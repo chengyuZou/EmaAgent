@@ -103,7 +103,7 @@ export interface PermissionContext {
   internalPaths?:  InternalPathCapabilities
   /**
    * Per-call askPermission override. When set, takes precedence over
-   * `PermissionConfig.ask`. AgentEngine injects this so each turn can route
+   * `PermissionConfig.ask`. TurnExecutor injects this so each turn can route
    * the prompt through its own SSE event stream (see gateWithEvents helper).
    */
   ask?:                   AskPermissionFn

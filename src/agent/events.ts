@@ -7,11 +7,8 @@ import type {
   ToolExecutionResult,
 } from '@ema-agent/tools';
 import type { SubagentContextMode } from '@ema-agent/tool-builtin';
-import type { TurnStats } from '@ema-agent/turn';
-import type { TurnEvent } from '@ema-agent/turn';
+import type { TurnEvent, TurnStats } from '@ema-agent/turn';
 import type { PermissionStreamEvent } from '@ema-agent/permission';
-import type { EmotionStreamEvent } from '@ema-agent/emotion';
-import type { ContextEvent } from '@ema-agent/context';
 import type { HookWarningEvent } from '@ema-agent/hooks';
 import type { AgentLoopState } from './agentLoopState.js';
 
@@ -69,16 +66,13 @@ export type AgentRunEvent =
   | { type: 'subagent_stream'; sessionId: SessionId; subagentId: AgentRunId; ev: SubagentInnerEvent };
 
 export type AgentTurnEvent =
-  | { type: 'agent_iteration'; sessionId: SessionId; n: number }
-  | { type: 'agent_breaker_tripped'; sessionId: SessionId; reason: string };
+  | { type: 'agent_iteration'; sessionId: SessionId; turnId: TurnId; n: number }
+  | { type: 'agent_breaker_tripped'; sessionId: SessionId; turnId: TurnId; reason: string };
 
-/** AgentEngine 对 TurnRuntime 输出的完整事件集合。 */
-export type AgentRuntimeEvent =
-  | TurnEvent
-  | AgentTurnEvent
+/** 子 Agent 调度器可向父 Turn 转发的事件，不包含根 Turn 终态和角色表现。 */
+export type AgentExecutionEvent =
   | AgentRunEvent
   | ToolExecutionEvent
   | PermissionStreamEvent
-  | EmotionStreamEvent
-  | ContextEvent
-  | HookWarningEvent;
+  | HookWarningEvent
+  | Extract<TurnEvent, { type: 'request_degraded' }>;

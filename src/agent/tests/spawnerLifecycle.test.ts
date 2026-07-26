@@ -5,7 +5,7 @@ import { asAgentRunId } from '@ema-agent/ids';
 import { HookBus } from '@ema-agent/hooks';
 import { ToolRegistry } from '@ema-agent/tools';
 import { SubagentSpawner } from '../spawner.js';
-import type { AgentDeps } from '../types.js';
+import type { SubagentSpawnerDeps } from '../spawner.js';
 
 describe('SubagentSpawner 生命周期', () => {
   it('shutdown 等待后台执行并记录 AgentRun 取消终态', async () => {
@@ -20,7 +20,7 @@ describe('SubagentSpawner 生命周期', () => {
         yield { type: 'done', stopReason: 'end_turn' };
       },
     };
-    const deps: AgentDeps = {
+    const deps: SubagentSpawnerDeps = {
       session: {} as never,
       hooks: new HookBus(),
       llm: llm as never,

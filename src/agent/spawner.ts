@@ -2,8 +2,14 @@
 
 import { randomUUID } from 'node:crypto';
 import { asAgentRunId, type AgentRunId, type SessionId, type TurnId } from '@ema-agent/ids';
-import type { ReadFileState, ToolError } from '@ema-agent/tools';
-import type { Message as ModelMessage } from '@ema-agent/llm';
+import type {
+  ReadFileState,
+  ToolError,
+  ToolExecutionJournalPort,
+  ToolExecutionRuntimeOptions,
+  ToolRegistry,
+} from '@ema-agent/tools';
+import type { LanguageModel, Message as ModelMessage } from '@ema-agent/llm';
 import type { KnowledgeSearchPort } from '@ema-agent/knowledge';
 import type { CommandRunnerPort } from '@ema-agent/sandbox';
 import type {
@@ -16,12 +22,16 @@ import {
   assembleToolPool,
   type BuiltinToolContext,
 } from '@ema-agent/tool-builtin';
-import type { AgentDeps } from './types.js';
+import type { PermissionEngine } from '@ema-agent/permission';
+import type { HookBus } from '@ema-agent/hooks';
+import type { IArtifactStore } from '@ema-agent/artifact';
+import type { SkillRunnerPort } from '@ema-agent/skills';
+import type { AgentRunStorePort } from './runs/types.js';
 import { TurnPolicy } from './policy.js';
 import { createToolLifecycleHooks } from './toolLifecycleHooks.js';
 import { runAgentLoop, type ExecutorFactory } from './agentLoop.js';
 import { TurnBudget } from './turn-budget.js';
-import type { AgentRuntimeEvent } from './events.js';
+import type { AgentExecutionEvent } from './events.js';
 import {
   ActiveSkillState,
 } from '@ema-agent/skills';
@@ -42,6 +52,19 @@ import {
 const RESULT_EXCERPT_MAX = 500;   // 工具结果明细预览字符数
 const OUTPUT_EXCERPT_MAX = 200;   // 子 Agent 完成摘要字符数
 
+/** 子 Agent 循环真正消费的依赖，不继承根 Turn 的 Session、情绪或 Context 能力。 */
+export interface SubagentSpawnerDeps {
+  tools: ToolRegistry;
+  llm: LanguageModel;
+  permission: PermissionEngine;
+  hooks: HookBus;
+  buildAsk?: ToolExecutionRuntimeOptions<BuiltinToolContext>['buildAsk'];
+  artifactStore?: IArtifactStore;
+  skillRunner?: SkillRunnerPort;
+  agentRunStore?: AgentRunStorePort;
+  toolExecutionJournal?: ToolExecutionJournalPort;
+}
+
 export class SubagentSpawner implements SubagentSpawnerPort {
   // 活跃执行按 agentRunId 索引，供单独取消。
   private readonly activeSubagents   = new Map<AgentRunId, AbortController>();
@@ -52,7 +75,7 @@ export class SubagentSpawner implements SubagentSpawnerPort {
   private stoppingReason: string | undefined;
 
   constructor(
-    private readonly deps:                  AgentDeps,
+    private readonly deps:                  SubagentSpawnerDeps,
     private readonly parentSessionId:       string,
     private readonly parentTurnId:          string,   // 父 Agent 的 Turn，不是子执行 ID
     private readonly parentProviderId:      string,
@@ -63,7 +86,7 @@ export class SubagentSpawner implements SubagentSpawnerPort {
     private readonly parentReadFileState:   ReadFileState,
     private readonly scratchpadDir?:        string,
     private readonly getScratchpadContext?: () => string | undefined,
-    private readonly parentEmit?:           (ev: AgentRuntimeEvent) => void,
+    private readonly parentEmit?:           (ev: AgentExecutionEvent) => void,
     private readonly kbSearch?:             KnowledgeSearchPort,
     private readonly budget:                TurnBudget = new TurnBudget(),
     private readonly parentActiveSkillState: ActiveSkillState = new ActiveSkillState(),
@@ -152,7 +175,7 @@ export class SubagentSpawner implements SubagentSpawnerPort {
     const startedAtMs = Date.now();
     const taskId      = opts.taskId;
     const kind        = opts.kind ?? 'subagent';
-    const emit = (ev: AgentRuntimeEvent) => this.parentEmit?.(ev);
+    const emit = (ev: AgentExecutionEvent) => this.parentEmit?.(ev);
 
     // 子控制器继承父取消信号，也允许只取消当前 AgentRun。
     const childCtrl     = new AbortController();
@@ -245,7 +268,7 @@ export class SubagentSpawner implements SubagentSpawnerPort {
     }
 
     let subagentExecutor: ToolExecutionRuntime | undefined;
-    const buildExecutor: ExecutorFactory<AgentRuntimeEvent> = ({ pushEv, signal: wakeSignal }) => {
+    const buildExecutor: ExecutorFactory<AgentExecutionEvent> = ({ pushEv, signal: wakeSignal }) => {
       const executor = new ToolExecutionRuntime({
         sessionId,
         turnId:     parentTurnId,
@@ -266,7 +289,7 @@ export class SubagentSpawner implements SubagentSpawnerPort {
     let usage    = { inputTokens: 0, outputTokens: 0 };
 
     try {
-      const agentLoop = runAgentLoop<AgentRuntimeEvent>({
+      const agentLoop = runAgentLoop<AgentExecutionEvent>({
         messages, policy, buildExecutor, llm,
         providerId:           this.parentProviderId,
         model:                resolvedModel,

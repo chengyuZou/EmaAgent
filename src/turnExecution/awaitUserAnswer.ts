@@ -1,27 +1,27 @@
-// 把根 Turn 的 AskUser Promise 等待接入取消信号。
+// 把根 Turn 的 AskUser 等待接入取消信号，并在取消时清理交互队列。
 
 import type { AskUserRequiredEvent } from '@ema-agent/tools';
-import type { AskUserRegistryLike } from './types.js';
+import type { AskUserInteractionPort } from './types.js';
 
-export interface AwaitAgentAnswerInput {
+export interface AwaitUserAnswerInput {
   promptId: string;
   request: AskUserRequiredEvent;
   turnId: string;
   signal: AbortSignal;
-  registry: AskUserRegistryLike;
+  interaction: AskUserInteractionPort;
 }
 
-export async function awaitAgentAnswer(
-  input: AwaitAgentAnswerInput,
+export async function awaitUserAnswer(
+  input: AwaitUserAnswerInput,
 ): Promise<{ answers: Record<string, string> }> {
-  const { promise } = input.registry.createWithId(
+  const { promise } = input.interaction.createWithId(
     input.promptId,
     undefined,
     input.turnId,
     input.request,
   );
   if (input.signal.aborted) {
-    input.registry.cancel(input.promptId);
+    input.interaction.cancel(input.promptId);
     throw abortReason(input.signal);
   }
 
@@ -30,7 +30,7 @@ export async function awaitAgentAnswer(
     rejectAbort = reject;
   });
   const onAbort = (): void => {
-    input.registry.cancel(input.promptId);
+    input.interaction.cancel(input.promptId);
     rejectAbort?.(abortReason(input.signal));
   };
   input.signal.addEventListener('abort', onAbort, { once: true });
@@ -49,5 +49,5 @@ export async function awaitAgentAnswer(
 function abortReason(signal: AbortSignal): Error {
   return signal.reason instanceof Error
     ? signal.reason
-    : new Error('Agent ask-user wait aborted');
+    : new Error('Turn ask-user wait aborted');
 }

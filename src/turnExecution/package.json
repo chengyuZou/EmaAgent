@@ -1,5 +1,5 @@
 {
-  "name": "@ema-agent/agent",
+  "name": "@ema-agent/turn-execution",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -21,17 +21,21 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
+    "@ema-agent/agent": "workspace:*",
     "@ema-agent/artifact": "workspace:*",
     "@ema-agent/context": "workspace:*",
+    "@ema-agent/emotion": "workspace:*",
     "@ema-agent/hooks": "workspace:*",
     "@ema-agent/ids": "workspace:*",
     "@ema-agent/knowledge": "workspace:*",
     "@ema-agent/llm": "workspace:*",
     "@ema-agent/permission": "workspace:*",
+    "@ema-agent/prompts": "workspace:*",
+    "@ema-agent/provider": "workspace:*",
     "@ema-agent/sandbox": "workspace:*",
+    "@ema-agent/session": "workspace:*",
     "@ema-agent/skills": "workspace:*",
-    "@ema-agent/storage": "workspace:*",
-    "@ema-agent/token": "workspace:*",
+    "@ema-agent/tasks": "workspace:*",
     "@ema-agent/tool-builtin": "workspace:*",
     "@ema-agent/tools": "workspace:*",
     "@ema-agent/turn": "workspace:*"

@@ -344,19 +344,36 @@ async function* runTurn(
           lastTextBlockIndex = chunk.blockIndex;
           if (cleaned) {
             textByIndex.set(chunk.blockIndex, (textByIndex.get(chunk.blockIndex) ?? '') + cleaned);
-            yield { type: 'output_text_delta', sessionId: input.sessionId, blockIndex: chunk.blockIndex, delta: cleaned };
+            yield {
+              type: 'output_text_delta',
+              sessionId: input.sessionId,
+              turnId: input.turn.id,
+              blockIndex: chunk.blockIndex,
+              delta: cleaned,
+            };
           }
           for (const ev of events) yield ev;
           break;
         }
         case 'thinking_delta':
           thinkingByIndex.set(chunk.blockIndex, (thinkingByIndex.get(chunk.blockIndex) ?? '') + chunk.delta);
-          yield { type: 'reasoning_delta', sessionId: input.sessionId, blockIndex: chunk.blockIndex, delta: chunk.delta };
+          yield {
+            type: 'reasoning_delta',
+            sessionId: input.sessionId,
+            turnId: input.turn.id,
+            blockIndex: chunk.blockIndex,
+            delta: chunk.delta,
+          };
           break;
         case 'thinking_complete':
           thinkingSignatureByIndex.set(chunk.blockIndex, chunk.signature);
           completedThinkingIndexes.add(chunk.blockIndex);
-          yield { type: 'reasoning_complete', sessionId: input.sessionId, blockIndex: chunk.blockIndex };
+          yield {
+            type: 'reasoning_complete',
+            sessionId: input.sessionId,
+            turnId: input.turn.id,
+            blockIndex: chunk.blockIndex,
+          };
           break;
         case 'usage':
           inputTokens = chunk.inputTokens;
@@ -384,7 +401,12 @@ async function* runTurn(
     for (const blockIndex of thinkingByIndex.keys()) {
       if (!completedThinkingIndexes.has(blockIndex)) {
         completedThinkingIndexes.add(blockIndex);
-        yield { type: 'reasoning_complete', sessionId: input.sessionId, blockIndex };
+        yield {
+          type: 'reasoning_complete',
+          sessionId: input.sessionId,
+          turnId: input.turn.id,
+          blockIndex,
+        };
       }
     }
 
@@ -396,7 +418,13 @@ async function* runTurn(
     if (tail) {
       fullText += tail;
       textByIndex.set(lastTextBlockIndex, (textByIndex.get(lastTextBlockIndex) ?? '') + tail);
-      yield { type: 'output_text_delta', sessionId: input.sessionId, blockIndex: lastTextBlockIndex, delta: tail };
+      yield {
+        type: 'output_text_delta',
+        sessionId: input.sessionId,
+        turnId: input.turn.id,
+        blockIndex: lastTextBlockIndex,
+        delta: tail,
+      };
     }
 
     // ── 流后 hook + 落盘 ───────────────────────────────────────────────────────
@@ -588,4 +616,4 @@ function buildAssistantBlocks(
   return blockEntries.map(([, block]) => block);
 }
 
-// buildModelMessages 与 AgentEngine 共享，定义在 @ema-agent/context。
+// buildModelMessages 与 TurnExecutor 共享，定义在 @ema-agent/context。

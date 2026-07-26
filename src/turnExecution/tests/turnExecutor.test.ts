@@ -1,14 +1,14 @@
-// 测试 AgentEngine 保存消息、调用 Hook 和处理 Turn 成功或失败的行为。
+// 测试 TurnExecutor 保存消息、调用 Hook 和处理 Turn 成功或失败的行为。
 
 import { describe, expect, it } from 'vitest';
 import type { MessageId, SessionId, TurnId } from '@ema-agent/ids';
-import type { AgentRuntimeEvent as EmaStreamEvent } from '../events.js';
+import type { TurnExecutionEvent as EmaStreamEvent } from '../types.js';
 import type { Message, Turn } from '@ema-agent/session';
 import { HookBus } from '@ema-agent/hooks';
 import { ToolRegistry } from '@ema-agent/tools';
 import { LlmToolArgumentsParseError } from '@ema-agent/llm';
-import { AgentEngine } from '../engine.js';
-import type { AgentDeps } from '../types.js';
+import { TurnExecutor } from '../turnExecutor.js';
+import type { TurnExecutionDeps } from '../types.js';
 
 const modelCapabilities = {
   resolve: () => ({
@@ -46,7 +46,7 @@ const prompt = {
   revision: 'test-prompt-revision',
 } as const;
 
-describe('AgentEngine 生命周期', () => {
+describe('TurnExecutor 生命周期', () => {
   it('assistant 消息落盘后发送相同的结构化 blocks', async () => {
     const hooks = new HookBus();
     let persistedAssistantBlocks: unknown;
@@ -105,7 +105,7 @@ describe('AgentEngine 生命周期', () => {
         yield { type: 'done', stopReason: 'end_turn' };
       },
     };
-    const deps: AgentDeps = {
+    const deps: TurnExecutionDeps = {
       session: session as never,
       hooks,
       llm: llm as never,
@@ -136,8 +136,8 @@ describe('AgentEngine 生命周期', () => {
     };
 
     const events: EmaStreamEvent[] = [];
-    const engine = new AgentEngine(deps);
-    for await (const event of engine.run({
+    const executor = new TurnExecutor(deps);
+    for await (const event of executor.execute({
       turn,
       signal: new AbortController().signal,
       userInput: 'hello',
@@ -217,7 +217,7 @@ describe('AgentEngine 生命周期', () => {
         throw new Error('provider unavailable');
       },
     };
-    const deps: AgentDeps = {
+    const deps: TurnExecutionDeps = {
       session: session as never,
       hooks,
       llm: llm as never,
@@ -255,8 +255,8 @@ describe('AgentEngine 生命周期', () => {
     };
 
     const events: EmaStreamEvent[] = [];
-    const engine = new AgentEngine(deps);
-    for await (const event of engine.run({
+    const executor = new TurnExecutor(deps);
+    for await (const event of executor.execute({
       turn,
       signal: new AbortController().signal,
       userInput: 'hello',
@@ -320,7 +320,7 @@ describe('AgentEngine 生命周期', () => {
         throw controller.signal.reason;
       },
     };
-    const deps: AgentDeps = {
+    const deps: TurnExecutionDeps = {
       session: session as never,
       hooks,
       llm: llm as never,
@@ -351,8 +351,8 @@ describe('AgentEngine 生命周期', () => {
     };
 
     const events: EmaStreamEvent[] = [];
-    const engine = new AgentEngine(deps);
-    for await (const event of engine.run({
+    const executor = new TurnExecutor(deps);
+    for await (const event of executor.execute({
       turn,
       signal: controller.signal,
       userInput: 'hello',
@@ -411,7 +411,7 @@ describe('AgentEngine 生命周期', () => {
         );
       },
     };
-    const deps: AgentDeps = {
+    const deps: TurnExecutionDeps = {
       session: session as never,
       hooks,
       llm: llm as never,
@@ -453,8 +453,8 @@ describe('AgentEngine 生命周期', () => {
     };
 
     const events: EmaStreamEvent[] = [];
-    const engine = new AgentEngine(deps);
-    for await (const event of engine.run({
+    const executor = new TurnExecutor(deps);
+    for await (const event of executor.execute({
       turn,
       signal: new AbortController().signal,
       userInput: 'hello',

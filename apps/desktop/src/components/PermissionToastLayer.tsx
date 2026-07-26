@@ -1,5 +1,5 @@
 /**
- * PermissionToastLayer — non-blocking floating decision cards in the pet window.
+ * 在桌宠窗口显示不阻塞其他 Session 的精简 Permission 与 AskConfirm 决策卡。
  *
  * Listens to Tauri IPC events relayed from the chat window:
  *   decision:push    — new prompt → show compact toast card
@@ -104,7 +104,7 @@ function PermissionCard({
     setSubmitting(true);
     setError(undefined);
     try {
-      await permissionApi.respond(toast.promptId, { action });
+      await permissionApi.respond(toast.turnId, toast.promptId, { action });
       onDismiss(toast.promptId);
     } catch (cause: unknown) {
       if (cause instanceof SidecarApiError && cause.status === 404) {

@@ -25,7 +25,7 @@ import type {
 } from '@ema-agent/turn';
 import type { EmaStreamEvent } from '@ema-agent/events';
 import { ConversationEngine } from '@ema-agent/conversation';
-import { AgentEngine }        from '@ema-agent/agent';
+import { TurnExecutor } from '@ema-agent/turn-execution';
 import { TtsCoordinator }     from '@ema-agent/tts';
 import type { FinalizedAudio } from '@ema-agent/tts';
 import { SettingsRepo } from '@ema-agent/storage';
@@ -103,7 +103,7 @@ export interface OrchestratorCallbacks {
  */
 export class Orchestrator {
   private readonly conversation: ConversationEngine;
-  private readonly agent:        AgentEngine;
+  private readonly turnExecutor: TurnExecutor;
   private readonly callbacks:    OrchestratorCallbacks;
   // turnId → sessionId, kept alive until the events generator exits
   private readonly activeTurns = new Map<string, ReturnType<typeof asSessionId>>();
@@ -114,7 +114,7 @@ export class Orchestrator {
   ) {
     this.callbacks    = callbacks;
     this.conversation = new ConversationEngine(bindings);
-    this.agent = new AgentEngine({
+    this.turnExecutor = new TurnExecutor({
       session:           bindings.session,
       hooks:             bindings.hooks,
       llm:               bindings.llm,
@@ -124,7 +124,7 @@ export class Orchestrator {
       permission:        bindings.permission,
       getCommandRunner:  bindings.getCommandRunner,
       buildAsk:          bindings.buildAskForTurn,
-      askUserRegistry:   bindings.askUserRegistry,
+      askUserInteraction: bindings.askUserRegistry,
       artifactStore:     bindings.artifactStore,
       skillRunner:       bindings.skillRunner,
       kbSearch:          bindings.kbSearch,
@@ -144,12 +144,12 @@ export class Orchestrator {
 
   /** Cancel a single sub-agent without aborting the parent turn. No-op if not found. */
   abortSubagent(turnId: TurnId, subagentId: string): void {
-    this.agent.abortSubagent(turnId as string, subagentId);
+    this.turnExecutor.abortAgentRun(turnId as string, subagentId);
   }
 
   /** Cancel a single in-flight tool without aborting the parent turn. Returns false if not found. */
   abortTool(turnId: TurnId, callId: string): boolean {
-    return this.agent.abortTool(turnId as string, callId);
+    return this.turnExecutor.abortTool(turnId as string, callId);
   }
 
   async run(request: TurnRequest): Promise<TurnResult> {
@@ -465,7 +465,7 @@ export class Orchestrator {
           ?? 200_000;
         const modelMaxOutputTokens = this.bindings.modelCapabilities.resolve({ providerId, model }).maxOutput;
 
-        return this.agent.run({
+        return this.turnExecutor.execute({
           turn, signal,
           providerId,
           model,

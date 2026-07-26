@@ -13,7 +13,7 @@ import {
   SessionInteractionQueue,
 } from '@ema-agent/turn';
 import type { AskUserInteractionOutcome } from '@ema-agent/turn';
-import type { AskUserRegistryLike } from '@ema-agent/agent';
+import type { AskUserInteractionPort } from '@ema-agent/turn-execution';
 import type { SettingsRepo, SqliteDb } from '@ema-agent/storage';
 
 // ── 返回契约 ─────────────────────────────────────────────────────────────────
@@ -28,8 +28,8 @@ export interface PermissionBootstrapResult {
   permission:        PermissionEngine;
   /** Permission 与 AskUser 共享的 per-Session FIFO 交互队列。 */
   interactionQueue:  AppInteractionQueue;
-  /** 适配 engine.ts askUser 回调的 AskUserRegistryLike;内部委托统一队列。 */
-  askUserRegistry:   AskUserRegistryLike;
+  /** 适配根 Turn AskUser 等待的交互端口；内部委托统一队列。 */
+  askUserRegistry:   AskUserInteractionPort;
   buildAskForTurn: (args: {
     sessionId: string;
     turnId:    TurnId;
@@ -38,16 +38,16 @@ export interface PermissionBootstrapResult {
   }) => AskPermissionFn;
 }
 
-// ── AskUserRegistryLike 适配器 ───────────────────────────────────────────────
+// ── AskUser 交互端口适配器 ──────────────────────────────────────────────────
 
 /**
- * 把 engine.ts 的 askUser 回调接到统一交互队列。
+ * 把 TurnExecutor 的 AskUser 等待接到统一交互队列。
  *
- * engine.ts 调用 createWithId(promptId, timeoutMs, turnId, request);request 携带
+ * 执行器调用 createWithId(promptId, timeoutMs, turnId, request)；request 携带
  * sessionId(见 tools/events.ts 的 ask_*_required 事件),适配器据此把问询推入
  * 对应 Session 的 FIFO,与 Permission 共同排队。
  */
-class InteractionQueueAskUserAdapter implements AskUserRegistryLike {
+class InteractionQueueAskUserAdapter implements AskUserInteractionPort {
   constructor(private readonly queue: AppInteractionQueue) {}
 
   createWithId(
@@ -89,7 +89,7 @@ class InteractionQueueAskUserAdapter implements AskUserRegistryLike {
  * 用于自动化测试或开发者 CLI;生产构建物理拒绝该环境变量。
  *
  * 永久规则存 profile.db.permission_rules,通过 SqlPermissionRuleStore 适配;
- * 启动时 Engine 从 Store 加载已启用规则参与匹配,addRule/removeRule/setRuleEnabled
+ * 启动时 PermissionEngine 从 Store 加载已启用规则参与匹配,addRule/removeRule/setRuleEnabled
  * 会立即写库并刷新内存快照。内置规则由代码提供,不进数据库。
  */
 export function buildPermissionSubsystem(

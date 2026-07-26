@@ -1,9 +1,9 @@
-// 这里用真实模型测试 Agent 循环、工具调用、结构化事件和上下文压缩能否贯通。
+// 使用真实模型测试 TurnExecutor、AgentLoop、工具调用和上下文压缩能否贯通。
 /**
- * Integration test: AgentEngine — mini think→act loop with real DeepSeek API.
+ * 通过真实 DeepSeek API 验证 TurnExecutor 的最小“思考→行动”循环。
  *
  * 使用 DeepSeek (openai-llm 兼容) 跑真实 API 调用。
- * 运行: pnpm --filter @ema-agent/agent test
+ * 运行: pnpm --filter @ema-agent/turn-execution test:integration
  *
  * 覆盖场景:
  *   1. simple  — 无工具 agent turn，LLM 直接 end_turn 回答
@@ -24,19 +24,19 @@ import { registerBuiltinTools } from '@ema-agent/tool-builtin';
 import type { Message, Turn } from '@ema-agent/session';
 import type { SessionId, TurnId, MessageId } from '@ema-agent/ids';
 
-import { AgentEngine } from '../engine.js';
-import type { AgentDeps } from '../types.js';
+import { TurnExecutor } from '../turnExecutor.js';
+import type { TurnExecutionDeps } from '../types.js';
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+// ── 测试常量 ──────────────────────────────────────────────────────────────────
 
-// Live API tests are skipped unless DS_API_KEY (or DEEPSEEK_API_KEY) is set.
+// 未提供 DS_API_KEY 或 DEEPSEEK_API_KEY 时跳过真实 API 测试。
 const DS_KEY       = process.env['DS_API_KEY'] ?? process.env['DEEPSEEK_API_KEY'] ?? '';
 const PROVIDER_ID  = 'deepseek-test';
 const MODEL        = 'deepseek-chat';
 const WORKSPACE    = path.resolve('D:/Github/EmaAgent');
 const TEST_TIMEOUT = 90_000;
 
-// ── In-memory SessionStore mock ───────────────────────────────────────────────
+// ── 内存 SessionStore 替身 ────────────────────────────────────────────────────
 
 function makeSessionStore() {
   const messages: Message[] = [];
@@ -66,15 +66,15 @@ function makeSessionStore() {
       messages.push(msg);
       return msg;
     },
-    completeTurn(_turnId: TurnId, _data: unknown): void { /* noop */ },
-    failTurn(_turnId: TurnId, _code: string, _msg: string): void { /* noop */ },
-    abortTurn(_sessionId: SessionId, _turnId: TurnId): void { /* noop */ },
-    // clear between tests
+    completeTurn(_turnId: TurnId, _data: unknown): void { /* 测试不持久化终态 */ },
+    failTurn(_turnId: TurnId, _code: string, _msg: string): void { /* 测试不持久化终态 */ },
+    abortTurn(_sessionId: SessionId, _turnId: TurnId): void { /* 测试不持久化终态 */ },
+    // 每条用例之间清空内存消息。
     clear() { messages.length = 0; msgCounter = 0; },
   };
 }
 
-// ── Turn stub ─────────────────────────────────────────────────────────────────
+// ── Turn 替身 ─────────────────────────────────────────────────────────────────
 
 function makeTurn(id = 'turn-1'): Turn {
   return {
@@ -95,9 +95,9 @@ function makeTurn(id = 'turn-1'): Turn {
   };
 }
 
-// ── Deps factory ──────────────────────────────────────────────────────────────
+// ── 依赖装配 ──────────────────────────────────────────────────────────────────
 
-let deps: AgentDeps;
+let deps: TurnExecutionDeps;
 let sessionStore: ReturnType<typeof makeSessionStore>;
 
 beforeAll(() => {
@@ -122,7 +122,7 @@ beforeAll(() => {
   sessionStore = makeSessionStore();
 
   deps = {
-    session:   sessionStore as unknown as AgentDeps['session'],
+    session:   sessionStore as unknown as TurnExecutionDeps['session'],
     hooks,
     llm,
     modelCapabilities: {
@@ -140,18 +140,23 @@ beforeAll(() => {
   };
 });
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── 测试辅助函数 ──────────────────────────────────────────────────────────────
 
-/** Drain the full AsyncIterable and return all events. */
-async function collectEvents(engine: AgentEngine, input: Parameters<AgentEngine['run']>[0]) {
+/** 消费完整异步事件流并返回全部事件。 */
+async function collectEvents(
+  executor: TurnExecutor,
+  input: Parameters<TurnExecutor['execute']>[0],
+) {
   const events = [];
-  for await (const ev of engine.run(input)) {
+  for await (const ev of executor.execute(input)) {
     events.push(ev);
   }
   return events;
 }
 
-function makeInput(overrides: Partial<Parameters<AgentEngine['run']>[0]> = {}) {
+function makeInput(
+  overrides: Partial<Parameters<TurnExecutor['execute']>[0]> = {},
+) {
   return {
     turn:          makeTurn(),
     signal:        AbortSignal.timeout(60_000),
@@ -181,14 +186,14 @@ function makeInput(overrides: Partial<Parameters<AgentEngine['run']>[0]> = {}) {
   };
 }
 
-// ── Test suite ────────────────────────────────────────────────────────────────
+// ── 真实调用用例 ──────────────────────────────────────────────────────────────
 
-describe.skipIf(!DS_KEY)('AgentEngine integration (DeepSeek)', () => {
+describe.skipIf(!DS_KEY)('TurnExecutor integration (DeepSeek)', () => {
 
   it('1. simple: no-tool turn ends normally', async () => {
     sessionStore.clear();
-    const engine = new AgentEngine(deps);
-    const events = await collectEvents(engine, makeInput({
+    const executor = new TurnExecutor(deps);
+    const events = await collectEvents(executor, makeInput({
       userInput:    'Reply with exactly: PONG',
     }));
 
@@ -207,10 +212,10 @@ describe.skipIf(!DS_KEY)('AgentEngine integration (DeepSeek)', () => {
 
   it('2. Read: LLM reads a real file', async () => {
     sessionStore.clear();
-    const engine = new AgentEngine(deps);
+    const executor = new TurnExecutor(deps);
 
     const targetFile = path.join(WORKSPACE, 'src/agent/package.json');
-    const events = await collectEvents(engine, makeInput({
+    const events = await collectEvents(executor, makeInput({
       turn:      makeTurn('turn-2'),
       userInput: `Use the Read tool to read the file at path "${targetFile}" and tell me the package name.`,
     }));
@@ -222,7 +227,7 @@ describe.skipIf(!DS_KEY)('AgentEngine integration (DeepSeek)', () => {
 
     expect(completed).toBeDefined();
     expect(toolResult).toBeDefined();
-    // The final answer should mention the package name
+    // 最终回答应包含读取到的包名。
     expect(fullText.toLowerCase()).toMatch(/ema.?agent\/agent|@ema-agent\/agent/i);
 
     console.log('[test 2] tool events:', events.filter(e => e.type === 'tool_call_complete' || e.type === 'tool_result').length);
@@ -231,9 +236,9 @@ describe.skipIf(!DS_KEY)('AgentEngine integration (DeepSeek)', () => {
 
   it('3. glob: LLM lists package.json files', async () => {
     sessionStore.clear();
-    const engine = new AgentEngine(deps);
+    const executor = new TurnExecutor(deps);
 
-    const events = await collectEvents(engine, makeInput({
+    const events = await collectEvents(executor, makeInput({
       turn:      makeTurn('turn-3'),
       userInput: `Use the glob_files tool with pattern "packages/*/package.json" in the workspace root "${WORKSPACE}" to list all package.json files. Tell me how many you found.`,
     }));
@@ -243,7 +248,7 @@ describe.skipIf(!DS_KEY)('AgentEngine integration (DeepSeek)', () => {
     const fullText  = textEvs.map((e: any) => e.delta).join('');
 
     expect(completed).toBeDefined();
-    // Should mention a number > 0
+    // 最终回答应包含大于零的文件数量。
     expect(fullText).toMatch(/\d+/);
 
     console.log('[test 3] iterations:', (events.find(e => e.type === 'agent_iteration') as any)?.n);
@@ -252,15 +257,15 @@ describe.skipIf(!DS_KEY)('AgentEngine integration (DeepSeek)', () => {
 
   it('4. abort: AbortSignal cancels in-flight turn', async () => {
     sessionStore.clear();
-    const engine = new AgentEngine(deps);
+    const executor = new TurnExecutor(deps);
     const controller = new AbortController();
 
-    // Abort after 2 seconds — should cancel mid-stream
+    // 两秒后取消，预期中断仍在进行的流式响应。
     const timer = setTimeout(() => controller.abort(), 2000);
 
     const events: unknown[] = [];
     try {
-      for await (const ev of engine.run(makeInput({
+      for await (const ev of executor.execute(makeInput({
         turn:      makeTurn('turn-4'),
         signal:    controller.signal,
         userInput: 'Count slowly from 1 to 1000, one number per line.',
@@ -274,7 +279,7 @@ describe.skipIf(!DS_KEY)('AgentEngine integration (DeepSeek)', () => {
     const aborted = events.find((e: any) => e.type === 'turn_aborted');
     const failed  = events.find((e: any) => e.type === 'turn_failed');
 
-    // Either aborted (mid-stream) or failed — both acceptable
+    // Provider 时序可能映射为 aborted 或 failed，两者都表示中途终止。
     const wasInterrupted = aborted !== undefined || failed !== undefined;
     expect(wasInterrupted || events.some((e: any) => e.type === 'turn_completed')).toBe(true);
 

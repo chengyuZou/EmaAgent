@@ -1,4 +1,4 @@
-// 运行一次 Agent Turn，并协调模型、工具、权限、Hook 和结果保存。
+// 执行一个已经创建的根 Turn，并协调模型循环、工具、Hook、持久化与唯一终态。
 
 import type { TurnFailureCode } from '@ema-agent/turn';
 import { asAgentRunId } from '@ema-agent/ids';
@@ -15,11 +15,21 @@ import {
 } from '@ema-agent/tool-builtin';
 import type { PermissionContext } from '@ema-agent/permission';
 import type { TurnFailurePhase } from '@ema-agent/hooks';
-import type { AgentDeps, TurnExecutionInput } from './types.js';
-import { TurnPolicy } from './policy.js';
-import { createToolLifecycleHooks } from './toolLifecycleHooks.js';
-import { runAgentLoop, type ExecutorFactory } from './agentLoop.js';
-import { SubagentSpawner } from './spawner.js';
+import type {
+  PreparedTurnExecution,
+  TurnExecutionDeps,
+  TurnExecutionEvent,
+} from './types.js';
+import {
+  AgentBudgetExceededError,
+  buildScratchpadContext,
+  createToolLifecycleHooks,
+  runAgentLoop,
+  SubagentSpawner,
+  TurnBudget,
+  TurnPolicy,
+  type ExecutorFactory,
+} from '@ema-agent/agent';
 import {
   buildModelMessages,
   buildRuntimeEnvironmentSnapshot,
@@ -28,39 +38,39 @@ import {
   validateCurrentContent,
 } from '@ema-agent/context';
 import type { ContextContribution } from '@ema-agent/context';
-import { buildScratchpadContext } from './scratchpad-context.js';
 import { LlmModelCapabilityError, llmProviderErrorCode } from '@ema-agent/llm';
 import type { AssistantBlock, Message as ModelMessage, UserBlock } from '@ema-agent/llm';
 import * as fs   from 'node:fs';
-import { AgentBudgetExceededError, TurnBudget } from './turn-budget.js';
-import { awaitAgentAnswer } from './ask-user-lifecycle.js';
-import type { AgentRuntimeEvent } from './events.js';
+import { awaitUserAnswer } from './awaitUserAnswer.js';
 import {
   ActiveSkillState,
   renderActiveSkillContext,
 } from '@ema-agent/skills';
 
-// ── AgentEngine ───────────────────────────────────────────────────────────────
+// ── TurnExecutor ─────────────────────────────────────────────────────────────
 
 /**
- * TurnRuntime 的迁移基座，负责 Turn 生命周期、持久化、Hook 和协议事件。
+ * 根 Turn 的执行边界，负责持久化、Hook、取消收口和协议事件。
+ *
+ * 本批调用方仍先创建 Turn；下一批会把 Session.startTurn 和 TurnHandle
+ * 收进这里，避免附件与 TTS 迁移和执行边界迁移同时改穿。
  * Agent 的思考与行动迭代由 AgentLoop 完成。
  */
-export class AgentEngine {
+export class TurnExecutor {
   // 路由按 turnId 定位 Spawner，以便只取消某个子 Agent。
   private readonly activeSpawners  = new Map<string, SubagentSpawner>();
   // 路由按 turnId 定位 Executor，以便只取消某个工具调用。
   private readonly activeExecutors = new Map<string, ToolExecutionRuntime>();
 
-  constructor(private readonly deps: AgentDeps) {}
+  constructor(private readonly deps: TurnExecutionDeps) {}
 
-  run(input: TurnExecutionInput): AsyncIterable<AgentRuntimeEvent> {
-    return runTurn(this.deps, input, this.activeSpawners, this.activeExecutors);
+  execute(input: PreparedTurnExecution): AsyncIterable<TurnExecutionEvent> {
+    return executeTurn(this.deps, input, this.activeSpawners, this.activeExecutors);
   }
 
-  /** 只取消指定子 Agent，不中止父 Turn。 */
-  abortSubagent(turnId: string, subagentId: string): void {
-    this.activeSpawners.get(turnId)?.abortSubagent(asAgentRunId(subagentId));
+  /** 只取消指定子 AgentRun，不中止父 Turn。 */
+  abortAgentRun(turnId: string, agentRunId: string): void {
+    this.activeSpawners.get(turnId)?.abortSubagent(asAgentRunId(agentRunId));
   }
 
   /** 只取消指定工具调用；找不到时返回 false。 */
@@ -71,13 +81,13 @@ export class AgentEngine {
 
 // ── Turn 核心运行入口 ─────────────────────────────────────────────────────────
 
-async function* runTurn(
-  deps:            AgentDeps,
-  input:           TurnExecutionInput,
+async function* executeTurn(
+  deps:            TurnExecutionDeps,
+  input:           PreparedTurnExecution,
   activeSpawners:  Map<string, SubagentSpawner>,
   activeExecutors: Map<string, ToolExecutionRuntime>,
-): AsyncIterable<AgentRuntimeEvent> {
-  const { session, hooks, llm, emotion, tools, permission, askUserRegistry } = deps;
+): AsyncIterable<TurnExecutionEvent> {
+  const { session, hooks, llm, emotion, tools, permission, askUserInteraction } = deps;
   const { turn, signal, userInput, workspaceRoot, providerId, model } = input;
   const sessionId = turn.sessionId;
   const turnId    = turn.id;
@@ -108,9 +118,9 @@ async function* runTurn(
 
   // 在 try 外声明，确保 finally 能在释放 Spawner 前切断事件队列引用。
   // buildExecutor 会在循环启动后填入实际发送函数。
-  const emitRef: { fn?: (ev: AgentRuntimeEvent) => void } = {};
-  const pendingHookEvents: AgentRuntimeEvent[] = [];
-  const emitHookEvent = (event: AgentRuntimeEvent): void => {
+  const emitRef: { fn?: (ev: TurnExecutionEvent) => void } = {};
+  const pendingHookEvents: TurnExecutionEvent[] = [];
+  const emitHookEvent = (event: TurnExecutionEvent): void => {
     pendingHookEvents.push(event);
   };
   let activePhase: TurnFailurePhase = 'setup';
@@ -286,15 +296,15 @@ async function* runTurn(
       knowledgeSearch:   scopedKbSearch,
       subagentSpawner:   spawner,
       scratchpad:        scratchpadDir ? { dir: scratchpadDir, author: 'main' } : undefined,
-      askUser: askUserRegistry
+      askUser: askUserInteraction
         ? async (promptId, questions, request) => {
             void questions;
-            return awaitAgentAnswer({
+            return awaitUserAnswer({
               promptId,
               request: request as AskUserRequiredEvent,
               turnId: turnId as string,
               signal,
-              registry: askUserRegistry,
+              interaction: askUserInteraction,
             });
           }
         : undefined,
@@ -307,7 +317,7 @@ async function* runTurn(
       toolCapabilities: policy.capabilities(),
     });
 
-    const buildExecutor: ExecutorFactory<AgentRuntimeEvent> = ({ pushEv, signal: wakeSignal }) => {
+    const buildExecutor: ExecutorFactory<TurnExecutionEvent> = ({ pushEv, signal: wakeSignal }) => {
       emitRef.fn = pushEv;   // 循环启动后接入父 SSE 发送函数
 
       const executor = new ToolExecutionRuntime({
@@ -329,7 +339,7 @@ async function* runTurn(
 
     // AgentLoop 不认识 SSE；本层把循环事件翻译为现有传输协议。
     activePhase = 'provider';
-    const agentLoop = runAgentLoop<AgentRuntimeEvent>({
+    const agentLoop = runAgentLoop<TurnExecutionEvent>({
       messages, policy, buildExecutor, llm,
       historyMessageCount: historyView.messages.length,
       providerId, model, signal,
@@ -441,14 +451,14 @@ async function* runTurn(
           iterTextByIndex     = new Map();
           iterThinkingByIndex = new Map();
           iterToolCalls       = new Map();
-          yield { type: 'agent_iteration', sessionId, n: ev.n };
+          yield { type: 'agent_iteration', sessionId, turnId, n: ev.n };
           break;
 
         case 'loop_text_delta': {
           const { cleaned, events } = emotion.processChunk(ev.delta, turnId, sessionId);
           if (cleaned) {
             iterTextByIndex.set(ev.blockIndex, (iterTextByIndex.get(ev.blockIndex) ?? '') + cleaned);
-            yield { type: 'output_text_delta', sessionId, blockIndex: ev.blockIndex, delta: cleaned };
+            yield { type: 'output_text_delta', sessionId, turnId, blockIndex: ev.blockIndex, delta: cleaned };
           }
           for (const e of events) yield e;
           break;
@@ -456,7 +466,7 @@ async function* runTurn(
 
         case 'loop_thinking_delta':
           iterThinkingByIndex.set(ev.blockIndex, (iterThinkingByIndex.get(ev.blockIndex) ?? '') + ev.delta);
-          yield { type: 'reasoning_delta', sessionId, blockIndex: ev.blockIndex, delta: ev.delta };
+          yield { type: 'reasoning_delta', sessionId, turnId, blockIndex: ev.blockIndex, delta: ev.delta };
           break;
 
         case 'loop_tool_partial':
@@ -494,7 +504,7 @@ async function* runTurn(
           if (tail) {
             const textIdx = iterTextByIndex.size > 0 ? Math.min(...iterTextByIndex.keys()) : 0;
             iterTextByIndex.set(textIdx, (iterTextByIndex.get(textIdx) ?? '') + tail);
-            yield { type: 'output_text_delta', sessionId, blockIndex: textIdx, delta: tail };
+            yield { type: 'output_text_delta', sessionId, turnId, blockIndex: textIdx, delta: tail };
           }
 
           const fullText = [...iterTextByIndex.entries()]
@@ -563,7 +573,7 @@ async function* runTurn(
         }
 
         case 'loop_breaker':
-          yield { type: 'agent_breaker_tripped', sessionId, reason: ev.reason };
+          yield { type: 'agent_breaker_tripped', sessionId, turnId, reason: ev.reason };
           break;
 
       }
@@ -679,7 +689,7 @@ async function* runTurn(
   }
 }
 
-function readableUserInput(input: TurnExecutionInput['userInput']): string {
+function readableUserInput(input: PreparedTurnExecution['userInput']): string {
   if (typeof input === 'string') return input;
   return input
     .filter((part): part is Extract<(typeof input)[number], { type: 'text' }> => part.type === 'text')

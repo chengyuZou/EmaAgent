@@ -1,17 +1,17 @@
 # @ema-agent/conversation
 
-> Chat / Narrative 回合引擎 —— 单次 LLM 调用的统一 turn 流，与 agent 包平行。
-> 更新时间 2026-6-6
+> Chat 单次调用的迁移期执行路径；Work 已由 `TurnExecutor + AgentLoop` 执行。
+> 该包会在 Chat 路径迁入 `turnExecution` 后删除，不再作为目标架构参考。
 
 ---
 
 ## 架构位置
 
 ```
-apps/core (orchestrator)
+apps/core (迁移期 orchestrator)
   │
-  ├─ turn mode = 'chat' | 'narrative' → ConversationEngine.run()
-  ├─ turn mode = 'agent'               → AgentEngine.run()
+  ├─ executionProfile = 'chat' → ConversationEngine.run()
+  ├─ executionProfile = 'work' → TurnExecutor.execute()
   │
   └─ register-hooks.ts 统一装配所有 beforeLlm handler
         ├─ priority 5:  conversation/narrative:recall
@@ -19,7 +19,7 @@ apps/core (orchestrator)
         └─ priority 20: memory/beforeLlm
 ```
 
-ConversationEngine **不 import AgentEngine，也不 import MemoryPlanner**。它只管触发事件、消费结果、流式输出。跨横切面的能力（记忆、提示词、叙事 RAG）全部通过 HookBus 注入。
+ConversationEngine **不 import TurnExecutor，也不 import MemoryPlanner**。它只管迁移期 Chat 的单次调用；长期由 `turnExecution` 统一根 Turn 生命周期。
 
 ---
 
@@ -57,7 +57,7 @@ Engine 需要的最小依赖面，是 `AppBindings` 的严格子集——CLI 也
 | `turn` | `Turn` | 调用方已通过 `session.startTurn()` 启动的回合 |
 | `signal` | `AbortSignal` | 用户点击 Stop 时触发 |
 | `sessionId` | `SessionId` | 当前会话 |
-| `mode` | `'chat' \| 'narrative'` | Agent 模式由 AgentEngine 处理 |
+| `executionProfile` | `'chat'` | Work 由 TurnExecutor 处理 |
 | `userInput` | `string` | 用户文本输入 |
 | `contentParts` | `LlmContentPart[]` | 多模态附件（可选，优先于 userInput） |
 | `model` | `string` | 显式模型覆盖（可选） |
@@ -182,15 +182,15 @@ narrative:recall (beforeLlm, priority 5)
 
 ---
 
-## 四、与 agent 包的对比
+## 四、与 Work 执行路径的对比
 
-| | conversation | agent |
+| | conversation | TurnExecutor + AgentLoop |
 |---|---|---|
-| 模式 | chat / narrative | agent (full / plan / debug) |
+| Profile | chat | work |
 | LLM 调用 | 单次 stream | 多轮 think→act loop |
 | 工具执行 | 无 | ToolExecutionRuntime 并发执行 |
 | 迭代上限 | 1 次 | 10 / 15 / 30 次 |
 | blockIndex | 跟随 provider chunk；支持 text/thinking 交错，但不执行工具 | 多 block（text + thinking + tool_use 交错） |
 | 共享的事件 | beforeLlm, afterLlmComplete, afterMessage, onTurnStart, onTurnEnd, onTurnAbort | 同左 |
 
-两个引擎**完全独立**，互不 import，只是挂在同一套 HookBus 事件上。
+这是迁移期双路径，不是目标架构；Chat 迁入后删除 ConversationEngine。

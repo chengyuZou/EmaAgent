@@ -39,6 +39,7 @@
     "@ema-agent/emotion": "workspace:*",
     "@ema-agent/conversation": "workspace:*",
     "@ema-agent/agent": "workspace:*",
+    "@ema-agent/turn-execution": "workspace:*",
     "@ema-agent/tasks": "workspace:*",
     "@ema-agent/embed": "workspace:*",
     "@ema-agent/rerank": "workspace:*",

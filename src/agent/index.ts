@@ -1,17 +1,13 @@
-// 统一导出 Agent 运行时、策略、循环状态和依赖接口。
-export { AgentEngine } from './engine.js';
+// 统一导出 Agent 循环、策略、预算和子 Agent 执行能力。
 export { TurnPolicy } from './policy.js';
 export {
   AgentToolCapabilityScope,
   ToolCapabilityRestrictionError,
 } from './tool-capability-scope.js';
 export { SubagentSpawner } from './spawner.js';
+export type { SubagentSpawnerDeps } from './spawner.js';
+export { createToolLifecycleHooks } from './toolLifecycleHooks.js';
 export { AgentRunStore } from './runs/agentRunStore.js';
-export type {
-  AgentDeps,
-  AskUserRegistryLike,
-  TurnExecutionInput,
-} from './types.js';
 export type {
   AgentRun,
   AgentRunCompletion,
@@ -30,9 +26,9 @@ export type {
 } from './agentLoop.js';
 export type {
   AgentKind,
+  AgentExecutionEvent,
   AgentLoopEvent,
   AgentRunEvent,
-  AgentRuntimeEvent,
   AgentTurnEvent,
   SubagentInnerEvent,
 } from './events.js';
@@ -47,5 +43,4 @@ export {
   TurnBudget,
 } from './turn-budget.js';
 export type { TurnBudgetDimension, TurnBudgetLimits } from './turn-budget.js';
-export { awaitAgentAnswer } from './ask-user-lifecycle.js';
-export type { AwaitAgentAnswerInput } from './ask-user-lifecycle.js';
+export { buildScratchpadContext } from './scratchpad-context.js';

@@ -64,17 +64,20 @@ export type TurnEvent =
   | {
       type: 'output_text_delta';
       sessionId: SessionId;
+      turnId: TurnId;
       blockIndex: number;
       delta: string;
     }
   | {
       type: 'reasoning_delta';
       sessionId: SessionId;
+      turnId: TurnId;
       blockIndex: number;
       delta: string;
     }
   | {
       type: 'reasoning_complete';
       sessionId: SessionId;
+      turnId: TurnId;
       blockIndex: number;
     };

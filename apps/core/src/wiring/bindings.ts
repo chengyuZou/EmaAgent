@@ -64,7 +64,7 @@ import { SessionStore }  from '@ema-agent/session';
 import { EmotionEngine } from '@ema-agent/emotion';
 import { PermissionEngine } from '@ema-agent/permission';
 import type { AskPermissionFn, PermissionStreamEvent } from '@ema-agent/permission';
-import type { AskUserRegistryLike } from '@ema-agent/agent';
+import type { AskUserInteractionPort } from '@ema-agent/turn-execution';
 import type {
   SessionId,
   ToolCallId,
@@ -164,8 +164,8 @@ export interface AppBindings {
   permission:        PermissionEngine;
   /** Permission 与 AskUser 共享的 per-Session FIFO 交互队列。 */
   interactionQueue:  AppInteractionQueue;
-  /** 适配 engine.ts askUser 回调的 AskUserRegistryLike;内部委托统一队列。 */
-  askUserRegistry:   AskUserRegistryLike;
+  /** 根 Turn 的 AskUser 等待端口；内部委托统一 Session 交互队列。 */
+  askUserRegistry:   AskUserInteractionPort;
   tools:             ToolRegistry;
   /** Per-turn factory that yields an askPermission callback wired to SSE emit. */
   buildAskForTurn: (args: {
