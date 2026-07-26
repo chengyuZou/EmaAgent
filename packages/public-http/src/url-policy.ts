@@ -75,9 +75,10 @@ export async function approvePublicTarget(rawUrl: string): Promise<ApprovedPubli
 }
 
 export function assertSafePublicRedirect(previous: URL, next: URL): void {
-  // 重定向只允许同一主机(严格相等, www 与裸域是两个主体)同端口;
+  // 重定向只允许同主机同端口; www 与裸域视为同一站点
+  // (互联网最普遍的等价跳转, Claude 同样放行 www 加/减)。
   // 标准 80 -> 443 的 HTTPS 升级是唯一例外。
-  const sameHost = previous.hostname.toLowerCase() === next.hostname.toLowerCase();
+  const sameHost = stripWww(previous.hostname) === stripWww(next.hostname);
   const sameProtocol = previous.protocol === next.protocol;
   const upgradesToHttps = previous.protocol === 'http:' && next.protocol === 'https:';
   const samePort = effectivePort(previous) === effectivePort(next);
@@ -89,6 +90,10 @@ export function assertSafePublicRedirect(previous: URL, next: URL): void {
       `重定向目标 ${next.origin} 需要单独授权, 拒绝跨站重定向`,
     );
   }
+}
+
+function stripWww(hostname: string): string {
+  return hostname.toLowerCase().replace(/^www\./, '');
 }
 
 export function isPublicNetworkAddress(address: string): boolean {

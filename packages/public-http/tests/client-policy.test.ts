@@ -1,7 +1,11 @@
 // 测试请求头白名单, 错误 URL 脱敏和并发闸门的边界.
 
 import { describe, expect, it } from 'vitest';
-import { buildRequestHeaders, PublicEgressLimiter } from '../src/client.js';
+import {
+  buildRequestHeaders,
+  fetchPublicResource,
+  PublicEgressLimiter,
+} from '../src/client.js';
 import { PublicHttpStatusError } from '../src/errors.js';
 
 describe('请求头白名单', () => {
@@ -29,6 +33,60 @@ describe('请求头白名单', () => {
       'Accept-Encoding': 'identity',
       'User-Agent': 'EmaAgent/1.0',
     });
+  });
+
+  it('additionalAllowedHeaders 只放行声明的头, 其余仍剥离', () => {
+    const headers = buildRequestHeaders(
+      {
+        'X-Subscription-Token': 'brave-key',
+        'Ocp-Apim-Subscription-Key': 'bing-key',
+        'Authorization': 'Bearer secret',
+        'Accept': 'application/json',
+      },
+      ['x-subscription-token', 'ocp-apim-subscription-key'],
+    );
+
+    expect(headers['X-Subscription-Token']).toBe('brave-key');
+    expect(headers['Ocp-Apim-Subscription-Key']).toBe('bing-key');
+    expect(headers['Authorization']).toBeUndefined();
+    expect(headers['Accept']).toBe('application/json');
+    expect(headers['User-Agent']).toBe('EmaAgent/1.0');
+  });
+
+  it('additionalAllowedHeaders 含 user-agent 时可覆盖默认 UA(仅当次调用)', () => {
+    const headers = buildRequestHeaders(
+      { 'User-Agent': 'Mozilla/5.0 (compatible; EmaAgent/1.0)' },
+      ['user-agent'],
+    );
+    expect(headers['User-Agent']).toBe('Mozilla/5.0 (compatible; EmaAgent/1.0)');
+    // 未声明时仍不可覆盖
+    expect(buildRequestHeaders({ 'User-Agent': 'Evil/1.0' })['User-Agent']).toBe('EmaAgent/1.0');
+  });
+
+  it('即使调用方声明也不允许覆盖路由和连接控制头', () => {
+    const headers = buildRequestHeaders(
+      {
+        Host: 'internal.example',
+        Connection: 'upgrade',
+        'Transfer-Encoding': 'chunked',
+        Authorization: 'Bearer fixed-api-key',
+      },
+      ['host', 'connection', 'transfer-encoding', 'authorization'],
+    );
+
+    expect(headers['Host']).toBeUndefined();
+    expect(headers['Connection']).toBeUndefined();
+    expect(headers['Transfer-Encoding']).toBeUndefined();
+    expect(headers['Authorization']).toBe('Bearer fixed-api-key');
+  });
+
+  it('额外敏感头与自动重定向不能同时启用', async () => {
+    await expect(fetchPublicResource('https://api.example.com/search', {
+      maxBytes: 1024,
+      maxRedirects: 1,
+      headers: { Authorization: 'Bearer fixed-api-key' },
+      additionalAllowedHeaders: ['authorization'],
+    })).rejects.toThrow('必须禁用自动重定向');
   });
 });
 

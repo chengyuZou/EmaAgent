@@ -2,7 +2,11 @@
 import http from 'node:http';
 import https from 'node:https';
 import type { IncomingMessage, RequestOptions } from 'node:http';
-import { PublicHttpLimitError, PublicHttpStatusError } from './errors.js';
+import {
+  PublicHttpLimitError,
+  PublicHttpPolicyError,
+  PublicHttpStatusError,
+} from './errors.js';
 import type { PublicHttpRequestOptions, PublicHttpResponse } from './types.js';
 import { approvePublicTarget, assertSafePublicRedirect } from './url-policy.js';
 
@@ -24,6 +28,18 @@ const CALLER_HEADER_ALLOWLIST = new Set([
   'if-modified-since',
 ]);
 
+// 即使调用方显式追加白名单，也不能覆盖路由、连接和消息边界头。
+const FORBIDDEN_REQUEST_HEADERS = new Set([
+  'connection',
+  'content-length',
+  'host',
+  'proxy-authorization',
+  'te',
+  'trailer',
+  'transfer-encoding',
+  'upgrade',
+]);
+
 export async function fetchPublicResource(
   rawUrl: string,
   options: PublicHttpRequestOptions,
@@ -33,6 +49,9 @@ export async function fetchPublicResource(
   const maxRedirects = options.maxRedirects ?? DEFAULT_MAX_REDIRECTS;
   assertPositiveInteger('timeoutMs', timeoutMs);
   assertNonNegativeInteger('maxRedirects', maxRedirects);
+  if ((options.additionalAllowedHeaders?.length ?? 0) > 0 && maxRedirects !== 0) {
+    throw new PublicHttpPolicyError('携带额外敏感请求头时必须禁用自动重定向');
+  }
 
   const timeoutSignal = AbortSignal.timeout(timeoutMs);
   const signal = options.signal
@@ -50,7 +69,14 @@ export async function fetchPublicResource(
       // DNS 查询本身没有 AbortSignal 参数, 通过竞速保证调用链可以按时退出.
       // 即使底层系统解析稍后才返回, 也不会继续建立网络连接.
       const target = await waitForSignal(approvePublicTarget(current), signal);
-      const response = await requestPinned(target.url, target.address, target.family, options.headers, signal);
+      const response = await requestPinned(
+        target.url,
+        target.address,
+        target.family,
+        options.headers,
+        signal,
+        options.additionalAllowedHeaders,
+      );
       const status = response.statusCode ?? 0;
       const statusText = response.statusMessage ?? 'Unknown status';
 
@@ -87,13 +113,24 @@ export async function fetchPublicResource(
 }
 
 /** 构建出站请求头; 导出仅供包内测试验证白名单边界. */
-export function buildRequestHeaders(callerHeaders: Readonly<Record<string, string>> | undefined): Record<string, string> {
+export function buildRequestHeaders(
+  callerHeaders: Readonly<Record<string, string>> | undefined,
+  additionalAllowed?: readonly string[],
+): Record<string, string> {
   const headers: Record<string, string> = {
     'Accept-Encoding': 'identity',
     'User-Agent': 'EmaAgent/1.0',
   };
+  const allowed = additionalAllowed && additionalAllowed.length > 0
+    ? new Set([
+        ...CALLER_HEADER_ALLOWLIST,
+        ...additionalAllowed
+          .map(name => name.toLowerCase())
+          .filter(name => !FORBIDDEN_REQUEST_HEADERS.has(name)),
+      ])
+    : CALLER_HEADER_ALLOWLIST;
   for (const [name, value] of Object.entries(callerHeaders ?? {})) {
-    if (CALLER_HEADER_ALLOWLIST.has(name.toLowerCase())) headers[name] = value;
+    if (allowed.has(name.toLowerCase())) headers[name] = value;
   }
   return headers;
 }
@@ -104,6 +141,7 @@ function requestPinned(
   family: 4 | 6,
   headers: Readonly<Record<string, string>> | undefined,
   signal: AbortSignal,
+  additionalAllowedHeaders?: readonly string[],
 ): Promise<IncomingMessage> {
   return new Promise((resolve, reject) => {
     const transport = url.protocol === 'https:' ? https : http;
@@ -115,7 +153,7 @@ function requestPinned(
       port: url.port || undefined,
       path: `${url.pathname}${url.search}`,
       method: 'GET',
-      headers: buildRequestHeaders(headers),
+      headers: buildRequestHeaders(headers, additionalAllowedHeaders),
       lookup: (_hostname, _options, callback) => callback(null, address, family),
       signal,
     };

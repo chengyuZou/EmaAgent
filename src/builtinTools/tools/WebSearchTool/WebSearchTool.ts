@@ -1,10 +1,10 @@
 // 通过已配置的搜索服务返回有界的网页搜索结果。
 import { z } from 'zod';
+import { fetchPublicResource } from '@ema-agent/public-http';
 import { buildTool } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import type { BuiltinToolContext } from '../../builtinToolContext.js';
 import { contextOk } from '../../contextValidation.js';
-import { fetchBounded } from '../shared/BoundedFetch.js';
 
 /** WebSearch 工具的窄 Context：per-call 取消信号。 */
 interface WebSearchToolContext {
@@ -118,16 +118,15 @@ async function braveSearch(
   signal: AbortSignal,
 ): Promise<SearchResult[]> {
   const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${count}`;
-  const res = await fetchBounded(url, {
+  // 主机写死 + additionalAllowedHeaders 声明: API key 只流向 Brave, 不会被重定向带走。
+  const res = await fetchPublicResource(url, {
     signal,
     timeoutMs: SEARCH_TIMEOUT_MS,
     maxBytes: API_RESPONSE_LIMIT,
-    init: {
-      redirect: 'error',
-      headers: { Accept: 'application/json', 'X-Subscription-Token': apiKey },
-    },
+    maxRedirects: 0,
+    headers: { Accept: 'application/json', 'X-Subscription-Token': apiKey },
+    additionalAllowedHeaders: ['x-subscription-token'],
   });
-  if (!res.ok) throw new Error(`Brave Search API error: ${res.status}`);
   const data = braveResponseSchema.parse(parseJson(res.body));
   return normalizeResults((data.web?.results ?? []).map((r) => ({
     title: r.title,
@@ -143,16 +142,14 @@ async function bingSearch(
   signal: AbortSignal,
 ): Promise<SearchResult[]> {
   const url = `https://api.bing.microsoft.com/v7.0/search?q=${encodeURIComponent(query)}&count=${count}`;
-  const res = await fetchBounded(url, {
+  const res = await fetchPublicResource(url, {
     signal,
     timeoutMs: SEARCH_TIMEOUT_MS,
     maxBytes: API_RESPONSE_LIMIT,
-    init: {
-      redirect: 'error',
-      headers: { 'Ocp-Apim-Subscription-Key': apiKey },
-    },
+    maxRedirects: 0,
+    headers: { 'Ocp-Apim-Subscription-Key': apiKey },
+    additionalAllowedHeaders: ['ocp-apim-subscription-key'],
   });
-  if (!res.ok) throw new Error(`Bing Search API error: ${res.status}`);
   const data = bingResponseSchema.parse(parseJson(res.body));
   return normalizeResults((data.webPages?.value ?? []).map((r) => ({
     title: r.name,
@@ -168,16 +165,14 @@ async function duckduckgoSearch(
 ): Promise<SearchResult[]> {
   // DuckDuckGo HTML 端点 - 基础爬取,无官方 API
   const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
-  const res = await fetchBounded(url, {
+  const res = await fetchPublicResource(url, {
     signal,
     timeoutMs: SEARCH_TIMEOUT_MS,
     maxBytes: HTML_RESPONSE_LIMIT,
-    init: {
-      redirect: 'error',
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; EmaAgent/1.0)' },
-    },
+    maxRedirects: 0,
+    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; EmaAgent/1.0)' },
+    additionalAllowedHeaders: ['user-agent'],
   });
-  if (!res.ok) throw new Error(`DuckDuckGo search failed: ${res.status}`);
   const html = res.body.toString('utf8');
 
   const results: SearchResult[] = [];

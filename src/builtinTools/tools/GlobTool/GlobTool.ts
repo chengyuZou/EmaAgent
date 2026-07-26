@@ -1,5 +1,4 @@
 // 在明确的目录和结果预算内按文件名模式查找文件。
-import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { globIterate } from 'glob';
@@ -12,6 +11,7 @@ import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import type { BuiltinToolContext } from '../../builtinToolContext.js';
 import { contextFail, contextOk } from '../../contextValidation.js';
 import { runBoundedProcess } from '../shared/BoundedProcess.js';
+import { sortPathsByMtimeDesc } from '../shared/fileMtimeSort.js';
 
 /** Glob 工具的窄 Context：工作区根 + per-call 取消信号。 */
 interface GlobToolContext {
@@ -101,7 +101,9 @@ export const GlobTool = buildTool<GlobInput, GlobResult, BuiltinToolContext, Glo
 
     // 枚举后才排序截取: "最近修改的 100 个"必须先枚举再按 mtime 降序,
     // 不能取遍历序前 100 再排序(大目录下不是真正的新文件)。
-    const { files, truncated } = newestFirst(found.paths);
+    const page = await newestFirst(found.paths);
+    const files = page.files;
+    const truncated = page.truncated || found.enumTruncated;
     const notice = truncated
       ? `[Showing the ${MAX_RESULTS} most recently modified of ${found.paths.length}${found.enumTruncated ? '+' : ''} matches. Narrow the pattern or path to continue.]`
       : undefined;
@@ -129,23 +131,9 @@ export const GlobTool = buildTool<GlobInput, GlobResult, BuiltinToolContext, Glo
  */
 const MAX_ENUMERATION = 20_000;
 
-/** 按 mtime 降序(相同 mtime 按路径字典序决胜); stat 失败的按 mtime 0 排尾。 */
-export function sortByMtimeDesc(paths: string[]): string[] {
-  const withMtime = paths.map((p) => {
-    try {
-      const { mtimeMs } = fs.statSync(p);
-      return { p, mtime: mtimeMs };
-    } catch {
-      return { p, mtime: 0 };
-    }
-  });
-  withMtime.sort((a, b) => b.mtime - a.mtime || a.p.localeCompare(b.p));
-  return withMtime.map((x) => x.p);
-}
-
 /** 枚举 → mtime 降序 → 取前 MAX_RESULTS。两条后端共用同一收口。 */
-function newestFirst(paths: string[]): { files: string[]; truncated: boolean } {
-  const sorted = sortByMtimeDesc(paths);
+async function newestFirst(paths: string[]): Promise<{ files: string[]; truncated: boolean }> {
+  const sorted = await sortPathsByMtimeDesc(paths);
   return {
     files: sorted.slice(0, MAX_RESULTS),
     truncated: sorted.length > MAX_RESULTS,

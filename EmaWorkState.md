@@ -90,7 +90,7 @@ Task 与 AgentRun 前端已经分面：Desktop 使用正式 `/api/tasks` 快照�
 
 开始任何新批次前必须重新运行 `git status --short` 与 `git diff`，保留用户和其他 Agent 的修改。
 
-当前工作区只包含本轮文档口径更新：FileRead 的 Builtin Tool 2D 审查由 Kimi 负责；主线下一批建立 TurnRuntime，并同步拆除迁移期 `src/conversation`，不要重复施工或在旧包继续新增业务。后续修改前仍须逐文件检查 Diff。
+当前工作区包含 Builtin Tool 2D 的 FileRead/FileEdit/Search/WebFetch/WebSearch 收口及配套 `public-http` 安全修复，其中部分改动来自 Kimi，后续修改前必须逐文件检查 Diff。主线下一批建立 TurnRuntime，并同步拆除迁移期 `src/conversation`，不要在旧包继续新增业务。
 
 当前基线最近提交：`f96f57fd feat(permission): implement Permission V1 with CRUD for persistent rules and enhanced response handling`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
 
@@ -135,7 +135,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 2. TaskList、AgentRunPanel、原生 AgentRun API 与真实 Review 入口已经完成，旧 `/api/agent-tasks` 兼容已删除；
 3. Sandbox 依赖反转、Tools 主执行链归位、单一 `BuiltinToolContext + validateContext` 窄投影与真实 ToolPool 接线均已完成；
 4. Tool Manifest 的 Builtin/MCP 稳定分区、内容 Revision 与缓存稳定测试（2C）已经完成；
-5. Builtin Tool 2D 的 Sandbox 命令环境 allowlist 与工作目录边界已经完成；FileRead 行数/字节双上限已交给 Kimi，结构化 Presentation 公共协议与首批接线已完成；
+5. Builtin Tool 2D 的 Sandbox 命令环境 allowlist、工作目录边界、FileRead 行数/字节双上限、Glob/Grep 有界搜索与 WebSearch 公网访问安全均已完成；结构化 Presentation 公共协议与首批接线已完成；
 6. Permission V1 已完成：统一 Session FIFO、明确终态、Turn 身份核对、SQLite 永久规则 CRUD 与设置页管理、Builtin-only 免审批边界均已接通；迁移期 `AskUserRegistryLike` 命名随 TurnRuntime 装配边界清理，不新增第二套队列；
 7. 建立 TurnRuntime，把 `src/conversation` 中仍有价值的职责归还给 Turn、Context、Narrative 与 Hooks，删除整个迁移期包；随后清理 Agent，并让 Core Route 退回协议层；
 8. 后台进程按 `BackgroundProcess + ProcessOutput/ProcessStop` 单独实现 C 档，不修改 AgentLoop，也不恢复假 `run_in_background`。
@@ -146,6 +146,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- Builtin Tool 搜索与公网访问收口：`public-http` 33/33、BuiltinTools 102/102 通过，另有 1 项“系统缺少 rg”条件测试因当前机器已安装 rg 而按预期跳过；两包 typecheck 及 `public-http` build 通过。真实 `rg` 语义覆盖相对路径、最大列宽、分页、跨行、类型过滤、上下文与全局 mtime 排序；WebSearch 已统一进入带 DNS 审批和 IP 固定的 `public-http`，额外敏感头禁止随重定向转发，既存裸域与 `www` 安全重定向口径已收口。
 - Permission V1 最终收口：Permission、Turn、Tools、Agent、Core、Desktop UI typecheck 通过；Permission 18/18、Turn 20/20、Tools Prepared Call 5/5、Agent ToolExecutionRuntime 12/12、Core Permission Route/事件 4/4、Desktop Permission 恢复与提交 5/5 通过。测试覆盖永久规则 CRUD、工作区绝对路径校验、`turnId + promptId` 陈旧响应拒绝，以及 MCP 伪造 `not_required` 的构建期与运行时双重防线；`git diff --check` 通过，仅有既有 CRLF 提示。
 - Permission/AskUser 统一交互收口：Turn 队列已泛型化，生产源码与 package 声明不再形成 `permission → storage → turn → permission` 依赖环；Permission、Tools、Turn、Agent build 通过，BuiltinTools 与 Core typecheck 通过；Tools 27/27、Turn 19/19、Agent 32/32、Core 90/90、Builtin Ask ToolPool 3/3 通过。此前 BuiltinTools 全量 72/73，唯一失败仍是既存 WebFetchPolicy 对 `example.com -> www.example.com` 的跨站重定向口径，与本批无关；Tools 缺失的 `diff` 运行依赖已离线补齐。
 - Tools 残余清理：Session 级文件快照及跨层接线已删除；Tools/Context/BuiltinTools/Agent build 与 Core typecheck 通过，Journal/Presentation/Compaction/File Tools 定向 26/26 通过。此前全量 Tools 27/27、Context 24/24、BuiltinTools 71/72；唯一失败仍是既存 WebFetchPolicy 的 `example.com -> www.example.com` 重定向口径，与本批无关。pnpm lockfile 已离线刷新。

@@ -56,15 +56,24 @@ describe('公网 URL 策略', () => {
     expect(isObviouslyUnsafePublicUrl('http://127.0.0.1:8080/')).toBe(true);
   });
 
-  it('只允许严格同主机重定向和标准 HTTP 到 HTTPS 升级', () => {
+  it('只允许同主机重定向(含 www 等价)和标准 HTTP 到 HTTPS 升级', () => {
     expect(() => assertSafePublicRedirect(
       new URL('http://example.com/start'),
       new URL('https://example.com/end'),
     )).not.toThrow();
-    // www 与裸域是两个主体, 不得自动放行。
+    // www 与裸域视为同一站点(Claude 同款, 互联网最普遍的等价跳转)。
     expect(() => assertSafePublicRedirect(
       new URL('http://example.com/start'),
       new URL('https://www.example.com/end'),
+    )).not.toThrow();
+    expect(() => assertSafePublicRedirect(
+      new URL('https://www.example.com/start'),
+      new URL('https://example.com/end'),
+    )).not.toThrow();
+    // 其他子域与跨域仍然拒绝。
+    expect(() => assertSafePublicRedirect(
+      new URL('https://example.com/start'),
+      new URL('https://api.example.com/end'),
     )).toThrow('跨站重定向');
     expect(() => assertSafePublicRedirect(
       new URL('https://example.com/start'),

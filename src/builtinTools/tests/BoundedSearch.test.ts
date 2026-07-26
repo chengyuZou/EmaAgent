@@ -223,7 +223,8 @@ describe('Grep 工业细节(2D 二轮, 需 rg)', () => {
     ) as { output: string };
 
     expect(result.output).toContain('normal.js');
-    expect(result.output).not.toContain('min.js');
+    expect(result.output).toContain('min.js');
+    expect(result.output).toContain('[Omitted long matching line]');
     expect(result.output.length).toBeLessThan(10_000);
   });
 
@@ -264,7 +265,6 @@ describe('Grep 工业细节(2D 二轮, 需 rg)', () => {
 
   it.skipIf(!hasRipgrep)('输出为相对路径, 不泄漏工作区绝对路径', async () => {
     const directory = makeTempDir();
-    fs.writeFileSync(path.join(directory, 'sub', 'f.txt').replace(/\\/g, '/'), 'hello\n');
     fs.mkdirSync(path.join(directory, 'sub'), { recursive: true });
     fs.writeFileSync(path.join(directory, 'sub', 'f.txt'), 'hello\n');
 
@@ -282,12 +282,11 @@ describe('Grep 工业细节(2D 二轮, 需 rg)', () => {
     const directory = makeTempDir();
     fs.writeFileSync(path.join(directory, 'm.txt'), 'start\nmiddle\nend\n');
 
-    const without = await executeWithContext(
+    await expect(executeWithContext(
       GrepTool,
       { pattern: 'start\nmiddle', output_mode: 'content', case_insensitive: false, head_limit: 10 },
       makeContext(directory),
-    ) as { output: string };
-    expect(without.output.trim()).toBe('');
+    )).rejects.toThrow('literal "\\n" is not allowed');
 
     const withMultiline = await executeWithContext(
       GrepTool,
@@ -327,6 +326,30 @@ describe('Grep 工业细节(2D 二轮, 需 rg)', () => {
     ) as { output: string };
 
     expect(result.output.indexOf('newer.txt')).toBeLessThan(result.output.indexOf('older.txt'));
+  });
+
+  it.skipIf(!hasRipgrep)('files_with_matches 先枚举再排序, head_limit 不截断候选集', async () => {
+    const directory = makeTempDir();
+    for (let index = 0; index < 12; index++) {
+      const filePath = path.join(directory, `${String(index).padStart(2, '0')}.txt`);
+      fs.writeFileSync(filePath, 'hit\n');
+      const timestamp = new Date(1_600_000_000_000 + index * 1_000);
+      fs.utimesSync(filePath, timestamp, timestamp);
+    }
+
+    const result = await executeWithContext(
+      GrepTool,
+      {
+        pattern: 'hit',
+        output_mode: 'files_with_matches',
+        case_insensitive: false,
+        head_limit: 2,
+      },
+      makeContext(directory),
+    ) as { output: string; truncated: boolean };
+
+    expect(result.output.split('\n').slice(0, 2)).toEqual(['11.txt', '10.txt']);
+    expect(result.truncated).toBe(true);
   });
 
   it.skipIf(!hasRipgrep)('分离上下文 -B/-A 生效', async () => {

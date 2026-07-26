@@ -12,13 +12,16 @@ import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import type { BuiltinToolContext } from '../../builtinToolContext.js';
 import { contextFail, contextOk } from '../../contextValidation.js';
 import { runBoundedProcess } from '../shared/BoundedProcess.js';
-import { sortByMtimeDesc } from '../GlobTool/GlobTool.js';
+import { sortPathsByMtimeDesc } from '../shared/fileMtimeSort.js';
 
 /** Grep 工具的窄 Context：工作区根 + per-call 取消信号。 */
 interface GrepToolContext {
   workspaceRoot: string;
   signal: AbortSignal;
 }
+
+const MAX_ENUMERATED_RECORDS = 20_000;
+const MAX_OFFSET = 19_000;
 
 // ── 输入 schema ──────────────────────────────────────────────────────────────
 
@@ -83,8 +86,9 @@ const inputSchema = z.object({
     .number()
     .int()
     .min(0)
+    .max(MAX_OFFSET)
     .default(0)
-    .describe('Skip first N lines/entries before applying head_limit (pagination).'),
+    .describe(`Skip first N lines/entries before applying head_limit (pagination, max ${MAX_OFFSET}).`),
 });
 
 type GrepInput = z.infer<typeof inputSchema>;
@@ -151,9 +155,9 @@ Over-long lines (minified/base64-style) are skipped.`,
       context_before,
       context_after,
       case_insensitive,
-      multiline,
+      multiline = false,
       head_limit,
-      offset,
+      offset = 0,
     } = input;
 
     const workspaceRoot = context.workspaceRoot;
@@ -204,12 +208,16 @@ Over-long lines (minified/base64-style) are skipped.`,
 
     let result;
     try {
+      // 文件列表和计数必须先取得有界全集，才能诚实排序、分页和统计；
+      // content 仍按 offset + head_limit 流式早停，避免无谓收集大量正文。
+      const maxRecords = output_mode === 'content'
+        ? offset + head_limit
+        : MAX_ENUMERATED_RECORDS;
       result = await runBoundedProcess('rg', args, {
         cwd: searchCwd,
         signal: context.signal,
         delimiter: '\n',
-        // 需要 offset + head_limit 条再截, 保留流式早停语义。
-        maxRecords: offset + head_limit,
+        maxRecords,
         maxBytes: MAX_OUTPUT_BYTES,
         timeoutMs: SEARCH_TIMEOUT_MS,
         allowedExitCodes: [0, 1],
@@ -230,40 +238,47 @@ Over-long lines (minified/base64-style) are skipped.`,
     // files_with_matches 按 mtime 降序(与 Glob 的 newest-first 对齐);
     // 排序在切片前, 否则拿到的是遍历序而不是最新序。
     if (output_mode === 'files_with_matches') {
-      records = sortByMtimeDesc(records.map((r) => path.resolve(searchCwd, r)))
+      records = (await sortPathsByMtimeDesc(
+        records.map(record => path.resolve(searchCwd, record)),
+      ))
         .map((p) => path.relative(searchCwd, p));
     }
 
     const page = records.slice(offset, offset + head_limit);
+    const hasMorePage = offset + head_limit < records.length;
+    const truncated = result.truncated || hasMorePage;
+    const stopReason = result.stopReason ?? (hasMorePage ? 'records' : undefined);
 
     let output = page.join('\n');
-    if (output_mode === 'count' && page.length > 0) {
+    if (output_mode === 'count' && records.length > 0) {
       let totalMatches = 0;
-      for (const line of page) {
+      for (const line of records) {
         const idx = line.lastIndexOf(':');
         const n = idx > 0 ? Number.parseInt(line.slice(idx + 1), 10) : NaN;
         if (!Number.isNaN(n)) totalMatches += n;
       }
-      output += `\n\nFound ${totalMatches} total occurrences across ${page.length} files.`;
+      output += result.truncated
+        ? `\n\nFound at least ${totalMatches} occurrences across ${records.length} files before the search limit.`
+        : `\n\nFound ${totalMatches} total occurrences across ${records.length} files.`;
     }
-    if (result.truncated) {
-      output += `${output ? '\n' : ''}[Search stopped at the ${result.stopReason ?? 'output'} limit. Narrow the pattern/path/glob, or continue with offset=${offset + head_limit}.]`;
+    if (truncated) {
+      output += `${output ? '\n' : ''}[Search stopped at the ${stopReason ?? 'output'} limit. Use a narrower pattern/path/glob, or continue with offset=${offset + head_limit}.]`;
     }
 
     return presentToolResult(
       {
         output,
-        truncated: result.truncated,
-        ...(result.stopReason ? { stopReason: result.stopReason } : {}),
+        truncated,
+        ...(stopReason ? { stopReason } : {}),
       },
       createSearchPresentation({
         operation: 'content_search',
         pattern,
         searchPath: resolvedTarget,
         resultCount: page.length,
-        truncated: result.truncated,
-        ...(result.stopReason
-          ? { limitReason: normalizeSearchLimitReason(result.stopReason) }
+        truncated,
+        ...(stopReason
+          ? { limitReason: normalizeSearchLimitReason(stopReason) }
           : {}),
       }),
     );
