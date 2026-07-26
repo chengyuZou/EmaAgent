@@ -4,8 +4,9 @@ export {
   profileDir, profileDbPath, sqliteFileSet, registryPath, lockfilePath,
   dataDbPathFor, trashDirFor,
   ensureDataDirLayout,
-  sessionDirFor, sessionAudioDirFor, sessionArtifactsDirFor,
-  ensureSessionLayout, scratchpadTurnDir, removeSessionDir, removeTurnFiles, sweepOrphanTurnFiles,
+  sessionDirFor, sessionAudioDirFor,
+  ensureSessionLayout, removeLegacyArtifactDirectories,
+  scratchpadTurnDir, removeSessionDir, removeTurnFiles, sweepOrphanTurnFiles,
   voiceRefsDir, voiceRefsForCard, resolveVoiceRefPath, ensureProfileLayout,
   cardsDir, cardDir, cardResourcePath, resolveCardVoiceRefPath,
 } from './paths.js';

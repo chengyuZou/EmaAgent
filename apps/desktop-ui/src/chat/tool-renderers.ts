@@ -89,14 +89,6 @@ export function renderToolArgs(name: string, args: unknown): ToolArgView {
     case 'todo_write':
       return { rows: [row('todos', `${Array.isArray(a.todos) ? a.todos.length : 0} items`)] };
 
-    case 'ArtifactWrite':
-    case 'ArtifactRead':
-    case 'ArtifactList':
-    case 'artifact_write':
-    case 'artifact_read':
-    case 'artifact_list':
-      return { rows: [row('artifact', a.artifactId ?? a.id)] };
-
     default:
       // mcp__<server>__<tool> / 未知工具 → 平铺顶层字段
       return {

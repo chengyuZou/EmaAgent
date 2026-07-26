@@ -29,14 +29,12 @@ function importBindings(
 ): AppBindings {
   const sessionBackup = new SessionBackupFacade({
     activeDataDir,
-    artifactsEnabled: false,
     sessionExists: () => false,
     restoreRows,
     collectExport: () => null,
   });
   return {
     activeDataDir,
-    releaseFeatures: { artifacts: false },
     sessionBackup,
     session: {
       getSession: () => ({ id: 'session-1', title: 'Imported' }),
@@ -101,13 +99,12 @@ describe('SessionBackupFacade 的 Core HTTP 接线', () => {
     const root = tempRoot();
     const snapshot: SessionExportSnapshot = {
       session: { id: 'session-123456', title: 'Route Export' },
-      turns: [], messages: [], artifacts: [], attachments: [], audio: [],
+      turns: [], messages: [], attachments: [], audio: [],
       notes: null, branches: [], agentRuns: [], agentRunMessages: [],
       memoryState: null, kbActivations: [], usageRecords: [],
     };
     const sessionBackup = new SessionBackupFacade({
       activeDataDir: root,
-      artifactsEnabled: false,
       sessionExists: () => false,
       restoreRows: vi.fn(),
       collectExport: () => snapshot,

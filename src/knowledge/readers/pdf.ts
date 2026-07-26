@@ -66,6 +66,15 @@ const ASCII_ALNUM_RE = /[A-Za-z0-9]/;
 
 export interface PdfItem { str: string; height: number; fontName?: string }
 
+/** PDF 专用的页范围读取参数，供知识入库和 PdfReadTool 复用同一解析器。 */
+export interface PdfReadRange {
+  /** 1-based 起始页；缺省从第 1 页开始。 */
+  startPage?: number;
+  /** 1-based 结束页且包含该页；缺省读到文档末尾。 */
+  endPage?: number;
+  signal?: AbortSignal;
+}
+
 /** pdfjs 页面上本文件用到的最小结构(算子表 + 图像对象存储)。 */
 interface PdfPageOps {
   getOperatorList: () => Promise<{
@@ -166,6 +175,15 @@ export class PdfReader implements DocumentReader {
   constructor(private readonly imageReader?: ImageReader) {}
 
   async read(source: ReaderSource): Promise<ReadResult> {
+    return this.readRange(source);
+  }
+
+  /**
+   * 只解析指定页范围。知识入库使用完整范围，交互式 Tool 使用有界范围，
+   * 避免为了读取两页而依次解析整份 PDF。
+   */
+  async readRange(source: ReaderSource, range: PdfReadRange = {}): Promise<ReadResult> {
+    range.signal?.throwIfAborted();
     const data = source.kind === 'path'
       ? new Uint8Array(await readFile(source.path))
       : source.bytes;
@@ -175,112 +193,129 @@ export class PdfReader implements DocumentReader {
     const failures: ReadFailure[] = [];
     const stack:    string[] = [];
     const pageCount = pdf.numPages;
+    const startPage = range.startPage ?? 1;
+    const endPage = Math.min(range.endPage ?? pageCount, pageCount);
 
-    for (let p = 1; p <= pageCount; p++) {
-      // Per-page isolation: one broken/unrenderable page must not abort the whole
-      // document (handles truncated/corrupt PDFs — 缺页/断页).
-      let page;
-      try {
-        page = await pdf.getPage(p);
-      } catch (error) {
-        blocks.push(brokenPageBlock(p));
-        failures.push(pageFailure(p, 'kb/pdf-page-unreadable', false, error));
-        continue;
+    try {
+      if (!Number.isInteger(startPage) || startPage < 1) {
+        throw new RangeError('PDF startPage 必须是从 1 开始的整数');
+      }
+      if (!Number.isInteger(endPage) || endPage < startPage) {
+        throw new RangeError('PDF endPage 必须是不小于 startPage 的整数');
+      }
+      if (startPage > pageCount) {
+        throw new RangeError(`PDF 起始页 ${startPage} 超出文档总页数 ${pageCount}`);
       }
 
-      let items: PdfItem[] = [];
-      let textLayerError: unknown;
-      try {
-        const content = await page.getTextContent();
-        items = content.items
-          .filter((it): it is typeof it & { str: string } => 'str' in it)
-          .map(it => ({
-            str:      (it as { str: string }).str,
-            height:   (it as { height?: number }).height ?? 0,
-            fontName: (it as { fontName?: string }).fontName,
-          }));
-      } catch (error) {
-        items = [];
-        textLayerError = error;
-      }
-
-      const pageTextLen = items.reduce((n, it) => n + it.str.replace(/\s/g, '').length, 0);
-      // 文本层可用性的两个维度: 长度够 + 不是乱码。乱码页(烂编码字体)与扫描页
-      // 一样降级到整页 OCR, 不把乱码文本写进知识库(B-074 同源修复)。
-      const textUsable =
-        pageTextLen >= MIN_PAGE_TEXT_CHARS &&
-        !isPageTextGarbled(
-          items,
-          fontId => resolveOriginalFontName(page as unknown as PdfPageOps, fontId),
-        );
-
-      // ── 文本层可用: 先用文本层; 页面含显著图时追加 Vision 读图 ────────────
-      if (textUsable) {
-        const median   = medianHeight(items);
-        const pageBlks = itemsToBlocks(items, median, p, stack);
-        for (const b of pageBlks) b.source = 'text-layer';
-        mergeContinuation(blocks, pageBlks);
-
-        // 文本够不代表没图: 标题+几行说明+一张核心图表的页, 只索引文字会丢掉图。
-        // 图像存在性用页面算子表判断(零重渲染成本), 不再拿文本长度当代理。
-        const figurePresent = await pageHasSignificantImage(page as unknown as PdfPageOps);
-        if (figurePresent && this.imageReader) {
-          await this.appendFigureDescription(page as unknown as RenderablePage, p, blocks, failures, stack);
-        } else if (figurePresent) {
-          // 未配置 Vision 时诚实记账: 图存在但没解析, 不伪装成完整处理。
-          failures.push(pageFailure(
-            p,
-            'kb/pdf-figure-unavailable',
-            false,
-            new Error('页面包含图像但未配置 Vision 能力, 图表内容未解析'),
-          ));
-        }
-        continue;
-      }
-
-      // ── 扫描页/乱码页: 整页光栅化 Vision OCR ─────────────────────────────
-      if (this.imageReader) {
+      for (let p = startPage; p <= endPage; p++) {
+        range.signal?.throwIfAborted();
+        // 单页损坏不能让整份文档失败，错误会作为明确的页级 failure 返回。
+        let page;
         try {
-          const png = await renderPageToPng(page as unknown as RenderablePage, OCR_RENDER_SCALE);
-          if (png) {
-            const res = await this.imageReader.read({ kind: 'bytes', bytes: png, name: `page-${p}.png` });
-            const ocrBlks = res.blocks
-              .filter(b => b.text.trim())
-              .map(b => ({ ...b, id: nextBlockId(), page: p, source: 'vision-ocr' as const, sectionPath: [...stack] }));
-            if (ocrBlks.length > 0) { blocks.push(...ocrBlks); continue; }
-          }
-          blocks.push(scannedPlaceholder(p));
-          failures.push(pageFailure(
-            p,
-            'kb/pdf-ocr-empty',
-            true,
-            textLayerError ?? new Error('OCR 未返回可索引文本'),
-          ));
+          page = await pdf.getPage(p);
         } catch (error) {
-          if (isKbVisionAdapterError(error) && error.code === 'vision/aborted') throw error;
-          // 单页失败不终止其他页面，但必须写入持久失败分片，不能伪装成完整成功。
-          blocks.push(scannedPlaceholder(p));
-          failures.push(pageFailure(
-            p,
-            isKbVisionAdapterError(error) ? error.code : 'kb/pdf-ocr-failed',
-            isKbVisionAdapterError(error) ? error.retryable : true,
-            error,
-          ));
+          blocks.push(brokenPageBlock(p));
+          failures.push(pageFailure(p, 'kb/pdf-page-unreadable', false, error));
+          continue;
         }
-        continue;
+
+        let items: PdfItem[] = [];
+        let textLayerError: unknown;
+        try {
+          const content = await page.getTextContent();
+          items = content.items
+            .filter((it): it is typeof it & { str: string } => 'str' in it)
+            .map(it => ({
+              str:      (it as { str: string }).str,
+              height:   (it as { height?: number }).height ?? 0,
+              fontName: (it as { fontName?: string }).fontName,
+            }));
+        } catch (error) {
+          items = [];
+          textLayerError = error;
+        }
+
+        const pageTextLen = items.reduce((n, it) => n + it.str.replace(/\s/g, '').length, 0);
+        // 文本层可用性的两个维度: 长度够 + 不是乱码。乱码页(烂编码字体)与扫描页
+        // 一样降级到整页 OCR, 不把乱码文本写进知识库(B-074 同源修复)。
+        const textUsable =
+          pageTextLen >= MIN_PAGE_TEXT_CHARS &&
+          !isPageTextGarbled(
+            items,
+            fontId => resolveOriginalFontName(page as unknown as PdfPageOps, fontId),
+          );
+
+        // ── 文本层可用: 先用文本层; 页面含显著图时追加 Vision 读图 ────────────
+        if (textUsable) {
+          const median   = medianHeight(items);
+          const pageBlks = itemsToBlocks(items, median, p, stack);
+          for (const b of pageBlks) b.source = 'text-layer';
+          mergeContinuation(blocks, pageBlks);
+
+          // 文本够不代表没图: 标题+几行说明+一张核心图表的页, 只索引文字会丢掉图。
+          // 图像存在性用页面算子表判断(零重渲染成本), 不再拿文本长度当代理。
+          const figurePresent = await pageHasSignificantImage(page as unknown as PdfPageOps);
+          if (figurePresent && this.imageReader) {
+            await this.appendFigureDescription(page as unknown as RenderablePage, p, blocks, failures, stack);
+          } else if (figurePresent) {
+            // 未配置 Vision 时诚实记账: 图存在但没解析, 不伪装成完整处理。
+            failures.push(pageFailure(
+              p,
+              'kb/pdf-figure-unavailable',
+              false,
+              new Error('页面包含图像但未配置 Vision 能力, 图表内容未解析'),
+            ));
+          }
+          continue;
+        }
+
+        // ── 扫描页/乱码页: 整页光栅化 Vision OCR ───────────────────────────
+        if (this.imageReader) {
+          try {
+            const png = await renderPageToPng(page as unknown as RenderablePage, OCR_RENDER_SCALE);
+            if (png) {
+              const res = await this.imageReader.read({ kind: 'bytes', bytes: png, name: `page-${p}.png` });
+              const ocrBlks = res.blocks
+                .filter(b => b.text.trim())
+                .map(b => ({ ...b, id: nextBlockId(), page: p, source: 'vision-ocr' as const, sectionPath: [...stack] }));
+              if (ocrBlks.length > 0) { blocks.push(...ocrBlks); continue; }
+            }
+            blocks.push(scannedPlaceholder(p));
+            failures.push(pageFailure(
+              p,
+              'kb/pdf-ocr-empty',
+              true,
+              textLayerError ?? new Error('OCR 未返回可索引文本'),
+            ));
+          } catch (error) {
+            if (isKbVisionAdapterError(error) && error.code === 'vision/aborted') throw error;
+            // 单页失败不终止其他页面，但必须写入持久失败分片，不能伪装成完整成功。
+            blocks.push(scannedPlaceholder(p));
+            failures.push(pageFailure(
+              p,
+              isKbVisionAdapterError(error) ? error.code : 'kb/pdf-ocr-failed',
+              isKbVisionAdapterError(error) ? error.retryable : true,
+              error,
+            ));
+          }
+          continue;
+        }
+
+        // No OCR capability: keep a placeholder so the page isn't silently dropped.
+        blocks.push(scannedPlaceholder(p));
+        failures.push(pageFailure(
+          p,
+          'kb/pdf-ocr-unavailable',
+          false,
+          textLayerError ?? new Error('当前未配置 PDF OCR 能力'),
+        ));
       }
 
-      // No OCR capability: keep a placeholder so the page isn't silently dropped.
-      blocks.push(scannedPlaceholder(p));
-      failures.push(pageFailure(
-        p,
-        'kb/pdf-ocr-unavailable',
-        false,
-        textLayerError ?? new Error('当前未配置 PDF OCR 能力'),
-      ));
+      return { blocks, pageCount, failures };
+    } finally {
+      const destroy = (pdf as { destroy?: () => Promise<void> }).destroy;
+      if (destroy) await destroy.call(pdf);
     }
-
-    return { blocks, pageCount, failures };
   }
 
   /**

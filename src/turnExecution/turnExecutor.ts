@@ -657,7 +657,6 @@ async function* executeTurn(
       readFileState,
       taskStore:         deps.taskStore,
       commandRunner:     resolvedRunner,
-      artifactStore:     deps.artifactStore,
       skillRunner:       deps.skillRunner,
       activeSkillState,
       knowledgeSearch:   scopedKbSearch,

@@ -12,6 +12,13 @@ export type {
   FileReadPresentation,
 } from './fileReadPresentation.js';
 export {
+  createPdfReadPresentation,
+} from './pdfReadPresentation.js';
+export type {
+  CreatePdfReadPresentationInput,
+  PdfReadPresentation,
+} from './pdfReadPresentation.js';
+export {
   createCommandPresentation,
 } from './commandPresentation.js';
 export type {

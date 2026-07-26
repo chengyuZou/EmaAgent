@@ -10,7 +10,6 @@ import {
 } from '@ema-agent/backup';
 import type {
   SessionDashboardWire,
-  ArtifactSummaryWire,
   AudioEntryWire,
   SessionNoteWire,
   SessionNoteEntryWire,
@@ -176,7 +175,6 @@ export function storageStatsRoute(bindings: AppBindings): Hono {
 
     const stats     = bindings.sessionStats.getStats(sessionId);
     const audioRows = bindings.sessionStats.listAudioEntries(sessionId);
-    const artRows   = bindings.sessionStats.listArtifactSummaries(sessionId);
     const noteRow   = bindings.sessionNotes.findBySession(asSessionId(sessionId));
 
     const audioEntries: AudioEntryWire[] = audioRows.map((r) => ({
@@ -186,17 +184,6 @@ export function storageStatsRoute(bindings: AppBindings): Hono {
       durationMs:   r.duration_ms,
       segmentCount: r.segment_count,
       createdAt:    r.created_at,
-    }));
-
-    const artifacts: ArtifactSummaryWire[] = artRows.map((r) => ({
-      id:              r.id,
-      type:            r.type,
-      title:           r.title,
-      contentLocation: r.content_location as 'inline' | 'file',
-      byteSize:        r.byte_size,
-      createdAt:       r.created_at,
-      appliedAt:       r.applied_at,
-      rejectedAt:      r.rejected_at,
     }));
 
     const notes: SessionNoteWire | null = noteRow
@@ -219,9 +206,6 @@ export function storageStatsRoute(bindings: AppBindings): Hono {
         work: stats.workTurns,
         narrativeAlways: stats.narrativeAlwaysTurns,
       },
-      artifactCount:        stats.artifactCount,
-      artifactTotalBytes:   stats.artifactInlineBytes,
-      artifacts,
       audioTurnCount:       stats.audioTurnCount,
       audioTotalBytes:      stats.audioTotalBytes,
       audioTotalDurationMs: stats.audioTotalDurationMs,
@@ -300,7 +284,7 @@ export function storageStatsRoute(bindings: AppBindings): Hono {
           signal: c.req.raw.signal,
         });
         const restored = bindings.session.getSession(asSessionId(result.sessionId));
-        return c.json({ ...restored, warnings: result.warnings }, 201);
+        return c.json(restored, 201);
       } catch (error) {
         if (error instanceof SessionImportError) {
           return c.json({ error: error.code, message: error.message }, error.status);

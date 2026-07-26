@@ -1,10 +1,15 @@
-// 这里测试 RuntimePaths 能否完整返回 SQLite 主文件及其 WAL/SHM 文件。
+// 测试 RuntimePaths 的数据库文件集合、启动清理和资源路径边界。
 
 import { describe, expect, it } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { sqliteFileSet, sweepOrphanTurnFiles, resolveCardVoiceRefPath } from '../src/storage-locations/paths.js';
+import {
+  sqliteFileSet,
+  sweepOrphanTurnFiles,
+  removeLegacyArtifactDirectories,
+  resolveCardVoiceRefPath,
+} from '../src/storage-locations/paths.js';
 
 describe('sqliteFileSet', () => {
   it('返回同一个数据库对应的三个文件', () => {
@@ -41,6 +46,31 @@ describe('sweepOrphanTurnFiles(启动自检孤儿 turn 文件)', () => {
       expect(existsSync(join(mergedDir, 'turn-live.mp3'))).toBe(true);
       expect(existsSync(join(mergedDir, 'turn-dead.mp3'))).toBe(false);
       expect(existsSync(scratchDead)).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('removeLegacyArtifactDirectories', () => {
+  it('只删除旧 Artifact 子目录并保留其他 Session 文件', () => {
+    const root = mkdtempSync(join(tmpdir(), 'ema-artifact-cleanup-'));
+    try {
+      const firstArtifactDir = join(root, 'sessions', 'session-1', 'artifacts');
+      const secondArtifactDir = join(root, 'sessions', 'session-2', 'artifacts');
+      const audioFile = join(root, 'sessions', 'session-1', 'audio', 'merged', 'turn-1.mp3');
+      mkdirSync(firstArtifactDir, { recursive: true });
+      mkdirSync(secondArtifactDir, { recursive: true });
+      mkdirSync(join(root, 'sessions', 'not-a-session.txt'), { recursive: true });
+      mkdirSync(join(root, 'sessions', 'session-1', 'audio', 'merged'), { recursive: true });
+      writeFileSync(join(firstArtifactDir, 'legacy.txt'), 'legacy');
+      writeFileSync(audioFile, 'audio');
+
+      expect(removeLegacyArtifactDirectories(root)).toBe(2);
+      expect(existsSync(firstArtifactDir)).toBe(false);
+      expect(existsSync(secondArtifactDir)).toBe(false);
+      expect(existsSync(audioFile)).toBe(true);
+      expect(removeLegacyArtifactDirectories(root)).toBe(0);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

@@ -33,17 +33,6 @@ export interface SessionAttachmentsResult {
   attachments: SessionAttachmentWire[];
 }
 
-export interface ArtifactSummaryWire {
-  id: string;
-  type: string;
-  title: string;
-  contentLocation: 'inline' | 'file';
-  byteSize: number;
-  createdAt: number;
-  appliedAt: number | null;
-  rejectedAt: number | null;
-}
-
 export interface AudioEntryWire {
   turnId: string;
   mimeType: string;
@@ -72,9 +61,6 @@ export interface SessionDashboardWire {
   totalInputTokens: number;
   totalOutputTokens: number;
   turnCounts: { chat: number; work: number; narrativeAlways: number };
-  artifactCount: number;
-  artifactTotalBytes: number;
-  artifacts: ArtifactSummaryWire[];
   audioTurnCount: number;
   audioTotalBytes: number;
   audioTotalDurationMs: number;

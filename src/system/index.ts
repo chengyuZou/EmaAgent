@@ -2,5 +2,4 @@
 
 export { getDisksInfo } from './disk.js';
 export type { DiskInfo } from './disk.js';
-export type { AppCapabilitiesWire, ReleaseFeaturesWire } from './types.js';
 export type { SystemEvent, SystemWarningEvent } from './events.js';

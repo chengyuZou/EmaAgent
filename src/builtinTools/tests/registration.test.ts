@@ -13,35 +13,6 @@ describe('V1 内置工具注册边界', () => {
     expect(names).not.toContain(BuiltinTools.PlanExit.name);
   });
 
-  it('V1 默认不注册 Artifact 工具(enableArtifacts 缺省)', () => {
-    const registry = new ToolRegistry();
-    registerBuiltinTools(registry);
-
-    const names = registry.descriptors().map((tool) => tool.name);
-    expect(names).not.toContain(BuiltinTools.ArtifactWrite.name);
-    expect(names).not.toContain(BuiltinTools.ArtifactRead.name);
-    expect(names).not.toContain(BuiltinTools.ArtifactList.name);
-  });
-
-  it('enableArtifacts:false 显式关闭时不注册 Artifact 工具', () => {
-    const registry = new ToolRegistry();
-    registerBuiltinTools(registry, { enableArtifacts: false });
-
-    const names = registry.descriptors().map((tool) => tool.name);
-    expect(names).not.toContain(BuiltinTools.ArtifactWrite.name);
-    expect(names).not.toContain(BuiltinTools.ArtifactList.name);
-  });
-
-  it('enableArtifacts:true 时注册全部 3 个 Artifact 工具', () => {
-    const registry = new ToolRegistry();
-    registerBuiltinTools(registry, { enableArtifacts: true });
-
-    const names = registry.descriptors().map((tool) => tool.name);
-    expect(names).toContain(BuiltinTools.ArtifactWrite.name);
-    expect(names).toContain(BuiltinTools.ArtifactRead.name);
-    expect(names).toContain(BuiltinTools.ArtifactList.name);
-  });
-
   it('业务能力工具统一注册，由每次执行的 ToolPool 决定是否可见', () => {
     const registry = new ToolRegistry();
     registerBuiltinTools(registry);
@@ -51,14 +22,13 @@ describe('V1 内置工具注册边界', () => {
       BuiltinTools.TaskGet.name,
       BuiltinTools.TaskList.name,
       BuiltinTools.TaskUpdate.name,
+      BuiltinTools.PdfRead.name,
     ]));
   });
 
   it('每个已注册工具都有唯一稳定 id 和 PascalCase 模型名称', () => {
     const registry = new ToolRegistry();
-    registerBuiltinTools(registry, {
-      enableArtifacts: true,
-    });
+    registerBuiltinTools(registry);
 
     const tools = registry.list();
     const ids = tools.map((tool) => tool.id);

@@ -15,7 +15,7 @@ EmaAgent 的 **SQLite 访问层**。`better-sqlite3` + 手写 SQL(禁 ORM)。只
 
 **不做什么**(Facade 边界):
 - 不做业务逻辑（权限判断 / LLM 调用 / embedding 与 rerank 计算——分别由 `permission` / `llm` / `embed` / `rerank` 模块承担）
-- 不碰文件系统(音频 / Artifact 正文 / 附件文件由 `tts` / `artifact` / `attachment` 包管,storage 只存路径)
+- 不碰文件系统(音频 / 附件文件由 `tts` / `attachment` 包管,storage 只存路径)
 - 不做路由 / 不接 HTTP
 - **例外**:`zh-tokenizer.ts`(jieba 中文分词)放在本包,因为 KB 的 FTS5 全文索引紧耦合分词策略(索引怎么建决定怎么查)。若未来其他包也要中文分词,应提取成独立包。
 
@@ -30,7 +30,7 @@ EmaAgent 用 **3 个独立 SQLite 数据库**,各自独立 `user_version`(版本
 | db | 文件路径 | 生命周期 | 内容 |
 |---|---|---|---|
 | `profile` | `~/.ema-agent/profile.db` | 全局,跟**用户**走,跨所有工作区共享 | Provider 配置 / 模型绑定 / 角色卡 / 设置 / skills 索引 / 全局记忆(节点图+条目)/ KB 注册表 |
-| `data` | `{activeDataDir}/data.db` | 每个工作区一个,用户切换数据目录时整体换 | sessions / turns / messages / 音频 / artifacts / 附件 / tasks / agent runs / per-session 记忆 / kb_activations |
+| `data` | `{activeDataDir}/data.db` | 每个工作区一个,用户切换数据目录时整体换 | sessions / turns / messages / 音频 / 附件 / tasks / agent runs / per-session 记忆 / kb_activations |
 | `kb` | `{kbPath}/kb.db` | 每个命名知识库独立一个 | document_assets / document_chunks / FTS5 索引 / kb_ingest_tasks |
 
 **为什么分三个**:
@@ -86,13 +86,12 @@ SQLite 封装。构造时:
 | `memory_session_state` | 每会话的记忆召回状态(已浮现 / 用户覆盖) |
 | `memory_tasks` | 记忆后台任务队列(extraction/maintenance/embedding_refresh/consolidation) |
 
-**音频 / 附件 / 产物**
+**音频 / 附件**
 | 表 | 职责 |
 |---|---|
 | `turn_audio_segments` | TTS 分段音频(每句一个文件) |
 | `turn_audio_merged` | 合并后的整轮音频(重播用) |
 | `turn_attachments` | per-turn 文件附件(路径引用) |
-| `artifacts` | 产物(代码/diff/图片),`content_location` 区分 inline 存正文 / file 存路径 |
 
 **权限 / 遥测 / 用量 / agent**
 | 表 | 职责 |
@@ -142,7 +141,7 @@ SQLite 封装。构造时:
    - 跳号(文件缺失)throw 明确错误,不静默跳过
    - 事务保证:中途失败全回滚,不留半成品
 
-**当前版本**:data 流 v5 / profile 流 v2 / kb 流 v1
+**当前版本**:data 流 v21 / profile 流 v12 / kb 流 v5
 
 **铁律(B-059 已修复)**:
 - 迁移**只追加,不回退,不 squash(合并)**。一旦发布,编号不可改
@@ -205,7 +204,7 @@ SQLite 封装。构造时:
 按 db 分组,导出在 `src/index.ts`:
 
 ### data.db Repo
-`SessionsRepo` / `TurnsRepo` / `MessagesRepo` / `ArtifactRepo` / `AttachmentRepo` / `SessionStatsRepo` + `DataDirStatsRepo`(`storage-stats.ts`)/ `TasksRepo` / `AgentRunsRepo` / `AgentRunMessagesRepo` / `PendingFragmentsRepo` / `SessionNotesRepo` / `MemoryTasksRepo`(data 侧)/ `MemorySessionStateRepo`
+`SessionsRepo` / `TurnsRepo` / `MessagesRepo` / `AttachmentRepo` / `SessionStatsRepo` + `DataDirStatsRepo`(`storage-stats.ts`)/ `TasksRepo` / `AgentRunsRepo` / `AgentRunMessagesRepo` / `PendingFragmentsRepo` / `SessionNotesRepo` / `MemoryTasksRepo`(data 侧)/ `MemorySessionStateRepo`
 
 旧 `AgentTasksRepo/AgentTaskMessagesRepo` 已迁为 `AgentRunsRepo/AgentRunMessagesRepo`；V1 结构化 Task 使用独立表与 Repo，不复用执行记录生命周期。
 
@@ -238,7 +237,7 @@ SQLite 封装。构造时:
 - **N-002** `market-sources.deleteById` 漏 builtin 守卫
 
 ### 跨包 bug(storage 侧已确认,主因在别包)
-- B-003 Artifact 备份丢正文(core route)/ B-070 KB activation 配对(KB 包)/ B-049 embedding identity(KB/Memory)/ B-011 KB 重试(KB 包)/ B-017 Provider 删后旧 adapter(core wiring)/ B-013 向量分数(USearch)
+- B-003 Artifact 备份丢正文(core route,Artifact 已物理删除) / B-070 KB activation 配对(KB 包) / B-049 embedding identity(KB/Memory) / B-011 KB 重试(KB 包) / B-017 Provider 删后旧 adapter(core wiring) / B-013 向量分数(USearch)
 
 ---
 

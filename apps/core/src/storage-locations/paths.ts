@@ -1,4 +1,4 @@
-// 这里统一计算 EmaAgent 的 profile、数据、Session 和资源文件路径。
+// 统一计算 EmaAgent 的 Profile、数据、Session 和资源文件路径。
 
 import fs   from 'node:fs';
 import os   from 'node:os';
@@ -156,7 +156,7 @@ export function trashDirFor(dataDir: string): string {
 
 /**
  * Create the top-level dataDir layout.
- * Audio and artifact directories are NOT pre-created here — they are
+ * Audio directories are NOT pre-created here — they are
  * created on demand per session via ensureSessionLayout().
  */
 export function ensureDataDirLayout(dataDir: string): void {
@@ -174,7 +174,6 @@ export function ensureDataDirLayout(dataDir: string): void {
 //     audio/
 //       segments/{turnId}/{n}.{ext}
 //       merged/{turnId}.{ext}
-//     artifacts/{artifactId}
 
 export function sessionDirFor(dataDir: string, sessionId: string): string {
   return path.join(dataDir, 'sessions', sessionId);
@@ -182,10 +181,6 @@ export function sessionDirFor(dataDir: string, sessionId: string): string {
 
 export function sessionAudioDirFor(dataDir: string, sessionId: string): string {
   return path.join(sessionDirFor(dataDir, sessionId), 'audio');
-}
-
-export function sessionArtifactsDirFor(dataDir: string, sessionId: string): string {
-  return path.join(sessionDirFor(dataDir, sessionId), 'artifacts');
 }
 
 /**
@@ -196,7 +191,25 @@ export function ensureSessionLayout(dataDir: string, sessionId: string): void {
   const audioDir = sessionAudioDirFor(dataDir, sessionId);
   fs.mkdirSync(path.join(audioDir, 'segments'), { recursive: true });
   fs.mkdirSync(path.join(audioDir, 'merged'),   { recursive: true });
-  fs.mkdirSync(sessionArtifactsDirFor(dataDir, sessionId), { recursive: true });
+}
+
+/**
+ * Artifact 数据表由迁移删除，但数据库迁移无法触及旧 Session 的物理目录。
+ * 启动恢复只删除已废弃的固定子目录，不扫描或改动 Audio、Scratchpad 等现行业务文件。
+ */
+export function removeLegacyArtifactDirectories(dataDir: string): number {
+  const sessionsRoot = path.join(dataDir, 'sessions');
+  if (!fs.existsSync(sessionsRoot)) return 0;
+
+  let removed = 0;
+  for (const entry of fs.readdirSync(sessionsRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const artifactDir = path.join(sessionsRoot, entry.name, 'artifacts');
+    if (!fs.existsSync(artifactDir)) continue;
+    fs.rmSync(artifactDir, { recursive: true, force: true });
+    removed += 1;
+  }
+  return removed;
 }
 
 // ── Turn-scoped scratchpad ────────────────────────────────────────────────────

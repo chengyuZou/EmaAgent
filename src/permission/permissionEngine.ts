@@ -83,7 +83,7 @@ export class PermissionEngine {
    *
    *  Early carve-outs:
    *   4. bypass mode → allow (non-immune)
-   *   5. Internal editable path (session memory / artifacts / scratch) → allow
+   *   5. Internal editable path (session memory / scratch) → allow
    *
    *  File-tool safety:
    *   6. Dangerous file/dir names (DANGEROUS_FILES/DIRS) → ask with suggestions

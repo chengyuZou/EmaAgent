@@ -6,6 +6,7 @@ export interface BuiltinToolIdentity {
 
 export const BuiltinTools = Object.freeze({
   FileRead:  Object.freeze({ id: 'builtin.file.read',  name: 'Read' }),
+  PdfRead:   Object.freeze({ id: 'builtin.pdf.read',   name: 'PdfRead' }),
   FileEdit:  Object.freeze({ id: 'builtin.file.edit',  name: 'Edit' }),
   FileWrite: Object.freeze({ id: 'builtin.file.write', name: 'Write' }),
   Glob:      Object.freeze({ id: 'builtin.search.glob', name: 'Glob' }),
@@ -30,9 +31,6 @@ export const BuiltinTools = Object.freeze({
     name: 'NarrativeSearch',
   }),
   SkillCall: Object.freeze({ id: 'builtin.skill.call', name: 'SkillCall' }),
-  ArtifactWrite: Object.freeze({ id: 'builtin.artifact.write', name: 'ArtifactWrite' }),
-  ArtifactRead:  Object.freeze({ id: 'builtin.artifact.read',  name: 'ArtifactRead' }),
-  ArtifactList:  Object.freeze({ id: 'builtin.artifact.list',  name: 'ArtifactList' }),
   ScratchpadWrite:  Object.freeze({ id: 'builtin.scratchpad.write',  name: 'ScratchpadWrite' }),
   ScratchpadRead:   Object.freeze({ id: 'builtin.scratchpad.read',   name: 'ScratchpadRead' }),
   ScratchpadList:   Object.freeze({ id: 'builtin.scratchpad.list',   name: 'ScratchpadList' }),

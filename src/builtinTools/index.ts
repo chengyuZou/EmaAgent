@@ -1,5 +1,6 @@
 // 统一导出并注册 EmaAgent 自带的工具，也提供这些工具启动恢复所需的入口。
 import { FileReadTool } from './tools/FileReadTool/FileReadTool.js';
+import { PdfReadTool } from './tools/PdfReadTool/PdfReadTool.js';
 import { FileWriteTool } from './tools/FileWriteTool/FileWriteTool.js';
 import { cleanupInterruptedFileWriteTemps } from './tools/FileWriteTool/recovery.js';
 import { FileEditTool } from './tools/FileEditTool/FileEditTool.js';
@@ -16,7 +17,6 @@ import { AskUserTool } from './tools/AskUserTool/AskUserTool.js';
 import { AskConfirmTool } from './tools/AskUserTool/AskConfirmTool.js';
 import { AskTextTool } from './tools/AskUserTool/AskTextTool.js';
 import { AskChoiceTool } from './tools/AskUserTool/AskChoiceTool.js';
-import { ArtifactWriteTool, ArtifactReadTool, ArtifactListTool } from './tools/ArtifactTool/ArtifactTools.js';
 import { SkillCallTool } from './tools/SkillCallTool/SkillCallTool.js';
 import { KnowledgeBaseSearchTool } from './tools/KnowledgeBaseSearchTool/KnowledgeBaseSearchTool.js';
 import { NarrativeSearchTool } from './tools/NarrativeSearchTool/NarrativeSearchTool.js';
@@ -53,6 +53,7 @@ export { contextOk, contextFail } from './contextValidation.js';
 export {
   BuiltinTools,
   FileReadTool,
+  PdfReadTool,
   FileWriteTool,
   cleanupInterruptedFileWriteTemps,
   FileEditTool,
@@ -69,9 +70,6 @@ export {
   AskConfirmTool,
   AskTextTool,
   AskChoiceTool,
-  ArtifactWriteTool,
-  ArtifactReadTool,
-  ArtifactListTool,
   SkillCallTool,
   KnowledgeBaseSearchTool,
   NarrativeSearchTool,
@@ -87,6 +85,10 @@ export {
   ScratchpadClearTool,
 };
 export type { FileReadResult } from './tools/FileReadTool/FileReadTool.js';
+export type {
+  PdfReadResult,
+  PdfReadWarning,
+} from './tools/PdfReadTool/PdfReadTool.js';
 export type { FileWriteResult } from './tools/FileWriteTool/FileWriteTool.js';
 export type { FileEditResult } from './tools/FileEditTool/FileEditTool.js';
 export type { GlobResult } from './tools/GlobTool/GlobTool.js';
@@ -112,6 +114,7 @@ export type { NarrativeSearchResult } from './tools/NarrativeSearchTool/Narrativ
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const ALL_BUILTIN_TOOLS: BuiltTool<any, any, any>[] = [
   FileReadTool,
+  PdfReadTool,
   FileWriteTool,
   FileEditTool,
   GlobTool,
@@ -127,9 +130,6 @@ const ALL_BUILTIN_TOOLS: BuiltTool<any, any, any>[] = [
   AskConfirmTool,
   AskTextTool,
   AskChoiceTool,
-  ArtifactWriteTool,
-  ArtifactReadTool,
-  ArtifactListTool,
   SkillCallTool,
   KnowledgeBaseSearchTool,
   NarrativeSearchTool,
@@ -150,17 +150,6 @@ const EXECUTE_TOOL_IDS: ReadonlySet<string> = new Set([
   BuiltinTools.Bash.id,
 ]);
 
-/**
- * Artifact 工具集。V1 默认不注册(Artifact 属于 V1.5 预留能力,
- * 完成状态机 B-003/B-068/B-069 前不得在生产注册)。
- * 源码保留在 ArtifactTool 目录，不删除。
- */
-const ARTIFACT_TOOL_IDS: ReadonlySet<string> = new Set([
-  BuiltinTools.ArtifactWrite.id,
-  BuiltinTools.ArtifactRead.id,
-  BuiltinTools.ArtifactList.id,
-]);
-
 export interface RegisterOptions {
   /**
    * true 时，Shell 执行工具 Bash 从注册表省略。
@@ -168,13 +157,6 @@ export interface RegisterOptions {
    * 开发时可设 AGEN_UNSAFE_SHELL=1 重新启用。
    */
   disableExecuteTools?: boolean;
-
-  /**
-   * Artifact 工具族是否注册。
-   * V1 默认 false(Artifact 属于 V1.5 预留,完成 B-003/B-068/B-069 前不得启用)。
-   * 测试或 V1.5 接线时设 true。
-   */
-  enableArtifacts?:   boolean;
 }
 
 /**
@@ -188,10 +170,6 @@ export function registerBuiltinTools(registry: ToolRegistry, opts: RegisterOptio
   for (const tool of ALL_BUILTIN_TOOLS) {
     // 无物理沙箱时跳过执行类工具。
     if (opts.disableExecuteTools && EXECUTE_TOOL_IDS.has(tool.id)) continue;
-
-    // Artifact 属于 V1.5 预留能力,V1 默认不注册。
-    // 完成状态机 B-003/B-068/B-069 前不得启用。
-    if (!opts.enableArtifacts && ARTIFACT_TOOL_IDS.has(tool.id)) continue;
 
     registry.register(tool);
   }

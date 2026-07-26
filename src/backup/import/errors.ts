@@ -3,6 +3,7 @@ export type SessionImportErrorCode =
   | 'import_cancelled'
   | 'invalid_zip'
   | 'invalid_format'
+  | 'unsupported_content'
   | 'unsupported_version'
   | 'unsafe_archive_path'
   | 'too_many_entries'

@@ -27,6 +27,7 @@ export {
   createCommandPresentation,
   createFileChangePresentation,
   createFileReadPresentation,
+  createPdfReadPresentation,
   createSearchPresentation,
 } from './presentation/index.js';
 export type {
@@ -36,6 +37,8 @@ export type {
   CreateSearchPresentationInput,
   FileChangePresentation,
   FileReadPresentation,
+  CreatePdfReadPresentationInput,
+  PdfReadPresentation,
   SearchLimitReason,
   SearchPresentation,
   ToolPresentation,

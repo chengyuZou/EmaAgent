@@ -103,6 +103,21 @@ beforeEach(() => {
 });
 
 describe('B-074 PDF 三路路由', () => {
+  it('按页范围只解析被请求的页面，同时保留整份文档总页数', async () => {
+    usePdf([
+      fakePage({ text: `${LONG_TEXT} first` }),
+      fakePage({ text: `${LONG_TEXT} second` }),
+      fakePage({ text: `${LONG_TEXT} third` }),
+    ]);
+    const result = await new PdfReader().readRange(SRC, { startPage: 2, endPage: 2 });
+
+    expect(result.pageCount).toBe(3);
+    expect(result.blocks).not.toHaveLength(0);
+    expect(result.blocks.every((block) => block.page === 2)).toBe(true);
+    expect(result.blocks.map((block) => block.text).join(' ')).toContain('second');
+    expect(result.blocks.map((block) => block.text).join(' ')).not.toContain('first');
+  });
+
   it('纯文本页只走文本层, 不触发任何 Vision 调用', async () => {
     usePdf([fakePage({ text: LONG_TEXT })]);
     const { reader, tasks } = stubImageReader();

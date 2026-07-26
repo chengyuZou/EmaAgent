@@ -23,7 +23,6 @@ export interface DataDirStats {
   sessionCount:    number;
   turnCount:       number;
   messageCount:    number;
-  artifactCount:   number;
   agentRunCount:   number;
   audioCount:      number;
   audioDurationMs: number;
@@ -38,20 +37,18 @@ export class DataDirStatsRepo {
         (SELECT COUNT(*) FROM sessions)    AS session_count,
         (SELECT COUNT(*) FROM turns)       AS turn_count,
         (SELECT COUNT(*) FROM messages)    AS message_count,
-        (SELECT COUNT(*) FROM artifacts)   AS artifact_count,
         (SELECT COUNT(*) FROM agent_runs) AS agent_run_count,
         (SELECT COUNT(*)                      FROM turn_audio_merged) AS audio_count,
         (SELECT COALESCE(SUM(duration_ms), 0) FROM turn_audio_merged) AS audio_duration_ms
     `).get() as {
       session_count: number; turn_count: number; message_count: number;
-      artifact_count: number; agent_run_count: number;
+      agent_run_count: number;
       audio_count: number; audio_duration_ms: number;
     };
     return {
       sessionCount:    row.session_count,
       turnCount:       row.turn_count,
       messageCount:    row.message_count,
-      artifactCount:   row.artifact_count,
       agentRunCount:   row.agent_run_count,
       audioCount:      row.audio_count,
       audioDurationMs: row.audio_duration_ms,
@@ -73,8 +70,6 @@ export interface SessionStats {
   chatTurns:            number;
   workTurns:            number;
   narrativeAlwaysTurns: number;
-  artifactCount:        number;
-  artifactInlineBytes:  number;
   audioTurnCount:       number;
   audioTotalBytes:      number;
   audioTotalDurationMs: number;
@@ -92,17 +87,6 @@ export interface AudioEntryRow {
   segment_count: number;
   created_at:    number;
   storage_path:  string;
-}
-
-export interface ArtifactSummaryRow {
-  id:               string;
-  type:             string;
-  title:            string;
-  content_location: string;
-  byte_size:        number;
-  created_at:       number;
-  applied_at:       number | null;
-  rejected_at:      number | null;
 }
 
 export interface MemoryStateRow {
@@ -127,14 +111,6 @@ export interface MessageRestoreRow {
   id: string; sessionId: string; turnId: string | null;
   role: string; kind: string; blocksJson: string;
   interrupted: boolean; createdAt: number;
-}
-
-export interface ArtifactRestoreRow {
-  id: string; sessionId: string; turnId: string | null; type: string; title: string; contentLocation: string;
-  content: string | null;
-  contentPath: string | null;
-  createdAt: number; appliedAt: number | null; rejectedAt: number | null;
-  metaJson?: string;
 }
 
 export interface AudioRestoreRow {
@@ -169,7 +145,6 @@ export interface SessionRestorePayload {
   };
   turns:             TurnRestoreRow[];
   messages:          MessageRestoreRow[];
-  artifacts:         ArtifactRestoreRow[];
   audio:             AudioRestoreRow[];
   attachments:       AttachmentRestoreRow[];
   tasks:             TaskRestoreRow[];
@@ -220,7 +195,6 @@ function validateSessionRestorePayload(payload: SessionRestorePayload): void {
   const taskIds = uniqueIds(payload.tasks, 'Task');
   const agentRunIds = uniqueIds(payload.agentRuns, 'AgentRun');
   uniqueIds(payload.messages, 'Message');
-  uniqueIds(payload.artifacts, 'Artifact');
   uniqueIds(payload.attachments, 'Attachment');
   uniqueIds(payload.agentRunMessages, 'AgentRunMessage');
   uniqueIds(payload.kbActivations, 'KbActivation');
@@ -240,10 +214,6 @@ function validateSessionRestorePayload(payload: SessionRestorePayload): void {
   for (const message of payload.messages) {
     assertSessionOwnership('Message', message.id, message.sessionId, sessionId);
     assertOptionalReference('Message.turnId', message.id, message.turnId, turnIds);
-  }
-  for (const artifact of payload.artifacts) {
-    assertSessionOwnership('Artifact', artifact.id, artifact.sessionId, sessionId);
-    assertOptionalReference('Artifact.turnId', artifact.id, artifact.turnId, turnIds);
   }
   for (const audio of payload.audio) {
     assertSessionOwnership('Audio', audio.turnId, audio.sessionId, sessionId);
@@ -404,9 +374,6 @@ export class SessionStatsRepo {
         (SELECT COUNT(*) FROM turns
           WHERE session_id = ? AND narrative_policy = 'always') AS narrative_always_turns,
         (SELECT COUNT(*) FROM turns WHERE session_id = ? AND execution_profile = 'work') AS work_turns,
-        (SELECT COUNT(*) FROM artifacts WHERE session_id = ?) AS artifact_count,
-        (SELECT COALESCE(SUM(LENGTH(COALESCE(content,''))), 0)
-           FROM artifacts WHERE session_id = ? AND content_location = 'inline') AS artifact_inline_bytes,
         (SELECT COUNT(*)                   FROM turn_audio_merged  WHERE session_id = ?) AS audio_turn_count,
         (SELECT COALESCE(SUM(byte_size),0) FROM turn_audio_merged  WHERE session_id = ?) AS audio_total_bytes,
         (SELECT COALESCE(SUM(duration_ms),0) FROM turn_audio_merged WHERE session_id = ?) AS audio_total_duration_ms,
@@ -415,14 +382,12 @@ export class SessionStatsRepo {
     `).get(
       sessionId, sessionId, sessionId, sessionId,
       sessionId, sessionId, sessionId,
-      sessionId, sessionId,
       sessionId, sessionId, sessionId,
       sessionId, sessionId,
     ) as {
       turn_count: number; message_count: number;
       total_input_tokens: number; total_output_tokens: number;
       chat_turns: number; work_turns: number; narrative_always_turns: number;
-      artifact_count: number; artifact_inline_bytes: number;
       audio_turn_count: number; audio_total_bytes: number; audio_total_duration_ms: number;
       attachment_count: number; attachment_total_bytes: number;
     };
@@ -435,8 +400,6 @@ export class SessionStatsRepo {
       chatTurns:            row.chat_turns,
       workTurns:            row.work_turns,
       narrativeAlwaysTurns: row.narrative_always_turns,
-      artifactCount:        row.artifact_count,
-      artifactInlineBytes:  row.artifact_inline_bytes,
       audioTurnCount:       row.audio_turn_count,
       audioTotalBytes:      row.audio_total_bytes,
       audioTotalDurationMs: row.audio_total_duration_ms,
@@ -478,20 +441,6 @@ export class SessionStatsRepo {
       row.turnId, row.sessionId, row.storagePath, row.mimeType,
       row.byteSize, row.durationMs, row.segmentCount, row.createdAt,
     );
-  }
-
-  listArtifactSummaries(sessionId: string): ArtifactSummaryRow[] {
-    return this.db.prepare(`
-      SELECT id, type, title, content_location,
-             CASE WHEN content_location = 'inline'
-                  THEN LENGTH(COALESCE(content, ''))
-                  ELSE 0
-             END AS byte_size,
-             created_at, applied_at, rejected_at
-      FROM artifacts
-      WHERE session_id = ?
-      ORDER BY created_at ASC
-    `).all(sessionId) as ArtifactSummaryRow[];
   }
 
   listAgentRuns(sessionId: string): AgentRunRow[] {
@@ -556,7 +505,7 @@ export class SessionStatsRepo {
   }
 
   // ── 导入:完整恢复事务 ──────────────────────────────────────────────────────
-  // 文件 I/O(音频、Artifact、Attachment)由调用方在调用此方法前处理。
+  // 文件 I/O(音频、Attachment)由调用方在调用此方法前处理。
   // payload 中所有 localPath / contentPath / storagePath 字段必须已指向磁盘上的文件。
 
   restoreRows(p: SessionRestorePayload): void {
@@ -619,24 +568,6 @@ export class SessionStatsRepo {
         stmtMsg.run(
           m.id, m.sessionId, m.turnId ?? null, m.role, m.kind ?? 'normal',
           m.blocksJson, m.interrupted ? 1 : 0, m.createdAt,
-        );
-      }
-
-      // 8. Artifact
-      const stmtArt = this.db.prepare(`
-        INSERT INTO artifacts
-          (id, session_id, turn_id, type, title, content, content_location,
-           content_path, meta_json, created_at, updated_at, applied_at, rejected_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-      for (const a of p.artifacts) {
-        stmtArt.run(
-          a.id, p.session.id, a.turnId ?? null, a.type, a.title,
-          a.content, a.contentLocation,
-          a.contentPath ?? null,
-          a.metaJson ?? '{}',
-          a.createdAt, a.createdAt,
-          a.appliedAt ?? null, a.rejectedAt ?? null,
         );
       }
 

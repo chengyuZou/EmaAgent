@@ -33,9 +33,13 @@ const ROOT_JSON_ENTRIES = new Set([
   'tasks.json', 'task_dependencies.json',
   'agent_runs.json', 'agent_run_messages.json', 'memory_state.json',
   'kb_activations.json', 'usage_records.json', 'llm_turn_metrics.json', 'usage.json', 'notes.json',
-  'artifacts/index.json', 'audio/index.json', 'attachments/index.json',
+  'audio/index.json', 'attachments/index.json',
 ]);
-const CONTENT_ROOTS = new Set(['artifacts', 'audio', 'attachments']);
+const CONTENT_ROOTS = new Set(['audio', 'attachments']);
+
+function isRemovedArtifactEntry(name: string): boolean {
+  return name === 'artifacts/' || name === 'artifacts/index.json' || name.startsWith('artifacts/');
+}
 
 function isAllowedEntry(name: string): boolean {
   if (ROOT_JSON_ENTRIES.has(name)) return true;
@@ -113,6 +117,12 @@ export function extractSessionArchive(
       entryCount += 1;
       if (entryCount > limits.maxEntries) {
         throw new SessionImportError('too_many_entries', 'ZIP 文件数量超过限制', 413);
+      }
+      if (isRemovedArtifactEntry(name)) {
+        throw new SessionImportError(
+          'unsupported_content',
+          '备份包含当前版本已经删除的 Artifact 数据，无法导入',
+        );
       }
       if (!isAllowedEntry(name)) {
         throw new SessionImportError('invalid_format', `ZIP 包含未知条目: ${name}`);

@@ -2,10 +2,12 @@
 import type { CommandPresentation } from './commandPresentation.js';
 import type { FileChangePresentation } from './fileChangePresentation.js';
 import type { FileReadPresentation } from './fileReadPresentation.js';
+import type { PdfReadPresentation } from './pdfReadPresentation.js';
 import type { SearchPresentation } from './searchPresentation.js';
 
 export type ToolPresentation =
   | FileChangePresentation
   | FileReadPresentation
+  | PdfReadPresentation
   | CommandPresentation
   | SearchPresentation;

@@ -14,7 +14,7 @@ export interface SessionOwnershipFacade {
   assertMessageOwnership(sessionId: SessionId, messageId: MessageId): void;
 }
 
-export type SessionOwnedEntity = 'artifact' | 'message' | 'turn';
+export type SessionOwnedEntity = 'message' | 'turn';
 
 // ── Domain objects (camelCase, parsed) ───────────────────────────────────────
 

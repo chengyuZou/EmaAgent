@@ -1,13 +1,6 @@
 // 定义 Session 备份 Facade 的输入输出、能力和文件端口。
 import type { SessionRestorePayload } from '@ema-agent/storage';
 
-/** 导入备份时跳过尚未发布功能所产生的提示。 */
-export interface ImportWarningWire {
-  readonly code: 'unsupported_feature';
-  readonly feature: 'artifacts';
-  readonly message: string;
-}
-
 export type SessionBackupFormat = 'zip-v1';
 
 /**
@@ -28,13 +21,6 @@ export interface SessionImportRequest {
 export interface SessionImportResult {
   sessionId: string;
   format: SessionBackupFormat;
-  warnings: ImportWarningWire[];
-}
-
-export interface BackupArtifactExportEntry {
-  id: string; type: string; title: string; contentLocation: string;
-  content?: string | null; contentPath?: string | null; turnId?: string | null;
-  createdAt: number; appliedAt?: number | null; rejectedAt?: number | null;
 }
 
 export interface BackupAttachmentExportEntry {
@@ -52,7 +38,6 @@ export interface SessionExportSnapshot {
   session: { id: string; title: string } & Record<string, unknown>;
   turns: readonly unknown[];
   messages: readonly unknown[];
-  artifacts: readonly BackupArtifactExportEntry[];
   attachments: readonly BackupAttachmentExportEntry[];
   audio: readonly BackupAudioExportEntry[];
   notes: unknown | null;
@@ -96,7 +81,6 @@ export interface BackupOutputSink {
 
 export interface SessionBackupPorts {
   readonly activeDataDir: string;
-  readonly artifactsEnabled: boolean;
   sessionExists(sessionId: string): boolean;
   restoreRows(payload: SessionRestorePayload): void;
   collectExport(sessionId: string): SessionExportSnapshot | null;

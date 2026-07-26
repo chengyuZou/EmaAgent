@@ -19,7 +19,6 @@ export type {
   SessionAttachmentFileStatus,
   SessionAttachmentWire,
   SessionAttachmentsResult,
-  ArtifactSummaryWire,
   AudioEntryWire,
   SessionNoteEntryWire,
   SessionNoteWire,

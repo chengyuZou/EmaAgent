@@ -3,11 +3,11 @@
 > 状态：批次 B 已完成，TaskList、AgentRun 迁移与 Workspace Dock 尚未实现
 > 日期：2026-07-23  
 > 范围：Desktop Chat 主布局、Turn 快速导航、Task/AgentRun/来源展示、右侧与底部工作区、桌面打开方式  
-> 不包含：恢复 Session Branch、Artifact V1 导航、尚无运行能力的空 Terminal/Browser/Review 面板
+> 不包含：恢复 Session Branch、尚无运行能力的空 Terminal/Browser/Review 面板
 
 ## 1. 设计结论
 
-EmaAgent Chat 不再使用“Artifact、古早 Task、文件、Branch 四个固定检查器”的布局。目标结构分成四层：
+EmaAgent Chat 不再使用“古早 Task、文件、Branch 固定检查器”的布局。目标结构分成四层：
 
 1. **聊天主区**：历史消息、Turn 快速导航、当前执行状态、输入框；
 2. **会话摘要**：工作区/Git、子 Agent、来源的置顶浮层；

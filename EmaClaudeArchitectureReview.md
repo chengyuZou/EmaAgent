@@ -279,7 +279,7 @@ Ema 已经完成了这一批最重要的安全骨架：
 - Agent 主链已经采用 `prepare -> PermissionEngine.gate -> execute`；
 - `src/builtinTools` 已按 `FileEditTool` 等业务名称整理复杂工具目录，并提供稳定内部 ID；
 - 内置与 MCP 工具拥有明确所有者，MCP 批量注册先验证后提交，不允许覆盖内置工具；
-- 无物理 Sandbox 时，Bash/PowerShell 从模型可见注册表移除；Artifact 和未接桥的 Skill/Subagent 工具同样不会伪装可用；
+- 无物理 Sandbox 时，Bash/PowerShell 从模型可见注册表移除；未接桥的 Skill/Subagent 工具同样不会伪装可用；
 - `ToolManifestSnapshot` 已在根 Agent 与 Subagent 主链接入：模型看到的 Schema、`prepare()` 查找和后续执行来自同一份 Registry 快照；伪造快照和同名 MCP 实现热更新后的旧快照都会被拒绝；
 - `ToolExecutionContext` 已携带 Session、Turn、ToolCall、AbortSignal、文件状态、Sandbox Runner、AskUser、Subagent、MCP、Skill 与 KB 桥。
 - Tool Result 外置已迁入 `src/tools/results`：`maxResultBytes` 默认 50KB，同批结果另受 200KB 聚合预算；持久化预览成为跨 Turn 和重启后的唯一重放事实。
@@ -521,7 +521,7 @@ Claude 源码还有一条容易被名称掩盖的边界：普通同步/异步 Ag
 5. **V1 收口：工具能力使用 Snapshot 交集。** Subagent Tool 集 = Profile 允许 ∩ 父 Agent 可用 ∩ Subagent 类型允许 ∩ Skill 限制 ∩ 当前 Bridge 可用。任何层只能收窄，不能靠名字重新扩大。
 6. **V1 收口：上下文继承由 Context 模块构建。** `fork` 不应在 Spawner 中手工复制 Message 并打 cacheBreakpoint；由第 03 章 `ContextAssembler.forkForAgentRun()` 产生稳定、可裁剪的只读前缀。
 7. **V1 收口：Mailbox 是 AgentRun 通信，不是用户 Prompt。** 消息必须带 sender/target/messageId，单次消费并可审计；子 Agent 请求用户信息时发 `needs_parent_input` 给父 Agent，而不是直接访问 AskUser。
-8. **V1 收口：Scratchpad 只是 Turn 内临时协作面。** 它不等于 Task Store、Memory 或持久 Artifact；Turn 结束清理，真正需要保留的结论由父 Agent写入正常结果或明确业务存储。
+8. **V1 收口：Scratchpad 只是 Turn 内临时协作面。** 它不等于 Task Store、Memory 或持久产出；Turn 结束清理，真正需要保留的结论由父 Agent写入正常结果或明确业务存储。
 9. **V1.5 候选：真正跨 Turn 的后台 AgentRun。** 只有在持久 Lease、心跳、恢复、通知和用户管理 UI 完成后，才能允许父 Turn 结束后继续运行。
 10. **V1.5 候选：Coordinator/Team。** 先复用 AgentRun + TaskList + Mailbox 三个清晰对象，再增加协调策略；不创建一个同时代表 Task、Worker、Job 和 Goal 的万能 Runtime。
 11. **不照搬：Claude coding 专属 Agent 类型与 Worktree 组合。** Ema 的 Agent 类型应围绕通用研究、KB/Narrative、角色工作流定义；代码隔离需要时使用已有 Sandbox/Workspace 能力。
@@ -1037,7 +1037,7 @@ Claude Code 没有把所有上下文混成一段字符串。它的提示体系�
 7. **V1 收口：每次 Turn 保存 Prompt/Tool 版本身份。** 持久化 `promptRevision`、`toolManifestRevision` 和 `prefixHash` 等明确字段，足够复现“模型当时看到了什么版本”；不必默认保存整份巨大 Prompt 副本。
 8. **V1 收口：角色变化不应破坏真正固定的前缀。** Character Slot 放在全局稳定规则之后；同一 Session 内保持角色版本稳定，换角色后自然形成新的前缀身份。ACT 协议属于 Character Presentation Slot，不混进全局安全规则。
 9. **V1 收口：Skill/MCP 渐进披露。** 固定前缀只放可用能力摘要，只有选中后才加载完整 Skill 文本或 MCP schema；连接状态变化放动态区域，不能迫使所有静态规则失去缓存。
-10. **V1 收口：Prompt 不能承诺不存在的能力。** Plan、Team、Schedule、Artifact、强 Sandbox 或后台 Agent 未接线时，不注册对应 Tool，也不在文字中声称可用。Feature Gate 必须同时控制实现、manifest 和 UI。
+10. **V1 收口：Prompt 不能承诺不存在的能力。** Plan、Team、Schedule、强 Sandbox 或后台 Agent 未接线时，不注册对应 Tool，也不在文字中声称可用。
 11. **V1 收口：模型/协议差异在 Adapter 投影。** 通用 Slot 不绑定 Anthropic XML、OpenAI role 或 Gemini part；Protocol Adapter 负责序列化。Think Block 不回放给下一模型，媒体兼容由 RequestPreparer 在组装完成后、发送前执行。
 12. **V1 收口：测试验证顺序与身份，不复制 Claude 的全文。** 应覆盖 Slot 唯一性、确定性排序、静态 Hash、动态尾部不污染固定前缀、Feature Gate 与 Tool Manifest 一致、非可信数据无法提升权限。
 13. **V1.5 候选：专用 Agent Prompt Registry。** Explore/Plan/Verification 等只有在真实 Agent type 和 Tool Policy 落地后再注册；Prompt 中写“只读”不能代替物理 Tool Allowlist 与 Sandbox。
@@ -1336,13 +1336,13 @@ Agent Teams 在共享 TaskList 之上增加成员、点对点消息和团队产�
 
 Ema V1 是单用户、单角色呈现，但未来可能多角色、多 Agent 和多入口。当前只有主 Agent→Subagent 的纵向关系，没有跨会话 peer 权威模型。
 
-1. **V1 不实现 Team/Peer 网络。** 先把 AgentRun、Task 与 transcript 做对；不建立共享 Memory、跨机 bridge 或 Artifact 协作。
+1. **V1 不实现 Team/Peer 网络。** 先把 AgentRun、Task 与 transcript 做对；不建立共享 Memory、跨机 bridge 或产出协作。
 2. **现在就固定消息来源类型。** `MessageOrigin` 至少区分 `user`、`agentRun`、`hook`、`tool`、`externalChannel`；来源不是 user 的内容永远不能构成危险操作授权。
 3. **未来 teammate 复用 TaskStore 与 AgentRun。** Team 只提供成员、寻址和消息，不新建 TeamTask；Task owner 使用稳定 `TeamMemberId`，实际执行仍以独立 AgentRun 关联，不能把一次 Run 当成员身份。
 4. **多角色不等于多 Agent。** Character 是表现与 Prompt 身份；AgentMember 是执行主体。一个角色可由一个 Agent 呈现，也可只改变同一 TurnExecutor 的 Character Slot，不能用 characterId 当 agentRunId。
 5. **QQ/微信/Web 等外部消息默认 untrusted input。** 它可以创建待用户处理的 Turn，但不能继承桌面用户的本地文件、push、发送或凭据授权；高后果动作回到可信 UI 确认。
 6. **禁止跨 Agent 权限洗白。** A 被拒后把请求发给 B，B 仍按原动作重新检查，且 peer 请求不能作为 user approval。
-7. **共享 Memory/产出未来必须有分区、版本和 secret filter。** 不能直接把当前全局 L0/L2 同步给所有角色或远端；Artifact V1 Feature Gate 保持关闭。
+7. **共享 Memory/产出未来必须有分区、版本和 secret filter。** 不能直接把当前全局 L0/L2 同步给所有角色或远端。
 8. **V1.5 候选目录 `src/teams`。** 依赖 Tasks、AgentRun、Message Origin、Permission 与 Memory public ports，不拥有自己的模型循环。
 
 ### 与前面章节复核

@@ -71,6 +71,13 @@ describe('Session ZIP 安全导入', () => {
       expect.objectContaining<Partial<SessionImportError>>({ code: 'invalid_format' }),
     );
   });
+
+  it('对旧 Artifact 备份返回明确的不支持错误', () => {
+    const zip = zipSync({ 'artifacts/index.json': strToU8('[]') });
+    expect(() => extractSessionArchive(zip, tempRoot())).toThrowError(
+      expect.objectContaining<Partial<SessionImportError>>({ code: 'unsupported_content' }),
+    );
+  });
 });
 
 describe('导入目标路径与失败回滚', () => {
@@ -104,7 +111,6 @@ describe('SessionBackupFacade 演进契约', () => {
     const restoreRows = vi.fn();
     const facade = new SessionBackupFacade({
       activeDataDir: root,
-      artifactsEnabled: false,
       sessionExists: () => false,
       restoreRows,
       collectExport: () => null,
@@ -143,7 +149,6 @@ describe('SessionBackupFacade 演进契约', () => {
   it('明确声明 ZIP v2 能力尚未启用', () => {
     const facade = new SessionBackupFacade({
       activeDataDir: tempRoot(),
-      artifactsEnabled: false,
       sessionExists: () => false,
       restoreRows: vi.fn(),
       collectExport: () => null,
@@ -162,7 +167,6 @@ describe('SessionBackupFacade 演进契约', () => {
   it('ZIP v1 导出也只经过 Facade，并明确保持同步内存边界', () => {
     const facade = new SessionBackupFacade({
       activeDataDir: tempRoot(),
-      artifactsEnabled: false,
       sessionExists: () => false,
       restoreRows: vi.fn(),
       collectExport: () => ({
@@ -172,7 +176,7 @@ describe('SessionBackupFacade 演进契约', () => {
           preferredProviderConfigId: 'provider-config-1',
           preferredModelId: 'model-1',
         },
-        turns: [{ id: 'turn-1' }], messages: [], artifacts: [], attachments: [],
+        turns: [{ id: 'turn-1' }], messages: [], attachments: [],
         audio: [], notes: null, tasks: [], taskDependencies: [],
         agentRuns: [],
         agentRunMessages: [], memoryState: null, kbActivations: [],
@@ -199,7 +203,7 @@ describe('SessionBackupFacade 演进契约', () => {
     fs.writeFileSync(largeFile, new Uint8Array(32));
     const snapshot: SessionExportSnapshot = {
       session: { id: 'session-1', title: 'Budget' },
-      turns: [], messages: [], artifacts: [],
+      turns: [], messages: [],
       attachments: [{
         id: 'attachment-1', name: 'large.bin', mime: 'application/octet-stream',
         size: 32, turnId: 'turn-1', mtime: 0, createdAt: 1, localPath: largeFile,
@@ -209,7 +213,7 @@ describe('SessionBackupFacade 演进契约', () => {
       memoryState: null, kbActivations: [], usageRecords: [],
     };
 
-    expect(() => exportSessionZipV1(snapshot, false, {
+    expect(() => exportSessionZipV1(snapshot, {
       maxEntryBytes: 16,
       maxExpandedBytes: 1024,
       maxArchiveBytes: 1024,

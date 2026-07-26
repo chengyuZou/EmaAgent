@@ -1,6 +1,5 @@
 // 定义工具调用、结果展示与用户询问产生的业务事件。
 import type { SessionId, TurnId } from '@ema-agent/ids';
-import type { ArtifactEvent } from '@ema-agent/artifact';
 import type { TaskEvent } from '@ema-agent/tasks';
 import type { ToolPresentation } from './presentation/index.js';
 
@@ -63,7 +62,7 @@ export type ToolStreamEvent =
   | { type: 'ask_choice_resolved'; sessionId: SessionId; promptId: string; selected: string[]; customText?: string };
 
 /** 工具执行上下文允许业务工具向外发出的领域事件。 */
-export type ToolExecutionEvent = ToolStreamEvent | TaskEvent | ArtifactEvent;
+export type ToolExecutionEvent = ToolStreamEvent | TaskEvent;
 
 export type AskUserRequiredEvent = Extract<
   ToolStreamEvent,

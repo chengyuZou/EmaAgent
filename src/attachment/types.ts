@@ -49,4 +49,38 @@ export interface ResolvedPrompt {
   promptLines: string;
 }
 
+export type AttachmentVisionTask = 'auto' | 'caption' | 'ocr' | 'layout' | 'table';
+
+export type AttachmentImageSource =
+  | { kind: 'path'; path: string }
+  | { kind: 'bytes'; bytes: Uint8Array; name?: string }
+  | { kind: 'base64'; data: string; name?: string };
+
+/** 已应用方向纠正、尺寸限制和隐私元数据移除的模型输入图片。 */
+export interface NormalizedAttachmentImage {
+  bytes: Uint8Array;
+  mimeType: 'image/png' | 'image/jpeg' | 'image/webp';
+  width: number;
+  height: number;
+  contentSha256: string;
+  transformVersion: string;
+}
+
+export interface CachedVisionDescriptionRequest {
+  source: AttachmentImageSource;
+  task: AttachmentVisionTask;
+  providerConfigId: string;
+  modelId: string;
+  /** Vision 任务 Prompt 的稳定版本；Prompt 语义变化时必须升级。 */
+  promptRevision: string;
+  language?: string;
+  signal?: AbortSignal;
+}
+
+export interface CachedVisionDescription {
+  text: string;
+  image: NormalizedAttachmentImage;
+  cache: 'memory' | 'disk' | 'miss';
+}
+
 export type { TurnAttachment };

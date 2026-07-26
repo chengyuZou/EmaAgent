@@ -130,7 +130,7 @@ describe('profile v4 到当前版本迁移：model_bindings CHECK 收紧到 11',
       // 11 模块写入仍正常
       expect(() => insBinding.run('vision', 'v-model')).not.toThrow();
 
-      expect(sqlite.pragma('user_version', { simple: true })).toBe(11);
+      expect(sqlite.pragma('user_version', { simple: true })).toBe(12);
     } finally {
       sqlite.close();
     }

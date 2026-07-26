@@ -9,7 +9,6 @@ import {
   handleTurnAborted,
   } from '../lib/tts-playback.js';
 import { useDecisionStore }        from './decision-store.js';
-import { useArtifactStore }        from './artifact-store.js';
 import { useAgentRunStore }        from './agentRunStore.js';
 import { useTaskStore }            from './taskStore.js';
 import { useConversationStore }    from './conversation-store.js';
@@ -347,16 +346,6 @@ export function dispatchSseEvent(
       if ((event.sessionId as string) === (useConversationStore.getState().ttsOwnerSessionId as string)) {
         void tauriBridge.emit('stage:cue', event.cue);
       }
-      break;
-
-    // ── Artifacts ──────────────────────────────────────────────────────────
-
-    case 'artifact_upserted':
-      useArtifactStore.getState().upsertFromEvent(event.artifact);
-      break;
-
-    case 'artifact_applied':
-      useArtifactStore.getState().markAppliedFromEvent(event.id);
       break;
 
     // ── 持久 Task ─────────────────────────────────────────────────────────

@@ -1,7 +1,6 @@
 import { sidecarClient } from './sidecar-client.js';
 import type { SessionId } from '@ema-agent/ids';
 import type { SessionDashboardWire, SessionNoteWire } from '@ema-agent/session';
-import type { ImportWarningWire } from '@ema-agent/backup';
 
 // ── DataDir wire types ────────────────────────────────────────────────────────
 
@@ -23,7 +22,6 @@ export interface StorageStatsWire {
   sessionCount:    number;
   turnCount:       number;
   messageCount:    number;
-  artifactCount:   number;
   agentRunCount:   number;
   audioCount:      number;
   audioDurationMs: number;
@@ -103,7 +101,7 @@ export const storageApi = {
   },
 
   /** POST /api/storage/sessions/import — upload a ZIP and restore the session. */
-  async importSession(file: File): Promise<{ id: string; title: string; warnings?: ImportWarningWire[] }> {
+  async importSession(file: File): Promise<{ id: string; title: string }> {
     const form = new FormData();
     form.append('file', file);
     const res = await sidecarClient.requestRaw('/api/storage/sessions/import', {
@@ -114,6 +112,6 @@ export const storageApi = {
       const body = await res.json().catch(() => ({ message: res.statusText })) as { message?: string };
       throw new Error(body.message ?? `Import failed: ${res.status}`);
     }
-    return res.json() as Promise<{ id: string; title: string; warnings?: ImportWarningWire[] }>;
+    return res.json() as Promise<{ id: string; title: string }>;
   },
 };

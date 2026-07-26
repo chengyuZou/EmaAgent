@@ -8,7 +8,7 @@ const CLEARED_PLACEHOLDER = '[Old tool result content cleared — call the tool 
 // Only these tools' results are safe to clear: their output can be
 // re-fetched by calling the tool again. Tools whose results carry
 // irreversible side-effect records or self-managed storage are excluded:
-//   - Artifact*   → ArtifactStore owns the content; result is a slim ref
+
 //   - AskUser*    → user's answer is unique, cannot re-fetch
 //   - SkillCall   → may carry one-shot state
 //   - mcp_call    → external side effects, not safely replayable in general

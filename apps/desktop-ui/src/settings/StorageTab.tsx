@@ -20,7 +20,6 @@ import type {
   SessionDashboardWire,
 } from '../api/storage.js';
 import type {
-  ArtifactSummaryWire,
   AudioEntryWire,
   SessionNoteEntryWire,
 } from '@ema-agent/session';
@@ -399,7 +398,6 @@ function StatsPanel({ stats, statsLoading }: {
         <StatCard index={0} icon="i-solar:chat-round-bold-duotone"      label="会话"     value={String(stats.sessionCount)} />
         <StatCard index={1} icon="i-solar:refresh-circle-bold-duotone"  label="轮次"     value={String(stats.turnCount)} />
         <StatCard index={2} icon="i-solar:letter-bold-duotone"          label="消息"     value={String(stats.messageCount)} />
-        <StatCard index={3} icon="i-solar:document-bold-duotone"        label="Artifact" value={String(stats.artifactCount)} />
         <StatCard index={4} icon="i-solar:soundwave-bold-duotone"       label="音频轮次" value={String(stats.audioCount)}    sub={fmtDuration(stats.audioDurationMs)} />
         <StatCard index={5} icon="i-solar:magic-stick-3-bold-duotone"   label="子智能体执行" value={String(stats.agentRunCount)} />
       </div>
@@ -480,7 +478,6 @@ function OverviewTab({ d }: { d: SessionDashboardWire }): JSX.Element {
     { label: '消息',     value: String(d.messageCount) },
     { label: 'Token',    value: fmtTokens(d.totalInputTokens + d.totalOutputTokens),
       sub: `↑ ${fmtTokens(d.totalInputTokens)}  ↓ ${fmtTokens(d.totalOutputTokens)}` },
-    { label: 'Artifact', value: String(d.artifactCount), sub: fmtBytes(d.artifactTotalBytes) },
     { label: '音频',     value: String(d.audioTurnCount),
       sub: `${fmtDuration(d.audioTotalDurationMs)} · ${fmtBytes(d.audioTotalBytes)}` },
     { label: '附件',     value: String(d.attachmentCount), sub: fmtBytes(d.attachmentTotalBytes) },
@@ -497,36 +494,6 @@ function OverviewTab({ d }: { d: SessionDashboardWire }): JSX.Element {
           <span className="text-xs text-[var(--ema-text-tertiary)]">{c.label}</span>
           <span className="text-base font-semibold text-[var(--ema-text-primary)] truncate">{c.value}</span>
           {c.sub && <span className="text-xs text-[var(--ema-text-tertiary)]">{c.sub}</span>}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function ArtifactsTab({ artifacts }: { artifacts: ArtifactSummaryWire[] }): JSX.Element {
-  if (artifacts.length === 0) {
-    return (
-      <p className="ema-fade-in text-[var(--ema-text-tertiary)] text-sm py-8 text-center">
-        暂无 Artifact
-      </p>
-    );
-  }
-  return (
-    <div className="flex flex-col gap-1.5">
-      {artifacts.map((a, i) => (
-        <div
-          key={a.id}
-          className="ema-stagger-in ema-glass-weak ema-card-decorate ema-card-decorate--storage bg-[var(--ema-surface-1)] rounded-xl border-2 border-solid border-[var(--ema-border)] hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]
-                     px-3 py-2.5 flex items-center gap-3 shadow-[var(--ema-shadow-1)]"
-          style={{ '--stagger-i': i } as CSSProperties}
-        >
-          <span className="i-solar:document-bold text-base text-[var(--ema-text-tertiary)] shrink-0" aria-hidden />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm text-[var(--ema-text-primary)] truncate">{a.title || '(untitled)'}</p>
-            <p className="text-xs text-[var(--ema-text-tertiary)]">{a.type} · {fmtBytes(a.byteSize)}</p>
-          </div>
-          {a.appliedAt  && <Badge variant="success">已应用</Badge>}
-          {a.rejectedAt && <Badge variant="warn">已拒绝</Badge>}
         </div>
       ))}
     </div>
@@ -635,7 +602,6 @@ function SessionDashboard({ session }: { session: SessionWire }): JSX.Element {
 
   const tabs = dashboard ? [
     { value: 'overview',  label: '概览',                                  icon: 'i-solar:chart-2-bold-duotone',   content: <OverviewTab d={dashboard} /> },
-    { value: 'artifacts', label: `Artifact (${dashboard.artifactCount})`, icon: 'i-solar:document-bold-duotone',  content: <ArtifactsTab artifacts={dashboard.artifacts} /> },
     { value: 'audio',     label: `音频 (${dashboard.audioTurnCount})`,    icon: 'i-solar:soundwave-bold-duotone', content: <AudioTab entries={dashboard.audioEntries} /> },
     { value: 'memory',    label: '记忆',                                  icon: 'i-solar:leaf-bold-duotone',      content: <MemoryTab notes={dashboard.notes} /> },
   ] : [];
@@ -668,7 +634,7 @@ function SessionDashboard({ session }: { session: SessionWire }): JSX.Element {
             <p className="ema-slide-up text-xs text-[var(--ema-text-tertiary)]">
               {dashboard.turnCount} 轮 ·{' '}
               {fmtTokens(dashboard.totalInputTokens + dashboard.totalOutputTokens)} tokens ·{' '}
-              {dashboard.artifactCount} Artifact · {dashboard.audioTurnCount} 音频
+              {dashboard.audioTurnCount} 音频
             </p>
           )}
         </div>
@@ -774,12 +740,6 @@ export function StorageTab(): JSX.Element {
       const result = await storageApi.importSession(file);
       await useSessionStore.getState().loadSessions();
       showToast('会话导入成功', { variant: 'success' });
-      // V1 跳过的未启用特性(如 Artifact)在此提示用户。
-      for (const w of result.warnings ?? []) {
-        if (w.feature === 'artifacts') {
-          showToast('已跳过备份中的产物数据(V1 未启用产物功能)', { variant: 'warning' });
-        }
-      }
     } catch (err) {
       showToast(err instanceof Error ? `导入失败：${err.message}` : '导入失败', { variant: 'danger' });
     } finally {

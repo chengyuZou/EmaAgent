@@ -3,7 +3,7 @@
 > 状态：设计中，不代表当前源码已经完成迁移  
 > 日期：2026-07-21  
 > 范围：后端统一引擎、业务契约拆分、Prompt 插槽、Context/Compaction、Narrative Tool、前端 Chat/Work，以及剩余发布前问题  
-> Artifact：继续由 V1 Feature Gate 禁用，不进入本 RFC
+> Artifact：已物理删除，不进入本 RFC
 >
 > Claude Code 全量文档逐章 Diff、Ema 目标边界与迁移顺序见 `EmaClaudeArchitectureReview.md`。本 RFC 负责实施范围，评审文档负责参考依据；两者冲突时以本 RFC 后续明确决策和实际源码为准。
 
@@ -566,7 +566,7 @@ Builtin / MCP / Skill Tool
 1. **Sandbox 依赖反转**：`spawnProcess` 收回 Sandbox；合并重复 `RunOptions/RunResult`；`CommandRunner` 不再持有 `PermissionEngine`；禁用 `process.cwd()` 回退；暂时禁用 detached 假后台。不先打断 Sandbox -> Tools，后面把 ToolExecutionRuntime 迁入 Tools 会立刻形成循环依赖。
 2. **Tools 主链收口**：删除 `ToolRegistry.dispatch()` 旁路；执行运行时迁入 `tools/execution`；AgentLoop 只决定何时启动和消费 Tool Batch。Ema 内置工具共享一次执行的完整 `BuiltinToolContext`，但每个 Tool 必须通过 `validateContext()` 校验并投影自己的窄 Context 后才能执行；通用 Tools 框架不拥有 Ema 业务 Port。不要恢复 `ToolInvocationContext + ToolExecutionScope` 两个万能参数袋，也不重写已正确的 PreparedToolCall/Manifest Snapshot/Result Budget/Journal。
 
-   业务执行入口由拥有语义的模块公开：Knowledge 拥有 `KnowledgeSearchPort`，Skills 拥有 `SkillRunnerPort`，Sandbox、Tasks 与 Artifact 继续拥有各自端口。Subagent 是有意的例外：`SubagentSpawnerPort` 是 Subagent Tool 对宿主的消费契约，因此位于 `builtinTools`；Agent 结构化实现它，不能让 `builtinTools` 反向依赖 Agent 并形成包环。AskUser 同理保留为 AskUser Tool 的消费端口，由 TurnExecutor 提供实现。
+   业务执行入口由拥有语义的模块公开：Knowledge 拥有 `KnowledgeSearchPort`，Skills 拥有 `SkillRunnerPort`，Sandbox、Tasks 继续拥有各自端口。Subagent 是有意的例外：`SubagentSpawnerPort` 是 Subagent Tool 对宿主的消费契约，因此位于 `builtinTools`；Agent 结构化实现它，不能让 `builtinTools` 反向依赖 Agent 并形成包环。AskUser 同理保留为 AskUser Tool 的消费端口，由 TurnExecutor 提供实现。
 3. **建立 TurnExecutor**：旧 `AgentEngine` 已迁入高层 `src/turnExecution` 并删除；Turn 创建与 `TurnHandle`（turnId + events + completion + abort）已经收回。低层 `src/turn` 不吸收 Context、KB、Character、Tool 或后台进程依赖。
 4. **清理 Agent**：`src/agent` 只保留 `agentLoop/agentLoopState/policy/budget/runs/spawner/events/errors`。
 5. **Core 退回协议层**：Route 解析并验证请求；调用 `turnExecutor.start()`；把 TurnEvent 编码成 SSE。不再组装 Context、创建 Tool Executor 或决定业务终态。
@@ -689,7 +689,6 @@ Provider 与 LLM 已证明产品模块可以位于根 `src`，同时保留内部
 | Hook Invocation ID、Warning 类型与事件 | Hook |
 | Provider Health 事件 | Providers |
 | Attachment 元数据和前端 Wire | Attachment |
-| Artifact 类型与事件 | Artifact，V1 继续禁用 |
 | Usage Record/Recorder/Correlation | Usage |
 | `SessionOwnershipFacade/Error` | Session |
 | Release、Sandbox、Import Warning | Release/System、Sandbox、Backup |

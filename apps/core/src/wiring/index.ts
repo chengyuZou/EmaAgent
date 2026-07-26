@@ -5,12 +5,15 @@ import { registerAllEmitters } from './register-emitters.js';
 import { configureBridge }     from './bridge.js';
 import { createBackgroundTicker } from './background-tick.js';
 import { sweepStartupOrphanTurnFiles } from './startup-turn-files.js';
+import { removeLegacyArtifactDirectories } from '../storage-locations/index.js';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const BACKGROUND_TICK_MS  = 5_000;      // poll background_tasks every 5 s
 // 360 ticks × 5 s = 1800 s = 30 min between cleaner sweeps.
 const CLEANER_SWEEP_EVERY = 360;
+// 每 30 分钟尝试一次；缓存自身还会检查应用空闲和 6 小时最小维护间隔。
+const ATTACHMENT_CACHE_SWEEP_EVERY = 360;
 // 12 ticks × 5 s = 60 s between bridge readiness checks.
 const BRIDGE_HEARTBEAT_EVERY = 12;
 
@@ -97,6 +100,16 @@ export function startBackgroundWork(bindings: AppBindings): BackgroundHandle {
     console.warn('[session] startup orphan turn file sweep skipped:', err);
   }
 
+  // 2b-3) Data v21 只能删除 SQLite 表；旧版产生的 Artifact 目录在启动恢复中清掉。
+  try {
+    const removed = removeLegacyArtifactDirectories(bindings.activeDataDir);
+    if (removed > 0) {
+      console.log(`[session] startup: removed ${removed} legacy Artifact directories`);
+    }
+  } catch (err) {
+    console.warn('[session] startup legacy artifact cleanup skipped:', err);
+  }
+
   // 2c) 子 Agent 执行恢复：启动时仍为 running 的记录来自上次异常退出，统一标记失败。
   try {
     const recovered = bindings.agentRunStore.recoverInterrupted();
@@ -139,6 +152,19 @@ export function startBackgroundWork(bindings: AppBindings): BackgroundHandle {
           }
         } catch (err) {
           console.warn('[tool-results] cleaner sweep failed:', err);
+        }
+      }
+      if (tickCount % ATTACHMENT_CACHE_SWEEP_EVERY === 0) {
+        try {
+          const report = await bindings.attachmentCacheMaintenance.sweepIfIdle();
+          if (report.ran && (report.deletedDerivations > 0 || report.deletedImages > 0)) {
+            console.log(
+              `[attachment-cache] cleaner: removed ${report.deletedDerivations} derivation(s)`
+              + ` and ${report.deletedImages} image(s), freed ${(report.freedBytes / 1024).toFixed(0)} KB`,
+            );
+          }
+        } catch (err) {
+          console.warn('[attachment-cache] cleaner sweep failed:', err);
         }
       }
       if (tickCount % BRIDGE_HEARTBEAT_EVERY === 0) {

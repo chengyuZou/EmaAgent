@@ -3,7 +3,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   SessionRestoreValidationError,
-  type ArtifactRestoreRow,
   type AttachmentRestoreRow,
   type AudioRestoreRow,
   type MessageRestoreRow,
@@ -22,7 +21,6 @@ import type {
   SessionImportResult,
   SessionExportRequest,
   SessionExportResult,
-  ImportWarningWire,
 } from './types.js';
 import { exportSessionZipV1 } from './export/zip-v1.js';
 
@@ -56,11 +54,6 @@ interface AttachmentMeta {
   id: string; name: string; mime: string; size: number; turnId: string;
   mtime: number; createdAt: number;
 }
-interface ArtifactMeta {
-  id: string; type: string; title: string; contentLocation: string;
-  turnId: string | null; createdAt: number; appliedAt: number | null;
-  rejectedAt: number | null;
-}
 interface NotesExport { body: string; tokensAtLastUpdate: number; updatedAt: number; }
 
 /** Session 备份唯一业务入口；Core/CLI 不得绕过它直接解压或恢复行。 */
@@ -73,7 +66,7 @@ export class SessionBackupFacade {
 
   exportSession(request: SessionExportRequest): SessionExportResult | null {
     const snapshot = this.ports.collectExport(request.sessionId);
-    return snapshot ? exportSessionZipV1(snapshot, this.ports.artifactsEnabled) : null;
+    return snapshot ? exportSessionZipV1(snapshot) : null;
   }
 
   async importSession(request: SessionImportRequest): Promise<SessionImportResult> {
@@ -103,9 +96,7 @@ export class SessionBackupFacade {
       fileCommit = new SessionImportFileCommit(this.ports.activeDataDir, session.id);
       const audio = this.restoreAudio(extracted, fileCommit, session.id);
       const attachments = this.restoreAttachments(extracted, fileCommit);
-      const warnings: ImportWarningWire[] = [];
-      const artifacts = this.restoreArtifacts(extracted, fileCommit, session.id, warnings);
-      const payload = this.buildPayload(extracted, session, { audio, attachments, artifacts });
+      const payload = this.buildPayload(extracted, session, { audio, attachments });
 
       try {
         this.ports.restoreRows(payload);
@@ -117,7 +108,7 @@ export class SessionBackupFacade {
       }
       fileCommit.commit();
 
-      return { sessionId: session.id, format: 'zip-v1', warnings };
+      return { sessionId: session.id, format: 'zip-v1' };
     } catch (error) {
       fileCommit?.rollback();
       throw error;
@@ -175,56 +166,12 @@ export class SessionBackupFacade {
     });
   }
 
-  private restoreArtifacts(
-    extracted: ReturnType<typeof extractSessionArchive>,
-    files: SessionImportFileCommit,
-    sessionId: string,
-    warnings: ImportWarningWire[],
-  ): ArtifactRestoreRow[] {
-    if (!extracted.has('artifacts/index.json')) return [];
-    if (!this.ports.artifactsEnabled) {
-      warnings.push({
-        code: 'unsupported_feature',
-        feature: 'artifacts',
-        message: 'V1 未启用产物(Artifact)功能,已跳过备份中的产物数据。',
-      });
-      return [];
-    }
-
-    const index = extracted.readJson<ArtifactMeta[]>('artifacts/index.json') ?? [];
-    assertArray(index, 'artifacts/index.json');
-    return index.map((entry) => {
-      assertPortableImportId(entry.id, 'Artifact id');
-      if (entry.turnId !== null) assertPortableImportId(entry.turnId, 'Artifact turnId');
-      const fileKey = `artifacts/${entry.id}${artifactExt(entry.type)}`;
-      const source = extracted.filePath(fileKey);
-      if (entry.contentLocation === 'file' && source) {
-        const ext = path.extname(fileKey) || '.bin';
-        const destination = files.copyToSession(source, 'artifacts', `${entry.id}${ext}`);
-        return {
-          id: entry.id, sessionId, turnId: entry.turnId, type: entry.type,
-          title: entry.title, contentLocation: 'file', content: null,
-          contentPath: destination, createdAt: entry.createdAt,
-          appliedAt: entry.appliedAt ?? null, rejectedAt: entry.rejectedAt ?? null,
-        };
-      }
-      const content = source ? fs.readFileSync(source, 'utf8') : null;
-      return {
-        id: entry.id, sessionId, turnId: entry.turnId, type: entry.type,
-        title: entry.title, contentLocation: 'inline', content, contentPath: null,
-        createdAt: entry.createdAt, appliedAt: entry.appliedAt ?? null,
-        rejectedAt: entry.rejectedAt ?? null,
-      };
-    });
-  }
-
   private buildPayload(
     extracted: ReturnType<typeof extractSessionArchive>,
     session: SessionExport,
     files: {
       audio: AudioRestoreRow[];
       attachments: AttachmentRestoreRow[];
-      artifacts: ArtifactRestoreRow[];
     },
   ): SessionRestorePayload {
     const turns = readArray<TurnRestoreRow>(extracted, 'turns.json');
@@ -274,7 +221,6 @@ export class SessionBackupFacade {
         ...message,
         blocksJson: message.blocksJson ?? JSON.stringify(message.blocks ?? []),
       })),
-      artifacts: files.artifacts,
       audio: files.audio,
       attachments: files.attachments,
       tasks,
@@ -413,12 +359,4 @@ function mimeToExt(mime: string): string {
   if (mime.includes('wav')) return '.wav';
   if (mime.includes('flac')) return '.flac';
   return '.mp3';
-}
-
-function artifactExt(type: string): string {
-  const extensions: Record<string, string> = {
-    code: '.txt', markdown: '.md', diff: '.diff', image: '.bin',
-    json: '.json', html: '.html', svg: '.svg',
-  };
-  return extensions[type] ?? '.txt';
 }

@@ -19,6 +19,8 @@ export type {
   KbSearchResult,
   KnowledgeSearchPort,
 } from './types.js';
+export { PdfReader } from './readers/pdf.js';
+export type { PdfReadRange } from './readers/pdf.js';
 
 // ── Events ─────────────────────────────────────────────────────────────────────
 export { DocumentEventEmitter }                         from './events/index.js';

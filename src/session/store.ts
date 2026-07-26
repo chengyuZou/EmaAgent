@@ -467,6 +467,11 @@ export class SessionStore implements SessionOwnershipFacade {
     return this.getTurn(turnId);
   }
 
+  /** 后台派生缓存只在所有前台 Turn 都结束后执行维护。 */
+  hasActiveTurns(): boolean {
+    return this.registry.activeSessionCount() > 0;
+  }
+
   listTurns(sessionId: SessionId, limit = 50): Turn[] {
     return this.turnsRepo.listForSession(sessionId, limit).map(toTurn);
   }

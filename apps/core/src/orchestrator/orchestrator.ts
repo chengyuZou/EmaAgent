@@ -39,6 +39,8 @@ import { prepareImagesForModel, replaceImageParts } from './media-compatibility.
 import { buildPromptSnapshot } from '@ema-agent/prompts';
 import { formatTaskContextReminder } from '@ema-agent/tasks';
 
+const TURN_ATTACHMENT_CAPTION_PROMPT_REVISION = 'turn-attachment-caption-v1';
+
 export interface TurnResult {
   turnId: TurnId;
   events: AsyncIterable<EmaStreamEvent>;
@@ -122,7 +124,6 @@ export class Orchestrator {
       getCommandRunner:  bindings.getCommandRunner,
       buildAsk:          bindings.buildAskForTurn,
       askUserInteraction: bindings.askUserRegistry,
-      artifactStore:     bindings.artifactStore,
       skillRunner:       bindings.skillRunner,
       kbSearch:          bindings.kbSearch,
       getSessionToolResultStore: bindings.getSessionToolResultStore,
@@ -325,25 +326,44 @@ export class Orchestrator {
           capabilitiesFor: (providerId, model) =>
             this.bindings.modelCapabilities.resolve({ providerId, model }),
           visionBinding: () => this.bindings.modelBindings.get('vision'),
-          describeImages: async ({
+          describeImage: async ({
             providerId,
             model,
-            inputs,
+            input,
             signal: visionSignal,
           }) => {
-            const result = await this.bindings.vision.extract({
-              providerId,
-              model,
-              task: 'caption',
-              inputs,
-              context: {
-                caller: 'turn_attachment',
-                sessionId: sessionId as string,
-                turnId: turnId as string,
+            const cached = await this.bindings.attachmentDerivationCache.getOrCreate({
+              source: {
+                kind: 'base64',
+                data: input.data,
+                name: input.name,
               },
+              task: 'caption',
+              providerConfigId: providerId,
+              modelId: model,
+              promptRevision: TURN_ATTACHMENT_CAPTION_PROMPT_REVISION,
               signal: visionSignal,
+            }, async (image) => {
+              const result = await this.bindings.vision.extract({
+                providerId,
+                model,
+                task: 'caption',
+                inputs: [{
+                  kind: 'bytes',
+                  bytes: image.bytes,
+                  mimeType: image.mimeType,
+                  name: input.name,
+                }],
+                context: {
+                  caller: 'turn_attachment',
+                  sessionId: sessionId as string,
+                  turnId: turnId as string,
+                },
+                signal: visionSignal,
+              });
+              return result.text;
             });
-            return result.text;
+            return cached.text;
           },
         }, resolvedLlm.providerId, resolvedLlm.model, imageParts, signal);
         contentParts = replaceImageParts(contentParts ?? [], fallback.parts);

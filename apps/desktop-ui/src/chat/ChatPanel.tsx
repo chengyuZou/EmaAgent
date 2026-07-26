@@ -7,7 +7,6 @@ import { useSessionStore } from '../stores/session-store.js';
 import { useSidecarStore } from '../stores/sidecar-store.js';
 import { useAgentRunStore } from '../stores/agentRunStore.js';
 import { findEnabledModel, useModelCatalogStore } from '../stores/model-catalog-store.js';
-import { useCapabilitiesStore } from '../stores/capabilities-store.js';
 import { useThemeSync } from '../stores/theme-store.js';
 import { useRuntimeSettingsSync } from '../stores/runtime-settings-sync.js';
 import { mountSystemEvents } from '../lib/system-sse.js';
@@ -17,7 +16,6 @@ import { ChatHistory } from './history/ChatHistory.js';
 import { ChatInput } from './ChatInput.js';
 import { ContextPanel } from './ContextPanel.js';
 import { AgentRunPanel } from './agentRuns/AgentRunPanel.js';
-import { ArtifactsPanel } from './ArtifactsPanel.js';
 import { FilesPanel } from './FilesPanel.js';
 import { SessionAttachmentsPanel } from './SessionAttachmentsPanel.js';
 import { ChatActivityStrip } from './activity/ChatActivityStrip.js';
@@ -25,7 +23,7 @@ import { ReviewPanel } from './review/ReviewPanel.js';
 
 // ── Inspector panel types ─────────────────────────────────────────────────────
 
-type InspectorPanelId = 'artifacts' | 'attachments' | 'files' | 'agentRuns' | 'review';
+type InspectorPanelId = 'attachments' | 'files' | 'agentRuns' | 'review';
 
 // ── ChatPanel ─────────────────────────────────────────────────────────────────
 
@@ -33,8 +31,6 @@ export function ChatPanel(): JSX.Element {
   const viewedSessionId = useConversationStore((s) => s.viewedSessionId);
   const sidecarStatus   = useSidecarStore((s) => s.status);
   const hasConnected    = useSidecarStore((s) => s.lastKnownPort !== null);
-  // Artifact 入口受 V1 发布特性门禁(fail-closed:未加载/失败 → false,按钮不显示)。
-  const artifactsEnabled = useCapabilitiesStore((s) => s.features.artifacts);
 
   useThemeSync();
   useRuntimeSettingsSync(sidecarStatus.kind === 'ok');
@@ -87,18 +83,6 @@ export function ChatPanel(): JSX.Element {
 
   // 聊天窗只消费主窗广播，不再自行建立全局 SSE 连接。
   useEffect(() => mountSystemEvents({ ownsConnection: false }), []);
-  // 拉一次 V1 发布特性开关(fail-closed,失败不抛)。
-  useEffect(() => { void useCapabilitiesStore.getState().load(); }, []);
-  // 特性从 true→false 时(理论上 V1 不会,但防御),把已打开的 artifacts 面板踢出。
-  useEffect(() => {
-    if (artifactsEnabled) return;
-    setActivePanels((prev) => {
-      if (!prev.has('artifacts')) return prev;
-      const next = new Set(prev);
-      next.delete('artifacts');
-      return next;
-    });
-  }, [artifactsEnabled]);
   useEffect(() => {
     const stop = useSidecarStore.getState().startPolling();
     return stop;
@@ -190,15 +174,6 @@ export function ChatPanel(): JSX.Element {
 
             {/* Inspector dock */}
             <div className="flex items-center gap-0.5 shrink-0">
-              {/* ▣ Artifacts — V1 发布特性门禁,artifacts=false 时不渲染入口 */}
-              {artifactsEnabled && (
-                <InspectorDockBtn
-                  icon="i-solar:layers-bold-duotone"
-                  label="产物"
-                  active={activePanels.has('artifacts')}
-                  onClick={() => togglePanel('artifacts')}
-                />
-              )}
               {/* ⋮ Overflow */}
               <div className="relative" ref={overflowRef}>
                 <Button
@@ -425,7 +400,6 @@ function InspectorContent({
 }
 
 const PANEL_META: Record<InspectorPanelId, { label: string; icon: string }> = {
-  artifacts: { label: '产物',     icon: 'i-solar:layers-bold-duotone' },
   attachments: { label: '会话附件', icon: 'i-lucide:paperclip' },
   files:     { label: '文件',     icon: 'i-solar:folder-bold-duotone' },
   agentRuns: { label: '子智能体', icon: 'i-solar:cpu-bold-duotone' },
@@ -466,7 +440,6 @@ function InspectorPanelBody({ id, sessionId }: { id: InspectorPanelId; sessionId
     <div key={id} className="ema-panel-in h-full">{child}</div>
   );
   if (id === 'agentRuns') return wrap(<AgentRunPanel className="p-2" />);
-  if (id === 'artifacts') return wrap(<ArtifactsPanel />);
   if (id === 'attachments') return wrap(<SessionAttachmentsPanel sessionId={sessionId} />);
   if (id === 'files')     return wrap(<FilesPanel />);
   if (id === 'review')    return wrap(<ReviewPanel sessionId={sessionId} />);

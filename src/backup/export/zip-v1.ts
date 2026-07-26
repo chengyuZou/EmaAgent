@@ -40,14 +40,6 @@ function validateExportLimits(limits: Readonly<SessionExportLimits>): void {
   }
 }
 
-function artifactExt(type: string): string {
-  const extensions: Record<string, string> = {
-    code: '.txt', markdown: '.md', diff: '.diff', image: '.bin',
-    json: '.json', html: '.html', svg: '.svg',
-  };
-  return extensions[type] ?? '.txt';
-}
-
 function mimeToExt(mime: string): string {
   if (mime.includes('mp3') || mime.includes('mpeg')) return '.mp3';
   if (mime.includes('ogg')) return '.ogg';
@@ -59,7 +51,6 @@ function mimeToExt(mime: string): string {
 /** ZIP v1 兼容导出器；同步内存压缩是已声明的 V1 边界。 */
 export function exportSessionZipV1(
   snapshot: SessionExportSnapshot,
-  artifactsEnabled: boolean,
   limits: Readonly<SessionExportLimits> = SESSION_EXPORT_LIMITS,
 ): SessionExportResult {
   validateExportLimits(limits);
@@ -104,32 +95,6 @@ export function exportSessionZipV1(
   if (snapshot.memoryState) putJson('memory_state.json', snapshot.memoryState);
   if (snapshot.kbActivations.length > 0) putJson('kb_activations.json', snapshot.kbActivations);
   if (snapshot.usageRecords.length > 0) putJson('usage_records.json', snapshot.usageRecords);
-
-  if (artifactsEnabled) {
-    putJson('artifacts/index.json', snapshot.artifacts.map((entry) => ({
-      id: entry.id, type: entry.type, title: entry.title,
-      contentLocation: entry.contentLocation, turnId: entry.turnId ?? null,
-      createdAt: entry.createdAt, appliedAt: entry.appliedAt ?? null,
-      rejectedAt: entry.rejectedAt ?? null,
-    })));
-    for (const artifact of snapshot.artifacts) {
-      if (artifact.contentLocation === 'inline' && artifact.content) {
-        putBytes(
-          `artifacts/${artifact.id}${artifactExt(artifact.type)}`,
-          strToU8(artifact.content),
-        );
-      } else if (
-        artifact.contentLocation === 'file'
-        && artifact.contentPath
-        && fs.existsSync(artifact.contentPath)
-      ) {
-        putFile(
-          `artifacts/${artifact.id}${path.extname(artifact.contentPath) || '.bin'}`,
-          artifact.contentPath,
-        );
-      }
-    }
-  }
 
   putJson('audio/index.json', snapshot.audio.map((entry) => ({
     turnId: entry.turn_id, mimeType: entry.mime_type, byteSize: entry.byte_size,

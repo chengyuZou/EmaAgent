@@ -9,7 +9,7 @@ const MIGRATIONS_DIR = path.join(dirname, 'migrations');
 /**
  * 三条独立迁移流,各自 DB 的 `user_version` pragma 跟踪:
  *   profile.db -> migrations/profile/  Provider 配置/模型绑定/角色卡/设置/全局记忆/KB 注册
- *   data.db    -> migrations/data/     sessions/turns/messages/音频/artifacts/agent tasks
+ *   data.db    -> migrations/data/     sessions/turns/messages/音频/agent tasks
  *   kb.db      -> migrations/kb/       单个命名 KB 的文档/分块/FTS5 索引
  *
  * 三条流独立:profile 可 v3 而 data v7(或反之)。版本只在自己文件夹内推进。

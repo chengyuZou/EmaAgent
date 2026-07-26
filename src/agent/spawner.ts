@@ -24,7 +24,6 @@ import {
 } from '@ema-agent/tool-builtin';
 import type { PermissionEngine } from '@ema-agent/permission';
 import type { HookBus } from '@ema-agent/hooks';
-import type { IArtifactStore } from '@ema-agent/artifact';
 import type { SkillRunnerPort } from '@ema-agent/skills';
 import type { AgentRunStorePort } from './runs/types.js';
 import { TurnPolicy } from './policy.js';
@@ -59,7 +58,6 @@ export interface SubagentSpawnerDeps {
   permission: PermissionEngine;
   hooks: HookBus;
   buildAsk?: ToolExecutionRuntimeOptions<BuiltinToolContext>['buildAsk'];
-  artifactStore?: IArtifactStore;
   skillRunner?: SkillRunnerPort;
   agentRunStore?: AgentRunStorePort;
   toolExecutionJournal?: ToolExecutionJournalPort;
@@ -200,7 +198,6 @@ export class SubagentSpawner implements SubagentSpawnerPort {
       signal:           childCtrl.signal,
       commandRunner:    this.commandRunner,
       readFileState,
-      artifactStore:    this.deps.artifactStore,
       skillRunner:      this.deps.skillRunner,
       activeSkillState,
       knowledgeSearch:  this.kbSearch,

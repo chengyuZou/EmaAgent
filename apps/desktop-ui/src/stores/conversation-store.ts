@@ -18,7 +18,6 @@ import {
   evictSessionPlayers,
   } from '../lib/tts-playback.js';
 import { useSessionStore }     from './session-store.js';
-import { useArtifactStore }    from './artifact-store.js';
 import { useAgentRunStore }    from './agentRunStore.js';
 import { useSessionAttachmentStore } from './session-attachment-store.js';
 import { useSessionHistoryStore } from '../chat/history/sessionHistoryStore.js';
@@ -392,7 +391,6 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
     sendQueues.delete(id as string);
     breakerReasons.delete(id as string);
     evictSessionPlayers(id as string);
-    useArtifactStore.getState().evictSession(id);
     useAgentRunStore.getState().evictSession(id as string);
     useSessionAttachmentStore.getState().evictSession(id);
     useSessionHistoryStore.getState().evictSession(id);
@@ -513,8 +511,6 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
       return { messages: msgs, streamingMap: streaming };
     });
 
-    // Turn 结束后重新读取权威列表，兜住丢失或乱序的 Artifact SSE 事件。
-    useArtifactStore.getState().invalidateSession(sessionId);
     useSessionHistoryStore.getState().noteTailUpdate(sessionId);
     useSessionHistoryStore.getState().invalidateTurnIndex(sessionId);
 
@@ -556,8 +552,6 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
       return { streamingMap: streaming, stopReasonMap: stops };
     });
 
-    // 中止前工具仍可能已经落盘 Artifact，不能沿用本轮开始前的缓存。
-    useArtifactStore.getState().invalidateSession(sessionId);
     if (partialWasVisible) useSessionHistoryStore.getState().noteTailUpdate(sessionId);
     useSessionHistoryStore.getState().invalidateTurnIndex(sessionId);
 

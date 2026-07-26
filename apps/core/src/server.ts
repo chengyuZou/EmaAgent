@@ -13,7 +13,6 @@ import { settingsRoute } from './routes/settings.js';
 import { transcribeRoute } from './routes/transcribe.js';
 import { cardsRoute } from './routes/cards.js';
 import { diagnosticRoute } from './routes/diagnostic.js';
-import { createArtifactsRouter } from './routes/artifacts.js';
 import { createSkillsRouter }   from './routes/skills.js';
 import { createMcpRouter }       from './routes/mcp.js';
 import { createMarketRouter }    from './routes/market.js';
@@ -72,12 +71,6 @@ export function buildServer(bindings: AppBindings, sharedSecret: string): Hono {
   app.route('/api/diagnostics',    diagnosticRoute());
   app.route('/api/transcribe',     transcribeRoute(bindings));
   app.route('/api/cards',          cardsRoute(bindings));
-
-  // Artifact 路由:V1 默认不挂载(releaseFeatures.artifacts === true 时才挂)。
-  // 源码保留(routes/artifacts.ts),V1.5 完成状态机(B-003/B-068/B-069)后启用。
-  if (bindings.releaseFeatures.artifacts) {
-    app.route('/api', createArtifactsRouter(bindings));
-  }
 
   app.route('/api',                createSkillsRouter(bindings));
   app.route('/api/mcp',            createMcpRouter(bindings));

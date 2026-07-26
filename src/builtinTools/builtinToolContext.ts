@@ -9,7 +9,6 @@ import type {
 } from '@ema-agent/ids';
 import type { CommandRunnerPort } from '@ema-agent/sandbox';
 import type { TaskStorePort } from '@ema-agent/tasks';
-import type { IArtifactStore } from '@ema-agent/artifact';
 import type { KnowledgeSearchPort } from '@ema-agent/knowledge';
 import type { NarrativeSearchPort } from '@ema-agent/narrative';
 import type {
@@ -79,8 +78,6 @@ export interface BuiltinToolContext {
   readonly skillRunner?: SkillRunnerPort;
   /** 当前 Agent 独占的 Skill 激活状态。 */
   readonly activeSkillState?: ActiveSkillStatePort;
-  /** Artifact 工具族（V1.5 预留，默认不注册）。 */
-  readonly artifactStore?: IArtifactStore;
   /** Scratchpad 工具的 Turn 级临时存储位置。 */
   readonly scratchpad?: ScratchpadPort;
   /** File 工具在当前 Turn 内共享的读取状态，用于去重和写入前校验。 */
@@ -91,7 +88,7 @@ export interface BuiltinToolContext {
   readonly askUser?: AskUserPort;
 
   // ── per-call 输出能力（执行器填充） ────────────────────────────────────────
-  /** 发结构化事件到当前 Turn 的 SSE 流；AskUser/Task/Artifact 等用。 */
+  /** 发结构化事件到当前 Turn 的 SSE 流；AskUser/Task 等用。 */
   readonly emit?: (event: ToolExecutionEvent) => void;
 }
 

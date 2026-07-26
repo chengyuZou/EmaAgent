@@ -6,7 +6,6 @@ export { SESSION_EXPORT_LIMITS, SessionExportError } from './export/zip-v1.js';
 export type { SessionExportLimits } from './export/zip-v1.js';
 export type {
   BackupArchiveSource,
-  BackupArtifactExportEntry,
   BackupAttachmentExportEntry,
   BackupAudioExportEntry,
   BackupOutputSink,
@@ -18,5 +17,4 @@ export type {
   SessionExportRequest,
   SessionExportResult,
   SessionExportSnapshot,
-  ImportWarningWire,
 } from './types.js';

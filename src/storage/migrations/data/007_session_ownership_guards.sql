@@ -82,13 +82,7 @@ WHERE EXISTS (
      SELECT 1 FROM turns t
       WHERE t.id = a.turn_id AND t.session_id = a.session_id
    )
-  UNION ALL
-  SELECT 1 FROM artifacts a
-   WHERE a.turn_id IS NOT NULL
-     AND NOT EXISTS (
-       SELECT 1 FROM turns t
-        WHERE t.id = a.turn_id AND t.session_id = a.session_id
-     )
+
   UNION ALL
   SELECT 1 FROM agent_tasks a
    WHERE a.turn_id IS NOT NULL
@@ -384,31 +378,6 @@ BEGIN
   END;
 END;
 
-CREATE TRIGGER trg_artifacts_owner_insert
-BEFORE INSERT ON artifacts
-WHEN NEW.turn_id IS NOT NULL
- AND NOT EXISTS (
-   SELECT 1 FROM turns t
-    WHERE t.id = NEW.turn_id AND t.session_id = NEW.session_id
- )
-BEGIN
-  SELECT RAISE(ABORT, 'ownership_violation: artifacts.turn_id');
-END;
-
-CREATE TRIGGER trg_artifacts_owner_update
-BEFORE UPDATE OF session_id, turn_id ON artifacts
-BEGIN
-  SELECT CASE
-    WHEN NEW.session_id <> OLD.session_id
-    THEN RAISE(ABORT, 'ownership_violation: artifacts.session_id is immutable')
-  END;
-  SELECT CASE
-    WHEN NEW.turn_id IS NOT NULL AND NOT EXISTS (
-      SELECT 1 FROM turns t
-       WHERE t.id = NEW.turn_id AND t.session_id = NEW.session_id
-    ) THEN RAISE(ABORT, 'ownership_violation: artifacts.turn_id')
-  END;
-END;
 
 -- AgentTask.turn_id / parent_id -> 同 Session 的 Turn / AgentTask。
 CREATE TRIGGER trg_agent_tasks_owner_insert

@@ -42,7 +42,6 @@ import type {
 } from '@ema-agent/tools';
 import type { SkillRunnerPort } from '@ema-agent/skills';
 import type { CommandRunnerPort } from '@ema-agent/sandbox';
-import type { IArtifactStore } from '@ema-agent/artifact';
 import type {
   PermissionEngine,
   AskPermissionFn,
@@ -107,8 +106,6 @@ export interface TurnExecutionDeps {
    * ask_user 工具会等待该函数返回。
    */
   askUserInteraction?: AskUserInteractionPort;
-  /** 持久 Artifact 存储，使 artifact_write/read/list 可以跨 Turn 使用。 */
-  artifactStore?: IArtifactStore;
   /** Skill 运行桥接，使 skill_call 可以调用已注册 Skill。 */
   skillRunner?: SkillRunnerPort;
   /**

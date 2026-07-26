@@ -25,7 +25,7 @@ export class DatabaseCapabilityError extends Error {
  *     每进程一个,跨所有已注册数据目录共享。
  *
  *   kind: 'data'    - `{activeDataDir}/data.db`
- *     Session / Memory / 音频 / Artifact 等。用户切换数据目录时随之切换。
+ *     Session / Memory / 音频 等。用户切换数据目录时随之切换。
  *
  *   kind: 'kb'      - `{kbPath}/kb.db`
  *     单个命名知识库的文档 / 分块 / FTS5 索引。每个 KB 独立一个。

@@ -26,14 +26,22 @@ export { UsageRecordsRepo } from './repos/usage-records.js';
 export { Live2DModelsRepo } from './repos/live2d-models.js';
 export { ProvidersRepo } from './repos/providers.js';
 export { ModelBindingsRepo } from './repos/model-bindings.js';
-export { ArtifactRepo }    from './repos/artifact.js';
 export { AttachmentRepo }  from './repos/attachment.js';
 export type { AttachmentRow, AttachmentInsert } from './repos/attachment.js';
+export { AttachmentDerivationsRepo } from './repos/attachmentDerivations.js';
+export type {
+  AttachmentVisionDerivationIdentity,
+  AttachmentVisionDerivationInsert,
+  AttachmentVisionDerivationRow,
+  AttachmentVisionTask,
+  CachedAttachmentImageInsert,
+  CachedAttachmentImageRow,
+} from './repos/attachmentDerivations.js';
 export { SessionStatsRepo, DataDirStatsRepo, SessionRestoreValidationError } from './repos/storage-stats.js';
 export type {
-  SessionStats, AudioEntryRow, ArtifactSummaryRow,
+  SessionStats, AudioEntryRow,
   MemoryStateRow,
-  TurnRestoreRow, MessageRestoreRow, ArtifactRestoreRow,
+  TurnRestoreRow, MessageRestoreRow,
   AudioRestoreRow, AttachmentRestoreRow, NotesRestoreData,
   SessionRestorePayload,
   TaskRestoreRow,

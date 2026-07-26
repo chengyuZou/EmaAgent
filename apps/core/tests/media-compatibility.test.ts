@@ -24,7 +24,7 @@ function services(
   return {
     capabilitiesFor: () => capabilities(image),
     visionBinding: () => ({ providerConfigId: 'vision-provider', model: 'vision-model' }),
-    describeImages: async () => '一只黑猫坐在窗边。',
+    describeImage: async () => '一只黑猫坐在窗边。',
     ...overrides,
   };
 }
@@ -38,9 +38,9 @@ const imagePart = {
 
 describe('Core 图片模型兼容协商', () => {
   it('当前 LLM 明确支持图片时原样透传，不调用 Vision', async () => {
-    const describeImages = vi.fn<MediaCompatibilityServices['describeImages']>();
+    const describeImage = vi.fn<MediaCompatibilityServices['describeImage']>();
     const result = await prepareImagesForModel(
-      services('supported', { describeImages }),
+      services('supported', { describeImage }),
       'llm-provider',
       'vision-capable-model',
       [imagePart],
@@ -50,23 +50,23 @@ describe('Core 图片模型兼容协商', () => {
     expect(result.parts).toEqual([imagePart]);
     expect(result.parts[0]).not.toBe(imagePart);
     expect(result.degradation).toBeUndefined();
-    expect(describeImages).not.toHaveBeenCalled();
+    expect(describeImage).not.toHaveBeenCalled();
   });
 
   it('当前 LLM 不支持图片时转换为描述并返回结构化降级信息', async () => {
-    const describeImages = vi.fn(async () => '一只黑猫坐在窗边。');
+    const describeImage = vi.fn(async () => '一只黑猫坐在窗边。');
     const result = await prepareImagesForModel(
-      services('unsupported', { describeImages }),
+      services('unsupported', { describeImage }),
       'llm-provider',
       'text-only-model',
       [imagePart],
       new AbortController().signal,
     );
 
-    expect(describeImages).toHaveBeenCalledWith(expect.objectContaining({
+    expect(describeImage).toHaveBeenCalledWith(expect.objectContaining({
       providerId: 'vision-provider',
       model: 'vision-model',
-      inputs: [expect.objectContaining({ kind: 'base64', mimeType: 'image/png' })],
+      input: expect.objectContaining({ kind: 'base64', mimeType: 'image/png' }),
     }));
     expect(result.parts).toEqual([
       { type: 'text', text: expect.stringContaining('一只黑猫坐在窗边。') },
@@ -74,6 +74,25 @@ describe('Core 图片模型兼容协商', () => {
     expect(result.degradation).toMatchObject({
       removed: ['image'],
       replacements: ['description'],
+    });
+  });
+
+  it('多张图片逐张描述并按原始顺序合并，允许每张图独立命中缓存', async () => {
+    const describeImage = vi.fn(async ({ input }: Parameters<
+      MediaCompatibilityServices['describeImage']
+    >[0]) => input.name === 'cat.png' ? '猫' : '狗');
+    const result = await prepareImagesForModel(
+      services('unsupported', { describeImage }),
+      'llm-provider',
+      'text-only-model',
+      [imagePart, { ...imagePart, name: 'dog.png' }],
+      new AbortController().signal,
+    );
+
+    expect(describeImage).toHaveBeenCalledTimes(2);
+    expect(result.parts[0]).toEqual({
+      type: 'text',
+      text: expect.stringMatching(/图片 1[\s\S]*猫[\s\S]*图片 2[\s\S]*狗/),
     });
   });
 
@@ -93,7 +112,7 @@ describe('Core 图片模型兼容协商', () => {
     controller.abort(abortError);
 
     await expect(prepareImagesForModel(
-      services('unsupported', { describeImages: async () => { throw abortError; } }),
+      services('unsupported', { describeImage: async () => { throw abortError; } }),
       'llm-provider',
       'text-only-model',
       [imagePart],

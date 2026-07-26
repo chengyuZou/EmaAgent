@@ -98,11 +98,6 @@ describe('SessionStatsRepo restore integration', () => {
       blocked_task_id: 'task-2',
       created_at: 145,
     });
-    payload.artifacts.push({
-      id: 'artifact-1', sessionId: payload.session.id, turnId: 'turn-child',
-      type: 'text', title: 'Artifact', contentLocation: 'inline', content: 'body',
-      contentPath: null, createdAt: 150, appliedAt: null, rejectedAt: null,
-    });
     payload.audio.push({
       turnId: 'turn-child', sessionId: payload.session.id, storagePath: 'audio/turn-child.wav',
       mimeType: 'audio/wav', byteSize: 128, durationMs: 500, segmentCount: 1, createdAt: 150,
@@ -189,7 +184,7 @@ describe('SessionStatsRepo restore integration', () => {
     `).pluck().get()).toBe(1);
 
     for (const table of [
-      'artifacts', 'turn_audio_merged', 'turn_attachments', 'agent_run_messages',
+      'turn_audio_merged', 'turn_attachments', 'agent_run_messages',
       'memory_session_state', 'kb_activations', 'usage_records', 'session_notes',
     ]) {
       expect(database.db.prepare(`SELECT COUNT(*) FROM ${table}`).pluck().get(), table).toBe(1);
@@ -299,7 +294,6 @@ function restorePayload(): SessionRestorePayload {
         createdAt: 131,
       },
     ],
-    artifacts: [],
     audio: [],
     attachments: [],
     tasks: [],

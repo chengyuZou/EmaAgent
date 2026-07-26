@@ -1,6 +1,6 @@
 -- ════════════════════════════════════════════════════════════════════════════
 -- DATA 流--每个 workspace(dataDir)一个 data.db。Session / Turn / Message
--- / per-session Memory / 音频 / Artifact / Agent task。KB *文档* 存在于
+-- / per-session Memory / 音频 / Agent task。KB *文档* 存在于
 -- 每个 KB 独立的 kb.db(kb 流)中;只有 kb_activations(session->KB 使用记录)留在这。
 --
 -- 合并后的初始 schema(替代旧的增量迁移 001–016)。
@@ -169,26 +169,6 @@ CREATE TABLE turn_attachments (
 CREATE INDEX idx_turn_attachments_turn    ON turn_attachments(turn_id);
 CREATE INDEX idx_turn_attachments_session ON turn_attachments(session_id, created_at DESC);
 
--- ── Artifact ──────────────────────────────────────────────────────────────────
-
-CREATE TABLE artifacts (
-  id               TEXT PRIMARY KEY,
-  session_id       TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  turn_id          TEXT REFERENCES turns(id) ON DELETE SET NULL,
-  type             TEXT NOT NULL,
-  title            TEXT NOT NULL,
-  content          TEXT,
-  content_location TEXT NOT NULL CHECK(content_location IN ('inline','file')),
-  content_path     TEXT,
-  meta_json        TEXT NOT NULL DEFAULT '{}',
-  created_at       INTEGER NOT NULL,
-  updated_at       INTEGER NOT NULL,
-  applied_at       INTEGER,
-  rejected_at      INTEGER
-);
-
-CREATE INDEX idx_artifacts_session ON artifacts(session_id, created_at DESC);
-CREATE INDEX idx_artifacts_turn    ON artifacts(turn_id);
 
 -- ── 权限授权 / telemetry / usage ──────────────────────────────────────────────────
 

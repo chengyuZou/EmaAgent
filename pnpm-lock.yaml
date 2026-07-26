@@ -34,9 +34,6 @@ importers:
       '@ema-agent/agent':
         specifier: workspace:*
         version: link:../../src/agent
-      '@ema-agent/artifact':
-        specifier: workspace:*
-        version: link:../../src/artifact
       '@ema-agent/attachment':
         specifier: workspace:*
         version: link:../../src/attachment
@@ -264,9 +261,6 @@ importers:
 
   apps/desktop-ui:
     dependencies:
-      '@ema-agent/artifact':
-        specifier: workspace:*
-        version: link:../../src/artifact
       '@ema-agent/backup':
         specifier: workspace:*
         version: link:../../src/backup
@@ -431,9 +425,6 @@ importers:
 
   src/agent:
     dependencies:
-      '@ema-agent/artifact':
-        specifier: workspace:*
-        version: link:../artifact
       '@ema-agent/context':
         specifier: workspace:*
         version: link:../context
@@ -487,19 +478,6 @@ importers:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
-  src/artifact:
-    dependencies:
-      '@ema-agent/ids':
-        specifier: workspace:*
-        version: link:../ids
-    devDependencies:
-      rimraf:
-        specifier: ^5.0.0
-        version: 5.0.10
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-
   src/attachment:
     dependencies:
       '@ema-agent/ids':
@@ -514,6 +492,9 @@ importers:
       '@ema-agent/turn':
         specifier: workspace:*
         version: link:../turn
+      sharp:
+        specifier: ^0.33.5
+        version: 0.33.5
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -555,9 +536,6 @@ importers:
 
   src/builtinTools:
     dependencies:
-      '@ema-agent/artifact':
-        specifier: workspace:*
-        version: link:../artifact
       '@ema-agent/ids':
         specifier: workspace:*
         version: link:../ids
@@ -728,9 +706,6 @@ importers:
       '@ema-agent/agent':
         specifier: workspace:*
         version: link:../agent
-      '@ema-agent/artifact':
-        specifier: workspace:*
-        version: link:../artifact
       '@ema-agent/characters':
         specifier: workspace:*
         version: link:../characters
@@ -1245,9 +1220,6 @@ importers:
 
   src/storage:
     dependencies:
-      '@ema-agent/artifact':
-        specifier: workspace:*
-        version: link:../artifact
       '@ema-agent/credential':
         specifier: workspace:*
         version: link:../../packages/credential
@@ -1369,9 +1341,6 @@ importers:
 
   src/tools:
     dependencies:
-      '@ema-agent/artifact':
-        specifier: workspace:*
-        version: link:../artifact
       '@ema-agent/ids':
         specifier: workspace:*
         version: link:../ids
@@ -1465,9 +1434,6 @@ importers:
       '@ema-agent/agent':
         specifier: workspace:*
         version: link:../agent
-      '@ema-agent/artifact':
-        specifier: workspace:*
-        version: link:../artifact
       '@ema-agent/context':
         specifier: workspace:*
         version: link:../context

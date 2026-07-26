@@ -14,10 +14,10 @@ export interface VisionModelBinding {
 export interface MediaCompatibilityServices {
   capabilitiesFor(providerId: string, model: string): ModelCapabilitySnapshot;
   visionBinding(): VisionModelBinding | undefined;
-  describeImages(input: {
+  describeImage(input: {
     providerId: string;
     model: string;
-    inputs: VisionImageInput[];
+    input: Extract<VisionImageInput, { kind: 'base64' }>;
     signal: AbortSignal;
   }): Promise<string>;
 }
@@ -50,12 +50,13 @@ export async function prepareImagesForModel(
     throw imageCapabilityError(providerId, model, capabilities.input.image, '没有可用的 Vision 模型生成图片描述');
   }
 
-  const base64Inputs: VisionImageInput[] = imageParts
+  const base64Inputs: Array<Extract<VisionImageInput, { kind: 'base64' }>> = imageParts
     .filter((part): part is Extract<LlmContentPart, { type: 'image_data' }> => part.type === 'image_data')
     .map((part) => ({
       kind: 'base64',
       data: part.data,
       mimeType: part.mimeType as VisionImageMime,
+      name: part.name,
     }));
 
   if (base64Inputs.length !== imageParts.length) {
@@ -63,12 +64,18 @@ export async function prepareImagesForModel(
   }
 
   try {
-    const description = await services.describeImages({
-      providerId: binding.providerConfigId,
-      model: binding.model,
-      inputs: base64Inputs,
-      signal,
-    });
+    const descriptions = await Promise.all(base64Inputs.map((input) =>
+      services.describeImage({
+        providerId: binding.providerConfigId,
+        model: binding.model,
+        input,
+        signal,
+      })));
+    const description = descriptions
+      .map((text, index) => base64Inputs.length > 1
+        ? `### 图片 ${index + 1}\n${text}`
+        : text)
+      .join('\n\n');
     return {
       parts: [{ type: 'text', text: `[图片内容（由 Vision 模型生成的描述）]\n${description}` }],
       degradation: {

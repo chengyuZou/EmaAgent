@@ -22,7 +22,6 @@
   },
   "dependencies": {
     "@ema-agent/agent": "workspace:*",
-    "@ema-agent/artifact": "workspace:*",
     "@ema-agent/context": "workspace:*",
     "@ema-agent/emotion": "workspace:*",
     "@ema-agent/hooks": "workspace:*",

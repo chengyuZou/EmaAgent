@@ -1,5 +1,4 @@
 import type { AgentRunEvent, AgentTurnEvent } from '@ema-agent/agent';
-import type { ArtifactEvent } from '@ema-agent/artifact';
 import type { CharacterEvent } from '@ema-agent/characters';
 import type { ContextEvent } from '@ema-agent/context';
 import type { EmotionStreamEvent } from '@ema-agent/emotion';
@@ -37,8 +36,7 @@ export type TurnStreamEvent =
 /** Session 范围的持久工作项和执行投影。 */
 export type SessionEvent =
   | TaskEvent
-  | AgentRunEvent
-  | ArtifactEvent;
+  | AgentRunEvent;
 
 /** 不从属于某个 Turn 的应用后台事件。 */
 export type AppEvent =

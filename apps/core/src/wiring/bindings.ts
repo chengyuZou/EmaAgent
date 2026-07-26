@@ -7,7 +7,7 @@ import {
   SettingsRepo,
   MemoryNodesRepo, MemoryEdgesRepo, MemoryLazyUpdatesRepo,
   MemoryItemsRepo, SessionNotesRepo, MemoryTasksRepo, PendingFragmentsRepo,
-  ArtifactRepo, AttachmentRepo,
+  AttachmentRepo,
   MemorySessionStateRepo, MemoryExtractionRunsRepo,
   ProviderLlmModelsRepo, ProviderEmbedModelsRepo,
   ProviderRerankModelsRepo, ProviderTtsModelsRepo, ProviderSttModelsRepo, ProviderVisionModelsRepo,
@@ -15,9 +15,14 @@ import {
   MarketSourcesRepo,
   AgentRunsRepo, AgentRunMessagesRepo, TasksRepo, ToolExecutionsRepo,
   SessionStatsRepo, DataDirStatsRepo, UsageRecordsRepo,
+  AttachmentDerivationsRepo,
 } from '@ema-agent/storage';
-import { AttachmentStore, type FileAccessFacade } from '@ema-agent/attachment';
-import { ArtifactStore }                               from '@ema-agent/artifact';
+import {
+  AttachmentCacheMaintenance,
+  AttachmentDerivationCache,
+  AttachmentStore,
+  type FileAccessFacade,
+} from '@ema-agent/attachment';
 import { McpRegistry, McpServerStore }                 from '@ema-agent/mcp';
 import { McpMarketAdapter, MCP_SEEDS }                 from '@ema-agent/mcp';
 import type { McpStdioLaunchIntent }                   from '@ema-agent/mcp';
@@ -75,7 +80,6 @@ import type {
 } from '@ema-agent/turn';
 import type { EmaStreamEvent } from '@ema-agent/events';
 import type { KbSearchResult } from '@ema-agent/knowledge';
-import type { ReleaseFeaturesWire } from '@ema-agent/system';
 import type { CommandRunnerPort, SandboxStatusWire } from '@ema-agent/sandbox';
 import type { UsageRecord } from '@ema-agent/usage';
 import { ToolExecutionJournal, ToolRegistry } from '@ema-agent/tools';
@@ -115,7 +119,7 @@ export interface AppBindings {
   // ── Storage: two SQLite DBs ─────────────────────────────────────────────────
   // profileDb: ~/.ema-agent/profile.db — provider configs, model bindings,
   //   character cards, app settings. Shared across all registered data dirs.
-  // dataDb:    {activeDataDir}/data.db — sessions, memory, audio, artifacts.
+  // dataDb:    {activeDataDir}/data.db — sessions, memory, audio.
   //   Swapped (sidecar restart required) when the user switches active dataDir.
   profileDb:     Database;
   dataDb:        Database;
@@ -220,8 +224,11 @@ export interface AppBindings {
   providerTtsModels:    ProviderTtsModelsRepo;
   providerSttModels:    ProviderSttModelsRepo;
   providerVisionModels:  ProviderVisionModelsRepo;
-  artifactStore:    ArtifactStore;
   attachmentStore:  AttachmentStore;
+  /** 图片规范化副本与 Vision 文本派生的可回收缓存。 */
+  attachmentDerivationCache: AttachmentDerivationCache;
+  /** 后台空闲维护入口，不在应用启动时扫描整个缓存目录。 */
+  attachmentCacheMaintenance: AttachmentCacheMaintenance;
   sessionStats:     SessionStatsRepo;
   storageStats:     DataDirStatsRepo;
   sessionNotes:     SessionNotesRepo;
@@ -240,19 +247,7 @@ export interface AppBindings {
    *  assetScopes: per-KB doc filters from the chat picker (each scope targets one KB).
    *  KBs without a matching scope are searched unfiltered.  */
   kbSearch: (query: string, topK?: number, kbIds?: string[], assetScopes?: KbAssetScope[], sessionId?: string, turnId?: string) => Promise<KbSearchResult>;
-
-  /** V1 发布特性开关。工具注册、路由挂载、capabilities endpoint 都从此读取。 */
-  releaseFeatures: ReleaseFeaturesWire;
 }
-
-// ── V1 发布特性 ────────────────────────────────────────────────────────────────
-
-/**
- * V1 默认发布特性。Artifact 属于 V1.5 预留能力,V1 默认关闭。
- * 完成状态机(B-003/B-068/B-069)前不得在生产开启。
- * 测试可通过 BuildBindingsArgs.releaseFeatures 显式注入。
- */
-const V1_RELEASE_FEATURES: ReleaseFeaturesWire = Object.freeze({ artifacts: false });
 
 // ── Build bindings ────────────────────────────────────────────────────────────
 
@@ -271,13 +266,10 @@ export interface BuildBindingsArgs {
   activeDataDir: string;
   credentials:   CredentialFacade;
   fileAccess: FileAccessFacade;
-  /** 仅用于测试显式注入;正常生产不传,始终采用 V1_RELEASE_FEATURES。 */
-  releaseFeatures?: ReleaseFeaturesWire;
 }
 
 export function buildBindings(args: BuildBindingsArgs): AppBindings {
   const { profileDb, dataDb, activeDataDir, credentials, fileAccess } = args;
-  const releaseFeatures = args.releaseFeatures ?? V1_RELEASE_FEATURES;
 
   // ── Core infra ──────────────────────────────────────────────────────────────
   const hooks   = new HookBus({
@@ -286,7 +278,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   });
   const session = new SessionStore({
     db: dataDb,
-    // Remove the session's on-disk directory tree (audio/artifacts/scratchpad)
+    // Remove the session's on-disk directory tree (audio/scratchpad)
     // when the session is deleted. DB rows cascade via FK; files need this.
     onSessionRemoved: (sid) => removeSessionDir(activeDataDir, sid),
     onTurnRemoved: (sid, tid) => removeTurnFiles(activeDataDir, sid, tid),
@@ -403,7 +395,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
 
   // ── Audio archive ───────────────────────────────────────────────────────────
   // Per-session: {dataDir}/sessions/{sessionId}/audio/. Collocated with
-  // artifacts/scratchpad so removeSessionDir cleans everything together.
+  // scratchpad so removeSessionDir cleans everything together.
   const audioArchive = new FsAudioArchive(
     nodePath.join(activeDataDir, 'sessions'),
   );
@@ -465,7 +457,6 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   const tools = new ToolRegistry();
   registerBuiltinTools(tools, {
     disableExecuteTools,
-    enableArtifacts: releaseFeatures.artifacts,
   });
 
   // Per-session command runner — memoised to avoid rebuilding SandboxConfig
@@ -502,7 +493,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   };
 
   // ── Session 工具结果存储 ───────────────────────────────────────────────────
-  // 新结果与音频、Artifact 使用同一正式 Session 根，永久删除 Session 时可由
+  // 新结果与音频使用同一正式 Session 根，永久删除 Session 时可由
   // removeSessionDir 一次清理；旧隐藏目录仅交给 Cleaner 做兼容回收。
   const sessionsDir = nodePath.join(activeDataDir, 'sessions');
   const legacyToolResultSessionsDir = nodePath.join(activeDataDir, '.ema-agent', 'sessions');
@@ -589,17 +580,18 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     persistSummary: (input) => session.appendMessage(input),
   });
 
-  // ── Artifacts ───────────────────────────────────────────────────────────────
-  // Per-session: {dataDir}/sessions/{sessionId}/artifacts/{id}. Collocated
-  // with audio/scratchpad so removeSessionDir cleans everything together.
-  const artifactStore = new ArtifactStore(
-    new ArtifactRepo(dataDb.sqlite),
-    nodePath.join(activeDataDir, 'sessions'),
-    session,
-  );
-
   // ── Attachments ─────────────────────────────────────────────────────────────
   const attachmentStore = new AttachmentStore(new AttachmentRepo(dataDb.sqlite), session);
+  const attachmentDerivationsRepo = new AttachmentDerivationsRepo(dataDb.sqlite);
+  const attachmentDerivationCache = new AttachmentDerivationCache({
+    activeDataDir,
+    repo: attachmentDerivationsRepo,
+  });
+  const attachmentCacheMaintenance = new AttachmentCacheMaintenance({
+    activeDataDir,
+    repo: attachmentDerivationsRepo,
+    isIdle: () => !session.hasActiveTurns(),
+  });
 
   // ── Session detail (stats + notes) — used by /api/sessions/:id/dashboard ──
   const sessionStats = new SessionStatsRepo(dataDb.sqlite);
@@ -607,7 +599,6 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   const sessionNotes = new SessionNotesRepo(dataDb.sqlite);
   const sessionBackup = new SessionBackupFacade({
     activeDataDir,
-    artifactsEnabled: releaseFeatures.artifacts,
     sessionExists: (sessionId) => session.sessionExists(sessionId as SessionId),
     restoreRows: (payload) => sessionStats.restoreRows(payload),
     collectExport: (sessionId) => {
@@ -619,7 +610,6 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
         session: { ...sessionRow },
         turns: session.listTurns(id, 10_000),
         messages: session.listMessages(id, { limit: 10_000 }),
-        artifacts: releaseFeatures.artifacts ? artifactStore.listForExport(id) : [],
         attachments: attachmentStore.listBySession(sessionId),
         audio: sessionStats.listAudioEntries(sessionId),
         notes: noteRow ? {
@@ -840,12 +830,12 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     providers, settings: settingsRepo,
     modelBindings, providerLlmModels, providerEmbedModels,
     providerRerankModels, providerTtsModels, providerSttModels, providerVisionModels,
-    artifactStore, attachmentStore, sessionStats, storageStats, sessionNotes,
+    attachmentStore, attachmentDerivationCache, attachmentCacheMaintenance,
+    sessionStats, storageStats, sessionNotes,
     mcpRegistry,
     marketRegistry, marketSourceStore,
     skillStore, skillRunner, skillInstaller,
     kb, kbSearch,
-    releaseFeatures,
   };
 }
 
