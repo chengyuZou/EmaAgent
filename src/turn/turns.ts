@@ -32,7 +32,7 @@ export type ExecutionProfile = 'chat' | 'work';
 /** Narrative 只控制剧情检索策略，不改变角色身份或创建第三套 Engine。 */
 export type NarrativePolicy = 'auto' | 'always' | 'off';
 
-/** Turn 的持久化生命周期状态；终态由 TurnRuntime 统一写入。 */
+/** Turn 的持久化生命周期状态；根终态由 TurnExecutor 统一写入。 */
 export type TurnStatus = 'pending' | 'running' | 'completed' | 'failed' | 'aborted';
 
 /** V1 唯一启用的 Turn 触发源；未来来源必须以新的判别分支显式加入。 */

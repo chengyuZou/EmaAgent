@@ -3,9 +3,14 @@
 import type { SessionId, ToolCallId, TurnId } from '@ema-agent/ids';
 import type {
   AskUserInteractionOutcome,
+  ExecutionProfile,
   KbAssetScope,
+  NarrativePolicy,
   RequestDegradationNotice,
   TurnEvent,
+  TurnFailureCode,
+  TurnStats,
+  TurnTriggerType,
 } from '@ema-agent/turn';
 import type {
   AskUserRequiredEvent,
@@ -65,8 +70,8 @@ export interface AskUserInteractionPort {
  * TurnExecutor 所需依赖，是 AppBindings 的严格子集。
  * 依赖只描述根 Turn 执行，不包含 HTTP、SSE、TTS 或附件准备。
  *
- * 不包含 model_bindings：Provider 与模型解析属于 Orchestrator，
- * 执行器只通过 PreparedTurnExecution 接收已经确定的 providerId 和 model。
+ * 不包含 model_bindings：Provider 与模型解析属于输入准备阶段，
+ * 执行器只消费已经确定的 providerId 和 model。
  */
 export interface TurnExecutionDeps {
   session:    SessionStore;
@@ -79,7 +84,7 @@ export interface TurnExecutionDeps {
   /**
    * 按 Session 创建沙箱 Runner。无工作区或无执行能力时返回 undefined，
    * Bash 必须明确拒绝，不能回退到裸进程。
-   * 每个 Session 的 workspaceRoot 不同，因此 Orchestrator 按 sessionId 缓存，
+   * 每个 Session 的 workspaceRoot 不同，因此装配入口按 sessionId 缓存，
    * 不能使用全局单例；聚焦测试可以省略。
    */
   getCommandRunner?: (sessionId: SessionId) => CommandRunnerPort | undefined;
@@ -123,17 +128,13 @@ export interface TurnExecutionDeps {
   toolExecutionJournal?: ToolExecutionJournalPort;
 }
 
-// ── Turn 执行输入 ─────────────────────────────────────────────────────────────
+// ── Turn 启动与执行输入 ───────────────────────────────────────────────────────
 
 /**
- * 单次 Turn 的已准备输入。Provider 与模型等路由决策必须在调用
- * TurnExecutor.execute() 前完成，执行器不重新猜测控制面选择。
+ * Turn 创建后才能准备的执行输入。附件持久化等迁移期能力可以使用已分配的
+ * turnId，但只能返回执行计划，不能自行提交 Turn 终态。
  */
-export interface PreparedTurnExecution {
-  /** 已经启动的 Turn；调用方负责先执行 session.startTurn。 */
-  turn:                  Turn;
-  /** session.startTurn 返回的取消信号，用户停止时触发。 */
-  signal:                AbortSignal;
+export interface TurnExecutionPlan {
   /**
    * 用户消息内容。纯文本 Turn 使用字符串，多模态图片、音频和文件使用
    * LlmContentPart[]；执行器通过 Array.isArray 区分两种表示。
@@ -143,9 +144,9 @@ export interface PreparedTurnExecution {
   persistedUserInput?:   MessageBlocks;
   /** Turn 开始时冻结的 Prompt Slot 快照，Agent 多轮共享同一 revision。 */
   prompt:                PromptSnapshot;
-  /** 已解析的 provider_configs.id，由 Orchestrator 负责提供。 */
+  /** 已解析的 provider_configs.id，由输入准备阶段提供。 */
   providerId:            string;
-  /** 已解析的模型名，由 Orchestrator 负责提供。 */
+  /** 已解析的模型名，由输入准备阶段提供。 */
   model:                 string;
   /** 工作区根目录；空字符串表示不提供工作区。 */
   workspaceRoot: string;
@@ -157,7 +158,7 @@ export interface PreparedTurnExecution {
   kbAssetScopes?: KbAssetScope[];
   /**
    * 每轮压缩回调，在 AgentLoop 调用模型前执行，防止多步骤 Work Turn
-   * 在中途超过上下文窗口。Orchestrator 将其接到 ContextCompactor.compact()；
+   * 在中途超过上下文窗口。输入准备阶段将其接到 ContextCompactor.compact()；
    * 测试和临时子 Agent 上下文可以省略。
    */
   prepareContextContributions?: ContextContributionProvider;
@@ -166,6 +167,67 @@ export interface PreparedTurnExecution {
   thinking?: ThinkingMode;
   /** Core 在执行器前完成的媒体降级。 */
   requestDegradations?: RequestDegradationNotice[];
+}
+
+/** 输入准备阶段只暴露本轮稳定身份和同一条取消信号。 */
+export interface TurnPreparationContext {
+  readonly turn: Turn;
+  readonly signal: AbortSignal;
+}
+
+/**
+ * 创建根 Turn 的完整命令。`userInput` 是需要写入 Turn 行的原始文本；
+ * 多模态模型输入由 prepare 使用同一 Turn 身份生成。
+ */
+export interface TurnStartCommand {
+  readonly sessionId: SessionId;
+  readonly triggerType: TurnTriggerType;
+  readonly executionProfile: ExecutionProfile;
+  readonly narrativePolicy: NarrativePolicy;
+  readonly userInput: string;
+  readonly prepare: (
+    context: TurnPreparationContext,
+  ) => TurnExecutionPlan | Promise<TurnExecutionPlan>;
+}
+
+/** Turn 对外只有一个明确终态，完成 Promise 与终态事件使用同一份数据。 */
+export type TurnOutcome =
+  | {
+      readonly status: 'completed';
+      readonly sessionId: SessionId;
+      readonly turnId: TurnId;
+      readonly stats: TurnStats;
+    }
+  | {
+      readonly status: 'failed';
+      readonly sessionId: SessionId;
+      readonly turnId: TurnId;
+      readonly code: TurnFailureCode;
+      readonly message: string;
+    }
+  | {
+      readonly status: 'aborted';
+      readonly sessionId: SessionId;
+      readonly turnId: TurnId;
+      readonly reason: string;
+    };
+
+/**
+ * 根 Turn 的稳定运行句柄。事件流只允许一个消费者；重复消费会明确失败，
+ * 避免两个调用方竞争同一组增量事件。
+ */
+export interface TurnHandle {
+  readonly sessionId: SessionId;
+  readonly turnId: TurnId;
+  readonly events: AsyncIterable<TurnExecutionEvent>;
+  readonly completion: Promise<TurnOutcome>;
+  abort(): void;
+}
+
+/** TurnExecutor 内部执行函数消费的完整输入，不作为调用方启动入口。 */
+export interface PreparedTurnExecution extends TurnExecutionPlan {
+  readonly turn: Turn;
+  readonly signal: AbortSignal;
 }
 
 /** 根 Turn 对外发出的完整事件集合；各成员仍由真实业务模块拥有。 */

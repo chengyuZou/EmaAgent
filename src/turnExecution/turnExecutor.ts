@@ -1,4 +1,4 @@
-// 执行一个已经创建的根 Turn，并协调模型循环、工具、Hook、持久化与唯一终态。
+// 创建并执行一个根 Turn，协调模型循环、工具、Hook、持久化与唯一终态。
 
 import type { TurnFailureCode } from '@ema-agent/turn';
 import { asAgentRunId } from '@ema-agent/ids';
@@ -19,6 +19,9 @@ import type {
   PreparedTurnExecution,
   TurnExecutionDeps,
   TurnExecutionEvent,
+  TurnHandle,
+  TurnOutcome,
+  TurnStartCommand,
 } from './types.js';
 import {
   AgentBudgetExceededError,
@@ -46,14 +49,16 @@ import {
   ActiveSkillState,
   renderActiveSkillContext,
 } from '@ema-agent/skills';
+import { TurnPreparationError } from './errors.js';
+import {
+  TurnEventChannel,
+  TurnEventChannelClosedError,
+} from './turnEventChannel.js';
 
 // ── TurnExecutor ─────────────────────────────────────────────────────────────
 
 /**
  * 根 Turn 的执行边界，负责持久化、Hook、取消收口和协议事件。
- *
- * 本批调用方仍先创建 Turn；下一批会把 Session.startTurn 和 TurnHandle
- * 收进这里，避免附件与 TTS 迁移和执行边界迁移同时改穿。
  * Agent 的思考与行动迭代由 AgentLoop 完成。
  */
 export class TurnExecutor {
@@ -64,8 +69,51 @@ export class TurnExecutor {
 
   constructor(private readonly deps: TurnExecutionDeps) {}
 
-  execute(input: PreparedTurnExecution): AsyncIterable<TurnExecutionEvent> {
-    return executeTurn(this.deps, input, this.activeSpawners, this.activeExecutors);
+  /**
+   * 同步创建 Turn 并立刻返回稳定句柄。输入准备和模型执行在内部启动；
+   * 事件通道使用固定容量反压，不会因调用方迟迟不消费而无限积压。
+   */
+  start(command: TurnStartCommand): TurnHandle {
+    const { turn, signal } = this.deps.session.startTurn({
+      sessionId: command.sessionId,
+      triggerType: command.triggerType,
+      executionProfile: command.executionProfile,
+      narrativePolicy: command.narrativePolicy,
+      userInput: command.userInput,
+    });
+    const sessionId = turn.sessionId;
+    const turnId = turn.id;
+    const channel = new TurnEventChannel<TurnExecutionEvent>(() => {
+      this.deps.session.requestAbort(sessionId);
+    });
+
+    let resolveCompletion!: (outcome: TurnOutcome) => void;
+    let rejectCompletion!: (error: unknown) => void;
+    const completion = new Promise<TurnOutcome>((resolve, reject) => {
+      resolveCompletion = resolve;
+      rejectCompletion = reject;
+    });
+    // Core 迁移期只消费 events；先登记拒绝观察者，避免极端持久化故障形成
+    // 未处理 Promise。调用方仍可 await 原 Promise 得到同一个 rejection。
+    void completion.catch(() => undefined);
+
+    void this.pumpTurn(
+      command,
+      { turn, signal },
+      channel,
+      resolveCompletion,
+      rejectCompletion,
+    );
+
+    return Object.freeze({
+      sessionId,
+      turnId,
+      events: channel,
+      completion,
+      abort: () => {
+        this.deps.session.requestAbort(sessionId);
+      },
+    });
   }
 
   /** 只取消指定子 AgentRun，不中止父 Turn。 */
@@ -76,6 +124,191 @@ export class TurnExecutor {
   /** 只取消指定工具调用；找不到时返回 false。 */
   abortTool(turnId: string, callId: string): boolean {
     return this.activeExecutors.get(turnId)?.abortTool(callId) ?? false;
+  }
+
+  private async pumpTurn(
+    command: TurnStartCommand,
+    started: Pick<PreparedTurnExecution, 'turn' | 'signal'>,
+    channel: TurnEventChannel<TurnExecutionEvent>,
+    resolveCompletion: (outcome: TurnOutcome) => void,
+    rejectCompletion: (error: unknown) => void,
+  ): Promise<void> {
+    const { turn, signal } = started;
+    let outcome: TurnOutcome | undefined;
+
+    try {
+      const plan = await command.prepare(started);
+      const events = executeTurn(
+        this.deps,
+        { ...plan, turn, signal },
+        this.activeSpawners,
+        this.activeExecutors,
+      );
+
+      for await (const event of events) {
+        outcome = outcomeFromEvent(event) ?? outcome;
+        await channel.push(event);
+      }
+
+      if (!outcome) {
+        outcome = await this.finishUnexpectedExecution(
+          turn,
+          signal,
+          channel,
+        );
+      }
+      resolveCompletion(outcome);
+      channel.finish();
+    } catch (error) {
+      if (outcome) {
+        resolveCompletion(outcome);
+        channel.finish();
+        return;
+      }
+
+      try {
+        outcome = await this.finishStartFailure(
+          turn,
+          signal,
+          error,
+          channel,
+        );
+        resolveCompletion(outcome);
+        channel.finish();
+      } catch (terminalError) {
+        rejectCompletion(terminalError);
+        channel.fail(terminalError);
+      }
+    } finally {
+      this.deps.session.clearRunning(turn.sessionId);
+    }
+  }
+
+  private async finishUnexpectedExecution(
+    turn: PreparedTurnExecution['turn'],
+    signal: AbortSignal,
+    channel: TurnEventChannel<TurnExecutionEvent>,
+  ): Promise<TurnOutcome> {
+    return this.finishStartFailure(
+      turn,
+      signal,
+      new Error('Turn execution ended without a terminal outcome'),
+      channel,
+    );
+  }
+
+  private async finishStartFailure(
+    turn: PreparedTurnExecution['turn'],
+    signal: AbortSignal,
+    error: unknown,
+    channel: TurnEventChannel<TurnExecutionEvent>,
+  ): Promise<TurnOutcome> {
+    const { sessionId, id: turnId } = turn;
+    if (signal.aborted || error instanceof TurnEventChannelClosedError) {
+      const hookEvents: TurnExecutionEvent[] = [];
+      await this.deps.hooks.trigger('onTurnAbort', {
+        turnId,
+        sessionId,
+        payload: { reason: 'user_stop' },
+        emit: (event) => hookEvents.push(event),
+      });
+      for (const event of hookEvents) {
+        await pushUnlessConsumerClosed(channel, event);
+      }
+
+      this.deps.session.abortTurn(sessionId, turnId);
+      const outcome: TurnOutcome = {
+        status: 'aborted',
+        sessionId,
+        turnId,
+        reason: 'user_stop',
+      };
+      await pushUnlessConsumerClosed(channel, {
+        type: 'turn_aborted',
+        sessionId,
+        turnId,
+        reason: outcome.reason,
+      });
+      return outcome;
+    }
+
+    const code = error instanceof TurnPreparationError
+      ? error.code
+      : 'turn/setup_failed';
+    const message = error instanceof Error ? error.message : String(error);
+    this.deps.session.failTurn(turnId, code, message);
+
+    const hookEvents: TurnExecutionEvent[] = [];
+    await this.deps.hooks.trigger('onTurnFailure', {
+      turnId,
+      sessionId,
+      payload: {
+        phase: 'setup',
+        code,
+        message,
+        durationMs: Date.now() - turn.startedAt,
+      },
+      emit: (event) => hookEvents.push(event),
+    });
+    for (const event of hookEvents) {
+      await pushUnlessConsumerClosed(channel, event);
+    }
+
+    const outcome: TurnOutcome = {
+      status: 'failed',
+      sessionId,
+      turnId,
+      code,
+      message,
+    };
+    await pushUnlessConsumerClosed(channel, {
+      type: 'turn_failed',
+      sessionId,
+      turnId,
+      code,
+      message,
+    });
+    return outcome;
+  }
+}
+
+function outcomeFromEvent(event: TurnExecutionEvent): TurnOutcome | undefined {
+  switch (event.type) {
+    case 'turn_completed':
+      return {
+        status: 'completed',
+        sessionId: event.sessionId,
+        turnId: event.turnId,
+        stats: event.stats,
+      };
+    case 'turn_failed':
+      return {
+        status: 'failed',
+        sessionId: event.sessionId,
+        turnId: event.turnId,
+        code: event.code,
+        message: event.message,
+      };
+    case 'turn_aborted':
+      return {
+        status: 'aborted',
+        sessionId: event.sessionId,
+        turnId: event.turnId,
+        reason: event.reason,
+      };
+    default:
+      return undefined;
+  }
+}
+
+async function pushUnlessConsumerClosed(
+  channel: TurnEventChannel<TurnExecutionEvent>,
+  event: TurnExecutionEvent,
+): Promise<void> {
+  try {
+    await channel.push(event);
+  } catch (error) {
+    if (!(error instanceof TurnEventChannelClosedError)) throw error;
   }
 }
 

@@ -8,6 +8,7 @@ import { HookBus } from '@ema-agent/hooks';
 import { ToolRegistry } from '@ema-agent/tools';
 import { LlmToolArgumentsParseError } from '@ema-agent/llm';
 import { TurnExecutor } from '../turnExecutor.js';
+import { TurnPreparationError } from '../errors.js';
 import type { TurnExecutionDeps } from '../types.js';
 
 const modelCapabilities = {
@@ -46,7 +47,192 @@ const prompt = {
   revision: 'test-prompt-revision',
 } as const;
 
+function makeTurn(): Turn {
+  return {
+    id: turnId,
+    sessionId,
+    triggerType: 'userMessage',
+    executionProfile: 'work',
+    narrativePolicy: 'off',
+    status: 'running',
+    userInput: 'hello',
+    startedAt: Date.now(),
+    completedAt: null,
+    errorCode: null,
+    errorMessage: null,
+    iterations: 0,
+    usageInputTokens: 0,
+    usageOutputTokens: 0,
+  };
+}
+
+function withTurnStart<T extends object>(
+  session: T,
+  controller = new AbortController(),
+): T & {
+  startTurn: () => { turn: Turn; signal: AbortSignal };
+  requestAbort: () => void;
+  clearRunning: () => void;
+} {
+  return {
+    ...session,
+    startTurn: () => ({ turn: makeTurn(), signal: controller.signal }),
+    requestAbort: () => controller.abort(),
+    clearRunning: () => undefined,
+  };
+}
+
+function startExecution(executor: TurnExecutor) {
+  return executor.start({
+    sessionId,
+    triggerType: 'userMessage',
+    executionProfile: 'work',
+    narrativePolicy: 'off',
+    userInput: 'hello',
+    prepare: () => ({
+      userInput: 'hello',
+      prompt,
+      providerId: 'provider-1',
+      model: 'model-1',
+      workspaceRoot: '',
+    }),
+  });
+}
+
 describe('TurnExecutor 生命周期', () => {
+  it('start 同步创建一次 Turn，准备失败仍产生唯一终态并释放运行锁', async () => {
+    let startCount = 0;
+    let clearCount = 0;
+    const failed: Array<{ code: string; message?: string }> = [];
+    const session = {
+      startTurn: () => {
+        startCount++;
+        return {
+          turn: makeTurn(),
+          signal: new AbortController().signal,
+        };
+      },
+      requestAbort: () => undefined,
+      clearRunning: () => { clearCount++; },
+      failTurn: (_id: TurnId, code: string, message?: string) => {
+        failed.push({ code, message });
+      },
+      abortTurn: () => undefined,
+    };
+    const executor = new TurnExecutor({
+      session: session as never,
+      hooks: new HookBus(),
+      llm: {} as never,
+      modelCapabilities,
+      emotion: {} as never,
+      tools: new ToolRegistry(),
+      permission: {} as never,
+    });
+
+    const handle = executor.start({
+      sessionId,
+      triggerType: 'userMessage',
+      executionProfile: 'work',
+      narrativePolicy: 'off',
+      userInput: 'hello',
+      prepare: () => {
+        throw new TurnPreparationError('turn/attachment_failed', 'attachment unavailable');
+      },
+    });
+
+    expect(startCount).toBe(1);
+    expect(handle.sessionId).toBe(sessionId);
+    expect(handle.turnId).toBe(turnId);
+
+    const iterator = handle.events[Symbol.asyncIterator]();
+    expect(() => handle.events[Symbol.asyncIterator]()).toThrow(
+      'TurnHandle.events only supports one consumer',
+    );
+    const events: EmaStreamEvent[] = [];
+    for (;;) {
+      const next = await iterator.next();
+      if (next.done) break;
+      events.push(next.value);
+    }
+
+    await expect(handle.completion).resolves.toEqual({
+      status: 'failed',
+      sessionId,
+      turnId,
+      code: 'turn/attachment_failed',
+      message: 'attachment unavailable',
+    });
+    expect(events.at(-1)).toEqual({
+      type: 'turn_failed',
+      sessionId,
+      turnId,
+      code: 'turn/attachment_failed',
+      message: 'attachment unavailable',
+    });
+    expect(failed).toEqual([{
+      code: 'turn/attachment_failed',
+      message: 'attachment unavailable',
+    }]);
+    expect(clearCount).toBe(1);
+  });
+
+  it('输入准备阶段取消时触发 onTurnAbort 并提交 aborted 终态', async () => {
+    const order: string[] = [];
+    const controller = new AbortController();
+    const hooks = new HookBus();
+    hooks.register('onTurnAbort', () => {
+      order.push('onTurnAbort');
+      return { kind: 'continue' };
+    });
+    const session = {
+      startTurn: () => ({
+        turn: makeTurn(),
+        signal: controller.signal,
+      }),
+      requestAbort: () => controller.abort(),
+      clearRunning: () => { order.push('clearRunning'); },
+      failTurn: () => { order.push('failTurn'); },
+      abortTurn: () => { order.push('abortTurn'); },
+    };
+    const executor = new TurnExecutor({
+      session: session as never,
+      hooks,
+      llm: {} as never,
+      modelCapabilities,
+      emotion: {} as never,
+      tools: new ToolRegistry(),
+      permission: {} as never,
+    });
+
+    const handle = executor.start({
+      sessionId,
+      triggerType: 'userMessage',
+      executionProfile: 'work',
+      narrativePolicy: 'off',
+      userInput: 'hello',
+      prepare: () => {
+        controller.abort();
+        throw controller.signal.reason;
+      },
+    });
+    const events: EmaStreamEvent[] = [];
+    for await (const event of handle.events) events.push(event);
+
+    await expect(handle.completion).resolves.toEqual({
+      status: 'aborted',
+      sessionId,
+      turnId,
+      reason: 'user_stop',
+    });
+    expect(order).toEqual(['onTurnAbort', 'abortTurn', 'clearRunning']);
+    expect(events).toEqual([{
+      type: 'turn_aborted',
+      sessionId,
+      turnId,
+      reason: 'user_stop',
+    }]);
+  });
+
   it('assistant 消息落盘后发送相同的结构化 blocks', async () => {
     const hooks = new HookBus();
     let persistedAssistantBlocks: unknown;
@@ -106,7 +292,7 @@ describe('TurnExecutor 生命周期', () => {
       },
     };
     const deps: TurnExecutionDeps = {
-      session: session as never,
+      session: withTurnStart(session) as never,
       hooks,
       llm: llm as never,
       modelCapabilities,
@@ -118,36 +304,15 @@ describe('TurnExecutor 生命周期', () => {
       tools: new ToolRegistry(),
       permission: {} as never,
     };
-    const turn: Turn = {
-      id: turnId,
-      sessionId,
-      triggerType: 'userMessage',
-      executionProfile: 'work',
-      narrativePolicy: 'off',
-      status: 'running',
-      userInput: 'hello',
-      startedAt: Date.now(),
-      completedAt: null,
-      errorCode: null,
-      errorMessage: null,
-      iterations: 0,
-      usageInputTokens: 0,
-      usageOutputTokens: 0,
-    };
-
     const events: EmaStreamEvent[] = [];
     const executor = new TurnExecutor(deps);
-    for await (const event of executor.execute({
-      turn,
-      signal: new AbortController().signal,
-      userInput: 'hello',
-      prompt,
-      providerId: 'provider-1',
-      model: 'model-1',
-      workspaceRoot: '',
-    })) {
+    const handle = startExecution(executor);
+    for await (const event of handle.events) {
       events.push(event);
     }
+    await expect(handle.completion).resolves.toEqual(
+      expect.objectContaining({ status: 'completed', sessionId, turnId }),
+    );
 
     expect(assistantMessagePayload).toEqual({
       messageId: persistedAssistantMessageId,
@@ -218,7 +383,7 @@ describe('TurnExecutor 生命周期', () => {
       },
     };
     const deps: TurnExecutionDeps = {
-      session: session as never,
+      session: withTurnStart(session) as never,
       hooks,
       llm: llm as never,
       modelCapabilities,
@@ -237,37 +402,21 @@ describe('TurnExecutor 生命周期', () => {
       } as never,
       permission: {} as never,
     };
-    const turn: Turn = {
-      id: turnId,
-      sessionId,
-      triggerType: 'userMessage',
-      executionProfile: 'work',
-      narrativePolicy: 'off',
-      status: 'running',
-      userInput: 'hello',
-      startedAt: Date.now(),
-      completedAt: null,
-      errorCode: null,
-      errorMessage: null,
-      iterations: 0,
-      usageInputTokens: 0,
-      usageOutputTokens: 0,
-    };
-
     const events: EmaStreamEvent[] = [];
     const executor = new TurnExecutor(deps);
-    for await (const event of executor.execute({
-      turn,
-      signal: new AbortController().signal,
-      userInput: 'hello',
-      prompt,
-      providerId: 'provider-1',
-      model: 'model-1',
-      workspaceRoot: '',
-    })) {
+    const handle = startExecution(executor);
+    for await (const event of handle.events) {
       events.push(event);
       if (event.type === 'turn_failed') order.push('turn_failed');
     }
+    await expect(handle.completion).resolves.toEqual(
+      expect.objectContaining({
+        status: 'failed',
+        code: 'provider/server_error',
+        sessionId,
+        turnId,
+      }),
+    );
 
     expect(order).toEqual(['failTurn', 'onTurnFailure', 'turn_failed']);
     expect(failurePayload).toEqual(expect.objectContaining({
@@ -321,7 +470,7 @@ describe('TurnExecutor 生命周期', () => {
       },
     };
     const deps: TurnExecutionDeps = {
-      session: session as never,
+      session: withTurnStart(session, controller) as never,
       hooks,
       llm: llm as never,
       modelCapabilities,
@@ -333,37 +482,19 @@ describe('TurnExecutor 生命周期', () => {
       tools: new ToolRegistry(),
       permission: {} as never,
     };
-    const turn: Turn = {
-      id: turnId,
-      sessionId,
-      triggerType: 'userMessage',
-      executionProfile: 'work',
-      narrativePolicy: 'off',
-      status: 'running',
-      userInput: 'hello',
-      startedAt: Date.now(),
-      completedAt: null,
-      errorCode: null,
-      errorMessage: null,
-      iterations: 0,
-      usageInputTokens: 0,
-      usageOutputTokens: 0,
-    };
-
     const events: EmaStreamEvent[] = [];
     const executor = new TurnExecutor(deps);
-    for await (const event of executor.execute({
-      turn,
-      signal: controller.signal,
-      userInput: 'hello',
-      prompt,
-      providerId: 'provider-1',
-      model: 'model-1',
-      workspaceRoot: '',
-    })) {
+    const handle = startExecution(executor);
+    for await (const event of handle.events) {
       events.push(event);
       if (event.type === 'turn_aborted') order.push('turn_aborted');
     }
+    await expect(handle.completion).resolves.toEqual({
+      status: 'aborted',
+      sessionId,
+      turnId,
+      reason: 'user_stop',
+    });
 
     expect(order).toEqual(['onTurnAbort', 'abortTurn', 'turn_aborted']);
     expect(events.at(-1)).toEqual({
@@ -412,7 +543,7 @@ describe('TurnExecutor 生命周期', () => {
       },
     };
     const deps: TurnExecutionDeps = {
-      session: session as never,
+      session: withTurnStart(session) as never,
       hooks,
       llm: llm as never,
       modelCapabilities,
@@ -435,34 +566,10 @@ describe('TurnExecutor 生命周期', () => {
       } as never,
       permission: {} as never,
     };
-    const turn: Turn = {
-      id: turnId,
-      sessionId,
-      triggerType: 'userMessage',
-      executionProfile: 'work',
-      narrativePolicy: 'off',
-      status: 'running',
-      userInput: 'hello',
-      startedAt: Date.now(),
-      completedAt: null,
-      errorCode: null,
-      errorMessage: null,
-      iterations: 0,
-      usageInputTokens: 0,
-      usageOutputTokens: 0,
-    };
-
     const events: EmaStreamEvent[] = [];
     const executor = new TurnExecutor(deps);
-    for await (const event of executor.execute({
-      turn,
-      signal: new AbortController().signal,
-      userInput: 'hello',
-      prompt,
-      providerId: 'provider-1',
-      model: 'model-1',
-      workspaceRoot: '',
-    })) {
+    const handle = startExecution(executor);
+    for await (const event of handle.events) {
       events.push(event);
     }
 

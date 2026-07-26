@@ -25,7 +25,7 @@ import type { Message, Turn } from '@ema-agent/session';
 import type { SessionId, TurnId, MessageId } from '@ema-agent/ids';
 
 import { TurnExecutor } from '../turnExecutor.js';
-import type { TurnExecutionDeps } from '../types.js';
+import type { TurnExecutionDeps, TurnExecutionPlan } from '../types.js';
 
 // ── 测试常量 ──────────────────────────────────────────────────────────────────
 
@@ -41,8 +41,23 @@ const TEST_TIMEOUT = 90_000;
 function makeSessionStore() {
   const messages: Message[] = [];
   let msgCounter = 0;
+  let turnCounter = 0;
+  let activeController: AbortController | undefined;
 
   return {
+    startTurn(): { turn: Turn; signal: AbortSignal } {
+      activeController = new AbortController();
+      return {
+        turn: makeTurn(`turn-${++turnCounter}`),
+        signal: activeController.signal,
+      };
+    },
+    requestAbort(): void {
+      activeController?.abort();
+    },
+    clearRunning(): void {
+      activeController = undefined;
+    },
     loadHistory(_sessionId: string): Message[] {
       return [...messages];
     },
@@ -145,21 +160,27 @@ beforeAll(() => {
 /** 消费完整异步事件流并返回全部事件。 */
 async function collectEvents(
   executor: TurnExecutor,
-  input: Parameters<TurnExecutor['execute']>[0],
+  input: TurnExecutionPlan,
 ) {
   const events = [];
-  for await (const ev of executor.execute(input)) {
+  const handle = executor.start({
+    sessionId: 'session-1' as SessionId,
+    triggerType: 'userMessage',
+    executionProfile: 'work',
+    narrativePolicy: 'off',
+    userInput: typeof input.userInput === 'string' ? input.userInput : '',
+    prepare: () => input,
+  });
+  for await (const ev of handle.events) {
     events.push(ev);
   }
   return events;
 }
 
 function makeInput(
-  overrides: Partial<Parameters<TurnExecutor['execute']>[0]> = {},
-) {
+  overrides: Partial<TurnExecutionPlan> = {},
+): TurnExecutionPlan {
   return {
-    turn:          makeTurn(),
-    signal:        AbortSignal.timeout(60_000),
     userInput:     'Hello',
     prompt: {
       slots: [],
@@ -216,7 +237,6 @@ describe.skipIf(!DS_KEY)('TurnExecutor integration (DeepSeek)', () => {
 
     const targetFile = path.join(WORKSPACE, 'src/agent/package.json');
     const events = await collectEvents(executor, makeInput({
-      turn:      makeTurn('turn-2'),
       userInput: `Use the Read tool to read the file at path "${targetFile}" and tell me the package name.`,
     }));
 
@@ -239,7 +259,6 @@ describe.skipIf(!DS_KEY)('TurnExecutor integration (DeepSeek)', () => {
     const executor = new TurnExecutor(deps);
 
     const events = await collectEvents(executor, makeInput({
-      turn:      makeTurn('turn-3'),
       userInput: `Use the glob_files tool with pattern "packages/*/package.json" in the workspace root "${WORKSPACE}" to list all package.json files. Tell me how many you found.`,
     }));
 
@@ -258,18 +277,24 @@ describe.skipIf(!DS_KEY)('TurnExecutor integration (DeepSeek)', () => {
   it('4. abort: AbortSignal cancels in-flight turn', async () => {
     sessionStore.clear();
     const executor = new TurnExecutor(deps);
-    const controller = new AbortController();
+    const input = makeInput({
+      userInput: 'Count slowly from 1 to 1000, one number per line.',
+    });
+    const handle = executor.start({
+      sessionId: 'session-1' as SessionId,
+      triggerType: 'userMessage',
+      executionProfile: 'work',
+      narrativePolicy: 'off',
+      userInput: input.userInput as string,
+      prepare: () => input,
+    });
 
     // 两秒后取消，预期中断仍在进行的流式响应。
-    const timer = setTimeout(() => controller.abort(), 2000);
+    const timer = setTimeout(() => handle.abort(), 2000);
 
     const events: unknown[] = [];
     try {
-      for await (const ev of executor.execute(makeInput({
-        turn:      makeTurn('turn-4'),
-        signal:    controller.signal,
-        userInput: 'Count slowly from 1 to 1000, one number per line.',
-      }))) {
+      for await (const ev of handle.events) {
         events.push(ev);
       }
     } finally {
