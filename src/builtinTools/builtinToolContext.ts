@@ -11,6 +11,7 @@ import type { CommandRunnerPort } from '@ema-agent/sandbox';
 import type { TaskStorePort } from '@ema-agent/tasks';
 import type { IArtifactStore } from '@ema-agent/artifact';
 import type { KnowledgeSearchPort } from '@ema-agent/knowledge';
+import type { NarrativeSearchPort } from '@ema-agent/narrative';
 import type {
   ActiveSkillStatePort,
   SkillRunnerPort,
@@ -68,6 +69,8 @@ export interface BuiltinToolContext {
   readonly commandRunner?: CommandRunnerPort;
   /** KB 检索工具的搜索入口。 */
   readonly knowledgeSearch?: KnowledgeSearchPort;
+  /** Narrative 剧情资料的按需检索入口，仅在 auto 策略下装配。 */
+  readonly narrativeSearch?: NarrativeSearchPort;
   /** Task 工具族的持久存储。 */
   readonly taskStore?: TaskStorePort;
   /** Subagent 工具的子 Agent 启动器。 */

@@ -58,17 +58,17 @@ TurnHandle.events + TurnOutcome
 
 - `apps/core` 的 route/wiring 仍承载部分业务编排，入口层边界不稳定；
 - 启动、自检、依赖 readiness 与延迟加载尚未形成一条可审计的 Composition Root 流程；
-- `NarrativePolicy=auto` 尚未接入模型可调用的 Narrative Tool；
 - 前端仍需完成统一工作区与真实 Turn/Task/AgentRun 投影。
 
 ### Diff 判断
 
 1. **V1 已完成：统一 TurnExecutor + AgentLoop。** Chat 与 Work 共享同一个循环，只通过 Profile 控制迭代预算和工具能力；旧第三套 Engine 已删除。
-2. **V1 必做：核心循环不依赖入口。** Desktop、未来 CLI/Web/QQ/微信只负责把输入规范化为 Turn，并消费事件；不得复制业务循环。
-3. **V1 收口：Core 退回 Sidecar BFF。** Route 只解析、校验、认证和转换 SSE，业务编排进入根 `src` 的产品模块。
-4. **V1 收口：建立明确启动阶段。** Tauri 管 Sidecar 生命周期；Core Composition Root 负责数据库迁移、凭据、Provider Runtime、Tool Registry 和 Bridge readiness；非关键目录扫描、Catalog 刷新和遥测延迟执行。
-5. **不照搬：集中式巨型全局 State。** Ema 多 Session 并行且有桌面多窗口，不应复制 Claude 单会话 CLI 的 150+ getter/setter 全局状态。Session/Turn 状态必须显式按 ID 隔离。
-6. **不照搬：Bun 编译期 Feature Flag。** Ema 使用 NodeNext/Tauri/Turbo，V1 继续使用明确 Feature Gate 与构建入口，不引入第二套 bundler 宏体系。
+2. **V1 已完成：Narrative 策略收口。** `always` 在根 Turn 开始时主动召回，`auto` 只向模型提供 NarrativeSearchTool，`off` 不装配该能力；三者共用 Narrative 自有 Route、多时间线召回、领域事件和专用持久化 Block。
+3. **V1 必做：核心循环不依赖入口。** Desktop、未来 CLI/Web/QQ/微信只负责把输入规范化为 Turn，并消费事件；不得复制业务循环。
+4. **V1 收口：Core 退回 Sidecar BFF。** Route 只解析、校验、认证和转换 SSE，业务编排进入根 `src` 的产品模块。
+5. **V1 收口：建立明确启动阶段。** Tauri 管 Sidecar 生命周期；Core Composition Root 负责数据库迁移、凭据、Provider Runtime、Tool Registry 和 Bridge readiness；非关键目录扫描、Catalog 刷新和遥测延迟执行。
+6. **不照搬：集中式巨型全局 State。** Ema 多 Session 并行且有桌面多窗口，不应复制 Claude 单会话 CLI 的 150+ getter/setter 全局状态。Session/Turn 状态必须显式按 ID 隔离。
+7. **不照搬：Bun 编译期 Feature Flag。** Ema 使用 NodeNext/Tauri/Turbo，V1 继续使用明确 Feature Gate 与构建入口，不引入第二套 bundler 宏体系。
 
 ### 建议拆分
 

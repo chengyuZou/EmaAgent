@@ -19,6 +19,7 @@ import { AskChoiceTool } from './tools/AskUserTool/AskChoiceTool.js';
 import { ArtifactWriteTool, ArtifactReadTool, ArtifactListTool } from './tools/ArtifactTool/ArtifactTools.js';
 import { SkillCallTool } from './tools/SkillCallTool/SkillCallTool.js';
 import { KnowledgeBaseSearchTool } from './tools/KnowledgeBaseSearchTool/KnowledgeBaseSearchTool.js';
+import { NarrativeSearchTool } from './tools/NarrativeSearchTool/NarrativeSearchTool.js';
 import { SubagentTool } from './tools/SubagentTool/SubagentTool.js';
 import {
   SubagentSpawnBackgroundTool,
@@ -73,6 +74,7 @@ export {
   ArtifactListTool,
   SkillCallTool,
   KnowledgeBaseSearchTool,
+  NarrativeSearchTool,
   SubagentTool,
   SubagentSpawnBackgroundTool,
   SubagentSendMessageTool,
@@ -104,6 +106,7 @@ export type { AskConfirmResult } from './tools/AskUserTool/AskConfirmTool.js';
 export type { AskTextResult } from './tools/AskUserTool/AskTextTool.js';
 export type { AskChoiceResult } from './tools/AskUserTool/AskChoiceTool.js';
 export type { SkillCallResult } from './tools/SkillCallTool/SkillCallTool.js';
+export type { NarrativeSearchResult } from './tools/NarrativeSearchTool/NarrativeSearchTool.js';
 // ── 注册 ──────────────────────────────────────────────────────────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -129,6 +132,7 @@ const ALL_BUILTIN_TOOLS: BuiltTool<any, any, any>[] = [
   ArtifactListTool,
   SkillCallTool,
   KnowledgeBaseSearchTool,
+  NarrativeSearchTool,
   SubagentTool,
   SubagentSpawnBackgroundTool,
   SubagentSendMessageTool,

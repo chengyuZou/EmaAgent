@@ -148,6 +148,7 @@ describe('Chat 统一执行链', () => {
     const toolNames = requests[0]?.tools?.map((tool) => tool.name) ?? [];
     expect(toolNames).toContain('Read');
     expect(toolNames).toContain('KnowledgeBaseSearch');
+    expect(toolNames).not.toContain('NarrativeSearch');
     expect(toolNames).not.toContain('Write');
     expect(toolNames).not.toContain('Bash');
     expect(toolNames).not.toContain('TaskCreate');

@@ -35,6 +35,7 @@ describe('Builtin ToolPool 能力装配', () => {
     expect(names).not.toContain(BuiltinTools.TaskList.name);
     expect(names).not.toContain(BuiltinTools.AskUser.name);
     expect(names).not.toContain(BuiltinTools.Subagent.name);
+    expect(names).not.toContain(BuiltinTools.NarrativeSearch.name);
   });
 
   it('根 Turn 注入能力后只增加对应工具族', () => {
@@ -46,6 +47,11 @@ describe('Builtin ToolPool 能力装配', () => {
       askUser: async () => ({ answers: {} }),
       subagentSpawner: {} as never,
       knowledgeSearch: async () => [] as never,
+      narrativeSearch: async () => ({
+        timelines: [],
+        contextText: null,
+        failedTimelineCount: 0,
+      }),
       scratchpad: { dir: 'D:/scratchpad', author: 'main' },
     };
 
@@ -58,6 +64,7 @@ describe('Builtin ToolPool 能力装配', () => {
       BuiltinTools.AskUser.name,
       BuiltinTools.Subagent.name,
       BuiltinTools.KnowledgeBaseSearch.name,
+      BuiltinTools.NarrativeSearch.name,
       BuiltinTools.ScratchpadWrite.name,
     ]));
     expect(names).not.toContain(BuiltinTools.Bash.name);

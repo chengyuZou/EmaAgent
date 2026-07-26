@@ -25,6 +25,10 @@ export const BuiltinTools = Object.freeze({
     id: 'builtin.knowledge_base.search',
     name: 'KnowledgeBaseSearch',
   }),
+  NarrativeSearch: Object.freeze({
+    id: 'builtin.narrative.search',
+    name: 'NarrativeSearch',
+  }),
   SkillCall: Object.freeze({ id: 'builtin.skill.call', name: 'SkillCall' }),
   ArtifactWrite: Object.freeze({ id: 'builtin.artifact.write', name: 'ArtifactWrite' }),
   ArtifactRead:  Object.freeze({ id: 'builtin.artifact.read',  name: 'ArtifactRead' }),

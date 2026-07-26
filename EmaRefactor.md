@@ -811,7 +811,7 @@ interface TurnExecutionSnapshot {
 
 - [x] 删除 `ConversationEngine`，迁移为 TurnExecutor + AgentLoop + ChatProfile；
 - [x] `TurnMode` 从 `chat/narrative/agent` 演进为 `executionProfile + narrativePolicy`；
-- [ ] `NarrativePolicy=auto` 改为 NarrativeSearchTool；`always` 已由 Narrative Recall 能力接入；
+- [x] `NarrativePolicy=auto` 改为 NarrativeSearchTool；`always` 已由 Narrative Recall 能力接入；
 - [x] Prompt Mode block 改为显式 Slot；
 - [x] Compaction 从 Memory 移入 Context；
 - [x] `agent-context` 拆分并删除；
@@ -955,10 +955,10 @@ interface TurnExecutionSnapshot {
 ### R4：Narrative Tool
 
 1. [已完成] Narrative 自有 Recall 函数封装 route + 多 timeline 并行查询；
-2. 新建稳定 ID 的 NarrativeSearchTool；
-3. 保留现有 Narrative SSE 与专用前端 Block；
-4. 实现 auto/always/off；
-5. route 模型改为 Narrative 自有配置。
+2. [已完成] 新建稳定 ID 的 NarrativeSearchTool；
+3. [已完成] 保留现有 Narrative SSE 与专用前端 Block；
+4. [已完成] 实现 auto/always/off；
+5. [已完成] Route 与 LightRAG 共用 Narrative 自有 `lightrag-llm` 绑定，不读取当前 Chat/Work 模型。
 
 ### R5：统一 TurnExecutor + AgentLoop
 
@@ -1027,7 +1027,7 @@ Tool Result、统一预算、ToolExecution Journal、执行运行时所有权迁
 4. [x] AgentLoop 只启动执行批次、等待结果并决定是否继续下一轮，不建立第二个 Scheduler；
 5. [x] 每次根 Agent/子 Agent 先按实际 `BuiltinToolContext` 装配模型可见 Manifest，再由同一 Manifest 建立 Policy；每个 Tool 的 `validateContext()` 在权限和副作用前完成窄投影，工具不可见与不可执行不再依赖两套手写白名单；
 6. [x] Tool Manifest 2C、Builtin Tool 2D、TurnHandle 与 Chat/Work 统一主链已经完成；
-7. 下一步补齐 `NarrativePolicy=auto` 的 NarrativeSearchTool，然后让 `apps/core` 只保留协议适配与 Composition Root。
+7. [x] `NarrativePolicy=auto` 已通过 NarrativeSearchTool 按需检索；下一步让 `apps/core` 只保留协议适配与 Composition Root。
 
 ## 12. 完成标准
 

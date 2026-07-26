@@ -567,6 +567,9 @@ importers:
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../llm
+      '@ema-agent/narrative':
+        specifier: workspace:*
+        version: link:../narrative
       '@ema-agent/permission':
         specifier: workspace:*
         version: link:../permission

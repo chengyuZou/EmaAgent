@@ -58,6 +58,7 @@ import {
   NarrativeClientError,
   prepareNarrativeRecall,
   type NarrativeRecallResult,
+  type NarrativeSearchPort,
 } from '@ema-agent/narrative';
 import { executionProfilePolicy } from './executionProfilePolicy.js';
 
@@ -544,6 +545,62 @@ async function* executeTurn(
         blocks: { timelines: [...narrativeRecall.timelines] },
       });
     }
+
+    // auto 只把按需检索能力交给模型；off 与 always 都不暴露 NarrativeSearch。
+    // Port 在宿主层绑定 Turn 身份、SSE 和 UI 持久化，Tool 只处理查询与结果。
+    const narrativeSearch: NarrativeSearchPort | undefined =
+      turn.narrativePolicy === 'auto' && deps.narrative
+        ? async (query, searchSignal) => {
+            let recalled: NarrativeRecallResult;
+            try {
+              recalled = await prepareNarrativeRecall(deps.narrative!, {
+                sessionId,
+                turnId,
+                userInput: query,
+                signal: searchSignal,
+                emit: (event) => emitRef.fn?.(event),
+              });
+            } catch (error) {
+              if (searchSignal.aborted || isAbortError(error)) throw error;
+              if (error instanceof NarrativeClientError) {
+                emitRef.fn?.({
+                  type: 'narrative_recall_unavailable',
+                  sessionId,
+                  turnId,
+                  code: error.code,
+                  message: error.message,
+                  retryable: error.retryable,
+                });
+              }
+              throw error;
+            }
+
+            if (recalled.timelines.length > 0) {
+              session.appendMessage({
+                turnId,
+                sessionId,
+                role: 'user',
+                kind: 'narrative_context',
+                blocks: { timelines: [...recalled.timelines] },
+              });
+            }
+            if (
+              recalled.timelines.length === 0
+              && recalled.failedTimelineCount > 0
+            ) {
+              emitRef.fn?.({
+                type: 'narrative_recall_unavailable',
+                sessionId,
+                turnId,
+                code: 'narrative/unknown',
+                message: 'Narrative timelines unavailable - continuing without narrative context',
+                retryable: true,
+              });
+            }
+            return recalled;
+          }
+        : undefined;
+
     const contextAssembler = new ContextAssembler();
     const activeSkillState = new ActiveSkillState();
 
@@ -604,6 +661,7 @@ async function* executeTurn(
       skillRunner:       deps.skillRunner,
       activeSkillState,
       knowledgeSearch:   scopedKbSearch,
+      narrativeSearch,
       subagentSpawner:   spawner,
       scratchpad:        scratchpadDir ? { dir: scratchpadDir, author: 'main' } : undefined,
       askUser: askUserInteraction

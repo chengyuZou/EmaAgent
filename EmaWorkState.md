@@ -12,6 +12,8 @@
 
 旧 `ConversationEngine` 与整个 `src/conversation` 包已经删除，Workspace 依赖和生产 import 归零。Chat 根生命周期与只读 Tool Profile 进入 `turnExecution`，LLM/Tool 迭代进入 `agent`，Narrative Route 与多周目 Recall 回到 `narrative`，模型可见召回正文通过不可信 Context Contribution 投递；Hook 不再携带 Narrative 私有结果。
 
+Narrative R4 已经完成：`auto` 只在本轮 Tool Context 注入 NarrativeSearchPort，由模型按需调用稳定 ID 的 NarrativeSearchTool；`always` 继续在 Turn 开始时主动召回；`off` 不暴露工具也不召回。Port 在 TurnExecutor 绑定 Session/Turn、SSE 与 `narrative_context` 持久化，Tool 只接收窄查询能力；Route 与 LightRAG 继续使用 Narrative 自有 `lightrag-llm` 绑定，不读取当前 Chat/Work 模型。
+
 事件所有权第一批已经落到源码：Agent、Artifact、Characters、Context、Hooks、Knowledge、Memory、Narrative、System、Tasks、Tools 与 TTS 各自拥有 `events.ts`；Turn 只保留根生命周期、输出、Usage 与请求降级事件。`src/events` 像 `src/ids` 一样执行严格准入，但只负责组合 `TurnStreamEvent/SessionEvent/AppEvent`，禁止定义业务字段。`EmaStreamEvent` 已标记为迁移期兼容名，新生产者必须使用领域事件或窄通道事件。
 
 R2 Prompt Slot 与 R3 ContextAssembler 主链接线已经完成：Prompt、Skill Catalog、Memory Recall、Narrative Recall、历史、当前 Turn、Scratchpad、Mailbox 与 Tool Manifest 由一次不可变 Context 快照统一装配。现有渐进 Compaction、Safe Cut、Restore、响应式压缩和 Tool Manifest Snapshot 都是基线，不重新实现。
@@ -96,9 +98,9 @@ Task 与 AgentRun 前端已经分面：Desktop 使用正式 `/api/tasks` 快照�
 
 开始任何新批次前必须重新运行 `git status --short` 与 `git diff`，保留用户和其他 Agent 的修改。
 
-当前未提交工作区只包含统一执行主线第二刀：`TurnExecutor.start()` 收回 Work 的 `Session.startTurn`，通过 `TurnHandle` 暴露 `turnId/events/completion/abort`，并以固定容量事件通道阻止无人消费时无限积压。Core 仍负责附件、模型选择、Prompt/Context/压缩输入准备和 TTS 旁路；Chat 仍直接创建 Turn 并使用 `conversation`，留给下一批迁移。
+当前未提交工作区只包含 Narrative R4 收口：NarrativeSearchTool、auto Tool Port 接线、策略与 ToolPool 边界测试、Workspace 依赖与文档更新。Core 仍负责附件、模型选择、Prompt/Context/压缩输入准备和 TTS 旁路，下一批只迁移 Core 的 Turn 输入装配边界，不同时重写所有 Route 或启动流程。
 
-当前基线最近提交：`7287096c feat(turnExecution): implement TurnExecutor and refactor agent turn processing`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
+当前基线最近提交：`03e3b214 feat(narrative): refactor narrative recall and execution policies`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
 
 ## 已确定的 V1 口径
 
@@ -144,7 +146,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 5. Builtin Tool 2D 的 Sandbox 命令环境 allowlist、工作目录边界、FileRead 行数/字节双上限、Glob/Grep 有界搜索与 WebSearch 公网访问安全均已完成；结构化 Presentation 公共协议与首批接线已完成；
 6. Permission V1 已完成：统一 Session FIFO、明确终态、Turn 身份核对、SQLite 永久规则 CRUD 与设置页管理、Builtin-only 免审批边界均已接通；旧 `AskUserRegistryLike` 已改为 `AskUserInteractionPort`，不新增第二套队列；
 7. Skill 多文件激活、per-Agent 状态、结构化 Context 恢复与 `allowed-tools` 单向收窄已经完成；
-8. `TurnExecutor + AgentLoop` 第三刀已完成：Chat/Work 共用主链，`src/conversation` 已删除，Narrative Recall 已归还所有者；下一批先补 `NarrativePolicy=auto` 的模型可调用 Tool，再让 Core Route 退回协议层；
+8. `TurnExecutor + AgentLoop` 第三刀与 Narrative R4 已完成：Chat/Work 共用主链，`src/conversation` 已删除；`auto/always/off` 已分别落到按需 Tool、主动 Recall 和关闭能力，下一批让 Core Route 退回协议层；
 9. 后台进程按 `BackgroundProcess + ProcessOutput/ProcessStop` 单独实现 C 档，不修改 AgentLoop，也不恢复假 `run_in_background`。
 
 命名随业务批次清理：旧 `IFileStateStoreEntry/IFileStateStore` 及后续过渡接口已经删除，`IToolExecutionJournal` 已改为职责名；其余迁移期 `I*` 类型继续随业务边界处理，不单独进行全仓机械重命名。
@@ -153,6 +155,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- Narrative R4：Narrative 与 BuiltinTools 按依赖顺序 build 通过；全仓 typecheck 84/84 通过；BuiltinTools 109/109、TurnExecution 11/11 通过，另有 1 个缺少系统 `rg` 的条件测试和 4 个 Live Integration 按规则跳过；`git diff --check` 仅有既有 CRLF 提示。
 - TurnExecutor 第三刀：全仓 typecheck 84/84 通过；TurnExecution 11/11、Narrative 6/6、Hooks 27/27、Agent 25/25、Core 93/93、Desktop UI 132/132 通过，4 个 Live Integration 按规则跳过。Workspace 已移除 `@ema-agent/conversation`，源码、依赖和磁盘缓存目录全部清零；Chat 只读 Tool Manifest、Narrative 多周目部分失败、领域事件、持久化 Block 与 reasoning signature 往返已有直接测试覆盖。
 - TurnExecutor 第二刀：全仓 typecheck 86/86 通过；TurnExecution 10/10、Core 93/93、Conversation 7/7 通过，4 个 Live Integration 按规则跳过。Work 生产调用已无 `turnExecutor.execute()`，`session.startTurn()` 只剩 TurnExecutor 与待迁 Chat 各一处；`TurnHandle` 准备失败、准备期取消、单消费者、终态 Promise 和运行锁释放已有测试覆盖。
 - TurnExecutor 第一刀：全仓 typecheck 86/86 通过；TurnExecution 8/8、Agent 25/25、Turn 20/20、Conversation 7/7、Core 93/93 通过，4 个 Live Integration 按规则跳过。全仓检查顺带发现并修复桌宠 Permission Toast 未随 API 新契约提交 `turnId` 的既存类型错误。旧 `AgentEngine/AgentDeps/TurnExecutionInput/AskUserRegistryLike/AgentRuntimeEvent` 生产引用归零；`git diff --check` 通过，仅有既有 CRLF 提示。
@@ -223,7 +226,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 先完整阅读 CLAUDE.md 与 EmaWorkState.md，再按当前批次阅读 EmaRefactor.md 和 EmaClaudeArchitectureReview.md 对应章节。检查 git status、diff 和最近提交，保留用户及其他 Agent 的修改。
 
-目录迁移已经结束，不要继续机械搬包。R2 Prompt Slot、R3 ContextAssembler 与 Chat/Work 统一 `TurnExecutor + AgentLoop` 主链已经完成；`AgentEngine`、`ConversationEngine` 和 `src/conversation` 均已删除。下一批先补 `NarrativePolicy=auto` 的 NarrativeSearchTool，再让 Core Route 退回协议层。不要创建 Orchestrator、Runtime 或第三套 Engine。修改前先核对真实调用链并说明本批边界，不要提交 Git。
+目录迁移已经结束，不要继续机械搬包。R2 Prompt Slot、R3 ContextAssembler、Chat/Work 统一 `TurnExecutor + AgentLoop` 主链与 Narrative R4 均已完成；`AgentEngine`、`ConversationEngine` 和 `src/conversation` 均已删除。下一批让 Core 的 Turn 入口退回协议层：先迁出附件、模型选择、Prompt/Context/压缩等执行计划装配，不要同时重写全部业务 Route、启动流程或创建新的 Service/Facade/Orchestrator。修改前先核对真实调用链并说明本批边界，不要提交 Git。
 ```
 
 ## 维护方式

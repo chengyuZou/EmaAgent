@@ -19,6 +19,12 @@ export interface NarrativeRecallResult {
   readonly failedTimelineCount: number;
 }
 
+/** Narrative Tool 使用的业务入口；宿主负责绑定本次 Turn 的身份、事件与持久化。 */
+export type NarrativeSearchPort = (
+  query: string,
+  signal: AbortSignal,
+) => Promise<NarrativeRecallResult>;
+
 export interface PrepareNarrativeRecallInput {
   readonly sessionId: SessionId;
   readonly turnId: TurnId;

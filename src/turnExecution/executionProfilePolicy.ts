@@ -16,6 +16,7 @@ const CHAT_TOOL_IDS = new Set<string>([
   BuiltinTools.WebFetch.id,
   BuiltinTools.WebSearch.id,
   BuiltinTools.KnowledgeBaseSearch.id,
+  BuiltinTools.NarrativeSearch.id,
 ]);
 
 const CHAT_POLICY: TurnExecutionProfilePolicy = Object.freeze({
