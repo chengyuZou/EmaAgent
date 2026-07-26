@@ -42,6 +42,7 @@ const DEFAULT_EVENT_DISPLAY: Partial<Record<EmaStreamEvent['type'], EventDisplay
   // Narrative recall
   narrative_route_resolved:     { enabled: true,  color: '#8b5cf6', durationMs: 3000 },
   narrative_timeline_complete:  { enabled: true,  color: '#8b5cf6', durationMs: 5000, truncateChars: 100 },
+  narrative_recall_unavailable: { enabled: true,  color: '#f59e0b', durationMs: 5000, truncateChars: 160 },
   memory_recall_evidence:       { enabled: true,  color: '#ec4899', durationMs: 3000 },
 
   // Memory

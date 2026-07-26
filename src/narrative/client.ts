@@ -32,7 +32,7 @@ export interface NarrativeClientOptions {
  *   1. `route(query)`  — LLM selects timelines + rewrites sub-queries.
  *                        Emit result as SSE event for frontend display.
  *   2. `query(routes)` — parallel LightRAG retrieval across selected timelines.
- *   3. Merge results into the ConversationEngine context.
+ *   3. TurnExecutor 把召回结果投影进本轮 Context。
  *
  * All methods throw `NarrativeUnavailableError` when the bridge is down or
  * narrative is not yet configured (503). Catch this to degrade gracefully.

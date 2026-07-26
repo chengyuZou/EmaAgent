@@ -37,7 +37,6 @@
     "@ema-agent/characters": "workspace:*",
     "@ema-agent/session": "workspace:*",
     "@ema-agent/emotion": "workspace:*",
-    "@ema-agent/conversation": "workspace:*",
     "@ema-agent/agent": "workspace:*",
     "@ema-agent/turn-execution": "workspace:*",
     "@ema-agent/tasks": "workspace:*",

@@ -157,6 +157,8 @@ export async function* runAgentLoop<TExecutorEvent>(
     // ── 思考阶段：读取一次模型流 ─────────────────────────────────────────────
     const textByIndex     = new Map<number, string>();
     const thinkingByIndex = new Map<number, string>();
+    const thinkingSignatureByIndex = new Map<number, string>();
+    const completedThinkingIndexes = new Set<number>();
     const toolUseByIndex  = new Map<number, AssistantBlock & { type: 'tool_use' }>();
 
     // Skill 调用可能收窄后续工具范围，因此每轮都重新取得工具定义。
@@ -213,6 +215,8 @@ export async function* runAgentLoop<TExecutorEvent>(
       streamRetry = false;
       textByIndex.clear();
       thinkingByIndex.clear();
+      thinkingSignatureByIndex.clear();
+      completedThinkingIndexes.clear();
       toolUseByIndex.clear();
       lastStopReason = 'end_turn';
       callUsage = { inputTokens: 0, outputTokens: 0 };
@@ -258,6 +262,16 @@ export async function* runAgentLoop<TExecutorEvent>(
             case 'thinking_delta':
               thinkingByIndex.set(chunk.blockIndex, (thinkingByIndex.get(chunk.blockIndex) ?? '') + chunk.delta);
               yield { type: 'loop_thinking_delta', delta: chunk.delta, blockIndex: chunk.blockIndex };
+              break;
+
+            case 'thinking_complete':
+              thinkingSignatureByIndex.set(chunk.blockIndex, chunk.signature);
+              completedThinkingIndexes.add(chunk.blockIndex);
+              yield {
+                type: 'loop_thinking_complete',
+                blockIndex: chunk.blockIndex,
+                signature: chunk.signature,
+              };
               break;
 
             case 'tool_use_delta':
@@ -354,6 +368,12 @@ export async function* runAgentLoop<TExecutorEvent>(
       .map(([, t]) => t)
       .join('');
 
+    for (const blockIndex of thinkingByIndex.keys()) {
+      if (completedThinkingIndexes.has(blockIndex)) continue;
+      completedThinkingIndexes.add(blockIndex);
+      yield { type: 'loop_thinking_complete', blockIndex };
+    }
+
     // 通知外层模型流已结束，以便刷新情绪解析并触发完成 Hook。
     yield {
       type: 'loop_llm_complete',
@@ -368,7 +388,12 @@ export async function* runAgentLoop<TExecutorEvent>(
     // 有效预算由上层决定，并由 LLM 请求准备器按模型最大输出上限裁剪。
     if (lastStopReason === 'max_tokens' && toolUseByIndex.size === 0) {
       if (state.maxOutputTokensRecoveryCount === 0) {
-        const partialBlocks = buildBlockMap(textByIndex, thinkingByIndex, new Map());
+        const partialBlocks = buildBlockMap(
+          textByIndex,
+          thinkingByIndex,
+          thinkingSignatureByIndex,
+          new Map(),
+        );
         if (partialBlocks.length > 0) {
           turnMessages.push({ role: 'assistant', content: partialBlocks });
         }
@@ -389,7 +414,12 @@ export async function* runAgentLoop<TExecutorEvent>(
 
     // 没有工具调用表示本次 AgentRun 已得到最终回答。
     if (toolUseByIndex.size === 0) {
-      const blockMap = buildBlockMap(textByIndex, thinkingByIndex, new Map());
+      const blockMap = buildBlockMap(
+        textByIndex,
+        thinkingByIndex,
+        thinkingSignatureByIndex,
+        new Map(),
+      );
       turnMessages.push({ role: 'assistant', content: blockMap });
 
       state = advanceAgentLoopState(state, { phase: 'done', transition: 'no_tool_calls' });
@@ -434,7 +464,12 @@ export async function* runAgentLoop<TExecutorEvent>(
         : 0;
 
     // 把当前工具轮次追加到循环工作消息；thinking 不跨 Provider 重放。
-    const allBlocks    = buildBlockMap(textByIndex, thinkingByIndex, toolUseByIndex);
+    const allBlocks = buildBlockMap(
+      textByIndex,
+      thinkingByIndex,
+      thinkingSignatureByIndex,
+      toolUseByIndex,
+    );
     const replayBlocks = allBlocks.filter(b => b.type !== 'thinking');
     turnMessages.push({ role: 'assistant', content: replayBlocks });
     turnMessages.push({ role: 'user', content: resultBlocks as UserBlock[] });
@@ -469,11 +504,19 @@ export async function* runAgentLoop<TExecutorEvent>(
 function buildBlockMap(
   textByIndex:    Map<number, string>,
   thinkingByIndex:Map<number, string>,
+  thinkingSignatureByIndex: Map<number, string>,
   toolUseByIndex: Map<number, AssistantBlock & { type: 'tool_use' }>,
 ): AssistantBlock[] {
   const blockMap = new Map<number, AssistantBlock>();
   for (const [idx, text]     of textByIndex)     blockMap.set(idx, { type: 'text', text });
-  for (const [idx, thinking] of thinkingByIndex) blockMap.set(idx, { type: 'thinking', thinking });
+  for (const [idx, thinking] of thinkingByIndex) {
+    const signature = thinkingSignatureByIndex.get(idx);
+    blockMap.set(idx, {
+      type: 'thinking',
+      thinking,
+      ...(signature ? { signature } : {}),
+    });
+  }
   for (const [idx, b]        of toolUseByIndex)  blockMap.set(idx, b);
   return [...blockMap.entries()].sort(([a], [b]) => a - b).map(([, b]) => b);
 }

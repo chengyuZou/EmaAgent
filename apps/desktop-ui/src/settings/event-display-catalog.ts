@@ -30,6 +30,7 @@ const EVENT_LABELS: Record<string, string> = {
   permission_resolved: '权限确认完成',
   narrative_route_resolved: '剧情检索路线确定',
   narrative_timeline_complete: '剧情时间线检索完成',
+  narrative_recall_unavailable: '剧情召回不可用',
   memory_recall_evidence: '记忆召回结果',
   context_compaction_started: '上下文压缩开始',
   context_compaction_completed: '上下文压缩完成',

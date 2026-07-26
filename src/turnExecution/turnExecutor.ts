@@ -54,6 +54,12 @@ import {
   TurnEventChannel,
   TurnEventChannelClosedError,
 } from './turnEventChannel.js';
+import {
+  NarrativeClientError,
+  prepareNarrativeRecall,
+  type NarrativeRecallResult,
+} from '@ema-agent/narrative';
+import { executionProfilePolicy } from './executionProfilePolicy.js';
 
 // ── TurnExecutor ─────────────────────────────────────────────────────────────
 
@@ -344,6 +350,7 @@ async function* executeTurn(
   // 每次收到 loop_iteration 都重置本轮累计内容。
   let iterTextByIndex     = new Map<number, string>();
   let iterThinkingByIndex = new Map<number, string>();
+  let iterThinkingSignatures = new Map<number, string>();
   let iterToolCalls       = new Map<number, AssistantBlock & { type: 'tool_use' }>();
   let totalInput  = 0;
   let totalOutput = 0;
@@ -453,19 +460,89 @@ async function* executeTurn(
       { role: 'user', content: userInput as string | UserBlock[] },
     ];
     const baseContributions: ContextContribution[] = [];
+    let narrativeRecall: NarrativeRecallResult | undefined;
+
+    // Narrative 是本轮 Context 的不可信资料来源，不经 Hook 改写消息数组。
+    // V1 的 always 主动召回保留现有语义；auto 等 NarrativeSearch Tool 接线。
+    const readableInput = readableUserInput(userInput);
+    if (turn.narrativePolicy === 'always' && readableInput && deps.narrative) {
+      activePhase = 'provider';
+      try {
+        narrativeRecall = yield* streamOperation((emit) =>
+          prepareNarrativeRecall(deps.narrative!, {
+            sessionId,
+            turnId,
+            userInput: readableInput,
+            signal,
+            emit,
+          }));
+      } catch (error) {
+        if (signal.aborted || isAbortError(error)) throw error;
+        if (!(error instanceof NarrativeClientError)) throw error;
+        yield {
+          type: 'narrative_recall_unavailable',
+          sessionId,
+          turnId,
+          code: error.code,
+          message: error.message,
+          retryable: error.retryable,
+        };
+      }
+
+      if (narrativeRecall?.contextText) {
+        baseContributions.push({
+          id: 'narrative.recall',
+          source: 'narrative',
+          placement: 'beforeCurrentTurn',
+          message: {
+            role: 'user',
+            content:
+              '[NARRATIVE CONTEXT - do not quote verbatim; use as background]\n\n'
+              + narrativeRecall.contextText,
+          },
+        });
+      }
+      if (
+        narrativeRecall
+        && narrativeRecall.timelines.length === 0
+        && narrativeRecall.failedTimelineCount > 0
+      ) {
+        yield {
+          type: 'narrative_recall_unavailable',
+          sessionId,
+          turnId,
+          code: 'narrative/unknown',
+          message: 'Narrative timelines unavailable - continuing without narrative context',
+          retryable: true,
+        };
+      }
+    }
+
     if (input.prepareContextContributions) {
       activePhase = 'unknown';
-      const prepared = await input.prepareContextContributions({
-        sessionId,
-        turnId,
-        executionProfile: turn.executionProfile,
-        narrativePolicy: turn.narrativePolicy,
-        userInput: readableUserInput(userInput),
-        signal,
-        emit: emitHookEvent,
-      });
+      const prepared = yield* streamOperation((emit) =>
+        input.prepareContextContributions!({
+          sessionId,
+          turnId,
+          executionProfile: turn.executionProfile,
+          narrativePolicy: turn.narrativePolicy,
+          userInput: readableInput,
+          signal,
+          emit,
+        }));
       baseContributions.push(...prepared);
-      while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
+    }
+
+    // 剧情检索块是 Session UI 的正式记录，但不会作为普通历史再次喂给模型。
+    if (narrativeRecall && narrativeRecall.timelines.length > 0) {
+      activePhase = 'persistence';
+      session.appendMessage({
+        turnId,
+        sessionId,
+        role: 'user',
+        kind: 'narrative_context',
+        blocks: { timelines: [...narrativeRecall.timelines] },
+      });
     }
     const contextAssembler = new ContextAssembler();
     const activeSkillState = new ActiveSkillState();
@@ -542,8 +619,14 @@ async function* executeTurn(
           }
         : undefined,
     };
+    const profilePolicy = executionProfilePolicy(turn.executionProfile);
+    const assembledTools = assembleToolPool(tools, capabilityContext);
+    const profileTools = profilePolicy.allowedToolIds === null
+      ? assembledTools
+      : assembledTools.filter((tool) => profilePolicy.allowedToolIds!.has(tool.id));
     const policy = new TurnPolicy(
-      tools.manifestSnapshot(assembleToolPool(tools, capabilityContext)),
+      tools.manifestSnapshot(profileTools),
+      profilePolicy.maxIterations,
     );
     const toolContext: BuiltinToolContext = Object.freeze({
       ...capabilityContext,
@@ -683,6 +766,7 @@ async function* executeTurn(
           iterations          = ev.n;
           iterTextByIndex     = new Map();
           iterThinkingByIndex = new Map();
+          iterThinkingSignatures = new Map();
           iterToolCalls       = new Map();
           yield { type: 'agent_iteration', sessionId, turnId, n: ev.n };
           break;
@@ -700,6 +784,16 @@ async function* executeTurn(
         case 'loop_thinking_delta':
           iterThinkingByIndex.set(ev.blockIndex, (iterThinkingByIndex.get(ev.blockIndex) ?? '') + ev.delta);
           yield { type: 'reasoning_delta', sessionId, turnId, blockIndex: ev.blockIndex, delta: ev.delta };
+          break;
+
+        case 'loop_thinking_complete':
+          if (ev.signature) iterThinkingSignatures.set(ev.blockIndex, ev.signature);
+          yield {
+            type: 'reasoning_complete',
+            sessionId,
+            turnId,
+            blockIndex: ev.blockIndex,
+          };
           break;
 
         case 'loop_tool_partial':
@@ -795,7 +889,14 @@ async function* executeTurn(
           activePhase = 'persistence';
           const blockMap = new Map<number, AssistantBlock>();
           for (const [idx, text]     of iterTextByIndex)     blockMap.set(idx, { type: 'text', text });
-          for (const [idx, thinking] of iterThinkingByIndex) blockMap.set(idx, { type: 'thinking', thinking });
+          for (const [idx, thinking] of iterThinkingByIndex) {
+            const signature = iterThinkingSignatures.get(idx);
+            blockMap.set(idx, {
+              type: 'thinking',
+              thinking,
+              ...(signature ? { signature } : {}),
+            });
+          }
           for (const [idx, b]        of iterToolCalls)       blockMap.set(idx, b);
           const allBlocks = [...blockMap.entries()].sort(([a], [b]) => a - b).map(([, b]) => b);
 
@@ -822,7 +923,12 @@ async function* executeTurn(
       const blockMap = new Map<number, AssistantBlock>();
       for (const [idx, text] of iterTextByIndex) blockMap.set(idx, { type: 'text', text });
       for (const [idx, thinking] of iterThinkingByIndex) {
-        blockMap.set(idx, { type: 'thinking', thinking });
+        const signature = iterThinkingSignatures.get(idx);
+        blockMap.set(idx, {
+          type: 'thinking',
+          thinking,
+          ...(signature ? { signature } : {}),
+        });
       }
       const allBlocks = [...blockMap.entries()]
         .sort(([left], [right]) => left - right)
@@ -928,4 +1034,55 @@ function readableUserInput(input: PreparedTurnExecution['userInput']): string {
     .filter((part): part is Extract<(typeof input)[number], { type: 'text' }> => part.type === 'text')
     .map((part) => part.text)
     .join('\n');
+}
+
+/**
+ * 长耗时 Context 提供者执行期间立即转发领域事件，避免等全部召回完成后再成批刷新 UI。
+ */
+async function* streamOperation<T>(
+  operation: (
+    emit: (event: TurnExecutionEvent) => void,
+  ) => Promise<T>,
+): AsyncGenerator<TurnExecutionEvent, T> {
+  const queue: TurnExecutionEvent[] = [];
+  let notify: (() => void) | null = null;
+  let done = false;
+  let value!: T;
+  let error: unknown;
+
+  operation((event) => {
+    queue.push(event);
+    notify?.();
+    notify = null;
+  }).then(
+    (result) => {
+      value = result;
+      done = true;
+      notify?.();
+      notify = null;
+    },
+    (reason: unknown) => {
+      error = reason;
+      done = true;
+      notify?.();
+      notify = null;
+    },
+  );
+
+  while (!done || queue.length > 0) {
+    while (queue.length > 0) yield queue.shift()!;
+    if (!done) {
+      await new Promise<void>((resolve) => {
+        notify = resolve;
+      });
+    }
+  }
+
+  if (error !== undefined) throw error;
+  return value;
+}
+
+function isAbortError(error: unknown): boolean {
+  if (error instanceof DOMException && error.name === 'AbortError') return true;
+  return error instanceof Error && error.name === 'AbortError';
 }

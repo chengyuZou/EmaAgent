@@ -21,10 +21,8 @@ import {
 } from '@ema-agent/ids';
 import type {
   RequestDegradationNotice,
-  TurnFailureCode,
 } from '@ema-agent/turn';
 import type { EmaStreamEvent } from '@ema-agent/events';
-import { ConversationEngine } from '@ema-agent/conversation';
 import {
   TurnExecutor,
   TurnPreparationError,
@@ -37,7 +35,6 @@ import { SettingsRepo } from '@ema-agent/storage';
 import { resolveVoice, ensureVoiceUri, VoiceUriCache } from '../wiring/providers/tts.js';
 import { ensureSessionLayout, scratchpadTurnDir } from '../storage-locations/index.js';
 import type { AttachmentReferenceBlock, MessageBlocks, Turn } from '@ema-agent/session';
-import type { TurnFailurePhase } from '@ema-agent/hooks';
 import { prepareImagesForModel, replaceImageParts } from './media-compatibility.js';
 import { buildPromptSnapshot } from '@ema-agent/prompts';
 import { formatTaskContextReminder } from '@ema-agent/tasks';
@@ -99,11 +96,10 @@ export interface OrchestratorCallbacks {
 }
 
 /**
- * Core 迁移期入口：Work 已交给 TurnExecutor，Chat 仍走旧 ConversationEngine。
- * 这里只保留输入准备、TTS 旁路和跨端事件合流，待 Chat 迁移后继续拆除。
+ * Core 的 Turn 输入装配入口。Chat/Work 共用 TurnExecutor，只在执行策略、
+ * Prompt 扩展和 Context Contribution 上保留产品差异。
  */
 export class Orchestrator {
-  private readonly conversation: ConversationEngine;
   private readonly turnExecutor: TurnExecutor;
   private readonly callbacks:    OrchestratorCallbacks;
   // Core 迁移期只保留按 turnId 查找取消入口，不再复制 Session 运行注册表。
@@ -114,13 +110,13 @@ export class Orchestrator {
     callbacks:                   OrchestratorCallbacks = {},
   ) {
     this.callbacks    = callbacks;
-    this.conversation = new ConversationEngine(bindings);
     this.turnExecutor = new TurnExecutor({
       session:           bindings.session,
       hooks:             bindings.hooks,
       llm:               bindings.llm,
       modelCapabilities: bindings.modelCapabilities,
       emotion:           bindings.emotion,
+      narrative:         bindings.narrative,
       tools:             bindings.tools,
       permission:        bindings.permission,
       getCommandRunner:  bindings.getCommandRunner,
@@ -152,12 +148,6 @@ export class Orchestrator {
   }
 
   async run(request: TurnRequest): Promise<TurnResult> {
-    return request.executionProfile === 'work'
-      ? this.runWork(request)
-      : this.runChat(request);
-  }
-
-  private async runWork(request: TurnRequest): Promise<TurnResult> {
     const sessionId = asSessionId(request.sessionId);
     ensureSessionLayout(this.bindings.activeDataDir, sessionId as string);
 
@@ -169,7 +159,7 @@ export class Orchestrator {
       userInput: request.userInput,
       prepare: async ({ turn, signal }) => {
         const prepared = await this.prepareCoreTurnRequest(request, turn, signal);
-        return this.buildWorkExecutionPlan(
+        return this.buildExecutionPlan(
           prepared.request,
           turn,
           prepared.requestDegradations,
@@ -198,84 +188,6 @@ export class Orchestrator {
       events,
       completion: handle.completion,
     };
-  }
-
-  private async runChat(request: TurnRequest): Promise<TurnResult> {
-    const sessionId = asSessionId(request.sessionId);
-    // 附件或音频写入前建立 Session 目录；递归创建可重复调用。
-    ensureSessionLayout(this.bindings.activeDataDir, sessionId as string);
-    const startInput = {
-      sessionId,
-      triggerType: request.trigger.type,
-      executionProfile: request.executionProfile,
-      narrativePolicy: request.narrativePolicy,
-      userInput: request.userInput,
-    };
-    const { turn, signal } = this.bindings.session.startTurn(startInput);
-    const turnId = turn.id;
-    this.activeTurns.set(turnId as string, {
-      abort: () => this.bindings.session.requestAbort(sessionId),
-    });
-
-    let preparedRequest: PreparedCoreTurnRequest;
-    try {
-      preparedRequest = await this.prepareCoreTurnRequest(request, turn, signal);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      try {
-        await this.reportTurnFailure(
-          turn,
-          err instanceof TurnPreparationError
-            ? err.code
-            : 'turn/attachment_failed',
-          message,
-          'setup',
-        );
-      } catch { /* fall through to clear */ }
-      this.bindings.session.clearRunning(sessionId);
-      this.activeTurns.delete(turnId as string);
-      throw err;
-    }
-
-    const {
-      request: resolvedRequest,
-      requestDegradations,
-    } = preparedRequest;
-
-    // Chat 迁移期仍由 Core 创建旧 Conversation 事件流；任何同步失败都必须释放锁。
-    let engineEvents: AsyncIterable<EmaStreamEvent>;
-    try {
-      engineEvents = this.engineStreamFor(
-        resolvedRequest,
-        turn,
-        signal,
-        sessionId,
-        requestDegradations,
-      );
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      // 即使终态持久化失败，也必须继续释放 Session 运行锁。
-      try {
-        await this.reportTurnFailure(turn, 'turn/setup_failed', message, 'setup');
-      } catch { /* fall through to clear */ }
-      this.bindings.session.clearRunning(sessionId);
-      this.activeTurns.delete(turnId as string);
-      throw err;
-    }
-
-    const events = await this.mergeWithTts(
-      request,
-      turnId,
-      sessionId,
-      signal,
-      engineEvents,
-      () => {
-        this.bindings.session.clearRunning(sessionId);
-        this.activeTurns.delete(turnId as string);
-      },
-    );
-
-    return { turnId, events };
   }
 
   /**
@@ -462,19 +374,20 @@ export class Orchestrator {
     };
   }
 
-  private buildWorkExecutionPlan(
+  private buildExecutionPlan(
     request: TurnRequest & { persistedUserInput: MessageBlocks },
     turn: Turn,
     requestDegradations: RequestDegradationNotice[],
   ): TurnExecutionPlan {
     const sessionId = turn.sessionId;
     const session = this.bindings.session.getSession(sessionId);
-    const workspaceRoot = session.workspaceRoot ?? process.cwd();
+    // 没有用户选择的工作区时保持为空，禁止把 Core 启动目录猜成授权目录。
+    const workspaceRoot = session.workspaceRoot ?? '';
     const { providerId, model } = this.resolveLlmForTurn(request);
     if (!providerId || !model) {
       throw new TurnPreparationError(
         'provider/not_configured',
-        'No LLM provider configured for work profile',
+        `No LLM provider configured for ${request.executionProfile} profile`,
       );
     }
 
@@ -493,20 +406,24 @@ export class Orchestrator {
         activeCharacter: this.bindings.card.current(),
         executionProfile: request.executionProfile,
         narrativePolicy: request.narrativePolicy,
-        extensionContributions: [
-          this.bindings.skillRunner.promptContribution(request.executionProfile),
-        ].filter((contribution) => contribution !== null),
+        extensionContributions: request.executionProfile === 'work'
+          ? [
+              this.bindings.skillRunner.promptContribution(request.executionProfile),
+            ].filter((contribution) => contribution !== null)
+          : [],
       }),
       userInput: request.contentParts?.length
         ? request.contentParts
         : request.userInput,
       persistedUserInput: request.persistedUserInput,
       workspaceRoot,
-      scratchpadDir: scratchpadTurnDir(
-        this.bindings.activeDataDir,
-        sessionId,
-        turn.id as string,
-      ),
+      scratchpadDir: request.executionProfile === 'work'
+        ? scratchpadTurnDir(
+            this.bindings.activeDataDir,
+            sessionId,
+            turn.id as string,
+          )
+        : undefined,
       kbIds: request.kbIds,
       kbAssetScopes: request.kbAssetScopes,
       thinking: request.thinking,
@@ -521,7 +438,9 @@ export class Orchestrator {
           signal: contextRequest.signal,
         });
         const contributions = recalled.contribution ? [recalled.contribution] : [];
-        const tasks = this.bindings.taskStore.takeContextReminder(contextRequest.sessionId);
+        const tasks = contextRequest.executionProfile === 'work'
+          ? this.bindings.taskStore.takeContextReminder(contextRequest.sessionId)
+          : [];
         if (tasks.length > 0) {
           contributions.push({
             id: `tasks.reminder.${Math.max(...tasks.map((task) => task.version))}`,
@@ -555,104 +474,6 @@ export class Orchestrator {
           : undefined,
       }).then((result) => result.messages),
     };
-  }
-
-  private engineStreamFor(
-    request:   TurnRequest,
-    turn:      Turn,
-    signal:    AbortSignal,
-    sessionId: ReturnType<typeof asSessionId>,
-    requestDegradations: RequestDegradationNotice[],
-  ): AsyncIterable<EmaStreamEvent> {
-    switch (request.executionProfile) {
-      case 'chat': {
-        const sess = this.bindings.session.getSession(sessionId);
-        const { providerId, model } = this.resolveLlmForTurn(request);
-        const contextWindow = providerId && model
-          ? this.bindings.providerLlmModels.contextWindowFor(providerId, model)
-            ?? this.bindings.modelCapabilities.resolve({ providerId, model }).contextWindow
-            ?? 200_000
-          : 200_000;
-        const modelMaxOutputTokens = providerId && model
-          ? this.bindings.modelCapabilities.resolve({ providerId, model }).maxOutput
-          : undefined;
-        return this.conversation.run({
-          turn, signal, sessionId,
-          userInput:    request.userInput,
-          prompt:       buildPromptSnapshot({
-            activeCharacter: this.bindings.card.current(),
-            executionProfile: request.executionProfile,
-            narrativePolicy: request.narrativePolicy,
-          }),
-          workspaceRoot: sess.workspaceRoot,
-          contentParts: request.contentParts,
-          persistedUserInput: request.persistedUserInput,
-          providerId,
-          model,
-          thinking:     request.thinking,
-          requestDegradations,
-          prepareContextContributions: async (contextRequest) => {
-            const recalled = await this.bindings.memory.prepareRecallContribution({
-              sessionId: contextRequest.sessionId,
-              turnId: contextRequest.turnId,
-              executionProfile: contextRequest.executionProfile,
-              narrativePolicy: contextRequest.narrativePolicy,
-              userInput: contextRequest.userInput,
-              signal: contextRequest.signal,
-            });
-            return recalled.contribution ? [recalled.contribution] : [];
-          },
-          compactContext: providerId && model ? (view) => this.bindings.contextCompactor.compact({
-            sessionId:          turn.sessionId,
-            turnId:             turn.id,
-            executionProfile:   request.executionProfile,
-            narrativePolicy:    request.narrativePolicy,
-            messages:           [...view.historyMessages],
-            prefixMessages:     view.prefixMessages,
-            suffixMessages:     view.suffixMessages,
-            requiredRestoreMessages: view.requiredRestoreMessages,
-            tools:              view.tools,
-            modelContextWindow: contextWindow,
-            modelMaxOutputTokens,
-            providerId,
-            model,
-            emit:               this.bindings.systemBus
-              ? (ev) => this.bindings.systemBus.emit(ev)
-              : undefined,
-          }).then(r => r.messages) : undefined,
-        });
-      }
-
-      case 'work': {
-        throw new Error('Work profile must start through TurnExecutor.start()');
-      }
-    }
-  }
-
-  /**
-   * Core 在 Engine 接管前报告 Turn 失败。Session 状态必须先落盘，随后才允许
-   * Observer 读取终态；返回的诊断事件由仍然存在的 SSE 流负责转发。
-   */
-  private async reportTurnFailure(
-    turn: Turn,
-    code: TurnFailureCode,
-    message: string,
-    phase: TurnFailurePhase,
-  ): Promise<EmaStreamEvent[]> {
-    this.bindings.session.failTurn(turn.id, code, message);
-    const emitted: EmaStreamEvent[] = [];
-    await this.bindings.hooks.trigger('onTurnFailure', {
-      turnId: turn.id,
-      sessionId: turn.sessionId,
-      payload: {
-        phase,
-        code,
-        message,
-        durationMs: Date.now() - turn.startedAt,
-      },
-      emit: (event) => emitted.push(event),
-    });
-    return emitted;
   }
 
   /** Turn 选择必须提供完整 Provider + Model；非 Turn 业务才允许读取自己的显式 Binding。 */

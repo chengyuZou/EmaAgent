@@ -51,6 +51,7 @@ import type {
 import type { ModelCapabilityResolver } from '@ema-agent/provider';
 import type { AgentRunStorePort } from '@ema-agent/agent';
 import type { TaskStorePort } from '@ema-agent/tasks';
+import type { NarrativeClient, NarrativeEvent } from '@ema-agent/narrative';
 
 /** 根 Turn 等待 AskUser 回答所需的最小交互端口。 */
 export interface AskUserInteractionPort {
@@ -79,6 +80,8 @@ export interface TurnExecutionDeps {
   llm:        LanguageModel;
   modelCapabilities: ModelCapabilityResolver;
   emotion:    EmotionEngine;
+  /** Narrative 的 route/query 执行入口；TurnExecutor 只按本轮策略调用。 */
+  narrative?: NarrativeClient;
   tools:      ToolRegistry;
   permission: PermissionEngine;
   /**
@@ -238,5 +241,6 @@ export type TurnExecutionEvent =
   | ToolExecutionEvent
   | PermissionStreamEvent
   | EmotionStreamEvent
+  | NarrativeEvent
   | ContextEvent
   | HookWarningEvent;

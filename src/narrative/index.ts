@@ -19,3 +19,9 @@ export type {
   NarrativeQueryResponse,
 } from './types.js';
 export type { NarrativeEvent, NarrativeTimelineFailureCode } from './events.js';
+export { prepareNarrativeRecall } from './recall.js';
+export type {
+  NarrativeRecallResult,
+  NarrativeRecallTimeline,
+  PrepareNarrativeRecallInput,
+} from './recall.js';

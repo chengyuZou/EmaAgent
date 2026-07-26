@@ -6,7 +6,6 @@ import type {
   LlmTokenUsage,
   Message as ModelMessage,
 } from '@ema-agent/llm';
-import type { NarrativeTimelineRecall } from '@ema-agent/session';
 import type { ToolFailurePhase } from '@ema-agent/tools';
 
 /**
@@ -66,7 +65,7 @@ export interface TurnFailurePayload {
 
 export interface HookPayload {
   beforeLlm: {
-    /** 当前 Turn 内的逻辑推理轮次；单轮 Conversation 固定为 1。 */
+    /** 当前 Turn 内的逻辑推理轮次。 */
     iteration: number;
     /** 逻辑 LLM 调用 ID；Provider 内部重试必须保持同一个 ID。 */
     llmCallId: LlmCallId;
@@ -84,10 +83,6 @@ export interface HookPayload {
     model: string;
     /** Agent workspace；普通对话没有 workspace。 */
     workspaceRoot?: string | null;
-    /** Narrative Hook 产生的正式流水线结果，供 Engine 落盘和前端展示。 */
-    narrativeRecall?: {
-      timelines: NarrativeTimelineRecall[];
-    };
   };
   afterLlmComplete: {
     /** 与对应 beforeLlm 完全相同的逻辑推理轮次。 */

@@ -517,6 +517,36 @@ export function dispatchSseEvent(
       });
       break;
 
+    case 'narrative_recall_unavailable':
+      useConversationStore.setState((s) => {
+        const sm = s.streamingMap.get(sessionId as string);
+        if (!sm) return {};
+        const existing = sm.slices.find((slice) => slice.type === 'narrative_status');
+        const narrativeStatus = existing?.type === 'narrative_status'
+          ? {
+              ...existing,
+              failedTimelines: {
+                ...(existing.failedTimelines ?? {}),
+                recall: event.message,
+              },
+            }
+          : {
+              type: 'narrative_status' as const,
+              timelines: [],
+              completedTimelines: [],
+              snippets: {},
+              failedTimelines: { recall: event.message },
+            };
+        const slices = [
+          ...sm.slices.filter((slice) => slice.type !== 'narrative_status'),
+          narrativeStatus,
+        ];
+        const streaming = new Map(s.streamingMap);
+        streaming.set(sessionId as string, { ...sm, slices });
+        return { streamingMap: streaming };
+      });
+      break;
+
     case 'narrative_timeline_complete':
       useConversationStore.setState((s) => {
         const sm = s.streamingMap.get(sessionId as string);

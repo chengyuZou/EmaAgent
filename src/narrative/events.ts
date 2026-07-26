@@ -11,4 +11,5 @@ export type NarrativeTimelineFailureCode =
 export type NarrativeEvent =
   | { type: 'narrative_route_resolved'; sessionId: SessionId; turnId: TurnId; timelines: string[] }
   | { type: 'narrative_timeline_complete'; sessionId: SessionId; turnId: TurnId; timeline: string; charCount: number; snippet: string }
-  | { type: 'narrative_timeline_failed'; sessionId: SessionId; turnId: TurnId; timeline: string; code: NarrativeTimelineFailureCode; message: string; retryable: boolean };
+  | { type: 'narrative_timeline_failed'; sessionId: SessionId; turnId: TurnId; timeline: string; code: NarrativeTimelineFailureCode; message: string; retryable: boolean }
+  | { type: 'narrative_recall_unavailable'; sessionId: SessionId; turnId: TurnId; code: NarrativeTimelineFailureCode; message: string; retryable: boolean };

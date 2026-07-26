@@ -120,11 +120,10 @@ class NarrativeManager:
         mode: str = "hybrid",
         top_k: int = 40,
     ) -> dict[str, str]:
-        """Query multiple timelines in parallel. Unknown timelines are silently skipped.
+        """并行查询多个周目；未配置的周目会被忽略。
 
-        only_need_context=True: LightRAG returns raw retrieved context without
-        calling the LLM for a synthesised answer — the main ConversationEngine
-        LLM does that instead.
+        only_need_context=True 让 LightRAG 只返回检索正文，不额外调用模型合成答案；
+        最终回答统一由 TurnExecutor 驱动的 AgentLoop 生成。
         """
         valid = {t: q for t, q in queries.items() if t in self._instances}
 

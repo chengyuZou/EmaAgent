@@ -32,6 +32,8 @@ export function describeEventNotification(event: EmaStreamEvent): EventNotificat
       return { message: `剧情检索将查询 ${event.timelines.length} 条时间线`, variant: 'info' };
     case 'narrative_timeline_complete':
       return { message: `${event.timeline} 检索完成：${event.snippet}`, variant: 'success' };
+    case 'narrative_recall_unavailable':
+      return { message: `剧情召回不可用：${event.message}`, variant: 'warning' };
     case 'memory_recall_evidence':
       return {
         message: `${event.layer.toUpperCase()} 记忆召回 ${event.report.itemCount} 项`,

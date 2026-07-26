@@ -39,16 +39,16 @@ Ema 已经具备与这条主链大部分对应的模块：
 ```text
 Desktop / apps/core route
         ↓
-ConversationEngine 或 AgentEngine
+TurnExecutor
         ↓
-LLM + Context + Tools + Permission + Hook
+ContextAssembler → AgentLoop → LLM / Tools
         ↓
-AsyncIterable<EmaStreamEvent>（迁移期万能联合）
+TurnHandle.events + TurnOutcome
 ```
 
 已有优势：
 
-- `Turn` 与结构化 SSE 已建立，但当前 `AsyncIterable<EmaStreamEvent>` 混合多个生命周期范围，必须拆为窄事件通道；
+- `Turn`、结构化 SSE 与按领域归属的窄事件已经建立，`EmaStreamEvent` 只保留为迁移期兼容名；
 - Provider 与各模型执行面已经分离，低层模型调用不感知 Session；
 - Permission 与 Sandbox 已物理分层；
 - Desktop、TS Sidecar、Python Bridge 的部署边界比单进程 CLI 更清楚；
@@ -56,15 +56,14 @@ AsyncIterable<EmaStreamEvent>（迁移期万能联合）
 
 当前主要偏差：
 
-- `ConversationEngine` 与 `AgentEngine` 仍是两套循环，Chat/Work 尚未汇聚到唯一执行核心；
 - `apps/core` 的 route/wiring 仍承载部分业务编排，入口层边界不稳定；
-- 模块正在从 `packages` 搬往根 `src`，调用方仍可能穿透旧包内部；
 - 启动、自检、依赖 readiness 与延迟加载尚未形成一条可审计的 Composition Root 流程；
-- 前端、Core 与 Agent 之间仍残留旧 `mode`、`AgentTask` 和多套消息类型。
+- `NarrativePolicy=auto` 尚未接入模型可调用的 Narrative Tool；
+- 前端仍需完成统一工作区与真实 Turn/Task/AgentRun 投影。
 
 ### Diff 判断
 
-1. **V1 必做：统一 TurnEngine。** Chat 与 Work 必须共享同一个循环，只通过 Profile 控制迭代预算和工具能力。不能继续维护第三套 Engine。
+1. **V1 已完成：统一 TurnExecutor + AgentLoop。** Chat 与 Work 共享同一个循环，只通过 Profile 控制迭代预算和工具能力；旧第三套 Engine 已删除。
 2. **V1 必做：核心循环不依赖入口。** Desktop、未来 CLI/Web/QQ/微信只负责把输入规范化为 Turn，并消费事件；不得复制业务循环。
 3. **V1 收口：Core 退回 Sidecar BFF。** Route 只解析、校验、认证和转换 SSE，业务编排进入根 `src` 的产品模块。
 4. **V1 收口：建立明确启动阶段。** Tauri 管 Sidecar 生命周期；Core Composition Root 负责数据库迁移、凭据、Provider Runtime、Tool Registry 和 Bridge readiness；非关键目录扫描、Catalog 刷新和遥测延迟执行。
@@ -123,7 +122,7 @@ Claude 将会话级 `QueryEngine` 与循环级 `query()` 分开。前者处理�
 - `max_tokens` 自动续写一次；
 - Turn Budget、Permission denial loop breaker 和最大迭代断路器已存在。
 
-真正的问题在循环外层：
+这轮重构前的问题位于循环外层：
 
 - `src/agent/engine.ts` 与 `src/conversation/engine.ts` 分别包装 Work 和 Chat/Narrative；
 - `apps/core/src/orchestrator/orchestrator.ts` 再在两者之上选择 Engine、组装 Context、合并 TTS/协调事件并推进终态；
@@ -163,7 +162,7 @@ AgentLoop.run(input): AsyncGenerator<AgentLoopEvent, AgentLoopOutcome>
 
 ### 与第 01 章复核
 
-第 01 章提出“所有入口汇聚到一个执行核心”，第 02 章将其细化为 `TurnExecutor + AgentLoop`，并不意味着再创造两个业务 Engine：两层分别解决根生命周期和循环迭代，Chat/Work 都走同一实例组合。现有 `Orchestrator + ConversationEngine` 迁移层仍需收敛，ConversationEngine 退役，而不是整体改名后保留。
+第 01 章提出“所有入口汇聚到一个执行核心”，第 02 章将其细化为 `TurnExecutor + AgentLoop`，并不意味着再创造两个业务 Engine：两层分别解决根生命周期和循环迭代，Chat/Work 已走同一实例组合。ConversationEngine 已按职责拆散删除，剩余工作是让 Core Orchestrator 继续退回协议与装配边界。
 
 ---
 
@@ -194,7 +193,7 @@ Claude 还使用 `<system-reminder>` 把系统注入内容放入消息流，并�
 - `src/agent/agentLoop.ts`：每次模型调用前主动压缩，PTL 时最多执行一次反应式压缩；重放时明确移除 thinking；循环以 `AgentLoopOutcome` 返回唯一结果；
 - 旧 `src/agentContext` 已删除：Tool Result 归 `src/tools/results`；Session 级近期文件快照也已删除，Work 压缩后按需重新调用 FileRead。
 
-`src/prompts` 目前只把 Character Prompt 和旧 `TurnMode` 文本拼成一个字符串。Memory Recall 由 orchestrator 作为额外 user message 注入，Narrative Recall 则由 `packages/conversation` 的 `beforeLlm` Hook 改写消息。也就是说，Ema 已经有压缩算法，却还没有一个拥有明确 Slot 的统一 `ContextAssembler`。
+`src/prompts` 已使用显式 Slot 组装稳定产品规则、全局角色与 Profile 指令；`ContextAssembler` 统一装配历史、当前 Turn、Memory、Narrative、Skill 和 Tool Manifest。Memory 只提供 Recall Contribution；Narrative 自有模块完成 route 与多周目查询，再以不可信 Contribution 进入窗口，不再借 `beforeLlm` Hook 改写整组消息。
 
 ### Diff 判断
 
@@ -1455,7 +1454,7 @@ packages/
 
 1. **先锁定语义和 ID。** ExecutionProfile、NarrativePolicy、Turn/Call/Prompt/AgentRun/Job 身份进入明确类型和列。
 2. **Prompt Slot 与 ContextAssembler。** 收敛 Hook/角色/Memory/Narrative 注入，保留现有 Compaction 行为。
-3. **统一 TurnExecutor/AgentLoop。** 根 Work Turn 已迁入高层 TurnExecutor；继续收回 Turn 创建并让 Chat/Work 共用 AgentLoop，Narrative 变独立能力，旧 ConversationEngine 退役。
+3. **统一 TurnExecutor/AgentLoop（已完成）。** Turn 创建与根生命周期归高层 TurnExecutor，Chat/Work 共用 AgentLoop；Narrative 已成为独立能力，旧 ConversationEngine 已删除。
 4. **Tool/Permission/Sandbox 主链复核。** Tool Manifest snapshot、Prepared Call hash、Session FIFO、跨平台 runner。
 5. **AgentTask 语义拆分并完成 V1 Task。** 根投影删除，子执行迁 AgentRun；`src/tasks` 建立持久 Task、依赖、可选活动 Run 绑定、事件、Context 与 UI 全闭环，根 Turn 的 Task Tools 替换并删除 TodoWrite。
 6. **事实与恢复收口。** Usage、Permission audit、AgentRun/Job recovery、单实例与 Desktop supervisor。

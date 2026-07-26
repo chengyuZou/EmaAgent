@@ -6,11 +6,11 @@
 
 ## 当前阶段
 
-根目录迁移已经结束，项目进入语义大重构阶段。统一执行主线第二刀已经完成：`TurnExecutor.start()` 现在同步创建根 Turn 并返回单消费者、有界反压的 `TurnHandle`，Work 调用方只准备 `TurnExecutionPlan` 和消费事件，不再自行持有 Turn 创建与根取消控制器。低层 `@ema-agent/turn` 继续只拥有根领域契约，不建立泛化的 Orchestrator、Runtime 或第三套 Engine。
+根目录迁移已经结束，项目进入语义大重构阶段。统一执行主线第三刀已经完成：Chat/Work 都通过 `TurnExecutor.start() + AgentLoop` 执行，`TurnExecutor` 同步创建根 Turn 并返回单消费者、有界反压的 `TurnHandle`；执行 Profile 只控制迭代预算与模型可见 Tool Manifest，不再选择另一套 Engine。低层 `@ema-agent/turn` 继续只拥有根领域契约，不建立泛化的 Orchestrator、Runtime 或第三套 Engine。
 
 开工前已复核本地 Codex 源码：`codex-protocol` 只定义 Thread/Turn/Submission 等低层协议，真正编排位于 `codex-core/session`；App Server 只校验并提交 `Op::UserInput`，Session 统一建立 `RunningTask`、取消句柄和终态，`RegularTask` 再调用内部 `run_turn` 完成多轮模型与工具循环。Ema 因此保留低层 `turn` 与高层 `turnExecution` 两个编译边界，不能把执行依赖反向塞进被 Context、Session、Storage、Hooks 共同依赖的领域包。
 
-旧 `ConversationEngine` 的双循环语义已经退役，但 `src/conversation` 迁移期包仍然存在。后续必须沿真实调用链把 Chat 路径、Context 贡献、Narrative 检索与 Hook 观察分别归还给所属模块，并最终删除整个 `src/conversation` 包、Workspace 配置和全部 import；禁止仅把它改名为新的 Engine、Service 或 Facade。
+旧 `ConversationEngine` 与整个 `src/conversation` 包已经删除，Workspace 依赖和生产 import 归零。Chat 根生命周期与只读 Tool Profile 进入 `turnExecution`，LLM/Tool 迭代进入 `agent`，Narrative Route 与多周目 Recall 回到 `narrative`，模型可见召回正文通过不可信 Context Contribution 投递；Hook 不再携带 Narrative 私有结果。
 
 事件所有权第一批已经落到源码：Agent、Artifact、Characters、Context、Hooks、Knowledge、Memory、Narrative、System、Tasks、Tools 与 TTS 各自拥有 `events.ts`；Turn 只保留根生命周期、输出、Usage 与请求降级事件。`src/events` 像 `src/ids` 一样执行严格准入，但只负责组合 `TurnStreamEvent/SessionEvent/AppEvent`，禁止定义业务字段。`EmaStreamEvent` 已标记为迁移期兼容名，新生产者必须使用领域事件或窄通道事件。
 
@@ -144,7 +144,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 5. Builtin Tool 2D 的 Sandbox 命令环境 allowlist、工作目录边界、FileRead 行数/字节双上限、Glob/Grep 有界搜索与 WebSearch 公网访问安全均已完成；结构化 Presentation 公共协议与首批接线已完成；
 6. Permission V1 已完成：统一 Session FIFO、明确终态、Turn 身份核对、SQLite 永久规则 CRUD 与设置页管理、Builtin-only 免审批边界均已接通；旧 `AskUserRegistryLike` 已改为 `AskUserInteractionPort`，不新增第二套队列；
 7. Skill 多文件激活、per-Agent 状态、结构化 Context 恢复与 `allowed-tools` 单向收窄已经完成；
-8. `turnExecution/TurnExecutor` 第二刀已完成；下一批让 Chat 共用同一 `TurnExecutor + AgentLoop` 主链，归还 Narrative/Context/Hook 职责并删除 `src/conversation`，最后让 Core Route 退回协议层；
+8. `TurnExecutor + AgentLoop` 第三刀已完成：Chat/Work 共用主链，`src/conversation` 已删除，Narrative Recall 已归还所有者；下一批先补 `NarrativePolicy=auto` 的模型可调用 Tool，再让 Core Route 退回协议层；
 9. 后台进程按 `BackgroundProcess + ProcessOutput/ProcessStop` 单独实现 C 档，不修改 AgentLoop，也不恢复假 `run_in_background`。
 
 命名随业务批次清理：旧 `IFileStateStoreEntry/IFileStateStore` 及后续过渡接口已经删除，`IToolExecutionJournal` 已改为职责名；其余迁移期 `I*` 类型继续随业务边界处理，不单独进行全仓机械重命名。
@@ -153,6 +153,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- TurnExecutor 第三刀：全仓 typecheck 84/84 通过；TurnExecution 11/11、Narrative 6/6、Hooks 27/27、Agent 25/25、Core 93/93、Desktop UI 132/132 通过，4 个 Live Integration 按规则跳过。Workspace 已移除 `@ema-agent/conversation`，源码、依赖和磁盘缓存目录全部清零；Chat 只读 Tool Manifest、Narrative 多周目部分失败、领域事件、持久化 Block 与 reasoning signature 往返已有直接测试覆盖。
 - TurnExecutor 第二刀：全仓 typecheck 86/86 通过；TurnExecution 10/10、Core 93/93、Conversation 7/7 通过，4 个 Live Integration 按规则跳过。Work 生产调用已无 `turnExecutor.execute()`，`session.startTurn()` 只剩 TurnExecutor 与待迁 Chat 各一处；`TurnHandle` 准备失败、准备期取消、单消费者、终态 Promise 和运行锁释放已有测试覆盖。
 - TurnExecutor 第一刀：全仓 typecheck 86/86 通过；TurnExecution 8/8、Agent 25/25、Turn 20/20、Conversation 7/7、Core 93/93 通过，4 个 Live Integration 按规则跳过。全仓检查顺带发现并修复桌宠 Permission Toast 未随 API 新契约提交 `turnId` 的既存类型错误。旧 `AgentEngine/AgentDeps/TurnExecutionInput/AskUserRegistryLike/AgentRuntimeEvent` 生产引用归零；`git diff --check` 通过，仅有既有 CRLF 提示。
 - Skill Runtime：Skills 26/26、Context 26/26、BuiltinTools 106/106、Agent 33/33 通过，另有 1 个系统能力条件测试和 4 个 Agent Live Integration 按规则跳过；Skills、Context、BuiltinTools 按依赖顺序 build 通过，Agent、Core、Desktop UI typecheck 通过。测试覆盖 SKILL.md/脚本/Reference 的独立 path、Bundle revision、per-Agent fork 隔离、SkillCall 激活登记，以及只有 Macro 后才恢复 Skill Context。
@@ -222,7 +223,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 先完整阅读 CLAUDE.md 与 EmaWorkState.md，再按当前批次阅读 EmaRefactor.md 和 EmaClaudeArchitectureReview.md 对应章节。检查 git status、diff 和最近提交，保留用户及其他 Agent 的修改。
 
-目录迁移已经结束，不要继续机械搬包。R2 Prompt Slot 与 R3 ContextAssembler 已完成，不要重写。统一执行第二刀已经让 `TurnExecutor.start()` 创建根 Turn 并返回 `TurnHandle`；下一批迁 Chat 到同一 `TurnExecutor + AgentLoop` 主链，归还 Narrative/Context/Hook 职责并删除 `conversation`。不要创建 Orchestrator、Runtime 或第三套 Engine。修改前先核对真实调用链并说明本批边界，不要提交 Git。
+目录迁移已经结束，不要继续机械搬包。R2 Prompt Slot、R3 ContextAssembler 与 Chat/Work 统一 `TurnExecutor + AgentLoop` 主链已经完成；`AgentEngine`、`ConversationEngine` 和 `src/conversation` 均已删除。下一批先补 `NarrativePolicy=auto` 的 NarrativeSearchTool，再让 Core Route 退回协议层。不要创建 Orchestrator、Runtime 或第三套 Engine。修改前先核对真实调用链并说明本批边界，不要提交 Git。
 ```
 
 ## 维护方式

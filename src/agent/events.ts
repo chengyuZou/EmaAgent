@@ -18,6 +18,7 @@ export type AgentLoopEvent<TExecutorEvent> =
   | { type: 'loop_iteration'; n: number; state: AgentLoopState }
   | { type: 'loop_text_delta'; delta: string; blockIndex: number }
   | { type: 'loop_thinking_delta'; delta: string; blockIndex: number }
+  | { type: 'loop_thinking_complete'; blockIndex: number; signature?: string }
   | { type: 'loop_tool_partial'; callId: string; name: string; argsDelta: string; blockIndex: number }
   | { type: 'loop_tool_complete'; callId: string; name: string; args: unknown; blockIndex: number }
   | {
