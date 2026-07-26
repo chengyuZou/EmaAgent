@@ -1,5 +1,5 @@
-// 这里管理文件型 Skill 的扫描, 安装, 读取, 重命名和安全删除.
-import { randomUUID } from 'node:crypto';
+// 管理文件型 Skill 的扫描、安装、读取、重命名和安全删除。
+import { createHash, randomUUID } from 'node:crypto';
 import { lstat, realpath, rm, stat } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import type { SkillRow } from '@ema-agent/storage';
@@ -8,6 +8,7 @@ import {
   assertRegularFile,
   assertSkillTextSize,
   copyExistingAssets,
+  inspectSkillDirectory,
   measureSkillDirectory,
   readUtf8Bounded,
   replaceFrontmatterName,
@@ -97,9 +98,13 @@ export class SkillStore {
 
   listSummaries(): SkillSummary[] {
     return this.repo.listEnabled().map(row => ({
+      skillId: row.id,
       name: row.name,
+      version: row.version,
       description: row.description,
       argumentHint: row.arg_hint ?? undefined,
+      path: join(row.dir_path, SKILL_FILE),
+      source: row.source as SkillSource,
     }));
   }
 
@@ -118,19 +123,34 @@ export class SkillStore {
       const file = await this.rootBoundary.guardedSkillFile(row);
       const raw = await readUtf8Bounded(file, MAX_SKILL_BYTES);
       const manifest = parseSkillMd(raw);
+      const rootPath = dirname(file);
+      const bundle = await inspectSkillDirectory(rootPath);
+      const instructionFile = bundle.files.find((entry) => entry.kind === 'instructions');
+      const rawHash = createHash('sha256').update(raw, 'utf8').digest('hex');
+      if (!instructionFile || instructionFile.sha256 !== rawHash) {
+        throw new SkillPathError(`Skill changed while being activated: ${file}`);
+      }
       return Object.freeze({
+        skillId: row.id,
         name: manifest.name,
-        content: manifest.body
+        version: manifest.version,
+        source: row.source as SkillSource,
+        path: resolve(file),
+        rootPath: resolve(rootPath),
+        bundleRevision: bundle.revision,
+        ...(args === undefined ? {} : { arguments: args }),
+        instructions: manifest.body
           .replaceAll('$ARGUMENTS', args ?? '')
           .replaceAll('${SKILL_DIR}', dirname(file).replaceAll('\\', '/')),
-        allowedTools: Object.freeze([...manifest.allowedTools]),
+        allowedToolPatterns: Object.freeze([...manifest.allowedTools]),
+        files: bundle.files,
       });
     });
   }
 
   /** 兼容只需要正文的管理端调用；Agent 主链使用 activate()。 */
   async renderBody(name: string, args: string | undefined): Promise<string> {
-    return (await this.activate(name, args)).content;
+    return (await this.activate(name, args)).instructions;
   }
 
   validate(rawMd: string) {
@@ -399,6 +419,7 @@ export class SkillStore {
       version: row.version,
       description: row.description,
       argumentHint: row.arg_hint ?? undefined,
+      path: join(row.dir_path, SKILL_FILE),
       dirPath: row.dir_path,
       source: row.source as SkillSource,
       sourceUrl: row.source_url ?? undefined,

@@ -31,6 +31,7 @@ export class ContextAssembler {
       prefixMessages: parts.prefix,
       historyMessages: parts.history,
       suffixMessages: parts.suffix,
+      requiredRestoreMessages: parts.restore,
       tools: parts.tools,
     }, options);
     const historyEnd = Math.max(parts.prefix.length, messages.length - parts.suffix.length);
@@ -43,12 +44,14 @@ interface ContextParts {
   prefix: Message[];
   history: Message[];
   suffix: Message[];
+  restore: Message[];
   tools: LlmToolDef[];
 }
 
 function buildContextParts(input: ContextAssemblyInput): ContextParts {
     const contributions = input.contributions ?? [];
-    assertUniqueContributionIds(contributions);
+    const restoreContributions = input.postCompactionRestoreContributions ?? [];
+    assertUniqueContributionIds([...contributions, ...restoreContributions]);
 
     const systemMessages = input.prompt.systemBlocks.map((block): Message => ({
       role: 'system',
@@ -82,6 +85,9 @@ function buildContextParts(input: ContextAssemblyInput): ContextParts {
       ].map(cloneAndFreeze),
       history: input.history.map(cloneAndFreeze),
       suffix,
+      restore: restoreContributions.map((contribution) =>
+        cloneAndFreeze(contribution.message)
+      ),
       tools,
     };
 }

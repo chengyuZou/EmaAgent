@@ -62,6 +62,9 @@ describe('SubagentSpawner 生命周期', () => {
       'provider-1',
       'model-1',
       [],
+      '',
+      undefined,
+      new Map(),
     );
     const agentRunId = asAgentRunId('11111111-1111-4111-8111-111111111111');
     const parentSignal = new AbortController().signal;

@@ -11,8 +11,8 @@ import {
 describe('renderSkillCatalog', () => {
   it('稳定排序并限制单项描述', () => {
     const catalog = renderSkillCatalog([
-      { name: 'zeta', description: 'z'.repeat(MAX_SKILL_DESCRIPTION_CHARS + 50) },
-      { name: 'alpha', description: 'first' },
+      summary('zeta', 'z'.repeat(MAX_SKILL_DESCRIPTION_CHARS + 50)),
+      summary('alpha', 'first'),
     ]);
 
     expect(catalog.indexOf('**alpha**')).toBeLessThan(catalog.indexOf('**zeta**'));
@@ -22,8 +22,12 @@ describe('renderSkillCatalog', () => {
   it('限制目录总长度并说明省略数量', () => {
     const catalog = renderSkillCatalog([
       ...Array.from({ length: 100 }, (_, index) => ({
+        skillId: `skill-${index}`,
         name: `skill-${String(index).padStart(3, '0')}`,
+        version: '1.0.0',
         description: '说明'.repeat(100),
+        path: `D:\\skills\\skill-${index}\\SKILL.md`,
+        source: 'user' as const,
       })),
     ]);
 
@@ -32,19 +36,35 @@ describe('renderSkillCatalog', () => {
   });
 });
 
+function summary(name: string, description: string) {
+  return {
+    skillId: `skill-${name}`,
+    name,
+    version: '1.0.0',
+    description,
+    path: `D:\\skills\\${name}\\SKILL.md`,
+    source: 'user' as const,
+  };
+}
+
 describe('SkillRunner Port', () => {
-  it('把领域 allowedTools 投影为 Tool 使用的 allowedToolPatterns', async () => {
+  it('不丢失 Skill 路径和 Bundle 身份', async () => {
+    const activation = {
+      skillId: 'skill-pdf',
+      name: 'pdf',
+      version: '1.0.0',
+      source: 'user' as const,
+      path: 'D:\\skills\\pdf\\SKILL.md',
+      rootPath: 'D:\\skills\\pdf',
+      bundleRevision: 'revision',
+      instructions: '读取 PDF',
+      allowedToolPatterns: ['FileRead', 'Grep'],
+      files: [],
+    };
     const runner = new SkillRunner({
-      activate: async () => ({
-        name: 'pdf',
-        content: '读取 PDF',
-        allowedTools: ['FileRead', 'Grep'],
-      }),
+      activate: async () => activation,
     } as never);
 
-    await expect(runner.run('pdf', undefined)).resolves.toEqual({
-      content: '读取 PDF',
-      allowedToolPatterns: ['FileRead', 'Grep'],
-    });
+    await expect(runner.run('pdf', undefined)).resolves.toBe(activation);
   });
 });

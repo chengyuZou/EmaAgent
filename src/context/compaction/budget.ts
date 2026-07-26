@@ -20,6 +20,9 @@ export function fitCompactionContext(args: {
   prefix: ModelMessage[];
   /** Memory、Narrative 与当前 Turn 等不可压缩尾部，始终原样保留。 */
   suffix: ModelMessage[];
+  /** Skill 等运行态必须恢复；放不下时整个压缩失败。 */
+  requiredRestore: ModelMessage[];
+  /** Session Note 等可选恢复状态，预算不足时可以丢弃。 */
   restore: ModelMessage[];
   tail: ModelMessage[];
   executionProfile: ExecutionProfile;
@@ -31,12 +34,18 @@ export function fitCompactionContext(args: {
     fixedTokens + estimateMessagesTokens(messages);
   if (
     args.tokenLimit <= fixedTokens
-    || estimateTotal([...args.prefix, ...args.tail, ...args.suffix]) >= args.tokenLimit
+    || estimateTotal([
+      ...args.prefix,
+      ...args.requiredRestore,
+      ...args.tail,
+      ...args.suffix,
+    ]) >= args.tokenLimit
   ) return null;
 
   const full = buildCandidate(
     args.summary,
     args.prefix,
+    args.requiredRestore,
     args.restore,
     args.tail,
     args.suffix,
@@ -56,6 +65,7 @@ export function fitCompactionContext(args: {
   const withoutRestore = buildCandidate(
     args.summary,
     args.prefix,
+    args.requiredRestore,
     [],
     args.tail,
     args.suffix,
@@ -82,6 +92,7 @@ export function fitCompactionContext(args: {
     const messages = buildCandidate(
       summary,
       args.prefix,
+      args.requiredRestore,
       [],
       args.tail,
       args.suffix,
@@ -107,6 +118,7 @@ export function fitCompactionContext(args: {
 function buildCandidate(
   summary: string,
   prefix: ModelMessage[],
+  requiredRestore: ModelMessage[],
   restore: ModelMessage[],
   tail: ModelMessage[],
   suffix: ModelMessage[],
@@ -118,6 +130,7 @@ function buildCandidate(
       role: 'user',
       content: `<context-summary profile="${executionProfile}">\n${summary}\n</context-summary>`,
     },
+    ...requiredRestore,
     ...restore,
     ...tail,
     ...suffix,

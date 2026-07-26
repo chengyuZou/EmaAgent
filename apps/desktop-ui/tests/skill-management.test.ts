@@ -11,6 +11,7 @@ function skill(name: string): SkillRecord {
     name,
     version: '1.0.0',
     description: 'test',
+    path: `D:\\skills\\${name}\\SKILL.md`,
     dirPath: `D:\\skills\\${name}`,
     source: 'user',
     sizeBytes: 10,

@@ -24,8 +24,8 @@ const inputSchema = z.object({
     .string()
     .min(1)
     .describe(
-      'Self-contained task prompt for the sub-agent. Must include all context needed - ' +
-        'the sub-agent has no memory of the parent agent\'s conversation.',
+      'Task prompt for the sub-agent. In the default "subagent" mode it must include all ' +
+        'needed context because parent conversation history is not inherited.',
     ),
   model: z
     .string()
@@ -35,15 +35,16 @@ const inputSchema = z.object({
     ),
   description: z
     .string()
-    .optional()
+    .trim()
+    .min(1)
+    .max(200)
     .describe('Short description of this sub-agent\'s role (shown in the dashboard and logs).'),
   kind: z
     .enum(['subagent', 'fork'])
     .optional()
     .describe(
-      'Context strategy. "fork" (default) inherits the parent conversation history - use when ' +
-        'the sub-agent needs prior context. "subagent" starts fresh with only the task prompt - ' +
-        'use for independent parallel workers to save tokens and avoid context bleed.',
+      'Context strategy. "subagent" is the default and starts with only the task prompt. ' +
+        'Use "fork" only when the worker explicitly needs the parent conversation history.',
     ),
   taskId: z
     .string()
@@ -64,7 +65,8 @@ export const SubagentTool = buildTool<SubagentInput, SubagentRunResult, BuiltinT
   description: `Spawn a fresh sub-agent to handle a self-contained sub-task and return its final output.
 
 The sub-agent:
-- Has NO memory of the parent conversation - the \`prompt\` must be fully self-contained.
+- Starts with NO parent conversation history by default; choose \`kind: "fork"\` explicitly to inherit it.
+- Uses the same workspace and permission/sandbox boundaries as the parent Turn.
 - Runs its own think->act loop and reports back when done.
 - Is cancelled automatically if the parent turn is aborted.
 - Useful for parallelizable research, code review, or isolated refactors.`,
@@ -104,7 +106,7 @@ The sub-agent:
       {
         model: input.model,
         description: input.description,
-        kind: input.kind,
+        kind: input.kind ?? 'subagent',
         agentRunId,
         taskId: input.taskId ? asTaskId(input.taskId) : undefined,
       },

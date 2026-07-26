@@ -2,9 +2,10 @@
 
 import { randomUUID } from 'node:crypto';
 import { asAgentRunId, type AgentRunId, type SessionId, type TurnId } from '@ema-agent/ids';
-import type { ToolError } from '@ema-agent/tools';
+import type { ReadFileState, ToolError } from '@ema-agent/tools';
 import type { Message as ModelMessage } from '@ema-agent/llm';
 import type { KnowledgeSearchPort } from '@ema-agent/knowledge';
+import type { CommandRunnerPort } from '@ema-agent/sandbox';
 import type {
   SubagentRunResult,
   SubagentSpawnOptions,
@@ -21,6 +22,9 @@ import { createToolLifecycleHooks } from './toolLifecycleHooks.js';
 import { runAgentLoop, type ExecutorFactory } from './agentLoop.js';
 import { TurnBudget } from './turn-budget.js';
 import type { AgentRuntimeEvent } from './events.js';
+import {
+  ActiveSkillState,
+} from '@ema-agent/skills';
 
 // ── 子 Agent 调度入口 ─────────────────────────────────────────────────────────
 // 负责全部子 Agent 面板事件：
@@ -54,11 +58,15 @@ export class SubagentSpawner implements SubagentSpawnerPort {
     private readonly parentProviderId:      string,
     private readonly parentModel:           string,
     private readonly parentMessages:        ModelMessage[],
+    private readonly workspaceRoot:         string,
+    private readonly commandRunner:         CommandRunnerPort | undefined,
+    private readonly parentReadFileState:   ReadFileState,
     private readonly scratchpadDir?:        string,
     private readonly getScratchpadContext?: () => string | undefined,
     private readonly parentEmit?:           (ev: AgentRuntimeEvent) => void,
     private readonly kbSearch?:             KnowledgeSearchPort,
     private readonly budget:                TurnBudget = new TurnBudget(),
+    private readonly parentActiveSkillState: ActiveSkillState = new ActiveSkillState(),
   ) {}
 
   // ── 后台执行 ─────────────────────────────────────────────────────────────
@@ -101,8 +109,11 @@ export class SubagentSpawner implements SubagentSpawnerPort {
 
   // ── 单个子 Agent 取消 ─────────────────────────────────────────────────────
 
-  abortSubagent(agentRunId: AgentRunId): void {
-    this.activeSubagents.get(agentRunId)?.abort();
+  abortSubagent(agentRunId: AgentRunId): boolean {
+    const controller = this.activeSubagents.get(agentRunId);
+    if (!controller) return false;
+    controller.abort();
+    return true;
   }
 
   /** 父 Turn 收口时取消并等待所有未显式 await 的后台子 Agent。 */
@@ -129,10 +140,8 @@ export class SubagentSpawner implements SubagentSpawnerPort {
     const sessionId     = this.parentSessionId as SessionId;
     const parentTurnId  = this.parentTurnId   as TurnId;
     const resolvedModel = opts.model ?? this.parentModel;
-    // 普通子 Agent 不继承父工作区。空 workspaceRoot 会让相对路径规则拒绝匹配；
-    // 只有显式全局规则或用户主目录规则才能授权，禁止改成 process.cwd()。
     const permCtx       = {
-      workspaceRoot: '',
+      workspaceRoot: this.workspaceRoot,
       sessionId: this.parentSessionId,
       turnId: parentTurnId,
       internalPaths: this.scratchpadDir
@@ -142,7 +151,7 @@ export class SubagentSpawner implements SubagentSpawnerPort {
 
     const startedAtMs = Date.now();
     const taskId      = opts.taskId;
-    const kind        = opts.kind ?? 'fork';
+    const kind        = opts.kind ?? 'subagent';
     const emit = (ev: AgentRuntimeEvent) => this.parentEmit?.(ev);
 
     // 子控制器继承父取消信号，也允许只取消当前 AgentRun。
@@ -151,16 +160,26 @@ export class SubagentSpawner implements SubagentSpawnerPort {
     signal.addEventListener('abort', onParentAbort, { once: true });
     this.activeSubagents.set(agentRunId, childCtrl);
 
-    // 子 Agent 不注入工作区、Task、AskUser 或新的 SubagentSpawner，因此这些工具
-    // 会由同一能力装配器从 Manifest 隐藏，而不是再维护一份手写工具白名单。
+    // 子 Agent 与父 Turn 在同一工作区和沙箱能力内执行，但拥有独立的可变文件状态。
+    // fork 继承父执行已读取文件的快照；fresh 子 Agent 必须自行读取后才能编辑。
+    // Task、AskUser 和新的 SubagentSpawner 不注入，递归与用户交互能力由 Manifest 隐藏。
+    const readFileState: ReadFileState = kind === 'fork'
+      ? new Map(this.parentReadFileState)
+      : new Map();
+    const activeSkillState = kind === 'fork'
+      ? this.parentActiveSkillState.fork()
+      : new ActiveSkillState();
     const capabilityContext: BuiltinToolContext = {
       sessionId,
       turnId:           parentTurnId,
       agentRunId,
-      workspaceRoot:    '',
+      workspaceRoot:    this.workspaceRoot,
       signal:           childCtrl.signal,
+      commandRunner:    this.commandRunner,
+      readFileState,
       artifactStore:    this.deps.artifactStore,
       skillRunner:      this.deps.skillRunner,
+      activeSkillState,
       knowledgeSearch:  this.kbSearch,
       scratchpad:       this.scratchpadDir
         ? { dir: this.scratchpadDir, author: `subagent:${agentRunId.slice(0, 8)}` }

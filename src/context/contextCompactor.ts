@@ -187,6 +187,9 @@ export class ContextCompactor {
       sessionId: args.sessionId,
       executionProfile: args.executionProfile,
     });
+    const requiredRestore = sanitizeCompactionMessages([
+      ...(args.requiredRestoreMessages ?? []),
+    ]);
     // 预算适配:把 [prefix, summary, restore, tail, suffix] 塞进 tokenLimit。
     // 摘要 + tail 仍超限时,fit 会进一步裁剪 tail;塞不下返回 null(失败)。
     const toolTokens = estimateLlmInputTokens([], { tools: args.tools }).totalTokens;
@@ -195,6 +198,7 @@ export class ContextCompactor {
       prefix,
       suffix: fixedSuffix,
       restore,
+      requiredRestore,
       tail,
       executionProfile: args.executionProfile,
       tokenLimit,

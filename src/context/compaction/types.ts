@@ -47,6 +47,8 @@ export interface ContextCompactionArgs {
   prefixMessages?: readonly Message[];
   /** 临时召回与当前 Turn 参与预算并原样保留，但不得进入摘要模型。 */
   suffixMessages?: readonly Message[];
+  /** Macro 成功后必须恢复的 Agent 运行态，不能因预算紧张静默丢弃。 */
+  requiredRestoreMessages?: readonly Message[];
   /** Provider 已明确报告超限时跳过估算阈值，强制尝试安全压缩。 */
   force?: boolean;
   modelContextWindow: number;

@@ -151,6 +151,12 @@ describe('ContextAssembler', () => {
         placement: 'beforeCurrentTurn',
         message: { role: 'user', content: 'recalled facts' },
       }],
+      postCompactionRestoreContributions: [{
+        id: 'skills.active',
+        source: 'skills',
+        placement: 'beforeCurrentTurn',
+        message: { role: 'user', content: 'active skill instructions' },
+      }],
     }, async (view) => {
       expect(view.prefixMessages).toEqual([
         { role: 'system', content: 'system rules', cacheBreakpoint: true },
@@ -162,16 +168,28 @@ describe('ContextAssembler', () => {
         { role: 'user', content: 'recalled facts' },
         { role: 'user', content: 'current question' },
       ]);
-      return [...view.prefixMessages, { role: 'user', content: 'summary' }, ...view.suffixMessages];
+      expect(view.requiredRestoreMessages).toEqual([
+        { role: 'user', content: 'active skill instructions' },
+      ]);
+      return [
+        ...view.prefixMessages,
+        { role: 'user', content: 'summary' },
+        ...view.requiredRestoreMessages,
+        ...view.suffixMessages,
+      ];
     });
 
     expect(snapshot.messages.map((message) => message.content)).toEqual([
       'system rules',
       'summary',
+      'active skill instructions',
       'recalled facts',
       'current question',
     ]);
-    expect(snapshot.messages[3]?.cacheBreakpoint).toBe(true);
-    expect(snapshot.history).toEqual([{ role: 'user', content: 'summary' }]);
+    expect(snapshot.messages[4]?.cacheBreakpoint).toBe(true);
+    expect(snapshot.history).toEqual([
+      { role: 'user', content: 'summary' },
+      { role: 'user', content: 'active skill instructions' },
+    ]);
   });
 });

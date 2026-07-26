@@ -8,7 +8,7 @@ export interface SubagentSpawnOptions {
   model?: string;
   description?: string;
   /**
-   * 默认 fork；独立任务使用 subagent 可减少无关历史并避免上下文串扰。
+   * 默认 subagent；只有明确需要父历史时才使用 fork。
    */
   kind?: SubagentContextMode;
   /** 调用方预分配执行 ID，确保启动事件与持久记录使用同一身份。 */
@@ -53,6 +53,6 @@ export interface SubagentSpawnerPort {
   /** 向运行中的后台子 Agent 投递下一轮可见的协调消息。 */
   queueMessage?(agentRunId: AgentRunId, message: string): boolean;
 
-  /** 只取消指定子 Agent，不中止父 Turn。 */
-  abortSubagent?(agentRunId: AgentRunId): void;
+  /** 只取消指定子 Agent，不中止父 Turn；未知或已结束时返回 false。 */
+  abortSubagent?(agentRunId: AgentRunId): boolean;
 }

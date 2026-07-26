@@ -7,7 +7,8 @@ export type ContextContributionSource =
   | 'narrative'
   | 'scratchpad'
   | 'mailbox'
-  | 'tasks';
+  | 'tasks'
+  | 'skills';
 
 export type ContextContributionPlacement =
   | 'beforeCurrentTurn'
@@ -25,6 +26,8 @@ export interface ContextCompactionView {
   readonly prefixMessages: readonly Message[];
   readonly historyMessages: readonly Message[];
   readonly suffixMessages: readonly Message[];
+  /** Macro 后必须恢复的 Agent 运行态；预算不足时压缩失败，不能静默丢弃。 */
+  readonly requiredRestoreMessages: readonly Message[];
   readonly tools: readonly LlmToolDef[];
 }
 

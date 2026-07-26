@@ -24,6 +24,7 @@ import {
   SubagentSpawnBackgroundTool,
   SubagentSendMessageTool,
   SubagentAwaitTool,
+  SubagentAbortTool,
 } from './tools/SubagentTool/BackgroundSubagentTools.js';
 import {
   ScratchpadWriteTool,
@@ -76,6 +77,7 @@ export {
   SubagentSpawnBackgroundTool,
   SubagentSendMessageTool,
   SubagentAwaitTool,
+  SubagentAbortTool,
   ScratchpadWriteTool,
   ScratchpadReadTool,
   ScratchpadListTool,
@@ -131,6 +133,7 @@ const ALL_BUILTIN_TOOLS: BuiltTool<any, any, any>[] = [
   SubagentSpawnBackgroundTool,
   SubagentSendMessageTool,
   SubagentAwaitTool,
+  SubagentAbortTool,
   ScratchpadWriteTool,
   ScratchpadReadTool,
   ScratchpadListTool,

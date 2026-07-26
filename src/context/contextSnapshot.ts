@@ -11,6 +11,8 @@ export interface ContextAssemblyInput {
   /** 当前 Turn 可能已包含多轮 assistant/tool_result，因此不能假设只有一条 user message。 */
   readonly currentTurn: readonly Message[];
   readonly contributions?: readonly ContextContribution[];
+  /** Macro 压缩后恢复的 Agent 运行态；正常装配时不重复投递。 */
+  readonly postCompactionRestoreContributions?: readonly ContextContribution[];
   readonly toolManifest?: ToolManifestSnapshot;
 }
 

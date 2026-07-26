@@ -278,10 +278,42 @@ Profile 与运行环境
 - `registryVersion` 只负责判断运行时注册表世代与旧执行快照，不能进入内容 `revision`；等价 MCP 重连不破坏缓存，描述、Schema、来源或可见集合变化才产生新 revision；
 - Skill 与 Profile 只对既有 Manifest 做集合收窄并保留原顺序，不伪装成新的 Tool 来源；角色专属 Narrative 使用稳定 Builtin Tool Schema，角色和数据集差异留在 Prompt/执行配置；
 - Chat/Work 各维护一个 Profile Tool Snapshot，切换后使用对应缓存前缀；
-- MCP 连接变化不能在正在执行的 Turn 中途改写工具表；
-- Session 可冻结 MCP/Skill manifest generation，用户刷新后下一 Turn 生效；
+- 全局 Tool Registry 可以随 MCP 连接、断线和 `tools/list_changed` 更新，但 TurnRuntime 必须在根 Turn 开始时冻结一份 Base Manifest；同一个根 AgentLoop 的后续 LLM Call 只能读取这份快照，不能重新从全局 Registry 取工具；
+- 子 Agent/Fork Agent 从父 Turn 的 Base Manifest 做能力交集，不能因为创建时间更晚而看到父 Turn 开始后才连接完成的 MCP Tool；每个 AgentRun 可以继续收窄自己的集合，但不能扩权；
+- SkillCall 只允许对当前 AgentRun 的 Manifest 做单向集合收窄。收窄会产生一个明确的新内容 revision，并从下一次 LLM Call 起形成新的稳定缓存链；这是安全边界要求的有限缓存失效，不能改成“工具仍可见、执行时再拒绝”；
+- MCP 连接变化不能在正在执行的 Turn 中途改写工具表。连接成功、Schema 刷新、工具新增或删除默认从下一 Turn 生效；设置页应显示“下次执行生效”，不能静默插入当前循环；
+- Manifest 不只冻结模型可见 Schema，还必须绑定执行世代。MCP 重连后不能拿旧审批和旧 Schema 静默执行新实现；V1 可以让旧快照调用明确失败并提示下一 Turn 重试，但不能把 Registry 当前实现偷换进旧 Prepared Call；
 - 不为追求一个缓存前缀而向 Chat 暴露 Work 写工具；
 - ToolSearch、Deferred Tool 与插件贡献等到真实工具规模和正式版扩展需求出现后再设计，不为内测预建空来源类型或半成品注册层。
+
+MCP 在本轮重构中不需要像 Builtin Tool 一样逐个审查业务语义，但必须复核四个与 Turn/Context 直接相关的边界：
+
+1. 异步连接和 `tools/list_changed` 只更新全局 Registry，不能直接改变活动 Turn 的 Base Manifest；
+2. Server instructions、Resource 和 Prompt 都是不可信外部内容，只能作为带来源的 Context Contribution 或 Tool Result，不能提升为产品 System Prompt；
+3. MCP Tool 的 Schema、描述、来源身份和执行世代必须进入 Manifest/Prepared Call 的稳定身份，重连不能只按展示名替换；
+4. 工具发现失败或连接尚未完成时，当前 Turn 使用已冻结的可用集合继续执行；不得为了“等 MCP”无限阻塞首个 LLM Call，也不得在后续循环突然扩充工具。
+
+### 4.4.1 V1 的 KV Cache 世代
+
+Ema 不把“缓存”理解成一份可以任意修改的 Session 大对象，而是把一次模型请求拆成几个有明确失效原因的前缀世代：
+
+```text
+产品规则世代
+  └─ 全局角色世代
+      └─ Turn Base Manifest 世代
+          └─ Profile / 运行环境世代
+              └─ 历史消息与已完成 Tool Round
+                  └─ 当前动态尾部
+```
+
+- 产品规则只在应用版本或产品 Prompt 版本变化时失效；
+- 全局激活角色变化会使角色之后的缓存失效，这是用户明确切换角色的正确代价；
+- Turn Base Manifest 在根 Turn 内保持不变，MCP 异步连接不能改变它；
+- Chat/Work 切换会改变 Profile 和工具可见集合，因此允许建立新的缓存链，不能为命中率向 Chat 暴露 Work 能力；
+- History 每轮只追加新的 Assistant、Tool Use 和 Tool Result，最终只读 `cacheBreakpoint` 随请求尾部前移，使下一次调用复用已经完成的历史前缀；
+- Memory、Narrative、附件描述、Scratchpad、Mailbox 等动态内容放在稳定前缀之后。能在 Turn 开始冻结的贡献只计算一次；真正按轮变化的内容只影响动态尾部；
+- Compaction 或 Microcompact 改写旧历史时会主动开启新的 History 世代。压缩本来就是为窗口生存付出的成本，不能为了缓存命中保留已经超预算的原文；
+- Provider 专属的 `cache_control` 只由对应 Adapter 投影。通用 Context 只负责顺序、断点、revision 和诊断 Hash，不把 Anthropic 字段写入通用 Message 业务模型。
 
 ### 4.5 参考项目结论
 
@@ -537,6 +569,16 @@ Builtin / MCP / Skill Tool
 3. **建立 TurnRuntime**：`AgentEngine` 的 Turn 创建/持久化/终态/取消迁入 `src/turn`；返回 `TurnHandle`（turnId + events + completion + abort）；修复缺 turnId 的 Turn 流事件。Turn 不吸收 KB/Character/Tool/后台进程领域事件。
 4. **清理 Agent**：`src/agent` 只保留 `agentLoop/agentLoopState/policy/budget/runs/spawner/events/errors`。
 5. **Core 退回协议层**：Route 解析并验证请求；调用 `turnRuntime.start()`；把 TurnEvent 编码成 SSE。不再组装 Context、创建 Tool Executor 或决定业务终态。
+
+当前源码的实际拆除落点已经确认：
+
+- `src/agent/engine.ts` 不是继续保留的 Agent 外观层。它现有的 Hook、历史读取、消息持久化、取消和唯一终态迁入 `src/turn/turnRuntime.ts`，随后删除；
+- `src/agent/agentLoop.ts` 保留为内层循环。它在每次 LLM Call 前请求 Context 快照，消费固定的 Base Manifest 或 Skill 收窄后的子集，不创建、完成或持久化根 Turn；
+- `src/conversation/engine.ts` 与 AgentEngine 重复实现 Chat/Narrative 的模型流和终态。Chat/Work 接入同一 AgentLoop 后删除整个 `src/conversation`；Narrative Recall 回到 Narrative/Context Contribution，不改名成新的 Conversation Service；
+- `apps/core/src/orchestrator/orchestrator.ts` 当前同时创建 Turn、选择 Engine、解析模型、组装 Prompt/Context、合并 TTS、处理附件和写失败终态。上述业务分别迁回 Turn、Context、TTS、附件与模型所有者后删除 Orchestrator；
+- `apps/core/src/routes/turns.ts` 最终只负责 HTTP 输入、认证、受限文件 capability 解析、调用 `turnRuntime.start()`、SSE replay/heartbeat 和 Wire 编码；用于补缺失身份的 `enrichTurnEvent()` 必须随完整 TurnEvent 契约一起删除；
+- `apps/core/src/turn-runtime` 中的子 Agent transcript 投影迁回 `src/agent/runs`；Core 不拥有名为 turn-runtime 的第二个业务目录；
+- `apps/core/src/wiring/bindings.ts` 在本批只负责构造唯一 TurnRuntime，不同时进行全仓后台 Worker 拆分。Turn 主链跑通后再按 Route/后台任务收窄依赖，避免把语义迁移和 Composition Root 清理混成一次不可审查的大改。
 
 一级主重构范围：
 

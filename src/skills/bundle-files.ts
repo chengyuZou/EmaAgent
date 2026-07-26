@@ -1,6 +1,8 @@
-// 这里负责 Skill Bundle 的有界读取, 安全复制, 持久写入和 manifest 文本改写.
+// 负责 Skill Bundle 的有界读取、安全复制、文件索引和持久写入。
+import { createHash } from 'node:crypto';
+import { createReadStream } from 'node:fs';
 import { lstat, mkdir, open, readdir, readFile, stat } from 'node:fs/promises';
-import { dirname, join, relative, sep } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { SkillPathError } from './errors.js';
 import {
   MAX_SKILL_BUNDLE_BYTES,
@@ -8,10 +10,17 @@ import {
   MAX_SKILL_BYTES,
 } from './limits.js';
 import { samePath, validateSkillAssets } from './path-policy.js';
+import type { SkillFile, SkillFileKind } from './types.js';
 
 const SKILL_FILE = 'SKILL.md';
 
 export type SkillAssetEntry = readonly [string, Uint8Array];
+
+export interface SkillBundleSnapshot {
+  files: readonly SkillFile[];
+  totalBytes: number;
+  revision: string;
+}
 
 export async function writeSkillBundle(
   stagePath: string,
@@ -65,6 +74,62 @@ export async function measureSkillDirectory(dirPath: string): Promise<number> {
 
   await visit(dirPath);
   return total;
+}
+
+/** 冻结 Bundle 的路径、大小和内容摘要；文件正文仍按需读取。 */
+export async function inspectSkillDirectory(dirPath: string): Promise<SkillBundleSnapshot> {
+  const rootPath = resolve(dirPath);
+  const files: SkillFile[] = [];
+  let totalBytes = 0;
+
+  async function visit(currentPath: string): Promise<void> {
+    const entries = (await readdir(currentPath, { withFileTypes: true }))
+      .sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      const fullPath = join(currentPath, entry.name);
+      if (entry.isSymbolicLink()) {
+        throw new SkillPathError(`Skill directory contains symlink: ${fullPath}`);
+      }
+      if (entry.isDirectory()) {
+        await visit(fullPath);
+        continue;
+      }
+      if (!entry.isFile()) {
+        throw new SkillPathError(`Skill directory contains unsupported entry: ${fullPath}`);
+      }
+
+      const fileStat = await stat(fullPath);
+      totalBytes += fileStat.size;
+      if (files.length >= MAX_SKILL_BUNDLE_FILES + 1 || totalBytes > MAX_SKILL_BUNDLE_BYTES) {
+        throw new SkillPathError('Skill directory exceeds file count or byte limit');
+      }
+      const relativePath = relative(rootPath, fullPath).split(sep).join('/');
+      files.push(Object.freeze({
+        path: resolve(fullPath),
+        relativePath,
+        kind: classifySkillFile(relativePath),
+        sizeBytes: fileStat.size,
+        sha256: await hashFile(fullPath),
+      }));
+    }
+  }
+
+  await visit(rootPath);
+  const ordered = files.sort((left, right) =>
+    left.relativePath.localeCompare(right.relativePath),
+  );
+  const revisionHash = createHash('sha256');
+  for (const file of ordered) {
+    revisionHash.update(file.relativePath);
+    revisionHash.update('\0');
+    revisionHash.update(file.sha256);
+    revisionHash.update('\0');
+  }
+  return Object.freeze({
+    files: Object.freeze(ordered),
+    totalBytes,
+    revision: revisionHash.digest('hex'),
+  });
 }
 
 export async function readUtf8Bounded(filePath: string, maxBytes: number): Promise<string> {
@@ -137,6 +202,23 @@ async function collectAssets(
     }
     assets[relativePath] = new Uint8Array(await readFile(fullPath));
   }
+}
+
+async function hashFile(filePath: string): Promise<string> {
+  const hash = createHash('sha256');
+  for await (const chunk of createReadStream(filePath)) hash.update(chunk);
+  return hash.digest('hex');
+}
+
+function classifySkillFile(relativePath: string): SkillFileKind {
+  const normalized = relativePath.toLowerCase();
+  if (normalized === SKILL_FILE.toLowerCase()) return 'instructions';
+  const root = normalized.split('/', 1)[0];
+  if (root === 'scripts') return 'script';
+  if (root === 'references') return 'reference';
+  if (root === 'templates') return 'template';
+  if (root === 'assets') return 'asset';
+  return 'resource';
 }
 
 async function writeDurableFile(filePath: string, content: string | Uint8Array): Promise<void> {

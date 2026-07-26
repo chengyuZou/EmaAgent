@@ -200,21 +200,69 @@ describe('ContextCompactor', () => {
       { role: 'user', content: '<memory>本轮临时召回</memory>' },
       { role: 'user', content: '当前用户问题' },
     ];
+    const restore: Message[] = [
+      { role: 'user', content: '<active-skill path="D:\\skills\\review\\SKILL.md">复查代码</active-skill>' },
+    ];
 
     const result = await compactor.compact({
       ...args(oversizedHistory()),
       prefixMessages: prefix,
       suffixMessages: suffix,
+      requiredRestoreMessages: restore,
     });
 
     expect(result.status).toBe('completed');
     expect(result.messages[0]).toEqual(prefix[0]);
     expect(result.messages.slice(-2)).toEqual(suffix);
+    expect(result.messages).toContainEqual(restore[0]);
     const summaryRequest = complete.mock.calls[0]?.[0];
     const summaryInput = JSON.stringify(summaryRequest?.messages);
     expect(summaryInput).not.toContain('固定产品规则');
     expect(summaryInput).not.toContain('本轮临时召回');
     expect(summaryInput).not.toContain('当前用户问题');
+    expect(summaryInput).not.toContain('active-skill');
+  });
+
+  it('未发生 Macro 时不额外插入恢复消息', async () => {
+    const compactor = new ContextCompactor(
+      { llm: { complete: vi.fn() } as never, persistSummary: vi.fn() },
+      { bufferTokens: 2_000, defaultReservedOutputTokens: 0, maximumReservedOutputTokens: 0 },
+    );
+    const messages: Message[] = [{ role: 'user', content: 'short message' }];
+
+    const result = await compactor.compact({
+      ...args(messages),
+      requiredRestoreMessages: [{ role: 'user', content: 'active skill instructions' }],
+    });
+
+    expect(result.status).toBe('not_needed');
+    expect(result.messages).toEqual(messages);
+  });
+
+  it('必需恢复状态超出预算时压缩失败而不是静默丢弃', async () => {
+    const complete = vi.fn(async () => ({
+      blocks: [{ type: 'text' as const, text: '极短摘要' }],
+      stopReason: 'end_turn' as const,
+      usage: { inputTokens: 100, outputTokens: 10 },
+    }));
+    const compactor = new ContextCompactor(
+      { llm: { complete } as never, persistSummary: vi.fn() },
+      { bufferTokens: 2_000, defaultReservedOutputTokens: 0, maximumReservedOutputTokens: 0 },
+    );
+
+    const result = await compactor.compact({
+      ...args(oversizedHistory()),
+      requiredRestoreMessages: [{
+        role: 'user',
+        content: `active skill ${'must keep '.repeat(2_000)}`,
+      }],
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      status: 'failed',
+      reason: 'macro_failed',
+    }));
+    expect(JSON.stringify(result.messages)).not.toContain('active skill');
   });
 
   it('连续失败达到上限后打开熔断器，不再消耗模型调用', async () => {

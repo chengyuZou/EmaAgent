@@ -35,6 +35,10 @@ import * as fs   from 'node:fs';
 import { AgentBudgetExceededError, TurnBudget } from './turn-budget.js';
 import { awaitAgentAnswer } from './ask-user-lifecycle.js';
 import type { AgentRuntimeEvent } from './events.js';
+import {
+  ActiveSkillState,
+  renderActiveSkillContext,
+} from '@ema-agent/skills';
 
 // ── AgentEngine ───────────────────────────────────────────────────────────────
 
@@ -221,6 +225,7 @@ async function* runTurn(
       while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
     }
     const contextAssembler = new ContextAssembler();
+    const activeSkillState = new ActiveSkillState();
 
     // ── 子 Agent 调度器与工具执行器工厂 ───────────────────────────────────────
     // 工具执行器闭包捕获 Turn 运行时依赖；Spawner 持有最新一次 beforeLlm
@@ -252,11 +257,15 @@ async function* runTurn(
 
     const spawner = new SubagentSpawner(
       deps, sessionId, turnId, providerId, model, subagentContextMessages,
+      workspaceRoot,
+      resolvedRunner,
+      readFileState,
       scratchpadDir,
       scratchpadDir ? () => buildScratchpadContext(scratchpadDir) : undefined,
       (ev) => emitRef.fn?.(ev),
       scopedKbSearch,
       budget,
+      activeSkillState,
     );
     turnSpawner = spawner;
     activeSpawners.set(turnId, spawner);
@@ -273,6 +282,7 @@ async function* runTurn(
       commandRunner:     resolvedRunner,
       artifactStore:     deps.artifactStore,
       skillRunner:       deps.skillRunner,
+      activeSkillState,
       knowledgeSearch:   scopedKbSearch,
       subagentSpawner:   spawner,
       scratchpad:        scratchpadDir ? { dir: scratchpadDir, author: 'main' } : undefined,
@@ -338,6 +348,7 @@ async function* runTurn(
         forceCompaction,
       }) => {
         const contributions: ContextContribution[] = [...baseContributions];
+        const activeSkillContext = renderActiveSkillContext(activeSkillState.list());
         if (scratchpadContext) {
           contributions.push({
             id: 'scratchpad.current',
@@ -364,6 +375,14 @@ async function* runTurn(
           history: compactableHistory,
           currentTurn,
           contributions,
+          postCompactionRestoreContributions: activeSkillContext
+            ? [{
+                id: 'skills.active',
+                source: 'skills' as const,
+                placement: 'beforeCurrentTurn' as const,
+                message: { role: 'user' as const, content: activeSkillContext },
+              }]
+            : [],
           toolManifest: policy.visibleManifestSnapshot(),
         };
         return input.compactContext

@@ -1,12 +1,12 @@
 # EmaAgent 当前重构接力板
 
 > 状态：临时施工记录，架构完成后删除
-> 更新时间：2026-07-25
+> 更新时间：2026-07-26
 > 作用：只记录当前阶段、工作区归属、最近验证和下一步。长期规则以 `CLAUDE.md` 为准，目标设计以 `EmaRefactor.md` 为准，设计依据以 `EmaClaudeArchitectureReview.md` 为准。
 
 ## 当前阶段
 
-根目录迁移已经结束，项目进入语义大重构阶段。现在不再继续机械搬包，也不建立第三套 Engine；长期主线仍是把现有 `AgentEngine + Core Orchestrator` 收敛为唯一的 `TurnRuntime + AgentLoop`。内层 `AgentLoop`、Tools 主执行链、Tool 调用边界、Tool Manifest 缓存稳定性（2C）与结构化 Presentation 公共协议都已完成收口；FileRead 的 Builtin Tool 2D 审查已交给 Kimi，主线随后直接把现有 `AgentEngine` 迁成 `TurnRuntime`，不在其上新增包装层。
+根目录迁移已经结束，项目进入语义大重构阶段。现在不再继续机械搬包，也不建立第三套 Engine；长期主线仍是把现有 `AgentEngine + Core Orchestrator` 收敛为唯一的 `TurnRuntime + AgentLoop`。内层 `AgentLoop`、Tools 主执行链、Tool 调用边界、Tool Manifest 缓存稳定性（2C）、结构化 Presentation、首批 Builtin Tool 2D 审查与 Skill Runtime 都已完成收口。下一项建立 TurnRuntime，不在旧 Engine 上新增包装层。
 
 旧 `ConversationEngine` 的双循环语义已经退役，但 `src/conversation` 迁移期包仍然存在。TurnRuntime 批次必须沿真实调用链把根生命周期、Context 贡献、Narrative 检索与 Hook 观察分别归还给所属模块，并最终删除整个 `src/conversation` 包、Workspace 配置和全部 import；禁止仅把它改名为新的 Engine、Service 或 Facade。
 
@@ -60,6 +60,10 @@ Tool Manifest 缓存稳定性已经收口：Manifest 是模型工具数组顺序
 
 Tool Presentation 公共协议已经收口：`src/tools/presentation` 拥有 FileChange/FileRead/Command/Search 的可判别联合与构造入口，`events.ts` 只引用总联合；FileEdit/FileWrite 的真实有界 Diff 已从 Builtin 私有 helper 迁入 Tools，FileRead、Glob/Grep 与 Bash 已接入实际读取范围、搜索数量和命令终态。模型提供的 Bash `description` 仍只用于 Prepared Call 的调用前解释，执行后 Presentation 只承载可信事实，两者都不参与 Permission/Sandbox 决策；未知 MCP V1 继续使用通用回退。
 
+Skill/Subagent 内置工具契约已经收口：SkillCall 明确只加载当前 Agent 使用的指令并可收窄工具集合，不再宣称原子执行或绕过 Permission/Sandbox；普通 Subagent 默认使用 fresh 上下文，只有显式 `kind = fork` 才继承父历史。子 Agent 与父 Turn 共用工作区和受控 CommandRunner，但每个 AgentRun 拥有独立 `ReadFileState`；fork 只复制父读取快照，fresh 必须自行读取后才能编辑。根 Agent 新增 `SubagentAbort`，后台启动、消息、等待和取消统一使用 `agentRunId`，子 Agent 仍不获得 Task、AskUser 或递归启动能力。
+
+Skill Runtime 已完成多文件 Bundle 与跨压缩恢复：`SkillRecord`、Catalog 摘要和激活快照都带明确的 `SKILL.md path`；Bundle 中每个实际文件拥有独立绝对 `path`、相对路径、用途、字节数和 SHA-256，整体 revision 按排序后的路径与内容摘要计算，正文与资源不常驻内存。每个根 Agent/AgentRun 独占 `ActiveSkillState`，fork 复制冻结快照、fresh 从空状态开始；SkillCall 仍只收窄 Tool 能力。正常迭代依赖原始 Tool Result，只有 Macro 真正改写历史后才通过结构化 `skills` Context Contribution 恢复激活指令，脚本继续显式经过 Bash、Permission 与 Sandbox。
+
 Bash 纵深防御第一轮已经落地：静态分析、Permission 与 Sandbox 保持三层分离，危险磁盘操作和越界重定向硬拦，无法证明的替换/复合命令进入确认，Runner 结果补退出码语义。复查修正了双引号内 `$()` 仍会执行、引号包裹危险路径逃逸，以及 `git branch/tag/remote` 写操作被误判只读的问题；环境 allowlist 仍按既定计划留在 Sandbox 后续批次。
 
 旧 `src/agentContext` 已完整删除：Tool Result 生命周期归 `src/tools/results`；Session 级近期文件快照已经删除，Work 压缩后按需重新调用 FileRead，编辑防覆盖只使用 Turn 内 `ReadFileState`。
@@ -90,9 +94,9 @@ Task 与 AgentRun 前端已经分面：Desktop 使用正式 `/api/tasks` 快照�
 
 开始任何新批次前必须重新运行 `git status --short` 与 `git diff`，保留用户和其他 Agent 的修改。
 
-当前工作区包含 Builtin Tool 2D 的 FileRead/FileEdit/Search/WebFetch/WebSearch 收口及配套 `public-http` 安全修复，其中部分改动来自 Kimi，后续修改前必须逐文件检查 Diff。主线下一批建立 TurnRuntime，并同步拆除迁移期 `src/conversation`，不要在旧包继续新增业务。
+当前工作区包含连续但边界清楚的两批未提交代码修改：SkillCall/Subagent 工具契约收口，以及 Skill 多文件激活快照、per-Agent 状态和 Compaction 后恢复；`EmaRefactor.md` 另补充了 TurnRuntime/Core 的真实拆除落点、MCP 活动 Turn 冻结规则与 V1 KV Cache 世代。上一批 File/Search/Web 收口已由用户提交。下一批建立 TurnRuntime 并拆除迁移期 `src/conversation`；不要继续向旧 AgentEngine 增加新的业务包装层。
 
-当前基线最近提交：`f96f57fd feat(permission): implement Permission V1 with CRUD for persistent rules and enhanced response handling`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
+当前基线最近提交：`ca74432d feat(public-http): enhance request header handling with additional allowed headers and strict redirect policies`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
 
 ## 已确定的 V1 口径
 
@@ -137,8 +141,9 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 4. Tool Manifest 的 Builtin/MCP 稳定分区、内容 Revision 与缓存稳定测试（2C）已经完成；
 5. Builtin Tool 2D 的 Sandbox 命令环境 allowlist、工作目录边界、FileRead 行数/字节双上限、Glob/Grep 有界搜索与 WebSearch 公网访问安全均已完成；结构化 Presentation 公共协议与首批接线已完成；
 6. Permission V1 已完成：统一 Session FIFO、明确终态、Turn 身份核对、SQLite 永久规则 CRUD 与设置页管理、Builtin-only 免审批边界均已接通；迁移期 `AskUserRegistryLike` 命名随 TurnRuntime 装配边界清理，不新增第二套队列；
-7. 建立 TurnRuntime，把 `src/conversation` 中仍有价值的职责归还给 Turn、Context、Narrative 与 Hooks，删除整个迁移期包；随后清理 Agent，并让 Core Route 退回协议层；
-8. 后台进程按 `BackgroundProcess + ProcessOutput/ProcessStop` 单独实现 C 档，不修改 AgentLoop，也不恢复假 `run_in_background`。
+7. Skill 多文件激活、per-Agent 状态、结构化 Context 恢复与 `allowed-tools` 单向收窄已经完成；
+8. 建立 TurnRuntime，把 `src/conversation` 中仍有价值的职责归还给 Turn、Context、Narrative 与 Hooks，删除整个迁移期包；随后清理 Agent，并让 Core Route 退回协议层；
+9. 后台进程按 `BackgroundProcess + ProcessOutput/ProcessStop` 单独实现 C 档，不修改 AgentLoop，也不恢复假 `run_in_background`。
 
 命名随业务批次清理：旧 `IFileStateStoreEntry/IFileStateStore` 及后续过渡接口已经删除，`IToolExecutionJournal` 已改为职责名；其余迁移期 `I*` 类型继续随业务边界处理，不单独进行全仓机械重命名。
 
@@ -146,6 +151,8 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- Skill Runtime：Skills 26/26、Context 26/26、BuiltinTools 106/106、Agent 33/33 通过，另有 1 个系统能力条件测试和 4 个 Agent Live Integration 按规则跳过；Skills、Context、BuiltinTools 按依赖顺序 build 通过，Agent、Core、Desktop UI typecheck 通过。测试覆盖 SKILL.md/脚本/Reference 的独立 path、Bundle revision、per-Agent fork 隔离、SkillCall 激活登记，以及只有 Macro 后才恢复 Skill Context。
+- Skill/Subagent 内置工具收口：BuiltinTools 与 Agent typecheck 通过；BuiltinTools 104/104、Agent 33/33 通过，另有 1 个缺少系统 `rg` 的条件测试和 4 个 Agent Live Integration 按规则跳过。测试覆盖普通 Subagent 默认 fresh、后台控制统一使用 AgentRunId、模型可调用取消，以及父 Turn 收口时后台 AgentRun 取消终态；`git diff --check` 通过，仅有既有 CRLF 提示。
 - Builtin Tool 搜索与公网访问收口：`public-http` 33/33、BuiltinTools 102/102 通过，另有 1 项“系统缺少 rg”条件测试因当前机器已安装 rg 而按预期跳过；两包 typecheck 及 `public-http` build 通过。真实 `rg` 语义覆盖相对路径、最大列宽、分页、跨行、类型过滤、上下文与全局 mtime 排序；WebSearch 已统一进入带 DNS 审批和 IP 固定的 `public-http`，额外敏感头禁止随重定向转发，既存裸域与 `www` 安全重定向口径已收口。
 - Permission V1 最终收口：Permission、Turn、Tools、Agent、Core、Desktop UI typecheck 通过；Permission 18/18、Turn 20/20、Tools Prepared Call 5/5、Agent ToolExecutionRuntime 12/12、Core Permission Route/事件 4/4、Desktop Permission 恢复与提交 5/5 通过。测试覆盖永久规则 CRUD、工作区绝对路径校验、`turnId + promptId` 陈旧响应拒绝，以及 MCP 伪造 `not_required` 的构建期与运行时双重防线；`git diff --check` 通过，仅有既有 CRLF 提示。
 - Permission/AskUser 统一交互收口：Turn 队列已泛型化，生产源码与 package 声明不再形成 `permission → storage → turn → permission` 依赖环；Permission、Tools、Turn、Agent build 通过，BuiltinTools 与 Core typecheck 通过；Tools 27/27、Turn 19/19、Agent 32/32、Core 90/90、Builtin Ask ToolPool 3/3 通过。此前 BuiltinTools 全量 72/73，唯一失败仍是既存 WebFetchPolicy 对 `example.com -> www.example.com` 的跨站重定向口径，与本批无关；Tools 缺失的 `diff` 运行依赖已离线补齐。

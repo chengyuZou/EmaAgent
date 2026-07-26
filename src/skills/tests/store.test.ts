@@ -25,19 +25,47 @@ afterEach(async () => {
 });
 
 describe('SkillStore', () => {
-  it('激活时同时返回替换后的正文和 allowed-tools', async () => {
+  it('激活时冻结 SKILL.md 与资源文件的独立路径和 Bundle revision', async () => {
     await store.install(
       '---\nname: review\nversion: 1.0.0\ndescription: test\n' +
       'allowed-tools:\n  - Read\n  - "mcp__github__*"\n---\n' +
       '检查 $ARGUMENTS\n目录 ${SKILL_DIR}\n',
+      {
+        assets: {
+          'scripts/check.js': new TextEncoder().encode('console.log("ok")'),
+          'references/rules.md': new TextEncoder().encode('# rules'),
+        },
+      },
     );
 
     const activation = await store.activate('review', 'src/agent');
 
     expect(activation.name).toBe('review');
-    expect(activation.allowedTools).toEqual(['Read', 'mcp__github__*']);
-    expect(activation.content).toContain('检查 src/agent');
-    expect(activation.content).toContain(rootPath.replaceAll('\\', '/'));
+    expect(activation.path).toBe(join(rootPath, 'review', 'SKILL.md'));
+    expect(activation.allowedToolPatterns).toEqual(['Read', 'mcp__github__*']);
+    expect(activation.instructions).toContain('检查 src/agent');
+    expect(activation.instructions).toContain(rootPath.replaceAll('\\', '/'));
+    expect(activation.bundleRevision).toMatch(/^[a-f0-9]{64}$/);
+    expect(activation.files).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        path: join(rootPath, 'review', 'SKILL.md'),
+        relativePath: 'SKILL.md',
+        kind: 'instructions',
+      }),
+      expect.objectContaining({
+        path: join(rootPath, 'review', 'scripts', 'check.js'),
+        relativePath: 'scripts/check.js',
+        kind: 'script',
+      }),
+      expect.objectContaining({
+        path: join(rootPath, 'review', 'references', 'rules.md'),
+        relativePath: 'references/rules.md',
+        kind: 'reference',
+      }),
+    ]));
+    expect(store.findByName('review')?.path).toBe(
+      join(rootPath, 'review', 'SKILL.md'),
+    );
   });
 
   it('SQL 更新失败时恢复旧目录和旧正文', async () => {

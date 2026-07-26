@@ -5,7 +5,6 @@ import type { SkillStore } from './store.js';
 import type {
   ActivatedSkill,
   SkillRunnerPort,
-  SkillRunResult,
   SkillSummary,
 } from './types.js';
 
@@ -46,18 +45,14 @@ export class SkillRunner implements SkillRunnerPort {
     return this.store.activate(name, args);
   }
 
-  /** 把 Skill 领域结果投影成 Tool 执行所需的稳定端口结果。 */
-  async run(name: string, args: string | undefined): Promise<SkillRunResult> {
-    const activation = await this.activate(name, args);
-    return {
-      content: activation.content,
-      allowedToolPatterns: activation.allowedTools,
-    };
+  /** Tool 与管理端共用完整激活快照，不能在端口处丢掉路径和 Bundle 身份。 */
+  async run(name: string, args: string | undefined): Promise<ActivatedSkill> {
+    return this.activate(name, args);
   }
 
   /** 兼容管理端只渲染正文的调用。 */
   async render(name: string, args: string | undefined): Promise<string> {
-    return (await this.activate(name, args)).content;
+    return (await this.activate(name, args)).instructions;
   }
 
 }

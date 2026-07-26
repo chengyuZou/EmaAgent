@@ -11,7 +11,10 @@ import type { CommandRunnerPort } from '@ema-agent/sandbox';
 import type { TaskStorePort } from '@ema-agent/tasks';
 import type { IArtifactStore } from '@ema-agent/artifact';
 import type { KnowledgeSearchPort } from '@ema-agent/knowledge';
-import type { SkillRunnerPort } from '@ema-agent/skills';
+import type {
+  ActiveSkillStatePort,
+  SkillRunnerPort,
+} from '@ema-agent/skills';
 import type {
   AskUserQuestionSpec,
   ReadFileState,
@@ -71,6 +74,8 @@ export interface BuiltinToolContext {
   readonly subagentSpawner?: SubagentSpawnerPort;
   /** SkillCall 工具的 Skill 运行器。 */
   readonly skillRunner?: SkillRunnerPort;
+  /** 当前 Agent 独占的 Skill 激活状态。 */
+  readonly activeSkillState?: ActiveSkillStatePort;
   /** Artifact 工具族（V1.5 预留，默认不注册）。 */
   readonly artifactStore?: IArtifactStore;
   /** Scratchpad 工具的 Turn 级临时存储位置。 */

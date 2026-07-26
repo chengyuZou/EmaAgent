@@ -5,6 +5,10 @@ import type {
   ToolCapabilityScope,
   ToolCapabilityRestriction,
 } from '@ema-agent/tools';
+import {
+  ActiveSkillState,
+  type ActivatedSkill,
+} from '@ema-agent/skills';
 import { SkillCallTool } from '../tools/SkillCallTool/SkillCallTool.js';
 
 describe('SkillCallTool', () => {
@@ -17,11 +21,9 @@ describe('SkillCallTool', () => {
     const result = await SkillCallTool.execute(
       { skill: 'review', args: undefined },
       {
+        activeSkillState: new ActiveSkillState(),
         skillRunner: {
-          run: async () => ({
-            content: '请阅读并复查代码',
-            allowedToolPatterns: ['Read', 'Grep'],
-          }),
+          run: async () => activation('review', ['Read', 'Grep']),
         },
         toolCapabilities: {
           restrict,
@@ -36,7 +38,11 @@ describe('SkillCallTool', () => {
     });
     expect(result).toEqual({
       skill: 'review',
+      path: 'D:\\skills\\review\\SKILL.md',
+      rootPath: 'D:\\skills\\review',
+      bundleRevision: 'revision',
       output: '请阅读并复查代码',
+      files: [],
       availableTools: ['Read', 'Grep'],
     });
   });
@@ -49,8 +55,9 @@ describe('SkillCallTool', () => {
       workspaceRoot: '',
       signal: new AbortController().signal,
       skillRunner: {
-        run: async () => ({ content: 'body', allowedToolPatterns: ['Read'] }),
+        run: async () => activation('review', ['Read']),
       },
+      activeSkillState: new ActiveSkillState(),
       // toolCapabilities 刻意不提供，验证 validateContext fail closed
     });
     expect(projection.valid).toBe(false);
@@ -63,8 +70,9 @@ describe('SkillCallTool', () => {
       SkillCallTool.execute(
         { skill: 'plain', args: undefined },
         {
+          activeSkillState: new ActiveSkillState(),
           skillRunner: {
-            run: async () => ({ content: 'body', allowedToolPatterns: [] }),
+            run: async () => activation('plain', []),
           },
           toolCapabilities: {
             restrict,
@@ -72,7 +80,87 @@ describe('SkillCallTool', () => {
           },
         },
       ),
-    ).resolves.toEqual({ skill: 'plain', output: 'body' });
+    ).resolves.toEqual({
+      skill: 'plain',
+      path: 'D:\\skills\\plain\\SKILL.md',
+      rootPath: 'D:\\skills\\plain',
+      bundleRevision: 'revision',
+      output: 'body',
+      files: [],
+    });
     expect(restrict).not.toHaveBeenCalled();
   });
+
+  it('激活结果进入当前 Agent 状态，并保留 SKILL.md path', async () => {
+    const activeSkillState = new ActiveSkillState();
+    await SkillCallTool.execute(
+      { skill: 'review', args: 'src' },
+      {
+        activeSkillState,
+        skillRunner: { run: async () => activation('review', []) },
+        toolCapabilities: {
+          restrict: vi.fn(),
+          snapshot: () => ({ allowedToolNames: [], restrictionSources: [] }),
+        },
+      },
+    );
+
+    expect(activeSkillState.list()[0]).toEqual(expect.objectContaining({
+      path: 'D:\\skills\\review\\SKILL.md',
+      instructions: '请阅读并复查代码',
+    }));
+  });
+
+  it('把 Bundle 中每个文件的独立 path 返回给模型', async () => {
+    const skill = activation('review', []);
+    const activationWithFiles: ActivatedSkill = {
+      ...skill,
+      files: [{
+        path: 'D:\\skills\\review\\references\\rules.md',
+        relativePath: 'references/rules.md',
+        kind: 'reference',
+        sizeBytes: 128,
+        sha256: 'file-sha256',
+      }],
+    };
+
+    await expect(
+      SkillCallTool.execute(
+        { skill: 'review', args: undefined },
+        {
+          activeSkillState: new ActiveSkillState(),
+          skillRunner: { run: async () => activationWithFiles },
+          toolCapabilities: {
+            restrict: vi.fn(),
+            snapshot: () => ({ allowedToolNames: [], restrictionSources: [] }),
+          },
+        },
+      ),
+    ).resolves.toEqual(expect.objectContaining({
+      path: 'D:\\skills\\review\\SKILL.md',
+      files: [{
+        path: 'D:\\skills\\review\\references\\rules.md',
+        relativePath: 'references/rules.md',
+        kind: 'reference',
+      }],
+    }));
+  });
 });
+
+function activation(
+  name: string,
+  allowedToolPatterns: readonly string[],
+): ActivatedSkill {
+  return {
+    skillId: `skill-${name}`,
+    name,
+    version: '1.0.0',
+    source: 'user',
+    path: `D:\\skills\\${name}\\SKILL.md`,
+    rootPath: `D:\\skills\\${name}`,
+    bundleRevision: 'revision',
+    instructions: name === 'review' ? '请阅读并复查代码' : 'body',
+    allowedToolPatterns,
+    files: [],
+  };
+}

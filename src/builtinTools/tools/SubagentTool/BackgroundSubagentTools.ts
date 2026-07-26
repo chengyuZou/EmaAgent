@@ -21,12 +21,12 @@ interface BackgroundSubagentToolContext {
 
 const spawnBgSchema = z.object({
   prompt: z.string().min(1).describe(
-    'Self-contained task prompt. The sub-agent has no memory of the parent conversation.',
+    'Task prompt. In the default "subagent" mode it must include all needed context.',
   ),
   model: z.string().optional().describe(
     'Override model ID. Defaults to the parent model.',
   ),
-  description: z.string().optional().describe(
+  description: z.string().trim().min(1).max(200).describe(
     'Short role description shown in the sub-agent dashboard.',
   ),
   kind: z.enum(['subagent', 'fork']).optional().describe(
@@ -50,6 +50,7 @@ export const SubagentSpawnBackgroundTool = buildTool<
   description: `Start a sub-agent in the background and return its ID immediately.
 The parent agent continues its own loop while the sub-agent runs concurrently.
 Use SubagentSendMessage to inject coordinator instructions mid-execution.
+Use SubagentAbort when the result is no longer needed.
 Use SubagentAwait to block until the sub-agent finishes and collect its output.
 The sub-agent MUST be awaited before the parent turn ends.`,
 
@@ -195,5 +196,57 @@ Must be called before the parent turn ends. Returns output:null if the agentRunI
     const result = await context.spawner.awaitBackground(asAgentRunId(input.agentRunId));
     if (!result) return { output: null };
     return result;
+  },
+});
+
+// ── SubagentAbort ─────────────────────────────────────────────────────────────
+
+const abortSchema = z.object({
+  agentRunId: z.string().uuid().describe('AgentRun ID returned by SubagentSpawnBackground.'),
+});
+
+export const SubagentAbortTool = buildTool<
+  z.infer<typeof abortSchema>,
+  { aborted: boolean },
+  BuiltinToolContext,
+  BackgroundSubagentToolContext
+>({
+  id: BuiltinTools.SubagentAbort.id,
+  name: BuiltinTools.SubagentAbort.name,
+  description: `Cancel one running background sub-agent without cancelling the parent Turn.
+Returns aborted:false if the AgentRun is unknown or has already finished.`,
+
+  inputSchema:       abortSchema,
+  isReadOnly:        () => false,
+  isConcurrencySafe: () => true,
+
+  permissionMeta: {
+    riskLevel: 'low',
+    accessType: 'write',
+    approval: 'not_required',
+  },
+
+  requires: ['subagentSpawner'],
+
+  validateContext(ctx) {
+    if (!ctx.subagentSpawner) {
+      return contextFail('子 Agent 启动器未装配。');
+    }
+    return contextOk({
+      spawner: ctx.subagentSpawner,
+      signal: ctx.signal,
+    });
+  },
+
+  async execute(input, context: BackgroundSubagentToolContext) {
+    if (!context.spawner.abortSubagent) {
+      throw new Error(
+        'SubagentAbort is only available to the top-level agent. ' +
+        'Sub-agents cannot cancel other sub-agents.',
+      );
+    }
+    return {
+      aborted: context.spawner.abortSubagent(asAgentRunId(input.agentRunId)),
+    };
   },
 });

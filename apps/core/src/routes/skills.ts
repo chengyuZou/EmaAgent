@@ -1,4 +1,4 @@
-// 这里提供 Skill 扫描, 市场浏览, 安装和启停 API.
+// 提供 Skill 扫描、市场浏览、安装和启停 API。
 import { Hono } from 'hono';
 import { z }    from 'zod';
 import { GithubSkillCoordsSchema, SkillNameSchema } from '@ema-agent/skills';
@@ -8,15 +8,14 @@ import type { AppBindings } from '../wiring/index.js';
 
 // ── Skills router ─────────────────────────────────────────────────────────────
 //
-// File-backed skills: the SQL index is a cache over <dirPath>/SKILL.md. Records
-// returned here are metadata only (no body) — the body is read lazily on
-// activation via the skill_call tool. `dirPath` lets the UI "open in editor".
+// SQL 只缓存文件型 Skill 的索引；列表返回明确的 SKILL.md `path` 与 Bundle
+// `dirPath`，正文仍在 SkillCall 激活时懒读，不通过管理 API 常驻内存。
 //
 // Routes:
 //   GET    /api/skills                 list all (metadata)
 //   POST   /api/skills                 install from text or URL
 //   POST   /api/skills/validate        validate without installing
-//   GET    /api/skills/:name           get single (metadata, incl. dirPath)
+//   GET    /api/skills/:name           get single (metadata, incl. path/dirPath)
 //   PATCH  /api/skills/:name           enable/disable
 //   POST   /api/skills/:name/rename    rename (rewrites frontmatter + dir key)
 //   POST   /api/skills/:name/relocate  V1 保留路由但 fail-closed，等待多 Root 事务

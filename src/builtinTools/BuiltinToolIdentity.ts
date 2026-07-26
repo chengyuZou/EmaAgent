@@ -44,6 +44,7 @@ export const BuiltinTools = Object.freeze({
     name: 'SubagentSendMessage',
   }),
   SubagentAwait: Object.freeze({ id: 'builtin.subagent.await', name: 'SubagentAwait' }),
+  SubagentAbort: Object.freeze({ id: 'builtin.subagent.abort', name: 'SubagentAbort' }),
   PlanEnter: Object.freeze({ id: 'builtin.plan.enter', name: 'PlanEnter' }),
   PlanExit:  Object.freeze({ id: 'builtin.plan.exit',  name: 'PlanExit' }),
 } satisfies Record<string, BuiltinToolIdentity>);
