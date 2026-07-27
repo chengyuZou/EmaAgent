@@ -52,20 +52,31 @@ function makeSessionStore() {
   let msgCounter = 0;
   let turnCounter = 0;
   let activeController: AbortController | undefined;
+  let activeTurn: Turn | undefined;
+  const turns = new Map<string, Turn>();
 
   return {
     startTurn(): { turn: Turn; signal: AbortSignal } {
       activeController = new AbortController();
+      activeTurn = makeTurn(`turn-${++turnCounter}`);
+      turns.set(activeTurn.id as string, activeTurn);
       return {
-        turn: makeTurn(`turn-${++turnCounter}`),
+        turn: activeTurn,
         signal: activeController.signal,
       };
+    },
+    getTurn(turnId: TurnId): Turn | undefined {
+      return turns.get(turnId as string);
+    },
+    getActiveTurn(): Turn | undefined {
+      return activeTurn;
     },
     requestAbort(): void {
       activeController?.abort();
     },
     clearRunning(): void {
       activeController = undefined;
+      activeTurn = undefined;
     },
     loadHistory(_sessionId: string): Message[] {
       return [...messages];
@@ -94,7 +105,13 @@ function makeSessionStore() {
     failTurn(_turnId: TurnId, _code: string, _msg: string): void { /* 测试不持久化终态 */ },
     abortTurn(_sessionId: SessionId, _turnId: TurnId): void { /* 测试不持久化终态 */ },
     // 每条用例之间清空内存消息。
-    clear() { messages.length = 0; msgCounter = 0; },
+    clear() {
+      messages.length = 0;
+      msgCounter = 0;
+      turns.clear();
+      activeController = undefined;
+      activeTurn = undefined;
+    },
   };
 }
 

@@ -6,7 +6,7 @@ import { buildTool } from '@ema-agent/tools';
 import type { SessionId, TurnId } from '@ema-agent/ids';
 import type {
   AskUserQuestionSpec,
-  ToolExecutionEvent as EmaStreamEvent,
+  ToolExecutionEvent,
 } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import type { AskUserPort, BuiltinToolContext } from '../../builtinToolContext.js';
@@ -14,7 +14,7 @@ import { contextOk } from '../../contextValidation.js';
 
 /** AskUser 工具的窄 Context：可选 SSE 输出 + 可选问询解析器 + 调用身份。 */
 interface AskUserToolContext {
-  emit?: (event: EmaStreamEvent) => void;
+  emit?: (event: ToolExecutionEvent) => void;
   askUser?: AskUserPort;
   sessionId: SessionId;
   turnId: TurnId;
@@ -102,8 +102,8 @@ export const AskUserTool = buildTool<AskUserInput, AskUserResult, BuiltinToolCon
     const { questions } = input;
 
     if (context.emit) {
-      // Desktop / SSE 路径 - emit 结构化事件,等答案经 side-channel promise
-      // 回来(由 orchestrator resolve)。orchestrator 为此向 ctx 注入 `askUser` resolver。
+      // Desktop / SSE 路径：发出结构化事件，再由 Turn Tools 注入的 askUser 端口
+      // 等待统一 Session 交互队列返回答案。
       if (context.askUser) {
         const askFn = context.askUser;
         const promptId = randomUUID();

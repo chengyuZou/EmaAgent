@@ -1,7 +1,7 @@
 // 管理根 Turn 的身份、生命周期 Hook、唯一终态、取消和对外事件句柄。
 
 import * as fs from 'node:fs';
-import { asAgentRunId } from '@ema-agent/ids';
+import { asAgentRunId, type TurnId } from '@ema-agent/ids';
 import type { TurnFailurePhase } from '@ema-agent/hooks';
 import type { Turn } from '@ema-agent/session';
 import {
@@ -48,7 +48,7 @@ export class TurnExecutor {
       userInput: command.userInput,
     });
     const channel = new TurnEventChannel<TurnExecutionEvent>(() => {
-      this.deps.session.requestAbort(turn.sessionId);
+      this.abort(turn.id);
     });
 
     let resolveCompletion!: (outcome: TurnOutcome) => void;
@@ -75,9 +75,26 @@ export class TurnExecutor {
       events: channel,
       completion,
       abort: () => {
-        this.deps.session.requestAbort(turn.sessionId);
+        this.abort(turn.id);
       },
     });
+  }
+
+  /**
+   * 只取消当前仍处于活动状态的指定根 Turn。
+   *
+   * 历史句柄或陈旧客户端携带的 turnId 不能按 Session 误杀后续 Turn；
+   * 活动身份继续以 Session 自己的运行注册表为唯一事实来源。
+   */
+  abort(turnId: TurnId): boolean {
+    const turn = this.deps.session.getTurn(turnId);
+    if (!turn) return false;
+
+    const activeTurn = this.deps.session.getActiveTurn(turn.sessionId);
+    if (activeTurn?.id !== turnId) return false;
+
+    this.deps.session.requestAbort(turn.sessionId);
+    return true;
   }
 
   /** 只取消指定子 AgentRun，不中止父 Turn。 */

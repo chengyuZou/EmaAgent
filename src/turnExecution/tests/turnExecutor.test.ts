@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { MessageId, SessionId, TurnId } from '@ema-agent/ids';
-import type { TurnExecutionEvent as EmaStreamEvent } from '../types.js';
+import type { TurnExecutionEvent } from '../types.js';
 import type { Message, Turn } from '@ema-agent/session';
 import { HookBus } from '@ema-agent/hooks';
 import { ToolRegistry } from '@ema-agent/tools';
@@ -134,6 +134,79 @@ function createTurnExecutor(deps: TestTurnExecutionDeps): TurnExecutor {
 }
 
 describe('TurnExecutor 生命周期', () => {
+  it('只按当前活动 turnId 取消，陈旧 Turn 不会误杀同 Session 的新执行', async () => {
+    const controller = new AbortController();
+    const activeTurn = makeTurn();
+    const staleTurn = {
+      ...makeTurn(),
+      id: 'turn-stale' as TurnId,
+      status: 'aborted' as const,
+    };
+    let currentTurn: Turn | undefined = activeTurn;
+    let abortRequests = 0;
+    const session = {
+      startTurn: () => ({
+        turn: activeTurn,
+        signal: controller.signal,
+      }),
+      getTurn: (id: TurnId) => {
+        if (id === activeTurn.id) return activeTurn;
+        if (id === staleTurn.id) return staleTurn;
+        return undefined;
+      },
+      getActiveTurn: () => currentTurn,
+      requestAbort: () => {
+        abortRequests++;
+        controller.abort();
+      },
+      clearRunning: () => {
+        currentTurn = undefined;
+      },
+      abortTurn: () => undefined,
+      failTurn: () => undefined,
+    };
+    const executor = createTurnExecutor({
+      session: session as never,
+      hooks: new HookBus(),
+      llm: {} as never,
+      emotion: {} as never,
+      tools: new ToolRegistry(),
+      permission: {} as never,
+    });
+
+    const handle = executor.start({
+      sessionId,
+      triggerType: 'userMessage',
+      executionProfile: 'work',
+      narrativePolicy: 'off',
+      userInput: 'hello',
+      prepare: ({ signal }) => new Promise((_, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason), {
+          once: true,
+        });
+      }),
+    });
+
+    expect(executor.abort(staleTurn.id)).toBe(false);
+    expect(controller.signal.aborted).toBe(false);
+    expect(executor.abort(activeTurn.id)).toBe(true);
+    expect(abortRequests).toBe(1);
+
+    const events: TurnExecutionEvent[] = [];
+    for await (const event of handle.events) events.push(event);
+    await expect(handle.completion).resolves.toMatchObject({
+      status: 'aborted',
+      turnId: activeTurn.id,
+    });
+
+    expect(executor.abort(activeTurn.id)).toBe(false);
+    expect(abortRequests).toBe(1);
+    expect(events.at(-1)).toMatchObject({
+      type: 'turn_aborted',
+      turnId: activeTurn.id,
+    });
+  });
+
   it('start 同步创建一次 Turn，准备失败仍产生唯一终态并释放运行锁', async () => {
     let startCount = 0;
     let clearCount = 0;
@@ -181,7 +254,7 @@ describe('TurnExecutor 生命周期', () => {
     expect(() => handle.events[Symbol.asyncIterator]()).toThrow(
       'TurnHandle.events only supports one consumer',
     );
-    const events: EmaStreamEvent[] = [];
+    const events: TurnExecutionEvent[] = [];
     for (;;) {
       const next = await iterator.next();
       if (next.done) break;
@@ -247,7 +320,7 @@ describe('TurnExecutor 生命周期', () => {
         throw controller.signal.reason;
       },
     });
-    const events: EmaStreamEvent[] = [];
+    const events: TurnExecutionEvent[] = [];
     for await (const event of handle.events) events.push(event);
 
     await expect(handle.completion).resolves.toEqual({
@@ -335,7 +408,7 @@ describe('TurnExecutor 生命周期', () => {
       tools: new ToolRegistry(),
       permission: {} as never,
     };
-    const events: EmaStreamEvent[] = [];
+    const events: TurnExecutionEvent[] = [];
     const executor = createTurnExecutor(deps);
     const handle = startExecution(executor);
     for await (const event of handle.events) {
@@ -432,7 +505,7 @@ describe('TurnExecutor 生命周期', () => {
       } as never,
       permission: {} as never,
     };
-    const events: EmaStreamEvent[] = [];
+    const events: TurnExecutionEvent[] = [];
     const executor = createTurnExecutor(deps);
     const handle = startExecution(executor);
     for await (const event of handle.events) {
@@ -511,7 +584,7 @@ describe('TurnExecutor 生命周期', () => {
       tools: new ToolRegistry(),
       permission: {} as never,
     };
-    const events: EmaStreamEvent[] = [];
+    const events: TurnExecutionEvent[] = [];
     const executor = createTurnExecutor(deps);
     const handle = startExecution(executor);
     for await (const event of handle.events) {
@@ -594,7 +667,7 @@ describe('TurnExecutor 生命周期', () => {
       } as never,
       permission: {} as never,
     };
-    const events: EmaStreamEvent[] = [];
+    const events: TurnExecutionEvent[] = [];
     const executor = createTurnExecutor(deps);
     const handle = startExecution(executor);
     for await (const event of handle.events) {

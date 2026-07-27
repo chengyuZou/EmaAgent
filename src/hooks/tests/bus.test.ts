@@ -4,7 +4,7 @@ import { PRIORITY } from '../priority.js';
 import type { HookPayload } from '../events.js';
 import type { DeepReadonly } from '../types.js';
 import type { HookInvocationId, MessageId, SessionId, TurnId } from '@ema-agent/ids';
-import type { HookWarningEvent as EmaStreamEvent } from '../streamEvents.js';
+import type { HookWarningEvent } from '../streamEvents.js';
 import type { LlmCallId } from '@ema-agent/llm';
 
 const turnId = 'turn-1' as TurnId;
@@ -217,7 +217,7 @@ describe('HookBus', () => {
   it('为一次 trigger 的上下文、trace、warning 和 SSE 复用同一 invocationId', async () => {
     const traces: Array<{ invocationId: HookInvocationId }> = [];
     const handlerInvocationIds: HookInvocationId[] = [];
-    const emitted: EmaStreamEvent[] = [];
+    const emitted: HookWarningEvent[] = [];
     const bus = new HookBus({
       traceSink: (entry) => traces.push(entry),
     });
@@ -641,7 +641,7 @@ describe('HookBus', () => {
       },
     );
 
-    const emitted: EmaStreamEvent[] = [];
+    const emitted: HookWarningEvent[] = [];
     const result = await bus.trigger('afterLlmComplete', {
       ...baseCtx(),
       payload: afterLlmPayload('original'),
@@ -801,7 +801,7 @@ describe('HookBus', () => {
     });
 
     const reached = vi.fn();
-    const emitted: EmaStreamEvent[] = [];
+    const emitted: HookWarningEvent[] = [];
 
     bus.register(
       'afterLlmComplete',
@@ -908,7 +908,7 @@ describe('HookBus', () => {
 
   it('aborts a timed-out critical handler and propagates cancellation to it', async () => {
     const traces: Array<{ failureKind?: string; sessionId?: SessionId; turnId?: TurnId; timestampMs?: number }> = [];
-    const emitted: EmaStreamEvent[] = [];
+    const emitted: HookWarningEvent[] = [];
     const bus = new HookBus({
       handlerTimeoutMs: 10,
       traceSink: (entry) => traces.push(entry),
@@ -958,7 +958,7 @@ describe('HookBus', () => {
     const bus = new HookBus({ handlerTimeoutMs: 0 });
     const parent = new AbortController();
     const reached = vi.fn();
-    const emitted: EmaStreamEvent[] = [];
+    const emitted: HookWarningEvent[] = [];
 
     bus.register('onTurnStart', async (ctx) => {
       await new Promise<void>((resolve) => {

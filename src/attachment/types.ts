@@ -24,7 +24,7 @@ export interface InspectedAttachment extends Attachment {
   fileStatus: SessionAttachmentFileStatus;
 }
 
-/** 经过文件能力校验后交给 Orchestrator 的可信附件输入。 */
+/** 经过文件能力校验后交给 TurnInputPreparer 的可信附件输入。 */
 export interface AttachmentInput {
   id: string;
   name: string;

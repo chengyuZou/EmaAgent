@@ -4,14 +4,14 @@ import { createInterface } from 'node:readline/promises';
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import type { SessionId, TurnId } from '@ema-agent/ids';
-import type { ToolExecutionEvent as EmaStreamEvent } from '@ema-agent/tools';
+import type { ToolExecutionEvent } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import type { AskUserPort, BuiltinToolContext } from '../../builtinToolContext.js';
 import { contextOk } from '../../contextValidation.js';
 
 /** AskChoice 工具的窄 Context：可选 SSE 输出 + 可选问询解析器 + 调用身份。 */
 interface AskChoiceToolContext {
-  emit?: (event: EmaStreamEvent) => void;
+  emit?: (event: ToolExecutionEvent) => void;
   askUser?: AskUserPort;
   sessionId: SessionId;
   turnId: TurnId;
@@ -89,7 +89,7 @@ Prefer this over AskUser for a single choice question - the UI shows a cleaner s
         options:          input.options,
         multiSelect:      input.multiSelect,
         allowCustom:      input.allowCustom,
-      } satisfies EmaStreamEvent;
+      } satisfies ToolExecutionEvent;
       context.emit(request);
 
       try {
@@ -105,7 +105,7 @@ Prefer this over AskUser for a single choice question - the UI shows a cleaner s
           promptId,
           selected,
           customText,
-        } satisfies EmaStreamEvent);
+        } satisfies ToolExecutionEvent);
 
         return { selected, customText };
       } catch (error) {
@@ -115,7 +115,7 @@ Prefer this over AskUser for a single choice question - the UI shows a cleaner s
           sessionId: context.sessionId,
           promptId,
           selected:  [],
-        } satisfies EmaStreamEvent);
+        } satisfies ToolExecutionEvent);
         throw error;
       }
     }

@@ -1,7 +1,7 @@
 // 测试单个 Turn 内工具调用的准备、权限、执行、等待用户和终态收口。
 import { describe, expect, it, vi } from 'vitest';
 import type { SessionId, TurnId } from '@ema-agent/ids';
-import type { AgentExecutionEvent as EmaStreamEvent } from '../events.js';
+import type { AgentExecutionEvent } from '../events.js';
 import { HookBus } from '@ema-agent/hooks';
 import {
   ToolExecutionRuntime,
@@ -127,7 +127,7 @@ describe('ToolExecutionRuntime Hook 与权限边界', () => {
 
   it('固定按工具意图 Hook、PermissionEngine、工具执行的顺序运行', async () => {
     const order: string[] = [];
-    const emitted: EmaStreamEvent[] = [];
+    const emitted: AgentExecutionEvent[] = [];
     let approvedInput: unknown;
     const hooks = new HookBus();
 
@@ -355,7 +355,7 @@ describe('ToolExecutionRuntime Hook 与权限边界', () => {
         code?: string;
         retryable?: boolean;
       }> = [];
-      const emitted: EmaStreamEvent[] = [];
+      const emitted: AgentExecutionEvent[] = [];
 
       hooks.register('beforeToolUse', (ctx) => {
         lifecycle.push({ event: 'before', callId: ctx.payload.callId });
@@ -433,7 +433,7 @@ describe('ToolExecutionRuntime Hook 与权限边界', () => {
   it('单工具取消不误报 onToolFailure', async () => {
     const hooks = new HookBus();
     const failures: unknown[] = [];
-    const emitted: EmaStreamEvent[] = [];
+    const emitted: AgentExecutionEvent[] = [];
     hooks.register('onToolFailure', (ctx) => {
       failures.push(ctx.payload);
       return { kind: 'continue' };

@@ -21,19 +21,13 @@ import { publishRuntimeReady } from './bootstrap/readiness.js';
 // 开发态直接运行 TypeScript；生产态拒绝缺失、陈旧或被混入旧文件的 dist。
 verifyLocalHostBuildIntegrity(import.meta.url);
 
-// ── Public re-exports (for embedding cores: CLI, tests, future hosts) ────────
-// The HTTP sidecar (this file's main()) is only one of several possible
-// consumers of the assembled runtime. Exposing `wire`, `startBackgroundWork`,
-// and `Orchestrator` lets a CLI import them directly and consume the
-// AsyncIterable<TurnStreamEvent> without any Hono dependency.
+// LocalHost 进程只是组合结果的一个消费者；未来本地 CLI 可以复用同一套装配，
+// 直接消费传输无关的 TurnHandle，而不依赖 Hono Route。
 export { wire, configureBridge, resolveBridgeUrl } from './wiring/index.js';
 export { startBackgroundWork } from './wiring/index.js';
 export type { AppBindings, BuildBindingsArgs, BackgroundHandle } from './wiring/index.js';
-export { Orchestrator }     from './orchestrator/orchestrator.js';
-export type {
-  TurnRequest as OrchestratorTurnRequest,
-  TurnResult  as OrchestratorTurnResult,
-} from './orchestrator/orchestrator.js';
+export { createTurnExecution } from './wiring/createTurnExecution.js';
+export { createTurnOutput } from './wiring/createTurnOutput.js';
 
 const PORT_DEFAULT = 3421;
 const PORT_MAX     = 3430;

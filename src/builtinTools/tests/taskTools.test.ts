@@ -7,7 +7,7 @@ import {
   asTurnId,
 } from '@ema-agent/ids';
 import type { Task, TaskStorePort } from '@ema-agent/tasks';
-import type { ToolExecutionEvent as EmaStreamEvent } from '@ema-agent/tools';
+import type { ToolExecutionEvent } from '@ema-agent/tools';
 import type { TaskSnapshot } from '@ema-agent/tasks';
 import { TaskCreateTool } from '../tools/TaskCreateTool/TaskCreateTool.js';
 import { TaskUpdateTool } from '../tools/TaskUpdateTool/TaskUpdateTool.js';
@@ -20,7 +20,7 @@ describe('Task 工具', () => {
   it('TaskCreate 返回持久快照并发送 task_created', async () => {
     const task = makeTask();
     const store = makeStore(task);
-    const events: EmaStreamEvent[] = [];
+    const events: ToolExecutionEvent[] = [];
 
     const result = await TaskCreateTool.execute({
       subject: 'Run tests',
@@ -53,7 +53,7 @@ describe('Task 工具', () => {
       deleted: false,
       task,
     });
-    const events: EmaStreamEvent[] = [];
+    const events: ToolExecutionEvent[] = [];
 
     const result = await TaskUpdateTool.execute({
       taskId,
@@ -115,11 +115,11 @@ function makeStore(task: Task): TaskStorePort {
 // 构造 Task 工具的窄 Context：持久存储 + 可选事件输出 + 调用身份。
 function makeContext(
   taskStore: TaskStorePort,
-  events: EmaStreamEvent[],
+  events: ToolExecutionEvent[],
 ) {
   return {
     taskStore,
-    emit: (event: EmaStreamEvent) => events.push(event),
+    emit: (event: ToolExecutionEvent) => events.push(event),
     sessionId,
     turnId,
   };

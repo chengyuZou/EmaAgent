@@ -4,14 +4,14 @@ import { createInterface } from 'node:readline/promises';
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import type { SessionId, TurnId } from '@ema-agent/ids';
-import type { ToolExecutionEvent as EmaStreamEvent } from '@ema-agent/tools';
+import type { ToolExecutionEvent } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import type { AskUserPort, BuiltinToolContext } from '../../builtinToolContext.js';
 import { contextOk } from '../../contextValidation.js';
 
 /** AskText 工具的窄 Context：可选 SSE 输出 + 可选问询解析器 + 调用身份。 */
 interface AskTextToolContext {
-  emit?: (event: EmaStreamEvent) => void;
+  emit?: (event: ToolExecutionEvent) => void;
   askUser?: AskUserPort;
   sessionId: SessionId;
   turnId: TurnId;
@@ -74,7 +74,7 @@ Prefer this over AskUser for a single freeform question - the UI shows a focused
         question:         input.question,
         humanDescription: input.humanDescription,
         placeholder:      input.placeholder,
-      } satisfies EmaStreamEvent;
+      } satisfies ToolExecutionEvent;
       context.emit(request);
 
       try {
@@ -86,7 +86,7 @@ Prefer this over AskUser for a single freeform question - the UI shows a focused
           sessionId: context.sessionId,
           promptId,
           text,
-        } satisfies EmaStreamEvent);
+        } satisfies ToolExecutionEvent);
 
         return { text };
       } catch (error) {
@@ -96,7 +96,7 @@ Prefer this over AskUser for a single freeform question - the UI shows a focused
           sessionId: context.sessionId,
           promptId,
           text:      '',
-        } satisfies EmaStreamEvent);
+        } satisfies ToolExecutionEvent);
         throw error;
       }
     }

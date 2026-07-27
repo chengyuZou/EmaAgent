@@ -1,7 +1,7 @@
 // 测试 Context 压缩的阈值、摘要持久化与连续失败熔断。
 import { describe, expect, it, vi } from 'vitest';
 import { asSessionId, asTurnId } from '@ema-agent/ids';
-import type { ContextRuntimeEvent as EmaStreamEvent } from '../events.js';
+import type { ContextRuntimeEvent } from '../events.js';
 import type { LlmRequest, Message } from '@ema-agent/llm';
 import { ContextCompactor } from '../contextCompactor.js';
 import { findSafeCutPoint } from '../compaction/safeCut.js';
@@ -104,7 +104,7 @@ describe('ContextCompactor', () => {
   });
 
   it('只有满足硬预算的摘要才持久化，并发送 Context 事件', async () => {
-    const events: EmaStreamEvent[] = [];
+    const events: ContextRuntimeEvent[] = [];
     const persistSummary = vi.fn();
     const complete = vi.fn(async (_request: LlmRequest) => ({
       blocks: [{ type: 'text' as const, text: '压缩后的工作摘要' }],
@@ -290,7 +290,7 @@ describe('ContextCompactor', () => {
   });
 
   it('整段工具调用能在完整配对前安全切割并执行 Macro 摘要', async () => {
-    const events: EmaStreamEvent[] = [];
+    const events: ContextRuntimeEvent[] = [];
     const persistSummary = vi.fn();
     const complete = vi.fn(async (request: LlmRequest) => ({
       blocks: [{ type: 'text' as const, text: '压缩后的工具历史摘要' }],

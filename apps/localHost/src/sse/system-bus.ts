@@ -6,8 +6,8 @@ import type { AppEvent } from '@ema-agent/events';
  * In-process pub/sub for events that aren't tied to a single turn.
  *
  * Two-channel architecture:
- *   per-turn  →  Orchestrator.run() async iterable  →  TurnEventStore
- *                                                  →  GET /api/turns/:id/events
+ *   per-turn  →  TurnHandle.events  →  TurnEventStore
+ *                                      →  GET /api/turns/:id/events
  *   system    →  SystemEventBus (this)              →  multiple SSE subscribers
  *                                                  →  GET /api/system/events
  *

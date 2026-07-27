@@ -4,14 +4,14 @@ import { createInterface } from 'node:readline/promises';
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import type { SessionId, TurnId } from '@ema-agent/ids';
-import type { ToolExecutionEvent as EmaStreamEvent } from '@ema-agent/tools';
+import type { ToolExecutionEvent } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import type { AskUserPort, BuiltinToolContext } from '../../builtinToolContext.js';
 import { contextOk } from '../../contextValidation.js';
 
 /** AskConfirm 工具的窄 Context：可选 SSE 输出 + 可选问询解析器 + 调用身份。 */
 interface AskConfirmToolContext {
-  emit?: (event: EmaStreamEvent) => void;
+  emit?: (event: ToolExecutionEvent) => void;
   askUser?: AskUserPort;
   sessionId: SessionId;
   turnId: TurnId;
@@ -72,7 +72,7 @@ Prefer this over AskUser when you only need a binary decision - the UI shows a f
         promptId,
         question:         input.question,
         humanDescription: input.humanDescription,
-      } satisfies EmaStreamEvent;
+      } satisfies ToolExecutionEvent;
       context.emit(request);
 
       try {
@@ -84,7 +84,7 @@ Prefer this over AskUser when you only need a binary decision - the UI shows a f
           sessionId: context.sessionId,
           promptId,
           confirmed,
-        } satisfies EmaStreamEvent);
+        } satisfies ToolExecutionEvent);
 
         return { confirmed };
       } catch (error) {
@@ -94,7 +94,7 @@ Prefer this over AskUser when you only need a binary decision - the UI shows a f
           sessionId: context.sessionId,
           promptId,
           confirmed: false,
-        } satisfies EmaStreamEvent);
+        } satisfies ToolExecutionEvent);
         throw error;
       }
     }

@@ -5,24 +5,26 @@ import {
   Readable } from 'node:stream';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { Orchestrator } from '../orchestrator/orchestrator.js';
 import { TurnEventHub } from '../sse/event-hub.js';
 import { TurnEventStore } from '../sse/event-store.js';
 import { encodeEvent,
   encodePing } from '../sse/writer.js';
 import type { AppBindings } from '../wiring/index.js';
+import { createTurnExecution } from '../wiring/createTurnExecution.js';
+import { createTurnOutput } from '../wiring/createTurnOutput.js';
 import type {
   TurnId,
 } from '@ema-agent/ids';
 import type { TurnStreamEvent } from '@ema-agent/events';
+import type { TurnHandle } from '@ema-agent/turn-execution';
 import {
   asTurnId,
   asSessionId,
 } from '@ema-agent/ids';
 import {
-  TurnRequest,
   filterAskUserPending,
 } from '@ema-agent/turn';
+import type { TurnRequest } from '@ema-agent/turn';
 import { hasTurnRequestInput } from '@ema-agent/turn';
 import { REQUEST_VALUE_LIMITS } from '../http/request-budget.js';
 import { SubagentTranscriptProjection } from '../turn-runtime/subagent-transcript-projection.js';
@@ -111,7 +113,11 @@ export function turnsRoute(bindings: AppBindings): Hono {
   const app = new Hono();
   const eventStore = new TurnEventStore(60_000);
   const eventHub = new TurnEventHub();
-  const orchestrator = new Orchestrator(bindings);
+  const {
+    executor: turnExecutor,
+    inputPreparer: turnInputPreparer,
+  } = createTurnExecution(bindings);
+  const turnSpeechOutput = createTurnOutput(bindings);
   // Evict completed / cancelled turns every 30 s to prevent unbounded memory growth.
   setInterval(() => eventStore.evictExpired(), 30_000).unref?.();
 
@@ -168,33 +174,46 @@ export function turnsRoute(bindings: AppBindings): Hono {
         ? asSessionId(sessionId)
         : bindings.session.createSession().id;
 
-    let turnId: TurnId;
-    let events: AsyncIterable<TurnStreamEvent>;
+    let handle: TurnHandle;
     try {
-      ({ turnId, events } = await orchestrator.run({
-        sessionId:        effectiveSessionId,
-        trigger,
+      handle = turnExecutor.start({
+        sessionId: effectiveSessionId,
+        triggerType: trigger.type,
         executionProfile,
         narrativePolicy,
-        userInput:        userInput ?? '',
-        contentParts,
-        attachmentInputs,
-        providerId,
-        model,
-        kbIds,
-        kbAssetScopes,
-        ttsEnabled:       ttsEnabled ?? false,
-        thinking:         thinkingEnabled ? { enabled: true as const, budgetTokens: 8000 } : undefined,
-      }));
+        userInput: userInput ?? '',
+        prepare: (context) => turnInputPreparer.prepare({
+          executionProfile,
+          narrativePolicy,
+          userInput: userInput ?? '',
+          contentParts,
+          attachmentInputs,
+          providerId,
+          model,
+          kbIds,
+          kbAssetScopes,
+          thinking: thinkingEnabled
+            ? { enabled: true as const, budgetTokens: 8000 }
+            : undefined,
+        }, context),
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       // Expected concurrency conflict — tell the client to retry, not "server broke".
       if (message.startsWith('session_busy')) {
         return c.json({ error: 'session_busy', message }, 409);
       }
-      console.error('[turns] orchestrator.run failed', err);
+      console.error('[turns] turn start failed', err);
       return c.json({ error: 'internal', message }, 500);
     }
+
+    const turnId = handle.turnId;
+    const events: AsyncIterable<TurnStreamEvent> = turnSpeechOutput.decorate({
+      enabled: ttsEnabled ?? false,
+      sessionId: effectiveSessionId,
+      turnId,
+      events: handle.events,
+    });
 
     // Transcript 是旁路投影；它可以失败，但不能停止 Engine 事件消费。
     const transcriptProjection = new SubagentTranscriptProjection(bindings.agentRunMessages);
@@ -207,7 +226,7 @@ export function turnsRoute(bindings: AppBindings): Hono {
         return true;
       }
       if (result.status === 'overflow') {
-        orchestrator.abort(turnId);
+        turnExecutor.abort(turnId);
       }
       return false;
     };
@@ -369,7 +388,7 @@ export function turnsRoute(bindings: AppBindings): Hono {
   app.delete('/:turnId/subagents/:subagentId', (c) => {
     const turnId     = asTurnId(c.req.param('turnId'));
     const subagentId = c.req.param('subagentId');
-    orchestrator.abortSubagent(turnId, subagentId);
+    turnExecutor.abortAgentRun(turnId as string, subagentId);
     return c.json({ ok: true });
   });
 
@@ -382,7 +401,7 @@ export function turnsRoute(bindings: AppBindings): Hono {
   app.delete('/:turnId/tools/:callId', (c) => {
     const turnId = asTurnId(c.req.param('turnId'));
     const callId = c.req.param('callId');
-    const aborted = orchestrator.abortTool(turnId, callId);
+    const aborted = turnExecutor.abortTool(turnId as string, callId);
     if (!aborted) return c.json({ ok: false, reason: 'not_found' }, 404);
     return c.json({ ok: true });
   });
@@ -396,8 +415,7 @@ export function turnsRoute(bindings: AppBindings): Hono {
   // No-op (200) if the turn isn't currently active.
   app.post('/:turnId/abort', (c) => {
     const turnId = asTurnId(c.req.param('turnId'));
-    orchestrator.abort(turnId);
-    return c.json({ ok: true });
+    return c.json({ ok: turnExecutor.abort(turnId) });
   });
 
   // ── POST /api/turns/:turnId/ask-user/:promptId/respond ─────────────────────
