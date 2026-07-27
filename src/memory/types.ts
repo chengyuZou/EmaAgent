@@ -1,9 +1,12 @@
 import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { ExecutionProfile } from '@ema-agent/turn';
-import type { MemoryEvent } from './events.js';
+import type { MemoryEvent, MemoryRecallEvent } from './events.js';
 import type { MemoryNodeType, MemoryItemKind } from '@ema-agent/storage';
 import type { EmbeddingSpace } from '@ema-agent/embed';
-import type { ContextContribution } from '@ema-agent/context';
+import type {
+  ContextContribution,
+  ContextContributionRequest,
+} from '@ema-agent/context';
 
 
 // ── Plan context (what the planner receives at beforeLlm) ────────────────────
@@ -78,6 +81,13 @@ export interface MemoryRecallView {
     layer2: number;
   };
   tokenEstimate: number;
+}
+
+/** Memory 对外只暴露一次 Turn 的召回投影，不让编排层接触内部 Repo。 */
+export interface MemoryRecallPort {
+  prepareRecallContribution(
+    args: ContextContributionRequest<MemoryRecallEvent>,
+  ): Promise<MemoryRecallView>;
 }
 
 // ── Settings ──────────────────────────────────────────────────────────────────

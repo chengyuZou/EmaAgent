@@ -8,6 +8,7 @@ import { HookBus } from '@ema-agent/hooks';
 import { ToolRegistry } from '@ema-agent/tools';
 import { registerBuiltinTools } from '@ema-agent/tool-builtin';
 import { TurnExecutor } from '../turnExecutor.js';
+import { TurnContextBuilder } from '../turnContext.js';
 
 const sessionId = 'session-chat-unified' as SessionId;
 const turnId = 'turn-chat-unified' as TurnId;
@@ -83,6 +84,10 @@ describe('Chat 统一执行链', () => {
     };
     const tools = new ToolRegistry();
     registerBuiltinTools(tools);
+    const narrative = {
+      route: async () => ({ routes: { '1st_Loop': '第一周目' } }),
+      queryOne: async () => '第一周目召回正文',
+    };
     const executor = new TurnExecutor({
       session: session as never,
       hooks: new HookBus(),
@@ -104,14 +109,14 @@ describe('Chat 统一执行链', () => {
         processChunk: (delta: string) => ({ cleaned: delta, events: [] }),
         flush: () => ({ cleaned: '', events: [] }),
       } as never,
-      narrative: {
-        route: async () => ({ routes: { '1st_Loop': '第一周目' } }),
-        queryOne: async () => '第一周目召回正文',
-      } as never,
+      narrative: narrative as never,
       tools,
       permission: {} as never,
       kbSearch: async () => ({ items: [] }) as never,
-    });
+    }, new TurnContextBuilder({
+      session: session as never,
+      narrative: narrative as never,
+    }));
 
     const handle = executor.start({
       sessionId,

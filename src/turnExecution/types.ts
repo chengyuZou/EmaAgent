@@ -24,14 +24,10 @@ import type { KbSearchResult } from '@ema-agent/knowledge';
 import type {
   LanguageModel,
   LlmContentPart,
-  Message as ModelMessage,
   ThinkingMode,
 } from '@ema-agent/llm';
-import type {
-  ContextContributionProvider,
-  ContextCompactionView,
-  ContextEvent,
-} from '@ema-agent/context';
+import type { ContextEvent } from '@ema-agent/context';
+import type { MemoryRecallEvent } from '@ema-agent/memory';
 import type { PromptSnapshot } from '@ema-agent/prompts';
 import type { MessageBlocks, SessionStore, Turn } from '@ema-agent/session';
 import type { HookBus, HookWarningEvent } from '@ema-agent/hooks';
@@ -126,10 +122,6 @@ export interface TurnExecutionDeps {
   taskStore?: TaskStorePort;
   /** 工具副作用的持久化状态机；生产环境由 Tools Journal 注入。 */
   toolExecutionJournal?: ToolExecutionJournalPort;
-  /** Memory、Task 等业务只贡献临时 Context，不得改写 Prompt 或持久历史。 */
-  prepareContextContributions?: ContextContributionProvider<TurnExecutionEvent>;
-  /** Context 模块拥有压缩算法；Turn 执行器只提供本轮冻结事实与窗口视图。 */
-  compactContext?: TurnContextCompactor;
 }
 
 // ── Turn 启动与执行输入 ───────────────────────────────────────────────────────
@@ -167,19 +159,6 @@ export interface TurnInput {
   /** 输入准备阶段完成的媒体降级。 */
   readonly requestDegradations: readonly RequestDegradationNotice[];
 }
-
-/** Context 压缩需要的根 Turn 事实，避免把宿主 Compactor 塞进 TurnInput。 */
-export interface TurnContextCompactionRequest {
-  readonly turn: Turn;
-  readonly input: TurnInput;
-  readonly view: ContextCompactionView;
-  readonly force?: boolean;
-  readonly signal: AbortSignal;
-}
-
-export type TurnContextCompactor = (
-  request: TurnContextCompactionRequest,
-) => Promise<readonly ModelMessage[]>;
 
 /** 输入准备阶段只暴露本轮稳定身份和同一条取消信号。 */
 export interface TurnPreparationContext {
@@ -245,5 +224,6 @@ export type TurnExecutionEvent =
   | PermissionStreamEvent
   | EmotionStreamEvent
   | NarrativeEvent
+  | MemoryRecallEvent
   | ContextEvent
   | HookWarningEvent;

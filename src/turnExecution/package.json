@@ -29,6 +29,7 @@
     "@ema-agent/ids": "workspace:*",
     "@ema-agent/knowledge": "workspace:*",
     "@ema-agent/llm": "workspace:*",
+    "@ema-agent/memory": "workspace:*",
     "@ema-agent/narrative": "workspace:*",
     "@ema-agent/permission": "workspace:*",
     "@ema-agent/prompts": "workspace:*",

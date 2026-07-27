@@ -1,0 +1,319 @@
+// 为一个根 Turn 准备历史与临时召回，并在每次模型调用前装配可压缩的上下文快照。
+
+import {
+  buildModelMessages,
+  buildRuntimeEnvironmentSnapshot,
+  ContextAssembler,
+  type ContextCompactor,
+  type ContextContribution,
+  type ContextRuntimeEvent,
+  type ModelContextSnapshot,
+  prepareHistoricalMessageView,
+  validateCurrentContent,
+} from '@ema-agent/context';
+import type { MemoryRecallEvent, MemoryRecallPort } from '@ema-agent/memory';
+import {
+  LlmModelCapabilityError,
+  type Message as ModelMessage,
+  type UserBlock,
+} from '@ema-agent/llm';
+import {
+  NarrativeClientError,
+  prepareNarrativeRecall,
+  type NarrativeClient,
+  type NarrativeEvent,
+  type NarrativeRecallTimeline,
+} from '@ema-agent/narrative';
+import type { SessionStore, Turn } from '@ema-agent/session';
+import {
+  renderActiveSkillContext,
+  type ActivatedSkill,
+} from '@ema-agent/skills';
+import {
+  formatTaskContextReminder,
+  type TaskStorePort,
+} from '@ema-agent/tasks';
+import type { ToolManifestSnapshot } from '@ema-agent/tools';
+import type { RequestDegradationNotice } from '@ema-agent/turn';
+import type { TurnInput } from './types.js';
+
+export type TurnContextEvent =
+  | ContextRuntimeEvent
+  | MemoryRecallEvent
+  | NarrativeEvent;
+
+export interface TurnContextBuilderDeps {
+  readonly session: SessionStore;
+  readonly memory?: MemoryRecallPort;
+  readonly tasks?: TaskStorePort;
+  readonly narrative?: NarrativeClient;
+  readonly compactor?: ContextCompactor;
+}
+
+export interface TurnContextPreparation {
+  readonly turn: Turn;
+  readonly input: TurnInput;
+  readonly signal: AbortSignal;
+  readonly emit?: (event: TurnContextEvent) => void;
+}
+
+export interface TurnContextAssembly {
+  readonly history: readonly ModelMessage[];
+  readonly currentTurn: readonly ModelMessage[];
+  readonly scratchpadContext?: string;
+  readonly mailboxMessages: readonly string[];
+  readonly activeSkills: readonly ActivatedSkill[];
+  readonly toolManifest: ToolManifestSnapshot;
+  readonly forceCompaction: boolean;
+  readonly emit?: (event: TurnContextEvent) => void;
+}
+
+export interface TurnContext {
+  /** AgentLoop 会在同一数组上追加 Assistant 与 Tool 消息。 */
+  readonly messages: ModelMessage[];
+  readonly historyMessageCount: number;
+  readonly readableUserInput: string;
+  readonly degradation?: RequestDegradationNotice;
+  readonly narrativeTimelines: readonly NarrativeRecallTimeline[];
+  assemble(request: TurnContextAssembly): Promise<ModelContextSnapshot>;
+}
+
+/**
+ * Builder 只持有 Context 领域真正需要的服务。prepare() 返回的对象冻结本轮
+ * Prompt、模型能力和基础贡献，后续 Agent 迭代只提交变化的消息与运行态投影。
+ */
+export class TurnContextBuilder {
+  private readonly assembler = new ContextAssembler();
+
+  constructor(private readonly deps: TurnContextBuilderDeps) {}
+
+  async prepare(request: TurnContextPreparation): Promise<TurnContext> {
+    const { turn, input, signal, emit } = request;
+    const { providerId, model, capabilities } = input.model;
+    const readableUserInput = toReadableUserInput(input.userInput);
+
+    if (Array.isArray(input.userInput)) {
+      const issues = validateCurrentContent(input.userInput, capabilities);
+      if (issues.length > 0) {
+        throw new LlmModelCapabilityError(providerId, model, issues);
+      }
+    }
+
+    const historyView = prepareHistoricalMessageView(
+      buildModelMessages(this.deps.session.loadHistory(turn.sessionId)),
+      capabilities,
+    );
+    const degradation = historyView.actions.length > 0
+      ? {
+          attempt: 1,
+          reason: '历史消息包含当前模型不支持或能力未知的媒体，已创建只读兼容视图',
+          removed: [...new Set(historyView.actions.map((action) => action.modality))],
+          replacements: ['placeholder'],
+        } satisfies RequestDegradationNotice
+      : undefined;
+
+    const baseContributions: ContextContribution[] = [];
+    let narrativeTimelines: readonly NarrativeRecallTimeline[] = [];
+
+    if (
+      turn.narrativePolicy === 'always'
+      && readableUserInput
+      && this.deps.narrative
+    ) {
+      try {
+        const recalled = await prepareNarrativeRecall(this.deps.narrative, {
+          sessionId: turn.sessionId,
+          turnId: turn.id,
+          userInput: readableUserInput,
+          signal,
+          emit,
+        });
+        narrativeTimelines = recalled.timelines;
+        if (recalled.contextText) {
+          baseContributions.push({
+            id: 'narrative.recall',
+            source: 'narrative',
+            placement: 'beforeCurrentTurn',
+            message: {
+              role: 'user',
+              content:
+                '[NARRATIVE CONTEXT - do not quote verbatim; use as background]\n\n'
+                + recalled.contextText,
+            },
+          });
+        }
+        if (
+          recalled.timelines.length === 0
+          && recalled.failedTimelineCount > 0
+        ) {
+          emit?.({
+            type: 'narrative_recall_unavailable',
+            sessionId: turn.sessionId,
+            turnId: turn.id,
+            code: 'narrative/unknown',
+            message: 'Narrative timelines unavailable - continuing without narrative context',
+            retryable: true,
+          });
+        }
+      } catch (error) {
+        if (signal.aborted || isAbortError(error)) throw error;
+        if (!(error instanceof NarrativeClientError)) throw error;
+        emit?.({
+          type: 'narrative_recall_unavailable',
+          sessionId: turn.sessionId,
+          turnId: turn.id,
+          code: error.code,
+          message: error.message,
+          retryable: error.retryable,
+        });
+      }
+    }
+
+    if (this.deps.memory) {
+      const recalled = await this.deps.memory.prepareRecallContribution({
+        sessionId: turn.sessionId,
+        turnId: turn.id,
+        executionProfile: turn.executionProfile,
+        narrativePolicy: turn.narrativePolicy,
+        userInput: readableUserInput,
+        signal,
+        emit,
+      });
+      if (recalled.contribution) baseContributions.push(recalled.contribution);
+    }
+
+    if (turn.executionProfile === 'work' && this.deps.tasks) {
+      const tasks = this.deps.tasks.takeContextReminder(turn.sessionId);
+      if (tasks.length > 0) {
+        baseContributions.push({
+          id: `tasks.reminder.${Math.max(...tasks.map((task) => task.version))}`,
+          source: 'tasks',
+          placement: 'beforeCurrentTurn',
+          message: {
+            role: 'user',
+            content: formatTaskContextReminder(tasks),
+          },
+        });
+      }
+    }
+
+    const modelUserInput = typeof input.userInput === 'string'
+      ? input.userInput
+      : input.userInput.map((part) => ({ ...part })) as UserBlock[];
+    const messages: ModelMessage[] = [
+      ...historyView.messages,
+      { role: 'user', content: modelUserInput },
+    ];
+    const frozenContributions = baseContributions.map((contribution) =>
+      structuredClone(contribution)
+    );
+
+    return {
+      messages,
+      historyMessageCount: historyView.messages.length,
+      readableUserInput,
+      degradation,
+      narrativeTimelines,
+      assemble: (assembly) => this.assemble(
+        turn,
+        input,
+        signal,
+        frozenContributions,
+        assembly,
+      ),
+    };
+  }
+
+  private async assemble(
+    turn: Turn,
+    input: TurnInput,
+    signal: AbortSignal,
+    baseContributions: readonly ContextContribution[],
+    request: TurnContextAssembly,
+  ): Promise<ModelContextSnapshot> {
+    const contributions: ContextContribution[] = baseContributions.map(
+      (contribution) => structuredClone(contribution),
+    );
+    if (request.scratchpadContext) {
+      contributions.push({
+        id: 'scratchpad.current',
+        source: 'scratchpad',
+        placement: 'afterCurrentTurn',
+        message: { role: 'user', content: request.scratchpadContext },
+      });
+    }
+    request.mailboxMessages.forEach((content, index) => {
+      contributions.push({
+        id: `mailbox.${index}`,
+        source: 'mailbox',
+        placement: 'afterCurrentTurn',
+        message: { role: 'user', content: `[Coordinator]: ${content}` },
+      });
+    });
+
+    const activeSkillContext = renderActiveSkillContext(request.activeSkills);
+    const assemblyInput = {
+      prompt: input.prompt,
+      environment: buildRuntimeEnvironmentSnapshot({
+        providerId: input.model.providerId,
+        model: input.model.model,
+        workspaceRoot: input.workspaceRoot,
+      }),
+      history: request.history,
+      currentTurn: request.currentTurn,
+      contributions,
+      postCompactionRestoreContributions: activeSkillContext
+        ? [{
+            id: 'skills.active',
+            source: 'skills' as const,
+            placement: 'beforeCurrentTurn' as const,
+            message: { role: 'user' as const, content: activeSkillContext },
+          }]
+        : [],
+      toolManifest: request.toolManifest,
+    };
+
+    if (!this.deps.compactor) return this.assembler.assemble(assemblyInput);
+
+    return this.assembler.assembleCompacted(
+      assemblyInput,
+      async (view, options) => {
+        const result = await this.deps.compactor!.compact({
+          sessionId: turn.sessionId,
+          turnId: turn.id,
+          executionProfile: turn.executionProfile,
+          narrativePolicy: turn.narrativePolicy,
+          messages: [...view.historyMessages],
+          prefixMessages: view.prefixMessages,
+          suffixMessages: view.suffixMessages,
+          requiredRestoreMessages: view.requiredRestoreMessages,
+          tools: view.tools,
+          force: options?.force,
+          modelContextWindow: input.model.capabilities.contextWindow ?? 200_000,
+          modelMaxOutputTokens: input.model.capabilities.maxOutput,
+          providerId: input.model.providerId,
+          model: input.model.model,
+          signal,
+          emit: request.emit,
+        });
+        return result.messages;
+      },
+      { force: request.forceCompaction },
+    );
+  }
+}
+
+function toReadableUserInput(input: TurnInput['userInput']): string {
+  if (typeof input === 'string') return input;
+  return input
+    .filter((part): part is Extract<(typeof input)[number], { type: 'text' }> =>
+      part.type === 'text'
+    )
+    .map((part) => part.text)
+    .join('\n');
+}
+
+function isAbortError(error: unknown): boolean {
+  if (error instanceof DOMException && error.name === 'AbortError') return true;
+  return error instanceof Error && error.name === 'AbortError';
+}

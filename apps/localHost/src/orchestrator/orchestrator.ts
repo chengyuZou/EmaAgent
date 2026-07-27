@@ -20,6 +20,7 @@ import {
 } from '@ema-agent/ids';
 import type { EmaStreamEvent } from '@ema-agent/events';
 import {
+  TurnContextBuilder,
   TurnExecutor,
   TurnInputPreparer,
   type TurnOutcome,
@@ -29,7 +30,6 @@ import type { FinalizedAudio } from '@ema-agent/tts';
 import { SettingsRepo } from '@ema-agent/storage';
 import { resolveVoice, ensureVoiceUri, VoiceUriCache } from '../wiring/providers/tts.js';
 import { ensureSessionLayout, scratchpadTurnDir } from '../storage-locations/index.js';
-import { formatTaskContextReminder } from '@ema-agent/tasks';
 
 const TURN_ATTACHMENT_CAPTION_PROMPT_REVISION = 'turn-attachment-caption-v1';
 
@@ -154,73 +154,33 @@ export class Orchestrator {
         },
       },
     });
-    this.turnExecutor = new TurnExecutor({
-      session:           bindings.session,
-      hooks:             bindings.hooks,
-      llm:               bindings.llm,
-      emotion:           bindings.emotion,
-      narrative:         bindings.narrative,
-      tools:             bindings.tools,
-      permission:        bindings.permission,
-      getCommandRunner:  bindings.getCommandRunner,
-      buildAsk:          bindings.buildAskForTurn,
-      askUserInteraction: bindings.askUserRegistry,
-      skillRunner:       bindings.skillRunner,
-      kbSearch:          bindings.kbSearch,
-      getSessionToolResultStore: bindings.getSessionToolResultStore,
-      agentRunStore:     bindings.agentRunStore,
-      taskStore:         bindings.taskStore,
-      toolExecutionJournal: bindings.toolExecutionJournal,
-      prepareContextContributions: async (contextRequest) => {
-        const recalled = await bindings.memory.prepareRecallContribution({
-          sessionId: contextRequest.sessionId,
-          turnId: contextRequest.turnId,
-          executionProfile: contextRequest.executionProfile,
-          narrativePolicy: contextRequest.narrativePolicy,
-          userInput: contextRequest.userInput,
-          signal: contextRequest.signal,
-        });
-        const contributions = recalled.contribution ? [recalled.contribution] : [];
-        const tasks = contextRequest.executionProfile === 'work'
-          ? bindings.taskStore.takeContextReminder(contextRequest.sessionId)
-          : [];
-        if (tasks.length > 0) {
-          contributions.push({
-            id: `tasks.reminder.${Math.max(...tasks.map((task) => task.version))}`,
-            source: 'tasks',
-            placement: 'beforeCurrentTurn',
-            message: {
-              role: 'user',
-              content: formatTaskContextReminder(tasks),
-            },
-          });
-        }
-        return contributions;
+    this.turnExecutor = new TurnExecutor(
+      {
+        session:           bindings.session,
+        hooks:             bindings.hooks,
+        llm:               bindings.llm,
+        emotion:           bindings.emotion,
+        narrative:         bindings.narrative,
+        tools:             bindings.tools,
+        permission:        bindings.permission,
+        getCommandRunner:  bindings.getCommandRunner,
+        buildAsk:          bindings.buildAskForTurn,
+        askUserInteraction: bindings.askUserRegistry,
+        skillRunner:       bindings.skillRunner,
+        kbSearch:          bindings.kbSearch,
+        getSessionToolResultStore: bindings.getSessionToolResultStore,
+        agentRunStore:     bindings.agentRunStore,
+        taskStore:         bindings.taskStore,
+        toolExecutionJournal: bindings.toolExecutionJournal,
       },
-      compactContext: ({ turn, input, view, force, signal }) => {
-        const { providerId, model, capabilities } = input.model;
-        return bindings.contextCompactor.compact({
-          sessionId: turn.sessionId,
-          turnId: turn.id,
-          executionProfile: turn.executionProfile,
-          narrativePolicy: turn.narrativePolicy,
-          messages: [...view.historyMessages],
-          prefixMessages: view.prefixMessages,
-          suffixMessages: view.suffixMessages,
-          requiredRestoreMessages: view.requiredRestoreMessages,
-          tools: view.tools,
-          force,
-          modelContextWindow: capabilities.contextWindow ?? 200_000,
-          modelMaxOutputTokens: capabilities.maxOutput,
-          providerId,
-          model,
-          signal,
-          emit: bindings.systemBus
-            ? (event) => bindings.systemBus.emit(event)
-            : undefined,
-        }).then((result) => result.messages);
-      },
-    });
+      new TurnContextBuilder({
+        session: bindings.session,
+        memory: bindings.memory,
+        tasks: bindings.taskStore,
+        narrative: bindings.narrative,
+        compactor: bindings.contextCompactor,
+      }),
+    );
   }
 
   /** 请求停止指定 Turn；Turn 已结束或不存在时无操作。 */

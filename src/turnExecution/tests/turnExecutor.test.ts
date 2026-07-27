@@ -8,6 +8,7 @@ import { HookBus } from '@ema-agent/hooks';
 import { ToolRegistry } from '@ema-agent/tools';
 import { LlmToolArgumentsParseError } from '@ema-agent/llm';
 import { TurnExecutor } from '../turnExecutor.js';
+import { TurnContextBuilder } from '../turnContext.js';
 import { TurnPreparationError } from '../errors.js';
 import type { TurnExecutionDeps } from '../types.js';
 
@@ -103,6 +104,14 @@ function startExecution(executor: TurnExecutor) {
   });
 }
 
+function createTurnExecutor(deps: TurnExecutionDeps): TurnExecutor {
+  return new TurnExecutor(deps, new TurnContextBuilder({
+    session: deps.session,
+    narrative: deps.narrative,
+    tasks: deps.taskStore,
+  }));
+}
+
 describe('TurnExecutor 生命周期', () => {
   it('start 同步创建一次 Turn，准备失败仍产生唯一终态并释放运行锁', async () => {
     let startCount = 0;
@@ -123,7 +132,7 @@ describe('TurnExecutor 生命周期', () => {
       },
       abortTurn: () => undefined,
     };
-    const executor = new TurnExecutor({
+    const executor = createTurnExecutor({
       session: session as never,
       hooks: new HookBus(),
       llm: {} as never,
@@ -197,7 +206,7 @@ describe('TurnExecutor 生命周期', () => {
       failTurn: () => { order.push('failTurn'); },
       abortTurn: () => { order.push('abortTurn'); },
     };
-    const executor = new TurnExecutor({
+    const executor = createTurnExecutor({
       session: session as never,
       hooks,
       llm: {} as never,
@@ -306,7 +315,7 @@ describe('TurnExecutor 生命周期', () => {
       permission: {} as never,
     };
     const events: EmaStreamEvent[] = [];
-    const executor = new TurnExecutor(deps);
+    const executor = createTurnExecutor(deps);
     const handle = startExecution(executor);
     for await (const event of handle.events) {
       events.push(event);
@@ -403,7 +412,7 @@ describe('TurnExecutor 生命周期', () => {
       permission: {} as never,
     };
     const events: EmaStreamEvent[] = [];
-    const executor = new TurnExecutor(deps);
+    const executor = createTurnExecutor(deps);
     const handle = startExecution(executor);
     for await (const event of handle.events) {
       events.push(event);
@@ -482,7 +491,7 @@ describe('TurnExecutor 生命周期', () => {
       permission: {} as never,
     };
     const events: EmaStreamEvent[] = [];
-    const executor = new TurnExecutor(deps);
+    const executor = createTurnExecutor(deps);
     const handle = startExecution(executor);
     for await (const event of handle.events) {
       events.push(event);
@@ -565,7 +574,7 @@ describe('TurnExecutor 生命周期', () => {
       permission: {} as never,
     };
     const events: EmaStreamEvent[] = [];
-    const executor = new TurnExecutor(deps);
+    const executor = createTurnExecutor(deps);
     const handle = startExecution(executor);
     for await (const event of handle.events) {
       events.push(event);

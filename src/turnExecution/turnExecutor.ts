@@ -34,22 +34,11 @@ import {
   TurnPolicy,
   type ExecutorFactory,
 } from '@ema-agent/agent';
-import {
-  buildModelMessages,
-  buildRuntimeEnvironmentSnapshot,
-  ContextAssembler,
-  prepareHistoricalMessageView,
-  validateCurrentContent,
-} from '@ema-agent/context';
-import type { ContextContribution } from '@ema-agent/context';
-import { LlmModelCapabilityError, llmProviderErrorCode } from '@ema-agent/llm';
-import type { AssistantBlock, Message as ModelMessage, UserBlock } from '@ema-agent/llm';
+import { llmProviderErrorCode } from '@ema-agent/llm';
+import type { AssistantBlock, Message as ModelMessage } from '@ema-agent/llm';
 import * as fs   from 'node:fs';
 import { awaitUserAnswer } from './awaitUserAnswer.js';
-import {
-  ActiveSkillState,
-  renderActiveSkillContext,
-} from '@ema-agent/skills';
+import { ActiveSkillState } from '@ema-agent/skills';
 import { TurnPreparationError } from './errors.js';
 import {
   TurnEventChannel,
@@ -62,6 +51,7 @@ import {
   type NarrativeSearchPort,
 } from '@ema-agent/narrative';
 import { executionProfilePolicy } from './executionProfilePolicy.js';
+import { TurnContextBuilder } from './turnContext.js';
 
 // ── TurnExecutor ─────────────────────────────────────────────────────────────
 
@@ -75,7 +65,10 @@ export class TurnExecutor {
   // 路由按 turnId 定位 Executor，以便只取消某个工具调用。
   private readonly activeExecutors = new Map<string, ToolExecutionRuntime>();
 
-  constructor(private readonly deps: TurnExecutionDeps) {}
+  constructor(
+    private readonly deps: TurnExecutionDeps,
+    private readonly contextBuilder: TurnContextBuilder,
+  ) {}
 
   /**
    * 同步创建 Turn 并立刻返回稳定句柄。输入准备和模型执行在内部启动；
@@ -148,6 +141,7 @@ export class TurnExecutor {
       const input = await command.prepare(started);
       const events = executeTurn(
         this.deps,
+        this.contextBuilder,
         input,
         turn,
         signal,
@@ -326,6 +320,7 @@ async function pushUnlessConsumerClosed(
 
 async function* executeTurn(
   deps:            TurnExecutionDeps,
+  contextBuilder:  TurnContextBuilder,
   input:           TurnInput,
   turn:            Turn,
   signal:          AbortSignal,
@@ -337,7 +332,6 @@ async function* executeTurn(
   const {
     providerId,
     model,
-    capabilities,
   } = input.model;
   const sessionId = turn.sessionId;
   const turnId    = turn.id;
@@ -434,129 +428,45 @@ async function* executeTurn(
       yield { type: 'request_degraded', sessionId, turnId, ...degradation };
     }
 
-    // ── 构建初始消息历史 ──────────────────────────────────────────────────────
+    // ── 准备本轮模型上下文 ────────────────────────────────────────────────────
     activePhase = 'provider';
-    const history = session.loadHistory(sessionId);
-    if (Array.isArray(userInput)) {
-      const issues = validateCurrentContent(userInput, capabilities);
-      if (issues.length > 0) {
-        throw new LlmModelCapabilityError(providerId, model, issues);
-      }
-    }
-    const historyView = prepareHistoricalMessageView(
-      buildModelMessages(history),
-      capabilities,
-    );
-    if (historyView.actions.length > 0) {
+    const preparedContext = yield* streamOperation((emit) =>
+      contextBuilder.prepare({
+        turn,
+        input,
+        signal,
+        emit,
+      }));
+    if (preparedContext.degradation) {
       yield {
         type: 'request_degraded',
         sessionId,
         turnId,
-        attempt: 1,
-        reason: '历史消息包含当前模型不支持或能力未知的媒体，已创建只读兼容视图',
-        removed: [...new Set(historyView.actions.map((action) => action.modality))],
-        replacements: ['placeholder'],
+        ...preparedContext.degradation,
       };
     }
+
     activePhase = 'persistence';
     session.appendMessage({
       turnId, sessionId, role: 'user',
       blocks: input.persistedUserInput,
     });
 
-    // Spawner 与 Executor 工厂共享同一数组引用，循环会在每轮向其中追加消息。
-    const modelUserInput = typeof userInput === 'string'
-      ? userInput
-      : userInput.map((part) => ({ ...part })) as UserBlock[];
-    const messages: ModelMessage[] = [
-      ...historyView.messages,
-      { role: 'user', content: modelUserInput },
-    ];
-    const baseContributions: ContextContribution[] = [];
-    let narrativeRecall: NarrativeRecallResult | undefined;
-
-    // Narrative 是本轮 Context 的不可信资料来源，不经 Hook 改写消息数组。
-    // V1 的 always 主动召回保留现有语义；auto 等 NarrativeSearch Tool 接线。
-    const readableInput = readableUserInput(userInput);
-    if (turn.narrativePolicy === 'always' && readableInput && deps.narrative) {
-      activePhase = 'provider';
-      try {
-        narrativeRecall = yield* streamOperation((emit) =>
-          prepareNarrativeRecall(deps.narrative!, {
-            sessionId,
-            turnId,
-            userInput: readableInput,
-            signal,
-            emit,
-          }));
-      } catch (error) {
-        if (signal.aborted || isAbortError(error)) throw error;
-        if (!(error instanceof NarrativeClientError)) throw error;
-        yield {
-          type: 'narrative_recall_unavailable',
-          sessionId,
-          turnId,
-          code: error.code,
-          message: error.message,
-          retryable: error.retryable,
-        };
-      }
-
-      if (narrativeRecall?.contextText) {
-        baseContributions.push({
-          id: 'narrative.recall',
-          source: 'narrative',
-          placement: 'beforeCurrentTurn',
-          message: {
-            role: 'user',
-            content:
-              '[NARRATIVE CONTEXT - do not quote verbatim; use as background]\n\n'
-              + narrativeRecall.contextText,
-          },
-        });
-      }
-      if (
-        narrativeRecall
-        && narrativeRecall.timelines.length === 0
-        && narrativeRecall.failedTimelineCount > 0
-      ) {
-        yield {
-          type: 'narrative_recall_unavailable',
-          sessionId,
-          turnId,
-          code: 'narrative/unknown',
-          message: 'Narrative timelines unavailable - continuing without narrative context',
-          retryable: true,
-        };
-      }
-    }
-
-    if (deps.prepareContextContributions) {
-      activePhase = 'unknown';
-      const prepared = yield* streamOperation((emit) =>
-        deps.prepareContextContributions!({
-          sessionId,
-          turnId,
-          executionProfile: turn.executionProfile,
-          narrativePolicy: turn.narrativePolicy,
-          userInput: readableInput,
-          signal,
-          emit,
-        }));
-      baseContributions.push(...prepared);
-    }
-
     // 剧情检索块是 Session UI 的正式记录，但不会作为普通历史再次喂给模型。
-    if (narrativeRecall && narrativeRecall.timelines.length > 0) {
+    if (preparedContext.narrativeTimelines.length > 0) {
       activePhase = 'persistence';
       session.appendMessage({
         turnId,
         sessionId,
         role: 'user',
         kind: 'narrative_context',
-        blocks: { timelines: [...narrativeRecall.timelines] },
+        blocks: { timelines: [...preparedContext.narrativeTimelines] },
       });
     }
+
+    // Spawner 与 Executor 工厂共享同一数组引用，循环会在每轮向其中追加消息。
+    const messages = preparedContext.messages;
+    const readableInput = preparedContext.readableUserInput;
 
     // auto 只把按需检索能力交给模型；off 与 always 都不暴露 NarrativeSearch。
     // Port 在宿主层绑定 Turn 身份、SSE 和 UI 持久化，Tool 只处理查询与结果。
@@ -613,7 +523,6 @@ async function* executeTurn(
           }
         : undefined;
 
-    const contextAssembler = new ContextAssembler();
     const activeSkillState = new ActiveSkillState();
 
     // ── 子 Agent 调度器与工具执行器工厂 ───────────────────────────────────────
@@ -732,7 +641,7 @@ async function* executeTurn(
     activePhase = 'provider';
     const agentLoop = runAgentLoop<TurnExecutionEvent>({
       messages, policy, buildExecutor, llm,
-      historyMessageCount: historyView.messages.length,
+      historyMessageCount: preparedContext.historyMessageCount,
       providerId, model, signal,
       maxIterations: policy.maxIterations(),
       budget,
@@ -747,59 +656,16 @@ async function* executeTurn(
         scratchpadContext,
         mailboxMessages,
         forceCompaction,
-      }) => {
-        const contributions: ContextContribution[] = [...baseContributions];
-        const activeSkillContext = renderActiveSkillContext(activeSkillState.list());
-        if (scratchpadContext) {
-          contributions.push({
-            id: 'scratchpad.current',
-            source: 'scratchpad',
-            placement: 'afterCurrentTurn',
-            message: { role: 'user', content: scratchpadContext },
-          });
-        }
-        mailboxMessages.forEach((content, index) => {
-          contributions.push({
-            id: `mailbox.${index}`,
-            source: 'mailbox',
-            placement: 'afterCurrentTurn',
-            message: { role: 'user', content: `[Coordinator]: ${content}` },
-          });
-        });
-        const assemblyInput = {
-          prompt: input.prompt,
-          environment: buildRuntimeEnvironmentSnapshot({
-            providerId,
-            model,
-            workspaceRoot,
-          }),
-          history: compactableHistory,
-          currentTurn,
-          contributions,
-          postCompactionRestoreContributions: activeSkillContext
-            ? [{
-                id: 'skills.active',
-                source: 'skills' as const,
-                placement: 'beforeCurrentTurn' as const,
-                message: { role: 'user' as const, content: activeSkillContext },
-              }]
-            : [],
-          toolManifest: policy.visibleManifestSnapshot(),
-        };
-        return deps.compactContext
-          ? contextAssembler.assembleCompacted(
-              assemblyInput,
-              (view, options) => deps.compactContext!({
-                turn,
-                input,
-                view,
-                force: options?.force,
-                signal,
-              }),
-              { force: forceCompaction },
-            )
-          : contextAssembler.assemble(assemblyInput);
-      },
+      }) => preparedContext.assemble({
+        history: compactableHistory,
+        currentTurn,
+        scratchpadContext,
+        mailboxMessages,
+        activeSkills: activeSkillState.list(),
+        toolManifest: policy.visibleManifestSnapshot(),
+        forceCompaction,
+        emit: (event) => emitRef.fn?.(event),
+      }),
       prepareLlmCall: async ({ iteration, llmCallId, messages: callMessages }) => {
         activePhase = 'hook';
         const result = await hooks.trigger('beforeLlm', {
@@ -810,7 +676,7 @@ async function* executeTurn(
             messages: callMessages,
             executionProfile: turn.executionProfile,
             narrativePolicy: turn.narrativePolicy,
-            userInput: readableUserInput(userInput),
+            userInput: readableInput,
             providerId,
             model,
             workspaceRoot,
@@ -1107,14 +973,6 @@ async function* executeTurn(
       try { fs.rmSync(scratchpadDir, { recursive: true, force: true }); } catch { /* 清理失败不改变 Turn 终态 */ }
     }
   }
-}
-
-function readableUserInput(input: TurnInput['userInput']): string {
-  if (typeof input === 'string') return input;
-  return input
-    .filter((part): part is Extract<(typeof input)[number], { type: 'text' }> => part.type === 'text')
-    .map((part) => part.text)
-    .join('\n');
 }
 
 /**

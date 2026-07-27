@@ -1455,6 +1455,9 @@ importers:
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../llm
+      '@ema-agent/memory':
+        specifier: workspace:*
+        version: link:../memory
       '@ema-agent/narrative':
         specifier: workspace:*
         version: link:../narrative

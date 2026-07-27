@@ -25,6 +25,7 @@ import type { Message, Turn } from '@ema-agent/session';
 import type { SessionId, TurnId, MessageId } from '@ema-agent/ids';
 
 import { TurnExecutor } from '../turnExecutor.js';
+import { TurnContextBuilder } from '../turnContext.js';
 import type { TurnExecutionDeps, TurnInput } from '../types.js';
 
 // ── 测试常量 ──────────────────────────────────────────────────────────────────
@@ -113,6 +114,14 @@ function makeTurn(id = 'turn-1'): Turn {
 // ── 依赖装配 ──────────────────────────────────────────────────────────────────
 
 let deps: TurnExecutionDeps;
+
+function createTurnExecutor(): TurnExecutor {
+  return new TurnExecutor(deps, new TurnContextBuilder({
+    session: deps.session,
+    narrative: deps.narrative,
+    tasks: deps.taskStore,
+  }));
+}
 let sessionStore: ReturnType<typeof makeSessionStore>;
 
 beforeAll(() => {
@@ -221,7 +230,7 @@ describe.skipIf(!DS_KEY)('TurnExecutor integration (DeepSeek)', () => {
 
   it('1. simple: no-tool turn ends normally', async () => {
     sessionStore.clear();
-    const executor = new TurnExecutor(deps);
+    const executor = createTurnExecutor();
     const events = await collectEvents(executor, makeInput({
       userInput:    'Reply with exactly: PONG',
     }));
@@ -241,7 +250,7 @@ describe.skipIf(!DS_KEY)('TurnExecutor integration (DeepSeek)', () => {
 
   it('2. Read: LLM reads a real file', async () => {
     sessionStore.clear();
-    const executor = new TurnExecutor(deps);
+    const executor = createTurnExecutor();
 
     const targetFile = path.join(WORKSPACE, 'src/agent/package.json');
     const events = await collectEvents(executor, makeInput({
@@ -264,7 +273,7 @@ describe.skipIf(!DS_KEY)('TurnExecutor integration (DeepSeek)', () => {
 
   it('3. glob: LLM lists package.json files', async () => {
     sessionStore.clear();
-    const executor = new TurnExecutor(deps);
+    const executor = createTurnExecutor();
 
     const events = await collectEvents(executor, makeInput({
       userInput: `Use the glob_files tool with pattern "packages/*/package.json" in the workspace root "${WORKSPACE}" to list all package.json files. Tell me how many you found.`,
@@ -284,7 +293,7 @@ describe.skipIf(!DS_KEY)('TurnExecutor integration (DeepSeek)', () => {
 
   it('4. abort: AbortSignal cancels in-flight turn', async () => {
     sessionStore.clear();
-    const executor = new TurnExecutor(deps);
+    const executor = createTurnExecutor();
     const input = makeInput({
       userInput: 'Count slowly from 1 to 1000, one number per line.',
     });

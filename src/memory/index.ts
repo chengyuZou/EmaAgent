@@ -15,6 +15,7 @@ export type {
   MemorySettings,
   MemoryModelRef,
   MemoryRecallView,
+  MemoryRecallPort,
   EmbeddedText,
   AlreadySurfaced,
 } from './types.js';
