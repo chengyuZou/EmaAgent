@@ -26,6 +26,10 @@ import type { SessionId, TurnId, MessageId } from '@ema-agent/ids';
 
 import { TurnExecutor } from '../turnExecutor.js';
 import { TurnContextBuilder } from '../turnContext.js';
+import {
+  TurnToolsBuilder,
+  type TurnToolsBuilderDeps,
+} from '../turnTools.js';
 import type { TurnExecutionDeps, TurnInput } from '../types.js';
 
 // ── 测试常量 ──────────────────────────────────────────────────────────────────
@@ -113,14 +117,21 @@ function makeTurn(id = 'turn-1'): Turn {
 
 // ── 依赖装配 ──────────────────────────────────────────────────────────────────
 
-let deps: TurnExecutionDeps;
+type TestTurnExecutionDeps = TurnExecutionDeps & TurnToolsBuilderDeps;
+
+let deps: TestTurnExecutionDeps;
 
 function createTurnExecutor(): TurnExecutor {
-  return new TurnExecutor(deps, new TurnContextBuilder({
+  return new TurnExecutor({
+    session: deps.session,
+    hooks: deps.hooks,
+    llm: deps.llm,
+    emotion: deps.emotion,
+  }, new TurnContextBuilder({
     session: deps.session,
     narrative: deps.narrative,
     tasks: deps.taskStore,
-  }));
+  }), new TurnToolsBuilder(deps));
 }
 let sessionStore: ReturnType<typeof makeSessionStore>;
 

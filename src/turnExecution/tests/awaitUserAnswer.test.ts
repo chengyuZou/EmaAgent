@@ -1,10 +1,12 @@
 // 测试根 Turn 的 AskUser 等待、回答和取消。
 
 import { describe, expect, it, vi } from 'vitest';
-import { awaitUserAnswer } from '../awaitUserAnswer.js';
+import {
+  awaitUserAnswer,
+  type AskUserInteractionPort,
+} from '../awaitUserAnswer.js';
 import type { AskUserRequiredEvent } from '@ema-agent/tools';
 import type { AskUserInteractionOutcome } from '@ema-agent/turn';
-import type { AskUserInteractionPort } from '../types.js';
 
 const request: AskUserRequiredEvent = {
   type: 'ask_user_required',

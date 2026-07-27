@@ -9,6 +9,7 @@ import { ToolRegistry } from '@ema-agent/tools';
 import { registerBuiltinTools } from '@ema-agent/tool-builtin';
 import { TurnExecutor } from '../turnExecutor.js';
 import { TurnContextBuilder } from '../turnContext.js';
+import { TurnToolsBuilder } from '../turnTools.js';
 
 const sessionId = 'session-chat-unified' as SessionId;
 const turnId = 'turn-chat-unified' as TurnId;
@@ -109,13 +110,17 @@ describe('Chat 统一执行链', () => {
         processChunk: (delta: string) => ({ cleaned: delta, events: [] }),
         flush: () => ({ cleaned: '', events: [] }),
       } as never,
-      narrative: narrative as never,
-      tools,
-      permission: {} as never,
-      kbSearch: async () => ({ items: [] }) as never,
     }, new TurnContextBuilder({
       session: session as never,
       narrative: narrative as never,
+    }), new TurnToolsBuilder({
+      session: session as never,
+      hooks: new HookBus(),
+      llm: {} as never,
+      narrative: narrative as never,
+      tools,
+      permission: {} as never,
+      knowledgeSearch: async () => ({ items: [] }) as never,
     }));
 
     const handle = executor.start({

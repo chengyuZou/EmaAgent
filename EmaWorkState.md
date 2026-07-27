@@ -14,6 +14,8 @@ L1 Turn 输入准备已经完成：`TurnInputPreparer` 统一完成一次根 Tur
 
 L2 Turn Context 已经完成：`TurnContextBuilder.prepare()` 一次性建立历史兼容视图和 Narrative/Memory/Task 临时贡献，返回的 `TurnContext` 在每次 LLM Call 通过现有 `ContextAssembler + ContextCompactor` 重建不可变窗口；Scratchpad、Mailbox 与 Active Skill 只作为当次投影输入。`TurnExecutor` 不再直接读取 Context 内部接口，LocalHost 也不再手写 Contribution/Compaction 回调。Memory 新增所有者定义的窄 `MemoryRecallPort`，召回证据与 Context 压缩事件进入当前 Turn 事件流，不再只发到进程级总线。
 
+L3 Turn Tools 已经完成：`TurnToolsBuilder.prepare()` 在根 Turn 开始时一次冻结 Capability Context、Builtin/MCP Manifest、Execution Profile 与 Tool Policy，并绑定 KB/Narrative/AskUser/Skill/Task/Sandbox 等窄能力；`TurnTools` 统一拥有 ToolExecutionRuntime、SubagentSpawner、Active Skill 与终态关闭顺序。`TurnExecutor` 不再读取 Tool Registry、Permission、CommandRunner、Journal 或 AgentRun Store，只通过一个 Turn 级协作者执行、取消和收口工具。根执行依赖现只剩 Session、Hook、LLM 与 Emotion，下一刀拆出根 AgentLoop 与 transcript。
+
 开工前已复核本地 Codex 源码：`codex-protocol` 只定义 Thread/Turn/Submission 等低层协议，真正编排位于 `codex-core/session`；App Server 只校验并提交 `Op::UserInput`，Session 统一建立 `RunningTask`、取消句柄和终态，`RegularTask` 再调用内部 `run_turn` 完成多轮模型与工具循环。Ema 因此保留低层 `turn` 与高层 `turnExecution` 两个编译边界，不能把执行依赖反向塞进被 Context、Session、Storage、Hooks 共同依赖的领域包。
 
 旧 `ConversationEngine` 与整个 `src/conversation` 包已经删除，Workspace 依赖和生产 import 归零。Chat 根生命周期与只读 Tool Profile 进入 `turnExecution`，LLM/Tool 迭代进入 `agent`，Narrative Route 与多周目 Recall 回到 `narrative`，模型可见召回正文通过不可信 Context Contribution 投递；Hook 不再携带 Narrative 私有结果。
@@ -106,9 +108,9 @@ Task 与 AgentRun 前端已经分面：Desktop 使用正式 `/api/tasks` 快照�
 
 开始任何新批次前必须重新运行 `git status --short` 与 `git diff`，保留用户和其他 Agent 的修改。
 
-当前未提交工作区是 L2 Turn Context：新增 `src/turnExecution/turnContext.ts` 与定向测试，修改 TurnExecutor、LocalHost 装配、Memory Recall Port、公共导出和 Workspace 依赖；本文件同步阶段与下一刀。没有迁移 Tool、TTS、Route 或 AppBindings。
+当前未提交工作区是 L3 Turn Tools：新增 `src/turnExecution/turnTools.ts`，修改 TurnExecutor、LocalHost 装配、AskUser 端口所有权、公共导出和聚焦测试；本文件同步阶段与下一刀。没有改写 Tools、Permission、Sandbox、AgentLoop、TTS、Route 或 AppBindings 的既有内部契约。
 
-当前基线最近提交：`22303ad4 feat: implement media compatibility for image inputs and enhance turn execution`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
+当前基线最近提交：`01254f72 feat: 新增turnContext 统一负责历史兼容、Narrative/Memory/Task Contribution、每轮 Context 装配与压缩。`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
 
 ## 已确定的 V1 口径
 
@@ -154,7 +156,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 5. Builtin Tool 2D 的 Sandbox 命令环境 allowlist、工作目录边界、FileRead 行数/字节双上限、Glob/Grep 有界搜索与 WebSearch 公网访问安全均已完成；结构化 Presentation 公共协议与首批接线已完成；
 6. Permission V1 已完成：统一 Session FIFO、明确终态、Turn 身份核对、SQLite 永久规则 CRUD 与设置页管理、Builtin-only 免审批边界均已接通；旧 `AskUserRegistryLike` 已改为 `AskUserInteractionPort`，不新增第二套队列；
 7. Skill 多文件激活、per-Agent 状态、结构化 Context 恢复与 `allowed-tools` 单向收窄已经完成；
-8. LocalHost L0、Turn 输入准备 L1 与 Turn Context L2 已完成；下一批收口 `turnTools.ts`：把根 Turn 的 Capability Context、ToolPool/Policy、Narrative/KB 窄入口、Subagent、Permission 与 ToolExecutionRuntime 构建从 `TurnExecutor` 迁到一个真实协作者。AgentLoop 仍只消费冻结 Manifest 与 Executor Factory；本批不同时迁 TTS、Route 或 AppBindings；
+8. LocalHost L0、Turn 输入准备 L1、Turn Context L2 与 Turn Tools L3 已完成；下一批收口 `rootAgentExecution.ts`：把根 AgentLoop、LLM/Message Hook、非终态事件翻译与 transcript 持久化从 `TurnExecutor` 迁到一个真实协作者。`TurnExecutor` 只保留根身份、TurnHandle、取消与唯一终态；本批不同时迁 TTS、Route 或 AppBindings；
 9. 后台进程按 `BackgroundProcess + ProcessOutput/ProcessStop` 单独实现 C 档，不修改 AgentLoop，也不恢复假 `run_in_background`。
 
 命名随业务批次清理：旧 `IFileStateStoreEntry/IFileStateStore` 及后续过渡接口已经删除，`IToolExecutionJournal` 已改为职责名；其余迁移期 `I*` 类型继续随业务边界处理，不单独进行全仓机械重命名。
@@ -163,6 +165,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- Turn Tools L3：新增 `TurnToolsBuilder + TurnTools`，根 Turn 的 Capability Context、稳定 Tool Manifest/Policy、KB/Narrative/AskUser 窄入口、Subagent 与 ToolExecutionRuntime 生命周期退出 `TurnExecutor`；`TurnExecutionDeps` 只保留 Session/Hook/LLM/Emotion。TurnExecution 7 个测试文件 21/21 通过，4 个 Live Integration 按规则跳过；Agent 6 个测试文件 25/25 通过；LocalHost typecheck 通过；全仓 typecheck 82/82 通过；`git diff --check` 通过，仅有既有 CRLF 与不可访问 pytest 缓存提示。
 - Turn Context L2：新增 `TurnContextBuilder + TurnContext`，旧 `prepareContextContributions/compactContext/TurnContextCompactor` 生产引用归零；Memory Recall 证据进入 Turn 事件联合。TurnExecution 7 个测试文件 21/21 通过，4 个 Live Integration 按规则跳过；LocalHost 26 个测试文件 86/86 通过；全仓 typecheck 82/82 通过；`git diff --check` 通过，仅有既有 CRLF 与不可访问 pytest 缓存提示。
 - Turn 输入准备 L1：`TurnInputPreparer` 已接入 LocalHost，旧 `TurnExecutionPlan/PreparedTurnExecution`、LocalHost 私有媒体兼容与持久消息构造实现归零；附件 Store 公共类型去除无意义 `I` 前缀。TurnExecution 6 个测试文件 19/19 通过，4 个 Live Integration 因未配置真实模型密钥按规则跳过；LocalHost 26 个测试文件 86/86 通过；全仓 typecheck 82/82 通过；`git diff --check` 通过，仅有既有 CRLF 与不可访问测试缓存提示。
 - Turn/TurnExecution/LocalHost 边界审计：完整复核 `turnExecutor.ts`、`agentLoop.ts`、LocalHost Orchestrator、Turns Route、wiring 与相关领域入口；确认 `TurnHandle.events` 可作为 SSE、未来 WebSocket 与 CLI 的传输无关事件源，LocalHost 是本机单 Profile 进程宿主而非远程万能后端。该批仅修改 `EmaRefactor.md` 与 `EmaWorkState.md`，未运行代码测试；使用 `git diff --check` 检查文档补丁。
@@ -240,7 +243,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 先完整阅读 CLAUDE.md 与 EmaWorkState.md，再按当前批次阅读 EmaRefactor.md 和 EmaClaudeArchitectureReview.md 对应章节。检查 git status、diff 和最近提交，保留用户及其他 Agent 的修改。
 
-LocalHost L0、Turn 输入准备 L1 与 Turn Context L2 已经完成，不要恢复 `apps/core`、`TurnExecutionPlan`、`PreparedTurnExecution`、`prepareContextContributions` 或 `compactContext` 回调。先阅读 `EmaRefactor.md` §7.1.1；下一批只收口 `turnTools.ts`：让根 Turn 的 Tool 能力投影、Manifest/Policy、Subagent 与 ToolExecutionRuntime 构建退出 `TurnExecutor`，但不要改写 Tools、Permission、Sandbox 或 AgentLoop 已经成立的内部契约，也不要同时迁 TTS、全部 Route 或 AppBindings。修改前先核对真实调用链并说明本批边界，不要提交 Git。
+LocalHost L0、Turn 输入准备 L1、Turn Context L2 与 Turn Tools L3 已经完成，不要恢复 `apps/core`、`TurnExecutionPlan`、`PreparedTurnExecution`、万能 `TurnExecutionDeps`、`prepareContextContributions` 或 `compactContext` 回调。先阅读 `EmaRefactor.md` §7.1.1；下一批只收口 `rootAgentExecution.ts`：让根 AgentLoop、LLM/Message Hook、非终态事件翻译与 transcript 持久化退出 `TurnExecutor`，但不要改写 AgentLoop、Context、Tools 或 Session 已经成立的内部契约，也不要同时迁 TTS、全部 Route 或 AppBindings。修改前先核对真实调用链并说明本批边界，不要提交 Git。
 ```
 
 ## 维护方式

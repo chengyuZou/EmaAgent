@@ -1,8 +1,7 @@
 // 定义根 Turn 执行器的准备结果、依赖端口与完整事件边界。
 
-import type { SessionId, ToolCallId, TurnId } from '@ema-agent/ids';
+import type { SessionId, TurnId } from '@ema-agent/ids';
 import type {
-  AskUserInteractionOutcome,
   ExecutionProfile,
   KbAssetScope,
   NarrativePolicy,
@@ -12,15 +11,11 @@ import type {
   TurnStats,
   TurnTriggerType,
 } from '@ema-agent/turn';
-import type {
-  AskUserRequiredEvent,
-  ToolExecutionEvent,
-} from '@ema-agent/tools';
+import type { ToolExecutionEvent } from '@ema-agent/tools';
 import type {
   AgentRunEvent,
   AgentTurnEvent,
 } from '@ema-agent/agent';
-import type { KbSearchResult } from '@ema-agent/knowledge';
 import type {
   LanguageModel,
   LlmContentPart,
@@ -32,34 +27,9 @@ import type { PromptSnapshot } from '@ema-agent/prompts';
 import type { MessageBlocks, SessionStore, Turn } from '@ema-agent/session';
 import type { HookBus, HookWarningEvent } from '@ema-agent/hooks';
 import type { EmotionEngine, EmotionStreamEvent } from '@ema-agent/emotion';
-import type {
-  ToolExecutionJournalPort,
-  ToolRegistry,
-  ToolResultStore,
-} from '@ema-agent/tools';
-import type { SkillRunnerPort } from '@ema-agent/skills';
-import type { CommandRunnerPort } from '@ema-agent/sandbox';
-import type {
-  PermissionEngine,
-  AskPermissionFn,
-  PermissionStreamEvent,
-} from '@ema-agent/permission';
+import type { PermissionStreamEvent } from '@ema-agent/permission';
 import type { ModelCapabilitySnapshot } from '@ema-agent/provider';
-import type { AgentRunStorePort } from '@ema-agent/agent';
-import type { TaskStorePort } from '@ema-agent/tasks';
-import type { NarrativeClient, NarrativeEvent } from '@ema-agent/narrative';
-
-/** 根 Turn 等待 AskUser 回答所需的最小交互端口。 */
-export interface AskUserInteractionPort {
-  /** 使用调用方提供的 promptId，不在注册表中另建 UUID。 */
-  createWithId(
-    promptId: string,
-    timeoutMs?: number,
-    turnId?: string,
-    request?: AskUserRequiredEvent,
-  ): { promise: Promise<AskUserInteractionOutcome> };
-  cancel(promptId: string): boolean;
-}
+import type { NarrativeEvent } from '@ema-agent/narrative';
 
 // ── 运行依赖 ──────────────────────────────────────────────────────────────────
 
@@ -71,57 +41,10 @@ export interface AskUserInteractionPort {
  * 执行器只消费已经确定的 providerId 和 model。
  */
 export interface TurnExecutionDeps {
-  session:    SessionStore;
-  hooks:      HookBus;
-  llm:        LanguageModel;
-  emotion:    EmotionEngine;
-  /** Narrative 的 route/query 执行入口；TurnExecutor 只按本轮策略调用。 */
-  narrative?: NarrativeClient;
-  tools:      ToolRegistry;
-  permission: PermissionEngine;
-  /**
-   * 按 Session 创建沙箱 Runner。无工作区或无执行能力时返回 undefined，
-   * Bash 必须明确拒绝，不能回退到裸进程。
-   * 每个 Session 的 workspaceRoot 不同，因此装配入口按 sessionId 缓存，
-   * 不能使用全局单例；聚焦测试可以省略。
-   */
-  getCommandRunner?: (sessionId: SessionId) => CommandRunnerPort | undefined;
-  /**
-   * 为每个 Turn 创建连接到 SSE 事件流的 askPermission 回调。
-   * 测试可省略，此时 PermissionEngine 使用构造参数中的 ask 配置，
-   * 通常是默认拒绝的替身实现。
-   */
-  buildAsk?: (args: {
-    sessionId: SessionId;
-    turnId:    TurnId;
-    toolCallId: ToolCallId;
-    emit:      (ev: PermissionStreamEvent) => void;
-  }) => AskPermissionFn;
-  /**
-   * 保存待回答 ask_user 请求的交互端口。执行器把解析函数注入 Tool Context，
-   * ask_user 工具会等待该函数返回。
-   */
-  askUserInteraction?: AskUserInteractionPort;
-  /** Skill 运行桥接，使 skill_call 可以调用已注册 Skill。 */
-  skillRunner?: SkillRunnerPort;
-  /**
-   * 知识库搜索能力，供 kb_search 工具执行 Agentic RAG。
-   * kbIds 由模型工具调用提供；空数组或 undefined 表示使用当前激活知识库。
-   * assetScopes 来自用户在聊天选择器中的文档范围，不由模型决定。
-   * 只有工具未显式提供 kbIds 时，执行器才会传入 assetScopes。
-   */
-  kbSearch?: (query: string, topK?: number, kbIds?: string[], assetScopes?: KbAssetScope[], sessionId?: string, turnId?: string) => Promise<KbSearchResult>;
-  /** 按 Session 获取大结果外置存储；测试与非 Agent 调用方可以省略。 */
-  getSessionToolResultStore?: (sessionId: SessionId) => ToolResultStore;
-  /**
-   * 子 Agent 执行记录；根 Turn 不建立重复 AgentRun 投影。
-   * 聚焦循环测试可以省略。
-   */
-  agentRunStore?: AgentRunStorePort;
-  /** 根 Turn 的持久工作清单；子 Agent ToolContext 不继承该入口。 */
-  taskStore?: TaskStorePort;
-  /** 工具副作用的持久化状态机；生产环境由 Tools Journal 注入。 */
-  toolExecutionJournal?: ToolExecutionJournalPort;
+  session: SessionStore;
+  hooks: HookBus;
+  llm: LanguageModel;
+  emotion: EmotionEngine;
 }
 
 // ── Turn 启动与执行输入 ───────────────────────────────────────────────────────

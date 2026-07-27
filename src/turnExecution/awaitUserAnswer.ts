@@ -1,7 +1,19 @@
 // 把根 Turn 的 AskUser 等待接入取消信号，并在取消时清理交互队列。
 
 import type { AskUserRequiredEvent } from '@ema-agent/tools';
-import type { AskUserInteractionPort } from './types.js';
+import type { AskUserInteractionOutcome } from '@ema-agent/turn';
+
+/** 根 Turn 等待 AskUser 回答所需的最小交互端口。 */
+export interface AskUserInteractionPort {
+  /** 使用调用方提供的 promptId，不在注册表中另建 UUID。 */
+  createWithId(
+    promptId: string,
+    timeoutMs?: number,
+    turnId?: string,
+    request?: AskUserRequiredEvent,
+  ): { promise: Promise<AskUserInteractionOutcome> };
+  cancel(promptId: string): boolean;
+}
 
 export interface AwaitUserAnswerInput {
   promptId: string;

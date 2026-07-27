@@ -3,17 +3,6 @@
 import type { TurnFailureCode } from '@ema-agent/turn';
 import { asAgentRunId } from '@ema-agent/ids';
 import type { MessageBlocks, Turn } from '@ema-agent/session';
-import {
-  ToolExecutionRuntime,
-  type AskUserRequiredEvent,
-  type ReadFileState,
-} from '@ema-agent/tools';
-import type { KnowledgeSearchPort } from '@ema-agent/knowledge';
-import {
-  assembleToolPool,
-  type BuiltinToolContext,
-} from '@ema-agent/tool-builtin';
-import type { PermissionContext } from '@ema-agent/permission';
 import type { TurnFailurePhase } from '@ema-agent/hooks';
 import type {
   TurnExecutionDeps,
@@ -26,32 +15,23 @@ import type {
 } from './types.js';
 import {
   AgentBudgetExceededError,
-  buildScratchpadContext,
-  createToolLifecycleHooks,
   runAgentLoop,
-  SubagentSpawner,
   TurnBudget,
-  TurnPolicy,
-  type ExecutorFactory,
 } from '@ema-agent/agent';
 import { llmProviderErrorCode } from '@ema-agent/llm';
-import type { AssistantBlock, Message as ModelMessage } from '@ema-agent/llm';
+import type { AssistantBlock } from '@ema-agent/llm';
 import * as fs   from 'node:fs';
-import { awaitUserAnswer } from './awaitUserAnswer.js';
-import { ActiveSkillState } from '@ema-agent/skills';
 import { TurnPreparationError } from './errors.js';
 import {
   TurnEventChannel,
   TurnEventChannelClosedError,
 } from './turnEventChannel.js';
-import {
-  NarrativeClientError,
-  prepareNarrativeRecall,
-  type NarrativeRecallResult,
-  type NarrativeSearchPort,
-} from '@ema-agent/narrative';
-import { executionProfilePolicy } from './executionProfilePolicy.js';
 import { TurnContextBuilder } from './turnContext.js';
+import {
+  TurnTools,
+  TurnToolsBuilder,
+  type TurnToolsShutdownReason,
+} from './turnTools.js';
 
 // ── TurnExecutor ─────────────────────────────────────────────────────────────
 
@@ -60,14 +40,13 @@ import { TurnContextBuilder } from './turnContext.js';
  * Agent 的思考与行动迭代由 AgentLoop 完成。
  */
 export class TurnExecutor {
-  // 路由按 turnId 定位 Spawner，以便只取消某个子 Agent。
-  private readonly activeSpawners  = new Map<string, SubagentSpawner>();
-  // 路由按 turnId 定位 Executor，以便只取消某个工具调用。
-  private readonly activeExecutors = new Map<string, ToolExecutionRuntime>();
+  // 路由只定位本 Turn 的工具协作者，不再穿透其 Spawner 与执行器。
+  private readonly activeTools = new Map<string, TurnTools>();
 
   constructor(
     private readonly deps: TurnExecutionDeps,
     private readonly contextBuilder: TurnContextBuilder,
+    private readonly toolsBuilder: TurnToolsBuilder,
   ) {}
 
   /**
@@ -119,12 +98,12 @@ export class TurnExecutor {
 
   /** 只取消指定子 AgentRun，不中止父 Turn。 */
   abortAgentRun(turnId: string, agentRunId: string): void {
-    this.activeSpawners.get(turnId)?.abortSubagent(asAgentRunId(agentRunId));
+    this.activeTools.get(turnId)?.abortAgentRun(asAgentRunId(agentRunId));
   }
 
   /** 只取消指定工具调用；找不到时返回 false。 */
   abortTool(turnId: string, callId: string): boolean {
-    return this.activeExecutors.get(turnId)?.abortTool(callId) ?? false;
+    return this.activeTools.get(turnId)?.abortTool(callId) ?? false;
   }
 
   private async pumpTurn(
@@ -142,11 +121,11 @@ export class TurnExecutor {
       const events = executeTurn(
         this.deps,
         this.contextBuilder,
+        this.toolsBuilder,
         input,
         turn,
         signal,
-        this.activeSpawners,
-        this.activeExecutors,
+        this.activeTools,
       );
 
       for await (const event of events) {
@@ -319,15 +298,15 @@ async function pushUnlessConsumerClosed(
 // ── Turn 核心运行入口 ─────────────────────────────────────────────────────────
 
 async function* executeTurn(
-  deps:            TurnExecutionDeps,
-  contextBuilder:  TurnContextBuilder,
-  input:           TurnInput,
-  turn:            Turn,
-  signal:          AbortSignal,
-  activeSpawners:  Map<string, SubagentSpawner>,
-  activeExecutors: Map<string, ToolExecutionRuntime>,
+  deps:           TurnExecutionDeps,
+  contextBuilder: TurnContextBuilder,
+  toolsBuilder:   TurnToolsBuilder,
+  input:          TurnInput,
+  turn:           Turn,
+  signal:         AbortSignal,
+  activeTools:    Map<string, TurnTools>,
 ): AsyncIterable<TurnExecutionEvent> {
-  const { session, hooks, llm, emotion, tools, permission, askUserInteraction } = deps;
+  const { session, hooks, llm, emotion } = deps;
   const { userInput, workspaceRoot } = input;
   const {
     providerId,
@@ -338,19 +317,7 @@ async function* executeTurn(
   const startedAt = Date.now();
 
   const budget        = new TurnBudget();
-  const readFileState = new Map() as ReadFileState;
-  const toolResultStore = deps.getSessionToolResultStore?.(sessionId);
-  const resolvedRunner = deps.getCommandRunner?.(sessionId);
-
-  // Core 生成根目录，Agent 只消费并把它转换成显式权限能力。
-  // 主 Agent 与子 Agent 共享该 Turn 目录；目录由 scratchpad_write 按需创建。
   const scratchpadDir = input.scratchpadDir;
-  const permCtx: PermissionContext = {
-    workspaceRoot,
-    sessionId,
-    turnId,
-    internalPaths: scratchpadDir ? { turnScratchpad: scratchpadDir } : undefined,
-  };
 
   // 每次收到 loop_iteration 都重置本轮累计内容。
   let iterTextByIndex     = new Map<number, string>();
@@ -361,8 +328,7 @@ async function* executeTurn(
   let totalOutput = 0;
   let iterations  = 0;
 
-  // 在 try 外声明，确保 finally 能在释放 Spawner 前切断事件队列引用。
-  // buildExecutor 会在循环启动后填入实际发送函数。
+  // Context 与 Tool 协作者都通过同一事件出口进入 AgentLoop relay。
   const emitRef: { fn?: (ev: TurnExecutionEvent) => void } = {};
   const pendingHookEvents: TurnExecutionEvent[] = [];
   const emitHookEvent = (event: TurnExecutionEvent): void => {
@@ -370,14 +336,9 @@ async function* executeTurn(
   };
   let activePhase: TurnFailurePhase = 'setup';
   let failureReported = false;
-  let turnExecutor: ToolExecutionRuntime | undefined;
-  let turnSpawner: SubagentSpawner | undefined;
-  let spawnerStopped = false;
-  const stopSpawner = async (reason: string): Promise<void> => {
-    if (spawnerStopped) return;
-    spawnerStopped = true;
-    emitRef.fn = undefined;
-    await turnSpawner?.shutdown(reason);
+  let turnTools: TurnTools | undefined;
+  const stopTools = async (reason: TurnToolsShutdownReason): Promise<void> => {
+    await turnTools?.shutdown(reason);
   };
   const reportFailure = async (
     code: TurnFailureCode,
@@ -468,179 +429,27 @@ async function* executeTurn(
     const messages = preparedContext.messages;
     const readableInput = preparedContext.readableUserInput;
 
-    // auto 只把按需检索能力交给模型；off 与 always 都不暴露 NarrativeSearch。
-    // Port 在宿主层绑定 Turn 身份、SSE 和 UI 持久化，Tool 只处理查询与结果。
-    const narrativeSearch: NarrativeSearchPort | undefined =
-      turn.narrativePolicy === 'auto' && deps.narrative
-        ? async (query, searchSignal) => {
-            let recalled: NarrativeRecallResult;
-            try {
-              recalled = await prepareNarrativeRecall(deps.narrative!, {
-                sessionId,
-                turnId,
-                userInput: query,
-                signal: searchSignal,
-                emit: (event) => emitRef.fn?.(event),
-              });
-            } catch (error) {
-              if (searchSignal.aborted || isAbortError(error)) throw error;
-              if (error instanceof NarrativeClientError) {
-                emitRef.fn?.({
-                  type: 'narrative_recall_unavailable',
-                  sessionId,
-                  turnId,
-                  code: error.code,
-                  message: error.message,
-                  retryable: error.retryable,
-                });
-              }
-              throw error;
-            }
-
-            if (recalled.timelines.length > 0) {
-              session.appendMessage({
-                turnId,
-                sessionId,
-                role: 'user',
-                kind: 'narrative_context',
-                blocks: { timelines: [...recalled.timelines] },
-              });
-            }
-            if (
-              recalled.timelines.length === 0
-              && recalled.failedTimelineCount > 0
-            ) {
-              emitRef.fn?.({
-                type: 'narrative_recall_unavailable',
-                sessionId,
-                turnId,
-                code: 'narrative/unknown',
-                message: 'Narrative timelines unavailable - continuing without narrative context',
-                retryable: true,
-              });
-            }
-            return recalled;
-          }
-        : undefined;
-
-    const activeSkillState = new ActiveSkillState();
-
-    // ── 子 Agent 调度器与工具执行器工厂 ───────────────────────────────────────
-    // 工具执行器闭包捕获 Turn 运行时依赖；Spawner 持有最新一次 beforeLlm
-    // 产生的完整请求视图，并在 spawn() 时按 fork 语义创建快照。
-    //
-    // emitRef 让 Spawner 把子 Agent 进度转发到父 SSE 流。
-    // AgentLoop 会在执行工具前调用 buildExecutor，因此 spawn 时发送函数已经就绪；
-    // Turn 结束后由 finally 清空引用。
-
-    // beforeLlm 返回的是每次请求的临时视图，不能写回原始历史，否则下一轮
-    // 会重复注入 Memory/Skill 等上下文。Spawner 需要继承完整视图，因此维护
-    // 一个稳定数组引用，每次 prepare 完成后原地刷新。
-    const subagentContextMessages: ModelMessage[] = [];
-    const scopedKbSearch: KnowledgeSearchPort | undefined = deps.kbSearch
-      ? (query, topK, kbIds) => {
-          // Tool 指定 kbIds 时是显式覆盖；否则继承父 Turn 的用户选择范围。
-          const effectiveKbIds = kbIds
-            ?? (input.kbIds?.length ? [...input.kbIds] : []);
-          const effectiveScopes = kbIds
-            ? undefined
-            : input.kbAssetScopes?.map((scope) => ({
-                kbId: scope.kbId,
-                assetIds: [...scope.assetIds],
-              }));
-          return deps.kbSearch!(
-            query,
-            topK,
-            effectiveKbIds,
-            effectiveScopes,
-            sessionId,
-            turnId,
-          );
-        }
-      : undefined;
-
-    const spawner = new SubagentSpawner(
-      deps, sessionId, turnId, providerId, model, subagentContextMessages,
-      workspaceRoot,
-      resolvedRunner,
-      readFileState,
-      scratchpadDir,
-      scratchpadDir ? () => buildScratchpadContext(scratchpadDir) : undefined,
-      (ev) => emitRef.fn?.(ev),
-      scopedKbSearch,
-      budget,
-      activeSkillState,
-    );
-    turnSpawner = spawner;
-    activeSpawners.set(turnId, spawner);
-
-    // 先按本次根 Turn 真正拥有的能力装配模型可见工具，再从同一 Manifest
-    // 建立执行策略。Tool 不可见与不可执行因此不会由两套手写门控分别决定。
-    const capabilityContext: BuiltinToolContext = {
-      sessionId,
-      turnId,
-      workspaceRoot,
+    // 工具快照只建立一次；后续 Skill/Profile 只能在该快照上收窄能力。
+    const toolsForTurn = toolsBuilder.prepare({
+      turn,
+      input,
       signal,
-      readFileState,
-      taskStore:         deps.taskStore,
-      commandRunner:     resolvedRunner,
-      skillRunner:       deps.skillRunner,
-      activeSkillState,
-      knowledgeSearch:   scopedKbSearch,
-      narrativeSearch,
-      subagentSpawner:   spawner,
-      scratchpad:        scratchpadDir ? { dir: scratchpadDir, author: 'main' } : undefined,
-      askUser: askUserInteraction
-        ? async (promptId, questions, request) => {
-            void questions;
-            return awaitUserAnswer({
-              promptId,
-              request: request as AskUserRequiredEvent,
-              turnId: turnId as string,
-              signal,
-              interaction: askUserInteraction,
-            });
-          }
-        : undefined,
-    };
-    const profilePolicy = executionProfilePolicy(turn.executionProfile);
-    const assembledTools = assembleToolPool(tools, capabilityContext);
-    const profileTools = profilePolicy.allowedToolIds === null
-      ? assembledTools
-      : assembledTools.filter((tool) => profilePolicy.allowedToolIds!.has(tool.id));
-    const policy = new TurnPolicy(
-      tools.manifestSnapshot(profileTools),
-      profilePolicy.maxIterations,
-    );
-    const toolContext: BuiltinToolContext = Object.freeze({
-      ...capabilityContext,
-      toolCapabilities: policy.capabilities(),
+      budget,
     });
-
-    const buildExecutor: ExecutorFactory<TurnExecutionEvent> = ({ pushEv, signal: wakeSignal }) => {
-      emitRef.fn = pushEv;   // 循环启动后接入父 SSE 发送函数
-
-      const executor = new ToolExecutionRuntime({
-        sessionId, turnId,
-        allows:          name => policy.allows(name),
-        toolManifest:    policy.manifestSnapshot(),
-        tools, permission, permCtx, toolContext,
-        lifecycle: createToolLifecycleHooks(hooks, pushEv),
-        buildAsk:        deps.buildAsk,
-        pushEv,
-        signal:          wakeSignal,
-        toolResultStore,
-        toolExecutionJournal: deps.toolExecutionJournal,
-      });
-      turnExecutor = executor;
-      activeExecutors.set(turnId, executor);
-      return executor;
-    };
+    turnTools = toolsForTurn;
+    activeTools.set(turnId, turnTools);
+    const policy = toolsForTurn.policy;
 
     // AgentLoop 不认识 SSE；本层把循环事件翻译为现有传输协议。
     activePhase = 'provider';
     const agentLoop = runAgentLoop<TurnExecutionEvent>({
-      messages, policy, buildExecutor, llm,
+      messages,
+      policy,
+      buildExecutor: (args) => {
+        emitRef.fn = args.pushEv;
+        return toolsForTurn.buildExecutor(args);
+      },
+      llm,
       historyMessageCount: preparedContext.historyMessageCount,
       providerId, model, signal,
       maxIterations: policy.maxIterations(),
@@ -648,7 +457,7 @@ async function* executeTurn(
       sessionId,
       turnId,
       getScratchpadContext: scratchpadDir
-        ? () => buildScratchpadContext(scratchpadDir)
+        ? () => toolsForTurn.readScratchpadContext()
         : undefined,
       assembleContext: async ({
         history: compactableHistory,
@@ -661,7 +470,7 @@ async function* executeTurn(
         currentTurn,
         scratchpadContext,
         mailboxMessages,
-        activeSkills: activeSkillState.list(),
+        activeSkills: toolsForTurn.activeSkills(),
         toolManifest: policy.visibleManifestSnapshot(),
         forceCompaction,
         emit: (event) => emitRef.fn?.(event),
@@ -691,11 +500,7 @@ async function* executeTurn(
         // 初始 Session 历史已建立兼容副本。Hook/Tool 新增内容来源不明确，
         // 不允许猜成历史后静默替换；LLM 请求准备器负责最终 fail-closed 门禁。
         const finalMessages = result.payload.messages;
-        subagentContextMessages.splice(
-          0,
-          subagentContextMessages.length,
-          ...finalMessages,
-        );
+        toolsForTurn.updateParentContext(finalMessages);
         return { kind: 'continue', messages: finalMessages };
       },
       thinking: input.thinking,
@@ -818,8 +623,7 @@ async function* executeTurn(
           break;
 
         case 'loop_hook_abort':
-          await turnExecutor?.shutdown('hook_abort');
-          await stopSpawner('parent_turn_failed');
+          await stopTools('hook_aborted');
           await reportFailure('turn/hook_aborted', ev.reason, 'hook');
           while (pendingHookEvents.length > 0) yield pendingHookEvents.shift()!;
           yield {
@@ -902,8 +706,7 @@ async function* executeTurn(
 
     // ── Turn 收尾 ─────────────────────────────────────────────────────────────
     if (signal.aborted) {
-      await turnExecutor?.shutdown('user_abort');
-      await stopSpawner('parent_turn_aborted');
+      await stopTools('aborted');
       await hooks.trigger('onTurnAbort', {
         turnId, sessionId,
         payload: { reason: 'user_stop' },
@@ -915,7 +718,7 @@ async function* executeTurn(
       return;
     }
 
-    await stopSpawner('parent_turn_completed');
+    await stopTools('completed');
     const durationMs = Date.now() - startedAt;
     activePhase = 'hook';
     await hooks.trigger('onTurnEnd', {
@@ -940,8 +743,7 @@ async function* executeTurn(
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     // Turn 终态必须晚于工具终态：先取消并等待，防止 failed/aborted 之后仍产生副作用。
-    await turnExecutor?.shutdown(signal.aborted ? 'user_abort' : 'turn_failed');
-    await stopSpawner(signal.aborted ? 'parent_turn_aborted' : 'parent_turn_failed');
+    await stopTools(signal.aborted ? 'aborted' : 'failed');
     if (signal.aborted) {
       await hooks.trigger('onTurnAbort', {
         turnId, sessionId,
@@ -962,13 +764,10 @@ async function* executeTurn(
       yield { type: 'turn_failed', sessionId, turnId, code, message: reason };
     }
   } finally {
-    // 释放 Spawner 前切断 emitRef → pushEv → pendingRelayEvents 引用链。
-    // 即使后台子 Agent 因模型未调用 subagent_await 而晚于父 Turn 结束，
-    // 后续 emit 也只会空操作，不会继续向失去消费者的数组写入并造成内存泄漏。
+    // TurnTools 会在停止子 Agent 前切断内部事件引用；本层同步切断 Context relay。
     emitRef.fn = undefined;
-    await stopSpawner('parent_turn_finished');
-    activeSpawners.delete(turnId);
-    activeExecutors.delete(turnId);
+    await stopTools('finished');
+    activeTools.delete(turnId);
     if (scratchpadDir) {
       try { fs.rmSync(scratchpadDir, { recursive: true, force: true }); } catch { /* 清理失败不改变 Turn 终态 */ }
     }
@@ -1019,9 +818,4 @@ async function* streamOperation<T>(
 
   if (error !== undefined) throw error;
   return value;
-}
-
-function isAbortError(error: unknown): boolean {
-  if (error instanceof DOMException && error.name === 'AbortError') return true;
-  return error instanceof Error && error.name === 'AbortError';
 }

@@ -9,6 +9,10 @@ import { ToolRegistry } from '@ema-agent/tools';
 import { LlmToolArgumentsParseError } from '@ema-agent/llm';
 import { TurnExecutor } from '../turnExecutor.js';
 import { TurnContextBuilder } from '../turnContext.js';
+import {
+  TurnToolsBuilder,
+  type TurnToolsBuilderDeps,
+} from '../turnTools.js';
 import { TurnPreparationError } from '../errors.js';
 import type { TurnExecutionDeps } from '../types.js';
 
@@ -104,12 +108,19 @@ function startExecution(executor: TurnExecutor) {
   });
 }
 
-function createTurnExecutor(deps: TurnExecutionDeps): TurnExecutor {
-  return new TurnExecutor(deps, new TurnContextBuilder({
+type TestTurnExecutionDeps = TurnExecutionDeps & TurnToolsBuilderDeps;
+
+function createTurnExecutor(deps: TestTurnExecutionDeps): TurnExecutor {
+  return new TurnExecutor({
+    session: deps.session,
+    hooks: deps.hooks,
+    llm: deps.llm,
+    emotion: deps.emotion,
+  }, new TurnContextBuilder({
     session: deps.session,
     narrative: deps.narrative,
     tasks: deps.taskStore,
-  }));
+  }), new TurnToolsBuilder(deps));
 }
 
 describe('TurnExecutor 生命周期', () => {
@@ -302,7 +313,7 @@ describe('TurnExecutor 生命周期', () => {
         yield { type: 'done', stopReason: 'end_turn' };
       },
     };
-    const deps: TurnExecutionDeps = {
+    const deps: TestTurnExecutionDeps = {
       session: withTurnStart(session) as never,
       hooks,
       llm: llm as never,
@@ -392,7 +403,7 @@ describe('TurnExecutor 生命周期', () => {
         throw new Error('provider unavailable');
       },
     };
-    const deps: TurnExecutionDeps = {
+    const deps: TestTurnExecutionDeps = {
       session: withTurnStart(session) as never,
       hooks,
       llm: llm as never,
@@ -478,7 +489,7 @@ describe('TurnExecutor 生命周期', () => {
         throw controller.signal.reason;
       },
     };
-    const deps: TurnExecutionDeps = {
+    const deps: TestTurnExecutionDeps = {
       session: withTurnStart(session, controller) as never,
       hooks,
       llm: llm as never,
@@ -550,7 +561,7 @@ describe('TurnExecutor 生命周期', () => {
         );
       },
     };
-    const deps: TurnExecutionDeps = {
+    const deps: TestTurnExecutionDeps = {
       session: withTurnStart(session) as never,
       hooks,
       llm: llm as never,

@@ -1,5 +1,7 @@
 export { TurnExecutor } from './turnExecutor.js';
 export { TurnContextBuilder } from './turnContext.js';
+export { TurnTools, TurnToolsBuilder } from './turnTools.js';
+export type { AskUserInteractionPort } from './awaitUserAnswer.js';
 export {
   TurnInputPreparer,
   buildPersistedUserInput,
@@ -12,7 +14,6 @@ export { TurnPreparationError } from './errors.js';
 export { executionProfilePolicy } from './executionProfilePolicy.js';
 export type { TurnExecutionProfilePolicy } from './executionProfilePolicy.js';
 export type {
-  AskUserInteractionPort,
   TurnExecutionDeps,
   TurnExecutionEvent,
   TurnHandle,
@@ -29,6 +30,12 @@ export type {
   TurnContextEvent,
   TurnContextPreparation,
 } from './turnContext.js';
+export type {
+  TurnKnowledgeSearch,
+  TurnToolsBuilderDeps,
+  TurnToolsPreparation,
+  TurnToolsShutdownReason,
+} from './turnTools.js';
 export type {
   TurnInputPreparerDeps,
   TurnPreparationRequest,
