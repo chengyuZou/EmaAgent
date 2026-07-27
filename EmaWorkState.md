@@ -18,6 +18,8 @@ L3 Turn Tools 已经完成：`TurnToolsBuilder.prepare()` 在根 Turn 开始时�
 
 L4 Root Agent Execution 已经完成：`RootAgentExecution` 统一拥有根 AgentLoop、Context/Tool 一次性组合、LLM/Message Hook、Emotion、非终态事件翻译与 transcript 持久化，只返回 `completed/failed/aborted` 结构化结果；它通过 `RootAgentTranscript` 窄端口写消息，无法创建或提交根 Turn 终态。`TurnExecutor` 只保留根身份、TurnHandle、准备期、Turn 生命周期 Hook、取消、临时目录清理与唯一终态；`TurnExecutionDeps` 已收窄为 Session 与 Hook。单次迭代块顺序由内聚的 `IterationTranscript` 共享给 Hook 和持久化，不在两个层级重复重建。
 
+L5 Turn Composition Root 已经完成：`apps/localHost/src/wiring/createTurnExecution.ts` 是根 Turn 输入准备、Context、Tools、RootAgentExecution 与 TurnExecutor 对象图的唯一构造位置。LocalHost Orchestrator 只取得 `TurnInputPreparer + TurnExecutor` 两个明确入口，不再知道 Agent 执行链如何装配；TTS 合流、Route 与大型 AppBindings 本批未动，避免把多个业务边界混成一次机械搬家。
+
 开工前已复核本地 Codex 源码：`codex-protocol` 只定义 Thread/Turn/Submission 等低层协议，真正编排位于 `codex-core/session`；App Server 只校验并提交 `Op::UserInput`，Session 统一建立 `RunningTask`、取消句柄和终态，`RegularTask` 再调用内部 `run_turn` 完成多轮模型与工具循环。Ema 因此保留低层 `turn` 与高层 `turnExecution` 两个编译边界，不能把执行依赖反向塞进被 Context、Session、Storage、Hooks 共同依赖的领域包。
 
 旧 `ConversationEngine` 与整个 `src/conversation` 包已经删除，Workspace 依赖和生产 import 归零。Chat 根生命周期与只读 Tool Profile 进入 `turnExecution`，LLM/Tool 迭代进入 `agent`，Narrative Route 与多周目 Recall 回到 `narrative`，模型可见召回正文通过不可信 Context Contribution 投递；Hook 不再携带 Narrative 私有结果。
@@ -110,9 +112,9 @@ Task 与 AgentRun 前端已经分面：Desktop 使用正式 `/api/tasks` 快照�
 
 开始任何新批次前必须重新运行 `git status --short` 与 `git diff`，保留用户和其他 Agent 的修改。
 
-当前未提交工作区是 L4 Root Agent Execution：新增 `rootAgentExecution.ts` 与 `iterationTranscript.ts`，收窄 `turnExecutor.ts`、公共依赖类型、LocalHost 构造入口和既有测试装配；本文件同步阶段与下一刀。没有改写 AgentLoop、Context、Tools、Session、TTS、Route 或 AppBindings 的既有内部契约。
+当前未提交工作区是 L5 Turn Composition Root：新增 `apps/localHost/src/wiring/createTurnExecution.ts`，并从 Orchestrator 移除 `TurnInputPreparer/TurnContextBuilder/TurnToolsBuilder/RootAgentExecution/TurnExecutor` 的直接构造。除本接力板外没有修改 AgentLoop、Context、Tools、Session、TTS、Route 或 AppBindings 的既有内部契约。
 
-当前基线最近提交：`c0b19221 feat: Refactor Turn execution to integrate TurnTools and streamline AskUser interaction`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
+当前基线最近提交：`0eaac4ea refactor: integrate RootAgentExecution into TurnExecutor and related tests`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
 
 ## 已确定的 V1 口径
 
@@ -158,7 +160,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 5. Builtin Tool 2D 的 Sandbox 命令环境 allowlist、工作目录边界、FileRead 行数/字节双上限、Glob/Grep 有界搜索与 WebSearch 公网访问安全均已完成；结构化 Presentation 公共协议与首批接线已完成；
 6. Permission V1 已完成：统一 Session FIFO、明确终态、Turn 身份核对、SQLite 永久规则 CRUD 与设置页管理、Builtin-only 免审批边界均已接通；旧 `AskUserRegistryLike` 已改为 `AskUserInteractionPort`，不新增第二套队列；
 7. Skill 多文件激活、per-Agent 状态、结构化 Context 恢复与 `allowed-tools` 单向收窄已经完成；
-8. LocalHost L0、Turn 输入准备 L1、Turn Context L2、Turn Tools L3 与 Root Agent Execution L4 已完成；下一批先审计 LocalHost 剩余对象图，再建立 `wiring/createTurnExecution.ts` 作为唯一 Turn 执行装配入口，让 Orchestrator 不再构造完整 Agent 执行链。本批只收窄 Composition Root，不同时拆 TTS、全部 Route 或 AppBindings；
+8. LocalHost L0、Turn 输入准备 L1、Turn Context L2、Turn Tools L3、Root Agent Execution L4 与 Turn Composition Root L5 已完成；五层 Turn 构造器只存在于 `wiring/createTurnExecution.ts`。下一批不再创造新的执行层级，先审计 Orchestrator 剩余的 TTS 合流与 Turns Route 副作用，再选择一个真实业务所有者迁移；AppBindings 收窄按具体 Route/能力逐批进行，不机械拆成一组空工厂；
 9. 后台进程按 `BackgroundProcess + ProcessOutput/ProcessStop` 单独实现 C 档，不修改 AgentLoop，也不恢复假 `run_in_background`。
 
 命名随业务批次清理：旧 `IFileStateStoreEntry/IFileStateStore` 及后续过渡接口已经删除，`IToolExecutionJournal` 已改为职责名；其余迁移期 `I*` 类型继续随业务边界处理，不单独进行全仓机械重命名。
@@ -167,6 +169,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- Turn Composition Root L5：新增唯一 `createTurnExecution.ts`，Orchestrator 对五层执行构造器的生产引用归零；反向扫描确认 `TurnInputPreparer/TurnContextBuilder/TurnToolsBuilder/RootAgentExecution/TurnExecutor` 的构造只剩 wiring 一处。LocalHost 26 个测试文件 86/86 通过；LocalHost typecheck 与全仓 typecheck 82/82 通过；`git diff --check` 通过，仅有既有 CRLF 提示。
 - Root Agent Execution L4：新增 `RootAgentExecution + IterationTranscript`，根 AgentLoop、LLM/Message Hook、Emotion、非终态事件翻译与 transcript 已退出 `TurnExecutor`；反向扫描确认 Root Agent 不包含根终态提交或终态事件，TurnExecutor 不包含 AgentLoop、LLM Hook、Emotion 或消息写入。TurnExecution 7 个测试文件 21/21 通过，4 个 Live Integration 按规则跳过；LocalHost 26 个测试文件 86/86 通过；全仓 typecheck 82/82 通过；`git diff --check` 通过，仅有既有 CRLF 提示。
 - Turn Tools L3：新增 `TurnToolsBuilder + TurnTools`，根 Turn 的 Capability Context、稳定 Tool Manifest/Policy、KB/Narrative/AskUser 窄入口、Subagent 与 ToolExecutionRuntime 生命周期退出 `TurnExecutor`；`TurnExecutionDeps` 只保留 Session/Hook/LLM/Emotion。TurnExecution 7 个测试文件 21/21 通过，4 个 Live Integration 按规则跳过；Agent 6 个测试文件 25/25 通过；LocalHost typecheck 通过；全仓 typecheck 82/82 通过；`git diff --check` 通过，仅有既有 CRLF 与不可访问 pytest 缓存提示。
 - Turn Context L2：新增 `TurnContextBuilder + TurnContext`，旧 `prepareContextContributions/compactContext/TurnContextCompactor` 生产引用归零；Memory Recall 证据进入 Turn 事件联合。TurnExecution 7 个测试文件 21/21 通过，4 个 Live Integration 按规则跳过；LocalHost 26 个测试文件 86/86 通过；全仓 typecheck 82/82 通过；`git diff --check` 通过，仅有既有 CRLF 与不可访问 pytest 缓存提示。
@@ -246,7 +249,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 先完整阅读 CLAUDE.md 与 EmaWorkState.md，再按当前批次阅读 EmaRefactor.md 和 EmaClaudeArchitectureReview.md 对应章节。检查 git status、diff 和最近提交，保留用户及其他 Agent 的修改。
 
-LocalHost L0、Turn 输入准备 L1、Turn Context L2、Turn Tools L3 与 Root Agent Execution L4 已经完成，不要恢复 `apps/core`、`TurnExecutionPlan`、`PreparedTurnExecution`、万能 `TurnExecutionDeps`、`prepareContextContributions`、`compactContext` 回调，或把根终态写回 `RootAgentExecution`。先阅读 `EmaRefactor.md` §7.1.1；下一批先审计 LocalHost 剩余构造链，再建立 `wiring/createTurnExecution.ts` 作为唯一 Turn 执行装配入口，让 Orchestrator 不再看见 Context/Tools/Agent 的完整对象图。本批不同时拆 TTS、全部 Route 或 AppBindings。修改前先核对真实调用链并说明边界，不要提交 Git。
+LocalHost L0、Turn 输入准备 L1、Turn Context L2、Turn Tools L3、Root Agent Execution L4 与 Turn Composition Root L5 已经完成，不要恢复 `apps/core`、`TurnExecutionPlan`、`PreparedTurnExecution`、万能 `TurnExecutionDeps`、`prepareContextContributions`、`compactContext` 回调，或把 Turn 执行对象图移回 Orchestrator。先阅读 `EmaRefactor.md` §7.1.1；下一批审计 Orchestrator 剩余的 TTS 合流与 Turns Route 副作用，只选择一个真实业务边界迁移，不同时拆 TTS、全部 Route 和 AppBindings。修改前先核对真实调用链并说明边界，不要提交 Git。
 ```
 
 ## 维护方式

@@ -19,21 +19,17 @@ import {
   asSessionId,
 } from '@ema-agent/ids';
 import type { EmaStreamEvent } from '@ema-agent/events';
-import {
-  TurnContextBuilder,
+import type {
   TurnExecutor,
   TurnInputPreparer,
-  RootAgentExecution,
-  TurnToolsBuilder,
-  type TurnOutcome,
+  TurnOutcome,
 } from '@ema-agent/turn-execution';
 import { TtsCoordinator }     from '@ema-agent/tts';
 import type { FinalizedAudio } from '@ema-agent/tts';
 import { SettingsRepo } from '@ema-agent/storage';
 import { resolveVoice, ensureVoiceUri, VoiceUriCache } from '../wiring/providers/tts.js';
-import { ensureSessionLayout, scratchpadTurnDir } from '../storage-locations/index.js';
-
-const TURN_ATTACHMENT_CAPTION_PROMPT_REVISION = 'turn-attachment-caption-v1';
+import { createTurnExecution } from '../wiring/createTurnExecution.js';
+import { ensureSessionLayout } from '../storage-locations/index.js';
 
 export interface TurnResult {
   turnId: TurnId;
@@ -93,107 +89,9 @@ export class Orchestrator {
     callbacks:                   OrchestratorCallbacks = {},
   ) {
     this.callbacks = callbacks;
-    this.turnInputPreparer = new TurnInputPreparer({
-      session: bindings.session,
-      attachments: bindings.attachmentStore,
-      modelCapabilities: bindings.modelCapabilities,
-      contextWindowFor: (providerId, model) =>
-        bindings.providerLlmModels.contextWindowFor(providerId, model),
-      activeCharacter: () => bindings.card.current(),
-      extensionPromptContributions: (executionProfile) => {
-        if (executionProfile !== 'work') return [];
-        const contribution = bindings.skillRunner.promptContribution(executionProfile);
-        return contribution ? [contribution] : [];
-      },
-      scratchpadDirForTurn: (sessionId, turnId) =>
-        scratchpadTurnDir(
-          bindings.activeDataDir,
-          sessionId,
-          turnId as string,
-        ),
-      mediaCompatibility: {
-        visionBinding: () => bindings.modelBindings.get('vision'),
-        describeImage: async ({
-          providerId,
-          model,
-          image,
-          sessionId,
-          turnId,
-          signal,
-        }) => {
-          const cached = await bindings.attachmentDerivationCache.getOrCreate({
-            source: {
-              kind: 'base64',
-              data: image.data,
-              name: image.name,
-            },
-            task: 'caption',
-            providerConfigId: providerId,
-            modelId: model,
-            promptRevision: TURN_ATTACHMENT_CAPTION_PROMPT_REVISION,
-            signal,
-          }, async (normalizedImage) => {
-            const result = await bindings.vision.extract({
-              providerId,
-              model,
-              task: 'caption',
-              inputs: [{
-                kind: 'bytes',
-                bytes: normalizedImage.bytes,
-                mimeType: normalizedImage.mimeType,
-                name: image.name,
-              }],
-              context: {
-                caller: 'turn_attachment',
-                sessionId: sessionId as string,
-                turnId: turnId as string,
-              },
-              signal,
-            });
-            return result.text;
-          });
-          return cached.text;
-        },
-      },
-    });
-    this.turnExecutor = new TurnExecutor(
-      {
-        session: bindings.session,
-        hooks: bindings.hooks,
-      },
-      new RootAgentExecution(
-        {
-          transcript: bindings.session,
-          hooks: bindings.hooks,
-          llm: bindings.llm,
-          emotion: bindings.emotion,
-        },
-        new TurnContextBuilder({
-          session: bindings.session,
-          memory: bindings.memory,
-          tasks: bindings.taskStore,
-          narrative: bindings.narrative,
-          compactor: bindings.contextCompactor,
-        }),
-        new TurnToolsBuilder({
-          session: bindings.session,
-          tools: bindings.tools,
-          permission: bindings.permission,
-          hooks: bindings.hooks,
-          llm: bindings.llm,
-          narrative: bindings.narrative,
-          getCommandRunner: bindings.getCommandRunner,
-          buildAsk: bindings.buildAskForTurn,
-          askUserInteraction: bindings.askUserRegistry,
-          skillRunner: bindings.skillRunner,
-          knowledgeSearch: bindings.kbSearch,
-          getSessionToolResultStore: bindings.getSessionToolResultStore,
-          agentRunStore: bindings.agentRunStore,
-          taskStore: bindings.taskStore,
-          toolExecutionJournal: bindings.toolExecutionJournal,
-        }),
-      ),
-    );
+    const turnExecution = createTurnExecution(bindings);
+    this.turnExecutor = turnExecution.executor;
+    this.turnInputPreparer = turnExecution.inputPreparer;
   }
 
   /** 请求停止指定 Turn；Turn 已结束或不存在时无操作。 */
