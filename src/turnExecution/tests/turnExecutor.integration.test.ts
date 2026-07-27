@@ -139,9 +139,10 @@ function makeTurn(id = 'turn-1'): Turn {
 // ── 依赖装配 ──────────────────────────────────────────────────────────────────
 
 type TestTurnExecutionDeps =
-  & TurnExecutionDeps
+  & Omit<TurnExecutionDeps, 'interactions'>
   & TurnToolsBuilderDeps
-  & Pick<RootAgentExecutionDeps, 'emotion'>;
+  & Pick<RootAgentExecutionDeps, 'emotion'>
+  & { interactions?: TurnExecutionDeps['interactions'] };
 
 let deps: TestTurnExecutionDeps;
 
@@ -149,6 +150,7 @@ function createTurnExecutor(): TurnExecutor {
   return new TurnExecutor({
     session: deps.session,
     hooks: deps.hooks,
+    interactions: deps.interactions ?? { cancelForTurn: () => 0 },
   }, new RootAgentExecution({
     transcript: deps.session,
     hooks: deps.hooks,

@@ -27,7 +27,6 @@ import {
 import type { TurnRequest } from '@ema-agent/turn';
 import { hasTurnRequestInput } from '@ema-agent/turn';
 import { REQUEST_VALUE_LIMITS } from '../http/request-budget.js';
-import { SubagentTranscriptProjection } from '../turn-runtime/subagent-transcript-projection.js';
 
 // ── UTF-8 safe body decoder ───────────────────────────────────────────────────
 
@@ -215,9 +214,6 @@ export function turnsRoute(bindings: AppBindings): Hono {
       events: handle.events,
     });
 
-    // Transcript 是旁路投影；它可以失败，但不能停止 Engine 事件消费。
-    const transcriptProjection = new SubagentTranscriptProjection(bindings.agentRunMessages);
-
     const publishEvent = (event: TurnStreamEvent): boolean => {
       const result = eventStore.push(turnId, event);
       if (result.status === 'stored') {
@@ -235,23 +231,7 @@ export function turnsRoute(bindings: AppBindings): Hono {
       for await (const event of events) {
         // Turn 输出契约已经要求每个事件携带所属 Session，不再由 Route 猜身份。
         const enriched = event;
-        const projectionWarning = transcriptProjection.apply(enriched);
-        if (projectionWarning) {
-          publishEvent({
-            type: 'turn_projection_warning',
-            sessionId: effectiveSessionId,
-            turnId,
-            ...projectionWarning,
-          });
-        }
         publishEvent(enriched);
-
-        // Auto-cancel any in-flight interaction prompts when the turn ends.
-        // 统一队列一次取消该 Turn 全部 Permission 与 AskUser 待交互,避免悬挂。
-        if (isTerminalTurnEvent(enriched)) {
-          const n = bindings.interactionQueue.cancelForTurn(turnId, `turn ${enriched.type}`);
-          if (n > 0) console.log(`[interaction] cancelled ${n} prompt(s) on ${enriched.type}`);
-        }
       }
     })().catch((err) => {
       console.error('[turns] event fan-out error', err);

@@ -149,6 +149,12 @@ export class TurnExecutor {
         channel.fail(terminalError);
       }
     } finally {
+      try {
+        const status = outcome?.status ?? (signal.aborted ? 'aborted' : 'failed');
+        this.deps.interactions.cancelForTurn(turn.id, `turn ${status}`);
+      } catch {
+        // 内存交互队列清理故障不能覆盖已经确定的根 Turn 终态。
+      }
       if (input?.scratchpadDir) {
         try {
           fs.rmSync(input.scratchpadDir, {

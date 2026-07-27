@@ -76,4 +76,24 @@ export type AgentExecutionEvent =
   | ToolExecutionEvent
   | PermissionStreamEvent
   | HookWarningEvent
-  | Extract<TurnEvent, { type: 'request_degraded' }>;
+  | Extract<
+      TurnEvent,
+      { type: 'request_degraded' | 'turn_projection_warning' }
+    >;
+
+/** 从 Agent 执行通道中识别真正属于 AgentRun 生命周期的事件。 */
+export function isAgentRunEvent(
+  event: AgentExecutionEvent,
+): event is AgentRunEvent {
+  switch (event.type) {
+    case 'subagent_started':
+    case 'subagent_progress':
+    case 'subagent_completed':
+    case 'subagent_failed':
+    case 'subagent_aborted':
+    case 'subagent_stream':
+      return true;
+    default:
+      return false;
+  }
+}

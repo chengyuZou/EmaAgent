@@ -47,6 +47,7 @@ import {
   SubagentSpawner,
   TurnPolicy,
   type AgentRunStorePort,
+  type AgentRunTranscriptWriter,
   type ExecutorFactory,
   type SubagentSpawnerDeps,
   type TurnBudget,
@@ -95,6 +96,7 @@ export interface TurnToolsBuilderDeps {
     sessionId: SessionId,
   ) => ToolResultStore;
   readonly agentRunStore?: AgentRunStorePort;
+  readonly agentRunTranscriptWriter?: AgentRunTranscriptWriter;
   readonly taskStore?: TaskStorePort;
   readonly toolExecutionJournal?: ToolExecutionJournalPort;
 }
@@ -230,6 +232,7 @@ export class TurnToolsBuilder {
       buildAsk: this.deps.buildAsk,
       skillRunner: this.deps.skillRunner,
       agentRunStore: this.deps.agentRunStore,
+      agentRunTranscriptWriter: this.deps.agentRunTranscriptWriter,
       toolExecutionJournal: this.deps.toolExecutionJournal,
     };
     const spawner = new SubagentSpawner(

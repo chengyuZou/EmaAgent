@@ -90,6 +90,7 @@ export function createTurnExecution(bindings: AppBindings): {
     {
       session: bindings.session,
       hooks: bindings.hooks,
+      interactions: bindings.interactionQueue,
     },
     new RootAgentExecution(
       {
@@ -119,6 +120,7 @@ export function createTurnExecution(bindings: AppBindings): {
         knowledgeSearch: bindings.kbSearch,
         getSessionToolResultStore: bindings.getSessionToolResultStore,
         agentRunStore: bindings.agentRunStore,
+        agentRunTranscriptWriter: bindings.agentRunMessages,
         taskStore: bindings.taskStore,
         toolExecutionJournal: bindings.toolExecutionJournal,
       }),

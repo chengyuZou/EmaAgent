@@ -8,6 +8,11 @@ export { SubagentSpawner } from './spawner.js';
 export type { SubagentSpawnerDeps } from './spawner.js';
 export { createToolLifecycleHooks } from './toolLifecycleHooks.js';
 export { AgentRunStore } from './runs/agentRunStore.js';
+export { AgentRunTranscriptProjection } from './runs/agentRunTranscriptProjection.js';
+export type {
+  AgentRunTranscriptWarning,
+  AgentRunTranscriptWriter,
+} from './runs/agentRunTranscriptProjection.js';
 export type {
   AgentRun,
   AgentRunCompletion,
@@ -32,6 +37,7 @@ export type {
   AgentTurnEvent,
   SubagentInnerEvent,
 } from './events.js';
+export { isAgentRunEvent } from './events.js';
 export type {
   AgentLoopPhase,
   AgentLoopState,

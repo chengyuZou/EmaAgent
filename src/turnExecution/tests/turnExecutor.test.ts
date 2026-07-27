@@ -113,14 +113,16 @@ function startExecution(executor: TurnExecutor) {
 }
 
 type TestTurnExecutionDeps =
-  & TurnExecutionDeps
+  & Omit<TurnExecutionDeps, 'interactions'>
   & TurnToolsBuilderDeps
-  & Pick<RootAgentExecutionDeps, 'emotion'>;
+  & Pick<RootAgentExecutionDeps, 'emotion'>
+  & { interactions?: TurnExecutionDeps['interactions'] };
 
 function createTurnExecutor(deps: TestTurnExecutionDeps): TurnExecutor {
   return new TurnExecutor({
     session: deps.session,
     hooks: deps.hooks,
+    interactions: deps.interactions ?? { cancelForTurn: () => 0 },
   }, new RootAgentExecution({
     transcript: deps.session,
     hooks: deps.hooks,
@@ -210,6 +212,7 @@ describe('TurnExecutor 生命周期', () => {
   it('start 同步创建一次 Turn，准备失败仍产生唯一终态并释放运行锁', async () => {
     let startCount = 0;
     let clearCount = 0;
+    const interactionCleanup: Array<{ turnId: TurnId; reason: string }> = [];
     const failed: Array<{ code: string; message?: string }> = [];
     const session = {
       startTurn: () => {
@@ -233,6 +236,12 @@ describe('TurnExecutor 生命周期', () => {
       emotion: {} as never,
       tools: new ToolRegistry(),
       permission: {} as never,
+      interactions: {
+        cancelForTurn(cancelledTurnId, reason) {
+          interactionCleanup.push({ turnId: cancelledTurnId, reason });
+          return 1;
+        },
+      },
     });
 
     const handle = executor.start({
@@ -280,6 +289,10 @@ describe('TurnExecutor 生命周期', () => {
       message: 'attachment unavailable',
     }]);
     expect(clearCount).toBe(1);
+    expect(interactionCleanup).toEqual([{
+      turnId,
+      reason: 'turn failed',
+    }]);
   });
 
   it('输入准备阶段取消时触发 onTurnAbort 并提交 aborted 终态', async () => {

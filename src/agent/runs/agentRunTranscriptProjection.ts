@@ -1,14 +1,15 @@
-// 把 Subagent SSE 投影为持久 transcript，并隔离辅助落库故障。
+// 把子 Agent 执行事件投影为可查询的持久 transcript，并隔离辅助落库故障。
 
-import { asAgentRunId } from '@ema-agent/ids';
+import type { AgentRunId } from '@ema-agent/ids';
 import type { AgentRunMessageInsert } from '@ema-agent/storage';
-import type { TurnStreamEvent } from '@ema-agent/events';
+import type { AgentRunEvent } from '../events.js';
 
-export interface AgentRunMessageWriter {
+/** AgentRun transcript 只需要追加记录，不暴露底层查询或数据库连接。 */
+export interface AgentRunTranscriptWriter {
   insert(message: AgentRunMessageInsert): void;
 }
 
-export interface TurnProjectionWarning {
+export interface AgentRunTranscriptWarning {
   projection: 'subagent_transcript';
   code: string;
   message: string;
@@ -16,36 +17,41 @@ export interface TurnProjectionWarning {
 }
 
 /**
- * Transcript 是 Turn 事件的辅助查询投影，不是 SSE 主链的事实源。
- * 写入失败时保留待写队列供下一条事件重试，并返回 warning 给主链发布。
+ * Transcript 是 AgentRun 事件的辅助查询投影，不是父 Turn 事件流的事实源。
+ * 写入失败时保留待写队列，下一条同域事件继续重试并向父 Turn 返回 warning。
  */
-export class SubagentTranscriptProjection {
-  private readonly textBySubagent = new Map<string, string>();
-  private readonly reasoningBySubagent = new Map<string, string>();
+export class AgentRunTranscriptProjection {
+  private readonly textByRun = new Map<AgentRunId, string>();
+  private readonly reasoningByRun = new Map<AgentRunId, string>();
   private readonly pending: AgentRunMessageInsert[] = [];
   private failureReported = false;
 
-  constructor(private readonly writer: AgentRunMessageWriter) {}
+  constructor(private readonly writer: AgentRunTranscriptWriter) {}
 
-  apply(event: TurnStreamEvent): TurnProjectionWarning | undefined {
+  apply(event: AgentRunEvent): AgentRunTranscriptWarning | undefined {
     this.collect(event);
     return this.flushPending();
   }
 
-  private collect(event: TurnStreamEvent): void {
+  /** 子执行收口时再重试一次尚未写入的记录。 */
+  flush(): AgentRunTranscriptWarning | undefined {
+    return this.flushPending();
+  }
+
+  private collect(event: AgentRunEvent): void {
     if (event.type === 'subagent_stream') {
       const { subagentId, ev: inner } = event;
       if (inner.type === 'text_delta') {
-        this.textBySubagent.set(
+        this.textByRun.set(
           subagentId,
-          (this.textBySubagent.get(subagentId) ?? '') + inner.delta,
+          (this.textByRun.get(subagentId) ?? '') + inner.delta,
         );
         return;
       }
       if (inner.type === 'reasoning_delta') {
-        this.reasoningBySubagent.set(
+        this.reasoningByRun.set(
           subagentId,
-          (this.reasoningBySubagent.get(subagentId) ?? '') + inner.delta,
+          (this.reasoningByRun.get(subagentId) ?? '') + inner.delta,
         );
         return;
       }
@@ -56,7 +62,7 @@ export class SubagentTranscriptProjection {
       if (inner.type === 'tool_call') {
         this.queueBufferedText(subagentId);
         this.pending.push({
-          agentRunId: asAgentRunId(subagentId),
+          agentRunId: subagentId,
           role: 'tool_call',
           content: {
             callId: inner.callId,
@@ -70,7 +76,7 @@ export class SubagentTranscriptProjection {
       }
       if (inner.type === 'tool_result') {
         this.pending.push({
-          agentRunId: asAgentRunId(subagentId),
+          agentRunId: subagentId,
           role: 'tool_result',
           content: {
             callId: inner.callId,
@@ -87,41 +93,41 @@ export class SubagentTranscriptProjection {
     }
 
     if (
-      event.type === 'subagent_completed' ||
-      event.type === 'subagent_failed' ||
-      event.type === 'subagent_aborted'
+      event.type === 'subagent_completed'
+      || event.type === 'subagent_failed'
+      || event.type === 'subagent_aborted'
     ) {
       this.queueBufferedText(event.subagentId);
-      this.textBySubagent.delete(event.subagentId);
-      this.reasoningBySubagent.delete(event.subagentId);
+      this.textByRun.delete(event.subagentId);
+      this.reasoningByRun.delete(event.subagentId);
     }
   }
 
-  private queueBufferedText(subagentId: string): void {
-    const reasoning = this.reasoningBySubagent.get(subagentId);
+  private queueBufferedText(agentRunId: AgentRunId): void {
+    const reasoning = this.reasoningByRun.get(agentRunId);
     if (reasoning) {
       this.pending.push({
-        agentRunId: asAgentRunId(subagentId),
+        agentRunId,
         role: 'reasoning',
         content: { text: reasoning },
         createdAt: Date.now(),
       });
-      this.reasoningBySubagent.delete(subagentId);
+      this.reasoningByRun.delete(agentRunId);
     }
 
-    const text = this.textBySubagent.get(subagentId);
+    const text = this.textByRun.get(agentRunId);
     if (text) {
       this.pending.push({
-        agentRunId: asAgentRunId(subagentId),
+        agentRunId,
         role: 'assistant',
         content: { text },
         createdAt: Date.now(),
       });
-      this.textBySubagent.delete(subagentId);
+      this.textByRun.delete(agentRunId);
     }
   }
 
-  private flushPending(): TurnProjectionWarning | undefined {
+  private flushPending(): AgentRunTranscriptWarning | undefined {
     while (this.pending.length > 0) {
       const message = this.pending[0]!;
       try {

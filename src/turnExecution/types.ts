@@ -32,6 +32,11 @@ import type { NarrativeEvent } from '@ema-agent/narrative';
 
 // ── 运行依赖 ──────────────────────────────────────────────────────────────────
 
+/** 根 Turn 终态清理统一交互队列所需的最小生命周期端口。 */
+export interface TurnInteractionCleanup {
+  cancelForTurn(turnId: TurnId, reason: string): number;
+}
+
 /**
  * TurnExecutor 所需依赖，是 AppBindings 的严格子集。
  * 依赖只描述根 Turn 执行，不包含 HTTP、SSE、TTS 或附件准备。
@@ -42,6 +47,7 @@ import type { NarrativeEvent } from '@ema-agent/narrative';
 export interface TurnExecutionDeps {
   session: SessionStore;
   hooks: HookBus;
+  interactions: TurnInteractionCleanup;
 }
 
 // ── Turn 启动与执行输入 ───────────────────────────────────────────────────────

@@ -112,6 +112,7 @@ describe('Chat 统一执行链', () => {
     const executor = new TurnExecutor({
       session: session as never,
       hooks,
+      interactions: { cancelForTurn: () => 0 },
     }, new RootAgentExecution({
       transcript: session as never,
       hooks,

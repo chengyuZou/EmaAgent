@@ -2,12 +2,60 @@
 
 import { describe, expect, it } from 'vitest';
 import { asAgentRunId } from '@ema-agent/ids';
+import type { AgentRunMessageInsert } from '@ema-agent/storage';
 import { HookBus } from '@ema-agent/hooks';
 import { ToolRegistry } from '@ema-agent/tools';
 import { SubagentSpawner } from '../spawner.js';
 import type { SubagentSpawnerDeps } from '../spawner.js';
 
 describe('SubagentSpawner 生命周期', () => {
+  it('没有父事件消费者时仍由 AgentRun 生命周期持久化 transcript', async () => {
+    const messages: AgentRunMessageInsert[] = [];
+    const llm = {
+      stream: async function* () {
+        yield { type: 'text_delta', blockIndex: 0, delta: 'subagent answer' };
+        yield {
+          type: 'usage',
+          inputTokens: 4,
+          outputTokens: 2,
+        };
+        yield { type: 'done', stopReason: 'end_turn' };
+      },
+    };
+    const deps: SubagentSpawnerDeps = {
+      hooks: new HookBus(),
+      llm: llm as never,
+      tools: new ToolRegistry(),
+      permission: {} as never,
+      agentRunTranscriptWriter: {
+        insert(message) {
+          messages.push(message);
+        },
+      },
+    };
+    const spawner = new SubagentSpawner(
+      deps,
+      'session-1',
+      'turn-1',
+      'provider-1',
+      'model-1',
+      [],
+      '',
+      undefined,
+      new Map(),
+    );
+
+    await spawner.spawn('answer directly', {
+      agentRunId: asAgentRunId('22222222-2222-4222-8222-222222222222'),
+    }, new AbortController().signal);
+
+    expect(messages).toMatchObject([{
+      agentRunId: '22222222-2222-4222-8222-222222222222',
+      role: 'assistant',
+      content: { text: 'subagent answer' },
+    }]);
+  });
+
   it('shutdown 等待后台执行并记录 AgentRun 取消终态', async () => {
     const cancelled: string[] = [];
     const llm = {

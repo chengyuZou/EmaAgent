@@ -24,6 +24,10 @@ export interface Live2DParameterRuntimeConfig {
   headInputY: string;
   headInputZ: string;
   breathParam: string;
+  eyeLOpenParam: string;
+  eyeROpenParam: string;
+  eyeBallXParam: string;
+  eyeBallYParam: string;
 }
 
 export interface Live2DIdleBeatRuntimeConfig {
@@ -71,6 +75,10 @@ export const DEFAULT_LIVE2D_RUNTIME_CONFIG: ResolvedLive2DModelRuntimeConfig = {
     headInputY: 'ParamAngleY',
     headInputZ: 'ParamAngleZ',
     breathParam: 'ParamBreath',
+    eyeLOpenParam: 'ParamEyeLOpen',
+    eyeROpenParam: 'ParamEyeROpen',
+    eyeBallXParam: 'ParamEyeBallX',
+    eyeBallYParam: 'ParamEyeBallY',
   },
   idleBeat: {
     swayAmplitude: 10,
@@ -135,6 +143,10 @@ export function resolveLive2DModelRuntimeConfig(
       headInputY: nonEmptyString(config?.parameters?.headInputY, defaults.parameters.headInputY),
       headInputZ: nonEmptyString(config?.parameters?.headInputZ, defaults.parameters.headInputZ),
       breathParam: nonEmptyString(config?.parameters?.breathParam, defaults.parameters.breathParam),
+      eyeLOpenParam: nonEmptyString(config?.parameters?.eyeLOpenParam, defaults.parameters.eyeLOpenParam),
+      eyeROpenParam: nonEmptyString(config?.parameters?.eyeROpenParam, defaults.parameters.eyeROpenParam),
+      eyeBallXParam: nonEmptyString(config?.parameters?.eyeBallXParam, defaults.parameters.eyeBallXParam),
+      eyeBallYParam: nonEmptyString(config?.parameters?.eyeBallYParam, defaults.parameters.eyeBallYParam),
     },
     idleBeat: {
       swayAmplitude: finiteNumber(config?.idleBeat?.swayAmplitude, defaults.idleBeat.swayAmplitude, 0, 30),

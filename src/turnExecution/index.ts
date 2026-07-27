@@ -22,6 +22,7 @@ export type {
 } from './rootAgentExecution.js';
 export type {
   TurnExecutionDeps,
+  TurnInteractionCleanup,
   TurnExecutionEvent,
   TurnHandle,
   TurnInput,

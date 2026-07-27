@@ -716,7 +716,7 @@ apps/localHost/src/
 
 1. **TTS Turn 输出边界（已完成）**：`TurnSpeechOutput` 与真实 `createTurnOutput.ts` 已接管事件合流、终态前 finalize/abort、语音 URI 缓存和最终音频投影；
 2. **删除旧 Orchestrator（已完成）**：`TurnExecutor.abort(turnId)` 通过 Session 运行注册表核对当前活动身份，历史句柄不能误杀同 Session 后续 Turn；LocalHost `activeTurns` 与整个 Orchestrator 已删除，Turns Route 直接调用 `TurnInputPreparer.prepare() → TurnExecutor.start() → TurnSpeechOutput.decorate()`；
-3. **Route 业务副作用归位**：Subagent transcript 进入 `src/agent/runs`，Interaction 终态清理进入 Turn/Tools 生命周期，音频统计进入 TTS 投影；AgentRun、AskUser、Audio 与 Tool Journal 使用各自窄 Route，先保持现有 URL；
+3. **Route 业务副作用归位（已完成）**：`AgentRunTranscriptProjection` 已进入 `src/agent/runs` 并由 `SubagentSpawner` 在事件产生处持久化；即使没有 HTTP/SSE 消费者，AgentRun transcript 仍会落库。`TurnExecutor` 通过窄 `TurnInteractionCleanup` 在统一 `finally` 中清理 Permission/AskUser，覆盖成功、失败、取消和准备失败。音频统计此前已经进入 TTS 投影；Turns Route 不再偷做这三类业务副作用；
 4. **逐 Route 收窄 AppBindings**：每个 Route 只接收实际使用的执行、查询或传输端口；`AppBindings` 只留在 Composition Root，不能机械替换成另一只嵌套依赖袋，也不为每个几行对象创建空工厂；
 5. **物理归档 HTTP 传输**：语义边界稳定后，才把 Route、SSE、Auth 和请求预算迁入 `transports/http`，删除旧 `routes/sse/orchestrator` 目录以及已经失去消费者的宽 Bindings。
 

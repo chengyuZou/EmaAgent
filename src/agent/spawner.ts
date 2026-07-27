@@ -25,12 +25,19 @@ import {
 import type { PermissionEngine } from '@ema-agent/permission';
 import type { HookBus } from '@ema-agent/hooks';
 import type { SkillRunnerPort } from '@ema-agent/skills';
+import {
+  AgentRunTranscriptProjection,
+  type AgentRunTranscriptWriter,
+} from './runs/agentRunTranscriptProjection.js';
 import type { AgentRunStorePort } from './runs/types.js';
 import { TurnPolicy } from './policy.js';
 import { createToolLifecycleHooks } from './toolLifecycleHooks.js';
 import { runAgentLoop, type ExecutorFactory } from './agentLoop.js';
 import { TurnBudget } from './turn-budget.js';
-import type { AgentExecutionEvent } from './events.js';
+import {
+  isAgentRunEvent,
+  type AgentExecutionEvent,
+} from './events.js';
 import {
   ActiveSkillState,
 } from '@ema-agent/skills';
@@ -60,6 +67,7 @@ export interface SubagentSpawnerDeps {
   buildAsk?: ToolExecutionRuntimeOptions<BuiltinToolContext>['buildAsk'];
   skillRunner?: SkillRunnerPort;
   agentRunStore?: AgentRunStorePort;
+  agentRunTranscriptWriter?: AgentRunTranscriptWriter;
   toolExecutionJournal?: ToolExecutionJournalPort;
 }
 
@@ -173,7 +181,23 @@ export class SubagentSpawner implements SubagentSpawnerPort {
     const startedAtMs = Date.now();
     const taskId      = opts.taskId;
     const kind        = opts.kind ?? 'subagent';
-    const emit = (ev: AgentExecutionEvent) => this.parentEmit?.(ev);
+    const transcriptProjection = this.deps.agentRunTranscriptWriter
+      ? new AgentRunTranscriptProjection(this.deps.agentRunTranscriptWriter)
+      : undefined;
+    const emit = (ev: AgentExecutionEvent): void => {
+      if (transcriptProjection && isAgentRunEvent(ev)) {
+        const warning = transcriptProjection.apply(ev);
+        if (warning) {
+          this.parentEmit?.({
+            type: 'turn_projection_warning',
+            sessionId,
+            turnId: parentTurnId,
+            ...warning,
+          });
+        }
+      }
+      this.parentEmit?.(ev);
+    };
 
     // 子控制器继承父取消信号，也允许只取消当前 AgentRun。
     const childCtrl     = new AbortController();
@@ -480,6 +504,15 @@ export class SubagentSpawner implements SubagentSpawnerPort {
       throw err;
 
     } finally {
+      const warning = transcriptProjection?.flush();
+      if (warning) {
+        this.parentEmit?.({
+          type: 'turn_projection_warning',
+          sessionId,
+          turnId: parentTurnId,
+          ...warning,
+        });
+      }
       signal.removeEventListener('abort', onParentAbort);
       this.activeSubagents.delete(agentRunId);
       releaseBudget();
