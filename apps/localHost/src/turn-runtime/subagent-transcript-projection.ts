@@ -2,7 +2,7 @@
 
 import { asAgentRunId } from '@ema-agent/ids';
 import type { AgentRunMessageInsert } from '@ema-agent/storage';
-import type { EmaStreamEvent } from '@ema-agent/events';
+import type { TurnStreamEvent } from '@ema-agent/events';
 
 export interface AgentRunMessageWriter {
   insert(message: AgentRunMessageInsert): void;
@@ -27,12 +27,12 @@ export class SubagentTranscriptProjection {
 
   constructor(private readonly writer: AgentRunMessageWriter) {}
 
-  apply(event: EmaStreamEvent): TurnProjectionWarning | undefined {
+  apply(event: TurnStreamEvent): TurnProjectionWarning | undefined {
     this.collect(event);
     return this.flushPending();
   }
 
-  private collect(event: EmaStreamEvent): void {
+  private collect(event: TurnStreamEvent): void {
     if (event.type === 'subagent_stream') {
       const { subagentId, ev: inner } = event;
       if (inner.type === 'text_delta') {

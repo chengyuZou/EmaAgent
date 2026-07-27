@@ -8,7 +8,7 @@ import {
   asSessionId,
   asTurnId,
 } from '@ema-agent/ids';
-import type { EmaStreamEvent } from '@ema-agent/events';
+import type { TurnStreamEvent } from '@ema-agent/events';
 import { TurnEventStore } from '../src/sse/event-store.js';
 import { encodeEvent } from '../src/sse/writer.js';
 
@@ -31,7 +31,7 @@ describe('TurnEventStore', () => {
 
   it('在线音频不进入重放内存，重放只保留事件位置', () => {
     const store = new TurnEventStore({ maxBytesPerTurn: 256, maxBytesTotal: 512 });
-    const event: EmaStreamEvent = {
+    const event: TurnStreamEvent = {
       type: 'tts_chunk',
       sessionId: SESSION_ID,
       turnId: TURN_ID,
@@ -63,6 +63,6 @@ describe('TurnEventStore', () => {
   });
 });
 
-function warning(message: string): EmaStreamEvent {
+function warning(message: string): TurnStreamEvent {
   return { type: 'system_warning', level: 'warn', message };
 }

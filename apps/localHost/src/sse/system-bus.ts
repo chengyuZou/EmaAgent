@@ -1,4 +1,4 @@
-import type { EmaStreamEvent } from '@ema-agent/events';
+import type { AppEvent } from '@ema-agent/events';
 
 // ── SystemEventBus ───────────────────────────────────────────────────────────
 
@@ -20,16 +20,16 @@ import type { EmaStreamEvent } from '@ema-agent/events';
  * If we ever need durable replay for system events, persist to a tail table.
  */
 export class SystemEventBus {
-  private readonly subscribers = new Set<(ev: EmaStreamEvent) => void>();
+  private readonly subscribers = new Set<(ev: AppEvent) => void>();
 
-  subscribe(handler: (ev: EmaStreamEvent) => void): () => void {
+  subscribe(handler: (ev: AppEvent) => void): () => void {
     this.subscribers.add(handler);
     return () => {
       this.subscribers.delete(handler);
     };
   }
 
-  emit(ev: EmaStreamEvent): void {
+  emit(ev: AppEvent): void {
     for (const fn of this.subscribers) {
       try { fn(ev); }
       catch (err) {

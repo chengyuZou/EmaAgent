@@ -1,5 +1,5 @@
 import type { TurnId } from '@ema-agent/ids';
-import type { EmaStreamEvent } from '@ema-agent/events';
+import type { TurnStreamEvent } from '@ema-agent/events';
 
 export interface PublishedTurnEvent {
   /**
@@ -8,7 +8,7 @@ export interface PublishedTurnEvent {
    * for clients whose cursor is < N.
    */
   cursor: number;
-  event: EmaStreamEvent;
+  event: TurnStreamEvent;
 }
 
 export type TurnEventListener = (published: PublishedTurnEvent) => void;

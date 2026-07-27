@@ -1,11 +1,10 @@
 import type { Database, ProviderConfigRow } from '@ema-agent/storage';
-import { ProvidersRepo, SettingsRepo } from '@ema-agent/storage';
+import { ProvidersRepo } from '@ema-agent/storage';
 import type { CredentialFacade } from '@ema-agent/credential';
 
 import {
   TtsRuntime,
   type TtsProviderConfig,
-  type TtsAdapter,
   type TtsVoiceRef,
 } from '@ema-agent/tts';
 
@@ -62,41 +61,7 @@ function loadTtsProviderConfigs(
   return out;
 }
 
-// ── Voice URI cache ─────────────────────────────────────────────────────────
-//
-// Persisted in profile.db → settings table. Key format:
-//   tts.voiceUri.<cardId>.<providerConfigId>.<model>
-// Value is the provider-specific voice URI string.
-//
-// This prevents cross-provider URI pollution: switching a character from
-// SiliconFlow to DashScope won't accidentally send a SiliconFlow URI to Ali.
-
-const VOICE_URI_KEY_PREFIX = 'tts.voiceUri';
-
-export class VoiceUriCache {
-  constructor(private readonly settings: SettingsRepo) {}
-
-  // Key includes model because DashScope voice IDs are model-bound:
-  // cosyvoice-v3.5-plus and cosyvoice-v3-flash need separate enrollments.
-  private key(cardId: CharacterCardId, providerConfigId: string, model: string): string {
-    return `${VOICE_URI_KEY_PREFIX}.${cardId}.${providerConfigId}.${model}`;
-  }
-
-  get(cardId: CharacterCardId, providerConfigId: string, model: string): string | null {
-    const val = this.settings.get(this.key(cardId, providerConfigId, model));
-    return typeof val === 'string' ? val : null;
-  }
-
-  set(cardId: CharacterCardId, providerConfigId: string, model: string, uri: string): void {
-    this.settings.set(this.key(cardId, providerConfigId, model), uri);
-  }
-
-  delete(cardId: CharacterCardId, providerConfigId: string, model: string): void {
-    this.settings.delete(this.key(cardId, providerConfigId, model));
-  }
-}
-
-// ── Voice resolution (orchestrator-layer concern) ───────────────────────────
+// ── Character voice resolution ──────────────────────────────────────────────
 
 /**
  * Resolve a TtsVoiceRef from a character card.
@@ -117,54 +82,8 @@ export function resolveVoice(
     refAudioPath: resolveCardVoiceRefPath(c.id as string, c.isBuiltin, primary.refAudioPath),
     promptText:   primary.promptText,
     promptLang:   primary.promptLang,
-    // voiceUri is populated later by ensureVoiceUri (lazy upload or cache hit)
+    // voiceUri 由 TTS 输出入口按 Provider + Model 缓存或懒上传。
   };
-}
-
-/**
- * Populate voiceUri on a TtsVoiceRef.
- *
- * Priority:
- *   1. VoiceUriCache (persisted per card+provider) — skip re-upload
- *   2. adapter.uploadVoice() — upload reference audio to provider
- *   3. If adapter has no uploadVoice (e.g. DashScope in V1), leave voiceUri
- *      empty — caller must handle (the voice was manually configured).
- *
- * On success, writes the URI to the cache so subsequent turns skip upload.
- */
-export async function ensureVoiceUri(
-  voice:            TtsVoiceRef,
-  adapter:          TtsAdapter,
-  model:            string,
-  cardId:           CharacterCardId,
-  providerConfigId: string,
-  cache:            VoiceUriCache,
-  signal?:          AbortSignal,
-): Promise<TtsVoiceRef> {
-  if (voice.voiceUri) return voice;
-
-  // 1. Check cache (keyed by card + provider + model — DashScope is model-bound)
-  const cached = cache.get(cardId, providerConfigId, model);
-  if (cached) {
-    voice.voiceUri = cached;
-    return voice;
-  }
-
-  // 2. Upload
-  if (!adapter.uploadVoice) {
-    return voice; // adapter doesn't support upload (e.g. gpt-sovits-tts uses refAudioPath)
-  }
-
-  const uri = await adapter.uploadVoice(
-    voice.refAudioPath,
-    voice.promptText,
-    voice.promptLang,
-    model,
-    signal,
-  );
-  voice.voiceUri = uri;
-  cache.set(cardId, providerConfigId, model, uri);
-  return voice;
 }
 
 function pickPrimaryRefAudio(profile: CharacterVoiceProfile | null) {

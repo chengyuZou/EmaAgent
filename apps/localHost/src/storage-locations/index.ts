@@ -5,7 +5,7 @@ export {
   dataDbPathFor, trashDirFor,
   ensureDataDirLayout,
   sessionDirFor, sessionAudioDirFor,
-  ensureSessionLayout, removeLegacyArtifactDirectories,
+  removeLegacyArtifactDirectories,
   scratchpadTurnDir, removeSessionDir, removeTurnFiles, sweepOrphanTurnFiles,
   voiceRefsDir, voiceRefsForCard, resolveVoiceRefPath, ensureProfileLayout,
   cardsDir, cardDir, cardResourcePath, resolveCardVoiceRefPath,

@@ -21,7 +21,8 @@ import {
   fetchLlmModels,
   fetchEmbedModels,
 } from '../wiring/index.js';
-import { resolveVoice, ensureVoiceUri, VoiceUriCache } from '../wiring/providers/tts.js';
+import { ensureVoiceUri, TtsVoiceUriCache } from '@ema-agent/tts';
+import { resolveVoice } from '../wiring/providers/tts.js';
 import { fetchVisionModels } from '../wiring/providers/vision.js';
 import {
   providerCredentialOperationSchema,
@@ -519,7 +520,7 @@ export function providersRoute(bindings: AppBindings): Hono {
     }
 
     try {
-      const cache = new VoiceUriCache(bindings.settings);
+      const cache = new TtsVoiceUriCache(bindings.settings);
       await ensureVoiceUri(voice, adapter, model, card.id, providerId, cache, c.req.raw.signal);
       if (!voice.voiceUri && adapter.protocol !== 'gpt-sovits-tts') {
         return c.json({ error: 'voice_upload_failed', message: '参考音频上传失败' }, 400);

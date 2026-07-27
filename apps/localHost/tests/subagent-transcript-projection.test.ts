@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { AgentRunMessageInsert } from '@ema-agent/storage';
-import type { EmaStreamEvent } from '@ema-agent/events';
+import type { TurnStreamEvent } from '@ema-agent/events';
 import { SubagentTranscriptProjection } from '../src/turn-runtime/subagent-transcript-projection.js';
 
 describe('SubagentTranscriptProjection', () => {
@@ -40,7 +40,7 @@ describe('SubagentTranscriptProjection', () => {
   });
 });
 
-function subagentText(delta: string): EmaStreamEvent {
+function subagentText(delta: string): TurnStreamEvent {
   return {
     type: 'subagent_stream',
     sessionId: 'session-1',
@@ -51,10 +51,10 @@ function subagentText(delta: string): EmaStreamEvent {
       subagentId: 'subagent-1',
       delta,
     },
-  } as EmaStreamEvent;
+  } as TurnStreamEvent;
 }
 
-function subagentIteration(): EmaStreamEvent {
+function subagentIteration(): TurnStreamEvent {
   return {
     type: 'subagent_stream',
     sessionId: 'session-1',
@@ -66,5 +66,5 @@ function subagentIteration(): EmaStreamEvent {
       n: 2,
       elapsedMs: 100,
     },
-  } as EmaStreamEvent;
+  } as TurnStreamEvent;
 }

@@ -1,6 +1,6 @@
 // 测试 Turn SSE 的断线续传、业务终态和待重连取消。
 import { describe, expect, it, vi } from 'vitest';
-import type { EmaStreamEvent } from '@ema-agent/events';
+import type { TurnStreamEvent } from '@ema-agent/events';
 import type {
   SseConnectionOutcome,
   SseHandle,
@@ -32,13 +32,13 @@ describe('startTurnSseLifecycle', () => {
               turnId: 't1',
               executionProfile: 'chat',
               narrativePolicy: 'auto',
-            } as EmaStreamEvent,
+            } as TurnStreamEvent,
             7,
           ));
           return completedHandle({ kind: 'eof', lastEventId: 7 });
         }
         queueMicrotask(() => options.onEvent(
-          { type: 'turn_completed', turnId: 't1' } as EmaStreamEvent,
+          { type: 'turn_completed', turnId: 't1' } as TurnStreamEvent,
           8,
         ));
         return completedHandle({ kind: 'eof', lastEventId: 8 });
@@ -60,7 +60,7 @@ describe('startTurnSseLifecycle', () => {
       connect(options) {
         connects += 1;
         queueMicrotask(() => options.onEvent(
-          { type: 'turn_failed', turnId: 't1', error: 'failed' } as unknown as EmaStreamEvent,
+          { type: 'turn_failed', turnId: 't1', error: 'failed' } as unknown as TurnStreamEvent,
           1,
         ));
         return completedHandle({ kind: 'eof', lastEventId: 1 });

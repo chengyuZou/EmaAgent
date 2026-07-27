@@ -1,12 +1,12 @@
 // 把跨窗口收到的系统事件写入当前窗口自己的前端 Store。
-import type { EmaStreamEvent } from '@ema-agent/events';
+import type { AppEvent } from '@ema-agent/events';
 import type { MemoryTaskKind } from '@ema-agent/storage';
 import { useCardStore } from '../stores/card-store.js';
 import { useKbStore } from '../stores/kb-store.js';
 import { useMemoryStore } from '../stores/memory-store.js';
 import { useSettingsStore } from '../stores/settings-store.js';
 
-export function dispatchSystemEvent(event: EmaStreamEvent): void {
+export function dispatchSystemEvent(event: AppEvent): void {
   switch (event.type) {
     case 'character_card_switched':
       void useCardStore.getState().load();

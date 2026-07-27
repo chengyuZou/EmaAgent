@@ -1,7 +1,7 @@
 // 保存 Turn 的有界 SSE 重放日志，并为每条事件分配稳定游标。
 
 import type { TurnId } from '@ema-agent/ids';
-import type { EmaStreamEvent } from '@ema-agent/events';
+import type { TurnStreamEvent } from '@ema-agent/events';
 import type { PublishedTurnEvent } from './event-hub.js';
 
 const DEFAULT_TURN_BUDGET_BYTES = 8 * 1024 * 1024;
@@ -57,7 +57,7 @@ export class TurnEventStore {
     );
   }
 
-  push(turnId: TurnId, event: EmaStreamEvent): TurnEventPushResult {
+  push(turnId: TurnId, event: TurnStreamEvent): TurnEventPushResult {
     const key = turnId as string;
     const entry = this.getOrCreate(key);
     if (entry.done) return { status: 'closed' };
@@ -164,17 +164,17 @@ function positiveInteger(value: number | undefined, fallback: number): number {
   return Number.isSafeInteger(value) && value! > 0 ? value! : fallback;
 }
 
-function isTerminalTurnEvent(event: EmaStreamEvent): boolean {
+function isTerminalTurnEvent(event: TurnStreamEvent): boolean {
   return event.type === 'turn_completed' ||
     event.type === 'turn_failed' ||
     event.type === 'turn_aborted';
 }
 
-function eventForReplay(event: EmaStreamEvent): EmaStreamEvent {
+function eventForReplay(event: TurnStreamEvent): TurnStreamEvent {
   if (event.type !== 'tts_chunk') return event;
   return { ...event, audio: '', lipsync: undefined };
 }
 
-function eventBytes(event: EmaStreamEvent): number {
+function eventBytes(event: TurnStreamEvent): number {
   return Buffer.byteLength(JSON.stringify(event), 'utf8');
 }

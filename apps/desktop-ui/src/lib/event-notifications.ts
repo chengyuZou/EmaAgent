@@ -1,5 +1,5 @@
 // 把结构化 SSE 事件转换为受用户设置控制的本地通知。
-import type { EmaStreamEvent } from '@ema-agent/events';
+import type { ClientEvent } from '@ema-agent/events';
 import { useSettingsStore, type EventDisplayConfig } from '../stores/settings-store.js';
 import { showToast, type ToastOptions } from './toast.js';
 
@@ -13,7 +13,7 @@ export interface ConfiguredEventNotification extends EventNotification {
   accentColor: string;
 }
 
-export function describeEventNotification(event: EmaStreamEvent): EventNotification | null {
+export function describeEventNotification(event: ClientEvent): EventNotification | null {
   switch (event.type) {
     case 'tool_call_complete':
       return { message: `准备执行工具：${event.name}`, variant: 'info' };
@@ -122,7 +122,7 @@ export function describeEventNotification(event: EmaStreamEvent): EventNotificat
 }
 
 export function resolveConfiguredEventNotification(
-  event: EmaStreamEvent,
+  event: ClientEvent,
   config: EventDisplayConfig | undefined,
 ): ConfiguredEventNotification | null {
   if (!config?.enabled) return null;
@@ -141,7 +141,7 @@ export function resolveConfiguredEventNotification(
   };
 }
 
-export function presentConfiguredEvent(event: EmaStreamEvent): void {
+export function presentConfiguredEvent(event: ClientEvent): void {
   const config = useSettingsStore.getState().eventDisplay?.effective[event.type];
   const notification = resolveConfiguredEventNotification(event, config);
   if (!notification) return;

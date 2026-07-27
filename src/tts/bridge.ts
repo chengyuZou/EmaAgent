@@ -4,10 +4,10 @@ import type { TurnId, SessionId } from '@ema-agent/ids';
 import type { TtsEvent } from './events.js';
 import type { TtsStreamEvent } from './types.js';
 
-// ── TtsStreamEvent -> EmaStreamEvent 桥接 ────────────────────────────────────
+// ── TtsStreamEvent -> Turn 流事件桥接 ────────────────────────────────────────
 //
 // `TtsRuntime` 和 Adapter 使用 `TtsStreamEvent`(Uint8Array 字节,数字
-// 句子索引)。前端说 `EmaStreamEvent.tts_chunk`(base64 音频字符串,
+// 句子索引)。前端接收 `tts_chunk`(base64 音频字符串,
 // 字符串 sentenceId)。本模块是唯一做转换的地方 - 保持纯函数,无副作用。
 //
 // sentenceId 格式:`<turnId>-<sentenceIndex>` - 在一个 turn 内唯一标识
@@ -23,13 +23,13 @@ export interface BridgeContext {
 }
 
 /**
- * 把一个 `TtsStreamEvent` 转成 0 或 1 个 `EmaStreamEvent`。部分内部事件
- * (sentence_started、done)没有公共对应,返回 `null` - orchestrator 直接丢弃。
+ * 把一个 `TtsStreamEvent` 转成 0 或 1 个 Turn TTS 事件。部分内部事件
+ * (sentence_started、done)没有公共对应,返回 `null`。
  *
  * 调用方负责跟踪当前句子索引,因为 `audio_chunk` 不带索引(它属于最近一次
  * sentence_started)。从 coordinator 的 per-turn 状态传 `currentSentenceIndex`。
  */
-export function ttsEventToEma(
+export function ttsEventToTurn(
   ev:                    TtsStreamEvent,
   ctx:                   BridgeContext,
   currentSentenceIndex:  number,

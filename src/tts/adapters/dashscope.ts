@@ -62,7 +62,7 @@ export class DashscopeTtsAdapter implements TtsAdapter {
 
   /**
    * 上传本地参考音频文件到 DashScope 做 voice cloning。
-   * 返回 provider 分配的 voice ID,存入 VoiceUriCache。
+   * 返回 Provider 分配的 voice ID，存入 TtsVoiceUriCache。
    *
    * 协议路由:
    *   cosyvoice-*  -> model=voice-enrollment,      input.url

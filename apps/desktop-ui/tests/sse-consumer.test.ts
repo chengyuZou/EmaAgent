@@ -4,7 +4,7 @@ import {
   createSseConsumer,
   type SseConnectionOutcome,
 } from '../src/lib/sse-consumer.js';
-import type { EmaStreamEvent } from '@ema-agent/events';
+import type { ClientEvent } from '@ema-agent/events';
 
 function mockSseResponse(frames: string[], status = 200): Response {
   const encoder = new TextEncoder();
@@ -36,12 +36,12 @@ function mockSseResponse(frames: string[], status = 200): Response {
 }
 
 async function collectSse(frames: string[]): Promise<{
-  events: EmaStreamEvent[];
+  events: ClientEvent[];
   cursors: Array<number | undefined>;
   heartbeats: number;
   outcome: SseConnectionOutcome;
 }> {
-  const events: EmaStreamEvent[] = [];
+  const events: ClientEvent[] = [];
   const cursors: Array<number | undefined> = [];
   let heartbeats = 0;
   const handle = createSseConsumer().start({

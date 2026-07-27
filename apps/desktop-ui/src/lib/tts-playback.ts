@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { TurnId } from '@ema-agent/ids';
-import type { EmaStreamEvent } from '@ema-agent/events';
+import type { TurnStreamEvent } from '@ema-agent/events';
 import { useSpeechStore } from '@ema-agent/live2d-react';
 import type { SpeechAnimationState } from '@ema-agent/live2d-react';
 import { tauriBridge } from './tauri-bridge.js';
@@ -241,7 +241,9 @@ function isTtsOwner(sessionId: string): boolean {
  *
  * Only processes events for the current ttsOwner session.
  */
-export function handleTtsChunk(event: EmaStreamEvent & { type: 'tts_chunk' }): void {
+export function handleTtsChunk(
+  event: Extract<TurnStreamEvent, { type: 'tts_chunk' }>,
+): void {
   // Evicted chunks (replayed after the audio file was finalized) keep their
   // cursor slot but carry no audio — see TurnEventStore.evictAudioChunks.
   if (!event.audio) return;
@@ -287,7 +289,7 @@ export function handleTtsChunk(event: EmaStreamEvent & { type: 'tts_chunk' }): v
  * Only processes events for the current ttsOwner session.
  */
 export function handleTtsSentenceComplete(
-  event: EmaStreamEvent & { type: 'tts_sentence_complete' },
+  event: Extract<TurnStreamEvent, { type: 'tts_sentence_complete' }>,
 ): void {
   if (!isTtsOwner(event.sessionId as string)) return;
   // No-op: sentence boundaries are transparent in the MediaSource streaming model.

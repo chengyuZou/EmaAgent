@@ -47,7 +47,7 @@ const DEFAULT_LIMITS: Readonly<TtsLimits> = {
  *   - configs:  Map<providerId, TtsProviderConfig> (id -> 配置)
  *
  * TtsRuntime 不感知角色卡、voice profile、
- * 文件路径、URI 缓存或 fallback 策略。这些职责在 apps/localHost(orchestrator 层)。
+ * 文件路径、URI 缓存或 fallback 策略。这些职责由 TurnSpeechOutput 的装配端承担。
  *
  * synthesize(request) 接收完全解析的 TtsVoiceRef - 调用方负责
  * 从角色卡解析 voice,并在调用前确保 voiceUri 已填。

@@ -37,11 +37,12 @@ DashScope 双协议路由(按模型前缀): `cosyvoice-*` 走 `wss://.../inferen
 | 入口 | 职责 |
 |---|---|
 | `TtsRuntime` | 按明确 providerId 路由到原子 Provider Entry，负责热重载、合成限制、稳定 Probe 和 Usage；不感知角色卡、路径和缓存 |
+| `TurnSpeechOutput` | 装饰根 Turn 事件流，解析可选语音能力，合并 TTS 事件并保证根终态最后发送 |
 | `TtsCoordinator` | per-turn 流式封装:喂 `acceptTextDelta` -> 过滤 -> 分句 -> 串行合成 -> emit 事件 + 归档。`finish()`/`abort()` 幂等 |
 | `FsAudioArchive` | 分段写盘 + Turn 结束合并;`findMergedFor` 供回放路由 |
 | `TtsAdapter` | 扩展接口:`stream`/`capabilitiesFor`/`uploadVoice?`/`probe?` |
 
-`TtsVoiceRef.refAudioPath` 是**绝对路径**(apps/localHost 从角色卡相对路径解析)。voice URI 缓存键 `tts.voiceUri.<cardId>.<providerId>.<model>`(DashScope voice ID 与模型绑定,跨模型不可复用)。
+`TtsVoiceRef.refAudioPath` 是**绝对路径**(Composition Root 从角色卡相对路径解析)。`TtsVoiceUriCache` 的缓存键为 `tts.voiceUri.<cardId>.<providerId>.<model>`(DashScope voice ID 与模型绑定,跨模型不可复用)。
 
 ## 关键机制
 
@@ -58,6 +59,8 @@ DashScope 双协议路由(按模型前缀): `cosyvoice-*` 走 `wss://.../inferen
 | `streaming/textFilter.ts` | `TextFilterStream` 5 状态机(块级清洗)+ `filterSentenceForTts`(行内清洗,无状态) |
 | `streaming/sentenceSplitter.ts` | 句子边界检测 |
 | `ttsRuntime.ts` | 原子 Provider Entry、合成限制、稳定 Probe、流终态和 Usage |
+| `turnOutput.ts` | 根 Turn 事件流的语音装饰、终态顺序与投影告警 |
+| `voiceUri.ts` | Provider voice URI 的稳定缓存键与懒上传 |
 | `coordinator.ts` | `TtsCoordinator` per-turn 流式编排 |
 | `archive.ts` | `FsAudioArchive` 分段写盘 + 格式合并 |
 | `errors.ts` | `TtsErrorCode` + 三分类函数(三 adapter 共用) |
@@ -70,4 +73,4 @@ DashScope 双协议路由(按模型前缀): `cosyvoice-*` 走 `wss://.../inferen
 - 不剥 ACT 标签(由 `@ema-agent/emotion` 上游剥)
 - 不做 WS 连接池(V1 单用户场景)
 - 不依赖 ffmpeg(格式合并用字节拼接,ogg/opus 不拼)
-- 不做声音管理(角色卡/voice profile/路径解析/URI 缓存都在 apps/localHost)
+- 不选择当前角色或 TTS binding；这些产品策略由 Composition Root 注入

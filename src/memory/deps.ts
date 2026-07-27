@@ -14,7 +14,7 @@ import type { SessionStore } from '@ema-agent/session';
 import type { LanguageModel } from '@ema-agent/llm';
 import type { EmbedRuntime } from '@ema-agent/embed';
 import type { RerankRuntime } from '@ema-agent/rerank';
-import type { MemoryEvent } from './events.js';
+import type { MemoryBackgroundEvent } from './events.js';
 
 // ── External dependencies ─────────────────────────────────────────────────────
 
@@ -57,5 +57,5 @@ export interface MemoryDeps {
    * events here. The orchestrator wires this to the SystemEventBus so the
    * frontend can render them as bubbles. Optional: tests omit it.
    */
-  emit?:          (ev: MemoryEvent) => void;
+  emit?:          (ev: MemoryBackgroundEvent) => void;
 }

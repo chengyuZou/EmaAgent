@@ -26,7 +26,7 @@ import {
   type NarrativePolicy,
   TurnStats,
 } from '@ema-agent/turn';
-import type { EmaStreamEvent } from '@ema-agent/events';
+import type { TurnStreamEvent } from '@ema-agent/events';
 import type {
   MemoryRecallLayer,
   MemoryRecallLayerReport,
@@ -60,7 +60,7 @@ export const breakerReasons = new Map<string, string>();
 // ── Main dispatcher ───────────────────────────────────────────────────────────
 
 export function dispatchSseEvent(
-  event:     EmaStreamEvent,
+  event:     TurnStreamEvent,
   sessionId: SessionId,
   cb:        StreamCallbacks,
 ): void {
@@ -627,10 +627,6 @@ export function dispatchSseEvent(
         message: event.message,
         retryable: event.retryable,
       });
-      break;
-
-    case 'system_warning':
-      console.warn('[sse] system_warning:', event.level, event.message);
       break;
 
     default:

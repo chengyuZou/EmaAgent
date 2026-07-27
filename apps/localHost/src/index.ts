@@ -25,7 +25,7 @@ verifyLocalHostBuildIntegrity(import.meta.url);
 // The HTTP sidecar (this file's main()) is only one of several possible
 // consumers of the assembled runtime. Exposing `wire`, `startBackgroundWork`,
 // and `Orchestrator` lets a CLI import them directly and consume the
-// AsyncIterable<EmaStreamEvent> without any Hono dependency.
+// AsyncIterable<TurnStreamEvent> without any Hono dependency.
 export { wire, configureBridge, resolveBridgeUrl } from './wiring/index.js';
 export { startBackgroundWork } from './wiring/index.js';
 export type { AppBindings, BuildBindingsArgs, BackgroundHandle } from './wiring/index.js';

@@ -1,5 +1,5 @@
 // 管理全应用唯一的系统 SSE 连接，并把事件按顺序广播给各个窗口。
-import type { EmaStreamEvent } from '@ema-agent/events';
+import type { AppEvent } from '@ema-agent/events';
 import { sidecarClient } from '../api/sidecar-client.js';
 import { dispatchSystemEvent } from './system-event-dispatcher.js';
 import {
@@ -17,8 +17,8 @@ const EOF_RECONNECT_DELAY_MS = 3_000;
 const ERROR_RECONNECT_DELAY_MS = 5_000;
 
 export interface SystemSseControllerOptions {
-  connect(onEvent: (event: EmaStreamEvent) => void): SseHandle;
-  publish(event: EmaStreamEvent): void;
+  connect(onEvent: (event: AppEvent) => void): SseHandle;
+  publish(event: AppEvent): void;
   onDisconnected(outcome: SseConnectionOutcome): void;
 }
 
@@ -97,7 +97,7 @@ export function createSystemSseController(
 
 let publishChain: Promise<void> = Promise.resolve();
 
-function publishAcrossWindows(event: EmaStreamEvent): void {
+function publishAcrossWindows(event: AppEvent): void {
   // 系统事件只由唯一 owner 展示一次；各窗口仍会收到广播并更新自己的 Store。
   presentConfiguredEvent(event);
   if (!tauriBridge.isTauri()) {
@@ -155,7 +155,7 @@ function acquireSubscriber(): () => void {
   if (subscriberLeases === 1 && tauriBridge.isTauri()) {
     subscriberGeneration += 1;
     const expectedGeneration = subscriberGeneration;
-    unlistenPromise = tauriBridge.listen<EmaStreamEvent>(SYSTEM_EVENT_CHANNEL, ({ payload }) => {
+    unlistenPromise = tauriBridge.listen<AppEvent>(SYSTEM_EVENT_CHANNEL, ({ payload }) => {
       if (subscriberGeneration === expectedGeneration && subscriberLeases > 0) {
         dispatchSystemEvent(payload);
       }

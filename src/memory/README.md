@@ -125,7 +125,7 @@ Deletion remains user-initiated. Automated maintenance should decay importance; 
 
 ## Events
 
-Memory emits structured `EmaStreamEvent` objects only. No unparsed log strings should be sent to the frontend.
+Memory recall emits structured `MemoryRecallEvent` objects to the current Turn; background work emits `MemoryBackgroundEvent` to the app channel. No unparsed log strings should be sent to the frontend.
 
 Turn-scoped events:
 

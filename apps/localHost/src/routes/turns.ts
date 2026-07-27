@@ -14,7 +14,7 @@ import type { AppBindings } from '../wiring/index.js';
 import type {
   TurnId,
 } from '@ema-agent/ids';
-import type { EmaStreamEvent } from '@ema-agent/events';
+import type { TurnStreamEvent } from '@ema-agent/events';
 import {
   asTurnId,
   asSessionId,
@@ -97,20 +97,12 @@ type TurnBodySchemaMatchesContract = RequireTrue<
   z.infer<typeof turnBodySchema> extends TurnRequest ? true : false
 >;
 
-function isTerminalTurnEvent(event: EmaStreamEvent): boolean {
+function isTerminalTurnEvent(event: TurnStreamEvent): boolean {
   return (
     event.type === 'turn_aborted' ||
     event.type === 'turn_failed' ||
     event.type === 'turn_completed'
   );
-}
-
-function enrichTurnEvent(
-  event: EmaStreamEvent,
-  sessionId: string,
-): EmaStreamEvent {
-  if ('sessionId' in event && (event as Record<string, unknown>).sessionId !== undefined) return event;
-  return { ...event, sessionId } as EmaStreamEvent;
 }
 
 // ── Route factory ─────────────────────────────────────────────────────────────
@@ -119,40 +111,7 @@ export function turnsRoute(bindings: AppBindings): Hono {
   const app = new Hono();
   const eventStore = new TurnEventStore(60_000);
   const eventHub = new TurnEventHub();
-  const orchestrator = new Orchestrator(bindings, {
-    onAudioFinalized: (turnId, sessionId, audio) => {
-      if (audio) {
-        try {
-          // 音频统计是可重建的辅助投影，失败不能反向破坏已生成的语音与 Turn。
-          bindings.sessionStats.recordAudioMerged({
-            turnId:       turnId as string,
-            sessionId:    sessionId as string,
-            storagePath:  audio.path,
-            mimeType:     audio.mime,
-            byteSize:     audio.byteSize,
-            durationMs:   audio.durationMs,
-            segmentCount: audio.segmentCount,
-            createdAt:    Date.now(),
-          });
-        } catch (error) {
-          const warning: EmaStreamEvent = {
-            type: 'turn_projection_warning',
-            sessionId,
-            turnId,
-            projection: 'turn_audio',
-            code: 'storage/turn_audio_projection_failed',
-            message: error instanceof Error ? error.message : String(error),
-            retryable: true,
-          };
-          const result = eventStore.push(turnId, warning);
-          if (result.status === 'stored') {
-            eventHub.publish(turnId, { cursor: result.published.cursor, event: warning });
-          }
-        }
-        eventStore.evictAudioChunks(turnId);
-      }
-    },
-  });
+  const orchestrator = new Orchestrator(bindings);
   // Evict completed / cancelled turns every 30 s to prevent unbounded memory growth.
   setInterval(() => eventStore.evictExpired(), 30_000).unref?.();
 
@@ -210,7 +169,7 @@ export function turnsRoute(bindings: AppBindings): Hono {
         : bindings.session.createSession().id;
 
     let turnId: TurnId;
-    let events: AsyncIterable<EmaStreamEvent>;
+    let events: AsyncIterable<TurnStreamEvent>;
     try {
       ({ turnId, events } = await orchestrator.run({
         sessionId:        effectiveSessionId,
@@ -240,7 +199,7 @@ export function turnsRoute(bindings: AppBindings): Hono {
     // Transcript 是旁路投影；它可以失败，但不能停止 Engine 事件消费。
     const transcriptProjection = new SubagentTranscriptProjection(bindings.agentRunMessages);
 
-    const publishEvent = (event: EmaStreamEvent): boolean => {
+    const publishEvent = (event: TurnStreamEvent): boolean => {
       const result = eventStore.push(turnId, event);
       if (result.status === 'stored') {
         // 重放日志可能对音频做脱敏，在线订阅者仍应收到原始事件。
@@ -255,8 +214,8 @@ export function turnsRoute(bindings: AppBindings): Hono {
 
     (async () => {
       for await (const event of events) {
-        // Inject sessionId into events from engines that don't carry it.
-        const enriched = enrichTurnEvent(event, effectiveSessionId);
+        // Turn 输出契约已经要求每个事件携带所属 Session，不再由 Route 猜身份。
+        const enriched = event;
         const projectionWarning = transcriptProjection.apply(enriched);
         if (projectionWarning) {
           publishEvent({
@@ -331,7 +290,7 @@ export function turnsRoute(bindings: AppBindings): Hono {
             }
           };
 
-          const writeEvent = (published: { cursor: number; event: EmaStreamEvent }): void => {
+          const writeEvent = (published: { cursor: number; event: TurnStreamEvent }): void => {
             writeEncoded(encodeEvent(published.event, published.cursor));
             if (isTerminalTurnEvent(published.event)) close();
           };

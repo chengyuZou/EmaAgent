@@ -420,8 +420,8 @@ export class SessionStatsRepo {
   }
 
   /**
-   * 记录一个 turn 的合并音频文件。由 orchestrator 在 TTS 完成合并文件后调用--
-   * 不调用的话,仪表盘统计和导出 zip 看不到音频,即使文件已在磁盘上。
+   * 记录一个 Turn 的合并音频文件。由 TTS 最终音频投影在归档完成后调用；
+   * 不调用时仪表盘统计和导出 ZIP 看不到音频，即使文件仍在磁盘上。
    */
   recordAudioMerged(row: {
     turnId:       string;

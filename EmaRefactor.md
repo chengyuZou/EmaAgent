@@ -714,7 +714,7 @@ apps/localHost/src/
 
 后续按依赖顺序分五批，不同时施工：
 
-1. **TTS Turn 输出边界**：新增 `TurnSpeechOutput` 与真实 `createTurnOutput.ts` 装配，把事件合流、终态前 finalize/abort、语音 URI 缓存和最终音频投影移出 Orchestrator/Route；本批不删除 Orchestrator；
+1. **TTS Turn 输出边界（已完成）**：`TurnSpeechOutput` 与真实 `createTurnOutput.ts` 已接管事件合流、终态前 finalize/abort、语音 URI 缓存和最终音频投影；Orchestrator 只保留下一批待删除的启动与取消转发；
 2. **删除旧 Orchestrator**：给 `TurnExecutor` 增加按 `turnId` 核对当前活动 Turn 的取消入口，删除 LocalHost `activeTurns`；Turns Route 直接调用 `TurnInputPreparer.prepare() → TurnExecutor.start() → TurnSpeechOutput.decorate()`；
 3. **Route 业务副作用归位**：Subagent transcript 进入 `src/agent/runs`，Interaction 终态清理进入 Turn/Tools 生命周期，音频统计进入 TTS 投影；AgentRun、AskUser、Audio 与 Tool Journal 使用各自窄 Route，先保持现有 URL；
 4. **逐 Route 收窄 AppBindings**：每个 Route 只接收实际使用的执行、查询或传输端口；`AppBindings` 只留在 Composition Root，不能机械替换成另一只嵌套依赖袋，也不为每个几行对象创建空工厂；

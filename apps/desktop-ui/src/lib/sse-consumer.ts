@@ -1,15 +1,15 @@
 // 解析一条 SSE 响应，并返回唯一且结构化的连接终态。
-import type { EmaStreamEvent } from '@ema-agent/events';
+import type { ClientEvent } from '@ema-agent/events';
 
 export const SSE_IDLE_TIMEOUT_MS = 45_000;
 
-export interface SseStartOptions {
+export interface SseStartOptions<TEvent extends ClientEvent = ClientEvent> {
   signal?: AbortSignal;
   lastEventId?: number;
   idleTimeoutMs?: number;
   requireEventId?: boolean;
   openResponse(signal: AbortSignal, lastEventId: number): Promise<Response>;
-  onEvent(event: EmaStreamEvent, cursor?: number): void;
+  onEvent(event: TEvent, cursor?: number): void;
   onHeartbeat?(): void;
 }
 
@@ -92,10 +92,14 @@ function parseFrame(frame: string): ParsedFrame | null {
 }
 
 export function createSseConsumer(): {
-  start(options: SseStartOptions): SseHandle;
+  start<TEvent extends ClientEvent = ClientEvent>(
+    options: SseStartOptions<TEvent>,
+  ): SseHandle;
 } {
   return {
-    start(options) {
+    start<TEvent extends ClientEvent = ClientEvent>(
+      options: SseStartOptions<TEvent>,
+    ) {
       const controller = new AbortController();
       const idleTimeoutMs = options.idleTimeoutMs ?? SSE_IDLE_TIMEOUT_MS;
       let lastEventId = options.lastEventId ?? 0;
@@ -156,7 +160,7 @@ export function createSseConsumer(): {
           return;
         }
 
-        let event: EmaStreamEvent;
+        let event: TEvent;
         try {
           const decoded = JSON.parse(parsed.data) as Record<string, unknown>;
           if (typeof decoded.type !== 'string') {
@@ -165,7 +169,7 @@ export function createSseConsumer(): {
           if (options.requireEventId && parsed.cursor === undefined) {
             throw new Error('SSE event is missing a valid id field');
           }
-          event = decoded as unknown as EmaStreamEvent;
+          event = decoded as unknown as TEvent;
         } catch (cause) {
           const message = cause instanceof Error ? cause.message : 'invalid JSON event';
           terminate({

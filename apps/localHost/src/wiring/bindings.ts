@@ -78,7 +78,6 @@ import type {
 import type {
   KbAssetScope,
 } from '@ema-agent/turn';
-import type { EmaStreamEvent } from '@ema-agent/events';
 import type { KbSearchResult } from '@ema-agent/knowledge';
 import type { CommandRunnerPort, SandboxStatusWire } from '@ema-agent/sandbox';
 import type { UsageRecord } from '@ema-agent/usage';

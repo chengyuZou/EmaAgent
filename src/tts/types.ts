@@ -20,7 +20,7 @@ export interface TtsVoiceRef {
    * `permanent_unsupported_voice_kind` 错误。
    * gpt-sovits-tts 忽略此字段,直接用 `refAudioPath`。
    *
-   * 由 apps/localHost 的 `ensureVoiceUri()` 在 coordinator 启动前懒填。
+   * 由 `ensureVoiceUri()` 在 Coordinator 启动前懒填。
    * 禁止在此硬编码值。
    */
   voiceUri?: string;
@@ -68,7 +68,7 @@ export type TtsStreamEvent =
 // ── 公共 TTS 请求(Facade 入口)────────────────────────────────────────────
 //
 // 与 LlmRequest 模式对齐:纯数据,无业务语义。
-// 调用方(TtsCoordinator / apps/localHost orchestrator)负责从角色卡解析 voice,
+// 调用方负责从角色卡解析 voice，TtsCoordinator 只消费已解析的引用，
 // 并在调 cloud adapter 的 synthesize 前确保 voiceUri 已填。
 
 /**

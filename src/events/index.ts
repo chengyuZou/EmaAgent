@@ -24,12 +24,14 @@ import type { TurnEvent } from '@ema-agent/turn';
 export type TurnStreamEvent =
   | TurnEvent
   | AgentTurnEvent
+  | AgentRunEvent
   | ToolStreamEvent
   | PermissionStreamEvent
   | EmotionStreamEvent
   | TtsEvent
   | NarrativeEvent
   | MemoryRecallEvent
+  | TaskEvent
   | ContextEvent
   | HookWarningEvent;
 
@@ -52,4 +54,4 @@ export type AppEvent =
 export type EmaStreamEvent = TurnStreamEvent | SessionEvent | AppEvent;
 
 /** 跨端解码器在协议入口使用的完整联合，不能作为业务生产者的 emit 类型。 */
-export type ClientEvent = EmaStreamEvent;
+export type ClientEvent = TurnStreamEvent | SessionEvent | AppEvent;

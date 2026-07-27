@@ -156,8 +156,7 @@ export function trashDirFor(dataDir: string): string {
 
 /**
  * Create the top-level dataDir layout.
- * Audio directories are NOT pre-created here — they are
- * created on demand per session via ensureSessionLayout().
+ * Audio directories are not pre-created here; AudioArchive writes them lazily.
  */
 export function ensureDataDirLayout(dataDir: string): void {
   fs.mkdirSync(dataDir, { recursive: true });
@@ -181,16 +180,6 @@ export function sessionDirFor(dataDir: string, sessionId: string): string {
 
 export function sessionAudioDirFor(dataDir: string, sessionId: string): string {
   return path.join(sessionDirFor(dataDir, sessionId), 'audio');
-}
-
-/**
- * Create the standard directory tree for a new (or newly accessed) session.
- * Safe to call multiple times — all mkdirSync calls use `recursive: true`.
- */
-export function ensureSessionLayout(dataDir: string, sessionId: string): void {
-  const audioDir = sessionAudioDirFor(dataDir, sessionId);
-  fs.mkdirSync(path.join(audioDir, 'segments'), { recursive: true });
-  fs.mkdirSync(path.join(audioDir, 'merged'),   { recursive: true });
 }
 
 /**

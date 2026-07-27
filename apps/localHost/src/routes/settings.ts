@@ -2,7 +2,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { SettingsRepo } from '@ema-agent/storage';
-import type { EmaStreamEvent } from '@ema-agent/events';
+import type { ClientEvent } from '@ema-agent/events';
 import type { AppBindings } from '../wiring/index.js';
 
 // ── Settings keys (typed) ────────────────────────────────────────────────────
@@ -30,7 +30,7 @@ interface EventDisplayConfig {
   truncateChars?: number;
 }
 
-const DEFAULT_EVENT_DISPLAY: Partial<Record<EmaStreamEvent['type'], EventDisplayConfig>> = {
+const DEFAULT_EVENT_DISPLAY: Partial<Record<ClientEvent['type'], EventDisplayConfig>> = {
   // Tool execution
   tool_call_complete:           { enabled: true,  color: '#3b82f6', durationMs: 4000 },
   tool_result:                  { enabled: true,  color: '#22c55e', durationMs: 3000 },
@@ -109,7 +109,7 @@ const eventDisplayEntrySchema = z.object({
 
 const eventDisplayBodySchema = z.record(z.string(), eventDisplayEntrySchema);
 
-const LEGACY_EVENT_DISPLAY_KEYS: Record<string, EmaStreamEvent['type']> = {
+const LEGACY_EVENT_DISPLAY_KEYS: Record<string, ClientEvent['type']> = {
   context_compacted: 'context_compaction_completed',
   memory_compaction_started: 'context_compaction_started',
   memory_compaction_completed: 'context_compaction_completed',

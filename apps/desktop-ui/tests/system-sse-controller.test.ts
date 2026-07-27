@@ -1,6 +1,6 @@
 // 测试系统 SSE 停止、重连和旧连接隔离，不允许卸载后的连接自行复活。
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { EmaStreamEvent } from '@ema-agent/events';
+import type { AppEvent } from '@ema-agent/events';
 import {
   createSystemSseController,
   mountSystemEvents,
@@ -14,13 +14,13 @@ import { tauriBridge } from '../src/lib/tauri-bridge.js';
 
 interface FakeConnection {
   handle: SseHandle;
-  emit(event: EmaStreamEvent): void;
+  emit(event: AppEvent): void;
   finish(outcome: SseConnectionOutcome): void;
   stop: ReturnType<typeof vi.fn>;
 }
 
 function createFakeConnection(
-  onEvent: (event: EmaStreamEvent) => void,
+  onEvent: (event: AppEvent) => void,
 ): FakeConnection {
   let finish!: (outcome: SseConnectionOutcome) => void;
   const done = new Promise<SseConnectionOutcome>((resolve) => {
@@ -37,12 +37,12 @@ function createFakeConnection(
 
 function createHarness(): {
   connections: FakeConnection[];
-  published: EmaStreamEvent[];
+  published: AppEvent[];
   disconnected: SseConnectionOutcome[];
   options: SystemSseControllerOptions;
 } {
   const connections: FakeConnection[] = [];
-  const published: EmaStreamEvent[] = [];
+  const published: AppEvent[] = [];
   const disconnected: SseConnectionOutcome[] = [];
   return {
     connections,
@@ -68,7 +68,7 @@ const warningEvent = {
   type: 'system_warning',
   level: 'warn',
   message: 'test',
-} as EmaStreamEvent;
+} as AppEvent;
 
 afterEach(() => {
   vi.useRealTimers();

@@ -7,13 +7,13 @@ import { TtsRuntime } from './ttsRuntime.js';
 import type { TtsVoiceRef } from './types.js';
 import { SentenceSplitter } from './streaming/sentenceSplitter.js';
 import { TextFilterStream } from './streaming/textFilter.js';
-import { ttsEventToEma, makeSentenceId } from './bridge.js';
+import { ttsEventToTurn, makeSentenceId } from './bridge.js';
 import type { AudioArchive, FinalizedAudio } from './archive.js';
 
 // ── TtsCoordinator ──────────────────────────────────────────────────────────
 //
 // 一个 per-turn 对象,负责:
-//   1. 接收 apps/localHost orchestrator 的可见 `output_text_delta` 块。
+//   1. 接收 TurnSpeechOutput 观察到的可见 `output_text_delta` 块。
 //      每个 delta 喂入句子切分器;完整句子进入合成队列。
 //   2. **顺序**排空队列(V1 并发 = 1)- 每句音频完整流完才开始下一句。
 //      顺序输出意味着前端无需跨句缓冲/重排;按序播放 = SSE 顺序。
@@ -25,7 +25,7 @@ import type { AudioArchive, FinalizedAudio } from './archive.js';
 //   - `finish()` 注销、flush 切分器、等队列排空、归档。幂等;
 //     可安全从 `finally` 块调用。
 //
-// 每个 turn 单实例。orchestrator 创建并持有;engine 不碰。
+// 每个 Turn 单实例，由 TurnSpeechOutput 创建并持有；AgentLoop 不碰。
 // TTS 是流式 sidecar,不是 HookBus 参与者。
 
 export interface TtsCoordinatorArgs {
@@ -261,7 +261,7 @@ export class TtsCoordinator {
           }
           writer?.write(ev.bytes);
         }
-        const transformed = ttsEventToEma(ev, { turnId: this.turnId, sessionId: this.sessionId }, index);
+        const transformed = ttsEventToTurn(ev, { turnId: this.turnId, sessionId: this.sessionId }, index);
         if (transformed && (this.state === 'accepting' || this.state === 'finishing')) {
           this.emit(transformed);
         }

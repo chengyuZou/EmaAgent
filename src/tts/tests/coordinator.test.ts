@@ -1,7 +1,7 @@
 // 测试 TTS Coordinator 的并发完成、取消和归档终态。
 import { describe, expect, it } from 'vitest';
 import type { SessionId, TurnId } from '@ema-agent/ids';
-import type { TtsEvent as EmaStreamEvent } from '../events.js';
+import type { TtsEvent } from '../events.js';
 import { TtsCoordinator } from '../coordinator.js';
 import { TtsRuntime } from '../ttsRuntime.js';
 import type { AudioArchive, FinalizedAudio, SegmentWriter } from '../archive.js';
@@ -44,7 +44,7 @@ function archiveSpy(): AudioArchive & { finalized: number; discarded: number } {
 function coordinator(
   adapter: TtsAdapter,
   archive: AudioArchive,
-  emit: (event: EmaStreamEvent) => void,
+  emit: (event: TtsEvent) => void,
 ): TtsCoordinator {
   return new TtsCoordinator({
     turnId: 'turn' as TurnId,
@@ -82,7 +82,7 @@ describe('TtsCoordinator 终态', () => {
     const archive = archiveSpy();
     let firstChunk!: () => void;
     const sawFirstChunk = new Promise<void>((resolve) => { firstChunk = resolve; });
-    const emitted: EmaStreamEvent[] = [];
+    const emitted: TtsEvent[] = [];
     const adapter = adapterWith(async function* (req) {
       yield { type: 'audio_chunk', bytes: new Uint8Array([1]), mime: 'audio/mpeg' };
       await new Promise<void>((resolve) => {
