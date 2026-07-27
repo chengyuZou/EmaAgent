@@ -99,20 +99,6 @@ describe('Chat 统一执行链', () => {
           yield { type: 'done' as const, stopReason: 'end_turn' as const };
         },
       } as never,
-      modelCapabilities: {
-        resolve: () => ({
-          input: {
-            text: 'supported' as const,
-            image: 'supported' as const,
-            audio: 'supported' as const,
-            file: 'supported' as const,
-          },
-          tools: 'supported' as const,
-          reasoning: 'supported' as const,
-          temperature: 'supported' as const,
-          source: 'manual' as const,
-        }),
-      },
       emotion: {
         beginTurn: () => undefined,
         processChunk: (delta: string) => ({ cleaned: delta, events: [] }),
@@ -135,10 +121,27 @@ describe('Chat 统一执行链', () => {
       userInput: turn.userInput,
       prepare: () => ({
         userInput: turn.userInput,
+        persistedUserInput: turn.userInput,
         prompt,
-        providerId: 'provider-1',
-        model: 'model-1',
+        model: {
+          providerId: 'provider-1',
+          model: 'model-1',
+          capabilities: {
+          input: {
+            text: 'supported' as const,
+            image: 'supported' as const,
+            audio: 'supported' as const,
+            file: 'supported' as const,
+          },
+          tools: 'supported' as const,
+          reasoning: 'supported' as const,
+          temperature: 'supported' as const,
+          contextWindow: 200_000,
+          source: 'manual' as const,
+          },
+        },
         workspaceRoot: process.cwd(),
+        requestDegradations: [],
       }),
     });
     const events = [];

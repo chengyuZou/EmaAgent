@@ -15,7 +15,7 @@ const MAX_FILES_PER_TURN  = 10;
 
 // ── 接口 ───────────────────────────────────────────────────────────────────────
 
-export interface IAttachmentStore {
+export interface AttachmentStorePort {
   add(input: AttachmentInput, turnId: string, sessionId: string): Attachment;
   addAll(inputs: AttachmentInput[], turnId: string, sessionId: string): Attachment[];
   get(id: string): Attachment;
@@ -28,7 +28,7 @@ export interface IAttachmentStore {
 
 // ── 实现 ───────────────────────────────────────────────────────────────────────
 
-export class AttachmentStore implements IAttachmentStore {
+export class AttachmentStore implements AttachmentStorePort {
   constructor(
     private readonly repo: AttachmentRepo,
     private readonly ownership: Pick<SessionOwnershipFacade, 'assertTurnOwnership'>,

@@ -11,8 +11,10 @@ import { TurnExecutor } from '../turnExecutor.js';
 import { TurnPreparationError } from '../errors.js';
 import type { TurnExecutionDeps } from '../types.js';
 
-const modelCapabilities = {
-  resolve: () => ({
+const model = {
+  providerId: 'provider-1',
+  model: 'model-1',
+  capabilities: {
     input: {
       text: 'supported' as const,
       image: 'supported' as const,
@@ -22,8 +24,9 @@ const modelCapabilities = {
     tools: 'supported' as const,
     reasoning: 'supported' as const,
     temperature: 'supported' as const,
+    contextWindow: 200_000,
     source: 'manual' as const,
-  }),
+  },
 };
 
 const sessionId = 'session-agent-failure' as SessionId;
@@ -91,10 +94,11 @@ function startExecution(executor: TurnExecutor) {
     userInput: 'hello',
     prepare: () => ({
       userInput: 'hello',
+      persistedUserInput: 'hello',
       prompt,
-      providerId: 'provider-1',
-      model: 'model-1',
+      model,
       workspaceRoot: '',
+      requestDegradations: [],
     }),
   });
 }
@@ -123,7 +127,6 @@ describe('TurnExecutor 生命周期', () => {
       session: session as never,
       hooks: new HookBus(),
       llm: {} as never,
-      modelCapabilities,
       emotion: {} as never,
       tools: new ToolRegistry(),
       permission: {} as never,
@@ -198,7 +201,6 @@ describe('TurnExecutor 生命周期', () => {
       session: session as never,
       hooks,
       llm: {} as never,
-      modelCapabilities,
       emotion: {} as never,
       tools: new ToolRegistry(),
       permission: {} as never,
@@ -295,7 +297,6 @@ describe('TurnExecutor 生命周期', () => {
       session: withTurnStart(session) as never,
       hooks,
       llm: llm as never,
-      modelCapabilities,
       emotion: {
         beginTurn: () => undefined,
         processChunk: (delta: string) => ({ cleaned: delta, events: [] }),
@@ -386,7 +387,6 @@ describe('TurnExecutor 生命周期', () => {
       session: withTurnStart(session) as never,
       hooks,
       llm: llm as never,
-      modelCapabilities,
       emotion: {
         beginTurn: () => undefined,
         processChunk: (delta: string) => ({ cleaned: delta, events: [] }),
@@ -473,7 +473,6 @@ describe('TurnExecutor 生命周期', () => {
       session: withTurnStart(session, controller) as never,
       hooks,
       llm: llm as never,
-      modelCapabilities,
       emotion: {
         beginTurn: () => undefined,
         processChunk: (delta: string) => ({ cleaned: delta, events: [] }),
@@ -546,7 +545,6 @@ describe('TurnExecutor 生命周期', () => {
       session: withTurnStart(session) as never,
       hooks,
       llm: llm as never,
-      modelCapabilities,
       emotion: {
         beginTurn: () => undefined,
         processChunk: (delta: string) => ({ cleaned: delta, events: [] }),

@@ -22,6 +22,7 @@
   },
   "dependencies": {
     "@ema-agent/agent": "workspace:*",
+    "@ema-agent/attachment": "workspace:*",
     "@ema-agent/context": "workspace:*",
     "@ema-agent/emotion": "workspace:*",
     "@ema-agent/hooks": "workspace:*",

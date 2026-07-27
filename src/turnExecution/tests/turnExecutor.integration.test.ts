@@ -25,7 +25,7 @@ import type { Message, Turn } from '@ema-agent/session';
 import type { SessionId, TurnId, MessageId } from '@ema-agent/ids';
 
 import { TurnExecutor } from '../turnExecutor.js';
-import type { TurnExecutionDeps, TurnExecutionPlan } from '../types.js';
+import type { TurnExecutionDeps, TurnInput } from '../types.js';
 
 // ── 测试常量 ──────────────────────────────────────────────────────────────────
 
@@ -140,15 +140,6 @@ beforeAll(() => {
     session:   sessionStore as unknown as TurnExecutionDeps['session'],
     hooks,
     llm,
-    modelCapabilities: {
-      resolve: () => ({
-        input: { text: 'supported', image: 'unknown', audio: 'unknown', file: 'unknown' },
-        tools: 'unknown',
-        reasoning: 'unknown',
-        temperature: 'unknown',
-        source: 'unknown',
-      }),
-    },
     emotion,
     tools,
     permission,
@@ -160,7 +151,7 @@ beforeAll(() => {
 /** 消费完整异步事件流并返回全部事件。 */
 async function collectEvents(
   executor: TurnExecutor,
-  input: TurnExecutionPlan,
+  input: TurnInput,
 ) {
   const events = [];
   const handle = executor.start({
@@ -178,10 +169,11 @@ async function collectEvents(
 }
 
 function makeInput(
-  overrides: Partial<TurnExecutionPlan> = {},
-): TurnExecutionPlan {
+  overrides: Partial<TurnInput> = {},
+): TurnInput {
   return {
     userInput:     'Hello',
+    persistedUserInput: 'Hello',
     prompt: {
       slots: [],
       systemBlocks: [{
@@ -201,8 +193,24 @@ function makeInput(
       revision: 'integration-prompt-revision',
     },
     workspaceRoot: WORKSPACE,
-    providerId:    PROVIDER_ID,
-    model:         MODEL,
+    model: {
+      providerId: PROVIDER_ID,
+      model: MODEL,
+      capabilities: {
+        input: {
+          text: 'supported',
+          image: 'unknown',
+          audio: 'unknown',
+          file: 'unknown',
+        },
+        tools: 'unknown',
+        reasoning: 'unknown',
+        temperature: 'unknown',
+        contextWindow: 200_000,
+        source: 'unknown',
+      },
+    },
+    requestDegradations: [],
     ...overrides,
   };
 }

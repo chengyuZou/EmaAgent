@@ -14,19 +14,14 @@ import type {
 } from '@ema-agent/turn';
 import type { ThinkingMode } from '@ema-agent/llm';
 import type { LlmContentPart } from '@ema-agent/llm';
-import { llmProviderErrorCode } from '@ema-agent/llm';
-import type { Attachment, AttachmentInput } from '@ema-agent/attachment';
+import type { AttachmentInput } from '@ema-agent/attachment';
 import {
   asSessionId,
 } from '@ema-agent/ids';
-import type {
-  RequestDegradationNotice,
-} from '@ema-agent/turn';
 import type { EmaStreamEvent } from '@ema-agent/events';
 import {
   TurnExecutor,
-  TurnPreparationError,
-  type TurnExecutionPlan,
+  TurnInputPreparer,
   type TurnOutcome,
 } from '@ema-agent/turn-execution';
 import { TtsCoordinator }     from '@ema-agent/tts';
@@ -34,9 +29,6 @@ import type { FinalizedAudio } from '@ema-agent/tts';
 import { SettingsRepo } from '@ema-agent/storage';
 import { resolveVoice, ensureVoiceUri, VoiceUriCache } from '../wiring/providers/tts.js';
 import { ensureSessionLayout, scratchpadTurnDir } from '../storage-locations/index.js';
-import type { AttachmentReferenceBlock, MessageBlocks, Turn } from '@ema-agent/session';
-import { prepareImagesForModel, replaceImageParts } from './media-compatibility.js';
-import { buildPromptSnapshot } from '@ema-agent/prompts';
 import { formatTaskContextReminder } from '@ema-agent/tasks';
 
 const TURN_ATTACHMENT_CAPTION_PROMPT_REVISION = 'turn-attachment-caption-v1';
@@ -54,45 +46,31 @@ export interface TurnRequest {
   narrativePolicy:  NarrativePolicy;
   userInput:        string;
   contentParts?:    LlmContentPart[];
-  /** LocalHost 内部落库投影，不属于 HTTP 请求字段。 */
-  persistedUserInput?: MessageBlocks;
-  /** Per-turn file attachments from the frontend. Persisted and resolved before engine dispatch. */
+  /** 前端提交的本轮附件；进入执行器前完成持久化和模型输入解析。 */
   attachmentInputs?: AttachmentInput[];
   /** provider_configs.id — 和 model 成对使用，前端选择器选的是 (provider, model) 组合。 */
   providerId?:      string;
   model?:           string;
-  /** KB ids the user selected in the chat picker (turn-level search scope). */
+  /** 用户在聊天选择器中选中的知识库，是本轮检索范围。 */
   kbIds?:           string[];
-  /** Per-KB document scopes from the chat picker. */
+  /** 聊天选择器为每个知识库指定的文档范围。 */
   kbAssetScopes?:   KbAssetScope[];
   /**
-   * Whether to spawn a TtsCoordinator for this turn. Defaults to false —
-   * the frontend opts in per turn (after the user toggles the speaker icon).
-   * When false, no TTS synthesis happens and no `tts_chunk` events emit.
+   * 是否为本轮启用语音合成，默认关闭，由前端扬声器开关逐轮选择。
+   * 关闭时不创建合成任务，也不发送 tts_chunk 事件。
    */
   ttsEnabled?:  boolean;
-  /** User-requested thinking mode. Only sent when the model supports reasoning and the user toggled it on. */
+  /** 用户选择的思考模式；只有用户开启且模型支持时才会发送。 */
   thinking?:    ThinkingMode;
 }
 
-interface PreparedCoreTurnRequest {
-  request: TurnRequest & { persistedUserInput: MessageBlocks };
-  requestDegradations: RequestDegradationNotice[];
-}
-
 /**
- * Optional callbacks the route layer wires in. The orchestrator can't import
- * routes/turns.ts (would be circular), so we go through this thin seam.
+ * Route 通过窄回调接收旁路结果，避免 Orchestrator 反向导入 Route 形成循环依赖。
  */
 export interface OrchestratorCallbacks {
   /**
-   * Fired after a turn's TTS has finished and the merged audio file is on
-   * disk. The route handler uses this to call `eventStore.evictAudioChunks`
-   * — releases the in-memory base64 audio chunks once they're replayable
-   * from `GET /api/turns/:turnId/audio`.
-   *
-   * `audioPath` is null if no audio was produced (turn had no TTS, or all
-   * sentences errored).
+   * 合并音频落盘后通知 Route 清理可由音频接口重放的内存 Base64 分块。
+   * 本轮未启用 TTS 或全部句子合成失败时 audio 为 null。
    */
   onAudioFinalized?: (turnId: TurnId, sessionId: SessionId, audio: FinalizedAudio | null) => void;
 }
@@ -103,6 +81,7 @@ export interface OrchestratorCallbacks {
  */
 export class Orchestrator {
   private readonly turnExecutor: TurnExecutor;
+  private readonly turnInputPreparer: TurnInputPreparer;
   private readonly callbacks:    OrchestratorCallbacks;
   // LocalHost 迁移期只保留按 turnId 查找取消入口，不再复制 Session 运行注册表。
   private readonly activeTurns = new Map<string, { abort: () => void }>();
@@ -111,12 +90,74 @@ export class Orchestrator {
     private readonly bindings:   AppBindings,
     callbacks:                   OrchestratorCallbacks = {},
   ) {
-    this.callbacks    = callbacks;
+    this.callbacks = callbacks;
+    this.turnInputPreparer = new TurnInputPreparer({
+      session: bindings.session,
+      attachments: bindings.attachmentStore,
+      modelCapabilities: bindings.modelCapabilities,
+      contextWindowFor: (providerId, model) =>
+        bindings.providerLlmModels.contextWindowFor(providerId, model),
+      activeCharacter: () => bindings.card.current(),
+      extensionPromptContributions: (executionProfile) => {
+        if (executionProfile !== 'work') return [];
+        const contribution = bindings.skillRunner.promptContribution(executionProfile);
+        return contribution ? [contribution] : [];
+      },
+      scratchpadDirForTurn: (sessionId, turnId) =>
+        scratchpadTurnDir(
+          bindings.activeDataDir,
+          sessionId,
+          turnId as string,
+        ),
+      mediaCompatibility: {
+        visionBinding: () => bindings.modelBindings.get('vision'),
+        describeImage: async ({
+          providerId,
+          model,
+          image,
+          sessionId,
+          turnId,
+          signal,
+        }) => {
+          const cached = await bindings.attachmentDerivationCache.getOrCreate({
+            source: {
+              kind: 'base64',
+              data: image.data,
+              name: image.name,
+            },
+            task: 'caption',
+            providerConfigId: providerId,
+            modelId: model,
+            promptRevision: TURN_ATTACHMENT_CAPTION_PROMPT_REVISION,
+            signal,
+          }, async (normalizedImage) => {
+            const result = await bindings.vision.extract({
+              providerId,
+              model,
+              task: 'caption',
+              inputs: [{
+                kind: 'bytes',
+                bytes: normalizedImage.bytes,
+                mimeType: normalizedImage.mimeType,
+                name: image.name,
+              }],
+              context: {
+                caller: 'turn_attachment',
+                sessionId: sessionId as string,
+                turnId: turnId as string,
+              },
+              signal,
+            });
+            return result.text;
+          });
+          return cached.text;
+        },
+      },
+    });
     this.turnExecutor = new TurnExecutor({
       session:           bindings.session,
       hooks:             bindings.hooks,
       llm:               bindings.llm,
-      modelCapabilities: bindings.modelCapabilities,
       emotion:           bindings.emotion,
       narrative:         bindings.narrative,
       tools:             bindings.tools,
@@ -130,6 +171,55 @@ export class Orchestrator {
       agentRunStore:     bindings.agentRunStore,
       taskStore:         bindings.taskStore,
       toolExecutionJournal: bindings.toolExecutionJournal,
+      prepareContextContributions: async (contextRequest) => {
+        const recalled = await bindings.memory.prepareRecallContribution({
+          sessionId: contextRequest.sessionId,
+          turnId: contextRequest.turnId,
+          executionProfile: contextRequest.executionProfile,
+          narrativePolicy: contextRequest.narrativePolicy,
+          userInput: contextRequest.userInput,
+          signal: contextRequest.signal,
+        });
+        const contributions = recalled.contribution ? [recalled.contribution] : [];
+        const tasks = contextRequest.executionProfile === 'work'
+          ? bindings.taskStore.takeContextReminder(contextRequest.sessionId)
+          : [];
+        if (tasks.length > 0) {
+          contributions.push({
+            id: `tasks.reminder.${Math.max(...tasks.map((task) => task.version))}`,
+            source: 'tasks',
+            placement: 'beforeCurrentTurn',
+            message: {
+              role: 'user',
+              content: formatTaskContextReminder(tasks),
+            },
+          });
+        }
+        return contributions;
+      },
+      compactContext: ({ turn, input, view, force, signal }) => {
+        const { providerId, model, capabilities } = input.model;
+        return bindings.contextCompactor.compact({
+          sessionId: turn.sessionId,
+          turnId: turn.id,
+          executionProfile: turn.executionProfile,
+          narrativePolicy: turn.narrativePolicy,
+          messages: [...view.historyMessages],
+          prefixMessages: view.prefixMessages,
+          suffixMessages: view.suffixMessages,
+          requiredRestoreMessages: view.requiredRestoreMessages,
+          tools: view.tools,
+          force,
+          modelContextWindow: capabilities.contextWindow ?? 200_000,
+          modelMaxOutputTokens: capabilities.maxOutput,
+          providerId,
+          model,
+          signal,
+          emit: bindings.systemBus
+            ? (event) => bindings.systemBus.emit(event)
+            : undefined,
+        }).then((result) => result.messages);
+      },
     });
   }
 
@@ -158,14 +248,7 @@ export class Orchestrator {
       executionProfile: request.executionProfile,
       narrativePolicy: request.narrativePolicy,
       userInput: request.userInput,
-      prepare: async ({ turn, signal }) => {
-        const prepared = await this.prepareCoreTurnRequest(request, turn, signal);
-        return this.buildExecutionPlan(
-          prepared.request,
-          turn,
-          prepared.requestDegradations,
-        );
-      },
+      prepare: (context) => this.turnInputPreparer.prepare(request, context),
     });
     this.activeTurns.set(handle.turnId as string, { abort: handle.abort });
 
@@ -274,240 +357,6 @@ export class Orchestrator {
     })();
   }
 
-  /**
-   * 附件仍由 LocalHost 的受限文件能力准备，但只产出本轮执行输入，不自行推进 Turn。
-   * 图片能力降级和直接 contentParts 共用同一条模型门禁。
-   */
-  private async prepareCoreTurnRequest(
-    request: TurnRequest,
-    turn: Turn,
-    signal: AbortSignal,
-  ): Promise<PreparedCoreTurnRequest> {
-    const sessionId = turn.sessionId;
-    const turnId = turn.id;
-    let contentParts = request.contentParts;
-    let userInput = request.userInput;
-    let storedAttachments: Attachment[] = [];
-    const requestDegradations: RequestDegradationNotice[] = [];
-
-    try {
-      if (request.attachmentInputs?.length) {
-        storedAttachments = this.bindings.attachmentStore.addAll(
-          request.attachmentInputs,
-          turnId,
-          sessionId,
-        );
-        const resolved = this.bindings.attachmentStore.resolveForPrompt(storedAttachments);
-
-        if (resolved.imageParts.length > 0 || resolved.promptLines) {
-          const parts: LlmContentPart[] = [...resolved.imageParts];
-          if (contentParts?.length) {
-            parts.push(...contentParts);
-          } else {
-            parts.push({ type: 'text', text: userInput });
-          }
-          if (resolved.promptLines) {
-            parts.push({ type: 'text', text: resolved.promptLines });
-          }
-          contentParts = parts;
-          userInput = '';
-        }
-      }
-
-      const imageParts = contentParts?.filter(
-        (part) => part.type === 'image_data' || part.type === 'image_url',
-      ) ?? [];
-      if (imageParts.length > 0) {
-        const resolvedLlm = this.resolveLlmForTurn(request);
-        if (!resolvedLlm.providerId || !resolvedLlm.model) {
-          throw new Error('provider/not_configured');
-        }
-        const fallback = await prepareImagesForModel({
-          capabilitiesFor: (providerId, model) =>
-            this.bindings.modelCapabilities.resolve({ providerId, model }),
-          visionBinding: () => this.bindings.modelBindings.get('vision'),
-          describeImage: async ({
-            providerId,
-            model,
-            input,
-            signal: visionSignal,
-          }) => {
-            const cached = await this.bindings.attachmentDerivationCache.getOrCreate({
-              source: {
-                kind: 'base64',
-                data: input.data,
-                name: input.name,
-              },
-              task: 'caption',
-              providerConfigId: providerId,
-              modelId: model,
-              promptRevision: TURN_ATTACHMENT_CAPTION_PROMPT_REVISION,
-              signal: visionSignal,
-            }, async (image) => {
-              const result = await this.bindings.vision.extract({
-                providerId,
-                model,
-                task: 'caption',
-                inputs: [{
-                  kind: 'bytes',
-                  bytes: image.bytes,
-                  mimeType: image.mimeType,
-                  name: input.name,
-                }],
-                context: {
-                  caller: 'turn_attachment',
-                  sessionId: sessionId as string,
-                  turnId: turnId as string,
-                },
-                signal: visionSignal,
-              });
-              return result.text;
-            });
-            return cached.text;
-          },
-        }, resolvedLlm.providerId, resolvedLlm.model, imageParts, signal);
-        contentParts = replaceImageParts(contentParts ?? [], fallback.parts);
-        if (fallback.degradation) requestDegradations.push(fallback.degradation);
-      }
-    } catch (error) {
-      const providerCode = llmProviderErrorCode(error);
-      const code = providerCode === 'provider/model_capability_unsupported'
-        ? providerCode
-        : 'turn/attachment_failed';
-      throw new TurnPreparationError(
-        code,
-        error instanceof Error ? error.message : String(error),
-        { cause: error },
-      );
-    }
-
-    const resolvedRequest = contentParts !== request.contentParts || userInput !== request.userInput
-      ? { ...request, contentParts, userInput }
-      : request;
-    const persistedUserInput = buildPersistedUserInput(
-      contentParts?.length ? contentParts : userInput,
-      storedAttachments,
-    );
-    return {
-      request: { ...resolvedRequest, persistedUserInput },
-      requestDegradations,
-    };
-  }
-
-  private buildExecutionPlan(
-    request: TurnRequest & { persistedUserInput: MessageBlocks },
-    turn: Turn,
-    requestDegradations: RequestDegradationNotice[],
-  ): TurnExecutionPlan {
-    const sessionId = turn.sessionId;
-    const session = this.bindings.session.getSession(sessionId);
-    // 没有用户选择的工作区时保持为空，禁止把 LocalHost 启动目录猜成授权目录。
-    const workspaceRoot = session.workspaceRoot ?? '';
-    const { providerId, model } = this.resolveLlmForTurn(request);
-    if (!providerId || !model) {
-      throw new TurnPreparationError(
-        'provider/not_configured',
-        `No LLM provider configured for ${request.executionProfile} profile`,
-      );
-    }
-
-    const contextWindow = this.bindings.providerLlmModels.contextWindowFor(providerId, model)
-      ?? this.bindings.modelCapabilities.resolve({ providerId, model }).contextWindow
-      ?? 200_000;
-    const modelMaxOutputTokens = this.bindings.modelCapabilities.resolve({
-      providerId,
-      model,
-    }).maxOutput;
-
-    return {
-      providerId,
-      model,
-      prompt: buildPromptSnapshot({
-        activeCharacter: this.bindings.card.current(),
-        executionProfile: request.executionProfile,
-        narrativePolicy: request.narrativePolicy,
-        extensionContributions: request.executionProfile === 'work'
-          ? [
-              this.bindings.skillRunner.promptContribution(request.executionProfile),
-            ].filter((contribution) => contribution !== null)
-          : [],
-      }),
-      userInput: request.contentParts?.length
-        ? request.contentParts
-        : request.userInput,
-      persistedUserInput: request.persistedUserInput,
-      workspaceRoot,
-      scratchpadDir: request.executionProfile === 'work'
-        ? scratchpadTurnDir(
-            this.bindings.activeDataDir,
-            sessionId,
-            turn.id as string,
-          )
-        : undefined,
-      kbIds: request.kbIds,
-      kbAssetScopes: request.kbAssetScopes,
-      thinking: request.thinking,
-      requestDegradations,
-      prepareContextContributions: async (contextRequest) => {
-        const recalled = await this.bindings.memory.prepareRecallContribution({
-          sessionId: contextRequest.sessionId,
-          turnId: contextRequest.turnId,
-          executionProfile: contextRequest.executionProfile,
-          narrativePolicy: contextRequest.narrativePolicy,
-          userInput: contextRequest.userInput,
-          signal: contextRequest.signal,
-        });
-        const contributions = recalled.contribution ? [recalled.contribution] : [];
-        const tasks = contextRequest.executionProfile === 'work'
-          ? this.bindings.taskStore.takeContextReminder(contextRequest.sessionId)
-          : [];
-        if (tasks.length > 0) {
-          contributions.push({
-            id: `tasks.reminder.${Math.max(...tasks.map((task) => task.version))}`,
-            source: 'tasks',
-            placement: 'beforeCurrentTurn',
-            message: {
-              role: 'user',
-              content: formatTaskContextReminder(tasks),
-            },
-          });
-        }
-        return contributions;
-      },
-      compactContext: (view, options) => this.bindings.contextCompactor.compact({
-        sessionId,
-        turnId: turn.id,
-        executionProfile: request.executionProfile,
-        narrativePolicy: request.narrativePolicy,
-        messages: [...view.historyMessages],
-        prefixMessages: view.prefixMessages,
-        suffixMessages: view.suffixMessages,
-        requiredRestoreMessages: view.requiredRestoreMessages,
-        tools: view.tools,
-        force: options?.force,
-        modelContextWindow: contextWindow,
-        modelMaxOutputTokens,
-        providerId,
-        model,
-        emit: this.bindings.systemBus
-          ? (event) => this.bindings.systemBus.emit(event)
-          : undefined,
-      }).then((result) => result.messages),
-    };
-  }
-
-  /** Turn 选择必须提供完整 Provider + Model；非 Turn 业务才允许读取自己的显式 Binding。 */
-  private resolveLlmForTurn(request: TurnRequest): { providerId: string; model: string } | { providerId: undefined; model: undefined } {
-    if (request.providerId || request.model) {
-      return request.providerId && request.model
-        ? { providerId: request.providerId, model: request.model }
-        : { providerId: undefined, model: undefined };
-    }
-
-    // Turn 的模型来自显式选择，不能用注册顺序或旧 Binding 猜测。
-    return { providerId: undefined, model: undefined };
-  }
-
   private async maybeBuildCoordinator(
     request:   TurnRequest,
     turnId:    TurnId,
@@ -517,9 +366,7 @@ export class Orchestrator {
   ): Promise<TtsCoordinator | null> {
     if (!request.ttsEnabled) return null;
 
-    // Each gate below silently produced no audio (no warning). Log every
-    // skip reason so "TTS enabled but no sound" is diagnosable from the
-    // sidecar console instead of guessed at.
+    // 每个门禁都记录跳过原因，避免“已开启 TTS 但没有声音”只能靠猜。
     const bindingRow = this.bindings.modelBindings.get('tts');
     if (!bindingRow) {
       console.warn('[tts] no audio: no `tts` model binding configured');
@@ -533,7 +380,7 @@ export class Orchestrator {
       return null;
     }
 
-    // Ensure voiceUri (cache hit → skip upload; cache miss → upload + persist)
+    // 缓存命中时复用 voiceUri；未命中时上传并持久化。
     const adapter = this.bindings.tts.getAdapter(bindingRow.providerConfigId);
     if (!adapter) {
       console.warn(`[tts] no audio: no TTS adapter for provider ${bindingRow.providerConfigId}`);
@@ -543,8 +390,7 @@ export class Orchestrator {
     const cache = new VoiceUriCache(new SettingsRepo(this.bindings.profileDb.sqlite));
     await ensureVoiceUri(voice, adapter, model, card.id, bindingRow.providerConfigId, cache, signal);
 
-    // GPT-SoVITS uses refAudioPath directly and never sets voiceUri.
-    // Cloud adapters (DashScope, OpenAI-TTS) require voiceUri — reject if absent.
+    // GPT-SoVITS 直接读取参考音频路径；云端适配器则必须取得 voiceUri。
     if (!voice.voiceUri && adapter.protocol !== 'gpt-sovits-tts') {
       console.warn(`[tts] no audio: cloud adapter ${adapter.protocol} requires a voiceUri but upload/cache produced none`);
       return null;
@@ -565,61 +411,19 @@ export class Orchestrator {
   }
 }
 
-// ── Signal helper ───────────────────────────────────────────────────────────
+// ── 单次唤醒信号 ─────────────────────────────────────────────────────────────
 
-/** One-shot wake-up signal (hand-rolled Promise.withResolvers — Node 20). */
+/** Node 20 环境下手写的一次性 Promise 唤醒信号。 */
 function armSignal(): { promise: Promise<void>; fire: () => void } {
   let fire!: () => void;
   const promise = new Promise<void>((r) => { fire = r; });
   return { promise, fire };
 }
 
-export function buildPersistedUserInput(
-  input: string | readonly LlmContentPart[],
-  attachments: readonly Attachment[],
-): MessageBlocks {
-  if (typeof input === 'string' && attachments.length === 0) return input;
-
-  const blocks: Array<LlmContentPart | AttachmentReferenceBlock> = [];
-  if (typeof input === 'string') {
-    if (input) blocks.push({ type: 'text', text: input });
-  } else {
-    for (const part of input) {
-      if (part.type === 'image_data' || part.type === 'audio_data' || part.type === 'file_data') {
-        blocks.push({
-          type: 'text',
-          text: `[本轮${mediaLabel(part.type)}正文未写入会话数据库]`,
-        });
-        continue;
-      }
-      blocks.push(part);
-    }
-  }
-
-  for (const attachment of attachments) {
-    blocks.push({
-      type: 'attachment_ref',
-      attachmentId: attachment.id,
-      name: attachment.name,
-      mimeType: attachment.mime,
-    });
-  }
-  return blocks;
-}
-
-function mediaLabel(type: 'image_data' | 'audio_data' | 'file_data'): string {
-  if (type === 'image_data') return '图片';
-  if (type === 'audio_data') return '音频';
-  return '文件';
-}
-
-// ── Merge helper ────────────────────────────────────────────────────────────
+// ── 事件流合并 ───────────────────────────────────────────────────────────────
 //
-// Yields engine events AND coordinator-pushed events as they arrive, in
-// arrival order. When the engine is done, drains any in-flight TTS events
-// before returning. The coordinator's own `finish()` call (in the caller)
-// is responsible for awaiting in-flight syntheses — this loop only drains
-// what's already been pushed at the moment of engine completion.
+// 按到达顺序合并根 Turn 与 TTS 事件。Turn 结束后先排空已产生的音频事件；
+// 尚在合成的任务由调用方执行 coordinator.finish() 等待，本循环不重复等待。
 
 async function* mergeStreams(
   engineEvents:    AsyncIterable<EmaStreamEvent>,
@@ -659,6 +463,6 @@ async function* mergeStreams(
         yield winner.r.value;
       }
     }
-    // 'tts' winner just loops back and drains queue
+    // TTS 先到达时回到循环顶部排空队列。
   }
 }

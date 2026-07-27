@@ -544,15 +544,154 @@ packages/
 
 根 `src` 放 Ema 产品主体；`apps/localHost` 只保留 Node Sidecar 入口、HTTP/SSE、认证与装配；`packages` 保留确有跨应用复用、平台隔离、独立发布或独立测试价值的技术底座。产品模块即使用独立 `package.json` 参与 TypeScript/Turbo 构建，也仍属于根 `src`，不因此成为公共库。
 
-`apps/localHost` 是 Desktop、未来 CLI/Web/移动端与外部渠道共同访问的本地 HTTP 宿主，不是新的业务 Core。V1 继续使用 localhost HTTP + SSE；未来若引入 WebSocket，只在 `transports/` 增加真实传输实现，不预建空目录。启动、就绪、数据目录和依赖装配属于进程入口；Turn 计划、附件处理、模型兼容、TTS 修饰、子 Agent transcript 与 Provider 配置生命周期必须回到根 `src` 的业务所有者。
+`apps/localHost` 是本机单 Profile EmaAgent 的进程宿主与协议入口，不是新的业务 Core，也不是可以被远程手机直接访问的万能后端。Desktop、本地 CLI 和本机 Web 可以复用 localhost HTTP；远程 Web、移动端与外部渠道未来必须经过真实的配对、认证或 Gateway/Connector，再把规范化命令交给本机 LocalHost。V1 继续使用 localhost HTTP + SSE；未来若引入 WebSocket，只在出现实时双向通信需求后增加真实传输实现，不预建空目录。启动、就绪、数据目录和依赖装配属于进程入口；Turn 输入准备、附件处理、模型兼容、TTS 修饰、子 Agent transcript 与 Provider 配置生命周期必须回到根 `src` 的业务所有者。
 
 LocalHost 分五批收口，每批只改变一个边界：
 
 1. **L0 纯改名**：`apps/core → apps/localHost`、`@ema-agent/core → @ema-agent/local-host`、`ema-core → ema-local-host`，同步 Tauri、发布脚本、CI、测试和文档，不移动业务职责；
-2. **L1 Turn 准备归位**：附件输入、模型能力、Prompt/Context/Compaction 输入和执行计划迁入 `src/turnExecution/prepareTurn.ts` 及各领域公共入口；
+2. **L1 Turn 执行边界收口**：先拆除 `TurnExecutionPlan/PreparedTurnExecution` 和大型 `TurnExecutionDeps` 口径；附件输入、模型能力与 Prompt 快照进入 `turnPreparation.ts`，每轮 Context、Tool 能力与根 Agent 执行分别归入内聚边界；
 3. **L2 删除旧 Orchestrator**：TurnExecutor 成为唯一产品执行入口，LocalHost 不再拥有第二套执行编排；
 4. **L3 HTTP 传输归档**：现有 Route、SSE、认证和请求预算迁入 `transports/http`，只做协议适配；
 5. **L4/L5 装配收窄**：删除大型 `AppBindings` Service Locator，wiring 按能力构造；大型 Route 改为窄依赖，但不新增全局 Service/Facade 杂物层。
+
+### 7.1.1 Turn、TurnExecution 与 LocalHost 执行边界审计
+
+2026-07-27 对当前真实调用链的审计结论是：不能把 LocalHost Orchestrator 机械搬成 `prepareTurn.ts`，否则只会在 `src/turnExecution` 复制一个新的 God Object。
+
+当前三个叠加的大边界分别是：
+
+- `apps/localHost/src/orchestrator/orchestrator.ts` 约 660 行，同时处理附件落库与模型投影、图片 Vision 降级、Provider/Model 解析、Prompt、Memory/Task Contribution、Compaction、TTS 合流和运行中取消；
+- `src/turnExecution/turnExecutor.ts` 约 1100 行，同时处理根 Turn 生命周期、历史兼容、Narrative Recall、Context、Tool/Permission/Sandbox、Subagent、Hook、Emotion、消息持久化和事件翻译；
+- `apps/localHost/src/wiring/bindings.ts` 约 845 行，`AppBindings` 向所有 Route 和 Orchestrator 暴露数据库、Repo、模型 Runtime、Agent、Memory、KB、Skill、附件和平台能力，已经是 Service Locator。
+
+大文件本身不是错误。单一状态机即使较长也可以保持内聚；真正的 God Object 信号是同一个运行时对象可以任意访问多个无关领域、协议解析与业务终态混写、修改任何业务都必须经过它。Composition Root 可以拥有大量 import，因为“构造完整对象图”就是它的唯一职责，但它不能把这张完整对象图作为万能参数袋继续向下传递。
+
+#### 三层稳定所有权
+
+```text
+src/turn
+    只描述 Turn 身份、触发、Profile、状态、统计、唯一终态与 TurnEvent
+
+src/turnExecution
+    执行一个根 Turn：建立身份、冻结输入、运行根 Agent、持久化并形成唯一终态
+
+apps/localHost
+    启动本地进程、装配实现、认证请求、解析 HTTP 并编码 SSE
+```
+
+`src/turn` 必须继续保持低依赖，不能引入 Prompt、Context、LLM、Tool、Permission、Session Repo 或传输协议。当前 `TurnRequest/TurnAttachment/TurnContentPart/TurnCreatedResponse` 明确描述 `POST /api/turns` 和本地 `fileHandle`，属于迁移期 HTTP Wire 债，最终应回到 LocalHost HTTP DTO；低层 Turn 只保留真正跨入口稳定的领域语义。
+
+`src/turnExecution` 是产品用例层，但不等于可以依赖所有叶子能力。目标不是把 `TurnExecutionDeps` 改成几个嵌套对象，而是让 `TurnExecutor` 只协调少数具有真实完整职责的协作者：
+
+```text
+TurnExecutor
+├─ SessionStore / Turn 生命周期
+├─ prepareTurn()              规范化一个 Turn 的输入并冻结稳定快照
+└─ runRootAgent()             运行根 Agent，返回结构化事件与结果
+      ├─ buildTurnContext()   每次 LLM Call 生成 ModelContextSnapshot
+      └─ buildTurnTools()     冻结本 Turn 的能力与 Tool 执行链
+```
+
+应用级公共能力不叫 `PreparedTurnInput`，也不作为模型输入传递。LLM、Tool Registry、ContextAssembler、ContextCompactor、Provider Resolver 等由 Composition Root 构造并注入各自唯一消费者。一个 Turn 的数据按生命周期分层：
+
+```text
+TurnStartCommand
+    渠道无关的启动意图；不含 HTTP Header、SSE cursor 或未验证绝对路径
+        ↓
+TurnInput
+    sessionId/turnId、trigger、用户输入、附件引用、workspace、KB 范围、
+    thinking、取消信号和明确的降级事实
+        +
+PromptSnapshot / ModelCapabilitySnapshot / ToolManifestSnapshot
+    各所有者生成的不可变快照；不合并成万能 meta 或可变 Prepared 对象
+        ↓
+ModelContextSnapshot
+    每次 LLM Call 根据 Session 历史、当前 Turn、Tool Result、Memory、
+    Task、Narrative、激活 Skill 与当前可见 Tool Manifest 重新投影
+```
+
+产品 System Prompt 可以跨 Turn 复用稳定 revision，但 Character、Profile、Skill Catalog、MCP 与 Tool 可用性会变化，必须在明确边界冻结。KV Cache 复用依靠确定顺序、revision 和 cache breakpoint，不依赖多个 Session 共享一个可变 Context。激活 Skill 正文属于具体 Agent 的动态 Context，不能提升成应用级公共输入；Skill/Profile 只能按原顺序收窄本 Turn 已冻结的工具能力。
+
+#### `TurnExecutionDeps` 的目标归属
+
+当前依赖不能继续全部由 `TurnExecutor` 直接读取：
+
+| 当前依赖 | 目标唯一消费者 |
+|---|---|
+| `session` | `TurnExecutor` 管开始/终态；根执行只通过消息读写窄入口处理 transcript |
+| `hooks` | `TurnExecutor` 处理 Turn Hook；根 Agent 执行处理 LLM/Message Hook |
+| `llm`、`emotion` | 根 Agent 执行 |
+| `modelCapabilities` | Turn 输入准备冻结模型快照；LLM 发送前仍保留最终门禁 |
+| `narrative`、Memory、Task Contribution、`contextCompactor` | 每轮 Turn Context 构建 |
+| `tools`、`permission`、CommandRunner、AskUser、Skill、KB、Result Store、Journal | 本 Turn Tool 能力与执行链 |
+| `agentRunStore` | 根 Agent 的 Subagent/AgentRun 协调 |
+
+目标目录保持少而实，不为了形式拆出大量几行文件：
+
+```text
+src/turnExecution/
+├─ turnExecutor.ts             根身份、TurnHandle、取消、唯一终态
+├─ turnPreparation.ts          附件、模型、Prompt、workspace 等一次性输入准备
+├─ rootAgentExecution.ts       根 AgentLoop、非终态事件翻译与 transcript
+├─ turnContext.ts              每次 LLM Call 的 Context Contribution 与压缩
+├─ turnTools.ts                根 Turn Tool 能力、Permission、Subagent 与执行器
+├─ executionProfilePolicy.ts
+├─ awaitUserAnswer.ts
+├─ turnEventChannel.ts
+├─ types.ts
+└─ tests/
+```
+
+这只是职责预算，不要求每个文件必须存在；若迁移后某一职责只有几行，应并回最接近的业务文件。`TurnExecutionPlan` 会与未来 PlanTool/Plan Mode 混淆，`PreparedTurnInput` 又错误暗示它是跨 Session 公共数据，因此二者都不作为目标名称。执行输入使用 `TurnStartCommand`、`TurnInput` 和各领域已有 Snapshot 明确表达。
+
+#### 多入口与传输边界
+
+```text
+Desktop UI ── HTTP + SSE ──┐
+本地 CLI  ── HTTP + SSE ───┤
+本机 Web  ── HTTP + SSE ───┤
+                           ▼
+                       LocalHost
+                           │ TurnStartCommand / TurnHandle
+                           ▼
+                       TurnExecutor
+
+远程 Web / 手机 / QQ / 微信
+        │ 配对、认证、限流、来源标记
+        ▼
+未来 Gateway / Connector
+        ▼
+LocalHost 或另一套服务端 Composition Root
+        ▼
+同一个 TurnExecutor 公共入口
+```
+
+本地 CLI 默认连接或启动同一个 LocalHost，不能另开数据库连接、Provider Runtime 和 Permission 队列，避免同 Profile 多进程竞争。若未来出现真正的多用户 Web 服务，应建立新的进程入口、认证与存储装配，只复用根 `src` 业务模块，不能把本地单人 LocalHost 假装成 SaaS 后端。
+
+`TurnHandle.events` 是传输无关的 `AsyncIterable`。SSE、未来 WebSocket、CLI 文本渲染和测试消费者只是不同编码器，不能改变 Turn 生命周期或复制 AgentLoop。TTS 是可选输出增强，应由 `src/tts` 的明确 Turn 输出入口订阅事件；它不能继续迫使 LocalHost Orchestrator 控制根 Turn 终态。LocalHost 当前的 Subagent transcript 投影、Turn 结束后 Interaction 清理与音频统计也应回到各领域生命周期，不由 HTTP Route 偷做业务副作用。
+
+#### LocalHost 最终收口
+
+LocalHost 的宽依赖只允许停留在 wiring：
+
+```text
+apps/localHost/src/
+├─ bootstrap/                  进程启动、readiness、数据目录、关闭
+├─ wiring/
+│  ├─ createStorage.ts
+│  ├─ createModelExecution.ts
+│  ├─ createAgentExecution.ts
+│  ├─ createTurnExecution.ts  唯一允许看见完整 Turn 对象图的装配入口
+│  └─ createHttpTransport.ts
+└─ transports/http/
+   ├─ auth/
+   ├─ routes/
+   └─ sse/
+```
+
+`createTurnExecution.ts` 可以显式接收和构造多个实现，但只返回 `TurnExecutor` 与必要的控制/查询入口，不返回新的全局 Bindings。Route 最终按领域取得窄依赖；`turns.ts` 只保留创建 Turn、订阅事件和取消根 Turn，Tool Journal、AskUser、AgentRun 与音频查询回到各自 Route。原始附件 `fileHandle` 在 HTTP 层校验后转换为 Attachment 领域输入，绝不能进入跨入口 `TurnStartCommand`。
+
+下一次代码批次只建立上述边界的第一条可验证切口：先移出 Turn 输入准备并改成纯值输出，同时删除 `TurnExecutionPlan/PreparedTurnExecution` 命名；不同时拆 Tool、Context、TTS、全部 Route 和 AppBindings。每完成一个切口都必须保持 Desktop 的 HTTP + SSE 主链可运行。
 
 目录命名约束：
 
@@ -609,7 +748,7 @@ Builtin / MCP / Skill Tool
 - `src/agent/engine.ts` 已删除；其 Hook、历史读取、消息持久化、取消、唯一终态和 Turn 创建已迁入 `src/turnExecution/turnExecutor.ts`；
 - `src/agent/agentLoop.ts` 保留为内层循环。它在每次 LLM Call 前请求 Context 快照，消费固定的 Base Manifest 或 Skill 收窄后的子集，不创建、完成或持久化根 Turn；
 - `src/conversation` 已删除；Chat/Work 共用同一 AgentLoop，Narrative Recall 已回到 Narrative 并以不可信 Context Contribution 投递，没有改名成新的 Conversation Service；
-- `apps/localHost/src/orchestrator/orchestrator.ts` 当前同时创建 Turn、选择 Engine、解析模型、组装 Prompt/Context、合并 TTS、处理附件和写失败终态。上述业务分别迁回 Turn、Context、TTS、附件与模型所有者后删除 Orchestrator；
+- `apps/localHost/src/orchestrator/orchestrator.ts` 当前同时创建 Turn、选择 Engine、解析模型、组装 Prompt/Context、合并 TTS、处理附件和写失败终态。上述业务分别迁回 `turnExecution` 用例层、Context、TTS、附件与模型所有者后删除 Orchestrator；
 - `apps/localHost/src/routes/turns.ts` 最终只负责 HTTP 输入、认证、受限文件 capability 解析、调用 `turnExecutor.start()`、SSE replay/heartbeat 和 Wire 编码；用于补缺失身份的 `enrichTurnEvent()` 必须随完整 TurnEvent 契约一起删除；
 - `apps/localHost/src/turn-runtime` 中的子 Agent transcript 投影迁回 `src/agent/runs`；LocalHost 不拥有名为 turn-runtime 的第二个业务目录；
 - `apps/localHost/src/wiring/bindings.ts` 只负责构造唯一 TurnExecutor，不同时进行全仓后台 Worker 拆分。Turn 主链跑通后再按 Route/后台任务收窄依赖，避免把语义迁移和 Composition Root 清理混成一次不可审查的大改。
@@ -921,19 +1060,19 @@ interface TurnExecutionSnapshot {
 
 1. 各业务模块迁出自己的事件；
 2. 事件按 AgentLoop、Turn、AgentRun、Session 与 App 五个生命周期范围组合，不重新声明业务字段；
-3. Turn Request/Response/Stats 与执行快照迁入 Turn；
+3. Turn 身份、触发、状态、Stats 与唯一终态归入 Turn；HTTP Request/Response 和本地文件句柄继续属于传输层；
 4. LocalHost SSE 与 Desktop UI 切换到业务 `protocol` 入口。
 
 当前进度（2026-07-21）：
 
-- [x] 新建 `src/turn` 与 `@ema-agent/turn` 公共入口，承接 Turn Request/Response/Stats、输入校验和迁移期 `EmaStreamEvent`；
+- [x] 新建 `src/turn` 与 `@ema-agent/turn` 公共入口，先承接旧 Turn Request/Response/Stats、输入校验和迁移期 `EmaStreamEvent`；其中 HTTP Wire 与本地 `fileHandle` 属于后续需要迁回 LocalHost 的边界债；
 - [x] LocalHost、Desktop UI、Agent、Conversation、Tool、Context、Memory、TTS 等消费者不再从 `contracts` 读取 Turn/SSE 类型；
 - [x] `contracts` 删除 `turns.ts`、`events.ts` 导出，并移除已无用途的 Provider 依赖；
 - [x] Provider、Permission 与 Emotion 已拥有各自的客户端事件类型；现有 Turn 聚合仅是迁移期状态，不再作为目标架构；
 - [ ] Knowledge Base 与 Character 事件迁移前先解除 `Knowledge/Character → Storage → Turn` 循环；Storage 不应为了持久化 AskUser JSON 反向依赖整个 Turn 协议；
 - [ ] 将当前聚合事件按 Tool、Context、Memory、Knowledge、TTS、Agent 等真实业务所有者继续拆分，再分别组合为 `AgentLoopEvent/TurnEvent/AgentRunEvent/SessionEvent/AppEvent`；
 - [ ] 将 `TurnEventStore`、Session 事件通道和 `AppEventBus` 改为窄类型，迁移消费者后删除 `EmaStreamEvent`；
-- [ ] 把 Turn 执行快照迁入 Turn，并为关键 HTTP/SSE 输入补运行时 Schema。
+- [ ] 分离跨入口稳定的 Turn 启动/终态契约与 LocalHost HTTP Wire，并为关键 HTTP/SSE 输入补运行时 Schema。
 
 #### C3：Session + Wire
 

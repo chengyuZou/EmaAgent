@@ -2,7 +2,7 @@
 
 import type { TurnFailureCode } from '@ema-agent/turn';
 import { asAgentRunId } from '@ema-agent/ids';
-import type { MessageBlocks } from '@ema-agent/session';
+import type { MessageBlocks, Turn } from '@ema-agent/session';
 import {
   ToolExecutionRuntime,
   type AskUserRequiredEvent,
@@ -16,11 +16,12 @@ import {
 import type { PermissionContext } from '@ema-agent/permission';
 import type { TurnFailurePhase } from '@ema-agent/hooks';
 import type {
-  PreparedTurnExecution,
   TurnExecutionDeps,
   TurnExecutionEvent,
   TurnHandle,
+  TurnInput,
   TurnOutcome,
+  TurnPreparationContext,
   TurnStartCommand,
 } from './types.js';
 import {
@@ -135,7 +136,7 @@ export class TurnExecutor {
 
   private async pumpTurn(
     command: TurnStartCommand,
-    started: Pick<PreparedTurnExecution, 'turn' | 'signal'>,
+    started: TurnPreparationContext,
     channel: TurnEventChannel<TurnExecutionEvent>,
     resolveCompletion: (outcome: TurnOutcome) => void,
     rejectCompletion: (error: unknown) => void,
@@ -144,10 +145,12 @@ export class TurnExecutor {
     let outcome: TurnOutcome | undefined;
 
     try {
-      const plan = await command.prepare(started);
+      const input = await command.prepare(started);
       const events = executeTurn(
         this.deps,
-        { ...plan, turn, signal },
+        input,
+        turn,
+        signal,
         this.activeSpawners,
         this.activeExecutors,
       );
@@ -192,7 +195,7 @@ export class TurnExecutor {
   }
 
   private async finishUnexpectedExecution(
-    turn: PreparedTurnExecution['turn'],
+    turn: Turn,
     signal: AbortSignal,
     channel: TurnEventChannel<TurnExecutionEvent>,
   ): Promise<TurnOutcome> {
@@ -205,7 +208,7 @@ export class TurnExecutor {
   }
 
   private async finishStartFailure(
-    turn: PreparedTurnExecution['turn'],
+    turn: Turn,
     signal: AbortSignal,
     error: unknown,
     channel: TurnEventChannel<TurnExecutionEvent>,
@@ -323,12 +326,19 @@ async function pushUnlessConsumerClosed(
 
 async function* executeTurn(
   deps:            TurnExecutionDeps,
-  input:           PreparedTurnExecution,
+  input:           TurnInput,
+  turn:            Turn,
+  signal:          AbortSignal,
   activeSpawners:  Map<string, SubagentSpawner>,
   activeExecutors: Map<string, ToolExecutionRuntime>,
 ): AsyncIterable<TurnExecutionEvent> {
   const { session, hooks, llm, emotion, tools, permission, askUserInteraction } = deps;
-  const { turn, signal, userInput, workspaceRoot, providerId, model } = input;
+  const { userInput, workspaceRoot } = input;
+  const {
+    providerId,
+    model,
+    capabilities,
+  } = input.model;
   const sessionId = turn.sessionId;
   const turnId    = turn.id;
   const startedAt = Date.now();
@@ -427,7 +437,6 @@ async function* executeTurn(
     // ── 构建初始消息历史 ──────────────────────────────────────────────────────
     activePhase = 'provider';
     const history = session.loadHistory(sessionId);
-    const capabilities = deps.modelCapabilities.resolve({ providerId, model });
     if (Array.isArray(userInput)) {
       const issues = validateCurrentContent(userInput, capabilities);
       if (issues.length > 0) {
@@ -452,13 +461,16 @@ async function* executeTurn(
     activePhase = 'persistence';
     session.appendMessage({
       turnId, sessionId, role: 'user',
-      blocks: input.persistedUserInput ?? userInput as MessageBlocks,
+      blocks: input.persistedUserInput,
     });
 
     // Spawner 与 Executor 工厂共享同一数组引用，循环会在每轮向其中追加消息。
+    const modelUserInput = typeof userInput === 'string'
+      ? userInput
+      : userInput.map((part) => ({ ...part })) as UserBlock[];
     const messages: ModelMessage[] = [
       ...historyView.messages,
-      { role: 'user', content: userInput as string | UserBlock[] },
+      { role: 'user', content: modelUserInput },
     ];
     const baseContributions: ContextContribution[] = [];
     let narrativeRecall: NarrativeRecallResult | undefined;
@@ -519,10 +531,10 @@ async function* executeTurn(
       }
     }
 
-    if (input.prepareContextContributions) {
+    if (deps.prepareContextContributions) {
       activePhase = 'unknown';
       const prepared = yield* streamOperation((emit) =>
-        input.prepareContextContributions!({
+        deps.prepareContextContributions!({
           sessionId,
           turnId,
           executionProfile: turn.executionProfile,
@@ -619,8 +631,14 @@ async function* executeTurn(
     const scopedKbSearch: KnowledgeSearchPort | undefined = deps.kbSearch
       ? (query, topK, kbIds) => {
           // Tool 指定 kbIds 时是显式覆盖；否则继承父 Turn 的用户选择范围。
-          const effectiveKbIds = kbIds ?? (input.kbIds?.length ? input.kbIds : []);
-          const effectiveScopes = kbIds ? undefined : input.kbAssetScopes;
+          const effectiveKbIds = kbIds
+            ?? (input.kbIds?.length ? [...input.kbIds] : []);
+          const effectiveScopes = kbIds
+            ? undefined
+            : input.kbAssetScopes?.map((scope) => ({
+                kbId: scope.kbId,
+                assetIds: [...scope.assetIds],
+              }));
           return deps.kbSearch!(
             query,
             topK,
@@ -768,10 +786,16 @@ async function* executeTurn(
             : [],
           toolManifest: policy.visibleManifestSnapshot(),
         };
-        return input.compactContext
+        return deps.compactContext
           ? contextAssembler.assembleCompacted(
               assemblyInput,
-              input.compactContext,
+              (view, options) => deps.compactContext!({
+                turn,
+                input,
+                view,
+                force: options?.force,
+                signal,
+              }),
               { force: forceCompaction },
             )
           : contextAssembler.assemble(assemblyInput);
@@ -1085,7 +1109,7 @@ async function* executeTurn(
   }
 }
 
-function readableUserInput(input: PreparedTurnExecution['userInput']): string {
+function readableUserInput(input: TurnInput['userInput']): string {
   if (typeof input === 'string') return input;
   return input
     .filter((part): part is Extract<(typeof input)[number], { type: 'text' }> => part.type === 'text')

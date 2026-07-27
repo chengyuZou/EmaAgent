@@ -24,12 +24,13 @@ import type { KbSearchResult } from '@ema-agent/knowledge';
 import type {
   LanguageModel,
   LlmContentPart,
+  Message as ModelMessage,
   ThinkingMode,
 } from '@ema-agent/llm';
 import type {
   ContextContributionProvider,
+  ContextCompactionView,
   ContextEvent,
-  ContextHistoryCompactor,
 } from '@ema-agent/context';
 import type { PromptSnapshot } from '@ema-agent/prompts';
 import type { MessageBlocks, SessionStore, Turn } from '@ema-agent/session';
@@ -47,7 +48,7 @@ import type {
   AskPermissionFn,
   PermissionStreamEvent,
 } from '@ema-agent/permission';
-import type { ModelCapabilityResolver } from '@ema-agent/provider';
+import type { ModelCapabilitySnapshot } from '@ema-agent/provider';
 import type { AgentRunStorePort } from '@ema-agent/agent';
 import type { TaskStorePort } from '@ema-agent/tasks';
 import type { NarrativeClient, NarrativeEvent } from '@ema-agent/narrative';
@@ -77,7 +78,6 @@ export interface TurnExecutionDeps {
   session:    SessionStore;
   hooks:      HookBus;
   llm:        LanguageModel;
-  modelCapabilities: ModelCapabilityResolver;
   emotion:    EmotionEngine;
   /** Narrative 的 route/query 执行入口；TurnExecutor 只按本轮策略调用。 */
   narrative?: NarrativeClient;
@@ -126,48 +126,60 @@ export interface TurnExecutionDeps {
   taskStore?: TaskStorePort;
   /** 工具副作用的持久化状态机；生产环境由 Tools Journal 注入。 */
   toolExecutionJournal?: ToolExecutionJournalPort;
+  /** Memory、Task 等业务只贡献临时 Context，不得改写 Prompt 或持久历史。 */
+  prepareContextContributions?: ContextContributionProvider<TurnExecutionEvent>;
+  /** Context 模块拥有压缩算法；Turn 执行器只提供本轮冻结事实与窗口视图。 */
+  compactContext?: TurnContextCompactor;
 }
 
 // ── Turn 启动与执行输入 ───────────────────────────────────────────────────────
 
-/**
- * Turn 创建后才能准备的执行输入。附件持久化等迁移期能力可以使用已分配的
- * turnId，但只能返回执行计划，不能自行提交 Turn 终态。
- */
-export interface TurnExecutionPlan {
+/** 一次根 Turn 冻结的模型选择与能力，整个 Agent 循环只能读取这一份。 */
+export interface TurnModelSnapshot {
+  readonly providerId: string;
+  readonly model: string;
+  readonly capabilities: ModelCapabilitySnapshot;
+}
+
+/** Turn 创建后冻结的纯值输入，不携带回调、存储对象或运行时服务。 */
+export interface TurnInput {
   /**
    * 用户消息内容。纯文本 Turn 使用字符串，多模态图片、音频和文件使用
    * LlmContentPart[]；执行器通过 Array.isArray 区分两种表示。
    */
-  userInput:             string | LlmContentPart[];
+  readonly userInput:             string | readonly LlmContentPart[];
   /** 只用于 Message 落库，禁止携带图片、音频或文件 Base64。 */
-  persistedUserInput?:   MessageBlocks;
+  readonly persistedUserInput:    MessageBlocks;
   /** Turn 开始时冻结的 Prompt Slot 快照，Agent 多轮共享同一 revision。 */
-  prompt:                PromptSnapshot;
-  /** 已解析的 provider_configs.id，由输入准备阶段提供。 */
-  providerId:            string;
-  /** 已解析的模型名，由输入准备阶段提供。 */
-  model:                 string;
+  readonly prompt:                PromptSnapshot;
+  /** 已解析且冻结的模型身份、能力与窗口预算。 */
+  readonly model:                 TurnModelSnapshot;
   /** 工作区根目录；空字符串表示不提供工作区。 */
-  workspaceRoot: string;
-  /** Core RuntimePaths 为当前 Turn 生成的临时目录；Agent 不负责拼接数据目录。 */
-  scratchpadDir?: string;
+  readonly workspaceRoot: string;
+  /** 进程宿主为当前 Turn 生成的临时目录；Agent 不负责拼接数据目录。 */
+  readonly scratchpadDir?: string;
   /** 用户在聊天选择器中选中的 KB ID；空数组或省略时使用当前激活知识库。 */
-  kbIds?:         string[];
+  readonly kbIds?:         readonly string[];
   /** 聊天选择器提供的逐 KB 文档范围；没有对应范围的 KB 不额外过滤。 */
-  kbAssetScopes?: KbAssetScope[];
-  /**
-   * 每轮压缩回调，在 AgentLoop 调用模型前执行，防止多步骤 Work Turn
-   * 在中途超过上下文窗口。输入准备阶段将其接到 ContextCompactor.compact()；
-   * 测试和临时子 Agent 上下文可以省略。
-   */
-  prepareContextContributions?: ContextContributionProvider;
-  compactContext?: ContextHistoryCompactor;
+  readonly kbAssetScopes?: readonly KbAssetScope[];
   /** 用户选择的思考模式，会传给 Agent 循环中的每次 LlmRequest。 */
-  thinking?: ThinkingMode;
-  /** Core 在执行器前完成的媒体降级。 */
-  requestDegradations?: RequestDegradationNotice[];
+  readonly thinking?: ThinkingMode;
+  /** 输入准备阶段完成的媒体降级。 */
+  readonly requestDegradations: readonly RequestDegradationNotice[];
 }
+
+/** Context 压缩需要的根 Turn 事实，避免把宿主 Compactor 塞进 TurnInput。 */
+export interface TurnContextCompactionRequest {
+  readonly turn: Turn;
+  readonly input: TurnInput;
+  readonly view: ContextCompactionView;
+  readonly force?: boolean;
+  readonly signal: AbortSignal;
+}
+
+export type TurnContextCompactor = (
+  request: TurnContextCompactionRequest,
+) => Promise<readonly ModelMessage[]>;
 
 /** 输入准备阶段只暴露本轮稳定身份和同一条取消信号。 */
 export interface TurnPreparationContext {
@@ -187,7 +199,7 @@ export interface TurnStartCommand {
   readonly userInput: string;
   readonly prepare: (
     context: TurnPreparationContext,
-  ) => TurnExecutionPlan | Promise<TurnExecutionPlan>;
+  ) => TurnInput | Promise<TurnInput>;
 }
 
 /** Turn 对外只有一个明确终态，完成 Promise 与终态事件使用同一份数据。 */
@@ -222,12 +234,6 @@ export interface TurnHandle {
   readonly events: AsyncIterable<TurnExecutionEvent>;
   readonly completion: Promise<TurnOutcome>;
   abort(): void;
-}
-
-/** TurnExecutor 内部执行函数消费的完整输入，不作为调用方启动入口。 */
-export interface PreparedTurnExecution extends TurnExecutionPlan {
-  readonly turn: Turn;
-  readonly signal: AbortSignal;
 }
 
 /** 根 Turn 对外发出的完整事件集合；各成员仍由真实业务模块拥有。 */

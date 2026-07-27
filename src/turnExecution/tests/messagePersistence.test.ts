@@ -1,11 +1,17 @@
-// 测试模型本轮可见的 Base64 媒体不会原样写入 Message JSON，附件改存稳定引用。
+// 测试模型可见的 Base64 媒体不会原样落库，附件只保存稳定引用。
+
 import { describe, expect, it } from 'vitest';
-import { buildPersistedUserInput } from '../src/orchestrator/orchestrator.js';
+import { buildPersistedUserInput } from '../turnPreparation.js';
 
 describe('Message 媒体持久化投影', () => {
   it('移除临时 Base64 并保留附件引用和普通文本', () => {
     const blocks = buildPersistedUserInput([
-      { type: 'image_data', data: 'very-large-base64', mimeType: 'image/png', name: 'map.png' },
+      {
+        type: 'image_data',
+        data: 'very-large-base64',
+        mimeType: 'image/png',
+        name: 'map.png',
+      },
       { type: 'text', text: '请分析图片' },
     ], [{
       id: 'attachment-1',

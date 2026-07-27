@@ -29,145 +29,6 @@ importers:
 
   apps/bridge: {}
 
-  apps/localHost:
-    dependencies:
-      '@ema-agent/agent':
-        specifier: workspace:*
-        version: link:../../src/agent
-      '@ema-agent/attachment':
-        specifier: workspace:*
-        version: link:../../src/attachment
-      '@ema-agent/backup':
-        specifier: workspace:*
-        version: link:../../src/backup
-      '@ema-agent/characters':
-        specifier: workspace:*
-        version: link:../../src/characters
-      '@ema-agent/context':
-        specifier: workspace:*
-        version: link:../../src/context
-      '@ema-agent/credential':
-        specifier: workspace:*
-        version: link:../../packages/credential
-      '@ema-agent/embed':
-        specifier: workspace:*
-        version: link:../../src/embed
-      '@ema-agent/emotion':
-        specifier: workspace:*
-        version: link:../../src/emotion
-      '@ema-agent/events':
-        specifier: workspace:*
-        version: link:../../src/events
-      '@ema-agent/hooks':
-        specifier: workspace:*
-        version: link:../../src/hooks
-      '@ema-agent/ids':
-        specifier: workspace:*
-        version: link:../../src/ids
-      '@ema-agent/knowledge':
-        specifier: workspace:*
-        version: link:../../src/knowledge
-      '@ema-agent/llm':
-        specifier: workspace:*
-        version: link:../../src/llm
-      '@ema-agent/marketplace':
-        specifier: workspace:*
-        version: link:../../src/marketplace
-      '@ema-agent/mcp':
-        specifier: workspace:*
-        version: link:../../src/mcp
-      '@ema-agent/memory':
-        specifier: workspace:*
-        version: link:../../src/memory
-      '@ema-agent/narrative':
-        specifier: workspace:*
-        version: link:../../src/narrative
-      '@ema-agent/permission':
-        specifier: workspace:*
-        version: link:../../src/permission
-      '@ema-agent/prompts':
-        specifier: workspace:*
-        version: link:../../src/prompts
-      '@ema-agent/provider':
-        specifier: workspace:*
-        version: link:../../src/providers
-      '@ema-agent/rerank':
-        specifier: workspace:*
-        version: link:../../src/rerank
-      '@ema-agent/sandbox':
-        specifier: workspace:*
-        version: link:../../src/sandbox
-      '@ema-agent/session':
-        specifier: workspace:*
-        version: link:../../src/session
-      '@ema-agent/skills':
-        specifier: workspace:*
-        version: link:../../src/skills
-      '@ema-agent/storage':
-        specifier: workspace:*
-        version: link:../../src/storage
-      '@ema-agent/stt':
-        specifier: workspace:*
-        version: link:../../src/stt
-      '@ema-agent/system':
-        specifier: workspace:*
-        version: link:../../src/system
-      '@ema-agent/tasks':
-        specifier: workspace:*
-        version: link:../../src/tasks
-      '@ema-agent/token':
-        specifier: workspace:*
-        version: link:../../src/token
-      '@ema-agent/tool-builtin':
-        specifier: workspace:*
-        version: link:../../src/builtinTools
-      '@ema-agent/tools':
-        specifier: workspace:*
-        version: link:../../src/tools
-      '@ema-agent/tts':
-        specifier: workspace:*
-        version: link:../../src/tts
-      '@ema-agent/turn':
-        specifier: workspace:*
-        version: link:../../src/turn
-      '@ema-agent/turn-execution':
-        specifier: workspace:*
-        version: link:../../src/turnExecution
-      '@ema-agent/usage':
-        specifier: workspace:*
-        version: link:../../src/usage
-      '@ema-agent/vision':
-        specifier: workspace:*
-        version: link:../../src/vision
-      '@hono/node-server':
-        specifier: ^1.14.3
-        version: 1.19.14(hono@4.12.18)
-      fflate:
-        specifier: ^0.8.2
-        version: 0.8.3
-      hono:
-        specifier: ^4.7.10
-        version: 4.12.18
-      zod:
-        specifier: ^3.24.4
-        version: 3.25.76
-    devDependencies:
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.39
-      rimraf:
-        specifier: ^5.0.0
-        version: 5.0.10
-      tsx:
-        specifier: ^4.21.0
-        version: 4.21.0
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: ^2.0.0
-        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
-
   apps/desktop:
     dependencies:
       '@ema-agent/desktop-ui':
@@ -382,6 +243,145 @@ importers:
       rimraf:
         specifier: ^5.0.0
         version: 5.0.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
+
+  apps/localHost:
+    dependencies:
+      '@ema-agent/agent':
+        specifier: workspace:*
+        version: link:../../src/agent
+      '@ema-agent/attachment':
+        specifier: workspace:*
+        version: link:../../src/attachment
+      '@ema-agent/backup':
+        specifier: workspace:*
+        version: link:../../src/backup
+      '@ema-agent/characters':
+        specifier: workspace:*
+        version: link:../../src/characters
+      '@ema-agent/context':
+        specifier: workspace:*
+        version: link:../../src/context
+      '@ema-agent/credential':
+        specifier: workspace:*
+        version: link:../../packages/credential
+      '@ema-agent/embed':
+        specifier: workspace:*
+        version: link:../../src/embed
+      '@ema-agent/emotion':
+        specifier: workspace:*
+        version: link:../../src/emotion
+      '@ema-agent/events':
+        specifier: workspace:*
+        version: link:../../src/events
+      '@ema-agent/hooks':
+        specifier: workspace:*
+        version: link:../../src/hooks
+      '@ema-agent/ids':
+        specifier: workspace:*
+        version: link:../../src/ids
+      '@ema-agent/knowledge':
+        specifier: workspace:*
+        version: link:../../src/knowledge
+      '@ema-agent/llm':
+        specifier: workspace:*
+        version: link:../../src/llm
+      '@ema-agent/marketplace':
+        specifier: workspace:*
+        version: link:../../src/marketplace
+      '@ema-agent/mcp':
+        specifier: workspace:*
+        version: link:../../src/mcp
+      '@ema-agent/memory':
+        specifier: workspace:*
+        version: link:../../src/memory
+      '@ema-agent/narrative':
+        specifier: workspace:*
+        version: link:../../src/narrative
+      '@ema-agent/permission':
+        specifier: workspace:*
+        version: link:../../src/permission
+      '@ema-agent/prompts':
+        specifier: workspace:*
+        version: link:../../src/prompts
+      '@ema-agent/provider':
+        specifier: workspace:*
+        version: link:../../src/providers
+      '@ema-agent/rerank':
+        specifier: workspace:*
+        version: link:../../src/rerank
+      '@ema-agent/sandbox':
+        specifier: workspace:*
+        version: link:../../src/sandbox
+      '@ema-agent/session':
+        specifier: workspace:*
+        version: link:../../src/session
+      '@ema-agent/skills':
+        specifier: workspace:*
+        version: link:../../src/skills
+      '@ema-agent/storage':
+        specifier: workspace:*
+        version: link:../../src/storage
+      '@ema-agent/stt':
+        specifier: workspace:*
+        version: link:../../src/stt
+      '@ema-agent/system':
+        specifier: workspace:*
+        version: link:../../src/system
+      '@ema-agent/tasks':
+        specifier: workspace:*
+        version: link:../../src/tasks
+      '@ema-agent/token':
+        specifier: workspace:*
+        version: link:../../src/token
+      '@ema-agent/tool-builtin':
+        specifier: workspace:*
+        version: link:../../src/builtinTools
+      '@ema-agent/tools':
+        specifier: workspace:*
+        version: link:../../src/tools
+      '@ema-agent/tts':
+        specifier: workspace:*
+        version: link:../../src/tts
+      '@ema-agent/turn':
+        specifier: workspace:*
+        version: link:../../src/turn
+      '@ema-agent/turn-execution':
+        specifier: workspace:*
+        version: link:../../src/turnExecution
+      '@ema-agent/usage':
+        specifier: workspace:*
+        version: link:../../src/usage
+      '@ema-agent/vision':
+        specifier: workspace:*
+        version: link:../../src/vision
+      '@hono/node-server':
+        specifier: ^1.14.3
+        version: 1.19.14(hono@4.12.18)
+      fflate:
+        specifier: ^0.8.2
+        version: 0.8.3
+      hono:
+        specifier: ^4.7.10
+        version: 4.12.18
+      zod:
+        specifier: ^3.24.4
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      tsx:
+        specifier: ^4.21.0
+        version: 4.21.0
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -1434,6 +1434,9 @@ importers:
       '@ema-agent/agent':
         specifier: workspace:*
         version: link:../agent
+      '@ema-agent/attachment':
+        specifier: workspace:*
+        version: link:../attachment
       '@ema-agent/context':
         specifier: workspace:*
         version: link:../context
