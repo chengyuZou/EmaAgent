@@ -546,13 +546,16 @@ packages/
 
 `apps/localHost` 是本机单 Profile EmaAgent 的进程宿主与协议入口，不是新的业务 Core，也不是可以被远程手机直接访问的万能后端。Desktop、本地 CLI 和本机 Web 可以复用 localhost HTTP；远程 Web、移动端与外部渠道未来必须经过真实的配对、认证或 Gateway/Connector，再把规范化命令交给本机 LocalHost。V1 继续使用 localhost HTTP + SSE；未来若引入 WebSocket，只在出现实时双向通信需求后增加真实传输实现，不预建空目录。启动、就绪、数据目录和依赖装配属于进程入口；Turn 输入准备、附件处理、模型兼容、TTS 修饰、子 Agent transcript 与 Provider 配置生命周期必须回到根 `src` 的业务所有者。
 
-LocalHost 分五批收口，每批只改变一个边界：
+根 Turn 执行地基已经按真实依赖顺序完成 L0–L5，每批只改变一个边界：
 
-1. **L0 纯改名**：`apps/core → apps/localHost`、`@ema-agent/core → @ema-agent/local-host`、`ema-core → ema-local-host`，同步 Tauri、发布脚本、CI、测试和文档，不移动业务职责；
-2. **L1 Turn 执行边界收口**：先拆除 `TurnExecutionPlan/PreparedTurnExecution` 和大型 `TurnExecutionDeps` 口径；附件输入、模型能力与 Prompt 快照进入 `turnPreparation.ts`，每轮 Context、Tool 能力与根 Agent 执行分别归入内聚边界；
-3. **L2 删除旧 Orchestrator**：TurnExecutor 成为唯一产品执行入口，LocalHost 不再拥有第二套执行编排；
-4. **L3 HTTP 传输归档**：现有 Route、SSE、认证和请求预算迁入 `transports/http`，只做协议适配；
-5. **L4/L5 装配收窄**：删除大型 `AppBindings` Service Locator，wiring 按能力构造；大型 Route 改为窄依赖，但不新增全局 Service/Facade 杂物层。
+1. **L0 LocalHost 纯改名**：`apps/core → apps/localHost`、`@ema-agent/core → @ema-agent/local-host`、`ema-core → ema-local-host`；
+2. **L1 Turn 输入准备**：`TurnInputPreparer` 冻结附件、媒体兼容、模型能力、Prompt、Workspace 和 Scratchpad 纯值输入；
+3. **L2 Turn Context**：`TurnContextBuilder` 统一历史兼容、Contribution 与每次 LLM Call 的不可变 Context 投影；
+4. **L3 Turn Tools**：`TurnToolsBuilder + TurnTools` 冻结 Tool Manifest/Policy，并拥有 Tool、Subagent 与 Active Skill 生命周期；
+5. **L4 Root Agent Execution**：`RootAgentExecution` 拥有根 AgentLoop、LLM/Message Hook、非终态事件和 transcript；
+6. **L5 Turn Composition Root**：`createTurnExecution.ts` 成为上述对象图的唯一构造位置。
+
+L5 是执行地基的最后一层，不建立 L6。旧 Orchestrator、Route 副作用和 `AppBindings` 属于 L5 之后的进程宿主收口，不得重新解释成新的 Agent 执行层级。
 
 ### 7.1.1 Turn、TurnExecution 与 LocalHost 执行边界审计
 
@@ -669,7 +672,21 @@ LocalHost 或另一套服务端 Composition Root
 
 本地 CLI 默认连接或启动同一个 LocalHost，不能另开数据库连接、Provider Runtime 和 Permission 队列，避免同 Profile 多进程竞争。若未来出现真正的多用户 Web 服务，应建立新的进程入口、认证与存储装配，只复用根 `src` 业务模块，不能把本地单人 LocalHost 假装成 SaaS 后端。
 
-`TurnHandle.events` 是传输无关的 `AsyncIterable`。SSE、未来 WebSocket、CLI 文本渲染和测试消费者只是不同编码器，不能改变 Turn 生命周期或复制 AgentLoop。TTS 是可选输出增强，应由 `src/tts` 的明确 Turn 输出入口订阅事件；它不能继续迫使 LocalHost Orchestrator 控制根 Turn 终态。LocalHost 当前的 Subagent transcript 投影、Turn 结束后 Interaction 清理与音频统计也应回到各领域生命周期，不由 HTTP Route 偷做业务副作用。
+`TurnHandle.events` 是传输无关的 `AsyncIterable`。SSE、未来 WebSocket、CLI 文本渲染和测试消费者只是不同编码器，不能改变 Turn 生命周期或复制 AgentLoop。TTS 是可选输出增强，应由 `src/tts/turnOutput.ts` 的 `TurnSpeechOutput` 订阅并装饰事件流；它不能继续迫使 LocalHost Orchestrator 控制根 Turn 终态。
+
+`TurnSpeechOutput` 只处理以下业务：
+
+```text
+TurnHandle.events
+    ├─ output_text_delta  → TtsCoordinator 切句与合成
+    ├─ TTS 事件           → 合并回同一输出流
+    ├─ completed          → 等待音频 finalize 后再输出根终态
+    └─ failed / aborted   → 中止 TTS、清理临时音频，再输出根终态
+```
+
+未绑定 TTS、未配置角色语音或 TTS 初始化失败时，根 Turn 事件流继续透传；可选语音增强不得把已成功的根 Turn 改成失败。TTS 失败使用 TTS 自有 warning 事件。`src/tts` 拥有合流、完成/中止、语音上传缓存和最终音频投影端口，但不直接依赖 Storage、Characters 或 LocalHost：模型绑定选择、角色语音绝对路径与 SQLite Store 由 Composition Root 通过明确闭包或窄端口装配。
+
+LocalHost 当前的 Subagent transcript 投影、Turn 结束后 Interaction 清理与音频统计也应回到各领域生命周期，不由 HTTP Route 偷做业务副作用。HTTP EventStore/Hub、SSE replay/heartbeat 和传输缓存淘汰仍属于传输层，不因“Route 不能有副作用”而错误迁入 Turn 业务。
 
 #### LocalHost 最终收口
 
@@ -683,6 +700,7 @@ apps/localHost/src/
 │  ├─ createModelExecution.ts
 │  ├─ createAgentExecution.ts
 │  ├─ createTurnExecution.ts  唯一允许看见完整 Turn 对象图的装配入口
+│  ├─ createTurnOutput.ts     装配可选 TTS 输出、角色语音解析与音频投影
 │  └─ createHttpTransport.ts
 └─ transports/http/
    ├─ auth/
@@ -692,7 +710,17 @@ apps/localHost/src/
 
 `createTurnExecution.ts` 可以显式接收和构造多个实现，但只返回 `TurnExecutor` 与必要的控制/查询入口，不返回新的全局 Bindings。Route 最终按领域取得窄依赖；`turns.ts` 只保留创建 Turn、订阅事件和取消根 Turn，Tool Journal、AskUser、AgentRun 与音频查询回到各自 Route。原始附件 `fileHandle` 在 HTTP 层校验后转换为 Attachment 领域输入，绝不能进入跨入口 `TurnStartCommand`。
 
-下一次代码批次只建立上述边界的第一条可验证切口：先移出 Turn 输入准备并改成纯值输出，同时删除 `TurnExecutionPlan/PreparedTurnExecution` 命名；不同时拆 Tool、Context、TTS、全部 Route 和 AppBindings。每完成一个切口都必须保持 Desktop 的 HTTP + SSE 主链可运行。
+#### L5 后的 LocalHost 迁移顺序
+
+后续按依赖顺序分五批，不同时施工：
+
+1. **TTS Turn 输出边界**：新增 `TurnSpeechOutput` 与真实 `createTurnOutput.ts` 装配，把事件合流、终态前 finalize/abort、语音 URI 缓存和最终音频投影移出 Orchestrator/Route；本批不删除 Orchestrator；
+2. **删除旧 Orchestrator**：给 `TurnExecutor` 增加按 `turnId` 核对当前活动 Turn 的取消入口，删除 LocalHost `activeTurns`；Turns Route 直接调用 `TurnInputPreparer.prepare() → TurnExecutor.start() → TurnSpeechOutput.decorate()`；
+3. **Route 业务副作用归位**：Subagent transcript 进入 `src/agent/runs`，Interaction 终态清理进入 Turn/Tools 生命周期，音频统计进入 TTS 投影；AgentRun、AskUser、Audio 与 Tool Journal 使用各自窄 Route，先保持现有 URL；
+4. **逐 Route 收窄 AppBindings**：每个 Route 只接收实际使用的执行、查询或传输端口；`AppBindings` 只留在 Composition Root，不能机械替换成另一只嵌套依赖袋，也不为每个几行对象创建空工厂；
+5. **物理归档 HTTP 传输**：语义边界稳定后，才把 Route、SSE、Auth 和请求预算迁入 `transports/http`，删除旧 `routes/sse/orchestrator` 目录以及已经失去消费者的宽 Bindings。
+
+每批都必须保持 Desktop 的 HTTP + SSE 主链可运行。WebSocket、CLI 和未来 Channel 只消费同一 `TurnHandle.events`，不能复制这条执行或输出装饰链。
 
 目录命名约束：
 
