@@ -6,7 +6,7 @@ import { buildLockedPackageLaunch } from '../package-spec.js';
 
 // ── mcp-registry source type ──────────────────────────────────────────────────
 //
-// 官方 MCP registry cursor 分页 API。从 apps/core/src/routes/mcp.ts:33-154 搬来。
+// 官方 MCP registry cursor 分页 API。从 apps/localHost/src/routes/mcp.ts:33-154 搬来。
 // registry.modelcontextprotocol.io 的 REST API,cursor 分页无总数,跟 nextCursor 直到取完(有安全 cap)。
 
 const MCP_REGISTRY_CAP   = 600;  // 单源总条目安全 cap

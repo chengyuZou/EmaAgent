@@ -5,7 +5,7 @@ on:
   pull_request:
     paths:
       - '.github/workflows/desktop-release.yml'
-      - 'apps/core/**'
+      - 'apps/localHost/**'
       - 'apps/bridge/**'
       - 'apps/desktop/**'
       - 'packages/**'
@@ -85,8 +85,8 @@ jobs:
         working-directory: apps/bridge
         run: uv lock --check
 
-      - name: Build Core Sidecar
-        run: pnpm --filter @ema-agent/desktop release:prepare:core -- --target ${{ matrix.target }}
+      - name: Build LocalHost Sidecar
+        run: pnpm --filter @ema-agent/desktop release:prepare:local-host -- --target ${{ matrix.target }}
 
       - name: Build Bridge Sidecar
         working-directory: apps/bridge
@@ -124,7 +124,7 @@ jobs:
           retention-days: 7
           path: |
             apps/desktop/src-tauri/binaries/
-            apps/desktop/src-tauri/resources/core-runtime/
+            apps/desktop/src-tauri/resources/local-host-runtime/
             apps/desktop/src-tauri/resources/bridge-runtime/
 
       - name: Upload unsigned installer

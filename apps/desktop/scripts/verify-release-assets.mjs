@@ -1,4 +1,4 @@
-// 严格验证当前目标平台的 Sidecar、Core runtime、Narrative seed 与 Cubism 发布制品。
+// 严格验证当前目标平台的 Sidecar、LocalHost runtime、Narrative seed 与 Cubism 发布制品。
 import { execFileSync } from 'node:child_process';
 import { existsSync, statSync } from 'node:fs';
 import path from 'node:path';
@@ -28,21 +28,21 @@ function requireExecutable(filePath, label) {
   }
 }
 
-const coreBinary = path.join(tauriRoot, 'binaries', `ema-core-${target}${suffix}`);
-const coreRuntime = path.join(tauriRoot, 'resources', 'core-runtime');
-const coreManifest = readJson(path.join(coreRuntime, 'release-manifest.json'));
-const coreEntry = path.join(coreRuntime, ...coreManifest.entry.split('/'));
-requireExecutable(coreBinary, 'Core sidecar');
-requireRegularFile(coreEntry, 'Core runtime 入口');
-if (coreManifest.target !== target || coreManifest.nodeVersion !== config.nodeVersion) {
-  throw new Error('Core release manifest 的 target 或 Node 版本不匹配');
+const localHostBinary = path.join(tauriRoot, 'binaries', `ema-local-host-${target}${suffix}`);
+const localHostRuntime = path.join(tauriRoot, 'resources', 'local-host-runtime');
+const localHostManifest = readJson(path.join(localHostRuntime, 'release-manifest.json'));
+const localHostEntry = path.join(localHostRuntime, ...localHostManifest.entry.split('/'));
+requireExecutable(localHostBinary, 'LocalHost sidecar');
+requireRegularFile(localHostEntry, 'LocalHost runtime 入口');
+if (localHostManifest.target !== target || localHostManifest.nodeVersion !== config.nodeVersion) {
+  throw new Error('LocalHost release manifest 的 target 或 Node 版本不匹配');
 }
-if (sha256File(coreEntry) !== coreManifest.entrySha256) {
-  throw new Error('Core runtime 入口摘要与 manifest 不匹配');
+if (sha256File(localHostEntry) !== localHostManifest.entrySha256) {
+  throw new Error('LocalHost runtime 入口摘要与 manifest 不匹配');
 }
-const actualNodeVersion = execFileSync(coreBinary, ['--version'], { encoding: 'utf8' }).trim();
+const actualNodeVersion = execFileSync(localHostBinary, ['--version'], { encoding: 'utf8' }).trim();
 if (actualNodeVersion !== `v${config.nodeVersion}`) {
-  throw new Error(`Core sidecar Node 版本错误: ${actualNodeVersion}`);
+  throw new Error(`LocalHost sidecar Node 版本错误: ${actualNodeVersion}`);
 }
 
 const bridgeRuntime = path.join(tauriRoot, 'resources', 'bridge-runtime');
@@ -109,11 +109,11 @@ execFileSync(
   [
     smokeScript,
     '--service',
-    'core',
+    'local-host',
     '--executable',
-    coreBinary,
+    localHostBinary,
     '--entry',
-    coreEntry,
+    localHostEntry,
   ],
   { stdio: 'inherit' },
 );

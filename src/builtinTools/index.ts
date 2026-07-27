@@ -162,7 +162,7 @@ export interface RegisterOptions {
 /**
  * 把所有内置工具注册进 ToolRegistry。
  *
- * apps/core 在应用启动时调一次。当前 sandbox 后端为 `app-layer`
+ * apps/localHost 在应用启动时调一次。当前 sandbox 后端为 `app-layer`
  * (无 OS 级隔离)时传 `disableExecuteTools: true`,防止 LLM 在无物理
  * 沙箱时调 shell 工具。
  */

@@ -19,7 +19,7 @@ Vision 也独立于 `@ema-agent/llm`。某个 Vision Provider 可能暴露 OpenA
 
 ## 运行时形态
 
-生产接线在 `apps/core` 中创建一个 `VisionRuntime`，通过 `AppBindings` 暴露：
+生产接线在 `apps/localHost` 中创建一个 `VisionRuntime`，通过 `AppBindings` 暴露：
 
 ```text
 buildBindings()

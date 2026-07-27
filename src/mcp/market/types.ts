@@ -1,7 +1,7 @@
 // 这里定义 MCP 市场条目和不同市场源的配置类型。
 // ── MCP market 条目类型 ───────────────────────────────────────────────────────
 //
-// 从路由层搬来(原 apps/core/src/routes/mcp.ts:37-48),供 adapter + 路由共用。
+// 从路由层搬来(原 apps/localHost/src/routes/mcp.ts:37-48),供 adapter + 路由共用。
 
 export interface McpMarketEntry {
   name:         string;

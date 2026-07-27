@@ -8,6 +8,8 @@
 
 根目录迁移已经结束，项目进入语义大重构阶段。统一执行主线第三刀已经完成：Chat/Work 都通过 `TurnExecutor.start() + AgentLoop` 执行，`TurnExecutor` 同步创建根 Turn 并返回单消费者、有界反压的 `TurnHandle`；执行 Profile 只控制迭代预算与模型可见 Tool Manifest，不再选择另一套 Engine。低层 `@ema-agent/turn` 继续只拥有根领域契约，不建立泛化的 Orchestrator、Runtime 或第三套 Engine。
 
+LocalHost L0 纯改名已经完成：`apps/core`、`@ema-agent/core`、`ema-core` 及发布资源身份统一为 `apps/localHost`、`@ema-agent/local-host`、`ema-local-host`；Tauri RuntimeService、readiness、externalBin、发布脚本、CI 与文档已经同步。该批没有迁移 Route、Orchestrator、wiring 或业务职责，下一批进入 L1 Turn 输入准备归位。
+
 开工前已复核本地 Codex 源码：`codex-protocol` 只定义 Thread/Turn/Submission 等低层协议，真正编排位于 `codex-core/session`；App Server 只校验并提交 `Op::UserInput`，Session 统一建立 `RunningTask`、取消句柄和终态，`RegularTask` 再调用内部 `run_turn` 完成多轮模型与工具循环。Ema 因此保留低层 `turn` 与高层 `turnExecution` 两个编译边界，不能把执行依赖反向塞进被 Context、Session、Storage、Hooks 共同依赖的领域包。
 
 旧 `ConversationEngine` 与整个 `src/conversation` 包已经删除，Workspace 依赖和生产 import 归零。Chat 根生命周期与只读 Tool Profile 进入 `turnExecution`，LLM/Tool 迭代进入 `agent`，Narrative Route 与多周目 Recall 回到 `narrative`，模型可见召回正文通过不可信 Context Contribution 投递；Hook 不再携带 Narrative 私有结果。
@@ -100,9 +102,9 @@ Task 与 AgentRun 前端已经分面：Desktop 使用正式 `/api/tasks` 快照�
 
 开始任何新批次前必须重新运行 `git status --short` 与 `git diff`，保留用户和其他 Agent 的修改。
 
-当前未提交工作区同时包含 Artifact 物理删除批次，以及附件/PDF 第一批：`PdfReadTool`、图片规范化、Vision 派生缓存、Data v22、Core 降级接线和空闲清理。两批在 Core/Storage 出口存在少量同文件增量，已经按当前 Diff 合并；不要回退 Artifact 删除。Core 仍负责附件、模型选择、Prompt/Context/压缩输入准备和 TTS 旁路，下一批只迁移 Core 的 Turn 输入装配边界，不同时重写所有 Route 或启动流程。
+当前未提交工作区以 LocalHost L0 纯改名为主：目录、包名、Tauri 运行时服务、发布脚本、CI、注释与架构文档均已同步；Git 会把目录移动展示为大量删除和新增，不能误判为源码丢失。`src/attachment/types.ts` 另有用户或其他 Agent 加入的 TODO，不属于本批，必须保留。
 
-当前基线最近提交：`e864ee64 feat(narrative): implement NarrativeSearchTool and integrate narrative search capabilities`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
+当前基线最近提交：`303a6208 refactor: remove artifact-related functionality and dependencies`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
 
 ## 已确定的 V1 口径
 
@@ -148,7 +150,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 5. Builtin Tool 2D 的 Sandbox 命令环境 allowlist、工作目录边界、FileRead 行数/字节双上限、Glob/Grep 有界搜索与 WebSearch 公网访问安全均已完成；结构化 Presentation 公共协议与首批接线已完成；
 6. Permission V1 已完成：统一 Session FIFO、明确终态、Turn 身份核对、SQLite 永久规则 CRUD 与设置页管理、Builtin-only 免审批边界均已接通；旧 `AskUserRegistryLike` 已改为 `AskUserInteractionPort`，不新增第二套队列；
 7. Skill 多文件激活、per-Agent 状态、结构化 Context 恢复与 `allowed-tools` 单向收窄已经完成；
-8. `TurnExecutor + AgentLoop` 第三刀与 Narrative R4 已完成：Chat/Work 共用主链，`src/conversation` 已删除；`auto/always/off` 已分别落到按需 Tool、主动 Recall 和关闭能力，下一批让 Core Route 退回协议层；
+8. LocalHost L0 纯改名已完成；下一批 L1 只迁出附件输入、模型能力、Prompt/Context/Compaction 输入与执行计划，形成 `src/turnExecution/prepareTurn.ts` 等明确业务入口，不同时移动全部 Route 或拆 AppBindings；
 9. 后台进程按 `BackgroundProcess + ProcessOutput/ProcessStop` 单独实现 C 档，不修改 AgentLoop，也不恢复假 `run_in_background`。
 
 命名随业务批次清理：旧 `IFileStateStoreEntry/IFileStateStore` 及后续过渡接口已经删除，`IToolExecutionJournal` 已改为职责名；其余迁移期 `I*` 类型继续随业务边界处理，不单独进行全仓机械重命名。
@@ -157,6 +159,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- LocalHost L0：`pnpm install --offline` 确认 44 个 Workspace 项目；全仓 typecheck 82/82 通过，范围内显示 43 个包且新身份为 `@ema-agent/local-host`；LocalHost 28 个测试文件 93/93、独立 typecheck、build manifest 与产物导入通过；Desktop TypeScript typecheck、发布版本校验通过；Tauri runtime 资源名/readiness 3/3 通过；发布脚本 `node --check`、Rust `cargo fmt --check` 与 `git diff --check` 通过。旧硬身份在生产源码、构建和发布配置中的残留为零，只在迁移说明中作为禁止恢复的旧名称出现；`apps/core` 目录不存在，原 91 个受版本控制文件均能映射到 `apps/localHost`。
 - Artifact 物理删除：全仓 typecheck 82/82 通过；Storage 120/120、BuiltinTools 96/96（11 skipped）、Backup 11/11、Core 93/93、Desktop UI 118/118、TurnExecution 11/11（4 skipped）、Agent 25/25、Tools 28/28、Session 37/37 通过。`@ema-agent/artifact` 依赖、`src/artifact` 目录、`artifacts` 表、ArtifactStore/ArtifactRepo/ArtifactEvent/IArtifactStore/ArtifactWrite/Read/List、`ReleaseFeaturesWire`/`artifactsEnabled` Feature Gate、capabilities 空壳端点、Desktop UI Artifact 面板/Store/API/测试、备份导出/恢复 Artifact 分支均已删除。Data v21 `DROP TABLE IF EXISTS artifacts` 兼容现有开发 DB；启动恢复定点清理旧 Artifact 目录，旧 Artifact ZIP 返回 `unsupported_content`。`git diff --check` 仅有既有 CRLF 提示。
 - 附件/PDF 第一批：Storage、Session、Attachment、Knowledge、Tools build 通过，BuiltinTools 与 Core typecheck 通过；Storage 缓存迁移/Repo 2/2、Attachment 规范化/LRU/磁盘复用/空闲清理 3/3、Knowledge PDF 19/19、Builtin 注册与 ToolPool 6/6、Core 图片兼容 6/6 通过。Data 迁移编号已与 Artifact 删除协调为 v21/v22。
 - Narrative R4：Narrative 与 BuiltinTools 按依赖顺序 build 通过；全仓 typecheck 84/84 通过；BuiltinTools 109/109、TurnExecution 11/11 通过，另有 1 个缺少系统 `rg` 的条件测试和 4 个 Live Integration 按规则跳过；`git diff --check` 仅有既有 CRLF 提示。
@@ -230,7 +233,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 先完整阅读 CLAUDE.md 与 EmaWorkState.md，再按当前批次阅读 EmaRefactor.md 和 EmaClaudeArchitectureReview.md 对应章节。检查 git status、diff 和最近提交，保留用户及其他 Agent 的修改。
 
-目录迁移已经结束，不要继续机械搬包。R2 Prompt Slot、R3 ContextAssembler、Chat/Work 统一 `TurnExecutor + AgentLoop` 主链与 Narrative R4 均已完成；`AgentEngine`、`ConversationEngine` 和 `src/conversation` 均已删除。下一批让 Core 的 Turn 入口退回协议层：先迁出附件、模型选择、Prompt/Context/压缩等执行计划装配，不要同时重写全部业务 Route、启动流程或创建新的 Service/Facade/Orchestrator。修改前先核对真实调用链并说明本批边界，不要提交 Git。
+LocalHost L0 纯改名已经完成，不要恢复 `apps/core`、`@ema-agent/core`、`ema-core` 或 `core-runtime`。R2 Prompt Slot、R3 ContextAssembler、Chat/Work 统一 `TurnExecutor + AgentLoop` 主链与 Narrative R4 均已完成；`AgentEngine`、`ConversationEngine` 和 `src/conversation` 均已删除。下一批执行 L1：先把附件输入、模型能力、Prompt/Context/Compaction 输入与执行计划迁入 `src/turnExecution` 和领域所有者，再删除 LocalHost Orchestrator；不要同时重写全部 Route、启动流程或 AppBindings。修改前先核对真实调用链并说明本批边界，不要提交 Git。
 ```
 
 ## 维护方式

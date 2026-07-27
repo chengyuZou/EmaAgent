@@ -114,7 +114,7 @@ export class NarrativeClient {
 
   /**
    * Update the base URL at runtime.
-   * Called by apps/core before each configureBridge() so the client always
+   * Called by apps/localHost before each configureBridge() so the client always
    * points at the port the bridge actually chose (read from bridge.port file).
    */
   updateBaseUrl(url: string): void {
@@ -125,7 +125,7 @@ export class NarrativeClient {
 
   /**
    * Push LightRAG config (embed + llm) to the bridge.
-   * Called by apps/core on startup and whenever relevant bindings change.
+   * Called by apps/localHost on startup and whenever relevant bindings change.
    * Returns false if the bridge is unreachable — safe to ignore.
    *
    * 注意:bridge 的 /internal/configure 返回 204 No Content(无 body),

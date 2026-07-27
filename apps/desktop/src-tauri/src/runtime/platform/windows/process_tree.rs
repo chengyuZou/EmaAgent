@@ -1,4 +1,4 @@
-// 使用单一 Windows Job Object 持有并回收 Core 与 Bridge 整棵进程树。
+// 使用单一 Windows Job Object 持有并回收 LocalHost 与 Bridge 整棵进程树。
 use std::sync::Arc;
 use std::time::Duration;
 

@@ -65,8 +65,8 @@ packages/tts/test-output/
 /apps/desktop/src-tauri/binaries/*
 !/apps/desktop/src-tauri/binaries/.gitkeep
 /apps/desktop/src-tauri/.release-staging/
-/apps/desktop/src-tauri/resources/core-runtime/*
-!/apps/desktop/src-tauri/resources/core-runtime/.gitkeep
+/apps/desktop/src-tauri/resources/local-host-runtime/*
+!/apps/desktop/src-tauri/resources/local-host-runtime/.gitkeep
 /apps/desktop/src-tauri/resources/bridge-runtime/*
 !/apps/desktop/src-tauri/resources/bridge-runtime/.gitkeep
 /apps/desktop/src-tauri/resources/narrative-seed/*

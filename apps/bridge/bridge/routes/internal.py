@@ -24,7 +24,7 @@ async def configure(
     body: ConfigureRequest,
 ) -> None:
     """
-    Push LightRAG config from apps/core.
+    Push LightRAG config from apps/localHost.
     Called on startup and whenever embed or lightrag-llm bindings change.
     """
     async with _configure_lock:

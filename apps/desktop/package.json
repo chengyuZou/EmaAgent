@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "release:prepare:core": "node scripts/prepare-core-sidecar.mjs",
+    "release:prepare:local-host": "node scripts/prepare-local-host-sidecar.mjs",
     "release:prepare:narrative": "node scripts/prepare-narrative-seed.mjs",
     "release:inject:cubism": "node scripts/inject-cubism-core.mjs",
     "release:verify": "node scripts/verify-release-assets.mjs",

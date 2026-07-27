@@ -93,7 +93,7 @@ BottomDock 横跨 ChatColumn 与 RightDock。SessionSidebar 不被 BottomDock �
 - Windows、macOS、Linux 使用各自平台实现；
 - 不把开发者电脑上的绝对路径写入 TypeScript；
 - 当前 Session 没有 `workspaceRoot` 时，禁用需要工作区的入口并说明原因；
-- 打开动作由 Tauri Host 执行，不经过 Core HTTP 路由绕一圈。
+- 打开动作由 Tauri Host 执行，不经过 LocalHost HTTP 路由绕一圈。
 
 建议 Tauri 边界：
 
@@ -698,7 +698,7 @@ TurnRail 的最外层是透明轨道容器，只承担定位、滚轮与指针�
 - `ChatPanel.tsx`；
 - `conversation-store.ts`；
 - `conversation-sse.ts`；
-- `apps/core/src/routes/sessions.ts`；
+- `apps/localHost/src/routes/sessions.ts`；
 - `EmaWorkState.md`。
 
 适合并行的前提：
@@ -752,4 +752,4 @@ TurnRail 的最外层是透明轨道容器，只承担定位、滚轮与指针�
 1. 先完成批次 A/B 的数据契约和状态模型，再把批次 C/D 的视觉组件交给前端模型；
 2. 或先继续统一 TurnRuntime/TurnLoop，等后端主架构稳定后再集中做全部前端。
 
-无论选择哪种，不能让前端模型同时修改 Core Turn 编排。推荐先完成 **批次 A（Task/AgentRun）和批次 B 的后端契约**，随后前后端按文件边界并行；TurnRuntime 大重构继续由理解完整执行链的负责人处理。
+无论选择哪种，不能让前端模型同时修改 LocalHost Turn 编排。推荐先完成 **批次 A（Task/AgentRun）和批次 B 的后端契约**，随后前后端按文件边界并行；TurnRuntime 大重构继续由理解完整执行链的负责人处理。

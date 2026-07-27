@@ -13,7 +13,7 @@ class BridgeState:
     """
     Runtime state for the bridge process.
 
-    Populated by POST /internal/configure after apps/core starts.
+    Populated by POST /internal/configure after apps/localHost starts.
     All fields are empty until configured — narrative routes return 503 when unready.
     """
 

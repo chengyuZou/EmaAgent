@@ -13,7 +13,7 @@ import type { AudioArchive, FinalizedAudio } from './archive.js';
 // ── TtsCoordinator ──────────────────────────────────────────────────────────
 //
 // 一个 per-turn 对象,负责:
-//   1. 接收 apps/core orchestrator 的可见 `output_text_delta` 块。
+//   1. 接收 apps/localHost orchestrator 的可见 `output_text_delta` 块。
 //      每个 delta 喂入句子切分器;完整句子进入合成队列。
 //   2. **顺序**排空队列(V1 并发 = 1)- 每句音频完整流完才开始下一句。
 //      顺序输出意味着前端无需跨句缓冲/重排;按序播放 = SSE 顺序。
@@ -31,7 +31,7 @@ import type { AudioArchive, FinalizedAudio } from './archive.js';
 export interface TtsCoordinatorArgs {
   turnId:        TurnId;
   sessionId:     SessionId;
-  /** 预解析的 voice 规格(apps/core 从角色卡 + binding 解析)。 */
+  /** 预解析的 voice 规格(apps/localHost 从角色卡 + binding 解析)。 */
   voice:         TtsVoiceRef;
   /** provider_configs.id - 本 turn 用哪个 TTS provider。 */
   providerId:    string;

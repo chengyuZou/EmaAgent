@@ -1,4 +1,4 @@
-// 统一编排 Bridge/Core 启动、结构化就绪、状态发布和可靠退出。
+// 统一编排 Bridge/LocalHost 启动、结构化就绪、状态发布和可靠退出。
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -16,7 +16,7 @@ use super::readiness::wait_for_ready;
 use super::resources::{resolve_narrative_dir, resolve_service_launch, ServiceLaunch};
 use super::types::{RuntimePhase, RuntimeService, RuntimeSnapshot, ServicePhase, ServiceSnapshot};
 
-const CORE_READY_TIMEOUT: Duration = Duration::from_secs(30);
+const LOCAL_HOST_READY_TIMEOUT: Duration = Duration::from_secs(30);
 const BRIDGE_READY_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Clone)]
@@ -28,7 +28,7 @@ struct Inner {
     operation: Mutex<()>,
     snapshot: RwLock<RuntimeSnapshot>,
     secret: RwLock<Option<String>>,
-    core: Mutex<Option<Child>>,
+    local_host: Mutex<Option<Child>>,
     bridge: Mutex<Option<Child>>,
     runtime_dir: Mutex<Option<PathBuf>>,
     process_tree: NativeProcessTree,
@@ -43,7 +43,7 @@ impl DesktopRuntimeSupervisor {
             operation: Mutex::new(()),
             snapshot: RwLock::new(RuntimeSnapshot::stopped()),
             secret: RwLock::new(None),
-            core: Mutex::new(None),
+            local_host: Mutex::new(None),
             bridge: Mutex::new(None),
             runtime_dir: Mutex::new(None),
             process_tree: NativeProcessTree::new()?,
@@ -74,7 +74,7 @@ impl DesktopRuntimeSupervisor {
         self.reset_snapshot(generation).await;
 
         // Bridge 是 Narrative 的可选能力；启动或就绪失败时明确标记 unavailable，
-        // Core 和 chat 主链路仍继续启动。
+        // LocalHost 和 chat 主链路仍继续启动。
         self.set_runtime_phase(RuntimePhase::StartingBridge, None)
             .await;
         let bridge_ready = runtime_dir.join("bridge.ready.json");
@@ -120,20 +120,20 @@ impl DesktopRuntimeSupervisor {
             return self.finish_cancelled_start().await;
         }
 
-        // Core 是桌面应用必需服务。任何失败都进入 Failed，并回收已经启动的 Bridge。
-        self.set_runtime_phase(RuntimePhase::StartingCore, None)
+        // LocalHost 是桌面应用必需服务。任何失败都进入 Failed，并回收已经启动的 Bridge。
+        self.set_runtime_phase(RuntimePhase::StartingLocalHost, None)
             .await;
-        self.set_service_starting(RuntimeService::Core).await;
-        let core_ready = runtime_dir.join("core.ready.json");
-        let core_launch = match resolve_service_launch(&app, RuntimeService::Core) {
+        self.set_service_starting(RuntimeService::LocalHost).await;
+        let local_host_ready = runtime_dir.join("local-host.ready.json");
+        let local_host_launch = match resolve_service_launch(&app, RuntimeService::LocalHost) {
             Ok(launch) => launch,
-            Err(error) => return self.fail_core_start(error).await,
+            Err(error) => return self.fail_local_host_start(error).await,
         };
         match self
             .start_service(
-                RuntimeService::Core,
-                core_launch,
-                &core_ready,
+                RuntimeService::LocalHost,
+                local_host_launch,
+                &local_host_ready,
                 &nonce,
                 &secret,
                 &credential_master_key,
@@ -142,14 +142,14 @@ impl DesktopRuntimeSupervisor {
             .await
         {
             Ok((pid, port)) => {
-                self.set_service_ready(RuntimeService::Core, pid, port)
+                self.set_service_ready(RuntimeService::LocalHost, pid, port)
                     .await;
                 self.set_runtime_phase(RuntimePhase::Ready, None).await;
                 self.spawn_exit_monitor(generation);
                 tracing::info!(generation, port, "desktop runtime ready");
                 Ok(())
             }
-            Err(error) => self.fail_core_start(error).await,
+            Err(error) => self.fail_local_host_start(error).await,
         }
     }
 
@@ -159,8 +159,8 @@ impl DesktopRuntimeSupervisor {
         let _operation = self.0.operation.lock().await;
         self.set_runtime_phase(RuntimePhase::Stopping, None).await;
 
-        // Core 依赖 Bridge，退出时先停上游请求入口，再停计算 Bridge。
-        self.terminate_service(RuntimeService::Core).await;
+        // LocalHost 依赖 Bridge，退出时先停上游请求入口，再停计算 Bridge。
+        self.terminate_service(RuntimeService::LocalHost).await;
         self.terminate_service(RuntimeService::Bridge).await;
 
         if let Some(directory) = self.0.runtime_dir.lock().await.take() {
@@ -190,7 +190,7 @@ impl DesktopRuntimeSupervisor {
         let deadline = tokio::time::Instant::now() + max_wait;
         loop {
             let snapshot = self.0.snapshot.read().await;
-            if let Some(port) = snapshot.core.port {
+            if let Some(port) = snapshot.local_host.port {
                 return Some(port);
             }
             if snapshot.phase == RuntimePhase::Failed {
@@ -234,7 +234,7 @@ impl DesktopRuntimeSupervisor {
         }
 
         let timeout = match service {
-            RuntimeService::Core => CORE_READY_TIMEOUT,
+            RuntimeService::LocalHost => LOCAL_HOST_READY_TIMEOUT,
             RuntimeService::Bridge => BRIDGE_READY_TIMEOUT,
         };
         let record = wait_for_ready(
@@ -261,10 +261,10 @@ impl DesktopRuntimeSupervisor {
             .await;
     }
 
-    async fn fail_core_start(&self, error: String) -> Result<(), String> {
-        self.terminate_service(RuntimeService::Core).await;
+    async fn fail_local_host_start(&self, error: String) -> Result<(), String> {
+        self.terminate_service(RuntimeService::LocalHost).await;
         self.terminate_service(RuntimeService::Bridge).await;
-        self.set_service_failed(RuntimeService::Core, error.clone())
+        self.set_service_failed(RuntimeService::LocalHost, error.clone())
             .await;
         self.set_runtime_phase(RuntimePhase::Failed, Some(error.clone()))
             .await;
@@ -282,10 +282,10 @@ impl DesktopRuntimeSupervisor {
                     return;
                 }
 
-                if let Some(status) = supervisor.poll_exit(RuntimeService::Core).await {
-                    let error = format!("core exited unexpectedly: {status}");
+                if let Some(status) = supervisor.poll_exit(RuntimeService::LocalHost).await {
+                    let error = format!("local host exited unexpectedly: {status}");
                     supervisor
-                        .set_service_failed(RuntimeService::Core, error.clone())
+                        .set_service_failed(RuntimeService::LocalHost, error.clone())
                         .await;
                     supervisor
                         .set_runtime_phase(RuntimePhase::Failed, Some(error.clone()))
@@ -325,13 +325,13 @@ impl DesktopRuntimeSupervisor {
 
     fn child_slot(&self, service: RuntimeService) -> &Mutex<Option<Child>> {
         match service {
-            RuntimeService::Core => &self.0.core,
+            RuntimeService::LocalHost => &self.0.local_host,
             RuntimeService::Bridge => &self.0.bridge,
         }
     }
 
     async fn finish_cancelled_start(&self) -> Result<(), String> {
-        self.terminate_service(RuntimeService::Core).await;
+        self.terminate_service(RuntimeService::LocalHost).await;
         self.terminate_service(RuntimeService::Bridge).await;
         Err("desktop runtime startup cancelled".to_string())
     }
@@ -340,7 +340,7 @@ impl DesktopRuntimeSupervisor {
         *self.0.snapshot.write().await = RuntimeSnapshot {
             generation,
             phase: RuntimePhase::Stopped,
-            core: ServiceSnapshot::stopped(),
+            local_host: ServiceSnapshot::stopped(),
             bridge: ServiceSnapshot::stopped(),
             last_error: None,
         };
@@ -407,7 +407,7 @@ impl DesktopRuntimeSupervisor {
     async fn set_service_snapshot(&self, service: RuntimeService, value: ServiceSnapshot) {
         let mut snapshot = self.0.snapshot.write().await;
         match service {
-            RuntimeService::Core => snapshot.core = value,
+            RuntimeService::LocalHost => snapshot.local_host = value,
             RuntimeService::Bridge => snapshot.bridge = value,
         }
     }

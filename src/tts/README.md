@@ -41,7 +41,7 @@ DashScope 双协议路由(按模型前缀): `cosyvoice-*` 走 `wss://.../inferen
 | `FsAudioArchive` | 分段写盘 + Turn 结束合并;`findMergedFor` 供回放路由 |
 | `TtsAdapter` | 扩展接口:`stream`/`capabilitiesFor`/`uploadVoice?`/`probe?` |
 
-`TtsVoiceRef.refAudioPath` 是**绝对路径**(apps/core 从角色卡相对路径解析)。voice URI 缓存键 `tts.voiceUri.<cardId>.<providerId>.<model>`(DashScope voice ID 与模型绑定,跨模型不可复用)。
+`TtsVoiceRef.refAudioPath` 是**绝对路径**(apps/localHost 从角色卡相对路径解析)。voice URI 缓存键 `tts.voiceUri.<cardId>.<providerId>.<model>`(DashScope voice ID 与模型绑定,跨模型不可复用)。
 
 ## 关键机制
 
@@ -70,4 +70,4 @@ DashScope 双协议路由(按模型前缀): `cosyvoice-*` 走 `wss://.../inferen
 - 不剥 ACT 标签(由 `@ema-agent/emotion` 上游剥)
 - 不做 WS 连接池(V1 单用户场景)
 - 不依赖 ffmpeg(格式合并用字节拼接,ogg/opus 不拼)
-- 不做声音管理(角色卡/voice profile/路径解析/URI 缓存都在 apps/core)
+- 不做声音管理(角色卡/voice profile/路径解析/URI 缓存都在 apps/localHost)

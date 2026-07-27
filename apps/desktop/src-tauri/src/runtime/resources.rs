@@ -1,4 +1,4 @@
-// 解析开发命令与各平台安装包内的 Core、Bridge 可执行资源。
+// 解析开发命令与各平台安装包内的 LocalHost、Bridge 可执行资源。
 use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, Manager};
@@ -53,12 +53,12 @@ pub async fn resolve_narrative_dir(app: &AppHandle) -> Result<PathBuf, String> {
 fn resolve_development_launch(service: RuntimeService) -> Result<ServiceLaunch, String> {
     let workspace_root = locate_workspace_root()?;
     match service {
-        RuntimeService::Core => Ok(ServiceLaunch {
+        RuntimeService::LocalHost => Ok(ServiceLaunch {
             executable: which::which("pnpm")
                 .map_err(|error| format!("pnpm not on PATH: {error}"))?,
             args: vec![
                 "--filter".to_string(),
-                "@ema-agent/core".to_string(),
+                "@ema-agent/local-host".to_string(),
                 "dev".to_string(),
             ],
             working_dir: workspace_root,
@@ -76,7 +76,7 @@ fn resolve_bundled_launch(
     service: RuntimeService,
 ) -> Result<ServiceLaunch, String> {
     let env_key = match service {
-        RuntimeService::Core => "EMA_CORE_EXECUTABLE",
+        RuntimeService::LocalHost => "EMA_LOCAL_HOST_EXECUTABLE",
         RuntimeService::Bridge => "EMA_BRIDGE_EXECUTABLE",
     };
     if let Ok(explicit) = std::env::var(env_key) {
@@ -119,11 +119,14 @@ fn resolve_bundled_launch(
         .into_iter()
         .find(|path| path.is_file())
         .ok_or_else(|| format!("bundled {} executable not found", service.as_str()))?;
-    if service == RuntimeService::Core {
-        let runtime_root = resource_dir.join("core-runtime").join("app");
+    if service == RuntimeService::LocalHost {
+        let runtime_root = resource_dir.join("local-host-runtime").join("app");
         let entry = runtime_root.join("dist").join("index.js");
         if !entry.is_file() {
-            return Err(format!("bundled Core entry not found: {}", entry.display()));
+            return Err(format!(
+                "bundled LocalHost entry not found: {}",
+                entry.display()
+            ));
         }
         return launch_for_existing_at(
             executable,
@@ -195,11 +198,11 @@ mod tests {
 
     #[test]
     fn platform_executable_has_expected_suffix() {
-        let name = platform_executable_name("ema-core");
+        let name = platform_executable_name("ema-local-host");
         if cfg!(target_os = "windows") {
-            assert_eq!(name, "ema-core.exe");
+            assert_eq!(name, "ema-local-host.exe");
         } else {
-            assert_eq!(name, "ema-core");
+            assert_eq!(name, "ema-local-host");
         }
     }
 }

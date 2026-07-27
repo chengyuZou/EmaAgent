@@ -3,7 +3,7 @@
 Entry point for `uv run ema-bridge` (and `python -m bridge`).
 
 Scans ports 7421–7430 for the first free one, writes the chosen port to
-{EMA_DATA_DIR}/bridge.port so apps/core can discover the URL without any
+{EMA_DATA_DIR}/bridge.port so apps/localHost can discover the URL without any
 hardcoded port, then starts uvicorn.  The port file is deleted on exit.
 """
 from __future__ import annotations

@@ -1,4 +1,4 @@
-// 读取并校验 Core/Bridge 原子写入的结构化启动握手。
+// 读取并校验 LocalHost/Bridge 原子写入的结构化启动握手。
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -93,7 +93,7 @@ mod tests {
 
     fn ready() -> ReadyRecord {
         ReadyRecord {
-            service: "core".to_string(),
+            service: "local-host".to_string(),
             pid: 42,
             port: 3421,
             nonce: "run-a".to_string(),
@@ -103,13 +103,13 @@ mod tests {
 
     #[test]
     fn rejects_stale_nonce() {
-        let error = validate_ready(&ready(), RuntimeService::Core, 42, "run-b").unwrap_err();
+        let error = validate_ready(&ready(), RuntimeService::LocalHost, 42, "run-b").unwrap_err();
         assert!(error.contains("nonce mismatch"));
     }
 
     #[test]
     fn rejects_foreign_pid() {
-        let error = validate_ready(&ready(), RuntimeService::Core, 99, "run-a").unwrap_err();
+        let error = validate_ready(&ready(), RuntimeService::LocalHost, 99, "run-a").unwrap_err();
         assert!(error.contains("pid mismatch"));
     }
 }

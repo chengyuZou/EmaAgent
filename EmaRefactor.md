@@ -1,4 +1,4 @@
-﻿# EmaAgent 统一 Turn Runtime 与契约拆分 RFC
+# EmaAgent 统一 Turn Runtime 与契约拆分 RFC
 
 > 状态：设计中，不代表当前源码已经完成迁移  
 > 日期：2026-07-21  
@@ -33,14 +33,14 @@ Ema 当前已经具备 Turn、SSE、工具、权限、Sandbox、Memory、Narrati
 - `agent-context` 实际混合文件快照与工具结果，并不是完整的模型上下文系统；
 - `agent-task` 同时表达根 Turn 投影、等待用户、子 Agent 与 transcript，和 Turn 状态重叠；
 - Compaction 放在 Memory 包内，导致长期记忆与模型窗口治理互相污染；
-- `apps/core` 直接依赖二十多个内部包，`AppBindings` 已接近 Service Locator；
+- `apps/localHost` 直接依赖二十多个内部包，`AppBindings` 已接近 Service Locator；
 - Prompt 没有稳定插槽与缓存边界，角色、Mode、MCP、Skill、工具变化容易破坏 KV Cache。
 - 中央 `contracts` 已混入模型内部消息、数据库持久化结构、前端 Wire、各业务事件、ID、Usage 与错误码，失去明确所有者；
 - 同一个“Message”同时表达 Session 记录、模型输入和前端 DTO，导致历史转换、媒体降级和持久化展示互相渗透。
 
 本轮目标不是换目录名字，而是先确定唯一运行语义，再做可验证迁移。
 
-当前已经完成的地基：Provider 与 LLM 已迁入根 `src`；LLM 使用 `LanguageModel` 作为业务接口、`LanguageModelRuntime` 作为 Core 装配实现，并已建立 Provider 原子快照、`llmRequestPreparer`、明确流终态和连续 Block Index。第二轮又完成了 LLM 自有 `Message/ContentPart/AssistantBlock/LlmCallId/LlmTokenUsage`、跨模态 `usage` 写入端口和 Context `messageBuilder`；LLM 生产代码已不再依赖 `packages/contracts`。后续不能再按旧 `LlmRouter` 或 `packages/llm` 设计。
+当前已经完成的地基：Provider 与 LLM 已迁入根 `src`；LLM 使用 `LanguageModel` 作为业务接口、`LanguageModelRuntime` 作为 LocalHost 装配实现，并已建立 Provider 原子快照、`llmRequestPreparer`、明确流终态和连续 Block Index。第二轮又完成了 LLM 自有 `Message/ContentPart/AssistantBlock/LlmCallId/LlmTokenUsage`、跨模态 `usage` 写入端口和 Context `messageBuilder`；LLM 生产代码已不再依赖 `packages/contracts`。后续不能再按旧 `LlmRouter` 或 `packages/llm` 设计。
 
 ## 2. 已确定的产品语义
 
@@ -504,13 +504,36 @@ src/
 │  └─ integrations/             QQ、微信等平台入口
 └─ bootstrap/
 
-apps/core/src/
-├─ index.ts
-├─ server.ts
-├─ routes/
-├─ sse/
-├─ auth/
-└─ wiring/
+apps/localHost/
+├─ package.json
+├─ scripts/
+├─ tests/
+└─ src/
+   ├─ index.ts
+   ├─ bootstrap/
+   │  ├─ startLocalHost.ts
+   │  ├─ shutdown.ts
+   │  ├─ readiness.ts
+   │  ├─ buildIntegrity.ts
+   │  └─ dataDirectory/
+   │     ├─ paths.ts
+   │     ├─ registry.ts
+   │     └─ lockfile.ts
+   ├─ wiring/
+   │  ├─ createStorage.ts
+   │  ├─ createModelExecution.ts
+   │  ├─ createAgentExecution.ts
+   │  ├─ createKnowledge.ts
+   │  ├─ createBackgroundWork.ts
+   │  ├─ registerHooks.ts
+   │  └─ registerEmitters.ts
+   └─ transports/
+      └─ http/
+         ├─ createHttpApp.ts
+         ├─ auth.ts
+         ├─ requestBudget.ts
+         ├─ sse/
+         └─ routes/
 
 packages/
 ├─ public-http/
@@ -519,7 +542,17 @@ packages/
 
 这棵树按 Agent 的真实执行路径命名，而不是按传统 DDD 分层：开发者从 `turnExecution/turnExecutor` 进入，由 `agent/agentLoop` 沿 `context → llm → tools → permission/sandbox → result` 读完一次 Turn；Narrative、Memory、Knowledge、Character 等产品能力直接是一等目录，不藏进 `capabilities`；Desktop、CLI、Web、QQ、微信只在 `channels` 提供输入输出适配，不能各自复制 Agent 编排。
 
-根 `src` 放 Ema 产品主体；`apps/core` 只保留 Node Sidecar 入口、HTTP/SSE、认证与装配；`packages` 保留确有跨应用复用、平台隔离、独立发布或独立测试价值的技术底座。产品模块即使用独立 `package.json` 参与 TypeScript/Turbo 构建，也仍属于根 `src`，不因此成为公共库。
+根 `src` 放 Ema 产品主体；`apps/localHost` 只保留 Node Sidecar 入口、HTTP/SSE、认证与装配；`packages` 保留确有跨应用复用、平台隔离、独立发布或独立测试价值的技术底座。产品模块即使用独立 `package.json` 参与 TypeScript/Turbo 构建，也仍属于根 `src`，不因此成为公共库。
+
+`apps/localHost` 是 Desktop、未来 CLI/Web/移动端与外部渠道共同访问的本地 HTTP 宿主，不是新的业务 Core。V1 继续使用 localhost HTTP + SSE；未来若引入 WebSocket，只在 `transports/` 增加真实传输实现，不预建空目录。启动、就绪、数据目录和依赖装配属于进程入口；Turn 计划、附件处理、模型兼容、TTS 修饰、子 Agent transcript 与 Provider 配置生命周期必须回到根 `src` 的业务所有者。
+
+LocalHost 分五批收口，每批只改变一个边界：
+
+1. **L0 纯改名**：`apps/core → apps/localHost`、`@ema-agent/core → @ema-agent/local-host`、`ema-core → ema-local-host`，同步 Tauri、发布脚本、CI、测试和文档，不移动业务职责；
+2. **L1 Turn 准备归位**：附件输入、模型能力、Prompt/Context/Compaction 输入和执行计划迁入 `src/turnExecution/prepareTurn.ts` 及各领域公共入口；
+3. **L2 删除旧 Orchestrator**：TurnExecutor 成为唯一产品执行入口，LocalHost 不再拥有第二套执行编排；
+4. **L3 HTTP 传输归档**：现有 Route、SSE、认证和请求预算迁入 `transports/http`，只做协议适配；
+5. **L4/L5 装配收窄**：删除大型 `AppBindings` Service Locator，wiring 按能力构造；大型 Route 改为窄依赖，但不新增全局 Service/Facade 杂物层。
 
 目录命名约束：
 
@@ -535,7 +568,7 @@ packages/
 本阶段按“Agent 执行体系”整体重构，不把它误解成只整理 `src/tools`。主链如下：
 
 ```text
-apps/core
+apps/localHost
   Route、认证、SSE 编码、启动恢复、依赖装配
       ↓
 TurnExecutor
@@ -569,17 +602,17 @@ Builtin / MCP / Skill Tool
    业务执行入口由拥有语义的模块公开：Knowledge 拥有 `KnowledgeSearchPort`，Skills 拥有 `SkillRunnerPort`，Sandbox、Tasks 继续拥有各自端口。Subagent 是有意的例外：`SubagentSpawnerPort` 是 Subagent Tool 对宿主的消费契约，因此位于 `builtinTools`；Agent 结构化实现它，不能让 `builtinTools` 反向依赖 Agent 并形成包环。AskUser 同理保留为 AskUser Tool 的消费端口，由 TurnExecutor 提供实现。
 3. **建立 TurnExecutor**：旧 `AgentEngine` 已迁入高层 `src/turnExecution` 并删除；Turn 创建与 `TurnHandle`（turnId + events + completion + abort）已经收回。低层 `src/turn` 不吸收 Context、KB、Character、Tool 或后台进程依赖。
 4. **清理 Agent**：`src/agent` 只保留 `agentLoop/agentLoopState/policy/budget/runs/spawner/events/errors`。
-5. **Core 退回协议层**：Route 解析并验证请求；调用 `turnExecutor.start()`；把 TurnEvent 编码成 SSE。不再组装 Context、创建 Tool Executor 或决定业务终态。
+5. **LocalHost 退回协议层**：Route 解析并验证请求；调用 `turnExecutor.start()`；把 TurnEvent 编码成 SSE。不再组装 Context、创建 Tool Executor 或决定业务终态。
 
 当前源码的实际拆除落点已经确认：
 
 - `src/agent/engine.ts` 已删除；其 Hook、历史读取、消息持久化、取消、唯一终态和 Turn 创建已迁入 `src/turnExecution/turnExecutor.ts`；
 - `src/agent/agentLoop.ts` 保留为内层循环。它在每次 LLM Call 前请求 Context 快照，消费固定的 Base Manifest 或 Skill 收窄后的子集，不创建、完成或持久化根 Turn；
 - `src/conversation` 已删除；Chat/Work 共用同一 AgentLoop，Narrative Recall 已回到 Narrative 并以不可信 Context Contribution 投递，没有改名成新的 Conversation Service；
-- `apps/core/src/orchestrator/orchestrator.ts` 当前同时创建 Turn、选择 Engine、解析模型、组装 Prompt/Context、合并 TTS、处理附件和写失败终态。上述业务分别迁回 Turn、Context、TTS、附件与模型所有者后删除 Orchestrator；
-- `apps/core/src/routes/turns.ts` 最终只负责 HTTP 输入、认证、受限文件 capability 解析、调用 `turnExecutor.start()`、SSE replay/heartbeat 和 Wire 编码；用于补缺失身份的 `enrichTurnEvent()` 必须随完整 TurnEvent 契约一起删除；
-- `apps/core/src/turn-runtime` 中的子 Agent transcript 投影迁回 `src/agent/runs`；Core 不拥有名为 turn-runtime 的第二个业务目录；
-- `apps/core/src/wiring/bindings.ts` 只负责构造唯一 TurnExecutor，不同时进行全仓后台 Worker 拆分。Turn 主链跑通后再按 Route/后台任务收窄依赖，避免把语义迁移和 Composition Root 清理混成一次不可审查的大改。
+- `apps/localHost/src/orchestrator/orchestrator.ts` 当前同时创建 Turn、选择 Engine、解析模型、组装 Prompt/Context、合并 TTS、处理附件和写失败终态。上述业务分别迁回 Turn、Context、TTS、附件与模型所有者后删除 Orchestrator；
+- `apps/localHost/src/routes/turns.ts` 最终只负责 HTTP 输入、认证、受限文件 capability 解析、调用 `turnExecutor.start()`、SSE replay/heartbeat 和 Wire 编码；用于补缺失身份的 `enrichTurnEvent()` 必须随完整 TurnEvent 契约一起删除；
+- `apps/localHost/src/turn-runtime` 中的子 Agent transcript 投影迁回 `src/agent/runs`；LocalHost 不拥有名为 turn-runtime 的第二个业务目录；
+- `apps/localHost/src/wiring/bindings.ts` 只负责构造唯一 TurnExecutor，不同时进行全仓后台 Worker 拆分。Turn 主链跑通后再按 Route/后台任务收窄依赖，避免把语义迁移和 Composition Root 清理混成一次不可审查的大改。
 
 一级主重构范围：
 
@@ -590,7 +623,7 @@ Builtin / MCP / Skill Tool
 - `src/agentContext`：已经逐项迁出并删除。Tool Result 与 Cleanup 归 `tools/results`，无业务价值的 Session 文件快照已经删除；
 - `src/tasks`：只拥有用户或根 Agent 可见的完整 Task 系统，包括状态、依赖、活动 Run 投影、事务/CAS、查询快照与事件；四个模型 Tool 的具体定义仍在 `src/builtinTools`，并且 V1 只向根 Turn 注册。AgentRun、ToolExecution、BackgroundProcess 与领域 Job 不得继续复用 Task 身份或生命周期；
 - `src/conversation`：已经按职责拆散并删除，不得恢复为 Chat 适配器或第三套循环；
-- `apps/core`：退回 HTTP/SSE/Auth/Composition Root。Route 最终只解析请求并调用 `turnExecutor.start()`，再编码 `TurnHandle.events`；现有 orchestrator 删除或缩为协议适配器。
+- `apps/localHost`：退回 HTTP/SSE/Auth/Composition Root。Route 最终只解析请求并调用 `turnExecutor.start()`，再编码 `TurnHandle.events`；现有 orchestrator 删除或缩为协议适配器。
 
 二级配套模块保持独立，但接口必须服从同一主链：
 
@@ -662,7 +695,7 @@ Provider 与 LLM 已证明产品模块可以位于根 `src`，同时保留内部
 
 1. 先保持行为做纯目录迁移，再单独修改业务；
 2. 每迁一个模块都检查 Workspace、lockfile、Turbo 依赖图与旧路径残留；
-3. `apps/core/dist` 不得产生依赖仓库源码路径的越界相对 import；
+3. `apps/localHost/dist` 不得产生依赖仓库源码路径的越界相对 import；
 4. `pnpm deploy --prod` 必须收集根 `src` 模块及 native dependency；
 5. release runtime 必须在没有 Git 仓库、Node 和 Python 开发环境时启动；
 6. 不在同一批同时执行全仓路径移动、数据库 Schema 重构和 TurnExecutor/AgentLoop 语义切换。
@@ -804,7 +837,7 @@ interface TurnExecutionSnapshot {
 - [ ] F-021：用户 Live2D 资源不能继续返回不可消费的绝对路径，需要授权资源协议；
 - [ ] Character Card 测试导入不存在的 `src/seed.js`，当前 0 tests；
 - [ ] B-071：图片自动内联仍使用 `statSync/readFileSync`；普通附件路径进入 Prompt 的隐私与可用性也要随 Tool 读取契约收口；
-- [ ] B-091：Core 路由与 `AppBindings` Service Locator 随本 RFC 分批收敛。
+- [ ] B-091：LocalHost 路由与 `AppBindings` Service Locator 随本 RFC 分批收敛。
 
 ### 9.2 本次统一 Runtime 直接覆盖
 
@@ -872,14 +905,14 @@ interface TurnExecutionSnapshot {
 - [x] 删除 `LlmMessage = Message` 迁移别名，LLM 源码与测试统一使用 `Message`；
 - [x] 删除已损坏且重复实现旧 Agent 编排的 `live-agent-business.test.ts`，同时删除硬编码凭据与 `describe.only` 的旧阿里云 live 测试；
 - [x] 保留通过环境变量显式启用的 DeepSeek live 测试，用于验证真实 Provider、流式事件、工具调用和协议差异；
-- [x] Vision/Embed/Rerank/STT/TTS、Core 与 Storage 已切到 `@ema-agent/usage`，contracts 中旧 Usage 定义已删除。
+- [x] Vision/Embed/Rerank/STT/TTS、LocalHost 与 Storage 已切到 `@ema-agent/usage`，contracts 中旧 Usage 定义已删除。
 - [x] `ModelsDevCatalog` 与 `ModelCapabilitySnapshot` 迁入 `src/providers/catalog`，LLM 只依赖注入的 `ModelCapabilityResolver`；
 - [x] Prompt 前缀 Hash 与 Tool Manifest 稳定化迁入 `src/context/promptPrefix.ts`，LLM 不再制定 KV Cache 策略；
 - [x] 历史媒体降级与本轮附件门禁迁入 Context，LLM 只保留 Adapter 前覆盖 Hook/Tool 内容的最终能力校验；
 - [x] 将 `packages/memory/src/compact` 迁入 Context，并让 Agent/Conversation 通过统一 Context 边界执行预算与压缩；采用 ToolResult 落盘 → Micro → Macro → Reactive 的 V1 渐进策略，并加入三次失败熔断。
 - [x] Provider Runtime Entry 改为配置与 Adapter 共用冻结快照；热刷新只替换真实变化的 Provider，并移除 LLM 注册顺序兜底，Turn 与后台业务必须使用显式模型选择或专属 Binding。
-- [x] 模型能力查询从 `LanguageModel` 公共接口迁回 Provider Resolver，Agent、Conversation 与 Core 显式依赖能力边界；LLM 仅在发送前执行最终门禁。Probe 同步补齐明确终态、十秒超时、调用方取消和安全错误码。
-- [x] 删除混合 `packages/ebd-client`，拆为 `src/embed` 与 `src/rerank` 两个执行模块；Core、Memory 与 Knowledge Base 分别依赖实际使用的能力，不再共享注册顺序或默认模型兜底。
+- [x] 模型能力查询从 `LanguageModel` 公共接口迁回 Provider Resolver，Agent、Conversation 与 LocalHost 显式依赖能力边界；LLM 仅在发送前执行最终门禁。Probe 同步补齐明确终态、十秒超时、调用方取消和安全错误码。
+- [x] 删除混合 `packages/ebd-client`，拆为 `src/embed` 与 `src/rerank` 两个执行模块；LocalHost、Memory 与 Knowledge Base 分别依赖实际使用的能力，不再共享注册顺序或默认模型兜底。
 - [x] `packages/vision` 迁入 `src/vision`；`VisionRuntime` 使用原子 Provider Entry，并将并发队列、请求校验和取消作用域从旧 Router 拆开。错误字段显式化，Gemini 不再静默丢弃不支持的 HTTP 图片。
 - [x] `packages/tts` 与 `packages/stt` 迁入 `src/tts`、`src/stt`；两者改用原子 Provider Entry，删除按插入顺序选择 Provider 的接口，并为 Probe 增加取消、超时和稳定错误码。
 - [x] `packages/storage` 以保持行为的方式迁入 `src/storage`；包名、Schema、Migration 顺序和 Repository 公共 API 不变，通用 SQLite 基础设施留待边界稳定后再评估。
@@ -889,12 +922,12 @@ interface TurnExecutionSnapshot {
 1. 各业务模块迁出自己的事件；
 2. 事件按 AgentLoop、Turn、AgentRun、Session 与 App 五个生命周期范围组合，不重新声明业务字段；
 3. Turn Request/Response/Stats 与执行快照迁入 Turn；
-4. Core SSE 与 Desktop UI 切换到业务 `protocol` 入口。
+4. LocalHost SSE 与 Desktop UI 切换到业务 `protocol` 入口。
 
 当前进度（2026-07-21）：
 
 - [x] 新建 `src/turn` 与 `@ema-agent/turn` 公共入口，承接 Turn Request/Response/Stats、输入校验和迁移期 `EmaStreamEvent`；
-- [x] Core、Desktop UI、Agent、Conversation、Tool、Context、Memory、TTS 等消费者不再从 `contracts` 读取 Turn/SSE 类型；
+- [x] LocalHost、Desktop UI、Agent、Conversation、Tool、Context、Memory、TTS 等消费者不再从 `contracts` 读取 Turn/SSE 类型；
 - [x] `contracts` 删除 `turns.ts`、`events.ts` 导出，并移除已无用途的 Provider 依赖；
 - [x] Provider、Permission 与 Emotion 已拥有各自的客户端事件类型；现有 Turn 聚合仅是迁移期状态，不再作为目标架构；
 - [ ] Knowledge Base 与 Character 事件迁移前先解除 `Knowledge/Character → Storage → Turn` 循环；Storage 不应为了持久化 AskUser JSON 反向依赖整个 Turn 协议；
@@ -991,7 +1024,7 @@ interface TurnExecutionSnapshot {
 1. Provider 与 LLM 的迁移模式作为后续模板；
 2. 只做机械 move，不改业务；
 3. 每迁移一个产品模块就删除旧路径并检查 workspace dependency；
-4. Core release deploy、native dependency smoke、无仓库启动全部通过；
+4. LocalHost release deploy、native dependency smoke、无仓库启动全部通过；
 5. 通用技术底座继续留在 packages，不为目录整齐强行搬迁；
 6. 最后再处理 B-091 的 Route 与业务编排边界。
 
@@ -1011,7 +1044,7 @@ interface TurnExecutionSnapshot {
 10. 收口 Task、AgentRun、ToolExecution、BackgroundProcess 四类身份与生命周期，并完成 V1 Task 全闭环；
 11. [x] Chat 接入统一 AgentLoop，删除 ConversationEngine；
 12. [x] 根 Turn 的执行职责、Turn 创建与 `TurnHandle` 已收回 `src/turnExecution/TurnExecutor`；
-13. `apps/core` 退回 Route、SSE、认证、启动恢复和 Composition Root；
+13. `apps/localHost` 退回 Route、SSE、认证、启动恢复和 Composition Root；
 14. 最后对 Permission、Sandbox 做针对性收口和 Windows/macOS/Linux 验证。
 
 这些步骤允许相邻批次共用已经稳定的端口，但不能把 Turn 统一、全仓 ID 改名、数据库 Schema 和前端 Profile 切换塞进同一批。
@@ -1026,7 +1059,7 @@ Tool Result、统一预算、ToolExecution Journal、执行运行时所有权迁
 4. [x] AgentLoop 只启动执行批次、等待结果并决定是否继续下一轮，不建立第二个 Scheduler；
 5. [x] 每次根 Agent/子 Agent 先按实际 `BuiltinToolContext` 装配模型可见 Manifest，再由同一 Manifest 建立 Policy；每个 Tool 的 `validateContext()` 在权限和副作用前完成窄投影，工具不可见与不可执行不再依赖两套手写白名单；
 6. [x] Tool Manifest 2C、Builtin Tool 2D、TurnHandle 与 Chat/Work 统一主链已经完成；
-7. [x] `NarrativePolicy=auto` 已通过 NarrativeSearchTool 按需检索；下一步让 `apps/core` 只保留协议适配与 Composition Root。
+7. [x] `NarrativePolicy=auto` 已通过 NarrativeSearchTool 按需检索；下一步让 `apps/localHost` 只保留协议适配与 Composition Root。
 
 ## 12. 完成标准
 
@@ -1040,7 +1073,7 @@ Tool Result、统一预算、ToolExecution Journal、执行运行时所有权迁
 - Turn 是唯一根生命周期，AgentRun 只表示子 Agent；
 - V1 Task 使用独立 UUID/短序号、显式字段、SQLite 事务/CAS 和依赖关系，并由 TaskCreate/Get/List/Update、动态 Context 提醒及独立 TaskList 构成完整闭环；
 - TodoWrite 不再注册，Task、AgentRun、BackgroundProcess、ToolExecution 与领域 Job 不共享 ID 或状态机；
-- Core Route 只做协议适配，业务进入对应模块的稳定公开入口或 TurnExecutor；
+- LocalHost Route 只做协议适配，业务进入对应模块的稳定公开入口或 TurnExecutor；
 - 中央 Contracts 路径归零，业务类型由各自模块拥有；
 - Session Message、LLM Message、Provider SDK Message 三层可辨认且只在明确 mapper 中转换；
 - Windows/macOS/Linux 的正式 Sidecar 制品仍能独立启动；

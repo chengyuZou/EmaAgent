@@ -37,7 +37,7 @@ Claude Code 把自身定义为受控工具循环 Agent，而不是聊天接口�
 Ema 已经具备与这条主链大部分对应的模块：
 
 ```text
-Desktop / apps/core route
+Desktop / apps/localHost route
         ↓
 TurnExecutor
         ↓
@@ -56,7 +56,7 @@ TurnHandle.events + TurnOutcome
 
 当前主要偏差：
 
-- `apps/core` 的 route/wiring 仍承载部分业务编排，入口层边界不稳定；
+- `apps/localHost` 的 route/wiring 仍承载部分业务编排，入口层边界不稳定；
 - 启动、自检、依赖 readiness 与延迟加载尚未形成一条可审计的 Composition Root 流程；
 - 前端仍需完成统一工作区与真实 Turn/Task/AgentRun 投影。
 
@@ -65,8 +65,8 @@ TurnHandle.events + TurnOutcome
 1. **V1 已完成：统一 TurnExecutor + AgentLoop。** Chat 与 Work 共享同一个循环，只通过 Profile 控制迭代预算和工具能力；旧第三套 Engine 已删除。
 2. **V1 已完成：Narrative 策略收口。** `always` 在根 Turn 开始时主动召回，`auto` 只向模型提供 NarrativeSearchTool，`off` 不装配该能力；三者共用 Narrative 自有 Route、多时间线召回、领域事件和专用持久化 Block。
 3. **V1 必做：核心循环不依赖入口。** Desktop、未来 CLI/Web/QQ/微信只负责把输入规范化为 Turn，并消费事件；不得复制业务循环。
-4. **V1 收口：Core 退回 Sidecar BFF。** Route 只解析、校验、认证和转换 SSE，业务编排进入根 `src` 的产品模块。
-5. **V1 收口：建立明确启动阶段。** Tauri 管 Sidecar 生命周期；Core Composition Root 负责数据库迁移、凭据、Provider Runtime、Tool Registry 和 Bridge readiness；非关键目录扫描、Catalog 刷新和遥测延迟执行。
+4. **V1 收口：LocalHost 退回 Sidecar BFF。** Route 只解析、校验、认证和转换 SSE，业务编排进入根 `src` 的产品模块。
+5. **V1 收口：建立明确启动阶段。** Tauri 管 Sidecar 生命周期；LocalHost Composition Root 负责数据库迁移、凭据、Provider Runtime、Tool Registry 和 Bridge readiness；非关键目录扫描、Catalog 刷新和遥测延迟执行。
 6. **不照搬：集中式巨型全局 State。** Ema 多 Session 并行且有桌面多窗口，不应复制 Claude 单会话 CLI 的 150+ getter/setter 全局状态。Session/Turn 状态必须显式按 ID 隔离。
 7. **不照搬：Bun 编译期 Feature Flag。** Ema 使用 NodeNext/Tauri/Turbo，V1 继续使用明确 Feature Gate 与构建入口，不引入第二套 bundler 宏体系。
 
@@ -83,7 +83,7 @@ src/agent/
 src/turn/                 Turn 命令、身份、终态与组合事件
 src/context/              发给模型的窗口和压缩
 src/tools/                工具准备与执行
-apps/core/                HTTP/SSE/认证/装配
+apps/localHost/                HTTP/SSE/认证/装配
 ```
 
 ### 与后续章节的接口
@@ -125,7 +125,7 @@ Claude 将会话级 `QueryEngine` 与循环级 `query()` 分开。前者处理�
 这轮重构前的问题位于循环外层：
 
 - `src/agent/engine.ts` 与 `src/conversation/engine.ts` 分别包装 Work 和 Chat/Narrative；
-- `apps/core/src/orchestrator/orchestrator.ts` 再在两者之上选择 Engine、组装 Context、合并 TTS/协调事件并推进终态；
+- `apps/localHost/src/orchestrator/orchestrator.ts` 再在两者之上选择 Engine、组装 Context、合并 TTS/协调事件并推进终态；
 - 根 Turn 终态又通过 `AgentTurnLifecycleFacade` 与旧 AgentTask 投影耦合；
 - Chat 的单轮流式路径与 Agent 的多轮状态机拥有重复的 Hook、持久化、媒体降级和错误处理。
 
@@ -158,11 +158,11 @@ AgentLoop.run(input): AsyncGenerator<AgentLoopEvent, AgentLoopOutcome>
   └─ TurnBudget
 ```
 
-`TurnExecutor` 是产品入口，位于高层 `src/turnExecution`，不放在 `apps/core`，也不塞进低层 `src/turn`；`apps/core` 只把 HTTP command 交给它并编码 SSE。旧 `AgentEngine` 的成熟职责已经迁入 TurnExecutor 并删除。`AgentLoop` 不写 Session Repo，不知道 Desktop，也不直接管理根 Turn 终态。
+`TurnExecutor` 是产品入口，位于高层 `src/turnExecution`，不放在 `apps/localHost`，也不塞进低层 `src/turn`；`apps/localHost` 只把 HTTP command 交给它并编码 SSE。旧 `AgentEngine` 的成熟职责已经迁入 TurnExecutor 并删除。`AgentLoop` 不写 Session Repo，不知道 Desktop，也不直接管理根 Turn 终态。
 
 ### 与第 01 章复核
 
-第 01 章提出“所有入口汇聚到一个执行核心”，第 02 章将其细化为 `TurnExecutor + AgentLoop`，并不意味着再创造两个业务 Engine：两层分别解决根生命周期和循环迭代，Chat/Work 已走同一实例组合。ConversationEngine 已按职责拆散删除，剩余工作是让 Core Orchestrator 继续退回协议与装配边界。
+第 01 章提出“所有入口汇聚到一个执行核心”，第 02 章将其细化为 `TurnExecutor + AgentLoop`，并不意味着再创造两个业务 Engine：两层分别解决根生命周期和循环迭代，Chat/Work 已走同一实例组合。ConversationEngine 已按职责拆散删除，剩余工作是让 LocalHost Orchestrator 继续退回协议与装配边界。
 
 ---
 
@@ -198,7 +198,7 @@ Claude 还使用 `<system-reminder>` 把系统注入内容放入消息流，并�
 ### Diff 判断
 
 1. **V1 收口：保留现有压缩流水线，不重写已经成立的部分。** Micro/Macro、Safe Cut、Restore、失败熔断和 Reactive Compact 已与 Claude 的渐进策略基本对齐。后续应补边界和输入契约，而不是另建第二套 Compactor。
-2. **V1 必做：建立唯一 `ContextAssembler`。** Turn Runtime 只提交 Session 快照、当前输入、Profile、模型能力和 Tool Snapshot，由 Context 模块返回不可变的 `ModelRequestContext`。`apps/core`、Hook 和 Engine 不再各自在消息数组中插入内容。
+2. **V1 必做：建立唯一 `ContextAssembler`。** Turn Runtime 只提交 Session 快照、当前输入、Profile、模型能力和 Tool Snapshot，由 Context 模块返回不可变的 `ModelRequestContext`。`apps/localHost`、Hook 和 Engine 不再各自在消息数组中插入内容。
 3. **V1 必做：Prompt 采用显式 Slot，而不是整段字符串或猜测位置。** 至少明确固定规则、通用 Tool/Skill/MCP、角色、Profile、Narrative Tool、Memory Recall、当前 Turn 等 Slot；每个 Slot 描述顺序、版本和缓存范围。
 4. **V1 收口：Context 与 Memory 彻底分离。** Memory 只返回结构化 `RecallBundle`；Context 决定它是否进入本次模型窗口、放在哪里以及超预算时怎样裁剪。Compaction 不再回流到 Memory 包。
 5. **V1 已收口：拆除 `agent-context` 杂糅边界。** 超大 Tool Result 的落盘与预览属于 `src/tools/results`；文件访问状态属于 Tools；恢复投影由 ContextAssembler 直接读取明确输入，不再保留虚假的 AgentContextSnapshot。
@@ -450,7 +450,7 @@ Ema 当前的 `packages/hook` 是**进程内业务生命周期总线**，并不�
 1. **V1 已对齐：身份、不可变 payload、超时与事件控制权限保留。** 多 Session 与同 Session 多 LLM/Tool 调用已经能靠 ID 区分，不需要再塞一个模糊 `ctx.meta`。
 2. **V1 必做：内部 Hook 不能成为第二套 Permission Engine。** `beforeToolUse` 继续只观察已准备调用；是否允许执行只由 Permission 决定，隔离只由 Sandbox 决定。未来用户 Hook 也不能返回一个未经重新 Prepare 的任意工具输入。
 3. **V1 收口：replace 改成领域 Patch/Slot，而不是替换大 payload。** `beforeLlm` 不应长期允许任意替换整个 Message 数组；Narrative、Memory、Skill 等应返回明确 `ContextContribution`，由 ContextAssembler 统一装配和验证。
-4. **V1 收口：注册采用“领域拥有、Composition Root 汇总”。** 每个业务模块导出 `registerXxxHooks(bus, deps)`，`apps/core` 的装配入口统一调用，因此开发者能从一个位置看见启用了哪些 Hook，又不把所有业务实现塞进 Hook 包。
+4. **V1 收口：注册采用“领域拥有、Composition Root 汇总”。** 每个业务模块导出 `registerXxxHooks(bus, deps)`，`apps/localHost` 的装配入口统一调用，因此开发者能从一个位置看见启用了哪些 Hook，又不把所有业务实现塞进 Hook 包。
 5. **V1 收口：Hook Event 只表达稳定生命周期节点。** 不因为某个组件想监听就增加事件；纯 UI 通知按作用域进入 `TurnEvent/SessionEvent/AppEvent`。Character/Emotion 变化绕过 HookBus 的选择是合理的。
 6. **V1 收口：failure phase 与错误码保持明确类型。** Hook 只传安全、可展示的错误摘要；原始 Provider body、API Key、命令环境等不能进入通用 payload 或 trace。
 7. **V1.5 候选：用户可配置 Hook。** 等内部事件和 Prompt Slot 稳定后，再增加 `HookDefinitionId`、启用状态、作用域、事件、Matcher、执行类型、超时和来源信任；不要现在把半成品 SQL/UI 混入 V1 主链。
@@ -811,7 +811,7 @@ Ema 已经建立了较强的 V1 安全边界：
 - 没有 Ask callback 的 headless 场景直接 deny，不永久挂起；
 - Pending Permission 保留 promptId/sessionId/turnId/toolCallId，支持 UI 重连恢复；
 - Sandbox 是独立 package，Linux 使用 bubblewrap、macOS 使用 sandbox-exec，无法提供 OS 隔离时降级为 app-layer；
-- Core 在 app-layer 时把 Bash/PowerShell 从模型可见 Tool Registry 移除，没有把“用户批准”伪装成“已隔离”。
+- LocalHost 在 app-layer 时把 Bash/PowerShell 从模型可见 Tool Registry 移除，没有把“用户批准”伪装成“已隔离”。
 
 仍需关注：Windows 裸机没有等价强 Sandbox；`CommandRunner` 的 background 分支直接 detached + unref 并立刻返回成功，无法追踪真实终态；project 规则/Hook 等未来来源尚无完整 Workspace Trust；“替我审批”的 LLM 分类器只在产品设想中，不应与当前静态 auto 模式混淆。
 
@@ -933,7 +933,7 @@ apps/desktop-ui/src/
 Ema 不是最小 coding agent。角色表达、Live2D、Memory、Knowledge Base、Narrative、语音和多 Provider 是产品定位，不属于可随意删除的偶然复杂性。但当前仓库确实存在两类不必要复杂度：
 
 - 产品模块长期散在 packages，`contracts` 成为中央类型杂物箱；
-- `apps/core` 的 route、orchestrator、wiring 和大型 `AppBindings` 同时承担协议、装配和业务选择；
+- `apps/localHost` 的 route、orchestrator、wiring 和大型 `AppBindings` 同时承担协议、装配和业务选择；
 - Chat/Narrative/Agent 三 Engine 或模式重复主链；
 - AgentTask、Task、AgentRun、Job 等名字混用；
 - 一些模块为了“有公共入口”使用 Facade/Manager/Service，而非表达真实职责；
@@ -960,7 +960,7 @@ Ema 不是最小 coding agent。角色表达、Live2D、Memory、Knowledge Base�
 ### Diff 判断
 
 1. **V1 必做：统一主链，保留产品能力插件式接入。** Chat/Work、Narrative、Memory、Skill 不各自拥有模型循环；它们提供 Profile、Context Contribution 或 Tool。
-2. **V1 必做：`apps/core` 只做 Composition Root 与 BFF。** Route 解析/校验/认证/编码 SSE；wiring 构造模块公共入口；业务决策进入根 `src`，不再增加传统 `services/` 杂物目录。
+2. **V1 必做：`apps/localHost` 只做 Composition Root 与 BFF。** Route 解析/校验/认证/编码 SSE；wiring 构造模块公共入口；业务决策进入根 `src`，不再增加传统 `services/` 杂物目录。
 3. **V1 必做：产品源码迁入根 `src`，技术底座留 packages。** “被两处引用”不是 package 理由；Storage 的 Ema Schema、Tool、Permission、Memory、Skill 等最终属于产品源码。
 4. **V1 收口：公共入口按职责命名。** `LlmRouter`、`ContextAssembler`、`ToolRegistry`、`PermissionEngine`、`AgentRunStore` 已经足够；只有确实协调多个子系统且隐藏复杂性时才使用 Facade。
 5. **V1 收口：不要建立 application/domain/infrastructure 三层模板。** Ema 按业务模块垂直组织，模块内部再按需要拆 Runtime/Repo/Adapter。Route 不承载业务并不等于必须新增一个全局 Service Layer。
@@ -1101,7 +1101,7 @@ Claude 的 Task 是模型和用户都能看见的结构化工作清单：`subjec
 
 ### Diff 判断
 
-1. **V1 已完成：AgentRun 语义拆分。** 表、Repo、Store、Spawner、Tool Journal、备份、Core API 与前端面板均使用 AgentRun；根 Turn 不再复制运行记录，旧 AgentTask HTTP/UI 兼容已经删除。SSE 字段改名留给统一事件协议批次。
+1. **V1 已完成：AgentRun 语义拆分。** 表、Repo、Store、Spawner、Tool Journal、备份、LocalHost API 与前端面板均使用 AgentRun；根 Turn 不再复制运行记录，旧 AgentTask HTTP/UI 兼容已经删除。SSE 字段改名留给统一事件协议批次。
 2. **V1 已完成：`src/tasks` 实现完整结构化工作项。** Task 使用显式列/类型：稳定 `taskId`、Session 内 `displayNumber`、`sessionId`、`subject`、`description`、`activeForm`、`status`、`version` 与时间字段；依赖使用明确关系表，不用 metadata JSON。V1 不保存 `ownerAgentRunId`，因为根 Agent 可以直接执行工作，而一次性 Run 不是长期 owner。
 3. **V1 已完成：TaskCreate/Get/List/Update 替换 TodoWrite。** 四个 Tool、TaskStore、事件、Context 提醒、恢复快照和独立前端 TaskList 已接线，旧内存 TodoWrite 已删除。
 4. **V1 已完成：AgentRun 可绑定 Task，但两者生命周期独立。** 一个 Task 可以被不同 AgentRun 先后重试，一个 AgentRun 也可能执行没有 Task 的临时研究。活动绑定通过 `agent_runs.task_id` 投影并限制同一 Task 同时最多一个活动 Run；AgentRun 成功不能自动把关联 Task 标完成，必须由根循环显式提交。
@@ -1366,11 +1366,11 @@ Ema 是 Tauri Desktop + TS Sidecar + Python Bridge。Desktop Host 本来就是�
 
 ### Diff 判断
 
-1. **V1 不实现 `/bg`、Fleet daemon 或多会话 attach。** Desktop Host 是唯一进程所有者，负责 Core/Bridge 启停与 readiness；不要在 TS 业务层再起第二台 supervisor。
+1. **V1 不实现 `/bg`、Fleet daemon 或多会话 attach。** Desktop Host 是唯一进程所有者，负责 LocalHost/Bridge 启停与 readiness；不要在 TS 业务层再起第二台 supervisor。
 2. **V1 必做：会话内后台 AgentRun 使用通知而非轮询。** 启动后返回 agentRunId；完成/失败/cancel 发送结构化事件唤醒对应 Session。主循环不 sleep-poll。
 3. **V1 必做：应用重启执行恢复扫描。** running/waiting/outcome_unknown 的 AgentRun 和各领域 Job 按自己的 checkpoint/lease 判定 resume/retry/fail；不能把所有 running 一律继续，也不能无限占用。
 4. **V1 必做：Sidecar/Bridge 生命周期归 Desktop RuntimeSupervisor。** PID/nonce/protocolVersion/readiness、进程树终止和资源路径按 Windows/macOS/Linux 实现；业务 Job 不直接管理子进程树。
-5. **V1 必做：同一 Profile 单实例。** Desktop 获取 profile lock；第二次启动将窗口聚焦或明确提示。这样避免两个 Core 同时领取 Job、同时写 Profile DB 和重复恢复 AgentRun。
+5. **V1 必做：同一 Profile 单实例。** Desktop 获取 profile lock；第二次启动将窗口聚焦或明确提示。这样避免两个 LocalHost 同时领取 Job、同时写 Profile DB 和重复恢复 AgentRun。
 6. **V1 收口：AgentRun 状态与 OS 进程状态分开。** 进程活着不代表 Run 成功，进程死了也不等于业务必然失败；以 journal/checkpoint/terminal event 为事实。
 7. **V1 收口：后台 Run 不自动获得外部副作用授权。** commit/push/发消息等仍走 Permission；Ema 不照搬 Claude 后台默认自动开 draft PR 的 coding 产品策略。
 8. **V1.5 候选：Desktop 后台常驻/系统托盘。** 若用户需要关闭窗口后继续，可由 Tauri Host 明确保持应用运行并展示托盘状态；真正关应用时按策略暂停或取消，而不是偷偷遗留 detached process。

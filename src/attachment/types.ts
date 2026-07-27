@@ -1,6 +1,7 @@
 // 这里放 Attachment 模块用到的基础类型：附件记录、前端输入、解析给 LLM 的结果。
 
 import type { TurnAttachment, TurnContentPart } from '@ema-agent/turn';
+// TODO: 为何不能在 attachment 里定义?
 import type { SessionAttachmentFileStatus } from '@ema-agent/session';
 
 // ── 领域类型 ───────────────────────────────────────────────────────────────────

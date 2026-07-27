@@ -1,4 +1,4 @@
-// 启动受监管的 Core/Bridge 子进程并转发其标准输出与错误日志。
+// 启动受监管的 LocalHost/Bridge 子进程并转发其标准输出与错误日志。
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 

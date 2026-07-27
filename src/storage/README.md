@@ -19,7 +19,7 @@ EmaAgent 的 **SQLite 访问层**。`better-sqlite3` + 手写 SQL(禁 ORM)。只
 - 不做路由 / 不接 HTTP
 - **例外**:`zh-tokenizer.ts`(jieba 中文分词)放在本包,因为 KB 的 FTS5 全文索引紧耦合分词策略(索引怎么建决定怎么查)。若未来其他包也要中文分词,应提取成独立包。
 
-**核心原则**:Repo 只接收 `SqliteDb`,不关心自己是 `profile` 还是 `data` 还是 `kb` -- 由装配层(`apps/core` wiring)把每个 Repo 和正确的 DB 配对。
+**核心原则**:Repo 只接收 `SqliteDb`,不关心自己是 `profile` 还是 `data` 还是 `kb` -- 由装配层(`apps/localHost` wiring)把每个 Repo 和正确的 DB 配对。
 
 ---
 
@@ -248,7 +248,7 @@ SQLite 封装。构造时:
 2. 写 `CREATE TABLE ...` + 索引
 3. 在 `src/repos/` 新建 `xxx.ts`,实现 `Repo` 类(参数化 SQL)
 4. 在 `src/index.ts` 导出 Repo + 类型
-5. 在 `apps/core` wiring 里把 Repo 和对应 DB 配对
+5. 在 `apps/localHost` wiring 里把 Repo 和对应 DB 配对
 
 ### 加列 / 改约束
 - 加列:`ALTER TABLE ... ADD COLUMN ...`(简单)

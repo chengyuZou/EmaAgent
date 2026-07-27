@@ -13,7 +13,7 @@
  * 对应的 models.dev provider。models.dev 未收录的 provider(本地运行时、
  * 仅 embed/rerank/tts)没有条目,回退到 provider 自己的 `/models` endpoint 或手填。
  *
- * 纯逻辑:无 fs,除可注入的 fetch 外无硬编码 I/O。apps/core 负责缓存持久化
+ * 纯逻辑:无 fs,除可注入的 fetch 外无硬编码 I/O。apps/localHost 负责缓存持久化
  * (把原始 payload 写盘,启动时 re-`loadFromJson`)和启动后台 `refresh()`。
  */
 

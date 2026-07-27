@@ -6,7 +6,7 @@ from pydantic.alias_generators import to_camel
 
 class EmbedCfg(BaseModel):
     """
-    Embed provider config pushed from apps/core for LightRAG's internal use.
+    Embed provider config pushed from apps/localHost for LightRAG's internal use.
     Accepts camelCase JSON keys (apiKey, baseUrl) from the TS client.
     """
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)

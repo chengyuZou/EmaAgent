@@ -6,7 +6,7 @@
  * would contain. Embedding that passage bridges the semantic gap between
  * conversational queries and formal document language.
  *
- * The caller (e.g. apps/core) wires up a concrete implementation that calls
+ * The caller (e.g. apps/localHost) wires up a concrete implementation that calls
  * the LLM router with an appropriate prompt.
  */
 export interface KbHydeAdapter {
