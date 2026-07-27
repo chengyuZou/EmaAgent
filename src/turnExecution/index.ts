@@ -1,4 +1,5 @@
 export { TurnExecutor } from './turnExecutor.js';
+export { RootAgentExecution } from './rootAgentExecution.js';
 export { TurnContextBuilder } from './turnContext.js';
 export { TurnTools, TurnToolsBuilder } from './turnTools.js';
 export type { AskUserInteractionPort } from './awaitUserAnswer.js';
@@ -13,6 +14,12 @@ export {
 export { TurnPreparationError } from './errors.js';
 export { executionProfilePolicy } from './executionProfilePolicy.js';
 export type { TurnExecutionProfilePolicy } from './executionProfilePolicy.js';
+export type {
+  RootAgentExecutionDeps,
+  RootAgentExecutionRequest,
+  RootAgentExecutionResult,
+  RootAgentTranscript,
+} from './rootAgentExecution.js';
 export type {
   TurnExecutionDeps,
   TurnExecutionEvent,

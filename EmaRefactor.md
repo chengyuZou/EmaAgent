@@ -633,6 +633,7 @@ src/turnExecution/
 ├─ turnExecutor.ts             根身份、TurnHandle、取消、唯一终态
 ├─ turnPreparation.ts          附件、模型、Prompt、workspace 等一次性输入准备
 ├─ rootAgentExecution.ts       根 AgentLoop、非终态事件翻译与 transcript
+├─ iterationTranscript.ts      单次模型回复的有序块重建
 ├─ turnContext.ts              每次 LLM Call 的 Context Contribution 与压缩
 ├─ turnTools.ts                根 Turn Tool 能力、Permission、Subagent 与执行器
 ├─ executionProfilePolicy.ts

@@ -17,7 +17,6 @@ import type {
   AgentTurnEvent,
 } from '@ema-agent/agent';
 import type {
-  LanguageModel,
   LlmContentPart,
   ThinkingMode,
 } from '@ema-agent/llm';
@@ -26,7 +25,7 @@ import type { MemoryRecallEvent } from '@ema-agent/memory';
 import type { PromptSnapshot } from '@ema-agent/prompts';
 import type { MessageBlocks, SessionStore, Turn } from '@ema-agent/session';
 import type { HookBus, HookWarningEvent } from '@ema-agent/hooks';
-import type { EmotionEngine, EmotionStreamEvent } from '@ema-agent/emotion';
+import type { EmotionStreamEvent } from '@ema-agent/emotion';
 import type { PermissionStreamEvent } from '@ema-agent/permission';
 import type { ModelCapabilitySnapshot } from '@ema-agent/provider';
 import type { NarrativeEvent } from '@ema-agent/narrative';
@@ -43,8 +42,6 @@ import type { NarrativeEvent } from '@ema-agent/narrative';
 export interface TurnExecutionDeps {
   session: SessionStore;
   hooks: HookBus;
-  llm: LanguageModel;
-  emotion: EmotionEngine;
 }
 
 // ── Turn 启动与执行输入 ───────────────────────────────────────────────────────

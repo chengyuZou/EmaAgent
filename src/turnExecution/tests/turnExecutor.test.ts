@@ -8,6 +8,10 @@ import { HookBus } from '@ema-agent/hooks';
 import { ToolRegistry } from '@ema-agent/tools';
 import { LlmToolArgumentsParseError } from '@ema-agent/llm';
 import { TurnExecutor } from '../turnExecutor.js';
+import {
+  RootAgentExecution,
+  type RootAgentExecutionDeps,
+} from '../rootAgentExecution.js';
 import { TurnContextBuilder } from '../turnContext.js';
 import {
   TurnToolsBuilder,
@@ -108,19 +112,25 @@ function startExecution(executor: TurnExecutor) {
   });
 }
 
-type TestTurnExecutionDeps = TurnExecutionDeps & TurnToolsBuilderDeps;
+type TestTurnExecutionDeps =
+  & TurnExecutionDeps
+  & TurnToolsBuilderDeps
+  & Pick<RootAgentExecutionDeps, 'emotion'>;
 
 function createTurnExecutor(deps: TestTurnExecutionDeps): TurnExecutor {
   return new TurnExecutor({
     session: deps.session,
     hooks: deps.hooks,
+  }, new RootAgentExecution({
+    transcript: deps.session,
+    hooks: deps.hooks,
     llm: deps.llm,
     emotion: deps.emotion,
   }, new TurnContextBuilder({
-    session: deps.session,
-    narrative: deps.narrative,
-    tasks: deps.taskStore,
-  }), new TurnToolsBuilder(deps));
+      session: deps.session,
+      narrative: deps.narrative,
+      tasks: deps.taskStore,
+    }), new TurnToolsBuilder(deps)));
 }
 
 describe('TurnExecutor 生命周期', () => {

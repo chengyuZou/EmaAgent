@@ -23,6 +23,7 @@ import {
   TurnContextBuilder,
   TurnExecutor,
   TurnInputPreparer,
+  RootAgentExecution,
   TurnToolsBuilder,
   type TurnOutcome,
 } from '@ema-agent/turn-execution';
@@ -157,35 +158,41 @@ export class Orchestrator {
     });
     this.turnExecutor = new TurnExecutor(
       {
-        session:           bindings.session,
-        hooks:             bindings.hooks,
-        llm:               bindings.llm,
-        emotion:           bindings.emotion,
-      },
-      new TurnContextBuilder({
         session: bindings.session,
-        memory: bindings.memory,
-        tasks: bindings.taskStore,
-        narrative: bindings.narrative,
-        compactor: bindings.contextCompactor,
-      }),
-      new TurnToolsBuilder({
-        session: bindings.session,
-        tools: bindings.tools,
-        permission: bindings.permission,
         hooks: bindings.hooks,
-        llm: bindings.llm,
-        narrative: bindings.narrative,
-        getCommandRunner: bindings.getCommandRunner,
-        buildAsk: bindings.buildAskForTurn,
-        askUserInteraction: bindings.askUserRegistry,
-        skillRunner: bindings.skillRunner,
-        knowledgeSearch: bindings.kbSearch,
-        getSessionToolResultStore: bindings.getSessionToolResultStore,
-        agentRunStore: bindings.agentRunStore,
-        taskStore: bindings.taskStore,
-        toolExecutionJournal: bindings.toolExecutionJournal,
-      }),
+      },
+      new RootAgentExecution(
+        {
+          transcript: bindings.session,
+          hooks: bindings.hooks,
+          llm: bindings.llm,
+          emotion: bindings.emotion,
+        },
+        new TurnContextBuilder({
+          session: bindings.session,
+          memory: bindings.memory,
+          tasks: bindings.taskStore,
+          narrative: bindings.narrative,
+          compactor: bindings.contextCompactor,
+        }),
+        new TurnToolsBuilder({
+          session: bindings.session,
+          tools: bindings.tools,
+          permission: bindings.permission,
+          hooks: bindings.hooks,
+          llm: bindings.llm,
+          narrative: bindings.narrative,
+          getCommandRunner: bindings.getCommandRunner,
+          buildAsk: bindings.buildAskForTurn,
+          askUserInteraction: bindings.askUserRegistry,
+          skillRunner: bindings.skillRunner,
+          knowledgeSearch: bindings.kbSearch,
+          getSessionToolResultStore: bindings.getSessionToolResultStore,
+          agentRunStore: bindings.agentRunStore,
+          taskStore: bindings.taskStore,
+          toolExecutionJournal: bindings.toolExecutionJournal,
+        }),
+      ),
     );
   }
 

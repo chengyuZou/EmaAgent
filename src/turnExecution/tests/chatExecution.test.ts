@@ -8,6 +8,7 @@ import { HookBus } from '@ema-agent/hooks';
 import { ToolRegistry } from '@ema-agent/tools';
 import { registerBuiltinTools } from '@ema-agent/tool-builtin';
 import { TurnExecutor } from '../turnExecutor.js';
+import { RootAgentExecution } from '../rootAgentExecution.js';
 import { TurnContextBuilder } from '../turnContext.js';
 import { TurnToolsBuilder } from '../turnTools.js';
 
@@ -89,39 +90,45 @@ describe('Chat 统一执行链', () => {
       route: async () => ({ routes: { '1st_Loop': '第一周目' } }),
       queryOne: async () => '第一周目召回正文',
     };
+    const hooks = new HookBus();
+    const llm = {
+      stream: async function* (request: LlmRequest) {
+        requests.push(request);
+        yield { type: 'thinking_delta' as const, blockIndex: 0, delta: '分析' };
+        yield {
+          type: 'thinking_complete' as const,
+          blockIndex: 0,
+          signature: 'signature-1',
+        };
+        yield { type: 'text_delta' as const, blockIndex: 1, delta: '回答' };
+        yield { type: 'done' as const, stopReason: 'end_turn' as const };
+      },
+    } as never;
+    const emotion = {
+      beginTurn: () => undefined,
+      processChunk: (delta: string) => ({ cleaned: delta, events: [] }),
+      flush: () => ({ cleaned: '', events: [] }),
+    } as never;
     const executor = new TurnExecutor({
       session: session as never,
-      hooks: new HookBus(),
-      llm: {
-        stream: async function* (request: LlmRequest) {
-          requests.push(request);
-          yield { type: 'thinking_delta' as const, blockIndex: 0, delta: '分析' };
-          yield {
-            type: 'thinking_complete' as const,
-            blockIndex: 0,
-            signature: 'signature-1',
-          };
-          yield { type: 'text_delta' as const, blockIndex: 1, delta: '回答' };
-          yield { type: 'done' as const, stopReason: 'end_turn' as const };
-        },
-      } as never,
-      emotion: {
-        beginTurn: () => undefined,
-        processChunk: (delta: string) => ({ cleaned: delta, events: [] }),
-        flush: () => ({ cleaned: '', events: [] }),
-      } as never,
+      hooks,
+    }, new RootAgentExecution({
+      transcript: session as never,
+      hooks,
+      llm,
+      emotion,
     }, new TurnContextBuilder({
-      session: session as never,
-      narrative: narrative as never,
-    }), new TurnToolsBuilder({
-      session: session as never,
-      hooks: new HookBus(),
-      llm: {} as never,
-      narrative: narrative as never,
-      tools,
-      permission: {} as never,
-      knowledgeSearch: async () => ({ items: [] }) as never,
-    }));
+        session: session as never,
+        narrative: narrative as never,
+      }), new TurnToolsBuilder({
+        session: session as never,
+        hooks,
+        llm,
+        narrative: narrative as never,
+        tools,
+        permission: {} as never,
+        knowledgeSearch: async () => ({ items: [] }) as never,
+      })));
 
     const handle = executor.start({
       sessionId,
