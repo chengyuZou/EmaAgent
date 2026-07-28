@@ -63,7 +63,10 @@ export function buildServer(bindings: AppBindings, sharedSecret: string): Hono {
   app.route('/api/model-bindings', modelBindingsRoute(bindings));
   app.route('/api/storage',        storageStatsRoute(bindings));
   app.route('/api/sessions',       sessionsRoute(bindings));
-  app.route('/api/permission',     permissionRoute(bindings));
+  app.route(
+    '/api/permission',
+    permissionRoute(bindings.permission, bindings.interactionQueue),
+  );
   app.route('/api/memory',         memoryRoute(bindings));
   app.route('/api/system/events',  systemEventsRoute(bindings));
   app.route('/api/system',         systemRoute(bindings));

@@ -1,6 +1,5 @@
 // 测试 Permission 审批身份核对和永久规则 CRUD HTTP 契约。
 import { describe, expect, it, vi } from 'vitest';
-import type { AppBindings } from '../src/wiring/index.js';
 import { permissionRoute } from '../src/routes/permission.js';
 
 function createApp() {
@@ -25,7 +24,7 @@ function createApp() {
     listPending: vi.fn(() => []),
   };
   return {
-    app: permissionRoute({ permission, interactionQueue } as unknown as AppBindings),
+    app: permissionRoute(permission, interactionQueue),
     permission,
     interactionQueue,
   };
@@ -105,5 +104,44 @@ describe('Permission 路由', () => {
 
     expect(response.status).toBe(400);
     expect(permission.addRule).not.toHaveBeenCalled();
+  });
+
+  it('待处理快照只返回 Permission 条目', async () => {
+    const { app, interactionQueue } = createApp();
+    interactionQueue.listPending.mockReturnValue([
+      {
+        kind: 'askUser',
+        promptId: 'ask-1',
+        createdAt: 1,
+        request: { question: '继续吗？' },
+      },
+      {
+        kind: 'permission',
+        promptId: 'permission-1',
+        createdAt: 2,
+        prompt: {
+          toolId: 'bash',
+          toolName: 'Bash',
+          input: { command: 'pwd' },
+          riskLevel: 'high',
+        },
+      },
+    ]);
+
+    const response = await app.request('/pending');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      count: 1,
+      prompts: [{
+        promptId: 'permission-1',
+        createdAt: 2,
+        prompt: {
+          toolId: 'bash',
+          toolName: 'Bash',
+          input: { command: 'pwd' },
+          riskLevel: 'high',
+        },
+      }],
+    });
   });
 });
