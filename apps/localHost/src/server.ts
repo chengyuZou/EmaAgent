@@ -6,7 +6,6 @@ import { emaAuth } from './auth.js';
 import { healthRoute } from './routes/health.js';
 import { providersRoute } from './routes/providers.js';
 import { modelBindingsRoute } from './routes/model-bindings.js';
-import { sessionsRoute } from './routes/sessions.js';
 import { permissionRoute } from './routes/permission.js';
 import { memoryRoute } from './routes/memory.js';
 import { systemEventsRoute } from './routes/system-events.js';
@@ -27,6 +26,7 @@ import { systemRoute }           from './routes/system.js';
 import { requestBudgetMiddleware } from './http/request-budget.js';
 import type { AppBindings } from './wiring/index.js';
 import { createTurnsRouter } from './wiring/createTurnsRouter.js';
+import { createSessionsRouter } from './wiring/createSessionsRouter.js';
 
 export function buildServer(bindings: AppBindings, sharedSecret: string): Hono {
   const app = new Hono();
@@ -62,7 +62,7 @@ export function buildServer(bindings: AppBindings, sharedSecret: string): Hono {
   app.route('/api/providers',      providersRoute(bindings));
   app.route('/api/model-bindings', modelBindingsRoute(bindings));
   app.route('/api/storage',        storageStatsRoute(bindings));
-  app.route('/api/sessions',       sessionsRoute(bindings));
+  app.route('/api/sessions',       createSessionsRouter(bindings));
   app.route(
     '/api/permission',
     permissionRoute(bindings.permission, bindings.interactionQueue),

@@ -1,9 +1,8 @@
 // 测试 Session 的 Turn 索引与锚点消息窗口 HTTP 契约。
 import { describe, expect, it, vi } from 'vitest';
-import type { AppBindings } from '../src/wiring/index.js';
-import { sessionsRoute } from '../src/routes/sessions.js';
+import { sessionHistoryRoute } from '../src/routes/sessions/sessionHistory.js';
 
-function bindings(): AppBindings {
+function routeDeps() {
   return {
     session: {
       listTurnIndex: vi.fn(() => ({
@@ -49,17 +48,26 @@ function bindings(): AppBindings {
         hasOlder: true,
         hasNewer: false,
       })),
+      listMessages: vi.fn(() => []),
+      listTurns: vi.fn(() => []),
     },
     attachmentStore: {
       listByTurn: vi.fn(() => []),
     },
-  } as unknown as AppBindings;
+    fileAccess: {
+      issue: vi.fn(() => 'ema-file:v1:test-handle'),
+    },
+  };
 }
 
 describe('Session history routes', () => {
   it('返回轻量 Turn 索引页', async () => {
-    const appBindings = bindings();
-    const response = await sessionsRoute(appBindings).request(
+    const deps = routeDeps();
+    const response = await sessionHistoryRoute(
+      deps.session,
+      deps.attachmentStore,
+      deps.fileAccess,
+    ).request(
       '/session-a/turn-index?limit=20',
     );
 
@@ -68,15 +76,19 @@ describe('Session history routes', () => {
       items: [{ turnId: 'turn-2', preview: '第二轮' }],
       nextCursor: 'cursor-next',
     });
-    expect(appBindings.session.listTurnIndex).toHaveBeenCalledWith(
+    expect(deps.session.listTurnIndex).toHaveBeenCalledWith(
       'session-a',
       { limit: 20 },
     );
   });
 
   it('锚点窗口路由优先于普通 messages 路由', async () => {
-    const appBindings = bindings();
-    const response = await sessionsRoute(appBindings).request(
+    const deps = routeDeps();
+    const response = await sessionHistoryRoute(
+      deps.session,
+      deps.attachmentStore,
+      deps.fileAccess,
+    ).request(
       '/session-a/messages/window?anchorTurnId=turn-2&beforeTurns=3&afterTurns=4',
     );
 
@@ -87,7 +99,7 @@ describe('Session history routes', () => {
       hasOlder: true,
       hasNewer: false,
     });
-    expect(appBindings.session.listMessageWindow).toHaveBeenCalledWith(
+    expect(deps.session.listMessageWindow).toHaveBeenCalledWith(
       'session-a',
       {
         anchorTurnId: 'turn-2',
@@ -98,7 +110,12 @@ describe('Session history routes', () => {
   });
 
   it('拒绝超过总窗口上限的请求', async () => {
-    const response = await sessionsRoute(bindings()).request(
+    const deps = routeDeps();
+    const response = await sessionHistoryRoute(
+      deps.session,
+      deps.attachmentStore,
+      deps.fileAccess,
+    ).request(
       '/session-a/messages/window?anchorTurnId=turn-2&beforeTurns=25&afterTurns=25',
     );
 

@@ -23,6 +23,14 @@ export interface Live2DParameterRuntimeConfig {
   headInputX: string;
   headInputY: string;
   headInputZ: string;
+  /**
+   * 独立身体转动输入参数(模型能力,可选)。缺省表示身体跟随头部经物理派生,
+   * 设置页不渲染身体滑块、user-pose 不写入;仅当模型物理上支持直写
+   * (参数未被 physics3.json Output 覆写)时才由角色卡声明。
+   */
+  bodyInputX?: string;
+  bodyInputY?: string;
+  bodyInputZ?: string;
   breathParam: string;
   eyeLOpenParam: string;
   eyeROpenParam: string;
@@ -74,6 +82,9 @@ export const DEFAULT_LIVE2D_RUNTIME_CONFIG: ResolvedLive2DModelRuntimeConfig = {
     headInputX: 'ParamAngleX',
     headInputY: 'ParamAngleY',
     headInputZ: 'ParamAngleZ',
+    bodyInputX: undefined,
+    bodyInputY: undefined,
+    bodyInputZ: undefined,
     breathParam: 'ParamBreath',
     eyeLOpenParam: 'ParamEyeLOpen',
     eyeROpenParam: 'ParamEyeROpen',
@@ -142,6 +153,9 @@ export function resolveLive2DModelRuntimeConfig(
       headInputX: nonEmptyString(config?.parameters?.headInputX, defaults.parameters.headInputX),
       headInputY: nonEmptyString(config?.parameters?.headInputY, defaults.parameters.headInputY),
       headInputZ: nonEmptyString(config?.parameters?.headInputZ, defaults.parameters.headInputZ),
+      bodyInputX: optionalNonEmptyString(config?.parameters?.bodyInputX),
+      bodyInputY: optionalNonEmptyString(config?.parameters?.bodyInputY),
+      bodyInputZ: optionalNonEmptyString(config?.parameters?.bodyInputZ),
       breathParam: nonEmptyString(config?.parameters?.breathParam, defaults.parameters.breathParam),
       eyeLOpenParam: nonEmptyString(config?.parameters?.eyeLOpenParam, defaults.parameters.eyeLOpenParam),
       eyeROpenParam: nonEmptyString(config?.parameters?.eyeROpenParam, defaults.parameters.eyeROpenParam),

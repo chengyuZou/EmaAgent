@@ -9,6 +9,7 @@ import type { Live2DRuntime } from '../runtime.js';
 import { createMouseEyeTrackPlugin } from '../composables/mouse-track.js';
 import { createIdleBeatPlugin } from '../composables/idle-beat.js';
 import { createIdleEyeSaccadePlugin } from '../composables/idle-eye-saccade.js';
+import { createUserPosePlugin } from '../composables/user-pose.js';
 import { createAudioLipSyncPlugin } from '../composables/audio-lipsync.js';
 import { startRandomIdleScheduler } from '../composables/random-idle.js';
 import { createExpressionController, type CoreModelLike } from '../composables/expression-controller.js';
@@ -78,6 +79,8 @@ export interface Live2DStageProps {
   suspended?: boolean;
   /** 渲染帧率上限；0 或缺省表示不限制。 */
   maxFps?: number;
+  /** 渲染分辨率倍率(在设备像素比基础上超采样/降采样);默认 1。 */
+  renderScale?: number;
   /** 主题色动态投影;默认 true。 */
   shadowEnabled?: boolean;
   onReady?:  () => void;
@@ -93,6 +96,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
       runtimeConfig,
       suspended = false,
       maxFps = 0,
+      renderScale = 1,
       shadowEnabled = true,
       onReady,
       onError,
@@ -109,6 +113,8 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
     const callbacksRef = useRef({ onReady, onError, runtimeConfig });
     const loadCoordinatorRef = useRef<Live2DLoadCoordinator | null>(null);
     const renderCircuitOpenRef = useRef(false);
+    // PIXI 默认分辨率(设备像素比);renderScale 在此基础上倍乘。
+    const baseResolutionRef = useRef(1);
     const [error, setError] = useState<Live2DError | null>(null);
     const [rendererGeneration, setRendererGeneration] = useState(0);
     const [pageHidden, setPageHidden] = useState(
@@ -153,6 +159,14 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
       if (app) app.ticker.maxFPS = maxFps;
     }, [maxFps]);
 
+    // renderScale prop 变化时调整渲染分辨率;resizeTo 负责随后重排画布。
+    useEffect(() => {
+      const app = appRef.current;
+      if (!app) return;
+      app.renderer.resolution = baseResolutionRef.current * renderScale;
+      app.resize();
+    }, [renderScale]);
+
     useImperativeHandle(ref, () => ({
       setExpression(name) { live2dStore.getState().setExpression(name); },
       playMotion(group, index) { live2dStore.getState().playMotion(group, index); },
@@ -188,6 +202,11 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
           antialias:       true,
         });
         app.ticker.maxFPS = maxFps;
+        baseResolutionRef.current = app.renderer.resolution;
+        if (renderScale !== 1) {
+          app.renderer.resolution = baseResolutionRef.current * renderScale;
+          app.resize();
+        }
       } catch (cause) {
         load.cancel();
         const err: Live2DError = {
@@ -335,6 +354,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
           // Pre stage: mouse-track (runs before idle motions, sets eye params)
           const mousePlugin = createMouseEyeTrackPlugin(
             () => app?.view as HTMLCanvasElement ?? null,
+            () => live2dStore.getState().mouseTrackEnabled,
           );
           pipeline.register(mousePlugin, 'pre');
           cleanupTasks.push(() => mousePlugin.dispose());
@@ -342,15 +362,25 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
           // markHandled 短路原生 update(冻结姿态),mouseTrack 已先跑(眼珠仍跟踪鼠标)。
           pipeline.register(createIdleDisablePlugin(), 'pre');
           // Final stage: idle-beat → auto-blink → expression
-          // idle-beat MUST be final-stage — the model's idle.motion3.json
-          // already animates ParamBodyAngle + ParamBreath. If we set them in
-          // the pre stage, the original motionManager.update overwrites ours.
-          // Final stage runs AFTER the original update, so our values win.
+          // idle-beat 必须是 final 级:它写的是转动输入参数(Param85/86/87),
+          // 原生 motion 曲线也可能写输入参数;final 在原生 update 之后运行,
+          // 我们的值才生效。(idle.motion3.json 的 ParamBodyAngle 曲线不是原因:
+          // 身体角度是 physics 输出,每帧被 physics.evaluate 从输入参数重算覆写。)
           pipeline.register(
             createIdleBeatPlugin(
               () => live2dStore.getState().idleBeatEnabled,
               () => readRuntimeConfig().parameters,
               () => readRuntimeConfig().idleBeat,
+            ),
+            'final',
+          );
+          // user-pose 在 idle-beat 之后、lipsync 之前:滑块基准以
+          // remember-and-subtract 加算到转动输入参数,与 idle sway、speechNod
+          // 组成 set-then-add 链,三者各记各的贡献,互不覆写。
+          pipeline.register(
+            createUserPosePlugin(
+              () => live2dStore.getState().pose,
+              () => readRuntimeConfig().parameters,
             ),
             'final',
           );
@@ -369,7 +399,11 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
           // Runs AFTER expression so mouth shape overlays on top of any
           // active expression (e.g. smile + talking at the same time).
           pipeline.register(
-            createAudioLipSyncPlugin(speechStore, () => readRuntimeConfig().parameters),
+            createAudioLipSyncPlugin(
+              speechStore,
+              () => readRuntimeConfig().parameters,
+              () => live2dStore.getState().lipSyncEnabled,
+            ),
             'final',
           );
 

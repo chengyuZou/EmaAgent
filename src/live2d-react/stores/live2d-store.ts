@@ -1,5 +1,6 @@
 // 保存单个 Live2D 舞台的动作、表情意图与运行开关。
 import { create, type StoreApi, type UseBoundStore } from 'zustand';
+import { NEUTRAL_POSE, type Live2DPoseSnapshot } from '../composables/user-pose.js';
 
 // ── Live2D runtime store ────────────────────────────────────────────────────
 //
@@ -70,6 +71,12 @@ export interface Live2DStoreState {
   autoBlinkEnabled:      boolean;
   forceAutoBlinkEnabled: boolean;
   expressionEnabled:     boolean;
+  /** 鼠标视线追踪开关;关闭时眼珠回中(或由 saccade 接管)。 */
+  mouseTrackEnabled:     boolean;
+  /** 唇同步开关;关闭时口型释放到 0 并撤回 speechNod 贡献。 */
+  lipSyncEnabled:        boolean;
+  /** 设置页姿态滑块基准;由 user-pose 插件逐帧幂等加算到转动输入参数。 */
+  pose:                  Live2DPoseSnapshot;
   availableExpressions:  string[];
   availableMotions:      Record<string, number>;
   ready:                 boolean;
@@ -102,6 +109,9 @@ export interface Live2DStoreActions {
   setAutoBlinkEnabled(value: boolean): void;
   setForceAutoBlinkEnabled(value: boolean): void;
   setExpressionEnabled(value: boolean): void;
+  setMouseTrackEnabled(value: boolean): void;
+  setLipSyncEnabled(value: boolean): void;
+  setPose(patch: Partial<Live2DPoseSnapshot>): void;
 
   /** Internal — written by Live2DStage after model load. */
   _setReady(ready: boolean): void;
@@ -125,6 +135,9 @@ const initialState: Live2DStoreState = {
   autoBlinkEnabled:      true,
   forceAutoBlinkEnabled: false,
   expressionEnabled:     true,
+  mouseTrackEnabled:     true,
+  lipSyncEnabled:        true,
+  pose:                  { ...NEUTRAL_POSE },
   availableExpressions:  [],
   availableMotions:      {},
   ready:                 false,
@@ -304,6 +317,11 @@ export function createLive2DStore(): Live2DStoreApi {
     setAutoBlinkEnabled(value)      { set({ autoBlinkEnabled:      value }); },
     setForceAutoBlinkEnabled(value) { set({ forceAutoBlinkEnabled: value }); },
     setExpressionEnabled(value)     { set({ expressionEnabled:     value }); },
+    setMouseTrackEnabled(value)     { set({ mouseTrackEnabled:     value }); },
+    setLipSyncEnabled(value)        { set({ lipSyncEnabled:        value }); },
+    setPose(patch) {
+      set((s) => ({ pose: { ...s.pose, ...patch } }));
+    },
 
     _setReady(ready)                { set({ ready }); },
     _setExpressionsAvailable(names) { set({ availableExpressions: names }); },

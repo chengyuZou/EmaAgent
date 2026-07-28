@@ -1,9 +1,8 @@
 // 测试 Session 附件接口的共享 DTO、磁盘状态透传与不存在会话语义。
 import { describe, expect, it, vi } from 'vitest';
-import type { AppBindings } from '../src/wiring/index.js';
-import { sessionsRoute } from '../src/routes/sessions.js';
+import { sessionAttachmentsRoute } from '../src/routes/sessions/sessionAttachments.js';
 
-function bindings(sessionExists = true): AppBindings {
+function routeDeps(sessionExists = true) {
   return {
     session: {
       getSession: vi.fn(() => {
@@ -28,12 +27,17 @@ function bindings(sessionExists = true): AppBindings {
     fileAccess: {
       issue: vi.fn(() => 'ema-file:v1:test-handle'),
     },
-  } as unknown as AppBindings;
+  };
 }
 
 describe('Session attachments route', () => {
   it('返回 camelCase DTO 和当前文件状态', async () => {
-    const app = sessionsRoute(bindings());
+    const deps = routeDeps();
+    const app = sessionAttachmentsRoute(
+      deps.session,
+      deps.attachmentStore,
+      deps.fileAccess,
+    );
     const response = await app.request('/session-a/attachments');
 
     expect(response.status).toBe(200);
@@ -54,7 +58,12 @@ describe('Session attachments route', () => {
   });
 
   it('不存在的 Session 返回 404，而不是伪装成空列表', async () => {
-    const app = sessionsRoute(bindings(false));
+    const deps = routeDeps(false);
+    const app = sessionAttachmentsRoute(
+      deps.session,
+      deps.attachmentStore,
+      deps.fileAccess,
+    );
     const response = await app.request('/missing/attachments');
 
     expect(response.status).toBe(404);

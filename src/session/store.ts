@@ -7,13 +7,13 @@ import type { SessionOwnershipFacade } from './types.js';
 import { parseMessageBlocksJson } from './message.js';
 import type { MessageBlocks } from './message.js';
 import type { Database } from '@ema-agent/storage';
-import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/turn';
 import { RunRegistry } from './run-registry.js';
 import type {
   Session,
   Turn,
   Message,
   CreateSessionInput,
+  PatchSessionInput,
   StartTurnInput,
   CompleteTurnInput,
   AppendMessageInput,
@@ -43,7 +43,7 @@ function toSession(row: SessionRow): Session {
     pinnedAt:      row.pinned_at,
     groupLabel:    row.group_label,
     parentSessionId:  row.parent_session_id  as SessionId  | null,
-    runningTurnCount: 0,    // populated by caller
+    runningTurnCount: 0,
     executionProfile: row.execution_profile,
     narrativePolicy: row.narrative_policy,
     preferredProviderConfigId: row.preferred_provider_config_id ?? null,
@@ -277,18 +277,7 @@ export class SessionStore implements SessionOwnershipFacade {
    */
   patchSession(
     id: SessionId,
-    patch: {
-      title?:          string;
-      pinned?:         boolean;
-      groupLabel?:     string | null;
-      workspaceRoot?:  string | null;
-      executionProfile?: ExecutionProfile;
-      narrativePolicy?: NarrativePolicy;
-      preferredModel?: {
-        providerConfigId: string;
-        modelId: string;
-      } | null;
-    },
+    patch: PatchSessionInput,
   ): void {
     const cleaned: Parameters<SessionsRepo['patch']>[1] = {};
 

@@ -8,7 +8,10 @@
 // When silent:    smoothly releases mouth toward 0 over ~200ms
 //
 // Also applies a subtle additive head nod on Param86 from the smoothed energy,
-// so the character "bounces" slightly with speech emphasis.
+// so the character "bounces" slightly with speech emphasis. The nod uses
+// remember-and-subtract composition (see user-pose.ts): naive `current + nod`
+// accumulates every frame whenever idle-beat stops re-setting Param86
+// (idleBeat disabled), pinning the head at the clamp limit.
 
 import type { MotionPlugin } from './motion-manager.js';
 import type { SpeechAnimationStoreApi } from '../stores/speech-store.js';
@@ -31,16 +34,20 @@ const RMS_GAIN = 13;
 export function createAudioLipSyncPlugin(
   speechStore: SpeechAnimationStoreApi,
   readParameters: () => Live2DParameterRuntimeConfig,
+  readEnabled: () => boolean = () => true,
 ): MotionPlugin {
   let currentMouth = 0;
+  // 本插件对 speechNodParam 的当前贡献;帧间先撤后加,关闭或静默时归零。
+  let addedNod = 0;
 
   return (ctx) => {
     const { speaking, rms, energy } = speechStore.getState();
     const params = readParameters();
+    const enabled = readEnabled();
     const attack = frameRateIndependentFactor(ATTACK_AT_60_FPS, ctx.timing.deltaMs);
     const release = frameRateIndependentFactor(RELEASE_AT_60_FPS, ctx.timing.deltaMs);
 
-    if (speaking && rms > 0.01) {
+    if (enabled && speaking && rms > 0.01) {
       const openness = Math.min(1, rms * RMS_GAIN);
       currentMouth += (openness * params.mouthOpenMax - currentMouth) * attack;
     } else {
@@ -49,11 +56,13 @@ export function createAudioLipSyncPlugin(
 
     ctx.model.setParameterValueById(params.mouthOpenParam, currentMouth);
 
-    // Subtle speech-emphasis head nod — additive on top of idle-beat
-    if (params.speechNodParam && energy > 0.02) {
-      const nod = energy * params.speechNodAmplitude;
+    // Subtle speech-emphasis head nod — remember-and-subtract, composes with
+    // idle-beat (SET) and user-pose (add) on the same input parameter.
+    if (params.speechNodParam) {
+      const nod = enabled && energy > 0.02 ? energy * params.speechNodAmplitude : 0;
       const current = ctx.model.getParameterValueById(params.speechNodParam);
-      ctx.model.setParameterValueById(params.speechNodParam, current + nod);
+      ctx.model.setParameterValueById(params.speechNodParam, current - addedNod + nod);
+      addedNod = nod;
     }
   };
 }

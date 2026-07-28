@@ -86,6 +86,20 @@ export interface CreateSessionInput {
   parentSessionId?: string;
 }
 
+/** 用户可在 Session 存续期间修改的偏好；undefined 表示保持原值。 */
+export interface PatchSessionInput {
+  title?: string;
+  pinned?: boolean;
+  groupLabel?: string | null;
+  workspaceRoot?: string | null;
+  executionProfile?: ExecutionProfile;
+  narrativePolicy?: NarrativePolicy;
+  preferredModel?: {
+    providerConfigId: string;
+    modelId: string;
+  } | null;
+}
+
 export interface StartTurnInput {
   sessionId: SessionId;
   triggerType: TurnTriggerType;
