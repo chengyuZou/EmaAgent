@@ -7,6 +7,8 @@ import {
   TurnInputPreparer,
   TurnToolsBuilder,
 } from '@ema-agent/turn-execution';
+import { agentSetting } from '@ema-agent/agent';
+import { contextCompactionSetting } from '@ema-agent/context';
 import type { AppBindings } from './bindings.js';
 import { scratchpadTurnDir } from '../storage-locations/index.js';
 
@@ -84,6 +86,10 @@ export function createTurnExecution(bindings: AppBindings): {
         return cached.text;
       },
     },
+    settingsForTurn: () => ({
+      agent: bindings.settings.get(agentSetting),
+      contextCompaction: bindings.settings.get(contextCompactionSetting),
+    }),
   });
 
   const executor = new TurnExecutor(

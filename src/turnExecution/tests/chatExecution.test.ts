@@ -1,6 +1,8 @@
 // 测试 Chat 通过统一 AgentLoop 执行时的只读工具边界、Narrative 与 reasoning 往返。
 
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_AGENT_SETTINGS } from '@ema-agent/agent';
+import { DEFAULT_CONTEXT_COMPACTION_SETTINGS } from '@ema-agent/context';
 import type { MessageId, SessionId, TurnId } from '@ema-agent/ids';
 import type { LlmRequest } from '@ema-agent/llm';
 import type { Message, Turn } from '@ema-agent/session';
@@ -157,6 +159,10 @@ describe('Chat 统一执行链', () => {
           contextWindow: 200_000,
           source: 'manual' as const,
           },
+        },
+        settings: {
+          agent: DEFAULT_AGENT_SETTINGS,
+          contextCompaction: DEFAULT_CONTEXT_COMPACTION_SETTINGS,
         },
         workspaceRoot: process.cwd(),
         requestDegradations: [],

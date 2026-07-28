@@ -2,6 +2,7 @@
 
 import {
   AgentBudgetExceededError,
+  DEFAULT_TURN_BUDGET_LIMITS,
   runAgentLoop,
   TurnBudget,
 } from '@ema-agent/agent';
@@ -98,7 +99,12 @@ export class RootAgentExecution {
     const { providerId, model } = input.model;
     const sessionId = turn.sessionId;
     const turnId = turn.id;
-    const budget = new TurnBudget();
+    const budget = new TurnBudget({
+      ...DEFAULT_TURN_BUDGET_LIMITS,
+      maxToolCalls: input.settings.agent.maxToolCalls,
+      maxSubagents: input.settings.agent.maxSubagents,
+      maxConcurrentSubagents: input.settings.agent.maxConcurrentSubagents,
+    });
     const iteration = new IterationTranscript();
     const pendingHookEvents: TurnExecutionEvent[] = [];
     const emitHookEvent = (event: TurnExecutionEvent): void => {

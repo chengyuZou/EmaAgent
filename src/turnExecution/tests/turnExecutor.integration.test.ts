@@ -16,6 +16,8 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import path from 'node:path';
 
 import { LanguageModelRuntime } from '@ema-agent/llm';
+import { DEFAULT_AGENT_SETTINGS } from '@ema-agent/agent';
+import { DEFAULT_CONTEXT_COMPACTION_SETTINGS } from '@ema-agent/context';
 import { HookBus } from '@ema-agent/hooks';
 import { EmotionEngine } from '@ema-agent/emotion';
 import { PermissionEngine, InMemoryPermissionRuleStore } from '@ema-agent/permission';
@@ -258,6 +260,10 @@ function makeInput(
         contextWindow: 200_000,
         source: 'unknown',
       },
+    },
+    settings: {
+      agent: DEFAULT_AGENT_SETTINGS,
+      contextCompaction: DEFAULT_CONTEXT_COMPACTION_SETTINGS,
     },
     requestDegradations: [],
     ...overrides,

@@ -29,6 +29,7 @@ export class ContextCompactor {
   }
 
   async compact(args: ContextCompactionArgs): Promise<ContextCompactionResult> {
+    const settings = args.settings ?? this.settings;
     const startedAt = Date.now();
     const rawPrefix = sanitizeCompactionMessages([...(args.prefixMessages ?? [])]);
     const rawHistory = sanitizeCompactionMessages(args.messages);
@@ -58,7 +59,7 @@ export class ContextCompactor {
     const beforeTokens = estimate(history);
     const messages = assemble(history);
 
-    if (!this.settings.enabled) {
+    if (!settings.enabled) {
       return unchanged('disabled', messages, beforeTokens);
     }
     if (this.deps.isEnabledForSession?.(args.sessionId) === false) {
@@ -66,12 +67,12 @@ export class ContextCompactor {
     }
 
     const reservedOutput = Math.min(
-      args.modelMaxOutputTokens ?? this.settings.defaultReservedOutputTokens,
-      this.settings.maximumReservedOutputTokens,
+      args.modelMaxOutputTokens ?? settings.defaultReservedOutputTokens,
+      settings.maximumReservedOutputTokens,
     );
     const tokenLimit = Math.max(
       1,
-      args.modelContextWindow - reservedOutput - this.settings.bufferTokens,
+      args.modelContextWindow - reservedOutput - settings.bufferTokens,
     );
 
     // 活跃对话未接近阈值时保持历史字节稳定，避免无意义地破坏 KV Cache。
@@ -82,7 +83,7 @@ export class ContextCompactor {
 
     // 熔断:该 Session 连续压缩失败达上限,不再自动调压缩模型,避免反复浪费 LLM 调用。
     // 成功一次即清零(见 compact 末尾 consecutiveFailures.delete)。
-    if (this.failureCount(args.sessionId) >= this.settings.maximumConsecutiveFailures) {
+    if (this.failureCount(args.sessionId) >= settings.maximumConsecutiveFailures) {
       return skipped(
         'circuit_open',
         '连续压缩失败次数已达上限，本 Session 不再自动调用压缩模型',
@@ -93,7 +94,7 @@ export class ContextCompactor {
 
     // 第 1 级:Micro 压缩。只清理旧 Tool Result(保留最近 N 条),不调 LLM。
     // 够小就返回,省一次 LLM 调用。
-    const micro = microCompact(history, { keepRecent: this.settings.keepRecentToolResults });
+    const micro = microCompact(history, { keepRecent: settings.keepRecentToolResults });
     let working = micro.messages;
     let estimated = estimate(working);
     if (!args.force && estimated <= tokenLimit) {

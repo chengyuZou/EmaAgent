@@ -27,6 +27,7 @@ export type {
   TurnHandle,
   TurnInput,
   TurnModelSnapshot,
+  TurnSettingsSnapshot,
   TurnOutcome,
   TurnPreparationContext,
   TurnStartCommand,

@@ -28,4 +28,8 @@ export class SettingsCatalog {
       .map(describeSetting)
       .sort((left, right) => left.key.localeCompare(right.key));
   }
+
+  find(key: string): SettingDefinition<unknown> | undefined {
+    return this.definitions.get(key);
+  }
 }

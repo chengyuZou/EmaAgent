@@ -15,7 +15,7 @@ function createApp(stored?: unknown) {
   });
   const app = settingsRoute({
     settings,
-    catalog: { list: () => [] },
+    catalog: { list: () => [], find: () => undefined },
     setDefaultPermissionTimeout: () => {},
   });
   return { app, set };

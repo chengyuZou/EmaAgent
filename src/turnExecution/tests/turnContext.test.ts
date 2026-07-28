@@ -1,8 +1,9 @@
 // 测试根 Turn 的历史投影、临时业务贡献、压缩调用和领域事件转发。
 
 import { describe, expect, it, vi } from 'vitest';
+import { DEFAULT_AGENT_SETTINGS } from '@ema-agent/agent';
+import { DEFAULT_CONTEXT_COMPACTION_SETTINGS, type ContextCompactor } from '@ema-agent/context';
 import type { SessionId, TaskId, TurnId } from '@ema-agent/ids';
-import type { ContextCompactor } from '@ema-agent/context';
 import type { MemoryRecallPort } from '@ema-agent/memory';
 import type { Turn } from '@ema-agent/session';
 import type { Task, TaskStorePort } from '@ema-agent/tasks';
@@ -70,6 +71,10 @@ const input: TurnInput = {
       maxOutput: 4_096,
       source: 'manual',
     },
+  },
+  settings: {
+    agent: DEFAULT_AGENT_SETTINGS,
+    contextCompaction: DEFAULT_CONTEXT_COMPACTION_SETTINGS,
   },
   workspaceRoot: 'D:\\workspace',
   requestDegradations: [],

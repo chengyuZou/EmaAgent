@@ -41,6 +41,7 @@ import type {
   TurnInput,
   TurnModelSnapshot,
   TurnPreparationContext,
+  TurnSettingsSnapshot,
 } from './types.js';
 
 const DEFAULT_MODEL_CONTEXT_WINDOW = 200_000;
@@ -75,6 +76,7 @@ export interface TurnInputPreparerDeps {
     turnId: TurnId,
   ) => string;
   readonly mediaCompatibility: MediaCompatibilityServices;
+  readonly settingsForTurn: () => TurnSettingsSnapshot;
 }
 
 /** 输入准备只读取或持久化本轮输入，不创建、完成或失败 Turn。 */
@@ -91,6 +93,7 @@ export class TurnInputPreparer {
     const workspaceRoot = session.workspaceRoot ?? '';
     const extensionContributions =
       this.deps.extensionPromptContributions?.(request.executionProfile) ?? [];
+    const settings = freezeTurnSettings(this.deps.settingsForTurn());
 
     return Object.freeze({
       userInput: freezeUserInput(prepared.userInput),
@@ -102,6 +105,7 @@ export class TurnInputPreparer {
         extensionContributions,
       }),
       model,
+      settings,
       workspaceRoot,
       scratchpadDir: request.executionProfile === 'work'
         ? this.deps.scratchpadDirForTurn?.(
@@ -284,6 +288,15 @@ function freezeUserInput(
 ): string | readonly LlmContentPart[] {
   if (typeof input === 'string') return input;
   return Object.freeze(input.map((part) => Object.freeze({ ...part })));
+}
+
+function freezeTurnSettings(
+  settings: TurnSettingsSnapshot,
+): TurnSettingsSnapshot {
+  return Object.freeze({
+    agent: Object.freeze({ ...settings.agent }),
+    contextCompaction: Object.freeze({ ...settings.contextCompaction }),
+  });
 }
 
 function mediaLabel(type: 'image_data' | 'audio_data' | 'file_data'): string {

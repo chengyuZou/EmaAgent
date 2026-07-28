@@ -58,6 +58,8 @@ export interface ContextCompactionArgs {
   model: string;
   signal?: AbortSignal;
   emit?: (event: ContextRuntimeEvent) => void;
+  /** 根 Turn 启动时冻结的设置；不提供时使用 Compactor 构造默认值。 */
+  settings?: Readonly<ContextCompactionSettings>;
 }
 
 interface ContextCompactionResultBase {

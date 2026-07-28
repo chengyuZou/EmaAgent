@@ -274,7 +274,10 @@ export class TurnToolsBuilder {
       askUser: this.buildAskUser(turn, signal),
     };
 
-    const profile = executionProfilePolicy(turn.executionProfile);
+    const profile = executionProfilePolicy(
+      turn.executionProfile,
+      input.settings.agent,
+    );
     const assembledTools = assembleToolPool(
       this.deps.tools,
       capabilityContext,

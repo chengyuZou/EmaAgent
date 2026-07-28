@@ -13,6 +13,7 @@ import type {
 } from '@ema-agent/turn';
 import type { ToolExecutionEvent } from '@ema-agent/tools';
 import type {
+  AgentSettings,
   AgentRunEvent,
   AgentTurnEvent,
 } from '@ema-agent/agent';
@@ -20,7 +21,10 @@ import type {
   LlmContentPart,
   ThinkingMode,
 } from '@ema-agent/llm';
-import type { ContextEvent } from '@ema-agent/context';
+import type {
+  ContextCompactionSettings,
+  ContextEvent,
+} from '@ema-agent/context';
 import type { MemoryRecallEvent } from '@ema-agent/memory';
 import type { PromptSnapshot } from '@ema-agent/prompts';
 import type { MessageBlocks, SessionStore, Turn } from '@ema-agent/session';
@@ -59,6 +63,12 @@ export interface TurnModelSnapshot {
   readonly capabilities: ModelCapabilitySnapshot;
 }
 
+/** 根 Turn 启动时冻结的用户设置，运行中的 Agent 循环不得重新读取。 */
+export interface TurnSettingsSnapshot {
+  readonly agent: Readonly<AgentSettings>;
+  readonly contextCompaction: Readonly<ContextCompactionSettings>;
+}
+
 /** Turn 创建后冻结的纯值输入，不携带回调、存储对象或运行时服务。 */
 export interface TurnInput {
   /**
@@ -72,6 +82,8 @@ export interface TurnInput {
   readonly prompt:                PromptSnapshot;
   /** 已解析且冻结的模型身份、能力与窗口预算。 */
   readonly model:                 TurnModelSnapshot;
+  /** 本 Turn 全部 Agent 迭代共享的设置快照。 */
+  readonly settings:              TurnSettingsSnapshot;
   /** 工作区根目录；空字符串表示不提供工作区。 */
   readonly workspaceRoot: string;
   /** 进程宿主为当前 Turn 生成的临时目录；Agent 不负责拼接数据目录。 */

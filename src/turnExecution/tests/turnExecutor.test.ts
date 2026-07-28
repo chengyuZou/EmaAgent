@@ -1,6 +1,8 @@
 // 测试 TurnExecutor 保存消息、调用 Hook 和处理 Turn 成功或失败的行为。
 
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_AGENT_SETTINGS } from '@ema-agent/agent';
+import { DEFAULT_CONTEXT_COMPACTION_SETTINGS } from '@ema-agent/context';
 import type { MessageId, SessionId, TurnId } from '@ema-agent/ids';
 import type { TurnExecutionEvent } from '../types.js';
 import type { Message, Turn } from '@ema-agent/session';
@@ -106,6 +108,10 @@ function startExecution(executor: TurnExecutor) {
       persistedUserInput: 'hello',
       prompt,
       model,
+      settings: {
+        agent: DEFAULT_AGENT_SETTINGS,
+        contextCompaction: DEFAULT_CONTEXT_COMPACTION_SETTINGS,
+      },
       workspaceRoot: '',
       requestDegradations: [],
     }),

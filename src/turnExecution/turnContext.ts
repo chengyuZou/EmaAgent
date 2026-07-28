@@ -295,6 +295,7 @@ export class TurnContextBuilder {
           model: input.model.model,
           signal,
           emit: request.emit,
+          settings: input.settings.contextCompaction,
         });
         return result.messages;
       },

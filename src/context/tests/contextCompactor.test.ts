@@ -103,6 +103,35 @@ describe('ContextCompactor', () => {
     expect(persistSummary).not.toHaveBeenCalled();
   });
 
+  it('优先使用根 Turn 传入的设置快照，不修改共享 Compactor 默认值', async () => {
+    const complete = vi.fn();
+    const persistSummary = vi.fn();
+    const compactor = new ContextCompactor(
+      { llm: { complete } as never, persistSummary },
+      { enabled: true },
+    );
+
+    const disabled = await compactor.compact({
+      ...args(oversizedHistory()),
+      settings: {
+        enabled: false,
+        bufferTokens: 2_000,
+        defaultReservedOutputTokens: 1_000,
+        maximumReservedOutputTokens: 2_000,
+        keepRecentToolResults: 6,
+        maximumConsecutiveFailures: 3,
+      },
+    });
+    const nextTurn = await compactor.compact({
+      ...args([{ role: 'user', content: 'short' }]),
+      modelContextWindow: 200_000,
+    });
+
+    expect(disabled).toMatchObject({ status: 'not_needed', reason: 'disabled' });
+    expect(nextTurn).toMatchObject({ status: 'not_needed', reason: 'below_threshold' });
+    expect(complete).not.toHaveBeenCalled();
+  });
+
   it('只有满足硬预算的摘要才持久化，并发送 Context 事件', async () => {
     const events: ContextRuntimeEvent[] = [];
     const persistSummary = vi.fn();

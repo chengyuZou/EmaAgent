@@ -1,6 +1,13 @@
+// 提供跨 Turn 系统事件的 SSE 订阅与订阅诊断的 HTTP 边界。
 import { Hono } from 'hono';
 import { encodeEvent, encodePing } from '../sse/writer.js';
-import type { AppBindings } from '../wiring/index.js';
+import type { SystemEventBus } from '../sse/system-bus.js';
+
+/** 系统事件 SSE 只需要订阅和诊断计数，不接触事件生产侧。 */
+type SystemEventSubscription = Pick<
+  SystemEventBus,
+  'subscribe' | 'subscriberCount'
+>;
 
 // ── /api/system/events ───────────────────────────────────────────────────────
 
@@ -16,7 +23,7 @@ import type { AppBindings } from '../wiring/index.js';
  * No reconnect replay buffer — system events are advisory. If you miss them,
  * they're gone. Frontend can fetch /api/memory/stats etc. for snapshots.
  */
-export function systemEventsRoute(bindings: AppBindings): Hono {
+export function systemEventsRoute(systemBus: SystemEventSubscription): Hono {
   const app = new Hono();
 
   app.get('/', (c) => {
@@ -29,7 +36,7 @@ export function systemEventsRoute(bindings: AppBindings): Hono {
           const encoder = new TextEncoder();
           let closed = false;
 
-          unsubscribe = bindings.systemBus.subscribe((ev) => {
+          unsubscribe = systemBus.subscribe((ev) => {
             if (closed) return;
             try { controller.enqueue(encoder.encode(encodeEvent(ev))); }
             catch { /* client gone — cancel() will clean up */ }
@@ -60,7 +67,7 @@ export function systemEventsRoute(bindings: AppBindings): Hono {
   });
 
   app.get('/diagnostics', (c) => {
-    return c.json({ subscribers: bindings.systemBus.subscriberCount() });
+    return c.json({ subscribers: systemBus.subscriberCount() });
   });
 
   return app;

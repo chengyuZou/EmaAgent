@@ -1,6 +1,7 @@
 // 测试事件通知与权限等待设置的默认协议、输入边界和运行时即时更新。
 import { describe, expect, it, vi } from 'vitest';
-import { SettingsStore } from '@ema-agent/settings';
+import { agentSetting } from '@ema-agent/agent';
+import { SettingsCatalog, SettingsStore } from '@ema-agent/settings';
 import { settingsRoute } from '../src/routes/settings.js';
 
 function createApp(stored: Record<string, unknown> = {}) {
@@ -17,9 +18,10 @@ function createApp(stored: Record<string, unknown> = {}) {
     setMany: () => {},
     delete: () => {},
   });
+  const catalog = new SettingsCatalog([agentSetting]);
   const app = settingsRoute({
     settings,
-    catalog: { list: () => [] },
+    catalog,
     setDefaultPermissionTimeout: setDefaultTimeout,
   });
   return { app, set, setDefaultTimeout };
@@ -95,5 +97,40 @@ describe('运行时设置路由', () => {
 
     expect(response.status).toBe(400);
     expect(setDefaultTimeout).not.toHaveBeenCalled();
+  });
+
+  it('通用入口按业务定义读取默认值并返回生效时机', async () => {
+    const { app } = createApp();
+    const response = await app.request('/values/agent.limits');
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      key: 'agent.limits',
+      apply: 'nextTurn',
+      value: {
+        chatMaxIterations: 8,
+        workMaxIterations: 30,
+      },
+    });
+  });
+
+  it('通用入口先按业务定义校验，非法值不会写入 SQLite', async () => {
+    const { app, set } = createApp();
+    const response = await app.request('/values/agent.limits', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        value: {
+          chatMaxIterations: 0,
+          workMaxIterations: 30,
+          maxToolCalls: 256,
+          maxSubagents: 16,
+          maxConcurrentSubagents: 4,
+        },
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(set).not.toHaveBeenCalled();
   });
 });

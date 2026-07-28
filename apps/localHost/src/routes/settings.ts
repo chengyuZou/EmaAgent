@@ -11,6 +11,7 @@ import {
   permissionAskTimeoutSetting,
 } from '@ema-agent/permission';
 import {
+  InvalidSettingValueError,
   type SettingsCatalog,
   type SettingsStore,
 } from '@ema-agent/settings';
@@ -57,7 +58,7 @@ const kbModelsBodySchema = z.object({
 
 export interface SettingsRouteDependencies {
   settings: Pick<SettingsStore, 'get' | 'set'>;
-  catalog: Pick<SettingsCatalog, 'list'>;
+  catalog: Pick<SettingsCatalog, 'find' | 'list'>;
   /** 只影响之后进入等待队列的 Permission/AskUser。 */
   setDefaultPermissionTimeout(timeoutMs: number): void;
 }
@@ -67,6 +68,53 @@ export function settingsRoute(dependencies: SettingsRouteDependencies): Hono {
   const settings = dependencies.settings;
 
   app.get('/catalog', (c) => c.json(dependencies.catalog.list()));
+
+  app.get('/values/:key', (c) => {
+    const definition = dependencies.catalog.find(c.req.param('key'));
+    if (!definition) {
+      return c.json({ error: 'setting_not_found' }, 404);
+    }
+    return c.json({
+      key: definition.key,
+      apply: definition.apply,
+      value: settings.get(definition),
+    });
+  });
+
+  app.put('/values/:key', async (c) => {
+    const definition = dependencies.catalog.find(c.req.param('key'));
+    if (!definition) {
+      return c.json({ error: 'setting_not_found' }, 404);
+    }
+
+    const body = await readJson(c.req);
+    if (!isRecord(body) || !Object.hasOwn(body, 'value')) {
+      return c.json({ error: 'invalid_request' }, 400);
+    }
+
+    try {
+      const value = settings.set(definition, body.value);
+      if (
+        definition.key === permissionAskTimeoutSetting.key
+        && typeof value === 'number'
+      ) {
+        dependencies.setDefaultPermissionTimeout(value);
+      }
+      return c.json({
+        key: definition.key,
+        apply: definition.apply,
+        value,
+      });
+    } catch (error) {
+      if (error instanceof InvalidSettingValueError) {
+        return c.json({
+          error: 'invalid_setting_value',
+          settingKey: error.settingKey,
+        }, 400);
+      }
+      throw error;
+    }
+  });
 
   app.get('/event-display', (c) => {
     const overrides = settings.get(eventDisplaySetting);
@@ -139,4 +187,8 @@ function invalidRequest(
     error: 'invalid_request',
     details: error.flatten(),
   }, 400);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }

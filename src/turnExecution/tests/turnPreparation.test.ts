@@ -1,6 +1,8 @@
 // 测试 TurnInputPreparer 只解析一次模型能力，并产出不含行为回调的冻结输入。
 
 import { describe, expect, it, vi } from 'vitest';
+import { DEFAULT_AGENT_SETTINGS } from '@ema-agent/agent';
+import { DEFAULT_CONTEXT_COMPACTION_SETTINGS } from '@ema-agent/context';
 import { asSessionId, asTurnId } from '@ema-agent/ids';
 import { TurnInputPreparer } from '../turnPreparation.js';
 
@@ -20,6 +22,14 @@ describe('TurnInputPreparer', () => {
       maxOutput: 4_096,
       source: 'manual' as const,
     }));
+    const turnSettings = {
+      agent: { ...DEFAULT_AGENT_SETTINGS, workMaxIterations: 41 },
+      contextCompaction: {
+        ...DEFAULT_CONTEXT_COMPACTION_SETTINGS,
+        bufferTokens: 14_000,
+      },
+    };
+    const settingsForTurn = vi.fn(() => turnSettings);
     const preparer = new TurnInputPreparer({
       session: {
         getSession: () => ({ workspaceRoot: 'D:\\workspace' }) as never,
@@ -52,6 +62,7 @@ describe('TurnInputPreparer', () => {
         describeImage: async () => '',
       },
       scratchpadDirForTurn: () => 'D:\\scratchpad\\turn-1',
+      settingsForTurn,
     });
 
     const input = await preparer.prepare({
@@ -70,6 +81,7 @@ describe('TurnInputPreparer', () => {
     });
 
     expect(resolve).toHaveBeenCalledTimes(1);
+    expect(settingsForTurn).toHaveBeenCalledTimes(1);
     expect(input.model).toMatchObject({
       providerId: 'provider-1',
       model: 'model-1',
@@ -84,6 +96,10 @@ describe('TurnInputPreparer', () => {
     expect(Object.isFrozen(input)).toBe(true);
     expect(Object.isFrozen(input.model)).toBe(true);
     expect(Object.isFrozen(input.model.capabilities.input)).toBe(true);
+    expect(Object.isFrozen(input.settings.agent)).toBe(true);
+    expect(Object.isFrozen(input.settings.contextCompaction)).toBe(true);
+    turnSettings.agent.workMaxIterations = 42;
+    expect(input.settings.agent.workMaxIterations).toBe(41);
     expect(Object.keys(input)).not.toContain('compactContext');
     expect(Object.keys(input)).not.toContain('prepareContextContributions');
   });
