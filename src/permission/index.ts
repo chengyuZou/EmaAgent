@@ -14,6 +14,12 @@ export type { PermissionRuleStore }                    from './policy/permission
 export { SqlPermissionRuleStore }                      from './policy/sqlPermissionRuleStore.js';
 export { pathInWorkingDir, pathInAnyWorkingDir }      from './paths/workspaceBoundary.js';
 export {
+  DEFAULT_PERMISSION_ASK_TIMEOUT_MS,
+  MAX_PERMISSION_ASK_TIMEOUT_MS,
+  MIN_PERMISSION_ASK_TIMEOUT_MS,
+  permissionAskTimeoutSetting,
+}                                                      from './settings.js';
+export {
   checkEditableInternalPath, checkReadableInternalPath,
 }                                                      from './paths/internalPaths.js';
 

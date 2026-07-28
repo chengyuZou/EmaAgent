@@ -6,6 +6,11 @@ export interface SettingRow {
   updated_at: number;
 }
 
+export interface SettingWrite {
+  key: string;
+  value: unknown;
+}
+
 export type SettingReadResult =
   | { status: 'found'; value: unknown }
   | { status: 'missing' }
@@ -46,18 +51,7 @@ export class SettingsRepo {
   }
 
   set(key: string, value: unknown, updatedAt = Date.now()): void {
-    let serialized: string | undefined;
-    try {
-      serialized = JSON.stringify(value);
-    } catch (error) {
-      throw new SettingSerializationError(key, error);
-    }
-    if (serialized === undefined) {
-      throw new SettingSerializationError(
-        key,
-        new TypeError('JSON.stringify returned undefined'),
-      );
-    }
+    const serialized = serializeSetting(key, value);
 
     this.db
       .prepare(
@@ -67,6 +61,24 @@ export class SettingsRepo {
       .run(key, serialized, updatedAt);
   }
 
+  /**
+   * 同一设置页面保存多个相关字段时统一提交，断电只会得到整批旧值或整批新值。
+   */
+  setMany(entries: readonly SettingWrite[], updatedAt = Date.now()): void {
+    if (entries.length === 0) return;
+    const rows = entries.map(entry => ({
+      key: entry.key,
+      value: serializeSetting(entry.key, entry.value),
+    }));
+    const statement = this.db.prepare(
+      `INSERT INTO settings (key, value_json, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at`,
+    );
+    this.db.transaction(() => {
+      for (const row of rows) statement.run(row.key, row.value, updatedAt);
+    })();
+  }
+
   delete(key: string): void {
     this.db.prepare('DELETE FROM settings WHERE key = ?').run(key);
   }
@@ -74,4 +86,20 @@ export class SettingsRepo {
   all(): SettingRow[] {
     return this.db.prepare('SELECT * FROM settings').all() as SettingRow[];
   }
+}
+
+function serializeSetting(key: string, value: unknown): string {
+  let serialized: string | undefined;
+  try {
+    serialized = JSON.stringify(value);
+  } catch (error) {
+    throw new SettingSerializationError(key, error);
+  }
+  if (serialized === undefined) {
+    throw new SettingSerializationError(
+      key,
+      new TypeError('JSON.stringify returned undefined'),
+    );
+  }
+  return serialized;
 }

@@ -82,6 +82,7 @@ export type {
 } from './repos/character-cards.js';
 export { SettingSerializationError } from './repos/settings.js';
 export type { SettingRow, SettingReadResult } from './repos/settings.js';
+export type { SettingWrite } from './repos/settings.js';
 export type { TelemetryEventRow } from './repos/telemetry.js';
 export type { UsageRecordRow } from './repos/usage-records.js';
 export type { Live2DModelRow } from './repos/live2d-models.js';

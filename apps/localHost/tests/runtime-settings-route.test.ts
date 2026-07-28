@@ -1,18 +1,27 @@
 // 测试事件通知与权限等待设置的默认协议、输入边界和运行时即时更新。
 import { describe, expect, it, vi } from 'vitest';
-import type { AppBindings } from '../src/wiring/index.js';
+import { SettingsStore } from '@ema-agent/settings';
 import { settingsRoute } from '../src/routes/settings.js';
 
 function createApp(stored: Record<string, unknown> = {}) {
   const set = vi.fn();
   const setDefaultTimeout = vi.fn();
-  const app = settingsRoute({
-    settings: {
-      get: (key: string) => stored[key],
-      set,
+  const settings = new SettingsStore({
+    read: key => key in stored
+      ? { status: 'found', value: stored[key] }
+      : { status: 'missing' },
+    set: (key, value) => {
+      set(key, value);
+      stored[key] = value;
     },
-    interactionQueue: { setDefaultTimeout },
-  } as unknown as AppBindings);
+    setMany: () => {},
+    delete: () => {},
+  });
+  const app = settingsRoute({
+    settings,
+    catalog: { list: () => [] },
+    setDefaultPermissionTimeout: setDefaultTimeout,
+  });
   return { app, set, setDefaultTimeout };
 }
 

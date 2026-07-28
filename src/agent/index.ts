@@ -55,3 +55,5 @@ export {
 } from './turn-budget.js';
 export type { TurnBudgetDimension, TurnBudgetLimits } from './turn-budget.js';
 export { buildScratchpadContext } from './scratchpad-context.js';
+export { agentSetting, DEFAULT_AGENT_SETTINGS } from './settings.js';
+export type { AgentSettings } from './settings.js';

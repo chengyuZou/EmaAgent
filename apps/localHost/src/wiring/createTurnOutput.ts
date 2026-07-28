@@ -13,7 +13,7 @@ import { resolveVoice } from './providers/tts.js';
  * TTS 只取得解析后的合成参数与窄投影回调，不反向读取这些业务对象。
  */
 export function createTurnOutput(bindings: AppBindings): TurnSpeechOutput {
-  const voiceUriCache = new TtsVoiceUriCache(bindings.settings);
+  const voiceUriCache = new TtsVoiceUriCache(bindings.runtimeCache);
 
   return new TurnSpeechOutput({
     resolveSynthesis: async ({ signal }) => {

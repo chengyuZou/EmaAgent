@@ -49,27 +49,31 @@ describe('运行时设置 Store', () => {
 
   it('保存事件覆盖时按完整快照替换，允许真正恢复默认值', async () => {
     useSettingsStore.setState({ eventDisplay });
-    const put = vi.spyOn(settingsApi, 'putEventDisplay').mockResolvedValue();
     const emit = vi.spyOn(tauriBridge, 'emit').mockResolvedValue();
     const replacement = {
       tool_result: { enabled: false, color: '#22c55e', durationMs: 3000 },
     };
-
-    await useSettingsStore.getState().putEventDisplay(replacement);
-
-    expect(put).toHaveBeenCalledWith(replacement);
-    expect(useSettingsStore.getState().eventDisplay).toMatchObject({
+    const saved: EventDisplayResult = {
+      defaults: eventDisplay.defaults,
       overrides: replacement,
       effective: {
         system_warning: eventDisplay.defaults.system_warning,
         tool_result: replacement.tool_result,
       },
-    });
+    };
+    const put = vi.spyOn(settingsApi, 'putEventDisplay').mockResolvedValue(saved);
+
+    await useSettingsStore.getState().putEventDisplay(replacement);
+
+    expect(put).toHaveBeenCalledWith(replacement);
+    expect(useSettingsStore.getState().eventDisplay).toEqual(saved);
     expect(emit).toHaveBeenCalledWith('settings:runtime-changed', expect.any(Object));
   });
 
   it('保存权限等待时间后更新本窗口并广播其他窗口', async () => {
-    vi.spyOn(settingsApi, 'putPermissionTimeout').mockResolvedValue();
+    vi.spyOn(settingsApi, 'putPermissionTimeout').mockResolvedValue({
+      timeoutMs: 60_000,
+    });
     const emit = vi.spyOn(tauriBridge, 'emit').mockResolvedValue();
 
     await useSettingsStore.getState().putPermissionTimeout(60_000);

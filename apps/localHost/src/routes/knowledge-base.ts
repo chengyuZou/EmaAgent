@@ -2,7 +2,10 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import type { AppBindings } from '../wiring/index.js';
-import type { KbEntry } from '@ema-agent/knowledge';
+import {
+  knowledgeModelsSetting,
+  type KbEntry,
+} from '@ema-agent/knowledge';
 import { DocumentAssetCursorError } from '@ema-agent/storage';
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
@@ -63,17 +66,12 @@ const reembedBody = z.object({
 
 // ── Binding resolution ────────────────────────────────────────────────────────
 
-interface KbModelsSetting {
-  embed?:  { providerConfigId: string; model: string };
-  rerank?: { providerConfigId: string; model: string };
-}
-
 function resolveBoundModels(bindings: AppBindings): {
   ebdProviderId?:    string; ebdModel?:    string;
   visionProviderId?: string; visionModel?: string;
   rerankProviderId?: string; rerankModel?: string;
 } {
-  const kb     = (bindings.settings.get('kb.models') as KbModelsSetting | undefined) ?? {};
+  const kb = bindings.settings.get(knowledgeModelsSetting);
   const vision = bindings.modelBindings.get('vision');
   return {
     ebdProviderId:    kb.embed?.providerConfigId,

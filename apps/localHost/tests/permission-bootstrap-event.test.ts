@@ -3,18 +3,15 @@ import { describe, expect, it } from 'vitest';
 import type { ToolCallId, TurnId } from '@ema-agent/ids';
 import type { TurnStreamEvent } from '@ema-agent/events';
 import type { PermissionPrompt } from '@ema-agent/permission';
-import { Database, type SettingsRepo } from '@ema-agent/storage';
+import { Database } from '@ema-agent/storage';
 import { buildPermissionSubsystem } from '../src/wiring/permission-bootstrap.js';
 
 describe('permission_required SSE', () => {
   it('保留 Tool 说明、风险等级、访问类型和门禁原因', async () => {
-    const settingsRepo = {
-      get: () => undefined,
-    } as unknown as SettingsRepo;
     const database = new Database({ memory: true, kind: 'profile' });
     database.migrate();
     try {
-      const subsystem = buildPermissionSubsystem(settingsRepo, database.sqlite);
+      const subsystem = buildPermissionSubsystem(120_000, database.sqlite);
       const events: TurnStreamEvent[] = [];
       const ask = subsystem.buildAskForTurn({
         sessionId: 'session-1',

@@ -2,6 +2,12 @@
  * 读写事件展示、权限超时、主题和知识库模型等通用设置。
  */
 import { sidecarClient } from './sidecar-client.js';
+import type {
+  ContentFontPreset,
+  ThemeSettings,
+} from '@ema-agent/theme';
+
+export type { ContentFontPreset } from '@ema-agent/theme';
 
 // ── Wire-format types ────────────────────────────────────────────────────────
 
@@ -22,18 +28,7 @@ export interface PermissionTimeoutResult {
   timeoutMs: number;
 }
 
-export interface ThemeConfig {
-  hue:    number;
-  radius: number;
-  /** 'light'(默认)| 'dark'。暗色 token 在 :root,亮色 [data-theme="light"] 覆盖 */
-  mode?:  'light' | 'dark';
-  /** Markdown 正文字体；不影响 UI 控件、代码块和数学公式。 */
-  contentFontPreset?: ContentFontPreset;
-  /** custom 模式下的单个本地字体名称。 */
-  contentFontFamily?: string;
-}
-
-export type ContentFontPreset = 'system' | 'rounded' | 'reading' | 'custom';
+export type ThemeConfig = ThemeSettings;
 
 /** KB's own embed/rerank model choice (decoupled from LightRAG's lightrag-embed binding). */
 export interface KbModelRef { providerConfigId: string; model: string }
@@ -48,8 +43,10 @@ export const settingsApi = {
   },
 
   /** PUT /api/settings/event-display */
-  async putEventDisplay(payload: Record<string, EventDisplayConfig>): Promise<void> {
-    await sidecarClient.request('/api/settings/event-display', {
+  async putEventDisplay(
+    payload: Record<string, EventDisplayConfig>,
+  ): Promise<EventDisplayResult> {
+    return sidecarClient.request<EventDisplayResult>('/api/settings/event-display', {
       method: 'PUT',
       json: payload,
     });
@@ -61,8 +58,10 @@ export const settingsApi = {
   },
 
   /** PUT /api/settings/permission-timeout */
-  async putPermissionTimeout(payload: { timeoutMs: number }): Promise<void> {
-    await sidecarClient.request('/api/settings/permission-timeout', {
+  async putPermissionTimeout(
+    payload: { timeoutMs: number },
+  ): Promise<PermissionTimeoutResult> {
+    return sidecarClient.request<PermissionTimeoutResult>('/api/settings/permission-timeout', {
       method: 'PUT',
       json: payload,
     });
@@ -74,8 +73,8 @@ export const settingsApi = {
   },
 
   /** PUT /api/settings/theme */
-  async putTheme(payload: ThemeConfig): Promise<void> {
-    await sidecarClient.request('/api/settings/theme', {
+  async putTheme(payload: ThemeConfig): Promise<ThemeConfig> {
+    return sidecarClient.request<ThemeConfig>('/api/settings/theme', {
       method: 'PUT',
       json: payload,
     });
@@ -87,8 +86,8 @@ export const settingsApi = {
   },
 
   /** PUT /api/settings/kb-models */
-  async putKbModels(payload: KbModelsConfig): Promise<void> {
-    await sidecarClient.request('/api/settings/kb-models', {
+  async putKbModels(payload: KbModelsConfig): Promise<KbModelsConfig> {
+    return sidecarClient.request<KbModelsConfig>('/api/settings/kb-models', {
       method: 'PUT',
       json: payload,
     });

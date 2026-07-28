@@ -731,6 +731,56 @@ apps/localHost/src/
 5. 每个业务目录提供稳定公开边界，名称按职责使用 `LanguageModel`、Runtime、Client、Registry、Store、函数或确有协调职责的 Facade，不强制增加 `XxxFacade`；
 6. `channels` 只能把平台输入规范化为 Turn，并按作用域消费 `TurnEvent/SessionEvent/AppEvent`，不能拥有独立聊天引擎。
 
+### 7.1.2 Settings、Theme 与业务参数边界
+
+Settings 是用户可控产品参数的统一提交与读取能力，不拥有 Agent、Context、Permission、Attachment、Vision 或 Knowledge 的业务规则。每个业务包用自己的 `settings.ts` 定义键、类型、合法范围、默认值和生效时机；LocalHost Composition Root 聚合这些定义，避免业务包反向依赖一个全局 Settings God Object。
+
+```text
+src/settings/
+├─ definitions.ts         boolean/number/enum 等定义构造器
+├─ settingsCatalog.ts     注册各业务定义，供 Route 与前端发现
+├─ settingsSnapshot.ts    当前进程内的不可变值快照
+├─ settingsStore.ts       类型化读取、更新与订阅入口
+├─ updateSettings.ts      校验 → SQLite → 快照 → 事件
+├─ events.ts              settings.changed
+├─ types.ts
+└─ errors.ts
+
+src/theme/
+├─ settings.ts            ThemeSettings 的业务定义
+├─ themeResolver.ts       system/light/dark 与 preset 解析
+├─ themeVariables.ts      ThemeSettings → CSS Variables
+├─ types.ts
+└─ errors.ts
+
+src/storage/repos/settings.ts
+    纯 KV 持久化，不理解类型、范围、生效时机或 Theme
+
+src/agent/settings.ts
+src/context/settings.ts
+src/permission/settings.ts
+src/attachment/settings.ts
+src/vision/settings.ts
+src/knowledge/settings.ts
+```
+
+Settings 可以直接依赖 Storage 的 `SettingsRepo`，因为它是 KV 持久化能力的消费者；不再为“解耦”复制 `SettingsPersistence`、`SettingsRepositoryLike` 等同形接口。反向依赖不允许：Storage 不导入 Settings，业务包也不导入 `SettingsCatalog`。所有定义只在 `apps/localHost` 的 Composition Root 注册。
+
+唯一写入顺序固定为：
+
+```text
+HTTP/其他入口
+    → SettingDefinition.decode()
+    → profile.db.settings 原子提交
+    → SettingsSnapshot 替换
+    → settings.changed
+    → 当前进程消费者更新或提示下一操作/下一 Turn/重启生效
+```
+
+SQLite 提交失败时，内存快照和前端最终状态保持旧值。`apply` 只是明确的产品契约，不写进 SQL：`immediate` 可立即投影，`nextOperation` 从下一次领域操作读取，`nextTurn` 在下一根 Turn 冻结，`restart` 只提示重启。业务 Runtime 的实际接线必须逐包完成；仅把定义注册进 Catalog 不等于参数已经生效。
+
+Theme 是独立业务模块，但 Theme 偏好仍通过普通 Setting 持久化。`themeResolver` 和 `themeVariables` 保持纯函数，不能直接读写 DOM；Desktop 可以先本地预览，保存失败必须回滚。CSS Token、动画和通用控件继续归前端 styles 与 UI 包，不进入后端 Settings。
+
 ### 7.2 Agent 执行体系的模块所有权
 
 本阶段按“Agent 执行体系”整体重构，不把它误解成只整理 `src/tools`。主链如下：

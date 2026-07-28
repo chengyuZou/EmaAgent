@@ -68,6 +68,13 @@ function resolveThemeConfig(config: ThemeConfig): ResolvedThemeConfig {
   };
 }
 
+function applyResolvedTheme(config: ResolvedThemeConfig): void {
+  setThemeHue(config.hue);
+  setThemeRadius(config.radius);
+  applyMode(config.mode);
+  applyContentFont(config.contentFontPreset, config.contentFontFamily);
+}
+
 function applyMode(mode: ThemeMode): void {
   // 切换双向动画:切前给 <html> 加 .ema-theme-transition 触发全局 color 过渡,
   // 过渡完(400ms)移除。只过渡颜色不过渡 transform/layout(见 transitions.css)。
@@ -131,46 +138,63 @@ export const useThemeStore = create<ThemeStoreState>((set, get) => ({
   },
 
   async setHue(hue) {
-    setThemeHue(hue);
-    set({ hue });
-    const { radius, mode, contentFontPreset, contentFontFamily } = get();
-    const next = { hue, radius, mode, contentFontPreset, contentFontFamily };
-    void emitTheme(next);
-    try { await settingsApi.putTheme(next); } catch (err) { console.warn('[theme] putTheme(hue) failed:', err); }
+    const previous = snapshotTheme(get());
+    const next = { ...previous, hue };
+    await persistThemeChange(next, previous, value => set(value));
   },
 
   async setRadius(radius) {
-    setThemeRadius(radius);
-    set({ radius });
-    const { hue, mode, contentFontPreset, contentFontFamily } = get();
-    const next = { hue, radius, mode, contentFontPreset, contentFontFamily };
-    void emitTheme(next);
-    try { await settingsApi.putTheme(next); } catch (err) { console.warn('[theme] putTheme(radius) failed:', err); }
+    const previous = snapshotTheme(get());
+    const next = { ...previous, radius };
+    await persistThemeChange(next, previous, value => set(value));
   },
 
   async setMode(mode) {
-    applyMode(mode);
-    set({ mode });
-    const { hue, radius, contentFontPreset, contentFontFamily } = get();
-    const next = { hue, radius, mode, contentFontPreset, contentFontFamily };
-    void emitTheme(next);
-    // 持久化 mode(之前 putTheme 没传 mode,切换不保存)
-    try { await settingsApi.putTheme(next); } catch (err) { console.warn('[theme] putTheme(mode) failed:', err); }
+    const previous = snapshotTheme(get());
+    const next = { ...previous, mode };
+    await persistThemeChange(next, previous, value => set(value));
   },
 
   async setContentFont(contentFontPreset, customFamily = get().contentFontFamily) {
+    const previous = snapshotTheme(get());
     const contentFontFamily = normalizeLocalFontName(customFamily);
-    applyContentFont(contentFontPreset, contentFontFamily);
-    set({ contentFontPreset, contentFontFamily });
-    const { hue, radius, mode } = get();
-    const next = { hue, radius, mode, contentFontPreset, contentFontFamily };
-    void emitTheme(next);
-    try { await settingsApi.putTheme(next); } catch (err) { console.warn('[theme] putTheme(contentFont) failed:', err); }
+    const next = { ...previous, contentFontPreset, contentFontFamily };
+    await persistThemeChange(next, previous, value => set(value));
   },
 }));
 
 function emitTheme(config: ThemeConfig): void {
   void tauriBridge.emit(THEME_EVENT, config);
+}
+
+function snapshotTheme(state: ThemeStoreState): ResolvedThemeConfig {
+  return {
+    hue: state.hue,
+    radius: state.radius,
+    mode: state.mode,
+    contentFontPreset: state.contentFontPreset,
+    contentFontFamily: state.contentFontFamily,
+  };
+}
+
+async function persistThemeChange(
+  next: ResolvedThemeConfig,
+  previous: ResolvedThemeConfig,
+  updateState: (value: ResolvedThemeConfig) => void,
+): Promise<void> {
+  // 当前窗口先预览；只有 SQLite 提交成功后才通知其他窗口。
+  applyResolvedTheme(next);
+  updateState(next);
+  try {
+    const saved = resolveThemeConfig(await settingsApi.putTheme(next));
+    applyResolvedTheme(saved);
+    updateState(saved);
+    emitTheme(saved);
+  } catch (error) {
+    applyResolvedTheme(previous);
+    updateState(previous);
+    throw error;
+  }
 }
 
 /**

@@ -25,3 +25,4 @@ export type {
   VisionSourceRef,
   VisionTask,
 } from './types.js';
+export { visionSetting } from './settings.js';

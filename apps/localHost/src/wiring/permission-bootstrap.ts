@@ -14,7 +14,7 @@ import {
 } from '@ema-agent/turn';
 import type { AskUserInteractionOutcome } from '@ema-agent/turn';
 import type { AskUserInteractionPort } from '@ema-agent/turn-execution';
-import type { SettingsRepo, SqliteDb } from '@ema-agent/storage';
+import type { SqliteDb } from '@ema-agent/storage';
 
 // ── 返回契约 ─────────────────────────────────────────────────────────────────
 
@@ -93,17 +93,16 @@ class InteractionQueueAskUserAdapter implements AskUserInteractionPort {
  * 会立即写库并刷新内存快照。内置规则由代码提供,不进数据库。
  */
 export function buildPermissionSubsystem(
-  settingsRepo: SettingsRepo,
+  defaultTimeoutMs: number,
   profileDb:    SqliteDb,
 ): PermissionBootstrapResult {
   // 用户设置只影响新入队的交互，已经开始等待的条目保持原超时。
-  const storedTimeout = settingsRepo.get('permission.askTimeoutMs');
   const interactionQueue = new SessionInteractionQueue<
     PermissionPrompt,
     PermissionResponse,
     AskUserRequiredEvent
   >(
-    typeof storedTimeout === 'number' ? storedTimeout : 120_000,
+    defaultTimeoutMs,
     reason => ({ action: 'deny', reason }),
   );
 

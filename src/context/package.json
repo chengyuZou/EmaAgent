@@ -26,6 +26,7 @@
     "@ema-agent/prompts": "workspace:*",
     "@ema-agent/provider": "workspace:*",
     "@ema-agent/session": "workspace:*",
+    "@ema-agent/settings": "workspace:*",
     "@ema-agent/token": "workspace:*",
     "@ema-agent/tools": "workspace:*"
   },

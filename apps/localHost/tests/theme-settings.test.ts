@@ -1,16 +1,23 @@
 // 测试 Markdown 正文字体设置的持久化、默认值和后端输入边界。
 import { describe, expect, it, vi } from 'vitest';
-import type { AppBindings } from '../src/wiring/index.js';
+import { SettingsStore } from '@ema-agent/settings';
 import { settingsRoute } from '../src/routes/settings.js';
 
 function createApp(stored?: unknown) {
   const set = vi.fn();
+  const settings = new SettingsStore({
+    read: () => stored === undefined
+      ? { status: 'missing' }
+      : { status: 'found', value: stored },
+    set: (key, value) => set(key, value),
+    setMany: () => {},
+    delete: () => {},
+  });
   const app = settingsRoute({
-    settings: {
-      get: () => stored,
-      set,
-    },
-  } as unknown as AppBindings);
+    settings,
+    catalog: { list: () => [] },
+    setDefaultPermissionTimeout: () => {},
+  });
   return { app, set };
 }
 

@@ -110,7 +110,7 @@ SQLite 封装。构造时:
 |---|---|
 | Provider 体系 | `provider_configs`(实例与凭据)/ `provider_capability_configs`(能力级协议与地址)/ `provider_health`(探测)/ 6 张 `provider_*_models`(模型池)/ `model_bindings`(模块->模型) |
 | 角色 / 外观 | `live2d_models` / `character_cards` |
-| 设置 / 插件 | `settings`(key-value)/ `mcp_servers` / `market_sources` / `skills`(磁盘 SKILL.md 的缓存索引) |
+| 设置 / 插件 | `settings`(纯 key-value，业务校验与生效策略归 `src/settings` 和各业务定义)/ `mcp_servers` / `market_sources` / `skills`(磁盘 SKILL.md 的缓存索引) |
 | 全局记忆 | `memory_nodes`(图节点,6 种类型)/ `memory_edges`(关系)/ `memory_node_lazy_updates`(懒更新队列)/ `memory_items`(4 种条目) |
 | KB 注册 | `knowledge_bases`(命名 KB 的 id/name/path) |
 

@@ -152,8 +152,8 @@ export const useSettingsStore = create<SettingsStoreState>((set, get) => ({
 
   async putPermissionTimeout(ms) {
     try {
-      await settingsApi.putPermissionTimeout({ timeoutMs: ms });
-      set({ permissionTimeoutMs: ms, error: null });
+      const saved = await settingsApi.putPermissionTimeout({ timeoutMs: ms });
+      set({ permissionTimeoutMs: saved.timeoutMs, error: null });
       broadcastRuntimeSettings(get());
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to save permission timeout' });
@@ -192,15 +192,8 @@ export const useSettingsStore = create<SettingsStoreState>((set, get) => ({
     try {
       const current = get().eventDisplay;
       if (!current) throw new Error('事件展示设置尚未加载');
-      await settingsApi.putEventDisplay(overrides);
-      set({
-        eventDisplay: {
-          defaults: current.defaults,
-          overrides,
-          effective: { ...current.defaults, ...overrides },
-        },
-        error: null,
-      });
+      const saved = await settingsApi.putEventDisplay(overrides);
+      set({ eventDisplay: saved, error: null });
       broadcastRuntimeSettings(get());
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to save event display config' });

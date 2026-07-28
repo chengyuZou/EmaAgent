@@ -4,7 +4,7 @@ import type { Database } from '@ema-agent/storage';
 import {
   ModelBindingsRepo,
   ProvidersRepo,
-  SettingsRepo,
+  type SettingsRepo,
   MemoryNodesRepo, MemoryEdgesRepo, MemoryLazyUpdatesRepo,
   MemoryItemsRepo, SessionNotesRepo, MemoryTasksRepo, PendingFragmentsRepo,
   AttachmentRepo,
@@ -67,7 +67,11 @@ import { buildPermissionSubsystem } from './permission-bootstrap.js';
 import type { AppInteractionQueue } from './permission-bootstrap.js';
 import { SessionStore }  from '@ema-agent/session';
 import { EmotionEngine } from '@ema-agent/emotion';
-import { PermissionEngine } from '@ema-agent/permission';
+import {
+  PermissionEngine,
+  permissionAskTimeoutSetting,
+} from '@ema-agent/permission';
+import type { SettingsStore } from '@ema-agent/settings';
 import type { AskPermissionFn, PermissionStreamEvent } from '@ema-agent/permission';
 import type { AskUserInteractionPort } from '@ema-agent/turn-execution';
 import type {
@@ -78,7 +82,10 @@ import type {
 import type {
   KbAssetScope,
 } from '@ema-agent/turn';
-import type { KbSearchResult } from '@ema-agent/knowledge';
+import {
+  knowledgeModelsSetting,
+  type KbSearchResult,
+} from '@ema-agent/knowledge';
 import type { CommandRunnerPort, SandboxStatusWire } from '@ema-agent/sandbox';
 import type { UsageRecord } from '@ema-agent/usage';
 import { ToolExecutionJournal, ToolRegistry } from '@ema-agent/tools';
@@ -107,6 +114,7 @@ import { SystemEventBus }  from '../sse/system-bus.js';
 import { ProviderRuntimeFacade } from './provider-runtime.js';
 import { SessionBackupFacade } from '@ema-agent/backup';
 import type { CredentialFacade } from '@ema-agent/credential';
+import { createSettingsStore } from '../settings/createSettingsStore.js';
 
 // ── App-wide bindings (Facade set passed everywhere) ─────────────────────────
 
@@ -218,7 +226,10 @@ export interface AppBindings {
 
   // Repos kept on the binding for route convenience
   providers:            ProvidersRepo;
-  settings:             SettingsRepo;
+  /** 用户可编辑设置的类型化入口。 */
+  settings:             SettingsStore;
+  /** TTS 解析 URI 等非用户配置使用的内部 KV 缓存。 */
+  runtimeCache:         SettingsRepo;
   modelBindings:        ModelBindingsRepo;
   providerLlmModels:    ProviderLlmModelsRepo;
   providerEmbedModels:  ProviderEmbedModelsRepo;
@@ -406,9 +417,12 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   const modelBindings = new ModelBindingsRepo(profileDb.sqlite);
 
   // ── Permission subsystem ────────────────────────────────────────────────────
-  const settingsRepo = new SettingsRepo(profileDb.sqlite);
+  const { settings, runtimeCache } = createSettingsStore(profileDb.sqlite);
   const { permission, interactionQueue, askUserRegistry, buildAskForTurn } =
-    buildPermissionSubsystem(settingsRepo, profileDb.sqlite);
+    buildPermissionSubsystem(
+      settings.get(permissionAskTimeoutSetting),
+      profileDb.sqlite,
+    );
 
   // ── Tools + sandbox ─────────────────────────────────────────────────────────
   // On Windows without WSL2+bubblewrap the backend is 'app-layer' (no OS
@@ -688,8 +702,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   const skillInstaller = new SkillInstaller(skillStore);
   // ── Knowledge base ───────────────────────────────────────────────────────────
   const resolveIngestModels = (): Partial<IngestOptions> => {
-    const kbModels = (settingsRepo.get('kb.models') as
-      { embed?: { providerConfigId: string; model: string } } | undefined) ?? {};
+    const kbModels = settings.get(knowledgeModelsSetting);
     const visionB = modelBindings.get('vision');
     return {
       ebdProviderId:    kbModels.embed?.providerConfigId,
@@ -794,10 +807,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     sessionId?:   string,
     turnId?:      string,
   ): Promise<KbSearchResult> => {
-    const kbModels = (settingsRepo.get('kb.models') as {
-      embed?:  { providerConfigId: string; model: string };
-      rerank?: { providerConfigId: string; model: string };
-    } | undefined) ?? {};
+    const kbModels = settings.get(knowledgeModelsSetting);
     // kbIds=[] / undefined → KbManager falls back to the active KB.
     // assetScopes let KbManager route per-KB doc filters to the right client.
     return kb.search(kbIds ?? [], query, {
@@ -831,7 +841,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     toolExecutionJournal, agentRunTranscript,
     memory, contextCompactor,
     systemBus,
-    providers, settings: settingsRepo,
+    providers, settings, runtimeCache,
     modelBindings, providerLlmModels, providerEmbedModels,
     providerRerankModels, providerTtsModels, providerSttModels, providerVisionModels,
     attachmentStore, attachmentDerivationCache, attachmentCacheMaintenance,

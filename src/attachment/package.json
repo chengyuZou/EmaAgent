@@ -22,6 +22,7 @@
   "dependencies": {
     "@ema-agent/ids": "workspace:*",
     "@ema-agent/session": "workspace:*",
+    "@ema-agent/settings": "workspace:*",
     "@ema-agent/turn": "workspace:*",
     "@ema-agent/storage": "workspace:*",
     "sharp": "^0.33.5"

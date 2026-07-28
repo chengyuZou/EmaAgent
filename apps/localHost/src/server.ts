@@ -8,6 +8,7 @@ import { permissionRoute } from './routes/permission.js';
 import { memoryRoute } from './routes/memory.js';
 import { systemEventsRoute } from './routes/system-events.js';
 import { settingsRoute } from './routes/settings.js';
+import { createSettingsCatalog } from './settings/createSettingsCatalog.js';
 import { transcribeRoute } from './routes/transcribe.js';
 import { cardsRoute } from './routes/cards.js';
 import { diagnosticRoute } from './routes/diagnostic.js';
@@ -72,7 +73,13 @@ export function buildServer(bindings: AppBindings, sharedSecret: string): Hono {
   app.route('/api/system',         systemRoute(bindings));
   app.route('/api/system/shell',   shellRoute(bindings));
   app.route('/api/workspace',      workspaceRoute());
-  app.route('/api/settings',       settingsRoute(bindings));
+  app.route('/api/settings', settingsRoute({
+    settings: bindings.settings,
+    catalog: createSettingsCatalog(),
+    setDefaultPermissionTimeout: timeoutMs => {
+      bindings.interactionQueue.setDefaultTimeout(timeoutMs);
+    },
+  }));
   app.route('/api/diagnostics',    diagnosticRoute());
   app.route('/api/transcribe',     transcribeRoute(bindings));
   app.route('/api/cards',          cardsRoute(bindings));

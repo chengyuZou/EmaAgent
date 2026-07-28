@@ -29,3 +29,8 @@ export type {
   ResolvedPrompt,
   TurnAttachment,
 } from './types.js';
+export {
+  attachmentSetting,
+  DEFAULT_ATTACHMENT_SETTINGS,
+} from './settings.js';
+export type { AttachmentSettings } from './settings.js';

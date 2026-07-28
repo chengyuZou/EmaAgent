@@ -52,6 +52,11 @@ export type { SemanticChunkOptions }                                    from './
 // ── Errors (embed 路径统一错误码) ──────────────────────────────────────────────
 export { KbError, isKbError, classifyKbError } from './errors.js';
 export type { KbErrorCode, KbErrorMeta }       from './errors.js';
+export { knowledgeModelsSetting } from './settings.js';
+export type {
+  KnowledgeModelRef,
+  KnowledgeModelSettings,
+} from './settings.js';
 
 // ── Vector index (exposed for benchmarking / advanced callers) ─────────────────
 export { BruteForceIndex }       from './index/brute-force.js';
