@@ -120,7 +120,7 @@ export function createTurnExecution(bindings: AppBindings): {
         knowledgeSearch: bindings.kbSearch,
         getSessionToolResultStore: bindings.getSessionToolResultStore,
         agentRunStore: bindings.agentRunStore,
-        agentRunTranscriptWriter: bindings.agentRunMessages,
+        agentRunTranscriptWriter: bindings.agentRunTranscript,
         taskStore: bindings.taskStore,
         toolExecutionJournal: bindings.toolExecutionJournal,
       }),

@@ -38,6 +38,14 @@ export interface InternalModelForPlugins {
   };
 }
 
+/** 眨眼与眼球参数名;由运行配置注入,默认 ParamEyeLOpen/ROpen/EyeBallX/Y。 */
+export interface Live2DParamNames {
+  eyeLOpenParam: string;
+  eyeROpenParam: string;
+  eyeBallXParam: string;
+  eyeBallYParam: string;
+}
+
 /** Per-frame plugin context. Each stage's plugins receive this. */
 export interface MotionPluginContext {
   model:          CubismCoreLike;
@@ -45,6 +53,8 @@ export interface MotionPluginContext {
   timing:         FrameTiming;
   internalModel:  InternalModelForPlugins;
   motionManager:  InternalModelForPlugins['motionManager'];
+  /** 眨眼/眼球参数名(运行配置注入)。 */
+  paramNames:     Live2DParamNames;
 
   /**
    * Live2D model parameter overrides (eye open base, etc.). Read by the
@@ -66,6 +76,11 @@ export interface MotionPluginContext {
 
 export type MotionPlugin = (ctx: MotionPluginContext) => void;
 
+/** 带 dispose 的插件,用于释放 window 监听等外部资源。 */
+export interface DisposableMotionPlugin extends MotionPlugin {
+  dispose(): void;
+}
+
 /** Snapshot of the user-configurable per-frame parameter overrides. */
 export interface ModelParametersSnapshot {
   leftEyeOpen:  number;
@@ -82,6 +97,8 @@ export interface MotionManagerUpdateOptions {
     autoBlinkEnabled:       boolean;
     forceAutoBlinkEnabled:  boolean;
   };
+  /** 眨眼/眼球参数名(运行配置注入)。 */
+  readParamNames(): Live2DParamNames;
 }
 
 export interface MotionManagerUpdate {
@@ -154,6 +171,7 @@ export function createMotionManagerUpdate(
       timing,
       internalModel:  options.internalModel,
       motionManager:  mm,
+      paramNames:     options.readParamNames(),
       modelParameters: options.readModelParameters(),
       idleAnimationEnabled:    flags.idleAnimationEnabled,
       autoBlinkEnabled:        flags.autoBlinkEnabled,
@@ -204,8 +222,8 @@ export function createIdleDisablePlugin(): MotionPlugin {
       if (ctx.internalModel.eyeBlink) {
         ctx.internalModel.eyeBlink.updateParameters(ctx.model, ctx.timing.deltaMs / 1000);
       }
-      ctx.model.setParameterValueById('ParamEyeLOpen', ctx.modelParameters.leftEyeOpen);
-      ctx.model.setParameterValueById('ParamEyeROpen', ctx.modelParameters.rightEyeOpen);
+      ctx.model.setParameterValueById(ctx.paramNames.eyeLOpenParam, ctx.modelParameters.leftEyeOpen);
+      ctx.model.setParameterValueById(ctx.paramNames.eyeROpenParam, ctx.modelParameters.rightEyeOpen);
       ctx.markHandled();
     }
   };
@@ -295,8 +313,8 @@ export function createAutoEyeBlinkPlugin(opts: {
       // Auto-blink OFF: write base + markHandled
       if (!ctx.autoBlinkEnabled) {
         resetBlink();
-        ctx.model.setParameterValueById('ParamEyeLOpen', baseLeft);
-        ctx.model.setParameterValueById('ParamEyeROpen', baseRight);
+        ctx.model.setParameterValueById(ctx.paramNames.eyeLOpenParam, baseLeft);
+        ctx.model.setParameterValueById(ctx.paramNames.eyeROpenParam, baseRight);
         ctx.markHandled();
         return;
       }
@@ -305,18 +323,18 @@ export function createAutoEyeBlinkPlugin(opts: {
       if (ctx.forceAutoBlinkEnabled || !ctx.internalModel.eyeBlink) {
         const dtMs = ctx.timing.deltaMs;
         const { eyeL, eyeR } = advanceForced(dtMs, baseLeft, baseRight);
-        ctx.model.setParameterValueById('ParamEyeLOpen', eyeL);
-        ctx.model.setParameterValueById('ParamEyeROpen', eyeR);
+        ctx.model.setParameterValueById(ctx.paramNames.eyeLOpenParam, eyeL);
+        ctx.model.setParameterValueById(ctx.paramNames.eyeROpenParam, eyeR);
         ctx.markHandled();
         return;
       }
 
       // Native eyeBlink + multiply by base + markHandled
       ctx.internalModel.eyeBlink.updateParameters(ctx.model, ctx.timing.deltaMs / 1000);
-      const blinkLeft  = ctx.model.getParameterValueById('ParamEyeLOpen');
-      const blinkRight = ctx.model.getParameterValueById('ParamEyeROpen');
-      ctx.model.setParameterValueById('ParamEyeLOpen', clamp01(blinkLeft * baseLeft));
-      ctx.model.setParameterValueById('ParamEyeROpen', clamp01(blinkRight * baseRight));
+      const blinkLeft  = ctx.model.getParameterValueById(ctx.paramNames.eyeLOpenParam);
+      const blinkRight = ctx.model.getParameterValueById(ctx.paramNames.eyeROpenParam);
+      ctx.model.setParameterValueById(ctx.paramNames.eyeLOpenParam, clamp01(blinkLeft * baseLeft));
+      ctx.model.setParameterValueById(ctx.paramNames.eyeROpenParam, clamp01(blinkRight * baseRight));
       ctx.markHandled();
       return;
     }
@@ -331,25 +349,25 @@ export function createAutoEyeBlinkPlugin(opts: {
 
     if (!ctx.autoBlinkEnabled) {
       resetBlink();
-      const curL = ctx.model.getParameterValueById('ParamEyeLOpen');
-      const curR = ctx.model.getParameterValueById('ParamEyeROpen');
-      ctx.model.setParameterValueById('ParamEyeLOpen', clamp01(curL * baseLeft));
-      ctx.model.setParameterValueById('ParamEyeROpen', clamp01(curR * baseRight));
+      const curL = ctx.model.getParameterValueById(ctx.paramNames.eyeLOpenParam);
+      const curR = ctx.model.getParameterValueById(ctx.paramNames.eyeROpenParam);
+      ctx.model.setParameterValueById(ctx.paramNames.eyeLOpenParam, clamp01(curL * baseLeft));
+      ctx.model.setParameterValueById(ctx.paramNames.eyeROpenParam, clamp01(curR * baseRight));
       return;
     }
 
     if (!ctx.forceAutoBlinkEnabled && ctx.internalModel.eyeBlink) {
       resetBlink();
-      const curL = ctx.model.getParameterValueById('ParamEyeLOpen');
-      const curR = ctx.model.getParameterValueById('ParamEyeROpen');
-      ctx.model.setParameterValueById('ParamEyeLOpen', clamp01(curL * baseLeft));
-      ctx.model.setParameterValueById('ParamEyeROpen', clamp01(curR * baseRight));
+      const curL = ctx.model.getParameterValueById(ctx.paramNames.eyeLOpenParam);
+      const curR = ctx.model.getParameterValueById(ctx.paramNames.eyeROpenParam);
+      ctx.model.setParameterValueById(ctx.paramNames.eyeLOpenParam, clamp01(curL * baseLeft));
+      ctx.model.setParameterValueById(ctx.paramNames.eyeROpenParam, clamp01(curR * baseRight));
       return;
     }
 
     // Force-mode while expression on
-    const curL = ctx.model.getParameterValueById('ParamEyeLOpen');
-    const curR = ctx.model.getParameterValueById('ParamEyeROpen');
+    const curL = ctx.model.getParameterValueById(ctx.paramNames.eyeLOpenParam);
+    const curR = ctx.model.getParameterValueById(ctx.paramNames.eyeROpenParam);
 
     const BLINK_THRESHOLD = 0.15;
     if (state.phase === 'idle' && curL <= BLINK_THRESHOLD && curR <= BLINK_THRESHOLD) {
@@ -366,13 +384,13 @@ export function createAutoEyeBlinkPlugin(opts: {
     const { eyeL: factorL, eyeR: factorR } = advanceForced(dtMs, 1, 1);
 
     if (wasActive && state.phase === 'idle') {
-      ctx.model.setParameterValueById('ParamEyeLOpen', clamp01(preBlinkLeft  * baseLeft));
-      ctx.model.setParameterValueById('ParamEyeROpen', clamp01(preBlinkRight * baseRight));
+      ctx.model.setParameterValueById(ctx.paramNames.eyeLOpenParam, clamp01(preBlinkLeft  * baseLeft));
+      ctx.model.setParameterValueById(ctx.paramNames.eyeROpenParam, clamp01(preBlinkRight * baseRight));
       return;
     }
     if (state.phase === 'idle') return;
-    ctx.model.setParameterValueById('ParamEyeLOpen', clamp01(preBlinkLeft  * factorL * baseLeft));
-    ctx.model.setParameterValueById('ParamEyeROpen', clamp01(preBlinkRight * factorR * baseRight));
+    ctx.model.setParameterValueById(ctx.paramNames.eyeLOpenParam, clamp01(preBlinkLeft  * factorL * baseLeft));
+    ctx.model.setParameterValueById(ctx.paramNames.eyeROpenParam, clamp01(preBlinkRight * factorR * baseRight));
   };
 }
 

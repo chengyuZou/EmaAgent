@@ -88,7 +88,10 @@ import {
 } from '@ema-agent/tool-builtin';
 import { detectBackend, CommandRunner } from '@ema-agent/sandbox';
 import { ToolResultCleaner, ToolResultStore } from '@ema-agent/tools';
-import { AgentRunStore } from '@ema-agent/agent';
+import {
+  AgentRunStore,
+  AgentRunTranscriptStore,
+} from '@ema-agent/agent';
 import { TaskStore } from '@ema-agent/tasks';
 import { MemoryPlanner } from '@ema-agent/memory';
 import { ContextCompactor } from '@ema-agent/context';
@@ -201,8 +204,8 @@ export interface AppBindings {
   taskStore: TaskStore;
   /** 工具副作用执行日志的唯一业务入口。 */
   toolExecutionJournal: ToolExecutionJournal;
-  /** SSE 转录投影写入子 Agent 消息的存储入口。 */
-  agentRunMessages: AgentRunMessagesRepo;
+  /** 子 Agent 执行追加和查询共用的领域 transcript 存储。 */
+  agentRunTranscript: AgentRunTranscriptStore;
 
   // Memory subsystem
   memory: MemoryPlanner;
@@ -510,7 +513,9 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     sessionsDir,
     legacyToolResultSessionsDir,
   ]);
-  const agentRunMessages = new AgentRunMessagesRepo(dataDb.sqlite);
+  const agentRunTranscript = new AgentRunTranscriptStore(
+    new AgentRunMessagesRepo(dataDb.sqlite),
+  );
   const agentRunStore = new AgentRunStore(new AgentRunsRepo(dataDb.sqlite));
   const taskStore = new TaskStore(new TasksRepo(dataDb.sqlite));
   const toolExecutionJournal = new ToolExecutionJournal(
@@ -823,7 +828,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     permission, interactionQueue, askUserRegistry, tools, buildAskForTurn, getCommandRunner,
     invalidateSessionRuntime, removeSessionRuntime,
     getSessionToolResultStore, toolResultCleaner, agentRunStore, taskStore,
-    toolExecutionJournal, agentRunMessages,
+    toolExecutionJournal, agentRunTranscript,
     memory, contextCompactor,
     systemBus,
     providers, settings: settingsRepo,

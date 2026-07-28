@@ -3,9 +3,20 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { asAgentRunId, asSessionId } from '@ema-agent/ids';
-import type { AppBindings } from '../wiring/index.js';
+import type {
+  AgentRunStore,
+  AgentRunTranscriptReader,
+} from '@ema-agent/agent';
 
-export function agentRunsRoute(bindings: AppBindings): Hono {
+type AgentRunsRouteStore = Pick<
+  AgentRunStore,
+  'cancel' | 'clearTerminalForSession' | 'delete' | 'get' | 'listForSession'
+>;
+
+export function agentRunsRoute(
+  agentRunStore: AgentRunsRouteStore,
+  transcript: AgentRunTranscriptReader,
+): Hono {
   const app = new Hono();
 
   app.get('/', (c) => {
@@ -13,7 +24,7 @@ export function agentRunsRoute(bindings: AppBindings): Hono {
     if (!sessionId) return c.json({ error: 'sessionId is required' }, 400);
 
     const status = c.req.query('status');
-    let runs = bindings.agentRunStore.listForSession(asSessionId(sessionId));
+    let runs = agentRunStore.listForSession(asSessionId(sessionId));
     if (status) runs = runs.filter(run => run.status === status);
 
     return c.json({ runs });
@@ -24,44 +35,37 @@ export function agentRunsRoute(bindings: AppBindings): Hono {
       .safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: 'sessionId is required' }, 400);
 
-    const deleted = bindings.agentRunStore.clearTerminalForSession(
+    const deleted = agentRunStore.clearTerminalForSession(
       asSessionId(parsed.data.sessionId),
     );
     return c.json({ deleted });
   });
 
   app.get('/:agentRunId', (c) => {
-    const run = bindings.agentRunStore.get(asAgentRunId(c.req.param('agentRunId')));
+    const run = agentRunStore.get(asAgentRunId(c.req.param('agentRunId')));
     if (!run) return c.json({ error: 'not_found' }, 404);
     return c.json({ run });
   });
 
   app.delete('/:agentRunId', (c) => {
     const agentRunId = asAgentRunId(c.req.param('agentRunId'));
-    const run = bindings.agentRunStore.get(agentRunId);
+    const run = agentRunStore.get(agentRunId);
     if (!run) return c.json({ error: 'not_found' }, 404);
 
     if (run.status === 'running') {
-      bindings.agentRunStore.cancel(agentRunId, 'user_deleted');
+      agentRunStore.cancel(agentRunId, 'user_deleted');
     }
-    bindings.agentRunStore.delete(agentRunId);
+    agentRunStore.delete(agentRunId);
     return c.json({ ok: true });
   });
 
   app.get('/:agentRunId/messages', (c) => {
     const agentRunId = asAgentRunId(c.req.param('agentRunId'));
-    if (!bindings.agentRunStore.get(agentRunId)) {
+    if (!agentRunStore.get(agentRunId)) {
       return c.json({ error: 'not_found' }, 404);
     }
 
-    const rows = bindings.agentRunMessages.listForRun(agentRunId);
-    const messages = rows.map(row => ({
-      id: row.id,
-      agentRunId: row.agent_run_id,
-      role: row.role,
-      content: JSON.parse(row.content_json) as unknown,
-      createdAt: row.created_at,
-    }));
+    const messages = transcript.listForRun(agentRunId);
     return c.json({ messages });
   });
 

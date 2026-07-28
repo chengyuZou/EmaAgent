@@ -8,6 +8,8 @@ import { showToast } from './toast.js';
 import { turnsApi } from '../api/turns.js';
 import { sidecarClient } from '../api/sidecar-client.js';
 import { useConversationStore } from '../stores/conversation-store.js';
+import type { EmaLipSync } from './wlipsync-lipsync.js';
+import { createEmaLipSync } from './wlipsync-lipsync.js';
 
 // ── Playback state (subscribable) ─────────────────────────────────────────────
 //
@@ -44,6 +46,43 @@ function ensureAudioCtx(): { ctx: AudioContext; analyser: AnalyserNode } {
   return { ctx: sharedCtx!, analyser: sharedAnalyser! };
 }
 
+// ── wLipSync 唇同步（lazy init，失败回退 RMS） ──────────────────────────────
+//
+// wLipSync 元音识别替代 RMS 音量包络：Ema 模型无分元音嘴型参数，元音权重
+// 聚合为单一 mouthOpen 写入 speech-store.rms（live2d-react audio-lipsync
+// 插件逻辑不变，只是 rms 的含义从"音量"变为"元音嘴张开度"）。
+// WASM 运行时加载失败（Tauri CSP / data: URL worklet 被拦）时保持 null，
+// RMS loop 回退到 analyser 音量包络。
+
+let lipSyncHelper: EmaLipSync | null = null;
+let lipSyncInitPromise: Promise<EmaLipSync | null> | null = null;
+
+async function ensureLipSync(): Promise<EmaLipSync | null> {
+  if (lipSyncHelper) return lipSyncHelper;
+  if (!lipSyncInitPromise) {
+    lipSyncInitPromise = createEmaLipSync(ensureAudioCtx().ctx)
+      .then((helper) => {
+        lipSyncHelper = helper;
+        return helper;
+      })
+      .catch((err) => {
+        // 运行时 WASM/worklet 加载失败不阻塞播放，回退 RMS
+        console.error('[tts-playback] wLipSync 初始化失败，回退 RMS 音量包络', err);
+        return null;
+      });
+  }
+  return lipSyncInitPromise;
+}
+
+function connectLipSyncSource(source: AudioNode): void {
+  if (lipSyncHelper) {
+    lipSyncHelper.connectSource(source);
+    return;
+  }
+  // init 是 async：未就绪则就绪后再接入当前源；失败静默（已 log）
+  void ensureLipSync().then((helper) => helper?.connectSource(source));
+}
+
 // ── Speech state broadcasting ─────────────────────────────────────────────────
 
 let speechChannel: BroadcastChannel | null = null;
@@ -74,19 +113,27 @@ function startRmsLoop(): void {
   if (rmsRaf) return;
   publishSpeechState({ speaking: true, rms: 0 }, true);
   useSpeechStore.getState().setSpeaking(true);
+  // fire-and-forget 启动 wLipSync 初始化；就绪前 loop 使用 RMS fallback
+  void ensureLipSync();
 
   const loop = (): void => {
-    const { analyser } = ensureAudioCtx();
-    if (!rmsData || rmsData.length !== analyser.frequencyBinCount) {
-      rmsData = new Uint8Array(analyser.frequencyBinCount);
+    // 优先使用 wLipSync 元音识别的 mouthOpen；未就绪或初始化失败时回退 RMS 音量包络
+    let rms: number;
+    if (lipSyncHelper) {
+      rms = lipSyncHelper.getMouthOpen();
+    } else {
+      const { analyser } = ensureAudioCtx();
+      if (!rmsData || rmsData.length !== analyser.frequencyBinCount) {
+        rmsData = new Uint8Array(analyser.frequencyBinCount);
+      }
+      analyser.getByteTimeDomainData(rmsData as Uint8Array<ArrayBuffer>);
+      let sum = 0;
+      for (let i = 0; i < rmsData.length; i++) {
+        const v = (rmsData[i]! - 128) / 128;
+        sum += v * v;
+      }
+      rms = Math.sqrt(sum / rmsData.length);
     }
-    analyser.getByteTimeDomainData(rmsData as Uint8Array<ArrayBuffer>);
-    let sum = 0;
-    for (let i = 0; i < rmsData.length; i++) {
-      const v = (rmsData[i]! - 128) / 128;
-      sum += v * v;
-    }
-    const rms = Math.sqrt(sum / rmsData.length);
     useSpeechStore.getState().setRms(rms);
     publishSpeechState({ speaking: true, rms });
     rmsRaf = requestAnimationFrame(loop);
@@ -145,6 +192,7 @@ function createPlayer(sessionId: string, turnId: string): TurnPlayer | null {
   const audioEl      = new Audio();
   const elementSource = ctx.createMediaElementSource(audioEl);
   elementSource.connect(analyser);
+  connectLipSyncSource(elementSource);
 
   const player: TurnPlayer = {
     sessionId, turnId,
@@ -365,6 +413,7 @@ export async function replayTurn(turnId: string): Promise<void> {
   const source = ctx.createBufferSource();
   source.buffer = audioBuffer;
   source.connect(analyser);
+  connectLipSyncSource(source);
 
   replaySource = source;
   setPlaying(turnId);
@@ -415,6 +464,7 @@ export async function testTtsPlayback(arrayBuffer: ArrayBuffer): Promise<void> {
   const source = ctx.createBufferSource();
   source.buffer = audioBuffer;
   source.connect(analyser);
+  connectLipSyncSource(source);
 
   startRmsLoop();
 

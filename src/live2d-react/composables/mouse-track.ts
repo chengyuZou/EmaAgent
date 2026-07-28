@@ -7,8 +7,10 @@
 // Eyes smoothly track cursor position relative to canvas center.
 // When cursor leaves canvas bounds, eyes glide back to center.
 
-import type { MotionPlugin } from './motion-manager.js';
+import type { DisposableMotionPlugin, MotionPlugin } from './motion-manager.js';
 import { frameRateIndependentFactor } from './frame-timing.js';
+
+export type { DisposableMotionPlugin } from './motion-manager.js';
 
 // ── Tuning ───────────────────────────────────────────────────────────────────
 
@@ -17,10 +19,6 @@ const EYE_RANGE_Y = 0.3;
 const SMOOTH_AT_60_FPS = 0.08;
 
 // ── Factory ──────────────────────────────────────────────────────────────────
-
-export interface DisposableMotionPlugin extends MotionPlugin {
-  dispose(): void;
-}
 
 export function createMouseEyeTrackPlugin(
   getCanvas: () => HTMLCanvasElement | null,
@@ -108,8 +106,8 @@ export function createMouseEyeTrackPlugin(
     currentX += (destinationX - currentX) * smoothing;
     currentY += (destinationY - currentY) * smoothing;
 
-    ctx.model.setParameterValueById('ParamEyeBallX', currentX);
-    ctx.model.setParameterValueById('ParamEyeBallY', currentY);
+    ctx.model.setParameterValueById(ctx.paramNames.eyeBallXParam, currentX);
+    ctx.model.setParameterValueById(ctx.paramNames.eyeBallYParam, currentY);
   }) as DisposableMotionPlugin;
 
   plugin.dispose = dispose;

@@ -26,9 +26,11 @@ L5 后第二批根取消与旧 Orchestrator 删除已经完成：`TurnExecutor.a
 
 L5 后第三批 Route 业务副作用归位已经完成：`AgentRunTranscriptProjection` 位于 `src/agent/runs`，`SubagentSpawner` 在 AgentRun 事件产生处写入 transcript，并把辅助落库失败转换为父 Turn warning；是否存在 HTTP/SSE 消费者不再影响落库。`TurnExecutor` 通过窄 `TurnInteractionCleanup` 在自身 `finally` 中清理该 Turn 遗留的 Permission 与 AskUser，准备失败、成功、失败和取消使用同一条路径。Turns Route 只保留事件存储、在线发布和传输控制，不再监听终态执行这两类业务副作用。
 
+AppBindings 收窄第一子批已经完成：`tasksRoute` 只接收 Task 查询所需的 `TaskStore` 方法，`agentRunsRoute` 只接收 AgentRun 管理方法和 transcript 读端口，两个 Route 对 `AppBindings` 的引用归零。`AgentRunTranscriptStore` 统一承担持久事件追加与 SQLite 行到领域 transcript 的映射，HTTP 不再解析 `content_json`；完整对象图仍只在 `server.ts` 与 wiring 装配边界展开。
+
 事件通道同步完成消费者迁移：Turn SSE 使用 `TurnStreamEvent`，系统 SSE 使用 `AppEvent`，只有跨端通用解码器使用 `ClientEvent`；`EmaStreamEvent` 仅剩 `src/events` 内的弃用兼容声明，生产代码与应用测试不再导入它。Task 更新明确属于 Turn 输出联合，Memory 进程级依赖只允许发送 `MemoryBackgroundEvent`，召回证据继续进入当前 Turn。
 
-L5 后余下收口顺序不变：下一批逐 Route 收窄 `AppBindings`，让完整对象图只停留在 Composition Root；最后才把已经纯化的 HTTP/SSE/Auth 文件归档到 `transports/http`。
+L5 后余下收口顺序不变：下一批收窄 Turn/Permission/AskUser Route 的执行与交互端口，让完整对象图只停留在 Composition Root；最后才把已经纯化的 HTTP/SSE/Auth 文件归档到 `transports/http`。
 
 开工前已复核本地 Codex 源码：`codex-protocol` 只定义 Thread/Turn/Submission 等低层协议，真正编排位于 `codex-core/session`；App Server 只校验并提交 `Op::UserInput`，Session 统一建立 `RunningTask`、取消句柄和终态，`RegularTask` 再调用内部 `run_turn` 完成多轮模型与工具循环。Ema 因此保留低层 `turn` 与高层 `turnExecution` 两个编译边界，不能把执行依赖反向塞进被 Context、Session、Storage、Hooks 共同依赖的领域包。
 
@@ -170,8 +172,8 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 5. Builtin Tool 2D 的 Sandbox 命令环境 allowlist、工作目录边界、FileRead 行数/字节双上限、Glob/Grep 有界搜索与 WebSearch 公网访问安全均已完成；结构化 Presentation 公共协议与首批接线已完成；
 6. Permission V1 已完成：统一 Session FIFO、明确终态、Turn 身份核对、SQLite 永久规则 CRUD 与设置页管理、Builtin-only 免审批边界均已接通；旧 `AskUserRegistryLike` 已改为 `AskUserInteractionPort`，不新增第二套队列；
 7. Skill 多文件激活、per-Agent 状态、结构化 Context 恢复与 `allowed-tools` 单向收窄已经完成；
-8. LocalHost L0、Turn 输入准备 L1、Turn Context L2、Turn Tools L3、Root Agent Execution L4、Turn Composition Root L5、TTS Turn 输出边界、精确根取消与旧 Orchestrator 删除、Route 业务副作用归位均已完成；
-9. 下一批逐 Route 收窄 `AppBindings`，完整对象图只允许停留在 Composition Root；完成后再移动已经纯化的 HTTP/SSE/Auth 目录；
+8. LocalHost L0、Turn 输入准备 L1、Turn Context L2、Turn Tools L3、Root Agent Execution L4、Turn Composition Root L5、TTS Turn 输出边界、精确根取消与旧 Orchestrator 删除、Route 业务副作用归位及 Task/AgentRun Route 窄依赖均已完成；
+9. 下一批收窄 Turn/Permission/AskUser Route，随后继续按业务组移除其余 Route 的 `AppBindings`；全部完成后再移动已经纯化的 HTTP/SSE/Auth 目录；
 10. 后台进程按 `BackgroundProcess + ProcessOutput/ProcessStop` 单独实现 C 档，不修改 AgentLoop，也不恢复假 `run_in_background`。
 
 命名随业务批次清理：旧 `IFileStateStoreEntry/IFileStateStore` 及后续过渡接口已经删除，`IToolExecutionJournal` 已改为职责名；其余迁移期 `I*` 类型继续随业务边界处理，不单独进行全仓机械重命名。
@@ -180,6 +182,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- AppBindings Task/AgentRun 第一子批：Agent 7 个测试文件 28/28、LocalHost 25 个测试文件 85/85 通过；Agent build、LocalHost 正式 build 通过，LocalHost 构建验证 57 个源码与 229 个产物；全仓 typecheck 82/82 通过。`tasksRoute/agentRunsRoute` 对 `AppBindings` 与 `content_json` 的引用归零，测试不再通过 `as unknown as AppBindings` 构造伪完整对象。
 - Route 业务副作用归位：Agent 7 个测试文件 27/27、TurnExecution 7 个非集成测试文件 22/22 通过，4 个真实模型 Integration 按规则跳过；LocalHost 25 个测试文件 85/85 通过。Agent、TurnExecution 按依赖顺序 build 通过，LocalHost 正式构建验证 57 个源码与 229 个产物；全仓 typecheck 82/82 通过。测试覆盖没有父 SSE 消费者时 AgentRun transcript 仍落库、投影写失败 warning 与后续重试，以及输入准备失败后统一清理该 Turn 的交互队列；旧 Route 投影与 Route 终态交互清理扫描归零，`git diff --check` 通过，仅有既有 CRLF 与不可访问 pytest 缓存提示。
 - Turn 根取消与旧 Orchestrator 删除：TurnExecution 7 个测试文件 22/22 通过，4 个真实模型 Integration 按规则跳过；LocalHost 26 个测试文件 86/86、独立 typecheck 与正式 build 通过；全仓 typecheck 82/82 通过。追加清理后 Agent 25/25、Context 26/26、BuiltinTools 106/106（另 1 条依赖本机 `rg` 的用例跳过）、Hooks 27/27 通过，四包 typecheck 通过。测试覆盖陈旧 TurnId 不会误杀同 Session 当前活动 Turn、正确取消与终态后幂等；旧 `Orchestrator/activeTurns/OrchestratorTurn*` 扫描归零，`EmaStreamEvent` 只剩 `src/events` 的弃用兼容声明。
 - TTS Turn 输出边界：TTS 7 个测试文件 67/67、LocalHost 26 个测试文件 86/86、Desktop UI 28 个测试文件 118/118 通过；TTS build、LocalHost 与 Desktop UI typecheck、全仓 typecheck 82/82 通过。测试覆盖关闭透传、即时音频不丢唤醒、根终态最后发送、失败取消、初始化/投影告警和 Voice URI 缓存隔离。应用生产代码与测试对弃用 `EmaStreamEvent` 的 import 已归零；`git diff --check` 通过，仅有既有 CRLF 与不可访问 pytest 缓存提示。
@@ -263,7 +266,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 先完整阅读 CLAUDE.md 与 EmaWorkState.md，再按当前批次阅读 EmaRefactor.md 和 EmaClaudeArchitectureReview.md 对应章节。检查 git status、diff 和最近提交，保留用户及其他 Agent 的修改。
 
-LocalHost L0、Turn 输入准备 L1、Turn Context L2、Turn Tools L3、Root Agent Execution L4、Turn Composition Root L5、TTS Turn 输出边界、精确根取消与旧 Orchestrator 删除、Route 业务副作用归位已经完成。不要恢复 `apps/core`、`TurnExecutionPlan`、`PreparedTurnExecution`、万能 `TurnExecutionDeps`、LocalHost `activeTurns`、旧 Orchestrator、Route transcript/交互/音频投影回调或弃用 `EmaStreamEvent` 消费者。先阅读 `EmaRefactor.md` §7.1.1；下一批逐 Route 收窄 `AppBindings`，先完整审计 Route 的真实消费者并按内聚业务分批，完整对象图只允许留在 Composition Root。该批不移动 HTTP 目录、不建立另一只嵌套依赖袋。修改前先说明所选 Route 分组、窄端口与预期效果，不要提交 Git。
+LocalHost L0、Turn 输入准备 L1、Turn Context L2、Turn Tools L3、Root Agent Execution L4、Turn Composition Root L5、TTS Turn 输出边界、精确根取消与旧 Orchestrator 删除、Route 业务副作用归位及 Task/AgentRun Route 窄依赖已经完成。不要恢复 `apps/core`、`TurnExecutionPlan`、`PreparedTurnExecution`、万能 `TurnExecutionDeps`、LocalHost `activeTurns`、旧 Orchestrator、Route transcript/交互/音频投影回调、Route 直接解析 AgentRun `content_json` 或弃用 `EmaStreamEvent` 消费者。先阅读 `EmaRefactor.md` §7.1.1；下一批收窄 Turn/Permission/AskUser Route 的执行和交互端口，完整对象图只允许留在 Composition Root。该批不移动 HTTP 目录、不建立另一只嵌套依赖袋。修改前先说明窄端口、URL 保持策略和预期效果，不要提交 Git。
 ```
 
 ## 维护方式

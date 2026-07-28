@@ -32,6 +32,12 @@ function createRuntime() {
       autoBlinkEnabled: true,
       forceAutoBlinkEnabled: false,
     }),
+    readParamNames: () => ({
+      eyeLOpenParam: 'ParamEyeLOpen',
+      eyeROpenParam: 'ParamEyeROpen',
+      eyeBallXParam: 'ParamEyeBallX',
+      eyeBallYParam: 'ParamEyeBallY',
+    }),
   });
   return { model, pipeline, updateParameters };
 }

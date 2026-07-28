@@ -1,12 +1,14 @@
 // 装配 Live2D 模型加载、渲染、动作与表情运行流水线。
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import * as PIXI from 'pixi.js';
+import { DropShadowFilter } from 'pixi-filters';
 import { Live2DModel as PixiLive2DModel } from 'pixi-live2d-display/cubism4';
 
 import type { Live2DStageHandle, Live2DFraming, Live2DError } from '../types.js';
 import type { Live2DRuntime } from '../runtime.js';
 import { createMouseEyeTrackPlugin } from '../composables/mouse-track.js';
 import { createIdleBeatPlugin } from '../composables/idle-beat.js';
+import { createIdleEyeSaccadePlugin } from '../composables/idle-eye-saccade.js';
 import { createAudioLipSyncPlugin } from '../composables/audio-lipsync.js';
 import { startRandomIdleScheduler } from '../composables/random-idle.js';
 import { createExpressionController, type CoreModelLike } from '../composables/expression-controller.js';
@@ -18,6 +20,7 @@ import {
   createAutoEyeBlinkPlugin,
   createExpressionPlugin,
   createExpressionResetPlugin,
+  createIdleDisablePlugin,
   type InternalModelForPlugins,
   type MotionManagerUpdate,
 } from '../composables/motion-manager.js';
@@ -73,6 +76,10 @@ export interface Live2DStageProps {
   runtimeConfig?: Live2DModelRuntimeConfig;
   /** 宿主窗口隐藏时暂停渲染与动作时间轴，不销毁已加载模型。 */
   suspended?: boolean;
+  /** 渲染帧率上限；0 或缺省表示不限制。 */
+  maxFps?: number;
+  /** 主题色动态投影;默认 true。 */
+  shadowEnabled?: boolean;
   onReady?:  () => void;
   onError?:  (err: Live2DError) => void;
   className?: string;
@@ -85,6 +92,8 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
       framing = 'halfbody',
       runtimeConfig,
       suspended = false,
+      maxFps = 0,
+      shadowEnabled = true,
       onReady,
       onError,
       className,
@@ -93,6 +102,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
     const { live2dStore, expressionStore, speechStore } = runtime;
 
     const containerRef = useRef<HTMLDivElement | null>(null);
+    const shadowColorRef = useRef<HTMLDivElement | null>(null);
     const appRef       = useRef<PIXI.Application | null>(null);
     const modelRef     = useRef<InstanceType<typeof PixiLive2DModel> | null>(null);
     const motionPipelineRef = useRef<MotionManagerUpdate | null>(null);
@@ -137,6 +147,12 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
       else if (!renderCircuitOpenRef.current) app.ticker.start();
     }, [effectiveSuspended]);
 
+    // maxFps prop 变化时更新渲染帧率上限;0 表示不限制。
+    useEffect(() => {
+      const app = appRef.current;
+      if (app) app.ticker.maxFPS = maxFps;
+    }, [maxFps]);
+
     useImperativeHandle(ref, () => ({
       setExpression(name) { live2dStore.getState().setExpression(name); },
       playMotion(group, index) { live2dStore.getState().playMotion(group, index); },
@@ -171,6 +187,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
           backgroundAlpha: 0,
           antialias:       true,
         });
+        app.ticker.maxFPS = maxFps;
       } catch (cause) {
         load.cancel();
         const err: Live2DError = {
@@ -237,9 +254,40 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
             height: localBounds.height,
           };
           const fit = (): void => applyFraming(app!, model, framing, naturalBounds);
+          // 初次定位瞬时完成;后续 resize 用 200ms 缓动,避免跳变。
           fit();
-          window.addEventListener('resize', fit);
-          cleanupTasks.push(() => window.removeEventListener('resize', fit));
+
+          // 主题色动态投影:DropShadowFilter 颜色从隐藏 div 的 --ema-primary 计算,
+          // MutationObserver 监听主题变量变化(暗色/hue 切换)实时更新。
+          let dropShadowFilter: DropShadowFilter | null = null;
+          if (shadowEnabled) {
+            dropShadowFilter = new DropShadowFilter({
+              offset: { x: 8, y: 8 },
+              distance: 12,
+              alpha: 0.25,
+              blur: 2,
+              color: readThemeShadowColor(shadowColorRef.current),
+            });
+            model.filters = [dropShadowFilter];
+            if (typeof MutationObserver !== 'undefined') {
+              const observer = new MutationObserver(() => {
+                if (dropShadowFilter) dropShadowFilter.color = readThemeShadowColor(shadowColorRef.current);
+              });
+              observer.observe(document.documentElement, { attributes: true, attributeFilter: ['style', 'class', 'data-theme', 'data-mode'] });
+              cleanupTasks.push(() => observer.disconnect());
+            }
+            cleanupTasks.push(() => { if (model.filters) model.filters = []; });
+          }
+          let framingAnimCancel: (() => void) | null = null;
+          const fitAnimated = (): void => {
+            framingAnimCancel?.();
+            framingAnimCancel = applyFramingAnimated(app!, model, framing, naturalBounds);
+          };
+          window.addEventListener('resize', fitAnimated);
+          cleanupTasks.push(() => {
+            window.removeEventListener('resize', fitAnimated);
+            framingAnimCancel?.();
+          });
 
           // ── Wire motion-manager pipeline + plugins ────────────────────
           const internalModel = model.internalModel as unknown as InternalModelForPlugins;
@@ -267,6 +315,15 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
                 forceAutoBlinkEnabled: s.forceAutoBlinkEnabled,
               };
             },
+            readParamNames: () => {
+              const p = readRuntimeConfig().parameters;
+              return {
+                eyeLOpenParam: p.eyeLOpenParam,
+                eyeROpenParam: p.eyeROpenParam,
+                eyeBallXParam: p.eyeBallXParam,
+                eyeBallYParam: p.eyeBallYParam,
+              };
+            },
           });
           pipeline.setSuspended(suspendedRef.current);
           motionPipelineRef.current = pipeline;
@@ -281,6 +338,9 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
           );
           pipeline.register(mousePlugin, 'pre');
           cleanupTasks.push(() => mousePlugin.dispose());
+          // idle-disable 在 mouseTrack 之后注册:idle 动画关闭时 stopAllMotions 并
+          // markHandled 短路原生 update(冻结姿态),mouseTrack 已先跑(眼珠仍跟踪鼠标)。
+          pipeline.register(createIdleDisablePlugin(), 'pre');
           // Final stage: idle-beat → auto-blink → expression
           // idle-beat MUST be final-stage — the model's idle.motion3.json
           // already animates ParamBodyAngle + ParamBreath. If we set them in
@@ -294,6 +354,10 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
             ),
             'final',
           );
+          // 空闲眼动扫视:idle 且鼠标静止时,眼珠随机扫视(覆盖 mouse-track 的回中)。
+          const saccadePlugin = createIdleEyeSaccadePlugin();
+          pipeline.register(saccadePlugin, 'final');
+          cleanupTasks.push(() => saccadePlugin.dispose());
           pipeline.register(
             createAutoEyeBlinkPlugin({
               readExpressionEnabled: () => live2dStore.getState().expressionEnabled,
@@ -480,6 +544,12 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
         className={className}
         style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
       >
+        {/* 隐藏 div,用于从 --ema-primary CSS 变量读取主题色(阴影) */}
+        <div
+          ref={shadowColorRef}
+          aria-hidden
+          style={{ position: 'absolute', width: 1, height: 1, visibility: 'hidden', background: 'var(--ema-primary, #000000)' }}
+        />
         {error && (
           <div
             role="alert"
@@ -546,6 +616,72 @@ function applyFraming(
   model.scale.set(placement.scale);
   model.x = placement.x;
   model.y = placement.y;
+}
+
+/** 从隐藏 div 的 --ema-primary CSS 变量读取主题色,转为 PIXI 数字色。 */
+function readThemeShadowColor(el: HTMLDivElement | null): number {
+  if (!el || typeof getComputedStyle === 'undefined') return 0x000000;
+  const css = getComputedStyle(el).backgroundColor;
+  return cssColorToNumber(css);
+}
+
+/** 把 CSS 颜色(oklch/rgb/hex)转为 PIXI 数字色;canvas 规范化后解析。 */
+function cssColorToNumber(cssColor: string): number {
+  if (typeof document === 'undefined') return 0x000000;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 1;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return 0x000000;
+  ctx.fillStyle = '#000000';
+  ctx.fillStyle = cssColor;
+  const normalized = ctx.fillStyle;
+  if (normalized.startsWith('#')) {
+    const n = parseInt(normalized.slice(1), 16);
+    return Number.isFinite(n) ? n : 0x000000;
+  }
+  const m = normalized.match(/rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/);
+  if (m) {
+    return (parseInt(m[1]!, 10) << 16) | (parseInt(m[2]!, 10) << 8) | parseInt(m[3]!, 10);
+  }
+  return 0x000000;
+}
+
+/**
+ * 缓动版 applyFraming:从当前 scale/x/y 用 200ms easeOutQuad 动画到目标。
+ * 返回取消函数;调用方负责在新动画前取消上一个,防叠加。
+ */
+function applyFramingAnimated(
+  app:     PIXI.Application,
+  model:   InstanceType<typeof PixiLive2DModel>,
+  framing: Live2DFraming,
+  naturalBounds: Live2DNaturalBounds,
+): (() => void) | null {
+  const placement = calculateLive2DFraming({
+    width: app.renderer.width,
+    height: app.renderer.height,
+  }, naturalBounds, framing);
+  if (!placement) return null;
+
+  const startScale = model.scale.x;
+  const startX = model.x;
+  const startY = model.y;
+  const startTime = performance.now();
+  const durationMs = 200;
+
+  let raf: number | null = requestAnimationFrame(function step(now: number) {
+    const t = Math.min(1, (now - startTime) / durationMs);
+    const eased = 1 - (1 - t) * (1 - t);
+    model.scale.set(startScale + (placement.scale - startScale) * eased);
+    model.x = startX + (placement.x - startX) * eased;
+    model.y = startY + (placement.y - startY) * eased;
+    if (t < 1) raf = requestAnimationFrame(step);
+    else raf = null;
+  });
+
+  return () => {
+    if (raf !== null) cancelAnimationFrame(raf);
+    raf = null;
+  };
 }
 
 function extractExpressionRefs(model: InstanceType<typeof PixiLive2DModel>): Array<{ Name: string; File: string }> {

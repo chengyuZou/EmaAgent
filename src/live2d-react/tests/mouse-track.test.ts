@@ -36,6 +36,12 @@ describe('Mouse eye tracking', () => {
         getParameterValueById: (id) => values.get(id) ?? 0,
         setParameterValueById: (id, value) => { values.set(id, value); },
       },
+      paramNames: {
+        eyeLOpenParam: 'ParamEyeLOpen',
+        eyeROpenParam: 'ParamEyeROpen',
+        eyeBallXParam: 'ParamEyeBallX',
+        eyeBallYParam: 'ParamEyeBallY',
+      },
       timing: { deltaMs: 1_000 / 60, elapsedMs: 1_000 / 60 },
     } as MotionPluginContext);
 

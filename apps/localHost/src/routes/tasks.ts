@@ -2,18 +2,20 @@
 
 import { Hono } from 'hono';
 import { asSessionId, asTaskId } from '@ema-agent/ids';
-import type { AppBindings } from '../wiring/index.js';
+import type { TaskStorePort } from '@ema-agent/tasks';
 
-export function tasksRoute(bindings: AppBindings): Hono {
+type TaskRouteStore = Pick<TaskStorePort, 'get' | 'list' | 'toSnapshot'>;
+
+export function tasksRoute(taskStore: TaskRouteStore): Hono {
   const app = new Hono();
 
   app.get('/', (c) => {
     const sessionId = c.req.query('sessionId');
     if (!sessionId) return c.json({ error: 'sessionId is required' }, 400);
 
-    const tasks = bindings.taskStore
+    const tasks = taskStore
       .list(asSessionId(sessionId))
-      .map((task) => bindings.taskStore.toSnapshot(task));
+      .map((task) => taskStore.toSnapshot(task));
     return c.json({ tasks });
   });
 
@@ -21,12 +23,12 @@ export function tasksRoute(bindings: AppBindings): Hono {
     const sessionId = c.req.query('sessionId');
     if (!sessionId) return c.json({ error: 'sessionId is required' }, 400);
 
-    const task = bindings.taskStore.get(
+    const task = taskStore.get(
       asSessionId(sessionId),
       asTaskId(c.req.param('taskId')),
     );
     return task
-      ? c.json({ task: bindings.taskStore.toSnapshot(task) })
+      ? c.json({ task: taskStore.toSnapshot(task) })
       : c.json({ error: 'not_found' }, 404);
   });
 

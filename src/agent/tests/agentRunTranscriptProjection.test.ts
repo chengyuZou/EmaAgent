@@ -1,17 +1,18 @@
-// 测试 AgentRun transcript 的缓冲、辅助落库故障隔离与后续重试。
+// 测试 AgentRun transcript 的领域映射、缓冲、辅助落库故障隔离与后续重试。
 
 import { describe, expect, it } from 'vitest';
 import type { AgentRunId, SessionId } from '@ema-agent/ids';
-import type { AgentRunMessageInsert } from '@ema-agent/storage';
 import type { AgentRunEvent } from '../events.js';
 import { AgentRunTranscriptProjection } from '../runs/agentRunTranscriptProjection.js';
+import { AgentRunTranscriptStore } from '../runs/agentRunTranscriptStore.js';
+import type { AgentRunTranscriptAppend } from '../runs/types.js';
 
 const sessionId = 'session-1' as SessionId;
 const agentRunId = 'subagent-1' as AgentRunId;
 
 describe('AgentRunTranscriptProjection', () => {
   it('落库失败返回结构化 warning，下一条 AgentRun 事件继续重试且不丢正文', () => {
-    const written: AgentRunMessageInsert[] = [];
+    const written: AgentRunTranscriptAppend[] = [];
     let failNext = true;
     const projection = new AgentRunTranscriptProjection({
       insert(message) {
@@ -42,6 +43,31 @@ describe('AgentRunTranscriptProjection', () => {
       agentRunId,
       role: 'assistant',
       content: { text: 'hello' },
+    }]);
+  });
+
+  it('查询时把 SQLite 行转换为领域 transcript，不向调用方暴露 JSON 列', () => {
+    const store = new AgentRunTranscriptStore({
+      insert() {},
+      listForRun() {
+        return [{
+          id: 'message-1',
+          agent_run_id: agentRunId,
+          role: 'assistant',
+          content_json: JSON.stringify({ text: '完成' }),
+          sequence: 1,
+          created_at: 123,
+        }];
+      },
+    });
+
+    expect(store.listForRun(agentRunId)).toEqual([{
+      id: 'message-1',
+      agentRunId,
+      role: 'assistant',
+      content: { text: '完成' },
+      sequence: 1,
+      createdAt: 123,
     }]);
   });
 });

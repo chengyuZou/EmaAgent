@@ -3,7 +3,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { asSessionId, asTaskId, asTurnId } from '@ema-agent/ids';
 import type { Task } from '@ema-agent/tasks';
-import type { AppBindings } from '../src/wiring/index.js';
 import { tasksRoute } from '../src/routes/tasks.js';
 
 const task: Task = {
@@ -21,15 +20,31 @@ const task: Task = {
   updatedAt: 1,
 };
 
+type RouteTaskStore = Parameters<typeof tasksRoute>[0];
+
+function createTaskStore(
+  overrides: Partial<RouteTaskStore> = {},
+): RouteTaskStore {
+  return {
+    list: vi.fn(() => []),
+    get: vi.fn(() => undefined),
+    toSnapshot: (value) => ({
+      ...value,
+      blocks: [...value.blocks],
+      blockedBy: [...value.blockedBy],
+    }),
+    ...overrides,
+  };
+}
+
 describe('Task 快照路由', () => {
   it('按 Session 列出 TaskSnapshot', async () => {
     const list = vi.fn(() => [task]);
-    const app = tasksRoute({
-      taskStore: {
+    const app = tasksRoute(
+      createTaskStore({
         list,
-        toSnapshot: (value: Task) => value,
-      },
-    } as unknown as AppBindings);
+      }),
+    );
 
     const response = await app.request('/?sessionId=session-route');
 
@@ -41,11 +56,11 @@ describe('Task 快照路由', () => {
   });
 
   it('查询不存在或其他 Session 的 Task 时返回 404', async () => {
-    const app = tasksRoute({
-      taskStore: {
+    const app = tasksRoute(
+      createTaskStore({
         get: vi.fn(() => undefined),
-      },
-    } as unknown as AppBindings);
+      }),
+    );
 
     const response = await app.request('/task-route?sessionId=another-session');
 

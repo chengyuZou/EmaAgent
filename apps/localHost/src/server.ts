@@ -76,8 +76,11 @@ export function buildServer(bindings: AppBindings, sharedSecret: string): Hono {
   app.route('/api/mcp',            createMcpRouter(bindings));
   app.route('/api/market',         createMarketRouter(bindings));
   app.route('/api/kb',             kbRoute(bindings));
-  app.route('/api/agent-runs',     agentRunsRoute(bindings));
-  app.route('/api/tasks',           tasksRoute(bindings));
+  app.route(
+    '/api/agent-runs',
+    agentRunsRoute(bindings.agentRunStore, bindings.agentRunTranscript),
+  );
+  app.route('/api/tasks', tasksRoute(bindings.taskStore));
 
   // 404 兜底
   app.notFound((c) => c.json({ error: 'not_found' }, 404));

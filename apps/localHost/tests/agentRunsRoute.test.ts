@@ -2,7 +2,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { asAgentRunId, asSessionId, asTurnId } from '@ema-agent/ids';
 import type { AgentRun } from '@ema-agent/agent';
-import type { AppBindings } from '../src/wiring/index.js';
 import { agentRunsRoute } from '../src/routes/agentRuns.js';
 
 const run: AgentRun = {
@@ -20,12 +19,42 @@ const run: AgentRun = {
   completedAt: 20,
 };
 
+type RouteAgentRunStore = Parameters<typeof agentRunsRoute>[0];
+type RouteTranscriptReader = Parameters<typeof agentRunsRoute>[1];
+
+function createAgentRunStore(
+  overrides: Partial<RouteAgentRunStore> = {},
+): RouteAgentRunStore {
+  return {
+    listForSession: vi.fn(() => []),
+    clearTerminalForSession: vi.fn(() => 0),
+    get: vi.fn(() => undefined),
+    cancel: vi.fn(() => ({
+      ok: false,
+      reason: 'not_found',
+      action: 'cancel',
+    })),
+    delete: vi.fn(),
+    ...overrides,
+  };
+}
+
+function createTranscriptReader(
+  overrides: Partial<RouteTranscriptReader> = {},
+): RouteTranscriptReader {
+  return {
+    listForRun: vi.fn(() => []),
+    ...overrides,
+  };
+}
+
 describe('AgentRun 路由', () => {
   it('按 Session 返回原生 AgentRun 快照', async () => {
     const listForSession = vi.fn(() => [run]);
-    const app = agentRunsRoute({
-      agentRunStore: { listForSession },
-    } as unknown as AppBindings);
+    const app = agentRunsRoute(
+      createAgentRunStore({ listForSession }),
+      createTranscriptReader(),
+    );
 
     const response = await app.request('/?sessionId=session-route');
 
@@ -42,18 +71,19 @@ describe('AgentRun 路由', () => {
   });
 
   it('执行记录使用 agentRunId，不再返回旧 taskId', async () => {
-    const app = agentRunsRoute({
-      agentRunStore: { get: vi.fn(() => run) },
-      agentRunMessages: {
+    const app = agentRunsRoute(
+      createAgentRunStore({ get: vi.fn(() => run) }),
+      createTranscriptReader({
         listForRun: vi.fn(() => [{
           id: 'message-1',
-          agent_run_id: run.id,
+          agentRunId: run.id,
           role: 'assistant',
-          content_json: JSON.stringify({ text: '完成' }),
-          created_at: 21,
+          content: { text: '完成' },
+          sequence: 1,
+          createdAt: 21,
         }]),
-      },
-    } as unknown as AppBindings);
+      }),
+    );
 
     const response = await app.request(`/${run.id}/messages`);
     const body = await response.json() as {

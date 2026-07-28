@@ -1,13 +1,11 @@
 // 把子 Agent 执行事件投影为可查询的持久 transcript，并隔离辅助落库故障。
 
 import type { AgentRunId } from '@ema-agent/ids';
-import type { AgentRunMessageInsert } from '@ema-agent/storage';
 import type { AgentRunEvent } from '../events.js';
-
-/** AgentRun transcript 只需要追加记录，不暴露底层查询或数据库连接。 */
-export interface AgentRunTranscriptWriter {
-  insert(message: AgentRunMessageInsert): void;
-}
+import type {
+  AgentRunTranscriptAppend,
+  AgentRunTranscriptWriter,
+} from './types.js';
 
 export interface AgentRunTranscriptWarning {
   projection: 'subagent_transcript';
@@ -23,7 +21,7 @@ export interface AgentRunTranscriptWarning {
 export class AgentRunTranscriptProjection {
   private readonly textByRun = new Map<AgentRunId, string>();
   private readonly reasoningByRun = new Map<AgentRunId, string>();
-  private readonly pending: AgentRunMessageInsert[] = [];
+  private readonly pending: AgentRunTranscriptAppend[] = [];
   private failureReported = false;
 
   constructor(private readonly writer: AgentRunTranscriptWriter) {}

@@ -9,9 +9,9 @@ export type { SubagentSpawnerDeps } from './spawner.js';
 export { createToolLifecycleHooks } from './toolLifecycleHooks.js';
 export { AgentRunStore } from './runs/agentRunStore.js';
 export { AgentRunTranscriptProjection } from './runs/agentRunTranscriptProjection.js';
+export { AgentRunTranscriptStore } from './runs/agentRunTranscriptStore.js';
 export type {
   AgentRunTranscriptWarning,
-  AgentRunTranscriptWriter,
 } from './runs/agentRunTranscriptProjection.js';
 export type {
   AgentRun,
@@ -20,6 +20,11 @@ export type {
   AgentRunStart,
   AgentRunStatus,
   AgentRunStorePort,
+  AgentRunTranscriptAppend,
+  AgentRunTranscriptMessage,
+  AgentRunTranscriptReader,
+  AgentRunTranscriptRole,
+  AgentRunTranscriptWriter,
   AgentRunTransitionAction,
   AgentRunTransitionResult,
 } from './runs/types.js';
