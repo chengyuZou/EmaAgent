@@ -68,7 +68,7 @@ export function buildServer(bindings: AppBindings, sharedSecret: string): Hono {
     '/api/permission',
     permissionRoute(bindings.permission, bindings.interactionQueue),
   );
-  app.route('/api/memory',         memoryRoute(bindings));
+  app.route('/api/memory',         memoryRoute(bindings.memory));
   app.route('/api/system/events',  systemEventsRoute(bindings));
   app.route('/api/system',         systemRoute(bindings));
   app.route('/api/system/shell',   shellRoute(bindings));

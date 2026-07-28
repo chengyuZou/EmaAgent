@@ -1,7 +1,22 @@
+// 提供记忆面板浏览、会话覆盖和维护任务的 HTTP 边界。
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { asSessionId } from '@ema-agent/ids';
-import type { AppBindings } from '../wiring/index.js';
+import type { MemoryPlanner } from '@ema-agent/memory';
+
+/** 记忆面板实际使用的查询与维护入口，不暴露提取、召回等 Turn 侧能力。 */
+type MemoryPanelRoute = Pick<
+  MemoryPlanner,
+  | 'getStats'
+  | 'listNodes'
+  | 'listItems'
+  | 'listEdgesForNodes'
+  | 'getSessionOverrides'
+  | 'setSessionOverrides'
+  | 'deleteNode'
+  | 'deleteItem'
+  | 'runMaintenance'
+>;
 
 // ── Schemas ──────────────────────────────────────────────────────────────────
 
@@ -61,12 +76,12 @@ const maintenanceSchema = z.object({
  *   DEL  /api/memory/items/:id
  *   POST /api/memory/maintenance           — decay pass (dryRun=true by default)
  */
-export function memoryRoute(bindings: AppBindings): Hono {
+export function memoryRoute(memory: MemoryPanelRoute): Hono {
   const app = new Hono();
 
   // ── Stats ─────────────────────────────────────────────────────────────────
   app.get('/stats', (c) => {
-    return c.json(bindings.memory.getStats());
+    return c.json(memory.getStats());
   });
 
   // ── Browse nodes ──────────────────────────────────────────────────────────
@@ -75,7 +90,7 @@ export function memoryRoute(bindings: AppBindings): Hono {
     if (!parsed.success) {
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
     }
-    const rows = bindings.memory.listNodes(parsed.data);
+    const rows = memory.listNodes(parsed.data);
     return c.json(rows);
   });
 
@@ -85,7 +100,7 @@ export function memoryRoute(bindings: AppBindings): Hono {
     if (!parsed.success) {
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
     }
-    const rows = bindings.memory.listItems(parsed.data);
+    const rows = memory.listItems(parsed.data);
     return c.json(rows);
   });
 
@@ -93,13 +108,13 @@ export function memoryRoute(bindings: AppBindings): Hono {
   app.get('/edges', (c) => {
     const ids = (c.req.query('nodes') ?? '').split(',').filter(Boolean);
     if (ids.length === 0) return c.json([]);
-    return c.json(bindings.memory.listEdgesForNodes(ids));
+    return c.json(memory.listEdgesForNodes(ids));
   });
 
   // ── Per-session overrides ─────────────────────────────────────────────────
   app.get('/sessions/:id/overrides', (c) => {
     const sid = asSessionId(c.req.param('id'));
-    return c.json(bindings.memory.getSessionOverrides(sid));
+    return c.json(memory.getSessionOverrides(sid));
   });
 
   app.put('/sessions/:id/overrides', async (c) => {
@@ -108,18 +123,18 @@ export function memoryRoute(bindings: AppBindings): Hono {
     if (!parsed.success) {
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
     }
-    bindings.memory.setSessionOverrides(sid, parsed.data);
-    return c.json(bindings.memory.getSessionOverrides(sid));
+    memory.setSessionOverrides(sid, parsed.data);
+    return c.json(memory.getSessionOverrides(sid));
   });
 
   // ── Delete nodes / items (user-initiated) ─────────────────────────────────
   app.delete('/nodes/:id', (c) => {
-    bindings.memory.deleteNode(c.req.param('id'));
+    memory.deleteNode(c.req.param('id'));
     return c.body(null, 204);
   });
 
   app.delete('/items/:id', (c) => {
-    bindings.memory.deleteItem(c.req.param('id'));
+    memory.deleteItem(c.req.param('id'));
     return c.body(null, 204);
   });
 
@@ -129,7 +144,7 @@ export function memoryRoute(bindings: AppBindings): Hono {
     if (!parsed.success) {
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
     }
-    const report = bindings.memory.runMaintenance(parsed.data);
+    const report = memory.runMaintenance(parsed.data);
     return c.json(report);
   });
 
