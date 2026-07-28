@@ -7,7 +7,6 @@ import { requireSharedSecret } from './auth.js';
 import { CredentialFacade, requireCredentialMasterKey } from '@ema-agent/credential';
 import { FileAccessFacade } from '@ema-agent/attachment';
 import { wire } from './wiring/index.js';
-import { startBackgroundWork } from './wiring/index.js';
 import { createHttpRoutes } from './wiring/createHttpRoutes.js';
 import {
   profileDbPath, dataDbPathFor, profileDir, loadRegistry, activeDirEntry,
@@ -92,7 +91,7 @@ async function main() {
   void bindings.kb.initAll().catch((err) => {
     console.warn('[kb] initAll() failed:', err);
   });
-  const bgWork   = startBackgroundWork(bindings);
+  bindings.backgroundWork.start();
   const app = buildServer(createHttpRoutes(bindings), sharedSecret);
 
   const port = await findOpenPort(PORT_DEFAULT, PORT_MAX);
@@ -121,7 +120,7 @@ async function main() {
     shuttingDown = true;
     console.log('[local-host] shutting down...');
     void (async () => {
-      try { await bgWork.shutdown(); } catch { /* swallow */ }
+      try { await bindings.backgroundWork.shutdown(); } catch { /* swallow */ }
       clearRuntimeReady?.();
       lock.release();
       server.close(() => {

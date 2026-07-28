@@ -1,7 +1,7 @@
 // 测试 B-025 single-flight 周期 tick: 慢轮不重入(不叠罗汉), stop 等待在途轮落地。
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createBackgroundTicker } from '../src/wiring/background-tick.js';
+import { createBackgroundTicker } from '../src/background/backgroundTicker.js';
 
 describe('createBackgroundTicker (B-025)', () => {
   beforeEach(() => { vi.useFakeTimers(); });

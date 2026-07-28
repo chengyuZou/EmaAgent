@@ -94,10 +94,7 @@ import {
 import type { CommandRunnerPort, SandboxStatusWire } from '@ema-agent/sandbox';
 import type { UsageRecord } from '@ema-agent/usage';
 import { ToolExecutionJournal, ToolRegistry } from '@ema-agent/tools';
-import {
-  cleanupInterruptedFileWriteTemps,
-  registerBuiltinTools,
-} from '@ema-agent/tool-builtin';
+import { registerBuiltinTools } from '@ema-agent/tool-builtin';
 import { detectBackend, CommandRunner } from '@ema-agent/sandbox';
 import { ToolResultCleaner, ToolResultStore } from '@ema-agent/tools';
 import {
@@ -120,6 +117,8 @@ import { ProviderRuntimeFacade } from './provider-runtime.js';
 import { SessionBackupFacade } from '@ema-agent/backup';
 import type { CredentialFacade } from '@ema-agent/credential';
 import { createSettingsStore } from '../settings/createSettingsStore.js';
+import { BackgroundWork } from '../background/backgroundWork.js';
+import { StartupRecovery } from '../background/startupRecovery.js';
 
 /**
  * LocalHost 迁移期完整对象图。
@@ -141,6 +140,8 @@ export interface AppBindings {
   sandboxStatus: SandboxStatusWire;
 
   hooks:   HookBus;
+  /** LocalHost 进程级恢复、周期维护与关闭入口。 */
+  backgroundWork: BackgroundWork;
   session: SessionStore;
   /** Session 备份导入的唯一业务入口；流式导出在 ZIP v2 接入同一 Facade。 */
   sessionBackup: SessionBackupFacade;
@@ -202,8 +203,6 @@ export interface AppBindings {
   removeSessionRuntime: (sessionId: SessionId) => void;
   /** 按 Session 缓存外置 Tool Result 存储。 */
   getSessionToolResultStore: (sessionId: SessionId) => ToolResultStore;
-  /** Sweeps offloaded tool-result files — called by background tick. */
-  toolResultCleaner: ToolResultCleaner;
   /** 子 Agent 实际执行的持久化入口；根 Turn 不会写入该存储。 */
   agentRunStore: AgentRunStore;
   /** 根 Turn 可见的持久工作清单；普通 Subagent 不继承该入口。 */
@@ -238,8 +237,6 @@ export interface AppBindings {
   attachmentStore:  AttachmentStore;
   /** 图片规范化副本与 Vision 文本派生的可回收缓存。 */
   attachmentDerivationCache: AttachmentDerivationCache;
-  /** 后台空闲维护入口，不在应用启动时扫描整个缓存目录。 */
-  attachmentCacheMaintenance: AttachmentCacheMaintenance;
   sessionStats:     SessionStatsRepo;
   storageStats:     DataDirStatsRepo;
   sessionNotes:     SessionNotesRepo;
@@ -542,27 +539,6 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   const toolExecutionJournal = new ToolExecutionJournal(
     new ToolExecutionsRepo(dataDb.sqlite),
   );
-  const interruptedTools = toolExecutionJournal.recoverInterrupted();
-  const fileWriteRecovery = cleanupInterruptedFileWriteTemps(interruptedTools);
-  if (interruptedTools.length > 0) {
-    const unknownCount = interruptedTools.filter(
-      execution => execution.status === 'outcome_unknown',
-    ).length;
-    console.warn(
-      `[tool-execution] recovered ${interruptedTools.length} interrupted calls; `
-      + `${unknownCount} may have produced side effects`,
-    );
-  }
-  if (fileWriteRecovery.failed.length > 0) {
-    console.warn(
-      `[FileWriteTool] failed to remove ${fileWriteRecovery.failed.length} interrupted temporary files`,
-    );
-  }
-  if (fileWriteRecovery.removed.length > 0) {
-    console.info(
-      `[FileWriteTool] removed ${fileWriteRecovery.removed.length} interrupted temporary files`,
-    );
-  }
 
   // ── System event bus ────────────────────────────────────────────────────────
   const systemBus = new SystemEventBus();
@@ -830,6 +806,23 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     });
   };
 
+  const backgroundWork = new BackgroundWork(
+    new StartupRecovery(
+      activeDataDir,
+      memory,
+      session,
+      agentRunStore,
+      toolExecutionJournal,
+    ),
+    memory,
+    mcpRegistry,
+    toolResultCleaner,
+    attachmentCacheMaintenance,
+    narrative,
+    providerRuntime,
+    systemBus,
+  );
+
   // Fire-and-forget: pull the models.dev catalog (context windows + capabilities).
   // On failure the catalog stays empty and lookups fall through to the DB / 0.
   void modelCatalog.refresh().then((ok) => {
@@ -839,20 +832,20 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
 
   return {
     dataDb, activeDataDir, fileAccess, sandboxStatus,
-    hooks, session, sessionBackup,
+    hooks, backgroundWork, session, sessionBackup,
     llm, embed, rerank, narrative, modelCatalog, modelCapabilities,
     card, emotion,
     tts, audioArchive, stt, vision, providerRuntime,
     permission, interactionQueue, askUserRegistry, tools, buildAskForTurn, getCommandRunner,
     invalidateSessionRuntime, removeSessionRuntime,
-    getSessionToolResultStore, toolResultCleaner, agentRunStore, taskStore,
+    getSessionToolResultStore, agentRunStore, taskStore,
     toolExecutionJournal, agentRunTranscript,
     memory, contextCompactor,
     systemBus,
     providers, settings, ttsVoiceHandles,
     modelBindings, providerLlmModels, providerEmbedModels,
     providerRerankModels, providerTtsModels, providerSttModels, providerVisionModels,
-    attachmentStore, attachmentDerivationCache, attachmentCacheMaintenance,
+    attachmentStore, attachmentDerivationCache,
     sessionStats, storageStats, sessionNotes,
     mcpRegistry,
     marketRegistry, marketSourceStore,
