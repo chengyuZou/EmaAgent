@@ -225,9 +225,8 @@ async function checkBridgeHeartbeat(
   return ready;
 }
 
-// ── Public re-exports (back-compat for existing routes / orchestrator) ──────
-
-export type { AppBindings, BuildBindingsArgs } from './bindings.js';
+// Provider 配置解析仍供 LocalHost 内部装配与定向测试复用。
+export type { BuildBindingsArgs } from './bindings.js';
 export {
   buildLlmProviderConfig,
   buildEmbedProviderConfig,

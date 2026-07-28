@@ -27,8 +27,8 @@ export interface EmotionEngineOptions {
 /**
  * EmotionEngine — Facade for ACT tag parsing + emotion state machine.
  *
- * One engine instance is shared across ALL sessions in the sidecar (AppBindings
- * holds a singleton). Internal state is keyed by sessionId so concurrent turns
+ * One engine instance is shared across ALL sessions in the LocalHost process.
+ * Internal state is keyed by sessionId so concurrent turns
  * in different sessions never interfere.
  *
  * ## Lifecycle per turn

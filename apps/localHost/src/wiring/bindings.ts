@@ -1,4 +1,4 @@
-// 创建 LocalHost 运行所需的业务模块，并把它们装配到迁移期 AppBindings。
+// 创建 LocalHost 运行所需的业务模块，并把仍待拆分的对象图留在装配边界。
 
 import type { Database } from '@ema-agent/storage';
 import {
@@ -121,14 +121,9 @@ import { SessionBackupFacade } from '@ema-agent/backup';
 import type { CredentialFacade } from '@ema-agent/credential';
 import { createSettingsStore } from '../settings/createSettingsStore.js';
 
-// ── App-wide bindings (Facade set passed everywhere) ─────────────────────────
-
 /**
- * The complete dependency surface for all routes / orchestrator / engines.
- *
- * Kept flat — sub-bundles were considered but would force a refactor of every
- * route handler that already reads `bindings.session`, `bindings.llm`, etc.
- * We revisit splitting if the field count meaningfully exceeds ~20.
+ * LocalHost 迁移期完整对象图。
+ * 只允许 wiring 文件展开，不能继续作为 Route、业务模块或公共包 API 的依赖入口。
  */
 export interface AppBindings {
   // ── Storage: two SQLite DBs ─────────────────────────────────────────────────
@@ -136,12 +131,10 @@ export interface AppBindings {
   //   character cards, app settings. Shared across all registered data dirs.
   // dataDb:    {activeDataDir}/data.db — sessions, memory, audio.
   //   Swapped (sidecar restart required) when the user switches active dataDir.
-  profileDb:     Database;
   dataDb:        Database;
   /** Absolute path of the currently-active data dir — used for file storage. */
   activeDataDir: string;
   /** Provider 凭据加解密的唯一入口；主密钥由 Tauri/OS keychain 提供。 */
-  credentials: CredentialFacade;
   /** 本地附件路径的签发、验证与权威元数据入口。 */
   fileAccess: FileAccessFacade;
   /** 当前机器实际启用的沙箱等级，供系统接口和前端设置页展示。 */
@@ -845,7 +838,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   });
 
   return {
-    profileDb, dataDb, activeDataDir, credentials, fileAccess, sandboxStatus,
+    dataDb, activeDataDir, fileAccess, sandboxStatus,
     hooks, session, sessionBackup,
     llm, embed, rerank, narrative, modelCatalog, modelCapabilities,
     card, emotion,

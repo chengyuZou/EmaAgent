@@ -19,17 +19,17 @@ Vision 也独立于 `@ema-agent/llm`。某个 Vision Provider 可能暴露 OpenA
 
 ## 运行时形态
 
-生产接线在 `apps/localHost` 中创建一个 `VisionRuntime`，通过 `AppBindings` 暴露：
+生产接线在 `apps/localHost` 中创建一个 `VisionRuntime`，再把执行入口直接注入需要视觉能力的装配点：
 
 ```text
-buildBindings()
+LocalHost wiring
   -> vision = new VisionRuntime({
        configs: visionProviderConfigs,
        limits,
      })
 
-routes / orchestrator / attachment ingest / knowledge ingest
-  -> bindings.vision.extract(...)
+TurnInputPreparer / knowledge ingest / probe route
+  -> vision.extract(...)
 ```
 
 `VisionRuntime` 使用单张 Runtime Entry 表原子保存 Provider 配置与 Adapter。每次调用的图片载荷、Prompt、解析状态和 AbortController 都留在 `extract()` 局部，因此对话、附件和知识库任务不会互相覆盖。

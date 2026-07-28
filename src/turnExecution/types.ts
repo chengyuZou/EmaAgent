@@ -43,7 +43,7 @@ export interface TurnInteractionCleanup {
 }
 
 /**
- * TurnExecutor 所需依赖，是 AppBindings 的严格子集。
+ * TurnExecutor 所需的根生命周期依赖。
  * 依赖只描述根 Turn 执行，不包含 HTTP、SSE、TTS 或附件准备。
  *
  * 不包含 model_bindings：Provider 与模型解析属于输入准备阶段，

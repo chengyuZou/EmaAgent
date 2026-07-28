@@ -46,6 +46,8 @@ Settings 运行时接线第二批已经完成：`attachments.limits` 在附件�
 
 L5 后余下 Route 收口已经完成：Transcribe 只接收 STT 执行面与模型绑定查询，Cards 只接收角色卡 Store，Shell 只接收 Permission 审批入口；Knowledge Base 与 Storage Stats 使用按业务命名的明确依赖集合。五组 Route 和对应测试不再导入或伪造 `AppBindings`，完整对象图只在 `server.ts` 与 `wiring/create*Router.ts` 等 Composition Root 展开，URL、状态码和响应协议保持不变。
 
+LocalHost HTTP 传输边界第一刀已经完成：`server.ts` 只接收有序 `MountedHttpRoute[]`，统一处理 CORS、认证、请求预算、挂载、404 与异常协议，不再导入任何业务 Route 或 `AppBindings`。`wiring/createHttpRoutes.ts` 是当前唯一 HTTP Router 注册表，各 Router 仍在 Composition Root 取得自己的窄依赖；所有 URL 与协议保持不变。字段审计删除了装配完成后无消费者的 `profileDb/credentials` 运行期成员，根包也停止公开宽 `AppBindings/wire/createTurnExecution/createTurnOutput` 装配 API。
+
 开工前已复核本地 Codex 源码：`codex-protocol` 只定义 Thread/Turn/Submission 等低层协议，真正编排位于 `codex-core/session`；App Server 只校验并提交 `Op::UserInput`，Session 统一建立 `RunningTask`、取消句柄和终态，`RegularTask` 再调用内部 `run_turn` 完成多轮模型与工具循环。Ema 因此保留低层 `turn` 与高层 `turnExecution` 两个编译边界，不能把执行依赖反向塞进被 Context、Session、Storage、Hooks 共同依赖的领域包。
 
 旧 `ConversationEngine` 与整个 `src/conversation` 包已经删除，Workspace 依赖和生产 import 归零。Chat 根生命周期与只读 Tool Profile 进入 `turnExecution`，LLM/Tool 迭代进入 `agent`，Narrative Route 与多周目 Recall 回到 `narrative`，模型可见召回正文通过不可信 Context Contribution 投递；Hook 不再携带 Narrative 私有结果。
@@ -138,9 +140,9 @@ Task 与 AgentRun 前端已经分面：Desktop 使用正式 `/api/tasks` 快照�
 
 开始任何新批次前必须重新运行 `git status --short` 与 `git diff`，保留用户和其他 Agent 的修改。
 
-当前工作区只包含 Transcribe、Cards、Knowledge Base、Storage Stats、Shell 五组 Route 的窄依赖改动，以及 `server.ts` Composition Root、对应测试和本接力板更新。开始下一批前仍须按实际 Diff 区分用户或其他 Agent 的后续修改。
+当前工作区只包含 LocalHost HTTP 传输边界第一刀：`server.ts`、`wiring/createHttpRoutes.ts`、`index.ts`、迁移期 `bindings.ts/wiring/index.ts`、Server 回归测试，以及 RFC/接力板更新。开始下一批前仍须按实际 Diff 区分用户或其他 Agent 的后续修改。
 
-当前基线最近提交：`4ea6f0b7 feat: enhance attachment handling with limits and normalization options`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
+当前基线最近提交：`76107a00 refactor: update routes to use dependency injection for improved testability`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
 
 ## 已确定的 V1 口径
 
@@ -187,7 +189,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 6. Permission V1 已完成：统一 Session FIFO、明确终态、Turn 身份核对、SQLite 永久规则 CRUD 与设置页管理、Builtin-only 免审批边界均已接通；旧 `AskUserRegistryLike` 已改为 `AskUserInteractionPort`，不新增第二套队列；
 7. Skill 多文件激活、per-Agent 状态、结构化 Context 恢复与 `allowed-tools` 单向收窄已经完成；
 8. LocalHost L0、Turn 输入准备 L1、Turn Context L2、Turn Tools L3、Root Agent Execution L4、Turn Composition Root L5、TTS Turn 输出边界、精确根取消与旧 Orchestrator 删除、Route 业务副作用归位及 Task/AgentRun Route 窄依赖均已完成；
-9. Turn/AskUser、Permission、Session、Provider/ModelBindings、Settings/Theme、Transcribe、Cards、Knowledge Base、Storage Stats 与 Shell Route 已完成窄依赖；Agent/Context/Attachment/Vision 设置已按各自生命周期接线。下一批先审计 `AppBindings` 字段与 wiring 构造是否仍有失效成员，再决定 HTTP/SSE/Auth 的最终归档位置；
+9. Turn/AskUser、Permission、Session、Provider/ModelBindings、Settings/Theme、Transcribe、Cards、Knowledge Base、Storage Stats 与 Shell Route 已完成窄依赖；HTTP Server 已改为只消费 Route 注册表。下一批按生命周期把启动恢复、Memory/MCP/清理器与 Bridge 心跳移出宽 `AppBindings`，不建立 `AgentBindings/ProviderBindings` 等嵌套依赖袋；物理移动 Auth/SSE/Route 目录等语义稳定后再做；
 10. 后台进程按 `BackgroundProcess + ProcessOutput/ProcessStop` 单独实现 C 档，不修改 AgentLoop，也不恢复假 `run_in_background`。
 
 命名随业务批次清理：旧 `IFileStateStoreEntry/IFileStateStore` 及后续过渡接口已经删除，`IToolExecutionJournal` 已改为职责名；其余迁移期 `I*` 类型继续随业务边界处理，不单独进行全仓机械重命名。
@@ -196,6 +198,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- LocalHost HTTP 传输边界第一刀：LocalHost typecheck、正式 build 与全量 31 个测试文件 112/112 通过，构建验证 83 个源码、333 个产物；新增 Server 测试覆盖无业务对象图挂载、统一认证和 404。`server.ts` 与根包公开入口的 `AppBindings` 引用归零，装配完成后无消费者的 `profileDb/credentials` 已退出绑定表。
 - 剩余五组 AppBindings Route 收窄：LocalHost typecheck、正式 build 与全量 30 个测试文件 110/110 通过，构建验证 82 个源码、329 个产物；Cards、KB Embedding、Session Backup、Shell Permission 定向 4 个测试文件 15/15 通过。五组 Route 和相关测试中的 `AppBindings` 引用归零，`server.ts` 显式投影现有业务对象；`git diff --check` 通过，仅有既有 CRLF 与不可访问 pytest 缓存提示。
 - Settings 运行时接线第二批：Attachment、Vision、TurnExecution、LocalHost typecheck 通过；Attachment 14/14、Vision 19/19、TurnExecution 23/23、LocalHost 110/110 通过，4 个真实模型 Integration 按规则跳过。新增测试覆盖附件超限明确拒绝、根 Turn 设置深冻结和 Vision 下一次操作读取新快照；`git diff --check` 通过，仅有既有 CRLF 与不可访问 pytest 缓存提示。
 - Settings 运行时接线第一批：Settings、Context、TurnExecution、LocalHost typecheck 通过；Context 27/27、TurnExecution 23/23、LocalHost Settings/Theme Route 10/10 通过，4 个真实模型 Integration 按规则跳过。新增测试覆盖通用设置读写与非法值拒绝、每根 Turn 只读取一次设置、冻结快照不受后续对象变化影响、Context 请求设置不污染共享 Compactor 默认值；`git diff --check` 通过，仅有既有 CRLF 提示。
@@ -289,7 +292,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 先完整阅读 CLAUDE.md 与 EmaWorkState.md，再按当前批次阅读 EmaRefactor.md 和 EmaClaudeArchitectureReview.md 对应章节。检查 git status、diff 和最近提交，保留用户及其他 Agent 的修改。
 
-LocalHost L0、Turn 输入准备 L1、Turn Context L2、Turn Tools L3、Root Agent Execution L4、Turn Composition Root L5、TTS Turn 输出边界、精确根取消与旧 Orchestrator 删除、Route 业务副作用归位以及 Task/AgentRun/Turn/AskUser/Permission/Session/Provider/ModelBindings/Settings/Theme Route 窄依赖已经完成。Agent/Context/Attachment 用户设置已经冻结进每根 `TurnInput`，Vision 设置在每次 Operation 开始时读取一次；不要在 AgentLoop 中重读 SQL 或修改共享 Compactor。不要恢复 `apps/core`、`TurnExecutionPlan`、`PreparedTurnExecution`、万能 `TurnExecutionDeps`、LocalHost `activeTurns`、旧 Orchestrator、Route transcript/交互/音频投影回调、Route 直接解析 AgentRun `content_json`、Session Route 标题/删除副作用、Provider Route 业务编排、通用 `cancelActive`、TOML 设置存储或弃用 `EmaStreamEvent` 消费者。先阅读 `EmaRefactor.md` §7.1.1 与 §7.1.2；下一批继续按业务组清除其余 Route 的 `AppBindings`，并审查 Knowledge 等设置消费者。完整对象图只允许留在 Composition Root，不建立另一只嵌套依赖袋。修改前先说明窄端口、URL 保持策略和预期效果，不要提交 Git。
+LocalHost L0、Turn 输入准备 L1、Turn Context L2、Turn Tools L3、Root Agent Execution L4、Turn Composition Root L5、TTS Turn 输出边界、精确根取消与旧 Orchestrator 删除、Route 业务副作用归位、全部 Route 窄依赖以及 HTTP Server 的 Route 注册表边界已经完成。Agent/Context/Attachment 用户设置已经冻结进每根 `TurnInput`，Vision 设置在每次 Operation 开始时读取一次；不要在 AgentLoop 中重读 SQL 或修改共享 Compactor。不要恢复 `apps/core`、`TurnExecutionPlan`、`PreparedTurnExecution`、万能 `TurnExecutionDeps`、LocalHost `activeTurns`、旧 Orchestrator、Route transcript/交互/音频投影回调、Route 直接解析 AgentRun `content_json`、Session Route 标题/删除副作用、Provider Route 业务编排、通用 `cancelActive`、TOML 设置存储、弃用 `EmaStreamEvent` 消费者或根包公开 `AppBindings`。先阅读 `EmaRefactor.md` §7.1.1 与 §7.1.2；下一批按生命周期拆出后台启动/恢复/周期清理/Bridge 心跳，让这些对象不再作为一般运行期依赖留在 `AppBindings`。不能按业务名复制嵌套依赖袋。修改前先说明生命周期、关闭顺序和预期效果，不要提交 Git。
 ```
 
 ## 维护方式
