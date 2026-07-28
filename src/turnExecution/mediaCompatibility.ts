@@ -7,6 +7,7 @@ import {
   type LlmContentPart,
 } from '@ema-agent/llm';
 import type { ModelCapabilitySnapshot } from '@ema-agent/provider';
+import type { AttachmentImageNormalizationOptions } from '@ema-agent/attachment';
 
 export interface VisionModelBinding {
   readonly providerConfigId: string;
@@ -27,6 +28,7 @@ export interface MediaCompatibilityServices {
     readonly image: TurnImageDescriptionInput;
     readonly sessionId: SessionId;
     readonly turnId: TurnId;
+    readonly normalization: Readonly<AttachmentImageNormalizationOptions>;
     readonly signal: AbortSignal;
   }): Promise<string>;
 }
@@ -52,6 +54,7 @@ export async function prepareImagesForModel(
     readonly sessionId: SessionId;
     readonly turnId: TurnId;
   },
+  normalization: Readonly<AttachmentImageNormalizationOptions>,
   signal: AbortSignal,
 ): Promise<PreparedImageInput> {
   if (model.capabilities.input.image === 'supported') {
@@ -87,6 +90,7 @@ export async function prepareImagesForModel(
         image,
         sessionId: identity.sessionId,
         turnId: identity.turnId,
+        normalization,
         signal,
       })));
     const description = descriptions

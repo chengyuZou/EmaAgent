@@ -2,9 +2,10 @@
 import { mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AttachmentRepo } from '@ema-agent/storage';
 import { AttachmentStore } from '../store.js';
+import { DEFAULT_ATTACHMENT_SETTINGS } from '../settings.js';
 
 const temporaryDirectories: string[] = [];
 
@@ -58,5 +59,37 @@ describe('AttachmentStore.inspectBySession', () => {
     const path = join(tmpdir(), `ema-missing-${Date.now()}.txt`);
     const [result] = await createStore(path, 1, 1).inspectBySession('session-a');
     expect(result?.fileStatus).toBe('missing');
+  });
+});
+
+describe('AttachmentStore.addAll', () => {
+  it('超过根 Turn 冻结的图片数量或体积时明确拒绝，不静默丢附件', () => {
+    const insert = vi.fn();
+    const store = new AttachmentStore(
+      { insert } as unknown as AttachmentRepo,
+      { assertTurnOwnership: () => {} },
+    );
+    const image = (id: string, size = 1) => ({
+      id,
+      name: `${id}.png`,
+      mimeType: 'image/png',
+      size,
+      mtime: 1,
+      localPath: `D:\\uploads\\${id}.png`,
+    });
+
+    expect(() => store.addAll(
+      [image('a'), image('b')],
+      'turn-a',
+      'session-a',
+      { ...DEFAULT_ATTACHMENT_SETTINGS, maxImagesPerTurn: 1 },
+    )).toThrow('最多上传 1 张图片');
+    expect(() => store.addAll(
+      [image('large', 2)],
+      'turn-a',
+      'session-a',
+      { ...DEFAULT_ATTACHMENT_SETTINGS, maxImageBytes: 1 },
+    )).toThrow('超过单文件上限');
+    expect(insert).not.toHaveBeenCalled();
   });
 });

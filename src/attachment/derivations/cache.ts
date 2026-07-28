@@ -53,7 +53,11 @@ export class AttachmentDerivationCache {
     request: CachedVisionDescriptionRequest,
     produce: VisionDescriptionProducer,
   ): Promise<CachedVisionDescription> {
-    const image = await normalizeAttachmentImage(request.source, request.signal);
+    const image = await normalizeAttachmentImage(
+      request.source,
+      request.signal,
+      request.normalization,
+    );
     const identity = createIdentity(request, image);
     const key = identityKey(identity);
 

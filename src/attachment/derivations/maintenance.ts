@@ -18,6 +18,8 @@ export interface AttachmentCacheMaintenanceOptions {
   isIdle: () => boolean;
   ttlMs?: number;
   maxBytes?: number;
+  /** 每次真正执行清理时读取一次，运行中的清理不会被设置变更打断。 */
+  maxBytesForSweep?: () => number;
   minIntervalMs?: number;
 }
 
@@ -62,7 +64,9 @@ export class AttachmentCacheMaintenance {
       if (expired.length < DELETE_BATCH_SIZE) break;
     }
 
-    const maxBytes = this.options.maxBytes ?? DEFAULT_MAX_BYTES;
+    const maxBytes = this.options.maxBytesForSweep?.()
+      ?? this.options.maxBytes
+      ?? DEFAULT_MAX_BYTES;
     while (this.options.repo.totalBytes() > maxBytes) {
       const oldest = this.options.repo.listOldestDerivations(DELETE_BATCH_SIZE);
       if (oldest.length === 0) break;

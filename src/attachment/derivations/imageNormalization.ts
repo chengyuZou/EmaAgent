@@ -4,24 +4,25 @@ import { readFile, stat } from 'node:fs/promises';
 import sharp from 'sharp';
 import type {
   AttachmentImageSource,
+  AttachmentImageNormalizationOptions,
   NormalizedAttachmentImage,
 } from '../types.js';
+import { DEFAULT_ATTACHMENT_SETTINGS } from '../settings.js';
 
-const MAX_SOURCE_BYTES = 20 * 1024 * 1024;
 const MAX_INPUT_PIXELS = 40_000_000;
-const MAX_LONG_EDGE = 2_048;
 
 export const ATTACHMENT_IMAGE_TRANSFORM_VERSION = 'attachment-image-v1';
 
 export async function normalizeAttachmentImage(
   source: AttachmentImageSource,
   signal?: AbortSignal,
+  options: Readonly<AttachmentImageNormalizationOptions> = DEFAULT_ATTACHMENT_SETTINGS,
 ): Promise<NormalizedAttachmentImage> {
   signal?.throwIfAborted();
-  const input = await readSource(source);
-  if (input.byteLength > MAX_SOURCE_BYTES) {
+  const input = await readSource(source, options.maxImageBytes);
+  if (input.byteLength > options.maxImageBytes) {
     throw new Error(
-      `图片超过单文件上限 ${(MAX_SOURCE_BYTES / 1024 / 1024).toFixed(0)} MiB`,
+      `图片超过单文件上限 ${(options.maxImageBytes / 1024 / 1024).toFixed(0)} MiB`,
     );
   }
 
@@ -45,8 +46,8 @@ export async function normalizeAttachmentImage(
   const transformed = pipeline
     .rotate()
     .resize({
-      width: MAX_LONG_EDGE,
-      height: MAX_LONG_EDGE,
+      width: options.maxImageLongEdge,
+      height: options.maxImageLongEdge,
       fit: 'inside',
       withoutEnlargement: true,
     })
@@ -60,18 +61,22 @@ export async function normalizeAttachmentImage(
     width: info.width,
     height: info.height,
     contentSha256: createHash('sha256').update(data).digest('hex'),
-    transformVersion: ATTACHMENT_IMAGE_TRANSFORM_VERSION,
+    transformVersion:
+      `${ATTACHMENT_IMAGE_TRANSFORM_VERSION}:${options.maxImageLongEdge}`,
   };
 }
 
-async function readSource(source: AttachmentImageSource): Promise<Uint8Array> {
+async function readSource(
+  source: AttachmentImageSource,
+  maxSourceBytes: number,
+): Promise<Uint8Array> {
   switch (source.kind) {
     case 'path': {
       const sourceStat = await stat(source.path);
       if (!sourceStat.isFile()) throw new Error('图片来源不是普通文件');
-      if (sourceStat.size > MAX_SOURCE_BYTES) {
+      if (sourceStat.size > maxSourceBytes) {
         throw new Error(
-          `图片超过单文件上限 ${(MAX_SOURCE_BYTES / 1024 / 1024).toFixed(0)} MiB`,
+          `图片超过单文件上限 ${(maxSourceBytes / 1024 / 1024).toFixed(0)} MiB`,
         );
       }
       return new Uint8Array(await readFile(source.path));
@@ -80,9 +85,9 @@ async function readSource(source: AttachmentImageSource): Promise<Uint8Array> {
       return source.bytes;
     case 'base64':
       // Base64 长度约为原始字节的 4/3；先拒绝明显超限内容，避免先分配大 Buffer。
-      if (source.data.length > Math.ceil(MAX_SOURCE_BYTES * 4 / 3) + 4) {
+      if (source.data.length > Math.ceil(maxSourceBytes * 4 / 3) + 4) {
         throw new Error(
-          `图片超过单文件上限 ${(MAX_SOURCE_BYTES / 1024 / 1024).toFixed(0)} MiB`,
+          `图片超过单文件上限 ${(maxSourceBytes / 1024 / 1024).toFixed(0)} MiB`,
         );
       }
       return new Uint8Array(Buffer.from(source.data, 'base64'));

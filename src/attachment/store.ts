@@ -6,18 +6,23 @@ import type { AttachmentRepo } from '@ema-agent/storage';
 import { asSessionId, asTurnId } from '@ema-agent/ids';
 import type { SessionOwnershipFacade } from '@ema-agent/session';
 import type { Attachment, AttachmentInput, InspectedAttachment, ResolvedPrompt } from './types.js';
-import { AttachmentNotFoundError } from './errors.js';
+import { AttachmentLimitError, AttachmentNotFoundError } from './errors.js';
 import { resolveForPrompt } from './resolver.js';
-
-// ── 每个 Turn 的上限（服务端兜底强制）─────────────────────────────────────────
-const MAX_IMAGES_PER_TURN = 5;
-const MAX_FILES_PER_TURN  = 10;
+import {
+  DEFAULT_ATTACHMENT_SETTINGS,
+  type AttachmentSettings,
+} from './settings.js';
 
 // ── 接口 ───────────────────────────────────────────────────────────────────────
 
 export interface AttachmentStorePort {
   add(input: AttachmentInput, turnId: string, sessionId: string): Attachment;
-  addAll(inputs: AttachmentInput[], turnId: string, sessionId: string): Attachment[];
+  addAll(
+    inputs: AttachmentInput[],
+    turnId: string,
+    sessionId: string,
+    limits?: Readonly<AttachmentSettings>,
+  ): Attachment[];
   get(id: string): Attachment;
   listByTurn(turnId: string): Attachment[];
   listBySession(sessionId: string): Attachment[];
@@ -62,14 +67,33 @@ export class AttachmentStore implements AttachmentStorePort {
     return att;
   }
 
-  addAll(inputs: AttachmentInput[], turnId: string, sessionId: string): Attachment[] {
+  addAll(
+    inputs: AttachmentInput[],
+    turnId: string,
+    sessionId: string,
+    limits: Readonly<AttachmentSettings> = DEFAULT_ATTACHMENT_SETTINGS,
+  ): Attachment[] {
     const images = inputs.filter(i => i.mimeType.startsWith('image/'));
     const files  = inputs.filter(i => !i.mimeType.startsWith('image/'));
 
-    const safeImages = images.slice(0, MAX_IMAGES_PER_TURN);
-    const safeFiles  = files.slice(0, MAX_FILES_PER_TURN);
+    if (images.length > limits.maxImagesPerTurn) {
+      throw new AttachmentLimitError(
+        `本轮最多上传 ${limits.maxImagesPerTurn} 张图片，实际收到 ${images.length} 张`,
+      );
+    }
+    if (files.length > limits.maxFilesPerTurn) {
+      throw new AttachmentLimitError(
+        `本轮最多上传 ${limits.maxFilesPerTurn} 个文件，实际收到 ${files.length} 个`,
+      );
+    }
+    const oversizedImage = images.find((input) => input.size > limits.maxImageBytes);
+    if (oversizedImage) {
+      throw new AttachmentLimitError(
+        `图片 ${oversizedImage.name} 超过单文件上限 ${formatMiB(limits.maxImageBytes)} MiB`,
+      );
+    }
 
-    return [...safeImages, ...safeFiles].map(i => this.add(i, turnId, sessionId));
+    return inputs.map(i => this.add(i, turnId, sessionId));
   }
 
   get(id: string): Attachment {
@@ -149,4 +173,8 @@ async function inspectFileStatus(
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && 'code' in error;
+}
+
+function formatMiB(bytes: number): string {
+  return (bytes / 1024 / 1024).toFixed(0);
 }

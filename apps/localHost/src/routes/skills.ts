@@ -3,8 +3,21 @@ import { Hono } from 'hono';
 import { z }    from 'zod';
 import { GithubSkillCoordsSchema, SkillNameSchema } from '@ema-agent/skills';
 import { mergeByName } from '@ema-agent/marketplace';
-import type { MarketSkillEntry } from '@ema-agent/skills';
-import type { AppBindings } from '../wiring/index.js';
+import type { SkillInstaller, SkillStore, MarketSkillEntry } from '@ema-agent/skills';
+import type { MarketRegistry, MarketSourceStore } from '@ema-agent/marketplace';
+
+/** Skill 管理面只使用索引与安装能力，不接触运行时激活。 */
+type SkillStoreManagement = Pick<
+  SkillStore,
+  'listAll' | 'findByName' | 'readRawMd' | 'setEnabled' | 'rename' | 'remove'
+>;
+type SkillInstallManagement = Pick<
+  SkillInstaller,
+  'installFromUrl' | 'installFromText' | 'validate'
+>;
+/** 市场聚合只需要启用源列表和跨源拉取。 */
+type MarketSourceListing = Pick<MarketSourceStore, 'listEnabled'>;
+type MarketEntryListing = Pick<MarketRegistry, 'listAll'>;
 
 // ── Skills router ─────────────────────────────────────────────────────────────
 //
@@ -38,9 +51,13 @@ const patchBodySchema    = z.object({ enabled: z.boolean() });
 const renameBodySchema   = z.object({ newName: SkillNameSchema });
 const relocateBodySchema = z.object({ dir: z.string().min(1) });
 
-export function createSkillsRouter(bindings: AppBindings) {
+export function createSkillsRouter(
+  skillStore: SkillStoreManagement,
+  skillInstaller: SkillInstallManagement,
+  marketSources: MarketSourceListing,
+  marketRegistry: MarketEntryListing,
+) {
   const router = new Hono();
-  const { skillInstaller, skillStore } = bindings;
 
   router.get('/skills', (c) => {
     return c.json({ skills: skillStore.listAll() });
@@ -51,8 +68,8 @@ export function createSkillsRouter(bindings: AppBindings) {
   // 单源失败不阻断(返回该源 error)。源管理走 /api/market/sources。
   router.get('/skills/market', async (c) => {
     try {
-      const sources = bindings.marketSourceStore.listEnabled('skill');
-      const results = await bindings.marketRegistry.listAll<MarketSkillEntry>(
+      const sources = marketSources.listEnabled('skill');
+      const results = await marketRegistry.listAll<MarketSkillEntry>(
         'skill',
         sources,
         c.req.raw.signal,

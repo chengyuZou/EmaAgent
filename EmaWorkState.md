@@ -1,7 +1,7 @@
 # EmaAgent 当前重构接力板
 
 > 状态：临时施工记录，架构完成后删除
-> 更新时间：2026-07-28
+> 更新时间：2026-07-29
 > 作用：只记录当前阶段、工作区归属、最近验证和下一步。长期规则以 `CLAUDE.md` 为准，目标设计以 `EmaRefactor.md` 为准，设计依据以 `EmaClaudeArchitectureReview.md` 为准。
 
 ## 当前阶段
@@ -42,7 +42,9 @@ Settings/Theme 配置所有权与 HTTP 边界已经完成：用户设置继续�
 
 Settings 运行时接线第一批已经完成：Catalog 新增稳定键查找，LocalHost 提供通用 `/api/settings/values/:key` 读写入口，所有写入继续经过业务定义的 decode 与 SQLite 后快照提交顺序。`agent.limits` 与 `context.compaction` 在 `TurnInputPreparer` 中只读取一次并冻结为根 Turn 设置快照；Agent 迭代、Tool/Subagent 预算和每次 Context 压缩都读取该快照，运行中的 Turn 不受后续设置更新影响，全局 `ContextCompactor` 也不保存并发 Session 的可变用户值。
 
-L5 后余下收口顺序更新：Turn/AskUser、Permission、Session、Provider/ModelBindings、Settings/Theme Route 已收窄；下一批接入 Attachment 的 `nextTurn` 与 Vision 的 `nextOperation` 设置，再继续按业务组移除其余 Route 的 `AppBindings`。最后才决定是否把已经纯化的 HTTP/SSE/Auth 文件归档到 `transports/http`。
+Settings 运行时接线第二批已经完成：`attachments.limits` 在附件写入、图片数量/体积校验和 Vision 降级前随根 Turn 冻结，同一 Turn 不会混用新旧值；超限输入改为明确失败，不再静默截掉附件。图片规范化使用该快照的字节和长边上限，派生缓存配额在每次空闲清理开始时读取一次。`vision.limits` 则按 `nextOperation` 语义在每次 extract/probe 开始时取得一份已校验快照，排队及执行中的请求不会被后续设置变更改写。
+
+L5 后余下收口顺序更新：Turn/AskUser、Permission、Session、Provider/ModelBindings、Settings/Theme Route 已收窄；Agent/Context/Attachment/Vision 设置已进入真实运行链。下一批继续按业务组移除其余 Route 的 `AppBindings`，并审查 Knowledge 等已注册设置的实际消费边界。最后才决定是否把已经纯化的 HTTP/SSE/Auth 文件归档到 `transports/http`。
 
 开工前已复核本地 Codex 源码：`codex-protocol` 只定义 Thread/Turn/Submission 等低层协议，真正编排位于 `codex-core/session`；App Server 只校验并提交 `Op::UserInput`，Session 统一建立 `RunningTask`、取消句柄和终态，`RegularTask` 再调用内部 `run_turn` 完成多轮模型与工具循环。Ema 因此保留低层 `turn` 与高层 `turnExecution` 两个编译边界，不能把执行依赖反向塞进被 Context、Session、Storage、Hooks 共同依赖的领域包。
 
@@ -136,9 +138,9 @@ Task 与 AgentRun 前端已经分面：Desktop 使用正式 `/api/tasks` 快照�
 
 开始任何新批次前必须重新运行 `git status --short` 与 `git diff`，保留用户和其他 Agent 的修改。
 
-当前工作区同时包含本批 Settings 运行时接线和其他 Agent 的 System/SystemEvents Route 收窄；并行改动集中在 `apps/localHost/src/routes/system.ts` 与 `system-events.ts`，本批未修改其业务实现。Settings 改动集中在 `src/settings`、`src/context`、`src/turnExecution`、LocalHost Settings Route 与 `createTurnExecution.ts`。开始下一批前仍须按实际 Diff 区分边界。
+当前工作区包含本批 Attachment/Vision Settings 接线，以及其他 Agent 对 `apps/localHost/src/routes/skills.ts` 的并行修改；本批未修改 Skill Route。Settings 改动集中在 `src/attachment`、`src/vision`、`src/turnExecution` 与 LocalHost wiring。开始下一批前仍须按实际 Diff 区分边界。
 
-当前基线最近提交：`3b37026d refactor: replace TtsVoiceUri with TtsProviderVoiceHandle for improved voice management`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
+当前基线最近提交：`7e138a17 feat: implement runtime settings route with read/write capabilities and validation`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
 
 ## 已确定的 V1 口径
 
@@ -185,7 +187,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 6. Permission V1 已完成：统一 Session FIFO、明确终态、Turn 身份核对、SQLite 永久规则 CRUD 与设置页管理、Builtin-only 免审批边界均已接通；旧 `AskUserRegistryLike` 已改为 `AskUserInteractionPort`，不新增第二套队列；
 7. Skill 多文件激活、per-Agent 状态、结构化 Context 恢复与 `allowed-tools` 单向收窄已经完成；
 8. LocalHost L0、Turn 输入准备 L1、Turn Context L2、Turn Tools L3、Root Agent Execution L4、Turn Composition Root L5、TTS Turn 输出边界、精确根取消与旧 Orchestrator 删除、Route 业务副作用归位及 Task/AgentRun Route 窄依赖均已完成；
-9. Turn/AskUser、Permission、Session、Provider/ModelBindings、Settings/Theme Route 已完成目录内聚和窄端口；Agent/Context 设置已接入根 Turn 快照，下一批接入 Attachment/Vision 并继续清除其余 Route 的 `AppBindings`，全部完成后再决定 HTTP/SSE/Auth 的最终归档位置；
+9. Turn/AskUser、Permission、Session、Provider/ModelBindings、Settings/Theme Route 已完成目录内聚和窄端口；Agent/Context/Attachment/Vision 设置已按各自生命周期接线，下一批继续清除其余 Route 的 `AppBindings` 并审查 Knowledge 等设置消费者，全部完成后再决定 HTTP/SSE/Auth 的最终归档位置；
 10. 后台进程按 `BackgroundProcess + ProcessOutput/ProcessStop` 单独实现 C 档，不修改 AgentLoop，也不恢复假 `run_in_background`。
 
 命名随业务批次清理：旧 `IFileStateStoreEntry/IFileStateStore` 及后续过渡接口已经删除，`IToolExecutionJournal` 已改为职责名；其余迁移期 `I*` 类型继续随业务边界处理，不单独进行全仓机械重命名。
@@ -194,6 +196,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- Settings 运行时接线第二批：Attachment、Vision、TurnExecution、LocalHost typecheck 通过；Attachment 14/14、Vision 19/19、TurnExecution 23/23、LocalHost 110/110 通过，4 个真实模型 Integration 按规则跳过。新增测试覆盖附件超限明确拒绝、根 Turn 设置深冻结和 Vision 下一次操作读取新快照；`git diff --check` 通过，仅有既有 CRLF 与不可访问 pytest 缓存提示。
 - Settings 运行时接线第一批：Settings、Context、TurnExecution、LocalHost typecheck 通过；Context 27/27、TurnExecution 23/23、LocalHost Settings/Theme Route 10/10 通过，4 个真实模型 Integration 按规则跳过。新增测试覆盖通用设置读写与非法值拒绝、每根 Turn 只读取一次设置、冻结快照不受后续对象变化影响、Context 请求设置不污染共享 Compactor 默认值；`git diff --check` 通过，仅有既有 CRLF 提示。
 - Settings/Theme 配置所有权：Settings、Theme、Agent、Context、Permission、Attachment、Vision、Knowledge、LocalHost 与 Desktop UI 的依赖构建 43/43 通过；Settings/LocalHost/Desktop 定向 5 个测试文件 18/18 通过。设置写入按 SQLite 成功后再替换快照并发布事件，持久化失败与 Theme 前端保存失败均保留旧值；`SettingsStore` 直接使用 Storage `SettingsRepo`，镜像持久化类型已清理。
 - TTS Provider 声音句柄生命周期：旧 `voiceUri` 与 Settings `runtimeCache` 生产引用归零；OpenAI 兼容与 DashScope 在协议未返回可靠有效期时标记为临时句柄，按角色、Provider 配置和模型进入两分钟进程内缓存。TTS/LocalHost 定向构建 40/40 通过，TTS 6 个测试文件 25/25 通过。
@@ -285,7 +288,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 先完整阅读 CLAUDE.md 与 EmaWorkState.md，再按当前批次阅读 EmaRefactor.md 和 EmaClaudeArchitectureReview.md 对应章节。检查 git status、diff 和最近提交，保留用户及其他 Agent 的修改。
 
-LocalHost L0、Turn 输入准备 L1、Turn Context L2、Turn Tools L3、Root Agent Execution L4、Turn Composition Root L5、TTS Turn 输出边界、精确根取消与旧 Orchestrator 删除、Route 业务副作用归位以及 Task/AgentRun/Turn/AskUser/Permission/Session/Provider/ModelBindings/Settings/Theme Route 窄依赖已经完成。Agent/Context 用户设置已经冻结进每根 `TurnInput`，不要在 AgentLoop 中重读 SQL 或修改共享 Compactor。不要恢复 `apps/core`、`TurnExecutionPlan`、`PreparedTurnExecution`、万能 `TurnExecutionDeps`、LocalHost `activeTurns`、旧 Orchestrator、Route transcript/交互/音频投影回调、Route 直接解析 AgentRun `content_json`、Session Route 标题/删除副作用、Provider Route 业务编排、通用 `cancelActive`、TOML 设置存储或弃用 `EmaStreamEvent` 消费者。先阅读 `EmaRefactor.md` §7.1.1 与 §7.1.2；下一批接入 Attachment 的 `nextTurn` 与 Vision 的 `nextOperation` 设置，并继续按业务组清除其余 Route 的 `AppBindings`。完整对象图只允许留在 Composition Root，不建立另一只嵌套依赖袋。修改前先说明窄端口、URL 保持策略和预期效果，不要提交 Git。
+LocalHost L0、Turn 输入准备 L1、Turn Context L2、Turn Tools L3、Root Agent Execution L4、Turn Composition Root L5、TTS Turn 输出边界、精确根取消与旧 Orchestrator 删除、Route 业务副作用归位以及 Task/AgentRun/Turn/AskUser/Permission/Session/Provider/ModelBindings/Settings/Theme Route 窄依赖已经完成。Agent/Context/Attachment 用户设置已经冻结进每根 `TurnInput`，Vision 设置在每次 Operation 开始时读取一次；不要在 AgentLoop 中重读 SQL 或修改共享 Compactor。不要恢复 `apps/core`、`TurnExecutionPlan`、`PreparedTurnExecution`、万能 `TurnExecutionDeps`、LocalHost `activeTurns`、旧 Orchestrator、Route transcript/交互/音频投影回调、Route 直接解析 AgentRun `content_json`、Session Route 标题/删除副作用、Provider Route 业务编排、通用 `cancelActive`、TOML 设置存储或弃用 `EmaStreamEvent` 消费者。先阅读 `EmaRefactor.md` §7.1.1 与 §7.1.2；下一批继续按业务组清除其余 Route 的 `AppBindings`，并审查 Knowledge 等设置消费者。完整对象图只允许留在 Composition Root，不建立另一只嵌套依赖袋。修改前先说明窄端口、URL 保持策略和预期效果，不要提交 Git。
 ```
 
 ## 维护方式

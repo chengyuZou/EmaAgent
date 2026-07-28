@@ -20,6 +20,7 @@ import {
   AttachmentCacheMaintenance,
   AttachmentDerivationCache,
   AttachmentStore,
+  attachmentSetting,
   type FileAccessFacade,
 } from '@ema-agent/attachment';
 import { McpRegistry, McpServerStore }                 from '@ema-agent/mcp';
@@ -63,7 +64,7 @@ import { SttRuntime } from '@ema-agent/stt';
 import { buildTtsRuntime } from './providers/tts.js';
 import { buildSttRuntime } from './providers/stt.js';
 import { buildVisionRuntime, asKbVisionAdapter } from './providers/vision.js';
-import { VisionRuntime } from '@ema-agent/vision';
+import { VisionRuntime, visionSetting } from '@ema-agent/vision';
 import { loadLlmConfigs }   from './providers/llm.js';
 import { loadEmbedConfigs }  from './providers/embed.js';
 import { loadRerankConfigs } from './providers/rerank.js';
@@ -394,11 +395,20 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   card.ensureSeed();
   const emotion = new EmotionEngine({ vocabulary: card.current().emotionVocabulary });
 
+  // SettingsStore 必须先于动态执行面创建，运行时只读取已校验的类型化快照。
+  const { settings } = createSettingsStore(profileDb.sqlite);
+
   // ── TTS / STT ───────────────────────────────────────────────────────────────
   const tts    = buildTtsRuntime({ profileDb, credentials, usageRecorder: usageRecords, onUsageRecordError });
   const ttsVoiceHandles = new TtsVoiceHandleCache();
   const stt    = buildSttRuntime({ profileDb, credentials, usageRecorder: usageRecords, onUsageRecordError });
-  const vision = buildVisionRuntime(profileDb, credentials, usageRecords, onUsageRecordError);
+  const vision = buildVisionRuntime(
+    profileDb,
+    credentials,
+    usageRecords,
+    onUsageRecordError,
+    () => settings.get(visionSetting),
+  );
   const providerRuntime = new ProviderRuntimeFacade({
     profileDb,
     llm,
@@ -422,7 +432,6 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   const modelBindings = new ModelBindingsRepo(profileDb.sqlite);
 
   // ── Permission subsystem ────────────────────────────────────────────────────
-  const { settings } = createSettingsStore(profileDb.sqlite);
   const { permission, interactionQueue, askUserRegistry, buildAskForTurn } =
     buildPermissionSubsystem(
       settings.get(permissionAskTimeoutSetting),
@@ -614,6 +623,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     activeDataDir,
     repo: attachmentDerivationsRepo,
     isIdle: () => !session.hasActiveTurns(),
+    maxBytesForSweep: () => settings.get(attachmentSetting).derivationCacheBytes,
   });
 
   // ── Session detail (stats + notes) — used by /api/sessions/:id/dashboard ──

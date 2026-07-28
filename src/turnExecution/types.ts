@@ -33,6 +33,7 @@ import type { EmotionStreamEvent } from '@ema-agent/emotion';
 import type { PermissionStreamEvent } from '@ema-agent/permission';
 import type { ModelCapabilitySnapshot } from '@ema-agent/provider';
 import type { NarrativeEvent } from '@ema-agent/narrative';
+import type { AttachmentSettings } from '@ema-agent/attachment';
 
 // ── 运行依赖 ──────────────────────────────────────────────────────────────────
 
@@ -66,6 +67,7 @@ export interface TurnModelSnapshot {
 /** 根 Turn 启动时冻结的用户设置，运行中的 Agent 循环不得重新读取。 */
 export interface TurnSettingsSnapshot {
   readonly agent: Readonly<AgentSettings>;
+  readonly attachment: Readonly<AttachmentSettings>;
   readonly contextCompaction: Readonly<ContextCompactionSettings>;
 }
 

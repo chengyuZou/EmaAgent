@@ -1,5 +1,5 @@
 // 测试 Vision 运行时的请求校验、并发背压、取消和热刷新。
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   VisionRuntime,
   type VisionExtractionResult,
@@ -7,6 +7,7 @@ import {
 } from '../index.js';
 import type { VisionAdapter, VisionAdapterCall } from '../adapters/base.js';
 import { GeminiVisionAdapter } from '../adapters/gemini.js';
+import { DEFAULT_VISION_LIMITS } from '../requestValidation.js';
 
 const CONFIG: VisionProviderConfig = {
   id: 'provider-1',
@@ -156,6 +157,43 @@ describe('VisionRuntime', () => {
     });
 
     expect(adapter.requests).toHaveLength(0);
+  });
+
+  it('每次操作只读取一次最新设置快照', async () => {
+    const adapter = new MockAdapter({
+      providerId: 'provider-1',
+      model: 'vision-model',
+      task: 'ocr',
+      text: 'ok',
+      blocks: [],
+      sources: [],
+    });
+    let maxImages = 2;
+    const limitsForOperation = vi.fn(() => ({
+      ...DEFAULT_VISION_LIMITS,
+      maxImages,
+    }));
+    const vision = new VisionRuntime({
+      configs: [CONFIG],
+      adapterOverrides: new Map([['provider-1', adapter]]),
+      limitsForOperation,
+    });
+    const request = {
+      providerId: 'provider-1',
+      model: 'vision-model',
+      task: 'ocr' as const,
+      inputs: [
+        { kind: 'base64' as const, data: 'aA==', mimeType: 'image/png' as const },
+        { kind: 'base64' as const, data: 'aQ==', mimeType: 'image/png' as const },
+      ],
+    };
+
+    await vision.extract(request);
+    maxImages = 1;
+    await expect(vision.extract(request)).rejects.toMatchObject({
+      code: 'vision/payload_too_large',
+    });
+    expect(limitsForOperation).toHaveBeenCalledTimes(2);
   });
 
   it('throws a typed error when the provider is not configured', async () => {

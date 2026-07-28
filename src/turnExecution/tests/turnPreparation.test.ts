@@ -3,6 +3,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_AGENT_SETTINGS } from '@ema-agent/agent';
 import { DEFAULT_CONTEXT_COMPACTION_SETTINGS } from '@ema-agent/context';
+import { DEFAULT_ATTACHMENT_SETTINGS } from '@ema-agent/attachment';
 import { asSessionId, asTurnId } from '@ema-agent/ids';
 import { TurnInputPreparer } from '../turnPreparation.js';
 
@@ -24,6 +25,10 @@ describe('TurnInputPreparer', () => {
     }));
     const turnSettings = {
       agent: { ...DEFAULT_AGENT_SETTINGS, workMaxIterations: 41 },
+      attachment: {
+        ...DEFAULT_ATTACHMENT_SETTINGS,
+        maxImagesPerTurn: 4,
+      },
       contextCompaction: {
         ...DEFAULT_CONTEXT_COMPACTION_SETTINGS,
         bufferTokens: 14_000,
@@ -97,9 +102,12 @@ describe('TurnInputPreparer', () => {
     expect(Object.isFrozen(input.model)).toBe(true);
     expect(Object.isFrozen(input.model.capabilities.input)).toBe(true);
     expect(Object.isFrozen(input.settings.agent)).toBe(true);
+    expect(Object.isFrozen(input.settings.attachment)).toBe(true);
     expect(Object.isFrozen(input.settings.contextCompaction)).toBe(true);
     turnSettings.agent.workMaxIterations = 42;
+    turnSettings.attachment.maxImagesPerTurn = 5;
     expect(input.settings.agent.workMaxIterations).toBe(41);
+    expect(input.settings.attachment.maxImagesPerTurn).toBe(4);
     expect(Object.keys(input)).not.toContain('compactContext');
     expect(Object.keys(input)).not.toContain('prepareContextContributions');
   });

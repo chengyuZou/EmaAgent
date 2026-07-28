@@ -9,6 +9,7 @@ import {
 } from '@ema-agent/turn-execution';
 import { agentSetting } from '@ema-agent/agent';
 import { contextCompactionSetting } from '@ema-agent/context';
+import { attachmentSetting } from '@ema-agent/attachment';
 import type { AppBindings } from './bindings.js';
 import { scratchpadTurnDir } from '../storage-locations/index.js';
 
@@ -50,6 +51,7 @@ export function createTurnExecution(bindings: AppBindings): {
         image,
         sessionId,
         turnId,
+        normalization,
         signal,
       }) => {
         const cached = await bindings.attachmentDerivationCache.getOrCreate({
@@ -62,6 +64,7 @@ export function createTurnExecution(bindings: AppBindings): {
           providerConfigId: providerId,
           modelId: model,
           promptRevision: TURN_ATTACHMENT_CAPTION_PROMPT_REVISION,
+          normalization,
           signal,
         }, async (normalizedImage) => {
           const result = await bindings.vision.extract({
@@ -88,6 +91,7 @@ export function createTurnExecution(bindings: AppBindings): {
     },
     settingsForTurn: () => ({
       agent: bindings.settings.get(agentSetting),
+      attachment: bindings.settings.get(attachmentSetting),
       contextCompaction: bindings.settings.get(contextCompactionSetting),
     }),
   });

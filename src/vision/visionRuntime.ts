@@ -36,6 +36,8 @@ interface VisionRuntimeEntry {
 export interface VisionRuntimeOptions {
   configs: readonly VisionProviderConfig[];
   limits?: Partial<VisionLimits>;
+  /** 每次 extract/probe 开始时读取一次，进行中的请求继续使用已取得的快照。 */
+  limitsForOperation?: () => Readonly<VisionLimits>;
   adapterOverrides?: ReadonlyMap<string, VisionAdapter>;
   limiter?: VisionConcurrencyLimiter;
   usageRecorder?: UsageRecorder;
@@ -47,6 +49,7 @@ export class VisionRuntime {
   private readonly adapterOverrides?: ReadonlyMap<string, VisionAdapter>;
   private readonly limiter: VisionConcurrencyLimiter;
   private readonly limits: VisionLimits;
+  private readonly limitsForOperation?: () => Readonly<VisionLimits>;
   private readonly usageRecorder?: UsageRecorder;
   private readonly onUsageRecordError?: (error: unknown, record: UsageRecord) => void;
 
@@ -54,6 +57,7 @@ export class VisionRuntime {
     this.adapterOverrides = options.adapterOverrides;
     this.limiter = options.limiter ?? new VisionLimiter();
     this.limits = { ...DEFAULT_VISION_LIMITS, ...options.limits };
+    this.limitsForOperation = options.limitsForOperation;
     this.usageRecorder = options.usageRecorder;
     this.onUsageRecordError = options.onUsageRecordError;
     validateVisionLimits(this.limits);
@@ -62,7 +66,8 @@ export class VisionRuntime {
 
   async extract(request: VisionRequest): Promise<VisionExtractionResult> {
     const normalized = normalizeVisionRequest(request);
-    const limits = resolveVisionLimits(this.limits, normalized.limits);
+    const operationLimits = this.readOperationLimits();
+    const limits = resolveVisionLimits(operationLimits, normalized.limits);
     validateVisionLimits(limits);
     validateVisionRequest(normalized, limits);
 
@@ -104,7 +109,8 @@ export class VisionRuntime {
     if (!model.trim()) return { ok: false, error: 'vision/model_not_configured' };
     if (!entry.adapter.probe) return { ok: false, error: 'vision/probe_not_supported' };
 
-    const scope = createVisionRequestScope(signal, Math.min(this.limits.timeoutMs, 10_000));
+    const operationLimits = this.readOperationLimits();
+    const scope = createVisionRequestScope(signal, Math.min(operationLimits.timeoutMs, 10_000));
     const startedAt = Date.now();
     try {
       const result = await entry.adapter.probe(model, scope.signal);
@@ -150,6 +156,15 @@ export class VisionRuntime {
     const next = new Map(this.entries);
     next.delete(providerId);
     this.entries = next;
+  }
+
+  private readOperationLimits(): VisionLimits {
+    const limits = {
+      ...this.limits,
+      ...this.limitsForOperation?.(),
+    };
+    validateVisionLimits(limits);
+    return limits;
   }
 
   private buildEntries(

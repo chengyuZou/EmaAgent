@@ -87,14 +87,19 @@ export class TurnInputPreparer {
     request: TurnPreparationRequest,
     context: TurnPreparationContext,
   ): Promise<TurnInput> {
+    // 设置在任何附件写入或媒体降级前读取一次，确保同一根 Turn 不会混用新旧上限。
+    const settings = freezeTurnSettings(this.deps.settingsForTurn());
     const model = this.resolveModel(request);
-    const prepared = await this.prepareUserInput(request, context, model);
+    const prepared = await this.prepareUserInput(
+      request,
+      context,
+      model,
+      settings,
+    );
     const session = this.deps.session.getSession(context.turn.sessionId);
     const workspaceRoot = session.workspaceRoot ?? '';
     const extensionContributions =
       this.deps.extensionPromptContributions?.(request.executionProfile) ?? [];
-    const settings = freezeTurnSettings(this.deps.settingsForTurn());
-
     return Object.freeze({
       userInput: freezeUserInput(prepared.userInput),
       persistedUserInput: prepared.persistedUserInput,
@@ -156,6 +161,7 @@ export class TurnInputPreparer {
     request: TurnPreparationRequest,
     context: TurnPreparationContext,
     model: TurnModelSnapshot,
+    settings: TurnSettingsSnapshot,
   ): Promise<{
     readonly userInput: string | readonly LlmContentPart[];
     readonly persistedUserInput: MessageBlocks;
@@ -174,6 +180,7 @@ export class TurnInputPreparer {
           [...request.attachmentInputs],
           context.turn.id as string,
           context.turn.sessionId as string,
+          settings.attachment,
         );
         const resolved = this.deps.attachments.resolveForPrompt(storedAttachments);
 
@@ -206,6 +213,7 @@ export class TurnInputPreparer {
             sessionId: context.turn.sessionId,
             turnId: context.turn.id,
           },
+          settings.attachment,
           context.signal,
         );
         contentParts = replaceImageParts(contentParts ?? [], fallback.parts);
@@ -295,6 +303,7 @@ function freezeTurnSettings(
 ): TurnSettingsSnapshot {
   return Object.freeze({
     agent: Object.freeze({ ...settings.agent }),
+    attachment: Object.freeze({ ...settings.attachment }),
     contextCompaction: Object.freeze({ ...settings.contextCompaction }),
   });
 }

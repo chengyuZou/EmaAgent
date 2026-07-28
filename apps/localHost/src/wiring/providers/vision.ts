@@ -1,7 +1,11 @@
 import type { Database, ProviderConfigRow } from '@ema-agent/storage';
 import { ProvidersRepo } from '@ema-agent/storage';
 import { VisionRuntime, isVisionError } from '@ema-agent/vision';
-import type { VisionProviderConfig, VisionImageMime } from '@ema-agent/vision';
+import type {
+  VisionImageMime,
+  VisionLimits,
+  VisionProviderConfig,
+} from '@ema-agent/vision';
 import type { CredentialFacade } from '@ema-agent/credential';
 import { KbVisionAdapterError, type KbVisionAdapter } from '@ema-agent/knowledge';
 import {
@@ -95,11 +99,13 @@ export function buildVisionRuntime(
   credentials: CredentialFacade,
   usageRecorder?: UsageRecorder,
   onUsageRecordError?: (error: unknown, record: UsageRecord) => void,
+  limitsForOperation?: () => Readonly<VisionLimits>,
 ): VisionRuntime {
   return new VisionRuntime({
     configs: loadVisionConfigs(profileDb, credentials),
     usageRecorder,
     onUsageRecordError,
+    limitsForOperation,
   });
 }
 

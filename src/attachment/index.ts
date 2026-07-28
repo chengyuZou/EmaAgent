@@ -16,10 +16,15 @@ export type {
   AttachmentCacheMaintenanceOptions,
   AttachmentCacheMaintenanceReport,
 } from './derivations/maintenance.js';
-export { AttachmentNotFoundError, AttachmentFileError } from './errors.js';
+export {
+  AttachmentNotFoundError,
+  AttachmentFileError,
+  AttachmentLimitError,
+} from './errors.js';
 export type {
   Attachment,
   AttachmentImageSource,
+  AttachmentImageNormalizationOptions,
   AttachmentInput,
   AttachmentVisionTask,
   CachedVisionDescription,

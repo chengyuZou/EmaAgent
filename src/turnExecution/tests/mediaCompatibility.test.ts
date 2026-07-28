@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { asSessionId, asTurnId } from '@ema-agent/ids';
 import { LlmModelCapabilityError } from '@ema-agent/llm';
 import type { ModelCapabilitySnapshot } from '@ema-agent/provider';
+import { DEFAULT_ATTACHMENT_SETTINGS } from '@ema-agent/attachment';
 import {
   prepareImagesForModel,
   replaceImageParts,
@@ -61,6 +62,7 @@ describe('根 Turn 图片模型兼容协商', () => {
       model('supported'),
       [imagePart],
       identity,
+      DEFAULT_ATTACHMENT_SETTINGS,
       new AbortController().signal,
     );
 
@@ -77,6 +79,7 @@ describe('根 Turn 图片模型兼容协商', () => {
       model('unsupported'),
       [imagePart],
       identity,
+      DEFAULT_ATTACHMENT_SETTINGS,
       new AbortController().signal,
     );
 
@@ -104,6 +107,7 @@ describe('根 Turn 图片模型兼容协商', () => {
       model('unsupported'),
       [imagePart, { ...imagePart, name: 'dog.png' }],
       identity,
+      DEFAULT_ATTACHMENT_SETTINGS,
       new AbortController().signal,
     );
 
@@ -120,6 +124,7 @@ describe('根 Turn 图片模型兼容协商', () => {
       model('unknown'),
       [imagePart],
       identity,
+      DEFAULT_ATTACHMENT_SETTINGS,
       new AbortController().signal,
     )).rejects.toBeInstanceOf(LlmModelCapabilityError);
   });
@@ -134,6 +139,7 @@ describe('根 Turn 图片模型兼容协商', () => {
       model('unsupported'),
       [imagePart],
       identity,
+      DEFAULT_ATTACHMENT_SETTINGS,
       controller.signal,
     )).rejects.toBe(abortError);
   });

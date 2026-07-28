@@ -17,3 +17,10 @@ export class AttachmentFileError extends Error {
     this.cause     = cause;
   }
 }
+
+export class AttachmentLimitError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AttachmentLimitError';
+  }
+}
