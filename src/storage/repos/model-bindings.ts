@@ -1,44 +1,16 @@
+// 持久化业务模块到 Provider 模型的绑定，并保证单选替换在同一事务内完成。
+import type {
+  ModelBindingInput,
+  ModelBindingModule,
+  ResolvedModelBinding,
+} from '@ema-agent/provider';
 import type { SqliteDb } from '../database.js';
 
-// ── 类型─────────────────────────────────────────────────────────────────────
-
-/** 所有可绑定到特定 Provider 实例 + model 的模块。 */
-export type BindingModule =
-  // 基础设施 / 后台任务 — 仍需全局绑定
-  | 'emotion'
-  | 'memory'
-  | 'router' | 'plan-parse' | 'title'
-  // LightRAG 内部配置 — 推送到 Python bridge。KB embed/rerank 已
-  // 移出到 app settings (kb.models)；此处仅保留 LightRAG 的 embed。
-  | 'lightrag-embed' | 'lightrag-llm'
-  // TTS — 所有模式共用一个绑定
-  | 'tts'
-  // 其他 TS 侧客户端（保留）
-  | 'stt' | 'vision' | 'imagegen';
-
-export interface ModelBindingRow {
-  module:             BindingModule;
+interface ModelBindingRow {
+  module:             ModelBindingModule;
   provider_config_id: string;
   model:              string;
-  voice_id:           string | null;
-  config_json:        string;
-}
-
-export interface ModelBindingUpsert {
-  module:           BindingModule;
-  providerConfigId: string;
-  model:            string;
-  voiceId?:         string;
-  config?:          Record<string, unknown>;
-}
-
-/** 已解析 config_json 的绑定结果。 */
-export interface ResolvedModelBinding {
-  module:           BindingModule;
-  providerConfigId: string;
-  model:            string;
-  voiceId:          string | null;
-  config:           Record<string, unknown>;
+  embedding_dimension: number | null;
 }
 
 // ── Repo ──────────────────────────────────────────────────────────────────────
@@ -63,34 +35,32 @@ export class ModelBindingsRepo {
   // ── 写入──────────────────────────────────────────────────────────────────
 
   /** 插入绑定。(module, provider_config_id, model) 冲突时更新该行。 */
-  upsert(data: ModelBindingUpsert): void {
+  upsert(data: ModelBindingInput): void {
     this.db
       .prepare(
         `INSERT INTO model_bindings
-           (module, provider_config_id, model, voice_id, config_json)
-         VALUES (?, ?, ?, ?, ?)
+           (module, provider_config_id, model, embedding_dimension)
+         VALUES (?, ?, ?, ?)
          ON CONFLICT(module, provider_config_id, model) DO UPDATE SET
-           voice_id    = excluded.voice_id,
-           config_json = excluded.config_json`,
+           embedding_dimension = excluded.embedding_dimension`,
       )
       .run(
         data.module,
         data.providerConfigId,
         data.model,
-        data.voiceId ?? null,
-        JSON.stringify(data.config ?? {}),
+        data.embeddingDimension ?? null,
       );
   }
 
   /** 删除单个绑定。 */
-  delete(module: BindingModule, providerConfigId: string, model: string): void {
+  delete(module: ModelBindingModule, providerConfigId: string, model: string): void {
     this.db
       .prepare('DELETE FROM model_bindings WHERE module = ? AND provider_config_id = ? AND model = ?')
       .run(module, providerConfigId, model);
   }
 
   /** 删除某模块的所有绑定。用于单选原子替换。 */
-  deleteAllByModule(module: BindingModule): number {
+  deleteAllByModule(module: ModelBindingModule): number {
     const info = this.db
       .prepare('DELETE FROM model_bindings WHERE module = ?')
       .run(module);
@@ -102,7 +72,7 @@ export class ModelBindingsRepo {
    * 用于 PUT /:module/set 路由。若 upsert 失败（如外键冲突、磁盘错误），
    * 事务回滚，旧绑定保留——避免模块瞬间失去全部绑定导致配置丢失。
    */
-  setSingle(data: ModelBindingUpsert): void {
+  setSingle(data: ModelBindingInput): void {
     this.db.transaction(() => {
       this.deleteAllByModule(data.module);
       this.upsert(data);
@@ -128,7 +98,7 @@ export class ModelBindingsRepo {
    * 返回某模块的第一个绑定（engine 用作默认值）。
    * 按 (provider_config_id, model) 稳定排序，保证多候选时默认绑定确定不跳变。
    */
-  get(module: BindingModule): ResolvedModelBinding | undefined {
+  get(module: ModelBindingModule): ResolvedModelBinding | undefined {
     const row = this.db
       .prepare(
         `SELECT * FROM model_bindings
@@ -141,7 +111,7 @@ export class ModelBindingsRepo {
   }
 
   /** 返回某模块的所有绑定（UI 列表用），按 (provider_config_id, model) 稳定排序。 */
-  listByModule(module: BindingModule): ResolvedModelBinding[] {
+  listByModule(module: ModelBindingModule): ResolvedModelBinding[] {
     const rows = this.db
       .prepare(
         `SELECT * FROM model_bindings
@@ -179,8 +149,7 @@ export class ModelBindingsRepo {
       module:           row.module,
       providerConfigId: row.provider_config_id,
       model:            row.model,
-      voiceId:          row.voice_id,
-      config:           JSON.parse(row.config_json) as Record<string, unknown>,
+      embeddingDimension: row.embedding_dimension,
     };
   }
 }

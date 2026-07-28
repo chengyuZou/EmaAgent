@@ -1,12 +1,11 @@
+// 测试 Provider 探测在执行 Adapter 前正确返回不存在与能力未启用错误。
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Database, ProvidersRepo } from '@ema-agent/storage';
-import type { AppBindings } from '../src/wiring/index.js';
-import { providersRoute } from '../src/routes/providers.js';
+import { ProviderProbe } from '@ema-agent/provider';
+import { providerProbesRoute } from '../src/routes/providers/providerProbes.js';
+import { StorageProviderConfigurationStore } from '../src/wiring/providers/providerConfigurationStore.js';
 import { createTestCredentialFacade } from './helpers/test-credential-facade.js';
 
-// B-061：probe 路由的前置校验（not_found / capability_not_supported）必须把
-// 构造好的 404/422 响应真正返回给调用方，而不是被 204 空响应覆盖。
-// not_found / cap_not_supported 都在调 adapter 之前返回，所以无需 mock 任何 adapter。
 describe('B-061 probe 路由错误响应不被 204 覆盖', () => {
   let profileDb: Database;
   let providers: ProvidersRepo;
@@ -27,7 +26,7 @@ describe('B-061 probe 路由错误响应不被 204 覆盖', () => {
   afterEach(() => profileDb.close());
 
   it('provider 不存在时返回 404 而非 204 空', async () => {
-    const app = providersRoute({ providers } as unknown as AppBindings);
+    const app = createProbeRoute(providers);
     const res = await app.request('/missing-id/probe/llm', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -38,7 +37,7 @@ describe('B-061 probe 路由错误响应不被 204 覆盖', () => {
   });
 
   it('provider 不支持该 capability 时返回 422 而非 204 空', async () => {
-    const app = providersRoute({ providers } as unknown as AppBindings);
+    const app = createProbeRoute(providers);
     const res = await app.request('/provider-1/probe/embed', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -51,3 +50,24 @@ describe('B-061 probe 路由错误响应不被 204 覆盖', () => {
     });
   });
 });
+
+function createProbeRoute(providers: ProvidersRepo) {
+  const store = new StorageProviderConfigurationStore(providers);
+  return providerProbesRoute(new ProviderProbe(
+    store,
+    {
+      firstEnabled: () => undefined,
+      firstCatalog: () => undefined,
+    },
+    {
+      probe: () => {
+        throw new Error('前置校验失败时不应执行 Adapter');
+      },
+    },
+    {
+      record: () => {
+        throw new Error('前置校验失败时不应写入健康状态');
+      },
+    },
+  ));
+}

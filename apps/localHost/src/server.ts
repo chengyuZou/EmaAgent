@@ -4,8 +4,6 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { emaAuth } from './auth.js';
 import { healthRoute } from './routes/health.js';
-import { providersRoute } from './routes/providers.js';
-import { modelBindingsRoute } from './routes/model-bindings.js';
 import { permissionRoute } from './routes/permission.js';
 import { memoryRoute } from './routes/memory.js';
 import { systemEventsRoute } from './routes/system-events.js';
@@ -27,6 +25,8 @@ import { requestBudgetMiddleware } from './http/request-budget.js';
 import type { AppBindings } from './wiring/index.js';
 import { createTurnsRouter } from './wiring/createTurnsRouter.js';
 import { createSessionsRouter } from './wiring/createSessionsRouter.js';
+import { createProvidersRouter } from './wiring/createProvidersRouter.js';
+import { createModelBindingsRouter } from './wiring/createModelBindingsRouter.js';
 
 export function buildServer(bindings: AppBindings, sharedSecret: string): Hono {
   const app = new Hono();
@@ -59,8 +59,8 @@ export function buildServer(bindings: AppBindings, sharedSecret: string): Hono {
   // 路由
   app.route('/health', healthRoute());
   app.route('/api/turns',          createTurnsRouter(bindings));
-  app.route('/api/providers',      providersRoute(bindings));
-  app.route('/api/model-bindings', modelBindingsRoute(bindings));
+  app.route('/api/providers',      createProvidersRouter(bindings));
+  app.route('/api/model-bindings', createModelBindingsRouter(bindings));
   app.route('/api/storage',        storageStatsRoute(bindings));
   app.route('/api/sessions',       createSessionsRouter(bindings));
   app.route(

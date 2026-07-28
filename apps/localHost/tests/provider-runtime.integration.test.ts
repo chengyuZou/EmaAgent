@@ -1,3 +1,4 @@
+// 测试 Provider 配置刷新会原子替换执行面，并向 Bridge 推送完整模型绑定快照。
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Database, ModelBindingsRepo, ProvidersRepo } from '@ema-agent/storage';
 import { LanguageModelRuntime } from '@ema-agent/llm';
@@ -8,8 +9,12 @@ import { SttRuntime } from '@ema-agent/stt';
 import { VisionRuntime } from '@ema-agent/vision';
 import type { BridgeConfigurePayload, NarrativeClient } from '@ema-agent/narrative';
 import { ProviderRuntimeFacade } from '../src/wiring/provider-runtime.js';
-import type { AppBindings } from '../src/wiring/index.js';
-import { providersRoute } from '../src/routes/providers.js';
+import {
+  ProviderConfiguration,
+  providerCatalog,
+} from '@ema-agent/provider';
+import { providerConfigurationRoute } from '../src/routes/providers/providerConfiguration.js';
+import { StorageProviderConfigurationStore } from '../src/wiring/providers/providerConfigurationStore.js';
 import { createTestCredentialFacade } from './helpers/test-credential-facade.js';
 
 class NarrativeClientSpy {
@@ -150,7 +155,7 @@ describe('ProviderRuntimeFacade', () => {
       module: 'lightrag-embed',
       providerConfigId: 'provider-1',
       model: 'embed-model',
-      config: { dim: 1024 },
+      embeddingDimension: 1024,
     });
 
     await runtime.syncBridge();
@@ -185,10 +190,13 @@ describe('ProviderRuntimeFacade', () => {
       providerConfigId: 'provider-1',
       model: 'embed-model',
     });
-    const app = providersRoute({
-      providers,
+    const app = providerConfigurationRoute(new ProviderConfiguration(
+      providerCatalog,
+      new StorageProviderConfigurationStore(providers),
       modelBindings,
-    } as unknown as AppBindings);
+      { refresh() {} },
+      () => 'new-provider',
+    ));
 
     const patchResponse = await app.request('/provider-1', {
       method: 'PATCH',

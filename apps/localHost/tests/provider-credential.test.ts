@@ -1,14 +1,19 @@
+// 测试 Provider 密钥只能显式查看，并严格区分保留、替换和清空操作。
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { Database, ProvidersRepo } from '@ema-agent/storage';
-import type { AppBindings } from '../src/wiring/index.js';
-import { providersRoute } from '../src/routes/providers.js';
+import { Database, ModelBindingsRepo, ProvidersRepo } from '@ema-agent/storage';
+import {
+  ProviderConfiguration,
+  PROVIDER_CONFIG_LIMITS,
+  providerCatalog,
+} from '@ema-agent/provider';
+import { providerConfigurationRoute } from '../src/routes/providers/providerConfiguration.js';
+import { StorageProviderConfigurationStore } from '../src/wiring/providers/providerConfigurationStore.js';
 import { createTestCredentialFacade } from './helpers/test-credential-facade.js';
-import { PROVIDER_CONFIG_LIMITS } from '@ema-agent/provider';
 
 describe('Provider 凭据契约', () => {
   let profileDb: Database;
   let providers: ProvidersRepo;
-  let app: ReturnType<typeof providersRoute>;
+  let app: ReturnType<typeof providerConfigurationRoute>;
 
   beforeEach(() => {
     profileDb = new Database({ memory: true, kind: 'profile' });
@@ -21,10 +26,13 @@ describe('Provider 凭据契约', () => {
       apiKey: 'secret-v1',
       capabilities: [{ capability: 'llm' }],
     });
-    app = providersRoute({
-      providers,
-      providerRuntime: { refresh() {} },
-    } as unknown as AppBindings);
+    app = providerConfigurationRoute(new ProviderConfiguration(
+      providerCatalog,
+      new StorageProviderConfigurationStore(providers),
+      new ModelBindingsRepo(profileDb.sqlite),
+      { refresh() {} },
+      () => 'new-provider',
+    ));
   });
 
   afterEach(() => profileDb.close());

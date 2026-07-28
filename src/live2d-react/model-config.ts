@@ -25,7 +25,7 @@ export interface Live2DParameterRuntimeConfig {
   headInputZ: string;
   /**
    * 独立身体转动输入参数(模型能力,可选)。缺省表示身体跟随头部经物理派生,
-   * 设置页不渲染身体滑块、user-pose 不写入;仅当模型物理上支持直写
+   * 设置页不渲染身体滑块、head-pose 不写入;仅当模型物理上支持直写
    * (参数未被 physics3.json Output 覆写)时才由角色卡声明。
    */
   bodyInputX?: string;

@@ -1,17 +1,17 @@
-/**
- * Model Bindings API — per-module LLM/TTS/STT binding CRUD.
- * Types imported from @ema-agent/storage.
- */
+// 模型绑定 API 只传递 Provider 控制面拥有的绑定类型，不暴露数据库行结构。
 import { sidecarClient } from './sidecar-client.js';
-import type { BindingModule, ResolvedModelBinding } from '@ema-agent/storage';
+import type {
+  ModelBindingModule,
+  ResolvedModelBinding,
+} from '@ema-agent/provider';
 
-export type { BindingModule, ResolvedModelBinding };
+export type BindingModule = ModelBindingModule;
+export type { ResolvedModelBinding };
 
 export interface BindingUpsertInput {
   providerConfigId: string;
   model:            string;
-  voiceId?:         string;
-  config?:          Record<string, unknown>;
+  embeddingDimension?: number;
 }
 
 // ── API object ────────────────────────────────────────────────────────────────

@@ -2,7 +2,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { AppBindings } from '../src/wiring/index.js';
 import { kbRoute } from '../src/routes/knowledge-base.js';
-import { modelBindingsRoute } from '../src/routes/model-bindings.js';
+import { availableBindingModelsRoute } from '../src/routes/modelBindings/availableModels.js';
 
 const SPACE = {
   id: 'space-provider-a-bge-m3',
@@ -16,15 +16,20 @@ const SPACE = {
 describe('KB Embedding 空间路由', () => {
   it('可用模型目录携带 EmbedRuntime 生成的完整空间身份', async () => {
     const embeddingSpace = vi.fn(() => SPACE);
-    const app = modelBindingsRoute({
-      providerEmbedModels: {
+    const app = availableBindingModelsRoute({
+      embedModels: {
         listAll: () => [{ provider_config_id: 'provider-a', model: 'bge-m3', dim: 1024 }],
       },
       providers: {
         get: () => ({ display_name: 'Provider A' }),
       },
       embed: { embeddingSpace },
-    } as unknown as AppBindings);
+      llmModels: { listAll: () => [] },
+      rerankModels: { listAll: () => [] },
+      ttsModels: { listAll: () => [] },
+      sttModels: { listAll: () => [] },
+      visionModels: { listAll: () => [] },
+    });
 
     const response = await app.request('/available/embed');
 

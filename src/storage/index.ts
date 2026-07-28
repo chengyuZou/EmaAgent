@@ -94,13 +94,6 @@ export type {
   ProviderWithHealth,
   HealthStatus,
 } from './repos/providers.js';
-export type {
-  BindingModule,
-  ModelBindingRow,
-  ModelBindingUpsert,
-  ResolvedModelBinding,
-} from './repos/model-bindings.js';
-
 // ── Memory 子系统类型 ──────────────────────────────────────────────────────────
 export type {
   MemoryNodeRow,

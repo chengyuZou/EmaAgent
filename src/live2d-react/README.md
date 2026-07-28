@@ -49,7 +49,7 @@ src/live2d-react/
     ├── composables/
     │   ├── motion-manager.ts
     │   ├── expression-controller.ts
-    │   ├── idle-beat.ts
+    │   ├── head-pose.ts
     │   ├── audio-lipsync.ts
     │   ├── mouse-track.ts
     │   └── random-idle.ts
@@ -193,7 +193,7 @@ resetAll()
 | `rms` | 当前音量，0 到 1 |
 | `energy` | 平滑后的能量，上升快、下降慢 |
 
-`audio-lipsync` 每帧读取它，然后写嘴型和说话点头。
+`audio-lipsync` 每帧读取它写嘴型,`head-pose` 读取它合成说话点头。
 
 ## 6. Live2DStage 生命周期
 
@@ -256,7 +256,7 @@ original:
   pixi-live2d-display motionManager.update
 
 final:
-  idle-beat
+  head-pose
   auto-eye-blink
   expression
   audio-lipsync
@@ -275,35 +275,30 @@ final:
 
 使用 window listener 是为了兼容 Tauri 拖拽区域覆盖 canvas 的情况。
 
-### 8.2 `idle-beat.ts`
+### 8.2 `head-pose.ts`
 
-根据 runtime config 写：
+转动输入参数的唯一写入方，每帧把三类贡献合成为一个值纯 SET：
 
-- `headInputX`
-- `headInputY`
-- `headInputZ`
-- `breathParam`
+- `headInputX/Y/Z` = idle 摇摆 + 设置页姿态滑块
+- `speechNodParam` = 说话点头(与 headInputY 同参数时合并为一次写入)
+- `breathParam` = 呼吸(idleBeat 启用时)
+- 可选 `bodyInputX/Y/Z` = 姿态滑块(仅角色卡声明的模型能力)
 
-Ema 配置中对应：
+Ema 配置中对应 `Param85/86/87`、`Param86`(说话重音点头)、`ParamBreath`。
 
-- `Param85`
-- `Param86`
-- `Param87`
-- `ParamBreath`
-
-这些参数进入 `ema.physics3.json` 的物理链路，会带动头、身体、头发、裙子、斗篷、锁链等。
+这些参数进入 `ema.physics3.json` 的物理链路，会带动头、身体、头发、裙子、斗篷、锁链等。多贡献不拆成独立插件加算:多写入方在"上游是否每帧重设"不确定时会累积或互相污染,单一写入方纯 SET 不依赖帧序假设。
 
 ### 8.3 `audio-lipsync.ts`
 
 根据 runtime config 写：
 
 - `mouthOpenParam`
-- `speechNodParam`
 
 Ema 配置中：
 
 - `ParamMouthOpenY`，上限 `2.1`
-- `Param86`，说话重音点头
+
+唇同步开关关闭或静默时口型平滑释放到 0。
 
 ### 8.4 `random-idle.ts`
 

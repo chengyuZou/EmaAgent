@@ -34,9 +34,11 @@ Permission Route 收窄已经完成：`permissionRoute()` 直接接收 Permissio
 
 Session Route 收窄已经完成：原 `routes/sessions.ts` 按集合、历史、附件、动作和标题拆入 `routes/sessions/`；所有 `/api/sessions/*` URL 与前端协议保持不变。标题 Prompt、模型失败回退和持久化进入 `SessionTitleGenerator`，工作区变更后的 Runner 失效及永久删除前的交互、授权、运行时清理进入 `SessionLifecycle`；HTTP 文件只接收各自使用的 Session、Attachment 和文件句柄窄端口，完整对象图只在 `wiring/createSessionsRouter.ts` 展开。
 
+Provider/ModelBindings 控制面收窄已经完成：原 784 行 Provider Route 按配置、模型池、六种能力探测和 TTS 试听拆入 `routes/providers/`，模型绑定查询与变更拆入 `routes/modelBindings/`；URL 和响应协议保持不变。Provider 配置、探测与模型绑定原子变更由 `src/providers` 拥有，TTS 试听由 `src/tts` 沿正式执行面完成；HTTP 只做解析和映射，完整对象图只在两个 `wiring/create*Router.ts` 展开。Profile v13 将模型绑定的通用 `config_json` 和未消费 `voice_id` 收口为明确的 `embedding_dimension`，Bridge 不再猜测 JSON 字段。
+
 事件通道同步完成消费者迁移：Turn SSE 使用 `TurnStreamEvent`，系统 SSE 使用 `AppEvent`，只有跨端通用解码器使用 `ClientEvent`；`EmaStreamEvent` 仅剩 `src/events` 内的弃用兼容声明，生产代码与应用测试不再导入它。Task 更新明确属于 Turn 输出联合，Memory 进程级依赖只允许发送 `MemoryBackgroundEvent`，召回证据继续进入当前 Turn。
 
-L5 后余下收口顺序不变：Turn/AskUser、Permission、Session Route 已收窄，下一批从 Provider/ModelBindings 控制面开始继续按业务组移除其余 Route 的 `AppBindings`；最后才决定是否把已经纯化的 HTTP/SSE/Auth 文件归档到 `transports/http`。
+L5 后余下收口顺序不变：Turn/AskUser、Permission、Session、Provider/ModelBindings Route 已收窄，下一批收口 Settings/Theme 的配置所有权与 HTTP 边界，再继续按业务组移除其余 Route 的 `AppBindings`；最后才决定是否把已经纯化的 HTTP/SSE/Auth 文件归档到 `transports/http`。
 
 开工前已复核本地 Codex 源码：`codex-protocol` 只定义 Thread/Turn/Submission 等低层协议，真正编排位于 `codex-core/session`；App Server 只校验并提交 `Op::UserInput`，Session 统一建立 `RunningTask`、取消句柄和终态，`RegularTask` 再调用内部 `run_turn` 完成多轮模型与工具循环。Ema 因此保留低层 `turn` 与高层 `turnExecution` 两个编译边界，不能把执行依赖反向塞进被 Context、Session、Storage、Hooks 共同依赖的领域包。
 
@@ -130,7 +132,7 @@ Task 与 AgentRun 前端已经分面：Desktop 使用正式 `/api/tasks` 快照�
 
 开始任何新批次前必须重新运行 `git status --short` 与 `git diff`，保留用户和其他 Agent 的修改。
 
-当前未提交工作区包含 Permission 与 Session Route 收窄、对应领域用例、测试和接力文档；没有其他 Agent 的已知在途文件。开始下一批前仍须重新检查工作区，避免覆盖用户或其他 Agent 的修改。
+当前工作区包含 Route 收窄主线及用户并行调整；本批 Provider/ModelBindings 改动集中在 `src/providers`、TTS 试听、Profile v13、LocalHost Provider/Binding Route 与 wiring。开始下一批前仍须按实际源码区分边界，避免覆盖用户或其他 Agent 的修改。
 
 当前基线最近提交：`6b1e1b85 docs: 记录 LocalHost 收口顺序并冻结 TTS Turn 输出边界`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
 
@@ -179,7 +181,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 6. Permission V1 已完成：统一 Session FIFO、明确终态、Turn 身份核对、SQLite 永久规则 CRUD 与设置页管理、Builtin-only 免审批边界均已接通；旧 `AskUserRegistryLike` 已改为 `AskUserInteractionPort`，不新增第二套队列；
 7. Skill 多文件激活、per-Agent 状态、结构化 Context 恢复与 `allowed-tools` 单向收窄已经完成；
 8. LocalHost L0、Turn 输入准备 L1、Turn Context L2、Turn Tools L3、Root Agent Execution L4、Turn Composition Root L5、TTS Turn 输出边界、精确根取消与旧 Orchestrator 删除、Route 业务副作用归位及 Task/AgentRun Route 窄依赖均已完成；
-9. Turn/AskUser、Permission、Session Route 已完成目录内聚和窄端口；下一批从 Provider/ModelBindings 控制面继续按业务组移除其余 Route 的 `AppBindings`，全部完成后再决定 HTTP/SSE/Auth 的最终归档位置；
+9. Turn/AskUser、Permission、Session、Provider/ModelBindings Route 已完成目录内聚和窄端口；下一批收口 Settings/Theme 的配置所有权和 Route，之后继续按业务组移除其余 Route 的 `AppBindings`，全部完成后再决定 HTTP/SSE/Auth 的最终归档位置；
 10. 后台进程按 `BackgroundProcess + ProcessOutput/ProcessStop` 单独实现 C 档，不修改 AgentLoop，也不恢复假 `run_in_background`。
 
 命名随业务批次清理：旧 `IFileStateStoreEntry/IFileStateStore` 及后续过渡接口已经删除，`IToolExecutionJournal` 已改为职责名；其余迁移期 `I*` 类型继续随业务边界处理，不单独进行全仓机械重命名。
@@ -188,6 +190,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- Provider/ModelBindings 控制面收窄：Provider、Storage build，TTS 69/69 与独立 typecheck，LocalHost 正式 build（79 个源码、317 个产物），Desktop UI typecheck 通过；Storage 26 个测试文件 120/120、LocalHost 26 个测试文件 89/89 通过。旧 Provider/ModelBindings Route 和专用凭据/能力配置 Route 已删除，生产引用归零；Profile v13 将模型绑定迁为显式 `embedding_dimension`，配置更新的 `keep` 不再解密后重写密钥，Provider 删除/能力关闭仍经过绑定冲突检查和运行时刷新。
 - Session Route 窄依赖：Session 全量 4 个测试文件 41/41、LocalHost 全量 26 个测试文件 89/89 通过；Session typecheck/build、LocalHost typecheck 与正式 build 通过，构建验证 72 个源码与 289 个产物。原 Session Route 已按集合、历史、附件、动作和标题拆分；Route 与测试中的 `AppBindings` 引用和强转归零，新增测试覆盖工作区运行时失效、永久删除清理顺序、标题模型失败回退及附件/历史 HTTP 契约。
 - Permission Route 窄依赖：Permission Route 定向 5/5、LocalHost 全量 26 个测试文件 89/89 通过；LocalHost typecheck 与正式 build 通过，构建验证 65 个源码与 261 个产物。`permissionRoute()` 与测试对 `AppBindings` 的引用和强转归零，生产入口直接传入规则 CRUD 与 Permission 交互队列的窄投影；新增测试覆盖统一队列混合快照不会把 AskUser 条目暴露到 Permission API。
 - Turn Route 目录内聚与交互取消隔离：Turn 21/21、LocalHost 26 个测试文件 88/88 通过；Turn/Tools build、LocalHost typecheck 与正式 build 通过，构建验证 65 个源码与 261 个产物。原 `routes/turns.ts` 已拆为启动、SSE、音频、工具审计、取消、AskUser 与 Schema 文件，生产和附件边界测试改用 `routes/turns/index.ts`；Turn 子路由对 `AppBindings`、`createTurnExecution/createTurnOutput` 的引用归零，完整装配进入 `wiring/createTurnsRouter.ts`。`cancelPermission/cancelAskUser` 的类型互斥与两个 HTTP 专属取消入口已有直接回归测试，`git diff --check` 通过，仅有既有 CRLF 提示。
@@ -275,7 +278,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 先完整阅读 CLAUDE.md 与 EmaWorkState.md，再按当前批次阅读 EmaRefactor.md 和 EmaClaudeArchitectureReview.md 对应章节。检查 git status、diff 和最近提交，保留用户及其他 Agent 的修改。
 
-LocalHost L0、Turn 输入准备 L1、Turn Context L2、Turn Tools L3、Root Agent Execution L4、Turn Composition Root L5、TTS Turn 输出边界、精确根取消与旧 Orchestrator 删除、Route 业务副作用归位以及 Task/AgentRun/Turn/AskUser/Permission/Session Route 窄依赖已经完成。不要恢复 `apps/core`、`TurnExecutionPlan`、`PreparedTurnExecution`、万能 `TurnExecutionDeps`、LocalHost `activeTurns`、旧 Orchestrator、Route transcript/交互/音频投影回调、Route 直接解析 AgentRun `content_json`、Session Route 标题/删除副作用、通用 `cancelActive` 或弃用 `EmaStreamEvent` 消费者。先阅读 `EmaRefactor.md` §7.1.1；下一批从 Provider/ModelBindings 控制面继续按业务组清除其余 Route 的 `AppBindings`。完整对象图只允许留在 Composition Root，不建立另一只嵌套依赖袋。修改前先说明窄端口、URL 保持策略和预期效果，不要提交 Git。
+LocalHost L0、Turn 输入准备 L1、Turn Context L2、Turn Tools L3、Root Agent Execution L4、Turn Composition Root L5、TTS Turn 输出边界、精确根取消与旧 Orchestrator 删除、Route 业务副作用归位以及 Task/AgentRun/Turn/AskUser/Permission/Session/Provider/ModelBindings Route 窄依赖已经完成。不要恢复 `apps/core`、`TurnExecutionPlan`、`PreparedTurnExecution`、万能 `TurnExecutionDeps`、LocalHost `activeTurns`、旧 Orchestrator、Route transcript/交互/音频投影回调、Route 直接解析 AgentRun `content_json`、Session Route 标题/删除副作用、Provider Route 业务编排、通用 `cancelActive` 或弃用 `EmaStreamEvent` 消费者。先阅读 `EmaRefactor.md` §7.1.1；下一批收口 Settings/Theme 的配置所有权和 HTTP 边界，再继续按业务组清除其余 Route 的 `AppBindings`。完整对象图只允许留在 Composition Root，不建立另一只嵌套依赖袋。修改前先说明窄端口、URL 保持策略和预期效果，不要提交 Git。
 ```
 
 ## 维护方式

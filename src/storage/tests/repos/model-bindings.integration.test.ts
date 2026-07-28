@@ -115,22 +115,41 @@ describe('profile v4 到当前版本迁移：model_bindings CHECK 收紧到 11',
       );
       insBinding.run('chat', 'chat-model');
       insBinding.run('embed', 'embed-model');
-      // 11 模块存量（走 Repo 类型安全路径）
-      new ModelBindingsRepo(sqlite).upsert({ module: 'router', providerConfigId: 'p-1', model: 'router-model' });
-      new ModelBindingsRepo(sqlite).upsert({ module: 'tts', providerConfigId: 'p-1', model: 'tts-model' });
+      sqlite.prepare(
+        `INSERT INTO model_bindings
+           (module, provider_config_id, model, voice_id, config_json)
+         VALUES ('lightrag-embed', 'p-1', 'lr-embed', NULL, '{"dim":768}')`,
+      ).run();
+      // 旧 v4 Schema 还没有明确维度列，存量数据继续用旧表写法构造。
+      insBinding.run('router', 'router-model');
+      insBinding.run('tts', 'tts-model');
 
       new MigrationsRunner(sqlite, 'profile').run();
 
       const remaining = sqlite.prepare('SELECT module FROM model_bindings ORDER BY module ASC')
         .all() as Array<{ module: string }>;
-      expect(remaining.map((r) => r.module)).toEqual(['router', 'tts']);
+      expect(remaining.map((r) => r.module)).toEqual([
+        'lightrag-embed',
+        'router',
+        'tts',
+      ]);
+      const migratedDimension = sqlite.prepare(
+        `SELECT embedding_dimension
+         FROM model_bindings
+         WHERE module = 'lightrag-embed'`,
+      ).get() as { embedding_dimension: number };
+      expect(migratedDimension.embedding_dimension).toBe(768);
 
-      // CHECK 已收紧：retired 模块写入被拒
-      expect(() => insBinding.run('chat', 'x')).toThrow(/CHECK constraint failed/);
-      // 11 模块写入仍正常
-      expect(() => insBinding.run('vision', 'v-model')).not.toThrow();
+      const currentInsert = sqlite.prepare(
+        `INSERT INTO model_bindings
+           (module, provider_config_id, model, embedding_dimension)
+         VALUES (?, 'p-1', ?, NULL)`,
+      );
+      // CHECK 已收紧：retired 模块写入被拒，11 模块仍正常。
+      expect(() => currentInsert.run('chat', 'x')).toThrow(/CHECK constraint failed/);
+      expect(() => currentInsert.run('vision', 'v-model')).not.toThrow();
 
-      expect(sqlite.pragma('user_version', { simple: true })).toBe(12);
+      expect(sqlite.pragma('user_version', { simple: true })).toBe(13);
     } finally {
       sqlite.close();
     }

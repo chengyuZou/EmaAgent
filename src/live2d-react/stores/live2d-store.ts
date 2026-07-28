@@ -1,6 +1,6 @@
 // 保存单个 Live2D 舞台的动作、表情意图与运行开关。
 import { create, type StoreApi, type UseBoundStore } from 'zustand';
-import { NEUTRAL_POSE, type Live2DPoseSnapshot } from '../composables/user-pose.js';
+import { NEUTRAL_POSE, type Live2DPoseSnapshot } from '../composables/head-pose.js';
 
 // ── Live2D runtime store ────────────────────────────────────────────────────
 //
@@ -75,7 +75,7 @@ export interface Live2DStoreState {
   mouseTrackEnabled:     boolean;
   /** 唇同步开关;关闭时口型释放到 0 并撤回 speechNod 贡献。 */
   lipSyncEnabled:        boolean;
-  /** 设置页姿态滑块基准;由 user-pose 插件逐帧幂等加算到转动输入参数。 */
+  /** 设置页姿态滑块基准;由 head-pose 插件逐帧与 idle 摇摆、speechNod 合成后写入。 */
   pose:                  Live2DPoseSnapshot;
   availableExpressions:  string[];
   availableMotions:      Record<string, number>;

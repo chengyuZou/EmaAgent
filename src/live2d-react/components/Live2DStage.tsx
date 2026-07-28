@@ -7,9 +7,8 @@ import { Live2DModel as PixiLive2DModel } from 'pixi-live2d-display/cubism4';
 import type { Live2DStageHandle, Live2DFraming, Live2DError } from '../types.js';
 import type { Live2DRuntime } from '../runtime.js';
 import { createMouseEyeTrackPlugin } from '../composables/mouse-track.js';
-import { createIdleBeatPlugin } from '../composables/idle-beat.js';
+import { createHeadPosePlugin } from '../composables/head-pose.js';
 import { createIdleEyeSaccadePlugin } from '../composables/idle-eye-saccade.js';
-import { createUserPosePlugin } from '../composables/user-pose.js';
 import { createAudioLipSyncPlugin } from '../composables/audio-lipsync.js';
 import { startRandomIdleScheduler } from '../composables/random-idle.js';
 import { createExpressionController, type CoreModelLike } from '../composables/expression-controller.js';
@@ -362,26 +361,20 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
           // markHandled 短路原生 update(冻结姿态),mouseTrack 已先跑(眼珠仍跟踪鼠标)。
           pipeline.register(createIdleDisablePlugin(), 'pre');
           // Final stage: idle-beat → auto-blink → expression
-          // idle-beat 必须是 final 级:它写的是转动输入参数(Param85/86/87),
-          // 原生 motion 曲线也可能写输入参数;final 在原生 update 之后运行,
-          // 我们的值才生效。(idle.motion3.json 的 ParamBodyAngle 曲线不是原因:
-          // 身体角度是 physics 输出,每帧被 physics.evaluate 从输入参数重算覆写。)
+          // head-pose 是转动输入参数(Param85/86/87)的唯一写入方:idle 摇摆、
+          // 姿态滑块与 speechNod 在此合成为一个值纯 SET。必须是 final 级——原生
+          // motion 曲线也可能写输入参数,final 在原生 update 之后运行才生效。
+          // (idle.motion3.json 的 ParamBodyAngle 曲线与此无关:身体角度是
+          // physics 输出,每帧被 physics.evaluate 从输入参数重算覆写。)
           pipeline.register(
-            createIdleBeatPlugin(
-              () => live2dStore.getState().idleBeatEnabled,
-              () => readRuntimeConfig().parameters,
-              () => readRuntimeConfig().idleBeat,
-            ),
-            'final',
-          );
-          // user-pose 在 idle-beat 之后、lipsync 之前:滑块基准以
-          // remember-and-subtract 加算到转动输入参数,与 idle sway、speechNod
-          // 组成 set-then-add 链,三者各记各的贡献,互不覆写。
-          pipeline.register(
-            createUserPosePlugin(
-              () => live2dStore.getState().pose,
-              () => readRuntimeConfig().parameters,
-            ),
+            createHeadPosePlugin({
+              readIdleBeatEnabled: () => live2dStore.getState().idleBeatEnabled,
+              readPose: () => live2dStore.getState().pose,
+              readParameters: () => readRuntimeConfig().parameters,
+              readIdleBeat: () => readRuntimeConfig().idleBeat,
+              speechStore,
+              readLipSyncEnabled: () => live2dStore.getState().lipSyncEnabled,
+            }),
             'final',
           );
           // 空闲眼动扫视:idle 且鼠标静止时,眼珠随机扫视(覆盖 mouse-track 的回中)。
@@ -641,9 +634,12 @@ function applyFraming(
   framing: Live2DFraming,
   naturalBounds: Live2DNaturalBounds,
 ): void {
+  // 必须用 screen(逻辑尺寸)而非 renderer.width(物理像素):
+  // renderScale 改变 resolution 后,物理宽度 = 逻辑 × renderScale,
+  // 而 model.scale/x/y 活在逻辑(stage)坐标系,混用会让模型随 renderScale 倍增。
   const placement = calculateLive2DFraming({
-    width: app.renderer.width,
-    height: app.renderer.height,
+    width: app.renderer.screen.width,
+    height: app.renderer.screen.height,
   }, naturalBounds, framing);
   if (!placement) return;
 
@@ -690,9 +686,10 @@ function applyFramingAnimated(
   framing: Live2DFraming,
   naturalBounds: Live2DNaturalBounds,
 ): (() => void) | null {
+  // 同 applyFraming:用逻辑尺寸,与 renderScale 解耦。
   const placement = calculateLive2DFraming({
-    width: app.renderer.width,
-    height: app.renderer.height,
+    width: app.renderer.screen.width,
+    height: app.renderer.screen.height,
   }, naturalBounds, framing);
   if (!placement) return null;
 

@@ -97,7 +97,7 @@ export async function configureBridge(
         apiKey:   enabledRow.credential ?? '',
         baseUrl:  configuredBaseUrlFor(def, 'embed', capability, protocol) ?? '',
         model:    embedBinding.model,
-        dim:      (embedBinding.config['dim'] as number | undefined) ?? 1024,
+        dim:      embedBinding.embeddingDimension ?? 1024,
       };
     } else if (protocol) {
       console.warn(`[bridge] embed protocol [${protocol}] not yet supported in bridge`);

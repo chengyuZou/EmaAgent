@@ -40,4 +40,24 @@ describe('Live2D runtime config', () => {
     expect(live2DReloadConfigKey({ modelId: 'ema', idleBeat: { swayAmplitude: 20 } })).toBe(base);
     expect(live2DReloadConfigKey({ modelId: 'ema-2' })).not.toBe(base);
   });
+
+  it('bodyInput 为可选模型能力:缺省 undefined,空白字符串视为未声明', () => {
+    const undeclared = resolveLive2DModelRuntimeConfig({
+      parameters: { bodyInputX: ' ', bodyInputY: '', bodyInputZ: undefined },
+    });
+    expect(undeclared.parameters.bodyInputX).toBeUndefined();
+    expect(undeclared.parameters.bodyInputY).toBeUndefined();
+    expect(undeclared.parameters.bodyInputZ).toBeUndefined();
+
+    const declared = resolveLive2DModelRuntimeConfig({
+      parameters: {
+        bodyInputX: 'ParamBodyAngleX',
+        bodyInputY: 'ParamBodyAngleY',
+        bodyInputZ: 'ParamBodyAngleZ',
+      },
+    });
+    expect(declared.parameters.bodyInputX).toBe('ParamBodyAngleX');
+    expect(declared.parameters.bodyInputY).toBe('ParamBodyAngleY');
+    expect(declared.parameters.bodyInputZ).toBe('ParamBodyAngleZ');
+  });
 });

@@ -18,6 +18,15 @@ export type {
 
 export { ensureVoiceUri, TtsVoiceUriCache } from './voiceUri.js';
 export type { TtsVoiceUriStore } from './voiceUri.js';
+export {
+  TtsVoicePreview,
+  TtsVoicePreviewError,
+} from './voicePreview.js';
+export type {
+  TtsVoicePreviewErrorCode,
+  TtsVoicePreviewResult,
+  TtsVoicePreviewSource,
+} from './voicePreview.js';
 
 export type {
   TtsAdapter,

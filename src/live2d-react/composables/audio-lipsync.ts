@@ -1,17 +1,14 @@
-// 根据指定舞台的语音能量驱动 Live2D 口型与轻微身体律动。
+// 根据指定舞台的语音能量驱动 Live2D 口型。
 // ── AudioLipSyncPlugin ───────────────────────────────────────────────────────
 //
 // Final-stage pipeline plugin. Reads real-time audio RMS from SpeechAnimationStore
 // and drives the Live2D mouth-open parameter.
 //
 // When speaking:  ParamMouthOpenY = rms * 2.1  (range from ema.vtube.json)
-// When silent:    smoothly releases mouth toward 0 over ~200ms
+// When silent or lip-sync disabled: smoothly releases mouth toward 0 over ~200ms
 //
-// Also applies a subtle additive head nod on Param86 from the smoothed energy,
-// so the character "bounces" slightly with speech emphasis. The nod uses
-// remember-and-subtract composition (see user-pose.ts): naive `current + nod`
-// accumulates every frame whenever idle-beat stops re-setting Param86
-// (idleBeat disabled), pinning the head at the clamp limit.
+// 说话点头(speechNod)不在本插件:它与 idle 摇摆、姿态滑块共享转动输入参数,
+// 由 head-pose 插件作为唯一写入方统一合成,避免多写入方加算链的累积问题。
 
 import type { MotionPlugin } from './motion-manager.js';
 import type { SpeechAnimationStoreApi } from '../stores/speech-store.js';
@@ -37,17 +34,14 @@ export function createAudioLipSyncPlugin(
   readEnabled: () => boolean = () => true,
 ): MotionPlugin {
   let currentMouth = 0;
-  // 本插件对 speechNodParam 的当前贡献;帧间先撤后加,关闭或静默时归零。
-  let addedNod = 0;
 
   return (ctx) => {
-    const { speaking, rms, energy } = speechStore.getState();
+    const { speaking, rms } = speechStore.getState();
     const params = readParameters();
-    const enabled = readEnabled();
     const attack = frameRateIndependentFactor(ATTACK_AT_60_FPS, ctx.timing.deltaMs);
     const release = frameRateIndependentFactor(RELEASE_AT_60_FPS, ctx.timing.deltaMs);
 
-    if (enabled && speaking && rms > 0.01) {
+    if (readEnabled() && speaking && rms > 0.01) {
       const openness = Math.min(1, rms * RMS_GAIN);
       currentMouth += (openness * params.mouthOpenMax - currentMouth) * attack;
     } else {
@@ -55,14 +49,5 @@ export function createAudioLipSyncPlugin(
     }
 
     ctx.model.setParameterValueById(params.mouthOpenParam, currentMouth);
-
-    // Subtle speech-emphasis head nod — remember-and-subtract, composes with
-    // idle-beat (SET) and user-pose (add) on the same input parameter.
-    if (params.speechNodParam) {
-      const nod = enabled && energy > 0.02 ? energy * params.speechNodAmplitude : 0;
-      const current = ctx.model.getParameterValueById(params.speechNodParam);
-      ctx.model.setParameterValueById(params.speechNodParam, current - addedNod + nod);
-      addedNod = nod;
-    }
   };
 }
