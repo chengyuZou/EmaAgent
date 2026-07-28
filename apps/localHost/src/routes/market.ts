@@ -1,7 +1,14 @@
 // 这里提供市场源管理和连通性测试 API, 实际抓取与校验由 Marketplace 和业务 Adapter 完成.
 import { Hono } from 'hono';
 import { z }    from 'zod';
-import type { AppBindings } from '../wiring/index.js';
+import type { MarketRegistry, MarketSourceStore } from '@ema-agent/marketplace';
+
+/** 源管理只读写字段记录；适配器查询只暴露按 kind 取 Adapter。 */
+type MarketSourceCrud = Pick<
+  MarketSourceStore,
+  'list' | 'get' | 'create' | 'update' | 'remove'
+>;
+type MarketAdapterLookup = Pick<MarketRegistry, 'getAdapter'>;
 
 // ── Market sources router ────────────────────────────────────────────────────
 //
@@ -31,9 +38,11 @@ const patchBodySchema = z.object({
   sortOrder: z.number().int().optional(),
 });
 
-export function createMarketRouter(bindings: AppBindings) {
+export function createMarketRouter(
+  marketSourceStore: MarketSourceCrud,
+  marketRegistry: MarketAdapterLookup,
+) {
   const router = new Hono();
-  const { marketSourceStore, marketRegistry } = bindings;
 
   // ── List type schemas(前端"添加源"Dialog 动态渲染表单用)──────────────────────
   // 返回该 kind 所有 source type 的 config 字段 schema。后端加 type → adapter

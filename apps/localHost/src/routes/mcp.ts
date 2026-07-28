@@ -7,8 +7,26 @@ import {
   parseImportedMcpServers,
 } from '@ema-agent/mcp';
 import { mergeByName }         from '@ema-agent/marketplace';
-import type { McpMarketEntry } from '@ema-agent/mcp';
-import type { AppBindings }    from '../wiring/index.js';
+import type { McpMarketEntry, McpRegistry } from '@ema-agent/mcp';
+import type { MarketRegistry, MarketSourceStore } from '@ema-agent/marketplace';
+
+/** HTTP 管理面只做注册、连接生命周期和探测，不接触运行时工具调用。 */
+type McpServerManagement = Pick<
+  McpRegistry,
+  | 'listRecords'
+  | 'getAllConnections'
+  | 'register'
+  | 'connectConfig'
+  | 'getConnection'
+  | 'setEnabled'
+  | 'connect'
+  | 'disconnect'
+  | 'remove'
+  | 'probe'
+>;
+/** 市场聚合只需要启用源列表和跨源拉取。 */
+type MarketSourceListing = Pick<MarketSourceStore, 'listEnabled'>;
+type MarketEntryListing = Pick<MarketRegistry, 'listAll'>;
 
 // ── MCP server management routes ──────────────────────────────────────────────
 //
@@ -44,15 +62,18 @@ const probeSchema = z.object({
 // 旧的 inline registry fetch + normaliseRegistryServer 已搬到
 // src/mcp/src/market/adapters/mcp-registry.ts。
 
-export function createMcpRouter(bindings: AppBindings) {
+export function createMcpRouter(
+  mcpRegistry: McpServerManagement,
+  marketSources: MarketSourceListing,
+  marketRegistry: MarketEntryListing,
+) {
   const router = new Hono();
-  const { mcpRegistry } = bindings;
 
   // ── Marketplace ─────────────────────────────────────────────────────────────
   router.get('/market', async (c) => {
     try {
-      const sources = bindings.marketSourceStore.listEnabled('mcp');
-      const results = await bindings.marketRegistry.listAll<McpMarketEntry>(
+      const sources = marketSources.listEnabled('mcp');
+      const results = await marketRegistry.listAll<McpMarketEntry>(
         'mcp',
         sources,
         c.req.raw.signal,

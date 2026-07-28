@@ -84,9 +84,27 @@ export function buildServer(bindings: AppBindings, sharedSecret: string): Hono {
   app.route('/api/transcribe',     transcribeRoute(bindings));
   app.route('/api/cards',          cardsRoute(bindings));
 
-  app.route('/api',                createSkillsRouter(bindings));
-  app.route('/api/mcp',            createMcpRouter(bindings));
-  app.route('/api/market',         createMarketRouter(bindings));
+  app.route(
+    '/api',
+    createSkillsRouter(
+      bindings.skillStore,
+      bindings.skillInstaller,
+      bindings.marketSourceStore,
+      bindings.marketRegistry,
+    ),
+  );
+  app.route(
+    '/api/mcp',
+    createMcpRouter(
+      bindings.mcpRegistry,
+      bindings.marketSourceStore,
+      bindings.marketRegistry,
+    ),
+  );
+  app.route(
+    '/api/market',
+    createMarketRouter(bindings.marketSourceStore, bindings.marketRegistry),
+  );
   app.route('/api/kb',             kbRoute(bindings));
   app.route(
     '/api/agent-runs',
