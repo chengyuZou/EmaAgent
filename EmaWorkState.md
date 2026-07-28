@@ -20,7 +20,7 @@ L4 Root Agent Execution 已经完成：`RootAgentExecution` 统一拥有根 Agen
 
 L5 Turn Composition Root 已经完成并提交：`apps/localHost/src/wiring/createTurnExecution.ts` 是根 Turn 输入准备、Context、Tools、RootAgentExecution 与 TurnExecutor 对象图的唯一构造位置。LocalHost Orchestrator 只取得 `TurnInputPreparer + TurnExecutor` 两个明确入口，不再知道 Agent 执行链如何装配；TTS 合流、Route 与大型 AppBindings 本批未动，避免把多个业务边界混成一次机械搬家。L5 是根 Turn 执行地基的最后一层，后续不再创建 L6 或另一套执行抽象。
 
-L5 后第一批 TTS Turn 输出边界已经完成：`src/tts/turnOutput.ts` 现在装饰 `TurnHandle.events`，把文本增量交给 `TtsCoordinator`，成功时在根终态前完成音频归档，失败/取消时丢弃音频；TTS 初始化和音频统计投影失败只产生 TTS warning，不改变根 Turn 终态。声音 URI 缓存与懒上传收回 `src/tts/voiceUri.ts`，LocalHost `createTurnOutput.ts` 只装配模型 binding、全局角色语音、路径与 SQLite 窄端口。旧 Orchestrator 的 TTS 合流、Route 音频投影回调和易丢唤醒的手写 Promise 信号已删除。
+L5 后第一批 TTS Turn 输出边界已经完成：`src/tts/turnOutput.ts` 现在装饰 `TurnHandle.events`，把文本增量交给 `TtsCoordinator`，成功时在根终态前完成音频归档，失败/取消时丢弃音频；TTS 初始化和音频统计投影失败只产生 TTS warning，不改变根 Turn 终态。Provider 声音上传结果已经从 Settings/SQLite 移出，由 `src/tts/voiceHandle.ts` 按角色、Provider 配置和模型在当前进程内短期复用；协议没有明确持久化保证时默认两分钟失效。LocalHost `createTurnOutput.ts` 只装配模型 binding、全局角色语音、路径与共享内存缓存。旧 Orchestrator 的 TTS 合流、Route 音频投影回调和易丢唤醒的手写 Promise 信号已删除。
 
 L5 后第二批根取消与旧 Orchestrator 删除已经完成：`TurnExecutor.abort(turnId)` 通过 Session 现有运行注册表核对历史 Turn 是否仍为当前活动 Turn，`TurnHandle.abort()` 和事件消费者关闭也走同一精确入口，陈旧句柄不会按 Session 误杀下一轮。Turns Route 直接使用 `createTurnExecution()` 返回的 `TurnInputPreparer + TurnExecutor` 启动根 Turn，再通过 `createTurnOutput()` 装饰事件；LocalHost `activeTurns`、重复请求类型与整个 `orchestrator` 文件已经物理删除。
 
@@ -38,7 +38,7 @@ Provider/ModelBindings 控制面收窄已经完成：原 784 行 Provider Route 
 
 事件通道同步完成消费者迁移：Turn SSE 使用 `TurnStreamEvent`，系统 SSE 使用 `AppEvent`，只有跨端通用解码器使用 `ClientEvent`；`EmaStreamEvent` 仅剩 `src/events` 内的弃用兼容声明，生产代码与应用测试不再导入它。Task 更新明确属于 Turn 输出联合，Memory 进程级依赖只允许发送 `MemoryBackgroundEvent`，召回证据继续进入当前 Turn。
 
-Settings/Theme 配置所有权与 HTTP 边界已经完成：用户设置继续使用 `profile.db.settings` 作为唯一持久化源，Storage 只提供纯 KV Repo；`src/settings` 直接消费 `SettingsRepo`，统一定义、Catalog、内存快照、提交顺序与变更事件，没有复制镜像持久化接口。Agent、Context、Permission、Attachment、Vision、Knowledge 与 Theme 已各自拥有显式设置定义，由 LocalHost Composition Root 聚合；既有 Event Display、Permission Timeout、Theme 与 KB Model URL 保持原 HTTP URL，并返回后端规范化后的持久值。Desktop Theme 支持先预览、保存失败回滚。下一批按业务逐项接入仍未消费的新参数，不能把“已注册定义”误写成“运行时已经生效”。
+Settings/Theme 配置所有权与 HTTP 边界已经完成：用户设置继续使用 `profile.db.settings` 作为唯一持久化源，Storage 只提供纯 KV Repo；`src/settings` 直接消费 `SettingsRepo`，统一定义、Catalog、内存快照、提交顺序与变更事件，没有复制镜像持久化接口。Agent、Context、Permission、Attachment、Vision、Knowledge 与 Theme 已各自拥有显式设置定义，由 LocalHost Composition Root 聚合；既有 Event Display、Permission Timeout、Theme 与 KB Model URL 保持原 HTTP URL，并返回后端规范化后的持久值。Desktop Theme 支持先预览、保存失败回滚。TTS 上传句柄等供应商运行时缓存不属于用户设置，已退出 `profile.db.settings`。下一批按业务逐项接入仍未消费的新参数，不能把“已注册定义”误写成“运行时已经生效”。
 
 L5 后余下收口顺序更新：Turn/AskUser、Permission、Session、Provider/ModelBindings、Settings/Theme Route 已收窄，下一批继续按业务组移除其余 Route 的 `AppBindings`，并为 Agent/Context/Attachment/Vision 的新设置逐项接入真实运行时；最后才决定是否把已经纯化的 HTTP/SSE/Auth 文件归档到 `transports/http`。
 
@@ -193,6 +193,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 ## 最近验证
 
 - Settings/Theme 配置所有权：Settings、Theme、Agent、Context、Permission、Attachment、Vision、Knowledge、LocalHost 与 Desktop UI 的依赖构建 43/43 通过；Settings/LocalHost/Desktop 定向 5 个测试文件 18/18 通过。设置写入按 SQLite 成功后再替换快照并发布事件，持久化失败与 Theme 前端保存失败均保留旧值；`SettingsStore` 直接使用 Storage `SettingsRepo`，镜像持久化类型已清理。
+- TTS Provider 声音句柄生命周期：旧 `voiceUri` 与 Settings `runtimeCache` 生产引用归零；OpenAI 兼容与 DashScope 在协议未返回可靠有效期时标记为临时句柄，按角色、Provider 配置和模型进入两分钟进程内缓存。TTS/LocalHost 定向构建 40/40 通过，TTS 6 个测试文件 25/25 通过。
 - Provider/ModelBindings 控制面收窄：Provider、Storage build，TTS 69/69 与独立 typecheck，LocalHost 正式 build（79 个源码、317 个产物），Desktop UI typecheck 通过；Storage 26 个测试文件 120/120、LocalHost 26 个测试文件 89/89 通过。旧 Provider/ModelBindings Route 和专用凭据/能力配置 Route 已删除，生产引用归零；Profile v13 将模型绑定迁为显式 `embedding_dimension`，配置更新的 `keep` 不再解密后重写密钥，Provider 删除/能力关闭仍经过绑定冲突检查和运行时刷新。
 - Session Route 窄依赖：Session 全量 4 个测试文件 41/41、LocalHost 全量 26 个测试文件 89/89 通过；Session typecheck/build、LocalHost typecheck 与正式 build 通过，构建验证 72 个源码与 289 个产物。原 Session Route 已按集合、历史、附件、动作和标题拆分；Route 与测试中的 `AppBindings` 引用和强转归零，新增测试覆盖工作区运行时失效、永久删除清理顺序、标题模型失败回退及附件/历史 HTTP 契约。
 - Permission Route 窄依赖：Permission Route 定向 5/5、LocalHost 全量 26 个测试文件 89/89 通过；LocalHost typecheck 与正式 build 通过，构建验证 65 个源码与 261 个产物。`permissionRoute()` 与测试对 `AppBindings` 的引用和强转归零，生产入口直接传入规则 CRUD 与 Permission 交互队列的窄投影；新增测试覆盖统一队列混合快照不会把 AskUser 条目暴露到 Permission API。

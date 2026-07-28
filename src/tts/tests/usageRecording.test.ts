@@ -14,7 +14,7 @@ const VOICE: TtsVoiceRef = {
   refAudioPath: '/voice.wav',
   promptText: 'prompt',
   promptLang: 'zh',
-  voiceUri: 'voice-id',
+  providerVoice: { value: 'voice-id', lifetime: 'durable' },
 };
 
 function request(callId: string): TtsRequest {

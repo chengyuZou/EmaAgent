@@ -154,7 +154,7 @@ function speechOutput(
         refAudioPath: 'voice.wav',
         promptText: '',
         promptLang: 'zh',
-        voiceUri: 'voice',
+        providerVoice: { value: 'voice', lifetime: 'durable' },
       },
       providerId: 'provider',
       model: 'model',

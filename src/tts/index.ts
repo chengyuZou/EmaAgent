@@ -16,8 +16,11 @@ export type {
   TurnSpeechSynthesis,
 } from './turnOutput.js';
 
-export { ensureVoiceUri, TtsVoiceUriCache } from './voiceUri.js';
-export type { TtsVoiceUriStore } from './voiceUri.js';
+export {
+  ensureProviderVoiceHandle,
+  TtsVoiceHandleCache,
+} from './voiceHandle.js';
+export type { TtsVoiceHandleCacheOptions } from './voiceHandle.js';
 export {
   TtsVoicePreview,
   TtsVoicePreviewError,
@@ -33,6 +36,7 @@ export type {
   TtsProviderConfig,
   TtsRequest,
   TtsStreamEvent,
+  TtsProviderVoiceHandle,
   TtsVoiceRef,
   TtsAudioFormat,
   TtsErrorCode,

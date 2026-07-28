@@ -96,7 +96,7 @@ export function createProvidersRouter(bindings: AppBindings): Hono {
         return voice ? { cardId: card.id, voice } : null;
       },
     },
-    bindings.runtimeCache,
+    bindings.ttsVoiceHandles,
   );
 
   return providersRoute(

@@ -49,7 +49,12 @@ function coordinator(
   return new TtsCoordinator({
     turnId: 'turn' as TurnId,
     sessionId: 'session' as SessionId,
-    voice: { refAudioPath: 'voice.wav', promptText: '', promptLang: 'zh', voiceUri: 'voice' },
+    voice: {
+      refAudioPath: 'voice.wav',
+      promptText: '',
+      promptLang: 'zh',
+      providerVoice: { value: 'voice', lifetime: 'durable' },
+    },
     providerId: 'provider',
     model: 'model',
     ttsClient: new TtsRuntime({

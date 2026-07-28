@@ -3,10 +3,9 @@ import type { CharacterCardId } from '@ema-agent/ids';
 import type { TtsRuntime } from './ttsRuntime.js';
 import type { TtsVoiceRef } from './types.js';
 import {
-  ensureVoiceUri,
-  TtsVoiceUriCache,
-  type TtsVoiceUriStore,
-} from './voiceUri.js';
+  ensureProviderVoiceHandle,
+  TtsVoiceHandleCache,
+} from './voiceHandle.js';
 
 export type TtsVoicePreviewErrorCode =
   | 'adapter_unavailable'
@@ -39,15 +38,11 @@ export interface TtsVoicePreviewResult {
 }
 
 export class TtsVoicePreview {
-  private readonly cache: TtsVoiceUriCache;
-
   constructor(
     private readonly runtime: Pick<TtsRuntime, 'getAdapter' | 'synthesize'>,
     private readonly voices: TtsVoicePreviewSource,
-    voiceUriStore: TtsVoiceUriStore,
-  ) {
-    this.cache = new TtsVoiceUriCache(voiceUriStore);
-  }
+    private readonly voiceHandles: TtsVoiceHandleCache,
+  ) {}
 
   async synthesize(
     providerId: string,
@@ -72,16 +67,16 @@ export class TtsVoicePreview {
     }
 
     try {
-      await ensureVoiceUri(
+      const voice = await ensureProviderVoiceHandle(
         current.voice,
         adapter,
         model,
         current.cardId,
         providerId,
-        this.cache,
+        this.voiceHandles,
         signal,
       );
-      if (!current.voice.voiceUri && adapter.protocol !== 'gpt-sovits-tts') {
+      if (!voice.providerVoice && adapter.protocol !== 'gpt-sovits-tts') {
         throw new TtsVoicePreviewError(
           'voice_upload_failed',
           '参考音频上传失败',
@@ -94,7 +89,7 @@ export class TtsVoicePreview {
         providerId,
         model,
         text,
-        voice: current.voice,
+        voice,
         format: 'mp3',
         abortSignal: signal,
       })) {

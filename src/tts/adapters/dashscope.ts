@@ -5,7 +5,15 @@ import fs   from 'node:fs/promises';
 import path from 'node:path';
 import WebSocket from 'ws';
 
-import type { TtsAdapter, TtsProviderConfig, TtsProbeResult, TtsRequest, TtsStreamEvent, TtsErrorCode } from '../types.js';
+import type {
+  TtsAdapter,
+  TtsErrorCode,
+  TtsProviderConfig,
+  TtsProviderVoiceHandle,
+  TtsProbeResult,
+  TtsRequest,
+  TtsStreamEvent,
+} from '../types.js';
 import { classifyCloseCode, classifyFetchError, classifyHttpStatus, classifyProbeFailure } from '../errors.js';
 import { mimeForFormat } from '../utils.js';
 
@@ -62,7 +70,8 @@ export class DashscopeTtsAdapter implements TtsAdapter {
 
   /**
    * 上传本地参考音频文件到 DashScope 做 voice cloning。
-   * 返回 Provider 分配的 voice ID，存入 TtsVoiceUriCache。
+   * 返回 Provider 分配的 voice ID。当前协议没有在响应中提供有效期，
+   * 因此上层保守地只在当前进程内短期复用。
    *
    * 协议路由:
    *   cosyvoice-*  -> model=voice-enrollment,      input.url
@@ -79,7 +88,7 @@ export class DashscopeTtsAdapter implements TtsAdapter {
     _promptLang:  string,
     model:        string,
     signal?:      AbortSignal,
-  ): Promise<string> {
+  ): Promise<TtsProviderVoiceHandle> {
     const family = dashscopeModelFamily(model);
     if (family === 'unknown') {
       throw new Error(`dashscope-tts: uploadVoice not supported for model "${model}"`);
@@ -137,7 +146,10 @@ export class DashscopeTtsAdapter implements TtsAdapter {
       throw new Error('DashScope voice enrollment response is missing voice id');
     }
 
-    return voiceId;
+    return {
+      value: voiceId,
+      lifetime: 'ephemeral',
+    };
   }
 
   async probe(signal?: AbortSignal): Promise<TtsProbeResult> {
@@ -278,8 +290,7 @@ class EventQueue<T> {
 //   3. 发 continue-task 带 text -> 服务器发二进制音频帧
 //   4. 发 finish-task -> 等 task-finished -> 关闭
 //
-// V1 只支持 clone:voice.voiceUri 带 voice enrollment(声音复刻)的
-// provider 端 voice ID。uploadVoice() 后续实现。
+// V1 只支持 clone：providerVoice 带声音复刻得到的 Provider 句柄。
 
 class CosyVoiceSession {
   private readonly mime: string;
@@ -292,9 +303,10 @@ class CosyVoiceSession {
   }
 
   async *run(): AsyncGenerator<TtsStreamEvent> {
-    if (!this.req.voice.voiceUri) {
+    const providerVoice = this.req.voice.providerVoice;
+    if (!providerVoice) {
       yield { type: 'error', code: 'permanent_unsupported_voice_kind',
-              message: 'cosyvoice (dashscope) requires voiceUri (voice not yet uploaded)' };
+              message: 'cosyvoice (dashscope) requires a provider voice handle' };
       return;
     }
 
@@ -340,7 +352,7 @@ class CosyVoiceSession {
           model:      this.req.model,
           parameters: {
             text_type:   'PlainText',
-            voice:       voice.voiceUri,
+            voice:       providerVoice.value,
             format:      this.req.format,
             sample_rate: this.req.sampleRate ?? defaultSampleRate(this.req.format ?? 'mp3'),
             volume:      50,
@@ -453,9 +465,10 @@ class QwenTtsRealtimeSession {
   }
 
   async *run(): AsyncGenerator<TtsStreamEvent> {
-    if (!this.req.voice.voiceUri) {
+    const providerVoice = this.req.voice.providerVoice;
+    if (!providerVoice) {
       yield { type: 'error', code: 'permanent_unsupported_voice_kind',
-              message: 'qwen-tts (dashscope) requires voiceUri (voice not yet uploaded)' };
+              message: 'qwen-tts (dashscope) requires a provider voice handle' };
       return;
     }
 
@@ -494,7 +507,7 @@ class QwenTtsRealtimeSession {
 
     ws.on('open', () => {
       const sessionConfig: Record<string, unknown> = {
-        voice:           voice.voiceUri,
+        voice:           providerVoice.value,
         response_format: audioFormat,
         sample_rate:     pcmSr,
         mode:            'commit',

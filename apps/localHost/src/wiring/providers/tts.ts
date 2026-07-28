@@ -82,7 +82,7 @@ export function resolveVoice(
     refAudioPath: resolveCardVoiceRefPath(c.id as string, c.isBuiltin, primary.refAudioPath),
     promptText:   primary.promptText,
     promptLang:   primary.promptLang,
-    // voiceUri 由 TTS 输出入口按 Provider + Model 缓存或懒上传。
+    // Provider 声音句柄由 TTS 输出入口按 Provider + Model 短期缓存或懒上传。
   };
 }
 

@@ -1,6 +1,13 @@
 // 将语音合成请求转换为 OpenAI 兼容协议，并支持参考音频上传。
 
-import type { TtsAdapter, TtsProviderConfig, TtsProbeResult, TtsRequest, TtsStreamEvent } from '../types.js';
+import type {
+  TtsAdapter,
+  TtsProviderConfig,
+  TtsProviderVoiceHandle,
+  TtsProbeResult,
+  TtsRequest,
+  TtsStreamEvent,
+} from '../types.js';
 import { errorEvent, classifyFetchError, classifyHttpStatus, classifyProbeFailure } from '../errors.js';
 import { mimeForFormat, mimeFromExt, concatBytes } from '../utils.js';
 import { readFile, stat } from 'node:fs/promises';
@@ -12,7 +19,7 @@ import { basename } from 'node:path';
 // 开始播放;这不是真正的句子级流式(OpenAI 不暴露),但响应比等完整体
 // 更早开始到达。
 //
-// V1 只支持 clone:voice 必须带 voiceUri(由 service 懒上传)。
+// V1 只支持 clone：voice 必须带 Provider 句柄，由上层按需上传。
 // CosyVoice2 模型在 clone 路径上跳过 speed/gain 参数。
 
 const CHUNK_BYTES = 8 * 1024;
@@ -27,13 +34,13 @@ export class OpenAiTtsAdapter implements TtsAdapter {
   constructor(private readonly config: Readonly<TtsProviderConfig>) {}
 
   async *stream(req: TtsRequest): AsyncIterable<TtsStreamEvent> {
-    if (!req.voice.voiceUri) {
+    if (!req.voice.providerVoice) {
       yield errorEvent('permanent_unsupported_voice_kind',
-        'openai-tts adapter requires voiceUri (voice not yet uploaded)');
+        'openai-tts adapter requires a provider voice handle');
       return;
     }
 
-    const voiceParam = req.voice.voiceUri;
+    const voiceParam = req.voice.providerVoice.value;
     // Clone 路径总是跳过 speed/gain(CosyVoice2 不接受)。
     const skipSpeedGain = true;
 
@@ -123,7 +130,7 @@ export class OpenAiTtsAdapter implements TtsAdapter {
     promptLang:   string,
     model:        string,
     signal?:      AbortSignal,
-  ): Promise<string> {
+  ): Promise<TtsProviderVoiceHandle> {
     const fileStat = await stat(refAudioPath);
     if (fileStat.size > MAX_REFERENCE_AUDIO_BYTES) {
       throw new Error(`Reference audio exceeds ${MAX_REFERENCE_AUDIO_BYTES} bytes`);
@@ -157,7 +164,11 @@ export class OpenAiTtsAdapter implements TtsAdapter {
     if (!data.uri) {
       throw new Error('Voice upload response is missing uri');
     }
-    return data.uri;
+    // OpenAI 兼容供应商没有统一的有效期契约，默认按短期句柄处理。
+    return {
+      value: data.uri,
+      lifetime: 'ephemeral',
+    };
   }
 
   async probe(signal?: AbortSignal): Promise<TtsProbeResult> {

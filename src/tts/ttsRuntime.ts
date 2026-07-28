@@ -47,10 +47,10 @@ const DEFAULT_LIMITS: Readonly<TtsLimits> = {
  *   - configs:  Map<providerId, TtsProviderConfig> (id -> 配置)
  *
  * TtsRuntime 不感知角色卡、voice profile、
- * 文件路径、URI 缓存或 fallback 策略。这些职责由 TurnSpeechOutput 的装配端承担。
+ * 文件路径、Provider 声音句柄缓存或 fallback 策略。这些职责由 TurnSpeechOutput 的装配端承担。
  *
  * synthesize(request) 接收完全解析的 TtsVoiceRef - 调用方负责
- * 从角色卡解析 voice,并在调用前确保 voiceUri 已填。
+ * 从角色卡解析 voice，并在调用前确保云端协议需要的 Provider 句柄已填。
  */
 export class TtsRuntime {
   private entries: ReadonlyMap<string, TtsRuntimeEntry>;
@@ -186,7 +186,7 @@ export class TtsRuntime {
    * 调用方(TtsCoordinator)负责:
    *   1. 句子切分 - 每次 synthesize() 调用接收一句话。
    *   2. Voice 解析 - request.voice 是完全解析的 TtsVoiceRef,
-   *      voiceUri 已填(由 apps/localHost 在调用前填好)。
+   *      providerVoice 已填（由 apps/localHost 在调用前填好）。
    *   3. 错误处理 - TtsRuntime 产出 TtsStreamEvent.error;调用方
    *      决定重试、fallback 还是上报用户。
    *

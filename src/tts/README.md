@@ -42,7 +42,7 @@ DashScope 双协议路由(按模型前缀): `cosyvoice-*` 走 `wss://.../inferen
 | `FsAudioArchive` | 分段写盘 + Turn 结束合并;`findMergedFor` 供回放路由 |
 | `TtsAdapter` | 扩展接口:`stream`/`capabilitiesFor`/`uploadVoice?`/`probe?` |
 
-`TtsVoiceRef.refAudioPath` 是**绝对路径**(Composition Root 从角色卡相对路径解析)。`TtsVoiceUriCache` 的缓存键为 `tts.voiceUri.<cardId>.<providerId>.<model>`(DashScope voice ID 与模型绑定,跨模型不可复用)。
+`TtsVoiceRef.refAudioPath` 是**绝对路径**（Composition Root 从角色卡相对路径解析）。`TtsVoiceHandleCache` 按 `cardId + providerConfigId + model` 隔离声音空间；没有可靠有效期的上传结果默认只在当前进程内复用两分钟，不写 Settings 或 SQLite。
 
 ## 关键机制
 
@@ -60,7 +60,7 @@ DashScope 双协议路由(按模型前缀): `cosyvoice-*` 走 `wss://.../inferen
 | `streaming/sentenceSplitter.ts` | 句子边界检测 |
 | `ttsRuntime.ts` | 原子 Provider Entry、合成限制、稳定 Probe、流终态和 Usage |
 | `turnOutput.ts` | 根 Turn 事件流的语音装饰、终态顺序与投影告警 |
-| `voiceUri.ts` | Provider voice URI 的稳定缓存键与懒上传 |
+| `voiceHandle.ts` | Provider 声音句柄的生命周期、短期内存缓存与按需上传 |
 | `coordinator.ts` | `TtsCoordinator` per-turn 流式编排 |
 | `archive.ts` | `FsAudioArchive` 分段写盘 + 格式合并 |
 | `errors.ts` | `TtsErrorCode` + 三分类函数(三 adapter 共用) |

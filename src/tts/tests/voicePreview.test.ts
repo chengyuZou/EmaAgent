@@ -8,7 +8,7 @@ import {
   TtsVoicePreviewError,
   type TtsVoicePreviewSource,
 } from '../voicePreview.js';
-import type { TtsVoiceUriStore } from '../voiceUri.js';
+import { TtsVoiceHandleCache } from '../voiceHandle.js';
 
 const CARD_ID = 'card' as CharacterCardId;
 
@@ -20,7 +20,7 @@ describe('TtsVoicePreview', () => {
         synthesize: () => emptyStream(),
       },
       voiceSource(),
-      memoryStore(),
+      new TtsVoiceHandleCache(),
     );
 
     await expect(
@@ -38,7 +38,7 @@ describe('TtsVoicePreview', () => {
         synthesize: () => audioStream(),
       },
       voiceSource(),
-      memoryStore(),
+      new TtsVoiceHandleCache(),
     );
 
     const result = await preview.synthesize('provider', 'model', '你好');
@@ -56,17 +56,6 @@ function voiceSource(): TtsVoicePreviewSource {
   };
   return {
     current: () => ({ cardId: CARD_ID, voice }),
-  };
-}
-
-function memoryStore(): TtsVoiceUriStore {
-  const values = new Map<string, unknown>();
-  return {
-    get: (key) => values.get(key),
-    set: (key, value) => values.set(key, value),
-    delete: (key) => {
-      values.delete(key);
-    },
   };
 }
 

@@ -457,11 +457,11 @@ async function testSiliconFlow(): Promise<void> {
 
   // ── Step 1: uploadVoice ───────────────────────────────────────────────────
 
-  let voiceUri: string;
+  let providerVoice: Awaited<ReturnType<NonNullable<TtsAdapter['uploadVoice']>>>;
   try {
     console.log('  → 上传参考音频...');
-    voiceUri = await adapter.uploadVoice(REF_AUDIO, REF_TEXT, REF_LANG, SF_MODEL);
-    ok(`uploadVoice 成功，voiceUri = ${voiceUri}`);
+    providerVoice = await adapter.uploadVoice(REF_AUDIO, REF_TEXT, REF_LANG, SF_MODEL);
+    ok(`uploadVoice 成功，providerVoice = ${providerVoice.value}`);
   } catch (e) {
     err('uploadVoice 失败', (e as Error).message);
     return;
@@ -473,7 +473,7 @@ async function testSiliconFlow(): Promise<void> {
     refAudioPath: REF_AUDIO,
     promptText:   REF_TEXT,
     promptLang:   REF_LANG,
-    voiceUri,
+    providerVoice,
   };
 
   console.log('  → 合成中...');
@@ -509,11 +509,11 @@ async function testDashScope(): Promise<void> {
 
   // ── Step 1: uploadVoice（base64 data URI 路线）───────────────────────────
 
-  let voiceUri: string;
+  let providerVoice: Awaited<ReturnType<NonNullable<TtsAdapter['uploadVoice']>>>;
   try {
     console.log('  → 上传参考音频（base64 data URI）...');
-    voiceUri = await adapter.uploadVoice(REF_AUDIO, REF_TEXT, REF_LANG, DS_MODEL);
-    ok(`uploadVoice 成功，voice_id = ${voiceUri}`);
+    providerVoice = await adapter.uploadVoice(REF_AUDIO, REF_TEXT, REF_LANG, DS_MODEL);
+    ok(`uploadVoice 成功，voice_id = ${providerVoice.value}`);
   } catch (e) {
     err('uploadVoice 失败', (e as Error).message);
     console.log('  ⚠  若 DashScope 拒绝 data URI，需切换为文件上传路线（见 uploadVoice TODO）');
@@ -526,7 +526,7 @@ async function testDashScope(): Promise<void> {
     refAudioPath: REF_AUDIO,
     promptText:   REF_TEXT,
     promptLang:   REF_LANG,
-    voiceUri,
+    providerVoice,
   };
 
   console.log('  → 合成中（CosyVoice WS 流式）...');

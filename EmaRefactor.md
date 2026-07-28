@@ -684,7 +684,7 @@ TurnHandle.events
     └─ failed / aborted   → 中止 TTS、清理临时音频，再输出根终态
 ```
 
-未绑定 TTS、未配置角色语音或 TTS 初始化失败时，根 Turn 事件流继续透传；可选语音增强不得把已成功的根 Turn 改成失败。TTS 失败使用 TTS 自有 warning 事件。`src/tts` 拥有合流、完成/中止、语音上传缓存和最终音频投影端口，但不直接依赖 Storage、Characters 或 LocalHost：模型绑定选择、角色语音绝对路径与 SQLite Store 由 Composition Root 通过明确闭包或窄端口装配。
+未绑定 TTS、未配置角色语音或 TTS 初始化失败时，根 Turn 事件流继续透传；可选语音增强不得把已成功的根 Turn 改成失败。TTS 失败使用 TTS 自有 warning 事件。`src/tts` 拥有合流、完成/中止、语音上传缓存和最终音频投影端口，但不直接依赖 Storage、Characters 或 LocalHost：模型绑定选择、角色语音绝对路径与进程级缓存由 Composition Root 通过明确闭包或窄端口装配。供应商没有明确保证长期有效的声音句柄只能短期驻留内存；只有协议明确声明为 durable 的注册实体才允许另行设计持久化生命周期。
 
 LocalHost 当前的 Subagent transcript 投影、Turn 结束后 Interaction 清理与音频统计也应回到各领域生命周期，不由 HTTP Route 偷做业务副作用。HTTP EventStore/Hub、SSE replay/heartbeat 和传输缓存淘汰仍属于传输层，不因“Route 不能有副作用”而错误迁入 Turn 业务。
 
@@ -714,7 +714,7 @@ apps/localHost/src/
 
 后续按依赖顺序分五批，不同时施工：
 
-1. **TTS Turn 输出边界（已完成）**：`TurnSpeechOutput` 与真实 `createTurnOutput.ts` 已接管事件合流、终态前 finalize/abort、语音 URI 缓存和最终音频投影；
+1. **TTS Turn 输出边界（已完成）**：`TurnSpeechOutput` 与真实 `createTurnOutput.ts` 已接管事件合流、终态前 finalize/abort、Provider 声音句柄的短期内存缓存和最终音频投影；
 2. **删除旧 Orchestrator（已完成）**：`TurnExecutor.abort(turnId)` 通过 Session 运行注册表核对当前活动身份，历史句柄不能误杀同 Session 后续 Turn；LocalHost `activeTurns` 与整个 Orchestrator 已删除，Turns Route 直接调用 `TurnInputPreparer.prepare() → TurnExecutor.start() → TurnSpeechOutput.decorate()`；
 3. **Route 业务副作用归位（已完成）**：`AgentRunTranscriptProjection` 已进入 `src/agent/runs` 并由 `SubagentSpawner` 在事件产生处持久化；即使没有 HTTP/SSE 消费者，AgentRun transcript 仍会落库。`TurnExecutor` 通过窄 `TurnInteractionCleanup` 在统一 `finally` 中清理 Permission/AskUser，覆盖成功、失败、取消和准备失败。音频统计此前已经进入 TTS 投影；Turns Route 不再偷做这三类业务副作用；
 4. **逐 Route 收窄 AppBindings（进行中）**：Task/AgentRun 第一子批已经完成，两个 Route 改为直接接收 `TaskStore`、`AgentRunStore` 与 transcript 读端口；AgentRun 的 `content_json` 映射同时回到 Agent 所有的 `AgentRunTranscriptStore`，Route 不再读取 SQLite 行。Turn/AskUser 子批也已经完成：原 430 行 Turns Route 按 HTTP 资源职责拆入 `routes/turns/`，`createTurnsRouter.ts` 在 wiring 组合根展开对象图，启动、SSE、音频、工具审计、取消和 AskUser 文件都不接收 `AppBindings`。统一交互队列用原子的 `cancelPermission/cancelAskUser` 阻止跨类型 promptId 取消。Permission Route 随后改为直接接收规则 CRUD 与 Permission 交互队列的窄投影。Session 子批也已完成：原单文件按集合、历史、附件、动作和标题拆入 `routes/sessions/`；标题生成与工作区/删除副作用分别进入 `SessionTitleGenerator` 和 `SessionLifecycle`，HTTP 只负责协议映射，完整对象图只在 `createSessionsRouter.ts` 展开。其余 Route 继续只接收实际使用的执行、查询或传输端口；`AppBindings` 只留在 Composition Root，不能机械替换成另一只嵌套依赖袋，也不为每个几行对象创建空工厂；
@@ -765,6 +765,8 @@ src/knowledge/settings.ts
 ```
 
 Settings 可以直接依赖 Storage 的 `SettingsRepo`，因为它是 KV 持久化能力的消费者；不再为“解耦”复制 `SettingsPersistence`、`SettingsRepositoryLike` 等同形接口。反向依赖不允许：Storage 不导入 Settings，业务包也不导入 `SettingsCatalog`。所有定义只在 `apps/localHost` 的 Composition Root 注册。
+
+Settings 只保存用户选择和需要跨启动保留的产品参数，不兼任通用运行时缓存。TTS 临时上传句柄、探测结果、短期 Token 和连接状态必须由各业务所有者在内存中按生命周期管理；不能因为 `settings` 表是现成 KV 就把它们写进 SQLite。真正需要长期保存的供应商注册实体必须拥有明确类型、有效期和撤销语义，不能伪装成普通 Setting。
 
 唯一写入顺序固定为：
 

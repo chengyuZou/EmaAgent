@@ -9,8 +9,13 @@ function mockConfig(id: string, protocol = 'openai-tts' as const): TtsProviderCo
   return { id, protocol, apiKey: 'sk-test', baseUrl: 'http://localhost' };
 }
 
-function mockVoice(voiceUri = 'speech:test:abc123'): TtsVoiceRef {
-  return { refAudioPath: '/abs/test.mp3', promptText: 'hello', promptLang: 'zh', voiceUri };
+function mockVoice(providerVoice = 'speech:test:abc123'): TtsVoiceRef {
+  return {
+    refAudioPath: '/abs/test.mp3',
+    promptText: 'hello',
+    promptLang: 'zh',
+    providerVoice: { value: providerVoice, lifetime: 'durable' },
+  };
 }
 
 function mockVoiceNoUri(): TtsVoiceRef {
@@ -69,7 +74,7 @@ describe('TtsRuntime', () => {
     expect(ad.calls).toHaveLength(1);
     expect(ad.calls[0]!.text).toBe('hello');
     expect(ad.calls[0]!.model).toBe('tts-1');
-    expect(ad.calls[0]!.voice.voiceUri).toBe('speech:test:abc123');
+    expect(ad.calls[0]!.voice.providerVoice?.value).toBe('speech:test:abc123');
   });
 
   it('2. errors on unknown providerId', async () => {
@@ -80,14 +85,14 @@ describe('TtsRuntime', () => {
     expect((events[0] as { message: string }).message).toContain('not registered');
   });
 
-  it('3. Adapter rejects missing voiceUri', async () => {
-    // Runtime 不推测各协议的 voice 规则，voiceUri 校验仍属于对应 Adapter。
+  it('3. Adapter rejects missing provider voice handle', async () => {
+    // Runtime 不推测各协议的声音规则，Provider 句柄校验仍属于对应 Adapter。
     // The real OpenAiTtsAdapter (created for 'openai-tts' protocol) checks it.
     const client = createRuntime([mockConfig('p1')]);
     const events = await collect(client, 'p1', 'hello', mockVoiceNoUri());
 
     expect(events[0]!.type).toBe('error');
-    expect((events[0] as { message: string }).message).toContain('voiceUri');
+    expect((events[0] as { message: string }).message).toContain('provider voice handle');
   });
 
   it('4. yields adapter stream chunks directly', async () => {

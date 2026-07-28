@@ -7,6 +7,18 @@ export type { TtsProtocol } from '@ema-agent/provider';
 // ── TTS 内部类型 ──────────────────────────────────────────────────────────────
 
 /** 传给每次 synthesize 调用的已解析 voice 引用。 */
+export interface TtsProviderVoiceHandle {
+  /** Provider 实际接受的 voice ID、注册句柄或短期上传 URI。 */
+  value: string;
+  /**
+   * 未经 Provider 明确保证持久有效时必须使用 ephemeral。
+   * ephemeral 句柄只允许进入进程内缓存，不能写入用户设置或 SQLite。
+   */
+  lifetime: 'ephemeral' | 'durable';
+  /** 临时句柄的绝对过期时间；缓存层会为缺省值补上保守 TTL。 */
+  expiresAt?: number;
+}
+
 export interface TtsVoiceRef {
   /** 引用音频文件的 profile 作用域绝对路径。 */
   refAudioPath: string;
@@ -14,16 +26,8 @@ export interface TtsVoiceRef {
   promptText:   string;
   /** 语言代码,如 'zh'、'en'。 */
   promptLang:   string;
-  /**
-   * Provider 分配的 voice URI。
-   * openai-tts 和 dashscope-tts 必需 - 这两个 adapter 会检查,缺失时产出
-   * `permanent_unsupported_voice_kind` 错误。
-   * gpt-sovits-tts 忽略此字段,直接用 `refAudioPath`。
-   *
-   * 由 `ensureVoiceUri()` 在 Coordinator 启动前懒填。
-   * 禁止在此硬编码值。
-   */
-  voiceUri?: string;
+  /** 云端协议使用的声音句柄；本地 GPT-SoVITS 直接读取 refAudioPath。 */
+  providerVoice?: TtsProviderVoiceHandle;
 }
 
 /** 向 adapter 请求的输出音频格式。 */
@@ -69,15 +73,15 @@ export type TtsStreamEvent =
 //
 // 与 LlmRequest 模式对齐:纯数据,无业务语义。
 // 调用方负责从角色卡解析 voice，TtsCoordinator 只消费已解析的引用，
-// 并在调 cloud adapter 的 synthesize 前确保 voiceUri 已填。
+// 并在调 cloud adapter 的 synthesize 前确保 providerVoice 已填。
 
 /**
  * 完全解析后的合成请求。
  *
  * `voice` 由 apps/localHost 从当前角色卡解析。
  * openai-tts 和 dashscope-tts 协议下,调 `synthesize()` 前必须填好
- * `voice.voiceUri`,否则 adapter 产出 `permanent_unsupported_voice_kind`。
- * gpt-sovits-tts 直接读 `voice.refAudioPath`,从不需要 voiceUri。
+ * `voice.providerVoice`,否则 adapter 产出 `permanent_unsupported_voice_kind`。
+ * gpt-sovits-tts 直接读 `voice.refAudioPath`,从不需要 Provider 句柄。
  */
 export interface TtsRequest {
   providerId:   string;
@@ -138,7 +142,7 @@ export interface TtsAdapter {
 
   /**
    * 上传参考音频文件用于 voice cloning。
-   * 返回一个 URI,后续 clone 调用可用作 `voiceUri`。
+   * 返回 Provider 声音句柄。没有明确持久化保证的实现必须标记为 ephemeral。
    * 并非所有 adapter 都支持 - 不支持的 adapter 抛错。
    */
   uploadVoice?(
@@ -147,7 +151,7 @@ export interface TtsAdapter {
     promptLang: string,
     model: string,
     signal?: AbortSignal,
-  ): Promise<string>;
+  ): Promise<TtsProviderVoiceHandle>;
 
   /** 实时连通性检查。可选 - 缺失时 service 回退 ok=false。 */
   probe?(signal?: AbortSignal): Promise<TtsProbeResult>;

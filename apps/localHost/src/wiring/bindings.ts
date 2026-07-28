@@ -4,7 +4,6 @@ import type { Database } from '@ema-agent/storage';
 import {
   ModelBindingsRepo,
   ProvidersRepo,
-  type SettingsRepo,
   MemoryNodesRepo, MemoryEdgesRepo, MemoryLazyUpdatesRepo,
   MemoryItemsRepo, SessionNotesRepo, MemoryTasksRepo, PendingFragmentsRepo,
   AttachmentRepo,
@@ -54,7 +53,12 @@ import { RerankRuntime } from '@ema-agent/rerank';
 import { NarrativeClient } from '@ema-agent/narrative';
 import { CharacterCardStore, BUILTIN_CARDS, EMA_CARD_INPUT, EMA_CARD_ID } from '@ema-agent/characters';
 import { Live2DModelsRepo } from '@ema-agent/storage';
-import { TtsRuntime, FsAudioArchive, type AudioArchive } from '@ema-agent/tts';
+import {
+  TtsRuntime,
+  TtsVoiceHandleCache,
+  FsAudioArchive,
+  type AudioArchive,
+} from '@ema-agent/tts';
 import { SttRuntime } from '@ema-agent/stt';
 import { buildTtsRuntime } from './providers/tts.js';
 import { buildSttRuntime } from './providers/stt.js';
@@ -228,8 +232,8 @@ export interface AppBindings {
   providers:            ProvidersRepo;
   /** 用户可编辑设置的类型化入口。 */
   settings:             SettingsStore;
-  /** TTS 解析 URI 等非用户配置使用的内部 KV 缓存。 */
-  runtimeCache:         SettingsRepo;
+  /** 云端声音上传结果只在当前进程内短期复用，不写入用户设置。 */
+  ttsVoiceHandles:      TtsVoiceHandleCache;
   modelBindings:        ModelBindingsRepo;
   providerLlmModels:    ProviderLlmModelsRepo;
   providerEmbedModels:  ProviderEmbedModelsRepo;
@@ -392,6 +396,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
 
   // ── TTS / STT ───────────────────────────────────────────────────────────────
   const tts    = buildTtsRuntime({ profileDb, credentials, usageRecorder: usageRecords, onUsageRecordError });
+  const ttsVoiceHandles = new TtsVoiceHandleCache();
   const stt    = buildSttRuntime({ profileDb, credentials, usageRecorder: usageRecords, onUsageRecordError });
   const vision = buildVisionRuntime(profileDb, credentials, usageRecords, onUsageRecordError);
   const providerRuntime = new ProviderRuntimeFacade({
@@ -417,7 +422,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   const modelBindings = new ModelBindingsRepo(profileDb.sqlite);
 
   // ── Permission subsystem ────────────────────────────────────────────────────
-  const { settings, runtimeCache } = createSettingsStore(profileDb.sqlite);
+  const { settings } = createSettingsStore(profileDb.sqlite);
   const { permission, interactionQueue, askUserRegistry, buildAskForTurn } =
     buildPermissionSubsystem(
       settings.get(permissionAskTimeoutSetting),
@@ -841,7 +846,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     toolExecutionJournal, agentRunTranscript,
     memory, contextCompactor,
     systemBus,
-    providers, settings, runtimeCache,
+    providers, settings, ttsVoiceHandles,
     modelBindings, providerLlmModels, providerEmbedModels,
     providerRerankModels, providerTtsModels, providerSttModels, providerVisionModels,
     attachmentStore, attachmentDerivationCache, attachmentCacheMaintenance,
