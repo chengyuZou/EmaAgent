@@ -1,12 +1,13 @@
+// 探测本机 Shell，并在权限审批后执行 Git 安装。
 import { Hono } from 'hono';
 import { probeBash, installGitViaWinget } from '@ema-agent/sandbox';
 import type { GitInstallResult } from '@ema-agent/sandbox';
-import type { AppBindings } from '../wiring/index.js';
+import type { PermissionEngine } from '@ema-agent/permission';
 
 // 安装是系统级副作用: 同一时刻只允许一个在跑, 并发请求明确拒绝而不是再起 winget。
 let installInFlight: Promise<GitInstallResult> | null = null;
 
-export function shellRoute(bindings: AppBindings): Hono {
+export function shellRoute(permission: Pick<PermissionEngine, 'gate'>): Hono {
   const app = new Hono();
 
   /**
@@ -27,7 +28,7 @@ export function shellRoute(bindings: AppBindings): Hono {
    * 再执行; 拒绝返回 403, 不绕开"工具意图必须独立审批"的红线直接 spawn。
    */
   app.post('/install-git', async (c) => {
-    const outcome = await bindings.permission.gate(
+    const outcome = await permission.gate(
       'shell_install_git',
       {
         operation: 'install_software',

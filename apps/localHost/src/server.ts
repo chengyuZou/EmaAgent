@@ -62,7 +62,15 @@ export function buildServer(bindings: AppBindings, sharedSecret: string): Hono {
   app.route('/api/turns',          createTurnsRouter(bindings));
   app.route('/api/providers',      createProvidersRouter(bindings));
   app.route('/api/model-bindings', createModelBindingsRouter(bindings));
-  app.route('/api/storage',        storageStatsRoute(bindings));
+  app.route('/api/storage', storageStatsRoute({
+    activeDataDir: bindings.activeDataDir,
+    dataDb: bindings.dataDb,
+    storageStats: bindings.storageStats,
+    sessionStats: bindings.sessionStats,
+    sessionNotes: bindings.sessionNotes,
+    sessionBackup: bindings.sessionBackup,
+    session: bindings.session,
+  }));
   app.route('/api/sessions',       createSessionsRouter(bindings));
   app.route(
     '/api/permission',
@@ -71,7 +79,7 @@ export function buildServer(bindings: AppBindings, sharedSecret: string): Hono {
   app.route('/api/memory',         memoryRoute(bindings.memory));
   app.route('/api/system/events',  systemEventsRoute(bindings.systemBus));
   app.route('/api/system',         systemRoute(bindings.activeDataDir, bindings.sandboxStatus));
-  app.route('/api/system/shell',   shellRoute(bindings));
+  app.route('/api/system/shell',   shellRoute(bindings.permission));
   app.route('/api/workspace',      workspaceRoute());
   app.route('/api/settings', settingsRoute({
     settings: bindings.settings,
@@ -81,8 +89,8 @@ export function buildServer(bindings: AppBindings, sharedSecret: string): Hono {
     },
   }));
   app.route('/api/diagnostics',    diagnosticRoute());
-  app.route('/api/transcribe',     transcribeRoute(bindings));
-  app.route('/api/cards',          cardsRoute(bindings));
+  app.route('/api/transcribe',     transcribeRoute(bindings.stt, bindings.modelBindings));
+  app.route('/api/cards',          cardsRoute(bindings.card));
 
   app.route(
     '/api',
@@ -105,7 +113,13 @@ export function buildServer(bindings: AppBindings, sharedSecret: string): Hono {
     '/api/market',
     createMarketRouter(bindings.marketSourceStore, bindings.marketRegistry),
   );
-  app.route('/api/kb',             kbRoute(bindings));
+  app.route('/api/kb', kbRoute({
+    kb: bindings.kb,
+    settings: bindings.settings,
+    modelBindings: bindings.modelBindings,
+    providerEmbedModels: bindings.providerEmbedModels,
+    embed: bindings.embed,
+  }));
   app.route(
     '/api/agent-runs',
     agentRunsRoute(bindings.agentRunStore, bindings.agentRunTranscript),

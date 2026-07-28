@@ -1,6 +1,7 @@
+// 接收音频上传并把请求适配到无 Session 状态的 STT 执行面。
 import { Hono } from 'hono';
-import { isSttError } from '@ema-agent/stt';
-import type { AppBindings } from '../wiring/index.js';
+import { isSttError, type SttRuntime } from '@ema-agent/stt';
+import type { ModelBindingsRepo } from '@ema-agent/storage';
 
 // ── POST /api/transcribe ────────────────────────────────────────────────────
 //
@@ -10,13 +11,16 @@ import type { AppBindings } from '../wiring/index.js';
 //
 // Binding 在业务层解析，STT Runtime 不保存模型选择。
 
-export function transcribeRoute(bindings: AppBindings): Hono {
+export function transcribeRoute(
+  stt: Pick<SttRuntime, 'isAvailable' | 'maximumAudioBytes' | 'transcribe'>,
+  modelBindings: Pick<ModelBindingsRepo, 'get'>,
+): Hono {
   const app = new Hono();
 
   app.post('/', async (c) => {
     // Resolve STT binding from model_bindings — same pattern as the turns route.
-    const binding = bindings.modelBindings.get('stt');
-    if (!binding || !bindings.stt.isAvailable()) {
+    const binding = modelBindings.get('stt');
+    if (!binding || !stt.isAvailable()) {
       return c.json({ error: 'stt_not_configured' }, 503);
     }
 
@@ -31,7 +35,7 @@ export function transcribeRoute(bindings: AppBindings): Hono {
     if (!(file instanceof File) && !(file instanceof Blob)) {
       return c.json({ error: 'missing_file_field' }, 400);
     }
-    if (file.size > bindings.stt.maximumAudioBytes()) {
+    if (file.size > stt.maximumAudioBytes()) {
       return c.json({ error: 'payload_too_large' }, 413);
     }
 
@@ -44,7 +48,7 @@ export function transcribeRoute(bindings: AppBindings): Hono {
     const mime = file.type || 'audio/webm';
 
     try {
-      const result = await bindings.stt.transcribe({
+      const result = await stt.transcribe({
         providerId: binding.providerConfigId,
         model:      binding.model,
         audio:      buf,

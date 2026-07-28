@@ -1,11 +1,10 @@
+// 测试角色卡 Route 的空值更新、删除守卫与参考音频路径安全。
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Database } from '@ema-agent/storage';
 import { CharacterCardStore } from '@ema-agent/characters';
-import type { AppBindings } from '../src/wiring/index.js';
 import { cardsRoute } from '../src/routes/cards.js';
 import { resolveCardVoiceRefPath } from '../src/storage-locations/index.js';
 
-// B-055:PATCH null 清空 + DELETE active 阻止。voice ref 路径安全留 Sol(需 storage-locations)。
 describe('B-055 cards route', () => {
   let db: Database;
   let card: CharacterCardStore;
@@ -15,7 +14,7 @@ describe('B-055 cards route', () => {
     db = new Database({ memory: true, kind: 'profile' });
     db.migrate();
     card = new CharacterCardStore({ db });
-    app = cardsRoute({ card } as unknown as AppBindings);
+    app = cardsRoute(card);
   });
 
   afterEach(() => db.close());

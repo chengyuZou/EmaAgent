@@ -2,7 +2,7 @@
 // 拒绝返回 403 且不执行; 安装进行中并发请求返回 409, 不起第二个 winget。
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import type { AppBindings } from '../src/wiring/index.js';
+import type { PermissionEngine } from '@ema-agent/permission';
 import type { GitInstallResult } from '@ema-agent/sandbox';
 
 const { mockProbeBash, mockInstallGit } = vi.hoisted(() => ({
@@ -17,14 +17,15 @@ vi.mock('@ema-agent/sandbox', () => ({
 
 import { shellRoute } from '../src/routes/shell.js';
 
-function makeBindings(granted: boolean, reason = 'denied by user'): AppBindings {
+function makePermission(
+  granted: boolean,
+  reason = 'denied by user',
+): Pick<PermissionEngine, 'gate'> {
   return {
-    permission: {
-      gate: vi.fn(async () => granted
-        ? { granted: true as const }
-        : { granted: false as const, reason }),
-    },
-  } as unknown as AppBindings;
+    gate: vi.fn(async () => granted
+      ? { granted: true as const }
+      : { granted: false as const, reason }),
+  } as unknown as Pick<PermissionEngine, 'gate'>;
 }
 
 function postInstall(app: ReturnType<typeof shellRoute>) {
@@ -37,15 +38,15 @@ beforeEach(() => {
 
 describe('B-064 install-git 权限门禁', () => {
   it('审批通过后执行安装并返回结果', async () => {
-    const bindings = makeBindings(true);
+    const permission = makePermission(true);
     mockInstallGit.mockResolvedValue({ ok: true, log: 'installed' } satisfies GitInstallResult);
-    const app = shellRoute(bindings);
+    const app = shellRoute(permission);
 
     const res = await postInstall(app);
 
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toMatchObject({ ok: true });
-    expect(bindings.permission.gate).toHaveBeenCalledWith(
+    expect(permission.gate).toHaveBeenCalledWith(
       'shell_install_git',
       expect.objectContaining({ installer: 'winget', packageId: 'Git.Git' }),
       { riskLevel: 'high', accessType: 'execute' },
@@ -55,8 +56,8 @@ describe('B-064 install-git 权限门禁', () => {
   });
 
   it('审批拒绝时返回 403 且绝不执行安装', async () => {
-    const bindings = makeBindings(false);
-    const app = shellRoute(bindings);
+    const permission = makePermission(false);
+    const app = shellRoute(permission);
 
     const res = await postInstall(app);
 
@@ -66,12 +67,12 @@ describe('B-064 install-git 权限门禁', () => {
   });
 
   it('安装进行中并发请求返回 409, 不起第二个 winget', async () => {
-    const bindings = makeBindings(true);
+    const permission = makePermission(true);
     let resolveInstall: ((result: GitInstallResult) => void) | undefined;
     mockInstallGit.mockImplementation(
       () => new Promise<GitInstallResult>((resolve) => { resolveInstall = resolve; }),
     );
-    const app = shellRoute(bindings);
+    const app = shellRoute(permission);
 
     const first = postInstall(app);
     // 等第一个请求占住 in-flight 槽位。

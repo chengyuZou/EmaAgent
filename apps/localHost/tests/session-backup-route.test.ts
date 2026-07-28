@@ -10,8 +10,10 @@ import {
 import { SessionRestoreValidationError, type SessionRestorePayload } from '@ema-agent/storage';
 import { strToU8, unzipSync, zipSync } from 'fflate';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { storageStatsRoute } from '../src/routes/storage-stats.js';
-import type { AppBindings } from '../src/wiring/index.js';
+import {
+  storageStatsRoute,
+  type StorageStatsRouteDependencies,
+} from '../src/routes/storage-stats.js';
 
 const roots: string[] = [];
 function tempRoot(): string {
@@ -26,7 +28,7 @@ afterEach(() => {
 function importBindings(
   activeDataDir: string,
   restoreRows: (payload: SessionRestorePayload) => void,
-): AppBindings {
+): StorageStatsRouteDependencies {
   const sessionBackup = new SessionBackupFacade({
     activeDataDir,
     sessionExists: () => false,
@@ -39,7 +41,7 @@ function importBindings(
     session: {
       getSession: () => ({ id: 'session-1', title: 'Imported' }),
     },
-  } as unknown as AppBindings;
+  } as unknown as StorageStatsRouteDependencies;
 }
 
 function sessionZip(sessionId: string, extra: Record<string, Uint8Array> = {}): Uint8Array {
@@ -109,7 +111,9 @@ describe('SessionBackupFacade 的 LocalHost HTTP 接线', () => {
       restoreRows: vi.fn(),
       collectExport: () => snapshot,
     });
-    const app = storageStatsRoute({ sessionBackup } as unknown as AppBindings);
+    const app = storageStatsRoute({
+      sessionBackup,
+    } as unknown as StorageStatsRouteDependencies);
 
     const response = await app.request('/sessions/session-123456/export', { method: 'POST' });
     expect(response.status).toBe(200);
@@ -125,7 +129,7 @@ describe('SessionBackupFacade 的 LocalHost HTTP 接线', () => {
           throw new SessionExportError('超出同步 ZIP 安全预算');
         },
       },
-    } as unknown as AppBindings);
+    } as unknown as StorageStatsRouteDependencies);
 
     const response = await app.request('/sessions/session-1/export', { method: 'POST' });
     expect(response.status).toBe(413);

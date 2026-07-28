@@ -1,7 +1,9 @@
 // 测试 LocalHost 原样返回后端 Embedding 空间身份，并把失效操作路由到明确的知识库。
 import { describe, expect, it, vi } from 'vitest';
-import type { AppBindings } from '../src/wiring/index.js';
-import { kbRoute } from '../src/routes/knowledge-base.js';
+import {
+  kbRoute,
+  type KnowledgeBaseRouteDependencies,
+} from '../src/routes/knowledge-base.js';
 import { availableBindingModelsRoute } from '../src/routes/modelBindings/availableModels.js';
 
 const SPACE = {
@@ -61,7 +63,7 @@ describe('KB Embedding 空间路由', () => {
       },
       providerEmbedModels: { dimFor: () => 1024 },
       embed: { embeddingSpace: () => SPACE },
-    } as unknown as AppBindings);
+    } as unknown as KnowledgeBaseRouteDependencies);
 
     const response = await app.request('/invalidate', {
       method: 'POST',

@@ -1,12 +1,38 @@
+// 把知识库管理、检索与索引操作适配为 LocalHost HTTP 接口。
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
-import type { AppBindings } from '../wiring/index.js';
 import {
   knowledgeModelsSetting,
+  type KbManager,
   type KbEntry,
 } from '@ema-agent/knowledge';
-import { DocumentAssetCursorError } from '@ema-agent/storage';
+import type { EmbedRuntime } from '@ema-agent/embed';
+import type { SettingsStore } from '@ema-agent/settings';
+import {
+  DocumentAssetCursorError,
+  type ModelBindingsRepo,
+  type ProviderEmbedModelsRepo,
+} from '@ema-agent/storage';
+
+export interface KnowledgeBaseRouteDependencies {
+  kb: Pick<
+    KbManager,
+    | 'getKb'
+    | 'openClient'
+    | 'openActiveEntry'
+    | 'listKbs'
+    | 'search'
+    | 'createKb'
+    | 'renameKb'
+    | 'setActiveKb'
+    | 'unregisterKb'
+  >;
+  settings: Pick<SettingsStore, 'get'>;
+  modelBindings: Pick<ModelBindingsRepo, 'get'>;
+  providerEmbedModels: Pick<ProviderEmbedModelsRepo, 'dimFor'>;
+  embed: Pick<EmbedRuntime, 'embeddingSpace'>;
+}
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
@@ -66,13 +92,13 @@ const reembedBody = z.object({
 
 // ── Binding resolution ────────────────────────────────────────────────────────
 
-function resolveBoundModels(bindings: AppBindings): {
+function resolveBoundModels(dependencies: KnowledgeBaseRouteDependencies): {
   ebdProviderId?:    string; ebdModel?:    string;
   visionProviderId?: string; visionModel?: string;
   rerankProviderId?: string; rerankModel?: string;
 } {
-  const kb = bindings.settings.get(knowledgeModelsSetting);
-  const vision = bindings.modelBindings.get('vision');
+  const kb = dependencies.settings.get(knowledgeModelsSetting);
+  const vision = dependencies.modelBindings.get('vision');
   return {
     ebdProviderId:    kb.embed?.providerConfigId,
     ebdModel:         kb.embed?.model,
@@ -89,23 +115,23 @@ function resolveBoundModels(bindings: AppBindings): {
  * - kbId omitted  → use the active KB (503 if none active)
  */
 async function resolveEntry(
-  bindings: AppBindings,
+  dependencies: KnowledgeBaseRouteDependencies,
   kbId: string | undefined,
   c: { json: (body: unknown, status: number) => Response },
 ): Promise<KbEntry | Response> {
   if (kbId) {
-    const rec = bindings.kb.getKb(kbId);
+    const rec = dependencies.kb.getKb(kbId);
     if (!rec) return c.json({ error: 'not_found', message: `知识库未找到: ${kbId}` }, 404) as Response;
-    return bindings.kb.openClient(kbId);
+    return dependencies.kb.openClient(kbId);
   }
-  const entry = await bindings.kb.openActiveEntry();
+  const entry = await dependencies.kb.openActiveEntry();
   if (!entry) return c.json({ error: 'no_active_kb', message: '请先在设置中创建并激活一个知识库' }, 503) as Response;
   return entry;
 }
 
 // ── Route factory ─────────────────────────────────────────────────────────────
 
-export function kbRoute(bindings: AppBindings): Hono {
+export function kbRoute(dependencies: KnowledgeBaseRouteDependencies): Hono {
   const app = new Hono();
 
   // POST /api/kb/documents — ingest a file into a KB (default: active)
@@ -114,7 +140,7 @@ export function kbRoute(bindings: AppBindings): Hono {
     if (!parsed.success)
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
 
-    const entry = await resolveEntry(bindings, parsed.data.kbId, c);
+    const entry = await resolveEntry(dependencies, parsed.data.kbId, c);
     if (entry instanceof Response) return entry;
 
     const { filePath, mimeType } = parsed.data;
@@ -133,7 +159,7 @@ export function kbRoute(bindings: AppBindings): Hono {
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
 
     const { kbId, ...listOpts } = parsed.data;
-    const entry = await resolveEntry(bindings, kbId, c);
+    const entry = await resolveEntry(dependencies, kbId, c);
     if (entry instanceof Response) return entry;
 
     try {
@@ -153,7 +179,7 @@ export function kbRoute(bindings: AppBindings): Hono {
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
 
     const { kbId, days } = parsed.data;
-    const entry = await resolveEntry(bindings, kbId, c);
+    const entry = await resolveEntry(dependencies, kbId, c);
     if (entry instanceof Response) return entry;
 
     return c.json(entry.client.listInactiveAssets(days ?? 30));
@@ -164,7 +190,7 @@ export function kbRoute(bindings: AppBindings): Hono {
     const parsed = kbIdQuery.safeParse(c.req.query());
     const kbId = parsed.success ? parsed.data.kbId : undefined;
 
-    const entry = await resolveEntry(bindings, kbId, c);
+    const entry = await resolveEntry(dependencies, kbId, c);
     if (entry instanceof Response) return entry;
 
     const asset = entry.client.getAsset(c.req.param('id'));
@@ -177,7 +203,7 @@ export function kbRoute(bindings: AppBindings): Hono {
     const parsed = kbIdQuery.safeParse(c.req.query());
     const kbId = parsed.success ? parsed.data.kbId : undefined;
 
-    const entry = await resolveEntry(bindings, kbId, c);
+    const entry = await resolveEntry(dependencies, kbId, c);
     if (entry instanceof Response) return entry;
 
     const preview = entry.client.getPreview(c.req.param('id'));
@@ -192,7 +218,7 @@ export function kbRoute(bindings: AppBindings): Hono {
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
 
     const { kbId, ...chunkOpts } = parsed.data;
-    const entry = await resolveEntry(bindings, kbId, c);
+    const entry = await resolveEntry(dependencies, kbId, c);
     if (entry instanceof Response) return entry;
 
     return c.json(entry.client.getChunksPaged(c.req.param('id'), chunkOpts));
@@ -203,7 +229,7 @@ export function kbRoute(bindings: AppBindings): Hono {
     const parsed = kbIdQuery.safeParse(c.req.query());
     const kbId = parsed.success ? parsed.data.kbId : undefined;
 
-    const entry = await resolveEntry(bindings, kbId, c);
+    const entry = await resolveEntry(dependencies, kbId, c);
     if (entry instanceof Response) return entry;
 
     return c.json(entry.client.getAssetUsage(c.req.param('id')));
@@ -216,17 +242,17 @@ export function kbRoute(bindings: AppBindings): Hono {
     const kbId = parsed.success ? parsed.data.kbId : undefined;
 
     if (kbId) {
-      const entry = await resolveEntry(bindings, kbId, c);
+      const entry = await resolveEntry(dependencies, kbId, c);
       if (entry instanceof Response) return entry;
       return c.json(entry.ingestTasks.listActive().map((t) => ({ ...t, kbId })));
     }
 
     // No kbId → aggregate across every registered KB.
-    const allKbs = bindings.kb.listKbs();
+    const allKbs = dependencies.kb.listKbs();
     const results = await Promise.all(
       allKbs.map(async (rec) => {
         try {
-          const entry = await bindings.kb.openClient(rec.id);
+          const entry = await dependencies.kb.openClient(rec.id);
           return entry.ingestTasks.listActive().map((t) => ({ ...t, kbId: rec.id }));
         } catch { return []; }
       }),
@@ -239,7 +265,7 @@ export function kbRoute(bindings: AppBindings): Hono {
     const parsed = kbIdQuery.safeParse(c.req.query());
     const kbId = parsed.success ? parsed.data.kbId : undefined;
 
-    const entry = await resolveEntry(bindings, kbId, c);
+    const entry = await resolveEntry(dependencies, kbId, c);
     if (entry instanceof Response) return entry;
 
     const ok = entry.ingestQueue.retryByTaskOrAssetId(c.req.param('id'));
@@ -250,7 +276,7 @@ export function kbRoute(bindings: AppBindings): Hono {
   // 新契约明确使用 taskId；旧 documents/:id/retry 暂留给开发期客户端过渡。
   app.post('/ingest-tasks/:taskId/retry', async (c) => {
     const parsed = kbIdQuery.safeParse(c.req.query());
-    const entry = await resolveEntry(bindings, parsed.success ? parsed.data.kbId : undefined, c);
+    const entry = await resolveEntry(dependencies, parsed.success ? parsed.data.kbId : undefined, c);
     if (entry instanceof Response) return entry;
     const ok = entry.ingestQueue.retry(c.req.param('taskId'));
     if (!ok) return c.json({ error: 'not_failed_or_not_found' }, 404);
@@ -262,13 +288,13 @@ export function kbRoute(bindings: AppBindings): Hono {
     const parsed = kbIdQuery.safeParse(c.req.query());
     const kbId = parsed.success ? parsed.data.kbId : undefined;
 
-    const entry = await resolveEntry(bindings, kbId, c);
+    const entry = await resolveEntry(dependencies, kbId, c);
     if (entry instanceof Response) return entry;
 
     if (!entry.client.getAsset(c.req.param('id')))
       return c.json({ error: 'not_found' }, 404);
 
-    const bound = resolveBoundModels(bindings);
+    const bound = resolveBoundModels(dependencies);
     if (!bound.ebdProviderId || !bound.ebdModel)
       return c.json({ error: 'no_embed_model' }, 400);
 
@@ -285,7 +311,7 @@ export function kbRoute(bindings: AppBindings): Hono {
     const parsed = kbIdQuery.safeParse(c.req.query());
     const kbId = parsed.success ? parsed.data.kbId : undefined;
 
-    const entry = await resolveEntry(bindings, kbId, c);
+    const entry = await resolveEntry(dependencies, kbId, c);
     if (entry instanceof Response) return entry;
 
     const id = c.req.param('id');
@@ -301,7 +327,7 @@ export function kbRoute(bindings: AppBindings): Hono {
     if (!parsed.success)
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
 
-    const bound = resolveBoundModels(bindings);
+    const bound = resolveBoundModels(dependencies);
     const { kbIds = [], ...rest } = parsed.data;
     const opts = {
       ...rest,
@@ -312,7 +338,7 @@ export function kbRoute(bindings: AppBindings): Hono {
     };
 
     try {
-      const result = await bindings.kb.search(kbIds, parsed.data.query, opts);
+      const result = await dependencies.kb.search(kbIds, parsed.data.query, opts);
       return c.json(result);
     } catch (err) {
       return c.json({ error: 'search_failed', message: (err as Error).message }, 500);
@@ -326,12 +352,12 @@ export function kbRoute(bindings: AppBindings): Hono {
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
 
     const { kbId, ebdProviderId, ebdModel } = parsed.data;
-    const entry = await resolveEntry(bindings, kbId, c);
+    const entry = await resolveEntry(dependencies, kbId, c);
     if (entry instanceof Response) return entry;
 
-    const dim = bindings.providerEmbedModels.dimFor(ebdProviderId, ebdModel);
+    const dim = dependencies.providerEmbedModels.dimFor(ebdProviderId, ebdModel);
     if (!dim) return c.json({ error: 'unknown_embed_dimension' }, 400);
-    const space = bindings.embed.embeddingSpace(ebdProviderId, ebdModel, dim);
+    const space = dependencies.embed.embeddingSpace(ebdProviderId, ebdModel, dim);
     const count = entry.client.invalidateEmbeddings(space.id);
     return c.json({ markedStale: count, embeddingSpace: space });
   });
@@ -344,10 +370,10 @@ export function kbRoute(bindings: AppBindings): Hono {
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
 
     const { kbId, ...reembedOpts } = parsed.data;
-    const entry = await resolveEntry(bindings, kbId, c);
+    const entry = await resolveEntry(dependencies, kbId, c);
     if (entry instanceof Response) return entry;
 
-    const bound = resolveBoundModels(bindings);
+    const bound = resolveBoundModels(dependencies);
     const ebdProviderId = reembedOpts.ebdProviderId ?? bound.ebdProviderId;
     const ebdModel      = reembedOpts.ebdModel      ?? bound.ebdModel;
     if (!ebdProviderId || !ebdModel)
@@ -360,7 +386,7 @@ export function kbRoute(bindings: AppBindings): Hono {
   // GET /api/kb/reembed-tasks — 重建任务列表(含失败/取消历史, 与 ingest-tasks 同型)
   app.get('/reembed-tasks', async (c) => {
     const parsed = kbIdQuery.safeParse(c.req.query());
-    const entry = await resolveEntry(bindings, parsed.success ? parsed.data.kbId : undefined, c);
+    const entry = await resolveEntry(dependencies, parsed.success ? parsed.data.kbId : undefined, c);
     if (entry instanceof Response) return entry;
     return c.json(entry.reembedTasks.listActive());
   });
@@ -368,7 +394,7 @@ export function kbRoute(bindings: AppBindings): Hono {
   // POST /api/kb/reembed-tasks/:taskId/cancel — 用户主动取消(运行中/排队中有效)
   app.post('/reembed-tasks/:taskId/cancel', async (c) => {
     const parsed = kbIdQuery.safeParse(c.req.query());
-    const entry = await resolveEntry(bindings, parsed.success ? parsed.data.kbId : undefined, c);
+    const entry = await resolveEntry(dependencies, parsed.success ? parsed.data.kbId : undefined, c);
     if (entry instanceof Response) return entry;
     const ok = entry.reembedQueue.cancel(c.req.param('taskId'));
     if (!ok) return c.json({ error: 'not_active_or_not_found' }, 404);
@@ -378,7 +404,7 @@ export function kbRoute(bindings: AppBindings): Hono {
   // POST /api/kb/reembed-tasks/:taskId/retry — 失败/部分失败/取消后重试
   app.post('/reembed-tasks/:taskId/retry', async (c) => {
     const parsed = kbIdQuery.safeParse(c.req.query());
-    const entry = await resolveEntry(bindings, parsed.success ? parsed.data.kbId : undefined, c);
+    const entry = await resolveEntry(dependencies, parsed.success ? parsed.data.kbId : undefined, c);
     if (entry instanceof Response) return entry;
     const ok = entry.reembedQueue.retry(c.req.param('taskId'));
     if (!ok) return c.json({ error: 'not_failed_or_not_found' }, 404);
@@ -389,7 +415,7 @@ export function kbRoute(bindings: AppBindings): Hono {
 
   // GET /api/kb/libs — list all registered KBs
   app.get('/libs', (c) => {
-    return c.json(bindings.kb.listKbs());
+    return c.json(dependencies.kb.listKbs());
   });
 
   // POST /api/kb/libs — create a new named KB
@@ -400,7 +426,7 @@ export function kbRoute(bindings: AppBindings): Hono {
       return c.json({ error: 'invalid_request', details: body.error.flatten() }, 400);
 
     try {
-      const record = await bindings.kb.createKb(body.data.name, body.data.path);
+      const record = await dependencies.kb.createKb(body.data.name, body.data.path);
       return c.json(record, 201);
     } catch (err) {
       return c.json({ error: 'create_failed', message: (err as Error).message }, 500);
@@ -414,23 +440,23 @@ export function kbRoute(bindings: AppBindings): Hono {
     if (!body.success)
       return c.json({ error: 'invalid_request', details: body.error.flatten() }, 400);
 
-    bindings.kb.renameKb(c.req.param('id'), body.data.name);
+    dependencies.kb.renameKb(c.req.param('id'), body.data.name);
     return c.json({ ok: true });
   });
 
   // POST /api/kb/libs/:id/activate — set as active KB
   app.post('/libs/:id/activate', (c) => {
-    const rec = bindings.kb.getKb(c.req.param('id'));
+    const rec = dependencies.kb.getKb(c.req.param('id'));
     if (!rec) return c.json({ error: 'not_found' }, 404);
-    bindings.kb.setActiveKb(rec.id);
+    dependencies.kb.setActiveKb(rec.id);
     return c.json({ ok: true });
   });
 
   // DELETE /api/kb/libs/:id — unregister (no disk delete)
   app.delete('/libs/:id', (c) => {
-    const rec = bindings.kb.getKb(c.req.param('id'));
+    const rec = dependencies.kb.getKb(c.req.param('id'));
     if (!rec) return c.json({ error: 'not_found' }, 404);
-    bindings.kb.unregisterKb(rec.id);
+    dependencies.kb.unregisterKb(rec.id);
     return c.json({ ok: true });
   });
 

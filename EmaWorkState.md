@@ -44,7 +44,7 @@ Settings 运行时接线第一批已经完成：Catalog 新增稳定键查找，
 
 Settings 运行时接线第二批已经完成：`attachments.limits` 在附件写入、图片数量/体积校验和 Vision 降级前随根 Turn 冻结，同一 Turn 不会混用新旧值；超限输入改为明确失败，不再静默截掉附件。图片规范化使用该快照的字节和长边上限，派生缓存配额在每次空闲清理开始时读取一次。`vision.limits` 则按 `nextOperation` 语义在每次 extract/probe 开始时取得一份已校验快照，排队及执行中的请求不会被后续设置变更改写。
 
-L5 后余下收口顺序更新：Turn/AskUser、Permission、Session、Provider/ModelBindings、Settings/Theme Route 已收窄；Agent/Context/Attachment/Vision 设置已进入真实运行链。下一批继续按业务组移除其余 Route 的 `AppBindings`，并审查 Knowledge 等已注册设置的实际消费边界。最后才决定是否把已经纯化的 HTTP/SSE/Auth 文件归档到 `transports/http`。
+L5 后余下 Route 收口已经完成：Transcribe 只接收 STT 执行面与模型绑定查询，Cards 只接收角色卡 Store，Shell 只接收 Permission 审批入口；Knowledge Base 与 Storage Stats 使用按业务命名的明确依赖集合。五组 Route 和对应测试不再导入或伪造 `AppBindings`，完整对象图只在 `server.ts` 与 `wiring/create*Router.ts` 等 Composition Root 展开，URL、状态码和响应协议保持不变。
 
 开工前已复核本地 Codex 源码：`codex-protocol` 只定义 Thread/Turn/Submission 等低层协议，真正编排位于 `codex-core/session`；App Server 只校验并提交 `Op::UserInput`，Session 统一建立 `RunningTask`、取消句柄和终态，`RegularTask` 再调用内部 `run_turn` 完成多轮模型与工具循环。Ema 因此保留低层 `turn` 与高层 `turnExecution` 两个编译边界，不能把执行依赖反向塞进被 Context、Session、Storage、Hooks 共同依赖的领域包。
 
@@ -138,9 +138,9 @@ Task 与 AgentRun 前端已经分面：Desktop 使用正式 `/api/tasks` 快照�
 
 开始任何新批次前必须重新运行 `git status --short` 与 `git diff`，保留用户和其他 Agent 的修改。
 
-当前工作区包含本批 Attachment/Vision Settings 接线，以及其他 Agent 对 `apps/localHost/src/routes/skills.ts` 的并行修改；本批未修改 Skill Route。Settings 改动集中在 `src/attachment`、`src/vision`、`src/turnExecution` 与 LocalHost wiring。开始下一批前仍须按实际 Diff 区分边界。
+当前工作区只包含 Transcribe、Cards、Knowledge Base、Storage Stats、Shell 五组 Route 的窄依赖改动，以及 `server.ts` Composition Root、对应测试和本接力板更新。开始下一批前仍须按实际 Diff 区分用户或其他 Agent 的后续修改。
 
-当前基线最近提交：`7e138a17 feat: implement runtime settings route with read/write capabilities and validation`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
+当前基线最近提交：`4ea6f0b7 feat: enhance attachment handling with limits and normalization options`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
 
 ## 已确定的 V1 口径
 
@@ -187,7 +187,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 6. Permission V1 已完成：统一 Session FIFO、明确终态、Turn 身份核对、SQLite 永久规则 CRUD 与设置页管理、Builtin-only 免审批边界均已接通；旧 `AskUserRegistryLike` 已改为 `AskUserInteractionPort`，不新增第二套队列；
 7. Skill 多文件激活、per-Agent 状态、结构化 Context 恢复与 `allowed-tools` 单向收窄已经完成；
 8. LocalHost L0、Turn 输入准备 L1、Turn Context L2、Turn Tools L3、Root Agent Execution L4、Turn Composition Root L5、TTS Turn 输出边界、精确根取消与旧 Orchestrator 删除、Route 业务副作用归位及 Task/AgentRun Route 窄依赖均已完成；
-9. Turn/AskUser、Permission、Session、Provider/ModelBindings、Settings/Theme Route 已完成目录内聚和窄端口；Agent/Context/Attachment/Vision 设置已按各自生命周期接线，下一批继续清除其余 Route 的 `AppBindings` 并审查 Knowledge 等设置消费者，全部完成后再决定 HTTP/SSE/Auth 的最终归档位置；
+9. Turn/AskUser、Permission、Session、Provider/ModelBindings、Settings/Theme、Transcribe、Cards、Knowledge Base、Storage Stats 与 Shell Route 已完成窄依赖；Agent/Context/Attachment/Vision 设置已按各自生命周期接线。下一批先审计 `AppBindings` 字段与 wiring 构造是否仍有失效成员，再决定 HTTP/SSE/Auth 的最终归档位置；
 10. 后台进程按 `BackgroundProcess + ProcessOutput/ProcessStop` 单独实现 C 档，不修改 AgentLoop，也不恢复假 `run_in_background`。
 
 命名随业务批次清理：旧 `IFileStateStoreEntry/IFileStateStore` 及后续过渡接口已经删除，`IToolExecutionJournal` 已改为职责名；其余迁移期 `I*` 类型继续随业务边界处理，不单独进行全仓机械重命名。
@@ -196,6 +196,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- 剩余五组 AppBindings Route 收窄：LocalHost typecheck、正式 build 与全量 30 个测试文件 110/110 通过，构建验证 82 个源码、329 个产物；Cards、KB Embedding、Session Backup、Shell Permission 定向 4 个测试文件 15/15 通过。五组 Route 和相关测试中的 `AppBindings` 引用归零，`server.ts` 显式投影现有业务对象；`git diff --check` 通过，仅有既有 CRLF 与不可访问 pytest 缓存提示。
 - Settings 运行时接线第二批：Attachment、Vision、TurnExecution、LocalHost typecheck 通过；Attachment 14/14、Vision 19/19、TurnExecution 23/23、LocalHost 110/110 通过，4 个真实模型 Integration 按规则跳过。新增测试覆盖附件超限明确拒绝、根 Turn 设置深冻结和 Vision 下一次操作读取新快照；`git diff --check` 通过，仅有既有 CRLF 与不可访问 pytest 缓存提示。
 - Settings 运行时接线第一批：Settings、Context、TurnExecution、LocalHost typecheck 通过；Context 27/27、TurnExecution 23/23、LocalHost Settings/Theme Route 10/10 通过，4 个真实模型 Integration 按规则跳过。新增测试覆盖通用设置读写与非法值拒绝、每根 Turn 只读取一次设置、冻结快照不受后续对象变化影响、Context 请求设置不污染共享 Compactor 默认值；`git diff --check` 通过，仅有既有 CRLF 提示。
 - Settings/Theme 配置所有权：Settings、Theme、Agent、Context、Permission、Attachment、Vision、Knowledge、LocalHost 与 Desktop UI 的依赖构建 43/43 通过；Settings/LocalHost/Desktop 定向 5 个测试文件 18/18 通过。设置写入按 SQLite 成功后再替换快照并发布事件，持久化失败与 Theme 前端保存失败均保留旧值；`SettingsStore` 直接使用 Storage `SettingsRepo`，镜像持久化类型已清理。

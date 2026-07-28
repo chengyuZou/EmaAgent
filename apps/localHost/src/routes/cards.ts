@@ -1,12 +1,13 @@
+// 提供角色卡 CRUD、参考音频与 Live2D 资源的 LocalHost HTTP 适配。
 import fs from 'node:fs';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
 
-import type { AppBindings } from '../wiring/index.js';
 import { asCharacterCardId } from '@ema-agent/ids';
 import {
+  type CharacterCardStore,
   emptyVoiceProfile,
   type CharacterRefAudio,
   type CharacterVoiceProfile,
@@ -17,9 +18,9 @@ import { z } from 'zod';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-function getCardOr404(bindings: AppBindings, idStr: string) {
+function getCardOr404(cardStore: CharacterCardStore, idStr: string) {
   const id = asCharacterCardId(idStr);
-  const card = bindings.card.get(id);
+  const card = cardStore.get(id);
   return card ? { id, card } : null;
 }
 
@@ -102,7 +103,7 @@ function mimeForExt(ext: string): string {
  *   DELETE /:cardId/voice-refs/:refId     remove ref entry + file
  *   PUT    /:cardId/voice-refs/primary    body: { refId } — switch primary
  */
-export function cardsRoute(bindings: AppBindings): Hono {
+export function cardsRoute(cardStore: CharacterCardStore): Hono {
   const app = new Hono();
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -110,11 +111,11 @@ export function cardsRoute(bindings: AppBindings): Hono {
   // ═══════════════════════════════════════════════════════════════════════
 
   app.get('/', (c) => {
-    return c.json(bindings.card.list());
+    return c.json(cardStore.list());
   });
 
   app.get('/:id', (c) => {
-    const card = bindings.card.get(asCharacterCardId(c.req.param('id')));
+    const card = cardStore.get(asCharacterCardId(c.req.param('id')));
     if (!card) return c.json({ error: 'card_not_found' }, 404);
     return c.json(card);
   });
@@ -138,7 +139,7 @@ export function cardsRoute(bindings: AppBindings): Hono {
         }
       }
     }
-    const card = bindings.card.create({
+    const card = cardStore.create({
       ...body.data,
       description:   body.data.description ?? undefined,
       live2dModelId: body.data.live2dModelId ?? undefined,
@@ -156,26 +157,26 @@ export function cardsRoute(bindings: AppBindings): Hono {
     }
     // B-055:不把 null 转 undefined —— storage update 用 `!== undefined` 判断,
     // null 会 SET NULL(清空),undefined 跳过(不更新)。`?? undefined` 会让清空失败。
-    const card = bindings.card.update(id, body.data);
+    const card = cardStore.update(id, body.data);
     return c.json(card);
   });
 
   app.delete('/:id', (c) => {
     const id = asCharacterCardId(c.req.param('id'));
-    const card = bindings.card.get(id);
+    const card = cardStore.get(id);
     if (!card) return c.json({ error: 'card_not_found' }, 404);
     if (card.isBuiltin) return c.json({ error: 'cannot_delete_builtin_card' }, 403);
     // B-055:禁止删除当前 active 卡,否则留下零 active 状态。用户须先 activate 别的卡。
     if (card.isActive) return c.json({ error: 'cannot_delete_active_card' }, 409);
-    bindings.card.delete(id);
+    cardStore.delete(id);
     return c.body(null, 204);
   });
 
   app.put('/:id/activate', (c) => {
     const id = asCharacterCardId(c.req.param('id'));
-    const card = bindings.card.get(id);
+    const card = cardStore.get(id);
     if (!card) return c.json({ error: 'card_not_found' }, 404);
-    bindings.card.activate(id);
+    cardStore.activate(id);
     return c.json({ activeCardId: id as string });
   });
 
@@ -184,13 +185,13 @@ export function cardsRoute(bindings: AppBindings): Hono {
   // ═══════════════════════════════════════════════════════════════════════
 
   app.get('/:cardId/voice-refs', (c) => {
-    const found = getCardOr404(bindings, c.req.param('cardId'));
+    const found = getCardOr404(cardStore, c.req.param('cardId'));
     if (!found) return c.json({ error: 'card_not_found' }, 404);
     return c.json(found.card.voiceProfile);
   });
 
   app.post('/:cardId/voice-refs', async (c) => {
-    const found = getCardOr404(bindings, c.req.param('cardId'));
+    const found = getCardOr404(cardStore, c.req.param('cardId'));
     if (!found) return c.json({ error: 'card_not_found' }, 404);
     if (found.card.isBuiltin) return c.json({ error: 'builtin_readonly' }, 403);
 
@@ -252,13 +253,13 @@ export function cardsRoute(bindings: AppBindings): Hono {
         ? refId
         : profile.primaryId,
     };
-    bindings.card.update(found.id, { voiceProfile: nextProfile });
+    cardStore.update(found.id, { voiceProfile: nextProfile });
 
     return c.json({ ref: newRef, primaryId: nextProfile.primaryId }, 201);
   });
 
   app.get('/:cardId/voice-refs/:refId', async (c) => {
-    const found = getCardOr404(bindings, c.req.param('cardId'));
+    const found = getCardOr404(cardStore, c.req.param('cardId'));
     if (!found) return c.json({ error: 'card_not_found' }, 404);
 
     const refId = c.req.param('refId');
@@ -287,7 +288,7 @@ export function cardsRoute(bindings: AppBindings): Hono {
   });
 
   app.delete('/:cardId/voice-refs/:refId', (c) => {
-    const found = getCardOr404(bindings, c.req.param('cardId'));
+    const found = getCardOr404(cardStore, c.req.param('cardId'));
     if (!found) return c.json({ error: 'card_not_found' }, 404);
     if (found.card.isBuiltin) return c.json({ error: 'builtin_readonly' }, 403);
 
@@ -308,7 +309,7 @@ export function cardsRoute(bindings: AppBindings): Hono {
     const nextPrimary = found.card.voiceProfile.primaryId === refId
       ? (nextRefs[0]?.id ?? null)
       : found.card.voiceProfile.primaryId;
-    bindings.card.update(found.id, {
+    cardStore.update(found.id, {
       voiceProfile: { refAudios: nextRefs, primaryId: nextPrimary },
     });
 
@@ -316,7 +317,7 @@ export function cardsRoute(bindings: AppBindings): Hono {
   });
 
   app.put('/:cardId/voice-refs/primary', async (c) => {
-    const found = getCardOr404(bindings, c.req.param('cardId'));
+    const found = getCardOr404(cardStore, c.req.param('cardId'));
     if (!found) return c.json({ error: 'card_not_found' }, 404);
 
     const body = await c.req.json().catch(() => null) as { refId?: string } | null;
@@ -327,7 +328,7 @@ export function cardsRoute(bindings: AppBindings): Hono {
       return c.json({ error: 'ref_not_found' }, 404);
     }
 
-    bindings.card.update(found.id, {
+    cardStore.update(found.id, {
       voiceProfile: { ...found.card.voiceProfile, primaryId: body.refId },
     });
     return c.json({ primaryId: body.refId });
@@ -342,7 +343,7 @@ export function cardsRoute(bindings: AppBindings): Hono {
    * User cards: returns an absolute filesystem path (the frontend streams via a sidecar route).
    */
   app.get('/:cardId/live2d/model-path', (c) => {
-    const found = getCardOr404(bindings, c.req.param('cardId'));
+    const found = getCardOr404(cardStore, c.req.param('cardId'));
     if (!found) return c.json({ error: 'card_not_found' }, 404);
     const modelId = found.card.live2dModelId;
     if (!modelId) return c.json({ error: 'no_live2d_model' }, 404);
@@ -363,7 +364,7 @@ export function cardsRoute(bindings: AppBindings): Hono {
    * from the card's resource pack (runtime-config.json).
    */
   app.get('/:cardId/live2d/runtime-config', async (c) => {
-    const found = getCardOr404(bindings, c.req.param('cardId'));
+    const found = getCardOr404(cardStore, c.req.param('cardId'));
     if (!found) return c.json({ error: 'card_not_found' }, 404);
     const modelId = found.card.live2dModelId;
     if (!modelId) return c.json({ error: 'no_live2d_model' }, 404);

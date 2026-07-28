@@ -1,3 +1,4 @@
+// 提供数据目录统计、迁移和 Session 备份的 LocalHost HTTP 适配。
 import { Hono } from 'hono';
 import { z }    from 'zod';
 import fs   from 'node:fs';
@@ -5,21 +6,38 @@ import path from 'node:path';
 import {
   SessionExportError,
   SessionImportError,
+  type SessionBackupFacade,
   type BackupArchiveSource,
   type SessionExportResult,
 } from '@ema-agent/backup';
 import type {
+  SessionStore,
   SessionDashboardWire,
   AudioEntryWire,
   SessionNoteWire,
   SessionNoteEntryWire,
 } from '@ema-agent/session';
 import { asSessionId } from '@ema-agent/ids';
+import type {
+  Database,
+  DataDirStatsRepo,
+  SessionNotesRepo,
+  SessionStatsRepo,
+} from '@ema-agent/storage';
 import {
   loadRegistry, addDir, removeDir, setActive,
   dataDbPathFor,
 } from '../storage-locations/index.js';
-import type { AppBindings } from '../wiring/index.js';
+
+export interface StorageStatsRouteDependencies {
+  activeDataDir: string;
+  dataDb: Pick<Database, 'sqlite'>;
+  storageStats: Pick<DataDirStatsRepo, 'getStats'>;
+  sessionStats: Pick<SessionStatsRepo, 'getStats' | 'listAudioEntries'>;
+  sessionNotes: Pick<SessionNotesRepo, 'findBySession'>;
+  sessionBackup: Pick<SessionBackupFacade, 'exportSession' | 'importSession'>;
+  session: Pick<SessionStore, 'getSession'>;
+}
 
 // ── Shared fs helpers ─────────────────────────────────────────────────────────
 
@@ -65,7 +83,7 @@ function backupSourceFromFile(file: File): BackupArchiveSource {
 
 // ── Route factory ─────────────────────────────────────────────────────────────
 
-export function storageStatsRoute(bindings: AppBindings): Hono {
+export function storageStatsRoute(dependencies: StorageStatsRouteDependencies): Hono {
   const app = new Hono();
 
   // ── GET /api/storage — list all registered data dirs ─────────────────────
@@ -122,8 +140,8 @@ export function storageStatsRoute(bindings: AppBindings): Hono {
 
   // ── GET /api/storage/stats — aggregate stats for the active data dir ──────
   app.get('/stats', (c) => {
-    const stats      = bindings.storageStats.getStats();
-    const activeDir  = bindings.activeDataDir;
+    const stats      = dependencies.storageStats.getStats();
+    const activeDir  = dependencies.activeDataDir;
     const dataDbBytes   = safeStatSize(dataDbPathFor(activeDir));
     const audioBytes    = dirBytes(path.join(activeDir, 'audio'));
     const sessionsBytes = dirBytes(path.join(activeDir, 'sessions'));
@@ -147,13 +165,13 @@ export function storageStatsRoute(bindings: AppBindings): Hono {
       return c.json({ error: 'invalid_request', details: body.error.flatten() }, 400);
 
     const { name, targetPath } = body.data;
-    const activeDir = bindings.activeDataDir;
+    const activeDir = dependencies.activeDataDir;
     if (path.resolve(targetPath) === path.resolve(activeDir))
       return c.json({ error: 'same_path', message: '目标路径与当前路径相同' }, 400);
 
     try {
       fs.mkdirSync(targetPath, { recursive: true });
-      await bindings.dataDb.sqlite.backup(path.join(targetPath, 'data.db'));
+      await dependencies.dataDb.sqlite.backup(path.join(targetPath, 'data.db'));
       const srcSessions = path.join(activeDir, 'sessions');
       if (fs.existsSync(srcSessions))
         fs.cpSync(srcSessions, path.join(targetPath, 'sessions'), { recursive: true });
@@ -173,9 +191,9 @@ export function storageStatsRoute(bindings: AppBindings): Hono {
   app.get('/sessions/:id/dashboard', (c) => {
     const sessionId = c.req.param('id');
 
-    const stats     = bindings.sessionStats.getStats(sessionId);
-    const audioRows = bindings.sessionStats.listAudioEntries(sessionId);
-    const noteRow   = bindings.sessionNotes.findBySession(asSessionId(sessionId));
+    const stats     = dependencies.sessionStats.getStats(sessionId);
+    const audioRows = dependencies.sessionStats.listAudioEntries(sessionId);
+    const noteRow   = dependencies.sessionNotes.findBySession(asSessionId(sessionId));
 
     const audioEntries: AudioEntryWire[] = audioRows.map((r) => ({
       turnId:       r.turn_id,
@@ -222,7 +240,7 @@ export function storageStatsRoute(bindings: AppBindings): Hono {
 
   app.get('/sessions/:id/notes', (c) => {
     const sessionId = c.req.param('id');
-    const noteRow   = bindings.sessionNotes.findBySession(asSessionId(sessionId));
+    const noteRow   = dependencies.sessionNotes.findBySession(asSessionId(sessionId));
     if (!noteRow) return c.json(null);
     const wire: SessionNoteWire = {
       sessionId,
@@ -238,7 +256,7 @@ export function storageStatsRoute(bindings: AppBindings): Hono {
   app.post('/sessions/:id/export', (c) => {
     let result: SessionExportResult | null;
     try {
-      result = bindings.sessionBackup.exportSession({
+      result = dependencies.sessionBackup.exportSession({
         sessionId: c.req.param('id'),
       });
     } catch (error) {
@@ -278,12 +296,12 @@ export function storageStatsRoute(bindings: AppBindings): Hono {
           }, 400);
         }
 
-        const result = await bindings.sessionBackup.importSession({
+        const result = await dependencies.sessionBackup.importSession({
           source: backupSourceFromFile(file),
           format: 'auto',
           signal: c.req.raw.signal,
         });
-        const restored = bindings.session.getSession(asSessionId(result.sessionId));
+        const restored = dependencies.session.getSession(asSessionId(result.sessionId));
         return c.json(restored, 201);
       } catch (error) {
         if (error instanceof SessionImportError) {
