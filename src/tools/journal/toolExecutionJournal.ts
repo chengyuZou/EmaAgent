@@ -89,6 +89,11 @@ export interface ToolExecutionJournalPort {
   outcomeUnknown(callId: ToolCallId, reason: string): ToolExecutionRecord;
 }
 
+/** 审计接口只读取持久执行记录，不能推进工具状态机。 */
+export interface ToolExecutionJournalReader {
+  listForTurn(turnId: TurnId): ToolExecutionRecord[];
+}
+
 export class ToolExecutionJournalConflictError extends Error {
   constructor(
     readonly callId: ToolCallId,
@@ -110,7 +115,8 @@ export class ToolExecutionJournalConflictError extends Error {
  * 执行器只能通过该入口推进状态；每一步使用 version CAS，防止取消流程、
  * 迟到的工具 Promise 和崩溃恢复互相覆盖。
  */
-export class ToolExecutionJournal implements ToolExecutionJournalPort {
+export class ToolExecutionJournal
+  implements ToolExecutionJournalPort, ToolExecutionJournalReader {
   constructor(private readonly store: ToolExecutionJournalStore) {}
 
   prepare(args: {

@@ -1,6 +1,6 @@
 // 测试 Turn HTTP 边界只接受文件能力句柄，不再接受前端提交的任意绝对路径。
 import { describe, expect, it } from 'vitest';
-import { attachmentInputSchema } from '../src/routes/turns.js';
+import { attachmentInputSchema } from '../src/routes/turns/index.js';
 
 const metadata = {
   id: 'attachment-1',

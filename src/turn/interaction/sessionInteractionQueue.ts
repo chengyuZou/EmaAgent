@@ -183,13 +183,47 @@ export class SessionInteractionQueue<TPermissionPrompt, TPermissionResponse, TAs
     return this.evict(promptId, { status: 'answered', answers });
   }
 
+  /** 只允许 Permission 路由取消匹配 Turn 的活动 Permission 队首。 */
+  cancelPermission(
+    promptId: string,
+    reason = 'cancelled',
+    expectedTurnId?: string,
+  ): boolean {
+    return this.cancelActiveByKind(
+      'permission',
+      promptId,
+      reason,
+      expectedTurnId,
+    );
+  }
+
+  /** 只允许 AskUser 路由取消匹配 Turn 的活动 AskUser 队首。 */
+  cancelAskUser(
+    promptId: string,
+    reason = 'cancelled',
+    expectedTurnId?: string,
+  ): boolean {
+    return this.cancelActiveByKind(
+      'askUser',
+      promptId,
+      reason,
+      expectedTurnId,
+    );
+  }
+
   /**
-   * 用户只能取消当前 Session 的活动队首。Turn/Session 中止需要清理排队项时，
-   * 使用 cancel()/cancelForTurn()/cancelForSession() 的内部生命周期入口。
+   * 用户只能取消类型和 Turn 均匹配的活动队首。Turn/Session 生命周期清理
+   * 继续使用 cancel()/cancelForTurn()/cancelForSession()，不经过 HTTP 限制。
    */
-  cancelActive(promptId: string, reason = 'cancelled', expectedTurnId?: string): boolean {
+  private cancelActiveByKind(
+    kind: 'permission' | 'askUser',
+    promptId: string,
+    reason: string,
+    expectedTurnId?: string,
+  ): boolean {
     const record = this.index.get(promptId);
     if (!record || record.fifo.entries[0] !== record.entry) return false;
+    if (record.entry.kind !== kind) return false;
     if (expectedTurnId !== undefined && record.entry.turnId !== expectedTurnId) return false;
     return this.cancel(promptId, reason);
   }

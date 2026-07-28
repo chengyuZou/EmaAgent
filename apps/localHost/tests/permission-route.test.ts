@@ -21,7 +21,7 @@ function createApp() {
   };
   const interactionQueue = {
     respondPermission: vi.fn(() => true),
-    cancelActive: vi.fn(() => true),
+    cancelPermission: vi.fn(() => true),
     listPending: vi.fn(() => []),
   };
   return {
@@ -44,6 +44,20 @@ describe('Permission 路由', () => {
     expect(interactionQueue.respondPermission).toHaveBeenCalledWith(
       'prompt-1',
       { action: 'allow' },
+      'turn-1',
+    );
+  });
+
+  it('取消只调用 Permission 专属入口', async () => {
+    const { app, interactionQueue } = createApp();
+    const response = await app.request('/turn-1/prompt-1/cancel', {
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(200);
+    expect(interactionQueue.cancelPermission).toHaveBeenCalledWith(
+      'prompt-1',
+      'cancelled by user',
       'turn-1',
     );
   });

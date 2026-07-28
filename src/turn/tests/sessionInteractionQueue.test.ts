@@ -307,9 +307,32 @@ describe('SessionInteractionQueue Permission 与 AskUser 混合 FIFO', () => {
     q.enqueueAskUser({ promptId: 'a1', sessionId: 's1', turnId: 't1', request: makeAskUserRequest('a1') });
     q.enqueueAskUser({ promptId: 'a2', sessionId: 's1', turnId: 't2', request: makeAskUserRequest('a2', 's1', 't2') });
 
-    expect(q.cancelActive('a2', 'cancelled', 't2')).toBe(false);
-    expect(q.cancelActive('a1', 'cancelled', 'wrong-turn')).toBe(false);
+    expect(q.cancelAskUser('a2', 'cancelled', 't2')).toBe(false);
+    expect(q.cancelAskUser('a1', 'cancelled', 'wrong-turn')).toBe(false);
     expect(q.listPending('s1').map(p => p.promptId)).toEqual(['a1', 'a2']);
+  });
+
+  it('HTTP 取消入口不能跨 Permission 与 AskUser 类型操作', () => {
+    const q = makeQueue();
+    const permission = q.enqueuePermission({
+      sessionId: 's1',
+      turnId: 't1',
+      toolCallId: 'tc1',
+      prompt: makePermissionPrompt('s1', 't1', 'tc1'),
+    });
+
+    expect(q.cancelAskUser(permission.promptId, 'wrong kind', 't1')).toBe(false);
+    expect(q.cancelPermission(permission.promptId, 'cancelled', 't1')).toBe(true);
+
+    q.enqueueAskUser({
+      promptId: 'a1',
+      sessionId: 's1',
+      turnId: 't1',
+      request: makeAskUserRequest('a1'),
+    });
+
+    expect(q.cancelPermission('a1', 'wrong kind', 't1')).toBe(false);
+    expect(q.cancelAskUser('a1', 'cancelled', 't1')).toBe(true);
   });
 });
 

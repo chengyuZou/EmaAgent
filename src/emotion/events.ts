@@ -10,6 +10,7 @@ export interface StageCue {
 
 export interface EmotionState {
   primary: string;
+  // 预留：次要情绪（主+次情绪混合、衰减与转换矩阵），当前无写入方，后续版本接线
   secondary?: string;
   intensity: number;
 }

@@ -1,8 +1,9 @@
+// 装配 LocalHost 的认证、请求预算和各业务 HTTP 路由。
+
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { emaAuth } from './auth.js';
 import { healthRoute } from './routes/health.js';
-import { turnsRoute } from './routes/turns.js';
 import { providersRoute } from './routes/providers.js';
 import { modelBindingsRoute } from './routes/model-bindings.js';
 import { sessionsRoute } from './routes/sessions.js';
@@ -25,6 +26,7 @@ import { storageStatsRoute }     from './routes/storage-stats.js';
 import { systemRoute }           from './routes/system.js';
 import { requestBudgetMiddleware } from './http/request-budget.js';
 import type { AppBindings } from './wiring/index.js';
+import { createTurnsRouter } from './wiring/createTurnsRouter.js';
 
 export function buildServer(bindings: AppBindings, sharedSecret: string): Hono {
   const app = new Hono();
@@ -39,7 +41,7 @@ export function buildServer(bindings: AppBindings, sharedSecret: string): Hono {
           const url = new URL(origin);
           if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') return origin;
         } catch {
-          // ignore
+          // 非法 Origin 按不允许处理。
         }
         return null;
       },
@@ -56,7 +58,7 @@ export function buildServer(bindings: AppBindings, sharedSecret: string): Hono {
 
   // 路由
   app.route('/health', healthRoute());
-  app.route('/api/turns',          turnsRoute(bindings));
+  app.route('/api/turns',          createTurnsRouter(bindings));
   app.route('/api/providers',      providersRoute(bindings));
   app.route('/api/model-bindings', modelBindingsRoute(bindings));
   app.route('/api/storage',        storageStatsRoute(bindings));

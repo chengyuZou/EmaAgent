@@ -46,17 +46,11 @@ const setRuleEnabledSchema = z.object({ enabled: z.boolean() });
 // ── Route factory ────────────────────────────────────────────────────────────
 
 /**
- * Frontend-facing endpoints for the permission prompt flow.
+ * 前端 Permission 审批入口。
  *
- *   POST /api/permission/:turnId/:promptId/respond
- *     body: PermissionResponse  → resolves the pending askPermission Promise
- *     404 if the promptId is unknown / expired / already resolved
- *
- *   POST /api/permission/:turnId/:promptId/cancel
- *     dismisses the prompt (resolves as deny with reason='cancelled')
- *
- *   GET  /api/permission/pending
- *     returns recoverable in-flight prompt snapshots
+ * respond 用 PermissionResponse 解决等待中的审批；
+ * cancel 以明确拒绝终态关闭审批；
+ * pending 返回窗口重开后可恢复的在飞快照。
  */
 export function permissionRoute(bindings: AppBindings): Hono {
   const app = new Hono();
@@ -114,7 +108,11 @@ export function permissionRoute(bindings: AppBindings): Hono {
   app.post('/:turnId/:promptId/cancel', (c) => {
     const turnId = asTurnId(c.req.param('turnId'));
     const promptId = c.req.param('promptId');
-    const ok = bindings.interactionQueue.cancelActive(promptId, 'cancelled by user', turnId);
+    const ok = bindings.interactionQueue.cancelPermission(
+      promptId,
+      'cancelled by user',
+      turnId,
+    );
     if (!ok) {
       return c.json({ error: 'not_found_or_expired', promptId }, 404);
     }

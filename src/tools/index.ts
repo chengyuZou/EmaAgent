@@ -85,6 +85,7 @@ export {
 } from './journal/toolExecutionJournal.js';
 export type {
   ToolExecutionJournalPort,
+  ToolExecutionJournalReader,
   ToolExecutionJournalStore,
   ToolExecutionPrepareRecord,
   ToolExecutionRecord,
