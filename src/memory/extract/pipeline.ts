@@ -14,7 +14,7 @@ import { buildExtractionPrompt, renderFragmentsForPrompt } from './prompts.js';
 import { readPending, clearPending } from './pending.js';
 import { EmbedService } from '../embed/service.js';
 import type { VectorIndex } from '../vector-index/vector-index.js';
-import { processNodes } from './route-nodes.js';
+import { processNodes, planNodeDuplicateJudgments } from './route-nodes.js';
 import { processEdges } from './route-edges.js';
 import { processItems } from './route-items.js';
 import { NodeDirectory } from './node-directory.js';
@@ -165,6 +165,13 @@ export async function runExtractionPipeline(
     const itemEmbeddings = itemResult.value;
     validatePreparedExtraction(output, nodeEmbeddings, itemEmbeddings);
 
+    // LLM 判定属于外部 I/O，必须在事务前完成；事务内只执行已确定的判定。
+    const duplicateJudgments = await planNodeDuplicateJudgments(
+      deps,
+      output,
+      nodeEmbeddings,
+    );
+
     noteDelta = output.session_note_delta;
 
     await deps.commitCoordinator.runExclusive(() => {
@@ -186,6 +193,7 @@ export async function runExtractionPipeline(
           directory,
           nodeEmbeddings,
           indexMutations,
+          duplicateJudgments,
         );
         processEdges(deps, output, stats, directory);
         processItems(

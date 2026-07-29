@@ -15,6 +15,7 @@ import {
   emitRecallLayer, estimateGraphRecallTokens,
   countEpisodicItems, estimateEpisodicRecallTokens, errorMessage,
 } from './context-builder.js';
+import { selectRelevantMemories } from './selectRelevant.js';
 import { loadSurfaced, dedupTail } from './surfaced.js';
 import type { ResolvedSessionOverrides } from '../maintenance/overrides.js';
 
@@ -131,9 +132,9 @@ export async function planRecall(
   const compatibleNodesIndex = queryEmbed?.space.id === indexSpaceId ? nodesIndex : null;
   const compatibleItemsIndex = queryEmbed?.space.id === indexSpaceId ? itemsIndex : null;
 
-  let layer0: RecallBundle['layer0'] = null;
-  let layer1: RecallBundle['layer1'] = null;
-  let layer2: RecallBundle['layer2'] = null;
+  let layer0: GraphRecallResult | null = null;
+  let layer1: string | null = null;
+  let layer2: EpisodicRecallResult | null = null;
 
   const layer0Task = async (): Promise<void> => {
     const t0 = Date.now();
@@ -191,6 +192,38 @@ export async function planRecall(
   };
 
   await Promise.allSettled([layer0Task(), layer1Task(), layer2Task()]);
+
+  // ── LLM 语义精选（粗筛之后、surfaced 记录之前）─────────────────────────────
+  // 精选不可用时回退粗筛结果：它是增强，不是门禁。
+  const coarseLayer0 = layer0 as GraphRecallResult | null;
+  const coarseLayer2 = layer2 as EpisodicRecallResult | null;
+  const candidateCount = (coarseLayer0?.nodes.length ?? 0)
+    + (coarseLayer2 ? countEpisodicItems(coarseLayer2) : 0);
+  if (candidateCount > 0) {
+    const selection = await bestEffortAsync('selectRelevantMemories', () =>
+      selectRelevantMemories({
+        llm: deps.llm,
+        modelBindings: deps.modelBindings,
+        userInput: ctx.userInput,
+        nodes: coarseLayer0?.nodes ?? [],
+        items: coarseLayer2 ? [...coarseLayer2.currentMode, ...coarseLayer2.otherModes] : [],
+        signal: ctx.signal,
+      }), null);
+    if (selection) {
+      if (coarseLayer0) {
+        layer0 = {
+          ...coarseLayer0,
+          nodes: coarseLayer0.nodes.filter(n => selection.nodeIds.includes(n.id)),
+        };
+      }
+      if (coarseLayer2) {
+        layer2 = {
+          currentMode: coarseLayer2.currentMode.filter(i => selection.itemIds.includes(i.id)),
+          otherModes: coarseLayer2.otherModes.filter(i => selection.itemIds.includes(i.id)),
+        };
+      }
+    }
+  }
 
   recordSurfaced(deps, settings, ctx.sessionId, prior, { layer0, layer2 });
 
