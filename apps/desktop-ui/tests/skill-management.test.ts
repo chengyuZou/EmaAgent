@@ -29,6 +29,34 @@ afterEach(() => {
 });
 
 describe('Skill 管理', () => {
+  it('市场安装把发布方 Bundle sha256 原样提交给后端', async () => {
+    const request = vi.spyOn(sidecarClient, 'request')
+      .mockResolvedValue({ skill: skill('verified') });
+    const sha256 = 'a'.repeat(64);
+    const coords = {
+      owner: 'owner',
+      repo: 'repo',
+      ref: 'commit',
+      dir: 'skills/verified',
+    };
+
+    await skillsApi.installFromUrl(
+      'https://example.com/verified/SKILL.md',
+      coords,
+      sha256,
+    );
+
+    expect(request).toHaveBeenCalledWith('/api/skills', {
+      method: 'POST',
+      json: {
+        source: 'url',
+        url: 'https://example.com/verified/SKILL.md',
+        coords,
+        sha256,
+      },
+    });
+  });
+
   it('所有按名称访问的 API 都会编码路径段', async () => {
     const request = vi.spyOn(sidecarClient, 'request').mockResolvedValue({ skill: skill('新技能') });
 

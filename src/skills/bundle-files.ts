@@ -22,6 +22,24 @@ export interface SkillBundleSnapshot {
   revision: string;
 }
 
+/**
+ * 市场清单与本地激活共用同一 Bundle 身份算法：稳定相对路径 + 每文件 SHA-256。
+ * 调用方传入顺序不影响结果，新增、删除、改名或修改任一资源都会改变 revision。
+ */
+export function computeSkillBundleRevision(
+  files: readonly Pick<SkillFile, 'relativePath' | 'sha256'>[],
+): string {
+  const revisionHash = createHash('sha256');
+  const ordered = [...files].sort(compareSkillFilePaths);
+  for (const file of ordered) {
+    revisionHash.update(file.relativePath);
+    revisionHash.update('\0');
+    revisionHash.update(file.sha256);
+    revisionHash.update('\0');
+  }
+  return revisionHash.digest('hex');
+}
+
 export async function writeSkillBundle(
   stagePath: string,
   rawMd: string,
@@ -115,20 +133,11 @@ export async function inspectSkillDirectory(dirPath: string): Promise<SkillBundl
   }
 
   await visit(rootPath);
-  const ordered = files.sort((left, right) =>
-    left.relativePath.localeCompare(right.relativePath),
-  );
-  const revisionHash = createHash('sha256');
-  for (const file of ordered) {
-    revisionHash.update(file.relativePath);
-    revisionHash.update('\0');
-    revisionHash.update(file.sha256);
-    revisionHash.update('\0');
-  }
+  const ordered = files.sort(compareSkillFilePaths);
   return Object.freeze({
     files: Object.freeze(ordered),
     totalBytes,
-    revision: revisionHash.digest('hex'),
+    revision: computeSkillBundleRevision(ordered),
   });
 }
 
@@ -219,6 +228,15 @@ function classifySkillFile(relativePath: string): SkillFileKind {
   if (root === 'templates') return 'template';
   if (root === 'assets') return 'asset';
   return 'resource';
+}
+
+function compareSkillFilePaths(
+  left: Pick<SkillFile, 'relativePath'>,
+  right: Pick<SkillFile, 'relativePath'>,
+): number {
+  if (left.relativePath < right.relativePath) return -1;
+  if (left.relativePath > right.relativePath) return 1;
+  return 0;
 }
 
 async function writeDurableFile(filePath: string, content: string | Uint8Array): Promise<void> {

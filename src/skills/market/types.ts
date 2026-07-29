@@ -29,6 +29,8 @@ export interface SkillJsonIndexEntry {
   name:        string;
   path?:       string;
   url:         string;
+  /** 对 SKILL.md 与全部资源文件计算的规范 Bundle revision。 */
+  sha256:      string;
 }
 
 export interface SkillJsonIndex {

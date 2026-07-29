@@ -159,7 +159,11 @@ export class SkillStore {
 
   async install(
     rawMd: string,
-    extra: { sourceUrl?: string; sha256?: string; assets?: Record<string, Uint8Array> } = {},
+    extra: {
+      sourceUrl?: string;
+      expectedBundleSha256?: string;
+      assets?: Record<string, Uint8Array>;
+    } = {},
   ): Promise<SkillRecord> {
     assertSkillTextSize(rawMd);
     const manifest = parseSkillMd(rawMd);
@@ -176,6 +180,17 @@ export class SkillStore {
       const transaction = await SkillDirectoryTransaction.create(rootPath, skillSlug(manifest.name));
       try {
         await writeSkillBundle(transaction.stagePath, rawMd, assets);
+        const stagedBundle = await inspectSkillDirectory(transaction.stagePath);
+        const expectedBundleSha256 = normalizeSha256(extra.expectedBundleSha256);
+        if (
+          expectedBundleSha256 !== undefined
+          && stagedBundle.revision !== expectedBundleSha256
+        ) {
+          throw new Error(
+            `Skill Bundle integrity check failed: expected ${expectedBundleSha256}, ` +
+            `received ${stagedBundle.revision}`,
+          );
+        }
         await transaction.prepare(previousPath, finalPath);
         await transaction.activate();
 
@@ -183,7 +198,7 @@ export class SkillStore {
           id: existing?.id ?? randomUUID(),
           source: this.rootBoundary.userRoot.source,
           sourceUrl: extra.sourceUrl ?? null,
-          sha256: extra.sha256 ?? null,
+          sha256: extra.sourceUrl ? stagedBundle.revision : null,
           enabled: existing?.enabled ?? 1,
           installedAt: existing?.installed_at ?? Date.now(),
         });
@@ -432,6 +447,15 @@ export class SkillStore {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function normalizeSha256(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (!/^[a-f0-9]{64}$/u.test(normalized)) {
+    throw new Error('Skill Bundle sha256 must be a 64-character hexadecimal digest');
+  }
+  return normalized;
 }
 
 async function rollbackAndThrow(

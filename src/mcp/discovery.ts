@@ -7,6 +7,7 @@ import type { ToolPermissionMeta } from '@ema-agent/permission';
 import type { McpToolInfo }      from './types.js';
 import { buildMcpToolName }      from './types.js';
 import type { McpRegistry }      from './registry.js';
+import { assertMcpToolSchemaLimits } from './toolSchemaLimits.js';
 
 const MAX_DESCRIPTION_LEN = 2048;
 
@@ -31,6 +32,7 @@ export async function discoverServerTools(
 ): Promise<McpToolInfo[]> {
   // listTools 失败必须上抛给连接状态机；只有 Server 真正返回空数组才算成功。
   const result = await client.listTools(undefined, { signal });
+  assertMcpToolSchemaLimits(serverName, result.tools);
 
   return result.tools.map((tool) => {
     const desc = tool.description ?? '';

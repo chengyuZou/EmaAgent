@@ -1,9 +1,13 @@
-// 这里测试 Skill 安装, 升级回滚, slug 碰撞, 路径边界和重命名事务.
+// 这里测试 Skill 安装、Bundle 完整性、升级回滚、路径边界和重命名事务。
+import { createHash } from 'node:crypto';
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Database, SkillsRepo } from '@ema-agent/storage';
+import {
+  computeSkillBundleRevision,
+} from '../bundle-files.js';
 import { SkillStore } from '../store.js';
 
 let rootPath: string;
@@ -66,6 +70,41 @@ describe('SkillStore', () => {
     expect(store.findByName('review')?.path).toBe(
       join(rootPath, 'review', 'SKILL.md'),
     );
+  });
+
+  it('市场安装按完整 Bundle revision 校验，资源被替换时不会覆盖旧版本', async () => {
+    const rawMd = skillMd('verified', 'old body');
+    const script = new TextEncoder().encode('console.log("trusted")');
+    const expectedBundleSha256 = computeSkillBundleRevision([
+      {
+        relativePath: 'SKILL.md',
+        sha256: sha256(rawMd),
+      },
+      {
+        relativePath: 'scripts/check.js',
+        sha256: sha256(script),
+      },
+    ]);
+    await store.install(rawMd, {
+      sourceUrl: 'https://example.com/verified/SKILL.md',
+      expectedBundleSha256,
+      assets: { 'scripts/check.js': script },
+    });
+    expect(repo.findByName('verified')?.sha256).toBe(expectedBundleSha256);
+
+    await expect(store.install(skillMd('verified', 'new body'), {
+      sourceUrl: 'https://example.com/verified/SKILL.md',
+      expectedBundleSha256,
+      assets: {
+        'scripts/check.js': new TextEncoder().encode('console.log("tampered")'),
+      },
+    })).rejects.toThrow('Bundle integrity check failed');
+
+    expect(await store.readRawMd('verified')).toContain('old body');
+    expect(await readFile(
+      join(rootPath, 'verified', 'scripts', 'check.js'),
+      'utf8',
+    )).toBe('console.log("trusted")');
   });
 
   it('SQL 更新失败时恢复旧目录和旧正文', async () => {
@@ -198,4 +237,8 @@ describe('SkillStore', () => {
 
 function skillMd(name: string, body: string): string {
   return `---\nname: ${JSON.stringify(name)}\nversion: 1.0.0\ndescription: test\n---\n${body}\n`;
+}
+
+function sha256(value: string | Uint8Array): string {
+  return createHash('sha256').update(value).digest('hex');
 }

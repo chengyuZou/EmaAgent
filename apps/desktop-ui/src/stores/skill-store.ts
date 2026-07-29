@@ -25,7 +25,11 @@ export interface SkillStoreState {
   /** Install a skill from raw markdown text. Refreshes list on success. */
   installFromText(content: string): Promise<Omit<SkillRecord, 'rawMd'>>;
   /** Install a skill from a remote URL. Refreshes list on success. */
-  installFromUrl(url: string, coords?: GithubSkillCoords): Promise<Omit<SkillRecord, 'rawMd'>>;
+  installFromUrl(
+    url: string,
+    coords?: GithubSkillCoords,
+    sha256?: string,
+  ): Promise<Omit<SkillRecord, 'rawMd'>>;
 
   /** Validate skill markdown without installing. Returns validation result. */
   validate(content: string): Promise<SkillValidateResult>;
@@ -84,9 +88,9 @@ export const useSkillStore = create<SkillStoreState>((set, get) => ({
     }
   },
 
-  async installFromUrl(url, coords) {
+  async installFromUrl(url, coords, sha256) {
     try {
-      const { skill } = await skillsApi.installFromUrl(url, coords);
+      const { skill } = await skillsApi.installFromUrl(url, coords, sha256);
       await get().refresh();
       return skill;
     } catch (err: unknown) {

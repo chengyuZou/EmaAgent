@@ -6,6 +6,7 @@ export {
   renderActiveSkillContext,
 } from './activeSkillState.js';
 export { SkillInstaller }                from './installer.js';
+export { computeSkillBundleRevision }    from './bundle-files.js';
 export { parseSkillMd, validateSkillMd } from './parser.js';
 export {
   SkillMarketAdapter, SKILL_SEEDS,

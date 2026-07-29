@@ -179,8 +179,10 @@ export interface MarketSkillEntry {
   name:        string;
   /** 仓库内路径,如 "document-skills/pdf"。 */
   path:        string;
-  /** SKILL.md 的原始 URL,可直接给 installFromUrl()。 */
+  /** SKILL.md 的原始 URL，可直接给 installFromUrl()。 */
   url:         string;
+  /** 对 SKILL.md 与全部 Bundle 资源计算的规范 SHA-256 revision。 */
+  sha256?:     string;
   /** GitHub 源携带坐标,bundle 安装优先用(不丢 mirrorUrl / 不靠 URL 反解析)。 */
   coords?:     GithubSkillCoords;
 }

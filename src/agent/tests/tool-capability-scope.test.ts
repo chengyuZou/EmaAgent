@@ -1,10 +1,14 @@
 // 这里测试 Agent 工具能力只能按名称或稳定 ID 逐层收窄，不能被 Skill 扩大。
 import { describe, expect, it } from 'vitest';
-import type { ToolManifestEntry } from '@ema-agent/tools';
+import {
+  createToolManifestSnapshotFromEntries,
+  type ToolManifestEntry,
+} from '@ema-agent/tools';
 import {
   AgentToolCapabilityScope,
   ToolCapabilityRestrictionError,
 } from '../tool-capability-scope.js';
+import { TurnPolicy } from '../policy.js';
 
 describe('AgentToolCapabilityScope', () => {
   it('保留 Manifest 固定顺序，并支持名称和稳定 ID glob', () => {
@@ -54,6 +58,25 @@ describe('AgentToolCapabilityScope', () => {
       allowedToolPatterns: ['Reed'],
     })).toThrow(ToolCapabilityRestrictionError);
     expect(scope.snapshot().allowedToolNames).toEqual(['Read']);
+  });
+});
+
+describe('TurnPolicy allowedIds', () => {
+  it('暴露父 Agent 当前收窄集的只读副本', () => {
+    const policy = new TurnPolicy(createToolManifestSnapshotFromEntries([
+      fakeTool('tool.read', 'Read'),
+      fakeTool('tool.write', 'Write'),
+    ], 1));
+    policy.capabilities().restrict({
+      source: 'skill:readonly',
+      allowedToolPatterns: ['Read'],
+    });
+
+    const first = policy.allowedIds();
+    expect([...first]).toEqual(['tool.read']);
+    (first as Set<string>).add('tool.write');
+
+    expect([...policy.allowedIds()]).toEqual(['tool.read']);
   });
 });
 

@@ -1,10 +1,15 @@
-// 这里管理 MCP 服务器配置与工具缓存的持久化转换和运行时校验。
+// MCP 存储入口负责服务器配置与工具缓存的持久化转换和运行时校验。
+import { Buffer }                  from 'node:buffer';
 import { randomUUID }            from 'node:crypto';
 import type { McpServersRepo }   from '@ema-agent/storage';
 import type { McpInstallProvenance, McpServerConfig, McpServerRecord, McpToolInfo } from './types.js';
 import { McpInstallProvenanceSchema, McpServerConfigSchema, McpToolInfoListSchema } from './types.js';
 import { McpServerNotFoundError, McpUnsupportedTransportError } from './errors.js';
 import { buildLockedPackageLaunch } from './market/package-spec.js';
+import {
+  MAX_MCP_TOOL_SCHEMA_BYTES,
+  assertMcpToolSchemaLimits,
+} from './toolSchemaLimits.js';
 
 // ── McpServerStore ────────────────────────────────────────────────────────────
 //
@@ -61,6 +66,7 @@ export class McpServerStore {
   cacheTools(name: string, tools: McpToolInfo[]): void {
     const row = this.repo.findByName(name);
     if (!row) return;
+    assertMcpToolSchemaLimits(name, tools);
     this.repo.update(row.id, { toolsCache: JSON.stringify(tools), cachedAt: Date.now() });
   }
 
@@ -111,7 +117,10 @@ export class McpServerStore {
     }
 
     let cachedTools: McpToolInfo[] | undefined;
-    if (row.tools_cache) {
+    if (
+      row.tools_cache
+      && Buffer.byteLength(row.tools_cache, 'utf8') <= MAX_MCP_TOOL_SCHEMA_BYTES
+    ) {
       try {
         const parsed = McpToolInfoListSchema.safeParse(JSON.parse(row.tools_cache));
         cachedTools = parsed.success ? parsed.data : undefined;

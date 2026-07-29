@@ -245,6 +245,9 @@ export class AnthropicAdapter implements LlmAdapter {
   }
 
   async *stream(request: LlmRequest, modelName: string): AsyncIterable<LlmStreamChunk> {
+    if (request.maxTokens === undefined) {
+      throw new TypeError('Anthropic requests require an explicit call-level maxTokens budget');
+    }
     const { system, messages } = toAnthropicMessages(request.messages);
     const tools      = request.toolChoice === 'none' ? undefined : request.tools?.map(toAnthropicTool);
     const toolChoice = tools?.length ? toAnthropicToolChoice(request.toolChoice) : undefined;
@@ -253,7 +256,7 @@ export class AnthropicAdapter implements LlmAdapter {
     const streamBody: Anthropic.Messages.MessageStreamParams = {
       model:       modelName,
       messages,
-      max_tokens:  request.maxTokens ?? 4096,
+      max_tokens:  request.maxTokens,
       temperature: thinkingEnabled ? 1 : request.temperature,
       ...(system    ? { system }                                          : {}),
       ...(tools?.length ? { tools, tool_choice: toolChoice }             : {}),

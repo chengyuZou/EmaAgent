@@ -10,4 +10,6 @@ export type KnowledgeEvent =
   | { type: 'kb_reembed_completed'; kbId: string; taskId?: string; assetId: string; totalItems: number; completedItems: number; failedItems: number }
   | { type: 'kb_reembed_partial_failed'; kbId: string; taskId?: string; assetId: string; error: string; totalItems: number; completedItems: number; failedItems: number }
   | { type: 'kb_reembed_cancelled'; kbId: string; taskId?: string; assetId: string }
-  | { type: 'kb_reembed_failed'; kbId: string; taskId?: string; assetId: string; error: string };
+  | { type: 'kb_reembed_failed'; kbId: string; taskId?: string; assetId: string; error: string }
+  // embed 模型绑定变更后自动标记 stale 完成，引导用户重嵌；不属于单个 KB。
+  | { type: 'kb_embeddings_staled'; markedStale: number; kbCount: number; failedKbIds: string[]; providerConfigId: string; model: string };

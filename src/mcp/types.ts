@@ -1,5 +1,6 @@
-// 这里定义 MCP 服务器配置、工具发现结果、连接状态和公开 Schema。
+// MCP 公共类型描述服务器配置、工具发现结果、连接状态和公开 Schema。
 import { z } from 'zod';
+import { MAX_MCP_TOOLS_PER_SERVER } from './toolSchemaLimits.js';
 
 // ── 服务器配置 ──────────────────────────────────────────────────────────────
 //
@@ -121,7 +122,7 @@ export const McpToolInfoSchema = z.preprocess((value) => {
   reportedDestructive: z.boolean().default(false),
 }));
 
-export const McpToolInfoListSchema = z.array(McpToolInfoSchema).max(1_000);
+export const McpToolInfoListSchema = z.array(McpToolInfoSchema).max(MAX_MCP_TOOLS_PER_SERVER);
 export type McpToolInfo = z.infer<typeof McpToolInfoSchema>;
 
 export interface McpConnection {

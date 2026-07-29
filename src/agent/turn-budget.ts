@@ -66,6 +66,19 @@ export class TurnBudget {
     }
   }
 
+  /** 返回下一次模型调用可使用的输出额度；额度耗尽时在请求 Provider 前终止。 */
+  remainingOutputTokens(): number {
+    const remaining = this.limits.maxOutputTokens - this.outputTokens;
+    if (remaining <= 0) {
+      throw new AgentBudgetExceededError(
+        'output_tokens',
+        this.outputTokens + 1,
+        this.limits.maxOutputTokens,
+      );
+    }
+    return remaining;
+  }
+
   recordUsage(usage: LlmTokenUsage): void {
     this.assertWithinLimits();
     const input = finiteNonNegative('input_tokens', usage.inputTokens);

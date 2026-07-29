@@ -38,6 +38,7 @@ function request(providerId: string, signal: AbortSignal): LlmRequest {
     providerId,
     model: 'test-model',
     messages: [{ role: 'user', content: 'hello' }],
+    maxTokens: 512,
     signal,
   };
 }
@@ -103,6 +104,22 @@ describe('Anthropic/Gemini Adapter — 取消传播', () => {
       outputTokens: 20,
     }));
     expect(chunks.at(-1)).toEqual({ type: 'done', stopReason: 'end_turn' });
+    expect(sdkMocks.anthropicStream).toHaveBeenCalledWith(
+      expect.objectContaining({ max_tokens: 512 }),
+      expect.any(Object),
+    );
+  });
+
+  it('Anthropic 不为缺失的调用级输出预算猜测默认值', async () => {
+    const adapter = new AnthropicAdapter(anthropicConfig());
+    const withoutBudget = request('anthropic-test', new AbortController().signal);
+    delete withoutBudget.maxTokens;
+
+    await expect(collect(adapter.stream(
+      withoutBudget,
+      'claude-test',
+    ))).rejects.toThrow('explicit call-level maxTokens budget');
+    expect(sdkMocks.anthropicStream).not.toHaveBeenCalled();
   });
 
   it('Anthropic 请求创建阶段取消时抛出 AbortError', async () => {

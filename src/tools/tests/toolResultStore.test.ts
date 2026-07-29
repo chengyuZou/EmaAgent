@@ -59,6 +59,40 @@ describe('工具结果预算', () => {
     expect(fs.readFileSync(normalized.filePath, 'utf8')).toBe(content);
   });
 
+  it('同一 Tool Call 重放只在正文一致时复用既有文件', () => {
+    const store = createStore();
+    const firstContent = '第一次结果'.repeat(1_000);
+    const replayed = store.normalize('call-replay', 'Bash', firstContent, 32);
+    const duplicate = store.normalize('call-replay', 'Bash', firstContent, 32);
+    const conflicting = store.normalize(
+      'call-replay',
+      'Bash',
+      '不同结果'.repeat(1_000),
+      32,
+    );
+
+    expect(replayed.kind).toBe('offloaded');
+    expect(duplicate.kind).toBe('offloaded');
+    expect(conflicting).toEqual({ kind: 'unchanged' });
+    if (replayed.kind !== 'offloaded') throw new Error('expected offloaded result');
+    expect(fs.readFileSync(replayed.filePath, 'utf8')).toBe(firstContent);
+  });
+
+  it('既有结果文件不可读时保留本轮完整正文，不返回失真的持久化引用', () => {
+    const store = createStore();
+    const content = '结果'.repeat(1_000);
+    const first = store.normalize('call-unreadable', 'Bash', content, 32);
+    expect(first.kind).toBe('offloaded');
+    if (first.kind !== 'offloaded') throw new Error('expected offloaded result');
+
+    // 用同名目录稳定制造 EEXIST + 读取失败，避免依赖平台权限位或修改 ESM 内建模块。
+    fs.rmSync(first.filePath);
+    fs.mkdirSync(first.filePath);
+
+    expect(store.normalize('call-unreadable', 'Bash', content, 32))
+      .toEqual({ kind: 'unchanged' });
+  });
+
   it('多个结果合计超限时优先外置最大的可外置结果', () => {
     const store = createStore(3_000);
     const contents = store.enforceAggregateBudget([

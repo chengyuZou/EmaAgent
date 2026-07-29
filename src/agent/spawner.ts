@@ -64,6 +64,8 @@ export interface SubagentSpawnerDeps {
   llm: LanguageModel;
   permission: PermissionEngine;
   hooks: HookBus;
+  /** spawn 瞬间读取父 Agent 的当前能力上限，Skill 收窄会沿任务树传播。 */
+  getParentAllowedToolIds: () => ReadonlySet<string>;
   buildAsk?: ToolExecutionRuntimeOptions<BuiltinToolContext>['buildAsk'];
   skillRunner?: SkillRunnerPort;
   agentRunStore?: AgentRunStorePort;
@@ -229,9 +231,10 @@ export class SubagentSpawner implements SubagentSpawnerPort {
         ? { dir: this.scratchpadDir, author: `subagent:${agentRunId.slice(0, 8)}` }
         : undefined,
     };
-    const policy = new TurnPolicy(
-      tools.manifestSnapshot(assembleToolPool(tools, capabilityContext)),
-    );
+    const parentAllowedToolIds = this.deps.getParentAllowedToolIds();
+    const childToolPool = assembleToolPool(tools, capabilityContext)
+      .filter((tool) => parentAllowedToolIds.has(tool.id));
+    const policy = new TurnPolicy(tools.manifestSnapshot(childToolPool));
     const toolContext: BuiltinToolContext = Object.freeze({
       ...capabilityContext,
       toolCapabilities: policy.capabilities(),

@@ -29,6 +29,16 @@ describe('TurnBudget', () => {
     expect(() => budget.reserveToolCall()).toThrow(AgentBudgetExceededError);
   });
 
+  it('把剩余输出额度交给下一次模型调用，耗尽后不再启动请求', () => {
+    const budget = new TurnBudget(LIMITS);
+
+    expect(budget.remainingOutputTokens()).toBe(50);
+    budget.recordUsage({ inputTokens: 0, outputTokens: 20 });
+    expect(budget.remainingOutputTokens()).toBe(30);
+    budget.recordUsage({ inputTokens: 0, outputTokens: 30 });
+    expect(() => budget.remainingOutputTokens()).toThrowError(AgentBudgetExceededError);
+  });
+
   it('Subagent 并发槽释放后可复用，但总创建数仍单调计数', () => {
     const budget = new TurnBudget(LIMITS);
     const releaseFirst = budget.enterSubagent();

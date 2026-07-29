@@ -87,6 +87,13 @@ export function describeEventNotification(event: ClientEvent): EventNotification
       return { message: '知识库重嵌入已取消', variant: 'warning' };
     case 'kb_reembed_failed':
       return { message: `知识库重嵌入失败：${event.error}`, variant: 'danger' };
+    case 'kb_embeddings_staled':
+      return {
+        message: event.markedStale > 0
+          ? `知识库 Embedding 模型已更换为 ${event.model}，${event.markedStale} 个文档需要重新嵌入，请到知识库设置页重建索引`
+          : `知识库 Embedding 模型已更换为 ${event.model}`,
+        variant: event.failedKbIds.length > 0 ? 'danger' : 'warning',
+      };
     case 'emotion_changed':
       return { message: `角色情绪切换为 ${event.state.primary}`, variant: 'info' };
     case 'stage_cue':

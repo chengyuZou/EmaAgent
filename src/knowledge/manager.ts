@@ -160,6 +160,33 @@ export class KbManager {
     return { query, hits: applyResultBudget(hits, maxResultChars) };
   }
 
+  // ── Embedding model invalidation ───────────────────────────────────────────
+
+  /**
+   * embed 模型绑定变更后调用：对每个已注册 KB 标记异空间向量为 stale 并清掉
+   * 内存索引。单个 KB 失败不中断整场——失败的 KB 返回在 failedKbIds 中，
+   * 下次打开或搜索时 ensureIndex 仍会惰性补标。
+   */
+  async invalidateAllEmbeddings(newSpaceId: string): Promise<{
+    kbCount: number;
+    markedStale: number;
+    failedKbIds: string[];
+  }> {
+    const records = this.deps.registry.list();
+    let markedStale = 0;
+    const failedKbIds: string[] = [];
+    for (const rec of records) {
+      try {
+        const entry = await this.openClient(rec.id);
+        markedStale += entry.client.invalidateEmbeddings(newSpaceId);
+      } catch (err) {
+        console.warn(`[kb-manager] invalidate embeddings failed for KB "${rec.name}":`, err);
+        failedKbIds.push(rec.id);
+      }
+    }
+    return { kbCount: records.length, markedStale, failedKbIds };
+  }
+
   // ── Init ──────────────────────────────────────────────────────────────────
 
   /**

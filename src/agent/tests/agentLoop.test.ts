@@ -76,6 +76,7 @@ describe('AgentLoop LLM 生命周期', () => {
       { inputTokens: 100, outputTokens: 0 },
       { inputTokens: 100, outputTokens: 20 },
     ]);
+    expect(stream).toHaveBeenCalledWith(expect.objectContaining({ maxTokens: 30 }));
     expect(result.outcome.state.usage).toEqual({ inputTokens: 100, outputTokens: 20 });
   });
 

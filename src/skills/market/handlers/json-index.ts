@@ -6,7 +6,7 @@ import type { SkillJsonIndex, SkillJsonIndexConfig } from '../types.js';
 
 // ── json-index source type ────────────────────────────────────────────────────
 //
-// 通用 JSON 索引源(用户自传 URL)。约定 JSON 格式:{ entries: [{ name, path?, url }] }
+// 通用 JSON 索引源。约定 JSON 格式:{ entries: [{ name, path?, url, sha256 }] }
 // 用户可自 host 一个 skill 列表,或镜像官方列表。url 字段是 SKILL.md 直链。
 
 /** 列出某 json-index 源的所有可装 skill。 */
@@ -21,11 +21,18 @@ export async function list(source: MarketSourceRecord, signal?: AbortSignal): Pr
   });
 
   const entries = (data?.entries ?? [])
-    .filter((e) => e && typeof e.name === 'string' && typeof e.url === 'string')
+    .filter((e) =>
+      e
+      && typeof e.name === 'string'
+      && typeof e.url === 'string'
+      && typeof e.sha256 === 'string'
+      && /^[a-f0-9]{64}$/iu.test(e.sha256),
+    )
     .map((e): MarketSkillEntry => ({
       name: e.name,
       path: e.path ?? '',
       url:  e.url,
+      sha256: e.sha256.toLowerCase(),
     }));
 
   // 按 name 去重,留最后一条

@@ -228,6 +228,7 @@ export async function* runAgentLoop<TExecutorEvent>(
         tools,
         toolChoice: 'auto',
         thinking,
+        maxTokens: budget.remainingOutputTokens(),
         signal,
         usageContext: {
           callId: llmCallId,

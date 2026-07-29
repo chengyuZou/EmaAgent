@@ -153,6 +153,11 @@ export function dispatchSystemEvent(event: AppEvent): void {
       );
       break;
 
+    case 'kb_embeddings_staled':
+      // stale 标记落在后端 SQLite；重读文档列表让"需要重嵌"徽标立即出现。
+      void useKbStore.getState().loadDocuments();
+      break;
+
     // 这些事件为后续 Memory 轮次预留，当前没有前端状态需要更新。
     case 'memory_consolidation_started':
     case 'memory_consolidation_completed':

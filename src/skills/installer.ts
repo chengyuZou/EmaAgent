@@ -1,5 +1,4 @@
 // 这里从文本或受信公网来源下载 Skill, 校验完整性并交给 SkillStore 安装.
-import { createHash } from 'node:crypto';
 import type { SkillStore } from './store.js';
 import type { GithubSkillCoords, SkillRecord } from './types.js';
 import {
@@ -38,7 +37,7 @@ export class SkillInstaller {
    * 从 URL 安装 skill。URL 是 GitHub-raw `SKILL.md` 时,下载整个 skill 目录
    * (scripts/、references/、assets),让带可运行脚本的 skill 也能工作 - 不只 markdown。
    * 其他 URL 回退单文件安装。
-   * `expectedSha256`(来自 market manifest)对 SKILL.md 校验。
+   * `expectedSha256` 来自市场清单，覆盖 SKILL.md 与全部资源文件。
    * `signal` 透传给所有 fetch,调用方可中止安装。
    * `coords`   market entry 携带的 GitHub 坐标,优先于 URL 反解析 --
    *            jsDelivr URL 也能正确触发 bundle 下载(不丢 sibling assets)。
@@ -54,11 +53,11 @@ export class SkillInstaller {
     const rawMd  = bundle
       ? bundle.skillMd
       : await downloadSkillText(url, githubRawToJsdelivr(url) ?? undefined, signal);
-    const sha256 = createHash('sha256').update(rawMd).digest('hex');
-    if (expectedSha256 && sha256 !== expectedSha256) {
-      throw new Error(`Skill integrity check failed for ${url}: sha256 mismatch`);
-    }
-    return this.store.install(rawMd, { sourceUrl: url, sha256, assets: bundle?.assets });
+    return this.store.install(rawMd, {
+      sourceUrl: url,
+      expectedBundleSha256: expectedSha256,
+      assets: bundle?.assets,
+    });
   }
 
   /** 只校验不安装 - UI 预览步骤用。 */

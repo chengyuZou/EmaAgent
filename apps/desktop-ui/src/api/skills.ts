@@ -19,7 +19,7 @@ export interface MarketSkillEntry {
   description?: string;
   /** Raw file URL (GitHub raw / jsDelivr) ready for installFromUrl. */
   url:         string;
-  /** SHA-256 checksum (hex) for integrity verification, if provided. */
+  /** 发布方按 SKILL.md 与全部资源计算的规范 Bundle SHA-256 revision。 */
   sha256?:     string;
   author?:     string;
   tags?:       string[];
@@ -65,11 +65,20 @@ export const skillsApi = {
     });
   },
 
-  /** POST /api/skills — install from URL (coords 透传给后端 bundle 安装) */
-  async installFromUrl(url: string, coords?: GithubSkillCoords): Promise<{ skill: SkillRecord }> {
+  /** POST /api/skills — 市场安装同时透传发布方的完整 Bundle 摘要。 */
+  async installFromUrl(
+    url: string,
+    coords?: GithubSkillCoords,
+    sha256?: string,
+  ): Promise<{ skill: SkillRecord }> {
     return sidecarClient.request<{ skill: SkillRecord }>('/api/skills', {
       method: 'POST',
-      json:   { source: 'url', url, ...(coords ? { coords } : {}) },
+      json: {
+        source: 'url',
+        url,
+        ...(coords ? { coords } : {}),
+        ...(sha256 ? { sha256 } : {}),
+      },
     });
   },
 

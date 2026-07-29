@@ -37,6 +37,7 @@ describe('UsageRecordsRepo', () => {
   });
 
   it('同一 Turn 的多次调用不会互相覆盖', () => {
+    expect(database.db.pragma('user_version', { simple: true })).toBe(23);
     repo.record(record('call-b', 10));
     repo.record(record('call-a', 10));
     expect(repo.forTurn(asTurnId('turn-a')).map((row) => row.id)).toEqual(['call-a', 'call-b']);
@@ -60,6 +61,38 @@ describe('UsageRecordsRepo', () => {
         id: 'call-retry', status: 'completed', output_tokens: 30, error_code: null, created_at: 20,
       }),
     ]);
+  });
+
+  it('保存取消终态，且迟到完成不得覆盖已经确认的取消', () => {
+    repo.record({
+      ...record('call-cancelled', 10),
+      status: 'cancelled',
+      errorCode: 'llm/aborted',
+    });
+    repo.record({
+      ...record('call-cancelled', 20),
+      status: 'completed',
+      outputTokens: 30,
+    });
+
+    expect(repo.forTurn(asTurnId('turn-a'))).toEqual([
+      expect.objectContaining({
+        id: 'call-cancelled',
+        status: 'cancelled',
+        output_tokens: 20,
+        error_code: 'llm/aborted',
+        created_at: 10,
+      }),
+    ]);
+  });
+
+  it('数据库约束拒绝未知 Usage 终态', () => {
+    expect(() => database.db.prepare(`
+      INSERT INTO usage_records (
+        id, provider_id, model_id, capability, status,
+        duration_ms, created_at
+      ) VALUES ('invalid-status', 'provider-a', 'model-a', 'llm', 'aborted', 1, 1)
+    `).run()).toThrow(/CHECK constraint failed/);
   });
 
   it('拒绝把 Turn 用量归到另一个 Session', () => {

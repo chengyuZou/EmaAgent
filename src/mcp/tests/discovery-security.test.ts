@@ -6,6 +6,10 @@ import { DEFAULT_MAX_RESULT_BYTES } from '@ema-agent/tools';
 import type { McpToolInfo } from '../types.js';
 import { McpToolInfoListSchema } from '../types.js';
 import { buildMcpBuiltTool, discoverServerTools } from '../discovery.js';
+import {
+  MAX_MCP_TOOLS_PER_SERVER,
+  MAX_MCP_TOOL_SCHEMA_BYTES,
+} from '../toolSchemaLimits.js';
 
 describe('MCP 工具发现安全边界', () => {
   it('把取消信号交给 SDK listTools', async () => {
@@ -24,6 +28,39 @@ describe('MCP 工具发现安全边界', () => {
     } as unknown as Client;
 
     await expect(discoverServerTools('broken', client)).rejects.toThrow('list tools failed');
+  });
+
+  it('拒绝超过单 Server 工具数量上限的 live schema', async () => {
+    const tools = Array.from(
+      { length: MAX_MCP_TOOLS_PER_SERVER + 1 },
+      (_, index) => ({
+        name: `tool-${index}`,
+        inputSchema: { type: 'object' },
+      }),
+    );
+    const client = {
+      listTools: vi.fn(async () => ({ tools })),
+    } as unknown as Client;
+
+    await expect(discoverServerTools('too-many', client)).rejects.toThrow(
+      /reported 257 tools; limit is 256/i,
+    );
+  });
+
+  it('拒绝总量超过一 MiB 的 live schema', async () => {
+    const client = {
+      listTools: vi.fn(async () => ({
+        tools: [{
+          name: 'oversized',
+          description: 'x'.repeat(MAX_MCP_TOOL_SCHEMA_BYTES),
+          inputSchema: { type: 'object' },
+        }],
+      })),
+    } as unknown as Client;
+
+    await expect(discoverServerTools('oversized', client)).rejects.toThrow(
+      /tool schemas use more than 1048576 UTF-8 bytes/i,
+    );
   });
 
   it('保留远端 annotations 供展示，但明确标记为 reported hints', async () => {

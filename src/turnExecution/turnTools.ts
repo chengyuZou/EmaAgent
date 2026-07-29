@@ -224,11 +224,18 @@ export class TurnToolsBuilder {
         : undefined,
     };
 
+    let parentPolicy: TurnPolicy | undefined;
     const spawnerDeps: SubagentSpawnerDeps = {
       tools: this.deps.tools,
       llm: this.deps.llm,
       permission: this.deps.permission,
       hooks: this.deps.hooks,
+      getParentAllowedToolIds: () => {
+        if (!parentPolicy) {
+          throw new Error('Parent TurnPolicy is not ready');
+        }
+        return parentPolicy.allowedIds();
+      },
       buildAsk: this.deps.buildAsk,
       skillRunner: this.deps.skillRunner,
       agentRunStore: this.deps.agentRunStore,
@@ -289,6 +296,7 @@ export class TurnToolsBuilder {
       this.deps.tools.manifestSnapshot(visibleTools),
       profile.maxIterations,
     );
+    parentPolicy = policy;
     const toolContext: BuiltinToolContext = Object.freeze({
       ...capabilityContext,
       toolCapabilities: policy.capabilities(),

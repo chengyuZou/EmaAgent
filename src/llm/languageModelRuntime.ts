@@ -27,7 +27,7 @@ import {
 import { createCompatibilityRecovery } from './compatibilityRecovery.js';
 import { LlmRequestPreparer } from './llmRequestPreparer.js';
 import { ProviderRuntimeRegistry } from './providerRuntimeRegistry.js';
-import { LlmStreamProtocolError } from './errors.js';
+import { isAbortError, LlmStreamProtocolError } from './errors.js';
 
 const PROBE_TIMEOUT_MS = 10_000;
 
@@ -130,6 +130,8 @@ export class LanguageModelRuntime implements LanguageModel {
     const startedAt = Date.now();
     let usage: LlmTokenUsage | undefined;
     let completed = false;
+    let cancelled = false;
+    let sourceExhausted = false;
     let errorCode: string | null = null;
 
     try {
@@ -138,10 +140,15 @@ export class LanguageModelRuntime implements LanguageModel {
         if (chunk.type === 'done') completed = true;
         yield chunk;
       }
+      sourceExhausted = true;
     } catch (error) {
+      cancelled = isAbortError(error, request.signal);
       errorCode = usageErrorCode(error);
       throw error;
     } finally {
+      // 消费方主动提前关闭异步迭代器时不会进入 catch；正常耗尽却没有 done
+      // 则是 Provider 协议不完整，仍应计为失败而不是伪装成用户取消。
+      if (!sourceExhausted && !completed && errorCode === null) cancelled = true;
       const record: UsageRecord = {
         id: request.usageContext?.callId ?? randomUUID(),
         sessionId: request.usageContext?.sessionId ?? null,
@@ -149,7 +156,7 @@ export class LanguageModelRuntime implements LanguageModel {
         providerId: request.providerId,
         modelId: request.model,
         capability: 'llm',
-        status: completed ? 'completed' : 'failed',
+        status: completed ? 'completed' : cancelled ? 'cancelled' : 'failed',
         inputTokens: usage?.inputTokens ?? null,
         outputTokens: usage?.outputTokens ?? null,
         cacheReadInputTokens: usage?.cacheReadInputTokens ?? null,
@@ -158,7 +165,7 @@ export class LanguageModelRuntime implements LanguageModel {
         unit: null,
         costUsd: null,
         durationMs: Math.max(0, Date.now() - startedAt),
-        errorCode: completed ? null : errorCode ?? 'llm/stream_incomplete',
+        errorCode: completed ? null : cancelled ? 'llm/aborted' : errorCode ?? 'llm/stream_incomplete',
         createdAt: startedAt,
       };
       try {

@@ -13,6 +13,14 @@ export class McpToolCallError extends Error {
   }
 }
 
+/** 远端工具目录超过本地模型与持久化边界时，整批拒绝而不是部分注册。 */
+export class McpToolSchemaLimitError extends Error {
+  constructor(serverName: string, detail: string) {
+    super(`[MCP:${serverName}] Tool schema limit exceeded: ${detail}`);
+    this.name = 'McpToolSchemaLimitError';
+  }
+}
+
 export class McpTimeoutError extends Error {
   constructor(serverName: string, operation: string, ms: number) {
     super(`[MCP:${serverName}] ${operation} timed out after ${ms}ms`);

@@ -8,7 +8,7 @@
 
 根目录迁移已经结束，项目进入语义大重构阶段。统一执行主线第三刀已经完成：Chat/Work 都通过 `TurnExecutor.start() + AgentLoop` 执行，`TurnExecutor` 同步创建根 Turn 并返回单消费者、有界反压的 `TurnHandle`；执行 Profile 只控制迭代预算与模型可见 Tool Manifest，不再选择另一套 Engine。低层 `@ema-agent/turn` 继续只拥有根领域契约，不建立泛化的 Orchestrator、Runtime 或第三套 Engine。
 
-LocalHost L0 纯改名已经完成：`apps/core`、`@ema-agent/core`、`ema-core` 及发布资源身份统一为 `apps/localHost`、`@ema-agent/local-host`、`ema-local-host`；Tauri RuntimeService、readiness、externalBin、发布脚本、CI 与文档已经同步。该批没有迁移 Route、Orchestrator、wiring 或业务职责，下一批进入 L1 Turn 输入准备归位。
+LocalHost L0 纯改名已经完成：`apps/core`、`@ema-agent/core`、`ema-core` 及发布资源身份统一为 `apps/localHost`、`@ema-agent/local-host`、`ema-local-host`；Tauri RuntimeService、readiness、externalBin、发布脚本、CI 与文档已经同步。其后的 L1-L5、Route、HTTP、后台生命周期与 Composition Root P1-P5 也已完成，不能再把 L1 写成下一批。
 
 L1 Turn 输入准备已经完成：`TurnInputPreparer` 统一完成一次根 Turn 的附件持久化与媒体兼容、模型选择与能力快照、Prompt 快照、Workspace 和 Scratchpad 纯值准备；`TurnInput` 不携带回调、Runtime、Repo 或可变依赖，模型能力也不会在执行阶段再次解析。旧 `TurnExecutionPlan/PreparedTurnExecution` 已删除，LocalHost Orchestrator 不再实现第二套输入准备。目标继续保留低层 `turn`、用例层 `turnExecution` 和进程宿主 `localHost` 三层；不建立新的万能依赖袋或第二套 Orchestrator。
 
@@ -156,9 +156,9 @@ Task 与 AgentRun 前端已经分面：Desktop 使用正式 `/api/tasks` 快照�
 
 开始任何新批次前必须重新运行 `git status --short` 与 `git diff`，保留用户和其他 Agent 的修改。
 
-当前主线工作区包含 LocalHost Composition Root 的 Extension/Knowledge/Lifecycle 对象图拆分：新增两个内聚工厂，从 `bindings.ts` 移出 MCP/Marketplace/Skill 与 KB/事件/搜索装配，并按 required、eager-degraded、background、lazy 收口启动和关闭。工作区同时包含 K3 正在进行的 Memory 判断层改动；本批没有修改其文件。Knowledge 新增的 `knowledgeModelsSetting/knowledgeRetrievalSetting` 已保留在操作级读取位置。本地忽略目录 `docs/architecture/localHostWiringRefactorPlan.md` 继续作为施工计划。
+本轮开始时主线工作区干净，LocalHost Composition Root P1-P5 已全部提交。并行完成的 R8-R9 Skills、R10 MCP 与 A 类三项主链 Bug 仍在工作区，尚未提交；K3 继续独占 Memory/Knowledge 的 R11-R13，其他批次不得修改其文件。`EmaWorkState.md` 只由主 Agent 更新，避免并行覆盖。
 
-当前基线最近提交：`673cd567 feat(extraction): add evidence quote validation and handling for memory extraction; implement tests for extraction integrity and skipped events`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
+当前基线最近提交：`3ea4d97a feat: implement character runtime creation and emotion engine initialization`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
 
 ## 已确定的 V1 口径
 
@@ -207,22 +207,13 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 8. LocalHost L0、Turn 输入准备 L1、Turn Context L2、Turn Tools L3、Root Agent Execution L4、Turn Composition Root L5、TTS Turn 输出边界、精确根取消与旧 Orchestrator 删除、Route 业务副作用归位及 Task/AgentRun Route 窄依赖均已完成；
 9. Turn/AskUser、Permission、Session、Provider/ModelBindings、Settings/Theme、Transcribe、Cards、Knowledge Base、Storage Stats 与 Shell Route 已完成窄依赖；HTTP Server、后台生命周期和一次性启动装配也已完成收口。`buildBindings()` 的 Provider/模型、Character/Emotion、Sandbox/Tool、Session/Memory、Attachment/Backup、Extension/Knowledge 对象图均已提取，LocalHost Composition Root 施工计划完成；后续不建立嵌套依赖袋或通用 `Lazy<T>`；
 10. 后台进程按 `BackgroundProcess + ProcessOutput/ProcessStop` 单独实现 C 档，不修改 AgentLoop，也不恢复假 `run_in_background`；
-11. 外围质量收口（K3 主线，依据为 2026-07-29 外围模块评审与 ragflow/claude-code 参照研究，管线对照见 `docs/reviews/ragflow-claude-pipelines.md`）：
-    - **R2 KB 检索质量**：rerank 分数统一归一 [0,1]（已在区间内不动、越界才 min-max），rerank 替换制改为 RRF 分与 rerank 分的加权混合（消灭 0.4 硬门槛整条消失），空结果降阈值自动重查一次；
-    - **R1 KB 摄入可靠性**：staging（原文上传即落盘，asset 只存位置与 content_hash）、hash 变更检测跳过重复解析、chunk id 幂等、digest 增量重跑、修复 `indexing` 窗口崩溃后的恢复死循环；
-    - **R3 KB 模型集成安全**：检索结果加 untrusted 标注（对齐 NarrativeSearchTool 措辞）、`SearchOptions.maxResultChars` 显式预算与预算感知填充（低分 hit 降级为 citation-only），Tool 按上下文预算传参；
-    - **R4 Memory 使用层**：`turnContext.ts` 召回包 try/catch 降级（对齐 Narrative 分支）、时间戳改"N 天前"、召回块加"可能已过时"标注、单条 body 长度上限；排在 turnExecution 施工空档；
-    - **R5 Memory 提取信任**：提取要求引用原文举证（无引用丢弃）、CHAT 排除列表、未配置 memory 模型静默清空改显式事件；
-    - **R6 Memory 判断层**：route-nodes 的 embedding 0.85 去重降级为"候选 + LLM 判定"，召回粗筛后加 LLM 精选（复用 memory binding，解决字面相近语义不同域的误判）；
-    - **R7 Memory 溯源链**：L0 节点与 L1 摘要携带 source_id 指回 L2 事件/Turn，含 Data migration；
-    - **R8 Skills 供应链**：bundle 资产全量哈希，市场清单携带 sha256，安装时强制校验；
-    - **R9 Skills 收窄传播（语义已冻结）**：能力收窄按任务树继承——子 Agent 工具上限 = 父当前收窄集 ∩ 自身工具池，只能更窄不能更宽，与 TurnBudget 全树共享同原则；父 `TurnPolicy` 暴露 allowedIds，`SubagentSpawner.spawn()` 求交后建子 policy；
-    - **R10 MCP 生命周期**：stdio 崩溃 onclose 感知、status 转 failed 与重连、live 发现的 schema 字节与工具数上限；
-    - **R11 Memory 后台欠账**：stale embedding 修复任务落地（替换"只数不修"）、租约丢失时管道关闸防双写；
-    - **R12 KB 模型变更生命周期**：embed 模型绑定变更时自动 `markStaleExcept` 并向用户提示或引导 reembed，消灭"换模型后旧文档向量静默退出 dense 检索"的漂移；chunk 参数若未来进设置，需按 claim 时冻结进任务（同 `resolveOptions` 模式）且 dedup 键扩展为 `hash(内容 + chunk配置)`（ragflow digest 语义）。
-    - **R13 Memory 存储预算（语义已冻结，2026-07-29 用户新增）**：Memory L0/L2 全局字节上限（`memory.storage.maxBytes` 用户设置，nextOperation，默认 64MB），逻辑字节 = `SUM(LENGTH(embedding)) + 文本列`，不碰 VACUUM。超限自动逐级降压（纯 SQL、零 LLM）：①删零/低 importance 长期未引用（`deleteZeroImportanceOlderThan` 语义从手动改自动）；②仍超限则对最冷行丢弃 embedding BLOB（文本与图保留，待 R11 重 embed 闭环）；③仍超限发事件上报，`user_fact/preference/relationship` 保护类永不自动删。复活死配置 `idleThresholdMs/maintenanceIntervalMs` 挂后台空闲窗口。顺手修两个既存问题：`hardDeleteZeroImportance` 批量删除不同步清 ANN 索引（幽灵节点）、decay 注释声称保护三类节点但 SQL 无 node_type 过滤（注释与实现对齐）。
-    - **A 主链真 bug**：ToolResultStore EEXIST 内容错位、Usage 状态模型补 `cancelled`、Anthropic 隐式 maxTokens=4096 改透传；
-    - **B 主链安全收口**：install-git 与 mcpStdioGate 路由级审批修通、`AGEN_UNSAFE_*` 生产构建物理拒绝、Sandbox 状态接前端常驻提示；
+11. 外围质量收口（依据为 2026-07-29 外围模块评审与 ragflow/claude-code 参照研究，管线对照见 `docs/reviews/ragflow-claude-pipelines.md`）：
+    - **R1-R7 已完成**：KB 摄入可靠性、检索质量、模型集成安全，以及 Memory 使用层、提取信任、判断层与溯源链均已落地；实现与验证见“最近验证”，不要继续作为待办重复施工；
+    - **R8-R9 Skills 已完成**：bundle 资产全量哈希、市场清单 sha256 与安装强校验已经落地；子 Agent 工具上限 = 父当前收窄集 ∩ 自身工具池，只能更窄不能更宽；
+    - **R10 MCP 已完成**：stdio 崩溃 onclose 感知、status 转 failed、惰性重连，以及 live/cache 共用的 Schema 字节与工具数上限已经落地；
+    - **R11-R13 Memory/KB（K3 独占在途）**：stale embedding 修复与租约丢失关闸；embed 模型变更后的 stale/reembed 生命周期；Memory 全局逻辑字节预算、分级降压与 ANN 索引同步；
+    - **A 主链真 Bug 已完成**：ToolResultStore EEXIST 只复用完全一致的内容；Usage 状态模型已区分 `cancelled`；Anthropic 已删除隐式 `maxTokens=4096` 并使用调用级剩余输出预算；
+    - **B 主链安全收口**：install-git 与 mcpStdioGate 路由级审批已经接通；仍待 `AGEN_UNSAFE_*` 在生产构建中物理拒绝，以及 Sandbox 状态接前端常驻提示；
     - **C 主链卫生**：agentLoopState 死声明清理（failed 相位、llm_error/user_timeout/user_cancel、pendingPromptId）、prefixHash 注释与行为对齐、压缩-恢复链字符串耦合改共享常量。
 
 命名随业务批次清理：旧 `IFileStateStoreEntry/IFileStateStore` 及后续过渡接口已经删除，`IToolExecutionJournal` 已改为职责名；其余迁移期 `I*` 类型继续随业务边界处理，不单独进行全仓机械重命名。
@@ -231,6 +222,11 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- KB 模型变更生命周期（外围 R12）：Knowledge 13 个测试文件 63/63、LocalHost 39 个测试文件 150/150、Desktop UI 28 个测试文件 119/119 通过；Knowledge build、LocalHost 与 Desktop UI typecheck 通过。`kb.models` 设置的 embed 引用变更现在自动失效全部已注册 KB：`KbManager.invalidateAllEmbeddings` 逐库标记 stale 并清内存索引（单库失败不中断，失败 id 单独返回，未打开的库下次打开时 ensureIndex 惰性补标）；`watchKnowledgeEmbedModel` 在设置提交+快照替换后的变更事件上触发（读取的一定是已持久化新值），embed 引用未变/被移除/维度未知均不动作，连续变更按 tail 链串行。完成后发出 `kb_embeddings_staled` 引导事件（AppEvent 新变体），前端映射为"N 个文档需要重新嵌入"通知并重读文档列表让 stale 徽标立即出现。新增测试覆盖全 KB 累计/单库失败隔离/空注册表、embed 变更触发/无关键忽略/引用未变忽略/移除不动作/维度未知跳过/连续变更串行/unwatch 生效。chunk 参数 freeze 属"未来若进设置"，本批不做。`git diff --check` 通过，仅有既有 CRLF 提示。
+
+- R8-R9 Skills：Skills 5 个测试文件 28/28、TurnExecution 8 个测试文件 24/24（4 个真实模型 Integration 按规则跳过）、Desktop UI 与 LocalHost Skill 管理定向测试各 4/4 通过。供应链摘要覆盖完整 Bundle，市场摘要从 UI/API 透传到安装事务；子 Agent 只继承父 Agent 当前仍允许的工具交集。
+- R10 MCP：MCP 7 个测试文件 30/30 通过。测试覆盖 Transport 意外关闭、失败状态、缓存保留、下一次调用惰性重连、显式断开忽略迟到回调，以及 live/cache 两条 Schema 发现路径的 256 工具和 1 MiB 总量上限。
+- A 类主链 Bug：LLM 11 个测试文件 131/131、Tools 6 个测试文件 30/30、Agent 7 个测试文件 31/31、Storage 27 个测试文件 126/126 通过；Skills、MCP、LLM、Tools、Storage、Agent、TurnExecution、Desktop UI、LocalHost 九模块 typecheck 通过。覆盖 ToolResultStore EEXIST 读失败与内容冲突、Usage `cancelled` 迁移和迟到终态、消费者提前关闭流、Provider 未完整流，以及 Anthropic 显式输出预算耗尽。
 - LocalHost Composition Root Character/Emotion 批次：定向 5/5、LocalHost 全量 38 个测试文件 143/143、typecheck 与正式 build 通过，构建验证 96 个源码、385 个产物。测试覆盖 Live2D 外键种子顺序、重复构造幂等、缺少活动角色时激活 Ema、Emotion 使用当前角色词表及 DB 不变量失败向上抛出；`bindings.ts` 的角色内部构造归零，运行期角色切换 emitter 未改。`git diff --check` 通过，仅有既有 CRLF 与不可访问 pytest 缓存提示。
 - Memory 溯源链（外围 R7）：Storage 27 个测试文件 124/124、Memory 11 个测试文件 44/44 通过；Memory typecheck/build、LocalHost typecheck 通过。Profile v14 新建 `memory_node_sources(node_id, source_session_id, source_turn_id, created_at)` 关联表（PK 三列，`source_turn_id` NOT NULL DEFAULT '' 规避 SQLite PK 列 NULL 互不相等的去重陷阱；跨库软引用不建 FK），存量从 `memory_node_lazy_updates` 回填（NULL session 跳过不伪造，同键取最早时间）。新增 `MemoryNodeSourcesRepo`（INSERT OR IGNORE 幂等 record、listByNode/listByNodes）；写入侧两条路径登记：`routeCandidateNode` 新建节点登记首条来源、`enqueueLazyUpdate` 为既有节点累积来源；consolidation 排水不动溯源（追加时已登记），L1 session_notes 溯源固有（session_id 主键 + 每条 entry 带 turnId），只在注释中说明不加列。新增测试覆盖迁移回填（NULL turn 归一空串、同键取最早、NULL session 跳过）、record 幂等/批量读取/CASCADE 清理、pipeline 端到端（新建与 lazy update 两条路径、多节点互不串扰）；既有回滚测试补 memory_node_sources 回滚断言；两处 profile 最新版本断言随 v14 更新。`git diff --check` 通过，仅有既有 CRLF 提示。
 
@@ -342,7 +338,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 先完整阅读 CLAUDE.md 与 EmaWorkState.md，再按当前批次阅读 EmaRefactor.md 和 EmaClaudeArchitectureReview.md 对应章节。检查 git status、diff 和最近提交，保留用户及其他 Agent 的修改。
 
-LocalHost L0、Turn 输入准备 L1、Turn Context L2、Turn Tools L3、Root Agent Execution L4、Turn Composition Root L5、TTS Turn 输出边界、精确根取消与旧 Orchestrator 删除、Route 业务副作用归位、全部 Route 窄依赖、HTTP Server 的 Route 注册表边界以及 Composition Root 的 Provider/Model、Character/Emotion、Sandbox/Tool、Session/Memory、Attachment/Backup、Extension/Knowledge/Lifecycle 批次已经完成。Agent/Context/Attachment 用户设置冻结进每根 `TurnInput`，Vision 与 Knowledge 设置在每次 Operation 开始时读取一次；不要在 AgentLoop 中重读 SQL 或修改共享 Compactor。不要恢复 `apps/core`、旧 Orchestrator、宽 `AppBindings` Route、TOML 设置、MCP `startAll()`、KB `initAll()` 或 `buildBindings()` 中的异步启动副作用。LocalHost Composition Root 计划已经结束，下一批进入外围欠账；Character Seed 必须继续保持 Live2D 外键、活动角色和 Emotion 初始化顺序。不要提交 Git。
+LocalHost L0-L5、Turn/TTS/Route/HTTP 边界以及 Composition Root P1-P5 已全部完成；Character Seed 必须继续保持 Live2D 外键、活动角色和 Emotion 初始化顺序。R1-R10 与 A 类三项主链 Bug 已经完成，不要重复施工；K3 独占 R11-R13 Memory/Knowledge。下一批从 B 类主链安全收口或 C 类主链卫生中选择一个边界，不要混批。不要在 AgentLoop 中重读 SQL 或修改共享 Compactor，不要恢复 `apps/core`、旧 Orchestrator、宽 `AppBindings` Route、TOML 设置、MCP `startAll()`、KB `initAll()` 或 `buildBindings()` 中的异步启动副作用。不要提交 Git。
 ```
 
 ## 维护方式

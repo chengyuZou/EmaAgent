@@ -4,7 +4,8 @@ import { describe, expect, it } from 'vitest';
 import { asAgentRunId } from '@ema-agent/ids';
 import type { AgentRunMessageInsert } from '@ema-agent/storage';
 import { HookBus } from '@ema-agent/hooks';
-import { ToolRegistry } from '@ema-agent/tools';
+import { ToolRegistry, type BuiltTool } from '@ema-agent/tools';
+import { TurnPolicy } from '../policy.js';
 import { SubagentSpawner } from '../spawner.js';
 import type { SubagentSpawnerDeps } from '../spawner.js';
 
@@ -27,6 +28,7 @@ describe('SubagentSpawner 生命周期', () => {
       llm: llm as never,
       tools: new ToolRegistry(),
       permission: {} as never,
+      getParentAllowedToolIds: () => new Set(),
       agentRunTranscriptWriter: {
         insert(message) {
           messages.push(message);
@@ -84,6 +86,7 @@ describe('SubagentSpawner 生命周期', () => {
       emotion: {} as never,
       tools: new ToolRegistry(),
       permission: {} as never,
+      getParentAllowedToolIds: () => new Set(),
       agentRunStore: {
         start: input => ({
           id: input.agentRunId,
@@ -123,4 +126,66 @@ describe('SubagentSpawner 生命周期', () => {
     expect(cancelled).toContain(`${agentRunId}:parent_turn_finished`);
     await expect(spawner.awaitBackground(agentRunId)).resolves.toBeNull();
   });
+
+  it('子 Agent 工具上限取父当前 allowedIds 与自身 ToolPool 的交集', async () => {
+    const tools = new ToolRegistry();
+    tools.register(fakeTool('tool.allowed', 'Allowed'));
+    tools.register(fakeTool('tool.parent-blocked', 'ParentBlocked'));
+    const parentPolicy = new TurnPolicy(tools.manifestSnapshot());
+    const requests: Array<{ tools?: Array<{ name: string }> }> = [];
+    const deps: SubagentSpawnerDeps = {
+      hooks: new HookBus(),
+      llm: {
+        stream: async function* (request: { tools?: Array<{ name: string }> }) {
+          requests.push(request);
+          yield { type: 'done', stopReason: 'end_turn' };
+        },
+      } as never,
+      tools,
+      permission: {} as never,
+      getParentAllowedToolIds: () => parentPolicy.allowedIds(),
+    };
+    const spawner = new SubagentSpawner(
+      deps,
+      'session-1',
+      'turn-1',
+      'provider-1',
+      'model-1',
+      [],
+      '',
+      undefined,
+      new Map(),
+    );
+    parentPolicy.capabilities().restrict({
+      source: 'skill:allowed-only',
+      allowedToolPatterns: ['Allowed'],
+    });
+
+    await spawner.spawn('answer directly', {
+      agentRunId: asAgentRunId('33333333-3333-4333-8333-333333333333'),
+    }, new AbortController().signal);
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.tools?.map((tool) => tool.name)).toEqual(['Allowed']);
+  });
 });
+
+function fakeTool(id: string, name: string): BuiltTool {
+  return {
+    id,
+    name,
+    origin: { kind: 'builtin' },
+    description: name,
+    inputSchema: {} as BuiltTool['inputSchema'],
+    maxResultBytes: 1024,
+    isReadOnly: () => true,
+    isConcurrencySafe: () => true,
+    requiresUserInteraction: () => false,
+    permissionMeta: { riskLevel: 'low', accessType: 'read' },
+    descriptor: () => ({ name, description: name, inputJsonSchema: {} }),
+    execute: async () => undefined,
+    unsafeExecute: async () => undefined,
+    unsafeValidateContext: () => ({ valid: true, context: undefined }),
+    parseInput: (input) => input,
+  };
+}

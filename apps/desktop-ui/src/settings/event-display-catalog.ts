@@ -56,6 +56,7 @@ const EVENT_LABELS: Record<string, string> = {
   kb_reembed_partial_failed: '知识库重嵌入部分失败',
   kb_reembed_cancelled: '知识库重嵌入取消',
   kb_reembed_failed: '知识库重嵌入失败',
+  kb_embeddings_staled: '知识库嵌入模型已更换',
   agent_iteration: 'Agent 迭代进度',
   agent_breaker_tripped: 'Agent 安全停止',
   subagent_started: '子 Agent 开始',

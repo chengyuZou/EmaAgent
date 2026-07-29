@@ -40,6 +40,14 @@ export class TurnPolicy {
     return this.scope;
   }
 
+  /**
+   * 子 Agent 在真正 spawn 时读取当前上限；返回副本，调用方不能改写父作用域。
+   * Skill 若已收窄当前 Agent，这里会立即反映收窄后的稳定工具 ID。
+   */
+  allowedIds(): ReadonlySet<string> {
+    return new Set(this.scope.list().map((tool) => tool.id));
+  }
+
   manifestSnapshot(): ToolManifestSnapshot {
     return this.manifest;
   }

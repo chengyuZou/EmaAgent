@@ -1,4 +1,4 @@
-// 这里管理 MCP 服务器的连接、工具发现、调用和本地进程启动门禁。
+// MCP 服务器注册表管理连接、工具发现、调用和本地进程启动门禁。
 
 import { randomUUID }       from 'node:crypto';
 import { ToolListChangedNotificationSchema } from '@modelcontextprotocol/sdk/types.js';
@@ -399,6 +399,9 @@ export class McpRegistry {
   ): Promise<McpConnection> {
     let opened: OpenedConnection | undefined;
     let retained = false;
+    let connectionCommitted = false;
+    let lastTransportError: Error | undefined;
+    let closedError: Error | undefined;
     try {
       if (previous) await cleanupQuietly(previous);
       this.assertCurrent(serverName, runtime, generation);
@@ -408,6 +411,26 @@ export class McpRegistry {
 
       opened = await openConnection(serverName, authorizedConfig, lifecycleAbort.signal);
       this.assertCurrent(serverName, runtime, generation);
+
+      // SDK 的 onerror 可能是可恢复协议错误，因此只记住诊断；只有 onclose
+      // 才表示当前 Client 已不可继续使用。显式 disconnect/reconnect 会先推进
+      // generation，迟到的 close 回调不能覆盖新一代状态。
+      const previousOnError = opened.client.onerror;
+      const previousOnClose = opened.client.onclose;
+      opened.client.onerror = (error) => {
+        lastTransportError = error;
+        previousOnError?.(error);
+      };
+      opened.client.onclose = () => {
+        const error = lastTransportError ?? new Error(
+          `[MCP:${serverName}] transport closed unexpectedly`,
+        );
+        closedError = error;
+        if (connectionCommitted && opened) {
+          this.handleUnexpectedClose(serverName, runtime, generation, opened, error);
+        }
+        previousOnClose?.();
+      };
 
       // 先监听变化，再做初次 listTools。连接阶段收到的通知会先记账，
       // 初次提交完成后立即刷新，避免 handler 安装窗口丢失变化事件。
@@ -422,6 +445,7 @@ export class McpRegistry {
         (error) => lifecycleAbort.abort(error),
       );
       this.assertCurrent(serverName, runtime, generation);
+      if (closedError) throw closedError;
 
       // 新批次先整体校验并提交，再移除缓存中已经消失的旧工具，避免半注册。
       this.toolRegistry.registerMcpBatch(toRegistrations(tools, this));
@@ -437,6 +461,7 @@ export class McpRegistry {
       runtime.info = info;
       runtime.opened = opened;
       retained = true;
+      connectionCommitted = true;
 
       // 工具缓存失败不能破坏已经建立的实时连接。
       try { this.store.cacheTools(serverName, tools); } catch { /* ignore */ }
@@ -463,6 +488,36 @@ export class McpRegistry {
         if (!retained) runtime.lifecycleAbort = undefined;
       }
     }
+  }
+
+  private handleUnexpectedClose(
+    serverName: string,
+    runtime: McpServerRuntime,
+    generation: number,
+    opened: OpenedConnection,
+    error: Error,
+  ): void {
+    if (
+      runtime.generation !== generation
+      || runtime.opened !== opened
+      || runtime.info.status !== 'connected'
+    ) {
+      return;
+    }
+
+    const tools = runtime.info.tools;
+    runtime.generation += 1;
+    runtime.lifecycleAbort?.abort(error);
+    runtime.opened = undefined;
+    runtime.connectTask = undefined;
+    runtime.lifecycleAbort = undefined;
+    runtime.refreshTask = undefined;
+    runtime.refreshRequested = false;
+    runtime.info = connectionInfo(serverName, 'failed', tools, error.message);
+
+    // 保留最后一次成功 Schema 作为惰性工具入口；下一次调用会重新建立
+    // Transport，但不会自动重放刚刚失败且可能已有副作用的 Tool Call。
+    if (tools.length > 0) this.primed.set(serverName, [...tools]);
   }
 
   private assertCurrent(

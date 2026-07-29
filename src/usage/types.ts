@@ -1,6 +1,6 @@
 export type UsageCapability = 'llm' | 'vision' | 'embed' | 'rerank' | 'stt' | 'tts';
 
-export type UsageRecordStatus = 'completed' | 'failed';
+export type UsageRecordStatus = 'completed' | 'failed' | 'cancelled';
 
 /** 把一次模型调用关联到业务身份；后台调用可以只提供 callId。 */
 export interface UsageContext<TCallId extends string = string> {

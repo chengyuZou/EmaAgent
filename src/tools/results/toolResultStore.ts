@@ -63,6 +63,9 @@ export class ToolResultStore {
         fs.writeFileSync(filePath, content, { encoding: 'utf8', flag: 'wx' });
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'EEXIST') return { kind: 'unchanged' };
+        // 同一 Tool Call 重放可以复用既有文件；内容不同说明身份发生碰撞，
+        // 此时必须保留原始结果，不能让预览指向另一份正文。
+        if (!existingFileMatches(filePath, content)) return { kind: 'unchanged' };
       }
 
       const { preview, hasMore } = generatePreview(content, DEFAULT_RESULT_PREVIEW_BYTES);
@@ -171,5 +174,13 @@ export function generatePreview(
 function assertPositiveBudget(value: number, name: string): void {
   if (!Number.isSafeInteger(value) || value <= 0) {
     throw new RangeError(`${name} must be a positive safe integer, got ${value}`);
+  }
+}
+
+function existingFileMatches(filePath: string, content: string): boolean {
+  try {
+    return fs.readFileSync(filePath, 'utf8') === content;
+  } catch {
+    return false;
   }
 }

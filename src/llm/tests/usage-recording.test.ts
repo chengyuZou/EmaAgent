@@ -78,4 +78,91 @@ describe('LanguageModelRuntime usage recording', () => {
       outputTokens: null, errorCode: 'provider/down',
     });
   });
+
+  it('主动取消调用记录为 cancelled，不污染 Provider 失败统计', async () => {
+    const records: UsageRecord[] = [];
+    const controller = new AbortController();
+    const adapter: LlmAdapter = {
+      async *stream() {
+        controller.abort(new DOMException('cancelled', 'AbortError'));
+        throw controller.signal.reason;
+      },
+    };
+    const router = new LanguageModelRuntime(
+      [config],
+      new Map([['provider-1', adapter]]),
+      { usageRecorder: { record: (record) => records.push(record) } },
+    );
+
+    await expect(consume(router.stream({
+      providerId: 'provider-1',
+      model: 'model-1',
+      messages: [],
+      signal: controller.signal,
+      usageContext: { callId: asLlmCallId('llm-call-cancelled') },
+    }))).rejects.toMatchObject({ name: 'AbortError' });
+
+    expect(records[0]).toMatchObject({
+      id: 'llm-call-cancelled',
+      status: 'cancelled',
+      errorCode: 'llm/aborted',
+    });
+  });
+
+  it('消费方提前关闭流时记录为 cancelled', async () => {
+    const records: UsageRecord[] = [];
+    const adapter: LlmAdapter = {
+      async *stream() {
+        yield { type: 'text_delta', blockIndex: 0, delta: 'partial' };
+        yield { type: 'done', stopReason: 'end_turn' };
+      },
+    };
+    const router = new LanguageModelRuntime(
+      [config],
+      new Map([['provider-1', adapter]]),
+      { usageRecorder: { record: (record) => records.push(record) } },
+    );
+
+    for await (const _chunk of router.stream({
+      providerId: 'provider-1',
+      model: 'model-1',
+      messages: [],
+      usageContext: { callId: asLlmCallId('llm-call-consumer-closed') },
+    })) {
+      break;
+    }
+
+    expect(records[0]).toMatchObject({
+      id: 'llm-call-consumer-closed',
+      status: 'cancelled',
+      errorCode: 'llm/aborted',
+    });
+  });
+
+  it('Provider 正常耗尽却缺少 done 时记录为协议失败', async () => {
+    const records: UsageRecord[] = [];
+    const adapter: LlmAdapter = {
+      async *stream() {
+        yield { type: 'text_delta', blockIndex: 0, delta: 'partial' };
+      },
+    };
+    const router = new LanguageModelRuntime(
+      [config],
+      new Map([['provider-1', adapter]]),
+      { usageRecorder: { record: (record) => records.push(record) } },
+    );
+
+    await expect(consume(router.stream({
+      providerId: 'provider-1',
+      model: 'model-1',
+      messages: [],
+      usageContext: { callId: asLlmCallId('llm-call-incomplete') },
+    }))).rejects.toThrow('ended without an explicit provider terminal signal');
+
+    expect(records[0]).toMatchObject({
+      id: 'llm-call-incomplete',
+      status: 'failed',
+      errorCode: 'provider/incomplete_stream',
+    });
+  });
 });

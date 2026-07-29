@@ -9,6 +9,7 @@ import {
   type IngestOptions,
   type KbSearchResult,
   type KnowledgeEvent,
+  type KnowledgeModelRef,
 } from '@ema-agent/knowledge';
 import type { RerankRuntime } from '@ema-agent/rerank';
 import type { SettingsStore } from '@ema-agent/settings';
@@ -17,6 +18,7 @@ import {
   KbRegistryRepo,
   type Database,
   type ModelBindingsRepo,
+  type ProviderEmbedModelsRepo,
 } from '@ema-agent/storage';
 import type { KbAssetScope } from '@ema-agent/turn';
 import type { VisionRuntime } from '@ema-agent/vision';
@@ -33,6 +35,7 @@ export function createKnowledgeRuntime(
   rerank: RerankRuntime,
   vision: VisionRuntime,
   emitEvent: KnowledgeEventSink,
+  providerEmbedModels: ProviderEmbedModelsRepo,
 ) {
   const resolveIngestModels = (): Partial<IngestOptions> => {
     const models = settings.get(knowledgeModelsSetting);
@@ -63,6 +66,16 @@ export function createKnowledgeRuntime(
     if (projected) emitEvent(projected);
   });
 
+  // embed 模型绑定变更时自动标记全部 KB stale 并引导重嵌，
+  // 不再依赖前端记得调 /invalidate 或等下次搜索惰性发现。
+  const unwatchEmbedModel = watchKnowledgeEmbedModel({
+    settings,
+    providerEmbedModels,
+    embed,
+    kb,
+    emitEvent,
+  });
+
   const kbSearch = (
     query: string,
     topK?: number,
@@ -87,7 +100,67 @@ export function createKnowledgeRuntime(
     });
   };
 
-  return { kb, kbSearch };
+  return { kb, kbSearch, unwatchEmbedModel };
+}
+
+/**
+ * 订阅 `kb.models` 设置变更：embed 模型引用变化后自动 invalidate 全部 KB
+ * 并发出 `kb_embeddings_staled` 引导事件。返回取消订阅函数。
+ *
+ * 变更事件在 SQLite 提交与快照替换之后发布，这里读到的一定是已持久化的新值；
+ * 连续多次变更按 tail 链串行执行，前一场 invalidate 不会被后一场插队。
+ */
+export function watchKnowledgeEmbedModel(deps: {
+  settings: SettingsStore;
+  providerEmbedModels: ProviderEmbedModelsRepo;
+  embed: EmbedRuntime;
+  kb: Pick<KbManager, 'invalidateAllEmbeddings'>;
+  emitEvent: KnowledgeEventSink;
+}): () => void {
+  let previousEmbed = deps.settings.get(knowledgeModelsSetting).embed;
+  let tail: Promise<void> = Promise.resolve();
+
+  const runInvalidation = (next: KnowledgeModelRef): void => {
+    tail = tail.then(async () => {
+      const dim = deps.providerEmbedModels.dimFor(next.providerConfigId, next.model);
+      if (!dim) {
+        console.warn(
+          `[knowledge] embed model ${next.providerConfigId}/${next.model} 维度未知，跳过 stale 标记`,
+        );
+        return;
+      }
+      const space = deps.embed.embeddingSpace(next.providerConfigId, next.model, dim);
+      const result = await deps.kb.invalidateAllEmbeddings(space.id);
+      deps.emitEvent({
+        type: 'kb_embeddings_staled',
+        markedStale: result.markedStale,
+        kbCount: result.kbCount,
+        failedKbIds: result.failedKbIds,
+        providerConfigId: next.providerConfigId,
+        model: next.model,
+      });
+    }).catch((err) => {
+      // 失败不阻断设置链路；相关 KB 下次打开或搜索时仍会惰性补标。
+      console.warn('[knowledge] embed 模型变更后的 stale 标记失败:', err);
+    });
+  };
+
+  return deps.settings.subscribe((event) => {
+    if (!event.changedKeys.includes(knowledgeModelsSetting.key)) return;
+    const next = deps.settings.get(knowledgeModelsSetting).embed;
+    if (sameModelRef(previousEmbed, next)) return;
+    previousEmbed = next;
+    if (!next) return;
+    runInvalidation(next);
+  });
+}
+
+function sameModelRef(
+  a: KnowledgeModelRef | undefined,
+  b: KnowledgeModelRef | undefined,
+): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  return a.providerConfigId === b.providerConfigId && a.model === b.model;
 }
 
 function projectKnowledgeEvent(

@@ -28,7 +28,12 @@ function MarketView({
 }: {
   active:         boolean;
   installedNames: Set<string>;
-  onInstall:      (url: string, name: string, coords?: GithubSkillCoords) => Promise<void>;
+  onInstall:      (
+    url: string,
+    name: string,
+    coords?: GithubSkillCoords,
+    sha256?: string,
+  ) => Promise<void>;
 }): JSX.Element {
   const marketSkills  = useSkillStore((s) => s.marketSkills);
   const marketLoading = useSkillStore((s) => s.marketLoading);
@@ -46,10 +51,17 @@ function MarketView({
   }, [active]);
 
   async function handleInstall(entry: MarketSkillEntry): Promise<void> {
+    if (!entry.sha256) {
+      showToast(
+        `无法安装 ${entry.name}：该市场源没有发布完整 Bundle SHA-256，请改用带校验清单的源。`,
+        { variant: 'danger' },
+      );
+      return;
+    }
     setInstalling((prev) => new Set(prev).add(entry.name));
     try {
-      // coords 透传给后端 bundle 安装(不丢 sibling assets)
-      await onInstall(entry.url, entry.name, entry.coords);
+      // 摘要只由市场清单提供；UI 不读取资源或自行构造完整性声明。
+      await onInstall(entry.url, entry.name, entry.coords, entry.sha256);
     } finally {
       setInstalling((prev) => {
         const next = new Set(prev);
@@ -107,6 +119,7 @@ function MarketView({
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-sm font-semibold text-[var(--ema-text-primary)]">{entry.name}</span>
               <Badge variant="neutral">v{entry.version}</Badge>
+              {!entry.sha256 && <Badge variant="warn">未锁定</Badge>}
               {entry.tags?.map((t) => (
                 <Badge key={t} variant="neutral">{t}</Badge>
               ))}
@@ -306,13 +319,17 @@ export function SkillsTab(): JSX.Element {
     }
   }
 
-  async function handleInstallFromUrl(url: string, coords?: GithubSkillCoords): Promise<void> {
+  async function handleInstallFromUrl(
+    url: string,
+    coords?: GithubSkillCoords,
+    sha256?: string,
+  ): Promise<void> {
     const target = url || urlInput.trim();
     if (!target) return;
     setInstalling(true);
     setInstallError(null);
     try {
-      const sk = await useSkillStore.getState().installFromUrl(target, coords);
+      const sk = await useSkillStore.getState().installFromUrl(target, coords, sha256);
       showToast(`已安装 ${sk.name}`, { variant: 'success' });
       closeDialog();
     } catch (err) {
@@ -390,7 +407,8 @@ export function SkillsTab(): JSX.Element {
         <MarketView
           active={activeTab === 'market'}
           installedNames={installedNames}
-          onInstall={(url, _name, coords) => handleInstallFromUrl(url, coords)}
+          onInstall={(url, _name, coords, sha256) =>
+            handleInstallFromUrl(url, coords, sha256)}
         />
       ),
     },

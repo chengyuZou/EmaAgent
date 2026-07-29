@@ -393,6 +393,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     rerank,
     vision,
     event => systemBus.emit(event),
+    providerEmbedModels,
   );
 
   const backgroundWork = new BackgroundWork(

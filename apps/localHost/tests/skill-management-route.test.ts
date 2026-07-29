@@ -1,4 +1,4 @@
-// 测试 Skill 重命名返回权威记录，并确认 V1 的移动路由不会伪造成功。
+// 测试 Skill 市场摘要透传、重命名权威记录及 V1 移动路由的失败语义。
 import { describe, expect, it, vi } from 'vitest';
 import type { SkillRecord } from '@ema-agent/skills';
 import { createSkillsRouter } from '../src/routes/skills.js';
@@ -52,10 +52,32 @@ function createApp() {
     marketSources,
     marketRegistry,
   );
-  return { app, skillStore };
+  return { app, skillStore, skillInstaller };
 }
 
 describe('Skill 管理路由', () => {
+  it('URL 安装把市场 Bundle sha256 原样交给 Installer', async () => {
+    const { app, skillInstaller } = createApp();
+    const sha256 = 'b'.repeat(64);
+    const response = await app.request('/skills', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        source: 'url',
+        url: 'https://example.com/verified/SKILL.md',
+        sha256,
+      }),
+    });
+
+    expect(response.status).toBe(201);
+    expect(skillInstaller.installFromUrl).toHaveBeenCalledWith(
+      'https://example.com/verified/SKILL.md',
+      sha256,
+      expect.any(AbortSignal),
+      undefined,
+    );
+  });
+
   it('重命名会裁剪首尾空白并返回新的权威记录', async () => {
     const { app, skillStore } = createApp();
     const response = await app.request('/skills/%E6%97%A7%E6%8A%80%E8%83%BD/rename', {

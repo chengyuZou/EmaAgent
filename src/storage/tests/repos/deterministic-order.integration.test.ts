@@ -107,7 +107,7 @@ describe('N-012 Data DB 确定性事件顺序', () => {
       .toContain('pending_fragments(session_id, at ASC, created_at ASC, id ASC)');
     expect(indexSql(database, 'idx_telemetry_kind').replaceAll(/\s+/g, ' '))
       .toContain('telemetry_events(kind, created_at DESC, id DESC)');
-    expect(database.currentVersion()).toBe(22);
+    expect(database.currentVersion()).toBe(23);
   });
 });
 
