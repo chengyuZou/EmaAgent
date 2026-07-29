@@ -67,7 +67,8 @@ export async function consolidatePendingNodes(
       }
     }
 
-    // Drain only the rows we actually consolidated — new arrivals stay
+    // Drain only the rows we actually consolidated — new arrivals stay.
+    // 溯源链不受影响：来源在 lazy update 追加时已登记进 memory_node_sources。
     deps.memory.lazyUpdates.deleteByIds(updates.map(u => u.id));
     consolidated++;
   }

@@ -7,6 +7,10 @@ import type { SessionNoteEntry } from './types.js';
 import { safeParseEntries } from './types.js';
 import type { ExtractionPipelineDeps } from './pipeline.js';
 
+/**
+ * L1 摘要的溯源是固有的：session_id 即主键，每条 entry 携带产生它的 turnId，
+ * 不需要 L0 那样的关联表。
+ */
 export function appendSessionNote(
   deps: ExtractionPipelineDeps,
   sessionId: SessionId,

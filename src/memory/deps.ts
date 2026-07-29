@@ -3,6 +3,7 @@ import type {
   MemoryEdgesRepo,
   MemoryLazyUpdatesRepo,
   MemoryItemsRepo,
+  MemoryNodeSourcesRepo,
   SessionNotesRepo,
   MemoryTasksRepo,
   MemorySessionStateRepo,
@@ -33,6 +34,7 @@ export interface MemoryDeps {
   nodes:          MemoryNodesRepo;
   edges:          MemoryEdgesRepo;
   lazyUpdates:    MemoryLazyUpdatesRepo;
+  nodeSources:    MemoryNodeSourcesRepo;
   items:          MemoryItemsRepo;
   sessionNotes:      SessionNotesRepo;
   memoryTasks:   MemoryTasksRepo;

@@ -149,7 +149,7 @@ describe('profile v4 到当前版本迁移：model_bindings CHECK 收紧到 11',
       expect(() => currentInsert.run('chat', 'x')).toThrow(/CHECK constraint failed/);
       expect(() => currentInsert.run('vision', 'v-model')).not.toThrow();
 
-      expect(sqlite.pragma('user_version', { simple: true })).toBe(13);
+      expect(sqlite.pragma('user_version', { simple: true })).toBe(14);
     } finally {
       sqlite.close();
     }

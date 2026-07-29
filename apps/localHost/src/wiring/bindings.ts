@@ -32,8 +32,7 @@ import {
 import type { EmbedRuntime } from '@ema-agent/embed';
 import type { RerankRuntime } from '@ema-agent/rerank';
 import type { NarrativeClient } from '@ema-agent/narrative';
-import { CharacterCardStore, BUILTIN_CARDS, EMA_CARD_INPUT, EMA_CARD_ID } from '@ema-agent/characters';
-import { Live2DModelsRepo } from '@ema-agent/storage';
+import type { CharacterCardStore } from '@ema-agent/characters';
 import {
   type TtsRuntime,
   type TtsVoiceHandleCache,
@@ -44,7 +43,7 @@ import type { VisionRuntime } from '@ema-agent/vision';
 import { buildPermissionSubsystem } from './permission-bootstrap.js';
 import type { AppInteractionQueue } from './permission-bootstrap.js';
 import type { SessionStore } from '@ema-agent/session';
-import { EmotionEngine } from '@ema-agent/emotion';
+import type { EmotionEngine } from '@ema-agent/emotion';
 import {
   PermissionEngine,
   permissionAskTimeoutSetting,
@@ -87,6 +86,7 @@ import { createAttachmentRuntime } from './createAttachmentRuntime.js';
 import { createSessionBackup } from './createSessionBackup.js';
 import { createExtensionRuntime } from './createExtensionRuntime.js';
 import { createKnowledgeRuntime } from './createKnowledgeRuntime.js';
+import { createCharacterRuntime } from './createCharacterRuntime.js';
 
 /**
  * LocalHost 迁移期完整对象图。
@@ -271,30 +271,8 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     modelCapabilities,
   } = createProviderControlPlane(profileDb, credentials);
 
-  // ── Character + emotion ─────────────────────────────────────────────────────
-  // 角色种子是 EmotionEngine 的构造前置条件，不是可延迟的后台初始化。
-  // character_cards.live2d_model_id 具有外键，必须先补内置 Live2D 模型再补角色卡。
-  const live2dModelsRepo = new Live2DModelsRepo(profileDb.sqlite);
-  for (const builtinCard of BUILTIN_CARDS) {
-    if (!builtinCard.live2dModelId) continue;
-    if (!live2dModelsRepo.findById(builtinCard.live2dModelId)) {
-      const cardId = builtinCard === EMA_CARD_INPUT ? EMA_CARD_ID : builtinCard.name;
-      const now = Date.now();
-      live2dModelsRepo.insert({
-        id:           builtinCard.live2dModelId,
-        name:         builtinCard.name,
-        format:       'live2d',
-        storage_path: `cards/${cardId}/live2d/${builtinCard.live2dModelId}.model3.json`,
-        params_json:  '{}',
-        is_builtin:   1,
-        created_at:   now,
-        updated_at:   now,
-      });
-    }
-  }
-  const card = new CharacterCardStore({ db: profileDb });
-  card.ensureSeed();
-  const emotion = new EmotionEngine({ vocabulary: card.current().emotionVocabulary });
+  // 角色是 Prompt、Live2D、Emotion 与 TTS 的全局基础，种子不变量失败时禁止发布 ready。
+  const { card, emotion } = createCharacterRuntime(profileDb);
 
   // SettingsStore 必须先于动态执行面创建，运行时只读取已校验的类型化快照。
   const { settings } = createSettingsStore(profileDb.sqlite);

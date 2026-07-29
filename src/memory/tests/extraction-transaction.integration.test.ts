@@ -8,6 +8,7 @@ import {
   MemoryItemsRepo,
   MemoryLazyUpdatesRepo,
   MemoryNodesRepo,
+  MemoryNodeSourcesRepo,
   PendingFragmentsRepo,
   SessionNotesRepo,
 } from '@ema-agent/storage';
@@ -69,6 +70,7 @@ function createHarness(): Harness {
   const nodes = new MemoryNodesRepo(profileDb.sqlite);
   const edges = new MemoryEdgesRepo(profileDb.sqlite);
   const lazyUpdates = new MemoryLazyUpdatesRepo(profileDb.sqlite);
+  const nodeSources = new MemoryNodeSourcesRepo(profileDb.sqlite);
   const items = new MemoryItemsRepo(profileDb.sqlite);
   const pending = new PendingFragmentsRepo(dataDb.sqlite);
   const notes = new SessionNotesRepo(dataDb.sqlite);
@@ -113,6 +115,7 @@ function createHarness(): Harness {
     nodes,
     edges,
     lazyUpdates,
+    nodeSources,
     items,
     sessionNotes: notes,
     pendingFragments: pending,
@@ -163,6 +166,7 @@ describe('B-015 Memory extraction 事务与跨库恢复', () => {
     expect(count(h.profileDb, 'memory_nodes')).toBe(0);
     expect(count(h.profileDb, 'memory_edges')).toBe(0);
     expect(count(h.profileDb, 'memory_items')).toBe(0);
+    expect(count(h.profileDb, 'memory_node_sources')).toBe(0);
     expect(count(h.profileDb, 'memory_extraction_runs')).toBe(0);
     expect(h.pending.countBySession(sessionId)).toBe(1);
     expect(h.notes.findBySession(sessionId)).toBeUndefined();

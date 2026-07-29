@@ -62,6 +62,8 @@ LocalHost Composition Root Attachment/Backup 批次已经完成：`createAttachm
 
 LocalHost Composition Root Extension/Knowledge/Lifecycle 批次已经完成：`createExtensionRuntime.ts` 统一构造 MCP、Marketplace 与 Skill，并使用 `profileDir()` 定位用户 Skill；`createKnowledgeRuntime.ts` 统一构造 KB、事件投影和模型工具搜索，`knowledgeModelsSetting/knowledgeRetrievalSetting` 继续在每次真实操作开始时读取。MCP 缺失 Schema 的并发发现按服务器名和工具名确定性提交，缓存写入晚于整批注册校验；KB 全量 `initAll()` 已删除。`bindings.ts` 保持扁平返回，没有新增嵌套依赖袋。
 
+LocalHost Composition Root Character/Emotion 批次已经完成：`createCharacterRuntime.ts` 按 `Live2D Seed → Character Seed → Active Card → Emotion` 的外键顺序建立同步对象图；缺少活动角色时仍激活 Ema，Emotion 初始词表来自构造时的当前全局角色。数据库、外键或活动角色不变量失败原样阻止 ready，运行期切换角色后的词表同步继续由既有 emitter 负责。至此本地施工计划 P1-P5 全部完成，`bindings.ts` 只表达 Character 工厂顺序并保持扁平返回。
+
 开工前已复核本地 Codex 源码：`codex-protocol` 只定义 Thread/Turn/Submission 等低层协议，真正编排位于 `codex-core/session`；App Server 只校验并提交 `Op::UserInput`，Session 统一建立 `RunningTask`、取消句柄和终态，`RegularTask` 再调用内部 `run_turn` 完成多轮模型与工具循环。Ema 因此保留低层 `turn` 与高层 `turnExecution` 两个编译边界，不能把执行依赖反向塞进被 Context、Session、Storage、Hooks 共同依赖的领域包。
 
 旧 `ConversationEngine` 与整个 `src/conversation` 包已经删除，Workspace 依赖和生产 import 归零。Chat 根生命周期与只读 Tool Profile 进入 `turnExecution`，LLM/Tool 迭代进入 `agent`，Narrative Route 与多周目 Recall 回到 `narrative`，模型可见召回正文通过不可信 Context Contribution 投递；Hook 不再携带 Narrative 私有结果。
@@ -203,7 +205,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 6. Permission V1 已完成：统一 Session FIFO、明确终态、Turn 身份核对、SQLite 永久规则 CRUD 与设置页管理、Builtin-only 免审批边界均已接通；旧 `AskUserRegistryLike` 已改为 `AskUserInteractionPort`，不新增第二套队列；
 7. Skill 多文件激活、per-Agent 状态、结构化 Context 恢复与 `allowed-tools` 单向收窄已经完成；
 8. LocalHost L0、Turn 输入准备 L1、Turn Context L2、Turn Tools L3、Root Agent Execution L4、Turn Composition Root L5、TTS Turn 输出边界、精确根取消与旧 Orchestrator 删除、Route 业务副作用归位及 Task/AgentRun Route 窄依赖均已完成；
-9. Turn/AskUser、Permission、Session、Provider/ModelBindings、Settings/Theme、Transcribe、Cards、Knowledge Base、Storage Stats 与 Shell Route 已完成窄依赖；HTTP Server、后台生命周期和一次性启动装配也已完成收口。`buildBindings()` 的 Provider/模型、Sandbox/Tool、Session/Memory、Attachment/Backup、Extension/Knowledge 对象图已经提取；Character/Emotion 工厂仍待独立批次，不建立嵌套依赖袋或通用 `Lazy<T>`；
+9. Turn/AskUser、Permission、Session、Provider/ModelBindings、Settings/Theme、Transcribe、Cards、Knowledge Base、Storage Stats 与 Shell Route 已完成窄依赖；HTTP Server、后台生命周期和一次性启动装配也已完成收口。`buildBindings()` 的 Provider/模型、Character/Emotion、Sandbox/Tool、Session/Memory、Attachment/Backup、Extension/Knowledge 对象图均已提取，LocalHost Composition Root 施工计划完成；后续不建立嵌套依赖袋或通用 `Lazy<T>`；
 10. 后台进程按 `BackgroundProcess + ProcessOutput/ProcessStop` 单独实现 C 档，不修改 AgentLoop，也不恢复假 `run_in_background`；
 11. 外围质量收口（K3 主线，依据为 2026-07-29 外围模块评审与 ragflow/claude-code 参照研究，管线对照见 `docs/reviews/ragflow-claude-pipelines.md`）：
     - **R2 KB 检索质量**：rerank 分数统一归一 [0,1]（已在区间内不动、越界才 min-max），rerank 替换制改为 RRF 分与 rerank 分的加权混合（消灭 0.4 硬门槛整条消失），空结果降阈值自动重查一次；
@@ -218,6 +220,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
     - **R10 MCP 生命周期**：stdio 崩溃 onclose 感知、status 转 failed 与重连、live 发现的 schema 字节与工具数上限；
     - **R11 Memory 后台欠账**：stale embedding 修复任务落地（替换"只数不修"）、租约丢失时管道关闸防双写；
     - **R12 KB 模型变更生命周期**：embed 模型绑定变更时自动 `markStaleExcept` 并向用户提示或引导 reembed，消灭"换模型后旧文档向量静默退出 dense 检索"的漂移；chunk 参数若未来进设置，需按 claim 时冻结进任务（同 `resolveOptions` 模式）且 dedup 键扩展为 `hash(内容 + chunk配置)`（ragflow digest 语义）。
+    - **R13 Memory 存储预算（语义已冻结，2026-07-29 用户新增）**：Memory L0/L2 全局字节上限（`memory.storage.maxBytes` 用户设置，nextOperation，默认 64MB），逻辑字节 = `SUM(LENGTH(embedding)) + 文本列`，不碰 VACUUM。超限自动逐级降压（纯 SQL、零 LLM）：①删零/低 importance 长期未引用（`deleteZeroImportanceOlderThan` 语义从手动改自动）；②仍超限则对最冷行丢弃 embedding BLOB（文本与图保留，待 R11 重 embed 闭环）；③仍超限发事件上报，`user_fact/preference/relationship` 保护类永不自动删。复活死配置 `idleThresholdMs/maintenanceIntervalMs` 挂后台空闲窗口。顺手修两个既存问题：`hardDeleteZeroImportance` 批量删除不同步清 ANN 索引（幽灵节点）、decay 注释声称保护三类节点但 SQL 无 node_type 过滤（注释与实现对齐）。
     - **A 主链真 bug**：ToolResultStore EEXIST 内容错位、Usage 状态模型补 `cancelled`、Anthropic 隐式 maxTokens=4096 改透传；
     - **B 主链安全收口**：install-git 与 mcpStdioGate 路由级审批修通、`AGEN_UNSAFE_*` 生产构建物理拒绝、Sandbox 状态接前端常驻提示；
     - **C 主链卫生**：agentLoopState 死声明清理（failed 相位、llm_error/user_timeout/user_cancel、pendingPromptId）、prefixHash 注释与行为对齐、压缩-恢复链字符串耦合改共享常量。
@@ -227,6 +230,9 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 每批只改变一个主要业务边界。不要把 Turn 统一、数据库 Schema、全仓 ID 改名和前端切换塞进同一批。
 
 ## 最近验证
+
+- LocalHost Composition Root Character/Emotion 批次：定向 5/5、LocalHost 全量 38 个测试文件 143/143、typecheck 与正式 build 通过，构建验证 96 个源码、385 个产物。测试覆盖 Live2D 外键种子顺序、重复构造幂等、缺少活动角色时激活 Ema、Emotion 使用当前角色词表及 DB 不变量失败向上抛出；`bindings.ts` 的角色内部构造归零，运行期角色切换 emitter 未改。`git diff --check` 通过，仅有既有 CRLF 与不可访问 pytest 缓存提示。
+- Memory 溯源链（外围 R7）：Storage 27 个测试文件 124/124、Memory 11 个测试文件 44/44 通过；Memory typecheck/build、LocalHost typecheck 通过。Profile v14 新建 `memory_node_sources(node_id, source_session_id, source_turn_id, created_at)` 关联表（PK 三列，`source_turn_id` NOT NULL DEFAULT '' 规避 SQLite PK 列 NULL 互不相等的去重陷阱；跨库软引用不建 FK），存量从 `memory_node_lazy_updates` 回填（NULL session 跳过不伪造，同键取最早时间）。新增 `MemoryNodeSourcesRepo`（INSERT OR IGNORE 幂等 record、listByNode/listByNodes）；写入侧两条路径登记：`routeCandidateNode` 新建节点登记首条来源、`enqueueLazyUpdate` 为既有节点累积来源；consolidation 排水不动溯源（追加时已登记），L1 session_notes 溯源固有（session_id 主键 + 每条 entry 带 turnId），只在注释中说明不加列。新增测试覆盖迁移回填（NULL turn 归一空串、同键取最早、NULL session 跳过）、record 幂等/批量读取/CASCADE 清理、pipeline 端到端（新建与 lazy update 两条路径、多节点互不串扰）；既有回滚测试补 memory_node_sources 回滚断言；两处 profile 最新版本断言随 v14 更新。`git diff --check` 通过，仅有既有 CRLF 提示。
 
 - LocalHost Composition Root Extension/Knowledge/Lifecycle 批次：MCP 6 个测试文件 26/26、Knowledge 12 个测试文件 60/60、LocalHost 全量 37 个测试文件 138/138 通过；MCP 与 Knowledge typecheck/build、LocalHost typecheck 与正式 build 通过，构建验证 95 个源码、381 个产物。新增 MCP 启动发现测试覆盖跳过已有缓存、确定性注册、注册后缓存和无常驻 Transport，生命周期测试覆盖 fatal 恢复、Memory 降级禁用、后台任务跟踪及无 `kb.initAll()`；两条 MCP 权限元数据测试同步补齐既有 `approval: required` 字段。`git diff --check` 通过，仅有既有 CRLF 与不可访问 pytest 缓存提示。
 - Memory 判断层（外围 R6）：Memory 10 个测试文件 42/42、Memory 与 TurnExecution typecheck、Memory build 通过。embedding 归并判定改为"粗筛候选 + LLM 判定"：`planNodeDuplicateJudgments` 在事务前对 embedding ≥0.85 的疑似重复调用 `judgeDuplicateEntity`（复用 memory binding，yes/no JSON），判否或判定失败一律保守新建，事务内只执行已确定的判定，LLM I/O 不进 SQLite 事务；`judgeDuplicateEntity` 未配置模型/输出不可解析/调用失败返回 null。召回粗筛后新增 LLM 语义精选 `selectRelevantMemories`（N/M 编号引用解析为真实 id，越界引用判失败），精选不可用（未配置/失败/解析失败）回退粗筛结果——精选是增强不是门禁。新增测试覆盖判定 yes/no/不可解析/未配置/调用失败、疑似重复的归并与保守新建、精选引用解析/越界/空选/失败/无候选短路；`git diff --check` 通过，仅有既有 CRLF 提示。
@@ -336,7 +342,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 先完整阅读 CLAUDE.md 与 EmaWorkState.md，再按当前批次阅读 EmaRefactor.md 和 EmaClaudeArchitectureReview.md 对应章节。检查 git status、diff 和最近提交，保留用户及其他 Agent 的修改。
 
-LocalHost L0、Turn 输入准备 L1、Turn Context L2、Turn Tools L3、Root Agent Execution L4、Turn Composition Root L5、TTS Turn 输出边界、精确根取消与旧 Orchestrator 删除、Route 业务副作用归位、全部 Route 窄依赖、HTTP Server 的 Route 注册表边界以及 Composition Root 的 Provider/Model、Sandbox/Tool、Session/Memory、Attachment/Backup、Extension/Knowledge/Lifecycle 批次已经完成。Agent/Context/Attachment 用户设置冻结进每根 `TurnInput`，Vision 与 Knowledge 设置在每次 Operation 开始时读取一次；不要在 AgentLoop 中重读 SQL 或修改共享 Compactor。不要恢复 `apps/core`、旧 Orchestrator、宽 `AppBindings` Route、TOML 设置、MCP `startAll()`、KB `initAll()` 或 `buildBindings()` 中的异步启动副作用。下一批先复核 Character/Emotion 是否仍未提取，再决定结束 Composition Root 计划或进入外围欠账；Character Seed 必须保持 Live2D 外键、活动角色和 Emotion 初始化顺序。不要提交 Git。
+LocalHost L0、Turn 输入准备 L1、Turn Context L2、Turn Tools L3、Root Agent Execution L4、Turn Composition Root L5、TTS Turn 输出边界、精确根取消与旧 Orchestrator 删除、Route 业务副作用归位、全部 Route 窄依赖、HTTP Server 的 Route 注册表边界以及 Composition Root 的 Provider/Model、Character/Emotion、Sandbox/Tool、Session/Memory、Attachment/Backup、Extension/Knowledge/Lifecycle 批次已经完成。Agent/Context/Attachment 用户设置冻结进每根 `TurnInput`，Vision 与 Knowledge 设置在每次 Operation 开始时读取一次；不要在 AgentLoop 中重读 SQL 或修改共享 Compactor。不要恢复 `apps/core`、旧 Orchestrator、宽 `AppBindings` Route、TOML 设置、MCP `startAll()`、KB `initAll()` 或 `buildBindings()` 中的异步启动副作用。LocalHost Composition Root 计划已经结束，下一批进入外围欠账；Character Seed 必须继续保持 Live2D 外键、活动角色和 Emotion 初始化顺序。不要提交 Git。
 ```
 
 ## 维护方式

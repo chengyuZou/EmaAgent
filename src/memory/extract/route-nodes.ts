@@ -138,6 +138,8 @@ export function routeCandidateNode(
       const view = unpackEmbedding(embedded.embedding, embedded.dim);
       indexMutations.push({ index: deps.nodesIndex, operation: 'add', id, vector: view });
     }
+    // 新节点登记首条溯源：该事实来自哪个 Session/Turn。
+    deps.memory.nodeSources.record(id, sessionId, fragments[0]?.turnId ?? null, now);
     directory.register(candidate.label, candidate.nodeType, id);
     stats.extractedNodes++;
   } catch (err) {
@@ -172,5 +174,7 @@ export function enqueueLazyUpdate(
     sourceTurnId:     source?.turnId,
     createdAt:        Date.now(),
   });
+  // 既有节点同样累积溯源：追加证据的来源与 lazy fragment 同源登记。
+  deps.memory.nodeSources.record(nodeId, sessionId, source?.turnId ?? null, Date.now());
   stats.lazyUpdatesQueued++;
 }

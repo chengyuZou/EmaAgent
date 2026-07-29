@@ -130,6 +130,7 @@ describe('planNodeDuplicateJudgments', () => {
 describe('routeCandidateNode 消费判定', () => {
   function createRouteDeps() {
     const lazyUpdates = { append: vi.fn() };
+    const nodeSources = { record: vi.fn() };
     const nodes = {
       findByLabelAndType: vi.fn(() => undefined),
       findById: vi.fn(() => ({
@@ -140,7 +141,7 @@ describe('routeCandidateNode 消费判定', () => {
       insert: vi.fn(() => ({ id: 'new-id' })),
     };
     const deps = {
-      memory: { nodes, lazyUpdates },
+      memory: { nodes, lazyUpdates, nodeSources },
       nodesIndex: null,
       indexSpaceId: null,
     } as unknown as ExtractionPipelineDeps;
@@ -153,7 +154,7 @@ describe('routeCandidateNode 消费判定', () => {
       droppedEdges: 0,
     };
     const directory = { register: vi.fn() } as unknown as NodeDirectory;
-    return { deps, nodes, lazyUpdates, stats, directory };
+    return { deps, nodes, lazyUpdates, nodeSources, stats, directory };
   }
 
   const candidate: ExtractedNode = {
@@ -165,22 +166,24 @@ describe('routeCandidateNode 消费判定', () => {
   };
 
   it('判定 merge=true 时归并到既有节点，不新建', () => {
-    const { deps, nodes, lazyUpdates, stats, directory } = createRouteDeps();
+    const { deps, nodes, lazyUpdates, nodeSources, stats, directory } = createRouteDeps();
     const judgment: NodeDuplicateJudgment = { targetNodeId: 'node-apple', merge: true };
 
     routeCandidateNode(deps, 'session-1' as never, candidate, null, [], stats, directory, [], judgment);
 
     expect(lazyUpdates.append).toHaveBeenCalledOnce();
+    expect(nodeSources.record).toHaveBeenCalledOnce();
     expect(nodes.insert).not.toHaveBeenCalled();
     expect(stats.lazyUpdatesQueued).toBe(1);
   });
 
   it('判定 merge=false 或缺失时正常新建节点', () => {
-    const { deps, nodes, lazyUpdates, stats, directory } = createRouteDeps();
+    const { deps, nodes, lazyUpdates, nodeSources, stats, directory } = createRouteDeps();
 
     routeCandidateNode(deps, 'session-1' as never, candidate, null, [], stats, directory, [], { targetNodeId: 'node-apple', merge: false });
 
     expect(nodes.insert).toHaveBeenCalledOnce();
+    expect(nodeSources.record).toHaveBeenCalledOnce();
     expect(lazyUpdates.append).not.toHaveBeenCalled();
   });
 });
