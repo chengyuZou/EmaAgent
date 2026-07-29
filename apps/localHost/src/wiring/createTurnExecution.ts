@@ -32,7 +32,6 @@ export function createTurnExecution(bindings: AppBindings): {
   const contextCompactor = new ContextCompactor({
     llm: bindings.llm,
     hookBus: bindings.hooks,
-    loadSessionNote: sessionId => bindings.memory.loadSessionNote(sessionId),
     persistSummary: input => bindings.session.appendMessage(input),
   });
 

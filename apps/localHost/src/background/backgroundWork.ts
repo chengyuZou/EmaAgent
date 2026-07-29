@@ -17,8 +17,9 @@ const BACKGROUND_TICK_MS = 5_000;
 const CLEANER_SWEEP_EVERY = 360;
 const ATTACHMENT_CACHE_SWEEP_EVERY = 360;
 const BRIDGE_HEARTBEAT_EVERY = 12;
+const EMBEDDING_REPAIR_SWEEP_EVERY = 360;
 
-type BackgroundMemory = Pick<MemoryPlanner, 'initialize' | 'tick' | 'drain'>;
+type BackgroundMemory = Pick<MemoryPlanner, 'initialize' | 'tick' | 'drain' | 'repairStaleEmbeddings'>;
 type BackgroundMcp = Pick<
   McpRegistry,
   'primeFromCache' | 'discoverUncached' | 'disconnectAll'
@@ -131,6 +132,9 @@ export class BackgroundWork {
     if (tickCount % ATTACHMENT_CACHE_SWEEP_EVERY === 0) {
       await this.sweepAttachmentCache();
     }
+    if (tickCount % EMBEDDING_REPAIR_SWEEP_EVERY === 0) {
+      await this.sweepMemoryEmbeddings();
+    }
     if (tickCount % BRIDGE_HEARTBEAT_EVERY === 0) {
       this.lastBridgeReady = await this.checkBridgeHeartbeat();
     }
@@ -162,6 +166,22 @@ export class BackgroundWork {
       }
     } catch (error) {
       console.warn('[attachment-cache] cleaner sweep failed:', error);
+    }
+  }
+
+  private async sweepMemoryEmbeddings(): Promise<void> {
+    if (!this.memoryEnabled) return;
+    try {
+      const report = await this.memory.repairStaleEmbeddings();
+      if (report.ran && (report.nodesRepaired + report.itemsRepaired > 0 || report.failed > 0)) {
+        console.log(
+          `[memory] embedding repair: nodes=${report.nodesRepaired} `
+          + `items=${report.itemsRepaired} failed=${report.failed} `
+          + `remaining=${report.remaining}`,
+        );
+      }
+    } catch (error) {
+      console.warn('[memory] embedding repair sweep failed:', error);
     }
   }
 

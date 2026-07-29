@@ -22,8 +22,8 @@ ContextCompactor
 - `messageCompatibility.ts`：替换当前模型无法重放的历史媒体，并拒绝本轮不受支持的输入；
 - `contextAssembler.ts`：按固定边界合并 PromptSnapshot、历史、当前 Turn、临时贡献和 ToolManifestSnapshot，返回不可变模型请求快照；
 - `promptPrefix.ts`：保留 Tool Manifest 已冻结的数组顺序、规范化 Schema key，并计算缓存边界之前的前缀指纹；
-- `contextCompactor.ts`：按 Token 预算执行微压缩、结构化摘要、恢复与连续失败熔断；
-- `compaction/`：保存纯函数预算、Tool 配对安全切点、摘要 Prompt 和压缩后恢复；
+- `contextCompactor.ts`：按 Token 预算执行微压缩、结构化摘要、必要运行态恢复与连续失败熔断；
+- `compaction/`：保存纯函数预算、Tool 配对安全切点和摘要 Prompt；
 - LLM Adapter 仍负责把 `cacheBreakpoint` 翻译成 Anthropic `cache_control` 等具体协议字段；
 
 ContextAssembler 会在最终请求投影的最后一条非空消息上补充增量缓存断点，使历史和已经完成的工具轮次进入下一次请求的缓存前缀。该断点不写回 Session Message、当前 Turn 工作消息或压缩结果；普通装配和压缩装配都会按各自最终顺序重新计算位置。
@@ -85,8 +85,8 @@ messages[]                         来源                          cacheBreakpoi
 ──────────────────────────────────────────────────────────────────────────────
 ┌─ user    ─── <context-summary profile="work"> ──────────────────────────┐
 │              ... Macro 摘要（<summary> 内容，analysis 已丢弃） ...       │
-├─ user    ─── <post-compact-restore profile="work"> ─────────────────────┤
-│              最近 5 个文件快照（work）/ 情绪状态（chat）                  │
+├─ user    ─── required restore（例如 active-skill）───────────────────────┤
+│              只恢复 Macro 会从历史中移除的 Agent 运行态                  │
 ├─ ... tail（保留的最近 ~25% 原文，tool 配对完整）... ────────────────────┤
 └──────────────────────────────────────────────────────────────────────────┘
   suffix（同上，原样保留）                 ✅ 尾断点自动补

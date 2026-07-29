@@ -27,7 +27,6 @@ export interface ContextCompactorDeps {
   llm: LanguageModel;
   hookBus?: HookBus;
   isEnabledForSession?: (sessionId: SessionId) => boolean;
-  loadSessionNote?: (sessionId: SessionId) => string | null;
   persistSummary: (input: {
     sessionId: SessionId;
     turnId: TurnId;

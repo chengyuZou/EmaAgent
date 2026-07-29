@@ -352,8 +352,7 @@ context/
    ├─ sanitize.ts
    ├─ microCompaction.ts
    ├─ macroCompaction.ts
-   ├─ compactionPrompts.ts
-   └─ postCompactionRestore.ts
+   └─ compactionPrompts.ts
 ```
 
 V1 不为单一实现预建 `profiles/`、`serializers/` 或 `restore/` 空目录。Prompt 的协议序列化属于 LLM Adapter；只有同一职责出现多个独立实现时才升级为子目录。

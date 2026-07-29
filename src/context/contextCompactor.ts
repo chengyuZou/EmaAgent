@@ -6,7 +6,6 @@ import { estimateLlmInputTokens } from '@ema-agent/token';
 import { fitCompactionContext } from './compaction/budget.js';
 import { runMacroCompaction } from './compaction/macroCompaction.js';
 import { microCompact } from './compaction/microCompaction.js';
-import { buildPostCompactionRestore } from './compaction/postCompactionRestore.js';
 import { findSafeCutPoint, macroFailureReason } from './compaction/safeCut.js';
 import { sanitizeCompactionMessages } from './compaction/sanitize.js';
 import {
@@ -183,22 +182,16 @@ export class ContextCompactor {
         macroFailureReason(macro.attempts), startedAt);
     }
 
-    // 压缩后恢复最近状态(session note、最近文件),否则模型摘要后会失忆。
-    const restore = buildPostCompactionRestore(this.deps.loadSessionNote, {
-      sessionId: args.sessionId,
-      executionProfile: args.executionProfile,
-    });
     const requiredRestore = sanitizeCompactionMessages([
       ...(args.requiredRestoreMessages ?? []),
     ]);
-    // 预算适配:把 [prefix, summary, restore, tail, suffix] 塞进 tokenLimit。
+    // 预算适配:把 [prefix, summary, requiredRestore, tail, suffix] 塞进 tokenLimit。
     // 摘要 + tail 仍超限时,fit 会进一步裁剪 tail;塞不下返回 null(失败)。
     const toolTokens = estimateLlmInputTokens([], { tools: args.tools }).totalTokens;
     const fitted = fitCompactionContext({
       summary: macro.summary,
       prefix,
       suffix: fixedSuffix,
-      restore,
       requiredRestore,
       tail,
       executionProfile: args.executionProfile,

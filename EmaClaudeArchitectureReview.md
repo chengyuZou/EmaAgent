@@ -189,7 +189,7 @@ Claude 还使用 `<system-reminder>` 把系统注入内容放入消息流，并�
 - `promptPrefix.ts`：规范化 Tool Schema，并按显式 `cacheBreakpoint` 计算稳定前缀指纹；
 - `ContextCompactor`：按模型窗口、输出预留和 buffer 计算阈值，依次执行 Micro、Macro、Restore，并在连续失败后按 Session 熔断；
 - `safeCut.ts`：避免从未配对的 Tool 交互中间切断；
-- `postCompactionRestore.ts`：压缩后恢复 Session Note 与最近文件状态；
+- Macro 压缩会原样保留本轮 Memory/Narrative Contribution；激活 Skill 等真正会被历史改写移除的运行态通过明确的 required restore 恢复；
 - `src/agent/agentLoop.ts`：每次模型调用前主动压缩，PTL 时最多执行一次反应式压缩；重放时明确移除 thinking；循环以 `AgentLoopOutcome` 返回唯一结果；
 - 旧 `src/agentContext` 已删除：Tool Result 归 `src/tools/results`；Session 级近期文件快照也已删除，Work 压缩后按需重新调用 FileRead。
 

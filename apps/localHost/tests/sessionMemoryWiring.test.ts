@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { asTurnId } from '@ema-agent/ids';
 import { EmbedRuntime } from '@ema-agent/embed';
 import { LanguageModelRuntime } from '@ema-agent/llm';
 import { RerankRuntime } from '@ema-agent/rerank';
@@ -58,7 +59,7 @@ describe('Session persistence wiring', () => {
 });
 
 describe('Memory runtime wiring', () => {
-  it('复用 Session 持久层的同一笔记入口，构造阶段不启动向量索引', () => {
+  it('通过 L1 主召回链读取共享 Session Note，构造阶段不启动向量索引', async () => {
     const profileDb = openDatabase('profile');
     const dataDb = openDatabase('data');
     const persistence = createSessionPersistence(
@@ -91,7 +92,14 @@ describe('Memory runtime wiring', () => {
       emit,
     );
 
-    expect(memory.loadSessionNote(session.id))
+    const recall = await memory.prepareRecallContribution({
+      sessionId: session.id,
+      turnId: asTurnId('turn-memory-recall'),
+      executionProfile: 'chat',
+      narrativePolicy: 'auto',
+      userInput: '继续刚才的话题',
+    });
+    expect(recall.contribution?.message.content)
       .toContain('Memory 与 Session Dashboard 读取同一份笔记');
     expect(memory.indexStats()).toEqual({ nodes: null, items: null });
     expect(emit).not.toHaveBeenCalled();

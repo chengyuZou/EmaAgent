@@ -10,7 +10,6 @@ export interface FittedCompactionContext {
   messages: ModelMessage[];
   summary: string;
   afterTokens: number;
-  restoreDropped: boolean;
   summaryTruncated: boolean;
 }
 
@@ -22,8 +21,6 @@ export function fitCompactionContext(args: {
   suffix: ModelMessage[];
   /** Skill 等运行态必须恢复；放不下时整个压缩失败。 */
   requiredRestore: ModelMessage[];
-  /** Session Note 等可选恢复状态，预算不足时可以丢弃。 */
-  restore: ModelMessage[];
   tail: ModelMessage[];
   executionProfile: ExecutionProfile;
   tokenLimit: number;
@@ -46,7 +43,6 @@ export function fitCompactionContext(args: {
     args.summary,
     args.prefix,
     args.requiredRestore,
-    args.restore,
     args.tail,
     args.suffix,
     args.executionProfile,
@@ -57,27 +53,6 @@ export function fitCompactionContext(args: {
       messages: full,
       summary: args.summary,
       afterTokens: fullTokens,
-      restoreDropped: false,
-      summaryTruncated: false,
-    };
-  }
-
-  const withoutRestore = buildCandidate(
-    args.summary,
-    args.prefix,
-    args.requiredRestore,
-    [],
-    args.tail,
-    args.suffix,
-    args.executionProfile,
-  );
-  const withoutRestoreTokens = estimateTotal(withoutRestore);
-  if (withoutRestoreTokens <= args.tokenLimit) {
-    return {
-      messages: withoutRestore,
-      summary: args.summary,
-      afterTokens: withoutRestoreTokens,
-      restoreDropped: args.restore.length > 0,
       summaryTruncated: false,
     };
   }
@@ -93,7 +68,6 @@ export function fitCompactionContext(args: {
       summary,
       args.prefix,
       args.requiredRestore,
-      [],
       args.tail,
       args.suffix,
       args.executionProfile,
@@ -104,7 +78,6 @@ export function fitCompactionContext(args: {
         messages,
         summary,
         afterTokens,
-        restoreDropped: args.restore.length > 0,
         summaryTruncated: true,
       };
       low = middle + 1;
@@ -119,7 +92,6 @@ function buildCandidate(
   summary: string,
   prefix: ModelMessage[],
   requiredRestore: ModelMessage[],
-  restore: ModelMessage[],
   tail: ModelMessage[],
   suffix: ModelMessage[],
   executionProfile: ExecutionProfile,
@@ -131,7 +103,6 @@ function buildCandidate(
       content: `<context-summary profile="${executionProfile}">\n${summary}\n</context-summary>`,
     },
     ...requiredRestore,
-    ...restore,
     ...tail,
     ...suffix,
   ];
