@@ -65,17 +65,67 @@ describe('StartupRecovery', () => {
       recoverInterrupted: vi.fn(() => []),
     };
 
-    new StartupRecovery(
+    const recovery = new StartupRecovery(
       activeDataDir,
       memory,
       session,
       agentRuns,
       toolExecutions,
-    ).run();
+    );
+    recovery.runRequired();
+    expect(recovery.runMaintenance()).toEqual({ memoryReady: true });
 
     expect(toolExecutions.recoverInterrupted).toHaveBeenCalledTimes(1);
     expect(memory.runStartupRecovery).toHaveBeenCalledTimes(1);
     expect(session.recoverStuckTurns).toHaveBeenCalledTimes(1);
     expect(agentRuns.recoverInterrupted).toHaveBeenCalledTimes(1);
+  });
+
+  it('Turn 终态恢复失败时向上传播，不继续伪装 ready', () => {
+    const activeDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ema-startup-'));
+    directories.push(activeDataDir);
+    const recovery = new StartupRecovery(
+      activeDataDir,
+      {
+        runStartupRecovery: vi.fn(() => ({
+          resetTasks: 0,
+          pendingSessions: 0,
+          staleNodeEmbeds: 0,
+          staleItemEmbeds: 0,
+          orphanLazyUpdates: 0,
+        })),
+      },
+      {
+        listTurnIdsPage: vi.fn(() => ({ ids: [], nextCursor: null })),
+        recoverStuckTurns: vi.fn(() => {
+          throw new Error('database unavailable');
+        }),
+      },
+      { recoverInterrupted: vi.fn(() => []) },
+      { recoverInterrupted: vi.fn(() => []) },
+    );
+
+    expect(() => recovery.runRequired()).toThrow('database unavailable');
+  });
+
+  it('Memory 恢复失败会返回降级状态而不影响文件维护', () => {
+    const activeDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ema-startup-'));
+    directories.push(activeDataDir);
+    const recovery = new StartupRecovery(
+      activeDataDir,
+      {
+        runStartupRecovery: vi.fn(() => {
+          throw new Error('memory unavailable');
+        }),
+      },
+      {
+        listTurnIdsPage: vi.fn(() => ({ ids: [], nextCursor: null })),
+        recoverStuckTurns: vi.fn(() => ({ healed: 0 })),
+      },
+      { recoverInterrupted: vi.fn(() => []) },
+      { recoverInterrupted: vi.fn(() => []) },
+    );
+
+    expect(recovery.runMaintenance()).toEqual({ memoryReady: false });
   });
 });

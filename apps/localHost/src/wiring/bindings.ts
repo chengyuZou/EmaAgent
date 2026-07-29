@@ -2,8 +2,6 @@
 
 import type { Database } from '@ema-agent/storage';
 import {
-  McpServersRepo, SkillsRepo,
-  MarketSourcesRepo,
   type SessionNotesRepo,
   type SessionStatsRepo,
   type DataDirStatsRepo,
@@ -21,14 +19,9 @@ import {
   type AttachmentStore,
   type FileAccessFacade,
 } from '@ema-agent/attachment';
-import { McpRegistry, McpServerStore }                 from '@ema-agent/mcp';
-import { McpMarketAdapter }                            from '@ema-agent/mcp';
-import type { McpStdioLaunchIntent }                   from '@ema-agent/mcp';
-import { SkillStore, SkillRunner, SkillInstaller }     from '@ema-agent/skills';
-import { SkillMarketAdapter }                          from '@ema-agent/skills';
-import { MarketRegistry, MarketSourceStore }           from '@ema-agent/marketplace';
-import * as nodePath from 'node:path';
-import * as os from 'node:os';
+import type { McpRegistry } from '@ema-agent/mcp';
+import type { SkillStore, SkillRunner, SkillInstaller } from '@ema-agent/skills';
+import type { MarketRegistry, MarketSourceStore } from '@ema-agent/marketplace';
 import { HookBus }       from '@ema-agent/hooks';
 import { createTraceSink } from './diagnostic-sink.js';
 import type { LanguageModelRuntime } from '@ema-agent/llm';
@@ -47,7 +40,6 @@ import {
   type AudioArchive,
 } from '@ema-agent/tts';
 import type { SttRuntime } from '@ema-agent/stt';
-import { asKbVisionAdapter } from './providers/vision.js';
 import type { VisionRuntime } from '@ema-agent/vision';
 import { buildPermissionSubsystem } from './permission-bootstrap.js';
 import type { AppInteractionQueue } from './permission-bootstrap.js';
@@ -68,11 +60,7 @@ import type {
 import type {
   KbAssetScope,
 } from '@ema-agent/turn';
-import {
-  knowledgeModelsSetting,
-  knowledgeRetrievalSetting,
-  type KbSearchResult,
-} from '@ema-agent/knowledge';
+import type { KbSearchResult, KbManager } from '@ema-agent/knowledge';
 import type { CommandRunnerPort, SandboxStatusWire } from '@ema-agent/sandbox';
 import type { ToolExecutionJournal, ToolRegistry, ToolResultStore } from '@ema-agent/tools';
 import type {
@@ -81,13 +69,6 @@ import type {
 } from '@ema-agent/agent';
 import type { TaskStore } from '@ema-agent/tasks';
 import type { MemoryPlanner } from '@ema-agent/memory';
-import {
-  KbManager,
-} from '@ema-agent/knowledge';
-import type { IngestOptions } from '@ema-agent/knowledge';
-import {
-  KbActivationsRepo, KbRegistryRepo,
-} from '@ema-agent/storage';
 import { SystemEventBus }  from '../sse/system-bus.js';
 import type { ProviderRuntimeFacade } from './provider-runtime.js';
 import type { SessionBackupFacade } from '@ema-agent/backup';
@@ -104,6 +85,8 @@ import { createSessionPersistence } from './createSessionPersistence.js';
 import { createMemoryRuntime } from './createMemoryRuntime.js';
 import { createAttachmentRuntime } from './createAttachmentRuntime.js';
 import { createSessionBackup } from './createSessionBackup.js';
+import { createExtensionRuntime } from './createExtensionRuntime.js';
+import { createKnowledgeRuntime } from './createKnowledgeRuntime.js';
 
 /**
  * LocalHost 迁移期完整对象图。
@@ -409,177 +392,30 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     attachmentStore,
   );
 
-  // ── MCP registry ────────────────────────────────────────────────────────────
-  const mcpStdioGate = async (intent: McpStdioLaunchIntent): Promise<boolean> => {
-    if (!localMcpStdioEnabled) return false;
-    // 环境变量值可能包含 API Key；授权界面只展示键名，但 Registry 会把批准
-    // 绑定在这次冻结 intent 上，并使用同一份配置启动进程。
-    const environmentKeys = Object.keys(intent.environment ?? {}).sort();
-    const outcome = await permission.gate(
-      'mcp_stdio_launch',
-      {
-        operation: intent.operation,
-        serverName: intent.serverName,
-        command: intent.command,
-        args: [...intent.args],
-        cwd: intent.cwd ?? null,
-        environmentKeys,
-      },
-      { riskLevel: 'high', accessType: 'execute' },
-      { workspaceRoot: process.cwd() },
-    );
-    return outcome.granted;
-  };
-  const mcpRegistry = new McpRegistry(
-    new McpServerStore(new McpServersRepo(profileDb.sqlite)),
+  const {
+    mcpRegistry,
+    marketRegistry,
+    marketSourceStore,
+    skillStore,
+    skillRunner,
+    skillInstaller,
+  } = createExtensionRuntime(
+    profileDb,
     tools,
-    mcpStdioGate,
+    permission,
     localMcpStdioEnabled,
   );
-  // ── Marketplace(多源聚合底座,MCP/Skill 共用)──────────────────────────────
-  // 纯底座:adapter 注册表 + 通用源 store。各业务包(MCP/Skill)实现自己的 adapter
-  // kind 不约束,未来 integration(QQ/微信/邮箱)零改底座接入。
-  const marketRegistry    = new MarketRegistry();
-  const marketSourceStore = new MarketSourceStore(new MarketSourcesRepo(profileDb.sqlite));
-  marketRegistry.registerAdapter(new McpMarketAdapter());
-  marketRegistry.registerAdapter(new SkillMarketAdapter());
 
-  // ── Skills ───────────────────────────────────────────────────────────────────
-  // File-backed: SKILL.md files live under the profile dir (cross-dataDir,
-  // mirrors where profile.db lives). The SQL index in profile.db is a cache.
-  const skillsUserRoot = nodePath.join(os.homedir(), '.ema-agent', 'skills');
-  const skillStore     = new SkillStore(new SkillsRepo(profileDb.sqlite), [
-    // builtin (read-only) root could be prepended here once skills ship with the app.
-    { path: skillsUserRoot, source: 'user' },
-  ]);
-  const skillRunner    = new SkillRunner(skillStore);
-  const skillInstaller = new SkillInstaller(skillStore);
-  // ── Knowledge base ───────────────────────────────────────────────────────────
-  const resolveIngestModels = (): Partial<IngestOptions> => {
-    const kbModels = settings.get(knowledgeModelsSetting);
-    const visionB = modelBindings.get('vision');
-    return {
-      ebdProviderId:    kbModels.embed?.providerConfigId,
-      ebdModel:         kbModels.embed?.model,
-      visionProviderId: visionB?.providerConfigId,
-      visionModel:      visionB?.model,
-    };
-  };
-
-  const kb = new KbManager({
-    registry:             new KbRegistryRepo(profileDb.sqlite),
-    activations:          new KbActivationsRepo(dataDb.sqlite),
-    embedRuntime:         embed,
-    rerankRuntime:        rerank,
-    visionAdapter:        asKbVisionAdapter(vision),
-    resolveIngestOptions: resolveIngestModels,
-    // 每次检索操作时读取用户可调的检索参数（kb.retrieval）。
-    resolveRetrievalSettings: () => settings.get(knowledgeRetrievalSetting),
-    concurrency:          3,
-  });
-
-  // Bridge KbManager's aggregated event bus → systemBus SSE.
-  // kbId is now injected by KbManager.openEntry; forward it on every event type.
-  kb.events.on((e) => {
-    const kbId = e.kbId ?? '';
-
-    // 重建索引事件走独立的 kb_reembed_* SSE, 不与入库进度混淆。
-    if (e.operation === 'reembed') {
-      if (e.kind === 'complete') {
-        systemBus.emit({
-          type: 'kb_reembed_completed', kbId, taskId: e.taskId, assetId: e.assetId,
-          totalItems: e.totalItems ?? 0, completedItems: e.completedItems ?? 0, failedItems: e.failedItems ?? 0,
-        });
-        return;
-      }
-      if (e.kind === 'partial_failed') {
-        systemBus.emit({
-          type: 'kb_reembed_partial_failed', kbId, taskId: e.taskId, assetId: e.assetId,
-          error: e.error ?? '部分文档重建失败',
-          totalItems: e.totalItems ?? 0, completedItems: e.completedItems ?? 0, failedItems: e.failedItems ?? 0,
-        });
-        return;
-      }
-      if (e.kind === 'cancelled') {
-        systemBus.emit({ type: 'kb_reembed_cancelled', kbId, taskId: e.taskId, assetId: e.assetId });
-        return;
-      }
-      if (e.kind === 'error') {
-        systemBus.emit({ type: 'kb_reembed_failed', kbId, taskId: e.taskId, assetId: e.assetId, error: e.error ?? 'unknown' });
-        return;
-      }
-      systemBus.emit({
-        type: 'kb_reembed_progress', kbId, taskId: e.taskId, assetId: e.assetId,
-        progress: e.progress ?? 0,
-        totalItems: e.totalItems, completedItems: e.completedItems, failedItems: e.failedItems,
-      });
-      return;
-    }
-    if (e.kind === 'complete') {
-      systemBus.emit({ type: 'kb_ingest_completed', kbId, taskId: e.taskId, assetId: e.assetId });
-      return;
-    }
-    if (e.kind === 'partial_failed') {
-      systemBus.emit({
-        type: 'kb_ingest_partial_failed',
-        kbId,
-        taskId: e.taskId,
-        assetId: e.assetId,
-        error: e.error ?? '部分处理项失败',
-        totalItems: e.totalItems ?? 0,
-        completedItems: e.completedItems ?? 0,
-        failedItems: e.failedItems ?? 0,
-      });
-      return;
-    }
-    if (e.kind === 'error') {
-      systemBus.emit({ type: 'kb_ingest_failed', kbId, taskId: e.taskId, assetId: e.assetId, error: e.error ?? 'unknown' });
-      return;
-    }
-    // cancelled 只属于 reembed。畸形事件不得伪装成 ingest 进度进入前端状态机。
-    if (e.kind === 'cancelled') return;
-    const base: Record<string, number> = { validate: 0.05, parse: 0.25, chunk: 0.45, embed: 0.5 };
-    const progress = e.kind === 'embed' ? 0.5 + 0.5 * (e.progress ?? 0) : (base[e.kind] ?? 0);
-    systemBus.emit({
-      type: 'kb_ingest_progress',
-      kbId,
-      taskId: e.taskId,
-      assetId: e.assetId,
-      stage: e.kind,
-      progress,
-      totalItems: e.totalItems,
-      completedItems: e.completedItems,
-      failedItems: e.failedItems,
-    });
-  });
-
-  // kb_search tool injection: resolves bound embed/rerank models and threads
-  // kbIds (LLM override) + assetScopes (user picker) into KbManager.search().
-  const kbSearch = (
-    query:        string,
-    topK?:        number,
-    kbIds?:       string[],
-    assetScopes?: KbAssetScope[],
-    sessionId?:   string,
-    turnId?:      string,
-  ): Promise<KbSearchResult> => {
-    const kbModels = settings.get(knowledgeModelsSetting);
-    const retrieval = settings.get(knowledgeRetrievalSetting);
-    // kbIds=[] / undefined → KbManager falls back to the active KB.
-    // assetScopes let KbManager route per-KB doc filters to the right client.
-    // 模型工具路径按用户预算裁剪结果正文；HTTP 面板不经此入口。
-    return kb.search(kbIds ?? [], query, {
-      assetScopes,
-      topK,
-      sessionId,
-      turnId,
-      maxResultChars: retrieval.resultMaxChars,
-      ebdProviderId:    kbModels.embed?.providerConfigId,
-      ebdModel:         kbModels.embed?.model,
-      rerankProviderId: kbModels.rerank?.providerConfigId,
-      rerankModel:      kbModels.rerank?.model,
-    });
-  };
+  const { kb, kbSearch } = createKnowledgeRuntime(
+    profileDb,
+    dataDb,
+    settings,
+    modelBindings,
+    embed,
+    rerank,
+    vision,
+    event => systemBus.emit(event),
+  );
 
   const backgroundWork = new BackgroundWork(
     new StartupRecovery(

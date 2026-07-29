@@ -12,7 +12,7 @@ import type { ProviderRuntimeFacade } from '../wiring/provider-runtime.js';
 
 const MODEL_CATALOG_REFRESH_TIMEOUT_MS = 10_000;
 
-type StartupKnowledge = Pick<KbManager, 'ensureDefault' | 'initAll'>;
+type StartupKnowledge = Pick<KbManager, 'ensureDefault'>;
 type StartupMarketplace = Pick<MarketSourceStore, 'ensureSeeds'>;
 type StartupSkills = Pick<SkillStore, 'scanAndReconcile'>;
 type StartupModelCatalog = Pick<ModelsDevCatalog, 'refresh' | 'size'>;
@@ -21,6 +21,7 @@ type StartupBackgroundWork = Pick<BackgroundWork, 'start' | 'shutdown'>;
 
 export class LocalHostLifecycle {
   private startup: Promise<void> | null = null;
+  private readonly backgroundTasks = new Set<Promise<void>>();
 
   constructor(
     private readonly knowledge: StartupKnowledge,
@@ -31,80 +32,72 @@ export class LocalHostLifecycle {
     private readonly backgroundWork: StartupBackgroundWork,
   ) {}
 
-  /**
-   * 默认 KB 是启动前置条件；其余索引与远端同步失败时只降级对应能力，
-   * 不能阻止用户进入本地应用。
-   */
+  /** 必需恢复完成后即可 ready；其余能力在后台独立启动并可降级。 */
   start(): Promise<void> {
     this.startup ??= this.startOnce();
     return this.startup;
   }
 
   async shutdown(): Promise<void> {
-    await this.backgroundWork.shutdown();
+    await this.startup;
+    await Promise.all([
+      this.backgroundWork.shutdown(),
+      ...this.backgroundTasks,
+    ]);
   }
 
   private async startOnce(): Promise<void> {
-    this.seedMarketplace();
-    const defaultKbPath = path.join(profileDir(), 'kb-default');
-    await this.knowledge.ensureDefault(defaultKbPath);
-
-    // 崩溃恢复和常驻 Worker 先启动，随后的一次性任务不能抢在恢复之前运行。
+    // 执行终态恢复属于 ready 前置条件；失败会让 start() 直接拒绝。
     this.backgroundWork.start();
-    void this.initializeKnowledge();
-    void this.reconcileSkills();
-    void this.refreshModelCatalog();
-    void this.syncBridge();
-  }
 
-  private seedMarketplace(): void {
-    try {
+    const defaultKbPath = path.join(profileDir(), 'kb-default');
+    await this.runDegraded('marketplace seed', async () => {
       this.marketplace.ensureSeeds([...MCP_SEEDS, ...SKILL_SEEDS]);
-    } catch (error) {
-      console.warn('[marketplace] seed failed:', error);
-    }
-  }
+    });
+    await this.runDegraded('default KB', () =>
+      this.knowledge.ensureDefault(defaultKbPath));
 
-  private async initializeKnowledge(): Promise<void> {
-    try {
-      await this.knowledge.initAll();
-    } catch (error) {
-      console.warn('[kb] initAll() failed:', error);
-    }
-  }
-
-  private async reconcileSkills(): Promise<void> {
-    try {
+    this.trackBackground('skill reconcile', async () => {
       await this.skills.scanAndReconcile();
-    } catch (error) {
-      console.warn('[skill] reconcile failed:', error);
-    }
+    });
+    this.trackBackground('model catalog refresh', () =>
+      this.refreshModelCatalog());
+    this.trackBackground('initial bridge sync', () =>
+      this.providerRuntime.syncBridge());
   }
 
   private async refreshModelCatalog(): Promise<void> {
-    try {
-      const payload = await this.modelCatalog.refresh({
-        signal: AbortSignal.timeout(MODEL_CATALOG_REFRESH_TIMEOUT_MS),
-      });
-      if (payload !== null && this.modelCatalog.size > 0) {
-        console.info(
-          `[catalog] models.dev loaded (${this.modelCatalog.size} models)`,
-        );
-        return;
-      }
-      console.warn(
-        '[catalog] models.dev refresh failed; context/capability lookups degraded',
+    const payload = await this.modelCatalog.refresh({
+      signal: AbortSignal.timeout(MODEL_CATALOG_REFRESH_TIMEOUT_MS),
+    });
+    if (payload !== null && this.modelCatalog.size > 0) {
+      console.info(
+        `[catalog] models.dev loaded (${this.modelCatalog.size} models)`,
       );
-    } catch (error) {
-      console.warn('[catalog] models.dev refresh failed:', error);
+      return;
     }
+    throw new Error('models.dev 返回空目录');
   }
 
-  private async syncBridge(): Promise<void> {
+  private trackBackground(
+    name: string,
+    operation: () => void | Promise<void>,
+  ): void {
+    const task = this.runDegraded(name, operation);
+    this.backgroundTasks.add(task);
+    void task.finally(() => {
+      this.backgroundTasks.delete(task);
+    });
+  }
+
+  private async runDegraded(
+    name: string,
+    operation: () => void | Promise<void>,
+  ): Promise<void> {
     try {
-      await this.providerRuntime.syncBridge();
+      await operation();
     } catch (error) {
-      console.warn('[provider-runtime] initial bridge sync failed:', error);
+      console.warn(`[startup] ${name} degraded:`, error);
     }
   }
 }

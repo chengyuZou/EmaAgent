@@ -162,14 +162,6 @@ export class KbManager {
 
   // ── Init ──────────────────────────────────────────────────────────────────
 
-  /** Open and HNSW-init every registered KB. Fire-and-forget safe. */
-  async initAll(): Promise<void> {
-    for (const rec of this.deps.registry.list()) {
-      try { await this.openClient(rec.id); }
-      catch (err) { console.warn(`[kb-manager] failed to init KB "${rec.name}" (${rec.id}):`, err); }
-    }
-  }
-
   /**
    * Ensure at least one KB exists. If the registry is empty, auto-create a
    * default KB at `defaultPath` and mark it active. Called at startup.

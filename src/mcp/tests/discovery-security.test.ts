@@ -51,7 +51,11 @@ describe('MCP 工具发现安全边界', () => {
     const ask = vi.fn(async () => ({ action: 'deny' as const }));
     const permission = new PermissionEngine({ mode: 'auto', ask }, new InMemoryPermissionRuleStore());
 
-    expect(tool.permissionMeta).toEqual({ riskLevel: 'medium', accessType: 'execute' });
+    expect(tool.permissionMeta).toEqual({
+      approval: 'required',
+      riskLevel: 'medium',
+      accessType: 'execute',
+    });
     expect(tool.isReadOnly({})).toBe(false);
     expect(tool.isConcurrencySafe({})).toBe(false);
 
@@ -96,6 +100,7 @@ describe('MCP 工具发现安全边界', () => {
     );
 
     expect(destructive.permissionMeta).toEqual({
+      approval: 'required',
       riskLevel: 'high',
       accessType: 'execute',
     });

@@ -4,7 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BackgroundWork } from '../src/background/backgroundWork.js';
 
 function createHarness() {
-  const startupRecovery = { run: vi.fn() };
+  const startupRecovery = {
+    runRequired: vi.fn(),
+    runMaintenance: vi.fn(() => ({ memoryReady: true })),
+  };
   const memory = {
     initialize: vi.fn(async () => ({ nodes: 0, items: 0, backend: null })),
     tick: vi.fn(async () => undefined),
@@ -12,7 +15,7 @@ function createHarness() {
   };
   const mcp = {
     primeFromCache: vi.fn(() => 0),
-    startAll: vi.fn(async () => undefined),
+    discoverUncached: vi.fn(async () => 0),
     disconnectAll: vi.fn(async () => undefined),
   };
   const toolResults = {
@@ -74,16 +77,52 @@ describe('BackgroundWork', () => {
 
     harness.work.start();
     harness.work.start();
+    await vi.waitFor(() => {
+      expect(harness.memory.initialize).toHaveBeenCalledTimes(1);
+    });
 
-    expect(harness.startupRecovery.run).toHaveBeenCalledTimes(1);
-    expect(harness.memory.initialize).toHaveBeenCalledTimes(1);
+    expect(harness.startupRecovery.runRequired).toHaveBeenCalledTimes(1);
+    expect(harness.startupRecovery.runMaintenance).toHaveBeenCalledTimes(1);
     expect(harness.mcp.primeFromCache).toHaveBeenCalledTimes(1);
-    expect(harness.mcp.startAll).toHaveBeenCalledTimes(1);
+    expect(harness.mcp.discoverUncached).toHaveBeenCalledTimes(1);
 
     await harness.work.shutdown();
     await harness.work.shutdown();
 
     expect(harness.memory.drain).toHaveBeenCalledTimes(1);
+    expect(harness.mcp.disconnectAll).toHaveBeenCalledTimes(1);
+  });
+
+  it('必需恢复失败会阻止后台 Worker 和 MCP 启动', () => {
+    const harness = createHarness();
+    harness.startupRecovery.runRequired.mockImplementation(() => {
+      throw new Error('turn recovery failed');
+    });
+
+    expect(() => harness.work.start()).toThrow('turn recovery failed');
+    expect(harness.memory.initialize).not.toHaveBeenCalled();
+    expect(harness.mcp.primeFromCache).not.toHaveBeenCalled();
+    expect(harness.mcp.discoverUncached).not.toHaveBeenCalled();
+  });
+
+  it('Memory 恢复失败时只禁用 Memory Worker，其余后台维护继续运行', async () => {
+    const harness = createHarness();
+    harness.startupRecovery.runMaintenance.mockReturnValue({
+      memoryReady: false,
+    });
+
+    harness.work.start();
+    await vi.waitFor(() => {
+      expect(harness.startupRecovery.runMaintenance).toHaveBeenCalledTimes(1);
+    });
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(harness.memory.initialize).not.toHaveBeenCalled();
+    expect(harness.memory.tick).not.toHaveBeenCalled();
+    expect(harness.mcp.discoverUncached).toHaveBeenCalledTimes(1);
+
+    await harness.work.shutdown();
+    expect(harness.memory.drain).not.toHaveBeenCalled();
     expect(harness.mcp.disconnectAll).toHaveBeenCalledTimes(1);
   });
 

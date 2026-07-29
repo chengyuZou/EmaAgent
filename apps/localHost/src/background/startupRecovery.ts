@@ -1,4 +1,4 @@
-// 集中恢复异常退出留下的运行状态与孤儿文件，再交给常驻后台任务继续处理。
+// 区分必须完成的执行状态恢复与可降级维护，避免带着错误终态对外 ready。
 
 import type { AgentRunStore } from '@ema-agent/agent';
 import { cleanupInterruptedFileWriteTemps } from '@ema-agent/tool-builtin';
@@ -34,18 +34,30 @@ export class StartupRecovery {
     private readonly toolExecutions: StartupToolExecutions,
   ) {}
 
-  run(): void {
+  /**
+   * Tool、Turn 与 AgentRun 的终态是继续接收请求的前置条件。
+   * 数据库恢复失败必须向上传播，不能把旧 running 状态留给新进程。
+   */
+  runRequired(): void {
     this.recoverToolExecutions();
-    this.recoverMemory();
     this.recoverTurns();
-    this.recoverTurnFiles();
-    this.removeLegacyArtifactFiles();
     this.recoverAgentRuns();
   }
 
+  /**
+   * Memory 与孤儿文件清理失败只降级对应后台能力。
+   * 返回值决定本次进程是否可以启动 Memory Worker。
+   */
+  runMaintenance(): { memoryReady: boolean } {
+    const memoryReady = this.recoverMemory();
+    this.recoverTurnFiles();
+    this.removeLegacyArtifactFiles();
+    return { memoryReady };
+  }
+
   private recoverToolExecutions(): void {
+    const interrupted = this.toolExecutions.recoverInterrupted();
     try {
-      const interrupted = this.toolExecutions.recoverInterrupted();
       const fileWriteRecovery = cleanupInterruptedFileWriteTemps(interrupted);
       if (interrupted.length > 0) {
         const unknownCount = interrupted.filter(
@@ -67,11 +79,12 @@ export class StartupRecovery {
         );
       }
     } catch (error) {
-      console.warn('[tool-execution] startup recovery skipped:', error);
+      // Tool 终态已经恢复；临时文件清理属于可重试维护，不阻止启动。
+      console.warn('[tool-execution] temporary file cleanup skipped:', error);
     }
   }
 
-  private recoverMemory(): void {
+  private recoverMemory(): boolean {
     try {
       const report = this.memory.runStartupRecovery();
       if (report.resetTasks > 0) {
@@ -93,21 +106,19 @@ export class StartupRecovery {
           `[memory] startup: ${report.pendingSessions} session(s) have pending fragments`,
         );
       }
+      return true;
     } catch (error) {
       console.warn('[memory] startup recovery skipped:', error);
+      return false;
     }
   }
 
   private recoverTurns(): void {
-    try {
-      const { healed } = this.session.recoverStuckTurns();
-      if (healed > 0) {
-        console.log(
-          `[session] startup: aborted ${healed} stuck turn(s) from prior crash`,
-        );
-      }
-    } catch (error) {
-      console.warn('[session] startup turn recovery skipped:', error);
+    const { healed } = this.session.recoverStuckTurns();
+    if (healed > 0) {
+      console.log(
+        `[session] startup: aborted ${healed} stuck turn(s) from prior crash`,
+      );
     }
   }
 
@@ -141,15 +152,11 @@ export class StartupRecovery {
   }
 
   private recoverAgentRuns(): void {
-    try {
-      const recovered = this.agentRuns.recoverInterrupted();
-      if (recovered.length > 0) {
-        console.log(
-          `[agent-run] startup: marked ${recovered.length} interrupted run(s) as failed`,
-        );
-      }
-    } catch (error) {
-      console.warn('[agent-run] startup recovery skipped:', error);
+    const recovered = this.agentRuns.recoverInterrupted();
+    if (recovered.length > 0) {
+      console.log(
+        `[agent-run] startup: marked ${recovered.length} interrupted run(s) as failed`,
+      );
     }
   }
 }

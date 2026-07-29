@@ -21,7 +21,7 @@ const BRIDGE_HEARTBEAT_EVERY = 12;
 type BackgroundMemory = Pick<MemoryPlanner, 'initialize' | 'tick' | 'drain'>;
 type BackgroundMcp = Pick<
   McpRegistry,
-  'primeFromCache' | 'startAll' | 'disconnectAll'
+  'primeFromCache' | 'discoverUncached' | 'disconnectAll'
 >;
 type BackgroundToolResults = Pick<ToolResultCleaner, 'sweep'>;
 type BackgroundAttachmentCache = Pick<
@@ -35,13 +35,17 @@ type BackgroundSystemEvents = Pick<SystemEventBus, 'emit'>;
 export class BackgroundWork {
   private ticker: BackgroundTicker | null = null;
   private initialization: Promise<unknown> | null = null;
-  private mcpStartup: Promise<void> | null = null;
+  private mcpDiscovery: Promise<unknown> | null = null;
   private lastBridgeReady: boolean | null = null;
+  private memoryEnabled = false;
   private started = false;
   private stopped = false;
 
   constructor(
-    private readonly startupRecovery: Pick<StartupRecovery, 'run'>,
+    private readonly startupRecovery: Pick<
+      StartupRecovery,
+      'runRequired' | 'runMaintenance'
+    >,
     private readonly memory: BackgroundMemory,
     private readonly mcp: BackgroundMcp,
     private readonly toolResults: BackgroundToolResults,
@@ -56,16 +60,22 @@ export class BackgroundWork {
     if (this.stopped) {
       throw new Error('BackgroundWork 已关闭，不能重新启动');
     }
-    this.started = true;
-
     // 崩溃恢复必须先于新一轮后台任务，避免旧 running 状态与新 Worker 竞争。
-    this.startupRecovery.run();
-    this.initialization = this.memory.initialize().catch((error) => {
-      console.warn(
-        '[memory] initialize() failed — continuing with no vector index:',
-        error,
-      );
-    });
+    this.startupRecovery.runRequired();
+    this.started = true;
+    this.initialization = Promise.resolve()
+      .then(() => this.startupRecovery.runMaintenance())
+      .then(async ({ memoryReady }) => {
+        if (!memoryReady) return;
+        await this.memory.initialize();
+        this.memoryEnabled = true;
+      })
+      .catch((error) => {
+        console.warn(
+          '[memory] maintenance or initialize() failed — Memory worker disabled:',
+          error,
+        );
+      });
 
     try {
       const primed = this.mcp.primeFromCache();
@@ -75,8 +85,8 @@ export class BackgroundWork {
     } catch (error) {
       console.warn('[mcp] primeFromCache() failed:', error);
     }
-    this.mcpStartup = this.mcp.startAll().catch((error) => {
-      console.warn('[mcp] startAll() refresh failed:', error);
+    this.mcpDiscovery = this.mcp.discoverUncached().catch((error) => {
+      console.warn('[mcp] uncached schema discovery failed:', error);
     });
 
     this.ticker = createBackgroundTicker({
@@ -93,12 +103,14 @@ export class BackgroundWork {
     await this.ticker?.stop();
     this.ticker = null;
     await this.initialization;
-    try {
-      await this.memory.drain();
-    } catch (error) {
-      console.warn('[memory] drain() failed during shutdown:', error);
+    if (this.memoryEnabled) {
+      try {
+        await this.memory.drain();
+      } catch (error) {
+        console.warn('[memory] drain() failed during shutdown:', error);
+      }
     }
-    await this.mcpStartup;
+    await this.mcpDiscovery;
     try {
       await this.mcp.disconnectAll();
     } catch (error) {
@@ -107,9 +119,11 @@ export class BackgroundWork {
   }
 
   private async runTick(tickCount: number): Promise<void> {
-    await this.memory.tick().catch((error) => {
-      console.warn('[memory] background tick failed:', error);
-    });
+    if (this.memoryEnabled) {
+      await this.memory.tick().catch((error) => {
+        console.warn('[memory] background tick failed:', error);
+      });
+    }
 
     if (tickCount % CLEANER_SWEEP_EVERY === 0) {
       this.sweepToolResults();

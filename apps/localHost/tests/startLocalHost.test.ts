@@ -1,4 +1,4 @@
-// 测试 LocalHost 先完成必要初始化，再单次启动可降级任务并委托后台关闭。
+// 测试 LocalHost 先完成必需恢复，再跟踪可降级启动任务并有序关闭。
 
 import fs from 'node:fs';
 import os from 'node:os';
@@ -21,7 +21,7 @@ describe('LocalHostLifecycle', () => {
     }
   });
 
-  it('种子与默认 KB 就绪后才启动后台任务，重复 start 只执行一次', async () => {
+  it('必需恢复先完成，可降级任务后台启动且重复 start 只执行一次', async () => {
     const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ema-profile-'));
     directories.push(profileDir);
     process.env['EMA_PROFILE_DIR'] = profileDir;
@@ -29,9 +29,6 @@ describe('LocalHostLifecycle', () => {
     const knowledge = {
       ensureDefault: vi.fn(async () => {
         order.push('knowledge.ensure');
-      }),
-      initAll: vi.fn(async () => {
-        order.push('knowledge.init');
       }),
     };
     const skills = {
@@ -73,23 +70,23 @@ describe('LocalHostLifecycle', () => {
     );
 
     await Promise.all([lifecycle.start(), lifecycle.start()]);
-    await Promise.resolve();
+    await vi.waitFor(() => {
+      expect(providerRuntime.syncBridge).toHaveBeenCalledTimes(1);
+    });
 
     expect(knowledge.ensureDefault).toHaveBeenCalledWith(
       path.join(profileDir, 'kb-default'),
     );
     expect(order).toEqual([
+      'background',
       'marketplace',
       'knowledge.ensure',
-      'background',
-      'knowledge.init',
       'skills',
       'catalog',
       'bridge',
     ]);
     expect(backgroundWork.start).toHaveBeenCalledTimes(1);
     expect(marketplace.ensureSeeds).toHaveBeenCalledTimes(1);
-    expect(knowledge.initAll).toHaveBeenCalledTimes(1);
     expect(skills.scanAndReconcile).toHaveBeenCalledTimes(1);
     expect(modelCatalog.refresh).toHaveBeenCalledTimes(1);
     expect(providerRuntime.syncBridge).toHaveBeenCalledTimes(1);
@@ -105,8 +102,7 @@ describe('LocalHostLifecycle', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const lifecycle = new LocalHostLifecycle(
       {
-        ensureDefault: vi.fn(async () => undefined),
-        initAll: vi.fn(async () => {
+        ensureDefault: vi.fn(async () => {
           throw new Error('kb unavailable');
         }),
       },
@@ -140,5 +136,43 @@ describe('LocalHostLifecycle', () => {
       expect(warn).toHaveBeenCalledTimes(5);
     });
     warn.mockRestore();
+  });
+
+  it('必需恢复失败会让 start 拒绝，且不启动任何可降级任务', async () => {
+    const knowledge = { ensureDefault: vi.fn(async () => undefined) };
+    const marketplace = { ensureSeeds: vi.fn() };
+    const skills = {
+      scanAndReconcile: vi.fn(async () => ({
+        indexed: 0,
+        pruned: 0,
+        errors: [],
+      })),
+    };
+    const modelCatalog = {
+      refresh: vi.fn(async () => ({})),
+      size: 1,
+    };
+    const providerRuntime = { syncBridge: vi.fn(async () => undefined) };
+    const backgroundWork = {
+      start: vi.fn(() => {
+        throw new Error('required recovery failed');
+      }),
+      shutdown: vi.fn(async () => undefined),
+    };
+    const lifecycle = new LocalHostLifecycle(
+      knowledge,
+      marketplace,
+      skills,
+      modelCatalog,
+      providerRuntime,
+      backgroundWork,
+    );
+
+    await expect(lifecycle.start()).rejects.toThrow('required recovery failed');
+    expect(knowledge.ensureDefault).not.toHaveBeenCalled();
+    expect(marketplace.ensureSeeds).not.toHaveBeenCalled();
+    expect(skills.scanAndReconcile).not.toHaveBeenCalled();
+    expect(modelCatalog.refresh).not.toHaveBeenCalled();
+    expect(providerRuntime.syncBridge).not.toHaveBeenCalled();
   });
 });

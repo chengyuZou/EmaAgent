@@ -34,7 +34,7 @@ import {
 } from './errors.js';
 
 const TOOL_DISCOVERY_TIMEOUT_MS = 15_000;
-const STARTUP_CONNECT_CONCURRENCY = 4;
+const STARTUP_DISCOVERY_CONCURRENCY = 4;
 
 interface McpServerRuntime {
   generation: number;
@@ -226,17 +226,59 @@ export class McpRegistry {
     return this.store.listAll();
   }
 
-  async startAll(): Promise<void> {
-    const enabled = this.store.listEnabled().filter(
-      record => record.config.type !== 'stdio' || this.stdioEnabled,
+  /**
+   * 后台发现尚无缓存 Schema 的服务器，但不保留 Transport。
+   * 成功结果写入缓存并注册为惰性工具，首次真实调用仍由 callTool() 建立连接。
+   */
+  async discoverUncached(): Promise<number> {
+    const records = this.store.listEnabled()
+      .filter((record) =>
+        (record.config.type !== 'stdio' || this.stdioEnabled)
+        && (!record.cachedTools || record.cachedTools.length === 0),
+      )
+      .sort((left, right) => left.name.localeCompare(right.name));
+    const discovered = new Map<string, McpToolInfo[]>();
+
+    await runWithConcurrency(
+      records,
+      STARTUP_DISCOVERY_CONCURRENCY,
+      async (record) => {
+        const result = await this.probe(record.name, record.config);
+        if (!result.ok) {
+          console.warn(
+            `[mcp] Failed to discover "${record.name}": ${result.error ?? 'unknown'}`,
+          );
+          return;
+        }
+        discovered.set(
+          record.name,
+          [...result.tools].sort((left, right) =>
+            left.qualifiedName.localeCompare(right.qualifiedName)),
+        );
+      },
     );
-    await runWithConcurrency(enabled, STARTUP_CONNECT_CONCURRENCY, async (record) => {
-      try {
-        await this.connectConfig(record.name, record.config);
-      } catch (err) {
-        console.warn(`[mcp] Failed to connect "${record.name}": ${(err as Error).message}`);
-      }
-    });
+
+    const registrations: McpToolRegistration[] = [];
+    const pending = new Map<string, McpToolInfo[]>();
+    for (const record of records) {
+      const tools = discovered.get(record.name);
+      if (!tools) continue;
+      const runtime = this.runtimes.get(record.name);
+      // 用户可能在后台发现期间显式连接；实时连接拥有更新的 Schema，不能被缓存覆盖。
+      if (runtime?.opened || runtime?.connectTask) continue;
+      registrations.push(...toRegistrations(tools, this));
+      pending.set(record.name, tools);
+    }
+
+    // 整批所有权校验成功后才写缓存，避免把无法注册的冲突 Schema 留给下次启动。
+    this.toolRegistry.registerMcpBatch(registrations);
+    for (const [serverName, tools] of pending) {
+      try { this.store.cacheTools(serverName, tools); } catch { /* 实时工具仍可使用 */ }
+      this.primed.set(serverName, tools);
+      const runtime = this.runtimeFor(serverName);
+      runtime.info = connectionInfo(serverName, 'disconnected', tools);
+    }
+    return registrations.length;
   }
 
   // ── 探测 ────────────────────────────────────────────────────────────────
