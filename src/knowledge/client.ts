@@ -15,6 +15,7 @@ import type { KbHydeAdapter }   from './adapters/hyde.js';
 import type { KbAutoQuestionAdapter } from './adapters/auto-questions.js';
 import { DocumentEventEmitter } from './events/emitter.js';
 import { weightedRank }         from './retrieval/hybrid.js';
+import { applyResultBudget }    from './retrieval/resultBudget.js';
 import type { VectorIndex }     from './index/vector-index.js';
 import { createVectorIndex }    from './index/factory.js';
 import { normalizeF32 } from './embed/normalize.js';
@@ -310,6 +311,7 @@ export class KnowledgeClient {
 
     // ── Optional rerank ───────────────────────────────────────────────────────
     if (this.deps.rerankRuntime && opts.rerankProviderId && opts.rerankModel && ranked.length > 0) {
+      const blendWeight = opts.rerankBlendWeight ?? RERANK_BLEND_WEIGHT;
       try {
         const rerankRes = await this.deps.rerankRuntime.rerank({
           providerId: opts.rerankProviderId,
@@ -335,8 +337,8 @@ export class KnowledgeClient {
         ranked = ranked
           .map((r) => ({
             id:    r.id,
-            score: (1 - RERANK_BLEND_WEIGHT) * (maxRrf > 0 ? r.score / maxRrf : 0)
-                 + RERANK_BLEND_WEIGHT * (rerankById.get(r.id) ?? 0),
+            score: (1 - blendWeight) * (maxRrf > 0 ? r.score / maxRrf : 0)
+                 + blendWeight * (rerankById.get(r.id) ?? 0),
           }))
           .sort((a, b) => b.score - a.score)
           .slice(0, topK);
@@ -378,7 +380,7 @@ export class KnowledgeClient {
       });
     }
 
-    return { query, hits };
+    return { query, hits: applyResultBudget(hits, opts.maxResultChars) };
   }
 
   // ── Asset accessors ───────────────────────────────────────────────────────

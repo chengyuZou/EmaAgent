@@ -2,10 +2,8 @@
 
 import type { Database } from '@ema-agent/storage';
 import {
-  AttachmentRepo,
   McpServersRepo, SkillsRepo,
   MarketSourcesRepo,
-  AttachmentDerivationsRepo,
   type SessionNotesRepo,
   type SessionStatsRepo,
   type DataDirStatsRepo,
@@ -19,10 +17,8 @@ import {
   type ProviderVisionModelsRepo,
 } from '@ema-agent/storage';
 import {
-  AttachmentCacheMaintenance,
-  AttachmentDerivationCache,
-  AttachmentStore,
-  attachmentSetting,
+  type AttachmentDerivationCache,
+  type AttachmentStore,
   type FileAccessFacade,
 } from '@ema-agent/attachment';
 import { McpRegistry, McpServerStore }                 from '@ema-agent/mcp';
@@ -74,6 +70,7 @@ import type {
 } from '@ema-agent/turn';
 import {
   knowledgeModelsSetting,
+  knowledgeRetrievalSetting,
   type KbSearchResult,
 } from '@ema-agent/knowledge';
 import type { CommandRunnerPort, SandboxStatusWire } from '@ema-agent/sandbox';
@@ -93,7 +90,7 @@ import {
 } from '@ema-agent/storage';
 import { SystemEventBus }  from '../sse/system-bus.js';
 import type { ProviderRuntimeFacade } from './provider-runtime.js';
-import { SessionBackupFacade } from '@ema-agent/backup';
+import type { SessionBackupFacade } from '@ema-agent/backup';
 import type { CredentialFacade } from '@ema-agent/credential';
 import { createSettingsStore } from '../settings/createSettingsStore.js';
 import { BackgroundWork } from '../background/backgroundWork.js';
@@ -105,6 +102,8 @@ import { createSandboxRuntime } from './createSandboxRuntime.js';
 import { createToolInfrastructure } from './createToolInfrastructure.js';
 import { createSessionPersistence } from './createSessionPersistence.js';
 import { createMemoryRuntime } from './createMemoryRuntime.js';
+import { createAttachmentRuntime } from './createAttachmentRuntime.js';
+import { createSessionBackup } from './createSessionBackup.js';
 
 /**
  * LocalHost 迁移期完整对象图。
@@ -392,52 +391,23 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     event => systemBus.emit(event),
   );
 
-  // ── Attachments ─────────────────────────────────────────────────────────────
-  const attachmentStore = new AttachmentStore(new AttachmentRepo(dataDb.sqlite), session);
-  const attachmentDerivationsRepo = new AttachmentDerivationsRepo(dataDb.sqlite);
-  const attachmentDerivationCache = new AttachmentDerivationCache({
+  const {
+    attachmentStore,
+    attachmentDerivationCache,
+    attachmentCacheMaintenance,
+  } = createAttachmentRuntime(
+    dataDb,
     activeDataDir,
-    repo: attachmentDerivationsRepo,
-  });
-  const attachmentCacheMaintenance = new AttachmentCacheMaintenance({
+    session,
+    settings,
+  );
+  const sessionBackup = createSessionBackup(
     activeDataDir,
-    repo: attachmentDerivationsRepo,
-    isIdle: () => !session.hasActiveTurns(),
-    maxBytesForSweep: () => settings.get(attachmentSetting).derivationCacheBytes,
-  });
-
-  // ── Session backup ──────────────────────────────────────────────────────────
-  const sessionBackup = new SessionBackupFacade({
-    activeDataDir,
-    sessionExists: (sessionId) => session.sessionExists(sessionId as SessionId),
-    restoreRows: (payload) => sessionStats.restoreRows(payload),
-    collectExport: (sessionId) => {
-      const id = sessionId as SessionId;
-      if (!session.sessionExists(id)) return null;
-      const sessionRow = session.getSession(id);
-      const noteRow = sessionNotes.findBySession(id);
-      return {
-        session: { ...sessionRow },
-        turns: session.listTurns(id, 10_000),
-        messages: session.listMessages(id, { limit: 10_000 }),
-        attachments: attachmentStore.listBySession(sessionId),
-        audio: sessionStats.listAudioEntries(sessionId),
-        notes: noteRow ? {
-          sessionId,
-          body: noteRow.body,
-          tokensAtLastUpdate: noteRow.tokens_at_last_update,
-          updatedAt: noteRow.updated_at,
-        } : null,
-        tasks: sessionStats.listTasks(sessionId),
-        taskDependencies: sessionStats.listTaskDependencies(sessionId),
-        agentRuns: sessionStats.listAgentRuns(sessionId),
-        agentRunMessages: sessionStats.listAgentRunMessages(sessionId),
-        memoryState: sessionStats.getMemoryState(sessionId) ?? null,
-        kbActivations: sessionStats.listKbActivations(sessionId),
-        usageRecords: sessionStats.listUsageRecords(sessionId),
-      };
-    },
-  });
+    session,
+    sessionStats,
+    sessionNotes,
+    attachmentStore,
+  );
 
   // ── MCP registry ────────────────────────────────────────────────────────────
   const mcpStdioGate = async (intent: McpStdioLaunchIntent): Promise<boolean> => {
@@ -503,6 +473,8 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     rerankRuntime:        rerank,
     visionAdapter:        asKbVisionAdapter(vision),
     resolveIngestOptions: resolveIngestModels,
+    // 每次检索操作时读取用户可调的检索参数（kb.retrieval）。
+    resolveRetrievalSettings: () => settings.get(knowledgeRetrievalSetting),
     concurrency:          3,
   });
 
@@ -592,13 +564,16 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     turnId?:      string,
   ): Promise<KbSearchResult> => {
     const kbModels = settings.get(knowledgeModelsSetting);
+    const retrieval = settings.get(knowledgeRetrievalSetting);
     // kbIds=[] / undefined → KbManager falls back to the active KB.
     // assetScopes let KbManager route per-KB doc filters to the right client.
+    // 模型工具路径按用户预算裁剪结果正文；HTTP 面板不经此入口。
     return kb.search(kbIds ?? [], query, {
       assetScopes,
       topK,
       sessionId,
       turnId,
+      maxResultChars: retrieval.resultMaxChars,
       ebdProviderId:    kbModels.embed?.providerConfigId,
       ebdModel:         kbModels.embed?.model,
       rerankProviderId: kbModels.rerank?.providerConfigId,

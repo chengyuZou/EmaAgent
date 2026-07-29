@@ -18,6 +18,11 @@ import { ReembedQueue }          from './reembed/queue.js';
 import { DocumentEventEmitter }  from './events/emitter.js';
 import type { KbVisionAdapter }  from './adapters/vision.js';
 import type { IngestOptions, SearchOptions, KbSearchResult } from './types.js';
+import { applyResultBudget } from './retrieval/resultBudget.js';
+import {
+  DEFAULT_KNOWLEDGE_RETRIEVAL_SETTINGS,
+  type KnowledgeRetrievalSettings,
+} from './settings.js';
 
 // ── Entry ─────────────────────────────────────────────────────────────────────
 
@@ -40,6 +45,8 @@ export interface KbManagerDeps {
   rerankRuntime?:       RerankRuntime;
   visionAdapter?:       KbVisionAdapter;
   resolveIngestOptions: () => Partial<IngestOptions>;
+  /** 每次检索操作时读取用户可调的检索参数；缺省用内置默认值。 */
+  resolveRetrievalSettings?: () => KnowledgeRetrievalSettings;
   concurrency?:         number;
 }
 
@@ -123,7 +130,18 @@ export class KbManager {
 
     if (targetIds.length === 0) return { query, hits: [] };
 
-    const { assetScopes, assetIds: _ignored, ...sharedOpts } = opts;
+    const retrieval = this.deps.resolveRetrievalSettings?.()
+      ?? DEFAULT_KNOWLEDGE_RETRIEVAL_SETTINGS;
+    const effectiveTopK = opts.topK ?? retrieval.defaultTopK;
+    // maxResultChars 只由调用方显式指定，在合并后统一填充一次；
+    // 各 KB 内部不按预算截断，避免多 KB 结果叠加超限。
+    const { assetScopes, assetIds: _ignored, maxResultChars, ...restOpts } = opts;
+    const sharedOpts = {
+      ...restOpts,
+      topK: effectiveTopK,
+      alpha: opts.alpha ?? retrieval.alpha,
+      rerankBlendWeight: opts.rerankBlendWeight ?? retrieval.rerankBlendWeight,
+    };
 
     const settled = await Promise.allSettled(
       targetIds.map(async (id) => {
@@ -137,9 +155,9 @@ export class KbManager {
       .filter((r): r is PromiseFulfilledResult<KbSearchResult> => r.status === 'fulfilled')
       .flatMap((r) => r.value.hits)
       .sort((a, b) => b.score - a.score)
-      .slice(0, opts.topK ?? 10);
+      .slice(0, effectiveTopK);
 
-    return { query, hits };
+    return { query, hits: applyResultBudget(hits, maxResultChars) };
   }
 
   // ── Init ──────────────────────────────────────────────────────────────────

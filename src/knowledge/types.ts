@@ -16,6 +16,8 @@ export interface KbSearchHit {
   markdown?: string;
   score: number;
   source: DocumentSourceRef;
+  /** 预算耗尽后降级为引用卡：text 只有命中块预览，正文未展开。 */
+  citationOnly?: boolean;
 }
 
 export interface KbSearchResult {
@@ -197,6 +199,10 @@ export interface SearchOptions {
   topK?:      number;
   /** BM25 / vector blend weight (0 = pure BM25, 1 = pure vector). Default 0.5. */
   alpha?:     number;
+  /** rerank 分在混合排序中的权重（0-1）；缺省由实现默认值决定。 */
+  rerankBlendWeight?: number;
+  /** 命中正文的总字符预算；超出后低分命中降级为 citation-only 引用卡。 */
+  maxResultChars?: number;
   /** Embedding provider for dense retrieval (optional). */
   ebdProviderId?:    string;
   ebdModel?:         string;

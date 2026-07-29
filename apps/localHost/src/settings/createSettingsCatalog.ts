@@ -3,7 +3,7 @@
 import { agentSetting } from '@ema-agent/agent';
 import { attachmentSetting } from '@ema-agent/attachment';
 import { contextCompactionSetting } from '@ema-agent/context';
-import { knowledgeModelsSetting } from '@ema-agent/knowledge';
+import { knowledgeModelsSetting, knowledgeRetrievalSetting } from '@ema-agent/knowledge';
 import { permissionAskTimeoutSetting } from '@ema-agent/permission';
 import { SettingsCatalog } from '@ema-agent/settings';
 import { themeSetting } from '@ema-agent/theme';
@@ -17,6 +17,7 @@ export function createSettingsCatalog(): SettingsCatalog {
   catalog.register(contextCompactionSetting);
   catalog.register(eventDisplaySetting);
   catalog.register(knowledgeModelsSetting);
+  catalog.register(knowledgeRetrievalSetting);
   catalog.register(permissionAskTimeoutSetting);
   catalog.register(themeSetting);
   catalog.register(visionSetting);

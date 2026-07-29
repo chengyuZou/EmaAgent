@@ -58,6 +58,8 @@ LocalHost Composition Root 第一批已经完成：`createProviderControlPlane.t
 
 LocalHost Composition Root Session/Memory 批次已经完成：`createSessionPersistence.ts` 统一构造 Session 聚合、统计与会话笔记入口，Memory、Session Dashboard 和 Backup 不再分别创建指向同一张表的 `SessionNotesRepo`；`createMemoryRuntime.ts` 只构造 Memory Planner 与两库 Repo，不启动索引或 Worker，`initialize/tick/drain` 继续由 `BackgroundWork` 管理。`ContextCompactor` 已退出 `AppBindings`，由唯一根 Turn 对象图 `createTurnExecution.ts` 构造并持有，不进入 Memory 工厂，也不按 Turn 重建。Route、恢复、后台和前端协议均未改变。
 
+LocalHost Composition Root Attachment/Backup 批次已经完成：`createAttachmentRuntime.ts` 统一构造附件记录、共享派生缓存 Repo、图片派生缓存与空闲维护器，构造期不创建目录、不规范化图片也不启动清理；缓存配额仍在每次真实 sweep 开始时读取一次。`createSessionBackup.ts` 复用同一 Session、统计、会话笔记和 Attachment 入口建立 `SessionBackupFacade`，ZIP 校验、文件提交与事务恢复语义不变。`bindings.ts` 不再展开 Attachment/Backup 内部对象图，Route、后台时序和前端协议均未改变。
+
 开工前已复核本地 Codex 源码：`codex-protocol` 只定义 Thread/Turn/Submission 等低层协议，真正编排位于 `codex-core/session`；App Server 只校验并提交 `Op::UserInput`，Session 统一建立 `RunningTask`、取消句柄和终态，`RegularTask` 再调用内部 `run_turn` 完成多轮模型与工具循环。Ema 因此保留低层 `turn` 与高层 `turnExecution` 两个编译边界，不能把执行依赖反向塞进被 Context、Session、Storage、Hooks 共同依赖的领域包。
 
 旧 `ConversationEngine` 与整个 `src/conversation` 包已经删除，Workspace 依赖和生产 import 归零。Chat 根生命周期与只读 Tool Profile 进入 `turnExecution`，LLM/Tool 迭代进入 `agent`，Narrative Route 与多周目 Recall 回到 `narrative`，模型可见召回正文通过不可信 Context Contribution 投递；Hook 不再携带 Narrative 私有结果。
@@ -150,9 +152,9 @@ Task 与 AgentRun 前端已经分面：Desktop 使用正式 `/api/tasks` 快照�
 
 开始任何新批次前必须重新运行 `git status --short` 与 `git diff`，保留用户和其他 Agent 的修改。
 
-当前主线工作区包含 LocalHost Composition Root 的 Session/Memory 对象图拆分：新增 Session 持久入口、Memory 构造工厂与聚焦测试，从 `bindings.ts` 移出相应 Repo/Planner 构造，并把 ContextCompactor 收回唯一根 Turn 对象图。本地忽略目录 `docs/architecture/localHostWiringRefactorPlan.md` 继续作为施工计划。开始下一批前仍须按实际 Diff 区分用户或其他 Agent 的后续修改。
+当前主线工作区包含 LocalHost Composition Root 的 Attachment/Backup 对象图拆分：新增两个内聚工厂与聚焦测试，从 `bindings.ts` 移出 Attachment Repo、派生缓存和 SessionBackup 导出投影构造。工作区同时包含其他 Agent 正在进行的 Knowledge 检索设置与结果预算改动，本批只在现有 `bindings.ts` 改动上追加装配替换，没有回退或重写其业务逻辑。本地忽略目录 `docs/architecture/localHostWiringRefactorPlan.md` 继续作为施工计划。
 
-当前基线最近提交：`9916b22a feat(knowledge): implement staging for ingest files and enhance asset management`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
+当前基线最近提交：`bbd266e0 feat: implement Session and Memory architecture with persistence and runtime management; add tests for session handling`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
 
 ## 已确定的 V1 口径
 
@@ -199,7 +201,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 6. Permission V1 已完成：统一 Session FIFO、明确终态、Turn 身份核对、SQLite 永久规则 CRUD 与设置页管理、Builtin-only 免审批边界均已接通；旧 `AskUserRegistryLike` 已改为 `AskUserInteractionPort`，不新增第二套队列；
 7. Skill 多文件激活、per-Agent 状态、结构化 Context 恢复与 `allowed-tools` 单向收窄已经完成；
 8. LocalHost L0、Turn 输入准备 L1、Turn Context L2、Turn Tools L3、Root Agent Execution L4、Turn Composition Root L5、TTS Turn 输出边界、精确根取消与旧 Orchestrator 删除、Route 业务副作用归位及 Task/AgentRun Route 窄依赖均已完成；
-9. Turn/AskUser、Permission、Session、Provider/ModelBindings、Settings/Theme、Transcribe、Cards、Knowledge Base、Storage Stats 与 Shell Route 已完成窄依赖；HTTP Server、后台生命周期和一次性启动装配也已完成收口。`buildBindings()` 的 Provider 控制面、六模态执行面、Sandbox/Tool、Session/Memory 对象图已经提取；Character/Emotion 工厂仍由 K3 独立准备，主线下一批按 Attachment/Backup 再到 Extension/Knowledge 的顺序施工，不建立嵌套依赖袋或通用 `Lazy<T>`；
+9. Turn/AskUser、Permission、Session、Provider/ModelBindings、Settings/Theme、Transcribe、Cards、Knowledge Base、Storage Stats 与 Shell Route 已完成窄依赖；HTTP Server、后台生命周期和一次性启动装配也已完成收口。`buildBindings()` 的 Provider 控制面、六模态执行面、Sandbox/Tool、Session/Memory、Attachment/Backup 对象图已经提取；Character/Emotion 工厂仍由 K3 独立准备，主线下一批进入 Extension/Knowledge/Lifecycle，并先与其他 Agent 的 Knowledge 工作区对齐，不建立嵌套依赖袋或通用 `Lazy<T>`；
 10. 后台进程按 `BackgroundProcess + ProcessOutput/ProcessStop` 单独实现 C 档，不修改 AgentLoop，也不恢复假 `run_in_background`；
 11. 外围质量收口（K3 主线，依据为 2026-07-29 外围模块评审与 ragflow/claude-code 参照研究，管线对照见 `docs/reviews/ragflow-claude-pipelines.md`）：
     - **R2 KB 检索质量**：rerank 分数统一归一 [0,1]（已在区间内不动、越界才 min-max），rerank 替换制改为 RRF 分与 rerank 分的加权混合（消灭 0.4 硬门槛整条消失），空结果降阈值自动重查一次；
@@ -213,6 +215,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
     - **R9 Skills 收窄传播（语义已冻结）**：能力收窄按任务树继承——子 Agent 工具上限 = 父当前收窄集 ∩ 自身工具池，只能更窄不能更宽，与 TurnBudget 全树共享同原则；父 `TurnPolicy` 暴露 allowedIds，`SubagentSpawner.spawn()` 求交后建子 policy；
     - **R10 MCP 生命周期**：stdio 崩溃 onclose 感知、status 转 failed 与重连、live 发现的 schema 字节与工具数上限；
     - **R11 Memory 后台欠账**：stale embedding 修复任务落地（替换"只数不修"）、租约丢失时管道关闸防双写；
+    - **R12 KB 模型变更生命周期**：embed 模型绑定变更时自动 `markStaleExcept` 并向用户提示或引导 reembed，消灭"换模型后旧文档向量静默退出 dense 检索"的漂移；chunk 参数若未来进设置，需按 claim 时冻结进任务（同 `resolveOptions` 模式）且 dedup 键扩展为 `hash(内容 + chunk配置)`（ragflow digest 语义）。
     - **A 主链真 bug**：ToolResultStore EEXIST 内容错位、Usage 状态模型补 `cancelled`、Anthropic 隐式 maxTokens=4096 改透传；
     - **B 主链安全收口**：install-git 与 mcpStdioGate 路由级审批修通、`AGEN_UNSAFE_*` 生产构建物理拒绝、Sandbox 状态接前端常驻提示；
     - **C 主链卫生**：agentLoopState 死声明清理（failed 相位、llm_error/user_timeout/user_cancel、pendingPromptId）、prefixHash 注释与行为对齐、压缩-恢复链字符串耦合改共享常量。
@@ -223,6 +226,8 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- KB 设置补全与模型集成安全（外围 R3）：Knowledge 12 个测试文件 60/60、LocalHost 37 个测试文件 133/133 通过；Knowledge、BuiltinTools、LocalHost typecheck 与 Knowledge build 通过。新增 `kb.retrieval` 设置（defaultTopK/alpha/rerankBlendWeight/resultMaxChars，`nextOperation`），`KbManager` 经 `resolveRetrievalSettings` 闭包每次操作读取（对齐 `resolveIngestOptions` 模式），显式 opts 优先于设置默认；`maxResultChars` 只由模型工具路径（bindings.kbSearch）显式注入，HTTP 面板不受影响。预算填充按分数从高到低消耗，第一个放不下的命中起全部降级为 citation-only 引用卡（保留出处与命中块预览），多 KB 合并后统一填充一次；rerank 混合权重改从 `SearchOptions.rerankBlendWeight` 读取。`KnowledgeBaseSearchTool` description 增加 untrusted 警示（对齐 NarrativeSearchTool 措辞）。新增测试覆盖预算填充四种形态、设置解码与越界拒绝、设置默认值/显式覆盖、合并后统一填充；`git diff --check` 通过，仅有既有 CRLF 提示。
+- LocalHost Composition Root Attachment/Backup 批次：Knowledge typecheck/build 与 LocalHost typecheck、全量 37 个测试文件 133/133、正式 build 通过，构建验证 93 个源码、373 个产物；聚焦 6/6 覆盖 Attachment 构造期无文件副作用、缓存配额延迟读取，以及 Backup 从同一对象图导出消息、附件文件和会话笔记。Attachment/Backup 的 6 处具体构造均只存在于两个新工厂，`bindings.ts` 降至 636 行；`git diff --check` 通过，仅有既有 CRLF 提示。
 - LocalHost Composition Root Session/Memory 批次：LocalHost typecheck、全量 36 个测试文件 131/131 与正式 build 通过，构建验证 91 个源码、365 个产物；聚焦测试覆盖 Session 永久删除后的派生目录清理、Session/Memory 共享同一会话笔记入口及 Memory 构造期不启动向量索引。`bindings.ts` 降至 661 行，ContextCompactor 生产构造只剩 `createTurnExecution.ts` 一处，SessionNotesRepo 在 wiring 中只构造一次；`git diff --check` 通过，仅有既有 CRLF 提示。
 - LocalHost Composition Root Sandbox/Tool 批次：新增 `createSandboxRuntime.ts` 与 `createToolInfrastructure.ts`，`bindings.ts` 中的 Sandbox 探测/状态、per-Session Runner、Builtin Registry、Result Store、Cleaner、Task/AgentRun/Journal 构造已归零；工作区变更只失效 Runner，永久删除同时释放 Runner 与 Result Store，MCP 继续复用同一稳定 Registry。LocalHost typecheck、正式 build 和 35 个测试文件 129/129 通过，构建验证 89 个源码、357 个产物；8 项新测试覆盖 fail-closed/显式不安全开关、两类 OS Sandbox 状态、SQLite 文件族保护、Runner 缓存与淘汰、Tool Manifest 确定性和 Result Store 生命周期。
 - KB 摄入可靠性（外围 R1）：Knowledge 11 个测试文件 51/51、LocalHost 35 个测试文件 129/129 通过；Knowledge 与 LocalHost typecheck、Knowledge build 通过。staging 落实 `{kb}/files/` 自包含设计意图：`stageIngestFile` 在 enqueue 时把原文复制进 KB 目录（文件名净化防穿越与 Windows 保留名），任务读取副本、`asset.filePath` 存 POSIX 相对路径，staging 失败在入队处直接 400 不产生必失败任务；`ingest/index.ts` 允许接管 `'indexing'` 崩溃残留（修复自动恢复必失败一次的死循环）；`KnowledgeClient.deleteAsset` 同步清理 staged 目录。新增测试覆盖源文件删除后任务仍成功、staging 失败拒绝入队、indexing 接管重建、删除文档清理副本；既有 ingest-queue 测试同步适配 async enqueue。contentHash 去重与失败分片增量重试经核实已存在，ragflow 页片 digest 复用不照搬；`git diff --check` 通过，仅有既有 CRLF 提示。
