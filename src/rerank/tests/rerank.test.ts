@@ -58,4 +58,60 @@ describe('RerankRuntime', () => {
     await expect(adapter.rerank('query', ['doc'], 1, 'model')).rejects.toThrow('rerank/base_url_required');
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it('越界分数按本批 min-max 归一到 [0,1]', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      results: [
+        { index: 0, relevance_score: 42 },
+        { index: 1, relevance_score: 21 },
+        { index: 2, relevance_score: 0 },
+      ],
+    }), { status: 200 }));
+    const runtime = new RerankRuntime([config]);
+
+    const result = await runtime.rerank({
+      providerId: config.id, model: 'rerank-model', query: 'query',
+      documents: ['a', 'b', 'c'], topK: 3,
+    });
+
+    expect(result.results).toEqual([
+      { index: 0, score: 1 },
+      { index: 1, score: 0.5 },
+      { index: 2, score: 0 },
+    ]);
+  });
+
+  it('分数全部在 [0,1] 时原样返回以保留阈值语义', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      results: [{ index: 0, relevance_score: 0.35 }, { index: 1, relevance_score: 0.1 }],
+    }), { status: 200 }));
+    const runtime = new RerankRuntime([config]);
+
+    const result = await runtime.rerank({
+      providerId: config.id, model: 'rerank-model', query: 'query',
+      documents: ['a', 'b'], topK: 2,
+    });
+
+    expect(result.results).toEqual([
+      { index: 0, score: 0.35 },
+      { index: 1, score: 0.1 },
+    ]);
+  });
+
+  it('分数全部相同且越界时统一映射为 1，不误触发低分过滤', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      results: [{ index: 0, relevance_score: 7 }, { index: 1, relevance_score: 7 }],
+    }), { status: 200 }));
+    const runtime = new RerankRuntime([config]);
+
+    const result = await runtime.rerank({
+      providerId: config.id, model: 'rerank-model', query: 'query',
+      documents: ['a', 'b'], topK: 2,
+    });
+
+    expect(result.results).toEqual([
+      { index: 0, score: 1 },
+      { index: 1, score: 1 },
+    ]);
+  });
 });

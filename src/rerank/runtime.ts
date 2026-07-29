@@ -4,6 +4,7 @@ import type { UsageRecord } from '@ema-agent/usage';
 import { CohereRerankAdapter } from './adapters/cohere.js';
 import type {
   RerankAdapter,
+  RerankItem,
   RerankProbeResult,
   RerankProviderConfig,
   RerankRequest,
@@ -66,7 +67,7 @@ export class RerankRuntime {
       );
       validateResponse(response, request.documents.length, topK);
       this.recordUsage(request, startedAt, null);
-      return response;
+      return { results: normalizeScoresToUnitRange(response.results) };
     } catch (error) {
       this.recordUsage(request, startedAt, usageErrorCode(error));
       throw error;
@@ -164,6 +165,26 @@ function normalizeTopK(topK: number | undefined, documentCount: number): number 
   if (topK === undefined) return Math.min(5, documentCount);
   if (!Number.isSafeInteger(topK) || topK <= 0) throw new RangeError(`rerank/invalid_top_k: ${topK}`);
   return Math.min(topK, documentCount);
+}
+
+/**
+ * 把本批 rerank 分数归一到 [0,1]：已全部在区间内时原样返回（保留阈值语义），
+ * 出现越界分数时按本批 min-max 映射；分数全部相同且越界时统一映射为 1，
+ * 此时相对排序已无意义，不能再让下游误触发低分过滤。
+ */
+function normalizeScoresToUnitRange(results: RerankItem[]): RerankItem[] {
+  if (results.every((item) => item.score >= 0 && item.score <= 1)) return results;
+  let min = Infinity;
+  let max = -Infinity;
+  for (const item of results) {
+    min = Math.min(min, item.score);
+    max = Math.max(max, item.score);
+  }
+  if (max === min) {
+    return results.map((item) => ({ ...item, score: 1 }));
+  }
+  const span = max - min;
+  return results.map((item) => ({ ...item, score: (item.score - min) / span }));
 }
 
 function validateResponse(response: RerankResponse, documentCount: number, topK: number): void {

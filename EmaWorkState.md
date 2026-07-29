@@ -52,6 +52,10 @@ LocalHost 后台生命周期已经完成收口：`BackgroundWork` 统一管理�
 
 LocalHost 一次性启动装配已经完成收口：`bootstrap/startLocalHost.ts` 先幂等补 Marketplace 内置源和默认 KB，再启动恢复与常驻后台，最后并行发起 KB 索引、Skill 对账、models.dev Catalog 和首次 Bridge 配置；除默认 KB 外均保持失败只降级对应能力。`buildBindings()` 不再启动 Skill/Catalog 或写 Marketplace Seed，进程入口也不再逐项知道 KB、Bridge 和后台任务。角色卡 Seed 仍是 Character/Emotion 对象图的同步构造前置：EmotionEngine 立即需要活动角色，且角色卡写入受 Live2D 模型外键约束，不能伪装成可延迟后台任务。
 
+LocalHost Composition Root 拆分计划已经冻结：轻量对象统一 eager 构造，真正的网络、文件、KB Client、MCP Transport 和 Skill 资源按 Operation 或资源 lazy；启动失败分为阻止 ready 的 `fatal`、禁用单项能力的 `degraded` 与仅影响单次调用的 `feature-local`。计划同时明确后台 Promise 必须由 Lifecycle 跟踪、核心 Turn/ToolExecution/AgentRun 恢复失败不得被清理 catch 吞掉、Memory 恢复失败时不得继续 Worker、默认 KB 目标改为可降级。施工计划位于本地忽略目录 `docs/architecture/localHostWiringRefactorPlan.md`。
+
+LocalHost Composition Root 第一批已经完成：`createProviderControlPlane.ts` 统一构造 Provider 仓库、模型绑定、六模态模型池、models.dev Catalog 与能力解析器，并保证旧明文凭据迁移先于任何 Provider 配置读取；`createModelExecution.ts` 统一构造无 Session 状态的 LLM/Embed/Rerank/Vision/STT/TTS、Narrative、Usage、音频归档与 Provider 刷新入口。`bindings.ts` 立即解构两个工厂结果，`AppBindings` 继续保持现有平面协议，没有新增嵌套依赖袋。内置 Catalog 快照同时支持源码与 dist 资源路径，空/坏快照不会清掉已有目录或伪装成加载成功；后台刷新增加 10 秒取消信号。
+
 开工前已复核本地 Codex 源码：`codex-protocol` 只定义 Thread/Turn/Submission 等低层协议，真正编排位于 `codex-core/session`；App Server 只校验并提交 `Op::UserInput`，Session 统一建立 `RunningTask`、取消句柄和终态，`RegularTask` 再调用内部 `run_turn` 完成多轮模型与工具循环。Ema 因此保留低层 `turn` 与高层 `turnExecution` 两个编译边界，不能把执行依赖反向塞进被 Context、Session、Storage、Hooks 共同依赖的领域包。
 
 旧 `ConversationEngine` 与整个 `src/conversation` 包已经删除，Workspace 依赖和生产 import 归零。Chat 根生命周期与只读 Tool Profile 进入 `turnExecution`，LLM/Tool 迭代进入 `agent`，Narrative Route 与多周目 Recall 回到 `narrative`，模型可见召回正文通过不可信 Context Contribution 投递；Hook 不再携带 Narrative 私有结果。
@@ -144,9 +148,9 @@ Task 与 AgentRun 前端已经分面：Desktop 使用正式 `/api/tasks` 快照�
 
 开始任何新批次前必须重新运行 `git status --short` 与 `git diff`，保留用户和其他 Agent 的修改。
 
-当前工作区只包含 LocalHost 一次性启动装配：新增 `bootstrap/startLocalHost.ts` 与对应测试，`bindings.ts` 只构造 `LocalHostLifecycle`，`index.ts` 只调用统一 start/shutdown；Marketplace Seed、KB 初始化、Skill 对账、Catalog 刷新和首次 Bridge 同步已退出散落入口。开始下一批前仍须按实际 Diff 区分用户或其他 Agent 的后续修改。
+当前主线工作区包含 LocalHost Composition Root 第一批：新增 Provider 控制面与模型执行工厂、Catalog 资源定位和刷新保护及对应测试；本地忽略目录 `docs/architecture/localHostWiringRefactorPlan.md` 继续作为施工计划。工作区同时存在其他 Agent 的 Knowledge/Rerank 独立改动，主线未修改或回退这些文件。开始下一批前仍须按实际 Diff 区分用户或其他 Agent 的后续修改。
 
-当前基线最近提交：`922c8e2b feat: implement background work management and recovery system`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
+当前基线最近提交：`528d2ade feat: implement LocalHost lifecycle management with initialization and shutdown processes`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
 
 ## 已确定的 V1 口径
 
@@ -193,8 +197,23 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 6. Permission V1 已完成：统一 Session FIFO、明确终态、Turn 身份核对、SQLite 永久规则 CRUD 与设置页管理、Builtin-only 免审批边界均已接通；旧 `AskUserRegistryLike` 已改为 `AskUserInteractionPort`，不新增第二套队列；
 7. Skill 多文件激活、per-Agent 状态、结构化 Context 恢复与 `allowed-tools` 单向收窄已经完成；
 8. LocalHost L0、Turn 输入准备 L1、Turn Context L2、Turn Tools L3、Root Agent Execution L4、Turn Composition Root L5、TTS Turn 输出边界、精确根取消与旧 Orchestrator 删除、Route 业务副作用归位及 Task/AgentRun Route 窄依赖均已完成；
-9. Turn/AskUser、Permission、Session、Provider/ModelBindings、Settings/Theme、Transcribe、Cards、Knowledge Base、Storage Stats 与 Shell Route 已完成窄依赖；HTTP Server、后台生命周期和一次性启动装配也已完成收口。下一批开始拆纯 `buildBindings()` 对象图：沿 Character/Emotion、模型执行面、Knowledge 与现有 `createTurnExecution/createHttpRoutes` 等真实内聚边界提取构造函数，不建立 `AgentBindings/ProviderBindings` 等嵌套依赖袋；物理移动 Auth/SSE/Route 目录等语义稳定后再做；
-10. 后台进程按 `BackgroundProcess + ProcessOutput/ProcessStop` 单独实现 C 档，不修改 AgentLoop，也不恢复假 `run_in_background`。
+9. Turn/AskUser、Permission、Session、Provider/ModelBindings、Settings/Theme、Transcribe、Cards、Knowledge Base、Storage Stats 与 Shell Route 已完成窄依赖；HTTP Server、后台生命周期和一次性启动装配也已完成收口。`buildBindings()` 对象图第一批 Provider 控制面与六模态执行面已经提取，源码态 Catalog Snapshot 路径与空刷新保护已经修复。下一批先复核并接入独立准备的 Character/Emotion 工厂，再提取 Sandbox/Tool 执行对象图；后续按 Session/Memory/Attachment/Backup、Extension/Knowledge 顺序施工，不建立嵌套依赖袋或通用 `Lazy<T>`；
+10. 后台进程按 `BackgroundProcess + ProcessOutput/ProcessStop` 单独实现 C 档，不修改 AgentLoop，也不恢复假 `run_in_background`；
+11. 外围质量收口（K3 主线，依据为 2026-07-29 外围模块评审与 ragflow/claude-code 参照研究，管线对照见 `docs/reviews/ragflow-claude-pipelines.md`）：
+    - **R2 KB 检索质量**：rerank 分数统一归一 [0,1]（已在区间内不动、越界才 min-max），rerank 替换制改为 RRF 分与 rerank 分的加权混合（消灭 0.4 硬门槛整条消失），空结果降阈值自动重查一次；
+    - **R1 KB 摄入可靠性**：staging（原文上传即落盘，asset 只存位置与 content_hash）、hash 变更检测跳过重复解析、chunk id 幂等、digest 增量重跑、修复 `indexing` 窗口崩溃后的恢复死循环；
+    - **R3 KB 模型集成安全**：检索结果加 untrusted 标注（对齐 NarrativeSearchTool 措辞）、`SearchOptions.maxResultChars` 显式预算与预算感知填充（低分 hit 降级为 citation-only），Tool 按上下文预算传参；
+    - **R4 Memory 使用层**：`turnContext.ts` 召回包 try/catch 降级（对齐 Narrative 分支）、时间戳改"N 天前"、召回块加"可能已过时"标注、单条 body 长度上限；排在 turnExecution 施工空档；
+    - **R5 Memory 提取信任**：提取要求引用原文举证（无引用丢弃）、CHAT 排除列表、未配置 memory 模型静默清空改显式事件；
+    - **R6 Memory 判断层**：route-nodes 的 embedding 0.85 去重降级为"候选 + LLM 判定"，召回粗筛后加 LLM 精选（复用 memory binding，解决字面相近语义不同域的误判）；
+    - **R7 Memory 溯源链**：L0 节点与 L1 摘要携带 source_id 指回 L2 事件/Turn，含 Data migration；
+    - **R8 Skills 供应链**：bundle 资产全量哈希，市场清单携带 sha256，安装时强制校验；
+    - **R9 Skills 收窄传播（语义已冻结）**：能力收窄按任务树继承——子 Agent 工具上限 = 父当前收窄集 ∩ 自身工具池，只能更窄不能更宽，与 TurnBudget 全树共享同原则；父 `TurnPolicy` 暴露 allowedIds，`SubagentSpawner.spawn()` 求交后建子 policy；
+    - **R10 MCP 生命周期**：stdio 崩溃 onclose 感知、status 转 failed 与重连、live 发现的 schema 字节与工具数上限；
+    - **R11 Memory 后台欠账**：stale embedding 修复任务落地（替换"只数不修"）、租约丢失时管道关闸防双写；
+    - **A 主链真 bug**：ToolResultStore EEXIST 内容错位、Usage 状态模型补 `cancelled`、Anthropic 隐式 maxTokens=4096 改透传；
+    - **B 主链安全收口**：install-git 与 mcpStdioGate 路由级审批修通、`AGEN_UNSAFE_*` 生产构建物理拒绝、Sandbox 状态接前端常驻提示；
+    - **C 主链卫生**：agentLoopState 死声明清理（failed 相位、llm_error/user_timeout/user_cancel、pendingPromptId）、prefixHash 注释与行为对齐、压缩-恢复链字符串耦合改共享常量。
 
 命名随业务批次清理：旧 `IFileStateStoreEntry/IFileStateStore` 及后续过渡接口已经删除，`IToolExecutionJournal` 已改为职责名；其余迁移期 `I*` 类型继续随业务边界处理，不单独进行全仓机械重命名。
 
@@ -202,6 +221,9 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- KB 检索质量（外围 R2）：Rerank、Knowledge typecheck 与 build 通过；Rerank 6/6、Knowledge 10 个测试文件 47/47 通过，LocalHost typecheck（消费方）通过。rerank 分数在 `RerankRuntime` 出口统一归一 [0,1]（区间内原样、越界 min-max、全同越界映射 1），检索排序由"rerank 0.4 硬门槛替换制"改为 RRF 分与归一化 rerank 分按 0.4/0.6 加权混合，低 rerank 分结果被压后而非整条消失；空结果降阈值重查经核实不适用（FTS 已是 OR 宽松查询，无阈值可降）。新增测试覆盖越界归一、区间内原样、全同映射、混合排序压后不消失、rerank 全 0 回退 RRF、rerank 失败与未配置回退；`git diff --check` 通过，仅有既有 CRLF 提示。
+- LocalHost Composition Root 第一批：Provider tests 4/4、LocalHost 定向 6/6、LocalHost 全量 34 文件 121/121、Provider 与 LocalHost typecheck、LocalHost 正式 build 全部通过；构建验证 87 个源码、349 个产物。新增测试覆盖源码/dist Catalog 快照定位、空快照降级、远端空目录保留已有索引，以及模型执行工厂构造期不发起网络请求；`git diff --check` 通过，仅有既有 CRLF 与不可访问 pytest 缓存提示。
+- LocalHost Composition Root 启动策略计划：完整审计 `buildBindings()`、Lifecycle、BackgroundWork、Provider/Catalog、Character、Sandbox/Tool、Session/Settings、Memory、Attachment、Backup、MCP/Market/Skill 与 KB 的构造和启动链；冻结 eager/lazy/background 与 fatal/degraded/feature-local 矩阵、三轮并行文件所有权和分批验收。该批只更新计划与接力板，未改生产代码、未运行代码测试；使用 `git diff --check` 检查文档补丁。
 - LocalHost 一次性启动装配：LocalHost typecheck、正式 build 与全量 33 个测试文件 117/117 通过，构建验证 85 个源码、341 个产物；新增测试覆盖 Marketplace/KB 前置顺序、重复 start 幂等、四项可降级初始化及统一后台关闭。`buildBindings()` 中 Skill/Catalog/Marketplace 启动副作用与进程入口 KB/Bridge 分散调用归零，`git diff --check` 通过，仅有既有 CRLF 与不可访问 pytest 缓存提示。
 - LocalHost 后台生命周期拆分：LocalHost typecheck、正式 build 与全量 32 个测试文件 115/115 通过，构建验证 84 个源码、337 个产物；新增测试覆盖启动/关闭幂等、恢复先于 Worker、后台 tick 单飞、Bridge 首次不可达与恢复事件。旧 `startBackgroundWork`、wiring 后台文件和 `AppBindings` 后台清理器字段引用归零，`git diff --check` 通过，仅有既有 CRLF 与不可访问 pytest 缓存提示。
 - LocalHost HTTP 传输边界第一刀：LocalHost typecheck、正式 build 与全量 31 个测试文件 112/112 通过，构建验证 83 个源码、333 个产物；新增 Server 测试覆盖无业务对象图挂载、统一认证和 404。`server.ts` 与根包公开入口的 `AppBindings` 引用归零，装配完成后无消费者的 `profileDb/credentials` 已退出绑定表。

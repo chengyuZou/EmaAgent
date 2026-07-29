@@ -19,10 +19,10 @@ import type { VectorIndex }     from './index/vector-index.js';
 import { createVectorIndex }    from './index/factory.js';
 import { normalizeF32 } from './embed/normalize.js';
 
-// Reranker scores below this threshold indicate the document does not actually
-// contain relevant content for the query. Filtering prevents cross-document
-// pollution when the answer simply does not exist in the KB.
-const MIN_RERANK_SCORE = 0.4;
+// rerank 分数在 RerankRuntime 出口已归一到 [0,1]；RRF 分按本批最高分归一。
+// 两路信号加权混合：rerank 低分结果被压后而不是整条消失，保留 RRF 命中的信息；
+// "知识库没有答案"由稀疏/dense 均无命中自然表达，不再用分数门槛制造。
+const RERANK_BLEND_WEIGHT = 0.6;
 
 export interface KnowledgeClientDeps {
   store:          KnowledgeStore;
@@ -323,9 +323,20 @@ export class KnowledgeClient {
             turnId: opts.turnId,
           },
         });
-        ranked = rerankRes.results
-          .filter(r => r.index >= 0 && r.index < ranked.length && r.score >= MIN_RERANK_SCORE)
-          .map(r => ({ id: ranked[r.index]!.id, score: r.score }));
+        const maxRrf = ranked[0]?.score ?? 0;
+        const rerankById = new Map(
+          rerankRes.results
+            .filter((r) => r.index >= 0 && r.index < ranked.length)
+            .map((r) => [ranked[r.index]!.id, r.score] as const),
+        );
+        ranked = ranked
+          .map((r) => ({
+            id:    r.id,
+            score: (1 - RERANK_BLEND_WEIGHT) * (maxRrf > 0 ? r.score / maxRrf : 0)
+                 + RERANK_BLEND_WEIGHT * (rerankById.get(r.id) ?? 0),
+          }))
+          .sort((a, b) => b.score - a.score)
+          .slice(0, topK);
       } catch {
         ranked = ranked.slice(0, topK);
       }

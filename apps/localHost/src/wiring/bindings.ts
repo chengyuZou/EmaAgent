@@ -2,19 +2,23 @@
 
 import type { Database } from '@ema-agent/storage';
 import {
-  ModelBindingsRepo,
-  ProvidersRepo,
   MemoryNodesRepo, MemoryEdgesRepo, MemoryLazyUpdatesRepo,
   MemoryItemsRepo, SessionNotesRepo, MemoryTasksRepo, PendingFragmentsRepo,
   AttachmentRepo,
   MemorySessionStateRepo, MemoryExtractionRunsRepo,
-  ProviderLlmModelsRepo, ProviderEmbedModelsRepo,
-  ProviderRerankModelsRepo, ProviderTtsModelsRepo, ProviderSttModelsRepo, ProviderVisionModelsRepo,
   McpServersRepo, SkillsRepo,
   MarketSourcesRepo,
   AgentRunsRepo, AgentRunMessagesRepo, TasksRepo, ToolExecutionsRepo,
-  SessionStatsRepo, DataDirStatsRepo, UsageRecordsRepo,
+  SessionStatsRepo, DataDirStatsRepo,
   AttachmentDerivationsRepo,
+  type ProvidersRepo,
+  type ModelBindingsRepo,
+  type ProviderLlmModelsRepo,
+  type ProviderEmbedModelsRepo,
+  type ProviderRerankModelsRepo,
+  type ProviderTtsModelsRepo,
+  type ProviderSttModelsRepo,
+  type ProviderVisionModelsRepo,
 } from '@ema-agent/storage';
 import {
   AttachmentCacheMaintenance,
@@ -30,7 +34,6 @@ import { SkillStore, SkillRunner, SkillInstaller }     from '@ema-agent/skills';
 import { SkillMarketAdapter }                          from '@ema-agent/skills';
 import { MarketRegistry, MarketSourceStore }           from '@ema-agent/marketplace';
 import * as nodePath from 'node:path';
-import { readFileSync } from 'node:fs';
 import * as os from 'node:os';
 import { HookBus }       from '@ema-agent/hooks';
 import { createTraceSink } from './diagnostic-sink.js';
@@ -41,33 +44,24 @@ import {
   removeTurnFiles,
   sqliteFileSet,
 } from '../storage-locations/index.js';
-import { LanguageModelRuntime } from '@ema-agent/llm';
+import type { LanguageModelRuntime } from '@ema-agent/llm';
 import {
-  createModelCapabilityResolver,
-  modelsDevIdFor,
-  providerCatalog,
-  ModelsDevCatalog,
+  type ModelsDevCatalog,
   type ModelCapabilityResolver,
 } from '@ema-agent/provider';
-import { EmbedRuntime } from '@ema-agent/embed';
-import { RerankRuntime } from '@ema-agent/rerank';
-import { NarrativeClient } from '@ema-agent/narrative';
+import type { EmbedRuntime } from '@ema-agent/embed';
+import type { RerankRuntime } from '@ema-agent/rerank';
+import type { NarrativeClient } from '@ema-agent/narrative';
 import { CharacterCardStore, BUILTIN_CARDS, EMA_CARD_INPUT, EMA_CARD_ID } from '@ema-agent/characters';
 import { Live2DModelsRepo } from '@ema-agent/storage';
 import {
-  TtsRuntime,
-  TtsVoiceHandleCache,
-  FsAudioArchive,
+  type TtsRuntime,
+  type TtsVoiceHandleCache,
   type AudioArchive,
 } from '@ema-agent/tts';
-import { SttRuntime } from '@ema-agent/stt';
-import { buildTtsRuntime } from './providers/tts.js';
-import { buildSttRuntime } from './providers/stt.js';
-import { buildVisionRuntime, asKbVisionAdapter } from './providers/vision.js';
-import { VisionRuntime, visionSetting } from '@ema-agent/vision';
-import { loadLlmConfigs }   from './providers/llm.js';
-import { loadEmbedConfigs }  from './providers/embed.js';
-import { loadRerankConfigs } from './providers/rerank.js';
+import type { SttRuntime } from '@ema-agent/stt';
+import { asKbVisionAdapter } from './providers/vision.js';
+import type { VisionRuntime } from '@ema-agent/vision';
 import { buildPermissionSubsystem } from './permission-bootstrap.js';
 import type { AppInteractionQueue } from './permission-bootstrap.js';
 import { SessionStore }  from '@ema-agent/session';
@@ -92,7 +86,6 @@ import {
   type KbSearchResult,
 } from '@ema-agent/knowledge';
 import type { CommandRunnerPort, SandboxStatusWire } from '@ema-agent/sandbox';
-import type { UsageRecord } from '@ema-agent/usage';
 import { ToolExecutionJournal, ToolRegistry } from '@ema-agent/tools';
 import { registerBuiltinTools } from '@ema-agent/tool-builtin';
 import { detectBackend, CommandRunner } from '@ema-agent/sandbox';
@@ -111,15 +104,16 @@ import type { IngestOptions } from '@ema-agent/knowledge';
 import {
   KbActivationsRepo, KbRegistryRepo,
 } from '@ema-agent/storage';
-import { resolveBridgeUrl } from './bridge.js';
 import { SystemEventBus }  from '../sse/system-bus.js';
-import { ProviderRuntimeFacade } from './provider-runtime.js';
+import type { ProviderRuntimeFacade } from './provider-runtime.js';
 import { SessionBackupFacade } from '@ema-agent/backup';
 import type { CredentialFacade } from '@ema-agent/credential';
 import { createSettingsStore } from '../settings/createSettingsStore.js';
 import { BackgroundWork } from '../background/backgroundWork.js';
 import { StartupRecovery } from '../background/startupRecovery.js';
 import { LocalHostLifecycle } from '../bootstrap/startLocalHost.js';
+import { createProviderControlPlane } from './createProviderControlPlane.js';
+import { createModelExecution } from './createModelExecution.js';
 
 /**
  * LocalHost 迁移期完整对象图。
@@ -293,73 +287,19 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     onTurnRemoved: (sid, tid) => removeTurnFiles(activeDataDir, sid, tid),
   });
 
-  // ── Per-provider model pools (profileDb) ────────────────────────────────────
-  const providers            = new ProvidersRepo(profileDb.sqlite, credentials);
-  const migratedCredentials  = providers.protectLegacyCredentials();
-  if (migratedCredentials > 0) {
-    console.info(`[credential] 已加密迁移 ${migratedCredentials} 个旧 Provider 凭据`);
-  }
-  const providerLlmModels    = new ProviderLlmModelsRepo(profileDb.sqlite);
-  const providerEmbedModels  = new ProviderEmbedModelsRepo(profileDb.sqlite);
-  const providerRerankModels = new ProviderRerankModelsRepo(profileDb.sqlite);
-  const providerTtsModels    = new ProviderTtsModelsRepo(profileDb.sqlite);
-  const providerSttModels    = new ProviderSttModelsRepo(profileDb.sqlite);
-  const providerVisionModels = new ProviderVisionModelsRepo(profileDb.sqlite);
-  const usageRecords         = new UsageRecordsRepo(dataDb.sqlite);
-  const onUsageRecordError = (error: unknown, record: UsageRecord): void => {
-    console.error(`[usage] 调用记录写入失败: ${record.id}`, error);
-  };
-
-  // ── AI clients (provider configs live in profileDb) ────────────────────────
-  // models.dev catalog: load bundled snapshot first (instant, offline-safe),
-  // then refresh from network in the background. Consumers get catalog data
-  // immediately from the snapshot; the refresh updates it silently.
-  // 必须先构造模型目录，语言模型运行时才能据此解析推理与多模态能力。
-  const modelCatalog = new ModelsDevCatalog();
-  try {
-    const snapshotPath = nodePath.join(import.meta.dirname!, '..', 'models-dev-snapshot.json');
-    modelCatalog.loadFromJson(JSON.parse(readFileSync(snapshotPath, 'utf8')));
-    console.info(`[catalog] loaded bundled snapshot (${modelCatalog.size} models)`);
-  } catch {
-    console.warn('[catalog] no bundled snapshot found, will rely on network refresh');
-  }
-  const catalogModelCapabilities = createModelCapabilityResolver(modelCatalog, {
-    supportsManualImageInput: (providerId, model) =>
-      providerVisionModels.hasProviderModel(providerId, model),
-  });
-  const modelCapabilities: ModelCapabilityResolver = {
-    resolve(query) {
-      const providerRow = providers.get(query.providerId);
-      const definition = providerRow
-        ? providerCatalog.get(providerRow.definition_id)
-        : undefined;
-      const modelsDevId = query.modelsDevId
-        ?? (definition ? modelsDevIdFor(definition, 'llm') : undefined);
-      return catalogModelCapabilities.resolve({
-        ...query,
-        ...(modelsDevId ? { modelsDevId } : {}),
-      });
-    },
-  };
-  const llm = new LanguageModelRuntime(loadLlmConfigs(profileDb, credentials), undefined, {
+  // Provider 控制面先完成凭据迁移、仓库和能力目录装配，执行面只消费其稳定输出。
+  const {
+    providers,
+    providerLlmModels,
+    providerEmbedModels,
+    providerRerankModels,
+    providerTtsModels,
+    providerSttModels,
+    providerVisionModels,
+    modelBindings,
+    modelCatalog,
     modelCapabilities,
-    usageRecorder: usageRecords,
-    onUsageRecordError,
-  });
-  const embed = new EmbedRuntime(
-    loadEmbedConfigs(profileDb, credentials),
-    { usageRecorder: usageRecords, onUsageRecordError },
-  );
-  const rerank = new RerankRuntime(
-    loadRerankConfigs(profileDb, credentials),
-    { usageRecorder: usageRecords, onUsageRecordError },
-  );
-
-  const narrative = new NarrativeClient({
-    baseUrl:   resolveBridgeUrl(),
-    secret:    process.env['EMA_SHARED_SECRET'],
-    timeoutMs: 60_000,
-  });
+  } = createProviderControlPlane(profileDb, credentials);
 
   // ── Character + emotion ─────────────────────────────────────────────────────
   // 角色种子是 EmotionEngine 的构造前置条件，不是可延迟的后台初始化。
@@ -389,39 +329,29 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   // SettingsStore 必须先于动态执行面创建，运行时只读取已校验的类型化快照。
   const { settings } = createSettingsStore(profileDb.sqlite);
 
-  // ── TTS / STT ───────────────────────────────────────────────────────────────
-  const tts    = buildTtsRuntime({ profileDb, credentials, usageRecorder: usageRecords, onUsageRecordError });
-  const ttsVoiceHandles = new TtsVoiceHandleCache();
-  const stt    = buildSttRuntime({ profileDb, credentials, usageRecorder: usageRecords, onUsageRecordError });
-  const vision = buildVisionRuntime(
-    profileDb,
-    credentials,
+  // 六类模型执行器保持无 Session 状态；网络请求只在具体操作发生时启动。
+  const {
     usageRecords,
-    onUsageRecordError,
-    () => settings.get(visionSetting),
-  );
-  const providerRuntime = new ProviderRuntimeFacade({
-    profileDb,
     llm,
     embed,
     rerank,
+    narrative,
     tts,
+    ttsVoiceHandles,
     stt,
     vision,
-    narrative,
+    providerRuntime,
+    audioArchive,
+  } = createModelExecution(
+    profileDb,
+    dataDb,
+    activeDataDir,
     credentials,
-  });
-
-  // ── Audio archive ───────────────────────────────────────────────────────────
-  // Per-session: {dataDir}/sessions/{sessionId}/audio/. Collocated with
-  // scratchpad so removeSessionDir cleans everything together.
-  const audioArchive = new FsAudioArchive(
-    nodePath.join(activeDataDir, 'sessions'),
+    settings,
+    modelCapabilities,
   );
 
   // ── Repos ───────────────────────────────────────────────────────────────────
-  const modelBindings = new ModelBindingsRepo(profileDb.sqlite);
-
   // ── Permission subsystem ────────────────────────────────────────────────────
   const { permission, interactionQueue, askUserRegistry, buildAskForTurn } =
     buildPermissionSubsystem(

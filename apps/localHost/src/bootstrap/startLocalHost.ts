@@ -10,6 +10,8 @@ import { profileDir } from '../storage-locations/index.js';
 import type { BackgroundWork } from '../background/backgroundWork.js';
 import type { ProviderRuntimeFacade } from '../wiring/provider-runtime.js';
 
+const MODEL_CATALOG_REFRESH_TIMEOUT_MS = 10_000;
+
 type StartupKnowledge = Pick<KbManager, 'ensureDefault' | 'initAll'>;
 type StartupMarketplace = Pick<MarketSourceStore, 'ensureSeeds'>;
 type StartupSkills = Pick<SkillStore, 'scanAndReconcile'>;
@@ -81,8 +83,10 @@ export class LocalHostLifecycle {
 
   private async refreshModelCatalog(): Promise<void> {
     try {
-      const payload = await this.modelCatalog.refresh();
-      if (payload !== null) {
+      const payload = await this.modelCatalog.refresh({
+        signal: AbortSignal.timeout(MODEL_CATALOG_REFRESH_TIMEOUT_MS),
+      });
+      if (payload !== null && this.modelCatalog.size > 0) {
         console.info(
           `[catalog] models.dev loaded (${this.modelCatalog.size} models)`,
         );

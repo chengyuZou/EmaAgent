@@ -108,6 +108,9 @@ export class ModelsDevCatalog {
       const res = await doFetch(opts.url ?? MODELS_DEV_API_URL, { signal: opts.signal });
       if (!res.ok) return null;
       const payload: unknown = await res.json();
+      const candidate = new ModelsDevCatalog();
+      candidate.loadFromJson(payload);
+      if (candidate.size === 0) return null;
       this.loadFromJson(payload);
       return payload;
     } catch {

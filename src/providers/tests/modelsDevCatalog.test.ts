@@ -1,5 +1,5 @@
 // 测试 models.dev 解析、Provider 隔离和手工 Vision 声明的能力解析顺序。
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   createModelCapabilityResolver,
   ModelsDevCatalog,
@@ -89,5 +89,23 @@ describe('ModelsDevCatalog', () => {
 
     expect(catalog.listLlmModelIds('providerA')).toEqual(['modelA']);
     expect(catalog.size).toBe(1);
+  });
+
+  it('远端返回空目录时保留已有快照并报告刷新失败', async () => {
+    const catalog = new ModelsDevCatalog();
+    catalog.loadFromJson({
+      providerA: {
+        models: {
+          modelA: { modalities: { input: ['text'], output: ['text'] } },
+        },
+      },
+    });
+    const fetchFn = vi.fn(async () => new Response(
+      JSON.stringify({}),
+      { status: 200 },
+    ));
+
+    await expect(catalog.refresh({ fetchFn })).resolves.toBeNull();
+    expect(catalog.listLlmModelIds('providerA')).toEqual(['modelA']);
   });
 });

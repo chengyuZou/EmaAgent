@@ -45,7 +45,7 @@ describe('LocalHostLifecycle', () => {
         order.push('catalog');
         return {};
       }),
-      size: 0,
+      size: 1,
     };
     const marketplace = {
       ensureSeeds: vi.fn(() => {
