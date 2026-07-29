@@ -8,7 +8,10 @@ import {
   TurnToolsBuilder,
 } from '@ema-agent/turn-execution';
 import { agentSetting } from '@ema-agent/agent';
-import { contextCompactionSetting } from '@ema-agent/context';
+import {
+  ContextCompactor,
+  contextCompactionSetting,
+} from '@ema-agent/context';
 import { attachmentSetting } from '@ema-agent/attachment';
 import type { AppBindings } from './bindings.js';
 import { scratchpadTurnDir } from '../storage-locations/index.js';
@@ -25,6 +28,14 @@ export function createTurnExecution(bindings: AppBindings): {
   readonly executor: TurnExecutor;
   readonly inputPreparer: TurnInputPreparer;
 } {
+  // Compactor 拥有跨 Turn 的 Session 熔断状态，只在根 Turn 对象图中构造一次。
+  const contextCompactor = new ContextCompactor({
+    llm: bindings.llm,
+    hookBus: bindings.hooks,
+    loadSessionNote: sessionId => bindings.memory.loadSessionNote(sessionId),
+    persistSummary: input => bindings.session.appendMessage(input),
+  });
+
   const inputPreparer = new TurnInputPreparer({
     session: bindings.session,
     attachments: bindings.attachmentStore,
@@ -114,7 +125,7 @@ export function createTurnExecution(bindings: AppBindings): {
         memory: bindings.memory,
         tasks: bindings.taskStore,
         narrative: bindings.narrative,
-        compactor: bindings.contextCompactor,
+        compactor: contextCompactor,
       }),
       new TurnToolsBuilder({
         session: bindings.session,

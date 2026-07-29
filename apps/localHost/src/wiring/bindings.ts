@@ -2,14 +2,13 @@
 
 import type { Database } from '@ema-agent/storage';
 import {
-  MemoryNodesRepo, MemoryEdgesRepo, MemoryLazyUpdatesRepo,
-  MemoryItemsRepo, SessionNotesRepo, MemoryTasksRepo, PendingFragmentsRepo,
   AttachmentRepo,
-  MemorySessionStateRepo, MemoryExtractionRunsRepo,
   McpServersRepo, SkillsRepo,
   MarketSourcesRepo,
-  SessionStatsRepo, DataDirStatsRepo,
   AttachmentDerivationsRepo,
+  type SessionNotesRepo,
+  type SessionStatsRepo,
+  type DataDirStatsRepo,
   type ProvidersRepo,
   type ModelBindingsRepo,
   type ProviderLlmModelsRepo,
@@ -36,10 +35,6 @@ import * as nodePath from 'node:path';
 import * as os from 'node:os';
 import { HookBus }       from '@ema-agent/hooks';
 import { createTraceSink } from './diagnostic-sink.js';
-import {
-  removeSessionDir,
-  removeTurnFiles,
-} from '../storage-locations/index.js';
 import type { LanguageModelRuntime } from '@ema-agent/llm';
 import {
   type ModelsDevCatalog,
@@ -60,7 +55,7 @@ import { asKbVisionAdapter } from './providers/vision.js';
 import type { VisionRuntime } from '@ema-agent/vision';
 import { buildPermissionSubsystem } from './permission-bootstrap.js';
 import type { AppInteractionQueue } from './permission-bootstrap.js';
-import { SessionStore }  from '@ema-agent/session';
+import type { SessionStore } from '@ema-agent/session';
 import { EmotionEngine } from '@ema-agent/emotion';
 import {
   PermissionEngine,
@@ -88,8 +83,7 @@ import type {
   AgentRunTranscriptStore,
 } from '@ema-agent/agent';
 import type { TaskStore } from '@ema-agent/tasks';
-import { MemoryPlanner } from '@ema-agent/memory';
-import { ContextCompactor } from '@ema-agent/context';
+import type { MemoryPlanner } from '@ema-agent/memory';
 import {
   KbManager,
 } from '@ema-agent/knowledge';
@@ -109,6 +103,8 @@ import { createProviderControlPlane } from './createProviderControlPlane.js';
 import { createModelExecution } from './createModelExecution.js';
 import { createSandboxRuntime } from './createSandboxRuntime.js';
 import { createToolInfrastructure } from './createToolInfrastructure.js';
+import { createSessionPersistence } from './createSessionPersistence.js';
+import { createMemoryRuntime } from './createMemoryRuntime.js';
 
 /**
  * LocalHost 迁移期完整对象图。
@@ -204,8 +200,6 @@ export interface AppBindings {
 
   // Memory subsystem
   memory: MemoryPlanner;
-  // Context subsystem
-  contextCompactor: ContextCompactor;
 
   // System-wide pub/sub for cross-turn events (memory pipeline, background
   // tasks, card switches, provider health). Backs GET /api/system/events.
@@ -274,13 +268,12 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     traceSink:     createTraceSink(),   // 后端 ring + console；Turn SSE 由 HookBus 的 ctx.emit 发出
     warnAnonymous: process.env['NODE_ENV'] !== 'production',
   });
-  const session = new SessionStore({
-    db: dataDb,
-    // Remove the session's on-disk directory tree (audio/scratchpad)
-    // when the session is deleted. DB rows cascade via FK; files need this.
-    onSessionRemoved: (sid) => removeSessionDir(activeDataDir, sid),
-    onTurnRemoved: (sid, tid) => removeTurnFiles(activeDataDir, sid, tid),
-  });
+  const {
+    session,
+    sessionStats,
+    storageStats,
+    sessionNotes,
+  } = createSessionPersistence(dataDb, activeDataDir);
 
   // Provider 控制面先完成凭据迁移、仓库和能力目录装配，执行面只消费其稳定输出。
   const {
@@ -385,43 +378,19 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   // ── System event bus ────────────────────────────────────────────────────────
   const systemBus = new SystemEventBus();
 
-  // ── Memory ──────────────────────────────────────────────────────────────────
-  const memoryNodes          = new MemoryNodesRepo(profileDb.sqlite);
-  const memoryEdges          = new MemoryEdgesRepo(profileDb.sqlite);
-  const memoryLazyUpdates    = new MemoryLazyUpdatesRepo(profileDb.sqlite);
-  const memoryItems          = new MemoryItemsRepo(profileDb.sqlite);
-  const memoryExtractionRuns = new MemoryExtractionRunsRepo(profileDb.sqlite);
-  const memorySessionNotes   = new SessionNotesRepo(dataDb.sqlite);
-  const pendingFragments     = new PendingFragmentsRepo(dataDb.sqlite);
-
-  const memory = new MemoryPlanner({
+  // Memory 只在此构造；索引初始化、恢复、tick 与 drain 仍由 BackgroundWork 管理。
+  const memory = createMemoryRuntime(
+    profileDb,
+    dataDb,
     session,
+    sessionNotes,
     llm,
-    embedRuntime: embed,
-    rerankRuntime: rerank,
+    embed,
+    rerank,
     modelBindings,
-    nodes:            memoryNodes,
-    edges:            memoryEdges,
-    lazyUpdates:      memoryLazyUpdates,
-    items:            memoryItems,
-    sessionNotes:     memorySessionNotes,
-    memoryTasks:      new MemoryTasksRepo(dataDb.sqlite),
-    pendingFragments,
-    memorySessionState: new MemorySessionStateRepo(dataDb.sqlite),
-    extractionRuns:     memoryExtractionRuns,
-    runProfileTransaction: <T>(work: () => T): T => profileDb.sqlite.transaction(work)(),
-    runDataTransaction:    <T>(work: () => T): T => dataDb.sqlite.transaction(work)(),
-    // dim is probed at enable time and stored on provider_embed_models (dim_source='probed').
-    getEmbedDim:      (providerId, model) => providerEmbedModels.dimFor(providerId, model) ?? 0,
-    emit:             (ev) => systemBus.emit(ev),
-  });
-
-  const contextCompactor = new ContextCompactor({
-    llm,
-    hookBus: hooks,
-    loadSessionNote: (sessionId) => memory.loadSessionNote(sessionId),
-    persistSummary: (input) => session.appendMessage(input),
-  });
+    providerEmbedModels,
+    event => systemBus.emit(event),
+  );
 
   // ── Attachments ─────────────────────────────────────────────────────────────
   const attachmentStore = new AttachmentStore(new AttachmentRepo(dataDb.sqlite), session);
@@ -437,10 +406,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     maxBytesForSweep: () => settings.get(attachmentSetting).derivationCacheBytes,
   });
 
-  // ── Session detail (stats + notes) — used by /api/sessions/:id/dashboard ──
-  const sessionStats = new SessionStatsRepo(dataDb.sqlite);
-  const storageStats = new DataDirStatsRepo(dataDb.sqlite);
-  const sessionNotes = new SessionNotesRepo(dataDb.sqlite);
+  // ── Session backup ──────────────────────────────────────────────────────────
   const sessionBackup = new SessionBackupFacade({
     activeDataDir,
     sessionExists: (sessionId) => session.sessionExists(sessionId as SessionId),
@@ -675,7 +641,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     invalidateSessionRuntime, removeSessionRuntime,
     getSessionToolResultStore, agentRunStore, taskStore,
     toolExecutionJournal, agentRunTranscript,
-    memory, contextCompactor,
+    memory,
     systemBus,
     providers, settings, ttsVoiceHandles,
     modelBindings, providerLlmModels, providerEmbedModels,
