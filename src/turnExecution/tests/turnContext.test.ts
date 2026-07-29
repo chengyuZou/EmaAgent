@@ -167,6 +167,47 @@ describe('TurnContextBuilder', () => {
     );
   });
 
+  it('Memory 召回抛错时降级为空贡献并发出不可用事件，不阻断准备', async () => {
+    const events: TurnContextEvent[] = [];
+    const memory: MemoryRecallPort = {
+      prepareRecallContribution: async () => {
+        throw new Error('sqlite: database is locked');
+      },
+    };
+    const builder = new TurnContextBuilder({
+      session: {
+        loadHistory: () => [],
+      } as never,
+      memory,
+    });
+
+    const prepared = await builder.prepare({
+      turn,
+      input,
+      signal: new AbortController().signal,
+      emit: (event) => events.push(event),
+    });
+    const snapshot = await prepared.assemble({
+      history: [],
+      currentTurn: prepared.messages,
+      mailboxMessages: [],
+      activeSkills: [],
+      toolManifest: emptyManifest,
+      forceCompaction: false,
+    });
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: 'memory_recall_unavailable',
+        sessionId,
+        turnId,
+        retryable: true,
+      }),
+    ]);
+    expect(snapshot.messages.map((message) => message.content)).not.toContain('remembered fact');
+    expect(snapshot.messages.map((message) => message.content)).toContain('hello');
+  });
+
   it('每次 assemble 都把强制压缩标记和 Context 事件传给现有 Compactor', async () => {
     const forces: Array<boolean | undefined> = [];
     const events: TurnContextEvent[] = [];

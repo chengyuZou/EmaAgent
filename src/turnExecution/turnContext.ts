@@ -170,16 +170,29 @@ export class TurnContextBuilder {
     }
 
     if (this.deps.memory) {
-      const recalled = await this.deps.memory.prepareRecallContribution({
-        sessionId: turn.sessionId,
-        turnId: turn.id,
-        executionProfile: turn.executionProfile,
-        narrativePolicy: turn.narrativePolicy,
-        userInput: readableUserInput,
-        signal,
-        emit,
-      });
-      if (recalled.contribution) baseContributions.push(recalled.contribution);
+      // Memory 召回是辅助贡献：存储或召回失败只降级为空贡献，
+      // 不能让 Turn 起步失败（与上方 Narrative 分支同一降级标准）。
+      try {
+        const recalled = await this.deps.memory.prepareRecallContribution({
+          sessionId: turn.sessionId,
+          turnId: turn.id,
+          executionProfile: turn.executionProfile,
+          narrativePolicy: turn.narrativePolicy,
+          userInput: readableUserInput,
+          signal,
+          emit,
+        });
+        if (recalled.contribution) baseContributions.push(recalled.contribution);
+      } catch (error) {
+        if (signal.aborted || isAbortError(error)) throw error;
+        emit?.({
+          type: 'memory_recall_unavailable',
+          sessionId: turn.sessionId,
+          turnId: turn.id,
+          error: error instanceof Error ? error.message : String(error),
+          retryable: true,
+        });
+      }
     }
 
     if (turn.executionProfile === 'work' && this.deps.tasks) {

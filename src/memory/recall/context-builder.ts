@@ -3,15 +3,33 @@ import type { ContextContribution } from '@ema-agent/context';
 import { estimateTextTokens } from '@ema-agent/token';
 import type { RecallBundle, GraphRecallResult, EpisodicRecallResult, PlanContext } from '../types.js';
 
+/** 单条记忆正文上限：节点 description 与事件 body 超出后截断，防止超长单条挤占召回预算。 */
+const MEMORY_ENTRY_MAX_CHARS = 500;
+
+/** 召回内容的时间与健康提示：记忆是某时刻的印象，不是实时状态。 */
+const MEMORY_FRESHNESS_NOTE =
+  '以上是从过往对话中记住的内容，可能已过时；涉及文件路径、代码位置或当前状态的说法，使用前请先验证。';
+
+/** 模型不擅长日期算术，直接给"几天前"而不是 ISO 时间戳（Claude memdir 同款经验）。 */
+function memoryAge(ms: number, now: number): string {
+  const days = Math.max(0, Math.floor((now - ms) / 86_400_000));
+  if (days === 0) return '今天';
+  if (days === 1) return '昨天';
+  return `${days} 天前`;
+}
+
+function clipEntry(text: string): string {
+  if (text.length <= MEMORY_ENTRY_MAX_CHARS) return text;
+  return `${text.slice(0, MEMORY_ENTRY_MAX_CHARS)}…`;
+}
+
 export function buildContextMessage(bundle: RecallBundle): ModelMessage | null {
   const parts: string[] = [];
-
-  const fmtDate = (ms: number) =>
-    new Date(ms).toISOString().replace('T', ' ').slice(0, 16);
+  const now = Date.now();
 
   if (bundle.layer0 && bundle.layer0.nodes.length > 0) {
     const nodes = bundle.layer0.nodes
-      .map(n => `- (${n.nodeType}) ${n.label}: ${n.description}`)
+      .map(n => `- (${n.nodeType}) ${n.label}: ${clipEntry(n.description)}`)
       .join('\n');
     const idToLabel = new Map(bundle.layer0.nodes.map(n => [n.id, n.label]));
     const labelOf   = (id: string) => idToLabel.get(id) ?? '[unknown]';
@@ -31,15 +49,15 @@ export function buildContextMessage(bundle: RecallBundle): ModelMessage | null {
     if (bundle.layer2.currentMode.length > 0) {
       blob.push('当前模式相关:');
       for (const i of bundle.layer2.currentMode) {
-        const ts = i.updatedAt ? ` (${fmtDate(i.updatedAt)})` : '';
-        blob.push(`- [${i.kind}]${ts} ${i.title}: ${i.body}`);
+        const ts = i.updatedAt ? ` (${memoryAge(i.updatedAt, now)})` : '';
+        blob.push(`- [${i.kind}]${ts} ${i.title}: ${clipEntry(i.body)}`);
       }
     }
     if (bundle.layer2.otherModes.length > 0) {
       blob.push('\n其他模式相关:');
       for (const i of bundle.layer2.otherModes) {
-        const ts = i.updatedAt ? ` (${fmtDate(i.updatedAt)})` : '';
-        blob.push(`- [${i.kind}]${ts} ${i.title}: ${i.body}`);
+        const ts = i.updatedAt ? ` (${memoryAge(i.updatedAt, now)})` : '';
+        blob.push(`- [${i.kind}]${ts} ${i.title}: ${clipEntry(i.body)}`);
       }
     }
     if (blob.length > 0) parts.push(`## 相关的过往\n${blob.join('\n')}`);
@@ -49,7 +67,7 @@ export function buildContextMessage(bundle: RecallBundle): ModelMessage | null {
 
   return {
     role:    'user',
-    content: `<memory>\n${parts.join('\n\n')}\n</memory>`,
+    content: `<memory>\n${parts.join('\n\n')}\n\n${MEMORY_FRESHNESS_NOTE}\n</memory>`,
   };
 }
 

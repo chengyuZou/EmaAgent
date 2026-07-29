@@ -15,13 +15,21 @@ export interface MemoryRecallLayerReport {
 }
 
 export type MemoryRecallEvent =
-  {
+  | {
       type: 'memory_recall_evidence';
       sessionId: SessionId;
       turnId: TurnId;
       executionProfile: ExecutionProfile;
       layer: MemoryRecallLayer;
       report: MemoryRecallLayerReport;
+    }
+  | {
+      /** 召回整体失败并降级为空贡献；Turn 继续，不带 Memory 上下文。 */
+      type: 'memory_recall_unavailable';
+      sessionId: SessionId;
+      turnId: TurnId;
+      error: string;
+      retryable: boolean;
     };
 
 export type MemoryBackgroundEvent =
