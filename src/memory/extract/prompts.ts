@@ -21,7 +21,9 @@ Respond with a single JSON object — no prose, no markdown fences. Schema:
       "label":       string,        // short identifier — e.g. "橘子(猫)", "工作压力"
       "node_type":   "user_fact" | "entity" | "event" | "emotion" | "preference" | "relationship",
       "description": string,        // one-paragraph factual summary
-      "importance":  0-100          // how much this matters long-term
+      "importance":  0-100,         // how much this matters long-term
+      "evidence_quote": string      // verbatim quote (>=8 chars) copied from the
+                                    // conversation above that directly supports this fact
     }
   ],
   "new_edges": [
@@ -39,7 +41,9 @@ Respond with a single JSON object — no prose, no markdown fences. Schema:
       "kind":       "user" | "feedback" | "project" | "reference",
       "title":      string,         // < 100 chars, distinctive
       "body":       string,         // few-sentence detail; include the WHY
-      "importance": 0-100
+      "importance": 0-100,
+      "evidence_quote": string      // verbatim quote (>=8 chars) from the conversation,
+                                    // same rule as new_nodes
     }
   ],
   "session_note_delta": string      // incremental markdown to APPEND to the running session summary
@@ -47,6 +51,9 @@ Respond with a single JSON object — no prose, no markdown fences. Schema:
 
 Empty arrays / empty string are acceptable. Return {} only if nothing is worth extracting.
 Avoid duplicating facts that already exist in the provided "Existing node labels" list.
+Every extracted node and memory item must carry an evidence_quote copied word-for-word
+from the conversation. If no verbatim evidence exists for a claim, do not extract it —
+an unverifiable long-term memory is worse than a missing one.
 `;
 
 const CHAT_HEADER = `
@@ -67,6 +74,12 @@ Focus areas:
                      conversation style preferences)
   - session_note_delta: a short markdown paragraph summarising what was
                         discussed / how the user felt / open threads.
+
+DO NOT extract:
+  - 临时状态与日程（"这周很忙"、"明天要出差"）——它们会过期，几周后就是误导
+  - 一次性情绪（"今天心情不错"）——只有反复出现的情绪模式才值得长期记忆
+  - 当前对话的过程信息（"我们正在聊 X"）——那是 session_note_delta 的职责
+  - 能由其他长期事实直接推出的冗余结论
 `;
 
 const WORK_HEADER = `
@@ -100,9 +113,7 @@ export function buildExtractionPrompt(args: {
 }): string {
   const header = args.executionProfile === 'chat' ? CHAT_HEADER : WORK_HEADER;
 
-  const conversation = args.fragments
-    .map(f => `[${f.role}] ${f.content}`)
-    .join('\n');
+  const conversation = renderFragmentsForPrompt(args.fragments);
 
   const existing = args.existingNodeLabels.length === 0
     ? '(none yet)'
@@ -117,6 +128,15 @@ Conversation fragments to extract from:
 ${conversation}
 
 ${SHARED_FOOTER.trim()}`;
+}
+
+/** 渲染对话片段的统一口径；举证校验以同一份文本为基准。 */
+export function renderFragmentsForPrompt(
+  fragments: Array<{ role: string; content: string }>,
+): string {
+  return fragments
+    .map(f => `[${f.role}] ${f.content}`)
+    .join('\n');
 }
 
 // ── Consolidation prompt ─────────────────────────────────────────────────────

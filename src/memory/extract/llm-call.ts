@@ -76,7 +76,22 @@ const VALID_ITEM_KINDS: ReadonlySet<MemoryItemKind> = new Set<MemoryItemKind>([
   'user', 'feedback', 'project', 'reference',
 ]);
 
-function sanitizeExtraction(raw: unknown): ExtractionOutput {
+/** 证据引用的最小长度：防止用"的"、"好"这类无信息量片段蒙混。 */
+const MIN_EVIDENCE_QUOTE_CHARS = 8;
+
+/**
+ * 校验证据引用真实存在于源文本。两边都归一化空白后做子串匹配——
+ * 引用必须逐字来自对话原文，这是提取侧唯一的幻觉防线。
+ */
+function hasValidEvidenceQuote(quote: unknown, sourceText: string): quote is string {
+  if (typeof quote !== 'string') return false;
+  const normalizedQuote = quote.trim().replace(/\s+/g, ' ');
+  if (normalizedQuote.length < MIN_EVIDENCE_QUOTE_CHARS) return false;
+  const normalizedSource = sourceText.replace(/\s+/g, ' ');
+  return normalizedSource.includes(normalizedQuote);
+}
+
+function sanitizeExtraction(raw: unknown, sourceText: string): ExtractionOutput {
   const obj = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
 
   const new_nodes: ExtractedNode[] = [];
@@ -89,11 +104,13 @@ function sanitizeExtraction(raw: unknown): ExtractionOutput {
       const desc  = typeof entry['description'] === 'string' ? entry['description'].trim() : '';
       if (!label || !desc) continue;
       if (typeof type !== 'string' || !VALID_NODE_TYPES.has(type as MemoryNodeType)) continue;
+      if (!hasValidEvidenceQuote(entry['evidence_quote'], sourceText)) continue;
       new_nodes.push({
         label,
         nodeType:    type as MemoryNodeType,
         description: desc,
         importance:  clamp(asNumber(entry['importance']) ?? 50, 0, 100),
+        evidenceQuote: (entry['evidence_quote'] as string).trim(),
       });
     }
   }
@@ -134,11 +151,13 @@ function sanitizeExtraction(raw: unknown): ExtractionOutput {
       const body  = typeof entry['body']  === 'string' ? entry['body'].trim()  : '';
       if (!title || !body) continue;
       if (typeof kind !== 'string' || !VALID_ITEM_KINDS.has(kind as MemoryItemKind)) continue;
+      if (!hasValidEvidenceQuote(entry['evidence_quote'], sourceText)) continue;
       memory_items.push({
         kind:       kind as MemoryItemKind,
         title,
         body,
         importance: clamp(asNumber(entry['importance']) ?? 50, 0, 100),
+        evidenceQuote: (entry['evidence_quote'] as string).trim(),
       });
     }
   }
@@ -154,12 +173,13 @@ export async function runExtraction(
   llm:           LanguageModel,
   modelBindings: ModelBindingsRepo,
   prompt:        string,
-  signal?:       AbortSignal,
+  signal:        AbortSignal | undefined,
+  sourceText:    string,
 ): Promise<ExtractionOutput | null> {
   const binding = resolveMemoryBinding(modelBindings);
   if (!binding) return null;
   const text = await runJsonCompletion(llm, binding, prompt, signal);
-  return sanitizeExtraction(extractJson(text));
+  return sanitizeExtraction(extractJson(text), sourceText);
 }
 
 export async function runConsolidation(

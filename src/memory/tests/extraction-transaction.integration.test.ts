@@ -89,14 +89,14 @@ function createHarness(): Harness {
       type: 'text' as const,
       text: JSON.stringify({
         new_nodes: [
-          { label: 'Alice', node_type: 'entity', description: 'A developer', importance: 70 },
-          { label: 'EmaAgent', node_type: 'entity', description: 'A desktop agent', importance: 80 },
+          { label: 'Alice', node_type: 'entity', description: 'A developer', importance: 70, evidence_quote: 'Alice works on EmaAgent.' },
+          { label: 'EmaAgent', node_type: 'entity', description: 'A desktop agent', importance: 80, evidence_quote: 'Alice works on EmaAgent.' },
         ],
         new_edges: [
           { from_label: 'Alice', to_label: 'EmaAgent', relation: 'develops' },
         ],
         memory_items: [
-          { kind: 'project', title: 'EmaAgent', body: 'Alice develops EmaAgent.', importance: 80 },
+          { kind: 'project', title: 'EmaAgent', body: 'Alice develops EmaAgent.', importance: 80, evidence_quote: 'Alice works on EmaAgent.' },
         ],
         session_note_delta: 'Alice is developing EmaAgent.',
       }),

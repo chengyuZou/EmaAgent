@@ -8,6 +8,8 @@ export interface ExtractedNode {
   nodeType:    MemoryNodeType;
   description: string;
   importance:  number;
+  /** 从对话原文逐字复制的证据片段；sanitize 校验其真实存在于源文本。 */
+  evidenceQuote: string;
 }
 
 export interface ExtractedEdge {
@@ -27,6 +29,8 @@ export interface ExtractedItem {
   title:      string;
   body:       string;
   importance: number;
+  /** 从对话原文逐字复制的证据片段；sanitize 校验其真实存在于源文本。 */
+  evidenceQuote: string;
 }
 
 // src/memory/src/extract/types.ts 里加

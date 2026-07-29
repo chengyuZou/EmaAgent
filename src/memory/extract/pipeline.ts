@@ -10,7 +10,7 @@ import type { MemorySettings } from '../types.js';
 import type { ExtractionOutput, PendingFragment } from './types.js';
 import { runExtraction } from './llm-call.js';
 import { bestEffortAsync } from '../best-effort.js';
-import { buildExtractionPrompt } from './prompts.js';
+import { buildExtractionPrompt, renderFragmentsForPrompt } from './prompts.js';
 import { readPending, clearPending } from './pending.js';
 import { EmbedService } from '../embed/service.js';
 import type { VectorIndex } from '../vector-index/vector-index.js';
@@ -133,9 +133,16 @@ export async function runExtractionPipeline(
       deps.memory.modelBindings,
       prompt,
       args.signal,
+      renderFragmentsForPrompt(fragments),
     );
     if (!output) {
-      // 未配置 memory model 时仍在 data.db 内原子清空，避免 buffer 永久堆积。
+      // 未配置 memory model 时仍在 data.db 内原子清空，避免 buffer 永久堆积；
+      // 但提取机会被丢弃必须显式可见，不能静默。
+      deps.memory.emit?.({
+        type: 'memory_extraction_skipped',
+        sessionId: args.sessionId,
+        reason: '未配置 memory 提取模型，本次对话片段已跳过提取',
+      });
       deps.memory.runDataTransaction(() => {
         clearPending(deps.memory.pendingFragments, args.sessionId, Date.now());
       });

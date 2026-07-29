@@ -36,6 +36,7 @@ export type MemoryBackgroundEvent =
   | { type: 'memory_extraction_started'; sessionId: SessionId; turnId?: TurnId; queueDepth: number }
   | { type: 'memory_extraction_completed'; sessionId: SessionId; nodes: number; edges: number; items: number; lazyQueued: number; durationMs: number }
   | { type: 'memory_extraction_failed'; sessionId: SessionId; error: string }
+  | { type: 'memory_extraction_skipped'; sessionId: SessionId; reason: string }
   | { type: 'memory_index_rebuilt'; backend: string; nodes: number; items: number; durationMs: number }
   | { type: 'memory_consolidation_started'; nodeCount: number }
   | { type: 'memory_consolidation_completed'; consolidated: number; durationMs: number }
