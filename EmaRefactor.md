@@ -720,7 +720,7 @@ apps/localHost/src/
 4. **逐 Route 收窄 AppBindings（已完成）**：Task/AgentRun、Turn/AskUser、Permission、Session、Provider/ModelBindings、Settings/Theme、Transcribe、Cards、Knowledge Base、Storage Stats 与 Shell Route 均只接收实际使用的执行、查询或传输端口。原大 Route 已按 HTTP 资源职责拆分，业务副作用回到领域所有者；Route 和测试不再伪造完整对象图。
 5. **HTTP 传输归档（进行中）**：`server.ts` 已只消费有序的 `MountedHttpRoute[]`，统一负责 CORS、认证、请求预算、挂载和错误协议；`createHttpRoutes.ts` 在 wiring 中构造实际 Router。HTTP Server 已不知道 Session、Provider、Agent、Knowledge 或 Storage 的对象图。后续再按真实改动把 Route、SSE、Auth 和请求预算迁入 `transports/http`，不能为目录图一次性制造空文件夹。
 
-2026-07-29 的 `AppBindings` 字段审计同时确认：`profileDb` 与 `credentials` 只参与构造，完成装配后没有运行期消费者，已从绑定表删除；根包不再导出 `AppBindings/wire/createTurnExecution/createTurnOutput` 等内部装配入口。剩余字段必须按生命周期继续退出宽对象图：启动一次性的 KB 初始化与 Bridge 同步归 `bootstrap`；Memory/MCP/清理器/Bridge 心跳归后台工作生命周期；HTTP 只取得已构造 Router；根 Turn 对象图继续只由 `createTurnExecution.ts` 展开。下一批不能按 `AgentBindings/ProviderBindings` 复制几只较小 Service Locator。
+2026-07-29 的 `AppBindings` 字段审计同时确认：`profileDb` 与 `credentials` 只参与构造，完成装配后没有运行期消费者，已从绑定表删除；根包不再导出 `AppBindings/wire/createTurnExecution/createTurnOutput` 等内部装配入口。后台恢复、Memory/MCP、周期清理、Bridge 心跳与关闭已经进入 `BackgroundWork`；Marketplace Seed、默认 KB、KB 索引、Skill 对账、Catalog 和首次 Bridge 同步已经进入 `bootstrap/startLocalHost.ts`，对象构造不再偷偷启动这些异步任务。Character Seed 仍是 Emotion 构造的同步前置，因为活动角色和 Live2D 外键必须先成立。后续拆纯 `buildBindings()` 对象图时，HTTP 只取得已构造 Router，根 Turn 对象图继续只由 `createTurnExecution.ts` 展开；不能按 `AgentBindings/ProviderBindings` 复制几只较小 Service Locator。
 
 每批都必须保持 Desktop 的 HTTP + SSE 主链可运行。WebSocket、CLI 和未来 Channel 只消费同一 `TurnHandle.events`，不能复制这条执行或输出装饰链。
 

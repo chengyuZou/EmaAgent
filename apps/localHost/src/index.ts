@@ -9,7 +9,7 @@ import { FileAccessFacade } from '@ema-agent/attachment';
 import { wire } from './wiring/index.js';
 import { createHttpRoutes } from './wiring/createHttpRoutes.js';
 import {
-  profileDbPath, dataDbPathFor, profileDir, loadRegistry, activeDirEntry,
+  profileDbPath, dataDbPathFor, loadRegistry, activeDirEntry,
   ensureDataDirLayout, ensureProfileLayout, acquireLock,
 } from './storage-locations/index.js';
 import { createServer } from 'node:net';
@@ -82,23 +82,10 @@ async function main() {
     fileAccess,
   });
 
-  // Ensure at least one KB exists; if registry is empty auto-create a default
-  // KB under the active dataDir so the app works out of the box.
-  const defaultKbPath = path.join(profileDir(), 'kb-default');
-  await bindings.kb.ensureDefault(defaultKbPath);
-  // Open + HNSW-init all registered KBs (fire-and-forget; search falls back
-  // to SQL cosine until HNSW builds, same as before).
-  void bindings.kb.initAll().catch((err) => {
-    console.warn('[kb] initAll() failed:', err);
-  });
-  bindings.backgroundWork.start();
+  await bindings.lifecycle.start();
   const app = buildServer(createHttpRoutes(bindings), sharedSecret);
 
   const port = await findOpenPort(PORT_DEFAULT, PORT_MAX);
-
-  // Fire-and-forget: push provider config to bridge after server is up.
-  // Bridge may not be running in dev — failures are logged as warnings.
-  void bindings.providerRuntime.syncBridge();
 
   let clearRuntimeReady: (() => void) | null = null;
   const server = serve({ fetch: app.fetch, port, hostname: '127.0.0.1' }, (info) => {
@@ -120,7 +107,7 @@ async function main() {
     shuttingDown = true;
     console.log('[local-host] shutting down...');
     void (async () => {
-      try { await bindings.backgroundWork.shutdown(); } catch { /* swallow */ }
+      try { await bindings.lifecycle.shutdown(); } catch { /* swallow */ }
       clearRuntimeReady?.();
       lock.release();
       server.close(() => {

@@ -24,10 +24,10 @@ import {
   type FileAccessFacade,
 } from '@ema-agent/attachment';
 import { McpRegistry, McpServerStore }                 from '@ema-agent/mcp';
-import { McpMarketAdapter, MCP_SEEDS }                 from '@ema-agent/mcp';
+import { McpMarketAdapter }                            from '@ema-agent/mcp';
 import type { McpStdioLaunchIntent }                   from '@ema-agent/mcp';
 import { SkillStore, SkillRunner, SkillInstaller }     from '@ema-agent/skills';
-import { SkillMarketAdapter, SKILL_SEEDS }             from '@ema-agent/skills';
+import { SkillMarketAdapter }                          from '@ema-agent/skills';
 import { MarketRegistry, MarketSourceStore }           from '@ema-agent/marketplace';
 import * as nodePath from 'node:path';
 import { readFileSync } from 'node:fs';
@@ -119,6 +119,7 @@ import type { CredentialFacade } from '@ema-agent/credential';
 import { createSettingsStore } from '../settings/createSettingsStore.js';
 import { BackgroundWork } from '../background/backgroundWork.js';
 import { StartupRecovery } from '../background/startupRecovery.js';
+import { LocalHostLifecycle } from '../bootstrap/startLocalHost.js';
 
 /**
  * LocalHost 迁移期完整对象图。
@@ -140,8 +141,8 @@ export interface AppBindings {
   sandboxStatus: SandboxStatusWire;
 
   hooks:   HookBus;
-  /** LocalHost 进程级恢复、周期维护与关闭入口。 */
-  backgroundWork: BackgroundWork;
+  /** LocalHost 一次性初始化、常驻后台工作与关闭入口。 */
+  lifecycle: LocalHostLifecycle;
   session: SessionStore;
   /** Session 备份导入的唯一业务入口；流式导出在 ZIP v2 接入同一 Facade。 */
   sessionBackup: SessionBackupFacade;
@@ -361,8 +362,8 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   });
 
   // ── Character + emotion ─────────────────────────────────────────────────────
-  // Seed built-in Live2D models FIRST — character_cards.live2d_model_id has an
-  // FK to live2d_models(id), so the model row must exist before the card insert.
+  // 角色种子是 EmotionEngine 的构造前置条件，不是可延迟的后台初始化。
+  // character_cards.live2d_model_id 具有外键，必须先补内置 Live2D 模型再补角色卡。
   const live2dModelsRepo = new Live2DModelsRepo(profileDb.sqlite);
   for (const builtinCard of BUILTIN_CARDS) {
     if (!builtinCard.live2dModelId) continue;
@@ -660,17 +661,11 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   );
   // ── Marketplace(多源聚合底座,MCP/Skill 共用)──────────────────────────────
   // 纯底座:adapter 注册表 + 通用源 store。各业务包(MCP/Skill)实现自己的 adapter
-  // + seed,wiring 时注册。kind 不约束,未来 integration(QQ/微信/邮箱)零改底座接入。
+  // kind 不约束,未来 integration(QQ/微信/邮箱)零改底座接入。
   const marketRegistry    = new MarketRegistry();
   const marketSourceStore = new MarketSourceStore(new MarketSourcesRepo(profileDb.sqlite));
   marketRegistry.registerAdapter(new McpMarketAdapter());
   marketRegistry.registerAdapter(new SkillMarketAdapter());
-  // startup 幂等 seed builtin 源(已存在则跳过,不覆盖用户的启停/排序)
-  try {
-    marketSourceStore.ensureSeeds([...MCP_SEEDS, ...SKILL_SEEDS]);
-  } catch (err) {
-    console.warn('[marketplace] seed failed:', err);
-  }
 
   // ── Skills ───────────────────────────────────────────────────────────────────
   // File-backed: SKILL.md files live under the profile dir (cross-dataDir,
@@ -680,8 +675,6 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     // builtin (read-only) root could be prepended here once skills ship with the app.
     { path: skillsUserRoot, source: 'user' },
   ]);
-  // Reconcile the index against disk on startup (fire-and-forget, like kb.init).
-  void skillStore.scanAndReconcile().catch((err) => console.warn('[skill] reconcile failed:', err));
   const skillRunner    = new SkillRunner(skillStore);
   const skillInstaller = new SkillInstaller(skillStore);
   // ── Knowledge base ───────────────────────────────────────────────────────────
@@ -822,17 +815,18 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     providerRuntime,
     systemBus,
   );
-
-  // Fire-and-forget: pull the models.dev catalog (context windows + capabilities).
-  // On failure the catalog stays empty and lookups fall through to the DB / 0.
-  void modelCatalog.refresh().then((ok) => {
-    if (ok) console.info(`[catalog] models.dev loaded (${modelCatalog.size} models)`);
-    else console.warn('[catalog] models.dev refresh failed; context/capability lookups degraded');
-  });
+  const lifecycle = new LocalHostLifecycle(
+    kb,
+    marketSourceStore,
+    skillStore,
+    modelCatalog,
+    providerRuntime,
+    backgroundWork,
+  );
 
   return {
     dataDb, activeDataDir, fileAccess, sandboxStatus,
-    hooks, backgroundWork, session, sessionBackup,
+    hooks, lifecycle, session, sessionBackup,
     llm, embed, rerank, narrative, modelCatalog, modelCapabilities,
     card, emotion,
     tts, audioArchive, stt, vision, providerRuntime,

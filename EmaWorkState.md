@@ -50,6 +50,8 @@ LocalHost HTTP 传输边界第一刀已经完成：`server.ts` 只接收有序 `
 
 LocalHost 后台生命周期已经完成收口：`BackgroundWork` 统一管理进程启动后的 Memory/MCP 初始化、周期维护、Tool Result 与 Attachment Cache 清理、Bridge 心跳和有序关闭；`StartupRecovery` 在新 Worker 启动前恢复中断的 Tool、Memory、Turn、Turn 文件和 AgentRun 状态。`wire()` 现在只构造对象图并注册 Hook/Emitter，不再因构造绑定而执行崩溃恢复；后台专用清理器也已退出 `AppBindings`。关闭顺序固定为停止新 tick、等待在途初始化、排空 Memory、等待 MCP 启动收口并断开连接。
 
+LocalHost 一次性启动装配已经完成收口：`bootstrap/startLocalHost.ts` 先幂等补 Marketplace 内置源和默认 KB，再启动恢复与常驻后台，最后并行发起 KB 索引、Skill 对账、models.dev Catalog 和首次 Bridge 配置；除默认 KB 外均保持失败只降级对应能力。`buildBindings()` 不再启动 Skill/Catalog 或写 Marketplace Seed，进程入口也不再逐项知道 KB、Bridge 和后台任务。角色卡 Seed 仍是 Character/Emotion 对象图的同步构造前置：EmotionEngine 立即需要活动角色，且角色卡写入受 Live2D 模型外键约束，不能伪装成可延迟后台任务。
+
 开工前已复核本地 Codex 源码：`codex-protocol` 只定义 Thread/Turn/Submission 等低层协议，真正编排位于 `codex-core/session`；App Server 只校验并提交 `Op::UserInput`，Session 统一建立 `RunningTask`、取消句柄和终态，`RegularTask` 再调用内部 `run_turn` 完成多轮模型与工具循环。Ema 因此保留低层 `turn` 与高层 `turnExecution` 两个编译边界，不能把执行依赖反向塞进被 Context、Session、Storage、Hooks 共同依赖的领域包。
 
 旧 `ConversationEngine` 与整个 `src/conversation` 包已经删除，Workspace 依赖和生产 import 归零。Chat 根生命周期与只读 Tool Profile 进入 `turnExecution`，LLM/Tool 迭代进入 `agent`，Narrative Route 与多周目 Recall 回到 `narrative`，模型可见召回正文通过不可信 Context Contribution 投递；Hook 不再携带 Narrative 私有结果。
@@ -142,9 +144,9 @@ Task 与 AgentRun 前端已经分面：Desktop 使用正式 `/api/tasks` 快照�
 
 开始任何新批次前必须重新运行 `git status --short` 与 `git diff`，保留用户和其他 Agent 的修改。
 
-当前工作区只包含 LocalHost 后台生命周期拆分：新增 `background/backgroundWork.ts`、`background/startupRecovery.ts` 与 `background/backgroundTicker.ts`，删除 wiring 下的旧后台文件，收窄 `bindings.ts/wiring/index.ts`，由进程入口显式启动和关闭后台工作，并补充恢复、单飞 tick、Bridge 状态和幂等关闭测试。开始下一批前仍须按实际 Diff 区分用户或其他 Agent 的后续修改。
+当前工作区只包含 LocalHost 一次性启动装配：新增 `bootstrap/startLocalHost.ts` 与对应测试，`bindings.ts` 只构造 `LocalHostLifecycle`，`index.ts` 只调用统一 start/shutdown；Marketplace Seed、KB 初始化、Skill 对账、Catalog 刷新和首次 Bridge 同步已退出散落入口。开始下一批前仍须按实际 Diff 区分用户或其他 Agent 的后续修改。
 
-当前基线最近提交：`0ef3f091 feat: restructure LocalHost HTTP routing and bindings for improved modularity and maintainability`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
+当前基线最近提交：`922c8e2b feat: implement background work management and recovery system`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
 
 ## 已确定的 V1 口径
 
@@ -191,7 +193,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 6. Permission V1 已完成：统一 Session FIFO、明确终态、Turn 身份核对、SQLite 永久规则 CRUD 与设置页管理、Builtin-only 免审批边界均已接通；旧 `AskUserRegistryLike` 已改为 `AskUserInteractionPort`，不新增第二套队列；
 7. Skill 多文件激活、per-Agent 状态、结构化 Context 恢复与 `allowed-tools` 单向收窄已经完成；
 8. LocalHost L0、Turn 输入准备 L1、Turn Context L2、Turn Tools L3、Root Agent Execution L4、Turn Composition Root L5、TTS Turn 输出边界、精确根取消与旧 Orchestrator 删除、Route 业务副作用归位及 Task/AgentRun Route 窄依赖均已完成；
-9. Turn/AskUser、Permission、Session、Provider/ModelBindings、Settings/Theme、Transcribe、Cards、Knowledge Base、Storage Stats 与 Shell Route 已完成窄依赖；HTTP Server 已改为只消费 Route 注册表，后台恢复、周期维护、Bridge 心跳与关闭也已进入独立生命周期对象。下一批收口一次性启动装配：KB 默认目录与初始化、首次 Bridge 同步，以及仍在 `buildBindings()` 中启动的 Skill/Catalog 工作；不建立 `AgentBindings/ProviderBindings` 等嵌套依赖袋，物理移动 Auth/SSE/Route 目录等语义稳定后再做；
+9. Turn/AskUser、Permission、Session、Provider/ModelBindings、Settings/Theme、Transcribe、Cards、Knowledge Base、Storage Stats 与 Shell Route 已完成窄依赖；HTTP Server、后台生命周期和一次性启动装配也已完成收口。下一批开始拆纯 `buildBindings()` 对象图：沿 Character/Emotion、模型执行面、Knowledge 与现有 `createTurnExecution/createHttpRoutes` 等真实内聚边界提取构造函数，不建立 `AgentBindings/ProviderBindings` 等嵌套依赖袋；物理移动 Auth/SSE/Route 目录等语义稳定后再做；
 10. 后台进程按 `BackgroundProcess + ProcessOutput/ProcessStop` 单独实现 C 档，不修改 AgentLoop，也不恢复假 `run_in_background`。
 
 命名随业务批次清理：旧 `IFileStateStoreEntry/IFileStateStore` 及后续过渡接口已经删除，`IToolExecutionJournal` 已改为职责名；其余迁移期 `I*` 类型继续随业务边界处理，不单独进行全仓机械重命名。
@@ -200,6 +202,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- LocalHost 一次性启动装配：LocalHost typecheck、正式 build 与全量 33 个测试文件 117/117 通过，构建验证 85 个源码、341 个产物；新增测试覆盖 Marketplace/KB 前置顺序、重复 start 幂等、四项可降级初始化及统一后台关闭。`buildBindings()` 中 Skill/Catalog/Marketplace 启动副作用与进程入口 KB/Bridge 分散调用归零，`git diff --check` 通过，仅有既有 CRLF 与不可访问 pytest 缓存提示。
 - LocalHost 后台生命周期拆分：LocalHost typecheck、正式 build 与全量 32 个测试文件 115/115 通过，构建验证 84 个源码、337 个产物；新增测试覆盖启动/关闭幂等、恢复先于 Worker、后台 tick 单飞、Bridge 首次不可达与恢复事件。旧 `startBackgroundWork`、wiring 后台文件和 `AppBindings` 后台清理器字段引用归零，`git diff --check` 通过，仅有既有 CRLF 与不可访问 pytest 缓存提示。
 - LocalHost HTTP 传输边界第一刀：LocalHost typecheck、正式 build 与全量 31 个测试文件 112/112 通过，构建验证 83 个源码、333 个产物；新增 Server 测试覆盖无业务对象图挂载、统一认证和 404。`server.ts` 与根包公开入口的 `AppBindings` 引用归零，装配完成后无消费者的 `profileDb/credentials` 已退出绑定表。
 - 剩余五组 AppBindings Route 收窄：LocalHost typecheck、正式 build 与全量 30 个测试文件 110/110 通过，构建验证 82 个源码、329 个产物；Cards、KB Embedding、Session Backup、Shell Permission 定向 4 个测试文件 15/15 通过。五组 Route 和相关测试中的 `AppBindings` 引用归零，`server.ts` 显式投影现有业务对象；`git diff --check` 通过，仅有既有 CRLF 与不可访问 pytest 缓存提示。
@@ -295,7 +298,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 先完整阅读 CLAUDE.md 与 EmaWorkState.md，再按当前批次阅读 EmaRefactor.md 和 EmaClaudeArchitectureReview.md 对应章节。检查 git status、diff 和最近提交，保留用户及其他 Agent 的修改。
 
-LocalHost L0、Turn 输入准备 L1、Turn Context L2、Turn Tools L3、Root Agent Execution L4、Turn Composition Root L5、TTS Turn 输出边界、精确根取消与旧 Orchestrator 删除、Route 业务副作用归位、全部 Route 窄依赖、HTTP Server 的 Route 注册表边界以及后台生命周期对象已经完成。Agent/Context/Attachment 用户设置已经冻结进每根 `TurnInput`，Vision 设置在每次 Operation 开始时读取一次；不要在 AgentLoop 中重读 SQL 或修改共享 Compactor。不要恢复 `apps/core`、`TurnExecutionPlan`、`PreparedTurnExecution`、万能 `TurnExecutionDeps`、LocalHost `activeTurns`、旧 Orchestrator、Route transcript/交互/音频投影回调、Route 直接解析 AgentRun `content_json`、Session Route 标题/删除副作用、Provider Route 业务编排、通用 `cancelActive`、TOML 设置存储、弃用 `EmaStreamEvent` 消费者、根包公开 `AppBindings`、旧 `startBackgroundWork` 或绑定表中的后台清理器。先阅读 `EmaRefactor.md` §7.1.1 与 §7.1.2；下一批把 KB 默认目录/初始化、首次 Bridge 同步和仍在 `buildBindings()` 中启动的 Skill/Catalog 工作收口成明确的一次性启动阶段。不能按业务名复制嵌套依赖袋，也不能让构造对象图重新产生后台副作用。修改前先说明启动顺序、失败策略和预期效果，不要提交 Git。
+LocalHost L0、Turn 输入准备 L1、Turn Context L2、Turn Tools L3、Root Agent Execution L4、Turn Composition Root L5、TTS Turn 输出边界、精确根取消与旧 Orchestrator 删除、Route 业务副作用归位、全部 Route 窄依赖、HTTP Server 的 Route 注册表边界、后台生命周期对象以及一次性启动装配已经完成。Agent/Context/Attachment 用户设置已经冻结进每根 `TurnInput`，Vision 设置在每次 Operation 开始时读取一次；不要在 AgentLoop 中重读 SQL 或修改共享 Compactor。不要恢复 `apps/core`、`TurnExecutionPlan`、`PreparedTurnExecution`、万能 `TurnExecutionDeps`、LocalHost `activeTurns`、旧 Orchestrator、Route transcript/交互/音频投影回调、Route 直接解析 AgentRun `content_json`、Session Route 标题/删除副作用、Provider Route 业务编排、通用 `cancelActive`、TOML 设置存储、弃用 `EmaStreamEvent` 消费者、根包公开 `AppBindings`、旧 `startBackgroundWork`、绑定表中的后台清理器或 `buildBindings()` 中的异步启动副作用。先阅读 `EmaRefactor.md` §7.1.1 与 §7.1.2；下一批开始拆纯 `buildBindings()` 对象图，优先选择能返回真实领域入口的内聚构造段，不复制 `AgentBindings/ProviderBindings` 等嵌套依赖袋。Character Seed 是 Emotion 构造前置，迁移时必须保持 Live2D 外键、活动角色和 Emotion 初始化顺序。修改前先说明构造输入、唯一消费者和预期减少的宽字段，不要提交 Git。
 ```
 
 ## 维护方式
