@@ -29,7 +29,7 @@ describe('B-011/B-012 IngestQueue', () => {
       concurrency: 1,
     });
 
-    const task = queue.enqueue({
+    const task = await queue.enqueue({
       assetId: 'asset-1',
       filePath: 'D:/docs/one.md',
       fileName: 'one.md',
@@ -77,7 +77,7 @@ describe('B-011/B-012 IngestQueue', () => {
       concurrency: 1,
     });
 
-    const task = queue.enqueue({
+    const task = await queue.enqueue({
       assetId: 'asset-pdf',
       filePath: 'D:/docs/large.pdf',
       fileName: 'large.pdf',

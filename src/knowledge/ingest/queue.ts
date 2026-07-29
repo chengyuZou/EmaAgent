@@ -5,6 +5,8 @@ import type {
   KbIngestTasksRepo,
 } from '@ema-agent/storage';
 import type { IngestOptions, IngestResult } from '../types.js';
+import { stagedRelativePathFor, type StagedFile } from './staging.js';
+import * as path from 'node:path';
 
 const DEFAULT_CONCURRENCY = 3;
 const LEASE_DURATION_MS = 60_000;
@@ -15,6 +17,8 @@ export interface IngestQueueDeps {
   ingest: (filePath: string, opts: IngestOptions) => Promise<IngestResult>;
   /** 每次领取时读取最新模型设置，排队期间切换 Provider 不会使用旧密钥。 */
   resolveOptions: () => IngestRuntimeOptions;
+  /** 上传即落盘：enqueue 时把原文复制进 KB 目录，之后任务只读副本。 */
+  stageFile?: (sourcePath: string, assetId: string) => Promise<StagedFile>;
   concurrency?: number;
 }
 
@@ -35,14 +39,22 @@ export class IngestQueue {
     this.concurrency = Math.max(1, Math.trunc(deps.concurrency ?? DEFAULT_CONCURRENCY));
   }
 
-  enqueue(input: {
+  async enqueue(input: {
     assetId: string;
     filePath: string;
     fileName: string;
     mimeType?: string;
-  }): KbIngestTask {
+  }): Promise<KbIngestTask> {
+    // 上传即落盘：staging 失败（源不可读、磁盘错误）直接抛出，不产生必失败的任务。
+    const staged = this.deps.stageFile
+      ? await this.deps.stageFile(input.filePath, input.assetId)
+      : undefined;
     const taskId = randomUUID();
-    this.deps.tasks.insert({ id: taskId, ...input });
+    this.deps.tasks.insert({
+      id: taskId,
+      ...input,
+      filePath: staged?.absolutePath ?? input.filePath,
+    });
     const task = this.deps.tasks.get(taskId);
     if (!task) throw new Error(`[kb/queue] task ${taskId} was not persisted`);
     this.tick();
@@ -117,6 +129,10 @@ export class IngestQueue {
         taskId: task.id,
         attempt: task.attempt,
         mimeType: task.mimeType,
+        // staging 开启时 task.filePath 是 KB 内副本，按同一约定重建相对引用。
+        ...(this.deps.stageFile
+          ? { stagedRelativePath: stagedRelativePathFor(task.assetId, path.basename(task.filePath)) }
+          : {}),
         ...(retryChunkIds.length > 0 ? { retryChunkIds } : {}),
         ...(replaceExistingAsset ? { replaceExistingAsset: true } : {}),
         signal: controller.signal,

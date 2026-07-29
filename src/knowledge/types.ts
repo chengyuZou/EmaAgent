@@ -149,6 +149,8 @@ export interface IngestOptions {
   retryChunkIds?: string[];
   /** 页级解析失败重试时替换上一轮的文档、chunk 与 preview。 */
   replaceExistingAsset?: boolean;
+  /** staging 后 asset.filePath 写入的 KB 相对路径；缺省时回退为读取路径。 */
+  stagedRelativePath?: string;
   /** Vision provider id for image/scanned-PDF OCR. */
   visionProviderId?: string;
   visionModel?:      string;

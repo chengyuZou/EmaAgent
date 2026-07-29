@@ -52,9 +52,15 @@ export async function ingest(
 
   // 失败后的完整重试必须先删除旧的中间产物。文档、chunk、preview 通过 FK
   // 一次清理，避免新解析结果与上一轮残留 chunk 混合。
+  // 'indexing' 是上一轮崩溃留下的未完成态，与 'error' 一样允许接管重建；
+  // 只有已完成的文档才拒绝覆盖。
   const sameIdAsset = store.getAsset(assetId);
   if (sameIdAsset) {
-    if (sameIdAsset.status !== 'error' && !opts.replaceExistingAsset) {
+    if (
+      sameIdAsset.status !== 'error'
+      && sameIdAsset.status !== 'indexing'
+      && !opts.replaceExistingAsset
+    ) {
       throw new Error(`[kb/ingest] asset ${assetId} already exists with status ${sameIdAsset.status}`);
     }
     store.deleteAsset(assetId);
@@ -81,7 +87,8 @@ export async function ingest(
   const fileName = filePath.split(/[\\/]/).pop() ?? filePath;
   const asset: DocumentAsset = {
     id: assetId,
-    filePath,
+    // staging 开启时存 KB 相对路径，保证 KB 目录自包含可移动。
+    filePath: opts.stagedRelativePath ?? filePath,
     fileName,
     mimeType,
     title: undefined,

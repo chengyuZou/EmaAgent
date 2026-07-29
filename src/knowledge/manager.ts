@@ -13,6 +13,7 @@ import type { RerankRuntime }    from '@ema-agent/rerank';
 import { KnowledgeClient }       from './client.js';
 import { KnowledgeStore }        from './store/index.js';
 import { IngestQueue }           from './ingest/queue.js';
+import { stageIngestFile }       from './ingest/staging.js';
 import { ReembedQueue }          from './reembed/queue.js';
 import { DocumentEventEmitter }  from './events/emitter.js';
 import type { KbVisionAdapter }  from './adapters/vision.js';
@@ -181,6 +182,7 @@ export class KbManager {
       embedRuntime:  this.deps.embedRuntime,
       rerankRuntime: this.deps.rerankRuntime,
       visionAdapter: this.deps.visionAdapter,
+      kbRoot:        rec.path,
     });
 
     const ingestTasks = new KbIngestTasksRepo(db.sqlite);
@@ -188,6 +190,7 @@ export class KbManager {
       tasks:          ingestTasks,
       ingest:         (fp, opts) => client.ingest(fp, opts),
       resolveOptions: this.deps.resolveIngestOptions,
+      stageFile:      (sourcePath, assetId) => stageIngestFile(rec.path, assetId, sourcePath),
       concurrency:    this.deps.concurrency ?? 3,
     });
 

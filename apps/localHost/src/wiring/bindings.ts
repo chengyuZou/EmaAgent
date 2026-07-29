@@ -8,7 +8,6 @@ import {
   MemorySessionStateRepo, MemoryExtractionRunsRepo,
   McpServersRepo, SkillsRepo,
   MarketSourcesRepo,
-  AgentRunsRepo, AgentRunMessagesRepo, TasksRepo, ToolExecutionsRepo,
   SessionStatsRepo, DataDirStatsRepo,
   AttachmentDerivationsRepo,
   type ProvidersRepo,
@@ -38,11 +37,8 @@ import * as os from 'node:os';
 import { HookBus }       from '@ema-agent/hooks';
 import { createTraceSink } from './diagnostic-sink.js';
 import {
-  dataDbPathFor,
-  profileDbPath,
   removeSessionDir,
   removeTurnFiles,
-  sqliteFileSet,
 } from '../storage-locations/index.js';
 import type { LanguageModelRuntime } from '@ema-agent/llm';
 import {
@@ -86,15 +82,12 @@ import {
   type KbSearchResult,
 } from '@ema-agent/knowledge';
 import type { CommandRunnerPort, SandboxStatusWire } from '@ema-agent/sandbox';
-import { ToolExecutionJournal, ToolRegistry } from '@ema-agent/tools';
-import { registerBuiltinTools } from '@ema-agent/tool-builtin';
-import { detectBackend, CommandRunner } from '@ema-agent/sandbox';
-import { ToolResultCleaner, ToolResultStore } from '@ema-agent/tools';
-import {
+import type { ToolExecutionJournal, ToolRegistry, ToolResultStore } from '@ema-agent/tools';
+import type {
   AgentRunStore,
   AgentRunTranscriptStore,
 } from '@ema-agent/agent';
-import { TaskStore } from '@ema-agent/tasks';
+import type { TaskStore } from '@ema-agent/tasks';
 import { MemoryPlanner } from '@ema-agent/memory';
 import { ContextCompactor } from '@ema-agent/context';
 import {
@@ -114,6 +107,8 @@ import { StartupRecovery } from '../background/startupRecovery.js';
 import { LocalHostLifecycle } from '../bootstrap/startLocalHost.js';
 import { createProviderControlPlane } from './createProviderControlPlane.js';
 import { createModelExecution } from './createModelExecution.js';
+import { createSandboxRuntime } from './createSandboxRuntime.js';
+import { createToolInfrastructure } from './createToolInfrastructure.js';
 
 /**
  * LocalHost 迁移期完整对象图。
@@ -359,117 +354,33 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
       profileDb.sqlite,
     );
 
-  // ── Tools + sandbox ─────────────────────────────────────────────────────────
-  // On Windows without WSL2+bubblewrap the backend is 'app-layer' (no OS
-  // isolation). Shell tools are disabled unless AGEN_UNSAFE_SHELL=1 is set.
-  const sandboxDetection   = detectBackend();
-  const unsafeShellOverride = process.env['AGEN_UNSAFE_SHELL'] === '1';
-  const unsafeMcpOverride   = process.env['AGEN_UNSAFE_MCP_STDIO'] === '1';
-  const sandboxNetworkAccess = process.env['AGEN_UNSAFE_SANDBOX_NETWORK'] === '1'
-    ? 'full' as const
-    : 'none' as const;
-  const disableExecuteTools =
-    sandboxDetection.backend === 'app-layer' &&
-    !unsafeShellOverride;
-
-  // stdio MCP 目前由 SDK 直接启动，不经过 CommandRunner，所以默认禁用。
-  // 显式环境变量只用于开发者自行承担风险，不代表它获得了系统沙箱。
-  const localMcpStdioEnabled = unsafeMcpOverride;
-  const sandboxWarnings = [
-    sandboxDetection.degradeReason,
-    sandboxDetection.backend === 'app-layer' && unsafeShellOverride
-      ? 'Shell is running without OS-level isolation because AGEN_UNSAFE_SHELL=1.'
-      : undefined,
-    localMcpStdioEnabled
-      ? 'Local stdio MCP processes are running without OS-level isolation because AGEN_UNSAFE_MCP_STDIO=1.'
-      : 'Local stdio MCP processes are disabled until they are routed through the sandbox runner.',
-    sandboxNetworkAccess === 'full'
-      ? 'Sandboxed shell commands have full network access because AGEN_UNSAFE_SANDBOX_NETWORK=1.'
-      : undefined,
-  ].filter((message): message is string => Boolean(message));
-  const sandboxStatus: SandboxStatusWire = Object.freeze({
-    backend: sandboxDetection.backend,
-    isolation: sandboxDetection.backend === 'app-layer' ? 'application-only' : 'os',
-    shellExecution: disableExecuteTools
-      ? 'disabled'
-      : sandboxDetection.backend === 'app-layer'
-        ? 'unsafe-override'
-        : 'isolated',
-    localMcpStdio: localMcpStdioEnabled ? 'unsafe-override' : 'disabled',
-    sandboxNetwork: sandboxNetworkAccess,
-    ...(sandboxWarnings.length > 0 ? { warning: sandboxWarnings.join(' ') } : {}),
-  });
-
-  const protectedSandboxPaths = [
-    ...sqliteFileSet(profileDbPath()),
-    ...sqliteFileSet(dataDbPathFor(activeDataDir)),
-  ];
-
-  const tools = new ToolRegistry();
-  registerBuiltinTools(tools, {
+  // Sandbox 先冻结本机安全能力，工具表据此决定是否暴露 Execute 类工具。
+  const {
+    sandboxStatus,
     disableExecuteTools,
-  });
-
-  // Per-session command runner — memoised to avoid rebuilding SandboxConfig
-  // on every turn (detectBackend + stat on bare-repo files is wasteful).
-  const runnerCache = new Map<string, CommandRunnerPort>();
-  const getCommandRunner = (sessionId: SessionId): CommandRunnerPort | undefined => {
-    let runner = runnerCache.get(sessionId);
-    if (runner) return runner;
-    const s = session.getSession(sessionId);
-    if (!s.workspaceRoot) return undefined;
-    const temporaryWritePaths = process.platform === 'darwin'
-      ? [os.tmpdir(), '/tmp', '/private/tmp']
-      : [os.tmpdir()];
-    runner = new CommandRunner({
-      workspaceRoot: s.workspaceRoot,
-      writablePaths: [s.workspaceRoot, ...temporaryWritePaths],
-      protectedPaths: protectedSandboxPaths,
-      networkAccess: sandboxNetworkAccess,
-    });
-    runnerCache.set(sessionId, runner);
-    return runner;
-  };
+    localMcpStdioEnabled,
+    getCommandRunner,
+    invalidateSessionRunner,
+    removeSessionRunner,
+  } = createSandboxRuntime(session, activeDataDir);
+  const {
+    tools,
+    getSessionToolResultStore,
+    removeSessionToolState,
+    toolResultCleaner,
+    agentRunTranscript,
+    agentRunStore,
+    taskStore,
+    toolExecutionJournal,
+  } = createToolInfrastructure(dataDb, activeDataDir, disableExecuteTools);
 
   const invalidateSessionRuntime = (sessionId: SessionId): void => {
-    // Session Tool 状态继续保留，工作区变化不会让已读文件历史失效。
-    // workspace-scoped. Only the runner bakes workspaceRoot in.
-    runnerCache.delete(sessionId);
+    invalidateSessionRunner(sessionId);
   };
-
   const removeSessionRuntime = (sessionId: SessionId): void => {
-    // 会话删除后释放 Runner 与 Tool Result Store，避免进程内缓存永久持有 Session。
-    runnerCache.delete(sessionId);
-    sessionToolResultStores.delete(sessionId);
+    removeSessionRunner(sessionId);
+    removeSessionToolState(sessionId);
   };
-
-  // ── Session 工具结果存储 ───────────────────────────────────────────────────
-  // 新结果与音频使用同一正式 Session 根，永久删除 Session 时可由
-  // removeSessionDir 一次清理；旧隐藏目录仅交给 Cleaner 做兼容回收。
-  const sessionsDir = nodePath.join(activeDataDir, 'sessions');
-  const legacyToolResultSessionsDir = nodePath.join(activeDataDir, '.ema-agent', 'sessions');
-  const sessionToolResultStores = new Map<string, ToolResultStore>();
-  const getSessionToolResultStore = (sessionId: SessionId): ToolResultStore => {
-    let store = sessionToolResultStores.get(sessionId);
-    if (store) return store;
-    store = new ToolResultStore(
-      nodePath.join(sessionsDir, sessionId, 'tool-results'),
-    );
-    sessionToolResultStores.set(sessionId, store);
-    return store;
-  };
-  const toolResultCleaner = new ToolResultCleaner([
-    sessionsDir,
-    legacyToolResultSessionsDir,
-  ]);
-  const agentRunTranscript = new AgentRunTranscriptStore(
-    new AgentRunMessagesRepo(dataDb.sqlite),
-  );
-  const agentRunStore = new AgentRunStore(new AgentRunsRepo(dataDb.sqlite));
-  const taskStore = new TaskStore(new TasksRepo(dataDb.sqlite));
-  const toolExecutionJournal = new ToolExecutionJournal(
-    new ToolExecutionsRepo(dataDb.sqlite),
-  );
 
   // ── System event bus ────────────────────────────────────────────────────────
   const systemBus = new SystemEventBus();

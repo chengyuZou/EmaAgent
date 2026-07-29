@@ -147,7 +147,13 @@ export function kbRoute(dependencies: KnowledgeBaseRouteDependencies): Hono {
     const assetId  = randomUUID();
     const fileName = filePath.split(/[\\/]/).pop() ?? filePath;
 
-    const task = entry.ingestQueue.enqueue({ assetId, filePath, fileName, mimeType });
+    // staging 在入队时执行：源文件不可读等错误在这里直接失败，不产生必失败的任务。
+    let task;
+    try {
+      task = await entry.ingestQueue.enqueue({ assetId, filePath, fileName, mimeType });
+    } catch (error) {
+      return c.json({ error: 'stage_failed', message: (error as Error).message }, 400);
+    }
 
     return c.json({ taskId: task.id, assetId, fileName, status: 'pending' }, 202);
   });
@@ -317,7 +323,7 @@ export function kbRoute(dependencies: KnowledgeBaseRouteDependencies): Hono {
     const id = c.req.param('id');
     const asset = entry.client.getAsset(id);
     if (!asset) return c.json({ error: 'not_found' }, 404);
-    entry.client.deleteAsset(id);
+    await entry.client.deleteAsset(id);
     return c.json({ deleted: id });
   });
 

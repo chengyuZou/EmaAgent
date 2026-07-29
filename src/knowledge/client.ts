@@ -18,6 +18,7 @@ import { weightedRank }         from './retrieval/hybrid.js';
 import type { VectorIndex }     from './index/vector-index.js';
 import { createVectorIndex }    from './index/factory.js';
 import { normalizeF32 } from './embed/normalize.js';
+import { removeStagedAssetFiles } from './ingest/staging.js';
 
 // rerank 分数在 RerankRuntime 出口已归一到 [0,1]；RRF 分按本批最高分归一。
 // 两路信号加权混合：rerank 低分结果被压后而不是整条消失，保留 RRF 命中的信息；
@@ -30,6 +31,8 @@ export interface KnowledgeClientDeps {
   rerankRuntime?: RerankRuntime;
   visionAdapter?: KbVisionAdapter;
   hydeAdapter?:   KbHydeAdapter;
+  /** KB 根目录；提供时删除文档会同步清理 files/ 下的 staged 副本。 */
+  kbRoot?:        string;
   /** Index-time question generation (RAGFlow-style). Interface only — unwired in V1,
    *  pending a frontend/product decision on how questions feed embedding. */
   autoQuestionAdapter?: KbAutoQuestionAdapter;
@@ -400,7 +403,7 @@ export class KnowledgeClient {
     return this.deps.store.listInactiveAssets(Date.now() - days * 24 * 60 * 60 * 1000);
   }
 
-  deleteAsset(id: string): void {
+  async deleteAsset(id: string): Promise<void> {
     // Remove from HNSW before deleting from DB
     if (this.hnsw) {
       for (const [chunkId, assetId] of this.chunkToAsset) {
@@ -411,6 +414,14 @@ export class KnowledgeClient {
       }
     }
     this.deps.store.deleteAsset(id);
+    if (this.deps.kbRoot) {
+      // DB 行已是事实源；staged 清理失败只留孤儿文件，不影响删除语义。
+      try {
+        await removeStagedAssetFiles(this.deps.kbRoot, id);
+      } catch (error) {
+        console.warn(`[kb] staged 文件清理失败（文档已删除）: ${errorMessage(error)}`);
+      }
+    }
   }
 }
 
@@ -420,6 +431,10 @@ function bufferToFloat32(buf: Buffer): Float32Array {
   const f32 = new Float32Array(buf.byteLength / 4);
   for (let i = 0; i < f32.length; i++) f32[i] = buf.readFloatLE(i * 4);
   return f32;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 // 知识库客户端负责文档检索、向量召回和重排，并把 Turn 身份传给模型调用账本。
 import { randomUUID } from 'node:crypto';

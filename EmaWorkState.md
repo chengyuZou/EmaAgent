@@ -148,9 +148,9 @@ Task 与 AgentRun 前端已经分面：Desktop 使用正式 `/api/tasks` 快照�
 
 开始任何新批次前必须重新运行 `git status --short` 与 `git diff`，保留用户和其他 Agent 的修改。
 
-当前主线工作区包含 LocalHost Composition Root 第一批：新增 Provider 控制面与模型执行工厂、Catalog 资源定位和刷新保护及对应测试；本地忽略目录 `docs/architecture/localHostWiringRefactorPlan.md` 继续作为施工计划。工作区同时存在其他 Agent 的 Knowledge/Rerank 独立改动，主线未修改或回退这些文件。开始下一批前仍须按实际 Diff 区分用户或其他 Agent 的后续修改。
+当前主线工作区包含 LocalHost Composition Root 的 Sandbox/Tool 对象图拆分：新增 Sandbox 运行时与 Tool 基础设施工厂、Session Runner/Result Store 生命周期测试，并从 `bindings.ts` 移出对应构造细节；本地忽略目录 `docs/architecture/localHostWiringRefactorPlan.md` 继续作为施工计划。工作区同时存在其他 Agent 的 Knowledge 独立改动，主线未修改或回退这些文件。开始下一批前仍须按实际 Diff 区分用户或其他 Agent 的后续修改。
 
-当前基线最近提交：`528d2ade feat: implement LocalHost lifecycle management with initialization and shutdown processes`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
+当前基线最近提交：`2f6e0f04 feat: enhance model catalog and execution control`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
 
 ## 已确定的 V1 口径
 
@@ -197,7 +197,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 6. Permission V1 已完成：统一 Session FIFO、明确终态、Turn 身份核对、SQLite 永久规则 CRUD 与设置页管理、Builtin-only 免审批边界均已接通；旧 `AskUserRegistryLike` 已改为 `AskUserInteractionPort`，不新增第二套队列；
 7. Skill 多文件激活、per-Agent 状态、结构化 Context 恢复与 `allowed-tools` 单向收窄已经完成；
 8. LocalHost L0、Turn 输入准备 L1、Turn Context L2、Turn Tools L3、Root Agent Execution L4、Turn Composition Root L5、TTS Turn 输出边界、精确根取消与旧 Orchestrator 删除、Route 业务副作用归位及 Task/AgentRun Route 窄依赖均已完成；
-9. Turn/AskUser、Permission、Session、Provider/ModelBindings、Settings/Theme、Transcribe、Cards、Knowledge Base、Storage Stats 与 Shell Route 已完成窄依赖；HTTP Server、后台生命周期和一次性启动装配也已完成收口。`buildBindings()` 对象图第一批 Provider 控制面与六模态执行面已经提取，源码态 Catalog Snapshot 路径与空刷新保护已经修复。下一批先复核并接入独立准备的 Character/Emotion 工厂，再提取 Sandbox/Tool 执行对象图；后续按 Session/Memory/Attachment/Backup、Extension/Knowledge 顺序施工，不建立嵌套依赖袋或通用 `Lazy<T>`；
+9. Turn/AskUser、Permission、Session、Provider/ModelBindings、Settings/Theme、Transcribe、Cards、Knowledge Base、Storage Stats 与 Shell Route 已完成窄依赖；HTTP Server、后台生命周期和一次性启动装配也已完成收口。`buildBindings()` 的 Provider 控制面、六模态执行面、Sandbox 运行时和 Tool 基础设施对象图已经提取；Character/Emotion 工厂由 K3 独立准备，主线下一批按 Session/Memory 再到 Attachment/Backup、Extension/Knowledge 的顺序施工，不建立嵌套依赖袋或通用 `Lazy<T>`；
 10. 后台进程按 `BackgroundProcess + ProcessOutput/ProcessStop` 单独实现 C 档，不修改 AgentLoop，也不恢复假 `run_in_background`；
 11. 外围质量收口（K3 主线，依据为 2026-07-29 外围模块评审与 ragflow/claude-code 参照研究，管线对照见 `docs/reviews/ragflow-claude-pipelines.md`）：
     - **R2 KB 检索质量**：rerank 分数统一归一 [0,1]（已在区间内不动、越界才 min-max），rerank 替换制改为 RRF 分与 rerank 分的加权混合（消灭 0.4 硬门槛整条消失），空结果降阈值自动重查一次；
@@ -221,6 +221,8 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- LocalHost Composition Root Sandbox/Tool 批次：新增 `createSandboxRuntime.ts` 与 `createToolInfrastructure.ts`，`bindings.ts` 中的 Sandbox 探测/状态、per-Session Runner、Builtin Registry、Result Store、Cleaner、Task/AgentRun/Journal 构造已归零；工作区变更只失效 Runner，永久删除同时释放 Runner 与 Result Store，MCP 继续复用同一稳定 Registry。LocalHost typecheck、正式 build 和 35 个测试文件 129/129 通过，构建验证 89 个源码、357 个产物；8 项新测试覆盖 fail-closed/显式不安全开关、两类 OS Sandbox 状态、SQLite 文件族保护、Runner 缓存与淘汰、Tool Manifest 确定性和 Result Store 生命周期。
+- KB 摄入可靠性（外围 R1）：Knowledge 11 个测试文件 51/51、LocalHost 35 个测试文件 129/129 通过；Knowledge 与 LocalHost typecheck、Knowledge build 通过。staging 落实 `{kb}/files/` 自包含设计意图：`stageIngestFile` 在 enqueue 时把原文复制进 KB 目录（文件名净化防穿越与 Windows 保留名），任务读取副本、`asset.filePath` 存 POSIX 相对路径，staging 失败在入队处直接 400 不产生必失败任务；`ingest/index.ts` 允许接管 `'indexing'` 崩溃残留（修复自动恢复必失败一次的死循环）；`KnowledgeClient.deleteAsset` 同步清理 staged 目录。新增测试覆盖源文件删除后任务仍成功、staging 失败拒绝入队、indexing 接管重建、删除文档清理副本；既有 ingest-queue 测试同步适配 async enqueue。contentHash 去重与失败分片增量重试经核实已存在，ragflow 页片 digest 复用不照搬；`git diff --check` 通过，仅有既有 CRLF 提示。
 - KB 检索质量（外围 R2）：Rerank、Knowledge typecheck 与 build 通过；Rerank 6/6、Knowledge 10 个测试文件 47/47 通过，LocalHost typecheck（消费方）通过。rerank 分数在 `RerankRuntime` 出口统一归一 [0,1]（区间内原样、越界 min-max、全同越界映射 1），检索排序由"rerank 0.4 硬门槛替换制"改为 RRF 分与归一化 rerank 分按 0.4/0.6 加权混合，低 rerank 分结果被压后而非整条消失；空结果降阈值重查经核实不适用（FTS 已是 OR 宽松查询，无阈值可降）。新增测试覆盖越界归一、区间内原样、全同映射、混合排序压后不消失、rerank 全 0 回退 RRF、rerank 失败与未配置回退；`git diff --check` 通过，仅有既有 CRLF 提示。
 - LocalHost Composition Root 第一批：Provider tests 4/4、LocalHost 定向 6/6、LocalHost 全量 34 文件 121/121、Provider 与 LocalHost typecheck、LocalHost 正式 build 全部通过；构建验证 87 个源码、349 个产物。新增测试覆盖源码/dist Catalog 快照定位、空快照降级、远端空目录保留已有索引，以及模型执行工厂构造期不发起网络请求；`git diff --check` 通过，仅有既有 CRLF 与不可访问 pytest 缓存提示。
 - LocalHost Composition Root 启动策略计划：完整审计 `buildBindings()`、Lifecycle、BackgroundWork、Provider/Catalog、Character、Sandbox/Tool、Session/Settings、Memory、Attachment、Backup、MCP/Market/Skill 与 KB 的构造和启动链；冻结 eager/lazy/background 与 fatal/degraded/feature-local 矩阵、三轮并行文件所有权和分批验收。该批只更新计划与接力板，未改生产代码、未运行代码测试；使用 `git diff --check` 检查文档补丁。
