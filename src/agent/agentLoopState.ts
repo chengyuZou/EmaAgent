@@ -8,8 +8,7 @@ export type AgentLoopPhase =
   | 'acting'
   | 'waiting_user'
   | 'done'
-  | 'aborted'
-  | 'failed';
+  | 'aborted';
 
 // 每次转换都保留继续原因，供熔断器识别重复失败。
 export type AgentLoopTransition =
@@ -19,12 +18,9 @@ export type AgentLoopTransition =
   | 'user_abort'
   | 'max_iterations'
   | 'hook_abort'
-  | 'llm_error'
   | 'permission_denial_loop'
   | 'waiting_user'
   | 'user_answered'
-  | 'user_timeout'
-  | 'user_cancel'
   | 'max_output_tokens_recovery'   // 输出截断后只允许续写一次
   | 'reactive_compact';            // 上下文超限后压缩并重试
 
@@ -37,8 +33,6 @@ export interface AgentLoopState {
   readonly maxOutputTokensRecoveryCount: number;
   /** 当前迭代是否已经执行过一次响应式压缩。 */
   readonly hasAttemptedReactiveCompact: boolean;
-  /** 仅在等待用户回答时存在。 */
-  readonly pendingPromptId?: string;
 }
 
 // ── 初始状态与转换 ───────────────────────────────────────────────────────────
