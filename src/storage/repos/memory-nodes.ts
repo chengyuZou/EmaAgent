@@ -63,6 +63,13 @@ export interface MemoryNodeEmbeddingUpdate {
   updatedAt:             number;
 }
 
+export interface MemoryNodeEmbeddingRepair extends MemoryNodeEmbeddingUpdate {
+  /** 扫描时看到的版本；内容或向量已被其他任务更新时拒绝覆盖。 */
+  expectedUpdatedAt: number;
+  /** 本轮计划修复到的空间；已经被并发任务修好时无需再次写入。 */
+  targetSpaceId: string;
+}
+
 export interface MemoryImportanceUpdate {
   id: string;
   importance: number;
@@ -258,6 +265,34 @@ export class MemoryNodesRepo {
       );
   }
 
+  /**
+   * 只修复扫描后没有发生变化的 stale 行。
+   * Embedding 请求在事务外运行，这个 CAS 防止旧文本生成的向量覆盖并发更新。
+   */
+  repairEmbeddingIfUnchanged(u: MemoryNodeEmbeddingRepair): boolean {
+    const info = this.db
+      .prepare(
+        `UPDATE memory_nodes
+            SET embedding               = ?,
+                embedding_provider_id   = ?,
+                embedding_model         = ?,
+                embedding_dim           = ?,
+                embedding_normalization = ?,
+                embedding_revision      = ?,
+                embedding_space_id      = ?,
+                updated_at              = ?
+          WHERE id = ?
+            AND updated_at = ?
+            AND (embedding IS NULL OR embedding_space_id IS NOT ?)`,
+      )
+      .run(
+        u.embedding, u.embeddingProviderId, u.embeddingModel, u.embeddingDim,
+        u.embeddingNormalization, u.embeddingRevision, u.embeddingSpaceId,
+        u.updatedAt, u.id, u.expectedUpdatedAt, u.targetSpaceId,
+      );
+    return info.changes === 1;
+  }
+
   listDecayCandidates(cutoff: number, limit = 5000): Array<{
     id: string;
     label: string;
@@ -361,6 +396,32 @@ export class MemoryNodesRepo {
       .prepare(
         `SELECT COUNT(*) AS n FROM memory_nodes
          WHERE embedding IS NOT NULL AND embedding_space_id IS NOT ?`,
+      )
+      .get(currentSpaceId) as { n: number };
+    return row.n;
+  }
+
+  /**
+   * 待修复向量行（异空间或从未嵌入），按 (updated_at, id) 升序。
+   * 修复成功的行自动离开结果集，分页进度隐式推进，无需游标持久化。
+   */
+  listStaleEmbeddingPage(currentSpaceId: string, limit: number): MemoryNodeRow[] {
+    return this.db
+      .prepare(
+        `SELECT * FROM memory_nodes
+         WHERE embedding IS NULL OR embedding_space_id IS NOT ?
+         ORDER BY updated_at ASC, id ASC
+         LIMIT ?`,
+      )
+      .all(currentSpaceId, limit) as MemoryNodeRow[];
+  }
+
+  /** 与 listStaleEmbeddingPage 同口径的计数，用于修复扫描报告剩余量。 */
+  countRepairableEmbeddings(currentSpaceId: string): number {
+    const row = this.db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM memory_nodes
+         WHERE embedding IS NULL OR embedding_space_id IS NOT ?`,
       )
       .get(currentSpaceId) as { n: number };
     return row.n;

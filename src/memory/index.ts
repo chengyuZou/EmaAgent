@@ -94,3 +94,11 @@ export type {
   MaintenanceReport,
   MaintenancePreview,
 } from './maintenance/decay.js';
+
+// ── Maintenance: embedding 修复 ───────────────────────────────────────────────
+export { repairStaleEmbeddings }              from './maintenance/embeddingRepair.js';
+export type { EmbeddingRepairReport }         from './maintenance/embeddingRepair.js';
+
+// ── Errors ────────────────────────────────────────────────────────────────────
+export { MemoryLeaseLostError }               from './errors.js';
+export type { MemoryErrorCode }               from './errors.js';

@@ -77,12 +77,12 @@ SQLite 封装。构造时:
 | `sessions` | 会话主表:标题 / 角色卡 / 工作区 / 置顶 / 归档 / 分组 / 父 Session / 最后活动时间 |
 | `turns` | 一轮有界执行:触发来源 / Chat 或 Work / Narrative 策略 / 状态 / 用户输入 / token 用量 |
 | `messages` | 单条消息:user/assistant/system,`kind` 区分 normal/context/tool_results/summary/narrative_context,正文存 `blocks_json` |
-| `pending_fragments` | 流式生成中的碎片暂存(还没拼成完整 message 前的增量) |
 
 **per-session 记忆**
 | 表 | 职责 |
 |---|---|
 | `session_notes` | 每会话的 L1 滚动摘要(文本) |
+| `pending_fragments` | Memory 提取输入队列:每轮 Turn 结束后追加 user/assistant 片段,攒够阈值后提取并清空 |
 | `memory_session_state` | 每会话的记忆召回状态(已浮现 / 用户覆盖) |
 | `memory_tasks` | 记忆后台任务队列(extraction/maintenance/embedding_refresh/consolidation) |
 

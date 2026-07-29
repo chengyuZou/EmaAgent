@@ -9,7 +9,6 @@ import type { MemoryDeps } from '../deps.js';
 import type { MemorySettings } from '../types.js';
 import type { ExtractionOutput, PendingFragment } from './types.js';
 import { runExtraction } from './llm-call.js';
-import { bestEffortAsync } from '../best-effort.js';
 import { buildExtractionPrompt, renderFragmentsForPrompt } from './prompts.js';
 import { readPending, clearPending } from './pending.js';
 import { EmbedService } from '../embed/service.js';
@@ -27,6 +26,7 @@ import {
 import type { EmbeddedText } from '../types.js';
 import type { MemoryExtractionRunRow } from '@ema-agent/storage';
 import type { MemoryCommitCoordinator } from '../tasks/commit-coordinator.js';
+import { MemoryLeaseLostError } from '../errors.js';
 
 // ── Pipeline ─────────────────────────────────────────────────────────────────
 
@@ -70,9 +70,17 @@ export async function runExtractionPipeline(
     signal?:             AbortSignal;
     /** Skip the LLM-driven consolidation pass — used when overrides.consolidation = false. */
     skipConsolidation?:  boolean;
+    /**
+     * 提交前的租约探针：返回 false 时立即抛 MemoryLeaseLostError 中止。
+     * 缺省不检查（测试与直接调用方）；任务 Runner 始终传入。
+     */
+    isLeaseValid?:       () => boolean;
   },
 ): Promise<PipelineResult> {
   if (!args.runId.trim()) throw new Error('memory.extract: runId must not be empty');
+  const assertLeaseValid = (): void => {
+    if (args.isLeaseValid && !args.isLeaseValid()) throw new MemoryLeaseLostError();
+  };
 
   const stats: PipelineResult = {
     extractedNodes:    0,
@@ -92,6 +100,7 @@ export async function runExtractionPipeline(
     if (recoveredRun) {
       validateRecoveryRun(recoveredRun, args.sessionId);
       await deps.commitCoordinator.runExclusive(() => {
+        assertLeaseValid();
         deps.memory.extractionRuns.delete(args.runId);
       });
     }
@@ -102,7 +111,10 @@ export async function runExtractionPipeline(
       if (lazyIds.length > 0) {
         // This can throw: the task runner will retry until consolidation succeeds.
         stats.consolidatedNodes = await deps.commitCoordinator.runExclusive(
-          () => consolidatePendingNodes(deps, args.signal),
+          () => {
+            assertLeaseValid();
+            return consolidatePendingNodes(deps, args.signal, assertLeaseValid);
+          },
         );
       }
     }
@@ -143,8 +155,11 @@ export async function runExtractionPipeline(
         sessionId: args.sessionId,
         reason: '未配置 memory 提取模型，本次对话片段已跳过提取',
       });
-      deps.memory.runDataTransaction(() => {
-        clearPending(deps.memory.pendingFragments, args.sessionId, Date.now());
+      await deps.commitCoordinator.runExclusive(() => {
+        assertLeaseValid();
+        deps.memory.runDataTransaction(() => {
+          clearPending(deps.memory.pendingFragments, args.sessionId, Date.now());
+        });
       });
       return stats;
     }
@@ -175,6 +190,9 @@ export async function runExtractionPipeline(
     noteDelta = output.session_note_delta;
 
     await deps.commitCoordinator.runExclusive(() => {
+      // 闸门 ：LLM 与 embedding 是外部 I/O，等待期间租约可能已易主；
+      // 恢复标记只在未被删除时有效，迟到提交必须在这里拦下。
+      assertLeaseValid();
       // 等待 gate 期间其他 Session 可能已经创建节点，因此提交前重建目录。
       const directory = new NodeDirectory();
       for (const node of deps.memory.nodes.listAll(500)) {
@@ -225,6 +243,8 @@ export async function runExtractionPipeline(
   }
 
   await deps.commitCoordinator.runExclusive(() => {
+    // 闸门 ：profile 已提交、标记即将删除，此后租约再丢就再无防护。
+    assertLeaseValid();
     // ── 4. data.db：note 与 pending 消费一次提交 ────────────────────────────
     deps.memory.runDataTransaction(() => {
       if (noteDelta.trim()) {
@@ -238,9 +258,22 @@ export async function runExtractionPipeline(
   });
 
   // ── 5. Compact L1 note if it has grown over budget ────────────────────────
-  // Non-fatal — note stays verbose, next run may compact. Logged for visibility.
-  await bestEffortAsync('compactSessionNoteIfNeeded',
-    () => compactSessionNoteIfNeeded(deps, args.sessionId, args.executionProfile, args.signal), undefined);
+  // 普通压缩失败不影响提取结果；租约丢失必须继续向上抛，不能被 best-effort 吞掉。
+  try {
+    await compactSessionNoteIfNeeded(
+      deps,
+      args.sessionId,
+      args.executionProfile,
+      args.signal,
+      assertLeaseValid,
+    );
+  } catch (error) {
+    if (error instanceof MemoryLeaseLostError) throw error;
+    console.warn(
+      '[memory] compactSessionNoteIfNeeded failed:',
+      error instanceof Error ? error.message : error,
+    );
+  }
 
   // ── 6. Consolidate any nodes with lazy_updates ───────────────────────────
   // 不吞异常：失败后由 task runner 重试。data.db 已在 step 4 消费 pending，
@@ -255,7 +288,10 @@ export async function runExtractionPipeline(
       });
       const t0 = Date.now();
       stats.consolidatedNodes = await deps.commitCoordinator.runExclusive(
-        () => consolidatePendingNodes(deps, args.signal),
+        () => {
+          assertLeaseValid();
+          return consolidatePendingNodes(deps, args.signal, assertLeaseValid);
+        },
       );
       deps.memory.emit?.({
         type:          'memory_consolidation_completed',

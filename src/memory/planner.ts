@@ -29,11 +29,14 @@ import {
   type MaintenanceOptions, type MaintenanceReport,
 } from './maintenance/decay.js';
 import {
+  repairStaleEmbeddings,
+  type EmbeddingRepairReport,
+} from './maintenance/embeddingRepair.js';
+import {
   runStartupRecovery as doStartupRecovery,
   type RecoveryReport,
 } from './tasks/recovery.js';
 import { buildMemoryContextContribution } from './recall/context-builder.js';
-import { recallSessionNote } from './recall/layer1-notes.js';
 import { IndexManager }  from './vector-index/index-manager.js';
 import { planRecall }    from './recall/recall-planner.js';
 import { handleAfterTurn, handleForceExtract } from './extract/dispatcher.js';
@@ -101,11 +104,6 @@ export class MemoryPlanner {
       (sid) => this.getSessionOverrides(sid),
       ctx,
     );
-  }
-
-  /** Context 压缩恢复只读取渲染后的 L1 Note，不接触 Memory 内部 Repo。 */
-  loadSessionNote(sessionId: SessionId): string | null {
-    return recallSessionNote(this.deps, sessionId);
   }
 
   // ── LLM recall view ─────────────────────────────────────────────────────────
@@ -201,6 +199,18 @@ export class MemoryPlanner {
 
   hardDeleteZeroImportance(thresholdDays: number) {
     return hardDeleteZeroImportance(this.deps, thresholdDays);
+  }
+
+  /** 换 embed 模型后按批修复 stale/缺失向量；进度隐式推进，断电续扫。 */
+  async repairStaleEmbeddings(batchSize = 100): Promise<EmbeddingRepairReport> {
+    return repairStaleEmbeddings(this.deps, this.embed, {
+      batchSize,
+      nodesIndex: this.indexMgr.nodesIndex,
+      itemsIndex: this.indexMgr.itemsIndex,
+      indexSpaceId: this.indexMgr.currentSpaceId(),
+      commitCoordinator: this.commitCoordinator,
+      refreshIndexes: () => this.indexMgr.refreshIndexes(),
+    });
   }
 
   // ── Background work ─────────────────────────────────────────────────────────

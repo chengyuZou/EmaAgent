@@ -6,6 +6,7 @@ import { unpackEmbedding } from '../embed/similarity.js';
 export async function consolidatePendingNodes(
   deps: ExtractionPipelineDeps,
   signal?: AbortSignal,
+  assertWritable?: () => void,
 ): Promise<number> {
   const nodeIds = deps.memory.lazyUpdates.listNodesWithPending();
   let consolidated = 0;
@@ -15,6 +16,7 @@ export async function consolidatePendingNodes(
     if (!node) {
       // Node deleted between extraction and consolidation — drop the orphans
       const stale = deps.memory.lazyUpdates.listByNode(nodeId);
+      assertWritable?.();
       deps.memory.lazyUpdates.deleteByIds(stale.map(s => s.id));
       continue;
     }
@@ -42,6 +44,8 @@ export async function consolidatePendingNodes(
     const reEmbed = await deps.embed.embedOne(
       `${node.label}: ${result.updated_description}`,
     );
+    // 两次模型调用都在锁内等待，期间租约仍可能易主；写业务表前再次关闸。
+    assertWritable?.();
     const now = Date.now();
     deps.memory.nodes.updateDescription({
       id:               node.id,

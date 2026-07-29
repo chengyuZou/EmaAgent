@@ -38,6 +38,7 @@ export async function compactSessionNoteIfNeeded(
   sessionId: SessionId,
   executionProfile: ExecutionProfile,
   signal?: AbortSignal,
+  assertWritable?: () => void,
 ): Promise<void> {
   const row = deps.memory.sessionNotes.findBySession(sessionId);
   if (!row) return;
@@ -56,6 +57,7 @@ export async function compactSessionNoteIfNeeded(
   const fresh = entries.filter(e => e.at > cutoff);
 
   if (fresh.length === 0) {
+    assertWritable?.();
     deps.memory.sessionNotes.upsert({
       sessionId,
       body:               JSON.stringify([]),
@@ -100,6 +102,8 @@ export async function compactSessionNoteIfNeeded(
   };
   const compacted = [mergedEntry, ...tail];
 
+  // LLM 调用期间任务租约可能易主；真正写入前必须重新确认所有权。
+  assertWritable?.();
   const now = Date.now();
   deps.memory.sessionNotes.upsert({
     sessionId,

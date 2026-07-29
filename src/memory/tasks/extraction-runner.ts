@@ -22,6 +22,7 @@ import {
   MEMORY_TASK_WORKER_CONCURRENCY,
 } from './task-lease-policy.js';
 import { MemoryCommitCoordinator } from './commit-coordinator.js';
+import { MemoryLeaseLostError } from '../errors.js';
 
 // ── Background task runner ───────────────────────────────────────────────────
 
@@ -177,7 +178,7 @@ export class MemoryTaskRunner {
     try {
       switch (row.kind) {
         case 'extraction':
-          await this.handleExtraction(row);
+          await this.handleExtraction(row, () => !leaseLost);
           break;
         case 'maintenance':
         case 'embedding_refresh':
@@ -199,7 +200,8 @@ export class MemoryTaskRunner {
         durationMs: Date.now() - t0,
       });
     } catch (err) {
-      if (leaseLost) return;
+      // 租约丢失属于正常移交：任务归新 Worker 所有，不标成功也不标失败。
+      if (leaseLost || err instanceof MemoryLeaseLostError) return;
       const msg = err instanceof Error ? err.message : String(err);
       const maxAttempts = err instanceof UnsupportedMemoryTaskKindError ? 1 : 3;
       const failed = this.deps.memory.memoryTasks.markFailed(
@@ -223,7 +225,10 @@ export class MemoryTaskRunner {
 
   // ── Extraction handler ─────────────────────────────────────────────────────
 
-  private async handleExtraction(row: MemoryTaskRow): Promise<void> {
+  private async handleExtraction(
+    row: MemoryTaskRow,
+    isLeaseValid: () => boolean,
+  ): Promise<void> {
     const payload = JSON.parse(row.payload_json) as {
       sessionId?: string;
       executionProfile?: ExecutionProfile;
@@ -265,8 +270,10 @@ export class MemoryTaskRunner {
             executionProfile,
             runId: row.id,
             skipConsolidation,
+            isLeaseValid,
           },
         );
+        if (!isLeaseValid()) throw new MemoryLeaseLostError();
         this.deps.memory.emit?.({
           type:       'memory_extraction_completed',
           sessionId:  sid,
@@ -277,11 +284,14 @@ export class MemoryTaskRunner {
           durationMs: Date.now() - t0,
         });
       } catch (err) {
-        this.deps.memory.emit?.({
-          type:      'memory_extraction_failed',
-          sessionId: sid,
-          error:     err instanceof Error ? err.message : String(err),
-        });
+        // 租约丢失是正常移交而非提取失败，不发 failure 事件误导前端。
+        if (!(err instanceof MemoryLeaseLostError)) {
+          this.deps.memory.emit?.({
+            type:      'memory_extraction_failed',
+            sessionId: sid,
+            error:     err instanceof Error ? err.message : String(err),
+          });
+        }
         throw err;
       }
     });
