@@ -32,6 +32,7 @@ export interface ContextCacheDiagnostics {
   readonly turnPromptRevision: string;
   readonly completePromptRevision: string;
   readonly toolManifestRevision: string | null;
+  /** 本次请求截止最终 cacheBreakpoint 的内容身份；随历史和当前 Turn 演进，不是固定 Prompt Hash。 */
   readonly prefixHash: string | null;
 }
 

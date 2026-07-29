@@ -214,7 +214,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
     - **R11-R13 Memory/KB（K3 独占在途）**：stale embedding 修复与租约丢失关闸；embed 模型变更后的 stale/reembed 生命周期；Memory 全局逻辑字节预算、分级降压与 ANN 索引同步；
     - **A 主链真 Bug 已完成**：ToolResultStore EEXIST 只复用完全一致的内容；Usage 状态模型已区分 `cancelled`；Anthropic 已删除隐式 `maxTokens=4096` 并使用调用级剩余输出预算；
     - **B 主链安全收口**：install-git 与 mcpStdioGate 路由级审批已经接通；仍待 `AGEN_UNSAFE_*` 在生产构建中物理拒绝，以及 Sandbox 状态接前端常驻提示；
-    - **C 主链卫生**：已删除 Macro 压缩后绕过 Memory 开关直接重读 L1 Session Note 的旧恢复旁路；正常 L1 Recall 继续作为不可压缩 Contribution 保留，Active Skill 继续走 required restore。AgentLoopState 已删除不可达的 failed 相位、llm_error/user_timeout/user_cancel 转换和 pendingPromptId；真实失败继续由 TurnExecutor、等待身份继续由交互队列所有。仅剩 prefixHash 注释与行为对齐。
+    - **C 主链卫生已完成**：已删除 Macro 压缩后绕过 Memory 开关直接重读 L1 Session Note 的旧恢复旁路；正常 L1 Recall 继续作为不可压缩 Contribution 保留，Active Skill 继续走 required restore。AgentLoopState 已删除不可达状态；`prefixHash` 已明确为本次请求截止最终缓存断点的身份，会随历史、当前 Turn 和工具轮次演进，不再伪装成跨 Turn 固定 Prompt Hash。
 
 命名随业务批次清理：旧 `IFileStateStoreEntry/IFileStateStore` 及后续过渡接口已经删除，`IToolExecutionJournal` 已改为职责名；其余迁移期 `I*` 类型继续随业务边界处理，不单独进行全仓机械重命名。
 
@@ -222,6 +222,8 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- Memory 后台欠账（外围 R11）：Memory 13 个测试文件 50/50、Storage 27 个测试文件 126/126、LocalHost 39 个测试文件 150/150 通过；Memory typecheck/build、LocalHost typecheck 通过。**R11b 租约关闸**：pipeline 新增 `isLeaseValid` 探针与三个提交闸门（profile 事务前、data 事务前、consolidation 排水前），丢失即抛 `MemoryLeaseLostError`（模块首个 `errors.ts`，prompts 同款 code union 模式）；Runner 传入 `() => !leaseLost`，该错误静默移交（不标成功/失败、不发 failure 事件），堵住"认领方删标记后迟到方全量重写"的双写窗口。**R11a stale embedding 修复**：新 `maintenance/embeddingRepair.ts` 有界扫描——nodes/items 各加 `listStaleEmbeddingPage/countRepairableEmbeddings`（异空间或从未嵌入，按 updated_at+id 升序，修复后自动离集无需游标持久化；过期条目不重嵌），整批 embedMany 后先 profile 事务落库再同步 ANN 索引（commitCoordinator 串行、空间不匹配不写索引），整批失败计入 failed 下轮重试；当前空间按 IndexManager 同口径（配置+catalog 维度）解析，未配置/维度未知跳过本轮。BackgroundWork 每 30 分钟扫一批（100 行）。新增测试覆盖闸门①全不写、闸门②data 不写+恢复标记续跑+note 不双写、闸门③consolidation 不排水，以及修复扫描的落库/索引/过期排除/二轮空扫、embed 失败计 failed、未配置跳过。`git diff --check` 通过，仅有既有 CRLF 提示。
+- Prefix Hash 语义对齐：Context 5 个测试文件 29/29 与 typecheck 通过。测试分别锁定“最后断点之后不参与 Hash”和“ContextAssembler 把最终断点移动到请求尾部后，当前 Turn 变化必须更新 Hash”；源码与架构文档已明确 Revision 表示稳定定义版本，`prefixHash` 只表示本次真实请求的缓存前缀身份。
 - AgentLoopState 死声明清理：Agent 7 个测试文件 31/31 与 typecheck 通过；Agent 源码中 failed 相位、llm_error/user_timeout/user_cancel 转换及 pendingPromptId 引用归零。测试启动时仍提示 Context 旧 dist sourcemap 指向已删除的 L1 恢复旁路源码，不影响测试与类型检查结果，后续正式 build 清理 dist 即消失。
 - Context L1 恢复旁路删除：Context 5 个测试文件 27/27、LocalHost L1 主召回定向 2/2 通过，Context 与 LocalHost typecheck 通过；`loadSessionNote`、`buildPostCompactionRestore`、可选 Session Note restore 预算分支及旧文件引用归零。Memory 全包 typecheck 被 K3 在途 `tasks/extraction-runner.ts` 缺少 `MemoryLeaseLostError` 导入阻塞，与本批无关；正常 L1 Recall、Memory 开关、Session Layer 1 开关和 Active Skill required restore 均保持原路径。
 - KB 模型变更生命周期（外围 R12）：Knowledge 13 个测试文件 63/63、LocalHost 39 个测试文件 150/150、Desktop UI 28 个测试文件 119/119 通过；Knowledge build、LocalHost 与 Desktop UI typecheck 通过。`kb.models` 设置的 embed 引用变更现在自动失效全部已注册 KB：`KbManager.invalidateAllEmbeddings` 逐库标记 stale 并清内存索引（单库失败不中断，失败 id 单独返回，未打开的库下次打开时 ensureIndex 惰性补标）；`watchKnowledgeEmbedModel` 在设置提交+快照替换后的变更事件上触发（读取的一定是已持久化新值），embed 引用未变/被移除/维度未知均不动作，连续变更按 tail 链串行。完成后发出 `kb_embeddings_staled` 引导事件（AppEvent 新变体），前端映射为"N 个文档需要重新嵌入"通知并重读文档列表让 stale 徽标立即出现。新增测试覆盖全 KB 累计/单库失败隔离/空注册表、embed 变更触发/无关键忽略/引用未变忽略/移除不动作/维度未知跳过/连续变更串行/unwatch 生效。chunk 参数 freeze 属"未来若进设置"，本批不做。`git diff --check` 通过，仅有既有 CRLF 提示。

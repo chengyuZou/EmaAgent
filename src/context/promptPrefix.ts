@@ -1,4 +1,4 @@
-// 稳定 Tool Manifest 并计算 Prompt 前缀指纹，供 Context 缓存策略与诊断使用。
+// 规范化 Tool Manifest 并计算真实请求缓存前缀的身份指纹。
 import { createHash } from 'node:crypto';
 import type { LlmToolDef, Message } from '@ema-agent/llm';
 
@@ -24,7 +24,9 @@ export function normalizeToolDefinitions(
 
 /**
  * 计算截止最后一个 cacheBreakpoint 的规范化前缀指纹。
- * 动态后缀不参与 Hash；没有显式断点时返回 null，避免伪装成可缓存请求。
+ * 只有最后断点之后的消息不参与 Hash；ContextAssembler 会把最终断点移动到
+ * 本次请求尾部，因此生产快照中的历史、当前 Turn 和已完成工具轮次通常都会参与。
+ * 没有显式断点时返回 null，避免伪装成可缓存请求。
  */
 export function computePromptPrefixHash(input: PromptPrefixInput): string | null {
   let breakpointIndex = -1;

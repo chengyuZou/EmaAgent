@@ -186,7 +186,7 @@ Claude 还使用 `<system-reminder>` 把系统注入内容放入消息流，并�
 
 - `messageBuilder.ts`：把持久化 Message 投影为模型可见 Message，并移除 UI 字段、thinking 和不应重放的块；
 - `messageCompatibility.ts`：历史媒体不兼容时生成只读替代视图，本轮新媒体不支持或能力未知时拒绝发送；
-- `promptPrefix.ts`：规范化 Tool Schema，并按显式 `cacheBreakpoint` 计算稳定前缀指纹；
+- `promptPrefix.ts`：规范化 Tool Schema，并按最后一个显式 `cacheBreakpoint` 计算本次请求的缓存前缀身份；
 - `ContextCompactor`：按模型窗口、输出预留和 buffer 计算阈值，依次执行 Micro、Macro、Restore，并在连续失败后按 Session 熔断；
 - `safeCut.ts`：避免从未配对的 Tool 交互中间切断；
 - Macro 压缩会原样保留本轮 Memory/Narrative Contribution；激活 Skill 等真正会被历史改写移除的运行态通过明确的 required restore 恢复；
@@ -1034,7 +1034,7 @@ Claude Code 没有把所有上下文混成一段字符串。它的提示体系�
 4. **V1 必做：删除旧三模式 Prompt 语义。** 顶层只剩 Chat/Work；Character 在两者中始终存在。NarrativePolicy 控制是否检索，不创建 narrative 系统人格；`off` 仅提示可能缺失剧情细节。Compaction/restore 同步按新 Profile 迁移。
 5. **V1 必做：Tool Schema 与文字说明同源。** Tool 注册后产出不可变 manifest snapshot；模型看到、Permission 审批、真正执行的都是该 snapshot 中同一个 Tool 与版本。主 Prompt 只说明通用选用原则，不复制每个参数表。
 6. **V1 必做：不可信数据不能升级成系统指令。** Tool Result、KB、Narrative、附件和网页内容使用 `trust: 'untrusted-data'` 的 Context Contribution；即便内容包含 `<system-reminder>` 一类标签，也不能取得 System Slot 权限。
-7. **V1 收口：每次 Turn 保存 Prompt/Tool 版本身份。** 持久化 `promptRevision`、`toolManifestRevision` 和 `prefixHash` 等明确字段，足够复现“模型当时看到了什么版本”；不必默认保存整份巨大 Prompt 副本。
+7. **V1 收口：每次 Turn 保存 Prompt/Tool 版本身份。** `promptRevision` 与 `toolManifestRevision` 标识稳定定义版本，`prefixHash` 标识本次请求截止最终缓存断点的内容身份；这些字段可判断两次请求是否使用同一版本和前缀，但不能单独还原正文，不必因此默认保存整份巨大 Prompt 副本。
 8. **V1 收口：角色变化不应破坏真正固定的前缀。** Character Slot 放在全局稳定规则之后；同一 Session 内保持角色版本稳定，换角色后自然形成新的前缀身份。ACT 协议属于 Character Presentation Slot，不混进全局安全规则。
 9. **V1 收口：Skill/MCP 渐进披露。** 固定前缀只放可用能力摘要，只有选中后才加载完整 Skill 文本或 MCP schema；连接状态变化放动态区域，不能迫使所有静态规则失去缓存。
 10. **V1 收口：Prompt 不能承诺不存在的能力。** Plan、Team、Schedule、强 Sandbox 或后台 Agent 未接线时，不注册对应 Tool，也不在文字中声称可用。

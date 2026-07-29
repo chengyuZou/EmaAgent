@@ -117,6 +117,25 @@ describe('ContextAssembler', () => {
     expect(snapshot.messages[4]?.cacheBreakpoint).toBe(true);
   });
 
+  it('最终断点随请求尾部移动，当前 Turn 变化会更新 prefixHash', () => {
+    const assembler = new ContextAssembler();
+    const first = assembler.assemble({
+      prompt,
+      history: [{ role: 'user', content: 'old question' }],
+      currentTurn: [{ role: 'user', content: 'first question' }],
+      toolManifest: manifest,
+    });
+    const second = assembler.assemble({
+      prompt,
+      history: [{ role: 'user', content: 'old question' }],
+      currentTurn: [{ role: 'user', content: 'different question' }],
+      toolManifest: manifest,
+    });
+
+    expect(first.cache.prefixHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(second.cache.prefixHash).not.toBe(first.cache.prefixHash);
+  });
+
   it('拒绝重复的临时贡献身份', () => {
     expect(() => new ContextAssembler().assemble({
       prompt,

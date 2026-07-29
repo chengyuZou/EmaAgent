@@ -1,4 +1,4 @@
-// 测试稳定 Prompt 前缀只受缓存边界之前的消息和规范化 Tool Manifest 影响。
+// 测试请求前缀指纹严格跟随最后缓存断点及规范化 Tool Manifest。
 import { describe, expect, it } from 'vitest';
 import type { LlmToolDef, Message } from '@ema-agent/llm';
 import {
@@ -12,8 +12,8 @@ const stableSystem: Message = {
   cacheBreakpoint: true,
 };
 
-describe('Prompt 前缀稳定性', () => {
-  it('动态后缀变化不改变前缀 Hash，稳定内容变化会改变', () => {
+describe('Prompt 缓存前缀指纹', () => {
+  it('最后断点之后的消息不参与 Hash，断点内内容变化会改变', () => {
     const first = computePromptPrefixHash({
       messages: [stableSystem, { role: 'user', content: 'first question' }],
     });
@@ -30,6 +30,23 @@ describe('Prompt 前缀稳定性', () => {
     expect(first).toMatch(/^[a-f0-9]{64}$/);
     expect(second).toBe(first);
     expect(changedSystem).not.toBe(first);
+  });
+
+  it('断点移动到请求尾部后，当前 Turn 内容参与 Hash', () => {
+    const first = computePromptPrefixHash({
+      messages: [
+        stableSystem,
+        { role: 'user', content: 'first question', cacheBreakpoint: true },
+      ],
+    });
+    const second = computePromptPrefixHash({
+      messages: [
+        stableSystem,
+        { role: 'user', content: 'different question', cacheBreakpoint: true },
+      ],
+    });
+
+    expect(second).not.toBe(first);
   });
 
   it('保留 Manifest 工具顺序，同时规范化 Schema key 构造顺序', () => {

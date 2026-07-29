@@ -21,7 +21,7 @@ ContextCompactor
 - `messageBuilder.ts`：把 Session Message 投影为 Provider 无关的模型 Message；thinking 与 UI 展示字段不重放，成对的 `tool_use/tool_result` 事实必须保留；
 - `messageCompatibility.ts`：替换当前模型无法重放的历史媒体，并拒绝本轮不受支持的输入；
 - `contextAssembler.ts`：按固定边界合并 PromptSnapshot、历史、当前 Turn、临时贡献和 ToolManifestSnapshot，返回不可变模型请求快照；
-- `promptPrefix.ts`：保留 Tool Manifest 已冻结的数组顺序、规范化 Schema key，并计算缓存边界之前的前缀指纹；
+- `promptPrefix.ts`：保留 Tool Manifest 已冻结的数组顺序、规范化 Schema key，并计算本次请求最后缓存断点之前的身份指纹；
 - `contextCompactor.ts`：按 Token 预算执行微压缩、结构化摘要、必要运行态恢复与连续失败熔断；
 - `compaction/`：保存纯函数预算、Tool 配对安全切点和摘要 Prompt；
 - LLM Adapter 仍负责把 `cacheBreakpoint` 翻译成 Anthropic `cache_control` 等具体协议字段；
@@ -72,7 +72,7 @@ messages[]                         来源                          cacheBreakpoi
 - **history 可压缩**：Macro 摘要只替换这一段。`messageBuilder` 投影时已剥 thinking、保留 tool 配对。
 - **suffix 是本轮临时数据**：`ContextContribution`（memory/narrative/scratchpad/mailbox）按 `placement` 插在 currentTurn 前后，不能伪装成历史。
 - **尾断点自动补**：`markFinalCacheBreakpoint` 从尾部往前找第一条非空消息标 `cacheBreakpoint`，使 history 进缓存前缀。这个断点只在请求投影上，不写回 Session/压缩结果。
-- **`cache` 诊断块**：快照还带 `productPromptRevision/activeCharacterRevision/turnPromptRevision/toolManifestRevision/prefixHash`，任一变化即可定位缓存断裂来源。
+- **`cache` 诊断块**：快照还带 `productPromptRevision/activeCharacterRevision/turnPromptRevision/toolManifestRevision/prefixHash`。Revision 用于定位稳定层变化；`prefixHash` 表示本次请求截止尾断点的完整前缀身份，会随历史、当前 Turn 和工具轮次演进。
 
 ## 压缩后的 Message 长什么样
 
