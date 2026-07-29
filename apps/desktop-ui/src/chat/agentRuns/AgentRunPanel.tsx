@@ -1,6 +1,6 @@
 // 展示当前 Session 的子智能体 AgentRun、取消入口与完整执行记录。
 import { useState, useEffect, useCallback, useMemo, useRef, type JSX, type CSSProperties } from 'react';
-import { Badge, Button, IconButton, Input, Spinner, type BadgeVariant } from '@ema-agent/ui';
+import { Badge, Button, Divider, IconButton, Input, Spinner, type BadgeVariant } from '@ema-agent/ui';
 import { useAgentRunStore, type AgentRunState, type AgentRunMessageWire } from '../../stores/agentRunStore.js';
 import { useConversationStore } from '../../stores/conversation-store.js';
 import type { ToolCallMessageContent, AssistantMessageContent, ReasoningMessageContent, ToolResultMessageContent } from '../../api/agentRuns.js';
@@ -268,7 +268,7 @@ function AgentRunTranscript({ agentRunId }: { agentRunId: string }): JSX.Element
   }, [agentRunId, loadTranscript]);
 
   const divider = (
-    <div className="bg-[var(--ema-border)]" style={{ height: 1, margin: '0 12px' }} />
+    <Divider className="w-auto mx-3" />
   );
 
   if (messages === null || messages === undefined) {

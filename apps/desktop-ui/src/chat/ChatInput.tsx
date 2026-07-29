@@ -291,7 +291,7 @@ export function ChatInput(): JSX.Element {
           className="relative rounded-2xl transition-shadow bg-[var(--ema-surface-2)]"
           style={{
             boxShadow: isDragOver
-              ? '0 0 0 2px var(--ema-primary), 0 0 24px var(--ema-glow)'
+              ? 'var(--ema-shadow-dragover)'
               : undefined,
           }}
         >
@@ -319,7 +319,7 @@ export function ChatInput(): JSX.Element {
                 ))}
               </div>
               {/* Fully transparent divider — just a hairline to separate regions */}
-              <div className="mx-4 border-t border-white/[0.05]" />
+              <div className="mx-4 border-t border-[var(--ema-border)]" />
             </>
           )}
 
@@ -328,8 +328,8 @@ export function ChatInput(): JSX.Element {
             containerless
             autoGrow={false}
             ref={textareaRef}
-            className="w-full bg-transparent rounded-2xl px-4 py-3 pr-12 text-sm resize-none focus:outline-none overflow-y-auto text-[var(--ema-text-secondary)]"
-            style={{ minHeight: 60, maxHeight: TEXTAREA_MAX_H }}
+            className="w-full bg-transparent rounded-2xl px-4 py-3 pr-12 text-sm resize-none focus:outline-none overflow-y-auto min-h-[60px] text-[var(--ema-text-secondary)]"
+            style={{ maxHeight: TEXTAREA_MAX_H }}
             rows={1}
             placeholder="输入消息…"
             value={text}

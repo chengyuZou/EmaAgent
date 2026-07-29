@@ -130,7 +130,7 @@ export function AppearanceTab(): JSX.Element {
               <span
                 className={`block w-7 h-7 rounded-full border-2 transition-ema hover:scale-110 ${
                   Math.abs(hue - p.hue) < 5
-                    ? 'border-white shadow-[0_0_0_1px_rgba(255,255,255,0.3)]'
+                    ? 'border-[var(--ema-border-strong)] shadow-[var(--ema-shadow-1)]'
                     : 'border-transparent'
                 }`}
                 style={{ background: `oklch(65% 0.18 ${p.hue})` }}

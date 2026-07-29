@@ -507,7 +507,7 @@ function ContextBall({ sessionId }: { sessionId: string | null }): JSX.Element |
           stroke={color} strokeWidth="2.5"
           strokeDasharray={`${dash} ${circ - dash}`}
           strokeLinecap="round"
-          className="transition-[stroke-dasharray] duration-[400ms] ease-out"
+          className="transition-[stroke-dasharray] duration-[var(--ema-duration-slow)] ease-[var(--ema-ease)]"
         />
       </svg>
       <span className="text-[var(--ema-text-tertiary)] tabular-nums">

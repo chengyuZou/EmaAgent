@@ -39,6 +39,8 @@
   --ema-shadow-soft: 0 8px 32px -12px rgba(0, 0, 0, 0.18);
   /* Primary glow(FAB/发送按钮 hover 主题色发光,抄 AstrBot)*/
   --ema-shadow-primary-glow: 0 8px 24px -4px oklch(0.72 0.18 var(--chromatic-hue, 200) / 0.40);
+  /* 拖放文件悬停高亮(ChatInput,primary 描边 + glow 光晕,两 var 均随主题) */
+  --ema-shadow-dragover: 0 0 0 2px var(--ema-primary), 0 0 24px var(--ema-glow);
 
   /* Surface layers - 半透明中性深灰玻璃(抄 AstrBot 层差,保留半透明供桌宠玻璃感)。
      0=最深背景,4=浮层最亮。中性灰非紫黑,跟 AstrBot #1a1a1a->#242424 对齐。 */
@@ -92,6 +94,16 @@
   --ema-syntax-boolean: oklch(0.78 0.16 285);
   --ema-syntax-comment: oklch(0.55 0.01 280);
   --ema-syntax-prompt:  oklch(0.78 0.16 75);
+
+  /* 文件类型图标色(AttachmentChip,常规文件色亮暗共用,不随主题翻转) */
+  --ema-file-image: oklch(0.72 0.14 160);
+  --ema-file-pdf:   oklch(0.65 0.20 25);
+  --ema-file-word:  oklch(0.60 0.18 255);
+  --ema-file-ppt:   oklch(0.65 0.19 45);
+  --ema-file-excel: oklch(0.65 0.18 150);
+  --ema-file-code:  oklch(0.72 0.14 75);
+  --ema-file-text:  oklch(0.65 0.04 250);
+  --ema-file-other: oklch(0.60 0.04 250);
 
   /* Info - 蓝 */
   --ema-info:           oklch(0.68 0.13 240);

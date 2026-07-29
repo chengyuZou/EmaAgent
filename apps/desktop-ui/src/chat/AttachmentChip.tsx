@@ -10,28 +10,28 @@ import type { AttachmentInputWire } from '../api/turns.js';
 
 function chipMeta(mime: string, name: string): { icon: string; color: string } {
   if (mime.startsWith('image/'))
-    return { icon: 'i-mdi:image-outline',          color: 'oklch(0.72 0.14 160)' };  // teal
+    return { icon: 'i-mdi:image-outline',          color: 'var(--ema-file-image)' };
 
   if (mime === 'application/pdf')
-    return { icon: 'i-mdi:file-pdf-box',            color: 'oklch(0.65 0.20 25)'  };  // red
+    return { icon: 'i-mdi:file-pdf-box',            color: 'var(--ema-file-pdf)' };
 
   if (mime.includes('wordprocessingml') || mime.includes('msword') || name.endsWith('.doc') || name.endsWith('.docx'))
-    return { icon: 'i-mdi:file-word',               color: 'oklch(0.60 0.18 255)' };  // blue
+    return { icon: 'i-mdi:file-word',               color: 'var(--ema-file-word)' };
 
   if (mime.includes('presentationml') || mime.includes('powerpoint') || name.endsWith('.ppt') || name.endsWith('.pptx'))
-    return { icon: 'i-mdi:file-powerpoint',         color: 'oklch(0.65 0.19 45)'  };  // orange
+    return { icon: 'i-mdi:file-powerpoint',         color: 'var(--ema-file-ppt)' };
 
   if (mime.includes('spreadsheetml') || mime.includes('excel') || name.endsWith('.xls') || name.endsWith('.xlsx'))
-    return { icon: 'i-mdi:file-excel',              color: 'oklch(0.65 0.18 150)' };  // green
+    return { icon: 'i-mdi:file-excel',              color: 'var(--ema-file-excel)' };
 
   if (mime.startsWith('text/x-') || mime === 'application/json' ||
       /\.(ts|tsx|js|jsx|py|rs|go|cpp|c|java|rb|php|sh|yaml|yml|toml|sql)$/.test(name))
-    return { icon: 'i-mdi:file-code-outline',       color: 'oklch(0.72 0.14 75)'  };  // amber
+    return { icon: 'i-mdi:file-code-outline',       color: 'var(--ema-file-code)' };
 
   if (mime.startsWith('text/'))
-    return { icon: 'i-mdi:file-document-outline',   color: 'oklch(0.65 0.04 250)' };  // neutral
+    return { icon: 'i-mdi:file-document-outline',   color: 'var(--ema-file-text)' };
 
-  return   { icon: 'i-lucide:paperclip',               color: 'oklch(0.60 0.04 250)' };
+  return   { icon: 'i-lucide:paperclip',               color: 'var(--ema-file-other)' };
 }
 
 function fmtSize(bytes: number): string {

@@ -1035,6 +1035,9 @@ importers:
       '@ema-agent/session':
         specifier: workspace:*
         version: link:../session
+      '@ema-agent/settings':
+        specifier: workspace:*
+        version: link:../settings
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage

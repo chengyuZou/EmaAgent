@@ -47,14 +47,14 @@ export function FloatingDock({ visible }: FloatingDockProps): JSX.Element {
   return (
     <div
       data-tauri-drag-region="false"
-      className={`absolute right-3 bottom-3 z-10 flex flex-col items-end gap-3 transition-opacity duration-200 ${
+      className={`absolute right-3 bottom-3 z-10 flex flex-col items-end gap-3 transition-opacity duration-[var(--ema-duration-base)] ${
         show ? 'opacity-100' : 'opacity-0 pointer-events-none'
       }`}
     >
       {/* ── More (click-to-toggle, flyout expands upward like a drawer) ── */}
       <div className="relative">
         <div
-          className={`absolute bottom-full right-0 mb-3 p-3 rounded-2xl border shadow-[var(--ema-shadow-3)] backdrop-blur grid grid-cols-[repeat(3,auto)] gap-3 origin-bottom-right transition-all duration-200 ease-out ${
+          className={`absolute bottom-full right-0 mb-3 p-3 rounded-2xl border shadow-[var(--ema-shadow-3)] backdrop-blur grid grid-cols-[repeat(3,auto)] gap-3 origin-bottom-right transition-ema ${
             flyoutOpen
               ? 'opacity-100 translate-y-0 scale-100'
               : 'opacity-0 translate-y-3 scale-90 pointer-events-none'
