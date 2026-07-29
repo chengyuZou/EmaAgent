@@ -34,9 +34,43 @@ export type ThemeConfig = ThemeSettings;
 export interface KbModelRef { providerConfigId: string; model: string }
 export interface KbModelsConfig { embed?: KbModelRef | null; rerank?: KbModelRef | null }
 
+/** 与 @ema-agent/settings 的 SettingDescriptor/SettingApplyPolicy 同形；desktop-ui 不依赖 settings 包，本地镜像。 */
+export type SettingApplyPolicyWire = 'immediate' | 'nextOperation' | 'nextTurn' | 'restart';
+
+export interface SettingDescriptorWire {
+  key:   string;
+  kind:  'boolean' | 'number' | 'string' | 'enum' | 'object';
+  apply: SettingApplyPolicyWire;
+}
+
+export interface SettingValueWire<T = unknown> {
+  key:   string;
+  apply: SettingApplyPolicyWire;
+  value: T;
+}
+
 // ── API object ────────────────────────────────────────────────────────────────
 
 export const settingsApi = {
+  /** GET /api/settings/catalog — 全部已注册设置的元信息（key/kind/apply）。 */
+  async getCatalog(): Promise<SettingDescriptorWire[]> {
+    return sidecarClient.request<SettingDescriptorWire[]>('/api/settings/catalog');
+  },
+
+  /** GET /api/settings/values/:key — 读取单个设置的已持久化值。 */
+  async getValue<T = unknown>(key: string): Promise<SettingValueWire<T>> {
+    return sidecarClient.request<SettingValueWire<T>>(
+      `/api/settings/values/${encodeURIComponent(key)}`,
+    );
+  },
+
+  /** PUT /api/settings/values/:key — 写入经业务 decode 校验后的持久值。 */
+  async putValue<T = unknown>(key: string, value: T): Promise<SettingValueWire<T>> {
+    return sidecarClient.request<SettingValueWire<T>>(
+      `/api/settings/values/${encodeURIComponent(key)}`,
+      { method: 'PUT', json: { value } },
+    );
+  },
   /** GET /api/settings/event-display */
   async getEventDisplay(): Promise<EventDisplayResult> {
     return sidecarClient.request<EventDisplayResult>('/api/settings/event-display');

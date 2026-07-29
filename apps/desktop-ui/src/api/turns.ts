@@ -10,7 +10,7 @@ import type {
   TurnCreatedResponse,
   TurnRequest,
 } from '@ema-agent/turn';
-import type { PendingAskUserPrompt } from '@ema-agent/tools';
+import type { PendingAskUserPrompt, ToolExecutionRecord } from '@ema-agent/tools';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -112,6 +112,13 @@ export const turnsApi = {
     return sidecarClient.request(
       `/api/turns/${turnId}/ask-user/${promptId}/cancel`,
       { method: 'POST' },
+    );
+  },
+
+  /** GET /api/turns/:turnId/tool-executions — 该 Turn 的持久工具执行审计。 */
+  listToolExecutions(turnId: string): Promise<{ executions: ToolExecutionRecord[] }> {
+    return sidecarClient.request<{ executions: ToolExecutionRecord[] }>(
+      `/api/turns/${turnId}/tool-executions`,
     );
   },
 };

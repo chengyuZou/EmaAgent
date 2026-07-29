@@ -78,6 +78,29 @@ export interface KbIngestTaskWire {
   updatedAt: number;
 }
 
+export type KbReembedStatusWire = 'pending' | 'running' | 'failed' | 'partial_failed' | 'cancelled';
+
+export interface KbReembedTaskWire {
+  id:        string;
+  /** 缺省 = 全库 stale 扫描；有值 = 单文档重建。 */
+  assetId?:  string;
+  ebdProviderId: string;
+  ebdModel:  string;
+  status:    KbReembedStatusWire;
+  stage?:    string;
+  progress:  number;
+  error?:    string;
+  errorCode?: string;
+  attempt: number;
+  version: number;
+  nextRetryAt: number;
+  totalItems: number;
+  completedItems: number;
+  failedItems: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
 /** One cursor-paginated page of KB assets. */
 export interface AssetPageWire {
   items:      DocumentAssetWire[];
@@ -269,6 +292,12 @@ export const kbApi = {
   /** POST /api/kb/reembed-tasks/:taskId/retry — 失败/取消后重试。 */
   async retryReembed(taskId: string, kbId?: string): Promise<void> {
     await sidecarClient.request(`/api/kb/reembed-tasks/${taskId}/retry${buildQs({ kbId })}`, { method: 'POST' });
+  },
+
+  /** GET /api/kb/reembed-tasks — 重建任务列表（含失败/取消历史，刷新恢复用）。
+   *  kbId omitted → active KB. */
+  async getReembedTasks(kbId?: string): Promise<KbReembedTaskWire[]> {
+    return sidecarClient.request<KbReembedTaskWire[]>(`/api/kb/reembed-tasks${buildQs({ kbId })}`);
   },
 
   // ── KB library registry ─────────────────────────────────────────────────────

@@ -222,6 +222,8 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- 前端 F1 API 接线批（K3，仅 api 层，按用户划定边界不碰 UI/Store/业务组件）：Desktop UI typecheck 与 28 个测试文件 119/119 通过。新增封装：`systemApi.getSandboxStatus`（/api/system/sandbox，本地镜像 SandboxStatusWire，desktop-ui 不依赖 sandbox 包）、`settingsApi.getCatalog/getValue/putValue`（/api/settings/catalog + /api/settings/values/:key 通用通道，本地镜像 Descriptor/ApplyPolicy）、`knowledgeBaseApi.getReembedTasks`（/api/kb/reembed-tasks，刷新后恢复路径与 ingest-tasks 对称）、`turnsApi.listToolExecutions`（/api/turns/:id/tool-executions，ToolExecutionRecord 复用 @ema-agent/tools 类型）。`/api/skills/:name/relocate` 经核实为后端刻意 fail-closed 501（V1 多 Root 未落地），不做封装。settings 5 个无 UI 的 key（agent.limits/context.compaction/attachments.limits/vision.limits/kb.retrieval）现在有了通用读写通道，UI 接入留给后续批次。`git diff --check` 通过，仅有既有 CRLF 提示。
+
 - Memory 后台 R11 最终收口：Memory 13 个测试文件 56/56、Storage 27 个测试文件 126/126、LocalHost 39 个测试文件 150/150、全仓 typecheck 86/86 通过；Storage build 通过。租约探针现在覆盖 profile/data 主事务、未配置模型清空、恢复标记清理、L1 Note 压缩和 consolidation 真正写入点；租约易主不写终态也不发送虚假完成事件。stale embedding 修复按 32 行小批隔离 Provider 异常，严格校验实际空间、维度和字节数；Repo 使用 `updated_at + stale space` CAS，旧文本向量不能覆盖并发更新，过期 Item 也会在提交时复核。SQLite 成功而 ANN 增量同步失败时立即从源数据重建；新增测试覆盖 CAS 冲突、异空间拒绝、跨类型失败隔离、索引恢复，以及此前遗漏的无模型与恢复标记租约旁路。`git diff --check` 通过，仅有既有 CRLF 提示。
 - Prefix Hash 语义对齐：Context 5 个测试文件 29/29 与 typecheck 通过。测试分别锁定“最后断点之后不参与 Hash”和“ContextAssembler 把最终断点移动到请求尾部后，当前 Turn 变化必须更新 Hash”；源码与架构文档已明确 Revision 表示稳定定义版本，`prefixHash` 只表示本次真实请求的缓存前缀身份。
 - AgentLoopState 死声明清理：Agent 7 个测试文件 31/31 与 typecheck 通过；Agent 源码中 failed 相位、llm_error/user_timeout/user_cancel 转换及 pendingPromptId 引用归零。测试启动时仍提示 Context 旧 dist sourcemap 指向已删除的 L1 恢复旁路源码，不影响测试与类型检查结果，后续正式 build 清理 dist 即消失。
