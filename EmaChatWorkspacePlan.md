@@ -1,6 +1,6 @@
 # EmaAgent Chat 工作区与历史导航实施计划
 
-> 状态：批次 A/B/C1/C2/C3/D1 已完成；D2（opener + Git 源）、批次 E/F 与块形态对齐（§14 批次 G）待做
+> 状态：批次 A/B/C1/C2/C3/D1/D2a 已完成；D2b（opener + 分支选择器）、批次 E/F 与块形态对齐（§14 批次 G）待做
 > 日期：2026-07-23  
 > 范围：Desktop Chat 主布局、Turn 快速导航、Task/AgentRun/来源展示、右侧与底部工作区、桌面打开方式  
 > 不包含：恢复 Session Branch、尚无运行能力的空 Terminal/Browser/Review 面板
@@ -763,21 +763,29 @@ TurnRail 的最外层是透明轨道容器，只承担定位、滚轮与指针�
 
 ### 批次 D：顶栏与桌面能力
 
-状态：D1 已完成（2026-07-30），D2 待做。
+状态：D1 已完成（2026-07-30），D2a 已完成（2026-07-30），D2b 待做。
 
 D1 已落地：`ChatHeader`（标题 + 置顶摘要/底部面板/右侧栏三入口）与 `PinnedSessionSummary` 浮层。按"不渲染假数据"划界：环境信息只有真实的"本地 + workspaceRoot"行（Git 行待 D2），运行活动只有子智能体行（后台进程行待批次 F），来源为真实附件截断列表。
 
-D2 待做：
+D2a 已落地（Git 只读源）：
 
-- "在…中打开"按钮与 Tauri 跨平台 opener 检测；
-- Git/工作区摘要的真实只读来源，接通环境信息区（变更计数/分支/比较分支）；
-- 分支选择器（搜索/未提交计数/创建新分支）依赖 Git 源，不在无源时渲染。
+- 新模块 `src/gitUtils`（`@ema-agent/git-utils`）：`gitProcess`（execFile 无 shell、5s 超时即杀、4MB 输出上限、强制 `-c core.hooksPath=NUL` / `-c core.fsmonitor=false`、`GIT_OPTIONAL_LOCKS=0` / `GIT_TERMINAL_PROMPT=0`，安全约束与 codex git-utils 一致）、`repoDetection`（纯 fs 祖先 .git 走查）、`queries/`（branch/changeStats/status/upstream 一文件一命令）、`summary`（capability 裁决后并行查询）。错误集中在 `errors.ts`。
+- `GitSummary` 为 capability 判别联合：`ok`（分支/detached SHA/未暂存/已暂存/未跟踪/upstream/originUrl）、`not-a-repo`、`git-unavailable`、`error`；非 ok 不携带猜测字段。
+- 路由 `GET /api/sessions/:id/git-summary`（`routes/sessions/sessionGit.ts`）：Session 拥有 workspaceRoot，无 root 显式 400 `no_workspace`；route 只做协议转换。
+- 前端 `api/git.ts` + 置顶摘要环境信息区 Git 行：仅 `ok` 渲染（分支或 detached @ SHA、变更文件数 +ins/-del、未跟踪数），点击开 review 标签；有 origin 时追加"远端"行展示 originUrl；`not-a-repo`/`git-unavailable`/`error` 整行隐藏，不展示降级文案。
+- 已验证：git-utils build + 8 测试（真实临时仓库），localHost typecheck + 3 路由测试 + 全量 155，desktop-ui typecheck + 137 测试。
+- codex git 面对照（2026-07-30 全仓核实）：codex UI 面=状态栏分支 + `/diff` 工作区 diff + `/review` 目标选择（BaseBranch/Commit），分别对应我们的 D2a/批次 E/D2b；thread git_info 创建快照、Turn 遥测元数据、trust 按 git root、内部 baseline .git、`gitDiffToRemote`（cloud task）均为 OpenAI 云架构特有，本地单人应用不拿。
+
+D2b 待做：
+
+- "在…中打开"按钮与 Tauri 跨平台 opener 检测（`apps/desktop/src-tauri/src/commands/openers/`：mod/types/windows/macos/linux，注册表/Programs 路径/vswhere/PATH 探测，不写死开发者路径）；
+- 分支选择器（搜索/未提交计数/创建新分支）依赖 Git 源，不在无源时渲染；分支列表与最近提交数据源对应 codex `/review` 选择器的 `local_git_branches` + `recent_commits`，落地时在 gitUtils queries/ 各加一文件。
 
 ### 批次 E：真实 Review、Terminal、Browser
 
 每项独立评审和实现：
 
-- Review：明确 Git diff 与 Tool 实际改动的事实来源；
+- Review：三 scope 事实来源已定（2026-07-30）：`上一轮`/`全部` 继续走 Tool file_change presentation（真实前后内容 + jsdiff，批次 G 已完成）；`工作区` scope 新增，走 `src/gitUtils` 的 `git diff` / `git diff --cached` CLI 原生产 unified diff，仅 capability=ok 时出现该 scope，非仓库/无 git 用户不渲染。后端不需要 jsdiff 算工作区 diff；jsdiff 只留前端渲染。工作区 diff 实现按 codex `/diff`（`tui/src/get_git_diff.rs`）同款：**untracked 文件也要出 diff**（`ls-files --others --exclude-standard` + 逐文件 `git diff --no-index NUL <file>`，diff exit code 1 视为正常）；安全旗标 `--no-textconv --no-ext-diff --submodule=short --ignore-submodules=dirty`，并将仓库配置的 `diff.*.clean/process` filter driver 置空——与 hooksPath=NUL 同一威胁模型（仓库配置可指定可执行 helper）；
 - Terminal：PTY、大小调整、输入输出、取消、重启终态；
 - Browser：浏览器实例、导航、权限、下载和网络安全。
 

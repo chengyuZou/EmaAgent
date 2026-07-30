@@ -67,13 +67,24 @@ export function PinnedSessionSummary({ sessionId }: PinnedSessionSummaryProps): 
           )}
         </div>
         {git?.capability === 'ok' && (
-          <SummaryRow
-            icon="i-lucide:git-branch"
-            label={git.branch ?? (git.headShortSha ? `detached @ ${git.headShortSha}` : '空仓库')}
-            onClick={() => openTab(sessionId, { id: 'review', kind: 'review' })}
-          >
-            <GitChangeCounts git={git} />
-          </SummaryRow>
+          <>
+            <SummaryRow
+              icon="i-lucide:git-branch"
+              label={git.branch ?? (git.headShortSha ? `detached @ ${git.headShortSha}` : '空仓库')}
+              onClick={() => openTab(sessionId, { id: 'review', kind: 'review' })}
+            >
+              <GitChangeCounts git={git} />
+            </SummaryRow>
+            {git.originUrl && (
+              <div className="flex items-center gap-2 px-1 py-0.5 text-[var(--ema-text-secondary)]">
+                <span className="i-lucide:cloud text-sm shrink-0 text-[var(--ema-text-tertiary)]" aria-hidden />
+                <span className="shrink-0">远端</span>
+                <span className="truncate text-[var(--ema-text-tertiary)]" title={git.originUrl}>
+                  {git.originUrl}
+                </span>
+              </div>
+            )}
+          </>
         )}
       </section>
 
