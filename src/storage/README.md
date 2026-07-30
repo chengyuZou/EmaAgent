@@ -108,7 +108,7 @@ SQLite 封装。构造时:
 | 分组 | 表 |
 |---|---|
 | Provider 体系 | `provider_configs`(实例与凭据)/ `provider_capability_configs`(能力级协议与地址)/ `provider_health`(探测)/ 6 张 `provider_*_models`(模型池)/ `model_bindings`(模块->模型) |
-| 角色 / 外观 | `live2d_models` / `character_cards` |
+| 角色 / 外观 | `character_cards` / `character_live2d_variants` / `character_portraits` / `character_voice_references` |
 | 设置 / 插件 | `settings`(纯 key-value，业务校验与生效策略归 `src/settings` 和各业务定义)/ `mcp_servers` / `market_sources` / `skills`(磁盘 SKILL.md 的缓存索引) |
 | 全局记忆 | `memory_nodes`(图节点,6 种类型)/ `memory_edges`(关系)/ `memory_node_lazy_updates`(懒更新队列)/ `memory_items`(4 种条目) |
 | KB 注册 | `knowledge_bases`(命名 KB 的 id/name/path) |
@@ -208,7 +208,7 @@ SQLite 封装。构造时:
 旧 `AgentTasksRepo/AgentTaskMessagesRepo` 已迁为 `AgentRunsRepo/AgentRunMessagesRepo`；V1 结构化 Task 使用独立表与 Repo，不复用执行记录生命周期。
 
 ### profile.db Repo
-`ProvidersRepo` / `ModelBindingsRepo` / `CharacterCardsRepo` / `SettingsRepo` / `Live2DModelsRepo` / `McpServersRepo` / `SkillsRepo` / `MarketSourcesRepo` / `MemoryNodesRepo` / `MemoryEdgesRepo` / `MemoryLazyUpdatesRepo` / `MemoryItemsRepo` / `MemoryTasksRepo`(profile 侧)/ `KbRegistryRepo` / 6 张 `Provider*ModelsRepo`
+`ProvidersRepo` / `ModelBindingsRepo` / `CharacterCardsRepo` / `CharacterLive2dVariantsRepo` / `CharacterPortraitsRepo` / `CharacterVoiceReferencesRepo` / `SettingsRepo` / `McpServersRepo` / `SkillsRepo` / `MarketSourcesRepo` / `MemoryNodesRepo` / `MemoryEdgesRepo` / `MemoryLazyUpdatesRepo` / `MemoryItemsRepo` / `MemoryTasksRepo`(profile 侧)/ `KbRegistryRepo` / 6 张 `Provider*ModelsRepo`
 
 ### kb.db Repo
 `DocumentAssetRepo` / `DocumentChunkRepo` / `DocumentPreviewRepo` / `KbIngestTasksRepo`

@@ -4,7 +4,6 @@ import {
   CharacterCardsRepo,
   Database,
   KbRegistryRepo,
-  Live2DModelsRepo,
   MarketSourcesRepo,
   ModelBindingsRepo,
   ProvidersRepo,
@@ -73,7 +72,7 @@ describe('profile 仓储防御性业务', () => {
     expect(repo.deleteById('missing-source')).toBe('not_found');
   });
 
-  it('角色卡和 Live2D 模型删除都明确报告内置保护', () => {
+  it('角色卡删除明确报告内置保护', () => {
     const cards = new CharacterCardsRepo(database.sqlite);
     const builtinCardId = asCharacterCardId('builtin-card');
     const userCardId = asCharacterCardId('user-card');
@@ -93,34 +92,9 @@ describe('profile 仓储防御性业务', () => {
       updatedAt: 1,
     });
 
-    const models = new Live2DModelsRepo(database.sqlite);
-    models.insert({
-      id: 'builtin-model',
-      name: 'Builtin',
-      format: 'live2d',
-      storage_path: 'builtin/model.json',
-      params_json: '{}',
-      is_builtin: 1,
-      created_at: 1,
-      updated_at: 1,
-    });
-    models.insert({
-      id: 'user-model',
-      name: 'User',
-      format: 'vrm',
-      storage_path: 'user/model.vrm',
-      params_json: '{}',
-      is_builtin: 0,
-      created_at: 1,
-      updated_at: 1,
-    });
-
     expect(cards.delete(builtinCardId)).toBe('builtin_protected');
     expect(cards.delete(userCardId)).toBe('deleted');
     expect(cards.delete(asCharacterCardId('missing-card'))).toBe('not_found');
-    expect(models.delete('builtin-model')).toBe('builtin_protected');
-    expect(models.delete('user-model')).toBe('deleted');
-    expect(models.delete('missing-model')).toBe('not_found');
   });
 
   it('删除 Provider 前可以确定性列出全部业务绑定', () => {

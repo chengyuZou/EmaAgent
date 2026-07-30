@@ -412,7 +412,7 @@ VTube Studio 私有配置，不是运行时依赖，但它给了 Ema 参数范�
 ```ts
 emotionVocabulary: string[];
 motionVocabulary: string[];
-live2dModelId: string | null;
+live2dVariants: CharacterLive2dVariant[];
 ```
 
 正确关系是：
@@ -421,9 +421,12 @@ live2dModelId: string | null;
 CharacterCard
   emotionVocabulary: happy/sad/shy
   motionVocabulary: wave/nod/idle
-  live2dModelId: ema
+  live2dVariants
+    id: ema:ema
+    entryPath: live2d/ema.model3.json
+    runtimeConfigPath: live2d/runtime-config.json
         ↓
-live2d_models.params_json
+runtime config
   emotionMap: sad -> liulei
   motionMap: idle -> Idle:0
   parameters: Ema 参数名和范围
@@ -432,7 +435,7 @@ live2d-react
   执行真实 expression/motion/parameter
 ```
 
-现在 Ema 的 runtime config 暂时写在 `EmaStageView.tsx`，后续应从 `live2d_models.params_json` 读取。
+Character 已把 Live2D 入口和 runtime config 路径作为显式资源事实返回。主窗口仍需在 C2 中按主项和稳定顺序加载，并在失败时降级到角色图片或占位。
 
 ## 12. 当前已修正的问题
 
@@ -451,7 +454,7 @@ live2d-react
 
 ## 13. 后续建议
 
-1. 把 `EmaStageView.tsx` 里的 `EMA_LIVE2D_RUNTIME_CONFIG` 移到数据库 `live2d_models.params_json`。
-2. 让角色卡切换事件触发 stage reload：`stage.loadModel(next.live2dModelId)`。
-3. 增加 Live2D 设置页，展示 `availableExpressions`、`availableMotions` 和 emotion/motion 映射。
-4. 如果未来要支持更多模型，给每个模型做一次 `vtube/model3/cdi3` 参数导入器，自动生成初始 config。
+1. 让角色切换后重新解析可用 Live2D 变体，并按主项、位置和 ID 确定加载顺序。
+2. 增加 Live2D 设置页，展示可用模型、`availableExpressions`、`availableMotions` 和 emotion/motion 映射。
+3. 如果未来要支持更多模型，给每个模型做一次 `vtube/model3/cdi3` 参数导入器，自动生成初始 config。
+4. 捕获模型加载失败并继续尝试下一变体，全部失败后再降级到角色图片。

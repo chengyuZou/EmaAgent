@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Database } from '@ema-agent/storage';
 import { CharacterCardStore } from '@ema-agent/characters';
+import { asCharacterVoiceReferenceId } from '@ema-agent/ids';
 import { cardsRoute } from '../src/routes/cards.js';
 import { resolveCardVoiceRefPath } from '../src/storage-locations/index.js';
 
@@ -60,7 +61,7 @@ describe('B-055 cards route', () => {
     expect(res.status).toBe(204);
   });
 
-  it('POST 创建卡时 refAudioPath 越界被拒 400(B-055)', async () => {
+  it('POST 不再接受旧 voiceProfile JSON 事实源', async () => {
     const res = await app.request('/', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -80,7 +81,7 @@ describe('B-055 cards route', () => {
       }),
     });
     expect(res.status).toBe(400);
-    await expect(res.json()).resolves.toMatchObject({ error: 'invalid_voice_ref_path' });
+    await expect(res.json()).resolves.toMatchObject({ error: 'invalid_request' });
   });
 
   it('GET voice-ref 遇到库中构造的越界路径返回 400 而不是文件内容(B-055)', async () => {
@@ -88,16 +89,15 @@ describe('B-055 cards route', () => {
     const created = card.create({
       name: 'Crafted',
       systemPrompt: 'p',
-      voiceProfile: {
-        refAudios: [{
-          id: 'ra_crafted',
-          label: 'crafted',
-          refAudioPath: 'voiceRefs/../../../package.json',
-          promptText: 'x',
-          promptLang: 'zh',
-        }],
-        primaryId: 'ra_crafted',
-      },
+    });
+    card.addVoiceReference(created.id, {
+      id: asCharacterVoiceReferenceId('ra_crafted'),
+      label: 'crafted',
+      relativePath: 'voiceRefs/../../../package.json',
+      promptText: 'x',
+      promptLang: 'zh',
+      mimeType: 'audio/mpeg',
+      isPrimary: true,
     });
     const res = await app.request(`/${created.id}/voice-refs/ra_crafted`);
     expect(res.status).toBe(400);

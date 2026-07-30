@@ -3,10 +3,14 @@
  */
 import { sidecarClient } from './sidecar-client.js';
 import type { CharacterCardId } from '@ema-agent/ids';
-import type { CharacterCard, CharacterCardInput, CharacterVoiceProfile } from '@ema-agent/characters';
+import type {
+  CharacterCard,
+  CharacterCardInput,
+  CharacterVoiceReference,
+} from '@ema-agent/characters';
 import type { Live2DModelRuntimeConfig } from '@ema-agent/live2d-react';
 
-export type { CharacterCard, CharacterCardInput, CharacterVoiceProfile };
+export type { CharacterCard, CharacterCardInput, CharacterVoiceReference };
 
 // ── API object ────────────────────────────────────────────────────────────────
 
@@ -65,8 +69,8 @@ export const cardsApi = {
   // ── Voice-refs ──────────────────────────────────────────────────────────
 
   /** GET /api/cards/:cardId/voice-refs */
-  async listVoiceRefs(cardId: CharacterCardId): Promise<CharacterVoiceProfile> {
-    return sidecarClient.request<CharacterVoiceProfile>(`/api/cards/${cardId}/voice-refs`);
+  async listVoiceRefs(cardId: CharacterCardId): Promise<CharacterVoiceReference[]> {
+    return sidecarClient.request<CharacterVoiceReference[]>(`/api/cards/${cardId}/voice-refs`);
   },
 
   /** POST /api/cards/:cardId/voice-refs — multipart upload */
@@ -74,7 +78,7 @@ export const cardsApi = {
     cardId: CharacterCardId,
     file: Blob,
     meta: { label: string; promptText: string; promptLang: string; setPrimary?: boolean },
-  ): Promise<{ ref: { id: string; label: string; refAudioPath: string; promptText: string; promptLang: string }; primaryId: string | null }> {
+  ): Promise<{ reference: CharacterVoiceReference; primaryId: string | null }> {
     const form = new FormData();
     form.set('file', file);
     form.set('label', meta.label);

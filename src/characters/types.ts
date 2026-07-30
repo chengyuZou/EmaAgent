@@ -1,29 +1,7 @@
-// 这里放角色卡的基础类型：角色卡、卡输入、语音档案。
-
 import type { CharacterCardId } from '@ema-agent/ids';
-
-// ── 语音档案 ───────────────────────────────────────────────────────────────────
-// 定义在这里（character-card 包）而不是 contracts，因为它是 character-card 的
-// 领域类型。包外消费者从 @ema-agent/characters 导入，不从 contracts。
-
-export interface CharacterRefAudio {
-  id:           string;
-  label:        string;
-  /** 档案内相对路径：voiceRefs/<filename> */
-  refAudioPath: string;
-  promptText:   string;
-  promptLang:   string;
-}
-
-export interface CharacterVoiceProfile {
-  refAudios: CharacterRefAudio[];
-  /** 当前激活的 refAudio。null = 用第一条。 */
-  primaryId: string | null;
-}
-
-export function emptyVoiceProfile(): CharacterVoiceProfile {
-  return { refAudios: [], primaryId: null };
-}
+import type { CharacterLive2dVariant } from './live2d/types.js';
+import type { CharacterPortrait } from './portraits/types.js';
+import type { CharacterVoiceReference } from './voiceReferences/types.js';
 
 export interface CharacterCard {
   id:               CharacterCardId;
@@ -35,8 +13,9 @@ export interface CharacterCard {
   forbiddenTopics:  string[];
   emotionVocabulary: string[];
   motionVocabulary:  string[];
-  live2dModelId:    string | null;
-  voiceProfile:     CharacterVoiceProfile;
+  live2dVariants:   readonly CharacterLive2dVariant[];
+  portraits:        readonly CharacterPortrait[];
+  voiceReferences:  readonly CharacterVoiceReference[];
   isActive:         boolean;
   isBuiltin:        boolean;
   createdAt:        number;
@@ -53,7 +32,4 @@ export interface CharacterCardInput {
   forbiddenTopics?: string[];
   emotionVocabulary?: string[];
   motionVocabulary?:  string[];
-  /** null = 显式清空(B-055)。 */
-  live2dModelId?:   string | null;
-  voiceProfile?:    CharacterVoiceProfile;
 }

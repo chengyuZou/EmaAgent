@@ -3,7 +3,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   EMA_CARD_ID,
-  emptyVoiceProfile,
   type CharacterCard,
 } from '@ema-agent/characters';
 import { buildPromptSnapshot } from '../promptBuilder.js';
@@ -20,8 +19,9 @@ function character(overrides: Partial<CharacterCard> = {}): CharacterCard {
     forbiddenTopics: [],
     emotionVocabulary: ['happy', 'sad'],
     motionVocabulary: ['wave', 'nod'],
-    live2dModelId: null,
-    voiceProfile: emptyVoiceProfile(),
+    live2dVariants: [],
+    portraits: [],
+    voiceReferences: [],
     isActive: true,
     isBuiltin: false,
     createdAt: 0,

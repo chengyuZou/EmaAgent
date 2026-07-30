@@ -1,3 +1,4 @@
+// 汇总业务事件订阅，并把角色切换等事实投递给进程内消费者与系统事件流。
 import type { AppBindings } from './bindings.js';
 
 // ── Aggregated emitter subscriptions ─────────────────────────────────────────
@@ -32,9 +33,7 @@ export function registerAllEmitters(bindings: AppBindings): () => void {
         name:   next.name,
       });
 
-      // Future subscribers (V1.5):
-      //   stage.loadModel(next.live2dModelId);
-      //   tts.setReferenceAudio(next.referenceAudioPath);
+      // 主窗口与 TTS 从角色聚合投影选择可用资源，不再读取角色卡旧单值字段。
     }),
   );
 

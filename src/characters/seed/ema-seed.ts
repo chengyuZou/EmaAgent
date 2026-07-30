@@ -1,6 +1,12 @@
-// 这里是内置角色卡「樱羽艾玛」的种子数据（人设 prompt + 词汇表 + 语音档案）。
+// 定义内置角色「樱羽艾玛」的角色卡与独立表现资源种子。
 
 import type { CharacterCardInput } from '../types.js';
+import type { CharacterLive2dVariantInput } from '../live2d/types.js';
+import type { CharacterVoiceReferenceInput } from '../voiceReferences/types.js';
+import {
+  asCharacterLive2dId,
+  asCharacterVoiceReferenceId,
+} from '@ema-agent/ids';
 
 export const EMA_CARD_ID = 'ema' as const;
 
@@ -112,19 +118,26 @@ determined: 「一定有办法的！」「我不会放弃！」
     'bow',
     'scared',
   ],
-
-  live2dModelId: 'ema',
-
-  voiceProfile: {
-    refAudios: [
-      {
-        id:           'ra_ema001',
-        label:        '默认',
-        refAudioPath: 'voiceRefs/ra_ema001.mp3',
-        promptText:   '我就是担心这种伤风败俗的东西如果被身心尚幼的小朋友们看到会造成不好的影响，所以我想提前为小朋友们做好预防措施。',
-        promptLang:   'zh',
-      },
-    ],
-    primaryId: 'ra_ema001',
-  },
 };
+
+export const EMA_LIVE2D_VARIANTS: readonly CharacterLive2dVariantInput[] = [{
+  id: asCharacterLive2dId('ema:ema'),
+  label: '默认',
+  format: 'live2d',
+  entryPath: 'live2d/ema.model3.json',
+  runtimeConfigPath: 'live2d/runtime-config.json',
+  position: 0,
+  isPrimary: true,
+  isBuiltin: true,
+}];
+
+export const EMA_VOICE_REFERENCES: readonly CharacterVoiceReferenceInput[] = [{
+  id: asCharacterVoiceReferenceId('ema:voice:ra_ema001'),
+  label: '默认',
+  relativePath: 'voiceRefs/ra_ema001.mp3',
+  promptText: '我就是担心这种伤风败俗的东西如果被身心尚幼的小朋友们看到会造成不好的影响，所以我想提前为小朋友们做好预防措施。',
+  promptLang: 'zh',
+  position: 0,
+  isPrimary: true,
+  mimeType: 'audio/mpeg',
+}];

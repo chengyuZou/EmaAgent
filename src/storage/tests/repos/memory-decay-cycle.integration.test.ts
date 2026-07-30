@@ -75,7 +75,7 @@ describe('profile v16 Memory 衰减周期', () => {
       .toHaveLength(1);
     expect(items.listDecayCandidates(laterCutoff, laterCutoff, later, [], 10))
       .toHaveLength(1);
-    expect(database.currentVersion()).toBe(16);
+    expect(database.currentVersion()).toBe(17);
   });
 
   it('候选读取后发生引用时，旧 CAS 不会覆盖新的重要度与引用时间', () => {

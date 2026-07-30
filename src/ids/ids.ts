@@ -8,6 +8,9 @@ export type AgentRunId = BrandedId<'AgentRunId'>;
 export type TaskId = BrandedId<'TaskId'>;
 export type MessageId = BrandedId<'MessageId'>;
 export type CharacterCardId = BrandedId<'CharacterCardId'>;
+export type CharacterLive2dId = BrandedId<'CharacterLive2dId'>;
+export type CharacterPortraitId = BrandedId<'CharacterPortraitId'>;
+export type CharacterVoiceReferenceId = BrandedId<'CharacterVoiceReferenceId'>;
 export type CompactionId = BrandedId<'CompactionId'>;
 export type ToolCallId = BrandedId<'ToolCallId'>;
 export type HookInvocationId = BrandedId<'HookInvocationId'>;
@@ -19,6 +22,15 @@ export function asAgentRunId(value: string): AgentRunId { return value as AgentR
 export function asTaskId(value: string): TaskId { return value as TaskId; }
 export function asMessageId(value: string): MessageId { return value as MessageId; }
 export function asCharacterCardId(value: string): CharacterCardId { return value as CharacterCardId; }
+export function asCharacterLive2dId(value: string): CharacterLive2dId {
+  return value as CharacterLive2dId;
+}
+export function asCharacterPortraitId(value: string): CharacterPortraitId {
+  return value as CharacterPortraitId;
+}
+export function asCharacterVoiceReferenceId(value: string): CharacterVoiceReferenceId {
+  return value as CharacterVoiceReferenceId;
+}
 export function asCompactionId(value: string): CompactionId { return value as CompactionId; }
 export function asToolCallId(value: string): ToolCallId { return value as ToolCallId; }
 export function asHookInvocationId(value: string): HookInvocationId { return value as HookInvocationId; }

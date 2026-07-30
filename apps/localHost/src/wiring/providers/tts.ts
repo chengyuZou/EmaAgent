@@ -23,7 +23,10 @@ import {
   selectedProtocolFor,
 } from './config-resolution.js';
 
-import type { CharacterCardStore, CharacterVoiceProfile } from '@ema-agent/characters';
+import type {
+  CharacterCardStore,
+  CharacterVoiceReference,
+} from '@ema-agent/characters';
 import { resolveCardVoiceRefPath } from '../../storage-locations/index.js';
 
 // ── Provider config builder ─────────────────────────────────────────────────
@@ -74,25 +77,23 @@ export function resolveVoice(
   const c = store.get(card);
   if (!c) return null;
 
-  const profile: CharacterVoiceProfile = c.voiceProfile;
-  const primary = pickPrimaryRefAudio(profile);
+  const primary = pickPrimaryVoiceReference(c.voiceReferences);
   if (!primary) return null;
 
   return {
-    refAudioPath: resolveCardVoiceRefPath(c.id as string, c.isBuiltin, primary.refAudioPath),
+    refAudioPath: resolveCardVoiceRefPath(c.id, c.isBuiltin, primary.relativePath),
     promptText:   primary.promptText,
     promptLang:   primary.promptLang,
     // Provider 声音句柄由 TTS 输出入口按 Provider + Model 短期缓存或懒上传。
   };
 }
 
-function pickPrimaryRefAudio(profile: CharacterVoiceProfile | null) {
-  if (!profile || profile.refAudios.length === 0) return null;
-  if (profile.primaryId) {
-    const found = profile.refAudios.find((r) => r.id === profile.primaryId);
-    if (found) return found;
-  }
-  return profile.refAudios[0]!;
+function pickPrimaryVoiceReference(
+  references: readonly CharacterVoiceReference[],
+): CharacterVoiceReference | null {
+  return references.find((reference) => reference.enabled && reference.isPrimary)
+    ?? references.find((reference) => reference.enabled)
+    ?? null;
 }
 
 // ── Top-level builder ───────────────────────────────────────────────────────

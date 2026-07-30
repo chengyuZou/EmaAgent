@@ -1,3 +1,4 @@
+// 测试角色卡与三类表现资源的种子、聚合、主项切换和复制边界。
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Database } from '@ema-agent/storage';
 import { CharacterCardStore } from '../store.js';
@@ -38,6 +39,13 @@ describe('CharacterCardStore', () => {
       expect(current.id).toBe(EMA_CARD_ID);
       expect(current.isBuiltin).toBe(true);
       expect(current.isActive).toBe(true);
+      expect(current.live2dVariants).toHaveLength(1);
+      expect(current.live2dVariants[0]).toMatchObject({
+        entryPath: 'live2d/ema.model3.json',
+        isPrimary: true,
+      });
+      expect(current.voiceReferences).toHaveLength(1);
+      expect(current.voiceReferences[0]?.isPrimary).toBe(true);
     });
 
     it('is idempotent — calling twice does not duplicate or throw', () => {
@@ -119,6 +127,35 @@ describe('CharacterCardStore', () => {
     });
   });
 
+  describe('voice references', () => {
+    it('删除主音频后由后端按稳定顺序提升下一条', () => {
+      const card = store.create(minimalInput());
+      const first = store.addVoiceReference(card.id, {
+        label: 'First',
+        relativePath: 'voiceRefs/first.wav',
+        promptText: 'first',
+        promptLang: 'en',
+        position: 0,
+        isPrimary: true,
+        mimeType: 'audio/wav',
+      });
+      const second = store.addVoiceReference(card.id, {
+        label: 'Second',
+        relativePath: 'voiceRefs/second.wav',
+        promptText: 'second',
+        promptLang: 'en',
+        position: 1,
+        mimeType: 'audio/wav',
+      });
+
+      store.deleteVoiceReference(card.id, first.id);
+
+      expect(store.get(card.id)?.voiceReferences).toEqual([
+        expect.objectContaining({ id: second.id, isPrimary: true }),
+      ]);
+    });
+  });
+
   // ─── activate ─────────────────────────────────────────────────────────────
 
   describe('activate', () => {
@@ -186,23 +223,22 @@ describe('CharacterCardStore', () => {
       expect(dup.speechPatterns).toEqual(ema.speechPatterns);
     });
 
-    it('copies voice profile', () => {
-      const card = store.create(minimalInput({
-        voiceProfile: {
-          primaryId: 'ref-1',
-          refAudios: [{
-            id: 'ref-1',
-            label: 'Main',
-            refAudioPath: 'card/ref.wav',
-            promptText: 'hello',
-            promptLang: 'en',
-          }],
-        },
-      }));
+    it('只复制角色定义，不复用原角色的资源路径', () => {
+      const card = store.create(minimalInput());
+      store.addVoiceReference(card.id, {
+        label: 'Main',
+        relativePath: 'voiceRefs/ref.wav',
+        promptText: 'hello',
+        promptLang: 'en',
+        mimeType: 'audio/wav',
+        isPrimary: true,
+      });
 
       const dup = store.duplicate(card.id);
 
-      expect(dup.voiceProfile).toEqual(card.voiceProfile);
+      expect(dup.voiceReferences).toEqual([]);
+      expect(dup.live2dVariants).toEqual([]);
+      expect(dup.portraits).toEqual([]);
     });
 
     it('throws when duplicating a non-existent card', () => {

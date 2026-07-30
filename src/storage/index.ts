@@ -20,9 +20,11 @@ export type {
 } from './repos/turns.js';
 export { MessagesRepo } from './repos/messages.js';
 export { CharacterCardsRepo } from './repos/character-cards.js';
+export { CharacterLive2dVariantsRepo } from './repos/characterLive2dVariants.js';
+export { CharacterPortraitsRepo } from './repos/characterPortraits.js';
+export { CharacterVoiceReferencesRepo } from './repos/characterVoiceReferences.js';
 export { SettingsRepo } from './repos/settings.js';
 export { UsageRecordsRepo } from './repos/usage-records.js';
-export { Live2DModelsRepo } from './repos/live2d-models.js';
 export { ProvidersRepo } from './repos/providers.js';
 export { ModelBindingsRepo } from './repos/model-bindings.js';
 export { AttachmentRepo }  from './repos/attachment.js';
@@ -81,11 +83,24 @@ export type {
   CharacterCardInsert,
   CharacterCardUpdate,
 } from './repos/character-cards.js';
+export type {
+  CharacterLive2dFormat,
+  CharacterLive2dVariantInsert,
+  CharacterLive2dVariantRow,
+} from './repos/characterLive2dVariants.js';
+export type {
+  CharacterPortraitInsert,
+  CharacterPortraitMime,
+  CharacterPortraitRow,
+} from './repos/characterPortraits.js';
+export type {
+  CharacterVoiceReferenceInsert,
+  CharacterVoiceReferenceRow,
+} from './repos/characterVoiceReferences.js';
 export { SettingSerializationError } from './repos/settings.js';
 export type { SettingRow, SettingReadResult } from './repos/settings.js';
 export type { SettingWrite } from './repos/settings.js';
 export type { UsageRecordRow } from './repos/usage-records.js';
-export type { Live2DModelRow } from './repos/live2d-models.js';
 export type {
   ProviderConfigRow,
   ProviderConfigInsert,

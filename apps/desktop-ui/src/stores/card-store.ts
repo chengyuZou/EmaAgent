@@ -2,7 +2,7 @@
  * Card store — character card CRUD + activate + voice-refs passthrough.
  */
 import { create } from 'zustand';
-import { cardsApi, type CharacterCard, type CharacterCardInput, type CharacterVoiceProfile } from '../api/cards.js';
+import { cardsApi, type CharacterCard, type CharacterCardInput } from '../api/cards.js';
 import type { CharacterCardId } from '@ema-agent/ids';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -10,8 +10,6 @@ import type { CharacterCardId } from '@ema-agent/ids';
 export interface CardStoreState {
   cards:         CharacterCard[];
   activeCardId:  CharacterCardId | null;
-  /** Voice-ref profiles cached per card, populated on demand. */
-  voiceProfiles: Map<string, CharacterVoiceProfile>;
   loading:       boolean;
   error:         string | null;
 
@@ -21,12 +19,6 @@ export interface CardStoreState {
   patch(id: CharacterCardId, input: Partial<CharacterCardInput>): Promise<void>;
   delete(id: CharacterCardId):                     Promise<void>;
 
-  /**
-   * Fetch voice refs for a card and cache them.
-   * Returns cached value on subsequent calls.
-   * Pass force=true to bypass cache (e.g. after an upload/delete).
-   */
-  loadVoiceRefs(cardId: CharacterCardId, force?: boolean): Promise<CharacterVoiceProfile>;
   uploadVoiceRef(cardId: CharacterCardId, file: Blob, meta: {
     label: string;
     promptText: string;
@@ -42,7 +34,6 @@ export interface CardStoreState {
 export const useCardStore = create<CardStoreState>((set, get) => ({
   cards:         [],
   activeCardId:  null,
-  voiceProfiles: new Map(),
   loading:       false,
   error:         null,
 
@@ -106,35 +97,10 @@ export const useCardStore = create<CardStoreState>((set, get) => ({
     }
   },
 
-  async loadVoiceRefs(cardId, force = false) {
-    const key = cardId as string;
-    if (!force) {
-      const cached = get().voiceProfiles.get(key);
-      if (cached) return cached;
-    }
-    try {
-      const profile = await cardsApi.listVoiceRefs(cardId);
-      set((s) => {
-        const m = new Map(s.voiceProfiles);
-        m.set(key, profile);
-        return { voiceProfiles: m };
-      });
-      return profile;
-    } catch (err: unknown) {
-      set({ error: err instanceof Error ? err.message : 'Failed to load voice refs' });
-      throw err;
-    }
-  },
-
   async uploadVoiceRef(cardId, file, meta) {
     try {
       await cardsApi.uploadVoiceRef(cardId, file, meta);
-      // Bust cache so next loadVoiceRefs re-fetches.
-      set((s) => {
-        const m = new Map(s.voiceProfiles);
-        m.delete(cardId as string);
-        return { voiceProfiles: m };
-      });
+      await get().load();
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to upload voice ref' });
       throw err;
@@ -144,11 +110,7 @@ export const useCardStore = create<CardStoreState>((set, get) => ({
   async deleteVoiceRef(cardId, refId) {
     try {
       await cardsApi.deleteVoiceRef(cardId, refId);
-      set((s) => {
-        const m = new Map(s.voiceProfiles);
-        m.delete(cardId as string);
-        return { voiceProfiles: m };
-      });
+      await get().load();
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to delete voice ref' });
       throw err;
@@ -158,11 +120,7 @@ export const useCardStore = create<CardStoreState>((set, get) => ({
   async setPrimaryVoiceRef(cardId, refId) {
     try {
       await cardsApi.setPrimaryVoiceRef(cardId, refId);
-      set((s) => {
-        const m = new Map(s.voiceProfiles);
-        m.delete(cardId as string);
-        return { voiceProfiles: m };
-      });
+      await get().load();
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to set primary voice ref' });
       throw err;

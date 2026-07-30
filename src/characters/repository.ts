@@ -4,23 +4,9 @@ import { randomUUID } from 'node:crypto';
 import type { CharacterCardsRepo, CharacterCardRow } from '@ema-agent/storage';
 import { asCharacterCardId } from '@ema-agent/ids';
 import type { CharacterCardId } from '@ema-agent/ids';
-import type { CharacterCard, CharacterCardInput, CharacterVoiceProfile } from './types.js';
-import { emptyVoiceProfile } from './types.js';
+import type { CharacterCard, CharacterCardInput } from './types.js';
 
 // ── 数据库行 -> 领域对象 ──────────────────────────────────────────────────────────
-
-function parseVoiceProfile(json: string): CharacterVoiceProfile {
-  if (!json) return emptyVoiceProfile();
-  try {
-    const parsed = JSON.parse(json) as Partial<CharacterVoiceProfile>;
-    return {
-      refAudios: Array.isArray(parsed.refAudios) ? parsed.refAudios : [],
-      primaryId: typeof parsed.primaryId === 'string' ? parsed.primaryId : null,
-    };
-  } catch {
-    return emptyVoiceProfile();
-  }
-}
 
 function fromRow(row: CharacterCardRow): CharacterCard {
   return {
@@ -33,8 +19,9 @@ function fromRow(row: CharacterCardRow): CharacterCard {
     forbiddenTopics:  JSON.parse(row.forbidden_topics_json) as string[],
     emotionVocabulary: JSON.parse(row.emotion_vocab_json) as string[],
     motionVocabulary:  JSON.parse(row.motion_vocab_json) as string[],
-    live2dModelId:    row.live2d_model_id,
-    voiceProfile:     parseVoiceProfile(row.voice_profile_json),
+    live2dVariants:   [],
+    portraits:        [],
+    voiceReferences:  [],
     isActive:         row.is_active === 1,
     isBuiltin:        row.is_builtin === 1,
     createdAt:        row.created_at,
@@ -79,8 +66,6 @@ export class CharacterCardRepository {
       forbiddenTopicsJson:  JSON.stringify(input.forbiddenTopics ?? []),
       emotionVocabJson:     JSON.stringify(input.emotionVocabulary ?? []),
       motionVocabJson:      JSON.stringify(input.motionVocabulary ?? []),
-      live2dModelId:        input.live2dModelId,
-      voiceProfileJson:     JSON.stringify(input.voiceProfile ?? emptyVoiceProfile()),
       isActive:             opts.isActive ?? false,
       isBuiltin:            opts.isBuiltin ?? false,
       createdAt:            now,
@@ -104,9 +89,6 @@ export class CharacterCardRepository {
                               ? JSON.stringify(patch.emotionVocabulary) : undefined,
       motionVocabJson:      patch.motionVocabulary !== undefined
                               ? JSON.stringify(patch.motionVocabulary) : undefined,
-      live2dModelId:        patch.live2dModelId,
-      voiceProfileJson:     patch.voiceProfile !== undefined
-                              ? JSON.stringify(patch.voiceProfile) : undefined,
       updatedAt:            Date.now(),
     });
   }
@@ -120,4 +102,3 @@ export class CharacterCardRepository {
     this.repo.delete(id);
   }
 }
-

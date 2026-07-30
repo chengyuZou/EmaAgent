@@ -118,11 +118,11 @@ export function cardResourcePath(cardId: string, isBuiltin: boolean, relPath: st
  * For builtin cards, this returns the path inside `public/cards/<cardId>/voiceRefs/`.
  * For user cards, `~/.ema-agent/cards/<cardId>/voiceRefs/`.
  *
- * The relPath stored in CharacterRefAudio.refAudioPath is relative to the
- * card pack root (e.g. 'voiceRefs/ra_ema001.mp3').
+ * CharacterVoiceReference.relativePath 相对角色包根目录保存，
+ * 例如 `voiceRefs/ra_ema001.mp3`。
  *
- * B-055 路径安全: 与 character-card 类型契约一致, 只允许 `voiceRefs/<单层文件名>`——
- * 拒绝绝对路径, `..` 逃逸, 反斜杠与子目录。refAudioPath 来自数据库(可能被构造),
+ * B-055 路径安全: 与 Character 类型契约一致, 只允许 `voiceRefs/<单层文件名>`——
+ * 拒绝绝对路径, `..` 逃逸, 反斜杠与子目录。relativePath 来自数据库(可能被构造),
  * 此函数是 GET 音频流, DELETE 文件, TTS 克隆上传与 GPT-SoVITS 读文件共用的
  * 唯一咽喉点, 越界一律抛 invalid_voice_ref_path。
  */

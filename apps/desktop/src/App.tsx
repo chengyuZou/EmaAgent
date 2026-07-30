@@ -39,8 +39,12 @@ export function App(): React.JSX.Element {
   const stageSuspended = useWindowSuspension();
   const sidecarStatus = useSidecarStore((s) => s.status);
   const activeCardId = useCardStore((s) => s.activeCardId);
-  const activeLive2dModelId = useCardStore((s) => (
-    s.cards.find((card) => card.id === s.activeCardId)?.live2dModelId ?? null
+  const activeLive2dResourceId = useCardStore((s) => (
+    s.cards.find((card) => card.id === s.activeCardId)
+      ?.live2dVariants.find((variant) => variant.enabled && variant.isPrimary)?.id
+      ?? s.cards.find((card) => card.id === s.activeCardId)
+        ?.live2dVariants.find((variant) => variant.enabled)?.id
+      ?? null
   ));
   const [dockVisible,  setDockVisible]  = useState(false);
   const [shellStatus,  setShellStatus]  = useState<ShellStatus | null>(null);
@@ -68,7 +72,7 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     stageLoader.invalidate();
 
-    if (!activeCardId || !activeLive2dModelId) {
+    if (!activeCardId || !activeLive2dResourceId) {
       setStageState({ kind: 'empty' });
       return;
     }
@@ -89,7 +93,7 @@ export function App(): React.JSX.Element {
       disposed = true;
       stageLoader.invalidate();
     };
-  }, [activeCardId, activeLive2dModelId, stageLoader]);
+  }, [activeCardId, activeLive2dResourceId, stageLoader]);
 
   useDevTtsPlaybackFromUrl();
   useThemeSync();

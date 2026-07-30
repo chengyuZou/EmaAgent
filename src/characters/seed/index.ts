@@ -1,4 +1,4 @@
-// 这里汇总所有内置角色卡种子，启动时 sidecar 遍历它幂等注册。
+// 汇总内置角色的角色卡与表现资源，供 LocalHost 启动时幂等注册。
 
 /**
  * 内置角色卡种子。
@@ -13,15 +13,42 @@
  * 没有死代码：新角色就是数据 + 一次 push，无需改接线。
  */
 import type { CharacterCardInput } from '../types.js';
-import { EMA_CARD_INPUT, EMA_CARD_ID } from './ema-seed.js';
+import type { CharacterLive2dVariantInput } from '../live2d/types.js';
+import type { CharacterPortraitInput } from '../portraits/types.js';
+import type { CharacterVoiceReferenceInput } from '../voiceReferences/types.js';
+import {
+  EMA_CARD_INPUT,
+  EMA_CARD_ID,
+  EMA_LIVE2D_VARIANTS,
+  EMA_VOICE_REFERENCES,
+} from './ema-seed.js';
 
-export { EMA_CARD_INPUT, EMA_CARD_ID };
+export {
+  EMA_CARD_INPUT,
+  EMA_CARD_ID,
+  EMA_LIVE2D_VARIANTS,
+  EMA_VOICE_REFERENCES,
+};
+
+export interface BuiltinCharacterSeed {
+  id: string;
+  card: CharacterCardInput;
+  live2dVariants: readonly CharacterLive2dVariantInput[];
+  portraits: readonly CharacterPortraitInput[];
+  voiceReferences: readonly CharacterVoiceReferenceInput[];
+}
 
 /**
  * 所有内置角色卡。启动 seeder 遍历此列表，逐条 upsert 进
- * character_cards + live2d_models（is_builtin=1）。
+ * character_cards 与三类显式角色资源表。
  */
-export const BUILTIN_CARDS: CharacterCardInput[] = [
-  EMA_CARD_INPUT,
+export const BUILTIN_CARDS: readonly BuiltinCharacterSeed[] = [
+  {
+    id: EMA_CARD_ID,
+    card: EMA_CARD_INPUT,
+    live2dVariants: EMA_LIVE2D_VARIANTS,
+    portraits: [],
+    voiceReferences: EMA_VOICE_REFERENCES,
+  },
   // 未来的内置角色放这里--push 种子即可。
 ];

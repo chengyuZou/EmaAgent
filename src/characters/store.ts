@@ -1,12 +1,34 @@
-// 这里是角色卡的 Facade：CRUD + 激活切换 + 启动种子 + 切卡事件广播。
+// 聚合角色定义与三类表现资源，并负责角色 CRUD、激活、内置种子和切换广播。
 
 import type { Database, CharacterCardsRepo } from '@ema-agent/storage';
-import { CharacterCardsRepo as Repo } from '@ema-agent/storage';
-import type { CharacterCardId } from '@ema-agent/ids';
+import {
+  CharacterCardsRepo as Repo,
+  CharacterLive2dVariantsRepo,
+  CharacterPortraitsRepo,
+  CharacterVoiceReferencesRepo,
+} from '@ema-agent/storage';
+import type {
+  CharacterCardId,
+  CharacterLive2dId,
+  CharacterPortraitId,
+  CharacterVoiceReferenceId,
+} from '@ema-agent/ids';
 import { asCharacterCardId } from '@ema-agent/ids';
 import type { CharacterCard, CharacterCardInput } from './types.js';
 import { CharacterCardRepository } from './repository.js';
-import { EMA_CARD_ID, EMA_CARD_INPUT, BUILTIN_CARDS } from './seed/index.js';
+import { EMA_CARD_ID, BUILTIN_CARDS } from './seed/index.js';
+import type {
+  CharacterLive2dVariant,
+  CharacterLive2dVariantInput,
+} from './live2d/types.js';
+import { CharacterLive2dRepository } from './live2d/repository.js';
+import type { CharacterPortrait, CharacterPortraitInput } from './portraits/types.js';
+import { CharacterPortraitRepository } from './portraits/repository.js';
+import type {
+  CharacterVoiceReference,
+  CharacterVoiceReferenceInput,
+} from './voiceReferences/types.js';
+import { CharacterVoiceReferenceRepository } from './voiceReferences/repository.js';
 
 // ── 事件监听器类型 ─────────────────────────────────────────────────────────────
 
@@ -31,11 +53,23 @@ export type CardSwitchedListener = (
 
 export class CharacterCardStore {
   private readonly repository: CharacterCardRepository;
+  private readonly live2d: CharacterLive2dRepository;
+  private readonly portraits: CharacterPortraitRepository;
+  private readonly voiceReferences: CharacterVoiceReferenceRepository;
   private readonly switchedListeners = new Set<CardSwitchedListener>();
 
   constructor({ db }: { db: Database }) {
     const repo: CharacterCardsRepo = new Repo(db.sqlite);
     this.repository = new CharacterCardRepository(repo);
+    this.live2d = new CharacterLive2dRepository(
+      new CharacterLive2dVariantsRepo(db.sqlite),
+    );
+    this.portraits = new CharacterPortraitRepository(
+      new CharacterPortraitsRepo(db.sqlite),
+    );
+    this.voiceReferences = new CharacterVoiceReferenceRepository(
+      new CharacterVoiceReferencesRepo(db.sqlite),
+    );
   }
 
   // ── 事件订阅 ──────────────────────────────────────────────────────────────────
@@ -62,10 +96,36 @@ export class CharacterCardStore {
   ensureSeed(): void {
     // 种子所有内置卡（不只 Ema）。每张缺失则插入。
     // 新增内置角色只需在 seed/index.ts 的 BUILTIN_CARDS 里 push--这里不用改接线。
-    for (const cardInput of BUILTIN_CARDS) {
-      const cardId = asCharacterCardId(cardInput === EMA_CARD_INPUT ? EMA_CARD_ID : cardInput.name);
+    for (const seed of BUILTIN_CARDS) {
+      const cardId = asCharacterCardId(seed.id);
       if (!this.repository.findById(cardId)) {
-        this.repository.insert(cardInput, { id: cardId as string, isBuiltin: true });
+        this.repository.insert(seed.card, { id: cardId, isBuiltin: true });
+      }
+
+      const live2dIds = new Set(this.live2d.list(cardId).map((item) => item.id));
+      for (const input of seed.live2dVariants) {
+        if (!input.id) throw new Error(`builtin Live2D resource requires id: ${seed.id}`);
+        if (!live2dIds.has(input.id)) {
+          this.live2d.insert(cardId, input);
+        }
+      }
+
+      const portraitIds = new Set(this.portraits.list(cardId).map((item) => item.id));
+      for (const input of seed.portraits) {
+        if (!input.id) throw new Error(`builtin portrait resource requires id: ${seed.id}`);
+        if (!portraitIds.has(input.id)) {
+          this.portraits.insert(cardId, input);
+        }
+      }
+
+      const voiceIds = new Set(
+        this.voiceReferences.list(cardId).map((item) => item.id),
+      );
+      for (const input of seed.voiceReferences) {
+        if (!input.id) throw new Error(`builtin voice resource requires id: ${seed.id}`);
+        if (!voiceIds.has(input.id)) {
+          this.voiceReferences.insert(cardId, input);
+        }
       }
     }
 
@@ -74,7 +134,7 @@ export class CharacterCardStore {
     if (!before) {
       const emaId = asCharacterCardId(EMA_CARD_ID);
       this.repository.activate(emaId);
-      const after = this.repository.findActive();
+      const after = this.get(emaId);
       if (after) this.emitSwitched(after, null);
     }
   }
@@ -82,24 +142,26 @@ export class CharacterCardStore {
   current(): CharacterCard {
     const card = this.repository.findActive();
     if (!card) throw new Error('no active character card - call ensureSeed() at startup');
-    return card;
+    return this.withResources(card);
   }
 
   list(): CharacterCard[] {
-    return this.repository.list();
+    return this.repository.list().map((card) => this.withResources(card));
   }
 
   get(id: CharacterCardId): CharacterCard | undefined {
-    return this.repository.findById(id);
+    const card = this.repository.findById(id);
+    return card ? this.withResources(card) : undefined;
   }
 
   activate(id: CharacterCardId): CharacterCardId {
-    const target = this.repository.findById(id);
+    const target = this.get(id);
     if (!target) throw new Error(`character card not found: ${id}`);
 
-    const before = this.repository.findActive() ?? null;
+    const active = this.repository.findActive();
+    const before = active ? this.withResources(active) : null;
     this.repository.activate(id);
-    const after = this.repository.findActive() ?? target;
+    const after = this.current();
 
     // 只有激活 id 真的变了才 emit。重新激活同一张卡是 no-op--
     // 省得订阅者跑多余的 reset 循环。
@@ -110,16 +172,16 @@ export class CharacterCardStore {
   }
 
   create(input: CharacterCardInput): CharacterCard {
-    return this.repository.insert(input);
+    return this.withResources(this.repository.insert(input));
   }
 
   update(id: CharacterCardId, patch: Partial<CharacterCardInput>): CharacterCard {
     this.repository.update(id, patch);
-    return this.repository.findById(id)!;
+    return this.get(id)!;
   }
 
   duplicate(id: CharacterCardId): CharacterCard {
-    const original = this.repository.findById(id);
+    const original = this.get(id);
     if (!original) throw new Error(`character card not found: ${id}`);
     return this.repository.insert(
       {
@@ -131,8 +193,6 @@ export class CharacterCardStore {
         forbiddenTopics: original.forbiddenTopics,
         emotionVocabulary: original.emotionVocabulary,
         motionVocabulary: original.motionVocabulary,
-        live2dModelId: original.live2dModelId ?? undefined,
-        voiceProfile: original.voiceProfile,
       },
       { isBuiltin: false },
     );
@@ -140,5 +200,80 @@ export class CharacterCardStore {
 
   delete(id: CharacterCardId): void {
     this.repository.delete(id);
+  }
+
+  listLive2dVariants(id: CharacterCardId): CharacterLive2dVariant[] {
+    return this.live2d.list(id);
+  }
+
+  addLive2dVariant(
+    id: CharacterCardId,
+    input: CharacterLive2dVariantInput,
+  ): CharacterLive2dVariant {
+    return this.live2d.insert(id, input);
+  }
+
+  setPrimaryLive2dVariant(id: CharacterCardId, resourceId: CharacterLive2dId): boolean {
+    return this.live2d.setPrimary(id, resourceId);
+  }
+
+  deleteLive2dVariant(
+    id: CharacterCardId,
+    resourceId: CharacterLive2dId,
+  ): CharacterLive2dVariant | undefined {
+    return this.live2d.delete(id, resourceId);
+  }
+
+  listPortraits(id: CharacterCardId): CharacterPortrait[] {
+    return this.portraits.list(id);
+  }
+
+  addPortrait(id: CharacterCardId, input: CharacterPortraitInput): CharacterPortrait {
+    return this.portraits.insert(id, input);
+  }
+
+  setPrimaryPortrait(id: CharacterCardId, resourceId: CharacterPortraitId): boolean {
+    return this.portraits.setPrimary(id, resourceId);
+  }
+
+  deletePortrait(
+    id: CharacterCardId,
+    resourceId: CharacterPortraitId,
+  ): CharacterPortrait | undefined {
+    return this.portraits.delete(id, resourceId);
+  }
+
+  listVoiceReferences(id: CharacterCardId): CharacterVoiceReference[] {
+    return this.voiceReferences.list(id);
+  }
+
+  addVoiceReference(
+    id: CharacterCardId,
+    input: CharacterVoiceReferenceInput,
+  ): CharacterVoiceReference {
+    return this.voiceReferences.insert(id, input);
+  }
+
+  setPrimaryVoiceReference(
+    id: CharacterCardId,
+    resourceId: CharacterVoiceReferenceId,
+  ): boolean {
+    return this.voiceReferences.setPrimary(id, resourceId);
+  }
+
+  deleteVoiceReference(
+    id: CharacterCardId,
+    resourceId: CharacterVoiceReferenceId,
+  ): CharacterVoiceReference | undefined {
+    return this.voiceReferences.delete(id, resourceId);
+  }
+
+  private withResources(card: CharacterCard): CharacterCard {
+    return {
+      ...card,
+      live2dVariants: this.live2d.list(card.id),
+      portraits: this.portraits.list(card.id),
+      voiceReferences: this.voiceReferences.list(card.id),
+    };
   }
 }

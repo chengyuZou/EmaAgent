@@ -66,7 +66,7 @@ LocalHost Composition Root Attachment/Backup 批次已经完成：`createAttachm
 
 LocalHost Composition Root Extension/Knowledge/Lifecycle 批次已经完成：`createExtensionRuntime.ts` 统一构造 MCP、Marketplace 与 Skill，并使用 `profileDir()` 定位用户 Skill；`createKnowledgeRuntime.ts` 统一构造 KB、事件投影和模型工具搜索，`knowledgeModelsSetting/knowledgeRetrievalSetting` 继续在每次真实操作开始时读取。MCP 缺失 Schema 的并发发现按服务器名和工具名确定性提交，缓存写入晚于整批注册校验；KB 全量 `initAll()` 已删除。`bindings.ts` 保持扁平返回，没有新增嵌套依赖袋。
 
-LocalHost Composition Root Character/Emotion 批次已经完成：`createCharacterRuntime.ts` 按 `Live2D Seed → Character Seed → Active Card → Emotion` 的外键顺序建立同步对象图；缺少活动角色时仍激活 Ema，Emotion 初始词表来自构造时的当前全局角色。数据库、外键或活动角色不变量失败原样阻止 ready，运行期切换角色后的词表同步继续由既有 emitter 负责。至此本地施工计划 P1-P5 全部完成，`bindings.ts` 只表达 Character 工厂顺序并保持扁平返回。
+LocalHost Composition Root Character/Emotion 批次已经完成：`createCharacterRuntime.ts` 同步建立 Character Seed → 三类表现资源 Seed → Active Card → Emotion；缺少活动角色时仍激活 Ema，Emotion 初始词表来自构造时的当前全局角色。数据库、资源外键或活动角色不变量失败原样阻止 ready，运行期切换角色后的词表同步继续由既有 emitter 负责。至此本地施工计划 P1-P5 全部完成，`bindings.ts` 只表达 Character 工厂顺序并保持扁平返回。
 
 开工前已复核本地 Codex 源码：`codex-protocol` 只定义 Thread/Turn/Submission 等低层协议，真正编排位于 `codex-core/session`；App Server 只校验并提交 `Op::UserInput`，Session 统一建立 `RunningTask`、取消句柄和终态，`RegularTask` 再调用内部 `run_turn` 完成多轮模型与工具循环。Ema 因此保留低层 `turn` 与高层 `turnExecution` 两个编译边界，不能把执行依赖反向塞进被 Context、Session、Storage、Hooks 共同依赖的领域包。
 
@@ -170,9 +170,9 @@ K3 当前负责 Desktop Chat Workspace、Git/Review 等前端工作；主 Agent 
 `apps/desktop-ui` 施工区。后台进程前端已经补入 `EmaChatWorkspacePlan.md`，
 现在可直接消费正式 API、领域事件与 Tool Presentation。
 
-本轮主 Agent 只修改 LocalHost 的 Session 目录启动恢复、路径导出、对应测试和本接力板；工作区内 Desktop UI 与 `apps/localHost/src/settings/eventDisplaySetting.ts` 的并行改动属于其他 Agent，不得覆盖。
+K3 当前负责 Desktop Chat Workspace 与 Git/Review 施工；本轮 Character 只修改 Desktop 的角色 API、角色设置 VoiceTab 和主窗资源选择，没有覆盖 Chat/Workspace 文件。
 
-Character 资源、自检、主窗降级与删除的 V1 口径已经写入 `docs/architecture/characterResourceValidationPlan.md`。本批只冻结设计，没有修改 Character、Desktop UI、Storage Schema 或 Backup 生产代码：Prompt 缺失属于阻止角色执行的 Error；Live2D、单张图片和参考音频问题属于可降级 Warning；主窗按主 Live2D、其他 Live2D、主图片/其他图片、空白占位的稳定顺序降级。三类资源都使用明确相对路径与多值记录，并支持单项删除；用户角色支持受保护的整包删除。单图上限 20 MiB，并额外限制解码像素。
+Character C1a 显式数据与调用链切换已经完成：Profile v17 将旧单值 Live2D 和 `voice_profile_json` 迁入 `character_live2d_variants/character_portraits/character_voice_references`，并物理删除旧字段和只服务 Character 的 `live2d_models` 表。Storage 保持纯 SQL Repo，Character 聚合角色卡与三类资源；Seed、Cards Route、TTS、角色设置和 Desktop 主窗均消费显式资源。旧共享模型与重复声音 ID 使用角色范围的确定性新身份，危险旧路径不会被提升为可信资源；复制角色只复制角色定义，不共享原角色资源路径。后续 C1b 才实现 Prompt 硬门槛、统一健康投影、图片/路径校验、per-Character 锁和操作阶段；C2 做主窗确定性降级，C3 做可恢复文件生命周期与导入导出。Session Backup 继续不接 Character。
 
 ## 已确定的 V1 口径
 
@@ -229,7 +229,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
     - **A 主链真 Bug 已完成**：ToolResultStore EEXIST 只复用完全一致的内容；Usage 状态模型已区分 `cancelled`；Anthropic 已删除隐式 `maxTokens=4096` 并使用调用级剩余输出预算；
     - **B 主链安全收口**：install-git 与 mcpStdioGate 路由级审批已经接通；`AGEN_UNSAFE_*` 在正式构建中会直接阻止启动，不能由安装环境变量关闭隔离。Sandbox 状态接前端常驻提示仍属于前端工作；
     - **C 主链卫生已完成**：已删除 Macro 压缩后绕过 Memory 开关直接重读 L1 Session Note 的旧恢复旁路；正常 L1 Recall 继续作为不可压缩 Contribution 保留，Active Skill 继续走 required restore。AgentLoopState 已删除不可达状态；`prefixHash` 已明确为本次请求截止最终缓存断点的身份，会随历史、当前 Turn 和工具轮次演进，不再伪装成跨 Turn 固定 Prompt Hash。
-12. Character 后续按 `docs/architecture/characterResourceValidationPlan.md` 分三批实施：先做多 Live2D、多图片、参考音频显式数据与统一健康投影，再做主窗口表现降级，最后接三类资源单项删除、角色整包删除、文件恢复和完整用户数据备份；不得与当前 Desktop Chat Workspace 施工混批。
+12. Character C1a 已完成显式多 Live2D、多图片与参考音频数据、Profile v17、四组纯 SQL Repo、聚合 DTO 和现有调用链切换。下一批 C1b 在 `src/characters` 增加 Prompt 硬门槛、统一健康投影、路径/图片校验、per-Character 资源锁与操作阶段，不拆顶层 Workspace 包；C2 再做主窗口多 Live2D → 多图片 → 占位的运行时降级；C3 最后接资源/角色删除、导入导出、普通目录搬运与启动恢复。现有 Session Backup 不扩张到 Character。
 
 命名随业务批次清理：旧 `IFileStateStoreEntry/IFileStateStore` 及后续过渡接口已经删除，`IToolExecutionJournal` 已改为职责名；其余迁移期 `I*` 类型继续随业务边界处理，不单独进行全仓机械重命名。
 
@@ -239,7 +239,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 - MCP 拆分收尾（K3）：Desktop UI typecheck + 33 文件 166/166 通过。用户已拆出 KeyValueEditor/McpMarketView/McpServerRow 后，最后一块两个对话框归位 `McpServerDialogs.tsx`（295 行）：`McpImportDialog` 与 `McpServerFormDialog` 状态自包含（store 全局自取，表单/探测/导入结果内部管理），编辑实例经父级 `key={editing?.name ?? 'new'}` 重挂重置初值；`McpTab.tsx` 433→130 行纯装配。mcp/ 终态：McpTab 130 + MarketView 194 + ServerRow 186 + ServerDialogs 295 + KeyValueEditor 48 + ArgumentEditor 80 + form-state 82。`git diff --check` 通过，仅有既有 CRLF 提示。
 
-- Character 资源设计批：仅更新 `docs/architecture/characterResourceValidationPlan.md` 与接力板；未修改生产代码，未运行代码测试。文档冻结 Prompt Error、Live2D/图片/参考音频 Warning、多 Live2D 与多图确定性选择、三类资源相对路径、20 MiB 与解码像素双上限、单项资源删除、受保护的角色整包删除、可恢复文件事务、主窗占位和角色备份边界。
+- Character C1a 显式资源批：Storage 全量 29 文件 129/129、Characters 20/20、LocalHost 聚焦 2 文件 11/11 通过；Storage、Characters、LocalHost、Desktop UI、Desktop、Prompts 与 TurnExecution 定向 typecheck 通过。Profile v17 覆盖共享旧 Live2D ID、跨卡重复声音 ID、危险旧路径降级、旧列/旧表物理删除和外键检查；Seed 重复构造、资源聚合、主声音删除后确定性提升、旧 JSON API 拒绝、TTS/Live2D 路径新投影均已接线。
 
 - MemoryTab 用户自拆验收 + Memory 后端全量对账 + stats 刷新补漏（K3）：Desktop UI typecheck + 33 文件 166/166 通过。用户按方法论自拆 MemoryTab 688→33 行主装配 + 7 块（Overview/Nodes/Items/MaintenanceTab/HealthCard/MaintenanceSettings/labels)，五关验收全过。Sol Memory 后端对账结论：routes/memory.ts 10 端点 memoryApi 全覆盖；`memory_tasks` 四 kind 仅 extraction 真实运行（maintenance/embedding_refresh/consolidation 为 schema 兼容残留，残留行明确标失败不重试），维护四操作走 backgroundWork + M5 健康投影，前端呈现各对各路无窟窿。补漏：`memory_consolidation_completed` 与 `memory_extraction_completed` 到达时刷新 memory stats（归并/提取后统计快照过期，与 maintenance_completed 同待遇）。`git diff --check` 通过，仅有既有 CRLF 提示。
 

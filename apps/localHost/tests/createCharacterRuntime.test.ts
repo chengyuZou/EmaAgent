@@ -1,4 +1,4 @@
-// 测试 LocalHost 按外键顺序补角色种子、恢复全局角色并冻结初始 Emotion 词表。
+// 测试 LocalHost 先建角色再补表现资源，并恢复全局角色和初始 Emotion 词表。
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { CharacterCardStore, EMA_CARD_ID } from '@ema-agent/characters';
@@ -15,21 +15,17 @@ afterEach(() => {
 });
 
 describe('createCharacterRuntime', () => {
-  it('先补 Live2D 模型，再写入带外键的内置角色卡', () => {
+  it('角色卡和内置 Live2D 资源由同一角色种子幂等补齐', () => {
     const profileDb = openProfileDatabase();
-
-    expect(() => {
-      new CharacterCardStore({ db: profileDb }).ensureSeed();
-    }).toThrow();
 
     const { card } = createCharacterRuntime(profileDb);
 
     expect(card.current().id).toBe(EMA_CARD_ID);
     expect(
       profileDb.sqlite
-        .prepare('SELECT id FROM live2d_models WHERE id = ?')
-        .get('ema'),
-    ).toEqual({ id: 'ema' });
+        .prepare('SELECT id FROM character_live2d_variants WHERE character_card_id = ?')
+        .get(EMA_CARD_ID),
+    ).toEqual({ id: 'ema:ema' });
   });
 
   it('重复构造保持内置模型和角色卡各一条', () => {
@@ -39,8 +35,8 @@ describe('createCharacterRuntime', () => {
     createCharacterRuntime(profileDb);
 
     const live2dCount = profileDb.sqlite
-      .prepare('SELECT COUNT(*) AS count FROM live2d_models WHERE id = ?')
-      .get('ema') as { count: number };
+      .prepare('SELECT COUNT(*) AS count FROM character_live2d_variants WHERE character_card_id = ?')
+      .get(EMA_CARD_ID) as { count: number };
     const cardCount = profileDb.sqlite
       .prepare('SELECT COUNT(*) AS count FROM character_cards WHERE id = ?')
       .get(EMA_CARD_ID) as { count: number };
