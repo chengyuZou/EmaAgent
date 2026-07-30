@@ -1,17 +1,16 @@
 // 组装会话侧栏、消息历史、输入区与工作区 Dock，并维护聊天窗口生命周期。
-import { useEffect, useState, useRef, type JSX } from 'react';
-import { Button } from '@ema-agent/ui';
+import { useEffect, type JSX } from 'react';
 import type { SessionId } from '@ema-agent/ids';
 import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore } from '../stores/session-store.js';
 import { useSidecarStore } from '../stores/sidecar-store.js';
-import { useAgentRunStore } from '../stores/agentRunStore.js';
 import { findEnabledModel, useModelCatalogStore } from '../stores/model-catalog-store.js';
 import { useThemeSync } from '../stores/theme-store.js';
 import { useRuntimeSettingsSync } from '../stores/runtime-settings-sync.js';
 import { mountSystemEvents } from '../lib/system-sse.js';
 import { ErrorBoundary } from '../lib/error-boundary.js';
 import { SessionSidebar } from './SessionSidebar.js';
+import { ChatHeader } from './ChatHeader.js';
 import { ChatHistory } from './history/ChatHistory.js';
 import { ChatInput } from './ChatInput.js';
 import { ContextPanel } from './ContextPanel.js';
@@ -29,40 +28,13 @@ export function ChatPanel(): JSX.Element {
   useThemeSync();
   useRuntimeSettingsSync(sidecarStatus.kind === 'ok');
 
-  const [overflowOpen, setOverflowOpen] = useState(false);
-  const overflowRef = useRef<HTMLDivElement>(null);
-
   // Session metadata for title bar
   const session = useSessionStore((s) =>
     viewedSessionId ? s.sessions.byId.get(viewedSessionId as string) : undefined,
   );
 
-  // Running task count badge on the ⋮ button
-  const runningAgentRunCount = useAgentRunStore((s) => {
-    if (!viewedSessionId) return 0;
-    return [...s.runs.values()].filter(
-      (run) => run.sessionId === viewedSessionId as string &&
-               run.status === 'running',
-    ).length;
-  });
-
-  // 工作区 Dock：⋮ 菜单与"改动"入口都把资源开成标签。
+  // 工作区 Dock："改动"入口把 review 开成标签。
   const openTab = useWorkspaceStore((s) => s.openTab);
-  const workspaceLayout = useWorkspaceStore((s) =>
-    viewedSessionId ? s.layouts[viewedSessionId as string] : undefined);
-  const hasWorkspaceTab = (tabId: string): boolean =>
-    workspaceLayout?.tabsById[tabId] !== undefined;
-
-  function openWorkspaceTab(tab: 'sources' | 'files' | 'agentRuns' | 'review'): void {
-    if (!viewedSessionId) return;
-    switch (tab) {
-      case 'sources':   openTab(viewedSessionId, { id: 'sources', kind: 'sources' }); break;
-      case 'files':     openTab(viewedSessionId, { id: 'files', kind: 'files' }); break;
-      case 'agentRuns': openTab(viewedSessionId, { id: 'agentRuns', kind: 'agentRuns' }); break;
-      case 'review':    openTab(viewedSessionId, { id: 'review', kind: 'review' }); break;
-    }
-    setOverflowOpen(false);
-  }
 
   // 聊天窗只消费主窗广播，不再自行建立全局 SSE 连接。
   useEffect(() => mountSystemEvents({ ownsConnection: false }), []);
@@ -85,18 +57,6 @@ export function ChatPanel(): JSX.Element {
       }
     })();
   }, []);
-
-  // Close overflow when clicking outside
-  useEffect(() => {
-    if (!overflowOpen) return;
-    const handler = (e: MouseEvent): void => {
-      if (overflowRef.current && !overflowRef.current.contains(e.target as Node)) {
-        setOverflowOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [overflowOpen]);
 
   function openReview(): void {
     if (!viewedSessionId) return;
@@ -128,70 +88,11 @@ export function ChatPanel(): JSX.Element {
         <SessionSidebar />
 
         <WorkspaceFrame sessionId={viewedSessionId}>
-          {/* Title bar + workspace entries */}
-          <div className="flex items-center justify-between px-4 py-2 border-b shrink-0 border-[var(--ema-border)]">
-            {/* Session title */}
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="text-sm font-medium truncate text-[var(--ema-text-secondary)]">
-                {session?.title ?? (viewedSessionId ? '加载中…' : '无会话')}
-              </span>
-              {session?.parentSessionId && (
-                <span className="text-xs text-[var(--ema-text-tertiary)]">· 会话副本</span>
-              )}
-            </div>
-
-            {/* Workspace ⋮ menu */}
-            <div className="flex items-center gap-0.5 shrink-0">
-              <div className="relative" ref={overflowRef}>
-                <Button
-                  variant="ghost"
-                  className={`relative size-7 p-0 rounded-md flex items-center justify-center text-sm transition-colors
-                    ${overflowOpen
-                      ? 'text-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
-                      : 'text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)]'}`}
-                  onClick={() => setOverflowOpen((v) => !v)}
-                  title="工作区"
-                >
-                  <span className="i-solar:menu-dots-bold-duotone text-base shrink-0" aria-hidden />
-                  {runningAgentRunCount > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-3.5 flex items-center justify-center rounded-full text-[9px] font-bold px-0.5 pointer-events-none bg-[var(--ema-primary)] text-[var(--ema-text-primary)]">
-                      {runningAgentRunCount}
-                    </span>
-                  )}
-                </Button>
-
-                {overflowOpen && (
-                  <div className="ema-slide-up absolute top-full right-0 mt-1 z-50 w-44 rounded-xl border p-1 shadow-[var(--ema-shadow-3)] bg-[var(--ema-surface-4)] border-[var(--ema-border-hover)]">
-                    <OverflowItem
-                      icon="i-lucide:paperclip"
-                      label="来源"
-                      active={hasWorkspaceTab('sources')}
-                      onClick={() => openWorkspaceTab('sources')}
-                    />
-                    <OverflowItem
-                      icon="i-solar:folder-bold-duotone"
-                      label="文件浏览"
-                      active={hasWorkspaceTab('files')}
-                      onClick={() => openWorkspaceTab('files')}
-                    />
-                    <OverflowItem
-                      icon="i-solar:cpu-bold-duotone"
-                      label="子智能体"
-                      active={hasWorkspaceTab('agentRuns')}
-                      badge={runningAgentRunCount}
-                      onClick={() => openWorkspaceTab('agentRuns')}
-                    />
-                    <OverflowItem
-                      icon="i-lucide:file-diff"
-                      label="审阅"
-                      active={hasWorkspaceTab('review')}
-                      onClick={() => openWorkspaceTab('review')}
-                    />
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
+          <ChatHeader
+            sessionId={viewedSessionId}
+            title={session?.title ?? (viewedSessionId ? '加载中…' : '无会话')}
+            isFork={session?.parentSessionId !== null && session?.parentSessionId !== undefined}
+          />
 
           {sidecarStatus.kind === 'error' && (
             <div
@@ -231,34 +132,8 @@ export function ChatPanel(): JSX.Element {
   );
 }
 
-// ── Workspace ⋮ menu item ───────────────────────────────────────────────────────
-
-function OverflowItem({
-  icon, label, active, badge, onClick,
-}: {
-  icon: string; label: string; active: boolean; badge?: number; onClick(): void;
-}): JSX.Element {
-  return (
-    <Button
-      variant="ghost"
-      className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-xs font-normal rounded-lg transition-colors
-        ${active
-          ? 'text-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
-          : 'text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-3)]'}`}
-      onClick={onClick}
-    >
-      <span className={`${icon} text-base shrink-0`} aria-hidden />
-      <span className="flex-1 text-left">{label}</span>
-      {badge != null && badge > 0 && (
-        <span className="min-w-[18px] h-4 flex items-center justify-center rounded-full text-[10px] font-medium px-1 bg-[var(--ema-primary-muted)] text-[var(--ema-primary)]">
-          {badge}
-        </span>
-      )}
-      {active && <span className="i-lucide:check text-sm shrink-0 text-[var(--ema-primary)]" aria-hidden />}
-    </Button>
-  );
-}
-
+// ── Context ball ──────────────────────────────────────────────────────────────
+// Small circular arc indicator showing live input token count vs context window.
 // ── Context ball ──────────────────────────────────────────────────────────────
 // Small circular arc indicator showing live input token count vs context window.
 

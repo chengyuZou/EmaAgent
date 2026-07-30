@@ -58,7 +58,7 @@ Session
    └─ AgentLoop：在该 Turn 内重复执行 LLM → Tool → Result
 ```
 
-Vision 是感知能力，主动说话是唤醒策略，WebSocket 是传输协议，直播是长生命周期活动；它们都不是新的 `ExecutionProfile`。V1 只实现用户消息触发，不建立未来触发器、Realtime 或直播空包，但 Turn 启动契约应保留明确的 trigger/origin 扩展位置，且任何非用户来源都不能构成危险 Tool 的用户授权。
+Vision 是感知能力，主动说话是唤醒策略，WebSocket 是传输协议，直播是长生命周期活动；它们都不是新的 `ExecutionProfile`。V1 实现用户消息触发，以及后台进程自然结束后严格受限的 `backgroundProcessCompleted` 触发；不建立 Realtime、直播或其他未来触发器空包。Turn 启动契约保留明确的 trigger/origin 扩展位置，且任何非用户来源都不能构成危险 Tool 的用户授权。
 
 ### 2.1 用户只看到 Chat 与 Work
 
@@ -422,6 +422,235 @@ V1 Task 闭环包括：SQLite 持久化、事务与 CAS、Session 内短序号�
 V1 不把普通 Subagent 当成 Claude Team teammate。`TaskCreate/Get/List/Update` 只注册给根 Turn；子 Agent 只获得自包含指令和可选 `taskId`，不读取整张 Task List，也不直接改变 Task 状态。根 Agent 可以直接处理 Task，因此 Task 不保存 `ownerAgentRunId`。一次活动 AgentRun 可通过 `agent_runs.task_id` 独占绑定一个既有 Task；历史重试继续保留多条 Run。Run 终态只释放活动绑定，Task 是否完成由父 Turn 验证后显式提交。
 
 在迁移前必须保留现有 CAS、恢复和 transcript 测试，避免“删了包但把断电恢复也删了”。
+
+### 6.1 V1 后台 Shell：BackgroundProcess
+
+本节冻结 V1 后台 Shell 的后端边界。它参考 Claude Code 的显式
+`run_in_background`、命令超过交互等待预算后原地转交后台、输出落盘、
+完成通知与 `TaskOutput/TaskStop`，但不照搬 Claude 的历史 Task 命名。
+
+Ema 中三类身份必须分开：
+
+```text
+Task                跨 Turn 的结构化工作项
+AgentRun            一次子 Agent 执行
+BackgroundProcess   一次可查询、可停止的后台 Shell 进程
+```
+
+前端可以把 AgentRun 与 BackgroundProcess 放在同一个“运行活动”面板，
+后端不能合表、共用 ID 或共用终态。AgentRun 已由 `agent_runs` 与
+`agent_run_messages` 持久化；BackgroundProcess 使用独立状态表和输出文件。
+
+#### 数据与文件边界
+
+状态元数据进入当前 active dataDir 的 `data.db`，大体积输出进入所属
+Session 目录：
+
+```text
+{activeDataDir}/
+├─ data.db
+└─ sessions/
+   └─ <sessionId>/
+      └─ processes/
+         └─ <backgroundProcessId>/
+            ├─ stdout.log
+            └─ stderr.log
+```
+
+`background_processes` 使用显式列，至少记录：
+
+```text
+id / session_id / origin_turn_id / tool_call_id
+command / cwd / status / version
+created_at / started_at / completed_at
+exit_code / termination_reason
+stdout_bytes / stderr_bytes / output_relative_path
+completion_claimed_at / continuation_turn_id / model_notified_at
+```
+
+SQLite 是状态事实源；日志文件是有界大内容。`output_relative_path` 只能由
+RuntimePaths 生成，不能接受模型或用户提交的任意路径。删除 Session 时依靠
+数据库外键与 Session 目录删除共同回收。旧 PID 不能用于重启后接管或终止
+进程，避免 PID 复用误杀；启动恢复只把遗留 `queued/starting/running`
+标记为 `interrupted`，保留已有日志，不自动重放命令。后台命令没有 Lease、
+重新认领或失败重试：启动一次便只执行一次，失败直接进入 `failed`。
+
+#### 状态机与 15 秒竞态
+
+```text
+queued -> starting -> running -> completed/failed/timedOut/stopped
+
+应用异常退出时：
+queued/starting/running -> interrupted
+```
+
+普通 Bash 调用开始时只是一个受管理的命令句柄，不提前创建虚假的
+BackgroundProcess。命令完成与 15 秒转交后台争用同一个内存所有权转换：
+
+```text
+awaitingResult -> settled
+awaitingResult -> transferred
+```
+
+`settled` 先赢时不创建 BackgroundProcess，Tool 直接得到命令结果；
+`transferred` 先赢时才创建 BackgroundProcess 并返回其引用。转交必须接管
+已经运行的同一个进程，不能杀掉后重启，也不能注册两份句柄。转交完成后
+绝不再给原 Tool Call 追加第二个 `tool_result`。
+
+后台提交成功只说明 Tool 成功把进程交给后台系统，不说明命令执行成功：
+
+```text
+ToolExecution: succeeded
+BackgroundProcess: queued | running
+```
+
+进程的真实成功、失败、停止或超时由 BackgroundProcess 终态表达。若命令在
+15 秒内被现有 `commandSemantics` 判定为失败，Bash Tool 本身直接失败并携带
+退出码和有界 stderr；不能把失败包装成 `BashResult` 的成功分支。`grep`
+无匹配、`diff` 有差异等既有非零成功语义继续保留。已经转交后台后才发生的
+失败不追溯改写旧 ToolExecution，而是由 BackgroundProcess 的 `failed`
+终态和后续完成 Turn 处理。
+
+#### 取消与超时
+
+即时结果等待取消和进程生命周期取消必须分开：
+
+```text
+Tool/Turn wait signal     只终止当前 Tool 对即时结果的等待
+Process lifetime signal   由 ProcessStop、总超时和应用关闭控制
+```
+
+转交后台后不能继续把进程绑定在原 Turn 的 AbortSignal 上，否则 Turn 收口会
+立即杀掉刚转入后台的进程。命令 `timeout` 表示进程总寿命，不是即时结果等待
+预算；即时结果等待预算固定为 15 秒。后台进程可以持续数小时，但不跨应用进程
+存活：V1 默认总寿命 24 小时，用户设置允许在安全范围内延长到 7 天；关闭
+Ema 或 Sidecar 异常退出会终止进程树并记为 `interrupted`。需要跨重启常驻
+的系统服务不属于 V1 BackgroundProcess，应由操作系统服务管理。
+
+#### Tool 契约
+
+不向通用 `ToolDef` 增加 `supportsBackground`。后台生命周期不是所有 Tool
+的共同属性，不能把 FileRead、WebFetch、AgentRun 和领域 Job 强行套进同一
+模型。
+
+Bash 自己增加可选 `runInBackground` 输入。结果按业务事实命名，不增加
+`mode: 'foreground' | 'background'` 这种展示字段：
+
+```ts
+type BashToolResult =
+  | {
+      kind: 'commandResult';
+      stdout: string;
+      stderr: string;
+      exitCode: number;
+      truncated: boolean;
+    }
+  | {
+      kind: 'processReference';
+      backgroundProcessId: BackgroundProcessId;
+      status: 'queued' | 'running';
+      outputPreview: string;
+    };
+```
+
+V1 增加三个独立 Builtin Tool：
+
+```text
+ProcessList(status?, limit?)
+ProcessOutput(backgroundProcessId, cursor?, waitMs?)
+ProcessStop(backgroundProcessId)
+```
+
+`ProcessList` 只列当前 Session 的进程，SessionId 从窄 Tool Context 取得，
+不接受模型提交其他 SessionId；返回 ID、命令摘要、状态、时长和退出码。
+`ProcessOutput` 返回状态、stdout/stderr 有界增量、`nextCursor` 与可选退出
+码；`waitMs` 只提供最多 30 秒的短等待，不能用来等待数小时。
+`ProcessStop` 可以取消 queued 项或终止运行中的整棵进程树。模型不直接获得
+日志绝对路径。
+
+#### 并发、队列与 Settings
+
+BackgroundProcess 由 `src/tools/background` 拥有全局调度器，按 Session
+保留 FIFO，并在 Session 间公平取队。用户设置只开放有产品价值的并发数：
+
+```ts
+interface BackgroundProcessSettings {
+  maxConcurrent: number; // 默认 2，范围 1..8，nextOperation 生效
+  maxRuntimeHours: number; // 默认 24，范围 1..168，nextOperation 生效
+}
+```
+
+设置定义位于 `src/tools/background/settings.ts` 并由 Settings Catalog
+聚合。降低限制时不杀现有进程，只停止启动新项。队列长度、日志字节上限与
+强制终止宽限期继续是安全硬限制，不把所有内部参数暴露给用户。
+
+显式 `runInBackground` 在无槽位时进入 `queued` 并立即返回 ID；排队前已经
+完成 PreparedToolCall、Permission 与 Sandbox 决策，排队保存同一份不可变
+启动快照，不能在出队时替换命令或工作目录。普通 Bash 从启动起就占用受管理
+命令并发槽；15 秒后只转移结果所有权，不重复占用第二个后台槽。因此转交不会
+因并发配额失败，也不复制、不重启进程。显式后台请求若尚未取得槽位才进入
+`queued`。
+
+#### 完成事件、自动续跑与新 Turn
+
+后台终态先提交 SQL，再发布 `BackgroundProcessEvent`。事件由
+`src/tools/background/events.ts` 拥有，在 LocalHost 组合进 Session 范围
+事件通道；原 Turn 可能已经结束，因此不能继续发送旧 `TurnEvent`。
+
+Claude Code 不依赖 Agent 无限轮询：`TaskOutput(block=true)` 虽可进行最长
+约十分钟的显式等待，但当前 Bash Prompt 要求后台任务完成后走
+`task-notification`，不要轮询。通知在 Query 仍运行时进入下一轮模型上下文；
+Query 空闲时则经过统一输入队列自动启动新的 Query。
+
+Ema 采用相同能力，但使用明确的 Turn 语义。完成通知进入每个 Session 的
+持久 Completion Inbox：
+
+```text
+后台进程终态提交
+  -> Completion Inbox pending
+  -> 当前 Turn 仍会继续调用 LLM
+       └─ 在下一次 Context 组装边界原子领取并注入
+  -> 当前 Session 已空闲
+       └─ 创建 trigger=backgroundProcessCompleted 的新 Turn
+  -> 成功进入模型窗口后标记 delivered
+```
+
+`backgroundProcessCompleted` 是系统生成的 TurnTrigger，不是 User Message，
+不在 UI 冒充用户气泡，也不继承原 Turn 的临时权限。它属于同一个 Session，
+会产生新的 TurnId，并携带 BackgroundProcessId、原 TurnId、终态、退出码与
+有界输出摘要。需要完整内容时模型调用 `ProcessOutput`。
+
+同一 Session 同时完成多个进程时允许在启动前合并成一个完成 Turn，避免
+连续唤醒模型。Session 正忙时只排队，不并发启动第二个根 Turn。用户主动
+停止产生的 `stopped` 默认只更新 UI，不自动唤醒模型；自然 `completed`、
+`failed` 和 `timedOut` 才进入自动续跑。领取与创建 Turn 必须用
+BackgroundProcessId 幂等，保证断电恢复不会重复创建多个完成 Turn；这只是
+通知投递去重，不是重新执行或重新认领失败命令。
+
+Agent 在收到 `processReference` 后应继续完成不依赖结果的工作；若后续必须
+依赖该结果，则结束当前 Turn 并说明“后台完成后继续”。它不能用
+`ProcessList/ProcessOutput` 形成高频轮询。持续数小时的进程由 Supervisor
+和事件通道管理，Agent 不保持 LLM 请求、Tool 调用或 Turn 等待。
+
+#### 前端投影
+
+置顶摘要增加“运行活动”，聚合 AgentRun 与 BackgroundProcess 的运行中/
+完成计数；点击后台进程打开动态 `BackgroundProcessPanel`。面板支持状态、
+时长、命令、工作目录、stdout/stderr 游标分页、尾部跟随、终止和跳回来源
+Tool Call。UI 可以共享活动外壳，但继续使用独立的 AgentRun/Process DTO。
+具体布局和委派边界见 `EmaChatWorkspacePlan.md`。
+
+#### 实施顺序
+
+1. `BackgroundProcessId`、Data migration、Repo、状态机与 Session 输出目录；
+2. 受管理进程句柄、显式后台、并发队列与
+   `ProcessList/ProcessOutput/ProcessStop`；
+3. 终态事件、启动恢复、Completion Inbox 与系统触发 Turn；
+4. 前端运行活动摘要与 BackgroundProcessPanel；
+5. 最后增加 15 秒即时结果等待预算和原进程转交后台。
+
+前四步稳定前，当前 Bash Schema 继续隐藏旧假 `run_in_background`，不能仅
+删除测试或重新暴露字段。
 
 ## 7. 目标代码结构
 

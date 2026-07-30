@@ -420,6 +420,10 @@ V1 “来源”至少包括当前已经持久化的附件：
 `backgroundProcessId`，不能提交 PID。点击来源跳转到原 Tool Call；Session
 删除后该标签进入资源失效状态并关闭，不打开其他 Session 的同名进程。
 
+后台进程自然完成、失败或超时后，前端先更新活动状态；后端若因此启动
+`backgroundProcessCompleted` Turn，聊天区把它渲染为系统活动与 Agent 回复，
+不能伪造一条用户气泡。用户主动终止默认只更新面板，不自动唤醒模型。
+
 来源面板形态（Codex 实测校正）：
 
 - 列表每行 `类型图标 + 文件名 + 完整路径 + 状态行`（如"已附加到对话"）；粘贴文本形成的附件与上传文件同级展示，类型图标区分；
@@ -769,7 +773,7 @@ TurnRail 的最外层是透明轨道容器，只承担定位、滚轮与指针�
 
 ### 批次 F：后台进程活动面板
 
-后端 `BackgroundProcess + ProcessOutput/ProcessStop`、列表 API 和 Session
+后端 `BackgroundProcess + ProcessList/ProcessOutput/ProcessStop`、列表 API、Completion Inbox 和 Session
 事件完成后，由前端模型按 §3.2 与 §7.1 实现：
 
 - 置顶摘要中的后台进程计数；
