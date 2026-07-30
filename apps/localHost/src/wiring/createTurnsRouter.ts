@@ -5,6 +5,7 @@ import { turnsRoute } from '../routes/turns/index.js';
 import type { AppBindings } from './bindings.js';
 import { createTurnExecution } from './createTurnExecution.js';
 import { createTurnOutput } from './createTurnOutput.js';
+import { BackgroundProcessCompletionDispatcher } from '../background/backgroundProcessCompletionDispatcher.js';
 
 export function createTurnsRouter(bindings: AppBindings): Hono {
   const {
@@ -12,6 +13,13 @@ export function createTurnsRouter(bindings: AppBindings): Hono {
     inputPreparer,
   } = createTurnExecution(bindings);
   const speechOutput = createTurnOutput(bindings);
+  const backgroundCompletions = new BackgroundProcessCompletionDispatcher({
+    source: bindings.backgroundProcesses,
+    session: bindings.session,
+    executor,
+    inputPreparer,
+  });
+  backgroundCompletions.start();
 
   return turnsRoute(
     {
@@ -33,4 +41,3 @@ export function createTurnsRouter(bindings: AppBindings): Hono {
     executor,
   );
 }
-

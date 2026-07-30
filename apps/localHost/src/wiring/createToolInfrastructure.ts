@@ -7,22 +7,30 @@ import type { SessionId } from '@ema-agent/ids';
 import {
   AgentRunMessagesRepo,
   AgentRunsRepo,
+  BackgroundProcessesRepo,
   TasksRepo,
   ToolExecutionsRepo,
   type Database,
 } from '@ema-agent/storage';
 import { TaskStore } from '@ema-agent/tasks';
 import {
+  BackgroundProcessRuntime,
+  backgroundProcessSetting,
   ToolExecutionJournal,
   ToolRegistry,
   ToolResultCleaner,
   ToolResultStore,
 } from '@ema-agent/tools';
+import type { SettingsStore } from '@ema-agent/settings';
+import type { BackgroundProcessEvent } from '@ema-agent/tools';
+import { backgroundProcessOutputDirFor } from '../storage-locations/paths.js';
 
 export function createToolInfrastructure(
   dataDb: Database,
   activeDataDir: string,
   disableExecuteTools: boolean,
+  settings: SettingsStore,
+  emit: (event: BackgroundProcessEvent) => void,
 ) {
   // 内置工具只注册一次并保持确定顺序；MCP 后续只能在同一 Registry 上增删自己的分区。
   const tools = new ToolRegistry();
@@ -45,6 +53,13 @@ export function createToolInfrastructure(
     resultStores.set(sessionId, store);
     return store;
   };
+  const backgroundProcesses = new BackgroundProcessRuntime({
+    repo: new BackgroundProcessesRepo(dataDb.sqlite),
+    outputPath: (sessionId, processId) =>
+      backgroundProcessOutputDirFor(activeDataDir, sessionId, processId),
+    settings: () => settings.get(backgroundProcessSetting),
+    emit,
+  });
 
   return {
     tools,
@@ -65,5 +80,6 @@ export function createToolInfrastructure(
     toolExecutionJournal: new ToolExecutionJournal(
       new ToolExecutionsRepo(dataDb.sqlite),
     ),
+    backgroundProcesses,
   };
 }

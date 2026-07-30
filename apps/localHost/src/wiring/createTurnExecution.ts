@@ -143,6 +143,7 @@ export function createTurnExecution(bindings: AppBindings): {
         agentRunTranscriptWriter: bindings.agentRunTranscript,
         taskStore: bindings.taskStore,
         toolExecutionJournal: bindings.toolExecutionJournal,
+        backgroundProcesses: bindings.backgroundProcesses,
       }),
     ),
   );

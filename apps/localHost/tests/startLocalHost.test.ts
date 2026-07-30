@@ -60,6 +60,9 @@ describe('LocalHostLifecycle', () => {
       }),
       shutdown: vi.fn(async () => undefined),
     };
+    const backgroundProcesses = {
+      shutdown: vi.fn(async () => undefined),
+    };
     const lifecycle = new LocalHostLifecycle(
       knowledge,
       marketplace,
@@ -67,6 +70,7 @@ describe('LocalHostLifecycle', () => {
       modelCatalog,
       providerRuntime,
       backgroundWork,
+      backgroundProcesses,
     );
 
     await Promise.all([lifecycle.start(), lifecycle.start()]);
@@ -93,6 +97,7 @@ describe('LocalHostLifecycle', () => {
 
     await lifecycle.shutdown();
     expect(backgroundWork.shutdown).toHaveBeenCalledTimes(1);
+    expect(backgroundProcesses.shutdown).toHaveBeenCalledTimes(1);
   });
 
   it('可选初始化失败只降级对应能力，不让 start 失败', async () => {
@@ -127,6 +132,9 @@ describe('LocalHostLifecycle', () => {
       },
       {
         start: vi.fn(),
+        shutdown: vi.fn(async () => undefined),
+      },
+      {
         shutdown: vi.fn(async () => undefined),
       },
     );
@@ -166,6 +174,9 @@ describe('LocalHostLifecycle', () => {
       modelCatalog,
       providerRuntime,
       backgroundWork,
+      {
+        shutdown: vi.fn(async () => undefined),
+      },
     );
 
     await expect(lifecycle.start()).rejects.toThrow('required recovery failed');

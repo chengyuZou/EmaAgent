@@ -11,6 +11,7 @@ import {
 } from '@ema-agent/memory';
 import { permissionAskTimeoutSetting } from '@ema-agent/permission';
 import { SettingsCatalog } from '@ema-agent/settings';
+import { backgroundProcessSetting } from '@ema-agent/tools';
 import { themeSetting } from '@ema-agent/theme';
 import { visionSetting } from '@ema-agent/vision';
 import { eventDisplaySetting } from './eventDisplaySetting.js';
@@ -19,6 +20,7 @@ export function createSettingsCatalog(): SettingsCatalog {
   const catalog = new SettingsCatalog();
   catalog.register(agentSetting);
   catalog.register(attachmentSetting);
+  catalog.register(backgroundProcessSetting);
   catalog.register(contextCompactionSetting);
   catalog.register(eventDisplaySetting);
   catalog.register(knowledgeModelsSetting);

@@ -18,6 +18,7 @@ import { agentRunsRoute } from '../routes/agentRuns.js';
 import { tasksRoute } from '../routes/tasks.js';
 import { storageStatsRoute } from '../routes/storage-stats.js';
 import { systemRoute } from '../routes/system.js';
+import { backgroundProcessesRoute } from '../routes/backgroundProcesses.js';
 import { createSettingsCatalog } from '../settings/createSettingsCatalog.js';
 import type { MountedHttpRoute } from '../server.js';
 import type { AppBindings } from './bindings.js';
@@ -113,5 +114,9 @@ export function createHttpRoutes(bindings: AppBindings): readonly MountedHttpRou
       router: agentRunsRoute(bindings.agentRunStore, bindings.agentRunTranscript),
     },
     { path: '/api/tasks', router: tasksRoute(bindings.taskStore) },
+    {
+      path: '/api/background-processes',
+      router: backgroundProcessesRoute(bindings.backgroundProcesses),
+    },
   ];
 }

@@ -61,7 +61,12 @@ import type {
 } from '@ema-agent/turn';
 import type { KbSearchResult, KbManager } from '@ema-agent/knowledge';
 import type { CommandRunnerPort, SandboxStatusWire } from '@ema-agent/sandbox';
-import type { ToolExecutionJournal, ToolRegistry, ToolResultStore } from '@ema-agent/tools';
+import type {
+  BackgroundProcessRuntime,
+  ToolExecutionJournal,
+  ToolRegistry,
+  ToolResultStore,
+} from '@ema-agent/tools';
 import type {
   AgentRunStore,
   AgentRunTranscriptStore,
@@ -148,6 +153,8 @@ export interface AppBindings {
   /** 根 Turn 的 AskUser 等待端口；内部委托统一 Session 交互队列。 */
   askUserRegistry:   AskUserInteractionPort;
   tools:             ToolRegistry;
+  /** Session 级后台 Shell 的调度、日志和终态入口。 */
+  backgroundProcesses: BackgroundProcessRuntime;
   /** Per-turn factory that yields an askPermission callback wired to SSE emit. */
   buildAskForTurn: (args: {
     sessionId: string;
@@ -276,6 +283,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
 
   // SettingsStore 必须先于动态执行面创建，运行时只读取已校验的类型化快照。
   const { settings } = createSettingsStore(profileDb.sqlite);
+  const systemBus = new SystemEventBus();
 
   // 六类模型执行器保持无 Session 状态；网络请求只在具体操作发生时启动。
   const {
@@ -325,18 +333,23 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     agentRunStore,
     taskStore,
     toolExecutionJournal,
-  } = createToolInfrastructure(dataDb, activeDataDir, disableExecuteTools);
+    backgroundProcesses,
+  } = createToolInfrastructure(
+    dataDb,
+    activeDataDir,
+    disableExecuteTools,
+    settings,
+    event => systemBus.emit(event),
+  );
 
   const invalidateSessionRuntime = (sessionId: SessionId): void => {
     invalidateSessionRunner(sessionId);
   };
   const removeSessionRuntime = (sessionId: SessionId): void => {
+    backgroundProcesses.discardSession(sessionId);
     removeSessionRunner(sessionId);
     removeSessionToolState(sessionId);
   };
-
-  // ── System event bus ────────────────────────────────────────────────────────
-  const systemBus = new SystemEventBus();
 
   // Memory 只在此构造；索引初始化、恢复、tick 与 drain 仍由 BackgroundWork 管理。
   const memory = createMemoryRuntime(
@@ -404,6 +417,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
       session,
       agentRunStore,
       toolExecutionJournal,
+      backgroundProcesses,
     ),
     memory,
     mcpRegistry,
@@ -420,6 +434,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     modelCatalog,
     providerRuntime,
     backgroundWork,
+    backgroundProcesses,
   );
 
   return {
@@ -428,7 +443,8 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     llm, embed, rerank, narrative, modelCatalog, modelCapabilities,
     card, emotion,
     tts, audioArchive, stt, vision, providerRuntime,
-    permission, interactionQueue, askUserRegistry, tools, buildAskForTurn, getCommandRunner,
+    permission, interactionQueue, askUserRegistry, tools, backgroundProcesses,
+    buildAskForTurn, getCommandRunner,
     invalidateSessionRuntime, removeSessionRuntime,
     getSessionToolResultStore, agentRunStore, taskStore,
     toolExecutionJournal, agentRunTranscript,

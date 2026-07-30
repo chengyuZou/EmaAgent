@@ -64,6 +64,9 @@ describe('StartupRecovery', () => {
     const toolExecutions = {
       recoverInterrupted: vi.fn(() => []),
     };
+    const backgroundProcesses = {
+      recoverInterrupted: vi.fn(() => []),
+    };
 
     const recovery = new StartupRecovery(
       activeDataDir,
@@ -71,11 +74,13 @@ describe('StartupRecovery', () => {
       session,
       agentRuns,
       toolExecutions,
+      backgroundProcesses,
     );
     recovery.runRequired();
     expect(recovery.runMaintenance()).toEqual({ memoryReady: true });
 
     expect(toolExecutions.recoverInterrupted).toHaveBeenCalledTimes(1);
+    expect(backgroundProcesses.recoverInterrupted).toHaveBeenCalledTimes(1);
     expect(memory.runStartupRecovery).toHaveBeenCalledTimes(1);
     expect(session.recoverStuckTurns).toHaveBeenCalledTimes(1);
     expect(agentRuns.recoverInterrupted).toHaveBeenCalledTimes(1);
@@ -103,6 +108,7 @@ describe('StartupRecovery', () => {
       },
       { recoverInterrupted: vi.fn(() => []) },
       { recoverInterrupted: vi.fn(() => []) },
+      { recoverInterrupted: vi.fn(() => []) },
     );
 
     expect(() => recovery.runRequired()).toThrow('database unavailable');
@@ -122,6 +128,7 @@ describe('StartupRecovery', () => {
         listTurnIdsPage: vi.fn(() => ({ ids: [], nextCursor: null })),
         recoverStuckTurns: vi.fn(() => ({ healed: 0 })),
       },
+      { recoverInterrupted: vi.fn(() => []) },
       { recoverInterrupted: vi.fn(() => []) },
       { recoverInterrupted: vi.fn(() => []) },
     );

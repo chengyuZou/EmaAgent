@@ -5,7 +5,10 @@ import { cleanupInterruptedFileWriteTemps } from '@ema-agent/tool-builtin';
 import type { MemoryPlanner } from '@ema-agent/memory';
 import type { SessionStore } from '@ema-agent/session';
 import type { TurnIdPage, TurnIdPageCursor } from '@ema-agent/storage';
-import type { ToolExecutionJournal } from '@ema-agent/tools';
+import type {
+  BackgroundProcessRuntime,
+  ToolExecutionJournal,
+} from '@ema-agent/tools';
 import type { SessionId } from '@ema-agent/ids';
 import {
   removeLegacyArtifactDirectories,
@@ -32,6 +35,10 @@ export class StartupRecovery {
     private readonly session: StartupSession,
     private readonly agentRuns: StartupAgentRuns,
     private readonly toolExecutions: StartupToolExecutions,
+    private readonly backgroundProcesses: Pick<
+      BackgroundProcessRuntime,
+      'recoverInterrupted'
+    >,
   ) {}
 
   /**
@@ -40,8 +47,18 @@ export class StartupRecovery {
    */
   runRequired(): void {
     this.recoverToolExecutions();
+    this.recoverBackgroundProcesses();
     this.recoverTurns();
     this.recoverAgentRuns();
+  }
+
+  private recoverBackgroundProcesses(): void {
+    const recovered = this.backgroundProcesses.recoverInterrupted();
+    if (recovered.length > 0) {
+      console.log(
+        `[background-process] startup: marked ${recovered.length} process(es) as interrupted`,
+      );
+    }
   }
 
   /**

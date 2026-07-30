@@ -9,6 +9,7 @@ import { SKILL_SEEDS, type SkillStore } from '@ema-agent/skills';
 import { profileDir } from '../storage-locations/index.js';
 import type { BackgroundWork } from '../background/backgroundWork.js';
 import type { ProviderRuntimeFacade } from '../wiring/provider-runtime.js';
+import type { BackgroundProcessRuntime } from '@ema-agent/tools';
 
 const MODEL_CATALOG_REFRESH_TIMEOUT_MS = 10_000;
 
@@ -30,6 +31,7 @@ export class LocalHostLifecycle {
     private readonly modelCatalog: StartupModelCatalog,
     private readonly providerRuntime: StartupProviderRuntime,
     private readonly backgroundWork: StartupBackgroundWork,
+    private readonly backgroundProcesses: Pick<BackgroundProcessRuntime, 'shutdown'>,
   ) {}
 
   /** 必需恢复完成后即可 ready；其余能力在后台独立启动并可降级。 */
@@ -41,6 +43,7 @@ export class LocalHostLifecycle {
   async shutdown(): Promise<void> {
     await this.startup;
     await Promise.all([
+      this.backgroundProcesses.shutdown(),
       this.backgroundWork.shutdown(),
       ...this.backgroundTasks,
     ]);

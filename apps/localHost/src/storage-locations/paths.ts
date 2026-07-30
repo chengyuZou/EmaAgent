@@ -178,6 +178,24 @@ export function sessionDirFor(dataDir: string, sessionId: string): string {
   return path.join(dataDir, 'sessions', sessionId);
 }
 
+/** 后台进程日志跟随 Session 生命周期，但不属于某个短命 Turn。 */
+export function backgroundProcessOutputDirFor(
+  dataDir: string,
+  sessionId: string,
+  backgroundProcessId: string,
+): { absoluteDirectory: string; relativeDirectory: string } {
+  const relativeDirectory = path.join(
+    'sessions',
+    sessionId,
+    'background-processes',
+    backgroundProcessId,
+  );
+  return {
+    absoluteDirectory: path.join(dataDir, relativeDirectory),
+    relativeDirectory,
+  };
+}
+
 export function sessionAudioDirFor(dataDir: string, sessionId: string): string {
   return path.join(sessionDirFor(dataDir, sessionId), 'audio');
 }
