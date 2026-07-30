@@ -5,6 +5,7 @@ import { queryBranch } from './queries/branch.js';
 import { queryChangeStats } from './queries/changeStats.js';
 import { queryUntrackedCount } from './queries/status.js';
 import { queryUpstream } from './queries/upstream.js';
+import { queryOriginUrl } from './queries/remote.js';
 import type { GitSummary } from './types.js';
 
 export async function gitSummary(workspaceRoot: string): Promise<GitSummary> {
@@ -13,12 +14,13 @@ export async function gitSummary(workspaceRoot: string): Promise<GitSummary> {
 
   try {
     // 与 codex collect_git_info 同时序:先确认仓库,再并行全部只读查询。
-    const [branchInfo, unstaged, staged, untrackedCount, upstream] = await Promise.all([
+    const [branchInfo, unstaged, staged, untrackedCount, upstream, originUrl] = await Promise.all([
       queryBranch(repoRoot),
       queryChangeStats(repoRoot, 'unstaged'),
       queryChangeStats(repoRoot, 'staged'),
       queryUntrackedCount(repoRoot),
       queryUpstream(repoRoot),
+      queryOriginUrl(repoRoot),
     ]);
     return {
       capability: 'ok',
@@ -28,6 +30,7 @@ export async function gitSummary(workspaceRoot: string): Promise<GitSummary> {
       staged,
       untrackedCount,
       upstream,
+      originUrl,
     };
   } catch (error) {
     if (error instanceof GitError) {

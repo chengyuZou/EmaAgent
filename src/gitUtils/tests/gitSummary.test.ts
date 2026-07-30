@@ -86,7 +86,20 @@ describe.skipIf(!HAS_GIT)('gitSummary(真实临时仓库)', () => {
       staged: { filesChanged: 0, insertions: 0, deletions: 0 },
       untrackedCount: 0,
       upstream: null,
+      originUrl: null,
     });
+  });
+
+  it('配置 origin 后返回远端地址', async () => {
+    git(root, ['remote', 'add', 'origin', 'https://example.com/ema/repo.git']);
+    try {
+      const summary = await gitSummary(root);
+      expect(summary.capability).toBe('ok');
+      if (summary.capability !== 'ok') return;
+      expect(summary.originUrl).toBe('https://example.com/ema/repo.git');
+    } finally {
+      git(root, ['remote', 'remove', 'origin']);
+    }
   });
 
   it('未暂存、已暂存与未跟踪分别计数', async () => {

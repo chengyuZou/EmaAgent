@@ -20,6 +20,8 @@ export interface GitSummaryOk {
   readonly untrackedCount: number;
   /** upstream 引用名(如 origin/main);未配置 upstream 为 null,属正常状态。 */
   readonly upstream: string | null;
+  /** origin 远端地址;未配置 origin 为 null,属正常状态。 */
+  readonly originUrl: string | null;
 }
 
 /** 工作区不在任何 Git 仓库内。 */
@@ -40,6 +42,46 @@ export interface GitSummaryError {
 
 export type GitSummary =
   | GitSummaryOk
+  | GitSummaryNotARepo
+  | GitSummaryUnavailable
+  | GitSummaryError;
+
+// ── 工作区 diff(批次 E)─────────────────────────────────────────────────────
+
+export type GitFileStatus = 'added' | 'modified' | 'deleted' | 'renamed';
+
+export interface GitDiffFile {
+  /** 仓库相对 POSIX 路径(展示用)。 */
+  readonly path: string;
+  /** 打开文件标签用的绝对路径;deleted 文件指向其删除前位置。 */
+  readonly absolutePath: string;
+  readonly status: GitFileStatus;
+  readonly additions: number;
+  readonly deletions: number;
+  /** 该文件的完整 patch 段(含 diff --git 头);超限截断并以 truncated 标记。 */
+  readonly unifiedDiff: string;
+  readonly truncated: boolean;
+}
+
+export interface GitScopeDiff {
+  readonly files: readonly GitDiffFile[];
+  readonly totalAdditions: number;
+  readonly totalDeletions: number;
+  /** 总量或文件数触顶而未包含的文件数;0 表示完整。 */
+  readonly omittedFiles: number;
+}
+
+export interface GitDiffOk {
+  readonly capability: 'ok';
+  readonly repoRoot: string;
+  /** 已暂存(index ⇄ HEAD)。 */
+  readonly staged: GitScopeDiff;
+  /** 未暂存(worktree ⇄ index),含未跟踪文件的伪 diff。 */
+  readonly unstaged: GitScopeDiff;
+}
+
+export type GitWorkspaceDiffResult =
+  | GitDiffOk
   | GitSummaryNotARepo
   | GitSummaryUnavailable
   | GitSummaryError;

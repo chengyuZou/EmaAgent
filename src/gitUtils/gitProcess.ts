@@ -13,7 +13,18 @@ export interface GitResult {
   readonly stderr: string;
 }
 
-export function runGit(cwd: string, args: readonly string[]): Promise<GitResult> {
+export interface RunGitOptions {
+  /** 视为成功的额外退出码;git diff --no-index 有差异时以 1 退出,属正常输出。 */
+  readonly allowedExitCodes?: readonly number[];
+  /** 单次输出上限,默认 4MB;合并 patch 可能超过默认值,调用方显式抬高。 */
+  readonly maxOutputBytes?: number;
+}
+
+export function runGit(
+  cwd: string,
+  args: readonly string[],
+  options: RunGitOptions = {},
+): Promise<GitResult> {
   return new Promise((resolve, reject) => {
     execFile(
       'git',
@@ -26,7 +37,7 @@ export function runGit(cwd: string, args: readonly string[]): Promise<GitResult>
       {
         cwd,
         timeout: GIT_TIMEOUT_MS,
-        maxBuffer: MAX_OUTPUT_BYTES,
+        maxBuffer: options.maxOutputBytes ?? MAX_OUTPUT_BYTES,
         windowsHide: true,
         env: {
           ...process.env,
@@ -48,6 +59,10 @@ export function runGit(cwd: string, args: readonly string[]): Promise<GitResult>
         }
         if (err.killed) {
           reject(new GitError('git/timeout', `git ${args.join(' ')}: timed out after ${GIT_TIMEOUT_MS}ms`));
+          return;
+        }
+        if (typeof err.code === 'number' && options.allowedExitCodes?.includes(err.code)) {
+          resolve({ stdout, stderr });
           return;
         }
         reject(new GitError(
