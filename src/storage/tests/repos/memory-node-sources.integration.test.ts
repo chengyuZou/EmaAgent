@@ -85,7 +85,7 @@ describe('profile v14 memory_node_sources 迁移', () => {
       { node_id: 'node-1', source_session_id: 'session-a', source_turn_id: 'turn-1', created_at: 50 },
       { node_id: 'node-1', source_session_id: 'session-a', source_turn_id: '', created_at: 200 },
     ]);
-    expect(sqlite.pragma('user_version', { simple: true })).toBe(14);
+    expect(sqlite.pragma('user_version', { simple: true })).toBe(15);
   });
 });
 

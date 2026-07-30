@@ -43,6 +43,15 @@ export type MemoryBackgroundEvent =
   | { type: 'memory_consolidation_failed'; error: string }
   | { type: 'memory_maintenance_completed'; decayedNodes: number; decayedItems: number; dryRun: boolean; durationMs: number }
   | { type: 'memory_maintenance_failed'; error: string }
+  | {
+      type: 'memory_storage_budget_enforced';
+      beforeBytes: number;
+      afterBytes: number;
+      maxBytes: number;
+      deletedRows: number;
+      evictedEmbeddings: number;
+      pressureRemaining: boolean;
+    }
   | { type: 'memory_node_merged'; nodeId: string; label: string; fragmentCount: number }
   | { type: 'memory_task_started'; taskId: string; kind: string; sessionId?: SessionId }
   | { type: 'memory_task_completed'; taskId: string; kind: string; durationMs: number }

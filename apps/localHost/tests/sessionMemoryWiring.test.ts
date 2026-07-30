@@ -8,10 +8,12 @@ import { asTurnId } from '@ema-agent/ids';
 import { EmbedRuntime } from '@ema-agent/embed';
 import { LanguageModelRuntime } from '@ema-agent/llm';
 import { RerankRuntime } from '@ema-agent/rerank';
+import { SettingsStore } from '@ema-agent/settings';
 import {
   Database,
   ModelBindingsRepo,
   ProviderEmbedModelsRepo,
+  SettingsRepo,
 } from '@ema-agent/storage';
 import { createMemoryRuntime } from '../src/wiring/createMemoryRuntime.js';
 import { createSessionPersistence } from '../src/wiring/createSessionPersistence.js';
@@ -87,6 +89,7 @@ describe('Memory runtime wiring', () => {
       new LanguageModelRuntime([]),
       new EmbedRuntime([]),
       new RerankRuntime([]),
+      new SettingsStore(new SettingsRepo(profileDb.sqlite)),
       new ModelBindingsRepo(profileDb.sqlite),
       new ProviderEmbedModelsRepo(profileDb.sqlite),
       emit,

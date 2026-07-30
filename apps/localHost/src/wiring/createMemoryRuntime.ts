@@ -2,9 +2,16 @@
 
 import type { EmbedRuntime } from '@ema-agent/embed';
 import type { LanguageModelRuntime } from '@ema-agent/llm';
-import { MemoryPlanner, type MemoryBackgroundEvent } from '@ema-agent/memory';
+import {
+  MemoryPlanner,
+  memoryMaintenanceSetting,
+  memoryModelsSetting,
+  memoryStorageSetting,
+  type MemoryBackgroundEvent,
+} from '@ema-agent/memory';
 import type { RerankRuntime } from '@ema-agent/rerank';
 import type { SessionStore } from '@ema-agent/session';
+import type { SettingsStore } from '@ema-agent/settings';
 import {
   MemoryEdgesRepo,
   MemoryExtractionRunsRepo,
@@ -13,6 +20,7 @@ import {
   MemoryNodesRepo,
   MemoryNodeSourcesRepo,
   MemorySessionStateRepo,
+  MemoryStorageRepo,
   MemoryTasksRepo,
   PendingFragmentsRepo,
   type Database,
@@ -29,6 +37,7 @@ export function createMemoryRuntime(
   llm: LanguageModelRuntime,
   embed: EmbedRuntime,
   rerank: RerankRuntime,
+  settings: SettingsStore,
   modelBindings: ModelBindingsRepo,
   providerEmbedModels: ProviderEmbedModelsRepo,
   emit: (event: MemoryBackgroundEvent) => void,
@@ -49,6 +58,7 @@ export function createMemoryRuntime(
     pendingFragments: new PendingFragmentsRepo(dataDb.sqlite),
     memorySessionState: new MemorySessionStateRepo(dataDb.sqlite),
     extractionRuns: new MemoryExtractionRunsRepo(profileDb.sqlite),
+    storage: new MemoryStorageRepo(profileDb.sqlite),
     runProfileTransaction: <T>(work: () => T): T =>
       profileDb.sqlite.transaction(work)(),
     runDataTransaction: <T>(work: () => T): T =>
@@ -57,5 +67,9 @@ export function createMemoryRuntime(
     getEmbedDim: (providerId, model) =>
       providerEmbedModels.dimFor(providerId, model) ?? 0,
     emit,
-  });
+  }, {}, () => ({
+    models: settings.get(memoryModelsSetting),
+    maintenance: settings.get(memoryMaintenanceSetting),
+    storage: settings.get(memoryStorageSetting),
+  }));
 }

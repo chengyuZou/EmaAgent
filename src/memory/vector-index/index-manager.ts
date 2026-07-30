@@ -8,6 +8,11 @@ export class IndexManager {
   nodesIndex: VectorIndex | null = null;
   itemsIndex: VectorIndex | null = null;
   private spaceId: string | null = null;
+  private initialization: Promise<{
+    nodes: number;
+    items: number;
+    backend: string | null;
+  }> | null = null;
 
   constructor(
     private readonly deps:  MemoryDeps,
@@ -15,21 +20,46 @@ export class IndexManager {
   ) {}
 
   async initialize(): Promise<{ nodes: number; items: number; backend: string | null }> {
-    if (this.nodesIndex || this.itemsIndex) {
+    if (this.initialization) return this.initialization;
+    const pending = this.initializeCurrentSpace();
+    this.initialization = pending;
+    try {
+      return await pending;
+    } finally {
+      if (this.initialization === pending) this.initialization = null;
+    }
+  }
+
+  private async initializeCurrentSpace(): Promise<{
+    nodes: number;
+    items: number;
+    backend: string | null;
+  }> {
+    const p = this.embed.resolveEmbed();
+    if (!p) {
+      this.reset();
+      return { nodes: 0, items: 0, backend: null };
+    }
+
+    const dim = this.deps.getEmbedDim(p.providerId, p.model);
+    if (!dim) {
+      this.reset();
+      return { nodes: 0, items: 0, backend: null };
+    }
+    const space = this.embed.currentSpace(dim);
+    if (!space) {
+      this.reset();
+      return { nodes: 0, items: 0, backend: null };
+    }
+
+    if ((this.nodesIndex || this.itemsIndex) && this.spaceId === space.id) {
       return {
         nodes:   this.nodesIndex?.size() ?? 0,
         items:   this.itemsIndex?.size() ?? 0,
         backend: this.nodesIndex?.backend ?? this.itemsIndex?.backend ?? null,
       };
     }
-
-    const p = this.embed.resolveEmbed();
-    if (!p) return { nodes: 0, items: 0, backend: null };
-
-    const dim = this.deps.getEmbedDim(p.providerId, p.model);
-    if (!dim) return { nodes: 0, items: 0, backend: null };
-    const space = this.embed.currentSpace(dim);
-    if (!space) return { nodes: 0, items: 0, backend: null };
+    this.reset();
 
     const t0 = Date.now();
     this.nodesIndex = await createVectorIndex(dim);
@@ -51,9 +81,7 @@ export class IndexManager {
   }
 
   async refreshIndexes(): Promise<void> {
-    this.nodesIndex = null;
-    this.itemsIndex = null;
-    this.spaceId = null;
+    this.reset();
     await this.initialize();
   }
 
@@ -63,6 +91,12 @@ export class IndexManager {
   removeItem(id: string): void                    { this.itemsIndex?.remove(id); }
 
   currentSpaceId(): string | null { return this.spaceId; }
+
+  private reset(): void {
+    this.nodesIndex = null;
+    this.itemsIndex = null;
+    this.spaceId = null;
+  }
 
   stats(): {
     nodes: { size: number; backend: string } | null;

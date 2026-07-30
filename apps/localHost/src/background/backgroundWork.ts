@@ -19,7 +19,10 @@ const ATTACHMENT_CACHE_SWEEP_EVERY = 360;
 const BRIDGE_HEARTBEAT_EVERY = 12;
 const EMBEDDING_REPAIR_SWEEP_EVERY = 360;
 
-type BackgroundMemory = Pick<MemoryPlanner, 'initialize' | 'tick' | 'drain' | 'repairStaleEmbeddings'>;
+type BackgroundMemory = Pick<
+  MemoryPlanner,
+  'initialize' | 'tick' | 'drain' | 'repairStaleEmbeddings' | 'enforceStorageBudget'
+>;
 type BackgroundMcp = Pick<
   McpRegistry,
   'primeFromCache' | 'discoverUncached' | 'disconnectAll'
@@ -133,6 +136,7 @@ export class BackgroundWork {
       await this.sweepAttachmentCache();
     }
     if (tickCount % EMBEDDING_REPAIR_SWEEP_EVERY === 0) {
+      await this.sweepMemoryStorageBudget();
       await this.sweepMemoryEmbeddings();
     }
     if (tickCount % BRIDGE_HEARTBEAT_EVERY === 0) {
@@ -182,6 +186,22 @@ export class BackgroundWork {
       }
     } catch (error) {
       console.warn('[memory] embedding repair sweep failed:', error);
+    }
+  }
+
+  private async sweepMemoryStorageBudget(): Promise<void> {
+    if (!this.memoryEnabled) return;
+    try {
+      const report = await this.memory.enforceStorageBudget();
+      if (report.ran) {
+        console.log(
+          `[memory] storage budget: before=${report.beforeBytes} `
+          + `after=${report.afterBytes} max=${report.maxBytes} `
+          + `pressure=${report.pressureRemaining}`,
+        );
+      }
+    } catch (error) {
+      console.warn('[memory] storage budget sweep failed:', error);
     }
   }
 

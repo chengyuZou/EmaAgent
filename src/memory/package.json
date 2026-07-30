@@ -32,7 +32,8 @@
     "@ema-agent/rerank":           "workspace:*",
     "@ema-agent/narrative":           "workspace:*",
     "@ema-agent/hooks":             "workspace:*",
-    "@ema-agent/token":            "workspace:*"
+    "@ema-agent/token":            "workspace:*",
+    "@ema-agent/settings":         "workspace:*"
   },
   "optionalDependencies": {
     "usearch": "^2.25.1"

@@ -4,7 +4,7 @@ import {
   buildMemoryContextContribution,
 } from '../recall/context-builder.js';
 import { runMaintenance } from '../maintenance/decay.js';
-import { DEFAULT_MEMORY_SETTINGS } from '../types.js';
+import { DEFAULT_MEMORY_MAINTENANCE_SETTINGS } from '../settings.js';
 import type { RecallBundle } from '../types.js';
 import type { MemoryDeps } from '../deps.js';
 
@@ -12,7 +12,7 @@ import type { MemoryDeps } from '../deps.js';
 // （若退回 0-1 标度的 0.1，则 50-0.1=49.9，decay 形同虚设）。
 describe('B-077 importance 标度统一 0-100', () => {
   it('decayAmount 默认 10（0-100 标度），非 0.1', () => {
-    expect(DEFAULT_MEMORY_SETTINGS.maintenance.decayAmount).toBe(10);
+    expect(DEFAULT_MEMORY_MAINTENANCE_SETTINGS.decayAmount).toBe(10);
   });
 
   it('decay 按 0-100 标度衰减：importance 50 - decayAmount 10 = 40', () => {

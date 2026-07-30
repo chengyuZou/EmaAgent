@@ -97,23 +97,27 @@ Maintenance is global memory hygiene and is driven through `MemoryPlanner.runMai
 
 Current maintenance behavior:
 
-- All memory node types can decay.
-- Items can decay when `decayItems` is enabled.
+- `user_fact`、`preference`、`relationship` 节点和 `user`、`feedback` 条目不会自动衰减。
+- 其他条目可以在 `decayItems` 启用时衰减。
 - Decay candidates are selected by `last_referenced_at`.
 - Decay lowers `importance`.
 - Re-reference touch can boost `importance` with a nonlinear age/saturation curve.
 - High-importance rows saturate, so repeated recall does not keep pushing them upward.
 
-The maintenance settings live under `MemorySettings.maintenance`:
+用户设置由 `src/memory/settings.ts` 定义：
 
 ```ts
-{
-  idleThresholdMs: number;
-  maintenanceIntervalMs: number;
+interface MemoryMaintenanceSettings {
   decayAmount: number;
   decayAfterDays: number;
-  deleteThreshold: number;
-  deleteAfterDays: number;
+  coldDeleteAfterDays: number;
+}
+
+interface MemoryStorageSettings {
+  maxBytes: number;
+}
+
+interface MemoryInternalMaintenanceSettings {
   reReferenceBoostMax: number;
   reReferenceHalfLifeDays: number;
   boostSaturationStart: number;
@@ -121,7 +125,9 @@ The maintenance settings live under `MemorySettings.maintenance`:
 }
 ```
 
-Deletion remains user-initiated. Automated maintenance should decay importance; destructive cleanup should stay explicit.
+Memory 超出全局逻辑字节预算后先清理过期条目，再删除长期未引用且重要度为
+0 的非保护类，最后只驱逐最冷的非保护类向量。正文被保护的条目不会自动删除；
+被预算驱逐的向量带显式标记，不会被修复任务立即重新生成。
 
 ## Events
 

@@ -1,21 +1,28 @@
 import type { MemoryDeps } from '../deps.js';
-import type { MemoryNodeType } from '@ema-agent/storage';
+import type { MemoryItemKind, MemoryNodeType } from '@ema-agent/storage';
 
-// ── Options + report ─────────────────────────────────────────────────────────
+export const PROTECTED_MEMORY_NODE_TYPES = [
+  'user_fact',
+  'preference',
+  'relationship',
+] as const satisfies readonly MemoryNodeType[];
+
+export const PROTECTED_MEMORY_ITEM_KINDS = [
+  'user',
+  'feedback',
+] as const satisfies readonly MemoryItemKind[];
 
 export interface MaintenanceOptions {
-  /** Nothing referenced in the last N days becomes a decay candidate. */
+  /** 连续多少天未被引用后进入衰减候选。 */
   decayAfterDays:     number;
-  /** Importance points removed per maintenance run on candidates. */
+  /** 每轮从候选项的重要度中扣除的点数。 */
   decayAmount:        number;
-  /** Whether to also decay memory_items along with nodes. */
+  /** 是否同时处理 memory_items。 */
   decayItems:         boolean;
-  /**
-   * Dry run mode — compute counts/preview but do NOT mutate anything.
-   * UI surfaces this before letting the user click "Run maintenance".
-   */
+  /** 只生成预览，不写入数据库。 */
   dryRun:             boolean;
-  nowMs:              number;   // for testing only, defaults to Date.now()
+  /** 显式时钟让维护任务和测试使用同一截止时间。 */
+  nowMs:              number;
 }
 
 
@@ -32,18 +39,8 @@ export interface MaintenanceReport {
   preview:          MaintenancePreview;
 }
 
-// ── Implementation ───────────────────────────────────────────────────────────
-
 /**
- * Run an importance-decay pass. Nodes / items whose `last_referenced_at` is
- * older than `decayAfterDays` get their `importance` reduced by `decayAmount`.
- *
- * Protected node types (default: user_fact / preference / relationship) are
- * NEVER decayed — Ema must keep knowing who you are.
- *
- * `dryRun: true` returns the list of rows that WOULD be touched without
- * mutating anything. Use that to render a preview in the UI before the user
- * commits to a real run.
+ * 保护类永不自动衰减；预览与实际写入使用同一批候选，避免用户确认后语义漂移。
  */
 export function runMaintenance(
   deps: MemoryDeps,
@@ -52,9 +49,16 @@ export function runMaintenance(
   const t0 = Date.now();
   const cutoff = opts.nowMs - opts.decayAfterDays * 24 * 60 * 60 * 1000;
 
-  const nodeCandidates = deps.nodes.listDecayCandidates(cutoff);
+  const nodeCandidates = deps.nodes.listDecayCandidates(
+    cutoff,
+    PROTECTED_MEMORY_NODE_TYPES,
+  );
   const itemCandidates = opts.decayItems
-    ? deps.items.listDecayCandidates(cutoff, opts.nowMs)
+    ? deps.items.listDecayCandidates(
+      cutoff,
+      opts.nowMs,
+      PROTECTED_MEMORY_ITEM_KINDS,
+    )
     : [];
 
   const preview: MaintenancePreview = {
@@ -107,33 +111,12 @@ export function runMaintenance(
   };
 }
 
-// ── Hard delete (user-initiated only) ────────────────────────────────────────
-
-/**
- * Hard-delete a node and all its edges. Triggered ONLY by explicit user action
- * in the memory panel — automated maintenance never deletes, only decays.
- */
+/** 用户明确删除节点时，外键级联清理边和延迟更新。 */
 export function deleteNode(deps: MemoryDeps, nodeId: string): void {
-  // ON DELETE CASCADE handles edges + lazy_updates
   deps.nodes.delete(nodeId);
 }
 
+/** 用户明确删除独立 Memory Item。 */
 export function deleteItem(deps: MemoryDeps, itemId: string): void {
   deps.items.delete(itemId);
-}
-
-/**
- * Hard-delete all zero-importance rows that haven't been referenced in
- * `hardDeleteAfterDays`. UI shows confirmation before calling this.
- */
-export function hardDeleteZeroImportance(
-  deps: MemoryDeps,
-  hardDeleteAfterDays: number,
-): { deletedNodes: number; deletedItems: number } {
-  const cutoff = Date.now() - hardDeleteAfterDays * 24 * 60 * 60 * 1000;
-
-  return {
-    deletedNodes: deps.nodes.deleteZeroImportanceOlderThan(cutoff),
-    deletedItems: deps.items.deleteZeroImportanceOlderThan(cutoff),
-  };
 }

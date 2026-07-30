@@ -156,7 +156,7 @@ Task 与 AgentRun 前端已经分面：Desktop 使用正式 `/api/tasks` 快照�
 
 开始任何新批次前必须重新运行 `git status --short` 与 `git diff`，保留用户和其他 Agent 的修改。
 
-本轮开始时主线工作区包含 R11 Memory 租约与 Embedding Repair 在途改动；主 Agent 已接手复核并完成并发收口。R13 Memory 存储预算尚未开始，后续施工不得把它与 R11 的租约、向量正确性重新混成一批。`EmaWorkState.md` 只由主 Agent 更新，避免并行覆盖。
+R11-R13 Memory 后台质量批次已经全部完成。R13 新增 Profile v15 逻辑字节预算、分级降压、显式向量驱逐标记和用户可调设置；本批未改 AgentLoop、Context Compaction 或根 Turn 主链。`EmaWorkState.md` 只由主 Agent 更新，避免并行覆盖。
 
 当前基线最近提交：`3ea4d97a feat: implement character runtime creation and emotion engine initialization`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
 
@@ -211,7 +211,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
     - **R1-R7 已完成**：KB 摄入可靠性、检索质量、模型集成安全，以及 Memory 使用层、提取信任、判断层与溯源链均已落地；实现与验证见“最近验证”，不要继续作为待办重复施工；
     - **R8-R9 Skills 已完成**：bundle 资产全量哈希、市场清单 sha256 与安装强校验已经落地；子 Agent 工具上限 = 父当前收窄集 ∩ 自身工具池，只能更窄不能更宽；
     - **R10 MCP 已完成**：stdio 崩溃 onclose 感知、status 转 failed、惰性重连，以及 live/cache 共用的 Schema 字节与工具数上限已经落地；
-    - **R11-R12 Memory/KB 已完成**：stale embedding 修复、租约丢失关闸，以及 embed 模型变更后的 stale/reembed 生命周期已经收口；**R13 待做**：Memory 全局逻辑字节预算、分级降压与 ANN 残留治理；
+    - **R11-R13 Memory/KB 已完成**：stale embedding 修复、租约丢失关闸、embed 模型变更后的 stale/reembed 生命周期，以及 Memory 全局逻辑字节预算、分级降压与 ANN 同步治理均已收口；
     - **A 主链真 Bug 已完成**：ToolResultStore EEXIST 只复用完全一致的内容；Usage 状态模型已区分 `cancelled`；Anthropic 已删除隐式 `maxTokens=4096` 并使用调用级剩余输出预算；
     - **B 主链安全收口**：install-git 与 mcpStdioGate 路由级审批已经接通；仍待 `AGEN_UNSAFE_*` 在生产构建中物理拒绝，以及 Sandbox 状态接前端常驻提示；
     - **C 主链卫生已完成**：已删除 Macro 压缩后绕过 Memory 开关直接重读 L1 Session Note 的旧恢复旁路；正常 L1 Recall 继续作为不可压缩 Contribution 保留，Active Skill 继续走 required restore。AgentLoopState 已删除不可达状态；`prefixHash` 已明确为本次请求截止最终缓存断点的身份，会随历史、当前 Turn 和工具轮次演进，不再伪装成跨 Turn 固定 Prompt Hash。
@@ -221,6 +221,10 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 每批只改变一个主要业务边界。不要把 Turn 统一、数据库 Schema、全仓 ID 改名和前端切换塞进同一批。
 
 ## 最近验证
+
+- Memory R13 存储预算收口：Profile v15 为 Node/Item 增加明确的 `embedding_evicted_at`，逻辑字节核算覆盖 Memory 主表；后台约每 30 分钟按“过期 Item → 长期未引用的零重要度非保护行 → 非保护冷向量”分级降压到 85% 低水位，`user_fact/preference/relationship` 与用户反馈类保持保护。主动驱逐的向量不会被 stale repair 立即重建，正文更新后才重新进入修复队列；SQLite 成功而 ANN 增量删除失败时触发索引重建。新增 `memory.models`、`memory.maintenance`、`memory.storage` 设置，默认上限 512 MiB，运行时按下一次操作读取。Storage 28 个测试文件 129/129、Memory 14 个测试文件 60/60、LocalHost 39 个测试文件 150/150、全仓 typecheck 86/86 通过；`git diff --check` 仅有既有 CRLF 提示。
+
+- 前端 F2 样式回潮批（K3）：Desktop UI typecheck 与 28 个测试文件 119/119 通过。tokens.css 新增 `--ema-file-*` 八枚文件类型色（亮暗共用的常规文件色，不随主题翻转）与 `--ema-shadow-dragover`；AttachmentChip 8 处 oklch 字面量、ChatInput 拖放 boxShadow 与 border-white、AppearanceTab 白色选中环全部 token 化；FloatingDock 与 SessionSidebar 的 duration/ease 字面值改走 `--ema-duration-*`/`--ema-ease` 与 `transition-ema`；SessionSidebar 自造 max-height 折叠组件换为标准 `.ema-collapsible`（删掉三处 maxHeight 计算）；AgentRunPanel 自造分隔线换 UI 包 `Divider`；ChatPanel 400ms 字面时长归入 slow 档。`git diff --check` 通过，仅有既有 CRLF 提示。
 
 - 前端 F1 API 接线批（K3，仅 api 层，按用户划定边界不碰 UI/Store/业务组件）：Desktop UI typecheck 与 28 个测试文件 119/119 通过。新增封装：`systemApi.getSandboxStatus`（/api/system/sandbox，本地镜像 SandboxStatusWire，desktop-ui 不依赖 sandbox 包）、`settingsApi.getCatalog/getValue/putValue`（/api/settings/catalog + /api/settings/values/:key 通用通道，本地镜像 Descriptor/ApplyPolicy）、`knowledgeBaseApi.getReembedTasks`（/api/kb/reembed-tasks，刷新后恢复路径与 ingest-tasks 对称）、`turnsApi.listToolExecutions`（/api/turns/:id/tool-executions，ToolExecutionRecord 复用 @ema-agent/tools 类型）。`/api/skills/:name/relocate` 经核实为后端刻意 fail-closed 501（V1 多 Root 未落地），不做封装。settings 5 个无 UI 的 key（agent.limits/context.compaction/attachments.limits/vision.limits/kb.retrieval）现在有了通用读写通道，UI 接入留给后续批次。`git diff --check` 通过，仅有既有 CRLF 提示。
 
@@ -344,7 +348,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 先完整阅读 CLAUDE.md 与 EmaWorkState.md，再按当前批次阅读 EmaRefactor.md 和 EmaClaudeArchitectureReview.md 对应章节。检查 git status、diff 和最近提交，保留用户及其他 Agent 的修改。
 
-LocalHost L0-L5、Turn/TTS/Route/HTTP 边界以及 Composition Root P1-P5 已全部完成；Character Seed 必须继续保持 Live2D 外键、活动角色和 Emotion 初始化顺序。R1-R12 与 A 类三项主链 Bug 已经完成，不要重复施工；下一批只做 R13 Memory 全局逻辑字节预算、分级降压、ANN 残留和 decay 保护，不与 Agent/LocalHost 主链重构混批。不要在 AgentLoop 中重读 SQL 或修改共享 Compactor，不要恢复 `apps/core`、旧 Orchestrator、宽 `AppBindings` Route、TOML 设置、MCP `startAll()`、KB `initAll()` 或 `buildBindings()` 中的异步启动副作用。不要提交 Git。
+LocalHost L0-L5、Turn/TTS/Route/HTTP 边界、Composition Root P1-P5、外围 R1-R13 与 A/C 类主链收口均已完成，不要重复施工。Memory 已具备动态模型设置、租约关闸、stale embedding 修复和全局逻辑字节预算；不要恢复已删除的死配置，也不要让主动驱逐向量立即进入 repair。下一批开始前重新审计实际源码与当前 Diff，再决定剩余后端终审或前端接线；不要恢复 `apps/core`、旧 Orchestrator、宽 `AppBindings` Route、TOML 设置、MCP `startAll()`、KB `initAll()` 或 `buildBindings()` 中的异步启动副作用。不要提交 Git。
 ```
 
 ## 维护方式

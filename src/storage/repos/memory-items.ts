@@ -30,6 +30,7 @@ export interface MemoryItemRow {
   embedding_normalization: string | null;
   embedding_revision:      string | null;
   embedding_space_id:      string | null;
+  embedding_evicted_at:    number | null;
 }
 
 export interface MemoryItemInsert {
@@ -301,7 +302,8 @@ export class MemoryItemsRepo {
                 embedding_dim      = COALESCE(?, embedding_dim),
                 embedding_normalization = COALESCE(?, embedding_normalization),
                 embedding_revision = COALESCE(?, embedding_revision),
-                embedding_space_id = COALESCE(?, embedding_space_id)
+                embedding_space_id = COALESCE(?, embedding_space_id),
+                embedding_evicted_at = NULL
           WHERE id = ?`,
       )
       .run(
@@ -330,6 +332,7 @@ export class MemoryItemsRepo {
                 embedding_normalization = ?,
                 embedding_revision    = ?,
                 embedding_space_id    = ?,
+                embedding_evicted_at  = NULL,
                 updated_at            = ?
           WHERE id = ?`,
       )
@@ -355,9 +358,11 @@ export class MemoryItemsRepo {
                 embedding_normalization = ?,
                 embedding_revision      = ?,
                 embedding_space_id      = ?,
+                embedding_evicted_at    = NULL,
                 updated_at              = ?
           WHERE id = ?
             AND updated_at = ?
+            AND embedding_evicted_at IS NULL
             AND (embedding IS NULL OR embedding_space_id IS NOT ?)
             AND (expires_at IS NULL OR expires_at > ?)`,
       )
@@ -369,11 +374,17 @@ export class MemoryItemsRepo {
     return info.changes === 1;
   }
 
-  listDecayCandidates(cutoff: number, now: number, limit = 5000): Array<{
+  listDecayCandidates(
+    cutoff: number,
+    now: number,
+    protectedKinds: readonly MemoryItemKind[] = [],
+    limit = 5000,
+  ): Array<{
     id: string;
     title: string;
     importance: number;
   }> {
+    const exclusion = protectedKinds.map(() => '?').join(',');
     return this.db
       .prepare(
         `SELECT id, title, importance
@@ -381,10 +392,11 @@ export class MemoryItemsRepo {
           WHERE last_referenced_at < ?
             AND importance > 0
             AND (expires_at IS NULL OR expires_at > ?)
+            ${exclusion ? `AND kind NOT IN (${exclusion})` : ''}
           ORDER BY last_referenced_at ASC, id ASC
           LIMIT ?`,
       )
-      .all(cutoff, now, limit) as Array<{ id: string; title: string; importance: number }>;
+      .all(cutoff, now, ...protectedKinds, limit) as Array<{ id: string; title: string; importance: number }>;
   }
 
   applyImportanceUpdates(updates: Array<{ id: string; importance: number; updatedAt: number }>): void {
@@ -412,7 +424,12 @@ export class MemoryItemsRepo {
         for (const batch of batches) {
           const placeholders = batch.map(() => '?').join(',');
           this.db
-            .prepare(`UPDATE memory_items SET last_referenced_at = ? WHERE id IN (${placeholders})`)
+            .prepare(
+              `UPDATE memory_items
+                  SET last_referenced_at = ?,
+                      embedding_evicted_at = NULL
+                WHERE id IN (${placeholders})`,
+            )
             .run(at, ...batch);
         }
       })();
@@ -423,6 +440,7 @@ export class MemoryItemsRepo {
       `UPDATE memory_items
           SET importance = ?,
               last_referenced_at = ?,
+              embedding_evicted_at = NULL,
               updated_at = ?
         WHERE id = ?`,
     );
@@ -471,7 +489,8 @@ export class MemoryItemsRepo {
     return this.db
       .prepare(
         `SELECT * FROM memory_items
-         WHERE (embedding IS NULL OR embedding_space_id IS NOT ?)
+         WHERE embedding_evicted_at IS NULL
+           AND (embedding IS NULL OR embedding_space_id IS NOT ?)
            AND (expires_at IS NULL OR expires_at > ?)
          ORDER BY updated_at ASC, id ASC
          LIMIT ?`,
@@ -484,7 +503,8 @@ export class MemoryItemsRepo {
     const row = this.db
       .prepare(
         `SELECT COUNT(*) AS n FROM memory_items
-         WHERE (embedding IS NULL OR embedding_space_id IS NOT ?)
+         WHERE embedding_evicted_at IS NULL
+           AND (embedding IS NULL OR embedding_space_id IS NOT ?)
            AND (expires_at IS NULL OR expires_at > ?)`,
       )
       .get(currentSpaceId, nowMs) as { n: number };
@@ -503,16 +523,6 @@ export class MemoryItemsRepo {
           GROUP BY kind`,
       )
       .all(now) as MemoryItemStatsRow[];
-  }
-
-  deleteZeroImportanceOlderThan(cutoff: number): number {
-    const info = this.db
-      .prepare(
-        `DELETE FROM memory_items
-          WHERE importance = 0 AND last_referenced_at < ?`,
-      )
-      .run(cutoff);
-    return info.changes;
   }
 
   // ── 删除 ──────────────────────────────────────────────────────────────────

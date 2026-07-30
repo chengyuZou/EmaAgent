@@ -1,4 +1,4 @@
-// 组织通用记忆的检索、写入和上下文压缩，并通过 Memory Facade 暴露给编排层。
+// 组织长期记忆的检索、提取、维护和后台修复，并向编排层提供窄入口。
 import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { ContextContributionRequest } from '@ema-agent/context';
 import { estimateTextTokens } from '@ema-agent/token';
@@ -11,6 +11,11 @@ import type {
   MemorySettings,
 } from './types.js';
 import { DEFAULT_MEMORY_SETTINGS } from './types.js';
+import {
+  DEFAULT_MEMORY_MAINTENANCE_SETTINGS,
+  DEFAULT_MEMORY_STORAGE_SETTINGS,
+  type MemoryUserSettingsSnapshot,
+} from './settings.js';
 import { EmbedService }     from './embed/service.js';
 import { SessionTaskQueue } from './tasks/session-queue.js';
 import { MemoryTaskRunner } from './tasks/extraction-runner.js';
@@ -25,13 +30,17 @@ import {
   type BrowseNodesOptions, type BrowseItemsOptions,
 } from './maintenance/browse.js';
 import {
-  runMaintenance, deleteNode, deleteItem, hardDeleteZeroImportance,
+  runMaintenance, deleteNode, deleteItem,
   type MaintenanceOptions, type MaintenanceReport,
 } from './maintenance/decay.js';
 import {
   repairStaleEmbeddings,
   type EmbeddingRepairReport,
 } from './maintenance/embeddingRepair.js';
+import {
+  enforceMemoryStorageBudget,
+  type MemoryStorageBudgetReport,
+} from './maintenance/storageBudget.js';
 import {
   runStartupRecovery as doStartupRecovery,
   type RecoveryReport,
@@ -48,10 +57,16 @@ export class MemoryPlanner {
   private readonly queue:    SessionTaskQueue;
   private readonly runner:   MemoryTaskRunner;
   private readonly commitCoordinator: MemoryCommitCoordinator;
+  private readonly readUserSettings: () => MemoryUserSettingsSnapshot;
 
   constructor(
     private readonly deps: MemoryDeps,
     overrides: Partial<MemorySettings> = {},
+    readUserSettings: () => MemoryUserSettingsSnapshot = () => ({
+      models: {},
+      maintenance: DEFAULT_MEMORY_MAINTENANCE_SETTINGS,
+      storage: DEFAULT_MEMORY_STORAGE_SETTINGS,
+    }),
   ) {
     this.settings = {
       ...DEFAULT_MEMORY_SETTINGS,
@@ -60,11 +75,11 @@ export class MemoryPlanner {
       recall:      { ...DEFAULT_MEMORY_SETTINGS.recall,      ...overrides.recall },
       maintenance: { ...DEFAULT_MEMORY_SETTINGS.maintenance, ...overrides.maintenance },
     };
+    this.readUserSettings = readUserSettings;
     this.embed = new EmbedService(
       deps.embedRuntime,
       deps.rerankRuntime,
-      this.settings.models?.embed,
-      this.settings.models?.rerank,
+      () => this.readUserSettings().models,
     );
     this.indexMgr = new IndexManager(deps, this.embed);
     this.queue    = new SessionTaskQueue();
@@ -97,6 +112,7 @@ export class MemoryPlanner {
   // ── Recall ──────────────────────────────────────────────────────────────────
 
   async plan(ctx: PlanContext): Promise<RecallBundle> {
+    await this.indexMgr.initialize();
     return planRecall(
       this.deps, this.embed, this.settings,
       this.indexMgr.nodesIndex, this.indexMgr.itemsIndex,
@@ -178,9 +194,10 @@ export class MemoryPlanner {
   // ── Maintenance ─────────────────────────────────────────────────────────────
 
   runMaintenance(opts: Partial<MaintenanceOptions> = {}): MaintenanceReport {
+    const maintenance = this.readUserSettings().maintenance;
     return runMaintenance(this.deps, {
-      decayAfterDays: opts.decayAfterDays ?? this.settings.maintenance.decayAfterDays,
-      decayAmount:    opts.decayAmount    ?? this.settings.maintenance.decayAmount,
+      decayAfterDays: opts.decayAfterDays ?? maintenance.decayAfterDays,
+      decayAmount:    opts.decayAmount    ?? maintenance.decayAmount,
       decayItems:     opts.decayItems     ?? true,
       dryRun:         opts.dryRun         ?? true,
       nowMs:          opts.nowMs          ?? Date.now(),
@@ -197,18 +214,26 @@ export class MemoryPlanner {
     this.indexMgr.removeItem(itemId);
   }
 
-  hardDeleteZeroImportance(thresholdDays: number) {
-    return hardDeleteZeroImportance(this.deps, thresholdDays);
-  }
-
   /** 换 embed 模型后按批修复 stale/缺失向量；进度隐式推进，断电续扫。 */
   async repairStaleEmbeddings(batchSize = 100): Promise<EmbeddingRepairReport> {
+    await this.indexMgr.initialize();
     return repairStaleEmbeddings(this.deps, this.embed, {
       batchSize,
       nodesIndex: this.indexMgr.nodesIndex,
       itemsIndex: this.indexMgr.itemsIndex,
       indexSpaceId: this.indexMgr.currentSpaceId(),
       commitCoordinator: this.commitCoordinator,
+      refreshIndexes: () => this.indexMgr.refreshIndexes(),
+    });
+  }
+
+  /** 超预算时按过期、零重要度正文、冷向量顺序降压。 */
+  async enforceStorageBudget(): Promise<MemoryStorageBudgetReport> {
+    const settings = this.readUserSettings();
+    return enforceMemoryStorageBudget(this.deps, settings, {
+      commitCoordinator: this.commitCoordinator,
+      removeNodeFromIndex: id => this.indexMgr.removeNode(id),
+      removeItemFromIndex: id => this.indexMgr.removeItem(id),
       refreshIndexes: () => this.indexMgr.refreshIndexes(),
     });
   }

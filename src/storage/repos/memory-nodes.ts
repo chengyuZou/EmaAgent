@@ -21,6 +21,7 @@ export interface MemoryNodeRow {
   embedding_normalization: string | null;
   embedding_revision:      string | null;
   embedding_space_id:      string | null;
+  embedding_evicted_at:    number | null;
   importance:             number;
   created_at:             number;
   updated_at:             number;
@@ -238,6 +239,7 @@ export class MemoryNodesRepo {
         `UPDATE memory_nodes
             SET description = ?,
                 importance  = MAX(0, MIN(100, importance + ?)),
+                embedding_evicted_at = NULL,
                 updated_at  = ?
           WHERE id = ?`,
       )
@@ -255,6 +257,7 @@ export class MemoryNodesRepo {
                 embedding_normalization = ?,
                 embedding_revision    = ?,
                 embedding_space_id    = ?,
+                embedding_evicted_at  = NULL,
                 updated_at            = ?
           WHERE id = ?`,
       )
@@ -280,9 +283,11 @@ export class MemoryNodesRepo {
                 embedding_normalization = ?,
                 embedding_revision      = ?,
                 embedding_space_id      = ?,
+                embedding_evicted_at    = NULL,
                 updated_at              = ?
           WHERE id = ?
             AND updated_at = ?
+            AND embedding_evicted_at IS NULL
             AND (embedding IS NULL OR embedding_space_id IS NOT ?)`,
       )
       .run(
@@ -293,21 +298,27 @@ export class MemoryNodesRepo {
     return info.changes === 1;
   }
 
-  listDecayCandidates(cutoff: number, limit = 5000): Array<{
+  listDecayCandidates(
+    cutoff: number,
+    protectedTypes: readonly MemoryNodeType[] = [],
+    limit = 5000,
+  ): Array<{
     id: string;
     label: string;
     node_type: MemoryNodeType;
     importance: number;
   }> {
+    const exclusion = protectedTypes.map(() => '?').join(',');
     return this.db
       .prepare(
         `SELECT id, label, node_type, importance
            FROM memory_nodes
           WHERE last_referenced_at < ? AND importance > 0
+            ${exclusion ? `AND node_type NOT IN (${exclusion})` : ''}
           ORDER BY last_referenced_at ASC, id ASC
           LIMIT ?`,
       )
-      .all(cutoff, limit) as Array<{
+      .all(cutoff, ...protectedTypes, limit) as Array<{
         id: string;
         label: string;
         node_type: MemoryNodeType;
@@ -344,7 +355,12 @@ export class MemoryNodesRepo {
         for (const batch of batches) {
           const placeholders = batch.map(() => '?').join(',');
           this.db
-            .prepare(`UPDATE memory_nodes SET last_referenced_at = ? WHERE id IN (${placeholders})`)
+            .prepare(
+              `UPDATE memory_nodes
+                  SET last_referenced_at = ?,
+                      embedding_evicted_at = NULL
+                WHERE id IN (${placeholders})`,
+            )
             .run(at, ...batch);
         }
       })();
@@ -355,6 +371,7 @@ export class MemoryNodesRepo {
       `UPDATE memory_nodes
           SET importance = ?,
               last_referenced_at = ?,
+              embedding_evicted_at = NULL,
               updated_at = ?
         WHERE id = ?`,
     );
@@ -379,16 +396,6 @@ export class MemoryNodesRepo {
     txn();
   }
 
-  deleteZeroImportanceOlderThan(cutoff: number): number {
-    const info = this.db
-      .prepare(
-        `DELETE FROM memory_nodes
-          WHERE importance = 0 AND last_referenced_at < ?`,
-      )
-      .run(cutoff);
-    return info.changes;
-  }
-
   // ── 计数（启动恢复 + 诊断） ─────────────────────────────────
 
   countStaleEmbeddings(currentSpaceId: string): number {
@@ -409,7 +416,8 @@ export class MemoryNodesRepo {
     return this.db
       .prepare(
         `SELECT * FROM memory_nodes
-         WHERE embedding IS NULL OR embedding_space_id IS NOT ?
+         WHERE embedding_evicted_at IS NULL
+           AND (embedding IS NULL OR embedding_space_id IS NOT ?)
          ORDER BY updated_at ASC, id ASC
          LIMIT ?`,
       )
@@ -421,7 +429,8 @@ export class MemoryNodesRepo {
     const row = this.db
       .prepare(
         `SELECT COUNT(*) AS n FROM memory_nodes
-         WHERE embedding IS NULL OR embedding_space_id IS NOT ?`,
+         WHERE embedding_evicted_at IS NULL
+           AND (embedding IS NULL OR embedding_space_id IS NOT ?)`,
       )
       .get(currentSpaceId) as { n: number };
     return row.n;

@@ -13,13 +13,26 @@ export type {
   RecalledEdge,
   RecalledItem,
   MemorySettings,
-  MemoryModelRef,
   MemoryRecallView,
   MemoryRecallPort,
   EmbeddedText,
   AlreadySurfaced,
 } from './types.js';
 export { DEFAULT_MEMORY_SETTINGS } from './types.js';
+export {
+  memoryModelsSetting,
+  memoryMaintenanceSetting,
+  memoryStorageSetting,
+  DEFAULT_MEMORY_MAINTENANCE_SETTINGS,
+  DEFAULT_MEMORY_STORAGE_SETTINGS,
+} from './settings.js';
+export type {
+  MemoryModelRef,
+  MemoryModelSettings,
+  MemoryMaintenanceSettings,
+  MemoryStorageSettings,
+  MemoryUserSettingsSnapshot,
+} from './settings.js';
 export type {
   MemoryEvent,
   MemoryBackgroundEvent,
@@ -98,6 +111,8 @@ export type {
 // ── Maintenance: embedding 修复 ───────────────────────────────────────────────
 export { repairStaleEmbeddings }              from './maintenance/embeddingRepair.js';
 export type { EmbeddingRepairReport }         from './maintenance/embeddingRepair.js';
+export { enforceMemoryStorageBudget }         from './maintenance/storageBudget.js';
+export type { MemoryStorageBudgetReport }     from './maintenance/storageBudget.js';
 
 // ── Errors ────────────────────────────────────────────────────────────────────
 export { MemoryLeaseLostError }               from './errors.js';

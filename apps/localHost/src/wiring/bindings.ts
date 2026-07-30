@@ -347,6 +347,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     llm,
     embed,
     rerank,
+    settings,
     modelBindings,
     providerEmbedModels,
     event => systemBus.emit(event),

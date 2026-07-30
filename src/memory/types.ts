@@ -92,19 +92,8 @@ export interface MemoryRecallPort {
 
 // ── Settings ──────────────────────────────────────────────────────────────────
 
-export interface MemoryModelRef {
-  providerId: string;
-  model:      string;
-}
-
 export interface MemorySettings {
   enabled: boolean;
-
-  /** 显式 Provider + Model；缺失时对应向量能力不可用，不按注册顺序猜测。 */
-  models?: {
-    embed?:  MemoryModelRef;
-    rerank?: MemoryModelRef;
-  };
 
   triggers: {
     pendingTokenThreshold: number;     // default 5000
@@ -145,12 +134,6 @@ export interface MemorySettings {
   };
 
   maintenance: {
-    idleThresholdMs:       number;   // 空闲多久才触发（默认 3600_000 = 1h）
-    maintenanceIntervalMs: number;   // 两次 maintenance 最小间隔（默认 259200_000 = 3天）
-    decayAmount:           number;   // 每次衰减扣多少 importance（0–100 标度，默认 10）
-    decayAfterDays:        number;   // N 天未引用才衰减（默认 30）
-    deleteThreshold:       number;   // importance 低于这个值（默认 15）
-    deleteAfterDays:       number;   // 且超过这么久未引用（默认 30）才删除
     /** Maximum points a stale memory can regain when re-referenced. */
     reReferenceBoostMax: number;
     /** How many stale days it takes to reach the middle of the boost curve. */
@@ -183,12 +166,6 @@ export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
     layer1MaxTokens:            2000,
   },
   maintenance: {
-    idleThresholdMs:       3600_000,   // 1h
-    maintenanceIntervalMs: 259200_000, // 3 days
-    decayAmount:           10,         // importance is 0–100; subtract 10 per pass
-    decayAfterDays:        30,
-    deleteThreshold:       15,
-    deleteAfterDays:       30,
     reReferenceBoostMax:   12,
     reReferenceHalfLifeDays: 30,
     boostSaturationStart:  75,
