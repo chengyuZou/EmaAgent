@@ -222,6 +222,8 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- ChatWorkspace 批次 C1 workspaceStore（K3）：Desktop UI typecheck 与 29 个测试文件 133/133 通过（新增 workspaceStore 14 用例）。`chat/workspace/` 纯状态机零 JSX：`workspaceTypes.ts` 可判别 `WorkspaceTab` 联合与每 Session 布局（宽度/高度按 §4.4 语义作为全局偏好留在 store 全局字段，不进每 Session 布局；file 资源键归一斜杠与 Windows 盘符防同路径双标签）；`workspaceStore.ts` 实现同资源单实例（已存在则激活、显式指定异 Dock 则移动同一实例）、关闭激活项邻居接管、关闭最后标签 Dock 自动折叠、显式关闭不进持久层、折叠保留标签原样恢复、每 Session 隔离；localStorage 持久化带损坏 JSON 回退、失效激活项与空 Dock open 标记的恢复纠正，Node 测试环境无 localStorage 时静默降级。`git diff --check` 通过，仅有既有 CRLF 提示。
+
 - V1 后端最终闸门第一批：正式构建已拒绝三个 `AGEN_UNSAFE_*` 沙箱绕过开关；Telemetry 无生产消费者的 Repo、公开类型和测试已删除，Data v24 负责清理旧库表；附件图片改为同一文件句柄上的异步有界读取，读取期间增长也不会突破 5 MiB 内存上限；Character Card 两个未实现死入口与 `EmaStreamEvent` 兼容名已删除。Attachment 14/14、Storage 125/125、LocalHost Sandbox 10/10 通过；Attachment、TurnExecution、LocalHost 定向 typecheck 及全仓 typecheck 86/86 通过。首次 Storage 回归因旧测试仍断言 Data v23 失败，更新到 v24 后全绿；`git diff --check` 通过，仅有既有 CRLF 提示。
 - Memory R13 存储预算收口：Profile v15 为 Node/Item 增加明确的 `embedding_evicted_at`，逻辑字节核算覆盖 Memory 主表；后台约每 30 分钟按“过期 Item → 长期未引用的零重要度非保护行 → 非保护冷向量”分级降压到 85% 低水位，`user_fact/preference/relationship` 与用户反馈类保持保护。主动驱逐的向量不会被 stale repair 立即重建，正文更新后才重新进入修复队列；SQLite 成功而 ANN 增量删除失败时触发索引重建。新增 `memory.models`、`memory.maintenance`、`memory.storage` 设置，默认上限 512 MiB，运行时按下一次操作读取。Storage 28 个测试文件 129/129、Memory 14 个测试文件 60/60、LocalHost 39 个测试文件 150/150、全仓 typecheck 86/86 通过；`git diff --check` 仅有既有 CRLF 提示。
 
