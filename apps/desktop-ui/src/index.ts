@@ -178,17 +178,17 @@ export { AskUserBatchPrompt }      from './decision/AskUserBatchPrompt.js';
 
 // Settings
 export { SettingsPanel }           from './settings/SettingsPanel.js';
-export { ProvidersTab }            from './settings/ProvidersTab.js';
-export { ProviderForm }            from './settings/ProviderForm.js';
-export { BindingsTab }             from './settings/BindingsTab.js';
-export { CardsTab }                from './settings/CardsTab.js';
-export { CharacterCardEditor }     from './settings/CharacterCardEditor.js';
-export { IdentityTab }             from './settings/IdentityTab.js';
-export { BehaviorTab }             from './settings/BehaviorTab.js';
-export { VoiceTab }                from './settings/VoiceTab.js';
-export { Live2DTab }               from './settings/Live2DTab.js';
-export { ShortcutsTab }            from './settings/ShortcutsTab.js';
-export { KnowledgeBaseTab }        from './settings/KnowledgeBaseTab.js';
+export { ProvidersTab }            from './settings/providers/ProvidersTab.js';
+export { ProviderForm }            from './settings/providers/ProviderForm.js';
+export { BindingsTab }             from './settings/providers/BindingsTab.js';
+export { CardsTab }                from './settings/character/CardsTab.js';
+export { CharacterCardEditor }     from './settings/character/CharacterCardEditor.js';
+export { IdentityTab }             from './settings/character/IdentityTab.js';
+export { BehaviorTab }             from './settings/character/BehaviorTab.js';
+export { VoiceTab }                from './settings/character/VoiceTab.js';
+export { Live2DTab }               from './settings/general/Live2DTab.js';
+export { ShortcutsTab }            from './settings/general/ShortcutsTab.js';
+export { KnowledgeBaseTab }        from './settings/knowledge/KnowledgeBaseTab.js';
 
 // Chat
 export { ChatPanel }               from './chat/ChatPanel.js';

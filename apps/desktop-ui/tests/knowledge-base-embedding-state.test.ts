@@ -6,7 +6,7 @@ import {
   documentNeedsReembed,
   resolveEmbedSelection,
   sameKbModelRef,
-} from '../src/settings/knowledge-base-embedding-state.js';
+} from '../src/settings/knowledge/knowledge-base-embedding-state.js';
 
 const model: AvailableBindingModel = {
   providerConfigId: 'provider-a',

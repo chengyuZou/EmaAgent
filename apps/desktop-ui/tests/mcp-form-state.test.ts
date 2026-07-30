@@ -4,7 +4,7 @@ import {
   buildMcpServerConfig,
   createEmptyMcpFormState,
   mcpServerConfigToForm,
-} from '../src/settings/mcp-form-state.js';
+} from '../src/settings/mcp/mcp-form-state.js';
 
 describe('MCP stdio 参数表单', () => {
   it('保留空格、引号、反斜杠与空字符串参数', () => {

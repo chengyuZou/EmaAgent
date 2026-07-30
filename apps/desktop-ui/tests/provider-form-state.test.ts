@@ -6,7 +6,7 @@ import {
   resolveProviderSubmitState,
   type ProviderFormDraft,
   type ProviderFormSnapshot,
-} from '../src/settings/provider-form-state.js';
+} from '../src/settings/providers/provider-form-state.js';
 
 const snapshot: ProviderFormSnapshot = {
   baseUrl: 'https://api.example.com/v1',

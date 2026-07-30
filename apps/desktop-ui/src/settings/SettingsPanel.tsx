@@ -17,19 +17,19 @@ import { useShallow } from 'zustand/react/shallow';
 import { useKbStore, selectIngestSummary } from '../stores/kb-store.js';
 import { useThemeSync } from '../stores/theme-store.js';
 import { mountSystemEvents } from '../lib/system-sse.js';
-import { ProvidersTab } from './ProvidersTab.js';
-import { BindingsTab } from './BindingsTab.js';
-import { CardsTab } from './CardsTab.js';
-import { SkillsTab } from './SkillsTab.js';
-import { McpTab } from './McpTab.js';
-import { MemoryTab } from './MemoryTab.js';
-import { KnowledgeBaseTab } from './KnowledgeBaseTab.js';
-import { Live2DTab } from './Live2DTab.js';
-import { ShortcutsTab } from './ShortcutsTab.js';
-import { AppearanceTab } from './AppearanceTab.js';
-import { StorageTab }    from './StorageTab.js';
-import { DiagnosticsTab } from './DiagnosticsTab.js';
-import { GeneralTab } from './GeneralTab.js';
+import { ProvidersTab } from './providers/ProvidersTab.js';
+import { BindingsTab } from './providers/BindingsTab.js';
+import { CardsTab } from './character/CardsTab.js';
+import { SkillsTab } from './skills/SkillsTab.js';
+import { McpTab } from './mcp/McpTab.js';
+import { MemoryTab } from './memory/MemoryTab.js';
+import { KnowledgeBaseTab } from './knowledge/KnowledgeBaseTab.js';
+import { Live2DTab } from './general/Live2DTab.js';
+import { ShortcutsTab } from './general/ShortcutsTab.js';
+import { AppearanceTab } from './general/AppearanceTab.js';
+import { StorageTab }    from './data/StorageTab.js';
+import { DiagnosticsTab } from './data/DiagnosticsTab.js';
+import { GeneralTab } from './general/GeneralTab.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

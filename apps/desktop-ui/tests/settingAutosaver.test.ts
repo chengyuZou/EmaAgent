@@ -11,7 +11,7 @@ vi.mock('../src/api/settings.js', () => ({
   },
 }));
 
-import { SettingAutosaver, type SettingSaveState } from '../src/settings/useObjectSetting.js';
+import { SettingAutosaver, type SettingSaveState } from '../src/settings/shared/useObjectSetting.js';
 
 interface Value { a: number; b: number }
 
