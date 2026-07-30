@@ -46,6 +46,8 @@ export function dispatchSystemEvent(event: AppEvent): void {
         lazyQueued: event.lazyQueued,
         durationMs: event.durationMs,
       });
+      // 提取产生了新节点/条目,统计快照已过期。
+      void useMemoryStore.getState().refreshStats();
       break;
 
     case 'memory_extraction_failed':
@@ -174,9 +176,13 @@ export function dispatchSystemEvent(event: AppEvent): void {
       useMemoryStore.getState().onHealthChanged(event.health);
       break;
 
+    case 'memory_consolidation_completed':
+      // 归并合并了节点,统计快照已过期;started/failed 无需动作。
+      void useMemoryStore.getState().refreshStats();
+      break;
+
     // 这些事件为后续 Memory 轮次预留，当前没有前端状态需要更新。
     case 'memory_consolidation_started':
-    case 'memory_consolidation_completed':
     case 'memory_consolidation_failed':
     case 'memory_node_merged':
       break;

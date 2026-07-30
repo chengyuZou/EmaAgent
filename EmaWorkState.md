@@ -50,6 +50,8 @@ LocalHost HTTP 传输边界第一刀已经完成：`server.ts` 只接收有序 `
 
 LocalHost 后台生命周期已经完成收口：`StartupRecovery.runRequired()` 在 ready 前恢复 ToolExecution、Turn 与 AgentRun，任一数据库恢复失败都会阻止启动；Memory 恢复、孤儿文件和遗留目录清理经 `runMaintenance()` 后台降级，Memory 恢复或初始化失败时不会继续 `tick/drain`。`BackgroundWork` 统一管理周期维护、Tool Result 与 Attachment Cache 清理、Bridge 心跳和有序关闭；MCP 只同步注册缓存 Schema，缺失 Schema 后台发现，Transport 保持首次真实调用时惰性连接。
 
+Session 物理目录恢复已经补齐：永久删除继续先提交数据库级联，再 best-effort 删除 `{dataDir}/sessions/{sessionId}`；若进程在两步之间退出，启动维护会以数据库为事实源删除整棵孤儿 Session 目录，再扫描存活 Session 内的孤儿 Turn 文件。符号链接与 Junction 不会被跟随，单个目录被 Windows 句柄占用只记录失败并继续清理其余目录。
+
 Memory 闲置后台维护 M1-M5 已完成：Session 活动根 Turn 注册表向 LocalHost 发布全局负载变化；轻量 Decay 与少量残留 Consolidation 在全局空闲 60 秒后运行，Storage Budget / Embedding Repair 必须连续空闲 30 分钟。新 Turn 或 LocalHost 关闭会在批次边界取消维护，预期抢占不记失败、不发伪完成事件。Profile v16 用 `last_decayed_at` 固化每行衰减周期，Decay 候选读取与 CAS 更新按 200 行小事务提交；Recall 引用加权、用户手动删除、Extraction、Decay、Consolidation、Embedding Repair 与 Storage Budget 共用 `MemoryCommitCoordinator`，模型和候选计算仍可跨 Session 并行。Consolidation 已按单节点快照、Node CAS 和 Profile 事务精确消费本轮 lazy update，模型往返期间的新证据不会被误删，ANN 增量失败会从 SQLite 事实源重建。Session 永久删除会先阻止新 Turn、撤销对应 Extraction 租约并取消事务外模型调用，再删除 Data DB 行；Profile 清理通过提交协调器等待已经开始的短提交，不等待可能忽略取消的 Provider。已经形成的全局长期记忆正文继续保留，崩溃留下的跨库孤儿由启动恢复补清。LocalHost 现提供进程内只读健康快照：各维护动作独立累计连续失败，初始化不可用或预算处理后仍超限立即退化，普通错误连续三次才退化，预期抢占和空扫描不产生警告。
 
 LocalHost 一次性启动装配已经完成收口：`bootstrap/startLocalHost.ts` 在 ready 前先完成必需执行状态恢复，再尝试可降级的 Marketplace Seed 与默认 KB；Skill 对账、models.dev Catalog 与首次 Bridge 配置由 Lifecycle 跟踪为后台任务，关闭时等待仍在途的任务。启动不再 `kb.initAll()` 打开所有 KB；默认项失败只影响 Knowledge，具体 KB Client 继续在首次操作时惰性打开。角色卡 Seed 仍是 Character/Emotion 对象图的同步构造前置：EmotionEngine 立即需要活动角色，且角色卡写入受 Live2D 模型外键约束，不能伪装成可延迟后台任务。
@@ -162,11 +164,15 @@ BackgroundProcess 后端主链已经完成：Bash 在 15 秒内返回普通结�
 
 Memory M1-M5 后端已经全部完成；本批没有修改 `apps/desktop-ui`。前端若接入健康展示，只消费 `/api/memory/health` 与退化边界事件。
 
-当前基线最近提交：`951a654c feat: implement session deletion lifecycle with memory cleanup`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
+当前基线最近提交：`d249726d feat: implement memory background health tracking and maintenance reporting`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
 
 K3 当前负责 Desktop Chat Workspace、Git/Review 等前端工作；主 Agent 不修改其
 `apps/desktop-ui` 施工区。后台进程前端已经补入 `EmaChatWorkspacePlan.md`，
 现在可直接消费正式 API、领域事件与 Tool Presentation。
+
+本轮主 Agent 只修改 LocalHost 的 Session 目录启动恢复、路径导出、对应测试和本接力板；工作区内 Desktop UI 与 `apps/localHost/src/settings/eventDisplaySetting.ts` 的并行改动属于其他 Agent，不得覆盖。
+
+Character 资源、自检与主窗降级的 V1 口径已经写入 `docs/architecture/characterResourceValidationPlan.md`。本批只冻结设计，没有修改 Character、Desktop UI、Storage Schema 或 Backup 生产代码：Prompt 缺失属于阻止角色执行的 Error；Live2D、单张图片和参考音频问题属于可降级 Warning；主窗按 Live2D、主图片/第一张可用图片、空白占位的稳定顺序降级。多图片使用显式子表，单图上限 20 MiB，并额外限制解码像素。
 
 ## 已确定的 V1 口径
 
@@ -223,12 +229,25 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
     - **A 主链真 Bug 已完成**：ToolResultStore EEXIST 只复用完全一致的内容；Usage 状态模型已区分 `cancelled`；Anthropic 已删除隐式 `maxTokens=4096` 并使用调用级剩余输出预算；
     - **B 主链安全收口**：install-git 与 mcpStdioGate 路由级审批已经接通；`AGEN_UNSAFE_*` 在正式构建中会直接阻止启动，不能由安装环境变量关闭隔离。Sandbox 状态接前端常驻提示仍属于前端工作；
     - **C 主链卫生已完成**：已删除 Macro 压缩后绕过 Memory 开关直接重读 L1 Session Note 的旧恢复旁路；正常 L1 Recall 继续作为不可压缩 Contribution 保留，Active Skill 继续走 required restore。AgentLoopState 已删除不可达状态；`prefixHash` 已明确为本次请求截止最终缓存断点的身份，会随历史、当前 Turn 和工具轮次演进，不再伪装成跨 Turn 固定 Prompt Hash。
+12. Character 后续按 `docs/architecture/characterResourceValidationPlan.md` 分三批实施：先做多图片数据与统一健康投影，再做主窗口表现降级，最后接角色文件生命周期和完整用户数据备份；不得与当前 Desktop Chat Workspace 施工混批。
 
 命名随业务批次清理：旧 `IFileStateStoreEntry/IFileStateStore` 及后续过渡接口已经删除，`IToolExecutionJournal` 已改为职责名；其余迁移期 `I*` 类型继续随业务边界处理，不单独进行全仓机械重命名。
 
 每批只改变一个主要业务边界。不要把 Turn 统一、数据库 Schema、全仓 ID 改名和前端切换塞进同一批。
 
 ## 最近验证
+
+- MCP 拆分收尾（K3）：Desktop UI typecheck + 33 文件 166/166 通过。用户已拆出 KeyValueEditor/McpMarketView/McpServerRow 后，最后一块两个对话框归位 `McpServerDialogs.tsx`（295 行）：`McpImportDialog` 与 `McpServerFormDialog` 状态自包含（store 全局自取，表单/探测/导入结果内部管理），编辑实例经父级 `key={editing?.name ?? 'new'}` 重挂重置初值；`McpTab.tsx` 433→130 行纯装配。mcp/ 终态：McpTab 130 + MarketView 194 + ServerRow 186 + ServerDialogs 295 + KeyValueEditor 48 + ArgumentEditor 80 + form-state 82。`git diff --check` 通过，仅有既有 CRLF 提示。
+
+- Character 资源设计批：仅新增 `docs/architecture/characterResourceValidationPlan.md` 并更新接力板；未修改生产代码，未运行代码测试。文档冻结 Prompt Error、Live2D/图片/参考音频 Warning、多图确定性选择、20 MiB 与解码像素双上限、主窗占位和角色备份边界。
+
+- MemoryTab 用户自拆验收 + Memory 后端全量对账 + stats 刷新补漏（K3）：Desktop UI typecheck + 33 文件 166/166 通过。用户按方法论自拆 MemoryTab 688→33 行主装配 + 7 块（Overview/Nodes/Items/MaintenanceTab/HealthCard/MaintenanceSettings/labels)，五关验收全过。Sol Memory 后端对账结论：routes/memory.ts 10 端点 memoryApi 全覆盖；`memory_tasks` 四 kind 仅 extraction 真实运行（maintenance/embedding_refresh/consolidation 为 schema 兼容残留，残留行明确标失败不重试），维护四操作走 backgroundWork + M5 健康投影，前端呈现各对各路无窟窿。补漏：`memory_consolidation_completed` 与 `memory_extraction_completed` 到达时刷新 memory stats（归并/提取后统计快照过期，与 maintenance_completed 同待遇）。`git diff --check` 通过，仅有既有 CRLF 提示。
+
+- settings 大文件拆分（K3 负责 KB 与 Storage 两块）：Desktop UI typecheck + 33 文件 166/166 通过，零行为变化。**KnowledgeBaseTab 965→110 行**：拆出 `ChunkViewer`（分块游标分页）、`DocumentRow`（含状态标签映射）、`IngestForm`、`SearchTest`、`ProcessingQueue`（含 IngestJobRow）、`LibraryManager`（含 LibraryRow/CreateLibDialog）、`KbModelSettings`（含后台重建 SSE 收口）；主文件只留取数与拼块。**StorageTab 810→约 200 行**：拆出 `storageFormat.ts`（useMountedAnim + 五个 fmt 辅助）、`StorageDirDialogs`（添加/迁移对话框）、`DataDirRow`、`StorageStatsPanel`（含 EmptyRight）、`SessionDashboard`（SessionRow + 概览/音频/笔记三个子页 + ZIP 导出）。唯一刻意改名：SessionDashboard 内部的会话笔记子页 `MemoryTab` → `NotesTab`（与 settings/memory 的 MemoryTab 同名易混，未导出纯内部）。MemoryTab/McpTab 由用户按同一方法论自拆。`git diff --check` 通过，仅有既有 CRLF 提示。
+
+- Session 孤儿目录启动恢复：LocalHost 定向 2 个测试文件 20/20、全量 43 个测试文件 173/173、typecheck 与 build 通过。测试覆盖数据库已删 Session 的整棵后台进程日志目录清理、存活 Session 保留，以及整目录清理先于孤儿 Turn 扫描。
+
+- Memory M5 健康投影前端接线 + memory 设置 UI（K3）：Desktop UI typecheck + 33 文件 166/166、LocalHost typecheck + 173/173 通过。Sol M5 后端（MemoryBackgroundHealthTracker + GET /api/memory/health + memory_background_health_changed 仅退化边界发布）前端全接：`memoryApi.health`、`memory-store` health slice（refreshHealth 静默失败保旧值/onHealthChanged 原位替换）、dispatcher case、通知（进入退化警告带 lastFailure 公开文案、退出退化报恢复）、catalog 标签与后端默认值补登。MemoryTab：向量索引卡后新增 `MemoryHealthCard`（正常/维护中·操作/已退化 Badge + 最近失败含连续次数 + 存储压力用量/上限/仍超限标红）；`MemoryMaintenanceSettings` 落地 memory.maintenance（衰减起始天数/衰减幅度/冷删除天数）与 memory.storage（上限 MB 显示）——Sol Memory M1–M5 定型后最后两个无 UI key 清零，共用 shared/ 骨架即存。memory.models 模型选择器留待专项（参照 KbModelSettings 的 Provider 模型下拉）。`git diff --check` 通过，仅有既有 CRLF 提示。
 
 - ChatHistory Codex 式工作区折叠（K3）：Desktop UI typecheck + 33 个测试文件 166/166（新增 workGroups 14 用例）通过。经 5 张 Codex 截图对齐形态：**纯模型** `chat/history/workGroups.ts`（groupSlices 连续工具分组、splitWorkAnswer 末尾 text 为正文其余进工作区、tallyTools 动词归类(Bash/Process*=命令,Edit/Write/ScratchpadWrite=编辑)/tallySummary 合并摘要(单条给具体文件或命令)、liveAction 流式当前动作(正在编辑/正在执行命令/正在运行/等待模型)、editedFiles 同文件归并汇总、formatTurnTime 当年 M月D日 HH:mm 跨年 YYYY年M月D日、formatWorkDuration 分档）。**组件**：`WorkSection`（"已处理 X · 摘要 · N 个错误红"折叠头，流式直播耗时与当前动作，终态默认收起）、`ToolWorkGroup`（组合并摘要行，失败计数红，展开为现有 ToolCallBlock）、`EditedFilesCard`（已编辑 N 个文件 +A -D + 每页 5 个"再显示" + 审核开 review 标签；无真实撤销能力不渲染）。AssistantBubble 重构：末尾 text 永驻为正文，其余全部进可折叠工作区；UserBubble 加绝对时间戳。用户拍板细节：动词合并一行、失败单条红+摘要带错误数、中止不红、流式摘要也用动词计数。`git diff --check` 通过，仅有既有 CRLF 提示。
 
