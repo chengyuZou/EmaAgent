@@ -184,6 +184,13 @@ export type {
   AgentRunMessageRow,
 } from './repos/agent-run-messages.js';
 export { ToolExecutionsRepo } from './repos/tool-executions.js';
+export { BackgroundProcessesRepo } from './repos/backgroundProcesses.js';
+export type {
+  BackgroundProcessInsert,
+  BackgroundProcessRow,
+  BackgroundProcessStatus,
+  BackgroundProcessTerminal,
+} from './repos/backgroundProcesses.js';
 
 // ── Knowledge-base repo ────────────────────────────────────────────────────────
 export { DocumentAssetRepo, DocumentAssetCursorError } from './repos/document-asset.js';

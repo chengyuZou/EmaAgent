@@ -11,6 +11,7 @@ export type CharacterCardId = BrandedId<'CharacterCardId'>;
 export type CompactionId = BrandedId<'CompactionId'>;
 export type ToolCallId = BrandedId<'ToolCallId'>;
 export type HookInvocationId = BrandedId<'HookInvocationId'>;
+export type BackgroundProcessId = BrandedId<'BackgroundProcessId'>;
 
 export function asSessionId(value: string): SessionId { return value as SessionId; }
 export function asTurnId(value: string): TurnId { return value as TurnId; }
@@ -21,3 +22,6 @@ export function asCharacterCardId(value: string): CharacterCardId { return value
 export function asCompactionId(value: string): CompactionId { return value as CompactionId; }
 export function asToolCallId(value: string): ToolCallId { return value as ToolCallId; }
 export function asHookInvocationId(value: string): HookInvocationId { return value as HookInvocationId; }
+export function asBackgroundProcessId(value: string): BackgroundProcessId {
+  return value as BackgroundProcessId;
+}

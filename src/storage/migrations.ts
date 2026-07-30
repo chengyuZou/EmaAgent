@@ -71,10 +71,32 @@ export class MigrationsRunner {
         );
       }
       const sql = fs.readFileSync(path.join(folder, filename), 'utf8');
-      this.db.transaction(() => {
-        this.db.exec(sql);
-        this.db.pragma(`user_version = ${v}`);
-      })();
+      const rebuildsReferencedTable = sql.includes(
+        '-- ema:migration foreign_keys=off',
+      );
+      if (rebuildsReferencedTable) {
+        // SQLite 在外键开启时会把子表引用同步改名到临时表。重建被引用表必须在
+        // 事务外临时关闭外键，再在提交前用 foreign_key_check 验证最终关系。
+        this.db.pragma('foreign_keys = OFF');
+      }
+      try {
+        this.db.transaction(() => {
+          this.db.exec(sql);
+          if (rebuildsReferencedTable) {
+            const violations = this.db.pragma('foreign_key_check') as unknown[];
+            if (violations.length > 0) {
+              throw new Error(
+                `[${this.kind}] 迁移 ${v} 重建表后留下 ${violations.length} 个外键错误`,
+              );
+            }
+          }
+          this.db.pragma(`user_version = ${v}`);
+        })();
+      } finally {
+        if (rebuildsReferencedTable) {
+          this.db.pragma('foreign_keys = ON');
+        }
+      }
     }
   }
 
