@@ -1,8 +1,13 @@
-// 审阅面板:上一轮/全部会话走工具 file_change presentation,未暂存/已暂存走 Git 工作区 diff;
-// 支持文件清单/差异视图、统一/分列、跳转过滤、file:<path> 标签打开。没有真实来源的范围不渲染。
+// 审阅面板:上一轮/全部会话走工具 file_change presentation,未暂存/已暂存走 Git 工作区 diff,
+// 提交记录/分支比较走 git-compare;没有真实来源的范围不渲染。
 import { useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import { Button, DropdownMenu, IconButton, Input } from '@ema-agent/ui';
-import type { GitDiffFile, GitWorkspaceDiffResult } from '@ema-agent/git-utils';
+import type {
+  GitCompareResult,
+  GitDiffFile,
+  GitRefsResult,
+  GitWorkspaceDiffResult,
+} from '@ema-agent/git-utils';
 import type { SessionId } from '@ema-agent/ids';
 import { gitApi } from '../../api/git.js';
 import { useWorkspaceStore } from '../workspace/workspaceStore.js';
@@ -10,14 +15,22 @@ import { fileTab } from '../workspace/workspaceTypes.js';
 import { useLatestTurnDiffs, useSessionDiffs } from './reviewDiffs.js';
 import { DiffCard, type ReviewFileItem } from './DiffCard.js';
 
-type ReviewScope = 'latest' | 'all' | 'unstaged' | 'staged';
+type ReviewScope = 'latest' | 'all' | 'unstaged' | 'staged' | 'commit' | 'branch';
 type PanelView = 'diff' | 'files';
+
+interface CompareTarget {
+  readonly type: 'commit' | 'branch';
+  readonly ref: string;
+  readonly label: string;
+}
 
 const SCOPE_LABEL: Record<ReviewScope, string> = {
   latest:   '上一轮',
   all:      '全部会话',
   unstaged: '未暂存',
   staged:   '已暂存',
+  commit:   '提交记录',
+  branch:   '分支比较',
 };
 
 export function ReviewPanel({ sessionId }: { sessionId: string | null }): JSX.Element {
@@ -38,23 +51,63 @@ export function ReviewPanel({ sessionId }: { sessionId: string | null }): JSX.El
   // Git 工作区 diff:capability 非 ok 时未暂存/已暂存范围不渲染。
   const [workspaceDiff, setWorkspaceDiff] = useState<GitWorkspaceDiffResult | null>(null);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
+  // 分支/提交清单与比较结果:同样 capability 裁决,非 ok 不渲染对应范围。
+  const [refs, setRefs] = useState<GitRefsResult | null>(null);
+  const [compareTarget, setCompareTarget] = useState<CompareTarget | null>(null);
+  const [compare, setCompare] = useState<GitCompareResult | null>(null);
+  const [compareLoading, setCompareLoading] = useState(false);
 
   useEffect(() => {
     if (!sessionId) {
       setWorkspaceDiff(null);
+      setRefs(null);
       return undefined;
     }
     let cancelled = false;
     setWorkspaceLoading(true);
     gitApi.getWorkspaceDiff(sessionId)
-      .then((result) => { if (!cancelled) setWorkspaceDiff(result); })
+      .then((result) => {
+        if (cancelled) return;
+        setWorkspaceDiff(result);
+        // 只读来源 ok 才取分支/提交清单,失败按无来源处理。
+        if (result.capability === 'ok') {
+          gitApi.getRefs(sessionId)
+            .then((refsResult) => { if (!cancelled) setRefs(refsResult); })
+            .catch(() => { if (!cancelled) setRefs(null); });
+        } else {
+          setRefs(null);
+        }
+      })
       .catch(() => { if (!cancelled) setWorkspaceDiff(null); })
       .finally(() => { if (!cancelled) setWorkspaceLoading(false); });
     return () => { cancelled = true; };
   }, [sessionId]);
 
+  // 比较目标变化时拉取 git-compare。
+  useEffect(() => {
+    if (!sessionId || !compareTarget) {
+      setCompare(null);
+      return undefined;
+    }
+    let cancelled = false;
+    setCompareLoading(true);
+    gitApi.getCompare(sessionId, { type: compareTarget.type, ref: compareTarget.ref })
+      .then((result) => { if (!cancelled) setCompare(result); })
+      .catch(() => { if (!cancelled) setCompare(null); })
+      .finally(() => { if (!cancelled) setCompareLoading(false); });
+    return () => { cancelled = true; };
+  }, [sessionId, compareTarget]);
+
   const refreshWorkspace = (): void => {
     if (!sessionId) return;
+    if ((scope === 'commit' || scope === 'branch') && compareTarget) {
+      setCompareLoading(true);
+      gitApi.getCompare(sessionId, { type: compareTarget.type, ref: compareTarget.ref })
+        .then(setCompare)
+        .catch(() => setCompare(null))
+        .finally(() => setCompareLoading(false));
+      return;
+    }
     setWorkspaceLoading(true);
     gitApi.getWorkspaceDiff(sessionId)
       .then(setWorkspaceDiff)
@@ -63,18 +116,34 @@ export function ReviewPanel({ sessionId }: { sessionId: string | null }): JSX.El
   };
 
   const gitAvailable = workspaceDiff?.capability === 'ok';
+  const refsAvailable = refs?.capability === 'ok';
+  // 分支比较候选:排除当前分支(与自身比较恒为空)。
+  const compareBranches = useMemo(
+    () => refsAvailable ? refs.branches.filter((b) => b !== refs.current) : [],
+    [refsAvailable, refs],
+  );
+  const compareCommits = useMemo(
+    () => refsAvailable ? refs.commits : [],
+    [refsAvailable, refs],
+  );
 
   // 当前范围失去数据来源时回退上一轮,不展示空壳。
   useEffect(() => {
     if ((scope === 'unstaged' || scope === 'staged') && workspaceDiff !== null && !gitAvailable) {
       setScope('latest');
     }
-  }, [scope, workspaceDiff, gitAvailable]);
+    if (scope === 'commit' && refs !== null && compareCommits.length === 0) setScope('latest');
+    if (scope === 'branch' && refs !== null && compareBranches.length === 0) setScope('latest');
+  }, [scope, workspaceDiff, gitAvailable, refs, compareCommits.length, compareBranches.length]);
 
   const items = useMemo<readonly ReviewFileItem[]>(() => {
     if (scope === 'unstaged' || scope === 'staged') {
       if (workspaceDiff?.capability !== 'ok') return [];
       return workspaceDiff[scope].files.map((file) => gitFileToItem(scope, file));
+    }
+    if (scope === 'commit' || scope === 'branch') {
+      if (!compareTarget || compare?.capability !== 'ok') return [];
+      return compare.diff.files.map((file) => gitFileToItem(scope, file));
     }
     const diffs = scope === 'latest' ? latestDiffs : allDiffs;
     return diffs.map((diff) => ({
@@ -87,7 +156,7 @@ export function ReviewPanel({ sessionId }: { sessionId: string | null }): JSX.El
       unifiedDiff: diff.change.unifiedDiff,
       truncated: diff.change.truncated,
     }));
-  }, [scope, workspaceDiff, latestDiffs, allDiffs]);
+  }, [scope, workspaceDiff, compareTarget, compare, latestDiffs, allDiffs]);
 
   const visibleItems = useMemo(() => {
     const query = filter.trim().toLowerCase();
@@ -104,12 +173,19 @@ export function ReviewPanel({ sessionId }: { sessionId: string | null }): JSX.El
         omitted: scopeDiff.omittedFiles,
       };
     }
+    if ((scope === 'commit' || scope === 'branch') && compare?.capability === 'ok') {
+      return {
+        additions: compare.diff.totalAdditions,
+        deletions: compare.diff.totalDeletions,
+        omitted: compare.diff.omittedFiles,
+      };
+    }
     return {
       additions: items.reduce((sum, item) => sum + item.additions, 0),
       deletions: items.reduce((sum, item) => sum + item.deletions, 0),
       omitted: 0,
     };
-  }, [scope, workspaceDiff, items]);
+  }, [scope, workspaceDiff, compare, items]);
 
   // §5:进入时默认定位到当前 Turn 首个变更。
   useEffect(() => {
@@ -139,9 +215,32 @@ export function ReviewPanel({ sessionId }: { sessionId: string | null }): JSX.El
     setPendingScrollKey(key);
   };
 
-  const scopeOptions: readonly ReviewScope[] = gitAvailable
-    ? ['latest', 'all', 'unstaged', 'staged']
-    : ['latest', 'all'];
+  const scopeOptions: readonly ReviewScope[] = [
+    'latest',
+    'all',
+    ...(gitAvailable ? (['unstaged', 'staged'] as const) : []),
+    ...(compareCommits.length > 0 ? (['commit'] as const) : []),
+    ...(compareBranches.length > 0 ? (['branch'] as const) : []),
+  ];
+
+  // 切到比较范围时,默认选中第一个候选,不给"未选择"的空壳状态。
+  const selectScope = (option: ReviewScope): void => {
+    setScope(option);
+    if (option === 'commit' && compareTarget?.type !== 'commit') {
+      const first = compareCommits[0];
+      if (first) {
+        setCompareTarget({
+          type: 'commit',
+          ref: first.sha,
+          label: `${first.sha.slice(0, 7)} ${first.subject}`,
+        });
+      }
+    }
+    if (option === 'branch' && compareTarget?.type !== 'branch') {
+      const first = compareBranches[0];
+      if (first) setCompareTarget({ type: 'branch', ref: first, label: first });
+    }
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -160,9 +259,52 @@ export function ReviewPanel({ sessionId }: { sessionId: string | null }): JSX.El
           items={scopeOptions.map((option) => ({
             kind: 'item' as const,
             label: SCOPE_LABEL[option],
-            onSelect: () => setScope(option),
+            onSelect: () => selectScope(option),
           }))}
         />
+        {/* 二级选择器:提交记录选提交,分支比较选基准分支。 */}
+        {scope === 'commit' && (
+          <DropdownMenu
+            side="bottom"
+            align="start"
+            widthClass="min-w-64 max-w-80"
+            trigger={(
+              <Button variant="ghost" size="sm" className="gap-1 max-w-64 truncate px-2 py-0.5 text-[11px]">
+                <span className="truncate">{compareTarget?.type === 'commit' ? compareTarget.label : '选择提交'}</span>
+                <span className="i-lucide:chevron-down shrink-0 text-xs" aria-hidden />
+              </Button>
+            )}
+            items={compareCommits.map((commit) => ({
+              kind: 'item' as const,
+              label: `${commit.sha.slice(0, 7)} ${commit.subject}`,
+              onSelect: () => setCompareTarget({
+                type: 'commit',
+                ref: commit.sha,
+                label: `${commit.sha.slice(0, 7)} ${commit.subject}`,
+              }),
+            }))}
+          />
+        )}
+        {scope === 'branch' && (
+          <DropdownMenu
+            side="bottom"
+            align="start"
+            widthClass="min-w-40"
+            trigger={(
+              <Button variant="ghost" size="sm" className="gap-1 max-w-48 truncate px-2 py-0.5 text-[11px]">
+                <span className="truncate">
+                  {compareTarget?.type === 'branch' ? `相对 ${compareTarget.label}` : '选择基准分支'}
+                </span>
+                <span className="i-lucide:chevron-down shrink-0 text-xs" aria-hidden />
+              </Button>
+            )}
+            items={compareBranches.map((branch) => ({
+              kind: 'item' as const,
+              label: branch,
+              onSelect: () => setCompareTarget({ type: 'branch', ref: branch, label: branch }),
+            }))}
+          />
+        )}
         <span className="text-[var(--ema-text-secondary)]">{items.length} 个变更</span>
         <span className="text-[var(--ema-success-text)]">+{totals.additions}</span>
         <span className="text-[var(--ema-danger-text)]">-{totals.deletions}</span>
@@ -203,12 +345,13 @@ export function ReviewPanel({ sessionId }: { sessionId: string | null }): JSX.El
           toggled={wrap}
           onClick={() => setWrap((value) => !value)}
         />
-        {gitAvailable && (scope === 'unstaged' || scope === 'staged') && (
+        {((gitAvailable && (scope === 'unstaged' || scope === 'staged'))
+          || ((scope === 'commit' || scope === 'branch') && compareTarget)) && (
           <IconButton
             size="sm"
-            label="刷新工作区 diff"
+            label="刷新 diff"
             icon="i-lucide:refresh-cw"
-            loading={workspaceLoading}
+            loading={workspaceLoading || compareLoading}
             onClick={refreshWorkspace}
           />
         )}
@@ -218,7 +361,7 @@ export function ReviewPanel({ sessionId }: { sessionId: string | null }): JSX.El
         <ScopeEmpty
           scope={scope}
           allCount={allDiffs.length}
-          loading={workspaceLoading}
+          loading={workspaceLoading || compareLoading}
           onShowAll={() => setScope('all')}
         />
       ) : view === 'files' ? (
@@ -261,7 +404,7 @@ export function ReviewPanel({ sessionId }: { sessionId: string | null }): JSX.El
   );
 }
 
-function gitFileToItem(scope: 'unstaged' | 'staged', file: GitDiffFile): ReviewFileItem {
+function gitFileToItem(scope: string, file: GitDiffFile): ReviewFileItem {
   return {
     key: `git:${scope}:${file.path}`,
     displayPath: file.path,
@@ -288,7 +431,9 @@ function ScopeEmpty({
       ? '当前 Session 还没有文件变更'
       : scope === 'unstaged'
         ? '工作区没有未暂存变更'
-        : '没有已暂存变更';
+        : scope === 'staged'
+          ? '没有已暂存变更'
+          : '与该基准没有差异';
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-2 text-xs text-[var(--ema-text-tertiary)]">
       <span className="i-lucide:file-diff text-2xl opacity-40" aria-hidden />

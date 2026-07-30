@@ -85,3 +85,31 @@ export type GitWorkspaceDiffResult =
   | GitSummaryNotARepo
   | GitSummaryUnavailable
   | GitSummaryError;
+
+// ── 比较 diff 与分支/提交清单(批次 D2b)──────────────────────────────────────
+
+export interface GitCompareOk {
+  readonly capability: 'ok';
+  readonly repoRoot: string;
+  readonly diff: GitScopeDiff;
+}
+
+export type GitCompareResult =
+  | GitCompareOk
+  | GitSummaryNotARepo
+  | GitSummaryUnavailable
+  | GitSummaryError;
+
+export interface GitRefsOk {
+  readonly capability: 'ok';
+  /** 当前分支;detached HEAD 为 null。 */
+  readonly current: string | null;
+  readonly branches: readonly string[];
+  readonly commits: readonly { readonly sha: string; readonly subject: string }[];
+}
+
+export type GitRefsResult =
+  | GitRefsOk
+  | GitSummaryNotARepo
+  | GitSummaryUnavailable
+  | GitSummaryError;
