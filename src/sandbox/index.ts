@@ -24,6 +24,8 @@ export type {
   WrappedCommand,
   SandboxCommand,
   CommandRunOptions,
+  CommandOutputChunk,
+  CommandProcessHandle,
   CommandRunResult,
   CommandRunnerPort,
   SandboxStatusWire,

@@ -7,12 +7,13 @@ import { detectBackend } from './detect.js';
 import { AppLayerBackend } from './backends/app-layer.js';
 import { BubblewrapBackend } from './backends/bubblewrap.js';
 import { SandboxExecBackend } from './backends/sandbox-exec.js';
-import { runProcess } from './processRunner.js';
+import { startProcess } from './processRunner.js';
 import { buildProcessEnvironment } from './processEnvironment.js';
 import { resolveCommandCwd } from './resolveCommandCwd.js';
 import { probeBash } from './bashProbe.js';
 import type {
   CommandRunOptions,
+  CommandProcessHandle,
   CommandRunResult,
   CommandRunnerPort,
   SandboxBackend,
@@ -21,7 +22,7 @@ import type {
 } from './types.js';
 
 const DEFAULT_TIMEOUT_MS = 120_000;
-const MAX_TIMEOUT_MS = 600_000;
+const MAX_TIMEOUT_MS = 7 * 24 * 60 * 60 * 1_000;
 
 /** bare-repo 完整签名: 三者同时存在才构成"工作区变成了 Git 仓库"。 */
 const BARE_SIGNATURE = ['HEAD', 'objects', 'refs'] as const;
@@ -61,27 +62,32 @@ export class CommandRunner implements CommandRunnerPort {
     );
   }
 
-  async run(command: string, options: CommandRunOptions = {}): Promise<CommandRunResult> {
+  start(command: string, options: CommandRunOptions = {}): CommandProcessHandle {
     const cwd = resolveCommandCwd(options.cwd, this.capability);
     const timeoutMs = Math.min(options.timeoutMs ?? DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS);
     const shell = resolveShell();
     const wrapped = this.backend.wrap(command, shell, this.config);
+    const handle = startProcess(
+      {
+        backend: this.backend.name,
+        executable: wrapped.executable,
+        args: wrapped.args,
+        cwd,
+        environment: buildProcessEnvironment(),
+      },
+      timeoutMs,
+      options.signal,
+      options.onOutput,
+    );
+    void handle.completion.then(
+      () => this.cleanup(),
+      () => this.cleanup(),
+    );
+    return handle;
+  }
 
-    try {
-      return await runProcess(
-        {
-          backend: this.backend.name,
-          executable: wrapped.executable,
-          args: wrapped.args,
-          cwd,
-          environment: buildProcessEnvironment(),
-        },
-        timeoutMs,
-        options.signal,
-      );
-    } finally {
-      this.cleanup();
-    }
+  async run(command: string, options: CommandRunOptions = {}): Promise<CommandRunResult> {
+    return this.start(command, options).completion;
   }
 
   /**

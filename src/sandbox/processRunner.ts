@@ -2,7 +2,12 @@
 // 只执行 SandboxCommand: 不读取 process.env, 不理解 Sandbox Policy。
 
 import { spawn, spawnSync } from 'node:child_process';
-import type { CommandRunResult, SandboxCommand } from './types.js';
+import type {
+  CommandOutputChunk,
+  CommandProcessHandle,
+  CommandRunResult,
+  SandboxCommand,
+} from './types.js';
 
 const MAX_OUTPUT_CHARS = 200_000;
 const MAX_STREAM_CHARS = MAX_OUTPUT_CHARS / 2;
@@ -12,8 +17,19 @@ export function runProcess(
   command: SandboxCommand,
   timeoutMs: number,
   signal?: AbortSignal,
+  onOutput?: (chunk: CommandOutputChunk) => void,
 ): Promise<CommandRunResult> {
-  return new Promise((resolve, reject) => {
+  return startProcess(command, timeoutMs, signal, onOutput).completion;
+}
+
+export function startProcess(
+  command: SandboxCommand,
+  timeoutMs: number,
+  signal?: AbortSignal,
+  onOutput?: (chunk: CommandOutputChunk) => void,
+): CommandProcessHandle {
+  let stopProcess = (): void => undefined;
+  const completion = new Promise<CommandRunResult>((resolve, reject) => {
     // 已取消的 signal 不启动进程, 诚实返回取消结果而不是"先启动再杀"。
     if (signal?.aborted) {
       resolve({
@@ -36,6 +52,7 @@ export function runProcess(
     let stdoutChars = 0;
     let stderrChars = 0;
     let timedOut = false;
+    let stopped = false;
     let settled = false;
 
     /**
@@ -77,6 +94,11 @@ export function runProcess(
       forceKillTimer = setTimeout(() => terminateTree(true), FORCE_KILL_DELAY_MS);
       forceKillTimer.unref?.();
     };
+    stopProcess = (): void => {
+      stopped = true;
+      clearTimeout(timeout);
+      terminate();
+    };
     const timeout = setTimeout(() => {
       timedOut = true;
       terminate();
@@ -90,11 +112,13 @@ export function runProcess(
     signal?.addEventListener('abort', onAbort, { once: true });
 
     child.stdout.on('data', (chunk: Buffer) => {
+      onOutput?.({ stream: 'stdout', data: chunk });
       const text = chunk.toString();
       stdoutChars += text.length;
       stdout = appendBounded(stdout, text);
     });
     child.stderr.on('data', (chunk: Buffer) => {
+      onOutput?.({ stream: 'stderr', data: chunk });
       const text = chunk.toString();
       stderrChars += text.length;
       stderr = appendBounded(stderr, text);
@@ -116,7 +140,7 @@ export function runProcess(
       clearForceKillTimer();
       signal?.removeEventListener('abort', onAbort);
 
-      const aborted = !timedOut && (signal?.aborted ?? false);
+      const aborted = !timedOut && (stopped || (signal?.aborted ?? false));
       const totalChars = stdoutChars + stderrChars;
       const truncated = stdoutChars > stdout.length || stderrChars > stderr.length;
       if (truncated) {
@@ -136,6 +160,10 @@ export function runProcess(
         aborted,
       });
     });
+  });
+  return Object.freeze({
+    completion,
+    stop: () => stopProcess(),
   });
 }
 

@@ -54,6 +54,13 @@ export interface CommandRunOptions {
   cwd?: string;
   timeoutMs?: number;
   signal?: AbortSignal;
+  /** 原始输出增量只供受控日志存储使用；最终结果仍保持有界。 */
+  onOutput?: (chunk: CommandOutputChunk) => void;
+}
+
+export interface CommandOutputChunk {
+  readonly stream: 'stdout' | 'stderr';
+  readonly data: Uint8Array;
 }
 
 export interface CommandRunResult {
@@ -65,8 +72,15 @@ export interface CommandRunResult {
   aborted: boolean;
 }
 
+/** 已启动进程的稳定句柄；stop 终止整棵进程树，completion 只结算一次。 */
+export interface CommandProcessHandle {
+  readonly completion: Promise<CommandRunResult>;
+  stop(): void;
+}
+
 /** Tool 执行层只依赖这项能力，不接触 Sandbox 的配置和后端实现。 */
 export interface CommandRunnerPort {
+  start(command: string, options?: CommandRunOptions): CommandProcessHandle;
   run(command: string, options?: CommandRunOptions): Promise<CommandRunResult>;
   cleanup(): void;
 }
