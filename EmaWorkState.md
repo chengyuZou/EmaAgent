@@ -156,14 +156,13 @@ Task 与 AgentRun 前端已经分面：Desktop 使用正式 `/api/tasks` 快照�
 
 开始任何新批次前必须重新运行 `git status --short` 与 `git diff`，保留用户和其他 Agent 的修改。
 
-R11-R13 Memory 后台质量批次已经全部完成。R13 新增 Profile v15 逻辑字节预算、分级降压、显式向量驱逐标记和用户可调设置；本批未改 AgentLoop、Context Compaction 或根 Turn 主链。`EmaWorkState.md` 只由主 Agent 更新，避免并行覆盖。
+BackgroundProcess 后端主链已经完成：Bash 在 15 秒内返回普通结果，超时则把同一进程一次性交给后台；显式后台、并发队列、持久状态/有界日志、ProcessList/ProcessOutput/ProcessStop、完成事件、内部续接 Turn、设置和只读/停止 API 均已接线。Session 删除会先终止所属进程并释放日志句柄。本批未修改 Desktop 前端。
 
 当前基线最近提交：`31b40e9d feat: 添加 workspaceStore 和 workspaceTypes，支持标签布局的持久化与管理`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
 
-K3 当前负责 Desktop Chat Workspace 前端，工作区内已有
-`apps/desktop-ui/src/styles/transitions.css` 未提交改动；主 Agent 不修改该
-文件或 K3 正在创建的 `chat/workspace` 文件。后台进程前端已经补入
-`EmaChatWorkspacePlan.md`，继续由 K3 在后端 API/事件完成后实现。
+K3 当前负责 Desktop Chat Workspace、Git/Review 等前端工作；主 Agent 不修改其
+`apps/desktop-ui` 施工区。后台进程前端已经补入 `EmaChatWorkspacePlan.md`，
+现在可直接消费正式 API、领域事件与 Tool Presentation。
 
 ## 已确定的 V1 口径
 
@@ -175,7 +174,7 @@ K3 当前负责 Desktop Chat Workspace 前端，工作区内已有
 - Provider 是控制面；LLM、Embed、Rerank、Vision、STT、TTS 是无 Session 状态的执行面。
 - Tool 使用同一份不可变 PreparedToolCall 完成准备、审批和执行；Permission 与 Sandbox 物理分层。
 - V1 完整实现持久 Task：TaskCreate/Get/List/Update、依赖、AgentRun 可选绑定、事务/CAS、事件、Context 提醒、恢复快照与独立前端 TaskList；Task Tools 只属于根 Turn，TodoWrite 完成迁移后删除。
-- 后台 Shell 是 BackgroundProcess，使用 ProcessList/ProcessOutput/ProcessStop；不复用 TaskId、AgentRunId 或领域 Job 生命周期。15 秒内完成就返回普通命令结果，超过等待预算才把原进程转交后台；失败直接进入失败终态，不重新认领或自动重跑。状态元数据进入 active `data.db`，有界 stdout/stderr 进入 `{dataDir}/sessions/{sessionId}/processes/{backgroundProcessId}/`。
+- 后台 Shell 是 BackgroundProcess，使用 ProcessList/ProcessOutput/ProcessStop；不复用 TaskId、AgentRunId 或领域 Job 生命周期。15 秒内完成就返回普通命令结果，超过等待预算才把原进程转交后台；失败直接进入失败终态，不重新认领或自动重跑。状态元数据进入 active `data.db`，有界 stdout/stderr 进入 `{dataDir}/sessions/{sessionId}/background-processes/{backgroundProcessId}/`。
 - Memory 只管理长期记忆；Compaction 属于 Context；Narrative、Knowledge Base、Memory 保持隔离。
 - branded ID 只允许进入零业务依赖的 `src/ids`；业务类型、状态、事件与错误仍归各自所有者。事件按范围组合为 `AgentLoopEvent`、`TurnEvent`、`AgentRunEvent`、`SessionEvent` 与 `AppEvent`，不再让 Turn 组合整个应用的万能事件联合。
 - 已知字段使用明确 type/interface/SQL column，不用 `meta`、`metaJson` 或万能 JSON 让调用方猜。
@@ -211,7 +210,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 7. Skill 多文件激活、per-Agent 状态、结构化 Context 恢复与 `allowed-tools` 单向收窄已经完成；
 8. LocalHost L0、Turn 输入准备 L1、Turn Context L2、Turn Tools L3、Root Agent Execution L4、Turn Composition Root L5、TTS Turn 输出边界、精确根取消与旧 Orchestrator 删除、Route 业务副作用归位及 Task/AgentRun Route 窄依赖均已完成；
 9. Turn/AskUser、Permission、Session、Provider/ModelBindings、Settings/Theme、Transcribe、Cards、Knowledge Base、Storage Stats 与 Shell Route 已完成窄依赖；HTTP Server、后台生命周期和一次性启动装配也已完成收口。`buildBindings()` 的 Provider/模型、Character/Emotion、Sandbox/Tool、Session/Memory、Attachment/Backup、Extension/Knowledge 对象图均已提取，LocalHost Composition Root 施工计划完成；后续不建立嵌套依赖袋或通用 `Lazy<T>`；
-10. 后台进程 C 档设计已冻结在 `EmaRefactor.md` §6.1：先建立独立 ID、Data 表、Session 输出目录、状态机和显式后台，再接 ProcessList/ProcessOutput/ProcessStop、并发队列、领域事件与持久 Completion Inbox，最后增加 15 秒原进程转交后台。长任务不保持 Turn 或 LLM 请求，也不让 Agent 轮询；自然完成、失败或超时后，在 Session 空闲时创建 `backgroundProcessCompleted` 系统 Turn，Session 正忙则等下一次安全 Context 边界。实现完成前不恢复旧假 `run_in_background`；前端活动面板交给 K3，按 `EmaChatWorkspacePlan.md` §7.1 接真实 API；
+10. 后台进程 C 档后端已经完成：Data v25、Session 输出目录、状态机、显式后台、15 秒原进程转交、ProcessList/ProcessOutput/ProcessStop、按 Session 公平并发队列、领域事件与持久 Completion Inbox 已落地。长任务不保持 Turn 或 LLM 请求，也不让 Agent 轮询；自然完成、失败或超时后，在 Session 空闲时创建 `backgroundProcessCompleted` 系统 Turn，Session 正忙则等下一次安全 Context 边界。前端活动面板交给 K3，按 `EmaChatWorkspacePlan.md` §7.1 消费真实 API；
 11. 外围质量收口（依据为 2026-07-29 外围模块评审与 ragflow/claude-code 参照研究，管线对照见 `docs/reviews/ragflow-claude-pipelines.md`）：
     - **R1-R7 已完成**：KB 摄入可靠性、检索质量、模型集成安全，以及 Memory 使用层、提取信任、判断层与溯源链均已落地；实现与验证见“最近验证”，不要继续作为待办重复施工；
     - **R8-R9 Skills 已完成**：bundle 资产全量哈希、市场清单 sha256 与安装强校验已经落地；子 Agent 工具上限 = 父当前收窄集 ∩ 自身工具池，只能更窄不能更宽；
@@ -226,6 +225,10 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 每批只改变一个主要业务边界。不要把 Turn 统一、数据库 Schema、全仓 ID 改名和前端切换塞进同一批。
 
 ## 最近验证
+
+- ChatWorkspace E1 Review 工作区 diff（K3）：git-utils build + 13/13（patch 分段解析、真实临时仓库双 scope、untracked 伪 diff、干净仓库零 omitted）、LocalHost typecheck + 4/4 路由测试、Desktop UI typecheck + 30 个测试文件 142/142（新增 diffModel 5 用例）通过。`src/gitUtils/diff.ts` 按 codex `/diff` 同款：tracked `git diff [--cached]`（`-U20` 有界上下文供增量展开）+ untracked 逐文件 `--no-index` 伪 diff（`runGit` 新增 `allowedExitCodes` 与 `maxOutputBytes` 选项，exit 1 正常、单文件失败计 omitted）；安全旗标 `--no-textconv --no-ext-diff --submodule=short --ignore-submodules=dirty`，`filter.*.clean/process` driver 经 `git config --get-regexp` 查出置空（与 hooksPath=NUL 同威胁模型）；封顶：单文件 200K 字符截断、总量 2M、单 scope 200 文件、untracked 50，超出如实计 `omittedFiles`。路由 `GET /api/sessions/:id/git-diff` 与 git-summary 共用身份解析。前端 `review/diffModel.ts`（unified diff 解析/折叠段推导/分列配对，纯函数）+ `DiffCard.tsx` + ReviewPanel 重写：范围下拉（上一轮/全部会话恒在，未暂存/已暂存仅 capability=ok 出现，失去来源自动回退）、折叠优先增量展开（变更行恒显、长上下文折叠段每次展开 20 行、hunk 间隔如实标"N 行未变更"不可展开——无数据不假装可展）、跳转到文件（过滤输入 + 文件清单视图点击滚动定位）、`file:<path>` 标签打开、统一/分列切换不丢展开状态、自动换行、git scope 刷新。实施偏差记入计划文档：-U20 有界缓冲替代原案按需重算；"提交记录/分支比较"范围项待 D2b 数据源；"隐藏空白字符"待后端 -w 参数。测试样例行号期望先错两处（样例 hunk 头与行数不自洽），修正样例后全绿，非源码问题。`git diff --check` 通过，仅有既有 CRLF 提示。
+
+- BackgroundProcess 后端主链：Storage 27 个测试文件 125/125、Tools 7 个测试文件 33/33、BuiltinTools 15 个测试文件 106/106（另 1 条依赖本机 `rg` 的条件用例跳过）、LocalHost 42 个测试文件 161/161 通过；Storage/Tools build、BuiltinTools/LocalHost typecheck 与 `git diff --check` 通过。测试覆盖 15 秒同进程转交、显式后台、日志截断与续读、Session 公平队列、停止/完成/失败终态、Session 删除先停进程并释放 Windows 文件句柄、跨 Session API 越权拒绝、内部完成 Turn 不伪造用户消息，以及不可信命令输出的边界转义。
 
 - ChatWorkspace D2a Git 只读源（K3）：新模块 `src/gitUtils`（`@ema-agent/git-utils`）build + 8/8 测试（真实临时仓库：not-a-repo 裁决、子目录向上找根、干净仓库零统计、未暂存/已暂存/未跟踪分别计数、origin 远端地址）、LocalHost typecheck + 3/3 路由测试 + 全量 40 文件 155/155、Desktop UI typecheck + 29 个测试文件 137/137 通过。结构按 codex git-utils 拆细防 god 文件：`gitProcess`（execFile 无 shell、5s 超时即杀、4MB 上限、强制 `-c core.hooksPath=NUL`/`-c core.fsmonitor=false`、`GIT_OPTIONAL_LOCKS=0`/`GIT_TERMINAL_PROMPT=0`）、`repoDetection`（纯 fs 祖先 .git 走查）、`queries/`（branch/changeStats/status/upstream/remote 一文件一命令）、`summary`（capability 裁决后并行查询，GitError 归入明确 capability 不抛出）；`errors.ts` 集中 `GitError`。`GitSummary` 为 capability 判别联合（ok/not-a-repo/git-unavailable/error），ok 携带分支/detached SHA/未暂存/已暂存/未跟踪/upstream/originUrl，非 ok 不携带猜测字段。路由 `GET /api/sessions/:id/git-summary`：Session 拥有 workspaceRoot，无 root 显式 400。前端 `api/git.ts` + 置顶摘要环境信息区 Git 行仅 ok 渲染（分支或 detached @ SHA、变更计数 +ins/-del、未跟踪数，点击开 review 标签；有 origin 时追加"远端"行），其余 capability 整行隐藏不做降级文案。codex git 面全仓对照结论（UI 面=状态栏分支+/diff+/review 选择器，其余为云架构遥测与内部基建不拿）与批次 E 工作区 diff 安全旗标（--no-textconv/--no-ext-diff/filter driver 置空/untracked --no-index）已记入计划文档。`git diff --check` 通过，仅有既有 CRLF 提示。
 

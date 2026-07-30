@@ -1,6 +1,6 @@
 # EmaAgent Chat 工作区与历史导航实施计划
 
-> 状态：批次 A/B/C1/C2/C3/D1/D2a 已完成；D2b（opener + 分支选择器）、批次 E/F 与块形态对齐（§14 批次 G）待做
+> 状态：批次 A/B/C1/C2/C3/D1/D2a/E1 已完成；D2b（opener + 分支选择器）、E2 Terminal、E3 Browser（建议延后）、批次 F 待做
 > 日期：2026-07-23  
 > 范围：Desktop Chat 主布局、Turn 快速导航、Task/AgentRun/来源展示、右侧与底部工作区、桌面打开方式  
 > 不包含：恢复 Session Branch、尚无运行能力的空 Terminal/Browser/Review 面板
@@ -785,9 +785,9 @@ D2b 待做：
 
 每项独立评审和实现：
 
-- Review：三 scope 事实来源已定（2026-07-30）：`上一轮`/`全部` 继续走 Tool file_change presentation（真实前后内容 + jsdiff，批次 G 已完成）；`工作区` scope 新增，走 `src/gitUtils` 的 `git diff` / `git diff --cached` CLI 原生产 unified diff，仅 capability=ok 时出现该 scope，非仓库/无 git 用户不渲染。后端不需要 jsdiff 算工作区 diff；jsdiff 只留前端渲染。工作区 diff 实现按 codex `/diff`（`tui/src/get_git_diff.rs`）同款：**untracked 文件也要出 diff**（`ls-files --others --exclude-standard` + 逐文件 `git diff --no-index NUL <file>`，diff exit code 1 视为正常）；安全旗标 `--no-textconv --no-ext-diff --submodule=short --ignore-submodules=dirty`，并将仓库配置的 `diff.*.clean/process` filter driver 置空——与 hooksPath=NUL 同一威胁模型（仓库配置可指定可执行 helper）；
+- Review（E1，已完成 2026-07-30）：三 scope 事实来源——`上一轮`/`全部会话` 走 Tool file_change presentation；`未暂存`/`已暂存` 走 `src/gitUtils/diff.ts`（`GET /api/sessions/:id/git-diff`）。后端按 codex `/diff` 同款：tracked 用 `git diff [--cached]`，untracked 逐文件 `--no-index` 伪 diff（exit 1 正常、单文件失败计 omitted 不拖垮整体）；安全旗标 `--no-textconv --no-ext-diff --submodule=short --ignore-submodules=dirty`，`filter.*.clean/process` driver 查出置空；有界封顶（单文件 200K 字符截断、总量 2M、单 scope 200 文件、untracked 50，超出计 `omittedFiles`）。前端 `diffModel.ts`（unified diff 解析/折叠段/分列配对，纯函数）+ `DiffCard.tsx` + ReviewPanel 重写：范围下拉（无来源项不渲染、失去来源自动回退上一轮）、折叠优先增量展开（变更行恒显、长上下文折叠每次展开 20 行、hunk 间隔如实标"N 行未变更"不可展开）、跳转到文件（过滤输入 + 文件清单点击滚动定位）、`file:<path>` 标签打开、统一/分列切换不丢展开状态、自动换行、刷新。**实施偏差**：①上下文缓冲用 `-U20` 有界生成（计划原案"hunk 及紧邻上下文"在 context-3 的 tool diff 上无缓冲可展，统一改为一命令有界缓冲，不做按需重算）；②"提交记录/分支比较"范围项依赖 D2b 的 recent_commits/branch 列表，本批不渲染；③"隐藏空白字符"需后端 `-w` 参数，本批选项菜单只做刷新/自动换行；
 - Terminal：PTY、大小调整、输入输出、取消、重启终态；
-- Browser：浏览器实例、导航、权限、下载和网络安全。
+- Browser：codex 协议层无 browser API（仅 OAuth 系统浏览器），GUI 闭源无法核实；V1 建议延后，链接走系统默认浏览器，`browser` tab kind 保留类型不提供入口。
 
 不能把三项合成一个“Panel UI 批次”。
 
