@@ -29,7 +29,7 @@ engine ──trigger(event, ctx)──► HookBus ──按优先级串行/并�
 
 - **控制型 3 个**:`beforeLlm` / `beforeCompact` / `onTurnStart`--可改控制流。`beforeLlm`/`onTurnStart` 可 `replace` payload;`beforeCompact` 只能 `abort`
 - **观察型 9 个**:只能 `continue`。工具生命周期事件刻意识观察型--工具安全由 `PermissionEngine` + `Sandbox` 负责,Hook 不拦截/授权/改参
-- **不进 HookBus 的 2 个 app 级事件**:`onCharacterCardSwitch` / `onEmotionChange`--直接发 `character_card_switched` / `emotion_changed` EmaStreamEvent,绕过优先级排序
+- **不进 HookBus 的 2 个 app 级事件**：`onCharacterCardSwitch` / `onEmotionChange` 直接进入各自业务事件通道，绕过 Hook 优先级排序
 
 ## 关键机制
 

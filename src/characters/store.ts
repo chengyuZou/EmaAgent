@@ -141,12 +141,4 @@ export class CharacterCardStore {
   delete(id: CharacterCardId): void {
     this.repository.delete(id);
   }
-
-  importFromFile(_buf: Uint8Array): Promise<CharacterCard> {
-    return Promise.reject(new Error('importFromFile not implemented in V1'));
-  }
-
-  exportToFile(_id: CharacterCardId): Promise<Uint8Array> {
-    return Promise.reject(new Error('exportToFile not implemented in V1'));
-  }
 }

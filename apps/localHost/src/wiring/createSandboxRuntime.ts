@@ -22,6 +22,13 @@ interface SandboxUnsafeOverrides {
   readonly network: boolean;
 }
 
+interface SandboxEnvironment {
+  readonly NODE_ENV?: string;
+  readonly AGEN_UNSAFE_SHELL?: string;
+  readonly AGEN_UNSAFE_MCP_STDIO?: string;
+  readonly AGEN_UNSAFE_SANDBOX_NETWORK?: string;
+}
+
 export interface SandboxRuntimePolicy {
   readonly status: SandboxStatusWire;
   readonly disableExecuteTools: boolean;
@@ -73,6 +80,27 @@ export function resolveSandboxRuntimePolicy(
   };
 }
 
+/**
+ * 不安全开关只服务本地开发。正式构建发现任一开关时直接阻止启动，
+ * 不能让安装环境中的意外变量静默关闭 Shell、MCP 或网络隔离。
+ */
+export function readSandboxUnsafeOverrides(
+  environment: SandboxEnvironment,
+): SandboxUnsafeOverrides {
+  const overrides = {
+    shell: environment.AGEN_UNSAFE_SHELL === '1',
+    localMcpStdio: environment.AGEN_UNSAFE_MCP_STDIO === '1',
+    network: environment.AGEN_UNSAFE_SANDBOX_NETWORK === '1',
+  };
+  if (
+    environment.NODE_ENV === 'production'
+    && (overrides.shell || overrides.localMcpStdio || overrides.network)
+  ) {
+    throw new Error('正式构建禁止使用 AGEN_UNSAFE_* 沙箱绕过开关');
+  }
+  return overrides;
+}
+
 /** 返回 Sandbox 必须永远拒绝写入的 Profile/Data SQLite 文件族。 */
 export function sandboxProtectedPaths(activeDataDir: string): readonly string[] {
   return Object.freeze([
@@ -85,11 +113,10 @@ export function createSandboxRuntime(
   session: SessionStore,
   activeDataDir: string,
 ) {
-  const policy = resolveSandboxRuntimePolicy(detectBackend(), {
-    shell: process.env['AGEN_UNSAFE_SHELL'] === '1',
-    localMcpStdio: process.env['AGEN_UNSAFE_MCP_STDIO'] === '1',
-    network: process.env['AGEN_UNSAFE_SANDBOX_NETWORK'] === '1',
-  });
+  const policy = resolveSandboxRuntimePolicy(
+    detectBackend(),
+    readSandboxUnsafeOverrides(process.env),
+  );
   const protectedPaths = sandboxProtectedPaths(activeDataDir);
   const runners = new Map<SessionId, CommandRunnerPort>();
 

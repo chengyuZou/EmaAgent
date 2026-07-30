@@ -182,7 +182,7 @@ export class TurnInputPreparer {
           context.turn.sessionId as string,
           settings.attachment,
         );
-        const resolved = this.deps.attachments.resolveForPrompt(storedAttachments);
+        const resolved = await this.deps.attachments.resolveForPrompt(storedAttachments);
 
         if (resolved.imageParts.length > 0 || resolved.promptLines) {
           const parts: LlmContentPart[] = [

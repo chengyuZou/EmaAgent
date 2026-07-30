@@ -21,7 +21,6 @@ export type {
 export { MessagesRepo } from './repos/messages.js';
 export { CharacterCardsRepo } from './repos/character-cards.js';
 export { SettingsRepo } from './repos/settings.js';
-export { TelemetryRepo } from './repos/telemetry.js';
 export { UsageRecordsRepo } from './repos/usage-records.js';
 export { Live2DModelsRepo } from './repos/live2d-models.js';
 export { ProvidersRepo } from './repos/providers.js';
@@ -85,7 +84,6 @@ export type {
 export { SettingSerializationError } from './repos/settings.js';
 export type { SettingRow, SettingReadResult } from './repos/settings.js';
 export type { SettingWrite } from './repos/settings.js';
-export type { TelemetryEventRow } from './repos/telemetry.js';
 export type { UsageRecordRow } from './repos/usage-records.js';
 export type { Live2DModelRow } from './repos/live2d-models.js';
 export type {

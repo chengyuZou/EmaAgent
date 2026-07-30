@@ -1,7 +1,7 @@
 # EmaAgent 当前重构接力板
 
 > 状态：临时施工记录，架构完成后删除
-> 更新时间：2026-07-29
+> 更新时间：2026-07-30
 > 作用：只记录当前阶段、工作区归属、最近验证和下一步。长期规则以 `CLAUDE.md` 为准，目标设计以 `EmaRefactor.md` 为准，设计依据以 `EmaClaudeArchitectureReview.md` 为准。
 
 ## 当前阶段
@@ -36,7 +36,7 @@ Session Route 收窄已经完成：原 `routes/sessions.ts` 按集合、历史�
 
 Provider/ModelBindings 控制面收窄已经完成：原 784 行 Provider Route 按配置、模型池、六种能力探测和 TTS 试听拆入 `routes/providers/`，模型绑定查询与变更拆入 `routes/modelBindings/`；URL 和响应协议保持不变。Provider 配置、探测与模型绑定原子变更由 `src/providers` 拥有，TTS 试听由 `src/tts` 沿正式执行面完成；HTTP 只做解析和映射，完整对象图只在两个 `wiring/create*Router.ts` 展开。Profile v13 将模型绑定的通用 `config_json` 和未消费 `voice_id` 收口为明确的 `embedding_dimension`，Bridge 不再猜测 JSON 字段。
 
-事件通道同步完成消费者迁移：Turn SSE 使用 `TurnStreamEvent`，系统 SSE 使用 `AppEvent`，只有跨端通用解码器使用 `ClientEvent`；`EmaStreamEvent` 仅剩 `src/events` 内的弃用兼容声明，生产代码与应用测试不再导入它。Task 更新明确属于 Turn 输出联合，Memory 进程级依赖只允许发送 `MemoryBackgroundEvent`，召回证据继续进入当前 Turn。
+事件通道同步完成消费者迁移：Turn SSE 使用 `TurnStreamEvent`，系统 SSE 使用 `AppEvent`，只有跨端通用解码器使用 `ClientEvent`；迁移期 `EmaStreamEvent` 兼容名已经物理删除。Task 更新明确属于 Turn 输出联合，Memory 进程级依赖只允许发送 `MemoryBackgroundEvent`，召回证据继续进入当前 Turn。
 
 Settings/Theme 配置所有权与 HTTP 边界已经完成：用户设置继续使用 `profile.db.settings` 作为唯一持久化源，Storage 只提供纯 KV Repo；`src/settings` 直接消费 `SettingsRepo`，统一定义、Catalog、内存快照、提交顺序与变更事件，没有复制镜像持久化接口。Agent、Context、Permission、Attachment、Vision、Knowledge 与 Theme 已各自拥有显式设置定义，由 LocalHost Composition Root 聚合；既有 Event Display、Permission Timeout、Theme 与 KB Model URL 保持原 HTTP URL，并返回后端规范化后的持久值。Desktop Theme 支持先预览、保存失败回滚。TTS 上传句柄等供应商运行时缓存不属于用户设置，已退出 `profile.db.settings`。下一批按业务逐项接入仍未消费的新参数，不能把“已注册定义”误写成“运行时已经生效”。
 
@@ -70,7 +70,7 @@ LocalHost Composition Root Character/Emotion 批次已经完成：`createCharact
 
 Narrative R4 已经完成：`auto` 只在本轮 Tool Context 注入 NarrativeSearchPort，由模型按需调用稳定 ID 的 NarrativeSearchTool；`always` 继续在 Turn 开始时主动召回；`off` 不暴露工具也不召回。Port 在 TurnExecutor 绑定 Session/Turn、SSE 与 `narrative_context` 持久化，Tool 只接收窄查询能力；Route 与 LightRAG 继续使用 Narrative 自有 `lightrag-llm` 绑定，不读取当前 Chat/Work 模型。
 
-事件所有权第一批已经落到源码：Agent、Characters、Context、Hooks、Knowledge、Memory、Narrative、System、Tasks、Tools 与 TTS 各自拥有 `events.ts`；Turn 只保留根生命周期、输出、Usage 与请求降级事件。`src/events` 像 `src/ids` 一样执行严格准入，但只负责组合 `TurnStreamEvent/SessionEvent/AppEvent`，禁止定义业务字段。`EmaStreamEvent` 已标记为迁移期兼容名，新生产者必须使用领域事件或窄通道事件。
+事件所有权第一批已经落到源码：Agent、Characters、Context、Hooks、Knowledge、Memory、Narrative、System、Tasks、Tools 与 TTS 各自拥有 `events.ts`；Turn 只保留根生命周期、输出、Usage 与请求降级事件。`src/events` 像 `src/ids` 一样执行严格准入，但只负责组合 `TurnStreamEvent/SessionEvent/AppEvent`，禁止定义业务字段。
 
 R2 Prompt Slot 与 R3 ContextAssembler 主链接线已经完成：Prompt、Skill Catalog、Memory Recall、Narrative Recall、历史、当前 Turn、Scratchpad、Mailbox 与 Tool Manifest 由一次不可变 Context 快照统一装配。现有渐进 Compaction、Safe Cut、Restore、响应式压缩和 Tool Manifest Snapshot 都是基线，不重新实现。
 
@@ -213,7 +213,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
     - **R10 MCP 已完成**：stdio 崩溃 onclose 感知、status 转 failed、惰性重连，以及 live/cache 共用的 Schema 字节与工具数上限已经落地；
     - **R11-R13 Memory/KB 已完成**：stale embedding 修复、租约丢失关闸、embed 模型变更后的 stale/reembed 生命周期，以及 Memory 全局逻辑字节预算、分级降压与 ANN 同步治理均已收口；
     - **A 主链真 Bug 已完成**：ToolResultStore EEXIST 只复用完全一致的内容；Usage 状态模型已区分 `cancelled`；Anthropic 已删除隐式 `maxTokens=4096` 并使用调用级剩余输出预算；
-    - **B 主链安全收口**：install-git 与 mcpStdioGate 路由级审批已经接通；仍待 `AGEN_UNSAFE_*` 在生产构建中物理拒绝，以及 Sandbox 状态接前端常驻提示；
+    - **B 主链安全收口**：install-git 与 mcpStdioGate 路由级审批已经接通；`AGEN_UNSAFE_*` 在正式构建中会直接阻止启动，不能由安装环境变量关闭隔离。Sandbox 状态接前端常驻提示仍属于前端工作；
     - **C 主链卫生已完成**：已删除 Macro 压缩后绕过 Memory 开关直接重读 L1 Session Note 的旧恢复旁路；正常 L1 Recall 继续作为不可压缩 Contribution 保留，Active Skill 继续走 required restore。AgentLoopState 已删除不可达状态；`prefixHash` 已明确为本次请求截止最终缓存断点的身份，会随历史、当前 Turn 和工具轮次演进，不再伪装成跨 Turn 固定 Prompt Hash。
 
 命名随业务批次清理：旧 `IFileStateStoreEntry/IFileStateStore` 及后续过渡接口已经删除，`IToolExecutionJournal` 已改为职责名；其余迁移期 `I*` 类型继续随业务边界处理，不单独进行全仓机械重命名。
@@ -222,6 +222,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- V1 后端最终闸门第一批：正式构建已拒绝三个 `AGEN_UNSAFE_*` 沙箱绕过开关；Telemetry 无生产消费者的 Repo、公开类型和测试已删除，Data v24 负责清理旧库表；附件图片改为同一文件句柄上的异步有界读取，读取期间增长也不会突破 5 MiB 内存上限；Character Card 两个未实现死入口与 `EmaStreamEvent` 兼容名已删除。Attachment 14/14、Storage 125/125、LocalHost Sandbox 10/10 通过；Attachment、TurnExecution、LocalHost 定向 typecheck 及全仓 typecheck 86/86 通过。首次 Storage 回归因旧测试仍断言 Data v23 失败，更新到 v24 后全绿；`git diff --check` 通过，仅有既有 CRLF 提示。
 - Memory R13 存储预算收口：Profile v15 为 Node/Item 增加明确的 `embedding_evicted_at`，逻辑字节核算覆盖 Memory 主表；后台约每 30 分钟按“过期 Item → 长期未引用的零重要度非保护行 → 非保护冷向量”分级降压到 85% 低水位，`user_fact/preference/relationship` 与用户反馈类保持保护。主动驱逐的向量不会被 stale repair 立即重建，正文更新后才重新进入修复队列；SQLite 成功而 ANN 增量删除失败时触发索引重建。新增 `memory.models`、`memory.maintenance`、`memory.storage` 设置，默认上限 512 MiB，运行时按下一次操作读取。Storage 28 个测试文件 129/129、Memory 14 个测试文件 60/60、LocalHost 39 个测试文件 150/150、全仓 typecheck 86/86 通过；`git diff --check` 仅有既有 CRLF 提示。
 
 - 前端 F2 样式回潮批（K3）：Desktop UI typecheck 与 28 个测试文件 119/119 通过。tokens.css 新增 `--ema-file-*` 八枚文件类型色（亮暗共用的常规文件色，不随主题翻转）与 `--ema-shadow-dragover`；AttachmentChip 8 处 oklch 字面量、ChatInput 拖放 boxShadow 与 border-white、AppearanceTab 白色选中环全部 token 化；FloatingDock 与 SessionSidebar 的 duration/ease 字面值改走 `--ema-duration-*`/`--ema-ease` 与 `transition-ema`；SessionSidebar 自造 max-height 折叠组件换为标准 `.ema-collapsible`（删掉三处 maxHeight 计算）；AgentRunPanel 自造分隔线换 UI 包 `Divider`；ChatPanel 400ms 字面时长归入 slow 档。`git diff --check` 通过，仅有既有 CRLF 提示。

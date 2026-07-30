@@ -1,4 +1,4 @@
-// 这里管理一个 Turn 的附件：增删查，以及把附件解析成 LLM 能直接用的格式。
+// 管理 Turn 附件的持久记录、限额、磁盘状态与模型可见投影。
 
 import { randomUUID } from 'node:crypto';
 import { stat } from 'node:fs/promises';
@@ -28,7 +28,7 @@ export interface AttachmentStorePort {
   listBySession(sessionId: string): Attachment[];
   inspectBySession(sessionId: string): Promise<InspectedAttachment[]>;
   remove(id: string): void;
-  resolveForPrompt(attachments: Attachment[]): ResolvedPrompt;
+  resolveForPrompt(attachments: Attachment[]): Promise<ResolvedPrompt>;
 }
 
 // ── 实现 ───────────────────────────────────────────────────────────────────────
@@ -130,7 +130,7 @@ export class AttachmentStore implements AttachmentStorePort {
     this.repo.deleteById(id);
   }
 
-  resolveForPrompt(attachments: Attachment[]): ResolvedPrompt {
+  resolveForPrompt(attachments: Attachment[]): Promise<ResolvedPrompt> {
     return resolveForPrompt(attachments);
   }
 }

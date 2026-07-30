@@ -93,10 +93,9 @@ SQLite 封装。构造时:
 | `turn_audio_merged` | 合并后的整轮音频(重播用) |
 | `turn_attachments` | per-turn 文件附件(路径引用) |
 
-**权限 / 遥测 / 用量 / agent**
+**权限 / 用量 / agent**
 | 表 | 职责 |
 |---|---|
-| `telemetry_events` | 遥测事件 |
 | `turn_usage` | per-turn 用量(provider/model/token/cost) |
 | `agent_tasks` | agent 运行实例状态机(running/completed/failed/cancelled) |
 | `agent_task_messages` | agent 对话 transcript |

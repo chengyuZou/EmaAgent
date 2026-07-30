@@ -10,6 +10,7 @@ import { SessionStore } from '@ema-agent/session';
 import { Database } from '@ema-agent/storage';
 import {
   createSandboxRuntime,
+  readSandboxUnsafeOverrides,
   resolveSandboxRuntimePolicy,
   sandboxProtectedPaths,
 } from '../src/wiring/createSandboxRuntime.js';
@@ -63,6 +64,34 @@ describe('Sandbox runtime wiring', () => {
       sandboxNetwork: 'full',
     });
     expect(policy.disableExecuteTools).toBe(false);
+  });
+
+  it('正式构建物理拒绝任何不安全开关', () => {
+    expect(() => readSandboxUnsafeOverrides({
+      NODE_ENV: 'production',
+      AGEN_UNSAFE_SHELL: '1',
+    })).toThrow('正式构建禁止使用 AGEN_UNSAFE_*');
+    expect(() => readSandboxUnsafeOverrides({
+      NODE_ENV: 'production',
+      AGEN_UNSAFE_MCP_STDIO: '1',
+    })).toThrow('正式构建禁止使用 AGEN_UNSAFE_*');
+    expect(() => readSandboxUnsafeOverrides({
+      NODE_ENV: 'production',
+      AGEN_UNSAFE_SANDBOX_NETWORK: '1',
+    })).toThrow('正式构建禁止使用 AGEN_UNSAFE_*');
+  });
+
+  it('开发环境仍允许显式启用不安全能力', () => {
+    expect(readSandboxUnsafeOverrides({
+      NODE_ENV: 'development',
+      AGEN_UNSAFE_SHELL: '1',
+      AGEN_UNSAFE_MCP_STDIO: '1',
+      AGEN_UNSAFE_SANDBOX_NETWORK: '1',
+    })).toEqual({
+      shell: true,
+      localMcpStdio: true,
+      network: true,
+    });
   });
 
   it.each(['bubblewrap', 'sandbox-exec'] as const)(

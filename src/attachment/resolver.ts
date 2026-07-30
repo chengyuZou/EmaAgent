@@ -1,6 +1,6 @@
-// 这里把附件解析成 LLM 能直接用的形式：小图片转 base64 内联进消息，其他文件转成路径文本塞进 prompt。
+// 把附件异步解析成模型可见图片或受控文件路径，避免同步文件读取阻塞 Turn 主链。
 
-import * as fs   from 'node:fs';
+import { open, stat } from 'node:fs/promises';
 import * as path from 'node:path';
 import type { TurnContentPart } from '@ema-agent/turn';
 import type { Attachment, ResolvedPrompt } from './types.js';
@@ -16,17 +16,19 @@ const IMAGE_INLINE_LIMIT = 5 * 1024 * 1024; // 5 MB
  *
  * 不抛错：读文件失败时降级成一行警告，不让整个解析挂掉。
  */
-export function resolveForPrompt(attachments: Attachment[]): ResolvedPrompt {
+export async function resolveForPrompt(
+  attachments: Attachment[],
+): Promise<ResolvedPrompt> {
   const imageParts: TurnContentPart[] = [];
-  const fileLines:  string[]             = [];
+  const fileLines: string[] = [];
 
   for (const att of attachments) {
     if (att.mime.startsWith('image/')) {
-      const part = tryInlineImage(att);
+      const part = await tryInlineImage(att);
       if (part) { imageParts.push(part); continue; }
       // 走到这里：图片太大或读不了 -> 当路径引用处理
     }
-    fileLines.push(formatFileLine(att));
+    fileLines.push(await formatFileLine(att));
   }
 
   const promptLines = fileLines.length === 0
@@ -38,34 +40,68 @@ export function resolveForPrompt(attachments: Attachment[]): ResolvedPrompt {
 
 // ── 辅助函数 ───────────────────────────────────────────────────────────────────
 
-function tryInlineImage(att: Attachment): TurnContentPart | null {
-  // B-071:不信任客户端传入的 att.size(可伪造),用 fs.statSync 真实字节判断。
-  // 否则声明 1KB、实际 2GB 的文件会绕过 inline 限制,readFileSync 把整个 2GB 读进内存。
-  let realSize: number;
+async function tryInlineImage(
+  att: Attachment,
+): Promise<TurnContentPart | null> {
   try {
-    realSize = fs.statSync(att.localPath).size;
-  } catch {
-    return null;   // 文件不存在/不可 stat -> 降级路径引用
-  }
-  if (realSize > IMAGE_INLINE_LIMIT) return null;
-
-  try {
-    const data = fs.readFileSync(att.localPath).toString('base64');
-    return { type: 'image_data', data, mimeType: att.mime, name: att.name };
+    const data = await readWithinLimit(att.localPath, IMAGE_INLINE_LIMIT);
+    if (!data) return null;
+    return {
+      type: 'image_data',
+      data: data.toString('base64'),
+      mimeType: att.mime,
+      name: att.name,
+    };
   } catch {
     return null;
   }
 }
 
-function formatFileLine(att: Attachment): string {
+/**
+ * 从同一个文件句柄校验并读取，避免路径在 stat 与 read 之间被替换。
+ * 循环最多累计 limit + 1 字节，即使文件读取期间继续增长也不会整文件进内存。
+ */
+async function readWithinLimit(
+  filePath: string,
+  limit: number,
+): Promise<Buffer | null> {
+  const handle = await open(filePath, 'r');
+  try {
+    const metadata = await handle.stat();
+    if (!metadata.isFile() || metadata.size > limit) return null;
+
+    const chunks: Buffer[] = [];
+    let total = 0;
+    while (total <= limit) {
+      const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, limit + 1 - total));
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, null);
+      if (bytesRead === 0) return Buffer.concat(chunks, total);
+      chunks.push(buffer.subarray(0, bytesRead));
+      total += bytesRead;
+    }
+    return null;
+  } finally {
+    await handle.close();
+  }
+}
+
+async function formatFileLine(att: Attachment): Promise<string> {
   const size    = formatSize(att.size);
   const mtime   = new Date(att.mtime).toISOString().replace('T', ' ').slice(0, 19);
-  const exists  = fs.existsSync(att.localPath);
+  const exists  = await isFile(att.localPath);
   const warning = !exists ? '  ⚠ file not found on disk' : '';
   const ext     = path.extname(att.name);
   const hint    = largeFileHint(att.size, ext);
 
   return `• ${att.name}  (${att.mime}, ${size}, modified ${mtime})  ${att.localPath}${hint}${warning}`;
+}
+
+async function isFile(filePath: string): Promise<boolean> {
+  try {
+    return (await stat(filePath)).isFile();
+  } catch {
+    return false;
+  }
 }
 
 function largeFileHint(size: number, ext: string): string {

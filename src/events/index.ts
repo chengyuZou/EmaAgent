@@ -48,10 +48,5 @@ export type AppEvent =
   | ProviderStreamEvent
   | SystemEvent;
 
-/**
- * @deprecated 迁移期兼容名。新代码按实际通道使用 TurnStreamEvent、SessionEvent 或 AppEvent。
- */
-export type EmaStreamEvent = TurnStreamEvent | SessionEvent | AppEvent;
-
 /** 跨端解码器在协议入口使用的完整联合，不能作为业务生产者的 emit 类型。 */
 export type ClientEvent = TurnStreamEvent | SessionEvent | AppEvent;

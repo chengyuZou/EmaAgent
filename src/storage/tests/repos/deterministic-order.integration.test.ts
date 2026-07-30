@@ -12,7 +12,6 @@ import {
   MemoryLazyUpdatesRepo,
   MemoryNodesRepo,
   PendingFragmentsRepo,
-  TelemetryRepo,
 } from '../../index.js';
 
 describe('N-012 Data DB 确定性事件顺序', () => {
@@ -77,23 +76,6 @@ describe('N-012 Data DB 确定性事件顺序', () => {
       .toEqual(['a-same-time', 'z-same-time', 'assistant-later']);
   });
 
-  it('Telemetry 同毫秒边界按 id 倒序稳定选择', () => {
-    const repo = new TelemetryRepo(database.sqlite);
-    for (const id of ['event-a', 'event-c', 'event-b']) {
-      repo.insertEvent({
-        id,
-        session_id: 'session-a',
-        turn_id: 'turn-a',
-        kind: 'test',
-        payload_json: '{}',
-        created_at: 1_000,
-      });
-    }
-
-    expect(repo.listEvents('test', 2).map((row) => row.id))
-      .toEqual(['event-c', 'event-b']);
-  });
-
   it('当前 Schema 安装 AgentRun 顺序列和对应复合索引', () => {
     const messageColumns = database.sqlite
       .prepare('PRAGMA table_info(agent_run_messages)')
@@ -105,9 +87,10 @@ describe('N-012 Data DB 确定性事件顺序', () => {
       .toContain('agent_run_messages(agent_run_id, sequence ASC)');
     expect(indexSql(database, 'idx_pending_fragments_session').replaceAll(/\s+/g, ' '))
       .toContain('pending_fragments(session_id, at ASC, created_at ASC, id ASC)');
-    expect(indexSql(database, 'idx_telemetry_kind').replaceAll(/\s+/g, ' '))
-      .toContain('telemetry_events(kind, created_at DESC, id DESC)');
-    expect(database.currentVersion()).toBe(23);
+    expect(database.sqlite.prepare(`
+      SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'telemetry_events'
+    `).get()).toBeUndefined();
+    expect(database.currentVersion()).toBe(24);
   });
 });
 
