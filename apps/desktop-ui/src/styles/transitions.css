@@ -7,6 +7,11 @@
   transition: width var(--ema-duration-panel) var(--ema-ease);
 }
 
+/* 高度过渡(BottomDock 展开/收起)。配 h-0 ↔ 具体高度 + overflow-hidden,拖拽中禁过渡跟手。 */
+.ema-transition-height {
+  transition: height var(--ema-duration-panel) var(--ema-ease);
+}
+
 /* 文本展开/收起(narrative 检索块"展开全文/收起全文")。配 max-h-[preview] ↔ max-h-[full]
    + overflow-hidden。DOM 常驻,双向:展开高度增长+淡入,收起收缩+淡出。*/
 .ema-transition-text-expand {

@@ -11,7 +11,7 @@
 EmaAgent Chat 不再使用“古早 Task、文件、Branch 固定检查器”的布局。目标结构分成四层：
 
 1. **聊天主区**：历史消息、Turn 快速导航、当前执行状态、输入框；
-2. **会话摘要**：工作区/Git、子 Agent、来源的置顶浮层；
+2. **会话摘要**：工作区/Git、运行活动、来源的置顶浮层；
 3. **工作标签**：同一套标签可以停靠到右侧或底部，同一资源只存在一个实例；
 4. **桌面能力**：用已检测到的本机程序打开工作区，由 Tauri 按平台提供。
 
@@ -124,8 +124,9 @@ openWorkspaceWith(openerId: string, workspaceRoot: string): Promise<void>;
 │   提交或推送 / 拉取请求状态（失败如实显示）      │
 │   比较分支    上一轮                            │
 │                                                  │
-│ 子智能体                                        │
-│   ● 2 运行中   ○ 15 已完成                      │
+│ 运行活动                                        │
+│   子智能体      ● 2 运行中   ○ 15 已完成         │
+│   后台进程      ● 1 运行中   ○ 2 已完成          │
 │                                                  │
 │ 来源                                            │
 │   图片、文件、粘贴文本……（即本 Session 附件）    │
@@ -138,7 +139,8 @@ openWorkspaceWith(openerId: string, workspaceRoot: string): Promise<void>;
 - 环境信息首行是**变更计数**（绿 +N / 红 -N），其次才是工作区与分支；"提交或推送""比较分支"是动作行，没有 Git 能力的 Session 整个环境信息区不渲染，不留空壳；
 - **"本地"是环境选择器下拉**（当前环境打勾 + 其他可用环境入口），V1 只有本地环境时下拉只保留一行说明，不虚构云端入口；
 - **分支名是分支选择器下拉**：顶部搜索框、分支行携带"未提交：N 个文件"、底部"创建并检出新分支…"；没有 Git 工作区时该行不渲染；
-- 子智能体按状态聚合计数（运行中/已完成），不是列表；
+- 运行活动按真实业务分两行聚合：子智能体使用 AgentRun，后台 Shell 使用
+  BackgroundProcess；两者只共享摘要外壳，不共享 ID、状态机或详情 DTO；
 - **来源就是当前 Session 的附件**（上传图片/文件、粘贴文本形成的附件），列表截断后由"查看全部"打开 `sources` 标签；不虚构网页引用等其他来源；
 - 分区标题右侧的 `[+]` 是该分区的快捷动作（如添加来源），没有真实动作的分区不渲染 `[+]`。
 
@@ -150,6 +152,9 @@ openWorkspaceWith(openerId: string, workspaceRoot: string): Promise<void>;
 
 点击某个子 Agent
 └─ 打开或激活 resourceKey = "agentRun:<agentRunId>"
+
+点击“后台进程”
+└─ 打开或激活 resourceKey = "backgroundProcesses"
 
 点击“查看全部来源”
 └─ 打开或激活 resourceKey = "sources"
@@ -246,11 +251,12 @@ files
 file:<normalized-path-key>
 terminal:<terminalId>
 browser:<browserId>
+agentRuns
 agentRun:<agentRunId>
 sources
 ```
 
-文件可以打开多个，因为不同路径是不同资源。Terminal 和 Browser 可以打开多个，因为不同运行实例拥有不同 ID。
+文件可以打开多个，因为不同路径是不同资源。Terminal 和 Browser 可以打开多个，因为不同运行实例拥有不同 ID。`agentRuns` 是全 Session 子智能体列表面板（2026-07-30 参照 Codex 子智能体标签补充），`agentRun:<id>` 是单次执行的深链标签。
 
 ### 4.3 显式标签类型
 
@@ -386,6 +392,33 @@ V1 “来源”至少包括当前已经持久化的附件：
 - Tauri 授权文件句柄。
 
 重命名为 Sources 时不能假装已经保存不存在的网页引用或跨 Session 来源；新增来源种类必须先有真实数据所有者和持久化契约。
+
+## 7.1 后台进程
+
+后台进程不是 Task 或 AgentRun。后端状态与输出契约冻结在
+`EmaRefactor.md` §6.1；前端只在真实 API 与事件接通后渲染。
+
+置顶摘要只显示当前 Session 的运行中/完成计数。点击后打开一个
+`backgroundProcesses` 动态标签，标签内部是列表到详情的导航：
+
+```text
+后台进程列表
+├─ ● npm run build       运行中  01:24
+├─ ◌ pnpm typecheck      排队中
+└─ ✓ cargo test          已完成  exit 0
+
+点击一行
+└─ 后台进程详情
+   ├─ 命令、工作目录、来源 Turn/Tool Call
+   ├─ 状态、时长、退出码
+   ├─ stdout/stderr 有界增量
+   ├─ [加载更早输出] [跟随尾部]
+   └─ [终止]（仅 queued/running）
+```
+
+详情输出必须使用后端游标分页，不能一次载入完整日志。终止操作提交
+`backgroundProcessId`，不能提交 PID。点击来源跳转到原 Tool Call；Session
+删除后该标签进入资源失效状态并关闭，不打开其他 Session 的同名进程。
 
 来源面板形态（Codex 实测校正）：
 
@@ -534,6 +567,9 @@ interface SessionHistoryState {
 | `GET /api/tasks?sessionId=...` | Task 重启快照 |
 | `GET /api/agent-runs?sessionId=...` | AgentRun 列表 |
 | `GET /api/agent-runs/:id/messages` | 子 Agent transcript |
+| `GET /api/background-processes?sessionId=...` | 当前 Session 后台进程列表 |
+| `GET /api/background-processes/:id/output?cursor=...` | stdout/stderr 有界增量 |
+| `POST /api/background-processes/:id/stop` | 取消排队项或终止进程树 |
 | `GET /api/sessions/:id/attachments` | 来源中的附件 |
 | Workspace 文件读取接口 | Files 与 File 标签 |
 
@@ -629,12 +665,17 @@ apps/desktop-ui/src/chat/
 │  ├─ AgentRunSummary.tsx          置顶摘要中的概况
 │  └─ AgentRunPanel.tsx            一次子 Agent 执行详情
 │
+├─ backgroundProcesses/
+│  ├─ BackgroundProcessSummary.tsx 置顶摘要中的后台进程概况
+│  ├─ BackgroundProcessPanel.tsx   列表与详情导航
+│  └─ backgroundProcessStore.ts    快照、事件与输出游标
+│
 ├─ sources/
 │  ├─ SourcesSummary.tsx           置顶摘要中的来源概况
 │  └─ SourcesPanel.tsx             完整来源标签
 │
 └─ summary/
-   └─ PinnedSessionSummary.tsx     工作区/Git、子 Agent、来源
+   └─ PinnedSessionSummary.tsx     工作区/Git、运行活动、来源
 ```
 
 如果某目录最终只有一个简单组件，则直接放回 `chat/`，不为了目录图制造几行小文件。
@@ -657,6 +698,7 @@ apps/desktop-ui/src/chat/
 | Sources | 已有 Session 附件接口 | 可首批实现附件来源 |
 | TaskList | 后端 Task 快照与事件已完成 | 必须新增独立 UI |
 | AgentRun | 原生 API、Store 与独立 Panel 已完成 | 后续迁入 Workspace Dock |
+| BackgroundProcess | 后端 RFC 已冻结，运行时/API 尚未实现 | 不画假运行项；后端完成后接活动摘要与动态标签 |
 | TurnRail | 最近消息与部分 Turn 已有 | 增加冷索引和窗口接口 |
 | Review | 尚需确定真实变更聚合来源 | 不先画空面板 |
 | Terminal | 后台进程不等于交互式 PTY | 先建立真实 Terminal Runtime |
@@ -725,6 +767,18 @@ TurnRail 的最外层是透明轨道容器，只承担定位、滚轮与指针�
 
 不能把三项合成一个“Panel UI 批次”。
 
+### 批次 F：后台进程活动面板
+
+后端 `BackgroundProcess + ProcessOutput/ProcessStop`、列表 API 和 Session
+事件完成后，由前端模型按 §3.2 与 §7.1 实现：
+
+- 置顶摘要中的后台进程计数；
+- `backgroundProcesses` 动态标签；
+- 列表、详情、游标输出与终止；
+- AgentRun 与 BackgroundProcess 并列展示但保持独立 Store/DTO。
+
+本批不实现交互式 PTY Terminal，也不把后台日志面板伪装成 Terminal。
+
 Review 交互细节（Codex 实测校正，实施时按此验收）：
 
 - **比较范围选择器**：面板头部 `上一轮 ⌄` 下拉，选项为"上一轮（当前 Turn 的工具变更）/ 未暂存 / 已暂存 / 提交记录 / 分支比较"中有真实数据来源的项；没有来源的项不渲染。默认定位到当前 Turn；
@@ -751,7 +805,8 @@ Review 交互细节（Codex 实测校正，实施时按此验收）：
 ├─ TurnRail 视觉与动效
 ├─ WorkspaceTabBar / Launcher / Dock 布局
 ├─ TaskList 与 AgentRun 卡片展示
-└─ 置顶摘要视觉实现
+├─ 置顶摘要视觉实现
+└─ 后端完成后实现 BackgroundProcess 活动面板
 ```
 
 委派时必须明确文件所有权，避免同时修改：

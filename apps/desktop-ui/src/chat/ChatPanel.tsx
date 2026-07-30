@@ -1,5 +1,5 @@
-// 组装会话侧栏、消息历史、输入区和检查器面板，并维护聊天窗口生命周期。
-import { useEffect, useState, useRef, useCallback, type JSX } from 'react';
+// 组装会话侧栏、消息历史、输入区与工作区 Dock，并维护聊天窗口生命周期。
+import { useEffect, useState, useRef, type JSX } from 'react';
 import { Button } from '@ema-agent/ui';
 import type { SessionId } from '@ema-agent/ids';
 import { useConversationStore } from '../stores/conversation-store.js';
@@ -15,15 +15,9 @@ import { SessionSidebar } from './SessionSidebar.js';
 import { ChatHistory } from './history/ChatHistory.js';
 import { ChatInput } from './ChatInput.js';
 import { ContextPanel } from './ContextPanel.js';
-import { AgentRunPanel } from './agentRuns/AgentRunPanel.js';
-import { FilesPanel } from './FilesPanel.js';
-import { SessionAttachmentsPanel } from './SessionAttachmentsPanel.js';
 import { ChatActivityStrip } from './activity/ChatActivityStrip.js';
-import { ReviewPanel } from './review/ReviewPanel.js';
-
-// ── Inspector panel types ─────────────────────────────────────────────────────
-
-type InspectorPanelId = 'attachments' | 'files' | 'agentRuns' | 'review';
+import { WorkspaceFrame } from './workspace/WorkspaceFrame.js';
+import { useWorkspaceStore } from './workspace/workspaceStore.js';
 
 // ── ChatPanel ─────────────────────────────────────────────────────────────────
 
@@ -35,37 +29,8 @@ export function ChatPanel(): JSX.Element {
   useThemeSync();
   useRuntimeSettingsSync(sidecarStatus.kind === 'ok');
 
-  const [activePanels, setActivePanels] = useState<Set<InspectorPanelId>>(new Set());
   const [overflowOpen, setOverflowOpen] = useState(false);
   const overflowRef = useRef<HTMLDivElement>(null);
-
-  // Inspector 宽度(可拖拽)。默认 360px,范围 240-800。拖拽中禁过渡跟手。
-  const [inspectorWidth, setInspectorWidth] = useState(360);
-  const [resizing, setResizing] = useState(false);
-  const resizeStartX = useRef(0);
-  const resizeStartW = useRef(0);
-
-  const onResizeStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    setResizing(true);
-    resizeStartX.current = e.clientX;
-    resizeStartW.current = inspectorWidth;
-    document.body.classList.add('ema-resizing');
-    const onMove = (ev: MouseEvent): void => {
-      // 手柄在左边缘,向左拖 = 增宽(鼠标 X 减小 -> width 增大)
-      const delta = resizeStartX.current - ev.clientX;
-      const next = Math.max(240, Math.min(800, resizeStartW.current + delta));
-      setInspectorWidth(next);
-    };
-    const onUp = (): void => {
-      setResizing(false);
-      document.body.classList.remove('ema-resizing');
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  }, [inspectorWidth]);
 
   // Session metadata for title bar
   const session = useSessionStore((s) =>
@@ -80,6 +45,24 @@ export function ChatPanel(): JSX.Element {
                run.status === 'running',
     ).length;
   });
+
+  // 工作区 Dock：⋮ 菜单与"改动"入口都把资源开成标签。
+  const openTab = useWorkspaceStore((s) => s.openTab);
+  const workspaceLayout = useWorkspaceStore((s) =>
+    viewedSessionId ? s.layouts[viewedSessionId as string] : undefined);
+  const hasWorkspaceTab = (tabId: string): boolean =>
+    workspaceLayout?.tabsById[tabId] !== undefined;
+
+  function openWorkspaceTab(tab: 'sources' | 'files' | 'agentRuns' | 'review'): void {
+    if (!viewedSessionId) return;
+    switch (tab) {
+      case 'sources':   openTab(viewedSessionId, { id: 'sources', kind: 'sources' }); break;
+      case 'files':     openTab(viewedSessionId, { id: 'files', kind: 'files' }); break;
+      case 'agentRuns': openTab(viewedSessionId, { id: 'agentRuns', kind: 'agentRuns' }); break;
+      case 'review':    openTab(viewedSessionId, { id: 'review', kind: 'review' }); break;
+    }
+    setOverflowOpen(false);
+  }
 
   // 聊天窗只消费主窗广播，不再自行建立全局 SSE 连接。
   useEffect(() => mountSystemEvents({ ownsConnection: false }), []);
@@ -115,23 +98,10 @@ export function ChatPanel(): JSX.Element {
     return () => document.removeEventListener('mousedown', handler);
   }, [overflowOpen]);
 
-  function togglePanel(id: InspectorPanelId): void {
-    setActivePanels((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
   function openReview(): void {
-    setActivePanels((current) => {
-      if (current.has('review')) return current;
-      return new Set([...current, 'review']);
-    });
+    if (!viewedSessionId) return;
+    openTab(viewedSessionId, { id: 'review', kind: 'review' });
   }
-
-  const hasInspector = activePanels.size > 0;
 
   if (sidecarStatus.kind === 'error' && !hasConnected) {
     return (
@@ -157,10 +127,8 @@ export function ChatPanel(): JSX.Element {
       <div className="flex flex-row h-screen bg-[var(--ema-bg)]">
         <SessionSidebar />
 
-        {/* ── Main column ── */}
-        <div className="flex flex-col flex-1 min-w-0">
-
-          {/* Title bar + inspector dock */}
+        <WorkspaceFrame sessionId={viewedSessionId}>
+          {/* Title bar + workspace entries */}
           <div className="flex items-center justify-between px-4 py-2 border-b shrink-0 border-[var(--ema-border)]">
             {/* Session title */}
             <div className="flex items-center gap-2 min-w-0">
@@ -172,9 +140,8 @@ export function ChatPanel(): JSX.Element {
               )}
             </div>
 
-            {/* Inspector dock */}
+            {/* Workspace ⋮ menu */}
             <div className="flex items-center gap-0.5 shrink-0">
-              {/* ⋮ Overflow */}
               <div className="relative" ref={overflowRef}>
                 <Button
                   variant="ghost"
@@ -183,7 +150,7 @@ export function ChatPanel(): JSX.Element {
                       ? 'text-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
                       : 'text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)]'}`}
                   onClick={() => setOverflowOpen((v) => !v)}
-                  title="更多面板"
+                  title="工作区"
                 >
                   <span className="i-solar:menu-dots-bold-duotone text-base shrink-0" aria-hidden />
                   {runningAgentRunCount > 0 && (
@@ -197,22 +164,28 @@ export function ChatPanel(): JSX.Element {
                   <div className="ema-slide-up absolute top-full right-0 mt-1 z-50 w-44 rounded-xl border p-1 shadow-[var(--ema-shadow-3)] bg-[var(--ema-surface-4)] border-[var(--ema-border-hover)]">
                     <OverflowItem
                       icon="i-lucide:paperclip"
-                      label="会话附件"
-                      active={activePanels.has('attachments')}
-                      onClick={() => { togglePanel('attachments'); setOverflowOpen(false); }}
+                      label="来源"
+                      active={hasWorkspaceTab('sources')}
+                      onClick={() => openWorkspaceTab('sources')}
                     />
                     <OverflowItem
                       icon="i-solar:folder-bold-duotone"
                       label="文件浏览"
-                      active={activePanels.has('files')}
-                      onClick={() => { togglePanel('files'); setOverflowOpen(false); }}
+                      active={hasWorkspaceTab('files')}
+                      onClick={() => openWorkspaceTab('files')}
                     />
                     <OverflowItem
                       icon="i-solar:cpu-bold-duotone"
                       label="子智能体"
-                      active={activePanels.has('agentRuns')}
+                      active={hasWorkspaceTab('agentRuns')}
                       badge={runningAgentRunCount}
-                      onClick={() => { togglePanel('agentRuns'); setOverflowOpen(false); }}
+                      onClick={() => openWorkspaceTab('agentRuns')}
+                    />
+                    <OverflowItem
+                      icon="i-lucide:file-diff"
+                      label="审阅"
+                      active={hasWorkspaceTab('review')}
+                      onClick={() => openWorkspaceTab('review')}
                     />
                   </div>
                 )}
@@ -252,65 +225,13 @@ export function ChatPanel(): JSX.Element {
               )}
             </div>
           </div>
-        </div>
-
-        {/* ── Right inspector panel ── */}
-        {/* 宽度可拖拽(左边缘手柄)。hasInspector 切换走 ema-transition-width 过渡,
-            拖拽中(resizing)禁过渡跟手。收起 width:0 滑出动画。 */}
-        <div
-          style={{
-            width: hasInspector ? inspectorWidth : 0,
-            borderColor: hasInspector ? 'var(--ema-border)' : 'transparent',
-          }}
-          className={`relative flex-none flex flex-col overflow-hidden border-l bg-[var(--ema-surface-1)] ${resizing ? '' : 'ema-transition-width'}`}
-        >
-          {/* 拖拽手柄(左边缘)。hasInspector 才显示 */}
-          {hasInspector && (
-            <div
-              className="ema-resize-handle"
-              onMouseDown={onResizeStart}
-              aria-hidden
-            />
-          )}
-          {hasInspector && (
-            <InspectorContent
-              activePanels={activePanels}
-              sessionId={viewedSessionId as string | null}
-              onClose={togglePanel}
-            />
-          )}
-        </div>
+        </WorkspaceFrame>
       </div>
     </ErrorBoundary>
   );
 }
 
-// ── Inspector dock helpers ────────────────────────────────────────────────────
-
-function InspectorDockBtn({
-  icon, label, active, badge, onClick,
-}: {
-  icon: string; label: string; active: boolean; badge?: number; onClick(): void;
-}): JSX.Element {
-  return (
-    <Button
-      variant="ghost"
-      className={`relative size-7 p-0 rounded-md flex items-center justify-center text-sm transition-colors
-        ${active
-          ? 'text-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
-          : 'text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)]'}`}
-      onClick={onClick}
-      title={label}
-    >
-      <span className={`${icon} text-base shrink-0`} aria-hidden />
-      {badge != null && badge > 0 && (
-        <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-3.5 flex items-center justify-center rounded-full text-[9px] font-bold px-0.5 pointer-events-none bg-[var(--ema-primary)] text-[var(--ema-primary-text)]">
-          {badge}
-        </span>
-      )}
-    </Button>
-  );
-}
+// ── Workspace ⋮ menu item ───────────────────────────────────────────────────────
 
 function OverflowItem({
   icon, label, active, badge, onClick,
@@ -336,114 +257,6 @@ function OverflowItem({
       {active && <span className="i-lucide:check text-sm shrink-0 text-[var(--ema-primary)]" aria-hidden />}
     </Button>
   );
-}
-
-// ── Inspector content ─────────────────────────────────────────────────────────
-//
-// Grid rules (panels ordered by activation time):
-//   1 panel  → full height, full width
-//   2 panels → [A][B]         side-by-side
-//   3 panels → [A][B] / [C  ] — C spans both columns
-//   4 panels → [A][B] / [C][D]
-//   5 panels → [A][B] / [C][D] / [E  ]
-
-function InspectorContent({
-  activePanels, sessionId, onClose,
-}: {
-  activePanels: Set<InspectorPanelId>;
-  sessionId:    string | null;
-  onClose(id: InspectorPanelId): void;
-}): JSX.Element {
-  const panels = [...activePanels]; // Set preserves insertion order
-  const count  = panels.length;
-
-  if (count === 0) return <></>;
-
-  if (count === 1) {
-    const id = panels[0]!;
-    return (
-      <div className="flex flex-col flex-1 min-h-0">
-        <InspectorPanelHeader id={id} onClose={() => onClose(id)} />
-        <div className="flex-1 overflow-hidden">
-          <InspectorPanelBody id={id} sessionId={sessionId} />
-        </div>
-      </div>
-    );
-  }
-
-  // 多面板统一使用两列网格；奇数项的最后一格横跨整行。
-  const rowCount = Math.ceil(count / 2);
-  return (
-    <div
-      className="grid flex-1 min-h-0 grid-cols-2"
-      style={{
-        borderColor: 'var(--ema-border)',
-        gridTemplateRows: `repeat(${rowCount}, minmax(0, 1fr))`,
-      }}
-    >
-      {panels.map((id, i) => {
-        const colSpan = count % 2 === 1 && i === count - 1;
-        return (
-          <div
-            key={id}
-            className={`flex flex-col min-h-0 overflow-hidden border-r border-b border-[var(--ema-border)] ${colSpan ? 'col-span-2' : ''}`}
-          >
-            <InspectorPanelHeader id={id} compact onClose={() => onClose(id)} />
-            <div className="flex-1 overflow-hidden">
-              <InspectorPanelBody id={id} sessionId={sessionId} />
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-const PANEL_META: Record<InspectorPanelId, { label: string; icon: string }> = {
-  attachments: { label: '会话附件', icon: 'i-lucide:paperclip' },
-  files:     { label: '文件',     icon: 'i-solar:folder-bold-duotone' },
-  agentRuns: { label: '子智能体', icon: 'i-solar:cpu-bold-duotone' },
-  review:    { label: '审阅',     icon: 'i-lucide:file-diff' },
-};
-
-function InspectorPanelHeader({
-  id,
-  compact,
-  onClose,
-}: {
-  id: InspectorPanelId;
-  compact?: boolean;
-  onClose(): void;
-}): JSX.Element {
-  const meta = PANEL_META[id];
-  return (
-    <div className={`flex items-center gap-1.5 px-3 shrink-0 border-b border-[var(--ema-border)] ${compact ? 'py-1.5' : 'py-2'}`}>
-      <span className={`${meta.icon} text-sm text-[var(--ema-text-tertiary)]`} aria-hidden />
-      <span className={`font-medium ${compact ? 'text-xs' : 'text-sm'} text-[var(--ema-text-secondary)]`}>
-        {meta.label}
-      </span>
-      <Button
-        variant="ghost"
-        className="ml-auto flex size-6 items-center justify-center rounded-md p-0 text-[var(--ema-text-tertiary)] hover:bg-[var(--ema-surface-2)]"
-        onClick={onClose}
-        aria-label={`关闭${meta.label}`}
-      >
-        <span className="i-lucide:x text-xs" aria-hidden />
-      </Button>
-    </div>
-  );
-}
-
-function InspectorPanelBody({ id, sessionId }: { id: InspectorPanelId; sessionId: string | null }): JSX.Element {
-  // key=id forces remount on panel switch → triggers ema-panel-in entrance
-  const wrap = (child: JSX.Element): JSX.Element => (
-    <div key={id} className="ema-panel-in h-full">{child}</div>
-  );
-  if (id === 'agentRuns') return wrap(<AgentRunPanel className="p-2" />);
-  if (id === 'attachments') return wrap(<SessionAttachmentsPanel sessionId={sessionId} />);
-  if (id === 'files')     return wrap(<FilesPanel />);
-  if (id === 'review')    return wrap(<ReviewPanel sessionId={sessionId} />);
-  return <></>;
 }
 
 // ── Context ball ──────────────────────────────────────────────────────────────

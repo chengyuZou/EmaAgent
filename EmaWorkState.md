@@ -158,7 +158,12 @@ Task 与 AgentRun 前端已经分面：Desktop 使用正式 `/api/tasks` 快照�
 
 R11-R13 Memory 后台质量批次已经全部完成。R13 新增 Profile v15 逻辑字节预算、分级降压、显式向量驱逐标记和用户可调设置；本批未改 AgentLoop、Context Compaction 或根 Turn 主链。`EmaWorkState.md` 只由主 Agent 更新，避免并行覆盖。
 
-当前基线最近提交：`3ea4d97a feat: implement character runtime creation and emotion engine initialization`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
+当前基线最近提交：`31b40e9d feat: 添加 workspaceStore 和 workspaceTypes，支持标签布局的持久化与管理`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
+
+K3 当前负责 Desktop Chat Workspace 前端，工作区内已有
+`apps/desktop-ui/src/styles/transitions.css` 未提交改动；主 Agent 不修改该
+文件或 K3 正在创建的 `chat/workspace` 文件。后台进程前端已经补入
+`EmaChatWorkspacePlan.md`，继续由 K3 在后端 API/事件完成后实现。
 
 ## 已确定的 V1 口径
 
@@ -170,7 +175,7 @@ R11-R13 Memory 后台质量批次已经全部完成。R13 新增 Profile v15 逻
 - Provider 是控制面；LLM、Embed、Rerank、Vision、STT、TTS 是无 Session 状态的执行面。
 - Tool 使用同一份不可变 PreparedToolCall 完成准备、审批和执行；Permission 与 Sandbox 物理分层。
 - V1 完整实现持久 Task：TaskCreate/Get/List/Update、依赖、AgentRun 可选绑定、事务/CAS、事件、Context 提醒、恢复快照与独立前端 TaskList；Task Tools 只属于根 Turn，TodoWrite 完成迁移后删除。
-- 后台 Shell 是 BackgroundProcess，使用 ProcessOutput/ProcessStop；不复用 TaskId、AgentRunId 或领域 Job 生命周期。
+- 后台 Shell 是 BackgroundProcess，使用 ProcessOutput/ProcessStop；不复用 TaskId、AgentRunId 或领域 Job 生命周期。状态元数据进入 active `data.db`，有界 stdout/stderr 进入 `{dataDir}/sessions/{sessionId}/processes/{backgroundProcessId}/`。
 - Memory 只管理长期记忆；Compaction 属于 Context；Narrative、Knowledge Base、Memory 保持隔离。
 - branded ID 只允许进入零业务依赖的 `src/ids`；业务类型、状态、事件与错误仍归各自所有者。事件按范围组合为 `AgentLoopEvent`、`TurnEvent`、`AgentRunEvent`、`SessionEvent` 与 `AppEvent`，不再让 Turn 组合整个应用的万能事件联合。
 - 已知字段使用明确 type/interface/SQL column，不用 `meta`、`metaJson` 或万能 JSON 让调用方猜。
@@ -206,7 +211,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 7. Skill 多文件激活、per-Agent 状态、结构化 Context 恢复与 `allowed-tools` 单向收窄已经完成；
 8. LocalHost L0、Turn 输入准备 L1、Turn Context L2、Turn Tools L3、Root Agent Execution L4、Turn Composition Root L5、TTS Turn 输出边界、精确根取消与旧 Orchestrator 删除、Route 业务副作用归位及 Task/AgentRun Route 窄依赖均已完成；
 9. Turn/AskUser、Permission、Session、Provider/ModelBindings、Settings/Theme、Transcribe、Cards、Knowledge Base、Storage Stats 与 Shell Route 已完成窄依赖；HTTP Server、后台生命周期和一次性启动装配也已完成收口。`buildBindings()` 的 Provider/模型、Character/Emotion、Sandbox/Tool、Session/Memory、Attachment/Backup、Extension/Knowledge 对象图均已提取，LocalHost Composition Root 施工计划完成；后续不建立嵌套依赖袋或通用 `Lazy<T>`；
-10. 后台进程按 `BackgroundProcess + ProcessOutput/ProcessStop` 单独实现 C 档，不修改 AgentLoop，也不恢复假 `run_in_background`；
+10. 后台进程 C 档设计已冻结在 `EmaRefactor.md` §6.1：先建立独立 ID、Data 表、Session 输出目录、状态机和显式后台，再接 ProcessOutput/ProcessStop、并发队列、领域事件与一次性模型通知，最后增加 15 秒原地自动后台化。实现完成前不恢复旧假 `run_in_background`；前端活动面板交给 K3，按 `EmaChatWorkspacePlan.md` §7.1 接真实 API；
 11. 外围质量收口（依据为 2026-07-29 外围模块评审与 ragflow/claude-code 参照研究，管线对照见 `docs/reviews/ragflow-claude-pipelines.md`）：
     - **R1-R7 已完成**：KB 摄入可靠性、检索质量、模型集成安全，以及 Memory 使用层、提取信任、判断层与溯源链均已落地；实现与验证见“最近验证”，不要继续作为待办重复施工；
     - **R8-R9 Skills 已完成**：bundle 资产全量哈希、市场清单 sha256 与安装强校验已经落地；子 Agent 工具上限 = 父当前收窄集 ∩ 自身工具池，只能更窄不能更宽；
@@ -222,6 +227,12 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- ChatWorkspace 批次 C2 Workspace Dock 框架与迁入（K3）：Desktop UI typecheck 与 29 个测试文件 133/133 通过。新增 `WorkspaceFrame/WorkspaceDock/WorkspaceTabBar/WorkspaceLauncher`：RightDock/BottomDock 共用同一 Dock 组件（BottomDock 横跨聊天列与 RightDock、不盖 SessionSidebar），**标签池经 React Portal 挂在 Frame 层**——全部标签常驻、激活显示其余 hidden，跨 Dock 移动只换 portal 目标不重建组件实例（移动不丢内部状态），内容容器常驻使折叠也不卸载；空 Dock 显示居中启动器（只列审阅/文件/来源/子智能体四个真实能力），TabBar 支持激活/关闭/右⇄底移动（DropdownMenu）。迁入：FilesPanel 点击文件改开 `file:<path>` 标签（FilePreview 作为标签内容，同路径归一单实例）、SessionAttachmentsPanel 作为 sources 内容、AgentRunPanel 新增 `initialExpandedId` 支撑 `agentRun:<id>` 深链、ReviewPanel 接 `review` 标签。ChatPanel 旧 Inspector（Set/Grid/拖拽宽度/面板头）整体退役，⋮ 菜单改为开标签。资源键补充 `agentRuns` 列表面板（计划 §4.2 已追记）；terminal/browser 类型保留但启动器不提供入口，防御性渲染明确说明。样式零硬编码：新增 `.ema-transition-height` 与 `.ema-resize-handle-h/.ema-resizing-v` 均沉淀在 styles。`git diff --check` 通过，仅有既有 CRLF 提示。
+- BackgroundProcess 设计冻结：完整对照 Claude Code 的 Bash 显式后台、
+  Assistant 15 秒原地后台化、LocalShellTask、TaskOutput/TaskStop 与完成通知，
+  并按 Ema 的 Task/AgentRun/Process 边界写入 `EmaRefactor.md` §6.1；
+  `EmaChatWorkspacePlan.md` 已补运行活动摘要、后台进程动态标签、API 与 K3
+  委派边界。本批只修改文档，未运行代码测试。
 - ChatWorkspace 批次 C1 workspaceStore（K3）：Desktop UI typecheck 与 29 个测试文件 133/133 通过（新增 workspaceStore 14 用例）。`chat/workspace/` 纯状态机零 JSX：`workspaceTypes.ts` 可判别 `WorkspaceTab` 联合与每 Session 布局（宽度/高度按 §4.4 语义作为全局偏好留在 store 全局字段，不进每 Session 布局；file 资源键归一斜杠与 Windows 盘符防同路径双标签）；`workspaceStore.ts` 实现同资源单实例（已存在则激活、显式指定异 Dock 则移动同一实例）、关闭激活项邻居接管、关闭最后标签 Dock 自动折叠、显式关闭不进持久层、折叠保留标签原样恢复、每 Session 隔离；localStorage 持久化带损坏 JSON 回退、失效激活项与空 Dock open 标记的恢复纠正，Node 测试环境无 localStorage 时静默降级。`git diff --check` 通过，仅有既有 CRLF 提示。
 
 - V1 后端最终闸门第一批：正式构建已拒绝三个 `AGEN_UNSAFE_*` 沙箱绕过开关；Telemetry 无生产消费者的 Repo、公开类型和测试已删除，Data v24 负责清理旧库表；附件图片改为同一文件句柄上的异步有界读取，读取期间增长也不会突破 5 MiB 内存上限；Character Card 两个未实现死入口与 `EmaStreamEvent` 兼容名已删除。Attachment 14/14、Storage 125/125、LocalHost Sandbox 10/10 通过；Attachment、TurnExecution、LocalHost 定向 typecheck 及全仓 typecheck 86/86 通过。首次 Storage 回归因旧测试仍断言 Data v23 失败，更新到 v24 后全绿；`git diff --check` 通过，仅有既有 CRLF 提示。

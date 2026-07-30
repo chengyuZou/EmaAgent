@@ -8,6 +8,9 @@ export type WorkspaceTab =
   | { id: `file:${string}`; kind: 'file'; path: string }
   | { id: `terminal:${string}`; kind: 'terminal'; terminalId: string }
   | { id: `browser:${string}`; kind: 'browser'; browserId: string }
+  // 'agentRuns' 是全 Session 子智能体列表面板（计划 §4.2 未单列，参照 Codex 的
+  // 子智能体标签补充）；'agentRun:<id>' 是单次执行的深链标签。
+  | { id: 'agentRuns'; kind: 'agentRuns' }
   | { id: `agentRun:${string}`; kind: 'agentRun'; agentRunId: string }
   | { id: 'sources'; kind: 'sources' };
 

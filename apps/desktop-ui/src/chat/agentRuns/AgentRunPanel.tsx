@@ -8,15 +8,17 @@ import { showToast } from '../../lib/toast.js';
 
 export interface AgentRunPanelProps {
   className?: string;
+  /** 深链标签（agentRun:<id>）初始展开的执行；列表标签不传。 */
+  initialExpandedId?: string;
 }
 
-export function AgentRunPanel({ className = '' }: AgentRunPanelProps): JSX.Element {
+export function AgentRunPanel({ className = '', initialExpandedId }: AgentRunPanelProps): JSX.Element {
   const sessionId      = useConversationStore((s) => s.viewedSessionId);
   const runs           = useAgentRunStore((s) => s.runs);
   const loadForSession = useAgentRunStore((s) => s.loadForSession);
   const clearTerminal  = useAgentRunStore((s) => s.clearTerminal);
 
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(initialExpandedId ?? null);
   const [search,     setSearch]     = useState('');
 
   useEffect(() => {

@@ -1,10 +1,11 @@
-// 按 Session 与工作区根目录隔离文件树、目录请求和文件预览状态。
+// 按 Session 与工作区根目录隔离文件树与目录请求；文件在工作区 Dock 以标签预览。
 import { useState, useCallback, useEffect, useRef, type JSX, type CSSProperties } from 'react';
 import { ScrollArea } from '@ema-agent/ui';
 import { workspaceApi, type FileEntry } from '../api/workspace.js';
 import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore } from '../stores/session-store.js';
-import { FilePreview } from './FilePreview.js';
+import { useWorkspaceStore } from './workspace/workspaceStore.js';
+import { fileTab } from './workspace/workspaceTypes.js';
 import {
   DirectoryRequestGate,
   workspaceBrowserScopeKey,
@@ -69,7 +70,7 @@ function FileRow({
 
   const handleClick = (): void => {
     if (isDir) { onToggle(entry.path); return; }
-    onSelectFile(entry.path);  // in-app 预览,不走 OS
+    onSelectFile(entry.path);  // 工作区标签内预览,不走 OS
   };
 
   return (
@@ -191,10 +192,17 @@ function ScopedFilesPanel({ root }: { root: string }): JSX.Element {
 
   const [search,       setSearch]       = useState('');
   const [dirNodes,     setDirNodes]     = useState<Map<string, DirNode>>(new Map);
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const requestGateRef = useRef<DirectoryRequestGate | null>(null);
   const requestGate = requestGateRef.current ?? new DirectoryRequestGate();
   requestGateRef.current = requestGate;
+
+  // 点击文件在工作区 Dock 中以 file:<path> 标签打开（同一路径复用同一标签）。
+  const sessionId = useConversationStore((s) => s.viewedSessionId);
+  const openTab = useWorkspaceStore((s) => s.openTab);
+  const openFileTab = useCallback((path: string): void => {
+    if (!sessionId) return;
+    openTab(sessionId, fileTab(path));
+  }, [sessionId, openTab]);
 
   const filter = search.trim().toLowerCase();
 
@@ -247,16 +255,6 @@ function ScopedFilesPanel({ root }: { root: string }): JSX.Element {
     if (root && !dirNodes.has(root)) void loadDir(root);
   }, [root, dirNodes, loadDir]);
 
-  // 选中文件 -> in-app 预览(双向 ema-fade-in)
-  if (selectedFile) {
-    return (
-      <FilePreview
-        path={selectedFile}
-        onBack={() => setSelectedFile(null)}
-      />
-    );
-  }
-
   return (
     <div className="flex flex-col h-full ema-fade-in">
       {/* Search */}
@@ -278,7 +276,7 @@ function ScopedFilesPanel({ root }: { root: string }): JSX.Element {
           filter={filter}
           dirNodes={dirNodes}
           onToggle={toggleDir}
-          onSelectFile={setSelectedFile}
+          onSelectFile={openFileTab}
         />
         {dirNodes.get(root)?.loading && (
           <div className="px-3 py-1 text-[10px] text-[var(--ema-text-tertiary)]">加载中…</div>

@@ -73,6 +73,28 @@
   user-select: none !important;
 }
 
+/* ── BottomDock 拖拽手柄(上边缘 row-resize)─────────────────────────────
+ *  hover 变色,拖拽中全局 row-resize(加 .ema-resizing-v 到 body)。
+ */
+.ema-resize-handle-h {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 4px;
+  cursor: row-resize;
+  z-index: 10;
+  transition: background var(--ema-duration-fast) var(--ema-ease);
+  background: transparent;
+}
+.ema-resize-handle-h:hover,
+.ema-resizing-v .ema-resize-handle-h {
+  background: var(--ema-primary);
+}
+.ema-resizing-v,
+.ema-resizing-v * {
+  cursor: row-resize !important;
+  user-select: none !important;
+}
+
 /* ── 代码高亮字体(FilePreview 代码 + 聊天代码块统一柔和)──────────────────
  *  直接作用 .hljs(code 元素),跟 github-dark.css 同 specificity,后定义赢。
  *  Cascadia Code 优先(柔和+连字),字重 400 + 行高 1.7 + 连字 + 抗锯齿。
