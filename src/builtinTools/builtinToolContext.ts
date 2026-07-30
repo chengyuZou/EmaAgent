@@ -20,6 +20,7 @@ import type {
   ReadFileState,
   ToolCapabilityScope,
   ToolExecutionEvent,
+  BackgroundProcessPort,
 } from '@ema-agent/tools';
 import type { SubagentSpawnerPort } from './subagentToolPort.js';
 
@@ -66,6 +67,8 @@ export interface BuiltinToolContext {
   // ── 装配时绑定的执行能力 ──────────────────────────────────────────────────
   /** Bash 工具的受控命令执行器（per-session 缓存）。 */
   readonly commandRunner?: CommandRunnerPort;
+  /** Bash 与 Process 工具族共享的持久后台进程入口。 */
+  readonly backgroundProcesses?: BackgroundProcessPort;
   /** KB 检索工具的搜索入口。 */
   readonly knowledgeSearch?: KnowledgeSearchPort;
   /** Narrative 剧情资料的按需检索入口，仅在 auto 策略下装配。 */

@@ -31,6 +31,7 @@ import type { TaskStorePort } from '@ema-agent/tasks';
 import type { KbAssetScope } from '@ema-agent/turn';
 import {
   ToolExecutionRuntime,
+  type BackgroundProcessPort,
   type AskUserRequiredEvent,
   type ReadFileState,
   type ToolExecutionJournalPort,
@@ -99,6 +100,7 @@ export interface TurnToolsBuilderDeps {
   readonly agentRunTranscriptWriter?: AgentRunTranscriptWriter;
   readonly taskStore?: TaskStorePort;
   readonly toolExecutionJournal?: ToolExecutionJournalPort;
+  readonly backgroundProcesses?: BackgroundProcessPort;
 }
 
 export interface TurnToolsPreparation {
@@ -241,6 +243,7 @@ export class TurnToolsBuilder {
       agentRunStore: this.deps.agentRunStore,
       agentRunTranscriptWriter: this.deps.agentRunTranscriptWriter,
       toolExecutionJournal: this.deps.toolExecutionJournal,
+      backgroundProcesses: this.deps.backgroundProcesses,
     };
     const spawner = new SubagentSpawner(
       spawnerDeps,

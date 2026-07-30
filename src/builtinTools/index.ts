@@ -7,6 +7,9 @@ import { FileEditTool } from './tools/FileEditTool/FileEditTool.js';
 import { GlobTool } from './tools/GlobTool/GlobTool.js';
 import { GrepTool } from './tools/GrepTool/GrepTool.js';
 import { BashTool } from './tools/BashTool/BashTool.js';
+import { ProcessListTool } from './tools/ProcessListTool/ProcessListTool.js';
+import { ProcessOutputTool } from './tools/ProcessOutputTool/ProcessOutputTool.js';
+import { ProcessStopTool } from './tools/ProcessStopTool/ProcessStopTool.js';
 import { WebFetchTool } from './tools/WebFetchTool/WebFetchTool.js';
 import { WebSearchTool } from './tools/WebSearchTool/WebSearchTool.js';
 import { TaskCreateTool } from './tools/TaskCreateTool/TaskCreateTool.js';
@@ -60,6 +63,9 @@ export {
   GlobTool,
   GrepTool,
   BashTool,
+  ProcessListTool,
+  ProcessOutputTool,
+  ProcessStopTool,
   WebFetchTool,
   WebSearchTool,
   TaskCreateTool,
@@ -94,6 +100,9 @@ export type { FileEditResult } from './tools/FileEditTool/FileEditTool.js';
 export type { GlobResult } from './tools/GlobTool/GlobTool.js';
 export type { GrepResult } from './tools/GrepTool/GrepTool.js';
 export type { BashResult } from './tools/BashTool/BashTool.js';
+export type { ProcessListResult } from './tools/ProcessListTool/ProcessListTool.js';
+export type { ProcessOutputResult } from './tools/ProcessOutputTool/ProcessOutputTool.js';
+export type { ProcessStopResult } from './tools/ProcessStopTool/ProcessStopTool.js';
 export type { WebFetchResult } from './tools/WebFetchTool/WebFetchTool.js';
 export type { WebSearchResult, SearchResult } from './tools/WebSearchTool/WebSearchTool.js';
 export type { TaskCreateResult } from './tools/TaskCreateTool/TaskCreateTool.js';
@@ -120,6 +129,9 @@ const ALL_BUILTIN_TOOLS: BuiltTool<any, any, any>[] = [
   GlobTool,
   GrepTool,
   BashTool,
+  ProcessListTool,
+  ProcessOutputTool,
+  ProcessStopTool,
   WebFetchTool,
   WebSearchTool,
   TaskCreateTool,

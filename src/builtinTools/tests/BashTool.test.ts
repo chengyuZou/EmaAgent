@@ -1,16 +1,17 @@
-// 测试 Bash 只通过受控 CommandRunner 执行，并且不再向模型声明假后台能力。
+// 测试 Bash 只通过受控后台进程入口执行，并公开真实的一次性转后台能力。
 
 import { describe, expect, it, vi } from 'vitest';
-import { asSessionId, asTurnId } from '@ema-agent/ids';
+import { asSessionId, asToolCallId, asTurnId } from '@ema-agent/ids';
 import { splitToolResult } from '@ema-agent/tools';
 import { BashTool } from '../tools/BashTool/BashTool.js';
 
 describe('BashTool 执行边界', () => {
-  it('模型可见 Schema 不再包含 run_in_background', () => {
+  it('模型可见 Schema 使用真实 runInBackground，不保留旧蛇形字段', () => {
     const properties = BashTool.descriptor().inputJsonSchema['properties'] as
       | Record<string, unknown>
       | undefined;
 
+    expect(properties).toHaveProperty('runInBackground');
     expect(properties).not.toHaveProperty('run_in_background');
   });
 
@@ -27,20 +28,35 @@ describe('BashTool 执行边界', () => {
   });
 
   it('使用实际执行参数生成命令展示数据', async () => {
-    const run = vi.fn().mockResolvedValue({
-      stdout: 'ok',
-      stderr: '',
-      exitCode: 0,
-      timedOut: false,
-      truncated: false,
-      aborted: false,
+    const runCommand = vi.fn().mockResolvedValue({
+      kind: 'commandResult',
+      result: {
+        stdout: 'ok',
+        stderr: '',
+        exitCode: 0,
+        timedOut: false,
+        truncated: false,
+        aborted: false,
+      },
+      durationMs: 12,
     });
     const projection = BashTool.unsafeValidateContext({
       sessionId: asSessionId('session-presentation'),
       turnId: asTurnId('turn-presentation'),
+      toolCallId: asToolCallId('tool-call-presentation'),
       workspaceRoot: 'D:/workspace',
       signal: new AbortController().signal,
-      commandRunner: { run, cleanup: vi.fn() },
+      commandRunner: {
+        start: vi.fn(),
+        run: vi.fn(),
+        cleanup: vi.fn(),
+      },
+      backgroundProcesses: {
+        runCommand,
+        list: vi.fn(),
+        readOutput: vi.fn(),
+        stop: vi.fn(),
+      },
     });
     if (!projection.valid) throw new Error(projection.reason);
 
@@ -50,7 +66,17 @@ describe('BashTool 执行边界', () => {
     );
     const split = splitToolResult(result);
 
-    expect(split.modelOutput).toMatchObject({ stdout: 'ok', exitCode: 0 });
+    expect(runCommand).toHaveBeenCalledWith(expect.objectContaining({
+      command: 'git status',
+      description: '查看工作区状态',
+      cwd: 'D:/workspace',
+    }));
+    expect(split.modelOutput).toMatchObject({
+      kind: 'commandResult',
+      stdout: 'ok',
+      exitCode: 0,
+      durationMs: 12,
+    });
     expect(split.presentation).toEqual({
       kind: 'command',
       command: 'git status',

@@ -4,10 +4,13 @@
 import { z } from 'zod';
 import {
   buildTool,
+  createBackgroundProcessPresentation,
   createCommandPresentation,
   presentToolResult,
+  type BackgroundProcessPort,
 } from '@ema-agent/tools';
 import type { CommandRunnerPort } from '@ema-agent/sandbox';
+import type { SessionId, ToolCallId, TurnId } from '@ema-agent/ids';
 import type { BuiltinToolContext } from '../../builtinToolContext.js';
 import { contextFail, contextOk } from '../../contextValidation.js';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
@@ -17,14 +20,17 @@ import { interpretExitCode } from './commandSemantics.js';
 /** Bash 工具的窄 Context：只需命令执行器 + 执行身份。 */
 interface BashToolContext {
   runner: CommandRunnerPort;
+  backgroundProcesses: BackgroundProcessPort;
+  sessionId: SessionId;
+  turnId: TurnId;
+  toolCallId: ToolCallId;
   signal: AbortSignal;
   workspaceRoot: string;
 }
 
 // ── 常量 ─────────────────────────────────────────────────────────────────────
 
-const DEFAULT_TIMEOUT_MS = 120_000; // 2 分钟
-const MAX_TIMEOUT_MS = 600_000; // 10 分钟
+const MAX_TIMEOUT_MS = 7 * 24 * 60 * 60 * 1_000;
 
 // ── 输入 schema ──────────────────────────────────────────────────────────────
 
@@ -43,14 +49,19 @@ const inputSchema = z.object({
     .min(1000)
     .max(MAX_TIMEOUT_MS)
     .optional()
-    .describe(`Timeout in milliseconds. Defaults to ${DEFAULT_TIMEOUT_MS}. Max ${MAX_TIMEOUT_MS}.`),
+    .describe('Maximum total runtime in milliseconds. Defaults to the user setting.'),
+  runInBackground: z
+    .boolean()
+    .optional()
+    .describe('Start in the background immediately instead of waiting up to 15 seconds.'),
 });
 
 type BashInput = z.infer<typeof inputSchema>;
 
 // ── 输出类型 ───────────────────────────────────────────────────────────────────
 
-export interface BashResult {
+export interface BashCommandResult {
+  kind: 'commandResult';
   stdout:     string;
   stderr:     string;
   exitCode:   number;
@@ -62,6 +73,15 @@ export interface BashResult {
   /** 退出码语义解释或破坏性命令提醒(grep 无匹配不是错误/git push -f 覆盖远端历史等)。 */
   note?: string;
 }
+
+export interface BashProcessReference {
+  kind: 'processReference';
+  backgroundProcessId: string;
+  status: 'queued' | 'running';
+  outputPreview: string;
+}
+
+export type BashResult = BashCommandResult | BashProcessReference;
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
 
@@ -77,7 +97,9 @@ Usage rules:
 - Avoid interactive commands that read from stdin (they will hang).
 - Git safety: never run destructive git commands (reset --hard, push --force, clean -f) unless the user explicitly asked; never use --no-verify; when a hook fails a commit, create a new commit instead of --amend.
 - Output redirects (> and >>) may only target paths inside the workspace or the system temp directory (relative paths land in the workspace).
-- Timeout defaults to 2 minutes (max 10). Background processes are not supported in V1.`,
+- Commands that finish within 15 seconds return their result directly. Slower commands keep running as background processes without being restarted.
+- Set runInBackground=true when the command is expected to be long-running. Use ProcessOutput to read incremental output and ProcessStop to terminate it.
+- timeout is the total runtime limit. When omitted, the user's background-process setting applies.`,
 
   getToolUseSummary: (input) => input.description,
 
@@ -90,14 +112,21 @@ Usage rules:
   },
   isConcurrencySafe: () => false,
 
-  requires: ['commandRunner'],
+  requires: ['commandRunner', 'backgroundProcesses'],
 
   validateContext(ctx) {
-    if (!ctx.commandRunner) {
+    if (!ctx.commandRunner || !ctx.backgroundProcesses) {
       return contextFail('当前执行环境没有 Shell 能力，请先选择工作区并检查 Sandbox 状态。');
+    }
+    if (!ctx.toolCallId) {
+      return contextFail('Shell 调用缺少 toolCallId，不能建立可审计的进程身份。');
     }
     return contextOk({
       runner: ctx.commandRunner,
+      backgroundProcesses: ctx.backgroundProcesses,
+      sessionId: ctx.sessionId,
+      turnId: ctx.turnId,
+      toolCallId: ctx.toolCallId,
       signal: ctx.signal,
       workspaceRoot: ctx.workspaceRoot,
     });
@@ -119,7 +148,7 @@ Usage rules:
     input: BashInput,
     context: BashToolContext,
   ): Promise<BashResult> {
-    const { command, timeout } = input;
+    const { command, timeout, runInBackground } = input;
 
     // 执行前复查: 直接分发(未过 Permission)时硬拦依然生效。
     const verdict = analyzeBashCommand(command);
@@ -127,36 +156,68 @@ Usage rules:
       throw new Error(`Command blocked by safety policy: ${verdict.reason ?? command}`);
     }
 
-    const timeoutMs = Math.min(timeout ?? DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS);
-    const startMs = Date.now();
-
-    const result = await context.runner.run(command, {
-      cwd: context.workspaceRoot,
-      timeoutMs,
-      signal: context.signal,
-    });
-
-    // 退出码语义(grep 无匹配/diff 有差异不是错误) + 破坏性命令提醒, 拼进 note。
-    const notes: string[] = [];
     const lastSegment = splitCommandSegments(command).at(-1) ?? command;
     const lastBase = /^(\S+)/.exec(lastSegment)?.[1]?.replace(/^.*\//, '') ?? '';
-    const interpretation = interpretExitCode(lastBase, result.exitCode);
+    const result = await context.backgroundProcesses.runCommand({
+      sessionId: context.sessionId,
+      turnId: context.turnId,
+      toolCallId: context.toolCallId,
+      runner: context.runner,
+      command,
+      description: input.description,
+      cwd: context.workspaceRoot,
+      timeoutMs: timeout,
+      runInBackground,
+      waitSignal: context.signal,
+      isSuccessfulExitCode: exitCode =>
+        interpretExitCode(lastBase, exitCode).ok,
+    });
+
+    if (result.kind === 'processReference') {
+      return presentToolResult(
+        {
+          kind: result.kind,
+          backgroundProcessId: result.backgroundProcessId,
+          status: result.status,
+          outputPreview: result.outputPreview,
+        },
+        createBackgroundProcessPresentation({
+          backgroundProcessId: result.backgroundProcessId,
+          command,
+          workingDirectory: context.workspaceRoot,
+          status: result.status,
+        }),
+      );
+    }
+
+    const interpretation = interpretExitCode(lastBase, result.result.exitCode);
+    if (!interpretation.ok) {
+      const detail = result.result.stderr.trim() || result.result.stdout.trim();
+      throw new Error(
+        `Command exited with code ${result.result.exitCode}`
+        + (detail ? `: ${detail.slice(0, 2_000)}` : ''),
+      );
+    }
+
+    // 退出码语义与静态安全提醒只作为补充说明，不改变真实退出状态。
+    const notes: string[] = [];
     if (interpretation.note) notes.push(interpretation.note);
     for (const warning of verdict.warnings) notes.push(warning);
 
     return presentToolResult(
       {
-        ...result,
-        durationMs: Date.now() - startMs,
+        kind: 'commandResult',
+        ...result.result,
+        durationMs: result.durationMs,
         ...(notes.length > 0 ? { note: notes.join('; ') } : {}),
       },
       createCommandPresentation({
         command,
         workingDirectory: context.workspaceRoot,
-        exitCode: result.exitCode,
-        timedOut: result.timedOut,
-        aborted: result.aborted,
-        truncated: result.truncated,
+        exitCode: result.result.exitCode,
+        timedOut: result.result.timedOut,
+        aborted: result.result.aborted,
+        truncated: result.result.truncated,
       }),
     );
   },

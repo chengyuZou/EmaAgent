@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { asAgentRunId, type AgentRunId, type SessionId, type TurnId } from '@ema-agent/ids';
 import type {
   ReadFileState,
+  BackgroundProcessPort,
   ToolError,
   ToolExecutionJournalPort,
   ToolExecutionRuntimeOptions,
@@ -71,6 +72,7 @@ export interface SubagentSpawnerDeps {
   agentRunStore?: AgentRunStorePort;
   agentRunTranscriptWriter?: AgentRunTranscriptWriter;
   toolExecutionJournal?: ToolExecutionJournalPort;
+  backgroundProcesses?: BackgroundProcessPort;
 }
 
 export class SubagentSpawner implements SubagentSpawnerPort {
@@ -223,6 +225,7 @@ export class SubagentSpawner implements SubagentSpawnerPort {
       workspaceRoot:    this.workspaceRoot,
       signal:           childCtrl.signal,
       commandRunner:    this.commandRunner,
+      backgroundProcesses: this.deps.backgroundProcesses,
       readFileState,
       skillRunner:      this.deps.skillRunner,
       activeSkillState,
