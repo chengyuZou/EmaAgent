@@ -11,6 +11,7 @@ import { sessionHistoryRoute } from './sessionHistory.js';
 import { sessionAttachmentsRoute } from './sessionAttachments.js';
 import { sessionActionsRoute } from './sessionActions.js';
 import { sessionTitleRoute } from './sessionTitle.js';
+import { sessionGitRoute } from './sessionGit.js';
 
 export function sessionsRoute(
   session: SessionStore,
@@ -25,5 +26,6 @@ export function sessionsRoute(
   app.route('/', sessionAttachmentsRoute(session, attachments, fileAccess));
   app.route('/', sessionActionsRoute(session, lifecycle));
   app.route('/', sessionTitleRoute(titleGenerator));
+  app.route('/', sessionGitRoute(session));
   return app;
 }
