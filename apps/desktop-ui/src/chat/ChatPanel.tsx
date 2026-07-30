@@ -16,7 +16,7 @@ import { ChatInput } from './ChatInput.js';
 import { ContextPanel } from './ContextPanel.js';
 import { ChatActivityStrip } from './activity/ChatActivityStrip.js';
 import { WorkspaceFrame } from './workspace/WorkspaceFrame.js';
-import { useWorkspaceStore } from './workspace/workspaceStore.js';
+import { useWorkspaceStore } from '../stores/workspaceStore.js';
 
 // ── ChatPanel ─────────────────────────────────────────────────────────────────
 

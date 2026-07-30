@@ -3,8 +3,8 @@ import type { JSX } from 'react';
 import type { SessionId } from '@ema-agent/ids';
 import { Button, DropdownMenu, IconButton } from '@ema-agent/ui';
 import { useAgentRunStore } from '../../stores/agentRunStore.js';
-import { useWorkspaceStore } from './workspaceStore.js';
-import type { WorkspaceDockId, WorkspaceTab } from './workspaceTypes.js';
+import { useWorkspaceStore } from '../../stores/workspaceStore.js';
+import type { WorkspaceDockId, WorkspaceTab } from '../../stores/workspaceTypes.js';
 
 export function workspaceTabIcon(tab: WorkspaceTab): string {
   switch (tab.kind) {

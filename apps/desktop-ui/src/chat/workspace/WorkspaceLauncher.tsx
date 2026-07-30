@@ -2,9 +2,9 @@
 import { useEffect, type JSX } from 'react';
 import type { SessionId } from '@ema-agent/ids';
 import { Button } from '@ema-agent/ui';
-import { useWorkspaceStore } from './workspaceStore.js';
+import { useWorkspaceStore } from '../../stores/workspaceStore.js';
 import { workspaceTabIcon } from './WorkspaceTabBar.js';
-import type { WorkspaceDockId, WorkspaceTab } from './workspaceTypes.js';
+import type { WorkspaceDockId, WorkspaceTab } from '../../stores/workspaceTypes.js';
 
 // 只放当前有真实能力的资源；Terminal/Browser 有运行时之前不进入此列表。
 const LAUNCHER_TABS: readonly WorkspaceTab[] = [

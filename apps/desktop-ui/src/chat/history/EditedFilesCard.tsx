@@ -3,7 +3,7 @@ import { useState, type JSX } from 'react';
 import { Button } from '@ema-agent/ui';
 import type { SessionId } from '@ema-agent/ids';
 import { useConversationStore } from '../../stores/conversation-store.js';
-import { useWorkspaceStore } from '../workspace/workspaceStore.js';
+import { useWorkspaceStore } from '../../stores/workspaceStore.js';
 import type { EditedFileEntry } from './workGroups.js';
 
 const PAGE_SIZE = 5;

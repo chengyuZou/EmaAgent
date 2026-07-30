@@ -15,7 +15,7 @@ import type { SessionId } from '@ema-agent/ids';
 import type { AssistantSlice } from '../stores/conversation-store.js';
 import { useConversationStore } from '../stores/conversation-store.js';
 import { turnsApi } from '../api/turns.js';
-import { useWorkspaceStore } from './workspace/workspaceStore.js';
+import { useWorkspaceStore } from '../stores/workspaceStore.js';
 import { renderToolArgs, renderToolResult, stripOuterBraces } from './tool-renderers.js';
 
 export interface ToolCallBlockProps {

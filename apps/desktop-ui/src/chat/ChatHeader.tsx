@@ -4,7 +4,7 @@ import { useState, type JSX } from 'react';
 import type { SessionId } from '@ema-agent/ids';
 import { IconButton, Popover } from '@ema-agent/ui';
 import { useAgentRunStore } from '../stores/agentRunStore.js';
-import { isRightFullWidth, useWorkspaceStore } from './workspace/workspaceStore.js';
+import { isRightFullWidth, useWorkspaceStore } from '../stores/workspaceStore.js';
 import { PinnedSessionSummary } from './summary/PinnedSessionSummary.js';
 
 export interface ChatHeaderProps {

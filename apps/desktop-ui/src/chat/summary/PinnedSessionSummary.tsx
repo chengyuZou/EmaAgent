@@ -7,7 +7,7 @@ import { useAgentRunStore } from '../../stores/agentRunStore.js';
 import { useBackgroundProcessStore } from '../../stores/backgroundProcessStore.js';
 import { useSessionAttachmentStore } from '../../stores/session-attachment-store.js';
 import { useSessionStore } from '../../stores/session-store.js';
-import { useWorkspaceStore } from '../workspace/workspaceStore.js';
+import { useWorkspaceStore } from '../../stores/workspaceStore.js';
 
 const SOURCES_PREVIEW_COUNT = 3;
 

@@ -1,10 +1,10 @@
 // 右侧/底部共用的工作区 Dock：标签条、内容容器、拖拽手柄与居中启动器。
 import { useCallback, useRef, useState, type JSX } from 'react';
 import type { SessionId } from '@ema-agent/ids';
-import { useWorkspaceStore } from './workspaceStore.js';
+import { useWorkspaceStore } from '../../stores/workspaceStore.js';
 import { WorkspaceTabBar } from './WorkspaceTabBar.js';
 import { WorkspaceLauncher } from './WorkspaceLauncher.js';
-import type { WorkspaceDockId } from './workspaceTypes.js';
+import type { WorkspaceDockId } from '../../stores/workspaceTypes.js';
 
 export interface WorkspaceDockProps {
   sessionId: SessionId | null;

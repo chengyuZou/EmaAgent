@@ -4,8 +4,8 @@ import { ScrollArea } from '@ema-agent/ui';
 import { workspaceApi, type FileEntry } from '../api/workspace.js';
 import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore } from '../stores/session-store.js';
-import { useWorkspaceStore } from './workspace/workspaceStore.js';
-import { fileTab } from './workspace/workspaceTypes.js';
+import { useWorkspaceStore } from '../stores/workspaceStore.js';
+import { fileTab } from '../stores/workspaceTypes.js';
 import {
   DirectoryRequestGate,
   workspaceBrowserScopeKey,

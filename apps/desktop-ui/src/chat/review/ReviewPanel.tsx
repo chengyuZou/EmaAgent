@@ -10,8 +10,8 @@ import type {
 } from '@ema-agent/git-utils';
 import type { SessionId } from '@ema-agent/ids';
 import { gitApi } from '../../api/git.js';
-import { useWorkspaceStore } from '../workspace/workspaceStore.js';
-import { fileTab } from '../workspace/workspaceTypes.js';
+import { useWorkspaceStore } from '../../stores/workspaceStore.js';
+import { fileTab } from '../../stores/workspaceTypes.js';
 import { useLatestTurnDiffs, useSessionDiffs } from './reviewDiffs.js';
 import { DiffCard, type ReviewFileItem } from './DiffCard.js';
 
