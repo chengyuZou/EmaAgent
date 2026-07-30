@@ -1,6 +1,6 @@
 # EmaAgent Chat 工作区与历史导航实施计划
 
-> 状态：批次 B 已完成，TaskList、AgentRun 迁移与 Workspace Dock 尚未实现
+> 状态：批次 A/B/C1/C2/C3/D1 已完成；D2（opener + Git 源）、批次 E/F 与块形态对齐（§14 批次 G）待做
 > 日期：2026-07-23  
 > 范围：Desktop Chat 主布局、Turn 快速导航、Task/AgentRun/来源展示、右侧与底部工作区、桌面打开方式  
 > 不包含：恢复 Session Branch、尚无运行能力的空 Terminal/Browser/Review 面板
@@ -743,6 +743,8 @@ TurnRail 的最外层是透明轨道容器，只承担定位、滚轮与指针�
 
 ### 批次 C：工作区框架
 
+状态：已完成（C1 状态机、C2 框架与迁入、C3 全宽模式，2026-07-30）。
+
 范围：
 
 - WorkspaceFrame、RightDock、BottomDock；
@@ -752,14 +754,24 @@ TurnRail 的最外层是透明轨道容器，只承担定位、滚轮与指针�
 
 不注册尚无能力的 Terminal/Browser/Review。
 
+实施偏差记录（与旧描述的差异，以代码为准）：
+
+- 资源键补充 `agentRuns`（全 Session 子智能体列表面板），`agentRun:<id>` 为深链标签，§4.2 已追记；
+- 标签池经 React Portal 挂在 WorkspaceFrame 层：跨 Dock 移动与折叠都不重建组件实例；
+- FilesPanel 点击文件直接开 `file:<path>` 标签（FilePreview 作为标签内容）；
+- C3 落地 §3.5 全宽三态：放大按钮仅 Dock 展开有内容时渲染、顶栏收敛为"恢复面板宽度"、全宽状态不进持久层；ChatHistory/ChatInput 以 portal 迁移为底部居中浮动条，可展开悬浮聊天卡。输入框迁移即重挂，附件队列等本地状态在切换时重置（草稿经 store 保留）。
+
 ### 批次 D：顶栏与桌面能力
 
-范围：
+状态：D1 已完成（2026-07-30），D2 待做。
 
-- 四个顶栏按钮；
-- 置顶摘要；
-- Tauri 跨平台 opener 检测；
-- Git/工作区摘要的真实只读来源。
+D1 已落地：`ChatHeader`（标题 + 置顶摘要/底部面板/右侧栏三入口）与 `PinnedSessionSummary` 浮层。按"不渲染假数据"划界：环境信息只有真实的"本地 + workspaceRoot"行（Git 行待 D2），运行活动只有子智能体行（后台进程行待批次 F），来源为真实附件截断列表。
+
+D2 待做：
+
+- "在…中打开"按钮与 Tauri 跨平台 opener 检测；
+- Git/工作区摘要的真实只读来源，接通环境信息区（变更计数/分支/比较分支）；
+- 分支选择器（搜索/未提交计数/创建新分支）依赖 Git 源，不在无源时渲染。
 
 ### 批次 E：真实 Review、Terminal、Browser
 
@@ -782,6 +794,24 @@ TurnRail 的最外层是透明轨道容器，只承担定位、滚轮与指针�
 - AgentRun 与 BackgroundProcess 并列展示但保持独立 Store/DTO。
 
 本批不实现交互式 PTY Terminal，也不把后台日志面板伪装成 Terminal。
+
+### 批次 G：块形态对齐（2026-07-30 复查汇总）
+
+状态：第 1/2/3 项已完成（2026-07-30）；第 4 项随批次 E；第 5 项已随第 2 项归位。
+
+框架（C1-C3/D1）完成后，逐块复查出的实现与设计差距。均为纯前端工作，不依赖新后端：
+
+1. **子代理块（§6 形态）**：现状是批次 A 卡片（状态色条 + 摘要 + 原位展开）。待对齐："已开启（空也显示）/完成 · N"分组、行形态 `图标 + 标题 + 一行摘要 + 相对时间`、列表截断"再显示 N 个"、点击进**详情页**（标签内导航：返回 + transcript + 底部"已编辑 N 个文件 +A -B"汇总卡；"审核"动作打开 `review` 并过滤该 AgentRun 变更，"撤销"无真实能力不渲染）。
+2. **附件块（§7 形态）**：现状行可用（图标 + 名称 + 状态 + 授权打开）。待对齐：补**完整路径**行与"已附加到对话"状态行；粘贴文本附件与上传文件的类型图标区分。
+3. **Review 当前 Turn 过滤（§5）**：`ChatActivityStrip` 已按最新 Turn 计数，但 ReviewPanel 仍展示全 Session 变更。`SessionDiff` 已携带 `turnId`，"上一轮"范围过滤可纯前端先行，与批次 E 的范围选择器合并实施。
+4. **diff 块交互（批次 E spec）**：折叠优先增量展开、跳转到文件、`file:<path>` 标签打开、统一/分列切换、文件清单视图——随批次 E 做；其中"上一轮"范围不依赖 Git 源。
+5. **目录小偏差**：`AgentRunSummary/SourcesSummary` 与 `PinnedSessionSummary` 合并实现为单个 `chat/summary/PinnedSessionSummary.tsx`（行为一致）；`sources/SourcesPanel.tsx` 未从 `SessionAttachmentsPanel` 改名——随第 2 项一并归位。
+
+实施偏差记录（2026-07-30，以代码为准）：
+
+- **第 1 项"已编辑文件汇总卡"与"审核"动作未实现**：`agent_run_messages` 的 wire 不携带 `file_change` presentation，Session diff 只来自根 Turn——AgentRun 级变更没有真实数据源，按"不伪造"跳过；详情页当前为"返回 + 标题/状态 + 事实行（模型/轮次/工具/tokens/耗时）+ transcript"。将来需要后端按 AgentRun 投影 file_change 后补卡；
+- **第 2 项"完整路径"行未实现**：`SessionAttachmentWire` 不携带原始路径（只有 name + 授权句柄），按"不伪造"跳过；状态行保留更丰富的 `fileStatus`（可用/已修改/已丢失/无法访问），"已附加到对话"为常量信息未单列；
+- 第 3 项已落地：ReviewPanel 默认"上一轮"范围（与输入框上方改动计数同语义），可切"全部会话"，空范围如实提示并可一键切换。
 
 Review 交互细节（Codex 实测校正，实施时按此验收）：
 

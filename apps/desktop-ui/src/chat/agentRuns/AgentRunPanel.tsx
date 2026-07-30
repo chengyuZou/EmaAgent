@@ -1,25 +1,27 @@
-// 展示当前 Session 的子智能体 AgentRun、取消入口与完整执行记录。
+// 展示当前 Session 的子智能体：已开启/完成分组列表与标签内详情导航。
 import { useState, useEffect, useCallback, useMemo, useRef, type JSX, type CSSProperties } from 'react';
-import { Badge, Button, Divider, IconButton, Input, Spinner, type BadgeVariant } from '@ema-agent/ui';
+import { Badge, Button, IconButton, Spinner, type BadgeVariant } from '@ema-agent/ui';
 import { useAgentRunStore, type AgentRunState, type AgentRunMessageWire } from '../../stores/agentRunStore.js';
 import { useConversationStore } from '../../stores/conversation-store.js';
 import type { ToolCallMessageContent, AssistantMessageContent, ReasoningMessageContent, ToolResultMessageContent } from '../../api/agentRuns.js';
 import { showToast } from '../../lib/toast.js';
 
+const TERMINAL_PAGE_SIZE = 10;
+
 export interface AgentRunPanelProps {
   className?: string;
-  /** 深链标签（agentRun:<id>）初始展开的执行；列表标签不传。 */
-  initialExpandedId?: string;
+  /** 深链标签（agentRun:<id>）初始打开的执行详情；列表标签不传。 */
+  initialDetailId?: string;
 }
 
-export function AgentRunPanel({ className = '', initialExpandedId }: AgentRunPanelProps): JSX.Element {
+export function AgentRunPanel({ className = '', initialDetailId }: AgentRunPanelProps): JSX.Element {
   const sessionId      = useConversationStore((s) => s.viewedSessionId);
   const runs           = useAgentRunStore((s) => s.runs);
   const loadForSession = useAgentRunStore((s) => s.loadForSession);
   const clearTerminal  = useAgentRunStore((s) => s.clearTerminal);
 
-  const [expandedId, setExpandedId] = useState<string | null>(initialExpandedId ?? null);
-  const [search,     setSearch]     = useState('');
+  const [detailId, setDetailId] = useState<string | null>(initialDetailId ?? null);
+  const [visibleCount, setVisibleCount] = useState(TERMINAL_PAGE_SIZE);
 
   useEffect(() => {
     if (sessionId) void loadForSession(sessionId as string);
@@ -29,112 +31,81 @@ export function AgentRunPanel({ className = '', initialExpandedId }: AgentRunPan
     const all = sessionId
       ? [...runs.values()].filter((run) => run.sessionId === sessionId as string)
       : [];
-    const kw = search.trim().toLowerCase();
-    return kw
-      ? all.filter((run) =>
-          run.id.toLowerCase().includes(kw) ||
-          (run.purpose ?? run.live?.promptExcerpt ?? '').toLowerCase().includes(kw)
-        )
-      : all;
-  }, [runs, sessionId, search]);
+    return all.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+  }, [runs, sessionId]);
 
   const running  = sessionRuns.filter((run) => run.status === 'running');
   const terminal = sessionRuns.filter((run) => run.status !== 'running');
-
-  const allForSession = sessionId
-    ? [...runs.values()].filter((run) => run.sessionId === sessionId as string)
-    : [];
-  const stats = {
-    total:     allForSession.length,
-    running:   allForSession.filter((t) => t.status === 'running').length,
-    completed: allForSession.filter((t) => t.status === 'completed').length,
-    failed:    allForSession.filter((t) => t.status === 'failed' || t.status === 'cancelled').length,
-  };
 
   const handleClear = useCallback(async () => {
     if (!sessionId) return;
     try {
       await clearTerminal(sessionId as string);
-      setExpandedId((id) => terminal.some((t) => t.id === id) ? null : id);
+      setDetailId((id) => terminal.some((t) => t.id === id) ? null : id);
     } catch (error: unknown) {
       showToast(error instanceof Error ? `清空失败：${error.message}` : '清空失败', { variant: 'danger' });
     }
   }, [sessionId, clearTerminal, terminal]);
 
+  if (detailId) {
+    return (
+      <AgentRunDetail
+        agentRunId={detailId}
+        className={className}
+        onBack={() => setDetailId(null)}
+      />
+    );
+  }
+
   return (
-    <div className={`flex flex-col gap-1 ${className}`}>
-      {/* 状态统计 */}
-      {stats.total > 0 && (
-        <div className="flex gap-4 px-3 py-2 rounded-lg mx-1 mb-0.5 bg-[var(--ema-bg)]"
-             style={{ border: '1px solid var(--ema-border)' }}>
-          {([
-            { label: '总计',   value: stats.total,     color: 'var(--ema-text-secondary)' },
-            { label: '运行中', value: stats.running,   color: 'var(--ema-primary)'       },
-            { label: '已完成', value: stats.completed, color: 'var(--ema-success)'       },
-            { label: '失败',   value: stats.failed,    color: 'var(--ema-danger)'        },
-          ] as const).map(({ label, value, color }) => (
-            <div key={label} className="flex flex-col items-center flex-1">
-              <span className="text-sm font-bold leading-none" style={{ color }}>{value}</span>
-              <span className="text-[9px] mt-0.5 text-[var(--ema-text-tertiary)]">{label}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* 搜索与终态清理 */}
-      <div className="flex items-center gap-1.5 px-1 mb-0.5">
-        <Input
-          inputSize="sm"
-          className="flex-1"
-          placeholder="搜索子智能体执行…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        {terminal.length > 0 && (
-          <Button variant="ghost" size="sm" onClick={() => void handleClear()}>
-            清空已完结
-          </Button>
-        )}
-      </div>
-
-      {/* 空状态 */}
-      {sessionRuns.length === 0 && (
-        <div className="flex flex-col items-center justify-center gap-2 py-10 text-xs text-[var(--ema-text-tertiary)]">
-          <span className="i-lucide:bot text-2xl opacity-40" />
-          <span>{search ? '无匹配执行' : '暂无子智能体执行'}</span>
-        </div>
-      )}
-
-      {/* 正在运行的子智能体 */}
-      {running.length > 0 && (
+    <div className={`flex flex-col gap-1 overflow-y-auto ${className}`}>
+      {/* 已开启：空也如实显示，不隐藏分区 */}
+      <SectionLabel>已开启</SectionLabel>
+      {running.length === 0 ? (
+        <p className="px-3 py-1.5 text-xs text-[var(--ema-text-tertiary)]">没有已开启的子代理</p>
+      ) : (
         <div className="flex flex-col gap-1">
-          <SectionLabel>运行中</SectionLabel>
-          {running.map((t, i) => (
-            <AgentRunCard
-              key={t.id}
-              run={t}
-              staggerIndex={i}
-              expanded={expandedId === t.id}
-              onToggle={() => setExpandedId((id) => id === t.id ? null : t.id)}
-            />
+          {running.map((run, i) => (
+            <AgentRunRow key={run.id} run={run} staggerIndex={i} onOpen={() => setDetailId(run.id)} />
           ))}
         </div>
       )}
 
-      {/* 已结束的执行记录 */}
+      {/* 完成：聚合计数 + 截断分页 */}
       {terminal.length > 0 && (
-        <div className="flex flex-col gap-1 mt-2">
-          <SectionLabel>历史执行</SectionLabel>
-          {terminal.map((t, i) => (
-            <AgentRunCard
-              key={t.id}
-              run={t}
-              staggerIndex={running.length + i}
-              expanded={expandedId === t.id}
-              onToggle={() => setExpandedId((id) => id === t.id ? null : t.id)}
-            />
-          ))}
-        </div>
+        <>
+          <div className="flex items-center mt-2">
+            <SectionLabel>{`完成 · ${terminal.length}`}</SectionLabel>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-auto mr-2 text-[11px] text-[var(--ema-text-tertiary)]"
+              onClick={() => void handleClear()}
+            >
+              清空已完结
+            </Button>
+          </div>
+          <div className="flex flex-col gap-1">
+            {terminal.slice(0, visibleCount).map((run, i) => (
+              <AgentRunRow
+                key={run.id}
+                run={run}
+                staggerIndex={running.length + i}
+                onOpen={() => setDetailId(run.id)}
+              />
+            ))}
+          </div>
+          {terminal.length > visibleCount && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="self-center text-xs text-[var(--ema-text-tertiary)]"
+              onClick={() => setVisibleCount((n) => n + TERMINAL_PAGE_SIZE)}
+            >
+              再显示 {Math.min(TERMINAL_PAGE_SIZE, terminal.length - visibleCount)} 个
+            </Button>
+          )}
+        </>
       )}
     </div>
   );
@@ -148,21 +119,29 @@ function SectionLabel({ children }: { children: string }): JSX.Element {
   );
 }
 
-interface AgentRunCardProps {
-  run:          AgentRunState;
-  expanded:     boolean;
-  onToggle:     () => void;
-  staggerIndex?: number;
-}
+// ── 列表行 ────────────────────────────────────────────────────────────────────
 
-function AgentRunCard({ run, expanded, onToggle, staggerIndex = 0 }: AgentRunCardProps): JSX.Element {
+function AgentRunRow({
+  run, onOpen, staggerIndex = 0,
+}: {
+  run: AgentRunState;
+  onOpen(): void;
+  staggerIndex?: number;
+}): JSX.Element {
   const deleteRun = useAgentRunStore((s) => s.deleteRun);
   const { icon, color } = statusMeta(run.status);
   const isRunning = run.status === 'running';
 
-  const excerpt = run.live?.promptExcerpt
-    ?? run.purpose
-    ?? undefined;
+  const title = run.purpose ?? run.live?.promptExcerpt ?? run.modelId ?? '子智能体';
+  const summary = run.live
+    ? `轮次 ${run.live.iteration} · 工具 ${run.live.toolCallCount} · ${formatElapsed(run.live.elapsedMs)}`
+    : run.error
+      ?? run.outputExcerpt
+      ?? [
+        run.iterations != null ? `${run.iterations} 轮次` : null,
+        run.toolCallCount != null ? `${run.toolCallCount} 个工具` : null,
+      ].filter(Boolean).join(' · ');
+  const at = run.completedAt ?? run.updatedAt ?? run.createdAt;
 
   const handleDelete = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -176,87 +155,109 @@ function AgentRunCard({ run, expanded, onToggle, staggerIndex = 0 }: AgentRunCar
     }
   }, [deleteRun, run.id, run.parentTurnId]);
 
-  const barColor = {
-    running:      'var(--ema-primary)',
-    completed:    'var(--ema-success)',
-    failed:       'var(--ema-danger)',
-    cancelled:    'var(--ema-text-tertiary)',
-  }[run.status];
-
   return (
     <div
-      className="relative rounded-lg overflow-hidden cursor-pointer transition-all flex ema-stagger-in bg-[var(--ema-surface-1)] ema-card-decorate ema-card-decorate--starfield"
-      style={{
-        border:        `1px solid ${expanded ? 'var(--ema-border-hover)' : 'var(--ema-border)'}`,
-        '--stagger-i': staggerIndex,
-      } as CSSProperties}
-      onClick={onToggle}
+      className="relative rounded-lg overflow-hidden cursor-pointer transition-all flex ema-stagger-in bg-[var(--ema-surface-1)] border border-[var(--ema-border)] hover:border-[var(--ema-border-hover)]"
+      style={{ '--stagger-i': staggerIndex } as CSSProperties}
+      onClick={onOpen}
     >
-      {/* 左侧状态条沿用现有卡片视觉语言 */}
-      <div className="w-1 shrink-0 my-1 ml-0.5 mr-1 rounded-full"
-           style={{ background: barColor, opacity: isRunning ? undefined : 0.7 }} />
-
-      {/* 运行中的顶部脉冲 */}
       {isRunning && <div className="ema-running-bar" />}
-
-      {/* 执行摘要 */}
-      <div className="flex items-start gap-2 px-2 py-2 flex-1 min-w-0">
-        {/* 状态图标 */}
-        <span className={`mt-0.5 text-base flex-shrink-0 ${icon}`} style={{ color }} />
-
-        {/* 模型、目的与统计 */}
+      <div className="flex items-start gap-2 px-2.5 py-2 flex-1 min-w-0">
+        <span className={`mt-0.5 text-base shrink-0 ${icon}`} style={{ color }} aria-hidden />
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs truncate text-[var(--ema-text-secondary)]">
-              {run.live?.model ?? run.modelId ?? 'subagent'}
-            </span>
-            <Badge variant={STATUS_BADGE_VARIANT[run.status]} dot={isRunning}>
-              {STATUS_LABEL[run.status]}
-            </Badge>
+          <div className="text-xs font-medium truncate text-[var(--ema-text-primary)]" title={title}>
+            {title}
           </div>
-          {excerpt && (
-            <p className="text-xs mt-0.5 line-clamp-2 text-[var(--ema-text-primary)]">
-              {excerpt}
+          {summary && (
+            <p className="text-[11px] mt-0.5 truncate text-[var(--ema-text-tertiary)]" title={summary}>
+              {summary}
             </p>
           )}
+        </div>
+        <span className="shrink-0 mt-0.5 text-[10px] tabular-nums text-[var(--ema-text-tertiary)]">
+          {formatRelativeTime(at)}
+        </span>
+        <IconButton
+          variant={isRunning ? 'default' : 'danger'}
+          size="sm"
+          icon={isRunning ? 'i-lucide:circle-stop' : 'i-lucide:trash-2'}
+          label={isRunning ? '取消' : '删除'}
+          onClick={(e) => void handleDelete(e)}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ── 详情页（标签内导航） ───────────────────────────────────────────────────────
+
+function AgentRunDetail({
+  agentRunId, className, onBack,
+}: {
+  agentRunId: string;
+  className?: string;
+  onBack(): void;
+}): JSX.Element {
+  const run = useAgentRunStore((s) => s.runs.get(agentRunId));
+  const { icon, color } = statusMeta(run?.status ?? 'cancelled');
+
+  return (
+    <div className={`flex flex-col min-h-0 h-full ${className}`}>
+      {/* 返回 + 标题 */}
+      <div className="flex items-center gap-1.5 px-2 py-1.5 shrink-0 border-b border-[var(--ema-border)]">
+        <Button variant="ghost" size="sm" className="px-1.5 text-[var(--ema-text-tertiary)]" onClick={onBack}>
+          <span className="i-lucide:arrow-left text-sm" aria-hidden />
+        </Button>
+        {run && (
+          <>
+            <span className={`text-sm shrink-0 ${icon}`} style={{ color }} aria-hidden />
+            <span className="text-xs font-medium truncate text-[var(--ema-text-primary)]">
+              {run.purpose ?? run.live?.promptExcerpt ?? '子智能体'}
+            </span>
+            <Badge variant={STATUS_BADGE_VARIANT[run.status]} dot={run.status === 'running'}>
+              {STATUS_LABEL[run.status]}
+            </Badge>
+          </>
+        )}
+      </div>
+
+      {run === undefined ? (
+        <div className="flex-1 flex items-center justify-center text-xs text-[var(--ema-text-tertiary)]">
+          该执行记录不存在或已被清理
+        </div>
+      ) : (
+        <>
+          {/* 事实行：模型、轮次、工具、tokens、耗时——全部来自持久记录 */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 px-3 py-1.5 shrink-0 text-[11px] text-[var(--ema-text-tertiary)] border-b border-[var(--ema-border)]">
+            <span>{run.live?.model ?? run.modelId ?? 'subagent'}</span>
+            {run.live && (
+              <>
+                <span>轮次 {run.live.iteration}</span>
+                <span>工具 {run.live.toolCallCount}</span>
+                <span>{formatElapsed(run.live.elapsedMs)}</span>
+              </>
+            )}
+            {!run.live && run.iterations != null && <span>{run.iterations} 轮次</span>}
+            {!run.live && run.toolCallCount != null && <span>{run.toolCallCount} 个工具</span>}
+            {run.inputTokens != null && (
+              <span>{((run.inputTokens + (run.outputTokens ?? 0)) / 1000).toFixed(1)}k tokens</span>
+            )}
+            {run.completedAt != null && (
+              <span>{formatElapsed(run.completedAt - run.createdAt)}</span>
+            )}
+          </div>
           {run.error && (
-            <p className="text-xs mt-0.5 truncate text-[var(--ema-danger-text)]">
+            <p className="px-3 py-1.5 shrink-0 text-xs truncate text-[var(--ema-danger-text)] border-b border-[var(--ema-border)]">
               {run.error}
             </p>
           )}
 
-          {/* 当前进度 */}
-          {run.live && (
-            <div className="flex items-center gap-3 mt-1 text-xs text-[var(--ema-text-tertiary)]">
-              <span>轮次 {run.live.iteration}</span>
-              <span>工具 {run.live.toolCallCount}</span>
-              <span>{formatElapsed(run.live.elapsedMs)}</span>
-            </div>
-          )}
-
-          {/* 终态统计 */}
-          {!run.live && run.iterations != null && (
-            <div className="flex items-center gap-3 mt-1 text-xs text-[var(--ema-text-tertiary)]">
-              <span>{run.iterations} 轮次</span>
-              {run.toolCallCount != null && <span>{run.toolCallCount} 个工具</span>}
-              {run.inputTokens != null && (
-                <span>{((run.inputTokens + (run.outputTokens ?? 0)) / 1000).toFixed(1)}k tokens</span>
-              )}
-            </div>
-          )}
-        </div>
-
-        <IconButton
-          variant="danger"
-          size="sm"
-          icon={isRunning ? 'i-lucide:circle-stop' : 'i-lucide:trash-2'}
-          label={isRunning ? '取消' : '删除'}
-          onClick={handleDelete}
-        />
-      </div>
-
-      {/* 展开后再读取执行记录 */}
-      {expanded && <AgentRunTranscript agentRunId={run.id} />}
+          {/* 执行记录 */}
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            <AgentRunTranscript agentRunId={agentRunId} />
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -269,46 +270,30 @@ function AgentRunTranscript({ agentRunId }: { agentRunId: string }): JSX.Element
     void loadTranscript(agentRunId);
   }, [agentRunId, loadTranscript]);
 
-  const divider = (
-    <Divider className="w-auto mx-3" />
-  );
-
   if (messages === null || messages === undefined) {
     return (
-      <>
-        {divider}
-        <div className="flex justify-center py-4">
-          <Spinner size="sm" />
-        </div>
-      </>
+      <div className="flex justify-center py-4">
+        <Spinner size="sm" />
+      </div>
     );
   }
 
   if (messages.length === 0) {
     return (
-      <>
-        {divider}
-        <div className="py-3 px-3 text-xs text-center text-[var(--ema-text-tertiary)]">
-          无对话记录
-        </div>
-      </>
+      <div className="py-3 px-3 text-xs text-center text-[var(--ema-text-tertiary)]">
+        无对话记录
+      </div>
     );
   }
 
   return (
-    <>
-      {divider}
-      <div
-        className="flex flex-col gap-0.5 px-3 py-2 max-h-64 overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {messages.map((msg) => (
-          <div key={msg.id} className="ema-timeline-row">
-            <TranscriptRow msg={msg} />
-          </div>
-        ))}
-      </div>
-    </>
+    <div className="flex flex-col gap-0.5 px-3 py-2">
+      {messages.map((msg) => (
+        <div key={msg.id} className="ema-timeline-row">
+          <TranscriptRow msg={msg} />
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -444,4 +429,17 @@ function formatElapsed(ms: number): string {
   if (s < 60) return `${s}s`;
   const m = Math.floor(s / 60);
   return `${m}m${s % 60}s`;
+}
+
+/** 列表行的相对时间：1 分钟内"刚刚"，之后分钟/小时/天，超过 30 天显示日期。 */
+function formatRelativeTime(ts: number): string {
+  const delta = Date.now() - ts;
+  if (delta < 60_000) return '刚刚';
+  const minutes = Math.floor(delta / 60_000);
+  if (minutes < 60) return `${minutes} 分钟前`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} 小时前`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days} 天前`;
+  return new Date(ts).toLocaleDateString();
 }

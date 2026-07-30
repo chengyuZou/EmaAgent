@@ -1,10 +1,10 @@
-// 展示当前 Session 的持久化附件、磁盘状态，并安全交给操作系统打开。
+// Sources 标签内容：展示当前 Session 的持久化附件、磁盘状态，并安全交给操作系统打开。
 import { useEffect, useState, type JSX } from 'react';
 import { Button, ScrollArea } from '@ema-agent/ui';
 import type { SessionId } from '@ema-agent/ids';
 import type { SessionAttachmentFileStatus, SessionAttachmentWire } from '@ema-agent/session';
-import { tauriBridge } from '../lib/tauri-bridge.js';
-import { useSessionAttachmentStore } from '../stores/session-attachment-store.js';
+import { tauriBridge } from '../../lib/tauri-bridge.js';
+import { useSessionAttachmentStore } from '../../stores/session-attachment-store.js';
 
 const EMPTY_ATTACHMENTS: SessionAttachmentWire[] = [];
 
@@ -91,7 +91,7 @@ function AttachmentRow({ attachment }: { attachment: SessionAttachmentWire }): J
             </time>
           </div>
           <p className="mt-1 truncate text-[10px] text-[var(--ema-text-tertiary)]">
-            本机附件
+            已附加到对话
           </p>
           {openError && <p className="mt-1 text-[10px] text-[var(--ema-danger)]">{openError}</p>}
         </div>
@@ -110,7 +110,7 @@ function AttachmentRow({ attachment }: { attachment: SessionAttachmentWire }): J
   );
 }
 
-export function SessionAttachmentsPanel({ sessionId }: { sessionId: string | null }): JSX.Element {
+export function SourcesPanel({ sessionId }: { sessionId: string | null }): JSX.Element {
   const attachments = useSessionAttachmentStore((state) =>
     sessionId ? state.bySession.get(sessionId) ?? EMPTY_ATTACHMENTS : EMPTY_ATTACHMENTS,
   );

@@ -9,7 +9,7 @@ import { WorkspaceDock } from './WorkspaceDock.js';
 import type { WorkspaceTab } from './workspaceTypes.js';
 import { ReviewPanel } from '../review/ReviewPanel.js';
 import { FilesPanel } from '../FilesPanel.js';
-import { SessionAttachmentsPanel } from '../SessionAttachmentsPanel.js';
+import { SourcesPanel } from '../sources/SourcesPanel.js';
 import { AgentRunPanel } from '../agentRuns/AgentRunPanel.js';
 import { FilePreview } from '../FilePreview.js';
 
@@ -152,11 +152,11 @@ function WorkspaceTabContent({
         />
       );
     case 'sources':
-      return <SessionAttachmentsPanel sessionId={sessionId as string | null} />;
+      return <SourcesPanel sessionId={sessionId as string | null} />;
     case 'agentRuns':
       return <AgentRunPanel className="p-2" />;
     case 'agentRun':
-      return <AgentRunPanel className="p-2" initialExpandedId={tab.agentRunId} />;
+      return <AgentRunPanel className="p-2" initialDetailId={tab.agentRunId} />;
     case 'terminal':
     case 'browser':
       // 启动器不提供这两类入口；仅防御历史持久层残留，不渲染假能力。
