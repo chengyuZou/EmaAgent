@@ -134,6 +134,9 @@ importers:
       '@ema-agent/events':
         specifier: workspace:*
         version: link:../../src/events
+      '@ema-agent/git-utils':
+        specifier: workspace:*
+        version: link:../../src/gitUtils
       '@ema-agent/ids':
         specifier: workspace:*
         version: link:../../src/ids

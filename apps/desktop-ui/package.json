@@ -41,6 +41,7 @@
     "@ema-agent/characters": "workspace:*",
     "@ema-agent/emotion": "workspace:*",
     "@ema-agent/events": "workspace:*",
+    "@ema-agent/git-utils": "workspace:*",
     "@ema-agent/ids": "workspace:*",
     "@ema-agent/live2d-react": "workspace:*",
     "@ema-agent/mcp": "workspace:*",

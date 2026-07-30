@@ -1,6 +1,8 @@
 // 置顶摘要浮层：工作区事实、运行活动计数与来源概况，点击打开对应工作区标签。
-import { useEffect, type JSX } from 'react';
+import { useEffect, useState, type JSX } from 'react';
 import type { SessionId } from '@ema-agent/ids';
+import { gitApi, type GitSummary } from '../../api/git.js';
+import type { GitSummaryOk } from '@ema-agent/git-utils';
 import { useAgentRunStore } from '../../stores/agentRunStore.js';
 import { useSessionAttachmentStore } from '../../stores/session-attachment-store.js';
 import { useSessionStore } from '../../stores/session-store.js';
@@ -17,6 +19,20 @@ export function PinnedSessionSummary({ sessionId }: PinnedSessionSummaryProps): 
 
   const workspaceRoot = useSessionStore((s) =>
     s.sessions.byId.get(sessionId as string)?.workspaceRoot ?? null);
+
+  // Git 摘要:仅 capability=ok 渲染;非仓库、无 git、查询失败都整行隐藏,不展示降级文案。
+  const [git, setGit] = useState<GitSummary | null>(null);
+  useEffect(() => {
+    if (!workspaceRoot) {
+      setGit(null);
+      return undefined;
+    }
+    let cancelled = false;
+    gitApi.getSummary(sessionId as string)
+      .then((summary) => { if (!cancelled) setGit(summary); })
+      .catch(() => { if (!cancelled) setGit(null); });
+    return () => { cancelled = true; };
+  }, [sessionId, workspaceRoot]);
 
   const activity = useAgentRunStore((s) => {
     let running = 0;
@@ -38,7 +54,7 @@ export function PinnedSessionSummary({ sessionId }: PinnedSessionSummaryProps): 
 
   return (
     <div className="flex flex-col gap-3 p-3 text-xs">
-      {/* 环境信息：Git 行在只读来源（批次 D2）就绪前不渲染；V1 只有本地环境。 */}
+      {/* 环境信息：本地行恒在;Git 行只在真实仓库摘要(ok)时出现,点击打开 review 标签。 */}
       <section>
         <SectionTitle label="环境信息" />
         <div className="flex items-center gap-2 px-1 py-0.5 text-[var(--ema-text-secondary)]">
@@ -50,6 +66,15 @@ export function PinnedSessionSummary({ sessionId }: PinnedSessionSummaryProps): 
             </span>
           )}
         </div>
+        {git?.capability === 'ok' && (
+          <SummaryRow
+            icon="i-lucide:git-branch"
+            label={git.branch ?? (git.headShortSha ? `detached @ ${git.headShortSha}` : '空仓库')}
+            onClick={() => openTab(sessionId, { id: 'review', kind: 'review' })}
+          >
+            <GitChangeCounts git={git} />
+          </SummaryRow>
+        )}
       </section>
 
       {/* 运行活动：后台进程行在后端 API（批次 F）就绪前不渲染。 */}
@@ -142,6 +167,29 @@ function SummaryRow({
       <span className="shrink-0 text-[var(--ema-text-secondary)]">{label}</span>
       <span className="flex items-center gap-2 truncate">{children}</span>
     </button>
+  );
+}
+
+/** Git 行的变更计数:合并未暂存与已暂存,全零时如实显示"无变更"。 */
+function GitChangeCounts({ git }: { git: GitSummaryOk }): JSX.Element {
+  const files = git.unstaged.filesChanged + git.staged.filesChanged;
+  const insertions = git.unstaged.insertions + git.staged.insertions;
+  const deletions = git.unstaged.deletions + git.staged.deletions;
+  if (files === 0 && git.untrackedCount === 0) {
+    return <span className="text-[var(--ema-text-tertiary)]">无变更</span>;
+  }
+  return (
+    <>
+      {files > 0 && (
+        <span className="text-[var(--ema-text-tertiary)]">
+          {files} 个文件 <span className="text-[var(--ema-success)]">+{insertions}</span>{' '}
+          <span className="text-[var(--ema-danger)]">-{deletions}</span>
+        </span>
+      )}
+      {git.untrackedCount > 0 && (
+        <span className="text-[var(--ema-text-tertiary)]">{git.untrackedCount} 未跟踪</span>
+      )}
+    </>
   );
 }
 
