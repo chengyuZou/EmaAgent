@@ -26,6 +26,12 @@ export type {
   CreateCommandPresentationInput,
 } from './commandPresentation.js';
 export {
+  createBackgroundProcessPresentation,
+} from './backgroundProcessPresentation.js';
+export type {
+  BackgroundProcessPresentation,
+} from './backgroundProcessPresentation.js';
+export {
   createSearchPresentation,
 } from './searchPresentation.js';
 export type {

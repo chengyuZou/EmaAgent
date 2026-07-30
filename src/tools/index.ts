@@ -24,6 +24,7 @@ export type {
   ToolExecutionEvent,
 } from './events.js';
 export {
+  createBackgroundProcessPresentation,
   createCommandPresentation,
   createFileChangePresentation,
   createFileReadPresentation,
@@ -31,6 +32,7 @@ export {
   createSearchPresentation,
 } from './presentation/index.js';
 export type {
+  BackgroundProcessPresentation,
   CommandPresentation,
   CreateCommandPresentationInput,
   CreateFileReadPresentationInput,
@@ -98,3 +100,4 @@ export type {
   NormalizeResult,
   CleanerConfig,
 } from './results/index.js';
+export * from './background/index.js';

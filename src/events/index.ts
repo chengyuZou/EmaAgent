@@ -13,7 +13,10 @@ import type { PermissionStreamEvent } from '@ema-agent/permission';
 import type { ProviderStreamEvent } from '@ema-agent/provider';
 import type { SystemEvent } from '@ema-agent/system';
 import type { TaskEvent } from '@ema-agent/tasks';
-import type { ToolStreamEvent } from '@ema-agent/tools';
+import type {
+  BackgroundProcessEvent,
+  ToolStreamEvent,
+} from '@ema-agent/tools';
 import type { TtsEvent } from '@ema-agent/tts';
 import type { TurnEvent } from '@ema-agent/turn';
 
@@ -45,6 +48,7 @@ export type AppEvent =
   | MemoryBackgroundEvent
   | KnowledgeEvent
   | CharacterEvent
+  | BackgroundProcessEvent
   | ProviderStreamEvent
   | SystemEvent;
 

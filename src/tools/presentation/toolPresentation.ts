@@ -4,10 +4,12 @@ import type { FileChangePresentation } from './fileChangePresentation.js';
 import type { FileReadPresentation } from './fileReadPresentation.js';
 import type { PdfReadPresentation } from './pdfReadPresentation.js';
 import type { SearchPresentation } from './searchPresentation.js';
+import type { BackgroundProcessPresentation } from './backgroundProcessPresentation.js';
 
 export type ToolPresentation =
   | FileChangePresentation
   | FileReadPresentation
   | PdfReadPresentation
   | CommandPresentation
+  | BackgroundProcessPresentation
   | SearchPresentation;
