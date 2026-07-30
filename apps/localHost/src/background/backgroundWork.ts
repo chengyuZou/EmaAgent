@@ -2,7 +2,10 @@
 
 import type { AttachmentCacheMaintenance } from '@ema-agent/attachment';
 import type { McpRegistry } from '@ema-agent/mcp';
-import type { MemoryPlanner } from '@ema-agent/memory';
+import type {
+  MemoryBackgroundOperation,
+  MemoryPlanner,
+} from '@ema-agent/memory';
 import type { NarrativeClient } from '@ema-agent/narrative';
 import type { SessionStore } from '@ema-agent/session';
 import type { ToolResultCleaner } from '@ema-agent/tools';
@@ -18,6 +21,7 @@ import {
   LIGHT_MAINTENANCE_IDLE_MS,
   WorkloadIdlePolicy,
 } from './workloadIdlePolicy.js';
+import type { MemoryBackgroundHealthTracker } from './memoryBackgroundHealth.js';
 
 const BACKGROUND_TICK_MS = 5_000;
 const CLEANER_SWEEP_EVERY = 360;
@@ -78,6 +82,7 @@ export class BackgroundWork {
     private readonly narrative: BackgroundNarrative,
     private readonly providerRuntime: BackgroundProviderRuntime,
     private readonly systemEvents: BackgroundSystemEvents,
+    private readonly memoryHealth: MemoryBackgroundHealthTracker,
   ) {}
 
   start(): void {
@@ -99,13 +104,21 @@ export class BackgroundWork {
       },
     );
     this.initialization = Promise.resolve()
-      .then(() => this.startupRecovery.runMaintenance())
+      .then(() => {
+        this.memoryHealth.begin('initialization');
+        return this.startupRecovery.runMaintenance();
+      })
       .then(async ({ memoryReady }) => {
-        if (!memoryReady) return;
+        if (!memoryReady) {
+          this.memoryHealth.markUnavailable('initialization');
+          return;
+        }
         await this.memory.initialize();
         this.memoryEnabled = true;
+        this.memoryHealth.complete('initialization');
       })
       .catch((error) => {
+        this.memoryHealth.markUnavailable('initialization');
         console.warn(
           '[memory] maintenance or initialize() failed — Memory worker disabled:',
           error,
@@ -191,22 +204,29 @@ export class BackgroundWork {
 
     const controller = new AbortController();
     this.maintenanceAbortController = controller;
+    let operation: MemoryBackgroundOperation = 'decay';
+    this.memoryHealth.begin(operation);
     try {
       const report = await this.memory.runMaintenance(
         { dryRun: false },
         controller.signal,
       );
+      controller.signal.throwIfAborted();
+      this.memoryHealth.complete(operation);
       if (report.decayedNodes > 0 || report.decayedItems > 0) {
         console.log(
           `[memory] decay: nodes=${report.decayedNodes} `
           + `items=${report.decayedItems}`,
         );
       }
-      controller.signal.throwIfAborted();
+      operation = 'consolidation';
+      this.memoryHealth.begin(operation);
       const consolidation = await this.memory.consolidatePendingNodes(
         10,
         controller.signal,
       );
+      controller.signal.throwIfAborted();
+      this.memoryHealth.complete(operation);
       if (consolidation.consolidated > 0 || consolidation.conflicts > 0) {
         console.log(
           `[memory] consolidation: completed=${consolidation.consolidated} `
@@ -214,7 +234,10 @@ export class BackgroundWork {
         );
       }
     } catch (error) {
-      if (!controller.signal.aborted) {
+      if (controller.signal.aborted) {
+        this.memoryHealth.cancel(operation);
+      } else {
+        this.memoryHealth.fail(operation);
         console.warn('[memory] light maintenance failed:', error);
       }
     } finally {
@@ -285,8 +308,16 @@ export class BackgroundWork {
 
   private async sweepMemoryEmbeddings(signal: AbortSignal): Promise<void> {
     if (!this.memoryEnabled) return;
+    const operation = 'embeddingRepair';
+    this.memoryHealth.begin(operation);
     try {
       const report = await this.memory.repairStaleEmbeddings(100, signal);
+      signal.throwIfAborted();
+      if (report.failed > 0) {
+        this.memoryHealth.fail(operation);
+      } else {
+        this.memoryHealth.complete(operation);
+      }
       if (report.ran && (report.nodesRepaired + report.itemsRepaired > 0 || report.failed > 0)) {
         console.log(
           `[memory] embedding repair: nodes=${report.nodesRepaired} `
@@ -295,15 +326,27 @@ export class BackgroundWork {
         );
       }
     } catch (error) {
-      if (signal.aborted) return;
+      if (signal.aborted) {
+        this.memoryHealth.cancel(operation);
+        return;
+      }
+      this.memoryHealth.fail(operation);
       console.warn('[memory] embedding repair sweep failed:', error);
     }
   }
 
   private async sweepMemoryStorageBudget(signal: AbortSignal): Promise<void> {
     if (!this.memoryEnabled) return;
+    const operation = 'storageBudget';
+    this.memoryHealth.begin(operation);
     try {
       const report = await this.memory.enforceStorageBudget(signal);
+      signal.throwIfAborted();
+      this.memoryHealth.complete(operation, {
+        usedBytes: report.afterBytes,
+        maxBytes: report.maxBytes,
+        remainsOverLimit: report.pressureRemaining,
+      });
       if (report.ran) {
         console.log(
           `[memory] storage budget: before=${report.beforeBytes} `
@@ -312,7 +355,11 @@ export class BackgroundWork {
         );
       }
     } catch (error) {
-      if (signal.aborted) return;
+      if (signal.aborted) {
+        this.memoryHealth.cancel(operation);
+        return;
+      }
+      this.memoryHealth.fail(operation);
       console.warn('[memory] storage budget sweep failed:', error);
     }
   }

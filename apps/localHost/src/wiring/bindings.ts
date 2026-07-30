@@ -79,6 +79,7 @@ import type { SessionBackupFacade } from '@ema-agent/backup';
 import type { CredentialFacade } from '@ema-agent/credential';
 import { createSettingsStore } from '../settings/createSettingsStore.js';
 import { BackgroundWork } from '../background/backgroundWork.js';
+import { MemoryBackgroundHealthTracker } from '../background/memoryBackgroundHealth.js';
 import { StartupRecovery } from '../background/startupRecovery.js';
 import { LocalHostLifecycle } from '../bootstrap/startLocalHost.js';
 import { createProviderControlPlane } from './createProviderControlPlane.js';
@@ -189,6 +190,8 @@ export interface AppBindings {
 
   // Memory subsystem
   memory: MemoryPlanner;
+  /** 当前进程的 Memory 后台维护只读健康投影。 */
+  memoryBackgroundHealth: MemoryBackgroundHealthTracker;
 
   // System-wide pub/sub for cross-turn events (memory pipeline, background
   // tasks, card switches, provider health). Backs GET /api/system/events.
@@ -410,6 +413,9 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     providerEmbedModels,
   );
 
+  const memoryBackgroundHealth = new MemoryBackgroundHealthTracker(
+    event => systemBus.emit(event),
+  );
   const backgroundWork = new BackgroundWork(
     new StartupRecovery(
       activeDataDir,
@@ -427,6 +433,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     narrative,
     providerRuntime,
     systemBus,
+    memoryBackgroundHealth,
   );
   const lifecycle = new LocalHostLifecycle(
     kb,
@@ -449,7 +456,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     invalidateSessionRuntime, removeSessionRuntime,
     getSessionToolResultStore, agentRunStore, taskStore,
     toolExecutionJournal, agentRunTranscript,
-    memory,
+    memory, memoryBackgroundHealth,
     systemBus,
     providers, settings, ttsVoiceHandles,
     modelBindings, providerLlmModels, providerEmbedModels,

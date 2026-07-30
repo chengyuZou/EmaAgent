@@ -54,7 +54,10 @@ export function createHttpRoutes(bindings: AppBindings): readonly MountedHttpRou
       path: '/api/permission',
       router: permissionRoute(bindings.permission, bindings.interactionQueue),
     },
-    { path: '/api/memory', router: memoryRoute(bindings.memory) },
+    {
+      path: '/api/memory',
+      router: memoryRoute(bindings.memory, bindings.memoryBackgroundHealth),
+    },
     { path: '/api/system/events', router: systemEventsRoute(bindings.systemBus) },
     {
       path: '/api/system',

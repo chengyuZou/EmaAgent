@@ -5,6 +5,7 @@ import { asSessionId } from '@ema-agent/ids';
 import {
   DEFAULT_OVERRIDES,
   type MaintenanceReport,
+  type MemoryBackgroundHealth,
   type MemoryStats,
 } from '@ema-agent/memory';
 import { memoryRoute } from '../src/routes/memory.js';
@@ -58,9 +59,36 @@ function createMemory(overrides: Partial<RouteMemory> = {}): RouteMemory {
   };
 }
 
+function createHealth(
+  snapshot: MemoryBackgroundHealth = {
+    state: 'idle',
+    consecutiveFailures: 0,
+  },
+) {
+  return { snapshot: vi.fn(() => snapshot) };
+}
+
 describe('Memory 面板路由', () => {
+  it('GET /health 返回当前进程的后台维护快照', async () => {
+    const health: MemoryBackgroundHealth = {
+      state: 'degraded',
+      consecutiveFailures: 3,
+      lastFailure: {
+        operation: 'embeddingRepair',
+        occurredAt: 123,
+        message: 'Memory 向量修复连续失败',
+      },
+    };
+    const app = memoryRoute(createMemory(), createHealth(health));
+
+    const response = await app.request('/health');
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(health);
+  });
+
   it('GET /stats 返回聚合统计', async () => {
-    const app = memoryRoute(createMemory());
+    const app = memoryRoute(createMemory(), createHealth());
 
     const response = await app.request('/stats');
 
@@ -70,7 +98,7 @@ describe('Memory 面板路由', () => {
 
   it('GET /nodes 把解析后的查询交给 Memory', async () => {
     const listNodes = vi.fn(() => []);
-    const app = memoryRoute(createMemory({ listNodes }));
+    const app = memoryRoute(createMemory({ listNodes }), createHealth());
 
     const response = await app.request('/nodes?limit=5&orderBy=importance');
 
@@ -82,7 +110,7 @@ describe('Memory 面板路由', () => {
   });
 
   it('GET /nodes 查询参数越界时返回 400', async () => {
-    const app = memoryRoute(createMemory());
+    const app = memoryRoute(createMemory(), createHealth());
 
     const response = await app.request('/nodes?limit=0');
 
@@ -94,7 +122,10 @@ describe('Memory 面板路由', () => {
 
   it('GET /edges 缺少 nodes 参数时不访问 Memory', async () => {
     const listEdgesForNodes = vi.fn(() => []);
-    const app = memoryRoute(createMemory({ listEdgesForNodes }));
+    const app = memoryRoute(
+      createMemory({ listEdgesForNodes }),
+      createHealth(),
+    );
 
     const response = await app.request('/edges');
 
@@ -109,10 +140,13 @@ describe('Memory 面板路由', () => {
       ...DEFAULT_OVERRIDES,
       layer2: false,
     }));
-    const app = memoryRoute(createMemory({
-      setSessionOverrides,
-      getSessionOverrides,
-    }));
+    const app = memoryRoute(
+      createMemory({
+        setSessionOverrides,
+        getSessionOverrides,
+      }),
+      createHealth(),
+    );
 
     const response = await app.request('/sessions/session-1/overrides', {
       method: 'PUT',
@@ -132,7 +166,7 @@ describe('Memory 面板路由', () => {
 
   it('DELETE /nodes/:id 删除后返回 204', async () => {
     const deleteNode = vi.fn();
-    const app = memoryRoute(createMemory({ deleteNode }));
+    const app = memoryRoute(createMemory({ deleteNode }), createHealth());
 
     const response = await app.request('/nodes/node-1', { method: 'DELETE' });
 
@@ -142,7 +176,10 @@ describe('Memory 面板路由', () => {
 
   it('POST /maintenance 空 Body 使用默认衰减参数', async () => {
     const runMaintenance = vi.fn(() => maintenanceReport);
-    const app = memoryRoute(createMemory({ runMaintenance }));
+    const app = memoryRoute(
+      createMemory({ runMaintenance }),
+      createHealth(),
+    );
 
     const response = await app.request('/maintenance', { method: 'POST' });
 

@@ -50,7 +50,7 @@ LocalHost HTTP 传输边界第一刀已经完成：`server.ts` 只接收有序 `
 
 LocalHost 后台生命周期已经完成收口：`StartupRecovery.runRequired()` 在 ready 前恢复 ToolExecution、Turn 与 AgentRun，任一数据库恢复失败都会阻止启动；Memory 恢复、孤儿文件和遗留目录清理经 `runMaintenance()` 后台降级，Memory 恢复或初始化失败时不会继续 `tick/drain`。`BackgroundWork` 统一管理周期维护、Tool Result 与 Attachment Cache 清理、Bridge 心跳和有序关闭；MCP 只同步注册缓存 Schema，缺失 Schema 后台发现，Transport 保持首次真实调用时惰性连接。
 
-Memory 闲置后台维护 M1-M4 已完成：Session 活动根 Turn 注册表向 LocalHost 发布全局负载变化；轻量 Decay 与少量残留 Consolidation 在全局空闲 60 秒后运行，Storage Budget / Embedding Repair 必须连续空闲 30 分钟。新 Turn 或 LocalHost 关闭会在批次边界取消维护，预期抢占不记失败、不发伪完成事件。Profile v16 用 `last_decayed_at` 固化每行衰减周期，Decay 候选读取与 CAS 更新按 200 行小事务提交；Recall 引用加权、用户手动删除、Extraction、Decay、Consolidation、Embedding Repair 与 Storage Budget 共用 `MemoryCommitCoordinator`，模型和候选计算仍可跨 Session 并行。Consolidation 已按单节点快照、Node CAS 和 Profile 事务精确消费本轮 lazy update，模型往返期间的新证据不会被误删，ANN 增量失败会从 SQLite 事实源重建。Session 永久删除会先阻止新 Turn、撤销对应 Extraction 租约并取消事务外模型调用，再删除 Data DB 行；Profile 清理通过提交协调器等待已经开始的短提交，不等待可能忽略取消的 Provider。已经形成的全局长期记忆正文继续保留，崩溃留下的跨库孤儿由启动恢复补清。
+Memory 闲置后台维护 M1-M5 已完成：Session 活动根 Turn 注册表向 LocalHost 发布全局负载变化；轻量 Decay 与少量残留 Consolidation 在全局空闲 60 秒后运行，Storage Budget / Embedding Repair 必须连续空闲 30 分钟。新 Turn 或 LocalHost 关闭会在批次边界取消维护，预期抢占不记失败、不发伪完成事件。Profile v16 用 `last_decayed_at` 固化每行衰减周期，Decay 候选读取与 CAS 更新按 200 行小事务提交；Recall 引用加权、用户手动删除、Extraction、Decay、Consolidation、Embedding Repair 与 Storage Budget 共用 `MemoryCommitCoordinator`，模型和候选计算仍可跨 Session 并行。Consolidation 已按单节点快照、Node CAS 和 Profile 事务精确消费本轮 lazy update，模型往返期间的新证据不会被误删，ANN 增量失败会从 SQLite 事实源重建。Session 永久删除会先阻止新 Turn、撤销对应 Extraction 租约并取消事务外模型调用，再删除 Data DB 行；Profile 清理通过提交协调器等待已经开始的短提交，不等待可能忽略取消的 Provider。已经形成的全局长期记忆正文继续保留，崩溃留下的跨库孤儿由启动恢复补清。LocalHost 现提供进程内只读健康快照：各维护动作独立累计连续失败，初始化不可用或预算处理后仍超限立即退化，普通错误连续三次才退化，预期抢占和空扫描不产生警告。
 
 LocalHost 一次性启动装配已经完成收口：`bootstrap/startLocalHost.ts` 在 ready 前先完成必需执行状态恢复，再尝试可降级的 Marketplace Seed 与默认 KB；Skill 对账、models.dev Catalog 与首次 Bridge 配置由 Lifecycle 跟踪为后台任务，关闭时等待仍在途的任务。启动不再 `kb.initAll()` 打开所有 KB；默认项失败只影响 Knowledge，具体 KB Client 继续在首次操作时惰性打开。角色卡 Seed 仍是 Character/Emotion 对象图的同步构造前置：EmotionEngine 立即需要活动角色，且角色卡写入受 Live2D 模型外键约束，不能伪装成可延迟后台任务。
 
@@ -160,9 +160,9 @@ Task 与 AgentRun 前端已经分面：Desktop 使用正式 `/api/tasks` 快照�
 
 BackgroundProcess 后端主链已经完成：Bash 在 15 秒内返回普通结果，超时则把同一进程一次性交给后台；显式后台、并发队列、持久状态/有界日志、ProcessList/ProcessOutput/ProcessStop、完成事件、内部续接 Turn、设置和只读/停止 API 均已接线。Session 删除会先终止所属进程并释放日志句柄。本批未修改 Desktop 前端。
 
-Memory M4 后端施工区位于 `src/session`、`src/memory`、Memory 相关 Storage Repo 与 Session 删除 Route；没有修改 `apps/desktop-ui`。M1-M4 已全部完成，M5 健康投影尚未开始。
+Memory M1-M5 后端已经全部完成；本批没有修改 `apps/desktop-ui`。前端若接入健康展示，只消费 `/api/memory/health` 与退化边界事件。
 
-当前基线最近提交：`a12814da feat: 增加对新事件类型的支持，包括语音合成警告、记忆召回不可用、记忆提取跳过和记忆存储预算执行`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
+当前基线最近提交：`951a654c feat: implement session deletion lifecycle with memory cleanup`。该提交号仅用于定位，不代表其他 Agent 不会继续提交。
 
 K3 当前负责 Desktop Chat Workspace、Git/Review 等前端工作；主 Agent 不修改其
 `apps/desktop-ui` 施工区。后台进程前端已经补入 `EmaChatWorkspacePlan.md`，
@@ -230,6 +230,8 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- ChatHistory Codex 式工作区折叠（K3）：Desktop UI typecheck + 33 个测试文件 166/166（新增 workGroups 14 用例）通过。经 5 张 Codex 截图对齐形态：**纯模型** `chat/history/workGroups.ts`（groupSlices 连续工具分组、splitWorkAnswer 末尾 text 为正文其余进工作区、tallyTools 动词归类(Bash/Process*=命令,Edit/Write/ScratchpadWrite=编辑)/tallySummary 合并摘要(单条给具体文件或命令)、liveAction 流式当前动作(正在编辑/正在执行命令/正在运行/等待模型)、editedFiles 同文件归并汇总、formatTurnTime 当年 M月D日 HH:mm 跨年 YYYY年M月D日、formatWorkDuration 分档）。**组件**：`WorkSection`（"已处理 X · 摘要 · N 个错误红"折叠头，流式直播耗时与当前动作，终态默认收起）、`ToolWorkGroup`（组合并摘要行，失败计数红，展开为现有 ToolCallBlock）、`EditedFilesCard`（已编辑 N 个文件 +A -D + 每页 5 个"再显示" + 审核开 review 标签；无真实撤销能力不渲染）。AssistantBubble 重构：末尾 text 永驻为正文，其余全部进可折叠工作区；UserBubble 加绝对时间戳。用户拍板细节：动词合并一行、失败单条红+摘要带错误数、中止不红、流式摘要也用动词计数。`git diff --check` 通过，仅有既有 CRLF 提示。
+
 - settings 文件夹按域归组（K3）：Desktop UI typecheck + build + 32 文件 152/152 通过，零行为变化。41 个平铺文件按 SettingsPanel 实际导航组归位：`general/`（通用设置组，含 Shortcuts/Appearance/Live2D 与本轮全部新组件）、`providers/`（AI 与模型组，含 BindingsTab——模型绑定属 Provider 控制面）、`character/`（CardsTab + CharacterCardEditor 及其内部子页 Identity/Behavior/Voice）、`skills/`（SkillsTab + MarketSourceManager，市场是技能内基座不单独立域）、`mcp/`、`memory/`、`knowledge/`、`data/`、`shared/`（SettingItem/NumberField/useObjectSetting 骨架）；`SettingsPanel.tsx` 留根。命名规则：文件夹名=左侧导航组。修正记录：McpTab 跨域引用 MarketSourceManager 改 `../skills/`;4 个测试文件（含本轮 settingAutosaver）旧路径同步；index.ts 导出面不变只改内部路径。`git diff --check` 通过，仅有既有 CRLF 提示。
 
 - SSE 哑事件收口（K3）：Desktop UI typecheck + 32 文件 152/152、LocalHost typecheck + 166/166 通过。先全量对账（后端 ~100 事件字面量 vs 前端引用）：真正哑的 4 个——`tts_warning`、`memory_recall_unavailable`、`memory_extraction_skipped`、`memory_storage_budget_enforced`（Sol R13 新增，旧 review 清单之外）；`loop_*`×11 是 CLAUDE.md 明确的循环内部事件不过 SSE、`audio/file/image_*` 是内容块类型、`backgroundProcessCompleted/iteration/userMessage` 是 Turn 字段，均非哑事件。修复：`event-notifications` 补 4 条映射（tts 按 severity 分色、召回不可用含可重试标注、提取跳过直接用后端 reason 原文、预算执行区分是否仍高于低水位）；`system-event-dispatcher` 预算执行刷新 memory stats；catalog 补 4 个标签（memory_* 前缀自动进记忆组）；后端 `DEFAULT_EVENT_DISPLAY` 补登 8 项（4 哑事件 + tts_chunk/tts_sentence_complete/kb_embeddings_staled/background_process_changed）。改动只碰 localHost 设置与前端，未触 src/memory（Sol 在途）。`git diff --check` 通过，仅有既有 CRLF 提示。
@@ -272,6 +274,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 - Memory 闲置后台维护 M2：Profile v16 增加 Node/Item `last_decayed_at` 与衰减候选索引；Decay 按 200 行执行候选快照 CAS，同一 `decayAfterDays` 周期不会因空闲扫描或快速重启重复扣减。Recall 引用加权与用户手动删除也接入全局提交协调器；新增跨 Session 计算并发/提交串行、取消后不发完成事件、周期与旧快照 CAS 测试。Storage 28 个测试文件 127/127、Memory 15 个测试文件 64/64、LocalHost 42 个测试文件 165/165 通过，全仓 typecheck 88/88 通过；Storage/Memory build 与 `git diff --check` 通过。重维护空闲阈值按产品口径改为 30 分钟，调度改为每个后台 Tick 检查空闲资格、成功开始后再进入 30 分钟冷却，避免固定扫描相位把真实等待拉长到近一小时；下一批是 M3 Consolidation 原子提交，不提前混入 M4/M5。
 - Memory 闲置后台维护 M3：Consolidation 从 `extract` 后处理升格到 `memory/consolidation`，每个 Node 在模型与 Embed 前冻结正文、重要度、版本及 lazy update 主键集合，外部 I/O 不占全局提交协调器；提交时在同一个 Profile 事务内复核精确证据集合、执行 Node CAS 并只删除快照证据。并发到达的新证据保留，Node/证据冲突丢弃旧计算结果而不覆盖、不误删；无新向量时清除旧正文向量，ANN 增量失败时在同一提交序列内重建。Extraction 与全局空闲 60 秒后的少量残留扫尾复用 `MemoryPlanner.consolidatePendingNodes()`。Storage 28 个测试文件 127/127、Memory 16 个测试文件 69/69、LocalHost 42 个测试文件 166/166 通过；Storage/Memory/LocalHost 定向 typecheck 与 Storage/Memory build 通过。全仓 typecheck 的 Memory 与 LocalHost 链已通过，最终被 K3 在途 Desktop UI 设置组件的五处泛型约束错误阻断（85/87 个任务成功），本批没有修改该并行施工区。下一批是 M4 Session 删除与在途 Extraction 的取消、提交段退出和来源软引用清理，不提前混入 M5。
 - Memory 闲置后台维护 M4：Session 删除协调先阻止新 Turn并取消当前根 Turn，再关闭该 Session 的 Extraction 入队、删除持久任务撤销租约并取消在途模型调用；删除请求不等待可能忽略取消的 Provider，迟到结果仍受既有提交前租约闸门约束。Data DB 删除完成后，Profile 清理通过全局提交协调器等待已经开始的短提交，再删除 Node 来源、脱敏 L2 Item/待归并证据来源并清理恢复标记；长期 Node、Item 与证据正文继续保留，启动恢复以 Data DB 为事实源补清跨库孤儿。Session 45/45、Memory 72/72、Storage 127/127、LocalHost 166/166 通过；Storage/Session/Memory build、四包定向 typecheck 与 `git diff --check` 通过，仅有既有 CRLF 提示。全仓 typecheck 的本批与下游链均通过，最终 85/87 被 K3 在途 Settings 目录迁移中 `McpTab.tsx` 尚未归位的 `MarketSourceManager.js` 阻断，主 Agent未触碰该前端施工区。M1-M4 至此完成，下一批若继续 Memory 是独立 M5 健康投影，不提前混入前端实现。
+- Memory 闲置后台维护 M5：健康投影由 LocalHost 调度层拥有，Memory 只提供跨端契约和维护报告；`GET /api/memory/health` 返回当前进程的 idle/running/degraded、活动动作、最近完成、按动作连续失败和存储压力。初始化失败与未解除的存储压力立即退化，普通维护连续三次失败才退化，其他动作成功不会产生假恢复；只在进入或离开退化状态时发布应用事件，取消与正常空扫描零噪音。Memory 17 个测试文件 72/72、LocalHost 43 个测试文件 171/171、全仓 typecheck 88/88 通过；Memory/LocalHost build 与 `git diff --check` 通过。
 
 - 前端 F2 样式回潮批（K3）：Desktop UI typecheck 与 28 个测试文件 119/119 通过。tokens.css 新增 `--ema-file-*` 八枚文件类型色（亮暗共用的常规文件色，不随主题翻转）与 `--ema-shadow-dragover`；AttachmentChip 8 处 oklch 字面量、ChatInput 拖放 boxShadow 与 border-white、AppearanceTab 白色选中环全部 token 化；FloatingDock 与 SessionSidebar 的 duration/ease 字面值改走 `--ema-duration-*`/`--ema-ease` 与 `transition-ema`；SessionSidebar 自造 max-height 折叠组件换为标准 `.ema-collapsible`（删掉三处 maxHeight 计算）；AgentRunPanel 自造分隔线换 UI 包 `Divider`；ChatPanel 400ms 字面时长归入 slow 档。`git diff --check` 通过，仅有既有 CRLF 提示。
 
@@ -397,7 +400,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 先完整阅读 CLAUDE.md 与 EmaWorkState.md，再按当前批次阅读 EmaRefactor.md 和 EmaClaudeArchitectureReview.md 对应章节。检查 git status、diff 和最近提交，保留用户及其他 Agent 的修改。
 
-LocalHost L0-L5、Turn/TTS/Route/HTTP 边界、Composition Root P1-P5、外围 R1-R13、A/C 类主链与 Memory 闲置维护 M1-M4 均已完成，不要重复施工。Memory 已具备动态模型设置、租约关闸、stale embedding 修复、全局逻辑字节预算、持久衰减周期、Consolidation 单节点原子提交、由活动根 Turn 抢占的轻重维护窗口，以及 Session 删除时的 Extraction 取消和跨库来源清理；不要恢复已删除的死配置，也不要让主动驱逐向量立即进入 repair。下一批若继续 Memory，按 `docs/architecture/memoryBackgroundMaintenancePlan.md` 单独处理 M5 只读健康投影与退化分级，不把前端状态塞入 Memory，也不重写 M1-M4。不要恢复 `apps/core`、旧 Orchestrator、宽 `AppBindings` Route、TOML 设置、MCP `startAll()`、KB `initAll()` 或 `buildBindings()` 中的异步启动副作用。不要提交 Git。
+LocalHost L0-L5、Turn/TTS/Route/HTTP 边界、Composition Root P1-P5、外围 R1-R13、A/C 类主链与 Memory 闲置维护 M1-M5 均已完成，不要重复施工。Memory 已具备动态模型设置、租约关闸、stale embedding 修复、全局逻辑字节预算、持久衰减周期、Consolidation 单节点原子提交、由活动根 Turn 抢占的轻重维护窗口、Session 删除时的 Extraction 取消和跨库来源清理，以及 LocalHost 进程内健康投影；不要恢复已删除的死配置，也不要让主动驱逐向量立即进入 repair。后续若继续 Memory，只委派前端消费 `/api/memory/health` 与退化边界事件，不把前端状态塞入 Memory，也不重写 M1-M5。不要恢复 `apps/core`、旧 Orchestrator、宽 `AppBindings` Route、TOML 设置、MCP `startAll()`、KB `initAll()` 或 `buildBindings()` 中的异步启动副作用。不要提交 Git。
 ```
 
 ## 维护方式

@@ -2,6 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BackgroundWork } from '../src/background/backgroundWork.js';
+import { MemoryBackgroundHealthTracker } from '../src/background/memoryBackgroundHealth.js';
 
 function createHarness() {
   let activeTurnCount = 0;
@@ -80,6 +81,7 @@ function createHarness() {
   const systemEvents = {
     emit: vi.fn(),
   };
+  const memoryHealth = new MemoryBackgroundHealthTracker(systemEvents.emit);
 
   const work = new BackgroundWork(
     startupRecovery,
@@ -91,6 +93,7 @@ function createHarness() {
     narrative,
     providerRuntime,
     systemEvents,
+    memoryHealth,
   );
 
   return {
@@ -108,6 +111,7 @@ function createHarness() {
     narrative,
     providerRuntime,
     systemEvents,
+    memoryHealth,
   };
 }
 
@@ -168,6 +172,12 @@ describe('BackgroundWork', () => {
     expect(harness.memory.initialize).not.toHaveBeenCalled();
     expect(harness.memory.tick).not.toHaveBeenCalled();
     expect(harness.mcp.discoverUncached).toHaveBeenCalledTimes(1);
+    expect(harness.memoryHealth.snapshot()).toEqual(
+      expect.objectContaining({
+        state: 'degraded',
+        consecutiveFailures: 3,
+      }),
+    );
 
     await harness.work.shutdown();
     expect(harness.memory.drain).not.toHaveBeenCalled();
@@ -267,6 +277,12 @@ describe('BackgroundWork', () => {
       expect.any(AbortSignal),
     );
     expect(harness.memory.enforceStorageBudget).not.toHaveBeenCalled();
+    expect(harness.memoryHealth.snapshot()).toEqual(
+      expect.objectContaining({
+        state: 'idle',
+        consecutiveFailures: 0,
+      }),
+    );
 
     await harness.work.shutdown();
   });
@@ -288,6 +304,12 @@ describe('BackgroundWork', () => {
 
     expect(harness.memory.enforceStorageBudget).toHaveBeenCalledTimes(1);
     expect(harness.memory.repairStaleEmbeddings).not.toHaveBeenCalled();
+    expect(harness.memoryHealth.snapshot()).toEqual(
+      expect.objectContaining({
+        state: 'idle',
+        consecutiveFailures: 0,
+      }),
+    );
 
     await harness.work.shutdown();
   });

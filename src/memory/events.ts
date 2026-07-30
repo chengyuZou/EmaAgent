@@ -5,6 +5,36 @@ import type { ExecutionProfile } from '@ema-agent/turn';
 export type MemoryRecallLayer = 'layer0' | 'layer1' | 'layer2';
 export type MemoryRecallLayerStatus = 'succeeded' | 'skipped' | 'failed';
 
+export type MemoryBackgroundOperation =
+  | 'initialization'
+  | 'decay'
+  | 'consolidation'
+  | 'embeddingRepair'
+  | 'storageBudget';
+
+export interface MemoryBackgroundFailure {
+  operation: MemoryBackgroundOperation;
+  occurredAt: number;
+  /** 只提供可公开的业务说明，不暴露异常堆栈、Prompt 或 Provider 响应。 */
+  message: string;
+}
+
+export interface MemoryStoragePressure {
+  usedBytes: number;
+  maxBytes: number;
+  remainsOverLimit: boolean;
+}
+
+/** 宿主进程内的 Memory 后台维护投影，重启后从空闲状态重新建立。 */
+export interface MemoryBackgroundHealth {
+  state: 'idle' | 'running' | 'degraded';
+  activeOperation?: MemoryBackgroundOperation;
+  lastCompletedAt?: number;
+  lastFailure?: MemoryBackgroundFailure;
+  consecutiveFailures: number;
+  storagePressure?: MemoryStoragePressure;
+}
+
 export interface MemoryRecallLayerReport {
   status: MemoryRecallLayerStatus;
   itemCount: number;
@@ -51,6 +81,11 @@ export type MemoryBackgroundEvent =
       deletedRows: number;
       evictedEmbeddings: number;
       pressureRemaining: boolean;
+    }
+  | {
+      /** 只在进入或离开退化状态时发布，正常扫描和预期抢占不产生通知噪音。 */
+      type: 'memory_background_health_changed';
+      health: MemoryBackgroundHealth;
     }
   | { type: 'memory_node_merged'; nodeId: string; label: string; fragmentCount: number }
   | { type: 'memory_task_started'; taskId: string; kind: string; sessionId?: SessionId }

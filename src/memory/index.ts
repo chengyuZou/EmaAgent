@@ -36,6 +36,10 @@ export type {
 export type {
   MemoryEvent,
   MemoryBackgroundEvent,
+  MemoryBackgroundFailure,
+  MemoryBackgroundHealth,
+  MemoryBackgroundOperation,
+  MemoryStoragePressure,
   MemoryRecallEvent,
   MemoryRecallLayer,
   MemoryRecallLayerReport,

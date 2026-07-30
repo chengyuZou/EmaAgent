@@ -2,7 +2,10 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { asSessionId } from '@ema-agent/ids';
-import type { MemoryPlanner } from '@ema-agent/memory';
+import type {
+  MemoryBackgroundHealth,
+  MemoryPlanner,
+} from '@ema-agent/memory';
 
 /** 记忆面板实际使用的查询与维护入口，不暴露提取、召回等 Turn 侧能力。 */
 type MemoryPanelRoute = Pick<
@@ -17,6 +20,10 @@ type MemoryPanelRoute = Pick<
   | 'deleteItem'
   | 'runMaintenance'
 >;
+
+interface MemoryBackgroundHealthReader {
+  snapshot(): MemoryBackgroundHealth;
+}
 
 // ── Schemas ──────────────────────────────────────────────────────────────────
 
@@ -66,6 +73,7 @@ const maintenanceSchema = z.object({
  *
  * Read:
  *   GET  /api/memory/stats                — aggregate counts + index status
+ *   GET  /api/memory/health               — 当前后台维护健康状态
  *   GET  /api/memory/nodes                — browse memory_nodes
  *   GET  /api/memory/items                — browse memory_items
  *   GET  /api/memory/sessions/:id/overrides
@@ -76,8 +84,16 @@ const maintenanceSchema = z.object({
  *   DEL  /api/memory/items/:id
  *   POST /api/memory/maintenance           — decay pass (dryRun=true by default)
  */
-export function memoryRoute(memory: MemoryPanelRoute): Hono {
+export function memoryRoute(
+  memory: MemoryPanelRoute,
+  backgroundHealth: MemoryBackgroundHealthReader,
+): Hono {
   const app = new Hono();
+
+  // ── 后台维护健康状态 ───────────────────────────────────────────────────────
+  app.get('/health', (c) => {
+    return c.json(backgroundHealth.snapshot());
+  });
 
   // ── Stats ─────────────────────────────────────────────────────────────────
   app.get('/stats', (c) => {
