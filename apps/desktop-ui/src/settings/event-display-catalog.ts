@@ -49,6 +49,9 @@ const EVENT_LABELS: Record<string, string> = {
   memory_task_started: '后台记忆任务开始',
   memory_task_completed: '后台记忆任务完成',
   memory_task_failed: '后台记忆任务失败',
+  memory_recall_unavailable: '记忆召回不可用',
+  memory_extraction_skipped: '记忆提取跳过',
+  memory_storage_budget_enforced: '记忆存储预算执行',
   kb_ingest_completed: '知识库文档处理完成',
   kb_ingest_partial_failed: '知识库文档部分失败',
   kb_ingest_failed: '知识库文档处理失败',
@@ -74,6 +77,7 @@ const EVENT_LABELS: Record<string, string> = {
   system_warning: '系统告警',
   tts_chunk: '语音数据块',
   tts_sentence_complete: '语音句子完成',
+  tts_warning: '语音合成警告',
 };
 
 export function eventDisplayLabel(eventType: string): string {

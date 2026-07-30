@@ -106,6 +106,25 @@ export function describeEventNotification(event: ClientEvent): EventNotification
         return { message: '后台进程超出最大运行时间，已被终止', variant: 'warning' };
       }
       return null;
+    case 'tts_warning':
+      return {
+        message: `语音合成${event.severity === 'error' ? '失败' : '警告'}：${event.message}`,
+        variant: event.severity === 'error' ? 'danger' : 'warning',
+      };
+    case 'memory_recall_unavailable':
+      return {
+        message: `记忆召回失败，本轮对话将不带记忆上下文${event.retryable ? '（可重试）' : ''}`,
+        variant: 'warning',
+      };
+    case 'memory_extraction_skipped':
+      // reason 由后端给完整说明(如"未配置 memory 提取模型"),直接呈现不拼前缀。
+      return { message: event.reason, variant: 'warning' };
+    case 'memory_storage_budget_enforced':
+      return {
+        message: `记忆存储超出预算，已自动清理 ${event.deletedRows} 条记录与 ${event.evictedEmbeddings} 条向量`
+          + (event.pressureRemaining ? '，仍高于低水位' : ''),
+        variant: event.pressureRemaining ? 'warning' : 'info',
+      };
     case 'emotion_changed':
       return { message: `角色情绪切换为 ${event.state.primary}`, variant: 'info' };
     case 'stage_cue':

@@ -164,6 +164,11 @@ export function dispatchSystemEvent(event: AppEvent): void {
       useBackgroundProcessStore.getState().applyEvent(event);
       break;
 
+    case 'memory_storage_budget_enforced':
+      // 预算执行驱逐了记录与向量,统计快照已过期。
+      void useMemoryStore.getState().refreshStats();
+      break;
+
     // 这些事件为后续 Memory 轮次预留，当前没有前端状态需要更新。
     case 'memory_consolidation_started':
     case 'memory_consolidation_completed':
