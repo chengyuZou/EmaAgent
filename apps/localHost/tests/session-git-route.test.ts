@@ -76,4 +76,29 @@ describe('sessionGitRoute', () => {
     const body = await res.json() as { capability: string };
     expect(body.capability).toBe('ok');
   });
+
+  it('git-refs 与 git-compare 复用同一身份解析,比较参数校验', async () => {
+    const missing = sessionGitRoute(createSessionStore('missing'));
+    expect((await missing.request(`/${asSessionId('s-1')}/git-refs`)).status).toBe(404);
+    expect((await missing.request(`/${asSessionId('s-1')}/git-compare?type=commit&ref=abc`)).status).toBe(404);
+
+    const inRepo = sessionGitRoute(createSessionStore(process.cwd()));
+    expect((await inRepo.request(`/${asSessionId('s-1')}/git-compare`)).status).toBe(400);
+    expect((await inRepo.request(`/${asSessionId('s-1')}/git-compare?type=nope&ref=x`)).status).toBe(400);
+    expect((await inRepo.request(`/${asSessionId('s-1')}/git-compare?type=commit`)).status).toBe(400);
+
+    if (!gitAvailable()) return;
+    const refs = await inRepo.request(`/${asSessionId('s-1')}/git-refs`);
+    expect(refs.status).toBe(200);
+    const refsBody = await refs.json() as { capability: string; branches?: string[] };
+    expect(refsBody.capability).toBe('ok');
+    expect(Array.isArray(refsBody.branches)).toBe(true);
+
+    const compare = await inRepo.request(
+      `/${asSessionId('s-1')}/git-compare?type=branch&ref=${encodeURIComponent('nonexistent-branch')}`,
+    );
+    // 不存在的分支由后端归入 error capability,不是 500。
+    expect(compare.status).toBe(200);
+    expect((await compare.json() as { capability: string }).capability).toBe('error');
+  });
 });

@@ -30,7 +30,7 @@ import {
   type BrowseNodesOptions, type BrowseItemsOptions,
 } from './maintenance/browse.js';
 import {
-  runMaintenance, deleteNode, deleteItem,
+  runMaintenance,
   type MaintenanceOptions, type MaintenanceReport,
 } from './maintenance/decay.js';
 import {
@@ -117,6 +117,7 @@ export class MemoryPlanner {
       this.deps, this.embed, this.settings,
       this.indexMgr.nodesIndex, this.indexMgr.itemsIndex,
       this.indexMgr.currentSpaceId(),
+      this.commitCoordinator,
       (sid) => this.getSessionOverrides(sid),
       ctx,
     );
@@ -193,7 +194,10 @@ export class MemoryPlanner {
 
   // ── Maintenance ─────────────────────────────────────────────────────────────
 
-  runMaintenance(opts: Partial<MaintenanceOptions> = {}): MaintenanceReport {
+  async runMaintenance(
+    opts: Partial<MaintenanceOptions> = {},
+    signal?: AbortSignal,
+  ): Promise<MaintenanceReport> {
     const maintenance = this.readUserSettings().maintenance;
     return runMaintenance(this.deps, {
       decayAfterDays: opts.decayAfterDays ?? maintenance.decayAfterDays,
@@ -201,16 +205,20 @@ export class MemoryPlanner {
       decayItems:     opts.decayItems     ?? true,
       dryRun:         opts.dryRun         ?? true,
       nowMs:          opts.nowMs          ?? Date.now(),
-    });
+    }, this.commitCoordinator, signal);
   }
 
-  deleteNode(nodeId: string): void {
-    deleteNode(this.deps, nodeId);
+  async deleteNode(nodeId: string): Promise<void> {
+    await this.commitCoordinator.runExclusive(() =>
+      this.deps.runProfileTransaction(() => this.deps.nodes.delete(nodeId)),
+    );
     this.indexMgr.removeNode(nodeId);
   }
 
-  deleteItem(itemId: string): void {
-    deleteItem(this.deps, itemId);
+  async deleteItem(itemId: string): Promise<void> {
+    await this.commitCoordinator.runExclusive(() =>
+      this.deps.runProfileTransaction(() => this.deps.items.delete(itemId)),
+    );
     this.indexMgr.removeItem(itemId);
   }
 
@@ -260,7 +268,10 @@ export class MemoryPlanner {
   }
 
   async tick():  Promise<void> { await this.runner.tick(); }
-  async drain(): Promise<void> { await this.runner.shutdown(); }
+  async drain(): Promise<void> {
+    await this.runner.shutdown();
+    await this.commitCoordinator.drain();
+  }
 
   runStartupRecovery(): RecoveryReport { return doStartupRecovery(this.deps, this.embed); }
 

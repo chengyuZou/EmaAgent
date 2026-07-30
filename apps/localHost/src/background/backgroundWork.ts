@@ -15,6 +15,7 @@ import {
 import type { StartupRecovery } from './startupRecovery.js';
 import {
   HEAVY_MAINTENANCE_IDLE_MS,
+  LIGHT_MAINTENANCE_IDLE_MS,
   WorkloadIdlePolicy,
 } from './workloadIdlePolicy.js';
 
@@ -22,11 +23,16 @@ const BACKGROUND_TICK_MS = 5_000;
 const CLEANER_SWEEP_EVERY = 360;
 const ATTACHMENT_CACHE_SWEEP_EVERY = 360;
 const BRIDGE_HEARTBEAT_EVERY = 12;
-const EMBEDDING_REPAIR_SWEEP_EVERY = 360;
+const MEMORY_DECAY_SWEEP_EVERY = 12;
 
 type BackgroundMemory = Pick<
   MemoryPlanner,
-  'initialize' | 'tick' | 'drain' | 'repairStaleEmbeddings' | 'enforceStorageBudget'
+  | 'initialize'
+  | 'tick'
+  | 'drain'
+  | 'runMaintenance'
+  | 'repairStaleEmbeddings'
+  | 'enforceStorageBudget'
 >;
 type ForegroundActivity = Pick<
   SessionStore,
@@ -51,6 +57,7 @@ export class BackgroundWork {
   private mcpDiscovery: Promise<unknown> | null = null;
   private lastBridgeReady: boolean | null = null;
   private memoryEnabled = false;
+  private lastHeavyMaintenanceAt = 0;
   private started = false;
   private stopped = false;
   private readonly idlePolicy = new WorkloadIdlePolicy();
@@ -163,23 +170,63 @@ export class BackgroundWork {
     if (tickCount % ATTACHMENT_CACHE_SWEEP_EVERY === 0) {
       await this.sweepAttachmentCache();
     }
-    if (tickCount % EMBEDDING_REPAIR_SWEEP_EVERY === 0) {
-      await this.runHeavyMemoryMaintenance();
+    if (tickCount % MEMORY_DECAY_SWEEP_EVERY === 0) {
+      await this.runLightMemoryMaintenance();
     }
+    await this.runHeavyMemoryMaintenance();
     if (tickCount % BRIDGE_HEARTBEAT_EVERY === 0) {
       this.lastBridgeReady = await this.checkBridgeHeartbeat();
     }
   }
 
-  private async runHeavyMemoryMaintenance(): Promise<void> {
+  private async runLightMemoryMaintenance(): Promise<void> {
     if (!this.memoryEnabled) return;
     if (!this.idlePolicy.canRun(
       this.foregroundActivity.hasActiveTurns(),
-      HEAVY_MAINTENANCE_IDLE_MS,
+      LIGHT_MAINTENANCE_IDLE_MS,
     )) {
       return;
     }
 
+    const controller = new AbortController();
+    this.maintenanceAbortController = controller;
+    try {
+      const report = await this.memory.runMaintenance(
+        { dryRun: false },
+        controller.signal,
+      );
+      if (report.decayedNodes > 0 || report.decayedItems > 0) {
+        console.log(
+          `[memory] decay: nodes=${report.decayedNodes} `
+          + `items=${report.decayedItems}`,
+        );
+      }
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        console.warn('[memory] decay sweep failed:', error);
+      }
+    } finally {
+      if (this.maintenanceAbortController === controller) {
+        this.maintenanceAbortController = null;
+      }
+    }
+  }
+
+  private async runHeavyMemoryMaintenance(): Promise<void> {
+    if (!this.memoryEnabled) return;
+    const nowMs = Date.now();
+    if (nowMs - this.lastHeavyMaintenanceAt < HEAVY_MAINTENANCE_IDLE_MS) {
+      return;
+    }
+    if (!this.idlePolicy.canRun(
+      this.foregroundActivity.hasActiveTurns(),
+      HEAVY_MAINTENANCE_IDLE_MS,
+      nowMs,
+    )) {
+      return;
+    }
+
+    this.lastHeavyMaintenanceAt = nowMs;
     const controller = new AbortController();
     this.maintenanceAbortController = controller;
     try {

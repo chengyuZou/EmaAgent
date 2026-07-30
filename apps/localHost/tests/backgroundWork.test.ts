@@ -22,6 +22,12 @@ function createHarness() {
     initialize: vi.fn(async () => ({ nodes: 0, items: 0, backend: null })),
     tick: vi.fn(async () => undefined),
     drain: vi.fn(async () => undefined),
+    runMaintenance: vi.fn(async () => ({
+      dryRun: false,
+      decayedNodes: 0,
+      decayedItems: 0,
+      preview: { nodes: [], items: [], decayedAt: 0 },
+    })),
     repairStaleEmbeddings: vi.fn(async () => ({
       ran: true,
       nodesRepaired: 0,
@@ -205,9 +211,33 @@ describe('BackgroundWork', () => {
     expect(harness.memory.repairStaleEmbeddings).not.toHaveBeenCalled();
 
     harness.setActiveTurnCount(0);
-    await vi.advanceTimersByTimeAsync(30 * 60_000);
+    await vi.advanceTimersByTimeAsync(30 * 60_000 + 5_000);
     expect(harness.memory.enforceStorageBudget).toHaveBeenCalledTimes(1);
     expect(harness.memory.repairStaleEmbeddings).toHaveBeenCalledTimes(1);
+
+    await harness.work.shutdown();
+  });
+
+  it('空闲一分钟后运行轻量衰减，新 Turn 出现时取消当前批次', async () => {
+    const harness = createHarness();
+    harness.memory.runMaintenance.mockImplementation(async (_opts, signal?: AbortSignal) => {
+      harness.setActiveTurnCount(1);
+      expect(signal?.aborted).toBe(true);
+      signal?.throwIfAborted();
+      throw new Error('unreachable');
+    });
+
+    harness.work.start();
+    await vi.waitFor(() => {
+      expect(harness.memory.initialize).toHaveBeenCalledTimes(1);
+    });
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(harness.memory.runMaintenance).toHaveBeenCalledWith(
+      { dryRun: false },
+      expect.any(AbortSignal),
+    );
+    expect(harness.memory.enforceStorageBudget).not.toHaveBeenCalled();
 
     await harness.work.shutdown();
   });

@@ -37,7 +37,12 @@ export class MemoryStorageRepo {
              + COALESCE(length(CAST(embedding_revision AS BLOB)), 0)
              + COALESCE(length(CAST(embedding_space_id AS BLOB)), 0)
              + length(CAST(meta_json AS BLOB))
-             + 8 * (5 + (embedding_dim IS NOT NULL) + (embedding_evicted_at IS NOT NULL))
+             + 8 * (
+               5
+               + (embedding_dim IS NOT NULL)
+               + (embedding_evicted_at IS NOT NULL)
+               + (last_decayed_at IS NOT NULL)
+             )
            ), 0)
            FROM memory_nodes
          ) AS nodes_bytes,
@@ -92,6 +97,7 @@ export class MemoryStorageRepo {
                + (expires_at IS NOT NULL)
                + (embedding_dim IS NOT NULL)
                + (embedding_evicted_at IS NOT NULL)
+               + (last_decayed_at IS NOT NULL)
              )
            ), 0)
            FROM memory_items

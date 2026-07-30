@@ -1,6 +1,6 @@
 # EmaAgent Chat 工作区与历史导航实施计划
 
-> 状态：批次 A/B/C1/C2/C3/D1/D2a/E1/F 已完成；D2b（opener + 分支选择器）待做；E2 Terminal/E3 Browser 推迟到 V1 正式版（内测不开放，类型保留+防御渲染）
+> 状态：批次 A/B/C1/C2/C3/D1/D2a/D2b(比较范围)/E1/F 已完成；opener 与 E2/E3 推迟到 V1 正式版；剩 Settings UI、SSE 哑事件、Sandbox 常驻提示
 > 日期：2026-07-23  
 > 范围：Desktop Chat 主布局、Turn 快速导航、Task/AgentRun/来源展示、右侧与底部工作区、桌面打开方式  
 > 不包含：恢复 Session Branch、尚无运行能力的空 Terminal/Browser/Review 面板
@@ -776,10 +776,12 @@ D2a 已落地（Git 只读源）：
 - 已验证：git-utils build + 8 测试（真实临时仓库），localHost typecheck + 3 路由测试 + 全量 155，desktop-ui typecheck + 137 测试。
 - codex git 面对照（2026-07-30 全仓核实）：codex UI 面=状态栏分支 + `/diff` 工作区 diff + `/review` 目标选择（BaseBranch/Commit），分别对应我们的 D2a/批次 E/D2b；thread git_info 创建快照、Turn 遥测元数据、trust 按 git root、内部 baseline .git、`gitDiffToRemote`（cloud task）均为 OpenAI 云架构特有，本地单人应用不拿。
 
-D2b 待做：
+D2b 已落地（Git 比较范围）+ opener 拍板推迟（2026-07-30）：
 
-- "在…中打开"按钮与 Tauri 跨平台 opener 检测（`apps/desktop/src-tauri/src/commands/openers/`：mod/types/windows/macos/linux，注册表/Programs 路径/vswhere/PATH 探测，不写死开发者路径）；
-- 分支选择器（搜索/未提交计数/创建新分支）依赖 Git 源，不在无源时渲染；分支列表与最近提交数据源对应 codex `/review` 选择器的 `local_git_branches` + `recent_commits`，落地时在 gitUtils queries/ 各加一文件。
+- gitUtils 新增 `queries/branches.ts`（for-each-ref 本地分支）、`queries/commits.ts`（log -n50 sha+subject，空仓库空数组）、`refs.ts`（gitRefs 组装当前分支/分支/提交）与 `diff.ts` 的 `gitCompareDiff`：commit=该提交补丁（`git show --format=`），branch=merge-base HEAD 后 diff（比较分叉点而非分支尖端，含未提交）；复用同一解析/安全旗标/封顶（`collectTrackedDiff` 共用）。路由 `GET /:id/git-refs` 与 `GET /:id/git-compare?type&ref`（参数校验 400，分支/SHA 只作 git 参数不经 shell）。
+- ReviewPanel 比较范围选择器全量点亮：上一轮/全部会话恒在，未暂存/已暂存仅 git ok，**提交记录**（有提交才出现，二级选择器选提交）与**分支比较**（有其他分支才出现，二级选择器选基准，排除当前分支）；范围失去来源自动回退上一轮；切范围默认选中首个候选不给空壳；刷新按范围复用。
+- **opener（"在…中打开"）拍板推迟到 V1 正式版**（2026-07-30 用户决定）：枚举到的本机 exe 不可信——同名伪造（随便一个软件叫 VS Code）、被注入的可执行文件、路径欺骗、启动死锁，内测版没有签名验证与防护体系，不开放"替用户启动本机程序"能力；初版固定名单+写死路径（LOCALAPPDATA\Programs）的检测方案已否决（用户 VS Code 在 D 盘即漏检），正确方向（开始菜单 lnk/App Paths 注册表/.desktop 枚举 + 词表筛选 + 真实入口启动）记入本段备 V1 重启；Rust openers 模块已删除，`commands/mod.rs` 留注释封存。ChatHeader 不渲染"在…中打开"按钮（无真实能力）。
+- **分支切换/创建新分支是 git 写操作**，不属本轮只读范围，待专项评估（计划 §14 已冻结 Review 不接 Git 写入口）。
 
 ### 批次 E：真实 Review、Terminal、Browser
 

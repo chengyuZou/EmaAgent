@@ -128,13 +128,13 @@ export function memoryRoute(memory: MemoryPanelRoute): Hono {
   });
 
   // ── Delete nodes / items (user-initiated) ─────────────────────────────────
-  app.delete('/nodes/:id', (c) => {
-    memory.deleteNode(c.req.param('id'));
+  app.delete('/nodes/:id', async (c) => {
+    await memory.deleteNode(c.req.param('id'));
     return c.body(null, 204);
   });
 
-  app.delete('/items/:id', (c) => {
-    memory.deleteItem(c.req.param('id'));
+  app.delete('/items/:id', async (c) => {
+    await memory.deleteItem(c.req.param('id'));
     return c.body(null, 204);
   });
 
@@ -144,7 +144,7 @@ export function memoryRoute(memory: MemoryPanelRoute): Hono {
     if (!parsed.success) {
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
     }
-    const report = memory.runMaintenance(parsed.data);
+    const report = await memory.runMaintenance(parsed.data);
     return c.json(report);
   });
 

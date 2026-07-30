@@ -18,6 +18,7 @@ import {
 import { selectRelevantMemories } from './selectRelevant.js';
 import { loadSurfaced, dedupTail } from './surfaced.js';
 import type { ResolvedSessionOverrides } from '../maintenance/overrides.js';
+import type { MemoryCommitCoordinator } from '../tasks/commit-coordinator.js';
 
 // ── rerank helpers ───────────────────────────────────────────────────────────
 
@@ -62,13 +63,14 @@ export async function rerankEpisodic(
 
 // ── surfaced tracking ────────────────────────────────────────────────────────
 
-export function recordSurfaced(
+export async function recordSurfaced(
   deps:      MemoryDeps,
+  commitCoordinator: MemoryCommitCoordinator,
   settings:  MemorySettings,
   sessionId: SessionId,
   prior:     AlreadySurfaced,
   bundle:    { layer0?: GraphRecallResult | null; layer2?: EpisodicRecallResult | null },
-): void {
+): Promise<void> {
   const nowMs     = Date.now();
   const newNodes: string[] = [];
   const newItems: string[] = [];
@@ -88,8 +90,14 @@ export function recordSurfaced(
     saturationSlope:  settings.maintenance.boostSaturationSlope,
   };
 
-  bestEffort('touchReferenced nodes', () => deps.nodes.touchReferenced(newNodes, nowMs, boost), undefined);
-  bestEffort('touchReferenced items', () => deps.items.touchReferenced(newItems, nowMs, boost), undefined);
+  await bestEffortAsync(
+    'touchReferenced',
+    () => commitCoordinator.runExclusive(() => deps.runProfileTransaction(() => {
+      deps.nodes.touchReferenced(newNodes, nowMs, boost);
+      deps.items.touchReferenced(newItems, nowMs, boost);
+    })),
+    undefined,
+  );
 
   const merged: AlreadySurfaced = {
     nodes:     dedupTail([...prior.nodes, ...newNodes], 200),
@@ -110,6 +118,7 @@ export async function planRecall(
   nodesIndex:          VectorIndex | null,
   itemsIndex:          VectorIndex | null,
   indexSpaceId:        string | null,
+  commitCoordinator:   MemoryCommitCoordinator,
   getSessionOverrides: (sessionId: SessionId) => ResolvedSessionOverrides,
   ctx:                 PlanContext,
 ): Promise<RecallBundle> {
@@ -225,7 +234,14 @@ export async function planRecall(
     }
   }
 
-  recordSurfaced(deps, settings, ctx.sessionId, prior, { layer0, layer2 });
+  await recordSurfaced(
+    deps,
+    commitCoordinator,
+    settings,
+    ctx.sessionId,
+    prior,
+    { layer0, layer2 },
+  );
 
   return { layer0, layer1, layer2 };
 }

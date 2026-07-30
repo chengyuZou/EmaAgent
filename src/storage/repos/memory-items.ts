@@ -24,6 +24,7 @@ export interface MemoryItemRow {
   meta_json:              string;
   profiles_json:          string;
   last_referenced_at:     number;
+  last_decayed_at:        number | null;
   embedding_provider_id:  string | null;
   embedding_model:        string | null;
   embedding_dim:          number | null;
@@ -74,9 +75,12 @@ export interface MemoryItemEmbeddingRepair extends MemoryItemEmbeddingUpdate {
   repairAt: number;
 }
 
-export interface MemoryImportanceUpdate {
+export interface MemoryItemDecayUpdate {
   id: string;
   importance: number;
+  expectedImportance: number;
+  expectedLastReferencedAt: number;
+  expectedLastDecayedAt: number | null;
   updatedAt: number;
 }
 
@@ -376,6 +380,7 @@ export class MemoryItemsRepo {
 
   listDecayCandidates(
     cutoff: number,
+    cycleCutoff: number,
     now: number,
     protectedKinds: readonly MemoryItemKind[] = [],
     limit = 5000,
@@ -383,34 +388,57 @@ export class MemoryItemsRepo {
     id: string;
     title: string;
     importance: number;
+    last_referenced_at: number;
+    last_decayed_at: number | null;
   }> {
     const exclusion = protectedKinds.map(() => '?').join(',');
     return this.db
       .prepare(
-        `SELECT id, title, importance
+        `SELECT id, title, importance, last_referenced_at, last_decayed_at
            FROM memory_items
           WHERE last_referenced_at < ?
             AND importance > 0
+            AND (last_decayed_at IS NULL OR last_decayed_at < ?)
             AND (expires_at IS NULL OR expires_at > ?)
             ${exclusion ? `AND kind NOT IN (${exclusion})` : ''}
           ORDER BY last_referenced_at ASC, id ASC
           LIMIT ?`,
       )
-      .all(cutoff, now, ...protectedKinds, limit) as Array<{ id: string; title: string; importance: number }>;
+      .all(cutoff, cycleCutoff, now, ...protectedKinds, limit) as Array<{
+        id: string;
+        title: string;
+        importance: number;
+        last_referenced_at: number;
+        last_decayed_at: number | null;
+      }>;
   }
 
-  applyImportanceUpdates(updates: Array<{ id: string; importance: number; updatedAt: number }>): void {
-    if (updates.length === 0) return;
+  applyDecayUpdates(updates: MemoryItemDecayUpdate[]): string[] {
+    if (updates.length === 0) return [];
     const stmt = this.db.prepare(
       `UPDATE memory_items
           SET importance = MAX(0, MIN(100, ?)),
-              updated_at = ?
-        WHERE id = ?`,
+              updated_at = ?,
+              last_decayed_at = ?
+        WHERE id = ?
+          AND importance = ?
+          AND last_referenced_at = ?
+          AND last_decayed_at IS ?`,
     );
-    const txn = this.db.transaction(() => {
-      for (const u of updates) stmt.run(u.importance, u.updatedAt, u.id);
-    });
-    txn();
+    const updatedIds: string[] = [];
+    for (const u of updates) {
+      const info = stmt.run(
+        u.importance,
+        u.updatedAt,
+        u.updatedAt,
+        u.id,
+        u.expectedImportance,
+        u.expectedLastReferencedAt,
+        u.expectedLastDecayedAt,
+      );
+      if (info.changes === 1) updatedIds.push(u.id);
+    }
+    return updatedIds;
   }
 
   touchReferenced(ids: string[], at: number, boost?: MemoryReferenceBoostOptions): void {

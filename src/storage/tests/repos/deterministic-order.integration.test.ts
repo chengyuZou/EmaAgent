@@ -120,7 +120,7 @@ describe('N-012 Profile DB MemoryLazyUpdate 顺序', () => {
         .toEqual(['update-a', 'update-b', 'update-c']);
       expect(indexSql(database, 'idx_lazy_updates_node').replaceAll(/\s+/g, ' '))
         .toContain('memory_node_lazy_updates(node_id, created_at ASC, id ASC)');
-      expect(database.currentVersion()).toBe(15);
+      expect(database.currentVersion()).toBe(16);
     } finally {
       database.close();
     }

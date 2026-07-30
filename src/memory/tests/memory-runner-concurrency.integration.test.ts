@@ -135,4 +135,45 @@ describe('B-051 MemoryTaskRunner 跨 Session 有界并发', () => {
     expect(h.tasks.findById('a-2')?.status).toBe('pending');
     expect(h.started).toEqual(['a-1']);
   });
+
+  it('不同 Session 可以并行计算，但全局 Memory 提交始终串行', async () => {
+    const coordinator = new MemoryCommitCoordinator();
+    const releaseCompute = deferred();
+    const releaseFirstCommit = deferred();
+    let activeCompute = 0;
+    let peakCompute = 0;
+    let activeCommit = 0;
+    let peakCommit = 0;
+    const commitOrder: string[] = [];
+
+    const runSession = async (sessionId: string): Promise<void> => {
+      activeCompute++;
+      peakCompute = Math.max(peakCompute, activeCompute);
+      await releaseCompute.promise;
+      activeCompute--;
+
+      await coordinator.runExclusive(async () => {
+        activeCommit++;
+        peakCommit = Math.max(peakCommit, activeCommit);
+        commitOrder.push(sessionId);
+        if (commitOrder.length === 1) await releaseFirstCommit.promise;
+        activeCommit--;
+      });
+    };
+
+    const first = runSession('session-a');
+    const second = runSession('session-b');
+    expect(peakCompute).toBe(2);
+
+    releaseCompute.resolve();
+    await vi.waitFor(() => expect(commitOrder).toHaveLength(1));
+    expect(activeCommit).toBe(1);
+    expect(peakCommit).toBe(1);
+
+    releaseFirstCommit.resolve();
+    await Promise.all([first, second]);
+
+    expect(commitOrder).toEqual(['session-a', 'session-b']);
+    expect(peakCommit).toBe(1);
+  });
 });

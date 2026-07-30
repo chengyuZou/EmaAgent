@@ -1,6 +1,7 @@
 // 根据全局根 Turn 活动时间判断低优先级后台维护是否可以开始。
 
-export const HEAVY_MAINTENANCE_IDLE_MS = 180_000;
+export const LIGHT_MAINTENANCE_IDLE_MS = 60_000;
+export const HEAVY_MAINTENANCE_IDLE_MS = 30 * 60_000;
 
 export class WorkloadIdlePolicy {
   private lastForegroundActivityAt: number;

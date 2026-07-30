@@ -5,6 +5,7 @@ import { useSettingsStore } from '../stores/settings-store.js';
 import { showToast } from '../lib/toast.js';
 import { EventDisplaySettings } from './EventDisplaySettings.js';
 import { PermissionRulesSettings } from './PermissionRulesSettings.js';
+import { SandboxStatusSettings } from './SandboxStatusSettings.js';
 
 export function GeneralTab(): JSX.Element {
   const savedTimeoutMs = useSettingsStore((state) => state.permissionTimeoutMs);
@@ -86,6 +87,9 @@ export function GeneralTab(): JSX.Element {
 
       <div className="h-px bg-[var(--ema-border)]" />
       <PermissionRulesSettings />
+
+      <div className="h-px bg-[var(--ema-border)]" />
+      <SandboxStatusSettings />
 
       <div className="h-px bg-[var(--ema-border)]" />
       <EventDisplaySettings />

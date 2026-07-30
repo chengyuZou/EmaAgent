@@ -26,6 +26,7 @@ export interface MemoryNodeRow {
   created_at:             number;
   updated_at:             number;
   last_referenced_at:     number;
+  last_decayed_at:        number | null;
   meta_json:              string;
 }
 
@@ -71,9 +72,12 @@ export interface MemoryNodeEmbeddingRepair extends MemoryNodeEmbeddingUpdate {
   targetSpaceId: string;
 }
 
-export interface MemoryImportanceUpdate {
+export interface MemoryNodeDecayUpdate {
   id: string;
   importance: number;
+  expectedImportance: number;
+  expectedLastReferencedAt: number;
+  expectedLastDecayedAt: number | null;
   updatedAt: number;
 }
 
@@ -300,6 +304,7 @@ export class MemoryNodesRepo {
 
   listDecayCandidates(
     cutoff: number,
+    cycleCutoff: number,
     protectedTypes: readonly MemoryNodeType[] = [],
     limit = 5000,
   ): Array<{
@@ -307,37 +312,57 @@ export class MemoryNodesRepo {
     label: string;
     node_type: MemoryNodeType;
     importance: number;
+    last_referenced_at: number;
+    last_decayed_at: number | null;
   }> {
     const exclusion = protectedTypes.map(() => '?').join(',');
     return this.db
       .prepare(
-        `SELECT id, label, node_type, importance
+        `SELECT id, label, node_type, importance,
+                last_referenced_at, last_decayed_at
            FROM memory_nodes
           WHERE last_referenced_at < ? AND importance > 0
+            AND (last_decayed_at IS NULL OR last_decayed_at < ?)
             ${exclusion ? `AND node_type NOT IN (${exclusion})` : ''}
           ORDER BY last_referenced_at ASC, id ASC
           LIMIT ?`,
       )
-      .all(cutoff, ...protectedTypes, limit) as Array<{
+      .all(cutoff, cycleCutoff, ...protectedTypes, limit) as Array<{
         id: string;
         label: string;
         node_type: MemoryNodeType;
         importance: number;
+        last_referenced_at: number;
+        last_decayed_at: number | null;
       }>;
   }
 
-  applyImportanceUpdates(updates: MemoryImportanceUpdate[]): void {
-    if (updates.length === 0) return;
+  applyDecayUpdates(updates: MemoryNodeDecayUpdate[]): string[] {
+    if (updates.length === 0) return [];
     const stmt = this.db.prepare(
       `UPDATE memory_nodes
           SET importance = MAX(0, MIN(100, ?)),
-              updated_at = ?
-        WHERE id = ?`,
+              updated_at = ?,
+              last_decayed_at = ?
+        WHERE id = ?
+          AND importance = ?
+          AND last_referenced_at = ?
+          AND last_decayed_at IS ?`,
     );
-    const txn = this.db.transaction(() => {
-      for (const u of updates) stmt.run(u.importance, u.updatedAt, u.id);
-    });
-    txn();
+    const updatedIds: string[] = [];
+    for (const u of updates) {
+      const info = stmt.run(
+        u.importance,
+        u.updatedAt,
+        u.updatedAt,
+        u.id,
+        u.expectedImportance,
+        u.expectedLastReferencedAt,
+        u.expectedLastDecayedAt,
+      );
+      if (info.changes === 1) updatedIds.push(u.id);
+    }
+    return updatedIds;
   }
 
   touchReferenced(
