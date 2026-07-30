@@ -159,11 +159,21 @@ function WorkspaceTabContent({
       return <AgentRunPanel className="p-2" initialDetailId={tab.agentRunId} />;
     case 'terminal':
     case 'browser':
-      // 启动器不提供这两类入口；仅防御历史持久层残留，不渲染假能力。
-      return (
-        <div className="flex-1 flex items-center justify-center text-xs text-[var(--ema-text-tertiary)]">
-          该能力尚未接入当前版本
-        </div>
-      );
+      // E2 Terminal / E3 Browser 经用户拍板推迟到 V1 正式版(2026-07-30,内测不开放):
+      // 类型与标签壳保留不删,启动器不提供入口;仅防御历史持久层残留或手工构造的标签,
+      // 如实告知未实现,不渲染假能力。
+      return <DeferredCapabilityNotice kind={tab.kind} />;
   }
+}
+
+function DeferredCapabilityNotice({ kind }: { kind: 'terminal' | 'browser' }): JSX.Element {
+  const label = kind === 'terminal' ? '终端' : '浏览器';
+  const icon = kind === 'terminal' ? 'i-lucide:terminal' : 'i-lucide:globe';
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center gap-2 text-xs text-[var(--ema-text-tertiary)]">
+      <span className={`${icon} text-2xl opacity-40`} aria-hidden />
+      <span>{label}功能暂未实现</span>
+      <span className="opacity-70">将在 V1 正式版提供,内测版不开放</span>
+    </div>
+  );
 }

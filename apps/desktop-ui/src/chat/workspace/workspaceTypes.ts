@@ -6,6 +6,8 @@ export type WorkspaceTab =
   | { id: 'review'; kind: 'review' }
   | { id: 'files'; kind: 'files' }
   | { id: `file:${string}`; kind: 'file'; path: string }
+  // terminal/browser 标签类型保留(E2/E3 推迟到 V1 正式版,2026-07-30 拍板):
+  // 启动器不提供入口,内容区渲染"暂未实现"说明,不渲染假能力。
   | { id: `terminal:${string}`; kind: 'terminal'; terminalId: string }
   | { id: `browser:${string}`; kind: 'browser'; browserId: string }
   // 'agentRuns' 是全 Session 子智能体列表面板（计划 §4.2 未单列，参照 Codex 的

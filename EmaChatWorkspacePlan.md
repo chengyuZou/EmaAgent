@@ -1,6 +1,6 @@
 # EmaAgent Chat 工作区与历史导航实施计划
 
-> 状态：批次 A/B/C1/C2/C3/D1/D2a/E1 已完成；D2b（opener + 分支选择器）、E2 Terminal、E3 Browser（建议延后）、批次 F 待做
+> 状态：批次 A/B/C1/C2/C3/D1/D2a/E1 已完成；D2b（opener + 分支选择器）、批次 F 待做；E2 Terminal/E3 Browser 推迟到 V1 正式版（内测不开放，类型保留+防御渲染）
 > 日期：2026-07-23  
 > 范围：Desktop Chat 主布局、Turn 快速导航、Task/AgentRun/来源展示、右侧与底部工作区、桌面打开方式  
 > 不包含：恢复 Session Branch、尚无运行能力的空 Terminal/Browser/Review 面板
@@ -786,8 +786,8 @@ D2b 待做：
 每项独立评审和实现：
 
 - Review（E1，已完成 2026-07-30）：三 scope 事实来源——`上一轮`/`全部会话` 走 Tool file_change presentation；`未暂存`/`已暂存` 走 `src/gitUtils/diff.ts`（`GET /api/sessions/:id/git-diff`）。后端按 codex `/diff` 同款：tracked 用 `git diff [--cached]`，untracked 逐文件 `--no-index` 伪 diff（exit 1 正常、单文件失败计 omitted 不拖垮整体）；安全旗标 `--no-textconv --no-ext-diff --submodule=short --ignore-submodules=dirty`，`filter.*.clean/process` driver 查出置空；有界封顶（单文件 200K 字符截断、总量 2M、单 scope 200 文件、untracked 50，超出计 `omittedFiles`）。前端 `diffModel.ts`（unified diff 解析/折叠段/分列配对，纯函数）+ `DiffCard.tsx` + ReviewPanel 重写：范围下拉（无来源项不渲染、失去来源自动回退上一轮）、折叠优先增量展开（变更行恒显、长上下文折叠每次展开 20 行、hunk 间隔如实标"N 行未变更"不可展开）、跳转到文件（过滤输入 + 文件清单点击滚动定位）、`file:<path>` 标签打开、统一/分列切换不丢展开状态、自动换行、刷新。**实施偏差**：①上下文缓冲用 `-U20` 有界生成（计划原案"hunk 及紧邻上下文"在 context-3 的 tool diff 上无缓冲可展，统一改为一命令有界缓冲，不做按需重算）；②"提交记录/分支比较"范围项依赖 D2b 的 recent_commits/branch 列表，本批不渲染；③"隐藏空白字符"需后端 `-w` 参数，本批选项菜单只做刷新/自动换行；
-- Terminal：PTY、大小调整、输入输出、取消、重启终态；
-- Browser：codex 协议层无 browser API（仅 OAuth 系统浏览器），GUI 闭源无法核实；V1 建议延后，链接走系统默认浏览器，`browser` tab kind 保留类型不提供入口。
+- Terminal（E2，**推迟到 V1 正式版**，2026-07-30 用户拍板：内测不开放）：PTY、大小调整、输入输出、取消、重启终态。代码不删：`terminal` tab kind 保留，启动器不提供入口，内容区渲染"暂未实现，将在 V1 正式版提供"；重启时参照 codex `utils/pty`（portable-pty 封装：spawn_pty vs spawn_pipe、TerminalSize resize、ProcessSignal、输出上限），并先拍板 PTY 归属（Rust 侧 vs bridge），与 BackgroundProcess（pipe 非交互）划界；
+- Browser（E3，**推迟到 V1 正式版**，同上拍板）：codex 协议层无 browser API（仅 OAuth 系统浏览器），GUI 闭源无法核实；`browser` tab kind 同样保留+防御渲染。内测期链接一律走系统默认浏览器。
 
 不能把三项合成一个“Panel UI 批次”。
 
