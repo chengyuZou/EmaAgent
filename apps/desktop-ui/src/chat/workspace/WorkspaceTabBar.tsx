@@ -47,10 +47,12 @@ export interface WorkspaceTabBarProps {
   tabs: WorkspaceTab[];
   activeTabId?: string;
   onAdd(): void;
+  /** RightDock 全宽展开（§3.5）；仅 Dock 展开且有内容时传入，按钮才渲染。 */
+  onExpandFullWidth?: () => void;
 }
 
 export function WorkspaceTabBar({
-  sessionId, dock, tabs, activeTabId, onAdd,
+  sessionId, dock, tabs, activeTabId, onAdd, onExpandFullWidth,
 }: WorkspaceTabBarProps): JSX.Element {
   const closeTab     = useWorkspaceStore((s) => s.closeTab);
   const activateTab  = useWorkspaceStore((s) => s.activateTab);
@@ -120,6 +122,14 @@ export function WorkspaceTabBar({
         );
       })}
       <IconButton size="sm" label="新建标签" icon="i-lucide:plus" onClick={onAdd} />
+      {onExpandFullWidth !== undefined && (
+        <IconButton
+          size="sm"
+          label="全宽展开"
+          icon="i-lucide:maximize-2"
+          onClick={onExpandFullWidth}
+        />
+      )}
     </div>
   );
 }

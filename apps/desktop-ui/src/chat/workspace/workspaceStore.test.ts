@@ -21,7 +21,7 @@ function createLocalStorageMock(): Storage {
 
 vi.stubGlobal('localStorage', createLocalStorageMock());
 
-const { useWorkspaceStore, DEFAULT_RIGHT_WIDTH, DEFAULT_BOTTOM_HEIGHT } = await import('./workspaceStore.js');
+const { useWorkspaceStore, DEFAULT_RIGHT_WIDTH, DEFAULT_BOTTOM_HEIGHT, isRightFullWidth } = await import('./workspaceStore.js');
 const { fileTab, agentRunTab } = await import('./workspaceTypes.js');
 
 function layoutOf(sessionId: SessionId = S1) {
@@ -34,10 +34,53 @@ function resetStore(): void {
     layouts: {},
     rightWidth: DEFAULT_RIGHT_WIDTH,
     bottomHeight: DEFAULT_BOTTOM_HEIGHT,
+    fullWidthBySession: {},
   });
 }
 
 beforeEach(resetStore);
+
+describe('全宽展开（§3.5）', () => {
+  it('标记 + Dock 展开 + 有标签三者同时成立才有效', () => {
+    const { openTab, setFullWidth } = useWorkspaceStore.getState();
+
+    setFullWidth(S1, true);
+    expect(isRightFullWidth(useWorkspaceStore.getState(), S1)).toBe(false);
+
+    openTab(S1, { id: 'review', kind: 'review' });
+    expect(isRightFullWidth(useWorkspaceStore.getState(), S1)).toBe(true);
+  });
+
+  it('折叠 Dock 丢弃全宽标记，重新打开回到普通宽度', () => {
+    const { openTab, setFullWidth, setDockOpen } = useWorkspaceStore.getState();
+    openTab(S1, { id: 'review', kind: 'review' });
+    setFullWidth(S1, true);
+
+    setDockOpen(S1, 'right', false);
+    expect(isRightFullWidth(useWorkspaceStore.getState(), S1)).toBe(false);
+
+    setDockOpen(S1, 'right', true);
+    expect(isRightFullWidth(useWorkspaceStore.getState(), S1)).toBe(false);
+  });
+
+  it('关闭最后标签后全宽派生失效', () => {
+    const { openTab, closeTab, setFullWidth } = useWorkspaceStore.getState();
+    openTab(S1, { id: 'review', kind: 'review' });
+    setFullWidth(S1, true);
+
+    closeTab(S1, 'review');
+    expect(isRightFullWidth(useWorkspaceStore.getState(), S1)).toBe(false);
+  });
+
+  it('全宽标记不进持久层', () => {
+    const { openTab, setFullWidth } = useWorkspaceStore.getState();
+    openTab(S1, { id: 'review', kind: 'review' });
+    setFullWidth(S1, true);
+
+    const persisted = JSON.parse(localStorage.getItem(STORAGE_KEY)!) as Record<string, unknown>;
+    expect('fullWidthBySession' in persisted).toBe(false);
+  });
+});
 
 describe('openTab 与唯一性', () => {
   it('新标签默认进右侧并激活展开', () => {

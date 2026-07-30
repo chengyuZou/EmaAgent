@@ -1,8 +1,10 @@
-// Chat 工作区框架：MainRow(聊天列 + RightDock) + BottomDock，以及跨 Dock 保状态的标签池。
+// Chat 工作区框架：MainRow(聊天列 + RightDock) + BottomDock、跨 Dock 保状态的标签池，
+// 以及 RightDock 全宽展开模式下的 ChatInput 浮动条。
 import { useState, type JSX, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { SessionId } from '@ema-agent/ids';
-import { useWorkspaceStore } from './workspaceStore.js';
+import { Button } from '@ema-agent/ui';
+import { isRightFullWidth, useWorkspaceStore } from './workspaceStore.js';
 import { WorkspaceDock } from './WorkspaceDock.js';
 import type { WorkspaceTab } from './workspaceTypes.js';
 import { ReviewPanel } from '../review/ReviewPanel.js';
@@ -13,17 +15,31 @@ import { FilePreview } from '../FilePreview.js';
 
 export interface WorkspaceFrameProps {
   sessionId: SessionId | null;
-  children: ReactNode;
+  header: ReactNode;
+  history: ReactNode;
+  activity: ReactNode;
+  input: ReactNode;
+  statusBar: ReactNode;
 }
 
-export function WorkspaceFrame({ sessionId, children }: WorkspaceFrameProps): JSX.Element {
+export function WorkspaceFrame({
+  sessionId, header, history, activity, input, statusBar,
+}: WorkspaceFrameProps): JSX.Element {
   const layout = useWorkspaceStore((s) =>
     sessionId ? s.layouts[sessionId as string] : undefined);
-  const openTab = useWorkspaceStore((s) => s.openTab);
+  const fullWidth = useWorkspaceStore((s) => isRightFullWidth(s, sessionId));
+  const setFullWidth = useWorkspaceStore((s) => s.setFullWidth);
 
   // 内容容器元素（回调 ref 触发重渲染，portal 才能挂上）。
   const [rightEl, setRightEl] = useState<HTMLDivElement | null>(null);
   const [bottomEl, setBottomEl] = useState<HTMLDivElement | null>(null);
+  const [columnHistoryEl, setColumnHistoryEl] = useState<HTMLDivElement | null>(null);
+  const [columnInputEl, setColumnInputEl] = useState<HTMLDivElement | null>(null);
+  const [floatHistoryEl, setFloatHistoryEl] = useState<HTMLDivElement | null>(null);
+  const [floatInputEl, setFloatInputEl] = useState<HTMLDivElement | null>(null);
+
+  // ChatInput 浮动条的展开/合上是当次状态（§3.5：不写布局记忆）。
+  const [floatExpanded, setFloatExpanded] = useState(false);
 
   const pool = layout
     ? Object.values(layout.tabsById).map((tab) => {
@@ -43,7 +59,7 @@ export function WorkspaceFrame({ sessionId, children }: WorkspaceFrameProps): JS
             <WorkspaceTabContent
               tab={tab}
               sessionId={sessionId}
-              onOpenFiles={sessionId ? () => openTab(sessionId, { id: 'files', kind: 'files' }) : undefined}
+              onOpenFiles={sessionId ? () => useWorkspaceStore.getState().openTab(sessionId, { id: 'files', kind: 'files' }) : undefined}
             />
           </div>,
           target,
@@ -51,16 +67,64 @@ export function WorkspaceFrame({ sessionId, children }: WorkspaceFrameProps): JS
       })
     : null;
 
+  // ChatHistory / ChatInput 同一实例在两处位置间迁移（全宽 ⇄ 普通），
+  // 与标签池同一 portal 模式：迁移即重挂，草稿经 store 保留。
+  const historyPortal = fullWidth
+    ? (floatExpanded && floatHistoryEl ? createPortal(history, floatHistoryEl) : null)
+    : (columnHistoryEl ? createPortal(history, columnHistoryEl) : null);
+  const inputPortal = fullWidth
+    ? (floatInputEl ? createPortal(input, floatInputEl) : null)
+    : (columnInputEl ? createPortal(input, columnInputEl) : null);
+
   return (
-    <div className="flex flex-col flex-1 min-w-0 min-h-0">
+    <div className="relative flex flex-col flex-1 min-w-0 min-h-0">
       <div className="flex flex-row flex-1 min-h-0 min-w-0">
-        <div className="flex flex-col flex-1 min-w-0 min-h-0">
-          {children}
+        <div className={`flex-col flex-1 min-w-0 min-h-0 ${fullWidth ? 'hidden' : 'flex'}`}>
+          {header}
+          <div ref={setColumnHistoryEl} className="flex-1 min-h-0 flex flex-col" />
+          {activity}
+          <div ref={setColumnInputEl} className="shrink-0" />
+          {statusBar}
         </div>
-        <WorkspaceDock sessionId={sessionId} dock="right" contentRef={setRightEl} />
+        <WorkspaceDock
+          sessionId={sessionId}
+          dock="right"
+          contentRef={setRightEl}
+          fullWidth={fullWidth}
+          {...(sessionId && !fullWidth && (layout?.rightTabOrder.length ?? 0) > 0
+            ? { onExpandFullWidth: () => setFullWidth(sessionId, true) }
+            : {})}
+        />
       </div>
       <WorkspaceDock sessionId={sessionId} dock="bottom" contentRef={setBottomEl} />
       {pool}
+      {historyPortal}
+      {inputPortal}
+
+      {/* ChatInput 浮动条：仅全宽模式；展开为悬浮聊天卡，合回输入条。 */}
+      {fullWidth && (
+        <div className="absolute inset-x-0 bottom-0 z-30 flex justify-center pointer-events-none">
+          <div className="pointer-events-auto w-[min(720px,92%)] pb-3 flex flex-col gap-1.5">
+            {floatExpanded && (
+              <div
+                className="rounded-2xl border overflow-hidden ema-fade-in shadow-[var(--ema-shadow-3)] bg-[var(--ema-surface-1)] border-[var(--ema-border)]"
+                style={{ height: '50vh' }}
+              >
+                <div ref={setFloatHistoryEl} className="h-full flex flex-col" />
+              </div>
+            )}
+            <Button
+              variant="ghost"
+              className="self-center size-6 p-0 rounded-full flex items-center justify-center border shadow-[var(--ema-shadow-1)] bg-[var(--ema-surface-3)] border-[var(--ema-border)] text-[var(--ema-text-tertiary)]"
+              onClick={() => setFloatExpanded((v) => !v)}
+              title={floatExpanded ? '合上浮窗' : '展开聊天'}
+            >
+              <span className={`${floatExpanded ? 'i-lucide:chevron-down' : 'i-lucide:chevron-up'} text-xs`} aria-hidden />
+            </Button>
+            <div ref={setFloatInputEl} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

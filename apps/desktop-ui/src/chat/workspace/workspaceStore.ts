@@ -186,6 +186,11 @@ interface WorkspaceState {
   /** 全局桌面偏好：RightDock 宽度与 BottomDock 高度（§4.4，不随 Session 切换）。 */
   rightWidth: number;
   bottomHeight: number;
+  /**
+   * RightDock 全宽展开（§3.5）：当次运行状态，不进持久化。
+   * 折叠 Dock 时丢弃；消费方仍需按 rightOpen && 有标签派生有效性。
+   */
+  fullWidthBySession: Record<string, boolean>;
 
   /**
    * 打开或激活标签。同一资源全局只存在一个实例：
@@ -202,10 +207,13 @@ interface WorkspaceState {
   setDockOpen(sessionId: SessionId, dock: WorkspaceDockId, open: boolean): void;
   setRightWidth(width: number): void;
   setBottomHeight(height: number): void;
+  /** 进入/退出 RightDock 全宽展开；false 也用于折叠后清理。 */
+  setFullWidth(sessionId: SessionId, fullWidth: boolean): void;
 }
 
 export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   ...loadPersisted(),
+  fullWidthBySession: {},
 
   openTab(sessionId, tab, opts) {
     set((state) => {
@@ -261,7 +269,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
       const next = dock === 'right'
         ? { ...layout, rightOpen: open }
         : { ...layout, bottomOpen: open };
-      return { layouts: { ...state.layouts, [key]: next } };
+      // 折叠 RightDock 丢弃全宽标记（§3.5：下次打开回到普通宽度）。
+      const fullWidthBySession = dock === 'right' && !open && state.fullWidthBySession[key]
+        ? { ...state.fullWidthBySession, [key]: false }
+        : state.fullWidthBySession;
+      return { layouts: { ...state.layouts, [key]: next }, fullWidthBySession };
     });
   },
 
@@ -271,6 +283,12 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
 
   setBottomHeight(height) {
     set({ bottomHeight: Math.max(MIN_BOTTOM_HEIGHT, Math.round(height)) });
+  },
+
+  setFullWidth(sessionId, fullWidth) {
+    set((state) => ({
+      fullWidthBySession: { ...state.fullWidthBySession, [sessionId as string]: fullWidth },
+    }));
   },
 }));
 
@@ -288,3 +306,15 @@ useWorkspaceStore.subscribe((state) => {
     // 持久化失败（隐私模式/配额）不阻断布局操作。
   }
 });
+
+/** 派生有效全宽：标记 + RightDock 展开 + 有标签三者同时成立（§3.5）。 */
+export function isRightFullWidth(
+  state: Pick<WorkspaceState, 'layouts' | 'fullWidthBySession'>,
+  sessionId: SessionId | null,
+): boolean {
+  if (!sessionId) return false;
+  const layout = state.layouts[sessionId as string];
+  return state.fullWidthBySession[sessionId as string] === true
+    && layout?.rightOpen === true
+    && layout.rightTabOrder.length > 0;
+}

@@ -87,53 +87,54 @@ export function ChatPanel(): JSX.Element {
       <div className="flex flex-row h-screen bg-[var(--ema-bg)]">
         <SessionSidebar />
 
-        <WorkspaceFrame sessionId={viewedSessionId}>
-          <ChatHeader
-            sessionId={viewedSessionId}
-            title={session?.title ?? (viewedSessionId ? '加载中…' : '无会话')}
-            isFork={session?.parentSessionId !== null && session?.parentSessionId !== undefined}
-          />
-
-          {sidecarStatus.kind === 'error' && (
-            <div
-              role="status"
-              className="flex items-center gap-2 px-4 py-2 border-b text-xs bg-[var(--ema-danger-muted)] border-[var(--ema-danger)]/30 text-[var(--ema-danger)]"
-            >
-              <span className="i-lucide:unplug shrink-0" aria-hidden />
-              <span className="truncate">Sidecar 暂时离线：{sidecarStatus.reason}</span>
-              <span className="ml-auto shrink-0 text-[var(--ema-text-tertiary)]">输入内容会保留</span>
-            </div>
-          )}
-
-          <ChatHistory />
-          <ChatActivityStrip onOpenReview={openReview} />
-          <ChatInput />
-
-          {/* Status bar */}
-          <div className="flex items-center justify-between px-4 py-1.5 border-t shrink-0 text-[11px] border-[var(--ema-border)] text-[var(--ema-text-tertiary)]">
-            <div className="flex items-center gap-2">
-              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${sidecarStatus.kind === 'ok' ? 'bg-[var(--ema-success)]' : 'bg-[var(--ema-danger)]'}`} />
-              <span>Sidecar</span>
-              {sidecarStatus.kind === 'ok' && (
-                <span className="text-[var(--ema-text-tertiary)]">{sidecarStatus.latencyMs}ms</span>
+        <WorkspaceFrame
+          sessionId={viewedSessionId}
+          header={
+            <>
+              <ChatHeader
+                sessionId={viewedSessionId}
+                title={session?.title ?? (viewedSessionId ? '加载中…' : '无会话')}
+                isFork={session?.parentSessionId !== null && session?.parentSessionId !== undefined}
+              />
+              {sidecarStatus.kind === 'error' && (
+                <div
+                  role="status"
+                  className="flex items-center gap-2 px-4 py-2 border-b text-xs bg-[var(--ema-danger-muted)] border-[var(--ema-danger)]/30 text-[var(--ema-danger)]"
+                >
+                  <span className="i-lucide:unplug shrink-0" aria-hidden />
+                  <span className="truncate">Sidecar 暂时离线：{sidecarStatus.reason}</span>
+                  <span className="ml-auto shrink-0 text-[var(--ema-text-tertiary)]">输入内容会保留</span>
+                </div>
               )}
+            </>
+          }
+          history={<ChatHistory />}
+          activity={<ChatActivityStrip onOpenReview={openReview} />}
+          input={<ChatInput />}
+          statusBar={
+            <div className="flex items-center justify-between px-4 py-1.5 border-t shrink-0 text-[11px] border-[var(--ema-border)] text-[var(--ema-text-tertiary)]">
+              <div className="flex items-center gap-2">
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${sidecarStatus.kind === 'ok' ? 'bg-[var(--ema-success)]' : 'bg-[var(--ema-danger)]'}`} />
+                <span>Sidecar</span>
+                {sidecarStatus.kind === 'ok' && (
+                  <span className="text-[var(--ema-text-tertiary)]">{sidecarStatus.latencyMs}ms</span>
+                )}
+              </div>
+              <div className="flex items-center gap-3">
+                <ContextBall sessionId={viewedSessionId as string | null} />
+                <ContextPanel />
+                {viewedSessionId && (
+                  <span className="font-mono opacity-40">{(viewedSessionId as string).slice(0, 8)}</span>
+                )}
+              </div>
             </div>
-            <div className="flex items-center gap-3">
-              <ContextBall sessionId={viewedSessionId as string | null} />
-              <ContextPanel />
-              {viewedSessionId && (
-                <span className="font-mono opacity-40">{(viewedSessionId as string).slice(0, 8)}</span>
-              )}
-            </div>
-          </div>
-        </WorkspaceFrame>
+          }
+        />
       </div>
     </ErrorBoundary>
   );
 }
 
-// ── Context ball ──────────────────────────────────────────────────────────────
-// Small circular arc indicator showing live input token count vs context window.
 // ── Context ball ──────────────────────────────────────────────────────────────
 // Small circular arc indicator showing live input token count vs context window.
 

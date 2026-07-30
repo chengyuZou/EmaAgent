@@ -1,9 +1,10 @@
-// 聊天列顶栏：会话标题与置顶摘要、底部面板、右侧栏三个工作区入口。
+// 聊天列顶栏：会话标题与置顶摘要、底部面板、右侧栏三个工作区入口；
+// RightDock 全宽时替换为恢复面板宽度单按钮。
 import { useState, type JSX } from 'react';
 import type { SessionId } from '@ema-agent/ids';
 import { IconButton, Popover } from '@ema-agent/ui';
 import { useAgentRunStore } from '../stores/agentRunStore.js';
-import { useWorkspaceStore } from './workspace/workspaceStore.js';
+import { isRightFullWidth, useWorkspaceStore } from './workspace/workspaceStore.js';
 import { PinnedSessionSummary } from './summary/PinnedSessionSummary.js';
 
 export interface ChatHeaderProps {
@@ -18,6 +19,8 @@ export function ChatHeader({ sessionId, title, isFork }: ChatHeaderProps): JSX.E
   const layout = useWorkspaceStore((s) =>
     sessionId ? s.layouts[sessionId as string] : undefined);
   const setDockOpen = useWorkspaceStore((s) => s.setDockOpen);
+  const setFullWidth = useWorkspaceStore((s) => s.setFullWidth);
+  const fullWidth = useWorkspaceStore((s) => isRightFullWidth(s, sessionId));
   const rightOpen = layout?.rightOpen ?? false;
   const bottomOpen = layout?.bottomOpen ?? false;
 
@@ -42,6 +45,16 @@ export function ChatHeader({ sessionId, title, isFork }: ChatHeaderProps): JSX.E
 
       <div className="flex items-center gap-0.5 shrink-0">
         {sessionId && (
+          fullWidth ? (
+            // 全宽时三入口收敛为恢复面板宽度（§3.5）。
+            <button
+              className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs transition-colors text-[var(--ema-primary)] hover:bg-[var(--ema-primary-muted)]"
+              onClick={() => setFullWidth(sessionId, false)}
+            >
+              <span className="i-lucide:minimize-2 text-sm" aria-hidden />
+              恢复面板宽度
+            </button>
+          ) : (
           <>
             <Popover
               open={summaryOpen}
@@ -83,6 +96,7 @@ export function ChatHeader({ sessionId, title, isFork }: ChatHeaderProps): JSX.E
               onClick={() => setDockOpen(sessionId, 'right', !rightOpen)}
             />
           </>
+          )
         )}
       </div>
     </div>

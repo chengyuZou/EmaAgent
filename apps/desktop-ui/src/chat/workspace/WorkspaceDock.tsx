@@ -12,9 +12,15 @@ export interface WorkspaceDockProps {
   /** 内容容器回调：WorkspaceFrame 的标签池经 portal 挂载到这里。
    *  容器常驻（折叠时仅尺寸为 0），标签内部状态不因折叠丢失。 */
   contentRef: (el: HTMLDivElement | null) => void;
+  /** RightDock 全宽展开（§3.5）：占满 WorkspaceFrame 宽度。 */
+  fullWidth?: boolean;
+  /** 放大按钮回调；仅 Dock 展开且有内容时传入（按钮才渲染）。 */
+  onExpandFullWidth?: () => void;
 }
 
-export function WorkspaceDock({ sessionId, dock, contentRef }: WorkspaceDockProps): JSX.Element {
+export function WorkspaceDock({
+  sessionId, dock, contentRef, fullWidth = false, onExpandFullWidth,
+}: WorkspaceDockProps): JSX.Element {
   const layout = useWorkspaceStore((s) =>
     sessionId ? s.layouts[sessionId as string] : undefined);
   const rightWidth = useWorkspaceStore((s) => s.rightWidth);
@@ -57,7 +63,7 @@ export function WorkspaceDock({ sessionId, dock, contentRef }: WorkspaceDockProp
 
   const horizontal = dock === 'right';
   const sizeStyle = horizontal
-    ? { width: open ? rightWidth : 0 }
+    ? { width: fullWidth ? '100%' : open ? rightWidth : 0 }
     : { height: open ? bottomHeight : 0 };
 
   return (
@@ -69,7 +75,7 @@ export function WorkspaceDock({ sessionId, dock, contentRef }: WorkspaceDockProp
         resizing ? '' : horizontal ? 'ema-transition-width' : 'ema-transition-height'
       }`}
     >
-      {open && (
+      {open && !fullWidth && (
         <div
           className={horizontal ? 'ema-resize-handle' : 'ema-resize-handle-h'}
           onMouseDown={onResizeStart}
@@ -84,6 +90,7 @@ export function WorkspaceDock({ sessionId, dock, contentRef }: WorkspaceDockProp
           tabs={tabs}
           {...(activeTabId !== undefined ? { activeTabId } : {})}
           onAdd={() => setLauncherOverlay(true)}
+          {...(onExpandFullWidth !== undefined ? { onExpandFullWidth } : {})}
         />
       )}
 
