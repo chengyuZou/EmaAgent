@@ -231,6 +231,26 @@ describe('SessionStore — 聊天历史导航', () => {
 // ── Turn concurrency ──────────────────────────────────────────────────────────
 
 describe('SessionStore — turn concurrency', () => {
+  it('Session 进入删除准备后拒绝创建新 Turn', () => {
+    const store = makeStore();
+    const session = store.createSession();
+
+    store.beginSessionDeletion(session.id);
+
+    expect(() => startTurn(store, {
+      sessionId: session.id,
+      executionProfile: 'chat',
+      userInput: 'too late',
+    })).toThrow('session_deleting');
+
+    store.cancelSessionDeletion(session.id);
+    expect(() => startTurn(store, {
+      sessionId: session.id,
+      executionProfile: 'chat',
+      userInput: 'retry',
+    })).not.toThrow();
+  });
+
   it('startTurn creates a running turn and returns AbortSignal', () => {
     const store = makeStore();
     const s = store.createSession();

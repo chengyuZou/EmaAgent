@@ -171,6 +171,7 @@ export class SessionStore implements SessionOwnershipFacade {
   private readonly db:           Database;
   private readonly onSessionRemoved?: (sessionId: string) => void;
   private readonly onTurnRemoved?: (sessionId: string, turnId: string) => void;
+  private readonly deletingSessions = new Set<string>();
   /** 单调时间戳避免同毫秒写入破坏游标边界。 */
   private lastTs = 0;
 
@@ -354,17 +355,39 @@ export class SessionStore implements SessionOwnershipFacade {
 
   // ── 删除 ───────────────────────────────────────────────────────────────────
 
+  /** 删除协调开始后立刻阻止新 Turn，并向当前根 Turn 发出取消信号。 */
+  beginSessionDeletion(id: SessionId): void {
+    this.requireSession(id);
+    if (this.deletingSessions.has(id)) {
+      throw new Error(`session_deleting: ${id}`);
+    }
+    this.deletingSessions.add(id);
+    this.registry.abort(id);
+  }
+
+  /** 跨模块准备失败时恢复 Session 的可运行状态。 */
+  cancelSessionDeletion(id: SessionId): void {
+    this.deletingSessions.delete(id);
+  }
+
   deleteSession(id: SessionId): void {
-    this.registry.clear(id);
-    this.sessionsRepo.delete(id);
-    // 数据库行由外键级联；文件目录需要显式清理。
-    this.onSessionRemoved?.(id as string);
+    try {
+      this.registry.clear(id);
+      this.sessionsRepo.delete(id);
+      // 数据库行由外键级联；文件目录需要显式清理。
+      this.onSessionRemoved?.(id as string);
+    } finally {
+      this.deletingSessions.delete(id);
+    }
   }
 
   // ── Turn ────────────────────────────────────────────────────────────────────
 
   /** 创建根 Turn，并返回贯穿 LLM 与工具执行的取消信号。 */
   startTurn(input: StartTurnInput): { turn: Turn; signal: AbortSignal } {
+    if (this.deletingSessions.has(input.sessionId)) {
+      throw new Error(`session_deleting: ${input.sessionId}`);
+    }
     if (this.registry.isRunning(input.sessionId)) {
       throw new Error('session_busy: a turn is already running for this session');
     }

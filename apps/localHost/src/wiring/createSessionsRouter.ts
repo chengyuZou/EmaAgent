@@ -13,6 +13,7 @@ export function createSessionsRouter(bindings: AppBindings): Hono {
     },
     interactions: bindings.interactionQueue,
     permissions: bindings.permission,
+    memory: bindings.memory,
   });
 
   const titleGenerator = new SessionTitleGenerator(bindings.session, {

@@ -16,29 +16,86 @@ describe('SessionLifecycle', () => {
     expect(fixture.invalidateSessionRuntime).toHaveBeenCalledWith(sessionId);
   });
 
-  it('永久删除前取消交互、清除授权并释放运行时', () => {
+  it('永久删除前阻止新 Turn、排空 Memory，再删除数据并清理软引用', async () => {
     const calls: string[] = [];
     const fixture = createFixture(calls);
     const sessionId = asSessionId('session-a');
 
-    fixture.lifecycle.deleteSession(sessionId);
+    await fixture.lifecycle.deleteSession(sessionId);
 
     expect(calls).toEqual([
+      'begin-deletion',
       'cancel-interactions',
       'clear-permissions',
       'remove-runtime',
+      'memory-before-delete',
       'delete-session',
+      'memory-after-delete',
+    ]);
+  });
+
+  it('Memory 准备失败时恢复 Session 与 Extraction 入口', async () => {
+    const calls: string[] = [];
+    const fixture = createFixture(calls, { failMemoryPreparation: true });
+    const sessionId = asSessionId('session-a');
+
+    await expect(fixture.lifecycle.deleteSession(sessionId)).rejects.toThrow(
+      'memory preparation failed',
+    );
+    expect(calls).toEqual([
+      'begin-deletion',
+      'cancel-interactions',
+      'clear-permissions',
+      'remove-runtime',
+      'memory-before-delete',
+      'memory-cancel-delete',
+      'cancel-deletion',
+    ]);
+  });
+
+  it('Data DB 已删除但派生文件清理失败时仍完成 Memory 后清理', async () => {
+    const calls: string[] = [];
+    const fixture = createFixture(calls, { failAfterDataDeletion: true });
+    const sessionId = asSessionId('session-a');
+
+    await expect(fixture.lifecycle.deleteSession(sessionId)).rejects.toThrow(
+      'derived file cleanup failed',
+    );
+    expect(calls).toEqual([
+      'begin-deletion',
+      'cancel-interactions',
+      'clear-permissions',
+      'remove-runtime',
+      'memory-before-delete',
+      'delete-session',
+      'memory-after-delete',
     ]);
   });
 });
 
-function createFixture(calls: string[] = []) {
+function createFixture(
+  calls: string[] = [],
+  options: {
+    failMemoryPreparation?: boolean;
+    failAfterDataDeletion?: boolean;
+  } = {},
+) {
   const invalidateSessionRuntime = vi.fn();
+  let sessionExists = true;
   const lifecycle = new SessionLifecycle({
     session: {
       patchSession: vi.fn(),
       getSession: vi.fn(() => ({ id: 'session-a' }) as never),
-      deleteSession: vi.fn(() => calls.push('delete-session')),
+      sessionExists: vi.fn(() => sessionExists),
+      beginSessionDeletion: vi.fn(() => calls.push('begin-deletion')),
+      cancelSessionDeletion: vi.fn(() => calls.push('cancel-deletion')),
+      deleteSession: vi.fn(() => {
+        calls.push('delete-session');
+        sessionExists = false;
+        if (options.failAfterDataDeletion) {
+          throw new Error('derived file cleanup failed');
+        }
+      }),
     },
     runtime: {
       invalidateSessionRuntime,
@@ -49,6 +106,18 @@ function createFixture(calls: string[] = []) {
     },
     permissions: {
       clearSession: vi.fn(() => calls.push('clear-permissions')),
+    },
+    memory: {
+      beforeSessionDelete: vi.fn(async () => {
+        calls.push('memory-before-delete');
+        if (options.failMemoryPreparation) {
+          throw new Error('memory preparation failed');
+        }
+      }),
+      afterSessionDelete: vi.fn(async () => {
+        calls.push('memory-after-delete');
+      }),
+      cancelSessionDelete: vi.fn(() => calls.push('memory-cancel-delete')),
     },
   });
   return { lifecycle, invalidateSessionRuntime };

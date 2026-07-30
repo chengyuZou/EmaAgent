@@ -73,6 +73,34 @@ export class MemoryLazyUpdatesRepo {
     return row.n;
   }
 
+  /** 返回待归并证据中仍携带的来源 Session。 */
+  listSourceSessionIds(): string[] {
+    const rows = this.db
+      .prepare(
+        `SELECT DISTINCT source_session_id
+           FROM memory_node_lazy_updates
+          WHERE source_session_id IS NOT NULL
+          ORDER BY source_session_id ASC`,
+      )
+      .all() as Array<{ source_session_id: string }>;
+    return rows.map(row => row.source_session_id);
+  }
+
+  /**
+   * Session 删除不等于遗忘已经提取的证据，因此只清空失效软引用，
+   * fragment 继续等待 Consolidation。
+   */
+  detachSourceSession(sourceSessionId: string): number {
+    return this.db
+      .prepare(
+        `UPDATE memory_node_lazy_updates
+            SET source_session_id = NULL,
+                source_turn_id = NULL
+          WHERE source_session_id = ?`,
+      )
+      .run(sourceSessionId).changes;
+  }
+
   /** 提交前确认快照中的更新行仍然完整存在。 */
   countByIds(ids: readonly string[]): number {
     const batches = createSqliteIdBatches(this.db, ids);

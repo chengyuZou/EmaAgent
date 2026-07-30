@@ -1,6 +1,6 @@
 -- L0 节点溯源链：记录每个记忆节点的事实来自哪些 Session/Turn。
 -- 节点与来源是多对多（同一节点可经多次提取/lazy update 累积证据），故用关联表而非节点列。
--- 跨库软引用：sessions/turns 在 data.db，不能建 FK；Session 删除后来源行保留为历史记录。
+-- 跨库软引用：sessions/turns 在 data.db，不能建 FK；Session 生命周期与启动恢复负责清理失效来源。
 -- source_turn_id 不允许 NULL：SQLite rowid 表的 PK 列里 NULL 互不相等，会破坏 INSERT OR IGNORE 去重。
 CREATE TABLE memory_node_sources (
   node_id           TEXT NOT NULL REFERENCES memory_nodes(id) ON DELETE CASCADE,

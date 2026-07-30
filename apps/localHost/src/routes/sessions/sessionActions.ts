@@ -122,8 +122,8 @@ export function sessionActionsRoute(
     return c.body(null, 204);
   });
 
-  app.delete('/:id', (c) => {
-    lifecycle.deleteSession(asSessionId(c.req.param('id')));
+  app.delete('/:id', async (c) => {
+    await lifecycle.deleteSession(asSessionId(c.req.param('id')));
     return c.body(null, 204);
   });
 

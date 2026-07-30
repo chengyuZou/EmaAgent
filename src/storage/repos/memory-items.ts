@@ -170,6 +170,31 @@ export class MemoryItemsRepo {
       .get(sourceSessionId, title) as MemoryItemRow | undefined;
   }
 
+  /** 返回仍被 L2 来源字段引用的 Session，供跨库孤儿恢复扫描。 */
+  listSourceSessionIds(): string[] {
+    const rows = this.db
+      .prepare(
+        `SELECT DISTINCT source_session_id
+           FROM memory_items
+          WHERE source_session_id IS NOT NULL
+          ORDER BY source_session_id ASC`,
+      )
+      .all() as Array<{ source_session_id: string }>;
+    return rows.map(row => row.source_session_id);
+  }
+
+  /** 保留长期记忆正文，只清空已经失效的 Session/Turn 来源。 */
+  detachSourceSession(sourceSessionId: string): number {
+    return this.db
+      .prepare(
+        `UPDATE memory_items
+            SET source_session_id = NULL,
+                source_turn_id = NULL
+          WHERE source_session_id = ?`,
+      )
+      .run(sourceSessionId).changes;
+  }
+
   listByKind(kind: MemoryItemKind, limit = 500): MemoryItemRow[] {
     return this.db
       .prepare(

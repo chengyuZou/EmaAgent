@@ -5,6 +5,9 @@ import type { Session, PatchSessionInput } from './types.js';
 interface SessionLifecycleStore {
   patchSession(sessionId: SessionId, patch: PatchSessionInput): void;
   getSession(sessionId: SessionId): Session;
+  sessionExists(sessionId: SessionId): boolean;
+  beginSessionDeletion(sessionId: SessionId): void;
+  cancelSessionDeletion(sessionId: SessionId): void;
   deleteSession(sessionId: SessionId): void;
 }
 
@@ -21,11 +24,18 @@ interface SessionPermissionState {
   clearSession(sessionId: SessionId): void;
 }
 
+interface SessionMemoryLifecycle {
+  beforeSessionDelete(sessionId: SessionId): Promise<void>;
+  afterSessionDelete(sessionId: SessionId): Promise<void>;
+  cancelSessionDelete(sessionId: SessionId): void;
+}
+
 export interface SessionLifecycleDeps {
   session: SessionLifecycleStore;
   runtime: SessionRuntimeState;
   interactions: SessionInteractionState;
   permissions: SessionPermissionState;
+  memory: SessionMemoryLifecycle;
 }
 
 /**
@@ -43,10 +53,28 @@ export class SessionLifecycle {
     return this.deps.session.getSession(sessionId);
   }
 
-  deleteSession(sessionId: SessionId): void {
-    this.deps.interactions.cancelForSession(sessionId, 'session deleted');
-    this.deps.permissions.clearSession(sessionId);
-    this.deps.runtime.removeSessionRuntime(sessionId);
-    this.deps.session.deleteSession(sessionId);
+  async deleteSession(sessionId: SessionId): Promise<void> {
+    this.deps.session.beginSessionDeletion(sessionId);
+    try {
+      this.deps.interactions.cancelForSession(sessionId, 'session deleted');
+      this.deps.permissions.clearSession(sessionId);
+      this.deps.runtime.removeSessionRuntime(sessionId);
+      await this.deps.memory.beforeSessionDelete(sessionId);
+      try {
+        this.deps.session.deleteSession(sessionId);
+      } finally {
+        // 数据行可能已删除，但派生目录清理随后抛错；此时仍须释放
+        // Memory 阻塞并清掉 Profile DB 软引用。
+        if (!this.deps.session.sessionExists(sessionId)) {
+          await this.deps.memory.afterSessionDelete(sessionId);
+        }
+      }
+    } catch (error) {
+      if (this.deps.session.sessionExists(sessionId)) {
+        this.deps.memory.cancelSessionDelete(sessionId);
+        this.deps.session.cancelSessionDeletion(sessionId);
+      }
+      throw error;
+    }
   }
 }

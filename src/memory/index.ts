@@ -72,6 +72,10 @@ export type {
   PendingFragment,
 } from './extract/types.js';
 export type { ConsolidationReport } from './consolidation/consolidatePendingNodes.js';
+export type {
+  SessionMemoryCleanupReport,
+  OrphanSessionMemoryCleanupReport,
+} from './sessionCleanup.js';
 
 // ── Background tasks + recovery ──────────────────────────────────────────────
 export { SessionTaskQueue }                   from './tasks/session-queue.js';

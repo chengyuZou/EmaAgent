@@ -72,11 +72,16 @@ export class MemoryTaskRunner {
   private currentTick: Promise<void> | null = null;
   private stopping = false;
   private lastCleanupAt = 0;
+  private readonly blockedSessions = new Set<SessionId>();
+  private readonly activeExtractions = new Map<SessionId, AbortController>();
 
   constructor(private readonly deps: MemoryTaskRunnerDeps) {}
 
   /** Enqueue a fresh task. Returns the task id so callers can correlate. */
   enqueue(kind: RunnableMemoryTaskKind, sessionId: SessionId, payload: Record<string, unknown>): string {
+    if (this.blockedSessions.has(sessionId)) {
+      throw new MemoryLeaseLostError('memory: session deletion rejected extraction enqueue');
+    }
     if (kind !== 'extraction') {
       throw new UnsupportedMemoryTaskKindError(
         kind as Exclude<MemoryTaskKind, RunnableMemoryTaskKind>,
@@ -116,6 +121,22 @@ export class MemoryTaskRunner {
     await this.currentTick;
     await this.deps.queue.drainAll();
     await this.deps.commitCoordinator.drain();
+  }
+
+  /**
+   * 删除 Session 前关闭该 Session 的 Extraction 入口。
+   * 删除任务行让租约立即失效，AbortSignal 尽快停止事务外模型调用；调用方
+   * 不等待可能忽略取消的 Provider，短提交由 MemoryCommitCoordinator 排空。
+   */
+  async cancelSession(sessionId: SessionId): Promise<void> {
+    this.blockedSessions.add(sessionId);
+    this.deps.memory.memoryTasks.deleteForSession(sessionId);
+    this.activeExtractions.get(sessionId)?.abort();
+  }
+
+  /** 删除失败时恢复入队；删除成功后释放临时阻塞集合。 */
+  releaseSession(sessionId: SessionId): void {
+    this.blockedSessions.delete(sessionId);
   }
 
   private async runTick(): Promise<void> {
@@ -241,64 +262,81 @@ export class MemoryTaskRunner {
     }
     const sid = payload.sessionId as SessionId;
     const executionProfile = payload.executionProfile;
+    const abortController = new AbortController();
+    const ownsLease = (): boolean =>
+      isLeaseValid() &&
+      !this.blockedSessions.has(sid) &&
+      !abortController.signal.aborted;
+
+    if (!ownsLease()) throw new MemoryLeaseLostError();
+    this.activeExtractions.set(sid, abortController);
 
     // Honour per-session override: consolidation can be skipped without
     // breaking extraction — lazy_updates simply stay buffered.
     const overrides = this.deps.getSessionOverrides(sid);
     const skipConsolidation = !overrides.consolidation;
 
-    await this.deps.queue.enqueue(sid, async () => {
-      const queueDepth = this.deps.memory.memoryTasks
-        .countByStatus('pending');
-      this.deps.memory.emit?.({
-        type:       'memory_extraction_started',
-        sessionId:  sid,
-        queueDepth,
-      });
-
-      const t0 = Date.now();
-      try {
-        const result = await (this.deps.runPipeline ?? runExtractionPipeline)(
-          {
-            memory:     this.deps.memory,
-            embed:      this.deps.embed,
-            settings:   this.deps.settings,
-            nodesIndex: this.deps.getNodesIndex(),
-            itemsIndex: this.deps.getItemsIndex(),
-            indexSpaceId: this.deps.getIndexSpaceId(),
-            commitCoordinator: this.deps.commitCoordinator,
-            refreshIndexes: this.deps.refreshIndexes,
-          },
-          {
-            sessionId: sid,
-            executionProfile,
-            runId: row.id,
-            skipConsolidation,
-            isLeaseValid,
-          },
-        );
-        if (!isLeaseValid()) throw new MemoryLeaseLostError();
+    try {
+      await this.deps.queue.enqueue(sid, async () => {
+        if (!ownsLease()) throw new MemoryLeaseLostError();
+        const queueDepth = this.deps.memory.memoryTasks
+          .countByStatus('pending');
         this.deps.memory.emit?.({
-          type:       'memory_extraction_completed',
+          type:       'memory_extraction_started',
           sessionId:  sid,
-          nodes:      result.extractedNodes,
-          edges:      result.extractedEdges,
-          items:      result.extractedItems,
-          lazyQueued: result.lazyUpdatesQueued,
-          durationMs: Date.now() - t0,
+          queueDepth,
         });
-      } catch (err) {
-        // 租约丢失是正常移交而非提取失败，不发 failure 事件误导前端。
-        if (!(err instanceof MemoryLeaseLostError)) {
+
+        const t0 = Date.now();
+        try {
+          const result = await (this.deps.runPipeline ?? runExtractionPipeline)(
+            {
+              memory:     this.deps.memory,
+              embed:      this.deps.embed,
+              settings:   this.deps.settings,
+              nodesIndex: this.deps.getNodesIndex(),
+              itemsIndex: this.deps.getItemsIndex(),
+              indexSpaceId: this.deps.getIndexSpaceId(),
+              commitCoordinator: this.deps.commitCoordinator,
+              refreshIndexes: this.deps.refreshIndexes,
+            },
+            {
+              sessionId: sid,
+              executionProfile,
+              runId: row.id,
+              signal: abortController.signal,
+              skipConsolidation,
+              isLeaseValid: ownsLease,
+            },
+          );
+          if (!ownsLease()) throw new MemoryLeaseLostError();
           this.deps.memory.emit?.({
-            type:      'memory_extraction_failed',
-            sessionId: sid,
-            error:     err instanceof Error ? err.message : String(err),
+            type:       'memory_extraction_completed',
+            sessionId:  sid,
+            nodes:      result.extractedNodes,
+            edges:      result.extractedEdges,
+            items:      result.extractedItems,
+            lazyQueued: result.lazyUpdatesQueued,
+            durationMs: Date.now() - t0,
           });
+        } catch (err) {
+          // Session 删除与租约移交都是正常取消，不发 failure 事件误导前端。
+          if (!ownsLease()) throw new MemoryLeaseLostError();
+          if (!(err instanceof MemoryLeaseLostError)) {
+            this.deps.memory.emit?.({
+              type:      'memory_extraction_failed',
+              sessionId: sid,
+              error:     err instanceof Error ? err.message : String(err),
+            });
+          }
+          throw err;
         }
-        throw err;
+      });
+    } finally {
+      if (this.activeExtractions.get(sid) === abortController) {
+        this.activeExtractions.delete(sid);
       }
-    });
+    }
   }
 
   // ── Consolidation handler (rare standalone case) ──────────────────────────

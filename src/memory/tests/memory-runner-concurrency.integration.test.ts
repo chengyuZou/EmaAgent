@@ -1,6 +1,7 @@
 // 测试 Memory worker 只并发不同 Session、同 Session 保序，并在关机后停止认领新任务。
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { asSessionId } from '@ema-agent/ids';
 import { Database, MemoryTasksRepo } from '@ema-agent/storage';
 import { MemoryCommitCoordinator } from '../tasks/commit-coordinator.js';
 import {
@@ -48,11 +49,13 @@ function createHarness(taskIds: Array<{ id: string; sessionId: string }>) {
   }));
 
   const gates = new Map(taskIds.map(task => [task.id, deferred()]));
+  const signals = new Map<string, AbortSignal>();
   const started: string[] = [];
   let active = 0;
   let peakActive = 0;
   const runPipeline: NonNullable<MemoryTaskRunnerDeps['runPipeline']> = async (_deps, args) => {
     started.push(args.runId);
+    if (args.signal) signals.set(args.runId, args.signal);
     active++;
     peakActive = Math.max(peakActive, active);
     await gates.get(args.runId)!.promise;
@@ -82,6 +85,7 @@ function createHarness(taskIds: Array<{ id: string; sessionId: string }>) {
       extraction: true,
       consolidation: true,
     }),
+    refreshIndexes: async () => undefined,
     runPipeline,
   });
 
@@ -89,6 +93,7 @@ function createHarness(taskIds: Array<{ id: string; sessionId: string }>) {
     runner,
     tasks,
     gates,
+    signals,
     started,
     peakActive: () => peakActive,
   };
@@ -134,6 +139,31 @@ describe('B-051 MemoryTaskRunner 跨 Session 有界并发', () => {
     expect(h.tasks.findById('a-1')?.status).toBe('completed');
     expect(h.tasks.findById('a-2')?.status).toBe('pending');
     expect(h.started).toEqual(['a-1']);
+  });
+
+  it('Session 删除会撤销任务租约、取消模型调用并丢弃迟到结果', async () => {
+    const h = createHarness([
+      { id: 'a-1', sessionId: 'session-a' },
+      { id: 'a-2', sessionId: 'session-a' },
+      { id: 'b-1', sessionId: 'session-b' },
+    ]);
+
+    const tick = h.runner.tick();
+    await vi.waitFor(() => expect(h.started).toEqual(['a-1', 'b-1']));
+
+    const cancellation = h.runner.cancelSession(asSessionId('session-a'));
+    expect(h.tasks.findById('a-1')).toBeUndefined();
+    expect(h.tasks.findById('a-2')).toBeUndefined();
+    expect(h.signals.get('a-1')?.aborted).toBe(true);
+    await expect(cancellation).resolves.toBeUndefined();
+
+    // 删除协调不能等待 Provider；即便 Provider 迟到返回，Runner 仍须再次验租约。
+    h.gates.get('a-1')!.resolve();
+    h.gates.get('b-1')!.resolve();
+    await tick;
+
+    expect(h.tasks.findById('b-1')?.status).toBe('completed');
+    expect(h.started).not.toContain('a-2');
   });
 
   it('不同 Session 可以并行计算，但全局 Memory 提交始终串行', async () => {

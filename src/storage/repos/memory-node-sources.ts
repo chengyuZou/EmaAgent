@@ -66,4 +66,23 @@ export class MemoryNodeSourcesRepo {
     }
     return rows;
   }
+
+  /** 返回仍被来源表引用的 Session，供跨库孤儿恢复扫描。 */
+  listSourceSessionIds(): string[] {
+    const rows = this.db
+      .prepare(
+        `SELECT DISTINCT source_session_id
+           FROM memory_node_sources
+          ORDER BY source_session_id ASC`,
+      )
+      .all() as Array<{ source_session_id: string }>;
+    return rows.map(row => row.source_session_id);
+  }
+
+  /** Session 永久删除后移除溯源关系；Memory Node 本身不随聊天记录删除。 */
+  deleteBySession(sourceSessionId: string): number {
+    return this.db
+      .prepare('DELETE FROM memory_node_sources WHERE source_session_id = ?')
+      .run(sourceSessionId).changes;
+  }
 }

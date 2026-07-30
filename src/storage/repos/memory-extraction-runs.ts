@@ -64,4 +64,25 @@ export class MemoryExtractionRunsRepo {
     this.db.prepare('DELETE FROM memory_extraction_runs WHERE run_id = ?').run(runId);
   }
 
+  /** 返回跨库恢复标记中仍引用的 Session。 */
+  listSessionIds(): string[] {
+    const rows = this.db
+      .prepare(
+        `SELECT DISTINCT session_id
+           FROM memory_extraction_runs
+          ORDER BY session_id ASC`,
+      )
+      .all() as Array<{ session_id: string }>;
+    return rows.map(row => row.session_id);
+  }
+
+  /**
+   * Session 已删除时恢复标记不再有可补写的 Data DB 目标，
+   * 只能丢弃，不能在下一次启动伪造恢复成功。
+   */
+  deleteBySession(sessionId: string): number {
+    return this.db
+      .prepare('DELETE FROM memory_extraction_runs WHERE session_id = ?')
+      .run(sessionId).changes;
+  }
 }

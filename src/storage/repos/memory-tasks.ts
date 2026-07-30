@@ -215,6 +215,16 @@ export class MemoryTasksRepo {
     return out;
   }
 
+  /**
+   * Session 删除准备阶段主动移除全部终态和非终态任务。
+   * running 行消失会让旧 Worker 的 heartbeat/CAS 立即失去租约。
+   */
+  deleteForSession(sessionId: string): number {
+    return this.db
+      .prepare('DELETE FROM memory_tasks WHERE session_id = ?')
+      .run(sessionId).changes;
+  }
+
   // ── 启动恢复 ────────────────────────────────────────────────────────
 
   /**

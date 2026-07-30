@@ -53,6 +53,9 @@ import { buildMemoryContextContribution } from './recall/context-builder.js';
 import { IndexManager }  from './vector-index/index-manager.js';
 import { planRecall }    from './recall/recall-planner.js';
 import { handleAfterTurn, handleForceExtract } from './extract/dispatcher.js';
+import {
+  cleanupSessionMemoryReferences,
+} from './sessionCleanup.js';
 
 export class MemoryPlanner {
   private readonly embed:    EmbedService;
@@ -295,6 +298,27 @@ export class MemoryPlanner {
   async drain(): Promise<void> {
     await this.runner.shutdown();
     await this.commitCoordinator.drain();
+  }
+
+  /** Session 删除前停止新提取、撤销任务租约并取消事务外模型调用。 */
+  async beforeSessionDelete(sessionId: SessionId): Promise<void> {
+    await this.runner.cancelSession(sessionId);
+  }
+
+  /** Data DB 删除成功后清理 Profile DB 软引用；长期 Memory 正文继续保留。 */
+  async afterSessionDelete(sessionId: SessionId): Promise<void> {
+    try {
+      await this.commitCoordinator.runExclusive(() =>
+        cleanupSessionMemoryReferences(this.deps, sessionId),
+      );
+    } finally {
+      this.runner.releaseSession(sessionId);
+    }
+  }
+
+  /** Session 删除在 Data DB 提交前失败时恢复 Extraction 入口。 */
+  cancelSessionDelete(sessionId: SessionId): void {
+    this.runner.releaseSession(sessionId);
   }
 
   runStartupRecovery(): RecoveryReport { return doStartupRecovery(this.deps, this.embed); }
