@@ -142,12 +142,14 @@ export class RootAgentExecution {
       }
 
       activePhase = 'persistence';
-      transcript.appendMessage({
-        turnId,
-        sessionId,
-        role: 'user',
-        blocks: input.persistedUserInput,
-      });
+      if (input.persistedUserInput !== undefined) {
+        transcript.appendMessage({
+          turnId,
+          sessionId,
+          role: 'user',
+          blocks: input.persistedUserInput,
+        });
+      }
 
       // Narrative 块属于 UI 正式记录，但历史投影不会把它当普通用户消息重放。
       if (preparedContext.narrativeTimelines.length > 0) {

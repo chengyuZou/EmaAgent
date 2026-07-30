@@ -35,12 +35,19 @@ export type NarrativePolicy = 'auto' | 'always' | 'off';
 /** Turn 的持久化生命周期状态；根终态由 TurnExecutor 统一写入。 */
 export type TurnStatus = 'pending' | 'running' | 'completed' | 'failed' | 'aborted';
 
-/** V1 唯一启用的 Turn 触发源；未来来源必须以新的判别分支显式加入。 */
+/** 用户主动提交的公开 Turn 触发源。 */
 export interface UserMessageTurnTrigger {
   readonly type: 'userMessage';
 }
 
-export type TurnTrigger = UserMessageTurnTrigger;
+/** 后台进程自然结束后由 LocalHost 内部创建，HTTP 客户端不能伪造。 */
+export interface BackgroundProcessCompletedTurnTrigger {
+  readonly type: 'backgroundProcessCompleted';
+}
+
+export type TurnTrigger =
+  | UserMessageTurnTrigger
+  | BackgroundProcessCompletedTurnTrigger;
 export type TurnTriggerType = TurnTrigger['type'];
 
 // ── POST /api/turns 的请求体 ──────────────────────────────────────────────────
@@ -58,7 +65,7 @@ export type TurnTriggerType = TurnTrigger['type'];
  */
 export interface TurnRequest {
   sessionId?:    string;             // 省略 → 自动创建新 session
-  trigger:        TurnTrigger;
+  trigger:        UserMessageTurnTrigger;
   executionProfile: ExecutionProfile;
   narrativePolicy:  NarrativePolicy;
   userInput?:    string;

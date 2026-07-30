@@ -41,6 +41,7 @@ export class TurnExecutor {
    */
   start(command: TurnStartCommand): TurnHandle {
     const { turn, signal } = this.deps.session.startTurn({
+      turnId: command.turnId,
       sessionId: command.sessionId,
       triggerType: command.triggerType,
       executionProfile: command.executionProfile,

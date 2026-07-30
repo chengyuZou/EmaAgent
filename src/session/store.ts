@@ -376,7 +376,7 @@ export class SessionStore implements SessionOwnershipFacade {
     this.turnsRepo.abortStale(input.sessionId, now);
 
     this.requireSession(input.sessionId);
-    const turnId  = asTurnId(crypto.randomUUID());
+    const turnId = input.turnId ?? asTurnId(crypto.randomUUID());
     this.turnsRepo.insert({
       id:           turnId,
       sessionId:    input.sessionId,

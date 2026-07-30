@@ -79,7 +79,7 @@ export interface TurnInput {
    */
   readonly userInput:             string | readonly LlmContentPart[];
   /** 只用于 Message 落库，禁止携带图片、音频或文件 Base64。 */
-  readonly persistedUserInput:    MessageBlocks;
+  readonly persistedUserInput?:   MessageBlocks;
   /** Turn 开始时冻结的 Prompt Slot 快照，Agent 多轮共享同一 revision。 */
   readonly prompt:                PromptSnapshot;
   /** 已解析且冻结的模型身份、能力与窗口预算。 */
@@ -111,6 +111,8 @@ export interface TurnPreparationContext {
  * 多模态模型输入由 prepare 使用同一 Turn 身份生成。
  */
 export interface TurnStartCommand {
+  /** 仅内部持久工作续接使用；公开 Route 不能提交此字段。 */
+  readonly turnId?: TurnId;
   readonly sessionId: SessionId;
   readonly triggerType: TurnTriggerType;
   readonly executionProfile: ExecutionProfile;

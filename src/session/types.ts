@@ -101,6 +101,8 @@ export interface PatchSessionInput {
 }
 
 export interface StartTurnInput {
+  /** 内部恢复流程可预留稳定身份；公开请求始终由 SessionStore 生成。 */
+  turnId?: TurnId;
   sessionId: SessionId;
   triggerType: TurnTriggerType;
   executionProfile: ExecutionProfile;
