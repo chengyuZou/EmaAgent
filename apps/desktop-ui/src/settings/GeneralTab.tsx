@@ -6,6 +6,10 @@ import { showToast } from '../lib/toast.js';
 import { EventDisplaySettings } from './EventDisplaySettings.js';
 import { PermissionRulesSettings } from './PermissionRulesSettings.js';
 import { SandboxStatusSettings } from './SandboxStatusSettings.js';
+import { AgentLimitsSettings } from './AgentLimitsSettings.js';
+import { CompactionSettings } from './CompactionSettings.js';
+import { AttachmentLimitsSettings } from './AttachmentLimitsSettings.js';
+import { VisionLimitsSettings } from './VisionLimitsSettings.js';
 
 export function GeneralTab(): JSX.Element {
   const savedTimeoutMs = useSettingsStore((state) => state.permissionTimeoutMs);
@@ -90,6 +94,18 @@ export function GeneralTab(): JSX.Element {
 
       <div className="h-px bg-[var(--ema-border)]" />
       <SandboxStatusSettings />
+
+      <div className="h-px bg-[var(--ema-border)]" />
+      <AgentLimitsSettings />
+
+      <div className="h-px bg-[var(--ema-border)]" />
+      <CompactionSettings />
+
+      <div className="h-px bg-[var(--ema-border)]" />
+      <AttachmentLimitsSettings />
+
+      <div className="h-px bg-[var(--ema-border)]" />
+      <VisionLimitsSettings />
 
       <div className="h-px bg-[var(--ema-border)]" />
       <EventDisplaySettings />

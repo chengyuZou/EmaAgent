@@ -15,6 +15,7 @@ import {
   sameKbModelRef,
   type ResolvedEmbedSelection,
 } from './knowledge-base-embedding-state.js';
+import { KbRetrievalSettings } from './KbRetrievalSettings.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -1005,6 +1006,9 @@ export function KnowledgeBaseTab(): JSX.Element {
 
       {/* ── Retrieval models (embed + rerank) ── */}
       <KbModelSettings onEmbedModelChanged={handleEmbedModelChanged} />
+
+      {/* ── Retrieval tuning (kb.retrieval) ── */}
+      <KbRetrievalSettings />
 
       {/* ── Background processing queue ── */}
       <ProcessingQueue />
