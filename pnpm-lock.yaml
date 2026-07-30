@@ -285,6 +285,9 @@ importers:
       '@ema-agent/events':
         specifier: workspace:*
         version: link:../../src/events
+      '@ema-agent/git-utils':
+        specifier: workspace:*
+        version: link:../../src/gitUtils
       '@ema-agent/hooks':
         specifier: workspace:*
         version: link:../../src/hooks
@@ -776,6 +779,21 @@ importers:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
+
+  src/gitUtils:
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
   src/hooks:
     dependencies:
