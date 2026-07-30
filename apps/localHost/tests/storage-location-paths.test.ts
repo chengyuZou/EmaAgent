@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   sqliteFileSet,
+  sweepOrphanSessionDirectories,
   sweepOrphanTurnFiles,
   removeLegacyArtifactDirectories,
   resolveCardVoiceRefPath,
@@ -18,6 +19,35 @@ describe('sqliteFileSet', () => {
       'D:\\Ema Data\\profile.db-wal',
       'D:\\Ema Data\\profile.db-shm',
     ]);
+  });
+});
+
+describe('sweepOrphanSessionDirectories', () => {
+  it('删除数据库已不存在的整棵目录并保留存活 Session', () => {
+    const root = mkdtempSync(join(tmpdir(), 'ema-session-sweep-'));
+    try {
+      const liveDir = join(root, 'sessions', 'session-live');
+      const orphanDir = join(root, 'sessions', 'session-orphan');
+      mkdirSync(join(liveDir, 'audio'), { recursive: true });
+      mkdirSync(join(orphanDir, 'background-processes', 'process-1'), {
+        recursive: true,
+      });
+      writeFileSync(
+        join(orphanDir, 'background-processes', 'process-1', 'stdout.log'),
+        'orphan',
+      );
+
+      const result = sweepOrphanSessionDirectories(
+        root,
+        sessionId => sessionId === 'session-live',
+      );
+
+      expect(result).toEqual({ removed: 1, failed: 0 });
+      expect(existsSync(liveDir)).toBe(true);
+      expect(existsSync(orphanDir)).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 

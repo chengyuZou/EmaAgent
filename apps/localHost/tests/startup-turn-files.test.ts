@@ -55,6 +55,7 @@ describe('StartupRecovery', () => {
       })),
     };
     const session = {
+      sessionExists: vi.fn(() => true),
       listTurnIdsPage: vi.fn(() => ({ ids: [], nextCursor: null })),
       recoverStuckTurns: vi.fn(() => ({ healed: 0 })),
     };
@@ -101,6 +102,7 @@ describe('StartupRecovery', () => {
         })),
       },
       {
+        sessionExists: vi.fn(() => true),
         listTurnIdsPage: vi.fn(() => ({ ids: [], nextCursor: null })),
         recoverStuckTurns: vi.fn(() => {
           throw new Error('database unavailable');
@@ -125,6 +127,7 @@ describe('StartupRecovery', () => {
         }),
       },
       {
+        sessionExists: vi.fn(() => true),
         listTurnIdsPage: vi.fn(() => ({ ids: [], nextCursor: null })),
         recoverStuckTurns: vi.fn(() => ({ healed: 0 })),
       },
@@ -134,5 +137,46 @@ describe('StartupRecovery', () => {
     );
 
     expect(recovery.runMaintenance()).toEqual({ memoryReady: false });
+  });
+
+  it('先删除数据库已不存在的 Session 目录，再扫描存活 Turn 文件', () => {
+    const activeDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ema-startup-'));
+    directories.push(activeDataDir);
+    const orphanDir = path.join(
+      activeDataDir,
+      'sessions',
+      'session-orphan',
+      'background-processes',
+      'process-1',
+    );
+    fs.mkdirSync(orphanDir, { recursive: true });
+    fs.writeFileSync(path.join(orphanDir, 'stdout.log'), 'orphan');
+    const listTurnIdsPage = vi.fn(() => ({ ids: [], nextCursor: null }));
+    const recovery = new StartupRecovery(
+      activeDataDir,
+      {
+        runStartupRecovery: vi.fn(() => ({
+          resetTasks: 0,
+          pendingSessions: 0,
+          staleNodeEmbeds: 0,
+          staleItemEmbeds: 0,
+          orphanLazyUpdates: 0,
+        })),
+      },
+      {
+        sessionExists: vi.fn(() => false),
+        listTurnIdsPage,
+        recoverStuckTurns: vi.fn(() => ({ healed: 0 })),
+      },
+      { recoverInterrupted: vi.fn(() => []) },
+      { recoverInterrupted: vi.fn(() => []) },
+      { recoverInterrupted: vi.fn(() => []) },
+    );
+
+    recovery.runMaintenance();
+
+    expect(fs.existsSync(path.join(activeDataDir, 'sessions', 'session-orphan')))
+      .toBe(false);
+    expect(listTurnIdsPage).not.toHaveBeenCalled();
   });
 });

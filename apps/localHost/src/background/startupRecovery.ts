@@ -12,11 +12,15 @@ import type {
 import type { SessionId } from '@ema-agent/ids';
 import {
   removeLegacyArtifactDirectories,
+  sweepOrphanSessionDirectories,
   sweepOrphanTurnFiles,
 } from '../storage-locations/index.js';
 
 type StartupMemory = Pick<MemoryPlanner, 'runStartupRecovery'>;
-type StartupSession = Pick<SessionStore, 'listTurnIdsPage' | 'recoverStuckTurns'>;
+type StartupSession = Pick<
+  SessionStore,
+  'listTurnIdsPage' | 'recoverStuckTurns' | 'sessionExists'
+>;
 type StartupAgentRuns = Pick<AgentRunStore, 'recoverInterrupted'>;
 type StartupToolExecutions = Pick<ToolExecutionJournal, 'recoverInterrupted'>;
 
@@ -67,6 +71,7 @@ export class StartupRecovery {
    */
   runMaintenance(): { memoryReady: boolean } {
     const memoryReady = this.recoverMemory();
+    this.recoverSessionDirectories();
     this.recoverTurnFiles();
     this.removeLegacyArtifactFiles();
     return { memoryReady };
@@ -136,6 +141,27 @@ export class StartupRecovery {
       console.log(
         `[session] startup: aborted ${healed} stuck turn(s) from prior crash`,
       );
+    }
+  }
+
+  private recoverSessionDirectories(): void {
+    try {
+      const { removed, failed } = sweepOrphanSessionDirectories(
+        this.activeDataDir,
+        sessionId => this.session.sessionExists(sessionId as SessionId),
+      );
+      if (removed > 0) {
+        console.log(
+          `[session] startup: removed ${removed} orphan Session director${removed === 1 ? 'y' : 'ies'}`,
+        );
+      }
+      if (failed > 0) {
+        console.warn(
+          `[session] startup: failed to remove ${failed} orphan Session director${failed === 1 ? 'y' : 'ies'}`,
+        );
+      }
+    } catch (error) {
+      console.warn('[session] startup orphan session sweep skipped:', error);
     }
   }
 

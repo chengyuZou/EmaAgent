@@ -6,7 +6,8 @@ export {
   ensureDataDirLayout,
   sessionDirFor, sessionAudioDirFor,
   removeLegacyArtifactDirectories,
-  scratchpadTurnDir, removeSessionDir, removeTurnFiles, sweepOrphanTurnFiles,
+  scratchpadTurnDir, removeSessionDir, removeTurnFiles,
+  sweepOrphanSessionDirectories, sweepOrphanTurnFiles,
   voiceRefsDir, voiceRefsForCard, resolveVoiceRefPath, ensureProfileLayout,
   cardsDir, cardDir, cardResourcePath, resolveCardVoiceRefPath,
 } from './paths.js';

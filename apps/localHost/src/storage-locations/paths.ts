@@ -178,6 +178,37 @@ export function sessionDirFor(dataDir: string, sessionId: string): string {
   return path.join(dataDir, 'sessions', sessionId);
 }
 
+/**
+ * 启动自检：删除数据库中已经不存在的整棵 Session 目录。
+ * 数据库是事实源；逐目录隔离删除失败，避免一个被占用的 Windows 文件阻断其余恢复。
+ */
+export function sweepOrphanSessionDirectories(
+  dataDir: string,
+  sessionExists: (sessionId: string) => boolean,
+): { removed: number; failed: number } {
+  const sessionsRoot = path.join(dataDir, 'sessions');
+  if (!fs.existsSync(sessionsRoot)) return { removed: 0, failed: 0 };
+
+  let removed = 0;
+  let failed = 0;
+  for (const entry of fs.readdirSync(sessionsRoot, { withFileTypes: true })) {
+    // 不跟随符号链接或 Junction，避免清理越出 active dataDir。
+    if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
+    if (sessionExists(entry.name)) continue;
+
+    try {
+      fs.rmSync(path.join(sessionsRoot, entry.name), {
+        recursive: true,
+        force: true,
+      });
+      removed += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+  return { removed, failed };
+}
+
 /** 后台进程日志跟随 Session 生命周期，但不属于某个短命 Turn。 */
 export function backgroundProcessOutputDirFor(
   dataDir: string,
@@ -282,7 +313,9 @@ export function sweepOrphanTurnFiles(
   if (!fs.existsSync(sessionsRoot)) return { removed: 0 };
 
   let removed = 0;
-  for (const sessionId of fs.readdirSync(sessionsRoot)) {
+  for (const entry of fs.readdirSync(sessionsRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
+    const sessionId = entry.name;
     const audioDir = path.join(sessionsRoot, sessionId, 'audio');
     const scratchDir = path.join(sessionsRoot, sessionId, 'scratchpad');
     if (!fs.existsSync(audioDir) && !fs.existsSync(scratchDir)) continue;

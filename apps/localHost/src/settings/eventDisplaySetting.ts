@@ -39,6 +39,7 @@ export const DEFAULT_EVENT_DISPLAY: Partial<Record<ClientEvent['type'], EventDis
   memory_recall_unavailable:    { enabled: true,  color: '#f59e0b', durationMs: 5000, truncateChars: 120 },
   memory_extraction_skipped:    { enabled: true,  color: '#f59e0b', durationMs: 5000, truncateChars: 120 },
   memory_storage_budget_enforced: { enabled: true, color: '#0ea5e9', durationMs: 4000 },
+  memory_background_health_changed: { enabled: true, color: '#f59e0b', durationMs: 5000 },
   kb_ingest_completed:          { enabled: true,  color: '#22c55e', durationMs: 3000 },
   kb_ingest_partial_failed:     { enabled: true,  color: '#f59e0b', durationMs: 5000 },
   kb_ingest_failed:             { enabled: true,  color: '#ef4444', durationMs: 5000 },
