@@ -9,6 +9,7 @@ import type { ChatHistoryItem } from '../stores/conversation-store.js';
 import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore } from '../stores/session-store.js';
 import { AttachmentChip } from './AttachmentChip.js';
+import { formatTurnTime } from './history/workGroups.js';
 
 function editErrorMessage(error: unknown): string {
   if (!(error instanceof Error)) return '重新发送失败';
@@ -123,22 +124,18 @@ export function UserBubble({ message, canEdit = false }: UserBubbleProps): JSX.E
         ) : null}
 
         {/* 只有最新一条用户消息可回滚重发，历史消息不提供破坏性删除。 */}
-        <div
-          className="ema-collapsible"
-          style={{ gridTemplateRows: showEdit ? '1fr' : '0fr', opacity: showEdit ? 1 : 0 }}
-        >
-          <div className="flex items-center justify-end gap-1 text-[11px] overflow-hidden text-[var(--ema-text-tertiary)]">
-            {showEdit && (
-              <IconButton
-                variant="default"
-                size="sm"
-                icon="i-lucide:pencil"
-                label="重写最后一轮（不撤销已执行操作）"
-                className="opacity-30 hover:opacity-80"
-                onClick={startEdit}
-              />
-            )}
-          </div>
+        <div className="flex items-center justify-end gap-1.5 text-[11px] text-[var(--ema-text-tertiary)]">
+          <span className="opacity-50 tabular-nums">{formatTurnTime(message.createdAt)}</span>
+          {showEdit && (
+            <IconButton
+              variant="default"
+              size="sm"
+              icon="i-lucide:pencil"
+              label="重写最后一轮（不撤销已执行操作）"
+              className="opacity-30 hover:opacity-80"
+              onClick={startEdit}
+            />
+          )}
         </div>
       </div>
     </div>

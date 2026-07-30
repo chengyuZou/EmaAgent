@@ -1,4 +1,4 @@
-// 渲染左对齐的助手消息、流式状态、Token 用量、正文工具块和语音操作。
+// 渲染左对齐的助手消息、流式状态、Token 用量、Codex 式折叠工作区和语音操作。
 import { useState, useEffect, useRef, type JSX } from 'react';
 import { IconButton } from '@ema-agent/ui';
 import { estimateTextTokens } from '@ema-agent/token';
@@ -9,6 +9,10 @@ import { ForkButton } from './ForkButton.js';
 import { replayTurn, stopPlayback, usePlaybackStore } from '../lib/tts-playback.js';
 import { showToast } from '../lib/toast.js';
 import { useConversationStore, type ChatHistoryItem, type AssistantSlice } from '../stores/conversation-store.js';
+import { WorkSection } from './history/WorkSection.js';
+import { ToolWorkGroup } from './history/ToolWorkGroup.js';
+import { EditedFilesCard } from './history/EditedFilesCard.js';
+import { editedFiles, groupSlices, splitWorkAnswer } from './history/workGroups.js';
 
 export interface AssistantBubbleProps {
   message: Pick<
@@ -90,21 +94,56 @@ export function AssistantBubble({ message, isStreaming, canFork = false }: Assis
           </div>
         ) : (
           <div className="text-sm break-words flex flex-col gap-2 text-[var(--ema-text-secondary)]">
-            {groupSlices(slices).map((group, gi) => {
-              if (group.kind === 'tool_group') {
-                return (
-                  <div
-                    key={gi}
-                    className="rounded-xl border bg-transparent px-3 py-2 flex flex-col gap-1.5 border-[var(--ema-border)]"
-                  >
-                    {group.slices.map((slice, si) => (
-                      <SliceRenderer key={si} slice={slice} streaming={!!isStreaming} turnId={message.turnId as string | undefined} />
-                    ))}
-                  </div>
-                );
-              }
-              return <SliceRenderer key={gi} slice={group.slice} streaming={!!isStreaming} turnId={message.turnId as string | undefined} />;
-            })}
+            {(() => {
+              const { work, answer } = splitWorkAnswer(groupSlices(slices));
+              const edited = editedFiles(slices);
+              return (
+                <>
+                  {work.length > 0 && (
+                    <WorkSection
+                      slices={slices}
+                      streaming={!!isStreaming}
+                      {...(message.stats?.durationMs !== undefined
+                        ? { durationMs: message.stats.durationMs }
+                        : {})}
+                      createdAt={message.createdAt}
+                    >
+                      {work.map((group, gi) => (
+                        group.kind === 'tool_group' ? (
+                          <ToolWorkGroup
+                            key={gi}
+                            slices={group.slices}
+                            streaming={!!isStreaming}
+                            turnId={message.turnId as string | undefined}
+                          />
+                        ) : (
+                          <SliceRenderer key={gi} slice={group.slice} streaming={!!isStreaming} turnId={message.turnId as string | undefined} />
+                        )
+                      ))}
+                    </WorkSection>
+                  )}
+                  {answer.map((group, gi) => (
+                    group.kind === 'tool_group' ? (
+                      <ToolWorkGroup
+                        key={gi}
+                        slices={group.slices}
+                        streaming={!!isStreaming}
+                        turnId={message.turnId as string | undefined}
+                      />
+                    ) : (
+                      <SliceRenderer key={gi} slice={group.slice} streaming={!!isStreaming} turnId={message.turnId as string | undefined} />
+                    )
+                  ))}
+                  {edited.files.length > 0 && (
+                    <EditedFilesCard
+                      files={edited.files}
+                      additions={edited.additions}
+                      deletions={edited.deletions}
+                    />
+                  )}
+                </>
+              );
+            })()}
           </div>
         )}
 
@@ -178,39 +217,6 @@ export function AssistantBubble({ message, isStreaming, canFork = false }: Assis
 function fmtTok(n: number): string {
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
   return String(n);
-}
-
-// Group consecutive tool_use slices into a shared box.
-type SliceGroup =
-  | { kind: 'tool_group'; slices: AssistantSlice[] }
-  | { kind: 'single';     slice:  AssistantSlice   };
-
-function groupSlices(slices: AssistantSlice[]): SliceGroup[] {
-  const out: SliceGroup[] = [];
-  let i = 0;
-  while (i < slices.length) {
-    const s = slices[i];
-    if (!s) break;
-    if (s.type === 'tool_use') {
-      const group: AssistantSlice[] = [];
-      while (i < slices.length) {
-        const cur = slices[i];
-        if (!cur || cur.type !== 'tool_use') break;
-        group.push(cur);
-        i++;
-      }
-      const first = group[0];
-      if (group.length === 1 && first) {
-        out.push({ kind: 'single', slice: first });
-      } else {
-        out.push({ kind: 'tool_group', slices: group });
-      }
-    } else {
-      out.push({ kind: 'single', slice: s });
-      i++;
-    }
-  }
-  return out;
 }
 
 function resolveSlices(msg: { content: string; slices?: AssistantSlice[] }): AssistantSlice[] {
