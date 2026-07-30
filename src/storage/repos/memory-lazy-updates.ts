@@ -52,11 +52,17 @@ export class MemoryLazyUpdatesRepo {
       .all(nodeId) as MemoryNodeLazyUpdateRow[];
   }
 
-  /** 当前至少有一个 pending fragment 的所有 node。 */
-  listNodesWithPending(): string[] {
+  /** 当前至少有一个 pending fragment 的 node，按最早待处理证据确定顺序。 */
+  listNodesWithPending(limit = 5000): string[] {
     const rows = this.db
-      .prepare('SELECT DISTINCT node_id FROM memory_node_lazy_updates')
-      .all() as Array<{ node_id: string }>;
+      .prepare(
+        `SELECT node_id
+           FROM memory_node_lazy_updates
+          GROUP BY node_id
+          ORDER BY MIN(created_at) ASC, node_id ASC
+          LIMIT ?`,
+      )
+      .all(limit) as Array<{ node_id: string }>;
     return rows.map(r => r.node_id);
   }
 
@@ -67,20 +73,40 @@ export class MemoryLazyUpdatesRepo {
     return row.n;
   }
 
+  /** 提交前确认快照中的更新行仍然完整存在。 */
+  countByIds(ids: readonly string[]): number {
+    const batches = createSqliteIdBatches(this.db, ids);
+    let count = 0;
+    for (const batch of batches) {
+      const placeholders = batch.map(() => '?').join(',');
+      const row = this.db
+        .prepare(
+          `SELECT COUNT(*) AS n
+             FROM memory_node_lazy_updates
+            WHERE id IN (${placeholders})`,
+        )
+        .get(...batch) as { n: number };
+      count += row.n;
+    }
+    return count;
+  }
+
   /**
-   * 删除指定集合的更新行。使用 listByNode 返回的 id-
+   * 删除指定集合的更新行。使用 listByNode 返回的 id，
    * 在 listByNode 和此调用之间到达的 fragment 会保留。
    */
-  deleteByIds(ids: string[]): void {
+  deleteByIds(ids: readonly string[]): number {
     const batches = createSqliteIdBatches(this.db, ids);
+    let deleted = 0;
     this.db.transaction(() => {
       for (const batch of batches) {
         const placeholders = batch.map(() => '?').join(',');
-        this.db
+        deleted += this.db
           .prepare(`DELETE FROM memory_node_lazy_updates WHERE id IN (${placeholders})`)
-          .run(...batch);
+          .run(...batch).changes;
       }
     })();
+    return deleted;
   }
 
   /** 孤儿清理-有 ON DELETE CASCADE 时应为 no-op。 */

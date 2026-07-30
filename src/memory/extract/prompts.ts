@@ -138,39 +138,3 @@ export function renderFragmentsForPrompt(
     .map(f => `[${f.role}] ${f.content}`)
     .join('\n');
 }
-
-// ── Consolidation prompt ─────────────────────────────────────────────────────
-
-/**
- * Used during the lazy-update drain. Takes a node's current description plus
- * a batch of accumulated fragments and asks the LLM to merge them into a
- * single updated description.
- */
-export function buildConsolidationPrompt(args: {
-  label: string;
-  nodeType: string;
-  currentDescription: string;
-  fragments: string[];
-}): string {
-  return `You are merging new factual fragments into an existing memory node.
-
-Node:
-  label:        ${args.label}
-  type:         ${args.nodeType}
-  description:  ${args.currentDescription || '(empty)'}
-
-New fragments to integrate:
-${args.fragments.map((f, i) => `  ${i + 1}. ${f}`).join('\n')}
-
-Produce an updated description that:
-  - preserves still-relevant existing information
-  - integrates the new fragments without redundancy
-  - is concise and factual (no narration, no markdown)
-  - flags contradictions when present ("previously X, now reports Y")
-
-Respond with a single JSON object — no prose, no fences:
-{
-  "updated_description": string,
-  "importance_delta":    -20 to +20   // change in node importance
-}`;
-}

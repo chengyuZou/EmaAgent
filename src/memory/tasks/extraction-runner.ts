@@ -1,6 +1,7 @@
-import type { ExecutionProfile } from '@ema-agent/turn';
 // 运行已持久化的 Memory 提取任务，并拒绝尚未实现的任务类型进入成功终态。
+
 import crypto from 'node:crypto';
+import type { ExecutionProfile } from '@ema-agent/turn';
 import type { SessionId } from '@ema-agent/ids';
 import type {
   MemoryTaskKind, MemoryTaskRow,
@@ -42,6 +43,8 @@ export interface MemoryTaskRunnerDeps {
   /** Resolves per-session overrides — used to skip consolidation when off. */
   getSessionOverrides: (sessionId: SessionId) => ResolvedSessionOverrides;
   commitCoordinator: MemoryCommitCoordinator;
+  /** SQLite 已提交但 ANN 同步失败时，在同一提交序列内恢复派生索引。 */
+  refreshIndexes: () => Promise<void>;
   /** 测试可替换模型流水线；生产默认使用 runExtractionPipeline。 */
   runPipeline?: typeof runExtractionPipeline;
 }
@@ -264,6 +267,7 @@ export class MemoryTaskRunner {
             itemsIndex: this.deps.getItemsIndex(),
             indexSpaceId: this.deps.getIndexSpaceId(),
             commitCoordinator: this.deps.commitCoordinator,
+            refreshIndexes: this.deps.refreshIndexes,
           },
           {
             sessionId: sid,

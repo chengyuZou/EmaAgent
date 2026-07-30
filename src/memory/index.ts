@@ -69,8 +69,9 @@ export { runExtractionPipeline }              from './extract/pipeline.js';
 export type { PipelineResult }                from './extract/pipeline.js';
 export type {
   ExtractedNode, ExtractedEdge, ExtractedItem, ExtractionOutput,
-  ConsolidationOutput, PendingFragment,
+  PendingFragment,
 } from './extract/types.js';
+export type { ConsolidationReport } from './consolidation/consolidatePendingNodes.js';
 
 // ── Background tasks + recovery ──────────────────────────────────────────────
 export { SessionTaskQueue }                   from './tasks/session-queue.js';

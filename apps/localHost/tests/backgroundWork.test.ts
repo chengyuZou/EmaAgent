@@ -28,6 +28,12 @@ function createHarness() {
       decayedItems: 0,
       preview: { nodes: [], items: [], decayedAt: 0 },
     })),
+    consolidatePendingNodes: vi.fn(async () => ({
+      pendingNodes: 0,
+      consolidated: 0,
+      conflicts: 0,
+      orphanUpdatesDeleted: 0,
+    })),
     repairStaleEmbeddings: vi.fn(async () => ({
       ran: true,
       nodesRepaired: 0,
@@ -214,6 +220,29 @@ describe('BackgroundWork', () => {
     await vi.advanceTimersByTimeAsync(30 * 60_000 + 5_000);
     expect(harness.memory.enforceStorageBudget).toHaveBeenCalledTimes(1);
     expect(harness.memory.repairStaleEmbeddings).toHaveBeenCalledTimes(1);
+
+    await harness.work.shutdown();
+  });
+
+  it('空闲一分钟后按顺序执行衰减与少量残留归并', async () => {
+    const harness = createHarness();
+    harness.work.start();
+    await vi.waitFor(() => {
+      expect(harness.memory.initialize).toHaveBeenCalledTimes(1);
+    });
+
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(harness.memory.runMaintenance).toHaveBeenCalledTimes(1);
+    expect(harness.memory.consolidatePendingNodes).toHaveBeenCalledWith(
+      10,
+      expect.any(AbortSignal),
+    );
+    expect(
+      harness.memory.runMaintenance.mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      harness.memory.consolidatePendingNodes.mock.invocationCallOrder[0]!,
+    );
 
     await harness.work.shutdown();
   });

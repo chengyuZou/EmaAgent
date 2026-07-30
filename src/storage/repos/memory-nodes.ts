@@ -53,6 +53,23 @@ export interface MemoryNodeDescriptionUpdate {
   updatedAt:             number;
 }
 
+export interface MemoryNodeConsolidationUpdate {
+  id:                       string;
+  description:              string;
+  importanceDelta:          number;
+  embedding:                Buffer | null;
+  embeddingProviderId:      string | null;
+  embeddingModel:           string | null;
+  embeddingDim:             number | null;
+  embeddingNormalization:   string | null;
+  embeddingRevision:        string | null;
+  embeddingSpaceId:         string | null;
+  updatedAt:                number;
+  expectedDescription:      string;
+  expectedImportance:       number;
+  expectedUpdatedAt:        number;
+}
+
 export interface MemoryNodeEmbeddingUpdate {
   id:                    string;
   embedding:             Buffer;
@@ -270,6 +287,49 @@ export class MemoryNodesRepo {
         u.embeddingNormalization, u.embeddingRevision, u.embeddingSpaceId,
         u.updatedAt, u.id,
       );
+  }
+
+  /**
+   * Consolidation 的模型和向量计算发生在事务外；提交时只允许更新仍与快照一致的节点。
+   * 没有可用向量时清空旧向量，让后续 Embedding Repair 按新正文重新生成。
+   */
+  consolidateIfUnchanged(u: MemoryNodeConsolidationUpdate): boolean {
+    const info = this.db
+      .prepare(
+        `UPDATE memory_nodes
+            SET description               = ?,
+                importance                = MAX(0, MIN(100, importance + ?)),
+                embedding                 = ?,
+                embedding_provider_id     = ?,
+                embedding_model           = ?,
+                embedding_dim             = ?,
+                embedding_normalization   = ?,
+                embedding_revision        = ?,
+                embedding_space_id        = ?,
+                embedding_evicted_at      = NULL,
+                updated_at                = ?
+          WHERE id = ?
+            AND description = ?
+            AND importance = ?
+            AND updated_at = ?`,
+      )
+      .run(
+        u.description,
+        u.importanceDelta,
+        u.embedding,
+        u.embeddingProviderId,
+        u.embeddingModel,
+        u.embeddingDim,
+        u.embeddingNormalization,
+        u.embeddingRevision,
+        u.embeddingSpaceId,
+        u.updatedAt,
+        u.id,
+        u.expectedDescription,
+        u.expectedImportance,
+        u.expectedUpdatedAt,
+      );
+    return info.changes === 1;
   }
 
   /**

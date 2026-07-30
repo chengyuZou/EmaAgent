@@ -101,6 +101,7 @@ export type {
   MemoryNodeInsert,
   MemoryNodeType,
   MemoryNodeDescriptionUpdate,
+  MemoryNodeConsolidationUpdate,
   MemoryNodeEmbeddingUpdate,
 } from './repos/memory-nodes.js';
 export type {

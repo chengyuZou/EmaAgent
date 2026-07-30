@@ -1,43 +1,39 @@
-import type { ExecutionProfile } from '@ema-agent/turn';
 // 执行 Memory 提取的模型准备、跨库提交、恢复标记和全局索引更新流水线。
+
+import type { ExecutionProfile } from '@ema-agent/turn';
 import type { SessionId } from '@ema-agent/ids';
 import type {
   MemoryNodeType,
   MemoryNodeRow,
 } from '@ema-agent/storage';
-import type { MemoryDeps } from '../deps.js';
 import type { MemorySettings } from '../types.js';
 import type { ExtractionOutput, PendingFragment } from './types.js';
 import { runExtraction } from './llm-call.js';
 import { buildExtractionPrompt, renderFragmentsForPrompt } from './prompts.js';
 import { readPending, clearPending } from './pending.js';
-import { EmbedService } from '../embed/service.js';
 import type { VectorIndex } from '../vector-index/vector-index.js';
 import { processNodes, planNodeDuplicateJudgments } from './route-nodes.js';
 import { processEdges } from './route-edges.js';
 import { processItems } from './route-items.js';
 import { NodeDirectory } from './node-directory.js';
 import { appendSessionNote, compactSessionNoteIfNeeded } from './session-note.js';
-import { consolidatePendingNodes } from './consolidate.js';
+import {
+  consolidatePendingNodes,
+  type ConsolidationDeps,
+} from '../consolidation/consolidatePendingNodes.js';
 import {
   applyIndexMutations,
   type PendingIndexMutation,
 } from './index-mutations.js';
 import type { EmbeddedText } from '../types.js';
 import type { MemoryExtractionRunRow } from '@ema-agent/storage';
-import type { MemoryCommitCoordinator } from '../tasks/commit-coordinator.js';
 import { MemoryLeaseLostError } from '../errors.js';
 
 // ── Pipeline ─────────────────────────────────────────────────────────────────
 
-export interface ExtractionPipelineDeps {
-  memory:   MemoryDeps;
-  embed:    EmbedService;
+export interface ExtractionPipelineDeps extends ConsolidationDeps {
   settings: MemorySettings;
-  nodesIndex: VectorIndex | null;
   itemsIndex: VectorIndex | null;
-  indexSpaceId: string | null;
-  commitCoordinator: MemoryCommitCoordinator;
 }
 
 export interface PipelineResult {
@@ -110,12 +106,11 @@ export async function runExtractionPipeline(
       const lazyIds = deps.memory.lazyUpdates.listNodesWithPending();
       if (lazyIds.length > 0) {
         // This can throw: the task runner will retry until consolidation succeeds.
-        stats.consolidatedNodes = await deps.commitCoordinator.runExclusive(
-          () => {
-            assertLeaseValid();
-            return consolidatePendingNodes(deps, args.signal, assertLeaseValid);
-          },
-        );
+        const report = await consolidatePendingNodes(deps, {
+          signal: args.signal,
+          assertWritable: assertLeaseValid,
+        });
+        stats.consolidatedNodes = report.consolidated;
       }
     }
     return stats;
@@ -282,22 +277,11 @@ export async function runExtractionPipeline(
   if (!args.skipConsolidation) {
     const pendingNodeIds = deps.memory.lazyUpdates.listNodesWithPending();
     if (pendingNodeIds.length > 0) {
-      deps.memory.emit?.({
-        type:      'memory_consolidation_started',
-        nodeCount: pendingNodeIds.length,
+      const report = await consolidatePendingNodes(deps, {
+        signal: args.signal,
+        assertWritable: assertLeaseValid,
       });
-      const t0 = Date.now();
-      stats.consolidatedNodes = await deps.commitCoordinator.runExclusive(
-        () => {
-          assertLeaseValid();
-          return consolidatePendingNodes(deps, args.signal, assertLeaseValid);
-        },
-      );
-      deps.memory.emit?.({
-        type:          'memory_consolidation_completed',
-        consolidated:  stats.consolidatedNodes,
-        durationMs:    Date.now() - t0,
-      });
+      stats.consolidatedNodes = report.consolidated;
     }
   }
 

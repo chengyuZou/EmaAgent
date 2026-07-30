@@ -31,6 +31,7 @@ type BackgroundMemory = Pick<
   | 'tick'
   | 'drain'
   | 'runMaintenance'
+  | 'consolidatePendingNodes'
   | 'repairStaleEmbeddings'
   | 'enforceStorageBudget'
 >;
@@ -201,9 +202,20 @@ export class BackgroundWork {
           + `items=${report.decayedItems}`,
         );
       }
+      controller.signal.throwIfAborted();
+      const consolidation = await this.memory.consolidatePendingNodes(
+        10,
+        controller.signal,
+      );
+      if (consolidation.consolidated > 0 || consolidation.conflicts > 0) {
+        console.log(
+          `[memory] consolidation: completed=${consolidation.consolidated} `
+          + `conflicts=${consolidation.conflicts}`,
+        );
+      }
     } catch (error) {
       if (!controller.signal.aborted) {
-        console.warn('[memory] decay sweep failed:', error);
+        console.warn('[memory] light maintenance failed:', error);
       }
     } finally {
       if (this.maintenanceAbortController === controller) {

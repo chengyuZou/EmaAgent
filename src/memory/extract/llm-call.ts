@@ -1,71 +1,11 @@
-import type { LanguageModel, AssistantBlock } from '@ema-agent/llm';
+import type { LanguageModel } from '@ema-agent/llm';
 import type { ModelBindingsRepo } from '@ema-agent/storage';
 import type {
-  ExtractionOutput, ConsolidationOutput, ExtractedNode,
+  ExtractionOutput, ExtractedNode,
   ExtractedEdge, ExtractedItem,
 } from './types.js';
 import type { MemoryNodeType, MemoryItemKind } from '@ema-agent/storage';
-
-// ── Resolving the 'memory' binding ───────────────────────────────────────────
-
-interface ResolvedBinding {
-  providerId: string;
-  model:      string;
-}
-
-function resolveMemoryBinding(
-  modelBindings: ModelBindingsRepo,
-): ResolvedBinding | null {
-  const binding = modelBindings.get('memory');
-  return binding
-    ? { providerId: binding.providerConfigId, model: binding.model }
-    : null;
-}
-
-// ── Generic JSON-only completion ─────────────────────────────────────────────
-
-async function runJsonCompletion(
-  llm: LanguageModel,
-  binding: ResolvedBinding,
-  prompt: string,
-  signal?: AbortSignal,
-): Promise<string> {
-  const completion = await llm.complete({
-    providerId:  binding.providerId,
-    model:       binding.model,
-    messages: [
-      { role: 'user', content: prompt },
-    ],
-    maxTokens:   2500,
-    temperature: 0.2,
-    signal,
-  });
-
-  // Collect text from blocks (ignoring thinking blocks)
-  const text = completion.blocks
-    .filter((b: AssistantBlock): b is AssistantBlock & { type: 'text' } => b.type === 'text')
-    .map(b => b.text)
-    .join('');
-
-  return text;
-}
-
-// ── JSON repair / extraction ─────────────────────────────────────────────────
-
-/**
- * Some models wrap JSON in markdown fences or include preamble text despite
- * being told not to. Strip fences and locate the first {...} JSON object.
- */
-function extractJson(raw: string): unknown {
-  const stripped = raw.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim();
-  const start = stripped.indexOf('{');
-  const end   = stripped.lastIndexOf('}');
-  if (start === -1 || end <= start) {
-    throw new Error('memory.extract: no JSON object found in LLM output');
-  }
-  const slice = stripped.slice(start, end + 1);
-  return JSON.parse(slice);
-}
+import { runMemoryJsonCompletion } from '../modelJsonCompletion.js';
 
 // ── Extraction call ──────────────────────────────────────────────────────────
 
@@ -176,30 +116,8 @@ export async function runExtraction(
   signal:        AbortSignal | undefined,
   sourceText:    string,
 ): Promise<ExtractionOutput | null> {
-  const binding = resolveMemoryBinding(modelBindings);
-  if (!binding) return null;
-  const text = await runJsonCompletion(llm, binding, prompt, signal);
-  return sanitizeExtraction(extractJson(text), sourceText);
-}
-
-export async function runConsolidation(
-  llm:           LanguageModel,
-  modelBindings: ModelBindingsRepo,
-  prompt:        string,
-  signal?:       AbortSignal,
-): Promise<ConsolidationOutput | null> {
-  const binding = resolveMemoryBinding(modelBindings);
-  if (!binding) return null;
-  const text = await runJsonCompletion(llm, binding, prompt, signal);
-  const parsed = extractJson(text) as Record<string, unknown>;
-  const updated = typeof parsed['updated_description'] === 'string'
-    ? parsed['updated_description']
-    : '';
-  if (!updated.trim()) return null;
-  return {
-    updated_description: updated.trim(),
-    importance_delta:    clamp(asNumber(parsed['importance_delta']) ?? 0, -20, 20),
-  };
+  const parsed = await runMemoryJsonCompletion(llm, modelBindings, prompt, signal);
+  return parsed === null ? null : sanitizeExtraction(parsed, sourceText);
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

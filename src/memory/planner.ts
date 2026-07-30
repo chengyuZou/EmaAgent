@@ -38,6 +38,10 @@ import {
   type EmbeddingRepairReport,
 } from './maintenance/embeddingRepair.js';
 import {
+  consolidatePendingNodes as consolidatePendingMemoryNodes,
+  type ConsolidationReport,
+} from './consolidation/consolidatePendingNodes.js';
+import {
   enforceMemoryStorageBudget,
   type MemoryStorageBudgetReport,
 } from './maintenance/storageBudget.js';
@@ -94,6 +98,7 @@ export class MemoryPlanner {
       getIndexSpaceId:     () => this.indexMgr.currentSpaceId(),
       getSessionOverrides: (sid) => this.getSessionOverrides(sid),
       commitCoordinator:   this.commitCoordinator,
+      refreshIndexes:      () => this.indexMgr.refreshIndexes(),
     });
   }
 
@@ -206,6 +211,25 @@ export class MemoryPlanner {
       dryRun:         opts.dryRun         ?? true,
       nowMs:          opts.nowMs          ?? Date.now(),
     }, this.commitCoordinator, signal);
+  }
+
+  /** 归并全局节点的待处理证据；模型计算在锁外，提交使用单节点 CAS 事务。 */
+  async consolidatePendingNodes(
+    maxNodes = 10,
+    signal?: AbortSignal,
+  ): Promise<ConsolidationReport> {
+    await this.indexMgr.initialize();
+    return consolidatePendingMemoryNodes({
+      memory: this.deps,
+      embed: this.embed,
+      nodesIndex: this.indexMgr.nodesIndex,
+      indexSpaceId: this.indexMgr.currentSpaceId(),
+      commitCoordinator: this.commitCoordinator,
+      refreshIndexes: () => this.indexMgr.refreshIndexes(),
+    }, {
+      maxNodes,
+      signal,
+    });
   }
 
   async deleteNode(nodeId: string): Promise<void> {

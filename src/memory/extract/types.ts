@@ -47,13 +47,6 @@ export interface ExtractionOutput {
   session_note_delta:  string;
 }
 
-// ── Consolidation LLM output ─────────────────────────────────────────────────
-
-export interface ConsolidationOutput {
-  updated_description: string;
-  importance_delta:    number;
-}
-
 // ── Pending fragment (lives in sessions.pending_fragments_json) ─────────────
 
 export interface PendingFragment {
