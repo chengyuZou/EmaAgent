@@ -7,7 +7,7 @@ import { useCardStore } from '../../stores/card-store.js';
 import { cardsApi } from '../../api/cards.js';
 import { showToast } from '../../lib/toast.js';
 import type { CharacterCardId } from '@ema-agent/ids';
-import type { CharacterVoiceProfile, CharacterRefAudio } from '@ema-agent/characters';
+import type { CharacterVoiceReference } from '@ema-agent/characters';
 
 const LANG_OPTIONS = [
   { value: 'zh', label: '中文 (zh)' },
@@ -17,11 +17,11 @@ const LANG_OPTIONS = [
 
 export function VoiceTab({
   cardId,
-  voiceProfile,
+  voiceReferences,
   isBuiltin,
 }: {
   cardId:       CharacterCardId;
-  voiceProfile: CharacterVoiceProfile;
+  voiceReferences: readonly CharacterVoiceReference[];
   isBuiltin:    boolean;
 }): JSX.Element {
   const [showUpload, setShowUpload] = useState(false);
@@ -90,7 +90,7 @@ export function VoiceTab({
     }
   }
 
-  const primary = voiceProfile.refAudios.find((r) => r.id === voiceProfile.primaryId);
+  const primary = voiceReferences.find((reference) => reference.isPrimary);
 
   return (
     <div className="max-w-lg pt-3">
@@ -105,7 +105,7 @@ export function VoiceTab({
       </div>
 
       {/* Audio list */}
-      {voiceProfile.refAudios.length === 0 ? (
+      {voiceReferences.length === 0 ? (
         <p className="text-[var(--ema-text-tertiary)] text-sm mb-4">
           尚无参考音频。上传后可用于 GPT-SoVITS 声音复刻。
         </p>
@@ -116,12 +116,12 @@ export function VoiceTab({
               内置角色音色为只读，不可上传 / 删除 / 改主用。
             </p>
           )}
-          {voiceProfile.refAudios.map((ref, i) => (
+          {voiceReferences.map((ref, i) => (
             <div key={ref.id} className="ema-stagger-in" style={{ '--stagger-i': i } as CSSProperties}>
             <RefAudioRow
               key={ref.id}
               refAudio={ref}
-              isPrimary={ref.id === voiceProfile.primaryId}
+              isPrimary={ref.isPrimary}
               isPlaying={playing === ref.id}
               onPlay={() => handlePlay(ref.id)}
               onSetPrimary={isBuiltin ? undefined : () => handleSetPrimary(ref.id)}
@@ -160,7 +160,7 @@ export function VoiceTab({
 function RefAudioRow({
   refAudio, isPrimary, isPlaying, onPlay, onSetPrimary, onDelete,
 }: {
-  refAudio:     CharacterRefAudio;
+  refAudio:     CharacterVoiceReference;
   isPrimary:    boolean;
   isPlaying:    boolean;
   onPlay():     void;

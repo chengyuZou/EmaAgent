@@ -31,7 +31,7 @@ export function CharacterCardEditor({ card, onActivate }: CharacterCardEditorPro
     {
       value:   'voice',
       label:   '音色',
-      content: <VoiceTab cardId={card.id as CharacterCardId} voiceProfile={card.voiceProfile} isBuiltin={card.isBuiltin} />,
+      content: <VoiceTab cardId={card.id as CharacterCardId} voiceReferences={card.voiceReferences} isBuiltin={card.isBuiltin} />,
     },
   ];
 
