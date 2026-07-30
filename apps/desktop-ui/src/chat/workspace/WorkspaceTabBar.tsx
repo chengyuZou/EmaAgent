@@ -16,6 +16,7 @@ export function workspaceTabIcon(tab: WorkspaceTab): string {
     case 'agentRun':  return 'i-solar:cpu-bold-duotone';
     case 'terminal':  return 'i-lucide:terminal';
     case 'browser':   return 'i-lucide:globe';
+    case 'backgroundProcesses': return 'i-lucide:square-terminal';
   }
 }
 
@@ -29,6 +30,7 @@ function baseTabLabel(tab: WorkspaceTab): string {
     case 'agentRun':  return '子智能体';
     case 'terminal':  return '终端';
     case 'browser':   return '浏览器';
+    case 'backgroundProcesses': return '后台进程';
   }
 }
 

@@ -46,6 +46,8 @@ export interface BackgroundProcessSummary {
   stdoutBytes: number;
   stderrBytes: number;
   outputTruncated: boolean;
+  /** 日志目录绝对路径(stdout.log/stderr.log 所在),供前端"在文件管理器中显示"。 */
+  outputDir: string;
 }
 
 export interface BackgroundProcessOutput {

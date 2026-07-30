@@ -39,8 +39,10 @@ export async function enforceMemoryStorageBudget(
     removeItemFromIndex: (id: string) => void;
     refreshIndexes: () => Promise<void>;
     nowMs?: number;
+    signal?: AbortSignal;
   },
 ): Promise<MemoryStorageBudgetReport> {
+  opts.signal?.throwIfAborted();
   const before = deps.storage.logicalFootprint();
   const maxBytes = settings.storage.maxBytes;
   const targetBytes = Math.floor(maxBytes * RECLAIM_RATIO);
@@ -54,6 +56,7 @@ export async function enforceMemoryStorageBudget(
   report.ran = true;
 
   await opts.commitCoordinator.runExclusive(async () => {
+    opts.signal?.throwIfAborted();
     let footprint = deps.storage.logicalFootprint();
     let indexSyncFailed = false;
 
@@ -69,64 +72,75 @@ export async function enforceMemoryStorageBudget(
       }
     };
 
-    // Tier 0：显式过期数据已失效，先清理它们，不牺牲仍有效的 Memory。
-    while (footprint.totalBytes > targetBytes) {
-      const ids = deps.storage.listExpiredItemIds(nowMs, STORAGE_BATCH_SIZE);
-      if (ids.length === 0) break;
-      const deleted = deps.runProfileTransaction(() => deps.storage.deleteItems(ids));
-      report.expiredItemsDeleted += deleted;
-      removeFromIndexes([], ids);
-      footprint = deps.storage.logicalFootprint();
-    }
+    try {
+      // Tier 0：显式过期数据已失效，先清理它们，不牺牲仍有效的 Memory。
+      while (footprint.totalBytes > targetBytes) {
+        opts.signal?.throwIfAborted();
+        const ids = deps.storage.listExpiredItemIds(nowMs, STORAGE_BATCH_SIZE);
+        if (ids.length === 0) break;
+        const deleted = deps.runProfileTransaction(() => deps.storage.deleteItems(ids));
+        report.expiredItemsDeleted += deleted;
+        removeFromIndexes([], ids);
+        footprint = deps.storage.logicalFootprint();
+        await yieldToForegroundWork();
+      }
 
-    // Tier 1：只删除已经衰减到 0 且长期未引用的非保护类正文。
-    while (footprint.totalBytes > targetBytes) {
-      const nodeIds = deps.storage.listColdZeroImportanceNodeIds(
-        cutoff,
-        PROTECTED_MEMORY_NODE_TYPES,
-        STORAGE_BATCH_SIZE,
-      );
-      const itemIds = deps.storage.listColdZeroImportanceItemIds(
-        cutoff,
-        PROTECTED_MEMORY_ITEM_KINDS,
-        STORAGE_BATCH_SIZE,
-      );
-      if (nodeIds.length === 0 && itemIds.length === 0) break;
-      deps.runProfileTransaction(() => {
-        report.coldNodesDeleted += deps.storage.deleteNodes(nodeIds);
-        report.coldItemsDeleted += deps.storage.deleteItems(itemIds);
-      });
-      removeFromIndexes(nodeIds, itemIds);
-      footprint = deps.storage.logicalFootprint();
-    }
+      // Tier 1：只删除已经衰减到 0 且长期未引用的非保护类正文。
+      while (footprint.totalBytes > targetBytes) {
+        opts.signal?.throwIfAborted();
+        const nodeIds = deps.storage.listColdZeroImportanceNodeIds(
+          cutoff,
+          PROTECTED_MEMORY_NODE_TYPES,
+          STORAGE_BATCH_SIZE,
+        );
+        const itemIds = deps.storage.listColdZeroImportanceItemIds(
+          cutoff,
+          PROTECTED_MEMORY_ITEM_KINDS,
+          STORAGE_BATCH_SIZE,
+        );
+        if (nodeIds.length === 0 && itemIds.length === 0) break;
+        deps.runProfileTransaction(() => {
+          report.coldNodesDeleted += deps.storage.deleteNodes(nodeIds);
+          report.coldItemsDeleted += deps.storage.deleteItems(itemIds);
+        });
+        removeFromIndexes(nodeIds, itemIds);
+        footprint = deps.storage.logicalFootprint();
+        await yieldToForegroundWork();
+      }
 
-    // Tier 2：正文仍保留，只驱逐最冷的非保护类向量；显式标记防止修复任务反复重嵌。
-    while (footprint.totalBytes > targetBytes) {
-      const nodeIds = deps.storage.listColdEmbeddedNodeIds(
-        cutoff,
-        PROTECTED_MEMORY_NODE_TYPES,
-        STORAGE_BATCH_SIZE,
-      );
-      const itemIds = deps.storage.listColdEmbeddedItemIds(
-        nowMs,
-        cutoff,
-        PROTECTED_MEMORY_ITEM_KINDS,
-        STORAGE_BATCH_SIZE,
-      );
-      if (nodeIds.length === 0 && itemIds.length === 0) break;
-      deps.runProfileTransaction(() => {
-        report.nodeEmbeddingsEvicted += deps.storage.evictNodeEmbeddings(nodeIds, nowMs);
-        report.itemEmbeddingsEvicted += deps.storage.evictItemEmbeddings(itemIds, nowMs);
-      });
-      removeFromIndexes(nodeIds, itemIds);
-      footprint = deps.storage.logicalFootprint();
-    }
+      // Tier 2：正文仍保留，只驱逐最冷的非保护类向量；显式标记防止修复任务反复重嵌。
+      while (footprint.totalBytes > targetBytes) {
+        opts.signal?.throwIfAborted();
+        const nodeIds = deps.storage.listColdEmbeddedNodeIds(
+          cutoff,
+          PROTECTED_MEMORY_NODE_TYPES,
+          STORAGE_BATCH_SIZE,
+        );
+        const itemIds = deps.storage.listColdEmbeddedItemIds(
+          nowMs,
+          cutoff,
+          PROTECTED_MEMORY_ITEM_KINDS,
+          STORAGE_BATCH_SIZE,
+        );
+        if (nodeIds.length === 0 && itemIds.length === 0) break;
+        deps.runProfileTransaction(() => {
+          report.nodeEmbeddingsEvicted += deps.storage.evictNodeEmbeddings(nodeIds, nowMs);
+          report.itemEmbeddingsEvicted += deps.storage.evictItemEmbeddings(itemIds, nowMs);
+        });
+        removeFromIndexes(nodeIds, itemIds);
+        footprint = deps.storage.logicalFootprint();
+        await yieldToForegroundWork();
+      }
 
-    report.afterBytes = footprint.totalBytes;
-    report.pressureRemaining = footprint.totalBytes > maxBytes;
-    if (indexSyncFailed) await opts.refreshIndexes();
+      opts.signal?.throwIfAborted();
+      report.afterBytes = footprint.totalBytes;
+      report.pressureRemaining = footprint.totalBytes > maxBytes;
+    } finally {
+      if (indexSyncFailed) await opts.refreshIndexes();
+    }
   });
 
+  opts.signal?.throwIfAborted();
   deps.emit?.({
     type: 'memory_storage_budget_enforced',
     beforeBytes: report.beforeBytes,
@@ -142,6 +156,11 @@ export async function enforceMemoryStorageBudget(
     pressureRemaining: report.pressureRemaining,
   });
   return report;
+}
+
+/** 每个有界批次后让出事件循环，让新 Turn 能及时触发维护取消。 */
+function yieldToForegroundWork(): Promise<void> {
+  return new Promise(resolve => setImmediate(resolve));
 }
 
 function emptyReport(

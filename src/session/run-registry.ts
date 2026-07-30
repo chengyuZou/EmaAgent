@@ -1,3 +1,5 @@
+// 记录当前活动根 Turn，并向后台维护发布全局前台负载变化。
+
 import type { SessionId, TurnId } from '@ema-agent/ids';
 
 interface ActiveRun {
@@ -6,33 +8,22 @@ interface ActiveRun {
 }
 
 /**
- * In-memory registry of currently running turns.
- *
- * Serves two purposes:
- *   1. Fast per-session concurrency check (no DB round-trip needed).
- *   2. Holds the AbortController so a running LLM stream can be cancelled
- *      when the user clicks Stop or the turn fails.
- *
- * State is intentionally not persisted — on process restart, startTurn()
- * calls turnsRepo.abortStale() to heal any DB rows left in 'running' state.
+ * 内存态仅用于快速判断与取消当前 Turn；崩溃恢复仍以 SQLite 中的 Turn 终态为准，
+ * 启动时由 SessionStore 修复遗留的 running 记录。
  */
 export class RunRegistry {
   private readonly runs = new Map<string, ActiveRun>();
+  private readonly listeners = new Set<(activeCount: number) => void>();
 
-  /**
-   * Register a new active turn and return its AbortSignal.
-   * Pass the signal to llm.stream() so cancellation propagates automatically.
-   */
+  /** 注册活动 Turn，并返回供 LLM 与 Tool 链路共同消费的取消信号。 */
   register(sessionId: SessionId, turnId: TurnId): AbortSignal {
     const abortController = new AbortController();
     this.runs.set(sessionId as string, { turnId, abortController });
+    this.notifyListeners();
     return abortController.signal;
   }
 
-  /**
-   * Fire the AbortController for the session's running turn.
-   * Returns false if no turn is registered (idempotent).
-   */
+  /** 取消 Session 当前 Turn；没有活动 Turn 时幂等返回 false。 */
   abort(sessionId: SessionId): boolean {
     const run = this.runs.get(sessionId as string);
     if (!run) return false;
@@ -48,13 +39,32 @@ export class RunRegistry {
     return this.runs.get(sessionId as string)?.turnId;
   }
 
-  /** Call after turn reaches any terminal state (completed/failed/aborted). */
+  /** Turn 进入 completed、failed 或 aborted 后清除内存态。 */
   clear(sessionId: SessionId): void {
-    this.runs.delete(sessionId as string);
+    if (!this.runs.delete(sessionId as string)) return;
+    this.notifyListeners();
   }
 
-  /** For observability / debugging. */
+  /** 返回当前活动根 Turn 数量。 */
   activeSessionCount(): number {
     return this.runs.size;
+  }
+
+  /**
+   * 观察活动根 Turn 数量；立即发送当前快照，避免订阅方在启动与第一次变化之间
+   * 误判系统空闲。
+   */
+  subscribe(listener: (activeCount: number) => void): () => void {
+    this.listeners.add(listener);
+    listener(this.runs.size);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  private notifyListeners(): void {
+    for (const listener of this.listeners) {
+      listener(this.runs.size);
+    }
   }
 }

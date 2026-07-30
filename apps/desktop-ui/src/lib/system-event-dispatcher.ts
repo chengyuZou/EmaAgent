@@ -1,6 +1,7 @@
 // 把跨窗口收到的系统事件写入当前窗口自己的前端 Store。
 import type { AppEvent } from '@ema-agent/events';
 import type { MemoryTaskKind } from '@ema-agent/storage';
+import { useBackgroundProcessStore } from '../stores/backgroundProcessStore.js';
 import { useCardStore } from '../stores/card-store.js';
 import { useKbStore } from '../stores/kb-store.js';
 import { useMemoryStore } from '../stores/memory-store.js';
@@ -156,6 +157,11 @@ export function dispatchSystemEvent(event: AppEvent): void {
     case 'kb_embeddings_staled':
       // stale 标记落在后端 SQLite；重读文档列表让"需要重嵌"徽标立即出现。
       void useKbStore.getState().loadDocuments();
+      break;
+
+    case 'background_process_changed':
+      // 面板只原位更新已加载的行;未加载的 Session 不预取,等打开再拉。
+      useBackgroundProcessStore.getState().applyEvent(event);
       break;
 
     // 这些事件为后续 Memory 轮次预留，当前没有前端状态需要更新。

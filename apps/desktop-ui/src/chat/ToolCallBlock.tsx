@@ -11,8 +11,11 @@
 import { useState, useEffect, useCallback, type JSX } from 'react';
 import { createPatch } from 'diff';
 import { IconButton } from '@ema-agent/ui';
+import type { SessionId } from '@ema-agent/ids';
 import type { AssistantSlice } from '../stores/conversation-store.js';
+import { useConversationStore } from '../stores/conversation-store.js';
 import { turnsApi } from '../api/turns.js';
+import { useWorkspaceStore } from './workspace/workspaceStore.js';
 import { renderToolArgs, renderToolResult, stripOuterBraces } from './tool-renderers.js';
 
 export interface ToolCallBlockProps {
@@ -69,13 +72,16 @@ export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBloc
 
   const isBash      = BASH_TOOLS.has(slice.name);
   const fileChange = slice.presentation?.kind === 'file_change' ? slice.presentation : null;
+  const backgroundProcess = slice.presentation?.kind === 'background_process' ? slice.presentation : null;
   const editDiff = fileChange
     ? fileChange.unifiedDiff
     : argsReady ? buildEditDiff(slice.name, slice.args) : null;
 
   const resultView = hasResult && slice.result !== null ? renderToolResult(slice.name, slice.result) : null;
-  // bash 结果沿用原终端融合渲染（不进 renderToolResult）
-  const bashResultStr = isBash && hasResult && slice.result !== null ? formatJson(slice.result) : null;
+  // bash 结果沿用原终端融合渲染（不进 renderToolResult）;已转交后台的进程引用 JSON 不渲染,由卡片表达。
+  const bashResultStr = isBash && hasResult && slice.result !== null && !backgroundProcess
+    ? formatJson(slice.result)
+    : null;
 
   const bodyForCopy = buildBodyText(slice, editDiff, isBash ? getBashCommand(slice.args) : null, bashResultStr, argsReady);
 
@@ -157,6 +163,14 @@ export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBloc
             </div>
           )}
 
+          {/* 已转交后台的 Bash:块当场终结,卡片只给面板入口,不持续刷新。 */}
+          {backgroundProcess && (
+            <BackgroundProcessCard
+              command={backgroundProcess.command}
+              status={backgroundProcess.status}
+            />
+          )}
+
           {/* Edit diff */}
           {!isBash && editDiff && (
             <div className="max-h-64 overflow-auto pr-6">
@@ -206,6 +220,37 @@ export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBloc
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── BackgroundProcessCard（已转交后台的入口卡）─────────────────────────────────
+
+function BackgroundProcessCard({
+  command, status,
+}: {
+  command: string;
+  status: 'queued' | 'running' | string;
+}): JSX.Element {
+  const sessionId = useConversationStore((s) => s.viewedSessionId);
+  const openTab = useWorkspaceStore((s) => s.openTab);
+
+  return (
+    <div className="flex items-center gap-2 rounded-md border px-2.5 py-1.5 pr-6 text-[11px] bg-[var(--ema-surface-1)] border-[var(--ema-border)]">
+      <span className="i-lucide:square-terminal shrink-0 text-sm text-[var(--ema-primary)]" aria-hidden />
+      <span className="min-w-0 flex-1 truncate text-[var(--ema-text-secondary)]" title={command}>
+        已转到后台{status === 'queued' ? '排队' : '运行'}
+      </span>
+      <button
+        className="shrink-0 text-[var(--ema-primary)] hover:text-[var(--ema-primary-hover)] transition-colors"
+        onClick={() => {
+          if (sessionId) {
+            openTab(sessionId as SessionId, { id: 'backgroundProcesses', kind: 'backgroundProcesses' });
+          }
+        }}
+      >
+        查看后台进程
+      </button>
     </div>
   );
 }

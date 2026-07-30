@@ -215,7 +215,10 @@ export class MemoryPlanner {
   }
 
   /** 换 embed 模型后按批修复 stale/缺失向量；进度隐式推进，断电续扫。 */
-  async repairStaleEmbeddings(batchSize = 100): Promise<EmbeddingRepairReport> {
+  async repairStaleEmbeddings(
+    batchSize = 100,
+    signal?: AbortSignal,
+  ): Promise<EmbeddingRepairReport> {
     await this.indexMgr.initialize();
     return repairStaleEmbeddings(this.deps, this.embed, {
       batchSize,
@@ -224,17 +227,19 @@ export class MemoryPlanner {
       indexSpaceId: this.indexMgr.currentSpaceId(),
       commitCoordinator: this.commitCoordinator,
       refreshIndexes: () => this.indexMgr.refreshIndexes(),
+      signal,
     });
   }
 
   /** 超预算时按过期、零重要度正文、冷向量顺序降压。 */
-  async enforceStorageBudget(): Promise<MemoryStorageBudgetReport> {
+  async enforceStorageBudget(signal?: AbortSignal): Promise<MemoryStorageBudgetReport> {
     const settings = this.readUserSettings();
     return enforceMemoryStorageBudget(this.deps, settings, {
       commitCoordinator: this.commitCoordinator,
       removeNodeFromIndex: id => this.indexMgr.removeNode(id),
       removeItemFromIndex: id => this.indexMgr.removeItem(id),
       refreshIndexes: () => this.indexMgr.refreshIndexes(),
+      signal,
     });
   }
 

@@ -4,6 +4,7 @@ import type { SessionId } from '@ema-agent/ids';
 import { gitApi, type GitSummary } from '../../api/git.js';
 import type { GitSummaryOk } from '@ema-agent/git-utils';
 import { useAgentRunStore } from '../../stores/agentRunStore.js';
+import { useBackgroundProcessStore } from '../../stores/backgroundProcessStore.js';
 import { useSessionAttachmentStore } from '../../stores/session-attachment-store.js';
 import { useSessionStore } from '../../stores/session-store.js';
 import { useWorkspaceStore } from '../workspace/workspaceStore.js';
@@ -52,6 +53,21 @@ export function PinnedSessionSummary({ sessionId }: PinnedSessionSummaryProps): 
     void loadAttachments(sessionId);
   }, [sessionId, loadAttachments]);
 
+  // 后台进程计数:面板同源 store,点击打开 backgroundProcesses 标签。
+  const loadProcesses = useBackgroundProcessStore((s) => s.loadForSession);
+  useEffect(() => {
+    void loadProcesses(sessionId as string);
+  }, [sessionId, loadProcesses]);
+  const processes = useBackgroundProcessStore((s) => {
+    let running = 0;
+    let terminal = 0;
+    for (const p of s.listsBySession.get(sessionId as string)?.processes ?? []) {
+      if (p.status === 'running' || p.status === 'queued') running += 1;
+      else terminal += 1;
+    }
+    return { running, terminal, total: running + terminal };
+  });
+
   return (
     <div className="flex flex-col gap-3 p-3 text-xs">
       {/* 环境信息：本地行恒在;Git 行只在真实仓库摘要(ok)时出现,点击打开 review 标签。 */}
@@ -88,7 +104,7 @@ export function PinnedSessionSummary({ sessionId }: PinnedSessionSummaryProps): 
         )}
       </section>
 
-      {/* 运行活动：后台进程行在后端 API（批次 F）就绪前不渲染。 */}
+      {/* 运行活动：子智能体与后台进程,计数同源各自 store,点击打开对应标签。 */}
       <section>
         <SectionTitle label="运行活动" />
         <SummaryRow
@@ -106,6 +122,25 @@ export function PinnedSessionSummary({ sessionId }: PinnedSessionSummaryProps): 
               )}
               {activity.terminal > 0 && (
                 <span className="text-[var(--ema-text-tertiary)]">○ {activity.terminal} 已完成</span>
+              )}
+            </>
+          )}
+        </SummaryRow>
+        <SummaryRow
+          icon="i-lucide:square-terminal"
+          label="后台进程"
+          disabled={processes.total === 0}
+          onClick={() => openTab(sessionId, { id: 'backgroundProcesses', kind: 'backgroundProcesses' })}
+        >
+          {processes.total === 0 ? (
+            <span className="text-[var(--ema-text-tertiary)]">无记录</span>
+          ) : (
+            <>
+              {processes.running > 0 && (
+                <span className="text-[var(--ema-primary)]">● {processes.running} 运行中</span>
+              )}
+              {processes.terminal > 0 && (
+                <span className="text-[var(--ema-text-tertiary)]">○ {processes.terminal} 已结束</span>
               )}
             </>
           )}

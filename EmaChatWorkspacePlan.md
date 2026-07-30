@@ -1,6 +1,6 @@
 # EmaAgent Chat 工作区与历史导航实施计划
 
-> 状态：批次 A/B/C1/C2/C3/D1/D2a/E1 已完成；D2b（opener + 分支选择器）、批次 F 待做；E2 Terminal/E3 Browser 推迟到 V1 正式版（内测不开放，类型保留+防御渲染）
+> 状态：批次 A/B/C1/C2/C3/D1/D2a/E1/F 已完成；D2b（opener + 分支选择器）待做；E2 Terminal/E3 Browser 推迟到 V1 正式版（内测不开放，类型保留+防御渲染）
 > 日期：2026-07-23  
 > 范围：Desktop Chat 主布局、Turn 快速导航、Task/AgentRun/来源展示、右侧与底部工作区、桌面打开方式  
 > 不包含：恢复 Session Branch、尚无运行能力的空 Terminal/Browser/Review 面板
@@ -793,13 +793,15 @@ D2b 待做：
 
 ### 批次 F：后台进程活动面板
 
-后端 `BackgroundProcess + ProcessList/ProcessOutput/ProcessStop`、列表 API、Completion Inbox 和 Session
-事件完成后，由前端模型按 §3.2 与 §7.1 实现：
+状态：已完成（2026-07-30）。后端 `BackgroundProcess + ProcessList/ProcessOutput/ProcessStop`、列表 API、Completion Inbox 和 Session 事件就绪后落地：
 
-- 置顶摘要中的后台进程计数；
-- `backgroundProcesses` 动态标签；
-- 列表、详情、游标输出与终止；
-- AgentRun 与 BackgroundProcess 并列展示但保持独立 Store/DTO。
+- **wire 增量**:`BackgroundProcessSummary.outputDir`（日志目录绝对路径，`toSummary` 改 runtime 私有方法走 `locationFor` 同一工厂）;
+- **数据层**:`api/backgroundProcesses.ts`(list/output/stop，类型复用 @ema-agent/tools)+ `backgroundProcessStore`（每 Session 列表、每进程 64KB 渲染缓冲封顶、SSE 事件原位更新不重拉、未加载 Session 不预取、Session 删除清理列表/输出/跟随循环）+ `workspaceTypes` 新增 `backgroundProcesses` tab kind;
+- **SSE**:`system-event-dispatcher` 接 `background_process_changed`;`event-notifications` 只对 failed(danger)/timedOut(warning）弹 toast，完成与停止静默（2026-07-30 拍板）;catalog 补登标签；
+- **面板**:`BackgroundProcessesPanel`（进行中/已结束分组列表 → 详情：命令/cwd/exit/时长/输出量事实行 + scrollToTurn 来源轮次 + stdout/stderr 有界渲染 + 上游更多时"只显示部分内容"+「在文件管理器中显示」走 `reveal_item_in_dir` + live 跟随尾部长轮询 + 终止仅 queued/running 只提交 backgroundProcessId);
+- **入口**：置顶摘要运行活动区后台进程行（● N 运行中 ○ M 已结束，点击开标签）;ToolCallBlock 新增 `background_process` presentation 卡片（块当场终结，"已转到后台"+ 查看入口，不渲染 processReference JSON);
+- **输出截断决策（2026-07-30 用户拍板）**：前端渲染缓冲封顶 64KB，不逐页加载完整日志，想看全量走文件管理器；
+- **来源跳转降级**：复用现有 `scrollToTurn(originTurnId)`，精度到轮次不到单个 Tool Call 块。
 
 本批不实现交互式 PTY Terminal，也不把后台日志面板伪装成 Terminal。
 

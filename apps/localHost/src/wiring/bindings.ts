@@ -419,6 +419,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
       toolExecutionJournal,
       backgroundProcesses,
     ),
+    session,
     memory,
     mcpRegistry,
     toolResultCleaner,

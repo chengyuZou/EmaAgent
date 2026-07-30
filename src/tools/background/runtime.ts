@@ -84,7 +84,7 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
   recoverInterrupted(): BackgroundProcessSummary[] {
     return this.deps.repo.recoverInterrupted(Date.now()).map(row => {
       this.emitRow(row);
-      return toSummary(row);
+      return this.toSummary(row);
     });
   }
 
@@ -258,7 +258,8 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
     sessionId: SessionId,
     options: { status?: BackgroundProcessStatus; limit?: number } = {},
   ): BackgroundProcessSummary[] {
-    return this.deps.repo.listForSession(sessionId, options).map(toSummary);
+    return this.deps.repo.listForSession(sessionId, options)
+      .map(row => this.toSummary(row));
   }
 
   async readOutput(
@@ -278,7 +279,7 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
     }
 
     return {
-      process: toSummary(row),
+      process: this.toSummary(row),
       stdout: chunk.stdout,
       stderr: chunk.stderr,
       nextCursor: encodeOutputCursor({
@@ -291,7 +292,7 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
 
   stop(sessionId: SessionId, id: BackgroundProcessId): BackgroundProcessSummary {
     const row = this.requireOwned(sessionId, id);
-    if (!isLive(row.status)) return toSummary(row);
+    if (!isLive(row.status)) return this.toSummary(row);
 
     const queued = this.queued.get(id);
     if (queued) {
@@ -309,7 +310,7 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
       if (!terminal) throw new Error('Background process state changed before stop');
       this.emitRow(terminal);
       this.notifyChanged(id);
-      return toSummary(terminal);
+      return this.toSummary(terminal);
     }
 
     const active = this.active.get(id);
@@ -318,7 +319,7 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
     }
     active.terminalIntent = 'stopped';
     active.handle.stop();
-    return toSummary(row);
+    return this.toSummary(row);
   }
 
   /**
@@ -534,6 +535,32 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
     return this.deps.outputPath(row.session_id, row.id);
   }
 
+  private toSummary(row: BackgroundProcessRow): BackgroundProcessSummary {
+    const end = row.completed_at ?? Date.now();
+    return {
+      id: row.id,
+      sessionId: row.session_id,
+      ...(row.origin_turn_id ? { originTurnId: row.origin_turn_id } : {}),
+      ...(row.tool_call_id ? { toolCallId: row.tool_call_id } : {}),
+      command: row.command,
+      ...(row.description ? { description: row.description } : {}),
+      cwd: row.cwd,
+      status: row.status,
+      createdAt: row.created_at,
+      ...(row.started_at !== null ? { startedAt: row.started_at } : {}),
+      ...(row.completed_at !== null ? { completedAt: row.completed_at } : {}),
+      durationMs: Math.max(0, end - (row.started_at ?? row.created_at)),
+      ...(row.exit_code !== null ? { exitCode: row.exit_code } : {}),
+      ...(row.termination_reason
+        ? { terminationReason: row.termination_reason }
+        : {}),
+      stdoutBytes: row.stdout_bytes,
+      stderrBytes: row.stderr_bytes,
+      outputTruncated: row.output_truncated === 1,
+      outputDir: this.locationFor(row).absoluteDirectory,
+    };
+  }
+
   private emitRow(row: BackgroundProcessRow): void {
     this.deps.emit?.({
       type: 'background_process_changed',
@@ -595,31 +622,6 @@ function terminalReason(
     return `Command exited with code ${result.exitCode}`;
   }
   return undefined;
-}
-
-function toSummary(row: BackgroundProcessRow): BackgroundProcessSummary {
-  const end = row.completed_at ?? Date.now();
-  return {
-    id: row.id,
-    sessionId: row.session_id,
-    ...(row.origin_turn_id ? { originTurnId: row.origin_turn_id } : {}),
-    ...(row.tool_call_id ? { toolCallId: row.tool_call_id } : {}),
-    command: row.command,
-    ...(row.description ? { description: row.description } : {}),
-    cwd: row.cwd,
-    status: row.status,
-    createdAt: row.created_at,
-    ...(row.started_at !== null ? { startedAt: row.started_at } : {}),
-    ...(row.completed_at !== null ? { completedAt: row.completed_at } : {}),
-    durationMs: Math.max(0, end - (row.started_at ?? row.created_at)),
-    ...(row.exit_code !== null ? { exitCode: row.exit_code } : {}),
-    ...(row.termination_reason
-      ? { terminationReason: row.termination_reason }
-      : {}),
-    stdoutBytes: row.stdout_bytes,
-    stderrBytes: row.stderr_bytes,
-    outputTruncated: row.output_truncated === 1,
-  };
 }
 
 function isLive(status: BackgroundProcessStatus): boolean {

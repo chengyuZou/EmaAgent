@@ -461,6 +461,11 @@ export class SessionStore implements SessionOwnershipFacade {
     return this.registry.activeSessionCount() > 0;
   }
 
+  /** LocalHost 通过活动数量变化及时抢占低优先级维护，不需要轮询 Session。 */
+  subscribeActiveTurns(listener: (activeCount: number) => void): () => void {
+    return this.registry.subscribe(listener);
+  }
+
   listTurns(sessionId: SessionId, limit = 50): Turn[] {
     return this.turnsRepo.listForSession(sessionId, limit).map(toTurn);
   }

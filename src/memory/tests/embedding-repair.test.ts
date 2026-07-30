@@ -122,13 +122,14 @@ function createHarness(opts: {
     deps,
     nodesIndex,
     itemsIndex,
-    sweep: () => repairStaleEmbeddings(deps, embed, {
+    sweep: (signal?: AbortSignal) => repairStaleEmbeddings(deps, embed, {
       batchSize: 10,
       nodesIndex,
       itemsIndex,
       indexSpaceId: NEW_SPACE.id,
       commitCoordinator: new MemoryCommitCoordinator(),
       refreshIndexes,
+      signal,
     }),
     refreshIndexes,
   };
@@ -267,5 +268,23 @@ describe('R11 stale embedding 修复扫描', () => {
     expect(report.nodesRepaired).toBe(1);
     expect(report.itemsRepaired).toBe(1);
     expect(h.refreshIndexes).toHaveBeenCalledOnce();
+  });
+
+  it('前台 Turn 在 Embed 等待期间开始时取消维护且不提交旧批次', async () => {
+    const controller = new AbortController();
+    const h = createHarness({
+      embedMany: async texts => {
+        controller.abort();
+        return texts.map(embedded);
+      },
+    });
+
+    await expect(h.sweep(controller.signal)).rejects.toMatchObject({
+      name: 'AbortError',
+    });
+    expect(h.nodes.findById('node-stale')!.embedding_space_id).toBe(OLD_SPACE);
+    expect(h.items.findById('item-no-embed')!.embedding).toBeNull();
+    expect(h.nodesIndex.update).not.toHaveBeenCalled();
+    expect(h.itemsIndex.update).not.toHaveBeenCalled();
   });
 });

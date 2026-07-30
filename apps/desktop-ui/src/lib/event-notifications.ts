@@ -94,6 +94,18 @@ export function describeEventNotification(event: ClientEvent): EventNotification
           : `知识库 Embedding 模型已更换为 ${event.model}`,
         variant: event.failedKbIds.length > 0 ? 'danger' : 'warning',
       };
+    case 'background_process_changed':
+      // 只给失败/超时弹通知;完成、停止与运行状态变化只更新面板(2026-07-30 拍板)。
+      if (event.status === 'failed') {
+        return {
+          message: `后台进程执行失败${event.terminationReason ? `：${event.terminationReason}` : ''}`,
+          variant: 'danger',
+        };
+      }
+      if (event.status === 'timedOut') {
+        return { message: '后台进程超出最大运行时间，已被终止', variant: 'warning' };
+      }
+      return null;
     case 'emotion_changed':
       return { message: `角色情绪切换为 ${event.state.primary}`, variant: 'info' };
     case 'stage_cue':

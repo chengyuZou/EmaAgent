@@ -14,7 +14,9 @@ export type WorkspaceTab =
   // 子智能体标签补充）；'agentRun:<id>' 是单次执行的深链标签。
   | { id: 'agentRuns'; kind: 'agentRuns' }
   | { id: `agentRun:${string}`; kind: 'agentRun'; agentRunId: string }
-  | { id: 'sources'; kind: 'sources' };
+  | { id: 'sources'; kind: 'sources' }
+  // 当前 Session 后台进程面板(批次 F);列表内部导航到单次进程详情。
+  | { id: 'backgroundProcesses'; kind: 'backgroundProcesses' };
 
 /**
  * 每个 Session 一份的标签布局。

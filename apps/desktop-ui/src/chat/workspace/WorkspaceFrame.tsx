@@ -11,6 +11,7 @@ import { ReviewPanel } from '../review/ReviewPanel.js';
 import { FilesPanel } from '../FilesPanel.js';
 import { SourcesPanel } from '../sources/SourcesPanel.js';
 import { AgentRunPanel } from '../agentRuns/AgentRunPanel.js';
+import { BackgroundProcessesPanel } from '../backgroundProcesses/BackgroundProcessesPanel.js';
 import { FilePreview } from '../FilePreview.js';
 
 export interface WorkspaceFrameProps {
@@ -153,6 +154,8 @@ function WorkspaceTabContent({
       );
     case 'sources':
       return <SourcesPanel sessionId={sessionId as string | null} />;
+    case 'backgroundProcesses':
+      return <BackgroundProcessesPanel sessionId={sessionId as string | null} />;
     case 'agentRuns':
       return <AgentRunPanel className="p-2" />;
     case 'agentRun':

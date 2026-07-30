@@ -111,6 +111,31 @@ describe('Memory 全局逻辑字节预算', () => {
       pressureRemaining: true,
     });
   });
+
+  it('每个有界批次后响应前台取消，不继续清理后续行', async () => {
+    const harness = createHarness();
+    for (let index = 0; index < 401; index++) {
+      harness.items.insert({
+        id: `expired-${index}`,
+        kind: 'project',
+        title: '过期',
+        body: 'x'.repeat(100),
+        profiles: ['chat'],
+        importance: 50,
+        expiresAt: NOW - 1,
+        createdAt: index + 1,
+      });
+    }
+    const controller = new AbortController();
+    setImmediate(() => controller.abort());
+
+    await expect(harness.run(1, controller.signal)).rejects.toMatchObject({
+      name: 'AbortError',
+    });
+    expect(harness.items.findById('expired-0')).toBeUndefined();
+    expect(harness.items.findById('expired-300')).toBeDefined();
+    expect(harness.events).toHaveLength(0);
+  });
 });
 
 describe('Memory 用户设置边界', () => {
@@ -181,7 +206,7 @@ function createHarness() {
     events,
     removeNode,
     removeItem,
-    run: (maxBytes: number) => enforceMemoryStorageBudget(
+    run: (maxBytes: number, signal?: AbortSignal) => enforceMemoryStorageBudget(
       deps,
       {
         storage: { maxBytes },
@@ -197,6 +222,7 @@ function createHarness() {
         removeItemFromIndex: removeItem,
         refreshIndexes,
         nowMs: NOW,
+        signal,
       },
     ),
   };

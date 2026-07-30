@@ -1,6 +1,7 @@
 // 管理前端 Session 列表、工作区、模式和下一轮模型偏好。
 import { create } from 'zustand';
 import { sessionsApi, type SessionWire } from '../api/sessions.js';
+import { useBackgroundProcessStore } from './backgroundProcessStore.js';
 import { useConversationStore } from './conversation-store.js';
 import { useDecisionStore } from './decision-store.js';
 import type { SessionId, TurnId } from '@ema-agent/ids';
@@ -324,6 +325,8 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
       await sessionsApi.delete(id);
       useConversationStore.getState().evictSession(id);
       useDecisionStore.getState().clearSession(id);
+      // Session 永久删除后,进程面板缓存与跟随循环一并清理,不显示其他 Session 的进程。
+      useBackgroundProcessStore.getState().clearSession(id as string);
       preferredModelWriteChains.delete(id as string);
       preferredModelGenerations.delete(id as string);
       executionSettingsWriteChains.delete(id as string);

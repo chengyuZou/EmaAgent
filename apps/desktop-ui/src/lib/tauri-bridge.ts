@@ -114,6 +114,9 @@ export interface TauriBridge {
    * 验证桌面宿主签发的能力句柄后，用系统默认程序打开附件。
    */
   openAuthorizedFile(fileHandle: string): Promise<void>;
+
+  /** 在系统文件管理器中定位一个本机路径。 */
+  revealInFolder(path: string): Promise<void>;
 }
 
 export interface AuthorizedFile {
@@ -362,5 +365,12 @@ export const tauriBridge: TauriBridge = {
     const core = await getCore();
     if (!core) return;
     await core.invoke('open_authorized_file', { fileHandle });
+  },
+
+  /** 在系统文件管理器中定位路径(后台进程日志目录等);插件缺失时抛错由调用方提示。 */
+  async revealInFolder(path: string): Promise<void> {
+    const core = await getCore();
+    if (!core) throw new Error('当前环境不支持文件管理器定位');
+    await core.invoke('plugin:opener|reveal_item_in_dir', { paths: [path] });
   },
 };

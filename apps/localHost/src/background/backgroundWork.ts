@@ -4,6 +4,7 @@ import type { AttachmentCacheMaintenance } from '@ema-agent/attachment';
 import type { McpRegistry } from '@ema-agent/mcp';
 import type { MemoryPlanner } from '@ema-agent/memory';
 import type { NarrativeClient } from '@ema-agent/narrative';
+import type { SessionStore } from '@ema-agent/session';
 import type { ToolResultCleaner } from '@ema-agent/tools';
 import type { SystemEventBus } from '../sse/system-bus.js';
 import type { ProviderRuntimeFacade } from '../wiring/provider-runtime.js';
@@ -12,6 +13,10 @@ import {
   type BackgroundTicker,
 } from './backgroundTicker.js';
 import type { StartupRecovery } from './startupRecovery.js';
+import {
+  HEAVY_MAINTENANCE_IDLE_MS,
+  WorkloadIdlePolicy,
+} from './workloadIdlePolicy.js';
 
 const BACKGROUND_TICK_MS = 5_000;
 const CLEANER_SWEEP_EVERY = 360;
@@ -22,6 +27,10 @@ const EMBEDDING_REPAIR_SWEEP_EVERY = 360;
 type BackgroundMemory = Pick<
   MemoryPlanner,
   'initialize' | 'tick' | 'drain' | 'repairStaleEmbeddings' | 'enforceStorageBudget'
+>;
+type ForegroundActivity = Pick<
+  SessionStore,
+  'hasActiveTurns' | 'subscribeActiveTurns'
 >;
 type BackgroundMcp = Pick<
   McpRegistry,
@@ -44,12 +53,16 @@ export class BackgroundWork {
   private memoryEnabled = false;
   private started = false;
   private stopped = false;
+  private readonly idlePolicy = new WorkloadIdlePolicy();
+  private maintenanceAbortController: AbortController | null = null;
+  private unsubscribeActiveTurns: (() => void) | null = null;
 
   constructor(
     private readonly startupRecovery: Pick<
       StartupRecovery,
       'runRequired' | 'runMaintenance'
     >,
+    private readonly foregroundActivity: ForegroundActivity,
     private readonly memory: BackgroundMemory,
     private readonly mcp: BackgroundMcp,
     private readonly toolResults: BackgroundToolResults,
@@ -67,6 +80,16 @@ export class BackgroundWork {
     // 崩溃恢复必须先于新一轮后台任务，避免旧 running 状态与新 Worker 竞争。
     this.startupRecovery.runRequired();
     this.started = true;
+    this.unsubscribeActiveTurns = this.foregroundActivity.subscribeActiveTurns(
+      activeCount => {
+        this.idlePolicy.recordForegroundActivity();
+        if (activeCount > 0) {
+          this.maintenanceAbortController?.abort(
+            new DOMException('前台 Turn 已开始', 'AbortError'),
+          );
+        }
+      },
+    );
     this.initialization = Promise.resolve()
       .then(() => this.startupRecovery.runMaintenance())
       .then(async ({ memoryReady }) => {
@@ -102,10 +125,15 @@ export class BackgroundWork {
   async shutdown(): Promise<void> {
     if (!this.started || this.stopped) return;
     this.stopped = true;
+    this.maintenanceAbortController?.abort(
+      new DOMException('LocalHost 正在关闭', 'AbortError'),
+    );
 
     // 先停止生产新任务，再等待初始化，最后依次排空 Memory 与 MCP。
     await this.ticker?.stop();
     this.ticker = null;
+    this.unsubscribeActiveTurns?.();
+    this.unsubscribeActiveTurns = null;
     await this.initialization;
     if (this.memoryEnabled) {
       try {
@@ -136,11 +164,34 @@ export class BackgroundWork {
       await this.sweepAttachmentCache();
     }
     if (tickCount % EMBEDDING_REPAIR_SWEEP_EVERY === 0) {
-      await this.sweepMemoryStorageBudget();
-      await this.sweepMemoryEmbeddings();
+      await this.runHeavyMemoryMaintenance();
     }
     if (tickCount % BRIDGE_HEARTBEAT_EVERY === 0) {
       this.lastBridgeReady = await this.checkBridgeHeartbeat();
+    }
+  }
+
+  private async runHeavyMemoryMaintenance(): Promise<void> {
+    if (!this.memoryEnabled) return;
+    if (!this.idlePolicy.canRun(
+      this.foregroundActivity.hasActiveTurns(),
+      HEAVY_MAINTENANCE_IDLE_MS,
+    )) {
+      return;
+    }
+
+    const controller = new AbortController();
+    this.maintenanceAbortController = controller;
+    try {
+      await this.sweepMemoryStorageBudget(controller.signal);
+      controller.signal.throwIfAborted();
+      await this.sweepMemoryEmbeddings(controller.signal);
+    } catch (error) {
+      if (!controller.signal.aborted) throw error;
+    } finally {
+      if (this.maintenanceAbortController === controller) {
+        this.maintenanceAbortController = null;
+      }
     }
   }
 
@@ -173,10 +224,10 @@ export class BackgroundWork {
     }
   }
 
-  private async sweepMemoryEmbeddings(): Promise<void> {
+  private async sweepMemoryEmbeddings(signal: AbortSignal): Promise<void> {
     if (!this.memoryEnabled) return;
     try {
-      const report = await this.memory.repairStaleEmbeddings();
+      const report = await this.memory.repairStaleEmbeddings(100, signal);
       if (report.ran && (report.nodesRepaired + report.itemsRepaired > 0 || report.failed > 0)) {
         console.log(
           `[memory] embedding repair: nodes=${report.nodesRepaired} `
@@ -185,14 +236,15 @@ export class BackgroundWork {
         );
       }
     } catch (error) {
+      if (signal.aborted) return;
       console.warn('[memory] embedding repair sweep failed:', error);
     }
   }
 
-  private async sweepMemoryStorageBudget(): Promise<void> {
+  private async sweepMemoryStorageBudget(signal: AbortSignal): Promise<void> {
     if (!this.memoryEnabled) return;
     try {
-      const report = await this.memory.enforceStorageBudget();
+      const report = await this.memory.enforceStorageBudget(signal);
       if (report.ran) {
         console.log(
           `[memory] storage budget: before=${report.beforeBytes} `
@@ -201,6 +253,7 @@ export class BackgroundWork {
         );
       }
     } catch (error) {
+      if (signal.aborted) return;
       console.warn('[memory] storage budget sweep failed:', error);
     }
   }

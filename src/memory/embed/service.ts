@@ -38,18 +38,26 @@ export class EmbedService {
     return p ? this.embedRuntime.embeddingSpace(p.providerId, p.model, dim) : null;
   }
 
-  async embedOne(text: string): Promise<EmbeddedText | null> {
-    const result = await this.embedMany([text]);
+  async embedOne(text: string, signal?: AbortSignal): Promise<EmbeddedText | null> {
+    const result = await this.embedMany([text], signal);
     if (!result) return null;
     return result[0] ?? null;
   }
 
-  async embedMany(texts: string[]): Promise<EmbeddedText[] | null> {
+  async embedMany(
+    texts: string[],
+    signal?: AbortSignal,
+  ): Promise<EmbeddedText[] | null> {
     if (texts.length === 0) return [];
     const p = this.resolveEmbed();
     if (!p) return null;
 
-    const resp = await this.embedRuntime.embed({ providerId: p.providerId, model: p.model, texts });
+    const resp = await this.embedRuntime.embed({
+      providerId: p.providerId,
+      model: p.model,
+      texts,
+      signal,
+    });
     return resp.embeddings.map((vec) => ({
       embedding:  packEmbedding(vec),
       providerId: p.providerId,

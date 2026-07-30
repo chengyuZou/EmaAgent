@@ -34,8 +34,10 @@ export async function repairStaleEmbeddings(
     commitCoordinator: MemoryCommitCoordinator;
     /** ANN 增量同步失败时从 SQLite 重建；索引是派生缓存，不能反向回滚业务数据。 */
     refreshIndexes?: () => Promise<void>;
+    signal?: AbortSignal;
   },
 ): Promise<EmbeddingRepairReport> {
+  opts.signal?.throwIfAborted();
   if (!Number.isSafeInteger(opts.batchSize) || opts.batchSize <= 0 || opts.batchSize > 1_000) {
     throw new RangeError('memory.embeddingRepair: batchSize must be between 1 and 1000');
   }
@@ -60,20 +62,26 @@ export async function repairStaleEmbeddings(
     embed,
     space.id,
     dim,
+    opts.signal,
   );
+  opts.signal?.throwIfAborted();
   const itemPrepared = await prepareUpdates(
     staleItems,
     row => `${row.title}: ${row.body}`,
     embed,
     space.id,
     dim,
+    opts.signal,
   );
+  opts.signal?.throwIfAborted();
   const failed = nodePrepared.failed + itemPrepared.failed;
   const committedNodes: typeof nodePrepared.updates = [];
   const committedItems: typeof itemPrepared.updates = [];
 
   if (nodePrepared.updates.length > 0 || itemPrepared.updates.length > 0) {
+    opts.signal?.throwIfAborted();
     await opts.commitCoordinator.runExclusive(async () => {
+      opts.signal?.throwIfAborted();
       deps.runProfileTransaction(() => {
         const now = Date.now();
         for (const update of nodePrepared.updates) {
@@ -163,14 +171,17 @@ async function prepareUpdates<Row extends { id: string }>(
   embed: EmbedService,
   expectedSpaceId: string,
   expectedDim: number,
+  signal?: AbortSignal,
 ): Promise<PreparedUpdates<Row>> {
   const updates: Array<PreparedUpdate<Row>> = [];
   let failed = 0;
 
   for (let offset = 0; offset < rows.length; offset += EMBEDDING_REPAIR_CHUNK_SIZE) {
+    signal?.throwIfAborted();
     const chunk = rows.slice(offset, offset + EMBEDDING_REPAIR_CHUNK_SIZE);
     try {
-      const embeddings = await embed.embedMany(chunk.map(render));
+      const embeddings = await embed.embedMany(chunk.map(render), signal);
+      signal?.throwIfAborted();
       if (!embeddings || embeddings.length !== chunk.length) {
         failed += chunk.length;
         continue;
@@ -188,6 +199,7 @@ async function prepareUpdates<Row extends { id: string }>(
         updates.push({ row: chunk[index]!, embedded: embeddings[index]! });
       }
     } catch {
+      signal?.throwIfAborted();
       failed += chunk.length;
     }
   }

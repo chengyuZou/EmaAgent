@@ -4,14 +4,44 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BackgroundWork } from '../src/background/backgroundWork.js';
 
 function createHarness() {
+  let activeTurnCount = 0;
+  const activeTurnListeners = new Set<(activeCount: number) => void>();
   const startupRecovery = {
     runRequired: vi.fn(),
     runMaintenance: vi.fn(() => ({ memoryReady: true })),
+  };
+  const foregroundActivity = {
+    hasActiveTurns: vi.fn(() => activeTurnCount > 0),
+    subscribeActiveTurns: vi.fn((listener: (activeCount: number) => void) => {
+      activeTurnListeners.add(listener);
+      listener(activeTurnCount);
+      return () => activeTurnListeners.delete(listener);
+    }),
   };
   const memory = {
     initialize: vi.fn(async () => ({ nodes: 0, items: 0, backend: null })),
     tick: vi.fn(async () => undefined),
     drain: vi.fn(async () => undefined),
+    repairStaleEmbeddings: vi.fn(async () => ({
+      ran: true,
+      nodesRepaired: 0,
+      itemsRepaired: 0,
+      failed: 0,
+      remaining: 0,
+    })),
+    enforceStorageBudget: vi.fn(async () => ({
+      ran: false,
+      beforeBytes: 0,
+      afterBytes: 0,
+      maxBytes: 0,
+      targetBytes: 0,
+      expiredItemsDeleted: 0,
+      coldNodesDeleted: 0,
+      coldItemsDeleted: 0,
+      nodeEmbeddingsEvicted: 0,
+      itemEmbeddingsEvicted: 0,
+      pressureRemaining: false,
+    })),
   };
   const mcp = {
     primeFromCache: vi.fn(() => 0),
@@ -41,6 +71,7 @@ function createHarness() {
 
   const work = new BackgroundWork(
     startupRecovery,
+    foregroundActivity,
     memory,
     mcp,
     toolResults,
@@ -52,6 +83,11 @@ function createHarness() {
 
   return {
     work,
+    foregroundActivity,
+    setActiveTurnCount(activeCount: number) {
+      activeTurnCount = activeCount;
+      for (const listener of activeTurnListeners) listener(activeCount);
+    },
     startupRecovery,
     memory,
     mcp,
@@ -152,6 +188,47 @@ describe('BackgroundWork', () => {
       level: 'info',
       message: 'Narrative bridge 已恢复',
     });
+
+    await harness.work.shutdown();
+  });
+
+  it('有活动 Turn 时跳过重维护，Turn 结束后重新等待空闲窗口', async () => {
+    const harness = createHarness();
+    harness.work.start();
+    await vi.waitFor(() => {
+      expect(harness.memory.initialize).toHaveBeenCalledTimes(1);
+    });
+
+    harness.setActiveTurnCount(1);
+    await vi.advanceTimersByTimeAsync(30 * 60_000);
+    expect(harness.memory.enforceStorageBudget).not.toHaveBeenCalled();
+    expect(harness.memory.repairStaleEmbeddings).not.toHaveBeenCalled();
+
+    harness.setActiveTurnCount(0);
+    await vi.advanceTimersByTimeAsync(30 * 60_000);
+    expect(harness.memory.enforceStorageBudget).toHaveBeenCalledTimes(1);
+    expect(harness.memory.repairStaleEmbeddings).toHaveBeenCalledTimes(1);
+
+    await harness.work.shutdown();
+  });
+
+  it('后台重维护运行时出现新 Turn 会取消当前批次且不继续修复向量', async () => {
+    const harness = createHarness();
+    harness.memory.enforceStorageBudget.mockImplementation(async (signal?: AbortSignal) => {
+      harness.setActiveTurnCount(1);
+      expect(signal?.aborted).toBe(true);
+      signal?.throwIfAborted();
+      throw new Error('unreachable');
+    });
+
+    harness.work.start();
+    await vi.waitFor(() => {
+      expect(harness.memory.initialize).toHaveBeenCalledTimes(1);
+    });
+    await vi.advanceTimersByTimeAsync(30 * 60_000);
+
+    expect(harness.memory.enforceStorageBudget).toHaveBeenCalledTimes(1);
+    expect(harness.memory.repairStaleEmbeddings).not.toHaveBeenCalled();
 
     await harness.work.shutdown();
   });
