@@ -52,6 +52,7 @@ const EVENT_LABELS: Record<string, string> = {
   memory_recall_unavailable: '记忆召回不可用',
   memory_extraction_skipped: '记忆提取跳过',
   memory_storage_budget_enforced: '记忆存储预算执行',
+  memory_background_health_changed: '记忆后台健康变化',
   kb_ingest_completed: '知识库文档处理完成',
   kb_ingest_partial_failed: '知识库文档部分失败',
   kb_ingest_failed: '知识库文档处理失败',

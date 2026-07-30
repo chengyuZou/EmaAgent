@@ -125,6 +125,15 @@ export function describeEventNotification(event: ClientEvent): EventNotification
           + (event.pressureRemaining ? '，仍高于低水位' : ''),
         variant: event.pressureRemaining ? 'warning' : 'info',
       };
+    case 'memory_background_health_changed':
+      // 只在退化边界发布:进入退化给警告,退出给恢复提示。
+      if (event.health.state === 'degraded') {
+        return {
+          message: `Memory 后台维护已退化：${event.health.lastFailure?.message ?? '连续失败'}`,
+          variant: 'warning',
+        };
+      }
+      return { message: 'Memory 后台维护已恢复正常', variant: 'success' };
     case 'emotion_changed':
       return { message: `角色情绪切换为 ${event.state.primary}`, variant: 'info' };
     case 'stage_cue':

@@ -4,10 +4,23 @@
  */
 import { sidecarClient } from './sidecar-client.js';
 import type { SessionId } from '@ema-agent/ids';
-import type { MemoryStats, MemorySessionOverrides, MaintenanceReport } from '@ema-agent/memory';
+import type {
+  MemoryBackgroundHealth,
+  MemoryStats,
+  MemorySessionOverrides,
+  MaintenanceReport,
+} from '@ema-agent/memory';
 import type { MemoryNodeRow, MemoryItemRow, MemoryEdgeRow } from '@ema-agent/storage';
 
-export type { MemoryStats, MemorySessionOverrides, MaintenanceReport, MemoryNodeRow, MemoryItemRow, MemoryEdgeRow };
+export type {
+  MemoryBackgroundHealth,
+  MemoryStats,
+  MemorySessionOverrides,
+  MaintenanceReport,
+  MemoryNodeRow,
+  MemoryItemRow,
+  MemoryEdgeRow,
+};
 
 export interface MemoryMaintenanceInput {
   decayAfterDays?: number;
@@ -22,6 +35,11 @@ export const memoryApi = {
   /** GET /api/memory/stats */
   async stats(): Promise<MemoryStats> {
     return sidecarClient.request<MemoryStats>('/api/memory/stats');
+  },
+
+  /** GET /api/memory/health — 后台维护健康投影(idle/running/degraded,只读)。 */
+  async health(): Promise<MemoryBackgroundHealth> {
+    return sidecarClient.request<MemoryBackgroundHealth>('/api/memory/health');
   },
 
   /** GET /api/memory/nodes */

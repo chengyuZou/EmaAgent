@@ -1,6 +1,6 @@
 // 管理通用记忆统计、后台任务结果、维护操作与 Session 级开关。
 import { create } from 'zustand';
-import { memoryApi, type MemoryStats, type MaintenanceReport, type MemoryMaintenanceInput, type MemorySessionOverrides } from '../api/memory.js';
+import { memoryApi, type MemoryStats, type MaintenanceReport, type MemoryMaintenanceInput, type MemorySessionOverrides, type MemoryBackgroundHealth } from '../api/memory.js';
 import type { MemoryTaskKind } from '@ema-agent/storage';
 import type { SessionId } from '@ema-agent/ids';
 
@@ -65,10 +65,18 @@ export interface MemoryStoreState {
   maintenanceRunning: boolean;
   maintenanceError: string | null;
 
+  /** 后台维护健康投影(M5);null 表示尚未拉取。 */
+  health: MemoryBackgroundHealth | null;
+
   // ── Actions ─────────────────────────────────────────────────────────────
 
   /** Fetch latest stats from the sidecar. No-op if already loading. */
   refreshStats(): Promise<void>;
+
+  /** 拉取后台维护健康投影。 */
+  refreshHealth(): Promise<void>;
+  /** SSE 健康事件到达时原位替换。 */
+  onHealthChanged(health: MemoryBackgroundHealth): void;
 
   onTaskStarted(taskId: string, kind: MemoryTaskKind, sessionId?: string): void;
   onTaskCompleted(taskId: string):                                     void;
@@ -128,6 +136,7 @@ export const useMemoryStore = create<MemoryStoreState>((set, get) => ({
   maintenanceReport:  null,
   maintenanceRunning: false,
   maintenanceError:   null,
+  health:             null,
   sessionOverrides:   new Map(),
 
   // ── Stats ──────────────────────────────────────────────────────────────────
@@ -144,6 +153,19 @@ export const useMemoryStore = create<MemoryStoreState>((set, get) => ({
         statsError: error instanceof Error ? error.message : '加载记忆统计失败',
       });
     }
+  },
+
+  async refreshHealth() {
+    try {
+      const health = await memoryApi.health();
+      set({ health });
+    } catch {
+      // 健康投影拉取失败不打扰:保持旧值,下事件或下次打开再试。
+    }
+  },
+
+  onHealthChanged(health) {
+    set({ health });
   },
 
   // ── Background task tracking ───────────────────────────────────────────────

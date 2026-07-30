@@ -169,6 +169,11 @@ export function dispatchSystemEvent(event: AppEvent): void {
       void useMemoryStore.getState().refreshStats();
       break;
 
+    case 'memory_background_health_changed':
+      // 只在进入/退出退化边界发布(M5),原位替换健康投影。
+      useMemoryStore.getState().onHealthChanged(event.health);
+      break;
+
     // 这些事件为后续 Memory 轮次预留，当前没有前端状态需要更新。
     case 'memory_consolidation_started':
     case 'memory_consolidation_completed':

@@ -7,6 +7,8 @@ import { useMemoryStore, type MemorySessionOverrides } from '../../stores/memory
 import { useConversationStore } from '../../stores/conversation-store.js';
 import { memoryApi, type MemoryNodeRow, type MemoryItemRow } from '../../api/memory.js';
 import { showToast } from '../../lib/toast.js';
+import { MemoryHealthCard } from './MemoryHealthCard.js';
+import { MemoryMaintenanceSettings } from './MemoryMaintenanceSettings.js';
 import type { MemoryNodeType, MemoryItemKind } from '@ema-agent/storage';
 
 // ── Label maps ────────────────────────────────────────────────────────────────
@@ -69,11 +71,15 @@ function OverviewTab(): JSX.Element {
   const activeTasks  = useMemoryStore((s) => s.activeTasks);
   const failedTasks  = useMemoryStore((s) => s.failedTasks);
   const viewedId     = useConversationStore((s) => s.viewedSessionId);
+  const health       = useMemoryStore((s) => s.health);
   const sessionOverrides = useMemoryStore((s) =>
     viewedId ? s.sessionOverrides.get(viewedId as string) : undefined,
   );
 
-  useEffect(() => { void useMemoryStore.getState().refreshStats(); }, []);
+  useEffect(() => {
+    void useMemoryStore.getState().refreshStats();
+    void useMemoryStore.getState().refreshHealth();
+  }, []);
 
   useEffect(() => {
     if (viewedId) void useMemoryStore.getState().getSessionOverrides(viewedId);
@@ -241,6 +247,17 @@ function OverviewTab(): JSX.Element {
           </div>
         </>
       )}
+
+      {/* 后台维护健康(M5) */}
+      {health && (
+        <>
+          <Divider />
+          <MemoryHealthCard health={health} />
+        </>
+      )}
+
+      <Divider />
+      <MemoryMaintenanceSettings />
     </div>
   );
 }
