@@ -51,16 +51,16 @@ describe('PromptAssembler', () => {
     );
   });
 
-  it('tools.usage 与 workspace.instructions 继承声明的槽位规格', () => {
+  it('tools.prompt 与 workspace.instructions 继承声明的槽位规格', () => {
     const assembler = new PromptAssembler();
     const snapshot = assembler.build([
       characterSlot,
-      { id: 'tools.usage', content: 'Bash usage.', version: 'tools:1' },
+      { id: 'tools.prompt', content: 'Bash usage.', version: 'tools:1' },
       { id: 'workspace.instructions', content: 'Project rules.', version: 'ws:1' },
     ]);
 
     expect(snapshot.slots.map((slot) => slot.id)).toEqual([
-      'tools.usage',
+      'tools.prompt',
       'workspace.instructions',
       'character.identity',
     ]);

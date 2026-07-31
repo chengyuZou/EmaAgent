@@ -4,7 +4,7 @@ import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/turn';
 export type PromptSlotId =
   | 'product.rules'
   | 'product.toolGuidance'
-  | 'tools.usage'
+  | 'tools.prompt'
   | 'extension.skillCatalog'
   | 'workspace.instructions'
   | 'character.identity'
@@ -12,14 +12,6 @@ export type PromptSlotId =
   | 'profile.execution'
   | `skills.required.${string}`
   | `skills.active.${string}`;
-
-export type PromptSlotKind =
-  | 'rules'
-  | 'guidance'
-  | 'extension'
-  | 'identity'
-  | 'presentation'
-  | 'execution';
 
 /**
  * 描述内容何时可能变化，不描述数据存放位置。
@@ -30,12 +22,6 @@ export type PromptStabilityScope = 'product' | 'activeCharacter' | 'session' | '
 /** 外部扩展目录作为模型上下文投递，不能获得产品 System 指令权限。 */
 export type PromptDelivery = 'system' | 'context';
 
-/**
- * product 由应用内置；user-configured 由用户选择的角色或设置提供；
- * extension 留给用户显式启用的扩展目录；它以 Context 投递，不能绕过 Permission。
- */
-export type PromptTrust = 'product' | 'user-configured' | 'extension';
-
 /** 业务模块只能贡献正文和版本，不能自行选择指令位置或信任级别。 */
 export interface PromptSlotContribution {
   readonly id: PromptSlotId;
@@ -45,13 +31,11 @@ export interface PromptSlotContribution {
 
 export interface PromptSlot {
   readonly id: PromptSlotId;
-  readonly kind: PromptSlotKind;
   readonly order: number;
   readonly content: string;
   readonly version: string;
   readonly stabilityScope: PromptStabilityScope;
   readonly delivery: PromptDelivery;
-  readonly trust: PromptTrust;
 }
 
 /** 同一稳定范围内的 Slot 合并为一块，协议层可以保留真实缓存断点。 */

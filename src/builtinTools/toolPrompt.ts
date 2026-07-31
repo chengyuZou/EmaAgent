@@ -1,4 +1,4 @@
-// 把本轮可见 Builtin Tool 的说明书装配为 tools.usage 槽内容;MCP 与未声明说明书的工具跳过。
+// 把本轮可见 Builtin Tool 的说明书装配为 tools.prompt 槽内容;MCP 与未声明说明书的工具跳过。
 import { createHash } from 'node:crypto';
 import type { ToolRegistry } from '@ema-agent/tools';
 import type { BuiltinToolContext } from './builtinToolContext.js';

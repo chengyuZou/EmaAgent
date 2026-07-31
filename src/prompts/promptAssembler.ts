@@ -106,13 +106,11 @@ function computeRevision(slots: readonly PromptSlot[]): string {
     schemaVersion: 2,
     slots: slots.map((slot) => ({
       id: slot.id,
-      kind: slot.kind,
       order: slot.order,
       content: slot.content,
       version: slot.version,
       stabilityScope: slot.stabilityScope,
       delivery: slot.delivery,
-      trust: slot.trust,
     })),
   });
 

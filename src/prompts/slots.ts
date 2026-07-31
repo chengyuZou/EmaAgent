@@ -7,35 +7,35 @@ import type {
 
 export type PromptSlotSpec = Pick<
   PromptSlot,
-  'kind' | 'order' | 'stabilityScope' | 'delivery' | 'trust'
+  'order' | 'stabilityScope' | 'delivery' 
 >;
 
 export const PROMPT_SLOT_SPECS: Readonly<Record<string, PromptSlotSpec>> = Object.freeze({
   'product.rules': Object.freeze({
-    kind: 'rules', order: 10, stabilityScope: 'product', delivery: 'system', trust: 'product',
+    order: 10, stabilityScope: 'product', delivery: 'system'
   }),
   'product.toolGuidance': Object.freeze({
-    kind: 'guidance', order: 20, stabilityScope: 'product', delivery: 'system', trust: 'product',
+    order: 20, stabilityScope: 'product', delivery: 'system'
   }),
   // 本轮可见 Builtin Tool 的逐工具说明书,随冻结的 Tool Manifest 走,正文由 Turn 装配贡献。
-  'tools.usage': Object.freeze({
-    kind: 'guidance', order: 30, stabilityScope: 'turn', delivery: 'system', trust: 'product',
+  'tools.prompt': Object.freeze({
+    order: 30, stabilityScope: 'turn', delivery: 'system'
   }),
   'extension.skillCatalog': Object.freeze({
-    kind: 'extension', order: 40, stabilityScope: 'turn', delivery: 'context', trust: 'extension',
+    order: 40, stabilityScope: 'turn', delivery: 'context'
   }),
   // 工作区规则(Codex/Claude 兼容或 Ema 原生),同一工作区跨 Turn 复用同一快照。
   'workspace.instructions': Object.freeze({
-    kind: 'rules', order: 50, stabilityScope: 'session', delivery: 'context', trust: 'user-configured',
+    order: 50, stabilityScope: 'session', delivery: 'context'
   }),
   'character.identity': Object.freeze({
-    kind: 'identity', order: 60, stabilityScope: 'activeCharacter', delivery: 'system', trust: 'user-configured',
+    order: 60, stabilityScope: 'activeCharacter', delivery: 'system'
   }),
   'character.presentation': Object.freeze({
-    kind: 'presentation', order: 70, stabilityScope: 'activeCharacter', delivery: 'system', trust: 'user-configured',
+    order: 70, stabilityScope: 'activeCharacter', delivery: 'system'
   }),
   'profile.execution': Object.freeze({
-    kind: 'execution', order: 80, stabilityScope: 'turn', delivery: 'system', trust: 'product',
+    order: 80, stabilityScope: 'turn', delivery: 'system'
   }),
 });
 
@@ -48,13 +48,13 @@ const PROMPT_SLOT_PREFIX_SPECS: readonly { prefix: string; spec: PromptSlotSpec 
   Object.freeze({
     prefix: 'skills.required.',
     spec: Object.freeze({
-      kind: 'extension', order: 35, stabilityScope: 'product', delivery: 'system', trust: 'product',
+      order: 35, stabilityScope: 'product', delivery: 'system',
     }),
   }),
   Object.freeze({
     prefix: 'skills.active.',
     spec: Object.freeze({
-      kind: 'extension', order: 55, stabilityScope: 'turn', delivery: 'context', trust: 'extension',
+      order: 55, stabilityScope: 'turn', delivery: 'context',
     }),
   }),
 ]);

@@ -83,7 +83,7 @@ export function createTurnExecution(bindings: AppBindings): {
         policy.allowedToolIds,
       );
       return assembly
-        ? { id: 'tools.usage', content: assembly.content, version: assembly.version }
+        ? { id: 'tools.prompt', content: assembly.content, version: assembly.version }
         : null;
     },
     scratchpadDirForTurn: (sessionId, turnId) =>

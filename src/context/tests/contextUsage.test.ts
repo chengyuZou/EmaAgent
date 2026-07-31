@@ -27,7 +27,7 @@ function baseInput(): ContextUsageInput {
     prompt: promptSnapshot([
       { id: 'product.rules', content: 'x'.repeat(400) },
       { id: 'character.identity', content: 'x'.repeat(200) },
-      { id: 'tools.usage', content: 'x'.repeat(120) },
+      { id: 'tools.prompt', content: 'x'.repeat(120) },
       { id: 'workspace.instructions', content: 'x'.repeat(80) },
       { id: 'extension.skillCatalog', content: 'x'.repeat(40) },
     ]),

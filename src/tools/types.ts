@@ -1,4 +1,4 @@
-﻿// 集中定义工具注册、权限检查和执行时共用的基础类型。
+// 集中定义工具注册、权限检查和执行时共用的基础类型。
 import type { z } from 'zod';
 import type { ToolPermissionMeta } from '@ema-agent/permission';
 
@@ -125,7 +125,7 @@ export interface ToolDef<TInput, TOutput, THostContext, TToolContext> {
   /**
    * 详细用法说明(何时用/何时不用/参数关联/失败恢复/平台限制),
    * 与帮助快速选择的 description 分层。输入就是工具自己的宿主 Context,
-   * 根 Turn 准备时调用一次并冻结进 tools.usage 槽与 Manifest revision;
+   * 根 Turn 准备时调用一次并冻结进 tools.prompt 槽与 Manifest revision;
    * 相同冻结上下文必须返回逐字节相同文本,禁时间、随机数与未冻结环境状态。
    * MCP 工具不实现,由 Server 自述。
    */

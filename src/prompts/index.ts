@@ -13,11 +13,9 @@ export type {
   PromptSlotContribution,
   PromptDelivery,
   PromptSlotId,
-  PromptSlotKind,
   PromptStabilityScope,
   PromptSnapshot,
-  PromptRevisions,
-  PromptTrust,
+  PromptRevisions
 } from './types.js';
 export type { PromptAssemblyErrorCode } from './errors.js';
 export type { PromptSlotSpec } from './slots.js';

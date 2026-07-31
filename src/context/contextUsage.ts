@@ -52,7 +52,7 @@ export function computeContextUsage(input: ContextUsageInput): ContextUsageEstim
   let skills = 0;
   for (const slot of input.prompt.slots) {
     const tokens = estimateTextTokens(slot.content);
-    if (slot.id === 'tools.usage') toolInstructions += tokens;
+    if (slot.id === 'tools.prompt') toolInstructions += tokens;
     else if (slot.id === 'workspace.instructions') workspaceInstructions += tokens;
     else if (
       slot.id === 'extension.skillCatalog'
