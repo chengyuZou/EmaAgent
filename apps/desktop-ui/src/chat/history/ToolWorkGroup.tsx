@@ -1,7 +1,7 @@
 // 连续工具调用的合并摘要行:动词计数 + 错误染红,展开为逐条 ToolCallBlock。
 import { useEffect, useState, type JSX } from 'react';
 import type { AssistantSlice } from '../../stores/conversation-store.js';
-import { ToolCallBlock } from '../ToolCallBlock.js';
+import { ToolCallBlock } from '../messages/ToolCallBlock.js';
 import { tallySummary, tallyTools } from './workGroups.js';
 
 type ToolUseSlice = Extract<AssistantSlice, { type: 'tool_use' }>;

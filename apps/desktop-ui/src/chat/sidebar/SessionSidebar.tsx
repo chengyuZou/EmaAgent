@@ -2,14 +2,14 @@
 import { useState, useCallback, useMemo, useRef, type JSX } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { Button } from '@ema-agent/ui';
-import { useConversationStore } from '../stores/conversation-store.js';
-import { useSessionStore } from '../stores/session-store.js';
-import { useDecisionStore } from '../stores/decision-store.js';
-import { runWithToast } from '../lib/toast.js';
-import { NewConversationCommand, ProjectListSection, SidebarCommand, SidebarSection } from './sidebar/SidebarSections.js';
-import { getStatusDot } from './sidebar/SidebarRow.js';
-import { SessionSearchOverlay } from './sidebar/SidebarSearchOverlay.js';
-import { buildProjectGroups, uniqueSessions } from './sidebar/sidebarGroups.js';
+import { useConversationStore } from '../../stores/conversation-store.js';
+import { useSessionStore } from '../../stores/session-store.js';
+import { useDecisionStore } from '../../stores/decision-store.js';
+import { runWithToast } from '../../lib/toast.js';
+import { NewConversationCommand, ProjectListSection, SidebarCommand, SidebarSection } from './SidebarSections.js';
+import { getStatusDot } from './SidebarRow.js';
+import { SessionSearchOverlay } from './SidebarSearchOverlay.js';
+import { buildProjectGroups, uniqueSessions } from './sidebarGroups.js';
 
 export function SessionSidebar(): JSX.Element {
   const [collapsed, setCollapsed]   = useState(false);

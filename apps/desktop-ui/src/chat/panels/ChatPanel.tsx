@@ -1,22 +1,22 @@
 // 组装会话侧栏、消息历史、输入区与工作区 Dock，并维护聊天窗口生命周期。
 import { useEffect, type JSX } from 'react';
 import type { SessionId } from '@ema-agent/ids';
-import { useConversationStore } from '../stores/conversation-store.js';
-import { useSessionStore } from '../stores/session-store.js';
-import { useSidecarStore } from '../stores/sidecar-store.js';
-import { findEnabledModel, useModelCatalogStore } from '../stores/model-catalog-store.js';
-import { useThemeSync } from '../stores/theme-store.js';
-import { useRuntimeSettingsSync } from '../stores/runtime-settings-sync.js';
-import { mountSystemEvents } from '../lib/system-sse.js';
-import { ErrorBoundary } from '../lib/error-boundary.js';
-import { SessionSidebar } from './SessionSidebar.js';
-import { ChatHeader } from './ChatHeader.js';
-import { ChatHistory } from './history/ChatHistory.js';
-import { ChatInput } from './ChatInput.js';
-import { ContextPanel } from './ContextPanel.js';
-import { ChatActivityStrip } from './activity/ChatActivityStrip.js';
-import { WorkspaceFrame } from './workspace/WorkspaceFrame.js';
-import { useWorkspaceStore } from '../stores/workspaceStore.js';
+import { useConversationStore } from '../../stores/conversation-store.js';
+import { useSessionStore } from '../../stores/session-store.js';
+import { useSidecarStore } from '../../stores/sidecar-store.js';
+import { findEnabledModel, useModelCatalogStore } from '../../stores/model-catalog-store.js';
+import { useThemeSync } from '../../stores/theme-store.js';
+import { useRuntimeSettingsSync } from '../../stores/runtime-settings-sync.js';
+import { mountSystemEvents } from '../../lib/system-sse.js';
+import { ErrorBoundary } from '../../lib/error-boundary.js';
+import { SessionSidebar } from '../sidebar/SessionSidebar.js';
+import { ChatHeader } from '../ChatHeader.js';
+import { ChatHistory } from '../history/ChatHistory.js';
+import { ChatInput } from '../input/ChatInput.js';
+import { ContextPanel } from '../ContextPanel.js';
+import { ChatActivityStrip } from '../activity/ChatActivityStrip.js';
+import { WorkspaceFrame } from '../workspace/WorkspaceFrame.js';
+import { useWorkspaceStore } from '../../stores/workspaceStore.js';
 
 // ── ChatPanel ─────────────────────────────────────────────────────────────────
 

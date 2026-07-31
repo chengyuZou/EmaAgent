@@ -2,9 +2,9 @@
 import type { JSX } from 'react';
 import { IconButton } from '@ema-agent/ui';
 import type { TurnId } from '@ema-agent/ids';
-import { useConversationStore } from '../stores/conversation-store.js';
-import { useSessionStore } from '../stores/session-store.js';
-import { showToast } from '../lib/toast.js';
+import { useConversationStore } from '../../stores/conversation-store.js';
+import { useSessionStore } from '../../stores/session-store.js';
+import { showToast } from '../../lib/toast.js';
 
 export function ForkButton({ turnId }: { turnId: string }): JSX.Element | null {
   const viewedId = useConversationStore((s) => s.viewedSessionId);

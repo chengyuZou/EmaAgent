@@ -3,8 +3,8 @@
  * Used in both the ChatInput preview (with remove button) and UserBubble history.
  */
 import type { JSX } from 'react';
-import { tauriBridge } from '../lib/tauri-bridge.js';
-import type { AttachmentInputWire } from '../api/turns.js';
+import { tauriBridge } from '../../lib/tauri-bridge.js';
+import type { AttachmentInputWire } from '../../api/turns.js';
 
 // ── Icon + color by MIME ──────────────────────────────────────────────────────
 

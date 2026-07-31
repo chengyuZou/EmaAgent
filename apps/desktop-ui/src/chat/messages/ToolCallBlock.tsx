@@ -10,9 +10,9 @@
  */
 import { useState, useEffect, useCallback, type JSX } from 'react';
 import { IconButton } from '@ema-agent/ui';
-import type { AssistantSlice } from '../stores/conversation-store.js';
-import { turnsApi } from '../api/turns.js';
-import { renderToolResult } from './tool-renderers.js';
+import type { AssistantSlice } from '../../stores/conversation-store.js';
+import { turnsApi } from '../../api/turns.js';
+import { renderToolResult } from './toolBlocks/tool-renderers.js';
 import { BackgroundProcessCard } from './toolBlocks/BackgroundProcessCard.js';
 import { ToolArgsView, ToolResultViewBlock, BashBlock, DiffBlock } from './toolBlocks/ToolRenderBlocks.js';
 import { BASH_TOOLS, getBashCommand, buildBodyText, buildEditDiff, getPrimaryTarget, formatJson } from './toolBlocks/toolBlockHelpers.js';

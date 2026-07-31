@@ -8,11 +8,11 @@ import { isRightFullWidth, useWorkspaceStore } from '../../stores/workspaceStore
 import { WorkspaceDock } from './WorkspaceDock.js';
 import type { WorkspaceTab } from '../../stores/workspaceTypes.js';
 import { ReviewPanel } from '../review/ReviewPanel.js';
-import { FilesPanel } from '../FilesPanel.js';
+import { FilesPanel } from '../panels/FilesPanel.js';
 import { SourcesPanel } from '../sources/SourcesPanel.js';
 import { AgentRunPanel } from '../agentRuns/AgentRunPanel.js';
 import { BackgroundProcessesPanel } from '../backgroundProcesses/BackgroundProcessesPanel.js';
-import { FilePreview } from '../FilePreview.js';
+import { FilePreview } from '../panels/FilePreview.js';
 
 export interface WorkspaceFrameProps {
   sessionId: SessionId | null;

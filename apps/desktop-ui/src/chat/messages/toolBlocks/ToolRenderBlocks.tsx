@@ -1,6 +1,6 @@
 // Tool 块的五个渲染件:参数平铺、结果分派、Bash 终端融合、JSON 高亮与 diff 上色。
 import type { JSX } from 'react';
-import { renderToolArgs, renderToolResult, stripOuterBraces } from '../tool-renderers.js';
+import { renderToolArgs, renderToolResult, stripOuterBraces } from './tool-renderers.js';
 import { JSON_COLORS, tokenizeJson } from './jsonTokenize.js';
 
 export function ToolArgsView({ name, args }: { name: string; args: unknown }): JSX.Element {

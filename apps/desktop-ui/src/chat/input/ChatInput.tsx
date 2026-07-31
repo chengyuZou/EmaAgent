@@ -1,21 +1,21 @@
 // 聊天输入主装配:草稿、附件、发送与工具栏,KB 选择器与工作区按钮各自成文件。
 import { useState, useCallback, useEffect, useRef, type KeyboardEvent, type JSX, type ChangeEvent } from 'react';
 import { IconButton, Textarea, type TextareaHandle, Switch } from '@ema-agent/ui';
-import { useConversationStore } from '../stores/conversation-store.js';
-import { useSessionStore } from '../stores/session-store.js';
-import { useUiStore } from '../stores/ui-store.js';
-import { useSidecarStore } from '../stores/sidecar-store.js';
+import { useConversationStore } from '../../stores/conversation-store.js';
+import { useSessionStore } from '../../stores/session-store.js';
+import { useUiStore } from '../../stores/ui-store.js';
+import { useSidecarStore } from '../../stores/sidecar-store.js';
 import { ExecutionProfileSelector } from './ExecutionProfileSelector.js';
-import { DecisionLayer } from '../decision/DecisionLayer.js';
+import { DecisionLayer } from '../../decision/DecisionLayer.js';
 import { ModelPicker, type ModelSelection } from './ModelPicker.js';
-import { findEnabledModel, useModelCatalogStore } from '../stores/model-catalog-store.js';
-import { AttachmentChip } from './AttachmentChip.js';
-import { showToast } from '../lib/toast.js';
-import { tauriBridge } from '../lib/tauri-bridge.js';
-import type { AttachmentInputWire } from '../api/turns.js';
-import { authorizedFileToAttachment } from './input/attachmentInput.js';
-import { KbButton } from './input/KbScopePicker.js';
-import { WorkspaceButton } from './input/WorkspaceButton.js';
+import { findEnabledModel, useModelCatalogStore } from '../../stores/model-catalog-store.js';
+import { AttachmentChip } from '../messages/AttachmentChip.js';
+import { showToast } from '../../lib/toast.js';
+import { tauriBridge } from '../../lib/tauri-bridge.js';
+import type { AttachmentInputWire } from '../../api/turns.js';
+import { authorizedFileToAttachment } from './attachmentInput.js';
+import { KbButton } from './KbScopePicker.js';
+import { WorkspaceButton } from './WorkspaceButton.js';
 
 export function ChatInput(): JSX.Element {
   const viewedId   = useConversationStore((s) => s.viewedSessionId);

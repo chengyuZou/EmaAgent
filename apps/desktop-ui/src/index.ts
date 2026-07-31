@@ -196,15 +196,15 @@ export { ShortcutsTab }            from './settings/general/ShortcutsTab.js';
 export { KnowledgeBaseTab }        from './settings/knowledge/KnowledgeBaseTab.js';
 
 // Chat
-export { ChatPanel }               from './chat/ChatPanel.js';
+export { ChatPanel }               from './chat/panels/ChatPanel.js';
 export { SessionSwitcher }         from './chat/SessionSwitcher.js';
-export { SessionSidebar }          from './chat/SessionSidebar.js';
+export { SessionSidebar }          from './chat/sidebar/SessionSidebar.js';
 export { ChatHistory }             from './chat/history/ChatHistory.js';
-export { UserBubble }              from './chat/UserBubble.js';
-export { AssistantBubble }         from './chat/AssistantBubble.js';
-export { ToolCallBlock }           from './chat/ToolCallBlock.js';
-export { ChatInput }               from './chat/ChatInput.js';
-export { ExecutionProfileSelector } from './chat/ExecutionProfileSelector.js';
+export { UserBubble }              from './chat/messages/UserBubble.js';
+export { AssistantBubble }         from './chat/messages/AssistantBubble.js';
+export { ToolCallBlock }           from './chat/messages/ToolCallBlock.js';
+export { ChatInput }               from './chat/input/ChatInput.js';
+export { ExecutionProfileSelector } from './chat/input/ExecutionProfileSelector.js';
 export { useChatHistoryScroll }    from './chat/history/useChatHistoryScroll.js';
 
 // AgentRun panel

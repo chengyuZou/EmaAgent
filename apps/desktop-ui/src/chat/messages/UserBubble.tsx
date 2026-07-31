@@ -2,14 +2,14 @@
 import { useRef, useState, type ChangeEvent, type JSX } from 'react';
 import { Button, IconButton, Textarea } from '@ema-agent/ui';
 import type { SessionId, TurnId } from '@ema-agent/ids';
-import { Markdown } from '../markdown/renderer.js';
-import { sessionsApi } from '../api/sessions.js';
-import { showToast } from '../lib/toast.js';
-import type { ChatHistoryItem } from '../stores/conversation-store.js';
-import { useConversationStore } from '../stores/conversation-store.js';
-import { useSessionStore } from '../stores/session-store.js';
+import { Markdown } from '../../markdown/renderer.js';
+import { sessionsApi } from '../../api/sessions.js';
+import { showToast } from '../../lib/toast.js';
+import type { ChatHistoryItem } from '../../stores/conversation-store.js';
+import { useConversationStore } from '../../stores/conversation-store.js';
+import { useSessionStore } from '../../stores/session-store.js';
 import { AttachmentChip } from './AttachmentChip.js';
-import { formatTurnTime } from './history/workGroups.js';
+import { formatTurnTime } from '../history/workGroups.js';
 
 function editErrorMessage(error: unknown): string {
   if (!(error instanceof Error)) return '重新发送失败';

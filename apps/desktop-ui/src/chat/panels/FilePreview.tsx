@@ -13,8 +13,8 @@
 import { useEffect, useState, type JSX } from 'react';
 import { IconButton, ScrollArea, Spinner } from '@ema-agent/ui';
 import hljs from 'highlight.js';
-import { Markdown } from '../markdown/renderer.js';
-import { workspaceApi, type FileContent } from '../api/workspace.js';
+import { Markdown } from '../../markdown/renderer.js';
+import { workspaceApi, type FileContent } from '../../api/workspace.js';
 
 /** 扩展名 -> highlight.js 语言名(常见映射,未知走自动检测) */
 const LANG_MAP: Record<string, string> = {

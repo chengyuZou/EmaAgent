@@ -2,17 +2,17 @@
 import { useState, useEffect, useRef, type JSX } from 'react';
 import { IconButton } from '@ema-agent/ui';
 import { estimateTextTokens } from '@ema-agent/token';
-import { Markdown } from '../markdown/renderer.js';
+import { Markdown } from '../../markdown/renderer.js';
 import { ToolCallBlock } from './ToolCallBlock.js';
 import { NarrativeStatusBlock } from './NarrativeStatusBlock.js';
 import { ForkButton } from './ForkButton.js';
-import { replayTurn, stopPlayback, usePlaybackStore } from '../lib/tts-playback.js';
-import { showToast } from '../lib/toast.js';
-import { useConversationStore, type ChatHistoryItem, type AssistantSlice } from '../stores/conversation-store.js';
-import { WorkSection } from './history/WorkSection.js';
-import { ToolWorkGroup } from './history/ToolWorkGroup.js';
-import { EditedFilesCard } from './history/EditedFilesCard.js';
-import { editedFiles, groupSlices, splitWorkAnswer } from './history/workGroups.js';
+import { replayTurn, stopPlayback, usePlaybackStore } from '../../lib/tts-playback.js';
+import { showToast } from '../../lib/toast.js';
+import { useConversationStore, type ChatHistoryItem, type AssistantSlice } from '../../stores/conversation-store.js';
+import { WorkSection } from '../history/WorkSection.js';
+import { ToolWorkGroup } from '../history/ToolWorkGroup.js';
+import { EditedFilesCard } from '../history/EditedFilesCard.js';
+import { editedFiles, groupSlices, splitWorkAnswer } from '../history/workGroups.js';
 
 export interface AssistantBubbleProps {
   message: Pick<

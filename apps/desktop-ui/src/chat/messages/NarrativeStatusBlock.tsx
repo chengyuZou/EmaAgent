@@ -1,7 +1,7 @@
 // 展示 Narrative 各时间线的检索进度、召回内容和部分失败状态。
 import { useState } from 'react';
 import { Button, Spinner } from '@ema-agent/ui';
-import type { AssistantSlice } from '../stores/conversation-store.js';
+import type { AssistantSlice } from '../../stores/conversation-store.js';
 
 type NarrativeSlice = Extract<AssistantSlice, { type: 'narrative_status' }>;
 

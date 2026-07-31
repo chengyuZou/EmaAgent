@@ -1,5 +1,5 @@
 // Tool 块主组件的参数、diff 与展示目标提取辅助,纯函数不含渲染。
-import type { AssistantSlice } from '../../stores/conversation-store.js';
+import type { AssistantSlice } from '../../../stores/conversation-store.js';
 import { createPatch } from 'diff';
 
 // 新会话使用 PascalCase；其余名称只负责渲染升级前保存的历史消息。

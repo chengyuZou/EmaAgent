@@ -7,8 +7,8 @@
  */
 import { useState, useEffect, useMemo, useRef, type JSX } from 'react';
 import { Input, ScrollArea, Badge } from '@ema-agent/ui';
-import type { EnabledModelWire } from '../api/models.js';
-import { findEnabledModel, useModelCatalogStore } from '../stores/model-catalog-store.js';
+import type { EnabledModelWire } from '../../api/models.js';
+import { findEnabledModel, useModelCatalogStore } from '../../stores/model-catalog-store.js';
 
 export interface ModelSelection {
   providerId: string;

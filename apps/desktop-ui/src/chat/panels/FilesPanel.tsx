@@ -1,15 +1,15 @@
 // 按 Session 与工作区根目录隔离文件树与目录请求；文件在工作区 Dock 以标签预览。
 import { useState, useCallback, useEffect, useRef, type JSX, type CSSProperties } from 'react';
 import { ScrollArea } from '@ema-agent/ui';
-import { workspaceApi, type FileEntry } from '../api/workspace.js';
-import { useConversationStore } from '../stores/conversation-store.js';
-import { useSessionStore } from '../stores/session-store.js';
-import { useWorkspaceStore } from '../stores/workspaceStore.js';
-import { fileTab } from '../stores/workspaceTypes.js';
+import { workspaceApi, type FileEntry } from '../../api/workspace.js';
+import { useConversationStore } from '../../stores/conversation-store.js';
+import { useSessionStore } from '../../stores/session-store.js';
+import { useWorkspaceStore } from '../../stores/workspaceStore.js';
+import { fileTab } from '../../stores/workspaceTypes.js';
 import {
   DirectoryRequestGate,
   workspaceBrowserScopeKey,
-} from './workspace-browser-cache.js';
+} from '../panels/workspace-browser-cache.js';
 
 // ── File icon by extension ────────────────────────────────────────────────────
 

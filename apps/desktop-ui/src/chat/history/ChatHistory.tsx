@@ -4,9 +4,9 @@ import { Button } from '@ema-agent/ui';
 import type { TurnId } from '@ema-agent/ids';
 import { useConversationStore, type ChatHistoryItem } from '../../stores/conversation-store.js';
 import { useChatHistoryScroll } from './useChatHistoryScroll.js';
-import { UserBubble } from '../UserBubble.js';
-import { AssistantBubble } from '../AssistantBubble.js';
-import { NarrativeStatusBlock } from '../NarrativeStatusBlock.js';
+import { UserBubble } from '../messages/UserBubble.js';
+import { AssistantBubble } from '../messages/AssistantBubble.js';
+import { NarrativeStatusBlock } from '../messages/NarrativeStatusBlock.js';
 import {
   EMPTY_SESSION_HISTORY,
   useSessionHistoryStore,
