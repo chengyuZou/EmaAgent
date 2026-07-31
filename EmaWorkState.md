@@ -174,7 +174,7 @@ K3 当前负责 Desktop Chat Workspace 与 Git/Review 施工；本轮 Character 
 
 Character C1a/C1b/C2/C3a/C3b 已完成：Character 统一拥有显式多 Live2D、多立绘、参考音频、路径规范、Prompt 硬门、健康投影与稳定候选顺序。LocalHost 提供原子表现快照、主资源切换及三类资源单项导入/导出/更新/删除；Desktop `CharacterStage` 支持 Live2D → 立绘 → 占位逐级失败降级、同角色无空白切换、跨角色立即占位，以及迟到异步结果隔离。C3b 在 `.imports/.trash` 地基上补齐 Live2D 完整目录、立绘重编码和参考音频真实文件头深检，恢复清单 v2 区分 SQL 入口路径与物理目录单元。C3c 的 `card.json`、整包导入导出与 `importAsCopy/replace` 推迟到 V1 正式版候选，不建立半成品 Route 或 `.rollback` 语义；Desktop 目录选择必须签发目录能力句柄，不能回退明文绝对路径。Session Backup 继续不接 Character。
 
-Session Backup ZIP V2 批一记录层已经完成：集中限制、十五类规范记录注册表、严格流式 JSONL、显式 camelCase Wire DTO 与逐条结构校验已经落地。所有 JSONL 条目即使为空也必须存在，缺失视为残缺归档；跨记录唯一性、引用和大规模图校验不在内存拼装万能 Payload，留给批二导入流水线的落盘索引。V1 文件、恢复事务和 Capabilities 尚未切换，Character 与整机备份继续不进入 Session Backup。
+Session Backup ZIP V2 批一记录层与批二归档内核已经完成：集中限制、十五类规范记录注册表、严格流式 JSONL、显式 camelCase Wire DTO 与逐条结构校验已经落地；`StreamingZipWriter` 现按 Sink 背压逐块压缩，统一限制条目数、单条目/展开/归档字节，并且只有所有条目和中央目录写完后才 commit。V2 导出器只接收已冻结条目，逐条计算未压缩内容 SHA-256，完整性清单覆盖 records、二进制文件和 manifest；路径白名单、重复路径与 Sink 失败均 fail-closed 并 abort。数据库一致快照与文件 staging 尚未接入该内核，Facade/Route 仍只宣称 ZIP V1；Character 与整机备份继续不进入 Session Backup。
 
 ## 已确定的 V1 口径
 
@@ -232,7 +232,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
     - **B 主链安全收口**：install-git 与 mcpStdioGate 路由级审批已经接通；`AGEN_UNSAFE_*` 在正式构建中会直接阻止启动，不能由安装环境变量关闭隔离。Sandbox 状态接前端常驻提示仍属于前端工作；
     - **C 主链卫生已完成**：已删除 Macro 压缩后绕过 Memory 开关直接重读 L1 Session Note 的旧恢复旁路；正常 L1 Recall 继续作为不可压缩 Contribution 保留，Active Skill 继续走 required restore。AgentLoopState 已删除不可达状态；`prefixHash` 已明确为本次请求截止最终缓存断点的身份，会随历史、当前 Turn 和工具轮次演进，不再伪装成跨 Turn 固定 Prompt Hash。
 12. Character C1a/C1b/C2/C3a/C3b 已完成显式资源、Prompt/健康门槛、主窗口可抢占降级、文件事务地基及三类资源单项生命周期。Live2D 目录有界复制并校验入口/引用/纹理，立绘重编码去元数据，参考音频按真实文件头冻结时长和摘要；导入、导出、删除分别使用同盘暂存、目标旁暂存和 `.trash`，SQL 失败与崩溃残留按事实源恢复。三类资源均可更新 `label/position/enabled`，禁用主项后由后端稳定提升下一启用资源。C3c 整包能力推迟到 V1 正式版候选；K3 正在接 Desktop 目录能力句柄和资源管理 UI。现有 Session Backup 不扩张到 Character。
-13. Session Backup ZIP V2 下一批只建立导出流水线、完整性清单、导入暂存索引与执行状态冻结，再以单个最终 SQLite 事务发布；不能复用巨型 `SessionRestorePayload`，不能在 V2 完成前删除 ZIP V1，也不能把内部 Record/JSONL 实现重新导出为公共包 API。
+13. Session Backup ZIP V2 下一批把 Storage 只读事务分页快照和受控文件 staging 接入已完成的流式 ZIP/完整性内核；随后建立导入暂存索引与执行状态冻结，再以单个最终 SQLite 事务发布。不能复用巨型 `SessionRestorePayload`，不能在 V2 完成前删除 ZIP V1，也不能把内部 Record/JSONL/归档器重新导出为公共包 API。
 
 命名随业务批次清理：旧 `IFileStateStoreEntry/IFileStateStore` 及后续过渡接口已经删除，`IToolExecutionJournal` 已改为职责名；其余迁移期 `I*` 类型继续随业务边界处理，不单独进行全仓机械重命名。
 
@@ -240,6 +240,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- Session Backup ZIP V2 流式归档内核：Backup 5 个测试文件 45/45、独立 typecheck 通过；新增覆盖分块二进制、manifest 参与 SHA-256、完整性清单不自引用、路径穿越/白名单拒绝、Sink 写失败 abort 且不 commit。该批没有修改 Facade、Route、Storage 或 V1 Capabilities，避免把未接数据库一致快照的半能力暴露给调用方。
 - Session Backup ZIP V2 批一修订：Backup 4 个测试文件 42/42、独立 typecheck 通过；测试覆盖并行 UTF-8 断字节、严格末行终止、原始字节跨分块上限、十五类注册表、真实数据库枚举、Usage 单 Session 边界、AgentRun 父子 Turn 一致性、Task 重复边/环和五万节点长链。JSONL 小块输入不再反复重编码整段缓冲，`git diff --check` 通过，仅有既有 CRLF 提示。
 - Character 资源可编辑字段：Storage、Characters、LocalHost 正式 build 通过，LocalHost 构建验证 105 个源码、421 个产物；Storage 129/129、Characters 36/36、LocalHost 166/166 通过。三个 PATCH Route 只允许非空 `label/position/enabled`，内置角色保持只读；禁用主项与重新启用唯一候选均由 SQL 事务恢复确定性主项，真实变更的 `updatedAt` 保证单调前进。`git diff --check` 通过，仅有既有 CRLF 与不可访问 pytest 缓存提示。
 - Chat 域重构 A–E + Desktop 清理（K3）：Desktop UI typecheck + 33 文件 166/166、Desktop typecheck 通过，零行为变化。A：workspaceStore/workspaceTypes/test 从 `chat/workspace/` 迁 `stores/`（13 处 import）；B：SessionSidebar 796→156 + `chat/sidebar/` 6 块（纯函数层零 UI 依赖）；C：ChatInput 668→393 + `chat/input/` 3 块；D：ToolCallBlock 459→215 + `chat/toolBlocks/` 4 块（用户自拆，K3 补 export 接缝）；E：chat 根 17→4 文件归组 messages/panels（用户自搬，K3 修 3 处漏网路径）。Desktop 清理：GlowBorder 粉白呼吸光 token 化（新增 `--ema-pet-glow/-bright` + `ema-breathe` keyframes + `.ema-pet-glow-border`，经 tokens/keyframes/components.css）；SidecarBadge/SpeechBubble 尾巴硬编码换 token；PermissionToastLayer 自造 Btn 换 ui Button；CharacterStage 类名 `__`→`-` 与 characterStage.css 改名同步。Backup 批一对账完成、方案冻结（ZIP v1 十条问题全属实；批一七项 additive 修复；断电恢复只做 B 档启动清残留；整机备份推 V1 正式版），等 Sol 指示开工。`git diff --check` 通过，仅有既有 CRLF 提示。
