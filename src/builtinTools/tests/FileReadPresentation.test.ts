@@ -26,6 +26,7 @@ describe('FileReadTool Presentation', () => {
       sessionId: 'session-file-read' as BuiltinToolContext['sessionId'],
       turnId: 'turn-file-read' as BuiltinToolContext['turnId'],
       workspaceRoot: directory,
+    platform: process.platform,
       readFileState: new Map(),
       signal: new AbortController().signal,
     };

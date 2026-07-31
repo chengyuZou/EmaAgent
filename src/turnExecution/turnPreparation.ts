@@ -71,6 +71,14 @@ export interface TurnInputPreparerDeps {
   readonly extensionPromptContributions?: (
     executionProfile: ExecutionProfile,
   ) => readonly PromptSlotContribution[];
+  /** 本轮可见 Builtin Tool 的说明书槽;由 LocalHost 按冻结可见性装配。 */
+  readonly toolPromptContribution?: (input: {
+    sessionId: SessionId;
+    turnId: TurnId;
+    executionProfile: ExecutionProfile;
+    narrativePolicy: NarrativePolicy;
+    workspaceRoot: string;
+  }) => Promise<PromptSlotContribution | null>;
   readonly scratchpadDirForTurn?: (
     sessionId: SessionId,
     turnId: TurnId,
@@ -98,8 +106,17 @@ export class TurnInputPreparer {
     );
     const session = this.deps.session.getSession(context.turn.sessionId);
     const workspaceRoot = session.workspaceRoot ?? '';
-    const extensionContributions =
-      this.deps.extensionPromptContributions?.(request.executionProfile) ?? [];
+    const toolPrompt = await this.deps.toolPromptContribution?.({
+      sessionId: context.turn.sessionId,
+      turnId: context.turn.id,
+      executionProfile: request.executionProfile,
+      narrativePolicy: request.narrativePolicy,
+      workspaceRoot,
+    }) ?? null;
+    const extensionContributions = [
+      ...(toolPrompt ? [toolPrompt] : []),
+      ...(this.deps.extensionPromptContributions?.(request.executionProfile) ?? []),
+    ];
     return Object.freeze({
       userInput: freezeUserInput(prepared.userInput),
       persistedUserInput: prepared.persistedUserInput,

@@ -140,6 +140,7 @@ function makeTempDir(): string {
 
 function makeContext(
   workspaceRoot: string,
+    platform: process.platform,
 ): BuiltinToolContext {
   return {
     sessionId: 'session-test' as BuiltinToolContext['sessionId'],

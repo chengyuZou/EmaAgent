@@ -61,6 +61,11 @@ export interface BuiltinToolContext {
   readonly toolCallId?: ToolCallId;
   /** 空串表示本次执行没有工作区；文件与 Shell 工具不会进入 Manifest。 */
   readonly workspaceRoot: string;
+  /**
+   * 宿主平台,装配时由 process.platform 冻结。
+   * 说明书写平台差异文案(Bash 语义、路径写法、信号)只准从这里取,不得自行探测。
+   */
+  readonly platform: NodeJS.Platform;
   /** 装配时是父执行信号，调用工具时由执行器替换成单工具信号。 */
   readonly signal: AbortSignal;
 

@@ -122,6 +122,14 @@ export interface ToolDef<TInput, TOutput, THostContext, TToolContext> {
   /** 省略时按 Ema 内置工具处理；MCP 工具必须声明原始 Server/Tool 身份。 */
   origin?: ToolOrigin;
   description: string;
+  /**
+   * 详细用法说明(何时用/何时不用/参数关联/失败恢复/平台限制),
+   * 与帮助快速选择的 description 分层。输入就是工具自己的宿主 Context,
+   * 根 Turn 准备时调用一次并冻结进 tools.usage 槽与 Manifest revision;
+   * 相同冻结上下文必须返回逐字节相同文本,禁时间、随机数与未冻结环境状态。
+   * MCP 工具不实现,由 Server 自述。
+   */
+  prompt?(context: THostContext): string | Promise<string>;
   /** 根据本次规范化输入生成批准卡片摘要；与写给模型看的 description 分离。 */
   getToolUseSummary?: (input: TInput) => string | undefined;
   // ZodType<Output, Def, Input> - 我们把 input 侧放宽到 unknown,因为
@@ -184,6 +192,8 @@ export interface BuiltTool<TInput = unknown, TOutput = unknown, TToolContext = u
   readonly name: string;
   readonly origin: ToolOrigin;
   readonly description: string;
+  /** 见 ToolDef.prompt;宿主 Context 在类型擦除边界退化为 unknown。 */
+  readonly prompt?: (context: unknown) => string | Promise<string>;
   readonly getToolUseSummary?: (input: TInput) => string | undefined;
   /** 运行时解析与校验使用的 Zod Schema。 */
   readonly inputSchema: z.ZodType<TInput, z.ZodTypeDef, unknown>;

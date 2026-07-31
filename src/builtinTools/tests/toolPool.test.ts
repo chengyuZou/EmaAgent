@@ -13,6 +13,7 @@ function baseContext(): BuiltinToolContext {
     sessionId: 'session-pool' as BuiltinToolContext['sessionId'],
     turnId: 'turn-pool' as BuiltinToolContext['turnId'],
     workspaceRoot: '',
+    platform: process.platform,
     signal: new AbortController().signal,
   };
 }
@@ -43,6 +44,7 @@ describe('Builtin ToolPool 能力装配', () => {
     const context: BuiltinToolContext = {
       ...baseContext(),
       workspaceRoot: 'D:/workspace',
+    platform: process.platform,
       readFileState: new Map(),
       taskStore: {} as never,
       askUser: async () => ({ answers: {} }),

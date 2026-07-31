@@ -269,6 +269,7 @@ export class TurnToolsBuilder {
       sessionId,
       turnId,
       workspaceRoot,
+      platform: process.platform,
       signal,
       readFileState,
       taskStore: this.deps.taskStore,

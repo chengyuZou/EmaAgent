@@ -13,6 +13,7 @@ function hostContext(
     sessionId: asSessionId('session-narrative-tool'),
     turnId: asTurnId('turn-narrative-tool'),
     workspaceRoot: '',
+    platform: process.platform,
     signal: new AbortController().signal,
     narrativeSearch,
   };

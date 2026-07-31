@@ -223,6 +223,7 @@ export class SubagentSpawner implements SubagentSpawnerPort {
       turnId:           parentTurnId,
       agentRunId,
       workspaceRoot:    this.workspaceRoot,
+      platform:         process.platform,
       signal:           childCtrl.signal,
       commandRunner:    this.commandRunner,
       backgroundProcesses: this.deps.backgroundProcesses,
