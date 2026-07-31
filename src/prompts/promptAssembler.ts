@@ -9,7 +9,7 @@ import type {
   PromptStabilityScope,
   PromptSnapshot,
 } from './types.js';
-import { PROMPT_SLOT_SPECS, PROMPT_STABILITY_ORDER } from './slots.js';
+import { PROMPT_STABILITY_ORDER, slotSpecFor } from './slots.js';
 
 export class PromptAssembler {
   build(input: readonly PromptSlotContribution[]): PromptSnapshot {
@@ -60,7 +60,7 @@ function buildBlocks(
 }
 
 function copyAndValidateSlot(contribution: PromptSlotContribution): PromptSlot {
-  const spec = PROMPT_SLOT_SPECS[contribution.id];
+  const spec = slotSpecFor(contribution.id);
   if (!spec) {
     throw new PromptAssemblyError(
       'prompt/invalid-slot',

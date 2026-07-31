@@ -5,7 +5,7 @@ export { buildExecutionProfileContribution } from './executionProfilePrompt.js';
 export { PromptAssembler } from './promptAssembler.js';
 export { PromptAssemblyError } from './errors.js';
 export { buildProductPromptContributions } from './productPrompt.js';
-export { PROMPT_SLOT_SPECS, PROMPT_STABILITY_ORDER } from './slots.js';
+export { PROMPT_SLOT_SPECS, PROMPT_STABILITY_ORDER, slotSpecFor } from './slots.js';
 export type {
   PromptBuildRequest,
   PromptBlock,

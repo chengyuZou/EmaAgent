@@ -4,10 +4,14 @@ import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/turn';
 export type PromptSlotId =
   | 'product.rules'
   | 'product.toolGuidance'
+  | 'tools.usage'
   | 'extension.skillCatalog'
+  | 'workspace.instructions'
   | 'character.identity'
   | 'character.presentation'
-  | 'profile.execution';
+  | 'profile.execution'
+  | `skills.required.${string}`
+  | `skills.active.${string}`;
 
 export type PromptSlotKind =
   | 'rules'
@@ -17,8 +21,11 @@ export type PromptSlotKind =
   | 'presentation'
   | 'execution';
 
-/** 描述内容何时可能变化，不描述数据存放位置。 */
-export type PromptStabilityScope = 'product' | 'activeCharacter' | 'turn';
+/**
+ * 描述内容何时可能变化，不描述数据存放位置。
+ * product 全应用稳定;activeCharacter 随角色切换;session 随工作区会话(跨 Turn 复用);turn 按根 Turn 冻结。
+ */
+export type PromptStabilityScope = 'product' | 'activeCharacter' | 'session' | 'turn';
 
 /** 外部扩展目录作为模型上下文投递，不能获得产品 System 指令权限。 */
 export type PromptDelivery = 'system' | 'context';

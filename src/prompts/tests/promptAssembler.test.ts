@@ -50,4 +50,74 @@ describe('PromptAssembler', () => {
       }),
     );
   });
+
+  it('tools.usage 与 workspace.instructions 继承声明的槽位规格', () => {
+    const assembler = new PromptAssembler();
+    const snapshot = assembler.build([
+      characterSlot,
+      { id: 'tools.usage', content: 'Bash usage.', version: 'tools:1' },
+      { id: 'workspace.instructions', content: 'Project rules.', version: 'ws:1' },
+    ]);
+
+    expect(snapshot.slots.map((slot) => slot.id)).toEqual([
+      'tools.usage',
+      'workspace.instructions',
+      'character.identity',
+    ]);
+    expect(snapshot.slots[0]).toEqual(expect.objectContaining({
+      order: 30, stabilityScope: 'turn', delivery: 'system', trust: 'product',
+    }));
+    expect(snapshot.slots[1]).toEqual(expect.objectContaining({
+      order: 50, stabilityScope: 'session', delivery: 'context', trust: 'user-configured',
+    }));
+  });
+
+  it('参数化 Skill 槽按前缀继承规格,空后缀与未知前缀拒绝', () => {
+    const assembler = new PromptAssembler();
+    const snapshot = assembler.build([
+      { id: 'skills.required.ema-guide', content: 'Always on.', version: 'sk:1' },
+      { id: 'skills.active.review', content: 'Active now.', version: 'sk:1' },
+    ]);
+
+    expect(snapshot.slots[0]).toEqual(expect.objectContaining({
+      id: 'skills.required.ema-guide', order: 35, stabilityScope: 'product',
+      delivery: 'system', trust: 'product',
+    }));
+    expect(snapshot.slots[1]).toEqual(expect.objectContaining({
+      id: 'skills.active.review', order: 55, stabilityScope: 'turn',
+      delivery: 'context', trust: 'extension',
+    }));
+
+    expect(() => assembler.build([
+      { id: 'skills.required.', content: 'x', version: 'v' },
+    ])).toThrowError(expect.objectContaining<Partial<PromptAssemblyError>>({
+      code: 'prompt/invalid-slot',
+    }));
+    expect(() => assembler.build([
+      { id: 'skills.other.x' as never, content: 'x', version: 'v' },
+    ])).toThrowError(expect.objectContaining<Partial<PromptAssemblyError>>({
+      code: 'prompt/invalid-slot',
+    }));
+  });
+
+  it('session 稳定范围在 activeCharacter 与 turn 之间成块', () => {
+    const assembler = new PromptAssembler();
+    const snapshot = assembler.build([
+      { id: 'product.rules', content: 'Product.', version: 'p:1' },
+      { id: 'workspace.instructions', content: 'Workspace.', version: 'ws:1' },
+      profileSlot,
+      characterSlot,
+    ]);
+
+    expect(snapshot.systemBlocks.map((block) => block.stabilityScope)).toEqual([
+      'product',
+      'activeCharacter',
+      'turn',
+    ]);
+    expect(snapshot.contextBlocks.map((block) => block.stabilityScope)).toEqual([
+      'session',
+    ]);
+    expect(snapshot.contextBlocks[0]!.cacheBreakpoint).toBe(true);
+    expect(snapshot.systemBlocks.find((b) => b.stabilityScope === 'turn')!.cacheBreakpoint).toBe(false);
+  });
 });
