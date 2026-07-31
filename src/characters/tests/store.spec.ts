@@ -151,7 +151,7 @@ describe('CharacterCardStore', () => {
   });
 
   describe('voice references', () => {
-    it('删除主音频后由后端按稳定顺序提升下一条', () => {
+    it('删除主音频后由后端按稳定顺序提升下一条', async () => {
       const card = store.create(minimalInput());
       const first = store.addVoiceReference(card.id, {
         label: 'First',
@@ -171,7 +171,7 @@ describe('CharacterCardStore', () => {
         mimeType: 'audio/wav',
       });
 
-      store.deleteVoiceReference(card.id, first.id);
+      await store.deleteManagedVoiceReference(card.id, first.id);
 
       expect(store.get(card.id)?.voiceReferences).toEqual([
         expect.objectContaining({ id: second.id, isPrimary: true }),
@@ -282,10 +282,19 @@ describe('CharacterCardStore', () => {
   // ─── delete ───────────────────────────────────────────────────────────────
 
   describe('delete', () => {
-    it('removes a non-builtin card', () => {
+    it('removes a non-builtin card', async () => {
       const card = store.create(minimalInput());
-      store.delete(card.id);
+      await store.deleteManagedCharacter(card.id);
       expect(store.get(card.id)).toBeUndefined();
+    });
+
+    it('拒绝绕过 Route 删除当前活动角色', async () => {
+      const card = store.create(minimalInput());
+      store.activate(card.id);
+
+      await expect(store.deleteManagedCharacter(card.id))
+        .rejects.toThrow('active character cannot be deleted');
+      expect(store.get(card.id)?.isActive).toBe(true);
     });
   });
 });

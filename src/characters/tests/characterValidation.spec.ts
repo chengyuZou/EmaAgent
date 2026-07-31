@@ -1,11 +1,20 @@
 // 测试角色 Prompt 硬门、资源路径边界、健康降级与单角色资源操作串行。
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
+import { asCharacterVoiceReferenceId } from '@ema-agent/ids';
 import { Database } from '@ema-agent/storage';
 import { CharacterCardStore, buildCharacterPromptSections } from '../index.js';
 
@@ -166,5 +175,108 @@ describe('character validation', () => {
     await Promise.all([first, second]);
     expect(order).toEqual(['first:start', 'first:end', 'second:start']);
     expect(store.inspectResourceOperation(card.id)?.stage).toBe('completed');
+  });
+
+  it('参考音频数据库删除失败时从 trash 恢复原文件', async () => {
+    const card = store.create({ name: 'Rollback', systemPrompt: 'valid' });
+    const voiceDir = join(root, 'user', card.id, 'voiceRefs');
+    mkdirSync(voiceDir, { recursive: true });
+    const source = join(voiceDir, 'voice.mp3');
+    writeFileSync(source, 'voice');
+    const reference = store.addVoiceReference(card.id, {
+      label: 'Voice',
+      relativePath: 'voiceRefs/voice.mp3',
+      promptText: 'hello',
+      promptLang: 'en',
+      mimeType: 'audio/mpeg',
+    });
+    database.sqlite.exec(`
+      CREATE TRIGGER reject_voice_delete
+      BEFORE DELETE ON character_voice_references
+      BEGIN
+        SELECT RAISE(ABORT, 'forced delete failure');
+      END
+    `);
+
+    await expect(store.deleteManagedVoiceReference(card.id, reference.id))
+      .rejects.toThrow('forced delete failure');
+    expect(readFileSync(source, 'utf8')).toBe('voice');
+    expect(store.get(card.id)?.voiceReferences).toHaveLength(1);
+    expect(existsSync(join(root, 'user', '.trash'))).toBe(true);
+  });
+
+  it('参考音频目标路径已存在时不删除旧文件', async () => {
+    const card = store.create({ name: 'Collision', systemPrompt: 'valid' });
+    const voiceDir = join(root, 'user', card.id, 'voiceRefs');
+    mkdirSync(voiceDir, { recursive: true });
+    const source = join(voiceDir, 'voice.mp3');
+    writeFileSync(source, 'original');
+
+    await expect(store.publishVoiceReference(card.id, {
+      id: asCharacterVoiceReferenceId('voice-collision'),
+      label: 'Voice',
+      relativePath: 'voiceRefs/voice.mp3',
+      promptText: 'hello',
+      promptLang: 'en',
+      mimeType: 'audio/mpeg',
+    }, new TextEncoder().encode('replacement'))).rejects.toThrow(
+      'character resource destination already exists',
+    );
+    expect(readFileSync(source, 'utf8')).toBe('original');
+    expect(store.get(card.id)?.voiceReferences).toHaveLength(0);
+  });
+
+  it('启动恢复按数据库事实源恢复中断删除并清理孤儿发布', () => {
+    const card = store.create({ name: 'Recovery', systemPrompt: 'valid' });
+    const voiceDir = join(root, 'user', card.id, 'voiceRefs');
+    mkdirSync(voiceDir, { recursive: true });
+    const source = join(voiceDir, 'kept.mp3');
+    writeFileSync(source, 'kept');
+    const reference = store.addVoiceReference(card.id, {
+      label: 'Kept',
+      relativePath: 'voiceRefs/kept.mp3',
+      promptText: 'hello',
+      promptLang: 'en',
+      mimeType: 'audio/mpeg',
+    });
+
+    const trashId = '00000000-0000-4000-8000-000000000001';
+    const trashDirectory = join(root, 'user', '.trash', trashId);
+    mkdirSync(trashDirectory, { recursive: true });
+    renameSync(source, join(trashDirectory, 'payload'));
+    writeFileSync(join(trashDirectory, 'operation.json'), JSON.stringify({
+      schemaVersion: 1,
+      operationId: trashId,
+      type: 'delete',
+      characterId: card.id,
+      resourceKind: 'voiceReference',
+      resourceId: reference.id,
+      relativePath: 'voiceRefs/kept.mp3',
+    }));
+
+    const orphanPath = join(voiceDir, 'orphan.mp3');
+    writeFileSync(orphanPath, 'orphan');
+    const importId = '00000000-0000-4000-8000-000000000002';
+    const importDirectory = join(root, 'user', '.imports', importId);
+    mkdirSync(importDirectory, { recursive: true });
+    writeFileSync(join(importDirectory, 'operation.json'), JSON.stringify({
+      schemaVersion: 1,
+      operationId: importId,
+      type: 'publish',
+      characterId: card.id,
+      resourceKind: 'voiceReference',
+      resourceId: 'missing-resource',
+      relativePath: 'voiceRefs/orphan.mp3',
+    }));
+
+    expect(store.recoverResourceFiles()).toEqual({
+      restored: 1,
+      removed: 2,
+      failed: 0,
+    });
+    expect(readFileSync(source, 'utf8')).toBe('kept');
+    expect(existsSync(orphanPath)).toBe(false);
+    expect(existsSync(trashDirectory)).toBe(false);
+    expect(existsSync(importDirectory)).toBe(false);
   });
 });

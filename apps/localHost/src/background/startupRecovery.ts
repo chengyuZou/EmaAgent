@@ -1,6 +1,7 @@
 // 区分必须完成的执行状态恢复与可降级维护，避免带着错误终态对外 ready。
 
 import type { AgentRunStore } from '@ema-agent/agent';
+import type { CharacterCardStore } from '@ema-agent/characters';
 import { cleanupInterruptedFileWriteTemps } from '@ema-agent/tool-builtin';
 import type { MemoryPlanner } from '@ema-agent/memory';
 import type { SessionStore } from '@ema-agent/session';
@@ -23,6 +24,7 @@ type StartupSession = Pick<
 >;
 type StartupAgentRuns = Pick<AgentRunStore, 'recoverInterrupted'>;
 type StartupToolExecutions = Pick<ToolExecutionJournal, 'recoverInterrupted'>;
+type StartupCharacterResources = Pick<CharacterCardStore, 'recoverResourceFiles'>;
 
 export interface StartupTurnReader {
   listTurnIdsPage(
@@ -43,6 +45,7 @@ export class StartupRecovery {
       BackgroundProcessRuntime,
       'recoverInterrupted'
     >,
+    private readonly characterResources: StartupCharacterResources,
   ) {}
 
   /**
@@ -54,6 +57,8 @@ export class StartupRecovery {
     this.recoverBackgroundProcesses();
     this.recoverTurns();
     this.recoverAgentRuns();
+    // 角色文件恢复自身会降级捕获，但必须在主窗口拿到表现快照前完成。
+    this.recoverCharacterResources();
   }
 
   private recoverBackgroundProcesses(): void {
@@ -75,6 +80,26 @@ export class StartupRecovery {
     this.recoverTurnFiles();
     this.removeLegacyArtifactFiles();
     return { memoryReady };
+  }
+
+  private recoverCharacterResources(): void {
+    try {
+      const report = this.characterResources.recoverResourceFiles();
+      if (report.restored > 0 || report.removed > 0) {
+        console.log(
+          `[character] startup: restored ${report.restored} resource(s), `
+          + `cleaned ${report.removed} transaction operation(s)`,
+        );
+      }
+      if (report.failed > 0) {
+        console.warn(
+          `[character] startup: ${report.failed} resource transaction(s) remain for retry`,
+        );
+      }
+    } catch (error) {
+      // 角色事务目录会保留供下次恢复；单项维护失败不应关闭 Session/Agent 主链。
+      console.warn('[character] startup resource recovery skipped:', error);
+    }
   }
 
   private recoverToolExecutions(): void {

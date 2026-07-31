@@ -52,8 +52,8 @@ export class CharacterResourcePaths {
     return target;
   }
 
-  voiceReferencesDirectory(characterId: CharacterCardId): string {
-    return path.join(this.cardRoot(characterId, false), 'voiceRefs');
+  operationRoot(kind: 'imports' | 'trash' | 'rollback'): string {
+    return path.join(this.roots.userCardsRoot, `.${kind}`);
   }
 }
 

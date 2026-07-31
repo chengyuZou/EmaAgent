@@ -424,6 +424,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
       agentRunStore,
       toolExecutionJournal,
       backgroundProcesses,
+      card,
     ),
     session,
     memory,

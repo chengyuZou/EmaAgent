@@ -172,7 +172,7 @@ K3 当前负责 Desktop Chat Workspace、Git/Review 等前端工作；主 Agent 
 
 K3 当前负责 Desktop Chat Workspace 与 Git/Review 施工；本轮 Character 只修改 Desktop 的角色 API、角色设置 VoiceTab 和主窗资源选择，没有覆盖 Chat/Workspace 文件。
 
-Character C1a/C1b/C2 已完成：Character 统一拥有显式多 Live2D、多立绘、参考音频、路径规范、Prompt 硬门、健康投影与稳定候选顺序。LocalHost 提供原子表现快照和主 Live2D/主立绘切换，资源变化通过 AppEvent 刷新各窗口；Desktop `CharacterStage` 支持 Live2D → 立绘 → 占位逐级失败降级、同角色无空白切换、跨角色立即占位，以及迟到异步结果隔离。C3 的可恢复文件事务、整包导入导出和角色目录删除尚未实现；Session Backup 继续不接 Character。
+Character C1a/C1b/C2/C3a 已完成：Character 统一拥有显式多 Live2D、多立绘、参考音频、路径规范、Prompt 硬门、健康投影与稳定候选顺序。LocalHost 提供原子表现快照和主 Live2D/主立绘切换，资源变化通过 AppEvent 刷新各窗口；Desktop `CharacterStage` 支持 Live2D → 立绘 → 占位逐级失败降级、同角色无空白切换、跨角色立即占位，以及迟到异步结果隔离。C3a 已用 `.imports/.trash` 显式清单接管参考音频发布/删除和角色目录删除，启动时按 SQLite 事实源恢复或清理；C3b/C3c 的三类资源深检、单项与整包导入导出、`importAsCopy/replace` 尚未实现，`.rollback` 不提前启用。Session Backup 继续不接 Character。
 
 ## 已确定的 V1 口径
 
@@ -229,7 +229,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
     - **A 主链真 Bug 已完成**：ToolResultStore EEXIST 只复用完全一致的内容；Usage 状态模型已区分 `cancelled`；Anthropic 已删除隐式 `maxTokens=4096` 并使用调用级剩余输出预算；
     - **B 主链安全收口**：install-git 与 mcpStdioGate 路由级审批已经接通；`AGEN_UNSAFE_*` 在正式构建中会直接阻止启动，不能由安装环境变量关闭隔离。Sandbox 状态接前端常驻提示仍属于前端工作；
     - **C 主链卫生已完成**：已删除 Macro 压缩后绕过 Memory 开关直接重读 L1 Session Note 的旧恢复旁路；正常 L1 Recall 继续作为不可压缩 Contribution 保留，Active Skill 继续走 required restore。AgentLoopState 已删除不可达状态；`prefixHash` 已明确为本次请求截止最终缓存断点的身份，会随历史、当前 Turn 和工具轮次演进，不再伪装成跨 Turn 固定 Prompt Hash。
-12. Character C1a/C1b/C2 已完成显式资源、Prompt/健康门槛与主窗口可抢占降级。主项和候选由后端冻结顺序，主窗口不扫描数据库或文件；同角色切换保留旧画面到新资源就绪，跨角色先显示占位，过期加载不能覆盖当前选择。下一批 C3 接资源/角色删除、导入导出、普通目录搬运与启动恢复。现有 Session Backup 不扩张到 Character。
+12. Character C1a/C1b/C2/C3a 已完成显式资源、Prompt/健康门槛、主窗口可抢占降级及文件事务地基。主项和候选由后端冻结顺序，主窗口不扫描数据库或文件；同角色切换保留旧画面到新资源就绪，跨角色先显示占位，过期加载不能覆盖当前选择。参考音频发布/删除与角色目录删除使用同盘 `.imports/.trash`，SQL 失败原位恢复，崩溃残留由启动恢复按事实源处理。下一批 C3b 补三类资源深校验与单项导入导出删除；之后 C3c 再做完整角色目录、Manifest、`importAsCopy/replace`。现有 Session Backup 不扩张到 Character。
 
 命名随业务批次清理：旧 `IFileStateStoreEntry/IFileStateStore` 及后续过渡接口已经删除，`IToolExecutionJournal` 已改为职责名；其余迁移期 `I*` 类型继续随业务边界处理，不单独进行全仓机械重命名。
 
@@ -237,6 +237,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- Character C3a 文件事务批：Characters 2 文件 31/31、LocalHost 全量 43 文件 164/164 通过，Characters build 与 LocalHost typecheck 通过；测试覆盖参考音频 SQL 删除失败后从 `.trash` 原位恢复、发布路径冲突不误删旧文件、启动时恢复仍被数据库引用的中断删除、清理未入库的孤儿发布、领域入口拒绝删除活动角色，以及完整角色目录随非活动角色删除。`git diff --check` 通过，仅有既有 CRLF 与不可访问 Bridge 测试缓存提示。
 - Character C2 主窗口降级批：Characters 2 文件 27/27、LocalHost 全量 43 文件 164/164、Desktop UI 全量 33 文件 166/166、Desktop 3 文件 12/12 通过；Characters、Events、LocalHost、Desktop UI、Desktop 五包 typecheck 通过。覆盖损坏主 Live2D 后继续同类候选、运行时切换主 Live2D、表现快照迟到请求隔离。Desktop Vite 构建已走到 1714 模块，最终被既有 `src/turn/interaction/sessionInteractionQueue.ts` 浏览器链导入 `node:crypto.randomUUID` 阻塞；与 Character 改动无关，后续需从 Desktop UI 依赖图移除 Node-only Turn 实现。
 
 - Character C1b 资源自检批：Characters typecheck/build 与 2 文件 26/26 通过；LocalHost typecheck 与全量 43 文件 163/163 通过；`git diff --check` 通过。测试覆盖写入/激活/Prompt 装配三重空 Prompt 关闸、绝对路径/反斜杠/目录穿越拒绝、立绘实际格式/尺寸/字节深检、Live2D 缺失后立绘降级、同角色资源操作串行，以及 Cards Health/激活 HTTP 契约。K3 的 `apps/desktop-ui/src/chat/input/` 未跟踪施工区未触碰。

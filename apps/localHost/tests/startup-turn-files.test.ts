@@ -68,6 +68,13 @@ describe('StartupRecovery', () => {
     const backgroundProcesses = {
       recoverInterrupted: vi.fn(() => []),
     };
+    const characterResources = {
+      recoverResourceFiles: vi.fn(() => ({
+        restored: 1,
+        removed: 2,
+        failed: 0,
+      })),
+    };
 
     const recovery = new StartupRecovery(
       activeDataDir,
@@ -76,6 +83,7 @@ describe('StartupRecovery', () => {
       agentRuns,
       toolExecutions,
       backgroundProcesses,
+      characterResources,
     );
     recovery.runRequired();
     expect(recovery.runMaintenance()).toEqual({ memoryReady: true });
@@ -85,6 +93,7 @@ describe('StartupRecovery', () => {
     expect(memory.runStartupRecovery).toHaveBeenCalledTimes(1);
     expect(session.recoverStuckTurns).toHaveBeenCalledTimes(1);
     expect(agentRuns.recoverInterrupted).toHaveBeenCalledTimes(1);
+    expect(characterResources.recoverResourceFiles).toHaveBeenCalledTimes(1);
   });
 
   it('Turn 终态恢复失败时向上传播，不继续伪装 ready', () => {
@@ -111,6 +120,13 @@ describe('StartupRecovery', () => {
       { recoverInterrupted: vi.fn(() => []) },
       { recoverInterrupted: vi.fn(() => []) },
       { recoverInterrupted: vi.fn(() => []) },
+      {
+        recoverResourceFiles: vi.fn(() => ({
+          restored: 0,
+          removed: 0,
+          failed: 0,
+        })),
+      },
     );
 
     expect(() => recovery.runRequired()).toThrow('database unavailable');
@@ -134,6 +150,13 @@ describe('StartupRecovery', () => {
       { recoverInterrupted: vi.fn(() => []) },
       { recoverInterrupted: vi.fn(() => []) },
       { recoverInterrupted: vi.fn(() => []) },
+      {
+        recoverResourceFiles: vi.fn(() => ({
+          restored: 0,
+          removed: 0,
+          failed: 0,
+        })),
+      },
     );
 
     expect(recovery.runMaintenance()).toEqual({ memoryReady: false });
@@ -171,6 +194,13 @@ describe('StartupRecovery', () => {
       { recoverInterrupted: vi.fn(() => []) },
       { recoverInterrupted: vi.fn(() => []) },
       { recoverInterrupted: vi.fn(() => []) },
+      {
+        recoverResourceFiles: vi.fn(() => ({
+          restored: 0,
+          removed: 0,
+          failed: 0,
+        })),
+      },
     );
 
     recovery.runMaintenance();

@@ -165,14 +165,14 @@ export function cardsRoute(cardStore: CharacterCardStore): Hono {
     }
   });
 
-  app.delete('/:id', (c) => {
+  app.delete('/:id', async (c) => {
     const id = asCharacterCardId(c.req.param('id'));
     const card = cardStore.get(id);
     if (!card) return c.json({ error: 'card_not_found' }, 404);
     if (card.isBuiltin) return c.json({ error: 'cannot_delete_builtin_card' }, 403);
     // B-055:禁止删除当前 active 卡,否则留下零 active 状态。用户须先 activate 别的卡。
     if (card.isActive) return c.json({ error: 'cannot_delete_active_card' }, 409);
-    cardStore.delete(id);
+    await cardStore.deleteManagedCharacter(id);
     return c.body(null, 204);
   });
 
@@ -236,52 +236,27 @@ export function cardsRoute(cardStore: CharacterCardStore): Hono {
     const setPrimary = form.get('setPrimary') === 'true'
                     || form.get('setPrimary') === '1';
 
-    return cardStore.runResourceOperation(
-      found.id,
-      'voiceReferenceUpload',
-      async ({ setStage }) => {
-        setStage('validating');
-        const refId = asCharacterVoiceReferenceId(`ra_${randomUUID().slice(0, 8)}`);
-        const ext = extForMime(file.type || mimeForExt(path.extname(label).slice(1)));
-        const relPath = `voiceRefs/${refId}.${ext}`;
-        const voiceDir = cardStore.voiceReferencesDirectory(found.id);
-        fs.mkdirSync(voiceDir, { recursive: true });
-        const absPath = cardStore.resolveResourcePath(
-          found.id,
-          relPath,
-          'voiceReference',
-        );
-
-        setStage('staging');
-        const bytes = new Uint8Array(await file.arrayBuffer());
-        await fs.promises.writeFile(absPath, bytes);
-
-        try {
-          setStage('publishing');
-          const current = cardStore.get(found.id);
-          if (!current) throw new Error(`character card not found: ${found.id}`);
-          const newRef = cardStore.addVoiceReference(found.id, {
-            id: refId,
-            label,
-            relativePath: relPath,
-            promptText,
-            promptLang,
-            isPrimary: setPrimary || current.voiceReferences.length === 0,
-            mimeType: file.type || mimeForExt(ext),
-            byteSize: file.size,
-          });
-          setStage('finalizing');
-          return c.json({
-            reference: newRef,
-            primaryId: cardStore.get(found.id)?.voiceReferences
-              .find((reference) => reference.isPrimary)?.id ?? null,
-          }, 201);
-        } catch (error) {
-          await fs.promises.rm(absPath, { force: true }).catch(() => undefined);
-          throw error;
-        }
-      },
-    );
+    const refId = asCharacterVoiceReferenceId(`ra_${randomUUID().slice(0, 8)}`);
+    const ext = extForMime(file.type || mimeForExt(path.extname(label).slice(1)));
+    const relPath = `voiceRefs/${refId}.${ext}`;
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const current = cardStore.get(found.id);
+    if (!current) throw new Error(`character card not found: ${found.id}`);
+    const newRef = await cardStore.publishVoiceReference(found.id, {
+      id: refId,
+      label,
+      relativePath: relPath,
+      promptText,
+      promptLang,
+      isPrimary: setPrimary || current.voiceReferences.length === 0,
+      mimeType: file.type || mimeForExt(ext),
+      byteSize: file.size,
+    }, bytes);
+    return c.json({
+      reference: newRef,
+      primaryId: cardStore.get(found.id)?.voiceReferences
+        .find((reference) => reference.isPrimary)?.id ?? null,
+    }, 201);
   });
 
   app.get('/:cardId/voice-refs/:refId', async (c) => {
@@ -336,30 +311,9 @@ export function cardsRoute(cardStore: CharacterCardStore): Hono {
       return c.json({ error: 'invalid_voice_ref_path' }, 400);
     }
 
-    return cardStore.runResourceOperation(
-      found.id,
-      'voiceReferenceDelete',
-      async ({ setStage }) => {
-        setStage('validating');
-        const current = cardStore.get(found.id);
-        const currentRef = current?.voiceReferences.find(
-          (reference) => reference.id === refId,
-        );
-        if (!currentRef) return c.json({ error: 'ref_not_found' }, 404);
-
-        setStage('publishing');
-        const deleted = cardStore.deleteVoiceReference(found.id, refId);
-        if (!deleted) return c.json({ error: 'ref_not_found' }, 404);
-
-        setStage('finalizing');
-        try {
-          await fs.promises.rm(absPath, { force: true });
-        } catch {
-          // 数据库已经是事实源；C3 的可恢复文件事务会负责孤儿文件回收。
-        }
-        return c.body(null, 204);
-      },
-    );
+    const deleted = await cardStore.deleteManagedVoiceReference(found.id, refId);
+    if (!deleted) return c.json({ error: 'ref_not_found' }, 404);
+    return c.body(null, 204);
   });
 
   app.put('/:cardId/voice-refs/primary', async (c) => {

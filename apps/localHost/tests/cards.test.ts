@@ -70,8 +70,14 @@ describe('B-055 cards route', () => {
 
   it('DELETE 非 active 用户卡成功 204', async () => {
     const { id } = await createCard('Tmp');
+    const cardDirectory = join(resourceRoot, 'user', id);
+    mkdirSync(cardDirectory, { recursive: true });
+    writeFileSync(join(cardDirectory, 'marker.txt'), 'managed');
     const res = await app.request(`/${id}`, { method: 'DELETE' });
     expect(res.status).toBe(204);
+    expect(card.get(id as never)).toBeUndefined();
+    expect(() => writeFileSync(join(cardDirectory, 'still-there.txt'), 'x'))
+      .toThrow();
   });
 
   it('健康接口投影降级资源，空 Prompt 角色不能激活', async () => {

@@ -52,6 +52,9 @@ export type {
   CharacterResourceOperationStage,
 } from './resources/characterResourceOperations.js';
 export type {
+  CharacterResourceRecoveryReport,
+} from './resources/characterResourceRecovery.js';
+export type {
   CharacterHealth,
   CharacterHealthIssue,
   CharacterHealthIssueCode,
