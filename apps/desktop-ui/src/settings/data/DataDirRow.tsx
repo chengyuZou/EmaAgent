@@ -52,7 +52,7 @@ export function DataDirRow({
     >
       <div className="flex items-center gap-2">
         <span
-          className={`text-xs shrink-0 ${dir.isActive ? 'i-solar:check-circle-bold text-[var(--ema-primary)]' : 'i-solar:circle-line-duotone text-[var(--ema-text-tertiary)]'}`}
+          className={`text-xs shrink-0 ${dir.isActive ? 'i-solar:check-circle-bold text-[var(--ema-primary)]' : 'i-solar:check-circle-linear text-[var(--ema-text-tertiary)]'}`}
           aria-hidden
         />
         <span className="text-sm font-semibold text-[var(--ema-text-primary)] truncate flex-1">

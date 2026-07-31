@@ -215,6 +215,7 @@ impl DesktopRuntimeSupervisor {
         narrative_dir: Option<PathBuf>,
     ) -> Result<(u32, u16), String> {
         let _ = tokio::fs::remove_file(ready_file).await;
+        let launcher_is_service = launch.launcher_is_service;
         let (child, pid) = spawn_service(
             service,
             launch,
@@ -240,7 +241,7 @@ impl DesktopRuntimeSupervisor {
         let record = wait_for_ready(
             ready_file,
             service,
-            pid,
+            launcher_is_service.then_some(pid),
             nonce,
             timeout,
             &self.0.shutdown_requested,

@@ -25,33 +25,6 @@
         "skipTaskbar":   false,
         "visible":       true,
         "additionalBrowserArgs": "--autoplay-policy=no-user-gesture-required"
-      },
-      {
-        "label":         "chat",
-        "title":         "Ema · 聊天",
-        "url":           "/chat.html",
-        "width":         720,
-        "height":        560,
-        "transparent":   false,
-        "decorations":   true,
-        "alwaysOnTop":   false,
-        "resizable":     true,
-        "visible":       false,
-        "center":        true,
-        "additionalBrowserArgs": "--autoplay-policy=no-user-gesture-required"
-      },
-      {
-        "label":         "settings",
-        "title":         "Ema · 设置",
-        "url":           "/settings.html",
-        "width":         860,
-        "height":        620,
-        "transparent":   false,
-        "decorations":   true,
-        "alwaysOnTop":   false,
-        "resizable":     true,
-        "visible":       false,
-        "center":        true
       }
     ],
     "security": {

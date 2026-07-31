@@ -1,7 +1,7 @@
 # EmaAgent 当前重构接力板
 
 > 状态：临时施工记录，架构完成后删除
-> 更新时间：2026-07-31
+> 更新时间：2026-08-01
 > 作用：只记录当前阶段、工作区归属、最近验证和下一步。长期规则以 `CLAUDE.md` 为准，目标设计以 `EmaRefactor.md` 为准，设计依据以 `EmaClaudeArchitectureReview.md` 为准。
 
 ## 当前阶段
@@ -162,6 +162,8 @@ Task 与 AgentRun 前端已经分面：Desktop 使用正式 `/api/tasks` 快照�
 
 开始任何新批次前必须重新运行 `git status --short` 与 `git diff`，保留用户和其他 Agent 的修改。
 
+Desktop 窗口生命周期与透明主窗启动故障已经收口：聊天与设置在首次 `open_window` 时按原 label、URL 和尺寸惰性创建，后续关闭继续 hide-and-reuse；主窗由 `setup` 显式确保创建、显示与聚焦。透明窗口的直接原因不是 Live2D，而是 Desktop API 从 `@ema-agent/turn` 根出口引入浏览器不支持的 `SessionInteractionQueue -> node:crypto.randomUUID`，导致 React 挂载前终止；现由浏览器安全的 `@ema-agent/turn/protocol` 子路径只暴露 Turn Wire 协议。普通浏览器预览也会在调用 Tauri 窗口 API 前确认宿主注入存在。K3 同时在处理 Runtime readiness 的开发包装器 PID 口径和三个前端图标引用；这些未提交改动不属于本批，不能覆盖。
+
 BackgroundProcess 后端主链已经完成：Bash 在 15 秒内返回普通结果，超时则把同一进程一次性交给后台；显式后台、并发队列、持久状态/有界日志、ProcessList/ProcessOutput/ProcessStop、完成事件、内部续接 Turn、设置和只读/停止 API 均已接线。Session 删除会先终止所属进程并释放日志句柄。本批未修改 Desktop 前端。
 
 Memory M1-M5 后端已经全部完成；本批没有修改 `apps/desktop-ui`。前端若接入健康展示，只消费 `/api/memory/health` 与退化边界事件。
@@ -242,6 +244,8 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- Desktop 透明主窗修复：浏览器运行日志确认旧链路在 `sessionInteractionQueue.js` 读取 `node:crypto.randomUUID` 时中断，改为 `@ema-agent/turn/protocol` 后该异常消失，主入口实际渲染出角色舞台占位及聊天、设置、置顶、退出等控制按钮；普通浏览器仅剩预期的未认证 LocalHost SSE 重试。Turn build、Desktop UI 与 Desktop typecheck 通过。Desktop 正式 Vite build 已越过原先的 Node-only Turn 阻塞并完成 1722 模块转换，现被独立的 `wlipsync` 顶层 await 与既有 `chrome105/es2022/safari13` target 不兼容阻塞，留发布构建批处理。
+- Desktop 窗口惰性创建与主窗兜底：`apps/desktop/src-tauri` 的 `cargo fmt --check`、`cargo check` 与 6/6 Rust 测试通过；实机窗口枚举确认旧进程只有托盘、没有任何顶层窗口，现由 `setup` 显式确保 `main` 创建并显示，`chat/settings` 保持原 capability label 并在首次操作时创建。`git diff --check` 通过，仅有既有 CRLF 提示。尚需下一次干净启动手动验证主窗可见、首次打开 Chat 后历史/SSE 完整、Settings 首次创建与重复隐藏/显示正常。
 - Session Backup ZIP V2 批三：Storage 定向 2/2、Backup 全量 46/46 通过，Storage build、Storage/Backup typecheck 与 `git diff --check` 通过。测试覆盖不存在 Session、惰性 SQLite 游标不会阻塞事务提交、稳定记录顺序、必需空 JSONL、存在附件冻结及缺失附件 warning；测试曾真实抓到“构造快照时同时打开所有 iterator 导致连接 busy”，已改为首次遍历该表时才打开游标。
 - Session Backup ZIP V2 流式归档内核：Backup 5 个测试文件 45/45、独立 typecheck 通过；新增覆盖分块二进制、manifest 参与 SHA-256、完整性清单不自引用、路径穿越/白名单拒绝、Sink 写失败 abort 且不 commit。该批没有修改 Facade、Route、Storage 或 V1 Capabilities，避免把未接数据库一致快照的半能力暴露给调用方。
 - Session Backup ZIP V2 批一修订：Backup 4 个测试文件 42/42、独立 typecheck 通过；测试覆盖并行 UTF-8 断字节、严格末行终止、原始字节跨分块上限、十五类注册表、真实数据库枚举、Usage 单 Session 边界、AgentRun 父子 Turn 一致性、Task 重复边/环和五万节点长链。JSONL 小块输入不再反复重编码整段缓冲，`git diff --check` 通过，仅有既有 CRLF 提示。

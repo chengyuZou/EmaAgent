@@ -11,6 +11,10 @@ pub struct ServiceLaunch {
     pub executable: PathBuf,
     pub args: Vec<String>,
     pub working_dir: PathBuf,
+    /// spawn 出的进程是否即服务本体。
+    /// 打包直启 exe 为 true(readiness PID 必须与 spawn PID 相等);
+    /// 开发期经 pnpm/uv 包装器为 false(真实服务是包装器的子进程,PID 不参与校验)。
+    pub launcher_is_service: bool,
 }
 
 pub fn resolve_service_launch(
@@ -62,11 +66,13 @@ fn resolve_development_launch(service: RuntimeService) -> Result<ServiceLaunch, 
                 "dev".to_string(),
             ],
             working_dir: workspace_root,
+            launcher_is_service: false,
         }),
         RuntimeService::Bridge => Ok(ServiceLaunch {
             executable: which::which("uv").map_err(|error| format!("uv not on PATH: {error}"))?,
             args: vec!["run".to_string(), "ema-bridge".to_string()],
             working_dir: workspace_root.join("apps").join("bridge"),
+            launcher_is_service: false,
         }),
     }
 }
@@ -166,6 +172,7 @@ fn launch_for_existing_at(
         executable,
         args,
         working_dir,
+        launcher_is_service: true,
     })
 }
 

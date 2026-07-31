@@ -2,14 +2,14 @@
  * Turns API — POST /api/turns, SSE events URL, merged audio URL.
  */
 import { sidecarClient } from './sidecar-client.js';
-import { hasTurnRequestInput } from '@ema-agent/turn';
+import { hasTurnRequestInput } from '@ema-agent/turn/protocol';
 import type {
   TurnId,
 } from '@ema-agent/ids';
 import type {
   TurnCreatedResponse,
   TurnRequest,
-} from '@ema-agent/turn';
+} from '@ema-agent/turn/protocol';
 import type { PendingAskUserPrompt, ToolExecutionRecord } from '@ema-agent/tools';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -30,7 +30,7 @@ export interface AttachmentInputWire {
 }
 
 // Re-export the canonical wire types so existing import sites keep working.
-export type { TurnRequest, TurnCreatedResponse } from '@ema-agent/turn';
+export type { TurnRequest, TurnCreatedResponse } from '@ema-agent/turn/protocol';
 
 // ── API object ────────────────────────────────────────────────────────────────
 

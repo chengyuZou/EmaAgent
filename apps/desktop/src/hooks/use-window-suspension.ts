@@ -29,11 +29,14 @@ export function useWindowSuspension(): boolean {
   }, []);
 
   useEffect(() => {
+    // 普通浏览器预览没有 Tauri 注入对象，不能在 try/catch 之外直接取得当前窗口。
+    if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return;
+
     let disposed = false;
     let unlisten: (() => void) | null = null;
-    const window = getCurrentWindow();
+    const currentWindow = getCurrentWindow();
 
-    void window.isVisible()
+    void currentWindow.isVisible()
       .then((visible) => {
         if (!disposed) setHostVisible(visible);
       })
@@ -41,7 +44,7 @@ export function useWindowSuspension(): boolean {
         // 普通浏览器预览没有 Tauri IPC，以页面可见性作为唯一信号。
       });
 
-    void window.listen<WindowVisibilityPayload>(WINDOW_VISIBILITY_EVENT, (event) => {
+    void currentWindow.listen<WindowVisibilityPayload>(WINDOW_VISIBILITY_EVENT, (event) => {
       if (!disposed) setHostVisible(event.payload.visible);
     }).then((off) => {
       if (disposed) off();

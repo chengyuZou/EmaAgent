@@ -78,7 +78,7 @@ function LibraryRow({ lib, onActivate, onRename, onDelete }: {
         />
         <IconButton
           variant="default" size="sm" label="移除"
-          icon={deleting ? 'i-solar:spinner-bold animate-spin' : 'i-solar:trash-bin-2-bold'}
+          icon={deleting ? 'i-solar:refresh-bold animate-spin' : 'i-solar:trash-bin-2-bold'}
           disabled={deleting || lib.isActive}
           onClick={() => void handleDelete()}
         />

@@ -187,17 +187,20 @@ export class CharacterCardStore {
       }
 
       const live2dIds = new Set(this.live2d.list(cardId).map((item) => item.id));
+      const live2dPaths = new Set(this.live2d.list(cardId).map((item) => item.entryPath));
       for (const input of seed.live2dVariants) {
         if (!input.id) throw new Error(`builtin Live2D resource requires id: ${seed.id}`);
-        if (!live2dIds.has(input.id)) {
+        // v17 迁移行的 id 口径与种子不同但路径相同;id 或路径任一命中即视为已存在。
+        if (!live2dIds.has(input.id) && !live2dPaths.has(input.entryPath)) {
           this.live2d.insert(cardId, input);
         }
       }
 
       const portraitIds = new Set(this.portraits.list(cardId).map((item) => item.id));
+      const portraitPaths = new Set(this.portraits.list(cardId).map((item) => item.relativePath));
       for (const input of seed.portraits) {
         if (!input.id) throw new Error(`builtin portrait resource requires id: ${seed.id}`);
-        if (!portraitIds.has(input.id)) {
+        if (!portraitIds.has(input.id) && !portraitPaths.has(input.relativePath)) {
           this.portraits.insert(cardId, input);
         }
       }
@@ -205,9 +208,12 @@ export class CharacterCardStore {
       const voiceIds = new Set(
         this.voiceReferences.list(cardId).map((item) => item.id),
       );
+      const voicePaths = new Set(
+        this.voiceReferences.list(cardId).map((item) => item.relativePath),
+      );
       for (const input of seed.voiceReferences) {
         if (!input.id) throw new Error(`builtin voice resource requires id: ${seed.id}`);
-        if (!voiceIds.has(input.id)) {
+        if (!voiceIds.has(input.id) && !voicePaths.has(input.relativePath)) {
           this.voiceReferences.insert(cardId, input);
         }
       }

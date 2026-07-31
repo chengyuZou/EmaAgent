@@ -114,7 +114,7 @@ export function DocumentRow({ doc, currentEmbed, kbId, onDelete, index }: {
               variant="default"
               size="sm"
               label="重新嵌入此文档"
-              icon={reembedding ? 'i-solar:spinner-bold animate-spin' : 'i-solar:refresh-bold'}
+              icon={reembedding ? 'i-solar:refresh-bold animate-spin' : 'i-solar:refresh-bold'}
               onClick={() => void handleReembed()}
               disabled={reembedding}
               className="ema-fade-in"
@@ -124,7 +124,7 @@ export function DocumentRow({ doc, currentEmbed, kbId, onDelete, index }: {
             variant="default"
             size="sm"
             label="删除"
-            icon={deleting ? 'i-solar:spinner-bold animate-spin' : 'i-solar:trash-bin-2-bold'}
+            icon={deleting ? 'i-solar:refresh-bold animate-spin' : 'i-solar:trash-bin-2-bold'}
             onClick={() => void handleDelete()}
             disabled={deleting}
           />

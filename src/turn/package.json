@@ -7,6 +7,10 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./protocol": {
+      "import": "./dist/turns.js",
+      "types": "./dist/turns.d.ts"
     }
   },
   "main": "./dist/index.js",

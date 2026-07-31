@@ -22,7 +22,7 @@ pub struct ReadyRecord {
 pub async fn wait_for_ready(
     path: &Path,
     service: RuntimeService,
-    expected_pid: u32,
+    expected_pid: Option<u32>,
     expected_nonce: &str,
     max_wait: Duration,
     shutdown_requested: &AtomicBool,
@@ -56,7 +56,7 @@ pub async fn wait_for_ready(
 fn validate_ready(
     record: &ReadyRecord,
     service: RuntimeService,
-    expected_pid: u32,
+    expected_pid: Option<u32>,
     expected_nonce: &str,
 ) -> Result<(), String> {
     if record.service != service.as_str() {
@@ -66,12 +66,17 @@ fn validate_ready(
             record.service,
         ));
     }
-    if record.pid != expected_pid {
-        return Err(format!(
-            "{} readiness pid mismatch: expected {expected_pid}, got {}",
-            service.as_str(),
-            record.pid,
-        ));
+    // 仅当启动器即服务本体(打包直启 exe)时才要求 PID 相等;
+    // 开发期经 pnpm/uv 包装器启动,readiness 里的 PID 是真实服务进程的。
+    // 本次启动的新鲜性由每轮唯一 runtime 目录 + 随机 nonce 保证,与 PID 无关。
+    if let Some(expected_pid) = expected_pid {
+        if record.pid != expected_pid {
+            return Err(format!(
+                "{} readiness pid mismatch: expected {expected_pid}, got {}",
+                service.as_str(),
+                record.pid,
+            ));
+        }
     }
     if record.nonce != expected_nonce {
         return Err(format!("{} readiness nonce mismatch", service.as_str()));
@@ -103,13 +108,21 @@ mod tests {
 
     #[test]
     fn rejects_stale_nonce() {
-        let error = validate_ready(&ready(), RuntimeService::LocalHost, 42, "run-b").unwrap_err();
+        let error =
+            validate_ready(&ready(), RuntimeService::LocalHost, Some(42), "run-b").unwrap_err();
         assert!(error.contains("nonce mismatch"));
     }
 
     #[test]
-    fn rejects_foreign_pid() {
-        let error = validate_ready(&ready(), RuntimeService::LocalHost, 99, "run-a").unwrap_err();
+    fn rejects_foreign_pid_when_launcher_is_service() {
+        let error =
+            validate_ready(&ready(), RuntimeService::LocalHost, Some(99), "run-a").unwrap_err();
         assert!(error.contains("pid mismatch"));
+    }
+
+    #[test]
+    fn accepts_service_pid_when_launcher_is_wrapper() {
+        // 开发期包装器(pnpm/uv)的 PID 与真实服务 PID 天然不同,不参与等值校验。
+        validate_ready(&ready(), RuntimeService::LocalHost, None, "run-a").unwrap();
     }
 }

@@ -67,6 +67,39 @@ describe('CharacterCardStore', () => {
       const emaCards = cards.filter((c) => c.id === EMA_CARD_ID);
       expect(emaCards).toHaveLength(1);
     });
+
+    it('v17 迁移行(同路径不同 id)不触发唯一约束错误,也不重复插入', () => {
+      // 模拟 v17 迁移产生的行:id 口径与种子不同,relative_path 与种子一致。
+      db.sqlite.prepare(
+        `DELETE FROM character_voice_references WHERE character_card_id = 'ema'`,
+      ).run();
+      db.sqlite.prepare(
+        `INSERT INTO character_voice_references (
+           id, character_card_id, label, relative_path, prompt_text, prompt_lang,
+           position, is_primary, enabled, mime_type, created_at, updated_at
+         ) VALUES ('ema:legacy:0', 'ema', '迁移旧行', 'voiceRefs/ra_ema001.mp3', '旧', 'zh',
+                   0, 1, 1, 'audio/mpeg', 1, 1)`,
+      ).run();
+      db.sqlite.prepare(
+        `DELETE FROM character_live2d_variants WHERE character_card_id = 'ema'`,
+      ).run();
+      db.sqlite.prepare(
+        `INSERT INTO character_live2d_variants (
+           id, character_card_id, label, format, entry_path, position, is_primary,
+           enabled, is_builtin, created_at, updated_at
+         ) VALUES ('ema:old-model', 'ema', '迁移旧模型', 'live2d', 'live2d/ema.model3.json',
+                   0, 1, 1, 1, 1, 1)`,
+      ).run();
+
+      expect(() => store.ensureSeed()).not.toThrow();
+      const current = store.current();
+      expect(
+        current.voiceReferences.filter((v) => v.relativePath === 'voiceRefs/ra_ema001.mp3'),
+      ).toHaveLength(1);
+      expect(
+        current.live2dVariants.filter((v) => v.entryPath === 'live2d/ema.model3.json'),
+      ).toHaveLength(1);
+    });
   });
 
   describe('current', () => {

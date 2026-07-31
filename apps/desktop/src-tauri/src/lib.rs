@@ -14,8 +14,7 @@ use commands::{
 };
 use desktop::window_lifecycle::{handle_window_event, show_main_window};
 use file_access::{
-    install_authorized_drop_handler, open_authorized_file, pick_authorized_directory,
-    pick_authorized_files, FileAccessFacade,
+    open_authorized_file, pick_authorized_directory, pick_authorized_files, FileAccessFacade,
 };
 use runtime::DesktopRuntimeSupervisor;
 
@@ -29,7 +28,6 @@ pub fn run() {
     let file_access = FileAccessFacade::new(&credential_master_key)
         .expect("failed to initialize local file access facade");
     let runtime_for_setup = runtime.clone();
-    let file_access_for_setup = file_access.clone();
 
     tauri::Builder::default()
         // 单实例插件在 setup 前取得所有权，第二实例只能唤醒主窗口。
@@ -61,12 +59,10 @@ pub fn run() {
                 }
             });
 
-            // 文件拖拽由 Rust 签发能力句柄，WebView 不接触原始路径。
-            if let Some(chat_window) = app.get_webview_window("chat") {
-                install_authorized_drop_handler(&chat_window, file_access_for_setup.clone());
-            }
-
             desktop::tray::install(app)?;
+
+            // 主窗必须在首次启动时出现；聊天与设置仍由用户操作时惰性创建。
+            show_main_window(app.handle());
             Ok(())
         })
         .on_window_event(handle_window_event)
