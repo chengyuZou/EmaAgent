@@ -47,4 +47,10 @@ export type {
 } from './compaction/types.js';
 export { DEFAULT_CONTEXT_COMPACTION_SETTINGS } from './compaction/types.js';
 export type { ContextEvent, ContextRuntimeEvent } from './events.js';
+export { computeContextUsage } from './contextUsage.js';
+export type {
+  ContextUsageCategories,
+  ContextUsageEstimate,
+  ContextUsageInput,
+} from './contextUsage.js';
 export { contextCompactionSetting } from './settings.js';

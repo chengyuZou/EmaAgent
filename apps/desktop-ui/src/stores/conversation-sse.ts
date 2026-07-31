@@ -12,6 +12,7 @@ import { useDecisionStore }        from './decision-store.js';
 import { useAgentRunStore }        from './agentRunStore.js';
 import { useTaskStore }            from './taskStore.js';
 import { useConversationStore }    from './conversation-store.js';
+import { useContextUsageStore }    from './contextUsageStore.js';
 import {
   appendTextSlice,
   appendThinkingSlice,
@@ -133,6 +134,14 @@ export function dispatchSseEvent(
         m.set(event.turnId as string, { inputTokens: event.inputTokens, outputTokens: event.outputTokens });
         return { liveUsageMap: m };
       });
+      break;
+
+    case 'llm_context_prepared':
+      useContextUsageStore.getState().applyEstimate(
+        sessionId as string,
+        event.llmCallId as string,
+        event.estimate,
+      );
       break;
 
     case 'output_text_delta':

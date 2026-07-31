@@ -4,9 +4,11 @@ import {
   buildModelMessages,
   buildRuntimeEnvironmentSnapshot,
   ContextAssembler,
+  computeContextUsage,
   type ContextCompactor,
   type ContextContribution,
   type ContextRuntimeEvent,
+  type ContextUsageEstimate,
   type ModelContextSnapshot,
   prepareHistoricalMessageView,
   validateCurrentContent,
@@ -75,6 +77,8 @@ export interface TurnContext {
   readonly readableUserInput: string;
   readonly degradation?: RequestDegradationNotice;
   readonly narrativeTimelines: readonly NarrativeRecallTimeline[];
+  /** 最近一次 assemble 的分类估算;llmCallId 由 RootAgentExecution 在发事件时补。 */
+  readonly usageEstimate: ContextUsageEstimate | null;
   assemble(request: TurnContextAssembly): Promise<ModelContextSnapshot>;
 }
 
@@ -220,6 +224,7 @@ export class TurnContextBuilder {
     const frozenContributions = baseContributions.map((contribution) =>
       structuredClone(contribution)
     );
+    let latestUsageEstimate: ContextUsageEstimate | null = null;
 
     return {
       messages,
@@ -227,12 +232,16 @@ export class TurnContextBuilder {
       readableUserInput,
       degradation,
       narrativeTimelines,
+      get usageEstimate() {
+        return latestUsageEstimate;
+      },
       assemble: (assembly) => this.assemble(
         turn,
         input,
         signal,
         frozenContributions,
         assembly,
+        (estimate) => { latestUsageEstimate = estimate; },
       ),
     };
   }
@@ -243,6 +252,7 @@ export class TurnContextBuilder {
     signal: AbortSignal,
     baseContributions: readonly ContextContribution[],
     request: TurnContextAssembly,
+    publishEstimate: (estimate: ContextUsageEstimate) => void,
   ): Promise<ModelContextSnapshot> {
     const contributions: ContextContribution[] = baseContributions.map(
       (contribution) => structuredClone(contribution),
@@ -286,9 +296,21 @@ export class TurnContextBuilder {
       toolManifest: request.toolManifest,
     };
 
-    if (!this.deps.compactor) return this.assembler.assemble(assemblyInput);
+    if (!this.deps.compactor) {
+      const snapshot = await this.assembler.assemble(assemblyInput);
+      publishEstimate(computeContextUsage({
+        prompt: input.prompt,
+        toolManifest: request.toolManifest,
+        history: snapshot.history,
+        currentTurn: request.currentTurn,
+        contributions,
+        restoreContributions: assemblyInput.postCompactionRestoreContributions,
+        contextWindow: input.model.capabilities.contextWindow ?? 200_000,
+      }));
+      return snapshot;
+    }
 
-    return this.assembler.assembleCompacted(
+    const snapshot = await this.assembler.assembleCompacted(
       assemblyInput,
       async (view, options) => {
         const result = await this.deps.compactor!.compact({
@@ -314,6 +336,16 @@ export class TurnContextBuilder {
       },
       { force: request.forceCompaction },
     );
+    publishEstimate(computeContextUsage({
+      prompt: input.prompt,
+      toolManifest: request.toolManifest,
+      history: snapshot.history,
+      currentTurn: request.currentTurn,
+      contributions,
+      restoreContributions: assemblyInput.postCompactionRestoreContributions,
+      contextWindow: input.model.capabilities.contextWindow ?? 200_000,
+    }));
+    return snapshot;
   }
 }
 

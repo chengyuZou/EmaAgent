@@ -1,9 +1,11 @@
 // 组装会话侧栏、消息历史、输入区与工作区 Dock，并维护聊天窗口生命周期。
 import { useEffect, type JSX } from 'react';
 import type { SessionId } from '@ema-agent/ids';
+import { Popover } from '@ema-agent/ui';
 import { useConversationStore } from '../../stores/conversation-store.js';
 import { useSessionStore } from '../../stores/session-store.js';
 import { useSidecarStore } from '../../stores/sidecar-store.js';
+import { useContextUsageStore } from '../../stores/contextUsageStore.js';
 import { findEnabledModel, useModelCatalogStore } from '../../stores/model-catalog-store.js';
 import { useThemeSync } from '../../stores/theme-store.js';
 import { useRuntimeSettingsSync } from '../../stores/runtime-settings-sync.js';
@@ -137,6 +139,7 @@ export function ChatPanel(): JSX.Element {
 
 // ── Context ball ──────────────────────────────────────────────────────────────
 // Small circular arc indicator showing live input token count vs context window.
+// 真实用量优先,首轮真实未到时回退批1估算(带 ~);点击弹出分类明细。
 
 const FALLBACK_CTX = 200_000;
 
@@ -157,7 +160,6 @@ function ContextBall({ sessionId }: { sessionId: string | null }): JSX.Element |
   );
   // 上下文上限来自当前 Session 的模型目录，不再读取跨 Session 的全局 UI 状态。
   const ctxWindow = preferredModel?.contextWindow ?? FALLBACK_CTX;
-  const isFallback = preferredModel === undefined;
 
   const streaming = useConversationStore((s) =>
     sessionId ? s.streamingMap.get(sessionId) : undefined,
@@ -171,11 +173,20 @@ function ContextBall({ sessionId }: { sessionId: string | null }): JSX.Element |
     sessionId ? s.messages.get(sessionId) ?? EMPTY_MSGS : EMPTY_MSGS,
   );
   const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant' && m.stats);
-  const inputTok = liveUsage?.inputTokens ?? lastAssistant?.stats?.inputTokens ?? 0;
+  const realInput = liveUsage?.inputTokens ?? lastAssistant?.stats?.inputTokens;
+
+  const estimateEntry = useContextUsageStore((s) =>
+    sessionId ? s.bySession[sessionId] : undefined,
+  );
+  const estimate = estimateEntry?.estimate;
+  // 真实未到时用估算撑场;窗口上限同样优先取估算自带的精确值。
+  const effectiveWindow = estimate?.contextWindow ?? ctxWindow;
+  const inputTok = realInput ?? estimate?.totalTokens ?? 0;
+  const isEstimate = realInput === undefined && estimate !== undefined;
 
   if (!inputTok) return null;
 
-  const pct = Math.min(inputTok / ctxWindow, 1);
+  const pct = Math.min(inputTok / effectiveWindow, 1);
   const r   = 7;
   const circ = 2 * Math.PI * r;
   const dash = pct * circ;
@@ -186,22 +197,78 @@ function ContextBall({ sessionId }: { sessionId: string | null }): JSX.Element |
     return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
   }
 
+  const categoryRows = estimate
+    ? (Object.entries(estimate.categories) as Array<[string, number]>)
+        .map(([key, tokens]) => ({ key, label: CATEGORY_LABELS[key] ?? key, tokens }))
+        .filter((row) => row.tokens > 0)
+        .sort((a, b) => b.tokens - a.tokens)
+    : [];
+
   return (
-    <div className="flex items-center gap-1.5"
-         title={`上下文: ${fmtK(inputTok)} / ${fmtK(ctxWindow)} (${Math.round(pct * 100)}%)${isFallback ? ' · 选择模型后显示精确上限' : ''}`}>
-      <svg width="18" height="18" viewBox="0 0 18 18" style={{ transform: 'rotate(-90deg)' }}>
-        <circle cx="9" cy="9" r={r} fill="none" stroke="var(--ema-surface-3)" strokeWidth="2.5" />
-        <circle
-          cx="9" cy="9" r={r} fill="none"
-          stroke={color} strokeWidth="2.5"
-          strokeDasharray={`${dash} ${circ - dash}`}
-          strokeLinecap="round"
-          className="transition-[stroke-dasharray] duration-[var(--ema-duration-slow)] ease-[var(--ema-ease)]"
-        />
-      </svg>
-      <span className="text-[var(--ema-text-tertiary)] tabular-nums">
-        {fmtK(inputTok)}
-      </span>
-    </div>
+    <Popover
+      side="top"
+      align="end"
+      widthClass="w-64"
+      trigger={
+        <span className="flex items-center gap-1.5 cursor-pointer rounded px-1 py-0.5 transition-colors hover:bg-[var(--ema-surface-2)]">
+          <svg width="18" height="18" viewBox="0 0 18 18" style={{ transform: 'rotate(-90deg)' }}>
+            <circle cx="9" cy="9" r={r} fill="none" stroke="var(--ema-surface-3)" strokeWidth="2.5" />
+            <circle
+              cx="9" cy="9" r={r} fill="none"
+              stroke={color} strokeWidth="2.5"
+              strokeDasharray={`${dash} ${circ - dash}`}
+              strokeLinecap="round"
+              className="transition-[stroke-dasharray] duration-[var(--ema-duration-slow)] ease-[var(--ema-ease)]"
+            />
+          </svg>
+          <span className="text-[var(--ema-text-tertiary)] tabular-nums">
+            {isEstimate ? `~${fmtK(inputTok)}` : fmtK(inputTok)}
+          </span>
+        </span>
+      }
+    >
+      <div className="flex flex-col gap-1.5 p-1">
+        <p className="text-xs font-medium text-[var(--ema-text-secondary)]">
+          上下文 {fmtK(inputTok)} / {fmtK(effectiveWindow)}({Math.round(pct * 100)}%)
+        </p>
+        {categoryRows.length > 0 ? (
+          categoryRows.map((row) => (
+            <div key={row.key} className="flex items-center justify-between text-[11px]">
+              <span className="text-[var(--ema-text-tertiary)]">{row.label}</span>
+              <span className="tabular-nums text-[var(--ema-text-secondary)]">~{fmtK(row.tokens)}</span>
+            </div>
+          ))
+        ) : (
+          <p className="text-[10px] text-[var(--ema-text-tertiary)]">本轮还没有分类估算。</p>
+        )}
+        <div className="border-t mt-1 pt-1.5 border-[var(--ema-border)]">
+          {realInput !== undefined ? (
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-[var(--ema-text-tertiary)]">本轮真实消耗</span>
+              <span className="tabular-nums text-[var(--ema-text-primary)]">
+                {fmtK(realInput)} Input{liveUsage ? ` · ${fmtK(liveUsage.outputTokens)} Output` : ''}
+              </span>
+            </div>
+          ) : (
+            <p className="text-[10px] text-[var(--ema-text-tertiary)]">
+              ~ 为估算值;真实消耗以 Provider 返回为准,回合结束后计入用量统计。
+            </p>
+          )}
+        </div>
+      </div>
+    </Popover>
   );
 }
+
+const CATEGORY_LABELS: Record<string, string> = {
+  systemPrompt: '系统指令',
+  toolInstructions: '工具说明书',
+  toolSchemas: '工具定义',
+  workspaceInstructions: '工作区规则',
+  skills: '技能',
+  memory: '记忆',
+  narrative: '剧情',
+  messages: '消息',
+  attachments: '附件媒体',
+  other: '其他',
+};

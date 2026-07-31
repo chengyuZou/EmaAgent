@@ -214,6 +214,15 @@ export class RootAgentExecution {
           messages,
         }) => {
           activePhase = 'hook';
+          if (preparedContext.usageEstimate) {
+            emitHookEvent({
+              type: 'llm_context_prepared',
+              sessionId,
+              turnId,
+              llmCallId,
+              estimate: preparedContext.usageEstimate,
+            });
+          }
           const result = await hooks.trigger('beforeLlm', {
             turnId,
             sessionId,
