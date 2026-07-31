@@ -78,6 +78,8 @@ Narrative R4 已经完成：`auto` 只在本轮 Tool Context 注入 NarrativeSea
 
 R2 Prompt Slot 与 R3 ContextAssembler 主链接线已经完成：Prompt、Skill Catalog、Memory Recall、Narrative Recall、历史、当前 Turn、Scratchpad、Mailbox 与 Tool Manifest 由一次不可变 Context 快照统一装配。现有渐进 Compaction、Safe Cut、Restore、响应式压缩和 Tool Manifest Snapshot 都是基线，不重新实现。
 
+Tool Prompt、工作区指令与 Context Usage 的下一阶段边界已冻结在 `docs/toolPromptWorkspaceInstructionsAndContextUsage.md`：Builtin Tool 将在短 `description` 之外提供与真实实现一致的详细 `usagePrompt`；工作区首批兼容 Codex `AGENTS*.md` 与 Claude `CLAUDE*.md/.claude/rules`，仅在两者缺失时使用 `.ema-agent/INSTRUCTIONS.md`；Context Usage 在每次 LLM Call 装配时计算并通过 Turn 事件推送，不采用前端轮询，也不把估算分类伪装成 Provider 精确 Usage。本轮只更新设计文档，尚未修改运行代码。
+
 Prompt 装配边界已经完成新语义收口：公共入口只接受全局 Active Character、`ExecutionProfile`、`NarrativePolicy` 与显式扩展贡献；旧 `buildSystemPrompt`、`buildModeBlock`、`legacyExecutionProfile` 和工作区路径注入已删除。Prompt 源码不再依赖 `contracts`，Skill Catalog 只在 Work Profile 作为扩展 Context 提供。运行时历史、召回、附件和工作区事实继续由 Context 所有。
 
 Prompt 缓存边界已进一步落到真实模型请求：稳定范围改为 `product / activeCharacter / turn`，全局激活角色不是 Session 绑定；产品规则与全局角色各自形成 System Block 和缓存断点，Chat/Work 与 NarrativePolicy 位于 Turn 动态尾部。Skill Catalog 作为普通 Context Message 投递并限制为 8000 字符总预算、250 字符单项描述，不能取得 System 权限。Context 会冻结日期、平台、工作区和模型身份，并输出分层 Prompt Revision、Tool Manifest Revision 与 Prefix Hash。Anthropic Adapter 已支持保留多层 System Block，不再由后一条覆盖前一条。

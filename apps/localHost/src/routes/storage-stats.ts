@@ -4,10 +4,10 @@ import { z }    from 'zod';
 import fs   from 'node:fs';
 import path from 'node:path';
 import {
+  SessionExportError,
   SessionImportError,
   type SessionBackupFacade,
   type BackupArchiveSource,
-  type SessionExportResult,
 } from '@ema-agent/backup';
 import type {
   SessionStore,
@@ -34,7 +34,7 @@ export interface StorageStatsRouteDependencies {
   storageStats: Pick<DataDirStatsRepo, 'getStats'>;
   sessionStats: Pick<SessionStatsRepo, 'getStats' | 'listAudioEntries'>;
   sessionNotes: Pick<SessionNotesRepo, 'findBySession'>;
-  sessionBackup: Pick<SessionBackupFacade, 'exportSession' | 'importSession'>;
+  sessionBackup: Pick<SessionBackupFacade, 'openSessionExport' | 'importSession'>;
   session: Pick<SessionStore, 'getSession'>;
 }
 
@@ -253,21 +253,46 @@ export function storageStatsRoute(dependencies: StorageStatsRouteDependencies): 
   // ── POST /:id/export ───────────────────────────────────────────────────────
 
   app.post('/sessions/:id/export', async (c) => {
-    let result: SessionExportResult | null;
-    result = await dependencies.sessionBackup.exportSession({
-      sessionId: c.req.param('id'),
-      signal: c.req.raw.signal,
-    });
-    if (!result) return c.json({ error: 'session_not_found' }, 404);
+    let opened;
+    try {
+      opened = dependencies.sessionBackup.openSessionExport({
+        sessionId: c.req.param('id'),
+        signal: c.req.raw.signal,
+      });
+    } catch (error) {
+      if (error instanceof SessionExportError) {
+        return c.json({ error: error.code, message: error.message }, error.status as 413);
+      }
+      throw error;
+    }
+    if (!opened) return c.json({ error: 'session_not_found' }, 404);
 
-    // Uint8Array 的底层可能是 SharedArrayBufferLike，复制为标准 ArrayBuffer
-    // 以满足 Web Response 在 Node/Tauri 两端一致的 BodyInit 契约。
-    return new Response(new Uint8Array(result.bytes).buffer, {
+    // ZIP 经 Sink 流式写入 HTTP 响应,不整包驻留内存;客户端断开即中止写入。
+    let cancelled = false;
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        try {
+          await opened.writeTo({
+            write: async (chunk) => {
+              if (cancelled) throw new Error('export cancelled by client');
+              controller.enqueue(chunk);
+            },
+            commit: async () => { controller.close(); },
+            abort: async () => { if (!cancelled) controller.error(new Error('export aborted')); },
+          });
+        } catch (error) {
+          if (!cancelled) controller.error(error);
+        }
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    return new Response(stream, {
       status: 200,
       headers: {
-        'Content-Type': result.mimeType,
-        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(result.filename)}`,
-        'Content-Length': String(result.bytes.byteLength),
+        'Content-Type': opened.mimeType,
+        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(opened.filename)}`,
       },
     });
   });

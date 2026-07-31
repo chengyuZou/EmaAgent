@@ -379,11 +379,6 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     session,
     settings,
   );
-  const sessionBackup = createSessionBackup(
-    activeDataDir,
-    dataDb,
-    session,
-  );
 
   const {
     mcpRegistry,
@@ -409,6 +404,15 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     vision,
     event => systemBus.emit(event),
     providerEmbedModels,
+  );
+
+  // 备份的便携恢复判定需要 KB 与 Provider 模型池,必须在两个 Runtime 之后装配。
+  const sessionBackup = createSessionBackup(
+    activeDataDir,
+    dataDb,
+    session,
+    providerLlmModels,
+    kb,
   );
 
   const memoryBackgroundHealth = new MemoryBackgroundHealthTracker(

@@ -28,6 +28,7 @@ import {
   recordDefinition,
 } from '../records/recordRegistry.js';
 import type { OmittedBackupFile, SessionBackupManifest } from '../records/sessionRecords.js';
+import { SessionExportError } from './errors.js';
 import {
   toAgentRunMessageRecord,
   toAgentRunRecord,
@@ -44,7 +45,7 @@ import {
   toToolExecutionRecord,
   toTurnRecord,
   toUsageRecord,
-} from '../records/storageRecordMappings.js';
+} from '../records/exportMappings.js';
 import type { PreparedSessionExport, SessionExportEntry } from './sessionExport.js';
 
 interface PendingFile {
@@ -66,6 +67,8 @@ export interface PrepareSessionExportOptions {
 }
 
 export interface StagedSessionExport extends PreparedSessionExport {
+  /** 标题 + 导出时间的便携文件名,前后端共用这一份。 */
+  readonly filename: string;
   dispose(): void;
 }
 
@@ -79,7 +82,10 @@ export function prepareSessionExport(
   const warnings: OmittedBackupFile[] = [];
 
   try {
+    let title = '';
+    const exportedAt = options.exportedAt ?? Date.now();
     const found = reader.withSnapshot(options.sessionId, (snapshot) => {
+      title = snapshot.session.title;
       writeRecords(root, snapshot, pendingFiles, limits, options.activeDataDir);
       return true;
     });
@@ -96,12 +102,13 @@ export function prepareSessionExport(
       format: 'ema-session',
       version: 2,
       sessionId: options.sessionId,
-      exportedAt: options.exportedAt ?? Date.now(),
+      exportedAt,
       generator: options.generator,
       warnings,
     };
     return {
       manifest,
+      filename: exportFilename(title, exportedAt),
       entries: () => stagedEntries(root),
       dispose: () => rmSync(root, { recursive: true, force: true }),
     };
@@ -138,10 +145,12 @@ function writeRecords(
         count += 1;
         totalRecords += 1;
         if (count > definition.maxRecords || totalRecords > limits.maxTotalRecords) {
-          throw new Error(`备份记录数超过限制: ${name}`);
+          throw new SessionExportError('export_too_large', `备份记录数超过限制: ${name}`);
         }
         const line = encodeJsonlLine(map(row));
-        if (line.byteLength > limits.jsonlMaxLineBytes) throw new Error(`备份记录单行过大: ${name}`);
+        if (line.byteLength > limits.jsonlMaxLineBytes) {
+          throw new SessionExportError('export_too_large', `备份记录单行过大: ${name}`);
+        }
         writeSync(descriptor, line);
       }
     } finally {
@@ -201,11 +210,27 @@ function writeJson(root: string, name: Parameters<typeof recordDefinition>[0], v
 }
 
 function stageFile(root: string, pending: PendingFile, warnings: OmittedBackupFile[]): void {
+  let before: ReturnType<typeof statSync>;
   try {
-    const before = statSync(pending.sourcePath);
+    before = statSync(pending.sourcePath);
+  } catch (error) {
+    warnings.push({
+      kind: pending.kind,
+      id: pending.id,
+      reason: isMissingError(error) ? 'missing' : 'unreadable',
+    });
+    return;
+  }
+  // 体积超限是完整性问题,必须让整个导出失败;只有丢失/不可读才允许省略。
+  if (before.isFile() && before.size > pending.maxBytes) {
+    throw new SessionExportError(
+      'export_too_large',
+      `备份文件超过 ${pending.maxBytes} 字节限制: ${pending.kind} ${pending.id}`,
+    );
+  }
+  try {
     if (
       !before.isFile()
-      || before.size > pending.maxBytes
       || (pending.expectedBytes !== undefined && before.size !== pending.expectedBytes)
     ) {
       throw new Error('unreadable');
@@ -218,12 +243,8 @@ function stageFile(root: string, pending: PendingFile, warnings: OmittedBackupFi
       rmSync(destination, { force: true });
       throw new Error('changed');
     }
-  } catch (error) {
-    warnings.push({
-      kind: pending.kind,
-      id: pending.id,
-      reason: isMissingError(error) ? 'missing' : 'unreadable',
-    });
+  } catch {
+    warnings.push({ kind: pending.kind, id: pending.id, reason: 'unreadable' });
   }
 }
 
@@ -257,6 +278,20 @@ function safeComponent(value: string): string {
     throw new Error('备份资源 ID 不能安全映射为路径');
   }
   return value;
+}
+
+/** ema-标题-YYYYMMDD-HHmm.zip;标题清洗跨平台字符,空标题回退 session。 */
+function exportFilename(title: string, exportedAt: number): string {
+  const safeTitle = title
+    .replace(/[<>:"/\\|?*\-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .slice(0, 30) || 'session';
+  const date = new Date(exportedAt);
+  const pad = (value: number): string => String(value).padStart(2, '0');
+  const stamp = `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}`
+    + `-${pad(date.getHours())}${pad(date.getMinutes())}`;
+  return `ema-${safeTitle}-${stamp}.zip`;
 }
 
 function safeFileName(value: string): string {

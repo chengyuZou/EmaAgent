@@ -30,11 +30,14 @@ export interface SessionExportRequest {
   signal?: AbortSignal;
 }
 
-export interface SessionExportResult {
-  format: SessionBackupFormat;
-  filename: string;
-  mimeType: 'application/zip';
-  bytes: Uint8Array;
+/**
+ * 已就位的导出:文件名已定,ZIP 经 writeTo 流式写入调用方 Sink。
+ * Facade 永不把整份 ZIP 聚合进内存,HTTP/Tauri 各自把 Sink 接到自己的响应流。
+ */
+export interface OpenedSessionExport {
+  readonly filename: string;
+  readonly mimeType: 'application/zip';
+  writeTo(sink: BackupOutputSink): Promise<void>;
 }
 
 export interface SessionBackupCapabilities {

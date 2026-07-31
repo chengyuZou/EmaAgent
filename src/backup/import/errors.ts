@@ -11,6 +11,7 @@ export type SessionImportErrorCode =
   | 'expanded_size_too_large'
   | 'compression_ratio_too_high'
   | 'integrity_mismatch'
+  | 'restore_failed'
   | 'destination_conflict';
 
 /** 备份业务边界的结构化错误，HTTP/CLI 各自决定如何呈现。 */
@@ -18,7 +19,7 @@ export class SessionImportError extends Error {
   constructor(
     readonly code: SessionImportErrorCode,
     message: string,
-    readonly status: 400 | 409 | 413 = 400,
+    readonly status: 400 | 409 | 413 | 500 = 400,
   ) {
     super(message);
     this.name = 'SessionImportError';

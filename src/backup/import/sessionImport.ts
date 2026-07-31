@@ -8,6 +8,7 @@ import type {
   SessionBackupRestoreInput,
   SessionBackupRestorer,
 } from '@ema-agent/storage';
+import { SessionBackupRestoreError } from '@ema-agent/storage';
 import { BACKUP_LIMITS, type BackupLimits } from '../limits.js';
 import { BACKUP_MANIFEST_PATH } from '../records/recordRegistry.js';
 import {
@@ -21,7 +22,7 @@ import {
   restoreToolExecution,
   restoreTurn,
   restoreUsage,
-} from '../records/recordStorageMappings.js';
+} from '../records/importMappings.js';
 import {
   checkTaskDependencyGraph,
   validateAgentRunLinks,
@@ -68,8 +69,10 @@ export interface ImportSessionOptions {
   readonly activeDataDir: string;
   readonly restorer: Pick<SessionBackupRestorer, 'restore'>;
   readonly sessionExists: (sessionId: string) => boolean;
-  readonly modelPreferenceExists?: (providerConfigId: string, modelId: string) => boolean;
-  readonly kbExists?: (kbId: string) => boolean;
+  /** 必需窄口:Provider 配置与模型同时存在才保留绑定。 */
+  readonly modelPreferenceExists: (providerConfigId: string, modelId: string) => boolean;
+  /** 必需窄口:KB 不存在则丢弃激活并产生警告,不让整个导入失败。 */
+  readonly kbExists: (kbId: string) => boolean;
   readonly signal?: AbortSignal;
   readonly limits?: BackupLimits;
 }
@@ -149,7 +152,7 @@ export async function importSession(
 
     const preferred = session.preferredProviderConfigId !== null
       && session.preferredModelId !== null
-      && options.modelPreferenceExists?.(
+      && options.modelPreferenceExists(
         session.preferredProviderConfigId,
         session.preferredModelId,
       )
@@ -208,7 +211,7 @@ export async function importSession(
       kbActivations: mapRecords<KbActivationRecord, ReturnType<typeof restoreKbActivation>>(
         records(archive, 'kbActivations', total, limits),
         record => {
-          if (!options.kbExists?.(record.kbId)) {
+          if (!options.kbExists(record.kbId)) {
             warnings.push(`KB ${record.kbId} 在当前设备不存在，已跳过激活记录 ${record.id}`);
             return null;
           }
@@ -225,6 +228,9 @@ export async function importSession(
   } catch (error) {
     files?.rollback();
     if (error instanceof SessionImportError) throw error;
+    if (error instanceof SessionBackupRestoreError) {
+      throw new SessionImportError('restore_failed', error.message, 500);
+    }
     throw new SessionImportError(
       'invalid_format',
       error instanceof Error ? error.message : 'Session 备份导入失败',

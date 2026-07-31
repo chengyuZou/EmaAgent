@@ -7,9 +7,9 @@ import { importSession } from './import/sessionImport.js';
 import { SessionImportError } from './import/errors.js';
 import type {
   BackupOutputSink,
+  OpenedSessionExport,
   SessionBackupCapabilities,
   SessionExportRequest,
-  SessionExportResult,
   SessionImportRequest,
   SessionImportResult,
 } from './types.js';
@@ -29,8 +29,8 @@ export interface SessionBackupFacadePorts {
   readonly reader: SessionBackupReader;
   readonly restorer: SessionBackupRestorer;
   sessionExists(sessionId: string): boolean;
-  modelPreferenceExists?(providerConfigId: string, modelId: string): boolean;
-  kbExists?(kbId: string): boolean;
+  modelPreferenceExists(providerConfigId: string, modelId: string): boolean;
+  kbExists(kbId: string): boolean;
 }
 
 export class SessionBackupFacade {
@@ -40,7 +40,11 @@ export class SessionBackupFacade {
     return CAPABILITIES;
   }
 
-  async exportSession(request: SessionExportRequest): Promise<SessionExportResult | null> {
+  /**
+   * 同步完成一致快照与文件登台,返回已就位的导出;
+   * ZIP 本体由调用方决定写向哪里(HTTP 响应、Tauri 文件、测试内存)。
+   */
+  openSessionExport(request: SessionExportRequest): OpenedSessionExport | null {
     if (request.signal?.aborted) throw new Error('Session 导出已取消');
     const prepared = prepareSessionExport(this.ports.reader, {
       sessionId: request.sessionId,
@@ -48,18 +52,17 @@ export class SessionBackupFacade {
       generator: 'EmaAgent',
     });
     if (!prepared) return null;
-    const sink = memorySink();
-    try {
-      await exportPreparedSession(prepared, sink, BACKUP_LIMITS);
-      return {
-        format: 'zip',
-        filename: `ema-session-${safeFilename(request.sessionId)}.zip`,
-        mimeType: 'application/zip',
-        bytes: joinChunks(sink.chunks),
-      };
-    } finally {
-      prepared.dispose();
-    }
+    return {
+      filename: prepared.filename,
+      mimeType: 'application/zip',
+      writeTo: async (sink: BackupOutputSink) => {
+        try {
+          await exportPreparedSession(prepared, sink, BACKUP_LIMITS);
+        } finally {
+          prepared.dispose();
+        }
+      },
+    };
   }
 
   async importSession(request: SessionImportRequest): Promise<SessionImportResult> {
@@ -77,29 +80,4 @@ export class SessionBackupFacade {
     });
     return { ...result, format: 'zip' };
   }
-}
-
-function memorySink(): BackupOutputSink & { readonly chunks: Uint8Array[] } {
-  const chunks: Uint8Array[] = [];
-  return {
-    chunks,
-    write: async chunk => { chunks.push(new Uint8Array(chunk)); },
-    commit: async () => {},
-    abort: async () => { chunks.length = 0; },
-  };
-}
-
-function joinChunks(chunks: readonly Uint8Array[]): Uint8Array {
-  const total = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
-  const output = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    output.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return output;
-}
-
-function safeFilename(value: string): string {
-  return value.replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 80) || 'session';
 }

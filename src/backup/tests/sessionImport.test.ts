@@ -70,6 +70,8 @@ describe('Session ZIP 导入', () => {
         activeDataDir: root,
         restorer: new SessionBackupRestorer(database.sqlite),
         sessionExists: () => false,
+        modelPreferenceExists: () => true,
+        kbExists: () => true,
       });
       expect(result.sessionId).toBe('session-1');
       expect(database.sqlite.prepare('SELECT status FROM turns WHERE id = ?').pluck().get('turn-1')).toBe('aborted');
@@ -96,6 +98,8 @@ describe('Session ZIP 导入', () => {
         activeDataDir: root,
         restorer: new SessionBackupRestorer(database.sqlite),
         sessionExists: () => false,
+        modelPreferenceExists: () => true,
+        kbExists: () => true,
       })).rejects.toMatchObject({ code: 'integrity_mismatch' });
       expect(fs.existsSync(path.join(root, 'sessions', 'session-1'))).toBe(false);
     } finally {
