@@ -4,4 +4,7 @@ mod commands;
 mod types;
 
 pub use capability::FileAccessFacade;
-pub use commands::{install_authorized_drop_handler, open_authorized_file, pick_authorized_files};
+pub use commands::{
+    install_authorized_drop_handler, open_authorized_file, pick_authorized_directory,
+    pick_authorized_files,
+};

@@ -14,7 +14,8 @@ use commands::{
 };
 use desktop::window_lifecycle::{handle_window_event, show_main_window};
 use file_access::{
-    install_authorized_drop_handler, open_authorized_file, pick_authorized_files, FileAccessFacade,
+    install_authorized_drop_handler, open_authorized_file, pick_authorized_directory,
+    pick_authorized_files, FileAccessFacade,
 };
 use runtime::DesktopRuntimeSupervisor;
 
@@ -48,6 +49,7 @@ pub fn run() {
             quit_app,
             open_window,
             pick_authorized_files,
+            pick_authorized_directory,
             open_authorized_file,
         ])
         .setup(move |app| {

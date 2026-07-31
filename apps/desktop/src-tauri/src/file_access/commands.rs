@@ -5,7 +5,7 @@ use tauri::{DragDropEvent, Emitter, WebviewEvent, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
 
 use super::capability::FileAccessFacade;
-use super::types::{AuthorizedFile, AuthorizedFileDrop, DropPosition};
+use super::types::{AuthorizedDirectory, AuthorizedFile, AuthorizedFileDrop, DropPosition};
 
 const AUTHORIZED_DROP_EVENT: &str = "ema://authorized-file-drop";
 
@@ -31,6 +31,30 @@ pub async fn pick_authorized_files(
     Ok(state.authorize_paths(paths))
 }
 
+// 角色资源导入/导出需要用户授权的目录(Live2D 源目录、导出目的地),不接受明文路径。
+#[tauri::command]
+pub async fn pick_authorized_directory(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, FileAccessFacade>,
+) -> Result<Option<AuthorizedDirectory>, String> {
+    require_authorized_window(&window)?;
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    app.dialog().file().pick_folder(move |folder| {
+        let _ = sender.send(folder);
+    });
+    let folder = receiver
+        .await
+        .map_err(|_| "原生目录选择器提前关闭".to_string())?;
+    let Some(folder) = folder else {
+        return Ok(None);
+    };
+    let path = folder
+        .into_path()
+        .map_err(|error| format!("解析所选目录路径失败: {error}"))?;
+    state.authorize_directory(&path).map(Some)
+}
+
 #[tauri::command]
 pub async fn open_authorized_file(
     file_handle: String,
@@ -52,6 +76,14 @@ pub async fn open_authorized_file(
 fn require_chat_window(window: &WebviewWindow) -> Result<(), String> {
     if window.label() != "chat" {
         return Err("本地附件能力只允许聊天窗口使用".to_string());
+    }
+    Ok(())
+}
+
+// 目录能力同时服务聊天(工作区)与设置(角色资源管理)两个窗口。
+fn require_authorized_window(window: &WebviewWindow) -> Result<(), String> {
+    if !matches!(window.label(), "chat" | "settings") {
+        return Err("本地目录能力只允许聊天与设置窗口使用".to_string());
     }
     Ok(())
 }

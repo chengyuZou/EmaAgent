@@ -11,7 +11,7 @@ use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
-use super::types::AuthorizedFile;
+use super::types::{AuthorizedDirectory, AuthorizedFile};
 
 const HANDLE_PREFIX: &str = "ema-file:v1";
 const HANDLE_DOMAIN: &[u8] = b"ema-file-capability:v1";
@@ -82,6 +82,26 @@ impl FileAccessFacade {
             return Err("文件能力只接受绝对路径".to_string());
         }
         Ok(path)
+    }
+
+    // 目录能力与文件共用同一签发管线,但接受目录本身(角色资源导入/导出目的地)。
+    pub fn authorize_directory(&self, path: &Path) -> Result<AuthorizedDirectory, String> {
+        let canonical = std::fs::canonicalize(path)
+            .map_err(|error| format!("解析目录真实路径失败: {error}"))?;
+        let metadata = std::fs::metadata(&canonical)
+            .map_err(|error| format!("读取目录元数据失败: {error}"))?;
+        if !metadata.is_dir() {
+            return Err("目录能力指向的不是目录".to_string());
+        }
+        let name = canonical
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("所选目录")
+            .to_string();
+        Ok(AuthorizedDirectory {
+            file_handle: self.issue(&canonical)?,
+            name,
+        })
     }
 
     fn authorize_path(&self, path: &Path) -> Result<AuthorizedFile, String> {

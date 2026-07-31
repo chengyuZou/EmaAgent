@@ -10,6 +10,14 @@ pub struct AuthorizedFile {
     pub mtime: u64,
 }
 
+// 目录能力只签发路径与显示名;大小与修改时间对目录没有意义。
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthorizedDirectory {
+    pub file_handle: String,
+    pub name: String,
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct DropPosition {
     pub x: f64,
