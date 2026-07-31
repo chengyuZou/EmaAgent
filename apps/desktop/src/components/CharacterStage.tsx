@@ -176,8 +176,8 @@ export function CharacterStage({
   return (
     <div className="ema-character-stage" data-tauri-drag-region={false}>
       {!active && (
-        <div className="ema-character-stage__placeholder" aria-label="角色舞台占位">
-          <span className="ema-character-stage__placeholder-ring" />
+        <div className="ema-character-stage-placeholder" aria-label="角色舞台占位">
+          <span className="ema-character-stage-placeholder-ring" />
         </div>
       )}
 
@@ -224,7 +224,7 @@ function StageResource({
   }, [interactive, onRuntimeChanged, runtime]);
 
   return (
-    <div className="ema-character-stage__resource" data-state={state}>
+    <div className="ema-character-stage-resource" data-state={state}>
       {mounted.candidate.kind === 'live2d' ? (
         <EmaStageView
           modelPath={sourcePath}
@@ -237,7 +237,7 @@ function StageResource({
         />
       ) : (
         <img
-          className="ema-character-stage__portrait"
+          className="ema-character-stage-portrait"
           src={sourcePath}
           alt={mounted.candidate.label}
           draggable={false}

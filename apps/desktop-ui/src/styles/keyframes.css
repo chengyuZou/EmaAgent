@@ -74,6 +74,11 @@
   0%, 100% { opacity: 1; }
   50%       { opacity: 0.45; }
 }
+/* 桌宠窗口边框呼吸光(App GlowBorder) */
+@keyframes ema-breathe {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 0.78; }
+}
 @keyframes ema-spin {
   to { transform: rotate(360deg); }
 }

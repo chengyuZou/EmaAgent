@@ -138,8 +138,6 @@ export function App(): React.JSX.Element {
 
   return (
     <>
-      {/* UnoCSS 扫描哨兵，确认生产扫描稳定后可以删除。 */}
-      <div className="hidden flex-col absolute right-3 top-1/2 -translate-y-1/2 z-10 opacity-0 pointer-events-none rounded-full w-10 h-10 gap-2 backdrop-blur border" />
 
       {/* 拖拽层位于所有内容下方；可交互组件必须显式关闭 Tauri 拖拽。 */}
       <div style={dragLayerStyle} data-tauri-drag-region />
@@ -207,39 +205,11 @@ function useDevTtsPlaybackFromUrl(runtime: React.RefObject<Live2DRuntime | null>
 
 // ── 粉白呼吸光边框 ──────────────────────────────────────────────────────────
 //
-// 内外两层阴影只负责视觉，不参与鼠标命中。
+// 视觉全部归 styles 的 .ema-pet-glow-border(含 ema-breathe keyframes 与签名粉 token)。
 
 function GlowBorder(): React.JSX.Element {
-  return (
-    <>
-      <style>{`
-        @keyframes ema-breathe {
-          0%, 100% { opacity: 0.35; }
-          50%      { opacity: 0.78; }
-        }
-      `}</style>
-      <div style={glowStyle} />
-    </>
-  );
+  return <div className="ema-pet-glow-border" />;
 }
-
-const PINK_WHITE        = 'rgba(255, 214, 230, 0.55)';
-const PINK_WHITE_BRIGHT = 'rgba(255, 192, 214, 0.85)';
-
-const glowStyle: React.CSSProperties = {
-  position:      'fixed',
-  inset:         0,
-  borderRadius:  16,
-  pointerEvents: 'none',
-  zIndex:        1,
-  // 内层勾勒边界，外层向窗口外柔化。
-  boxShadow:     [
-    `inset 0 0 12px 1px ${PINK_WHITE}`,
-    `inset 0 0 28px 4px rgba(255, 214, 230, 0.18)`,
-    `0 0 24px 2px ${PINK_WHITE_BRIGHT}`,
-  ].join(', '),
-  animation:     'ema-breathe 2.6s ease-in-out infinite',
-};
 
 const dragLayerStyle: React.CSSProperties = {
   position:      'fixed',
@@ -253,10 +223,10 @@ const dragLayerStyle: React.CSSProperties = {
 function SidecarBadge({ status }: { status: SidecarStatus }): React.JSX.Element {
   const [hover, setHover] = useState(false);
 
-  const dotColor = status.kind === 'ok'      ? '#22c55e'
-                 : status.kind === 'pending' ? '#f59e0b'
-                 : status.kind === 'error'   ? '#ef4444'
-                 :                              '#6b7280';
+  const dotColor = status.kind === 'ok'      ? 'var(--ema-success)'
+                 : status.kind === 'pending' ? 'var(--ema-warning)'
+                 : status.kind === 'error'   ? 'var(--ema-danger)'
+                 :                              'var(--ema-text-tertiary)';
 
   const detail = status.kind === 'ok'      ? `sidecar @ port ${status.port}`
                : status.kind === 'pending' ? '等待 sidecar 启动 …'
@@ -303,8 +273,8 @@ const badgeTooltipStyle: React.CSSProperties = {
   whiteSpace:     'nowrap',
   fontSize:       12,
   padding:        '4px 8px',
-  background:     'rgba(20, 22, 30, 0.95)',
-  border:         '1px solid rgba(255, 214, 230, 0.18)',
+  background:     'var(--ema-surface-0)',
+  border:         '1px solid var(--ema-glow)',
   borderRadius:   6,
   pointerEvents:  'none',
 };

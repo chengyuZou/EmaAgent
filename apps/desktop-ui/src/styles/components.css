@@ -39,6 +39,23 @@
   animation:      ema-pulse-bar 1.6s ease-in-out infinite;
 }
 
+/* ── 桌宠窗口粉白呼吸光边框(App GlowBorder)────────────────────────────────
+ * 内层勾勒边界,外层向窗口外柔化;只负责视觉,不参与鼠标命中。
+ * 中间层透明度取 --ema-pet-glow 的 33%(≈原 rgba 0.18)。
+ */
+.ema-pet-glow-border {
+  position:       fixed;
+  inset:          0;
+  border-radius:  16px;
+  pointer-events: none;
+  z-index:        1;
+  box-shadow:
+    inset 0 0 12px 1px var(--ema-pet-glow),
+    inset 0 0 28px 4px color-mix(in srgb, var(--ema-pet-glow) 33%, transparent),
+    0 0 24px 2px var(--ema-pet-glow-bright);
+  animation:      ema-breathe 2.6s ease-in-out infinite;
+}
+
 /* ── Mask overlay(dialogs / drawers)──────────────────────────────────────*/
 .ema-mask {
   position:       fixed;

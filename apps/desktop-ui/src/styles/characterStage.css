@@ -1,8 +1,8 @@
 /* 主窗口角色舞台使用双层过渡，保证新资源就绪前旧画面不会消失。 */
 
 .ema-character-stage,
-.ema-character-stage__resource,
-.ema-character-stage__placeholder {
+.ema-character-stage-resource,
+.ema-character-stage-placeholder {
   position: fixed;
   inset: 0;
 }
@@ -12,25 +12,25 @@
   pointer-events: none;
 }
 
-.ema-character-stage__resource {
+.ema-character-stage-resource {
   opacity: 0;
   transition: opacity var(--ema-duration-slow) var(--ema-ease);
 }
 
-.ema-character-stage__resource[data-state='active'] {
+.ema-character-stage-resource[data-state='active'] {
   opacity: 1;
   pointer-events: auto;
 }
 
-.ema-character-stage__resource[data-state='outgoing'] {
+.ema-character-stage-resource[data-state='outgoing'] {
   opacity: 0;
 }
 
-.ema-character-stage__resource[data-state='pending'] {
+.ema-character-stage-resource[data-state='pending'] {
   visibility: hidden;
 }
 
-.ema-character-stage__portrait {
+.ema-character-stage-ortrait {
   width: 100%;
   height: 100%;
   object-fit: contain;
@@ -40,14 +40,14 @@
   animation: ema-character-portrait-breathe 4.8s var(--ema-ease) infinite;
 }
 
-.ema-character-stage__placeholder {
+.ema-character-stage-placeholder {
   display: grid;
   place-items: center;
   opacity: 0.58;
   animation: ema-fade-in var(--ema-duration-base) var(--ema-ease) both;
 }
 
-.ema-character-stage__placeholder-ring {
+.ema-character-stage-placeholder-ring {
   width: 42%;
   aspect-ratio: 1;
   border-radius: 50%;
@@ -71,12 +71,12 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ema-character-stage__resource {
+  .ema-character-stage-resource {
     transition-duration: 0ms;
   }
 
-  .ema-character-stage__portrait,
-  .ema-character-stage__placeholder {
+  .ema-character-stage-ortrait,
+  .ema-character-stage-placeholder {
     animation: none;
   }
 }

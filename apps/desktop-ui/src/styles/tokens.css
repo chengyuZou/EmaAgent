@@ -135,6 +135,10 @@
   --ema-glow:        rgba(180, 160, 200, 0.15);
   --ema-glow-strong: rgba(160, 130, 180, 0.35);
 
+  /* 桌宠窗口签名粉白呼吸光(App GlowBorder,跨主题一致的签名色,不随主题翻转) */
+  --ema-pet-glow:        rgba(255, 214, 230, 0.55);
+  --ema-pet-glow-bright: rgba(255, 192, 214, 0.85);
+
   /* ── Scrollbar(暗色:跟 primary 联动,抄 AstrBot 滚动条 token 化)── */
   --ema-scrollbar-thumb: oklch(0.72 0.18 var(--chromatic-hue, 200) / 0.50);
   --ema-scrollbar-thumb-hover: oklch(0.72 0.18 var(--chromatic-hue, 200) / 0.72);

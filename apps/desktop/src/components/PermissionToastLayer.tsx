@@ -15,6 +15,7 @@
  * POSTs directly to the backend; does NOT change the active TTS/Live2D session.
  */
 import { useEffect, useState, type CSSProperties } from 'react';
+import { Button } from '@ema-agent/ui';
 import {
   tauriBridge,
   permissionApi,
@@ -126,9 +127,9 @@ function PermissionCard({
       <p style={toolNameStyle}>{toast.toolName}</p>
       <p style={descStyle}>{desc}</p>
       <div style={rowStyle}>
-        <Btn variant="danger" disabled={submitting} onClick={() => void respond('deny')}>拒绝</Btn>
-        <Btn variant="neutral" disabled={submitting} onClick={() => void respond('allow_session')}>此会话</Btn>
-        <Btn variant="primary" disabled={submitting} onClick={() => void respond('allow')}>允许</Btn>
+        <Button variant="danger" size="sm" disabled={submitting} onClick={() => void respond('deny')}>拒绝</Button>
+        <Button variant="secondary" size="sm" disabled={submitting} onClick={() => void respond('allow_session')}>此会话</Button>
+        <Button variant="primary" size="sm" disabled={submitting} onClick={() => void respond('allow')}>允许</Button>
       </div>
       {error && <p style={errorStyle}>{error}</p>}
     </ToastCard>
@@ -173,8 +174,8 @@ function AskConfirmCard({
       <p style={descStyle}>{body}</p>
       {sub && <p style={subStyle}>{sub}</p>}
       <div style={rowStyle}>
-        <Btn variant="neutral" disabled={submitting} onClick={() => void respond(false)}>否</Btn>
-        <Btn variant="primary" disabled={submitting} onClick={() => void respond(true)}>确认</Btn>
+        <Button variant="secondary" size="sm" disabled={submitting} onClick={() => void respond(false)}>否</Button>
+        <Button variant="primary" size="sm" disabled={submitting} onClick={() => void respond(true)}>确认</Button>
       </div>
       {error && <p style={errorStyle}>{error}</p>}
     </ToastCard>
@@ -200,67 +201,6 @@ function ToastCard({
       </div>
       {children}
     </div>
-  );
-}
-
-// ── Button ────────────────────────────────────────────────────────────────────
-
-type BtnVariant = 'primary' | 'neutral' | 'danger';
-
-const btnVars: Record<BtnVariant, { bg: string; bgHover: string; color: string }> = {
-  primary: {
-    bg:      'var(--ema-primary)',
-    bgHover: 'var(--ema-primary-hover)',
-    color:   'var(--ema-primary-text)',
-  },
-  neutral: {
-    bg:      'rgba(255,255,255,0.08)',
-    bgHover: 'var(--ema-border-hover)',
-    color:   'var(--ema-text-secondary)',
-  },
-  danger: {
-    bg:      'var(--ema-danger-muted)',
-    bgHover: 'oklch(0.62 0.22 25 / 0.36)',
-    color:   'var(--ema-danger-text)',
-  },
-};
-
-function Btn({
-  variant,
-  disabled = false,
-  onClick,
-  children,
-}: {
-  variant:  BtnVariant;
-  disabled?: boolean;
-  onClick(): void;
-  children: React.ReactNode;
-}): React.JSX.Element {
-  const v = btnVars[variant];
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      style={{
-        background:   v.bg,
-        color:        v.color,
-        border:       'none',
-        borderRadius: 'var(--ema-radius-sm)',
-        padding:      '4px 10px',
-        fontSize:     11,
-        fontWeight:   500,
-        cursor:       disabled ? 'not-allowed' : 'pointer',
-        opacity:      disabled ? 0.6 : 1,
-        whiteSpace:   'nowrap',
-        transition:   `background var(--ema-duration-fast) var(--ema-ease)`,
-      }}
-      onMouseEnter={(e) => {
-        if (!disabled) (e.currentTarget as HTMLButtonElement).style.background = v.bgHover;
-      }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = v.bg; }}
-    >
-      {children}
-    </button>
   );
 }
 

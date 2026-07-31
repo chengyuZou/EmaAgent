@@ -141,7 +141,7 @@ export function SpeechBubble(): React.JSX.Element | null {
           border:         '1px solid var(--ema-glow)',
           borderRadius:   'var(--ema-radius-lg)',
           padding:        '10px 14px',
-          boxShadow:      'var(--ema-shadow-2), 0 0 16px rgba(255,214,230,0.07)',
+          boxShadow:      'var(--ema-shadow-2), 0 0 16px color-mix(in srgb, var(--ema-pet-glow-bright) 12%, transparent)',
           backdropFilter: 'var(--ema-glass-base)',
           maxHeight:      210,
           overflow:       'hidden',
@@ -165,7 +165,8 @@ export function SpeechBubble(): React.JSX.Element | null {
         </p>
       </div>
 
-      {/* Tail — border-trick triangle pointing down toward Ema's face */}
+      {/* Tail — border-trick triangle pointing down toward Ema's face.
+          颜色必须与气泡身一致,直接引用同一 token,永不漂移。 */}
       <div
         style={{
           position:    'relative',
@@ -175,8 +176,7 @@ export function SpeechBubble(): React.JSX.Element | null {
           height:      0,
           borderLeft:  '9px solid transparent',
           borderRight: '9px solid transparent',
-          // Must match BUBBLE_BG — inline-only because no CSS var for alpha-blend
-          borderTop:   `11px solid rgba(10, 8, 16, 0.90)`,
+          borderTop:   '11px solid var(--ema-surface-0)',
           marginTop:   -1,
         }}
       />
