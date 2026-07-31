@@ -5,6 +5,7 @@ import {
   type CharacterCard,
   type CharacterCardInput,
 } from '../api/cards.js';
+import type { CharacterHealth } from '@ema-agent/characters';
 import type { CharacterCardId } from '@ema-agent/ids';
 
 export interface ResourcePatch {
@@ -20,8 +21,11 @@ export interface CardStoreState {
   activeCardId:  CharacterCardId | null;
   loading:       boolean;
   error:         string | null;
+  /** 每卡健康投影;资源操作后显式刷新,不靠 card.updatedAt 碰运气。 */
+  healthMap:     Record<string, CharacterHealth>;
 
   load():                                          Promise<void>;
+  refreshHealth(id: CharacterCardId):              Promise<void>;
   activate(id: CharacterCardId):                   Promise<void>;
   create(input: CharacterCardInput):               Promise<CharacterCard>;
   patch(id: CharacterCardId, input: Partial<CharacterCardInput>): Promise<void>;
@@ -74,6 +78,7 @@ export const useCardStore = create<CardStoreState>((set, get) => ({
   activeCardId:  null,
   loading:       false,
   error:         null,
+  healthMap:     {},
 
   async load() {
     set({ loading: true, error: null });
@@ -93,11 +98,22 @@ export const useCardStore = create<CardStoreState>((set, get) => ({
     }
   },
 
+  // 静默失败保旧值:健康只是展示投影,网络抖动不能清掉用户正在看的状态。
+  async refreshHealth(id) {
+    try {
+      const health = await cardsApi.health(id);
+      set((s) => ({ healthMap: { ...s.healthMap, [id as string]: health } }));
+    } catch {
+      // 保留旧投影,下一次资源操作或编辑器挂载会再试。
+    }
+  },
+
   async activate(id) {
     try {
       await cardsApi.activate(id);
       // 重读以取得唯一可信的 isActive 状态。
       await get().load();
+      void get().refreshHealth(id);
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to activate card' });
       throw err;
@@ -119,6 +135,8 @@ export const useCardStore = create<CardStoreState>((set, get) => ({
     try {
       await cardsApi.patch(id, input);
       await get().load();
+      // systemPrompt 是健康硬门,元数据修改后同步刷新。
+      void get().refreshHealth(id);
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to update card' });
       throw err;
@@ -128,6 +146,11 @@ export const useCardStore = create<CardStoreState>((set, get) => ({
   async delete(id) {
     try {
       await cardsApi.delete(id);
+      set((s) => {
+        const healthMap = { ...s.healthMap };
+        delete healthMap[id as string];
+        return { healthMap };
+      });
       await get().load();
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to delete card' });
@@ -139,6 +162,7 @@ export const useCardStore = create<CardStoreState>((set, get) => ({
     try {
       await cardsApi.setPrimaryLive2d(id, resourceId);
       await get().load();
+      void get().refreshHealth(id);
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to switch Live2D' });
       throw err;
@@ -149,6 +173,7 @@ export const useCardStore = create<CardStoreState>((set, get) => ({
     try {
       await cardsApi.setPrimaryPortrait(id, resourceId);
       await get().load();
+      void get().refreshHealth(id);
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to switch portrait' });
       throw err;
@@ -159,6 +184,7 @@ export const useCardStore = create<CardStoreState>((set, get) => ({
     try {
       await cardsApi.uploadVoiceRef(cardId, file, meta);
       await get().load();
+      void get().refreshHealth(cardId);
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to upload voice ref' });
       throw err;
@@ -169,6 +195,7 @@ export const useCardStore = create<CardStoreState>((set, get) => ({
     try {
       await cardsApi.deleteVoiceRef(cardId, refId);
       await get().load();
+      void get().refreshHealth(cardId);
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to delete voice ref' });
       throw err;
@@ -179,6 +206,7 @@ export const useCardStore = create<CardStoreState>((set, get) => ({
     try {
       await cardsApi.setPrimaryVoiceRef(cardId, refId);
       await get().load();
+      void get().refreshHealth(cardId);
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to set primary voice ref' });
       throw err;
@@ -191,6 +219,7 @@ export const useCardStore = create<CardStoreState>((set, get) => ({
     try {
       await cardsApi.importLive2d(id, input);
       await get().load();
+      void get().refreshHealth(id);
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to import Live2D' });
       throw err;
@@ -211,6 +240,7 @@ export const useCardStore = create<CardStoreState>((set, get) => ({
     try {
       await cardsApi.patchLive2d(id, resourceId, patch);
       await get().load();
+      void get().refreshHealth(id);
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to update Live2D' });
       throw err;
@@ -221,6 +251,7 @@ export const useCardStore = create<CardStoreState>((set, get) => ({
     try {
       await cardsApi.deleteLive2d(id, resourceId);
       await get().load();
+      void get().refreshHealth(id);
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to delete Live2D' });
       throw err;
@@ -231,6 +262,7 @@ export const useCardStore = create<CardStoreState>((set, get) => ({
     try {
       await cardsApi.importPortrait(id, input);
       await get().load();
+      void get().refreshHealth(id);
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to import portrait' });
       throw err;
@@ -251,6 +283,7 @@ export const useCardStore = create<CardStoreState>((set, get) => ({
     try {
       await cardsApi.patchPortrait(id, resourceId, patch);
       await get().load();
+      void get().refreshHealth(id);
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to update portrait' });
       throw err;
@@ -261,6 +294,7 @@ export const useCardStore = create<CardStoreState>((set, get) => ({
     try {
       await cardsApi.deletePortrait(id, resourceId);
       await get().load();
+      void get().refreshHealth(id);
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to delete portrait' });
       throw err;
@@ -281,6 +315,7 @@ export const useCardStore = create<CardStoreState>((set, get) => ({
     try {
       await cardsApi.patchVoiceRef(cardId, resourceId, patch);
       await get().load();
+      void get().refreshHealth(cardId);
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to update voice ref' });
       throw err;

@@ -190,7 +190,7 @@ export { CardsTab }                from './settings/character/CardsTab.js';
 export { CharacterCardEditor }     from './settings/character/CharacterCardEditor.js';
 export { IdentityTab }             from './settings/character/IdentityTab.js';
 export { BehaviorTab }             from './settings/character/BehaviorTab.js';
-export { VoiceTab }                from './settings/character/VoiceTab.js';
+export { VoiceTab }                from './settings/character/voice/VoiceTab.js';
 export { Live2DTab }               from './settings/general/Live2DTab.js';
 export { ShortcutsTab }            from './settings/general/ShortcutsTab.js';
 export { KnowledgeBaseTab }        from './settings/knowledge/KnowledgeBaseTab.js';

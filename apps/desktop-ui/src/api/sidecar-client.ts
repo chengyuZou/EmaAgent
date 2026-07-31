@@ -32,17 +32,25 @@ export interface SidecarClient {
 export class SidecarApiError extends Error {
   status: number;
   code?: string;
+  /** 领域错误的细分原因(如 CharacterResourceValidationError 的 reason)。 */
+  reason?: string;
   details?: unknown;
 
   constructor(status: number, body: string) {
     let code: string | undefined;
+    let reason: string | undefined;
     let details: unknown;
     let message = `Sidecar HTTP ${status}`;
 
     try {
       const parsed = JSON.parse(body) as Record<string, unknown>;
       code = typeof parsed.code === 'string' ? parsed.code : undefined;
+      reason = typeof parsed.reason === 'string' ? parsed.reason : undefined;
       details = parsed.details;
+      // Ema 路由约定 error 字段即机器错误码(如 card_not_found),用它兜底 code。
+      if (!code && typeof parsed.error === 'string' && /^[a-z0-9_/-]+$/i.test(parsed.error)) {
+        code = parsed.error;
+      }
       message = typeof parsed.error === 'string'
         ? parsed.error
         : message;
@@ -56,6 +64,7 @@ export class SidecarApiError extends Error {
     this.name = 'SidecarApiError';
     this.status = status;
     this.code = code;
+    this.reason = reason;
     this.details = details;
   }
 }

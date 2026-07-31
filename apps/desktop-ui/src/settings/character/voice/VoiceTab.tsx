@@ -1,11 +1,14 @@
 /**
- * VoiceTab — manage refAudios: upload, test listen, set primary, delete.
+ * VoiceTab — manage refAudios: upload, test listen, export, enable, set primary, delete.
  */
 import { useState, useRef, type CSSProperties, type JSX } from 'react';
 import { Button, Checkbox, EntityRow, FilePicker, Select, Textarea } from '@ema-agent/ui';
-import { useCardStore } from '../../stores/card-store.js';
-import { cardsApi } from '../../api/cards.js';
-import { showToast } from '../../lib/toast.js';
+import { useCardStore } from '../../../stores/card-store.js';
+import { cardsApi } from '../../../api/cards.js';
+import { showToast } from '../../../lib/toast.js';
+import { tauriBridge } from '../../../lib/tauri-bridge.js';
+import { describeResourceError } from '../shared/characterResourceErrors.js';
+import { EnabledControl } from '../shared/ResourceControls.js';
 import type { CharacterCardId } from '@ema-agent/ids';
 import type { CharacterVoiceReference } from '@ema-agent/characters';
 
@@ -70,6 +73,26 @@ export function VoiceTab({
     }
   }
 
+  async function handleExport(ref: CharacterVoiceReference): Promise<void> {
+    const dir = await tauriBridge.pickAuthorizedDirectory();
+    if (!dir) return;
+    try {
+      const destination = await useCardStore.getState().exportVoiceRef(cardId, ref.id, dir.fileHandle);
+      showToast(`已导出: ${destination}`, { variant: 'success' });
+    } catch (err: unknown) {
+      showToast(describeResourceError(err, '导出失败').message, { variant: 'danger' });
+    }
+  }
+
+  async function handleToggleEnabled(ref: CharacterVoiceReference, enabled: boolean): Promise<void> {
+    try {
+      await useCardStore.getState().patchVoiceRef(cardId, ref.id, { enabled });
+      showToast(enabled ? '已启用' : '已停用', { variant: 'success' });
+    } catch (err: unknown) {
+      showToast(describeResourceError(err, '更新失败').message, { variant: 'danger' });
+    }
+  }
+
   async function handlePlay(refId: string): Promise<void> {
     if (playing === refId) {
       audioRef.current?.pause();
@@ -124,6 +147,8 @@ export function VoiceTab({
               isPrimary={ref.isPrimary}
               isPlaying={playing === ref.id}
               onPlay={() => handlePlay(ref.id)}
+              onToggleEnabled={isBuiltin ? undefined : (enabled) => handleToggleEnabled(ref, enabled)}
+              onExport={() => handleExport(ref)}
               onSetPrimary={isBuiltin ? undefined : () => handleSetPrimary(ref.id)}
               onDelete={isBuiltin ? undefined : () => handleDelete(ref.id)}
             />
@@ -158,12 +183,14 @@ export function VoiceTab({
 // ── RefAudioRow ───────────────────────────────────────────────────────────────
 
 function RefAudioRow({
-  refAudio, isPrimary, isPlaying, onPlay, onSetPrimary, onDelete,
+  refAudio, isPrimary, isPlaying, onPlay, onToggleEnabled, onExport, onSetPrimary, onDelete,
 }: {
   refAudio:     CharacterVoiceReference;
   isPrimary:    boolean;
   isPlaying:    boolean;
   onPlay():     void;
+  onToggleEnabled?(enabled: boolean): void;
+  onExport?():  void;
   onSetPrimary?(): void;
   onDelete?():   void;
 }): JSX.Element {
@@ -174,7 +201,14 @@ function RefAudioRow({
           <span className={isPrimary ? 'size-2 rounded-full bg-[var(--ema-success)]' : 'size-2 rounded-full border border-[var(--ema-text-tertiary)]'} aria-hidden />
           <span className="text-sm font-semibold text-[var(--ema-text-primary)]">{refAudio.label}</span>
         </div>
-        <div className="flex gap-1.5">
+        <div className="flex items-center gap-1.5">
+          {onToggleEnabled && (
+            <EnabledControl
+              enabled={refAudio.enabled}
+              label={refAudio.label}
+              onChange={onToggleEnabled}
+            />
+          )}
           <Button
             variant={isPlaying ? 'primary' : 'ghost'}
             size="sm"
@@ -183,6 +217,11 @@ function RefAudioRow({
           >
             {isPlaying ? '停止' : '试听'}
           </Button>
+          {onExport && (
+            <Button variant="ghost" size="sm" icon="i-mdi:export-variant" onClick={onExport}>
+              导出
+            </Button>
+          )}
           {!isPrimary && onSetPrimary && (
             <Button variant="secondary" size="sm" onClick={onSetPrimary}>
               设主用

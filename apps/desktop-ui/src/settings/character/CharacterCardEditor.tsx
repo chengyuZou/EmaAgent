@@ -1,12 +1,15 @@
 /**
- * CharacterCardEditor — card editor with 3 tabs: Identity / Behavior / Voice.
+ * CharacterCardEditor — card editor with 5 tabs: Identity / Behavior / Live2D / Portraits / Voice.
  */
 import { useState, type JSX } from 'react';
 import { Button, Tabs } from '@ema-agent/ui';
 import type { CharacterCard } from '../../api/cards.js';
 import { IdentityTab } from './IdentityTab.js';
 import { BehaviorTab } from './BehaviorTab.js';
-import { VoiceTab } from './VoiceTab.js';
+import { VoiceTab } from './voice/VoiceTab.js';
+import { Live2DTab } from './live2d/Live2DTab.js';
+import { PortraitsTab } from './portraits/PortraitsTab.js';
+import { HealthBadge } from './shared/HealthBadge.js';
 import type { CharacterCardId } from '@ema-agent/ids';
 
 export interface CharacterCardEditorProps {
@@ -29,6 +32,16 @@ export function CharacterCardEditor({ card, onActivate }: CharacterCardEditorPro
       content: <BehaviorTab card={card} />,
     },
     {
+      value:   'live2d',
+      label:   'Live2D',
+      content: <Live2DTab card={card} />,
+    },
+    {
+      value:   'portraits',
+      label:   '立绘',
+      content: <PortraitsTab card={card} />,
+    },
+    {
       value:   'voice',
       label:   '音色',
       content: <VoiceTab cardId={card.id as CharacterCardId} voiceReferences={card.voiceReferences} isBuiltin={card.isBuiltin} />,
@@ -39,7 +52,10 @@ export function CharacterCardEditor({ card, onActivate }: CharacterCardEditorPro
     <div>
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-[var(--ema-text-primary)]">{card.name}</h2>
+        <div className="flex items-center gap-2 min-w-0">
+          <h2 className="text-lg font-semibold text-[var(--ema-text-primary)] truncate">{card.name}</h2>
+          <HealthBadge cardId={card.id as CharacterCardId} />
+        </div>
         <div className="flex items-center gap-2">
           {card.isActive ? (
             <span className="text-xs text-[var(--ema-success-text)] px-2 py-1 rounded-lg bg-[var(--ema-success-muted)]">
