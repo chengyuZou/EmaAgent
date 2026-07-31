@@ -1,362 +1,105 @@
-// 编排 Session 备份导入导出，并统一处理校验、文件落盘和事务恢复。
-import fs from 'node:fs';
-import path from 'node:path';
-import {
-  SessionRestoreValidationError,
-  type AttachmentRestoreRow,
-  type AudioRestoreRow,
-  type MessageRestoreRow,
-  type SessionRestorePayload,
-  type TurnRestoreRow,
-} from '@ema-agent/storage';
-import { extractSessionArchive, SESSION_IMPORT_LIMITS } from './import/archive.js';
+// 对外提供当前 Session 备份的导入导出入口，并隐藏归档、文件和事务细节。
+import type { SessionBackupReader, SessionBackupRestorer } from '@ema-agent/storage';
+import { BACKUP_LIMITS } from './limits.js';
+import { prepareSessionExport } from './export/prepareSessionExport.js';
+import { exportPreparedSession } from './export/sessionExport.js';
+import { importSession } from './import/sessionImport.js';
 import { SessionImportError } from './import/errors.js';
-import { SessionImportFileCommit } from './import/file-commit.js';
-import { assertPortableImportId } from './import/path-policy.js';
 import type {
-  BackupArchiveSource,
+  BackupOutputSink,
   SessionBackupCapabilities,
-  SessionBackupPorts,
-  SessionImportRequest,
-  SessionImportResult,
   SessionExportRequest,
   SessionExportResult,
+  SessionImportRequest,
+  SessionImportResult,
 } from './types.js';
-import { exportSessionZipV1 } from './export/zip-v1.js';
 
 const CAPABILITIES: SessionBackupCapabilities = Object.freeze({
-  importFormats: Object.freeze(['zip-v1'] as const),
-  exportFormats: Object.freeze(['zip-v1'] as const),
-  // 输入端口已经分块，但 ZIP v1 解压器仍需在硬上限内聚合压缩数据。
-  streamingArchiveInput: false,
-  streamingArchiveOutput: false,
-  streamingJsonRecords: false,
+  importFormats: Object.freeze(['zip'] as const),
+  exportFormats: Object.freeze(['zip'] as const),
+  streamingArchiveInput: true,
+  streamingArchiveOutput: true,
+  streamingJsonRecords: true,
   multipartVolumes: false,
-  integrityManifest: false,
+  integrityManifest: true,
 });
 
-interface Manifest { version: string; }
-interface SessionExport {
-  id: string; title: string; workspaceRoot: string | null;
-  createdAt: number; updatedAt: number; lastActivityAt: number;
-  archivedAt: number | null; pinned: boolean; pinnedAt: number | null;
-  groupLabel: string | null; parentSessionId: string | null;
-  executionProfile: 'chat' | 'work';
-  narrativePolicy: 'auto' | 'always' | 'off';
-  preferredProviderConfigId?: string | null;
-  preferredModelId?: string | null;
+export interface SessionBackupFacadePorts {
+  readonly activeDataDir: string;
+  readonly reader: SessionBackupReader;
+  readonly restorer: SessionBackupRestorer;
+  sessionExists(sessionId: string): boolean;
+  modelPreferenceExists?(providerConfigId: string, modelId: string): boolean;
+  kbExists?(kbId: string): boolean;
 }
-interface AudioMeta {
-  turnId: string; mimeType: string; byteSize: number; durationMs: number | null;
-  segmentCount: number; createdAt: number;
-}
-interface AttachmentMeta {
-  id: string; name: string; mime: string; size: number; turnId: string;
-  mtime: number; createdAt: number;
-}
-interface NotesExport { body: string; tokensAtLastUpdate: number; updatedAt: number; }
 
-/** Session 备份唯一业务入口；Core/CLI 不得绕过它直接解压或恢复行。 */
 export class SessionBackupFacade {
-  constructor(private readonly ports: SessionBackupPorts) {}
+  constructor(private readonly ports: SessionBackupFacadePorts) {}
 
   capabilities(): SessionBackupCapabilities {
     return CAPABILITIES;
   }
 
-  exportSession(request: SessionExportRequest): SessionExportResult | null {
-    const snapshot = this.ports.collectExport(request.sessionId);
-    return snapshot ? exportSessionZipV1(snapshot) : null;
+  async exportSession(request: SessionExportRequest): Promise<SessionExportResult | null> {
+    if (request.signal?.aborted) throw new Error('Session 导出已取消');
+    const prepared = prepareSessionExport(this.ports.reader, {
+      sessionId: request.sessionId,
+      activeDataDir: this.ports.activeDataDir,
+      generator: 'EmaAgent',
+    });
+    if (!prepared) return null;
+    const sink = memorySink();
+    try {
+      await exportPreparedSession(prepared, sink, BACKUP_LIMITS);
+      return {
+        format: 'zip',
+        filename: `ema-session-${safeFilename(request.sessionId)}.zip`,
+        mimeType: 'application/zip',
+        bytes: joinChunks(sink.chunks),
+      };
+    } finally {
+      prepared.dispose();
+    }
   }
 
   async importSession(request: SessionImportRequest): Promise<SessionImportResult> {
-    if (request.format !== undefined && request.format !== 'auto' && request.format !== 'zip-v1') {
+    if (request.format !== undefined && request.format !== 'auto' && request.format !== 'zip') {
       throw new SessionImportError('invalid_format', `不支持备份格式 ${String(request.format)}`);
     }
-
-    const bytes = await readBoundedSource(request.source, request.signal);
-    const extracted = extractSessionArchive(
-      bytes,
-      path.join(this.ports.activeDataDir, '.imports'),
-    );
-    let fileCommit: SessionImportFileCommit | null = null;
-
-    try {
-      const manifest = extracted.readJson<Manifest>('manifest.json', true)!;
-      if (manifest.version !== '1') {
-        throw new SessionImportError('unsupported_version', `不支持备份版本 ${String(manifest.version)}`);
-      }
-
-      const session = extracted.readJson<SessionExport>('session.json', true)!;
-      assertPortableImportId(session.id, 'Session id');
-      if (this.ports.sessionExists(session.id)) {
-        throw new SessionImportError('destination_conflict', `会话 ${session.id} 已存在，请先删除后再导入`, 409);
-      }
-
-      fileCommit = new SessionImportFileCommit(this.ports.activeDataDir, session.id);
-      const audio = this.restoreAudio(extracted, fileCommit, session.id);
-      const attachments = this.restoreAttachments(extracted, fileCommit);
-      const payload = this.buildPayload(extracted, session, { audio, attachments });
-
-      try {
-        this.ports.restoreRows(payload);
-      } catch (error) {
-        if (error instanceof SessionRestoreValidationError) {
-          throw new SessionImportError('invalid_format', error.message);
-        }
-        throw error;
-      }
-      fileCommit.commit();
-
-      return { sessionId: session.id, format: 'zip-v1' };
-    } catch (error) {
-      fileCommit?.rollback();
-      throw error;
-    } finally {
-      extracted.dispose();
-    }
-  }
-
-  private restoreAudio(
-    extracted: ReturnType<typeof extractSessionArchive>,
-    files: SessionImportFileCommit,
-    sessionId: string,
-  ): AudioRestoreRow[] {
-    const index = extracted.readJson<AudioMeta[]>('audio/index.json') ?? [];
-    assertArray(index, 'audio/index.json');
-    return index.map((entry) => {
-      assertPortableImportId(entry.turnId, 'Audio turnId');
-      const ext = mimeToExt(entry.mimeType);
-      const source = requireArchiveFile(extracted, `audio/${entry.turnId}${ext}`);
-      const destination = files.copyToSession(source, 'audio', 'merged', `${entry.turnId}${ext}`);
-      const actualSize = fs.statSync(destination).size;
-      if (actualSize !== entry.byteSize) {
-        throw new SessionImportError('invalid_format', `音频大小不匹配: ${entry.turnId}`);
-      }
-      return {
-        turnId: entry.turnId, sessionId, storagePath: destination,
-        mimeType: entry.mimeType, byteSize: actualSize,
-        durationMs: entry.durationMs, segmentCount: entry.segmentCount,
-        createdAt: entry.createdAt,
-      };
+    const result = await importSession({
+      source: request.source,
+      activeDataDir: this.ports.activeDataDir,
+      restorer: this.ports.restorer,
+      sessionExists: sessionId => this.ports.sessionExists(sessionId),
+      modelPreferenceExists: this.ports.modelPreferenceExists,
+      kbExists: this.ports.kbExists,
+      signal: request.signal,
     });
-  }
-
-  private restoreAttachments(
-    extracted: ReturnType<typeof extractSessionArchive>,
-    files: SessionImportFileCommit,
-  ): AttachmentRestoreRow[] {
-    const index = extracted.readJson<AttachmentMeta[]>('attachments/index.json') ?? [];
-    assertArray(index, 'attachments/index.json');
-    return index.map((entry) => {
-      assertPortableImportId(entry.id, 'Attachment id');
-      assertPortableImportId(entry.turnId, 'Attachment turnId');
-      const safeName = safeImportedFileName(entry.name);
-      const source = requireArchiveFile(extracted, `attachments/${entry.id}_${safeName}`);
-      const destination = files.copyAttachment(source, entry.id, safeName);
-      const actualSize = fs.statSync(destination).size;
-      if (actualSize !== entry.size) {
-        throw new SessionImportError('invalid_format', `附件大小不匹配: ${entry.id}`);
-      }
-      return {
-        id: entry.id, turnId: entry.turnId, name: entry.name, mime: entry.mime,
-        size: actualSize, mtime: entry.mtime ?? 0, localPath: destination,
-        createdAt: entry.createdAt,
-      };
-    });
-  }
-
-  private buildPayload(
-    extracted: ReturnType<typeof extractSessionArchive>,
-    session: SessionExport,
-    files: {
-      audio: AudioRestoreRow[];
-      attachments: AttachmentRestoreRow[];
-    },
-  ): SessionRestorePayload {
-    const turns = readArray<TurnRestoreRow>(extracted, 'turns.json');
-    const messages = readArray<MessageRestoreRow>(extracted, 'messages.json');
-    const tasks = readArray<SessionRestorePayload['tasks'][number]>(extracted, 'tasks.json');
-    const taskDependencies = readArray<SessionRestorePayload['taskDependencies'][number]>(
-      extracted,
-      'task_dependencies.json',
-    );
-    const agentRuns = readArray<SessionRestorePayload['agentRuns'][number]>(
-      extracted,
-      'agent_runs.json',
-    );
-    const agentRunMessages = readArray<SessionRestorePayload['agentRunMessages'][number]>(
-      extracted,
-      'agent_run_messages.json',
-    );
-    const kbActivations = readArray<SessionRestorePayload['kbActivations'][number]>(extracted, 'kb_activations.json');
-    const usageRecords = extracted.has('usage_records.json')
-      ? readArray<SessionRestorePayload['usageRecords'][number]>(extracted, 'usage_records.json')
-      : legacyMetricsToUsageRecords(
-          extracted.has('llm_turn_metrics.json')
-            ? readArray<LegacyLlmTurnMetrics>(extracted, 'llm_turn_metrics.json')
-            : readArray<LegacyLlmTurnMetrics>(extracted, 'usage.json'),
-          turns,
-          session.id,
-        );
-    const memoryState = extracted.readJson<SessionRestorePayload['memoryState']>('memory_state.json');
-    const notes = extracted.readJson<NotesExport>('notes.json');
-
-    return {
-      session: {
-        id: session.id, title: session.title,
-        workspaceRoot: session.workspaceRoot ?? null,
-        createdAt: session.createdAt, updatedAt: session.updatedAt,
-        lastActivityAt: session.lastActivityAt ?? session.updatedAt,
-        archivedAt: session.archivedAt ?? null, pinned: session.pinned ?? false,
-        pinnedAt: session.pinnedAt ?? null, groupLabel: session.groupLabel ?? null,
-        parentSessionId: session.parentSessionId ?? null,
-        executionProfile: session.executionProfile,
-        narrativePolicy: session.narrativePolicy,
-        preferredProviderConfigId: session.preferredProviderConfigId ?? null,
-        preferredModelId: session.preferredModelId ?? null,
-      },
-      turns,
-      messages: messages.map((message: MessageRestoreRow & { blocks?: unknown }) => ({
-        ...message,
-        blocksJson: message.blocksJson ?? JSON.stringify(message.blocks ?? []),
-      })),
-      audio: files.audio,
-      attachments: files.attachments,
-      tasks,
-      taskDependencies,
-      agentRuns,
-      agentRunMessages,
-      memoryState,
-      kbActivations,
-      usageRecords,
-      notes: notes ? {
-        body: notes.body,
-        tokensAtLastUpdate: notes.tokensAtLastUpdate ?? 0,
-        updatedAt: notes.updatedAt,
-      } : null,
-    };
+    return { ...result, format: 'zip' };
   }
 }
 
-interface LegacyLlmTurnMetrics {
-  turn_id: string;
-  llm_provider: string;
-  model_id: string;
-  input_tokens: number;
-  output_tokens: number;
-  cost_usd: number;
-  duration_ms: number;
-  created_at: number;
-}
-
-function legacyMetricsToUsageRecords(
-  rows: readonly LegacyLlmTurnMetrics[],
-  turns: readonly TurnRestoreRow[],
-  sessionId: string,
-): SessionRestorePayload['usageRecords'] {
-  const turnIds = new Set(turns.map((turn) => turn.id));
-  return rows.filter((row) => turnIds.has(row.turn_id)).map((row) => ({
-    id: `legacy:${row.turn_id}`,
-    session_id: sessionId,
-    turn_id: row.turn_id,
-    provider_id: `legacy-protocol:${row.llm_provider}`,
-    model_id: row.model_id,
-    capability: 'llm',
-    status: 'completed',
-    input_tokens: row.input_tokens,
-    output_tokens: row.output_tokens,
-    cache_read_input_tokens: null,
-    cache_write_input_tokens: null,
-    quantity: null,
-    unit: null,
-    cost_usd: row.cost_usd,
-    duration_ms: row.duration_ms,
-    error_code: null,
-    created_at: row.created_at,
-  }));
-}
-
-async function readBoundedSource(
-  source: BackupArchiveSource,
-  signal?: AbortSignal,
-): Promise<Uint8Array> {
-  if (signal?.aborted) throw new SessionImportError('import_cancelled', 'Session 导入已取消');
-  if (source.declaredSize !== null && source.declaredSize > SESSION_IMPORT_LIMITS.maxArchiveBytes) {
-    throw new SessionImportError('archive_too_large', 'ZIP 文件超过 V1 导入大小限制', 413);
-  }
-
-  if (source.declaredSize !== null) {
-    const result = new Uint8Array(source.declaredSize);
-    let offset = 0;
-    for await (const chunk of source.chunks()) {
-      if (signal?.aborted) throw new SessionImportError('import_cancelled', 'Session 导入已取消');
-      if (offset + chunk.byteLength > result.byteLength) {
-        throw new SessionImportError('invalid_format', '上传数据超过声明大小');
-      }
-      result.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-    if (offset !== result.byteLength) {
-      throw new SessionImportError('invalid_format', '上传数据长度与声明大小不一致');
-    }
-    return result;
-  }
-
+function memorySink(): BackupOutputSink & { readonly chunks: Uint8Array[] } {
   const chunks: Uint8Array[] = [];
-  let total = 0;
-  for await (const chunk of source.chunks()) {
-    if (signal?.aborted) throw new SessionImportError('import_cancelled', 'Session 导入已取消');
-    total += chunk.byteLength;
-    if (total > SESSION_IMPORT_LIMITS.maxArchiveBytes) {
-      throw new SessionImportError('archive_too_large', 'ZIP 文件超过 V1 导入大小限制', 413);
-    }
-    chunks.push(chunk);
-  }
-  const result = new Uint8Array(total);
+  return {
+    chunks,
+    write: async chunk => { chunks.push(new Uint8Array(chunk)); },
+    commit: async () => {},
+    abort: async () => { chunks.length = 0; },
+  };
+}
+
+function joinChunks(chunks: readonly Uint8Array[]): Uint8Array {
+  const total = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+  const output = new Uint8Array(total);
   let offset = 0;
   for (const chunk of chunks) {
-    result.set(chunk, offset);
+    output.set(chunk, offset);
     offset += chunk.byteLength;
   }
-  return result;
+  return output;
 }
 
-function readArray<T>(
-  extracted: ReturnType<typeof extractSessionArchive>,
-  name: string,
-): T[] {
-  const value = extracted.readJson<T[]>(name) ?? [];
-  assertArray(value, name);
-  return value;
-}
-
-function assertArray(value: unknown, entryName: string): asserts value is unknown[] {
-  if (!Array.isArray(value)) {
-    throw new SessionImportError('invalid_format', `${entryName} 必须是数组`);
-  }
-}
-
-function requireArchiveFile(
-  extracted: ReturnType<typeof extractSessionArchive>,
-  name: string,
-): string {
-  const filePath = extracted.filePath(name);
-  if (!filePath) throw new SessionImportError('invalid_format', `备份缺少 ${name}`);
-  return filePath;
-}
-
-function safeImportedFileName(value: unknown): string {
-  if (typeof value !== 'string' || value.length === 0) {
-    throw new SessionImportError('invalid_format', '附件名称无效');
-  }
-  return value.replace(/[/\\?%*:|"<>]/g, '_').slice(0, 80);
-}
-
-function mimeToExt(mime: string): string {
-  if (mime.includes('mp3') || mime.includes('mpeg')) return '.mp3';
-  if (mime.includes('ogg')) return '.ogg';
-  if (mime.includes('wav')) return '.wav';
-  if (mime.includes('flac')) return '.flac';
-  return '.mp3';
+function safeFilename(value: string): string {
+  return value.replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 80) || 'session';
 }

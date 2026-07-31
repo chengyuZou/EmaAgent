@@ -4,7 +4,6 @@ import { z }    from 'zod';
 import fs   from 'node:fs';
 import path from 'node:path';
 import {
-  SessionExportError,
   SessionImportError,
   type SessionBackupFacade,
   type BackupArchiveSource,
@@ -253,18 +252,12 @@ export function storageStatsRoute(dependencies: StorageStatsRouteDependencies): 
 
   // ── POST /:id/export ───────────────────────────────────────────────────────
 
-  app.post('/sessions/:id/export', (c) => {
+  app.post('/sessions/:id/export', async (c) => {
     let result: SessionExportResult | null;
-    try {
-      result = dependencies.sessionBackup.exportSession({
-        sessionId: c.req.param('id'),
-      });
-    } catch (error) {
-      if (error instanceof SessionExportError) {
-        return c.json({ error: error.code, message: error.message }, error.status);
-      }
-      throw error;
-    }
+    result = await dependencies.sessionBackup.exportSession({
+      sessionId: c.req.param('id'),
+      signal: c.req.raw.signal,
+    });
     if (!result) return c.json({ error: 'session_not_found' }, 404);
 
     // Uint8Array 的底层可能是 SharedArrayBufferLike，复制为标准 ArrayBuffer

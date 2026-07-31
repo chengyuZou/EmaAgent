@@ -89,7 +89,7 @@ export class JsonlDecoder {
     const pending = this.buffer;
     this.buffer = '';
     if (pending.length === 0) return [];
-    // 严格 V2:末行缺终止换行即截断;规范导出器恒以 \n 结束每一行。
+    // 末行缺终止换行即视为截断；规范导出器恒以 \n 结束每一行。
     throw new JsonlParseError('末行不完整,归档被截断', this.options.entryName, this.lineNumber + 1);
   }
 

@@ -40,6 +40,10 @@ export type {
 } from './repos/attachmentDerivations.js';
 export { SessionStatsRepo, DataDirStatsRepo, SessionRestoreValidationError } from './repos/storage-stats.js';
 export { SessionBackupReader } from './repos/sessionBackup.js';
+export {
+  SessionBackupRestorer,
+  SessionBackupRestoreError,
+} from './repos/sessionBackupRestore.js';
 export type {
   SessionStats, AudioEntryRow,
   MemoryStateRow,
@@ -54,6 +58,7 @@ export type {
   SessionBackupSnapshot,
   SessionBackupToolExecutionRow,
 } from './repos/sessionBackup.js';
+export type { SessionBackupRestoreInput } from './repos/sessionBackupRestore.js';
 export { McpServersRepo }  from './repos/mcp-servers.js';
 export type { McpServerRow } from './repos/mcp-servers.js';
 export { SkillsRepo }      from './repos/skills.js';

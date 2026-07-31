@@ -1,15 +1,16 @@
-// 定义 Session 备份 Facade 的输入输出、能力和文件端口。
-import type { SessionRestorePayload } from '@ema-agent/storage';
+// 定义当前 Session 备份入口的分块输入、流式输出和结果契约。
 
-export type SessionBackupFormat = 'zip-v1';
+export type SessionBackupFormat = 'zip';
 
-/**
- * Core/CLI/Tauri 都通过同一个分块输入端口提交备份，不把 Web File 类型带进业务包。
- * V1 会受限聚合压缩输入；ZIP v2 可直接消费相同 chunks() 而无需修改调用方。
- */
 export interface BackupArchiveSource {
   readonly declaredSize: number | null;
   chunks(): AsyncIterable<Uint8Array>;
+}
+
+export interface BackupOutputSink {
+  write(chunk: Uint8Array): Promise<void>;
+  commit(): Promise<void>;
+  abort(reason: unknown): Promise<void>;
 }
 
 export interface SessionImportRequest {
@@ -21,36 +22,14 @@ export interface SessionImportRequest {
 export interface SessionImportResult {
   sessionId: string;
   format: SessionBackupFormat;
+  warnings: readonly string[];
 }
 
-export interface BackupAttachmentExportEntry {
-  id: string; name: string; mime: string; size: number; turnId: string;
-  mtime: number; createdAt: number; localPath?: string | null;
+export interface SessionExportRequest {
+  sessionId: string;
+  signal?: AbortSignal;
 }
 
-export interface BackupAudioExportEntry {
-  turn_id: string; mime_type: string; byte_size: number;
-  duration_ms: number | null; segment_count: number; created_at: number;
-  storage_path: string | null;
-}
-
-export interface SessionExportSnapshot {
-  session: { id: string; title: string } & Record<string, unknown>;
-  turns: readonly unknown[];
-  messages: readonly unknown[];
-  attachments: readonly BackupAttachmentExportEntry[];
-  audio: readonly BackupAudioExportEntry[];
-  notes: unknown | null;
-  tasks: readonly unknown[];
-  taskDependencies: readonly unknown[];
-  agentRuns: readonly unknown[];
-  agentRunMessages: readonly unknown[];
-  memoryState: unknown | null;
-  kbActivations: readonly unknown[];
-  usageRecords: readonly unknown[];
-}
-
-export interface SessionExportRequest { sessionId: string; }
 export interface SessionExportResult {
   format: SessionBackupFormat;
   filename: string;
@@ -58,30 +37,12 @@ export interface SessionExportResult {
   bytes: Uint8Array;
 }
 
-/** 当前运行时能力；false 项是稳定的演进插槽，不代表半成品已经接线。 */
 export interface SessionBackupCapabilities {
   importFormats: readonly SessionBackupFormat[];
   exportFormats: readonly SessionBackupFormat[];
-  streamingArchiveInput: boolean;
-  streamingArchiveOutput: boolean;
-  streamingJsonRecords: boolean;
-  multipartVolumes: boolean;
-  integrityManifest: boolean;
-}
-
-/**
- * ZIP v2 导出将写向此端口，目标可以是 HTTP Response、Tauri 文件或分卷器。
- * 当前只导出端口契约，不宣称 SessionBackupFacade 已实现流式导出。
- */
-export interface BackupOutputSink {
-  write(chunk: Uint8Array): Promise<void>;
-  commit(): Promise<void>;
-  abort(reason: unknown): Promise<void>;
-}
-
-export interface SessionBackupPorts {
-  readonly activeDataDir: string;
-  sessionExists(sessionId: string): boolean;
-  restoreRows(payload: SessionRestorePayload): void;
-  collectExport(sessionId: string): SessionExportSnapshot | null;
+  streamingArchiveInput: true;
+  streamingArchiveOutput: true;
+  streamingJsonRecords: true;
+  multipartVolumes: false;
+  integrityManifest: true;
 }

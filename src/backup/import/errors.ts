@@ -10,6 +10,7 @@ export type SessionImportErrorCode =
   | 'entry_too_large'
   | 'expanded_size_too_large'
   | 'compression_ratio_too_high'
+  | 'integrity_mismatch'
   | 'destination_conflict';
 
 /** 备份业务边界的结构化错误，HTTP/CLI 各自决定如何呈现。 */

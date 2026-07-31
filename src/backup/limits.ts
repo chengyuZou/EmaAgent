@@ -2,7 +2,7 @@
 
 export const BACKUP_LIMITS = Object.freeze({
   // ── 归档输入(不可信)──
-  /** 压缩包体积上限;v2 流式解压,放大但必须有顶。 */
+  /** 压缩包体积上限；流式解压可以放大，但仍必须有顶。 */
   maxArchiveBytes: 2 * 1024 ** 3,
   /** 条目数上限,防条目炸弹。 */
   maxEntries: 100_000,

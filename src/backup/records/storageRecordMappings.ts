@@ -1,4 +1,4 @@
-// 把 Storage 的 snake_case 行投影为 ZIP V2 的 camelCase wire 记录，不携带来源机绝对路径。
+// 把 Storage 的 snake_case 行投影为 ZIP 的 camelCase wire 记录，不携带来源机绝对路径。
 import type {
   AgentRunMessageRow,
   AgentRunRow,

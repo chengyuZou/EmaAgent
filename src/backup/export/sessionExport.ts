@@ -1,4 +1,4 @@
-// 把已经冻结的 Session V2 条目写成带完整性清单的流式 ZIP，不读取数据库或猜测文件路径。
+// 把已经冻结的 Session 条目写成带完整性清单的流式 ZIP，不读取数据库或猜测文件路径。
 import { createHash } from 'node:crypto';
 import {
   BACKUP_FILE_ROOTS,
@@ -35,7 +35,7 @@ export interface BackupIntegrityManifest {
   readonly entries: readonly IntegrityEntry[];
 }
 
-export async function exportPreparedSessionV2(
+export async function exportPreparedSession(
   prepared: PreparedSessionExport,
   sink: BackupOutputSink,
   limits: BackupLimits,
@@ -137,5 +137,5 @@ function assertArchiveEntryPath(path: string): void {
   ) {
     return;
   }
-  throw new Error(`备份条目不在 V2 白名单: ${path}`);
+  throw new Error(`备份条目不在白名单: ${path}`);
 }

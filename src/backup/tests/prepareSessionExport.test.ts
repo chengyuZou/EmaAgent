@@ -1,13 +1,13 @@
-// 验证 V2 staging 在事务外冻结文件、写齐必需记录，并把缺失文件降级为安全 warning。
+// 验证导出 staging 在事务外冻结文件、写齐必需记录，并把缺失文件降级为安全 warning。
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Database, SessionBackupReader } from '@ema-agent/storage';
-import { prepareSessionExportV2 } from '../export/prepareSessionExport.js';
+import { prepareSessionExport } from '../export/prepareSessionExport.js';
 import { BACKUP_RECORD_REGISTRY } from '../records/recordRegistry.js';
 
-describe('prepareSessionExportV2', () => {
+describe('prepareSessionExport', () => {
   const roots: string[] = [];
   const databases: Database[] = [];
 
@@ -42,7 +42,7 @@ describe('prepareSessionExportV2', () => {
     insertAttachment.run('attachment-ok', 'hello.txt', 5, existing);
     insertAttachment.run('attachment-missing', 'missing.txt', 1, join(root, 'missing.txt'));
 
-    const prepared = prepareSessionExportV2(
+    const prepared = prepareSessionExport(
       new SessionBackupReader(database.sqlite),
       { sessionId: 'session-a', activeDataDir: root, generator: 'test', stagingRoot: root },
     );

@@ -69,7 +69,7 @@ export interface StagedSessionExport extends PreparedSessionExport {
   dispose(): void;
 }
 
-export function prepareSessionExportV2(
+export function prepareSessionExport(
   reader: SessionBackupReader,
   options: PrepareSessionExportOptions,
 ): StagedSessionExport | null {

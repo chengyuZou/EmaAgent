@@ -117,7 +117,7 @@ export interface AppBindings {
   /** LocalHost 一次性初始化、常驻后台工作与关闭入口。 */
   lifecycle: LocalHostLifecycle;
   session: SessionStore;
-  /** Session 备份导入的唯一业务入口；流式导出在 ZIP v2 接入同一 Facade。 */
+  /** Session 备份导入导出的唯一业务入口。 */
   sessionBackup: SessionBackupFacade;
 
   // AI clients
@@ -381,10 +381,8 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   );
   const sessionBackup = createSessionBackup(
     activeDataDir,
+    dataDb,
     session,
-    sessionStats,
-    sessionNotes,
-    attachmentStore,
   );
 
   const {

@@ -1,9 +1,9 @@
-// 测试 V2 Session 导出的流式背压、完整性清单、路径白名单与失败回滚。
+// 测试 Session 导出的流式背压、完整性清单、路径白名单与失败回滚。
 import { createHash } from 'node:crypto';
 import { unzipSync } from 'fflate';
 import { describe, expect, it, vi } from 'vitest';
 import { BACKUP_LIMITS } from '../limits.js';
-import { exportPreparedSessionV2 } from '../export/sessionExport.js';
+import { exportPreparedSession } from '../export/sessionExport.js';
 import type { BackupOutputSink } from '../types.js';
 
 const decoder = new TextDecoder();
@@ -36,10 +36,10 @@ function joined(chunks: readonly Uint8Array[]): Uint8Array {
   return result;
 }
 
-describe('Session ZIP V2 流式导出', () => {
+describe('Session ZIP 流式导出', () => {
   it('逐块写出记录和文件，并为 manifest 在内的条目生成 SHA-256', async () => {
     const sink = memorySink();
-    await exportPreparedSessionV2({
+    await exportPreparedSession({
       manifest: {
         format: 'ema-session',
         version: 2,
@@ -85,7 +85,7 @@ describe('Session ZIP V2 流式导出', () => {
 
   it('拒绝白名单外路径并 abort，绝不 commit 半包', async () => {
     const sink = memorySink();
-    await expect(exportPreparedSessionV2({
+    await expect(exportPreparedSession({
       manifest: {
         format: 'ema-session',
         version: 2,
@@ -112,7 +112,7 @@ describe('Session ZIP V2 流式导出', () => {
     sink.write = async () => {
       throw new Error('disk full');
     };
-    await expect(exportPreparedSessionV2({
+    await expect(exportPreparedSession({
       manifest: {
         format: 'ema-session',
         version: 2,
