@@ -37,6 +37,12 @@ export interface CharacterPortraitInput {
   contentSha256?: string | null;
 }
 
+export interface CharacterPortraitPatch {
+  label?: string;
+  position?: number;
+  enabled?: boolean;
+}
+
 export interface ImportCharacterPortraitInput {
   sourceFile: string;
   label: string;

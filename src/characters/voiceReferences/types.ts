@@ -37,6 +37,12 @@ export interface CharacterVoiceReferenceInput {
   contentSha256?: string | null;
 }
 
+export interface CharacterVoiceReferencePatch {
+  label?: string;
+  position?: number;
+  enabled?: boolean;
+}
+
 export interface ImportCharacterVoiceReferenceInput {
   sourceFile: string;
   label: string;

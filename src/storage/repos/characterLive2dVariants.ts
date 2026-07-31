@@ -44,6 +44,12 @@ export interface CharacterLive2dVariantInsert {
   updatedAt: number;
 }
 
+export interface CharacterLive2dVariantUpdate {
+  label?: string;
+  position?: number;
+  enabled?: boolean;
+}
+
 export class CharacterLive2dVariantsRepo {
   constructor(private readonly db: SqliteDb) {}
 
@@ -118,6 +124,45 @@ export class CharacterLive2dVariantsRepo {
     })();
   }
 
+  update(
+    characterCardId: CharacterCardId,
+    id: CharacterLive2dId,
+    patch: CharacterLive2dVariantUpdate,
+    updatedAt: number,
+  ): CharacterLive2dVariantRow | undefined {
+    return this.db.transaction(() => {
+      const current = this.findById(characterCardId, id);
+      if (!current) return undefined;
+
+      const label = patch.label ?? current.label;
+      const position = patch.position ?? current.position;
+      const enabled = patch.enabled ?? current.enabled === 1;
+      const changed = label !== current.label
+        || position !== current.position
+        || enabled !== (current.enabled === 1);
+      if (!changed) return current;
+      const revisionAt = Math.max(updatedAt, current.updated_at + 1);
+
+      this.db.prepare(
+        `UPDATE character_live2d_variants
+         SET label = ?, position = ?, enabled = ?,
+             is_primary = CASE WHEN ? = 1 THEN is_primary ELSE 0 END,
+             updated_at = ?
+         WHERE character_card_id = ? AND id = ?`,
+      ).run(
+        label,
+        position,
+        enabled ? 1 : 0,
+        enabled ? 1 : 0,
+        revisionAt,
+        characterCardId,
+        id,
+      );
+      this.ensurePrimary(characterCardId, revisionAt);
+      return this.findById(characterCardId, id);
+    })();
+  }
+
   delete(
     characterCardId: CharacterCardId,
     id: CharacterLive2dId,
@@ -158,5 +203,13 @@ export class CharacterLive2dVariantsRepo {
          LIMIT 1
        )`,
     ).run(updatedAt, characterCardId);
+  }
+
+  private ensurePrimary(characterCardId: CharacterCardId, updatedAt: number): void {
+    const primary = this.db.prepare(
+      `SELECT 1 FROM character_live2d_variants
+       WHERE character_card_id = ? AND enabled = 1 AND is_primary = 1`,
+    ).get(characterCardId);
+    if (!primary) this.promoteFirstEnabled(characterCardId, updatedAt);
   }
 }

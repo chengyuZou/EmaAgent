@@ -10,7 +10,11 @@ import {
   type CharacterCardId,
   type CharacterPortraitId,
 } from '@ema-agent/ids';
-import type { CharacterPortrait, CharacterPortraitInput } from './types.js';
+import type {
+  CharacterPortrait,
+  CharacterPortraitInput,
+  CharacterPortraitPatch,
+} from './types.js';
 
 function fromRow(row: CharacterPortraitRow): CharacterPortrait {
   return {
@@ -56,6 +60,15 @@ export class CharacterPortraitRepository {
 
   setPrimary(characterCardId: CharacterCardId, id: CharacterPortraitId): boolean {
     return this.repo.setPrimary(characterCardId, id, Date.now());
+  }
+
+  update(
+    characterCardId: CharacterCardId,
+    id: CharacterPortraitId,
+    patch: CharacterPortraitPatch,
+  ): CharacterPortrait | undefined {
+    const row = this.repo.update(characterCardId, id, patch, Date.now());
+    return row ? fromRow(row) : undefined;
   }
 
   delete(

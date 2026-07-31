@@ -45,6 +45,19 @@ const exportSchema = z.object({
   destinationHandle: z.string().min(1),
 }).strict();
 
+const resourcePatchSchema = z.object({
+  label: z.string().trim().min(1).max(200).optional(),
+  position: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
+  enabled: z.boolean().optional(),
+}).strict().refine(
+  value => (
+    value.label !== undefined
+    || value.position !== undefined
+    || value.enabled !== undefined
+  ),
+  { message: 'at least one resource field is required' },
+);
+
 export function characterResourcesRoute(
   cardStore: CharacterCardStore,
   fileAccess: Pick<FileAccessFacade, 'resolve'>,
@@ -82,6 +95,22 @@ export function characterResourcesRoute(
         fileAccess.resolve(parsed.data.destinationHandle),
       );
       return c.json({ destinationPath });
+    });
+  });
+
+  app.patch('/:cardId/live2d/:resourceId', async (c) => {
+    const parsed = resourcePatchSchema.safeParse(await readJson(c));
+    if (!parsed.success) return invalidRequest(c, parsed.error.flatten());
+    const cardId = asCharacterCardId(c.req.param('cardId'));
+    return runResourceRequest(c, async () => {
+      const resource = cardStore.updateLive2dVariant(
+        cardId,
+        asCharacterLive2dId(c.req.param('resourceId')),
+        parsed.data,
+      );
+      return resource
+        ? c.json({ resource })
+        : c.json({ error: 'live2d_not_found' }, 404);
     });
   });
 
@@ -130,6 +159,22 @@ export function characterResourcesRoute(
     });
   });
 
+  app.patch('/:cardId/portraits/:resourceId', async (c) => {
+    const parsed = resourcePatchSchema.safeParse(await readJson(c));
+    if (!parsed.success) return invalidRequest(c, parsed.error.flatten());
+    const cardId = asCharacterCardId(c.req.param('cardId'));
+    return runResourceRequest(c, async () => {
+      const resource = cardStore.updatePortrait(
+        cardId,
+        asCharacterPortraitId(c.req.param('resourceId')),
+        parsed.data,
+      );
+      return resource
+        ? c.json({ resource })
+        : c.json({ error: 'portrait_not_found' }, 404);
+    });
+  });
+
   app.delete('/:cardId/portraits/:resourceId', async (c) => {
     const cardId = asCharacterCardId(c.req.param('cardId'));
     return runResourceRequest(c, async () => {
@@ -166,6 +211,22 @@ export function characterResourcesRoute(
         fileAccess.resolve(parsed.data.destinationHandle),
       );
       return c.json({ destinationPath });
+    });
+  });
+
+  app.patch('/:cardId/voice-refs/:resourceId', async (c) => {
+    const parsed = resourcePatchSchema.safeParse(await readJson(c));
+    if (!parsed.success) return invalidRequest(c, parsed.error.flatten());
+    const cardId = asCharacterCardId(c.req.param('cardId'));
+    return runResourceRequest(c, async () => {
+      const resource = cardStore.updateVoiceReference(
+        cardId,
+        asCharacterVoiceReferenceId(c.req.param('resourceId')),
+        parsed.data,
+      );
+      return resource
+        ? c.json({ resource })
+        : c.json({ error: 'voice_ref_not_found' }, 404);
     });
   });
 

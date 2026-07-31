@@ -20,17 +20,20 @@ export type {
   CharacterLive2dFormat,
   CharacterLive2dVariant,
   CharacterLive2dVariantInput,
+  CharacterLive2dVariantPatch,
   ImportCharacterLive2dInput,
 } from './live2d/types.js';
 export type {
   CharacterPortrait,
   CharacterPortraitInput,
   CharacterPortraitMime,
+  CharacterPortraitPatch,
   ImportCharacterPortraitInput,
 } from './portraits/types.js';
 export type {
   CharacterVoiceReference,
   CharacterVoiceReferenceInput,
+  CharacterVoiceReferencePatch,
   ImportCharacterVoiceReferenceInput,
 } from './voiceReferences/types.js';
 export { buildCharacterPromptSections } from './characterPrompt.js';

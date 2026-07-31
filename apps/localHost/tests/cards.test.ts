@@ -10,7 +10,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Database } from '@ema-agent/storage';
-import { CharacterCardStore } from '@ema-agent/characters';
+import { CharacterCardStore, EMA_CARD_ID } from '@ema-agent/characters';
 import { asCharacterCardId, asCharacterVoiceReferenceId } from '@ema-agent/ids';
 import { cardsRoute } from '../src/routes/cards.js';
 
@@ -261,5 +261,80 @@ describe('B-055 cards route', () => {
     );
     expect(deleteResponse.status).toBe(204);
     expect(card.get(asCharacterCardId(id))?.portraits).toHaveLength(0);
+  });
+
+  it('三类资源 PATCH 更新展示字段，空补丁与内置角色默认拒绝', async () => {
+    const created = card.create({ name: 'Resource patch', systemPrompt: 'p' });
+    const live2d = card.addLive2dVariant(created.id, {
+      label: 'Live2D',
+      format: 'live2d',
+      entryPath: 'live2d/model.model3.json',
+      isPrimary: true,
+    });
+    const portrait = card.addPortrait(created.id, {
+      label: 'Portrait',
+      relativePath: 'portraits/main.png',
+      isPrimary: true,
+      mimeType: 'image/png',
+      byteSize: 1,
+      width: 1,
+      height: 1,
+    });
+    const voice = card.addVoiceReference(created.id, {
+      label: 'Voice',
+      relativePath: 'voiceRefs/main.wav',
+      promptText: 'hello',
+      promptLang: 'en',
+      isPrimary: true,
+      mimeType: 'audio/wav',
+    });
+
+    const cases = [
+      [`/${created.id}/live2d/${live2d.id}`, live2d.id],
+      [`/${created.id}/portraits/${portrait.id}`, portrait.id],
+      [`/${created.id}/voice-refs/${voice.id}`, voice.id],
+    ] as const;
+    for (const [path, resourceId] of cases) {
+      const response = await app.request(path, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          label: `Updated ${resourceId}`,
+          position: 4,
+          enabled: false,
+        }),
+      });
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({
+        resource: {
+          id: resourceId,
+          label: `Updated ${resourceId}`,
+          position: 4,
+          enabled: false,
+          isPrimary: false,
+        },
+      });
+    }
+
+    const emptyResponse = await app.request(
+      `/${created.id}/live2d/${live2d.id}`,
+      {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      },
+    );
+    expect(emptyResponse.status).toBe(400);
+
+    card.ensureSeed();
+    const builtinResponse = await app.request(
+      `/${EMA_CARD_ID}/live2d/${card.get(EMA_CARD_ID)!.live2dVariants[0]!.id}`,
+      {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ enabled: false }),
+      },
+    );
+    expect(builtinResponse.status).toBe(403);
   });
 });

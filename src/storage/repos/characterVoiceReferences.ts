@@ -42,6 +42,12 @@ export interface CharacterVoiceReferenceInsert {
   updatedAt: number;
 }
 
+export interface CharacterVoiceReferenceUpdate {
+  label?: string;
+  position?: number;
+  enabled?: boolean;
+}
+
 export class CharacterVoiceReferencesRepo {
   constructor(private readonly db: SqliteDb) {}
 
@@ -116,6 +122,45 @@ export class CharacterVoiceReferencesRepo {
     })();
   }
 
+  update(
+    characterCardId: CharacterCardId,
+    id: CharacterVoiceReferenceId,
+    patch: CharacterVoiceReferenceUpdate,
+    updatedAt: number,
+  ): CharacterVoiceReferenceRow | undefined {
+    return this.db.transaction(() => {
+      const current = this.findById(characterCardId, id);
+      if (!current) return undefined;
+
+      const label = patch.label ?? current.label;
+      const position = patch.position ?? current.position;
+      const enabled = patch.enabled ?? current.enabled === 1;
+      const changed = label !== current.label
+        || position !== current.position
+        || enabled !== (current.enabled === 1);
+      if (!changed) return current;
+      const revisionAt = Math.max(updatedAt, current.updated_at + 1);
+
+      this.db.prepare(
+        `UPDATE character_voice_references
+         SET label = ?, position = ?, enabled = ?,
+             is_primary = CASE WHEN ? = 1 THEN is_primary ELSE 0 END,
+             updated_at = ?
+         WHERE character_card_id = ? AND id = ?`,
+      ).run(
+        label,
+        position,
+        enabled ? 1 : 0,
+        enabled ? 1 : 0,
+        revisionAt,
+        characterCardId,
+        id,
+      );
+      this.ensurePrimary(characterCardId, revisionAt);
+      return this.findById(characterCardId, id);
+    })();
+  }
+
   delete(
     characterCardId: CharacterCardId,
     id: CharacterVoiceReferenceId,
@@ -155,5 +200,13 @@ export class CharacterVoiceReferencesRepo {
          LIMIT 1
        )`,
     ).run(updatedAt, characterCardId);
+  }
+
+  private ensurePrimary(characterCardId: CharacterCardId, updatedAt: number): void {
+    const primary = this.db.prepare(
+      `SELECT 1 FROM character_voice_references
+       WHERE character_card_id = ? AND enabled = 1 AND is_primary = 1`,
+    ).get(characterCardId);
+    if (!primary) this.promoteFirstEnabled(characterCardId, updatedAt);
   }
 }

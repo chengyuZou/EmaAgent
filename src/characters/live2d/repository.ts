@@ -13,6 +13,7 @@ import {
 import type {
   CharacterLive2dVariant,
   CharacterLive2dVariantInput,
+  CharacterLive2dVariantPatch,
 } from './types.js';
 
 function fromRow(row: CharacterLive2dVariantRow): CharacterLive2dVariant {
@@ -60,6 +61,15 @@ export class CharacterLive2dRepository {
 
   setPrimary(characterCardId: CharacterCardId, id: CharacterLive2dId): boolean {
     return this.repo.setPrimary(characterCardId, id, Date.now());
+  }
+
+  update(
+    characterCardId: CharacterCardId,
+    id: CharacterLive2dId,
+    patch: CharacterLive2dVariantPatch,
+  ): CharacterLive2dVariant | undefined {
+    const row = this.repo.update(characterCardId, id, patch, Date.now());
+    return row ? fromRow(row) : undefined;
   }
 
   delete(

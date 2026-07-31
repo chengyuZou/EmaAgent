@@ -179,6 +179,80 @@ describe('CharacterCardStore', () => {
     });
   });
 
+  describe('resource metadata updates', () => {
+    it('禁用主 Live2D 后提升下一候选，并让资源 revision 单调前进', () => {
+      const card = store.create(minimalInput());
+      const first = store.addLive2dVariant(card.id, {
+        label: 'First',
+        format: 'live2d',
+        entryPath: 'live2d/first.model3.json',
+        position: 0,
+        isPrimary: true,
+      });
+      const second = store.addLive2dVariant(card.id, {
+        label: 'Second',
+        format: 'live2d',
+        entryPath: 'live2d/second.model3.json',
+        position: 1,
+      });
+
+      const updated = store.updateLive2dVariant(card.id, first.id, {
+        label: 'Disabled',
+        position: 3,
+        enabled: false,
+      });
+
+      expect(updated).toMatchObject({
+        id: first.id,
+        label: 'Disabled',
+        position: 3,
+        enabled: false,
+        isPrimary: false,
+      });
+      expect(updated!.updatedAt).toBeGreaterThan(first.updatedAt);
+      expect(store.get(card.id)?.live2dVariants).toEqual([
+        expect.objectContaining({ id: second.id, isPrimary: true }),
+        expect.objectContaining({ id: first.id, isPrimary: false }),
+      ]);
+    });
+
+    it('重新启用唯一立绘时自动恢复主项，参考音频也可修改展示字段', () => {
+      const card = store.create(minimalInput());
+      const portrait = store.addPortrait(card.id, {
+        label: 'Portrait',
+        relativePath: 'portraits/main.png',
+        isPrimary: true,
+        mimeType: 'image/png',
+        byteSize: 1,
+        width: 1,
+        height: 1,
+      });
+      const voice = store.addVoiceReference(card.id, {
+        label: 'Voice',
+        relativePath: 'voiceRefs/main.wav',
+        promptText: 'hello',
+        promptLang: 'en',
+        isPrimary: true,
+        mimeType: 'audio/wav',
+      });
+
+      expect(store.updatePortrait(card.id, portrait.id, { enabled: false }))
+        .toMatchObject({ enabled: false, isPrimary: false });
+      expect(store.updatePortrait(card.id, portrait.id, { enabled: true }))
+        .toMatchObject({ enabled: true, isPrimary: true });
+      expect(store.updateVoiceReference(card.id, voice.id, {
+        label: 'Updated voice',
+        position: 8,
+        enabled: false,
+      })).toMatchObject({
+        label: 'Updated voice',
+        position: 8,
+        enabled: false,
+        isPrimary: false,
+      });
+    });
+  });
+
   // ─── activate ─────────────────────────────────────────────────────────────
 
   describe('activate', () => {

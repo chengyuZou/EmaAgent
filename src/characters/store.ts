@@ -22,18 +22,21 @@ import { EMA_CARD_ID, BUILTIN_CARDS } from './seed/index.js';
 import type {
   CharacterLive2dVariant,
   CharacterLive2dVariantInput,
+  CharacterLive2dVariantPatch,
   ImportCharacterLive2dInput,
 } from './live2d/types.js';
 import { CharacterLive2dRepository } from './live2d/repository.js';
 import type {
   CharacterPortrait,
   CharacterPortraitInput,
+  CharacterPortraitPatch,
   ImportCharacterPortraitInput,
 } from './portraits/types.js';
 import { CharacterPortraitRepository } from './portraits/repository.js';
 import type {
   CharacterVoiceReference,
   CharacterVoiceReferenceInput,
+  CharacterVoiceReferencePatch,
   ImportCharacterVoiceReferenceInput,
 } from './voiceReferences/types.js';
 import { CharacterVoiceReferenceRepository } from './voiceReferences/repository.js';
@@ -330,6 +333,18 @@ export class CharacterCardStore {
     return changed;
   }
 
+  updateLive2dVariant(
+    id: CharacterCardId,
+    resourceId: CharacterLive2dId,
+    patch: CharacterLive2dVariantPatch,
+  ): CharacterLive2dVariant | undefined {
+    this.assertMutableResourceCard(id);
+    assertResourcePatch(patch);
+    const resource = this.live2d.update(id, resourceId, patch);
+    if (resource) this.emitPresentationChanged(id);
+    return resource;
+  }
+
   deleteLive2dVariant(
     id: CharacterCardId,
     resourceId: CharacterLive2dId,
@@ -376,6 +391,18 @@ export class CharacterCardStore {
     const changed = this.portraits.setPrimary(id, resourceId);
     if (changed) this.emitPresentationChanged(id);
     return changed;
+  }
+
+  updatePortrait(
+    id: CharacterCardId,
+    resourceId: CharacterPortraitId,
+    patch: CharacterPortraitPatch,
+  ): CharacterPortrait | undefined {
+    this.assertMutableResourceCard(id);
+    assertResourcePatch(patch);
+    const resource = this.portraits.update(id, resourceId, patch);
+    if (resource) this.emitPresentationChanged(id);
+    return resource;
   }
 
   deletePortrait(
@@ -426,6 +453,16 @@ export class CharacterCardStore {
     resourceId: CharacterVoiceReferenceId,
   ): boolean {
     return this.voiceReferences.setPrimary(id, resourceId);
+  }
+
+  updateVoiceReference(
+    id: CharacterCardId,
+    resourceId: CharacterVoiceReferenceId,
+    patch: CharacterVoiceReferencePatch,
+  ): CharacterVoiceReference | undefined {
+    this.assertMutableResourceCard(id);
+    assertResourcePatch(patch);
+    return this.voiceReferences.update(id, resourceId, patch);
   }
 
   publishVoiceReference(
@@ -500,6 +537,12 @@ export class CharacterCardStore {
     this.resourcePaths.resolve(id, card.isBuiltin, relativePath, kind);
   }
 
+  private assertMutableResourceCard(id: CharacterCardId): void {
+    const card = this.get(id);
+    if (!card) throw new Error(`character card not found: ${id}`);
+    if (card.isBuiltin) throw new Error(`builtin character is read-only: ${id}`);
+  }
+
   private withResources(card: CharacterCard): CharacterCard {
     return {
       ...card,
@@ -556,5 +599,30 @@ export class CharacterCardStore {
         resource => resource.relativePath === manifest.relativePath,
       ),
     };
+  }
+}
+
+function assertResourcePatch(
+  patch: {
+    label?: string;
+    position?: number;
+    enabled?: boolean;
+  },
+): void {
+  if (
+    patch.label === undefined
+    && patch.position === undefined
+    && patch.enabled === undefined
+  ) {
+    throw new Error('character resource patch is empty');
+  }
+  if (patch.label !== undefined && patch.label.trim().length === 0) {
+    throw new Error('character resource label is empty');
+  }
+  if (
+    patch.position !== undefined
+    && (!Number.isSafeInteger(patch.position) || patch.position < 0)
+  ) {
+    throw new Error('character resource position is invalid');
   }
 }

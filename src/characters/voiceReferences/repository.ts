@@ -13,6 +13,7 @@ import {
 import type {
   CharacterVoiceReference,
   CharacterVoiceReferenceInput,
+  CharacterVoiceReferencePatch,
 } from './types.js';
 
 function fromRow(row: CharacterVoiceReferenceRow): CharacterVoiceReference {
@@ -63,6 +64,15 @@ export class CharacterVoiceReferenceRepository {
     id: CharacterVoiceReferenceId,
   ): boolean {
     return this.repo.setPrimary(characterCardId, id, Date.now());
+  }
+
+  update(
+    characterCardId: CharacterCardId,
+    id: CharacterVoiceReferenceId,
+    patch: CharacterVoiceReferencePatch,
+  ): CharacterVoiceReference | undefined {
+    const row = this.repo.update(characterCardId, id, patch, Date.now());
+    return row ? fromRow(row) : undefined;
   }
 
   delete(

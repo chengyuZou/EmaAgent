@@ -40,6 +40,12 @@ export interface CharacterLive2dVariantInput {
   isBuiltin?: boolean;
 }
 
+export interface CharacterLive2dVariantPatch {
+  label?: string;
+  position?: number;
+  enabled?: boolean;
+}
+
 export interface ImportCharacterLive2dInput {
   sourceDirectory: string;
   label: string;

@@ -87,15 +87,18 @@ export type {
   CharacterLive2dFormat,
   CharacterLive2dVariantInsert,
   CharacterLive2dVariantRow,
+  CharacterLive2dVariantUpdate,
 } from './repos/characterLive2dVariants.js';
 export type {
   CharacterPortraitInsert,
   CharacterPortraitMime,
   CharacterPortraitRow,
+  CharacterPortraitUpdate,
 } from './repos/characterPortraits.js';
 export type {
   CharacterVoiceReferenceInsert,
   CharacterVoiceReferenceRow,
+  CharacterVoiceReferenceUpdate,
 } from './repos/characterVoiceReferences.js';
 export { SettingSerializationError } from './repos/settings.js';
 export type { SettingRow, SettingReadResult } from './repos/settings.js';
