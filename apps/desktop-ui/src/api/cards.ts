@@ -4,12 +4,17 @@ import type { CharacterCardId } from '@ema-agent/ids';
 import type {
   CharacterCard,
   CharacterCardInput,
+  CharacterHealth,
   CharacterHealthIssue,
+  CharacterLive2dVariant,
+  CharacterPortrait,
+  CharacterResourceOperation,
   CharacterVoiceReference,
 } from '@ema-agent/characters';
 import type { Live2DModelRuntimeConfig } from '@ema-agent/live2d-react';
 
 export type { CharacterCard, CharacterCardInput, CharacterVoiceReference };
+export type { CharacterLive2dVariant, CharacterPortrait };
 
 export type CharacterStageCandidate =
   | {
@@ -142,6 +147,127 @@ export const cardsApi = {
     return sidecarClient.request<{ primaryId: string }>(`/api/cards/${cardId}/voice-refs/primary`, {
       method: 'PUT',
       json: { refId },
+    });
+  },
+
+  // ── 健康与资源操作状态 ───────────────────────────────────────────────────
+
+  /** GET /api/cards/:id/health — deep=true 用 sharp/文件头做真实媒体深检。 */
+  async health(id: CharacterCardId, deep = false): Promise<CharacterHealth> {
+    return sidecarClient.request<CharacterHealth>(
+      `/api/cards/${id}/health${deep ? '?depth=deep' : ''}`,
+    );
+  },
+
+  /** GET /api/cards/:id/resource-operation — 当前或最近一次资源操作阶段。 */
+  async resourceOperation(id: CharacterCardId): Promise<CharacterResourceOperation | null> {
+    const res = await sidecarClient.request<{ operation: CharacterResourceOperation | null }>(
+      `/api/cards/${id}/resource-operation`,
+    );
+    return res.operation;
+  },
+
+  // ── 三类资源的能力句柄导入/导出/更新/删除(C3b)───────────────────────────
+
+  async importLive2d(
+    id: CharacterCardId,
+    input: {
+      sourceHandle: string;
+      label: string;
+      format: 'live2d' | 'vrm';
+      entryRelativePath: string;
+      runtimeConfigRelativePath?: string | null;
+      position?: number;
+      isPrimary?: boolean;
+    },
+  ): Promise<{ resource: CharacterLive2dVariant }> {
+    return sidecarClient.request(`/api/cards/${id}/live2d/import`, {
+      method: 'POST',
+      json: input,
+    });
+  },
+
+  async exportLive2d(
+    id: CharacterCardId,
+    resourceId: string,
+    destinationHandle: string,
+  ): Promise<{ destinationPath: string }> {
+    return sidecarClient.request(`/api/cards/${id}/live2d/${resourceId}/export`, {
+      method: 'POST',
+      json: { destinationHandle },
+    });
+  },
+
+  async patchLive2d(
+    id: CharacterCardId,
+    resourceId: string,
+    patch: { label?: string; position?: number; enabled?: boolean },
+  ): Promise<{ resource: CharacterLive2dVariant }> {
+    return sidecarClient.request(`/api/cards/${id}/live2d/${resourceId}`, {
+      method: 'PATCH',
+      json: patch,
+    });
+  },
+
+  async deleteLive2d(id: CharacterCardId, resourceId: string): Promise<void> {
+    await sidecarClient.request(`/api/cards/${id}/live2d/${resourceId}`, { method: 'DELETE' });
+  },
+
+  async importPortrait(
+    id: CharacterCardId,
+    input: { sourceHandle: string; label: string; position?: number; isPrimary?: boolean },
+  ): Promise<{ resource: CharacterPortrait }> {
+    return sidecarClient.request(`/api/cards/${id}/portraits/import`, {
+      method: 'POST',
+      json: input,
+    });
+  },
+
+  async exportPortrait(
+    id: CharacterCardId,
+    resourceId: string,
+    destinationHandle: string,
+  ): Promise<{ destinationPath: string }> {
+    return sidecarClient.request(`/api/cards/${id}/portraits/${resourceId}/export`, {
+      method: 'POST',
+      json: { destinationHandle },
+    });
+  },
+
+  async patchPortrait(
+    id: CharacterCardId,
+    resourceId: string,
+    patch: { label?: string; position?: number; enabled?: boolean },
+  ): Promise<{ resource: CharacterPortrait }> {
+    return sidecarClient.request(`/api/cards/${id}/portraits/${resourceId}`, {
+      method: 'PATCH',
+      json: patch,
+    });
+  },
+
+  async deletePortrait(id: CharacterCardId, resourceId: string): Promise<void> {
+    await sidecarClient.request(`/api/cards/${id}/portraits/${resourceId}`, { method: 'DELETE' });
+  },
+
+  async exportVoiceRef(
+    cardId: CharacterCardId,
+    resourceId: string,
+    destinationHandle: string,
+  ): Promise<{ destinationPath: string }> {
+    return sidecarClient.request(`/api/cards/${cardId}/voice-refs/${resourceId}/export`, {
+      method: 'POST',
+      json: { destinationHandle },
+    });
+  },
+
+  async patchVoiceRef(
+    cardId: CharacterCardId,
+    resourceId: string,
+    patch: { label?: string; position?: number; enabled?: boolean },
+  ): Promise<{ resource: CharacterVoiceReference }> {
+    return sidecarClient.request(`/api/cards/${cardId}/voice-refs/${resourceId}`, {
+      method: 'PATCH',
+      json: patch,
     });
   },
 };

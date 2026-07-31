@@ -1,7 +1,17 @@
 /** 聚合角色卡编辑、激活、表现切换与参考音频操作。 */
 import { create } from 'zustand';
-import { cardsApi, type CharacterCard, type CharacterCardInput } from '../api/cards.js';
+import {
+  cardsApi,
+  type CharacterCard,
+  type CharacterCardInput,
+} from '../api/cards.js';
 import type { CharacterCardId } from '@ema-agent/ids';
+
+export interface ResourcePatch {
+  label?: string;
+  position?: number;
+  enabled?: boolean;
+}
 
 // ── 类型 ─────────────────────────────────────────────────────────────────────
 
@@ -27,6 +37,34 @@ export interface CardStoreState {
   }): Promise<void>;
   deleteVoiceRef(cardId: CharacterCardId, refId: string): Promise<void>;
   setPrimaryVoiceRef(cardId: CharacterCardId, refId: string): Promise<void>;
+
+  // ── 三类资源管理(C3b 能力句柄式)─────────────────────────────────────────
+
+  importLive2d(id: CharacterCardId, input: {
+    sourceHandle: string;
+    label: string;
+    format: 'live2d' | 'vrm';
+    entryRelativePath: string;
+    runtimeConfigRelativePath?: string | null;
+    position?: number;
+    isPrimary?: boolean;
+  }): Promise<void>;
+  exportLive2d(id: CharacterCardId, resourceId: string, destinationHandle: string): Promise<string>;
+  patchLive2d(id: CharacterCardId, resourceId: string, patch: ResourcePatch): Promise<void>;
+  deleteLive2d(id: CharacterCardId, resourceId: string): Promise<void>;
+
+  importPortrait(id: CharacterCardId, input: {
+    sourceHandle: string;
+    label: string;
+    position?: number;
+    isPrimary?: boolean;
+  }): Promise<void>;
+  exportPortrait(id: CharacterCardId, resourceId: string, destinationHandle: string): Promise<string>;
+  patchPortrait(id: CharacterCardId, resourceId: string, patch: ResourcePatch): Promise<void>;
+  deletePortrait(id: CharacterCardId, resourceId: string): Promise<void>;
+
+  exportVoiceRef(cardId: CharacterCardId, resourceId: string, destinationHandle: string): Promise<string>;
+  patchVoiceRef(cardId: CharacterCardId, resourceId: string, patch: ResourcePatch): Promise<void>;
 }
 
 // ── Store ────────────────────────────────────────────────────────────────────
@@ -143,6 +181,108 @@ export const useCardStore = create<CardStoreState>((set, get) => ({
       await get().load();
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to set primary voice ref' });
+      throw err;
+    }
+  },
+
+  // ── 三类资源管理:导入/更新/删除后重读,导出不改库只回传目标路径 ─────────────
+
+  async importLive2d(id, input) {
+    try {
+      await cardsApi.importLive2d(id, input);
+      await get().load();
+    } catch (err: unknown) {
+      set({ error: err instanceof Error ? err.message : 'Failed to import Live2D' });
+      throw err;
+    }
+  },
+
+  async exportLive2d(id, resourceId, destinationHandle) {
+    try {
+      const res = await cardsApi.exportLive2d(id, resourceId, destinationHandle);
+      return res.destinationPath;
+    } catch (err: unknown) {
+      set({ error: err instanceof Error ? err.message : 'Failed to export Live2D' });
+      throw err;
+    }
+  },
+
+  async patchLive2d(id, resourceId, patch) {
+    try {
+      await cardsApi.patchLive2d(id, resourceId, patch);
+      await get().load();
+    } catch (err: unknown) {
+      set({ error: err instanceof Error ? err.message : 'Failed to update Live2D' });
+      throw err;
+    }
+  },
+
+  async deleteLive2d(id, resourceId) {
+    try {
+      await cardsApi.deleteLive2d(id, resourceId);
+      await get().load();
+    } catch (err: unknown) {
+      set({ error: err instanceof Error ? err.message : 'Failed to delete Live2D' });
+      throw err;
+    }
+  },
+
+  async importPortrait(id, input) {
+    try {
+      await cardsApi.importPortrait(id, input);
+      await get().load();
+    } catch (err: unknown) {
+      set({ error: err instanceof Error ? err.message : 'Failed to import portrait' });
+      throw err;
+    }
+  },
+
+  async exportPortrait(id, resourceId, destinationHandle) {
+    try {
+      const res = await cardsApi.exportPortrait(id, resourceId, destinationHandle);
+      return res.destinationPath;
+    } catch (err: unknown) {
+      set({ error: err instanceof Error ? err.message : 'Failed to export portrait' });
+      throw err;
+    }
+  },
+
+  async patchPortrait(id, resourceId, patch) {
+    try {
+      await cardsApi.patchPortrait(id, resourceId, patch);
+      await get().load();
+    } catch (err: unknown) {
+      set({ error: err instanceof Error ? err.message : 'Failed to update portrait' });
+      throw err;
+    }
+  },
+
+  async deletePortrait(id, resourceId) {
+    try {
+      await cardsApi.deletePortrait(id, resourceId);
+      await get().load();
+    } catch (err: unknown) {
+      set({ error: err instanceof Error ? err.message : 'Failed to delete portrait' });
+      throw err;
+    }
+  },
+
+  async exportVoiceRef(cardId, resourceId, destinationHandle) {
+    try {
+      const res = await cardsApi.exportVoiceRef(cardId, resourceId, destinationHandle);
+      return res.destinationPath;
+    } catch (err: unknown) {
+      set({ error: err instanceof Error ? err.message : 'Failed to export voice ref' });
+      throw err;
+    }
+  },
+
+  async patchVoiceRef(cardId, resourceId, patch) {
+    try {
+      await cardsApi.patchVoiceRef(cardId, resourceId, patch);
+      await get().load();
+    } catch (err: unknown) {
+      set({ error: err instanceof Error ? err.message : 'Failed to update voice ref' });
       throw err;
     }
   },

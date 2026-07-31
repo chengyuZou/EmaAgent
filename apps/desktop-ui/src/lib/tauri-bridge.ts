@@ -90,6 +90,9 @@ export interface TauriBridge {
   /** 由 Rust 原生选框选择附件，并返回不暴露绝对路径的持久能力句柄。 */
   pickAuthorizedFiles(): Promise<AuthorizedFile[]>;
 
+  /** 由 Rust 原生选框选择目录(Live2D 源目录/资源导出目的地),取消返回 null。 */
+  pickAuthorizedDirectory(): Promise<AuthorizedDirectory | null>;
+
   /**
    * Subscribe to native OS-level file drag-and-drop events on the current webview.
    * Tauri 2 disables HTML5 drop events by default (so we can read file *paths*,
@@ -124,6 +127,11 @@ export interface AuthorizedFile {
   name: string;
   size: number;
   mtime: number;
+}
+
+export interface AuthorizedDirectory {
+  fileHandle: string;
+  name: string;
 }
 
 // ── Detection ────────────────────────────────────────────────────────────────
@@ -317,6 +325,10 @@ export const tauriBridge: TauriBridge = {
 
   async pickAuthorizedFiles(): Promise<AuthorizedFile[]> {
     return await tauriBridge.invoke<AuthorizedFile[]>('pick_authorized_files') ?? [];
+  },
+
+  async pickAuthorizedDirectory(): Promise<AuthorizedDirectory | null> {
+    return await tauriBridge.invoke<AuthorizedDirectory | null>('pick_authorized_directory') ?? null;
   },
 
   async onDragDrop(handler: (event: {
