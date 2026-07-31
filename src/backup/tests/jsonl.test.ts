@@ -95,6 +95,7 @@ describe('拒绝规则', () => {
   it('末行缺终止换行视为截断,即使内容合法也拒绝', () => {
     expect(() => decodeJsonl('{"ok":1}', OPTS)).toThrow(/截断/);
     expect(() => decodeJsonl('{"ok":1}\n{"also":2}', OPTS)).toThrow(/截断/);
+    expect(() => decodeJsonl(' \t', OPTS)).toThrow(/截断/);
   });
 
   it('单行超长拒绝', () => {
@@ -107,5 +108,14 @@ describe('拒绝规则', () => {
     const d = new JsonlDecoder({ entryName: 't', maxRecords: 2 });
     const bytes = encodeAll([{ n: 1 }, { n: 2 }, { n: 3 }]);
     expect(() => d.push(bytes)).toThrow(/超过 2 条/);
+  });
+
+  it('巨型单行按原始字节跨分块累计', () => {
+    const d = new JsonlDecoder({ entryName: 't', maxRecords: 100, maxLineBytes: 8 });
+    const bytes = new TextEncoder().encode('123456789');
+    for (let i = 0; i < 8; i += 1) {
+      expect(() => d.push(bytes.subarray(i, i + 1))).not.toThrow();
+    }
+    expect(() => d.push(bytes.subarray(8))).toThrow(/超过 8 字节/);
   });
 });

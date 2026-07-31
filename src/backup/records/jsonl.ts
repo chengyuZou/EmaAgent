@@ -45,6 +45,7 @@ export interface JsonlDecodeOptions {
 export class JsonlDecoder {
   private readonly utf8 = new TextDecoder('utf-8', { fatal: true });
   private buffer = '';
+  private currentLineBytes = 0;
   private lineNumber = 0;
   private records = 0;
   private readonly maxLineBytes: number;
@@ -58,6 +59,7 @@ export class JsonlDecoder {
   }
 
   push(chunk: Uint8Array): unknown[] {
+    this.scanLineBytes(chunk);
     let text: string;
     try {
       text = this.utf8.decode(chunk, { stream: true });
@@ -73,9 +75,6 @@ export class JsonlDecoder {
       const record = this.consumeLine(line);
       if (record !== undefined) out.push(record);
     }
-    if (encoder.encode(this.buffer).byteLength > this.maxLineBytes) {
-      throw new JsonlParseError(`单行超过 ${this.maxLineBytes} 字节限制`, this.options.entryName, this.lineNumber + 1);
-    }
     return out;
   }
 
@@ -89,7 +88,7 @@ export class JsonlDecoder {
     this.buffer += tail;
     const pending = this.buffer;
     this.buffer = '';
-    if (pending.trim().length === 0) return [];
+    if (pending.length === 0) return [];
     // 严格 V2:末行缺终止换行即截断;规范导出器恒以 \n 结束每一行。
     throw new JsonlParseError('末行不完整,归档被截断', this.options.entryName, this.lineNumber + 1);
   }
@@ -98,9 +97,6 @@ export class JsonlDecoder {
     const trimmed = line.trim();
     this.lineNumber += 1;
     if (trimmed.length === 0) return undefined;
-    if (encoder.encode(trimmed).byteLength > this.maxLineBytes) {
-      throw new JsonlParseError(`单行超过 ${this.maxLineBytes} 字节限制`, this.options.entryName, this.lineNumber);
-    }
     this.records += 1;
     if (this.records > this.options.maxRecords) {
       throw new JsonlParseError(`记录数超过 ${this.options.maxRecords} 条限制`, this.options.entryName, this.lineNumber);
@@ -109,6 +105,29 @@ export class JsonlDecoder {
       return JSON.parse(trimmed) as unknown;
     } catch {
       throw new JsonlParseError('不是合法 JSON', this.options.entryName, this.lineNumber);
+    }
+  }
+
+  /**
+   * 换行字节不会出现在 UTF-8 多字节序列内部,因此可以在解码前按原始字节计数。
+   * 这样即使攻击者把巨型单行拆成大量小块,也不会反复重编码整段缓冲形成 O(n²) 开销。
+   */
+  private scanLineBytes(chunk: Uint8Array): void {
+    let reportedLine = this.lineNumber + 1;
+    for (const byte of chunk) {
+      if (byte === 0x0a) {
+        this.currentLineBytes = 0;
+        reportedLine += 1;
+        continue;
+      }
+      this.currentLineBytes += 1;
+      if (this.currentLineBytes > this.maxLineBytes) {
+        throw new JsonlParseError(
+          `单行超过 ${this.maxLineBytes} 字节限制`,
+          this.options.entryName,
+          reportedLine,
+        );
+      }
     }
   }
 }
