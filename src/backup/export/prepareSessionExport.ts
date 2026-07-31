@@ -280,10 +280,10 @@ function safeComponent(value: string): string {
   return value;
 }
 
-/** ema-标题-YYYYMMDD-HHmm.zip;标题清洗跨平台字符,空标题回退 session。 */
+/** ema-标题-YYYYMMDD-HHmm.zip;标题清洗跨平台字符与控制符,空标题回退 session。 */
 function exportFilename(title: string, exportedAt: number): string {
   const safeTitle = title
-    .replace(/[<>:"/\\|?*\-]/g, '')
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '')
     .trim()
     .replace(/\s+/g, '-')
     .slice(0, 30) || 'session';
