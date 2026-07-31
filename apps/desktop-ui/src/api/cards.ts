@@ -1,18 +1,44 @@
-/**
- * Cards API — character card CRUD + voice-refs sub-resource.
- */
+/** 角色卡、主窗口表现与参考音频的 LocalHost API。 */
 import { sidecarClient } from './sidecar-client.js';
 import type { CharacterCardId } from '@ema-agent/ids';
 import type {
   CharacterCard,
   CharacterCardInput,
+  CharacterHealthIssue,
   CharacterVoiceReference,
 } from '@ema-agent/characters';
 import type { Live2DModelRuntimeConfig } from '@ema-agent/live2d-react';
 
 export type { CharacterCard, CharacterCardInput, CharacterVoiceReference };
 
-// ── API object ────────────────────────────────────────────────────────────────
+export type CharacterStageCandidate =
+  | {
+      kind: 'live2d';
+      resourceId: string;
+      label: string;
+      resourceRevision: string;
+      sourcePath: string;
+      runtimeConfig: Live2DModelRuntimeConfig | null;
+    }
+  | {
+      kind: 'portrait';
+      resourceId: string;
+      label: string;
+      resourceRevision: string;
+      sourcePath: string;
+      mimeType: string;
+      width: number;
+      height: number;
+    };
+
+export interface CharacterStageSnapshot {
+  characterId: CharacterCardId;
+  revision: string;
+  candidates: CharacterStageCandidate[];
+  issues: CharacterHealthIssue[];
+}
+
+// ── API ─────────────────────────────────────────────────────────────────────
 
 export const cardsApi = {
   /** GET /api/cards — list all cards. */
@@ -53,17 +79,25 @@ export const cardsApi = {
     });
   },
 
-  // ── Live2D ──────────────────────────────────────────────────────────────
+  // ── 主窗口表现 ───────────────────────────────────────────────────────────
 
-  /** GET /api/cards/:id/live2d/model-path — web-accessible model path. */
-  async getLive2dModelPath(id: CharacterCardId): Promise<string> {
-    const res = await sidecarClient.request<{ path: string }>(`/api/cards/${id}/live2d/model-path`);
-    return res.path;
+  /** 返回已经按 Live2D → 立绘冻结顺序排列的主窗口候选。 */
+  async getPresentation(id: CharacterCardId): Promise<CharacterStageSnapshot> {
+    return sidecarClient.request<CharacterStageSnapshot>(`/api/cards/${id}/presentation`);
   },
 
-  /** GET /api/cards/:id/live2d/runtime-config — emotion/motion map (may 404). */
-  async getLive2dRuntimeConfig(id: CharacterCardId): Promise<Live2DModelRuntimeConfig> {
-    return sidecarClient.request<Live2DModelRuntimeConfig>(`/api/cards/${id}/live2d/runtime-config`);
+  async setPrimaryLive2d(id: CharacterCardId, resourceId: string): Promise<void> {
+    await sidecarClient.request(`/api/cards/${id}/live2d/primary`, {
+      method: 'PUT',
+      json: { resourceId },
+    });
+  },
+
+  async setPrimaryPortrait(id: CharacterCardId, resourceId: string): Promise<void> {
+    await sidecarClient.request(`/api/cards/${id}/portraits/primary`, {
+      method: 'PUT',
+      json: { resourceId },
+    });
   },
 
   // ── Voice-refs ──────────────────────────────────────────────────────────

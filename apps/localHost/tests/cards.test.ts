@@ -1,24 +1,37 @@
 // 测试角色卡 Route 的空值更新、删除守卫与参考音频路径安全。
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { Database } from '@ema-agent/storage';
 import { CharacterCardStore } from '@ema-agent/characters';
-import { asCharacterVoiceReferenceId } from '@ema-agent/ids';
+import { asCharacterCardId, asCharacterVoiceReferenceId } from '@ema-agent/ids';
 import { cardsRoute } from '../src/routes/cards.js';
-import { resolveCardVoiceRefPath } from '../src/storage-locations/index.js';
 
 describe('B-055 cards route', () => {
   let db: Database;
   let card: CharacterCardStore;
   let app: ReturnType<typeof cardsRoute>;
+  let resourceRoot: string;
 
   beforeEach(() => {
     db = new Database({ memory: true, kind: 'profile' });
     db.migrate();
-    card = new CharacterCardStore({ db });
+    resourceRoot = mkdtempSync(join(tmpdir(), 'ema-cards-route-'));
+    card = new CharacterCardStore({
+      db,
+      resourceRoots: {
+        builtinCardsRoot: join(resourceRoot, 'builtin'),
+        userCardsRoot: join(resourceRoot, 'user'),
+      },
+    });
     app = cardsRoute(card);
   });
 
-  afterEach(() => db.close());
+  afterEach(() => {
+    db.close();
+    rmSync(resourceRoot, { recursive: true, force: true });
+  });
 
   async function createCard(name: string): Promise<{ id: string }> {
     const res = await app.request('/', {
@@ -61,6 +74,79 @@ describe('B-055 cards route', () => {
     expect(res.status).toBe(204);
   });
 
+  it('健康接口投影降级资源，空 Prompt 角色不能激活', async () => {
+    const { id } = await createCard('Health');
+    const healthResponse = await app.request(`/${id}/health`);
+    expect(healthResponse.status).toBe(200);
+    await expect(healthResponse.json()).resolves.toMatchObject({
+      characterId: id,
+      status: 'degraded',
+      executionAvailable: true,
+      presentation: 'placeholder',
+    });
+
+    db.sqlite.prepare(
+      'UPDATE character_cards SET system_prompt = ? WHERE id = ?',
+    ).run(' ', id);
+    const activateResponse = await app.request(`/${id}/activate`, {
+      method: 'PUT',
+    });
+    expect(activateResponse.status).toBe(409);
+    await expect(activateResponse.json()).resolves.toMatchObject({
+      error: 'character_not_executable',
+      health: {
+        executionAvailable: false,
+        status: 'invalid',
+      },
+    });
+  });
+
+  it('表现快照按主资源顺序返回候选，并允许运行中切换主 Live2D', async () => {
+    const created = card.create({ name: 'Stage', systemPrompt: 'p' });
+    const live2dDir = join(resourceRoot, 'user', created.id, 'live2d');
+    mkdirSync(live2dDir, { recursive: true });
+    writeFileSync(join(live2dDir, 'a.model3.json'), '{}');
+    writeFileSync(join(live2dDir, 'b.model3.json'), '{}');
+    const first = card.addLive2dVariant(created.id, {
+      label: 'A',
+      format: 'live2d',
+      entryPath: 'live2d/a.model3.json',
+      position: 0,
+      isPrimary: true,
+    });
+    const second = card.addLive2dVariant(created.id, {
+      label: 'B',
+      format: 'live2d',
+      entryPath: 'live2d/b.model3.json',
+      position: 1,
+    });
+
+    const switchResponse = await app.request(`/${created.id}/live2d/primary`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ resourceId: second.id }),
+    });
+    expect(switchResponse.status).toBe(200);
+
+    const response = await app.request(`/${created.id}/presentation`);
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      characterId: created.id,
+      candidates: [
+        {
+          kind: 'live2d',
+          resourceId: second.id,
+          sourcePath: join(live2dDir, 'b.model3.json'),
+        },
+        {
+          kind: 'live2d',
+          resourceId: first.id,
+          sourcePath: join(live2dDir, 'a.model3.json'),
+        },
+      ],
+    });
+  });
+
   it('POST 不再接受旧 voiceProfile JSON 事实源', async () => {
     const res = await app.request('/', {
       method: 'POST',
@@ -93,19 +179,31 @@ describe('B-055 cards route', () => {
     card.addVoiceReference(created.id, {
       id: asCharacterVoiceReferenceId('ra_crafted'),
       label: 'crafted',
-      relativePath: 'voiceRefs/../../../package.json',
+      relativePath: 'voiceRefs/crafted.mp3',
       promptText: 'x',
       promptLang: 'zh',
       mimeType: 'audio/mpeg',
       isPrimary: true,
     });
+    db.sqlite.prepare(
+      'UPDATE character_voice_references SET relative_path = ? WHERE id = ?',
+    ).run('voiceRefs/../../../package.json', 'ra_crafted');
     const res = await app.request(`/${created.id}/voice-refs/ra_crafted`);
     expect(res.status).toBe(400);
     await expect(res.json()).resolves.toMatchObject({ error: 'invalid_voice_ref_path' });
   });
 
-  it('resolveCardVoiceRefPath 自身只放行 voiceRefs/ 单层文件名', () => {
-    expect(() => resolveCardVoiceRefPath('c', false, 'voiceRefs/ra_a.mp3')).not.toThrow();
-    expect(() => resolveCardVoiceRefPath('c', false, 'voiceRefs/../../etc/passwd')).toThrow(/invalid_voice_ref_path/);
+  it('Character 领域只放行 voiceRefs/ 单层文件名', async () => {
+    const { id } = await createCard('Path owner');
+    expect(() => card.resolveResourcePath(
+      asCharacterCardId(id),
+      'voiceRefs/ra_a.mp3',
+      'voiceReference',
+    )).not.toThrow();
+    expect(() => card.resolveResourcePath(
+      asCharacterCardId(id),
+      'voiceRefs/../../etc/passwd',
+      'voiceReference',
+    )).toThrow(/invalid character resource path/);
   });
 });

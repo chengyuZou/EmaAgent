@@ -16,7 +16,7 @@ const REPO_ROOT = path.resolve(__dirname, '..', '..', '..', '..');
 
 /**
  * Always `~/.ema-agent/`. Holds profile.db + registry.json + lockfile.json
- * + voiceRefs/ + global memory (L0 entity graph, L2 episodic items).
+ * + cards/ + global memory (L0 entity graph, L2 episodic items).
  * Honors EMA_PROFILE_DIR env var for tests.
  */
 export function profileDir(): string {
@@ -42,32 +42,6 @@ export function lockfilePath(): string {
   return path.join(profileDir(), 'lockfile.json');
 }
 
-// ── Voice reference audio (profile-scoped) ───────────────────────────────────
-// @deprecated Use cardDir(cardId, isBuiltin) + 'voiceRefs' instead.
-// Kept for backward compatibility during the V2 migration.
-
-/**
- * Root for character reference audio. Profile-scoped so a card's voice
- * survives dataDir switches. Per-card sub-folder:
- *   `<profileDir>/voiceRefs/<cardId>/<filename>`
- *
- * @deprecated — user-uploaded voice-refs now live under
- *   `~/.ema-agent/cards/<cardId>/voiceRefs/`. This function is kept only
- *   for migration of legacy voice-ref paths. New code should use
- *   cardDir(cardId, false) + 'voiceRefs'.
- */
-export function voiceRefsDir(): string {
-  return path.join(profileDir(), 'voiceRefs');
-}
-
-export function voiceRefsForCard(cardId: string): string {
-  return path.join(voiceRefsDir(), cardId);
-}
-
-export function resolveVoiceRefPath(relPath: string): string {
-  return path.join(voiceRefsDir(), relPath);
-}
-
 // ── Character card resource packs ────────────────────────────────────────────
 
 /**
@@ -80,67 +54,14 @@ export function cardsDir(): string {
   return path.join(profileDir(), 'cards');
 }
 
-/**
- * Path to a character card's resource directory.
- *
- * Builtin cards (isBuiltin=true): packaged in `public/cards/<cardId>/`,
- * read-only, served by the Tauri webview. The EMA_BUILTIN_CARDS_DIR env
- * var overrides the default (used in dev to point at apps/desktop/public).
- *
- * User cards (isBuiltin=false): `~/.ema-agent/cards/<cardId>/`, read-write.
- */
-export function cardDir(cardId: string, isBuiltin: boolean): string {
-  if (isBuiltin) {
-    // builtin 卡资源在 apps/desktop/public/cards/<cardId>/,从仓库根拼
-    // (process.cwd() 在 tsx watch 下是 apps/localHost,不是仓库根,会导致路径错误 →
-    // runtime-config 404 → Live2D 加载失败卡第 0 帧)
-    const base = process.env['EMA_BUILTIN_CARDS_DIR'] ?? path.join(REPO_ROOT, 'apps', 'desktop', 'public', 'cards');
-    return path.join(base, cardId);
-  }
-  return path.join(cardsDir(), cardId);
-}
-
-/**
- * Resolve a relative path inside a card's resource pack to an absolute path.
- *
- * @param cardId    The card's id (e.g. 'ema').
- * @param isBuiltin Whether the card is builtin (read from public/) or user.
- * @param relPath   Relative path inside the card pack (e.g. 'live2d/ema.model3.json'
- *                  or 'voiceRefs/ra_ema001.mp3').
- */
-export function cardResourcePath(cardId: string, isBuiltin: boolean, relPath: string): string {
-  return path.join(cardDir(cardId, isBuiltin), relPath);
-}
-
-/**
- * Resolve a voice-ref relative path inside a card's resource pack.
- *
- * For builtin cards, this returns the path inside `public/cards/<cardId>/voiceRefs/`.
- * For user cards, `~/.ema-agent/cards/<cardId>/voiceRefs/`.
- *
- * CharacterVoiceReference.relativePath 相对角色包根目录保存，
- * 例如 `voiceRefs/ra_ema001.mp3`。
- *
- * B-055 路径安全: 与 Character 类型契约一致, 只允许 `voiceRefs/<单层文件名>`——
- * 拒绝绝对路径, `..` 逃逸, 反斜杠与子目录。relativePath 来自数据库(可能被构造),
- * 此函数是 GET 音频流, DELETE 文件, TTS 克隆上传与 GPT-SoVITS 读文件共用的
- * 唯一咽喉点, 越界一律抛 invalid_voice_ref_path。
- */
-export function resolveCardVoiceRefPath(cardId: string, isBuiltin: boolean, relPath: string): string {
-  if (relPath.includes('\\')) {
-    throw new Error(`invalid_voice_ref_path: ${relPath}`);
-  }
-  const match = /^voiceRefs\/([^/]+)$/.exec(relPath);
-  const filename = match?.[1];
-  if (!filename || filename === '.' || filename === '..') {
-    throw new Error(`invalid_voice_ref_path: ${relPath}`);
-  }
-  return path.join(cardDir(cardId, isBuiltin), 'voiceRefs', filename);
+/** 内置角色资源根目录；正式包可用 EMA_BUILTIN_CARDS_DIR 指向只读资源目录。 */
+export function builtinCardsDir(): string {
+  return process.env['EMA_BUILTIN_CARDS_DIR']
+    ?? path.join(REPO_ROOT, 'apps', 'desktop', 'public', 'cards');
 }
 
 /** Create the profile-side directories that aren't part of profile.db itself. */
 export function ensureProfileLayout(): void {
-  fs.mkdirSync(voiceRefsDir(), { recursive: true });
   fs.mkdirSync(cardsDir(), { recursive: true });
 }
 

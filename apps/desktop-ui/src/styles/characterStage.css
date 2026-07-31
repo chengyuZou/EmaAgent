@@ -1,0 +1,82 @@
+/* 主窗口角色舞台使用双层过渡，保证新资源就绪前旧画面不会消失。 */
+
+.ema-character-stage,
+.ema-character-stage__resource,
+.ema-character-stage__placeholder {
+  position: fixed;
+  inset: 0;
+}
+
+.ema-character-stage {
+  z-index: 2;
+  pointer-events: none;
+}
+
+.ema-character-stage__resource {
+  opacity: 0;
+  transition: opacity var(--ema-duration-slow) var(--ema-ease);
+}
+
+.ema-character-stage__resource[data-state='active'] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.ema-character-stage__resource[data-state='outgoing'] {
+  opacity: 0;
+}
+
+.ema-character-stage__resource[data-state='pending'] {
+  visibility: hidden;
+}
+
+.ema-character-stage__portrait {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center bottom;
+  user-select: none;
+  -webkit-user-drag: none;
+  animation: ema-character-portrait-breathe 4.8s var(--ema-ease) infinite;
+}
+
+.ema-character-stage__placeholder {
+  display: grid;
+  place-items: center;
+  opacity: 0.58;
+  animation: ema-fade-in var(--ema-duration-base) var(--ema-ease) both;
+}
+
+.ema-character-stage__placeholder-ring {
+  width: 42%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 1px solid var(--ema-border);
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--ema-primary) 10%, transparent),
+    transparent 68%
+  );
+  box-shadow: 0 0 42px color-mix(in srgb, var(--ema-primary) 14%, transparent);
+}
+
+@keyframes ema-character-portrait-breathe {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-2px) scale(1.003);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ema-character-stage__resource {
+    transition-duration: 0ms;
+  }
+
+  .ema-character-stage__portrait,
+  .ema-character-stage__placeholder {
+    animation: none;
+  }
+}

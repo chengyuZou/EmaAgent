@@ -4,6 +4,7 @@ import {
   defaultLive2DRuntime,
   Live2DStage,
   type Live2DModelRuntimeConfig,
+  type Live2DError,
   type Live2DRuntime,
   type Live2DStageHandle,
 } from '@ema-agent/live2d-react';
@@ -12,9 +13,12 @@ import { tauriBridge } from '@ema-agent/desktop-ui';
 export interface EmaStageViewProps {
   modelPath: string;
   runtime?: Live2DRuntime;
-  /** Live2D runtime config JSON (emotionMap, motionMap, etc.). */
+  /** Live2D 的情绪与动作映射运行配置。 */
   runtimeConfig?: Live2DModelRuntimeConfig;
   suspended?: boolean;
+  interactive?: boolean;
+  onReady?: () => void;
+  onError?: (error: Live2DError) => void;
 }
 
 export function EmaStageView({
@@ -22,11 +26,16 @@ export function EmaStageView({
   runtime = defaultLive2DRuntime,
   runtimeConfig,
   suspended = false,
+  interactive = true,
+  onReady,
+  onError,
 }: EmaStageViewProps): JSX.Element {
   const stageRef = useRef<Live2DStageHandle>(null);
   const { live2dStore, speechStore } = runtime;
 
   useEffect(() => {
+    if (!interactive) return;
+
     const isTargetStage = (stageId?: string): boolean => {
       if (stageId) return stageId === runtime.stageId;
       return runtime.stageId === defaultLive2DRuntime.stageId;
@@ -59,7 +68,7 @@ export function EmaStageView({
       stageRef.current?.playMotion(target.group, target.index);
     };
 
-    // Listen for stage:emotion-changed events from system-sse
+    // 接收系统事件流投递的角色情绪变化。
     const unlistenEmotion = tauriBridge.listen<{ primary: string; stageId?: string }>(
       'stage:emotion-changed',
       (event) => {
@@ -68,7 +77,7 @@ export function EmaStageView({
       },
     );
 
-    // Listen for stage:cue events (motion + expression)
+    // 舞台提示可以同时携带动作与表情。
     const unlistenCue = tauriBridge.listen<{
       motion?: string;
       expression?: string;
@@ -87,8 +96,7 @@ export function EmaStageView({
       },
     );
 
-    // Speech RMS can originate in another webview (chat.html owns TTS
-    // playback), so bridge it into the stage window's own speech store.
+    // TTS 播放可能位于聊天 WebView，需要把 RMS 桥接到主窗口自己的语音状态。
     const unlistenSpeech = tauriBridge.listen<{
       speaking: boolean;
       rms: number;
@@ -113,7 +121,7 @@ export function EmaStageView({
       };
     }
 
-    // Listen for stage:cycle-expression (from FloatingDock):
+    // FloatingDock 只发出轮换意图，具体状态仍由舞台 Store 原子更新：
     // 轮换语义由 store 的 cycleExpression 原子完成, 此处只做 stage 过滤。
     const unlistenCycle = tauriBridge.listen<{ stageId?: string }>(
       'stage:cycle-expression',
@@ -130,7 +138,7 @@ export function EmaStageView({
       void unlistenCycle.then((fn) => fn());
       speechChannel?.close();
     };
-  }, [live2dStore, runtime, runtimeConfig, speechStore]);
+  }, [interactive, live2dStore, runtime, runtimeConfig, speechStore]);
 
   return (
     <Live2DStage
@@ -139,6 +147,8 @@ export function EmaStageView({
       runtime={runtime}
       runtimeConfig={runtimeConfig ?? undefined}
       suspended={suspended}
+      onReady={onReady}
+      onError={onError}
     />
   );
 }

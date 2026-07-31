@@ -27,7 +27,6 @@ import type {
   CharacterCardStore,
   CharacterVoiceReference,
 } from '@ema-agent/characters';
-import { resolveCardVoiceRefPath } from '../../storage-locations/index.js';
 
 // ── Provider config builder ─────────────────────────────────────────────────
 
@@ -80,8 +79,20 @@ export function resolveVoice(
   const primary = pickPrimaryVoiceReference(c.voiceReferences);
   if (!primary) return null;
 
+  let refAudioPath: string;
+  try {
+    refAudioPath = store.resolveResourcePath(
+      c.id,
+      primary.relativePath,
+      'voiceReference',
+    );
+  } catch {
+    // 参考音频损坏只降级声音能力，不阻断角色与文字对话。
+    return null;
+  }
+
   return {
-    refAudioPath: resolveCardVoiceRefPath(c.id, c.isBuiltin, primary.relativePath),
+    refAudioPath,
     promptText:   primary.promptText,
     promptLang:   primary.promptLang,
     // Provider 声音句柄由 TTS 输出入口按 Provider + Model 短期缓存或懒上传。

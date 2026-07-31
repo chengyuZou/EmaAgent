@@ -32,4 +32,31 @@ export type {
 } from './voiceReferences/types.js';
 export { buildCharacterPromptSections } from './characterPrompt.js';
 export type { CharacterPromptSections } from './characterPrompt.js';
-export type { CharacterCardSwitchedEvent, CharacterEvent } from './events.js';
+export type {
+  CharacterCardSwitchedEvent,
+  CharacterEvent,
+  CharacterPresentationChangedEvent,
+} from './events.js';
+export {
+  CharacterPromptInvalidError,
+  CharacterResourcePathError,
+} from './errors.js';
+export type {
+  CharacterResourceKind,
+  CharacterResourceRoots,
+} from './resources/characterResourcePaths.js';
+export type {
+  CharacterResourceOperation,
+  CharacterResourceOperationContext,
+  CharacterResourceOperationKind,
+  CharacterResourceOperationStage,
+} from './resources/characterResourceOperations.js';
+export type {
+  CharacterHealth,
+  CharacterHealthIssue,
+  CharacterHealthIssueCode,
+  CharacterHealthIssueSeverity,
+  CharacterHealthStatus,
+  CharacterPresentation,
+  CharacterPresentationCandidate,
+} from './validation/characterValidator.js';

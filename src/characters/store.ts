@@ -29,6 +29,22 @@ import type {
   CharacterVoiceReferenceInput,
 } from './voiceReferences/types.js';
 import { CharacterVoiceReferenceRepository } from './voiceReferences/repository.js';
+import {
+  CharacterResourcePaths,
+  type CharacterResourceKind,
+  type CharacterResourceRoots,
+} from './resources/characterResourcePaths.js';
+import {
+  CharacterResourceOperations,
+  type CharacterResourceOperation,
+  type CharacterResourceOperationContext,
+  type CharacterResourceOperationKind,
+} from './resources/characterResourceOperations.js';
+import {
+  CharacterValidator,
+  type CharacterHealth,
+} from './validation/characterValidator.js';
+import { assertCharacterPrompt } from './validation/characterPromptValidation.js';
 
 // ── 事件监听器类型 ─────────────────────────────────────────────────────────────
 
@@ -51,14 +67,27 @@ export type CardSwitchedListener = (
   previous: CharacterCard | null,
 ) => void;
 
+export type CharacterPresentationChangedListener = (card: CharacterCard) => void;
+
 export class CharacterCardStore {
   private readonly repository: CharacterCardRepository;
   private readonly live2d: CharacterLive2dRepository;
   private readonly portraits: CharacterPortraitRepository;
   private readonly voiceReferences: CharacterVoiceReferenceRepository;
+  private readonly resourcePaths: CharacterResourcePaths;
+  private readonly validator: CharacterValidator;
+  private readonly resourceOperations = new CharacterResourceOperations();
   private readonly switchedListeners = new Set<CardSwitchedListener>();
+  private readonly presentationChangedListeners =
+    new Set<CharacterPresentationChangedListener>();
 
-  constructor({ db }: { db: Database }) {
+  constructor({
+    db,
+    resourceRoots,
+  }: {
+    db: Database;
+    resourceRoots: CharacterResourceRoots;
+  }) {
     const repo: CharacterCardsRepo = new Repo(db.sqlite);
     this.repository = new CharacterCardRepository(repo);
     this.live2d = new CharacterLive2dRepository(
@@ -70,6 +99,8 @@ export class CharacterCardStore {
     this.voiceReferences = new CharacterVoiceReferenceRepository(
       new CharacterVoiceReferencesRepo(db.sqlite),
     );
+    this.resourcePaths = new CharacterResourcePaths(resourceRoots);
+    this.validator = new CharacterValidator(this.resourcePaths);
   }
 
   // ── 事件订阅 ──────────────────────────────────────────────────────────────────
@@ -81,6 +112,13 @@ export class CharacterCardStore {
     this.switchedListeners.add(handler);
     return () => {
       this.switchedListeners.delete(handler);
+    };
+  }
+
+  onPresentationChanged(handler: CharacterPresentationChangedListener): () => void {
+    this.presentationChangedListeners.add(handler);
+    return () => {
+      this.presentationChangedListeners.delete(handler);
     };
   }
 
@@ -99,6 +137,7 @@ export class CharacterCardStore {
     for (const seed of BUILTIN_CARDS) {
       const cardId = asCharacterCardId(seed.id);
       if (!this.repository.findById(cardId)) {
+        assertCharacterPrompt(seed.card.systemPrompt, cardId);
         this.repository.insert(seed.card, { id: cardId, isBuiltin: true });
       }
 
@@ -157,6 +196,7 @@ export class CharacterCardStore {
   activate(id: CharacterCardId): CharacterCardId {
     const target = this.get(id);
     if (!target) throw new Error(`character card not found: ${id}`);
+    assertCharacterPrompt(target.systemPrompt, id);
 
     const active = this.repository.findActive();
     const before = active ? this.withResources(active) : null;
@@ -172,10 +212,14 @@ export class CharacterCardStore {
   }
 
   create(input: CharacterCardInput): CharacterCard {
+    assertCharacterPrompt(input.systemPrompt);
     return this.withResources(this.repository.insert(input));
   }
 
   update(id: CharacterCardId, patch: Partial<CharacterCardInput>): CharacterCard {
+    if (patch.systemPrompt !== undefined) {
+      assertCharacterPrompt(patch.systemPrompt, id);
+    }
     this.repository.update(id, patch);
     return this.get(id)!;
   }
@@ -199,6 +243,7 @@ export class CharacterCardStore {
   }
 
   delete(id: CharacterCardId): void {
+    this.resourceOperations.forget(id);
     this.repository.delete(id);
   }
 
@@ -210,18 +255,28 @@ export class CharacterCardStore {
     id: CharacterCardId,
     input: CharacterLive2dVariantInput,
   ): CharacterLive2dVariant {
-    return this.live2d.insert(id, input);
+    this.validateResourceInput(id, input.entryPath, 'live2d');
+    if (input.runtimeConfigPath) {
+      this.validateResourceInput(id, input.runtimeConfigPath, 'live2d');
+    }
+    const resource = this.live2d.insert(id, input);
+    this.emitPresentationChanged(id);
+    return resource;
   }
 
   setPrimaryLive2dVariant(id: CharacterCardId, resourceId: CharacterLive2dId): boolean {
-    return this.live2d.setPrimary(id, resourceId);
+    const changed = this.live2d.setPrimary(id, resourceId);
+    if (changed) this.emitPresentationChanged(id);
+    return changed;
   }
 
   deleteLive2dVariant(
     id: CharacterCardId,
     resourceId: CharacterLive2dId,
   ): CharacterLive2dVariant | undefined {
-    return this.live2d.delete(id, resourceId);
+    const resource = this.live2d.delete(id, resourceId);
+    if (resource) this.emitPresentationChanged(id);
+    return resource;
   }
 
   listPortraits(id: CharacterCardId): CharacterPortrait[] {
@@ -229,18 +284,25 @@ export class CharacterCardStore {
   }
 
   addPortrait(id: CharacterCardId, input: CharacterPortraitInput): CharacterPortrait {
-    return this.portraits.insert(id, input);
+    this.validateResourceInput(id, input.relativePath, 'portrait');
+    const resource = this.portraits.insert(id, input);
+    this.emitPresentationChanged(id);
+    return resource;
   }
 
   setPrimaryPortrait(id: CharacterCardId, resourceId: CharacterPortraitId): boolean {
-    return this.portraits.setPrimary(id, resourceId);
+    const changed = this.portraits.setPrimary(id, resourceId);
+    if (changed) this.emitPresentationChanged(id);
+    return changed;
   }
 
   deletePortrait(
     id: CharacterCardId,
     resourceId: CharacterPortraitId,
   ): CharacterPortrait | undefined {
-    return this.portraits.delete(id, resourceId);
+    const resource = this.portraits.delete(id, resourceId);
+    if (resource) this.emitPresentationChanged(id);
+    return resource;
   }
 
   listVoiceReferences(id: CharacterCardId): CharacterVoiceReference[] {
@@ -251,6 +313,7 @@ export class CharacterCardStore {
     id: CharacterCardId,
     input: CharacterVoiceReferenceInput,
   ): CharacterVoiceReference {
+    this.validateResourceInput(id, input.relativePath, 'voiceReference');
     return this.voiceReferences.insert(id, input);
   }
 
@@ -268,6 +331,51 @@ export class CharacterCardStore {
     return this.voiceReferences.delete(id, resourceId);
   }
 
+  inspectHealth(id: CharacterCardId, deep = false): Promise<CharacterHealth> {
+    const card = this.get(id);
+    if (!card) throw new Error(`character card not found: ${id}`);
+    return this.validator.inspect(card, deep);
+  }
+
+  resolveResourcePath(
+    id: CharacterCardId,
+    relativePath: string,
+    kind: CharacterResourceKind,
+  ): string {
+    const card = this.get(id);
+    if (!card) throw new Error(`character card not found: ${id}`);
+    return this.resourcePaths.resolve(id, card.isBuiltin, relativePath, kind);
+  }
+
+  voiceReferencesDirectory(id: CharacterCardId): string {
+    const card = this.get(id);
+    if (!card) throw new Error(`character card not found: ${id}`);
+    if (card.isBuiltin) throw new Error(`builtin character is read-only: ${id}`);
+    return this.resourcePaths.voiceReferencesDirectory(id);
+  }
+
+  runResourceOperation<T>(
+    id: CharacterCardId,
+    kind: CharacterResourceOperationKind,
+    operation: (context: CharacterResourceOperationContext) => Promise<T>,
+  ): Promise<T> {
+    return this.resourceOperations.run(id, kind, operation);
+  }
+
+  inspectResourceOperation(id: CharacterCardId): CharacterResourceOperation | undefined {
+    return this.resourceOperations.inspect(id);
+  }
+
+  private validateResourceInput(
+    id: CharacterCardId,
+    relativePath: string,
+    kind: CharacterResourceKind,
+  ): void {
+    const card = this.get(id);
+    if (!card) throw new Error(`character card not found: ${id}`);
+    this.resourcePaths.resolve(id, card.isBuiltin, relativePath, kind);
+  }
+
   private withResources(card: CharacterCard): CharacterCard {
     return {
       ...card,
@@ -275,5 +383,17 @@ export class CharacterCardStore {
       portraits: this.portraits.list(card.id),
       voiceReferences: this.voiceReferences.list(card.id),
     };
+  }
+
+  private emitPresentationChanged(id: CharacterCardId): void {
+    const card = this.get(id);
+    if (!card) return;
+    for (const listener of this.presentationChangedListeners) {
+      try {
+        listener(card);
+      } catch (error) {
+        console.error('[character-card] presentation listener threw:', error);
+      }
+    }
   }
 }

@@ -7,10 +7,15 @@ import { Hono } from 'hono';
 
 import {
   asCharacterCardId,
+  asCharacterLive2dId,
+  asCharacterPortraitId,
   asCharacterVoiceReferenceId,
 } from '@ema-agent/ids';
-import type { CharacterCardStore } from '@ema-agent/characters';
-import { cardDir, cardResourcePath, resolveCardVoiceRefPath } from '../storage-locations/index.js';
+import {
+  CharacterPromptInvalidError,
+  CharacterResourcePathError,
+  type CharacterCardStore,
+} from '@ema-agent/characters';
 import { REQUEST_VALUE_LIMITS } from '../http/request-budget.js';
 import { z } from 'zod';
 
@@ -25,10 +30,10 @@ function getCardOr404(cardStore: CharacterCardStore, idStr: string) {
 // ── Card CRUD schemas ──────────────────────────────────────────────────────
 
 const createCardSchema = z.object({
-  name:              z.string().min(1).max(200),
+  name:              z.string().trim().min(1).max(200),
   version:           z.string().max(50).optional(),
   description:       z.string().max(1000).optional().nullable(),
-  systemPrompt:      z.string().min(1),
+  systemPrompt:      z.string().refine((value) => value.trim().length > 0),
   speechPatterns:    z.array(z.string()).optional(),
   forbiddenTopics:   z.array(z.string()).optional(),
   emotionVocabulary: z.array(z.string()).optional(),
@@ -37,10 +42,10 @@ const createCardSchema = z.object({
 
 // 资源不混入角色卡元数据；参考音频在角色创建后通过独立子资源接口维护。
 const patchCardSchema = z.object({
-  name:              z.string().min(1).max(200).optional(),
+  name:              z.string().trim().min(1).max(200).optional(),
   version:           z.string().max(50).optional(),
   description:       z.string().max(1000).optional().nullable(),
-  systemPrompt:      z.string().min(1).optional(),
+  systemPrompt:      z.string().refine((value) => value.trim().length > 0).optional(),
   speechPatterns:    z.array(z.string()).optional(),
   forbiddenTopics:   z.array(z.string()).optional(),
   emotionVocabulary: z.array(z.string()).optional(),
@@ -80,6 +85,9 @@ function mimeForExt(ext: string): string {
  *   PATCH  /:id                       update card metadata
  *   DELETE /:id                       delete card
  *   PUT    /:id/activate              set as globally active card
+ *   GET    /:id/presentation          ordered main-window resource snapshot
+ *   PUT    /:id/live2d/primary        switch primary Live2D resource
+ *   PUT    /:id/portraits/primary     switch primary portrait resource
  *
  * Voice-refs (sub-resource of card):
  *   GET    /:cardId/voice-refs            list refs (no audio bytes)
@@ -105,17 +113,37 @@ export function cardsRoute(cardStore: CharacterCardStore): Hono {
     return c.json(card);
   });
 
+  app.get('/:id/health', async (c) => {
+    const id = asCharacterCardId(c.req.param('id'));
+    if (!cardStore.get(id)) return c.json({ error: 'card_not_found' }, 404);
+    const deep = c.req.query('depth') === 'deep';
+    return c.json(await cardStore.inspectHealth(id, deep));
+  });
+
+  app.get('/:id/resource-operation', (c) => {
+    const id = asCharacterCardId(c.req.param('id'));
+    if (!cardStore.get(id)) return c.json({ error: 'card_not_found' }, 404);
+    return c.json({ operation: cardStore.inspectResourceOperation(id) ?? null });
+  });
+
   app.post('/', async (c) => {
     const body = createCardSchema.safeParse(await c.req.json().catch(() => null));
     if (!body.success) {
       return c.json({ error: 'invalid_request', details: body.error.flatten() }, 400);
     }
-    const card = cardStore.create({
-      ...body.data,
-      description: body.data.description ?? undefined,
-      version: body.data.version ?? '1.0',
-    });
-    return c.json(card, 201);
+    try {
+      const card = cardStore.create({
+        ...body.data,
+        description: body.data.description ?? undefined,
+        version: body.data.version ?? '1.0',
+      });
+      return c.json(card, 201);
+    } catch (error) {
+      if (error instanceof CharacterPromptInvalidError) {
+        return c.json({ error: error.code }, 400);
+      }
+      throw error;
+    }
   });
 
   app.patch('/:id', async (c) => {
@@ -126,8 +154,15 @@ export function cardsRoute(cardStore: CharacterCardStore): Hono {
     }
     // B-055:不把 null 转 undefined —— storage update 用 `!== undefined` 判断,
     // null 会 SET NULL(清空),undefined 跳过(不更新)。`?? undefined` 会让清空失败。
-    const card = cardStore.update(id, body.data);
-    return c.json(card);
+    try {
+      const card = cardStore.update(id, body.data);
+      return c.json(card);
+    } catch (error) {
+      if (error instanceof CharacterPromptInvalidError) {
+        return c.json({ error: error.code }, 400);
+      }
+      throw error;
+    }
   });
 
   app.delete('/:id', (c) => {
@@ -141,12 +176,16 @@ export function cardsRoute(cardStore: CharacterCardStore): Hono {
     return c.body(null, 204);
   });
 
-  app.put('/:id/activate', (c) => {
+  app.put('/:id/activate', async (c) => {
     const id = asCharacterCardId(c.req.param('id'));
     const card = cardStore.get(id);
     if (!card) return c.json({ error: 'card_not_found' }, 404);
+    const health = await cardStore.inspectHealth(id, false);
+    if (!health.executionAvailable) {
+      return c.json({ error: 'character_not_executable', health }, 409);
+    }
     cardStore.activate(id);
-    return c.json({ activeCardId: id as string });
+    return c.json({ activeCardId: id as string, health });
   });
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -197,38 +236,52 @@ export function cardsRoute(cardStore: CharacterCardStore): Hono {
     const setPrimary = form.get('setPrimary') === 'true'
                     || form.get('setPrimary') === '1';
 
-    const refId = asCharacterVoiceReferenceId(`ra_${randomUUID().slice(0, 8)}`);
-    const ext     = extForMime(file.type || mimeForExt(path.extname(label).slice(1)));
-    const voiceDir = path.join(cardDir(found.id as string, found.card.isBuiltin), 'voiceRefs');
-    fs.mkdirSync(voiceDir, { recursive: true });
-    const relPath = `voiceRefs/${refId}.${ext}`;
-    const absPath = path.join(voiceDir, `${refId}.${ext}`);
+    return cardStore.runResourceOperation(
+      found.id,
+      'voiceReferenceUpload',
+      async ({ setStage }) => {
+        setStage('validating');
+        const refId = asCharacterVoiceReferenceId(`ra_${randomUUID().slice(0, 8)}`);
+        const ext = extForMime(file.type || mimeForExt(path.extname(label).slice(1)));
+        const relPath = `voiceRefs/${refId}.${ext}`;
+        const voiceDir = cardStore.voiceReferencesDirectory(found.id);
+        fs.mkdirSync(voiceDir, { recursive: true });
+        const absPath = cardStore.resolveResourcePath(
+          found.id,
+          relPath,
+          'voiceReference',
+        );
 
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    await fs.promises.writeFile(absPath, bytes);
+        setStage('staging');
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        await fs.promises.writeFile(absPath, bytes);
 
-    let newRef;
-    try {
-      newRef = cardStore.addVoiceReference(found.id, {
-        id: refId,
-        label,
-        relativePath: relPath,
-        promptText,
-        promptLang,
-        isPrimary: setPrimary || found.card.voiceReferences.length === 0,
-        mimeType: file.type || mimeForExt(ext),
-        byteSize: file.size,
-      });
-    } catch (error) {
-      await fs.promises.rm(absPath, { force: true }).catch(() => undefined);
-      throw error;
-    }
-
-    return c.json({
-      reference: newRef,
-      primaryId: cardStore.get(found.id)?.voiceReferences
-        .find((reference) => reference.isPrimary)?.id ?? null,
-    }, 201);
+        try {
+          setStage('publishing');
+          const current = cardStore.get(found.id);
+          if (!current) throw new Error(`character card not found: ${found.id}`);
+          const newRef = cardStore.addVoiceReference(found.id, {
+            id: refId,
+            label,
+            relativePath: relPath,
+            promptText,
+            promptLang,
+            isPrimary: setPrimary || current.voiceReferences.length === 0,
+            mimeType: file.type || mimeForExt(ext),
+            byteSize: file.size,
+          });
+          setStage('finalizing');
+          return c.json({
+            reference: newRef,
+            primaryId: cardStore.get(found.id)?.voiceReferences
+              .find((reference) => reference.isPrimary)?.id ?? null,
+          }, 201);
+        } catch (error) {
+          await fs.promises.rm(absPath, { force: true }).catch(() => undefined);
+          throw error;
+        }
+      },
+    );
   });
 
   app.get('/:cardId/voice-refs/:refId', async (c) => {
@@ -242,10 +295,10 @@ export function cardsRoute(cardStore: CharacterCardStore): Hono {
     // 相对路径来自显式资源记录，文件读取前仍再次限制在角色 voiceRefs 目录。
     let absPath: string;
     try {
-      absPath = resolveCardVoiceRefPath(
+      absPath = cardStore.resolveResourcePath(
         found.id,
-        found.card.isBuiltin,
         ref.relativePath,
+        'voiceReference',
       );
     } catch {
       return c.json({ error: 'invalid_voice_ref_path' }, 400);
@@ -263,7 +316,7 @@ export function cardsRoute(cardStore: CharacterCardStore): Hono {
     });
   });
 
-  app.delete('/:cardId/voice-refs/:refId', (c) => {
+  app.delete('/:cardId/voice-refs/:refId', async (c) => {
     const found = getCardOr404(cardStore, c.req.param('cardId'));
     if (!found) return c.json({ error: 'card_not_found' }, 404);
     if (found.card.isBuiltin) return c.json({ error: 'builtin_readonly' }, 403);
@@ -274,20 +327,39 @@ export function cardsRoute(cardStore: CharacterCardStore): Hono {
 
     let absPath: string;
     try {
-      absPath = resolveCardVoiceRefPath(
+      absPath = cardStore.resolveResourcePath(
         found.id,
-        found.card.isBuiltin,
         ref.relativePath,
+        'voiceReference',
       );
     } catch {
       return c.json({ error: 'invalid_voice_ref_path' }, 400);
     }
 
-    const deleted = cardStore.deleteVoiceReference(found.id, refId);
-    if (!deleted) return c.json({ error: 'ref_not_found' }, 404);
-    try { fs.rmSync(absPath, { force: true }); } catch { /* 孤儿文件由后续资源自检回收。 */ }
+    return cardStore.runResourceOperation(
+      found.id,
+      'voiceReferenceDelete',
+      async ({ setStage }) => {
+        setStage('validating');
+        const current = cardStore.get(found.id);
+        const currentRef = current?.voiceReferences.find(
+          (reference) => reference.id === refId,
+        );
+        if (!currentRef) return c.json({ error: 'ref_not_found' }, 404);
 
-    return c.body(null, 204);
+        setStage('publishing');
+        const deleted = cardStore.deleteVoiceReference(found.id, refId);
+        if (!deleted) return c.json({ error: 'ref_not_found' }, 404);
+
+        setStage('finalizing');
+        try {
+          await fs.promises.rm(absPath, { force: true });
+        } catch {
+          // 数据库已经是事实源；C3 的可恢复文件事务会负责孤儿文件回收。
+        }
+        return c.body(null, 204);
+      },
+    );
   });
 
   app.put('/:cardId/voice-refs/primary', async (c) => {
@@ -306,55 +378,151 @@ export function cardsRoute(cardStore: CharacterCardStore): Hono {
     return c.json({ primaryId: refId });
   });
 
-  // ── Live2D model path + runtime config ──────────────────────────────────────
+  // ── 主窗口表现快照 ─────────────────────────────────────────────────────────
 
-  /**
-   * GET /:cardId/live2d/model-path
-   * Returns the web-accessible path for the card's selected Live2D model.
-   */
-  app.get('/:cardId/live2d/model-path', (c) => {
+  app.get('/:cardId/presentation', async (c) => {
     const found = getCardOr404(cardStore, c.req.param('cardId'));
     if (!found) return c.json({ error: 'card_not_found' }, 404);
-    const model = selectedLive2dVariant(found.card.live2dVariants);
-    if (!model) return c.json({ error: 'no_live2d_model' }, 404);
+    const health = await cardStore.inspectHealth(found.id, false);
+    const candidates = [];
 
-    if (found.card.isBuiltin) {
-      return c.json({ path: `/cards/${found.id}/${model.entryPath}` });
+    for (const candidate of health.presentationCandidates) {
+      if (candidate.kind === 'live2d') {
+        const resource = found.card.live2dVariants.find(
+          (item) => item.id === candidate.resourceId,
+        );
+        if (!resource) continue;
+        candidates.push({
+          kind: 'live2d' as const,
+          resourceId: resource.id,
+          label: resource.label,
+          resourceRevision: `${resource.updatedAt}:${resource.contentSha256 ?? ''}`,
+          sourcePath: stageResourcePath(
+            cardStore,
+            found.id,
+            found.card.isBuiltin,
+            resource.entryPath,
+            'live2d',
+          ),
+          runtimeConfig: await readRuntimeConfig(
+            cardStore,
+            found.id,
+            resource.runtimeConfigPath,
+          ),
+        });
+        continue;
+      }
+
+      const resource = found.card.portraits.find(
+        (item) => item.id === candidate.resourceId,
+      );
+      if (!resource) continue;
+      candidates.push({
+        kind: 'portrait' as const,
+        resourceId: resource.id,
+        label: resource.label,
+        resourceRevision: `${resource.updatedAt}:${resource.contentSha256 ?? ''}`,
+        sourcePath: stageResourcePath(
+          cardStore,
+          found.id,
+          found.card.isBuiltin,
+          resource.relativePath,
+          'portrait',
+        ),
+        mimeType: resource.mimeType,
+        width: resource.width,
+        height: resource.height,
+      });
     }
+
     return c.json({
-      path: cardResourcePath(found.id, false, model.entryPath),
+      characterId: found.id,
+      revision: presentationRevision(found.card),
+      candidates,
+      issues: health.issues,
     });
   });
 
-  app.get('/:cardId/live2d/runtime-config', async (c) => {
+  app.put('/:cardId/live2d/primary', async (c) => {
     const found = getCardOr404(cardStore, c.req.param('cardId'));
     if (!found) return c.json({ error: 'card_not_found' }, 404);
-    const model = selectedLive2dVariant(found.card.live2dVariants);
-    if (!model) return c.json({ error: 'no_live2d_model' }, 404);
-    if (!model.runtimeConfigPath) {
-      return c.json({ error: 'runtime_config_missing' }, 404);
+    const body = await c.req.json().catch(() => null) as { resourceId?: string } | null;
+    if (!body || typeof body.resourceId !== 'string') {
+      return c.json({ error: 'missing_resourceId' }, 400);
     }
+    const resourceId = asCharacterLive2dId(body.resourceId);
+    if (!cardStore.setPrimaryLive2dVariant(found.id, resourceId)) {
+      return c.json({ error: 'live2d_not_found' }, 404);
+    }
+    return c.json({ primaryId: resourceId });
+  });
 
-    const configPath = cardResourcePath(
-      found.id,
-      found.card.isBuiltin,
-      model.runtimeConfigPath,
-    );
-    try {
-      const content = await fs.promises.readFile(configPath, 'utf-8');
-      return c.json(JSON.parse(content));
-    } catch {
-      return c.json({ error: 'runtime_config_missing' }, 404);
+  app.put('/:cardId/portraits/primary', async (c) => {
+    const found = getCardOr404(cardStore, c.req.param('cardId'));
+    if (!found) return c.json({ error: 'card_not_found' }, 404);
+    const body = await c.req.json().catch(() => null) as { resourceId?: string } | null;
+    if (!body || typeof body.resourceId !== 'string') {
+      return c.json({ error: 'missing_resourceId' }, 400);
     }
+    const resourceId = asCharacterPortraitId(body.resourceId);
+    if (!cardStore.setPrimaryPortrait(found.id, resourceId)) {
+      return c.json({ error: 'portrait_not_found' }, 404);
+    }
+    return c.json({ primaryId: resourceId });
   });
 
   return app;
 }
 
-function selectedLive2dVariant<T extends {
-  isPrimary: boolean;
-  enabled: boolean;
-}>(variants: readonly T[]): T | undefined {
-  return variants.find((variant) => variant.enabled && variant.isPrimary)
-    ?? variants.find((variant) => variant.enabled);
+function stageResourcePath(
+  cardStore: CharacterCardStore,
+  cardId: ReturnType<typeof asCharacterCardId>,
+  isBuiltin: boolean,
+  relativePath: string,
+  kind: 'live2d' | 'portrait',
+): string {
+  const absolutePath = cardStore.resolveResourcePath(cardId, relativePath, kind);
+  return isBuiltin ? `/cards/${cardId}/${relativePath}` : absolutePath;
+}
+
+async function readRuntimeConfig(
+  cardStore: CharacterCardStore,
+  cardId: ReturnType<typeof asCharacterCardId>,
+  relativePath: string | null,
+): Promise<unknown | null> {
+  if (!relativePath) return null;
+  try {
+    const configPath = cardStore.resolveResourcePath(cardId, relativePath, 'live2d');
+    const content = await fs.promises.readFile(configPath, 'utf-8');
+    return JSON.parse(content) as unknown;
+  } catch {
+    // 模型本体仍可使用默认映射；配置故障不应把整个 Live2D 候选踢出降级链。
+    return null;
+  }
+}
+
+function presentationRevision(card: {
+  updatedAt: number;
+  live2dVariants: readonly {
+    id: string;
+    updatedAt: number;
+    isPrimary: boolean;
+    enabled: boolean;
+  }[];
+  portraits: readonly {
+    id: string;
+    updatedAt: number;
+    isPrimary: boolean;
+    enabled: boolean;
+  }[];
+}): string {
+  const resources = [...card.live2dVariants, ...card.portraits]
+    .map((resource) => [
+      resource.id,
+      resource.updatedAt,
+      Number(resource.isPrimary),
+      Number(resource.enabled),
+    ].join(':'))
+    .sort();
+  return [card.updatedAt, ...resources].join('|');
 }

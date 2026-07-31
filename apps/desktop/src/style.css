@@ -1,9 +1,0 @@
-/* ── ⚠️ 此文件为孤儿(没人 import),暗色 token 已迁移 ──────────────────────
- *
- * 2026-07-08:暗色语义 token(--ema-primary / --ema-text-* / --ema-border* 等)
- * 已合并到 apps/desktop-ui/src/styles/tokens.css 的 :root。此文件保留作暗色方案
- * 草稿(用户 V1 要做亮暗,暗色没想好,暂留参考)。实跑样式走 desktop-ui/styles/。
- *
- * 别再往这里加东西 —— 新样式进 apps/desktop-ui/src/styles/ 对应文件。
- * 历史暗色 token 定义已删除(已迁移),如需查阅暗色方案,看 tokens.css 的 :root。
- */

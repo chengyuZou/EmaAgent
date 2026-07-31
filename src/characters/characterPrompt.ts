@@ -1,6 +1,7 @@
 // 把角色身份与表达能力转换为模型可见的角色指令片段。
 
 import type { CharacterCard } from './types.js';
+import { assertCharacterPrompt } from './validation/characterPromptValidation.js';
 
 export interface CharacterPromptSections {
   identity: string;
@@ -12,6 +13,8 @@ export interface CharacterPromptSections {
 export function buildCharacterPromptSections(
   card: CharacterCard,
 ): CharacterPromptSections {
+  // 数据库可能被旧版本或外部工具直接改坏；每次新模型请求仍在领域边界拒绝空 Prompt。
+  assertCharacterPrompt(card.systemPrompt, card.id);
   return {
     identity: card.systemPrompt,
     presentation: buildActProtocolPrompt(card),

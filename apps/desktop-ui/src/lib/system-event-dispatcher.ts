@@ -10,6 +10,7 @@ import { useSettingsStore } from '../stores/settings-store.js';
 export function dispatchSystemEvent(event: AppEvent): void {
   switch (event.type) {
     case 'character_card_switched':
+    case 'character_presentation_changed':
       void useCardStore.getState().load();
       break;
 

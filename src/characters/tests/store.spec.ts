@@ -1,6 +1,9 @@
 // 测试角色卡与三类表现资源的种子、聚合、主项切换和复制边界。
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Database } from '@ema-agent/storage';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { CharacterCardStore } from '../store.js';
 import { EMA_CARD_ID } from '../seed/index.js';
 import type { CharacterCardInput } from '../types.js';
@@ -19,16 +22,25 @@ function minimalInput(overrides: Partial<CharacterCardInput> = {}): CharacterCar
 describe('CharacterCardStore', () => {
   let db: Database;
   let store: CharacterCardStore;
+  let resourceRoot: string;
 
   beforeEach(() => {
     db = new Database({ memory: true, kind: 'profile' });
     db.migrate();
-    store = new CharacterCardStore({ db });
+    resourceRoot = mkdtempSync(join(tmpdir(), 'ema-character-store-'));
+    store = new CharacterCardStore({
+      db,
+      resourceRoots: {
+        builtinCardsRoot: join(resourceRoot, 'builtin'),
+        userCardsRoot: join(resourceRoot, 'user'),
+      },
+    });
     store.ensureSeed();
   });
 
   afterEach(() => {
     db.close();
+    rmSync(resourceRoot, { recursive: true, force: true });
   });
 
   // ─── seed & init ──────────────────────────────────────────────────────────
@@ -67,7 +79,13 @@ describe('CharacterCardStore', () => {
       // deactivate the only card by activating nothing (simulate corrupted state)
       const db2 = new Database({ memory: true, kind: 'profile' });
       db2.migrate();
-      const emptyStore = new CharacterCardStore({ db: db2 });
+      const emptyStore = new CharacterCardStore({
+        db: db2,
+        resourceRoots: {
+          builtinCardsRoot: join(resourceRoot, 'builtin'),
+          userCardsRoot: join(resourceRoot, 'user'),
+        },
+      });
       // never called ensureSeed
       expect(() => emptyStore.current()).toThrow('no active character card');
       db2.close();
@@ -125,6 +143,11 @@ describe('CharacterCardStore', () => {
       expect(card.emotionVocabulary).toEqual([]);
       expect(card.motionVocabulary).toEqual([]);
     });
+
+    it('拒绝只有空白的角色 Prompt', () => {
+      expect(() => store.create(minimalInput({ systemPrompt: ' \n ' })))
+        .toThrow('character prompt is empty');
+    });
   });
 
   describe('voice references', () => {
@@ -171,6 +194,14 @@ describe('CharacterCardStore', () => {
 
     it('throws when activating a non-existent card', () => {
       expect(() => store.activate('ghost' as CharacterCardId)).toThrow();
+    });
+
+    it('数据库被外部写坏后仍拒绝激活空 Prompt', () => {
+      const card = store.create(minimalInput());
+      db.sqlite.prepare(
+        'UPDATE character_cards SET system_prompt = ? WHERE id = ?',
+      ).run(' ', card.id);
+      expect(() => store.activate(card.id)).toThrow('character prompt is empty');
     });
   });
 

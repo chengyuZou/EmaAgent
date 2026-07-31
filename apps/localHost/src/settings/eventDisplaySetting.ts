@@ -54,6 +54,7 @@ export const DEFAULT_EVENT_DISPLAY: Partial<Record<ClientEvent['type'], EventDis
   tts_sentence_complete:        { enabled: false, color: '#f472b6', durationMs: 1500 },
   tts_warning:                  { enabled: true,  color: '#f59e0b', durationMs: 4000, truncateChars: 120 },
   character_card_switched:      { enabled: true,  color: '#f59e0b', durationMs: 4000 },
+  character_presentation_changed: { enabled: false, color: '#f59e0b', durationMs: 1500 },
   provider_health_changed:      { enabled: true,  color: '#0ea5e9', durationMs: 3000 },
   background_process_changed:   { enabled: true,  color: '#64748b', durationMs: 3000 },
   system_warning:               { enabled: true,  color: '#f59e0b', durationMs: 5000 },

@@ -7,4 +7,11 @@ export interface CharacterCardSwitchedEvent {
   name: string;
 }
 
-export type CharacterEvent = CharacterCardSwitchedEvent;
+export interface CharacterPresentationChangedEvent {
+  type: 'character_presentation_changed';
+  cardId: CharacterCardId;
+}
+
+export type CharacterEvent =
+  | CharacterCardSwitchedEvent
+  | CharacterPresentationChangedEvent;

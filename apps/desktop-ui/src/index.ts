@@ -129,7 +129,12 @@ export type {
 } from './api/settings.js';
 
 export { cardsApi }          from './api/cards.js';
-export type { CharacterCard, CharacterCardInput } from './api/cards.js';
+export type {
+  CharacterCard,
+  CharacterCardInput,
+  CharacterStageCandidate,
+  CharacterStageSnapshot,
+} from './api/cards.js';
 
 export { transcribeApi }     from './api/transcribe.js';
 export type { SttResponse, SttSegment } from './api/transcribe.js';

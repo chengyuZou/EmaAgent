@@ -8,8 +8,8 @@ export {
   removeLegacyArtifactDirectories,
   scratchpadTurnDir, removeSessionDir, removeTurnFiles,
   sweepOrphanSessionDirectories, sweepOrphanTurnFiles,
-  voiceRefsDir, voiceRefsForCard, resolveVoiceRefPath, ensureProfileLayout,
-  cardsDir, cardDir, cardResourcePath, resolveCardVoiceRefPath,
+  ensureProfileLayout,
+  cardsDir, builtinCardsDir,
 } from './paths.js';
 
 export {

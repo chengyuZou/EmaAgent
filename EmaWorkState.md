@@ -1,7 +1,7 @@
 # EmaAgent 当前重构接力板
 
 > 状态：临时施工记录，架构完成后删除
-> 更新时间：2026-07-30
+> 更新时间：2026-07-31
 > 作用：只记录当前阶段、工作区归属、最近验证和下一步。长期规则以 `CLAUDE.md` 为准，目标设计以 `EmaRefactor.md` 为准，设计依据以 `EmaClaudeArchitectureReview.md` 为准。
 
 ## 当前阶段
@@ -172,7 +172,7 @@ K3 当前负责 Desktop Chat Workspace、Git/Review 等前端工作；主 Agent 
 
 K3 当前负责 Desktop Chat Workspace 与 Git/Review 施工；本轮 Character 只修改 Desktop 的角色 API、角色设置 VoiceTab 和主窗资源选择，没有覆盖 Chat/Workspace 文件。
 
-Character C1a 显式数据与调用链切换已经完成：Profile v17 将旧单值 Live2D 和 `voice_profile_json` 迁入 `character_live2d_variants/character_portraits/character_voice_references`，并物理删除旧字段和只服务 Character 的 `live2d_models` 表。Storage 保持纯 SQL Repo，Character 聚合角色卡与三类资源；Seed、Cards Route、TTS、角色设置和 Desktop 主窗均消费显式资源。旧共享模型与重复声音 ID 使用角色范围的确定性新身份，危险旧路径不会被提升为可信资源；复制角色只复制角色定义，不共享原角色资源路径。后续 C1b 才实现 Prompt 硬门槛、统一健康投影、图片/路径校验、per-Character 锁和操作阶段；C2 做主窗确定性降级，C3 做可恢复文件生命周期与导入导出。Session Backup 继续不接 Character。
+Character C1a/C1b/C2 已完成：Character 统一拥有显式多 Live2D、多立绘、参考音频、路径规范、Prompt 硬门、健康投影与稳定候选顺序。LocalHost 提供原子表现快照和主 Live2D/主立绘切换，资源变化通过 AppEvent 刷新各窗口；Desktop `CharacterStage` 支持 Live2D → 立绘 → 占位逐级失败降级、同角色无空白切换、跨角色立即占位，以及迟到异步结果隔离。C3 的可恢复文件事务、整包导入导出和角色目录删除尚未实现；Session Backup 继续不接 Character。
 
 ## 已确定的 V1 口径
 
@@ -229,13 +229,17 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
     - **A 主链真 Bug 已完成**：ToolResultStore EEXIST 只复用完全一致的内容；Usage 状态模型已区分 `cancelled`；Anthropic 已删除隐式 `maxTokens=4096` 并使用调用级剩余输出预算；
     - **B 主链安全收口**：install-git 与 mcpStdioGate 路由级审批已经接通；`AGEN_UNSAFE_*` 在正式构建中会直接阻止启动，不能由安装环境变量关闭隔离。Sandbox 状态接前端常驻提示仍属于前端工作；
     - **C 主链卫生已完成**：已删除 Macro 压缩后绕过 Memory 开关直接重读 L1 Session Note 的旧恢复旁路；正常 L1 Recall 继续作为不可压缩 Contribution 保留，Active Skill 继续走 required restore。AgentLoopState 已删除不可达状态；`prefixHash` 已明确为本次请求截止最终缓存断点的身份，会随历史、当前 Turn 和工具轮次演进，不再伪装成跨 Turn 固定 Prompt Hash。
-12. Character C1a 已完成显式多 Live2D、多图片与参考音频数据、Profile v17、四组纯 SQL Repo、聚合 DTO 和现有调用链切换。下一批 C1b 在 `src/characters` 增加 Prompt 硬门槛、统一健康投影、路径/图片校验、per-Character 资源锁与操作阶段，不拆顶层 Workspace 包；C2 再做主窗口多 Live2D → 多图片 → 占位的运行时降级；C3 最后接资源/角色删除、导入导出、普通目录搬运与启动恢复。现有 Session Backup 不扩张到 Character。
+12. Character C1a/C1b/C2 已完成显式资源、Prompt/健康门槛与主窗口可抢占降级。主项和候选由后端冻结顺序，主窗口不扫描数据库或文件；同角色切换保留旧画面到新资源就绪，跨角色先显示占位，过期加载不能覆盖当前选择。下一批 C3 接资源/角色删除、导入导出、普通目录搬运与启动恢复。现有 Session Backup 不扩张到 Character。
 
 命名随业务批次清理：旧 `IFileStateStoreEntry/IFileStateStore` 及后续过渡接口已经删除，`IToolExecutionJournal` 已改为职责名；其余迁移期 `I*` 类型继续随业务边界处理，不单独进行全仓机械重命名。
 
 每批只改变一个主要业务边界。不要把 Turn 统一、数据库 Schema、全仓 ID 改名和前端切换塞进同一批。
 
 ## 最近验证
+
+- Character C2 主窗口降级批：Characters 2 文件 27/27、LocalHost 全量 43 文件 164/164、Desktop UI 全量 33 文件 166/166、Desktop 3 文件 12/12 通过；Characters、Events、LocalHost、Desktop UI、Desktop 五包 typecheck 通过。覆盖损坏主 Live2D 后继续同类候选、运行时切换主 Live2D、表现快照迟到请求隔离。Desktop Vite 构建已走到 1714 模块，最终被既有 `src/turn/interaction/sessionInteractionQueue.ts` 浏览器链导入 `node:crypto.randomUUID` 阻塞；与 Character 改动无关，后续需从 Desktop UI 依赖图移除 Node-only Turn 实现。
+
+- Character C1b 资源自检批：Characters typecheck/build 与 2 文件 26/26 通过；LocalHost typecheck 与全量 43 文件 163/163 通过；`git diff --check` 通过。测试覆盖写入/激活/Prompt 装配三重空 Prompt 关闸、绝对路径/反斜杠/目录穿越拒绝、立绘实际格式/尺寸/字节深检、Live2D 缺失后立绘降级、同角色资源操作串行，以及 Cards Health/激活 HTTP 契约。K3 的 `apps/desktop-ui/src/chat/input/` 未跟踪施工区未触碰。
 
 - MCP 拆分收尾（K3）：Desktop UI typecheck + 33 文件 166/166 通过。用户已拆出 KeyValueEditor/McpMarketView/McpServerRow 后，最后一块两个对话框归位 `McpServerDialogs.tsx`（295 行）：`McpImportDialog` 与 `McpServerFormDialog` 状态自包含（store 全局自取，表单/探测/导入结果内部管理），编辑实例经父级 `key={editing?.name ?? 'new'}` 重挂重置初值；`McpTab.tsx` 433→130 行纯装配。mcp/ 终态：McpTab 130 + MarketView 194 + ServerRow 186 + ServerDialogs 295 + KeyValueEditor 48 + ArgumentEditor 80 + form-state 82。`git diff --check` 通过，仅有既有 CRLF 提示。
 

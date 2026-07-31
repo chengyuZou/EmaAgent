@@ -3,12 +3,19 @@
 import { CharacterCardStore } from '@ema-agent/characters';
 import { EmotionEngine } from '@ema-agent/emotion';
 import type { Database } from '@ema-agent/storage';
+import { builtinCardsDir, cardsDir } from '../storage-locations/index.js';
 
 export function createCharacterRuntime(profileDb: Database): {
   readonly card: CharacterCardStore;
   readonly emotion: EmotionEngine;
 } {
-  const card = new CharacterCardStore({ db: profileDb });
+  const card = new CharacterCardStore({
+    db: profileDb,
+    resourceRoots: {
+      builtinCardsRoot: builtinCardsDir(),
+      userCardsRoot: cardsDir(),
+    },
+  });
   card.ensureSeed();
 
   const emotion = new EmotionEngine({

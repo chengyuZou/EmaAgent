@@ -37,6 +37,15 @@ export function registerAllEmitters(bindings: AppBindings): () => void {
     }),
   );
 
+  offs.push(
+    bindings.card.onPresentationChanged((card) => {
+      bindings.systemBus.emit({
+        type: 'character_presentation_changed',
+        cardId: card.id,
+      });
+    }),
+  );
+
   return () => {
     for (const off of offs) {
       try { off(); } catch { /* tolerate */ }

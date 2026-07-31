@@ -1,121 +1,122 @@
 // 组装桌宠主窗口、Live2D 舞台、权限提示与桌面交互入口。
-import { useEffect, useState } from 'react';
-import { EmaStageView }          from './components/EmaStageView.js';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { CharacterStage }       from './components/CharacterStage.js';
 import { SpeechBubble }          from './components/SpeechBubble.js';
 import { PermissionToastLayer }  from './components/PermissionToastLayer.js';
-import { defaultLive2DRuntime } from '@ema-agent/live2d-react';
 import {
-  FloatingDock, ShellSetupDialog, SidecarApiError, cardsApi, mountSystemEvents, shellApi, turnsApi, useCardStore, useSidecarStore, useRuntimeSettingsSync, useThemeSync, } from '@ema-agent/desktop-ui';
-import type { ShellStatus, SidecarStatus } from '@ema-agent/desktop-ui';
+  defaultLive2DRuntime,
+  type Live2DRuntime,
+} from '@ema-agent/live2d-react';
+import {
+  FloatingDock, ShellSetupDialog, cardsApi, mountSystemEvents, shellApi, turnsApi, useCardStore, useSidecarStore, useRuntimeSettingsSync, useThemeSync, } from '@ema-agent/desktop-ui';
+import type {
+  CharacterStageSnapshot,
+  ShellStatus,
+  SidecarStatus,
+} from '@ema-agent/desktop-ui';
 import type { CharacterCardId, TurnId } from '@ema-agent/ids';
 import {
-  StageSnapshotLoader,
-  type ActiveStageSnapshot,
-} from './stage-snapshot-loader.js';
+  CharacterStageSnapshotLoader,
+} from './characterStageSnapshotLoader.js';
 import { useWindowSuspension } from './hooks/use-window-suspension.js';
 
-// ── Main window ─────────────────────────────────────────────────────────────
+// ── 主窗口 ──────────────────────────────────────────────────────────────────
 //
-// Layout (all positioned absolute over a transparent window):
-//   - <DragLayer>             — invisible full-window drag region (Tauri)
-//   - <GlowBorder>            — pink-white breathing ring around the window
-//   - <Live2DStage>           — character (half-body framing in component)
-//   - <FloatingDock>          — right edge, fades in on cursor-in-window
-//   - <SidecarBadge>          — top-left dot, tooltip on hover
+// 透明窗口上的绝对定位层：
+//   - DragLayer：覆盖全窗的透明拖拽区
+//   - GlowBorder：窗口边缘呼吸光
+//   - CharacterStage：Live2D、立绘或占位
+//   - FloatingDock：鼠标进入窗口后出现的右侧工具条
+//   - SidecarBadge：左上角 LocalHost 状态点
 //
-// Dock visibility: tracks DOM mouseenter / mouseleave on the body. On enter,
-// dock fades in (opacity 0 → 1). On leave with a 600 ms grace, fades out.
-// Grace keeps the dock visible while you move along its right edge briefly.
+// Dock 监听 body 的鼠标进入和离开；离开后保留 600ms，避免沿右缘移动时闪烁。
 
 const DOCK_FADE_GRACE_MS = 600;
-
-type ActiveStageState =
-  | { kind: 'empty' }
-  | { kind: 'loading'; cardId: CharacterCardId }
-  | { kind: 'ready'; snapshot: ActiveStageSnapshot }
-  | { kind: 'error'; cardId: CharacterCardId; error: unknown };
 
 export function App(): React.JSX.Element {
   const stageSuspended = useWindowSuspension();
   const sidecarStatus = useSidecarStore((s) => s.status);
   const activeCardId = useCardStore((s) => s.activeCardId);
-  const activeLive2dResourceId = useCardStore((s) => (
-    s.cards.find((card) => card.id === s.activeCardId)
-      ?.live2dVariants.find((variant) => variant.enabled && variant.isPrimary)?.id
-      ?? s.cards.find((card) => card.id === s.activeCardId)
-        ?.live2dVariants.find((variant) => variant.enabled)?.id
-      ?? null
-  ));
+  const activePresentationRevision = useCardStore((s) => {
+    const card = s.cards.find((item) => item.id === s.activeCardId);
+    if (!card) return '';
+    return [
+      card.updatedAt,
+      ...[...card.live2dVariants, ...card.portraits]
+        .map((resource) => [
+          resource.id,
+          resource.updatedAt,
+          Number(resource.isPrimary),
+          Number(resource.enabled),
+        ].join(':'))
+        .sort(),
+    ].join('|');
+  });
+  const activeStageRuntime = useRef<Live2DRuntime | null>(null);
   const [dockVisible,  setDockVisible]  = useState(false);
   const [shellStatus,  setShellStatus]  = useState<ShellStatus | null>(null);
-  const [stageState, setStageState] = useState<ActiveStageState>({ kind: 'empty' });
-  const [stageLoader] = useState(() => new StageSnapshotLoader({
-    getModelPath: (cardId) => cardsApi.getLive2dModelPath(cardId),
-    async getRuntimeConfig(cardId) {
-      try {
-        return await cardsApi.getLive2dRuntimeConfig(cardId);
-      } catch (error: unknown) {
-        // 运行配置是可选资源；只有“确实不存在”才使用默认值，其他故障必须显式失败。
-        if (error instanceof SidecarApiError && error.status === 404) return null;
-        throw error;
-      }
-    },
+  const [stageSnapshot, setStageSnapshot] = useState<CharacterStageSnapshot | null>(null);
+  const [stageLoader] = useState(() => new CharacterStageSnapshotLoader({
+    getPresentation: (cardId) => cardsApi.getPresentation(cardId),
   }));
+  const handleStageRuntimeChanged = useCallback((runtime: Live2DRuntime | null): void => {
+    if (runtime) activeStageRuntime.current = runtime;
+  }, []);
 
-  // Sidecar 首次可用及角色切换事件都会刷新 card-store；舞台只订阅稳定的角色字段。
+  // LocalHost 首次可用及角色切换事件都会刷新 card-store；舞台只订阅稳定角色字段。
   useEffect(() => {
     if (sidecarStatus.kind !== 'ok') return;
     void useCardStore.getState().load();
   }, [sidecarStatus.kind]);
 
-  // 路径与配置必须作为同一快照提交，绝不展示“新模型 + 旧角色配置”。
+  // 同角色刷新保留旧快照到新候选就绪；跨角色先撤下旧角色，避免视觉与 Prompt 身份错位。
   useEffect(() => {
     stageLoader.invalidate();
 
-    if (!activeCardId || !activeLive2dResourceId) {
-      setStageState({ kind: 'empty' });
+    if (!activeCardId) {
+      setStageSnapshot(null);
       return;
     }
 
     let disposed = false;
-    setStageState({ kind: 'loading', cardId: activeCardId });
+    setStageSnapshot((current) => (
+      current?.characterId === activeCardId ? current : null
+    ));
     void stageLoader.load(activeCardId)
       .then((snapshot) => {
-        if (!disposed && snapshot) setStageState({ kind: 'ready', snapshot });
+        if (!disposed && snapshot) setStageSnapshot(snapshot);
       })
       .catch((error: unknown) => {
         if (disposed) return;
         console.error('[stage] failed to load active character', activeCardId, error);
-        setStageState({ kind: 'error', cardId: activeCardId, error });
       });
 
     return () => {
       disposed = true;
       stageLoader.invalidate();
     };
-  }, [activeCardId, activeLive2dResourceId, stageLoader]);
+  }, [activeCardId, activePresentationRevision, stageLoader]);
 
-  useDevTtsPlaybackFromUrl();
+  useDevTtsPlaybackFromUrl(activeStageRuntime);
   useThemeSync();
   useRuntimeSettingsSync(sidecarStatus.kind === 'ok');
 
   // 主桌宠窗口与应用同生命周期，负责唯一的全局系统事件连接。
   useEffect(() => mountSystemEvents({ ownsConnection: true }), []);
 
-  // Shell availability check — runs once when the sidecar becomes reachable.
-  // On non-Windows this always resolves to { available: true } immediately.
+  // LocalHost 可用后检查一次 Shell；非 Windows 平台会直接返回可用。
   useEffect(() => {
     if (sidecarStatus.kind !== 'ok') return;
     shellApi.status().then(setShellStatus).catch(() => { /* sidecar not yet settled */ });
   }, [sidecarStatus.kind]);
 
-  // Sidecar health polling
+  // 主窗口持有 LocalHost 健康轮询。
   useEffect(() => {
     const stop = useSidecarStore.getState().startPolling();
     return stop;
   }, []);
 
-  // Dock visibility tracking (cursor in / out of the window body)
+  // 鼠标进出窗口时控制 Dock 显隐。
   useEffect(() => {
     let leaveTimer: ReturnType<typeof setTimeout> | null = null;
     const onEnter = (): void => {
@@ -137,24 +138,20 @@ export function App(): React.JSX.Element {
 
   return (
     <>
-      {/* UnoCSS test — remove after confirming scanning works */}
+      {/* UnoCSS 扫描哨兵，确认生产扫描稳定后可以删除。 */}
       <div className="hidden flex-col absolute right-3 top-1/2 -translate-y-1/2 z-10 opacity-0 pointer-events-none rounded-full w-10 h-10 gap-2 backdrop-blur border" />
 
-      {/*  Drag region — covers the whole window underneath everything else.
-           Anything that should NOT drag (dock buttons, Live2D, future text
-           inputs) sets `data-tauri-drag-region={false}` on itself.          */}
+      {/* 拖拽层位于所有内容下方；可交互组件必须显式关闭 Tauri 拖拽。 */}
       <div style={dragLayerStyle} data-tauri-drag-region />
 
       <GlowBorder />
 
-      {stageState.kind === 'ready' && (
-        <EmaStageView
-          key={stageState.snapshot.cardId}
-          modelPath={stageState.snapshot.modelPath}
-          runtimeConfig={stageState.snapshot.runtimeConfig ?? undefined}
-          suspended={stageSuspended}
-        />
-      )}
+      <CharacterStage
+        targetCharacterId={activeCardId}
+        snapshot={stageSnapshot}
+        suspended={stageSuspended}
+        onRuntimeChanged={handleStageRuntimeChanged}
+      />
 
       <SpeechBubble />
 
@@ -162,9 +159,7 @@ export function App(): React.JSX.Element {
 
       <SidecarBadge status={sidecarStatus} />
 
-      {/* Non-blocking toasts for permission / ask_confirm. Other ask_* prompts
-          are handled in the chat window's DecisionLayer (per-session queue);
-          the pet window has no viewedSessionId so it never shows a modal. */}
+      {/* 主窗口只显示非阻塞授权提示；其他 AskUser 由聊天窗口的 Session 队列处理。 */}
       <PermissionToastLayer />
 
       {shellStatus?.available === false && (
@@ -177,7 +172,7 @@ export function App(): React.JSX.Element {
   );
 }
 
-function useDevTtsPlaybackFromUrl(): void {
+function useDevTtsPlaybackFromUrl(runtime: React.RefObject<Live2DRuntime | null>): void {
   useEffect(() => {
     if (!import.meta.env.DEV) return;
 
@@ -194,7 +189,7 @@ function useDevTtsPlaybackFromUrl(): void {
         if (!response.ok) {
           throw new Error(`audio fetch failed: ${response.status} ${response.statusText}`);
         }
-        await testTtsPlayback(await response.arrayBuffer());
+        await testTtsPlayback(await response.arrayBuffer(), runtime.current);
       } catch (err) {
         console.error('[live2d-test] failed to play turn audio', err);
       }
@@ -210,12 +205,9 @@ function useDevTtsPlaybackFromUrl(): void {
   }, []);
 }
 
-// ── Pink-white breathing glow border ────────────────────────────────────────
+// ── 粉白呼吸光边框 ──────────────────────────────────────────────────────────
 //
-// Two layered box-shadows on an empty positioned div:
-//   - inner ring     (subtle, always on)
-//   - outer pulse    (animated opacity, slow breathing)
-// pointer-events: none so it never blocks dock/drag.
+// 内外两层阴影只负责视觉，不参与鼠标命中。
 
 function GlowBorder(): React.JSX.Element {
   return (
@@ -240,7 +232,7 @@ const glowStyle: React.CSSProperties = {
   borderRadius:  16,
   pointerEvents: 'none',
   zIndex:        1,
-  // Inset glow lives on the border itself, outset glow softens outward
+  // 内层勾勒边界，外层向窗口外柔化。
   boxShadow:     [
     `inset 0 0 12px 1px ${PINK_WHITE}`,
     `inset 0 0 28px 4px rgba(255, 214, 230, 0.18)`,
@@ -253,11 +245,10 @@ const dragLayerStyle: React.CSSProperties = {
   position:      'fixed',
   inset:         0,
   zIndex:        0,
-  // Drag region needs to be opaque to mouse events, so no pointer-events: none.
-  // Stays underneath dock/stage which set their own zIndex.
+  // 拖拽区必须接收鼠标事件，因此不能设置 pointer-events:none。
 };
 
-// ── Sidecar status badge ────────────────────────────────────────────────────
+// ── LocalHost 状态点 ─────────────────────────────────────────────────────────
 
 function SidecarBadge({ status }: { status: SidecarStatus }): React.JSX.Element {
   const [hover, setHover] = useState(false);
@@ -318,12 +309,16 @@ const badgeTooltipStyle: React.CSSProperties = {
   pointerEvents:  'none',
 };
 
-// ── Test harness: play audio through the Live2D lip-sync pipeline ─────────
+// ── 开发测试入口：让音频经过 Live2D 口型管线 ─────────────────────────────────
 
 let _testAudioCtx: AudioContext | null = null;
 let _testAnalyser: AnalyserNode | null = null;
 
-async function testTtsPlayback(arrayBuffer: ArrayBuffer): Promise<void> {
+async function testTtsPlayback(
+  arrayBuffer: ArrayBuffer,
+  runtime: Live2DRuntime | null = defaultLive2DRuntime,
+): Promise<void> {
+  const targetRuntime = runtime ?? defaultLive2DRuntime;
   if (!_testAudioCtx) {
     _testAudioCtx = new AudioContext();
     _testAnalyser = _testAudioCtx.createAnalyser();
@@ -343,11 +338,11 @@ async function testTtsPlayback(arrayBuffer: ArrayBuffer): Promise<void> {
       const v = (rmsData[i]! - 128) / 128;
       sum += v * v;
     }
-    defaultLive2DRuntime.speechStore.getState().setRms(Math.sqrt(sum / rmsData.length));
+    targetRuntime.speechStore.getState().setRms(Math.sqrt(sum / rmsData.length));
     raf = requestAnimationFrame(loop);
   };
 
-  defaultLive2DRuntime.speechStore.getState().setSpeaking(true);
+  targetRuntime.speechStore.getState().setSpeaking(true);
   loop();
 
   try {
@@ -359,7 +354,7 @@ async function testTtsPlayback(arrayBuffer: ArrayBuffer): Promise<void> {
     await new Promise<void>((r) => { source.onended = () => r(); source.start(); });
   } finally {
     cancelAnimationFrame(raf);
-    defaultLive2DRuntime.speechStore.getState().reset();
+    targetRuntime.speechStore.getState().reset();
   }
 }
 

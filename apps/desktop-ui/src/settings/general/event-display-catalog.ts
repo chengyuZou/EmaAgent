@@ -72,6 +72,7 @@ const EVENT_LABELS: Record<string, string> = {
   emotion_changed: '角色情绪变化',
   stage_cue: '角色舞台动作',
   character_card_switched: '角色切换',
+  character_presentation_changed: '角色外观切换',
   provider_health_changed: '服务健康状态变化',
   background_process_changed: '后台进程状态变化',
   hook_warning: 'Hook 告警',
