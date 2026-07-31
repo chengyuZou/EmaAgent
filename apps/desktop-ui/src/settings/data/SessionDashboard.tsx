@@ -163,11 +163,13 @@ export function SessionDashboard({ session }: { session: SessionWire }): JSX.Ele
   async function handleExport(): Promise<void> {
     setExporting(true);
     try {
-      const blob = await storageApi.exportSession(sid);
+      const { blob, filename } = await storageApi.exportSession(sid);
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement('a');
       a.href     = url;
-      a.download = `ema-${(session.title || session.id).slice(0, 30)}-${session.id.slice(-6)}.zip`;
+      // 文件名以后端 Content-Disposition 为准,只有旧后端才回退本地拼接。
+      a.download = filename
+        ?? `ema-${(session.title || session.id).slice(0, 30)}-${session.id.slice(-6)}.zip`;
       a.click();
       URL.revokeObjectURL(url);
       showToast('导出完成', { variant: 'success' });

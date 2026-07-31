@@ -320,7 +320,7 @@ export function storageStatsRoute(dependencies: StorageStatsRouteDependencies): 
           signal: c.req.raw.signal,
         });
         const restored = dependencies.session.getSession(asSessionId(result.sessionId));
-        return c.json(restored, 201);
+        return c.json({ session: restored, warnings: result.warnings }, 201);
       } catch (error) {
         if (error instanceof SessionImportError) {
           return c.json({ error: error.code, message: error.message }, error.status);

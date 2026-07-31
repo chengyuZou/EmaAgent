@@ -63,7 +63,15 @@ export function StorageTab(): JSX.Element {
     try {
       const result = await storageApi.importSession(file);
       await useSessionStore.getState().loadSessions();
-      showToast('会话导入成功', { variant: 'success' });
+      if (result.warnings.length > 0) {
+        const preview = result.warnings.slice(0, 2).join(';');
+        showToast(
+          `会话已导入,但有 ${result.warnings.length} 项内容缺失: ${preview}${result.warnings.length > 2 ? ' 等' : ''}`,
+          { variant: 'warning' },
+        );
+      } else {
+        showToast('会话导入成功', { variant: 'success' });
+      }
     } catch (err) {
       showToast(err instanceof Error ? `导入失败：${err.message}` : '导入失败', { variant: 'danger' });
     } finally {
