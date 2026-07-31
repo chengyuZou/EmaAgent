@@ -226,6 +226,105 @@ describe('character validation', () => {
     expect(store.get(card.id)?.voiceReferences).toHaveLength(0);
   });
 
+  it('C3b 原子导入、导出并删除规范化立绘', async () => {
+    const card = store.create({ name: 'Portrait', systemPrompt: 'valid' });
+    const source = join(root, 'portrait-source.jpg');
+    await sharp({
+      create: {
+        width: 16,
+        height: 24,
+        channels: 3,
+        background: '#88aaff',
+      },
+    }).jpeg().toFile(source);
+
+    const portrait = await store.importPortraitFile(card.id, {
+      sourceFile: source,
+      label: 'Standing',
+    });
+    const managed = store.resolveResourcePath(
+      card.id,
+      portrait.relativePath,
+      'portrait',
+    );
+    expect(existsSync(managed)).toBe(true);
+    expect(portrait).toMatchObject({
+      mimeType: 'image/jpeg',
+      width: 16,
+      height: 24,
+      isPrimary: true,
+    });
+
+    const exportDirectory = join(root, 'exports');
+    mkdirSync(exportDirectory);
+    const exported = await store.exportPortraitFile(
+      card.id,
+      portrait.id,
+      exportDirectory,
+    );
+    expect(existsSync(exported)).toBe(true);
+
+    await expect(store.deleteManagedPortrait(card.id, portrait.id))
+      .resolves.toMatchObject({ id: portrait.id });
+    expect(existsSync(managed)).toBe(false);
+    expect(store.get(card.id)?.portraits).toHaveLength(0);
+  });
+
+  it('C3b 复制完整 Live2D 包后校验内部引用并按目录删除', async () => {
+    const card = store.create({ name: 'Live2D', systemPrompt: 'valid' });
+    const source = join(root, 'live2d-source');
+    mkdirSync(join(source, 'textures'), { recursive: true });
+    writeFileSync(join(source, 'model.moc3'), 'moc');
+    await sharp({
+      create: {
+        width: 8,
+        height: 8,
+        channels: 4,
+        background: '#ffffff',
+      },
+    }).png().toFile(join(source, 'textures', 'texture.png'));
+    writeFileSync(join(source, 'avatar.model3.json'), JSON.stringify({
+      Version: 3,
+      FileReferences: {
+        Moc: 'model.moc3',
+        Textures: ['textures/texture.png'],
+      },
+    }));
+
+    const variant = await store.importLive2dDirectory(card.id, {
+      sourceDirectory: source,
+      label: 'Main',
+      format: 'live2d',
+      entryRelativePath: 'avatar.model3.json',
+    });
+    expect(variant).toMatchObject({
+      resourceVersion: '3',
+      isPrimary: true,
+    });
+    const entry = store.resolveResourcePath(card.id, variant.entryPath, 'live2d');
+    expect(existsSync(entry)).toBe(true);
+
+    await expect(store.deleteManagedLive2dVariant(card.id, variant.id))
+      .resolves.toMatchObject({ id: variant.id });
+    expect(existsSync(entry)).toBe(false);
+  });
+
+  it('C3b 参考音频只信任真实文件头并冻结时长与摘要', async () => {
+    const card = store.create({ name: 'Voice', systemPrompt: 'valid' });
+    const source = join(root, 'voice-source.wav');
+    writeFileSync(source, createWav(8_000, 500));
+
+    const reference = await store.importVoiceReferenceFile(card.id, {
+      sourceFile: source,
+      label: 'Voice',
+      promptText: 'hello',
+      promptLang: 'en',
+    });
+    expect(reference.mimeType).toBe('audio/wav');
+    expect(reference.durationMs).toBe(500);
+    expect(reference.contentSha256).toMatch(/^[0-9a-f]{64}$/u);
+  });
+
   it('启动恢复按数据库事实源恢复中断删除并清理孤儿发布', () => {
     const card = store.create({ name: 'Recovery', systemPrompt: 'valid' });
     const voiceDir = join(root, 'user', card.id, 'voiceRefs');
@@ -280,3 +379,23 @@ describe('character validation', () => {
     expect(existsSync(importDirectory)).toBe(false);
   });
 });
+
+function createWav(sampleRate: number, durationMs: number): Buffer {
+  const samples = Math.floor(sampleRate * durationMs / 1_000);
+  const dataBytes = samples * 2;
+  const buffer = Buffer.alloc(44 + dataBytes);
+  buffer.write('RIFF', 0, 'ascii');
+  buffer.writeUInt32LE(36 + dataBytes, 4);
+  buffer.write('WAVE', 8, 'ascii');
+  buffer.write('fmt ', 12, 'ascii');
+  buffer.writeUInt32LE(16, 16);
+  buffer.writeUInt16LE(1, 20);
+  buffer.writeUInt16LE(1, 22);
+  buffer.writeUInt32LE(sampleRate, 24);
+  buffer.writeUInt32LE(sampleRate * 2, 28);
+  buffer.writeUInt16LE(2, 32);
+  buffer.writeUInt16LE(16, 34);
+  buffer.write('data', 36, 'ascii');
+  buffer.writeUInt32LE(dataBytes, 40);
+  return buffer;
+}

@@ -36,3 +36,12 @@ export interface CharacterVoiceReferenceInput {
   durationMs?: number | null;
   contentSha256?: string | null;
 }
+
+export interface ImportCharacterVoiceReferenceInput {
+  sourceFile: string;
+  label: string;
+  promptText: string;
+  promptLang: string;
+  position?: number;
+  isPrimary?: boolean;
+}

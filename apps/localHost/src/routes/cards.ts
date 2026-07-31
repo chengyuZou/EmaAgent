@@ -1,6 +1,5 @@
 // 提供角色卡 CRUD、参考音频与 Live2D 资源的 LocalHost HTTP 适配。
 import fs from 'node:fs';
-import path from 'node:path';
 import { Readable } from 'node:stream';
 import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
@@ -11,6 +10,7 @@ import {
   asCharacterPortraitId,
   asCharacterVoiceReferenceId,
 } from '@ema-agent/ids';
+import type { FileAccessFacade } from '@ema-agent/attachment';
 import {
   CharacterPromptInvalidError,
   CharacterResourcePathError,
@@ -18,6 +18,7 @@ import {
 } from '@ema-agent/characters';
 import { REQUEST_VALUE_LIMITS } from '../http/request-budget.js';
 import { z } from 'zod';
+import { characterResourcesRoute } from './cards/resources.js';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -52,27 +53,6 @@ const patchCardSchema = z.object({
   motionVocabulary:  z.array(z.string()).optional(),
 }).strict();
 
-function extForMime(mime: string): string {
-  if (mime.includes('wav'))  return 'wav';
-  if (mime.includes('mp3') || mime.includes('mpeg')) return 'mp3';
-  if (mime.includes('flac')) return 'flac';
-  if (mime.includes('ogg') || mime.includes('opus')) return 'ogg';
-  if (mime.includes('m4a') || mime.includes('mp4'))  return 'm4a';
-  return 'wav';
-}
-
-function mimeForExt(ext: string): string {
-  switch (ext) {
-    case 'mp3':  return 'audio/mpeg';
-    case 'wav':  return 'audio/wav';
-    case 'flac': return 'audio/flac';
-    case 'ogg':
-    case 'opus': return 'audio/ogg';
-    case 'm4a':  return 'audio/mp4';
-    default:     return 'application/octet-stream';
-  }
-}
-
 // ── Routes ──────────────────────────────────────────────────────────────────
 
 /**
@@ -96,7 +76,10 @@ function mimeForExt(ext: string): string {
  *   DELETE /:cardId/voice-refs/:refId     remove ref entry + file
  *   PUT    /:cardId/voice-refs/primary    body: { refId } — switch primary
  */
-export function cardsRoute(cardStore: CharacterCardStore): Hono {
+export function cardsRoute(
+  cardStore: CharacterCardStore,
+  fileAccess: Pick<FileAccessFacade, 'resolve'>,
+): Hono {
   const app = new Hono();
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -237,8 +220,8 @@ export function cardsRoute(cardStore: CharacterCardStore): Hono {
                     || form.get('setPrimary') === '1';
 
     const refId = asCharacterVoiceReferenceId(`ra_${randomUUID().slice(0, 8)}`);
-    const ext = extForMime(file.type || mimeForExt(path.extname(label).slice(1)));
-    const relPath = `voiceRefs/${refId}.${ext}`;
+    // 受管文件名不信任客户端扩展名；真实格式在暂存阶段按文件头写入 SQL。
+    const relPath = `voiceRefs/${refId}`;
     const bytes = new Uint8Array(await file.arrayBuffer());
     const current = cardStore.get(found.id);
     if (!current) throw new Error(`character card not found: ${found.id}`);
@@ -249,7 +232,7 @@ export function cardsRoute(cardStore: CharacterCardStore): Hono {
       promptText,
       promptLang,
       isPrimary: setPrimary || current.voiceReferences.length === 0,
-      mimeType: file.type || mimeForExt(ext),
+      mimeType: 'application/octet-stream',
       byteSize: file.size,
     }, bytes);
     return c.json({
@@ -300,9 +283,8 @@ export function cardsRoute(cardStore: CharacterCardStore): Hono {
     const ref = found.card.voiceReferences.find((reference) => reference.id === refId);
     if (!ref) return c.json({ error: 'ref_not_found' }, 404);
 
-    let absPath: string;
     try {
-      absPath = cardStore.resolveResourcePath(
+      cardStore.resolveResourcePath(
         found.id,
         ref.relativePath,
         'voiceReference',
@@ -425,6 +407,7 @@ export function cardsRoute(cardStore: CharacterCardStore): Hono {
     return c.json({ primaryId: resourceId });
   });
 
+  app.route('/', characterResourcesRoute(cardStore, fileAccess));
   return app;
 }
 

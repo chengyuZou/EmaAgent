@@ -9,6 +9,7 @@ import {
   moveWithoutOverwrite,
   readOperationManifest,
   removeOperationDirectory,
+  transactionTargetRelativePath,
   type CharacterResourceTransactionManifest,
 } from './characterResourceFiles.js';
 
@@ -71,7 +72,7 @@ export class CharacterResourceRecovery {
     const target = this.paths.resolve(
       manifest.characterId,
       false,
-      manifest.relativePath,
+      transactionTargetRelativePath(manifest),
       manifest.resourceKind,
     );
     const payload = path.join(directory, CHARACTER_RESOURCE_PAYLOAD_NAME);
@@ -105,7 +106,7 @@ export class CharacterResourceRecovery {
       : this.paths.resolve(
         manifest.characterId,
         false,
-        manifest.relativePath,
+        transactionTargetRelativePath(manifest),
         manifest.resourceKind,
       );
     const payload = path.join(directory, CHARACTER_RESOURCE_PAYLOAD_NAME);

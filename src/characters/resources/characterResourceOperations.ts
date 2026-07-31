@@ -7,6 +7,7 @@ export type CharacterResourceOperationKind =
   | 'voiceReferenceUpload'
   | 'voiceReferenceDelete'
   | 'resourceImport'
+  | 'resourceExport'
   | 'resourceDelete';
 
 export type CharacterResourceOperationStage =

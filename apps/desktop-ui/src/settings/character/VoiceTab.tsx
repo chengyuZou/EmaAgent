@@ -231,7 +231,6 @@ function UploadForm({
         <FilePicker
           accept=".wav,.mp3,.flac,.ogg,.m4a"
           onSelect={(files) => setFile(files[0] ?? null)}
-          className="self-start inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border border-[var(--ema-border)] bg-[var(--ema-surface-1)] text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-2)] transition-ema"
         >
           <Button
             size="sm"

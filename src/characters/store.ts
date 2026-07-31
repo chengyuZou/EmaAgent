@@ -13,20 +13,28 @@ import type {
   CharacterPortraitId,
   CharacterVoiceReferenceId,
 } from '@ema-agent/ids';
-import { asCharacterCardId } from '@ema-agent/ids';
+import {
+  asCharacterCardId,
+} from '@ema-agent/ids';
 import type { CharacterCard, CharacterCardInput } from './types.js';
 import { CharacterCardRepository } from './repository.js';
 import { EMA_CARD_ID, BUILTIN_CARDS } from './seed/index.js';
 import type {
   CharacterLive2dVariant,
   CharacterLive2dVariantInput,
+  ImportCharacterLive2dInput,
 } from './live2d/types.js';
 import { CharacterLive2dRepository } from './live2d/repository.js';
-import type { CharacterPortrait, CharacterPortraitInput } from './portraits/types.js';
+import type {
+  CharacterPortrait,
+  CharacterPortraitInput,
+  ImportCharacterPortraitInput,
+} from './portraits/types.js';
 import { CharacterPortraitRepository } from './portraits/repository.js';
 import type {
   CharacterVoiceReference,
   CharacterVoiceReferenceInput,
+  ImportCharacterVoiceReferenceInput,
 } from './voiceReferences/types.js';
 import { CharacterVoiceReferenceRepository } from './voiceReferences/repository.js';
 import {
@@ -57,6 +65,7 @@ import {
   type CharacterHealth,
 } from './validation/characterValidator.js';
 import { assertCharacterPrompt } from './validation/characterPromptValidation.js';
+import { CharacterResourceLifecycle } from './resources/characterResourceLifecycle.js';
 
 // ── 事件监听器类型 ─────────────────────────────────────────────────────────────
 
@@ -91,6 +100,7 @@ export class CharacterCardStore {
   private readonly resourceStaging: CharacterResourceStaging;
   private readonly resourceRecovery: CharacterResourceRecovery;
   private readonly validator: CharacterValidator;
+  private readonly resourceLifecycle: CharacterResourceLifecycle;
   private readonly resourceOperations = new CharacterResourceOperations();
   private readonly switchedListeners = new Set<CardSwitchedListener>();
   private readonly presentationChangedListeners =
@@ -122,6 +132,17 @@ export class CharacterCardStore {
       manifest => this.lookupResourceReference(manifest),
     );
     this.validator = new CharacterValidator(this.resourcePaths);
+    this.resourceLifecycle = new CharacterResourceLifecycle(
+      id => this.get(id),
+      this.live2d,
+      this.portraits,
+      this.voiceReferences,
+      this.resourcePaths,
+      this.resourceTrash,
+      this.resourceStaging,
+      this.resourceOperations,
+      id => this.emitPresentationChanged(id),
+    );
   }
 
   // ── 事件订阅 ──────────────────────────────────────────────────────────────────
@@ -318,6 +339,28 @@ export class CharacterCardStore {
     return resource;
   }
 
+  importLive2dDirectory(
+    id: CharacterCardId,
+    input: ImportCharacterLive2dInput,
+  ): Promise<CharacterLive2dVariant> {
+    return this.resourceLifecycle.importLive2d(id, input);
+  }
+
+  exportLive2dDirectory(
+    id: CharacterCardId,
+    resourceId: CharacterLive2dId,
+    destinationDirectory: string,
+  ): Promise<string> {
+    return this.resourceLifecycle.exportLive2d(id, resourceId, destinationDirectory);
+  }
+
+  deleteManagedLive2dVariant(
+    id: CharacterCardId,
+    resourceId: CharacterLive2dId,
+  ): Promise<CharacterLive2dVariant | undefined> {
+    return this.resourceLifecycle.deleteLive2d(id, resourceId);
+  }
+
   listPortraits(id: CharacterCardId): CharacterPortrait[] {
     return this.portraits.list(id);
   }
@@ -344,6 +387,28 @@ export class CharacterCardStore {
     return resource;
   }
 
+  importPortraitFile(
+    id: CharacterCardId,
+    input: ImportCharacterPortraitInput,
+  ): Promise<CharacterPortrait> {
+    return this.resourceLifecycle.importPortrait(id, input);
+  }
+
+  exportPortraitFile(
+    id: CharacterCardId,
+    resourceId: CharacterPortraitId,
+    destinationDirectory: string,
+  ): Promise<string> {
+    return this.resourceLifecycle.exportPortrait(id, resourceId, destinationDirectory);
+  }
+
+  deleteManagedPortrait(
+    id: CharacterCardId,
+    resourceId: CharacterPortraitId,
+  ): Promise<CharacterPortrait | undefined> {
+    return this.resourceLifecycle.deletePortrait(id, resourceId);
+  }
+
   listVoiceReferences(id: CharacterCardId): CharacterVoiceReference[] {
     return this.voiceReferences.list(id);
   }
@@ -368,66 +433,29 @@ export class CharacterCardStore {
     input: CharacterVoiceReferenceInput & { id: CharacterVoiceReferenceId },
     bytes: Uint8Array,
   ): Promise<CharacterVoiceReference> {
-    return this.resourceOperations.run(id, 'voiceReferenceUpload', async ({ setStage }) => {
-      const card = this.get(id);
-      if (!card) throw new Error(`character card not found: ${id}`);
-      if (card.isBuiltin) throw new Error(`builtin character is read-only: ${id}`);
-      setStage('validating');
-      this.validateResourceInput(id, input.relativePath, 'voiceReference');
-      setStage('staging');
-      const published = this.resourceStaging.publishFile({
-        characterId: id,
-        resourceKind: 'voiceReference',
-        resourceId: input.id,
-        relativePath: input.relativePath,
-        bytes,
-        commit: () => {
-          setStage('publishing');
-          return this.addVoiceReference(id, input);
-        },
-        isReferenced: () => this.voiceReferences.list(id).some(
-          resource => resource.id === input.id
-            && resource.relativePath === input.relativePath,
-        ),
-      });
-      setStage('finalizing');
-      return published;
-    });
+    return this.resourceLifecycle.publishVoice(id, input, bytes);
+  }
+
+  importVoiceReferenceFile(
+    id: CharacterCardId,
+    input: ImportCharacterVoiceReferenceInput,
+  ): Promise<CharacterVoiceReference> {
+    return this.resourceLifecycle.importVoice(id, input);
+  }
+
+  exportVoiceReferenceFile(
+    id: CharacterCardId,
+    resourceId: CharacterVoiceReferenceId,
+    destinationDirectory: string,
+  ): Promise<string> {
+    return this.resourceLifecycle.exportVoice(id, resourceId, destinationDirectory);
   }
 
   deleteManagedVoiceReference(
     id: CharacterCardId,
     resourceId: CharacterVoiceReferenceId,
   ): Promise<CharacterVoiceReference | undefined> {
-    return this.resourceOperations.run(id, 'voiceReferenceDelete', async ({ setStage }) => {
-      const card = this.get(id);
-      if (!card) throw new Error(`character card not found: ${id}`);
-      if (card.isBuiltin) throw new Error(`builtin character is read-only: ${id}`);
-      setStage('validating');
-      const current = this.voiceReferences.list(id).find(
-        resource => resource.id === resourceId,
-      );
-      if (!current) return undefined;
-      setStage('staging');
-      const deleted = this.resourceTrash.delete({
-        characterId: id,
-        resourceKind: 'voiceReference',
-        resourceId,
-        relativePath: current.relativePath,
-        commit: () => {
-          setStage('publishing');
-          const result = this.voiceReferences.delete(id, resourceId);
-          if (!result) throw new Error(`voice reference disappeared: ${resourceId}`);
-          return result;
-        },
-        isReferenced: () => this.voiceReferences.list(id).some(
-          resource => resource.id === resourceId
-            && resource.relativePath === current.relativePath,
-        ),
-      });
-      setStage('finalizing');
-      return deleted;
-    });
+    return this.resourceLifecycle.deleteVoice(id, resourceId);
   }
 
   recoverResourceFiles(): CharacterResourceRecoveryReport {

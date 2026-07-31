@@ -5,7 +5,7 @@ import path from 'node:path';
 import type { CharacterCardId } from '@ema-agent/ids';
 import type { CharacterResourceKind } from './characterResourcePaths.js';
 
-export const CHARACTER_RESOURCE_TRANSACTION_SCHEMA_VERSION = 1;
+export const CHARACTER_RESOURCE_TRANSACTION_SCHEMA_VERSION = 2;
 export const CHARACTER_RESOURCE_MANIFEST_NAME = 'operation.json';
 export const CHARACTER_RESOURCE_PAYLOAD_NAME = 'payload';
 
@@ -13,13 +13,16 @@ export type CharacterResourceTransactionType = 'publish' | 'delete';
 export type CharacterManagedResourceKind = CharacterResourceKind | 'character';
 
 export interface CharacterResourceTransactionManifest {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 1 | 2;
   readonly operationId: string;
   readonly type: CharacterResourceTransactionType;
   readonly characterId: CharacterCardId;
   readonly resourceKind: CharacterManagedResourceKind;
   readonly resourceId: string;
+  /** SQL 资源记录引用的入口文件；用于判断事务是否已经提交。 */
   readonly relativePath: string;
+  /** 实际原子移动的文件或目录；v1 清单缺失时等同 relativePath。 */
+  readonly targetRelativePath?: string;
 }
 
 export function createOperationDirectory(root: string, operationId: string): string {
@@ -54,13 +57,15 @@ export function readOperationManifest(
       ),
     ) as Partial<CharacterResourceTransactionManifest>;
     if (
-      value.schemaVersion !== CHARACTER_RESOURCE_TRANSACTION_SCHEMA_VERSION
+      (value.schemaVersion !== 1
+        && value.schemaVersion !== CHARACTER_RESOURCE_TRANSACTION_SCHEMA_VERSION)
       || (value.type !== 'publish' && value.type !== 'delete')
       || typeof value.operationId !== 'string'
       || typeof value.characterId !== 'string'
       || !isResourceKind(value.resourceKind)
       || typeof value.resourceId !== 'string'
       || typeof value.relativePath !== 'string'
+      || (value.schemaVersion === 2 && typeof value.targetRelativePath !== 'string')
       || path.basename(directory) !== value.operationId
     ) {
       return null;
@@ -69,6 +74,12 @@ export function readOperationManifest(
   } catch {
     return null;
   }
+}
+
+export function transactionTargetRelativePath(
+  manifest: CharacterResourceTransactionManifest,
+): string {
+  return manifest.targetRelativePath ?? manifest.relativePath;
 }
 
 export function moveWithoutOverwrite(source: string, destination: string): void {

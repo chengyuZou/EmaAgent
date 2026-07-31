@@ -172,7 +172,7 @@ K3 当前负责 Desktop Chat Workspace、Git/Review 等前端工作；主 Agent 
 
 K3 当前负责 Desktop Chat Workspace 与 Git/Review 施工；本轮 Character 只修改 Desktop 的角色 API、角色设置 VoiceTab 和主窗资源选择，没有覆盖 Chat/Workspace 文件。
 
-Character C1a/C1b/C2/C3a 已完成：Character 统一拥有显式多 Live2D、多立绘、参考音频、路径规范、Prompt 硬门、健康投影与稳定候选顺序。LocalHost 提供原子表现快照和主 Live2D/主立绘切换，资源变化通过 AppEvent 刷新各窗口；Desktop `CharacterStage` 支持 Live2D → 立绘 → 占位逐级失败降级、同角色无空白切换、跨角色立即占位，以及迟到异步结果隔离。C3a 已用 `.imports/.trash` 显式清单接管参考音频发布/删除和角色目录删除，启动时按 SQLite 事实源恢复或清理；C3b/C3c 的三类资源深检、单项与整包导入导出、`importAsCopy/replace` 尚未实现，`.rollback` 不提前启用。Session Backup 继续不接 Character。
+Character C1a/C1b/C2/C3a/C3b 已完成：Character 统一拥有显式多 Live2D、多立绘、参考音频、路径规范、Prompt 硬门、健康投影与稳定候选顺序。LocalHost 提供原子表现快照、主资源切换及三类资源单项导入/导出/删除；Desktop `CharacterStage` 支持 Live2D → 立绘 → 占位逐级失败降级、同角色无空白切换、跨角色立即占位，以及迟到异步结果隔离。C3b 在 `.imports/.trash` 地基上补齐 Live2D 完整目录、立绘重编码和参考音频真实文件头深检，恢复清单 v2 区分 SQL 入口路径与物理目录单元。C3c 的 `card.json`、整包导入导出与 `importAsCopy/replace` 尚未实现，`.rollback` 不提前启用；Desktop 目录选择仍需签发目录能力句柄，不能回退明文绝对路径。Session Backup 继续不接 Character。
 
 ## 已确定的 V1 口径
 
@@ -229,7 +229,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
     - **A 主链真 Bug 已完成**：ToolResultStore EEXIST 只复用完全一致的内容；Usage 状态模型已区分 `cancelled`；Anthropic 已删除隐式 `maxTokens=4096` 并使用调用级剩余输出预算；
     - **B 主链安全收口**：install-git 与 mcpStdioGate 路由级审批已经接通；`AGEN_UNSAFE_*` 在正式构建中会直接阻止启动，不能由安装环境变量关闭隔离。Sandbox 状态接前端常驻提示仍属于前端工作；
     - **C 主链卫生已完成**：已删除 Macro 压缩后绕过 Memory 开关直接重读 L1 Session Note 的旧恢复旁路；正常 L1 Recall 继续作为不可压缩 Contribution 保留，Active Skill 继续走 required restore。AgentLoopState 已删除不可达状态；`prefixHash` 已明确为本次请求截止最终缓存断点的身份，会随历史、当前 Turn 和工具轮次演进，不再伪装成跨 Turn 固定 Prompt Hash。
-12. Character C1a/C1b/C2/C3a 已完成显式资源、Prompt/健康门槛、主窗口可抢占降级及文件事务地基。主项和候选由后端冻结顺序，主窗口不扫描数据库或文件；同角色切换保留旧画面到新资源就绪，跨角色先显示占位，过期加载不能覆盖当前选择。参考音频发布/删除与角色目录删除使用同盘 `.imports/.trash`，SQL 失败原位恢复，崩溃残留由启动恢复按事实源处理。下一批 C3b 补三类资源深校验与单项导入导出删除；之后 C3c 再做完整角色目录、Manifest、`importAsCopy/replace`。现有 Session Backup 不扩张到 Character。
+12. Character C1a/C1b/C2/C3a/C3b 已完成显式资源、Prompt/健康门槛、主窗口可抢占降级、文件事务地基及三类资源单项生命周期。Live2D 目录有界复制并校验入口/引用/纹理，立绘重编码去元数据，参考音频按真实文件头冻结时长和摘要；导入、导出、删除分别使用同盘暂存、目标旁暂存和 `.trash`，SQL 失败与崩溃残留按事实源恢复。下一批 C3c 再做完整角色目录、Manifest、`importAsCopy/replace`；K3 的资源管理 UI 接线还需 Desktop 目录能力句柄。现有 Session Backup 不扩张到 Character。
 
 命名随业务批次清理：旧 `IFileStateStoreEntry/IFileStateStore` 及后续过渡接口已经删除，`IToolExecutionJournal` 已改为职责名；其余迁移期 `I*` 类型继续随业务边界处理，不单独进行全仓机械重命名。
 
@@ -237,6 +237,8 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- Chat 域重构 A–E + Desktop 清理（K3）：Desktop UI typecheck + 33 文件 166/166、Desktop typecheck 通过，零行为变化。A：workspaceStore/workspaceTypes/test 从 `chat/workspace/` 迁 `stores/`（13 处 import）；B：SessionSidebar 796→156 + `chat/sidebar/` 6 块（纯函数层零 UI 依赖）；C：ChatInput 668→393 + `chat/input/` 3 块；D：ToolCallBlock 459→215 + `chat/toolBlocks/` 4 块（用户自拆，K3 补 export 接缝）；E：chat 根 17→4 文件归组 messages/panels（用户自搬，K3 修 3 处漏网路径）。Desktop 清理：GlowBorder 粉白呼吸光 token 化（新增 `--ema-pet-glow/-bright` + `ema-breathe` keyframes + `.ema-pet-glow-border`，经 tokens/keyframes/components.css）；SidecarBadge/SpeechBubble 尾巴硬编码换 token；PermissionToastLayer 自造 Btn 换 ui Button；CharacterStage 类名 `__`→`-` 与 characterStage.css 改名同步。Backup 批一对账完成、方案冻结（ZIP v1 十条问题全属实；批一七项 additive 修复；断电恢复只做 B 档启动清残留；整机备份推 V1 正式版），等 Sol 指示开工。`git diff --check` 通过，仅有既有 CRLF 提示。
+- Character C3b 单项资源生命周期：Characters 34/34、LocalHost 165/165 通过；Characters 与 LocalHost 正式 build 通过，LocalHost 构建验证 102 个源码、409 个产物。新增测试覆盖立绘规范化导入/导出/删除、Live2D 完整目录引用与纹理深检、参考音频真实 WAV 时长和摘要、LocalHost 文件能力句柄入口；测试同时发现并修正 WAV `byteRate` 字段偏移。`git diff --check` 通过，仅有既有 CRLF 与不可访问 pytest 缓存提示。
 - Character C3a 文件事务批：Characters 2 文件 31/31、LocalHost 全量 43 文件 164/164 通过，Characters build 与 LocalHost typecheck 通过；测试覆盖参考音频 SQL 删除失败后从 `.trash` 原位恢复、发布路径冲突不误删旧文件、启动时恢复仍被数据库引用的中断删除、清理未入库的孤儿发布、领域入口拒绝删除活动角色，以及完整角色目录随非活动角色删除。`git diff --check` 通过，仅有既有 CRLF 与不可访问 Bridge 测试缓存提示。
 - Character C2 主窗口降级批：Characters 2 文件 27/27、LocalHost 全量 43 文件 164/164、Desktop UI 全量 33 文件 166/166、Desktop 3 文件 12/12 通过；Characters、Events、LocalHost、Desktop UI、Desktop 五包 typecheck 通过。覆盖损坏主 Live2D 后继续同类候选、运行时切换主 Live2D、表现快照迟到请求隔离。Desktop Vite 构建已走到 1714 模块，最终被既有 `src/turn/interaction/sessionInteractionQueue.ts` 浏览器链导入 `node:crypto.randomUUID` 阻塞；与 Character 改动无关，后续需从 Desktop UI 依赖图移除 Node-only Turn 实现。
 

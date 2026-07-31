@@ -24,6 +24,7 @@ export class CharacterResourceTrash {
     resourceKind,
     resourceId,
     relativePath,
+    targetRelativePath = relativePath,
     commit,
     isReferenced,
   }: {
@@ -31,13 +32,14 @@ export class CharacterResourceTrash {
     resourceKind: CharacterResourceKind;
     resourceId: string;
     relativePath: string;
+    targetRelativePath?: string;
     commit: () => T;
     isReferenced: () => boolean;
   }): T {
     const source = this.paths.resolve(
       characterId,
       false,
-      relativePath,
+      targetRelativePath,
       resourceKind,
     );
     if (!fs.existsSync(source)) return commit();
@@ -50,13 +52,14 @@ export class CharacterResourceTrash {
     const payload = path.join(directory, CHARACTER_RESOURCE_PAYLOAD_NAME);
     try {
       writeOperationManifest(directory, {
-        schemaVersion: 1,
+        schemaVersion: 2,
         operationId,
         type: 'delete',
         characterId,
         resourceKind,
         resourceId,
         relativePath,
+        targetRelativePath,
       });
       moveWithoutOverwrite(source, payload);
       const result = commit();

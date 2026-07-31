@@ -47,11 +47,22 @@ src/
 ├── live2d/              # Live2D 变体类型与仓储适配
 ├── portraits/           # 角色图片类型与仓储适配
 ├── voiceReferences/     # 参考音频类型与仓储适配
+├── resources/           # 路径规范、staging/trash 文件事务、启动恢复与资源生命周期
+├── validation/          # Prompt 硬门与 CharacterHealth 资源校验投影
+├── transfer/            # 同盘暂存发布（.imports）
 ├── characterPrompt.ts   # 角色身份与 ACT 表达能力的模型可见片段
 └── seed/                # 内置角色定义与显式资源种子
 tests/
 └── store.spec.ts      # Vitest 单元测试
 ```
+
+---
+
+## 当前边界（V1 内测）
+
+- 单项资源管理已完整：Live2D、立绘、参考音频各自支持导入、导出、删除与主用切换，文件经 `.imports/.trash` 事务保证 SQL 失败或断电可恢复。
+- **V1 内测暂不支持完整角色包导入/导出（card.json + 整目录）与 `importAsCopy/replace` 冲突策略**；该能力推迟到 V1 正式版，依据内测反馈决定是否实现。不要在内测期创建半成品 Route 或空 manifest 类型。
+- 结构化元数据（资源 ID、相对路径、主用、排序、摘要）在 SQLite；媒体正文（Live2D 目录、图片、音频）在文件系统 `cards/<id>/` 下。
 
 ---
 

@@ -39,3 +39,13 @@ export interface CharacterLive2dVariantInput {
   byteSize?: number | null;
   isBuiltin?: boolean;
 }
+
+export interface ImportCharacterLive2dInput {
+  sourceDirectory: string;
+  label: string;
+  format: CharacterLive2dFormat;
+  entryRelativePath: string;
+  runtimeConfigRelativePath?: string | null;
+  position?: number;
+  isPrimary?: boolean;
+}

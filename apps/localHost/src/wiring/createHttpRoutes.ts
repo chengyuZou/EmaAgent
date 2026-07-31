@@ -80,7 +80,7 @@ export function createHttpRoutes(bindings: AppBindings): readonly MountedHttpRou
       path: '/api/transcribe',
       router: transcribeRoute(bindings.stt, bindings.modelBindings),
     },
-    { path: '/api/cards', router: cardsRoute(bindings.card) },
+    { path: '/api/cards', router: cardsRoute(bindings.card, bindings.fileAccess) },
     {
       path: '/api',
       router: createSkillsRouter(

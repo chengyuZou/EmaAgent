@@ -20,15 +20,18 @@ export type {
   CharacterLive2dFormat,
   CharacterLive2dVariant,
   CharacterLive2dVariantInput,
+  ImportCharacterLive2dInput,
 } from './live2d/types.js';
 export type {
   CharacterPortrait,
   CharacterPortraitInput,
   CharacterPortraitMime,
+  ImportCharacterPortraitInput,
 } from './portraits/types.js';
 export type {
   CharacterVoiceReference,
   CharacterVoiceReferenceInput,
+  ImportCharacterVoiceReferenceInput,
 } from './voiceReferences/types.js';
 export { buildCharacterPromptSections } from './characterPrompt.js';
 export type { CharacterPromptSections } from './characterPrompt.js';
@@ -40,6 +43,7 @@ export type {
 export {
   CharacterPromptInvalidError,
   CharacterResourcePathError,
+  CharacterResourceValidationError,
 } from './errors.js';
 export type {
   CharacterResourceKind,

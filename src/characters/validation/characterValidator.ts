@@ -1,7 +1,6 @@
 // 将 Prompt 与三类表现资源检查汇总为唯一 CharacterHealth 投影。
 
 import fs from 'node:fs';
-import sharp from 'sharp';
 import type {
   CharacterLive2dId,
   CharacterPortraitId,
@@ -9,6 +8,7 @@ import type {
 } from '@ema-agent/ids';
 import { CharacterResourcePathError } from '../errors.js';
 import type { CharacterCard } from '../types.js';
+import { inspectPortraitFile } from '../portraits/portraitValidator.js';
 import type { CharacterResourceKind } from '../resources/characterResourcePaths.js';
 import { CharacterResourcePaths } from '../resources/characterResourcePaths.js';
 
@@ -59,11 +59,6 @@ export interface CharacterHealth {
   readonly issues: readonly CharacterHealthIssue[];
 }
 
-const MAX_PORTRAIT_BYTES = 20 * 1024 * 1024;
-const MAX_PORTRAIT_EDGE = 8192;
-const MAX_PORTRAIT_PIXELS = 40_000_000;
-const ALLOWED_PORTRAIT_FORMATS = new Set(['png', 'jpeg', 'webp']);
-
 export class CharacterValidator {
   constructor(private readonly paths: CharacterResourcePaths) {}
 
@@ -94,12 +89,17 @@ export class CharacterValidator {
         'portrait',
         issues,
       );
-      if (
-        absolutePath
-        && await this.inspectPortrait(resource, absolutePath, deep, issues)
-      ) {
-        portraitCandidates.push(resource);
+      if (!absolutePath) continue;
+      const failure = await inspectPortraitFile(resource, absolutePath, deep);
+      if (failure) {
+        issues.push({
+          severity: 'warning',
+          resourceId: resource.id,
+          ...failure,
+        });
+        continue;
       }
+      portraitCandidates.push(resource);
     }
 
     const voiceCandidates = orderedEnabled(card.voiceReferences);
@@ -198,98 +198,6 @@ export class CharacterValidator {
       return null;
     }
   }
-
-  private async inspectPortrait(
-    portrait: CharacterCard['portraits'][number],
-    absolutePath: string,
-    deep: boolean,
-    issues: CharacterHealthIssue[],
-  ): Promise<boolean> {
-    let stat: fs.Stats;
-    try {
-      stat = await fs.promises.stat(absolutePath);
-    } catch {
-      issues.push({
-        code: 'resource_missing',
-        severity: 'warning',
-        resourceId: portrait.id,
-        message: `角色资源文件在校验期间消失：${portrait.relativePath}`,
-      });
-      return false;
-    }
-    if (stat.size > MAX_PORTRAIT_BYTES) {
-      issues.push({
-        code: 'portrait_too_large',
-        severity: 'warning',
-        resourceId: portrait.id,
-        message: `角色立绘超过 ${MAX_PORTRAIT_BYTES} 字节限制。`,
-      });
-      return false;
-    }
-
-    if (!deep) {
-      if (!dimensionsAllowed(portrait.width, portrait.height)) {
-        issues.push({
-          code: 'portrait_dimensions_invalid',
-          severity: 'warning',
-          resourceId: portrait.id,
-          message: '角色立绘登记的尺寸超过安全限制。',
-        });
-        return false;
-      }
-      return true;
-    }
-
-    try {
-      const metadata = await sharp(absolutePath, {
-        animated: false,
-        limitInputPixels: MAX_PORTRAIT_PIXELS,
-      }).metadata();
-      if (!metadata.format || !ALLOWED_PORTRAIT_FORMATS.has(metadata.format)) {
-        issues.push({
-          code: 'portrait_format_unsupported',
-          severity: 'warning',
-          resourceId: portrait.id,
-          message: '角色立绘实际格式只允许 PNG、JPEG 或 WebP。',
-        });
-        return false;
-      }
-      const width = metadata.width ?? 0;
-      const height = metadata.height ?? 0;
-      if (!dimensionsAllowed(width, height)) {
-        issues.push({
-          code: 'portrait_dimensions_invalid',
-          severity: 'warning',
-          resourceId: portrait.id,
-          message: '角色立绘实际尺寸超过安全限制。',
-        });
-        return false;
-      }
-      if (
-        width !== portrait.width
-        || height !== portrait.height
-        || `image/${metadata.format}` !== portrait.mimeType
-        || stat.size !== portrait.byteSize
-      ) {
-        issues.push({
-          code: 'portrait_metadata_mismatch',
-          severity: 'warning',
-          resourceId: portrait.id,
-          message: '角色立绘实际元数据与数据库记录不一致。',
-        });
-        return false;
-      }
-      return true;
-    } catch {
-      issues.push({
-        code: 'portrait_format_unsupported',
-        severity: 'warning',
-        resourceId: portrait.id,
-        message: '角色立绘无法被安全解码。',
-      });
-      return false;
-    }
-  }
 }
 
 function orderedEnabled<T extends {
@@ -307,12 +215,4 @@ function orderedEnabled<T extends {
       || left.position - right.position
       || left.id.localeCompare(right.id)
     ));
-}
-
-function dimensionsAllowed(width: number, height: number): boolean {
-  return width > 0
-    && height > 0
-    && width <= MAX_PORTRAIT_EDGE
-    && height <= MAX_PORTRAIT_EDGE
-    && width * height <= MAX_PORTRAIT_PIXELS;
 }

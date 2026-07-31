@@ -1,6 +1,12 @@
 // 测试角色卡 Route 的空值更新、删除守卫与参考音频路径安全。
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Database } from '@ema-agent/storage';
@@ -25,7 +31,9 @@ describe('B-055 cards route', () => {
         userCardsRoot: join(resourceRoot, 'user'),
       },
     });
-    app = cardsRoute(card);
+    app = cardsRoute(card, {
+      resolve: fileHandle => fileHandle,
+    });
   });
 
   afterEach(() => {
@@ -211,5 +219,47 @@ describe('B-055 cards route', () => {
       'voiceRefs/../../etc/passwd',
       'voiceReference',
     )).toThrow(/invalid character resource path/);
+  });
+
+  it('C3b 资源 Route 只消费授权句柄并完成立绘导入导出删除', async () => {
+    const { id } = await createCard('Portrait API');
+    const source = join(resourceRoot, 'source.png');
+    writeFileSync(source, Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      'base64',
+    ));
+    const importResponse = await app.request(`/${id}/portraits/import`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        sourceHandle: source,
+        label: 'Standing',
+      }),
+    });
+    expect(importResponse.status).toBe(201);
+    const imported = await importResponse.json() as {
+      resource: { id: string; relativePath: string };
+    };
+
+    const destination = join(resourceRoot, 'exports');
+    mkdirSync(destination);
+    const exportResponse = await app.request(
+      `/${id}/portraits/${imported.resource.id}/export`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ destinationHandle: destination }),
+      },
+    );
+    expect(exportResponse.status).toBe(200);
+    const exported = await exportResponse.json() as { destinationPath: string };
+    expect(existsSync(exported.destinationPath)).toBe(true);
+
+    const deleteResponse = await app.request(
+      `/${id}/portraits/${imported.resource.id}`,
+      { method: 'DELETE' },
+    );
+    expect(deleteResponse.status).toBe(204);
+    expect(card.get(asCharacterCardId(id))?.portraits).toHaveLength(0);
   });
 });

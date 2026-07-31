@@ -36,3 +36,10 @@ export interface CharacterPortraitInput {
   height: number;
   contentSha256?: string | null;
 }
+
+export interface ImportCharacterPortraitInput {
+  sourceFile: string;
+  label: string;
+  position?: number;
+  isPrimary?: boolean;
+}

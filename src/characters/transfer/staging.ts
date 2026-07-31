@@ -17,12 +17,13 @@ import {
 export class CharacterResourceStaging {
   constructor(private readonly paths: CharacterResourcePaths) {}
 
-  publishFile<T>({
+  async publishPrepared<TPrepared, TResult>({
     characterId,
     resourceKind,
     resourceId,
     relativePath,
-    bytes,
+    targetRelativePath = relativePath,
+    prepare,
     commit,
     isReferenced,
   }: {
@@ -30,14 +31,15 @@ export class CharacterResourceStaging {
     resourceKind: CharacterResourceKind;
     resourceId: string;
     relativePath: string;
-    bytes: Uint8Array;
-    commit: () => T;
+    targetRelativePath?: string;
+    prepare: (payloadPath: string) => Promise<TPrepared>;
+    commit: (prepared: TPrepared) => TResult;
     isReferenced: () => boolean;
-  }): T {
+  }): Promise<TResult> {
     const target = this.paths.resolve(
       characterId,
       false,
-      relativePath,
+      targetRelativePath,
       resourceKind,
     );
     const operationId = randomUUID();
@@ -48,19 +50,23 @@ export class CharacterResourceStaging {
     const payload = path.join(directory, CHARACTER_RESOURCE_PAYLOAD_NAME);
     let published = false;
     try {
+      if (fs.existsSync(target)) {
+        throw new Error(`character resource destination already exists: ${target}`);
+      }
       writeOperationManifest(directory, {
-        schemaVersion: 1,
+        schemaVersion: 2,
         operationId,
         type: 'publish',
         characterId,
         resourceKind,
         resourceId,
         relativePath,
+        targetRelativePath,
       });
-      fs.writeFileSync(payload, bytes, { flag: 'wx' });
+      const prepared = await prepare(payload);
       moveWithoutOverwrite(payload, target);
       published = true;
-      const result = commit();
+      const result = commit(prepared);
       try {
         removeOperationDirectory(directory);
       } catch {
