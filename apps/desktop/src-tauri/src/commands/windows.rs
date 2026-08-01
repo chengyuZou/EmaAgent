@@ -20,12 +20,18 @@ pub fn set_passthrough(window: tauri::Window, value: bool) -> Result<(), String>
 
 #[tauri::command]
 pub async fn quit_app(app: tauri::AppHandle) {
+    tracing::info!("quit_app requested");
     let state = app.state::<DesktopRuntimeSupervisor>();
     state.shutdown().await;
+    tracing::info!("runtime shutdown complete; exiting");
     app.exit(0);
 }
 
 #[tauri::command]
 pub fn open_window(app: tauri::AppHandle, label: String) -> Result<(), String> {
-    show_window(&app, &label)
+    show_window(&app, &label).map_err(|error| {
+        // 原生侧保留窗口创建错误，便于前端提示之外继续从 Desktop 日志定位。
+        tracing::error!(%label, %error, "open_window failed");
+        error
+    })
 }

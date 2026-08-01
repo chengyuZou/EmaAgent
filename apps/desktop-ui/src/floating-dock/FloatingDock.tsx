@@ -1,47 +1,57 @@
-/**
- * FloatingDock — main-window bottom-right floating button column.
- *
- * Main column (top → bottom): more, expression, drag — anchored to the
- * window's bottom-right corner. The rest (chat / settings / pin / quit)
- * live in a flyout panel that expands UPWARD from the more button on
- * click, and collapses only when the more button is clicked again.
- */
+// 提供桌宠主窗口的聊天、设置、置顶、表情、拖动与退出入口。
 import { useState, type CSSProperties } from 'react';
 import { IconButton, Tooltip } from '@ema-agent/ui';
 import { useUiStore } from '../stores/ui-store.js';
 import { tauriBridge } from '../lib/tauri-bridge.js';
+import { showToast } from '../lib/toast.js';
 
 export interface FloatingDockProps {
   visible: boolean;
+  expressionAvailable: boolean;
 }
 
-export function FloatingDock({ visible }: FloatingDockProps): JSX.Element {
+export function FloatingDock({ visible, expressionAvailable }: FloatingDockProps): JSX.Element {
   const dockVisible = useUiStore((s) => s.dockVisible);
 
   const [pinned,     setPinned]     = useState(true);
   const [flyoutOpen, setFlyoutOpen] = useState(false);
+  const [pinUpdating, setPinUpdating] = useState(false);
 
   const show = visible || dockVisible;
+
+  const runDockAction = (label: string, action: () => Promise<void>): void => {
+    void action().catch((error: unknown) => {
+      const detail = error instanceof Error ? error.message : String(error);
+      console.error(`[floating-dock] ${label} failed`, error);
+      showToast(`${label}失败：${detail}`, { variant: 'danger', duration: 6000 });
+    });
+  };
 
   // ── Flyout buttons (3 per row) ──────────────────────────────────────────
   const flyoutButtons = [
     { id: 'chat',     icon: 'i-mdi:chat-outline', label: '聊天',
-      onClick: () => void tauriBridge.openWindow('chat') },
+      onClick: () => runDockAction('打开聊天窗口', () => tauriBridge.openWindow('chat')) },
     { id: 'settings', icon: 'i-mdi:cog-outline',  label: '设置',
-      onClick: () => void tauriBridge.openWindow('settings') },
+      onClick: () => runDockAction('打开设置窗口', () => tauriBridge.openWindow('settings')) },
     {
       id: 'pin',
       icon: pinned ? 'i-mdi:pin' : 'i-mdi:pin-off-outline',
       label: pinned ? '取消置顶' : '置顶',
       toggled: pinned,
-      onClick: () => {
+      disabled: pinUpdating,
+      onClick: () => runDockAction('切换置顶状态', async () => {
         const next = !pinned;
-        setPinned(next);
-        void tauriBridge.setAlwaysOnTop(next);
-      },
+        setPinUpdating(true);
+        try {
+          await tauriBridge.setAlwaysOnTop(next);
+          setPinned(next);
+        } finally {
+          setPinUpdating(false);
+        }
+      }),
     },
     { id: 'quit', icon: 'i-mdi:power', label: '退出', danger: true,
-      onClick: () => void tauriBridge.quit() },
+      onClick: () => runDockAction('退出应用', () => tauriBridge.quit()) },
   ];
 
   return (
@@ -68,6 +78,7 @@ export function FloatingDock({ visible }: FloatingDockProps): JSX.Element {
                 label={btn.label}
                 icon={btn.icon}
                 toggled={btn.toggled}
+                disabled={btn.disabled}
                 variant={btn.danger ? 'danger' : 'default'}
                 className="rounded-xl ema-stagger-in"
                 style={{ '--stagger-i': i } as CSSProperties}
@@ -88,13 +99,14 @@ export function FloatingDock({ visible }: FloatingDockProps): JSX.Element {
       </div>
 
       {/* ── Expression ── */}
-      <Tooltip content="切换表情" side="left">
+      <Tooltip content={expressionAvailable ? '切换表情' : '当前舞台没有可切换的 Live2D 表情'} side="left">
         <IconButton
           size="lg"
           label="切换表情"
           icon="i-mdi:emoticon-happy-outline"
+          disabled={!expressionAvailable}
           className="rounded-full shadow-[var(--ema-shadow-1)] backdrop-blur"
-          onClick={() => void tauriBridge.emit('stage:cycle-expression')}
+          onClick={() => runDockAction('切换表情', () => tauriBridge.emit('stage:cycle-expression'))}
         />
       </Tooltip>
 
@@ -105,7 +117,7 @@ export function FloatingDock({ visible }: FloatingDockProps): JSX.Element {
           label="按住拖动"
           icon="i-mdi:drag"
           className="rounded-full shadow-[var(--ema-shadow-1)] backdrop-blur cursor-grab active:cursor-grabbing"
-          onMouseDown={() => void tauriBridge.startDragging()}
+          onMouseDown={() => runDockAction('拖动窗口', () => tauriBridge.startDragging())}
         />
       </Tooltip>
     </div>

@@ -171,9 +171,8 @@ async function getCore(): Promise<TauriCore | null> {
   try {
     _core = await import('@tauri-apps/api/core');
     return _core;
-  } catch {
-    _detected = false;
-    return null;
+  } catch (cause) {
+    throw new Error('Tauri Core 加载失败，桌面命令不可用', { cause });
   }
 }
 
@@ -183,9 +182,8 @@ async function getEvent(): Promise<TauriEvent | null> {
   try {
     _event = await import('@tauri-apps/api/event');
     return _event;
-  } catch {
-    _detected = false;
-    return null;
+  } catch (cause) {
+    throw new Error('Tauri Event 加载失败，跨窗口事件不可用', { cause });
   }
 }
 

@@ -162,7 +162,7 @@ Task 与 AgentRun 前端已经分面：Desktop 使用正式 `/api/tasks` 快照�
 
 开始任何新批次前必须重新运行 `git status --short` 与 `git diff`，保留用户和其他 Agent 的修改。
 
-Desktop 窗口生命周期与透明主窗启动故障已经收口：聊天与设置在首次 `open_window` 时按原 label、URL 和尺寸惰性创建，后续关闭继续 hide-and-reuse；主窗由 `setup` 显式确保创建、显示与聚焦。透明窗口的直接原因不是 Live2D，而是 Desktop API 从 `@ema-agent/turn` 根出口引入浏览器不支持的 `SessionInteractionQueue -> node:crypto.randomUUID`，导致 React 挂载前终止；现由浏览器安全的 `@ema-agent/turn/protocol` 子路径只暴露 Turn Wire 协议。普通浏览器预览也会在调用 Tauri 窗口 API 前确认宿主注入存在。K3 同时在处理 Runtime readiness 的开发包装器 PID 口径和三个前端图标引用；这些未提交改动不属于本批，不能覆盖。
+Desktop 窗口生命周期与透明主窗启动故障已经收口：聊天与设置在首次 `open_window` 时按原 label、URL 和尺寸惰性创建，后续关闭继续 hide-and-reuse；主窗由 `setup` 显式确保创建、显示与聚焦。透明窗口的直接原因不是 Live2D，而是 Desktop API 从 `@ema-agent/turn` 根出口引入浏览器不支持的 `SessionInteractionQueue -> node:crypto.randomUUID`，导致 React 挂载前终止；现由浏览器安全的 `@ema-agent/turn/protocol` 子路径只暴露 Turn Wire 协议。主窗 Dock 不再吞掉 Tauri Core/Event 加载和窗口命令失败，置顶状态只在原生命令成功后更新；取消置顶的无边框主窗失焦时自动最小化。表情入口只在真实 Live2D Runtime 活跃时可用，立绘或占位不会再提供无消费方的假按钮。普通浏览器预览仍会在调用 Tauri 窗口 API 前确认宿主注入存在。
 
 BackgroundProcess 后端主链已经完成：Bash 在 15 秒内返回普通结果，超时则把同一进程一次性交给后台；显式后台、并发队列、持久状态/有界日志、ProcessList/ProcessOutput/ProcessStop、完成事件、内部续接 Turn、设置和只读/停止 API 均已接线。Session 删除会先终止所属进程并释放日志句柄。本批未修改 Desktop 前端。
 
@@ -244,6 +244,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- Desktop 主窗交互收口：Desktop UI typecheck/build、Desktop typecheck、Tauri `cargo fmt --check` 与 `cargo check` 通过；聊天、设置、退出、拖动与表情命令失败会显示真实错误，置顶按钮不再先改图标后静默失败。立绘/占位状态下表情按钮明确禁用；主窗取消置顶后失焦自动最小化。`git diff --check` 通过，仅有既有 Windows CRLF 提示。
 - Desktop 透明主窗修复：浏览器运行日志确认旧链路在 `sessionInteractionQueue.js` 读取 `node:crypto.randomUUID` 时中断，改为 `@ema-agent/turn/protocol` 后该异常消失，主入口实际渲染出角色舞台占位及聊天、设置、置顶、退出等控制按钮；普通浏览器仅剩预期的未认证 LocalHost SSE 重试。Turn build、Desktop UI 与 Desktop typecheck 通过。Desktop 正式 Vite build 已越过原先的 Node-only Turn 阻塞并完成 1722 模块转换，现被独立的 `wlipsync` 顶层 await 与既有 `chrome105/es2022/safari13` target 不兼容阻塞，留发布构建批处理。
 - Desktop 窗口惰性创建与主窗兜底：`apps/desktop/src-tauri` 的 `cargo fmt --check`、`cargo check` 与 6/6 Rust 测试通过；实机窗口枚举确认旧进程只有托盘、没有任何顶层窗口，现由 `setup` 显式确保 `main` 创建并显示，`chat/settings` 保持原 capability label 并在首次操作时创建。`git diff --check` 通过，仅有既有 CRLF 提示。尚需下一次干净启动手动验证主窗可见、首次打开 Chat 后历史/SSE 完整、Settings 首次创建与重复隐藏/显示正常。
 - Session Backup ZIP V2 批三：Storage 定向 2/2、Backup 全量 46/46 通过，Storage build、Storage/Backup typecheck 与 `git diff --check` 通过。测试覆盖不存在 Session、惰性 SQLite 游标不会阻塞事务提交、稳定记录顺序、必需空 JSONL、存在附件冻结及缺失附件 warning；测试曾真实抓到“构造快照时同时打开所有 iterator 导致连接 busy”，已改为首次遍历该表时才打开游标。

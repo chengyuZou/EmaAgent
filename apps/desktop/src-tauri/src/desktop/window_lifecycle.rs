@@ -94,13 +94,25 @@ pub fn toggle_main_window(app: &tauri::AppHandle) {
 }
 
 pub fn handle_window_event(window: &tauri::Window, event: &WindowEvent) {
-    if let WindowEvent::CloseRequested { api, .. } = event {
-        api.prevent_close();
-        let _ = window.hide();
-        let _ = window.emit(
-            WINDOW_VISIBILITY_EVENT,
-            WindowVisibilityPayload { visible: false },
-        );
+    match event {
+        WindowEvent::CloseRequested { api, .. } => {
+            api.prevent_close();
+            let _ = window.hide();
+            let _ = window.emit(
+                WINDOW_VISIBILITY_EVENT,
+                WindowVisibilityPayload { visible: false },
+            );
+        }
+        // 主窗取消置顶后采用普通桌宠语义：用户切到其他应用时自动最小化，
+        // 避免透明无边框窗口留在桌面中间却没有原生最小化按钮。
+        WindowEvent::Focused(false) if window.label() == "main" => {
+            if matches!(window.is_always_on_top(), Ok(false)) {
+                if let Err(error) = window.minimize() {
+                    tracing::warn!(%error, "failed to minimize unpinned main window");
+                }
+            }
+        }
+        _ => {}
     }
 }
 

@@ -53,6 +53,7 @@ export function App(): React.JSX.Element {
     ].join('|');
   });
   const activeStageRuntime = useRef<Live2DRuntime | null>(null);
+  const [stageRuntimeAvailable, setStageRuntimeAvailable] = useState(false);
   const [dockVisible,  setDockVisible]  = useState(false);
   const [shellStatus,  setShellStatus]  = useState<ShellStatus | null>(null);
   const [stageSnapshot, setStageSnapshot] = useState<CharacterStageSnapshot | null>(null);
@@ -60,7 +61,8 @@ export function App(): React.JSX.Element {
     getPresentation: (cardId) => cardsApi.getPresentation(cardId),
   }));
   const handleStageRuntimeChanged = useCallback((runtime: Live2DRuntime | null): void => {
-    if (runtime) activeStageRuntime.current = runtime;
+    activeStageRuntime.current = runtime;
+    setStageRuntimeAvailable(runtime !== null);
   }, []);
 
   // LocalHost 首次可用及角色切换事件都会刷新 card-store；舞台只订阅稳定角色字段。
@@ -153,7 +155,10 @@ export function App(): React.JSX.Element {
 
       <SpeechBubble />
 
-      <FloatingDock visible={dockVisible} />
+      <FloatingDock
+        visible={dockVisible}
+        expressionAvailable={stageRuntimeAvailable}
+      />
 
       <SidecarBadge status={sidecarStatus} />
 
