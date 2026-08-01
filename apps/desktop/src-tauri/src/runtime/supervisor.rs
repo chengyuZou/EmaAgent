@@ -1,4 +1,4 @@
-// 统一编排 Bridge/LocalHost 启动、结构化就绪、状态发布和可靠退出。
+// 统一编排 Narrative Bridge/LocalHost 启动、结构化就绪、状态发布和可靠退出。
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -17,7 +17,7 @@ use super::resources::{resolve_narrative_dir, resolve_service_launch, ServiceLau
 use super::types::{RuntimePhase, RuntimeService, RuntimeSnapshot, ServicePhase, ServiceSnapshot};
 
 const LOCAL_HOST_READY_TIMEOUT: Duration = Duration::from_secs(30);
-const BRIDGE_READY_TIMEOUT: Duration = Duration::from_secs(30);
+const NARRATIVE_BRIDGE_READY_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Clone)]
 pub struct DesktopRuntimeSupervisor(Arc<Inner>);
@@ -29,7 +29,7 @@ struct Inner {
     snapshot: RwLock<RuntimeSnapshot>,
     secret: RwLock<Option<String>>,
     local_host: Mutex<Option<Child>>,
-    bridge: Mutex<Option<Child>>,
+    narrative_bridge: Mutex<Option<Child>>,
     runtime_dir: Mutex<Option<PathBuf>>,
     process_tree: NativeProcessTree,
     credential_master_key: String,
@@ -44,7 +44,7 @@ impl DesktopRuntimeSupervisor {
             snapshot: RwLock::new(RuntimeSnapshot::stopped()),
             secret: RwLock::new(None),
             local_host: Mutex::new(None),
-            bridge: Mutex::new(None),
+            narrative_bridge: Mutex::new(None),
             runtime_dir: Mutex::new(None),
             process_tree: NativeProcessTree::new()?,
             credential_master_key,
@@ -73,20 +73,21 @@ impl DesktopRuntimeSupervisor {
         *self.0.secret.write().await = Some(secret.clone());
         self.reset_snapshot(generation).await;
 
-        // Bridge 是 Narrative 的可选能力；启动或就绪失败时明确标记 unavailable，
+        // Narrative Bridge 是可选能力；启动或就绪失败时明确标记 unavailable，
         // LocalHost 和 chat 主链路仍继续启动。
-        self.set_runtime_phase(RuntimePhase::StartingBridge, None)
+        self.set_runtime_phase(RuntimePhase::StartingNarrativeBridge, None)
             .await;
-        let bridge_ready = runtime_dir.join("bridge.ready.json");
-        match resolve_service_launch(&app, RuntimeService::Bridge) {
+        let narrative_bridge_ready = runtime_dir.join("narrative-bridge.ready.json");
+        match resolve_service_launch(&app, RuntimeService::NarrativeBridge) {
             Ok(launch) => {
-                self.set_service_starting(RuntimeService::Bridge).await;
+                self.set_service_starting(RuntimeService::NarrativeBridge)
+                    .await;
                 let result = match resolve_narrative_dir(&app).await {
                     Ok(path) => {
                         self.start_service(
-                            RuntimeService::Bridge,
+                            RuntimeService::NarrativeBridge,
                             launch,
-                            &bridge_ready,
+                            &narrative_bridge_ready,
                             &nonce,
                             &secret,
                             &credential_master_key,
@@ -98,21 +99,25 @@ impl DesktopRuntimeSupervisor {
                 };
                 match result {
                     Ok((pid, port)) => {
-                        self.set_service_ready(RuntimeService::Bridge, pid, port)
+                        self.set_service_ready(RuntimeService::NarrativeBridge, pid, port)
                             .await
                     }
                     Err(error) => {
-                        self.terminate_service(RuntimeService::Bridge).await;
-                        self.set_service_unavailable(RuntimeService::Bridge, error.clone())
+                        self.terminate_service(RuntimeService::NarrativeBridge)
                             .await;
-                        tracing::warn!(%error, "bridge unavailable; narrative mode will degrade");
+                        self.set_service_unavailable(
+                            RuntimeService::NarrativeBridge,
+                            error.clone(),
+                        )
+                        .await;
+                        tracing::warn!(%error, "narrative bridge unavailable; narrative mode will degrade");
                     }
                 }
             }
             Err(error) => {
-                self.set_service_unavailable(RuntimeService::Bridge, error.clone())
+                self.set_service_unavailable(RuntimeService::NarrativeBridge, error.clone())
                     .await;
-                tracing::warn!(%error, "bridge executable unavailable; narrative mode will degrade");
+                tracing::warn!(%error, "narrative bridge executable unavailable; narrative mode will degrade");
             }
         }
 
@@ -120,7 +125,7 @@ impl DesktopRuntimeSupervisor {
             return self.finish_cancelled_start().await;
         }
 
-        // LocalHost 是桌面应用必需服务。任何失败都进入 Failed，并回收已经启动的 Bridge。
+        // LocalHost 是桌面应用必需服务。任何失败都进入 Failed，并回收已启动的 Narrative Bridge。
         self.set_runtime_phase(RuntimePhase::StartingLocalHost, None)
             .await;
         self.set_service_starting(RuntimeService::LocalHost).await;
@@ -159,9 +164,10 @@ impl DesktopRuntimeSupervisor {
         let _operation = self.0.operation.lock().await;
         self.set_runtime_phase(RuntimePhase::Stopping, None).await;
 
-        // LocalHost 依赖 Bridge，退出时先停上游请求入口，再停计算 Bridge。
+        // LocalHost 依赖 Narrative Bridge，退出时先停上游请求入口，再停检索进程。
         self.terminate_service(RuntimeService::LocalHost).await;
-        self.terminate_service(RuntimeService::Bridge).await;
+        self.terminate_service(RuntimeService::NarrativeBridge)
+            .await;
 
         if let Some(directory) = self.0.runtime_dir.lock().await.take() {
             if let Err(error) = tokio::fs::remove_dir_all(&directory).await {
@@ -236,7 +242,7 @@ impl DesktopRuntimeSupervisor {
 
         let timeout = match service {
             RuntimeService::LocalHost => LOCAL_HOST_READY_TIMEOUT,
-            RuntimeService::Bridge => BRIDGE_READY_TIMEOUT,
+            RuntimeService::NarrativeBridge => NARRATIVE_BRIDGE_READY_TIMEOUT,
         };
         let record = wait_for_ready(
             ready_file,
@@ -264,7 +270,8 @@ impl DesktopRuntimeSupervisor {
 
     async fn fail_local_host_start(&self, error: String) -> Result<(), String> {
         self.terminate_service(RuntimeService::LocalHost).await;
-        self.terminate_service(RuntimeService::Bridge).await;
+        self.terminate_service(RuntimeService::NarrativeBridge)
+            .await;
         self.set_service_failed(RuntimeService::LocalHost, error.clone())
             .await;
         self.set_runtime_phase(RuntimePhase::Failed, Some(error.clone()))
@@ -291,15 +298,17 @@ impl DesktopRuntimeSupervisor {
                     supervisor
                         .set_runtime_phase(RuntimePhase::Failed, Some(error.clone()))
                         .await;
-                    supervisor.terminate_service(RuntimeService::Bridge).await;
+                    supervisor
+                        .terminate_service(RuntimeService::NarrativeBridge)
+                        .await;
                     tracing::error!(generation, %error, "desktop runtime failed");
                     return;
                 }
 
-                if let Some(status) = supervisor.poll_exit(RuntimeService::Bridge).await {
-                    let error = format!("bridge exited unexpectedly: {status}");
+                if let Some(status) = supervisor.poll_exit(RuntimeService::NarrativeBridge).await {
+                    let error = format!("narrative bridge exited unexpectedly: {status}");
                     supervisor
-                        .set_service_unavailable(RuntimeService::Bridge, error.clone())
+                        .set_service_unavailable(RuntimeService::NarrativeBridge, error.clone())
                         .await;
                     tracing::warn!(generation, %error, "narrative bridge became unavailable");
                 }
@@ -327,13 +336,14 @@ impl DesktopRuntimeSupervisor {
     fn child_slot(&self, service: RuntimeService) -> &Mutex<Option<Child>> {
         match service {
             RuntimeService::LocalHost => &self.0.local_host,
-            RuntimeService::Bridge => &self.0.bridge,
+            RuntimeService::NarrativeBridge => &self.0.narrative_bridge,
         }
     }
 
     async fn finish_cancelled_start(&self) -> Result<(), String> {
         self.terminate_service(RuntimeService::LocalHost).await;
-        self.terminate_service(RuntimeService::Bridge).await;
+        self.terminate_service(RuntimeService::NarrativeBridge)
+            .await;
         Err("desktop runtime startup cancelled".to_string())
     }
 
@@ -342,7 +352,7 @@ impl DesktopRuntimeSupervisor {
             generation,
             phase: RuntimePhase::Stopped,
             local_host: ServiceSnapshot::stopped(),
-            bridge: ServiceSnapshot::stopped(),
+            narrative_bridge: ServiceSnapshot::stopped(),
             last_error: None,
         };
     }
@@ -409,7 +419,7 @@ impl DesktopRuntimeSupervisor {
         let mut snapshot = self.0.snapshot.write().await;
         match service {
             RuntimeService::LocalHost => snapshot.local_host = value,
-            RuntimeService::Bridge => snapshot.bridge = value,
+            RuntimeService::NarrativeBridge => snapshot.narrative_bridge = value,
         }
     }
 }

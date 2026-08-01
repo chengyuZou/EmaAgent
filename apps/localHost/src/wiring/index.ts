@@ -25,7 +25,10 @@ export {
 
 export { fetchLlmModels, type FetchedModels } from './providers/llm.js';
 export { fetchEmbedModels, type FetchedEmbedModels } from './providers/embed.js';
-export { resolveBridgeUrl, configureBridge } from './bridge.js';
+export {
+  resolveNarrativeBridgeUrl,
+  configureNarrativeBridge,
+} from './narrativeBridge.js';
 export { ProviderRuntimeFacade } from './provider-runtime.js';
 export type { ProviderRuntimeDependencies } from './provider-runtime.js';
 export { registerAllHooks }    from './register-hooks.js';

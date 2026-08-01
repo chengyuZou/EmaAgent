@@ -144,7 +144,7 @@ export interface AppBindings {
   stt:          SttRuntime;
   // Vision Facade — image understanding; used by KB ingest (OCR fallback).
   vision:       VisionRuntime;
-  /** Provider 配置到各能力运行时及 Python Bridge 的统一生命周期入口。 */
+  /** Provider 配置到各能力运行时及 Narrative Bridge 的统一生命周期入口。 */
   providerRuntime: ProviderRuntimeFacade;
 
   // Agent stack

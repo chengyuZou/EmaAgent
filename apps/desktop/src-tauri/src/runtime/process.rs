@@ -1,4 +1,4 @@
-// 启动受监管的 LocalHost/Bridge 子进程并转发其标准输出与错误日志。
+// 启动受监管的 LocalHost/Narrative Bridge 子进程并转发其标准输出与错误日志。
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
@@ -31,7 +31,7 @@ pub async fn spawn_service(
         .env("EMA_READY_FILE", ready_file)
         .env("EMA_RUNTIME_NONCE", nonce)
         .env("EMA_RUNTIME_PROTOCOL_VERSION", "1");
-    if service == RuntimeService::Bridge {
+    if service == RuntimeService::NarrativeBridge {
         command.env("EMA_DATA_DIR", profile_directory());
     }
     if let Some(path) = narrative_dir {

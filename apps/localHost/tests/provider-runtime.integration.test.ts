@@ -1,4 +1,4 @@
-// 测试 Provider 配置刷新会原子替换执行面，并向 Bridge 推送完整模型绑定快照。
+// 测试 Provider 配置刷新会原子替换执行面，并向 Narrative Bridge 推送完整模型绑定快照。
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Database, ModelBindingsRepo, ProvidersRepo } from '@ema-agent/storage';
 import { LanguageModelRuntime } from '@ema-agent/llm';
@@ -158,21 +158,21 @@ describe('ProviderRuntimeFacade', () => {
       embeddingDimension: 1024,
     });
 
-    await runtime.syncBridge();
+    await runtime.syncNarrativeBridge();
     expect(narrative.payloads.at(-1)).toMatchObject({
       llm: { apiKey: 'bridge-secret', model: 'llm-model' },
       embed: { apiKey: 'bridge-secret', model: 'embed-model', dim: 1024 },
     });
 
     providers.setEnabled('provider-1', false);
-    await runtime.syncBridge();
+    await runtime.syncNarrativeBridge();
     expect(narrative.payloads.at(-1)).toEqual({ llm: null, embed: null });
 
     providers.setEnabled('provider-1', true);
     modelBindings.deleteAllByModule('lightrag-llm');
     modelBindings.deleteAllByModule('lightrag-embed');
     providers.delete('provider-1');
-    await runtime.syncBridge();
+    await runtime.syncNarrativeBridge();
     expect(narrative.payloads.at(-1)).toEqual({ llm: null, embed: null });
   });
 

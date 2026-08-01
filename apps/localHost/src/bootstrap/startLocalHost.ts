@@ -17,7 +17,7 @@ type StartupKnowledge = Pick<KbManager, 'ensureDefault'>;
 type StartupMarketplace = Pick<MarketSourceStore, 'ensureSeeds'>;
 type StartupSkills = Pick<SkillStore, 'scanAndReconcile'>;
 type StartupModelCatalog = Pick<ModelsDevCatalog, 'refresh' | 'size'>;
-type StartupProviderRuntime = Pick<ProviderRuntimeFacade, 'syncBridge'>;
+type StartupProviderRuntime = Pick<ProviderRuntimeFacade, 'syncNarrativeBridge'>;
 type StartupBackgroundWork = Pick<BackgroundWork, 'start' | 'shutdown'>;
 
 export class LocalHostLifecycle {
@@ -65,8 +65,8 @@ export class LocalHostLifecycle {
     });
     this.trackBackground('model catalog refresh', () =>
       this.refreshModelCatalog());
-    this.trackBackground('initial bridge sync', () =>
-      this.providerRuntime.syncBridge());
+    this.trackBackground('initial Narrative Bridge sync', () =>
+      this.providerRuntime.syncNarrativeBridge());
   }
 
   private async refreshModelCatalog(): Promise<void> {

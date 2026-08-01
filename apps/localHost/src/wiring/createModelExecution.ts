@@ -15,7 +15,7 @@ import {
 } from '@ema-agent/tts';
 import type { UsageRecord } from '@ema-agent/usage';
 import { visionSetting } from '@ema-agent/vision';
-import { resolveBridgeUrl } from './bridge.js';
+import { resolveNarrativeBridgeUrl } from './narrativeBridge.js';
 import { ProviderRuntimeFacade } from './provider-runtime.js';
 import { loadEmbedConfigs } from './providers/embed.js';
 import { loadLlmConfigs } from './providers/llm.js';
@@ -55,7 +55,7 @@ export function createModelExecution(
     { usageRecorder: usageRecords, onUsageRecordError },
   );
   const narrative = new NarrativeClient({
-    baseUrl: resolveBridgeUrl(),
+    baseUrl: resolveNarrativeBridgeUrl(),
     secret: process.env['EMA_SHARED_SECRET'],
     timeoutMs: 60_000,
   });

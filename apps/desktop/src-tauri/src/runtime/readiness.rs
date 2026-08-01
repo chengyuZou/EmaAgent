@@ -1,4 +1,4 @@
-// 读取并校验 LocalHost/Bridge 原子写入的结构化启动握手。
+// 读取并校验 LocalHost/Narrative Bridge 原子写入的结构化启动握手。
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;

@@ -1,4 +1,4 @@
-// 测试 LocalHost 后台生命周期只启动一次、按周期探测 Bridge，并有序排空资源。
+// 测试 LocalHost 后台生命周期只启动一次、按周期探测 Narrative Bridge，并有序排空资源。
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BackgroundWork } from '../src/background/backgroundWork.js';
@@ -76,7 +76,7 @@ function createHarness() {
     isReady: vi.fn(async () => true),
   };
   const providerRuntime = {
-    syncBridge: vi.fn(async () => undefined),
+    syncNarrativeBridge: vi.fn(async () => undefined),
   };
   const systemEvents = {
     emit: vi.fn(),
@@ -195,7 +195,7 @@ describe('BackgroundWork', () => {
     harness.work.start();
     await vi.advanceTimersByTimeAsync(60_000);
 
-    expect(harness.providerRuntime.syncBridge).toHaveBeenCalledTimes(1);
+    expect(harness.providerRuntime.syncNarrativeBridge).toHaveBeenCalledTimes(1);
     expect(harness.systemEvents.emit).toHaveBeenNthCalledWith(1, {
       type: 'system_warning',
       level: 'warn',
@@ -204,7 +204,7 @@ describe('BackgroundWork', () => {
 
     await vi.advanceTimersByTimeAsync(60_000);
 
-    expect(harness.providerRuntime.syncBridge).toHaveBeenCalledTimes(2);
+    expect(harness.providerRuntime.syncNarrativeBridge).toHaveBeenCalledTimes(2);
     expect(harness.systemEvents.emit).toHaveBeenNthCalledWith(2, {
       type: 'system_warning',
       level: 'info',

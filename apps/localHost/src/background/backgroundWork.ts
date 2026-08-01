@@ -1,4 +1,4 @@
-// 管理 LocalHost 启动后常驻的恢复、维护、Bridge 探测与有序关闭。
+// 管理 LocalHost 启动后常驻的恢复、维护、Narrative Bridge 探测与有序关闭。
 
 import type { AttachmentCacheMaintenance } from '@ema-agent/attachment';
 import type { McpRegistry } from '@ema-agent/mcp';
@@ -26,7 +26,7 @@ import type { MemoryBackgroundHealthTracker } from './memoryBackgroundHealth.js'
 const BACKGROUND_TICK_MS = 5_000;
 const CLEANER_SWEEP_EVERY = 360;
 const ATTACHMENT_CACHE_SWEEP_EVERY = 360;
-const BRIDGE_HEARTBEAT_EVERY = 12;
+const NARRATIVE_BRIDGE_HEARTBEAT_EVERY = 12;
 const MEMORY_DECAY_SWEEP_EVERY = 12;
 
 type BackgroundMemory = Pick<
@@ -53,14 +53,14 @@ type BackgroundAttachmentCache = Pick<
   'sweepIfIdle'
 >;
 type BackgroundNarrative = Pick<NarrativeClient, 'isReady'>;
-type BackgroundProviderRuntime = Pick<ProviderRuntimeFacade, 'syncBridge'>;
+type BackgroundProviderRuntime = Pick<ProviderRuntimeFacade, 'syncNarrativeBridge'>;
 type BackgroundSystemEvents = Pick<SystemEventBus, 'emit'>;
 
 export class BackgroundWork {
   private ticker: BackgroundTicker | null = null;
   private initialization: Promise<unknown> | null = null;
   private mcpDiscovery: Promise<unknown> | null = null;
-  private lastBridgeReady: boolean | null = null;
+  private lastNarrativeBridgeReady: boolean | null = null;
   private memoryEnabled = false;
   private lastHeavyMaintenanceAt = 0;
   private started = false;
@@ -188,8 +188,8 @@ export class BackgroundWork {
       await this.runLightMemoryMaintenance();
     }
     await this.runHeavyMemoryMaintenance();
-    if (tickCount % BRIDGE_HEARTBEAT_EVERY === 0) {
-      this.lastBridgeReady = await this.checkBridgeHeartbeat();
+    if (tickCount % NARRATIVE_BRIDGE_HEARTBEAT_EVERY === 0) {
+      this.lastNarrativeBridgeReady = await this.checkNarrativeBridgeHeartbeat();
     }
   }
 
@@ -364,31 +364,31 @@ export class BackgroundWork {
     }
   }
 
-  private async checkBridgeHeartbeat(): Promise<boolean> {
+  private async checkNarrativeBridgeHeartbeat(): Promise<boolean> {
     let ready = await this.narrative.isReady();
     if (!ready) {
-      await this.providerRuntime.syncBridge().catch(() => undefined);
+      await this.providerRuntime.syncNarrativeBridge().catch(() => undefined);
       ready = await this.narrative.isReady();
     }
 
-    if (this.lastBridgeReady === null) {
+    if (this.lastNarrativeBridgeReady === null) {
       if (!ready) {
-        console.warn('[bridge] narrative capability unavailable — degrading');
+        console.warn('[narrative-bridge] capability unavailable — degrading');
         this.systemEvents.emit({
           type: 'system_warning',
           level: 'warn',
           message: 'Narrative bridge 不可达 — narrative 模式暂时降级',
         });
       }
-    } else if (!this.lastBridgeReady && ready) {
-      console.log('[bridge] narrative capability recovered');
+    } else if (!this.lastNarrativeBridgeReady && ready) {
+      console.log('[narrative-bridge] capability recovered');
       this.systemEvents.emit({
         type: 'system_warning',
         level: 'info',
         message: 'Narrative bridge 已恢复',
       });
-    } else if (this.lastBridgeReady && !ready) {
-      console.warn('[bridge] narrative capability lost — degrading');
+    } else if (this.lastNarrativeBridgeReady && !ready) {
+      console.warn('[narrative-bridge] capability lost — degrading');
       this.systemEvents.emit({
         type: 'system_warning',
         level: 'warn',

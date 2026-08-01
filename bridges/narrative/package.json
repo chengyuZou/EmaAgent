@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "uv run ema-narrative-bridge",
+    "test": "uv run pytest",
     "build:sidecar": "uv run --group build python packaging/build_sidecar.py"
   }
 }

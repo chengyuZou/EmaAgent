@@ -5,6 +5,9 @@ import type {
   NarrativeRouteResponse,
   NarrativeQueryResponse,
   NarrativeIngestResponse,
+  NarrativeRecallRequest,
+  NarrativeRecallResponse,
+  NarrativeTimelineFailure,
 } from './types.js';
 import {
   NarrativeClientError,
@@ -32,6 +35,15 @@ export class NarrativeClient {
       'Content-Type': 'application/json',
       ...(opts.secret ? { 'X-Ema-Secret': opts.secret } : {}),
     };
+  }
+
+  async recall(
+    query: string,
+    mode?: string,
+    topK?: number,
+    signal?: AbortSignal
+  ): Promise<NarrativeRecallResponse> {
+    return this.post<NarrativeRecallResponse>('/narrative/recall', { query, mode, topK }, signal);
   }
 
   async route(query: string, signal?: AbortSignal): Promise<NarrativeRouteResponse> {

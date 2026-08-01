@@ -1,4 +1,4 @@
-// 启动真实 LocalHost 或 Bridge 制品，验证 readiness 身份、健康端点与可靠退出。
+// 启动真实 LocalHost 或 Narrative Bridge 制品，验证 readiness 身份、健康端点与可靠退出。
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -16,11 +16,13 @@ const service = argument('--service');
 const executable = path.resolve(argument('--executable'));
 const entry = argument('--entry', false);
 const narrativeSeed = argument('--narrative', false);
-if (service !== 'local-host' && service !== 'bridge') {
+if (service !== 'local-host' && service !== 'narrative-bridge') {
   throw new Error(`未知运行时服务: ${service}`);
 }
 if (service === 'local-host' && !entry) throw new Error('LocalHost smoke 缺少 --entry');
-if (service === 'bridge' && !narrativeSeed) throw new Error('Bridge smoke 缺少 --narrative');
+if (service === 'narrative-bridge' && !narrativeSeed) {
+  throw new Error('Narrative Bridge smoke 缺少 --narrative');
+}
 
 const temporaryRoot = mkdtempSync(path.join(os.tmpdir(), `ema-${service}-smoke-`));
 const readyFile = path.join(temporaryRoot, `${service}.ready.json`);
@@ -42,7 +44,7 @@ try {
     HOME: temporaryRoot,
     USERPROFILE: temporaryRoot,
     EMA_PROFILE_DIR: path.join(temporaryRoot, 'profile'),
-    EMA_DATA_DIR: path.join(temporaryRoot, 'bridge-data'),
+    EMA_DATA_DIR: path.join(temporaryRoot, `${service}-data`),
     EMA_SHARED_SECRET: sharedSecret,
     EMA_CREDENTIAL_MASTER_KEY: credentialKey,
     EMA_READY_FILE: readyFile,
@@ -65,7 +67,7 @@ try {
     });
   }
 
-  const deadline = Date.now() + (service === 'bridge' ? 120_000 : 60_000);
+  const deadline = Date.now() + (service === 'narrative-bridge' ? 120_000 : 60_000);
   let ready;
   while (Date.now() < deadline) {
     if (child.exitCode !== null) {

@@ -50,7 +50,7 @@ describe('LocalHostLifecycle', () => {
       }),
     };
     const providerRuntime = {
-      syncBridge: vi.fn(async () => {
+      syncNarrativeBridge: vi.fn(async () => {
         order.push('bridge');
       }),
     };
@@ -75,7 +75,7 @@ describe('LocalHostLifecycle', () => {
 
     await Promise.all([lifecycle.start(), lifecycle.start()]);
     await vi.waitFor(() => {
-      expect(providerRuntime.syncBridge).toHaveBeenCalledTimes(1);
+      expect(providerRuntime.syncNarrativeBridge).toHaveBeenCalledTimes(1);
     });
 
     expect(knowledge.ensureDefault).toHaveBeenCalledWith(
@@ -93,7 +93,7 @@ describe('LocalHostLifecycle', () => {
     expect(marketplace.ensureSeeds).toHaveBeenCalledTimes(1);
     expect(skills.scanAndReconcile).toHaveBeenCalledTimes(1);
     expect(modelCatalog.refresh).toHaveBeenCalledTimes(1);
-    expect(providerRuntime.syncBridge).toHaveBeenCalledTimes(1);
+    expect(providerRuntime.syncNarrativeBridge).toHaveBeenCalledTimes(1);
 
     await lifecycle.shutdown();
     expect(backgroundWork.shutdown).toHaveBeenCalledTimes(1);
@@ -126,7 +126,7 @@ describe('LocalHostLifecycle', () => {
         size: 0,
       },
       {
-        syncBridge: vi.fn(async () => {
+        syncNarrativeBridge: vi.fn(async () => {
           throw new Error('bridge unavailable');
         }),
       },
@@ -160,7 +160,9 @@ describe('LocalHostLifecycle', () => {
       refresh: vi.fn(async () => ({})),
       size: 1,
     };
-    const providerRuntime = { syncBridge: vi.fn(async () => undefined) };
+    const providerRuntime = {
+      syncNarrativeBridge: vi.fn(async () => undefined),
+    };
     const backgroundWork = {
       start: vi.fn(() => {
         throw new Error('required recovery failed');
@@ -184,6 +186,6 @@ describe('LocalHostLifecycle', () => {
     expect(marketplace.ensureSeeds).not.toHaveBeenCalled();
     expect(skills.scanAndReconcile).not.toHaveBeenCalled();
     expect(modelCatalog.refresh).not.toHaveBeenCalled();
-    expect(providerRuntime.syncBridge).not.toHaveBeenCalled();
+    expect(providerRuntime.syncNarrativeBridge).not.toHaveBeenCalled();
   });
 });

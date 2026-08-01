@@ -14,6 +14,11 @@ export interface BridgeLlmCfg {
   model: string;
 }
 
+/** 
+ *   - 删：NarrativeRouteRequest/Response、NarrativeQueryRequest/Response、NarrativeIngestRequest/Response（端点退位 + ingest 消失）。
+  - 增：NarrativeRecallRequest { query, mode?, topK? }、NarrativeTimelineFailure { timeline, code, message, retryable }、NarrativeRecallResponse { generationId, routes, results, failures }。
+*/
+
 /**
  * POST /internal/configure 的完整配置快照。
  * null 表示显式撤销该能力，避免 Bridge 继续持有已删除 Provider 的密钥。
@@ -33,6 +38,26 @@ export interface BridgeHealthResponse {
   status:       'ok';
   version:      string;
   capabilities: BridgeCapabilities;
+}
+
+export interface NarrativeRecallRequest {
+  query: string;
+  mode?: string; // LightRAG query mode. 默认为 'hybrid'.
+  topK?: number; // LightRAG topK. 默认为 5.
+}
+
+export interface NarrativeTimelineFailure {
+  timeline: string;
+  code: string;
+  message: string;
+  retryable: boolean;
+}
+
+export interface NarrativeRecallResponse {
+  generationId: string;
+  routes: Record<string, string>;
+  results: Record<string, string>;
+  failures: NarrativeTimelineFailure[];
 }
 
 // ── Route ─────────────────────────────────────────────────────────────────────

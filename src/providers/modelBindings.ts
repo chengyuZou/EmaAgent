@@ -32,7 +32,7 @@ export const MODEL_BINDING_CAPABILITIES: Partial<
   vision: 'vision',
 });
 
-const BRIDGE_BINDING_MODULES = new Set<ModelBindingModule>([
+const NARRATIVE_BRIDGE_BINDING_MODULES = new Set<ModelBindingModule>([
   'lightrag-embed',
   'lightrag-llm',
 ]);
@@ -63,7 +63,7 @@ export interface ModelBindingStore {
 }
 
 export interface ModelBindingRuntime {
-  syncBridge(): Promise<void>;
+  syncNarrativeBridge(): Promise<void>;
 }
 
 export class ModelBindingControl {
@@ -86,29 +86,29 @@ export class ModelBindingControl {
 
   setSingle(input: ModelBindingInput): ResolvedModelBinding[] {
     this.store.setSingle(input);
-    this.syncBridgeIfNeeded(input.module);
+    this.syncNarrativeBridgeIfNeeded(input.module);
     return this.store.listByModule(input.module);
   }
 
   upsert(input: ModelBindingInput): ResolvedModelBinding[] {
     this.store.upsert(input);
-    this.syncBridgeIfNeeded(input.module);
+    this.syncNarrativeBridgeIfNeeded(input.module);
     return this.store.listByModule(input.module);
   }
 
   delete(module: ModelBindingModule, providerConfigId: string, model: string): void {
     this.store.delete(module, providerConfigId, model);
-    this.syncBridgeIfNeeded(module);
+    this.syncNarrativeBridgeIfNeeded(module);
   }
 
   deleteByProviderModel(providerConfigId: string, model: string): number {
     return this.store.deleteByProviderModel(providerConfigId, model);
   }
 
-  private syncBridgeIfNeeded(module: ModelBindingModule): void {
-    if (!BRIDGE_BINDING_MODULES.has(module)) return;
-    void this.runtime.syncBridge().catch((error: unknown) => {
-      console.warn('[model-bindings] bridge sync failed:', error);
+  private syncNarrativeBridgeIfNeeded(module: ModelBindingModule): void {
+    if (!NARRATIVE_BRIDGE_BINDING_MODULES.has(module)) return;
+    void this.runtime.syncNarrativeBridge().catch((error: unknown) => {
+      console.warn('[model-bindings] narrative bridge sync failed:', error);
     });
   }
 }

@@ -27,8 +27,6 @@ importers:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
-  apps/bridge: {}
-
   apps/desktop:
     dependencies:
       '@ema-agent/desktop-ui':
@@ -409,6 +407,8 @@ importers:
       vitest:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
+
+  bridges/narrative: {}
 
   packages/credential:
     devDependencies:

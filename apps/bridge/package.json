@@ -1,9 +1,0 @@
-{
-  "name": "@ema-agent/bridge",
-  "version": "0.1.0",
-  "private": true,
-  "scripts": {
-    "dev": "uv run ema-bridge",
-    "build:sidecar": "uv run --group build python packaging/build_sidecar.py"
-  }
-}

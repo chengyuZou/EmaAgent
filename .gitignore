@@ -35,7 +35,9 @@ Thumbs.db
 **/src-tauri/gen/
 
 # Python
+.pytest_cache
 __pycache__/
+ema_narrative_bridge.egg-info
 *.py[cod]
 *$py.class
 *.so

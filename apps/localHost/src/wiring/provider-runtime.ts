@@ -13,7 +13,7 @@ import { loadRerankConfigs } from './providers/rerank.js';
 import { reloadTtsRuntime } from './providers/tts.js';
 import { reloadSttRuntime } from './providers/stt.js';
 import { reloadVisionRuntime } from './providers/vision.js';
-import { configureBridge } from './bridge.js';
+import { configureNarrativeBridge } from './narrativeBridge.js';
 
 export interface ProviderRuntimeDependencies {
   profileDb: Database;
@@ -34,7 +34,7 @@ export interface ProviderRuntimeDependencies {
  * 完整快照；它不应根据某一行的新 capability 推测需要更新哪些 Router。
  */
 export class ProviderRuntimeFacade {
-  private bridgeQueue: Promise<void> = Promise.resolve();
+  private narrativeBridgeQueue: Promise<void> = Promise.resolve();
 
   constructor(private readonly deps: ProviderRuntimeDependencies) {}
 
@@ -57,27 +57,27 @@ export class ProviderRuntimeFacade {
   }
 
   /**
-   * 串行推送 Bridge 完整快照。
+   * 串行推送 Narrative Bridge 完整快照。
    * 每个队列任务执行时重新读取 DB，因此连续保存不会让旧快照覆盖新快照。
    */
-  syncBridge(): Promise<void> {
-    this.bridgeQueue = this.bridgeQueue
+  syncNarrativeBridge(): Promise<void> {
+    this.narrativeBridgeQueue = this.narrativeBridgeQueue
       .catch(() => undefined)
       .then(async () => {
-        await configureBridge(
+        await configureNarrativeBridge(
           this.deps.profileDb,
           this.deps.narrative,
           this.deps.credentials,
         );
       });
-    return this.bridgeQueue;
+    return this.narrativeBridgeQueue;
   }
 
-  /** Provider 写入后的统一入口：TS 运行时立即换代，Bridge 后台串行同步。 */
+  /** Provider 写入后的统一入口：TS 运行时立即换代，Narrative Bridge 后台串行同步。 */
   refresh(): void {
     this.refreshProviders();
-    void this.syncBridge().catch((error: unknown) => {
-      console.warn('[provider-runtime] bridge sync failed:', error);
+    void this.syncNarrativeBridge().catch((error: unknown) => {
+      console.warn('[provider-runtime] Narrative Bridge sync failed:', error);
     });
   }
 }

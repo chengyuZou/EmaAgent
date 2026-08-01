@@ -1,18 +1,18 @@
-// 定义桌面运行时、LocalHost 与 Bridge 生命周期对外可见的状态结构。
+// 定义桌面运行时、LocalHost 与 Narrative Bridge 生命周期对外可见的状态结构。
 use serde::Serialize;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RuntimeService {
     LocalHost,
-    Bridge,
+    NarrativeBridge,
 }
 
 impl RuntimeService {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::LocalHost => "local-host",
-            Self::Bridge => "bridge",
+            Self::NarrativeBridge => "narrative-bridge",
         }
     }
 }
@@ -21,7 +21,7 @@ impl RuntimeService {
 #[serde(rename_all = "snake_case")]
 pub enum RuntimePhase {
     Stopped,
-    StartingBridge,
+    StartingNarrativeBridge,
     StartingLocalHost,
     Ready,
     Stopping,
@@ -64,7 +64,7 @@ pub struct RuntimeSnapshot {
     pub generation: u64,
     pub phase: RuntimePhase,
     pub local_host: ServiceSnapshot,
-    pub bridge: ServiceSnapshot,
+    pub narrative_bridge: ServiceSnapshot,
     pub last_error: Option<String>,
 }
 
@@ -74,7 +74,7 @@ impl RuntimeSnapshot {
             generation: 0,
             phase: RuntimePhase::Stopped,
             local_host: ServiceSnapshot::stopped(),
-            bridge: ServiceSnapshot::stopped(),
+            narrative_bridge: ServiceSnapshot::stopped(),
             last_error: None,
         }
     }

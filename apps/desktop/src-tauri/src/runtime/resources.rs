@@ -1,4 +1,4 @@
-// 解析开发命令与各平台安装包内的 LocalHost、Bridge 可执行资源。
+// 解析开发命令与各平台安装包内的 LocalHost、Narrative Bridge 可执行资源。
 use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, Manager};
@@ -68,10 +68,10 @@ fn resolve_development_launch(service: RuntimeService) -> Result<ServiceLaunch, 
             working_dir: workspace_root,
             launcher_is_service: false,
         }),
-        RuntimeService::Bridge => Ok(ServiceLaunch {
+        RuntimeService::NarrativeBridge => Ok(ServiceLaunch {
             executable: which::which("uv").map_err(|error| format!("uv not on PATH: {error}"))?,
-            args: vec!["run".to_string(), "ema-bridge".to_string()],
-            working_dir: workspace_root.join("apps").join("bridge"),
+            args: vec!["run".to_string(), "ema-narrative-bridge".to_string()],
+            working_dir: workspace_root.join("bridges").join("narrative"),
             launcher_is_service: false,
         }),
     }
@@ -83,7 +83,7 @@ fn resolve_bundled_launch(
 ) -> Result<ServiceLaunch, String> {
     let env_key = match service {
         RuntimeService::LocalHost => "EMA_LOCAL_HOST_EXECUTABLE",
-        RuntimeService::Bridge => "EMA_BRIDGE_EXECUTABLE",
+        RuntimeService::NarrativeBridge => "EMA_NARRATIVE_BRIDGE_EXECUTABLE",
     };
     if let Ok(explicit) = std::env::var(env_key) {
         return launch_for_existing(PathBuf::from(explicit), Vec::new());
@@ -101,12 +101,12 @@ fn resolve_bundled_launch(
         .ok()
         .and_then(|path| path.parent().map(Path::to_path_buf));
 
-    if service == RuntimeService::Bridge {
-        let bridge_executable = resource_dir
-            .join("bridge-runtime")
-            .join(platform_executable_name("ema-bridge"));
-        if bridge_executable.is_file() {
-            return launch_for_existing(bridge_executable, Vec::new());
+    if service == RuntimeService::NarrativeBridge {
+        let narrative_bridge_executable = resource_dir
+            .join("narrative-bridge-runtime")
+            .join(platform_executable_name("ema-narrative-bridge"));
+        if narrative_bridge_executable.is_file() {
+            return launch_for_existing(narrative_bridge_executable, Vec::new());
         }
     }
 

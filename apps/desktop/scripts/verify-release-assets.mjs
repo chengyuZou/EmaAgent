@@ -45,22 +45,25 @@ if (actualNodeVersion !== `v${config.nodeVersion}`) {
   throw new Error(`LocalHost sidecar Node 版本错误: ${actualNodeVersion}`);
 }
 
-const bridgeRuntime = path.join(tauriRoot, 'resources', 'bridge-runtime');
-const bridgeBinary = path.join(bridgeRuntime, `ema-bridge${suffix}`);
-const bridgeManifestPath = path.join(bridgeRuntime, 'release-manifest.json');
-requireExecutable(bridgeBinary, 'Bridge sidecar');
-requireRegularFile(bridgeManifestPath, 'Bridge release manifest');
-const bridgeManifest = readJson(bridgeManifestPath);
-if (bridgeManifest.target !== target || bridgeManifest.fileName !== path.basename(bridgeBinary)) {
-  throw new Error('Bridge release manifest 的 target 或文件名不匹配');
+const narrativeBridgeRuntime = path.join(tauriRoot, 'resources', 'narrative-bridge-runtime');
+const narrativeBridgeBinary = path.join(narrativeBridgeRuntime, `ema-narrative-bridge${suffix}`);
+const narrativeBridgeManifestPath = path.join(narrativeBridgeRuntime, 'release-manifest.json');
+requireExecutable(narrativeBridgeBinary, 'Narrative Bridge sidecar');
+requireRegularFile(narrativeBridgeManifestPath, 'Narrative Bridge release manifest');
+const narrativeBridgeManifest = readJson(narrativeBridgeManifestPath);
+if (
+  narrativeBridgeManifest.target !== target
+  || narrativeBridgeManifest.fileName !== path.basename(narrativeBridgeBinary)
+) {
+  throw new Error('Narrative Bridge release manifest 的 target 或文件名不匹配');
 }
 if (
-  bridgeManifest.size !== statSync(bridgeBinary).size
-  || bridgeManifest.sha256 !== sha256File(bridgeBinary)
+  narrativeBridgeManifest.size !== statSync(narrativeBridgeBinary).size
+  || narrativeBridgeManifest.sha256 !== sha256File(narrativeBridgeBinary)
 ) {
-  throw new Error('Bridge Sidecar 大小或摘要与 manifest 不匹配');
+  throw new Error('Narrative Bridge Sidecar 大小或摘要与 manifest 不匹配');
 }
-execFileSync(bridgeBinary, ['--version'], { stdio: 'inherit' });
+execFileSync(narrativeBridgeBinary, ['--version'], { stdio: 'inherit' });
 
 const cubismPath = path.join(
   desktopRoot,
@@ -122,9 +125,9 @@ execFileSync(
   [
     smokeScript,
     '--service',
-    'bridge',
+    'narrative-bridge',
     '--executable',
-    bridgeBinary,
+    narrativeBridgeBinary,
     '--narrative',
     narrativeRoot,
   ],

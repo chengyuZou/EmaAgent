@@ -162,6 +162,8 @@ Task 与 AgentRun 前端已经分面：Desktop 使用正式 `/api/tasks` 快照�
 
 开始任何新批次前必须重新运行 `git status --short` 与 `git diff`，保留用户和其他 Agent 的修改。
 
+Narrative Bridge 目录与运行协议已经收口：Python 工程迁入 `bridges/narrative/narrativeBridge`，Rust 监督器、LocalHost 模型绑定同步、readiness、端口文件、环境变量和发布脚本统一使用 `narrative-bridge` 身份，不再把它描述成承载任意 Python 能力的通用 Bridge。剧情数据本批仍保留在 `apps/bridge/data/narrative`，只由 Desktop 资源定位显式引用；数据安装与分发必须另开批次，不能在代码迁移中顺手搬动 182 MB 内容。
+
 Desktop 窗口生命周期与透明主窗启动故障已经收口：聊天与设置在首次 `open_window` 时按原 label、URL 和尺寸惰性创建，后续关闭继续 hide-and-reuse；主窗由 `setup` 显式确保创建、显示与聚焦。透明窗口的直接原因不是 Live2D，而是 Desktop API 从 `@ema-agent/turn` 根出口引入浏览器不支持的 `SessionInteractionQueue -> node:crypto.randomUUID`，导致 React 挂载前终止；现由浏览器安全的 `@ema-agent/turn/protocol` 子路径只暴露 Turn Wire 协议。Windows 首次创建子窗口的 `open_window` 必须保持 async command：Tauri/WebView2 明确会在同步 command 中与 UI 线程互等并死锁。主窗、聊天和设置还必须使用完全一致的 WebView2 浏览器参数，否则后创建窗口会收到 `0x8007139F` 并留下无法再次创建的空窗口壳。取消置顶后的真实稳定失焦会自动最小化，但 Windows 从任务栏恢复时的瞬时焦点抖动不会再把窗口立刻压回。Live2D 只接受 Desktop Host 的显隐暂停事实，不再同时读取 WebView2 多窗口场景下不可靠的 `document.visibilityState` 停止 PIXI ticker；普通浏览器预览仍由外层 Hook 使用页面可见性。表情入口只有在当前 Runtime 已 ready 且确实加载出 exp3 候选时才启用，轮换会返回并提示实际资源名，避免把内置首项 `taishou` 的抬手/物理变化误判为按钮无效。聊天置顶摘要的 AgentRun 与后台进程统计使用浅比较，不能让 Zustand 5 selector 每次返回不同对象触发 React 最大更新深度。子进程 stdout EOF 和 Uvicorn 的 stderr INFO 属正常退出事实，不再记录成黄色警告；真正异常仍由进程终态监视和 ERROR/CRITICAL 日志报告。
 
 BackgroundProcess 后端主链已经完成：Bash 在 15 秒内返回普通结果，超时则把同一进程一次性交给后台；显式后台、并发队列、持久状态/有界日志、ProcessList/ProcessOutput/ProcessStop、完成事件、内部续接 Turn、设置和只读/停止 API 均已接线。Session 删除会先终止所属进程并释放日志句柄。本批未修改 Desktop 前端。
@@ -243,6 +245,8 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 每批只改变一个主要业务边界。不要把 Turn 统一、数据库 Schema、全仓 ID 改名和前端切换塞进同一批。
 
 ## 最近验证
+
+- Narrative Bridge 目录与运行协议收口：Python 10/10、LocalHost 定向 15/15 通过；Provider build、LocalHost typecheck、Desktop Rust `cargo check` 与发布版本一致性检查通过。Workspace lockfile 已刷新为 `bridges/narrative`，旧 `syncBridge`、旧环境变量、旧 readiness/port 文件名和发布脚本中的 `apps/bridge/pyproject.toml` 引用归零。`git diff --check` 仅剩其他在途修改 `src/narrative/types.ts` 的一处尾随空格与既有 CRLF 提示。
 
 - Desktop 表情与退出日志：`cycleExpression()` 现在返回实际激活的 exp3 名称，主舞台点击后短暂提示资源名；空候选仍无操作。正常子进程 stdout EOF 降为 debug，Uvicorn 写入 stderr 的 INFO 按 debug 记录，ERROR/CRITICAL 保持错误。Live2D 50/50 测试与 build、Desktop UI build、Desktop typecheck、Rust `cargo fmt --check`/`cargo check` 与 6/6 测试通过；尚需实机确认 `taishou → liulei → monvhua` 三次轮换的视觉结果，并记录若仍出现的真实退出黄条原文。
 - Desktop 主窗焦点、Live2D 与表情 P0：未置顶主窗增加 350ms 焦点稳定窗口，任务栏恢复的瞬时失焦不触发自动最小化；真实自动最小化会同步发出 Host hidden，重新聚焦发出 visible。删除 `Live2DStage` 内重复的页面可见性暂停，Tauri 下由 Host 显隐作为唯一事实源；FloatingDock 订阅当前 Runtime 的 ready/availableExpressions，禁止无候选假按钮。Live2D React build 与 50/50 测试、Desktop UI build、Desktop typecheck 与 13/13 测试、Rust `cargo check` 与 6/6 测试通过；尚需实机复验任务栏恢复、子窗口开关后的持续动画和真实表情轮换。
