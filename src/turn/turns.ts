@@ -1,6 +1,4 @@
 // 定义 Turn 的请求、创建响应、输入校验与终态统计。
-import type { SessionId, TurnId } from '@ema-agent/ids';
-
 /** Turn 输入边界允许携带的文本与媒体内容。 */
 export type TurnContentPart =
   | { type: 'text'; text: string }
@@ -59,7 +57,7 @@ export type TurnTriggerType = TurnTrigger['type'];
 /**
  * userInput、contentParts 和 attachments 至少要有一个有效输入。
  * sessionId 省略时后端自动创建新 session 并返回生成的 sessionId。
- * providerId + model 省略时使用 model_bindings 里对应 mode 的绑定。
+ * providerId + model 省略时由 Turn 输入准备层使用当前 Profile 的模型绑定。
  * providerId 和 model 应成对出现——前端选择器选的是 (provider, model) 组合，
  * 因为同名模型可能存在于多个供应商下。
  */
@@ -76,14 +74,13 @@ export interface TurnRequest {
   /** 模型名。如果有 providerId，此模型必须在该供应商下已启用。 */
   model?:        string;
   ttsEnabled?:      boolean;
-  /** 用户开启"思考"开关——仅对支持 reasoning 的模型生效。route 转成 orchestrator 的 ThinkingMode。 */
+  /** 用户开启“思考”开关；支持范围由模型能力快照和输入准备层校验。 */
   thinkingEnabled?: boolean;
-  /** KB ids the user selected in the chat picker (turn-level search scope). */
+  /** 用户在聊天选择器中选中的 KB；只影响本 Turn 的检索范围。 */
   kbIds?:           string[];
   /**
-   * Per-KB document scopes: which docs within each KB are selected. Drives
-   * AgenticRAG precision — kb_search is restricted to these assets. Omit/empty
-   * → agent mode searches all global KBs; chat/narrative RAG will reuse this.
+   * 每个 KB 内选中的文档范围。省略时不额外限制该 KB；具体检索策略由
+   * Knowledge Tool 与当前 ExecutionProfile 决定。
    */
   kbAssetScopes?:   KbAssetScope[];
 }
@@ -108,8 +105,8 @@ export function hasTurnRequestInput(input: TurnRequestInput): boolean {
  * sessionId 返回实际使用的 session（可能是刚创建的新 session）。
  */
 export interface TurnCreatedResponse {
-  turnId:    TurnId;
-  sessionId: SessionId;
+  turnId:    string;
+  sessionId: string;
 }
 
 // ── 本轮统计（被 turn_completed SSE 事件引用） ────────────────────────────────

@@ -126,8 +126,8 @@ export class SessionInteractionQueue<TPermissionPrompt, TPermissionResponse, TAs
   }
 
   /**
-   * 预约一个 AskUser 问询槽。promptId 由调用方生成(engine.ts 的 askUser 回调
-   * 已 emit 该 promptId)。返回在用户回答或超时后 resolve 的 Promise。
+   * 预约一个 AskUser 问询槽。promptId 由 Tool 执行链生成并随
+   * ask_user_required 事件发出；返回在用户回答或超时后 resolve 的 Promise。
    */
   enqueueAskUser(args: {
     promptId:   string;

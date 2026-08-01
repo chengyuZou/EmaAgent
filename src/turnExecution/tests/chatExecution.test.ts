@@ -58,8 +58,8 @@ describe('Chat 统一执行链', () => {
     };
     const session = {
       startTurn: () => ({ turn, signal: controller.signal }),
-      requestAbort: () => controller.abort(),
-      clearRunning: () => undefined,
+      requestAbort: (_sessionId, _turnId) => controller.abort(),
+      clearRunning: (_sessionId, _turnId) => undefined,
       loadHistory: () => [],
       appendMessage: (input: {
         turnId: TurnId;

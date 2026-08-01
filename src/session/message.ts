@@ -5,7 +5,10 @@ import type {
 } from '@ema-agent/llm';
 import type { MessageKind, MessageRole } from '@ema-agent/storage';
 import type { TurnContentPart } from '@ema-agent/turn';
-import type { ToolExecutionResult } from '@ema-agent/tools';
+import {
+  isToolPresentation,
+  type ToolExecutionResult,
+} from '@ema-agent/tools';
 
 export type AssistantBlock = LlmAssistantBlock;
 export type MessageContentPart = TurnContentPart;
@@ -165,18 +168,6 @@ function isTurnContentPart(value: unknown): value is TurnContentPart {
     default:
       return false;
   }
-}
-
-function isToolPresentation(value: unknown): value is NonNullable<ToolExecutionResult['presentation']> {
-  return isRecord(value)
-    && value.kind === 'file_change'
-    && (value.operation === 'create' || value.operation === 'update')
-    && typeof value.filePath === 'string'
-    && typeof value.unifiedDiff === 'string'
-    && typeof value.additions === 'number'
-    && typeof value.deletions === 'number'
-    && typeof value.truncated === 'boolean'
-    && (value.omittedReason === undefined || typeof value.omittedReason === 'string');
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -72,10 +72,10 @@ function makeSessionStore() {
     getActiveTurn(): Turn | undefined {
       return activeTurn;
     },
-    requestAbort(): void {
+    requestAbort(_sessionId: SessionId, _turnId: TurnId): void {
       activeController?.abort();
     },
-    clearRunning(): void {
+    clearRunning(_sessionId: SessionId, _turnId: TurnId): void {
       activeController = undefined;
       activeTurn = undefined;
     },

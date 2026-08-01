@@ -30,6 +30,7 @@ export {
   createFileReadPresentation,
   createPdfReadPresentation,
   createSearchPresentation,
+  isToolPresentation,
 } from './presentation/index.js';
 export type {
   BackgroundProcessPresentation,

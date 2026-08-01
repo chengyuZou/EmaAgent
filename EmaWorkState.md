@@ -170,6 +170,12 @@ Task 与 AgentRun 前端已经分面：Desktop 使用正式 `/api/tasks` 快照�
 
 Storage 目录与开发期迁移基线已经收口：数据库连接、迁移执行与 CLI 归入 `src/storage/database`，FTS/中文分词/LIKE 工具归入 `search`，Repo 按实际数据库归入 `repos/profile`、`repos/data`、`repos/kb`。2026-08-01 内测前将 Profile v17、Data v26、KB v5 的最终 Schema 分别压成唯一 `001_initial.sql`，旧增量迁移和只验证历史升级路径的测试已经删除；生成前后逐对象比对 SQLite Schema，并验证三库外键、FTS 和同步 Trigger。模型绑定 CHECK 同步删除退役模块，三个与主键/唯一约束重复的命名索引一并去除。现有开发数据库不会被自动删除；旧 `user_version` 高于 1 时应由开发者自行备份并重建，正式发布后恢复只追加迁移的规则。
 
+Session 活动 Turn 身份第一批已经收口：旧 `RunRegistry` 改为内部 `ActiveTurnRegistry`，同一 Session 禁止覆盖注册；取消和释放必须同时匹配 `sessionId + turnId`，旧 Turn 的迟到 `finally` 不会清掉后继 Turn。Turn 写入 completed/failed/aborted 后仍保持运行锁，唯一执行器在事件、交互和临时资源全部收口后才于 `finally` 释放；负载观察者异常不会反向破坏 Turn 生命周期。
+
+Session Message Presentation 解析已经收口：六类 Tool Presentation 的运行时校验回到 `src/tools/presentation` 所有者，Session 只调用公共判别入口；FileChange、FileRead、PdfRead、Command、Search 与 BackgroundProcess 重启后都能从 Message JSON 恢复，字段缺失或枚举未知继续整体降级为不可读占位。
+
+Session 文件内聚与确定性读取已经收口：数据库行映射归入 `persistence/rowMapping.ts`，长历史、Turn 索引、消息窗口和热历史读取归入 `history/sessionHistory.ts`，`SessionStore` 保持稳定聚合入口但不再同时承载 SQL 行解析和游标算法。标题生成按消息接口“最新优先”的真实顺序选取本轮最早用户意图；Session 领域内的父 Session 身份改用 `SessionId`，Wire 结构继续使用普通字符串。外部分页上限由 Route 校验，Storage 的内部长页自行夹紧，本批没有叠加第二套上限或修改数据库 Schema。
+
 Narrative Bridge 目录、运行身份和原子 Recall 协议已经收口：Python 工程位于 `bridges/narrative/narrativeBridge`，Rust 监督器、LocalHost 模型绑定同步、readiness、端口文件、环境变量和发布脚本统一使用 `narrative-bridge` 身份。剧情数据仍保留在 `apps/bridge/data/narrative`，只由 Desktop 资源定位显式引用；数据安装与分发必须另开批次，不能在代码迁移中顺手搬动 182 MB 内容。
 
 Desktop 窗口生命周期与透明主窗启动故障已经收口：聊天与设置在首次 `open_window` 时按原 label、URL 和尺寸惰性创建，后续关闭继续 hide-and-reuse；主窗由 `setup` 显式确保创建、显示与聚焦。透明窗口的直接原因不是 Live2D，而是 Desktop API 从 `@ema-agent/turn` 根出口引入浏览器不支持的 `SessionInteractionQueue -> node:crypto.randomUUID`，导致 React 挂载前终止；现由浏览器安全的 `@ema-agent/turn/protocol` 子路径只暴露 Turn Wire 协议。Windows 首次创建子窗口的 `open_window` 必须保持 async command：Tauri/WebView2 明确会在同步 command 中与 UI 线程互等并死锁。主窗、聊天和设置还必须使用完全一致的 WebView2 浏览器参数，否则后创建窗口会收到 `0x8007139F` 并留下无法再次创建的空窗口壳。取消置顶后的真实稳定失焦会自动最小化，但 Windows 从任务栏恢复时的瞬时焦点抖动不会再把窗口立刻压回。Live2D 只接受 Desktop Host 的显隐暂停事实，不再同时读取 WebView2 多窗口场景下不可靠的 `document.visibilityState` 停止 PIXI ticker；普通浏览器预览仍由外层 Hook 使用页面可见性。表情入口只有在当前 Runtime 已 ready 且确实加载出 exp3 候选时才启用，轮换会返回并提示实际资源名，避免把内置首项 `taishou` 的抬手/物理变化误判为按钮无效。聊天置顶摘要的 AgentRun 与后台进程统计使用浅比较，不能让 Zustand 5 selector 每次返回不同对象触发 React 最大更新深度。子进程 stdout EOF 和 Uvicorn 的 stderr INFO 属正常退出事实，不再记录成黄色警告；真正异常仍由进程终态监视和 ERROR/CRITICAL 日志报告。
@@ -255,6 +261,9 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- Session 活动 Turn 身份：Session 5 个测试文件 48/48、TurnExecution 非 Live 定向测试与两包 typecheck 通过；Session build 已刷新下游声明。新增覆盖重复注册拒绝、迟到取消/释放隔离、终态提交不提前放行及观察者异常隔离；`git diff --check` 通过，仅有既有 Windows CRLF 提示。
+- Session Message Presentation：Tools 7 个测试文件 33/33、Session 5 个测试文件 49/49 与两包 typecheck 通过，Tools build 已刷新公共判别出口。新增覆盖六类 Presentation 完整往返及缺字段拒绝。
+- Session 文件内聚与标题顺序：Session 5 个测试文件 50/50、typecheck、build 通过。新增覆盖最新优先历史仍选取最早用户意图；`store.ts` 的历史读取与数据库行映射已拆入内聚子目录，公开 API 与数据库 Schema 不变。
 - Storage 开发基线压缩：Profile/Data/KB 源码与 dist 均只保留一份 `001_initial.sql`；旧链与新基线逐对象 Schema 对比一致，三库 `foreign_key_check` 均为零。Storage 29 个测试文件 128/128、typecheck、build 通过；Session FTS 增删改同步、模型绑定约束和 SQLite 自动唯一索引均有现行 Schema 测试覆盖。
 - 内部 HookBus 删除收口：`@ema-agent/hooks`、HookBus、Hook abort、注册器与旧 LLM/Compaction Hook 生产引用归零；Events build、LocalHost 与 Desktop UI typecheck 通过。Context 34/34、Memory 72/72、Agent 19/19、TurnExecution 17/17 通过，另有 4 个既有 Live Integration 按规则跳过；Workspace lockfile 已离线刷新。
 - Narrative 前端中断收口：Desktop UI `conversation-store` 定向测试 18/18、typecheck 通过；`git diff --check` 仅有 Windows CRLF 提示。
@@ -463,6 +472,8 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 先完整阅读 CLAUDE.md 与 EmaWorkState.md，再按当前批次阅读 EmaRefactor.md 和 EmaClaudeArchitectureReview.md 对应章节。检查 git status、diff 和最近提交，保留用户及其他 Agent 的修改。
 
 LocalHost L0-L5、Turn/TTS/Route/HTTP 边界、Composition Root P1-P5、外围 R1-R13、A/C 类主链与 Memory 闲置维护 M1-M5 均已完成，不要重复施工。Memory 已具备动态模型设置、租约关闸、stale embedding 修复、全局逻辑字节预算、持久衰减周期、Consolidation 单节点原子提交、由活动根 Turn 抢占的轻重维护窗口、Session 删除时的 Extraction 取消和跨库来源清理，以及 LocalHost 进程内健康投影；不要恢复已删除的死配置，也不要让主动驱逐向量立即进入 repair。后续若继续 Memory，只委派前端消费 `/api/memory/health` 与退化边界事件，不把前端状态塞入 Memory，也不重写 M1-M5。不要恢复 `apps/core`、旧 Orchestrator、宽 `AppBindings` Route、TOML 设置、MCP `startAll()`、KB `initAll()` 或 `buildBindings()` 中的异步启动副作用。不要提交 Git。
+
+Session 的活动 Turn 身份、Message Presentation 解析、历史读取和数据库行映射已经完成本轮收口。不要重新公开内存 Registry，不要让终态数据库提交提前释放 Session 运行锁，也不要把 History 游标或 SQL 行解析重新塞回 `store.ts`。下一业务模块先做只读全链审查，再决定是否修改。
 ```
 
 ## 维护方式

@@ -1,13 +1,27 @@
 // 集中管理 Session、Turn、消息与独立 Session Fork 的领域读写。
 import crypto from 'node:crypto';
-import { SessionsRepo, TurnsRepo, MessagesRepo, nextCursorFor, type SessionRow, type SessionRowEnriched, type SessionSearchRow, type TurnRow, type TurnIdPage, type TurnIdPageCursor, type MessageRow, } from '@ema-agent/storage';
+import {
+  MessagesRepo,
+  SessionsRepo,
+  TurnsRepo,
+  nextCursorFor,
+  type SessionRowEnriched,
+  type TurnIdPage,
+  type TurnIdPageCursor,
+} from '@ema-agent/storage';
 import { type SessionId, type TurnId, type MessageId, asSessionId, asTurnId, asMessageId } from '@ema-agent/ids';
 import { SessionOwnershipError } from './errors.js';
 import type { SessionOwnershipFacade } from './types.js';
-import { parseMessageBlocksJson } from './message.js';
-import type { MessageBlocks } from './message.js';
 import type { Database } from '@ema-agent/storage';
-import { RunRegistry } from './run-registry.js';
+import { ActiveTurnRegistry } from './activeTurnRegistry.js';
+import { SessionHistory } from './history/sessionHistory.js';
+import {
+  toMessage,
+  toSearchHit,
+  toSession,
+  toSessionEnriched,
+  toTurn,
+} from './persistence/rowMapping.js';
 import type {
   Session,
   Turn,
@@ -28,130 +42,6 @@ import type {
   SearchSessionsOutput,
 } from './types.js';
 
-// ── 数据库行转换 ─────────────────────────────────────────────────────────────
-
-function toSession(row: SessionRow): Session {
-  return {
-    id: row.id as SessionId,
-    title: row.title,
-    workspaceRoot:  row.workspace_root ?? null,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    lastActivityAt: row.last_activity_at,
-    archivedAt: row.archived_at,
-    pinned:        row.pinned === 1,
-    pinnedAt:      row.pinned_at,
-    groupLabel:    row.group_label,
-    parentSessionId:  row.parent_session_id  as SessionId  | null,
-    runningTurnCount: 0,
-    executionProfile: row.execution_profile,
-    narrativePolicy: row.narrative_policy,
-    preferredProviderConfigId: row.preferred_provider_config_id ?? null,
-    preferredModelId: row.preferred_model_id ?? null,
-    lastViewedAt:   row.last_viewed_at ?? null,
-    lastTurnStatus: null,
-    hasUnread:      false,
-  };
-}
-
-function toSessionEnriched(row: SessionRowEnriched): Session {
-  const s = toSession(row);
-  const lastTurnStatus = (row.last_turn_status ?? null) as Session['lastTurnStatus'];
-  const lastTurnCompletedAt = row.last_turn_completed_at ?? 0;
-  const hasUnread = lastTurnStatus === 'completed'
-    && lastTurnCompletedAt > (row.last_viewed_at ?? 0);
-  return {
-    ...s,
-    runningTurnCount: row.running_turn_count,
-    lastTurnStatus,
-    hasUnread,
-  };
-}
-
-function toTurn(row: TurnRow): Turn {
-  return {
-    id:           row.id        as TurnId,
-    sessionId:    row.session_id as SessionId,
-    triggerType: row.trigger_type,
-    executionProfile: row.execution_profile,
-    narrativePolicy: row.narrative_policy,
-    status: row.status,
-    userInput: row.user_input,
-    startedAt: row.started_at,
-    completedAt: row.completed_at,
-    errorCode: row.error_code,
-    errorMessage: row.error_message,
-    iterations: row.iterations,
-    usageInputTokens: row.usage_input_tokens,
-    usageOutputTokens: row.usage_output_tokens,
-  };
-}
-
-function toMessage(row: MessageRow): Message {
-  const blocks = parseMessageBlocksJson(row.blocks_json, row.role, row.kind);
-  return {
-    id:          row.id as MessageId,
-    sessionId:   row.session_id as SessionId,
-    turnId:      row.turn_id as TurnId | null,
-    role:        row.role,
-    kind:        row.kind,
-    blocks,
-    interrupted: row.interrupted === 1,
-    createdAt:   row.created_at,
-  };
-}
-
-function blocksJsonToSearchText(raw: string | null): string {
-  if (!raw) return '';
-  try {
-    const blocks = JSON.parse(raw) as MessageBlocks;
-    if (typeof blocks === 'string') return normaliseSnippet(blocks);
-    if (!Array.isArray(blocks)) return '';
-
-    const parts: string[] = [];
-    for (const b of blocks as Array<{ type?: string; text?: string; content?: unknown }>) {
-      if (b.type === 'text' && typeof b.text === 'string') {
-        parts.push(b.text);
-      } else if (b.type === 'tool_result' && typeof b.content === 'string') {
-        parts.push(b.content);
-      }
-    }
-    return normaliseSnippet(parts.join(' '));
-  } catch {
-    return normaliseSnippet(raw);
-  }
-}
-
-function normaliseSnippet(text: string): string {
-  return text
-    .replace(/\\n/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 220);
-}
-
-function toSearchHit(row: SessionSearchRow): SearchSessionsOutput['results'][number] {
-  const session = toSessionEnriched(row);
-  return {
-    session,
-    matchKind: row.match_kind,
-    snippet: row.match_kind === 'title'
-      ? row.title
-      : blocksJsonToSearchText(row.snippet_json),
-    messageId: row.message_id as MessageId | null,
-    messageAt: row.message_created_at,
-  };
-}
-
-const DEFAULT_HISTORY_LIMIT = 500;
-const TURN_INDEX_DEFAULT_LIMIT = 200;
-const TURN_INDEX_MAX_LIMIT = 500;
-const TURN_INDEX_PREVIEW_LENGTH = 180;
-const MESSAGE_WINDOW_DEFAULT_BEFORE = 8;
-const MESSAGE_WINDOW_DEFAULT_AFTER = 12;
-const MESSAGE_WINDOW_MAX_SIDE = 25;
-const MESSAGE_WINDOW_MAX_TOTAL = 40;
-
 // ── Session 聚合 ─────────────────────────────────────────────────────────────
 
 export interface SessionStoreDeps {
@@ -167,7 +57,8 @@ export class SessionStore implements SessionOwnershipFacade {
   private readonly sessionsRepo: SessionsRepo;
   private readonly turnsRepo:    TurnsRepo;
   private readonly messagesRepo: MessagesRepo;
-  private readonly registry:     RunRegistry;
+  private readonly registry:     ActiveTurnRegistry;
+  private readonly history:      SessionHistory;
   private readonly db:           Database;
   private readonly onSessionRemoved?: (sessionId: string) => void;
   private readonly onTurnRemoved?: (sessionId: string, turnId: string) => void;
@@ -179,7 +70,12 @@ export class SessionStore implements SessionOwnershipFacade {
     this.sessionsRepo = new SessionsRepo(db.sqlite);
     this.turnsRepo    = new TurnsRepo(db.sqlite);
     this.messagesRepo = new MessagesRepo(db.sqlite);
-    this.registry     = new RunRegistry();
+    this.registry     = new ActiveTurnRegistry();
+    this.history      = new SessionHistory({
+      sessionsRepo: this.sessionsRepo,
+      turnsRepo: this.turnsRepo,
+      messagesRepo: this.messagesRepo,
+    });
     this.db           = db;
     this.onSessionRemoved = onSessionRemoved;
     this.onTurnRemoved = onTurnRemoved;
@@ -255,10 +151,7 @@ export class SessionStore implements SessionOwnershipFacade {
     const query = input.query.trim();
     if (!query) return { results: [] };
     const rows = this.sessionsRepo.search(query, input.limit ?? 20);
-    const results = rows.map((r) => {
-      const hit = toSearchHit(r);
-      return hit;
-    });
+    const results = rows.map(toSearchHit);
     return { results };
   }
 
@@ -362,7 +255,8 @@ export class SessionStore implements SessionOwnershipFacade {
       throw new Error(`session_deleting: ${id}`);
     }
     this.deletingSessions.add(id);
-    this.registry.abort(id);
+    const activeTurnId = this.registry.getActiveTurnId(id);
+    if (activeTurnId) this.registry.abort(id, activeTurnId);
   }
 
   /** 跨模块准备失败时恢复 Session 的可运行状态。 */
@@ -372,7 +266,7 @@ export class SessionStore implements SessionOwnershipFacade {
 
   deleteSession(id: SessionId): void {
     try {
-      this.registry.clear(id);
+      this.registry.discardSession(id);
       this.sessionsRepo.delete(id);
       // 数据库行由外键级联；文件目录需要显式清理。
       this.onSessionRemoved?.(id as string);
@@ -415,9 +309,8 @@ export class SessionStore implements SessionOwnershipFacade {
     const signal = this.registry.register(input.sessionId, turnId);
     return { turn: this.requireTurn(turnId), signal };
   }
-
   completeTurn(turnId: TurnId, usage: CompleteTurnInput = {}): void {
-    const turn = this.requireTurn(turnId);
+    this.requireTurn(turnId);
     this.turnsRepo.complete(turnId, {
       status:             'completed',
       completedAt:        Date.now(),
@@ -425,41 +318,43 @@ export class SessionStore implements SessionOwnershipFacade {
       usageOutputTokens:  usage.usageOutputTokens,
       iterations:         usage.iterations,
     });
-    this.registry.clear(turn.sessionId);
   }
 
   failTurn(turnId: TurnId, errorCode: string, errorMessage?: string): void {
-    const turn = this.requireTurn(turnId);
+    this.requireTurn(turnId);
     this.turnsRepo.complete(turnId, {
       status:       'failed',
       completedAt:  Date.now(),
       errorCode,
       errorMessage,
     });
-    this.registry.clear(turn.sessionId);
   }
 
   /** 触发取消信号并提交 Turn 的 aborted 终态。 */
   abortTurn(sessionId: SessionId, turnId: TurnId): void {
-    this.registry.abort(sessionId);
+    this.assertTurnOwnership(sessionId, turnId);
+    const activeTurnId = this.registry.getActiveTurnId(sessionId);
+    if (activeTurnId !== turnId) {
+      throw new Error(`turn_not_active: ${turnId}`);
+    }
+    this.registry.abort(sessionId, turnId);
     this.turnsRepo.complete(turnId, {
       status:      'aborted',
       completedAt: Date.now(),
     });
-    this.registry.clear(sessionId);
   }
 
   /**
    * 只请求正在运行的执行流停止，不提前写数据库终态。执行流会先收拢工具和
    * Subagent，再由对应生命周期 Facade 提交 aborted/cancelled。
    */
-  requestAbort(sessionId: SessionId): void {
-    this.registry.abort(sessionId);
+  requestAbort(sessionId: SessionId, turnId: TurnId): void {
+    this.registry.abort(sessionId, turnId);
   }
 
-  /** 幂等释放内存运行锁，供 Turn 执行链的 finally 无条件调用。 */
-  clearRunning(sessionId: SessionId): void {
-    this.registry.clear(sessionId);
+  /** 只释放指定 Turn 的运行锁，迟到 finally 不得清掉同 Session 的后继 Turn。 */
+  clearRunning(sessionId: SessionId, turnId: TurnId): void {
+    this.registry.clear(sessionId, turnId);
   }
 
   /** 启动时将崩溃遗留的 pending/running Turn 收口为 aborted。 */
@@ -490,7 +385,7 @@ export class SessionStore implements SessionOwnershipFacade {
   }
 
   listTurns(sessionId: SessionId, limit = 50): Turn[] {
-    return this.turnsRepo.listForSession(sessionId, limit).map(toTurn);
+    return this.history.listTurns(sessionId, limit);
   }
 
   /** 为长 Session 提供不含消息正文的轻量 Turn 导航索引。 */
@@ -498,32 +393,7 @@ export class SessionStore implements SessionOwnershipFacade {
     sessionId: SessionId,
     input: ListTurnIndexInput = {},
   ): TurnIndexPage {
-    this.requireSession(sessionId);
-    const limit = normaliseIntegerLimit(
-      input.limit,
-      TURN_INDEX_DEFAULT_LIMIT,
-      TURN_INDEX_MAX_LIMIT,
-      'turn_index_limit',
-    );
-    const cursor = input.cursor
-      ? decodeTurnIndexCursor(input.cursor)
-      : undefined;
-    const page = this.turnsRepo.listForSessionPage(sessionId, cursor, limit);
-
-    return {
-      items: page.rows.map((row) => ({
-        turnId: row.id as TurnId,
-        startedAt: row.started_at,
-        completedAt: row.completed_at,
-        status: row.status,
-        triggerType: row.trigger_type,
-        executionProfile: row.execution_profile,
-        preview: formatTurnPreview(row.user_input_preview),
-      })),
-      nextCursor: page.nextCursor
-        ? encodeTurnIndexCursor(page.nextCursor)
-        : undefined,
-    };
+    return this.history.listTurnIndex(sessionId, input);
   }
 
   /** 按 Turn 边界读取旧消息窗口，避免把整个 Session 的正文一次载入内存。 */
@@ -531,43 +401,7 @@ export class SessionStore implements SessionOwnershipFacade {
     sessionId: SessionId,
     input: ListMessageWindowInput,
   ): MessageWindow {
-    this.requireSession(sessionId);
-    this.assertTurnOwnership(sessionId, input.anchorTurnId);
-
-    const beforeTurns = normaliseIntegerLimit(
-      input.beforeTurns,
-      MESSAGE_WINDOW_DEFAULT_BEFORE,
-      MESSAGE_WINDOW_MAX_SIDE,
-      'message_window_before',
-      true,
-    );
-    const afterTurns = normaliseIntegerLimit(
-      input.afterTurns,
-      MESSAGE_WINDOW_DEFAULT_AFTER,
-      MESSAGE_WINDOW_MAX_SIDE,
-      'message_window_after',
-      true,
-    );
-    if (beforeTurns + afterTurns > MESSAGE_WINDOW_MAX_TOTAL) {
-      throw new Error('message_window_too_large');
-    }
-
-    const window = this.turnsRepo.listWindowAround(
-      sessionId,
-      input.anchorTurnId,
-      beforeTurns,
-      afterTurns,
-    );
-    if (!window) throw new Error(`turn_not_found: ${input.anchorTurnId}`);
-
-    const turnIds = window.rows.map((row) => row.id as TurnId);
-    return {
-      anchorTurnId: input.anchorTurnId,
-      turns: window.rows.map(toTurn),
-      messages: this.messagesRepo.listForTurns(sessionId, turnIds).map(toMessage),
-      hasOlder: window.hasOlder,
-      hasNewer: window.hasNewer,
-    };
+    return this.history.listMessageWindow(sessionId, input);
   }
 
   /**
@@ -608,7 +442,7 @@ export class SessionStore implements SessionOwnershipFacade {
     cursor?: TurnIdPageCursor,
     limit = 1_000,
   ): TurnIdPage {
-    return this.turnsRepo.listIdsForSessionPage(sessionId, cursor, limit);
+    return this.history.listTurnIdsPage(sessionId, cursor, limit);
   }
 
   /** 校验 turn 属于指定 session；供跨模块写入前通过 Facade 调用。 */
@@ -654,24 +488,18 @@ export class SessionStore implements SessionOwnershipFacade {
   }
 
   /** 加载 LLM 可见历史；从最近 Summary 开始并保持时间正序。 */
-  loadHistory(sessionId: SessionId, limit = DEFAULT_HISTORY_LIMIT): Message[] {
-    this.requireSession(sessionId);
-    return this.messagesRepo.listForSessionFromSummary(sessionId, limit).map(toMessage);
+  loadHistory(sessionId: SessionId, limit?: number): Message[] {
+    return this.history.loadHistory(sessionId, limit);
   }
 
   /** 加载一个 Turn 的全部消息，供 Turn 后处理使用。 */
   loadMessagesForTurn(turnId: TurnId): Message[] {
-    return this.messagesRepo.listForTurn(turnId).map(toMessage);
+    return this.history.loadMessagesForTurn(turnId);
   }
 
   /** 兼容现有聊天页的时间游标读取，结果保持最新优先。 */
   listMessages(sessionId: SessionId, input: ListMessagesInput = {}): Message[] {
-    const limit   = input.limit ?? 50;
-    this.requireSession(sessionId);
-    if (input.before === undefined) {
-      return this.messagesRepo.listForSession(sessionId, limit).map(toMessage);
-    }
-    return this.messagesRepo.listBefore(sessionId, input.before, limit).map(toMessage);
+    return this.history.listMessages(sessionId, input);
   }
 
   // ── 归属读取 ────────────────────────────────────────────────────────────────
@@ -692,56 +520,5 @@ export class SessionStore implements SessionOwnershipFacade {
     const row = this.messagesRepo.findById(id);
     if (!row) throw new Error(`message_not_found: ${id}`);
     return toMessage(row);
-  }
-}
-
-function normaliseIntegerLimit(
-  value: number | undefined,
-  fallback: number,
-  maximum: number,
-  errorCode: string,
-  allowZero = false,
-): number {
-  const resolved = value ?? fallback;
-  const minimum = allowZero ? 0 : 1;
-  if (!Number.isSafeInteger(resolved) || resolved < minimum || resolved > maximum) {
-    throw new Error(errorCode);
-  }
-  return resolved;
-}
-
-function formatTurnPreview(userInput: string): string {
-  const preview = userInput.replace(/\s+/g, ' ').trim();
-  if (preview.length <= TURN_INDEX_PREVIEW_LENGTH) return preview;
-  return `${preview.slice(0, TURN_INDEX_PREVIEW_LENGTH - 1)}…`;
-}
-
-function encodeTurnIndexCursor(cursor: TurnIdPageCursor): string {
-  return Buffer.from(JSON.stringify({
-    version: 1,
-    startedAt: cursor.startedAt,
-    id: cursor.id,
-  }), 'utf8').toString('base64url');
-}
-
-function decodeTurnIndexCursor(value: string): TurnIdPageCursor {
-  try {
-    const parsed = JSON.parse(
-      Buffer.from(value, 'base64url').toString('utf8'),
-    ) as { version?: unknown; startedAt?: unknown; id?: unknown };
-    if (
-      parsed.version !== 1
-      || !Number.isSafeInteger(parsed.startedAt)
-      || typeof parsed.id !== 'string'
-      || parsed.id.length === 0
-    ) {
-      throw new Error('invalid');
-    }
-    return {
-      startedAt: parsed.startedAt as number,
-      id: parsed.id,
-    };
-  } catch {
-    throw new Error('Invalid turn index cursor');
   }
 }

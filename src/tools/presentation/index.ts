@@ -39,6 +39,7 @@ export type {
   SearchLimitReason,
   SearchPresentation,
 } from './searchPresentation.js';
+export { isToolPresentation } from './toolPresentation.js';
 export type { ToolPresentation } from './toolPresentation.js';
 export {
   presentToolResult,

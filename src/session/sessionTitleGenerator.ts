@@ -24,7 +24,8 @@ export class SessionTitleGenerator {
 
   async generate(sessionId: SessionId): Promise<string | undefined> {
     const messages = this.session.listMessages(sessionId, { limit: 10 });
-    const firstUser = messages.find((message) => message.role === 'user');
+    // Session 历史按最新优先返回；标题必须取这一页中最早的用户意图。
+    const firstUser = [...messages].reverse().find((message) => message.role === 'user');
     if (!firstUser) return undefined;
 
     const firstText = extractText(firstUser.blocks);

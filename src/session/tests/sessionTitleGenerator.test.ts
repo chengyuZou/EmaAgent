@@ -23,25 +23,44 @@ describe('SessionTitleGenerator', () => {
     await expect(fixture.generator.generate(asSessionId('session-a')))
       .resolves.toBe('一段 很长但仍然可以作为确定性回退的用户消息');
   });
+
+  it('历史按最新优先返回时仍使用最早的用户消息', async () => {
+    const completeTitle = vi.fn(async () => 'Initial topic');
+    const fixture = createFixture(completeTitle, [
+      createUserMessage('后续补充'),
+      createUserMessage('最初的问题'),
+    ]);
+
+    await expect(fixture.generator.generate(asSessionId('session-a')))
+      .resolves.toBe('Initial topic');
+    expect(completeTitle).toHaveBeenCalledWith(expect.stringContaining('最初的问题'));
+    expect(completeTitle).not.toHaveBeenCalledWith(expect.stringContaining('后续补充'));
+  });
 });
 
 function createFixture(
   completeTitle: (prompt: string) => Promise<string | undefined>,
-  text = '请重构 Session Route',
+  messages: string | ReturnType<typeof createUserMessage>[] = '请重构 Session Route',
 ) {
   const patchSession = vi.fn();
   const generator = new SessionTitleGenerator({
-    listMessages: vi.fn(() => [{
-      id: 'message-a',
-      sessionId: 'session-a',
-      turnId: 'turn-a',
-      role: 'user',
-      kind: 'normal',
-      blocks: text,
-      interrupted: false,
-      createdAt: 1,
-    }] as never),
+    listMessages: vi.fn(() => (typeof messages === 'string'
+      ? [createUserMessage(messages)]
+      : messages) as never),
     patchSession,
   }, { completeTitle });
   return { generator, patchSession };
+}
+
+function createUserMessage(text: string) {
+  return {
+    id: 'message-a',
+    sessionId: 'session-a',
+    turnId: 'turn-a',
+    role: 'user',
+    kind: 'normal',
+    blocks: text,
+    interrupted: false,
+    createdAt: 1,
+  } as const;
 }

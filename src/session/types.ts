@@ -1,9 +1,9 @@
-import type { TurnStatus } from '@ema-agent/turn';
 import type { SessionId, TurnId, MessageId } from '@ema-agent/ids';
 import type { MessageKind, MessageRole } from '@ema-agent/storage';
 import type {
   ExecutionProfile,
   NarrativePolicy,
+  TurnStatus,
   TurnTriggerType,
 } from '@ema-agent/turn';
 import type { MessageBlocks } from './message.js';
@@ -16,7 +16,7 @@ export interface SessionOwnershipFacade {
 
 export type SessionOwnedEntity = 'message' | 'turn';
 
-// ── Domain objects (camelCase, parsed) ───────────────────────────────────────
+// 领域对象使用已经解析的 camelCase 字段。
 
 export interface Session {
   id: SessionId;
@@ -25,13 +25,13 @@ export interface Session {
   createdAt: number;
   /** 行属性更新时间：标题、分组、置顶、Workspace 或执行偏好发生变化。 */
   updatedAt: number;
-  /** Conversation activity time used for "recent sessions" ordering. */
+  /** 会话活动时间，用于“最近 Session”排序。 */
   lastActivityAt: number;
   archivedAt: number | null;
   pinned:        boolean;
   pinnedAt:      number | null;
   groupLabel:    string | null;
-  parentSessionId:  string   | null;
+  parentSessionId: SessionId | null;
   runningTurnCount: number;
   executionProfile: ExecutionProfile;
   narrativePolicy: NarrativePolicy;
@@ -68,22 +68,20 @@ export interface Message {
   role: MessageRole;
   kind: MessageKind;
   /**
-   * Parsed content blocks:
-   * - system:    plain string
-   * - user:      plain string | UserBlock[]  (UserBlock[] when has media or tool_results)
-   * - assistant: AssistantBlock[]            (text / thinking / tool_use in original order)
+   * 已解析的内容块：System 是普通文本，User 可包含媒体或 Tool Result，
+   * Assistant 保留 text、thinking 与 tool_use 的原始顺序。
    */
   blocks: MessageBlocks;
   interrupted: boolean;
   createdAt: number;
 }
 
-// ── Input types for SessionStore methods ─────────────────────────────────────
+// SessionStore 的输入输出契约。
 
 export interface CreateSessionInput {
   title?: string;
   workspaceRoot?:  string | null;
-  parentSessionId?: string;
+  parentSessionId?: SessionId;
 }
 
 /** 用户可在 Session 存续期间修改的偏好；undefined 表示保持原值。 */
@@ -126,7 +124,7 @@ export interface AppendMessageInput {
 }
 
 export interface ListSessionsInput {
-  /** Max results per page. */
+  /** 单页最多返回的 Session 数量。 */
   limit?: number;
   /**
    * 上一页返回的不透明 V1 cursor。调用方只能原样回传，不能解析或构造。
@@ -137,12 +135,12 @@ export interface ListSessionsInput {
 
 export interface ListSessionsOutput {
   sessions: Session[];
-  /** Present when there are more results. Pass as `cursor` to the next request. */
+  /** 仍有下一页时返回，调用方应原样作为下一次的 cursor。 */
   nextCursor?: string;
 }
 
 export interface ListMessagesInput {
-  /** Cursor: load messages older than this timestamp (for UI pagination). */
+  /** 加载早于该时间戳的消息，供 UI 热历史分页。 */
   before?: number;
   limit?: number;
 }

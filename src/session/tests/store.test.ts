@@ -112,6 +112,7 @@ describe('SessionStore — session', () => {
       userInput: 'root',
     });
     store.completeTurn(turn.id);
+    store.clearRunning(session.id, turn.id);
 
     const fork = store.forkSession(session.id);
     expect(store.getSession(fork.sessionId)).toMatchObject({
@@ -134,6 +135,7 @@ describe('SessionStore — Turn ID 游标遍历', () => {
       });
       expected.add(turn.id as string);
       store.completeTurn(turn.id);
+      store.clearRunning(session.id, turn.id);
     }
 
     const actual: string[] = [];
@@ -160,6 +162,7 @@ describe('SessionStore — 聊天历史导航', () => {
         userInput: index === 0 ? 'a'.repeat(300) : `turn ${index}`,
       });
       store.completeTurn(turn.id);
+      store.clearRunning(session.id, turn.id);
     }
 
     const first = store.listTurnIndex(session.id, { limit: 2 });
@@ -194,6 +197,7 @@ describe('SessionStore — 聊天历史导航', () => {
         blocks: `message ${index}`,
       });
       store.completeTurn(turn.id);
+      store.clearRunning(session.id, turn.id);
     }
 
     const window = store.listMessageWindow(session.id, {
@@ -289,7 +293,7 @@ describe('SessionStore — turn concurrency', () => {
     }).not.toThrow();
   });
 
-  it('completeTurn frees the session for a new turn', () => {
+  it('终态提交后仍由执行器最终释放 Session', () => {
     const store = makeStore();
     const s = store.createSession();
 
@@ -300,7 +304,12 @@ describe('SessionStore — turn concurrency', () => {
     expect(completed.status).toBe('completed');
     expect(completed.usageInputTokens).toBe(10);
 
-    // Should be able to start a new turn now
+    expect(() =>
+      startTurn(store, { sessionId: s.id, executionProfile: 'chat', userInput: 'Too early' })
+    ).toThrow('session_busy');
+
+    store.clearRunning(s.id, turn.id);
+
     expect(() =>
       startTurn(store, { sessionId: s.id, executionProfile: 'chat', userInput: 'Second' })
     ).not.toThrow();
@@ -326,7 +335,7 @@ describe('SessionStore — turn concurrency', () => {
       userInput: 'Stop me safely',
     });
 
-    store.requestAbort(s.id);
+    store.requestAbort(s.id, turn.id);
 
     expect(signal.aborted).toBe(true);
     expect(store.getTurn(turn.id)?.status).toBe('running');
@@ -448,9 +457,11 @@ describe('SessionStore — message', () => {
     const { turn: t1 } = startTurn(store, { sessionId: s.id, executionProfile: 'chat', userInput: 'T1' });
     store.appendMessage({ sessionId: s.id, turnId: t1.id, role: 'user', blocks: 'T1-user' });
     store.completeTurn(t1.id);
+    store.clearRunning(s.id, t1.id);
     const { turn: t2 } = startTurn(store, { sessionId: s.id, executionProfile: 'chat', userInput: 'T2' });
     store.appendMessage({ sessionId: s.id, turnId: t2.id, role: 'user', blocks: 'T2-user' });
     store.completeTurn(t2.id);
+    store.clearRunning(s.id, t2.id);
     expect(() => store.rewindLastTurn(s.id, t1.id)).toThrow(/turn_not_latest/);
     store.rewindLastTurn(s.id, t2.id);
 
@@ -466,8 +477,34 @@ describe('SessionStore — message', () => {
 
     expect(() => store.rewindLastTurn(s1.id, turn.id)).toThrow(/turn_running/);
     store.abortTurn(s1.id, turn.id);
+    store.clearRunning(s1.id, turn.id);
     expect(() => store.rewindLastTurn(s2.id, turn.id)).toThrow(/ownership/);
     expect(() => store.rewindLastTurn(s1.id, 'turn-ghost' as TurnId)).toThrow(/turn_not_found/);
+  });
+
+  it('旧 Turn 的迟到释放不会清除新 Turn', () => {
+    const store = makeStore();
+    const session = store.createSession();
+    const { turn: first } = startTurn(store, {
+      sessionId: session.id,
+      executionProfile: 'work',
+      userInput: 'first',
+    });
+    store.completeTurn(first.id);
+    store.clearRunning(session.id, first.id);
+
+    const { turn: second } = startTurn(store, {
+      sessionId: session.id,
+      executionProfile: 'work',
+      userInput: 'second',
+    });
+
+    store.clearRunning(session.id, first.id);
+
+    expect(store.getActiveTurn(session.id)?.id).toBe(second.id);
+    expect(() =>
+      startTurn(store, { sessionId: session.id, executionProfile: 'work', userInput: 'third' })
+    ).toThrow('session_busy');
   });
 
   it('listMessages (cursor) returns newest-first on first page', () => {

@@ -94,7 +94,7 @@ export class TurnExecutor {
     const activeTurn = this.deps.session.getActiveTurn(turn.sessionId);
     if (activeTurn?.id !== turnId) return false;
 
-    this.deps.session.requestAbort(turn.sessionId);
+    this.deps.session.requestAbort(turn.sessionId, turn.id);
     return true;
   }
 
@@ -166,7 +166,7 @@ export class TurnExecutor {
           // 临时目录清理失败不能覆盖已经确定的 Turn 终态。
         }
       }
-      this.deps.session.clearRunning(turn.sessionId);
+      this.deps.session.clearRunning(turn.sessionId, turn.id);
     }
   }
 

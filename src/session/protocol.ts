@@ -1,4 +1,3 @@
-import type { TurnStatus } from '@ema-agent/turn';
 // 定义 Session 模块跨 Core 与客户端传输的稳定 JSON 结构。
 
 import type { MessageKind, MessageRole } from '@ema-agent/storage';
@@ -6,6 +5,7 @@ import type {
   ExecutionProfile,
   NarrativePolicy,
   TurnAttachment,
+  TurnStatus,
   TurnTriggerType,
 } from '@ema-agent/turn';
 import type { MessageBlocks } from './message.js';
