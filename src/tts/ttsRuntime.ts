@@ -59,10 +59,6 @@ export class TtsRuntime {
   private readonly usageRecorder?: UsageRecorder;
   private readonly onUsageRecordError?: (error: unknown, record: UsageRecord) => void;
 
-  /**
-   * @param configs           Provider 配置(来自 profile.db)。
-   * @param adapterOverrides  预构建的 adapter,按 provider id 索引(测试在此注入 mock)。
-   */
   constructor(options: TtsRuntimeOptions) {
     this.adapterOverrides = options.adapterOverrides;
     this.limits = validateLimits({ ...DEFAULT_LIMITS, ...options.limits });
@@ -71,13 +67,11 @@ export class TtsRuntime {
     this.entries = this.buildEntries(options.configs);
   }
 
-  // ── 热重载 ──────────────────────────────────────────────────────────────
 
   reload(configs: readonly TtsProviderConfig[]): void {
     this.entries = this.buildEntries(configs, this.entries);
   }
 
-  /** 与 LanguageModelRuntime.upsertConfig() 对称。 */
   upsertConfig(config: TtsProviderConfig): void {
     const previous = this.entries.get(config.id);
     if (previous && configsEqual(previous.config, config)) return;
@@ -86,7 +80,6 @@ export class TtsRuntime {
     this.entries = entries;
   }
 
-  /** 与 LanguageModelRuntime.removeConfig() 对称。 */
   removeConfig(providerId: string): void {
     if (!this.entries.has(providerId)) return;
     const entries = new Map(this.entries);
@@ -94,7 +87,6 @@ export class TtsRuntime {
     this.entries = entries;
   }
 
-  /** 按 provider id 取 adapter(用于 voice 解析 / 缓存管理)。 */
   getAdapter(providerId: string): TtsAdapter | undefined {
     return this.entries.get(providerId)?.adapter;
   }
@@ -105,8 +97,6 @@ export class TtsRuntime {
   }
 
   /**
-   * 健康检查 - 验证至少配置了一个 TTS provider。
-   *
    * V1 只做配置检查(无实时 API 调用)。provider 的 adapter 成功注册
    * 即视为健康(即其 config 通过了 wiring 层的 `buildTtsProviderConfig`
    * 校验)。API key 的实际有效性在首次合成调用时验证。

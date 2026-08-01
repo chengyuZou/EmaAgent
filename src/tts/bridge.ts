@@ -74,15 +74,6 @@ export function makeSentenceId(turnId: TurnId, index: number): string {
   return `${turnId as string}-${index}`;
 }
 
-export function parseSentenceId(sentenceId: string): { turnId: string; index: number } | null {
-  const lastDash = sentenceId.lastIndexOf('-');
-  if (lastDash < 0) return null;
-  const turnId = sentenceId.slice(0, lastDash);
-  const index  = Number.parseInt(sentenceId.slice(lastDash + 1), 10);
-  if (!Number.isFinite(index)) return null;
-  return { turnId, index };
-}
-
 // ── 内部实现 ─────────────────────────────────────────────────────────────────
 
 /**

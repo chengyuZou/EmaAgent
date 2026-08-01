@@ -278,7 +278,7 @@ class EventQueue<T> {
     }
   }
 
-  // 静默 "unused" - 留作未来调试 / abort 流程检查。
+  /** 是否已收到最终值；close handler 据此区分"正常收尾"与"未完成的异常关闭"。 */
   hasFinal(): boolean { return this.closeValue !== null; }
 }
 
@@ -339,8 +339,6 @@ class CosyVoiceSession {
       queue.close();
     };
     this.req.abortSignal?.addEventListener('abort', abortHandler);
-
-    const voice = this.req.voice;
 
     ws.on('open', () => {
       ws.send(JSON.stringify({
@@ -500,7 +498,6 @@ class QwenTtsRealtimeSession {
     };
     this.req.abortSignal?.addEventListener('abort', abortHandler);
 
-    const voice  = this.req.voice;
     const pcmSr  = this.pcmSr;
 
     const audioFormat = audioFormatForSampleRate(pcmSr);
@@ -616,18 +613,14 @@ class QwenTtsRealtimeSession {
 
 // ── Qwen Realtime 音频格式选择 ───────────────────────────────────────────────
 
-function audioFormatForSampleRate(sr: number): string {
-  // 阿里文档:AudioFormat 枚举 - PCM_{rate}HZ_MONO_16BIT
-  if (sr === 16000) return 'pcm';   // 服务器接受简单的 "pcm" 别名
-  if (sr === 24000) return 'pcm';
-  if (sr === 48000) return 'pcm';
+function audioFormatForSampleRate(_sr: number): string {
+  // 阿里 AudioFormat 枚举形如 PCM_{rate}HZ_MONO_16BIT,同时接受简单别名 "pcm"。
+  // 采样率由独立的 sample_rate 字段携带,此处恒为别名。
   return 'pcm';
 }
 
 function defaultSampleRate(format: string): number {
-  if (format === 'pcm') return 24000;
-  if (format === 'wav') return 22050;
-  return 22050;
+  return format === 'pcm' ? 24000 : 22050;
 }
 
 function makeEventId(): string {

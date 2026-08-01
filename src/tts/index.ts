@@ -57,7 +57,7 @@ export { FsAudioArchive } from './archive.js';
 export type { AudioArchive, SegmentWriter, FinalizedAudio } from './archive.js';
 
 export {
-  ttsEventToTurn, makeSentenceId, parseSentenceId,
+  ttsEventToTurn, makeSentenceId,
 } from './bridge.js';
 export type { BridgeContext } from './bridge.js';
-export type { LipSyncFrame, TtsEvent } from './events.js';
+export type { TtsEvent } from './events.js';

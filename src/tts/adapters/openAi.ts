@@ -20,7 +20,7 @@ import { basename } from 'node:path';
 // 更早开始到达。
 //
 // V1 只支持 clone：voice 必须带 Provider 句柄，由上层按需上传。
-// CosyVoice2 模型在 clone 路径上跳过 speed/gain 参数。
+// clone 路径不发 speed/gain(CosyVoice2 克隆音色不接受这两个参数)。
 
 const CHUNK_BYTES = 8 * 1024;
 const MAX_REFERENCE_AUDIO_BYTES = 25 * 1024 * 1024;
@@ -41,8 +41,6 @@ export class OpenAiTtsAdapter implements TtsAdapter {
     }
 
     const voiceParam = req.voice.providerVoice.value;
-    // Clone 路径总是跳过 speed/gain(CosyVoice2 不接受)。
-    const skipSpeedGain = true;
 
     const url = `${this.config.baseUrl.replace(/\/$/, '')}/audio/speech`;
     const body: Record<string, unknown> = {
@@ -51,9 +49,6 @@ export class OpenAiTtsAdapter implements TtsAdapter {
       input:           req.text,
       response_format: req.format,
     };
-    if (!skipSpeedGain) {
-      body.speed = req.speed ?? 1.0;
-    }
 
     const startedAt = Date.now();
     let totalBytes  = 0;
