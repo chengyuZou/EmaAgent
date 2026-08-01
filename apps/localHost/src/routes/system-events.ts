@@ -15,7 +15,7 @@ type SystemEventSubscription = Pick<
  * Global SSE stream for events that don't belong to a single turn:
  *   memory_extraction_*, memory_consolidation_*, memory_maintenance_*,
  *   memory_index_rebuilt, memory_node_merged,
- *   background_task_*, character_card_switched, provider_health_changed
+ *   background_task_*, character_card_switched
  *
  * Frontend opens this in parallel with /api/turns/:id/events. The bubble
  * manager filters/styles each event by type via displaySettings.

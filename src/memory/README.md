@@ -9,11 +9,11 @@ MemoryPlanner
   initialize()
     -> build in-memory vector indexes from storage repos
 
-  applyRecallToMessages()
+  prepareRecallContribution()
     -> plan()
-    -> inject one memory context message before the latest user message
+    -> return one structured Context contribution
 
-  afterTurn()
+  recordTurnForExtraction()
     -> append pending_fragments
     -> enqueue session-scoped extraction when thresholds are reached
 
@@ -69,7 +69,8 @@ Current body format is JSON `SessionNoteEntry[]`. Recall parses the JSON and ren
 
 Extraction is session-scoped.
 
-`afterTurn()` converts a completed turn into pending fragments:
+`recordCompletedTurnMemory()` extracts visible text from a committed Turn, then
+`recordTurnForExtraction()` converts it into pending fragments:
 
 ```ts
 {
@@ -157,9 +158,9 @@ Important methods:
 
 ```ts
 initialize(): Promise<{ nodes: number; items: number; backend: string | null }>
-applyRecallToMessages(args): Promise<{ messages: ModelMessage[]; recallSummary: unknown; tokenEstimate: number }>
+prepareRecallContribution(args): Promise<MemoryRecallView>
 plan(ctx: PlanContext): Promise<RecallBundle>
-afterTurn(ctx): Promise<void>
+recordTurnForExtraction(ctx): Promise<void>
 forceExtract(sessionId, mode): Promise<void>
 tick(): Promise<void>
 drain(): Promise<void>

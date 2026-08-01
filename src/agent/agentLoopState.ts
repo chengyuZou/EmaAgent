@@ -17,7 +17,6 @@ export type AgentLoopTransition =
   | 'no_tool_calls'                // 模型只返回最终内容
   | 'user_abort'
   | 'max_iterations'
-  | 'hook_abort'
   | 'permission_denial_loop'
   | 'waiting_user'
   | 'user_answered'

@@ -21,7 +21,6 @@
   "dependencies": {
     "@ema-agent/ids": "workspace:*",
     "@ema-agent/turn": "workspace:*",
-    "@ema-agent/hooks": "workspace:*",
     "@ema-agent/llm": "workspace:*",
     "@ema-agent/prompts": "workspace:*",
     "@ema-agent/provider": "workspace:*",

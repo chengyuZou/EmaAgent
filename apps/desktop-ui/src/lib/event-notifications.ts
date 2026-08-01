@@ -50,8 +50,6 @@ export function describeEventNotification(event: ClientEvent): EventNotification
       return { message: `上下文压缩完成，节省 ${event.savedTokens.toLocaleString()} tokens`, variant: 'success' };
     case 'context_compaction_failed':
       return { message: `上下文压缩失败：${event.error}`, variant: 'danger' };
-    case 'context_compaction_skipped':
-      return { message: `已跳过上下文压缩：${event.message}`, variant: 'warning' };
     case 'memory_extraction_started':
       return { message: `开始提取记忆，队列中还有 ${event.queueDepth} 项`, variant: 'info' };
     case 'memory_extraction_completed':
@@ -145,11 +143,6 @@ export function describeEventNotification(event: ClientEvent): EventNotification
       return { message: `角色舞台动作：${event.cue.motion ?? event.cue.expression ?? '已更新'}`, variant: 'info' };
     case 'character_card_switched':
       return { message: `已切换角色：${event.name}`, variant: 'success' };
-    case 'provider_health_changed':
-      return {
-        message: `服务 ${event.definitionId} 状态：${event.status}${event.error ? `（${event.error}）` : ''}`,
-        variant: event.status === 'failed' ? 'danger' : event.status === 'ok' ? 'success' : 'info',
-      };
     case 'subagent_started':
       return { message: `子 Agent 已开始：${event.description ?? event.promptExcerpt}`, variant: 'info' };
     case 'subagent_progress':
@@ -164,8 +157,6 @@ export function describeEventNotification(event: ClientEvent): EventNotification
       return { message: `Agent 正在执行第 ${event.n} 轮`, variant: 'info' };
     case 'agent_breaker_tripped':
       return { message: `Agent 已停止：${event.reason}`, variant: 'danger' };
-    case 'hook_warning':
-      return { message: `Hook ${event.handlerName} 告警：${event.message}`, variant: event.severity === 'error' ? 'danger' : 'warning' };
     case 'system_warning':
       return { message: event.message, variant: event.level === 'error' ? 'danger' : event.level === 'warn' ? 'warning' : 'info' };
     default:

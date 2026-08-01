@@ -103,7 +103,7 @@ System Prompt 属于不可压缩前缀。即使响应式压缩接收到完整请
 
 Memory、Narrative、Scratchpad 和 Mailbox 属于本轮临时数据，通过带来源、唯一 ID 和插入位置的 `ContextContribution` 进入装配器；它们不能伪装成持久化历史。Skill Catalog 属于 Prompt Context Slot，激活后的完整 Skill 则由当前 Agent 独立保存；正常工具轮次依赖原始 SkillCall Result，只有 Macro 真正改写历史后才通过 `postCompactionRestoreContributions` 恢复，避免每轮重复正文。该恢复状态属于 `requiredRestoreMessages`，预算不足时压缩失败，不能静默丢 Skill。`assembleCompacted()` 会把固定 Prompt、可压缩历史、临时贡献、恢复状态与当前 Turn 分开交给压缩器，只有历史允许进入摘要模型。
 
-Conversation 与 Agent 根 Turn 已直接使用该入口。Agent 每次逻辑迭代重新装配 Scratchpad、Mailbox 和当前可见 Tool Manifest；Skill 调用收窄工具后，下一次 LLM 请求会得到新的 Manifest revision。`beforeLlm` Hook 仍可观察或调整最终请求，但 Prompt、Memory、Narrative 与 Skill 不再依赖 Hook 优先级完成核心装配。
+Conversation 与 Agent 根 Turn 已直接使用该入口。Agent 每次逻辑迭代重新装配 Scratchpad、Mailbox 和当前可见 Tool Manifest；Skill 调用收窄工具后，下一次 LLM 请求会得到新的 Manifest revision。Prompt、Memory、Narrative 与 Skill 均通过明确入口完成核心装配，不再依赖 Hook 优先级改写请求。
 
 压缩阈值按 `contextWindow - reservedOutputTokens - bufferTokens` 计算。模型目录提供 `maxOutput` 时使用真实值，否则默认预留 8K；预留上限为 20K，安全缓冲为 13K。连续三次摘要失败后按 Session 熔断，避免重复消耗模型调用。
 

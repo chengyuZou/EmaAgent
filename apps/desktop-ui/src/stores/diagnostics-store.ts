@@ -1,8 +1,7 @@
-// 聚合系统、系统事件与 Hook 诊断快照，并统一处理刷新、缓存和失败状态。
+// 聚合系统与系统事件诊断快照，并统一处理刷新、缓存和失败状态。
 import { create } from 'zustand';
 import {
   diagnosticsApi,
-  type HookDiagnosticsResult,
   type SystemEventDiagnosticsResult,
 } from '../api/diagnostic.js';
 import { systemApi, type SystemInfoWire } from '../api/system.js';
@@ -13,7 +12,6 @@ export interface DiagnosticsSnapshot {
   capturedAt: number;
   system: SystemInfoWire;
   systemEvents: SystemEventDiagnosticsResult;
-  hooks: HookDiagnosticsResult;
 }
 
 export type DiagnosticsLoadStatus = 'idle' | 'loading' | 'ready' | 'stale' | 'error';
@@ -33,7 +31,6 @@ export function serializeDiagnosticsSnapshot(snapshot: DiagnosticsSnapshot): str
     capturedAt: new Date(snapshot.capturedAt).toISOString(),
     system: snapshot.system,
     systemEvents: snapshot.systemEvents,
-    hooks: snapshot.hooks,
   }, null, 2);
 }
 
@@ -53,11 +50,10 @@ export const useDiagnosticsStore = create<DiagnosticsStoreState>((set, get) => (
     const request = Promise.all([
       systemApi.getInfo(),
       diagnosticsApi.systemEvents(),
-      diagnosticsApi.hooks(),
     ])
-      .then(([system, systemEvents, hooks]) => {
+      .then(([system, systemEvents]) => {
         set({
-          snapshot: { capturedAt: Date.now(), system, systemEvents, hooks },
+          snapshot: { capturedAt: Date.now(), system, systemEvents },
           status: 'ready',
           error: null,
         });

@@ -80,7 +80,7 @@ import { CharacterResourceLifecycle } from './resources/characterResourceLifecyc
  *   stage.loadModel      （V1.5）
  *   tts.setReferenceAudio（V1.5）
  *
- * 不是 HookBus--这是 fire-and-forget 广播。多个订阅者（emotion / stage / tts）
+ * 这是角色领域自己的 fire-and-forget 广播。多个订阅者（emotion / stage / tts）
  * 各自独立反应；store 不等它们，也不聚合结果。
  *
  * 监听器在 activate() 内同步调用；抛错的 handler 会被记日志并吞掉，

@@ -22,8 +22,6 @@ import {
 import type { McpRegistry } from '@ema-agent/mcp';
 import type { SkillStore, SkillRunner, SkillInstaller } from '@ema-agent/skills';
 import type { MarketRegistry, MarketSourceStore } from '@ema-agent/marketplace';
-import { HookBus }       from '@ema-agent/hooks';
-import { createTraceSink } from './diagnostic-sink.js';
 import type { LanguageModelRuntime } from '@ema-agent/llm';
 import {
   type ModelsDevCatalog,
@@ -113,7 +111,6 @@ export interface AppBindings {
   /** 当前机器实际启用的沙箱等级，供系统接口和前端设置页展示。 */
   sandboxStatus: SandboxStatusWire;
 
-  hooks:   HookBus;
   /** LocalHost 一次性初始化、常驻后台工作与关闭入口。 */
   lifecycle: LocalHostLifecycle;
   session: SessionStore;
@@ -236,12 +233,11 @@ export interface AppBindings {
 // ── Build bindings ────────────────────────────────────────────────────────────
 
 /**
- * Construct every Facade. Pure data assembly: no hook registration, no
- * subscriber wiring, no side effects beyond DB reads and Facade construction.
+ * Construct every Facade. Pure data assembly: no subscriber wiring and no
+ * side effects beyond DB reads and Facade construction.
  *
  * The `wire(db)` entry point in ./index.ts orchestrates:
  *   buildBindings(db)      ← this function
- *   registerAllHooks(...)
  *   registerAllEmitters(...)
  */
 export interface BuildBindingsArgs {
@@ -256,10 +252,6 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   const { profileDb, dataDb, activeDataDir, credentials, fileAccess } = args;
 
   // ── LocalHost 基础设施 ──────────────────────────────────────────────────────
-  const hooks   = new HookBus({
-    traceSink:     createTraceSink(),   // 后端 ring + console；Turn SSE 由 HookBus 的 ctx.emit 发出
-    warnAnonymous: process.env['NODE_ENV'] !== 'production',
-  });
   const {
     session,
     sessionStats,
@@ -450,7 +442,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
 
   return {
     dataDb, activeDataDir, fileAccess, sandboxStatus,
-    hooks, lifecycle, session, sessionBackup,
+    lifecycle, session, sessionBackup,
     llm, embed, rerank, narrative, modelCatalog, modelCapabilities,
     card, emotion,
     tts, audioArchive, stt, vision, providerRuntime,

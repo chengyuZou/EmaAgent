@@ -6,7 +6,6 @@ import { DEFAULT_CONTEXT_COMPACTION_SETTINGS } from '@ema-agent/context';
 import type { MessageId, SessionId, TurnId } from '@ema-agent/ids';
 import type { LlmRequest } from '@ema-agent/llm';
 import type { Message, Turn } from '@ema-agent/session';
-import { HookBus } from '@ema-agent/hooks';
 import { ToolRegistry } from '@ema-agent/tools';
 import { registerBuiltinTools } from '@ema-agent/tool-builtin';
 import { TurnExecutor } from '../turnExecutor.js';
@@ -89,10 +88,13 @@ describe('Chat 统一执行链', () => {
     const tools = new ToolRegistry();
     registerBuiltinTools(tools);
     const narrative = {
-      route: async () => ({ routes: { '1st_Loop': '第一周目' } }),
-      queryOne: async () => '第一周目召回正文',
+      recall: async () => ({
+        generationId: 'generation-1',
+        routes: { '1st_Loop': '第一周目' },
+        results: { '1st_Loop': '第一周目召回正文' },
+        failures: [],
+      }),
     };
-    const hooks = new HookBus();
     const llm = {
       stream: async function* (request: LlmRequest) {
         requests.push(request);
@@ -113,11 +115,9 @@ describe('Chat 统一执行链', () => {
     } as never;
     const executor = new TurnExecutor({
       session: session as never,
-      hooks,
       interactions: { cancelForTurn: () => 0 },
     }, new RootAgentExecution({
       transcript: session as never,
-      hooks,
       llm,
       emotion,
     }, new TurnContextBuilder({
@@ -125,7 +125,6 @@ describe('Chat 统一执行链', () => {
         narrative: narrative as never,
       }), new TurnToolsBuilder({
         session: session as never,
-        hooks,
         llm,
         narrative: narrative as never,
         tools,
@@ -171,7 +170,8 @@ describe('Chat 统一执行链', () => {
     const events = [];
     for await (const event of handle.events) events.push(event);
 
-    await expect(handle.completion).resolves.toMatchObject({ status: 'completed' });
+    const outcome = await handle.completion;
+    expect(outcome).toMatchObject({ status: 'completed' });
     const toolNames = requests[0]?.tools?.map((tool) => tool.name) ?? [];
     expect(toolNames).toContain('Read');
     expect(toolNames).toContain('KnowledgeBaseSearch');

@@ -28,7 +28,6 @@ import type {
 import type { MemoryRecallEvent } from '@ema-agent/memory';
 import type { PromptSnapshot } from '@ema-agent/prompts';
 import type { MessageBlocks, SessionStore, Turn } from '@ema-agent/session';
-import type { HookBus, HookWarningEvent } from '@ema-agent/hooks';
 import type { EmotionStreamEvent } from '@ema-agent/emotion';
 import type { PermissionStreamEvent } from '@ema-agent/permission';
 import type { ModelCapabilitySnapshot } from '@ema-agent/provider';
@@ -42,6 +41,11 @@ export interface TurnInteractionCleanup {
   cancelForTurn(turnId: TurnId, reason: string): number;
 }
 
+/** 根 Turn 成功提交后执行的非关键观察者；失败不得反向改写 Turn 终态。 */
+export interface TurnCompletedObserver {
+  record(turn: Turn): void | Promise<void>;
+}
+
 /**
  * TurnExecutor 所需的根生命周期依赖。
  * 依赖只描述根 Turn 执行，不包含 HTTP、SSE、TTS 或附件准备。
@@ -51,8 +55,8 @@ export interface TurnInteractionCleanup {
  */
 export interface TurnExecutionDeps {
   session: SessionStore;
-  hooks: HookBus;
   interactions: TurnInteractionCleanup;
+  completedObserver?: TurnCompletedObserver;
 }
 
 // ── Turn 启动与执行输入 ───────────────────────────────────────────────────────
@@ -167,5 +171,4 @@ export type TurnExecutionEvent =
   | EmotionStreamEvent
   | NarrativeEvent
   | MemoryRecallEvent
-  | ContextEvent
-  | HookWarningEvent;
+  | ContextEvent;

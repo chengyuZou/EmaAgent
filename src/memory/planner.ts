@@ -52,7 +52,7 @@ import {
 import { buildMemoryContextContribution } from './recall/context-builder.js';
 import { IndexManager }  from './vector-index/index-manager.js';
 import { planRecall }    from './recall/recall-planner.js';
-import { handleAfterTurn, handleForceExtract } from './extract/dispatcher.js';
+import { recordTurnForExtraction, handleForceExtract } from './extract/dispatcher.js';
 import {
   cleanupSessionMemoryReferences,
 } from './sessionCleanup.js';
@@ -280,14 +280,14 @@ export class MemoryPlanner {
 
   // ── Background work ─────────────────────────────────────────────────────────
 
-  async afterTurn(ctx: {
+  async recordTurnForExtraction(ctx: {
     sessionId:     SessionId;
     turnId:        string;
     executionProfile: ContextContributionRequest['executionProfile'];
     userText:      string;
     assistantText: string;
   }): Promise<void> {
-    return handleAfterTurn(this.deps, this.settings, this.runner, (sid) => this.getSessionOverrides(sid), ctx);
+    return recordTurnForExtraction(this.deps, this.settings, this.runner, (sid) => this.getSessionOverrides(sid), ctx);
   }
 
   async forceExtract(sessionId: SessionId, executionProfile: ContextContributionRequest['executionProfile']): Promise<void> {

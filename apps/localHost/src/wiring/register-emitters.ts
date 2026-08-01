@@ -4,11 +4,7 @@ import type { AppBindings } from './bindings.js';
 // ── Aggregated emitter subscriptions ─────────────────────────────────────────
 
 /**
- * Wire module-level emitters (not HookBus events) to their subscribers.
- *
- * Why a separate file from register-hooks.ts:
- *   HookBus  → "I run before X happens, may modify the payload, then continue"
- *   emitters → "I broadcast that X happened; subscribers react independently"
+ * Wire module-level emitters to their subscribers.
  *
  * Two destinations:
  *   1. In-process side-effects (emotion reset, stage reload, etc.)

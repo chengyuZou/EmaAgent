@@ -1,7 +1,6 @@
 // 为一个根 Turn 冻结工具能力，并统一管理权限执行器、子 Agent 与终态收口。
 
 import type { AgentRunId, SessionId, ToolCallId, TurnId } from '@ema-agent/ids';
-import type { HookBus } from '@ema-agent/hooks';
 import type {
   KnowledgeSearchPort,
   KbSearchResult,
@@ -43,7 +42,6 @@ import {
 } from '@ema-agent/tool-builtin';
 import {
   buildScratchpadContext,
-  createToolLifecycleHooks,
   SubagentSpawner,
   TurnPolicy,
   type AgentRunStorePort,
@@ -77,7 +75,6 @@ export interface TurnToolsBuilderDeps {
   readonly session: SessionStore;
   readonly tools: ToolRegistry;
   readonly permission: PermissionEngine;
-  readonly hooks: HookBus;
   readonly llm: LanguageModel;
   readonly narrative?: NarrativeClient;
   readonly getCommandRunner?: (
@@ -113,7 +110,6 @@ export type TurnToolsShutdownReason =
   | 'completed'
   | 'aborted'
   | 'failed'
-  | 'hook_aborted'
   | 'finished';
 
 interface TurnEventRelay {
@@ -155,7 +151,7 @@ export class TurnTools {
     return executor;
   };
 
-  /** Hook 产生的最终请求视图只供 fork 子 Agent 继承，不写回 Session 历史。 */
+  /** 最终模型请求视图只供 fork 子 Agent 继承，不写回 Session 历史。 */
   updateParentContext(messages: readonly ModelMessage[]): void {
     this.parentMessages.splice(
       0,
@@ -230,7 +226,6 @@ export class TurnToolsBuilder {
       tools: this.deps.tools,
       llm: this.deps.llm,
       permission: this.deps.permission,
-      hooks: this.deps.hooks,
       getParentAllowedToolIds: () => {
         if (!parentPolicy) {
           throw new Error('Parent TurnPolicy is not ready');
@@ -317,7 +312,6 @@ export class TurnToolsBuilder {
         permission: this.deps.permission,
         permCtx: permissionContext,
         toolContext,
-        lifecycle: createToolLifecycleHooks(this.deps.hooks, pushEvent),
         buildAsk: this.deps.buildAsk,
         pushEv: pushEvent,
         signal: wake,
@@ -422,8 +416,6 @@ function toolShutdownReason(reason: TurnToolsShutdownReason): string {
   switch (reason) {
     case 'aborted':
       return 'user_abort';
-    case 'hook_aborted':
-      return 'hook_abort';
     case 'failed':
       return 'turn_failed';
     case 'completed':
@@ -437,7 +429,6 @@ function subagentShutdownReason(reason: TurnToolsShutdownReason): string {
   switch (reason) {
     case 'aborted':
       return 'parent_turn_aborted';
-    case 'hook_aborted':
     case 'failed':
       return 'parent_turn_failed';
     case 'completed':

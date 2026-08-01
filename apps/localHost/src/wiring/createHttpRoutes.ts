@@ -10,7 +10,6 @@ import { systemEventsRoute } from '../routes/system-events.js';
 import { settingsRoute } from '../routes/settings.js';
 import { transcribeRoute } from '../routes/transcribe.js';
 import { cardsRoute } from '../routes/cards.js';
-import { diagnosticRoute } from '../routes/diagnostic.js';
 import { shellRoute } from '../routes/shell.js';
 import { workspaceRoute } from '../routes/workspace.js';
 import { kbRoute } from '../routes/knowledge-base.js';
@@ -75,7 +74,6 @@ export function createHttpRoutes(bindings: AppBindings): readonly MountedHttpRou
         },
       }),
     },
-    { path: '/api/diagnostics', router: diagnosticRoute() },
     {
       path: '/api/transcribe',
       router: transcribeRoute(bindings.stt, bindings.modelBindings),

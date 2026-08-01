@@ -16,7 +16,9 @@ L2 Turn Context 已经完成：`TurnContextBuilder.prepare()` 一次性建立历
 
 L3 Turn Tools 已经完成：`TurnToolsBuilder.prepare()` 在根 Turn 开始时一次冻结 Capability Context、Builtin/MCP Manifest、Execution Profile 与 Tool Policy，并绑定 KB/Narrative/AskUser/Skill/Task/Sandbox 等窄能力；`TurnTools` 统一拥有 ToolExecutionRuntime、SubagentSpawner、Active Skill 与终态关闭顺序。`TurnExecutor` 不再读取 Tool Registry、Permission、CommandRunner、Journal 或 AgentRun Store，只通过一个 Turn 级协作者执行、取消和收口工具。
 
-L4 Root Agent Execution 已经完成：`RootAgentExecution` 统一拥有根 AgentLoop、Context/Tool 一次性组合、LLM/Message Hook、Emotion、非终态事件翻译与 transcript 持久化，只返回 `completed/failed/aborted` 结构化结果；它通过 `RootAgentTranscript` 窄端口写消息，无法创建或提交根 Turn 终态。`TurnExecutor` 只保留根身份、TurnHandle、准备期、Turn 生命周期 Hook、取消、交互清理、临时目录清理与唯一终态；`TurnExecutionDeps` 只有 Session、Hook 与根 Turn 交互清理三个明确依赖。单次迭代块顺序由内聚的 `IterationTranscript` 共享给 Hook 和持久化，不在两个层级重复重建。
+L4 Root Agent Execution 已经完成：`RootAgentExecution` 统一拥有根 AgentLoop、Context/Tool 一次性组合、Emotion、非终态事件翻译与 transcript 持久化，只返回 `completed/failed/aborted` 结构化结果；它通过 `RootAgentTranscript` 窄端口写消息，无法创建或提交根 Turn 终态。`TurnExecutor` 只保留根身份、TurnHandle、准备期、取消、交互清理、临时目录清理与唯一终态。单次迭代块顺序由内聚的 `IterationTranscript` 共享给事件投影和持久化，不在两个层级重复重建。
+
+内部 HookBus 清理已经完成：原 `src/hooks` 不是 Claude/Codex 意义上的用户自动化平台，且生产环境只剩 Memory 一个真实消费者，因此源码已复制到 `D:\Github\EmaAgentBranchArchive` 后从主仓删除。Context、Tool、Turn 与 Agent 不再通过可替换/可中止的通用 Hook 串联；LLM 请求仅保留只读 `onLlmRequestPrepared` 观察点，Memory 通过 `TurnCompletedObserver` 在 `completeTurn()` 提交成功后异步记录可见文本，失败不会污染根 Turn 终态。用户可配置 Hook、Settings 与 Runner 均不在 V1 预建。
 
 L5 Turn Composition Root 已经完成并提交：`apps/localHost/src/wiring/createTurnExecution.ts` 是根 Turn 输入准备、Context、Tools、RootAgentExecution 与 TurnExecutor 对象图的唯一构造位置。LocalHost Orchestrator 只取得 `TurnInputPreparer + TurnExecutor` 两个明确入口，不再知道 Agent 执行链如何装配；TTS 合流、Route 与大型 AppBindings 本批未动，避免把多个业务边界混成一次机械搬家。L5 是根 Turn 执行地基的最后一层，后续不再创建 L6 或另一套执行抽象。
 
@@ -78,7 +80,7 @@ Narrative 原子 Recall 已经完成：TypeScript 和 Python 只保留 `POST /na
 
 Narrative 前端终态收口已经完成：`started` 仍只属于当前进程的 SSE/流式展示状态，不写入持久历史；任一根 Turn 终止时，仍在运行的 Narrative Block 会转为 `interrupted`，不会把断电、断连或缺失终态伪装成检索失败，也不会在当前进程留下永久转圈状态。重启后只有已经持久化的 `narrative_context` 会重建为完成块。
 
-事件所有权第一批已经落到源码：Agent、Characters、Context、Hooks、Knowledge、Memory、Narrative、System、Tasks、Tools 与 TTS 各自拥有 `events.ts`；Turn 只保留根生命周期、输出、Usage 与请求降级事件。`src/events` 像 `src/ids` 一样执行严格准入，但只负责组合 `TurnStreamEvent/SessionEvent/AppEvent`，禁止定义业务字段。
+事件所有权已经落到源码：Agent、Characters、Context、Knowledge、Memory、Narrative、System、Tasks、Tools 与 TTS 各自拥有 `events.ts`；Turn 只保留根生命周期、输出、Usage 与请求降级事件。`src/events` 像 `src/ids` 一样执行严格准入，但只负责组合 `TurnStreamEvent/SessionEvent/AppEvent`，禁止定义业务字段。
 
 R2 Prompt Slot 与 R3 ContextAssembler 主链接线已经完成：Prompt、Skill Catalog、Memory Recall、Narrative Recall、历史、当前 Turn、Scratchpad、Mailbox 与 Tool Manifest 由一次不可变 Context 快照统一装配。现有渐进 Compaction、Safe Cut、Restore、响应式压缩和 Tool Manifest Snapshot 都是基线，不重新实现。
 
@@ -120,7 +122,7 @@ Agent 执行体系第二批已经完成：ToolExecution Journal 从 Tasks 收回
 
 Sandbox 依赖反转已经完成：进程启动、超时、取消和有界输出收回 `src/sandbox/processRunner.ts`，`CommandRunnerPort/CommandRunOptions/CommandRunResult` 只由 Sandbox 定义。Sandbox 不再依赖 Tools 或 Permission，也不从审批规则猜 OS 文件能力；Core 直接注入工作区、可写路径、私有路径和网络能力快照。Bash 删除裸 `spawn` 回退与假后台参数，无 Runner 时明确拒绝；无法进入现有 OS Sandbox 的 PowerShell Tool 已移除。无工作区不再回退 Sidecar 的 `process.cwd()`，子 Agent 当前本就不获得 Bash 能力。
 
-Tools 主执行链归位已经完成：`ToolRegistry.dispatch()` 组合捷径已删除，可信测试调用同样显式使用 `prepare()` 与 `execute()`；原 Agent 内执行器迁为 `src/tools/execution/toolExecutionRuntime.ts`，统一承担并发栅栏、PreparedToolCall 校验、Permission、Journal、取消、结果预算和执行事件。Tools 通过窄 `ToolLifecycleObserver` 接受观察能力，不反向依赖 Agent、Session 或 Hooks；Agent 只负责把现有 HookBus 适配进来，并消费 `ToolExecutionResult` 决定下一轮。`ToolFailurePhase` 同步回到 Tools，Session 只扩展持久消息允许的媒体结果结构。
+Tools 主执行链归位已经完成：`ToolRegistry.dispatch()` 组合捷径已删除，可信测试调用同样显式使用 `prepare()` 与 `execute()`；原 Agent 内执行器迁为 `src/tools/execution/toolExecutionRuntime.ts`，统一承担并发栅栏、PreparedToolCall 校验、Permission、Journal、取消、结果预算和执行事件。Tools 通过明确领域事件公开执行事实，不反向依赖 Agent 或 Session；Agent 消费 `ToolExecutionResult` 决定下一轮。`ToolFailurePhase` 同步回到 Tools，Session 只扩展持久消息允许的媒体结果结构。
 
 Permission 与 AskUser 的阻塞交互已经统一：`SessionInteractionQueue` 按 Session 串行 Permission/AskUser，跨 Session 并行，只有队首计时并允许用户响应；AskUser 回答、取消和超时使用明确终态，不再把取消伪装成空答案。四种纯问询工具通过随 `PreparedToolCall` 冻结的 `permissionMeta.approval = not_required` 跳过普通权限卡片，其余工具省略字段时默认 `required`。AskUser HTTP 响应同时校验 `promptId + turnId`，Turn/Session 中止仍可清理包括非队首在内的全部等待项。
 

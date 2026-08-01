@@ -3,7 +3,6 @@ import type { MessageBlocks } from '@ema-agent/session';
 import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/turn';
 import type { ContextRuntimeEvent } from '../events.js';
 import type { LanguageModel, LlmToolDef, Message } from '@ema-agent/llm';
-import type { HookBus } from '@ema-agent/hooks';
 
 export interface ContextCompactionSettings {
   enabled: boolean;
@@ -25,7 +24,6 @@ export const DEFAULT_CONTEXT_COMPACTION_SETTINGS: ContextCompactionSettings = {
 
 export interface ContextCompactorDeps {
   llm: LanguageModel;
-  hookBus?: HookBus;
   isEnabledForSession?: (sessionId: SessionId) => boolean;
   persistSummary: (input: {
     sessionId: SessionId;
@@ -78,7 +76,7 @@ export type ContextCompactionResult =
   | (ContextCompactionResultBase & {
       status: 'skipped';
       macroRan: false;
-      reason: 'hook_aborted' | 'circuit_open';
+      reason: 'circuit_open';
       detail?: string;
     })
   | (ContextCompactionResultBase & {

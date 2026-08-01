@@ -7,7 +7,8 @@ import type { MemoryTaskRunner } from '../tasks/extraction-runner.js';
 import type { ResolvedSessionOverrides } from '../maintenance/overrides.js';
 import { appendPending, readPending, shouldExtract, buildFragmentsFromTurn } from './pending.js';
 
-export async function handleAfterTurn(
+/** 把已完成 Turn 的可见文本写入待提取区，并在达到阈值时安排提取。 */
+export async function recordTurnForExtraction(
   deps:                MemoryDeps,
   settings:            MemorySettings,
   runner:              MemoryTaskRunner,

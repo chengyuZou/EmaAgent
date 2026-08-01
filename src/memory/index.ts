@@ -92,9 +92,7 @@ export type { RunnableMemoryTaskKind } from './tasks/extraction-runner.js';
 export { runStartupRecovery }                 from './tasks/recovery.js';
 export type { RecoveryReport }                from './tasks/recovery.js';
 
-// ── Hooks ────────────────────────────────────────────────────────────────────
-export { registerMemoryHooks }                from './hooks.js';
-export type { MemoryHooksDeps } from './hooks.js';
+export { recordCompletedTurnMemory } from './completedTurn.js';
 
 // ── Maintenance: overrides ───────────────────────────────────────────────────
 export { DEFAULT_OVERRIDES }                  from './maintenance/overrides.js';

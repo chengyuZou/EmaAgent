@@ -420,70 +420,39 @@ src/tools/files/
 
 ---
 
-## 06 Hooks and Extensibility：内部生命周期与未来用户扩展
-
-> 源文档文件名为 `06-hooks-extensibility.md`，正文标题沿用了“第 7 章”；本评审按文件顺序记为 06。
+## 06 Hooks and Extensibility：当前不建立内部万能 Hook 总线
 
 ### Claude 的业务与架构
 
-Claude 的 Hook 是面向用户、项目、插件和 SDK 的正式扩展协议，覆盖 Tool、Permission、Session、Stop、Subagent、Task、Compaction、MCP 和环境变化。可执行形态包括 Command、Prompt、Agent、HTTP、Callback 和会话 Function；执行前会做来源信任、Matcher/条件过滤、去重、超时、并发和输出协议解析。
-
-这套能力的安全成本很高：Command Hook 等同本地代码执行，HTTP Hook 需要 SSRF 和凭据白名单，Prompt/Agent Hook 会产生额外模型调用，Permission Hook 甚至可能改变安全决策。Claude 为此维护配置快照、信任确认、环境变量白名单、CRLF 防护和稳定 JSON 协议。
+Claude 的 Hook 是面向用户、项目、插件和 SDK 的正式自动化协议，而不是内部模块之间传 callback 的别名。它需要配置快照、来源信任、Matcher、超时、并发、稳定输入输出协议，以及针对 Command、HTTP、Prompt 等执行形态分别建立的安全边界。
 
 ### Ema 当前事实
 
-Ema 当前的 `packages/hook` 是**进程内业务生命周期总线**，并不是 Claude 那种用户可配置 Hook 平台：
+Ema 曾有一套进程内 `HookBus`，覆盖 Turn、LLM、Tool、Compaction 与 Assistant Message。它没有用户配置、可信来源、Command/HTTP/Prompt Runner，也没有一项必须依赖通用 Hook 才能成立的产品能力；实际生产消费者只有 Memory 的 Turn 完成回调。2026-08-01 已把该源码复制到 `D:\Github\EmaAgentBranchArchive` 供未来参考，并从主仓删除。
 
-- 事件覆盖 LLM、Assistant Message、Tool、Compaction 和 Turn 生命周期；
-- `HookContext` 明确携带 `invocationId/sessionId/turnId`，LLM payload 另有 `iteration/llmCallId`，Tool payload 另有 `ToolCallId`；
-- payload 每个 handler 独立 clone + freeze，handler 无法通过共享引用修改 Engine 状态；
-- 控制事件与观察事件分开，观察事件返回 abort/replace 会被视为协议违规；
-- 串行 replace 有明确传递顺序，并行 handler 不允许 replace；
-- 每个 handler 有 AbortSignal、超时、critical/fail-open 语义、并发上限、结构化 trace 与 warning；
-- Tool Hook 被刻意限制为观察用途，不能授权、拒绝、改参或绕过 Sandbox；
-- Narrative 目前仍通过 `beforeLlm` replace 整个 messages 数组注入检索结果，说明显式 Context Slot 尚未接线。
+当前边界改为显式业务接口：
 
-这比早期单纯 callback 列表成熟，但它仍是内部 API。数据库里没有用户 Hook Definition/HookId，Settings 没有启停和来源信任，Command/HTTP/Prompt Hook Runtime 也不存在。
+- Prompt、Narrative、Memory、Skill 通过类型化 Context Contribution 进入 `ContextAssembler`；
+- AgentLoop 只暴露只读的 `onLlmRequestPrepared` 观察点，用于事件与诊断，不能替换消息或中止调用；
+- Tool 执行继续显式经过 PreparedToolCall、Permission、Sandbox、Journal 和领域事件；
+- Turn 成功提交后，`TurnCompletedObserver` 才执行非关键后处理；Memory 使用 `recordCompletedTurnMemory()`，失败不能把已完成 Turn 改回失败；
+- Character、Knowledge、Narrative、Tasks 等事件由各自业务包定义，`src/events` 只组合协议。
 
 ### Diff 判断
 
-1. **V1 已对齐：身份、不可变 payload、超时与事件控制权限保留。** 多 Session 与同 Session 多 LLM/Tool 调用已经能靠 ID 区分，不需要再塞一个模糊 `ctx.meta`。
-2. **V1 必做：内部 Hook 不能成为第二套 Permission Engine。** `beforeToolUse` 继续只观察已准备调用；是否允许执行只由 Permission 决定，隔离只由 Sandbox 决定。未来用户 Hook 也不能返回一个未经重新 Prepare 的任意工具输入。
-3. **V1 收口：replace 改成领域 Patch/Slot，而不是替换大 payload。** `beforeLlm` 不应长期允许任意替换整个 Message 数组；Narrative、Memory、Skill 等应返回明确 `ContextContribution`，由 ContextAssembler 统一装配和验证。
-4. **V1 收口：注册采用“领域拥有、Composition Root 汇总”。** 每个业务模块导出 `registerXxxHooks(bus, deps)`，`apps/localHost` 的装配入口统一调用，因此开发者能从一个位置看见启用了哪些 Hook，又不把所有业务实现塞进 Hook 包。
-5. **V1 收口：Hook Event 只表达稳定生命周期节点。** 不因为某个组件想监听就增加事件；纯 UI 通知按作用域进入 `TurnEvent/SessionEvent/AppEvent`。Character/Emotion 变化绕过 HookBus 的选择是合理的。
-6. **V1 收口：failure phase 与错误码保持明确类型。** Hook 只传安全、可展示的错误摘要；原始 Provider body、API Key、命令环境等不能进入通用 payload 或 trace。
-7. **V1.5 候选：用户可配置 Hook。** 等内部事件和 Prompt Slot 稳定后，再增加 `HookDefinitionId`、启用状态、作用域、事件、Matcher、执行类型、超时和来源信任；不要现在把半成品 SQL/UI 混入 V1 主链。
-8. **V1.5 候选：Command/HTTP/Prompt Hook 分别实现专用 Runner。** Command 必须走 Sandbox，HTTP 必须走 `public-http`，Prompt 必须通过独立 LLM Call 且禁止递归触发同类 Hook；三者不能共用一个 `payload: JSON` 万能执行器。
-9. **V1.5 候选：Stop Hook。** 它本质是“采样后验证是否允许 Turn 停止”，可与第 17 章 Goal 判定接口对接；V1 不应为了模仿 Claude 暗中让测试 Hook 无限续跑。
-10. **不照搬：Claude 的 27 个事件和退出码协议。** Ema 是桌面产品而非 shell-first CLI，只添加真实业务需要的事件；跨平台 Command Hook 也不能默认用户一定有 Bash。
-
-### 建议拆分与公共接口
-
-```text
-src/hooks/
-├─ hookBus.ts                 当前强类型内部总线
-├─ events.ts                  稳定领域生命周期事件
-├─ payloadSnapshot.ts         handler 隔离与只读快照
-├─ errors.ts
-├─ registrations.ts           Composition Root 可扫描的注册清单
-└─ contributions.ts           Context Patch 等受限返回类型
-
-未来 V1.5：
-src/hooks/configuration/      HookDefinition、作用域、来源与信任
-src/hooks/runners/            command/http/prompt 专用执行器
-src/settings/hooks/           用户设置读写，不塞进 Memory
-```
-
-建议未来用户 Hook 主键叫 `hookDefinitionId` 或 `hookId`，单次执行身份继续使用现有 `hookInvocationId`，两者不能混用。已知字段进显式 SQL column；只有某类 Hook 真正开放的执行配置才使用对应的判别联合，不建立 `options_json/meta_json`。
+1. **V1 已收口：不保留伪装成扩展平台的内部 Hook 包。** 显式接口比事件名、优先级和 replace 链更容易追踪，也避免形成第二套编排层。
+2. **V1 已收口：模型请求观察不可改参。** 真要修改 Context，必须回到对应 Contribution/Assembler；真要修改 Tool 参数，必须重新 Prepare 和审批。
+3. **V1 已收口：Memory 后处理发生在 Turn 提交之后。** 它属于可失败的派生工作，不参与根 Turn 原子终态。
+4. **V1 不提供用户 Hook 设置与 SQL。** 没有真实自动化需求时，不预建 HookId、空 UI 或半成品 Runner。
+5. **未来候选：按真实自动化能力重新建立专用入口。** 例如 PostToolUse 测试自动化、Notification 或 Stop Validator；Command 必须走 Sandbox，HTTP 必须走 `public-http`，Prompt 必须是独立 LLM Call，并分别定义信任与递归边界。
+6. **不照搬：Claude 的全部事件和退出码协议。** Ema 只在产品确实需要用户可配置自动化时实现对应子集。
 
 ### 与第 01～05 章复核
 
-- `TurnExecutor` 决定何时触发生命周期事件；HookBus 不拥有 Turn 状态机。
-- `beforeLlm` 的 Context Contribution 交给第 03 章 `ContextAssembler`，Hook 不再直接拼 Message。
-- `beforeToolUse` 观察第 04 章的 `PreparedToolCall`；即使未来 Hook 建议改参，也必须重新 Prepare、重新计算摘要并重新审批。
-- FileEdit 的实际 Diff 与写入 Journal 可由 afterToolUse 观察，但 Hook 失败不能回滚一个已经原子提交成功的文件并把结果伪装成未执行。
-- Stop/Goal、Subagent、Task 等事件是否加入，要等对应领域对象成立，不能用 Hook 事件反向创造空业务。
+- `TurnExecutor` 拥有根终态，不让观察者回滚已提交事实；
+- ContextAssembler 拥有模型可见窗口，不允许任意回调替换整个 Message 数组；
+- Permission 与 Sandbox 只处理不可变 PreparedToolCall，不读取 Hook 返回值；
+- Tool、Task、Subagent、Compaction 与业务事件按所有者归位，不靠通用 Hook 反向创造领域对象。
 
 ---
 
@@ -569,7 +538,7 @@ V1 每次真实启动子 Agent 创建一条 `agent_runs`，保存 `sessionId/par
 - 所有 AgentRun 复用同一个 `AgentLoop` 实现，但根 Turn Runtime 才拥有用户交互终态和 AskUser。
 - Context Fork 由 Context 模块投影，Spawner 不拥有 Message 格式与 Provider cache 字段。
 - Subagent Tool Call 仍走同一 Prepared/Permission/Sandbox 管线；白名单不是权限替代品。
-- Hook 使用 `agentRunId` 区分父子执行；不会把 `subagentId` 塞进 `turnId` 欺骗类型系统。
+- 父子执行事件使用 `agentRunId` 区分；不会把 `subagentId` 塞进 `turnId` 欺骗类型系统。
 - 第 15 章 Task 只负责“要完成什么”，本章 AgentRun 负责“谁在执行、执行到哪、消耗多少”。
 
 ---
@@ -731,7 +700,7 @@ interface ActivatedSkill {
 
 - Skill Catalog 与正文分别进入 Prompt 的稳定目录 Slot 和动态激活 Slot，服从 Context 预算与 KV Cache 顺序。
 - Skill 只能收窄第 04 章 Tool Snapshot，不能改变 Permission 结果或直接执行 asset。
-- 未来 Skill Hook 使用第 06 章用户 Hook 信任机制，不在 Parser 中另起一套执行器。
+- 未来若开放 Skill 自动化，复用第 06 章的专用信任与执行边界，不在 Parser 中另起一套执行器。
 - Fork Skill 直接创建 AgentRun；Task 是否存在取决于它是否在执行一个明确工作项，而不是由 Skill 自动创建。
 
 ---
@@ -846,7 +815,7 @@ apps/desktop-ui/               权限卡与 Session 队列展示
 
 - Tool Registry 冻结调用，Permission 只裁决它，Sandbox 只执行它；三层针对同一份输入。
 - FileEdit 原子提交前的乐观并发校验是 Permission 之后的最后一致性防线。
-- Hook 不能覆盖 deny 或伪造 Sandbox；未来用户 Hook 本身也必须先经过 Workspace Trust。
+- 任何未来自动化都不能覆盖 deny 或伪造 Sandbox，并且必须先经过 Workspace Trust。
 - Subagent 没有 AskUser，不把 Permission 弹窗卡在后台；其工具集默认更窄，需审批的动作由父侧承担或直接拒绝。
 - Skill `allowed-tools`、Plan 只读 Tool Snapshot 与 Permission 都是交集收窄关系，不是相互授权。
 
@@ -1067,13 +1036,13 @@ ContextAssembler
   → LlmRouter（协议投影与调用）
 ```
 
-不建议把每个两三行 Slot 都拆成文件；上图表达所有权，实际按内容规模合并。Hook 可以通知或贡献明确 Slot，但不再允许 `beforeLlm` 任意替换整份 messages。
+不建议把每个两三行 Slot 都拆成文件；上图表达所有权，实际按内容规模合并。业务模块只能贡献明确 Slot，不允许任意回调替换整份 messages。
 
 ### 与前面章节复核
 
 - 与 03 一致：Prompt 定义语义，Context 决定最终窗口、预算、压缩与发送顺序。
 - 与 04/11 一致：Tool description、PreparedToolCall、Permission 与执行共享同一 manifest 身份；文字约束不是安全边界。
-- 与 06 一致：Hook 使用类型化 Contribution，不接管主消息数组。
+- 与 06 一致：业务模块使用类型化 Contribution，不接管主消息数组。
 - 与 08/09 一致：Memory、Skill 和 MCP 都在固定前缀之后渐进注入，不能彼此覆盖。
 - 与 10 一致：Plan 是未来 Work 子状态，未注册前 Prompt 不得声称存在。
 - 与 12 一致：前端显示的 Profile、Tool 和决策能力必须来自同一运行时快照，不能只改文案。
@@ -1174,7 +1143,7 @@ src/memory/jobs/              Memory 领域 Job
 
 - 与 02/07 一致：Turn 是根交互，AgentRun 是执行，Task 是工作项；三者 ID 不混用。
 - 与 03/14 一致：Task snapshot 属于动态尾部，不破坏固定 Prompt 前缀。
-- 与 06 一致：TaskCreated/Completed Hook 可以观察或阻止状态变更，但回滚由 TaskStore 事务保证。
+- 与 06 一致：Task 创建与完成由 TaskStore 事务保证；领域事件只能观察已成立的事实，不能替代事务回滚。
 - 与 10 一致：Plan 可以生成 Task 草案，批准后才创建/更新正式 Task；Plan 本身不是 Task。
 - 与 12 一致：前端 TaskList 与 AgentRun Panel 分开，不再把 transcript 运行记录画成待办事项。
 - 与 13 一致：不建立万能 task-runtime；共享的是少量生命周期原则，不是所有领域继承同一基类。

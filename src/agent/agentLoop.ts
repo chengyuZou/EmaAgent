@@ -65,10 +65,6 @@ export interface AssembleAgentContextInput {
   forceCompaction: boolean;
 }
 
-export type PrepareLlmCallResult =
-  | { kind: 'continue'; messages: ModelMessage[] }
-  | { kind: 'abort'; reason: string };
-
 export interface AgentLoopInput<TExecutorEvent> {
   /** 初始持久化历史与当前用户消息；启用上下文装配后会建立独立工作副本。 */
   messages:       ModelMessage[];
@@ -94,15 +90,12 @@ export interface AgentLoopInput<TExecutorEvent> {
   assembleContext?: (
     input: AssembleAgentContextInput,
   ) => Promise<ModelContextSnapshot>;
-  /**
-   * 每个逻辑 LLM 调用前执行的窄回调。AgentLoop 不依赖 HookBus；外层 Runtime
-   * 用它触发 beforeLlm，并返回只属于本次请求的消息视图。
-   */
-  prepareLlmCall?: (input: PrepareLlmCallInput) => Promise<PrepareLlmCallResult>;
+  /** 每次最终请求快照确定后通知外层，用于更新子 Agent 继承视图与诊断。 */
+  onLlmRequestPrepared?: (input: PrepareLlmCallInput) => void | Promise<void>;
   thinking?: ThinkingMode;
 }
 
-/** 运行纯粹的思考与行动循环，不拥有 Session 生命周期、HookBus 或传输协议。 */
+/** 运行纯粹的思考与行动循环，不拥有 Session 生命周期或传输协议。 */
 export async function* runAgentLoop<TExecutorEvent>(
   input: AgentLoopInput<TExecutorEvent>,
 ): AsyncGenerator<AgentLoopEvent<TExecutorEvent>, AgentLoopOutcome> {
@@ -110,7 +103,7 @@ export async function* runAgentLoop<TExecutorEvent>(
     messages, policy, llm, providerId, model, signal, maxIterations, budget,
     sessionId, turnId, getScratchpadContext, getMailboxMessages,
     assembleContext,
-    prepareLlmCall, thinking,
+    onLlmRequestPrepared, thinking,
   } = input;
 
   const pendingRelayEvents: TExecutorEvent[] = [];
@@ -191,18 +184,12 @@ export async function* runAgentLoop<TExecutorEvent>(
     } else {
       requestMessages = buildEffectiveMessages();
     }
-    if (prepareLlmCall) {
-      const prepared = await prepareLlmCall({
+    if (onLlmRequestPrepared) {
+      await onLlmRequestPrepared({
         iteration: state.iteration,
         llmCallId,
         messages: requestMessages,
       });
-      if (prepared.kind === 'abort') {
-        state = advanceAgentLoopState(state, { phase: 'aborted', transition: 'hook_abort' });
-        yield { type: 'loop_hook_abort', reason: prepared.reason };
-        return { fullText: '', state };
-      }
-      requestMessages = prepared.messages;
     }
 
     let lastStopReason: StopReason = 'end_turn';
@@ -337,20 +324,13 @@ export async function* runAgentLoop<TExecutorEvent>(
           historyMessages = [...snapshot.history];
           requestMessages = [...snapshot.messages];
           tools = [...snapshot.tools];
-          // 新快照不是第一次请求的同一份输入，必须重新经过最终请求 Hook。
-          // 使用相同 llmCallId 表明它仍是同一次逻辑调用的 Provider 重试。
-          if (prepareLlmCall) {
-            const prepared = await prepareLlmCall({
+          // 新快照属于同一次逻辑调用的 Provider 重试，继续使用相同 llmCallId。
+          if (onLlmRequestPrepared) {
+            await onLlmRequestPrepared({
               iteration: state.iteration,
               llmCallId,
               messages: requestMessages,
             });
-            if (prepared.kind === 'abort') {
-              state = advanceAgentLoopState(state, { phase: 'aborted', transition: 'hook_abort' });
-              yield { type: 'loop_hook_abort', reason: prepared.reason };
-              return { fullText: '', state };
-            }
-            requestMessages = prepared.messages;
           }
           state = advanceAgentLoopState(state, {
             phase:                       state.phase,
@@ -375,7 +355,7 @@ export async function* runAgentLoop<TExecutorEvent>(
       yield { type: 'loop_thinking_complete', blockIndex };
     }
 
-    // 通知外层模型流已结束，以便刷新情绪解析并触发完成 Hook。
+    // 通知外层模型流已结束，以便刷新情绪解析和持久化本轮结果。
     yield {
       type: 'loop_llm_complete',
       iteration: state.iteration,

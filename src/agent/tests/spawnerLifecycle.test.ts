@@ -3,7 +3,6 @@
 import { describe, expect, it } from 'vitest';
 import { asAgentRunId } from '@ema-agent/ids';
 import type { AgentRunMessageInsert } from '@ema-agent/storage';
-import { HookBus } from '@ema-agent/hooks';
 import { ToolRegistry, type BuiltTool } from '@ema-agent/tools';
 import { TurnPolicy } from '../policy.js';
 import { SubagentSpawner } from '../spawner.js';
@@ -24,7 +23,6 @@ describe('SubagentSpawner 生命周期', () => {
       },
     };
     const deps: SubagentSpawnerDeps = {
-      hooks: new HookBus(),
       llm: llm as never,
       tools: new ToolRegistry(),
       permission: {} as never,
@@ -72,7 +70,6 @@ describe('SubagentSpawner 生命周期', () => {
     };
     const deps: SubagentSpawnerDeps = {
       session: {} as never,
-      hooks: new HookBus(),
       llm: llm as never,
       modelCapabilities: {
         resolve: () => ({
@@ -134,7 +131,6 @@ describe('SubagentSpawner 生命周期', () => {
     const parentPolicy = new TurnPolicy(tools.manifestSnapshot());
     const requests: Array<{ tools?: Array<{ name: string }> }> = [];
     const deps: SubagentSpawnerDeps = {
-      hooks: new HookBus(),
       llm: {
         stream: async function* (request: { tools?: Array<{ name: string }> }) {
           requests.push(request);

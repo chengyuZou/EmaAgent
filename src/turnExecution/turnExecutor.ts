@@ -1,9 +1,9 @@
-// 管理根 Turn 的身份、生命周期 Hook、唯一终态、取消和对外事件句柄。
+// 管理根 Turn 的身份、唯一终态、取消和对外事件句柄。
 
 import * as fs from 'node:fs';
 import { asAgentRunId, type TurnId } from '@ema-agent/ids';
-import type { TurnFailurePhase } from '@ema-agent/hooks';
 import type { Turn } from '@ema-agent/session';
+import type { TurnFailurePhase } from '@ema-agent/turn';
 import {
   RootAgentExecution,
   type RootAgentExecutionResult,
@@ -176,41 +176,6 @@ export class TurnExecutor {
     signal: AbortSignal,
     channel: TurnEventChannel<TurnExecutionEvent>,
   ): Promise<TurnOutcome> {
-    const startHookEvents: TurnExecutionEvent[] = [];
-    let startResult;
-    try {
-      startResult = await this.deps.hooks.trigger('onTurnStart', {
-        turnId: turn.id,
-        sessionId: turn.sessionId,
-        payload: {
-          executionProfile: turn.executionProfile,
-          narrativePolicy: turn.narrativePolicy,
-        },
-        signal,
-        emit: (event) => startHookEvents.push(event),
-      });
-    } catch (error) {
-      return this.finishFailed(
-        turn,
-        executionFailure(error, 'hook'),
-        channel,
-      );
-    }
-    await pushEvents(channel, startHookEvents);
-
-    if (startResult.kind === 'abort') {
-      return this.finishFailed(
-        turn,
-        {
-          status: 'failed',
-          code: 'turn/hook_aborted',
-          message: startResult.reason,
-          phase: 'hook',
-        },
-        channel,
-      );
-    }
-
     await channel.push({
       type: 'turn_started',
       sessionId: turn.sessionId,
@@ -235,7 +200,7 @@ export class TurnExecutor {
     );
     switch (result.status) {
       case 'completed':
-        return this.finishCompleted(turn, result, signal, channel);
+        return this.finishCompleted(turn, result, channel);
       case 'failed':
         return this.finishFailed(turn, result, channel);
       case 'aborted':
@@ -273,28 +238,9 @@ export class TurnExecutor {
   private async finishCompleted(
     turn: Turn,
     result: Extract<RootAgentExecutionResult, { status: 'completed' }>,
-    signal: AbortSignal,
     channel: TurnEventChannel<TurnExecutionEvent>,
   ): Promise<TurnOutcome> {
     const durationMs = Date.now() - turn.startedAt;
-    const hookEvents: TurnExecutionEvent[] = [];
-    try {
-      await this.deps.hooks.trigger('onTurnEnd', {
-        turnId: turn.id,
-        sessionId: turn.sessionId,
-        payload: { durationMs },
-        signal,
-        emit: (event) => hookEvents.push(event),
-      });
-    } catch (error) {
-      return this.finishFailed(
-        turn,
-        executionFailure(error, 'hook'),
-        channel,
-      );
-    }
-    await pushTerminalEvents(channel, hookEvents);
-
     const stats = {
       iterations: result.iterations,
       usageInputTokens: result.inputTokens,
@@ -308,6 +254,12 @@ export class TurnExecutor {
         executionFailure(error, 'persistence'),
         channel,
       );
+    }
+
+    try {
+      await this.deps.completedObserver?.record(turn);
+    } catch {
+      // 非关键观察者故障不能把已经提交的 completed Turn 改写成 failed。
     }
 
     const outcome: TurnOutcome = {
@@ -336,20 +288,6 @@ export class TurnExecutor {
   ): Promise<TurnOutcome> {
     this.deps.session.failTurn(turn.id, result.code, result.message);
 
-    const hookEvents: TurnExecutionEvent[] = [];
-    await this.deps.hooks.trigger('onTurnFailure', {
-      turnId: turn.id,
-      sessionId: turn.sessionId,
-      payload: {
-        phase: result.phase,
-        code: result.code,
-        message: result.message,
-        durationMs: Date.now() - turn.startedAt,
-      },
-      emit: (event) => hookEvents.push(event),
-    });
-    await pushTerminalEvents(channel, hookEvents);
-
     const outcome: TurnOutcome = {
       status: 'failed',
       sessionId: turn.sessionId,
@@ -372,15 +310,6 @@ export class TurnExecutor {
     reason: string,
     channel: TurnEventChannel<TurnExecutionEvent>,
   ): Promise<TurnOutcome> {
-    const hookEvents: TurnExecutionEvent[] = [];
-    await this.deps.hooks.trigger('onTurnAbort', {
-      turnId: turn.id,
-      sessionId: turn.sessionId,
-      payload: { reason },
-      emit: (event) => hookEvents.push(event),
-    });
-    await pushTerminalEvents(channel, hookEvents);
-
     this.deps.session.abortTurn(turn.sessionId, turn.id);
     const outcome: TurnOutcome = {
       status: 'aborted',
@@ -423,24 +352,6 @@ export class TurnExecutor {
     );
   }
 
-}
-
-async function pushEvents(
-  channel: TurnEventChannel<TurnExecutionEvent>,
-  events: readonly TurnExecutionEvent[],
-): Promise<void> {
-  for (const event of events) {
-    await channel.push(event);
-  }
-}
-
-async function pushTerminalEvents(
-  channel: TurnEventChannel<TurnExecutionEvent>,
-  events: readonly TurnExecutionEvent[],
-): Promise<void> {
-  for (const event of events) {
-    await pushUnlessConsumerClosed(channel, event);
-  }
 }
 
 async function pushUnlessConsumerClosed(

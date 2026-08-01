@@ -23,7 +23,6 @@
     "@ema-agent/characters": "workspace:*",
     "@ema-agent/context": "workspace:*",
     "@ema-agent/emotion": "workspace:*",
-    "@ema-agent/hooks": "workspace:*",
     "@ema-agent/knowledge": "workspace:*",
     "@ema-agent/memory": "workspace:*",
     "@ema-agent/narrative": "workspace:*",

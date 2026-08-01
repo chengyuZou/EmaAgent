@@ -7,7 +7,14 @@ export type TurnFailureCode =
   | 'provider/tool_arguments_invalid_json'
   | 'provider/not_configured'
   | 'turn/budget_exceeded'
-  | 'turn/hook_aborted'
   | 'turn/attachment_failed'
   | 'turn/setup_failed'
   | 'turn/execution_failed';
+
+/** Turn 失败发生的业务阶段；用于诊断，不参与执行控制。 */
+export type TurnFailurePhase =
+  | 'setup'
+  | 'provider'
+  | 'persistence'
+  | 'tool'
+  | 'unknown';

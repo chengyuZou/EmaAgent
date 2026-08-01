@@ -26,7 +26,7 @@ import type { AudioArchive, FinalizedAudio } from './archive.js';
 //     可安全从 `finally` 块调用。
 //
 // 每个 Turn 单实例，由 TurnSpeechOutput 创建并持有；AgentLoop 不碰。
-// TTS 是流式 sidecar,不是 HookBus 参与者。
+// TTS 是流式 sidecar，不参与 Turn 生命周期控制。
 
 export interface TtsCoordinatorArgs {
   turnId:        TurnId;

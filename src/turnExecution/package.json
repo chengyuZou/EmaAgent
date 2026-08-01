@@ -25,7 +25,6 @@
     "@ema-agent/attachment": "workspace:*",
     "@ema-agent/context": "workspace:*",
     "@ema-agent/emotion": "workspace:*",
-    "@ema-agent/hooks": "workspace:*",
     "@ema-agent/ids": "workspace:*",
     "@ema-agent/knowledge": "workspace:*",
     "@ema-agent/llm": "workspace:*",

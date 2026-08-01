@@ -554,10 +554,6 @@ export function dispatchSseEvent(
     case 'context_compaction_failed':
       break;
 
-    case 'context_compaction_skipped':
-      console.info('[sse] context_compaction_skipped:', event.compactionId, event.reason, event.message);
-      break;
-
     case 'context_compaction_completed':
       useConversationStore.setState((s) => {
         const msgs    = new Map(s.messages);
@@ -595,19 +591,6 @@ export function dispatchSseEvent(
         reason: event.reason,
         removed: event.removed,
         replacements: event.replacements,
-      });
-      break;
-
-    case 'hook_warning':
-      console.warn('[sse] hook_warning:', {
-        hookInvocationId: event.hookInvocationId,
-        sessionId: event.sessionId,
-        turnId: event.turnId,
-        hookEvent: event.hookEvent,
-        handlerName: event.handlerName,
-        failureKind: event.failureKind,
-        message: event.message,
-        durationMs: event.durationMs,
       });
       break;
 

@@ -7,7 +7,6 @@ import {
   TurnBudget,
 } from '@ema-agent/agent';
 import type { EmotionEngine } from '@ema-agent/emotion';
-import type { HookBus, TurnFailurePhase } from '@ema-agent/hooks';
 import {
   llmProviderErrorCode,
   type LanguageModel,
@@ -17,7 +16,7 @@ import type {
   SessionStore,
   Turn,
 } from '@ema-agent/session';
-import type { TurnFailureCode } from '@ema-agent/turn';
+import type { TurnFailureCode, TurnFailurePhase } from '@ema-agent/turn';
 import type {
   TurnExecutionEvent,
   TurnInput,
@@ -36,7 +35,6 @@ export type RootAgentTranscript = Pick<SessionStore, 'appendMessage'>;
 /** 根 Agent 循环所需服务，不包含根 Turn 终态操作。 */
 export interface RootAgentExecutionDeps {
   readonly transcript: RootAgentTranscript;
-  readonly hooks: HookBus;
   readonly llm: LanguageModel;
   readonly emotion: EmotionEngine;
 }
@@ -95,7 +93,7 @@ export class RootAgentExecution {
     request: RootAgentExecutionRequest,
   ): AsyncGenerator<TurnExecutionEvent, RootAgentExecutionResult> {
     const { turn, input, signal } = request;
-    const { transcript, hooks, llm, emotion } = this.deps;
+    const { transcript, llm, emotion } = this.deps;
     const { providerId, model } = input.model;
     const sessionId = turn.sessionId;
     const turnId = turn.id;
@@ -106,10 +104,6 @@ export class RootAgentExecution {
       maxConcurrentSubagents: input.settings.agent.maxConcurrentSubagents,
     });
     const iteration = new IterationTranscript();
-    const pendingHookEvents: TurnExecutionEvent[] = [];
-    const emitHookEvent = (event: TurnExecutionEvent): void => {
-      pendingHookEvents.push(event);
-    };
     const emitRef: { fn?: (event: TurnExecutionEvent) => void } = {};
 
     let activePhase: TurnFailurePhase = 'provider';
@@ -208,14 +202,9 @@ export class RootAgentExecution {
           forceCompaction,
           emit: (event) => emitRef.fn?.(event),
         }),
-        prepareLlmCall: async ({
-          iteration: iterationNumber,
-          llmCallId,
-          messages,
-        }) => {
-          activePhase = 'hook';
+        onLlmRequestPrepared: ({ llmCallId, messages }) => {
           if (preparedContext.usageEstimate) {
-            emitHookEvent({
+            emitRef.fn?.({
               type: 'llm_context_prepared',
               sessionId,
               turnId,
@@ -223,32 +212,7 @@ export class RootAgentExecution {
               estimate: preparedContext.usageEstimate,
             });
           }
-          const result = await hooks.trigger('beforeLlm', {
-            turnId,
-            sessionId,
-            payload: {
-              iteration: iterationNumber,
-              llmCallId,
-              messages,
-              executionProfile: turn.executionProfile,
-              narrativePolicy: turn.narrativePolicy,
-              userInput: preparedContext.readableUserInput,
-              providerId,
-              model,
-              workspaceRoot: input.workspaceRoot,
-            },
-            signal,
-            emit: emitHookEvent,
-          });
-          activePhase = 'provider';
-          if (result.kind === 'abort') {
-            return { kind: 'abort', reason: result.reason };
-          }
-
-          // Hook 返回的是本次请求视图，只供子 Agent fork 继承，不能写回 Session 历史。
-          const finalMessages = result.payload.messages;
-          toolsForTurn.updateParentContext(finalMessages);
-          return { kind: 'continue', messages: finalMessages };
+          toolsForTurn.updateParentContext(messages);
         },
         thinking: input.thinking,
       });
@@ -256,8 +220,6 @@ export class RootAgentExecution {
       let loopStep = await agentLoop.next();
       while (!loopStep.done) {
         const event = loopStep.value;
-        yield* drainEvents(pendingHookEvents);
-
         switch (event.type) {
           case 'loop_iteration':
             iterations = event.n;
@@ -372,23 +334,6 @@ export class RootAgentExecution {
               };
             }
 
-            activePhase = 'hook';
-            await hooks.trigger('afterLlmComplete', {
-              turnId,
-              sessionId,
-              payload: {
-                iteration: event.iteration,
-                llmCallId: event.llmCallId,
-                content: iteration.fullText(),
-                usage: event.usage,
-                promptPrefixHash: event.promptPrefixHash,
-                toolCalls: iteration.toolCalls(),
-              },
-              signal,
-              emit: emitHookEvent,
-            });
-            activePhase = 'provider';
-            yield* drainEvents(pendingHookEvents);
             break;
           }
 
@@ -403,16 +348,6 @@ export class RootAgentExecution {
               replacements: event.replacements,
             };
             break;
-
-          case 'loop_hook_abort':
-            await stopTools('hook_aborted');
-            yield* drainEvents(pendingHookEvents);
-            return {
-              status: 'failed',
-              code: 'turn/hook_aborted',
-              message: event.reason,
-              phase: 'hook',
-            };
 
           case 'loop_tool_results': {
             activePhase = 'persistence';
@@ -450,22 +385,13 @@ export class RootAgentExecution {
       if (loopOutcome.state.transition === 'no_tool_calls') {
         activePhase = 'persistence';
         const blocks = iteration.assistantBlocks();
-        const message = transcript.appendMessage({
+        transcript.appendMessage({
           turnId,
           sessionId,
           role: 'assistant',
           blocks: blocks as MessageBlocks,
         });
 
-        activePhase = 'hook';
-        await hooks.trigger('afterAssistantMessage', {
-          turnId,
-          sessionId,
-          payload: { messageId: message.id, blocks },
-          signal,
-          emit: emitHookEvent,
-        });
-        yield* drainEvents(pendingHookEvents);
         activePhase = 'provider';
       }
 
@@ -504,14 +430,6 @@ export class RootAgentExecution {
       await stopTools('finished');
       this.activeTools.delete(turnId);
     }
-  }
-}
-
-function* drainEvents(
-  events: TurnExecutionEvent[],
-): Generator<TurnExecutionEvent> {
-  while (events.length > 0) {
-    yield events.shift()!;
   }
 }
 

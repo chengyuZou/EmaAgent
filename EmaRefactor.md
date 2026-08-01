@@ -105,7 +105,7 @@ AgentLoop
 
 `TurnExecutor.start(command)` 返回立即可用的 `TurnHandle`：稳定的 `sessionId/turnId`、`AsyncIterable<TurnEvent>`、唯一完成的 `Promise<TurnOutcome>` 与取消入口。`AgentLoop` 返回循环内部事件和 `AgentLoopOutcome`，不创建或结束根 Turn，不直接写 Session Repo，也不直接面向 HTTP/SSE。
 
-`src/conversation` 的迁移已经完成并删除：根 Turn 请求、Profile 与执行生命周期进入 `src/turnExecution`，低层状态与事件契约留在 `src/turn`，模型可见窗口贡献进入 `src/context`，Narrative 检索与路由回到 `src/narrative`，Hook 观察能力继续由 `src/hooks` 所有，LLM/Tool 迭代只留在 `src/agent`。禁止重新建立 Conversation Engine、Service 或 Facade。
+`src/conversation` 的迁移已经完成并删除：根 Turn 请求、Profile 与执行生命周期进入 `src/turnExecution`，低层状态与事件契约留在 `src/turn`，模型可见窗口贡献进入 `src/context`，Narrative 检索与路由回到 `src/narrative`，LLM/Tool 迭代只留在 `src/agent`。伪内部 HookBus 已删除；跨业务协作使用明确端口、Context Contribution 或领域事件。禁止重新建立 Conversation Engine、万能 Hook、Service 或 Facade。
 
 ```ts
 export interface TurnExecutionProfile {
@@ -780,7 +780,7 @@ packages/
 2. **L1 Turn 输入准备**：`TurnInputPreparer` 冻结附件、媒体兼容、模型能力、Prompt、Workspace 和 Scratchpad 纯值输入；
 3. **L2 Turn Context**：`TurnContextBuilder` 统一历史兼容、Contribution 与每次 LLM Call 的不可变 Context 投影；
 4. **L3 Turn Tools**：`TurnToolsBuilder + TurnTools` 冻结 Tool Manifest/Policy，并拥有 Tool、Subagent 与 Active Skill 生命周期；
-5. **L4 Root Agent Execution**：`RootAgentExecution` 拥有根 AgentLoop、LLM/Message Hook、非终态事件和 transcript；
+5. **L4 Root Agent Execution**：`RootAgentExecution` 拥有根 AgentLoop、只读 LLM 请求观察、非终态事件和 transcript；
 6. **L5 Turn Composition Root**：`createTurnExecution.ts` 成为上述对象图的唯一构造位置。
 
 L5 是执行地基的最后一层，不建立 L6。旧 Orchestrator、Route 副作用和 `AppBindings` 属于 L5 之后的进程宿主收口，不得重新解释成新的 Agent 执行层级。
@@ -850,7 +850,7 @@ ModelContextSnapshot
 | 当前依赖 | 目标唯一消费者 |
 |---|---|
 | `session` | `TurnExecutor` 管开始/终态；根执行只通过消息读写窄入口处理 transcript |
-| `hooks` | `TurnExecutor` 处理 Turn Hook；根 Agent 执行处理 LLM/Message Hook |
+| 根 Turn 完成后处理 | `TurnExecutor` 在成功提交后调用窄 `TurnCompletedObserver`；观察失败不改写终态 |
 | `llm`、`emotion` | 根 Agent 执行 |
 | `modelCapabilities` | Turn 输入准备冻结模型快照；LLM 发送前仍保留最终门禁 |
 | `narrative`、Memory、Task Contribution、`contextCompactor` | 每轮 Turn Context 构建 |
@@ -1079,7 +1079,7 @@ Builtin / MCP / Skill Tool
 
 - `src/permission` 接收不可变 `PreparedToolCall`，管理规则、Session Grant、Prompt FIFO、路径能力与 allow/ask/deny；批准不等于已经隔离；
 - `src/sandbox` 管跨平台隔离、进程树信号、网络、cwd 与挂载，通过小型 Command Runner Port 为 Tools 提供受限启动能力；后台句柄、输出、终态、LRU 与取消归 `src/tools/background`；
-- `src/hooks` 观察 Prepared 调用。Hook 若修改参数，必须重新 Prepare、重新审批，不能直接执行 Tool；
+- 用户自动化 Hook 尚未进入 V1；Prepared 调用只允许显式只读观察，未来若允许改参必须重新 Prepare、重新审批，不能直接执行 Tool；
 - `src/session` 保存消息、Tool Result 稳定预览与引用，并参与删除生命周期，不判断是否外置或如何授权；
 - `src/storage` 只实现 Repository、SQL、Migration、事务和 CAS；ToolExecution 状态机的业务定义归 Tools；
 - `src/context` 只消费已经处理过的 Tool Result，并配合稳定 Tool Manifest 与缓存诊断，不重写现有 ContextAssembler；

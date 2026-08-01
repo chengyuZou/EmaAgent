@@ -2,7 +2,6 @@ import type { AgentRunEvent, AgentTurnEvent } from '@ema-agent/agent';
 import type { CharacterEvent } from '@ema-agent/characters';
 import type { ContextEvent } from '@ema-agent/context';
 import type { EmotionStreamEvent } from '@ema-agent/emotion';
-import type { HookWarningEvent } from '@ema-agent/hooks';
 import type { KnowledgeEvent } from '@ema-agent/knowledge';
 import type {
   MemoryBackgroundEvent,
@@ -10,7 +9,6 @@ import type {
 } from '@ema-agent/memory';
 import type { NarrativeEvent } from '@ema-agent/narrative';
 import type { PermissionStreamEvent } from '@ema-agent/permission';
-import type { ProviderStreamEvent } from '@ema-agent/provider';
 import type { SystemEvent } from '@ema-agent/system';
 import type { TaskEvent } from '@ema-agent/tasks';
 import type {
@@ -35,8 +33,7 @@ export type TurnStreamEvent =
   | NarrativeEvent
   | MemoryRecallEvent
   | TaskEvent
-  | ContextEvent
-  | HookWarningEvent;
+  | ContextEvent;
 
 /** Session 范围的持久工作项和执行投影。 */
 export type SessionEvent =
@@ -49,7 +46,6 @@ export type AppEvent =
   | KnowledgeEvent
   | CharacterEvent
   | BackgroundProcessEvent
-  | ProviderStreamEvent
   | SystemEvent;
 
 /** 跨端解码器在协议入口使用的完整联合，不能作为业务生产者的 emit 类型。 */

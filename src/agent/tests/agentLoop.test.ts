@@ -218,19 +218,12 @@ describe('AgentLoop LLM 生命周期', () => {
       maxIterations: 10,
       budget: new TurnBudget(),
       sessionId: 'session-1',
-      prepareLlmCall: async (call) => {
+      onLlmRequestPrepared: (call) => {
         before.push({
           iteration: call.iteration,
           llmCallId: call.llmCallId,
           messages: [...call.messages],
         });
-        return {
-          kind: 'continue',
-          messages: [
-            { role: 'system', content: 'stable', cacheBreakpoint: true },
-            ...call.messages,
-          ],
-        };
       },
     }));
     for (const event of result.events) {
@@ -252,22 +245,22 @@ describe('AgentLoop LLM 生命周期', () => {
       .toEqual(before.map(({ iteration, llmCallId }) => ({ iteration, llmCallId })));
     expect(completed.map((call) => call.cacheReadInputTokens)).toEqual([75, 75]);
     expect(completed.map((call) => call.cacheHitRate)).toEqual([0.75, 0.75]);
-    expect(completed[0]?.promptPrefixHash).toMatch(/^[a-f0-9]{64}$/);
-    expect(completed[1]?.promptPrefixHash).toBe(completed[0]?.promptPrefixHash);
+    // 只读观察者不再伪造 cache breakpoint；没有显式断点时应诚实返回 null。
+    expect(completed.map((call) => call.promptPrefixHash)).toEqual([null, null]);
     expect(new Set(before.map((call) => call.llmCallId)).size).toBe(2);
     expect(before[1]?.messages.some((message) => message.role === 'system')).toBe(false);
     expect(eventTypes).toContain('loop_breaker');
     expect(result.outcome.state.transition).toBe('max_output_tokens_recovery');
   });
 
-  it('响应式压缩生成新快照后重新应用最终请求 Hook，并保持同一 llmCallId', async () => {
+  it('响应式压缩生成新快照后重新通知请求观察者，并保持同一 llmCallId', async () => {
     let attempt = 0;
     const stream = vi.fn(() => (async function* () {
       attempt += 1;
       if (attempt === 1) throw new ContextWindowExceededError();
       yield { type: 'done' as const, stopReason: 'end_turn' as const };
     })());
-    const hookCallIds: LlmCallId[] = [];
+    const observedCallIds: LlmCallId[] = [];
     const assembleContext = vi.fn(async ({ forceCompaction }: { forceCompaction: boolean }) => ({
       messages: [{ role: 'user' as const, content: forceCompaction ? 'compacted' : 'original' }],
       history: [],
@@ -290,25 +283,18 @@ describe('AgentLoop LLM 生命周期', () => {
       budget: new TurnBudget(),
       sessionId: 'session-1',
       assembleContext,
-      prepareLlmCall: async (call) => {
-        hookCallIds.push(call.llmCallId);
-        return {
-          kind: 'continue',
-          messages: [{ role: 'system', content: 'hooked' }, ...call.messages],
-        };
+      onLlmRequestPrepared: (call) => {
+        observedCallIds.push(call.llmCallId);
       },
     }));
 
     expect(assembleContext).toHaveBeenLastCalledWith(expect.objectContaining({
       forceCompaction: true,
     }));
-    expect(hookCallIds).toHaveLength(2);
-    expect(new Set(hookCallIds).size).toBe(1);
+    expect(observedCallIds).toHaveLength(2);
+    expect(new Set(observedCallIds).size).toBe(1);
     expect(stream).toHaveBeenLastCalledWith(expect.objectContaining({
-      messages: [
-        { role: 'system', content: 'hooked' },
-        { role: 'user', content: 'compacted' },
-      ],
+      messages: [{ role: 'user', content: 'compacted' }],
     }));
   });
 });

@@ -6,7 +6,6 @@ export {
 } from './tool-capability-scope.js';
 export { SubagentSpawner } from './spawner.js';
 export type { SubagentSpawnerDeps } from './spawner.js';
-export { createToolLifecycleHooks } from './toolLifecycleHooks.js';
 export { AgentRunStore } from './runs/agentRunStore.js';
 export { AgentRunTranscriptProjection } from './runs/agentRunTranscriptProjection.js';
 export { AgentRunTranscriptStore } from './runs/agentRunTranscriptStore.js';

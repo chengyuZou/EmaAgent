@@ -15,6 +15,7 @@ import {
   contextCompactionSetting,
 } from '@ema-agent/context';
 import { attachmentSetting } from '@ema-agent/attachment';
+import { recordCompletedTurnMemory } from '@ema-agent/memory';
 import type { AppBindings } from './bindings.js';
 import { scratchpadTurnDir } from '../storage-locations/index.js';
 
@@ -33,7 +34,6 @@ export function createTurnExecution(bindings: AppBindings): {
   // Compactor 拥有跨 Turn 的 Session 熔断状态，只在根 Turn 对象图中构造一次。
   const contextCompactor = new ContextCompactor({
     llm: bindings.llm,
-    hookBus: bindings.hooks,
     persistSummary: input => bindings.session.appendMessage(input),
   });
 
@@ -148,13 +148,18 @@ export function createTurnExecution(bindings: AppBindings): {
   const executor = new TurnExecutor(
     {
       session: bindings.session,
-      hooks: bindings.hooks,
       interactions: bindings.interactionQueue,
+      completedObserver: {
+        record: (turn) => recordCompletedTurnMemory(
+          bindings.session,
+          bindings.memory,
+          turn,
+        ),
+      },
     },
     new RootAgentExecution(
       {
         transcript: bindings.session,
-        hooks: bindings.hooks,
         llm: bindings.llm,
         emotion: bindings.emotion,
       },
@@ -169,7 +174,6 @@ export function createTurnExecution(bindings: AppBindings): {
         session: bindings.session,
         tools: bindings.tools,
         permission: bindings.permission,
-        hooks: bindings.hooks,
         llm: bindings.llm,
         narrative: bindings.narrative,
         getCommandRunner: bindings.getCommandRunner,

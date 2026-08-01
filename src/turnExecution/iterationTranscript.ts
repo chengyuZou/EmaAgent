@@ -1,4 +1,4 @@
-// 按模型块索引保存一次迭代的文本、思考和工具调用，供 Hook 与消息持久化共享。
+// 按模型块索引保存一次迭代的文本、思考和工具调用，供流式展示与消息持久化共享。
 
 import type { AssistantBlock } from '@ema-agent/llm';
 

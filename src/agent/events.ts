@@ -9,7 +9,6 @@ import type {
 import type { SubagentContextMode } from '@ema-agent/tool-builtin';
 import type { TurnEvent, TurnStats } from '@ema-agent/turn';
 import type { PermissionStreamEvent } from '@ema-agent/permission';
-import type { HookWarningEvent } from '@ema-agent/hooks';
 import type { AgentLoopState } from './agentLoopState.js';
 
 export type AgentKind = SubagentContextMode;
@@ -37,7 +36,6 @@ export type AgentLoopEvent<TExecutorEvent> =
       usage: LlmTokenUsage;
       promptPrefixHash: string | null;
     }
-  | { type: 'loop_hook_abort'; reason: string }
   | { type: 'loop_tool_results'; results: ToolExecutionResult[]; fullText: string }
   | { type: 'loop_breaker'; reason: string };
 
@@ -75,7 +73,6 @@ export type AgentExecutionEvent =
   | AgentRunEvent
   | ToolExecutionEvent
   | PermissionStreamEvent
-  | HookWarningEvent
   | Extract<
       TurnEvent,
       { type: 'request_degraded' | 'turn_projection_warning' }

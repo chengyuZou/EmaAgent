@@ -18,7 +18,6 @@ import path from 'node:path';
 import { LanguageModelRuntime } from '@ema-agent/llm';
 import { DEFAULT_AGENT_SETTINGS } from '@ema-agent/agent';
 import { DEFAULT_CONTEXT_COMPACTION_SETTINGS } from '@ema-agent/context';
-import { HookBus } from '@ema-agent/hooks';
 import { EmotionEngine } from '@ema-agent/emotion';
 import { PermissionEngine, InMemoryPermissionRuleStore } from '@ema-agent/permission';
 import { ToolRegistry } from '@ema-agent/tools';
@@ -151,11 +150,9 @@ let deps: TestTurnExecutionDeps;
 function createTurnExecutor(): TurnExecutor {
   return new TurnExecutor({
     session: deps.session,
-    hooks: deps.hooks,
     interactions: deps.interactions ?? { cancelForTurn: () => 0 },
   }, new RootAgentExecution({
     transcript: deps.session,
-    hooks: deps.hooks,
     llm: deps.llm,
     emotion: deps.emotion,
   }, new TurnContextBuilder({
@@ -174,7 +171,6 @@ beforeAll(() => {
     baseUrl:      'https://api.deepseek.com',
   }]);
 
-  const hooks = new HookBus();
   const emotion = new EmotionEngine({ vocabulary: ['neutral', 'happy', 'sad', 'surprised', 'angry'] });
 
   const permission = new PermissionEngine({
@@ -189,7 +185,6 @@ beforeAll(() => {
 
   deps = {
     session:   sessionStore as unknown as TurnExecutionDeps['session'],
-    hooks,
     llm,
     emotion,
     tools,

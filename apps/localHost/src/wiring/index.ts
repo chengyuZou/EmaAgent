@@ -1,7 +1,6 @@
-// 组装 LocalHost 完整对象图，并注册业务 Hook 与跨域事件转发。
+// 组装 LocalHost 完整对象图，并注册跨域事件转发。
 
 import { buildBindings, type AppBindings, type BuildBindingsArgs } from './bindings.js';
-import { registerAllHooks }    from './register-hooks.js';
 import { registerAllEmitters } from './register-emitters.js';
 
 /**
@@ -10,7 +9,6 @@ import { registerAllEmitters } from './register-emitters.js';
  */
 export function wire(args: BuildBindingsArgs): AppBindings {
   const bindings = buildBindings(args);
-  registerAllHooks(bindings);
   registerAllEmitters(bindings);
   return bindings;
 }
@@ -31,5 +29,4 @@ export {
 } from './narrativeBridge.js';
 export { ProviderRuntimeFacade } from './provider-runtime.js';
 export type { ProviderRuntimeDependencies } from './provider-runtime.js';
-export { registerAllHooks }    from './register-hooks.js';
 export { registerAllEmitters } from './register-emitters.js';

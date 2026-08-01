@@ -125,36 +125,6 @@ export class ContextCompactor {
     const head = safeCut > 0 ? working.slice(0, safeCut) : working;
     const tail = safeCut > 0 ? working.slice(safeCut) : [];
     const compactionId = asCompactionId(randomUUID());
-    const beforeHook = await this.deps.hookBus?.trigger('beforeCompact', {
-      payload: { compactionId, messageCount: messages.length, tokenEstimate: estimated },
-      turnId: args.turnId,
-      sessionId: args.sessionId,
-      signal: args.signal,
-      emit: args.emit,
-    });
-
-    if (beforeHook?.kind === 'abort') {
-      args.emit?.({
-        type: 'context_compaction_skipped',
-        compactionId,
-        sessionId: args.sessionId,
-        turnId: args.turnId,
-        executionProfile: args.executionProfile,
-        narrativePolicy: args.narrativePolicy,
-        reason: 'hook_aborted',
-        message: beforeHook.reason,
-        beforeTokens,
-        afterTokens: estimated,
-        durationMs: Date.now() - startedAt,
-      });
-      return {
-        ...skipped('hook_aborted', beforeHook.reason, assemble(working), beforeTokens),
-        microCleared: micro.cleared,
-        afterTokens: estimated,
-        savedTokens: Math.max(0, beforeTokens - estimated),
-      };
-    }
-
     args.emit?.({
       type: 'context_compaction_started',
       compactionId,
@@ -234,14 +204,6 @@ export class ContextCompactor {
       savedTokens: Math.max(0, beforeTokens - afterTokens),
       durationMs: Date.now() - startedAt,
     });
-    await this.deps.hookBus?.trigger('afterCompact', {
-      payload: { compactionId, before: beforeTokens, after: afterTokens, method: 'macro' },
-      turnId: args.turnId,
-      sessionId: args.sessionId,
-      signal: args.signal,
-      emit: args.emit,
-    });
-
     return {
       status: 'completed',
       messages: working,

@@ -24,7 +24,6 @@ import {
   type BuiltinToolContext,
 } from '@ema-agent/tool-builtin';
 import type { PermissionEngine } from '@ema-agent/permission';
-import type { HookBus } from '@ema-agent/hooks';
 import type { SkillRunnerPort } from '@ema-agent/skills';
 import { AgentRunTranscriptProjection } from './runs/agentRunTranscriptProjection.js';
 import type {
@@ -32,7 +31,6 @@ import type {
   AgentRunTranscriptWriter,
 } from './runs/types.js';
 import { TurnPolicy } from './policy.js';
-import { createToolLifecycleHooks } from './toolLifecycleHooks.js';
 import { runAgentLoop, type ExecutorFactory } from './agentLoop.js';
 import { TurnBudget } from './turn-budget.js';
 import {
@@ -64,7 +62,6 @@ export interface SubagentSpawnerDeps {
   tools: ToolRegistry;
   llm: LanguageModel;
   permission: PermissionEngine;
-  hooks: HookBus;
   /** spawn 瞬间读取父 Agent 的当前能力上限，Skill 收窄会沿任务树传播。 */
   getParentAllowedToolIds: () => ReadonlySet<string>;
   buildAsk?: ToolExecutionRuntimeOptions<BuiltinToolContext>['buildAsk'];
@@ -168,7 +165,7 @@ export class SubagentSpawner implements SubagentSpawnerPort {
     signal:  AbortSignal,
   ): Promise<SubagentRunResult> {
     const releaseBudget = this.budget.enterSubagent();
-    const { tools, llm, permission, hooks } = this.deps;
+    const { tools, llm, permission } = this.deps;
     const agentRunId    = opts.agentRunId ?? asAgentRunId(randomUUID());
     const sessionId     = this.parentSessionId as SessionId;
     const parentTurnId  = this.parentTurnId   as TurnId;
@@ -303,7 +300,6 @@ export class SubagentSpawner implements SubagentSpawnerPort {
         allows:     name => policy.allows(name),
         toolManifest: policy.manifestSnapshot(),
         tools, permission, permCtx, toolContext,
-        lifecycle: createToolLifecycleHooks(hooks, pushEv),
         buildAsk:   this.deps.buildAsk,
         pushEv,
         signal:     wakeSignal,

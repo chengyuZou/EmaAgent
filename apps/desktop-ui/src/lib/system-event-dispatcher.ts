@@ -14,10 +14,6 @@ export function dispatchSystemEvent(event: AppEvent): void {
       void useCardStore.getState().load();
       break;
 
-    case 'provider_health_changed':
-      void useSettingsStore.getState().refreshProviders();
-      break;
-
     case 'memory_task_started':
       // contracts 不依赖 storage，Core 只会在该事件中发送合法的 MemoryTaskKind。
       useMemoryStore.getState().onTaskStarted(

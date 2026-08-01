@@ -31,7 +31,6 @@
     "@ema-agent/embed":            "workspace:*",
     "@ema-agent/rerank":           "workspace:*",
     "@ema-agent/narrative":           "workspace:*",
-    "@ema-agent/hooks":             "workspace:*",
     "@ema-agent/token":            "workspace:*",
     "@ema-agent/settings":         "workspace:*"
   },

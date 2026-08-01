@@ -1,7 +1,7 @@
 # @ema-agent/character-card
 
 > EmaAgent 的角色卡领域模型 —— 管理角色数据、SQLite 持久化，以及角色身份与表达能力的模型可见投影。
-> 本包不依赖 HookBus，也不装配完整 System Prompt；它只把自己的角色语义输出为明确片段。
+> 本包不依赖通用生命周期总线，也不装配完整 System Prompt；它只把自己的角色语义输出为明确片段。
 
 ---
 
@@ -68,8 +68,8 @@ tests/
 
 ## 核心设计要点
 
-### 1. 彻底与 HookBus 解耦
-在最初的设计中，角色卡的切换或状态修改会向 `HookBus` 发送触发事件。为了遵守**关注点分离**（Separation of Concerns），`store.ts` 将所有副作用剥除，不再依赖 `@ema-agent/hook`。角色卡切换相关的事件（如 `onCharacterCardSwitch`）交由消费此包的上层（例如 App 层）以回调或 emitter 的形式分发。`activate(id)` 现在是一个纯粹的同步操作，直接返回激活的 `CharacterCardId`。
+### 1. 角色事件归角色领域
+角色卡切换或外观修改通过角色包自己的事件出口广播。`store.ts` 不依赖通用生命周期总线，也不装配跨域副作用；上层订阅者分别刷新 emotion、stage 与 tts。`activate(id)` 只负责提交角色切换并返回激活的 `CharacterCardId`。
 
 ### 2. 角色语义与 Prompt 装配分离
 `characterPrompt.ts` 负责把 `systemPrompt`、`emotionVocabulary` 和 `motionVocabulary` 转成 Character Identity 与 Presentation 片段，因为这些语义属于角色。完整 Slot 排序、版本快照和 System Prompt 序列化仍由 **`@ema-agent/prompts`** 处理；Character 不读取其他上下文，也不修改消息数组。
