@@ -1,6 +1,4 @@
-// 定义供应商目录、能力、协议、认证和模型来源，不包含数据库或具体 API 调用行为。
-
-export type Capability = 'llm' | 'embed' | 'rerank' | 'vision' | 'tts' | 'stt';
+export type Capability = 'llm' | 'embed' | 'rerank' | 'vision' | 'tts' | 'stt'; 
 
 export const PROTOCOL_FAMILIES = [
   'openai-llm',
@@ -41,8 +39,11 @@ export interface ProviderTransport<TProtocol extends ProtocolFamily = ProtocolFa
 export type ProviderModelSource =
   /** LLM 与 Vision 通过 models.dev 获取供应商模型目录。 */
   | { type: 'models-dev'; providerId: string }
+  /** 定义内硬编码的模型清单（本地/小众供应商的固定模型集）。 */
   | { type: 'static'; models: readonly string[] }
+  /** 调用 Provider 自己的 /models 端点实时拉取（Ollama 等本地运行时）。 */
   | { type: 'live' }
+  /** 目录未收录的模型由用户在设置页手动填写。 */
   | { type: 'manual' };
 
 export interface ProviderModelCatalogDefinition {

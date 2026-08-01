@@ -47,11 +47,8 @@ function asNumber(v: unknown): number | undefined {
 }
 
 export class ModelsDevCatalog {
-  /** modelsDevId -> (modelId -> spec) */
+  /** modelsDevId -> (modelId -> spec)。能力/窗口查询必须走 Provider + Model 精确身份。 */
   private readonly index = new Map<string, Map<string, ModelsDevSpec>>();
-  /** modelId -> spec - 扁平二级索引,供 O(1) 不分 provider 查询。 */
-  private readonly flat  = new Map<string, ModelsDevSpec>();
-  private loadedAt: number | null = null;
 
   /** 解析 models.dev api.json payload。对缺失/多余字段容错。 */
   loadFromJson(payload: unknown): void {
@@ -59,7 +56,6 @@ export class ModelsDevCatalog {
     if (!providers) return;
 
     const next     = new Map<string, Map<string, ModelsDevSpec>>();
-    const nextFlat = new Map<string, ModelsDevSpec>();
     for (const [providerId, providerVal] of Object.entries(providers)) {
       const prov = asRecord(providerVal);
       const models = prov && asRecord(prov['models']);
@@ -84,18 +80,13 @@ export class ModelsDevCatalog {
           structuredOutput: m['structured_output'] === true,
         };
         modelMap.set(modelId, spec);
-        // 扁平索引:同一 modelId 首个 provider 条目胜出。
-        if (!nextFlat.has(modelId)) nextFlat.set(modelId, spec);
       }
       if (modelMap.size > 0) next.set(providerId, modelMap);
     }
 
     // 整体替换 - refresh 总是反映最新快照。
     this.index.clear();
-    this.flat.clear();
     for (const [k, v] of next) this.index.set(k, v);
-    for (const [k, v] of nextFlat) this.flat.set(k, v);
-    this.loadedAt = Date.now();
   }
 
   /**
@@ -120,50 +111,6 @@ export class ModelsDevCatalog {
 
   get(modelsDevId: string, modelId: string): ModelsDevSpec | undefined {
     return this.index.get(modelsDevId)?.get(modelId);
-  }
-
-  /** 通过扁平二级索引做不分 provider 的 spec 查询。O(1)。 */
-  getByModelId(modelId: string): ModelsDevSpec | undefined {
-    return this.flat.get(modelId);
-  }
-
-  /** 模型的上下文窗口,按裸 model id 查找。 */
-  contextWindowOf(modelId: string): number | undefined {
-    return this.flat.get(modelId)?.contextWindow;
-  }
-
-  /** 模型的最大输出 token,按裸 model id 查找。 */
-  maxOutputOf(modelId: string): number | undefined {
-    return this.flat.get(modelId)?.maxOutput;
-  }
-
-  /** 模型是否标记为具备 reasoning 能力。 */
-  hasReasoning(modelId: string): boolean {
-    return this.flat.get(modelId)?.reasoning === true;
-  }
-
-  /**
-   * 不分 provider 的模糊建议(供模型名输入的设置 UI)。
-   * 返回 id 含 `query` 的 LLM 模型 id 及其上下文窗口。
-   * 跨 provider 去重(首个 context 胜出)。
-   */
-  suggest(query: string, limit = 8): Array<{ id: string; contextWindow: number }> {
-    const q = query.trim().toLowerCase();
-    if (!q) return [];
-    const results: Array<{ id: string; contextWindow: number }> = [];
-    for (const spec of this.flat.values()) {
-      if (!spec.id.toLowerCase().includes(q)) continue;
-      // 仅 LLM 类:输出 text(跳过纯图像/视频生成)。
-      if (spec.outputModalities.length > 0 && !spec.outputModalities.includes('text')) continue;
-      results.push({ id: spec.id, contextWindow: spec.contextWindow ?? 0 });
-      if (results.length >= limit) break;
-    }
-    return results;
-  }
-
-  /** models.dev 为该 provider 列出的全部模型 id。 */
-  listModelIds(modelsDevId: string): string[] {
-    return [...(this.index.get(modelsDevId)?.keys() ?? [])];
   }
 
   /** Chat/LLM 模型 id - 输出含 'text'(排除纯图像/视频生成)。 */
@@ -193,11 +140,10 @@ export class ModelsDevCatalog {
     return this.get(modelsDevId, modelId)?.inputModalities.includes('image') ?? false;
   }
 
+  /** 已收录的模型条目总数(跨 provider 求和),仅用于"目录是否为空"判断与日志。 */
   get size(): number {
-    return this.flat.size;
-  }
-
-  get lastLoadedAt(): number | null {
-    return this.loadedAt;
+    let total = 0;
+    for (const models of this.index.values()) total += models.size;
+    return total;
   }
 }

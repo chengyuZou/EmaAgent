@@ -19,8 +19,11 @@ import type {
 
 export interface ProviderCapabilityConfiguration {
   capability: Capability;
+  /** 留空（undefined/null）表示使用 Provider 定义中该能力的首选协议。 */
   protocol?: ProtocolFamily | null;
+  /** 留空表示使用 Provider 定义或协议声明的默认地址。 */
   baseUrl?: string | null;
+  /** 仅 Embed 使用：区分同名模型的向量空间版本（换维度/换代时避免索引混用）。 */
   embeddingRevision?: string | null;
   enabled?: boolean;
 }
