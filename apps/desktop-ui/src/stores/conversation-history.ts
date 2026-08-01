@@ -41,9 +41,11 @@ export interface AssistantSliceToolUse {
   permissionPromptId?: string;
 }
 export interface AssistantSliceNarrative {
-  type: 'narrative_status'; timelines: string[]; completedTimelines: string[];
+  type: 'narrative_status'; status: 'running' | 'completed' | 'failed' | 'interrupted';
+                            timelines: string[]; completedTimelines: string[];
                             snippets: Record<string, string>;
                             failedTimelines: Record<string, string>;
+                            message?: string;
 }
 export type AnyAssistantSlice =
   | AssistantSlice
@@ -194,6 +196,7 @@ export function assembleHistory(
         turnId:    m.turnId !== null ? (m.turnId as TurnId) : undefined,
         slices:    [{
           type:              'narrative_status',
+          status:            'completed',
           timelines:         timelines.map((t) => t.name),
           completedTimelines: timelines.map((t) => t.name),
           snippets:          Object.fromEntries(timelines.map((t) => [t.name, t.text])),

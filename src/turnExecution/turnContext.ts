@@ -146,30 +146,10 @@ export class TurnContextBuilder {
             },
           });
         }
-        if (
-          recalled.timelines.length === 0
-          && recalled.failedTimelineCount > 0
-        ) {
-          emit?.({
-            type: 'narrative_recall_unavailable',
-            sessionId: turn.sessionId,
-            turnId: turn.id,
-            code: 'narrative/unknown',
-            message: 'Narrative timelines unavailable - continuing without narrative context',
-            retryable: true,
-          });
-        }
       } catch (error) {
         if (signal.aborted || isAbortError(error)) throw error;
         if (!(error instanceof NarrativeClientError)) throw error;
-        emit?.({
-          type: 'narrative_recall_unavailable',
-          sessionId: turn.sessionId,
-          turnId: turn.id,
-          code: error.code,
-          message: error.message,
-          retryable: error.retryable,
-        });
+        // Narrative Recall 自己发布整体失败事件；always 策略只负责降级为空上下文。
       }
     }
 

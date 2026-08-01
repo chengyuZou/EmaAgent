@@ -70,6 +70,25 @@ export type {
   StreamingAssistantMessage,
 } from './conversation-history.js';
 
+const NARRATIVE_INTERRUPTED_MESSAGE = '剧情检索被中断，未产生完整结果';
+
+/** Turn 已终止时，运行中的 Narrative 不能作为永久加载状态进入会话历史。 */
+function settleInterruptedNarrativeSlices(
+  slices: AnyAssistantSlice[],
+): AnyAssistantSlice[] {
+  let changed = false;
+  const settled = slices.map((slice) => {
+    if (slice.type !== 'narrative_status' || slice.status !== 'running') return slice;
+    changed = true;
+    return {
+      ...slice,
+      status: 'interrupted' as const,
+      message: slice.message ?? NARRATIVE_INTERRUPTED_MESSAGE,
+    };
+  });
+  return changed ? settled : slices;
+}
+
 // ── Send input ────────────────────────────────────────────────────────────────
 
 interface SendInput {
@@ -499,7 +518,9 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
       if (!sm) return { streamingMap: streaming };
 
       const historyItem = {
-        role: 'assistant' as const, content: sm.content, slices: sm.slices,
+        role: 'assistant' as const,
+        content: sm.content,
+        slices: settleInterruptedNarrativeSlices(sm.slices),
         createdAt: Date.now(), stats: stats ?? undefined, turnId: sm.turnId,
         executionProfile: sm.executionProfile,
         narrativePolicy: sm.narrativePolicy,
@@ -538,7 +559,9 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
 
       if (sm && (sm.content.trim() || sm.slices.length > 0)) {
         const partial = {
-          role: 'assistant' as const, content: sm.content, slices: sm.slices,
+          role: 'assistant' as const,
+          content: sm.content,
+          slices: settleInterruptedNarrativeSlices(sm.slices),
           createdAt: sm.startedAt, turnId: sm.turnId,
           executionProfile: sm.executionProfile,
           narrativePolicy: sm.narrativePolicy,

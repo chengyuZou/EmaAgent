@@ -8,17 +8,19 @@ export {
 export type { NarrativeClientErrorCode, NarrativeClientErrorOptions } from './errors.js';
 
 export type {
-  BridgeConfigurePayload,
-  BridgeEmbedCfg,
-  BridgeLlmCfg,
-  BridgeCapabilities,
-  BridgeHealthResponse,
-  NarrativeRouteRequest,
-  NarrativeRouteResponse,
-  NarrativeQueryRequest,
-  NarrativeQueryResponse,
+  NarrativeBridgeConfigurePayload,
+  NarrativeBridgeEmbedConfig,
+  NarrativeBridgeLlmConfig,
+  NarrativeRecallRequest,
+  NarrativeRecallResponse,
+  NarrativeTimelineFailure,
+  NarrativeTimelineFailureCode,
 } from './types.js';
-export type { NarrativeEvent, NarrativeTimelineFailureCode } from './events.js';
+export type {
+  NarrativeEvent,
+  NarrativeRecallFailureCode,
+  NarrativeTimelineSummary,
+} from './events.js';
 export { prepareNarrativeRecall } from './recall.js';
 export type {
   NarrativeRecallResult,

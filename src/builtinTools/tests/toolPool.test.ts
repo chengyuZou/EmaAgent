@@ -51,9 +51,10 @@ describe('Builtin ToolPool 能力装配', () => {
       subagentSpawner: {} as never,
       knowledgeSearch: async () => [] as never,
       narrativeSearch: async () => ({
+        generationId: 'generation-pool',
         timelines: [],
         contextText: null,
-        failedTimelineCount: 0,
+        failures: [],
       }),
       scratchpad: { dir: 'D:/scratchpad', author: 'main' },
     };

@@ -7,7 +7,10 @@ import { RerankRuntime } from '@ema-agent/rerank';
 import { TtsRuntime } from '@ema-agent/tts';
 import { SttRuntime } from '@ema-agent/stt';
 import { VisionRuntime } from '@ema-agent/vision';
-import type { BridgeConfigurePayload, NarrativeClient } from '@ema-agent/narrative';
+import type {
+  NarrativeBridgeConfigurePayload,
+  NarrativeClient,
+} from '@ema-agent/narrative';
 import { ProviderRuntimeFacade } from '../src/wiring/provider-runtime.js';
 import {
   ProviderConfiguration,
@@ -18,11 +21,11 @@ import { StorageProviderConfigurationStore } from '../src/wiring/providers/provi
 import { createTestCredentialFacade } from './helpers/test-credential-facade.js';
 
 class NarrativeClientSpy {
-  readonly payloads: BridgeConfigurePayload[] = [];
+  readonly payloads: NarrativeBridgeConfigurePayload[] = [];
 
   updateBaseUrl(_url: string): void {}
 
-  async configure(payload: BridgeConfigurePayload): Promise<boolean> {
+  async configure(payload: NarrativeBridgeConfigurePayload): Promise<boolean> {
     this.payloads.push(payload);
     return true;
   }

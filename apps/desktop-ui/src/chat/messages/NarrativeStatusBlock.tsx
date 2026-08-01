@@ -19,8 +19,6 @@ export function NarrativeStatusBlock({ slice }: { slice: NarrativeSlice }): Reac
   const timelines = slice.timelines;
   const completed = new Set(slice.completedTimelines);
   const failed    = slice.failedTimelines ?? {};
-  const settledCount = completed.size + Object.keys(failed).length;
-  const allDone   = timelines.length > 0 && settledCount >= timelines.length;
   const isMulti   = timelines.length > 1;
 
   // 外层折叠 state:单/多周目都默认收起,用户主动展开
@@ -38,16 +36,18 @@ export function NarrativeStatusBlock({ slice }: { slice: NarrativeSlice }): Reac
         className="flex items-center gap-1.5 font-medium transition-colors text-left w-full hover:opacity-80 text-[var(--ema-info)]"
         aria-expanded={outerOpen}
       >
-        {allDone
-          ? <span className="i-lucide:circle-check shrink-0 text-[var(--ema-info)]" aria-hidden />
-          : <Spinner size="sm" />
-        }
+        {slice.status === 'running' && <Spinner size="sm" />}
+        {slice.status === 'completed' && (
+          <span className="i-lucide:circle-check shrink-0 text-[var(--ema-info)]" aria-hidden />
+        )}
+        {slice.status === 'failed' && (
+          <span className="i-lucide:triangle-alert shrink-0 text-[var(--ema-warning)]" aria-hidden />
+        )}
+        {slice.status === 'interrupted' && (
+          <span className="i-lucide:circle-pause shrink-0 text-[var(--ema-warning)]" aria-hidden />
+        )}
         <span className="flex-1">
-          {allDone
-            ? Object.keys(failed).length > 0
-              ? `已检索 ${completed.size}/${timelines.length} 条剧情线`
-              : `已检索 ${timelines.length} 条剧情线`
-            : '检索剧情线…'}
+          {narrativeStatusLabel(slice, completed.size, Object.keys(failed).length)}
         </span>
         <span className={`${outerOpen ? 'i-lucide:chevron-down' : 'i-lucide:chevron-right'} text-[var(--ema-text-tertiary)]`} aria-hidden />
       </Button>
@@ -58,6 +58,14 @@ export function NarrativeStatusBlock({ slice }: { slice: NarrativeSlice }): Reac
         style={{ gridTemplateRows: outerOpen ? '1fr' : '0fr', opacity: outerOpen ? 1 : 0 }}
       >
         <div className="flex flex-col gap-2">
+          {(slice.status === 'failed' || slice.status === 'interrupted') && slice.message && (
+            <p className="text-xs text-[var(--ema-warning)]">{slice.message}</p>
+          )}
+          {slice.status === 'completed' && timelines.length === 0 && (
+            <p className="text-xs italic text-[var(--ema-text-tertiary)]">
+              未找到相关剧情资料
+            </p>
+          )}
           {timelines.map((t) => (
             <TimelineRow
               key={t}
@@ -163,10 +171,25 @@ function TimelineRow({
           </div>
         ) : completed ? (
           <p className="pl-5 text-xs italic text-[var(--ema-text-tertiary)]">
-            （检索返回空,可能该周目无相关内容或 bridge 出错）
+            （该剧情线未返回相关内容）
           </p>
         ) : null}
       </div>
     </div>
   );
+}
+
+function narrativeStatusLabel(
+  slice: NarrativeSlice,
+  completedCount: number,
+  failedCount: number,
+): string {
+  if (slice.status === 'running') return '检索剧情资料…';
+  if (slice.status === 'failed') return '剧情检索失败';
+  if (slice.status === 'interrupted') return '剧情检索已中断';
+  if (slice.timelines.length === 0) return '未找到相关剧情资料';
+  if (failedCount > 0) {
+    return `已检索 ${completedCount}/${slice.timelines.length} 条剧情线`;
+  }
+  return `已检索 ${slice.timelines.length} 条剧情线`;
 }

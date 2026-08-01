@@ -476,7 +476,7 @@ export function dispatchSseEvent(
 
     // ── Narrative ──────────────────────────────────────────────────────────
 
-    case 'narrative_route_resolved':
+    case 'narrative_recall_started':
       useConversationStore.setState((s) => {
         const sm = s.streamingMap.get(sessionId as string);
         if (!sm) return {};
@@ -484,7 +484,8 @@ export function dispatchSseEvent(
           ...sm.slices.filter((sl) => sl.type !== 'narrative_status'),
           {
             type: 'narrative_status' as const,
-            timelines: event.timelines,
+            status: 'running' as const,
+            timelines: [],
             completedTimelines: [],
             snippets: {},
             failedTimelines: {},
@@ -496,48 +497,25 @@ export function dispatchSseEvent(
       });
       break;
 
-    case 'narrative_timeline_failed':
+    case 'narrative_recall_completed':
       useConversationStore.setState((s) => {
         const sm = s.streamingMap.get(sessionId as string);
         if (!sm) return {};
-        const slices = sm.slices.map((sl) =>
-          sl.type !== 'narrative_status' ? sl : {
-            ...sl,
-            failedTimelines: {
-              ...(sl.failedTimelines ?? {}),
-              [event.timeline]: event.message,
-            },
-          },
-        );
-        const streaming = new Map(s.streamingMap);
-        streaming.set(sessionId as string, { ...sm, slices });
-        return { streamingMap: streaming };
-      });
-      break;
-
-    case 'narrative_recall_unavailable':
-      useConversationStore.setState((s) => {
-        const sm = s.streamingMap.get(sessionId as string);
-        if (!sm) return {};
-        const existing = sm.slices.find((slice) => slice.type === 'narrative_status');
-        const narrativeStatus = existing?.type === 'narrative_status'
-          ? {
-              ...existing,
-              failedTimelines: {
-                ...(existing.failedTimelines ?? {}),
-                recall: event.message,
-              },
-            }
-          : {
-              type: 'narrative_status' as const,
-              timelines: [],
-              completedTimelines: [],
-              snippets: {},
-              failedTimelines: { recall: event.message },
-            };
+        const completedTimelines = event.timelines.map((timeline) => timeline.name);
         const slices = [
           ...sm.slices.filter((slice) => slice.type !== 'narrative_status'),
-          narrativeStatus,
+          {
+            type: 'narrative_status' as const,
+            status: 'completed' as const,
+            timelines: [...event.timelineOrder],
+            completedTimelines,
+            snippets: Object.fromEntries(
+              event.timelines.map((timeline) => [timeline.name, timeline.snippet]),
+            ),
+            failedTimelines: Object.fromEntries(
+              event.failures.map((failure) => [failure.timeline, failure.message]),
+            ),
+          },
         ];
         const streaming = new Map(s.streamingMap);
         streaming.set(sessionId as string, { ...sm, slices });
@@ -545,17 +523,23 @@ export function dispatchSseEvent(
       });
       break;
 
-    case 'narrative_timeline_complete':
+    case 'narrative_recall_failed':
       useConversationStore.setState((s) => {
         const sm = s.streamingMap.get(sessionId as string);
         if (!sm) return {};
-        const slices = sm.slices.map((sl) =>
-          sl.type !== 'narrative_status' ? sl : {
-            ...sl,
-            completedTimelines: [...(sl.completedTimelines ?? []), event.timeline],
-            snippets: { ...(sl.snippets ?? {}), [event.timeline]: event.snippet },
-          },
-        );
+        const narrativeStatus = {
+          type: 'narrative_status' as const,
+          status: 'failed' as const,
+          timelines: [],
+          completedTimelines: [],
+          snippets: {},
+          failedTimelines: {},
+          message: event.message,
+        };
+        const slices = [
+          ...sm.slices.filter((slice) => slice.type !== 'narrative_status'),
+          narrativeStatus,
+        ];
         const streaming = new Map(s.streamingMap);
         streaming.set(sessionId as string, { ...sm, slices });
         return { streamingMap: streaming };

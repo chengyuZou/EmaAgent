@@ -8,7 +8,6 @@ import type {
 } from '@ema-agent/knowledge';
 import type { LanguageModel, Message as ModelMessage } from '@ema-agent/llm';
 import {
-  NarrativeClientError,
   prepareNarrativeRecall,
   type NarrativeClient,
   type NarrativeRecallResult,
@@ -375,29 +374,16 @@ export class TurnToolsBuilder {
     }
 
     return async (query, signal) => {
-      let recalled: NarrativeRecallResult;
-      try {
-        recalled = await prepareNarrativeRecall(narrative, {
+      const recalled: NarrativeRecallResult = await prepareNarrativeRecall(
+        narrative,
+        {
           sessionId: turn.sessionId,
           turnId: turn.id,
           userInput: query,
           signal,
           emit: (event) => relay.emit?.(event),
-        });
-      } catch (error) {
-        if (signal.aborted || isAbortError(error)) throw error;
-        if (error instanceof NarrativeClientError) {
-          relay.emit?.({
-            type: 'narrative_recall_unavailable',
-            sessionId: turn.sessionId,
-            turnId: turn.id,
-            code: error.code,
-            message: error.message,
-            retryable: error.retryable,
-          });
-        }
-        throw error;
-      }
+        },
+      );
 
       if (recalled.timelines.length > 0) {
         this.deps.session.appendMessage({
@@ -406,19 +392,6 @@ export class TurnToolsBuilder {
           role: 'user',
           kind: 'narrative_context',
           blocks: { timelines: [...recalled.timelines] },
-        });
-      }
-      if (
-        recalled.timelines.length === 0
-        && recalled.failedTimelineCount > 0
-      ) {
-        relay.emit?.({
-          type: 'narrative_recall_unavailable',
-          sessionId: turn.sessionId,
-          turnId: turn.id,
-          code: 'narrative/unknown',
-          message: 'Narrative timelines unavailable - continuing without narrative context',
-          retryable: true,
         });
       }
       return recalled;
@@ -472,9 +445,4 @@ function subagentShutdownReason(reason: TurnToolsShutdownReason): string {
     case 'finished':
       return 'parent_turn_finished';
   }
-}
-
-function isAbortError(error: unknown): boolean {
-  if (error instanceof DOMException && error.name === 'AbortError') return true;
-  return error instanceof Error && error.name === 'AbortError';
 }

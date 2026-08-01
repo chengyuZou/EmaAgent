@@ -36,16 +36,3 @@ class NarrativeService:
             results=batch.results,
             failures=batch.failures,
         )
-
-    async def route(self, query: str) -> dict[str, str]:
-        """迁移期兼容入口；新调用方应使用 recall 保持同代语义。"""
-        return await self.router.route(query)
-
-    async def query(
-        self,
-        queries: dict[str, str],
-        mode: str = "hybrid",
-        top_k: int = 40,
-    ):
-        """迁移期兼容入口；下一批 TypeScript 接线后删除。"""
-        return await self.store.query_batch(queries, mode=mode, top_k=top_k)

@@ -4,7 +4,7 @@ import os   from 'node:os';
 import { ProvidersRepo, ModelBindingsRepo } from '@ema-agent/storage';
 import type { Database, ProviderConfigRow } from '@ema-agent/storage';
 import { NarrativeClient } from '@ema-agent/narrative';
-import type { BridgeConfigurePayload } from '@ema-agent/narrative';
+import type { NarrativeBridgeConfigurePayload } from '@ema-agent/narrative';
 import {
   providerCatalog,
   type Capability,
@@ -63,7 +63,7 @@ export async function configureNarrativeBridge(
   const providersRepo = new ProvidersRepo(profileDb.sqlite, credentials);
   const bindings      = new ModelBindingsRepo(profileDb.sqlite);
 
-  const payload: BridgeConfigurePayload = { llm: null, embed: null };
+  const payload: NarrativeBridgeConfigurePayload = { llm: null, embed: null };
 
   const llmBinding = bindings.get('lightrag-llm');
   if (llmBinding) {

@@ -36,8 +36,14 @@ describe('NarrativeSearchTool', () => {
         charCount: 4,
         text: '剧情正文',
       }],
+      generationId: 'generation-1',
       contextText: '## 1st_Loop\n剧情正文',
-      failedTimelineCount: 1,
+      failures: [{
+        timeline: '2nd_Loop',
+        code: 'timeline_query_failed' as const,
+        message: '检索失败',
+        retryable: true,
+      }],
     }));
     const context = NarrativeSearchTool.unsafeValidateContext(
       hostContext(narrativeSearch),
@@ -54,7 +60,12 @@ describe('NarrativeSearchTool', () => {
         charCount: 4,
         text: '剧情正文',
       }],
-      failedTimelineCount: 1,
+      failures: [{
+        timeline: '2nd_Loop',
+        code: 'timeline_query_failed',
+        message: '检索失败',
+        retryable: true,
+      }],
     });
     expect(narrativeSearch).toHaveBeenCalledWith(
       '查询角色过去',
@@ -66,8 +77,9 @@ describe('NarrativeSearchTool', () => {
     const context = NarrativeSearchTool.unsafeValidateContext(hostContext(
       async () => ({
         timelines: [{ name: '2nd_Loop', charCount: 0, text: '' }],
+        generationId: 'generation-2',
         contextText: null,
-        failedTimelineCount: 0,
+        failures: [],
       }),
     ));
     if (!context.valid) throw new Error(context.reason);
@@ -76,7 +88,7 @@ describe('NarrativeSearchTool', () => {
       NarrativeSearchTool.execute({ query: '未知细节' }, context.context),
     ).resolves.toMatchObject({
       status: 'empty',
-      failedTimelineCount: 0,
+      failures: [],
     });
   });
 });

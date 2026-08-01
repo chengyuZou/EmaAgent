@@ -36,6 +36,28 @@ function resetStore(): void {
   });
 }
 
+function appendRunningNarrativeSlice(sessionId: SessionId): void {
+  const state = useConversationStore.getState();
+  const stream = state.streamingMap.get(sessionId as string);
+  if (!stream) throw new Error('测试必须先创建流');
+  const streamingMap = new Map(state.streamingMap);
+  streamingMap.set(sessionId as string, {
+    ...stream,
+    slices: [
+      ...stream.slices,
+      {
+        type: 'narrative_status',
+        status: 'running',
+        timelines: [],
+        completedTimelines: [],
+        snippets: {},
+        failedTimelines: {},
+      },
+    ],
+  });
+  useConversationStore.setState({ streamingMap });
+}
+
 describe('conversation-store', () => {
   beforeEach(resetStore);
 
@@ -127,6 +149,36 @@ describe('conversation-store', () => {
 
       const msgs = state.messages.get(S1 as string);
       expect(msgs![msgs!.length - 1]).toMatchObject({ role: 'assistant', content: 'Partial...' });
+    });
+
+    it('finalizeStream settles an unfinished narrative recall as interrupted', () => {
+      useConversationStore.setState({ messages: new Map([[S1 as string, []]]) });
+      useConversationStore.getState().beginStream(S1, T1);
+      appendRunningNarrativeSlice(S1);
+
+      useConversationStore.getState().finalizeStream(S1, null);
+
+      const messages = useConversationStore.getState().messages.get(S1 as string)!;
+      expect(messages.at(-1)?.slices).toContainEqual(expect.objectContaining({
+        type: 'narrative_status',
+        status: 'interrupted',
+        message: '剧情检索被中断，未产生完整结果',
+      }));
+    });
+
+    it('abortStream settles an unfinished narrative recall as interrupted', () => {
+      useConversationStore.setState({ messages: new Map([[S1 as string, []]]) });
+      useConversationStore.getState().beginStream(S1, T1);
+      appendRunningNarrativeSlice(S1);
+
+      useConversationStore.getState().abortStream(S1, 'Connection lost');
+
+      const messages = useConversationStore.getState().messages.get(S1 as string)!;
+      expect(messages.at(-1)?.slices).toContainEqual(expect.objectContaining({
+        type: 'narrative_status',
+        status: 'interrupted',
+        message: '剧情检索被中断，未产生完整结果',
+      }));
     });
   });
 

@@ -1,13 +1,8 @@
 // 封装 Core 调用 Python Bridge 的 Narrative 查询与内部语料维护协议。
 import type {
-  BridgeConfigurePayload,
-  BridgeHealthResponse,
-  NarrativeRouteResponse,
-  NarrativeQueryResponse,
-  NarrativeIngestResponse,
+  NarrativeBridgeConfigurePayload,
   NarrativeRecallRequest,
   NarrativeRecallResponse,
-  NarrativeTimelineFailure,
 } from './types.js';
 import {
   NarrativeClientError,
@@ -38,44 +33,10 @@ export class NarrativeClient {
   }
 
   async recall(
-    query: string,
-    mode?: string,
-    topK?: number,
-    signal?: AbortSignal
+    request: NarrativeRecallRequest,
+    signal?: AbortSignal,
   ): Promise<NarrativeRecallResponse> {
-    return this.post<NarrativeRecallResponse>('/narrative/recall', { query, mode, topK }, signal);
-  }
-
-  async route(query: string, signal?: AbortSignal): Promise<NarrativeRouteResponse> {
-    return this.post<NarrativeRouteResponse>('/narrative/route', { query }, signal);
-  }
-
-
-  async query(
-    queries: Record<string, string>,
-    mode = 'hybrid',
-    signal?: AbortSignal,
-  ): Promise<NarrativeQueryResponse> {
-    return this.post<NarrativeQueryResponse>('/narrative/query', { queries, mode }, signal);
-  }
-
-  /**
-   * 为未来续作或同世界观资料重建写入离线清洗文本。
-   * 这是内部内容维护接口，不属于普通 Turn 的 route/query 流程，也不向 V1 前端开放。
-   * LightRAG 按内容哈希去重；Bridge 未就绪时抛出 NarrativeUnavailableError。
-   */
-  async ingest(
-    timeline: string,
-    documents: string[],
-    signal?: AbortSignal,
-  ): Promise<NarrativeIngestResponse> {
-    return this.post<NarrativeIngestResponse>('/narrative/ingest', { timeline, documents }, signal);
-  }
-
-
-  async queryOne(timeline: string, query: string, signal?: AbortSignal): Promise<string> {
-    const resp = await this.query({ [timeline]: query }, 'hybrid', signal);
-    return resp.results[timeline] ?? '';
+    return this.post<NarrativeRecallResponse>('/narrative/recall', request, signal);
   }
 
   async isReady(): Promise<boolean> {
@@ -102,7 +63,7 @@ export class NarrativeClient {
    * 不能走通用 post<T>()(它会 res.json() 解析空 body 抛 SyntaxError,
    * 把成功的 204 误判为 unreachable 这里单独处理:只看 res.ok。
    */
-  async configure(payload: BridgeConfigurePayload): Promise<boolean> {
+  async configure(payload: NarrativeBridgeConfigurePayload): Promise<boolean> {
     try {
       const res = await fetch(`${this.baseUrl}/internal/configure`, {
         method:  'POST',
@@ -113,19 +74,6 @@ export class NarrativeClient {
       return res.ok;
     } catch {
       return false;
-    }
-  }
-
-  // TODO: 返回 null吗?
-  async health(): Promise<BridgeHealthResponse | null> {
-    try {
-      const res = await fetch(`${this.baseUrl}/health`, {
-        signal: AbortSignal.timeout(5_000),
-      });
-      if (!res.ok) return null;
-      return res.json() as Promise<BridgeHealthResponse>;
-    } catch {
-      return null;
     }
   }
 
@@ -146,12 +94,12 @@ export class NarrativeClient {
       if (!res.ok) {
         if (res.status === 503) {
           throw new NarrativeUnavailableError(
-            `Bridge narrative not configured or unavailable (HTTP ${res.status}).`,
+            `Narrative Bridge is not configured or unavailable (HTTP ${res.status}).`,
             { status: res.status },
           );
         }
         throw new NarrativeRequestError(
-          `Bridge narrative request failed (HTTP ${res.status}).`,
+          `Narrative Bridge request failed (HTTP ${res.status}).`,
           {
             code: 'narrative/http_error',
             retryable: res.status === 408 || res.status === 429 || res.status >= 500,
@@ -162,7 +110,7 @@ export class NarrativeClient {
       try {
         return await res.json() as T;
       } catch (error) {
-        throw new NarrativeRequestError('Bridge narrative returned invalid JSON.', {
+        throw new NarrativeRequestError('Narrative Bridge returned invalid JSON.', {
           code: 'narrative/invalid_response',
           retryable: false,
           cause: error,
@@ -172,7 +120,7 @@ export class NarrativeClient {
       if (err instanceof NarrativeClientError) throw err;
       if (externalSignal?.aborted) throw externalSignal.reason ?? err;
       if (timeoutSignal.aborted) {
-        throw new NarrativeRequestError(`Bridge narrative request timed out: ${path}`, {
+        throw new NarrativeRequestError(`Narrative Bridge request timed out: ${path}`, {
           code: 'narrative/timeout',
           retryable: true,
           cause: err,
@@ -180,7 +128,7 @@ export class NarrativeClient {
       }
 
       throw new NarrativeUnavailableError(
-        `Failed to ${path} on bridge: ${err instanceof Error ? err.message : String(err)}`,
+        `Narrative Bridge request ${path} failed: ${err instanceof Error ? err.message : String(err)}`,
         { cause: err },
       );
     }

@@ -4,6 +4,7 @@ import { buildTool } from '@ema-agent/tools';
 import type {
   NarrativeRecallTimeline,
   NarrativeSearchPort,
+  NarrativeTimelineFailure,
 } from '@ema-agent/narrative';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import type { BuiltinToolContext } from '../../builtinToolContext.js';
@@ -27,7 +28,7 @@ type NarrativeSearchStatus = 'found' | 'partial' | 'empty' | 'unavailable';
 export interface NarrativeSearchResult {
   readonly status: NarrativeSearchStatus;
   readonly timelines: readonly NarrativeRecallTimeline[];
-  readonly failedTimelineCount: number;
+  readonly failures: readonly NarrativeTimelineFailure[];
 }
 
 interface NarrativeSearchToolContext {
@@ -81,13 +82,13 @@ Do not call this for ordinary conversation or questions that can be answered fro
       (timeline) => timeline.text.trim().length > 0,
     );
     const status: NarrativeSearchStatus = hasContent
-      ? recalled.failedTimelineCount > 0 ? 'partial' : 'found'
-      : recalled.failedTimelineCount > 0 ? 'unavailable' : 'empty';
+      ? recalled.failures.length > 0 ? 'partial' : 'found'
+      : recalled.failures.length > 0 ? 'unavailable' : 'empty';
 
     return {
       status,
       timelines: recalled.timelines,
-      failedTimelineCount: recalled.failedTimelineCount,
+      failures: recalled.failures,
     };
   },
 });

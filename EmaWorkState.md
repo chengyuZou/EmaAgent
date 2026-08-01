@@ -74,6 +74,10 @@ LocalHost Composition Root Character/Emotion 批次已经完成：`createCharact
 
 Narrative R4 已经完成：`auto` 只在本轮 Tool Context 注入 NarrativeSearchPort，由模型按需调用稳定 ID 的 NarrativeSearchTool；`always` 继续在 Turn 开始时主动召回；`off` 不暴露工具也不召回。Port 在 TurnExecutor 绑定 Session/Turn、SSE 与 `narrative_context` 持久化，Tool 只接收窄查询能力；Route 与 LightRAG 继续使用 Narrative 自有 `lightrag-llm` 绑定，不读取当前 Chat/Work 模型。
 
+Narrative 原子 Recall 已经完成：TypeScript 和 Python 只保留 `POST /narrative/recall`，一次 Bridge 运行代际内完成路由与全部时间线查询；旧 `/route`、`/query`、`ingest`、`health()` 客户端外壳及分时间线请求均已删除。事件收口为 `narrative_recall_started/completed/failed`，部分时间线失败作为 completed 的结构化结果，整体传输失败才发 failed；空路由是正常完成。Turn 主动召回、NarrativeSearchTool、SSE Store、NarrativeStatusBlock 和 Event Display 使用同一协议，不再伪造逐时间线流式进度。
+
+Narrative 前端终态收口已经完成：`started` 仍只属于当前进程的 SSE/流式展示状态，不写入持久历史；任一根 Turn 终止时，仍在运行的 Narrative Block 会转为 `interrupted`，不会把断电、断连或缺失终态伪装成检索失败，也不会在当前进程留下永久转圈状态。重启后只有已经持久化的 `narrative_context` 会重建为完成块。
+
 事件所有权第一批已经落到源码：Agent、Characters、Context、Hooks、Knowledge、Memory、Narrative、System、Tasks、Tools 与 TTS 各自拥有 `events.ts`；Turn 只保留根生命周期、输出、Usage 与请求降级事件。`src/events` 像 `src/ids` 一样执行严格准入，但只负责组合 `TurnStreamEvent/SessionEvent/AppEvent`，禁止定义业务字段。
 
 R2 Prompt Slot 与 R3 ContextAssembler 主链接线已经完成：Prompt、Skill Catalog、Memory Recall、Narrative Recall、历史、当前 Turn、Scratchpad、Mailbox 与 Tool Manifest 由一次不可变 Context 快照统一装配。现有渐进 Compaction、Safe Cut、Restore、响应式压缩和 Tool Manifest Snapshot 都是基线，不重新实现。
@@ -162,7 +166,7 @@ Task 与 AgentRun 前端已经分面：Desktop 使用正式 `/api/tasks` 快照�
 
 开始任何新批次前必须重新运行 `git status --short` 与 `git diff`，保留用户和其他 Agent 的修改。
 
-Narrative Bridge 目录与运行协议已经收口：Python 工程迁入 `bridges/narrative/narrativeBridge`，Rust 监督器、LocalHost 模型绑定同步、readiness、端口文件、环境变量和发布脚本统一使用 `narrative-bridge` 身份，不再把它描述成承载任意 Python 能力的通用 Bridge。剧情数据本批仍保留在 `apps/bridge/data/narrative`，只由 Desktop 资源定位显式引用；数据安装与分发必须另开批次，不能在代码迁移中顺手搬动 182 MB 内容。
+Narrative Bridge 目录、运行身份和原子 Recall 协议已经收口：Python 工程位于 `bridges/narrative/narrativeBridge`，Rust 监督器、LocalHost 模型绑定同步、readiness、端口文件、环境变量和发布脚本统一使用 `narrative-bridge` 身份。剧情数据仍保留在 `apps/bridge/data/narrative`，只由 Desktop 资源定位显式引用；数据安装与分发必须另开批次，不能在代码迁移中顺手搬动 182 MB 内容。
 
 Desktop 窗口生命周期与透明主窗启动故障已经收口：聊天与设置在首次 `open_window` 时按原 label、URL 和尺寸惰性创建，后续关闭继续 hide-and-reuse；主窗由 `setup` 显式确保创建、显示与聚焦。透明窗口的直接原因不是 Live2D，而是 Desktop API 从 `@ema-agent/turn` 根出口引入浏览器不支持的 `SessionInteractionQueue -> node:crypto.randomUUID`，导致 React 挂载前终止；现由浏览器安全的 `@ema-agent/turn/protocol` 子路径只暴露 Turn Wire 协议。Windows 首次创建子窗口的 `open_window` 必须保持 async command：Tauri/WebView2 明确会在同步 command 中与 UI 线程互等并死锁。主窗、聊天和设置还必须使用完全一致的 WebView2 浏览器参数，否则后创建窗口会收到 `0x8007139F` 并留下无法再次创建的空窗口壳。取消置顶后的真实稳定失焦会自动最小化，但 Windows 从任务栏恢复时的瞬时焦点抖动不会再把窗口立刻压回。Live2D 只接受 Desktop Host 的显隐暂停事实，不再同时读取 WebView2 多窗口场景下不可靠的 `document.visibilityState` 停止 PIXI ticker；普通浏览器预览仍由外层 Hook 使用页面可见性。表情入口只有在当前 Runtime 已 ready 且确实加载出 exp3 候选时才启用，轮换会返回并提示实际资源名，避免把内置首项 `taishou` 的抬手/物理变化误判为按钮无效。聊天置顶摘要的 AgentRun 与后台进程统计使用浅比较，不能让 Zustand 5 selector 每次返回不同对象触发 React 最大更新深度。子进程 stdout EOF 和 Uvicorn 的 stderr INFO 属正常退出事实，不再记录成黄色警告；真正异常仍由进程终态监视和 ERROR/CRITICAL 日志报告。
 
@@ -239,12 +243,16 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
     - **C 主链卫生已完成**：已删除 Macro 压缩后绕过 Memory 开关直接重读 L1 Session Note 的旧恢复旁路；正常 L1 Recall 继续作为不可压缩 Contribution 保留，Active Skill 继续走 required restore。AgentLoopState 已删除不可达状态；`prefixHash` 已明确为本次请求截止最终缓存断点的身份，会随历史、当前 Turn 和工具轮次演进，不再伪装成跨 Turn 固定 Prompt Hash。
 12. Character C1a/C1b/C2/C3a/C3b 已完成显式资源、Prompt/健康门槛、主窗口可抢占降级、文件事务地基及三类资源单项生命周期。Live2D 目录有界复制并校验入口/引用/纹理，立绘重编码去元数据，参考音频按真实文件头冻结时长和摘要；导入、导出、删除分别使用同盘暂存、目标旁暂存和 `.trash`，SQL 失败与崩溃残留按事实源恢复。三类资源均可更新 `label/position/enabled`，禁用主项后由后端稳定提升下一启用资源。C3c 整包能力推迟到 V1 正式版候选；K3 正在接 Desktop 目录能力句柄和资源管理 UI。现有 Session Backup 不扩张到 Character。
 13. Session Backup ZIP V2 下一批进入导入侧：流式解压到暂存、校验 SHA-256 与十五类记录、执行状态冻结、受控文件重落，最后用单个 SQLite 事务发布。随后再接 Facade/Route、启动清残留并删除 ZIP V1。不能复用巨型 `SessionRestorePayload`，不能在 V2 完成前删除 ZIP V1，也不能把内部 Record/JSONL/归档器重新导出为公共包 API。
+14. Narrative 代码与协议复查已经完成；下一步另开剧情数据安装/首次复制/版本清单/升级恢复批次，解决正式用户安装后如何获得 182 MB 语料。该批不得重新引入通用 Bridge、旧两段式 Route/Query 或在线 Ingest。
 
 命名随业务批次清理：旧 `IFileStateStoreEntry/IFileStateStore` 及后续过渡接口已经删除，`IToolExecutionJournal` 已改为职责名；其余迁移期 `I*` 类型继续随业务边界处理，不单独进行全仓机械重命名。
 
 每批只改变一个主要业务边界。不要把 Turn 统一、数据库 Schema、全仓 ID 改名和前端切换塞进同一批。
 
 ## 最近验证
+
+- Narrative 前端中断收口：Desktop UI `conversation-store` 定向测试 18/18、typecheck 通过；`git diff --check` 仅有 Windows CRLF 提示。
+- Narrative 原子 Recall：Narrative build 与 8/8 测试、Events build、BuiltinTools typecheck 与 111/111 测试（1 个缺少系统 `rg` 的条件测试跳过）、TurnExecution/LocalHost/Desktop UI typecheck、Python Bridge 10/10 测试通过。生产源码中旧 `/route`、`/query`、`queryOne`、`failedTimelineCount` 和四个旧 Narrative 事件名引用归零；`git diff --check` 仅有 Windows CRLF 提示。
 
 - Narrative Bridge 目录与运行协议收口：Python 10/10、LocalHost 定向 15/15 通过；Provider build、LocalHost typecheck、Desktop Rust `cargo check` 与发布版本一致性检查通过。Workspace lockfile 已刷新为 `bridges/narrative`，旧 `syncBridge`、旧环境变量、旧 readiness/port 文件名和发布脚本中的 `apps/bridge/pyproject.toml` 引用归零。`git diff --check` 仅剩其他在途修改 `src/narrative/types.ts` 的一处尾随空格与既有 CRLF 提示。
 

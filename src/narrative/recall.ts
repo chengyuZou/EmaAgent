@@ -1,11 +1,10 @@
-// 执行 Narrative 路由与多时间线并发召回，并返回可持久化的结构化结果。
-
+// 把一次原子 Narrative Recall 投影为模型上下文和前端生命周期事件。
 import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { NarrativeClient } from './client.js';
 import { NarrativeClientError } from './errors.js';
 import type { NarrativeEvent } from './events.js';
+import type { NarrativeTimelineFailure } from './types.js';
 
-// 为什么不叫 NarrativeSingleRecalResult?
 export interface NarrativeRecallTimeline {
   readonly name: string;
   readonly charCount: number;
@@ -13,14 +12,15 @@ export interface NarrativeRecallTimeline {
 }
 
 export interface NarrativeRecallResult {
-  /** 成功查询的时间线；空文本仍保留，供前端区分“无结果”和“未查询”。 */
+  readonly generationId: string;
+  /** 成功查询的时间线；空文本仍保留，供 UI 区分无结果与未查询。 */
   readonly timelines: readonly NarrativeRecallTimeline[];
+  readonly failures: readonly NarrativeTimelineFailure[];
   /** 只包含非空结果的模型背景文本；没有可注入正文时为 null。 */
   readonly contextText: string | null;
-  readonly failedTimelineCount: number;
 }
 
-/** Narrative Tool 使用的业务入口；宿主负责绑定本次 Turn 的身份、事件与持久化。 */
+/** Narrative Tool 使用的业务入口；宿主负责绑定本次 Turn 的身份与事件。 */
 export type NarrativeSearchPort = (
   query: string,
   signal: AbortSignal,
@@ -34,83 +34,74 @@ export interface PrepareNarrativeRecallInput {
   readonly emit?: (event: NarrativeEvent) => void;
 }
 
-// TODO: 为什么不直接用query()返回的结果？
 export async function prepareNarrativeRecall(
   client: NarrativeClient,
   input: PrepareNarrativeRecallInput,
 ): Promise<NarrativeRecallResult> {
-  // TODO: 需不需要每router到一个timeline就发一个narrative_route_resolved事件？现在是一次性发完所有timeline 前端怎么搞的我不知道
-  const routeResponse = await client.route(input.userInput, input.signal);
-  const routeOrder = Object.keys(routeResponse.routes);
   input.emit?.({
-    type: 'narrative_route_resolved',
+    type: 'narrative_recall_started',
     sessionId: input.sessionId,
     turnId: input.turnId,
-    timelines: routeOrder,
   });
 
-  const recalled = new Map<string, string>();
-  let failedTimelineCount = 0;
-  let cancellationError: unknown;
+  try {
+    const response = await client.recall(
+      { query: input.userInput },
+      input.signal,
+    );
+    const timelineOrder = Object.keys(response.routes);
+    const timelines = timelineOrder.flatMap((name) => {
+      const text = response.results[name];
+      return text === undefined
+        ? []
+        : [{ name, charCount: text.length, text }];
+    });
+    const contextText = timelines
+      .filter((timeline) => timeline.text.trim().length > 0)
+      .map((timeline) => `## ${timeline.name}\n${timeline.text}`)
+      .join('\n\n');
 
-  await Promise.allSettled(routeOrder.map(async (timeline) => {
-    const query = routeResponse.routes[timeline] ?? '';
-    try {
-      const text = await client.queryOne(timeline, query, input.signal);
-      recalled.set(timeline, text);
-      input.emit?.({
-        type: 'narrative_timeline_complete',
-        sessionId: input.sessionId,
-        turnId: input.turnId,
-        timeline,
-        charCount: text.length,
-        snippet: text.length > 100 ? `${text.slice(0, 100)}…` : text,
-      });
-    } catch (error) {
-      if (isAbortLike(error, input.signal)) {
-        cancellationError ??= error;
-        return;
-      }
-      failedTimelineCount += 1;
-      const failure = error instanceof NarrativeClientError
-        ? {
-            code: error.code,
-            message: error.message,
-            retryable: error.retryable,
-          }
-        : {
-            code: 'narrative/unknown' as const,
-            message: error instanceof Error ? error.message : String(error),
-            retryable: false,
-          };
-      input.emit?.({
-        type: 'narrative_timeline_failed',
-        sessionId: input.sessionId,
-        turnId: input.turnId,
-        timeline,
-        ...failure,
-      });
-    }
-  }));
+    input.emit?.({
+      type: 'narrative_recall_completed',
+      sessionId: input.sessionId,
+      turnId: input.turnId,
+      generationId: response.generationId,
+      timelineOrder,
+      timelines: timelines.map((timeline) => ({
+        name: timeline.name,
+        charCount: timeline.charCount,
+        snippet: summarizeTimeline(timeline.text),
+      })),
+      failures: response.failures,
+    });
 
-  if (cancellationError !== undefined) throw cancellationError;
+    return {
+      generationId: response.generationId,
+      timelines,
+      failures: response.failures,
+      contextText: contextText.length > 0 ? contextText : null,
+    };
+  } catch (error) {
+    if (isAbortLike(error, input.signal)) throw error;
+    const failure = error instanceof NarrativeClientError
+      ? { code: error.code, message: error.message, retryable: error.retryable }
+      : {
+          code: 'narrative/unknown' as const,
+          message: error instanceof Error ? error.message : String(error),
+          retryable: false,
+        };
+    input.emit?.({
+      type: 'narrative_recall_failed',
+      sessionId: input.sessionId,
+      turnId: input.turnId,
+      ...failure,
+    });
+    throw error;
+  }
+}
 
-  const timelines = routeOrder.flatMap((name) => {
-    const text = recalled.get(name);
-    return text === undefined
-      ? []
-      : [{ name, charCount: text.length, text }];
-  });
-  const sections = timelines
-    .filter((timeline) => timeline.text.trim().length > 0)
-    .map((timeline) => `## ${timeline.name}\n${timeline.text}`)
-    .join('\n\n');
-
-  return {
-    timelines,
-    contextText: sections.length > 0 ? sections : null,
-    failedTimelineCount,
-  };
+function summarizeTimeline(text: string): string {
+  return text.length > 100 ? `${text.slice(0, 100)}…` : text;
 }
 
 function isAbortLike(error: unknown, signal?: AbortSignal): boolean {

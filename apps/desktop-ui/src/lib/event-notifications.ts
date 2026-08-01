@@ -28,12 +28,17 @@ export function describeEventNotification(event: ClientEvent): EventNotification
         message: event.decision === 'allow' ? '工具权限已允许' : '工具权限已拒绝',
         variant: event.decision === 'allow' ? 'success' : 'warning',
       };
-    case 'narrative_route_resolved':
-      return { message: `剧情检索将查询 ${event.timelines.length} 条时间线`, variant: 'info' };
-    case 'narrative_timeline_complete':
-      return { message: `${event.timeline} 检索完成：${event.snippet}`, variant: 'success' };
-    case 'narrative_recall_unavailable':
-      return { message: `剧情召回不可用：${event.message}`, variant: 'warning' };
+    case 'narrative_recall_started':
+      return { message: '正在检索剧情资料', variant: 'info' };
+    case 'narrative_recall_completed':
+      return event.timelineOrder.length === 0
+        ? { message: '未找到相关剧情资料', variant: 'info' }
+        : {
+            message: `剧情检索完成：${event.timelines.length}/${event.timelineOrder.length} 条时间线可用`,
+            variant: event.failures.length > 0 ? 'warning' : 'success',
+          };
+    case 'narrative_recall_failed':
+      return { message: `剧情检索失败：${event.message}`, variant: 'warning' };
     case 'memory_recall_evidence':
       return {
         message: `${event.layer.toUpperCase()} 记忆召回 ${event.report.itemCount} 项`,
