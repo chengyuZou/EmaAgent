@@ -39,7 +39,7 @@ export interface ConfiguredProvider {
 }
 
 export interface ProviderHealthSnapshot {
-  status: 'ok' | 'failed' | 'probing' | 'unknown';
+  status: 'ok' | 'failed' | 'unknown';
   lastProbedAt: number | null;
   latencyMs: number | null;
   lastError: string | null;

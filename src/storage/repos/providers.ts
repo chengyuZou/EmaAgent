@@ -3,7 +3,7 @@ import type { CredentialFacade } from '@ema-agent/credential';
 import type { Capability, ProtocolFamily } from '@ema-agent/provider';
 import type { SqliteDb } from '../database.js';
 
-export type HealthStatus = 'ok' | 'failed' | 'probing' | 'unknown';
+export type HealthStatus = 'ok' | 'failed' | 'unknown';
 
 export interface ProviderCapabilityConfigRow {
   provider_config_id: string;
