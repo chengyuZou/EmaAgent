@@ -37,8 +37,8 @@ function wav(pcm: number[], sampleRate = 16_000): Buffer {
 }
 
 describe('FsAudioArchive', () => {
-  it('流式合并 PCM，保留全部分段', async () => {
-    const { archive } = createArchive();
+  it('流式合并 PCM 后删除分段目录，避免双份占盘', async () => {
+    const { archive, root } = createArchive();
     const first = archive.openSegment('s', 't', 0, 'pcm');
     first.write(new Uint8Array([1, 2]));
     first.close();
@@ -49,6 +49,7 @@ describe('FsAudioArchive', () => {
     const result = await archive.finalizeTurn('s', 't', 'pcm');
     expect(result?.byteSize).toBe(4);
     expect(fs.readFileSync(result!.path)).toEqual(Buffer.from([1, 2, 3, 4]));
+    expect(fs.existsSync(path.join(root, 's', 'audio', 'segments', 't'))).toBe(false);
   });
 
   it('重写 WAV 容器头并合并全部 PCM data', async () => {

@@ -149,6 +149,9 @@ export class FsAudioArchive implements AudioArchive {
       }
 
       await replaceFile(temporary, target);
+      // 合并成功后分段已无消费方(回放只读 merged),删除避免双份占盘;
+      // 失败路径不走到这里,分段保留供排查。
+      fs.rmSync(segDir, { recursive: true, force: true });
       const stat = await fs.promises.stat(target);
       return {
         path: target,

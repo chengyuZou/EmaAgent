@@ -38,12 +38,26 @@ export async function nextWithAbort<T>(
   iterator: AsyncIterator<T>,
   signal: AbortSignal,
 ): Promise<IteratorResult<T>> {
-  if (signal.aborted) throw new Error(String(signal.reason ?? 'aborted'));
+  if (signal.aborted) throw abortReasonError(signal);
   return new Promise<IteratorResult<T>>((resolve, reject) => {
-    const onAbort = (): void => reject(new Error(String(signal.reason ?? 'aborted')));
+    const onAbort = (): void => reject(abortReasonError(signal));
     signal.addEventListener('abort', onAbort, { once: true });
     iterator.next().then(resolve, reject).finally(() => {
       signal.removeEventListener('abort', onAbort);
     });
   });
+}
+
+/**
+ * 原样传递取消原因：Error reason 不包装；scope 的领域原因字符串（'aborted'/
+ * 'timeout' 等）放进标准 AbortError 的 message，保真且能被 isAbortError 类
+ * 检查正确识别为取消而非 Provider 故障。
+ */
+function abortReasonError(signal: AbortSignal): unknown {
+  if (signal.reason instanceof Error) return signal.reason;
+  const error = new Error(
+    signal.reason !== undefined ? String(signal.reason) : 'The operation was aborted',
+  );
+  error.name = 'AbortError';
+  return error;
 }

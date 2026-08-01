@@ -13,9 +13,15 @@ export function errorEvent(code: TtsErrorCode, message: string): TtsStreamEvent 
 
 /**
  * 把 fetch 抛的错误归一成 TtsErrorCode。
- * AbortError（超时/取消）-> transient_timeout；其他网络错误 -> transient_network。
+ * signal 是 requestScope 的领域原因通道：取消与超时不能靠错误名反推
+ * （两者都是 AbortError），先查登记簿，查不到再按错误名兜底。
  */
-export function classifyFetchError(err: unknown): TtsErrorCode {
+export function classifyFetchError(err: unknown, signal?: AbortSignal): TtsErrorCode {
+  if (signal?.aborted) {
+    if (signal.reason === 'aborted') return 'aborted';
+    if (signal.reason === 'resource_exhausted') return 'resource_exhausted';
+    if (signal.reason === 'timeout') return 'transient_timeout';
+  }
   const name = (err as { name?: string }).name;
   if (name === 'AbortError') return 'transient_timeout';
   return 'transient_network';

@@ -14,7 +14,7 @@ import type {
   TtsRequest,
   TtsStreamEvent,
 } from '../types.js';
-import { classifyCloseCode, classifyFetchError, classifyHttpStatus, classifyProbeFailure } from '../errors.js';
+import { classifyCloseCode, classifyHttpStatus, classifyProbeFailure } from '../errors.js';
 import { mimeForFormat } from '../utils.js';
 
 // ── DashScope(阿里云百炼)TTS ──────────────────────────────────────────────
@@ -153,8 +153,8 @@ export class DashscopeTtsAdapter implements TtsAdapter {
   }
 
   async probe(signal?: AbortSignal): Promise<TtsProbeResult> {
-    // DashScope 用 WebSocket;改用其 REST models API 探测。
-    const url = 'https://dashscope.aliyuncs.com/api/v1/models';
+    // DashScope 用 WebSocket;改用其 REST models API 探测,尊重用户配置的中转地址。
+    const url = httpHostFromConfig(this.config.baseUrl).replace(/\/$/, '') + '/api/v1/models';
     const startedAt = Date.now();
     try {
       const res = await fetch(url, {

@@ -66,7 +66,7 @@ export class OpenAiTtsAdapter implements TtsAdapter {
         signal: req.abortSignal,
       });
     } catch (err) {
-      yield errorEvent(classifyFetchError(err), (err as Error).message);
+      yield errorEvent(classifyFetchError(err, req.abortSignal), (err as Error).message);
       return;
     }
 
@@ -104,7 +104,7 @@ export class OpenAiTtsAdapter implements TtsAdapter {
         yield { type: 'audio_chunk', bytes: pending, mime };
       }
     } catch (err) {
-      yield errorEvent(classifyFetchError(err), (err as Error).message);
+      yield errorEvent(classifyFetchError(err, req.abortSignal), (err as Error).message);
       return;
     }
 
