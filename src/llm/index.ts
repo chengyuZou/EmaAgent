@@ -1,8 +1,6 @@
 export { LanguageModelRuntime }                           from './languageModelRuntime.js';
 export type { LanguageModel }                            from './languageModel.js';
 export { validateContentParts }                           from './validate.js';
-export { withRetry } from './retry.js';
-export type { RetryOptions } from './retry.js';
 export { CircuitBreaker, LlmStreamRuntime } from './streamRuntime.js';
 export type {
   CircuitBreakerOptions,

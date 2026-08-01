@@ -2,6 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import type { UsageRecord } from '@ema-agent/usage';
 import { CohereRerankAdapter } from './adapters/cohere.js';
+import { withOneRetry } from './retry.js';
 import type {
   RerankAdapter,
   RerankItem,
@@ -58,11 +59,15 @@ export class RerankRuntime {
     const topK = normalizeTopK(request.topK, request.documents.length);
     const startedAt = Date.now();
     try {
-      const response = await entry.adapter.rerank(
-        request.query,
-        request.documents,
-        topK,
-        request.model,
+      // 重试只包住 adapter 的网络调用;响应校验在重试之外,校验失败不值得补枪。
+      const response = await withOneRetry(
+        () => entry.adapter.rerank(
+          request.query,
+          request.documents,
+          topK,
+          request.model,
+          request.signal,
+        ),
         request.signal,
       );
       validateResponse(response, request.documents.length, topK);

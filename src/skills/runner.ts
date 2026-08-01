@@ -13,10 +13,9 @@ export const MAX_SKILL_DESCRIPTION_CHARS = 250;
 
 // ── SkillRunner ───────────────────────────────────────────────────────────────
 //
-// 经 beforeLlm hook 向 system message 注入轻量"可用技能"CATALOG -
-// 不是完整 body。模型选一个 skill 调 `SkillCall(skill, args)`;
-// body 只在那时从磁盘懒读(见 SkillStore.renderBody)。这保持 prompt 小,
-// 且因 catalog 只在 install/enable 时变(非 per-turn),保住 prompt cache。
+// Turn 开始时向 Prompt Slot 提供轻量“可用技能”目录，不放完整正文。
+// 模型选择 Skill 后调用 `SkillCall(skill, args)`，正文才从磁盘读取并激活。
+// 目录只随安装、启用状态变化，稳定 Slot 可以保住 Prompt Cache。
 //
 // skill 不自行授予能力。catalog 只在 Work Profile 注入,因 SkillCall 是
 // Work 工具 - 没有 per-skill Profile 标签。allowed-tools 由 SkillCall

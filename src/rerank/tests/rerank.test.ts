@@ -38,7 +38,9 @@ describe('RerankRuntime', () => {
   });
 
   it('Provider 失败时记录文档数和失败状态', async () => {
-    fetchMock.mockResolvedValueOnce(new Response('unavailable', { status: 503 }));
+    // 每次调用生成新 Response:body 只能消费一次,重试会打第二发。
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(new Response('unavailable', { status: 503 })));
     const records: UsageRecord[] = [];
     const runtime = new RerankRuntime([config], {
       usageRecorder: { record: (record) => records.push(record) },
@@ -48,6 +50,7 @@ describe('RerankRuntime', () => {
       providerId: config.id, model: 'rerank-model', query: 'query',
       documents: ['one', 'two', 'three'], usageContext: { callId: 'call-1' },
     })).rejects.toThrow('HTTP 503');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(records).toEqual([expect.objectContaining({
       id: 'call-1', capability: 'rerank', status: 'failed', quantity: 3, unit: 'document',
     })]);
@@ -113,5 +116,74 @@ describe('RerankRuntime', () => {
       { index: 0, score: 1 },
       { index: 1, score: 1 },
     ]);
+  });
+});
+
+describe('RerankRuntime 有限重试', () => {
+  const okPayload = () => new Response(JSON.stringify({
+    results: [{ index: 0, relevance_score: 0.5 }],
+  }), { status: 200 });
+
+  function call(runtime: RerankRuntime, signal?: AbortSignal) {
+    return runtime.rerank({
+      providerId: config.id, model: 'rerank-model', query: 'query',
+      documents: ['a'], topK: 1, signal,
+    });
+  }
+
+  it('429 退避后补枪成功', async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response('slow down', { status: 429 }))
+      .mockImplementationOnce(() => Promise.resolve(okPayload()));
+    const runtime = new RerankRuntime([config]);
+
+    const result = await call(runtime);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result.results).toEqual([{ index: 0, score: 0.5 }]);
+  });
+
+  it('网络层错误（无 HTTP 状态）补枪成功', async () => {
+    fetchMock
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockImplementationOnce(() => Promise.resolve(okPayload()));
+    const runtime = new RerankRuntime([config]);
+
+    const result = await call(runtime);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result.results).toHaveLength(1);
+  });
+
+  it('401 属配置故障，不重试', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('denied', { status: 401 }));
+    const runtime = new RerankRuntime([config]);
+
+    await expect(call(runtime)).rejects.toThrow('HTTP 401');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('响应校验失败不重试（脏数据不是瞬时故障）', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      results: [{ index: 9, relevance_score: 0.5 }],
+    }), { status: 200 }));
+    const runtime = new RerankRuntime([config]);
+
+    await expect(call(runtime)).rejects.toThrow('rerank/invalid_index');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('退避期间取消立即抛出，不等退避完成', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('slow down', { status: 429 }));
+    const controller = new AbortController();
+    const runtime = new RerankRuntime([config]);
+
+    const pending = call(runtime, controller.signal);
+    setTimeout(() => controller.abort(), 20);
+
+    const startedAt = Date.now();
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    expect(Date.now() - startedAt).toBeLessThan(500);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

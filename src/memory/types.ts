@@ -9,7 +9,7 @@ import type {
 } from '@ema-agent/context';
 
 
-// ── Plan context (what the planner receives at beforeLlm) ────────────────────
+// ── Recall planning input：Turn Context 在根执行开始前提供的检索事实 ──────────
 
 export interface PlanContext {
   sessionId:    SessionId;

@@ -4,6 +4,7 @@ import type { UsageRecord } from '@ema-agent/usage';
 import { OpenAiEmbedAdapter } from './adapters/openAi.js';
 import { GeminiEmbedAdapter } from './adapters/gemini.js';
 import { createEmbeddingSpace, type EmbeddingSpace } from './embeddingSpace.js';
+import { withOneRetry } from './retry.js';
 import type {
   EmbedAdapter,
   EmbedProbeResult,
@@ -57,7 +58,11 @@ export class EmbedRuntime {
     if (!entry) throw new Error(`embed/not_configured: ${request.providerId}`);
     const startedAt = Date.now();
     try {
-      const raw = await entry.adapter.embed(request.texts, request.model, request.signal);
+      // 重试只包住 adapter 的网络调用;响应校验在重试之外,校验失败不值得补枪。
+      const raw = await withOneRetry(
+        () => entry.adapter.embed(request.texts, request.model, request.signal),
+        request.signal,
+      );
       validateResponse(request.texts.length, raw.embeddings, raw.dim);
       const space = createEmbeddingSpace({
         providerId: request.providerId,

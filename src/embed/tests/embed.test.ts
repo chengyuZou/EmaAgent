@@ -74,3 +74,46 @@ describe('EmbedRuntime', () => {
     expect((init?.headers as Record<string, string>)['x-goog-api-key']).toBe('secret');
   });
 });
+
+describe('EmbedRuntime 有限重试', () => {
+  const provider: EmbedProviderConfig = {
+    id: 'provider-a', protocol: 'openai-embed', apiKey: 'test-key',
+    baseUrl: 'https://example.test/v1',
+  };
+  const okPayload = () => new Response(JSON.stringify({
+    data: [{ index: 0, embedding: [1, 0] }],
+  }), { status: 200 });
+
+  it('5xx 退避后补枪成功', async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response('unavailable', { status: 503 }))
+      .mockImplementationOnce(() => Promise.resolve(okPayload()));
+    const runtime = new EmbedRuntime([provider]);
+
+    const result = await runtime.embed({ providerId: 'provider-a', model: 'm', texts: ['x'] });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result.embeddings).toEqual([[1, 0]]);
+  });
+
+  it('网络层错误（无 HTTP 状态）补枪成功', async () => {
+    fetchMock
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockImplementationOnce(() => Promise.resolve(okPayload()));
+    const runtime = new EmbedRuntime([provider]);
+
+    await runtime.embed({ providerId: 'provider-a', model: 'm', texts: ['x'] });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('401 属配置故障，不重试', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('denied', { status: 401 }));
+    const runtime = new EmbedRuntime([provider]);
+
+    await expect(
+      runtime.embed({ providerId: 'provider-a', model: 'm', texts: ['x'] }),
+    ).rejects.toThrow('HTTP 401');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
