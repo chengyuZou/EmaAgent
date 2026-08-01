@@ -62,7 +62,7 @@ describe('B-060 DocumentAsset 复合游标', () => {
       .toThrow('Invalid document asset cursor');
   });
 
-  it('KB v2 安装复合排序索引', () => {
+  it('当前 KB Schema 安装复合排序索引', () => {
     const indexSql = database.sqlite.prepare(`
       SELECT sql FROM sqlite_master
        WHERE type = 'index' AND name = 'idx_doc_assets_created'
@@ -70,7 +70,7 @@ describe('B-060 DocumentAsset 复合游标', () => {
 
     expect(indexSql.replaceAll(/\s+/g, ' '))
       .toContain('document_assets(created_at DESC, id DESC)');
-    expect(database.currentVersion()).toBe(5);
+    expect(database.currentVersion()).toBe(1);
   });
 
   it('分批核对当前 KB 拥有的资源 ID，并保持输入顺序且去重', () => {

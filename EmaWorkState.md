@@ -168,7 +168,7 @@ Task 与 AgentRun 前端已经分面：Desktop 使用正式 `/api/tasks` 快照�
 
 开始任何新批次前必须重新运行 `git status --short` 与 `git diff`，保留用户和其他 Agent 的修改。
 
-Storage 目录收口已经完成：数据库连接、迁移执行与 CLI 归入 `src/storage/database`，FTS/中文分词/LIKE 工具归入 `search`，Repo 按实际数据库归入 `repos/profile`、`repos/data`、`repos/kb`；SQL、Schema、迁移历史和 Repo 查询语义未改变。迁移 CLI 的默认 `data.db` 路径已与运行时统一为 `~/.ema-agent/data/data.db`，根公共出口保持不变。Storage typecheck、build 与 131/131 测试通过；两处仍断言 data schema v25 的旧测试已随当前 v26 迁移订正。迁移历史合并仍是未来独立决策，不在本批处理。
+Storage 目录与开发期迁移基线已经收口：数据库连接、迁移执行与 CLI 归入 `src/storage/database`，FTS/中文分词/LIKE 工具归入 `search`，Repo 按实际数据库归入 `repos/profile`、`repos/data`、`repos/kb`。2026-08-01 内测前将 Profile v17、Data v26、KB v5 的最终 Schema 分别压成唯一 `001_initial.sql`，旧增量迁移和只验证历史升级路径的测试已经删除；生成前后逐对象比对 SQLite Schema，并验证三库外键、FTS 和同步 Trigger。模型绑定 CHECK 同步删除退役模块，三个与主键/唯一约束重复的命名索引一并去除。现有开发数据库不会被自动删除；旧 `user_version` 高于 1 时应由开发者自行备份并重建，正式发布后恢复只追加迁移的规则。
 
 Narrative Bridge 目录、运行身份和原子 Recall 协议已经收口：Python 工程位于 `bridges/narrative/narrativeBridge`，Rust 监督器、LocalHost 模型绑定同步、readiness、端口文件、环境变量和发布脚本统一使用 `narrative-bridge` 身份。剧情数据仍保留在 `apps/bridge/data/narrative`，只由 Desktop 资源定位显式引用；数据安装与分发必须另开批次，不能在代码迁移中顺手搬动 182 MB 内容。
 
@@ -255,6 +255,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- Storage 开发基线压缩：Profile/Data/KB 源码与 dist 均只保留一份 `001_initial.sql`；旧链与新基线逐对象 Schema 对比一致，三库 `foreign_key_check` 均为零。Storage 29 个测试文件 128/128、typecheck、build 通过；Session FTS 增删改同步、模型绑定约束和 SQLite 自动唯一索引均有现行 Schema 测试覆盖。
 - 内部 HookBus 删除收口：`@ema-agent/hooks`、HookBus、Hook abort、注册器与旧 LLM/Compaction Hook 生产引用归零；Events build、LocalHost 与 Desktop UI typecheck 通过。Context 34/34、Memory 72/72、Agent 19/19、TurnExecution 17/17 通过，另有 4 个既有 Live Integration 按规则跳过；Workspace lockfile 已离线刷新。
 - Narrative 前端中断收口：Desktop UI `conversation-store` 定向测试 18/18、typecheck 通过；`git diff --check` 仅有 Windows CRLF 提示。
 - Narrative 原子 Recall：Narrative build 与 8/8 测试、Events build、BuiltinTools typecheck 与 111/111 测试（1 个缺少系统 `rg` 的条件测试跳过）、TurnExecution/LocalHost/Desktop UI typecheck、Python Bridge 10/10 测试通过。生产源码中旧 `/route`、`/query`、`queryOne`、`failedTimelineCount` 和四个旧 Narrative 事件名引用归零；`git diff --check` 仅有 Windows CRLF 提示。

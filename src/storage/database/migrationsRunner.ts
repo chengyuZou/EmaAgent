@@ -14,9 +14,8 @@ const MIGRATIONS_DIR = path.join(dirname, '..', 'migrations');
  *
  * 三条流独立:profile 可 v3 而 data v7(或反之)。版本只在自己文件夹内推进。
  *
- * 铁律:迁移**只追加,不 squash(合并),编号发布后不可改**。否则老库 `user_version > latest`
- * 会被 compatibility gate 拦下(见 `run()`)。未来确需 squash,引入 `_migrations` checksum 表
- * + baseline 机制(参考 Flyway),V1 不需要。
+ * 2026-08-01 在首次公开内测前将三条开发迁移链压为新的 001 基线。此后迁移只追加，
+ * 编号发布后不可修改；再次压缩必须建立明确的 baseline/checksum 升级机制。
  */
 export type DatabaseKind = 'profile' | 'data' | 'kb';
 
@@ -54,7 +53,7 @@ export class MigrationsRunner {
     // 本包无法降级迁移。fail-closed,防静默跳过致 schema 不一致。
     if (current > latest) {
       throw new Error(
-        `[${this.kind}] 数据库版本 v${current} 高于本包最新 v${latest},可能用了更新版本的应用。请升级应用或备份数据后重建`,
+        `[${this.kind}] 数据库版本 v${current} 高于本包最新 v${latest}。可能使用了更新版本，或仍是基线重置前的开发库；请升级应用，或备份后重建开发数据库`,
       );
     }
 

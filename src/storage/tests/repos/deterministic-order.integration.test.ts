@@ -83,14 +83,22 @@ describe('N-012 Data DB 确定性事件顺序', () => {
     const sequence = messageColumns.find((column) => column.name === 'sequence');
     expect(sequence).toMatchObject({ notnull: 1 });
 
-    expect(indexSql(database, 'idx_agent_run_messages_sequence'))
-      .toContain('agent_run_messages(agent_run_id, sequence ASC)');
+    const sequenceConstraint = (database.sqlite.prepare(
+      `PRAGMA index_list(agent_run_messages)`,
+    ).all() as Array<{ name: string; unique: number; origin: string }>)
+      .find((index) => index.unique === 1 && index.origin === 'u');
+    expect(sequenceConstraint).toBeDefined();
+    expect(database.sqlite.prepare(`PRAGMA index_info(${sequenceConstraint!.name})`).all())
+      .toEqual([
+        expect.objectContaining({ seqno: 0, name: 'agent_run_id' }),
+        expect.objectContaining({ seqno: 1, name: 'sequence' }),
+      ]);
     expect(indexSql(database, 'idx_pending_fragments_session').replaceAll(/\s+/g, ' '))
       .toContain('pending_fragments(session_id, at ASC, created_at ASC, id ASC)');
     expect(database.sqlite.prepare(`
       SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'telemetry_events'
     `).get()).toBeUndefined();
-    expect(database.currentVersion()).toBe(26);
+    expect(database.currentVersion()).toBe(1);
   });
 });
 
@@ -120,7 +128,7 @@ describe('N-012 Profile DB MemoryLazyUpdate 顺序', () => {
         .toEqual(['update-a', 'update-b', 'update-c']);
       expect(indexSql(database, 'idx_lazy_updates_node').replaceAll(/\s+/g, ' '))
         .toContain('memory_node_lazy_updates(node_id, created_at ASC, id ASC)');
-      expect(database.currentVersion()).toBe(17);
+      expect(database.currentVersion()).toBe(1);
     } finally {
       database.close();
     }

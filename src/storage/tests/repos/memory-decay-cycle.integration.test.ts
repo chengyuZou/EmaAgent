@@ -1,4 +1,4 @@
-// 测试 Memory 衰减周期迁移、候选筛选与 CAS 更新不会在短时间内重复扣减重要度。
+// 测试 Memory 衰减候选筛选与 CAS 更新不会在短时间内重复扣减重要度。
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -7,7 +7,7 @@ import {
   MemoryNodesRepo,
 } from '../../index.js';
 
-describe('profile v16 Memory 衰减周期', () => {
+describe('Memory 衰减周期', () => {
   let database: Database;
   let nodes: MemoryNodesRepo;
   let items: MemoryItemsRepo;
@@ -75,7 +75,7 @@ describe('profile v16 Memory 衰减周期', () => {
       .toHaveLength(1);
     expect(items.listDecayCandidates(laterCutoff, laterCutoff, later, [], 10))
       .toHaveLength(1);
-    expect(database.currentVersion()).toBe(17);
+    expect(database.currentVersion()).toBe(1);
   });
 
   it('候选读取后发生引用时，旧 CAS 不会覆盖新的重要度与引用时间', () => {
