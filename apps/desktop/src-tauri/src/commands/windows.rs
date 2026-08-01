@@ -28,10 +28,15 @@ pub async fn quit_app(app: tauri::AppHandle) {
 }
 
 #[tauri::command]
-pub fn open_window(app: tauri::AppHandle, label: String) -> Result<(), String> {
+pub async fn open_window(app: tauri::AppHandle, label: String) -> Result<(), String> {
+    // WebView2 在 Windows 的同步 command 中创建窗口会与 UI 线程互等并死锁。
+    // async command 由 Tauri 调度到异步线程，窗口首次惰性创建时不会冻住整个桌面宿主。
+    tracing::info!(%label, "open_window requested");
     show_window(&app, &label).map_err(|error| {
         // 原生侧保留窗口创建错误，便于前端提示之外继续从 Desktop 日志定位。
         tracing::error!(%label, %error, "open_window failed");
         error
-    })
+    })?;
+    tracing::info!(%label, "open_window completed");
+    Ok(())
 }

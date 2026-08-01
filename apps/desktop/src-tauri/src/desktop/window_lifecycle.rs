@@ -5,6 +5,8 @@ use tauri::{Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, W
 use crate::file_access::{install_authorized_drop_handler, FileAccessFacade};
 
 const WINDOW_VISIBILITY_EVENT: &str = "ema://window-visibility";
+// 同一进程内的 WebView2 必须使用一致的浏览器参数，否则后创建的窗口会被环境复用规则拒绝。
+const SHARED_BROWSER_ARGS: &str = "--autoplay-policy=no-user-gesture-required";
 
 #[derive(Clone, Serialize)]
 struct WindowVisibilityPayload {
@@ -34,7 +36,7 @@ fn create_window(app: &tauri::AppHandle, label: &str) -> Result<WebviewWindow, S
             .always_on_top(true)
             .shadow(false)
             .skip_taskbar(false)
-            .additional_browser_args("--autoplay-policy=no-user-gesture-required")
+            .additional_browser_args(SHARED_BROWSER_ARGS)
             .build()
             .map_err(|error| format!("failed to create main webview: {error}"))?,
         "chat" => WebviewWindowBuilder::new(app, "chat", WebviewUrl::App("chat.html".into()))
@@ -46,7 +48,7 @@ fn create_window(app: &tauri::AppHandle, label: &str) -> Result<WebviewWindow, S
             .decorations(true)
             .transparent(false)
             .always_on_top(false)
-            .additional_browser_args("--autoplay-policy=no-user-gesture-required")
+            .additional_browser_args(SHARED_BROWSER_ARGS)
             .build()
             .map_err(|error| format!("failed to create chat webview: {error}"))?,
         "settings" => {
@@ -59,6 +61,7 @@ fn create_window(app: &tauri::AppHandle, label: &str) -> Result<WebviewWindow, S
                 .decorations(true)
                 .transparent(false)
                 .always_on_top(false)
+                .additional_browser_args(SHARED_BROWSER_ARGS)
                 .build()
                 .map_err(|error| format!("failed to create settings webview: {error}"))?
         }

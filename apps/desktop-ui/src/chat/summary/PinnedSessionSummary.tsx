@@ -1,5 +1,6 @@
 // 置顶摘要浮层：工作区事实、运行活动计数与来源概况，点击打开对应工作区标签。
 import { useEffect, useState, type JSX } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import type { SessionId } from '@ema-agent/ids';
 import { gitApi, type GitSummary } from '../../api/git.js';
 import type { GitSummaryOk } from '@ema-agent/git-utils';
@@ -35,7 +36,7 @@ export function PinnedSessionSummary({ sessionId }: PinnedSessionSummaryProps): 
     return () => { cancelled = true; };
   }, [sessionId, workspaceRoot]);
 
-  const activity = useAgentRunStore((s) => {
+  const activity = useAgentRunStore(useShallow((s) => {
     let running = 0;
     let terminal = 0;
     for (const run of s.runs.values()) {
@@ -44,7 +45,7 @@ export function PinnedSessionSummary({ sessionId }: PinnedSessionSummaryProps): 
       else terminal += 1;
     }
     return { running, terminal, total: running + terminal };
-  });
+  }));
 
   const attachments = useSessionAttachmentStore((s) =>
     s.bySession.get(sessionId as string));
@@ -58,7 +59,7 @@ export function PinnedSessionSummary({ sessionId }: PinnedSessionSummaryProps): 
   useEffect(() => {
     void loadProcesses(sessionId as string);
   }, [sessionId, loadProcesses]);
-  const processes = useBackgroundProcessStore((s) => {
+  const processes = useBackgroundProcessStore(useShallow((s) => {
     let running = 0;
     let terminal = 0;
     for (const p of s.listsBySession.get(sessionId as string)?.processes ?? []) {
@@ -66,7 +67,7 @@ export function PinnedSessionSummary({ sessionId }: PinnedSessionSummaryProps): 
       else terminal += 1;
     }
     return { running, terminal, total: running + terminal };
-  });
+  }));
 
   return (
     <div className="flex flex-col gap-3 p-3 text-xs">
