@@ -31,25 +31,25 @@ describe('B-024 ModelBindings setSingle 事务原子性', () => {
 
   it('setSingle 成功时旧绑定被新绑定替换', () => {
     const bindings = new ModelBindingsRepo(database.sqlite);
-    bindings.upsert({ module: 'emotion', providerConfigId: 'provider-1', model: 'old-model' });
+    bindings.upsert({ module: 'memory', providerConfigId: 'provider-1', model: 'old-model' });
 
-    bindings.setSingle({ module: 'emotion', providerConfigId: 'provider-1', model: 'new-model' });
+    bindings.setSingle({ module: 'memory', providerConfigId: 'provider-1', model: 'new-model' });
 
-    expect(bindings.listByModule('emotion').map((r) => r.model)).toEqual(['new-model']);
+    expect(bindings.listByModule('memory').map((r) => r.model)).toEqual(['new-model']);
   });
 
   it('setSingle 中途 upsert 失败时旧绑定保留（事务回滚，不丢配置）', () => {
     const bindings = new ModelBindingsRepo(database.sqlite);
-    bindings.upsert({ module: 'emotion', providerConfigId: 'provider-1', model: 'old-model' });
+    bindings.upsert({ module: 'memory', providerConfigId: 'provider-1', model: 'old-model' });
 
     // upsert 失败场景：provider_config_id 的 FK 不存在 -> 违反外键约束。
     // setSingle 先 deleteAll（删掉 old-model），再 upsert（FK 失败抛错）；
     // 事务必须回滚把 old-model 还回来，否则模块瞬间失去全部绑定。
     expect(() =>
-      bindings.setSingle({ module: 'emotion', providerConfigId: 'missing-provider', model: 'new-model' }),
+      bindings.setSingle({ module: 'memory', providerConfigId: 'missing-provider', model: 'new-model' }),
     ).toThrow(/FOREIGN KEY constraint failed/);
 
-    expect(bindings.listByModule('emotion').map((r) => r.model)).toEqual(['old-model']);
+    expect(bindings.listByModule('memory').map((r) => r.model)).toEqual(['old-model']);
   });
 });
 
@@ -70,22 +70,22 @@ describe('B-058 ModelBindings 确定性排序', () => {
   it('get() 多行时按 (provider_config_id, model) 稳定返回首行', () => {
     const bindings = new ModelBindingsRepo(database.sqlite);
     // 故意以非字典序插入，验证排序不是“插入序”
-    bindings.upsert({ module: 'router', providerConfigId: 'p-zeta', model: 'z-model' });
-    bindings.upsert({ module: 'router', providerConfigId: 'p-alpha', model: 'm-model' });
-    bindings.upsert({ module: 'router', providerConfigId: 'p-alpha', model: 'a-model' });
+    bindings.upsert({ module: 'title', providerConfigId: 'p-zeta', model: 'z-model' });
+    bindings.upsert({ module: 'title', providerConfigId: 'p-alpha', model: 'm-model' });
+    bindings.upsert({ module: 'title', providerConfigId: 'p-alpha', model: 'a-model' });
 
-    const first = bindings.get('router');
+    const first = bindings.get('title');
     expect(first?.providerConfigId).toBe('p-alpha');
     expect(first?.model).toBe('a-model');
   });
 
   it('listByModule() 按 (provider_config_id, model) 稳定排序', () => {
     const bindings = new ModelBindingsRepo(database.sqlite);
-    bindings.upsert({ module: 'router', providerConfigId: 'p-zeta', model: 'z-model' });
-    bindings.upsert({ module: 'router', providerConfigId: 'p-alpha', model: 'm-model' });
-    bindings.upsert({ module: 'router', providerConfigId: 'p-alpha', model: 'a-model' });
+    bindings.upsert({ module: 'title', providerConfigId: 'p-zeta', model: 'z-model' });
+    bindings.upsert({ module: 'title', providerConfigId: 'p-alpha', model: 'm-model' });
+    bindings.upsert({ module: 'title', providerConfigId: 'p-alpha', model: 'a-model' });
 
-    expect(bindings.listByModule('router').map((r) => [r.providerConfigId, r.model]))
+    expect(bindings.listByModule('title').map((r) => [r.providerConfigId, r.model]))
       .toEqual([
         ['p-alpha', 'a-model'],
         ['p-alpha', 'm-model'],

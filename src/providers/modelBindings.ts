@@ -2,10 +2,7 @@
 import type { Capability } from './types.js';
 
 export const MODEL_BINDING_MODULES = [
-  'emotion',
   'memory',
-  'router',
-  'plan-parse',
   'title',
   'lightrag-embed',
   'lightrag-llm',
@@ -20,10 +17,7 @@ export type ModelBindingModule = typeof MODEL_BINDING_MODULES[number];
 export const MODEL_BINDING_CAPABILITIES: Partial<
   Readonly<Record<ModelBindingModule, Capability>>
 > = Object.freeze({
-  emotion: 'llm',
   memory: 'llm',
-  router: 'llm',
-  'plan-parse': 'llm',
   title: 'llm',
   'lightrag-llm': 'llm',
   'lightrag-embed': 'embed',

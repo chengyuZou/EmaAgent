@@ -108,10 +108,10 @@ describe('profile 仓储防御性业务', () => {
     });
     const bindings = new ModelBindingsRepo(database.sqlite);
     bindings.upsert({ module: 'lightrag-llm', providerConfigId: 'provider-1', model: 'z-model' });
-    bindings.upsert({ module: 'emotion', providerConfigId: 'provider-1', model: 'a-model' });
+    bindings.upsert({ module: 'memory', providerConfigId: 'provider-1', model: 'a-model' });
 
     expect(bindings.listByProviderConfig('provider-1').map((binding) => binding.module))
-      .toEqual(['emotion', 'lightrag-llm']);
+      .toEqual(['lightrag-llm', 'memory']);
     expect(() => providers.delete('provider-1')).toThrow(/FOREIGN KEY constraint failed/);
   });
 });

@@ -27,10 +27,7 @@ import { showToast } from '../../lib/toast.js';
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const MODULE_CAPABILITY: Record<BindingModule, string> = {
-  emotion:          'llm',
   memory:           'llm',
-  router:           'llm',
-  'plan-parse':     'llm',
   title:            'llm',
   'lightrag-llm':   'llm',
   'lightrag-embed': 'embed',
@@ -44,10 +41,7 @@ const MODULE_CAPABILITY: Record<BindingModule, string> = {
 const POOL_CAPABILITIES = new Set(['llm', 'embed', 'rerank', 'tts', 'stt', 'vision']);
 
 const MODULES: Array<{ id: BindingModule; label: string; desc: string }> = [
-  { id: 'emotion',       label: 'Emotion',      desc: '情绪后置抽取兜底(ACT 标签缺失时用便宜 LLM 二次判定)' },
   { id: 'memory',        label: 'Memory',       desc: '记忆提取与整合' },
-  { id: 'router',        label: 'Router',       desc: '模式路由判定' },
-  { id: 'plan-parse',    label: 'Plan Parse',   desc: 'Agent 计划解析' },
   { id: 'title',          label: 'Title',         desc: '会话标题自动生成' },
   { id: 'lightrag-embed', label: 'LightRAG 嵌入', desc: '⚠️ 叙事专用嵌入（bge-m3）。换模型会让 narrative 检索骤减、需重建索引——非必要勿动。知识库的嵌入在「设置 → 知识库」单独选。' },
   { id: 'lightrag-llm',   label: 'LightRAG LLM',  desc: '叙事模式剧情检索 LLM' },
