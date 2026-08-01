@@ -1,4 +1,3 @@
-// 将整段音频转录请求转换为 OpenAI 兼容协议。
 import type { SttAdapter, SttAdapterCall, SttProviderConfig, SttProbeResult, SttResponse } from '../types.js';
 import { isSttError, SttError } from '../errors.js';
 

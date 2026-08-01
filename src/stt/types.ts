@@ -1,14 +1,9 @@
 import type { UsageContext } from '@ema-agent/usage';
 import type { SttProtocol } from '@ema-agent/provider';
 
-// 重新导出 protocol 枚举,消费者只从此包 import
-export type { SttProtocol } from '@ema-agent/provider';
+/** V1 不做 STT 流式能力探测。 */
 
-// ── 公共 STT 请求(Facade 入口)────────────────────────────────────────────
-//
-// 定义在此(不在 contracts)- 与 @ema-agent/llm 的 LlmRequest 对称。
-// 调用方在调用 SttRuntime 前从 model_bindings 解析 providerId + model。
-// Runtime 只执行明确指定的 Provider 和模型。
+export type { SttProtocol } from '@ema-agent/provider';
 
 export interface SttRequest {
   /** provider_configs.id UUID - 用哪个 adapter 实例。 */
@@ -22,7 +17,6 @@ export interface SttRequest {
   usageContext?: UsageContext;
 }
 
-/** Facade 级硬限制。V1 不做 STT 流式能力探测。 */
 export interface SttLimits {
   maxAudioBytes: number;
   timeoutMs: number;
@@ -98,9 +92,6 @@ export interface SttAdapter {
    * 的抛出 Error 上报。
    */
   transcribe(call: SttAdapterCall): Promise<SttResponse>;
-  /**
-   * 实时探测 - 用一次轻量真实 API 调用验证凭证(无需上传音频)。
-   * 供设置页"测试连接"按钮用。未实现时 SttRuntime.probe() 返回稳定失败码。
-   */
+
   probe?(signal?: AbortSignal): Promise<Omit<SttProbeResult, 'providerId'>>;
 }
