@@ -17,26 +17,9 @@ export interface NarrativeClientOptions {
   baseUrl?: string;
   /** Shared secret sent as X-Ema-Secret header. */
   secret?: string;
-  /**
-   * Request timeout in ms for route + query calls.
-   * Route involves an LLM call; query involves parallel LightRAG lookups.
-   * Default: 60_000
-   */
   timeoutMs?: number;
 }
 
-/**
- * Facade for the Python bridge's narrative endpoints.
- *
- * Typical narrative turn flow:
- *   1. `route(query)`  — LLM selects timelines + rewrites sub-queries.
- *                        Emit result as SSE event for frontend display.
- *   2. `query(routes)` — parallel LightRAG retrieval across selected timelines.
- *   3. TurnExecutor 把召回结果投影进本轮 Context。
- *
- * All methods throw `NarrativeUnavailableError` when the bridge is down or
- * narrative is not yet configured (503). Catch this to degrade gracefully.
- */
 export class NarrativeClient {
   private baseUrl: string;
   private readonly headers: Record<string, string>;
@@ -51,18 +34,11 @@ export class NarrativeClient {
     };
   }
 
-  /**
-   * Route a user query to relevant timelines and rewrite sub-queries.
-   * Involves one LLM call on the bridge side.
-   */
   async route(query: string, signal?: AbortSignal): Promise<NarrativeRouteResponse> {
     return this.post<NarrativeRouteResponse>('/narrative/route', { query }, signal);
   }
 
-  /**
-   * Run LightRAG retrieval for each timeline sub-query in parallel.
-   * All timelines are sent in one request; Python bridge gathers them.
-   */
+
   async query(
     queries: Record<string, string>,
     mode = 'hybrid',
@@ -84,19 +60,12 @@ export class NarrativeClient {
     return this.post<NarrativeIngestResponse>('/narrative/ingest', { timeline, documents }, signal);
   }
 
-  /**
-   * Run LightRAG retrieval for a single timeline.
-   * Call this concurrently per-timeline so results stream back as each finishes.
-   */
+
   async queryOne(timeline: string, query: string, signal?: AbortSignal): Promise<string> {
     const resp = await this.query({ [timeline]: query }, 'hybrid', signal);
     return resp.results[timeline] ?? '';
   }
 
-  /**
-   * Check whether the bridge's narrative capability is ready.
-   * Returns false when the bridge is unreachable.
-   */
   async isReady(): Promise<boolean> {
     try {
       const res = await fetch(`${this.baseUrl}/health`, {
@@ -110,27 +79,16 @@ export class NarrativeClient {
     }
   }
 
-  // ── URL hot-update ────────────────────────────────────────────────────────
 
-  /**
-   * Update the base URL at runtime.
-   * Called by apps/localHost before each configureBridge() so the client always
-   * points at the port the bridge actually chose (read from bridge.port file).
-   */
   updateBaseUrl(url: string): void {
     this.baseUrl = url.replace(/\/$/, '');
   }
 
-  // ── Bridge admin ───────────────────────────────────────────────────────────
 
   /**
-   * Push LightRAG config (embed + llm) to the bridge.
-   * Called by apps/localHost on startup and whenever relevant bindings change.
-   * Returns false if the bridge is unreachable — safe to ignore.
-   *
    * 注意:bridge 的 /internal/configure 返回 204 No Content(无 body),
    * 不能走通用 post<T>()(它会 res.json() 解析空 body 抛 SyntaxError,
-   * 把成功的 204 误判为 unreachable)。这里单独处理:只看 res.ok。
+   * 把成功的 204 误判为 unreachable 这里单独处理:只看 res.ok。
    */
   async configure(payload: BridgeConfigurePayload): Promise<boolean> {
     try {
@@ -146,6 +104,7 @@ export class NarrativeClient {
     }
   }
 
+  // TODO: 返回 null吗?
   async health(): Promise<BridgeHealthResponse | null> {
     try {
       const res = await fetch(`${this.baseUrl}/health`, {

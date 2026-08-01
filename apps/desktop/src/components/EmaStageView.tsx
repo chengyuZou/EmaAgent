@@ -8,7 +8,7 @@ import {
   type Live2DRuntime,
   type Live2DStageHandle,
 } from '@ema-agent/live2d-react';
-import { tauriBridge } from '@ema-agent/desktop-ui';
+import { showToast, tauriBridge } from '@ema-agent/desktop-ui';
 
 export interface EmaStageViewProps {
   modelPath: string;
@@ -127,7 +127,13 @@ export function EmaStageView({
       'stage:cycle-expression',
       (event) => {
         if (!isTargetStage(event.payload.stageId)) return;
-        live2dStore.getState().cycleExpression();
+        const expression = live2dStore.getState().cycleExpression();
+        if (expression) {
+          showToast(`已切换 Live2D 表情：${expression}`, {
+            variant: 'info',
+            duration: 1800,
+          });
+        }
       },
     );
 

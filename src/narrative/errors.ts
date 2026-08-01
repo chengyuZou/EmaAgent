@@ -1,5 +1,6 @@
 // 定义 Narrative Bridge 请求的稳定错误分类和诊断字段。
 
+// TODO: 需要加什么 health error吗还有别的各种字段
 export type NarrativeClientErrorCode =
   | 'narrative/unavailable'
   | 'narrative/timeout'

@@ -1,6 +1,4 @@
-// ── Bridge admin ──────────────────────────────────────────────────────────────
-
-/** Embed config pushed to bridge for LightRAG's internal use. */
+/** 推给 Bridge 的 embedding 配置快照(LightRAG 内部向量化用) */
 export interface BridgeEmbedCfg {
   protocol: 'openai-embed';   // LightRAG bridge only supports openai-compat embed
   apiKey: string;
@@ -9,7 +7,7 @@ export interface BridgeEmbedCfg {
   dim?: number;
 }
 
-/** LLM config pushed to bridge for LightRAG's entity extraction. */
+/** 推给 Bridge 的 LLM 配置快照(LightRAG 实体抽取 + 周目路由用) */
 export interface BridgeLlmCfg {
   apiKey: string;
   baseUrl: string;
@@ -43,40 +41,38 @@ export interface NarrativeRouteRequest {
   query: string;
 }
 
-/**
- * Returned by /narrative/route.
- * TS side should emit this as a `narrative_route_resolved` SSE event so the
- * frontend can display which timelines are being searched.
+/** 路由结果——时间线 -> 为该时间线改写好的子查询
+ * 魔裁中有 3 个时间线：1st_Loop, 2nd_Loop, 3rd_Loop
+ * bridge会根据一个整剧情SummaryPrompt对query进行改写，返回可能存在的每个时间线的子查询
  */
 export interface NarrativeRouteResponse {
-  /** timeline → rewritten sub-query for that timeline's RAG search. */
   routes: Record<string, string>;
 }
 
 // ── Query ─────────────────────────────────────────────────────────────────────
 
 export interface NarrativeQueryRequest {
-  /** Output of NarrativeRouteResponse.routes, or a manually constructed map. */
+  /** 批量查询请求——多时间线子查询 + LightRAG 检索模式 */
   queries: Record<string, string>;
-  /** LightRAG query mode. Default: 'hybrid'. */
+  /** LightRAG query mode. 默认为 'hybrid'. */
   mode?: string;
 }
 
 export interface NarrativeQueryResponse {
-  /** timeline → recalled narrative text. */
+  /** 时间线 → 召回的叙事文本。 */
   results: Record<string, string>;
 }
 
 // ── Ingest ────────────────────────────────────────────────────────────────────
 
 export interface NarrativeIngestRequest {
-  /** Must be one of: 1st_Loop, 2nd_Loop, 3rd_Loop */
+  /** 必须是以下之一：1st_Loop, 2nd_Loop, 3rd_Loop */
   timeline: string;
-  /** Raw text documents to push into LightRAG. */
+  /** 原始文本文档，用于推入 LightRAG。 */
   documents: string[];
 }
 
 export interface NarrativeIngestResponse {
-  /** Number of documents accepted by this call. */
+  /** 本次调用接受的文档数量。 */
   accepted: number;
 }

@@ -11,4 +11,9 @@ describe('resolveWindowSuspended', () => {
   ])('根据两个可见性来源得到 $expected', ({ documentHidden, hostVisible, expected }) => {
     expect(resolveWindowSuspended(documentHidden, hostVisible)).toBe(expected);
   });
+
+  it('桌面宿主管理显隐时忽略 WebView2 的页面可见性误判', () => {
+    expect(resolveWindowSuspended(true, true, true)).toBe(false);
+    expect(resolveWindowSuspended(false, false, true)).toBe(true);
+  });
 });

@@ -78,7 +78,9 @@ fn pipe_stdout(stdout: Option<tokio::process::ChildStdout>, service: RuntimeServ
         while let Ok(Some(line)) = lines.next_line().await {
             tracing::debug!(service = service.as_str(), %line, "runtime stdout");
         }
-        tracing::warn!(service = service.as_str(), "runtime stdout closed");
+        // 主动退出与子进程自然退出都会关闭管道；异常终态由 Supervisor 的
+        // 进程监视器判断，不能仅凭 EOF 向用户显示黄色警告。
+        tracing::debug!(service = service.as_str(), "runtime stdout closed");
     });
 }
 
@@ -87,7 +89,16 @@ fn pipe_stderr(stderr: Option<tokio::process::ChildStderr>, service: RuntimeServ
     tokio::spawn(async move {
         let mut lines = BufReader::new(stderr).lines();
         while let Ok(Some(line)) = lines.next_line().await {
-            tracing::warn!(service = service.as_str(), %line, "runtime stderr");
+            // Uvicorn 按惯例把普通 INFO 生命周期日志写到 stderr；按内容还原级别，
+            // 避免正常启动和退出在 Desktop 终端里伪装成黄色故障。
+            let normalized = line.trim_start();
+            if normalized.starts_with("INFO:") {
+                tracing::debug!(service = service.as_str(), %line, "runtime stderr");
+            } else if normalized.starts_with("ERROR:") || normalized.starts_with("CRITICAL:") {
+                tracing::error!(service = service.as_str(), %line, "runtime stderr");
+            } else {
+                tracing::warn!(service = service.as_str(), %line, "runtime stderr");
+            }
         }
     });
 }

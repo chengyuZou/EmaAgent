@@ -5,6 +5,7 @@ import type { NarrativeClient } from './client.js';
 import { NarrativeClientError } from './errors.js';
 import type { NarrativeEvent } from './events.js';
 
+// 为什么不叫 NarrativeSingleRecalResult?
 export interface NarrativeRecallTimeline {
   readonly name: string;
   readonly charCount: number;
@@ -33,10 +34,12 @@ export interface PrepareNarrativeRecallInput {
   readonly emit?: (event: NarrativeEvent) => void;
 }
 
+// TODO: 为什么不直接用query()返回的结果？
 export async function prepareNarrativeRecall(
   client: NarrativeClient,
   input: PrepareNarrativeRecallInput,
 ): Promise<NarrativeRecallResult> {
+  // TODO: 需不需要每router到一个timeline就发一个narrative_route_resolved事件？现在是一次性发完所有timeline 前端怎么搞的我不知道
   const routeResponse = await client.route(input.userInput, input.signal);
   const routeOrder = Object.keys(routeResponse.routes);
   input.emit?.({

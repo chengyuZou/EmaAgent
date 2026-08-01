@@ -98,9 +98,9 @@ export interface Live2DStoreActions {
   /**
    * 轮换到下一个表情: 当前表情在候选列表中 → 下一项(末尾回首项);
    * 不在列表或没有激活表情 → 第一项; 空候选列表无操作。
-   * 原子读取当前状态, 不依赖调用方快照。
+   * 原子读取当前状态并返回新激活的表情名，没有候选时返回 null。
    */
-  cycleExpression(): void;
+  cycleExpression(): string | null;
 
   playMotion(group: string, index?: number): void;
   setModelParameters(patch: Partial<ModelParameters>): void;
@@ -294,12 +294,13 @@ export function createLive2DStore(): Live2DStoreApi {
 
     cycleExpression() {
       const { availableExpressions, activeExpressions } = get();
-      if (availableExpressions.length === 0) return;
+      if (availableExpressions.length === 0) return null;
       const current = activeExpressions[0]?.name;
       const idx = current ? availableExpressions.indexOf(current) : -1;
       const next = availableExpressions[(idx + 1) % availableExpressions.length]!;
       // 复用 setExpression: 原子替换为单一表情, 并清掉旧表情的 duration timer。
       get().setExpression(next, { source: 'ui' });
+      return next;
     },
 
     // ── Motion / parameters / flags ──────────────────────────────────────

@@ -1,14 +1,18 @@
 // 提供窗口显示、交互模式与应用退出相关的 Tauri commands。
 use tauri::Manager;
 
-use crate::desktop::window_lifecycle::show_window;
+use crate::desktop::window_lifecycle::{begin_main_focus_settling, show_window};
 use crate::runtime::DesktopRuntimeSupervisor;
 
 #[tauri::command]
 pub fn set_always_on_top(window: tauri::Window, value: bool) -> Result<(), String> {
     window
         .set_always_on_top(value)
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    if window.label() == "main" && !value {
+        begin_main_focus_settling();
+    }
+    Ok(())
 }
 
 #[tauri::command]

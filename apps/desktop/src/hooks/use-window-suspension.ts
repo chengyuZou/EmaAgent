@@ -8,8 +8,12 @@ interface WindowVisibilityPayload {
   visible: boolean;
 }
 
-export function resolveWindowSuspended(documentHidden: boolean, hostVisible: boolean): boolean {
-  return documentHidden || !hostVisible;
+export function resolveWindowSuspended(
+  documentHidden: boolean,
+  hostVisible: boolean,
+  hostManagesVisibility = false,
+): boolean {
+  return hostManagesVisibility ? !hostVisible : documentHidden || !hostVisible;
 }
 
 export function useWindowSuspension(): boolean {
@@ -59,5 +63,6 @@ export function useWindowSuspension(): boolean {
     };
   }, []);
 
-  return resolveWindowSuspended(documentHidden, hostVisible);
+  const hostManagesVisibility = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+  return resolveWindowSuspended(documentHidden, hostVisible, hostManagesVisibility);
 }

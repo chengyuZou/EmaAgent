@@ -1,5 +1,7 @@
 // 统一处理桌面窗口的惰性创建、显示、隐藏和前端可见性通知。
 use serde::Serialize;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 
 use crate::file_access::{install_authorized_drop_handler, FileAccessFacade};
@@ -7,6 +9,8 @@ use crate::file_access::{install_authorized_drop_handler, FileAccessFacade};
 const WINDOW_VISIBILITY_EVENT: &str = "ema://window-visibility";
 // 同一进程内的 WebView2 必须使用一致的浏览器参数，否则后创建的窗口会被环境复用规则拒绝。
 const SHARED_BROWSER_ARGS: &str = "--autoplay-policy=no-user-gesture-required";
+const MAIN_FOCUS_SETTLE_GRACE: Duration = Duration::from_millis(350);
+static MAIN_FOCUSED_AT: Mutex<Option<Instant>> = Mutex::new(None);
 
 #[derive(Clone, Serialize)]
 struct WindowVisibilityPayload {
@@ -96,6 +100,12 @@ pub fn toggle_main_window(app: &tauri::AppHandle) {
     }
 }
 
+pub fn begin_main_focus_settling() {
+    if let Ok(mut focused_at) = MAIN_FOCUSED_AT.lock() {
+        *focused_at = Some(Instant::now());
+    }
+}
+
 pub fn handle_window_event(window: &tauri::Window, event: &WindowEvent) {
     match event {
         WindowEvent::CloseRequested { api, .. } => {
@@ -106,12 +116,28 @@ pub fn handle_window_event(window: &tauri::Window, event: &WindowEvent) {
                 WindowVisibilityPayload { visible: false },
             );
         }
-        // 主窗取消置顶后采用普通桌宠语义：用户切到其他应用时自动最小化，
-        // 避免透明无边框窗口留在桌面中间却没有原生最小化按钮。
+        WindowEvent::Focused(true) if window.label() == "main" => {
+            begin_main_focus_settling();
+            let _ = window.emit(
+                WINDOW_VISIBILITY_EVENT,
+                WindowVisibilityPayload { visible: true },
+            );
+        }
+        // Windows 从任务栏恢复窗口时可能紧跟一次瞬时失焦；稳定窗口内不执行自动最小化。
         WindowEvent::Focused(false) if window.label() == "main" => {
-            if matches!(window.is_always_on_top(), Ok(false)) {
+            let focus_is_stable = MAIN_FOCUSED_AT
+                .lock()
+                .ok()
+                .and_then(|focused_at| *focused_at)
+                .is_none_or(|focused_at| focused_at.elapsed() >= MAIN_FOCUS_SETTLE_GRACE);
+            if focus_is_stable && matches!(window.is_always_on_top(), Ok(false)) {
                 if let Err(error) = window.minimize() {
                     tracing::warn!(%error, "failed to minimize unpinned main window");
+                } else {
+                    let _ = window.emit(
+                        WINDOW_VISIBILITY_EVENT,
+                        WindowVisibilityPayload { visible: false },
+                    );
                 }
             }
         }

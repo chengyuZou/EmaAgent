@@ -15,6 +15,8 @@ from bridge.narrative.adapters import make_embedding_func, make_llm_func
 if TYPE_CHECKING:
     from bridge.state import BridgeState
 
+# TODO: 写的不好
+
 TIMELINES = ("1st_Loop", "2nd_Loop", "3rd_Loop")
 _BRIDGE_PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _DEFAULT_NARRATIVE_ROOT = _BRIDGE_PROJECT_ROOT / "data" / "narrative"

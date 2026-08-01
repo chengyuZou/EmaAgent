@@ -53,7 +53,8 @@ export function App(): React.JSX.Element {
     ].join('|');
   });
   const activeStageRuntime = useRef<Live2DRuntime | null>(null);
-  const [stageRuntimeAvailable, setStageRuntimeAvailable] = useState(false);
+  const stageRuntimeUnsubscribe = useRef<(() => void) | null>(null);
+  const [expressionAvailable, setExpressionAvailable] = useState(false);
   const [dockVisible,  setDockVisible]  = useState(false);
   const [shellStatus,  setShellStatus]  = useState<ShellStatus | null>(null);
   const [stageSnapshot, setStageSnapshot] = useState<CharacterStageSnapshot | null>(null);
@@ -61,9 +62,22 @@ export function App(): React.JSX.Element {
     getPresentation: (cardId) => cardsApi.getPresentation(cardId),
   }));
   const handleStageRuntimeChanged = useCallback((runtime: Live2DRuntime | null): void => {
+    stageRuntimeUnsubscribe.current?.();
+    stageRuntimeUnsubscribe.current = null;
     activeStageRuntime.current = runtime;
-    setStageRuntimeAvailable(runtime !== null);
+    if (!runtime) {
+      setExpressionAvailable(false);
+      return;
+    }
+    const updateAvailability = (): void => {
+      const state = runtime.live2dStore.getState();
+      setExpressionAvailable(state.ready && state.availableExpressions.length > 0);
+    };
+    updateAvailability();
+    stageRuntimeUnsubscribe.current = runtime.live2dStore.subscribe(updateAvailability);
   }, []);
+
+  useEffect(() => () => stageRuntimeUnsubscribe.current?.(), []);
 
   // LocalHost 首次可用及角色切换事件都会刷新 card-store；舞台只订阅稳定角色字段。
   useEffect(() => {
@@ -157,7 +171,7 @@ export function App(): React.JSX.Element {
 
       <FloatingDock
         visible={dockVisible}
-        expressionAvailable={stageRuntimeAvailable}
+        expressionAvailable={expressionAvailable}
       />
 
       <SidecarBadge status={sidecarStatus} />

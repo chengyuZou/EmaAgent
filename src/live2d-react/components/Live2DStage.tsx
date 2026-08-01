@@ -116,10 +116,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
     const baseResolutionRef = useRef(1);
     const [error, setError] = useState<Live2DError | null>(null);
     const [rendererGeneration, setRendererGeneration] = useState(0);
-    const [pageHidden, setPageHidden] = useState(
-      () => typeof document !== 'undefined' && document.visibilityState === 'hidden',
-    );
-    const effectiveSuspended = suspended || pageHidden;
+    const effectiveSuspended = suspended;
     const suspendedRef = useRef(effectiveSuspended);
     const reloadConfigKey = live2DReloadConfigKey(runtimeConfig);
 
@@ -129,17 +126,6 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
     useEffect(() => {
       callbacksRef.current = { onReady, onError, runtimeConfig };
     }, [onReady, onError, runtimeConfig]);
-
-    // 浏览器标签页隐藏是非 Tauri 宿主的兜底；桌面托盘隐藏由 suspended 显式传入。
-    useEffect(() => {
-      if (typeof document === 'undefined') return;
-      const updateVisibility = (): void => {
-        setPageHidden(document.visibilityState === 'hidden');
-      };
-      document.addEventListener('visibilitychange', updateVisibility);
-      updateVisibility();
-      return () => document.removeEventListener('visibilitychange', updateVisibility);
-    }, []);
 
     useEffect(() => {
       suspendedRef.current = effectiveSuspended;

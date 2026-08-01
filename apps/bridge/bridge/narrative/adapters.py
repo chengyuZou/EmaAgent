@@ -8,6 +8,7 @@ from openai import AsyncOpenAI
 if TYPE_CHECKING:
     from bridge.state import BridgeState
 
+# TODO: 这俩写的都不好
 
 def make_embedding_func(state: BridgeState):
     """Return a LightRAG-compatible async embedding function backed by state's embed config."""

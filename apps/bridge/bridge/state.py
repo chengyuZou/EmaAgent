@@ -7,6 +7,7 @@ if TYPE_CHECKING:
     from bridge.narrative.manager import NarrativeManager
     from bridge.narrative.router import NarrativeRouter
 
+# TODO: 意义不明,组件混搭在一起了
 
 @dataclass
 class BridgeState:

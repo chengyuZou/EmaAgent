@@ -17,14 +17,14 @@ describe('live2d-store cycleExpression', () => {
   it('空候选列表无操作', () => {
     const store = makeStore([]);
     store.getState().setExpression('anything', { source: 'ui' });
-    store.getState().cycleExpression();
+    expect(store.getState().cycleExpression()).toBeNull();
 
     expect(activeName(store)).toBe('anything');
   });
 
   it('没有激活表情时从第一项开始', () => {
     const store = makeStore(['smile', 'blush', 'angry']);
-    store.getState().cycleExpression();
+    expect(store.getState().cycleExpression()).toBe('smile');
 
     expect(activeName(store)).toBe('smile');
   });
