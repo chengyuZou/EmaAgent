@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { Database } from '../../database.js';
-import { MemoryItemsRepo } from '../../repos/memory-items.js';
-import { MemoryNodesRepo } from '../../repos/memory-nodes.js';
-import type { MemoryEmbeddingPageCursor } from '../../repos/memory-embedding-page.js';
+import { Database } from '../../database/database.js';
+import { MemoryItemsRepo } from '../../repos/profile/memory-items.js';
+import { MemoryNodesRepo } from '../../repos/profile/memory-nodes.js';
+import type { MemoryEmbeddingPageCursor } from '../../repos/profile/memory-embedding-page.js';
 
 const MODEL = 'embedding-test';
 const SPACE = 'space-test';

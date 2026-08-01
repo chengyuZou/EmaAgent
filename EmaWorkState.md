@@ -168,6 +168,8 @@ Task 与 AgentRun 前端已经分面：Desktop 使用正式 `/api/tasks` 快照�
 
 开始任何新批次前必须重新运行 `git status --short` 与 `git diff`，保留用户和其他 Agent 的修改。
 
+Storage 目录收口已经完成：数据库连接、迁移执行与 CLI 归入 `src/storage/database`，FTS/中文分词/LIKE 工具归入 `search`，Repo 按实际数据库归入 `repos/profile`、`repos/data`、`repos/kb`；SQL、Schema、迁移历史和 Repo 查询语义未改变。迁移 CLI 的默认 `data.db` 路径已与运行时统一为 `~/.ema-agent/data/data.db`，根公共出口保持不变。Storage typecheck、build 与 131/131 测试通过；两处仍断言 data schema v25 的旧测试已随当前 v26 迁移订正。迁移历史合并仍是未来独立决策，不在本批处理。
+
 Narrative Bridge 目录、运行身份和原子 Recall 协议已经收口：Python 工程位于 `bridges/narrative/narrativeBridge`，Rust 监督器、LocalHost 模型绑定同步、readiness、端口文件、环境变量和发布脚本统一使用 `narrative-bridge` 身份。剧情数据仍保留在 `apps/bridge/data/narrative`，只由 Desktop 资源定位显式引用；数据安装与分发必须另开批次，不能在代码迁移中顺手搬动 182 MB 内容。
 
 Desktop 窗口生命周期与透明主窗启动故障已经收口：聊天与设置在首次 `open_window` 时按原 label、URL 和尺寸惰性创建，后续关闭继续 hide-and-reuse；主窗由 `setup` 显式确保创建、显示与聚焦。透明窗口的直接原因不是 Live2D，而是 Desktop API 从 `@ema-agent/turn` 根出口引入浏览器不支持的 `SessionInteractionQueue -> node:crypto.randomUUID`，导致 React 挂载前终止；现由浏览器安全的 `@ema-agent/turn/protocol` 子路径只暴露 Turn Wire 协议。Windows 首次创建子窗口的 `open_window` 必须保持 async command：Tauri/WebView2 明确会在同步 command 中与 UI 线程互等并死锁。主窗、聊天和设置还必须使用完全一致的 WebView2 浏览器参数，否则后创建窗口会收到 `0x8007139F` 并留下无法再次创建的空窗口壳。取消置顶后的真实稳定失焦会自动最小化，但 Windows 从任务栏恢复时的瞬时焦点抖动不会再把窗口立刻压回。Live2D 只接受 Desktop Host 的显隐暂停事实，不再同时读取 WebView2 多窗口场景下不可靠的 `document.visibilityState` 停止 PIXI ticker；普通浏览器预览仍由外层 Hook 使用页面可见性。表情入口只有在当前 Runtime 已 ready 且确实加载出 exp3 候选时才启用，轮换会返回并提示实际资源名，避免把内置首项 `taishou` 的抬手/物理变化误判为按钮无效。聊天置顶摘要的 AgentRun 与后台进程统计使用浅比较，不能让 Zustand 5 selector 每次返回不同对象触发 React 最大更新深度。子进程 stdout EOF 和 Uvicorn 的 stderr INFO 属正常退出事实，不再记录成黄色警告；真正异常仍由进程终态监视和 ERROR/CRITICAL 日志报告。
@@ -253,6 +255,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- 内部 HookBus 删除收口：`@ema-agent/hooks`、HookBus、Hook abort、注册器与旧 LLM/Compaction Hook 生产引用归零；Events build、LocalHost 与 Desktop UI typecheck 通过。Context 34/34、Memory 72/72、Agent 19/19、TurnExecution 17/17 通过，另有 4 个既有 Live Integration 按规则跳过；Workspace lockfile 已离线刷新。
 - Narrative 前端中断收口：Desktop UI `conversation-store` 定向测试 18/18、typecheck 通过；`git diff --check` 仅有 Windows CRLF 提示。
 - Narrative 原子 Recall：Narrative build 与 8/8 测试、Events build、BuiltinTools typecheck 与 111/111 测试（1 个缺少系统 `rg` 的条件测试跳过）、TurnExecution/LocalHost/Desktop UI typecheck、Python Bridge 10/10 测试通过。生产源码中旧 `/route`、`/query`、`queryOne`、`failedTimelineCount` 和四个旧 Narrative 事件名引用归零；`git diff --check` 仅有 Windows CRLF 提示。
 

@@ -79,6 +79,9 @@ export class RerankRuntime {
     }
   }
 
+  /**
+   * 除测试之外无任何调用
+   */
   getProtocol(providerId: string): RerankProviderConfig['protocol'] | undefined {
     return this.entries.get(providerId)?.config.protocol;
   }

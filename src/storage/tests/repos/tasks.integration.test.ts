@@ -7,8 +7,8 @@ import {
   asTaskId,
   asTurnId,
 } from '@ema-agent/ids';
-import { AgentRunsRepo } from '../../repos/agent-runs.js';
-import { TasksRepo } from '../../repos/tasks.js';
+import { AgentRunsRepo } from '../../repos/data/agent-runs.js';
+import { TasksRepo } from '../../repos/data/tasks.js';
 import { createTestDatabase, type TestDatabase } from '../helpers/create-test-database.js';
 
 describe('Task 持久化边界', () => {

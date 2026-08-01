@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { asMessageId, asSessionId } from '@ema-agent/ids';
 import type { MessageKind } from '../../index.js';
-import { MessagesRepo } from '../../repos/messages.js';
+import { MessagesRepo } from '../../repos/data/messages.js';
 import { createTestDatabase, type TestDatabase } from '../helpers/create-test-database.js';
 
 describe('MessagesRepo 历史加载集成测试', () => {

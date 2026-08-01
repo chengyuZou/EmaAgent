@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { Database } from '../../database.js';
-import { KbIngestTasksRepo } from '../../repos/kb-ingest-tasks.js';
+import { Database } from '../../database/database.js';
+import { KbIngestTasksRepo } from '../../repos/kb/kb-ingest-tasks.js';
 
 describe('B-011/B-012 KB 导入任务状态机', () => {
   let database: Database;

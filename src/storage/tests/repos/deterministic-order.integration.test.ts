@@ -90,7 +90,7 @@ describe('N-012 Data DB 确定性事件顺序', () => {
     expect(database.sqlite.prepare(`
       SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'telemetry_events'
     `).get()).toBeUndefined();
-    expect(database.currentVersion()).toBe(25);
+    expect(database.currentVersion()).toBe(26);
   });
 });
 

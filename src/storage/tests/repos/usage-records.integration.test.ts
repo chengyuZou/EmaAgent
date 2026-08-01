@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { asSessionId, asTurnId } from '@ema-agent/ids';
 import type { UsageRecord } from '@ema-agent/usage';
-import { UsageRecordsRepo } from '../../repos/usage-records.js';
+import { UsageRecordsRepo } from '../../repos/data/usage-records.js';
 import { createTestDatabase, type TestDatabase } from '../helpers/create-test-database.js';
 
 describe('UsageRecordsRepo', () => {
@@ -37,7 +37,7 @@ describe('UsageRecordsRepo', () => {
   });
 
   it('同一 Turn 的多次调用不会互相覆盖', () => {
-    expect(database.db.pragma('user_version', { simple: true })).toBe(25);
+    expect(database.db.pragma('user_version', { simple: true })).toBe(26);
     repo.record(record('call-b', 10));
     repo.record(record('call-a', 10));
     expect(repo.forTurn(asTurnId('turn-a')).map((row) => row.id)).toEqual(['call-a', 'call-b']);

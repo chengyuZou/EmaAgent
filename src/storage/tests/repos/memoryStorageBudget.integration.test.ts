@@ -1,10 +1,10 @@
 // 测试 Memory 逻辑字节核算、保护类候选过滤和显式向量驱逐标记。
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { Database } from '../../database.js';
-import { MemoryItemsRepo } from '../../repos/memory-items.js';
-import { MemoryNodesRepo } from '../../repos/memory-nodes.js';
-import { MemoryStorageRepo } from '../../repos/memoryStorage.js';
+import { Database } from '../../database/database.js';
+import { MemoryItemsRepo } from '../../repos/profile/memory-items.js';
+import { MemoryNodesRepo } from '../../repos/profile/memory-nodes.js';
+import { MemoryStorageRepo } from '../../repos/profile/memoryStorage.js';
 
 const EMBEDDING_SPACE = 'memory-space-v1';
 const DAY_MS = 86_400_000;

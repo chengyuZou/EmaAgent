@@ -2,7 +2,7 @@
 
 Token 估算工具包。纯函数、零运行时依赖,给 memory(压缩触发/上下文预算)和 desktop-ui(流式 "~N tok" 占位显示)提供不调 API、不等 provider usage 的本地快速估算。
 
-估算 ≠ 真实。计费/精确显示用 `afterLlmComplete` payload 的 `usage`,不用本包。本包用于容忍 ±15% 误差的决策。
+估算 ≠ 真实。计费和精确显示使用 LLM 执行面返回的调用级 `LlmTokenUsage`，不用本包。本包用于容忍 ±15% 误差的预算决策。
 
 ## 估算公式
 

@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Database, type SqliteDb } from '../../database.js';
+import { Database, type SqliteDb } from '../../database/database.js';
 
 export interface TestDatabase {
   readonly db: SqliteDb;

@@ -2,8 +2,8 @@
 // 与 KbIngestTasksRepo 同型, 防"审批旧状态、覆盖新状态"。
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { Database } from '../../database.js';
-import { KbReembedTasksRepo } from '../../repos/kb-reembed-tasks.js';
+import { Database } from '../../database/database.js';
+import { KbReembedTasksRepo } from '../../repos/kb/kb-reembed-tasks.js';
 
 describe('KbReembedTasksRepo', () => {
   const databases: Database[] = [];

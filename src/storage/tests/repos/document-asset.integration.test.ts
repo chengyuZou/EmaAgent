@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { Database } from '../../database.js';
+import { Database } from '../../database/database.js';
 import {
   DocumentAssetCursorError,
   DocumentAssetRepo,
-} from '../../repos/document-asset.js';
+} from '../../repos/kb/document-asset.js';
 
 describe('B-060 DocumentAsset 复合游标', () => {
   let database: Database;

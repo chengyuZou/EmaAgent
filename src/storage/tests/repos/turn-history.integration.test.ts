@@ -1,10 +1,10 @@
 // 测试 Turn 稳定分页、锚点窗口和对应消息读取不会丢行或重复。
 import { describe, expect, it } from 'vitest';
 import { asMessageId, asSessionId, asTurnId } from '@ema-agent/ids';
-import { Database } from '../../database.js';
-import { MessagesRepo } from '../../repos/messages.js';
-import { SessionsRepo } from '../../repos/sessions.js';
-import { TurnsRepo } from '../../repos/turns.js';
+import { Database } from '../../database/database.js';
+import { MessagesRepo } from '../../repos/data/messages.js';
+import { SessionsRepo } from '../../repos/data/sessions.js';
+import { TurnsRepo } from '../../repos/data/turns.js';
 
 function createFixture() {
   const database = new Database({ memory: true, kind: 'data' });

@@ -118,7 +118,7 @@ Claude 将会话级 `QueryEngine` 与循环级 `query()` 分开。前者处理�
 - 每次 LLM 调用前执行 Context Compaction；
 - `tool_use_complete` 到达时立即 `executor.addTool()`，不是等流结束后才执行；
 - 并发安全 Tool 可并行，询问用户的 Tool 会让循环进入内存态 `waiting_user`；
-- Context Window 过长只做一次 reactive compact，且不会重复执行有副作用的 beforeLlm Hook；
+- Context Window 过长只做一次 reactive compact，并以同一 `llmCallId` 重新构建请求；循环中不存在可改写消息或中止调用的通用 Hook；
 - `max_tokens` 自动续写一次；
 - Turn Budget、Permission denial loop breaker 和最大迭代断路器已存在。
 
@@ -561,9 +561,9 @@ Ema Memory 是更通用的本地长期记忆系统，不是 Claude 的 Markdown 
 - L1 是 `data.db` 中按 Session 保存的 Note；
 - L2 是 `profile.db` 中全局 Episodic Item；
 - Recall Planner 并行召回三层，向量不可用时可降级，并可选 Rerank；
-- `MemoryPlanner.applyRecallToMessages()` 当前直接构造模型 Message；
-- `beforeLlm` Hook 只在本 Turn 第一次逻辑 LLM Call 召回，并 replace 整个 messages；
-- Turn 成功后将 user/assistant 正文写入 pending fragments，达到 Token/Turn 阈值后由 session-scoped extraction worker 提取；
+- `MemoryPlanner.prepareRecallContribution()` 返回结构化 Context Contribution，不直接替换模型消息；
+- `TurnContextBuilder` 在根 Turn 执行前准备一次 Recall，后续 LLM Call 由 `ContextAssembler` 重建窗口；
+- Turn 提交成功后，`TurnCompletedObserver` 从已持久化消息提取 user/assistant 正文并写入 pending fragments，达到 Token/Turn 阈值后由 session-scoped extraction worker 提取；
 - 全局 L0/L2 maintenance 与 session extraction 已在设计上分开，自动维护只衰减，删除仍由用户决定；
 - Context Compaction 已迁到 `src/context`，但 L1 Note 自身过长时的 Note 瘦身仍属于 Memory 数据维护。
 
@@ -987,9 +987,8 @@ Claude Code 没有把所有上下文混成一段字符串。它的提示体系�
 
 ### Ema 当前事实
 
-- `src/prompts/build.ts` 已成为旧 Engine 的兼容入口，内部开始使用 `PromptAssembler`；Character 模块产出 Identity 与 Presentation，Prompt 不再拥有 ACT 文案；
-- `src/prompts/mode-blocks.ts` 仍声明旧 `chat/narrative/agent` 三模式，甚至规定 Chat/Narrative 不调用工具，与目标 Chat/Work + NarrativePolicy 冲突；
-- `src/prompts/hooks.ts` 在 `beforeLlm` 中直接替换首条 system message，依赖 Hook priority 与 Memory/Narrative 的注册顺序；
+- `src/prompts` 已按显式 Slot 组装稳定产品规则、Chat/Work Profile、Character 与扩展目录；Character 模块产出角色内容，Prompt 不再拥有 ACT 文案；
+- 旧 `chat/narrative/agent` 三模式与 `src/prompts/hooks.ts` 已删除，Narrative 以独立 Recall Contribution 进入 Context；
 - `src/context/promptPrefix.ts` 已经能规范化 Tool Manifest、计算 cache breakpoint 前缀 Hash，这是可保留的正确基础；
 - Compaction 仍按旧 TurnMode 生成三套摘要和恢复块，说明 Profile 迁移不能只改前端枚举；
 - Tool description 分散在各 Tool，方向正确，但尚未形成“注册即决定模型可见 manifest”的单一快照；

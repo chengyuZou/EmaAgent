@@ -27,9 +27,10 @@ export async function rerankLayer0(
   query:  string,
   result: GraphRecallResult,
   signal?: AbortSignal,
+  usage?: { sessionId: string; turnId: string },
 ): Promise<GraphRecallResult> {
   const documents = result.nodes.map(n => `${n.label}: ${n.description}`);
-  const scores    = await embed.rerank(query, documents, documents.length, signal);
+  const scores    = await embed.rerank(query, documents, documents.length, signal, usage);
   if (!scores) return result;
   const reranked = [...result.nodes]
     .map((node, i) => ({ node, score: scores.get(i) ?? -Infinity }))
@@ -43,10 +44,11 @@ export async function rerankEpisodic(
   query:  string,
   result: EpisodicRecallResult,
   signal?: AbortSignal,
+  usage?: { sessionId: string; turnId: string },
 ): Promise<EpisodicRecallResult> {
   const allItems  = [...result.currentMode, ...result.otherModes];
   const documents = allItems.map(i => `${i.title}: ${i.body}`);
-  const scores    = await embed.rerank(query, documents, documents.length, signal);
+  const scores    = await embed.rerank(query, documents, documents.length, signal, usage);
   if (!scores) return result;
 
   const rerank = <T>(items: T[], offset: number): T[] =>
@@ -158,7 +160,9 @@ export async function planRecall(
     try {
       layer0 = recallGraph(deps, { queryVec, queryEmbed, index: compatibleNodesIndex, alreadySurfaced: new Set(prior.nodes), settings });
       if (settings.recall.useReranker && layer0.nodes.length > 1) {
-        layer0 = await rerankLayer0(embed, ctx.userInput, layer0, ctx.signal);
+        layer0 = await rerankLayer0(embed, ctx.userInput, layer0, ctx.signal, {
+          sessionId: ctx.sessionId, turnId: ctx.turnId,
+        });
       }
       emitRecallLayer(ctx, 'layer0', { status: 'succeeded', itemCount: layer0.nodes.length, tokenEstimate: estimateGraphRecallTokens(layer0), durationMs: Date.now() - t0 });
     } catch (err) {
@@ -191,7 +195,9 @@ export async function planRecall(
     try {
       layer2 = await recallEpisodic(deps, { query: ctx.userInput, queryVec, queryEmbed, index: compatibleItemsIndex, executionProfile: ctx.executionProfile, alreadySurfaced: new Set(prior.items), settings });
       if (settings.recall.useReranker && (layer2.currentMode.length + layer2.otherModes.length) > 1) {
-        layer2 = await rerankEpisodic(embed, ctx.userInput, layer2, ctx.signal);
+        layer2 = await rerankEpisodic(embed, ctx.userInput, layer2, ctx.signal, {
+          sessionId: ctx.sessionId, turnId: ctx.turnId,
+        });
       }
       emitRecallLayer(ctx, 'layer2', { status: 'succeeded', itemCount: countEpisodicItems(layer2), tokenEstimate: estimateEpisodicRecallTokens(layer2), durationMs: Date.now() - t0 });
     } catch (err) {

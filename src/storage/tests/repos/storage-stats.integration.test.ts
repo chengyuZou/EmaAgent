@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   SessionStatsRepo,
   type SessionRestorePayload,
-} from '../../repos/storage-stats.js';
+} from '../../repos/data/storage-stats.js';
 import { createTestDatabase, type TestDatabase } from '../helpers/create-test-database.js';
 
 describe('SessionStatsRepo restore integration', () => {

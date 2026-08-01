@@ -1,6 +1,6 @@
 // 测试 Memory 任务的重试、租约 fencing、Session 分区认领、恢复和有界清理。
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { MemoryTasksRepo } from '../../repos/memory-tasks.js';
+import { MemoryTasksRepo } from '../../repos/data/memory-tasks.js';
 import { createTestDatabase, type TestDatabase } from '../helpers/create-test-database.js';
 
 describe('N-005 MemoryTask 租约与原子状态转换', () => {

@@ -20,8 +20,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "migrate": "tsx migrate-cli.ts",
-    "migrate:status": "tsx migrate-cli.ts --status",
+    "migrate": "tsx database/migrateCli.ts",
+    "migrate:status": "tsx database/migrateCli.ts --status",
     "clean": "rimraf dist"
   },
   "dependencies": {

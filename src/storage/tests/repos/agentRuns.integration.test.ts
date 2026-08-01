@@ -6,7 +6,7 @@ import {
   asSessionId,
   asTurnId,
 } from '@ema-agent/ids';
-import { AgentRunsRepo } from '../../repos/agent-runs.js';
+import { AgentRunsRepo } from '../../repos/data/agent-runs.js';
 import { createTestDatabase, type TestDatabase } from '../helpers/create-test-database.js';
 
 describe('AgentRun 持久化状态机', () => {
