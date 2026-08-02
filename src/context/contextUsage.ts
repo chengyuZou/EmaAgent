@@ -52,8 +52,7 @@ export function computeContextUsage(input: ContextUsageInput): ContextUsageEstim
   let skills = 0;
   for (const slot of input.prompt.slots) {
     const tokens = estimateTextTokens(slot.content);
-    if (slot.id === 'tools.prompt') toolInstructions += tokens;
-    else if (slot.id === 'workspace.instructions') workspaceInstructions += tokens;
+    if (slot.id === 'workspace.instructions') workspaceInstructions += tokens;
     else if (
       slot.id === 'extension.skillCatalog'
       || slot.id.startsWith('skills.required.')
@@ -62,15 +61,24 @@ export function computeContextUsage(input: ContextUsageInput): ContextUsageEstim
     else systemPrompt += tokens;
   }
 
-  const toolSchemas = input.toolManifest
-    ? estimateLlmInputTokens([], {
-        tools: input.toolManifest.entries.map((entry) => ({
-          name: entry.name,
-          description: entry.description,
-          parameters: entry.inputJsonSchema,
-        })),
-      }).totalTokens
-    : 0;
+  let toolSchemas = 0;
+  if (input.toolManifest) {
+    const definitions = input.toolManifest.entries.map((entry) => ({
+      name: entry.name,
+      description: entry.description,
+      parameters: entry.inputJsonSchema,
+    }));
+    toolInstructions = estimateLlmInputTokens([], {
+      tools: definitions.map((definition) => ({
+        ...definition,
+        parameters: {},
+      })),
+    }).totalTokens;
+    const completeToolDefinitions = estimateLlmInputTokens([], {
+      tools: definitions,
+    }).totalTokens;
+    toolSchemas = Math.max(0, completeToolDefinitions - toolInstructions);
+  }
 
   let memory = 0;
   let narrative = 0;

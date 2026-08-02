@@ -1,6 +1,5 @@
 // 执行 Embedding 请求，并维护配置、Adapter、空间身份与 Usage 的原子运行时入口。
-import { randomUUID } from 'node:crypto';
-import type { UsageRecord } from '@ema-agent/usage';
+import { createUsageRecord, reportUsage } from '@ema-agent/usage';
 import { OpenAiEmbedAdapter } from './adapters/openAi.js';
 import { GeminiEmbedAdapter } from './adapters/gemini.js';
 import { createEmbeddingSpace, type EmbeddingSpace } from './embeddingSpace.js';
@@ -26,8 +25,8 @@ export class EmbedRuntime {
   private readonly createAdapter: EmbedAdapterFactory;
 
   constructor(
-    configs: readonly EmbedProviderConfig[] = [],
-    private readonly options: EmbedRuntimeOptions = {},
+    configs: readonly EmbedProviderConfig[],
+    private readonly options: EmbedRuntimeOptions,
     createAdapter: EmbedAdapterFactory = createProtocolAdapter,
   ) {
     this.createAdapter = createAdapter;
@@ -138,34 +137,19 @@ export class EmbedRuntime {
   }
 
   private recordUsage(request: EmbedRequest, startedAt: number, errorCode: string | null): void {
-    const record: UsageRecord = {
-      id: request.usageContext?.callId ?? randomUUID(),
-      sessionId: request.usageContext?.sessionId ?? null,
-      turnId: request.usageContext?.turnId ?? null,
+    const record = createUsageRecord({
+      capability: 'embed',
       providerId: request.providerId,
       modelId: request.model,
-      capability: 'embed',
       status: errorCode === null ? 'completed' : 'failed',
-      inputTokens: null,
-      outputTokens: null,
-      cacheReadInputTokens: null,
-      cacheWriteInputTokens: null,
+      startedAt,
+      durationMs: Date.now() - startedAt,
+      usageContext: request.usageContext,
       quantity: request.texts.length,
       unit: 'text',
-      costUsd: null,
-      durationMs: Math.max(0, Date.now() - startedAt),
       errorCode,
-      createdAt: startedAt,
-    };
-    try {
-      this.options.usageRecorder?.record(record);
-    } catch (error) {
-      try {
-        this.options.onUsageRecordError?.(error, record);
-      } catch {
-        // 观测链路不得破坏已经完成的模型调用。
-      }
-    }
+    });
+    reportUsage(this.options.usageRecorder, record, this.options.onUsageRecordError);
   }
 }
 

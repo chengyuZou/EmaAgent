@@ -1,10 +1,12 @@
 // 测试 Embedding 空间身份、协议映射、向量归一化和 Usage 记录。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { UsageRecord } from '@ema-agent/usage';
+import type { UsageRecord, UsageRecorder } from '@ema-agent/usage';
 import { GeminiEmbedAdapter } from '../adapters/gemini.js';
 import { createEmbeddingSpace } from '../embeddingSpace.js';
 import { EmbedRuntime } from '../runtime.js';
 import type { EmbedProviderConfig } from '../types.js';
+
+const noopRecorder: UsageRecorder = { record: () => undefined };
 
 const fetchMock = vi.fn<typeof fetch>();
 
@@ -88,7 +90,7 @@ describe('EmbedRuntime 有限重试', () => {
     fetchMock
       .mockResolvedValueOnce(new Response('unavailable', { status: 503 }))
       .mockImplementationOnce(() => Promise.resolve(okPayload()));
-    const runtime = new EmbedRuntime([provider]);
+    const runtime = new EmbedRuntime([provider], { usageRecorder: noopRecorder });
 
     const result = await runtime.embed({ providerId: 'provider-a', model: 'm', texts: ['x'] });
 
@@ -100,7 +102,7 @@ describe('EmbedRuntime 有限重试', () => {
     fetchMock
       .mockRejectedValueOnce(new TypeError('fetch failed'))
       .mockImplementationOnce(() => Promise.resolve(okPayload()));
-    const runtime = new EmbedRuntime([provider]);
+    const runtime = new EmbedRuntime([provider], { usageRecorder: noopRecorder });
 
     await runtime.embed({ providerId: 'provider-a', model: 'm', texts: ['x'] });
 
@@ -109,7 +111,7 @@ describe('EmbedRuntime 有限重试', () => {
 
   it('401 属配置故障，不重试', async () => {
     fetchMock.mockResolvedValueOnce(new Response('denied', { status: 401 }));
-    const runtime = new EmbedRuntime([provider]);
+    const runtime = new EmbedRuntime([provider], { usageRecorder: noopRecorder });
 
     await expect(
       runtime.embed({ providerId: 'provider-a', model: 'm', texts: ['x'] }),

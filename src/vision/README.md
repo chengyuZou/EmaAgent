@@ -26,6 +26,7 @@ LocalHost wiring
   -> vision = new VisionRuntime({
        configs: visionProviderConfigs,
        limits,
+       usageRecorder,
      })
 
 TurnInputPreparer / knowledge ingest / probe route
@@ -54,6 +55,7 @@ const vision = new VisionRuntime({
     apiKey,
     baseUrl: 'https://api.openai.com/v1',
   }],
+  usageRecorder,
 });
 ```
 

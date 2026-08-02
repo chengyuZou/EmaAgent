@@ -34,7 +34,7 @@ const PROVIDERS: ProviderConfig[] = [
   },
 ];
 
-const router = new LanguageModelRuntime(PROVIDERS);
+const router = new LanguageModelRuntime(PROVIDERS, undefined, { usageRecorder: { record: () => undefined } });
 
 interface ToolCompleteMetric {
   atMs: number;

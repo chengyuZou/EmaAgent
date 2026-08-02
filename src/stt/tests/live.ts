@@ -149,7 +149,7 @@ async function testOpenAiSttAdapter(
   providerId: string,
 ) {
   const cfg: SttProviderConfig = { id: providerId, protocol: 'openai-stt', apiKey, baseUrl };
-  const client = new SttRuntime({ configs: [cfg] });
+  const client = new SttRuntime({ configs: [cfg], usageRecorder: { record: () => undefined } });
   return client.transcribe({ providerId, model, audio: bytes, mime, language: 'zh' });
 }
 
@@ -238,7 +238,7 @@ async function main() {
   const cfg: SttProviderConfig = {
     id: 'dashscope', protocol: 'openai-stt', apiKey: DS_KEY, baseUrl: DS_BASE,
   };
-  const client = new SttRuntime({ configs: [cfg] });
+  const client = new SttRuntime({ configs: [cfg], usageRecorder: { record: () => undefined } });
   const health = client.healthCheck();
   pass('ok', String(health.ok));
   for (const p of health.providers) {

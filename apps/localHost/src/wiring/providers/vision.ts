@@ -97,7 +97,7 @@ function loadVisionConfigs(
 export function buildVisionRuntime(
   profileDb: Database,
   credentials: CredentialFacade,
-  usageRecorder?: UsageRecorder,
+  usageRecorder: UsageRecorder,
   onUsageRecordError?: (error: unknown, record: UsageRecord) => void,
   limitsForOperation?: () => Readonly<VisionLimits>,
 ): VisionRuntime {

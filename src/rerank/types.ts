@@ -37,7 +37,7 @@ export interface RerankProbeResult {
 }
 
 export interface RerankRuntimeOptions {
-  usageRecorder?: UsageRecorder;
+  usageRecorder: UsageRecorder;
   onUsageRecordError?: (error: unknown, record: UsageRecord) => void;
 }
 

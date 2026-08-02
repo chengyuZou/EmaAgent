@@ -79,7 +79,6 @@ describe('buildPromptSnapshot', () => {
       expect.objectContaining({
         stabilityScope: 'turn',
         delivery: 'context',
-        trust: 'extension',
       }),
     );
   });

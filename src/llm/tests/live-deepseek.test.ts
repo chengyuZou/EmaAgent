@@ -40,7 +40,7 @@ beforeAll(() => {
     apiKey:   API_KEY ?? '',
     baseUrl:  'https://api.deepseek.com',
   };
-  router = new LanguageModelRuntime([cfg]);
+  router = new LanguageModelRuntime([cfg], undefined, { usageRecorder: { record: () => undefined } });
 });
 
 // ── 辅助函数 ──────────────────────────────────────────────────────────────────
@@ -261,7 +261,7 @@ describe('DeepSeek — probe()', () => {
       apiKey:   'sk-invalid-key-xxx',
       baseUrl:  'https://api.deepseek.com',
     };
-    const badRouter = new LanguageModelRuntime([badCfg]);
+    const badRouter = new LanguageModelRuntime([badCfg], undefined, { usageRecorder: { record: () => undefined } });
 
     const result = await badRouter.probe('ds-bad', MODEL_FLASH);
 

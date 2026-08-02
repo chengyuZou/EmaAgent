@@ -74,4 +74,12 @@ export class UsageRecordsRepo {
       ORDER BY created_at ASC, id ASC
     `).all(sessionId) as UsageRecordRow[];
   }
+
+  /** 删除早于 cutoffMs 的记录，返回删除行数；由启动一次性保留清理调用。 */
+  deleteOlderThan(cutoffMs: number): number {
+    const result = this.db.prepare(
+      'DELETE FROM usage_records WHERE created_at < ?',
+    ).run(cutoffMs);
+    return result.changes;
+  }
 }

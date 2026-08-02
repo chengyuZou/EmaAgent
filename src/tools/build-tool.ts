@@ -69,7 +69,6 @@ export function buildTool<TInput, TOutput, THostContext, TToolContext>(
     name: def.name,
     origin,
     description: def.description,
-    prompt: def.prompt as BuiltTool<TInput, TOutput, TToolContext>['prompt'],
     getToolUseSummary: def.getToolUseSummary,
     inputSchema: def.inputSchema,
     inputJsonSchemaOverride: def.inputJsonSchemaOverride

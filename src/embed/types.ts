@@ -40,7 +40,7 @@ export interface EmbedProbeResult {
 }
 
 export interface EmbedRuntimeOptions {
-  usageRecorder?: UsageRecorder;
+  usageRecorder: UsageRecorder;
   onUsageRecordError?: (error: unknown, record: UsageRecord) => void;
 }
 

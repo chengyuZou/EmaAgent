@@ -169,7 +169,7 @@ beforeAll(() => {
     protocol:     'openai-llm',
     apiKey:       DS_KEY,
     baseUrl:      'https://api.deepseek.com',
-  }]);
+  }], undefined, { usageRecorder: { record: () => undefined } });
 
   const emotion = new EmotionEngine({ vocabulary: ['neutral', 'happy', 'sad', 'surprised', 'angry'] });
 

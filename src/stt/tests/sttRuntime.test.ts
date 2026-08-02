@@ -19,6 +19,7 @@ function createRuntime(
     configs: [CONFIG],
     adapterOverrides: new Map([['provider-1', adapter]]),
     limits,
+    usageRecorder: { record: () => undefined },
   });
 }
 

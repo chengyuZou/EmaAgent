@@ -4,7 +4,6 @@ import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/turn';
 export type PromptSlotId =
   | 'product.rules'
   | 'product.toolGuidance'
-  | 'tools.prompt'
   | 'extension.skillCatalog'
   | 'workspace.instructions'
   | 'character.identity'

@@ -34,7 +34,6 @@ describe('PromptAssembler', () => {
     expect(first.slots[0]).toEqual(expect.objectContaining({
       order: 60,
       stabilityScope: 'activeCharacter',
-      trust: 'user-configured',
     }));
     expect(first.revision).toBe(second.revision);
     expect(Object.isFrozen(first)).toBe(true);
@@ -51,24 +50,19 @@ describe('PromptAssembler', () => {
     );
   });
 
-  it('tools.prompt 与 workspace.instructions 继承声明的槽位规格', () => {
+  it('workspace.instructions 继承声明的槽位规格', () => {
     const assembler = new PromptAssembler();
     const snapshot = assembler.build([
       characterSlot,
-      { id: 'tools.prompt', content: 'Bash usage.', version: 'tools:1' },
       { id: 'workspace.instructions', content: 'Project rules.', version: 'ws:1' },
     ]);
 
     expect(snapshot.slots.map((slot) => slot.id)).toEqual([
-      'tools.prompt',
       'workspace.instructions',
       'character.identity',
     ]);
     expect(snapshot.slots[0]).toEqual(expect.objectContaining({
-      order: 30, stabilityScope: 'turn', delivery: 'system', trust: 'product',
-    }));
-    expect(snapshot.slots[1]).toEqual(expect.objectContaining({
-      order: 50, stabilityScope: 'session', delivery: 'context', trust: 'user-configured',
+      order: 50, stabilityScope: 'session', delivery: 'context',
     }));
   });
 
@@ -81,11 +75,11 @@ describe('PromptAssembler', () => {
 
     expect(snapshot.slots[0]).toEqual(expect.objectContaining({
       id: 'skills.required.ema-guide', order: 35, stabilityScope: 'product',
-      delivery: 'system', trust: 'product',
+      delivery: 'system',
     }));
     expect(snapshot.slots[1]).toEqual(expect.objectContaining({
       id: 'skills.active.review', order: 55, stabilityScope: 'turn',
-      delivery: 'context', trust: 'extension',
+      delivery: 'context',
     }));
 
     expect(() => assembler.build([

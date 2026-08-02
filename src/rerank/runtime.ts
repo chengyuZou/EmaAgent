@@ -1,6 +1,5 @@
 // 执行 Rerank 请求，并维护配置、Adapter 与 Usage 的原子运行时入口。
-import { randomUUID } from 'node:crypto';
-import type { UsageRecord } from '@ema-agent/usage';
+import { createUsageRecord, reportUsage } from '@ema-agent/usage';
 import { CohereRerankAdapter } from './adapters/cohere.js';
 import { withOneRetry } from './retry.js';
 import type {
@@ -25,8 +24,8 @@ export class RerankRuntime {
   private readonly createAdapter: RerankAdapterFactory;
 
   constructor(
-    configs: readonly RerankProviderConfig[] = [],
-    private readonly options: RerankRuntimeOptions = {},
+    configs: readonly RerankProviderConfig[],
+    private readonly options: RerankRuntimeOptions,
     createAdapter: RerankAdapterFactory = createProtocolAdapter,
   ) {
     this.createAdapter = createAdapter;
@@ -125,34 +124,19 @@ export class RerankRuntime {
   }
 
   private recordUsage(request: RerankRequest, startedAt: number, errorCode: string | null): void {
-    const record: UsageRecord = {
-      id: request.usageContext?.callId ?? randomUUID(),
-      sessionId: request.usageContext?.sessionId ?? null,
-      turnId: request.usageContext?.turnId ?? null,
+    const record = createUsageRecord({
+      capability: 'rerank',
       providerId: request.providerId,
       modelId: request.model,
-      capability: 'rerank',
       status: errorCode === null ? 'completed' : 'failed',
-      inputTokens: null,
-      outputTokens: null,
-      cacheReadInputTokens: null,
-      cacheWriteInputTokens: null,
+      startedAt,
+      durationMs: Date.now() - startedAt,
+      usageContext: request.usageContext,
       quantity: request.documents.length,
       unit: 'document',
-      costUsd: null,
-      durationMs: Math.max(0, Date.now() - startedAt),
       errorCode,
-      createdAt: startedAt,
-    };
-    try {
-      this.options.usageRecorder?.record(record);
-    } catch (error) {
-      try {
-        this.options.onUsageRecordError?.(error, record);
-      } catch {
-        // 观测链路不得破坏已经完成的模型调用。
-      }
-    }
+    });
+    reportUsage(this.options.usageRecorder, record, this.options.onUsageRecordError);
   }
 }
 

@@ -57,7 +57,7 @@ function loadSttProviderConfigs(
 export function buildSttRuntime(args: {
   profileDb: Database;
   credentials: CredentialFacade;
-  usageRecorder?: UsageRecorder;
+  usageRecorder: UsageRecorder;
   onUsageRecordError?: (error: unknown, record: UsageRecord) => void;
 }): SttRuntime {
   return new SttRuntime({

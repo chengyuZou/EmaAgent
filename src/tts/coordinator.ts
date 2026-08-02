@@ -4,7 +4,7 @@ import type { TurnId, SessionId } from '@ema-agent/ids';
 import type { TtsEvent } from './events.js';
 
 import { TtsRuntime } from './ttsRuntime.js';
-import type { TtsVoiceRef } from './types.js';
+import type { TtsAudioFormat, TtsVoiceRef } from './types.js';
 import { SentenceSplitter } from './streaming/sentenceSplitter.js';
 import { TextFilterStream } from './streaming/textFilter.js';
 import { ttsEventToTurn, makeSentenceId } from './bridge.js';
@@ -47,7 +47,7 @@ export interface TtsCoordinatorArgs {
    * audio_chunk MIME 推断,所以 Qwen-TTS(PCM->WAV 包封后总是交付 WAV)
    * 不管这个提示都写 .wav 分段。
    */
-  format?:       'mp3' | 'pcm' | 'wav' | 'opus';
+  format?:       TtsAudioFormat;
   /** Turn 级中止信号。用于取消进行中的 provider 请求。 */
   signal?:       AbortSignal;
   /** 单个 Turn 允许归档和推送的最大音频字节数。 */
@@ -71,7 +71,7 @@ export class TtsCoordinator {
   private readonly ttsClient:   TtsRuntime;
   private readonly emit:        (event: TtsEvent) => void;
   private readonly archive:     AudioArchive | undefined;
-  private readonly format:      'mp3' | 'pcm' | 'wav' | 'opus';
+  private readonly format:      TtsAudioFormat;
   private readonly abortController = new AbortController();
   private readonly disposeExternalAbort: (() => void) | undefined;
   private readonly maxBytesPerTurn: number;

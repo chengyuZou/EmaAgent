@@ -27,7 +27,6 @@ function baseInput(): ContextUsageInput {
     prompt: promptSnapshot([
       { id: 'product.rules', content: 'x'.repeat(400) },
       { id: 'character.identity', content: 'x'.repeat(200) },
-      { id: 'tools.prompt', content: 'x'.repeat(120) },
       { id: 'workspace.instructions', content: 'x'.repeat(80) },
       { id: 'extension.skillCatalog', content: 'x'.repeat(40) },
     ]),
@@ -62,7 +61,7 @@ function baseInput(): ContextUsageInput {
 }
 
 describe('computeContextUsage', () => {
-  it('槽位按 id 归口到四个 Prompt 类', () => {
+  it('Prompt 槽与 Tool Manifest 分别归口', () => {
     const { categories } = computeContextUsage(baseInput());
     expect(categories.systemPrompt).toBeGreaterThan(0);
     expect(categories.toolInstructions).toBeGreaterThan(0);
@@ -101,6 +100,7 @@ describe('computeContextUsage', () => {
       contributions: undefined,
     });
     expect(estimate.categories.toolSchemas).toBe(0);
+    expect(estimate.categories.toolInstructions).toBe(0);
     expect(estimate.categories.memory).toBe(0);
     expect(estimate.categories.narrative).toBe(0);
     expect(estimate.totalTokens).toBeGreaterThan(0);

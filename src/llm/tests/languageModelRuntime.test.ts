@@ -6,6 +6,9 @@ import { ProviderRuntimeRegistry } from '../providerRuntimeRegistry.js';
 import { LlmModelCapabilityError } from '../errors.js';
 import type { LlmAdapter } from '../adapters/base.js';
 import type { LlmRequest, LlmStreamChunk, ProviderConfig } from '../types.js';
+import type { UsageRecorder } from '@ema-agent/usage';
+
+const noopRecorder: UsageRecorder = { record: () => undefined };
 
 // ── Mock adapter ──────────────────────────────────────────────────────────────
 
@@ -59,7 +62,7 @@ const THINKING_CHUNKS: LlmStreamChunk[] = [
 describe('LanguageModelRuntime — routing', () => {
   it('streams all chunks through the correct adapter', async () => {
     const mock   = new MockAdapter(TEXT_CHUNKS);
-    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', mock]]));
+    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', mock]]), { usageRecorder: noopRecorder });
 
     const chunks = await collect(
       router.stream({ providerId: 'ds-001', model: 'deepseek-v4-flash', messages: [{ role: 'user', content: 'Hi' }] }),
@@ -70,7 +73,7 @@ describe('LanguageModelRuntime — routing', () => {
 
   it('passes modelName directly to the adapter', async () => {
     const mock   = new MockAdapter([{ type: 'done', stopReason: 'end_turn' }]);
-    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', mock]]));
+    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', mock]]), { usageRecorder: noopRecorder });
 
     await collect(router.stream({ providerId: 'ds-001', model: 'deepseek-v4-pro', messages: [] }));
 
@@ -79,7 +82,7 @@ describe('LanguageModelRuntime — routing', () => {
 
   it('passes AbortSignal through to the adapter', async () => {
     const mock   = new MockAdapter([{ type: 'done', stopReason: 'end_turn' }]);
-    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', mock]]));
+    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', mock]]), { usageRecorder: noopRecorder });
     const signal = new AbortController().signal;
 
     await collect(router.stream({ providerId: 'ds-001', model: 'deepseek-v4-flash', messages: [], signal }));
@@ -89,7 +92,7 @@ describe('LanguageModelRuntime — routing', () => {
 
   it('Adapter 边界保留 Context 已准备好的 Tool Manifest 顺序', async () => {
     const mock = new MockAdapter([{ type: 'done', stopReason: 'end_turn' }]);
-    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', mock]]));
+    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', mock]]), { usageRecorder: noopRecorder });
 
     await collect(router.stream({
       providerId: 'ds-001',
@@ -113,7 +116,7 @@ describe('LanguageModelRuntime — routing', () => {
   it('routes two providers with the same protocol independently by id', async () => {
     const mockDS = new MockAdapter([{ type: 'done', stopReason: 'end_turn' }]);
     const mockSF = new MockAdapter([{ type: 'done', stopReason: 'end_turn' }]);
-    const router = new LanguageModelRuntime([DS_CONFIG, SF_CONFIG], new Map([['ds-001', mockDS], ['sf-001', mockSF]]));
+    const router = new LanguageModelRuntime([DS_CONFIG, SF_CONFIG], new Map([['ds-001', mockDS], ['sf-001', mockSF]]), { usageRecorder: noopRecorder });
 
     await collect(router.stream({ providerId: 'ds-001', model: 'deepseek-v4-flash', messages: [] }));
     await collect(router.stream({ providerId: 'sf-001', model: 'Qwen2.5-72B',       messages: [] }));
@@ -124,7 +127,7 @@ describe('LanguageModelRuntime — routing', () => {
 
   it('streams tool_use_complete chunks unchanged', async () => {
     const mock   = new MockAdapter(TOOL_CHUNKS);
-    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', mock]]));
+    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', mock]]), { usageRecorder: noopRecorder });
 
     const chunks = await collect(router.stream({ providerId: 'ds-001', model: 'deepseek-v4-flash', messages: [] }));
 
@@ -139,7 +142,7 @@ describe('LanguageModelRuntime — routing', () => {
       ['gm-001', new MockAdapter([{ type: 'done', stopReason: 'end_turn' }])],
       ['or-001', new MockAdapter([{ type: 'done', stopReason: 'end_turn' }])],
     ]);
-    const router = new LanguageModelRuntime(configs, mocks);
+    const router = new LanguageModelRuntime(configs, mocks, { usageRecorder: noopRecorder });
 
     for (const cfg of configs) {
       const chunks = await collect(router.stream({ providerId: cfg.id, model: 'test', messages: [] }));
@@ -152,13 +155,13 @@ describe('LanguageModelRuntime — routing', () => {
 
 describe('LanguageModelRuntime — error cases', () => {
   it('throws provider/not_configured for unknown provider id', () => {
-    const router = new LanguageModelRuntime([]);
+    const router = new LanguageModelRuntime([], undefined, { usageRecorder: noopRecorder });
     expect(() => router.stream({ providerId: 'ghost', model: 'gpt-4o', messages: [] }))
       .toThrow('provider/not_configured');
   });
 
   it('throws synchronously so engines can fail-fast', () => {
-    const router = new LanguageModelRuntime([]);
+    const router = new LanguageModelRuntime([], undefined, { usageRecorder: noopRecorder });
     expect(() => router.stream({ providerId: 'ghost', model: 'gpt-4o', messages: [] }))
       .toThrow();
   });
@@ -188,7 +191,7 @@ describe('LanguageModelRuntime — hot-reload', () => {
 
   it('完整快照会删除旧 Provider，同时允许已取得的流自然结束', async () => {
     const mock = new MockAdapter(TEXT_CHUNKS);
-    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', mock]]));
+    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', mock]]), { usageRecorder: noopRecorder });
     const inFlight = router.stream({ providerId: 'ds-001', model: 'm', messages: [] });
 
     router.reload([]);
@@ -200,7 +203,7 @@ describe('LanguageModelRuntime — hot-reload', () => {
 
   it('upsertConfig makes a new provider available', async () => {
     const mock   = new MockAdapter([{ type: 'done', stopReason: 'end_turn' }]);
-    const router = new LanguageModelRuntime([], new Map([['ds-001', mock]]));
+    const router = new LanguageModelRuntime([], new Map([['ds-001', mock]]), { usageRecorder: noopRecorder });
 
     // Before upsert: unknown
     expect(() => router.stream({ providerId: 'ds-001', model: 'm', messages: [] }))
@@ -215,7 +218,7 @@ describe('LanguageModelRuntime — hot-reload', () => {
 
   it('removeConfig makes a provider unavailable', () => {
     const mock   = new MockAdapter();
-    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', mock]]));
+    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', mock]]), { usageRecorder: noopRecorder });
 
     router.removeConfig('ds-001');
 
@@ -246,6 +249,7 @@ describe('LanguageModelRuntime — model capability + compatibility recovery', (
       { ...DS_CONFIG, id: 'b', modelsDevId: 'providerB' },
     ], new Map([['a', adapterA], ['b', adapterB]]), {
       modelCapabilities: createModelCapabilityResolver(catalog),
+      usageRecorder: noopRecorder,
     });
     const messages: LlmRequest['messages'] = [{
       role: 'user',
@@ -269,7 +273,7 @@ describe('LanguageModelRuntime — model capability + compatibility recovery', (
         yield { type: 'done', stopReason: 'end_turn' };
       },
     };
-    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', adapter]]));
+    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', adapter]]), { usageRecorder: noopRecorder });
 
     const chunks = await collect(router.stream({
       providerId: 'ds-001', model: 'm', messages: [], temperature: 0.2,
@@ -298,7 +302,7 @@ describe('LanguageModelRuntime — model capability + compatibility recovery', (
         throw Object.assign(new Error('unsupported tool_choice parameter'), { status: 400 });
       },
     };
-    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', adapter]]));
+    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', adapter]]), { usageRecorder: noopRecorder });
 
     await expect(collect(router.stream({
       providerId: 'ds-001',
@@ -320,7 +324,7 @@ describe('LanguageModelRuntime — model capability + compatibility recovery', (
         throw Object.assign(new Error('unsupported parameter: temperature'), { status: 400 });
       },
     };
-    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', adapter]]));
+    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', adapter]]), { usageRecorder: noopRecorder });
 
     await expect(collect(router.stream({
       providerId: 'ds-001', model: 'm', messages: [], temperature: 0.2,
@@ -342,6 +346,7 @@ describe('LanguageModelRuntime — model capability + compatibility recovery', (
       { ...DS_CONFIG, modelsDevId: 'providerA' },
     ], new Map([['ds-001', adapter]]), {
       modelCapabilities: createModelCapabilityResolver(catalog),
+      usageRecorder: noopRecorder,
     });
 
     expect(() => router.stream({
@@ -364,7 +369,7 @@ describe('LanguageModelRuntime — model capability + compatibility recovery', (
 
 describe('LanguageModelRuntime — getProtocol', () => {
   it('returns the protocol for a registered provider', () => {
-    const router = new LanguageModelRuntime([DS_CONFIG, CL_CONFIG, GM_CONFIG, OR_CONFIG]);
+    const router = new LanguageModelRuntime([DS_CONFIG, CL_CONFIG, GM_CONFIG, OR_CONFIG], undefined, { usageRecorder: noopRecorder });
     expect(router.getProtocol('ds-001')).toBe('openai-llm');
     expect(router.getProtocol('cl-001')).toBe('anthropic-llm');
     expect(router.getProtocol('gm-001')).toBe('gemini-llm');
@@ -372,7 +377,7 @@ describe('LanguageModelRuntime — getProtocol', () => {
   });
 
   it('returns undefined for an unknown provider', () => {
-    const router = new LanguageModelRuntime([DS_CONFIG]);
+    const router = new LanguageModelRuntime([DS_CONFIG], undefined, { usageRecorder: noopRecorder });
     expect(router.getProtocol('ghost')).toBeUndefined();
   });
 });
@@ -384,6 +389,7 @@ describe('LanguageModelRuntime — probe', () => {
     const router = new LanguageModelRuntime(
       [DS_CONFIG, SF_CONFIG],
       new Map([['ds-001', completed], ['sf-001', incomplete]]),
+      { usageRecorder: noopRecorder },
     );
 
     await expect(router.probe('ds-001', 'model')).resolves.toMatchObject({ ok: true });
@@ -399,7 +405,7 @@ describe('LanguageModelRuntime — probe', () => {
         throw new Error('request failed with sk-secret-value');
       },
     };
-    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', adapter]]));
+    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', adapter]]), { usageRecorder: noopRecorder });
 
     const result = await router.probe('ds-001', 'model');
     expect(result).toMatchObject({ ok: false, error: 'provider/probe_failed' });
@@ -408,7 +414,7 @@ describe('LanguageModelRuntime — probe', () => {
 
   it('尊重调用方已经取消的探测请求', async () => {
     const adapter = new MockAdapter([{ type: 'done', stopReason: 'end_turn' }]);
-    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', adapter]]));
+    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', adapter]]), { usageRecorder: noopRecorder });
     const controller = new AbortController();
     controller.abort();
 
@@ -430,7 +436,7 @@ describe('LanguageModelRuntime — complete()', () => {
       { type: 'usage',      inputTokens: 5, outputTokens: 3 },
       { type: 'done',       stopReason: 'end_turn' },
     ];
-    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', new MockAdapter(chunks)]]));
+    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', new MockAdapter(chunks)]]), { usageRecorder: noopRecorder });
 
     const result = await router.complete({ providerId: 'ds-001', model: 'm', messages: [] });
 
@@ -452,7 +458,7 @@ describe('LanguageModelRuntime — complete()', () => {
       },
       { type: 'done', stopReason: 'end_turn' },
     ];
-    const router = new LanguageModelRuntime([CL_CONFIG], new Map([['cl-001', new MockAdapter(chunks)]]));
+    const router = new LanguageModelRuntime([CL_CONFIG], new Map([['cl-001', new MockAdapter(chunks)]]), { usageRecorder: noopRecorder });
 
     const result = await router.complete({ providerId: 'cl-001', model: 'm', messages: [] });
 
@@ -466,7 +472,7 @@ describe('LanguageModelRuntime — complete()', () => {
   });
 
   it('reconstructs thinking block with signature from thinking_complete', async () => {
-    const router = new LanguageModelRuntime([CL_CONFIG], new Map([['cl-001', new MockAdapter(THINKING_CHUNKS)]]));
+    const router = new LanguageModelRuntime([CL_CONFIG], new Map([['cl-001', new MockAdapter(THINKING_CHUNKS)]]), { usageRecorder: noopRecorder });
 
     const result = await router.complete({ providerId: 'cl-001', model: 'm', messages: [] });
 
@@ -483,7 +489,7 @@ describe('LanguageModelRuntime — complete()', () => {
       { type: 'thinking_complete', blockIndex: 0, signature: 's' },
       { type: 'done',             stopReason: 'tool_use' },
     ];
-    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', new MockAdapter(chunks)]]));
+    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', new MockAdapter(chunks)]]), { usageRecorder: noopRecorder });
 
     const result = await router.complete({ providerId: 'ds-001', model: 'm', messages: [] });
 
@@ -499,7 +505,7 @@ describe('LanguageModelRuntime — complete()', () => {
         throw Object.assign(new Error('network drop'), { status: 500 });
       },
     };
-    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', failAfterFirstChunk]]));
+    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', failAfterFirstChunk]]), { usageRecorder: noopRecorder });
 
     await expect(
       router.complete({ providerId: 'ds-001', model: 'm', messages: [] }),
@@ -519,7 +525,7 @@ describe('LanguageModelRuntime — complete()', () => {
         yield { type: 'done', stopReason: 'end_turn' };
       },
     };
-    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', failBeforeChunk]]));
+    const router = new LanguageModelRuntime([DS_CONFIG], new Map([['ds-001', failBeforeChunk]]), { usageRecorder: noopRecorder });
 
     const result = await router.complete({ providerId: 'ds-001', model: 'm', messages: [] });
 

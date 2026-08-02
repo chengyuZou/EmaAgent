@@ -49,8 +49,6 @@ export type {
   SubagentSpawnerPort,
 } from './subagentToolPort.js';
 export { assembleToolPool } from './assembleToolPool.js';
-export { assembleToolPrompt } from './toolPrompt.js';
-export type { ToolPromptAssembly } from './toolPrompt.js';
 export { contextOk, contextFail } from './contextValidation.js';
 
 // ── 单个工具导出 ──────────────────────────────────────────────────────────────

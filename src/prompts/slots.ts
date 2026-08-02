@@ -17,10 +17,6 @@ export const PROMPT_SLOT_SPECS: Readonly<Record<string, PromptSlotSpec>> = Objec
   'product.toolGuidance': Object.freeze({
     order: 20, stabilityScope: 'product', delivery: 'system'
   }),
-  // 本轮可见 Builtin Tool 的逐工具说明书,随冻结的 Tool Manifest 走,正文由 Turn 装配贡献。
-  'tools.prompt': Object.freeze({
-    order: 30, stabilityScope: 'turn', delivery: 'system'
-  }),
   'extension.skillCatalog': Object.freeze({
     order: 40, stabilityScope: 'turn', delivery: 'context'
   }),

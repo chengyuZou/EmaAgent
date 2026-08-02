@@ -8,6 +8,9 @@ import {
 import type { VisionAdapter, VisionAdapterCall } from '../adapters/base.js';
 import { GeminiVisionAdapter } from '../adapters/gemini.js';
 import { DEFAULT_VISION_LIMITS } from '../requestValidation.js';
+import type { UsageRecorder } from '@ema-agent/usage';
+
+const noopRecorder: UsageRecorder = { record: () => undefined };
 
 const CONFIG: VisionProviderConfig = {
   id: 'provider-1',
@@ -76,6 +79,7 @@ describe('VisionRuntime', () => {
     const vision = new VisionRuntime({
       configs: [CONFIG],
       adapterOverrides: new Map([['provider-1', adapter]]),
+      usageRecorder: noopRecorder,
     });
 
     const result = await vision.extract({
@@ -114,6 +118,7 @@ describe('VisionRuntime', () => {
     const vision = new VisionRuntime({
       configs: [CONFIG],
       adapterOverrides: new Map([['provider-1', adapter]]),
+      usageRecorder: noopRecorder,
     });
 
     await vision.extract({
@@ -141,6 +146,7 @@ describe('VisionRuntime', () => {
       configs: [CONFIG],
       adapterOverrides: new Map([['provider-1', adapter]]),
       limits: { maxBytesPerImage: 2 },
+      usageRecorder: noopRecorder,
     });
 
     await expect(vision.extract({
@@ -177,6 +183,7 @@ describe('VisionRuntime', () => {
       configs: [CONFIG],
       adapterOverrides: new Map([['provider-1', adapter]]),
       limitsForOperation,
+      usageRecorder: noopRecorder,
     });
     const request = {
       providerId: 'provider-1',
@@ -197,7 +204,7 @@ describe('VisionRuntime', () => {
   });
 
   it('throws a typed error when the provider is not configured', async () => {
-    const vision = new VisionRuntime({ configs: [CONFIG] });
+    const vision = new VisionRuntime({ configs: [CONFIG], usageRecorder: noopRecorder });
 
     await expect(vision.extract({
       providerId: 'missing-provider',
@@ -219,6 +226,7 @@ describe('VisionRuntime', () => {
       configs: [CONFIG],
       adapterOverrides: new Map([['provider-1', adapter]]),
       limits: { maxConcurrentGlobal: 1, maxConcurrentPerProvider: 1 },
+      usageRecorder: noopRecorder,
     });
 
     const running = vision.extract({
@@ -259,6 +267,7 @@ describe('VisionRuntime', () => {
       configs: [CONFIG],
       adapterOverrides: new Map([['provider-1', adapter]]),
       limits: { maxConcurrentGlobal: 4, maxConcurrentPerProvider: 2 },
+      usageRecorder: noopRecorder,
     });
     const request = {
       providerId: 'provider-1',
@@ -282,6 +291,7 @@ describe('VisionRuntime', () => {
       configs: [CONFIG],
       adapterOverrides: new Map([['provider-1', adapter]]),
       limits: { maxConcurrentGlobal: 1, maxConcurrentPerProvider: 1 },
+      usageRecorder: noopRecorder,
     });
     const request = {
       providerId: 'provider-1',
@@ -312,6 +322,7 @@ describe('VisionRuntime', () => {
         maxConcurrentPerProvider: 1,
         maxQueuedRequests: 0,
       },
+      usageRecorder: noopRecorder,
     });
     const request = {
       providerId: 'provider-1',
@@ -335,6 +346,7 @@ describe('VisionRuntime', () => {
     const vision = new VisionRuntime({
       configs: [CONFIG],
       adapterOverrides: new Map([['provider-1', adapter]]),
+      usageRecorder: noopRecorder,
     });
     const request = {
       providerId: 'provider-1',
@@ -366,6 +378,7 @@ describe('VisionRuntime', () => {
     const vision = new VisionRuntime({
       configs: [CONFIG],
       adapterOverrides: new Map([['provider-1', adapter]]),
+      usageRecorder: noopRecorder,
     });
 
     await expect(vision.probe('provider-1', 'vision-model')).resolves.toEqual({

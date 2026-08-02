@@ -1,5 +1,4 @@
 // 运行语言模型调用，并协调 Provider 快照、请求准备、流生命周期与用量记录。
-import { randomUUID } from 'node:crypto';
 import { OpenAiAdapter }         from './adapters/openai.js';
 import { OpenAiResponsesAdapter } from './adapters/openaiResponses.js';
 import { AnthropicAdapter }       from './adapters/anthropic.js';
@@ -18,6 +17,7 @@ import type {
 } from './types.js';
 import type { LanguageModel } from './languageModel.js';
 import type { UsageRecord, UsageRecorder } from '@ema-agent/usage';
+import { createUsageRecord, reportUsage } from '@ema-agent/usage';
 import {
   type LlmProtocol,
   type ModelCapabilityResolver,
@@ -30,6 +30,12 @@ import { ProviderRuntimeRegistry } from './providerRuntimeRegistry.js';
 import { isAbortError, LlmStreamProtocolError } from './errors.js';
 
 const PROBE_TIMEOUT_MS = 10_000;
+
+export interface LanguageModelRuntimeOptions {
+  modelCapabilities?: ModelCapabilityResolver;
+  usageRecorder: UsageRecorder;
+  onUsageRecordError?: (error: unknown, record: UsageRecord) => void;
+}
 
 // ── 内部工厂 ──────────────────────────────────────────────────────────
 
@@ -66,7 +72,7 @@ export class LanguageModelRuntime implements LanguageModel {
   /** 仅测试用的 adapter 替换,以 ProviderConfig.id 为 key。 */
   private readonly adapterOverrides?: ReadonlyMap<string, LlmAdapter>;
   private readonly modelCapabilities?: ModelCapabilityResolver;
-  private readonly usageRecorder?: UsageRecorder;
+  private readonly usageRecorder: UsageRecorder;
   private readonly onUsageRecordError?: (error: unknown, record: UsageRecord) => void;
 
   /**
@@ -76,12 +82,8 @@ export class LanguageModelRuntime implements LanguageModel {
    */
   constructor(
     configs: ProviderConfig[],
-    adapterOverrides?: ReadonlyMap<string, LlmAdapter>,
-    options: {
-      modelCapabilities?: ModelCapabilityResolver;
-      usageRecorder?: UsageRecorder;
-      onUsageRecordError?: (error: unknown, record: UsageRecord) => void;
-    } = {},
+    adapterOverrides: ReadonlyMap<string, LlmAdapter> | undefined,
+    options: LanguageModelRuntimeOptions,
   ) {
     this.adapterOverrides = adapterOverrides;
     this.modelCapabilities = options.modelCapabilities;
@@ -149,34 +151,21 @@ export class LanguageModelRuntime implements LanguageModel {
       // 消费方主动提前关闭异步迭代器时不会进入 catch；正常耗尽却没有 done
       // 则是 Provider 协议不完整，仍应计为失败而不是伪装成用户取消。
       if (!sourceExhausted && !completed && errorCode === null) cancelled = true;
-      const record: UsageRecord = {
-        id: request.usageContext?.callId ?? randomUUID(),
-        sessionId: request.usageContext?.sessionId ?? null,
-        turnId: request.usageContext?.turnId ?? null,
+      const record = createUsageRecord({
+        capability: 'llm',
         providerId: request.providerId,
         modelId: request.model,
-        capability: 'llm',
         status: completed ? 'completed' : cancelled ? 'cancelled' : 'failed',
+        startedAt,
+        durationMs: Date.now() - startedAt,
+        usageContext: request.usageContext,
         inputTokens: usage?.inputTokens ?? null,
         outputTokens: usage?.outputTokens ?? null,
         cacheReadInputTokens: usage?.cacheReadInputTokens ?? null,
         cacheWriteInputTokens: usage?.cacheWriteInputTokens ?? null,
-        quantity: null,
-        unit: null,
-        costUsd: null,
-        durationMs: Math.max(0, Date.now() - startedAt),
         errorCode: completed ? null : cancelled ? 'llm/aborted' : errorCode ?? 'llm/stream_incomplete',
-        createdAt: startedAt,
-      };
-      try {
-        this.usageRecorder?.record(record);
-      } catch (error) {
-        try {
-          this.onUsageRecordError?.(error, record);
-        } catch {
-          // 诊断回调也不能反向破坏已经成功的模型流。
-        }
-      }
+      });
+      reportUsage(this.usageRecorder, record, this.onUsageRecordError);
     }
   }
 

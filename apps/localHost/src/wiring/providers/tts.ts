@@ -112,7 +112,7 @@ function pickPrimaryVoiceReference(
 export interface BuildTtsRuntimeArgs {
   profileDb: Database;
   credentials: CredentialFacade;
-  usageRecorder?: UsageRecorder;
+  usageRecorder: UsageRecorder;
   onUsageRecordError?: (error: unknown, record: UsageRecord) => void;
 }
 

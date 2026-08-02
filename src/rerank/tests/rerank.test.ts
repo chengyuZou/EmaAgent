@@ -1,9 +1,11 @@
 // 测试 Rerank 协议映射、响应校验、Top-K 边界和 Usage 失败记录。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { UsageRecord } from '@ema-agent/usage';
+import type { UsageRecord, UsageRecorder } from '@ema-agent/usage';
 import { CohereRerankAdapter } from '../adapters/cohere.js';
 import { RerankRuntime } from '../runtime.js';
 import type { RerankProviderConfig } from '../types.js';
+
+const noopRecorder: UsageRecorder = { record: () => undefined };
 
 const fetchMock = vi.fn<typeof fetch>();
 
@@ -24,7 +26,7 @@ describe('RerankRuntime', () => {
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
       results: [{ index: 1, relevance_score: 0.9 }, { index: 0, relevance_score: 0.2 }],
     }), { status: 200 }));
-    const runtime = new RerankRuntime([config]);
+    const runtime = new RerankRuntime([config], { usageRecorder: noopRecorder });
 
     const result = await runtime.rerank({
       providerId: config.id, model: 'rerank-model', query: 'query',
@@ -70,7 +72,7 @@ describe('RerankRuntime', () => {
         { index: 2, relevance_score: 0 },
       ],
     }), { status: 200 }));
-    const runtime = new RerankRuntime([config]);
+    const runtime = new RerankRuntime([config], { usageRecorder: noopRecorder });
 
     const result = await runtime.rerank({
       providerId: config.id, model: 'rerank-model', query: 'query',
@@ -88,7 +90,7 @@ describe('RerankRuntime', () => {
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
       results: [{ index: 0, relevance_score: 0.35 }, { index: 1, relevance_score: 0.1 }],
     }), { status: 200 }));
-    const runtime = new RerankRuntime([config]);
+    const runtime = new RerankRuntime([config], { usageRecorder: noopRecorder });
 
     const result = await runtime.rerank({
       providerId: config.id, model: 'rerank-model', query: 'query',
@@ -105,7 +107,7 @@ describe('RerankRuntime', () => {
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
       results: [{ index: 0, relevance_score: 7 }, { index: 1, relevance_score: 7 }],
     }), { status: 200 }));
-    const runtime = new RerankRuntime([config]);
+    const runtime = new RerankRuntime([config], { usageRecorder: noopRecorder });
 
     const result = await runtime.rerank({
       providerId: config.id, model: 'rerank-model', query: 'query',
@@ -135,7 +137,7 @@ describe('RerankRuntime 有限重试', () => {
     fetchMock
       .mockResolvedValueOnce(new Response('slow down', { status: 429 }))
       .mockImplementationOnce(() => Promise.resolve(okPayload()));
-    const runtime = new RerankRuntime([config]);
+    const runtime = new RerankRuntime([config], { usageRecorder: noopRecorder });
 
     const result = await call(runtime);
 
@@ -147,7 +149,7 @@ describe('RerankRuntime 有限重试', () => {
     fetchMock
       .mockRejectedValueOnce(new TypeError('fetch failed'))
       .mockImplementationOnce(() => Promise.resolve(okPayload()));
-    const runtime = new RerankRuntime([config]);
+    const runtime = new RerankRuntime([config], { usageRecorder: noopRecorder });
 
     const result = await call(runtime);
 
@@ -157,7 +159,7 @@ describe('RerankRuntime 有限重试', () => {
 
   it('401 属配置故障，不重试', async () => {
     fetchMock.mockResolvedValueOnce(new Response('denied', { status: 401 }));
-    const runtime = new RerankRuntime([config]);
+    const runtime = new RerankRuntime([config], { usageRecorder: noopRecorder });
 
     await expect(call(runtime)).rejects.toThrow('HTTP 401');
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -167,7 +169,7 @@ describe('RerankRuntime 有限重试', () => {
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
       results: [{ index: 9, relevance_score: 0.5 }],
     }), { status: 200 }));
-    const runtime = new RerankRuntime([config]);
+    const runtime = new RerankRuntime([config], { usageRecorder: noopRecorder });
 
     await expect(call(runtime)).rejects.toThrow('rerank/invalid_index');
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -176,7 +178,7 @@ describe('RerankRuntime 有限重试', () => {
   it('退避期间取消立即抛出，不等退避完成', async () => {
     fetchMock.mockResolvedValueOnce(new Response('slow down', { status: 429 }));
     const controller = new AbortController();
-    const runtime = new RerankRuntime([config]);
+    const runtime = new RerankRuntime([config], { usageRecorder: noopRecorder });
 
     const pending = call(runtime, controller.signal);
     setTimeout(() => controller.abort(), 20);

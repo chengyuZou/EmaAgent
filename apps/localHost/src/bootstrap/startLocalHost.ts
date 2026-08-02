@@ -6,12 +6,15 @@ import type { MarketSourceStore } from '@ema-agent/marketplace';
 import { MCP_SEEDS } from '@ema-agent/mcp';
 import type { ModelsDevCatalog } from '@ema-agent/provider';
 import { SKILL_SEEDS, type SkillStore } from '@ema-agent/skills';
+import type { UsageRecordsRepo } from '@ema-agent/storage';
 import { profileDir } from '../storage-locations/index.js';
 import type { BackgroundWork } from '../background/backgroundWork.js';
 import type { ProviderRuntimeFacade } from '../wiring/provider-runtime.js';
 import type { BackgroundProcessRuntime } from '@ema-agent/tools';
 
 const MODEL_CATALOG_REFRESH_TIMEOUT_MS = 10_000;
+/** 用量记录保留窗口;量级远未到需要按行数裁剪的程度,超窗一次性删除即可。 */
+const USAGE_RETENTION_DAYS = 90;
 
 type StartupKnowledge = Pick<KbManager, 'ensureDefault'>;
 type StartupMarketplace = Pick<MarketSourceStore, 'ensureSeeds'>;
@@ -19,6 +22,7 @@ type StartupSkills = Pick<SkillStore, 'scanAndReconcile'>;
 type StartupModelCatalog = Pick<ModelsDevCatalog, 'refresh' | 'size'>;
 type StartupProviderRuntime = Pick<ProviderRuntimeFacade, 'syncNarrativeBridge'>;
 type StartupBackgroundWork = Pick<BackgroundWork, 'start' | 'shutdown'>;
+type StartupUsageRetention = Pick<UsageRecordsRepo, 'deleteOlderThan'>;
 
 export class LocalHostLifecycle {
   private startup: Promise<void> | null = null;
@@ -32,6 +36,7 @@ export class LocalHostLifecycle {
     private readonly providerRuntime: StartupProviderRuntime,
     private readonly backgroundWork: StartupBackgroundWork,
     private readonly backgroundProcesses: Pick<BackgroundProcessRuntime, 'shutdown'>,
+    private readonly usageRetention: StartupUsageRetention,
   ) {}
 
   /** 必需恢复完成后即可 ready；其余能力在后台独立启动并可降级。 */
@@ -67,6 +72,13 @@ export class LocalHostLifecycle {
       this.refreshModelCatalog());
     this.trackBackground('initial Narrative Bridge sync', () =>
       this.providerRuntime.syncNarrativeBridge());
+    this.trackBackground('usage retention', () => {
+      const cutoff = Date.now() - USAGE_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+      const removed = this.usageRetention.deleteOlderThan(cutoff);
+      if (removed > 0) {
+        console.info(`[usage] retention: 清理 ${removed} 条 ${USAGE_RETENTION_DAYS} 天前的用量记录`);
+      }
+    });
   }
 
   private async refreshModelCatalog(): Promise<void> {

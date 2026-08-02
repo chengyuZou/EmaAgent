@@ -18,6 +18,9 @@ import {
 import { createMemoryRuntime } from '../src/wiring/createMemoryRuntime.js';
 import { createSessionPersistence } from '../src/wiring/createSessionPersistence.js';
 import { sessionDirFor } from '../src/storage-locations/index.js';
+import type { UsageRecorder } from '@ema-agent/usage';
+
+const noopRecorder: UsageRecorder = { record: () => undefined };
 
 const databases: Database[] = [];
 const temporaryDirectories: string[] = [];
@@ -86,9 +89,9 @@ describe('Memory runtime wiring', () => {
       dataDb,
       persistence.session,
       persistence.sessionNotes,
-      new LanguageModelRuntime([]),
-      new EmbedRuntime([]),
-      new RerankRuntime([]),
+      new LanguageModelRuntime([], undefined, { usageRecorder: noopRecorder }),
+      new EmbedRuntime([], { usageRecorder: noopRecorder }),
+      new RerankRuntime([], { usageRecorder: noopRecorder }),
       new SettingsStore(new SettingsRepo(profileDb.sqlite)),
       new ModelBindingsRepo(profileDb.sqlite),
       new ProviderEmbedModelsRepo(profileDb.sqlite),

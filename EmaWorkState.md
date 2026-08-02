@@ -5,7 +5,7 @@
 
 ## 当前阶段
 
-当前进入 **Tool / Prompt / Context / Agent 边界复核与纠偏**。本阶段不重写已经成立的 Agent 主链，也不补写各个内置 Tool 的 Claude 风格长说明；只消除重复事实源、把通用装配放回正确所有者，并冻结后续不得偏移的规则。
+当前进入 **Tool / Prompt / Context / Agent 边界复核与纠偏**。T1 的 Tool description 单一事实源已经完成，下一批进入 T2 Tool 装配所有权；不重写已经成立的 Agent 主链，也不在架构批顺手补写各个内置 Tool 的长说明。
 
 最近完成的主线可视为既有地基：
 
@@ -56,8 +56,8 @@ AgentLoop → LLM → ToolExecutionRuntime
 
 ### 已冻结决定
 
-1. **删除 `tools.prompt` 旁路。** 每个 Tool 的详细用法只写在 `ToolDef.description`，经同一份 Manifest 进入 Provider `tools[].description`；Prompt Slot 不复制每个 Tool 的参数表、示例或错误语义。
-2. **`ToolDef.prompt?` 不再保留。** `src/builtinTools/toolPrompt.ts`、`tools.prompt` Slot、重复 Context Usage 统计和对应测试属于下一批删除对象。具体内置 Tool 长说明由后续逐 Tool 对照 Claude 源码补写，本轮不代写。
+1. **`tools.prompt` 旁路已经删除。** 每个 Tool 的详细用法只写在 `ToolDef.description`，经同一份 Manifest 进入 Provider `tools[].description`；Prompt Slot 不复制每个 Tool 的参数表、示例或错误语义。
+2. **`ToolDef.prompt?` 已经删除。** Context Usage 的 `toolInstructions/toolSchemas` 仍分别展示，但都从同一 `ToolManifestSnapshot` 估算，不再读取 Prompt Slot 副本。具体内置 Tool 长说明由后续逐 Tool 对照 Claude 源码补写。
 3. **Prompt 只拥有可信指令。** 产品规则、Character、Chat/Work Profile、NarrativePolicy 与通用工具选择原则进入显式 Slot；MCP、网页、附件、KB、Narrative、Memory 和 Skill 外部正文不能提升为产品 System 指令。
 4. **Context 拥有最终模型窗口。** 每次 LLM Call 前重新组装模型可见消息、预算、缓存断点与压缩结果；TurnExecution 只冻结稳定输入和能力快照，不一次性永久拼好消息数组。
 5. **Tool Manifest 是能力事实源。** 模型可见、PreparedToolCall、Permission 审批与实际执行必须共享同一 Tool 身份、Schema、版本和不可变输入。
@@ -104,12 +104,12 @@ V1 只实现一种协作：**根 Agent → 隔离普通 Subagent**，可同步�
 
 ## 下一步批次
 
-### T1：Tool description 单一事实源
+### T1：Tool description 单一事实源（已完成）
 
-- 删除 `ToolDef.prompt?`、`src/builtinTools/toolPrompt.ts` 与 `assembleToolPrompt()`；
-- 删除 `tools.prompt` Slot、重复 Context Usage 分类与失去意义的测试；
-- 保持各 Tool 现有 description 不变，后续由用户/其他 Agent 逐个对照 Claude 补全；
-- 验证模型看到的 description、Schema 和运行时可执行 Manifest 来自同一 Snapshot。
+- 已删除 `ToolDef.prompt?`、`src/builtinTools/toolPrompt.ts`、`assembleToolPrompt()` 与 `tools.prompt` Slot；
+- Context Usage 改为从 Manifest 同源拆算 description 与 Schema；
+- 各 Tool 现有 description 未改，Claude 源码对照表已写入 `docs/toolPromptWorkspaceInstructionsAndContextUsage.md`；
+- Tool Manifest、Builtin、Prompt、Context 与 TurnExecution 目标构建、类型检查和测试已通过。
 
 ### T2：Tool 装配所有权
 
@@ -131,25 +131,30 @@ V1 只实现一种协作：**根 Agent → 隔离普通 Subagent**，可同步�
 
 ## 当前工作区归属
 
-本轮只修改 `CLAUDE.md`、三份架构/接力文档和既有 Tool 说明设计稿，不修改运行代码。下列工作区内容属于用户或其他 Agent，禁止覆盖或回退：
+本轮 T1 修改 Tools、BuiltinTools、Prompts、Context 与 TurnExecution 的重复说明通道，以及架构/接力文档。下列工作区内容属于用户或其他 Agent，禁止覆盖或回退：
 
 ```text
-M  .gitignore
 M  apps/localHost/src/bootstrap/startLocalHost.ts
+M  apps/localHost/src/wiring/providers/{stt,tts,vision}.ts
+M  apps/localHost/tests/{provider-runtime.integration,sessionMemoryWiring}.test.ts
 D  src/builtinTools/tools/PlanModeTool/PlanModeTools.ts
-M  src/rerank/runtime.ts
+M  src/embed/{runtime,types}.ts + tests
+M  src/llm/languageModelRuntime.ts + tests
+M  src/rerank/{runtime,types}.ts + tests
 M  src/storage/repos/data/usage-records.ts
-M  src/tts/coordinator.ts
+M  src/stt、src/tts、src/vision 的 Runtime/Coordinator 与测试
+M  src/turnExecution/tests/turnExecutor.integration.test.ts
 M  src/usage/index.ts
 ?? src/usage/record.ts
 ```
 
 ## 本轮验证
 
-- 文档依据：已重新阅读 Claude Code 的 System Prompt、Permission Security、Multi-Agent 章节，并复核 Ema 对应源码与两份架构文档。
-- 本轮为文档批，不运行 typecheck 或测试。
-- 完成后只执行 `git diff --check` 与文档 Diff 复核。
+- `@ema-agent/tools`、`tool-builtin`、`prompts`、`context`、`turn-execution` typecheck 全通过；
+- Tools 33/33、Builtin 106 通过 + 1 跳过、Prompts 9/9、Context 34/34、TurnExecution 20 通过 + 4 个 integration 跳过；
+- 五个相关模块 build 全通过；
+- 已阅读 Claude Plan Mode 文档并复核 `EnterPlanModeTool`、`ExitPlanModeV2Tool`、`query()` 与 Tool 注册链：Plan 复用同一 Engine，Ema 实现时必须在根 Turn 边界重建冻结 Manifest。
 
 ## 接力提示
 
-下一次从 T1 开始。先重新阅读本文件和 `CLAUDE.md`，再确认其他 Agent 是否正在修改 `src/tools`、`src/builtinTools`、`src/prompts`、`src/context` 或 `src/turnExecution/turnTools.ts`。不要在 T1 同时迁 Tool Pool、Turn DTO 或事件体系。
+下一次从 T2 开始。先确认其他 Agent 是否正在修改 `src/tools`、`src/builtinTools` 或 MCP 装配，再把通用 `assembleToolPool()` 迁回 `src/tools`；不要同时实现 Plan、迁 Turn DTO 或改事件体系。Plan 已调整为 V1 目标，但需要先单独冻结状态、Turn 边界、审批和持久化方案。

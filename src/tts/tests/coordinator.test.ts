@@ -60,6 +60,7 @@ function coordinator(
     ttsClient: new TtsRuntime({
       configs: [CONFIG],
       adapterOverrides: new Map([['provider', adapter]]),
+      usageRecorder: { record: () => undefined },
     }),
     emit,
     archive,

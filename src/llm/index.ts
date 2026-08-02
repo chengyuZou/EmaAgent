@@ -1,4 +1,5 @@
 export { LanguageModelRuntime }                           from './languageModelRuntime.js';
+export type { LanguageModelRuntimeOptions }               from './languageModelRuntime.js';
 export type { LanguageModel }                            from './languageModel.js';
 export { validateContentParts }                           from './validate.js';
 export { CircuitBreaker, LlmStreamRuntime } from './streamRuntime.js';

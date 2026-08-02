@@ -1,11 +1,11 @@
 // STT 运行时执行整段音频转录，并控制请求限制、取消和 Usage 记录。
-import { randomUUID } from 'node:crypto';
 import type { SttAdapter, SttAdapterCall, SttProviderConfig, SttRequest, SttResponse, SttHealthResult, SttProbeResult } from './types.js';
 import { OpenAiSttAdapter } from './adapters/openAi.js';
 import { isSttError, SttError } from './errors.js';
 import { createSttRequestScope } from './requestScope.js';
 import type { SttLimits } from './types.js';
 import type { UsageRecord, UsageRecorder } from '@ema-agent/usage';
+import { createUsageRecord, reportUsage } from '@ema-agent/usage';
 
 interface SttRuntimeEntry {
   readonly config: Readonly<SttProviderConfig>;
@@ -16,7 +16,7 @@ export interface SttRuntimeOptions {
   configs: readonly SttProviderConfig[];
   adapterOverrides?: ReadonlyMap<string, SttAdapter>;
   limits?: Partial<SttLimits>;
-  usageRecorder?: UsageRecorder;
+  usageRecorder: UsageRecorder;
   onUsageRecordError?: (error: unknown, record: UsageRecord) => void;
 }
 
@@ -43,7 +43,7 @@ export class SttRuntime {
   private entries: ReadonlyMap<string, SttRuntimeEntry>;
   private readonly adapterOverrides?: ReadonlyMap<string, SttAdapter>;
   private readonly limits: Readonly<SttLimits>;
-  private readonly usageRecorder?: UsageRecorder;
+  private readonly usageRecorder: UsageRecorder;
   private readonly onUsageRecordError?: (error: unknown, record: UsageRecord) => void;
 
   constructor(options: SttRuntimeOptions) {
@@ -203,34 +203,19 @@ export class SttRuntime {
   }
 
   private recordUsage(req: SttRequest, startedAt: number, errorCode: string | null): void {
-    const record: UsageRecord = {
-      id: req.usageContext?.callId ?? randomUUID(),
-      sessionId: req.usageContext?.sessionId ?? null,
-      turnId: req.usageContext?.turnId ?? null,
+    const record = createUsageRecord({
+      capability: 'stt',
       providerId: req.providerId,
       modelId: req.model,
-      capability: 'stt',
       status: errorCode === null ? 'completed' : 'failed',
-      inputTokens: null,
-      outputTokens: null,
-      cacheReadInputTokens: null,
-      cacheWriteInputTokens: null,
+      startedAt,
+      durationMs: Date.now() - startedAt,
+      usageContext: req.usageContext,
       quantity: req.audio.byteLength,
       unit: 'byte',
-      costUsd: null,
-      durationMs: Math.max(0, Date.now() - startedAt),
       errorCode,
-      createdAt: startedAt,
-    };
-    try {
-      this.usageRecorder?.record(record);
-    } catch (error) {
-      try {
-        this.onUsageRecordError?.(error, record);
-      } catch {
-        // 记录失败不能覆盖真实的 STT 调用结果。
-      }
-    }
+    });
+    reportUsage(this.usageRecorder, record, this.onUsageRecordError);
   }
 }
 

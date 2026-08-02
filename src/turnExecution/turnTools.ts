@@ -25,7 +25,6 @@ import {
   type SkillRunnerPort,
 } from '@ema-agent/skills';
 import type { TaskStorePort } from '@ema-agent/tasks';
-import type { PromptSlotContribution } from '@ema-agent/prompts';
 import {
   ToolExecutionRuntime,
   type BackgroundProcessPort,
@@ -36,7 +35,6 @@ import {
   type ToolResultStore,
 } from '@ema-agent/tools';
 import {
-  assembleToolPrompt,
   assembleToolPool,
   type BuiltinToolContext,
 } from '@ema-agent/tool-builtin';
@@ -123,7 +121,6 @@ export class TurnTools {
 
   constructor(
     readonly policy: TurnPolicy,
-    readonly toolPromptContribution: PromptSlotContribution | undefined,
     private readonly activeSkillState: ActiveSkillState,
     private readonly spawner: SubagentSpawner,
     private readonly parentMessages: ModelMessage[],
@@ -291,14 +288,6 @@ export class TurnToolsBuilder {
       ...capabilityContext,
       toolCapabilities: policy.capabilities(),
     });
-    const assembledPrompt = await assembleToolPrompt(visibleTools, toolContext);
-    const toolPromptContribution = assembledPrompt
-      ? {
-          id: 'tools.prompt' as const,
-          content: assembledPrompt.content,
-          version: assembledPrompt.version,
-        }
-      : undefined;
     const toolResultStore =
       this.deps.getSessionToolResultStore?.(sessionId);
 
@@ -321,7 +310,6 @@ export class TurnToolsBuilder {
 
     return new TurnTools(
       policy,
-      toolPromptContribution,
       activeSkillState,
       spawner,
       parentMessages,

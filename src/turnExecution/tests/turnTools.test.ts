@@ -1,4 +1,4 @@
-// 测试根 Turn 使用同一份真实能力快照生成 Tool Manifest 与 Tool Prompt。
+// 测试根 Turn 使用同一份真实能力快照生成模型可见与运行时可执行 Tool Manifest。
 
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_AGENT_SETTINGS, TurnBudget } from '@ema-agent/agent';
@@ -15,10 +15,7 @@ import type { TurnInput } from '../types.js';
 const sessionId = 'session-tool-snapshot' as SessionId;
 const turnId = 'turn-tool-snapshot' as TurnId;
 
-const backgroundDocumentedTool: BuiltTool = Object.freeze({
-  ...BashTool,
-  prompt: () => '后台进程工具说明书',
-});
+const backgroundDocumentedTool: BuiltTool = BashTool;
 
 const turn: Turn = {
   id: turnId,
@@ -68,7 +65,7 @@ function createBuilder(withBackgroundProcesses: boolean): TurnToolsBuilder {
 }
 
 describe('TurnToolsBuilder 能力快照', () => {
-  it('后台进程能力真实进入 Manifest，不由独立 Prompt Context 猜测', async () => {
+  it('后台进程能力与 description 共同进入同一 Manifest', async () => {
     const enabled = await createBuilder(true).prepare({
       turn,
       input,
@@ -78,7 +75,8 @@ describe('TurnToolsBuilder 能力快照', () => {
     const enabledNames = enabled.policy.manifestSnapshot().entries
       .map((entry) => entry.name);
     expect(enabledNames).toEqual(['Bash']);
-    expect(enabled.toolPromptContribution?.content).toContain('后台进程工具说明书');
+    expect(enabled.policy.manifestSnapshot().entries[0]?.description)
+      .toBe(BashTool.description);
 
     const disabled = await createBuilder(false).prepare({
       turn,
@@ -89,6 +87,5 @@ describe('TurnToolsBuilder 能力快照', () => {
     const disabledNames = disabled.policy.manifestSnapshot().entries
       .map((entry) => entry.name);
     expect(disabledNames).not.toContain('Bash');
-    expect(disabled.toolPromptContribution).toBeUndefined();
   });
 });

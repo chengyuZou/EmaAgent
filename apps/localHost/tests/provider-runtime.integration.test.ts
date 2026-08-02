@@ -19,6 +19,9 @@ import {
 import { providerConfigurationRoute } from '../src/routes/providers/providerConfiguration.js';
 import { StorageProviderConfigurationStore } from '../src/wiring/providers/providerConfigurationStore.js';
 import { createTestCredentialFacade } from './helpers/test-credential-facade.js';
+import type { UsageRecorder } from '@ema-agent/usage';
+
+const noopRecorder: UsageRecorder = { record: () => undefined };
 
 class NarrativeClientSpy {
   readonly payloads: NarrativeBridgeConfigurePayload[] = [];
@@ -47,12 +50,12 @@ describe('ProviderRuntimeFacade', () => {
     profileDb = new Database({ memory: true, kind: 'profile' });
     profileDb.migrate();
     providers = new ProvidersRepo(profileDb.sqlite, createTestCredentialFacade());
-    llm = new LanguageModelRuntime([]);
-    embed = new EmbedRuntime();
-    rerank = new RerankRuntime();
-    tts = new TtsRuntime({ configs: [] });
-    stt = new SttRuntime({ configs: [] });
-    vision = new VisionRuntime({ configs: [] });
+    llm = new LanguageModelRuntime([], undefined, { usageRecorder: noopRecorder });
+    embed = new EmbedRuntime([], { usageRecorder: noopRecorder });
+    rerank = new RerankRuntime([], { usageRecorder: noopRecorder });
+    tts = new TtsRuntime({ configs: [], usageRecorder: noopRecorder });
+    stt = new SttRuntime({ configs: [], usageRecorder: noopRecorder });
+    vision = new VisionRuntime({ configs: [], usageRecorder: noopRecorder });
     narrative = new NarrativeClientSpy();
     runtime = new ProviderRuntimeFacade({
       profileDb,

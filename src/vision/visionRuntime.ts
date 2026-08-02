@@ -1,7 +1,8 @@
 // Vision 运行时执行图片提取，并原子维护 Provider Adapter、并发限制、取消与 Usage。
 import { randomUUID } from 'node:crypto';
 import type { VisionProtocol } from '@ema-agent/provider';
-import type { UsageRecord, UsageRecorder } from '@ema-agent/usage';
+import type { UsageContext, UsageRecord, UsageRecorder } from '@ema-agent/usage';
+import { createUsageRecord, reportUsage } from '@ema-agent/usage';
 import { AnthropicVisionAdapter } from './adapters/anthropic.js';
 import type { VisionAdapter } from './adapters/base.js';
 import { GeminiVisionAdapter } from './adapters/gemini.js';
@@ -40,7 +41,7 @@ export interface VisionRuntimeOptions {
   limitsForOperation?: () => Readonly<VisionLimits>;
   adapterOverrides?: ReadonlyMap<string, VisionAdapter>;
   limiter?: VisionConcurrencyLimiter;
-  usageRecorder?: UsageRecorder;
+  usageRecorder: UsageRecorder;
   onUsageRecordError?: (error: unknown, record: UsageRecord) => void;
 }
 
@@ -50,7 +51,7 @@ export class VisionRuntime {
   private readonly limiter: VisionConcurrencyLimiter;
   private readonly limits: VisionLimits;
   private readonly limitsForOperation?: () => Readonly<VisionLimits>;
-  private readonly usageRecorder?: UsageRecorder;
+  private readonly usageRecorder: UsageRecorder;
   private readonly onUsageRecordError?: (error: unknown, record: UsageRecord) => void;
 
   constructor(options: VisionRuntimeOptions) {
@@ -201,34 +202,21 @@ export class VisionRuntime {
     startedAt: number,
     errorCode: string | null,
   ): void {
-    const record: UsageRecord = {
-      id: request.usageContext?.callId ?? randomUUID(),
-      sessionId: request.usageContext?.sessionId ?? request.context?.sessionId ?? null,
-      turnId: request.usageContext?.turnId ?? request.context?.turnId ?? null,
+    const record = createUsageRecord({
+      capability: 'vision',
       providerId: request.providerId,
       modelId: request.model,
-      capability: 'vision',
       status: errorCode === null ? 'completed' : 'failed',
+      startedAt,
+      durationMs: Date.now() - startedAt,
+      usageContext: mergeUsageContext(request),
       inputTokens: result?.usage?.inputTokens ?? null,
       outputTokens: result?.usage?.outputTokens ?? null,
-      cacheReadInputTokens: null,
-      cacheWriteInputTokens: null,
       quantity: request.inputs.length,
       unit: 'image',
-      costUsd: null,
-      durationMs: Math.max(0, Date.now() - startedAt),
       errorCode,
-      createdAt: startedAt,
-    };
-    try {
-      this.usageRecorder?.record(record);
-    } catch (error) {
-      try {
-        this.onUsageRecordError?.(error, record);
-      } catch {
-        // 用量写入属于观测链路，不能改变 Vision 主调用结果。
-      }
-    }
+    });
+    reportUsage(this.usageRecorder, record, this.onUsageRecordError);
   }
 }
 
@@ -266,4 +254,17 @@ function configsEqual(left: Readonly<VisionProviderConfig>, right: VisionProvide
 
 function safeProbeCode(error: string | undefined): string {
   return error?.startsWith('vision/') ? error : 'vision/probe_failed';
+}
+
+/** usageContext 缺省字段回退到调用方业务上下文里的 session/turn 身份。 */
+function mergeUsageContext(request: NormalizedVisionRequest): UsageContext | undefined {
+  const callId = request.usageContext?.callId;
+  const sessionId = request.usageContext?.sessionId ?? request.context?.sessionId;
+  const turnId = request.usageContext?.turnId ?? request.context?.turnId;
+  if (callId === undefined && sessionId === undefined && turnId === undefined) return undefined;
+  return {
+    callId: callId ?? randomUUID(),
+    ...(sessionId !== undefined ? { sessionId } : {}),
+    ...(turnId !== undefined ? { turnId } : {}),
+  };
 }

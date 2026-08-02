@@ -720,26 +720,27 @@ Plan 是用户级控制面，子 Agent 不能自行进入或等待用户批准�
 
 ### Ema 当前事实
 
-Ema 只有 `PlanModeTools.ts` 草稿：`PlanEnter` 发送一条 system warning 并返回 active，`PlanExit` 发送完成提示；它没有只读 Tool Snapshot、Permission 策略切换、计划持久化、审批、拒绝、重入和恢复。因此这些工具被明确注释为 V1.5 草稿，`registerBuiltinTools()` 不注册，测试也验证模型看不到它们。
+旧 `PlanModeTools.ts` 只有提示文本，没有只读 Tool Snapshot、Permission 策略切换、计划持久化、审批、拒绝、重入和恢复，现已物理删除。Ema 当前没有 Plan Mode，也没有注册任何伪装成完整能力的 Plan Tool。
 
-这个状态处理正确：保留设计占位但不伪装产品已经具备 Plan 安全语义。
+2026-08-02 产品决定把完整 Plan Mode 调整为 V1 目标，但实现仍必须遵守现有 `TurnExecutor + AgentLoop` 主链和“根 Turn 内 Tool Manifest 冻结”约束，不能为了赶进度恢复旧草稿。
 
 ### Diff 判断
 
-1. **V1 保持现状：Plan 工具不注册。** V1 Work 模式可以用普通文本先说明方案，但不能向用户宣称已进入强制只读 Plan Mode。
-2. **V1.5 必做：Plan 是 Work Profile 下的执行子状态，不是第三个顶层模式。** 用户仍只看到 Chat/Work；`PlanState=inactive/exploring/awaitingApproval/approved/cancelled` 单独存在，避免旧 `TurnMode` 再膨胀。
-3. **V1.5 必做：进入 Plan 时冻结并收窄 Tool Snapshot。** 只允许明确的读取、搜索、Task/Plan 编辑和 AskUser；即使旧 Permission 有“本会话允许写入”，Plan 期间也不能继承为可写。
-4. **V1.5 必做：退出必须由用户审批。** 模型调用 `SubmitPlan` 只产生审批请求，不能自行切回执行；用户可批准、编辑后批准、要求修改或取消。
-5. **V1.5 必做：审批后重新建立执行快照。** 不能直接恢复进入前对象引用；需要重新读取当前 Feature Gate、Sandbox、Provider、Workspace 和 Permission Rules，防止 Plan 期间环境已变化。
-6. **V1.5 必做：Plan 持久化使用明确领域对象。** 建立 `planId/sessionId/createdTurnId/status/version/body/createdAt/updatedAt`；正文可以是 Markdown，身份和状态用 column，禁止藏进 Session meta JSON。
-7. **V1.5 必做：Root Turn 才能等待 Plan 审批。** Subagent/Agent Hook 遇到需要方向选择时返回提案给父 Agent；不直接调用 PlanEnter，也不占用用户 Prompt 队列。
-8. **V1.5 收口：Plan 与 Task 分离。** Plan 描述实施方式；批准后可以创建/更新多个 Task 跟踪工作，但 Plan 不是 Task 列表，Task 完成也不自动证明 Plan 全部目标成立。
-9. **V1.5 收口：Context 使用 Plan Slot 与节流提醒。** 首次完整注入只读约束，后续用短提醒；压缩后必须恢复当前 Plan 状态与批准后的最终版本。
-10. **不照搬：随机本地 Markdown slug 与订阅等级决定 Agent 数。** Ema 以 SQL Plan 身份和可导出 Markdown 为主；并行探索数量由本地 Settings/Turn Budget 决定，不依赖商业订阅等级。
+1. **V1 必做：Plan 复用唯一 Engine。** `TurnExecutor` 仍执行根 Turn，`AgentLoop` 仍执行 LLM → Tool → Result；Plan 只是 Work Profile 下的受控执行子状态，不创建 `PlanEngine` 或第二套循环。
+2. **V1 必做：Plan 不是第三个顶层 Profile。** 用户仍只看到 Chat/Work；`PlanState=inactive/exploring/awaitingApproval/approved/cancelled` 单独存在，避免旧 `TurnMode` 再膨胀。
+3. **V1 必做：状态转换发生在根 Turn 边界。** `EnterPlanMode` 只能请求转换；当前根 Turn 收口后，由同一 `TurnExecutor` 以只读 Tool Manifest 开始规划 Turn。`SubmitPlan` 获批后同样结束规划 Turn，再以重新冻结的执行 Manifest 开始后续 Turn。禁止在一个已冻结 Manifest 的 AgentLoop 中热删或热增 Tool。
+4. **V1 必做：进入 Plan 时收窄 Tool Snapshot。** 只允许明确的读取、搜索、Task/Plan 编辑和 AskUser；即使旧 Permission 有“本会话允许写入”，Plan 期间也不能继承为可写。
+5. **V1 必做：退出必须由用户审批。** 模型调用 `SubmitPlan` 只产生审批请求，不能自行切回执行；用户可批准、编辑后批准、要求修改或取消。
+6. **V1 必做：审批后重新建立执行快照。** 不能直接恢复进入前对象引用；需要重新读取当前 Feature Gate、Sandbox、Provider、Workspace 和 Permission Rules，防止 Plan 期间环境已变化。
+7. **V1 必做：Plan 持久化使用明确领域对象。** 建立 `planId/sessionId/createdTurnId/status/version/body/createdAt/updatedAt`；正文可以是 Markdown，身份和状态用 column，禁止藏进 Session meta JSON。
+8. **V1 必做：Root Turn 才能请求 Plan 审批。** Subagent 遇到需要方向选择时返回提案给父 Agent；不直接进入 Plan，也不占用用户 Prompt 队列。
+9. **V1 收口：Plan 与 Task 分离。** Plan 描述实施方式；批准后可以创建/更新多个 Task 跟踪工作，但 Plan 不是 Task 列表，Task 完成也不自动证明 Plan 全部目标成立。
+10. **V1 收口：Context 使用 Plan Slot 与节流提醒。** 首次完整注入只读约束，后续用短提醒；压缩后必须恢复当前 Plan 状态与批准后的最终版本。
+11. **不照搬：随机本地 Markdown slug 与订阅等级决定 Agent 数。** Ema 以 SQL Plan 身份和可导出 Markdown 为主；并行探索数量由本地 Settings/Turn Budget 决定，不依赖商业订阅等级。
 
-### 未来拆分与接口
+### V1 拆分与接口
 
-V1 不创建这些空目录；实现 V1.5 时建议：
+实现时按真实职责逐批建立，不预先创建空目录：
 
 ```text
 src/plans/
@@ -755,7 +756,7 @@ src/plans/
 
 ### 与第 01～09 章复核
 
-- Plan Controller 是 TurnExecutor 的受控子状态，不创建另一套 Agent Engine。
+- Plan Controller 只协调 Turn 边界状态转换，不创建另一套 Agent Engine。
 - Plan Prompt 通过 Context Slot 注入，Tool Snapshot 通过 Tool Registry 收窄，安全事实不只靠提示词提醒。
 - Plan 审批走根 Session 的交互队列，但与普通 Tool Permission 使用不同的结构化卡片和决策语义。
 - Explore/Design 可复用 AgentRun 和 Turn Budget；Subagent 不能直接 AskUser 或批准自身计划。

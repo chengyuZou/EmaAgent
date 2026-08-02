@@ -27,7 +27,7 @@ function createRuntime(
   adapterOverrides?: ReadonlyMap<string, TtsAdapter>,
   limits: Partial<import('../types.js').TtsLimits> = {},
 ): TtsRuntime {
-  return new TtsRuntime({ configs, adapterOverrides, limits });
+  return new TtsRuntime({ configs, adapterOverrides, limits, usageRecorder: { record: () => undefined } });
 }
 
 /** Captures every call to stream() and returns configurable chunks. */

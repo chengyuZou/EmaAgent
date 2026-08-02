@@ -1,6 +1,5 @@
 // TTS 运行时按 Provider 执行单句合成，并控制超时、字节上限和 Usage 记录。
 
-import { randomUUID } from 'node:crypto';
 import type {
   TtsRequest,
   TtsStreamEvent,
@@ -19,6 +18,7 @@ import { DashscopeTtsAdapter } from './adapters/dashscope.js';
 import { filterSentenceForTts } from './streaming/textFilter.js';
 import { createTtsRequestScope, nextWithAbort } from './requestScope.js';
 import type { UsageRecord, UsageRecorder } from '@ema-agent/usage';
+import { createUsageRecord, reportUsage } from '@ema-agent/usage';
 
 interface TtsRuntimeEntry {
   readonly config: Readonly<TtsProviderConfig>;
@@ -29,7 +29,7 @@ export interface TtsRuntimeOptions {
   configs: readonly TtsProviderConfig[];
   adapterOverrides?: ReadonlyMap<string, TtsAdapter>;
   limits?: Partial<TtsLimits>;
-  usageRecorder?: UsageRecorder;
+  usageRecorder: UsageRecorder;
   onUsageRecordError?: (error: unknown, record: UsageRecord) => void;
 }
 
@@ -56,7 +56,7 @@ export class TtsRuntime {
   private entries: ReadonlyMap<string, TtsRuntimeEntry>;
   private readonly adapterOverrides?: ReadonlyMap<string, TtsAdapter>;
   private readonly limits: Readonly<TtsLimits>;
-  private readonly usageRecorder?: UsageRecorder;
+  private readonly usageRecorder: UsageRecorder;
   private readonly onUsageRecordError?: (error: unknown, record: UsageRecord) => void;
 
   constructor(options: TtsRuntimeOptions) {
@@ -287,34 +287,19 @@ export class TtsRuntime {
     startedAt: number,
     errorCode: string | null,
   ): void {
-    const record: UsageRecord = {
-      id: req.usageContext?.callId ?? randomUUID(),
-      sessionId: req.usageContext?.sessionId ?? null,
-      turnId: req.usageContext?.turnId ?? null,
+    const record = createUsageRecord({
+      capability: 'tts',
       providerId: req.providerId,
       modelId: req.model,
-      capability: 'tts',
       status: errorCode === null ? 'completed' : 'failed',
-      inputTokens: null,
-      outputTokens: null,
-      cacheReadInputTokens: null,
-      cacheWriteInputTokens: null,
+      startedAt,
+      durationMs: Date.now() - startedAt,
+      usageContext: req.usageContext,
       quantity: characterCount,
       unit: 'character',
-      costUsd: null,
-      durationMs: Math.max(0, Date.now() - startedAt),
       errorCode,
-      createdAt: startedAt,
-    };
-    try {
-      this.usageRecorder?.record(record);
-    } catch (error) {
-      try {
-        this.onUsageRecordError?.(error, record);
-      } catch {
-        // 用量记录失败不能改变已经产生的音频流。
-      }
-    }
+    });
+    reportUsage(this.usageRecorder, record, this.onUsageRecordError);
   }
 }
 
