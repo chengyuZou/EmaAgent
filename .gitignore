@@ -2,6 +2,8 @@
 node_modules/
 .pnpm-store/
 
+.agents/**
+
 # Memory bench — embedding cache (large, regenerated on demand)
 packages/memory/bench/cache/
 

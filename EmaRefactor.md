@@ -211,36 +211,43 @@ type NarrativeEvent =
 
 ### 4.1 Prompt 文本与工具 Schema 必须分开
 
-- Prompt Slot 负责系统指令和上下文文本；
-- Tool Manifest 负责 API 的 `tools` 字段；
-- 不把完整 Tool Schema 再复制进 System Prompt；
+- Prompt Slot 负责可信产品指令和有明确来源的上下文文本；
+- Tool Manifest 负责 API 的 `tools` 字段，并同时拥有每个 Tool 的完整 `description`、Schema、来源与版本；
+- 每个 Tool 的详细使用说明只写在 `ToolDef.description`，经 Manifest 投影为 Provider `tools[].description`；不再建立 `ToolDef.prompt?` 或 `tools.prompt` System Slot；
+- System Prompt 只保留通用工具选择、调用协议和安全原则，不把完整 Tool Schema、参数表、示例和错误语义再复制一遍；
 - 角色专属 Narrative 使用同一个稳定 Tool Schema，角色/数据集差异放在 Prompt Slot 与执行配置中，避免换角色就改变工具 Schema 字节。
+
+这是单一事实源要求，不是为了节省少量 Token。模型可见说明、PreparedToolCall、Permission 审批和真实执行必须能追溯到同一份 Manifest 身份；若详细用法同时存在于 Tool description 和 System Slot，两边迟早会发生能力漂移。
 
 ### 4.2 显式插槽
 
 ```ts
 export type PromptSlotId =
-  | 'core.identity'
-  | 'core.safety'
-  | 'core.tool_protocol'
-  | 'skills.fixed'
-  | 'mcp.instructions'
+  | 'product.rules'
+  | 'product.toolGuidance'
   | 'character.identity'
-  | 'character.narrative'
-  | 'profile.instructions'
-  | 'workspace.environment'
-  | 'context.summary'
-  | 'memory.recall'
-  | 'turn.current';
+  | 'character.presentation'
+  | 'profile.execution'
+  | 'extension.skillCatalog'
+  | 'workspace.instructions'
+  | `skills.required.${string}`
+  | `skills.active.${string}`;
 
-export type PromptCacheScope = 'global' | 'session' | 'turn';
+export type PromptStabilityScope =
+  | 'product'
+  | 'activeCharacter'
+  | 'session'
+  | 'turn';
+
+export type PromptDelivery = 'system' | 'context';
 
 export interface PromptSlot {
   id: PromptSlotId;
   order: number;
-  cacheScope: PromptCacheScope;
+  stabilityScope: PromptStabilityScope;
+  delivery: PromptDelivery;
   content: string;
-  sourceVersion: string;
+  version: string;
 }
 ```
 
@@ -250,30 +257,28 @@ export interface PromptSlot {
 
 ```text
 全局稳定前缀
-  10 core.identity
-  20 core.safety
-  30 core.tool_protocol
-  40 skills.fixed
+  10 product.rules
+  20 product.toolGuidance
+  30 skills.required.*       只允许随产品发布的可信内置必需 Skill
 
-Session 稳定前缀
-  50 mcp.instructions       会话冻结快照或明确 generation
-  60 character.identity
-  70 character.narrative
+全局角色前缀
+  40 character.identity
+  50 character.presentation
 
-Profile 与运行环境
-  80 profile.instructions   Chat/Work
-  90 workspace.environment
+Session / Turn Context
+  60 workspace.instructions Claude/Codex/Ema 工作区规则，作为带来源 Context
+  70 extension.skillCatalog 轻量目录，不注入所有 Skill 正文
+  80 skills.active.*        当前 Agent 激活正文，作为动态 Context
 
-动态尾部
-  100 context.summary
-  110 memory.recall
-  120 turn.current
+Turn 动态 System
+  90 profile.execution      Chat/Work 与 NarrativePolicy
 ```
 
-注意：普通 Skill 不应全部常驻 Prompt。只有 bundled/always-on 的固定规则进入 `skills.fixed`；其余 Skill 使用 SkillSearch/SkillCall 按需展开。MCP 的工具 Schema 与 Server instructions 分开管理。
+注意：普通 Skill 不应全部常驻 Prompt。只有随产品发布、经过信任审计且确实每次必需的内置 Skill 才能进入 `skills.required.*`；其余 Skill 使用 SkillCall 按需激活并作为 Context Contribution。MCP 的工具 Schema 与 Server instructions 分开管理，Server instructions 不能获得产品 System 权限。History、Memory、Narrative、KB、附件、Scratchpad 与当前输入都由 ContextAssembler 排布，不扩充 PromptSlotId 假装成产品 Prompt。
 
 ### 4.4 Tool Manifest 稳定性
 
+- `src/tools` 是通用 Tool Pool、Manifest、Prepared Call 与执行契约的所有者；`src/builtinTools` 只拥有具体 Builtin Tool 和静态 Builtin 注册，不能拥有跨来源装配或 Prompt Slot；
 - Tool Manifest 是模型工具数组顺序的唯一所有者：Builtin 按稳定内部 ID 排成连续前缀，MCP 按原始 `serverName + serverToolName` 排成连续后缀，不能在 Agent、Context 或 Adapter 再次平铺排序；
 - `registryVersion` 只负责判断运行时注册表世代与旧执行快照，不能进入内容 `revision`；等价 MCP 重连不破坏缓存，描述、Schema、来源或可见集合变化才产生新 revision；
 - Skill 与 Profile 只对既有 Manifest 做集合收窄并保留原顺序，不伪装成新的 Tool 来源；角色专属 Narrative 使用稳定 Builtin Tool Schema，角色和数据集差异留在 Prompt/执行配置；
@@ -420,6 +425,8 @@ Process    后台 Shell 进程
 V1 Task 闭环包括：SQLite 持久化、事务与 CAS、Session 内短序号、显式状态、依赖关系、AgentRun 可选绑定、结构化事件、重启快照、动态 Context 提醒和独立 TaskList UI。Team、跨设备共享与实验性验证 Agent 不在 V1，但不能以此为理由把 Task 降级成 Turn 内 Todo。
 
 V1 不把普通 Subagent 当成 Claude Team teammate。`TaskCreate/Get/List/Update` 只注册给根 Turn；子 Agent 只获得自包含指令和可选 `taskId`，不读取整张 Task List，也不直接改变 Task 状态。根 Agent 可以直接处理 Task，因此 Task 不保存 `ownerAgentRunId`。一次活动 AgentRun 可通过 `agent_runs.task_id` 独占绑定一个既有 Task；历史重试继续保留多条 Run。Run 终态只释放活动绑定，Task 是否完成由父 Turn 验证后显式提交。
+
+V1 多 Agent 只保留 Claude 三种形态中的第一种：父 Agent 启动隔离的普通 Subagent。同步等待和父 Turn 内后台执行只是同一种 AgentRun 的等待方式，不是 Coordinator 或 Team。子 Agent 的 Manifest 必须取“父可见集合 ∩ Profile ∩ SubagentPolicy ∩ Skill 限制 ∩ 宿主能力”，不能因 fresh/fork 或晚创建而扩权；它不获得 Task Tools、AskUser、递归 Subagent 或独立 Permission 队列。需要用户决策时返回结构化需求给父 Agent。Coordinator、Swarm/Team、共享 Task owner 和点对点成员消息等到真实产品入口出现后再设计，不预建空框架。
 
 在迁移前必须保留现有 CAS、恢复和 transcript 测试，避免“删了包但把断电恢复也删了”。
 
@@ -673,11 +680,14 @@ src/
 │  ├─ taskContext.ts            动态 Context 提醒
 │  └─ types.ts
 ├─ turn/
-│  ├─ turnExecution/
-│  │  └─ turnExecutor.ts        Turn 根生命周期与唯一终态
-│  ├─ protocol.ts               TurnCommand、TurnHandle、TurnOutcome 与执行快照
-│  ├─ events.ts                 只组合单个根 Turn 的实时事件
+│  ├─ types.ts                  Turn 身份、触发、状态与唯一终态
+│  ├─ events.ts                 只描述单个根 Turn 的领域事件
 │  └─ errors.ts
+├─ turnExecution/
+│  ├─ turnExecutor.ts           根 Turn 应用用例入口
+│  ├─ turnInputPreparer.ts      冻结本轮稳定输入
+│  ├─ turnContextBuilder.ts     协调每次 LLM Call 的 Context 投影
+│  └─ turnTools.ts              冻结本 Turn Tool 能力和执行入口
 ├─ llm/
 │  ├─ languageModel.ts
 │  ├─ languageModelRuntime.ts
@@ -687,27 +697,26 @@ src/
 │  ├─ usage.ts
 │  └─ adapters/
 ├─ context/
-│  ├─ contextManager.ts
 │  ├─ contextAssembler.ts
 │  ├─ messageBuilder.ts          Session Message → LLM Message
 │  ├─ compaction/
-│  ├─ normalization/
-│  └─ budgets/
-├─ prompt/
-│  ├─ promptAssembler.ts
-│  ├─ slots/
-│  └─ cache/
+│  └─ contextSnapshot.ts
+├─ prompts/
+│  ├─ promptAssembler.ts         可信 Prompt Slot 的稳定装配
+│  ├─ slots.ts
+│  ├─ productPrompt.ts
+│  └─ executionProfilePrompt.ts
 ├─ tools/
-│  ├─ registry/
-│  ├─ preparation/
+│  ├─ registry.ts               通用注册、Pool 与 Manifest 所有权
+│  ├─ preparation/              PreparedToolCall
 │  ├─ execution/
 │  ├─ results/
 │  ├─ background/               BackgroundProcess 句柄、输出与取消
 │  ├─ events.ts
 │  └─ protocol.ts
+├─ builtinTools/                具体内置 Tool 与静态 Builtin 注册
 ├─ permission/
 ├─ sandbox/                     受限命令启动与平台隔离
-├─ hook/
 ├─ session/
 │  ├─ message.ts                 持久化 Session Message
 │  ├─ protocol.ts               前端 Session/Message Wire

@@ -265,7 +265,7 @@ interface ModelRequestContext {
 
 ### Claude 的业务与架构
 
-Claude 把 Tool 作为模型影响外部世界的唯一出口。它把工具分为定义、组装和执行三层：工具自身声明 Schema 与安全语义；注册表按环境、权限和能力组装模型可见工具；执行器针对同一次调用依次完成查找、验证、Hook、审批、Sandbox、执行、结果格式化和事件发送。默认不可并发、默认视为有副作用、默认不允许自动分类审批，属于 fail-closed。
+Claude 把 Tool 作为模型影响外部世界的唯一出口。它把工具分为定义、组装和执行三层：工具自身声明 Schema 与安全语义；注册表按环境、权限和能力组装模型可见工具；执行器针对同一次调用依次完成查找、验证、审批、Sandbox、执行、结果格式化和事件发送。可配置 Hook 可以观察或拦截部分生命周期，但不替代 Permission、Sandbox 或 Tool 自身校验。默认不可并发、默认视为有副作用、默认不允许自动分类审批，属于 fail-closed。
 
 Claude 的 Tool 接口还直接包含 React 渲染能力，这是其 CLI/Ink 单体应用的工程选择。复杂工具按目录拆分实现、Schema、Prompt、UI 和辅助逻辑；简单工具仍可以保持单文件。
 
@@ -276,12 +276,12 @@ Ema 已经完成了这一批最重要的安全骨架：
 - `src/tools` 提供 `ToolDef`、`buildTool()`、`ToolRegistry` 与 `PreparedToolCall`；
 - `ToolRegistry.prepare()` 只解析一次模型参数，深冻结输入和权限元数据，并以 `WeakMap` 证明快照确实由当前 Registry 产生；
 - `ToolRegistry.execute()` 拒绝伪造快照，也拒绝 MCP 热更新后仍执行旧审批快照；
-- Agent 主链已经采用 `prepare -> PermissionEngine.gate -> execute`；
+- Agent 主链已经采用 `prepare -> PermissionEngine.gate -> Sandbox/Capability -> execute`；
 - `src/builtinTools` 已按 `FileEditTool` 等业务名称整理复杂工具目录，并提供稳定内部 ID；
 - 内置与 MCP 工具拥有明确所有者，MCP 批量注册先验证后提交，不允许覆盖内置工具；
 - 无物理 Sandbox 时，Bash/PowerShell 从模型可见注册表移除；未接桥的 Skill/Subagent 工具同样不会伪装可用；
 - `ToolManifestSnapshot` 已在根 Agent 与 Subagent 主链接入：模型看到的 Schema、`prepare()` 查找和后续执行来自同一份 Registry 快照；伪造快照和同名 MCP 实现热更新后的旧快照都会被拒绝；
-- `ToolExecutionContext` 已携带 Session、Turn、ToolCall、AbortSignal、文件状态、Sandbox Runner、AskUser、Subagent、MCP、Skill 与 KB 桥。
+- 万能 `ToolExecutionContext` 已删除；Builtin 集成层只装配一次宿主能力，每个 Tool 通过 `requires + validateContext()` 投影自己的窄执行 Context。
 - Tool Result 外置已迁入 `src/tools/results`：`maxResultBytes` 默认 50KB，同批结果另受 200KB 聚合预算；持久化预览成为跨 Turn 和重启后的唯一重放事实。
 - MCP 动态 Tool 已改用统一 `buildTool()`：Server 原始 JSON Schema 通过 `inputJsonSchemaOverride` 覆盖模型描述，运行时参数仍由宽松 Zod `inputSchema` 保证对象边界；Ema 的结果预算和保守默认值不再因手工构造 `BuiltTool` 被绕过，MCP 协议层 1MB 安全阀继续独立存在。
 - `validateInput` 已形成 Schema 后、Permission 前的业务校验入口；`requiresUserInteraction` 已替代 Agent 按 AskUser 工具名猜测等待状态。
@@ -289,6 +289,8 @@ Ema 已经完成了这一批最重要的安全骨架：
 - ToolExecution Journal 已归入 `src/tools/journal`：Tools 拥有状态、记录、CAS 状态机、崩溃恢复语义和 Store 端口；Storage 只实现原子 SQL 操作，Tasks 不再导出工具执行生命周期。
 - 跨端展示协议已归入 `src/tools/presentation`：FileWrite/FileEdit 根据真实落盘前后内容生成有界 Diff，FileRead、Glob/Grep 与 Bash 分别生成读取、搜索和命令事实；具体工具实现不包含 React，事件层只引用 `ToolPresentation` 联合。
 - Bash 的模型 `description` 继续只作为 Prepared Call 的调用前摘要；执行后的 `CommandPresentation` 来自实际命令、工作目录和 Runner 终态，两者都不参与 Permission 或 Sandbox 裁决。
+- 当前又出现一条待纠正旁路：`ToolDef.prompt?` 与 `src/builtinTools/toolPrompt.ts` 把逐 Tool 说明复制为 `tools.prompt` System Slot。Claude 的真实模式是完整说明直接属于 Tool description；Ema 下一批删除该旁路，保留 Manifest description 为唯一事实源。
+- 通用 `assembleToolPool()` 当前位于 `src/builtinTools`，所有权偏移。它负责跨来源可见性、稳定顺序与 Snapshot，应迁回 `src/tools`；Builtin 包只保留具体工具和静态注册。
 
 上述旧缺口中的万能 Context、Registry 执行旁路和跨端 Presentation 已经完成收口。Tool 主线完成后直接建立 TurnExecutor，不再发明第二套 Tool 抽象。
 
@@ -310,16 +312,17 @@ Ema 已经完成了这一批最重要的安全骨架：
 14. **V1 已对齐：结构校验与业务校验分层。** Zod/JSON Schema 处理字段形状，`validateInput` 在权限询问前检查工作区和文件状态等语义；失败作为可修正 Tool Result 返回模型，不能让用户批准一个注定无法执行的操作。
 15. **V1 已对齐：交互等待是工具能力，不是名称规则。** AskUser 系列显式声明 `requiresUserInteraction`；Agent Scheduler 只读取 Prepared 快照，不维护工具名白名单。
 16. **V1 已对齐：来源使用单一可判别字段。** Ema 不复制 Claude 可互相矛盾的 `isMcp + mcpInfo`，而使用 `ToolOrigin = builtin | mcp`；MCP 分支必须同时携带 `serverName/serverToolName`。来源跟随 Manifest 和 Prepared 快照，供 UI、审计和执行策略读取。V1 没有 LSP Tool，因此不预建 `isLsp` 空分支。
-17. **V1 已有等价机制：不重复增加同义字段。** `prompt()` 由直接进入 Provider Schema 的 `description` 承担；`isDestructive/isOpenWorld/checkPermissions` 由声明式 `permissionMeta` 与 Permission 规则承担；`isEnabled()` 由 Feature Gate、注册条件与每 Turn Manifest 选择承担；`isSearchOrReadCommand/backfillObservableInput` 属于跨端 `ToolPresentation`，不进入执行定义。
+17. **V1 必须恢复单一说明源。** `ToolDef.description` 直接进入 Provider Tool Schema，已经能承担 Claude Tool Prompt 的职责；因此删除后来增加的 `ToolDef.prompt?`、`tools.prompt` Slot 与重复 Usage 统计。`isDestructive/isOpenWorld/checkPermissions` 继续由声明式 `permissionMeta` 与 Permission 规则承担；`isEnabled()` 由 Feature Gate、注册条件与每 Turn Manifest 选择承担；`isSearchOrReadCommand/backfillObservableInput` 属于跨端 `ToolPresentation`，不进入执行定义。
 18. **暂不加入：没有当前执行消费者的字段。** `outputSchema` 等结构化 Result 封套确定后再接。Claude 的 `requiresUserInteraction` 与 `interruptBehavior = cancel | block` 是正交能力：前者表示工具主动等待用户并驱动 `waiting_user`，后者表示工具运行期间收到新消息时取消工具还是阻塞新消息；Ema 保留已经接线的前者，等 TurnExecutor 统一用户插话、排队与取消语义后再加入后者。Provider `strict` 由支持该能力的 Adapter 决定，不能假装所有协议都支持；`aliases/inputsEquivalent` 等重命名或调用去重出现真实需求后再设计；ToolSearch 的 `searchHint/shouldDefer/alwaysLoad` 留到 V1.5。
 
 ### 建议拆分与公共接口
 
 ```text
 src/tools/
-├─ registry/                 工具身份、所有权、注册与 Snapshot
+├─ registry.ts               工具身份、所有权、注册与 Snapshot
+├─ toolPool.ts               跨来源筛选、稳定顺序与 Manifest 装配
 ├─ preparation/              Schema 解析、语义校验、PreparedToolCall
-├─ execution/                Hook -> Permission -> Sandbox -> Result
+├─ execution/                Permission -> Sandbox -> Result
 ├─ results/                  结果封套、外置、截断、回收
 ├─ background/               后台进程句柄与取消（不是 Task）
 └─ presentation/             跨端工具摘要、风险、Diff 与进度数据
@@ -336,7 +339,7 @@ apps/desktop-ui/             ToolPresentation 的桌面渲染
 ToolIntent
   -> ToolRegistry.prepare()
   -> PreparedToolCall
-  -> Hook inspection
+  -> Tool business validation
   -> PermissionEngine.gate()
   -> Sandbox/Capability runner
   -> ToolExecutionResult
@@ -989,22 +992,22 @@ Claude Code 没有把所有上下文混成一段字符串。它的提示体系�
 
 - `src/prompts` 已按显式 Slot 组装稳定产品规则、Chat/Work Profile、Character 与扩展目录；Character 模块产出角色内容，Prompt 不再拥有 ACT 文案；
 - 旧 `chat/narrative/agent` 三模式与 `src/prompts/hooks.ts` 已删除，Narrative 以独立 Recall Contribution 进入 Context；
-- `src/context/promptPrefix.ts` 已经能规范化 Tool Manifest、计算 cache breakpoint 前缀 Hash，这是可保留的正确基础；
-- Compaction 仍按旧 TurnMode 生成三套摘要和恢复块，说明 Profile 迁移不能只改前端枚举；
-- Tool description 分散在各 Tool，方向正确，但尚未形成“注册即决定模型可见 manifest”的单一快照；
-- Character Prompt 已开始使用明确 Slot 与 trust；Memory Recall、Narrative Recall 与 Hook 结果仍未迁入类型化 Context Contribution。
+- `ContextAssembler` 已统一组装 Prompt、Tool Manifest、历史、当前输入与 Memory/Narrative/KB/Skill Contribution；Compaction 已脱离旧 TurnMode，并保留渐进压缩、Safe Cut 与 Restore；
+- `src/context/promptPrefix.ts` 能规范化 Tool Manifest、计算 cache breakpoint 前缀 Hash；Anthropic Adapter 已投影真实缓存断点；
+- Tool Manifest Snapshot 已接入模型可见、Prepared Call 与执行主链，但 `tools.prompt` 又把逐 Tool 说明复制进 System Prompt，形成新的双事实源；
+- Character Prompt 已使用明确 Slot 与信任级别；外部 Skill、MCP instructions、Memory、Narrative、KB、网页和附件继续作为有来源的 Context，而不是产品 System 指令。
 
 ### Diff 判断
 
-1. **V1 必做：建立 `PromptAssembler`，但 Context 保持最终所有权。** Prompt 模块只产出有序 `PromptSlot[]`；`ContextAssembler` 将 Slot、历史、Recall、当前输入和 Tool Manifest 组成本次模型请求。Prompt 不自行调 LLM，Context 不重新生成角色文案。
-2. **V1 必做：Slot 使用明确字段。** 至少包含 `id`、`kind`、`order`、`content`、`version`、`cacheScope`、`trust`；不得使用 `meta` 或调用方猜 JSON。重复 `id` 应报错，不能静默覆盖。
-3. **V1 必做：固定前缀与动态尾部显式分界。** 全局安全/行为规则、稳定 Tool 使用规则在前；启用的 Skill/MCP 摘要、ExecutionProfile、Character 在中段；环境、Recall、附件说明和当前 Turn 在尾部。具体缓存断点由组装器根据 Provider 能力投影，不由任意 Hook 塞 `cacheBreakpoint`。
-4. **V1 必做：删除旧三模式 Prompt 语义。** 顶层只剩 Chat/Work；Character 在两者中始终存在。NarrativePolicy 控制是否检索，不创建 narrative 系统人格；`off` 仅提示可能缺失剧情细节。Compaction/restore 同步按新 Profile 迁移。
-5. **V1 必做：Tool Schema 与文字说明同源。** Tool 注册后产出不可变 manifest snapshot；模型看到、Permission 审批、真正执行的都是该 snapshot 中同一个 Tool 与版本。主 Prompt 只说明通用选用原则，不复制每个参数表。
-6. **V1 必做：不可信数据不能升级成系统指令。** Tool Result、KB、Narrative、附件和网页内容使用 `trust: 'untrusted-data'` 的 Context Contribution；即便内容包含 `<system-reminder>` 一类标签，也不能取得 System Slot 权限。
+1. **V1 已对齐：`PromptAssembler` 产出稳定 Prompt，Context 保持最终所有权。** `ContextAssembler` 将 Slot、历史、Recall、当前输入和 Tool Manifest 组成本次模型请求。Prompt 不自行调 LLM，Context 不重新生成角色文案。
+2. **V1 已对齐：Slot 使用明确字段和中央规格表。** `id/order/content/version/stabilityScope/delivery` 均为显式字段；业务贡献方不能自行选择 System 权限。重复 `id` 报错，禁止 `meta` 或调用方猜 JSON。
+3. **V1 已对齐：固定前缀与动态尾部显式分界。** 全局安全/行为规则和通用 Tool 选用原则在前；全局激活 Character、ExecutionProfile 与可信内置必需 Skill 按稳定范围排列；环境、外部 Skill/MCP 摘要、Recall、附件说明和当前 Turn 位于 Context 区域。具体缓存断点由组装器根据 Provider 能力投影，不由任意业务模块随意塞 `cacheBreakpoint`。
+4. **V1 已对齐：旧三模式 Prompt 语义已删除。** 顶层只剩 Chat/Work；Character 在两者中始终存在。NarrativePolicy 控制是否检索，不创建 narrative 系统人格；`off` 仅提示可能缺失剧情细节。
+5. **V1 当前纠偏：Tool Schema 与文字说明必须同源。** Tool 注册后产出不可变 Manifest Snapshot；模型看到、Permission 审批、真正执行的都是该 Snapshot 中同一个 Tool 与版本。主 Prompt 只说明通用选用原则；下一批删除当前多出来的 `tools.prompt` 副本。
+6. **V1 已对齐：不可信数据不能升级成系统指令。** Tool Result、KB、Narrative、附件和网页内容使用有明确来源的 Context Contribution；即便内容包含 `<system-reminder>` 一类标签，也不能取得 System Slot 权限。
 7. **V1 收口：每次 Turn 保存 Prompt/Tool 版本身份。** `promptRevision` 与 `toolManifestRevision` 标识稳定定义版本，`prefixHash` 标识本次请求截止最终缓存断点的内容身份；这些字段可判断两次请求是否使用同一版本和前缀，但不能单独还原正文，不必因此默认保存整份巨大 Prompt 副本。
-8. **V1 收口：角色变化不应破坏真正固定的前缀。** Character Slot 放在全局稳定规则之后；同一 Session 内保持角色版本稳定，换角色后自然形成新的前缀身份。ACT 协议属于 Character Presentation Slot，不混进全局安全规则。
-9. **V1 收口：Skill/MCP 渐进披露。** 固定前缀只放可用能力摘要，只有选中后才加载完整 Skill 文本或 MCP schema；连接状态变化放动态区域，不能迫使所有静态规则失去缓存。
+8. **V1 收口：角色变化不应破坏真正固定的前缀。** Character Slot 放在产品稳定规则之后；Ema 的角色由全局 Active Character 决定，切换后自然形成新的角色 revision。ACT 协议属于 Character Presentation Slot，不混进全局安全规则。
+9. **V1 收口：Skill 渐进披露，MCP Schema 保持 Manifest 语义。** Skill Catalog 只提供轻量摘要，选中后才加载正文；MCP Tool Schema 始终属于冻结 Tool Manifest，Server instructions/Resource/Prompt 作为不可信 Context Contribution。连接变化只影响下一 Turn，不能中途破坏当前缓存链。
 10. **V1 收口：Prompt 不能承诺不存在的能力。** Plan、Team、Schedule、强 Sandbox 或后台 Agent 未接线时，不注册对应 Tool，也不在文字中声称可用。
 11. **V1 收口：模型/协议差异在 Adapter 投影。** 通用 Slot 不绑定 Anthropic XML、OpenAI role 或 Gemini part；Protocol Adapter 负责序列化。Think Block 不回放给下一模型，媒体兼容由 RequestPreparer 在组装完成后、发送前执行。
 12. **V1 收口：测试验证顺序与身份，不复制 Claude 的全文。** 应覆盖 Slot 唯一性、确定性排序、静态 Hash、动态尾部不污染固定前缀、Feature Gate 与 Tool Manifest 一致、非可信数据无法提升权限。
@@ -1024,7 +1027,7 @@ src/characters/
 └─ characterPrompt.ts         Character Identity + Presentation；组合角色词表与 ACT 模型说明
 
 src/emotion/                  ACT 流式解析、状态转换与 StageCue
-packages/live2d-react/        将 StageCue 映射为具体 Live2D 表情和动作
+src/live2d-react/             将 StageCue 映射为具体 Live2D 表情和动作
 
 ContextAssembler
   ← PromptAssembler.build(snapshot)
@@ -1390,13 +1393,15 @@ Desktop / future CLI / Web / channels
 
 ```text
 src/
-├─ turn/                 Turn command、runtime、TurnEvent、唯一终态
+├─ turn/                 Turn 身份、触发、TurnEvent 与唯一终态领域契约
+├─ turnExecution/        执行一个根 Turn 的应用用例
 ├─ agent/                AgentLoop、AgentLoopEvent 与 AgentRun
 ├─ session/              持久消息、SessionEvent 与所有权
 ├─ system/               AppEvent 组合与全局通知
 ├─ context/              模型窗口、预算、压缩、ContextContribution
 ├─ prompts/              PromptSlot 与稳定组装
-├─ tools/                Registry、PreparedToolCall、执行与结果
+├─ tools/                通用 Registry、Pool、Manifest、PreparedToolCall、执行与结果
+├─ builtinTools/         具体内置 Tool 与静态 Builtin 注册
 ├─ permission/           决策、Session grant、审计
 ├─ session/ storage/     Ema 数据模型、Repo、恢复
 ├─ providers/            Provider 控制面与模型 Catalog
@@ -1408,10 +1413,12 @@ src/
 └─ goals/ schedules/ workflows/ teams/   V1.5，尚不创建空包
 
 apps/
-├─ core/                 Sidecar BFF + Composition Root
-├─ bridge/               Python-only Narrative compute
+├─ localHost/            本机 Sidecar、HTTP/SSE、认证与 Composition Root
 ├─ desktop/              Tauri Host + RuntimeSupervisor
 └─ desktop-ui/           Turn/Tool/Decision 的桌面投影
+
+bridges/
+└─ narrative/            Python-only Narrative compute bridge
 
 packages/
 ├─ public-http/
@@ -1445,10 +1452,10 @@ packages/
 
 | 概念 | Ema 唯一含义 | 当前目标所有者 |
 |---|---|---|
-| Turn | 用户发起的一轮交互和唯一根终态 | `src/turn` + `src/turnExecution/turnExecutor` |
+| Turn | 一次有明确触发原因的交互和唯一根终态 | `src/turn` + `src/turnExecution` |
 | Task | 用户/根 Agent 可见、可持久化、可建立依赖并可选关联 AgentRun 的结构化工作项 | `src/tasks`（V1 必做） |
 | Plan | 只读探索后供用户审批的实施方案 | V1.5 候选，暂不建包 |
-| AgentRun | V1 中一次子 Agent 实际执行 | `src/agent/runs`（待从旧 agent-task 拆出） |
+| AgentRun | V1 中一次子 Agent 实际执行 | `src/agent/runs` |
 | BackgroundProcess | 一次可查询、可停止的后台 Shell 进程 | `src/tools/background`（V1 必做） |
 | Job | KB、Vision、Embedding 等领域后台工作 | 各领域内部 |
 | Schedule | Cron、唤醒与循环触发 | V1.5 候选，暂不建包 |
