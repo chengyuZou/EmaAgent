@@ -33,7 +33,14 @@ function isTurnTerminalEvent(event: TurnStreamEvent): boolean {
 }
 
 function canReconnect(outcome: SseConnectionOutcome): boolean {
-  return outcome.kind !== 'cancelled' && outcome.kind !== 'consumer_error';
+  if (outcome.kind === 'cancelled' || outcome.kind === 'consumer_error') {
+    return false;
+  }
+  // 请求或身份错误不会因等待而恢复；404 也表示后端重放窗口已经结束。
+  if (outcome.kind === 'http_error' && outcome.status >= 400 && outcome.status < 500) {
+    return false;
+  }
+  return true;
 }
 
 export function startTurnSseLifecycle(

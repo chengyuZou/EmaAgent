@@ -1,11 +1,11 @@
+// 向当前在线的 Turn SSE 订阅者广播新事件，不保存任何重放历史。
+
 import type { TurnId } from '@ema-agent/ids';
 import type { TurnStreamEvent } from '@ema-agent/events';
 
 export interface PublishedTurnEvent {
   /**
-   * 1-based event cursor within this turn. The replay API uses the number of
-   * events already consumed as lastEventId, so an event with cursor N is new
-   * for clients whose cursor is < N.
+   * Turn 内从 1 开始的事件游标。客户端提交最后已消费游标，服务端只发送更大值。
    */
   cursor: number;
   event: TurnStreamEvent;
@@ -14,10 +14,7 @@ export interface PublishedTurnEvent {
 export type TurnEventListener = (published: PublishedTurnEvent) => void;
 
 /**
- * In-process live fan-out for currently connected turn SSE clients.
- *
- * TurnEventStore remains the replay/TTL cache. This hub is deliberately small:
- * it has no history and only pushes newly published events to live subscribers.
+ * 进程内实时广播只服务当前连接；重放和 TTL 仍由 TurnEventStore 负责。
  */
 export class TurnEventHub {
   private readonly subscribers = new Map<string, Set<TurnEventListener>>();
@@ -49,8 +46,7 @@ export class TurnEventHub {
       try {
         listener(published);
       } catch {
-        // A broken listener should not prevent other SSE clients from receiving
-        // the same turn event. The route's cancel path will clean it up.
+        // 单个失效连接不能阻止其他客户端收到同一事件；Route 取消路径会清理订阅。
       }
     }
   }

@@ -4,18 +4,30 @@ import {
   describe,
   expect,
   it } from 'vitest';
+import { Hono } from 'hono';
 import {
   asSessionId,
   asTurnId,
 } from '@ema-agent/ids';
 import type { TurnStreamEvent } from '@ema-agent/events';
 import { TurnEventStore } from '../src/sse/event-store.js';
+import { TurnEventHub } from '../src/sse/event-hub.js';
 import { encodeEvent } from '../src/sse/writer.js';
+import { registerTurnEventRoutes } from '../src/routes/turns/turnEvents.js';
 
 const TURN_ID = asTurnId('turn-1');
 const SESSION_ID = asSessionId('session-1');
 
 describe('TurnEventStore', () => {
+  it('显式登记空事件槽，让首事件到达前也能识别合法 Turn', () => {
+    const store = new TurnEventStore();
+
+    expect(store.has(TURN_ID)).toBe(false);
+    store.open(TURN_ID);
+    expect(store.has(TURN_ID)).toBe(true);
+    expect(store.replay(TURN_ID, 0)).toEqual([]);
+  });
+
   it('使用绝对游标重放断线后遗漏的事件', () => {
     const store = new TurnEventStore();
     const first = store.push(TURN_ID, warning('first'));
@@ -36,8 +48,8 @@ describe('TurnEventStore', () => {
       sessionId: SESSION_ID,
       turnId: TURN_ID,
       sentenceId: 'sentence-1',
+      mime: 'audio/mpeg',
       audio: 'x'.repeat(10_000),
-      lipsync: [{ t: 0, mouth: 1 }],
     };
 
     expect(store.push(TURN_ID, event).status).toBe('stored');
@@ -60,6 +72,29 @@ describe('TurnEventStore', () => {
     }).status).toBe('stored');
     expect(store.isDone(TURN_ID)).toBe(true);
     expect(store.replay(TURN_ID, 0)).toHaveLength(1);
+  });
+});
+
+describe('Turn event route', () => {
+  it('未知或已经离开重连窗口的 Turn 返回 404，不维持永久心跳', async () => {
+    const app = new Hono();
+    registerTurnEventRoutes(app, new TurnEventStore(), new TurnEventHub());
+
+    const response = await app.request(`/${TURN_ID}/events`);
+
+    expect(response.status).toBe(404);
+  });
+
+  it('拒绝负数、非整数和超出安全整数范围的游标', async () => {
+    const app = new Hono();
+    const store = new TurnEventStore();
+    store.open(TURN_ID);
+    registerTurnEventRoutes(app, store, new TurnEventHub());
+
+    for (const cursor of ['-1', '1.5', 'abc', '99999999999999999999']) {
+      const response = await app.request(`/${TURN_ID}/events?lastEventId=${cursor}`);
+      expect(response.status).toBe(400);
+    }
   });
 });
 

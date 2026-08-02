@@ -120,6 +120,13 @@ export class TurnExecutor {
     let outcome: TurnOutcome | undefined;
 
     try {
+      await channel.push({
+        type: 'turn_started',
+        sessionId: turn.sessionId,
+        turnId: turn.id,
+        executionProfile: turn.executionProfile,
+        narrativePolicy: turn.narrativePolicy,
+      });
       input = await command.prepare(started);
       outcome = await this.executePreparedTurn(
         turn,
@@ -176,13 +183,6 @@ export class TurnExecutor {
     signal: AbortSignal,
     channel: TurnEventChannel<TurnExecutionEvent>,
   ): Promise<TurnOutcome> {
-    await channel.push({
-      type: 'turn_started',
-      sessionId: turn.sessionId,
-      turnId: turn.id,
-      executionProfile: turn.executionProfile,
-      narrativePolicy: turn.narrativePolicy,
-    });
     for (const degradation of input.requestDegradations) {
       await channel.push({
         type: 'request_degraded',

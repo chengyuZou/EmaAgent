@@ -14,7 +14,13 @@ import type { AgentLoopState } from './agentLoopState.js';
 export type AgentKind = SubagentContextMode;
 
 export type AgentLoopEvent<TExecutorEvent> =
-  | { type: 'loop_iteration'; n: number; state: AgentLoopState }
+  | {
+      type: 'loop_iteration';
+      n: number;
+      state: AgentLoopState;
+      /** 本次模型调用是否继续上一段被输出上限截断的回答。 */
+      continuesOutput: boolean;
+    }
   | { type: 'loop_text_delta'; delta: string; blockIndex: number }
   | { type: 'loop_thinking_delta'; delta: string; blockIndex: number }
   | { type: 'loop_thinking_complete'; blockIndex: number; signature?: string }

@@ -57,6 +57,16 @@ export class TurnEventStore {
     );
   }
 
+  /** POST 创建 Turn 后立即登记空日志，避免订阅请求与首事件之间出现身份竞态。 */
+  open(turnId: TurnId): void {
+    this.getOrCreate(turnId as string);
+  }
+
+  /** 判断 Turn 是否仍处于本进程允许重连的窗口内。 */
+  has(turnId: TurnId): boolean {
+    return this.store.has(turnId as string);
+  }
+
   push(turnId: TurnId, event: TurnStreamEvent): TurnEventPushResult {
     const key = turnId as string;
     const entry = this.getOrCreate(key);
@@ -121,25 +131,6 @@ export class TurnEventStore {
     if (entry) this.deleteEntry(key, entry);
   }
 
-  /**
-   * 兼容旧调用：已写入的音频事件再次做脱敏，并重新核算内存预算。
-   * 新事件在 push 时已经脱敏，因此正常情况下该方法不会改变字节数。
-   */
-  evictAudioChunks(turnId: TurnId): void {
-    const entry = this.store.get(turnId as string);
-    if (!entry) return;
-
-    let nextBytes = 0;
-    entry.events = entry.events.map((item) => {
-      const event = eventForReplay(item.event);
-      const bytes = eventBytes(event);
-      nextBytes += bytes;
-      return { cursor: item.cursor, event, bytes };
-    });
-    this.totalBytes += nextBytes - entry.bytes;
-    entry.bytes = nextBytes;
-  }
-
   private getOrCreate(key: string): TurnEventEntry {
     const existing = this.store.get(key);
     if (existing) return existing;
@@ -161,7 +152,9 @@ export class TurnEventStore {
 }
 
 function positiveInteger(value: number | undefined, fallback: number): number {
-  return Number.isSafeInteger(value) && value! > 0 ? value! : fallback;
+  return value !== undefined && Number.isSafeInteger(value) && value > 0
+    ? value
+    : fallback;
 }
 
 function isTerminalTurnEvent(event: TurnStreamEvent): boolean {
@@ -172,7 +165,7 @@ function isTerminalTurnEvent(event: TurnStreamEvent): boolean {
 
 function eventForReplay(event: TurnStreamEvent): TurnStreamEvent {
   if (event.type !== 'tts_chunk') return event;
-  return { ...event, audio: '', lipsync: undefined };
+  return { ...event, audio: '' };
 }
 
 function eventBytes(event: TurnStreamEvent): number {

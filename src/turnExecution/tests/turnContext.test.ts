@@ -87,6 +87,78 @@ const emptyManifest = {
 } as const;
 
 describe('TurnContextBuilder', () => {
+  it('并发执行 Narrative 与 Memory 召回，并按固定顺序组装贡献', async () => {
+    const started: string[] = [];
+    let finishNarrative!: () => void;
+    let finishMemory!: () => void;
+    const narrativeGate = new Promise<void>((resolve) => {
+      finishNarrative = resolve;
+    });
+    const memoryGate = new Promise<void>((resolve) => {
+      finishMemory = resolve;
+    });
+    const builder = new TurnContextBuilder({
+      session: { loadHistory: () => [] } as never,
+      narrative: {
+        recall: async () => {
+          started.push('narrative');
+          await narrativeGate;
+          return {
+            generationId: 'generation-1',
+            routes: { timeline: 'route' },
+            results: { timeline: 'narrative fact' },
+            failures: [],
+          };
+        },
+      } as never,
+      memory: {
+        prepareRecallContribution: async () => {
+          started.push('memory');
+          await memoryGate;
+          return {
+            contribution: {
+              id: 'memory.recall',
+              source: 'memory',
+              placement: 'beforeCurrentTurn',
+              message: { role: 'user', content: 'memory fact' },
+            },
+            recallSummary: { layer0: 0, layer1: false, layer2: 1 },
+            tokenEstimate: 2,
+          };
+        },
+      },
+    });
+    const preparing = builder.prepare({
+      turn: { ...turn, narrativePolicy: 'always' },
+      input,
+      signal: new AbortController().signal,
+    });
+
+    await Promise.resolve();
+    expect(started).toEqual(['narrative', 'memory']);
+    finishMemory();
+    finishNarrative();
+    const prepared = await preparing;
+    const snapshot = await prepared.assemble({
+      history: [],
+      currentTurn: prepared.messages,
+      mailboxMessages: [],
+      activeSkills: [],
+      toolManifest: emptyManifest,
+      forceCompaction: false,
+    });
+    const contents = snapshot.messages.map((message) => message.content);
+    const narrativeIndex = contents.findIndex(
+      (content) => typeof content === 'string' && content.includes('narrative fact'),
+    );
+    const memoryIndex = contents.indexOf('memory fact');
+    const userIndex = contents.indexOf('hello');
+
+    expect(narrativeIndex).toBeGreaterThanOrEqual(0);
+    expect(memoryIndex).toBeGreaterThan(narrativeIndex);
+    expect(userIndex).toBeGreaterThan(memoryIndex);
+  });
+
   it('把 Memory 与 Task 投影成临时贡献，并把 Memory 证据事件交还当前 Turn', async () => {
     const events: TurnContextEvent[] = [];
     const memory: MemoryRecallPort = {

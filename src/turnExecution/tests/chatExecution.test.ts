@@ -95,16 +95,24 @@ describe('Chat 统一执行链', () => {
         failures: [],
       }),
     };
+    let llmCallCount = 0;
     const llm = {
       stream: async function* (request: LlmRequest) {
         requests.push(request);
-        yield { type: 'thinking_delta' as const, blockIndex: 0, delta: '分析' };
-        yield {
-          type: 'thinking_complete' as const,
-          blockIndex: 0,
-          signature: 'signature-1',
-        };
-        yield { type: 'text_delta' as const, blockIndex: 1, delta: '回答' };
+        llmCallCount += 1;
+        if (llmCallCount === 1) {
+          yield { type: 'thinking_delta' as const, blockIndex: 0, delta: '分析' };
+          yield {
+            type: 'thinking_complete' as const,
+            blockIndex: 0,
+            signature: 'signature-1',
+          };
+          yield { type: 'text_delta' as const, blockIndex: 1, delta: '回答前半' };
+          yield { type: 'done' as const, stopReason: 'max_tokens' as const };
+          return;
+        }
+        // 新 Provider 调用的 blockIndex 会从零开始，不能覆盖前一段文本。
+        yield { type: 'text_delta' as const, blockIndex: 0, delta: '后半' };
         yield { type: 'done' as const, stopReason: 'end_turn' as const };
       },
     } as never;
@@ -181,6 +189,7 @@ describe('Chat 统一执行链', () => {
     expect(toolNames).not.toContain('TaskCreate');
     expect(toolNames).not.toContain('SkillCall');
     expect(toolNames).not.toContain('Subagent');
+    expect(requests).toHaveLength(2);
 
     expect(requests[0]?.messages).toEqual(expect.arrayContaining([
       expect.objectContaining({
@@ -208,7 +217,7 @@ describe('Chat 统一执行链', () => {
       role: 'assistant',
       blocks: [
         { type: 'thinking', thinking: '分析', signature: 'signature-1' },
-        { type: 'text', text: '回答' },
+        { type: 'text', text: '回答前半后半' },
       ],
     }));
   });

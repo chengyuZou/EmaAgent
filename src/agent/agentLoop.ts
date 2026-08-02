@@ -132,18 +132,24 @@ export async function* runAgentLoop<TExecutorEvent>(
       return { fullText: '', state };
     }
 
+    const continuesOutput = state.transition === 'max_output_tokens_recovery';
     state = advanceAgentLoopState(state, {
       phase:      'thinking',
       transition: state.iteration === 0 ? 'initial' : 'next_turn',
       iteration:  state.iteration + 1,
       // 新迭代必须重置只对单轮有效的恢复标记。
       maxOutputTokensRecoveryCount:
-        state.transition === 'max_output_tokens_recovery'
+        continuesOutput
           ? state.maxOutputTokensRecoveryCount
           : 0,
       hasAttemptedReactiveCompact:  false,
     });
-    yield { type: 'loop_iteration', n: state.iteration, state };
+    yield {
+      type: 'loop_iteration',
+      n: state.iteration,
+      state,
+      continuesOutput,
+    };
 
     executor.reset();
 

@@ -152,19 +152,30 @@ function stopRmsLoop(): void {
 
 // ── TurnPlayer ────────────────────────────────────────────────────────────────
 //
-// One per active turn. Owns a MediaSource + SourceBuffer backed HTMLAudioElement
-// connected to the shared AnalyserNode so RMS-based lip-sync works without a
-// separate decode pass.
+// One per active turn. Two playback modes chosen by the first chunk's mime:
+//   'mse'    — MediaSource + SourceBuffer streaming(mp3/aac;WebView2 支持良好)。
+//   'decode' — 句级 decodeAudioData 兜底(wav/pcm 等 MSE 不支持的容器)。
+//              GPT-SoVITS(AAC)与 Qwen-TTS(WAV)都按句交付,句界事件到来时
+//              解码并顺序排播,保住句级流式体验。
+// 两种模式都接入共享 AnalyserNode,唇同步链路一致。
 
 interface TurnPlayer {
   sessionId: string;
   turnId:    string;
-  mediaSource:   MediaSource;
+  mime:      string;
+  mode:      'mse' | 'decode';
+  // ── mse 模式字段(decode 模式为 null)──
+  mediaSource:   MediaSource | null;
   sourceBuffer:  SourceBuffer | null;
-  objectUrl:     string;
-  audioEl:       HTMLAudioElement;
-  elementSource: MediaElementAudioSourceNode;
+  objectUrl:     string | null;
+  audioEl:       HTMLAudioElement | null;
+  elementSource: MediaElementAudioSourceNode | null;
   pendingChunks: ArrayBuffer[];
+  // ── decode 模式字段 ──
+  pendingBytes:      Uint8Array[];
+  decodeChain:       Promise<void>;
+  scheduledSources:  Set<AudioBufferSourceNode>;
+  nextStartTime:     number;
   stopped:       boolean;
   completed:     boolean;
 }
@@ -172,12 +183,21 @@ interface TurnPlayer {
 const activePlayers   = new Map<string, TurnPlayer>(); // turnId → player
 const sessionToTurnId = new Map<string, string>();     // sessionId → turnId
 
-function createPlayer(sessionId: string, turnId: string): TurnPlayer | null {
-  if (!MediaSource.isTypeSupported('audio/mpeg')) {
-    console.error('[tts-playback] audio/mpeg not supported by MediaSource');
-    return null;
+/** 返回 MediaSource 实际支持的 mime 写法,不支持时返回 null(走 decode 兜底)。 */
+function mseSupportedMime(mime: string): string | null {
+  const base = mime.split(';')[0]!.trim();
+  const candidates = [base];
+  // Chromium 的 MSE 对 wav 需要显式 PCM codec 写法,两个都试。
+  if (base === 'audio/wav' || base === 'audio/x-wav' || base === 'audio/L16' || base === 'audio/pcm') {
+    candidates.push('audio/wav; codecs="1"');
   }
+  for (const candidate of candidates) {
+    if (MediaSource.isTypeSupported(candidate)) return candidate;
+  }
+  return null;
+}
 
+function createPlayer(sessionId: string, turnId: string, mime: string): TurnPlayer {
   const { ctx, analyser } = ensureAudioCtx();
   if (ctx.state === 'suspended') {
     ctx.resume().catch((err: Error) => {
@@ -187,54 +207,73 @@ function createPlayer(sessionId: string, turnId: string): TurnPlayer | null {
     });
   }
 
-  const mediaSource  = new MediaSource();
-  const objectUrl    = URL.createObjectURL(mediaSource);
-  const audioEl      = new Audio();
-  const elementSource = ctx.createMediaElementSource(audioEl);
-  elementSource.connect(analyser);
-  connectLipSyncSource(elementSource);
-
   const player: TurnPlayer = {
-    sessionId, turnId,
-    mediaSource, objectUrl, audioEl, elementSource,
+    sessionId, turnId, mime,
+    mode:          'decode',
+    mediaSource:   null,
     sourceBuffer:  null,
+    objectUrl:     null,
+    audioEl:       null,
+    elementSource: null,
     pendingChunks: [],
+    pendingBytes:  [],
+    decodeChain:   Promise.resolve(),
+    scheduledSources: new Set(),
+    nextStartTime: 0,
     stopped:       false,
     completed:     false,
   };
 
-  mediaSource.addEventListener('sourceopen', () => {
-    if (player.stopped) return;
-    try {
-      const sb = mediaSource.addSourceBuffer('audio/mpeg');
-      player.sourceBuffer = sb;
-      sb.addEventListener('updateend', () => {
-        if (!player.stopped) flushPending(player);
-      });
-      flushPending(player);
-    } catch (err) {
-      console.error('[tts-playback] SourceBuffer creation failed', err);
-    }
-  }, { once: true });
+  const supported = mseSupportedMime(mime);
+  if (supported) {
+    player.mode = 'mse';
+    const mediaSource  = new MediaSource();
+    const objectUrl    = URL.createObjectURL(mediaSource);
+    const audioEl      = new Audio();
+    const elementSource = ctx.createMediaElementSource(audioEl);
+    elementSource.connect(analyser);
+    connectLipSyncSource(elementSource);
+    player.mediaSource   = mediaSource;
+    player.objectUrl     = objectUrl;
+    player.audioEl       = audioEl;
+    player.elementSource = elementSource;
 
-  audioEl.src = objectUrl;
-  audioEl.addEventListener('ended', () => {
-    if (!player.stopped) onPlaybackEnded();
-  }, { once: true });
+    mediaSource.addEventListener('sourceopen', () => {
+      if (player.stopped) return;
+      try {
+        const sb = mediaSource.addSourceBuffer(supported);
+        player.sourceBuffer = sb;
+        sb.addEventListener('updateend', () => {
+          if (!player.stopped) flushPending(player);
+        });
+        flushPending(player);
+      } catch (err) {
+        console.error('[tts-playback] SourceBuffer creation failed', err);
+      }
+    }, { once: true });
 
-  audioEl.play().catch((err: Error) => {
-    console.error('[tts-playback] play() rejected:', err.name, err.message);
-    if (err.name === 'NotAllowedError') {
-      // Safety net — should be unreachable once additionalBrowserArgs disables
-      // the autoplay policy (tauri.conf.json), kept in case the flag regresses.
-      showToast('音频被自动播放策略拦截，点击窗口任意处后重试', { variant: 'warning' });
-    }
-  });
+    audioEl.src = objectUrl;
+    audioEl.addEventListener('ended', () => {
+      if (!player.stopped) onPlaybackEnded();
+    }, { once: true });
+
+    audioEl.play().catch((err: Error) => {
+      console.error('[tts-playback] play() rejected:', err.name, err.message);
+      if (err.name === 'NotAllowedError') {
+        // Safety net — should be unreachable once additionalBrowserArgs disables
+        // the autoplay policy (tauri.conf.json), kept in case the flag regresses.
+        showToast('音频被自动播放策略拦截，点击窗口任意处后重试', { variant: 'warning' });
+      }
+    });
+  } else {
+    console.warn(`[tts-playback] MediaSource 不支持 ${mime}，回退句级解码播放`);
+  }
 
   return player;
 }
 
 function flushPending(player: TurnPlayer): void {
+  if (player.mode !== 'mse') return;
   if (!player.sourceBuffer || player.sourceBuffer.updating) return;
   const next = player.pendingChunks.shift();
   if (next) {
@@ -247,19 +286,81 @@ function flushPending(player: TurnPlayer): void {
 function tryEndStream(player: TurnPlayer): void {
   if (player.sourceBuffer?.updating || player.pendingChunks.length > 0) return;
   try {
-    if (player.mediaSource.readyState === 'open') player.mediaSource.endOfStream();
+    if (player.mediaSource?.readyState === 'open') player.mediaSource.endOfStream();
   } catch { /* already ended or detached */ }
+}
+
+// ── decode 模式:句级解码与顺序排播 ────────────────────────────────────────────
+
+/** 把当前累积的一句字节解码并按序排播;decode 串行链保序,失败只丢该句。 */
+function scheduleSentence(player: TurnPlayer): void {
+  if (player.mode !== 'decode' || player.pendingBytes.length === 0) return;
+  const total = player.pendingBytes.reduce((size, b) => size + b.byteLength, 0);
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const part of player.pendingBytes) {
+    bytes.set(part, offset);
+    offset += part.byteLength;
+  }
+  player.pendingBytes = [];
+
+  player.decodeChain = player.decodeChain.then(async () => {
+    if (player.stopped) return;
+    let audioBuffer: AudioBuffer;
+    try {
+      const { ctx } = ensureAudioCtx();
+      // decodeAudioData 会 detach 输入;复制一份保持调用方语义无关。
+      audioBuffer = await ctx.decodeAudioData(
+        bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+      );
+    } catch (err) {
+      console.error('[tts-playback] 句子解码失败,跳过该句', err);
+      return;
+    }
+    if (player.stopped) return;
+
+    const { ctx, analyser } = ensureAudioCtx();
+    const source = ctx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(analyser);
+    connectLipSyncSource(source);
+    player.scheduledSources.add(source);
+    const startAt = Math.max(ctx.currentTime + 0.02, player.nextStartTime);
+    source.start(startAt);
+    player.nextStartTime = startAt + audioBuffer.duration;
+    source.onended = () => {
+      player.scheduledSources.delete(source);
+      maybeFinishDecode(player);
+    };
+  });
+}
+
+/** decode 模式的终态:turn 完成、无待解码、无在播,才算整轮播完。 */
+function maybeFinishDecode(player: TurnPlayer): void {
+  if (player.mode !== 'decode' || player.stopped) return;
+  if (!player.completed) return;
+  if (player.pendingBytes.length > 0) return;
+  void player.decodeChain.then(() => {
+    if (!player.stopped && player.scheduledSources.size === 0) onPlaybackEnded();
+  });
 }
 
 function destroyPlayer(player: TurnPlayer): void {
   player.stopped = true;
-  player.audioEl.pause();
-  player.audioEl.src = '';
-  try { player.elementSource.disconnect(); } catch { /* already disconnected */ }
+  player.pendingBytes = [];
+  for (const source of player.scheduledSources) {
+    try { source.stop(); } catch { /* already stopped */ }
+  }
+  player.scheduledSources.clear();
+  if (player.audioEl) {
+    player.audioEl.pause();
+    player.audioEl.src = '';
+  }
+  try { player.elementSource?.disconnect(); } catch { /* already disconnected */ }
   try {
-    if (player.mediaSource.readyState === 'open') player.mediaSource.endOfStream();
+    if (player.mediaSource?.readyState === 'open') player.mediaSource.endOfStream();
   } catch { /* fine */ }
-  URL.revokeObjectURL(player.objectUrl);
+  if (player.objectUrl) URL.revokeObjectURL(player.objectUrl);
   activePlayers.delete(player.turnId);
   if (sessionToTurnId.get(player.sessionId) === player.turnId) {
     sessionToTurnId.delete(player.sessionId);
@@ -293,7 +394,7 @@ export function handleTtsChunk(
   event: Extract<TurnStreamEvent, { type: 'tts_chunk' }>,
 ): void {
   // Evicted chunks (replayed after the audio file was finalized) keep their
-  // cursor slot but carry no audio — see TurnEventStore.evictAudioChunks.
+  // 重放事件保留游标但不携带音频；实时音频已播放，断线后不重复补播。
   if (!event.audio) return;
   if (!isTtsOwner(event.sessionId as string)) return;
 
@@ -310,9 +411,7 @@ export function handleTtsChunk(
       if (prev) destroyPlayer(prev);
     }
 
-    player = createPlayer(sessionId, turnId);
-    if (!player) return;
-
+    player = createPlayer(sessionId, turnId, event.mime);
     activePlayers.set(turnId, player);
     sessionToTurnId.set(sessionId, turnId);
     setPlaying(turnId);
@@ -325,24 +424,28 @@ export function handleTtsChunk(
   const bytes  = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)!;
 
+  if (player.mode === 'decode') {
+    player.pendingBytes.push(bytes);
+    return;
+  }
+
   player.pendingChunks.push(bytes.buffer as ArrayBuffer);
   if (player.sourceBuffer) flushPending(player);
 }
 
 /**
  * `tts_sentence_complete` — sentence boundary marker from the backend.
- * In the new streaming design, playback has already started via the chunks.
- * This is a no-op for live playback; `handleTurnCompleted` signals end-of-stream.
- *
- * Only processes events for the current ttsOwner session.
+ * mse 模式句界透明(SourceBuffer 连续累积);decode 模式据此解码并排播当前句。
  */
 export function handleTtsSentenceComplete(
   event: Extract<TurnStreamEvent, { type: 'tts_sentence_complete' }>,
 ): void {
   if (!isTtsOwner(event.sessionId as string)) return;
-  // No-op: sentence boundaries are transparent in the MediaSource streaming model.
-  // The SourceBuffer accumulates all sentences continuously; endOfStream is called
-  // once by handleTurnCompleted when the backend signals the full turn is done.
+  const turnId = sessionToTurnId.get(event.sessionId as string);
+  const player = turnId ? activePlayers.get(turnId) : undefined;
+  if (player && player.mode === 'decode' && !player.stopped) {
+    scheduleSentence(player);
+  }
 }
 
 /**
@@ -355,6 +458,12 @@ export function handleTurnCompleted(sessionId: string): void {
   const player = activePlayers.get(turnId);
   if (!player || player.stopped) return;
   player.completed = true;
+  if (player.mode === 'decode') {
+    // 尾句可能没有句界事件(截断/单边),兜底冲刷。
+    scheduleSentence(player);
+    maybeFinishDecode(player);
+    return;
+  }
   if (player.sourceBuffer) flushPending(player);
   // If sourceBuffer isn't ready yet, completed=true will be picked up when
   // sourceopen fires and calls flushPending.

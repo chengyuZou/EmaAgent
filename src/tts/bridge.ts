@@ -38,6 +38,7 @@ export function ttsEventToTurn(
     case 'audio_chunk':
       return {
         type:       'tts_chunk',
+        mime:       ev.mime,
         turnId:     ctx.turnId,
         audio:      base64Encode(ev.bytes),
         sentenceId: makeSentenceId(ctx.turnId, currentSentenceIndex),

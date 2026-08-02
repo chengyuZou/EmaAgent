@@ -5,12 +5,21 @@ import type { AssistantBlock } from '@ema-agent/llm';
 type ToolUseBlock = Extract<AssistantBlock, { type: 'tool_use' }>;
 
 export class IterationTranscript {
+  private committedSegments: AssistantBlock[][] = [];
   private textByIndex = new Map<number, string>();
   private thinkingByIndex = new Map<number, string>();
   private thinkingSignatures = new Map<number, string>();
   private toolCallsByIndex = new Map<number, ToolUseBlock>();
 
-  reset(): void {
+  /** 开始一次模型调用；输出续写会封存上一段，普通工具迭代会开始全新记录。 */
+  beginIteration(continuesOutput: boolean): void {
+    if (continuesOutput) {
+      const segment = this.currentBlocks();
+      if (segment.length > 0) this.committedSegments.push(segment);
+    } else {
+      this.committedSegments = [];
+    }
+
     this.textByIndex = new Map();
     this.thinkingByIndex = new Map();
     this.thinkingSignatures = new Map();
@@ -59,6 +68,13 @@ export class IterationTranscript {
   }
 
   assistantBlocks(): AssistantBlock[] {
+    return mergeAdjacentTextBlocks([
+      ...this.committedSegments.flat(),
+      ...this.currentBlocks(),
+    ]);
+  }
+
+  private currentBlocks(): AssistantBlock[] {
     const blocks = new Map<number, AssistantBlock>();
     for (const [index, text] of this.textByIndex) {
       blocks.set(index, { type: 'text', text });
@@ -78,4 +94,20 @@ export class IterationTranscript {
       .sort(([left], [right]) => left - right)
       .map(([, block]) => block);
   }
+}
+
+/** 不同 LLM 调用会重新编号 blockIndex，因此只在分段完成后合并相邻文本。 */
+function mergeAdjacentTextBlocks(
+  blocks: readonly AssistantBlock[],
+): AssistantBlock[] {
+  const merged: AssistantBlock[] = [];
+  for (const block of blocks) {
+    const previous = merged.at(-1);
+    if (previous?.type === 'text' && block.type === 'text') {
+      previous.text += block.text;
+      continue;
+    }
+    merged.push({ ...block });
+  }
+  return merged;
 }

@@ -117,67 +117,38 @@ export class TurnContextBuilder {
       : undefined;
 
     const baseContributions: ContextContribution[] = [];
-    let narrativeTimelines: readonly NarrativeRecallTimeline[] = [];
-
-    if (
-      turn.narrativePolicy === 'always'
-      && readableUserInput
-      && this.deps.narrative
-    ) {
-      try {
-        const recalled = await prepareNarrativeRecall(this.deps.narrative, {
-          sessionId: turn.sessionId,
-          turnId: turn.id,
-          userInput: readableUserInput,
-          signal,
-          emit,
-        });
-        narrativeTimelines = recalled.timelines;
-        if (recalled.contextText) {
-          baseContributions.push({
-            id: 'narrative.recall',
-            source: 'narrative',
-            placement: 'beforeCurrentTurn',
-            message: {
-              role: 'user',
-              content:
-                '[NARRATIVE CONTEXT - do not quote verbatim; use as background]\n\n'
-                + recalled.contextText,
-            },
-          });
-        }
-      } catch (error) {
-        if (signal.aborted || isAbortError(error)) throw error;
-        if (!(error instanceof NarrativeClientError)) throw error;
-        // Narrative Recall 自己发布整体失败事件；always 策略只负责降级为空上下文。
-      }
+    const [narrativeResult, memoryResult] = await Promise.allSettled([
+      this.prepareNarrativeContribution(
+        turn,
+        readableUserInput,
+        signal,
+        emit,
+      ),
+      this.prepareMemoryContribution(
+        turn,
+        readableUserInput,
+        signal,
+        emit,
+      ),
+    ]);
+    if (signal.aborted) {
+      const rejected = [narrativeResult, memoryResult].find(
+        (result): result is PromiseRejectedResult => result.status === 'rejected',
+      );
+      throw signal.reason ?? rejected?.reason ?? new DOMException(
+        'Turn context preparation was aborted.',
+        'AbortError',
+      );
     }
+    if (narrativeResult.status === 'rejected') throw narrativeResult.reason;
+    if (memoryResult.status === 'rejected') throw memoryResult.reason;
 
-    if (this.deps.memory) {
-      // Memory 召回是辅助贡献：存储或召回失败只降级为空贡献，
-      // 不能让 Turn 起步失败（与上方 Narrative 分支同一降级标准）。
-      try {
-        const recalled = await this.deps.memory.prepareRecallContribution({
-          sessionId: turn.sessionId,
-          turnId: turn.id,
-          executionProfile: turn.executionProfile,
-          narrativePolicy: turn.narrativePolicy,
-          userInput: readableUserInput,
-          signal,
-          emit,
-        });
-        if (recalled.contribution) baseContributions.push(recalled.contribution);
-      } catch (error) {
-        if (signal.aborted || isAbortError(error)) throw error;
-        emit?.({
-          type: 'memory_recall_unavailable',
-          sessionId: turn.sessionId,
-          turnId: turn.id,
-          error: error instanceof Error ? error.message : String(error),
-          retryable: true,
-        });
-      }
+    // 两路召回可以并行完成，但 Prompt 插入顺序必须保持确定性。
+    const narrativeTimelines = narrativeResult.value.timelines;
+    if (narrativeResult.value.contribution) {
+      baseContributions.push(narrativeResult.value.contribution);
     }
+    if (memoryResult.value) baseContributions.push(memoryResult.value);
 
     if (turn.executionProfile === 'work' && this.deps.tasks) {
       const tasks = this.deps.tasks.takeContextReminder(turn.sessionId);
@@ -224,6 +195,90 @@ export class TurnContextBuilder {
         (estimate) => { latestUsageEstimate = estimate; },
       ),
     };
+  }
+
+  private async prepareNarrativeContribution(
+    turn: Turn,
+    readableUserInput: string,
+    signal: AbortSignal,
+    emit?: (event: TurnContextEvent) => void,
+  ): Promise<{
+    timelines: readonly NarrativeRecallTimeline[];
+    contribution?: ContextContribution;
+  }> {
+    if (
+      turn.narrativePolicy !== 'always'
+      || !readableUserInput
+      || !this.deps.narrative
+    ) {
+      return { timelines: [] };
+    }
+
+    try {
+      const recalled = await prepareNarrativeRecall(this.deps.narrative, {
+        sessionId: turn.sessionId,
+        turnId: turn.id,
+        userInput: readableUserInput,
+        signal,
+        emit,
+      });
+      return {
+        timelines: recalled.timelines,
+        ...(recalled.contextText
+          ? {
+              contribution: {
+                id: 'narrative.recall',
+                source: 'narrative',
+                placement: 'beforeCurrentTurn',
+                message: {
+                  role: 'user',
+                  content:
+                    '[NARRATIVE CONTEXT - do not quote verbatim; use as background]\n\n'
+                    + recalled.contextText,
+                },
+              } satisfies ContextContribution,
+            }
+          : {}),
+      };
+    } catch (error) {
+      if (signal.aborted || isAbortError(error)) throw error;
+      if (!(error instanceof NarrativeClientError)) throw error;
+      // Narrative Recall 自己发布整体失败事件；always 策略只负责降级为空上下文。
+      return { timelines: [] };
+    }
+  }
+
+  private async prepareMemoryContribution(
+    turn: Turn,
+    readableUserInput: string,
+    signal: AbortSignal,
+    emit?: (event: TurnContextEvent) => void,
+  ): Promise<ContextContribution | undefined> {
+    if (!this.deps.memory) return undefined;
+
+    // Memory 是辅助贡献：存储或召回失败只降级为空贡献，不能让 Turn 起步失败。
+    try {
+      const recalled = await this.deps.memory.prepareRecallContribution({
+        sessionId: turn.sessionId,
+        turnId: turn.id,
+        executionProfile: turn.executionProfile,
+        narrativePolicy: turn.narrativePolicy,
+        userInput: readableUserInput,
+        signal,
+        emit,
+      });
+      return recalled.contribution ?? undefined;
+    } catch (error) {
+      if (signal.aborted || isAbortError(error)) throw error;
+      emit?.({
+        type: 'memory_recall_unavailable',
+        sessionId: turn.sessionId,
+        turnId: turn.id,
+        error: error instanceof Error ? error.message : String(error),
+        retryable: true,
+      });
+      return undefined;
+    }
   }
 
   private async assemble(

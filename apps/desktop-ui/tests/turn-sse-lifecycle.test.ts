@@ -116,4 +116,29 @@ describe('startTurnSseLifecycle', () => {
     await lifecycle.done;
     expect(errors[0]?.message).toBe('connection reset');
   });
+
+  it('Turn 重放窗口不存在时不重复请求同一个 404', async () => {
+    let connects = 0;
+    const errors: Error[] = [];
+    const lifecycle = startTurnSseLifecycle({
+      openResponse: async () => new Response(),
+      connect() {
+        connects += 1;
+        return completedHandle({
+          kind: 'http_error',
+          status: 404,
+          lastEventId: 0,
+          error: new Error('turn event stream not found'),
+        });
+      },
+      onEvent() {},
+      onPermanentDisconnect(error) {
+        errors.push(error);
+      },
+    });
+
+    await lifecycle.done;
+    expect(connects).toBe(1);
+    expect(errors[0]?.message).toBe('turn event stream not found');
+  });
 });

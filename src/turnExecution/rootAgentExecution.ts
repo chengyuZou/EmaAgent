@@ -223,7 +223,7 @@ export class RootAgentExecution {
         switch (event.type) {
           case 'loop_iteration':
             iterations = event.n;
-            iteration.reset();
+            iteration.beginIteration(event.continuesOutput);
             yield {
               type: 'agent_iteration',
               sessionId,
@@ -382,7 +382,10 @@ export class RootAgentExecution {
       }
 
       const loopOutcome = loopStep.value;
-      if (loopOutcome.state.transition === 'no_tool_calls') {
+      if (
+        loopOutcome.state.transition === 'no_tool_calls'
+        || loopOutcome.state.transition === 'max_output_tokens_recovery'
+      ) {
         activePhase = 'persistence';
         const blocks = iteration.assistantBlocks();
         transcript.appendMessage({

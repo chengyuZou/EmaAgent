@@ -20,10 +20,14 @@ export function registerTurnEventRoutes(
 ): void {
   app.get('/:turnId/events', (context) => {
     const turnId = asTurnId(context.req.param('turnId'));
-    const lastEventId = Number.parseInt(
-      context.req.query('lastEventId') ?? '0',
-      10,
-    ) || 0;
+    if (!eventStore.has(turnId)) {
+      return context.json({ error: 'turn_event_stream_not_found' }, 404);
+    }
+
+    const lastEventId = parseLastEventId(context.req.query('lastEventId'));
+    if (lastEventId === null) {
+      return context.json({ error: 'invalid_last_event_id' }, 400);
+    }
 
     let heartbeat: ReturnType<typeof setInterval> | undefined;
     let unsubscribe: (() => void) | null = null;
@@ -106,6 +110,13 @@ export function registerTurnEventRoutes(
   });
 }
 
+function parseLastEventId(value: string | undefined): number | null {
+  if (value === undefined) return 0;
+  if (!/^\d+$/.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
 function isTerminalTurnEvent(event: TurnStreamEvent): boolean {
   return (
     event.type === 'turn_aborted' ||
@@ -113,4 +124,3 @@ function isTerminalTurnEvent(event: TurnStreamEvent): boolean {
     event.type === 'turn_completed'
   );
 }
-

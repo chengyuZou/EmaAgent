@@ -11,6 +11,7 @@ import type {
   TurnExecutor,
   TurnHandle,
   TurnInputPreparer,
+  TurnOutcome,
 } from '@ema-agent/turn-execution';
 import type { TurnSpeechOutput } from '@ema-agent/tts';
 import type { SessionStore } from '@ema-agent/session';
@@ -82,8 +83,10 @@ export function registerStartTurnRoute(
       }, 400);
     }
 
-    // 数据库刷新后前端可能保留旧 SessionId；此时新建 Session，避免外键错误阻断发送。
     const effectiveSessionId = resolveSessionId(session, sessionId);
+    if (!effectiveSessionId) {
+      return context.json({ error: 'session_not_found' }, 404);
+    }
 
     let handle: TurnHandle;
     try {
@@ -124,6 +127,8 @@ export function registerStartTurnRoute(
       events: handle.events,
     });
 
+    // 先登记空重放槽再返回身份，避免客户端立即订阅时首事件尚未到达而误报不存在。
+    eventStore.open(handle.turnId);
     publishTurnEvents(events, handle, eventStore, eventHub, executor);
     return context.json({
       turnId: handle.turnId,
@@ -135,14 +140,10 @@ export function registerStartTurnRoute(
 function resolveSessionId(
   session: Pick<SessionStore, 'createSession' | 'sessionExists'>,
   requestedSessionId: string | undefined,
-): SessionId {
-  if (
-    requestedSessionId &&
-    session.sessionExists(asSessionId(requestedSessionId))
-  ) {
-    return asSessionId(requestedSessionId);
-  }
-  return session.createSession().id;
+): SessionId | undefined {
+  if (!requestedSessionId) return session.createSession().id;
+  const sessionId = asSessionId(requestedSessionId);
+  return session.sessionExists(sessionId) ? sessionId : undefined;
 }
 
 function publishTurnEvents(
@@ -153,19 +154,89 @@ function publishTurnEvents(
   executor: Pick<TurnExecutor, 'abort'>,
 ): void {
   void (async () => {
-    for await (const event of events) {
-      const result = eventStore.push(handle.turnId, event);
-      if (result.status === 'stored') {
-        // 重放日志可能对音频脱敏，在线订阅者仍接收当前事件的完整内容。
-        eventHub.publish(handle.turnId, {
-          cursor: result.published.cursor,
-          event,
-        });
-      } else if (result.status === 'overflow') {
-        executor.abort(handle.turnId);
+    try {
+      for await (const event of events) {
+        const result = publishEvent(eventStore, eventHub, handle.turnId, event);
+        if (result === 'overflow') executor.abort(handle.turnId);
       }
+    } catch (error) {
+      console.error('[turns] event decoration or fan-out failed', error);
+      executor.abort(handle.turnId);
+    } finally {
+      await publishMissingTerminal(handle, eventStore, eventHub);
     }
   })().catch((error) => {
-    console.error('[turns] event fan-out error', error);
+    // completion 本身失败且终态也无法写入时，只能记录传输级故障。
+    console.error('[turns] terminal event publication failed', error);
   });
+}
+
+function publishEvent(
+  eventStore: TurnEventStore,
+  eventHub: TurnEventHub,
+  turnId: TurnHandle['turnId'],
+  event: TurnStreamEvent,
+): 'stored' | 'overflow' | 'closed' {
+  const result = eventStore.push(turnId, event);
+  if (result.status !== 'stored') return result.status;
+
+  // 重放日志可能对音频脱敏，在线订阅者仍接收当前事件的完整内容。
+  eventHub.publish(turnId, {
+    cursor: result.published.cursor,
+    event,
+  });
+  return 'stored';
+}
+
+/**
+ * 输出装饰器或事件分发异常不能让客户端永久等待。根执行的 completion 是终态
+ * 事实源；事件流未送达终态时，只在传输层补发同一结果，不重新提交数据库。
+ */
+async function publishMissingTerminal(
+  handle: TurnHandle,
+  eventStore: TurnEventStore,
+  eventHub: TurnEventHub,
+): Promise<void> {
+  if (eventStore.isDone(handle.turnId)) return;
+
+  let event: TurnStreamEvent;
+  try {
+    event = terminalEvent(await handle.completion);
+  } catch (error) {
+    event = {
+      type: 'turn_failed',
+      sessionId: handle.sessionId,
+      turnId: handle.turnId,
+      code: 'turn/execution_failed',
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
+  publishEvent(eventStore, eventHub, handle.turnId, event);
+}
+
+function terminalEvent(outcome: TurnOutcome): TurnStreamEvent {
+  switch (outcome.status) {
+    case 'completed':
+      return {
+        type: 'turn_completed',
+        sessionId: outcome.sessionId,
+        turnId: outcome.turnId,
+        stats: outcome.stats,
+      };
+    case 'failed':
+      return {
+        type: 'turn_failed',
+        sessionId: outcome.sessionId,
+        turnId: outcome.turnId,
+        code: outcome.code,
+        message: outcome.message,
+      };
+    case 'aborted':
+      return {
+        type: 'turn_aborted',
+        sessionId: outcome.sessionId,
+        turnId: outcome.turnId,
+        reason: outcome.reason,
+      };
+  }
 }

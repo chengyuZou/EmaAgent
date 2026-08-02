@@ -2,7 +2,7 @@
 import type { SessionId, TurnId } from '@ema-agent/ids';
 
 export type TtsEvent =
-  | { type: 'tts_chunk'; sessionId: SessionId; turnId: TurnId; audio: string; sentenceId: string }
+  | { type: 'tts_chunk'; sessionId: SessionId; turnId: TurnId; audio: string; sentenceId: string, mime: string }
   | { type: 'tts_sentence_complete'; sessionId: SessionId; turnId: TurnId; sentenceId: string }
   | {
       type: 'tts_warning';
