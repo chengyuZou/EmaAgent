@@ -17,6 +17,7 @@ import type {
   Turn,
 } from '@ema-agent/session';
 import type { TurnFailureCode, TurnFailurePhase } from '@ema-agent/turn';
+import { extendPromptSnapshot } from '@ema-agent/prompts';
 import type {
   TurnExecutionEvent,
   TurnInput,
@@ -119,10 +120,29 @@ export class RootAgentExecution {
     try {
       emotion.beginTurn(sessionId);
 
+      const toolsForTurn = await this.toolsBuilder.prepare({
+        turn,
+        input,
+        signal,
+        budget,
+      });
+      turnTools = toolsForTurn;
+      this.activeTools.set(turnId, toolsForTurn);
+      const policy = toolsForTurn.policy;
+      const executionInput = toolsForTurn.toolPromptContribution
+        ? Object.freeze({
+            ...input,
+            prompt: extendPromptSnapshot(
+              input.prompt,
+              [toolsForTurn.toolPromptContribution],
+            ),
+          })
+        : input;
+
       const preparedContext = yield* streamOperation((emit) =>
         this.contextBuilder.prepare({
           turn,
-          input,
+          input: executionInput,
           signal,
           emit,
         }));
@@ -155,16 +175,6 @@ export class RootAgentExecution {
           blocks: { timelines: [...preparedContext.narrativeTimelines] },
         });
       }
-
-      const toolsForTurn = this.toolsBuilder.prepare({
-        turn,
-        input,
-        signal,
-        budget,
-      });
-      turnTools = toolsForTurn;
-      this.activeTools.set(turnId, toolsForTurn);
-      const policy = toolsForTurn.policy;
 
       activePhase = 'provider';
       const agentLoop = runAgentLoop<TurnExecutionEvent>({

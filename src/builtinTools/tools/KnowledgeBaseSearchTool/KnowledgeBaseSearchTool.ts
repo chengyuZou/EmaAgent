@@ -1,15 +1,19 @@
 // 从当前 Session 已激活的知识库中检索相关内容。
 import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
-import type { KnowledgeSearchPort } from '@ema-agent/knowledge';
-import type { KbSearchResult } from '@ema-agent/knowledge';
+import type {
+  KbSearchResult,
+  KnowledgeSearchRequest,
+} from '@ema-agent/knowledge';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import type { BuiltinToolContext } from '../../builtinToolContext.js';
 import { contextFail, contextOk } from '../../contextValidation.js';
 
 /** 知识库检索工具的窄 Context：KB 搜索入口。 */
 interface KnowledgeBaseSearchToolContext {
-  knowledgeSearch: KnowledgeSearchPort;
+  knowledgeSearch: (
+    request: Pick<KnowledgeSearchRequest, 'query' | 'topK' | 'kbIds'>,
+  ) => Promise<KbSearchResult>;
 }
 
 // ── 输入 schema ──────────────────────────────────────────────────────────────
@@ -71,6 +75,10 @@ If the user has multiple knowledge bases, you may specify kb_ids to target one o
   },
 
   async execute(input: KbSearchInput, context: KnowledgeBaseSearchToolContext): Promise<KbSearchResult> {
-    return context.knowledgeSearch(input.query, input.top_k, input.kb_ids);
+    return context.knowledgeSearch({
+      query: input.query,
+      topK: input.top_k,
+      kbIds: input.kb_ids,
+    });
   },
 });

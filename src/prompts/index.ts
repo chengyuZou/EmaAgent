@@ -1,6 +1,6 @@
 // 统一导出 Prompt 快照组装、槽位类型和稳定产品指令。
 
-export { buildPromptSnapshot } from './promptBuilder.js';
+export { buildPromptSnapshot, extendPromptSnapshot } from './promptBuilder.js';
 export { buildExecutionProfileContribution } from './executionProfilePrompt.js';
 export { PromptAssembler } from './promptAssembler.js';
 export { PromptAssemblyError } from './errors.js';

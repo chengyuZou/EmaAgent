@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { buildTool, ToolRegistry, type BuiltTool } from '@ema-agent/tools';
 import type { BuiltinToolContext } from '../builtinToolContext.js';
+import { assembleToolPool } from '../assembleToolPool.js';
 import { assembleToolPrompt } from '../toolPrompt.js';
 
 function makeTool(
@@ -55,6 +56,16 @@ function context(workspaceRoot = '/ws'): BuiltinToolContext {
   };
 }
 
+function assemble(
+  registry: ToolRegistry,
+  hostContext: BuiltinToolContext,
+  allowedToolIds: ReadonlySet<string> | null = null,
+) {
+  const visible = assembleToolPool(registry, hostContext)
+    .filter((tool) => allowedToolIds === null || allowedToolIds.has(tool.id));
+  return assembleToolPrompt(visible, hostContext);
+}
+
 describe('assembleToolPrompt', () => {
   it('按可见顺序拼装说明书,MCP 与无 prompt 工具跳过', async () => {
     const registry = makeRegistry([
@@ -62,7 +73,7 @@ describe('assembleToolPrompt', () => {
       makeTool('FileWrite'),
       makeTool('McpThing', { mcp: true, prompt: () => '不可信说明书' }),
     ]);
-    const result = await assembleToolPrompt(registry, context());
+    const result = await assemble(registry, context());
     expect(result).not.toBeNull();
     expect(result!.content).toBe('## FileRead\n读取文件的正确姿势');
     expect(result!.content).not.toContain('FileWrite');
@@ -74,16 +85,14 @@ describe('assembleToolPrompt', () => {
       makeTool('FileRead', { prompt: () => '读' }),
       makeTool('Bash', { prompt: () => '跑', requires: ['commandRunner'] }),
     ]);
-    const wide = await assembleToolPrompt(registry, {
+    const wideContext = {
       ...context(),
       commandRunner: {},
-    } as BuiltinToolContext);
+    } as BuiltinToolContext;
+    const wide = await assemble(registry, wideContext);
     expect(wide!.content).toContain('## Bash');
 
-    const narrow = await assembleToolPrompt(registry, {
-      ...context(),
-      commandRunner: {},
-    } as BuiltinToolContext, new Set(['FileRead']));
+    const narrow = await assemble(registry, wideContext, new Set(['FileRead']));
     expect(narrow!.content).toBe('## FileRead\n读');
   });
 
@@ -92,29 +101,30 @@ describe('assembleToolPrompt', () => {
       makeTool('NarrativeSearch', { prompt: () => '剧情', requires: ['narrativeSearch'] }),
       makeTool('FileRead', { prompt: () => '读' }),
     ]);
-    const withNarrative = await assembleToolPrompt(registry, {
+    const withNarrativeContext = {
       ...context(),
       narrativeSearch: {},
-    } as BuiltinToolContext);
+    } as BuiltinToolContext;
+    const withNarrative = await assemble(registry, withNarrativeContext);
     expect(withNarrative!.content).toContain('## NarrativeSearch');
 
-    const without = await assembleToolPrompt(registry, context());
+    const without = await assemble(registry, context());
     expect(without!.content).toBe('## FileRead\n读');
   });
 
   it('同内容版本稳定,内容变化版本变化', async () => {
     const registry = makeRegistry([makeTool('FileRead', { prompt: () => '稳定文本' })]);
-    const first = await assembleToolPrompt(registry, context());
-    const second = await assembleToolPrompt(registry, context());
+    const first = await assemble(registry, context());
+    const second = await assemble(registry, context());
     expect(first!.version).toBe(second!.version);
 
     const changed = makeRegistry([makeTool('FileRead', { prompt: () => '不同文本' })]);
-    const third = await assembleToolPrompt(changed, context());
+    const third = await assemble(changed, context());
     expect(third!.version).not.toBe(first!.version);
   });
 
   it('没有说明书工具时返回 null,不产生空槽', async () => {
     const registry = makeRegistry([makeTool('FileRead')]);
-    expect(await assembleToolPrompt(registry, context())).toBeNull();
+    expect(await assemble(registry, context())).toBeNull();
   });
 });

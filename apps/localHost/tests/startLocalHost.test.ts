@@ -63,6 +63,7 @@ describe('LocalHostLifecycle', () => {
     const backgroundProcesses = {
       shutdown: vi.fn(async () => undefined),
     };
+    const usageRetention = { deleteOlderThan: vi.fn(() => 0) };
     const lifecycle = new LocalHostLifecycle(
       knowledge,
       marketplace,
@@ -71,6 +72,7 @@ describe('LocalHostLifecycle', () => {
       providerRuntime,
       backgroundWork,
       backgroundProcesses,
+      usageRetention,
     );
 
     await Promise.all([lifecycle.start(), lifecycle.start()]);
@@ -94,6 +96,7 @@ describe('LocalHostLifecycle', () => {
     expect(skills.scanAndReconcile).toHaveBeenCalledTimes(1);
     expect(modelCatalog.refresh).toHaveBeenCalledTimes(1);
     expect(providerRuntime.syncNarrativeBridge).toHaveBeenCalledTimes(1);
+    expect(usageRetention.deleteOlderThan).toHaveBeenCalledTimes(1);
 
     await lifecycle.shutdown();
     expect(backgroundWork.shutdown).toHaveBeenCalledTimes(1);
@@ -137,6 +140,7 @@ describe('LocalHostLifecycle', () => {
       {
         shutdown: vi.fn(async () => undefined),
       },
+      { deleteOlderThan: vi.fn(() => 0) },
     );
 
     await expect(lifecycle.start()).resolves.toBeUndefined();
@@ -179,6 +183,7 @@ describe('LocalHostLifecycle', () => {
       {
         shutdown: vi.fn(async () => undefined),
       },
+      { deleteOlderThan: vi.fn(() => 0) },
     );
 
     await expect(lifecycle.start()).rejects.toThrow('required recovery failed');

@@ -7,9 +7,9 @@ import {
   knowledgeRetrievalSetting,
   type DocumentProgressEvent,
   type IngestOptions,
-  type KbSearchResult,
   type KnowledgeEvent,
   type KnowledgeModelRef,
+  type KnowledgeSearchPort,
 } from '@ema-agent/knowledge';
 import type { RerankRuntime } from '@ema-agent/rerank';
 import type { SettingsStore } from '@ema-agent/settings';
@@ -20,7 +20,6 @@ import {
   type ModelBindingsRepo,
   type ProviderEmbedModelsRepo,
 } from '@ema-agent/storage';
-import type { KbAssetScope } from '@ema-agent/turn';
 import type { VisionRuntime } from '@ema-agent/vision';
 import { asKbVisionAdapter } from './providers/vision.js';
 
@@ -76,18 +75,21 @@ export function createKnowledgeRuntime(
     emitEvent,
   });
 
-  const kbSearch = (
-    query: string,
-    topK?: number,
-    kbIds?: string[],
-    assetScopes?: KbAssetScope[],
-    sessionId?: string,
-    turnId?: string,
-  ): Promise<KbSearchResult> => {
+  const kbSearch: KnowledgeSearchPort = ({
+    query,
+    topK,
+    kbIds,
+    assetScopes,
+    sessionId,
+    turnId,
+  }) => {
     const models = settings.get(knowledgeModelsSetting);
     const retrieval = settings.get(knowledgeRetrievalSetting);
-    return kb.search(kbIds ?? [], query, {
-      assetScopes,
+    return kb.search([...(kbIds ?? [])], query, {
+      assetScopes: assetScopes?.map((scope) => ({
+        kbId: scope.kbId,
+        assetIds: [...scope.assetIds],
+      })),
       topK,
       sessionId,
       turnId,

@@ -3,7 +3,6 @@
 import type { AgentRunId, SessionId, ToolCallId, TurnId } from '@ema-agent/ids';
 import type {
   KnowledgeSearchPort,
-  KbSearchResult,
 } from '@ema-agent/knowledge';
 import type { LanguageModel, Message as ModelMessage } from '@ema-agent/llm';
 import {
@@ -26,7 +25,7 @@ import {
   type SkillRunnerPort,
 } from '@ema-agent/skills';
 import type { TaskStorePort } from '@ema-agent/tasks';
-import type { KbAssetScope } from '@ema-agent/turn';
+import type { PromptSlotContribution } from '@ema-agent/prompts';
 import {
   ToolExecutionRuntime,
   type BackgroundProcessPort,
@@ -37,6 +36,7 @@ import {
   type ToolResultStore,
 } from '@ema-agent/tools';
 import {
+  assembleToolPrompt,
   assembleToolPool,
   type BuiltinToolContext,
 } from '@ema-agent/tool-builtin';
@@ -60,16 +60,6 @@ import type {
   TurnInput,
 } from './types.js';
 
-/** LocalHost 为一次 Turn 绑定 KB 范围时使用的执行入口。 */
-export type TurnKnowledgeSearch = (
-  query: string,
-  topK?: number,
-  kbIds?: string[],
-  assetScopes?: KbAssetScope[],
-  sessionId?: string,
-  turnId?: string,
-) => Promise<KbSearchResult>;
-
 /** 只有 TurnToolsBuilder 消费的工具执行服务。 */
 export interface TurnToolsBuilderDeps {
   readonly session: SessionStore;
@@ -88,7 +78,7 @@ export interface TurnToolsBuilderDeps {
   }) => AskPermissionFn;
   readonly askUserInteraction?: AskUserInteractionPort;
   readonly skillRunner?: SkillRunnerPort;
-  readonly knowledgeSearch?: TurnKnowledgeSearch;
+  readonly knowledgeSearch?: KnowledgeSearchPort;
   readonly getSessionToolResultStore?: (
     sessionId: SessionId,
   ) => ToolResultStore;
@@ -133,6 +123,7 @@ export class TurnTools {
 
   constructor(
     readonly policy: TurnPolicy,
+    readonly toolPromptContribution: PromptSlotContribution | undefined,
     private readonly activeSkillState: ActiveSkillState,
     private readonly spawner: SubagentSpawner,
     private readonly parentMessages: ModelMessage[],
@@ -198,7 +189,7 @@ export class TurnTools {
 export class TurnToolsBuilder {
   constructor(private readonly deps: TurnToolsBuilderDeps) {}
 
-  prepare(request: TurnToolsPreparation): TurnTools {
+  async prepare(request: TurnToolsPreparation): Promise<TurnTools> {
     const { turn, input, signal, budget } = request;
     const sessionId = turn.sessionId;
     const turnId = turn.id;
@@ -268,6 +259,7 @@ export class TurnToolsBuilder {
       readFileState,
       taskStore: this.deps.taskStore,
       commandRunner,
+      backgroundProcesses: this.deps.backgroundProcesses,
       skillRunner: this.deps.skillRunner,
       activeSkillState,
       knowledgeSearch,
@@ -299,6 +291,14 @@ export class TurnToolsBuilder {
       ...capabilityContext,
       toolCapabilities: policy.capabilities(),
     });
+    const assembledPrompt = await assembleToolPrompt(visibleTools, toolContext);
+    const toolPromptContribution = assembledPrompt
+      ? {
+          id: 'tools.prompt' as const,
+          content: assembledPrompt.content,
+          version: assembledPrompt.version,
+        }
+      : undefined;
     const toolResultStore =
       this.deps.getSessionToolResultStore?.(sessionId);
 
@@ -321,6 +321,7 @@ export class TurnToolsBuilder {
 
     return new TurnTools(
       policy,
+      toolPromptContribution,
       activeSkillState,
       spawner,
       parentMessages,
@@ -337,7 +338,7 @@ export class TurnToolsBuilder {
     const search = this.deps.knowledgeSearch;
     if (!search) return undefined;
 
-    return (query, topK, kbIds) => {
+    return ({ query, topK, kbIds }) => {
       // Tool 显式给出 kbIds 时覆盖用户选择；否则继承本 Turn 冻结的文档范围。
       const effectiveKbIds = kbIds
         ?? (input.kbIds?.length ? [...input.kbIds] : []);
@@ -347,14 +348,14 @@ export class TurnToolsBuilder {
             kbId: scope.kbId,
             assetIds: [...scope.assetIds],
           }));
-      return search(
+      return search({
         query,
         topK,
-        effectiveKbIds,
-        effectiveScopes,
-        turn.sessionId,
-        turn.id,
-      );
+        kbIds: effectiveKbIds,
+        assetScopes: effectiveScopes,
+        sessionId: turn.sessionId,
+        turnId: turn.id,
+      });
     };
   }
 

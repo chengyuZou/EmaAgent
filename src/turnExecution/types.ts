@@ -84,7 +84,7 @@ export interface TurnInput {
   readonly userInput:             string | readonly LlmContentPart[];
   /** 只用于 Message 落库，禁止携带图片、音频或文件 Base64。 */
   readonly persistedUserInput?:   MessageBlocks;
-  /** Turn 开始时冻结的 Prompt Slot 快照，Agent 多轮共享同一 revision。 */
+  /** 输入准备冻结的基础 Prompt；执行前只允许追加同一 Tool 快照生成的说明书槽。 */
   readonly prompt:                PromptSnapshot;
   /** 已解析且冻结的模型身份、能力与窗口预算。 */
   readonly model:                 TurnModelSnapshot;

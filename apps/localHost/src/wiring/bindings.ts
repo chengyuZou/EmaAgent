@@ -29,6 +29,7 @@ import {
 } from '@ema-agent/provider';
 import type { EmbedRuntime } from '@ema-agent/embed';
 import type { RerankRuntime } from '@ema-agent/rerank';
+import type { KnowledgeSearchPort } from '@ema-agent/knowledge';
 import type { NarrativeClient } from '@ema-agent/narrative';
 import type { CharacterCardStore } from '@ema-agent/characters';
 import {
@@ -54,10 +55,7 @@ import type {
   ToolCallId,
   TurnId,
 } from '@ema-agent/ids';
-import type {
-  KbAssetScope,
-} from '@ema-agent/turn';
-import type { KbSearchResult, KbManager } from '@ema-agent/knowledge';
+import type { KbManager } from '@ema-agent/knowledge';
 import type { CommandRunnerPort, SandboxStatusWire } from '@ema-agent/sandbox';
 import type {
   BackgroundProcessRuntime,
@@ -227,7 +225,7 @@ export interface AppBindings {
    *  kbIds=[] → active KB; multiple ids → cross-KB merge.
    *  assetScopes: per-KB doc filters from the chat picker (each scope targets one KB).
    *  KBs without a matching scope are searched unfiltered.  */
-  kbSearch: (query: string, topK?: number, kbIds?: string[], assetScopes?: KbAssetScope[], sessionId?: string, turnId?: string) => Promise<KbSearchResult>;
+  kbSearch: KnowledgeSearchPort;
 }
 
 // ── Build bindings ────────────────────────────────────────────────────────────
@@ -438,6 +436,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     providerRuntime,
     backgroundWork,
     backgroundProcesses,
+    usageRecords,
   );
 
   return {

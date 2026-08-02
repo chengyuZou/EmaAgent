@@ -24,6 +24,18 @@ export function buildPromptSnapshot(request: PromptBuildRequest): PromptSnapshot
   ]);
 }
 
+/** 在既有快照上追加由运行能力生成的槽，并重新计算顺序、分块和 revision。 */
+export function extendPromptSnapshot(
+  snapshot: PromptSnapshot,
+  contributions: readonly PromptSlotContribution[],
+): PromptSnapshot {
+  if (contributions.length === 0) return snapshot;
+  return assembler.build([
+    ...snapshot.slots.map(({ id, content, version }) => ({ id, content, version })),
+    ...contributions,
+  ]);
+}
+
 function buildCharacterContributions(
   character: PromptBuildRequest['activeCharacter'],
 ): PromptSlotContribution[] {

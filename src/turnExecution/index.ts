@@ -40,7 +40,6 @@ export type {
   TurnContextPreparation,
 } from './turnContext.js';
 export type {
-  TurnKnowledgeSearch,
   TurnToolsBuilderDeps,
   TurnToolsPreparation,
   TurnToolsShutdownReason,

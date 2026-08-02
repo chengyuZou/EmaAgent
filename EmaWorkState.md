@@ -1,8 +1,19 @@
 # EmaAgent 当前重构接力板
 
 > 状态：临时施工记录，架构完成后删除
-> 更新时间：2026-08-01
+> 更新时间：2026-08-02
 > 作用：只记录当前阶段、工作区归属、最近验证和下一步。长期规则以 `CLAUDE.md` 为准，目标设计以 `EmaRefactor.md` 为准，设计依据以 `EmaClaudeArchitectureReview.md` 为准。
+
+## 接口所有权与装配规则
+
+- 业务 Port、Request 和 Result 由能力所有者包定义；消费者只能导入，不得重新声明近似接口或扩展版函数签名。
+- 消费方需要绑定 Session、Turn 或能力范围时，使用私有 Adapter；若新增参数属于原业务语义，必须回到所有者包修改正式契约。
+- 参数超过三个时优先使用明确的 Request 对象，禁止继续扩展位置参数列表。
+- 同一运行能力只能有一个装配入口。Prompt、Tool Manifest 和执行 Context 必须从同一份冻结 Snapshot 生成，不得分别手写能力集合。
+- 生产代码禁止用 `as unknown as SomeContext` 伪造完整 Context；测试 Fixture 除外。
+- AppBindings、Route 和组合根不得复制业务 Port 签名；Route 只解析 DTO 并调用正式业务入口。
+- 接口被替换后，同批迁移所有调用方并删除旧导出；开发期不保留 Legacy 别名或第二套兼容契约。
+- 修改 Port 或装配逻辑后，必须检查：定义位置唯一、旧符号零引用、Prompt 与实际 Manifest 一致、可选能力缺失时相关 Tool 不可见。
 
 ## 当前阶段
 
@@ -15,6 +26,8 @@ L1 Turn 输入准备已经完成：`TurnInputPreparer` 统一完成一次根 Tur
 L2 Turn Context 已经完成：`TurnContextBuilder.prepare()` 一次性建立历史兼容视图和 Narrative/Memory/Task 临时贡献，返回的 `TurnContext` 在每次 LLM Call 通过现有 `ContextAssembler + ContextCompactor` 重建不可变窗口；Scratchpad、Mailbox 与 Active Skill 只作为当次投影输入。`TurnExecutor` 不再直接读取 Context 内部接口，LocalHost 也不再手写 Contribution/Compaction 回调。Memory 新增所有者定义的窄 `MemoryRecallPort`，召回证据与 Context 压缩事件进入当前 Turn 事件流，不再只发到进程级总线。
 
 L3 Turn Tools 已经完成：`TurnToolsBuilder.prepare()` 在根 Turn 开始时一次冻结 Capability Context、Builtin/MCP Manifest、Execution Profile 与 Tool Policy，并绑定 KB/Narrative/AskUser/Skill/Task/Sandbox 等窄能力；`TurnTools` 统一拥有 ToolExecutionRuntime、SubagentSpawner、Active Skill 与终态关闭顺序。`TurnExecutor` 不再读取 Tool Registry、Permission、CommandRunner、Journal 或 AgentRun Store，只通过一个 Turn 级协作者执行、取消和收口工具。
+
+Tool 接口与装配漂移复查已经完成：Knowledge 的检索入口统一为所有者定义的 `KnowledgeSearchPort(KnowledgeSearchRequest)`，TurnExecution 与 LocalHost 删除六位置参数的重复签名，只做 Session/Turn/KB 范围绑定。旧 LocalHost 假 `BuiltinToolContext` 已删除；`TurnToolsBuilder` 从真实 `BuiltinToolContext` 一次筛出可见工具，同一集合同时生成 Manifest、Policy 与 `tools.prompt`，并补回此前遗漏的 BackgroundProcess 能力。回归测试锁定能力存在或缺失时 Manifest 与说明书共同出现或消失。
 
 L4 Root Agent Execution 已经完成：`RootAgentExecution` 统一拥有根 AgentLoop、Context/Tool 一次性组合、Emotion、非终态事件翻译与 transcript 持久化，只返回 `completed/failed/aborted` 结构化结果；它通过 `RootAgentTranscript` 窄端口写消息，无法创建或提交根 Turn 终态。`TurnExecutor` 只保留根身份、TurnHandle、准备期、取消、交互清理、临时目录清理与唯一终态。单次迭代块顺序由内聚的 `IterationTranscript` 共享给事件投影和持久化，不在两个层级重复重建。
 
@@ -170,6 +183,8 @@ Task 与 AgentRun 前端已经分面：Desktop 使用正式 `/api/tasks` 快照�
 
 Turn 全链复查正在进行，当前已完成三条语义收口。LocalHost 会在 POST 返回前为新 Turn 建立空事件日志，显式未知 Session 和未知/过期 Turn 不再被静默创建或无限 SSE 心跳；严格游标校验、装饰器故障后的精确取消与 completion 补终态、Desktop 对永久 4xx 停止重试已经接通。AgentLoop 的输出上限续写改为分段 Transcript：不同 LLM Call 的 blockIndex 不共享命名空间，前后文本会一次持久化，第二次仍截断也保留已经生成的回答。`turn_started` 现在紧随 Turn 创建发布，输入准备失败保持 `started → failed` 的完整生命周期。Narrative 与 Memory Recall 已从无依赖的串行等待改为共同 settle，并继续按 Narrative → Memory 的固定顺序装配；取消和致命错误不会留下无人收口的召回 Promise。
 
+本轮主 Agent 施工区为 Knowledge 检索 Port、Builtin Tool Prompt、TurnExecution Tool 快照和 LocalHost 对应 wiring；Desktop、TTS、Usage 与 Storage 的其他未提交修改属于用户或其他 Agent，不覆盖、不回退。
+
 Storage 目录与开发期迁移基线已经收口：数据库连接、迁移执行与 CLI 归入 `src/storage/database`，FTS/中文分词/LIKE 工具归入 `search`，Repo 按实际数据库归入 `repos/profile`、`repos/data`、`repos/kb`。2026-08-01 内测前将 Profile v17、Data v26、KB v5 的最终 Schema 分别压成唯一 `001_initial.sql`，旧增量迁移和只验证历史升级路径的测试已经删除；生成前后逐对象比对 SQLite Schema，并验证三库外键、FTS 和同步 Trigger。模型绑定 CHECK 同步删除退役模块，三个与主键/唯一约束重复的命名索引一并去除。现有开发数据库不会被自动删除；旧 `user_version` 高于 1 时应由开发者自行备份并重建，正式发布后恢复只追加迁移的规则。
 
 Session 活动 Turn 身份第一批已经收口：旧 `RunRegistry` 改为内部 `ActiveTurnRegistry`，同一 Session 禁止覆盖注册；取消和释放必须同时匹配 `sessionId + turnId`，旧 Turn 的迟到 `finally` 不会清掉后继 Turn。Turn 写入 completed/failed/aborted 后仍保持运行锁，唯一执行器在事件、交互和临时资源全部收口后才于 `finally` 释放；负载观察者异常不会反向破坏 Turn 生命周期。
@@ -265,6 +280,7 @@ Chat 工作区、Turn 导航轨、Task/AgentRun 分面、双 Dock、置顶摘要
 
 ## 最近验证
 
+- Tool 接口与装配漂移收口：Knowledge 13 个测试文件 63/63、TurnExecution 9 个非 Live 文件 20/20、Builtin Tool Prompt 5/5 通过；Knowledge/Prompt/BuiltinTools/TurnExecution 已按依赖重建，TurnExecution 与 LocalHost typecheck 通过。`TurnKnowledgeSearch`、生产假 `BuiltinToolContext` 与本批新增行内导入扫描归零；`git diff --check` 仅有 Windows CRLF 提示。
 - Turn 全链前三批：Agent typecheck/build、AgentLoop 5/5、TurnExecution typecheck、Turn Context/生命周期/Chat 续写定向 6/6 通过；LocalHost 事件身份/启动路由定向 8/8、Desktop SSE 生命周期 5/5 已在本轮前半通过。覆盖显式未知 Session、未知 Turn、非法游标、事件装饰失败补终态、永久 4xx 停止重试、max-token 两次调用 blockIndex 隔离、准备失败 `started → failed`，以及 Narrative/Memory 并发启动与确定性插入顺序；`git diff --check` 仅有 Windows CRLF 提示。
 - Session 活动 Turn 身份：Session 5 个测试文件 48/48、TurnExecution 非 Live 定向测试与两包 typecheck 通过；Session build 已刷新下游声明。新增覆盖重复注册拒绝、迟到取消/释放隔离、终态提交不提前放行及观察者异常隔离；`git diff --check` 通过，仅有既有 Windows CRLF 提示。
 - Session Message Presentation：Tools 7 个测试文件 33/33、Session 5 个测试文件 49/49 与两包 typecheck 通过，Tools build 已刷新公共判别出口。新增覆盖六类 Presentation 完整往返及缺字段拒绝。

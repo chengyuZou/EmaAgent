@@ -1,4 +1,5 @@
 // ── Document block (reader output) ───────────────────────────────────────────
+import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { KbAssetScope } from '@ema-agent/turn';
 
 export interface DocumentSourceRef {
@@ -25,11 +26,19 @@ export interface KbSearchResult {
   hits: KbSearchHit[];
 }
 
-/** Tool 等外部消费者调用 Knowledge 检索时使用的稳定执行入口。 */
+/** Knowledge 检索的一次完整请求；宿主可以在转交给 Tool 前冻结范围与调用身份。 */
+export interface KnowledgeSearchRequest {
+  readonly query: string;
+  readonly topK?: number;
+  readonly kbIds?: readonly string[];
+  readonly assetScopes?: readonly KbAssetScope[];
+  readonly sessionId?: SessionId;
+  readonly turnId?: TurnId;
+}
+
+/** Tool、Turn 与进程宿主共同复用的唯一 Knowledge 检索入口。 */
 export type KnowledgeSearchPort = (
-  query: string,
-  topK?: number,
-  kbIds?: string[],
+  request: KnowledgeSearchRequest,
 ) => Promise<KbSearchResult>;
 
 export type DocumentBlockKind =

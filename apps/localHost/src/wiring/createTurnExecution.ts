@@ -6,9 +6,7 @@ import {
   TurnExecutor,
   TurnInputPreparer,
   TurnToolsBuilder,
-  executionProfilePolicy,
 } from '@ema-agent/turn-execution';
-import { assembleToolPrompt, type BuiltinToolContext } from '@ema-agent/tool-builtin';
 import { agentSetting } from '@ema-agent/agent';
 import {
   ContextCompactor,
@@ -48,43 +46,6 @@ export function createTurnExecution(bindings: AppBindings): {
       if (executionProfile !== 'work') return [];
       const contribution = bindings.skillRunner.promptContribution(executionProfile);
       return contribution ? [contribution] : [];
-    },
-    toolPromptContribution: async ({
-      sessionId, turnId, executionProfile, narrativePolicy, workspaceRoot,
-    }) => {
-      // L1 时刻的可见性 Context:身份与 bindings 层服务全部真实;
-      // per-Turn 构造物(narrativeSearch/activeSkillState/subagentSpawner/scratchpad)
-      // 以占位表示——可见性检查只看存在性,说明书只读冻结字段。
-      // 任何一边新增 per-Turn 能力键都必须同步这里。
-      const policy = executionProfilePolicy(
-        executionProfile,
-        bindings.settings.get(agentSetting),
-      );
-      const hostContext = {
-        sessionId,
-        turnId,
-        workspaceRoot,
-        platform: process.platform,
-        signal: new AbortController().signal,
-        commandRunner: bindings.getCommandRunner?.(sessionId),
-        backgroundProcesses: bindings.backgroundProcesses,
-        taskStore: bindings.taskStore,
-        skillRunner: bindings.skillRunner,
-        knowledgeSearch: bindings.kbSearch,
-        narrativeSearch: narrativePolicy !== 'off' ? {} : undefined,
-        activeSkillState: {},
-        subagentSpawner: {},
-        askUser: () => Promise.resolve({ answers: {} }),
-        scratchpad: executionProfile === 'work' ? {} : undefined,
-      } as unknown as BuiltinToolContext;
-      const assembly = await assembleToolPrompt(
-        bindings.tools,
-        hostContext,
-        policy.allowedToolIds,
-      );
-      return assembly
-        ? { id: 'tools.prompt', content: assembly.content, version: assembly.version }
-        : null;
     },
     scratchpadDirForTurn: (sessionId, turnId) =>
       scratchpadTurnDir(
