@@ -80,9 +80,8 @@ function pathMatchesGlob(
 
   const relative = posix.relative(posixRoot, posixTarget);
 
-  // 根目录之外的目标不能命中本规则。
   if (relative.startsWith('..') || posix.isAbsolute(relative)) return false;
-  // 空相对路径代表目标就是根目录，不应被文件 pattern 命中。
+  // 空相对路径代表目标就是根目录，不应被文件 pattern 命中。？存疑
   if (!relative) return false;
 
   // ignore 已隐式匹配子树，去掉结尾 /** 可避免目录本身漏匹配。
@@ -111,11 +110,7 @@ export function ruleMatches(
   return pathMatchesGlob(targetPath, rule.pathGlob, rule.scope, context);
 }
 
-/**
- * Scope 优先级：global > workspace。
- * 全局规则最权威，工作区规则次之。同一 action 的多条规则都匹配同一调用时，
- * 按此优先级返回确定的那条，使审计能准确指出放行/拒绝来自哪一层。
- */
+
 const SCOPE_PRIORITY: Record<RuleScope, number> = {
   global:    0,
   workspace: 1,
@@ -125,11 +120,7 @@ function compareScopePriority(left: PermissionRule, right: PermissionRule): numb
   return SCOPE_PRIORITY[left.scope] - SCOPE_PRIORITY[right.scope];
 }
 
-/**
- * 在同一 action 的规则里查找匹配项，按 scope 优先级返回最权威的那条。
- * deny/ask/allow 各自的步骤顺序由 PermissionEngine.authorize() 保证，
- * 这里只决定同 action 内多规则匹配时返回哪一条用于审计与决策归因。
- */
+
 function findRuleByAction(
   rules:       PermissionRule[],
   action:      PermissionRule['action'],
