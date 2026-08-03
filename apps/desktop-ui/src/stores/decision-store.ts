@@ -10,9 +10,8 @@
  */
 import { create } from 'zustand';
 import type {
-  AccessType,
   PendingPermissionPrompt,
-  RiskLevel,
+  PermissionPrompt,
 } from '@ema-agent/permission';
 import type {
   SessionId,
@@ -25,23 +24,16 @@ import type {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+/** 前端队列只补充卡片身份，Permission 业务字段全部继承后端唯一契约。 */
+export interface PermissionDecisionPrompt extends PermissionPrompt {
+  kind: 'permission';
+  promptId: string;
+  turnId: TurnId;
+  sessionId: SessionId;
+}
+
 export type DecisionPrompt =
-  | {
-      kind: 'permission';
-      promptId: string;
-      turnId: TurnId;
-      sessionId?: SessionId;
-      toolId: string;
-      toolName: string;
-      toolDescription?: string;
-      args: unknown;
-      hint: string;
-      riskLevel: RiskLevel;
-      accessType?: AccessType;
-      gateReason?: string;
-      humanDescription?: string;
-      humanDescriptionPending?: boolean;
-    }
+  | PermissionDecisionPrompt
   | {
       kind: 'ask_confirm';
       promptId: string;
@@ -81,16 +73,6 @@ export type DecisionPrompt =
       humanDescription?: string;
     };
 
-export type PermissionResponse =
-  | { decision: 'allow' }
-  | { decision: 'deny' };
-
-export type AskResponse =
-  | { kind: 'confirm'; confirmed: boolean }
-  | { kind: 'text'; text: string }
-  | { kind: 'choice'; answers: string[]; customText?: string }
-  | { kind: 'ask_user'; answers: Record<string, string> };
-
 // ── State ─────────────────────────────────────────────────────────────────────
 
 export interface DecisionStoreState {
@@ -101,7 +83,7 @@ export interface DecisionStoreState {
   push(prompt: DecisionPrompt): void;
 
   /** Resolve the head of `sessionId`'s queue. */
-  resolve(sessionId: SessionId, response: PermissionResponse | AskResponse): void;
+  resolve(sessionId: SessionId): void;
 
   /** Cancel the head of `sessionId`'s queue. */
   cancel(sessionId: SessionId): void;
@@ -145,7 +127,7 @@ export const useDecisionStore = create<DecisionStoreState>((set, get) => ({
     set({ sessions: next });
   },
 
-  resolve(sessionId, _response) {
+  resolve(sessionId) {
     set((s) => {
       const q = s.sessions.get(sessionId);
       if (!q || q.length === 0) return {};
@@ -192,19 +174,11 @@ export const useDecisionStore = create<DecisionStoreState>((set, get) => ({
       const prompt = snapshot.prompt;
       if (!prompt.sessionId || !prompt.turnId) continue;
       get().push({
+        ...prompt,
         kind: 'permission',
         promptId: snapshot.promptId,
-        turnId: prompt.turnId as TurnId,
-        sessionId: prompt.sessionId as SessionId,
-        toolId: prompt.toolId,
-        toolName: prompt.toolName,
-        toolDescription: prompt.toolDescription,
-        args: prompt.input,
-        hint: prompt.gateReason ?? '',
-        riskLevel: prompt.riskLevel,
-        accessType: prompt.accessType,
-        gateReason: prompt.gateReason,
-        humanDescriptionPending: false,
+        turnId: prompt.turnId,
+        sessionId: prompt.sessionId,
       });
     }
   },

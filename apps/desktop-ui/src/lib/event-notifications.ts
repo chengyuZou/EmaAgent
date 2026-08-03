@@ -22,7 +22,7 @@ export function describeEventNotification(event: ClientEvent): EventNotification
         ? { message: `工具 ${event.name} 执行失败：${event.error.message}`, variant: 'danger' }
         : { message: `工具 ${event.name} 执行完成`, variant: 'success' };
     case 'permission_required':
-      return { message: `工具 ${event.tool} 正在等待你的授权`, variant: 'warning' };
+      return { message: `工具 ${event.toolName} 正在等待你的授权`, variant: 'warning' };
     case 'permission_resolved':
       return {
         message: event.decision === 'allow' ? '工具权限已允许' : '工具权限已拒绝',

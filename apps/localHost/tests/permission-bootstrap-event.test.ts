@@ -26,6 +26,7 @@ describe('permission_required SSE', () => {
         input: { path: 'D:/workspace/readme.md' },
         riskLevel: 'medium',
         accessType: 'write',
+        targets: [],
         gateReason: '需要修改工作区文件',
       };
 
@@ -38,8 +39,8 @@ describe('permission_required SSE', () => {
         toolDescription: '编辑指定文件的内容',
         riskLevel: 'medium',
         accessType: 'write',
+        targets: [],
         gateReason: '需要修改工作区文件',
-        hint: '需要修改工作区文件',
       }));
       if (!required || required.type !== 'permission_required') {
         throw new Error('permission_required event was not emitted');

@@ -23,6 +23,7 @@ import {
   turnsApi,
   type DecisionPrompt,
 } from '@ema-agent/desktop-ui';
+import type { PermissionResponse } from '@ema-agent/permission';
 
 // ── Toast item types ──────────────────────────────────────────────────────────
 
@@ -100,12 +101,12 @@ function PermissionCard({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>();
 
-  const respond = async (action: 'allow' | 'allow_session' | 'deny'): Promise<void> => {
+  const respond = async (response: PermissionResponse): Promise<void> => {
     if (submitting) return;
     setSubmitting(true);
     setError(undefined);
     try {
-      await permissionApi.respond(toast.turnId, toast.promptId, { action });
+      await permissionApi.respond(toast.turnId, toast.promptId, response);
       onDismiss(toast.promptId);
     } catch (cause: unknown) {
       if (cause instanceof SidecarApiError && cause.status === 404) {
@@ -118,18 +119,18 @@ function PermissionCard({
     }
   };
 
-  const desc = toast.humanDescriptionPending
-    ? toast.hint
-    : (toast.humanDescription ?? toast.toolDescription ?? toast.hint);
+  const desc = toast.toolDescription
+    ?? toast.gateReason
+    ?? `即将运行 ${toast.toolName}`;
 
   return (
     <ToastCard sessionId={toast.sessionId} label="工具请求">
       <p style={toolNameStyle}>{toast.toolName}</p>
       <p style={descStyle}>{desc}</p>
       <div style={rowStyle}>
-        <Button variant="danger" size="sm" disabled={submitting} onClick={() => void respond('deny')}>拒绝</Button>
-        <Button variant="secondary" size="sm" disabled={submitting} onClick={() => void respond('allow_session')}>此会话</Button>
-        <Button variant="primary" size="sm" disabled={submitting} onClick={() => void respond('allow')}>允许</Button>
+        <Button variant="danger" size="sm" disabled={submitting} onClick={() => void respond({ action: 'deny' })}>拒绝</Button>
+        <Button variant="secondary" size="sm" disabled={submitting} onClick={() => void respond({ action: 'allowSession' })}>此会话</Button>
+        <Button variant="primary" size="sm" disabled={submitting} onClick={() => void respond({ action: 'allow' })}>允许</Button>
       </div>
       {error && <p style={errorStyle}>{error}</p>}
     </ToastCard>

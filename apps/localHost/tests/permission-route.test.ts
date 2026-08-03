@@ -47,6 +47,34 @@ describe('Permission 路由', () => {
     );
   });
 
+  it('本会话批准直接使用 PermissionResponse 的标准 action', async () => {
+    const { app, interactionQueue } = createApp();
+    const response = await app.request('/turn-1/prompt-1/respond', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'allowSession' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(interactionQueue.respondPermission).toHaveBeenCalledWith(
+      'prompt-1',
+      { action: 'allowSession' },
+      'turn-1',
+    );
+  });
+
+  it('拒绝已经删除的 allow_session 传输别名', async () => {
+    const { app, interactionQueue } = createApp();
+    const response = await app.request('/turn-1/prompt-1/respond', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'allow_session' }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(interactionQueue.respondPermission).not.toHaveBeenCalled();
+  });
+
   it('取消只调用 Permission 专属入口', async () => {
     const { app, interactionQueue } = createApp();
     const response = await app.request('/turn-1/prompt-1/cancel', {

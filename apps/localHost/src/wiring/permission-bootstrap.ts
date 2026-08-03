@@ -154,9 +154,9 @@ export function buildPermissionSubsystem(
         toolName:  prompt.toolName,
         toolDescription: prompt.toolDescription,
         input:     prompt.input,
-        hint:      prompt.gateReason ?? '',
         riskLevel: prompt.riskLevel,
         accessType: prompt.accessType,
+        targets:   prompt.targets,
         gateReason: prompt.gateReason,
       });
       const response = await promise;

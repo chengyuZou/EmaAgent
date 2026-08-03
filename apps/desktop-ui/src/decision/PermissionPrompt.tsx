@@ -3,18 +3,16 @@ import { useEffect, useRef, useState } from 'react';
 import { Button, Card, Progress } from '@ema-agent/ui';
 import { DecisionSubmissionFeedback, HumanDescriptionPanel } from './HumanDescriptionPanel.js';
 import { RawCommandPanel } from './RawCommandPanel.js';
-import type { PermissionResponse } from '@ema-agent/permission';
+import type {
+  PermissionPrompt as PermissionPromptData,
+  PermissionResponse,
+} from '@ema-agent/permission';
 
 export interface PermissionPromptProps {
-  promptId:                 string;
-  toolName:                 string;
-  toolDescription?:         string;
-  args:                     unknown;
-  hint:                     string;
-  humanDescription?:        string;
-  humanDescriptionPending?: boolean;
-  submitting:                boolean;
-  submissionError?:          string;
+  promptId:        string;
+  prompt:          PermissionPromptData;
+  submitting:      boolean;
+  submissionError?: string;
   /** If set, auto-deny after this many milliseconds. 0 or absent = no timeout. */
   timeoutMs?:               number;
   onRespond(response: PermissionResponse): void;
@@ -22,12 +20,7 @@ export interface PermissionPromptProps {
 
 export function PermissionPrompt({
   promptId,
-  toolName,
-  toolDescription,
-  args,
-  hint,
-  humanDescription,
-  humanDescriptionPending,
+  prompt,
   submitting,
   submissionError,
   timeoutMs,
@@ -69,12 +62,12 @@ export function PermissionPrompt({
   return (
     <Card variant="elevated" padding="lg" className="shadow-[var(--ema-shadow-3)] max-w-lg w-full">
       <HumanDescriptionPanel
-        description={humanDescription ?? toolDescription ?? (hint || `即将运行 ${toolName}`)}
-        toolName={toolName}
-        pending={humanDescriptionPending ?? false}
+        description={prompt.toolDescription ?? prompt.gateReason ?? `即将运行 ${prompt.toolName}`}
+        toolName={prompt.toolName}
+        pending={false}
       />
 
-      <RawCommandPanel toolName={toolName} args={args} />
+      <RawCommandPanel toolName={prompt.toolName} args={prompt.input} />
 
       {/* Action row */}
       <div className="flex gap-2 mt-4 justify-between items-center">
@@ -92,7 +85,7 @@ export function PermissionPrompt({
             variant="secondary"
             size="sm"
             disabled={submitting}
-            onClick={() => onRespond({ action: 'allow_session' })}
+            onClick={() => onRespond({ action: 'allowSession' })}
           >
             本会话允许此操作
           </Button>

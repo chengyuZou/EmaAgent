@@ -60,8 +60,6 @@ export type {
 export type {
   DecisionStoreState,
   DecisionPrompt,
-  PermissionResponse,
-  AskResponse,
 } from './stores/decision-store.js';
 
 // ── Lib ───────────────────────────────────────────────────────────────────────

@@ -25,7 +25,7 @@ type PermissionInteractionsRoute = Pick<
 
 const respondSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('allow') }),
-  z.object({ action: z.literal('allow_session') }),
+  z.object({ action: z.literal('allowSession') }),
   z.object({
     action: z.literal('deny'),
     reason: z.string().optional(),
@@ -114,9 +114,7 @@ export function permissionRoute(
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
     }
 
-    const response: PermissionResponse = parsed.data.action === 'allow_session'
-      ? { action: 'allowSession' }
-      : parsed.data;
+    const response: PermissionResponse = parsed.data;
     const ok = interactionQueue.respondPermission(promptId, response, turnId);
     if (!ok) {
       return c.json({ error: 'not_found_or_expired', promptId }, 404);

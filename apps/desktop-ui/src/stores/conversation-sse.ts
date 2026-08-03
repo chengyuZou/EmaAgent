@@ -278,12 +278,15 @@ export function dispatchSseEvent(
       const p = {
         kind: 'permission' as const, promptId: event.promptId, sessionId,
         turnId: event.turnId,
-        toolId: event.toolId, toolName: event.tool, toolDescription: event.toolDescription,
-        args: event.args, hint: event.hint, riskLevel: event.riskLevel,
-        accessType: event.accessType, gateReason: event.gateReason,
-        humanDescription: event.humanDescription,
-        // LLM 解释尚未开始时不能显示加载态；后续由用户点击“解释”后再局部置为 true。
-        humanDescriptionPending: false,
+        toolId: event.toolId,
+        toolName: event.toolName,
+        toolDescription: event.toolDescription,
+        input: event.input,
+        riskLevel: event.riskLevel,
+        accessType: event.accessType,
+        targets: event.targets,
+        gateReason: event.gateReason,
+        toolCallId: event.toolCallId,
       };
       useDecisionStore.getState().push(p);
       void tauriBridge.emit('decision:push', p);
@@ -294,7 +297,7 @@ export function dispatchSseEvent(
         let set = false;
         const slices = sm.slices.map((sl) => {
           if (set) return sl;
-          if (sl.type === 'tool_use' && sl.callId === event.callId) {
+          if (sl.type === 'tool_use' && sl.callId === event.toolCallId) {
             set = true;
             return { ...sl, permissionPromptId: event.promptId };
           }

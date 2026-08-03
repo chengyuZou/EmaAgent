@@ -67,21 +67,14 @@ function PromptRouter({
       return (
         <PermissionPrompt
           promptId={prompt.promptId}
-          toolName={prompt.toolName}
-          toolDescription={prompt.toolDescription}
-          args={prompt.args}
-          hint={prompt.hint}
-          humanDescription={prompt.humanDescription}
-          humanDescriptionPending={prompt.humanDescriptionPending}
+          prompt={prompt}
           submitting={submission.submitting}
           submissionError={submission.error}
           timeoutMs={timeoutMs}
           onRespond={(response: PermissionResponse) => {
             void submission.run(
               () => permissionApi.respond(prompt.turnId, prompt.promptId, response),
-              () => useDecisionStore.getState().resolve(sessionId, {
-                decision: response.action === 'deny' ? 'deny' : 'allow',
-              }),
+              () => useDecisionStore.getState().resolve(sessionId),
             );
           }}
         />
@@ -98,7 +91,7 @@ function PromptRouter({
           onResolve={(confirmed) => {
             void submission.run(
               () => turnsApi.respondAskUser(prompt.turnId, prompt.promptId, { confirmed: String(confirmed) }),
-              () => useDecisionStore.getState().resolve(sessionId, { kind: 'confirm', confirmed }),
+              () => useDecisionStore.getState().resolve(sessionId),
             );
           }}
           onCancel={() => {
@@ -122,7 +115,7 @@ function PromptRouter({
           onResolve={(text) => {
             void submission.run(
               () => turnsApi.respondAskUser(prompt.turnId, prompt.promptId, { text }),
-              () => useDecisionStore.getState().resolve(sessionId, { kind: 'text', text }),
+              () => useDecisionStore.getState().resolve(sessionId),
             );
           }}
           onCancel={() => {
@@ -151,7 +144,7 @@ function PromptRouter({
                 selected: answers.join(','),
                 ...(customText ? { custom: customText } : {}),
               }),
-              () => useDecisionStore.getState().resolve(sessionId, { kind: 'choice', answers, customText }),
+              () => useDecisionStore.getState().resolve(sessionId),
             );
           }}
           onCancel={() => {
@@ -173,7 +166,7 @@ function PromptRouter({
           onResolve={(answers) => {
             void submission.run(
               () => turnsApi.respondAskUser(prompt.turnId, prompt.promptId, answers),
-              () => useDecisionStore.getState().resolve(sessionId, { kind: 'ask_user', answers }),
+              () => useDecisionStore.getState().resolve(sessionId),
             );
           }}
           onCancel={() => {

@@ -9,14 +9,12 @@ import type { PermissionRule, RuleScope, PermissionContext } from '../types.js';
 import { normalizeCaseForComparison } from '../paths/pathSafety.js';
 import { getPlatform, toPortablePath } from '../paths/platformPaths.js';
 
-// ignore 使用 export =，NodeNext ESM 通过 createRequire 取得真实工厂函数。
 const require = createRequire(import.meta.url);
 const createIgnore = require('ignore') as () => Ignore;
 if (typeof createIgnore !== 'function') {
   throw new Error('@ema-agent/permission 无法加载 ignore 依赖');
 }
 
-// 规则字符串是确定性的纯数据，跨 Session 复用编译结果不会携带授权状态。
 const ignoreCache = new Map<string, Ignore>();
 
 function getIgnore(pattern: string): Ignore {
@@ -28,26 +26,10 @@ function getIgnore(pattern: string): Ignore {
   return matcher;
 }
 
-/** 测试修改规则集合后清除已编译的 pattern。 */
 export function clearIgnoreCache(): void {
   ignoreCache.clear();
 }
 
-/**
- * 按 pathGlob 前缀确定规则根目录，并返回没有前导斜杠的根内 pattern。
- *
- * ```
- * //abs/path/** 锚定文件系统根，~/rel/** 锚定 home，
- * /rel/**、rel/** 和 ./rel/** 锚定规则 scope 根。
- * ```
- * @example
- * resolvePatternRoot("/src/**", "workspace", "/Users/abc/project")
- * => {
- *   root: "/Users/abc/project",
- *   pattern: "src/**"
- * }
- * 
- */
 function resolvePatternRoot(
   glob:          string,
   scope:         RuleScope,
@@ -107,6 +89,7 @@ function pathMatchesGlob(
   const normalised = pattern.endsWith('/**') ? pattern.slice(0, -3) : pattern;
   if (!normalised) return false;
 
+  // Windows 路径的真实路径与大小写候选由上游路径解析统一提供；本层只执行确定的 gitignore 匹配。
   return getIgnore(normalised).ignores(relative);
 }
 
@@ -150,7 +133,7 @@ function compareScopePriority(left: PermissionRule, right: PermissionRule): numb
 function findRuleByAction(
   rules:       PermissionRule[],
   action:      PermissionRule['action'],
-  toolId:    string,
+  toolId:      string,
   targetPath:  string | undefined,
   context:     Pick<PermissionContext, 'workspaceRoot'>,
 ): PermissionRule | undefined {
@@ -164,21 +147,21 @@ function findRuleByAction(
 
 export function findDenyRule(
   rules: PermissionRule[], toolId: string, targetPath: string | undefined,
-  context: Pick<PermissionContext, 'workspaceRoot' | 'sessionId'>,
+  context: Pick<PermissionContext, 'workspaceRoot'>,
 ): PermissionRule | undefined {
   return findRuleByAction(rules, 'deny', toolId, targetPath, context);
 }
 
 export function findAskRule(
   rules: PermissionRule[], toolId: string, targetPath: string | undefined,
-  context: Pick<PermissionContext, 'workspaceRoot' | 'sessionId'>,
+  context: Pick<PermissionContext, 'workspaceRoot'>,
 ): PermissionRule | undefined {
   return findRuleByAction(rules, 'ask', toolId, targetPath, context);
 }
 
 export function findAllowRule(
   rules: PermissionRule[], toolId: string, targetPath: string | undefined,
-  context: Pick<PermissionContext, 'workspaceRoot' | 'sessionId'>,
+  context: Pick<PermissionContext, 'workspaceRoot'>,
 ): PermissionRule | undefined {
   return findRuleByAction(rules, 'allow', toolId, targetPath, context);
 }
