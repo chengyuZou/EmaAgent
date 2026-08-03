@@ -22,7 +22,7 @@ export interface ToolExecutionRecord {
   turnId: TurnId;
   agentRunId?: AgentRunId;
   toolName: string;
-  /** 规范化后的完整 Prepared 输入；崩溃恢复和审计使用，不是 Tool Result 副本。 */
+  /** Schema 解析后的完整输入；崩溃恢复和审计使用，不是 Tool Result 副本。 */
   inputJson: string;
   /** 用于拒绝同一 ToolCallId 被另一份输入复用。 */
   inputDigest: string;

@@ -5,12 +5,9 @@ export type {
   ToolCapabilityRestriction,
   ToolCapabilitySnapshot,
   ToolCapabilityScope,
-  ToolManifestSnapshot,
-  ExecutableToolManifestSnapshot,
 } from './types.js';
 export type {
   Tool,
-  ToolManifestEntry,
   ToolOrigin,
   ToolInputValidationResult,
   ToolContextValidation,
@@ -36,7 +33,6 @@ export type {
   ToolStreamEvent,
   ToolExecutionEvent,
 } from './events.js';
-export type { DeepReadonly, PreparedToolCall } from './preparation/preparedToolCall.js';
 export type { ToolExecutionResult } from './execution/toolExecutionResult.js';
 export { ToolExecution } from './execution/toolExecution.js';
 export type {
@@ -59,10 +55,6 @@ export type {
 export { buildTool, DEFAULT_MAX_RESULT_BYTES } from './Tool/buildTool.js';
 export { assembleToolPool } from './assembly/assembleToolPool.js';
 export { ToolPool } from './assembly/toolPool.js';
-export {
-  createToolManifestSnapshot,
-  createToolManifestSnapshotFromEntries,
-} from './assembly/toolManifest.js';
 export { ToolRegistry } from './assembly/toolRegistry.js';
 export {
   BackgroundProcessError,

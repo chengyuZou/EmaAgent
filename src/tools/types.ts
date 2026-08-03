@@ -1,5 +1,4 @@
-// 定义 Tool 框架跨结果、能力与 Manifest 使用的非执行类型。
-import type { ToolManifestEntry } from './Tool/tool.js';
+// 定义 Tool 框架跨结果与能力边界使用的非执行类型。
 
 // ── ReadFileState - turn 内跨工具调用共享的去重缓存 ──────────────────────────
 
@@ -53,28 +52,4 @@ export interface ToolCapabilitySnapshot {
 export interface ToolCapabilityScope {
   restrict(restriction: ToolCapabilityRestriction): ToolCapabilitySnapshot;
   snapshot(): ToolCapabilitySnapshot;
-}
-
-/**
- * ToolRegistry 为一次 Agent 执行生成的不可变能力快照。
- *
- * entries 是最终发送给模型的规范顺序：Builtin 是连续前缀，MCP 是连续后缀。
- * registryVersion 只标识注册表运行时世代；revision 只由模型可见内容决定。
- */
-export interface ToolManifestSnapshot {
-  readonly registryVersion: number;
-  readonly revision: string;
-  readonly entries: readonly ToolManifestEntry[];
-}
-
-declare const executableToolManifestBrand: unique symbol;
-
-/**
- * 由 ToolRegistry 冻结并保留实现绑定的 Manifest。
- *
- * Context 与 Provider 只需要 ToolManifestSnapshot；执行主链必须持有本类型，
- * 防止把仅含模型投影的派生清单误当成可执行能力。
- */
-export interface ExecutableToolManifestSnapshot extends ToolManifestSnapshot {
-  readonly [executableToolManifestBrand]: true;
 }

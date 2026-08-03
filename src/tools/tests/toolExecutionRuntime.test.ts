@@ -1,13 +1,12 @@
 // 测试流式 Runtime 只负责调度，并按模型 block 顺序发射并发工具终态。
 
-import { describe, expect, it } from 'vitest';
 import type { SessionId, TurnId } from '@ema-agent/ids';
-import {
-  createToolManifestSnapshot,
-  ToolExecutionRuntime,
-  type ExecutableToolManifestSnapshot,
-  type ToolExecutionRuntimeEvent,
-} from '../index.js';
+import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
+import { ToolPool } from '../assembly/toolPool.js';
+import { ToolExecutionRuntime } from '../execution/toolExecutionRuntime.js';
+import { buildTool } from '../Tool/buildTool.js';
+import type { ToolExecutionRuntimeEvent } from '../index.js';
 
 const sessionId = 'session-runtime-fifo' as SessionId;
 const turnId = 'turn-runtime-fifo' as TurnId;
@@ -16,36 +15,32 @@ describe('ToolExecutionRuntime', () => {
   it('并发工具完成顺序相反时仍按模型出现顺序发射 tool_result', async () => {
     const completions = new Map<string, () => void>();
     const emitted: ToolExecutionRuntimeEvent[] = [];
-    const manifest = createToolManifestSnapshot([], 1) as ExecutableToolManifestSnapshot;
+    const makeTool = (name: string) => buildTool({
+      id: `builtin.${name.toLowerCase()}`,
+      name,
+      description: `${name} test tool`,
+      inputSchema: z.object({}),
+      validateContext: () => ({ valid: true, context: {} }),
+      isReadOnly: () => true,
+      isConcurrencySafe: () => true,
+      getPermissionIntent: () => ({
+        riskLevel: 'low',
+        accessType: 'read',
+        promptPolicy: 'neverForTrustedBuiltin',
+      }),
+      execute: async () => {
+        await new Promise<void>(resolve => completions.set(name, resolve));
+        return name;
+      },
+    });
     const executor = new ToolExecutionRuntime({
       sessionId,
       turnId,
-      allows: () => true,
-      toolManifest: manifest,
-      tools: {
-        prepare: (name: string, input: unknown) => ({
-          id: `builtin.${name.toLowerCase()}`,
-          name,
-          origin: { kind: 'builtin' },
-          input,
-          isReadOnly: true,
-          isConcurrencySafe: true,
-          requiresUserInteraction: false,
-          maxResultBytes: 1024,
-        }),
-        validateContext: () => ({ valid: true, context: {} }),
-        validate: async () => ({ valid: true }),
-        permissionIntent: async () => ({
-          riskLevel: 'low',
-          accessType: 'read',
-          promptPolicy: 'neverForTrustedBuiltin',
-        }),
-        execute: async (prepared: { name: string }) => {
-          await new Promise<void>(resolve => completions.set(prepared.name, resolve));
-          return prepared.name;
-        },
-      } as never,
-      permission: { authorize: async () => ({ outcome: 'allow' }) } as never,
+      toolPool: new ToolPool([makeTool('First'), makeTool('Second')]),
+      permission: {
+        authorize: async () => ({ outcome: 'allow', reason: { type: 'workspace' } }),
+        clearSession: () => {},
+      },
       permCtx: { mode: 'default' },
       abortSignal: new AbortController().signal,
       toolContext: { workspaceRoot: 'D:/workspace', platform: 'win32' },

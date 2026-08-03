@@ -86,7 +86,7 @@ export interface PermissionContext {
 // 一次待裁决操作的完整快照
 export interface PermissionRequest {
   readonly tool: PermissionToolIdentity;
-  /** 必须是 PreparedToolCall 冻结后的同一份输入。 */
+  /** 必须是 ToolExecution 完成 Schema 解析后、随后交给 execute 的同一份输入。 */
   readonly input: unknown;
   readonly intent: PermissionIntent;
   readonly context: PermissionContext;

@@ -81,7 +81,7 @@ export interface ScratchpadPort {
  * 信号属于 ToolInvocation；任何具体 Tool 只能取得 validateContext 返回的窄投影。
  */
 export interface ToolUseContext {
-  /** 空串表示本次执行没有工作区；文件与 Shell 工具不会进入 Manifest。 */
+  /** 空串表示本次执行没有工作区；文件与 Shell 工具不会进入 ToolPool。 */
   readonly workspaceRoot: string;
   /**
    * 宿主平台,装配时由 process.platform 冻结。

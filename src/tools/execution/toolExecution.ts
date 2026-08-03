@@ -1,4 +1,4 @@
-// 完成一次工具调用从准备、审批、执行到审计终态的完整流水线。
+// 完成单次 Tool 调用的解析、校验、授权、执行与审计终态。
 
 import type {
   AgentRunId,
@@ -10,22 +10,27 @@ import type {
   AskPermissionFn,
   PermissionAuthorizer,
   PermissionContext,
+  PermissionIntent,
   PermissionStreamEvent,
 } from '@ema-agent/permission';
+import { ZodError } from 'zod';
+import type { ToolPool } from '../assembly/toolPool.js';
 import { ToolInputError } from '../errors.js';
 import type { ToolExecutionEvent, ToolFailurePhase } from '../events.js';
+import type { Tool } from '../Tool/tool.js';
 import type { ToolInvocation } from '../Tool/toolInvocation.js';
 import type { ToolUseContext } from '../Tool/toolUseContext.js';
 import type {
   ToolExecutionJournalPort,
   ToolExecutionStatus,
 } from '../journal/toolExecutionJournal.js';
-import type { PreparedToolCall } from '../preparation/preparedToolCall.js';
-import type { ToolRegistry } from '../assembly/toolRegistry.js';
 import type { ToolResultStore } from '../results/toolResultStore.js';
-import type { ExecutableToolManifestSnapshot } from '../types.js';
 import type { ToolExecutionResult } from './toolExecutionResult.js';
 import type { ToolLifecycleObserver } from './toolLifecycleObserver.js';
+
+// ToolPool 是 Tool 泛型的唯一擦除边界；单调用内的同一对象负责全程。
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyTool = Tool<any, any, any, any>;
 
 export type ToolExecutionLiveEvent = ToolExecutionEvent | PermissionStreamEvent;
 
@@ -37,10 +42,8 @@ export interface ToolExecutionEnvironment {
   readonly agentRunId?: AgentRunId;
   /** 父执行取消信号；每个 ToolInvocation 会再派生自己的 signal。 */
   readonly abortSignal: AbortSignal;
-  /** 调用执行前再次检查当前能力范围，防止排队期间能力被收窄。 */
-  readonly allows: (name: string) => boolean;
-  readonly toolManifest: ExecutableToolManifestSnapshot;
-  readonly tools: ToolRegistry;
+  /** 根 Turn 已经筛选并冻结的唯一 Tool 集合。 */
+  readonly toolPool: ToolPool;
   readonly permission: PermissionAuthorizer;
   readonly permCtx: PermissionContext;
   readonly lifecycle?: ToolLifecycleObserver;
@@ -77,8 +80,8 @@ interface ToolFailure {
 /**
  * 单次工具调用的执行状态机。
  *
- * Runtime 只负责何时调用 run()；该对象独占输入准备、动态策略复核、Context
- * 投影、业务校验、权限、Journal 和工具结果终态，避免静态与流式路径各写一套。
+ * Runtime 只决定何时 run()；本对象从当前 ToolPool 取得唯一 Tool，
+ * 对模型参数只 parse 一次，然后让校验、Permission 和 execute 共用该局部输入。
  */
 export class ToolExecution {
   readonly id: ToolCallId;
@@ -89,9 +92,9 @@ export class ToolExecution {
 
   private readonly startedAt = Date.now();
   private readonly abortController = new AbortController();
-  private readonly prepared?: PreparedToolCall;
+  private readonly tool?: AnyTool;
+  private readonly input?: unknown;
   private readonly preflightFailure?: ToolFailure;
-  private readonly rawArgs: unknown;
   private journalStatus?: ToolExecutionStatus;
   private result?: ToolExecutionResult;
   private terminalEvent?: ToolExecutionEvent;
@@ -105,41 +108,26 @@ export class ToolExecution {
   ) {
     this.id = call.callId;
     this.name = call.name;
-    this.rawArgs = call.args;
 
-    let prepared: PreparedToolCall | undefined;
-    let preflightFailure: ToolFailure | undefined;
-    if (!environment.allows(call.name)) {
-      preflightFailure = policyDenied(call.name, false);
-    } else {
-      try {
-        prepared = environment.tools.prepare(
-          call.name,
-          call.args,
-          environment.toolManifest,
-        );
-      } catch (error) {
-        preflightFailure = classifyPreparationFailure(error);
-      }
+    const tool = environment.toolPool.get(call.name);
+    if (!tool) {
+      this.preflightFailure = policyDenied(call.name);
+      this.isConcurrencySafe = true;
+      this.requiresUserInteraction = false;
+      return;
     }
 
-    this.prepared = prepared;
-    this.preflightFailure = preflightFailure;
-    this.isConcurrencySafe = prepared?.isConcurrencySafe ?? true;
-    this.requiresUserInteraction = prepared?.requiresUserInteraction ?? false;
-    this.maxResultBytes = prepared?.maxResultBytes;
-
-    // prepare 是模型工具意图被接纳的时刻，必须先于调度和任何副作用持久化。
-    if (environment.toolExecutionJournal) {
-      const record = environment.toolExecutionJournal.prepare({
-        callId: call.callId,
-        sessionId: environment.sessionId,
-        turnId: environment.turnId,
-        agentRunId: environment.agentRunId,
-        toolName: prepared?.id ?? call.name,
-        input: prepared?.input ?? call.args,
-      });
-      this.journalStatus = record?.status ?? 'prepared';
+    try {
+      const input = tool.inputSchema.parse(call.args);
+      this.tool = tool;
+      this.input = input;
+      this.isConcurrencySafe = tool.isConcurrencySafe(input);
+      this.requiresUserInteraction = tool.requiresUserInteraction(input);
+      this.maxResultBytes = tool.maxResultBytes;
+    } catch (error) {
+      this.preflightFailure = classifyInputFailure(call.name, error);
+      this.isConcurrencySafe = true;
+      this.requiresUserInteraction = false;
     }
   }
 
@@ -206,40 +194,20 @@ export class ToolExecution {
   }
 
   private async executePipeline(): Promise<void> {
-    const { sessionId, turnId, lifecycle, tools, toolContext } = this.environment;
     const signal = this.abortController.signal;
-    const invocation = this.invocation(signal);
-    const args = this.prepared?.input ?? this.callArgs();
-
     if (signal.aborted || this.environment.abortSignal.aborted) {
       this.completeCancellation(this.cancellationReason ?? 'turn_abort');
-      return;
-    }
-
-    await lifecycle?.beforeToolUse(
-      { callId: this.id, name: this.name, args },
-      { turnId, sessionId, signal },
-    );
-
-    if (!this.environment.allows(this.name)) {
-      await this.completeFailure(policyDenied(this.name, true));
       return;
     }
     if (this.preflightFailure) {
       await this.completeFailure(this.preflightFailure);
       return;
     }
-    if (!this.prepared) {
-      await this.completeFailure({
-        phase: 'validation',
-        code: 'tool/preparation_missing',
-        message: `Tool "${this.name}" has no prepared input`,
-        retryable: false,
-      });
-      return;
-    }
 
-    const contextProjection = tools.validateContext(this.prepared, toolContext);
+    // 构造器只有在 Tool 存在且 Schema 解析成功时才不会设置 preflightFailure。
+    const tool = this.tool!;
+    const invocation = this.invocation(signal);
+    const contextProjection = tool.validateContext(this.environment.toolContext);
     if (!contextProjection.valid) {
       await this.completeFailure({
         phase: 'validation',
@@ -250,9 +218,42 @@ export class ToolExecution {
       return;
     }
 
-    let validation;
+    if (!await this.validateInput(tool, this.input, contextProjection.context, invocation)) return;
+    if (!await this.prepareJournal(tool, this.input)) return;
+
+    await this.environment.lifecycle?.beforeToolUse(
+      { callId: this.id, name: this.name, args: this.input },
+      {
+        turnId: this.environment.turnId,
+        sessionId: this.environment.sessionId,
+        signal,
+      },
+    );
+
+    if (!await this.requestPermission(tool, this.input, contextProjection.context)) return;
+
+    this.environment.toolExecutionJournal?.authorize(this.id);
+    if (this.environment.toolExecutionJournal) this.journalStatus = 'authorized';
+    await this.executeTool(tool, this.input, contextProjection.context, invocation);
+  }
+
+  private async validateInput(
+    tool: AnyTool,
+    input: unknown,
+    narrowedContext: unknown,
+    invocation: ToolInvocation,
+  ): Promise<boolean> {
     try {
-      validation = await tools.validate(this.prepared, contextProjection.context, invocation);
+      const validation = await tool.validateInput?.(input, narrowedContext, invocation)
+        ?? { valid: true as const };
+      if (validation.valid) return true;
+      await this.completeFailure({
+        phase: 'validation',
+        code: validation.code ?? 'tool/invalid_input',
+        message: validation.message,
+        retryable: validation.retryable ?? true,
+      });
+      return false;
     } catch (error) {
       await this.completeFailure({
         phase: 'validation',
@@ -260,34 +261,39 @@ export class ToolExecution {
         message: errorMessage(error),
         retryable: true,
       });
-      return;
+      return false;
     }
-    if (!validation.valid) {
-      await this.completeFailure({
-        phase: 'validation',
-        code: validation.code ?? 'tool/invalid_input',
-        message: validation.message,
-        retryable: validation.retryable ?? true,
-      });
-      return;
-    }
-
-    if (!await this.requestPermission(contextProjection.context)) return;
-
-    this.environment.toolExecutionJournal?.authorize(this.id);
-    if (this.environment.toolExecutionJournal) this.journalStatus = 'authorized';
-    await this.executePrepared(contextProjection.context, invocation);
   }
 
-  private async requestPermission(narrowedContext: unknown): Promise<boolean> {
-    const {
-      sessionId,
-      turnId,
-      permission,
-      permCtx,
-      buildAsk,
-    } = this.environment;
-    const prepared = this.prepared!;
+  private async prepareJournal(tool: AnyTool, input: unknown): Promise<boolean> {
+    try {
+      const record = this.environment.toolExecutionJournal?.prepare({
+        callId: this.id,
+        sessionId: this.environment.sessionId,
+        turnId: this.environment.turnId,
+        agentRunId: this.environment.agentRunId,
+        toolName: tool.id,
+        input,
+      });
+      if (record) this.journalStatus = record.status;
+      return true;
+    } catch (error) {
+      await this.completeFailure({
+        phase: 'persistence',
+        code: 'tool/journal_prepare_failed',
+        message: errorMessage(error),
+        retryable: false,
+      }, true);
+      return false;
+    }
+  }
+
+  private async requestPermission(
+    tool: AnyTool,
+    input: unknown,
+    narrowedContext: unknown,
+  ): Promise<boolean> {
+    const { sessionId, turnId, permission, permCtx, buildAsk } = this.environment;
     const signal = this.abortController.signal;
     const permissionContext: PermissionContext = {
       ...permCtx,
@@ -302,19 +308,28 @@ export class ToolExecution {
       emit: this.emit,
     });
 
-    let outcome;
     try {
-      const intent = await this.environment.tools.permissionIntent(prepared, narrowedContext);
-      outcome = await permission.authorize({
+      const declaredIntent = await tool.getPermissionIntent(input, narrowedContext);
+      const summary = tool.getToolUseSummary?.(input);
+      const outcome = await permission.authorize({
         tool: {
-          id: prepared.id,
-          name: this.name,
-          ...(prepared.summary ? { description: prepared.summary } : {}),
+          id: tool.id,
+          name: tool.name,
+          ...(summary ? { description: summary } : {}),
         },
-        input: prepared.input,
-        intent,
+        input,
+        intent: enforceOriginPermission(tool, declaredIntent),
         context: permissionContext,
       }, ask);
+      if (outcome.outcome === 'allow') return true;
+
+      await this.completeFailure({
+        phase: 'permission',
+        code: 'permission/denied',
+        message: outcome.message,
+        retryable: false,
+      });
+      return false;
     } catch (error) {
       if (isCancelled(signal, this.environment.abortSignal)) {
         this.completeCancellation(this.cancellationReason ?? 'user_abort');
@@ -328,22 +343,15 @@ export class ToolExecution {
       }
       return false;
     }
-    if (outcome.outcome === 'allow') return true;
-
-    await this.completeFailure({
-      phase: 'permission',
-      code: 'permission/denied',
-      message: outcome.message,
-      retryable: false,
-    });
-    return false;
   }
 
-  private async executePrepared(
+  private async executeTool(
+    tool: AnyTool,
+    input: unknown,
     narrowedContext: unknown,
     invocation: ToolInvocation,
   ): Promise<void> {
-    const { tools, lifecycle, sessionId, turnId } = this.environment;
+    const { lifecycle, sessionId, turnId } = this.environment;
     const signal = this.abortController.signal;
     let output: unknown;
 
@@ -351,11 +359,11 @@ export class ToolExecution {
       // running 是副作用边界；该状态持久化成功后才能调用具体工具。
       this.environment.toolExecutionJournal?.start(this.id);
       if (this.environment.toolExecutionJournal) this.journalStatus = 'running';
-      output = await tools.execute(
-        this.prepared!,
+      output = await tool.execute(
+        input,
         narrowedContext,
         invocation,
-        (progress) => this.emit({
+        (progress: unknown) => this.emit({
           type: 'tool_progress',
           sessionId,
           turnId,
@@ -406,11 +414,10 @@ export class ToolExecution {
       }
     }
 
-    const content = this.normalizeResult(output);
     this.result = {
       type: 'tool_result',
       toolUseId: this.id,
-      content,
+      content: this.normalizeResult(output, tool.maxResultBytes),
       isError: false,
       durationMs: this.durationMs(),
     };
@@ -466,17 +473,17 @@ export class ToolExecution {
     };
   }
 
-  private normalizeResult(output: unknown): string {
+  private normalizeResult(output: unknown, maxResultBytes: number): string {
     const serialized = serializeToolOutput(output);
-    const store = this.environment.toolResultStore;
-    if (!store || !this.prepared) return serialized;
-    const normalized = store.normalize(
+    const normalized = this.environment.toolResultStore?.normalize(
       this.id,
       this.name,
       serialized,
-      this.prepared.maxResultBytes,
+      maxResultBytes,
     );
-    return normalized.kind === 'unchanged' ? serialized : normalized.blockContent;
+    return !normalized || normalized.kind === 'unchanged'
+      ? serialized
+      : normalized.blockContent;
   }
 
   private errorResult(code: string, message: string): ToolExecutionResult {
@@ -521,10 +528,6 @@ export class ToolExecution {
     }
   }
 
-  private callArgs(): unknown {
-    return this.rawArgs;
-  }
-
   private durationMs(): number {
     return Date.now() - this.startedAt;
   }
@@ -540,14 +543,37 @@ export class ToolExecution {
   }
 }
 
-function policyDenied(name: string, changedWhileQueued: boolean): ToolFailure {
+function policyDenied(name: string): ToolFailure {
   return {
     phase: 'policy',
     code: 'policy/denied',
-    message: changedWhileQueued
-      ? `Tool "${name}" is no longer available in the current capability scope`
-      : `Tool "${name}" is not available in this mode`,
+    message: `Tool "${name}" is not available in the current ToolPool`,
     retryable: false,
+  };
+}
+
+function classifyInputFailure(toolName: string, error: unknown): ToolFailure {
+  const inputError = error instanceof ZodError
+    ? new ToolInputError(toolName, error)
+    : error;
+  return {
+    phase: 'validation',
+    code: inputError instanceof ToolInputError
+      ? 'tool/validation_failed'
+      : 'tool/input_preparation_failed',
+    message: errorMessage(inputError),
+    retryable: inputError instanceof ToolInputError,
+  };
+}
+
+/** MCP Server 只能申报更严格的意图，不能把自己降级为低风险或免询问。 */
+function enforceOriginPermission(tool: AnyTool, intent: PermissionIntent): PermissionIntent {
+  if (tool.origin.kind === 'builtin') return intent;
+  return {
+    ...intent,
+    riskLevel: intent.riskLevel === 'high' ? 'high' : 'medium',
+    accessType: 'execute',
+    promptPolicy: 'whenRequired',
   };
 }
 
@@ -559,29 +585,16 @@ function serializeToolOutput(output: unknown): string {
 
 function annotateAborted(output: unknown): unknown {
   const notice = '\n[用户中途终止]';
-  if (output && typeof output === 'object' && typeof (output as Record<string, unknown>)['stdout'] === 'string') {
+  if (
+    output
+    && typeof output === 'object'
+    && typeof (output as Record<string, unknown>)['stdout'] === 'string'
+  ) {
     const record = output as Record<string, unknown>;
     return { ...record, stdout: (record['stdout'] as string) + notice };
   }
   if (typeof output === 'string') return output + notice;
   return String(JSON.stringify(output) ?? '') + notice;
-}
-
-function classifyPreparationFailure(error: unknown): ToolFailure {
-  if (error instanceof ToolInputError) {
-    return {
-      phase: 'validation',
-      code: 'tool/validation_failed',
-      message: error.message,
-      retryable: true,
-    };
-  }
-  return {
-    phase: 'validation',
-    code: 'tool/preparation_failed',
-    message: errorMessage(error),
-    retryable: false,
-  };
 }
 
 function classifyExecutionFailure(error: unknown): ToolFailure {
