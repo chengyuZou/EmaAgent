@@ -1,10 +1,7 @@
-// 定义内置工具宿主 Context、调用期能力和窄 Context 投影结果构造器。
+// 定义宿主装配给工具系统的业务能力全集。
 import type {
   AgentRunId,
-  SessionId,
   TaskId,
-  ToolCallId,
-  TurnId,
 } from '@ema-agent/ids';
 import type { CommandRunnerPort } from '@ema-agent/sandbox';
 import type { TaskStorePort } from '@ema-agent/tasks';
@@ -18,9 +15,8 @@ import type {
   ReadFileState,
   ToolCapabilityScope,
 } from '../types.js';
-import type { AskUserQuestionSpec, ToolExecutionEvent } from '../events.js';
+import type { AskUserQuestionSpec } from '../events.js';
 import type { BackgroundProcessPort } from '../background/types.js';
-import type { ToolContextValidation } from './tool.js';
 
 /** 子 Agent 启动时如何取得父执行上下文。 */
 export type SubagentContextMode = 'subagent' | 'fork';
@@ -79,30 +75,19 @@ export interface ScratchpadPort {
 }
 
 /**
- * Ema 内置工具完整宿主 Context。
+ * Ema 工具宿主能力全集。
  *
- * 身份和能力位于同一个对象；工具通过自己的 validateContext 投影出所需窄 Context。
- * 总字段较多没有关系——任何具体 Tool 只能拿到它 validateContext 返回的部分。
- *
- * toolCallId、单工具 signal 和 emit 由 ToolExecutionRuntime 在每次调用前覆盖；
- * 装配 Manifest 时 toolCallId 尚不存在，因此它是可选字段。
+ * 该对象只描述本轮宿主能提供哪些业务能力。Session、Turn、ToolCall 身份和取消
+ * 信号属于 ToolInvocation；任何具体 Tool 只能取得 validateContext 返回的窄投影。
  */
-export interface BuiltinToolContext {
-  readonly sessionId: SessionId;
-  readonly turnId: TurnId;
-  /** 子 Agent 保留父 turnId，并用 agentRunId 关联实际子执行。 */
-  readonly agentRunId?: AgentRunId;
-  /** 执行器在单次调用前补入，权限、审计和文件写入共用该身份。 */
-  readonly toolCallId?: ToolCallId;
+export interface ToolUseContext {
   /** 空串表示本次执行没有工作区；文件与 Shell 工具不会进入 Manifest。 */
   readonly workspaceRoot: string;
   /**
    * 宿主平台,装配时由 process.platform 冻结。
    * 说明书写平台差异文案(Bash 语义、路径写法、信号)只准从这里取,不得自行探测。
-   */
+  */
   readonly platform: NodeJS.Platform;
-  /** 装配时是父执行信号，调用工具时由执行器替换成单工具信号。 */
-  readonly signal: AbortSignal;
 
   // ── 装配时绑定的执行能力 ──────────────────────────────────────────────────
   /** Bash 工具的受控命令执行器（per-session 缓存）。 */
@@ -129,18 +114,4 @@ export interface BuiltinToolContext {
   readonly toolCapabilities?: ToolCapabilityScope;
   /** AskUser 工具的问询解析器。 */
   readonly askUser?: AskUserPort;
-
-  // ── per-call 输出能力（执行器填充） ────────────────────────────────────────
-  /** 发结构化事件到当前 Turn 的 SSE 流；AskUser/Task 等用。 */
-  readonly emit?: (event: ToolExecutionEvent) => void;
 }
-
-/** 投影成功，携带 Tool 实际需要的窄 Context。 */
-export const contextOk = <T>(context: T): ToolContextValidation<T> =>
-  ({ valid: true, context });
-
-/** 投影失败时把缺失能力如实返回模型，不进入 Permission 和执行阶段。 */
-export const contextFail = <T = never>(reason: string): ToolContextValidation<T> =>
-  ({ valid: false, reason });
-
-export type { AgentRunId, SessionId, TaskId, TurnId };

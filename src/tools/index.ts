@@ -9,24 +9,24 @@ export type {
   ExecutableToolManifestSnapshot,
 } from './types.js';
 export type {
-  ToolDescriptor,
+  Tool,
   ToolManifestEntry,
   ToolOrigin,
   ToolInputValidationResult,
   ToolContextValidation,
-  ToolDef,
-  BuiltTool,
+  ToolProgressCallback,
 } from './Tool/tool.js';
+export { contextFail, contextOk } from './Tool/tool.js';
+export type { ToolInvocation } from './Tool/toolInvocation.js';
 export type {
   AskUserPort,
-  BuiltinToolContext,
   ScratchpadPort,
   SubagentContextMode,
   SubagentRunResult,
   SubagentSpawnOptions,
   SubagentSpawnerPort,
+  ToolUseContext,
 } from './Tool/toolUseContext.js';
-export { contextFail, contextOk } from './Tool/toolUseContext.js';
 export type {
   AskUserQuestionSpec,
   AskUserRequiredEvent,
@@ -43,7 +43,6 @@ export type {
   ToolExecutionCall,
   ToolExecutionCompletion,
   ToolExecutionEnvironment,
-  ToolExecutionHostContext,
   ToolExecutionLiveEvent,
 } from './execution/toolExecution.js';
 export type {
@@ -59,12 +58,12 @@ export type {
 } from './execution/toolExecutionRuntime.js';
 export { buildTool, DEFAULT_MAX_RESULT_BYTES } from './Tool/buildTool.js';
 export { assembleToolPool } from './assembly/assembleToolPool.js';
+export { ToolPool } from './assembly/toolPool.js';
 export {
   createToolManifestSnapshot,
   createToolManifestSnapshotFromEntries,
 } from './assembly/toolManifest.js';
 export { ToolRegistry } from './assembly/toolRegistry.js';
-export type { McpToolOwner, McpToolRegistration } from './assembly/toolRegistry.js';
 export {
   BackgroundProcessError,
   createBackgroundProcessAbortError,

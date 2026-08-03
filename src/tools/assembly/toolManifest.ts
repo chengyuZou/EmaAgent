@@ -1,12 +1,17 @@
 // 把工具实现投影为稳定排序、深冻结并带版本身份的模型可见清单。
 
 import { createHash } from 'node:crypto';
+import { zodToJsonSchema } from 'zod-to-json-schema';
 import { freezePreparedInput } from '../preparation/preparedToolCall.js';
-import type { BuiltTool, ToolManifestEntry } from '../Tool/tool.js';
+import type { Tool, ToolManifestEntry } from '../Tool/tool.js';
 import type { ToolManifestSnapshot } from '../types.js';
 
+// Registry 边界必须容纳不同输入、输出和 Context 的 Tool。
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyTool = Tool<any, any, any, any>;
+
 export function createToolManifestSnapshot(
-  tools: readonly BuiltTool[],
+  tools: readonly AnyTool[],
   registryVersion: number,
 ): ToolManifestSnapshot {
   return createToolManifestSnapshotFromEntries(
@@ -70,14 +75,20 @@ function compareManifestEntries(
     || compareCodeUnits(left.id, right.id);
 }
 
-function toManifestEntry(tool: BuiltTool): ToolManifestEntry {
-  const descriptor = tool.descriptor();
-  const schema = structuredClone(descriptor.inputJsonSchema);
+export function toManifestEntry(
+  tool: AnyTool,
+): ToolManifestEntry {
+  const schema = structuredClone(
+    tool.inputJsonSchemaOverride ?? zodToJsonSchema(tool.inputSchema, {
+      target: 'openApi3',
+      $refStrategy: 'none',
+    }) as Record<string, unknown>,
+  );
   return Object.freeze({
     id: tool.id,
-    name: descriptor.name,
+    name: tool.name,
     origin: freezeOrigin(tool.origin),
-    description: descriptor.description,
+    description: tool.description,
     inputJsonSchema: freezePreparedInput(schema),
   });
 }

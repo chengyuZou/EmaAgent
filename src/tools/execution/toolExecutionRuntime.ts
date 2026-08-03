@@ -6,14 +6,13 @@ import type { ToolResultStore } from '../results/toolResultStore.js';
 import {
   ToolExecution,
   type ToolExecutionEnvironment,
-  type ToolExecutionHostContext,
   type ToolExecutionLiveEvent,
 } from './toolExecution.js';
 import type { ToolExecutionResult } from './toolExecutionResult.js';
 
-interface TrackedTool<THostContext extends ToolExecutionHostContext> {
+interface TrackedTool {
   readonly blockIndex: number;
-  readonly execution: ToolExecution<THostContext>;
+  readonly execution: ToolExecution;
   done: boolean;
   terminalEmitted: boolean;
   suppressEvents: boolean;
@@ -24,8 +23,7 @@ interface TrackedTool<THostContext extends ToolExecutionHostContext> {
 
 export type ToolExecutionRuntimeEvent = ToolExecutionLiveEvent;
 
-export interface ToolExecutionRuntimeOptions<THostContext extends ToolExecutionHostContext>
-  extends ToolExecutionEnvironment<THostContext> {
+export interface ToolExecutionRuntimeOptions extends ToolExecutionEnvironment {
   /** 写入 Agent 待发送事件队列；实现方同时负责唤醒流式排空循环。 */
   readonly pushEv: (event: ToolExecutionRuntimeEvent) => void;
   /** 工具完成但没有新增进度事件时，唤醒 Agent 重新检查 allDone()。 */
@@ -38,12 +36,12 @@ export interface ToolExecutionRuntimeOptions<THostContext extends ToolExecutionH
  * 单次调用的准备、权限、校验、审计和执行全部委托给 ToolExecution；本类只处理
  * 流式入队、并发安全工具与独占工具的屏障、取消、等待状态和模型顺序终态。
  */
-export class ToolExecutionRuntime<THostContext extends ToolExecutionHostContext = ToolExecutionHostContext> {
-  private tracked: Array<TrackedTool<THostContext>> = [];
+export class ToolExecutionRuntime {
+  private tracked: TrackedTool[] = [];
   private serialTail: Promise<void> = Promise.resolve();
   private stoppingReason?: string;
 
-  constructor(private readonly options: ToolExecutionRuntimeOptions<THostContext>) {}
+  constructor(private readonly options: ToolExecutionRuntimeOptions) {}
 
   /** 取消指定工具，不中止父 Turn。 */
   abortTool(callId: string): boolean {
@@ -101,7 +99,7 @@ export class ToolExecutionRuntime<THostContext extends ToolExecutionHostContext 
   addTool(blockIndex: number, id: string, name: string, args: unknown): void {
     if (this.stoppingReason) return;
 
-    let track!: TrackedTool<THostContext>;
+    let track!: TrackedTool;
     const execution = new ToolExecution(
       this.options,
       { callId: asToolCallId(id), name, args },
@@ -161,7 +159,7 @@ export class ToolExecutionRuntime<THostContext extends ToolExecutionHostContext 
     });
   }
 
-  private async execute(track: TrackedTool<THostContext>): Promise<void> {
+  private async execute(track: TrackedTool): Promise<void> {
     try {
       if (this.stoppingReason) track.execution.abort(this.stoppingReason);
       const completion = await track.execution.run();
@@ -210,7 +208,7 @@ export class ToolExecutionRuntime<THostContext extends ToolExecutionHostContext 
   }
 
   private enforceAggregateBudget(
-    tracks: ReadonlyArray<TrackedTool<THostContext>>,
+    tracks: readonly TrackedTool[],
     store: ToolResultStore,
   ): ReadonlyMap<string, string> {
     return store.enforceAggregateBudget(

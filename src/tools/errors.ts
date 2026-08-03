@@ -16,22 +16,22 @@ export class ToolRegistryError extends Error {
 export class ToolRegistrationConflictError extends ToolRegistryError {
   constructor(
     public readonly toolName: string,
-    public readonly existingOwner: ToolOrigin,
-    public readonly attemptedOwner: ToolOrigin,
+    public readonly existingOrigin: ToolOrigin,
+    public readonly attemptedOrigin: ToolOrigin,
   ) {
     super(
       `Tool "${toolName}" registration conflict: ` +
-      `${describeOwner(existingOwner)} already owns the name; ` +
-      `${describeOwner(attemptedOwner)} cannot replace it`,
+      `${describeOrigin(existingOrigin)} already provides the name; ` +
+      `${describeOrigin(attemptedOrigin)} cannot replace it`,
     );
     this.name = 'ToolRegistrationConflictError';
   }
 }
 
-function describeOwner(owner: ToolOrigin): string {
-  return owner.kind === 'builtin'
+function describeOrigin(origin: ToolOrigin): string {
+  return origin.kind === 'builtin'
     ? 'builtin tool'
-    : `MCP tool "${owner.serverName}/${owner.serverToolName}"`;
+    : `MCP tool "${origin.serverName}/${origin.serverToolName}"`;
 }
 
 /** 模型提交的工具参数无法通过该工具的输入 Schema 解析。 */
@@ -65,7 +65,7 @@ export class ToolExecutionJournalConflictError extends Error {
 
 // ── 工具定义装配 ─────────────────────────────────────────────────────────────
 
-/** buildTool() 收到的 ToolDef 不满足运行时不变量。 */
+/** buildTool() 收到的 Tool 声明不满足运行时不变量。 */
 export class ToolDefinitionError extends RangeError {
   constructor(message: string) {
     super(message);

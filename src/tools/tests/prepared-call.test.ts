@@ -4,9 +4,19 @@ import { z } from 'zod';
 import { buildTool } from '../Tool/buildTool.js';
 import { ToolRegistry } from '../assembly/toolRegistry.js';
 import { ToolRegistryError } from '../errors.js';
-import type { BuiltTool } from '../Tool/tool.js';
+import type { Tool } from '../Tool/tool.js';
+import type { ToolInvocation } from '../Tool/toolInvocation.js';
+import type { ToolUseContext } from '../Tool/toolUseContext.js';
+import { asSessionId, asToolCallId, asTurnId } from '@ema-agent/ids';
 
-const context = {
+const context: ToolUseContext = {
+  workspaceRoot: 'D:/workspace',
+  platform: 'win32',
+};
+const invocation: ToolInvocation = {
+  sessionId: asSessionId('session-prepared'),
+  turnId: asTurnId('turn-prepared'),
+  toolCallId: asToolCallId('call-prepared'),
   signal: new AbortController().signal,
 };
 
@@ -17,7 +27,7 @@ function makeTool(
     serverName: string;
     serverToolName: string;
   } = { kind: 'builtin' },
-): BuiltTool<{ path: string; parallel: boolean }, string> {
+): Tool<{ path: string; parallel: boolean }, string, Record<never, never>> {
   return buildTool({
     name,
     origin,
@@ -72,7 +82,11 @@ describe('PreparedToolCall', () => {
       targets: [{ path: 'notes.txt', accessType: 'write' }],
       promptPolicy: 'whenRequired',
     });
-    await expect(registry.execute(prepared, context)).resolves.toBe('notes.txt:true');
+    await expect(registry.execute(
+      prepared,
+      projected.context,
+      invocation,
+    )).resolves.toBe('notes.txt:true');
   });
 
   it('在同一 Prepared 输入上执行权限前业务校验', async () => {
@@ -86,14 +100,14 @@ describe('PreparedToolCall', () => {
       manifest,
     );
     expect(valid.requiresUserInteraction).toBe(true);
-    await expect(registry.validate(valid, context)).resolves.toEqual({ valid: true });
+    await expect(registry.validate(valid, {}, invocation)).resolves.toEqual({ valid: true });
 
     const invalid = registry.prepare(
       'dynamic_tool',
       { path: 'blocked.txt', parallel: false },
       manifest,
     );
-    await expect(registry.validate(invalid, context)).resolves.toEqual({
+    await expect(registry.validate(invalid, {}, invocation)).resolves.toEqual({
       valid: false,
       message: '路径被业务规则拒绝',
       code: 'tool/path_blocked',
@@ -146,13 +160,13 @@ describe('PreparedToolCall', () => {
       { path: 'a.txt' },
       manifest,
     );
-    await expect(second.execute(prepared, context)).rejects.toBeInstanceOf(ToolRegistryError);
+    await expect(second.execute(prepared, {}, invocation)).rejects.toBeInstanceOf(ToolRegistryError);
 
     first.registerMcp({
       tool: makeTool('mcp__test__dynamic', origin),
       owner: { serverName: 'test', serverToolName: 'dynamic' },
     });
-    await expect(first.execute(prepared, context)).resolves.toBe('a.txt:false');
+    await expect(first.execute(prepared, {}, invocation)).resolves.toBe('a.txt:false');
 
     await expect(first.execute({
       id: 'mcp__test__dynamic',
@@ -163,7 +177,7 @@ describe('PreparedToolCall', () => {
       isConcurrencySafe: false,
       requiresUserInteraction: false,
       maxResultBytes: 4096,
-    }, context)).rejects.toThrow(/not created by this registry/);
+    }, {}, invocation)).rejects.toThrow(/not created by this registry/);
   });
 });
 
@@ -184,10 +198,18 @@ describe('MCP 权限意图', () => {
         accessType: 'read',
         promptPolicy: 'neverForTrustedBuiltin',
       }),
+      isReadOnly: () => true,
+      isConcurrencySafe: () => true,
       validateContext: () => ({ valid: true, context: {} }),
       execute: async () => 'ok',
     });
-    await expect(tool.getPermissionIntent({}, {})).resolves.toEqual({
+    const registry = new ToolRegistry();
+    registry.registerMcp({
+      tool,
+      owner: { serverName: 'remote', serverToolName: 'remote_tool' },
+    });
+    const prepared = registry.prepare('remote_tool', {}, registry.manifestSnapshot());
+    await expect(registry.permissionIntent(prepared, {})).resolves.toEqual({
       riskLevel: 'medium',
       accessType: 'execute',
       promptPolicy: 'whenRequired',

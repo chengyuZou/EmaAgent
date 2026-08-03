@@ -14,6 +14,8 @@ import type {
 } from '@ema-agent/permission';
 import { ToolInputError } from '../errors.js';
 import type { ToolExecutionEvent, ToolFailurePhase } from '../events.js';
+import type { ToolInvocation } from '../Tool/toolInvocation.js';
+import type { ToolUseContext } from '../Tool/toolUseContext.js';
 import type {
   ToolExecutionJournalPort,
   ToolExecutionStatus,
@@ -27,15 +29,14 @@ import type { ToolLifecycleObserver } from './toolLifecycleObserver.js';
 
 export type ToolExecutionLiveEvent = ToolExecutionEvent | PermissionStreamEvent;
 
-export interface ToolExecutionHostContext {
-  readonly signal: AbortSignal;
-  readonly agentRunId?: AgentRunId;
-}
-
 /** 同一 Turn 内每个单调用共享的执行环境。 */
-export interface ToolExecutionEnvironment<THostContext extends ToolExecutionHostContext> {
+export interface ToolExecutionEnvironment {
   readonly sessionId: SessionId;
   readonly turnId: TurnId;
+  /** 子 Agent 调用仍属于父 Turn，只额外关联自己的 AgentRun。 */
+  readonly agentRunId?: AgentRunId;
+  /** 父执行取消信号；每个 ToolInvocation 会再派生自己的 signal。 */
+  readonly abortSignal: AbortSignal;
   /** 调用执行前再次检查当前能力范围，防止排队期间能力被收窄。 */
   readonly allows: (name: string) => boolean;
   readonly toolManifest: ExecutableToolManifestSnapshot;
@@ -43,7 +44,7 @@ export interface ToolExecutionEnvironment<THostContext extends ToolExecutionHost
   readonly permission: PermissionAuthorizer;
   readonly permCtx: PermissionContext;
   readonly lifecycle?: ToolLifecycleObserver;
-  readonly toolContext: THostContext;
+  readonly toolContext: ToolUseContext;
   readonly buildAsk?: (args: {
     sessionId: SessionId;
     turnId: TurnId;
@@ -79,7 +80,7 @@ interface ToolFailure {
  * Runtime 只负责何时调用 run()；该对象独占输入准备、动态策略复核、Context
  * 投影、业务校验、权限、Journal 和工具结果终态，避免静态与流式路径各写一套。
  */
-export class ToolExecution<THostContext extends ToolExecutionHostContext> {
+export class ToolExecution {
   readonly id: ToolCallId;
   readonly name: string;
   readonly isConcurrencySafe: boolean;
@@ -98,7 +99,7 @@ export class ToolExecution<THostContext extends ToolExecutionHostContext> {
   private runPromise?: Promise<ToolExecutionCompletion>;
 
   constructor(
-    private readonly environment: ToolExecutionEnvironment<THostContext>,
+    private readonly environment: ToolExecutionEnvironment,
     call: ToolExecutionCall,
     private readonly emit: (event: ToolExecutionLiveEvent) => void,
   ) {
@@ -134,7 +135,7 @@ export class ToolExecution<THostContext extends ToolExecutionHostContext> {
         callId: call.callId,
         sessionId: environment.sessionId,
         turnId: environment.turnId,
-        agentRunId: environment.toolContext.agentRunId,
+        agentRunId: environment.agentRunId,
         toolName: prepared?.id ?? call.name,
         input: prepared?.input ?? call.args,
       });
@@ -174,7 +175,7 @@ export class ToolExecution<THostContext extends ToolExecutionHostContext> {
   }
 
   private async runOnce(): Promise<ToolExecutionCompletion> {
-    const parentSignal = this.environment.toolContext.signal;
+    const parentSignal = this.environment.abortSignal;
     const onParentAbort = (): void => this.abort('turn_abort');
     parentSignal.addEventListener('abort', onParentAbort, { once: true });
     if (parentSignal.aborted) this.abort('turn_abort');
@@ -207,9 +208,10 @@ export class ToolExecution<THostContext extends ToolExecutionHostContext> {
   private async executePipeline(): Promise<void> {
     const { sessionId, turnId, lifecycle, tools, toolContext } = this.environment;
     const signal = this.abortController.signal;
+    const invocation = this.invocation(signal);
     const args = this.prepared?.input ?? this.callArgs();
 
-    if (signal.aborted || toolContext.signal.aborted) {
+    if (signal.aborted || this.environment.abortSignal.aborted) {
       this.completeCancellation(this.cancellationReason ?? 'turn_abort');
       return;
     }
@@ -237,13 +239,7 @@ export class ToolExecution<THostContext extends ToolExecutionHostContext> {
       return;
     }
 
-    const hostContext = {
-      ...toolContext,
-      toolCallId: this.id,
-      signal,
-      emit: this.emit,
-    };
-    const contextProjection = tools.validateContext(this.prepared, hostContext);
+    const contextProjection = tools.validateContext(this.prepared, toolContext);
     if (!contextProjection.valid) {
       await this.completeFailure({
         phase: 'validation',
@@ -256,7 +252,7 @@ export class ToolExecution<THostContext extends ToolExecutionHostContext> {
 
     let validation;
     try {
-      validation = await tools.validate(this.prepared, contextProjection.context);
+      validation = await tools.validate(this.prepared, contextProjection.context, invocation);
     } catch (error) {
       await this.completeFailure({
         phase: 'validation',
@@ -280,7 +276,7 @@ export class ToolExecution<THostContext extends ToolExecutionHostContext> {
 
     this.environment.toolExecutionJournal?.authorize(this.id);
     if (this.environment.toolExecutionJournal) this.journalStatus = 'authorized';
-    await this.executePrepared(contextProjection.context);
+    await this.executePrepared(contextProjection.context, invocation);
   }
 
   private async requestPermission(narrowedContext: unknown): Promise<boolean> {
@@ -290,7 +286,6 @@ export class ToolExecution<THostContext extends ToolExecutionHostContext> {
       permission,
       permCtx,
       buildAsk,
-      toolContext,
     } = this.environment;
     const prepared = this.prepared!;
     const signal = this.abortController.signal;
@@ -321,7 +316,7 @@ export class ToolExecution<THostContext extends ToolExecutionHostContext> {
         context: permissionContext,
       }, ask);
     } catch (error) {
-      if (isCancelled(signal, toolContext.signal)) {
+      if (isCancelled(signal, this.environment.abortSignal)) {
         this.completeCancellation(this.cancellationReason ?? 'user_abort');
       } else {
         await this.completeFailure({
@@ -344,8 +339,11 @@ export class ToolExecution<THostContext extends ToolExecutionHostContext> {
     return false;
   }
 
-  private async executePrepared(narrowedContext: unknown): Promise<void> {
-    const { tools, toolContext, lifecycle, sessionId, turnId } = this.environment;
+  private async executePrepared(
+    narrowedContext: unknown,
+    invocation: ToolInvocation,
+  ): Promise<void> {
+    const { tools, lifecycle, sessionId, turnId } = this.environment;
     const signal = this.abortController.signal;
     let output: unknown;
 
@@ -353,9 +351,21 @@ export class ToolExecution<THostContext extends ToolExecutionHostContext> {
       // running 是副作用边界；该状态持久化成功后才能调用具体工具。
       this.environment.toolExecutionJournal?.start(this.id);
       if (this.environment.toolExecutionJournal) this.journalStatus = 'running';
-      output = await tools.execute(this.prepared!, narrowedContext);
+      output = await tools.execute(
+        this.prepared!,
+        narrowedContext,
+        invocation,
+        (progress) => this.emit({
+          type: 'tool_progress',
+          sessionId,
+          turnId,
+          callId: this.id,
+          name: this.name,
+          progress,
+        }),
+      );
 
-      if (signal.aborted && !toolContext.signal.aborted) output = annotateAborted(output);
+      if (signal.aborted && !this.environment.abortSignal.aborted) output = annotateAborted(output);
 
       try {
         this.environment.toolExecutionJournal?.succeed(this.id, output);
@@ -384,10 +394,10 @@ export class ToolExecution<THostContext extends ToolExecutionHostContext> {
         { turnId, sessionId, signal },
       );
     } catch (error) {
-      if (signal.aborted && !toolContext.signal.aborted) {
+      if (signal.aborted && !this.environment.abortSignal.aborted) {
         output = '[用户中途终止]';
         this.completeCancellation('user_abort');
-      } else if (toolContext.signal.aborted) {
+      } else if (this.environment.abortSignal.aborted) {
         this.completeCancellation('turn_abort');
         return;
       } else {
@@ -517,6 +527,16 @@ export class ToolExecution<THostContext extends ToolExecutionHostContext> {
 
   private durationMs(): number {
     return Date.now() - this.startedAt;
+  }
+
+  private invocation(signal: AbortSignal): ToolInvocation {
+    return Object.freeze({
+      sessionId: this.environment.sessionId,
+      turnId: this.environment.turnId,
+      agentRunId: this.environment.agentRunId,
+      toolCallId: this.id,
+      signal,
+    });
   }
 }
 

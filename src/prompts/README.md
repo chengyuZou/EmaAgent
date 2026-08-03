@@ -88,7 +88,7 @@ Work + off      相同            相同                   ## 当前执行方式
 - `activeCharacter` 描述全局角色的变化周期，不是 Session 绑定，也不表示角色卡存进 Prompt。
 - 产品规则和全局角色分别形成缓存断点；Chat/Work 与 NarrativePolicy 位于 Turn 动态尾部，不再把全部 System Prompt 压成一条字符串。
 - Skill Catalog 等扩展目录使用普通 Context Message 投递，不能取得产品 System 指令权限。完整 Skill 仍通过 Tool 按需加载。
-- Agent Profile 和 Tool Manifest 决定模型实际能调用哪些工具；Prompt 文字不是权限边界。
-- ContextAssembler 把 PromptSnapshot、历史、当前 Turn、运行时 Contribution 和 Tool Manifest 组成单次模型请求。
+- Agent Profile 和根 Turn ToolPool 决定模型实际能调用哪些工具；Prompt 文字不是权限边界。
+- ContextAssembler 把 PromptSnapshot、历史、当前 Turn、运行时 Contribution 和 ToolPool 组成单次模型请求。
 - 工作区路径等运行时事实不进入 Prompt；由 Context 使用明确来源注入。
 - Tool Schema 通过 LLM 请求的 `tools` 字段发送，不复制到 System Prompt。

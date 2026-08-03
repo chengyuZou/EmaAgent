@@ -5,6 +5,15 @@ import { z } from 'zod';
 import { buildTool } from '../Tool/buildTool.js';
 import { ToolRegistry } from '../assembly/toolRegistry.js';
 import { ToolRegistryError } from '../errors.js';
+import { asSessionId, asToolCallId, asTurnId } from '@ema-agent/ids';
+import type { ToolInvocation } from '../Tool/toolInvocation.js';
+
+const invocation: ToolInvocation = {
+  sessionId: asSessionId('session-manifest'),
+  turnId: asTurnId('turn-manifest'),
+  toolCallId: asToolCallId('call-manifest'),
+  signal: new AbortController().signal,
+};
 
 function makeTool(
   id: string,
@@ -107,8 +116,8 @@ describe('ToolManifestSnapshot', () => {
       afterReconnect,
     );
 
-    await expect(registry.execute(oldTurnCall, {})).resolves.toBe('v1');
-    await expect(registry.execute(nextTurnCall, {})).resolves.toBe('v2');
+    await expect(registry.execute(oldTurnCall, {}, invocation)).resolves.toBe('v1');
+    await expect(registry.execute(nextTurnCall, {}, invocation)).resolves.toBe('v2');
   });
 
   it('模型可见集合或 Schema 变化时更新内容 revision', () => {

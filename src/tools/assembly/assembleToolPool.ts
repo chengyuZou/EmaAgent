@@ -1,28 +1,40 @@
-// 按宿主当前拥有的能力，从统一注册表筛出本次 Agent 可见的工具实现。
-
-import type { BuiltTool } from '../Tool/tool.js';
+// 从进程 Tool 库筛选并稳定排序，建立当前根 Turn 的冻结 ToolPool。
+import type { Tool } from '../Tool/tool.js';
+import type { ToolUseContext } from '../Tool/toolUseContext.js';
+import { ToolPool } from './toolPool.js';
 import type { ToolRegistry } from './toolRegistry.js';
 
+// 根 Pool 同时容纳不同泛型实参的 Tool。
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyTool = Tool<any, any, any, any>;
+
 /**
- * 从 Registry 筛出全部 requires 均已满足的工具。
- *
- * 该函数只处理通用 Tool 装配事实，不认识 Builtin、MCP、Turn 或具体业务 Port。
- * Profile、Skill 和 Subagent 必须在结果上继续做交集收窄，不能借此扩大能力。
+ * validateContext 是装配可见性与执行前能力复核的唯一规则。
+ * Builtin 构成稳定前缀，MCP 按原始 Server/Tool 身份构成稳定后缀。
  */
-export function assembleToolPool<THostContext extends object>(
+export function assembleToolPool(
   registry: ToolRegistry,
-  hostContext: THostContext,
-): BuiltTool[] {
-  return registry.list().filter((tool) => hasRequiredCapabilities(tool, hostContext));
+  context: ToolUseContext,
+): ToolPool {
+  const visible = registry.list()
+    .filter((tool) => tool.validateContext(context).valid)
+    .sort(compareTools);
+  return new ToolPool(visible);
 }
 
-function hasRequiredCapabilities(
-  tool: BuiltTool,
-  hostContext: object,
-): boolean {
-  for (const key of tool.requires ?? []) {
-    const capability = Reflect.get(hostContext, key) as unknown;
-    if (capability == null || capability === '') return false;
+function compareTools(left: AnyTool, right: AnyTool): number {
+  if (left.origin.kind !== right.origin.kind) {
+    return left.origin.kind === 'builtin' ? -1 : 1;
   }
-  return true;
+  if (left.origin.kind === 'builtin' || right.origin.kind === 'builtin') {
+    return compareText(left.id, right.id) || compareText(left.name, right.name);
+  }
+  return compareText(left.origin.serverName, right.origin.serverName)
+    || compareText(left.origin.serverToolName, right.origin.serverToolName)
+    || compareText(left.name, right.name)
+    || compareText(left.id, right.id);
+}
+
+function compareText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }

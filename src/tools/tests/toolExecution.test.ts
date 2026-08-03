@@ -45,8 +45,9 @@ describe('ToolExecution', () => {
         accessType: 'read' as const,
         promptPolicy: 'neverForTrustedBuiltin' as const,
       }),
-      execute: async () => {
+      execute: async (_prepared: unknown, _context: unknown, _invocation: unknown, onProgress?: (value: unknown) => void) => {
         order.push('execute');
+        onProgress?.({ completed: 1, total: 1 });
         return { ok: true };
       },
     };
@@ -63,7 +64,8 @@ describe('ToolExecution', () => {
         tools: tools as never,
         permission: { authorize: permissionAuthorize, clearSession: () => {} },
         permCtx: { mode: 'default' },
-        toolContext: { signal: new AbortController().signal },
+        abortSignal: new AbortController().signal,
+        toolContext: { workspaceRoot: 'D:/workspace', platform: 'win32' },
         lifecycle: {
           beforeToolUse: async () => { order.push('before'); },
           afterToolUse: async () => { order.push('after'); },
@@ -101,7 +103,13 @@ describe('ToolExecution', () => {
       'journal:succeed',
       'after',
     ]);
-    expect(immediateEvents).toEqual([]);
+    expect(immediateEvents).toEqual([expect.objectContaining({
+      type: 'tool_progress',
+      sessionId,
+      turnId,
+      callId,
+      progress: { completed: 1, total: 1 },
+    })]);
     expect(completion.result).toEqual(expect.objectContaining({
       toolUseId: callId,
       content: JSON.stringify({ ok: true }, null, 2),

@@ -47,7 +47,8 @@ describe('ToolExecutionRuntime', () => {
       } as never,
       permission: { authorize: async () => ({ outcome: 'allow' }) } as never,
       permCtx: { mode: 'default' },
-      toolContext: { signal: new AbortController().signal },
+      abortSignal: new AbortController().signal,
+      toolContext: { workspaceRoot: 'D:/workspace', platform: 'win32' },
       pushEv: event => emitted.push(event),
       signal: () => undefined,
     });

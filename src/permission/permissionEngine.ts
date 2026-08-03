@@ -205,7 +205,7 @@ export class PermissionEngine implements PermissionAuthorizer, PermissionRuleCat
       };
     }
 
-    if (isWorkspaceRead(targets, context)) {
+    if (isWorkspaceRead(targets, context) && intent.riskLevel === 'low') {
       return { kind: 'decision', decision: allow({ type: 'workspace' }) };
     }
 
@@ -443,7 +443,7 @@ function normalizeRule(rule: PermissionRule): PermissionRule {
     }
     return { ...rule, workspaceRoot: path.resolve(rule.workspaceRoot) };
   }
-  return { ...rule, workspaceRoot: undefined };
+  return { ...rule, workspaceRoot: rule.workspaceRoot ? path.resolve(rule.workspaceRoot) : undefined };
 }
 
 function allow(reason: PermissionDecision['reason']): PermissionDecision {

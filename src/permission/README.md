@@ -28,7 +28,7 @@ Tool Schema 与 Context 校验
 `PermissionRequest` 由四部分组成：
 
 - `tool`：稳定 Tool id 和批准界面名称；
-- `input`：PreparedToolCall 冻结后的同一份输入；
+- `input`：单调用执行器完成一次 Schema 解析后的同一份输入；
 - `intent`：Tool 投影出的风险、访问类型和路径目标；
 - `context`：本次调用的模式、工作区和 Session/Turn/ToolCall 身份。
 

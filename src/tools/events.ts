@@ -28,6 +28,15 @@ export interface AskUserQuestionSpec {
 export type ToolStreamEvent =
   | { type: 'tool_call_partial'; sessionId: SessionId; blockIndex: number; callId: string; name: string; argsDelta: string }
   | { type: 'tool_call_complete'; sessionId: SessionId; blockIndex: number; callId: string; name: string; args: unknown }
+  | {
+      type: 'tool_progress';
+      sessionId: SessionId;
+      turnId: TurnId;
+      callId: string;
+      name: string;
+      /** 不同 Tool 的进度形状由自己的 TProgress 定义，SSE 只负责透明传输。 */
+      progress: unknown;
+    }
   | { type: 'tool_result'; sessionId: SessionId; callId: string; name: string; output?: unknown; error?: ToolError; durationMs: number }
   | {
       type: 'ask_user_required';

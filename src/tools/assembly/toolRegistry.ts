@@ -1,318 +1,124 @@
-// 注册、查找和准备内置及 MCP 工具，并阻止名称或身份冲突。
-import { ZodError } from 'zod';
+// 保存进程已经提供的 Tool，并按 Tool 自有来源完成 MCP 原子更新与注销。
 import {
-  ToolInputError,
   ToolRegistrationConflictError,
   ToolRegistryError,
 } from '../errors.js';
-import type {
-  BuiltTool,
-  ToolContextValidation,
-  ToolDescriptor,
-  ToolInputValidationResult,
-  ToolOrigin,
-} from '../Tool/tool.js';
-import type { PermissionIntent } from '@ema-agent/permission';
-import type { ExecutableToolManifestSnapshot } from '../types.js';
-import { freezePreparedInput } from '../preparation/preparedToolCall.js';
-import type { PreparedToolCall } from '../preparation/preparedToolCall.js';
-import { createToolManifestSnapshot } from './toolManifest.js';
+import type { Tool, ToolOrigin } from '../Tool/tool.js';
 
-// Registry 是泛型擦除边界；输入在 prepare() 中通过各工具自己的 Schema 恢复类型。
+// Registry 需要容纳输入、输出、窄 Context 和进度类型各不相同的 Tool。
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyBuiltTool = BuiltTool<any, any, any>;
-
-/** MCP 注册所有者使用原始名称，不能使用经过清洗的 LLM 可见名称。 */
-export interface McpToolOwner {
-  readonly serverName: string;
-  readonly serverToolName: string;
-}
-
-export interface McpToolRegistration {
-  readonly tool: AnyBuiltTool;
-  readonly owner: McpToolOwner;
-}
-
-type ToolOwner = ToolOrigin;
+type AnyTool = Tool<any, any, any, any>;
+type McpToolOrigin = Extract<ToolOrigin, { readonly kind: 'mcp' }>;
 
 /**
- * Central registry for all BuiltTool instances.
+ * ToolRegistry 是进程级可变库存。
  *
- * Builtin 在启动时注册；MCP 在连接与重连时只更新自己拥有的动态分区。
- * Agent 主链固定调用 prepare() → validateContext/input → permissionIntent() → execute()。
+ * Builtin 在启动装配时注册，MCP 在连接或重连时原子替换自己的实现。当前根
+ * Turn 已经持有的 ToolPool 不会回读 Registry，因此热更新只影响下一根 Turn。
  */
 export class ToolRegistry {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private readonly tools    = new Map<string, BuiltTool<any, any, any>>();
-  /** 内部稳定身份不能被另一个工具重复占用。 */
-  private readonly toolsById = new Map<string, BuiltTool<any, any, any>>();
-  /** 与 tools 同键，保存注册来源，确保热更新和注销只能操作自己的工具。 */
-  private readonly owners   = new Map<string, ToolOwner>();
-  /** 运行时能力表：Prepared 调用永远绑定准备时选中的实现。 */
-  private readonly preparedCalls = new WeakMap<object, BuiltTool<any, any, any>>();
-  /** 可执行 Manifest 的实现绑定只保存在 Registry 内，字段相同的复制品不能执行。 */
-  private readonly manifestTools = new WeakMap<object, ReadonlyMap<string, AnyBuiltTool>>();
-  private manifestVersion = 0;
+  private readonly tools = new Map<string, AnyTool>();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  register(tool: BuiltTool<any, any, any>): void {
+  register(tool: AnyTool): void {
     if (tool.origin.kind !== 'builtin') {
-      throw new ToolRegistryError(`MCP tool "${tool.name}" must use registerMcp()`);
+      throw new ToolRegistryError(`MCP tool "${tool.name}" must use registerMcpBatch()`);
     }
     if (this.tools.has(tool.name)) {
       throw new ToolRegistryError(`Tool "${tool.name}" is already registered`);
     }
-    if (this.toolsById.has(tool.id)) {
-      throw new ToolRegistryError(`Tool id "${tool.id}" is already registered`);
-    }
+    this.assertIdAvailable(tool);
     this.tools.set(tool.name, tool);
-    this.toolsById.set(tool.id, tool);
-    this.owners.set(tool.name, Object.freeze({ kind: 'builtin' }));
-    this.manifestVersion += 1;
   }
 
   /**
-   * 原子注册一批 MCP 工具。先验证整批所有权，再一次性提交：
-   * 同一原始 server/tool 重连可以替换自己；内置工具、其他 Server 及同批
-   * 清洗后重名都明确拒绝，不留下半注册状态。
+   * 原子注册一次 MCP 工具清单。
+   *
+   * 整批先完成名称、稳定 ID 和原始 Server/Tool 来源校验，再统一替换。清洗后
+   * 同名的不同 MCP 工具、内置工具和其他 Server 的实现都不能被覆盖。
    */
-  registerMcpBatch(registrations: readonly McpToolRegistration[]): void {
-    const batchOwners = new Map<string, ToolOwner>();
-    const batchIds = new Map<string, string>();
-    const validated: Array<{ registration: McpToolRegistration; owner: ToolOwner }> = [];
+  registerMcpBatch(tools: readonly AnyTool[]): void {
+    const batchByName = new Map<string, AnyTool>();
+    const batchById = new Map<string, AnyTool>();
 
-    for (const registration of registrations) {
-      const attemptedOwner = toMcpOwner(registration.owner);
-      if (!sameOwner(registration.tool.origin, attemptedOwner)) {
-        throw new ToolRegistryError(
-          `MCP tool "${registration.tool.name}" origin does not match its registration owner`,
-        );
+    for (const tool of tools) {
+      if (tool.origin.kind !== 'mcp') {
+        throw new ToolRegistryError(`Builtin tool "${tool.name}" must use register()`);
       }
-      const duplicateInBatch = batchOwners.get(registration.tool.name);
-      if (duplicateInBatch) {
+
+      const sameName = batchByName.get(tool.name);
+      if (sameName) {
         throw new ToolRegistrationConflictError(
-          registration.tool.name,
-          duplicateInBatch,
-          attemptedOwner,
+          tool.name,
+          sameName.origin,
+          tool.origin,
         );
       }
-      batchOwners.set(registration.tool.name, attemptedOwner);
+      batchByName.set(tool.name, tool);
 
-      const duplicateIdName = batchIds.get(registration.tool.id);
-      if (duplicateIdName && duplicateIdName !== registration.tool.name) {
+      const sameId = batchById.get(tool.id);
+      if (sameId && sameId.name !== tool.name) {
         throw new ToolRegistryError(
-          `Tool id "${registration.tool.id}" is shared by "${duplicateIdName}" and "${registration.tool.name}"`,
+          `Tool id "${tool.id}" is shared by "${sameId.name}" and "${tool.name}"`,
         );
       }
-      batchIds.set(registration.tool.id, registration.tool.name);
+      batchById.set(tool.id, tool);
 
-      const existingOwner = this.owners.get(registration.tool.name);
-      if (existingOwner && !sameOwner(existingOwner, attemptedOwner)) {
+      const registeredByName = this.tools.get(tool.name);
+      if (registeredByName && !sameOrigin(registeredByName.origin, tool.origin)) {
         throw new ToolRegistrationConflictError(
-          registration.tool.name,
-          existingOwner,
-          attemptedOwner,
+          tool.name,
+          registeredByName.origin,
+          tool.origin,
         );
       }
-      const existingById = this.toolsById.get(registration.tool.id);
-      if (existingById && existingById.name !== registration.tool.name) {
-        throw new ToolRegistryError(`Tool id "${registration.tool.id}" is already registered`);
-      }
-      validated.push({ registration, owner: attemptedOwner });
+      this.assertIdAvailable(tool);
     }
 
-    for (const { registration, owner } of validated) {
-      const previous = this.tools.get(registration.tool.name);
-      if (previous && previous.id !== registration.tool.id) this.toolsById.delete(previous.id);
-      this.tools.set(registration.tool.name, registration.tool);
-      this.toolsById.set(registration.tool.id, registration.tool);
-      this.owners.set(registration.tool.name, owner);
+    for (const tool of tools) {
+      this.tools.set(tool.name, tool);
     }
-    if (validated.length > 0) this.manifestVersion += 1;
   }
 
-  /** 注册单个 MCP 工具；同样遵守 registerMcpBatch() 的所有权规则。 */
-  registerMcp(registration: McpToolRegistration): void {
-    this.registerMcpBatch([registration]);
+  /** 只注销与原始 MCP Server/Tool 身份完全一致的实现。 */
+  unregisterMcp(serverName: string, serverToolName: string): boolean {
+    for (const [name, tool] of this.tools) {
+      if (
+        tool.origin.kind === 'mcp'
+        && tool.origin.serverName === serverName
+        && tool.origin.serverToolName === serverToolName
+      ) {
+        this.tools.delete(name);
+        return true;
+      }
+    }
+    return false;
   }
 
-  /**
-   * 只注销属于指定原始 server/tool 的工具。
-   * 返回 false 表示名称不存在或所有者不匹配，绝不会误删其他来源的实现。
-   */
-  unregisterMcp(name: string, owner: McpToolOwner): boolean {
-    const existingOwner = this.owners.get(name);
-    if (!existingOwner || !sameOwner(existingOwner, toMcpOwner(owner))) return false;
-    const tool = this.tools.get(name);
-    this.tools.delete(name);
-    if (tool) this.toolsById.delete(tool.id);
-    this.owners.delete(name);
-    this.manifestVersion += 1;
-    return true;
-  }
-
-  /** 工具未注册时抛 ToolRegistryError。 */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  get(name: string): BuiltTool<any, any, any> {
-    const tool = this.tools.get(name);
-    if (!tool) throw new ToolRegistryError(`Tool "${name}" is not registered`);
-    return tool;
+  get(name: string): AnyTool | undefined {
+    return this.tools.get(name);
   }
 
   has(name: string): boolean {
     return this.tools.has(name);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  list(): BuiltTool<any, any, any>[] {
+  list(): readonly AnyTool[] {
     return [...this.tools.values()];
   }
 
-  descriptors(): ToolDescriptor[] {
-    return this.list().map((t) => t.descriptor());
-  }
-
-  /**
-   * 固化一次 Turn 实际可见的工具。selection 必须来自当前 Registry，不能注入
-   * 同名伪造实现；创建完成后，即使 Registry 热更新也继续绑定本次实现。
-   */
-  manifestSnapshot(
-    selection: readonly AnyBuiltTool[] = this.list(),
-  ): ExecutableToolManifestSnapshot {
-    const selected = new Map<string, AnyBuiltTool>();
-    for (const tool of selection) {
-      if (this.tools.get(tool.name) !== tool) {
-        throw new ToolRegistryError(`Tool "${tool.name}" does not belong to the current registry`);
+  private assertIdAvailable(attempted: AnyTool): void {
+    for (const existing of this.tools.values()) {
+      if (existing.id === attempted.id && existing.name !== attempted.name) {
+        throw new ToolRegistryError(
+          `Tool id "${attempted.id}" is already registered by "${existing.name}"`,
+        );
       }
-      if (selected.has(tool.name)) {
-        throw new ToolRegistryError(`Tool "${tool.name}" appears more than once in the manifest`);
-      }
-      selected.set(tool.name, tool);
     }
-
-    const snapshot = createToolManifestSnapshot(
-      [...selected.values()],
-      this.manifestVersion,
-    ) as ExecutableToolManifestSnapshot;
-    this.manifestTools.set(snapshot, selected);
-    return snapshot;
-  }
-
-  /**
-   * 查找工具并完成一次且仅一次的输入解析。
-   * 返回值同时供 Hook、PermissionEngine 和 execute() 使用。
-   */
-  prepare(
-    name: string,
-    rawArgs: unknown,
-    manifest: ExecutableToolManifestSnapshot,
-  ): PreparedToolCall {
-    const tool = this.toolFromManifest(manifest, name);
-    let parsed: unknown;
-    try {
-      parsed = tool.parseInput(rawArgs);
-    } catch (err) {
-      if (err instanceof ZodError) {
-        throw new ToolInputError(name, err);
-      }
-      throw err;
-    }
-
-    const input = freezePreparedInput(parsed);
-    const prepared = Object.freeze({
-      id: tool.id,
-      name,
-      origin: tool.origin,
-      summary: tool.getToolUseSummary?.(input),
-      input,
-      isReadOnly: tool.isReadOnly(input),
-      isConcurrencySafe: tool.isConcurrencySafe(input),
-      requiresUserInteraction: tool.requiresUserInteraction(input),
-      maxResultBytes: tool.maxResultBytes,
-    }) satisfies PreparedToolCall;
-
-    this.preparedCalls.set(prepared, tool);
-    return prepared;
-  }
-
-  /**
-   * 把宿主 Context 投影成工具自己的窄 Context。
-   * 执行器在 prepare 之后、execute 之前调用;返回 valid:false 时该次调用
-   * 作为工具错误返回模型(不执行 execute)。
-   */
-  validateContext(
-    prepared: PreparedToolCall,
-    hostContext: unknown,
-  ): ToolContextValidation<unknown> {
-    return this.preparedTool(prepared).unsafeValidateContext(hostContext);
-  }
-
-  /** 对已经冻结的输入执行 Schema 之后、权限之前的业务语义校验。 */
-  async validate(
-    prepared: PreparedToolCall,
-    narrowedContext: unknown,
-  ): Promise<ToolInputValidationResult> {
-    const tool = this.preparedTool(prepared);
-    // 注册表是类型擦除边界;窄 Context 由 validateContext 投影后以 unknown 传入。
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return await tool.validateInput?.(prepared.input, narrowedContext as any) ?? { valid: true };
-  }
-
-  /** 使用准备时绑定的同一 Tool 实现，为冻结输入生成纯数据授权意图。 */
-  async permissionIntent(
-    prepared: PreparedToolCall,
-    narrowedContext: unknown,
-  ): Promise<PermissionIntent> {
-    const tool = this.preparedTool(prepared);
-    return tool.getPermissionIntent(prepared.input, narrowedContext);
-  }
-
-  private toolFromManifest(
-    manifest: ExecutableToolManifestSnapshot,
-    name: string,
-  ): AnyBuiltTool {
-    const snapshotTools = this.manifestTools.get(manifest);
-    if (!snapshotTools) {
-      throw new ToolRegistryError('Tool manifest was not created by this registry');
-    }
-    const tool = snapshotTools.get(name);
-    if (!tool) {
-      throw new ToolRegistryError(`Tool "${name}" is not present in the approved manifest`);
-    }
-    return tool;
-  }
-
-  /**
-   * 执行由本 Registry 准备的不可变调用。
-   * 后续 Registry 热更新不改变绑定；审批和执行始终针对同一个实现与输入。
-   */
-  async execute(
-    prepared: PreparedToolCall,
-    narrowedContext: unknown,
-  ): Promise<unknown> {
-    return this.preparedTool(prepared).unsafeExecute(prepared.input, narrowedContext);
-  }
-
-  private preparedTool(prepared: PreparedToolCall): AnyBuiltTool {
-    const preparedObject = prepared as object;
-    const tool = this.preparedCalls.get(preparedObject);
-    if (!tool) {
-      throw new ToolRegistryError('Prepared tool call was not created by this registry');
-    }
-    return tool;
   }
 }
 
-function toMcpOwner(owner: McpToolOwner): ToolOwner {
-  return Object.freeze({
-    kind: 'mcp',
-    serverName: owner.serverName,
-    serverToolName: owner.serverToolName,
-  });
-}
-
-function sameOwner(left: ToolOwner, right: ToolOwner): boolean {
-  if (left.kind !== right.kind) return false;
-  if (left.kind === 'builtin' || right.kind === 'builtin') return true;
-  return left.serverName === right.serverName && left.serverToolName === right.serverToolName;
+function sameOrigin(left: ToolOrigin, right: McpToolOrigin): boolean {
+  return left.kind === 'mcp'
+    && left.serverName === right.serverName
+    && left.serverToolName === right.serverToolName;
 }

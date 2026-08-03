@@ -1,6 +1,6 @@
 # @ema-agent/context
 
-Context 负责把持久化历史、当前输入、Prompt 与 Tool Manifest 组织成模型可见上下文。它决定哪些内容进入请求、历史媒体怎样降级以及缓存前缀在哪里结束，但不调用 Provider API，也不保存通用记忆。
+Context 负责把持久化历史、当前输入、Prompt 与根 Turn ToolPool 组织成模型可见上下文。它决定哪些内容进入请求、历史媒体怎样降级以及缓存前缀在哪里结束，但不调用 Provider API，也不保存通用记忆。
 
 `contextSnapshot.ts` 集中定义单次模型调用的不可变输入、输出和缓存诊断；`types.ts` 保留 Context Contribution 与压缩协作契约，避免快照身份继续散落在通用类型文件中。
 
@@ -9,7 +9,7 @@ Session Message
     ↓ messageBuilder
 Provider ModelCapabilitySnapshot
     ↓ messageCompatibility
-Prompt / Tool Manifest
+Prompt / ToolPool
     ↓ ContextAssembler
 ContextCompactor
     ↓ Micro → Macro → Restore
@@ -20,8 +20,8 @@ ContextCompactor
 
 - `messageBuilder.ts`：把 Session Message 投影为 Provider 无关的模型 Message；thinking 与 UI 展示字段不重放，成对的 `tool_use/tool_result` 事实必须保留；
 - `messageCompatibility.ts`：替换当前模型无法重放的历史媒体，并拒绝本轮不受支持的输入；
-- `contextAssembler.ts`：按固定边界合并 PromptSnapshot、历史、当前 Turn、临时贡献和 ToolManifestSnapshot，返回不可变模型请求快照；
-- `promptPrefix.ts`：保留 Tool Manifest 已冻结的数组顺序、规范化 Schema key，并计算本次请求最后缓存断点之前的身份指纹；
+- `contextAssembler.ts`：按固定边界合并 PromptSnapshot、历史、当前 Turn、临时贡献和根 Turn ToolPool，返回不可变模型请求快照；
+- `promptPrefix.ts`：保留 ToolPool 的稳定数组顺序、规范化 Schema key，并计算本次请求最后缓存断点之前的身份指纹；
 - `contextCompactor.ts`：按 Token 预算执行微压缩、结构化摘要、必要运行态恢复与连续失败熔断；
 - `compaction/`：保存纯函数预算、Tool 配对安全切点和摘要 Prompt；
 - LLM Adapter 仍负责把 `cacheBreakpoint` 翻译成 Anthropic `cache_control` 等具体协议字段；
@@ -72,7 +72,7 @@ messages[]                         来源                          cacheBreakpoi
 - **history 可压缩**：Macro 摘要只替换这一段。`messageBuilder` 投影时已剥 thinking、保留 tool 配对。
 - **suffix 是本轮临时数据**：`ContextContribution`（memory/narrative/scratchpad/mailbox）按 `placement` 插在 currentTurn 前后，不能伪装成历史。
 - **尾断点自动补**：`markFinalCacheBreakpoint` 从尾部往前找第一条非空消息标 `cacheBreakpoint`，使 history 进缓存前缀。这个断点只在请求投影上，不写回 Session/压缩结果。
-- **`cache` 诊断块**：快照还带 `productPromptRevision/activeCharacterRevision/turnPromptRevision/toolManifestRevision/prefixHash`。Revision 用于定位稳定层变化；`prefixHash` 表示本次请求截止尾断点的完整前缀身份，会随历史、当前 Turn 和工具轮次演进。
+- **`cache` 诊断块**：快照还带 `productPromptRevision/activeCharacterRevision/turnPromptRevision/toolPoolRevision/prefixHash`。Revision 用于定位稳定层变化；`prefixHash` 表示本次请求截止尾断点的完整前缀身份，会随历史、当前 Turn 和工具轮次演进。
 
 ## 压缩后的 Message 长什么样
 
@@ -103,7 +103,7 @@ System Prompt 属于不可压缩前缀。即使响应式压缩接收到完整请
 
 Memory、Narrative、Scratchpad 和 Mailbox 属于本轮临时数据，通过带来源、唯一 ID 和插入位置的 `ContextContribution` 进入装配器；它们不能伪装成持久化历史。Skill Catalog 属于 Prompt Context Slot，激活后的完整 Skill 则由当前 Agent 独立保存；正常工具轮次依赖原始 SkillCall Result，只有 Macro 真正改写历史后才通过 `postCompactionRestoreContributions` 恢复，避免每轮重复正文。该恢复状态属于 `requiredRestoreMessages`，预算不足时压缩失败，不能静默丢 Skill。`assembleCompacted()` 会把固定 Prompt、可压缩历史、临时贡献、恢复状态与当前 Turn 分开交给压缩器，只有历史允许进入摘要模型。
 
-Conversation 与 Agent 根 Turn 已直接使用该入口。Agent 每次逻辑迭代重新装配 Scratchpad、Mailbox 和当前可见 Tool Manifest；Skill 调用收窄工具后，下一次 LLM 请求会得到新的 Manifest revision。Prompt、Memory、Narrative 与 Skill 均通过明确入口完成核心装配，不再依赖 Hook 优先级改写请求。
+根 Turn 已直接使用该入口。Agent 每次逻辑迭代重新装配 Scratchpad、Mailbox 和当前可见 ToolPool；Skill 调用只能从父 Pool 派生更窄的 Pool，下一次 LLM 请求使用派生 Pool 的内容 revision。Prompt、Memory、Narrative 与 Skill 均通过明确入口完成核心装配，不再依赖 Hook 优先级改写请求。
 
 压缩阈值按 `contextWindow - reservedOutputTokens - bufferTokens` 计算。模型目录提供 `maxOutput` 时使用真实值，否则默认预留 8K；预留上限为 20K，安全缓冲为 13K。连续三次摘要失败后按 Session 熔断，避免重复消耗模型调用。
 

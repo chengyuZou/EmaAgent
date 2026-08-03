@@ -15,7 +15,7 @@ LlmRequestPreparer
     ├─ 复制轻量消息结构，不复制附件二进制
     ├─ 通过 Provider 注入的 Resolver 查询模型能力
     ├─ 执行 Adapter 前的最终媒体与协议门禁
-    ├─ 保留 Context 已生成的 Tool Manifest 顺序
+    ├─ 保留 Context 从根 Turn ToolPool 投影出的顺序
     └─ 按模型 maxOutput 裁剪调用方给出的输出预算
     ↓
 LlmStreamRuntime
@@ -69,7 +69,7 @@ OpenAI / Anthropic / Gemini API
 
 - Session、Turn、角色和 Narrative 业务；
 - 历史 Token 计算、上下文裁剪、Summary 与 Compaction；
-- Prompt 前缀策略、Tool Manifest 稳定化和历史媒体降级；
+- Prompt 前缀策略、ToolPool 稳定化和历史媒体降级；
 - 模型绑定和“应该选择哪个模型”的产品决策；
 - Permission、Sandbox 和 Tool 执行；
 - API Key 持久化与普通日志展示。
