@@ -1,38 +1,36 @@
+// 识别 Permission 路径检查需要的平台差异，并统一跨平台比较格式。
+
 import fs from 'node:fs';
 import type { Platform } from '../types.js';
 
-let _platform: Platform | undefined;
+let cachedPlatform: Platform | undefined;
 
 /**
- * Returns the current runtime platform, including WSL detection.
- * Result is cached after the first call.
- *
- * WSL is detected by reading /proc/sys/kernel/osrelease (same source as
- * sandbox/platform.ts) — on WSL1 and WSL2 the string contains "microsoft".
- * We treat both WSL1 and WSL2 as 'wsl' here because NTFS Alternate Data
- * Streams are interpreted by the Windows kernel even from WSL (DrvFs mounts),
- * so Windows-specific path checks must run on both.
- *
- * (sandbox/platform.ts additionally distinguishes wsl1 vs wsl2 for backend
- * selection; that finer grain isn't needed for permission path checking.)
+ * WSL1 与 WSL2 都归为 wsl，因为 DrvFs 上的 NTFS ADS 仍由 Windows 内核解释，
+ * Permission 必须继续执行 Windows 路径检查。Sandbox 选择后端时才需要区分 WSL 版本。
  */
 export function getPlatform(): Platform {
-  if (_platform !== undefined) return _platform;
+  if (cachedPlatform !== undefined) return cachedPlatform;
 
-  if (process.platform === 'win32') return (_platform = 'windows');
-  if (process.platform === 'darwin') return (_platform = 'macos');
+  if (process.platform === 'win32') return (cachedPlatform = 'windows');
+  if (process.platform === 'darwin') return (cachedPlatform = 'macos');
 
   try {
     const release = fs.readFileSync('/proc/sys/kernel/osrelease', 'utf8').toLowerCase();
-    if (release.includes('microsoft')) return (_platform = 'wsl');
+    if (release.includes('microsoft')) return (cachedPlatform = 'wsl');
   } catch {
-    // Not WSL or /proc not mounted — treat as Linux
+    // /proc 不存在或不可读时按普通 Linux 处理。
   }
 
-  return (_platform = 'linux');
+  return (cachedPlatform = 'linux');
 }
 
-/** Reset cached platform (test helper). */
+/** 把平台原生分隔符转换为规则匹配统一使用的 POSIX 形式。 */
+export function toPortablePath(candidate: string): string {
+  return getPlatform() === 'windows' ? candidate.replace(/\\/g, '/') : candidate;
+}
+
+/** 测试切换运行平台后清除缓存。 */
 export function resetPlatformCache(): void {
-  _platform = undefined;
+  cachedPlatform = undefined;
 }

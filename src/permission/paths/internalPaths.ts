@@ -1,4 +1,4 @@
-// 这里检查一个路径是否位于 Core 传进来的内部工作目录中。
+// 检查一个路径是否位于 Core 传进来的内部工作目录中。
 
 import path from 'node:path';
 import { normalizeCaseForComparison } from './pathSafety.js';

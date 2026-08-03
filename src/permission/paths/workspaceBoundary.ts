@@ -1,36 +1,20 @@
+// 判断原路径与真实路径是否完整落在本次请求声明的工作区内。
+
 import path, { posix } from 'node:path';
 import { normalizeCaseForComparison, normalizeMacOsSymlinks, getPathsForPermissionCheck } from './pathSafety.js';
-import { getPlatform } from './platformPaths.js';
+import { getPlatform, toPortablePath } from './platformPaths.js';
 import type { PermissionContext } from '../types.js';
 
-// ── POSIX conversion ──────────────────────────────────────────────────────────
-
-function toPosix(p: string): string {
-  return getPlatform() === 'windows' ? p.replace(/\\/g, '/') : p;
-}
-
-// ── Relative path helper ──────────────────────────────────────────────────────
-
-/**
- * Cross-platform relative path that always returns POSIX-style output.
- * Mirrors Claude Code's relativePath() helper.
- */
+/** 返回统一分隔符的跨平台相对路径，供工作区边界比较。 */
 function relativePosixPath(from: string, to: string): string {
   if (getPlatform() === 'windows') {
-    return posix.relative(toPosix(from), toPosix(to));
+    return posix.relative(toPortablePath(from), toPortablePath(to));
   }
   return posix.relative(from, to);
 }
 
-// ── Single working-dir check ──────────────────────────────────────────────────
-
 /**
- * Returns true if `targetPath` is inside (or equal to) `workingDir`.
- *
- * Handles:
- *  - macOS /private/tmp → /tmp alias normalisation
- *  - Case-insensitive comparison (macOS / Windows)
- *  - Path traversal detection
+ * 判断目标是否等于或位于工作区内部，同时处理 macOS 路径别名和大小写差异。
  */
 export function pathInWorkingDir(targetPath: string, workingDir: string): boolean {
   const platform = getPlatform();
@@ -48,39 +32,23 @@ export function pathInWorkingDir(targetPath: string, workingDir: string): boolea
 
   const relative = relativePosixPath(ciWorking, ciTarget);
 
-  // Same path
   if (relative === '') return true;
-
-  // Path traversal detected — outside workingDir
   if (relative.startsWith('../') || relative === '..') return false;
-
-  // Is a relative sub-path inside workingDir (not absolute)
   return !posix.isAbsolute(relative);
 }
 
-// ── All working dirs check ────────────────────────────────────────────────────
-
 /**
- * Returns true if ALL resolved forms of `targetPath` lie inside at least one
- * of the allowed working directories.
- *
- * Checking ALL resolved forms (original + symlink) prevents symlink escape:
- *   ln -s /etc/passwd /workspace/.env
- * The symlink resolves outside the workspace, so this returns false.
+ * 原路径和 symlink/junction 真实路径都必须落在工作区内，任一越界都返回 false。
  */
 export function pathInAnyWorkingDir(
   targetPath: string,
   context:    Pick<PermissionContext, 'workspaceRoot'>,
 ): boolean {
-  // Empty workspaceRoot = no workspace (subagents). MUST short-circuit to false
-  // — pathInWorkingDir(p, '') resolves '' to process.cwd(), which would
-  // accidentally grant subagents access to the sidecar's cwd. Originally
-  // (empty workspaceRoots array + .some()) this returned false for subagents.
+  // 缺少工作区必须直接拒绝，不能让 path.resolve('') 把宿主 cwd 变成隐式授权目录。
   if (!context.workspaceRoot) return false;
 
   const allPaths = getPathsForPermissionCheck(targetPath);
   const wd       = context.workspaceRoot;
 
-  // Every resolved form must be inside the working dir
   return allPaths.every(p => pathInWorkingDir(p, wd));
 }

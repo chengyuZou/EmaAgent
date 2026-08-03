@@ -1,10 +1,11 @@
-// 这里规范化并解析工具路径，拦截跨平台危险路径、设备名和 symlink 越界。
+// 工具传入的是不可信的原始路径字符串 而权限检查需要在一个规范化、真实、无歧义的路径上做判断
+
 import fs   from 'node:fs';
 import os   from 'node:os';
 import path from 'node:path';
 import { getPlatform } from './platformPaths.js';
 
-// ── Case normalization ────────────────────────────────────────────────────────
+// ── 大小写规范化 ──────────────────────────────────────────────────────────────
 
 /**
  * 规范化路径用于比较:windows/macOS 文件系统大小写不敏感,统一转小写;
@@ -15,12 +16,11 @@ export function normalizeCaseForComparison(p: string): string {
   return (platform === 'windows' || platform === 'macos') ? p.toLowerCase() : p;
 }
 
-// ── macOS symlink aliases ─────────────────────────────────────────────────────
+// ── macOS 符号链接别名 ────────────────────────────────────────────────────────
 
 /**
- * On macOS /tmp → /private/tmp and /var → /private/var are common symlinks.
- * realpathSync resolves them, which causes mismatches when comparing against
- * paths constructed from the non-private prefix. Normalise both directions.
+ * macOS 上 /tmp → /private/tmp、/var → /private/var 是常见符号链接。
+ * realpathSync 会解析它们，导致与使用非 private 前缀构造的路径比较时失配，因此对两个方向都做规范化。
  */
 export function normalizeMacOsSymlinks(p: string): string {
   return p
@@ -28,14 +28,14 @@ export function normalizeMacOsSymlinks(p: string): string {
     .replace(/^\/private\/tmp(\/|$)/, '/tmp$1');
 }
 
-// ── Symlink-aware path resolution ─────────────────────────────────────────────
+// ── 符号链接感知的路径解析 ─────────────────────────────────────────────────────
 
 /**
- * Returns the original path PLUS its symlink-resolved form (if different).
- * Both must pass all permission checks to prevent symlink escape attacks like:
+ * 返回原始路径以及其符号链接解析后的形式(若不同)。
+ * 两者都必须通过全部权限检查，以防止此类符号链接逃逸攻击：
  *   ln -s /etc/passwd /workspace/.env
  *
- * Non-existent paths (e.g. files about to be created) just return [rawPath].
+ * 不存在的路径(例如将要创建的文件)只返回 [rawPath]。
  */
 export function getPathsForPermissionCheck(rawPath: string): string[] {
   const expanded = rawPath.startsWith('~')
@@ -48,7 +48,7 @@ export function getPathsForPermissionCheck(rawPath: string): string[] {
   try {
     const resolved = resolveExistingPathOrAncestor(absolute);
     paths.add(resolved);
-    // Apply macOS alias normalisation to the resolved form as well
+    // 对解析后的形式同样应用 macOS 别名规范化
     if (getPlatform() === 'macos') {
       paths.add(normalizeMacOsSymlinks(resolved));
     }
@@ -74,18 +74,18 @@ function resolveExistingPathOrAncestor(absolutePath: string): string {
   return path.join(fs.realpathSync(cursor), ...missingSegments);
 }
 
-// ── Dangerous file / directory constants ──────────────────────────────────────
+// ── 危险文件 / 目录常量 ────────────────────────────────────────────────────────
 
 export const DANGEROUS_FILES: ReadonlySet<string> = new Set([
   '.gitconfig', '.gitcredentials', '.git-credentials',
   '.npmrc', '.yarnrc', '.yarnrc.yml', '.pnpmfile.cjs',
   '.env', '.env.local', '.env.production', '.env.development',
   '.mcp.json', '.ema-agent/settings.json',
-  // Unix shell configs — relevant on Windows too via WSL / Git Bash
+  // Unix shell 配置——在 Windows 上通过 WSL / Git Bash 同样相关
   '.bashrc', '.bash_profile', '.bash_logout',
   '.zshrc', '.zprofile', '.zshenv', '.zlogin', '.zlogout',
   '.profile', '.tcshrc', '.cshrc', '.kshrc',
-  // SSH credentials
+  // SSH 凭据
   '.ssh/config', '.ssh/authorized_keys', '.ssh/known_hosts',
   'id_rsa', 'id_ed25519', 'id_ecdsa', 'id_dsa',
 ]);
@@ -97,7 +97,7 @@ export const DANGEROUS_DIRS: ReadonlySet<string> = new Set([
   '__pycache__', '.venv', 'venv',
 ]);
 
-// ── Common safety checks (all platforms) ─────────────────────────────────────
+// ── 通用安全检查(所有平台)────────────────────────────────────────────────────
 
 function checkCommonSafety(p: string): string | undefined {
   if (p.includes('\0')) return 'path contains a null byte';
@@ -108,7 +108,7 @@ function checkCommonSafety(p: string): string | undefined {
   return undefined;
 }
 
-// ── Windows / WSL-specific checks ────────────────────────────────────────────
+// ── Windows / WSL 专属检查 ────────────────────────────────────────────────────
 
 const DOS_DEVICE_NAMES: ReadonlySet<string> = new Set([
   'CON','PRN','AUX','NUL',
@@ -117,49 +117,49 @@ const DOS_DEVICE_NAMES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Detects Windows / NTFS path attacks.
- * Runs on 'windows' AND 'wsl' — DrvFs mounts on WSL route file operations
- * through the Windows kernel, so ADS colon syntax is still interpreted there.
+ * 检测 Windows / NTFS 路径攻击。
+ * 在 'windows' 和 'wsl' 上都运行——WSL 上的 DrvFs 挂载会把文件操作
+ * 路由到 Windows 内核，因此 ADS 冒号语法在那里仍会被解释执行。
  *
- * Covers:
- *   NTFS Alternate Data Streams  (file.txt:stream — Windows/WSL only)
- *   Long-path / device prefixes  (\\?\ or \\.\  or //?/ or //./  )
- *   Trailing dots or spaces      (bypass extension checks)
- *   8.3 short names              (PROGRA~1)
- *   DOS device names             (.git.CON)
- *   Three-or-more consecutive dots as a path component
- *   UNC paths (defense-in-depth on all platforms)
+ * 覆盖范围：
+ *   NTFS 备用数据流  (file.txt:stream — 仅 Windows/WSL)
+ *   长路径 / 设备前缀  (\\?\ 或 \\.\ 或 //?/ 或 //./  )
+ *   尾部点或空格      (绕过扩展名检查)
+ *   8.3 短文件名      (PROGRA~1)
+ *   DOS 设备名        (.git.CON)
+ *   连续三个及以上点的路径组件
+ *   UNC 路径 (所有平台上的纵深防御)
  */
 export function hasSuspiciousWindowsPath(p: string): boolean {
   const platform = getPlatform();
 
-  // ADS colon — Windows kernel only (Windows + WSL DrvFs)
+  // ADS 冒号——仅 Windows 内核(Windows + WSL DrvFs)
   if (platform === 'windows' || platform === 'wsl') {
     if (p.indexOf(':', 2) !== -1) return true;
   }
 
-  // Long-path / device prefixes (both slash variants)
+  // 长路径 / 设备前缀(两种斜杠变体)
   if (
     p.startsWith('\\\\?\\') || p.startsWith('\\\\.\\') ||
     p.startsWith('//?/')    || p.startsWith('//./')
   ) return true;
 
-  // UNC paths (all platforms, defense-in-depth)
+  // UNC 路径（所有平台，纵深防御）
   if ((p.startsWith('\\\\') || p.startsWith('//')) && p.length > 2) return true;
 
-  // Trailing dot or whitespace (Windows strips these during resolution)
+  // 尾部点或空白（Windows 在解析时会剥离这些字符）
   if (/[.\s]+$/.test(p)) return true;
 
-  // 8.3 tilde short-name heuristic
+  // 8.3 波浪号短文件名启发式
   if (/~\d/.test(p)) return true;
 
-  // Three-or-more consecutive dots as a path component
+  // 路径组件中连续三个及以上的点
   if (/(^|\/|\\)\.{3,}(\/|\\|$)/.test(p)) return true;
 
-  // DOS device name as file extension suffix (e.g. .git.CON)
+  // DOS 设备名作为文件扩展名后缀（例如 .git.CON）
   if (/\.(CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9])$/i.test(p)) return true;
 
-  // DOS device name as a path segment
+  // DOS 设备名作为路径段
   const segments = p.replace(/\\/g, '/').split('/').filter(Boolean);
   for (const seg of segments) {
     const base = (seg.split('.')[0] ?? seg).toUpperCase();
@@ -169,7 +169,7 @@ export function hasSuspiciousWindowsPath(p: string): boolean {
   return false;
 }
 
-// ── Unix-specific checks ──────────────────────────────────────────────────────
+// ── Unix 专属检查 ─────────────────────────────────────────────────────────────
 
 const DANGEROUS_UNIX_PREFIXES: readonly string[] = [
   '/proc/self/mem', '/proc/self/maps', '/proc/kcore',
@@ -186,12 +186,11 @@ function checkUnixSafety(p: string): string | undefined {
   return undefined;
 }
 
-// ── Dangerous name check (all platforms) ─────────────────────────────────────
+// ── 危险名称检查（所有平台）────────────────────────────────────────────────────
 
 /**
- * Returns a human-readable reason if the path targets a dangerous file or
- * directory by name, or undefined if the name is safe.
- * Uses case-insensitive comparison to prevent mixed-case bypasses.
+ * 若路径按名称指向危险文件或目录，返回人类可读的原因；名称安全时返回 undefined。
+ * 使用大小写不敏感比较，防止大小写混合绕过。
  */
 export function getDangerousPathReason(rawPath: string): string | undefined {
   const normalised = normalizeCaseForComparison(rawPath.replace(/\\/g, '/'));
@@ -218,7 +217,7 @@ export function getDangerousPathReason(rawPath: string): string | undefined {
   return undefined;
 }
 
-// ── Removal safety ────────────────────────────────────────────────────────────
+// ── 删除安全性 ────────────────────────────────────────────────────────────────
 
 export function isDangerousRemovalPath(rawPath: string): boolean {
   if (rawPath === '*' || rawPath === '/*' || rawPath === '*.*') return true;
@@ -233,13 +232,13 @@ export function isDangerousRemovalPath(rawPath: string): boolean {
   return false;
 }
 
-// ── Shell-expansion helper (exported) ─────────────────────────────────────────
+// ── Shell 展开辅助函数（导出）────────────────────────────────────────────────────
 
 export function hasShellExpansion(p: string): boolean {
   return checkCommonSafety(p) !== undefined;
 }
 
-// ── Compound check ────────────────────────────────────────────────────────────
+// ── 综合检查 ──────────────────────────────────────────────────────────────────
 
 export interface PathSafetyResult {
   safe:    boolean;
@@ -247,14 +246,14 @@ export interface PathSafetyResult {
 }
 
 /**
- * Full bypass-immune path safety check.
- * Run this on EVERY resolved path (original + symlink) before any file tool.
+ * 完整的 bypass-immune 路径安全检查。
+ * 在任何文件工具之前，对每个已解析路径（原始 + 符号链接）都执行。
  *
- * Order:
- *  1. Common (null bytes, shell expansion, glob injection)
- *  2. Platform-specific (Windows/WSL or Unix virtual filesystems)
- *  Note: dangerous file/dir names are NOT checked here — they live in
- *  getDangerousPathReason() and only block writes (not reads) in the pipeline.
+ * 顺序：
+ *  1. 通用检查（空字节、shell 展开、glob 注入）
+ *  2. 平台专属检查（Windows/WSL 或 Unix 虚拟文件系统）
+ *  注意：危险文件/目录名在这里不检查——它们位于
+ *  getDangerousPathReason() 中，并且只在流水线中拦截写入（不拦截读取）。
  */
 export function checkPathSafety(rawPath: string): PathSafetyResult {
   const common = checkCommonSafety(rawPath);

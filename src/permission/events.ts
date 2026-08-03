@@ -3,30 +3,30 @@ import type { SessionId, ToolCallId, TurnId } from '@ema-agent/ids';
 import type { AccessType, RiskLevel } from './types.js';
 
 export interface PermissionRequiredEvent {
-  type: 'permission_required';
-  sessionId: SessionId;
-  turnId: TurnId;
-  callId: ToolCallId;
-  promptId: string;
-  toolId: string;
-  tool: string;
-  toolDescription?: string;
-  args: unknown;
-  hint: string;
-  riskLevel: RiskLevel;
-  accessType?: AccessType;
-  gateReason?: string;
+  readonly type: 'permission_required';
+  readonly sessionId: SessionId;
+  readonly turnId: TurnId;
+  readonly toolCallId: ToolCallId;
+  readonly promptId: string;
+  readonly toolId: string;
+  readonly toolName: string;
+  readonly toolDescription?: string;
+  readonly input: unknown;
+  readonly hint: string;
+  readonly riskLevel: RiskLevel;
+  readonly accessType: AccessType;
+  readonly gateReason?: string;
   /** V1.5 可按需由 Tool Explainer 生成，不参与权限判定。 */
-  humanDescription?: string;
+  readonly humanDescription?: string;
 }
 
 export interface PermissionResolvedEvent {
-  type: 'permission_resolved';
-  sessionId: SessionId;
-  turnId: TurnId;
-  callId: ToolCallId;
-  promptId: string;
-  decision: 'allow' | 'deny';
+  readonly type: 'permission_resolved';
+  readonly sessionId: SessionId;
+  readonly turnId: TurnId;
+  readonly toolCallId: ToolCallId;
+  readonly promptId: string;
+  readonly decision: 'allow' | 'deny';
 }
 
 export type PermissionStreamEvent =

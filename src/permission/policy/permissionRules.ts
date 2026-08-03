@@ -1,3 +1,5 @@
+// 使用稳定的 gitignore 语义匹配全局与工作区 Permission 规则。
+
 import { createRequire } from 'node:module';
 import os        from 'node:os';
 import path      from 'node:path';
@@ -5,61 +7,41 @@ import { posix } from 'node:path';
 import type { Ignore } from 'ignore';
 import type { PermissionRule, RuleScope, PermissionContext } from '../types.js';
 import { normalizeCaseForComparison } from '../paths/pathSafety.js';
-import { getPlatform } from '../paths/platformPaths.js';
+import { getPlatform, toPortablePath } from '../paths/platformPaths.js';
 
-// CJS interop: `ignore` uses `export =` which NodeNext ESM cannot import as default.
-const _req = createRequire(import.meta.url);
-const createIgnore = _req('ignore') as () => Ignore;
-// TYPE-04: guard against packaging failures that would turn this into a silent runtime error
+// ignore 使用 export =，NodeNext ESM 通过 createRequire 取得真实工厂函数。
+const require = createRequire(import.meta.url);
+const createIgnore = require('ignore') as () => Ignore;
 if (typeof createIgnore !== 'function') {
-  throw new Error('@ema-agent/permission: failed to load the "ignore" package — is it installed?');
+  throw new Error('@ema-agent/permission 无法加载 ignore 依赖');
 }
 
-// ── Ignore-instance cache ─────────────────────────────────────────────────────
-// Building an Ignore instance for the same pattern on every tool call is wasteful
-// when a session has many calls. Cache by normalised pattern string (module-level,
-// shared across sessions — safe because patterns are deterministic pure strings).
-const _ignoreCache = new Map<string, Ignore>();
+// 规则字符串是确定性的纯数据，跨 Session 复用编译结果不会携带授权状态。
+const ignoreCache = new Map<string, Ignore>();
 
 function getIgnore(pattern: string): Ignore {
-  let ig = _ignoreCache.get(pattern);
-  if (!ig) {
-    ig = createIgnore().add([pattern]);
-    _ignoreCache.set(pattern, ig);
+  let matcher = ignoreCache.get(pattern);
+  if (!matcher) {
+    matcher = createIgnore().add([pattern]);
+    ignoreCache.set(pattern, matcher);
   }
-  return ig;
+  return matcher;
 }
 
-/** Clear ignore cache — exposed for unit tests that mutate patterns. */
+/** 测试修改规则集合后清除已编译的 pattern。 */
 export function clearIgnoreCache(): void {
-  _ignoreCache.clear();
+  ignoreCache.clear();
 }
-
-// ── POSIX path conversion ─────────────────────────────────────────────────────
-// NOTE: workspace.ts has an identical helper — kept separate intentionally so
-// each file remains independently importable without cross-dependencies.
-
-function toPosix(p: string): string {
-  return getPlatform() === 'windows' ? p.replace(/\\/g, '/') : p;
-}
-
-// ── Pattern root resolution ───────────────────────────────────────────────────
 
 /**
- * Determines the filesystem root for a rule's pathGlob based on its prefix,
- * and returns the pattern root-relative (no leading slash) so `ignore` can
- * match it correctly.
+ * 按 pathGlob 前缀确定规则根目录，并返回没有前导斜杠的根内 pattern。
  *
  * ```
- * Pattern prefixes:
- *   //abs/path/**  → anchored to filesystem root (/ on Unix, drive root on Windows)
- *   ~/rel/**       → anchored to home directory
- *   /rel/**        → anchored to scope root (workspaceRoot for session/project, ~ for global)
- *   rel/**         → same as /rel (relative to scope root)
- *   ./rel/**       → normalised to rel
+ * //abs/path/** 锚定文件系统根，~/rel/** 锚定 home，
+ * /rel/**、rel/** 和 ./rel/** 锚定规则 scope 根。
  * ```
  * @example
- * resolvePatternRoot("/src/**", "session", "/Users/abc/project")
+ * resolvePatternRoot("/src/**", "workspace", "/Users/abc/project")
  * => {
  *   root: "/Users/abc/project",
  *   pattern: "src/**"
@@ -74,7 +56,7 @@ function resolvePatternRoot(
   const home = os.homedir();
 
   if (glob.startsWith('//')) {
-    // BUG-01 fix: strip both leading slashes so pattern is root-relative
+    // 去掉两个前导斜杠后，pattern 才是文件系统根的相对路径。
     const fsRoot = getPlatform() === 'windows'
       ? workspaceRoot.slice(0, 3) || (process.env['SystemDrive'] ?? 'C:') + '\\'
       : '/';
@@ -87,56 +69,46 @@ function resolvePatternRoot(
 
   const scopeRoot = scope === 'global' ? home : workspaceRoot;
 
-  // No workspace (subagents pass ''). Session/project-scoped relative or
-  // `/`-prefixed patterns anchor to the workspace — without one they cannot
-  // match. Return empty so pathMatchesGlob short-circuits to false instead of
-  // falling back to path.resolve('') = process.cwd() (which would let a
-  // subagent match rules against the sidecar's cwd). `~/` and `//` patterns
-  // already returned above (home / fs-root anchored, workspace-independent).
+  // workspace 规则缺少工作区时不能回退到宿主 cwd；home 与文件系统根前缀已在上方处理。
   if (!scopeRoot) return { root: '', pattern: '' };
 
   if (glob.startsWith('/')) {
-    // BUG-02 fix: strip leading / so pattern is root-relative, not scope-relative with a slash
+    // ignore 接收根内相对 pattern，必须去掉前导斜杠。
     return { root: scopeRoot, pattern: glob.slice(1) };
   }
 
-  // Relative — strip leading ./
+  // 相对规则统一去掉 ./。
   const pattern = glob.startsWith('./') ? glob.slice(2) : glob;
   return { root: scopeRoot, pattern };
 }
 
-// ── Pattern matching via `ignore` ─────────────────────────────────────────────
-
-/**
- * Returns true if `targetPath` matches the rule's pathGlob using gitignore
- * semantics (via the `ignore` npm library).
- */
+/** 使用 gitignore 语义判断目标路径是否匹配规则。 */
 function pathMatchesGlob(
   targetPath:    string,
   glob:          string,
   scope:         RuleScope,
   context:       Pick<PermissionContext, 'workspaceRoot'>,
 ): boolean {
-  const { root, pattern } = resolvePatternRoot(glob, scope, context.workspaceRoot || '');
+  const { root, pattern } = resolvePatternRoot(glob, scope, context.workspaceRoot ?? '');
 
-  const posixTarget = toPosix(path.resolve(targetPath));
-  const posixRoot   = toPosix(path.resolve(root));
+  if (!root || !pattern) return false;
+
+  const posixTarget = toPortablePath(path.resolve(targetPath));
+  const posixRoot   = toPortablePath(path.resolve(root));
 
   const relative = posix.relative(posixRoot, posixTarget);
 
-  // Target is outside root — cannot match
+  // 根目录之外的目标不能命中本规则。
   if (relative.startsWith('..') || posix.isAbsolute(relative)) return false;
-  // Empty string means target IS the root itself — not matchable by a file pattern
+  // 空相对路径代表目标就是根目录，不应被文件 pattern 命中。
   if (!relative) return false;
 
-  // Strip trailing /** — `ignore` implicitly matches the whole subtree
+  // ignore 已隐式匹配子树，去掉结尾 /** 可避免目录本身漏匹配。
   const normalised = pattern.endsWith('/**') ? pattern.slice(0, -3) : pattern;
   if (!normalised) return false;
 
   return getIgnore(normalised).ignores(relative);
 }
-
-// ── Rule matching ─────────────────────────────────────────────────────────────
 
 export function ruleMatches(
   rule:       PermissionRule,
@@ -156,8 +128,6 @@ export function ruleMatches(
   return pathMatchesGlob(targetPath, rule.pathGlob, rule.scope, context);
 }
 
-// ── Rule lookup helpers ───────────────────────────────────────────────────────
-
 /**
  * Scope 优先级：global > workspace。
  * 全局规则最权威，工作区规则次之。同一 action 的多条规则都匹配同一调用时，
@@ -174,7 +144,7 @@ function compareScopePriority(left: PermissionRule, right: PermissionRule): numb
 
 /**
  * 在同一 action 的规则里查找匹配项，按 scope 优先级返回最权威的那条。
- * deny/ask/allow 各自的 Step 顺序仍由 PermissionEngine.gate() 保证，
+ * deny/ask/allow 各自的步骤顺序由 PermissionEngine.authorize() 保证，
  * 这里只决定同 action 内多规则匹配时返回哪一条用于审计与决策归因。
  */
 function findRuleByAction(
@@ -211,18 +181,4 @@ export function findAllowRule(
   context: Pick<PermissionContext, 'workspaceRoot' | 'sessionId'>,
 ): PermissionRule | undefined {
   return findRuleByAction(rules, 'allow', toolName, targetPath, context);
-}
-
-// ── Rule persistence helper ───────────────────────────────────────────────────
-
-export function upsertRule(rules: PermissionRule[], incoming: PermissionRule): PermissionRule[] {
-  const filtered = rules.filter(
-    r => !(
-      normalizeCaseForComparison(r.tool) === normalizeCaseForComparison(incoming.tool) &&
-      r.pathGlob === incoming.pathGlob &&
-      r.scope    === incoming.scope &&
-      r.workspaceRoot === incoming.workspaceRoot
-    ),
-  );
-  return [...filtered, incoming];
 }

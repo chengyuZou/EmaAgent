@@ -1,178 +1,174 @@
-// 这里放 Permission 模块用到的基础类型和接口。
+import type { SessionId, ToolCallId, TurnId } from '@ema-agent/ids';
 
-// ── Platform ──────────────────────────────────────────────────────────────────
+export type Platform = 'windows' | 'wsl' | 'linux' | 'macos';
 
-export type Platform = 'windows' | 'wsl' | 'linux' | 'macos'
+/** 权限模式属于一次执行快照，不能作为 PermissionEngine 的跨 Session 全局状态。 
+ * | 模式 | 语义 |
+ * |---|---|
+ * | `default` | 工作区读取自动允许，其余按规则或询问 |
+ * | `acceptEdits` | 额外允许工作区文件写入，不允许 execute |
+ * | `bypassPermissions` | 仅显式开发入口可开启；正式装配必须禁用 |
+*/
+export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions';
 
-// ── Permission Modes ──────────────────────────────────────────────────────────
+export type RuleScope = 'global' | 'workspace';
+export type RiskLevel = 'low' | 'medium' | 'high';
+export type AccessType = 'read' | 'write' | 'execute';
+export type PermissionPathAccess = 'read' | 'write';
+export type PermissionPromptPolicy = 'whenRequired' | 'neverForTrustedBuiltin';
 
-/**
- * ask    — prompt user for every unapproved call (default)
- * auto   — auto-allow workspace/low-risk ops; ask for dangerous or outside workspace
- * bypass — skip all permission checks (dev/test only)
- */
-export type PermissionMode = 'ask' | 'auto' | 'bypass'
-
-// ── Rule Scopes ───────────────────────────────────────────────────────────────
-
-/** global → 全局规则(~/.ema-agent) | workspace → 工作区规则(绑定 workspaceRoot)。session 级临时授权由 SessionGrantStore 内存管理,不进此类型。 */
-export type RuleScope = 'global' | 'workspace'
-
-// ── Risk & Access ─────────────────────────────────────────────────────────────
-
-export type RiskLevel  = 'low' | 'medium' | 'high'
-export type AccessType = 'read' | 'write' | 'execute'
-
-/** Permission 可识别的内部目录能力；目录值必须由 Core 的 RuntimePaths 生成。 */
+/** Permission 可识别的内部目录能力；目录值必须由宿主的 RuntimePaths 生成。 */
 export interface InternalPathCapabilities {
-  /** 当前 Turn 的临时 scratchpad，主 Agent 与其子 Agent 可共享。 */
-  turnScratchpad?: string
+  /** 当前 Turn 的临时 scratchpad，根 Agent 与其子 Agent 可以共享。 */
+  readonly turnScratchpad?: string;
 }
 
-export type InternalPathCapability = keyof InternalPathCapabilities
-
-// ── Rules ─────────────────────────────────────────────────────────────────────
+export type InternalPathCapability = keyof InternalPathCapabilities;
 
 /**
- * Pattern format for pathGlob (gitignore-compatible via `ignore` library):
- *   //abs/path/**  → anchored to filesystem root
- *   ~/rel/**       → anchored to home directory
- *   /rel/**        → anchored to scope root (workspaceRoot for session/project, ~ for global)
- *   rel/**         → relative, matched against scope root
+ * 表示一个 Tool 在对应作用域下的权限规则。规则由宿主持久化，PermissionEngine 只负责匹配和裁决。
  */
 export interface PermissionRule {
-  /** allow = always allow | deny = always deny | ask = always prompt, even in auto mode */
-  action:    'allow' | 'deny' | 'ask'
-  /** Tool name to match, or '*' for all tools. */
-  tool:      string
-  /** Gitignore-style path pattern. Absent = match all paths for this tool. */
-  pathGlob?: string
-  scope:     RuleScope
-  /** scope=workspace 时必填(规范化工作区根);scope=global 时 undefined。 */
-  workspaceRoot?: string
+  readonly action: 'allow' | 'deny' | 'ask';
+  /** Tool 稳定 id，`*` 表示全部 Tool。 */
+  readonly tool: string;
+  /** 使用 gitignore 语义；省略时匹配该 Tool 的全部目标。 */
+  readonly pathGlob?: string;
+  readonly scope: RuleScope;
+  /** workspace 规则必须绑定创建规则时的规范化工作区。 */
+  readonly workspaceRoot?: string;
 }
 
-/** 持久化规则:PermissionRule + 存储/管理字段。Store 返回;Engine 匹配时只用 PermissionRule 字段。 */
 export interface PersistedPermissionRule extends PermissionRule {
-  id:        string
-  enabled:   boolean
-  createdAt: number
-  updatedAt: number
+  readonly id: string;
+  readonly enabled: boolean;
+  readonly createdAt: number;
+  readonly updatedAt: number;
 }
 
-/** 权限使用稳定 id 匹配规则，同时保留模型名称给用户界面展示。 */
 export interface PermissionToolIdentity {
-  id: string
-  name: string
-  /** Tool 自己提供的默认人类可读说明；它只参与展示，不参与权限判定。 */
-  description?: string
+  readonly id: string;
+  readonly name: string;
+  /** 只用于批准界面，不参与规则匹配。 */
+  readonly description?: string;
 }
 
-// ── Decision Reason ───────────────────────────────────────────────────────────
-
-/** Structured explanation of why a permission outcome was reached. */
-export type DecisionReason =
-  | { type: 'rule';         rule: PermissionRule }
-  | { type: 'mode';         mode: PermissionMode }
-  | { type: 'sessionGrant'; sessionId: string }
-  | { type: 'workingDir' }
-  | { type: 'internalPath'; path: string }
-  | { type: 'internalCapability'; capability: InternalPathCapability; root: string }
-  | { type: 'safetyCheck';  reason: string }
-  | { type: 'other';        reason: string }
-
-// ── Outcome ───────────────────────────────────────────────────────────────────
-
-export type PermissionOutcome =
-  | { granted: true;  decisionReason?: DecisionReason }
-  | { granted: false; reason: string;          decisionReason?: DecisionReason }
-
-// ── Context ───────────────────────────────────────────────────────────────────
-
-/** Runtime context passed to every gate() call. */
-export interface PermissionContext {
-  /** The workspace root the agent is allowed to operate in. Empty string = no workspace (subagent). */
-  workspaceRoot:   string
-  /** Current session ID — used for internal path carve-outs (e.g. session memory). */
-  sessionId?:      string
-  /** 当前 Turn 标识，用于把并发审批精确关联到产生它的事件流。 */
-  turnId?:         string
-  /** 当前工具调用标识；同一 Turn 内同名工具并发时不能依赖工具名猜测。 */
-  toolCallId?:     string
-  /** Core 显式授予本次执行的内部目录；Permission 禁止自行拼接或猜测这些路径。 */
-  internalPaths?:  InternalPathCapabilities
-  /**
-   * Per-call askPermission override. When set, takes precedence over
-   * `PermissionConfig.ask`. TurnExecutor injects this so each turn can route
-   * the prompt through its own SSE event stream (see gateWithEvents helper).
-   */
-  ask?:                   AskPermissionFn
+/** Tool 把业务输入投影为 Permission 能理解的纯数据目标。 */
+export interface PermissionPathTarget {
+  readonly path: string;
+  readonly accessType: PermissionPathAccess;
 }
 
-// ── Ask flow ──────────────────────────────────────────────────────────────────
+/** Tool 已完成 Schema、Context 和业务硬安全校验后产生的授权意图。 */
+export interface PermissionIntent {
+  readonly riskLevel: RiskLevel;
+  readonly accessType: AccessType;
+  readonly targets?: readonly PermissionPathTarget[];
+  readonly internalPathCapability?: InternalPathCapability;
+  readonly promptPolicy: PermissionPromptPolicy;
+}
 
 /**
- * Everything the UI needs to render the permission dialog.
- * Sent engine → UI when a tool call requires user confirmation.
+ * 一次执行的上下文快照，不是全局状态。
+ * 否则并发 Session 互相覆盖权限状态，导致安全漏洞。
  */
-export interface PermissionPrompt {
-  toolId:           string
-  toolName:         string
-  toolDescription?: string
-  input:            unknown
-  riskLevel:        RiskLevel
-  accessType?:      AccessType
-  /** Human-readable reason why this call is being gated (shown in the dialog). */
-  gateReason?:      string
-  sessionId?:       string
-  turnId?:          string
-  toolCallId?:      string
+export interface PermissionContext {
+  readonly mode: PermissionMode;
+  /** 没有工作区时省略；相对路径在这种情况下必须 fail-closed。 */
+  readonly workspaceRoot?: string;
+  readonly sessionId?: SessionId;
+  readonly turnId?: TurnId;
+  readonly toolCallId?: ToolCallId;
+  /** 宿主显式授予本次执行的内部目录，Permission 不自行拼接这些路径。 */
+  readonly internalPaths?: InternalPathCapabilities;
 }
 
-/** Core 暂存的一条待审批请求，供窗口重开或 SSE 重连后恢复界面。 */
+// 一次待裁决操作的完整快照
+export interface PermissionRequest {
+  readonly tool: PermissionToolIdentity;
+  /** 必须是 PreparedToolCall 冻结后的同一份输入。 */
+  readonly input: unknown;
+  readonly intent: PermissionIntent;
+  readonly context: PermissionContext;
+}
+
+export type PermissionDecisionReason =
+  | { readonly type: 'invalidRequest'; readonly reason: string }
+  | { readonly type: 'pathSafety'; readonly reason: string }
+  | { readonly type: 'rule'; readonly rules: readonly PermissionRule[] }
+  | { readonly type: 'mode'; readonly mode: PermissionMode }
+  | { readonly type: 'sessionGrant'; readonly sessionId: SessionId }
+  | { readonly type: 'workspace' }
+  | { readonly type: 'internalPath' }
+  | { readonly type: 'internalCapability'; readonly capability: InternalPathCapability }
+  | { readonly type: 'promptPolicy'; readonly policy: PermissionPromptPolicy }
+  | { readonly type: 'user'; readonly action: PermissionResponse['action'] }
+  | { readonly type: 'headless' }
+  | { readonly type: 'requestChanged' };
+
+/** PermissionEngine 最终的裁决结果。
+ * 返回结果以及处于的阶段
+ */
+export type PermissionDecision =
+  | {
+      readonly outcome: 'allow';
+      readonly reason: PermissionDecisionReason;
+    }
+  | {
+      readonly outcome: 'deny';
+      readonly message: string;
+      readonly reason: PermissionDecisionReason;
+    };
+
+export interface PermissionPromptTarget {
+  readonly path: string;
+  readonly accessType: PermissionPathAccess;
+}
+
+/** 批准界面唯一需要理解的 Permission 投影。 */
+export interface PermissionPrompt {
+  readonly toolId: string;
+  readonly toolName: string;
+  readonly toolDescription?: string;
+  readonly input: unknown;
+  readonly riskLevel: RiskLevel;
+  readonly accessType: AccessType;
+  readonly targets: readonly PermissionPromptTarget[];
+  readonly gateReason?: string;
+  readonly sessionId?: SessionId;
+  readonly turnId?: TurnId;
+  readonly toolCallId?: ToolCallId;
+}
+
+/** LocalHost 暂存的待批准快照；Promise、计时器和内部指纹不进入事件协议。 */
 export interface PendingPermissionPrompt {
-  promptId: string
-  createdAt: number
-  prompt: PermissionPrompt
+  readonly promptId: string;
+  readonly createdAt: number;
+  readonly prompt: PermissionPrompt;
 }
 
 export type PermissionResponse =
-  /** Allow this one call. */
-  | { action: 'allow' }
-  /** Allow this tool for the rest of this session (session-scoped allow rule). */
-  | { action: 'allow_session' }
-  /** Deny this call. User may optionally provide a reason. */
-  | { action: 'deny'; reason?: string }
+  | { readonly action: 'allow' }
+  | { readonly action: 'allowSession' }
+  | { readonly action: 'deny'; readonly reason?: string };
 
-export type AskPermissionFn = (prompt: PermissionPrompt) => Promise<PermissionResponse>
+export type AskPermissionFn = (prompt: PermissionPrompt) => Promise<PermissionResponse>;
 
-// ── Per-tool metadata ─────────────────────────────────────────────────────────
-
-export interface ToolPermissionMeta {
-  /**
-   * 是否需要进入普通工具审批门禁。
-   * 省略时按 required 处理；只有可信内置工具可以声明 not_required。
-   */
-  approval?:      'required' | 'not_required'
-  riskLevel:     RiskLevel
-  accessType?:   AccessType
-  /**
-   * When true, the tool's safetyCheck runs before any allow logic and its
-   * result cannot be overridden by bypass mode.
-   */
-  bypassImmune?: boolean
-  safetyCheck?:  (input: unknown) => 'deny' | 'continue'
-  /** Extracts the primary file-system path from the tool's input, if any. */
-  extractPath?:  (input: unknown) => string | undefined
-  /** 工具封装并隐藏真实路径时，用该字段声明它运行所需的内部目录能力。 */
-  internalPathCapability?: InternalPathCapability
+export interface PermissionAuthorizer {
+  authorize(request: PermissionRequest, ask?: AskPermissionFn): Promise<PermissionDecision>;
+  clearSession(sessionId: SessionId): void;
 }
 
-// ── Engine config ─────────────────────────────────────────────────────────────
+export interface PermissionRuleCatalog {
+  listRules(): readonly PersistedPermissionRule[];
+  saveRule(rule: PermissionRule): PersistedPermissionRule;
+  setRuleEnabled(ruleId: string, enabled: boolean): boolean;
+  removeRule(ruleId: string): boolean;
+}
 
-export interface PermissionConfig {
-  mode:             PermissionMode
-  /** 代码提供的内置规则(不持久化,如危险命令 deny);用户规则由 PermissionRuleStore 提供。 */
-  builtinRules?:    readonly PermissionRule[]
-  ask?:             AskPermissionFn
+export interface PermissionEngineOptions {
+  /** 代码内置的不可删除规则，例如禁止访问操作系统危险设备。 */
+  readonly builtinRules?: readonly PermissionRule[];
+  /** 正式构建保持 false；只有明确的开发入口可以启用 bypassPermissions。 */
+  readonly allowBypassPermissions?: boolean;
 }

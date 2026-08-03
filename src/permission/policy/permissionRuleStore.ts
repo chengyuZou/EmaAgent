@@ -17,7 +17,7 @@ export interface PermissionRuleStore {
   /** 插入或按 (tool, pathGlob, scope, workspaceRoot) 去重更新;返回持久化结果。 */
   upsert(input: PermissionRule): PersistedPermissionRule;
   /** 启停一条规则。 */
-  setEnabled(id: string, enabled: boolean): void;
+  setEnabled(id: string, enabled: boolean): boolean;
   /** 按 id 删除;不存在返回 false。 */
   delete(id: string): boolean;
 }
@@ -70,10 +70,11 @@ export class InMemoryPermissionRuleStore implements PermissionRuleStore {
     return persisted;
   }
 
-  setEnabled(id: string, enabled: boolean): void {
+  setEnabled(id: string, enabled: boolean): boolean {
     const existing = this.rules.get(id);
-    if (!existing) return;
+    if (!existing) return false;
     this.rules.set(id, { ...existing, enabled, updatedAt: Date.now() });
+    return true;
   }
 
   delete(id: string): boolean {
