@@ -8,6 +8,7 @@ export type {
   ToolDescriptor,
   ToolManifestEntry,
   ToolManifestSnapshot,
+  ExecutableToolManifestSnapshot,
   ToolOrigin,
   ToolInputValidationResult,
   ToolContextValidation,

@@ -1,4 +1,4 @@
-// 测试 Tool Manifest 的确定性、不可变性、来源校验和 MCP 热更新失效语义。
+// 测试 Tool Manifest 的确定性、不可变性、来源校验和 MCP 热更新隔离语义。
 
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
@@ -14,6 +14,7 @@ function makeTool(
     serverName: string;
     serverToolName: string;
   } = { kind: 'builtin' },
+  result = 'ok',
 ) {
   return buildTool({
     id,
@@ -25,7 +26,7 @@ function makeTool(
     isConcurrencySafe: () => true,
     permissionMeta: { riskLevel: 'low', accessType: 'read' },
     validateContext: () => ({ valid: true, context: {} }),
-    execute: async () => 'ok',
+    execute: async () => result,
   });
 }
 
@@ -67,11 +68,11 @@ describe('ToolManifestSnapshot', () => {
     expect(Object.isFrozen(first.entries[0]?.inputJsonSchema)).toBe(true);
   });
 
-  it('MCP 等价重连不改变内容 revision，但旧执行快照仍会失效', () => {
+  it('MCP 等价重连不改变内容 revision，且旧 Turn 继续执行冻结实现', async () => {
     const registry = new ToolRegistry();
     const origin = { kind: 'mcp' as const, serverName: 'demo', serverToolName: 'search' };
     registry.registerMcp({
-      tool: makeTool('mcp.demo.search', 'mcp__demo__search', origin),
+      tool: makeTool('mcp.demo.search', 'mcp__demo__search', origin, 'v1'),
       owner: { serverName: 'demo', serverToolName: 'search' },
     });
     const beforeReconnect = registry.manifestSnapshot();
@@ -83,7 +84,7 @@ describe('ToolManifestSnapshot', () => {
     )).toThrow(ToolRegistryError);
 
     registry.registerMcp({
-      tool: makeTool('mcp.demo.search', 'mcp__demo__search', origin),
+      tool: makeTool('mcp.demo.search', 'mcp__demo__search', origin, 'v2'),
       owner: { serverName: 'demo', serverToolName: 'search' },
     });
     const afterReconnect = registry.manifestSnapshot();
@@ -91,11 +92,19 @@ describe('ToolManifestSnapshot', () => {
     expect(afterReconnect.registryVersion).toBeGreaterThan(beforeReconnect.registryVersion);
     expect(afterReconnect.revision).toBe(beforeReconnect.revision);
 
-    expect(() => registry.prepare(
+    const oldTurnCall = registry.prepare(
       'mcp__demo__search',
       { query: 'after' },
       beforeReconnect,
-    )).toThrow(/stale/);
+    );
+    const nextTurnCall = registry.prepare(
+      'mcp__demo__search',
+      { query: 'after' },
+      afterReconnect,
+    );
+
+    await expect(registry.execute(oldTurnCall, {})).resolves.toBe('v1');
+    await expect(registry.execute(nextTurnCall, {})).resolves.toBe('v2');
   });
 
   it('模型可见集合或 Schema 变化时更新内容 revision', () => {

@@ -2,8 +2,10 @@
 import { describe, expect, it } from 'vitest';
 import type { SessionId, TurnId } from '@ema-agent/ids';
 import {
+  createToolManifestSnapshot,
   presentToolResult,
   ToolExecutionRuntime,
+  type ExecutableToolManifestSnapshot,
   type ToolExecutionRuntimeEvent,
 } from '../index.js';
 
@@ -14,10 +16,12 @@ describe('tool presentation flow', () => {
   it('把真实 diff 发给客户端并保持模型结果简短', async () => {
     const emitted: ToolExecutionRuntimeEvent[] = [];
     let journalOutput: unknown;
+    const manifest = createToolManifestSnapshot([], 1) as ExecutableToolManifestSnapshot;
     const executor = new ToolExecutionRuntime({
       sessionId,
       turnId,
       allows: () => true,
+      toolManifest: manifest,
       tools: {
         has: () => true,
         prepare: (name: string, input: unknown) => ({

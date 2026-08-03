@@ -1,5 +1,6 @@
 // 把一次 Turn 的工具能力作用域转换成模型工具定义和执行准入判断。
 import type {
+  ExecutableToolManifestSnapshot,
   ToolCapabilityScope,
   ToolManifestSnapshot,
 } from '@ema-agent/tools';
@@ -13,7 +14,7 @@ export class TurnPolicy {
   private readonly scope: AgentToolCapabilityScope;
 
   constructor(
-    private readonly manifest: ToolManifestSnapshot,
+    private readonly manifest: ExecutableToolManifestSnapshot,
     private readonly maxIter = 30,
   ) {
     this.scope = new AgentToolCapabilityScope(manifest.entries);
@@ -48,7 +49,7 @@ export class TurnPolicy {
     return new Set(this.scope.list().map((tool) => tool.id));
   }
 
-  manifestSnapshot(): ToolManifestSnapshot {
+  manifestSnapshot(): ExecutableToolManifestSnapshot {
     return this.manifest;
   }
 

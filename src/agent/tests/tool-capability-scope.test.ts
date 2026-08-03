@@ -2,6 +2,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   createToolManifestSnapshotFromEntries,
+  type ExecutableToolManifestSnapshot,
+  type ToolManifestSnapshot,
   type ToolManifestEntry,
 } from '@ema-agent/tools';
 import {
@@ -63,10 +65,10 @@ describe('AgentToolCapabilityScope', () => {
 
 describe('TurnPolicy allowedIds', () => {
   it('暴露父 Agent 当前收窄集的只读副本', () => {
-    const policy = new TurnPolicy(createToolManifestSnapshotFromEntries([
+    const policy = new TurnPolicy(asExecutableManifest(createToolManifestSnapshotFromEntries([
       fakeTool('tool.read', 'Read'),
       fakeTool('tool.write', 'Write'),
-    ], 1));
+    ], 1)));
     policy.capabilities().restrict({
       source: 'skill:readonly',
       allowedToolPatterns: ['Read'],
@@ -90,4 +92,10 @@ function fakeTool(id: string, name: string): ToolManifestEntry {
     description: name,
     inputJsonSchema: {},
   };
+}
+
+function asExecutableManifest(
+  manifest: ToolManifestSnapshot,
+): ExecutableToolManifestSnapshot {
+  return manifest as ExecutableToolManifestSnapshot;
 }

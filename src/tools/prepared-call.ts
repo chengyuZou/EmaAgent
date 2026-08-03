@@ -14,7 +14,7 @@ export type DeepReadonly<T> =
  *
  * 它是 PermissionEngine 与实际执行共同观察的唯一输入。调用方不能自行构造
  * 一个可执行快照；ToolRegistry.execute() 只接受由同一个 Registry.prepare()
- * 创建、且仍绑定当前工具实现的对象。
+ * 创建、且绑定准备时可执行 Manifest 实现的对象。
  */
 export interface PreparedToolCall<TInput = unknown> {
   readonly id: string;

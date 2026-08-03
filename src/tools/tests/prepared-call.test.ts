@@ -50,7 +50,7 @@ describe('PreparedToolCall', () => {
     registry.register(makeTool());
 
     const raw = { path: 'notes.txt', parallel: true };
-    const prepared = registry.prepare('dynamic_tool', raw);
+    const prepared = registry.prepare('dynamic_tool', raw, registry.manifestSnapshot());
 
     expect(prepared.input).toEqual(raw);
     expect(prepared.summary).toBe('处理 notes.txt');
@@ -71,11 +71,20 @@ describe('PreparedToolCall', () => {
     const registry = new ToolRegistry();
     registry.register(makeTool());
 
-    const valid = registry.prepare('dynamic_tool', { path: 'question.txt', parallel: false });
+    const manifest = registry.manifestSnapshot();
+    const valid = registry.prepare(
+      'dynamic_tool',
+      { path: 'question.txt', parallel: false },
+      manifest,
+    );
     expect(valid.requiresUserInteraction).toBe(true);
     await expect(registry.validate(valid, context)).resolves.toEqual({ valid: true });
 
-    const invalid = registry.prepare('dynamic_tool', { path: 'blocked.txt', parallel: false });
+    const invalid = registry.prepare(
+      'dynamic_tool',
+      { path: 'blocked.txt', parallel: false },
+      manifest,
+    );
     await expect(registry.validate(invalid, context)).resolves.toEqual({
       valid: false,
       message: '路径被业务规则拒绝',
@@ -97,7 +106,11 @@ describe('PreparedToolCall', () => {
     });
     registry.register(nestedTool);
 
-    const prepared = registry.prepare('nested_tool', { nested: { value: 'approved' } });
+    const prepared = registry.prepare(
+      'nested_tool',
+      { nested: { value: 'approved' } },
+      registry.manifestSnapshot(),
+    );
     expect(Object.isFrozen(prepared.input.nested)).toBe(true);
     expect(() => {
       (prepared.input.nested as { value: string }).value = 'changed';
@@ -105,7 +118,7 @@ describe('PreparedToolCall', () => {
     expect(prepared.input.nested.value).toBe('approved');
   });
 
-  it('拒绝伪造、跨 Registry 和热更新前的旧快照', async () => {
+  it('拒绝伪造与跨 Registry 调用，并保留热更新前的执行绑定', async () => {
     const first = new ToolRegistry();
     const second = new ToolRegistry();
     const origin = { kind: 'mcp' as const, serverName: 'test', serverToolName: 'dynamic' };
@@ -115,14 +128,19 @@ describe('PreparedToolCall', () => {
     });
     second.register(makeTool('mcp__test__dynamic'));
 
-    const prepared = first.prepare('mcp__test__dynamic', { path: 'a.txt' });
+    const manifest = first.manifestSnapshot();
+    const prepared = first.prepare(
+      'mcp__test__dynamic',
+      { path: 'a.txt' },
+      manifest,
+    );
     await expect(second.execute(prepared, context)).rejects.toBeInstanceOf(ToolRegistryError);
 
     first.registerMcp({
       tool: makeTool('mcp__test__dynamic', origin),
       owner: { serverName: 'test', serverToolName: 'dynamic' },
     });
-    await expect(first.execute(prepared, context)).rejects.toThrow(/stale/);
+    await expect(first.execute(prepared, context)).resolves.toBe('a.txt:false');
 
     await expect(first.execute({
       id: 'mcp__test__dynamic',

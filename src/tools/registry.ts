@@ -7,10 +7,10 @@ import {
 } from './errors.js';
 import type {
   BuiltTool,
+  ExecutableToolManifestSnapshot,
   ToolContextValidation,
   ToolDescriptor,
   ToolInputValidationResult,
-  ToolManifestSnapshot,
   ToolOrigin,
 } from './types.js';
 import { freezePreparedInput } from './prepared-call.js';
@@ -47,9 +47,9 @@ export class ToolRegistry {
   private readonly toolsById = new Map<string, BuiltTool<any, any, any>>();
   /** 与 tools 同键，保存注册来源，确保热更新和注销只能操作自己的工具。 */
   private readonly owners   = new Map<string, ToolOwner>();
-  /** 运行时能力表：防止调用方伪造 PreparedToolCall 或跨 Registry 执行。 */
+  /** 运行时能力表：Prepared 调用永远绑定准备时选中的实现。 */
   private readonly preparedCalls = new WeakMap<object, BuiltTool<any, any, any>>();
-  /** Manifest provenance 只保存在 Registry 内，外部复制相同字段也不能用于执行。 */
+  /** 可执行 Manifest 的实现绑定只保存在 Registry 内，字段相同的复制品不能执行。 */
   private readonly manifestTools = new WeakMap<object, ReadonlyMap<string, AnyBuiltTool>>();
   private manifestVersion = 0;
 
@@ -173,9 +173,11 @@ export class ToolRegistry {
 
   /**
    * 固化一次 Turn 实际可见的工具。selection 必须来自当前 Registry，不能注入
-   * 同名伪造实现；MCP 热更新后旧 Manifest 会在 prepare() 阶段明确失效。
+   * 同名伪造实现；创建完成后，即使 Registry 热更新也继续绑定本次实现。
    */
-  manifestSnapshot(selection: readonly AnyBuiltTool[] = this.list()): ToolManifestSnapshot {
+  manifestSnapshot(
+    selection: readonly AnyBuiltTool[] = this.list(),
+  ): ExecutableToolManifestSnapshot {
     const selected = new Map<string, AnyBuiltTool>();
     for (const tool of selection) {
       if (this.tools.get(tool.name) !== tool) {
@@ -187,7 +189,10 @@ export class ToolRegistry {
       selected.set(tool.name, tool);
     }
 
-    const snapshot = createToolManifestSnapshot([...selected.values()], this.manifestVersion);
+    const snapshot = createToolManifestSnapshot(
+      [...selected.values()],
+      this.manifestVersion,
+    ) as ExecutableToolManifestSnapshot;
     this.manifestTools.set(snapshot, selected);
     return snapshot;
   }
@@ -199,9 +204,9 @@ export class ToolRegistry {
   prepare(
     name: string,
     rawArgs: unknown,
-    manifest?: ToolManifestSnapshot,
+    manifest: ExecutableToolManifestSnapshot,
   ): PreparedToolCall {
-    const tool = manifest ? this.toolFromManifest(manifest, name) : this.get(name);
+    const tool = this.toolFromManifest(manifest, name);
     let parsed: unknown;
     try {
       parsed = tool.parseInput(rawArgs);
@@ -255,7 +260,10 @@ export class ToolRegistry {
     return await tool.validateInput?.(prepared.input, narrowedContext as any) ?? { valid: true };
   }
 
-  private toolFromManifest(manifest: ToolManifestSnapshot, name: string): AnyBuiltTool {
+  private toolFromManifest(
+    manifest: ExecutableToolManifestSnapshot,
+    name: string,
+  ): AnyBuiltTool {
     const snapshotTools = this.manifestTools.get(manifest);
     if (!snapshotTools) {
       throw new ToolRegistryError('Tool manifest was not created by this registry');
@@ -264,15 +272,12 @@ export class ToolRegistry {
     if (!tool) {
       throw new ToolRegistryError(`Tool "${name}" is not present in the approved manifest`);
     }
-    if (this.tools.get(name) !== tool) {
-      throw new ToolRegistryError(`Tool manifest for "${name}" is stale`);
-    }
     return tool;
   }
 
   /**
    * 执行由本 Registry 准备的不可变调用。
-   * MCP 热更新等注册表变化会让旧快照失效，避免审批旧实现却执行新实现。
+   * 后续 Registry 热更新不改变绑定；审批和执行始终针对同一个实现与输入。
    */
   async execute(
     prepared: PreparedToolCall,
@@ -286,10 +291,6 @@ export class ToolRegistry {
     const tool = this.preparedCalls.get(preparedObject);
     if (!tool) {
       throw new ToolRegistryError('Prepared tool call was not created by this registry');
-    }
-    if (this.tools.get(prepared.name) !== tool) {
-      this.preparedCalls.delete(preparedObject);
-      throw new ToolRegistryError(`Prepared tool call for "${prepared.name}" is stale`);
     }
     return tool;
   }

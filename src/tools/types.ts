@@ -113,6 +113,18 @@ export interface ToolManifestSnapshot {
   readonly entries: readonly ToolManifestEntry[];
 }
 
+declare const executableToolManifestBrand: unique symbol;
+
+/**
+ * 由 ToolRegistry 冻结并保留实现绑定的 Manifest。
+ *
+ * Context 与 Provider 只需要 ToolManifestSnapshot；执行主链必须持有本类型，
+ * 防止把仅含模型投影的派生清单误当成可执行能力。
+ */
+export interface ExecutableToolManifestSnapshot extends ToolManifestSnapshot {
+  readonly [executableToolManifestBrand]: true;
+}
+
 // ── ToolDef - 作者写的原始定义 ────────────────────────────────────────────────
 
 export interface ToolDef<TInput, TOutput, THostContext, TToolContext> {

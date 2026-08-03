@@ -19,7 +19,7 @@ import type {
   TurnId,
 } from '@ema-agent/ids';
 import type {
-  ToolManifestSnapshot,
+  ExecutableToolManifestSnapshot,
 } from '../types.js';
 import type { PreparedToolCall } from '../prepared-call.js';
 import type {
@@ -82,8 +82,8 @@ export interface ToolExecutionRuntimeOptions<
   turnId:      TurnId;
   /** 同步策略检查；不在当前 Agent capability 集合中的工具直接拒绝。 */
   allows:      (name: string) => boolean;
-  /** 模型看见的同一份不可变工具清单；旧测试适配器可以暂时省略。 */
-  toolManifest?: ToolManifestSnapshot;
+  /** 模型看见且绑定本 Turn 实现的同一份可执行工具清单。 */
+  toolManifest: ExecutableToolManifestSnapshot;
   tools:       ToolRegistry;
   permission:  PermissionEngine;
   permCtx:     PermissionContext;
@@ -211,13 +211,6 @@ export class ToolExecutionRuntime<
         code: 'policy/denied',
         message: `Tool "${name}" is not available in this mode`,
         retryable: false,
-      };
-    } else if (!this.opts.toolManifest && !tools.has(name)) {
-      preflightFailure = {
-        phase: 'validation',
-        code: 'tool/not_found',
-        message: `Unknown tool: "${name}"`,
-        retryable: true,
       };
     } else {
       try {

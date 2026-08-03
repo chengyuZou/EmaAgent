@@ -139,7 +139,7 @@ describe('ToolRegistry MCP 注册所有权', () => {
     const registry = new ToolRegistry();
     registry.register(makeTool('Edit', 'ok', 'builtin.file.edit'));
 
-    expect(registry.prepare('Edit', {})).toEqual(expect.objectContaining({
+    expect(registry.prepare('Edit', {}, registry.manifestSnapshot())).toEqual(expect.objectContaining({
       id: 'builtin.file.edit',
       name: 'Edit',
     }));
