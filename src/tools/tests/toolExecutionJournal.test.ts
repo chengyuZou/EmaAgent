@@ -5,8 +5,8 @@ import { asSessionId, asToolCallId, asTurnId } from '@ema-agent/ids';
 import { Database, ToolExecutionsRepo } from '@ema-agent/storage';
 import {
   ToolExecutionJournal,
-  ToolExecutionJournalConflictError,
 } from '../journal/toolExecutionJournal.js';
+import { ToolExecutionJournalConflictError } from '../errors.js';
 
 describe('ToolExecutionJournal', () => {
   let database: Database;

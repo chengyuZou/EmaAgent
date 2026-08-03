@@ -26,6 +26,7 @@ import {
 } from '@ema-agent/skills';
 import type { TaskStorePort } from '@ema-agent/tasks';
 import {
+  assembleToolPool,
   ToolExecutionRuntime,
   type BackgroundProcessPort,
   type AskUserRequiredEvent,
@@ -35,7 +36,6 @@ import {
   type ToolResultStore,
 } from '@ema-agent/tools';
 import {
-  assembleToolPool,
   type BuiltinToolContext,
 } from '@ema-agent/tool-builtin';
 import {

@@ -2,6 +2,7 @@
 
 import { createHash } from 'node:crypto';
 import type { AgentRunId, SessionId, ToolCallId, TurnId } from '@ema-agent/ids';
+import { ToolExecutionJournalConflictError } from '../errors.js';
 
 const RESULT_PREVIEW_CHAR_LIMIT = 4_096;
 
@@ -92,21 +93,6 @@ export interface ToolExecutionJournalPort {
 /** 审计接口只读取持久执行记录，不能推进工具状态机。 */
 export interface ToolExecutionJournalReader {
   listForTurn(turnId: TurnId): ToolExecutionRecord[];
-}
-
-export class ToolExecutionJournalConflictError extends Error {
-  constructor(
-    readonly callId: ToolCallId,
-    readonly expected: readonly ToolExecutionStatus[],
-    readonly actual?: ToolExecutionStatus,
-  ) {
-    super(
-      actual
-        ? `工具调用 ${callId} 状态冲突：期望 ${expected.join('/')}，实际 ${actual}`
-        : `工具调用 ${callId} 不存在`,
-    );
-    this.name = 'ToolExecutionJournalConflictError';
-  }
 }
 
 /**

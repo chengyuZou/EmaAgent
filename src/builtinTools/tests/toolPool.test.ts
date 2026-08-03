@@ -1,8 +1,7 @@
 // 测试每次 Agent 执行只向模型暴露当前宿主 Context 真正拥有的工具能力。
 import { describe, expect, it } from 'vitest';
-import { ToolRegistry } from '@ema-agent/tools';
+import { assembleToolPool, ToolRegistry } from '@ema-agent/tools';
 import {
-  assembleToolPool,
   BuiltinTools,
   registerBuiltinTools,
   type BuiltinToolContext,

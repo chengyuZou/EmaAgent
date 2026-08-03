@@ -1,5 +1,6 @@
 // 把工具作者提供的定义封装成注册表可以安全使用的不可变工具。
 import { zodToJsonSchema } from 'zod-to-json-schema';
+import { ToolDefinitionError } from './errors.js';
 import type {
   BuiltTool,
   ToolContextValidation,
@@ -28,7 +29,7 @@ export function buildTool<TInput, TOutput, THostContext, TToolContext>(
     maxResultBytes !== Number.POSITIVE_INFINITY
     && (!Number.isSafeInteger(maxResultBytes) || maxResultBytes <= 0)
   ) {
-    throw new RangeError(`maxResultBytes must be a positive safe integer or Infinity, got ${maxResultBytes}`);
+    throw new ToolDefinitionError(`maxResultBytes must be a positive safe integer or Infinity, got ${maxResultBytes}`);
   }
   const origin: ToolOrigin = def.origin?.kind === 'mcp'
     ? Object.freeze({
@@ -38,7 +39,7 @@ export function buildTool<TInput, TOutput, THostContext, TToolContext>(
       })
     : Object.freeze({ kind: 'builtin' });
   if (origin.kind !== 'builtin' && def.permissionMeta.approval === 'not_required') {
-    throw new Error('Only trusted builtin tools may declare approval=not_required');
+    throw new ToolDefinitionError('Only trusted builtin tools may declare approval=not_required');
   }
   let cachedDescriptor: ToolDescriptor | undefined;
   const descriptor = (): ToolDescriptor => {

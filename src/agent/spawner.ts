@@ -10,6 +10,7 @@ import type {
   ToolExecutionRuntimeOptions,
   ToolRegistry,
 } from '@ema-agent/tools';
+import { assembleToolPool, ToolExecutionRuntime } from '@ema-agent/tools';
 import type { LanguageModel, Message as ModelMessage } from '@ema-agent/llm';
 import type { KnowledgeSearchPort } from '@ema-agent/knowledge';
 import type { CommandRunnerPort } from '@ema-agent/sandbox';
@@ -18,9 +19,7 @@ import type {
   SubagentSpawnOptions,
   SubagentSpawnerPort,
 } from '@ema-agent/tool-builtin';
-import { ToolExecutionRuntime } from '@ema-agent/tools';
 import {
-  assembleToolPool,
   type BuiltinToolContext,
 } from '@ema-agent/tool-builtin';
 import type { PermissionEngine } from '@ema-agent/permission';

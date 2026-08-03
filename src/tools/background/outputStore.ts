@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { CommandOutputChunk } from '@ema-agent/sandbox';
+import { BackgroundProcessError } from '../errors.js';
 import type {
   BackgroundProcessOutputLocation,
   BackgroundProcessOutputPathFactory,
@@ -112,15 +113,15 @@ export function decodeOutputCursor(value?: string): {
   try {
     const decoded = Buffer.from(value, 'base64url').toString('utf8');
     const match = /^(\d+):(\d+)$/.exec(decoded);
-    if (!match) throw new Error('invalid cursor');
+    if (!match) throw new BackgroundProcessError('invalid_cursor', 'invalid cursor');
     const stdoutOffset = Number(match[1]);
     const stderrOffset = Number(match[2]);
     if (!Number.isSafeInteger(stdoutOffset) || !Number.isSafeInteger(stderrOffset)) {
-      throw new Error('invalid cursor');
+      throw new BackgroundProcessError('invalid_cursor', 'invalid cursor');
     }
     return { stdoutOffset, stderrOffset };
   } catch {
-    throw new Error('Invalid background process output cursor');
+    throw new BackgroundProcessError('invalid_cursor', 'Invalid background process output cursor');
   }
 }
 

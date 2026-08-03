@@ -707,14 +707,16 @@ src/
 │  ├─ productPrompt.ts
 │  └─ executionProfilePrompt.ts
 ├─ tools/
-│  ├─ registry.ts               通用注册、Pool 与 Manifest 所有权
-│  ├─ preparation/              PreparedToolCall
+│  ├─ Tool/                     Tool 定义、构建和执行时窄 Context
+│  ├─ registry/                 Registry、每 Turn Pool 与 Manifest
+│  ├─ preparedToolCall.ts       解析并冻结同一份模型调用输入
 │  ├─ execution/
 │  ├─ results/
 │  ├─ background/               BackgroundProcess 句柄、输出与取消
+│  ├─ journal/                  ToolExecution 持久状态机
 │  ├─ events.ts
-│  └─ protocol.ts
-├─ builtinTools/                具体内置 Tool 与静态 Builtin 注册
+│  └─ index.ts
+├─ builtinTools/                具体内置 Tool、静态 Builtin 注册与前端 UI 子路径
 ├─ permission/
 ├─ sandbox/                     受限命令启动与平台隔离
 ├─ session/
@@ -1036,8 +1038,11 @@ TurnExecutor
 AgentLoop
   LLM → Tool Batch → Result → LLM 的迭代和预算
       ↓
-ToolExecutionRuntime
-  Prepare → Hook → Permission → Execute → Result
+Tool Orchestration
+  静态批次或流式到达 → 并发门控 → FIFO 终态
+      ↓
+toolExecution
+  Prepare → Tool 校验 → Permission → Sandbox/Capability → Execute → Result/Journal
       ↓
 Builtin / MCP / Skill Tool
   只实现具体能力
@@ -1047,7 +1052,7 @@ Builtin / MCP / Skill Tool
 
 **Context 装配时序**：不是 TurnExecutor 开始时只组装一次。Claude 明确规定每次 API 调用前都重新组装模型请求（消息和工具结果每轮增长）。因此 Ema 的准确边界是：TurnExecutor 提供组装所需的根事实（Session/Profile/Tool Manifest），AgentLoop 决定何时请求组装（每轮 LLM 调用前），ContextAssembler 决定怎样组装（基于最新历史/Tool Result/Recall/压缩状态）。**不能让 TurnExecutor 自己手写消息拼接规则。**
 
-**不需要独立的 Agent Tool Scheduler**：AgentLoop 发现 Tool Calls、调用 ToolExecutionRuntime、消费结果、决定是否继续下一轮。ToolExecutionRuntime 负责并发分批/顺序/Hook/Permission/Sandbox/Journal/Result。Agent 只决定"是否继续下一轮"，Tools 决定"这一批调用怎样安全执行"。
+**Agent 不拥有 Tool 调度细节**：AgentLoop 发现 Tool Calls、把一批调用交给 Tools、消费按模型顺序返回的结果并决定是否继续下一轮。Tools 内部分开单次调用主链和批次调度：`toolExecution` 只执行一个调用的完整 Prepare/Permission/Sandbox/Journal/Result 流水线；`toolOrchestration` 与 `StreamingToolExecutor` 只决定何时启动、并发多少、何时取消兄弟和按什么顺序发射，二者都复用同一个单次入口。不得再把两类职责塞回一个 God `ToolExecutionRuntime`。
 
 **根 Turn 不额外产生 AgentRun**：V1 根执行由 Turn 表达，不创建重复的根 AgentRun。子 Agent/Fork Agent 才创建 AgentRun。根 Turn + 根 AgentRun 会产生两个必须保持一致的根终态（Turn.status / AgentRun.status），V1 避免。
 
@@ -1056,7 +1061,7 @@ Builtin / MCP / Skill Tool
 **施工顺序**（五批，每批只改一个主要边界）：
 
 1. **Sandbox 依赖反转**：`spawnProcess` 收回 Sandbox；合并重复 `RunOptions/RunResult`；`CommandRunner` 不再持有 `PermissionEngine`；禁用 `process.cwd()` 回退；暂时禁用 detached 假后台。不先打断 Sandbox -> Tools，后面把 ToolExecutionRuntime 迁入 Tools 会立刻形成循环依赖。
-2. **Tools 主链收口**：删除 `ToolRegistry.dispatch()` 旁路；执行运行时迁入 `tools/execution`；AgentLoop 只决定何时启动和消费 Tool Batch。Ema 内置工具共享一次执行的完整 `BuiltinToolContext`，但每个 Tool 必须通过 `validateContext()` 校验并投影自己的窄 Context 后才能执行；通用 Tools 框架不拥有 Ema 业务 Port。不要恢复 `ToolInvocationContext + ToolExecutionScope` 两个万能参数袋，也不重写已正确的 PreparedToolCall/Manifest Snapshot/Result Budget/Journal。
+2. **Tools 主链收口**：删除 `ToolRegistry.dispatch()` 旁路；执行所有权迁入 `tools/execution`；AgentLoop 只决定何时启动和消费 Tool Batch。当前共享 `BuiltinToolContext` 是迁移期宿主能力袋，目标由 `src/tools/Tool/toolUseContext.ts` 统一调用身份和投影规则，每个 Tool 再通过 `requires + validateContext()` 取得自己的窄 Context；业务 Port 仍由真实业务所有者定义，Tools 只引用而不复制。不要恢复 `ToolInvocationContext + ToolExecutionScope` 两个万能参数袋。
 
    业务执行入口由拥有语义的模块公开：Knowledge 拥有 `KnowledgeSearchPort`，Skills 拥有 `SkillRunnerPort`，Sandbox、Tasks 继续拥有各自端口。Subagent 是有意的例外：`SubagentSpawnerPort` 是 Subagent Tool 对宿主的消费契约，因此位于 `builtinTools`；Agent 结构化实现它，不能让 `builtinTools` 反向依赖 Agent 并形成包环。AskUser 同理保留为 AskUser Tool 的消费端口，由 TurnExecutor 提供实现。
 3. **建立 TurnExecutor**：旧 `AgentEngine` 已迁入高层 `src/turnExecution` 并删除；Turn 创建与 `TurnHandle`（turnId + events + completion + abort）已经收回。低层 `src/turn` 不吸收 Context、KB、Character、Tool 或后台进程依赖。
@@ -1075,8 +1080,8 @@ Builtin / MCP / Skill Tool
 
 一级主重构范围：
 
-- `src/tools`：拥有 `ToolDef/buildTool`、注册与来源、Manifest Snapshot、`PreparedToolCall`、单次 Tool 生命周期、Execution Journal 领域逻辑、Result 外置与预算、后台句柄及 Presentation 数据；
-- `src/builtinTools`：只实现 Ema 内置能力。MCP 与 Skill 可以接入同一 Tool 框架，但不属于 Builtin Tool；
+- `src/tools`：拥有 `ToolDef/buildTool`、Registry、每 Turn ToolPool、Manifest Snapshot、`PreparedToolCall`、单次 Tool 生命周期、批次调度、Execution Journal、Result 外置与预算及后台句柄；它不实现任何具体 Builtin 业务，也不导出 React；
+- `src/builtinTools`：只实现 Ema 内置能力、静态 Builtin 目录和前端专用 UI 子路径。`registerBuiltinTools()` 等价于 Claude 的 `getAllBaseTools()`，只注册进程可提供的实现，不根据当前 Turn 组装、过滤或冻结 ToolPool；MCP 与 Skill 可以接入同一 Tool 框架，但不属于 Builtin Tool；
 - `src/agent`：拥有 `AgentLoop`、Profile/Policy/Budget、LLM 迭代、Tool Call 批次调度、Subagent/AgentRun 协调与循环熔断；AgentLoop 不写根 Turn 终态；
 - `src/turn`：拥有 Turn 输入、触发来源、身份、状态、取消、唯一终态、持久化协调与 `TurnEvent`；它通过公共端口使用 Session Store，不直接访问 Storage Repo，也不实现 Tool 或 Prompt 细节；
 - `src/agentContext`：已经逐项迁出并删除。Tool Result 与 Cleanup 归 `tools/results`，无业务价值的 Session 文件快照已经删除；
@@ -1094,40 +1099,47 @@ Builtin / MCP / Skill Tool
 - `src/context` 只消费已经处理过的 Tool Result，并配合稳定 Tool Manifest 与缓存诊断，不重写现有 ContextAssembler；
 - `src/llm` 只把 Tool Manifest 投影为各 Provider 协议，不注册 Tool，也不决定权限。
 
-`src/tools` 的目录按真实职责逐步形成，不为目录图预建空文件夹：
+`src/tools` 的目录按真实职责逐步形成，不为目录图预建空文件夹。文件名表达业务，不能用 `runner`、`manager` 或浅层目录掩盖职责：
 
 ```text
 src/tools/
-├─ definitions/       ToolDef、buildTool 与保守默认值
-├─ registry/          注册来源与 Manifest Snapshot
-├─ preparation/       Schema、语义校验与 PreparedToolCall
-├─ execution/         单次 Tool 调用生命周期
-├─ results/           外置、预算、预览与清理
-├─ journal/           prepared → running → terminal 审计
-├─ background/        后台句柄与取消
-├─ presentation/      跨端展示数据
-├─ types.ts
+├─ Tool/
+│  ├─ Tool.ts                  ToolDef、BuiltTool 与保守默认值
+│  ├─ buildTool.ts             构建并冻结定义
+│  └─ toolUseContext.ts        Tool 执行时的通用身份和窄 Context 规则
+├─ registry/
+│  ├─ toolRegistry.ts          进程已注册实现、稳定身份、来源和所有权
+│  ├─ toolPool.ts              一次 Agent 可见能力的交集筛选
+│  └─ toolManifest.ts          模型可见的不可变顺序、Schema 与 Revision
+├─ preparedToolCall.ts         解析、规范化并冻结同一份调用输入
+├─ execution/
+│  ├─ toolExecution.ts         单次调用唯一完整流水线
+│  ├─ toolOrchestration.ts     静态批次分组、屏障和硬并发上限
+│  └─ StreamingToolExecutor.ts 流式到达、进度、兄弟取消和 FIFO 终态
+├─ results/
+│  ├─ toolResultStore.ts       超大结果外置和稳定引用
+│  └─ toolResultCleaner.ts     配额、TTL 与 Session 生命周期清理
+├─ journal/
+│  └─ toolExecutionJournal.ts  prepared → running → terminal 的持久状态机
+├─ background/                 长时 Shell 进程、输出、停止与完成通知
+├─ events.ts
 ├─ errors.ts
 └─ index.ts
 ```
 
-`presentation/` 是明确的跨端数据协议，不是 React 渲染目录，也不是把所有工具输出复制一遍：
+三个相邻名词不得混用：
 
-```text
-src/tools/presentation/
-├─ toolPresentation.ts        只汇总可判别联合
-├─ fileChangePresentation.ts  根据真实 before/after 生成有界 diff
-├─ fileReadPresentation.ts    路径、实际行区间与裁剪状态
-├─ commandPresentation.ts     实际命令、cwd、退出与终止状态
-├─ searchPresentation.ts      搜索范围、结果数量与停止原因
-└─ index.ts                   公共导出
-```
+- `ToolRegistry` 是进程库存：保存有哪些可执行实现、谁拥有它们以及当前实现版本；
+- `ToolPool` 是一次 Agent 的能力集合：根据 Profile、宿主能力、Subagent 和 Skill 规则对 Registry 做交集；
+- `ToolManifestSnapshot` 是给模型与缓存使用的冻结投影：只含稳定 `toolId/name/description/schema/origin/version/order/revision`，不含执行函数。
 
-- 模型在 Tool Input 中提供的 `description` 是调用前的人话意图，进入 `PreparedToolCall.summary` 和 Permission 卡；它不可信，只能辅助用户理解，不能决定风险、路径或是否放行。
-- `ToolPresentation` 是执行后根据 Prepared Input 和真实 Result 生成的可信界面事实；`ToolExecutionRuntime` 只传输它，Desktop、CLI、Web 各自渲染，不能反向影响 Tool Result、Permission 或 Sandbox。
-- 只有需要专门展示的工具生成具体 Presentation。未知 MCP Tool 在 V1 使用通用参数/结果回退，不允许 Server 注入任意 Presentation JSON，也不为插件系统预建空分支。
+`PreparedToolCall` 保留为一个直接文件，不建立只有一层的 `preparation/` 目录。它冻结模型给出的工具身份、原始参数、规范化输入、定义版本和调用摘要，使 Tool 校验、Permission 与实际执行面对同一份输入；这不是为 Snapshot 形式做的防御，而是防止审批后换参的 TOCTOU 边界。
 
-每次审查 Builtin Tool，都必须结合 Claude 文档与真实源码逐项核对模型可见名称、输入 Schema、字段语义、输出、校验、只读性、并发、Permission、Sandbox、取消、超时、结果上限、流式行为、跨平台与 Presentation。Claude 的数值和字段不是默认答案；例如采用 30K 结果上限前，必须先确认双方返回内容和外置机制是否相同。
+Tool 执行结果不再维护独立 `ToolPresentation` 副本。目标公共结果为类型化、可序列化的 `ToolResult<TData> = { data, modelContent }`：`data` 是 UI、持久化与审计共享的真实结果；`modelContent` 是进入下一轮模型窗口的有界投影。状态、耗时、错误、取消和外置引用属于通用执行封套。大型结果的具体业务上限由具体 Tool 决定，模型窗口单结果/同批聚合预算和外置路径由 `src/tools/results` 决定。
+
+复杂 Builtin Tool 可以把 `UI.tsx` 与 Tool 实现放在同一目录，通过前端专用 `@ema-agent/tool-builtin/ui` 子路径导出；后端入口不得加载 React。Desktop 只维护按稳定 `toolId` 查 renderer 的薄注册表，简单 Tool 共用 `GenericToolUI`，MCP、未知 Tool 和旧历史记录使用通用回退。Tool UI 只解释该 Tool 的类型化输入和 `data`；公共状态、权限、错误、耗时、分组和布局仍归前端 Harness。
+
+每次审查 Builtin Tool，都必须结合 Claude 文档与真实源码逐项核对模型可见名称、输入 Schema、字段语义、类型化结果、模型内容、校验、只读性、并发、Permission、Sandbox、取消、超时、结果上限、流式行为、跨平台与 UI。Claude 的数值和字段不是默认答案；例如采用 30K 结果上限前，必须先确认双方返回内容和外置机制是否相同。
 
 建议按 `FileRead/FileWrite/FileEdit → Glob/Grep → Bash/PowerShell → WebFetch/WebSearch → AskUser → Skill/KB/Subagent → Scratchpad → TaskCreate/Get/List/Update → Feature Gate Tool` 的顺序审查。TodoWrite 只作为迁移期旧实现，不是最终审查目标。
 
@@ -1495,30 +1507,33 @@ interface TurnExecutionSnapshot {
 2. [x] ToolExecution Journal 从 Tasks/Agent 收回 Tools，Storage 只保留 Store 实现；
 3. [x] 解除 Sandbox 的错误依赖：把 `spawnProcess` 从 Tools 收回 Sandbox；合并重复的 `RunOptions/RunResult`；`CommandRunner` 不再持有 `PermissionEngine`，只接收已冻结的 Sandbox Policy；禁止无工作区时回退 `process.cwd()`；暂时禁用 detached 假后台；
 4. [x] 删除 `ToolRegistry.dispatch()` 的 prepare->execute 旁路，冻结唯一执行入口；
-5. [x] 将工具执行运行时迁入 `src/tools/execution` 为 `ToolExecutionRuntime`；Agent 通过窄生命周期端口接入 Hook，不让 Tools 反向依赖 Agent、Session 或 Hooks；
-6. [x] 删除万能 `ToolExecutionContext/ToolExecutionScope/ToolInvocationContext`；Ema 集成层用单一 `BuiltinToolContext` 表达本次执行的身份与实际能力，每个 Tool 通过 `validateContext()` 投影窄 Context；执行器按调用覆盖 `toolCallId/signal/emit`，MCP 同样使用自己的结构化 Host Context，不再重复注入 per-Turn Bridge；
+5. [x] 将工具执行所有权迁入 `src/tools/execution`，Agent 不再直接实现 Permission、Journal、结果预算或具体 Tool 调用；现有 `ToolExecutionRuntime` 是迁移基座，不是目标 God Runtime；
+6. [进行中] 已删除 `ToolExecutionContext/ToolExecutionScope/ToolInvocationContext` 三个万能参数袋；下一步继续移除共享 `BuiltinToolContext`，由通用 `ToolUseContext` 提供调用身份和能力投影规则，每个 Tool 只接收自己的窄 Context；执行器按调用提供 `toolCallId/signal/progress`，MCP 使用同一通用调用契约，不重复注入 per-Turn Bridge；
 7. [x] Tool Manifest 增加来源与稳定分区，并建立内容 Revision 与缓存稳定测试；
 8. [x] 按 7.2 的顺序逐组审查所有 Builtin Tool；
 9. [已完成] 迁出 `agentContext` 剩余职责并删除该模块；
 10. 收口 Task、AgentRun、ToolExecution、BackgroundProcess 四类身份与生命周期，并完成 V1 Task 全闭环；
 11. [x] Chat 接入统一 AgentLoop，删除 ConversationEngine；
 12. [x] 根 Turn 的执行职责、Turn 创建与 `TurnHandle` 已收回 `src/turnExecution/TurnExecutor`；
-13. `apps/localHost` 退回 Route、SSE、认证、启动恢复和 Composition Root；
-14. 最后对 Permission、Sandbox 做针对性收口和 Windows/macOS/Linux 验证。
+13. [进行中] 把 `ToolExecutionRuntime` 拆成单次 `toolExecution` 与批次 `toolOrchestration/StreamingToolExecutor`，两种调度复用同一执行主链；
+14. [进行中] 用类型化 `ToolResult.data + modelContent` 取代独立 Presentation 副本，并让复杂 Builtin 通过前端专用子路径拥有 `UI.tsx`；
+15. `apps/localHost` 退回 Route、SSE、认证、启动恢复和 Composition Root；
+16. 最后对 Permission、Sandbox 做针对性收口和 Windows/macOS/Linux 验证。
 
 这些步骤允许相邻批次共用已经稳定的端口，但不能把 Turn 统一、全仓 ID 改名、数据库 Schema 和前端 Profile 切换塞进同一批。
 
 ## 11. 下一阶段的实际边界
 
-Tool Result、统一预算、ToolExecution Journal、执行运行时所有权迁移和 Tool Context 收窄已经完成。Registry 不再提供组合执行捷径：
+Tool Result 外置、统一预算、ToolExecution Journal、执行所有权迁移和 Tool Context 收窄已经完成；但当前 `ToolExecutionRuntime` 仍同时承担批次调度、单次调用、Permission、Journal、结果映射与发射，独立 `ToolPresentation` 又复制了一份执行结果事实。下一阶段先完成 Tools 内部收口，再进入 Turn/Session 所有权迁移：
 
 1. [x] 删除 `ToolRegistry.dispatch()`，可信测试调用也显式使用 `prepare()` 与 `execute()`；
 2. [x] 执行必须接收当前 Registry 生成的不可变 `PreparedToolCall`；
-3. [x] `ToolExecutionRuntime` 统一承担并发栅栏、Hook 观察、Permission、Journal、结果预算和取消收口；
-4. [x] AgentLoop 只启动执行批次、等待结果并决定是否继续下一轮，不建立第二个 Scheduler；
-5. [x] 每次根 Agent/子 Agent 先按实际 `BuiltinToolContext` 装配模型可见 Manifest，再由同一 Manifest 建立 Policy；每个 Tool 的 `validateContext()` 在权限和副作用前完成窄投影，工具不可见与不可执行不再依赖两套手写白名单；
+3. [进行中] 单次 `toolExecution` 统一承担 Prepare、Tool 校验、Permission、Sandbox/Capability、Journal、execute、结果预算和终态；
+4. [进行中] `toolOrchestration` 与 `StreamingToolExecutor` 分别承担静态批次和流式调度，硬并发上限、危险调用屏障、命令兄弟取消和 FIFO 结果发射属于这里；两者不得复制单次执行主链；
+5. [进行中] 每次根 Agent/子 Agent 先按实际 `ToolUseContext` 装配模型可见 Manifest，再由同一 Manifest 建立 Policy；每个 Tool 的 `validateContext()` 在权限和副作用前完成窄投影，工具不可见与不可执行不再依赖两套手写白名单；当前 `BuiltinToolContext` 迁移袋随 T3 一并删除；
 6. [x] Tool Manifest 2C、Builtin Tool 2D、TurnHandle 与 Chat/Work 统一主链已经完成；
-7. [x] `NarrativePolicy=auto` 已通过 NarrativeSearchTool 按需检索；下一步让 `apps/localHost` 只保留协议适配与 Composition Root。
+7. [进行中] Tool Result 改为类型化 `data + modelContent`，删除 Presentation WeakMap/重复联合；复杂 Builtin UI 经前端专用子路径注册，后端不加载 React；
+8. [x] `NarrativePolicy=auto` 已通过 NarrativeSearchTool 按需检索；Tools 收口后再让 `apps/localHost` 只保留协议适配与 Composition Root。
 
 ## 12. 完成标准
 

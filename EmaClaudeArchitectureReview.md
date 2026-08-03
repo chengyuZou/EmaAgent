@@ -281,56 +281,62 @@ Ema 已经完成了这一批最重要的安全骨架：
 - 内置与 MCP 工具拥有明确所有者，MCP 批量注册先验证后提交，不允许覆盖内置工具；
 - 无物理 Sandbox 时，Bash/PowerShell 从模型可见注册表移除；未接桥的 Skill/Subagent 工具同样不会伪装可用；
 - `ToolManifestSnapshot` 已在根 Agent 与 Subagent 主链接入：模型看到的 Schema、`prepare()` 查找和后续执行来自同一份 Registry 快照；伪造快照和同名 MCP 实现热更新后的旧快照都会被拒绝；
-- 万能 `ToolExecutionContext` 已删除；Builtin 集成层只装配一次宿主能力，每个 Tool 通过 `requires + validateContext()` 投影自己的窄执行 Context。
+- 万能 `ToolExecutionContext` 已删除；当前 Builtin 集成层仍用共享 `BuiltinToolContext` 装配宿主能力，每个 Tool 再通过 `requires + validateContext()` 投影窄 Context。共享袋本身仍是迁移残留，下一步收回通用 `ToolUseContext`，不能把它冻结成 Builtin 的长期职责。
 - Tool Result 外置已迁入 `src/tools/results`：`maxResultBytes` 默认 50KB，同批结果另受 200KB 聚合预算；持久化预览成为跨 Turn 和重启后的唯一重放事实。
 - MCP 动态 Tool 已改用统一 `buildTool()`：Server 原始 JSON Schema 通过 `inputJsonSchemaOverride` 覆盖模型描述，运行时参数仍由宽松 Zod `inputSchema` 保证对象边界；Ema 的结果预算和保守默认值不再因手工构造 `BuiltTool` 被绕过，MCP 协议层 1MB 安全阀继续独立存在。
 - `validateInput` 已形成 Schema 后、Permission 前的业务校验入口；`requiresUserInteraction` 已替代 Agent 按 AskUser 工具名猜测等待状态。
 - `ToolOrigin` 已把 Builtin 与 MCP 来源纳入 ToolDef、Manifest 和 Prepared 快照；MCP 分支强制携带原始 Server/Tool 名，Registry 会拒绝来源声明与注册所有者不一致的实现。
 - ToolExecution Journal 已归入 `src/tools/journal`：Tools 拥有状态、记录、CAS 状态机、崩溃恢复语义和 Store 端口；Storage 只实现原子 SQL 操作，Tasks 不再导出工具执行生命周期。
-- 跨端展示协议已归入 `src/tools/presentation`：FileWrite/FileEdit 根据真实落盘前后内容生成有界 Diff，FileRead、Glob/Grep 与 Bash 分别生成读取、搜索和命令事实；具体工具实现不包含 React，事件层只引用 `ToolPresentation` 联合。
-- Bash 的模型 `description` 继续只作为 Prepared Call 的调用前摘要；执行后的 `CommandPresentation` 来自实际命令、工作目录和 Runner 终态，两者都不参与 Permission 或 Sandbox 裁决。
-- 当前又出现一条待纠正旁路：`ToolDef.prompt?` 与 `src/builtinTools/toolPrompt.ts` 把逐 Tool 说明复制为 `tools.prompt` System Slot。Claude 的真实模式是完整说明直接属于 Tool description；Ema 下一批删除该旁路，保留 Manifest description 为唯一事实源。
-- 通用 `assembleToolPool()` 当前位于 `src/builtinTools`，所有权偏移。它负责跨来源可见性、稳定顺序与 Snapshot，应迁回 `src/tools`；Builtin 包只保留具体工具和静态注册。
+- 现有跨端展示协议位于 `src/tools/presentation`，并通过 `WeakMap` 把 Presentation 绑定到 Tool Result；Desktop 仍在 `ToolCallBlock/tool-renderers` 按工具名分支。这形成了执行结果、Presentation 和前端 switch 三处必须同步的事实源，是当前待拆除的偏差，而不是已完成架构。
+- Bash 的模型 `description` 继续只作为 Prepared Call 的调用前摘要；实际命令、工作目录、退出和终止状态必须来自执行结果。它们不参与 Permission 或 Sandbox 裁决，但应成为 Bash 类型化 `ToolResult.data`，而不是第二份 `CommandPresentation`。
+- `ToolDef.prompt?` 与 `src/builtinTools/toolPrompt.ts` 旁路已经删除；逐 Tool 完整说明只保留在 Manifest description，主 Prompt 不再复制第二份工具说明。
+- 通用 `assembleToolPool()` 已迁回 `src/tools`：它只根据同一 `ToolRegistry` 快照和 `requires` 过滤跨来源工具；Builtin 包只保留具体工具、宿主 Context 与静态注册。
 
-上述旧缺口中的万能 Context、Registry 执行旁路和跨端 Presentation 已经完成收口。Tool 主线完成后直接建立 TurnExecutor，不再发明第二套 Tool 抽象。
+上述旧缺口中的万能 Context 与 Registry 执行旁路已经完成收口；Presentation 和 God `ToolExecutionRuntime` 仍是待纠偏项。TurnExecutor 已经建立，下一步是在不改 Turn 主链的前提下把 Tools 内部职责拆清，而不是再发明一套 Agent 侧 Tool Scheduler。
 
 ### Diff 判断
 
 1. **V1 已对齐：PreparedToolCall 必须保留。** 它解决的不是类型优雅，而是“模型提交 A、用户批准 A、实际执行时不能换成 B”的 TOCTOU 安全问题。后续 Hook、自动审批和 UI 都只能查看这份不可变快照。
 2. **V1 必做：Tool 生命周期只能有一条主链。** 内置、MCP、Skill 激活后获得的工具都进入相同的 Prepare、Permission、Sandbox、Execute、Result 流程；禁止可信桥或 route 使用 `dispatch()` 绕过审批。
 3. **V1 必做：运行时安全默认关闭。** 新工具默认 `isConcurrencySafe=false`、非只读、不可自动批准。工具作者需要显式证明更宽松的语义。
-4. **V1 已对齐：Tool Context 使用执行时窄投影。** Ema 集成层只装配一次 `BuiltinToolContext`，每个 Tool 必须通过 `requires + validateContext()` 验证并投影自己的最小 Context；`execute()` 看不到其他业务能力。通用 Tools 不拥有 Knowledge、Skill 或 Subagent Port，也不再存在 `ToolExecutionContext/Scope/InvocationContext` 万能参数袋。
+4. **V1 继续收口：Tool Context 使用执行时窄投影。** 通用调用身份与投影规则归 `src/tools/Tool/toolUseContext.ts`；业务 Port 仍由 Knowledge、Skill、Subagent 等所有者定义，Tools 只引用契约。每个 Tool 必须通过 `requires + validateContext()` 得到自己的最小 Context，`execute()` 看不到其他业务能力。当前共享 `BuiltinToolContext` 应删除，不能成为第四个万能参数袋。
 5. **V1 必做：模型可见名与内部稳定 ID 分离。** Permission、审计、恢复和 Feature Gate 使用稳定 ID；Provider Tool Schema 使用名称。重命名展示名不能意外继承或绕过旧权限。
-6. **V1 必做：Tool Result 形成结构化结果封套。** 结果要区分成功、失败、取消、超时、输出截断、外置引用和 outcome unknown；不能只返回 stdout 字符串，也不能把日志文本当 SSE 事件。
-7. **V1 已对齐：工具 UI 不进入执行包。** Claude 的 React renderer 适合单体 CLI，Ema 有 Desktop、未来 CLI/Web/移动端；`src/tools/presentation` 已用可判别联合承载读取、搜索、命令和文件 Diff 事实，Desktop UI 自己渲染。
+6. **V1 必做：Tool Result 形成单一类型化结果封套。** 具体 Tool 返回 `ToolResult<TData> = { data, modelContent }`：`data` 是可持久化、可审计、供 UI 使用的真实业务结果；`modelContent` 是送回模型的有界投影。成功、失败、取消、超时、输出截断、外置引用和 outcome unknown 属于统一执行封套，不能只返回 stdout，也不能再构造一份 Presentation 事实。
+7. **V1 纠偏：UI 归具体 Builtin Tool，但只通过前端子路径暴露。** Claude 把 renderer 与 Tool 放在同一目录的核心价值是避免“工具实现知道一种结果、全局 UI switch 又猜一次”。Ema 应保留这种内聚性，同时因 LocalHost/WebView 进程边界把 React 放到 `@ema-agent/tool-builtin/ui` 子路径；后端入口不加载 React，Desktop 用稳定 `toolId` 的薄 renderer registry，CLI/Web 可以实现自己的 renderer。
 8. **V1 已对齐：工具池使用不可变 Session/Turn 快照。** Skill 和 Profile 只能收窄工具能力；MCP 连接变化生成下一次 Snapshot，已开始的 Turn 仍持有原快照，但被移除或同名替换的实现会在 prepare 阶段明确失败，不会偷换成新实现。
 9. **V1 已对齐：Tool 顺序与第 03 章缓存策略衔接。** 内置工具形成稳定前缀，MCP 形成稳定后缀；Skill/Profile 只按原顺序收窄既有 Manifest。等价 MCP 重连不改变内容 Revision，连接顺序或 Map 插入顺序不再破坏 KV Cache。
 10. **V1 必做：AskUser 只属于根 Turn 交互能力。** Subagent 默认工具集不包含 AskUser。若子 Agent 缺少信息，它结束或向父 Agent 发送 `needs_parent_input`，由根 Turn 决定是否询问用户。
 11. **V1.5 候选：ToolSearch 延迟加载。** 当 Skill/MCP 数量真正导致 Tool Schema 过大时再加入 Discovery Catalog；V1 先用明确工具快照和启用门禁，不制造半成品搜索工具。
-12. **不照搬：Bun 编译宏与每个 Tool 强制 UI 文件。** Ema 用 Tauri/NodeNext Feature Gate；文件拆分按复杂度，而不是为了长得像 Claude 产生几行小文件。
+12. **选择性照搬：不复制 Bun 编译宏，也不强迫每个简单 Tool 单开 UI 文件。** Ema 用 Tauri/NodeNext Feature Gate。复杂 Tool 使用同目录 `UI.tsx`，简单 Tool 显式选择共享 `GenericToolUI`；每个 Tool 都有展示策略，但文件拆分仍按复杂度，不为了目录外观制造几行空壳。
 13. **V1 已对齐：结果预算属于统一 Tool 契约。** Builtin 和 MCP 都生成必有 `maxResultBytes` 的 `BuiltTool/PreparedToolCall`；MCP Server 无权自行扩大 Ema 的模型与磁盘预算。`Infinity` 只允许真正具有强制字节上限的工具使用；当前 `FileRead` 的 `offset/limit` 仍可省略，因此继续服从默认结果预算，待 Builtin Tool 审查时再补真正的行数与字节双上限。
 14. **V1 已对齐：结构校验与业务校验分层。** Zod/JSON Schema 处理字段形状，`validateInput` 在权限询问前检查工作区和文件状态等语义；失败作为可修正 Tool Result 返回模型，不能让用户批准一个注定无法执行的操作。
 15. **V1 已对齐：交互等待是工具能力，不是名称规则。** AskUser 系列显式声明 `requiresUserInteraction`；Agent Scheduler 只读取 Prepared 快照，不维护工具名白名单。
 16. **V1 已对齐：来源使用单一可判别字段。** Ema 不复制 Claude 可互相矛盾的 `isMcp + mcpInfo`，而使用 `ToolOrigin = builtin | mcp`；MCP 分支必须同时携带 `serverName/serverToolName`。来源跟随 Manifest 和 Prepared 快照，供 UI、审计和执行策略读取。V1 没有 LSP Tool，因此不预建 `isLsp` 空分支。
-17. **V1 必须恢复单一说明源。** `ToolDef.description` 直接进入 Provider Tool Schema，已经能承担 Claude Tool Prompt 的职责；因此删除后来增加的 `ToolDef.prompt?`、`tools.prompt` Slot 与重复 Usage 统计。`isDestructive/isOpenWorld/checkPermissions` 继续由声明式 `permissionMeta` 与 Permission 规则承担；`isEnabled()` 由 Feature Gate、注册条件与每 Turn Manifest 选择承担；`isSearchOrReadCommand/backfillObservableInput` 属于跨端 `ToolPresentation`，不进入执行定义。
-18. **暂不加入：没有当前执行消费者的字段。** `outputSchema` 等结构化 Result 封套确定后再接。Claude 的 `requiresUserInteraction` 与 `interruptBehavior = cancel | block` 是正交能力：前者表示工具主动等待用户并驱动 `waiting_user`，后者表示工具运行期间收到新消息时取消工具还是阻塞新消息；Ema 保留已经接线的前者，等 TurnExecutor 统一用户插话、排队与取消语义后再加入后者。Provider `strict` 由支持该能力的 Adapter 决定，不能假装所有协议都支持；`aliases/inputsEquivalent` 等重命名或调用去重出现真实需求后再设计；ToolSearch 的 `searchHint/shouldDefer/alwaysLoad` 留到 V1.5。
+17. **V1 已恢复单一模型说明源。** `ToolDef.description` 直接进入 Provider Tool Schema，承担 Claude Tool Prompt 的职责；后来增加的 `ToolDef.prompt?`、`tools.prompt` Slot 与重复 Usage 统计已经删除。`isDestructive/isOpenWorld/checkPermissions` 继续由声明式权限属性与 Permission 规则承担；`isEnabled()` 由 Feature Gate、注册条件与每 Turn ToolPool 承担。仅供 UI 的可观察输入回填必须生成浅拷贝，不得修改 Prepared Input 或历史 Tool Call，避免改变审批对象和 Prompt Cache。
+18. **暂不加入没有执行消费者的字段，但结构化结果不再延期。** Tool 的 `TData` 是内部类型化输出，不等于向 Provider 声明 JSON `outputSchema`；后者等真实协议消费者出现再加。Claude 的 `requiresUserInteraction` 与 `interruptBehavior = cancel | block` 是正交能力：前者表示工具主动等待用户并驱动 `waiting_user`，后者表示工具运行期间收到新消息时取消工具还是阻塞新消息；Ema 保留已经接线的前者，等 TurnExecutor 统一用户插话、排队与取消语义后再加入后者。Provider `strict` 由支持该能力的 Adapter 决定，不能假装所有协议都支持；`aliases/inputsEquivalent` 等出现真实需求后再设计；ToolSearch 留到 V1.5。
+19. **V1 必做：静态目录与每 Turn 装配分离。** `registerBuiltinTools()` 只对应 Claude `getAllBaseTools()`，把当前进程可提供的 Builtin 注册到 Registry；`ToolPool` 才根据 Profile、宿主能力、Subagent 和 Skill 做交集；Manifest 再冻结模型可见投影。不得在 Builtin 注册函数里读取当前 Turn 条件。
+20. **V1 必做：单次执行与批次调度分离。** `toolExecution` 承担一个调用的 Prepare/校验/Permission/Sandbox/Journal/Result；静态 `toolOrchestration` 负责并发安全分组、危险屏障和硬并发上限，`StreamingToolExecutor` 负责流式启动、进度、命令兄弟取消与 FIFO 终态。二者必须复用单次入口，不能各写一遍执行流水线。
+21. **不照搬：公开 execute 不统一改成 AsyncGenerator。** Claude 的 Bash `call()` 仍返回 Promise，只在内部 `runShellCommand()` 消费 async generator 并转发进度。Ema 同样保持统一 Promise Tool 接口；只有真正长时、渐进输出的实现内部使用生成器。
 
 ### 建议拆分与公共接口
 
 ```text
 src/tools/
-├─ registry.ts               工具身份、所有权、注册与 Snapshot
-├─ toolPool.ts               跨来源筛选、稳定顺序与 Manifest 装配
-├─ preparation/              Schema 解析、语义校验、PreparedToolCall
-├─ execution/                Permission -> Sandbox -> Result
-├─ results/                  结果封套、外置、截断、回收
-├─ background/               后台进程句柄与取消（不是 Task）
-└─ presentation/             跨端工具摘要、风险、Diff 与进度数据
+├─ Tool/                     ToolDef、buildTool 与窄 Context 规则
+├─ registry/                 Registry、每 Turn ToolPool、Manifest Snapshot
+├─ preparedToolCall.ts       解析并冻结同一份调用输入
+├─ execution/
+│  ├─ toolExecution.ts       单次调用唯一完整流水线
+│  ├─ toolOrchestration.ts   静态批次、屏障与硬并发上限
+│  └─ StreamingToolExecutor.ts 流式调度、兄弟取消与 FIFO 终态
+├─ results/                  modelContent 预算、外置、引用和回收
+├─ journal/                  ToolExecution 持久状态机
+└─ background/               长时 Shell 进程、输出与停止（不是 Task）
 
-src/builtinTools/            Ema 内置工具实现
+src/builtinTools/            Ema 内置工具实现、静态目录和前端 UI 子路径
 src/sandbox/                 Ema 跨平台执行隔离
 packages/public-http/        可独立复用的公网请求安全底座
-apps/desktop-ui/             ToolPresentation 的桌面渲染
+apps/desktop-ui/             renderer registry 与公共 Tool 外壳
 ```
 
 不建议让所有 Tool 继承复杂基类。工具作者面向一个小型 `ToolDefinition<Input, Output>`；构建函数补齐保守默认值；执行流水线统一处理横切能力。
@@ -342,7 +348,8 @@ ToolIntent
   -> Tool business validation
   -> PermissionEngine.gate()
   -> Sandbox/Capability runner
-  -> ToolExecutionResult
+  -> ToolResult.data + modelContent
+  -> Result budget / Journal terminal
   -> AgentLoopEvent + next model tool_result
 ```
 
@@ -389,7 +396,7 @@ Ema 的 FileEdit/FileWrite 已经覆盖本章大部分关键工程约束：
 4. **V1 收口：明确 UTF-8 产品政策。** 当前原子写固定 UTF-8。V1 若只承诺 UTF-8，应在 FileRead 检测 BOM/二进制/非法 UTF-8 并明确拒绝不可安全写回的编码，而不是解码后悄悄损坏。是否兼容 UTF-16 应作为单独能力，不混入本轮架构迁移。
 5. **V1 收口：Write 空操作和覆盖语义统一。** 写入内容与当前文件完全相同时返回 `unchanged`，不制造假的文件变更事件；FileEdit 的 `old_string === new_string` 也应在准备阶段拒绝。
 6. **V1 收口：Notebook、图片、PDF 等非普通文本走专用读取/编辑能力。** FileEdit 不应把这些文件当 UTF-8 文本试写。V1 没有 Notebook Editor 时应 fail-closed，而不是模仿 Claude 暴露不存在的能力。
-7. **V1 收口：Diff 是 Presentation，不是执行输入。** 后端根据实际 before/after 生成有界结构；前端可以选择统一 diff、左右对比或折叠显示，但不能影响实际写入内容。
+7. **V1 收口：Diff 是 FileEdit/FileWrite 的类型化结果，不是执行输入。** Tool 根据实际 before/after 生成有界 `data`；前端 Tool UI 可以选择统一 diff、左右对比或折叠显示，模型只接收有界 `modelContent`，两者都不能影响实际写入内容。
 8. **V1.5 候选：语义等价编辑去重、配置文件专用 Schema 校验。** 只有真实重试数据表明重复编辑是问题时才做语义去重；对 Ema 自己的关键配置可增加领域校验，但不建立万能 AST 编辑层。
 9. **不照搬：Claude API 的 XML desanitization。** 这是其模型/API 特有兼容层。Ema 若某个 Provider 出现同类转换，应放在该协议适配或明确兼容工具中，不污染通用 FileEdit。
 
@@ -398,15 +405,17 @@ Ema 的 FileEdit/FileWrite 已经覆盖本章大部分关键工程约束：
 现有复杂工具目录结构基本合理，不需要继续拆碎：
 
 ```text
-src/tools/builtin/FileEditTool/
+src/builtinTools/tools/FileEditTool/
 ├─ FileEditTool.ts            Schema、校验与执行协调
 ├─ matching.ts                精确匹配、引号归一化、唯一性
-└─ presentation.ts            可与 FileWrite 共用真实 Diff 构造
+├─ fileChangeResult.ts        可与 FileWrite 共用真实 Diff 数据构造
+└─ UI.tsx                     前端专用子路径导出的 Diff renderer
 
-src/tools/builtin/FileWriteTool/
+src/builtinTools/tools/FileWriteTool/
 ├─ FileWriteTool.ts
 ├─ atomicWrite.ts             路径锁、临时文件、fsync、rename
-└─ recovery.ts                Journal 驱动的中断清理
+├─ recovery.ts                Journal 驱动的中断清理
+└─ UI.tsx                     复用文件变更 renderer
 
 src/tools/files/
 └─ fileAccessPolicy.ts        编码、普通文本类型和规范路径公共校验
@@ -418,7 +427,7 @@ src/tools/files/
 
 - Context 的文件状态只保存模型本轮已经看到的完整版本与最近访问投影；实际文件写入一致性由 Tool 执行层再次校验，不能只信 Context 缓存。
 - `PreparedToolCall` 冻结的是原始编辑意图，Permission 同时批准规范化路径和变更摘要；实际提交前仍执行乐观并发校验。
-- `ToolExecutionResult.presentation` 携带真实 Diff，模型收到有界结果，Desktop 收到结构化展示数据；两端不需要共享 React 组件。
+- FileEdit/FileWrite 的 `ToolResult.data` 携带真实 Diff，`modelContent` 给模型有界摘要；Desktop 通过 Builtin 的前端专用 UI 子路径渲染同一份 `data`，不再同步维护第二个 Presentation 联合。
 - 写入完成后的文件状态可供下一次 Context 组装使用，但不会把完整大文件复制进每个 Session Snapshot。
 
 ---
@@ -808,12 +817,12 @@ Ema 已经建立了较强的 V1 安全边界：
 ```text
 src/permission/                 Ema 产品规则、Prompt 队列、决策解释
 packages/sandbox/              跨平台隔离与受管理进程技术底座
-packages/system/               平台检测、路径与能力探测
+src/system/                    Ema 平台检测、路径与能力探测
 src/tools/execution/           Prepared -> Permission -> Sandbox 调度
 apps/desktop-ui/               权限卡与 Session 队列展示
 ```
 
-当前 Permission 是 Ema Tool 产品安全策略，最终更适合根 `src/permission`；Sandbox 可以脱离 Ema 复用，保留在 packages。两者不应为了放到同一目录而合并。
+Permission、Sandbox 与 System 当前都包含 Ema 产品语义，位于根 `src`；其中可复用的进程或平台原语可以保持深模块边界，但不能仅因“理论上可复用”重新搬回 packages。Permission 与 Sandbox 仍必须物理分层，不应为了同属安全链而合并。
 
 ### 与第 04～10 章复核
 
@@ -841,18 +850,18 @@ Ema Desktop 已经具备不少对应组件：
 
 - 前端消费结构化 SSE，不需要解析 Provider 原始流；
 - `ToolCallBlock` 展示 running/awaiting_permission/success/failed/denied、参数、结果、耗时和单 Tool Abort；
-- 文件工具可接收真实 `FileChangePresentation` Diff；
+- 文件工具已经能生成真实 Diff，但当前通过独立 `FileChangePresentation` 传递，仍待并入 FileEdit/FileWrite 的类型化 `ToolResult.data`；
 - Session Sidebar 展示流式和待处理问题数量，用户切到其他 Session 也能看到 A 正在等待；
 - Decision Store/Permission/AskUser 已能按 Session 保存 Pending 项；
 - Provider、Skill、Memory、Storage、Theme 等已有独立 Settings UI；
-- Chat 页面仍存在旧 chat/narrative/agent mode、旧 TaskPanel 与多套 Store/事件投影；
-- 工具参数展示由前端 `switch(name)` 解释，未知 MCP 工具退回平铺对象，跨端 Presentation 协议还不完整。
+- Chat/Work 与新 Task/AgentRun 领域已经在后端收口；前端仍需按 Turn、Task、AgentRun 的真实事件与结果契约继续清理历史 switch 和重复投影；
+- 工具参数展示仍由前端 `switch(name)` 解释，独立 Presentation 又复制结果事实；未知 MCP 工具退回平铺对象。这正是本轮 Tool Result/UI 纠偏要删除的三处同步点。
 
 ### Diff 判断
 
 1. **V1 必做：前端围绕 Turn 投影，不围绕 `/chat` 请求状态。** 每个 Session 独立维护 activeTurn、stream slices、pending decisions 和 draft；一个 Session 的健康轮询、历史刷新或流重连不能清空另一个 Session 或当前输入框。
 2. **V1 必做：Permission/AskUser 卡固定在输入框上方。** 它是会话内独立 UI Block，不是全屏居中弹窗；卡片紧凑，说明动作、目标、风险与影响，决策按钮靠右。Session 内 FIFO，一次只处理队首。
-3. **V1 必做：非开发者先看人话，开发者可展开原始参数。** 后端 ToolPresentation 提供确定性摘要；未来右上角可按需调用 LLM 翻译，但原命令、路径、Diff 与风险事实始终可展开核对。
+3. **V1 必做：非开发者先看人话，开发者可展开原始参数。** 具体 Tool 的类型化 `data` 和同目录 UI 提供确定性摘要；未来右上角可按需调用 LLM 翻译，但原命令、路径、Diff 与风险事实始终可展开核对，LLM 翻译不能替换执行事实。
 4. **V1 必做：Chat/Work 是唯一顶层 Profile。** 同一 Session 可切换，Turn 保存当时 Profile；NarrativePolicy 是 Chat 下二级控制，Narrative Recall 用专属 Block 展示，不再是第三模式。
 5. **V1 必做：持久历史与临时流状态可重建。** 重开软件先加载 Session/Message/Turn 终态，再加载 pending Permission/AskUser/AgentRun；SSE 重连只补活动事件，不用“清空后重放”造成闪烁或草稿丢失。
 6. **V1 收口：错误按用户动作分类。** 自动重试/降级显示轻量状态；需要换模型、补 Key、批准权限或重新上传附件时给明确按钮；不能把 Provider body、堆栈或 `fetch failed` 直接扔给普通用户。
@@ -860,10 +869,10 @@ Ema Desktop 已经具备不少对应组件：
 8. **V1 必做：旧 TaskPanel 按领域拆 UI。** AgentRuns 面板展示子 Agent 执行；V1 TaskList 展示工作项；两者不继续共用“任务”卡片造成运行状态与工作项状态混淆。
 9. **V1 收口：流式 Markdown 只重算不稳定尾部。** 长会话需要虚拟列表/稳定块 memo，用户自定义正文字体走 Theme/Settings Token；代码字体与角色聊天正文字体分开。
 10. **V1 已收口：会话历史保持线性。** Ema 不继续维护同 Session Branch 树。侧栏 Fork 完整复制 Session；回复下 Fork 按 Turn 截止复制为独立 Session；用户消息只允许回滚最后一轮后重发。任意历史删除与 `<N/M>` 兄弟导航已移除，因为 Tool、Task、AgentRun 和外部副作用无法随一棵消息树可靠回滚。Codex 的 Worktree Fork 属于代码工作区隔离，不等同于 Ema 的会话内 Branch。
-10. **V1 收口：Live2D/Emotion/TTS 是消费事件的表现层。** 动画、语音或模型资源失败不能阻塞 Turn 文本主链；窗口隐藏/失焦时暂停无意义动画，并尊重 reduced motion。
-11. **V1 收口：所有样式复用 styles 与 `@ema-agent/ui`。** CSS Variable、动画、Button/Dialog 不在业务组件中另起体系；展开和收起都有统一动画。
-12. **V1.5 候选：跨端 Presentation Adapter。** Desktop、未来 CLI/Web/移动端消费相同 Turn/Tool/Decision 协议，各自渲染；不把 ReactNode 放进后端 Tool 接口。
-13. **不照搬：Ink 渲染器、终端对象池、Vim 模式和 ANSI 协议。** Ema 使用浏览器/Tauri 渲染能力，只借鉴增量更新与可观察性原则。
+11. **V1 收口：Live2D/Emotion/TTS 是消费事件的表现层。** 动画、语音或模型资源失败不能阻塞 Turn 文本主链；窗口隐藏/失焦时暂停无意义动画，并尊重 reduced motion。
+12. **V1 收口：所有样式复用 styles 与 `@ema-agent/ui`。** CSS Variable、动画、Button/Dialog 不在业务组件中另起体系；展开和收起都有统一动画。
+13. **V1 必做：跨端结果数据与平台 renderer 分离。** Desktop、未来 CLI/Web/移动端消费同一类型化 Tool Result；复杂 Builtin 的 React UI 只从 frontend-only 子路径进入 Desktop，CLI/Web 可以提供各自 renderer，ReactNode 永远不进入 SSE、SQLite 或后端 Tool 契约。
+14. **不照搬：Ink 渲染器、终端对象池、Vim 模式和 ANSI 协议。** Ema 使用浏览器/Tauri 渲染能力，只借鉴增量更新与可观察性原则。
 
 ### 建议前端数据边界
 
@@ -871,7 +880,7 @@ Ema Desktop 已经具备不少对应组件：
 apps/desktop-ui/src/
 ├─ features/turns/             Turn command、active state、event reducer
 ├─ features/messages/          持久历史与虚拟列表
-├─ features/tools/             Tool Block、Diff、Presentation adapters
+├─ features/tools/             公共 Tool 外壳、renderer registry 与 Generic 回退
 ├─ features/decisions/         Permission/AskUser FIFO 卡片
 ├─ features/agentRuns/         Subagent 执行状态
 ├─ features/tasks/             V1 结构化 TaskList
@@ -886,7 +895,7 @@ apps/desktop-ui/src/
 ### 与前面章节复核
 
 - UI 只消费按作用域公开的 `TurnEvent/AgentRunEvent/SessionEvent/AppEvent`；Context、Provider 与 AgentLoop 内部对象不直接泄露。
-- ToolPresentation 来自真实执行结果；Permission 卡展示 Prepared Call，不能由前端重新解释后再提交不同参数。
+- Tool UI 只渲染真实 `ToolResult.data`；Permission 卡展示 Prepared Call，不能由前端重新解释后再提交不同参数。
 - AgentRun、Task、Plan 各用不同 UI；Pending Prompt 与 Turn 终态严格联动。
 - Settings 只控制用户可理解的产品参数；底层安全硬限制不因 UI 开关而消失。
 - Session A 等待确认时，切到 Session B 不会解决或取消 A；Sidebar 保留明显但不过度打扰的待处理标记。
@@ -995,7 +1004,7 @@ Claude Code 没有把所有上下文混成一段字符串。它的提示体系�
 - 旧 `chat/narrative/agent` 三模式与 `src/prompts/hooks.ts` 已删除，Narrative 以独立 Recall Contribution 进入 Context；
 - `ContextAssembler` 已统一组装 Prompt、Tool Manifest、历史、当前输入与 Memory/Narrative/KB/Skill Contribution；Compaction 已脱离旧 TurnMode，并保留渐进压缩、Safe Cut 与 Restore；
 - `src/context/promptPrefix.ts` 能规范化 Tool Manifest、计算 cache breakpoint 前缀 Hash；Anthropic Adapter 已投影真实缓存断点；
-- Tool Manifest Snapshot 已接入模型可见、Prepared Call 与执行主链，但 `tools.prompt` 又把逐 Tool 说明复制进 System Prompt，形成新的双事实源；
+- Tool Manifest Snapshot 已接入模型可见、Prepared Call 与执行主链；逐 Tool 说明只来自 Manifest description，已删除 `tools.prompt` System Slot 双事实源；
 - Character Prompt 已使用明确 Slot 与信任级别；外部 Skill、MCP instructions、Memory、Narrative、KB、网页和附件继续作为有来源的 Context，而不是产品 System 指令。
 
 ### Diff 判断
@@ -1004,7 +1013,7 @@ Claude Code 没有把所有上下文混成一段字符串。它的提示体系�
 2. **V1 已对齐：Slot 使用明确字段和中央规格表。** `id/order/content/version/stabilityScope/delivery` 均为显式字段；业务贡献方不能自行选择 System 权限。重复 `id` 报错，禁止 `meta` 或调用方猜 JSON。
 3. **V1 已对齐：固定前缀与动态尾部显式分界。** 全局安全/行为规则和通用 Tool 选用原则在前；全局激活 Character、ExecutionProfile 与可信内置必需 Skill 按稳定范围排列；环境、外部 Skill/MCP 摘要、Recall、附件说明和当前 Turn 位于 Context 区域。具体缓存断点由组装器根据 Provider 能力投影，不由任意业务模块随意塞 `cacheBreakpoint`。
 4. **V1 已对齐：旧三模式 Prompt 语义已删除。** 顶层只剩 Chat/Work；Character 在两者中始终存在。NarrativePolicy 控制是否检索，不创建 narrative 系统人格；`off` 仅提示可能缺失剧情细节。
-5. **V1 当前纠偏：Tool Schema 与文字说明必须同源。** Tool 注册后产出不可变 Manifest Snapshot；模型看到、Permission 审批、真正执行的都是该 Snapshot 中同一个 Tool 与版本。主 Prompt 只说明通用选用原则；下一批删除当前多出来的 `tools.prompt` 副本。
+5. **V1 已对齐：Tool Schema 与文字说明同源。** Tool 注册后产出不可变 Manifest Snapshot；模型看到、Permission 审批、真正执行的都是该 Snapshot 中同一个 Tool 与版本。主 Prompt 只说明通用选用原则，不再保存 `tools.prompt` 副本。
 6. **V1 已对齐：不可信数据不能升级成系统指令。** Tool Result、KB、Narrative、附件和网页内容使用有明确来源的 Context Contribution；即便内容包含 `<system-reminder>` 一类标签，也不能取得 System Slot 权限。
 7. **V1 收口：每次 Turn 保存 Prompt/Tool 版本身份。** `promptRevision` 与 `toolManifestRevision` 标识稳定定义版本，`prefixHash` 标识本次请求截止最终缓存断点的内容身份；这些字段可判断两次请求是否使用同一版本和前缀，但不能单独还原正文，不必因此默认保存整份巨大 Prompt 副本。
 8. **V1 收口：角色变化不应破坏真正固定的前缀。** Character Slot 放在产品稳定规则之后；Ema 的角色由全局 Active Character 决定，切换后自然形成新的角色 revision。ACT 协议属于 Character Presentation Slot，不混进全局安全规则。

@@ -1,5 +1,10 @@
 ﻿// 注册、查找和准备内置及 MCP 工具，并阻止名称或身份冲突。
 import { ZodError } from 'zod';
+import {
+  ToolInputError,
+  ToolRegistrationConflictError,
+  ToolRegistryError,
+} from './errors.js';
 import type {
   BuiltTool,
   ToolContextValidation,
@@ -29,42 +34,10 @@ export interface McpToolRegistration {
 
 type ToolOwner = ToolOrigin;
 
-export class ToolRegistryError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'ToolRegistryError';
-  }
-}
-
-export class ToolRegistrationConflictError extends ToolRegistryError {
-  constructor(
-    public readonly toolName: string,
-    public readonly existingOwner: ToolOwner,
-    public readonly attemptedOwner: ToolOwner,
-  ) {
-    super(
-      `Tool "${toolName}" registration conflict: ` +
-      `${describeOwner(existingOwner)} already owns the name; ` +
-      `${describeOwner(attemptedOwner)} cannot replace it`,
-    );
-    this.name = 'ToolRegistrationConflictError';
-  }
-}
-
-export class ToolInputError extends Error {
-  constructor(
-    public readonly toolName: string,
-    public readonly zodError: ZodError,
-  ) {
-    super(`Invalid input for tool "${toolName}": ${zodError.message}`);
-    this.name = 'ToolInputError';
-  }
-}
-
 /**
  * Central registry for all BuiltTool instances.
  *
- * Tools are registered once at startup by tool-builtin's registerBuiltinTools().
+ * Builtin 在启动时注册；MCP 在连接与重连时只更新自己拥有的动态分区。
  * Agent 主链固定调用 prepare() → PermissionEngine.gate() → execute()。
  */
 export class ToolRegistry {
@@ -334,10 +307,4 @@ function sameOwner(left: ToolOwner, right: ToolOwner): boolean {
   if (left.kind !== right.kind) return false;
   if (left.kind === 'builtin' || right.kind === 'builtin') return true;
   return left.serverName === right.serverName && left.serverToolName === right.serverToolName;
-}
-
-function describeOwner(owner: ToolOwner): string {
-  return owner.kind === 'builtin'
-    ? 'builtin tool'
-    : `MCP tool "${owner.serverName}/${owner.serverToolName}"`;
 }

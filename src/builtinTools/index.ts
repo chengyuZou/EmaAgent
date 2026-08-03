@@ -48,7 +48,6 @@ export type {
   SubagentSpawnOptions,
   SubagentSpawnerPort,
 } from './subagentToolPort.js';
-export { assembleToolPool } from './assembleToolPool.js';
 export { contextOk, contextFail } from './contextValidation.js';
 
 // ── 单个工具导出 ──────────────────────────────────────────────────────────────

@@ -28,7 +28,7 @@ import type {
 } from '../journal/toolExecutionJournal.js';
 import type { ToolResultStore } from '../results/toolResultStore.js';
 import { splitToolResult } from '../presentation/presentToolResult.js';
-import { ToolInputError } from '../registry.js';
+import { ToolInputError } from '../errors.js';
 import type { ToolRegistry } from '../registry.js';
 import type {
   AskPermissionFn,

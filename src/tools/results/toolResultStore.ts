@@ -2,6 +2,7 @@
 import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { ToolResultStoreError } from '../errors.js';
 
 export const DEFAULT_AGGREGATE_RESULT_BYTES = 200 * 1024;
 export const DEFAULT_RESULT_PREVIEW_BYTES = 2_000;
@@ -146,7 +147,7 @@ export function generatePreview(
   maxBytes: number,
 ): { preview: string; hasMore: boolean } {
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) {
-    throw new RangeError(`maxBytes must be a non-negative safe integer, got ${maxBytes}`);
+    throw new ToolResultStoreError(`maxBytes must be a non-negative safe integer, got ${maxBytes}`);
   }
   if (Buffer.byteLength(content, 'utf8') <= maxBytes) {
     return { preview: content, hasMore: false };
@@ -173,7 +174,7 @@ export function generatePreview(
 
 function assertPositiveBudget(value: number, name: string): void {
   if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new RangeError(`${name} must be a positive safe integer, got ${value}`);
+    throw new ToolResultStoreError(`${name} must be a positive safe integer, got ${value}`);
   }
 }
 

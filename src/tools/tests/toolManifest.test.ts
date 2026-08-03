@@ -3,7 +3,8 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { buildTool } from '../build-tool.js';
-import { ToolRegistry, ToolRegistryError } from '../registry.js';
+import { ToolRegistry } from '../registry.js';
+import { ToolRegistryError } from '../errors.js';
 
 function makeTool(
   id: string,

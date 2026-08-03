@@ -11,6 +11,7 @@ import type {
   CommandProcessHandle,
   CommandRunResult,
 } from '@ema-agent/sandbox';
+import { BackgroundProcessError, createBackgroundProcessAbortError } from '../errors.js';
 import {
   type BackgroundProcessRow,
   BackgroundProcessesRepo,
@@ -135,7 +136,9 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
   }
 
   async runCommand(request: BackgroundCommandRequest): Promise<BackgroundCommandResult> {
-    if (this.shuttingDown) throw new Error('Background process runtime is shutting down');
+    if (this.shuttingDown) {
+      throw new BackgroundProcessError('shutting_down', 'Background process runtime is shutting down');
+    }
     const id = asBackgroundProcessId(crypto.randomUUID());
     const writer = this.output.create(request.sessionId, id);
     const timeoutMs = this.resolveTimeout(request.timeoutMs);
@@ -177,7 +180,7 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
       writer.close();
       this.output.remove(writer.location);
       this.scheduler.release();
-      throw abortError();
+      throw createBackgroundProcessAbortError();
     }
 
     let active: ActiveProcess;
@@ -296,7 +299,7 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
 
     const queued = this.queued.get(id);
     if (queued) {
-      this.scheduler.cancel(id, new Error('Background process stopped before start'));
+      this.scheduler.cancel(id, new BackgroundProcessError('stopped_before_start', 'Background process stopped before start'));
       this.queued.delete(id);
       queued.writer.close();
       const terminal = this.deps.repo.finish(id, row.version, {
@@ -307,7 +310,7 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
         stderrBytes: queued.writer.stderrBytes,
         outputTruncated: queued.writer.truncated,
       });
-      if (!terminal) throw new Error('Background process state changed before stop');
+      if (!terminal) throw new BackgroundProcessError('state_changed_before_stop', 'Background process state changed before stop');
       this.emitRow(terminal);
       this.notifyChanged(id);
       return this.toSummary(terminal);
@@ -315,7 +318,7 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
 
     const active = this.active.get(id);
     if (!active) {
-      throw new Error('Background process is no longer attached to this application process');
+      throw new BackgroundProcessError('not_attached', 'Background process is no longer attached to this application process');
     }
     active.terminalIntent = 'stopped';
     active.handle.stop();
@@ -329,7 +332,7 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
   discardSession(sessionId: SessionId): void {
     for (const [id, queued] of this.queued) {
       if (queued.request.sessionId !== sessionId) continue;
-      this.scheduler.cancel(id, new Error('Session deleted'));
+      this.scheduler.cancel(id, new BackgroundProcessError('session_deleted', 'Session deleted'));
       this.queued.delete(id);
       queued.writer.close();
       this.notifyChanged(id);
@@ -348,7 +351,7 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
     this.completionListener = undefined;
     for (const [id, queued] of this.queued) {
       const row = this.deps.repo.findById(id);
-      this.scheduler.cancel(id, new Error('Application is shutting down'));
+      this.scheduler.cancel(id, new BackgroundProcessError('app_shutting_down', 'Application is shutting down'));
       queued.writer.close();
       if (row) {
         const terminal = this.deps.repo.finish(id, row.version, {
@@ -425,7 +428,9 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
   ): Promise<void> {
     return new Promise((resolve, reject) => {
       const onAbort = (): void => {
-        if (this.scheduler.cancel(id, abortError())) reject(abortError());
+        if (this.scheduler.cancel(id, createBackgroundProcessAbortError())) {
+          reject(createBackgroundProcessAbortError());
+        }
       };
       signal.addEventListener('abort', onAbort, { once: true });
       this.scheduler.enqueue(sessionId, {
@@ -526,7 +531,7 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
   private requireOwned(sessionId: SessionId, id: BackgroundProcessId): BackgroundProcessRow {
     const row = this.deps.repo.findById(id);
     if (!row || row.session_id !== sessionId) {
-      throw new Error('Background process not found in the current Session');
+      throw new BackgroundProcessError('not_found', 'Background process not found in the current Session');
     }
     return row;
   }
@@ -646,8 +651,4 @@ function delay<T>(ms: number, value: T): Promise<T> {
     const timer = setTimeout(() => resolve(value), ms);
     timer.unref?.();
   });
-}
-
-function abortError(): Error {
-  return Object.assign(new Error('Command cancelled before start'), { name: 'AbortError' });
 }

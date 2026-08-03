@@ -63,17 +63,24 @@ export { presentToolResult, splitToolResult } from './presentation/index.js';
 export type { SplitToolResult } from './presentation/index.js';
 
 export { buildTool, DEFAULT_MAX_RESULT_BYTES } from './build-tool.js';
+export { assembleToolPool } from './assembleToolPool.js';
 export {
   createToolManifestSnapshot,
   createToolManifestSnapshotFromEntries,
 } from './toolManifest.js';
+export { ToolRegistry } from './registry.js';
+export type { McpToolOwner, McpToolRegistration } from './registry.js';
 export {
-  ToolRegistry,
-  ToolRegistryError,
+  BackgroundProcessError,
+  createBackgroundProcessAbortError,
+  ToolDefinitionError,
+  ToolExecutionJournalConflictError,
   ToolInputError,
   ToolRegistrationConflictError,
-} from './registry.js';
-export type { McpToolOwner, McpToolRegistration } from './registry.js';
+  ToolRegistryError,
+  ToolResultStoreError,
+} from './errors.js';
+export type { BackgroundProcessErrorCode } from './errors.js';
 export {
   DEFAULT_AGGREGATE_RESULT_BYTES,
   DEFAULT_RESULT_PREVIEW_BYTES,
@@ -84,7 +91,6 @@ export {
 } from './results/index.js';
 export {
   ToolExecutionJournal,
-  ToolExecutionJournalConflictError,
 } from './journal/toolExecutionJournal.js';
 export type {
   ToolExecutionJournalPort,
