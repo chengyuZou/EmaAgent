@@ -172,10 +172,18 @@ describe('BashTool 集成', () => {
     expect(BashTool.isReadOnly({ command: 'git branch feature/new' })).toBe(false);
   });
 
-  it('safetyCheck 只硬拦 deny 档, ask 档放行给默认确认流', () => {
-    const meta = BashTool.permissionMeta;
-    expect(meta.safetyCheck?.({ command: 'rm -rf /' })).toBe('deny');
-    expect(meta.safetyCheck?.({ command: 'echo $(date)' })).toBe('continue');
-    expect(meta.safetyCheck?.({ command: 'ls' })).toBe('continue');
+  it('validateInput 只硬拦 deny 档，其余命令交给统一权限裁决', async () => {
+    expect(BashTool.validateInput?.(
+      BashTool.parseInput({ command: 'rm -rf /' }),
+      {} as never,
+    )).toMatchObject({ valid: false, code: 'bash/unsafe_command' });
+    expect(BashTool.validateInput?.(
+      BashTool.parseInput({ command: 'echo $(date)' }),
+      {} as never,
+    )).toEqual({ valid: true });
+    expect(BashTool.validateInput?.(
+      BashTool.parseInput({ command: 'ls' }),
+      {} as never,
+    )).toEqual({ valid: true });
   });
 });

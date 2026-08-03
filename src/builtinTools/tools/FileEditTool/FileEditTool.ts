@@ -4,14 +4,13 @@ import path from 'node:path';
 import { z } from 'zod';
 import {
   buildTool,
-  createFileChangePresentation,
-  presentToolResult,
+  contextFail,
+  contextOk,
+  type BuiltinToolContext,
+  type ReadFileState,
 } from '@ema-agent/tools';
-import type { ReadFileState } from '@ema-agent/tools';
 import type { ToolCallId } from '@ema-agent/ids';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
-import type { BuiltinToolContext } from '../../builtinToolContext.js';
-import { contextFail, contextOk } from '../../contextValidation.js';
 import { atomicTransformUtf8 } from '../FileWriteTool/atomicWrite.js';
 
 /** File 编辑工具只取得当前 Turn 的写入保护状态和单次调用身份。 */
@@ -152,14 +151,12 @@ Rules:
     return { valid: true };
   },
 
-  permissionMeta: {
+  getPermissionIntent: (input) => ({
     riskLevel: 'medium',
     accessType: 'write',
-    extractPath: (input: unknown) => {
-      const parsed = inputSchema.safeParse(input);
-      return parsed.success ? parsed.data.file_path : undefined;
-    },
-  },
+    targets: [{ path: input.file_path, accessType: 'write' }],
+    promptPolicy: 'whenRequired',
+  }),
 
   async execute(
     input: FileEditInput,
@@ -257,9 +254,9 @@ Rules:
       isPartialView: false,
       truncated: false,
     });
-    return presentToolResult({
+    return {
       filePath: file_path,
       replacements,
-    }, createFileChangePresentation(file_path, written.previousContent, written.content));
+    };
   },
 });

@@ -112,7 +112,7 @@ function pathMatchesGlob(
 
 export function ruleMatches(
   rule:       PermissionRule,
-  toolName:   string,
+  toolId:     string,
   targetPath: string | undefined,
   context:    Pick<PermissionContext, 'workspaceRoot'>,
 ): boolean {
@@ -120,7 +120,7 @@ export function ruleMatches(
     if (!rule.workspaceRoot || !context.workspaceRoot) return false;
     if (normalizeCaseForComparison(rule.workspaceRoot) !== normalizeCaseForComparison(context.workspaceRoot)) return false;
   }
-  if (rule.tool !== '*' && normalizeCaseForComparison(rule.tool) !== normalizeCaseForComparison(toolName)) {
+  if (rule.tool !== '*' && normalizeCaseForComparison(rule.tool) !== normalizeCaseForComparison(toolId)) {
     return false;
   }
   if (rule.pathGlob === undefined) return true;
@@ -150,12 +150,12 @@ function compareScopePriority(left: PermissionRule, right: PermissionRule): numb
 function findRuleByAction(
   rules:       PermissionRule[],
   action:      PermissionRule['action'],
-  toolName:    string,
+  toolId:    string,
   targetPath:  string | undefined,
-  context:     Pick<PermissionContext, 'workspaceRoot' | 'sessionId'>,
+  context:     Pick<PermissionContext, 'workspaceRoot'>,
 ): PermissionRule | undefined {
   const matched = rules.filter(
-    r => r.action === action && ruleMatches(r, toolName, targetPath, context),
+    r => r.action === action && ruleMatches(r, toolId, targetPath, context),
   );
   if (matched.length === 0) return undefined;
   matched.sort(compareScopePriority);
@@ -163,22 +163,22 @@ function findRuleByAction(
 }
 
 export function findDenyRule(
-  rules: PermissionRule[], toolName: string, targetPath: string | undefined,
+  rules: PermissionRule[], toolId: string, targetPath: string | undefined,
   context: Pick<PermissionContext, 'workspaceRoot' | 'sessionId'>,
 ): PermissionRule | undefined {
-  return findRuleByAction(rules, 'deny', toolName, targetPath, context);
+  return findRuleByAction(rules, 'deny', toolId, targetPath, context);
 }
 
 export function findAskRule(
-  rules: PermissionRule[], toolName: string, targetPath: string | undefined,
+  rules: PermissionRule[], toolId: string, targetPath: string | undefined,
   context: Pick<PermissionContext, 'workspaceRoot' | 'sessionId'>,
 ): PermissionRule | undefined {
-  return findRuleByAction(rules, 'ask', toolName, targetPath, context);
+  return findRuleByAction(rules, 'ask', toolId, targetPath, context);
 }
 
 export function findAllowRule(
-  rules: PermissionRule[], toolName: string, targetPath: string | undefined,
+  rules: PermissionRule[], toolId: string, targetPath: string | undefined,
   context: Pick<PermissionContext, 'workspaceRoot' | 'sessionId'>,
 ): PermissionRule | undefined {
-  return findRuleByAction(rules, 'allow', toolName, targetPath, context);
+  return findRuleByAction(rules, 'allow', toolId, targetPath, context);
 }

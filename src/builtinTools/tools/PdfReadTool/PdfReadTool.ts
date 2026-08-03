@@ -3,14 +3,8 @@ import { open, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
 import { PdfReader, type DocumentBlock } from '@ema-agent/knowledge';
-import {
-  buildTool,
-  createPdfReadPresentation,
-  presentToolResult,
-} from '@ema-agent/tools';
+import { buildTool, contextFail, contextOk, type BuiltinToolContext } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
-import type { BuiltinToolContext } from '../../builtinToolContext.js';
-import { contextFail, contextOk } from '../../contextValidation.js';
 import { isBlockedDevice } from '../FileReadTool/FileReadTool.js';
 
 const MAX_PDF_BYTES = 50 * 1024 * 1024;
@@ -85,14 +79,12 @@ export const PdfReadTool = buildTool<
     });
   },
 
-  permissionMeta: {
+  getPermissionIntent: (input) => ({
     riskLevel: 'low',
     accessType: 'read',
-    extractPath: (input: unknown) => {
-      const parsed = inputSchema.safeParse(input);
-      return parsed.success ? parsed.data.file_path : undefined;
-    },
-  },
+    targets: [{ path: input.file_path, accessType: 'read' }],
+    promptPolicy: 'whenRequired',
+  }),
 
   async execute(input, context): Promise<PdfReadResult> {
     const filePath = path.resolve(context.workspaceRoot, input.file_path);
@@ -141,16 +133,7 @@ export const PdfReadTool = buildTool<
       warnings,
     };
 
-    return presentToolResult(
-      modelOutput,
-      createPdfReadPresentation({
-        filePath: input.file_path,
-        startPage,
-        endPage,
-        totalPages,
-        incompletePages: new Set(warnings.map((warning) => warning.page)).size,
-      }),
-    );
+    return modelOutput;
   },
 });
 

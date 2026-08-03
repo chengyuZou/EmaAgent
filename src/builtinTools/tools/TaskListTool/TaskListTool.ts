@@ -3,11 +3,9 @@
 import { z } from 'zod';
 import type { SessionId } from '@ema-agent/ids';
 import type { AgentRunId, TaskId } from '@ema-agent/ids';
-import { buildTool } from '@ema-agent/tools';
+import { buildTool, contextFail, contextOk, type BuiltinToolContext } from '@ema-agent/tools';
 import type { TaskStatus, TaskStorePort } from '@ema-agent/tasks';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
-import type { BuiltinToolContext } from '../../builtinToolContext.js';
-import { contextFail, contextOk } from '../../contextValidation.js';
 
 /** Task 列表工具的窄 Context：持久存储 + 调用身份。 */
 interface TaskListToolContext {
@@ -46,10 +44,11 @@ Prefer lower display numbers when several tasks are available because earlier ta
   maxResultBytes: 100_000,
   isReadOnly: () => true,
   isConcurrencySafe: () => true,
-  permissionMeta: {
+  getPermissionIntent: () => ({
     riskLevel: 'low',
     accessType: 'read',
-  },
+    promptPolicy: 'neverForTrustedBuiltin',
+  }),
 
   requires: ['taskStore'],
 

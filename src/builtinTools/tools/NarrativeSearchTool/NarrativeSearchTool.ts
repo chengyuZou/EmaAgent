@@ -1,14 +1,12 @@
 // 按需检索 Narrative 剧情资料，并把多时间线结果作为不可信工具资料返回模型。
 import { z } from 'zod';
-import { buildTool } from '@ema-agent/tools';
+import { buildTool, contextFail, contextOk, type BuiltinToolContext } from '@ema-agent/tools';
 import type {
   NarrativeRecallTimeline,
   NarrativeSearchPort,
   NarrativeTimelineFailure,
 } from '@ema-agent/narrative';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
-import type { BuiltinToolContext } from '../../builtinToolContext.js';
-import { contextFail, contextOk } from '../../contextValidation.js';
 
 const MAX_QUERY_CHARS = 8_000;
 
@@ -56,10 +54,11 @@ Do not call this for ordinary conversation or questions that can be answered fro
   // LightRAG 查询会更新内部缓存，同一 Turn 内保持顺序，避免多个查询争用缓存写入。
   isConcurrencySafe: () => false,
 
-  permissionMeta: {
+  getPermissionIntent: () => ({
     riskLevel: 'low',
     accessType: 'read',
-  },
+    promptPolicy: 'neverForTrustedBuiltin',
+  }),
 
   requires: ['narrativeSearch'],
 

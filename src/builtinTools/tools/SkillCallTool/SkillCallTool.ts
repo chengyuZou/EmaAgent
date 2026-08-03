@@ -1,7 +1,10 @@
 // 加载指定 Skill 的指令，并通过 Skill Runner 注入当前 Agent。
 import { z } from 'zod';
-import { buildTool } from '@ema-agent/tools';
-import type {
+import {
+  buildTool,
+  contextFail,
+  contextOk,
+  type BuiltinToolContext,
   ToolCapabilityScope,
 } from '@ema-agent/tools';
 import type {
@@ -10,8 +13,6 @@ import type {
   SkillRunnerPort,
 } from '@ema-agent/skills';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
-import type { BuiltinToolContext } from '../../builtinToolContext.js';
-import { contextFail, contextOk } from '../../contextValidation.js';
 
 /** SkillCall 工具的窄 Context：Skill 运行器 + 工具能力边界。 */
 interface SkillCallToolContext {
@@ -63,10 +64,11 @@ The result contains the Skill instructions for the current workflow. A Skill doe
   isReadOnly: () => false,
   isConcurrencySafe: () => false,
 
-  permissionMeta: {
+  getPermissionIntent: () => ({
     riskLevel: 'medium',
     accessType: 'execute',
-  },
+    promptPolicy: 'whenRequired',
+  }),
 
   // toolCapabilities 由本轮 Manifest 派生，外部装配只需证明 SkillRunner 存在。
   requires: ['skillRunner', 'activeSkillState'],

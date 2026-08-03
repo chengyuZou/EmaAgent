@@ -1,20 +1,32 @@
-// 统一导出工具框架的注册、执行、结果展示和基础类型接口。
+// 统一导出工具框架的定义、注册、执行和结果边界。
 export type {
   ReadFileEntry,
   ReadFileState,
   ToolCapabilityRestriction,
   ToolCapabilitySnapshot,
   ToolCapabilityScope,
-  ToolDescriptor,
-  ToolManifestEntry,
   ToolManifestSnapshot,
   ExecutableToolManifestSnapshot,
+} from './types.js';
+export type {
+  ToolDescriptor,
+  ToolManifestEntry,
   ToolOrigin,
   ToolInputValidationResult,
   ToolContextValidation,
   ToolDef,
   BuiltTool,
-} from './types.js';
+} from './Tool/tool.js';
+export type {
+  AskUserPort,
+  BuiltinToolContext,
+  ScratchpadPort,
+  SubagentContextMode,
+  SubagentRunResult,
+  SubagentSpawnOptions,
+  SubagentSpawnerPort,
+} from './Tool/toolUseContext.js';
+export { contextFail, contextOk } from './Tool/toolUseContext.js';
 export type {
   AskUserQuestionSpec,
   AskUserRequiredEvent,
@@ -24,31 +36,16 @@ export type {
   ToolStreamEvent,
   ToolExecutionEvent,
 } from './events.js';
-export {
-  createBackgroundProcessPresentation,
-  createCommandPresentation,
-  createFileChangePresentation,
-  createFileReadPresentation,
-  createPdfReadPresentation,
-  createSearchPresentation,
-  isToolPresentation,
-} from './presentation/index.js';
-export type {
-  BackgroundProcessPresentation,
-  CommandPresentation,
-  CreateCommandPresentationInput,
-  CreateFileReadPresentationInput,
-  CreateSearchPresentationInput,
-  FileChangePresentation,
-  FileReadPresentation,
-  CreatePdfReadPresentationInput,
-  PdfReadPresentation,
-  SearchLimitReason,
-  SearchPresentation,
-  ToolPresentation,
-} from './presentation/index.js';
-export type { DeepReadonly, PreparedToolCall } from './prepared-call.js';
+export type { DeepReadonly, PreparedToolCall } from './preparation/preparedToolCall.js';
 export type { ToolExecutionResult } from './execution/toolExecutionResult.js';
+export { ToolExecution } from './execution/toolExecution.js';
+export type {
+  ToolExecutionCall,
+  ToolExecutionCompletion,
+  ToolExecutionEnvironment,
+  ToolExecutionHostContext,
+  ToolExecutionLiveEvent,
+} from './execution/toolExecution.js';
 export type {
   ToolLifecycleContext,
   ToolLifecycleObserver,
@@ -60,17 +57,14 @@ export type {
   ToolExecutionRuntimeEvent,
   ToolExecutionRuntimeOptions,
 } from './execution/toolExecutionRuntime.js';
-export { presentToolResult, splitToolResult } from './presentation/index.js';
-export type { SplitToolResult } from './presentation/index.js';
-
-export { buildTool, DEFAULT_MAX_RESULT_BYTES } from './build-tool.js';
-export { assembleToolPool } from './assembleToolPool.js';
+export { buildTool, DEFAULT_MAX_RESULT_BYTES } from './Tool/buildTool.js';
+export { assembleToolPool } from './assembly/assembleToolPool.js';
 export {
   createToolManifestSnapshot,
   createToolManifestSnapshotFromEntries,
-} from './toolManifest.js';
-export { ToolRegistry } from './registry.js';
-export type { McpToolOwner, McpToolRegistration } from './registry.js';
+} from './assembly/toolManifest.js';
+export { ToolRegistry } from './assembly/toolRegistry.js';
+export type { McpToolOwner, McpToolRegistration } from './assembly/toolRegistry.js';
 export {
   BackgroundProcessError,
   createBackgroundProcessAbortError,

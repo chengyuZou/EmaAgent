@@ -33,7 +33,8 @@ const permissionTimeoutBodySchema = z.object({
   timeoutMs: z.number()
     .int()
     .min(MIN_PERMISSION_ASK_TIMEOUT_MS)
-    .max(MAX_PERMISSION_ASK_TIMEOUT_MS),
+    .max(MAX_PERMISSION_ASK_TIMEOUT_MS)
+    .nullable(),
 });
 
 const themeBodySchema = z.object({
@@ -60,7 +61,7 @@ export interface SettingsRouteDependencies {
   settings: Pick<SettingsStore, 'get' | 'set'>;
   catalog: Pick<SettingsCatalog, 'find' | 'list'>;
   /** 只影响之后进入等待队列的 Permission/AskUser。 */
-  setDefaultPermissionTimeout(timeoutMs: number): void;
+  setDefaultPermissionTimeout(timeoutMs: number | null): void;
 }
 
 export function settingsRoute(dependencies: SettingsRouteDependencies): Hono {
@@ -96,7 +97,7 @@ export function settingsRoute(dependencies: SettingsRouteDependencies): Hono {
       const value = settings.set(definition, body.value);
       if (
         definition.key === permissionAskTimeoutSetting.key
-        && typeof value === 'number'
+        && (typeof value === 'number' || value === null)
       ) {
         dependencies.setDefaultPermissionTimeout(value);
       }

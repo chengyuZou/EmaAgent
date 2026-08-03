@@ -170,6 +170,7 @@ describe('Chat 统一执行链', () => {
         settings: {
           agent: DEFAULT_AGENT_SETTINGS,
           contextCompaction: DEFAULT_CONTEXT_COMPACTION_SETTINGS,
+          permissionMode: 'default',
         },
         workspaceRoot: process.cwd(),
         requestDegradations: [],

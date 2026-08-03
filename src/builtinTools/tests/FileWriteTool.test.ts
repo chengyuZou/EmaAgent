@@ -5,7 +5,6 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { asToolCallId, asSessionId, asTurnId } from '@ema-agent/ids';
 import type { ToolExecutionRecord } from '@ema-agent/tools';
-import { splitToolResult } from '@ema-agent/tools';
 import { FileWriteTool } from '../tools/FileWriteTool/FileWriteTool.js';
 import { atomicTempPrefix, atomicWriteUtf8 } from '../tools/FileWriteTool/atomicWrite.js';
 import { cleanupInterruptedFileWriteTemps } from '../tools/FileWriteTool/recovery.js';
@@ -32,12 +31,6 @@ describe('FileWriteTool', () => {
 
     const canonical = fs.realpathSync.native(target);
     expect(result).toMatchObject({ type: 'created', bytesWritten: 12 });
-    expect(splitToolResult(result).presentation).toMatchObject({
-      kind: 'file_change',
-      operation: 'create',
-      filePath: target,
-      additions: 1,
-    });
     expect(fs.readFileSync(target, 'utf8')).toBe('完整内容');
     expect(execution.readFileState.get(canonical)?.content).toBe('完整内容');
     expect(listWriteTemps(path.dirname(target))).toEqual([]);
@@ -57,7 +50,7 @@ describe('FileWriteTool', () => {
     expect(listWriteTemps(directory)).toEqual([]);
   });
 
-  it('已有文件完整读过且未变更时允许覆盖并展示真实 diff', async () => {
+  it('已有文件完整读过且未变更时允许覆盖', async () => {
     const directory = makeTempDir();
     const target = path.join(directory, 'existing.txt');
     fs.writeFileSync(target, '第一行\n旧内容\n', 'utf8');
@@ -74,12 +67,8 @@ describe('FileWriteTool', () => {
       { file_path: target, content: '第一行\n新内容\n' },
       execution,
     );
-    const split = splitToolResult(result);
-
-    expect(split.modelOutput).toMatchObject({ type: 'updated' });
-    expect(split.presentation).toMatchObject({ additions: 1, deletions: 1 });
-    expect(split.presentation?.kind === 'file_change' && split.presentation.unifiedDiff)
-      .toContain('+新内容');
+    expect(result).toMatchObject({ type: 'updated' });
+    expect(fs.readFileSync(target, 'utf8')).toBe('第一行\n新内容\n');
   });
 
   it('写入在替换前取消时保留旧文件且不遗留临时文件', async () => {

@@ -1,9 +1,8 @@
-// Ema 内置工具的完整宿主 Context：调用身份 + 各业务能力 Port。
-// 只有 builtinTools 集成层需要同时知道所有 Port；src/tools 通用框架不引用它，
-// 避免 tools 反向依赖 sandbox/knowledge/tasks/agent 等业务包。
+// 定义内置工具宿主 Context、调用期能力和窄 Context 投影结果构造器。
 import type {
   AgentRunId,
   SessionId,
+  TaskId,
   ToolCallId,
   TurnId,
 } from '@ema-agent/ids';
@@ -16,13 +15,49 @@ import type {
   SkillRunnerPort,
 } from '@ema-agent/skills';
 import type {
-  AskUserQuestionSpec,
   ReadFileState,
   ToolCapabilityScope,
-  ToolExecutionEvent,
-  BackgroundProcessPort,
-} from '@ema-agent/tools';
-import type { SubagentSpawnerPort } from './subagentToolPort.js';
+} from '../types.js';
+import type { AskUserQuestionSpec, ToolExecutionEvent } from '../events.js';
+import type { BackgroundProcessPort } from '../background/types.js';
+import type { ToolContextValidation } from './tool.js';
+
+/** 子 Agent 启动时如何取得父执行上下文。 */
+export type SubagentContextMode = 'subagent' | 'fork';
+
+export interface SubagentSpawnOptions {
+  model?: string;
+  description?: string;
+  kind?: SubagentContextMode;
+  agentRunId?: AgentRunId;
+  taskId?: TaskId;
+}
+
+export interface SubagentRunResult {
+  agentRunId: AgentRunId;
+  output: string;
+  usage: {
+    inputTokens: number;
+    outputTokens: number;
+  };
+}
+
+/** Subagent Tool 消费的执行端口；Agent 只需结构化实现，不被 Tools 反向导入。 */
+export interface SubagentSpawnerPort {
+  spawn(
+    prompt: string,
+    options: SubagentSpawnOptions,
+    signal: AbortSignal,
+  ): Promise<SubagentRunResult>;
+  spawnBackground?(
+    prompt: string,
+    options: SubagentSpawnOptions,
+    signal: AbortSignal,
+  ): AgentRunId;
+  awaitBackground?(agentRunId: AgentRunId): Promise<SubagentRunResult | null>;
+  queueMessage?(agentRunId: AgentRunId, message: string): boolean;
+  abortSubagent?(agentRunId: AgentRunId): boolean;
+}
 
 /**
  * AskUser 工具向宿主提出的问询解析器：发出结构化问询请求并等待答案。
@@ -100,4 +135,12 @@ export interface BuiltinToolContext {
   readonly emit?: (event: ToolExecutionEvent) => void;
 }
 
-export type { AgentRunId, SessionId, TurnId };
+/** 投影成功，携带 Tool 实际需要的窄 Context。 */
+export const contextOk = <T>(context: T): ToolContextValidation<T> =>
+  ({ valid: true, context });
+
+/** 投影失败时把缺失能力如实返回模型，不进入 Permission 和执行阶段。 */
+export const contextFail = <T = never>(reason: string): ToolContextValidation<T> =>
+  ({ valid: false, reason });
+
+export type { AgentRunId, SessionId, TaskId, TurnId };

@@ -86,24 +86,25 @@ describe('MCP 工具发现安全边界', () => {
   it('readOnlyHint 不能生成 low/read 权限，也不能开放并发', async () => {
     const tool = buildMcpBuiltTool(toolInfo({ reportedReadOnly: true }), registryStub());
     const ask = vi.fn(async () => ({ action: 'deny' as const }));
-    const permission = new PermissionEngine({ mode: 'auto', ask }, new InMemoryPermissionRuleStore());
+    const permission = new PermissionEngine(new InMemoryPermissionRuleStore());
 
-    expect(tool.permissionMeta).toEqual({
-      approval: 'required',
+    const intent = await tool.getPermissionIntent({}, {});
+    expect(intent).toEqual({
       riskLevel: 'medium',
       accessType: 'execute',
+      promptPolicy: 'whenRequired',
     });
     expect(tool.isReadOnly({})).toBe(false);
     expect(tool.isConcurrencySafe({})).toBe(false);
 
-    const outcome = await permission.gate(
-      { id: tool.id, name: tool.name },
-      {},
-      tool.permissionMeta,
-      { workspaceRoot: '', sessionId: 'session-mcp' },
-    );
+    const outcome = await permission.authorize({
+      tool: { id: tool.id, name: tool.name },
+      input: {},
+      intent,
+      context: { mode: 'default' },
+    }, ask);
 
-    expect(outcome.granted).toBe(false);
+    expect(outcome.outcome).toBe('deny');
     expect(ask).toHaveBeenCalledWith(expect.objectContaining({
       toolId: tool.id,
       toolName: tool.name,
@@ -130,16 +131,16 @@ describe('MCP 工具发现安全边界', () => {
     expect(tool.requiresUserInteraction({})).toBe(false);
   });
 
-  it('destructiveHint 只能单向提升到 high，和 readOnlyHint 冲突时仍按 high', () => {
+  it('destructiveHint 只能单向提升到 high，和 readOnlyHint 冲突时仍按 high', async () => {
     const destructive = buildMcpBuiltTool(
       toolInfo({ reportedReadOnly: true, reportedDestructive: true }),
       registryStub(),
     );
 
-    expect(destructive.permissionMeta).toEqual({
-      approval: 'required',
+    await expect(destructive.getPermissionIntent({}, {})).resolves.toEqual({
       riskLevel: 'high',
       accessType: 'execute',
+      promptPolicy: 'whenRequired',
     });
     expect(destructive.isReadOnly({})).toBe(false);
     expect(destructive.isConcurrencySafe({})).toBe(false);

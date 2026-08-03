@@ -22,7 +22,7 @@ import type {
 import {
   type BuiltinToolContext,
 } from '@ema-agent/tool-builtin';
-import type { PermissionEngine } from '@ema-agent/permission';
+import type { PermissionAuthorizer, PermissionMode } from '@ema-agent/permission';
 import type { SkillRunnerPort } from '@ema-agent/skills';
 import { AgentRunTranscriptProjection } from './runs/agentRunTranscriptProjection.js';
 import type {
@@ -60,7 +60,9 @@ const OUTPUT_EXCERPT_MAX = 200;   // 子 Agent 完成摘要字符数
 export interface SubagentSpawnerDeps {
   tools: ToolRegistry;
   llm: LanguageModel;
-  permission: PermissionEngine;
+  permission: PermissionAuthorizer;
+  /** 子 Agent 必须继承父 Turn 冻结的权限模式，不能自行升级。 */
+  permissionMode: PermissionMode;
   /** spawn 瞬间读取父 Agent 的当前能力上限，Skill 收窄会沿任务树传播。 */
   getParentAllowedToolIds: () => ReadonlySet<string>;
   buildAsk?: ToolExecutionRuntimeOptions<BuiltinToolContext>['buildAsk'];
@@ -170,8 +172,9 @@ export class SubagentSpawner implements SubagentSpawnerPort {
     const parentTurnId  = this.parentTurnId   as TurnId;
     const resolvedModel = opts.model ?? this.parentModel;
     const permCtx       = {
+      mode: this.deps.permissionMode,
       workspaceRoot: this.workspaceRoot,
-      sessionId: this.parentSessionId,
+      sessionId,
       turnId: parentTurnId,
       internalPaths: this.scratchpadDir
         ? { turnScratchpad: this.scratchpadDir }

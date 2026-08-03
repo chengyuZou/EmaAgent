@@ -2,12 +2,12 @@
 import { Hono } from 'hono';
 import { probeBash, installGitViaWinget } from '@ema-agent/sandbox';
 import type { GitInstallResult } from '@ema-agent/sandbox';
-import type { PermissionEngine } from '@ema-agent/permission';
+import type { PermissionAuthorizer } from '@ema-agent/permission';
 
 // 安装是系统级副作用: 同一时刻只允许一个在跑, 并发请求明确拒绝而不是再起 winget。
 let installInFlight: Promise<GitInstallResult> | null = null;
 
-export function shellRoute(permission: Pick<PermissionEngine, 'gate'>): Hono {
+export function shellRoute(permission: PermissionAuthorizer): Hono {
   const app = new Hono();
 
   /**
@@ -28,19 +28,30 @@ export function shellRoute(permission: Pick<PermissionEngine, 'gate'>): Hono {
    * 再执行; 拒绝返回 403, 不绕开"工具意图必须独立审批"的红线直接 spawn。
    */
   app.post('/install-git', async (c) => {
-    const outcome = await permission.gate(
-      'shell_install_git',
-      {
+    const outcome = await permission.authorize({
+      tool: {
+        id: 'host.shell.installGit',
+        name: '安装 Git',
+        description: '通过 winget 为当前用户安装 Git for Windows',
+      },
+      input: {
         operation: 'install_software',
         installer: 'winget',
         packageId: 'Git.Git',
         scope:     'user',
       },
-      { riskLevel: 'high', accessType: 'execute' },
-      { workspaceRoot: process.cwd() },
-    );
-    if (!outcome.granted) {
-      return c.json({ error: 'permission_denied', reason: outcome.reason }, 403);
+      intent: {
+        riskLevel: 'high',
+        accessType: 'execute',
+        promptPolicy: 'whenRequired',
+      },
+      context: {
+        mode: 'default',
+        workspaceRoot: process.cwd(),
+      },
+    });
+    if (outcome.outcome === 'deny') {
+      return c.json({ error: 'permission_denied', reason: outcome.message }, 403);
     }
 
     if (installInFlight) {

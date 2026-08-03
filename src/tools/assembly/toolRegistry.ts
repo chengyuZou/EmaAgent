@@ -1,20 +1,21 @@
-﻿// 注册、查找和准备内置及 MCP 工具，并阻止名称或身份冲突。
+// 注册、查找和准备内置及 MCP 工具，并阻止名称或身份冲突。
 import { ZodError } from 'zod';
 import {
   ToolInputError,
   ToolRegistrationConflictError,
   ToolRegistryError,
-} from './errors.js';
+} from '../errors.js';
 import type {
   BuiltTool,
-  ExecutableToolManifestSnapshot,
   ToolContextValidation,
   ToolDescriptor,
   ToolInputValidationResult,
   ToolOrigin,
-} from './types.js';
-import { freezePreparedInput } from './prepared-call.js';
-import type { PreparedToolCall } from './prepared-call.js';
+} from '../Tool/tool.js';
+import type { PermissionIntent } from '@ema-agent/permission';
+import type { ExecutableToolManifestSnapshot } from '../types.js';
+import { freezePreparedInput } from '../preparation/preparedToolCall.js';
+import type { PreparedToolCall } from '../preparation/preparedToolCall.js';
 import { createToolManifestSnapshot } from './toolManifest.js';
 
 // Registry 是泛型擦除边界；输入在 prepare() 中通过各工具自己的 Schema 恢复类型。
@@ -38,7 +39,7 @@ type ToolOwner = ToolOrigin;
  * Central registry for all BuiltTool instances.
  *
  * Builtin 在启动时注册；MCP 在连接与重连时只更新自己拥有的动态分区。
- * Agent 主链固定调用 prepare() → PermissionEngine.gate() → execute()。
+ * Agent 主链固定调用 prepare() → validateContext/input → permissionIntent() → execute()。
  */
 export class ToolRegistry {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -218,15 +219,12 @@ export class ToolRegistry {
     }
 
     const input = freezePreparedInput(parsed);
-    // MCP 工具可能绕过 buildTool() 手工构造，因此这里统一建立权限策略快照。
-    const permissionMeta = Object.freeze({ ...tool.permissionMeta });
     const prepared = Object.freeze({
       id: tool.id,
       name,
       origin: tool.origin,
       summary: tool.getToolUseSummary?.(input),
       input,
-      permissionMeta,
       isReadOnly: tool.isReadOnly(input),
       isConcurrencySafe: tool.isConcurrencySafe(input),
       requiresUserInteraction: tool.requiresUserInteraction(input),
@@ -258,6 +256,15 @@ export class ToolRegistry {
     // 注册表是类型擦除边界;窄 Context 由 validateContext 投影后以 unknown 传入。
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return await tool.validateInput?.(prepared.input, narrowedContext as any) ?? { valid: true };
+  }
+
+  /** 使用准备时绑定的同一 Tool 实现，为冻结输入生成纯数据授权意图。 */
+  async permissionIntent(
+    prepared: PreparedToolCall,
+    narrowedContext: unknown,
+  ): Promise<PermissionIntent> {
+    const tool = this.preparedTool(prepared);
+    return tool.getPermissionIntent(prepared.input, narrowedContext);
   }
 
   private toolFromManifest(

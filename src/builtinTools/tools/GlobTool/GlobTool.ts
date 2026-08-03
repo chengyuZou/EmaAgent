@@ -2,14 +2,8 @@
 import path from 'node:path';
 import { z } from 'zod';
 import { globIterate } from 'glob';
-import {
-  buildTool,
-  createSearchPresentation,
-  presentToolResult,
-} from '@ema-agent/tools';
+import { buildTool, contextFail, contextOk, type BuiltinToolContext } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
-import type { BuiltinToolContext } from '../../builtinToolContext.js';
-import { contextFail, contextOk } from '../../contextValidation.js';
 import { runBoundedProcess } from '../shared/BoundedProcess.js';
 import { sortPathsByMtimeDesc } from '../shared/fileMtimeSort.js';
 
@@ -63,14 +57,12 @@ export const GlobTool = buildTool<GlobInput, GlobResult, BuiltinToolContext, Glo
   isReadOnly: () => true,
   isConcurrencySafe: () => true,
 
-  permissionMeta: {
+  getPermissionIntent: (input, context) => ({
     riskLevel:   'low',
     accessType:  'read',
-    // 提供 `path` 时,搜索根传给 PermissionEngine 以强制工作区边界检查。
-    // 缺失时工具默认 ctx.workspaceRoot(总在界内),故传 undefined,
-    // 让标准的 workspace-read 快速路径适用。
-    extractPath: (input) => (input as { path?: string }).path,
-  },
+    targets: [{ path: input.path ?? context.workspaceRoot, accessType: 'read' }],
+    promptPolicy: 'whenRequired',
+  }),
 
   requires: ['workspaceRoot'],
 
@@ -108,17 +100,7 @@ export const GlobTool = buildTool<GlobInput, GlobResult, BuiltinToolContext, Glo
       ? `[Showing the ${MAX_RESULTS} most recently modified of ${found.paths.length}${found.enumTruncated ? '+' : ''} matches. Narrow the pattern or path to continue.]`
       : undefined;
 
-    return presentToolResult(
-      { files, truncated, notice },
-      createSearchPresentation({
-        operation: 'file_search',
-        pattern: input.pattern,
-        searchPath: searchDir,
-        resultCount: files.length,
-        truncated,
-        ...(truncated ? { limitReason: 'results' as const } : {}),
-      }),
-    );
+    return { files, truncated, notice };
   },
 });
 

@@ -1,12 +1,9 @@
 // 把工具实现投影为稳定排序、深冻结并带版本身份的模型可见清单。
 
 import { createHash } from 'node:crypto';
-import { freezePreparedInput } from './prepared-call.js';
-import type {
-  BuiltTool,
-  ToolManifestEntry,
-  ToolManifestSnapshot,
-} from './types.js';
+import { freezePreparedInput } from '../preparation/preparedToolCall.js';
+import type { BuiltTool, ToolManifestEntry } from '../Tool/tool.js';
+import type { ToolManifestSnapshot } from '../types.js';
 
 export function createToolManifestSnapshot(
   tools: readonly BuiltTool[],

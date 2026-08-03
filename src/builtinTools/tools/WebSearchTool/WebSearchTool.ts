@@ -1,10 +1,8 @@
 // 通过已配置的搜索服务返回有界的网页搜索结果。
 import { z } from 'zod';
 import { fetchPublicResource } from '@ema-agent/public-http';
-import { buildTool } from '@ema-agent/tools';
+import { buildTool, contextOk, type BuiltinToolContext } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
-import type { BuiltinToolContext } from '../../builtinToolContext.js';
-import { contextOk } from '../../contextValidation.js';
 
 /** WebSearch 工具的窄 Context：per-call 取消信号。 */
 interface WebSearchToolContext {
@@ -79,10 +77,11 @@ Adapter priority (uses the first configured one):
   isReadOnly: () => true,
   isConcurrencySafe: () => true,
 
-  permissionMeta: {
-    riskLevel: 'low',
+  getPermissionIntent: () => ({
+    riskLevel: 'medium',
     accessType: 'read',
-  },
+    promptPolicy: 'whenRequired',
+  }),
 
   validateContext(ctx) {
     return contextOk({ signal: ctx.signal });

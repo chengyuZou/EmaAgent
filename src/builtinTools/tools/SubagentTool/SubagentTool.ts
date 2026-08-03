@@ -2,14 +2,15 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { asAgentRunId, asTaskId } from '@ema-agent/ids';
-import { buildTool } from '@ema-agent/tools';
-import type {
+import {
+  buildTool,
+  contextFail,
+  contextOk,
+  type BuiltinToolContext,
   SubagentSpawnerPort,
   SubagentRunResult,
-} from '../../subagentToolPort.js';
+} from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
-import type { BuiltinToolContext } from '../../builtinToolContext.js';
-import { contextFail, contextOk } from '../../contextValidation.js';
 
 /** Subagent 工具的窄 Context：子 Agent 启动器 + per-call 取消信号。 */
 interface SubagentToolContext {
@@ -75,10 +76,11 @@ The sub-agent:
   isReadOnly: () => false,
   isConcurrencySafe: () => true,
 
-  permissionMeta: {
+  getPermissionIntent: () => ({
     riskLevel: 'high',
     accessType: 'execute',
-  },
+    promptPolicy: 'whenRequired',
+  }),
 
   requires: ['subagentSpawner'],
 

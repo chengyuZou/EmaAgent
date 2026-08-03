@@ -12,59 +12,25 @@ describe('parseMessageBlocksJson', () => {
     }];
     expect(parseMessageBlocksJson(JSON.stringify(reference), 'user', 'normal')).toEqual(reference);
   });
-  it('保留 Session 独有的工具展示字段', () => {
-    const presentations = [
-      {
-        kind: 'file_change', operation: 'update', filePath: 'a.ts', unifiedDiff: 'diff',
-        additions: 1, deletions: 1, truncated: false,
-      },
-      {
-        kind: 'file_read', filePath: 'a.ts', status: 'content', startLine: 1,
-        endLine: 10, totalLines: 20, partial: true, truncated: false,
-      },
-      {
-        kind: 'pdf_read', filePath: 'a.pdf', startPage: 1, endPage: 2,
-        totalPages: 4, hasMore: true, incompletePages: 0,
-      },
-      {
-        kind: 'command', command: 'pnpm test', workingDirectory: 'D:/repo', exitCode: 0,
-        timedOut: false, aborted: false, truncated: false,
-      },
-      {
-        kind: 'search', operation: 'content_search', pattern: 'SessionStore',
-        searchPath: 'src', resultCount: 3, truncated: true, limitReason: 'results',
-      },
-      {
-        kind: 'background_process', backgroundProcessId: 'process-1', command: 'pnpm dev',
-        workingDirectory: 'D:/repo', status: 'running',
-      },
-    ];
-    const rawBlocks = presentations.map((presentation, index) => ({
+  it('保留 Session 需要持久化的工具终态字段', () => {
+    const rawBlocks = [0, 1].map((index) => ({
       type: 'tool_result',
       toolUseId: `call-${index}`,
       content: 'done',
       durationMs: 12,
       errorCode: 'tool/error',
-      presentation,
     }));
 
     expect(parseMessageBlocksJson(JSON.stringify(rawBlocks), 'user', 'tool_results'))
       .toEqual(rawBlocks);
   });
 
-  it('拒绝字段不完整或枚举未知的工具展示数据', () => {
+  it('拒绝类型错误的工具终态字段', () => {
     const invalid = [{
       type: 'tool_result',
       toolUseId: 'call-1',
       content: 'done',
-      presentation: {
-        kind: 'command',
-        command: 'pnpm test',
-        workingDirectory: 'D:/repo',
-        exitCode: 0,
-        timedOut: false,
-        aborted: false,
-      },
+      durationMs: 'slow',
     }];
 
     expect(parseMessageBlocksJson(JSON.stringify(invalid), 'user', 'tool_results'))

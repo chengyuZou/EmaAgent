@@ -3,11 +3,9 @@
 import { z } from 'zod';
 import { asTaskId } from '@ema-agent/ids';
 import type { SessionId } from '@ema-agent/ids';
-import { buildTool } from '@ema-agent/tools';
+import { buildTool, contextFail, contextOk, type BuiltinToolContext } from '@ema-agent/tools';
 import type { TaskSnapshot, TaskStorePort } from '@ema-agent/tasks';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
-import type { BuiltinToolContext } from '../../builtinToolContext.js';
-import { contextFail, contextOk } from '../../contextValidation.js';
 
 /** Task 读取工具的窄 Context：持久存储 + 调用身份。 */
 interface TaskGetToolContext {
@@ -38,10 +36,11 @@ Use this before updating a task so you have its latest version, full description
   isReadOnly: () => true,
   isConcurrencySafe: () => true,
   getToolUseSummary: (input) => `读取任务：${input.taskId.slice(0, 8)}`,
-  permissionMeta: {
+  getPermissionIntent: () => ({
     riskLevel: 'low',
     accessType: 'read',
-  },
+    promptPolicy: 'neverForTrustedBuiltin',
+  }),
 
   requires: ['taskStore'],
 

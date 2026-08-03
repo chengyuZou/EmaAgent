@@ -34,7 +34,7 @@ describe('permission_required SSE', () => {
       expect(required).toEqual(expect.objectContaining({
         type: 'permission_required',
         toolId: 'file_edit',
-        tool: 'FileEdit',
+        toolName: 'FileEdit',
         toolDescription: '编辑指定文件的内容',
         riskLevel: 'medium',
         accessType: 'write',

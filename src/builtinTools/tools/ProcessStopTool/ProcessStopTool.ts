@@ -9,10 +9,11 @@ import {
   buildTool,
   type BackgroundProcessPort,
   type BackgroundProcessSummary,
+  type BuiltinToolContext,
+  contextFail,
+  contextOk,
 } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
-import type { BuiltinToolContext } from '../../builtinToolContext.js';
-import { contextFail, contextOk } from '../../contextValidation.js';
 
 interface ProcessStopToolContext {
   backgroundProcesses: BackgroundProcessPort;
@@ -40,10 +41,11 @@ export const ProcessStopTool = buildTool<
   maxResultBytes: 50_000,
   isReadOnly: () => false,
   isConcurrencySafe: () => false,
-  permissionMeta: {
+  getPermissionIntent: () => ({
     riskLevel: 'high',
     accessType: 'execute',
-  },
+    promptPolicy: 'whenRequired',
+  }),
   requires: ['backgroundProcesses'],
   validateContext(ctx) {
     if (!ctx.backgroundProcesses) {

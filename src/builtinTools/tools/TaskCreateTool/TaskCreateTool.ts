@@ -2,12 +2,10 @@
 
 import { z } from 'zod';
 import type { SessionId, TurnId } from '@ema-agent/ids';
-import { buildTool } from '@ema-agent/tools';
+import { buildTool, contextFail, contextOk, type BuiltinToolContext } from '@ema-agent/tools';
 import type { ToolExecutionEvent } from '@ema-agent/tools';
 import type { TaskSnapshot, TaskStorePort } from '@ema-agent/tasks';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
-import type { BuiltinToolContext } from '../../builtinToolContext.js';
-import { contextFail, contextOk } from '../../contextValidation.js';
 
 /** Task 写入工具的窄 Context：持久存储 + 可选事件输出 + 调用身份。 */
 interface TaskCreateToolContext {
@@ -64,10 +62,11 @@ New tasks always start as pending. Mark a task in_progress before beginning it a
   isReadOnly: () => false,
   isConcurrencySafe: () => true,
   getToolUseSummary: (input) => `创建任务：${input.subject}`,
-  permissionMeta: {
+  getPermissionIntent: () => ({
     riskLevel: 'low',
     accessType: 'write',
-  },
+    promptPolicy: 'whenRequired',
+  }),
 
   requires: ['taskStore'],
 

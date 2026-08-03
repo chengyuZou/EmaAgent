@@ -11,7 +11,7 @@ import {
   McpServerStore,
   type McpStdioLaunchIntent,
 } from '@ema-agent/mcp';
-import type { PermissionEngine } from '@ema-agent/permission';
+import type { PermissionAuthorizer } from '@ema-agent/permission';
 import {
   SkillInstaller,
   SkillMarketAdapter,
@@ -27,12 +27,10 @@ import {
 import type { ToolRegistry } from '@ema-agent/tools';
 import { profileDir } from '../storage-locations/index.js';
 
-type ExtensionPermission = Pick<PermissionEngine, 'gate'>;
-
 export function createExtensionRuntime(
   profileDb: Database,
   tools: ToolRegistry,
-  permission: ExtensionPermission,
+  permission: PermissionAuthorizer,
   localMcpStdioEnabled: boolean,
 ) {
   const mcpStdioGate = async (
@@ -42,9 +40,13 @@ export function createExtensionRuntime(
 
     // 环境变量值可能包含密钥；审批只展示键名，实际执行仍使用同一份冻结配置。
     const environmentKeys = Object.keys(intent.environment ?? {}).sort();
-    const outcome = await permission.gate(
-      'mcp_stdio_launch',
-      {
+    const outcome = await permission.authorize({
+      tool: {
+        id: 'host.mcp.launchStdio',
+        name: '启动本地 MCP 服务',
+        description: '启动用户配置的本地 stdio MCP 进程',
+      },
+      input: {
         operation: intent.operation,
         serverName: intent.serverName,
         command: intent.command,
@@ -52,10 +54,17 @@ export function createExtensionRuntime(
         cwd: intent.cwd ?? null,
         environmentKeys,
       },
-      { riskLevel: 'high', accessType: 'execute' },
-      { workspaceRoot: process.cwd() },
-    );
-    return outcome.granted;
+      intent: {
+        riskLevel: 'high',
+        accessType: 'execute',
+        promptPolicy: 'whenRequired',
+      },
+      context: {
+        mode: 'default',
+        workspaceRoot: process.cwd(),
+      },
+    });
+    return outcome.outcome === 'allow';
   };
 
   const mcpRegistry = new McpRegistry(

@@ -1,7 +1,7 @@
 // 按宿主当前拥有的能力，从统一注册表筛出本次 Agent 可见的工具实现。
 
-import type { BuiltTool } from './types.js';
-import type { ToolRegistry } from './registry.js';
+import type { BuiltTool } from '../Tool/tool.js';
+import type { ToolRegistry } from './toolRegistry.js';
 
 /**
  * 从 Registry 筛出全部 requires 均已满足的工具。

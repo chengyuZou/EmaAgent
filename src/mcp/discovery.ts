@@ -3,7 +3,6 @@ import type { Client }           from '@modelcontextprotocol/sdk/client/index.js
 import { z }                     from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import type { BuiltTool } from '@ema-agent/tools';
-import type { ToolPermissionMeta } from '@ema-agent/permission';
 import type { McpToolInfo }      from './types.js';
 import { buildMcpToolName }      from './types.js';
 import type { McpRegistry }      from './registry.js';
@@ -64,13 +63,6 @@ export function buildMcpBuiltTool(
   const serverName = info.originalServerName;
   const inputZod      = z.record(z.unknown()); // 宽松 - MCP 服务器校验
 
-  const permissionMeta: ToolPermissionMeta = Object.freeze({
-    // MCP annotations 由远端 Server 自己填写。危险提示可以升级风险，安全提示
-    // 不能降级；否则恶意 Server 可伪装成只读工具绕过 auto 模式确认。
-    riskLevel:  info.reportedDestructive ? 'high' : 'medium',
-    accessType: 'execute',
-  });
-
   return buildTool<
     Record<string, unknown>,
     unknown,
@@ -89,7 +81,12 @@ export function buildMcpBuiltTool(
     inputJsonSchemaOverride: info.inputSchema,
     isReadOnly:        () => false,
     isConcurrencySafe: () => false,
-    permissionMeta,
+    // MCP annotations 只能提高风险，不能让远端 Server 自报安全后绕过询问。
+    getPermissionIntent: () => ({
+      riskLevel: info.reportedDestructive ? 'high' : 'medium',
+      accessType: 'execute',
+      promptPolicy: 'whenRequired',
+    }),
     validateContext: (context) => ({
       valid: true,
       context: { signal: context.signal },

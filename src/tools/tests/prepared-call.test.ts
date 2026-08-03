@@ -1,10 +1,10 @@
 // 测试 PreparedToolCall 的输入冻结、归属校验和执行一致性。
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { buildTool } from '../build-tool.js';
-import { ToolRegistry } from '../registry.js';
+import { buildTool } from '../Tool/buildTool.js';
+import { ToolRegistry } from '../assembly/toolRegistry.js';
 import { ToolRegistryError } from '../errors.js';
-import type { BuiltTool } from '../types.js';
+import type { BuiltTool } from '../Tool/tool.js';
 
 const context = {
   signal: new AbortController().signal,
@@ -35,11 +35,12 @@ function makeTool(
     isReadOnly: (input) => input.path.endsWith('.txt'),
     isConcurrencySafe: (input) => input.parallel,
     requiresUserInteraction: input => input.path === 'question.txt',
-    permissionMeta: {
+    getPermissionIntent: input => ({
       riskLevel: 'medium',
       accessType: 'write',
-      extractPath: (input) => (input as { path: string }).path,
-    },
+      targets: [{ path: input.path, accessType: 'write' }],
+      promptPolicy: 'whenRequired',
+    }),
     execute: async (input) => `${input.path}:${input.parallel}`,
   });
 }
@@ -60,10 +61,17 @@ describe('PreparedToolCall', () => {
     expect(prepared.isConcurrencySafe).toBe(true);
     expect(prepared.requiresUserInteraction).toBe(false);
     expect(prepared.maxResultBytes).toBe(4096);
-    expect(prepared.permissionMeta.approval).toBe('required');
     expect(Object.isFrozen(prepared)).toBe(true);
     expect(Object.isFrozen(prepared.input)).toBe(true);
-    expect(Object.isFrozen(prepared.permissionMeta)).toBe(true);
+    const projected = registry.validateContext(prepared, context);
+    expect(projected.valid).toBe(true);
+    if (!projected.valid) throw new Error(projected.reason);
+    await expect(registry.permissionIntent(prepared, projected.context)).resolves.toEqual({
+      riskLevel: 'medium',
+      accessType: 'write',
+      targets: [{ path: 'notes.txt', accessType: 'write' }],
+      promptPolicy: 'whenRequired',
+    });
     await expect(registry.execute(prepared, context)).resolves.toBe('notes.txt:true');
   });
 
@@ -100,7 +108,11 @@ describe('PreparedToolCall', () => {
       inputSchema: z.object({ nested: z.object({ value: z.string() }) }),
       isReadOnly: () => true,
       isConcurrencySafe: () => true,
-      permissionMeta: { riskLevel: 'low', accessType: 'read' },
+      getPermissionIntent: () => ({
+        riskLevel: 'low',
+        accessType: 'read',
+        promptPolicy: 'neverForTrustedBuiltin',
+      }),
       validateContext: () => ({ valid: true, context: {} }),
       execute: async () => 'ok',
     });
@@ -151,14 +163,13 @@ describe('PreparedToolCall', () => {
       isConcurrencySafe: false,
       requiresUserInteraction: false,
       maxResultBytes: 4096,
-      permissionMeta: { riskLevel: 'low' },
     }, context)).rejects.toThrow(/not created by this registry/);
   });
 });
 
-describe('工具审批声明', () => {
-  it('拒绝 MCP 工具声明 not_required', () => {
-    expect(() => buildTool({
+describe('MCP 权限意图', () => {
+  it('远端声明不能把 MCP 工具降成低风险免询问', async () => {
+    const tool = buildTool({
       id: 'remote_tool',
       name: 'remote_tool',
       description: '远端工具',
@@ -168,12 +179,18 @@ describe('工具审批声明', () => {
         serverToolName: 'remote_tool',
       },
       inputSchema: z.object({}),
-      permissionMeta: {
-        approval: 'not_required',
+      getPermissionIntent: () => ({
         riskLevel: 'low',
-      },
+        accessType: 'read',
+        promptPolicy: 'neverForTrustedBuiltin',
+      }),
       validateContext: () => ({ valid: true, context: {} }),
       execute: async () => 'ok',
-    })).toThrow('Only trusted builtin tools');
+    });
+    await expect(tool.getPermissionIntent({}, {})).resolves.toEqual({
+      riskLevel: 'medium',
+      accessType: 'execute',
+      promptPolicy: 'whenRequired',
+    });
   });
 });

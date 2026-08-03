@@ -49,6 +49,7 @@ import {
 } from '@ema-agent/permission';
 import type { SettingsStore } from '@ema-agent/settings';
 import type { AskPermissionFn, PermissionStreamEvent } from '@ema-agent/permission';
+import type { PermissionMode } from '@ema-agent/permission';
 import type { AskUserInteractionPort } from '@ema-agent/turn-execution';
 import type {
   SessionId,
@@ -144,6 +145,8 @@ export interface AppBindings {
 
   // Agent stack
   permission:        PermissionEngine;
+  /** 新根 Turn 冻结的默认权限模式。 */
+  permissionMode:    PermissionMode;
   /** Permission 与 AskUser 共享的 per-Session FIFO 交互队列。 */
   interactionQueue:  AppInteractionQueue;
   /** 根 Turn 的 AskUser 等待端口；内部委托统一 Session 交互队列。 */
@@ -302,7 +305,13 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
 
   // ── Repos ───────────────────────────────────────────────────────────────────
   // ── Permission subsystem ────────────────────────────────────────────────────
-  const { permission, interactionQueue, askUserRegistry, buildAskForTurn } =
+  const {
+    permission,
+    permissionMode,
+    interactionQueue,
+    askUserRegistry,
+    buildAskForTurn,
+  } =
     buildPermissionSubsystem(
       settings.get(permissionAskTimeoutSetting),
       profileDb.sqlite,
@@ -445,7 +454,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     llm, embed, rerank, narrative, modelCatalog, modelCapabilities,
     card, emotion,
     tts, audioArchive, stt, vision, providerRuntime,
-    permission, interactionQueue, askUserRegistry, tools, backgroundProcesses,
+    permission, permissionMode, interactionQueue, askUserRegistry, tools, backgroundProcesses,
     buildAskForTurn, getCommandRunner,
     invalidateSessionRuntime, removeSessionRuntime,
     getSessionToolResultStore, agentRunStore, taskStore,

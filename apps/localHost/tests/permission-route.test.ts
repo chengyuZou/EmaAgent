@@ -13,8 +13,8 @@ function createApp() {
     updatedAt: 1,
   }];
   const permission = {
-    getRules: vi.fn(() => rules),
-    addRule: vi.fn((rule) => ({ ...rule, id: 'rule-2', enabled: true, createdAt: 2, updatedAt: 2 })),
+    listRules: vi.fn(() => rules),
+    saveRule: vi.fn((rule) => ({ ...rule, id: 'rule-2', enabled: true, createdAt: 2, updatedAt: 2 })),
     setRuleEnabled: vi.fn(),
     removeRule: vi.fn((id: string) => id === 'rule-1'),
   };
@@ -71,7 +71,7 @@ describe('Permission 路由', () => {
       body: JSON.stringify({ action: 'allow', tool: 'file_read', scope: 'global' }),
     });
     expect(created.status).toBe(201);
-    expect(permission.addRule).toHaveBeenCalledWith({
+    expect(permission.saveRule).toHaveBeenCalledWith({
       action: 'allow',
       tool: 'file_read',
       scope: 'global',
@@ -103,7 +103,7 @@ describe('Permission 路由', () => {
     });
 
     expect(response.status).toBe(400);
-    expect(permission.addRule).not.toHaveBeenCalled();
+    expect(permission.saveRule).not.toHaveBeenCalled();
   });
 
   it('待处理快照只返回 Permission 条目', async () => {

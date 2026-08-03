@@ -2,11 +2,14 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { asAgentRunId, asTaskId } from '@ema-agent/ids';
-import { buildTool } from '@ema-agent/tools';
-import type { SubagentSpawnerPort } from '../../subagentToolPort.js';
+import {
+  buildTool,
+  contextFail,
+  contextOk,
+  type BuiltinToolContext,
+  type SubagentSpawnerPort,
+} from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
-import type { BuiltinToolContext } from '../../builtinToolContext.js';
-import { contextFail, contextOk } from '../../contextValidation.js';
 
 /** 后台子 Agent 工具族的窄 Context：启动器 + per-call 取消信号（SpawnBackground 用）。 */
 interface BackgroundSubagentToolContext {
@@ -58,7 +61,11 @@ The sub-agent MUST be awaited before the parent turn ends.`,
   isReadOnly:        () => false,
   isConcurrencySafe: () => true,
 
-  permissionMeta: { riskLevel: 'high', accessType: 'execute' },
+  getPermissionIntent: () => ({
+    riskLevel: 'high',
+    accessType: 'execute',
+    promptPolicy: 'whenRequired',
+  }),
 
   requires: ['subagentSpawner'],
 
@@ -123,7 +130,11 @@ Returns queued:false if the sub-agent has already finished or was never started.
   isReadOnly:        () => false,
   isConcurrencySafe: () => true,
 
-  permissionMeta: { riskLevel: 'low', accessType: 'write' },
+  getPermissionIntent: () => ({
+    riskLevel: 'low',
+    accessType: 'write',
+    promptPolicy: 'whenRequired',
+  }),
 
   requires: ['subagentSpawner'],
 
@@ -172,7 +183,11 @@ Must be called before the parent turn ends. Returns output:null if the agentRunI
   isReadOnly:        () => false,
   isConcurrencySafe: () => true,
 
-  permissionMeta: { riskLevel: 'low', accessType: 'read' },
+  getPermissionIntent: () => ({
+    riskLevel: 'low',
+    accessType: 'read',
+    promptPolicy: 'neverForTrustedBuiltin',
+  }),
 
   requires: ['subagentSpawner'],
 
@@ -220,11 +235,11 @@ Returns aborted:false if the AgentRun is unknown or has already finished.`,
   isReadOnly:        () => false,
   isConcurrencySafe: () => true,
 
-  permissionMeta: {
+  getPermissionIntent: () => ({
     riskLevel: 'low',
     accessType: 'write',
-    approval: 'not_required',
-  },
+    promptPolicy: 'neverForTrustedBuiltin',
+  }),
 
   requires: ['subagentSpawner'],
 

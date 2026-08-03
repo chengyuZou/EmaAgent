@@ -1,18 +1,16 @@
 // 把 Bash 命令交给独立 Sandbox Runner 执行, 返回有界输出。
-// 安全链: bashSecurity 静态分析(permissionMeta.safetyCheck 硬拦 + execute 复查)
+// 安全链: bashSecurity 静态分析(validateInput 硬拦 + execute 复查)
 // + Permission 规则裁决 + Sandbox 隔离, 三层互不替代。
 import { z } from 'zod';
 import {
   buildTool,
-  createBackgroundProcessPresentation,
-  createCommandPresentation,
-  presentToolResult,
+  contextFail,
+  contextOk,
   type BackgroundProcessPort,
+  type BuiltinToolContext,
 } from '@ema-agent/tools';
 import type { CommandRunnerPort } from '@ema-agent/sandbox';
 import type { SessionId, ToolCallId, TurnId } from '@ema-agent/ids';
-import type { BuiltinToolContext } from '../../builtinToolContext.js';
-import { contextFail, contextOk } from '../../contextValidation.js';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { analyzeBashCommand, splitCommandSegments } from './bashSecurity.js';
 import { interpretExitCode } from './commandSemantics.js';
@@ -132,17 +130,23 @@ Usage rules:
     });
   },
 
-  permissionMeta: {
+  validateInput(input) {
+    const verdict = analyzeBashCommand(input.command);
+    return verdict.kind === 'deny'
+      ? {
+          valid: false,
+          code: 'bash/unsafe_command',
+          message: `Command blocked by safety policy: ${verdict.reason ?? input.command}`,
+          retryable: false,
+        }
+      : { valid: true };
+  },
+
+  getPermissionIntent: () => ({
     riskLevel: 'high',
     accessType: 'execute',
-    bypassImmune: true, // 安全检查即使 bypass 模式也跑
-    safetyCheck: (input: unknown) => {
-      const parsed = inputSchema.safeParse(input);
-      if (!parsed.success) return 'continue';
-      // 静态分析只表达硬拦截(deny); ask 档由 Bash 高风险默认确认流程兜住。
-      return analyzeBashCommand(parsed.data.command).kind === 'deny' ? 'deny' : 'continue';
-    },
-  },
+    promptPolicy: 'whenRequired',
+  }),
 
   async execute(
     input: BashInput,
@@ -174,20 +178,12 @@ Usage rules:
     });
 
     if (result.kind === 'processReference') {
-      return presentToolResult(
-        {
-          kind: result.kind,
-          backgroundProcessId: result.backgroundProcessId,
-          status: result.status,
-          outputPreview: result.outputPreview,
-        },
-        createBackgroundProcessPresentation({
-          backgroundProcessId: result.backgroundProcessId,
-          command,
-          workingDirectory: context.workspaceRoot,
-          status: result.status,
-        }),
-      );
+      return {
+        kind: result.kind,
+        backgroundProcessId: result.backgroundProcessId,
+        status: result.status,
+        outputPreview: result.outputPreview,
+      };
     }
 
     const interpretation = interpretExitCode(lastBase, result.result.exitCode);
@@ -204,21 +200,11 @@ Usage rules:
     if (interpretation.note) notes.push(interpretation.note);
     for (const warning of verdict.warnings) notes.push(warning);
 
-    return presentToolResult(
-      {
-        kind: 'commandResult',
-        ...result.result,
-        durationMs: result.durationMs,
-        ...(notes.length > 0 ? { note: notes.join('; ') } : {}),
-      },
-      createCommandPresentation({
-        command,
-        workingDirectory: context.workspaceRoot,
-        exitCode: result.result.exitCode,
-        timedOut: result.result.timedOut,
-        aborted: result.result.aborted,
-        truncated: result.result.truncated,
-      }),
-    );
+    return {
+      kind: 'commandResult',
+      ...result.result,
+      durationMs: result.durationMs,
+      ...(notes.length > 0 ? { note: notes.join('; ') } : {}),
+    };
   },
 });

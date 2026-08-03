@@ -1,7 +1,7 @@
 // 集中定义 src/tools 模块的错误类、错误码与取消错误构造助手。
 import { ZodError } from 'zod';
 import type { ToolCallId } from '@ema-agent/ids';
-import type { ToolOrigin } from './types.js';
+import type { ToolOrigin } from './Tool/tool.js';
 import type { ToolExecutionStatus } from './journal/toolExecutionJournal.js';
 
 // ── 工具注册与输入准备 ───────────────────────────────────────────────────────

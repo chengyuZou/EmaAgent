@@ -5,10 +5,7 @@ import type {
 } from '@ema-agent/llm';
 import type { MessageKind, MessageRole } from '@ema-agent/storage';
 import type { TurnContentPart } from '@ema-agent/turn';
-import {
-  isToolPresentation,
-  type ToolExecutionResult,
-} from '@ema-agent/tools';
+import type { ToolExecutionResult } from '@ema-agent/tools';
 
 export type AssistantBlock = LlmAssistantBlock;
 export type MessageContentPart = TurnContentPart;
@@ -113,8 +110,7 @@ function isToolResultBlock(value: unknown): value is ToolResultBlock {
   if (!(typeof value.content === 'string' || isToolResultParts(value.content))) return false;
   if (value.isError !== undefined && typeof value.isError !== 'boolean') return false;
   if (value.durationMs !== undefined && typeof value.durationMs !== 'number') return false;
-  if (value.errorCode !== undefined && typeof value.errorCode !== 'string') return false;
-  return value.presentation === undefined || isToolPresentation(value.presentation);
+  return value.errorCode === undefined || typeof value.errorCode === 'string';
 }
 
 function isToolResultParts(value: unknown): value is ToolResultContentPart[] {

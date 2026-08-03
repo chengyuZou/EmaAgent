@@ -3,7 +3,7 @@
 // (防 Unicode 空白绕过正则), 命令本身原样执行不改写。
 //
 // 判定分三档:
-//   deny —— 硬拦截, 对应 permissionMeta.safetyCheck, 任何模式都不放行;
+//   deny —— 硬拦截, 对应 BashTool.validateInput, 任何权限模式都不放行;
 //   ask  —— 无法静态证明安全, 依赖 Bash 高风险默认确认流程;
 //           注意: 用户已保存的 allow 规则可豁免此档(已知边界);
 //   ok   —— 进入正常权限流; readOnly=true 时工具另声明只读。

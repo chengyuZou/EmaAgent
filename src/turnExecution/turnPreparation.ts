@@ -305,6 +305,7 @@ function freezeTurnSettings(
     agent: Object.freeze({ ...settings.agent }),
     attachment: Object.freeze({ ...settings.attachment }),
     contextCompaction: Object.freeze({ ...settings.contextCompaction }),
+    permissionMode: settings.permissionMode,
   });
 }
 

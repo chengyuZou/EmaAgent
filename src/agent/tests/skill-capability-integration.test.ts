@@ -16,7 +16,10 @@ describe('Skill capability 与工具执行器集成', () => {
     ], 1) as ExecutableToolManifestSnapshot;
     const policy = new TurnPolicy(manifest);
     const dispatched: string[] = [];
-    const permissionGate = vi.fn(async () => ({ granted: true as const }));
+    const permissionAuthorize = vi.fn(async () => ({
+      outcome: 'allow' as const,
+      reason: { type: 'workspace' as const },
+    }));
 
     const tools = {
       has: () => true,
@@ -25,13 +28,18 @@ describe('Skill capability 与工具执行器集成', () => {
         name,
         origin: { kind: 'builtin' },
         input,
-        permissionMeta: {},
         isReadOnly: false,
         isConcurrencySafe: name !== 'SkillCall',
         requiresUserInteraction: false,
         maxResultBytes: 1024,
       }),
       validateContext: () => ({ valid: true, context: {} }),
+      validate: async () => ({ valid: true as const }),
+      permissionIntent: async () => ({
+        riskLevel: 'low' as const,
+        accessType: 'read' as const,
+        promptPolicy: 'neverForTrustedBuiltin' as const,
+      }),
       execute: async (prepared: { name: string }) => {
         dispatched.push(prepared.name);
         if (prepared.name === 'SkillCall') {
@@ -50,8 +58,8 @@ describe('Skill capability 与工具执行器集成', () => {
       allows: name => policy.allows(name),
       toolManifest: manifest,
       tools: tools as never,
-      permission: { gate: permissionGate } as never,
-      permCtx: { workspaceRoot: null } as never,
+      permission: { authorize: permissionAuthorize, clearSession: () => {} },
+      permCtx: { mode: 'default' },
       toolContext: {
         sessionId: 'session-skill',
         turnId: 'turn-skill',
@@ -69,7 +77,7 @@ describe('Skill capability 与工具执行器集成', () => {
     await executor.join();
 
     expect(dispatched).toEqual(['SkillCall']);
-    expect(permissionGate).toHaveBeenCalledTimes(1);
+    expect(permissionAuthorize).toHaveBeenCalledTimes(1);
     expect(executor.getResults()).toEqual([
       expect.objectContaining({ toolUseId: 'call-skill', isError: false }),
       expect.objectContaining({

@@ -25,7 +25,7 @@ interface TestAskRequest {
   questions: readonly unknown[];
 }
 
-function makeQueue(timeoutMs = 60_000): SessionInteractionQueue<
+function makeQueue(timeoutMs: number | null = 60_000): SessionInteractionQueue<
   TestPermissionPrompt,
   TestPermissionResponse,
   TestAskRequest
@@ -281,6 +281,26 @@ describe('SessionInteractionQueue Permission 与 AskUser 混合 FIFO', () => {
         reason: 'timed out after 1000ms',
       });
       expect(q.size()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('超时为 null 时一直等待，直到用户响应或生命周期取消', async () => {
+    vi.useFakeTimers();
+    try {
+      const q = makeQueue(null);
+      const pending = q.enqueuePermission({
+        sessionId: 's1',
+        turnId: 't1',
+        toolCallId: 'c1',
+        prompt: makePermissionPrompt('permission'),
+      });
+
+      await vi.advanceTimersByTimeAsync(24 * 60 * 60 * 1_000);
+      expect(q.listPending('s1')).toHaveLength(1);
+      expect(q.respondPermission(pending.promptId, { action: 'allow' })).toBe(true);
+      await expect(pending.promise).resolves.toEqual({ action: 'allow' });
     } finally {
       vi.useRealTimers();
     }

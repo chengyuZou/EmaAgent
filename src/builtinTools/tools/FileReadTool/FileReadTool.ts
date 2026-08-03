@@ -4,13 +4,12 @@ import path from 'node:path';
 import { z } from 'zod';
 import {
   buildTool,
-  createFileReadPresentation,
-  presentToolResult,
+  contextFail,
+  contextOk,
+  type BuiltinToolContext,
+  type ReadFileState,
 } from '@ema-agent/tools';
-import type { ReadFileState } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
-import type { BuiltinToolContext } from '../../builtinToolContext.js';
-import { contextFail, contextOk } from '../../contextValidation.js';
 import { readTextInRange, SELECTED_BYTES_LIMIT } from './readTextInRange.js';
 
 /** File 读取工具只取得当前 Turn 的读取状态与取消信号。 */
@@ -177,14 +176,12 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, BuiltinTool
     });
   },
 
-  permissionMeta: {
+  getPermissionIntent: (input) => ({
     riskLevel: 'low',
     accessType: 'read',
-    extractPath: (input: unknown) => {
-      const parsed = inputSchema.safeParse(input);
-      return parsed.success ? parsed.data.file_path : undefined;
-    },
-  },
+    targets: [{ path: input.file_path, accessType: 'read' }],
+    promptPolicy: 'whenRequired',
+  }),
 
   async execute(
     input: FileReadInput,
@@ -250,18 +247,13 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, BuiltinTool
       // 判别联合: 两个分支都带截断事实, 回放原样保留(分页分支另有 totalLines)。
       const totalLines = existing.isPartialView ? existing.totalLines : cachedLines.length;
       const truncated = existing.truncated;
-      return presentToolResult(
-        { type: 'file_unchanged', filePath: file_path },
-        createFileReadPresentation({
-          filePath: file_path,
-          status: 'unchanged',
-          startLine,
-          endLine: startLine + cachedLines.length - 1,
-          totalLines,
-          partial: isPartialView,
-          truncated,
-        }),
-      );
+      return {
+        type: 'file_unchanged',
+        filePath: file_path,
+        totalLines,
+        isPartialView,
+        ...(truncated ? { truncated: true as const } : {}),
+      };
     }
 
     // ── 读文件(小文件快路径整读, 大文件流式只留选中行) ─────────────────────────
@@ -297,33 +289,22 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, BuiltinTool
       });
     }
     const nextOffset = startLine + result.lines.length;
-    return presentToolResult(
-      {
-        type: 'file_content',
-        filePath: file_path,
-        content,
-        totalLines: result.totalLines,
-        isPartialView,
-        // 截断必须模型可见: 只告诉前端的话, 模型会对着不完整内容继续推理(P1)。
-        ...(result.truncated
-          ? {
-              truncated: true as const,
-              truncationReason: 'bytes' as const,
-              nextOffset,
-              notice: `Output truncated at ${SELECTED_BYTES_LIMIT / 1024} KB. Use offset=${nextOffset} to continue reading.`,
-            }
-          : {}),
-      },
-      createFileReadPresentation({
-        filePath: file_path,
-        status: 'content',
-        startLine,
-        endLine: startLine + result.lines.length - 1,
-        totalLines: result.totalLines,
-        partial: isPartialView,
-        truncated: result.truncated,
-      }),
-    );
+    return {
+      type: 'file_content',
+      filePath: file_path,
+      content,
+      totalLines: result.totalLines,
+      isPartialView,
+      // 截断必须模型可见，不能只告诉 UI 后让模型对不完整内容继续推理。
+      ...(result.truncated
+        ? {
+            truncated: true as const,
+            truncationReason: 'bytes' as const,
+            nextOffset,
+            notice: `Output truncated at ${SELECTED_BYTES_LIMIT / 1024} KB. Use offset=${nextOffset} to continue reading.`,
+          }
+        : {}),
+    };
   },
 });
 

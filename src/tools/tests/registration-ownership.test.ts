@@ -1,8 +1,8 @@
 // 这里测试 ToolRegistry 的名称所有权、稳定身份和 MCP 批量注册原子性。
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { buildTool } from '../build-tool.js';
-import { ToolRegistry } from '../registry.js';
+import { buildTool } from '../Tool/buildTool.js';
+import { ToolRegistry } from '../assembly/toolRegistry.js';
 import { ToolRegistrationConflictError } from '../errors.js';
 
 function makeTool(name: string, result: string, id = name) {
@@ -13,7 +13,11 @@ function makeTool(name: string, result: string, id = name) {
     inputSchema: z.object({}),
     isReadOnly: () => true,
     isConcurrencySafe: () => true,
-    permissionMeta: { riskLevel: 'low', accessType: 'read' },
+    getPermissionIntent: () => ({
+      riskLevel: 'low',
+      accessType: 'read',
+      promptPolicy: 'neverForTrustedBuiltin',
+    }),
     validateContext: () => ({ valid: true, context: {} }),
     execute: async () => result,
   });
@@ -33,7 +37,11 @@ function makeMcpTool(
     inputSchema: z.object({}),
     isReadOnly: () => true,
     isConcurrencySafe: () => true,
-    permissionMeta: { riskLevel: 'low', accessType: 'read' },
+    getPermissionIntent: () => ({
+      riskLevel: 'low',
+      accessType: 'read',
+      promptPolicy: 'neverForTrustedBuiltin',
+    }),
     validateContext: () => ({ valid: true, context: {} }),
     execute: async () => result,
   });

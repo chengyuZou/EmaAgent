@@ -4,7 +4,6 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { asToolCallId } from '@ema-agent/ids';
-import { splitToolResult } from '@ema-agent/tools';
 import { FileEditTool } from '../tools/FileEditTool/FileEditTool.js';
 
 const tempDirs: string[] = [];
@@ -36,7 +35,7 @@ describe('FileEditTool', () => {
     expect(fs.readFileSync(target, 'utf8')).toBe('旧内容');
   });
 
-  it('返回基于实际完整文件的 diff，而不是根据模型参数猜 diff', async () => {
+  it('根据完整文件状态执行精确替换', async () => {
     const target = makeFile('actual-diff.txt', '前文\n旧内容\n后文\n');
     const ctx = makeReadContext(target, 'call-diff');
 
@@ -44,14 +43,8 @@ describe('FileEditTool', () => {
       { file_path: target, old_string: '旧内容', new_string: '新内容', replace_all: false },
       ctx,
     );
-    const split = splitToolResult(result);
-
-    expect(split.modelOutput).toMatchObject({ filePath: target, replacements: 1 });
-    expect(split.presentation).toMatchObject({ additions: 1, deletions: 1, truncated: false });
-    if (split.presentation?.kind !== 'file_change') throw new Error('缺少文件变更展示数据');
-    expect(split.presentation.unifiedDiff).toContain(' 前文');
-    expect(split.presentation.unifiedDiff).toContain('-旧内容');
-    expect(split.presentation.unifiedDiff).toContain('+新内容');
+    expect(result).toMatchObject({ filePath: target, replacements: 1 });
+    expect(fs.readFileSync(target, 'utf8')).toBe('前文\n新内容\n后文\n');
   });
 
   it('两个 Session 基于同一旧版本并发编辑时只允许一个提交', async () => {

@@ -3,10 +3,10 @@ import path from 'node:path';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type {
-  PermissionEngine,
   PermissionPrompt,
   PermissionResponse,
   PermissionRule,
+  PermissionRuleCatalog,
 } from '@ema-agent/permission';
 import { asTurnId } from '@ema-agent/ids';
 import {
@@ -14,10 +14,7 @@ import {
   type SessionInteractionQueue,
 } from '@ema-agent/turn';
 
-type PermissionRulesRoute = Pick<
-  PermissionEngine,
-  'addRule' | 'getRules' | 'removeRule' | 'setRuleEnabled'
->;
+type PermissionRulesRoute = PermissionRuleCatalog;
 
 type PermissionInteractionsRoute = Pick<
   SessionInteractionQueue<PermissionPrompt, PermissionResponse, unknown>,
@@ -75,7 +72,7 @@ export function permissionRoute(
 ): Hono {
   const app = new Hono();
 
-  app.get('/rules', (c) => c.json({ rules: permission.getRules() }));
+  app.get('/rules', (c) => c.json({ rules: permission.listRules() }));
 
   app.post('/rules', async (c) => {
     const parsed = permissionRuleSchema.safeParse(await c.req.json().catch(() => null));
@@ -85,7 +82,7 @@ export function permissionRoute(
     const input: PermissionRule = parsed.data.scope === 'global'
       ? { ...parsed.data, workspaceRoot: undefined }
       : { ...parsed.data, workspaceRoot: path.resolve(parsed.data.workspaceRoot!) };
-    return c.json({ rule: permission.addRule(input) }, 201);
+    return c.json({ rule: permission.saveRule(input) }, 201);
   });
 
   app.patch('/rules/:ruleId', async (c) => {
@@ -94,7 +91,7 @@ export function permissionRoute(
     if (!parsed.success) {
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
     }
-    if (!permission.getRules().some((rule) => rule.id === ruleId)) {
+    if (!permission.listRules().some((rule) => rule.id === ruleId)) {
       return c.json({ error: 'not_found', ruleId }, 404);
     }
     permission.setRuleEnabled(ruleId, parsed.data.enabled);
@@ -117,7 +114,9 @@ export function permissionRoute(
       return c.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
     }
 
-    const response = parsed.data as PermissionResponse;
+    const response: PermissionResponse = parsed.data.action === 'allow_session'
+      ? { action: 'allowSession' }
+      : parsed.data;
     const ok = interactionQueue.respondPermission(promptId, response, turnId);
     if (!ok) {
       return c.json({ error: 'not_found_or_expired', promptId }, 404);

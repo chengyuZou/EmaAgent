@@ -46,6 +46,7 @@ const input: TurnInput = {
     agent: DEFAULT_AGENT_SETTINGS,
     attachment: DEFAULT_ATTACHMENT_SETTINGS,
     contextCompaction: DEFAULT_CONTEXT_COMPACTION_SETTINGS,
+    permissionMode: 'default',
   },
   workspaceRoot: 'D:\\workspace',
   requestDegradations: [],

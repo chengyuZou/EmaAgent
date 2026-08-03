@@ -2,12 +2,10 @@
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline/promises';
 import { z } from 'zod';
-import { buildTool } from '@ema-agent/tools';
+import { buildTool, contextOk, type AskUserPort, type BuiltinToolContext } from '@ema-agent/tools';
 import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { ToolExecutionEvent } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
-import type { AskUserPort, BuiltinToolContext } from '../../builtinToolContext.js';
-import { contextOk } from '../../contextValidation.js';
 
 /** AskText 工具的窄 Context：可选 SSE 输出 + 可选问询解析器 + 调用身份。 */
 interface AskTextToolContext {
@@ -44,10 +42,11 @@ Prefer this over AskUser for a single freeform question - the UI shows a focused
   requiresUserInteraction: () => true,
   requires: ['askUser'],
 
-  permissionMeta: {
-    approval: 'not_required',
+  getPermissionIntent: () => ({
     riskLevel: 'low',
-  },
+    accessType: 'read',
+    promptPolicy: 'neverForTrustedBuiltin',
+  }),
 
   // 总是可用：有 emit+askUser 走 SSE，否则 CLI 兜底。
   validateContext(ctx) {

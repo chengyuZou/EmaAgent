@@ -15,7 +15,7 @@ function message(input: Partial<SessionMessage> & Pick<SessionMessage, 'role' | 
 }
 
 describe('buildModelMessages', () => {
-  it('移除 thinking 和界面展示字段，但保留成对的工具调用事实', () => {
+  it('移除 thinking 和执行诊断字段，但保留成对的工具调用事实', () => {
     const result = buildModelMessages([
       message({
         role: 'assistant',
@@ -34,15 +34,7 @@ describe('buildModelMessages', () => {
           toolUseId: 'call-1',
           content: 'tool output',
           durationMs: 12,
-          presentation: {
-            kind: 'file_change',
-            operation: 'update',
-            filePath: 'demo.ts',
-            unifiedDiff: 'private UI diff',
-            additions: 1,
-            deletions: 0,
-            truncated: false,
-          },
+          errorCode: 'tool/diagnostic',
         }],
       }),
     ]);

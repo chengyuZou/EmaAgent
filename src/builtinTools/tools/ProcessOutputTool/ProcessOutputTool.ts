@@ -9,10 +9,11 @@ import {
   buildTool,
   type BackgroundProcessOutput,
   type BackgroundProcessPort,
+  type BuiltinToolContext,
+  contextFail,
+  contextOk,
 } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
-import type { BuiltinToolContext } from '../../builtinToolContext.js';
-import { contextFail, contextOk } from '../../contextValidation.js';
 
 interface ProcessOutputToolContext {
   backgroundProcesses: BackgroundProcessPort;
@@ -43,7 +44,11 @@ Use nextCursor for continuation. waitMs may wait up to 30 seconds for new output
   maxResultBytes: 160_000,
   isReadOnly: () => true,
   isConcurrencySafe: () => true,
-  permissionMeta: { riskLevel: 'low', accessType: 'read' },
+  getPermissionIntent: () => ({
+    riskLevel: 'low',
+    accessType: 'read',
+    promptPolicy: 'neverForTrustedBuiltin',
+  }),
   requires: ['backgroundProcesses'],
   validateContext(ctx) {
     if (!ctx.backgroundProcesses) {

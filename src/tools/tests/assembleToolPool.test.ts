@@ -2,9 +2,9 @@
 
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { assembleToolPool } from '../assembleToolPool.js';
-import { buildTool } from '../build-tool.js';
-import { ToolRegistry } from '../registry.js';
+import { assembleToolPool } from '../assembly/assembleToolPool.js';
+import { buildTool } from '../Tool/buildTool.js';
+import { ToolRegistry } from '../assembly/toolRegistry.js';
 
 interface HostContext {
   readonly workspaceRoot: string;
@@ -31,7 +31,11 @@ function makeTool(
     validateContext: () => ({ valid: true, context: {} }),
     isReadOnly: () => true,
     isConcurrencySafe: () => true,
-    permissionMeta: { riskLevel: 'low', accessType: 'read' },
+    getPermissionIntent: () => ({
+      riskLevel: 'low',
+      accessType: 'read',
+      promptPolicy: 'neverForTrustedBuiltin',
+    }),
     execute: async () => 'ok',
   });
 }

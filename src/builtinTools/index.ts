@@ -41,14 +41,16 @@ import { BuiltinTools } from './BuiltinToolIdentity.js';
 import type { ToolRegistry, BuiltTool } from '@ema-agent/tools';
 
 // ── 宿主 Context 与装配 ──────────────────────────────────────────────────────
-export type { BuiltinToolContext, ScratchpadPort, AskUserPort } from './builtinToolContext.js';
 export type {
+  AskUserPort,
+  BuiltinToolContext,
+  ScratchpadPort,
   SubagentContextMode,
   SubagentRunResult,
   SubagentSpawnOptions,
   SubagentSpawnerPort,
-} from './subagentToolPort.js';
-export { contextOk, contextFail } from './contextValidation.js';
+} from '@ema-agent/tools';
+export { contextOk, contextFail } from '@ema-agent/tools';
 
 // ── 单个工具导出 ──────────────────────────────────────────────────────────────
 

@@ -1,11 +1,15 @@
 // 提供当前 Turn 内主 Agent 和子 Agent 共用的临时读写工具。
 
 import { z } from 'zod';
-import { buildTool } from '@ema-agent/tools';
+import {
+  buildTool,
+  contextFail,
+  contextOk,
+  type BuiltinToolContext,
+  type ScratchpadPort,
+} from '@ema-agent/tools';
 import { estimateTextTokens } from '@ema-agent/token';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
-import type { BuiltinToolContext, ScratchpadPort } from '../../builtinToolContext.js';
-import { contextFail, contextOk } from '../../contextValidation.js';
 import {
   SCRATCHPAD_KEY_RE,
   writeScratchpadEntry,
@@ -76,11 +80,12 @@ The scratchpad is automatically deleted when the turn ends.`,
   isReadOnly:        () => false,
   isConcurrencySafe: () => false,
 
-  permissionMeta: {
+  getPermissionIntent: () => ({
     riskLevel: 'low',
     accessType: 'write',
     internalPathCapability: 'turnScratchpad',
-  },
+    promptPolicy: 'neverForTrustedBuiltin',
+  }),
 
   requires: ['scratchpad'],
   validateContext: validateScratchpad,
@@ -121,11 +126,12 @@ export const ScratchpadReadTool = buildTool<
   isReadOnly:        () => true,
   isConcurrencySafe: () => true,
 
-  permissionMeta: {
+  getPermissionIntent: () => ({
     riskLevel: 'low',
     accessType: 'read',
     internalPathCapability: 'turnScratchpad',
-  },
+    promptPolicy: 'neverForTrustedBuiltin',
+  }),
 
   requires: ['scratchpad'],
   validateContext: validateScratchpad,
@@ -160,11 +166,12 @@ export const ScratchpadListTool = buildTool<
   isReadOnly:        () => true,
   isConcurrencySafe: () => true,
 
-  permissionMeta: {
+  getPermissionIntent: () => ({
     riskLevel: 'low',
     accessType: 'read',
     internalPathCapability: 'turnScratchpad',
-  },
+    promptPolicy: 'neverForTrustedBuiltin',
+  }),
 
   requires: ['scratchpad'],
   validateContext: validateScratchpad,
@@ -201,11 +208,12 @@ export const ScratchpadDeleteTool = buildTool<z.infer<typeof deleteSchema>, { de
   isReadOnly:        () => false,
   isConcurrencySafe: () => false,
 
-  permissionMeta: {
+  getPermissionIntent: () => ({
     riskLevel: 'low',
     accessType: 'write',
     internalPathCapability: 'turnScratchpad',
-  },
+    promptPolicy: 'neverForTrustedBuiltin',
+  }),
 
   requires: ['scratchpad'],
   validateContext: validateScratchpad,
@@ -229,11 +237,12 @@ export const ScratchpadClearTool = buildTool<Record<never, never>, { cleared: nu
   isReadOnly:        () => false,
   isConcurrencySafe: () => false,
 
-  permissionMeta: {
+  getPermissionIntent: () => ({
     riskLevel: 'low',
     accessType: 'write',
     internalPathCapability: 'turnScratchpad',
-  },
+    promptPolicy: 'neverForTrustedBuiltin',
+  }),
 
   requires: ['scratchpad'],
   validateContext: validateScratchpad,

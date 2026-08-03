@@ -1,9 +1,10 @@
 // 根据运行模式创建权限引擎，并让 Permission 与 AskUser 共享 Session 交互队列。
 
-import { PermissionEngine, SqlPermissionRuleStore } from '@ema-agent/permission';
+import { PermissionEngine } from '@ema-agent/permission';
 import type {
   AskPermissionFn,
   PermissionPrompt,
+  PermissionMode,
   PermissionResponse,
 } from '@ema-agent/permission';
 import type { SessionId, ToolCallId, TurnId } from '@ema-agent/ids';
@@ -15,6 +16,8 @@ import {
 import type { AskUserInteractionOutcome } from '@ema-agent/turn';
 import type { AskUserInteractionPort } from '@ema-agent/turn-execution';
 import type { SqliteDb } from '@ema-agent/storage';
+import { PermissionRulesRepo } from '@ema-agent/storage';
+import { PermissionRuleStoreAdapter } from './permissionRuleStoreAdapter.js';
 
 // ── 返回契约 ─────────────────────────────────────────────────────────────────
 
@@ -26,6 +29,8 @@ export type AppInteractionQueue = SessionInteractionQueue<
 
 export interface PermissionBootstrapResult {
   permission:        PermissionEngine;
+  /** 根 Turn 启动时冻结的默认权限模式。 */
+  permissionMode:    PermissionMode;
   /** Permission 与 AskUser 共享的 per-Session FIFO 交互队列。 */
   interactionQueue:  AppInteractionQueue;
   /** 适配根 Turn AskUser 等待的交互端口；内部委托统一队列。 */
@@ -88,12 +93,12 @@ class InteractionQueueAskUserAdapter implements AskUserInteractionPort {
  * AGEN_PERMISSION_BYPASS=1 仅在非生产构建(NODE_ENV !== production)生效,
  * 用于自动化测试或开发者 CLI;生产构建物理拒绝该环境变量。
  *
- * 永久规则存 profile.db.permission_rules,通过 SqlPermissionRuleStore 适配;
+ * 永久规则存 profile.db.permission_rules，通过 LocalHost 的窄适配器接入；
  * 启动时 PermissionEngine 从 Store 加载已启用规则参与匹配,addRule/removeRule/setRuleEnabled
  * 会立即写库并刷新内存快照。内置规则由代码提供,不进数据库。
  */
 export function buildPermissionSubsystem(
-  defaultTimeoutMs: number,
+  defaultTimeoutMs: number | null,
   profileDb:    SqliteDb,
 ): PermissionBootstrapResult {
   // 用户设置只影响新入队的交互，已经开始等待的条目保持原超时。
@@ -112,18 +117,19 @@ export function buildPermissionSubsystem(
   // 仅开发/测试构建允许 AGEN_PERMISSION_BYPASS=1。
   const bypassAllowed = process.env['NODE_ENV'] !== 'production';
   const permissionMode = bypassAllowed && process.env['AGEN_PERMISSION_BYPASS'] === '1'
-    ? 'bypass'
-    : 'ask';
+    ? 'bypassPermissions'
+    : 'default';
 
   // 永久规则 Store:profile.db.permission_rules。
   // 不为 FileRead/Glob/Grep 注入无路径限制的全局 allow:工作区内读取由
   // PermissionEngine 的 workingDir 规则自动放行,工作区外读取落到 ask,
   // 避免越界读取借 allow 规则提前通过。
-  const ruleStore = new SqlPermissionRuleStore(profileDb);
-  const permission = new PermissionEngine({
-    mode: permissionMode,
-    ask:  async () => ({ action: 'deny', reason: 'no per-turn ask wired' }),
-  }, ruleStore);
+  const ruleStore = new PermissionRuleStoreAdapter(
+    new PermissionRulesRepo(profileDb),
+  );
+  const permission = new PermissionEngine(ruleStore, {
+    allowBypassPermissions: bypassAllowed,
+  });
 
   const buildAskForTurn = (args: {
     sessionId: string;
@@ -142,12 +148,12 @@ export function buildPermissionSubsystem(
         type:      'permission_required',
         sessionId: args.sessionId as SessionId,
         turnId:    args.turnId,
-        callId:    args.toolCallId,
+        toolCallId: args.toolCallId,
         promptId,
         toolId:    prompt.toolId,
-        tool:      prompt.toolName,
+        toolName:  prompt.toolName,
         toolDescription: prompt.toolDescription,
-        args:      prompt.input,
+        input:     prompt.input,
         hint:      prompt.gateReason ?? '',
         riskLevel: prompt.riskLevel,
         accessType: prompt.accessType,
@@ -158,14 +164,20 @@ export function buildPermissionSubsystem(
         type:      'permission_resolved',
         sessionId: args.sessionId as SessionId,
         turnId:    args.turnId,
-        callId:    args.toolCallId,
+        toolCallId: args.toolCallId,
         promptId,
-        decision: response.action === 'allow' || response.action === 'allow_session'
+        decision: response.action === 'allow' || response.action === 'allowSession'
                   ? 'allow' : 'deny',
       });
       return response;
     };
   };
 
-  return { permission, interactionQueue, askUserRegistry, buildAskForTurn };
+  return {
+    permission,
+    permissionMode,
+    interactionQueue,
+    askUserRegistry,
+    buildAskForTurn,
+  };
 }

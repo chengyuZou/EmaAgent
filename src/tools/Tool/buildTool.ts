@@ -1,13 +1,14 @@
 // 把工具作者提供的定义封装成注册表可以安全使用的不可变工具。
 import { zodToJsonSchema } from 'zod-to-json-schema';
-import { ToolDefinitionError } from './errors.js';
+import type { PermissionIntent } from '@ema-agent/permission';
+import { ToolDefinitionError } from '../errors.js';
 import type {
   BuiltTool,
   ToolContextValidation,
   ToolDef,
   ToolDescriptor,
   ToolOrigin,
-} from './types.js';
+} from './tool.js';
 
 export const DEFAULT_MAX_RESULT_BYTES = 50 * 1024;
 
@@ -38,9 +39,6 @@ export function buildTool<TInput, TOutput, THostContext, TToolContext>(
         serverToolName: def.origin.serverToolName,
       })
     : Object.freeze({ kind: 'builtin' });
-  if (origin.kind !== 'builtin' && def.permissionMeta.approval === 'not_required') {
-    throw new ToolDefinitionError('Only trusted builtin tools may declare approval=not_required');
-  }
   let cachedDescriptor: ToolDescriptor | undefined;
   const descriptor = (): ToolDescriptor => {
     if (!cachedDescriptor) {
@@ -65,6 +63,20 @@ export function buildTool<TInput, TOutput, THostContext, TToolContext>(
     input: unknown,
     context: unknown,
   ): Promise<unknown> => execute(input as TInput, context as TToolContext);
+  const getPermissionIntent = async (
+    input: TInput,
+    context: TToolContext,
+  ): Promise<PermissionIntent> => {
+    const intent = await def.getPermissionIntent(input, context);
+    if (origin.kind === 'builtin') return intent;
+
+    // MCP annotation 由远端提供，不能把外部 Tool 自报的低风险或免询问当作信任依据。
+    return {
+      riskLevel: intent.riskLevel === 'high' ? 'high' : 'medium',
+      accessType: 'execute' as const,
+      promptPolicy: 'whenRequired' as const,
+    };
+  };
   return Object.freeze({
     id: def.id ?? def.name,
     name: def.name,
@@ -81,11 +93,7 @@ export function buildTool<TInput, TOutput, THostContext, TToolContext>(
     isReadOnly: def.isReadOnly,
     isConcurrencySafe: def.isConcurrencySafe,
     requiresUserInteraction: def.requiresUserInteraction ?? (() => false),
-    // 审批策略默认关闭失败：旧工具未声明时仍必须经过 PermissionEngine。
-    permissionMeta: Object.freeze({
-      approval: 'required',
-      ...def.permissionMeta,
-    }),
+    getPermissionIntent,
     descriptor,
     execute,
     unsafeExecute,

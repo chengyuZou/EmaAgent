@@ -14,7 +14,7 @@ import {
 import type {
   AskPermissionFn,
   PermissionContext,
-  PermissionEngine,
+  PermissionAuthorizer,
   PermissionStreamEvent,
 } from '@ema-agent/permission';
 import type { CommandRunnerPort } from '@ema-agent/sandbox';
@@ -62,7 +62,7 @@ import type {
 export interface TurnToolsBuilderDeps {
   readonly session: SessionStore;
   readonly tools: ToolRegistry;
-  readonly permission: PermissionEngine;
+  readonly permission: PermissionAuthorizer;
   readonly llm: LanguageModel;
   readonly narrative?: NarrativeClient;
   readonly getCommandRunner?: (
@@ -201,6 +201,7 @@ export class TurnToolsBuilder {
     const knowledgeSearch = this.buildKnowledgeSearch(turn, input);
     const narrativeSearch = this.buildNarrativeSearch(turn, relay);
     const permissionContext: PermissionContext = {
+      mode: input.settings.permissionMode,
       workspaceRoot,
       sessionId,
       turnId,
@@ -214,6 +215,7 @@ export class TurnToolsBuilder {
       tools: this.deps.tools,
       llm: this.deps.llm,
       permission: this.deps.permission,
+      permissionMode: input.settings.permissionMode,
       getParentAllowedToolIds: () => {
         if (!parentPolicy) {
           throw new Error('Parent TurnPolicy is not ready');

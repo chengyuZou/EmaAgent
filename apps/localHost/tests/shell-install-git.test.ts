@@ -2,7 +2,7 @@
 // 拒绝返回 403 且不执行; 安装进行中并发请求返回 409, 不起第二个 winget。
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import type { PermissionEngine } from '@ema-agent/permission';
+import type { PermissionAuthorizer } from '@ema-agent/permission';
 import type { GitInstallResult } from '@ema-agent/sandbox';
 
 const { mockProbeBash, mockInstallGit } = vi.hoisted(() => ({
@@ -20,12 +20,13 @@ import { shellRoute } from '../src/routes/shell.js';
 function makePermission(
   granted: boolean,
   reason = 'denied by user',
-): Pick<PermissionEngine, 'gate'> {
+): PermissionAuthorizer {
   return {
-    gate: vi.fn(async () => granted
-      ? { granted: true as const }
-      : { granted: false as const, reason }),
-  } as unknown as Pick<PermissionEngine, 'gate'>;
+    authorize: vi.fn(async () => granted
+      ? { outcome: 'allow' as const, reason: { type: 'workspace' as const } }
+      : { outcome: 'deny' as const, message: reason, reason: { type: 'headless' as const } }),
+    clearSession: () => {},
+  };
 }
 
 function postInstall(app: ReturnType<typeof shellRoute>) {
@@ -46,12 +47,12 @@ describe('B-064 install-git 权限门禁', () => {
 
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toMatchObject({ ok: true });
-    expect(permission.gate).toHaveBeenCalledWith(
-      'shell_install_git',
-      expect.objectContaining({ installer: 'winget', packageId: 'Git.Git' }),
-      { riskLevel: 'high', accessType: 'execute' },
-      expect.objectContaining({ workspaceRoot: expect.any(String) }),
-    );
+    expect(permission.authorize).toHaveBeenCalledWith(expect.objectContaining({
+      tool: expect.objectContaining({ id: 'host.shell.installGit' }),
+      input: expect.objectContaining({ installer: 'winget', packageId: 'Git.Git' }),
+      intent: expect.objectContaining({ riskLevel: 'high', accessType: 'execute' }),
+      context: expect.objectContaining({ mode: 'default', workspaceRoot: expect.any(String) }),
+    }));
     expect(mockInstallGit).toHaveBeenCalledTimes(1);
   });
 

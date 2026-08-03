@@ -75,7 +75,7 @@ describe('Builtin ToolPool 能力装配', () => {
     expect(names).not.toContain(BuiltinTools.SkillCall.name);
   });
 
-  it('四种纯问询工具显式免普通权限审批', () => {
+  it('四种纯问询工具显式免普通权限审批', async () => {
     const registry = new ToolRegistry();
     registerBuiltinTools(registry);
 
@@ -85,7 +85,11 @@ describe('Builtin ToolPool 能力装配', () => {
       BuiltinTools.AskChoice,
       BuiltinTools.AskConfirm,
     ]) {
-      expect(registry.get(tool.name)?.permissionMeta.approval).toBe('not_required');
+      const registered = registry.get(tool.name);
+      expect(registered).toBeDefined();
+      await expect(registered!.getPermissionIntent({}, {})).resolves.toMatchObject({
+        promptPolicy: 'neverForTrustedBuiltin',
+      });
     }
   });
 });

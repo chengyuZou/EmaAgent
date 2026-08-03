@@ -2,15 +2,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import {
-  buildTool,
-  createSearchPresentation,
-  presentToolResult,
-} from '@ema-agent/tools';
-import type { SearchLimitReason } from '@ema-agent/tools';
+import { buildTool, contextFail, contextOk, type BuiltinToolContext } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
-import type { BuiltinToolContext } from '../../builtinToolContext.js';
-import { contextFail, contextOk } from '../../contextValidation.js';
 import { runBoundedProcess } from '../shared/BoundedProcess.js';
 import { sortPathsByMtimeDesc } from '../shared/fileMtimeSort.js';
 
@@ -124,13 +117,12 @@ Over-long lines (minified/base64-style) are skipped.`,
   isReadOnly: () => true,
   isConcurrencySafe: () => true,
 
-  permissionMeta: {
+  getPermissionIntent: (input, context) => ({
     riskLevel:   'low',
     accessType:  'read',
-    // 同 glob 的理由:显式 path 做工作区边界检查;
-    // 缺失默认 workspaceRoot(总在界内)。
-    extractPath: (input) => (input as { path?: string }).path,
-  },
+    targets: [{ path: input.path ?? context.workspaceRoot, accessType: 'read' }],
+    promptPolicy: 'whenRequired',
+  }),
 
   requires: ['workspaceRoot'],
 
@@ -265,28 +257,10 @@ Over-long lines (minified/base64-style) are skipped.`,
       output += `${output ? '\n' : ''}[Search stopped at the ${stopReason ?? 'output'} limit. Use a narrower pattern/path/glob, or continue with offset=${offset + head_limit}.]`;
     }
 
-    return presentToolResult(
-      {
-        output,
-        truncated,
-        ...(stopReason ? { stopReason } : {}),
-      },
-      createSearchPresentation({
-        operation: 'content_search',
-        pattern,
-        searchPath: resolvedTarget,
-        resultCount: page.length,
-        truncated,
-        ...(stopReason
-          ? { limitReason: normalizeSearchLimitReason(stopReason) }
-          : {}),
-      }),
-    );
+    return {
+      output,
+      truncated,
+      ...(stopReason ? { stopReason } : {}),
+    };
   },
 });
-
-function normalizeSearchLimitReason(
-  reason: 'records' | 'bytes' | 'timeout',
-): SearchLimitReason {
-  return reason === 'records' ? 'results' : reason;
-}

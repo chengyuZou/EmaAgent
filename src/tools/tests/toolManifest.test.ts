@@ -2,8 +2,8 @@
 
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { buildTool } from '../build-tool.js';
-import { ToolRegistry } from '../registry.js';
+import { buildTool } from '../Tool/buildTool.js';
+import { ToolRegistry } from '../assembly/toolRegistry.js';
 import { ToolRegistryError } from '../errors.js';
 
 function makeTool(
@@ -24,7 +24,11 @@ function makeTool(
     inputSchema: z.object({ query: z.string() }),
     isReadOnly: () => true,
     isConcurrencySafe: () => true,
-    permissionMeta: { riskLevel: 'low', accessType: 'read' },
+    getPermissionIntent: () => ({
+      riskLevel: 'low',
+      accessType: 'read',
+      promptPolicy: 'neverForTrustedBuiltin',
+    }),
     validateContext: () => ({ valid: true, context: {} }),
     execute: async () => result,
   });
@@ -125,7 +129,11 @@ describe('ToolManifestSnapshot', () => {
       inputSchema: z.object({ query: z.string(), limit: z.number() }),
       isReadOnly: () => true,
       isConcurrencySafe: () => true,
-      permissionMeta: { riskLevel: 'low', accessType: 'read' },
+      getPermissionIntent: () => ({
+        riskLevel: 'low',
+        accessType: 'read',
+        promptPolicy: 'neverForTrustedBuiltin',
+      }),
       validateContext: () => ({ valid: true, context: {} }),
       execute: async () => 'ok',
     }));

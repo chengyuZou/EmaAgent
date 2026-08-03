@@ -6,7 +6,6 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { FileReadTool } from '../tools/FileReadTool/FileReadTool.js';
-import { splitToolResult } from '@ema-agent/tools';
 import type { ReadFileState } from '@ema-agent/tools';
 
 function makeCtx(workspaceRoot = ''): { readFileState: ReadFileState; signal: AbortSignal; workspaceRoot: string } {
@@ -221,10 +220,7 @@ describe('FileReadTool — 截断模型可见与回放保留', () => {
     const { result } = await read(file, { offset: 1, limit: 10, ctx });
 
     expect(result.type).toBe('file_unchanged');
-    const { presentation } = splitToolResult(result) as {
-      presentation: { truncated?: boolean };
-    };
-    expect(presentation.truncated).toBe(true);
+    expect(result.truncated).toBe(true);
   });
 });
 

@@ -103,6 +103,7 @@ export function createTurnExecution(bindings: AppBindings): {
       agent: bindings.settings.get(agentSetting),
       attachment: bindings.settings.get(attachmentSetting),
       contextCompaction: bindings.settings.get(contextCompactionSetting),
+      permissionMode: bindings.permissionMode,
     }),
   });
 

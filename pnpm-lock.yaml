@@ -1073,9 +1073,6 @@ importers:
       '@ema-agent/settings':
         specifier: workspace:*
         version: link:../settings
-      '@ema-agent/storage':
-        specifier: workspace:*
-        version: link:../storage
       ignore:
         specifier: ^5.3.2
         version: 5.3.2
@@ -1396,24 +1393,48 @@ importers:
       '@ema-agent/ids':
         specifier: workspace:*
         version: link:../ids
+      '@ema-agent/knowledge':
+        specifier: workspace:*
+        version: link:../knowledge
+      '@ema-agent/llm':
+        specifier: workspace:*
+        version: link:../llm
+      '@ema-agent/narrative':
+        specifier: workspace:*
+        version: link:../narrative
       '@ema-agent/permission':
         specifier: workspace:*
         version: link:../permission
+      '@ema-agent/public-http':
+        specifier: workspace:*
+        version: link:../../packages/public-http
       '@ema-agent/sandbox':
         specifier: workspace:*
         version: link:../sandbox
+      '@ema-agent/session':
+        specifier: workspace:*
+        version: link:../session
       '@ema-agent/settings':
         specifier: workspace:*
         version: link:../settings
-      '@ema-agent/storage':
+      '@ema-agent/skills':
         specifier: workspace:*
-        version: link:../storage
+        version: link:../skills
       '@ema-agent/tasks':
         specifier: workspace:*
         version: link:../tasks
+      '@ema-agent/token':
+        specifier: workspace:*
+        version: link:../token
+      '@ema-agent/turn':
+        specifier: workspace:*
+        version: link:../turn
       diff:
         specifier: ^9.0.0
         version: 9.0.0
+      glob:
+        specifier: ^11.0.0
+        version: 11.1.0
       zod:
         specifier: ^3.23.0
         version: 3.25.76
@@ -1421,6 +1442,9 @@ importers:
         specifier: ^3.23.0
         version: 3.25.2(zod@3.25.76)
     devDependencies:
+      '@ema-agent/storage':
+        specifier: workspace:*
+        version: link:../storage
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.39

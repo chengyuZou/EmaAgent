@@ -1,13 +1,11 @@
 // 从当前 Session 已激活的知识库中检索相关内容。
 import { z } from 'zod';
-import { buildTool } from '@ema-agent/tools';
+import { buildTool, contextFail, contextOk, type BuiltinToolContext } from '@ema-agent/tools';
 import type {
   KbSearchResult,
   KnowledgeSearchRequest,
 } from '@ema-agent/knowledge';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
-import type { BuiltinToolContext } from '../../builtinToolContext.js';
-import { contextFail, contextOk } from '../../contextValidation.js';
 
 /** 知识库检索工具的窄 Context：KB 搜索入口。 */
 interface KnowledgeBaseSearchToolContext {
@@ -60,10 +58,11 @@ If the user has multiple knowledge bases, you may specify kb_ids to target one o
   isReadOnly: () => true,
   isConcurrencySafe: () => true,
 
-  permissionMeta: {
+  getPermissionIntent: () => ({
     riskLevel: 'low',
     accessType: 'read',
-  },
+    promptPolicy: 'neverForTrustedBuiltin',
+  }),
 
   requires: ['knowledgeSearch'],
 

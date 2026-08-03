@@ -26,6 +26,7 @@ describe('SubagentSpawner 生命周期', () => {
       llm: llm as never,
       tools: new ToolRegistry(),
       permission: {} as never,
+      permissionMode: 'default',
       getParentAllowedToolIds: () => new Set(),
       agentRunTranscriptWriter: {
         insert(message) {
@@ -83,6 +84,7 @@ describe('SubagentSpawner 生命周期', () => {
       emotion: {} as never,
       tools: new ToolRegistry(),
       permission: {} as never,
+      permissionMode: 'default',
       getParentAllowedToolIds: () => new Set(),
       agentRunStore: {
         start: input => ({
@@ -139,6 +141,7 @@ describe('SubagentSpawner 生命周期', () => {
       } as never,
       tools,
       permission: {} as never,
+      permissionMode: 'default',
       getParentAllowedToolIds: () => parentPolicy.allowedIds(),
     };
     const spawner = new SubagentSpawner(
@@ -177,7 +180,11 @@ function fakeTool(id: string, name: string): BuiltTool {
     isReadOnly: () => true,
     isConcurrencySafe: () => true,
     requiresUserInteraction: () => false,
-    permissionMeta: { riskLevel: 'low', accessType: 'read' },
+    getPermissionIntent: async () => ({
+      riskLevel: 'low',
+      accessType: 'read',
+      promptPolicy: 'neverForTrustedBuiltin',
+    }),
     descriptor: () => ({ name, description: name, inputJsonSchema: {} }),
     execute: async () => undefined,
     unsafeExecute: async () => undefined,

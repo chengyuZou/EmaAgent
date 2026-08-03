@@ -11,7 +11,7 @@ export interface PermissionInteraction<TPermissionPrompt, TPermissionResponse> {
   readonly turnId:      string;
   readonly toolCallId:  string;
   readonly createdAt:   number;
-  readonly timeoutMs:   number;
+  readonly timeoutMs:   number | null;
   readonly prompt:      TPermissionPrompt;
   readonly resolve:     (response: TPermissionResponse) => void;
 }
@@ -23,7 +23,7 @@ export interface AskUserInteraction<TAskRequest> {
   readonly sessionId:   string;
   readonly turnId:      string;
   readonly createdAt:   number;
-  readonly timeoutMs:   number;
+  readonly timeoutMs:   number | null;
   readonly request:     TAskRequest;
   readonly resolve:     (outcome: AskUserInteractionOutcome) => void;
 }
@@ -74,11 +74,11 @@ export class SessionInteractionQueue<TPermissionPrompt, TPermissionResponse, TAs
     fifo: SessionFifo<TPermissionPrompt, TPermissionResponse, TAskRequest>;
     entry: SessionInteraction<TPermissionPrompt, TPermissionResponse, TAskRequest>;
   }>();
-  private defaultTimeoutMs: number;
+  private defaultTimeoutMs: number | null;
   private readonly permissionCancellation: (reason: string) => TPermissionResponse;
 
   constructor(
-    defaultTimeoutMs: number,
+    defaultTimeoutMs: number | null,
     permissionCancellation: (reason: string) => TPermissionResponse,
   ) {
     this.defaultTimeoutMs = defaultTimeoutMs;
@@ -86,7 +86,7 @@ export class SessionInteractionQueue<TPermissionPrompt, TPermissionResponse, TAs
   }
 
   /** 实时更新默认超时(供 /api/settings/permission-timeout)。只影响此后新建的条目。 */
-  setDefaultTimeout(ms: number): void {
+  setDefaultTimeout(ms: number | null): void {
     this.defaultTimeoutMs = ms;
   }
 
@@ -100,7 +100,7 @@ export class SessionInteractionQueue<TPermissionPrompt, TPermissionResponse, TAs
     turnId:     string;
     toolCallId: string;
     prompt:     TPermissionPrompt;
-    timeoutMs?: number;
+    timeoutMs?: number | null;
   }): { promptId: string; createdAt: number; promise: Promise<TPermissionResponse> } {
     const promptId   = randomUUID();
     const timeoutMs  = args.timeoutMs ?? this.defaultTimeoutMs;
@@ -134,7 +134,7 @@ export class SessionInteractionQueue<TPermissionPrompt, TPermissionResponse, TAs
     sessionId:  string;
     turnId:     string;
     request:    TAskRequest;
-    timeoutMs?: number;
+    timeoutMs?: number | null;
   }): { createdAt: number; promise: Promise<AskUserInteractionOutcome> } {
     const timeoutMs = args.timeoutMs ?? this.defaultTimeoutMs;
     const createdAt = Date.now();
@@ -318,6 +318,10 @@ export class SessionInteractionQueue<TPermissionPrompt, TPermissionResponse, TAs
     if (fifo.timer) clearTimeout(fifo.timer);
     const head = fifo.entries[0];
     if (!head) {
+      fifo.timer = undefined;
+      return;
+    }
+    if (head.timeoutMs === null) {
       fifo.timer = undefined;
       return;
     }

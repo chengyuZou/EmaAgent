@@ -29,7 +29,7 @@ import type { MemoryRecallEvent } from '@ema-agent/memory';
 import type { PromptSnapshot } from '@ema-agent/prompts';
 import type { MessageBlocks, SessionStore, Turn } from '@ema-agent/session';
 import type { EmotionStreamEvent } from '@ema-agent/emotion';
-import type { PermissionStreamEvent } from '@ema-agent/permission';
+import type { PermissionMode, PermissionStreamEvent } from '@ema-agent/permission';
 import type { ModelCapabilitySnapshot } from '@ema-agent/provider';
 import type { NarrativeEvent } from '@ema-agent/narrative';
 import type { AttachmentSettings } from '@ema-agent/attachment';
@@ -73,6 +73,8 @@ export interface TurnSettingsSnapshot {
   readonly agent: Readonly<AgentSettings>;
   readonly attachment: Readonly<AttachmentSettings>;
   readonly contextCompaction: Readonly<ContextCompactionSettings>;
+  /** 权限模式随根 Turn 冻结，子 Agent 只能继承，不能在执行中自行放宽。 */
+  readonly permissionMode: PermissionMode;
 }
 
 /** Turn 创建后冻结的纯值输入，不携带回调、存储对象或运行时服务。 */

@@ -173,10 +173,10 @@ beforeAll(() => {
 
   const emotion = new EmotionEngine({ vocabulary: ['neutral', 'happy', 'sad', 'surprised', 'angry'] });
 
-  const permission = new PermissionEngine({
-    mode:  'bypass',
-    ask:   async () => ({ action: 'allow' }),
-  }, new InMemoryPermissionRuleStore());
+  const permission = new PermissionEngine(
+    new InMemoryPermissionRuleStore(),
+    { allowBypassPermissions: true },
+  );
 
   const tools = new ToolRegistry();
   registerBuiltinTools(tools);
@@ -259,6 +259,7 @@ function makeInput(
     settings: {
       agent: DEFAULT_AGENT_SETTINGS,
       contextCompaction: DEFAULT_CONTEXT_COMPACTION_SETTINGS,
+      permissionMode: 'bypassPermissions',
     },
     requestDegradations: [],
     ...overrides,

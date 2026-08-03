@@ -1,7 +1,6 @@
-// 定义工具调用、结果展示与用户询问产生的业务事件。
+// 定义工具调用、原始结果与用户询问产生的业务事件。
 import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { TaskEvent } from '@ema-agent/tasks';
-import type { ToolPresentation } from './presentation/index.js';
 
 export interface ToolError {
   code: string;
@@ -29,7 +28,7 @@ export interface AskUserQuestionSpec {
 export type ToolStreamEvent =
   | { type: 'tool_call_partial'; sessionId: SessionId; blockIndex: number; callId: string; name: string; argsDelta: string }
   | { type: 'tool_call_complete'; sessionId: SessionId; blockIndex: number; callId: string; name: string; args: unknown }
-  | { type: 'tool_result'; sessionId: SessionId; callId: string; name: string; output?: unknown; presentation?: ToolPresentation; error?: ToolError; durationMs: number }
+  | { type: 'tool_result'; sessionId: SessionId; callId: string; name: string; output?: unknown; error?: ToolError; durationMs: number }
   | {
       type: 'ask_user_required';
       sessionId: SessionId;

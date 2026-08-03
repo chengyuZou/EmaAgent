@@ -75,6 +75,7 @@ const input: TurnInput = {
   settings: {
     agent: DEFAULT_AGENT_SETTINGS,
     contextCompaction: DEFAULT_CONTEXT_COMPACTION_SETTINGS,
+    permissionMode: 'default',
   },
   workspaceRoot: 'D:\\workspace',
   requestDegradations: [],

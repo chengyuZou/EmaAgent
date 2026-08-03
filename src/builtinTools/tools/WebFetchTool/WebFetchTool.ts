@@ -1,10 +1,8 @@
 // 在网络安全和响应大小边界内获取公开网页内容。
 import { z } from 'zod';
 import { isObviouslyUnsafePublicUrl } from '@ema-agent/public-http';
-import { buildTool } from '@ema-agent/tools';
+import { buildTool, contextOk, type BuiltinToolContext } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
-import type { BuiltinToolContext } from '../../builtinToolContext.js';
-import { contextOk } from '../../contextValidation.js';
 import { fetchPublicPage } from './httpClient.js';
 import { htmlToMarkdown } from './htmlToMarkdown.js';
 
@@ -68,16 +66,22 @@ export const WebFetchTool = buildTool<WebFetchInput, WebFetchResult, BuiltinTool
   isReadOnly: () => true,
   isConcurrencySafe: () => true,
 
-  permissionMeta: {
+  validateInput(input) {
+    return isObviouslyUnsafePublicUrl(input.url)
+      ? {
+          valid: false,
+          code: 'web_fetch/unsafe_url',
+          message: 'URL 指向本机、私网或不受支持的协议，不能发送公网请求。',
+          retryable: false,
+        }
+      : { valid: true };
+  },
+
+  getPermissionIntent: () => ({
     riskLevel: 'medium',
     accessType: 'read',
-    bypassImmune: true,
-    safetyCheck: (input: unknown) => {
-      const parsed = inputSchema.safeParse(input);
-      if (!parsed.success) return 'continue';
-      return isObviouslyUnsafePublicUrl(parsed.data.url) ? 'deny' : 'continue';
-    },
-  },
+    promptPolicy: 'whenRequired',
+  }),
 
   validateContext(ctx) {
     return contextOk({ signal: ctx.signal });

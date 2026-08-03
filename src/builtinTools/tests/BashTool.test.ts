@@ -2,7 +2,6 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { asSessionId, asToolCallId, asTurnId } from '@ema-agent/ids';
-import { splitToolResult } from '@ema-agent/tools';
 import { BashTool } from '../tools/BashTool/BashTool.js';
 
 describe('BashTool 执行边界', () => {
@@ -27,7 +26,7 @@ describe('BashTool 执行边界', () => {
     expect(projection.valid).toBe(false);
   });
 
-  it('使用实际执行参数生成命令展示数据', async () => {
+  it('使用实际执行参数返回结构化命令结果', async () => {
     const runCommand = vi.fn().mockResolvedValue({
       kind: 'commandResult',
       result: {
@@ -64,27 +63,17 @@ describe('BashTool 执行边界', () => {
       { command: 'git status', description: '查看工作区状态' },
       projection.context,
     );
-    const split = splitToolResult(result);
 
     expect(runCommand).toHaveBeenCalledWith(expect.objectContaining({
       command: 'git status',
       description: '查看工作区状态',
       cwd: 'D:/workspace',
     }));
-    expect(split.modelOutput).toMatchObject({
+    expect(result).toMatchObject({
       kind: 'commandResult',
       stdout: 'ok',
       exitCode: 0,
       durationMs: 12,
-    });
-    expect(split.presentation).toEqual({
-      kind: 'command',
-      command: 'git status',
-      workingDirectory: 'D:/workspace',
-      exitCode: 0,
-      timedOut: false,
-      aborted: false,
-      truncated: false,
     });
   });
 });

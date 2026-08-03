@@ -71,7 +71,7 @@ export class McpRegistry {
     private readonly toolRegistry: ToolRegistry,
     /**
      * 提供时,stdio 服务器连接经此回调门禁。
-     * apps/localHost 在此接 PermissionEngine.gate() 调用,使启用 stdio MCP server
+     * apps/localHost 在此接非 Turn 的 PermissionAuthorizer 调用，使启用 stdio MCP server
      * 需用户显式批准 - 与 shell 工具调用门禁一致。
      */
     private readonly stdioGate?:   McpStdioPermissionGate,

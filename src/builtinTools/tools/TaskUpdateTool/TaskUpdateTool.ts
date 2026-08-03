@@ -3,12 +3,10 @@
 import { z } from 'zod';
 import { asTaskId } from '@ema-agent/ids';
 import type { SessionId, TurnId } from '@ema-agent/ids';
-import { buildTool } from '@ema-agent/tools';
+import { buildTool, contextFail, contextOk, type BuiltinToolContext } from '@ema-agent/tools';
 import type { ToolExecutionEvent } from '@ema-agent/tools';
 import type { TaskSnapshot, TaskStorePort, TaskMutationFailure } from '@ema-agent/tasks';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
-import type { BuiltinToolContext } from '../../builtinToolContext.js';
-import { contextFail, contextOk } from '../../contextValidation.js';
 
 /** Task 更新工具的窄 Context：持久存储 + 可选事件输出 + 调用身份。 */
 interface TaskUpdateToolContext {
@@ -107,10 +105,11 @@ Use action="cancel" when work is intentionally abandoned but history should rema
     const operation = input.action ?? input.status ?? '更新字段';
     return `更新任务：${input.taskId.slice(0, 8)} → ${operation}`;
   },
-  permissionMeta: {
+  getPermissionIntent: () => ({
     riskLevel: 'low',
     accessType: 'write',
-  },
+    promptPolicy: 'whenRequired',
+  }),
 
   requires: ['taskStore'],
 
