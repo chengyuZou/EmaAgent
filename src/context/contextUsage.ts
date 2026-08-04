@@ -6,7 +6,8 @@ import {
 } from '@ema-agent/token';
 import type { Message } from '@ema-agent/llm';
 import type { PromptSnapshot } from '@ema-agent/prompts';
-import { toolInputJsonSchema, type ToolPool } from '@ema-agent/tools';
+import type { ToolPool } from '@ema-agent/tools';
+import { projectToolPool } from './contextAssembler.js';
 import type { ContextContribution } from './types.js';
 
 export interface ContextUsageCategories {
@@ -63,11 +64,7 @@ export function computeContextUsage(input: ContextUsageInput): ContextUsageEstim
 
   let toolSchemas = 0;
   if (input.toolPool.tools.length > 0) {
-    const definitions = input.toolPool.tools.map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-      parameters: toolInputJsonSchema(tool),
-    }));
+    const definitions = projectToolPool(input.toolPool);
     toolInstructions = estimateLlmInputTokens([], {
       tools: definitions.map((definition) => ({
         ...definition,

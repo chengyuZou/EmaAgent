@@ -30,6 +30,14 @@ export function clearIgnoreCache(): void {
   ignoreCache.clear();
 }
 
+/**
+ * 按 pathGlob 前缀确定规则根目录，并返回没有前导斜杠的根内 pattern。
+ *
+ * //abs/path/** 锚定文件系统根(Windows 取工作区盘符根);
+ * ~/rel/** 锚定 home;
+ * /rel/**、rel/**、./rel/** 锚定 scope 根:
+ * global 规则锚 home,workspace 规则锚 workspaceRoot。
+ */
 function resolvePatternRoot(
   glob:          string,
   scope:         RuleScope,
@@ -81,7 +89,8 @@ function pathMatchesGlob(
   const relative = posix.relative(posixRoot, posixTarget);
 
   if (relative.startsWith('..') || posix.isAbsolute(relative)) return false;
-  // 空相对路径代表目标就是根目录，不应被文件 pattern 命中。？存疑
+  // 空相对路径代表目标就是锚定根本身:gitignore 无法表达"根本身",
+  // 根的管辖权属于 scope 一致性检查,不属于文件 pattern。
   if (!relative) return false;
 
   // ignore 已隐式匹配子树，去掉结尾 /** 可避免目录本身漏匹配。

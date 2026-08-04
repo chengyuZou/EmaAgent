@@ -1,6 +1,7 @@
 // 在模型调用前把 Prompt、历史、本轮输入、临时召回和工具清单装配成不可变请求快照。
 import type { Message, LlmToolDef } from '@ema-agent/llm';
-import { toolInputJsonSchema, type Tool, type ToolPool } from '@ema-agent/tools';
+import type { Tool, ToolPool } from '@ema-agent/tools';
+import { zodToJsonSchema } from 'zod-to-json-schema';
 import { ContextAssemblyError } from './errors.js';
 import type {
   ContextAssemblyInput,
@@ -180,7 +181,13 @@ function toLlmToolDef(tool: AnyTool): LlmToolDef {
   return cloneAndFreeze({
     name: tool.name,
     description: tool.description,
-    parameters: toolInputJsonSchema(tool),
+    parameters: structuredClone(
+      tool.inputJsonSchemaOverride
+        ?? zodToJsonSchema(tool.inputSchema, {
+          target: 'jsonSchema7',
+          $refStrategy: 'none',
+        }) as Record<string, unknown>,
+    ),
   });
 }
 

@@ -120,10 +120,6 @@ export type PermissionDecision =
       readonly reason: PermissionDecisionReason;
     };
 
-export interface PermissionPromptTarget {
-  readonly path: string;
-  readonly accessType: PermissionPathAccess;
-}
 
 /** 批准界面唯一需要理解的 Permission 投影。 */
 export interface PermissionPrompt {
@@ -133,7 +129,7 @@ export interface PermissionPrompt {
   readonly input: unknown;
   readonly riskLevel: RiskLevel;
   readonly accessType: AccessType;
-  readonly targets: readonly PermissionPromptTarget[];
+  readonly targets: readonly PermissionPathTarget[];
   readonly gateReason?: string;
   readonly sessionId?: SessionId;
   readonly turnId?: TurnId;

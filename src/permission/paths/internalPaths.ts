@@ -20,8 +20,7 @@ function grantedRoots(context: Pick<PermissionContext, 'internalPaths'>): string
   );
 }
 
-/** 判断路径是否位于本次执行被显式授予的可写内部目录中。 */
-export function checkEditableInternalPath(
+export function checkInternalPath(
   absolutePath: string,
   context: Pick<PermissionContext, 'internalPaths'>,
 ): 'allow' | 'passthrough' {
@@ -31,13 +30,3 @@ export function checkEditableInternalPath(
     : 'passthrough';
 }
 
-/** 判断路径是否位于本次执行被显式授予的可读内部目录中。 */
-export function checkReadableInternalPath(
-  absolutePath: string,
-  context: Pick<PermissionContext, 'internalPaths'>,
-): 'allow' | 'passthrough' {
-  const candidate = normalizeCaseForComparison(normalize(absolutePath));
-  return grantedRoots(context).some(root => underDir(candidate, root))
-    ? 'allow'
-    : 'passthrough';
-}

@@ -15,7 +15,6 @@ export type {
 } from './Tool/tool.js';
 export { contextFail, contextOk } from './Tool/tool.js';
 export type { ToolInvocation } from './Tool/toolInvocation.js';
-export { toolInputJsonSchema } from './Tool/toolInputJsonSchema.js';
 export type {
   AskUserPort,
   ScratchpadPort,

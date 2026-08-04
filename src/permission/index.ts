@@ -25,7 +25,6 @@ export type {
   PermissionPathTarget,
   PermissionPrompt,
   PermissionPromptPolicy,
-  PermissionPromptTarget,
   PermissionRequest,
   PermissionResponse,
   PermissionRule,

@@ -232,11 +232,6 @@ export function isDangerousRemovalPath(rawPath: string): boolean {
   return false;
 }
 
-// ── Shell 展开辅助函数（导出）────────────────────────────────────────────────────
-
-export function hasShellExpansion(p: string): boolean {
-  return checkCommonSafety(p) !== undefined;
-}
 
 // ── 综合检查 ──────────────────────────────────────────────────────────────────
 

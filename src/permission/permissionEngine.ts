@@ -8,8 +8,7 @@ import {
   getPathsForPermissionCheck,
 } from './paths/pathSafety.js';
 import {
-  checkEditableInternalPath,
-  checkReadableInternalPath,
+  checkInternalPath,
 } from './paths/internalPaths.js';
 import { pathInWorkingDir } from './paths/workspaceBoundary.js';
 import {
@@ -349,7 +348,6 @@ function resolveTargetPaths(
   return getPathsForPermissionCheck(candidate);
 }
 
-
 function flattenResolvedPaths(targets: readonly ResolvedPermissionTarget[]): readonly string[] {
   return targets.flatMap(target => target.resolvedPaths);
 }
@@ -394,9 +392,7 @@ function isGrantedInternalTarget(
   context: PermissionContext,
 ): boolean {
   return target.resolvedPaths.every(targetPath => {
-    return target.accessType === 'read'
-      ? checkReadableInternalPath(targetPath, context) === 'allow'
-      : checkEditableInternalPath(targetPath, context) === 'allow';
+    return checkInternalPath(targetPath, context) === 'allow';
   });
 }
 
