@@ -24,4 +24,14 @@ export class ToolPool {
   get(name: string): AnyTool | undefined {
     return this.toolsByName.get(name);
   }
+
+  /**
+   * 从父 Pool 派生顺序不变的更窄 Pool。
+   *
+   * Skill、执行 Profile 和子 Agent 只能调用该方法做集合收窄；它不会回读全局
+   * Registry，因此不能把根 Turn 启动后才出现的工具扩进来。
+   */
+  filter(predicate: (tool: AnyTool) => boolean): ToolPool {
+    return new ToolPool(this.tools.filter(predicate));
+  }
 }

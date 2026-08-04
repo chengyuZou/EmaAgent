@@ -32,12 +32,11 @@ import {
   type AskUserRequiredEvent,
   type ReadFileState,
   type ToolExecutionJournalPort,
+  type ToolPool,
   type ToolRegistry,
   type ToolResultStore,
+  type ToolUseContext,
 } from '@ema-agent/tools';
-import {
-  type BuiltinToolContext,
-} from '@ema-agent/tool-builtin';
 import {
   buildScratchpadContext,
   SubagentSpawner,
@@ -107,16 +106,17 @@ interface TurnEventRelay {
 type TurnToolsRuntimeFactory = (
     pushEvent: (event: TurnExecutionEvent) => void,
     wake: () => void,
-  ) => ToolExecutionRuntime<BuiltinToolContext>;
+    toolPool: ToolPool,
+  ) => ToolExecutionRuntime;
 
 /**
  * 一个根 Turn 的工具能力快照。
  *
- * Manifest、执行器、子 Agent 和动态 Skill 状态必须来自同一次装配；
+ * ToolPool、执行器、子 Agent 和动态 Skill 状态必须来自同一次装配；
  * 调用方不能在 AgentLoop 中途重新读取全局 Registry 扩大能力。
  */
 export class TurnTools {
-  private executor?: ToolExecutionRuntime<BuiltinToolContext>;
+  private executor?: ToolExecutionRuntime;
   private stopped = false;
 
   constructor(
@@ -132,9 +132,10 @@ export class TurnTools {
   readonly buildExecutor: ExecutorFactory<TurnExecutionEvent> = ({
     pushEv,
     signal,
+    toolPool,
   }) => {
     this.relay.emit = pushEv;
-    const executor = this.runtimeFactory(pushEv, signal);
+    const executor = this.runtimeFactory(pushEv, signal, toolPool);
     this.executor = executor;
     return executor;
   };
@@ -212,15 +213,14 @@ export class TurnToolsBuilder {
 
     let parentPolicy: TurnPolicy | undefined;
     const spawnerDeps: SubagentSpawnerDeps = {
-      tools: this.deps.tools,
       llm: this.deps.llm,
       permission: this.deps.permission,
       permissionMode: input.settings.permissionMode,
-      getParentAllowedToolIds: () => {
+      getParentToolPool: () => {
         if (!parentPolicy) {
           throw new Error('Parent TurnPolicy is not ready');
         }
-        return parentPolicy.allowedIds();
+        return parentPolicy.toolPool();
       },
       buildAsk: this.deps.buildAsk,
       skillRunner: this.deps.skillRunner,
@@ -249,12 +249,9 @@ export class TurnToolsBuilder {
       activeSkillState,
     );
 
-    const capabilityContext: BuiltinToolContext = {
-      sessionId,
-      turnId,
+    const capabilityContext: ToolUseContext = {
       workspaceRoot,
       platform: process.platform,
-      signal,
       readFileState,
       taskStore: this.deps.taskStore,
       commandRunner,
@@ -278,28 +275,27 @@ export class TurnToolsBuilder {
       this.deps.tools,
       capabilityContext,
     );
-    const visibleTools = profile.allowedToolIds === null
+    const visibleToolPool = profile.allowedToolIds === null
       ? assembledTools
       : assembledTools.filter((tool) => profile.allowedToolIds!.has(tool.id));
     const policy = new TurnPolicy(
-      this.deps.tools.manifestSnapshot(visibleTools),
+      visibleToolPool,
       profile.maxIterations,
     );
     parentPolicy = policy;
-    const toolContext: BuiltinToolContext = Object.freeze({
+    const toolContext: ToolUseContext = Object.freeze({
       ...capabilityContext,
       toolCapabilities: policy.capabilities(),
     });
     const toolResultStore =
       this.deps.getSessionToolResultStore?.(sessionId);
 
-    const runtimeFactory: TurnToolsRuntimeFactory = (pushEvent, wake) =>
+    const runtimeFactory: TurnToolsRuntimeFactory = (pushEvent, wake, toolPool) =>
       new ToolExecutionRuntime({
         sessionId,
         turnId,
-        allows: (name) => policy.allows(name),
-        toolManifest: policy.manifestSnapshot(),
-        tools: this.deps.tools,
+        abortSignal: signal,
+        toolPool,
         permission: this.deps.permission,
         permCtx: permissionContext,
         toolContext,

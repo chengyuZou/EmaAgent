@@ -6,7 +6,7 @@ import {
 } from '@ema-agent/token';
 import type { Message } from '@ema-agent/llm';
 import type { PromptSnapshot } from '@ema-agent/prompts';
-import type { ToolManifestSnapshot } from '@ema-agent/tools';
+import { toolInputJsonSchema, type ToolPool } from '@ema-agent/tools';
 import type { ContextContribution } from './types.js';
 
 export interface ContextUsageCategories {
@@ -35,7 +35,7 @@ export interface ContextUsageEstimate {
 
 export interface ContextUsageInput {
   readonly prompt: PromptSnapshot;
-  readonly toolManifest?: ToolManifestSnapshot;
+  readonly toolPool: ToolPool;
   /** 压缩后的最终循环历史(snapshot.history),不是压缩前原历史。 */
   readonly history: readonly Message[];
   /** 当前 Turn 消息,不参与压缩;媒体 token 归入 attachments 而非 messages。 */
@@ -62,11 +62,11 @@ export function computeContextUsage(input: ContextUsageInput): ContextUsageEstim
   }
 
   let toolSchemas = 0;
-  if (input.toolManifest) {
-    const definitions = input.toolManifest.entries.map((entry) => ({
-      name: entry.name,
-      description: entry.description,
-      parameters: entry.inputJsonSchema,
+  if (input.toolPool.tools.length > 0) {
+    const definitions = input.toolPool.tools.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      parameters: toolInputJsonSchema(tool),
     }));
     toolInstructions = estimateLlmInputTokens([], {
       tools: definitions.map((definition) => ({

@@ -35,7 +35,7 @@ import {
   formatTaskContextReminder,
   type TaskStorePort,
 } from '@ema-agent/tasks';
-import type { ToolManifestSnapshot } from '@ema-agent/tools';
+import type { ToolPool } from '@ema-agent/tools';
 import type { RequestDegradationNotice } from '@ema-agent/turn';
 import type { TurnInput } from './types.js';
 
@@ -65,7 +65,7 @@ export interface TurnContextAssembly {
   readonly scratchpadContext?: string;
   readonly mailboxMessages: readonly string[];
   readonly activeSkills: readonly ActivatedSkill[];
-  readonly toolManifest: ToolManifestSnapshot;
+  readonly toolPool: ToolPool;
   readonly forceCompaction: boolean;
   readonly emit?: (event: TurnContextEvent) => void;
 }
@@ -328,14 +328,14 @@ export class TurnContextBuilder {
             message: { role: 'user' as const, content: activeSkillContext },
           }]
         : [],
-      toolManifest: request.toolManifest,
+      toolPool: request.toolPool,
     };
 
     if (!this.deps.compactor) {
       const snapshot = await this.assembler.assemble(assemblyInput);
       publishEstimate(computeContextUsage({
         prompt: input.prompt,
-        toolManifest: request.toolManifest,
+        toolPool: request.toolPool,
         history: snapshot.history,
         currentTurn: request.currentTurn,
         contributions,
@@ -373,7 +373,7 @@ export class TurnContextBuilder {
     );
     publishEstimate(computeContextUsage({
       prompt: input.prompt,
-      toolManifest: request.toolManifest,
+      toolPool: request.toolPool,
       history: snapshot.history,
       currentTurn: request.currentTurn,
       contributions,

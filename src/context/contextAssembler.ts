@@ -1,6 +1,6 @@
 // 在模型调用前把 Prompt、历史、本轮输入、临时召回和工具清单装配成不可变请求快照。
 import type { Message, LlmToolDef } from '@ema-agent/llm';
-import type { ToolManifestEntry } from '@ema-agent/tools';
+import { toolInputJsonSchema, type Tool, type ToolPool } from '@ema-agent/tools';
 import { ContextAssemblyError } from './errors.js';
 import type {
   ContextAssemblyInput,
@@ -75,7 +75,7 @@ function buildContextParts(input: ContextAssemblyInput): ContextParts {
       ...input.currentTurn,
       ...messagesAt(contributions, 'afterCurrentTurn'),
     ].map(cloneAndFreeze);
-    const tools = (input.toolManifest?.entries ?? []).map(toLlmToolDef);
+    const tools = projectToolPool(input.toolPool);
 
     return {
       prefix: [
@@ -104,7 +104,6 @@ function buildSnapshot(
   const frozenTools = Object.freeze(tools.map(cloneAndFreeze));
   return Object.freeze({
     promptRevision: input.prompt.revision,
-    toolManifestRevision: input.toolManifest?.revision ?? null,
     messages: frozenMessages,
     history: Object.freeze(history.map(cloneAndFreeze)),
     tools: frozenTools,
@@ -113,7 +112,6 @@ function buildSnapshot(
       activeCharacterRevision: input.prompt.revisions.activeCharacter,
       turnPromptRevision: input.prompt.revisions.turn,
       completePromptRevision: input.prompt.revisions.complete,
-      toolManifestRevision: input.toolManifest?.revision ?? null,
       prefixHash: computePromptPrefixHash({
         messages: frozenMessages,
         tools: frozenTools,
@@ -169,11 +167,20 @@ function assertUniqueContributionIds(
   }
 }
 
-function toLlmToolDef(entry: ToolManifestEntry): LlmToolDef {
+// ToolPool 是异构泛型集合，模型投影只读取每个 Tool 的公开说明与输入契约。
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyTool = Tool<any, any, any, any>;
+
+/** 把 ToolPool 直接投影为 Provider 工具定义，不创建第二份可执行清单。 */
+export function projectToolPool(toolPool: ToolPool): LlmToolDef[] {
+  return toolPool.tools.map(toLlmToolDef);
+}
+
+function toLlmToolDef(tool: AnyTool): LlmToolDef {
   return cloneAndFreeze({
-    name: entry.name,
-    description: entry.description,
-    parameters: structuredClone(entry.inputJsonSchema) as Record<string, unknown>,
+    name: tool.name,
+    description: tool.description,
+    parameters: toolInputJsonSchema(tool),
   });
 }
 

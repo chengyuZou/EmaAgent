@@ -8,9 +8,10 @@ import type {
   ToolError,
   ToolExecutionJournalPort,
   ToolExecutionRuntimeOptions,
-  ToolRegistry,
+  ToolPool,
+  ToolUseContext,
 } from '@ema-agent/tools';
-import { assembleToolPool, ToolExecutionRuntime } from '@ema-agent/tools';
+import { ToolExecutionRuntime } from '@ema-agent/tools';
 import type { LanguageModel, Message as ModelMessage } from '@ema-agent/llm';
 import type { KnowledgeSearchPort } from '@ema-agent/knowledge';
 import type { CommandRunnerPort } from '@ema-agent/sandbox';
@@ -18,9 +19,6 @@ import type {
   SubagentRunResult,
   SubagentSpawnOptions,
   SubagentSpawnerPort,
-} from '@ema-agent/tool-builtin';
-import {
-  type BuiltinToolContext,
 } from '@ema-agent/tool-builtin';
 import type { PermissionAuthorizer, PermissionMode } from '@ema-agent/permission';
 import type { SkillRunnerPort } from '@ema-agent/skills';
@@ -58,14 +56,13 @@ const OUTPUT_EXCERPT_MAX = 200;   // 子 Agent 完成摘要字符数
 
 /** 子 Agent 循环真正消费的依赖，不继承根 Turn 的 Session、情绪或 Context 能力。 */
 export interface SubagentSpawnerDeps {
-  tools: ToolRegistry;
   llm: LanguageModel;
   permission: PermissionAuthorizer;
   /** 子 Agent 必须继承父 Turn 冻结的权限模式，不能自行升级。 */
   permissionMode: PermissionMode;
-  /** spawn 瞬间读取父 Agent 的当前能力上限，Skill 收窄会沿任务树传播。 */
-  getParentAllowedToolIds: () => ReadonlySet<string>;
-  buildAsk?: ToolExecutionRuntimeOptions<BuiltinToolContext>['buildAsk'];
+  /** spawn 瞬间读取父 Agent 的当前 ToolPool，Skill 收窄会沿任务树传播。 */
+  getParentToolPool: () => ToolPool;
+  buildAsk?: ToolExecutionRuntimeOptions['buildAsk'];
   skillRunner?: SkillRunnerPort;
   agentRunStore?: AgentRunStorePort;
   agentRunTranscriptWriter?: AgentRunTranscriptWriter;
@@ -166,7 +163,7 @@ export class SubagentSpawner implements SubagentSpawnerPort {
     signal:  AbortSignal,
   ): Promise<SubagentRunResult> {
     const releaseBudget = this.budget.enterSubagent();
-    const { tools, llm, permission } = this.deps;
+    const { llm, permission } = this.deps;
     const agentRunId    = opts.agentRunId ?? asAgentRunId(randomUUID());
     const sessionId     = this.parentSessionId as SessionId;
     const parentTurnId  = this.parentTurnId   as TurnId;
@@ -210,20 +207,16 @@ export class SubagentSpawner implements SubagentSpawnerPort {
 
     // 子 Agent 与父 Turn 在同一工作区和沙箱能力内执行，但拥有独立的可变文件状态。
     // fork 继承父执行已读取文件的快照；fresh 子 Agent 必须自行读取后才能编辑。
-    // Task、AskUser 和新的 SubagentSpawner 不注入，递归与用户交互能力由 Manifest 隐藏。
+    // Task、AskUser 和新的 SubagentSpawner 不注入，递归与用户交互能力由 Context 投影隐藏。
     const readFileState: ReadFileState = kind === 'fork'
       ? new Map(this.parentReadFileState)
       : new Map();
     const activeSkillState = kind === 'fork'
       ? this.parentActiveSkillState.fork()
       : new ActiveSkillState();
-    const capabilityContext: BuiltinToolContext = {
-      sessionId,
-      turnId:           parentTurnId,
-      agentRunId,
+    const capabilityContext: ToolUseContext = {
       workspaceRoot:    this.workspaceRoot,
       platform:         process.platform,
-      signal:           childCtrl.signal,
       commandRunner:    this.commandRunner,
       backgroundProcesses: this.deps.backgroundProcesses,
       readFileState,
@@ -234,11 +227,11 @@ export class SubagentSpawner implements SubagentSpawnerPort {
         ? { dir: this.scratchpadDir, author: `subagent:${agentRunId.slice(0, 8)}` }
         : undefined,
     };
-    const parentAllowedToolIds = this.deps.getParentAllowedToolIds();
-    const childToolPool = assembleToolPool(tools, capabilityContext)
-      .filter((tool) => parentAllowedToolIds.has(tool.id));
-    const policy = new TurnPolicy(tools.manifestSnapshot(childToolPool));
-    const toolContext: BuiltinToolContext = Object.freeze({
+    const childToolPool = this.deps.getParentToolPool().filter(
+      (tool) => tool.validateContext(capabilityContext).valid,
+    );
+    const policy = new TurnPolicy(childToolPool);
+    const toolContext: ToolUseContext = Object.freeze({
       ...capabilityContext,
       toolCapabilities: policy.capabilities(),
     });
@@ -295,13 +288,20 @@ export class SubagentSpawner implements SubagentSpawnerPort {
     }
 
     let subagentExecutor: ToolExecutionRuntime | undefined;
-    const buildExecutor: ExecutorFactory<AgentExecutionEvent> = ({ pushEv, signal: wakeSignal }) => {
+    const buildExecutor: ExecutorFactory<AgentExecutionEvent> = ({
+      pushEv,
+      signal: wakeSignal,
+      toolPool,
+    }) => {
       const executor = new ToolExecutionRuntime({
         sessionId,
         turnId:     parentTurnId,
-        allows:     name => policy.allows(name),
-        toolManifest: policy.manifestSnapshot(),
-        tools, permission, permCtx, toolContext,
+        agentRunId,
+        abortSignal: childCtrl.signal,
+        toolPool,
+        permission,
+        permCtx,
+        toolContext,
         buildAsk:   this.deps.buildAsk,
         pushEv,
         signal:     wakeSignal,

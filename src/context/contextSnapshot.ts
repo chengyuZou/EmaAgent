@@ -1,7 +1,7 @@
 // 定义单次模型调用的不可变 Context 输入、输出与缓存诊断快照。
 import type { Message, LlmToolDef } from '@ema-agent/llm';
 import type { PromptSnapshot } from '@ema-agent/prompts';
-import type { ToolManifestSnapshot } from '@ema-agent/tools';
+import type { ToolPool } from '@ema-agent/tools';
 import type { ContextContribution } from './types.js';
 
 export interface ContextAssemblyInput {
@@ -13,7 +13,8 @@ export interface ContextAssemblyInput {
   readonly contributions?: readonly ContextContribution[];
   /** Macro 压缩后恢复的 Agent 运行态；正常装配时不重复投递。 */
   readonly postCompactionRestoreContributions?: readonly ContextContribution[];
-  readonly toolManifest?: ToolManifestSnapshot;
+  /** 与本轮执行器共享的同一个冻结 ToolPool。 */
+  readonly toolPool: ToolPool;
 }
 
 /** 运行时事实由 Context 投递，不进入可由角色或扩展修改的 Prompt Slot。 */
@@ -31,7 +32,6 @@ export interface ContextCacheDiagnostics {
   readonly activeCharacterRevision: string;
   readonly turnPromptRevision: string;
   readonly completePromptRevision: string;
-  readonly toolManifestRevision: string | null;
   /** 本次请求截止最终 cacheBreakpoint 的内容身份；随历史和当前 Turn 演进，不是固定 Prompt Hash。 */
   readonly prefixHash: string | null;
 }
@@ -39,7 +39,6 @@ export interface ContextCacheDiagnostics {
 /** 一次模型调用看到的完整只读快照，也是缓存诊断使用的版本事实。 */
 export interface ModelContextSnapshot {
   readonly promptRevision: string;
-  readonly toolManifestRevision: string | null;
   readonly messages: readonly Message[];
   /** 压缩后的可持久循环历史；Agent 下一次迭代复用它，避免重复生成摘要。 */
   readonly history: readonly Message[];

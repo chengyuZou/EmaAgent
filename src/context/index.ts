@@ -1,5 +1,5 @@
 export { buildModelMessages } from './messageBuilder.js';
-export { ContextAssembler } from './contextAssembler.js';
+export { ContextAssembler, projectToolPool } from './contextAssembler.js';
 export { ContextAssemblyError } from './errors.js';
 export type { ContextAssemblyErrorCode } from './errors.js';
 export type {

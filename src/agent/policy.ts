@@ -1,11 +1,8 @@
 // 把一次 Turn 的工具能力作用域转换成模型工具定义和执行准入判断。
 import type {
-  ExecutableToolManifestSnapshot,
   ToolCapabilityScope,
-  ToolManifestSnapshot,
+  ToolPool,
 } from '@ema-agent/tools';
-import { createToolManifestSnapshotFromEntries } from '@ema-agent/tools';
-import type { LlmToolDef } from '@ema-agent/llm';
 import { AgentToolCapabilityScope } from './tool-capability-scope.js';
 
 // ── TurnPolicy ────────────────────────────────────────────────────────────────
@@ -14,21 +11,10 @@ export class TurnPolicy {
   private readonly scope: AgentToolCapabilityScope;
 
   constructor(
-    private readonly manifest: ExecutableToolManifestSnapshot,
+    toolPool: ToolPool,
     private readonly maxIter = 30,
   ) {
-    this.scope = new AgentToolCapabilityScope(manifest.entries);
-  }
-
-  /** LlmToolDef[] ready to pass straight to LlmRequest.tools. */
-  toolDefs(): LlmToolDef[] {
-    return this.scope.list().map((t) => {
-      return {
-        name: t.name,
-        description: t.description,
-        parameters: t.inputJsonSchema as Record<string, unknown>,
-      };
-    });
+    this.scope = new AgentToolCapabilityScope(toolPool);
   }
 
   /** Returns true if the named tool is permitted under this policy. */
@@ -49,16 +35,9 @@ export class TurnPolicy {
     return new Set(this.scope.list().map((tool) => tool.id));
   }
 
-  manifestSnapshot(): ExecutableToolManifestSnapshot {
-    return this.manifest;
-  }
-
-  /** Skill 等能力收窄后的模型可见清单，执行仍受原 Manifest 与 allows 双重约束。 */
-  visibleManifestSnapshot(): ToolManifestSnapshot {
-    return createToolManifestSnapshotFromEntries(
-      this.scope.list(),
-      this.manifest.registryVersion,
-    );
+  /** 每轮开始时取得当前能力上限；同一实例必须同时交给 Context 和执行器。 */
+  toolPool(): ToolPool {
+    return this.scope.pool();
   }
 
   maxIterations(): number {

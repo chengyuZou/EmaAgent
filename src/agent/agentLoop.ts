@@ -12,6 +12,7 @@ import type {
   UserBlock,
 } from '@ema-agent/llm';
 import type {
+  ToolPool,
   ToolExecutionResult,
   ToolExecutionRuntime,
 } from '@ema-agent/tools';
@@ -19,7 +20,11 @@ import {
   advanceLlmUsageSnapshot,
   ContextWindowExceededError,
 } from '@ema-agent/llm';
-import { computePromptPrefixHash, normalizeToolDefinitions } from '@ema-agent/context';
+import {
+  computePromptPrefixHash,
+  normalizeToolDefinitions,
+  projectToolPool,
+} from '@ema-agent/context';
 import type { ModelContextSnapshot } from '@ema-agent/context';
 import type { TurnPolicy } from './policy.js';
 import {
@@ -49,6 +54,8 @@ export type ExecutorFactory<TExecutorEvent> = (internals: {
   pushEv:  (ev: TExecutorEvent) => void;
   /** 工具完成时唤醒等待队列。 */
   signal:  () => void;
+  /** 与本次模型请求共享的冻结 ToolPool。 */
+  toolPool: ToolPool;
 }) => ToolExecutionRuntime;
 
 export interface PrepareLlmCallInput {
@@ -63,6 +70,8 @@ export interface AssembleAgentContextInput {
   scratchpadContext?: string;
   mailboxMessages: readonly string[];
   forceCompaction: boolean;
+  /** 本轮模型可见且执行器真正可调用的同一个冻结 ToolPool。 */
+  toolPool: ToolPool;
 }
 
 export interface AgentLoopInput<TExecutorEvent> {
@@ -110,11 +119,6 @@ export async function* runAgentLoop<TExecutorEvent>(
   let wakeUp: (() => void) | null = null;
   const signalWake = (): void => { wakeUp?.(); wakeUp = null; };
 
-  const executor = input.buildExecutor({
-    pushEv: (ev: TExecutorEvent) => { pendingRelayEvents.push(ev); signalWake(); },
-    signal: signalWake,
-  });
-
   let state = createAgentLoopState();
   let historyMessages = assembleContext
     ? messages.slice(0, input.historyMessageCount ?? 0)
@@ -151,7 +155,14 @@ export async function* runAgentLoop<TExecutorEvent>(
       continuesOutput,
     };
 
-    executor.reset();
+    // Skill 只能在工具轮结束后影响下一次模型请求。每轮取得一次当前 Pool，并把
+    // 同一个对象交给 Context 和执行器，避免模型可见工具与实际准入分叉。
+    const toolPool = policy.toolPool();
+    const executor = input.buildExecutor({
+      pushEv: (ev: TExecutorEvent) => { pendingRelayEvents.push(ev); signalWake(); },
+      signal: signalWake,
+      toolPool,
+    });
 
     // ── 思考阶段：读取一次模型流 ─────────────────────────────────────────────
     const textByIndex     = new Map<number, string>();
@@ -162,7 +173,7 @@ export async function* runAgentLoop<TExecutorEvent>(
 
     // Skill 调用可能收窄后续工具范围，因此每轮都重新取得工具定义。
     // 工具定义虽然不在消息数组中，压缩时仍必须预留其序列化后的 Token 成本。
-    let tools = normalizeToolDefinitions(policy.toolDefs());
+    let tools = normalizeToolDefinitions(projectToolPool(toolPool));
 
     // Scratchpad 和邮箱只进入本次请求视图，不写回持久消息。
     const scratchpadCtx  = getScratchpadContext?.();
@@ -183,6 +194,7 @@ export async function* runAgentLoop<TExecutorEvent>(
         ...(scratchpadCtx ? { scratchpadContext: scratchpadCtx } : {}),
         mailboxMessages: mailboxMsgs,
         forceCompaction: false,
+        toolPool,
       });
       historyMessages = [...snapshot.history];
       requestMessages = [...snapshot.messages];
@@ -326,6 +338,7 @@ export async function* runAgentLoop<TExecutorEvent>(
             ...(scratchpadCtx ? { scratchpadContext: scratchpadCtx } : {}),
             mailboxMessages: mailboxMsgs,
             forceCompaction: true,
+            toolPool,
           });
           historyMessages = [...snapshot.history];
           requestMessages = [...snapshot.messages];
