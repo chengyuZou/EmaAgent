@@ -10,6 +10,11 @@ export const DEFAULT_RESULT_PREVIEW_BYTES = 2_000;
 const PERSISTED_OPEN = '<persisted-output>';
 const PERSISTED_CLOSE = '</persisted-output>';
 
+/**
+ * - `unchanged`：结果不大 原文直接进入 ToolResult
+ * - `placeholder`：结果是空字符串改成类似 Bash 执行完成但没有输出 的文字
+ * - `offloaded`：结果太大 完整正文写入文件 blockContent 只留下路径和短预览
+ */
 export type NormalizeResult =
   | { kind: 'unchanged' }
   | { kind: 'placeholder'; blockContent: string }
@@ -36,7 +41,7 @@ export class ToolResultStore {
     private readonly toolResultsDir: string,
     private readonly aggregateMaxBytes = DEFAULT_AGGREGATE_RESULT_BYTES,
   ) {
-    assertPositiveBudget(aggregateMaxBytes, 'aggregateMaxBytes');
+    validatePositiveBudget(aggregateMaxBytes, 'aggregateMaxBytes');
   }
 
   /** 空输出转占位；超过工具预算的正文落盘并替换为稳定预览。 */
@@ -52,7 +57,7 @@ export class ToolResultStore {
     }
     if (content.startsWith(PERSISTED_OPEN)) return { kind: 'unchanged' };
     if (maxResultBytes === Number.POSITIVE_INFINITY) return { kind: 'unchanged' };
-    assertPositiveBudget(maxResultBytes, 'maxResultBytes');
+    validatePositiveBudget(maxResultBytes, 'maxResultBytes');
 
     const originalSize = Buffer.byteLength(content, 'utf8');
     if (!forceOffload && originalSize <= maxResultBytes) return { kind: 'unchanged' };
@@ -146,9 +151,8 @@ export function generatePreview(
   content: string,
   maxBytes: number,
 ): { preview: string; hasMore: boolean } {
-  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) {
-    throw new ToolResultStoreError(`maxBytes must be a non-negative safe integer, got ${maxBytes}`);
-  }
+  validatePositiveBudget(maxBytes, 'maxBytes');
+
   if (Buffer.byteLength(content, 'utf8') <= maxBytes) {
     return { preview: content, hasMore: false };
   }
@@ -172,7 +176,7 @@ export function generatePreview(
   return { preview: truncated, hasMore: true };
 }
 
-function assertPositiveBudget(value: number, name: string): void {
+function validatePositiveBudget(value: number, name: string): void {
   if (!Number.isSafeInteger(value) || value <= 0) {
     throw new ToolResultStoreError(`${name} must be a positive safe integer, got ${value}`);
   }

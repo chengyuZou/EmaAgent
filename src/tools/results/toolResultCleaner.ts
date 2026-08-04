@@ -2,13 +2,13 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-export interface CleanerConfig {
+export interface ToolResultCleanerSettings {
   ttlDays: number;
   perSessionMaxBytes: number;
   globalMaxBytes: number;
 }
 
-export const DEFAULT_CLEANER_CONFIG: CleanerConfig = {
+export const DEFAULT_CLEANER_SETTINGS: ToolResultCleanerSettings = {
   ttlDays: 7,
   perSessionMaxBytes: 50 * 1024 * 1024,
   globalMaxBytes: 500 * 1024 * 1024,
@@ -25,23 +25,30 @@ export class ToolResultCleaner {
 
   constructor(
     sessionsDirs: string | readonly string[],
-    private readonly config: CleanerConfig = DEFAULT_CLEANER_CONFIG,
+    private readonly setting: ToolResultCleanerSettings = DEFAULT_CLEANER_SETTINGS,
   ) {
     this.sessionRoots = typeof sessionsDirs === 'string' ? [sessionsDirs] : [...sessionsDirs];
   }
 
+  /**
+   * 执行三步清理：
+   * 1. 删除超过 TTL 的非活跃 Session 工具结果文件；
+   * 2. 删除超过单 Session 配额的最旧工具结果文件；
+   * 3. 删除超过全局配额的最旧工具结果文件 避免一个session中巨额工具结果占满全局配额。
+   */
   sweep(): { deleted: number; freedBytes: number } {
     let deleted = 0;
     let freedBytes = 0;
     const allFiles: FileEntry[] = [];
     const now = Date.now();
-    const ttlMs = this.config.ttlDays * 24 * 60 * 60 * 1000;
+    const ttlMs = this.setting.ttlDays * 24 * 60 * 60 * 1000;
 
     for (const directory of this.listSessionToolResultDirs()) {
       const files = this.listFiles(directory);
       const sessionDir = path.dirname(directory);
       let sessionActive = false;
       try {
+        // 活跃度为近似判断
         sessionActive = now - fs.statSync(sessionDir).mtimeMs < ttlMs;
       } catch {
         // Session 目录已删除时按非活跃处理，后续文件操作保持容错。
@@ -59,13 +66,13 @@ export class ToolResultCleaner {
         }
       }
 
-      const sessionQuota = this.enforceQuota(survivors, this.config.perSessionMaxBytes);
+      const sessionQuota = this.enforceQuota(survivors, this.setting.perSessionMaxBytes);
       deleted += sessionQuota.deleted;
       freedBytes += sessionQuota.freedBytes;
       allFiles.push(...sessionQuota.remaining);
     }
 
-    const globalQuota = this.enforceQuota(allFiles, this.config.globalMaxBytes);
+    const globalQuota = this.enforceQuota(allFiles, this.setting.globalMaxBytes);
     return {
       deleted: deleted + globalQuota.deleted,
       freedBytes: freedBytes + globalQuota.freedBytes,
@@ -82,6 +89,7 @@ export class ToolResultCleaner {
       return { deleted: 0, freedBytes: 0, remaining: files };
     }
 
+    // 最旧的先驱逐；同 mtime 按路径保证两次运行结果一致。
     const sorted = [...files].sort(
       (left, right) => left.mtimeMs - right.mtimeMs || left.fullPath.localeCompare(right.fullPath),
     );

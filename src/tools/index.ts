@@ -29,29 +29,17 @@ export type {
   AskUserRequiredEvent,
   PendingAskUserPrompt,
   ToolError,
-  ToolFailurePhase,
   ToolStreamEvent,
   ToolExecutionEvent,
 } from './events.js';
-export type { ToolExecutionResult } from './execution/toolExecutionResult.js';
-export { ToolExecution } from './execution/toolExecution.js';
-export type {
-  ToolExecutionCall,
-  ToolExecutionCompletion,
-  ToolExecutionEnvironment,
-  ToolExecutionLiveEvent,
-} from './execution/toolExecution.js';
-export type {
-  ToolLifecycleContext,
-  ToolLifecycleObserver,
-} from './execution/toolLifecycleObserver.js';
+export type { ToolResult } from './results/toolResult.js';
 export {
-  ToolExecutionRuntime,
-} from './execution/toolExecutionRuntime.js';
+  StreamingToolExecutor,
+} from './execution/streamingToolExecutor.js';
 export type {
-  ToolExecutionRuntimeEvent,
-  ToolExecutionRuntimeOptions,
-} from './execution/toolExecutionRuntime.js';
+  StreamingToolExecutorEvent,
+  StreamingToolExecutorOptions,
+} from './execution/streamingToolExecutor.js';
 export { buildTool, DEFAULT_MAX_RESULT_BYTES } from './Tool/buildTool.js';
 export { assembleToolPool } from './assembly/assembleToolPool.js';
 export { ToolPool } from './assembly/toolPool.js';
@@ -60,7 +48,7 @@ export {
   BackgroundProcessError,
   createBackgroundProcessAbortError,
   ToolDefinitionError,
-  ToolExecutionJournalConflictError,
+  ToolExecutionStateConflictError,
   ToolInputError,
   ToolRegistrationConflictError,
   ToolRegistryError,
@@ -72,25 +60,23 @@ export {
   DEFAULT_RESULT_PREVIEW_BYTES,
   ToolResultStore,
   generatePreview,
-  DEFAULT_CLEANER_CONFIG,
+  DEFAULT_CLEANER_SETTINGS,
   ToolResultCleaner,
 } from './results/index.js';
-export {
-  ToolExecutionJournal,
-} from './journal/toolExecutionJournal.js';
+export { ToolExecutionState } from './execution/toolExecutionState.js';
 export type {
-  ToolExecutionJournalPort,
-  ToolExecutionJournalReader,
-  ToolExecutionJournalStore,
+  ToolExecutionStatePort,
+  ToolExecutionStateReader,
+  ToolExecutionStateStore,
   ToolExecutionPrepareRecord,
   ToolExecutionRecord,
   ToolExecutionStatus,
   ToolExecutionTerminalDetails,
-} from './journal/toolExecutionJournal.js';
+} from './execution/toolExecutionState.js';
 export type {
   AggregateResultCandidate,
   AggregateResultContents,
   NormalizeResult,
-  CleanerConfig,
+  ToolResultCleanerSettings,
 } from './results/index.js';
 export * from './background/index.js';

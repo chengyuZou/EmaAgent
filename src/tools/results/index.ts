@@ -9,5 +9,5 @@ export type {
   AggregateResultContents,
   NormalizeResult,
 } from './toolResultStore.js';
-export { DEFAULT_CLEANER_CONFIG, ToolResultCleaner } from './toolResultCleaner.js';
-export type { CleanerConfig } from './toolResultCleaner.js';
+export { DEFAULT_CLEANER_SETTINGS, ToolResultCleaner } from './toolResultCleaner.js';
+export type { ToolResultCleanerSettings } from './toolResultCleaner.js';

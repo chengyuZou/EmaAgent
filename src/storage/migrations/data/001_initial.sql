@@ -241,15 +241,10 @@ CREATE TABLE tool_executions (
   session_id     TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   turn_id        TEXT NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
   tool_name      TEXT NOT NULL,
-  input_json     TEXT NOT NULL,
-  input_digest   TEXT NOT NULL,
   status         TEXT NOT NULL CHECK (status IN (
     'prepared', 'authorized', 'running', 'succeeded',
     'failed', 'cancelled', 'outcome_unknown'
   )),
-  result_preview TEXT,
-  error_code     TEXT,
-  error_message  TEXT,
   started_at     INTEGER,
   completed_at   INTEGER,
   version        INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
@@ -916,7 +911,7 @@ BEGIN
 END;
 
 CREATE TRIGGER trg_tool_executions_owner_update
-BEFORE UPDATE OF call_id, session_id, turn_id, tool_name, input_json, input_digest
+BEFORE UPDATE OF call_id, session_id, turn_id, tool_name
 ON tool_executions
 BEGIN
   SELECT CASE
@@ -924,8 +919,6 @@ BEGIN
       OR NEW.session_id <> OLD.session_id
       OR NEW.turn_id <> OLD.turn_id
       OR NEW.tool_name <> OLD.tool_name
-      OR NEW.input_json <> OLD.input_json
-      OR NEW.input_digest <> OLD.input_digest
     THEN RAISE(ABORT, 'ownership_violation: tool execution identity is immutable')
   END;
 END;

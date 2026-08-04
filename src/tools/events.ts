@@ -7,14 +7,6 @@ export interface ToolError {
   message: string;
 }
 
-/** 工具失败发生在执行流水线的哪个边界。 */
-export type ToolFailurePhase =
-  | 'policy'
-  | 'permission'
-  | 'validation'
-  | 'persistence'
-  | 'execution';
-
 export interface AskUserQuestionSpec {
   id: string;
   question: string;

@@ -25,7 +25,6 @@
     "@ema-agent/llm": "workspace:*",
     "@ema-agent/knowledge": "workspace:*",
     "@ema-agent/narrative": "workspace:*",
-    "@ema-agent/session": "workspace:*",
     "@ema-agent/skills": "workspace:*",
     "@ema-agent/tasks": "workspace:*",
     "@ema-agent/permission": "workspace:*",

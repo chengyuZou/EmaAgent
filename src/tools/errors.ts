@@ -2,7 +2,7 @@
 import { ZodError } from 'zod';
 import type { ToolCallId } from '@ema-agent/ids';
 import type { ToolOrigin } from './Tool/tool.js';
-import type { ToolExecutionStatus } from './journal/toolExecutionJournal.js';
+import type { ToolExecutionStatus } from './execution/toolExecutionState.js';
 
 // ── 工具注册与输入准备 ───────────────────────────────────────────────────────
 
@@ -45,10 +45,10 @@ export class ToolInputError extends Error {
   }
 }
 
-// ── 工具执行 Journal ─────────────────────────────────────────────────────────
+// ── 工具执行状态 ─────────────────────────────────────────────────────────────
 
 /** 工具执行状态机发生非法迁移（CAS 冲突或调用不存在）。 */
-export class ToolExecutionJournalConflictError extends Error {
+export class ToolExecutionStateConflictError extends Error {
   constructor(
     readonly callId: ToolCallId,
     readonly expected: readonly ToolExecutionStatus[],
@@ -59,7 +59,7 @@ export class ToolExecutionJournalConflictError extends Error {
         ? `工具调用 ${callId} 状态冲突：期望 ${expected.join('/')}，实际 ${actual}`
         : `工具调用 ${callId} 不存在`,
     );
-    this.name = 'ToolExecutionJournalConflictError';
+    this.name = 'ToolExecutionStateConflictError';
   }
 }
 
