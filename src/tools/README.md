@@ -63,6 +63,7 @@ src/tools/
 **工具作者消费**(`src/builtinTools`、MCP 适配层）:
 
 - `Tool`、`buildTool`、`contextOk/contextFail`、`DEFAULT_MAX_RESULT_BYTES`;
+- 每个 Tool 的 `execute()` 只返回类型化 `TOutput`;`mapResultToModelContent(TOutput)` 把同一结果投影为 Provider 中立的模型内容（缺省按"string 原样、其余 JSON 化"，复杂工具必须自定义）；信封 `data` 槽携带 TOutput 本体供 UI/审计/持久化；
 - `ToolUseContext`、`ToolInvocation`、`ToolInputValidationResult`、`ToolContextValidation`;
 - 宿主 Port 类型：`SubagentSpawnerPort`、`AskUserPort`、`ScratchpadPort`、`CommandRunnerPort`(sandbox 转出口径）。
 
@@ -90,6 +91,8 @@ src/tools/
 6. **终态 FIFO。** 完成可乱序，`tool_result` 终态必须按模型 blockIndex 顺序发射；进度事件实时但有界。
 7. **后台双坑位池。** 交互命令独立小池（15s 内完成或转交），后台长任务吃 `maxConcurrent`;15s 转交时 detach 取消信号并交还交互坑位，转交后进程不再计入任何池。
 8. **取消与降级诚实。** 无批准界面 deny、无 workspace 相对路径 fail-closed、超大结果先外置再给稳定预览（落盘失败当前原样放行，改有界错误待拍板）、后台 interrupted 墓碑不自动重跑。
+9. **结果只有一份事实。** Tool 作者不同时返回 `data + modelContent`；模型内容必须由 `mapResultToModelContent(TOutput)` 在执行期投影一次并持久化（重放不重算）。缺省投影为 JSON/Text；复杂结果必须自定义映射，过滤内部字段并保留多模态语义；多模态 parts 不做文本外置，由 Tool 业务层自限尺寸。
+10. **MCP 只有一个结果 Adapter。** 动态 MCP Tool 共用标准 `content` 转换；`structuredContent` 稳定 JSON 化，`isError` 进入失败路径，`_meta` 不进模型，图片/资源/二进制按各自协议语义处理。
 
 ## 失败语义速查
 

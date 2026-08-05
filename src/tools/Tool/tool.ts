@@ -1,4 +1,5 @@
 // 定义工具作者、注册表与执行器共同遵守的唯一 Tool 契约。
+import type { ToolResultContentPart } from '@ema-agent/llm';
 import type { PermissionIntent } from '@ema-agent/permission';
 import type { z } from 'zod';
 import type { ToolInvocation } from './toolInvocation.js';
@@ -87,6 +88,14 @@ export interface Tool<TInput, TOutput, TContext, TProgress = never> {
     invocation: ToolInvocation,
     onProgress?: ToolProgressCallback<TProgress>,
   ) => Promise<TOutput>;
+
+  /**
+   * 把 TOutput 投影为模型可见内容,执行期调用一次并持久化。
+   * 缺省时执行层按"string 原样、其余 JSON 化"处理——简单工具零样板;
+   * 复杂工具必须自定义(FileEdit 只报"修改成功"、FileRead 图片给图片块),
+   * 不得把 UI/审计专用数据混进模型内容。
+   */
+  readonly mapResultToModelContent?: (output: TOutput) => string | ToolResultContentPart[];
 }
 
 /** 投影成功，携带具体 Tool 真正需要的窄 Context。 */

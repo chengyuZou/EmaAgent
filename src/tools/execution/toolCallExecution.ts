@@ -6,6 +6,7 @@ import type {
   ToolCallId,
   TurnId,
 } from '@ema-agent/ids';
+import type { ToolResultContentPart } from '@ema-agent/llm';
 import type {
   AskPermissionFn,
   PermissionAuthorizer,
@@ -404,7 +405,8 @@ export class ToolCallExecution {
     this.result = {
       type: 'tool_result',
       toolUseId: this.id,
-      content: this.normalizeResult(output, tool.maxResultBytes),
+      content: this.normalizeResult(tool, output),
+      data: output,
       isError: false,
       durationMs: this.durationMs(),
     };
@@ -441,16 +443,22 @@ export class ToolCallExecution {
     };
   }
 
-  private normalizeResult(output: unknown, maxResultBytes: number): string {
-    const serialized = serializeToolOutput(output);
+  /**
+   * 模型可见内容 = Tool 自定义投影,缺省按"string 原样、其余 JSON 化"。
+   * 文本走统一单项预算(超限外置);多模态 parts 不做文本外置,
+   * 由 Tool 业务层自限尺寸(结果层没有语义能安全裁切它们)。
+   */
+  private normalizeResult(tool: AnyTool, output: unknown): string | ToolResultContentPart[] {
+    const modelContent = tool.mapResultToModelContent?.(output) ?? serializeToolOutput(output);
+    if (typeof modelContent !== 'string') return modelContent;
     const normalized = this.environment.toolResultStore?.normalize(
       this.id,
       this.name,
-      serialized,
-      maxResultBytes,
+      modelContent,
+      tool.maxResultBytes,
     );
     return !normalized || normalized.kind === 'unchanged'
-      ? serialized
+      ? modelContent
       : normalized.blockContent;
   }
 

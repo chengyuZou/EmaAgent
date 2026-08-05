@@ -8,10 +8,10 @@ type LoadState =
   | { kind: 'error'; message: string }
   | { kind: 'ready'; status: SandboxStatusWire };
 
-const BACKEND_LABEL: Record<SandboxStatusWire['backend'], string> = {
+const BACKEND_LABEL: Record<SandboxStatusWire['kind'], string> = {
   'bubblewrap':  'bubblewrap(Linux 系统沙箱)',
   'sandbox-exec': 'sandbox-exec(macOS 系统沙箱)',
-  'app-layer':   '应用层(无操作系统沙箱)',
+  'unisolated':  '应用层(无操作系统沙箱)',
 };
 
 const EXECUTION_LABEL: Record<'isolated' | 'disabled' | 'unsafe-override', string> = {
@@ -73,7 +73,7 @@ export function SandboxStatusSettings(): JSX.Element {
       {status && (
         <>
           <div className="ema-glass-weak grid grid-cols-1 gap-x-6 gap-y-3 rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] px-4 py-4 sm:grid-cols-2">
-            <StatusRow label="隔离后端" value={BACKEND_LABEL[status.backend]} />
+            <StatusRow label="隔离后端" value={BACKEND_LABEL[status.kind]} />
             <StatusRow
               label="命令执行"
               value={EXECUTION_LABEL[status.shellExecution]}

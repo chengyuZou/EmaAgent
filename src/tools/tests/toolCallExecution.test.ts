@@ -191,10 +191,37 @@ describe('ToolCallExecution', () => {
     execution.commitResult();
 
     expect(result.isError).toBe(false);
-    expect(JSON.parse(result.content)).toEqual({ echoed: 42 });
+    expect(JSON.parse(result.content as string)).toEqual({ echoed: 42 });
     expect(terminalEvent.type).toBe('tool_result');
     expect(state.transitions).toEqual(['prepared', 'authorized', 'running', 'succeeded']);
     expect(events.some(e => e.type === 'tool_result')).toBe(false);
+  });
+
+  it('自定义 mapResultToModelContent 优先于缺省 JSON 投影,data 槽携带 TOutput 本体', async () => {
+    const tool = echoTool({
+      mapResultToModelContent: (output) =>
+        `echo 完成:${(output as { echoed: number }).echoed}`,
+    });
+    const { execution } = makeCall(makeEnv({ tools: [tool] }), 'Echo', { value: 7 });
+
+    const { result } = await execution.run();
+
+    expect(result.content).toBe('echo 完成:7');
+    expect(result.data).toEqual({ echoed: 7 });
+  });
+
+  it('map 返回多模态 parts 时原样直通,不做文本外置也不 JSON 化', async () => {
+    const parts = [
+      { type: 'text' as const, text: '看图:' },
+      { type: 'image_data' as const, data: 'aGVsbG8=', mimeType: 'image/png' },
+    ];
+    const tool = echoTool({ mapResultToModelContent: () => parts });
+    const { execution } = makeCall(makeEnv({ tools: [tool] }), 'Echo', { value: 1 });
+
+    const { result } = await execution.run();
+
+    expect(result.content).toBe(parts);
+    expect(result.isError).toBe(false);
   });
 
   it('执行中被用户取消:终态是 cancelled 而不是 succeeded(回归)', async () => {
