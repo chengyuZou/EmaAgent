@@ -1,17 +1,17 @@
-// 这里测试 Sandbox 只保护 Core 传入的真实私有路径，不再自行猜旧设置文件位置。
+// 这里测试 Sandbox 只保护 LocalHost 传入的真实私有路径，不再自行猜旧设置文件位置。
 
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { buildSandboxConfig } from '../config-builder.js';
 
 describe('buildSandboxConfig 私有路径', () => {
-  it('只采用 Core 明确注入的可写路径', () => {
+  it('只采用 LocalHost 明确注入的可写路径', () => {
     const workspaceRoot = path.resolve('D:/workspace');
     const explicitCache = path.resolve('D:/ema-cache');
     const result = buildSandboxConfig({
       workspaceRoot,
       writablePaths: [workspaceRoot, explicitCache, explicitCache],
-      protectedPaths: [],
+      forbiddenPaths: [],
       networkAccess: 'none',
     });
 
@@ -21,14 +21,14 @@ describe('buildSandboxConfig 私有路径', () => {
     ]);
   });
 
-  it('同时禁止读取和修改 Core 传入的每一个路径', () => {
+  it('同时禁止读取和修改 LocalHost 传入的每一个路径', () => {
     const profileDir = path.resolve('D:/ema-profile');
     const dataDb = path.resolve('E:/ema-data/data.db');
     const workspaceRoot = path.resolve('D:/workspace');
     const result = buildSandboxConfig({
       workspaceRoot,
       writablePaths: [workspaceRoot],
-      protectedPaths: [profileDir, dataDb, `${dataDb}-wal`, `${dataDb}-shm`, dataDb],
+      forbiddenPaths: [profileDir, dataDb, `${dataDb}-wal`, `${dataDb}-shm`, dataDb],
       networkAccess: 'none',
     });
 
@@ -51,7 +51,7 @@ describe('buildSandboxConfig 私有路径', () => {
     const result = buildSandboxConfig({
       workspaceRoot,
       writablePaths: [],
-      protectedPaths: [],
+      forbiddenPaths: [],
       networkAccess: 'none',
     });
 
@@ -64,13 +64,13 @@ describe('buildSandboxConfig 私有路径', () => {
     const denied = buildSandboxConfig({
       workspaceRoot,
       writablePaths: [],
-      protectedPaths: [],
+      forbiddenPaths: [],
       networkAccess: 'none',
     });
     const full = buildSandboxConfig({
       workspaceRoot,
       writablePaths: [],
-      protectedPaths: [],
+      forbiddenPaths: [],
       networkAccess: 'full',
     });
 

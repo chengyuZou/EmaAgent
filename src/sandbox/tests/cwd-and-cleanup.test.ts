@@ -11,9 +11,14 @@ function makeCapability(workspaceRoot: string, writablePaths: string[] = []): Sa
   return {
     workspaceRoot,
     writablePaths: [workspaceRoot, ...writablePaths],
-    protectedPaths: [],
+    forbiddenPaths: [],
     networkAccess: 'none',
   };
+}
+
+/** cleanup 是内部方法(不上公共 Port),测试经显式收窄访问。 */
+function cleanupOf(runner: CommandRunner): void {
+  (runner as unknown as { cleanup(): void }).cleanup();
 }
 
 function makeWorkspace(): string {
@@ -38,7 +43,7 @@ describe('resolveCommandCwd', () => {
     );
   });
 
-  it('相对路径以 workspaceRoot 为基准解析, 不借 Core 进程 cwd', () => {
+  it('相对路径以 workspaceRoot 为基准解析, 不借宿主进程 cwd', () => {
     const root = makeWorkspace();
     const sub = path.join(root, 'sub');
     fs.mkdirSync(sub);
@@ -82,7 +87,7 @@ describe('CommandRunner.cleanup — bare-repo 防御(永不删除)', () => {
       const runner = new CommandRunner(makeCapability(root));
       plantBareRepo(root);
 
-      runner.cleanup();
+      cleanupOf(runner);
 
       // 不删除: git init 与 bare 攻击形态相同, 删除可能误伤用户数据(P1)
       expect(fs.existsSync(path.join(root, 'hooks', 'pre-commit'))).toBe(true);
@@ -108,7 +113,7 @@ describe('CommandRunner.cleanup — bare-repo 防御(永不删除)', () => {
     fs.mkdirSync(path.join(root, 'objects'));
     fs.mkdirSync(path.join(root, 'refs'));
 
-    runner.cleanup();
+    cleanupOf(runner);
 
     expect(fs.existsSync(path.join(root, 'config'))).toBe(true);
     expect(fs.existsSync(path.join(root, 'hooks', 'pre-commit'))).toBe(true);
@@ -122,7 +127,7 @@ describe('CommandRunner.cleanup — bare-repo 防御(永不删除)', () => {
     try {
       const runner = new CommandRunner(makeCapability(root));
 
-      runner.cleanup();
+      cleanupOf(runner);
 
       expect(fs.existsSync(path.join(root, 'hooks', 'pre-commit'))).toBe(true);
       expect(fs.existsSync(path.join(root, 'config'))).toBe(true);

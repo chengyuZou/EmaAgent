@@ -3,7 +3,7 @@
 import path from 'node:path';
 import { statSync } from 'node:fs';
 import type { SandboxBackend, SandboxConfig, WrappedCommand } from '../types.js';
-import { getPlatform, type SandboxPlatform } from '../platform.js';
+import { getPlatform, type SandboxPlatform } from '../detectPlatform.js';
 
 /**
  * Linux 和 WSL2（含 Windows 经 WSL2）的 Bubblewrap 后端。
@@ -20,7 +20,7 @@ import { getPlatform, type SandboxPlatform } from '../platform.js';
  * （wsl.exe 把 argv 拼成单行命令传给 Linux 进程）。
  */
 export class BubblewrapBackend implements SandboxBackend {
-  readonly name = 'bubblewrap';
+  readonly kind = 'bubblewrap';
 
   wrap(command: string, shell: string, config: SandboxConfig): WrappedCommand {
     return buildBubblewrapCommand(command, shell, config, getPlatform());
@@ -133,8 +133,8 @@ function wrapViaWsl(command: string, shell: string, config: SandboxConfig): Wrap
 
 /**
  * 把 Win32 路径翻译成 WSL /mnt/<drive> 等价路径。
- * UNC 路径（\\server\share）原样返回 - WSL 内的 bwrap 无法 bind-mount 它们，
- * 会落到 app-layer 执行。
+ * UNC 路径（\\server\share）无法翻译——WSL 内的 bwrap 无法 bind-mount 它们,
+ * 调用方不应把 UNC 工作区交给此后端。
  */
 function toWslPath(winPath: string): string {
   // UNC 路径 - 无法翻译

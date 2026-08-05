@@ -14,7 +14,7 @@ import type { SandboxBackend, SandboxConfig, WrappedCommand } from '../types.js'
  *   - 网络：无允许域名则全拒
  */
 export class SandboxExecBackend implements SandboxBackend {
-  readonly name = 'sandbox-exec';
+  readonly kind = 'sandbox-exec';
 
   wrap(command: string, shell: string, config: SandboxConfig): WrappedCommand {
     const profile = buildProfile(config);

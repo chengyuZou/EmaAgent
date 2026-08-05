@@ -1,5 +1,7 @@
 // 子进程环境净化: 不继承宿主环境再删 Key, 而是清空后按白名单重建(Codex 同款方向)。
 // API Key/Token/Secret/SSH/注入类变量(BASH_ENV/NODE_OPTIONS/LD_PRELOAD 等)默认不存在。
+// 白名单刻意最小: 没有 USER/LOGNAME/XDG_*/DISPLAY 不是遗漏——沙箱命令不应开 GUI,
+// 配置/缓存默认落 HOME 与临时目录即可;少暴露一个变量就少一条宿主信息泄漏通道。
 
 // ── 白名单 ────────────────────────────────────────────────────────────────────
 
@@ -37,6 +39,8 @@ export function buildProcessEnvironment(
       ALLOWED_EXACT.has(upper) || ALLOWED_PREFIXES.some((prefix) => upper.startsWith(prefix));
     if (!allowed) continue;
     // Windows 环境变量大小写不敏感, 统一大写键避免 Path/PATH 重复。
+    // POSIX 下白名单内变量本就是大写约定, 大写化同样无害;
+    // 极端情况(POSIX source 里 Path/PATH 真共存)后者胜出, 现实中不出现。
     environment[upper] = value;
   }
 

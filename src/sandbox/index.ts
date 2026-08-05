@@ -1,19 +1,12 @@
-// 这是 Sandbox 包的统一出口，外部代码从这里创建命令运行器并查看沙箱状态。
+// Sandbox 的公共出口:命令运行器、平台/后端探测与 Bash 可用性。
 
 export { CommandRunner } from './commandRunner.js';
 
-export { probeBash, installGitViaWinget, resetBashProbeCache } from './bashProbe.js';
+export { probeBash, installGitViaWinget } from './bashProbe.js';
 export type { BashProbeResult, GitInstallResult } from './bashProbe.js';
 
-export { detectBackend, resetDetectCache } from './detect.js';
-export type { DetectResult, BackendKind }  from './detect.js';
-
-export { getPlatform, resetPlatformCache } from './platform.js';
-export type { SandboxPlatform }            from './platform.js';
-
-export { buildSandboxConfig }              from './config-builder.js';
-
-export { buildProcessEnvironment }          from './processEnvironment.js';
+export { detectBackend } from './detectBackend.js';
+export type { DetectResult, BackendKind }  from './detectBackend.js';
 
 export type {
   SandboxConfig,
@@ -28,5 +21,4 @@ export type {
   CommandProcessHandle,
   CommandRunResult,
   CommandRunnerPort,
-  SandboxStatusWire,
 } from './types.js';

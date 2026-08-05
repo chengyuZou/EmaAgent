@@ -1,7 +1,7 @@
 // 测试平台 -> 沙箱后端的纯映射逻辑，覆盖所有平台分支与降级原因。
 
 import { describe, expect, it } from 'vitest';
-import { selectBackendForPlatform } from '../detect.js';
+import { selectBackendForPlatform } from '../detectBackend.js';
 
 describe('selectBackendForPlatform', () => {
   it('macos 直接选 sandbox-exec', () => {
@@ -20,10 +20,10 @@ describe('selectBackendForPlatform', () => {
     expect(selectBackendForPlatform('wsl2').kind).toBe('bwrap-direct');
   });
 
-  it('WSL1 无 namespace，直接降级 app-layer 并提示升级', () => {
+  it('WSL1 无 namespace，直接降级 unisolated 并提示升级', () => {
     const result = selectBackendForPlatform('wsl1');
-    expect(result.kind).toBe('app-layer');
-    if (result.kind === 'app-layer') {
+    expect(result.kind).toBe('unisolated');
+    if (result.kind === 'unisolated') {
       expect(result.degradeReason).toContain('WSL1');
       expect(result.degradeReason).toContain('WSL2');
     }

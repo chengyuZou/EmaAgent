@@ -2,9 +2,9 @@
 
 import { existsSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { buildSandboxConfig } from './config-builder.js';
-import { detectBackend } from './detect.js';
-import { AppLayerBackend } from './backends/app-layer.js';
+import { buildSandboxConfig } from './buildSandboxConfig.js';
+import { detectBackend } from './detectBackend.js';
+import { UnisolatedBackend } from './backends/unisolated.js';
 import { BubblewrapBackend } from './backends/bubblewrap.js';
 import { SandboxExecBackend } from './backends/sandbox-exec.js';
 import { startProcess } from './processRunner.js';
@@ -36,7 +36,6 @@ export class CommandRunner implements CommandRunnerPort {
   private readonly bareRepoExistedAtStart: boolean;
   /** 构造时已存在的 hooks/config 路径: 归属用户, 永不警告永不触碰。 */
   private readonly exploitPathsExistedAtStart: ReadonlySet<string>;
-  private readonly degradeReason: string | undefined;
 
   constructor(capability: SandboxCapability) {
     if (capability.workspaceRoot.trim() === '') {
@@ -45,13 +44,12 @@ export class CommandRunner implements CommandRunnerPort {
     this.capability = Object.freeze({
       workspaceRoot: capability.workspaceRoot,
       writablePaths: Object.freeze([...capability.writablePaths]),
-      protectedPaths: Object.freeze([...capability.protectedPaths]),
+      forbiddenPaths: Object.freeze([...capability.forbiddenPaths]),
       networkAccess: capability.networkAccess,
     });
 
     const detection = detectBackend();
     this.backend = selectBackend(detection.backend);
-    this.degradeReason = detection.degradeReason;
 
     this.config = buildSandboxConfig(this.capability);
     this.bareRepoExistedAtStart = hasBareRepoSignature(capability.workspaceRoot);
@@ -69,7 +67,6 @@ export class CommandRunner implements CommandRunnerPort {
     const wrapped = this.backend.wrap(command, shell, this.config);
     const handle = startProcess(
       {
-        backend: this.backend.name,
         executable: wrapped.executable,
         args: wrapped.args,
         cwd,
@@ -97,7 +94,7 @@ export class CommandRunner implements CommandRunnerPort {
    * 这里只做归属记录与警告; 真正的隔离留给后续受控 Git 环境
    * (core.hooksPath / GIT_CONFIG 隔离), 不靠删除。
    */
-  cleanup(): void {
+  private cleanup(): void {
     if (this.bareRepoExistedAtStart) return;
     const root = this.capability.workspaceRoot;
     if (!hasBareRepoSignature(root)) return;
@@ -110,14 +107,6 @@ export class CommandRunner implements CommandRunnerPort {
       `[sandbox] 命令执行后工作区出现 bare-repo 签名, `
       + `${newExploits.join(' 与 ')} 会被后续 git 命令信任, 请人工确认来源: ${root}`,
     );
-  }
-
-  getSandboxUnavailableReason(): string | undefined {
-    return this.degradeReason;
-  }
-
-  get backendName(): string {
-    return this.backend.name;
   }
 }
 
@@ -140,7 +129,7 @@ function selectBackend(kind: ReturnType<typeof detectBackend>['backend']): Sandb
     case 'sandbox-exec':
       return new SandboxExecBackend();
     default:
-      return new AppLayerBackend();
+      return new UnisolatedBackend();
   }
 }
 

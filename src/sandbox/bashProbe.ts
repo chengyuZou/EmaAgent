@@ -2,7 +2,7 @@
 import { spawnSync, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { getPlatform } from './platform.js';
+import { getPlatform } from './detectPlatform.js';
 
 /** Windows 没有原生 Bash，但可以调用 WSL Bash 时使用的内部标记。 */
 export const WSL_BASH_SENTINEL = 'wsl:bash';

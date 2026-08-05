@@ -16,7 +16,7 @@ export interface SandboxConfig {
   network: SandboxNetworkConfig;
 }
 
-export type BackendKind = 'bubblewrap' | 'sandbox-exec' | 'app-layer';
+export type BackendKind = 'bubblewrap' | 'sandbox-exec' | 'unisolated';
 
 /** 后端包装命令后真正要启动的程序和参数。 */
 export interface WrappedCommand {
@@ -26,11 +26,10 @@ export interface WrappedCommand {
 
 /**
  * Sandbox 最终决定的启动形态: 平台后端 + 结构化 argv + 工作目录 + 净化环境。
- * Backend 产出 WrappedCommand, CommandRunner 补齐 backend/cwd/environment,
+ * Backend 产出 WrappedCommand, CommandRunner 补齐 cwd/environment,
  * ProcessRunner 只执行, 不再读取 process.env 或理解 Sandbox Policy。
  */
 export interface SandboxCommand {
-  readonly backend: BackendKind;
   readonly executable: string;
   readonly args: readonly string[];
   readonly cwd: string;
@@ -38,15 +37,18 @@ export interface SandboxCommand {
 }
 
 export interface SandboxBackend {
-  readonly name: BackendKind;
+  readonly kind: BackendKind;
   wrap(command: string, shell: string, config: SandboxConfig): WrappedCommand;
 }
 
-/** Core 为一个 Session 冻结的命令执行能力；Sandbox 不从 Permission 规则反推。 */
+/** 为一个 Session 冻结的命令执行能力；Sandbox 不从 Permission 规则反推。 */
 export interface SandboxCapability {
+  /** 必填;空串直接拒绝,不允许回退到宿主进程工作目录。 */
   workspaceRoot: string;
+  /** 绝对路径;workspaceRoot 之外的附加可写根,构造时统一规范化,不含空项。 */
   writablePaths: readonly string[];
-  protectedPaths: readonly string[];
+  /** 绝对路径;同时禁止读取与写入(protected 表达不出这个强度,故名 forbidden)。 */
+  forbiddenPaths: readonly string[];
   networkAccess: 'none' | 'full';
 }
 
@@ -66,9 +68,12 @@ export interface CommandOutputChunk {
 export interface CommandRunResult {
   stdout: string;
   stderr: string;
+  /** 进程自身退出码;被信号杀死或预检取消时为 -1。spawn 启动失败不走这里——Promise 直接 reject。 */
   exitCode: number;
   timedOut: boolean;
+  /** 仅表示内存中累计的 stdout/stderr 文本被截断,不代表 onOutput 原始流被截。 */
   truncated: boolean;
+  /** 与 timedOut 互斥:超时优先记 timedOut,不计 aborted。 */
   aborted: boolean;
 }
 
@@ -82,15 +87,4 @@ export interface CommandProcessHandle {
 export interface CommandRunnerPort {
   start(command: string, options?: CommandRunOptions): CommandProcessHandle;
   run(command: string, options?: CommandRunOptions): Promise<CommandRunResult>;
-  cleanup(): void;
-}
-
-/** 当前机器对 Shell 与本地 MCP 进程实际提供的隔离能力。 */
-export interface SandboxStatusWire {
-  readonly backend: 'bubblewrap' | 'sandbox-exec' | 'app-layer';
-  readonly isolation: 'os' | 'application-only';
-  readonly shellExecution: 'isolated' | 'disabled' | 'unsafe-override';
-  readonly sandboxNetwork: 'none' | 'full';
-  readonly localMcpStdio: 'isolated' | 'disabled' | 'unsafe-override';
-  readonly warning?: string;
 }
