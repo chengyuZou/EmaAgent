@@ -1,43 +1,113 @@
 # Tools 模块
 
-`@ema-agent/tools` 拥有 Builtin 与 MCP 共用的工具契约、进程级 Registry、根 Turn 的 `ToolPool`、单调用执行、并发调度、结果预算、Journal 和后台进程。具体内置工具属于 `src/builtinTools`；权限规则属于 `@ema-agent/permission`；系统命令隔离属于 `@ema-agent/sandbox`。
+`@ema-agent/tools` 拥有工具系统的通用框架：`Tool` 契约、宿主能力投影、进程级 Registry、根 Turn 的冻结 ToolPool、单次调用管线、流式批次调度、结果预算与外置、执行状态机、后台进程。
 
-## 公共契约
+本 README 是接线前置条件：消费方只能使用这里列出的公共接口，绕过任何一个都会重新制造漂移。
 
-- `Tool<TInput, TOutput, TContext, TProgress>`：工具作者唯一实现的接口；项目中不存在第二套 `ToolDef`、`BuiltTool`、Descriptor 或 Entry。
-- `ToolUseContext`：一次 Agent 装配可提供的业务能力全集，不含 Session、Turn 或 ToolCall 身份。
-- `ToolInvocation`：一次调用的 `sessionId/turnId/agentRunId/toolCallId/signal`，不承载业务 Port、Permission 决策或通用事件出口。
-- `ToolRegistry`：进程级可变库存，直接保存 `Tool`；只负责注册、撤销和查询，MCP 热更新只改变 Registry。
-- `ToolPool`：根 Turn 从 Registry 筛选并冻结的有序 `Tool` 集合，是本轮模型 Schema、缓存诊断和执行查找的唯一事实源。
+## 所有权边界
 
-具体 Tool 用 `validateContext()` 从 `ToolUseContext` 投影窄 Context。根 Turn 组装 `ToolPool` 时用它决定工具是否可见；执行前再次投影，防止排队期间能力失效。不得恢复 `requires` 第二份能力清单。
+**本包拥有：**
 
-项目不建立独立 Tool Manifest、Executable Manifest 或 `PreparedToolCall`。它们都会复制已经存在于 `ToolPool` 和当前调用局部变量中的事实，增加版本漂移和错误绑定的机会。
+- `Tool<TInput, TOutput, TContext, TProgress>` 契约与 `buildTool()` 工厂（唯一工具形态，不存在第二套 ToolDef/BuiltTool/Descriptor);
+- `ToolUseContext`（宿主能力全集）与 `ToolInvocation`（单次调用身份与取消）;
+- `ToolRegistry`（进程级可变库存）、`ToolPool`（根 Turn 冻结快照）;
+- 单调用管线 `ToolCallExecution` 与流式协调器 `StreamingToolExecutor`;
+- `ToolExecutionState` 副作用边界状态机（prepared/authorized/running → 终态）;
+- Results 层：`ToolResult` 信封、单项/聚合预算、外置落盘与回收；
+- 后台进程：`BackgroundProcessRuntime`（15s 转交、双坑位池、日志、终态、完成通知）。
 
-## 唯一调用顺序
+**本包不拥有（禁止反向依赖）：**
+
+- 具体内置工具实现（归 `src/builtinTools`);
+- 权限规则与决策（归 `@ema-agent/permission`，本包只 import 其公开类型）;
+- OS 级隔离与进程后端（归 `@ema-agent/sandbox`);
+- SQL、Row、snake_case（归 `@ema-agent/storage`;**本包不 import storage**，持久化一律走本包定义的窄端口，由 Core 装配注入实现）;
+- Session/Turn 生命周期、SSE 编码、HTTP 路由、前端渲染；
+- 任务（Task）业务语义（`@ema-agent/tasks`）与子 Agent 执行（`@ema-agent/agent`)。
+
+## 目录
 
 ```text
-Registry.list()
-  → assembleToolPool(context/profile)
-  → 冻结本轮 ToolPool
-  ├─ Provider tools[] 直接由该 Pool 投影
-  ├─ Context Usage / 缓存诊断直接读取该 Pool
-  └─ ToolExecution 按模型返回的 name 从该 Pool 查找 Tool
-       → inputSchema.parse(rawArgs) 一次
-       → validateContext
-       → validateInput(input, context, invocation)
-       → getPermissionIntent(input, context, invocation)
-       → PermissionAuthorizer
-       → execute(input, context, invocation, onProgress)
-       → Result budget / Journal / FIFO terminal
+src/tools/
+├─ Tool/                          契约层
+│  ├─ tool.ts                     Tool 接口、ToolOrigin、校验结果类型
+│  ├─ buildTool.ts                工厂:fail-closed 默认值、maxResultBytes 校验、冻结
+│  ├─ toolInvocation.ts           单次调用身份(session/turn/agentRun/toolCall/signal)
+│  └─ toolUseContext.ts           宿主能力全集 + Subagent/AskUser/Scratchpad 等 Port
+├─ assembly/                      装配层
+│  ├─ toolRegistry.ts             进程库存;MCP 整批原子注册、来源冲突即错误
+│  ├─ assembleToolPool.ts         validateContext 过滤 + Builtin 前缀/MCP 后缀稳定排序
+│  └─ toolPool.ts                 冻结集合;filter() 只许收窄不许回读 Registry
+├─ execution/                     执行层
+│  ├─ toolCallExecution.ts        单次调用状态机(不对外导出)
+│  ├─ streamingToolExecutor.ts    唯一批次协调入口(对外)
+│  └─ toolExecutionState.ts       副作用边界状态机 + 持久化窄端口
+├─ results/                       结果层
+│  ├─ toolResult.ts               唯一结果信封(toolUseId/content/isError/durationMs/errorCode)
+│  ├─ toolResultStore.ts          空输出占位、单项预算外置、聚合预算、稳定预览
+│  └─ toolResultCleaner.ts        TTL + 单 Session + 全局配额回收
+├─ background/                    后台进程
+│  ├─ backgroundProcessRuntime.ts 15s 转交、双坑位池、列表/读取/停止
+│  ├─ backgroundProcessScheduler.ts 公平轮转坑位
+│  ├─ backgroundProcessStore.ts   后台进程持久化窄端口 + camelCase 记录
+│  ├─ outputStore.ts              stdout/stderr 有界落盘与双游标读取
+│  ├─ types.ts / events.ts / settings.ts
+├─ events.ts                      Tool 事件(ToolStreamEvent/AskUser 事件)
+├─ errors.ts                      本包全部错误类型
+├─ types.ts                       ReadFileState、ToolCapabilityScope 等共享类型
+└─ index.ts                       公共出口(见下)
 ```
 
-解析后的 `input` 是一次调用的局部常量，同一个值依次进入业务校验、Permission 和执行。校验与 Permission 不得原地修改它；确实需要规范化的 Tool 必须显式返回新的规范化输入，并从 Permission 开始统一使用该值。禁止用深冻结、品牌类型或 WeakMap 重新包装一次调用。
+## 公共接口与消费方
 
-Permission 接口已经封口。Tools 只 import `PermissionIntent`、`PermissionAuthorizer` 等公开类型，不复制 Permission Request、Response、Prompt 或规则结构。MCP 自报权限在单调用执行边界投影成可信的 Permission Intent，不能在 Registry 中维护第二份安全状态。
+**工具作者消费**(`src/builtinTools`、MCP 适配层）:
 
-## 进度与结果
+- `Tool`、`buildTool`、`contextOk/contextFail`、`DEFAULT_MAX_RESULT_BYTES`;
+- `ToolUseContext`、`ToolInvocation`、`ToolInputValidationResult`、`ToolContextValidation`;
+- 宿主 Port 类型：`SubagentSpawnerPort`、`AskUserPort`、`ScratchpadPort`、`CommandRunnerPort`(sandbox 转出口径）。
 
-`TProgress` 只通过当前调用的 `onProgress` 上报，执行器补齐 Session、Turn、ToolCall 和 Tool 名称后形成 `tool_progress`。完成结果仍由 `execute()` 的 Promise 唯一返回，不能用进度事件伪装终态。
+**装配层消费**(LocalHost wiring):
 
-具体 Tool 先限制生产规模，通用 Results 层再执行 UTF-8 单项和聚合预算。超大结果的截断、受控落盘引用和回收属于 Results 层；具体 Tool 只负责自己的业务上限。
+- `ToolRegistry`(Builtin 启动注册、MCP 热更新）、`assembleToolPool`、`ToolPool`;
+- `StreamingToolExecutor` + `StreamingToolExecutorOptions` —— **执行的唯一公开入口；`ToolCallExecution` 不导出，任何包不得绕过协调器直接单发**;
+- `ToolExecutionState` + `ToolExecutionStateStore`（端口）+ `ToolExecutionStateReader`（审计只读）——SQL 实现在 storage,Core 注入;
+- `BackgroundProcessRuntime` + `BackgroundProcessStore`（端口）+ `BackgroundProcessPort`(Bash/Process 工具消费的窄口）+ `BackgroundProcessCompletionSource`(LocalHost 完成通知）;
+- `ToolResultStore`、`ToolResultCleaner`、`backgroundProcessSetting`。
+
+**Agent/Turn 消费**:
+
+- `ToolResult`（唯一结果信封）、`ToolExecutionEvent`、`AskUserQuestionSpec`、`PendingAskUserPrompt`;
+- `ToolCapabilityScope`（只能收窄的能力边界）、`ReadFileState`;
+- `BackgroundProcessEvent`。
+
+## 关键不变量
+
+1. **ToolPool 即冻结快照。** 根 Turn 冻结后不回读 Registry;MCP 热更新只影响下一根 Turn。不存在独立 Manifest/PreparedToolCall——Provider `tools[]`、缓存诊断、执行查找都从同一个 Pool 取。
+2. **输入解析一次。** `inputSchema.parse` 只在单调用入口做一次，同一个局部 `input` 依次经过 validateInput → getPermissionIntent → execute。Permission 不修改输入；规范化必须由 Tool 显式返回新输入。
+3. **`validateContext` 一身二任。** 装配时决定可见性，执行前重新投影——不得恢复 `requires` 第二份能力清单。
+4. **running 是副作用边界。** `ToolExecutionState.start()` 落库成功后才能 `execute()`;running 后断电/取消按 `outcome_unknown` 关账，不伪装干净 cancelled。
+5. **Message 先落，状态后关。** `acknowledgeResult`（写 Message）先于 `commitResult`（推进状态机）——先持久化后关账。
+6. **终态 FIFO。** 完成可乱序，`tool_result` 终态必须按模型 blockIndex 顺序发射；进度事件实时但有界。
+7. **后台双坑位池。** 交互命令独立小池（15s 内完成或转交），后台长任务吃 `maxConcurrent`;15s 转交时 detach 取消信号并交还交互坑位，转交后进程不再计入任何池。
+8. **取消与降级诚实。** 无批准界面 deny、无 workspace 相对路径 fail-closed、超大结果先外置再给稳定预览（落盘失败当前原样放行，改有界错误待拍板）、后台 interrupted 墓碑不自动重跑。
+
+## 失败语义速查
+
+| 场景 | 结果 |
+|---|---|
+| 模型幻觉工具名 | `tool/unavailable`（不是权限拒绝） |
+| Schema 解析失败 | `tool/validation_failed`，不产生状态迁移 |
+| validateContext 失败 | `tool/context_unavailable`，不进 Pool |
+| 权限拒绝 | `permission/denied`，不越过 running |
+| 执行中用户取消 | 模型见 `tool/cancelled`，审计 `outcome_unknown` |
+| running 后断电 | 启动恢复标 `outcome_unknown`，合成一次结果进 Message |
+| MCP 自报低风险/免询问 | 强制加固为 `medium/execute/whenRequired` |
+
+## 反模式（其他包禁止的行为）
+
+- 从本包以外 import `toolCallExecution.js`（内部实现）或直接构造执行环境——只能消费 `StreamingToolExecutor`;
+- 让本包 import `@ema-agent/storage`——持久化端口在 `toolExecutionState.ts` 与 `background/backgroundProcessStore.ts`,SQL 适配由 Core 装配；
+- 在 Tool 上声明 `requires`、`permissionMeta` 或第二份安全状态——能力走 `validateContext`,意图走 `getPermissionIntent`;
+- 用 `WeakMap`、全局 Map 或模块级单例给一次调用塞旁路数据——调用事实只活在 `ToolCallExecution` 局部与 `ToolResult`;
+- 绕过 `getPermissionIntent` 在 Tool 里自行审批，或让 MCP 自报 `promptPolicy: neverForTrustedBuiltin`（执行边界强制加固）;
+- 业务包重复定义 `BackgroundProcessStatus`、`ToolExecutionStatus` 等本包联合类型（备份链路消费 storage Row 是已登记的唯一例外）。

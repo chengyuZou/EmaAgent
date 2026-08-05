@@ -74,6 +74,8 @@ export interface BackgroundProcessRuntimeDeps {
   resolveOutputLocation: BackgroundProcessOutputLocationResolver;
   settings: () => Readonly<BackgroundProcessSettings>;
   emit?: (event: BackgroundProcessEvent) => void;
+  /** 交互等待上限,默认 15s;仅测试用更短值。 */
+  immediateResultWaitMs?: number;
 }
 
 export class BackgroundProcessRuntime
@@ -223,7 +225,7 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
     try {
       winner = await Promise.race([
         active.handle.completion,
-        delay(IMMEDIATE_RESULT_WAIT_MS, transfer),
+        delay(this.deps.immediateResultWaitMs ?? IMMEDIATE_RESULT_WAIT_MS, transfer),
       ]);
     } catch (error) {
       active.detachWaitAbort?.();

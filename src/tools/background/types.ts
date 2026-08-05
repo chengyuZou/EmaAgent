@@ -107,7 +107,8 @@ export interface BackgroundProcessPort {
     id: BackgroundProcessId,
     options?: BackgroundProcessOutputOptions,
   ): Promise<BackgroundProcessOutput>;
-  stop(sessionId: SessionId, id: BackgroundProcessId): BackgroundProcessSummary;
+  /** 停止请求会在进程退出后返回真实终态快照。 */
+  stop(sessionId: SessionId, id: BackgroundProcessId): Promise<BackgroundProcessSummary>;
 }
 
 export interface BackgroundProcessOutputLocation {
@@ -118,6 +119,11 @@ export interface BackgroundProcessOutputLocation {
 export type BackgroundProcessOutputPathFactory = (
   sessionId: SessionId,
   processId: BackgroundProcessId,
+) => BackgroundProcessOutputLocation;
+
+/** 读取期把行内存储的相对路径解析为当前数据目录下的绝对位置。 */
+export type BackgroundProcessOutputLocationResolver = (
+  relativeDirectory: string,
 ) => BackgroundProcessOutputLocation;
 
 export interface BackgroundProcessCompletion {
