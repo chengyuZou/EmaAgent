@@ -13,6 +13,7 @@ import { IconButton } from '@ema-agent/ui';
 import type { AssistantSlice } from '../../stores/conversation-store.js';
 import { turnsApi } from '../../api/turns.js';
 import { renderToolResult } from './toolBlocks/tool-renderers.js';
+import { lookupToolUI } from './toolBlocks/toolUIRegistry.js';
 import { BackgroundProcessCard } from './toolBlocks/BackgroundProcessCard.js';
 import { ToolArgsView, ToolResultViewBlock, BashBlock, DiffBlock } from './toolBlocks/ToolRenderBlocks.js';
 import { BASH_TOOLS, getBashCommand, buildBodyText, buildEditDiff, getPrimaryTarget, formatJson } from './toolBlocks/toolBlockHelpers.js';
@@ -77,6 +78,12 @@ export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBloc
     : argsReady ? buildEditDiff(slice.name, slice.args) : null;
 
   const resultView = hasResult && slice.result !== null ? renderToolResult(slice.name, slice.result) : null;
+  // 专属 UI 优先;返回 null(类型守卫失败/未注册)回落通用平铺。渲染函数必须纯(无 hooks)。
+  const toolUI = lookupToolUI(slice.name);
+  const customArgs = toolUI?.ArgsView && argsReady ? toolUI.ArgsView({ args: slice.args }) : null;
+  const customResult = toolUI?.ResultView && hasResult && slice.result != null
+    ? toolUI.ResultView({ data: slice.result })
+    : null;
   // bash 结果沿用原终端融合渲染（不进 renderToolResult）;已转交后台的进程引用 JSON 不渲染,由卡片表达。
   const bashResultStr = isBash && hasResult && slice.result !== null && !backgroundProcess
     ? formatJson(slice.result)
@@ -186,9 +193,9 @@ export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBloc
           {/* 通用工具：单块 = 参数 + 透明横线 + 结果 */}
           {!isBash && !fileChange && !editDiff && (
             <>
-              {/* 参数区 */}
+              {/* 参数区:专属 UI 优先,否则通用平铺 */}
               {argsReady ? (
-                <ToolArgsView name={slice.name} args={slice.args} />
+                customArgs ?? <ToolArgsView name={slice.name} args={slice.args} />
               ) : slice.partialArgs ? (
                 <pre className="font-mono text-[11px] text-[var(--ema-text-tertiary)] whitespace-pre-wrap break-all leading-relaxed bg-transparent m-0 p-0 pr-6">
                   {slice.partialArgs}
@@ -196,15 +203,17 @@ export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBloc
               ) : null}
 
               {/* 透明横线（分隔参数与结果，仅当两者都有时） */}
-              {(argsReady || slice.partialArgs) && resultView !== null && (
+              {(argsReady || slice.partialArgs) && (customResult !== null || resultView !== null) && (
                 <div className="my-2 mx-4 border-t border-[var(--ema-border)]" />
               )}
 
-              {/* 结果区 */}
-              {resultView !== null && (
-                <div className="max-h-48 overflow-auto pr-6">
-                  <ToolResultViewBlock view={resultView} />
-                </div>
+              {/* 结果区:专属 UI 优先,否则通用渲染 */}
+              {customResult ?? (
+                resultView !== null && (
+                  <div className="max-h-48 overflow-auto pr-6">
+                    <ToolResultViewBlock view={resultView} />
+                  </div>
+                )
               )}
 
               {/* 错误区（denied/failed 状态） */}

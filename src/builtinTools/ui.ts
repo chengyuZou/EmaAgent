@@ -1,0 +1,4 @@
+// 内置工具的桌面 UI 出口: 仅供前端(desktop)导入, 后端入口 index.ts 不得引用本文件。
+// 每个复杂 Tool 在自己的目录提供 UI.tsx, 这里统一再导出, 前端注册表按 toolId 取用。
+
+export { FileReadArgsView, FileReadResultView } from './tools/FileReadTool/UI.js';

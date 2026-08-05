@@ -7,6 +7,10 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./ui": {
+      "import": "./dist/ui.js",
+      "types": "./dist/ui.d.ts"
     }
   },
   "main": "./dist/index.js",
@@ -34,11 +38,17 @@
     "@ema-agent/sandbox": "workspace:*",
     "@ema-agent/tools": "workspace:*",
     "@ema-agent/token": "workspace:*",
+    "@ema-agent/ui": "workspace:*",
     "glob": "^11.0.0",
     "zod": "^3.23.0"
   },
+  "peerDependencies": {
+    "react": "^18.3.0"
+  },
   "devDependencies": {
     "@types/node": "^20.0.0",
+    "@types/react": "^18.3.0",
+    "react": "^18.3.0",
     "rimraf": "^5.0.0",
     "typescript": "^5.9.3",
     "vitest": "^2.0.0"

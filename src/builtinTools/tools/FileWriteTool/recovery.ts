@@ -1,7 +1,6 @@
-// 这里根据中断日志，只清理由对应 FileWriteTool 调用留下的临时文件。
+// 根据 Message 中的 FileWrite 调用参数，清理由中断调用留下的临时文件。
 import fs from 'node:fs';
 import path from 'node:path';
-import type { ToolExecutionRecord } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { atomicTempPrefix, resolveAtomicTargetPath } from './atomicWrite.js';
 
@@ -10,8 +9,15 @@ export interface FileWriteRecoveryResult {
   failed: Array<{ path: string; message: string }>;
 }
 
+export interface InterruptedFileWriteCall {
+  callId: string;
+  toolName: string;
+  args: unknown;
+  outcomeUnknown: boolean;
+}
+
 export function cleanupInterruptedFileWriteTemps(
-  executions: readonly ToolExecutionRecord[],
+  executions: readonly InterruptedFileWriteCall[],
 ): FileWriteRecoveryResult {
   const result: FileWriteRecoveryResult = { removed: [], failed: [] };
 
@@ -21,8 +27,8 @@ export function cleanupInterruptedFileWriteTemps(
       // 兼容升级前尚未完成的旧 journal 记录。
       && execution.toolName !== 'fs_write'
     ) continue;
-    if (execution.status !== 'outcome_unknown') continue;
-    const targetPath = readTargetPath(execution.inputJson);
+    if (!execution.outcomeUnknown) continue;
+    const targetPath = readTargetPath(execution.args);
     if (!targetPath) continue;
 
     let absoluteTarget: string;
@@ -60,15 +66,10 @@ export function cleanupInterruptedFileWriteTemps(
   return result;
 }
 
-function readTargetPath(inputJson: string): string | undefined {
-  try {
-    const input = JSON.parse(inputJson) as unknown;
-    if (typeof input !== 'object' || input === null) return undefined;
-    const value = (input as Record<string, unknown>).file_path;
-    return typeof value === 'string' && value.length > 0 ? value : undefined;
-  } catch {
-    return undefined;
-  }
+function readTargetPath(input: unknown): string | undefined {
+  if (typeof input !== 'object' || input === null) return undefined;
+  const value = (input as Record<string, unknown>)['file_path'];
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
 function isMissingPath(error: unknown): boolean {

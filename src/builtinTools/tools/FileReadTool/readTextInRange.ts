@@ -1,14 +1,7 @@
 // 按行范围读取文本文件: 小文件快路径整读, 大文件流式只保留选中行。
 // 内存占用由选中范围决定, 不由文件大小决定——读 100 GB 文件的第 1 行不会爆 RSS。
 import fs from 'node:fs';
-
-const FAST_PATH_MAX_SIZE = 10 * 1024 * 1024; // 10 MiB, 与 FileReadTool 整文件上限一致
-/**
- * 单次读取给模型的正文字节预算: 与 FileReadTool 声明的 maxResultBytes 对齐
- * (后者另含 cat -n 行号开销)。超出的部分标 truncated + nextOffset 翻页,
- * 不再暗中交给结果外置换成预览。
- */
-export const SELECTED_BYTES_LIMIT = 50 * 1024;
+import { SELECTED_BYTES_LIMIT, TEXT_WHOLE_READ_LIMIT } from './limits.js';
 
 export interface TextRangeResult {
   /** 选中行(已剥 BOM 与行尾 \r)。 */
@@ -33,7 +26,7 @@ export async function readTextInRange(
   limit: number | undefined,
   signal?: AbortSignal,
 ): Promise<TextRangeResult> {
-  if (stat.isFile() && stat.size <= FAST_PATH_MAX_SIZE) {
+  if (stat.isFile() && stat.size <= TEXT_WHOLE_READ_LIMIT) {
     return readFast(filePath, offset, limit, signal);
   }
   return readStreaming(filePath, offset, limit, signal);

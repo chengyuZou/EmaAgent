@@ -1,26 +1,27 @@
-// 按行读取文本文件，并维护后续编辑需要的文件状态。
+// 读取文本或图片文件，并维护后续编辑需要的文件状态。
+// 模型说明书见 prompt.ts; 结果预算见 limits.ts; 图片分支见 imageReader.ts。
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
+import type { ToolResultContentPart } from '@ema-agent/llm';
 import {
   buildTool,
   contextFail,
   contextOk,
-  type BuiltinToolContext,
   type ReadFileState,
+  type ToolInvocation,
 } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
-import { readTextInRange, SELECTED_BYTES_LIMIT } from './readTextInRange.js';
+import { imageMediaTypeFor, readImageFile, type FileReadImageResult } from './imageReader.js';
+import { MAX_READ_LINES, MAX_RESULT_BYTES, SELECTED_BYTES_LIMIT, TEXT_WHOLE_READ_LIMIT } from './limits.js';
+import { FILE_READ_DESCRIPTION, FILE_UNCHANGED_STUB, imageResultNotice } from './prompt.js';
+import { readTextInRange } from './readTextInRange.js';
 
-/** File 读取工具只取得当前 Turn 的读取状态与取消信号。 */
+/** File 读取工具只取得当前 Turn 的读取状态与工作区；取消信号走 ToolInvocation。 */
 interface FileReadToolContext {
   readFileState: ReadFileState;
-  signal: AbortSignal;
   workspaceRoot: string;
 }
-
-/** 工具级结果预算: 50KB 正文预算 + cat -n 行号开销余量, 与 reader 截断口径严格一致。 */
-const MAX_RESULT_BYTES = SELECTED_BYTES_LIMIT + 16 * 1024;
 
 // ── 常量 ─────────────────────────────────────────────────────────────────────
 
@@ -46,10 +47,6 @@ const BINARY_EXTENSIONS = new Set([
   '.a', '.pdb', '.class', '.pyc', '.pyo', '.wasm', '.node',
 ]);
 
-const TEXT_SIZE_LIMIT = 10 * 1024 * 1024; // 10 MiB - 超此整读拒绝, 分页走流式
-/** 单次分页最多行数: 防止 limit=天文数字制造巨量输出。 */
-const MAX_READ_LINES = 2000;
-
 // ── 输入 schema ──────────────────────────────────────────────────────────────
 
 const inputSchema = z.object({
@@ -59,7 +56,7 @@ const inputSchema = z.object({
     .int()
     .min(1)
     .optional()
-    .describe('1-based line number to start reading from.'),
+    .describe('1-based line number to start reading from (text files only).'),
   limit: z
     .number()
     .int()
@@ -73,22 +70,35 @@ type FileReadInput = z.infer<typeof inputSchema>;
 
 // ── 输出类型 ───────────────────────────────────────────────────────────────────
 
-export interface FileReadResult {
-  type: 'file_content' | 'file_unchanged';
+/** 文本正文(cat -n); 截断事实模型可见。 */
+export interface FileReadTextResult {
+  type: 'file_content';
   filePath: string;
-  /** type === 'file_content' 时存在。cat -n 格式。 */
-  content?: string;
-  totalLines?: number;
+  content: string;
+  totalLines: number;
   /** 应用了 offset/limit 时为 true。 */
-  isPartialView?: boolean;
-  /** 选中内容超过字节预算被截断(模型可见, 不只是前端)。 */
-  truncated?: boolean;
+  isPartialView: boolean;
+  truncated?: true;
   truncationReason?: 'bytes';
   /** 截断后继续读取的起始行号。 */
   nextOffset?: number;
   /** 给模型的可读说明(英文)。 */
   notice?: string;
 }
+
+/** 同文件同范围同 mtime 的去重回放; 不带正文。 */
+export interface FileReadUnchangedResult {
+  type: 'file_unchanged';
+  filePath: string;
+  totalLines: number;
+  isPartialView: boolean;
+  truncated?: true;
+}
+
+export type FileReadResult =
+  | FileReadTextResult
+  | FileReadUnchangedResult
+  | FileReadImageResult;
 
 // ── 辅助函数 ───────────────────────────────────────────────────────────────────
 
@@ -147,31 +157,25 @@ function formatWithLineNumbers(lines: string[], startLine: number): string {
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
 
-export const FileReadTool = buildTool<FileReadInput, FileReadResult, BuiltinToolContext, FileReadToolContext>({
+export const FileReadTool = buildTool<FileReadInput, FileReadResult, FileReadToolContext>({
   id: BuiltinTools.FileRead.id,
   name: BuiltinTools.FileRead.name,
-  description: `Read a file from the local filesystem.
-
-- Returns content with 1-based line numbers (cat -n format).
-- Use \`offset\` and \`limit\` to paginate large files (limit up to ${MAX_READ_LINES} lines); omit both to read the entire file. Pagination streams the file — reading a slice of a huge file does not load it into memory.
-- Each read returns at most ${SELECTED_BYTES_LIMIT / 1024} KB of content; larger selections are truncated with a \`nextOffset\` to continue from.
-- Binary files, device files, and files over 10 MiB (without pagination) are refused.
-- If the same file+range is read twice without the file changing, returns \`file_unchanged\` to save tokens.`,
+  description: FILE_READ_DESCRIPTION,
 
   inputSchema,
   isReadOnly: () => true,
   isConcurrencySafe: () => true,
   maxResultBytes: MAX_RESULT_BYTES,
 
-  requires: ['workspaceRoot', 'readFileState'],
-
   validateContext(ctx) {
-    if (!ctx.workspaceRoot || !ctx.readFileState) {
-      return contextFail('File 读取工具未装配完整的工作区或读取状态。');
+    if (!ctx.workspaceRoot) {
+      return contextFail('File 读取工具需要明确的工作区。');
+    }
+    if (!ctx.readFileState) {
+      return contextFail('File 读取工具未装配读取状态。');
     }
     return contextOk({
       readFileState: ctx.readFileState,
-      signal: ctx.signal,
       workspaceRoot: ctx.workspaceRoot,
     });
   },
@@ -186,6 +190,7 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, BuiltinTool
   async execute(
     input: FileReadInput,
     context: FileReadToolContext,
+    invocation: ToolInvocation,
   ): Promise<FileReadResult> {
     const { file_path, offset, limit } = input;
     // 与 Permission/Write 同一基准: 相对路径按工作区解析, 不借 Core 进程 cwd。
@@ -218,6 +223,22 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, BuiltinTool
     if (!stat.isFile()) {
       throw new Error(`Path is not a regular file: ${fullPath}`);
     }
+
+    // ── 图片分支: 扩展名单点判定, 分页参数对图片无意义 ─────────────────────────
+    const imageMediaType = imageMediaTypeFor(fullPath);
+    if (imageMediaType) {
+      if (offset !== undefined || limit !== undefined) {
+        throw new Error('offset/limit do not apply to image files.');
+      }
+      return readImageFile({
+        fullPath,
+        displayPath: file_path,
+        mediaType: imageMediaType,
+        sizeBytes: stat.size,
+        signal: invocation.signal,
+      });
+    }
+
     // 内容级二进制探测: 扩展名伪装(.exe 改名 .txt)在前 8KB 的 NUL/不可打印
     // 字符面前无效, 与 Claude 同款判定。
     if (isBinaryContent(fullPath)) {
@@ -225,7 +246,7 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, BuiltinTool
     }
     const isPartialView = offset !== undefined || limit !== undefined;
 
-    if (stat.size > TEXT_SIZE_LIMIT && !isPartialView) {
+    if (stat.size > TEXT_WHOLE_READ_LIMIT && !isPartialView) {
       throw new Error(
         `File is too large to read as text (${(stat.size / 1024 / 1024).toFixed(1)} MiB > 10 MiB). ` +
           `Use offset/limit to read a section.`,
@@ -246,18 +267,17 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, BuiltinTool
       const cachedLines = existing.content.split('\n');
       // 判别联合: 两个分支都带截断事实, 回放原样保留(分页分支另有 totalLines)。
       const totalLines = existing.isPartialView ? existing.totalLines : cachedLines.length;
-      const truncated = existing.truncated;
       return {
         type: 'file_unchanged',
         filePath: file_path,
         totalLines,
         isPartialView,
-        ...(truncated ? { truncated: true as const } : {}),
+        ...(existing.truncated ? { truncated: true as const } : {}),
       };
     }
 
     // ── 读文件(小文件快路径整读, 大文件流式只留选中行) ─────────────────────────
-    const result = await readTextInRange(fullPath, stat, startLine, limit, context.signal);
+    const result = await readTextInRange(fullPath, stat, startLine, limit, invocation.signal);
 
     if (result.totalLines === 0 || startLine > result.totalLines) {
       throw new Error(
@@ -305,6 +325,25 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, BuiltinTool
           }
         : {}),
     };
+  },
+
+  mapResultToModelContent(output) {
+    switch (output.type) {
+      case 'file_unchanged':
+        return FILE_UNCHANGED_STUB;
+      case 'image_content':
+        return [
+          {
+            type: 'text',
+            text: imageResultNotice(output.filePath, output.mediaType, output.originalBytes),
+          },
+          { type: 'image_data', data: output.base64, mimeType: output.mediaType },
+        ];
+      case 'file_content': {
+        const notice = output.notice ? `\n${output.notice}` : '';
+        return `${output.content}${notice}`;
+      }
+    }
   },
 });
 

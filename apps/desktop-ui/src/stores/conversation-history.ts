@@ -225,7 +225,8 @@ export function assembleHistory(
 
         const updated: AnyAssistantSlice = {
           ...target,
-          result: block.content,
+          // 类型化 data 优先(供专属 UI);老消息没有 data 槽,回落模型内容。
+          result: block.data ?? block.content,
           durationMs: block.durationMs,
           presentation: block.presentation,
           errorCode: block.errorCode ?? (block.isError ? 'tool/error' : undefined),
