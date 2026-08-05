@@ -2,7 +2,7 @@
 
 import path from 'node:path';
 import { statSync } from 'node:fs';
-import type { SandboxBackend, SandboxConfig, WrappedCommand } from '../types.js';
+import type { SandboxBackend, SandboxConfig, ShellSpec, WrappedCommand } from '../types.js';
 import { getPlatform, type SandboxPlatform } from '../detectPlatform.js';
 
 /**
@@ -22,7 +22,7 @@ import { getPlatform, type SandboxPlatform } from '../detectPlatform.js';
 export class BubblewrapBackend implements SandboxBackend {
   readonly kind = 'bubblewrap';
 
-  wrap(command: string, shell: string, config: SandboxConfig): WrappedCommand {
+  wrap(command: string, shell: ShellSpec, config: SandboxConfig): WrappedCommand {
     return buildBubblewrapCommand(command, shell, config, getPlatform());
   }
 }
@@ -30,18 +30,20 @@ export class BubblewrapBackend implements SandboxBackend {
 /** 平台相关的 bwrap 启动形态（导出供单测覆盖直启与 WSL 两条路径）。 */
 export function buildBubblewrapCommand(
   command: string,
-  shell: string,
+  shell: ShellSpec,
   config: SandboxConfig,
   platform: SandboxPlatform,
 ): WrappedCommand {
   if (platform === 'windows') {
-    return wrapViaWsl(command, shell, config);
+    return wrapViaWsl(command, config);
   }
 
   // 原生 Linux / WSL2: 结构化 argv 直启 bwrap, 路径无需任何引号转义。
+  // 非 Windows 平台上 shell 恒为 native 路径; wsl 形态在此不可达, 防御性回退。
+  const shellPath = shell.kind === 'native' ? shell.path : 'bash';
   return {
     executable: 'bwrap',
-    args: [...buildBwrapArgs(config), '--', shell, '-c', command],
+    args: [...buildBwrapArgs(config), '--', shellPath, '-c', command],
   };
 }
 
@@ -100,7 +102,7 @@ function buildBwrapArgs(
 
 // ── Windows / WSL path translation ───────────────────────────────────────────
 
-function wrapViaWsl(command: string, shell: string, config: SandboxConfig): WrappedCommand {
+function wrapViaWsl(command: string, config: SandboxConfig): WrappedCommand {
   // 把 Win32 路径翻译成 /mnt/<drive>/...，供 WSL 内的 bwrap 使用
     const translatedConfig: SandboxConfig = {
     filesystem: {

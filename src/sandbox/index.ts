@@ -2,8 +2,8 @@
 
 export { CommandRunner } from './commandRunner.js';
 
-export { probeBash, installGitViaWinget } from './bashProbe.js';
-export type { BashProbeResult, GitInstallResult } from './bashProbe.js';
+export { probeBash, probeBashSettled, resetBashProbeCache } from './bashProbe.js';
+export type { BashProbeResult } from './bashProbe.js';
 
 export { detectBackend } from './detectBackend.js';
 export type { DetectResult, BackendKind }  from './detectBackend.js';
@@ -14,6 +14,7 @@ export type {
   SandboxFilesystemConfig,
   SandboxNetworkConfig,
   SandboxBackend,
+  ShellSpec,
   WrappedCommand,
   SandboxCommand,
   CommandRunOptions,

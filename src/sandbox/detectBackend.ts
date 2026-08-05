@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { getPlatform, type SandboxPlatform } from './detectPlatform.js';
-import type { BackendKind, SandboxConfig } from './types.js';
+import type { BackendKind, SandboxConfig, ShellSpec } from './types.js';
 import { buildBubblewrapCommand } from './backends/bubblewrap.js';
 import { SandboxExecBackend } from './backends/sandbox-exec.js';
 
@@ -114,7 +114,8 @@ function runDetect(): DetectResult {
  * 输出不符即降级, 避免向前端谎报 isolated 后第一条命令才失败。
  */
 function smokeSandboxExec(): DetectResult {
-  const wrapped = new SandboxExecBackend().wrap(`echo ${SMOKE_MARKER}`, '/bin/bash', smokeConfig());
+  const shellSpec: ShellSpec = { kind: 'native', path: '/bin/bash' };
+  const wrapped = new SandboxExecBackend().wrap(`echo ${SMOKE_MARKER}`, shellSpec, smokeConfig());
   const probe = spawnSync(wrapped.executable, wrapped.args, {
     encoding: 'utf8',
     timeout: 8_000,
@@ -129,7 +130,8 @@ function smokeSandboxExec(): DetectResult {
 }
 
 function smokeBwrap(platform: SandboxPlatform, degradeReason: string): DetectResult {
-  const wrapped = buildBubblewrapCommand(`echo ${SMOKE_MARKER}`, '/bin/bash', smokeConfig(), platform);
+  const shellSpec: ShellSpec = { kind: 'native', path: '/bin/bash' };
+  const wrapped = buildBubblewrapCommand(`echo ${SMOKE_MARKER}`, shellSpec, smokeConfig(), platform);
   const probe = spawnSync(wrapped.executable, wrapped.args, {
     encoding: 'utf8',
     timeout: 8_000,

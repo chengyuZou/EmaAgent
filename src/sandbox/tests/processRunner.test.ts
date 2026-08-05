@@ -18,11 +18,11 @@ function makeCommand(executable: string, args: string[], cwd: string): SandboxCo
   };
 }
 
-function bashOrSkip(): string | null {
-  const shell = probeBash();
+async function bashOrSkip(): Promise<string | null> {
+  const probe = await probeBash();
   // 无 bash 或 wsl 间接路径(终止语义不同)时跳过。
-  if (!shell.available || shell.path === 'wsl:bash') return null;
-  return shell.path;
+  if (!probe.available || probe.source === 'wsl') return null;
+  return probe.path;
 }
 
 function pidAlive(pid: number): boolean {
@@ -49,7 +49,7 @@ describe('startProcess 进程树终止', () => {
   });
 
   it('取消会终止整棵进程树, 不留孙进程', async () => {
-    const shell = bashOrSkip();
+    const shell = await bashOrSkip();
     if (shell === null) return;
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ema-sandbox-kill-'));
     const heartbeat = path.join(dir, 'hb.log').replace(/\\/g, '/');
@@ -88,7 +88,7 @@ describe('startProcess 进程树终止', () => {
 
 describe('startProcess 输出与消费防线', () => {
   it('跨 chunk 拆分的多字节字符不碎', async () => {
-    const shell = bashOrSkip();
+    const shell = await bashOrSkip();
     if (shell === null) return;
     // "中" = E4 B8 AD: 先写前两字节, 隔 0.2s 再写第三字节——
     // 按块 toString 会解出两个 �, StringDecoder 应拼回完整字符。
@@ -100,7 +100,7 @@ describe('startProcess 输出与消费防线', () => {
   });
 
   it('onOutput 抛错时命令继续跑完, 且不再转发后续输出', async () => {
-    const shell = bashOrSkip();
+    const shell = await bashOrSkip();
     if (shell === null) return;
     let calls = 0;
     const result = await startProcess(
@@ -119,7 +119,7 @@ describe('startProcess 输出与消费防线', () => {
   });
 
   it('超上限输出被截断, 截断通知不破坏流预算', async () => {
-    const shell = bashOrSkip();
+    const shell = await bashOrSkip();
     if (shell === null) return;
     // 200KB 输出超过单流 100KB 上限。
     const result = await startProcess(

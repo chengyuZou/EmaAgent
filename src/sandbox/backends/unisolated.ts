@@ -1,7 +1,6 @@
 // 无 OS 沙箱时原样包装命令；调用方必须先完成安全策略判定（隐藏或显式不安全覆盖）。
 
-import { WSL_BASH_SENTINEL } from '../bashProbe.js';
-import type { SandboxBackend, WrappedCommand } from '../types.js';
+import type { SandboxBackend, ShellSpec, WrappedCommand } from '../types.js';
 
 /**
  * 命令原样交给 Shell 执行，不提供任何物理隔离。
@@ -11,10 +10,10 @@ import type { SandboxBackend, WrappedCommand } from '../types.js';
 export class UnisolatedBackend implements SandboxBackend {
   readonly kind = 'unisolated';
 
-  wrap(command: string, shell: string): WrappedCommand {
-    if (shell === WSL_BASH_SENTINEL) {
+  wrap(command: string, shell: ShellSpec): WrappedCommand {
+    if (shell.kind === 'wsl') {
       return { executable: 'wsl.exe', args: ['bash', '-c', command] };
     }
-    return { executable: shell, args: ['-c', command] };
+    return { executable: shell.path, args: ['-c', command] };
   }
 }

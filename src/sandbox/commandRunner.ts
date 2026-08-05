@@ -1,6 +1,6 @@
 // 使用一份冻结的 Sandbox 能力快照包装并执行当前 Session 的 Shell 命令。
 
-import { existsSync, statSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { buildSandboxConfig } from './buildSandboxConfig.js';
 import { detectBackend } from './detectBackend.js';
@@ -10,7 +10,8 @@ import { SandboxExecBackend } from './backends/sandbox-exec.js';
 import { startProcess } from './processRunner.js';
 import { buildProcessEnvironment } from './processEnvironment.js';
 import { resolveCommandCwd } from './resolveCommandCwd.js';
-import { probeBash } from './bashProbe.js';
+import { probeBash, probeBashSettled } from './bashProbe.js';
+import { BARE_REPO_EXPLOIT_FILES, hasBareRepoSignature } from './bareRepoSurface.js';
 import type {
   CommandRunOptions,
   CommandProcessHandle,
@@ -19,15 +20,11 @@ import type {
   SandboxBackend,
   SandboxCapability,
   SandboxConfig,
+  ShellSpec,
 } from './types.js';
 
 const DEFAULT_TIMEOUT_MS = 120_000;
 const MAX_TIMEOUT_MS = 7 * 24 * 60 * 60 * 1_000;
-
-/** bare-repo 完整签名: 三者同时存在才构成"工作区变成了 Git 仓库"。 */
-const BARE_SIGNATURE = ['HEAD', 'objects', 'refs'] as const;
-/** 攻击真正利用的两个落点: Git 会读取并执行/采信它们。 */
-const BARE_EXPLOIT_FILES = ['hooks', 'config'] as const;
 
 export class CommandRunner implements CommandRunnerPort {
   private readonly capability: SandboxCapability;
@@ -51,10 +48,14 @@ export class CommandRunner implements CommandRunnerPort {
     const detection = detectBackend();
     this.backend = selectBackend(detection.backend);
 
+    // 兜底预热 shell 探测(正常由 LocalHost 启动期提前发起):
+    // 让首个 start() 的 probeBashSettled 尽量命中已结算缓存。
+    void probeBash();
+
     this.config = buildSandboxConfig(this.capability);
     this.bareRepoExistedAtStart = hasBareRepoSignature(capability.workspaceRoot);
     this.exploitPathsExistedAtStart = new Set(
-      BARE_EXPLOIT_FILES.filter((fileName) =>
+      BARE_REPO_EXPLOIT_FILES.filter((fileName) =>
         existsSync(path.join(capability.workspaceRoot, fileName)),
       ),
     );
@@ -98,7 +99,7 @@ export class CommandRunner implements CommandRunnerPort {
     if (this.bareRepoExistedAtStart) return;
     const root = this.capability.workspaceRoot;
     if (!hasBareRepoSignature(root)) return;
-    const newExploits = BARE_EXPLOIT_FILES.filter(
+    const newExploits = BARE_REPO_EXPLOIT_FILES.filter(
       (fileName) =>
         !this.exploitPathsExistedAtStart.has(fileName) && existsSync(path.join(root, fileName)),
     );
@@ -108,18 +109,6 @@ export class CommandRunner implements CommandRunnerPort {
       + `${newExploits.join(' 与 ')} 会被后续 git 命令信任, 请人工确认来源: ${root}`,
     );
   }
-}
-
-/** 工作区根是否同时存在 HEAD + objects + refs(bare-repo 签名)。 */
-function hasBareRepoSignature(root: string): boolean {
-  return BARE_SIGNATURE.every((fileName) => {
-    try {
-      statSync(path.join(root, fileName));
-      return true;
-    } catch {
-      return false;
-    }
-  });
 }
 
 function selectBackend(kind: ReturnType<typeof detectBackend>['backend']): SandboxBackend {
@@ -133,13 +122,21 @@ function selectBackend(kind: ReturnType<typeof detectBackend>['backend']): Sandb
   }
 }
 
-function resolveShell(): string {
-  const result = probeBash();
-  if (!result.available) {
+/**
+ * 把已结算的 bash 探测结果翻译成后端启动形态。
+ * start() 是同步路径(后台进程调度立即持有句柄), 不能 await 探测——
+ * 冷窗口(探测尚未结算)与未找到 bash 都如实抛错, 不假装能执行。
+ */
+function resolveShell(): ShellSpec {
+  const probe = probeBashSettled();
+  if (probe === undefined) {
+    throw new Error('[sandbox] Shell 探测尚未完成, 请稍后重试该命令。');
+  }
+  if (!probe.available) {
+    // 只有 Windows 会走到 unavailable(Linux/macOS 探测恒 available)。
     throw new Error(
-      '[sandbox] Bash 未找到，无法执行 Shell 命令。'
-      + '请安装 Git for Windows，或在 Windows 上启用 WSL2。',
+      '[sandbox] 未找到可用的 Bash。请安装 Git for Windows, 或启用 WSL2 后重试。',
     );
   }
-  return result.path;
+  return probe.source === 'wsl' ? { kind: 'wsl' } : { kind: 'native', path: probe.path };
 }

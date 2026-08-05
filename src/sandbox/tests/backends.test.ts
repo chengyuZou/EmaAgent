@@ -5,7 +5,8 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { SandboxExecBackend } from '../backends/sandbox-exec.js';
 import { buildBubblewrapCommand } from '../backends/bubblewrap.js';
-import type { SandboxConfig } from '../types.js';
+import { UnisolatedBackend } from '../backends/unisolated.js';
+import type { SandboxConfig, ShellSpec } from '../types.js';
 
 const config: SandboxConfig = {
   filesystem: {
@@ -19,7 +20,8 @@ const config: SandboxConfig = {
 describe('SandboxExecBackend', () => {
   it('spawn 直传 argv, 命令不再包一层引号', () => {
     const backend = new SandboxExecBackend();
-    const wrapped = backend.wrap('ls -la "My Documents"', '/bin/bash', config);
+    const shell: ShellSpec = ({ kind: 'native', path: '/bin/bash' });
+    const wrapped = backend.wrap('ls -la "My Documents"', shell, config);
 
     expect(wrapped.executable).toBe('sandbox-exec');
     expect(wrapped.args[0]).toBe('-p');
@@ -31,7 +33,8 @@ describe('SandboxExecBackend', () => {
 
   it('profile 拒绝 denyRead 子路径且断网', () => {
     const backend = new SandboxExecBackend();
-    const wrapped = backend.wrap('ls', '/bin/bash', config);
+    const shell: ShellSpec = ({ kind: 'native', path: '/bin/bash' });
+    const wrapped = backend.wrap('ls', shell, config);
     const profile = wrapped.args[1]!;
 
     expect(profile).toContain('(deny file-read* (subpath "/home/u/.ema-agent/profile.db"))');
@@ -42,7 +45,8 @@ describe('SandboxExecBackend', () => {
   it('full 网络模式显式开放(deny default 起手, 不写 allow 等于断网)', () => {
     const backend = new SandboxExecBackend();
     const fullConfig: SandboxConfig = { ...config, network: { access: 'full' } };
-    const profile = backend.wrap('ls', '/bin/bash', fullConfig).args[1]!;
+    const shell: ShellSpec = ({ kind: 'native', path: '/bin/bash' });
+    const profile = backend.wrap('ls', shell, fullConfig).args[1]!;
 
     expect(profile).toContain('(allow network-outbound)');
     expect(profile).toContain('(allow network-inbound)');
@@ -50,9 +54,22 @@ describe('SandboxExecBackend', () => {
   });
 });
 
+describe('UnisolatedBackend', () => {
+  it('native shell 原样执行', () => {
+    const wrapped = new UnisolatedBackend().wrap('ls -la', { kind: 'native', path: '/bin/bash' });
+    expect(wrapped).toEqual({ executable: '/bin/bash', args: ['-c', 'ls -la'] });
+  });
+
+  it('wsl 形态经 wsl.exe 路由, 不假装有本机路径', () => {
+    const wrapped = new UnisolatedBackend().wrap('ls', { kind: 'wsl' });
+    expect(wrapped).toEqual({ executable: 'wsl.exe', args: ['bash', '-c', 'ls'] });
+  });
+});
+
 describe('buildBubblewrapCommand', () => {
   it('原生 Linux: 直接 argv 启动 bwrap, 路径不带引号', () => {
-    const wrapped = buildBubblewrapCommand('echo "hi there"', '/bin/bash', config, 'linux');
+    const shell: ShellSpec = ({ kind: 'native', path: '/bin/bash' });
+    const wrapped = buildBubblewrapCommand('echo "hi there"', shell, config, 'linux');
 
     expect(wrapped.executable).toBe('bwrap');
     expect(wrapped.args).toContain('--unshare-net');
@@ -76,7 +93,8 @@ describe('buildBubblewrapCommand', () => {
       },
       network: { access: 'full' },
     };
-    const wrapped = buildBubblewrapCommand('echo ok', 'bash', winConfig, 'windows');
+    const shell: ShellSpec = ({ kind: 'native', path: 'bash' });
+    const wrapped = buildBubblewrapCommand('echo ok', shell, winConfig, 'windows');
 
     expect(wrapped.executable).toBe('wsl.exe');
     expect(wrapped.args[0]).toBe('bash');
@@ -94,7 +112,8 @@ describe('buildBubblewrapCommand', () => {
       filesystem: { allowWrite: [], denyWrite: [], denyRead: [dir, file] },
       network: { access: 'none' },
     };
-    const line = buildBubblewrapCommand('echo ok', 'bash', winConfig, 'windows').args[2]!;
+    const shell: ShellSpec = ({ kind: 'native', path: 'bash' });
+    const line = buildBubblewrapCommand('echo ok', shell, winConfig, 'windows').args[2]!;
 
     // 目录 → --tmpfs 遮蔽; 文件 → /dev/null 覆盖(翻译前判定, 不受宿主 statSync 失真影响)
     expect(line).toContain('--tmpfs');

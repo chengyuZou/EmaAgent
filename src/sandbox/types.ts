@@ -18,6 +18,15 @@ export interface SandboxConfig {
 
 export type BackendKind = 'bubblewrap' | 'sandbox-exec' | 'unisolated';
 
+/**
+ * 后端真正启动的 Shell 形态:
+ * - native: 本机可执行文件, path 是真实文件路径(如 /bin/bash、Git bash.exe);
+ * - wsl:    bash 在 WSL 虚拟机内, 命令经 wsl.exe 路由, 没有本机路径。
+ */
+export type ShellSpec =
+  | { readonly kind: 'native'; readonly path: string }
+  | { readonly kind: 'wsl' };
+
 /** 后端包装命令后真正要启动的程序和参数。 */
 export interface WrappedCommand {
   executable: string;
@@ -38,7 +47,7 @@ export interface SandboxCommand {
 
 export interface SandboxBackend {
   readonly kind: BackendKind;
-  wrap(command: string, shell: string, config: SandboxConfig): WrappedCommand;
+  wrap(command: string, shell: ShellSpec, config: SandboxConfig): WrappedCommand;
 }
 
 /** 为一个 Session 冻结的命令执行能力；Sandbox 不从 Permission 规则反推。 */

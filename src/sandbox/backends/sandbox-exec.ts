@@ -1,6 +1,6 @@
 // 为 macOS sandbox-exec 生成文件和网络隔离规则。
 
-import type { SandboxBackend, SandboxConfig, WrappedCommand } from '../types.js';
+import type { SandboxBackend, SandboxConfig, ShellSpec, WrappedCommand } from '../types.js';
 
 /**
  * macOS sandbox-exec 后端。
@@ -16,14 +16,16 @@ import type { SandboxBackend, SandboxConfig, WrappedCommand } from '../types.js'
 export class SandboxExecBackend implements SandboxBackend {
   readonly kind = 'sandbox-exec';
 
-  wrap(command: string, shell: string, config: SandboxConfig): WrappedCommand {
+  wrap(command: string, shell: ShellSpec, config: SandboxConfig): WrappedCommand {
     const profile = buildProfile(config);
 
     // spawn 直接传 argv, 不经过外层 Shell——命令不能再包一层引号,
     // 否则引号会成为 bash -c 输入的一部分, 整条命令被解释成一个"命令名"。
+    // macOS 上 shell 恒为 native 路径; wsl 形态不可达, 防御性回退。
+    const shellPath = shell.kind === 'native' ? shell.path : 'bash';
     return {
       executable: 'sandbox-exec',
-      args: ['-p', profile, shell, '-c', command],
+      args: ['-p', profile, shellPath, '-c', command],
     };
   }
 }

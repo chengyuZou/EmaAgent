@@ -1,8 +1,10 @@
 // 这里测试 Sandbox 只保护 LocalHost 传入的真实私有路径，不再自行猜旧设置文件位置。
 
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { buildSandboxConfig } from '../config-builder.js';
+import { buildSandboxConfig } from '../buildSandboxConfig.js';
 
 describe('buildSandboxConfig 私有路径', () => {
   it('只采用 LocalHost 明确注入的可写路径', () => {
@@ -76,5 +78,25 @@ describe('buildSandboxConfig 私有路径', () => {
 
     expect(denied.network).toEqual({ access: 'none' });
     expect(full.network).toEqual({ access: 'full' });
+  });
+
+  it('符号链接路径按真实路径落配置, 与 cwd 校验口径一致', () => {
+    const real = fs.mkdtempSync(path.join(os.tmpdir(), 'ema-sandbox-real-'));
+    const link = path.join(os.tmpdir(), `ema-sandbox-link-${process.pid}`);
+    fs.symlinkSync(real, link, process.platform === 'win32' ? 'junction' : 'dir');
+    try {
+      const result = buildSandboxConfig({
+        workspaceRoot: real,
+        writablePaths: [link],
+        forbiddenPaths: [],
+        networkAccess: 'none',
+      });
+      const expectedReal = fs.realpathSync.native(real).replace(/^\\\\\?\\/, '');
+      expect(result.filesystem.allowWrite).toEqual([expectedReal]);
+      expect(result.filesystem.allowWrite[0]).not.toContain('\\\\?\\');
+    } finally {
+      fs.rmSync(link, { recursive: true, force: true });
+      fs.rmSync(real, { recursive: true, force: true });
+    }
   });
 });
