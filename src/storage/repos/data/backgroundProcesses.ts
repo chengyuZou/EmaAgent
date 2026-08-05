@@ -17,6 +17,7 @@ export type BackgroundProcessStatus =
   | 'stopped'
   | 'interrupted';
 
+/** SQLite 原始行结构;备份链路按列名消费,不进入 Tools 运行态。 */
 export interface BackgroundProcessRow {
   id: BackgroundProcessId;
   session_id: SessionId;
@@ -40,6 +41,32 @@ export interface BackgroundProcessRow {
   completion_claimed_at: number | null;
   continuation_turn_id: TurnId | null;
   model_notified_at: number | null;
+}
+
+/** 提供给 Tools 端口的领域形状,不泄露 SQL 列名与 null。 */
+interface StoredBackgroundProcess {
+  id: BackgroundProcessId;
+  sessionId: SessionId;
+  originTurnId?: TurnId;
+  toolCallId?: ToolCallId;
+  command: string;
+  description?: string;
+  cwd: string;
+  status: BackgroundProcessStatus;
+  timeoutMs: number;
+  version: number;
+  createdAt: number;
+  startedAt?: number;
+  completedAt?: number;
+  exitCode?: number;
+  terminationReason?: string;
+  stdoutBytes: number;
+  stderrBytes: number;
+  outputTruncated: boolean;
+  outputRelativePath: string;
+  completionClaimedAt?: number;
+  continuationTurnId?: TurnId;
+  modelNotifiedAt?: number;
 }
 
 export interface BackgroundProcessInsert {
@@ -74,8 +101,8 @@ export interface BackgroundProcessTerminal {
 export class BackgroundProcessesRepo {
   constructor(private readonly db: SqliteDb) {}
 
-  insert(value: BackgroundProcessInsert): BackgroundProcessRow {
-    return this.db.prepare(
+  insert(value: BackgroundProcessInsert): StoredBackgroundProcess {
+    const row = this.db.prepare(
       `INSERT INTO background_processes (
          id, session_id, origin_turn_id, tool_call_id, command, description, cwd,
          status, timeout_ms, created_at, started_at, stdout_bytes, stderr_bytes,
@@ -99,41 +126,45 @@ export class BackgroundProcessesRepo {
       value.outputTruncated ? 1 : 0,
       value.outputRelativePath,
     ) as BackgroundProcessRow;
+    return fromSqlRow(row);
   }
 
-  findById(id: BackgroundProcessId): BackgroundProcessRow | undefined {
-    return this.db.prepare(
+  findById(id: BackgroundProcessId): StoredBackgroundProcess | undefined {
+    const row = this.db.prepare(
       'SELECT * FROM background_processes WHERE id = ?',
     ).get(id) as BackgroundProcessRow | undefined;
+    return row ? fromSqlRow(row) : undefined;
   }
 
   listForSession(
     sessionId: SessionId,
     options: { status?: BackgroundProcessStatus; limit?: number } = {},
-  ): BackgroundProcessRow[] {
+  ): StoredBackgroundProcess[] {
     const limit = Math.min(Math.max(options.limit ?? 100, 1), 500);
     if (options.status) {
-      return this.db.prepare(
+      const rows = this.db.prepare(
         `SELECT * FROM background_processes
           WHERE session_id = ? AND status = ?
           ORDER BY created_at DESC, id DESC
           LIMIT ?`,
       ).all(sessionId, options.status, limit) as BackgroundProcessRow[];
+      return rows.map(fromSqlRow);
     }
-    return this.db.prepare(
+    const rows = this.db.prepare(
       `SELECT * FROM background_processes
         WHERE session_id = ?
         ORDER BY created_at DESC, id DESC
         LIMIT ?`,
     ).all(sessionId, limit) as BackgroundProcessRow[];
+    return rows.map(fromSqlRow);
   }
 
   transitionToRunning(
     id: BackgroundProcessId,
     expectedVersion: number,
     startedAt: number,
-  ): BackgroundProcessRow | undefined {
-    return this.db.prepare(
+  ): StoredBackgroundProcess | undefined {
+    const row = this.db.prepare(
       `UPDATE background_processes
           SET status = 'running',
               started_at = COALESCE(started_at, ?),
@@ -141,14 +172,15 @@ export class BackgroundProcessesRepo {
         WHERE id = ? AND version = ? AND status = 'queued'
         RETURNING *`,
     ).get(startedAt, id, expectedVersion) as BackgroundProcessRow | undefined;
+    return row ? fromSqlRow(row) : undefined;
   }
 
   finish(
     id: BackgroundProcessId,
     expectedVersion: number,
     terminal: BackgroundProcessTerminal,
-  ): BackgroundProcessRow | undefined {
-    return this.db.prepare(
+  ): StoredBackgroundProcess | undefined {
+    const row = this.db.prepare(
       `UPDATE background_processes
           SET status = ?,
               completed_at = ?,
@@ -171,10 +203,11 @@ export class BackgroundProcessesRepo {
       id,
       expectedVersion,
     ) as BackgroundProcessRow | undefined;
+    return row ? fromSqlRow(row) : undefined;
   }
 
-  recoverInterrupted(at: number): BackgroundProcessRow[] {
-    return this.db.prepare(
+  recoverInterrupted(at: number): StoredBackgroundProcess[] {
+    const rows = this.db.prepare(
       `UPDATE background_processes
           SET status = 'interrupted',
               completed_at = ?,
@@ -183,6 +216,7 @@ export class BackgroundProcessesRepo {
         WHERE status IN ('queued','running')
         RETURNING *`,
     ).all(at) as BackgroundProcessRow[];
+    return rows.map(fromSqlRow);
   }
 
   /**
@@ -194,7 +228,7 @@ export class BackgroundProcessesRepo {
     continuationTurnId: TurnId,
     at: number,
     limit = 20,
-  ): BackgroundProcessRow[] {
+  ): StoredBackgroundProcess[] {
     const claim = this.db.transaction(() => {
       const existing = this.db.prepare(
         `SELECT * FROM background_processes
@@ -233,7 +267,7 @@ export class BackgroundProcessesRepo {
           ORDER BY completed_at ASC, id ASC`,
       ).all(continuationTurnId) as BackgroundProcessRow[];
     });
-    return claim();
+    return claim().map(fromSqlRow);
   }
 
   markCompletionDelivered(continuationTurnId: TurnId, at: number): number {
@@ -258,4 +292,39 @@ export class BackgroundProcessesRepo {
     ).all(Math.min(Math.max(limit, 1), 500)) as Array<{ session_id: SessionId }>;
     return rows.map(row => row.session_id);
   }
+}
+
+function fromSqlRow(row: BackgroundProcessRow): StoredBackgroundProcess {
+  return {
+    id: row.id,
+    sessionId: row.session_id,
+    ...(row.origin_turn_id ? { originTurnId: row.origin_turn_id } : {}),
+    ...(row.tool_call_id ? { toolCallId: row.tool_call_id } : {}),
+    command: row.command,
+    ...(row.description ? { description: row.description } : {}),
+    cwd: row.cwd,
+    status: row.status,
+    timeoutMs: row.timeout_ms,
+    version: row.version,
+    createdAt: row.created_at,
+    ...(row.started_at !== null ? { startedAt: row.started_at } : {}),
+    ...(row.completed_at !== null ? { completedAt: row.completed_at } : {}),
+    ...(row.exit_code !== null ? { exitCode: row.exit_code } : {}),
+    ...(row.termination_reason
+      ? { terminationReason: row.termination_reason }
+      : {}),
+    stdoutBytes: row.stdout_bytes,
+    stderrBytes: row.stderr_bytes,
+    outputTruncated: row.output_truncated === 1,
+    outputRelativePath: row.output_relative_path,
+    ...(row.completion_claimed_at !== null
+      ? { completionClaimedAt: row.completion_claimed_at }
+      : {}),
+    ...(row.continuation_turn_id
+      ? { continuationTurnId: row.continuation_turn_id }
+      : {}),
+    ...(row.model_notified_at !== null
+      ? { modelNotifiedAt: row.model_notified_at }
+      : {}),
+  };
 }

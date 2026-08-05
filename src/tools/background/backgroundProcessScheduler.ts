@@ -1,4 +1,8 @@
 // 在全局并发上限内按 Session FIFO、公平轮转启动后台命令。
+//
+// 轮转规则:某 Session 启动一个条目后,队列仍有剩余则 cursor 前进一步,
+// 把下一个空位让给下一个 Session;队列清空则从轮转表移除,cursor 不动,
+// 数组删除后自然指向下一个。任何 Session 都无法独占空位。
 
 import type { SessionId } from '@ema-agent/ids';
 
@@ -58,7 +62,14 @@ export class BackgroundProcessScheduler {
       this.activeCount += 1;
       if (queue.length === 0) this.removeEmptySession(sessionId);
       else this.cursor = (this.cursor + 1) % this.sessionOrder.length;
-      item.start();
+      try {
+        item.start();
+      } catch (error) {
+        // start() 的契约是自吞业务错误;异常逃逸属于调度器级缺陷。
+        // 先占位后回调的场景,回调抛错不能带走计数——坑位必须先归还。
+        this.activeCount = Math.max(0, this.activeCount - 1);
+        throw error;
+      }
     }
   }
 

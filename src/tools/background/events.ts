@@ -15,7 +15,8 @@ export interface BackgroundProcessEvent {
   readonly originTurnId?: TurnId;
   readonly toolCallId?: ToolCallId;
   readonly status: BackgroundProcessStatus;
-  readonly at: number;
+  /** 状态最后变更时间(终态取 completedAt,否则 startedAt/createdAt)。 */
+  readonly changedAt: number;
   readonly exitCode?: number;
   readonly terminationReason?: string;
 }

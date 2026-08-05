@@ -1,5 +1,12 @@
-export { BackgroundProcessRuntime } from './runtime.js';
-export type { BackgroundProcessRuntimeDeps } from './runtime.js';
+export { BackgroundProcessRuntime } from './backgroundProcessRuntime.js';
+export type { BackgroundProcessRuntimeDeps } from './backgroundProcessRuntime.js';
+export type {
+  BackgroundProcessInsertRecord,
+  BackgroundProcessListFilter,
+  BackgroundProcessRecord,
+  BackgroundProcessStore,
+  BackgroundProcessTerminalRecord,
+} from './backgroundProcessStore.js';
 export {
   backgroundProcessSetting,
   DEFAULT_BACKGROUND_PROCESS_SETTINGS,
