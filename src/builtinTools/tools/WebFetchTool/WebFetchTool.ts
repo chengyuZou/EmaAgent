@@ -1,15 +1,11 @@
-// 在网络安全和响应大小边界内获取公开网页内容。
+// 在网络安全与响应大小边界内获取公开网页内容, 转换结果按 URL 缓存。
 import { z } from 'zod';
 import { isObviouslyUnsafePublicUrl } from '@ema-agent/public-http';
-import { buildTool, contextOk, type BuiltinToolContext } from '@ema-agent/tools';
+import { buildTool, contextOk, type ToolInvocation } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { fetchPublicPage } from './httpClient.js';
-import { htmlToMarkdown } from './htmlToMarkdown.js';
-
-/** WebFetch 工具的窄 Context：per-call 取消信号。 */
-interface WebFetchToolContext {
-  signal: AbortSignal;
-}
+import { isPreapprovedHost } from './preapproved.js';
+import { WEB_FETCH_DESCRIPTION } from './prompt.js';
 
 // ── 常量 ─────────────────────────────────────────────────────────────────────
 
@@ -36,35 +32,39 @@ const inputSchema = z.object({
     .boolean()
     .default(false)
     .describe('Return raw HTML instead of converting to Markdown.'),
-});
+}).strict();
 
 type WebFetchInput = z.infer<typeof inputSchema>;
 
 // ── 输出类型 ───────────────────────────────────────────────────────────────────
 
 export interface WebFetchResult {
+  /** 重定向后的最终 URL, 与首次请求的 finalUrl 一致。 */
   url: string;
+  /** 响应体字节数, 供 UI 展示接收体积。 */
+  bytes: number;
+  code: number;
+  codeText: string;
+  /** 模型可见内容(分页后的 Markdown 或原始 HTML)。 */
   content: string;
   truncated: boolean;
   totalLength: number;
-  durationMs: number;
 }
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
 
-export const WebFetchTool = buildTool<WebFetchInput, WebFetchResult, BuiltinToolContext, WebFetchToolContext>({
+export const WebFetchTool = buildTool<WebFetchInput, WebFetchResult, undefined>({
   id: BuiltinTools.WebFetch.id,
   name: BuiltinTools.WebFetch.name,
-  description: `Fetch a URL and return its content as Markdown (or raw HTML if raw: true).
-
-- Localhost / private IP ranges are blocked.
-- Follows up to 5 redirects.
-- Times out after 30 seconds.
-- Use \`start_index\` + \`max_length\` to paginate large pages.`,
+  description: WEB_FETCH_DESCRIPTION,
+  // 业务上限是 100K 字符; 按 UTF-8 最坏 3 字节/字符(CJK)折算成结果预算。
+  maxResultBytes: 300_000,
 
   inputSchema,
   isReadOnly: () => true,
   isConcurrencySafe: () => true,
+
+  getToolUseSummary: (input) => input.url,
 
   validateInput(input) {
     return isObviouslyUnsafePublicUrl(input.url)
@@ -77,36 +77,59 @@ export const WebFetchTool = buildTool<WebFetchInput, WebFetchResult, BuiltinTool
       : { valid: true };
   },
 
-  getPermissionIntent: () => ({
-    riskLevel: 'medium',
-    accessType: 'read',
-    promptPolicy: 'whenRequired',
-  }),
-
-  validateContext(ctx) {
-    return contextOk({ signal: ctx.signal });
-  },
-
-  async execute(input: WebFetchInput, context: WebFetchToolContext): Promise<WebFetchResult> {
-    const { url, max_length, start_index, raw } = input;
-
-    const startMs  = Date.now();
-    const response = await fetchPublicPage(url, context.signal);
-    let content = raw ? response.body : htmlToMarkdown(response.body);
-
-    const totalLength = content.length;
-    const truncated   = start_index + max_length < totalLength;
-    const sliced      = truncated
-      ? content.slice(start_index, start_index + max_length) +
-        `\n[Output truncated: ${totalLength.toLocaleString()} chars -> ${max_length.toLocaleString()} chars shown. Use start_index to paginate.]`
-      : content.slice(start_index, start_index + max_length);
-
+  // 预批准域名只对 WebFetch 的 GET 放行, 不继承到其他工具或沙箱网络规则。
+  getPermissionIntent(input) {
     return {
-      url: response.finalUrl,
-      content: sliced,
-      truncated,
-      totalLength,
-      durationMs: Date.now() - startMs,
+      riskLevel: 'medium',
+      accessType: 'read',
+      promptPolicy: isPreapprovedUrl(input.url)
+        ? 'neverForTrustedBuiltin'
+        : 'whenRequired',
     };
   },
+
+  // 本工具不消费宿主能力: 网络边界由 public-http 提供, 无需窄 Context。
+  validateContext() {
+    return contextOk(undefined);
+  },
+
+  async execute(
+    input: WebFetchInput,
+    _context: undefined,
+    invocation: ToolInvocation,
+  ): Promise<WebFetchResult> {
+    const { url, max_length, start_index, raw } = input;
+    const page = await fetchPublicPage(url, invocation.signal, { raw });
+
+    const totalLength = page.content.length;
+    const truncated = start_index + max_length < totalLength;
+    const content = truncated
+      ? page.content.slice(start_index, start_index + max_length)
+        + `\n[Output truncated: ${totalLength.toLocaleString()} chars -> ${max_length.toLocaleString()} chars shown. Use start_index to paginate.]`
+      : page.content.slice(start_index, start_index + max_length);
+
+    return {
+      url: page.finalUrl,
+      bytes: page.bytes,
+      code: page.status,
+      codeText: page.statusText,
+      content,
+      truncated,
+      totalLength,
+    };
+  },
+
+  // 模型只需要内容本身; 字节/状态码等 HTTP 事实留在 TOutput 给 UI 与审计。
+  mapResultToModelContent(output) {
+    return output.content;
+  },
 });
+
+function isPreapprovedUrl(rawUrl: string): boolean {
+  try {
+    const url = new URL(rawUrl);
+    return isPreapprovedHost(url.hostname, url.pathname);
+  } catch {
+    return false;
+  }
+}
