@@ -206,7 +206,7 @@ export class StreamingToolExecutor {
       const message = error instanceof Error ? error.message : String(error);
       track.result = {
         type: 'tool_result',
-        toolUseId: track.execution.id,
+        toolCallId: track.execution.id,
         content: message,
         isError: true,
         errorCode: 'tool/runtime_error',

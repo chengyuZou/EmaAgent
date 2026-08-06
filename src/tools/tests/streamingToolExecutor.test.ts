@@ -161,7 +161,7 @@ describe('StreamingToolExecutor', () => {
     first.release();
     await tick();
     const delivered = executor.takeCompletedResults();
-    expect(delivered.map(result => result.toolUseId)).toEqual(['c1', 'c2']);
+    expect(delivered.map(result => result.toolCallId)).toEqual(['c1', 'c2']);
     expect(() => executor.acknowledgeResult('c1')).not.toThrow();
     // 重复关账由状态机幂等吸收;未交付的关账才报错。
     expect(() => executor.acknowledgeResult('c1')).not.toThrow();
@@ -185,8 +185,8 @@ describe('StreamingToolExecutor', () => {
     await executor.join();
 
     const results = executor.takeCompletedResults();
-    expect(results[0]).toMatchObject({ toolUseId: 'c1', isError: true, errorCode: 'tool/cancelled' });
-    expect(results[1]).toMatchObject({ toolUseId: 'c2', isError: false });
+    expect(results[0]).toMatchObject({ toolCallId: 'c1', isError: true, errorCode: 'tool/cancelled' });
+    expect(results[1]).toMatchObject({ toolCallId: 'c2', isError: false });
   });
 
   it('shutdown 后不再接受新调用,排队调用被取消', async () => {
@@ -203,6 +203,6 @@ describe('StreamingToolExecutor', () => {
     await shutdown;
     expect(executor.allDone()).toBe(true);
     // shutdown 后登记的调用被拒绝,终态只有 c1 一个。
-    expect(executor.takeCompletedResults().map(r => r.toolUseId)).toEqual(['c1']);
+    expect(executor.takeCompletedResults().map(r => r.toolCallId)).toEqual(['c1']);
   });
 });

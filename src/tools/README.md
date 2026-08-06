@@ -43,7 +43,7 @@ src/tools/
 │  ├─ streamingToolExecutor.ts    唯一批次协调入口(对外)
 │  └─ toolExecutionState.ts       副作用边界状态机 + 持久化窄端口
 ├─ results/                       结果层
-│  ├─ toolResult.ts               唯一结果信封(toolUseId/content/isError/durationMs/errorCode)
+│  ├─ toolResult.ts               唯一结果信封(toolCallId/content/isError/durationMs/errorCode)
 │  ├─ toolResultStore.ts          空输出占位、单项预算外置、聚合预算、稳定预览
 │  └─ toolResultCleaner.ts        TTL + 单 Session + 全局配额回收
 ├─ background/                    后台进程

@@ -404,7 +404,7 @@ export class ToolCallExecution {
 
     this.result = {
       type: 'tool_result',
-      toolUseId: this.id,
+      toolCallId: this.id,
       content: this.normalizeResult(tool, output),
       data: output,
       isError: false,
@@ -425,7 +425,7 @@ export class ToolCallExecution {
     const output = '[用户中途终止]';
     this.result = {
       type: 'tool_result',
-      toolUseId: this.id,
+      toolCallId: this.id,
       content: output,
       isError: true,
       durationMs: this.durationMs(),
@@ -465,7 +465,7 @@ export class ToolCallExecution {
   private errorResult(code: string, message: string): ToolResult {
     return {
       type: 'tool_result',
-      toolUseId: this.id,
+      toolCallId: this.id,
       content: message,
       isError: true,
       durationMs: this.durationMs(),

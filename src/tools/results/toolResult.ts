@@ -3,7 +3,7 @@ import type { ToolResultContentPart } from '@ema-agent/llm';
 
 export interface ToolResult {
   type: 'tool_result';
-  toolUseId: string;
+  toolCallId: string;
   /**
    * 模型可见内容：执行期由 Tool 的 mapResultToModelContent 投影一次并持久化,
    * Session 重放原样回读,不重算。中立形状归 @ema-agent/llm 所有。

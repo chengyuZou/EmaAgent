@@ -334,6 +334,17 @@ export class RootAgentExecution {
               };
             }
 
+            if (iteration.toolCalls().length > 0) {
+              activePhase = 'persistence';
+              transcript.appendMessage({
+                turnId,
+                sessionId,
+                role: 'assistant',
+                blocks: iteration.assistantBlocks() as MessageBlocks,
+              });
+              activePhase = 'provider';
+            }
+
             break;
           }
 
@@ -349,20 +360,14 @@ export class RootAgentExecution {
             };
             break;
 
-          case 'loop_tool_results': {
+          case 'loop_tool_result': {
             activePhase = 'persistence';
-            transcript.appendMessage({
-              turnId,
-              sessionId,
-              role: 'assistant',
-              blocks: iteration.assistantBlocks() as MessageBlocks,
-            });
             transcript.appendMessage({
               turnId,
               sessionId,
               role: 'user',
               kind: 'tool_results',
-              blocks: event.results as MessageBlocks,
+              blocks: [event.result] as MessageBlocks,
             });
             activePhase = 'provider';
             break;

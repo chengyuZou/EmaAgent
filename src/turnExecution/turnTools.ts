@@ -27,11 +27,11 @@ import {
 import type { TaskStorePort } from '@ema-agent/tasks';
 import {
   assembleToolPool,
-  ToolExecutionRuntime,
+  StreamingToolExecutor,
   type BackgroundProcessPort,
   type AskUserRequiredEvent,
   type ReadFileState,
-  type ToolExecutionJournalPort,
+  type ToolExecutionStatePort,
   type ToolPool,
   type ToolRegistry,
   type ToolResultStore,
@@ -82,7 +82,7 @@ export interface TurnToolsBuilderDeps {
   readonly agentRunStore?: AgentRunStorePort;
   readonly agentRunTranscriptWriter?: AgentRunTranscriptWriter;
   readonly taskStore?: TaskStorePort;
-  readonly toolExecutionJournal?: ToolExecutionJournalPort;
+  readonly toolExecutionState?: ToolExecutionStatePort;
   readonly backgroundProcesses?: BackgroundProcessPort;
 }
 
@@ -107,7 +107,7 @@ type TurnToolsRuntimeFactory = (
     pushEvent: (event: TurnExecutionEvent) => void,
     wake: () => void,
     toolPool: ToolPool,
-  ) => ToolExecutionRuntime;
+  ) => StreamingToolExecutor;
 
 /**
  * 一个根 Turn 的工具能力快照。
@@ -116,7 +116,7 @@ type TurnToolsRuntimeFactory = (
  * 调用方不能在 AgentLoop 中途重新读取全局 Registry 扩大能力。
  */
 export class TurnTools {
-  private executor?: ToolExecutionRuntime;
+  private executor?: StreamingToolExecutor;
   private stopped = false;
 
   constructor(
@@ -226,7 +226,7 @@ export class TurnToolsBuilder {
       skillRunner: this.deps.skillRunner,
       agentRunStore: this.deps.agentRunStore,
       agentRunTranscriptWriter: this.deps.agentRunTranscriptWriter,
-      toolExecutionJournal: this.deps.toolExecutionJournal,
+      toolExecutionState: this.deps.toolExecutionState,
       backgroundProcesses: this.deps.backgroundProcesses,
     };
     const spawner = new SubagentSpawner(
@@ -291,19 +291,19 @@ export class TurnToolsBuilder {
       this.deps.getSessionToolResultStore?.(sessionId);
 
     const runtimeFactory: TurnToolsRuntimeFactory = (pushEvent, wake, toolPool) =>
-      new ToolExecutionRuntime({
+      new StreamingToolExecutor({
         sessionId,
         turnId,
         abortSignal: signal,
         toolPool,
         permission: this.deps.permission,
-        permCtx: permissionContext,
+        permissionContext,
         toolContext,
         buildAsk: this.deps.buildAsk,
         pushEv: pushEvent,
-        signal: wake,
+        wake,
         toolResultStore,
-        toolExecutionJournal: this.deps.toolExecutionJournal,
+        toolExecutionState: this.deps.toolExecutionState,
       });
 
     return new TurnTools(
