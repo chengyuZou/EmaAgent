@@ -1,5 +1,5 @@
 /* ── Component-style utility classes ────────────────────────────────────────
- * 玻璃表面/运行条/遮罩/拖拽手柄/Radix data-state 动画/代码字体。
+ * 玻璃表面/运行条/遮罩/拖拽手柄/Radix data-state 动画/链接/代码字体。
  * 这些用了 CSS 变量依赖/伪元素/data-state,UnoCSS 表达不了。
  */
 
@@ -472,4 +472,29 @@
   mask-image: linear-gradient(165deg, white 30%, transparent 50%);
   opacity: 1;
   pointer-events: none;
+}
+
+/* ── 链接(ema-link)─────────────────────────────────────────────────────────
+ * 自定义组件里的 <a> 统一用本类,不写死颜色/过渡/下划线。
+ * 颜色随亮暗主题 token 翻转;hover 主题色加深 + 下划线;
+ * focus 用光圈是因为 base.css 全局关了 outline。
+ */
+.ema-link {
+  color:           var(--ema-primary);
+  text-decoration: none;
+  border-radius:   var(--ema-radius-xs);
+  transition:      color var(--ema-duration-fast) var(--ema-ease);
+}
+
+.ema-link:hover {
+  color:           var(--ema-primary-hover);
+  text-decoration: underline;
+}
+
+.ema-link:active {
+  color: var(--ema-primary-active);
+}
+
+.ema-link:focus-visible {
+  box-shadow: var(--ema-shadow-focus);
 }

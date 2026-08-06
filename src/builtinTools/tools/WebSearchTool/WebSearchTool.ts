@@ -1,50 +1,29 @@
-// 通过已配置的搜索服务返回有界的网页搜索结果。
+// 通过已配置的搜索服务返回有界的网页搜索结果; 后端选择、过滤与归一在 adapters 层。
 import { z } from 'zod';
-import { fetchPublicResource } from '@ema-agent/public-http';
-import { buildTool, contextOk, type BuiltinToolContext } from '@ema-agent/tools';
+import { buildTool, contextOk, type ToolInvocation } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
-
-/** WebSearch 工具的窄 Context：per-call 取消信号。 */
-interface WebSearchToolContext {
-  signal: AbortSignal;
-}
-
-const SEARCH_TIMEOUT_MS = 20_000;
-const API_RESPONSE_LIMIT = 5 * 1024 * 1024;
-const HTML_RESPONSE_LIMIT = 2 * 1024 * 1024;
-
-const braveResponseSchema = z.object({
-  web: z.object({
-    results: z.array(z.object({
-      title: z.string(),
-      url: z.string(),
-      description: z.string().optional().default(''),
-    })).optional().default([]),
-  }).optional(),
-});
-
-const bingResponseSchema = z.object({
-  webPages: z.object({
-    value: z.array(z.object({
-      name: z.string(),
-      url: z.string(),
-      snippet: z.string().optional().default(''),
-    })).optional().default([]),
-  }).optional(),
-});
+import { searchWeb, type SearchProgress } from './adapters/index.js';
+import { WEB_SEARCH_DESCRIPTION } from './prompt.js';
 
 // ── 输入 schema ──────────────────────────────────────────────────────────────
 
 const inputSchema = z.object({
-  query: z.string().min(1).describe('Search query.'),
-  num_results: z
-    .number()
-    .int()
+  query: z
+    .string()
     .min(1)
+    .max(500)
+    .describe('The search query to use.'),
+  allowed_domains: z
+    .array(z.string().min(1).max(253))
     .max(20)
-    .default(5)
-    .describe('Number of results to return.'),
-});
+    .optional()
+    .describe('Only include results from these domains (exact or any subdomain).'),
+  blocked_domains: z
+    .array(z.string().min(1).max(253))
+    .max(20)
+    .optional()
+    .describe('Never include results from these domains. Do not combine with allowed_domains.'),
+}).strict();
 
 type WebSearchInput = z.infer<typeof inputSchema>;
 
@@ -63,19 +42,17 @@ export interface WebSearchResult {
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
 
-export const WebSearchTool = buildTool<WebSearchInput, WebSearchResult, BuiltinToolContext, WebSearchToolContext>({
+export const WebSearchTool = buildTool<WebSearchInput, WebSearchResult, undefined, SearchProgress>({
   id: BuiltinTools.WebSearch.id,
   name: BuiltinTools.WebSearch.name,
-  description: `Search the web and return a list of relevant results (title, URL, snippet).
-
-Adapter priority (uses the first configured one):
-1. Brave Search API (\`BRAVE_SEARCH_API_KEY\` env var)
-2. Bing Search API (\`BING_SEARCH_API_KEY\` env var)
-3. DuckDuckGo HTML scraping (no API key required, rate-limited)`,
+  description: WEB_SEARCH_DESCRIPTION,
+  maxResultBytes: 100_000,
 
   inputSchema,
   isReadOnly: () => true,
   isConcurrencySafe: () => true,
+
+  getToolUseSummary: (input) => input.query,
 
   getPermissionIntent: () => ({
     riskLevel: 'medium',
@@ -83,152 +60,70 @@ Adapter priority (uses the first configured one):
     promptPolicy: 'whenRequired',
   }),
 
-  validateContext(ctx) {
-    return contextOk({ signal: ctx.signal });
+  // 本工具不消费宿主能力: 只依赖环境配置与 public-http, 无需窄 Context。
+  validateContext() {
+    return contextOk(undefined);
   },
 
-  async execute(input: WebSearchInput, context: WebSearchToolContext): Promise<WebSearchResult> {
-    const { query, num_results } = input;
-    const results = await search(query, num_results, context.signal);
+  validateInput(input) {
+    if (!input.query.trim()) {
+      return { valid: false, message: 'query 不能为空' };
+    }
+    if (input.allowed_domains?.length && input.blocked_domains?.length) {
+      return {
+        valid: false,
+        code: 'invalid_domain_filter',
+        message: 'allowed_domains 与 blocked_domains 不能同时使用',
+      };
+    }
+    for (const list of [input.allowed_domains, input.blocked_domains]) {
+      for (const domain of list ?? []) {
+        const issue = validateDomainEntry(domain);
+        if (issue) {
+          return { valid: false, code: 'invalid_domain_filter', message: issue };
+        }
+      }
+    }
+    return { valid: true };
+  },
+
+  async execute(
+    input: WebSearchInput,
+    _context: undefined,
+    invocation: ToolInvocation,
+    onProgress?: (progress: SearchProgress) => void,
+  ): Promise<WebSearchResult> {
+    const query = input.query.trim();
+    const results = await searchWeb(query, {
+      signal: invocation.signal,
+      allowedDomains: input.allowed_domains,
+      blockedDomains: input.blocked_domains,
+      onProgress,
+    });
     return { query, results };
+  },
+
+  mapResultToModelContent(output) {
+    if (output.results.length === 0) {
+      return `No search results found for "${output.query}".`;
+    }
+    const links = output.results
+      .map((result) => {
+        const line = `  - [${result.title}](${result.url})`;
+        return result.snippet ? `${line}: ${result.snippet}` : line;
+      })
+      .join('\n');
+    return `Web search results for query: "${output.query}"\n\nLinks:\n${links}\n\n`
+      + 'REMINDER: You MUST include the sources above in your response to the user using markdown hyperlinks.';
   },
 });
 
-// ── adapter ───────────────────────────────────────────────────────────────────
-
-async function search(
-  query: string,
-  numResults: number,
-  signal: AbortSignal,
-): Promise<SearchResult[]> {
-  if (process.env['BRAVE_SEARCH_API_KEY']) {
-    return braveSearch(query, numResults, process.env['BRAVE_SEARCH_API_KEY'], signal);
-  }
-  if (process.env['BING_SEARCH_API_KEY']) {
-    return bingSearch(query, numResults, process.env['BING_SEARCH_API_KEY'], signal);
-  }
-  return duckduckgoSearch(query, numResults, signal);
-}
-
-async function braveSearch(
-  query: string,
-  count: number,
-  apiKey: string,
-  signal: AbortSignal,
-): Promise<SearchResult[]> {
-  const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${count}`;
-  // 主机写死 + additionalAllowedHeaders 声明: API key 只流向 Brave, 不会被重定向带走。
-  const res = await fetchPublicResource(url, {
-    signal,
-    timeoutMs: SEARCH_TIMEOUT_MS,
-    maxBytes: API_RESPONSE_LIMIT,
-    maxRedirects: 0,
-    headers: { Accept: 'application/json', 'X-Subscription-Token': apiKey },
-    additionalAllowedHeaders: ['x-subscription-token'],
-  });
-  const data = braveResponseSchema.parse(parseJson(res.body));
-  return normalizeResults((data.web?.results ?? []).map((r) => ({
-    title: r.title,
-    url: r.url,
-    snippet: r.description,
-  })), count);
-}
-
-async function bingSearch(
-  query: string,
-  count: number,
-  apiKey: string,
-  signal: AbortSignal,
-): Promise<SearchResult[]> {
-  const url = `https://api.bing.microsoft.com/v7.0/search?q=${encodeURIComponent(query)}&count=${count}`;
-  const res = await fetchPublicResource(url, {
-    signal,
-    timeoutMs: SEARCH_TIMEOUT_MS,
-    maxBytes: API_RESPONSE_LIMIT,
-    maxRedirects: 0,
-    headers: { 'Ocp-Apim-Subscription-Key': apiKey },
-    additionalAllowedHeaders: ['ocp-apim-subscription-key'],
-  });
-  const data = bingResponseSchema.parse(parseJson(res.body));
-  return normalizeResults((data.webPages?.value ?? []).map((r) => ({
-    title: r.name,
-    url: r.url,
-    snippet: r.snippet,
-  })), count);
-}
-
-async function duckduckgoSearch(
-  query: string,
-  count: number,
-  signal: AbortSignal,
-): Promise<SearchResult[]> {
-  // DuckDuckGo HTML 端点 - 基础爬取,无官方 API
-  const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
-  const res = await fetchPublicResource(url, {
-    signal,
-    timeoutMs: SEARCH_TIMEOUT_MS,
-    maxBytes: HTML_RESPONSE_LIMIT,
-    maxRedirects: 0,
-    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; EmaAgent/1.0)' },
-    additionalAllowedHeaders: ['user-agent'],
-  });
-  const html = res.body.toString('utf8');
-
-  const results: SearchResult[] = [];
-  const linkRe = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
-  const snippetRe = /<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/gi;
-
-  const links = [...html.matchAll(linkRe)];
-  const snippets = [...html.matchAll(snippetRe)];
-
-  for (let i = 0; i < Math.min(links.length, count); i++) {
-    const url = decodeDuckDuckGoUrl(links[i]![1]!);
-    const title = links[i]![2]!.replace(/<[^>]+>/g, '').trim();
-    const snippet = snippets[i]?.[1]?.replace(/<[^>]+>/g, '').trim() ?? '';
-    if (url && title) results.push({ title, url, snippet });
-  }
-
-  return normalizeResults(results, count);
-}
-
-function parseJson(body: Buffer): unknown {
-  try {
-    return JSON.parse(body.toString('utf8')) as unknown;
-  } catch {
-    throw new Error('Search provider returned invalid JSON');
-  }
-}
-
-function normalizeResults(results: readonly SearchResult[], limit: number): SearchResult[] {
-  const normalized: SearchResult[] = [];
-  for (const result of results) {
-    if (normalized.length >= limit) break;
-    const url = normalizePublicResultUrl(result.url);
-    if (!url) continue;
-    normalized.push({
-      title: String(result.title ?? '').slice(0, 500),
-      url,
-      snippet: String(result.snippet ?? '').slice(0, 4_000),
-    });
-  }
-  return normalized;
-}
-
-function normalizePublicResultUrl(value: string): string | null {
-  try {
-    const url = new URL(value);
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
-    return url.toString().slice(0, 2_048);
-  } catch {
-    return null;
-  }
-}
-
-function decodeDuckDuckGoUrl(value: string): string {
-  const stripped = value.replace(/^\/\/duckduckgo\.com\/l\/\?uddg=/, '');
-  try {
-    return decodeURIComponent(stripped);
-  } catch {
-    return '';
-  }
+/** 域名条目形状校验: 拒绝空、协议/路径、通配符与空白, 规整交给适配层。 */
+function validateDomainEntry(domain: string): string | null {
+  const value = domain.trim().toLowerCase();
+  if (!value) return '域名条目不能为空';
+  if (value.includes('/')) return `域名条目不能包含协议或路径: ${domain}`;
+  if (value.includes('*')) return `域名条目不支持通配符: ${domain}`;
+  if (/\s/.test(value)) return `域名条目不能包含空白: ${domain}`;
+  return null;
 }

@@ -14,6 +14,7 @@ import {
   GlobResultView,
   GrepArgsView,
   GrepResultView,
+  SubagentResultView,
 } from '@ema-agent/tool-builtin/ui';
 
 export interface ToolUIEntry {
@@ -30,6 +31,7 @@ const TOOL_UI_REGISTRY: Readonly<Record<string, ToolUIEntry>> = {
   Glob: { ArgsView: GlobArgsView, ResultView: GlobResultView },
   Grep: { ArgsView: GrepArgsView, ResultView: GrepResultView },
   AskUser: { ResultView: AskUserResultView },
+  Subagent: { ResultView: SubagentResultView },
 };
 
 export function lookupToolUI(toolName: string): ToolUIEntry | undefined {
