@@ -25,3 +25,11 @@ export function patchToUnifiedText(hunks: readonly PatchHunk[]): string {
     .map((h) => [`@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@`, ...h.lines].join('\n'))
     .join('\n');
 }
+
+/** 新建文件内容 → 全新增行的 unified 文本(Review 面板 created 形态的展示输入)。 */
+export function additionsToUnifiedText(content: string): string {
+  const lines = content.split('\n');
+  // split 口径的末尾空行不是真实行("a\n" → ['a',''])。
+  if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+  return [`@@ -0,0 +1,${lines.length} @@`, ...lines.map((line) => `+${line}`)].join('\n');
+}

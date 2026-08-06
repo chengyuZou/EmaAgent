@@ -93,6 +93,46 @@ export function FileEditResultView({ data }: { data: unknown }): JSX.Element | n
   return <FileEditDiffCard result={result} />;
 }
 
+/** 结构化补丁卡: 红删绿增灰上下文, 行号双列, hunk 间隔带。Edit/Write 共用(第三个消费者出现时再议提取位置)。 */
+export function StructuredPatchCard({ hunks }: { hunks: readonly PatchHunk[] }): JSX.Element {
+  const entries = flattenPatch(hunks);
+  return (
+    <div className="max-h-64 overflow-auto rounded-md border border-[var(--ema-border)] font-mono text-[11px] leading-relaxed">
+      {entries.map((entry) => {
+        if (entry.kind === 'gap') {
+          return (
+            <div
+              key={entry.key}
+              className="px-2.5 py-0.5 text-center text-[10px] text-[var(--ema-text-tertiary)] bg-[var(--ema-surface-2)]"
+            >
+              ···
+            </div>
+          );
+        }
+        const tone = entry.kind === 'add'
+          ? 'text-[var(--ema-success-text)] bg-[var(--ema-success-muted)]'
+          : entry.kind === 'del'
+            ? 'text-[var(--ema-danger-text)] bg-[var(--ema-danger-muted)]'
+            : 'text-[var(--ema-text-tertiary)]';
+        return (
+          <div key={entry.key} className={`flex px-2 ${tone}`}>
+            <span className="w-9 shrink-0 select-none text-right opacity-60">
+              {entry.oldLine ?? ''}
+            </span>
+            <span className="w-9 shrink-0 select-none text-right opacity-60">
+              {entry.newLine ?? ''}
+            </span>
+            <span className="min-w-0 flex-1 pl-2 whitespace-pre-wrap break-all">
+              {entry.kind === 'add' ? '+' : entry.kind === 'del' ? '-' : ' '}
+              {entry.text}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function FileEditDiffCard({ result }: { result: FileEditResult }): JSX.Element {
   const [copied, setCopied] = useState(false);
 
@@ -102,7 +142,6 @@ function FileEditDiffCard({ result }: { result: FileEditResult }): JSX.Element {
   const deletions = result.structuredPatch.reduce(
     (sum, h) => sum + h.lines.filter((l) => l.startsWith('-')).length, 0,
   );
-  const entries = flattenPatch(result.structuredPatch);
 
   return (
     <div className="flex flex-col gap-1 pr-6">
@@ -129,40 +168,7 @@ function FileEditDiffCard({ result }: { result: FileEditResult }): JSX.Element {
         </button>
       </div>
 
-      {/* diff 主体: 红删绿增灰上下文, 行号双列 */}
-      <div className="max-h-64 overflow-auto rounded-md border border-[var(--ema-border)] font-mono text-[11px] leading-relaxed">
-        {entries.map((entry) => {
-          if (entry.kind === 'gap') {
-            return (
-              <div
-                key={entry.key}
-                className="px-2.5 py-0.5 text-center text-[10px] text-[var(--ema-text-tertiary)] bg-[var(--ema-surface-2)]"
-              >
-                ···
-              </div>
-            );
-          }
-          const tone = entry.kind === 'add'
-            ? 'text-[var(--ema-success-text)] bg-[var(--ema-success-muted)]'
-            : entry.kind === 'del'
-              ? 'text-[var(--ema-danger-text)] bg-[var(--ema-danger-muted)]'
-              : 'text-[var(--ema-text-tertiary)]';
-          return (
-            <div key={entry.key} className={`flex px-2 ${tone}`}>
-              <span className="w-9 shrink-0 select-none text-right opacity-60">
-                {entry.oldLine ?? ''}
-              </span>
-              <span className="w-9 shrink-0 select-none text-right opacity-60">
-                {entry.newLine ?? ''}
-              </span>
-              <span className="min-w-0 flex-1 pl-2 whitespace-pre-wrap break-all">
-                {entry.kind === 'add' ? '+' : entry.kind === 'del' ? '-' : ' '}
-                {entry.text}
-              </span>
-            </div>
-          );
-        })}
-      </div>
+      <StructuredPatchCard hunks={result.structuredPatch} />
     </div>
   );
 }

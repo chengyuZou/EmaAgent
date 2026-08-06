@@ -1,4 +1,5 @@
 // 把完整文本安全地写入文件，并同步后续编辑所需的文件状态。
+// 模型说明书见 prompt.ts; 补丁生成复用 FileEditTool/patch.ts。
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
@@ -6,19 +7,18 @@ import {
   buildTool,
   contextFail,
   contextOk,
-  type BuiltinToolContext,
   type ReadFileState,
+  type ToolInvocation,
 } from '@ema-agent/tools';
-import type { ToolCallId } from '@ema-agent/ids';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { atomicTransformUtf8 } from './atomicWrite.js';
 import { isBlockedDevice } from '../FileReadTool/FileReadTool.js';
+import { buildStructuredPatch, type PatchHunk } from '../FileEditTool/patch.js';
+import { FILE_WRITE_DESCRIPTION } from './prompt.js';
 
-/** File 写入工具只取得当前 Turn 的写入保护状态和单次调用身份。 */
+/** File 写入工具只取得当前 Turn 的读取状态与工作区;取消与调用身份走 ToolInvocation。 */
 interface FileWriteToolContext {
   readFileState: ReadFileState;
-  signal: AbortSignal;
-  toolCallId: ToolCallId;
   workspaceRoot: string;
 }
 
@@ -31,42 +31,40 @@ const inputSchema = z.object({
 
 type FileWriteInput = z.infer<typeof inputSchema>;
 
-// ── 输出类型 ───────────────────────────────────────────────────────────────────
+// ── 输出类型(与 Claude FileWrite Output 同构;差集:无 gitDiff) ─────────────────
 
 export interface FileWriteResult {
   type: 'created' | 'updated';
   filePath: string;
   bytesWritten: number;
+  /** 写入全文;created 形态的 UI 展示与审计基准。 */
+  content: string;
+  /** updated 的前文;created 为 null。 */
+  originalFile: string | null;
+  /** updated 的 diff;created 为空数组(UI 用 content 直接展示,不合成假 diff)。 */
+  structuredPatch: PatchHunk[];
 }
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
 
-export const FileWriteTool = buildTool<FileWriteInput, FileWriteResult, BuiltinToolContext, FileWriteToolContext>({
+export const FileWriteTool = buildTool<FileWriteInput, FileWriteResult, FileWriteToolContext>({
   id: BuiltinTools.FileWrite.id,
   name: BuiltinTools.FileWrite.name,
-  description: `Write full content to a file, creating it if it does not exist.
-
-- Replaces the entire file - for targeted in-place edits use \`Edit\` instead.
-- An existing file MUST have been read in full with \`Read\` before it can be overwritten.
-- Parent directories are created automatically.
-- Paths are resolved against the session workspace (absolute paths are used as-is).
-- Line endings in \`content\` are written as-is (LF preserved, no rewriting).
-- After writing, the file is added to the read-state cache so subsequent \`Edit\` calls work without a separate read.`,
+  description: FILE_WRITE_DESCRIPTION,
 
   inputSchema,
   isReadOnly: () => false,
   isConcurrencySafe: () => false,
 
-  requires: ['workspaceRoot', 'readFileState'],
-
   validateContext(ctx) {
-    if (!ctx.workspaceRoot || !ctx.readFileState || !ctx.toolCallId) {
-      return contextFail('File 写入工具未装配完整的工作区、读取状态或调用身份。');
+    if (!ctx.workspaceRoot) {
+      return contextFail('File 写入工具需要明确的工作区。');
+    }
+    if (!ctx.readFileState) {
+      return contextFail('File 写入工具未装配读取状态。');
     }
     return contextOk({
       readFileState: ctx.readFileState,
-      signal: ctx.signal,
-      toolCallId: ctx.toolCallId,
       workspaceRoot: ctx.workspaceRoot,
     });
   },
@@ -81,9 +79,9 @@ export const FileWriteTool = buildTool<FileWriteInput, FileWriteResult, BuiltinT
   async execute(
     input: FileWriteInput,
     context: FileWriteToolContext,
+    invocation: ToolInvocation,
   ): Promise<FileWriteResult> {
     const { file_path, content } = input;
-    const operationId = context.toolCallId;
     // 与 Permission/Read 同一基准: 相对路径按工作区解析, 不借 Core 进程 cwd——
     // 否则审批查的是工作区路径, 实际写的却是 Core 启动目录(P1 路径分裂)。
     const fullPath = path.resolve(context.workspaceRoot, file_path);
@@ -101,8 +99,8 @@ export const FileWriteTool = buildTool<FileWriteInput, FileWriteResult, BuiltinT
 
     const written = await atomicTransformUtf8(
       fullPath,
-      operationId,
-      context.signal,
+      invocation.toolCallId,
+      invocation.signal,
       current => {
         if (!current.existed) return content;
         const cached = context.readFileState.get(fullPath);
@@ -132,10 +130,23 @@ export const FileWriteTool = buildTool<FileWriteInput, FileWriteResult, BuiltinT
       isPartialView: false,
       truncated: false,
     });
+    const existed = written.existed;
     return {
-      type: written.existed ? 'updated' : 'created',
+      type: existed ? 'updated' : 'created',
       filePath: file_path,
       bytesWritten: Buffer.byteLength(content, 'utf8'),
+      content,
+      originalFile: written.previousContent,
+      structuredPatch: existed && written.previousContent !== null
+        ? buildStructuredPatch(file_path, written.previousContent, content)
+        : [],
     };
+  },
+
+  mapResultToModelContent(output) {
+    if (output.type === 'created') {
+      return `File created successfully at: ${output.filePath}`;
+    }
+    return `The file ${output.filePath} has been updated successfully.`;
   },
 });

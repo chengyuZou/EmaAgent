@@ -3,7 +3,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import type { ToolResultContentPart } from '@ema-agent/llm';
 import {
   buildTool,
   contextFail,

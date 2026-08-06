@@ -6,5 +6,11 @@ export {
   asFileEditResult,
   FileEditArgsView,
   FileEditResultView,
+  StructuredPatchCard,
 } from './tools/FileEditTool/UI.js';
-export { patchToUnifiedText } from './tools/FileEditTool/patch.js';
+export {
+  asFileWriteResult,
+  FileWriteArgsView,
+  FileWriteResultView,
+} from './tools/FileWriteTool/UI.js';
+export { additionsToUnifiedText, patchToUnifiedText } from './tools/FileEditTool/patch.js';
