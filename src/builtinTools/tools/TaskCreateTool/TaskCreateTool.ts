@@ -1,18 +1,19 @@
-// 创建持久 Task，并把同一份结构化快照返回模型、发送给前端。
+// 创建持久 Task,把同一份结构化快照返回模型;task_created 事件由 wiring 侧的 store 装饰器发出。
 
 import { z } from 'zod';
-import type { SessionId, TurnId } from '@ema-agent/ids';
-import { buildTool, contextFail, contextOk, type BuiltinToolContext } from '@ema-agent/tools';
-import type { ToolExecutionEvent } from '@ema-agent/tools';
+import {
+  buildTool,
+  contextFail,
+  contextOk,
+  type ToolUseContext,
+} from '@ema-agent/tools';
 import type { TaskSnapshot, TaskStorePort } from '@ema-agent/tasks';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
+import { TASK_CREATE_DESCRIPTION } from './prompt.js';
 
-/** Task 写入工具的窄 Context：持久存储 + 可选事件输出 + 调用身份。 */
+/** Task 写入工具的窄 Context:只有持久存储;调用身份由 ToolInvocation 提供。 */
 interface TaskCreateToolContext {
   taskStore: TaskStorePort;
-  emit?: (event: ToolExecutionEvent) => void;
-  sessionId: SessionId;
-  turnId: TurnId;
 }
 
 const inputSchema = z.object({
@@ -44,62 +45,39 @@ export interface TaskCreateResult {
   task: TaskSnapshot;
 }
 
-export const TaskCreateTool = buildTool<TaskCreateInput, TaskCreateResult, BuiltinToolContext, TaskCreateToolContext>({
+export const TaskCreateTool = buildTool<TaskCreateInput, TaskCreateResult, TaskCreateToolContext>({
   id: BuiltinTools.TaskCreate.id,
   name: BuiltinTools.TaskCreate.name,
-  description: `Create a persistent task in the current Session's structured task list.
-
-Use Task tools proactively when work has at least three meaningful steps, when the user gives several requests, or when a non-trivial task benefits from visible progress tracking.
-
-Do not create tasks for a single trivial action, a short informational answer, or purely conversational work.
-
-Before creating tasks, call TaskList to avoid duplicates. Use an imperative subject, put enough context in description for future Turns to resume the work, and use TaskUpdate to add dependencies after creation.
-
-New tasks always start as pending. Mark a task in_progress before beginning it and completed immediately after the work is fully finished and verified.`,
+  description: TASK_CREATE_DESCRIPTION,
 
   inputSchema,
-  maxResultBytes: 100_000,
   isReadOnly: () => false,
   isConcurrencySafe: () => true,
-  getToolUseSummary: (input) => `创建任务：${input.subject}`,
+  getToolUseSummary: (input) => `创建任务:${input.subject}`,
   getPermissionIntent: () => ({
     riskLevel: 'low',
     accessType: 'write',
     promptPolicy: 'whenRequired',
   }),
 
-  requires: ['taskStore'],
-
-  validateContext(ctx) {
+  validateContext(ctx: ToolUseContext) {
     if (!ctx.taskStore) {
       return contextFail('Task tools are available only in the root Work Turn.');
     }
-    return contextOk({
-      taskStore: ctx.taskStore,
-      ...(ctx.emit ? { emit: ctx.emit } : {}),
-      sessionId: ctx.sessionId,
-      turnId: ctx.turnId,
-    });
+    return contextOk({ taskStore: ctx.taskStore });
   },
 
-  async execute(input, context): Promise<TaskCreateResult> {
+  async execute(input, context, invocation): Promise<TaskCreateResult> {
     const task = context.taskStore.create({
-      sessionId: context.sessionId,
-      turnId: context.turnId,
+      sessionId: invocation.sessionId,
+      turnId: invocation.turnId,
       subject: input.subject,
       description: input.description,
       activeForm: input.activeForm,
     });
-    const snapshot = context.taskStore.toSnapshot(task);
-    context.emit?.({
-      type: 'task_created',
-      sessionId: snapshot.sessionId,
-      turnId: context.turnId,
-      task: snapshot,
-    });
     return {
       message: `Task #${task.displayNumber} created successfully: ${task.subject}`,
-      task: snapshot,
+      task: context.taskStore.toSnapshot(task),
     };
   },
 });

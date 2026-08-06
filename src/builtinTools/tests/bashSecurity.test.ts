@@ -172,17 +172,17 @@ describe('BashTool 集成', () => {
     expect(BashTool.isReadOnly({ command: 'git branch feature/new' })).toBe(false);
   });
 
-  it('validateInput 只硬拦 deny 档，其余命令交给统一权限裁决', async () => {
+  it('validateInput 只硬拦 deny 档，其余命令交给统一权限裁决', () => {
     expect(BashTool.validateInput?.(
-      BashTool.parseInput({ command: 'rm -rf /' }),
+      BashTool.inputSchema.parse({ command: 'rm -rf /' }),
       {} as never,
     )).toMatchObject({ valid: false, code: 'bash/unsafe_command' });
     expect(BashTool.validateInput?.(
-      BashTool.parseInput({ command: 'echo $(date)' }),
+      BashTool.inputSchema.parse({ command: 'echo $(date)' }),
       {} as never,
     )).toEqual({ valid: true });
     expect(BashTool.validateInput?.(
-      BashTool.parseInput({ command: 'ls' }),
+      BashTool.inputSchema.parse({ command: 'ls' }),
       {} as never,
     )).toEqual({ valid: true });
   });

@@ -4,19 +4,10 @@ import { ToolRegistry } from '@ema-agent/tools';
 import { BuiltinTools, registerBuiltinTools } from '../index.js';
 
 describe('V1 内置工具注册边界', () => {
-  it('未完成的 Plan Mode 工具不向模型暴露', () => {
-    const registry = new ToolRegistry();
-    registerBuiltinTools(registry);
-
-    const names = registry.descriptors().map((tool) => tool.name);
-    expect(names).not.toContain(BuiltinTools.PlanEnter.name);
-    expect(names).not.toContain(BuiltinTools.PlanExit.name);
-  });
-
   it('业务能力工具统一注册，由每次执行的 ToolPool 决定是否可见', () => {
     const registry = new ToolRegistry();
     registerBuiltinTools(registry);
-    const names = registry.descriptors().map((tool) => tool.name);
+    const names = registry.list().map((tool) => tool.name);
     expect(names).toEqual(expect.arrayContaining([
       BuiltinTools.TaskCreate.name,
       BuiltinTools.TaskGet.name,

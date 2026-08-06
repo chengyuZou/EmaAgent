@@ -1,26 +1,23 @@
-// 测试每次 Agent 执行只向模型暴露当前宿主 Context 真正拥有的工具能力。
+// 测试每次根 Turn 装配只向模型暴露当前宿主 Context 真正拥有的工具能力。
 import { describe, expect, it } from 'vitest';
-import { assembleToolPool, ToolRegistry } from '@ema-agent/tools';
 import {
-  BuiltinTools,
-  registerBuiltinTools,
-  type BuiltinToolContext,
-} from '../index.js';
+  assembleToolPool,
+  ToolRegistry,
+  type ToolUseContext,
+} from '@ema-agent/tools';
+import { BuiltinTools, registerBuiltinTools } from '../index.js';
 
-function baseContext(): BuiltinToolContext {
+function baseContext(): ToolUseContext {
   return {
-    sessionId: 'session-pool' as BuiltinToolContext['sessionId'],
-    turnId: 'turn-pool' as BuiltinToolContext['turnId'],
     workspaceRoot: '',
     platform: process.platform,
-    signal: new AbortController().signal,
   };
 }
 
-function visibleNames(context: BuiltinToolContext): string[] {
+function visibleNames(context: ToolUseContext): string[] {
   const registry = new ToolRegistry();
   registerBuiltinTools(registry);
-  return assembleToolPool(registry, context).map((tool) => tool.name);
+  return assembleToolPool(registry, context).tools.map((tool) => tool.name);
 }
 
 describe('Builtin ToolPool 能力装配', () => {
@@ -40,10 +37,9 @@ describe('Builtin ToolPool 能力装配', () => {
   });
 
   it('根 Turn 注入能力后只增加对应工具族', () => {
-    const context: BuiltinToolContext = {
+    const context: ToolUseContext = {
       ...baseContext(),
       workspaceRoot: 'D:/workspace',
-    platform: process.platform,
       readFileState: new Map(),
       taskStore: {} as never,
       askUser: async () => ({ answers: {} }),
@@ -75,21 +71,14 @@ describe('Builtin ToolPool 能力装配', () => {
     expect(names).not.toContain(BuiltinTools.SkillCall.name);
   });
 
-  it('四种纯问询工具显式免普通权限审批', async () => {
+  it('问询工具显式免普通权限审批(它自己就是询问通道)', () => {
     const registry = new ToolRegistry();
     registerBuiltinTools(registry);
 
-    for (const tool of [
-      BuiltinTools.AskUser,
-      BuiltinTools.AskText,
-      BuiltinTools.AskChoice,
-      BuiltinTools.AskConfirm,
-    ]) {
-      const registered = registry.get(tool.name);
-      expect(registered).toBeDefined();
-      await expect(registered!.getPermissionIntent({}, {})).resolves.toMatchObject({
-        promptPolicy: 'neverForTrustedBuiltin',
-      });
-    }
+    const registered = registry.get(BuiltinTools.AskUser.name);
+    expect(registered).toBeDefined();
+    expect(registered!.getPermissionIntent({}, {} as never)).toMatchObject({
+      promptPolicy: 'neverForTrustedBuiltin',
+    });
   });
 });

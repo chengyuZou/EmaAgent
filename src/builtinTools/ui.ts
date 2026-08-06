@@ -19,4 +19,9 @@ export { AskUserResultView } from './tools/AskUserTool/UI.js';
 export { SubagentResultView } from './tools/SubagentTool/UI.js';
 export { WebSearchArgsView, WebSearchResultView } from './tools/WebSearchTool/UI.js';
 export { WebFetchArgsView, WebFetchResultView } from './tools/WebFetchTool/UI.js';
+export {
+  NarrativeSearchArgsView,
+  NarrativeSearchResultView,
+  NarrativeStatusBlock,
+} from './tools/NarrativeSearchTool/UI.js';
 export { additionsToUnifiedText, patchToUnifiedText } from './tools/FileEditTool/patch.js';
