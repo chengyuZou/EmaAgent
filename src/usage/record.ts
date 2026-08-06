@@ -7,6 +7,8 @@ import type {
   UsageRecorder,
   UsageRecordStatus,
 } from './types.js';
+import { UsageRecordValidationError } from './errors.js';
+import { validateUsageRecord } from './validate.js';
 
 export interface UsageRecordInput {
   readonly capability: UsageCapability;
@@ -60,6 +62,20 @@ export function reportUsage(
   record: UsageRecord,
   onError?: (error: unknown, record: UsageRecord) => void,
 ): void {
+  const issues = validateUsageRecord(record);
+  if (issues.length > 0) {
+    const error = new UsageRecordValidationError(issues);
+    try {
+      onError?.(error, record);
+    } catch {
+      // 观测链路不拥有业务终态。
+    }
+    if (!onError) {
+      console.error(`[usage] invalid record dropped: ${error.message}`, record);
+    }
+    return;
+  }
+
   try {
     recorder.record(record);
   } catch (error) {
