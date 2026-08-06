@@ -15,4 +15,5 @@ export {
 } from './tools/FileWriteTool/UI.js';
 export { GlobArgsView, GlobResultView } from './tools/GlobTool/UI.js';
 export { GrepArgsView, GrepResultView } from './tools/GrepTool/UI.js';
+export { AskUserResultView } from './tools/AskUserTool/UI.js';
 export { additionsToUnifiedText, patchToUnifiedText } from './tools/FileEditTool/patch.js';

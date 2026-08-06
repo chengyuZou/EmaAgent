@@ -4,7 +4,7 @@ import type { MessageWire } from '@ema-agent/session';
 import { assembleHistory } from '../src/stores/conversation-history.js';
 
 describe('tool presentation history', () => {
-  it('按 toolUseId 把持久化 presentation 合并回 Edit 调用', () => {
+  it('按 toolCallId 把持久化 presentation 合并回 Edit 调用', () => {
     const assistant: MessageWire = {
       id: 'message-assistant',
       sessionId: 'session-test',
@@ -28,7 +28,7 @@ describe('tool presentation history', () => {
       kind: 'tool_results',
       blocks: [{
         type: 'tool_result',
-        toolUseId: 'call-edit',
+        toolCallId: 'call-edit',
         content: '{"filePath":"demo.txt","replacements":1}',
         presentation: {
           kind: 'file_change',

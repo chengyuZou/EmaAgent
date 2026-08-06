@@ -17,9 +17,6 @@ import { TaskGetTool } from './tools/TaskGetTool/TaskGetTool.js';
 import { TaskListTool } from './tools/TaskListTool/TaskListTool.js';
 import { TaskUpdateTool } from './tools/TaskUpdateTool/TaskUpdateTool.js';
 import { AskUserTool } from './tools/AskUserTool/AskUserTool.js';
-import { AskConfirmTool } from './tools/AskUserTool/AskConfirmTool.js';
-import { AskTextTool } from './tools/AskUserTool/AskTextTool.js';
-import { AskChoiceTool } from './tools/AskUserTool/AskChoiceTool.js';
 import { SkillCallTool } from './tools/SkillCallTool/SkillCallTool.js';
 import { KnowledgeBaseSearchTool } from './tools/KnowledgeBaseSearchTool/KnowledgeBaseSearchTool.js';
 import { NarrativeSearchTool } from './tools/NarrativeSearchTool/NarrativeSearchTool.js';
@@ -38,12 +35,12 @@ import {
   ScratchpadClearTool,
 } from './tools/ScratchpadTool/ScratchpadTools.js';
 import { BuiltinTools } from './BuiltinToolIdentity.js';
-import type { ToolRegistry, BuiltTool } from '@ema-agent/tools';
+import type { ToolRegistry, Tool } from '@ema-agent/tools';
 
 // ── 宿主 Context 与装配 ──────────────────────────────────────────────────────
 export type {
   AskUserPort,
-  BuiltinToolContext,
+  ToolUseContext,
   ScratchpadPort,
   SubagentContextMode,
   SubagentRunResult,
@@ -74,9 +71,6 @@ export {
   TaskListTool,
   TaskUpdateTool,
   AskUserTool,
-  AskConfirmTool,
-  AskTextTool,
-  AskChoiceTool,
   SkillCallTool,
   KnowledgeBaseSearchTool,
   NarrativeSearchTool,
@@ -114,15 +108,12 @@ export type {
 } from './tools/TaskListTool/TaskListTool.js';
 export type { TaskUpdateResult } from './tools/TaskUpdateTool/TaskUpdateTool.js';
 export type { AskUserResult } from './tools/AskUserTool/AskUserTool.js';
-export type { AskConfirmResult } from './tools/AskUserTool/AskConfirmTool.js';
-export type { AskTextResult } from './tools/AskUserTool/AskTextTool.js';
-export type { AskChoiceResult } from './tools/AskUserTool/AskChoiceTool.js';
 export type { SkillCallResult } from './tools/SkillCallTool/SkillCallTool.js';
 export type { NarrativeSearchResult } from './tools/NarrativeSearchTool/NarrativeSearchTool.js';
 // ── 注册 ──────────────────────────────────────────────────────────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const ALL_BUILTIN_TOOLS: BuiltTool<any, any, any>[] = [
+const ALL_BUILTIN_TOOLS: Tool<any, any, any, any>[] = [
   FileReadTool,
   PdfReadTool,
   FileWriteTool,
@@ -140,9 +131,6 @@ const ALL_BUILTIN_TOOLS: BuiltTool<any, any, any>[] = [
   TaskListTool,
   TaskUpdateTool,
   AskUserTool,
-  AskConfirmTool,
-  AskTextTool,
-  AskChoiceTool,
   SkillCallTool,
   KnowledgeBaseSearchTool,
   NarrativeSearchTool,

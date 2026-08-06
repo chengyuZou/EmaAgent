@@ -9,7 +9,6 @@ import type {
   GitWorkspaceDiffResult,
 } from '@ema-agent/git-utils';
 import type { SessionId } from '@ema-agent/ids';
-import { patchToUnifiedText } from '@ema-agent/tool-builtin/ui';
 import { gitApi } from '../../api/git.js';
 import { useWorkspaceStore } from '../../stores/workspaceStore.js';
 import { fileTab } from '../../stores/workspaceTypes.js';
@@ -149,13 +148,12 @@ export function ReviewPanel({ sessionId }: { sessionId: string | null }): JSX.El
     const diffs = scope === 'latest' ? latestDiffs : allDiffs;
     return diffs.map((diff) => ({
       key: diff.callId,
-      displayPath: diff.result.filePath,
-      absolutePath: diff.result.filePath,
-      // Edit 只有 modified;FileWrite 收口后由其结果补充 added 形态。
-      status: 'modified' as const,
+      displayPath: diff.filePath,
+      absolutePath: diff.filePath,
+      status: diff.status === 'created' ? 'added' as const : 'modified' as const,
       additions: diff.additions,
       deletions: diff.deletions,
-      unifiedDiff: patchToUnifiedText(diff.result.structuredPatch),
+      unifiedDiff: diff.unifiedDiff,
       truncated: false,
     }));
   }, [scope, workspaceDiff, compareTarget, compare, latestDiffs, allDiffs]);

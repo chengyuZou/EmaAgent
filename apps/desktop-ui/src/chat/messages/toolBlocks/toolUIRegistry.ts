@@ -3,10 +3,17 @@
 // 注册表只做查找与回落, 权限卡、状态条、耗时、错误外壳仍在 ToolCallBlock。
 import type { JSX } from 'react';
 import {
+  AskUserResultView,
   FileEditArgsView,
   FileEditResultView,
   FileReadArgsView,
   FileReadResultView,
+  FileWriteArgsView,
+  FileWriteResultView,
+  GlobArgsView,
+  GlobResultView,
+  GrepArgsView,
+  GrepResultView,
 } from '@ema-agent/tool-builtin/ui';
 
 export interface ToolUIEntry {
@@ -19,6 +26,10 @@ export interface ToolUIEntry {
 const TOOL_UI_REGISTRY: Readonly<Record<string, ToolUIEntry>> = {
   Read: { ArgsView: FileReadArgsView, ResultView: FileReadResultView },
   Edit: { ArgsView: FileEditArgsView, ResultView: FileEditResultView },
+  Write: { ArgsView: FileWriteArgsView, ResultView: FileWriteResultView },
+  Glob: { ArgsView: GlobArgsView, ResultView: GlobResultView },
+  Grep: { ArgsView: GrepArgsView, ResultView: GrepResultView },
+  AskUser: { ResultView: AskUserResultView },
 };
 
 export function lookupToolUI(toolName: string): ToolUIEntry | undefined {

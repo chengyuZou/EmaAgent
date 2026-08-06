@@ -84,3 +84,32 @@ export function formatJson(value: unknown): string {
   }
   return JSON.stringify(value, null, 2);
 }
+
+// ── Bash 结果守卫(data 槽形状;presentation 通道已删) ──────────────────────────
+
+/** Bash 转交后台的引用结果;老消息/错误结果不匹配返回 null。 */
+export function asBashProcessReference(result: unknown): {
+  backgroundProcessId: string;
+  status: 'queued' | 'running';
+} | null {
+  if (!result || typeof result !== 'object') return null;
+  const r = result as Record<string, unknown>;
+  if (r['kind'] !== 'processReference' || typeof r['backgroundProcessId'] !== 'string') return null;
+  const status = r['status'];
+  return {
+    backgroundProcessId: r['backgroundProcessId'],
+    status: status === 'queued' ? 'queued' : 'running',
+  };
+}
+
+/** Bash 命令结果 → 终端视图文本;非该形状返回 null(调用方回落 formatJson)。 */
+export function bashCommandOutputText(result: unknown): string | null {
+  if (!result || typeof result !== 'object') return null;
+  const r = result as Record<string, unknown>;
+  if (r['kind'] !== 'commandResult') return null;
+  const parts: string[] = [];
+  if (typeof r['stdout'] === 'string' && r['stdout'].trim()) parts.push(r['stdout'].trimEnd());
+  if (typeof r['stderr'] === 'string' && r['stderr'].trim()) parts.push(`[stderr]\n${r['stderr'].trimEnd()}`);
+  if (typeof r['note'] === 'string' && r['note']) parts.push(r['note']);
+  return parts.join('\n');
+}

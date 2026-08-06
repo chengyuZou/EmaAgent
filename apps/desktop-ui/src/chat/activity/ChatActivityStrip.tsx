@@ -85,16 +85,18 @@ export function ChatActivityStrip({
                   <button
                     key={diff.callId}
                     className="flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors hover:bg-[var(--ema-surface-2)]"
-                    title={diff.result.filePath}
+                    title={diff.filePath}
                     onClick={() => {
                       setDiffsOpen(false);
                       onOpenReview();
                     }}
                   >
                     <span className="i-lucide:link shrink-0 text-xs text-[var(--ema-text-tertiary)]" aria-hidden />
-                    <span className="shrink-0 text-xs text-[var(--ema-text-tertiary)]">已编辑</span>
+                    <span className="shrink-0 text-xs text-[var(--ema-text-tertiary)]">
+                      {diff.status === 'created' ? '新建' : '已编辑'}
+                    </span>
                     <span className="min-w-0 flex-1 truncate font-mono text-xs text-[var(--ema-text-secondary)] underline decoration-[var(--ema-text-tertiary)] underline-offset-2">
-                      {baseName(diff.result.filePath)}
+                      {baseName(diff.filePath)}
                     </span>
                     <span className="shrink-0 text-[11px] text-[var(--ema-success-text)]">+{diff.additions}</span>
                     <span className="shrink-0 text-[11px] text-[var(--ema-danger-text)]">-{diff.deletions}</span>

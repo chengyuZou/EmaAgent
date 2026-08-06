@@ -16,7 +16,7 @@ import { renderToolResult } from './toolBlocks/tool-renderers.js';
 import { lookupToolUI } from './toolBlocks/toolUIRegistry.js';
 import { BackgroundProcessCard } from './toolBlocks/BackgroundProcessCard.js';
 import { ToolArgsView, ToolResultViewBlock, BashBlock, DiffBlock } from './toolBlocks/ToolRenderBlocks.js';
-import { BASH_TOOLS, getBashCommand, buildBodyText, buildEditDiff, getPrimaryTarget, formatJson } from './toolBlocks/toolBlockHelpers.js';
+import { BASH_TOOLS, getBashCommand, buildBodyText, buildEditDiff, getPrimaryTarget, formatJson, asBashProcessReference, bashCommandOutputText } from './toolBlocks/toolBlockHelpers.js';
 
 export interface ToolCallBlockProps {
   slice:      Extract<AssistantSlice, { type: 'tool_use' }>;
@@ -72,7 +72,9 @@ export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBloc
 
   const isBash      = BASH_TOOLS.has(slice.name);
   const fileChange = slice.presentation?.kind === 'file_change' ? slice.presentation : null;
-  const backgroundProcess = slice.presentation?.kind === 'background_process' ? slice.presentation : null;
+  // 后台进程引用走 data 槽(旧 presentation 通道已删);
+  // 有真实结果的命令用守卫提取终端文本,不再 JSON 直出。
+  const processRef = hasResult && slice.result != null ? asBashProcessReference(slice.result) : null;
 
   const resultView = hasResult && slice.result !== null ? renderToolResult(slice.name, slice.result) : null;
   // 专属 UI 优先;返回 null(类型守卫失败/未注册)回落通用平铺。渲染函数必须纯(无 hooks)。
@@ -88,9 +90,9 @@ export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBloc
     : fileChange
       ? fileChange.unifiedDiff
       : argsReady ? buildEditDiff(slice.name, slice.args) : null;
-  // bash 结果沿用原终端融合渲染（不进 renderToolResult）;已转交后台的进程引用 JSON 不渲染,由卡片表达。
-  const bashResultStr = isBash && hasResult && slice.result !== null && !backgroundProcess
-    ? formatJson(slice.result)
+  // bash 结果沿用原终端融合渲染（不进 renderToolResult）;转交后台的引用由卡片表达。
+  const bashResultStr = isBash && hasResult && slice.result !== null && !processRef
+    ? bashCommandOutputText(slice.result) ?? formatJson(slice.result)
     : null;
 
   const bodyForCopy = buildBodyText(slice, editDiff, isBash ? getBashCommand(slice.args) : null, bashResultStr, argsReady);
@@ -167,17 +169,18 @@ export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBloc
           </button>
 
           {/* Bash: 融合终端视图（命令 + 输出，不走通用平铺） */}
-          {isBash && (
+          {/* Bash 终端视图(转交后台后不再重复输出,由卡片表达) */}
+          {isBash && !processRef && (
             <div className="max-h-64 overflow-auto pr-6">
               <BashBlock cmd={getBashCommand(slice.args) ?? ''} output={bashResultStr} partialArgs={slice.partialArgs} isPending={isPending} />
             </div>
           )}
 
           {/* 已转交后台的 Bash:块当场终结,卡片只给面板入口,不持续刷新。 */}
-          {backgroundProcess && (
+          {isBash && processRef && (
             <BackgroundProcessCard
-              command={backgroundProcess.command}
-              status={backgroundProcess.status}
+              command={getBashCommand(slice.args) ?? ''}
+              status={processRef.status}
             />
           )}
 
