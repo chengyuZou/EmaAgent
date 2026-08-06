@@ -13,4 +13,5 @@ export {
   FileWriteArgsView,
   FileWriteResultView,
 } from './tools/FileWriteTool/UI.js';
+export { GlobArgsView, GlobResultView } from './tools/GlobTool/UI.js';
 export { additionsToUnifiedText, patchToUnifiedText } from './tools/FileEditTool/patch.js';
