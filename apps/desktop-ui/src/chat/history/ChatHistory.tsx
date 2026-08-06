@@ -6,7 +6,7 @@ import { useConversationStore, type ChatHistoryItem } from '../../stores/convers
 import { useChatHistoryScroll } from './useChatHistoryScroll.js';
 import { UserBubble } from '../messages/UserBubble.js';
 import { AssistantBubble } from '../messages/AssistantBubble.js';
-import { NarrativeStatusBlock } from '../messages/NarrativeStatusBlock.js';
+import { NarrativeStatusBlock } from '@ema-agent/tool-builtin/ui';
 import {
   EMPTY_SESSION_HISTORY,
   useSessionHistoryStore,
@@ -238,7 +238,7 @@ function BubbleRouter({
       return (
         <div className="flex justify-start px-1">
           <div className="max-w-[85%]">
-            <NarrativeStatusBlock slice={slice} />
+            <NarrativeStatusBlock data={slice} />
           </div>
         </div>
       );

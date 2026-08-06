@@ -12,7 +12,6 @@ import {
   type AttachmentInputWire,
   } from '../api/turns.js';
 import type { KbAssetScope } from '@ema-agent/turn';
-import type { ToolPresentation } from '@ema-agent/tools';
 import {
   handleTurnAborted,
   evictSessionPlayers,
@@ -492,13 +491,13 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
       }
 
       if (slice === 'tool_result' && typeof delta === 'object') {
-        const tr = delta as { callId: string; output?: unknown; presentation?: ToolPresentation; error?: { code: string; message: string }; durationMs?: number };
+        const tr = delta as { callId: string; output?: unknown; error?: { code: string; message: string }; durationMs?: number };
         const streaming = new Map(s.streamingMap);
         streaming.set(sessionId as string, {
           ...sm,
           slices: sm.slices.map((sl) =>
             sl.type === 'tool_use' && sl.callId === tr.callId
-              ? { ...sl, result: tr.output ?? null, presentation: tr.presentation, error: tr.error, durationMs: tr.durationMs, errorCode: tr.error?.code, permissionPromptId: undefined }
+              ? { ...sl, result: tr.output ?? null, error: tr.error, durationMs: tr.durationMs, errorCode: tr.error?.code, permissionPromptId: undefined }
               : sl,
           ),
         });

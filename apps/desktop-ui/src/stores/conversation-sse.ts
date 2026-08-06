@@ -21,7 +21,6 @@ import type {
   SessionId,
   TurnId,
 } from '@ema-agent/ids';
-import type { ToolPresentation } from '@ema-agent/tools';
 import {
   type ExecutionProfile,
   type NarrativePolicy,
@@ -39,7 +38,7 @@ export type DeltaSlice = 'text' | 'thinking' | 'tool_use' | 'tool_result';
 export type DeltaPayload =
   | string
   | { callId: string; name: string; args: unknown }
-  | { callId: string; output?: unknown; presentation?: ToolPresentation; error?: { code: string; message: string }; durationMs?: number };
+  | { callId: string; output?: unknown; error?: { code: string; message: string }; durationMs?: number };
 
 export interface StreamCallbacks {
   beginStream(
@@ -207,7 +206,6 @@ export function dispatchSseEvent(
       cb.appendDelta(sessionId, 'tool_result', {
         callId: event.callId,
         output: event.output,
-        presentation: event.presentation,
         error: event.error,
         durationMs: event.durationMs,
       });

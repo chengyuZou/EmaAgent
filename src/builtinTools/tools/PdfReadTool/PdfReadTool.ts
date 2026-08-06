@@ -3,14 +3,16 @@ import { open, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
 import { PdfReader, type DocumentBlock } from '@ema-agent/knowledge';
-import { buildTool, contextFail, contextOk, type BuiltinToolContext } from '@ema-agent/tools';
+import { buildTool, contextFail, contextOk, type ToolInvocation } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { isBlockedDevice } from '../FileReadTool/FileReadTool.js';
-
-const MAX_PDF_BYTES = 50 * 1024 * 1024;
-const DEFAULT_PAGE_COUNT = 10;
-const MAX_PAGE_COUNT = 20;
-const MAX_RESULT_BYTES = 50 * 1024;
+import {
+  DEFAULT_PAGE_COUNT,
+  MAX_PAGE_COUNT,
+  MAX_PDF_BYTES,
+  MAX_RESULT_BYTES,
+} from './limits.js';
+import { PDF_READ_DESCRIPTION } from './prompt.js';
 
 const inputSchema = z.object({
   file_path: z.string().min(1).describe('Absolute or workspace-relative path to the PDF file.'),
@@ -22,13 +24,13 @@ const inputSchema = z.object({
     .max(MAX_PAGE_COUNT)
     .optional()
     .describe(`Number of pages to read, capped at ${MAX_PAGE_COUNT}.`),
-});
+}).strict();
 
 type PdfReadInput = z.infer<typeof inputSchema>;
 
+/** PdfReadTool 的窄 Context：只取工作区根; 取消与身份走 ToolInvocation。 */
 interface PdfReadToolContext {
   workspaceRoot: string;
-  signal: AbortSignal;
 }
 
 export interface PdfReadWarning {
@@ -49,34 +51,31 @@ export interface PdfReadResult {
   warnings: PdfReadWarning[];
 }
 
-export const PdfReadTool = buildTool<
-  PdfReadInput,
-  PdfReadResult,
-  BuiltinToolContext,
-  PdfReadToolContext
->({
+export const PdfReadTool = buildTool<PdfReadInput, PdfReadResult, PdfReadToolContext>({
   id: BuiltinTools.PdfRead.id,
   name: BuiltinTools.PdfRead.name,
-  description: `Read text and structure from a PDF file.
+  description: PDF_READ_DESCRIPTION,
+  maxResultBytes: MAX_RESULT_BYTES,
 
-- Reads ${DEFAULT_PAGE_COUNT} pages by default and at most ${MAX_PAGE_COUNT} pages per call.
-- Use start_page to continue from nextPage.
-- Text-layer pages are returned directly. Scanned pages and unparsed figures are reported as warnings instead of being silently omitted.
-- This tool reads PDF only; use format-specific tools for DOCX, spreadsheets, or presentations.`,
   inputSchema,
   isReadOnly: () => true,
   isConcurrencySafe: () => true,
-  maxResultBytes: MAX_RESULT_BYTES,
-  requires: ['workspaceRoot'],
+
+  getToolUseSummary: (input) => input.file_path,
 
   validateContext(context) {
     if (!context.workspaceRoot) {
       return contextFail('PDF 读取工具未装配工作区。');
     }
-    return contextOk({
-      workspaceRoot: context.workspaceRoot,
-      signal: context.signal,
-    });
+    return contextOk({ workspaceRoot: context.workspaceRoot });
+  },
+
+  // 路径形状在 Permission 之前校验; 文件存在/签名/体积留在 execute 用 fs 复查。
+  validateInput(input) {
+    const issue = assertReadablePdfPath(input.file_path);
+    return issue
+      ? { valid: false, code: 'pdf/invalid_path', message: issue }
+      : { valid: true };
   },
 
   getPermissionIntent: (input) => ({
@@ -86,10 +85,13 @@ export const PdfReadTool = buildTool<
     promptPolicy: 'whenRequired',
   }),
 
-  async execute(input, context): Promise<PdfReadResult> {
+  async execute(
+    input: PdfReadInput,
+    context: PdfReadToolContext,
+    invocation: ToolInvocation,
+  ): Promise<PdfReadResult> {
     const filePath = path.resolve(context.workspaceRoot, input.file_path);
-    assertReadablePdfPath(filePath);
-    context.signal.throwIfAborted();
+    invocation.signal.throwIfAborted();
 
     const fileStat = await stat(filePath);
     if (!fileStat.isFile()) {
@@ -110,7 +112,7 @@ export const PdfReadTool = buildTool<
       {
         startPage,
         endPage: requestedEndPage,
-        signal: context.signal,
+        signal: invocation.signal,
       },
     );
 
@@ -122,7 +124,8 @@ export const PdfReadTool = buildTool<
       message: failure.error,
       retryable: failure.retryable,
     }));
-    const modelOutput: PdfReadResult = {
+
+    return {
       type: 'pdf_content',
       filePath: input.file_path,
       content: formatPdfBlocks(result.blocks, startPage, endPage),
@@ -132,21 +135,29 @@ export const PdfReadTool = buildTool<
       ...(endPage < totalPages ? { nextPage: endPage + 1 } : {}),
       warnings,
     };
+  },
 
-    return modelOutput;
+  // 模型只需要正文; 读取不完整的页单独列一节, 不让模型误以为全文完整。
+  mapResultToModelContent(output) {
+    if (output.warnings.length === 0) return output.content;
+    const lines = output.warnings.map(
+      (warning) => `- 第 ${warning.page} 页: ${warning.message}`,
+    );
+    return `${output.content}\n\n[读取不完整]\n${lines.join('\n')}`;
   },
 });
 
-function assertReadablePdfPath(filePath: string): void {
+function assertReadablePdfPath(filePath: string): string | null {
   if (filePath.startsWith('\\\\')) {
-    throw new Error(`UNC paths are not supported: ${filePath}`);
+    return `UNC paths are not supported: ${filePath}`;
   }
   if (isBlockedDevice(filePath)) {
-    throw new Error(`Reading from device file is not allowed: ${filePath}`);
+    return `Reading from device file is not allowed: ${filePath}`;
   }
   if (path.extname(filePath).toLowerCase() !== '.pdf') {
-    throw new Error(`PdfRead only accepts .pdf files: ${filePath}`);
+    return `PdfRead only accepts .pdf files: ${filePath}`;
   }
+  return null;
 }
 
 async function assertPdfSignature(filePath: string): Promise<void> {
@@ -162,7 +173,11 @@ async function assertPdfSignature(filePath: string): Promise<void> {
   }
 }
 
-function formatPdfBlocks(blocks: readonly DocumentBlock[], startPage: number, endPage: number): string {
+function formatPdfBlocks(
+  blocks: readonly DocumentBlock[],
+  startPage: number,
+  endPage: number,
+): string {
   const pages = new Map<number, DocumentBlock[]>();
   for (const block of blocks) {
     const page = block.page ?? startPage;

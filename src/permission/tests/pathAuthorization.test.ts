@@ -96,6 +96,56 @@ describe('Permission 路径授权', () => {
       reason: { type: 'headless' },
     });
   });
+
+  it('工作区外绝对路径默认模式进入用户询问, 不由引擎一票否决', async () => {
+    const workspaceRoot = makeTempDir();
+    const outsideFile = path.join(makeTempDir(), 'notes.txt');
+    fs.writeFileSync(outsideFile, 'outside');
+    const engine = new PermissionEngine(new InMemoryPermissionRuleStore());
+    const request = fileRequest(outsideFile, 'read', workspaceRoot);
+
+    // 没有批准界面时 headless 拒绝——证明它没有走"工作区读取自动放行"捷径。
+    const headless = await engine.authorize(request);
+    expect(headless).toMatchObject({
+      outcome: 'deny',
+      reason: { type: 'headless' },
+    });
+
+    // 工作区外由用户裁决: 允许就放行, 拒绝就拦截, 不是工具/引擎硬性一票拒绝。
+    const allowed = await engine.authorize(
+      request,
+      async () => ({ action: 'allow' }),
+    );
+    expect(allowed).toMatchObject({ outcome: 'allow' });
+
+    const denied = await engine.authorize(
+      request,
+      async () => ({ action: 'deny', reason: '用户拒绝' }),
+    );
+    expect(denied).toMatchObject({ outcome: 'deny', message: '用户拒绝' });
+  });
+
+  it('acceptEdits 模式只自动放行工作区写入, 工作区外写入仍需用户裁决', async () => {
+    const workspaceRoot = makeTempDir();
+    const outsideFile = path.join(makeTempDir(), 'new.txt');
+    const engine = new PermissionEngine(new InMemoryPermissionRuleStore());
+    const request: PermissionRequest = {
+      ...fileRequest(outsideFile, 'write', workspaceRoot),
+      context: { mode: 'acceptEdits', workspaceRoot },
+    };
+
+    const headless = await engine.authorize(request);
+    expect(headless).toMatchObject({
+      outcome: 'deny',
+      reason: { type: 'headless' },
+    });
+
+    const allowed = await engine.authorize(
+      request,
+      async () => ({ action: 'allow' }),
+    );
+    expect(allowed).toMatchObject({ outcome: 'allow' });
+  });
 });
 
 function fileRequest(

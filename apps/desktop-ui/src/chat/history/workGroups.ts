@@ -1,6 +1,5 @@
 // 把 assistant 消息的 slices 归纳成 Codex 式工作区模型:连续工具分组、动词摘要、
 // 当前动作(流式)、失败计数、正文切分与已编辑文件汇总。纯函数,供渲染与测试。
-import type { FileChangePresentation } from '@ema-agent/tools';
 import type { AssistantSlice } from '../../stores/conversation-store.js';
 
 type ToolUseSlice = Extract<AssistantSlice, { type: 'tool_use' }>;
@@ -92,10 +91,10 @@ export function tallySummary(
   const singleEdit = tally.fileEdits === 1 && tools.length === 1 ? tools[0] : null;
   const singleCommand = tally.commands === 1 && tools.length === 1 ? tools[0] : null;
   if (singleEdit) {
-    const change = fileChangeOf(singleEdit);
+    const change = editedFileOf(singleEdit);
     if (change) {
       parts.push(
-        `${change.operation === 'create' ? '已创建' : '已编辑'} ${basename(change.filePath)} +${change.additions} -${change.deletions}`,
+        `${change.created ? '已创建' : '已编辑'} ${basename(change.path)} +${change.additions} -${change.deletions}`,
       );
       return parts;
     }
@@ -168,13 +167,13 @@ export function editedFiles(slices: readonly AssistantSlice[]): {
   const byPath = new Map<string, EditedFileEntry>();
   for (const slice of slices) {
     if (slice.type !== 'tool_use') continue;
-    const change = fileChangeOf(slice);
+    const change = editedFileOf(slice);
     if (!change) continue;
-    byPath.set(change.filePath, {
-      path: change.filePath,
+    byPath.set(change.path, {
+      path: change.path,
       additions: change.additions,
       deletions: change.deletions,
-      created: change.operation === 'create',
+      created: change.created,
     });
   }
   const files = [...byPath.values()];
@@ -187,8 +186,49 @@ export function editedFiles(slices: readonly AssistantSlice[]): {
 
 // ── 内部工具 ──────────────────────────────────────────────────────────────────
 
-function fileChangeOf(slice: ToolUseSlice): FileChangePresentation | null {
-  return slice.presentation?.kind === 'file_change' ? slice.presentation : null;
+interface TypedEditedFile {
+  path: string;
+  additions: number;
+  deletions: number;
+  created: boolean;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** 从 FileEdit/FileWrite 的类型化 data 槽提取编辑事实; 旧 presentation 通道已删。 */
+function editedFileOf(slice: ToolUseSlice): TypedEditedFile | null {
+  const result = slice.result;
+  if (!isRecord(result)) return null;
+
+  if (result['type'] === 'created' && typeof result['filePath'] === 'string') {
+    const content = typeof result['content'] === 'string' ? result['content'] : '';
+    const lines = content.length === 0 ? 0 : content.split('\n').length;
+    return { path: result['filePath'], additions: lines, deletions: 0, created: true };
+  }
+
+  if (typeof result['filePath'] === 'string' && result['structuredPatch'] !== undefined) {
+    const counts = countPatchLines(result['structuredPatch']);
+    return { path: result['filePath'], additions: counts.additions, deletions: counts.deletions, created: false };
+  }
+  return null;
+}
+
+/** structuredPatch 的 lines 以 ' '/'-'/'+' 开头, 逐行计数即增删行数。 */
+function countPatchLines(hunks: unknown): { additions: number; deletions: number } {
+  if (!Array.isArray(hunks)) return { additions: 0, deletions: 0 };
+  let additions = 0;
+  let deletions = 0;
+  for (const hunk of hunks) {
+    if (!isRecord(hunk) || !Array.isArray(hunk['lines'])) continue;
+    for (const line of hunk['lines']) {
+      if (typeof line !== 'string') continue;
+      if (line.startsWith('+')) additions++;
+      else if (line.startsWith('-')) deletions++;
+    }
+  }
+  return { additions, deletions };
 }
 
 function bashCommandOf(slice: ToolUseSlice): string | null {

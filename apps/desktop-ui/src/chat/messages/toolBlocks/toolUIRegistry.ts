@@ -15,6 +15,10 @@ import {
   GrepArgsView,
   GrepResultView,
   SubagentResultView,
+  NarrativeSearchArgsView,
+  NarrativeSearchResultView,
+  PdfReadArgsView,
+  PdfReadResultView,
 } from '@ema-agent/tool-builtin/ui';
 
 export interface ToolUIEntry {
@@ -32,6 +36,11 @@ const TOOL_UI_REGISTRY: Readonly<Record<string, ToolUIEntry>> = {
   Grep: { ArgsView: GrepArgsView, ResultView: GrepResultView },
   AskUser: { ResultView: AskUserResultView },
   Subagent: { ResultView: SubagentResultView },
+  NarrativeSearch: {
+    ArgsView: NarrativeSearchArgsView,
+    ResultView: NarrativeSearchResultView,
+  },
+  PdfRead: { ArgsView: PdfReadArgsView, ResultView: PdfReadResultView },
 };
 
 export function lookupToolUI(toolName: string): ToolUIEntry | undefined {

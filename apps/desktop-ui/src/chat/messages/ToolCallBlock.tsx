@@ -71,7 +71,6 @@ export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBloc
   const target = argsReady ? getPrimaryTarget(slice.name, slice.args) : null;
 
   const isBash      = BASH_TOOLS.has(slice.name);
-  const fileChange = slice.presentation?.kind === 'file_change' ? slice.presentation : null;
   // 后台进程引用走 data 槽(旧 presentation 通道已删);
   // 有真实结果的命令用守卫提取终端文本,不再 JSON 直出。
   const processRef = hasResult && slice.result != null ? asBashProcessReference(slice.result) : null;
@@ -87,9 +86,7 @@ export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBloc
   // 运行中尚无 data,仍用 args 推导的 diff 做预览。
   const editDiff = customResult !== null
     ? null
-    : fileChange
-      ? fileChange.unifiedDiff
-      : argsReady ? buildEditDiff(slice.name, slice.args) : null;
+    : argsReady ? buildEditDiff(slice.name, slice.args) : null;
   // bash 结果沿用原终端融合渲染（不进 renderToolResult）;转交后台的引用由卡片表达。
   const bashResultStr = isBash && hasResult && slice.result !== null && !processRef
     ? bashCommandOutputText(slice.result) ?? formatJson(slice.result)
@@ -191,14 +188,8 @@ export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBloc
             </div>
           )}
 
-          {!isBash && fileChange && !editDiff && (
-            <div className="pr-6 text-[11px] text-[var(--ema-text-tertiary)]">
-              {fileChange.omittedReason ?? '文件已更新，但没有可展示的文本差异。'}
-            </div>
-          )}
-
           {/* 通用工具：单块 = 参数 + 透明横线 + 结果 */}
-          {!isBash && !fileChange && !editDiff && (
+          {!isBash && !editDiff && (
             <>
               {/* 参数区:专属 UI 优先,否则通用平铺 */}
               {argsReady ? (

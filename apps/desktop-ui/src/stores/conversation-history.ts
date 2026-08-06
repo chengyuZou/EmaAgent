@@ -8,7 +8,6 @@ import type {
   NarrativePolicy,
   TurnStats,
 } from '@ema-agent/turn';
-import type { ToolPresentation } from '@ema-agent/tools';
 import type {
   AssistantBlock,
   MessageBlocks,
@@ -29,7 +28,6 @@ export interface AssistantSliceToolUse {
   type: 'tool_use';         callId: string; name: string; args?: unknown;
                             partialArgs?: string;
                             result?: unknown; error?: { code: string; message: string };
-                            presentation?: ToolPresentation;
   // ── 状态展示字段（8.2 Tool 块重做）──
   /** 流式创建时间戳，running 时算实时耗时用。刷新后无（DB 不存）。 */
   startedAt?: number;
@@ -228,7 +226,6 @@ export function assembleHistory(
           // 类型化 data 优先(供专属 UI);老消息没有 data 槽,回落模型内容。
           result: block.data ?? block.content,
           durationMs: block.durationMs,
-          presentation: block.presentation,
           errorCode: block.errorCode ?? (block.isError ? 'tool/error' : undefined),
           ...(block.isError
             ? { error: { code: block.errorCode ?? 'tool/error', message: typeof block.content === 'string' ? block.content : '工具执行失败' } }

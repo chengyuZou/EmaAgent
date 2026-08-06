@@ -4,7 +4,7 @@ import { IconButton } from '@ema-agent/ui';
 import { estimateTextTokens } from '@ema-agent/token';
 import { Markdown } from '../../markdown/renderer.js';
 import { ToolCallBlock } from './ToolCallBlock.js';
-import { NarrativeStatusBlock } from './NarrativeStatusBlock.js';
+import { NarrativeStatusBlock } from '@ema-agent/tool-builtin/ui';
 import { ForkButton } from './ForkButton.js';
 import { replayTurn, stopPlayback, usePlaybackStore } from '../../lib/tts-playback.js';
 import { showToast } from '../../lib/toast.js';
@@ -234,7 +234,7 @@ function SliceRenderer({ slice, streaming, turnId }: { slice: AssistantSlice; st
     case 'tool_use':
       return <ToolCallBlock slice={slice} streaming={streaming} turnId={turnId} />;
     case 'narrative_status':
-      return <NarrativeStatusBlock slice={slice} />;
+      return <NarrativeStatusBlock data={slice} />;
     default:
       return <></>;
   }

@@ -24,4 +24,5 @@ export {
   NarrativeSearchResultView,
   NarrativeStatusBlock,
 } from './tools/NarrativeSearchTool/UI.js';
+export { PdfReadArgsView, PdfReadResultView } from './tools/PdfReadTool/UI.js';
 export { additionsToUnifiedText, patchToUnifiedText } from './tools/FileEditTool/patch.js';
