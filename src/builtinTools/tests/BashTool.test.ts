@@ -1,67 +1,71 @@
-// 测试 Bash 只通过受控后台进程入口执行，并公开真实的一次性转后台能力。
-
+// BashTool 收口测试: Schema 字段、Context 投影、受控后台执行、
+// 交互期 onProgress 流式(含跨 chunk 字符拼接)、30K 命令上限、map 投影。
 import { describe, expect, it, vi } from 'vitest';
 import { asSessionId, asToolCallId, asTurnId } from '@ema-agent/ids';
-import { BashTool } from '../tools/BashTool/BashTool.js';
+import type { ToolInvocation } from '@ema-agent/tools';
+import { BashTool, type BashProgress } from '../tools/BashTool/BashTool.js';
+import { extractBashCommentLabel } from '../tools/BashTool/commentLabel.js';
 
-describe('BashTool 执行边界', () => {
-  it('模型可见 Schema 使用真实 runInBackground，不保留旧蛇形字段', () => {
-    const properties = BashTool.descriptor().inputJsonSchema['properties'] as
-      | Record<string, unknown>
-      | undefined;
+function makeInvocation(): ToolInvocation {
+  return {
+    sessionId: asSessionId('00000000-0000-4000-8000-0000000000c1'),
+    turnId: asTurnId('00000000-0000-4000-8000-0000000000c2'),
+    toolCallId: asToolCallId('call-bash-1'),
+    signal: new AbortController().signal,
+  };
+}
 
-    expect(properties).toHaveProperty('runInBackground');
-    expect(properties).not.toHaveProperty('run_in_background');
-  });
-
-  it('没有 CommandRunner 时明确拒绝，不回退到裸进程', () => {
-    // 新模式：缺少 commandRunner 时 validateContext 投影失败，execute 不会被调用。
-    const projection = BashTool.unsafeValidateContext({
-      sessionId: asSessionId('session-test'),
-      turnId: asTurnId('turn-test'),
+function makeHost(runCommand: ReturnType<typeof vi.fn>) {
+  return {
+    host: {
       workspaceRoot: 'D:/workspace',
-      signal: new AbortController().signal,
-      // commandRunner 刻意不提供，验证工具不会回退到裸进程
-    });
-    expect(projection.valid).toBe(false);
+      commandRunner: { start: vi.fn(), run: vi.fn() },
+      backgroundProcesses: { runCommand, list: vi.fn(), readOutput: vi.fn(), stop: vi.fn() },
+    },
+  };
+}
+
+const SUCCESS_RESULT = {
+  kind: 'commandResult' as const,
+  result: {
+    stdout: 'ok', stderr: '', exitCode: 0,
+    timedOut: false, truncated: false, aborted: false,
+  },
+  durationMs: 12,
+};
+
+describe('BashTool — Schema 与 Context', () => {
+  it('模型可见 Schema 使用 runInBackground, 命令上限 30K', () => {
+    const shape = BashTool.inputSchema.shape;
+    expect('runInBackground' in shape).toBe(true);
+    expect('run_in_background' in shape).toBe(false);
+    expect(BashTool.inputSchema.safeParse({ command: 'x'.repeat(30_000) }).success).toBe(true);
+    expect(BashTool.inputSchema.safeParse({ command: 'x'.repeat(30_001) }).success).toBe(false);
   });
 
+  it('没有 commandRunner/backgroundProcesses 时投影失败, 不回退裸进程', () => {
+    const empty = BashTool.validateContext({ workspaceRoot: 'D:/ws' } as never);
+    expect(empty.valid).toBe(false);
+    const noWorkspace = BashTool.validateContext({
+      workspaceRoot: '',
+      commandRunner: {},
+      backgroundProcesses: {},
+    } as never);
+    expect(noWorkspace.valid).toBe(false);
+  });
+});
+
+describe('BashTool — 执行', () => {
   it('使用实际执行参数返回结构化命令结果', async () => {
-    const runCommand = vi.fn().mockResolvedValue({
-      kind: 'commandResult',
-      result: {
-        stdout: 'ok',
-        stderr: '',
-        exitCode: 0,
-        timedOut: false,
-        truncated: false,
-        aborted: false,
-      },
-      durationMs: 12,
-    });
-    const projection = BashTool.unsafeValidateContext({
-      sessionId: asSessionId('session-presentation'),
-      turnId: asTurnId('turn-presentation'),
-      toolCallId: asToolCallId('tool-call-presentation'),
-      workspaceRoot: 'D:/workspace',
-      signal: new AbortController().signal,
-      commandRunner: {
-        start: vi.fn(),
-        run: vi.fn(),
-        cleanup: vi.fn(),
-      },
-      backgroundProcesses: {
-        runCommand,
-        list: vi.fn(),
-        readOutput: vi.fn(),
-        stop: vi.fn(),
-      },
-    });
-    if (!projection.valid) throw new Error(projection.reason);
+    const runCommand = vi.fn().mockResolvedValue(SUCCESS_RESULT);
+    const { host } = makeHost(runCommand);
+    const projection = BashTool.validateContext(host as never);
+    if (!projection.valid) throw new Error('投影应成功');
 
-    const result = await BashTool.unsafeExecute(
+    const result = await BashTool.execute(
       { command: 'git status', description: '查看工作区状态' },
       projection.context,
+      makeInvocation(),
     );
 
     expect(runCommand).toHaveBeenCalledWith(expect.objectContaining({
@@ -69,11 +73,89 @@ describe('BashTool 执行边界', () => {
       description: '查看工作区状态',
       cwd: 'D:/workspace',
     }));
-    expect(result).toMatchObject({
-      kind: 'commandResult',
-      stdout: 'ok',
-      exitCode: 0,
-      durationMs: 12,
+    expect(result).toMatchObject({ kind: 'commandResult', stdout: 'ok', exitCode: 0 });
+  });
+
+  it('交互期输出增量经 onProgress 上报, 跨 chunk 的多字节字符不碎', async () => {
+    const runCommand = vi.fn().mockImplementation(async (request) => {
+      // "中" = E4 B8 AD: 故意拆在两个 chunk 里回调。
+      request.onOutput({ stream: 'stdout', data: Buffer.from([0xe4, 0xb8]) });
+      request.onOutput({ stream: 'stdout', data: Buffer.from([0xad]) });
+      request.onOutput({ stream: 'stderr', data: Buffer.from('warn') });
+      return SUCCESS_RESULT;
     });
+    const { host } = makeHost(runCommand);
+    const projection = BashTool.validateContext(host as never);
+    if (!projection.valid) throw new Error('投影应成功');
+
+    const progress: BashProgress[] = [];
+    await BashTool.execute(
+      { command: 'echo 中' },
+      projection.context,
+      makeInvocation(),
+      (p) => progress.push(p),
+    );
+
+    expect(progress).toEqual([
+      { stream: 'stdout', text: '中' },
+      { stream: 'stderr', text: 'warn' },
+    ]);
+  });
+
+  it('转交后台时引用带日志路径', async () => {
+    const runCommand = vi.fn().mockResolvedValue({
+      kind: 'processReference',
+      backgroundProcessId: 'bgp-1',
+      status: 'running',
+      outputPreview: '…',
+      outputRelativePath: 'background/session-1/bgp-1',
+    });
+    const { host } = makeHost(runCommand);
+    const projection = BashTool.validateContext(host as never);
+    if (!projection.valid) throw new Error('投影应成功');
+
+    const result = await BashTool.execute(
+      { command: 'npm run build', runInBackground: true },
+      projection.context,
+      makeInvocation(),
+    );
+
+    expect(result).toMatchObject({
+      kind: 'processReference',
+      backgroundProcessId: 'bgp-1',
+      outputRelativePath: 'background/session-1/bgp-1',
+    });
+  });
+});
+
+describe('BashTool.mapResultToModelContent', () => {
+  it('命令结果: stdout/stderr 排版, 空输出给占位', () => {
+    expect(BashTool.mapResultToModelContent!({
+      kind: 'commandResult', stdout: 'hello\n', stderr: '', exitCode: 0,
+      timedOut: false, truncated: false, durationMs: 5, aborted: false,
+    })).toBe('hello');
+    expect(BashTool.mapResultToModelContent!({
+      kind: 'commandResult', stdout: '', stderr: '', exitCode: 0,
+      timedOut: false, truncated: false, durationMs: 5, aborted: false,
+    })).toBe('(command completed with no output)');
+  });
+
+  it('后台引用: 带 id、日志路径与不轮询提示', () => {
+    const out = BashTool.mapResultToModelContent!({
+      kind: 'processReference', backgroundProcessId: 'bgp-9', status: 'queued',
+      outputPreview: '…', outputRelativePath: 'background/s/bgp-9',
+    });
+    expect(out).toContain('bgp-9');
+    expect(out).toContain('background/s/bgp-9');
+    expect(out).toContain('notified');
+  });
+});
+
+describe('extractBashCommentLabel', () => {
+  it('提取首行 # 注释, shebang 与无注释返回 undefined', () => {
+    expect(extractBashCommentLabel('# 部署到测试环境\nnpm run deploy')).toBe('部署到测试环境');
+    expect(extractBashCommentLabel('#!/bin/bash\necho hi')).toBeUndefined();
+    expect(extractBashCommentLabel('echo hi')).toBeUndefined();
+    expect(extractBashCommentLabel('#')).toBeUndefined();
   });
 });

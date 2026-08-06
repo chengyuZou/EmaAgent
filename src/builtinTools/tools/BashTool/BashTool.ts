@@ -1,34 +1,44 @@
 // 把 Bash 命令交给独立 Sandbox Runner 执行, 返回有界输出。
 // 安全链: bashSecurity 静态分析(validateInput 硬拦 + execute 复查)
 // + Permission 规则裁决 + Sandbox 隔离, 三层互不替代。
+// 模型说明书见 prompt.ts。
+import { StringDecoder } from 'node:string_decoder';
 import { z } from 'zod';
 import {
   buildTool,
   contextFail,
   contextOk,
   type BackgroundProcessPort,
-  type BuiltinToolContext,
+  type ToolInvocation,
 } from '@ema-agent/tools';
 import type { CommandRunnerPort } from '@ema-agent/sandbox';
-import type { SessionId, ToolCallId, TurnId } from '@ema-agent/ids';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { analyzeBashCommand, splitCommandSegments } from './bashSecurity.js';
 import { interpretExitCode } from './commandSemantics.js';
+import { BASH_DESCRIPTION } from './prompt.js';
 
-/** Bash 工具的窄 Context：只需命令执行器 + 执行身份。 */
+/** Bash 工具的窄 Context：命令执行器与后台进程入口;身份与取消走 ToolInvocation。 */
 interface BashToolContext {
   runner: CommandRunnerPort;
   backgroundProcesses: BackgroundProcessPort;
-  sessionId: SessionId;
-  turnId: TurnId;
-  toolCallId: ToolCallId;
-  signal: AbortSignal;
   workspaceRoot: string;
+}
+
+/** 交互等待期的输出增量(转交后台后不再上报)。 */
+export interface BashProgress {
+  stream: 'stdout' | 'stderr';
+  text: string;
 }
 
 // ── 常量 ─────────────────────────────────────────────────────────────────────
 
 const MAX_TIMEOUT_MS = 7 * 24 * 60 * 60 * 1_000;
+/**
+ * 命令字符串上限: 压 Windows CreateProcess 的 32,767 字符硬上限以下
+ * (WSL 路径转义最坏 4 倍膨胀),超限给模型可读错误而不是平台 EINVAL。
+ * 与防卡死无关——字符串不存在卡死路径,超限 spawn 本就诚实失败。
+ */
+const MAX_COMMAND_CHARS = 30_000;
 
 // ── 输入 schema ──────────────────────────────────────────────────────────────
 
@@ -36,6 +46,7 @@ const inputSchema = z.object({
   command: z
     .string()
     .min(1)
+    .max(MAX_COMMAND_CHARS)
     .describe('Shell command to execute. Avoid interactive commands that require stdin.'),
   description: z
     .string()
@@ -77,55 +88,40 @@ export interface BashProcessReference {
   backgroundProcessId: string;
   status: 'queued' | 'running';
   outputPreview: string;
+  /** 日志落盘位置(相对数据目录), 模型可 Read 完整输出。 */
+  outputRelativePath: string;
 }
 
 export type BashResult = BashCommandResult | BashProcessReference;
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
 
-export const BashTool = buildTool<BashInput, BashResult, BuiltinToolContext, BashToolContext>({
+export const BashTool = buildTool<BashInput, BashResult, BashToolContext, BashProgress>({
   id: BuiltinTools.Bash.id,
   name: BuiltinTools.Bash.name,
-  description: `Execute a bash/sh shell command inside the workspace sandbox and return stdout, stderr, and exit code.
-
-Usage rules:
-- Prefer the dedicated tools over shell equivalents: Read instead of cat, Edit instead of sed/awk, Write instead of echo >, Glob instead of find, Grep instead of grep — they carry finer-grained permissions and safer output budgets.
-- Chain dependent commands with && (never newline-separated). Use ; only when failure of the previous step does not matter.
-- Quote paths containing spaces. Verify a directory exists (ls) before creating files in it.
-- Avoid interactive commands that read from stdin (they will hang).
-- Git safety: never run destructive git commands (reset --hard, push --force, clean -f) unless the user explicitly asked; never use --no-verify; when a hook fails a commit, create a new commit instead of --amend.
-- Output redirects (> and >>) may only target paths inside the workspace or the system temp directory (relative paths land in the workspace).
-- Commands that finish within 15 seconds return their result directly. Slower commands keep running as background processes without being restarted.
-- Set runInBackground=true when the command is expected to be long-running. Use ProcessOutput to read incremental output and ProcessStop to terminate it.
-- timeout is the total runtime limit. When omitted, the user's background-process setting applies.`,
+  description: BASH_DESCRIPTION,
 
   getToolUseSummary: (input) => input.description,
 
   inputSchema,
   isReadOnly: (input) => {
     // 结构化只读证明: 无重定向写入且每段都在只读白名单内。
-    // 供 Manifest 与并发安全判定说真话; 权限放行仍由 Permission 决定。
+    // 供并发安全判定说真话; 权限放行仍由 Permission 决定。
     const verdict = analyzeBashCommand(input.command);
     return verdict.kind === 'ok' && verdict.readOnly;
   },
   isConcurrencySafe: () => false,
 
-  requires: ['commandRunner', 'backgroundProcesses'],
-
   validateContext(ctx) {
+    if (!ctx.workspaceRoot) {
+      return contextFail('Shell 工具需要明确的工作区。');
+    }
     if (!ctx.commandRunner || !ctx.backgroundProcesses) {
       return contextFail('当前执行环境没有 Shell 能力，请先选择工作区并检查 Sandbox 状态。');
-    }
-    if (!ctx.toolCallId) {
-      return contextFail('Shell 调用缺少 toolCallId，不能建立可审计的进程身份。');
     }
     return contextOk({
       runner: ctx.commandRunner,
       backgroundProcesses: ctx.backgroundProcesses,
-      sessionId: ctx.sessionId,
-      turnId: ctx.turnId,
-      toolCallId: ctx.toolCallId,
-      signal: ctx.signal,
       workspaceRoot: ctx.workspaceRoot,
     });
   },
@@ -151,6 +147,8 @@ Usage rules:
   async execute(
     input: BashInput,
     context: BashToolContext,
+    invocation: ToolInvocation,
+    onProgress?: (progress: BashProgress) => void,
   ): Promise<BashResult> {
     const { command, timeout, runInBackground } = input;
 
@@ -160,21 +158,33 @@ Usage rules:
       throw new Error(`Command blocked by safety policy: ${verdict.reason ?? command}`);
     }
 
+    // 进度上报: 跨 chunk 的多字节字符用 StringDecoder 拼齐, 不发半个字符。
+    const stdoutDecoder = new StringDecoder('utf8');
+    const stderrDecoder = new StringDecoder('utf8');
+    const emitChunk = (stream: 'stdout' | 'stderr', data: Uint8Array): void => {
+      if (!onProgress) return;
+      const text = (stream === 'stdout' ? stdoutDecoder : stderrDecoder).write(Buffer.from(data));
+      if (text) onProgress({ stream, text });
+    };
+
     const lastSegment = splitCommandSegments(command).at(-1) ?? command;
     const lastBase = /^(\S+)/.exec(lastSegment)?.[1]?.replace(/^.*\//, '') ?? '';
     const result = await context.backgroundProcesses.runCommand({
-      sessionId: context.sessionId,
-      turnId: context.turnId,
-      toolCallId: context.toolCallId,
+      sessionId: invocation.sessionId,
+      turnId: invocation.turnId,
+      toolCallId: invocation.toolCallId,
       runner: context.runner,
       command,
       description: input.description,
       cwd: context.workspaceRoot,
       timeoutMs: timeout,
       runInBackground,
-      waitSignal: context.signal,
+      waitSignal: invocation.signal,
       isSuccessfulExitCode: exitCode =>
         interpretExitCode(lastBase, exitCode).ok,
+      onOutput: onProgress
+        ? chunk => emitChunk(chunk.stream, chunk.data)
+        : undefined,
     });
 
     if (result.kind === 'processReference') {
@@ -183,6 +193,7 @@ Usage rules:
         backgroundProcessId: result.backgroundProcessId,
         status: result.status,
         outputPreview: result.outputPreview,
+        outputRelativePath: result.outputRelativePath,
       };
     }
 
@@ -206,5 +217,21 @@ Usage rules:
       durationMs: result.durationMs,
       ...(notes.length > 0 ? { note: notes.join('; ') } : {}),
     };
+  },
+
+  mapResultToModelContent(output) {
+    if (output.kind === 'processReference') {
+      return `Command is running in the background (id: ${output.backgroundProcessId}, status: ${output.status}).\n`
+        + `Output so far: ${output.outputPreview}\n`
+        + `You will be notified when it completes. To inspect progress, use ProcessOutput `
+        + `or Read the log at: ${output.outputRelativePath}`;
+    }
+    const parts: string[] = [];
+    if (output.stdout.trim()) parts.push(output.stdout.trimEnd());
+    if (output.stderr.trim()) parts.push(`[stderr]\n${output.stderr.trimEnd()}`);
+    if (output.timedOut) parts.push('[timed out]');
+    if (output.truncated) parts.push('[output truncated]');
+    if (output.note) parts.push(output.note);
+    return parts.length > 0 ? parts.join('\n') : '(command completed with no output)';
   },
 });
