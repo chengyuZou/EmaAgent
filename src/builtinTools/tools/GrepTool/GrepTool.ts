@@ -1,20 +1,25 @@
 // 通过 ripgrep 在时间、输出和结果数量预算内搜索文件内容。
+// 模型说明书见 prompt.ts; rg 是外部二进制(缺失时给明确错误); 结果按模式三形态返回。
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { buildTool, contextFail, contextOk, type BuiltinToolContext } from '@ema-agent/tools';
+import { buildTool, contextFail, contextOk, type ToolInvocation } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { runBoundedProcess } from '../shared/BoundedProcess.js';
 import { sortPathsByMtimeDesc } from '../shared/fileMtimeSort.js';
+import { GREP_DESCRIPTION } from './prompt.js';
 
-/** Grep 工具的窄 Context：工作区根 + per-call 取消信号。 */
+/** Grep 工具的窄 Context：只取工作区根；取消信号走 ToolInvocation。 */
 interface GrepToolContext {
   workspaceRoot: string;
-  signal: AbortSignal;
 }
 
 const MAX_ENUMERATED_RECORDS = 20_000;
 const MAX_OFFSET = 19_000;
+const MAX_OUTPUT_BYTES = 2 * 1024 * 1024;
+const SEARCH_TIMEOUT_MS = 15_000;
+/** 版本控制元数据目录自动排除, 避免搜索结果噪声。 */
+const VCS_DIRECTORIES_TO_EXCLUDE = ['.git', '.svn', '.hg', '.bzr', '.jj', '.sl'];
 
 // ── 输入 schema ──────────────────────────────────────────────────────────────
 
@@ -86,76 +91,87 @@ const inputSchema = z.object({
 
 type GrepInput = z.infer<typeof inputSchema>;
 
-// ── 输出类型 ───────────────────────────────────────────────────────────────────
+export type GrepResult =
+  | {
+      type: 'files_with_matches';
+      /** 匹配的文件路径(相对搜索根, '/' 分隔), 按 mtime 降序。 */
+      files: string[];
+      truncated: boolean;
+      /** 仅 truncated=true 时存在。给模型的人类可读提示。 */
+      notice?: string;
+    }
+  | {
+      type: 'count';
+      /** 分页后的 "文件:计数" 行。 */
+      entries: string[];
+      /** 有界全集内累计的匹配总数(截断时为下限)。 */
+      totalMatches: number;
+      /** 参与统计的文件数。 */
+      fileCount: number;
+      truncated: boolean;
+      notice?: string;
+    }
+  | {
+      type: 'content';
+      /** 匹配行(含行号与上下文), 已剥 ./ 前缀。 */
+      output: string;
+      numLines: number;
+      truncated: boolean;
+      notice?: string;
+    };
 
-export interface GrepResult {
-  output: string;
-  truncated: boolean;
-  stopReason?: 'records' | 'bytes' | 'timeout';
-}
-
-const MAX_OUTPUT_BYTES = 2 * 1024 * 1024;
-const SEARCH_TIMEOUT_MS = 15_000;
-
-// ── 工具定义 ───────────────────────────────────────────────────────────────────
-
-export const GrepTool = buildTool<GrepInput, GrepResult, BuiltinToolContext, GrepToolContext>({
+export const GrepTool = buildTool<GrepInput, GrepResult, GrepToolContext>({
   id: BuiltinTools.Grep.id,
   name: BuiltinTools.Grep.name,
-  description: `Regex content search powered by ripgrep.
-
-Output modes:
-- \`files_with_matches\` (default) - list file paths that contain the pattern, newest-modified first
-- \`content\` - show matching lines, with optional surrounding context lines (\`context\`, or \`context_before\`/\`context_after\`)
-- \`count\` - show match count per file plus a total summary
-
-Use \`glob\` or \`type\` to restrict which files are searched (e.g. \`"*.ts"\` or \`"rust"\`).
-Results are capped at \`head_limit\` output lines (default 250; in \`content\` mode this includes context lines, so fewer matches may fit). Use \`offset\` to paginate.
-Over-long lines (minified/base64-style) are skipped.`,
+  description: GREP_DESCRIPTION,
 
   inputSchema,
   isReadOnly: () => true,
   isConcurrencySafe: () => true,
 
-  getPermissionIntent: (input, context) => ({
-    riskLevel:   'low',
-    accessType:  'read',
-    targets: [{ path: input.path ?? context.workspaceRoot, accessType: 'read' }],
-    promptPolicy: 'whenRequired',
-  }),
-
-  requires: ['workspaceRoot'],
-
   validateContext(ctx) {
     if (!ctx.workspaceRoot) {
       return contextFail('Grep 工具需要明确的工作区，禁止回退到 Sidecar 进程目录。');
     }
-    return contextOk({
-      workspaceRoot: ctx.workspaceRoot,
-      signal: ctx.signal,
-    });
+    return contextOk({ workspaceRoot: ctx.workspaceRoot });
   },
 
-  async execute(input: GrepInput, context: GrepToolContext): Promise<GrepResult> {
-    const {
-      pattern,
-      path: inputPath,
-      glob: globFilter,
-      type: fileType,
-      output_mode,
-      context: contextLines,
-      context_before,
-      context_after,
-      case_insensitive,
-      multiline = false,
-      head_limit,
-      offset = 0,
-    } = input;
+  validateInput(input, context) {
+    if (!input.path) return { valid: true };
+    // UNC 跳过 stat: stat 本身会触发 SMB 认证, NTLM 凭据泄露; Permission 层会拦。
+    if (input.path.startsWith('\\\\') || input.path.startsWith('//')) return { valid: true };
+    const resolved = path.resolve(context.workspaceRoot, input.path);
+    try {
+      fs.statSync(resolved);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === 'ENOENT' || code === 'ENOTDIR') {
+        return { valid: false, message: `Path does not exist: ${input.path}` };
+      }
+      return { valid: false, message: `Cannot access path: ${input.path}` };
+    }
+    return { valid: true };
+  },
 
+  getPermissionIntent: (input, context) => ({
+    riskLevel: 'low',
+    accessType: 'read',
+    targets: [{
+      path: input.path ? path.resolve(context.workspaceRoot, input.path) : context.workspaceRoot,
+      accessType: 'read',
+    }],
+    promptPolicy: 'whenRequired',
+  }),
+
+  async execute(
+    input: GrepInput,
+    context: GrepToolContext,
+    invocation: ToolInvocation,
+  ): Promise<GrepResult> {
     const workspaceRoot = context.workspaceRoot;
     // cwd 内搜索: 输出相对路径(省 token 且更易读); 目标是文件时以其所在目录为 cwd。
-    const resolvedTarget = inputPath
-      ? path.resolve(workspaceRoot, inputPath)
+    const resolvedTarget = input.path
+      ? path.resolve(workspaceRoot, input.path)
       : workspaceRoot;
     let searchCwd = resolvedTarget;
     let searchTarget = '.';
@@ -168,46 +184,16 @@ Over-long lines (minified/base64-style) are skipped.`,
       // 路径不存在: 交给 rg 自己的错误输出(经下方 stderr 透传)。
     }
 
-    const args: string[] = [];
-
-    // 模式标志
-    if (output_mode === 'files_with_matches') args.push('--files-with-matches');
-    else if (output_mode === 'count') args.push('--count');
-    // content 模式:rg 默认行为(显示匹配行)
-
-    // 防止 base64/minified 单行巨行吃掉输出行数与字节预算(Claude 同款)。
-    args.push('--max-columns', '500');
-
-    if (multiline) args.push('-U', '--multiline-dotall');
-
-    if (output_mode === 'content') {
-      // -C 优先; 否则独立 -B/-A。
-      if (contextLines !== undefined) {
-        args.push('-C', String(contextLines));
-      } else {
-        if (context_before !== undefined) args.push('-B', String(context_before));
-        if (context_after !== undefined) args.push('-A', String(context_after));
-      }
-      args.push('--line-number');
-    }
-    if (case_insensitive) args.push('--ignore-case');
-    if (fileType) args.push('--type', fileType);
-    if (globFilter) args.push('--glob', globFilter);
-
-    args.push('--no-heading', '--color=never');
-    // `--` 把模型提供的 pattern/path 与 rg 自身参数隔开，避免以 `-` 开头的内容被当成选项。
-    args.push('--', pattern, searchTarget);
-
     let result;
     try {
-      // 文件列表和计数必须先取得有界全集，才能诚实排序、分页和统计；
-      // content 仍按 offset + head_limit 流式早停，避免无谓收集大量正文。
-      const maxRecords = output_mode === 'content'
-        ? offset + head_limit
+      // 文件列表和计数必须先取得有界全集, 才能诚实排序、分页和统计;
+      // content 仍按 offset + head_limit 流式早停, 避免无谓收集大量正文。
+      const maxRecords = input.output_mode === 'content'
+        ? input.offset + input.head_limit
         : MAX_ENUMERATED_RECORDS;
-      result = await runBoundedProcess('rg', args, {
+      result = await runBoundedProcess('rg', buildRgArgs(input, searchTarget), {
         cwd: searchCwd,
-        signal: context.signal,
+        signal: invocation.signal,
         delimiter: '\n',
         maxRecords,
         maxBytes: MAX_OUTPUT_BYTES,
@@ -225,42 +211,115 @@ Over-long lines (minified/base64-style) are skipped.`,
     }
 
     // rg 用 cwd+相对目标输出的路径带 ./ 前缀, 剥掉再展示。
-    let records = result.records.map((r) => (r.startsWith('./') ? r.slice(2) : r));
+    const records = result.records.map((r) => (r.startsWith('./') ? r.slice(2) : r));
+    const pageStart = input.offset;
+    const pageEnd = input.offset + input.head_limit;
+    const truncated = result.truncated || pageEnd < records.length;
+    const notice = truncated
+      ? `[Search stopped at the ${result.stopReason ?? 'output'} limit. Use a narrower pattern/path/glob, or continue with offset=${pageEnd}.]`
+      : undefined;
 
-    // files_with_matches 按 mtime 降序(与 Glob 的 newest-first 对齐);
-    // 排序在切片前, 否则拿到的是遍历序而不是最新序。
-    if (output_mode === 'files_with_matches') {
-      records = (await sortPathsByMtimeDesc(
-        records.map(record => path.resolve(searchCwd, record)),
-      ))
-        .map((p) => path.relative(searchCwd, p));
-    }
-
-    const page = records.slice(offset, offset + head_limit);
-    const hasMorePage = offset + head_limit < records.length;
-    const truncated = result.truncated || hasMorePage;
-    const stopReason = result.stopReason ?? (hasMorePage ? 'records' : undefined);
-
-    let output = page.join('\n');
-    if (output_mode === 'count' && records.length > 0) {
-      let totalMatches = 0;
-      for (const line of records) {
-        const idx = line.lastIndexOf(':');
-        const n = idx > 0 ? Number.parseInt(line.slice(idx + 1), 10) : NaN;
-        if (!Number.isNaN(n)) totalMatches += n;
+    switch (input.output_mode) {
+      case 'files_with_matches': {
+        // 按 mtime 降序(与 Glob 的 newest-first 对齐); 排序在切片前, 否则拿到的是遍历序。
+        // path.relative 在 Windows 返回反斜杠, 统一 '/' 与 rg 原始输出口径一致(模型可回填)。
+        const sorted = await sortPathsByMtimeDesc(
+          records.map((record) => path.resolve(searchCwd, record)),
+        );
+        return {
+          type: 'files_with_matches',
+          files: sorted
+            .slice(pageStart, pageEnd)
+            .map((p) => path.relative(searchCwd, p).replace(/\\/g, '/')),
+          truncated,
+          ...(notice ? { notice } : {}),
+        };
       }
-      output += result.truncated
-        ? `\n\nFound at least ${totalMatches} occurrences across ${records.length} files before the search limit.`
-        : `\n\nFound ${totalMatches} total occurrences across ${records.length} files.`;
+      case 'count': {
+        // 统计基于有界全集(截断时 "at least"); 展示按分页切片。
+        let totalMatches = 0;
+        for (const line of records) {
+          const idx = line.lastIndexOf(':');
+          const n = idx > 0 ? Number.parseInt(line.slice(idx + 1), 10) : NaN;
+          if (!Number.isNaN(n)) totalMatches += n;
+        }
+        return {
+          type: 'count',
+          entries: records.slice(pageStart, pageEnd),
+          totalMatches,
+          fileCount: records.length,
+          truncated,
+          ...(notice ? { notice } : {}),
+        };
+      }
+      default: {
+        const page = records.slice(pageStart, pageEnd);
+        return {
+          type: 'content',
+          output: page.join('\n'),
+          numLines: page.length,
+          truncated,
+          ...(notice ? { notice } : {}),
+        };
+      }
     }
-    if (truncated) {
-      output += `${output ? '\n' : ''}[Search stopped at the ${stopReason ?? 'output'} limit. Use a narrower pattern/path/glob, or continue with offset=${offset + head_limit}.]`;
-    }
+  },
 
-    return {
-      output,
-      truncated,
-      ...(stopReason ? { stopReason } : {}),
-    };
+  mapResultToModelContent(output) {
+    switch (output.type) {
+      case 'files_with_matches': {
+        if (output.files.length === 0) return 'No files found';
+        const header = `Found ${output.files.length} file${output.files.length === 1 ? '' : 's'}`;
+        return output.notice
+          ? `${header}\n${output.files.join('\n')}\n${output.notice}`
+          : `${header}\n${output.files.join('\n')}`;
+      }
+      case 'count': {
+        const body = output.entries.join('\n') || 'No matches found';
+        const summary =
+          `\n\nFound ${output.totalMatches} total occurrence${output.totalMatches === 1 ? '' : 's'} ` +
+          `across ${output.fileCount} file${output.fileCount === 1 ? '' : 's'}.`;
+        return body + summary + (output.notice ? ` ${output.notice}` : '');
+      }
+      case 'content':
+        return (output.output || 'No matches found') + (output.notice ? `\n\n${output.notice}` : '');
+    }
   },
 });
+
+
+/**
+ * 把输入翻译成 rg 参数。`--` 把模式与搜索目标同 rg 自身选项隔开,
+ * 防止以 `-` 开头的模式被当成选项; --color=never 防配置强制上色污染记录。
+ */
+function buildRgArgs(input: GrepInput, searchTarget: string): string[] {
+  const args: string[] = ['--hidden'];
+  // 排除 VCS 元数据目录, 避免搜索历史/引用噪声。
+  for (const dir of VCS_DIRECTORIES_TO_EXCLUDE) args.push('--glob', `!${dir}`);
+
+  // 防止 base64/minified 单行巨行吃掉输出行数与字节预算。
+  args.push('--max-columns', '500');
+
+  if (input.output_mode === 'files_with_matches') args.push('--files-with-matches');
+  else if (input.output_mode === 'count') args.push('--count');
+
+  if (input.multiline) args.push('-U', '--multiline-dotall');
+  if (input.case_insensitive) args.push('--ignore-case');
+
+  if (input.output_mode === 'content') {
+    // -C 优先; 否则独立 -B/-A。
+    if (input.context !== undefined) {
+      args.push('-C', String(input.context));
+    } else {
+      if (input.context_before !== undefined) args.push('-B', String(input.context_before));
+      if (input.context_after !== undefined) args.push('-A', String(input.context_after));
+    }
+    args.push('--line-number');
+  }
+  if (input.type) args.push('--type', input.type);
+  if (input.glob) args.push('--glob', input.glob);
+
+  args.push('--no-heading', '--color=never');
+  args.push('--', input.pattern, searchTarget);
+  return args;
+}
