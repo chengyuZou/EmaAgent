@@ -5,6 +5,7 @@ import type {
   TurnId,
 } from '@ema-agent/ids';
 import type {
+  CommandOutputChunk,
   CommandRunResult,
   CommandRunnerPort,
 } from '@ema-agent/sandbox';
@@ -70,6 +71,11 @@ export interface BackgroundCommandRequest {
   runInBackground?: boolean;
   waitSignal: AbortSignal;
   isSuccessfulExitCode(exitCode: number): boolean;
+  /**
+   * 交互等待期内的原始输出增量(转交后台后不再回调——
+   * 此后输出归日志与 ProcessOutput 游标, 原调用的进度通道已随结果返回关闭)。
+   */
+  onOutput?: (chunk: CommandOutputChunk) => void;
 }
 
 export type BackgroundCommandResult =
@@ -83,6 +89,8 @@ export type BackgroundCommandResult =
       backgroundProcessId: BackgroundProcessId;
       status: 'queued' | 'running';
       outputPreview: string;
+      /** 日志落盘位置(相对数据目录), 供模型后续 Read 完整输出。 */
+      outputRelativePath: string;
     };
 
 export interface BackgroundProcessListOptions {

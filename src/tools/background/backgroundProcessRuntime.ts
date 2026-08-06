@@ -168,7 +168,32 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
     const id = asBackgroundProcessId(crypto.randomUUID());
     const writer = this.output.create(request.sessionId, id);
     const timeoutMs = this.resolveTimeout(request.timeoutMs);
-    const frozenRequest = Object.freeze({ ...request, timeoutMs });
+    // 进度透传只在调用存活期有效:本函数一旦返回/抛出(包括转交后台),
+    // 调用方的 onProgress 通道随之关闭,进程后续输出只进日志。
+    let forwardToCaller = true;
+    const callerOutput = request.onOutput;
+    const frozenRequest = Object.freeze({
+      ...request,
+      timeoutMs,
+      ...(callerOutput
+        ? { onOutput: (chunk: Parameters<NonNullable<typeof callerOutput>>[0]) => {
+            if (forwardToCaller) callerOutput(chunk);
+          } }
+        : {}),
+    });
+    try {
+      return await this.runCommandInner(id, writer, request, frozenRequest);
+    } finally {
+      forwardToCaller = false;
+    }
+  }
+
+  private async runCommandInner(
+    id: BackgroundProcessId,
+    writer: BackgroundProcessOutputWriter,
+    request: BackgroundCommandRequest,
+    frozenRequest: BackgroundCommandRequest & { timeoutMs: number },
+  ): Promise<BackgroundCommandResult> {
 
     if (request.runInBackground) {
       const record = this.deps.store.insert({
@@ -180,7 +205,7 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
         description: request.description,
         cwd: request.cwd,
         status: 'queued',
-        timeoutMs,
+        timeoutMs: frozenRequest.timeoutMs,
         outputRelativePath: writer.location.relativeDirectory,
         createdAt: Date.now(),
       });
@@ -192,6 +217,7 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
         backgroundProcessId: id,
         status: this.active.has(id) ? 'running' : 'queued',
         outputPreview: 'Command accepted by the background process queue.',
+        outputRelativePath: writer.location.relativeDirectory,
       };
     }
 
@@ -280,7 +306,7 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
       description: request.description,
       cwd: request.cwd,
       status: 'running',
-      timeoutMs,
+      timeoutMs: frozenRequest.timeoutMs,
       outputRelativePath: writer.location.relativeDirectory,
       createdAt: active.startedAt,
       startedAt: active.startedAt,
@@ -298,6 +324,7 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
       status: 'running',
       outputPreview:
         `Command is still running; ${writer.stdoutBytes + writer.stderrBytes} output bytes captured.`,
+      outputRelativePath: writer.location.relativeDirectory,
     };
   }
 
@@ -517,6 +544,8 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
       timeoutMs: request.timeoutMs,
       onOutput: chunk => {
         writer.append(chunk);
+        // 交互期把增量透传给调用方(进度展示);转交后台后由调用方关闭通道。
+        request.onOutput?.(chunk);
         this.notifyChanged(id);
       },
     });
