@@ -4,7 +4,7 @@ import type { LlmCallId, LlmTokenUsage } from '@ema-agent/llm';
 import type {
   ToolError,
   ToolExecutionEvent,
-  ToolExecutionResult,
+  ToolResult,
 } from '@ema-agent/tools';
 import type { SubagentContextMode } from '@ema-agent/tool-builtin';
 import type { TurnEvent, TurnStats } from '@ema-agent/turn';
@@ -42,7 +42,7 @@ export type AgentLoopEvent<TExecutorEvent> =
       usage: LlmTokenUsage;
       promptPrefixHash: string | null;
     }
-  | { type: 'loop_tool_results'; results: ToolExecutionResult[]; fullText: string }
+  | { type: 'loop_tool_result'; result: ToolResult }
   | { type: 'loop_breaker'; reason: string };
 
 export type SubagentInnerEvent =

@@ -44,8 +44,6 @@ export function freezeToolExecution(
   return {
     ...record,
     status: wasRunning ? 'outcome_unknown' : 'cancelled',
-    errorCode: wasRunning ? 'tool/outcome_unknown' : 'tool/process_interrupted',
-    errorMessage: 'Tool execution was unfinished when the Session backup was imported',
     completedAt: record.completedAt ?? importedAt,
     version: record.version + 1,
     updatedAt: Math.max(record.updatedAt, importedAt),

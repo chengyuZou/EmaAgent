@@ -72,7 +72,7 @@ function stripImages(messages: ModelMessage[]): ModelMessage[] {
       if (t && MEDIA_TYPES.has(t)) return { type: 'text', text: `[${t}]` };
       // 同时剥离嵌套在 tool_result content 数组里的媒体
       if (t === 'tool_result') {
-        const tr = blk as { type: 'tool_result'; toolUseId: string; content: string | unknown[]; isError?: boolean };
+        const tr = blk as { type: 'tool_result'; toolCallId: string; content: string | unknown[]; isError?: boolean };
         if (Array.isArray(tr.content)) {
           const stripped = tr.content.map((part) => {
             const pt = (part as { type?: string }).type;
@@ -80,7 +80,7 @@ function stripImages(messages: ModelMessage[]): ModelMessage[] {
               ? { type: 'text' as const, text: `[${pt}]` }
               : part;
           });
-          return { type: 'tool_result', toolUseId: tr.toolUseId, content: stripped, isError: tr.isError ?? false } as UserBlock;
+          return { type: 'tool_result', toolCallId: tr.toolCallId, content: stripped, isError: tr.isError ?? false } as UserBlock;
         }
       }
       return blk;

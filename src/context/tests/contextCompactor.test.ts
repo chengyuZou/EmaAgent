@@ -28,7 +28,7 @@ function toolOnlyHistory(pairs = 10, repeat = 100): Message[] {
       role: 'user',
       content: [{
         type: 'tool_result',
-        toolUseId: `call-${i}`,
+        toolCallId: `call-${i}`,
         content: `result-${i} ${'long context '.repeat(repeat)}`,
       }],
     });
@@ -62,7 +62,7 @@ describe('ContextCompactor', () => {
         role: 'user',
         content: [
           { type: 'text', text: 'system reminder' },
-          { type: 'tool_result', toolUseId: 'call-1', content: 'result' },
+          { type: 'tool_result', toolCallId: 'call-1', content: 'result' },
         ],
       },
       { role: 'user', content: 'next instruction' },
@@ -80,7 +80,7 @@ describe('ContextCompactor', () => {
       { role: 'user', content: 'ephemeral attachment between tool messages' },
       {
         role: 'user',
-        content: [{ type: 'tool_result', toolUseId: 'call-2', content: 'result' }],
+        content: [{ type: 'tool_result', toolCallId: 'call-2', content: 'result' }],
       },
     ];
     expect(findSafeCutPoint(interleaved, 2)).toBe(1);

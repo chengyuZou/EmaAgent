@@ -93,11 +93,11 @@ messages[]                         来源                          cacheBreakpoi
 ──────────────────────────────────────────────────────────────────────────────
 ```
 
-Safe Cut 保证 tail 内每个 `tool_result` 的 `tool_use` 也在 tail 内（按 `toolUseId` 全表配对验证）。找不到安全切点（历史已损坏）时整段 history 文本化后交 Macro 摘要，失败计入 Session 熔断。
+Safe Cut 保证 tail 内每个 `tool_result` 的 `tool_use` 也在 tail 内（按 `toolCallId` 全表配对验证）。找不到安全切点（历史已损坏）时整段 history 文本化后交 Macro 摘要，失败计入 Session 熔断。
 
 V1 使用渐进式压缩：现有 ToolResultStore 先把超大结果落盘；只有上下文接近模型硬限制时才执行 Micro Compaction；仍超限才调用当前模型生成摘要。API 超限时由 Agent 触发一次 Reactive Compaction。Context Collapse、服务端 cache edits 和后台 Session Memory Agent 延后评估。
 
-Compaction 只按 `ExecutionProfile = chat | work` 选择摘要结构；`NarrativePolicy` 只控制剧情检索，不会创建第三套压缩语义。Macro 摘要要求模型先生成 `<analysis>` 草稿再输出 `<summary>`，解析器只保留最终摘要。Safe Cut 按 `toolUseId` 验证保留尾部的完整配对，允许从 assistant `tool_use` 开始，但不会让 tail 留下来自摘要 head 的孤立 `tool_result`。
+Compaction 只按 `ExecutionProfile = chat | work` 选择摘要结构；`NarrativePolicy` 只控制剧情检索，不会创建第三套压缩语义。Macro 摘要要求模型先生成 `<analysis>` 草稿再输出 `<summary>`，解析器只保留最终摘要。Safe Cut 按 `toolCallId` 验证保留尾部的完整配对，允许从 assistant `tool_use` 开始，但不会让 tail 留下来自摘要 head 的孤立 `tool_result`。
 
 System Prompt 属于不可压缩前缀。即使响应式压缩接收到完整请求视图，也必须先将 system message 与历史分离；摘要模型只处理历史，压缩结果原样恢复 System Prompt。
 

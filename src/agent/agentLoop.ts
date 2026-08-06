@@ -13,8 +13,8 @@ import type {
 } from '@ema-agent/llm';
 import type {
   ToolPool,
-  ToolExecutionResult,
-  ToolExecutionRuntime,
+  ToolResult,
+  StreamingToolExecutor,
 } from '@ema-agent/tools';
 import {
   advanceLlmUsageSnapshot,
@@ -56,7 +56,7 @@ export type ExecutorFactory<TExecutorEvent> = (internals: {
   signal:  () => void;
   /** 与本次模型请求共享的冻结 ToolPool。 */
   toolPool: ToolPool;
-}) => ToolExecutionRuntime;
+}) => StreamingToolExecutor;
 
 export interface PrepareLlmCallInput {
   iteration: number;
@@ -383,6 +383,10 @@ export async function* runAgentLoop<TExecutorEvent>(
       promptPrefixHash,
     };
 
+    // 外层处理完 loop_llm_complete 后，assistant 的 tool_use 已持久化。
+    // 从这一刻起才允许工具越过副作用边界。
+    if (toolUseByIndex.size > 0) executor.start();
+
     // ── 输出 Token 达上限后的单次续写 ─────────────────────────────────────────
     // Provider 到达本次调用的有效输出预算时，允许自动续写一次。
     // 有效预算由上层决定，并由 LLM 请求准备器按模型最大输出上限裁剪。
@@ -429,9 +433,15 @@ export async function* runAgentLoop<TExecutorEvent>(
     // ── 行动阶段：等待全部工具并持续排空事件 ─────────────────────────────────
     state = advanceAgentLoopState(state, { phase: 'acting', transition: 'next_turn' });
 
+    const resultBlocks: ToolResult[] = [];
     while (!executor.allDone() || pendingRelayEvents.length > 0) {
       while (pendingRelayEvents.length > 0) {
         yield { type: 'loop_relay', ev: pendingRelayEvents.shift()! };
+      }
+      for (const result of executor.takeCompletedResults()) {
+        resultBlocks.push(result);
+        yield { type: 'loop_tool_result', result };
+        executor.acknowledgeResult(result.toolCallId);
       }
       if (executor.allDone()) break;
 
@@ -451,8 +461,11 @@ export async function* runAgentLoop<TExecutorEvent>(
     while (pendingRelayEvents.length > 0) {
       yield { type: 'loop_relay', ev: pendingRelayEvents.shift()! };
     }
-
-    const resultBlocks: ToolExecutionResult[] = executor.getResults();
+    for (const result of executor.takeCompletedResults()) {
+      resultBlocks.push(result);
+      yield { type: 'loop_tool_result', result };
+      executor.acknowledgeResult(result.toolCallId);
+    }
 
     const permissionDenials = resultBlocks.filter(
       result => result.isError && result.errorCode === 'permission/denied',
@@ -473,9 +486,6 @@ export async function* runAgentLoop<TExecutorEvent>(
     const replayBlocks = allBlocks.filter(b => b.type !== 'thinking');
     turnMessages.push({ role: 'assistant', content: replayBlocks });
     turnMessages.push({ role: 'user', content: resultBlocks as UserBlock[] });
-
-    // 外层 Runtime 收到后负责持久化 Tool Use 与 Tool Result。
-    yield { type: 'loop_tool_results', results: resultBlocks, fullText };
 
     if (
       consecutivePermissionDenials >= MAX_CONSECUTIVE_PERMISSION_DENIALS ||

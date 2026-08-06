@@ -118,12 +118,12 @@ function projectUserBlock(
   if (block && typeof block === 'object') {
     const candidate = block as {
       type?: unknown;
-      toolUseId?: unknown;
+      toolCallId?: unknown;
       content?: unknown;
       isError?: unknown;
     };
     if (candidate.type === 'tool_result') {
-      if (typeof candidate.toolUseId !== 'string' || !pairedToolIds.has(candidate.toolUseId)) {
+      if (typeof candidate.toolCallId !== 'string' || !pairedToolIds.has(candidate.toolCallId)) {
         return undefined;
       }
       const content = typeof candidate.content === 'string'
@@ -136,7 +136,7 @@ function projectUserBlock(
       if (content === undefined) return undefined;
       return {
         type: 'tool_result',
-        toolUseId: candidate.toolUseId,
+        toolCallId: candidate.toolCallId,
         content,
         ...(typeof candidate.isError === 'boolean' ? { isError: candidate.isError } : {}),
       };
@@ -166,24 +166,24 @@ function projectToolResultPart(block: unknown): ToolResultContentPart | undefine
 }
 
 function collectPairedToolIds(history: readonly SessionMessage[]): ReadonlySet<string> {
-  const toolUseIds = new Set<string>();
+  const toolCallIds = new Set<string>();
   const toolResultIds = new Set<string>();
 
   for (const message of history) {
     if (!Array.isArray(message.blocks)) continue;
     for (const block of message.blocks) {
       if (!block || typeof block !== 'object') continue;
-      const candidate = block as { type?: unknown; id?: unknown; toolUseId?: unknown };
+      const candidate = block as { type?: unknown; id?: unknown; toolCallId?: unknown };
       if (candidate.type === 'tool_use' && typeof candidate.id === 'string') {
-        toolUseIds.add(candidate.id);
+        toolCallIds.add(candidate.id);
       }
-      if (candidate.type === 'tool_result' && typeof candidate.toolUseId === 'string') {
-        toolResultIds.add(candidate.toolUseId);
+      if (candidate.type === 'tool_result' && typeof candidate.toolCallId === 'string') {
+        toolResultIds.add(candidate.toolCallId);
       }
     }
   }
 
-  return new Set([...toolUseIds].filter((id) => toolResultIds.has(id)));
+  return new Set([...toolCallIds].filter((id) => toolResultIds.has(id)));
 }
 
 function projectContentPart(block: unknown): ContentPart | undefined {

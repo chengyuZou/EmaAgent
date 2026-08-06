@@ -122,7 +122,7 @@ function toResponsesInput(
               : tb.content.map(p => (p.type === 'text' ? p.text : '[non-text]')).join('\n');
           input.push({
             type:     'function_call_output',
-            call_id:  tb.toolUseId,
+            call_id:  tb.toolCallId,
             output,
           } as OpenAI.Responses.ResponseInputItem.FunctionCallOutput);
         } else {

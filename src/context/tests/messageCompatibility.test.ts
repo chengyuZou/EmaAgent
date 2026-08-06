@@ -88,7 +88,7 @@ describe('LLM 消息兼容请求视图', () => {
       role: 'user',
       content: [{
         type: 'tool_result',
-        toolUseId: 'call-1',
+        toolCallId: 'call-1',
         content: [
           { type: 'text', text: '截图结果' },
           { type: 'image_data', data: 'base64', mimeType: 'image/png' },
@@ -105,7 +105,7 @@ describe('LLM 消息兼容请求视图', () => {
       role: 'user',
       content: [{
         type: 'tool_result',
-        toolUseId: 'call-1',
+        toolCallId: 'call-1',
         content: [
           { type: 'text', text: '截图结果' },
           { type: 'text', text: expect.stringContaining('历史图片未发送') },

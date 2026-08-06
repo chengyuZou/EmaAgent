@@ -154,7 +154,7 @@ describe('AgentLoop LLM 生命周期', () => {
       hasWaitingUserTool: () => false,
       getResults: () => [{
         type: 'tool_result' as const,
-        toolUseId: `call-${call}`,
+        toolCallId: `call-${call}`,
         content: 'Permission denied: user denied',
         isError: true,
         errorCode: 'permission/denied',

@@ -4,7 +4,7 @@ import type { Message as ModelMessage } from '@ema-agent/llm';
 /** 从期望位置向前寻找安全边界，保证 tail 内每个 tool_result 的调用也留在 tail。 */
 export function findSafeCutPoint(messages: ModelMessage[], desiredCut: number): number {
   const toolUseIndexes = new Map<string, number>();
-  const toolResults: Array<{ toolUseId: string; messageIndex: number }> = [];
+  const toolResults: Array<{ toolCallId: string; messageIndex: number }> = [];
 
   for (let messageIndex = 0; messageIndex < messages.length; messageIndex += 1) {
     const message = messages[messageIndex]!;
@@ -16,8 +16,8 @@ export function findSafeCutPoint(messages: ModelMessage[], desiredCut: number): 
         if (id) toolUseIndexes.set(id, messageIndex);
       }
       if (message.role === 'user' && type === 'tool_result') {
-        const toolUseId = (block as { toolUseId?: string }).toolUseId;
-        if (toolUseId) toolResults.push({ toolUseId, messageIndex });
+        const toolCallId = (block as { toolCallId?: string }).toolCallId;
+        if (toolCallId) toolResults.push({ toolCallId, messageIndex });
       }
     }
   }
@@ -27,7 +27,7 @@ export function findSafeCutPoint(messages: ModelMessage[], desiredCut: number): 
     let nextBoundary = boundary;
     for (const result of toolResults) {
       if (result.messageIndex < boundary) continue;
-      const toolUseIndex = toolUseIndexes.get(result.toolUseId);
+      const toolUseIndex = toolUseIndexes.get(result.toolCallId);
       // 缺失或倒序配对说明历史已经损坏，没有任何非零切点能生成合法 tail。
       if (toolUseIndex === undefined || toolUseIndex >= result.messageIndex) return 0;
       if (toolUseIndex < boundary) nextBoundary = Math.min(nextBoundary, toolUseIndex);

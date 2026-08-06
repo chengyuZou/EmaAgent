@@ -6,12 +6,12 @@ import type {
   ReadFileState,
   BackgroundProcessPort,
   ToolError,
-  ToolExecutionJournalPort,
-  ToolExecutionRuntimeOptions,
+  ToolExecutionStatePort,
+  StreamingToolExecutorOptions,
   ToolPool,
   ToolUseContext,
 } from '@ema-agent/tools';
-import { ToolExecutionRuntime } from '@ema-agent/tools';
+import { StreamingToolExecutor } from '@ema-agent/tools';
 import type { LanguageModel, Message as ModelMessage } from '@ema-agent/llm';
 import type { KnowledgeSearchPort } from '@ema-agent/knowledge';
 import type { CommandRunnerPort } from '@ema-agent/sandbox';
@@ -62,11 +62,11 @@ export interface SubagentSpawnerDeps {
   permissionMode: PermissionMode;
   /** spawn 瞬间读取父 Agent 的当前 ToolPool，Skill 收窄会沿任务树传播。 */
   getParentToolPool: () => ToolPool;
-  buildAsk?: ToolExecutionRuntimeOptions['buildAsk'];
+  buildAsk?: StreamingToolExecutorOptions['buildAsk'];
   skillRunner?: SkillRunnerPort;
   agentRunStore?: AgentRunStorePort;
   agentRunTranscriptWriter?: AgentRunTranscriptWriter;
-  toolExecutionJournal?: ToolExecutionJournalPort;
+  toolExecutionState?: ToolExecutionStatePort;
   backgroundProcesses?: BackgroundProcessPort;
 }
 
@@ -287,25 +287,25 @@ export class SubagentSpawner implements SubagentSpawnerPort {
       messages = [...sharedPrefix, { role: 'user', content: prompt }];
     }
 
-    let subagentExecutor: ToolExecutionRuntime | undefined;
+    let subagentExecutor: StreamingToolExecutor | undefined;
     const buildExecutor: ExecutorFactory<AgentExecutionEvent> = ({
       pushEv,
       signal: wakeSignal,
       toolPool,
     }) => {
-      const executor = new ToolExecutionRuntime({
+      const executor = new StreamingToolExecutor({
         sessionId,
         turnId:     parentTurnId,
         agentRunId,
         abortSignal: childCtrl.signal,
         toolPool,
         permission,
-        permCtx,
+        permissionContext: permCtx,
         toolContext,
         buildAsk:   this.deps.buildAsk,
         pushEv,
-        signal:     wakeSignal,
-        toolExecutionJournal: this.deps.toolExecutionJournal,
+        wake:       wakeSignal,
+        toolExecutionState: this.deps.toolExecutionState,
       });
       subagentExecutor = executor;
       return executor;

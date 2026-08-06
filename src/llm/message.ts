@@ -24,7 +24,7 @@ export type ToolResultContentPart =
 /** 只描述模型可见的 Tool Result，不包含 UI presentation、耗时或持久化元数据。 */
 export interface ToolResultBlock {
   type: 'tool_result';
-  toolUseId: string;
+  toolCallId: string;
   content: string | ToolResultContentPart[];
   isError?: boolean;
 }

@@ -88,9 +88,7 @@ export const toAgentRunMessageRecord = (r: AgentRunMessageRow): AgentRunMessageR
 
 export const toToolExecutionRecord = (r: SessionBackupToolExecutionRow): ToolExecutionRecord => ({
   callId: r.call_id, sessionId: r.session_id, turnId: r.turn_id,
-  agentRunId: r.agent_run_id, toolName: r.tool_name, inputJson: r.input_json,
-  inputDigest: r.input_digest, status: r.status, resultPreview: r.result_preview,
-  errorCode: r.error_code, errorMessage: r.error_message, startedAt: r.started_at,
+  agentRunId: r.agent_run_id, toolName: r.tool_name, status: r.status, startedAt: r.started_at,
   completedAt: r.completed_at, version: r.version, createdAt: r.created_at,
   updatedAt: r.updated_at,
 });

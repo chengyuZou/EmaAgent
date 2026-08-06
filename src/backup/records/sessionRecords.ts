@@ -160,12 +160,7 @@ export interface ToolExecutionRecord {
   readonly turnId: string;
   readonly agentRunId: string | null;
   readonly toolName: string;
-  readonly inputJson: string;
-  readonly inputDigest: string;
   readonly status: 'prepared' | 'authorized' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'outcome_unknown';
-  readonly resultPreview: string | null;
-  readonly errorCode: string | null;
-  readonly errorMessage: string | null;
   readonly startedAt: number | null;
   readonly completedAt: number | null;
   readonly version: number;

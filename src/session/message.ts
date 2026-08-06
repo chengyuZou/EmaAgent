@@ -5,7 +5,7 @@ import type {
 } from '@ema-agent/llm';
 import type { MessageKind, MessageRole } from '@ema-agent/storage';
 import type { TurnContentPart } from '@ema-agent/turn';
-import type { ToolExecutionResult } from '@ema-agent/tools';
+import type { ToolResult } from '@ema-agent/tools';
 
 export type AssistantBlock = LlmAssistantBlock;
 export type MessageContentPart = TurnContentPart;
@@ -29,7 +29,7 @@ export interface AttachmentReferenceBlock {
 }
 
 /** Session 比模型消息多保存耗时、错误码和客户端展示数据。 */
-export interface ToolResultBlock extends Omit<ToolExecutionResult, 'content'> {
+export interface ToolResultBlock extends Omit<ToolResult, 'content'> {
   content: string | ToolResultContentPart[];
 }
 
@@ -104,7 +104,7 @@ function isAttachmentReferenceBlock(value: unknown): value is AttachmentReferenc
 }
 
 function isToolResultBlock(value: unknown): value is ToolResultBlock {
-  if (!isRecord(value) || value.type !== 'tool_result' || typeof value.toolUseId !== 'string') {
+  if (!isRecord(value) || value.type !== 'tool_result' || typeof value.toolCallId !== 'string') {
     return false;
   }
   if (!(typeof value.content === 'string' || isToolResultParts(value.content))) return false;

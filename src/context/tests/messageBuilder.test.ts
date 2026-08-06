@@ -31,7 +31,7 @@ describe('buildModelMessages', () => {
         kind: 'tool_results',
         blocks: [{
           type: 'tool_result',
-          toolUseId: 'call-1',
+          toolCallId: 'call-1',
           content: 'tool output',
           durationMs: 12,
           errorCode: 'tool/diagnostic',
@@ -49,7 +49,7 @@ describe('buildModelMessages', () => {
       },
       {
         role: 'user',
-        content: [{ type: 'tool_result', toolUseId: 'call-1', content: 'tool output' }],
+        content: [{ type: 'tool_result', toolCallId: 'call-1', content: 'tool output' }],
       },
     ]);
   });
@@ -67,7 +67,7 @@ describe('buildModelMessages', () => {
       message({
         role: 'user',
         kind: 'tool_results',
-        blocks: [{ type: 'tool_result', toolUseId: 'orphan-result', content: 'unknown' }],
+        blocks: [{ type: 'tool_result', toolCallId: 'orphan-result', content: 'unknown' }],
       }),
     ]);
 

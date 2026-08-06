@@ -107,7 +107,7 @@ function toOpenAiMessages(messages: Message[]): OpenAI.ChatCompletionMessagePara
           const content = typeof tb.content === 'string'
             ? tb.content
             : tb.content.map(p => (p.type === 'text' ? p.text : '[non-text content]')).join('\n');
-          out.push({ role: 'tool', tool_call_id: tb.toolUseId, content });
+          out.push({ role: 'tool', tool_call_id: tb.toolCallId, content });
           continue;
         }
 

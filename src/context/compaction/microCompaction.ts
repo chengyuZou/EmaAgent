@@ -40,7 +40,7 @@ export function microCompact(
   messages: ModelMessage[],
   opts: { keepRecent: number } = { keepRecent: 6 },
 ): { messages: ModelMessage[]; cleared: number } {
-  // 从 assistant 的 tool_use 块中构建 toolUseId → toolName 映射。
+  // 从 assistant 的 tool_use 块中构建 toolCallId → toolName 映射。
   // tool_use 总是先于其 tool_result，因此在扫描结果时映射已完整。
   // TODO 这俩不能一次遍历 ?
   const toolNameById = new Map<string, string>();
@@ -60,7 +60,7 @@ export function microCompact(
     for (let b = 0; b < msg.content.length; b++) {
       const blk = msg.content[b]!;
       if (!isToolResult(blk)) continue;
-      const toolName = toolNameById.get(blk.toolUseId);
+      const toolName = toolNameById.get(blk.toolCallId);
       if (!toolName || !COMPACTABLE_TOOLS.has(toolName)) continue;
       locs.push({ msgIdx: m, blockIdx: b });
     }
@@ -86,7 +86,7 @@ export function microCompact(
       if (!clearSet.has(`${mIdx}:${bIdx}`)) return blk;
       return {
         type:      'tool_result',
-        toolUseId: blk.toolUseId,
+        toolCallId: blk.toolCallId,
         content:   CLEARED_PLACEHOLDER,
         isError:   false,
       } satisfies ToolResultBlock;

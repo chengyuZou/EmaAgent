@@ -356,7 +356,7 @@ describe('LanguageModelRuntime — model capability + compatibility recovery', (
         role: 'user',
         content: [{
           type: 'tool_result',
-          toolUseId: 'call-1',
+          toolCallId: 'call-1',
           content: [{ type: 'image_data', data: 'base64', mimeType: 'image/png' }],
         }],
       }],

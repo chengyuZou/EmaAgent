@@ -161,7 +161,7 @@ export function toAnthropicMessages(msgs: Message[]): NormalizedMessages {
                   (Anthropic.TextBlockParam | Anthropic.ImageBlockParam)[];
           content.push({
             type:        'tool_result',
-            tool_use_id: tb.toolUseId,
+            tool_use_id: tb.toolCallId,
             content:     resultContent,
             is_error:    tb.isError,
           });

@@ -98,9 +98,7 @@ export const restoreToolExecution = (
   const r = freezeToolExecution(record, importedAt);
   return {
     call_id: r.callId, session_id: r.sessionId, turn_id: r.turnId,
-    agent_run_id: r.agentRunId, tool_name: r.toolName, input_json: r.inputJson,
-    input_digest: r.inputDigest, status: r.status, result_preview: r.resultPreview,
-    error_code: r.errorCode, error_message: r.errorMessage, started_at: r.startedAt,
+    agent_run_id: r.agentRunId, tool_name: r.toolName, status: r.status, started_at: r.startedAt,
     completed_at: r.completedAt, version: r.version, created_at: r.createdAt,
     updated_at: r.updatedAt,
   };

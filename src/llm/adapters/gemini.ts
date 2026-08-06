@@ -129,7 +129,7 @@ function toGeminiContents(
       for (const block of msg.content as UserBlock[]) {
         if (block.type === 'tool_result') {
           const tb = block as ToolResultBlock;
-          const name = callIdToName.get(tb.toolUseId) ?? tb.toolUseId;
+          const name = callIdToName.get(tb.toolCallId) ?? tb.toolCallId;
           let response: Record<string, unknown>;
           try {
             response = typeof tb.content === 'string'
