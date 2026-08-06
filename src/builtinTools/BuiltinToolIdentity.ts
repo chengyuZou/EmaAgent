@@ -14,6 +14,7 @@ export const BuiltinTools = Object.freeze({
   WebFetch:  Object.freeze({ id: 'builtin.web.fetch',  name: 'WebFetch' }),
   WebSearch: Object.freeze({ id: 'builtin.web.search', name: 'WebSearch' }),
   Bash:       Object.freeze({ id: 'builtin.shell.bash',       name: 'Bash' }),
+  PowerShell: Object.freeze({ id: 'builtin.shell.powershell', name: 'PowerShell' }),
   ProcessList: Object.freeze({ id: 'builtin.process.list', name: 'ProcessList' }),
   ProcessOutput: Object.freeze({ id: 'builtin.process.output', name: 'ProcessOutput' }),
   ProcessStop: Object.freeze({ id: 'builtin.process.stop', name: 'ProcessStop' }),

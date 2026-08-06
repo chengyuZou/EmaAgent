@@ -7,6 +7,7 @@ import { FileEditTool } from './tools/FileEditTool/FileEditTool.js';
 import { GlobTool } from './tools/GlobTool/GlobTool.js';
 import { GrepTool } from './tools/GrepTool/GrepTool.js';
 import { BashTool } from './tools/BashTool/BashTool.js';
+import { PowerShellTool } from './tools/PowerShellTool/PowerShellTool.js';
 import { ProcessListTool } from './tools/ProcessListTool/ProcessListTool.js';
 import { ProcessOutputTool } from './tools/ProcessOutputTool/ProcessOutputTool.js';
 import { ProcessStopTool } from './tools/ProcessStopTool/ProcessStopTool.js';
@@ -57,6 +58,7 @@ export {
   GlobTool,
   GrepTool,
   BashTool,
+  PowerShellTool,
   ProcessListTool,
   ProcessOutputTool,
   ProcessStopTool,
@@ -89,6 +91,7 @@ export type { FileEditResult } from './tools/FileEditTool/FileEditTool.js';
 export type { GlobResult } from './tools/GlobTool/GlobTool.js';
 export type { GrepResult } from './tools/GrepTool/GrepTool.js';
 export type { BashResult } from './tools/BashTool/BashTool.js';
+export type { PowerShellCommandResult } from './tools/PowerShellTool/PowerShellTool.js';
 export type { ProcessListResult } from './tools/ProcessListTool/ProcessListTool.js';
 export type { ProcessOutputResult } from './tools/ProcessOutputTool/ProcessOutputTool.js';
 export type { ProcessStopResult } from './tools/ProcessStopTool/ProcessStopTool.js';
@@ -115,6 +118,7 @@ const ALL_BUILTIN_TOOLS: Tool<any, any, any, any>[] = [
   GlobTool,
   GrepTool,
   BashTool,
+  PowerShellTool,
   ProcessListTool,
   ProcessOutputTool,
   ProcessStopTool,
@@ -142,6 +146,9 @@ const ALL_BUILTIN_TOOLS: Tool<any, any, any, any>[] = [
 const EXECUTE_TOOL_IDS: ReadonlySet<string> = new Set([
   BuiltinTools.Bash.id,
 ]);
+// PowerShell 刻意不在此列:它的安全由 AST 静态分析 + 逐条权限提供,正是为
+// 无沙箱 Windows 准备的执行面(TODO #8 的放行路线);可用性由 validateContext
+// 按 pwsh/powershell 探测结果门控,与沙箱后端无关。
 
 export interface RegisterOptions {
   /**
