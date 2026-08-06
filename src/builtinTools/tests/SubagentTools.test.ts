@@ -1,81 +1,148 @@
-// 测试子 Agent 工具默认使用独立上下文，并能按 AgentRunId 发送、等待和取消后台执行。
+// Subagent 三件套收口测试: 同步/后台/auto 转交三形态、限时等待取消、
+// SendMessage 与 Await 语义、map 投影。
 import { describe, expect, it, vi } from 'vitest';
-import { asAgentRunId } from '@ema-agent/ids';
-import {
-  SubagentAbortTool,
-  SubagentAwaitTool,
-  SubagentSendMessageTool,
-  SubagentTool,
-} from '../index.js';
+import { asSessionId, asToolCallId, asTurnId } from '@ema-agent/ids';
+import type { ToolInvocation } from '@ema-agent/tools';
+import { SubagentTool } from '../tools/SubagentTool/SubagentTool.js';
+import { SubagentSendMessageTool } from '../tools/SubagentTool/SubagentSendMessageTool.js';
+import { SubagentAwaitTool } from '../tools/SubagentTool/SubagentAwaitTool.js';
 
-const agentRunId = asAgentRunId('11111111-1111-4111-8111-111111111111');
+const AGENT_RUN_ID = '11111111-1111-4111-8111-111111111111';
 
-describe('Subagent 工具契约', () => {
-  it('同步启动默认使用 fresh 子 Agent，而不是隐式继承父历史', async () => {
-    const spawn = vi.fn(async () => ({
-      agentRunId,
-      output: 'done',
-      usage: { inputTokens: 1, outputTokens: 1 },
-    }));
+function makeInvocation(signal?: AbortSignal): ToolInvocation {
+  return {
+    sessionId: asSessionId('00000000-0000-4000-8000-0000000000a1'),
+    turnId: asTurnId('00000000-0000-4000-8000-0000000000a2'),
+    toolCallId: asToolCallId('call-sub-1'),
+    signal: signal ?? new AbortController().signal,
+  };
+}
 
-    await SubagentTool.execute(
-      {
-        prompt: '检查文件边界',
-        description: '检查边界',
-        kind: undefined,
-        model: undefined,
-        taskId: undefined,
-      },
-      {
-        spawner: { spawn },
-        signal: new AbortController().signal,
-      },
+const INPUT = {
+  prompt: '检查文件边界',
+  description: '检查边界',
+  kind: undefined,
+  model: undefined,
+  taskId: undefined,
+  runInBackground: undefined,
+};
+
+describe('SubagentTool — 三形态', () => {
+  it('runInBackground=true: 立即返回引用, 不等待', async () => {
+    const spawnBackground = vi.fn();
+    const projection = SubagentTool.validateContext({
+      subagentSpawner: { spawn: vi.fn(), spawnBackground },
+    } as never);
+    if (!projection.valid) throw new Error('投影应成功');
+
+    const result = await SubagentTool.execute(
+      { ...INPUT, runInBackground: true },
+      projection.context,
+      makeInvocation(),
     );
 
-    expect(spawn).toHaveBeenCalledWith(
+    expect(result.kind).toBe('background');
+    expect(result.via).toBe('requested');
+    expect(spawnBackground).toHaveBeenCalledWith(
       '检查文件边界',
       expect.objectContaining({ kind: 'subagent' }),
       expect.any(AbortSignal),
     );
   });
 
-  it('后台控制工具使用同一个 AgentRunId，不把它当 TurnId', async () => {
-    const queueMessage = vi.fn(() => true);
+  it('同步路径在 30s 内完成: 返回 completed 结果', async () => {
+    const spawnBackground = vi.fn();
     const awaitBackground = vi.fn(async () => ({
-      agentRunId,
+      agentRunId: AGENT_RUN_ID,
       output: 'done',
-      usage: { inputTokens: 2, outputTokens: 3 },
+      usage: { inputTokens: 1, outputTokens: 2 },
     }));
-    const abortSubagent = vi.fn(() => true);
-    const context = {
-      spawner: {
+    const projection = SubagentTool.validateContext({
+      subagentSpawner: { spawn: vi.fn(), spawnBackground, awaitBackground },
+    } as never);
+    if (!projection.valid) throw new Error('投影应成功');
+
+    const result = await SubagentTool.execute(INPUT, projection.context, makeInvocation());
+
+    expect(result).toMatchObject({ kind: 'completed', output: 'done' });
+  });
+
+  it('同步等待超限自动转后台(via=auto), 不阻塞到天荒地老', async () => {
+    vi.useFakeTimers();
+    try {
+      const spawnBackground = vi.fn();
+      // awaitBackground 永不结算,模拟长跑。
+      const awaitBackground = vi.fn(() => new Promise(() => {}));
+      const projection = SubagentTool.validateContext({
+        subagentSpawner: { spawn: vi.fn(), spawnBackground, awaitBackground },
+      } as never);
+      if (!projection.valid) throw new Error('投影应成功');
+
+      const pending = SubagentTool.execute(INPUT, projection.context, makeInvocation());
+      await vi.advanceTimersByTimeAsync(30_100);
+      const result = await pending;
+
+      expect(result.kind).toBe('background');
+      expect(result.via).toBe('auto');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('同步等待被中止: 取消子 Agent 后抛出, 不留孤儿', async () => {
+    const controller = new AbortController();
+    const abortSubagent = vi.fn();
+    const awaitBackground = vi.fn(() => new Promise(() => {}));
+    const projection = SubagentTool.validateContext({
+      subagentSpawner: {
         spawn: vi.fn(),
-        queueMessage,
+        spawnBackground: vi.fn(),
         awaitBackground,
         abortSubagent,
       },
-      signal: new AbortController().signal,
-    };
+    } as never);
+    if (!projection.valid) throw new Error('投影应成功');
 
-    await expect(SubagentSendMessageTool.execute(
-      { agentRunId, message: '停止扩展范围' },
-      context,
-    )).resolves.toEqual({ queued: true });
-    await expect(SubagentAwaitTool.execute(
-      { agentRunId },
-      context,
-    )).resolves.toEqual({
-      agentRunId,
-      output: 'done',
-      usage: { inputTokens: 2, outputTokens: 3 },
-    });
-    await expect(SubagentAbortTool.execute(
-      { agentRunId },
-      context,
-    )).resolves.toEqual({ aborted: true });
+    const pending = SubagentTool.execute(INPUT, projection.context, makeInvocation(controller.signal));
+    controller.abort(new Error('用户中止'));
 
-    expect(queueMessage).toHaveBeenCalledWith(agentRunId, '停止扩展范围');
-    expect(awaitBackground).toHaveBeenCalledWith(agentRunId);
-    expect(abortSubagent).toHaveBeenCalledWith(agentRunId);
+    await expect(pending).rejects.toThrow('用户中止');
+    expect(abortSubagent).toHaveBeenCalledTimes(1);
+  });
+
+  it('子 Agent 环境(无 spawner)投影失败: 深度限制 1', () => {
+    expect(SubagentTool.validateContext({} as never).valid).toBe(false);
+  });
+});
+
+describe('SubagentSendMessage / SubagentAwait', () => {
+  it('SendMessage 投递与 map 语义', async () => {
+    const queueMessage = vi.fn(() => true);
+    const projection = SubagentSendMessageTool.validateContext({
+      subagentSpawner: { spawn: vi.fn(), queueMessage },
+    } as never);
+    if (!projection.valid) throw new Error('投影应成功');
+
+    const result = await SubagentSendMessageTool.execute(
+      { agentRunId: AGENT_RUN_ID, message: '停止扩展范围' },
+      projection.context,
+    );
+
+    expect(result).toEqual({ queued: true });
+    expect(queueMessage).toHaveBeenCalledWith(AGENT_RUN_ID, '停止扩展范围');
+    expect(SubagentSendMessageTool.mapResultToModelContent!(result)).toContain('queued');
+  });
+
+  it('Await 返回输出; 未知 id 返回 output:null 并如实投影', async () => {
+    const awaitBackground = vi.fn(async () => null);
+    const projection = SubagentAwaitTool.validateContext({
+      subagentSpawner: { spawn: vi.fn(), awaitBackground },
+    } as never);
+    if (!projection.valid) throw new Error('投影应成功');
+
+    const result = await SubagentAwaitTool.execute({ agentRunId: AGENT_RUN_ID }, projection.context);
+
+    expect(result).toEqual({ output: null });
+    expect(SubagentAwaitTool.mapResultToModelContent!(result)).toContain('No result available');
   });
 });

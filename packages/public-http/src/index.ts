@@ -6,6 +6,7 @@ export {
   PublicHttpLimitError,
   PublicHttpPolicyError,
   PublicHttpStatusError,
+  PublicHttpTimeoutError,
 } from './errors.js';
 export {
   approvePublicTarget,
@@ -16,6 +17,7 @@ export {
 export { fetchPublicResource } from './client.js';
 export type {
   ApprovedPublicTarget,
+  PublicHttpHeaders,
   PublicHttpRequestOptions,
   PublicHttpResponse,
 } from './types.js';

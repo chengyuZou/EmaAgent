@@ -1,11 +1,11 @@
-// 定义公网 HTTP 安全出口的请求、响应和已审批目标。
-import type { IncomingHttpHeaders } from 'node:http';
-
+// 定义公网 HTTP 安全出口的请求、响应和下载契约。
 export interface ApprovedPublicTarget {
   url: URL;
   address: string;
   family: 4 | 6;
 }
+
+export type PublicHttpHeaders = Readonly<Record<string, string | string[] | undefined>>;
 
 export interface PublicHttpRequestOptions {
   signal?: AbortSignal;
@@ -14,9 +14,8 @@ export interface PublicHttpRequestOptions {
   maxRedirects?: number;
   headers?: Readonly<Record<string, string>>;
   /**
-   * 按调用追加允许的请求头名(如 API key 头), 仅本次请求生效。
-   * 只能用于调用方自己写死主机且 maxRedirects=0 的场景(如搜索 API)。
-   * 路由、连接和消息边界头即使声明也不会放行。
+   * 只为调用方写死的主机放行额外请求头；携带这些头时禁止重定向。
+   * Host、Range 与连接控制头不会因声明而放行。
    */
   additionalAllowedHeaders?: readonly string[];
 }
@@ -25,6 +24,6 @@ export interface PublicHttpResponse {
   finalUrl: string;
   status: number;
   statusText: string;
-  headers: IncomingHttpHeaders;
+  headers: PublicHttpHeaders;
   body: Buffer;
 }

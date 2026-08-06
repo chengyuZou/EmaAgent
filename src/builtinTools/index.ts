@@ -21,12 +21,8 @@ import { SkillCallTool } from './tools/SkillCallTool/SkillCallTool.js';
 import { KnowledgeBaseSearchTool } from './tools/KnowledgeBaseSearchTool/KnowledgeBaseSearchTool.js';
 import { NarrativeSearchTool } from './tools/NarrativeSearchTool/NarrativeSearchTool.js';
 import { SubagentTool } from './tools/SubagentTool/SubagentTool.js';
-import {
-  SubagentSpawnBackgroundTool,
-  SubagentSendMessageTool,
-  SubagentAwaitTool,
-  SubagentAbortTool,
-} from './tools/SubagentTool/BackgroundSubagentTools.js';
+import { SubagentSendMessageTool } from './tools/SubagentTool/SubagentSendMessageTool.js';
+import { SubagentAwaitTool } from './tools/SubagentTool/SubagentAwaitTool.js';
 import {
   ScratchpadWriteTool,
   ScratchpadReadTool,
@@ -75,10 +71,8 @@ export {
   KnowledgeBaseSearchTool,
   NarrativeSearchTool,
   SubagentTool,
-  SubagentSpawnBackgroundTool,
   SubagentSendMessageTool,
   SubagentAwaitTool,
-  SubagentAbortTool,
   ScratchpadWriteTool,
   ScratchpadReadTool,
   ScratchpadListTool,
@@ -135,10 +129,8 @@ const ALL_BUILTIN_TOOLS: Tool<any, any, any, any>[] = [
   KnowledgeBaseSearchTool,
   NarrativeSearchTool,
   SubagentTool,
-  SubagentSpawnBackgroundTool,
   SubagentSendMessageTool,
   SubagentAwaitTool,
-  SubagentAbortTool,
   ScratchpadWriteTool,
   ScratchpadReadTool,
   ScratchpadListTool,

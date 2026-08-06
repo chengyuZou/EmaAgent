@@ -1,4 +1,4 @@
-// 定义公网 HTTP 出口的策略、体积和响应状态错误。
+// 定义公网 HTTP 出口的策略、体积、超时和响应状态错误。
 export class PublicHttpPolicyError extends Error {
   constructor(message: string) {
     super(message);
@@ -21,17 +21,22 @@ export class PublicHttpStatusError extends Error {
   ) {
     super(`HTTP ${status} ${statusText} for ${sanitizeUrlForLog(url)}`);
     this.name = 'PublicHttpStatusError';
-    this.status = status;
-    this.statusText = statusText;
     this.url = sanitizeUrlForLog(url);
   }
 }
 
-/** 日志中的 URL 去掉 query 和 hash——里面可能带 API key/token。 */
+export class PublicHttpTimeoutError extends Error {
+  constructor(readonly timeoutMs: number) {
+    super(`公网请求超过 ${timeoutMs}ms 未完成`);
+    this.name = 'PublicHttpTimeoutError';
+  }
+}
+
+/** 错误和日志不保留 URL query/hash，避免泄漏签名和 token。 */
 function sanitizeUrlForLog(raw: string): string {
   try {
-    const u = new URL(raw);
-    return `${u.protocol}//${u.host}${u.pathname}`;
+    const url = new URL(raw);
+    return `${url.protocol}//${url.host}${url.pathname}`;
   } catch {
     return '(invalid-url)';
   }

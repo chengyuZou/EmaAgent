@@ -1,12 +1,10 @@
 // 测试请求头白名单, 错误 URL 脱敏和并发闸门的边界.
 
 import { describe, expect, it } from 'vitest';
-import {
-  buildRequestHeaders,
-  fetchPublicResource,
-  PublicEgressLimiter,
-} from '../src/client.js';
+import { fetchPublicResource } from '../src/client.js';
+import { PublicEgressLimiter } from '../src/egressLimiter.js';
 import { PublicHttpStatusError } from '../src/errors.js';
+import { buildRequestHeaders } from '../src/requestPolicy.js';
 
 describe('请求头白名单', () => {
   it('剥离凭证/Host/连接指令与默认头覆盖, 保留白名单头', () => {
@@ -69,14 +67,18 @@ describe('请求头白名单', () => {
         Host: 'internal.example',
         Connection: 'upgrade',
         'Transfer-Encoding': 'chunked',
+        Range: 'bytes=100-',
+        'If-Range': 'forged-etag',
         Authorization: 'Bearer fixed-api-key',
       },
-      ['host', 'connection', 'transfer-encoding', 'authorization'],
+      ['host', 'connection', 'transfer-encoding', 'range', 'if-range', 'authorization'],
     );
 
     expect(headers['Host']).toBeUndefined();
     expect(headers['Connection']).toBeUndefined();
     expect(headers['Transfer-Encoding']).toBeUndefined();
+    expect(headers['Range']).toBeUndefined();
+    expect(headers['If-Range']).toBeUndefined();
     expect(headers['Authorization']).toBe('Bearer fixed-api-key');
   });
 
