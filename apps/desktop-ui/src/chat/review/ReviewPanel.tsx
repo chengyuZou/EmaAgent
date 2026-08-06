@@ -1,5 +1,5 @@
-// 审阅面板:上一轮/全部会话走工具 file_change presentation,未暂存/已暂存走 Git 工作区 diff,
-// 提交记录/分支比较走 git-compare;没有真实来源的范围不渲染。
+// 审阅面板:上一轮/全部会话走工具结果 data 槽(Edit/Write 的 structuredPatch),
+// 未暂存/已暂存走 Git 工作区 diff,提交记录/分支比较走 git-compare;没有真实来源的范围不渲染。
 import { useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import { Button, DropdownMenu, IconButton, Input } from '@ema-agent/ui';
 import type {
@@ -9,6 +9,7 @@ import type {
   GitWorkspaceDiffResult,
 } from '@ema-agent/git-utils';
 import type { SessionId } from '@ema-agent/ids';
+import { patchToUnifiedText } from '@ema-agent/tool-builtin/ui';
 import { gitApi } from '../../api/git.js';
 import { useWorkspaceStore } from '../../stores/workspaceStore.js';
 import { fileTab } from '../../stores/workspaceTypes.js';
@@ -148,13 +149,14 @@ export function ReviewPanel({ sessionId }: { sessionId: string | null }): JSX.El
     const diffs = scope === 'latest' ? latestDiffs : allDiffs;
     return diffs.map((diff) => ({
       key: diff.callId,
-      displayPath: diff.change.filePath,
-      absolutePath: diff.change.filePath,
-      status: diff.change.operation === 'create' ? 'added' as const : 'modified' as const,
-      additions: diff.change.additions,
-      deletions: diff.change.deletions,
-      unifiedDiff: diff.change.unifiedDiff,
-      truncated: diff.change.truncated,
+      displayPath: diff.result.filePath,
+      absolutePath: diff.result.filePath,
+      // Edit 只有 modified;FileWrite 收口后由其结果补充 added 形态。
+      status: 'modified' as const,
+      additions: diff.additions,
+      deletions: diff.deletions,
+      unifiedDiff: patchToUnifiedText(diff.result.structuredPatch),
+      truncated: false,
     }));
   }, [scope, workspaceDiff, compareTarget, compare, latestDiffs, allDiffs]);
 

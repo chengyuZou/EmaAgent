@@ -217,7 +217,7 @@ export function assembleHistory(
       for (const block of blocks as ToolResultBlock[]) {
         if (block.type !== 'tool_result') continue;
         const idx = working.findIndex(
-          (s) => s.type === 'tool_use' && s.callId === block.toolUseId,
+          (s) => s.type === 'tool_use' && s.callId === block.toolCallId,
         );
         if (idx === -1) continue;
         const target = working[idx];

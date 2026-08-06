@@ -12,9 +12,9 @@ export interface SystemInfoWire {
   dataDir: string;
 }
 
-/** 与 @ema-agent/sandbox 的 SandboxStatusWire 同形；desktop-ui 不依赖 sandbox 包，本地镜像。 */
+/** 与 LocalHost 组装的 SandboxStatusWire 同形；desktop-ui 不依赖后端包，本地镜像。 */
 export interface SandboxStatusWire {
-  readonly backend: 'bubblewrap' | 'sandbox-exec' | 'app-layer';
+  readonly kind: 'bubblewrap' | 'sandbox-exec' | 'unisolated';
   readonly isolation: 'os' | 'application-only';
   readonly shellExecution: 'isolated' | 'disabled' | 'unsafe-override';
   readonly sandboxNetwork: 'none' | 'full';

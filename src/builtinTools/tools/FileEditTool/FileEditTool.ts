@@ -1,4 +1,5 @@
 // 在已读取的文件中执行受保护的精确文本替换。
+// 模型说明书见 prompt.ts; 文本匹配见 textMatch.ts; 补丁生成见 patch.ts。
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
@@ -6,19 +7,28 @@ import {
   buildTool,
   contextFail,
   contextOk,
-  type BuiltinToolContext,
   type ReadFileState,
+  type ToolInvocation,
 } from '@ema-agent/tools';
-import type { ToolCallId } from '@ema-agent/ids';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { atomicTransformUtf8 } from '../FileWriteTool/atomicWrite.js';
+import { buildStructuredPatch, type PatchHunk } from './patch.js';
+import { FILE_EDIT_DESCRIPTION } from './prompt.js';
+import {
+  countOccurrences,
+  findActualString,
+  preserveQuoteStyle,
+  stripTrailingWhitespace,
+} from './textMatch.js';
 
-/** File 编辑工具只取得当前 Turn 的写入保护状态和单次调用身份。 */
+/** File 编辑工具只取得当前 Turn 的读取状态与工作区;取消与调用身份走 ToolInvocation。 */
 interface FileEditToolContext {
   readFileState: ReadFileState;
-  signal: AbortSignal;
-  toolCallId: ToolCallId;
+  workspaceRoot: string;
 }
+
+/** 编辑文件大小上限,防 V8 字符串长度限制(~2^30)导致 OOM。 */
+const MAX_EDIT_FILE_SIZE = 1024 * 1024 * 1024; // 1 GiB
 
 // ── 输入 schema ──────────────────────────────────────────────────────────────
 
@@ -28,7 +38,7 @@ const inputSchema = z.object({
     .min(1)
     .describe('Absolute path to the file to edit. Must have been read with Read first.'),
   old_string: z.string().min(1).describe('Exact non-empty string to find and replace. Must be unique in the file.'),
-  new_string: z.string().describe('Replacement string.'),
+  new_string: z.string().describe('Replacement string (must differ from old_string).'),
   replace_all: z
     .boolean()
     .default(false)
@@ -37,109 +47,47 @@ const inputSchema = z.object({
 
 type FileEditInput = z.infer<typeof inputSchema>;
 
-// ── 输出类型 ───────────────────────────────────────────────────────────────────
+// ── 输出类型(与 Claude FileEditOutput 同构;差集:无 userModified/gitDiff) ──────
 
 export interface FileEditResult {
   filePath: string;
+  /** 实际被替换的子串(引号归一化后的文件原文)。 */
+  oldString: string;
+  /** 实际写入的子串(引号风格保持后)。 */
+  newString: string;
+  /** 编辑前全文,审计与重算的基准。 */
+  originalFile: string;
+  structuredPatch: PatchHunk[];
+  replaceAll: boolean;
   replacements: number;
-}
-
-// ── 引号归一化 ─────────────────────────────────────────────────────────────────
-
-/** 把排版引号归一化为直 ASCII 等价物以便匹配。 */
-function normalizeQuotes(s: string): string {
-  return s
-    .replace(/[‘’‚‛′‵]/g, "'") // 单弯引号 -> '
-    .replace(/[“”„‟″‶]/g, '"'); // 双弯引号 -> "
-}
-
-/**
- * 在 `fileContent` 中定位 `search`,先精确匹配,再引号归一化兜底。
- * 返回文件中的实际子串,以便替换用文件自己的引号风格。
- */
-function findActualString(fileContent: string, search: string): string | null {
-  if (fileContent.includes(search)) return search;
-
-  // 精确匹配失败时归一化弯引号后定位;返回文件实际子串,替换用文件自己的引号风格。
-  const normalizedSearch = normalizeQuotes(search);
-  const normalizedFile = normalizeQuotes(fileContent);
-  const found = normalizedFile.indexOf(normalizedSearch);
-  if (found === -1) return null;
-  return fileContent.substring(found, found + search.length);
-}
-
-/** 数 `haystack` 中 `needle` 的非重叠出现次数。 */
-function countOccurrences(haystack: string, needle: string): number {
-  let count = 0;
-  let pos = 0;
-  while ((pos = haystack.indexOf(needle, pos)) !== -1) {
-    count++;
-    pos += needle.length;
-  }
-  return count;
-}
-
-/** 编辑文件大小上限,防 V8 字符串长度限制(~2^30)导致 OOM。 */
-const MAX_EDIT_FILE_SIZE = 1024 * 1024 * 1024; // 1 GiB
-
-/** 每行去尾部空白(空格/tab);Markdown 除外(行尾两空格是硬换行,裁剪改语义)。 */
-function stripTrailingWhitespace(s: string): string {
-  return s.replace(/[ \t]+$/gm, '');
-}
-
-/**
- * 文件 old_string 含弯引号时,把 new_string 的直引号转回弯引号,保持文件排版风格。
- * 启发式:行首或前是空白/开括号→左引号,前是字母→右引号(撇号,如 don't),否则右引号。
- */
-function preserveQuoteStyle(actualOld: string, newString: string): string {
-  if (!/[‘’“”]/.test(actualOld)) return newString; // 文件用直引号,无需转
-  let result = '';
-  for (let i = 0; i < newString.length; i++) {
-    const ch = newString[i]!;
-    const prev = i > 0 ? newString[i - 1]! : '';
-    if (ch === "'") {
-      result += prev === '' || /[\s([{\[]/.test(prev) ? '‘' : '’';
-    } else if (ch === '"') {
-      result += prev === '' || /[\s([{\[]/.test(prev) ? '“' : '”';
-    } else {
-      result += ch;
-    }
-  }
-  return result;
 }
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
 
-export const FileEditTool = buildTool<FileEditInput, FileEditResult, BuiltinToolContext, FileEditToolContext>({
+export const FileEditTool = buildTool<FileEditInput, FileEditResult, FileEditToolContext>({
   id: BuiltinTools.FileEdit.id,
   name: BuiltinTools.FileEdit.name,
-  description: `Replace an exact string in a file (str_replace semantics).
-
-Rules:
-- The file MUST have been read with \`Read\` in the current turn before editing.
-- \`old_string\` must be unique in the file unless \`replace_all\` is true.
-- Typographic/curly quotes in \`old_string\` are normalized automatically, so literal quotes from AI output match curly-quote source files.
-- The file must not have been modified externally since it was read (mtime guard).`,
+  description: FILE_EDIT_DESCRIPTION,
 
   inputSchema,
   isReadOnly: () => false,
   isConcurrencySafe: () => false,
 
-  requires: ['workspaceRoot', 'readFileState'],
-
   validateContext(ctx) {
-    if (!ctx.workspaceRoot || !ctx.readFileState || !ctx.toolCallId) {
-      return contextFail('File 编辑工具未装配完整的工作区、读取状态或调用身份。');
+    if (!ctx.workspaceRoot) {
+      return contextFail('File 编辑工具需要明确的工作区。');
+    }
+    if (!ctx.readFileState) {
+      return contextFail('File 编辑工具未装配读取状态。');
     }
     return contextOk({
       readFileState: ctx.readFileState,
-      signal: ctx.signal,
-      toolCallId: ctx.toolCallId,
+      workspaceRoot: ctx.workspaceRoot,
     });
   },
 
   validateInput(input) {
-    // 空操作 edit 在准备阶段直接拒绝,避免产生假 FileChangePresentation。
+    // 空操作 edit 在准备阶段直接拒绝,避免产生假变更。
     if (input.old_string === input.new_string) {
       return {
         valid: false,
@@ -161,9 +109,11 @@ Rules:
   async execute(
     input: FileEditInput,
     context: FileEditToolContext,
+    invocation: ToolInvocation,
   ): Promise<FileEditResult> {
     const { file_path, old_string, replace_all } = input;
-    const fullPath = path.resolve(file_path);
+    // 与 FileRead/Permission 同一基准: 相对路径按工作区解析, 不借宿主进程 cwd。
+    const fullPath = path.resolve(context.workspaceRoot, file_path);
 
     // ── 文件大小上限(防 V8 字符串长度 OOM)─────────────────────────────────
     let stat: fs.Stats;
@@ -196,12 +146,13 @@ Rules:
     const isMarkdown = /\.(md|mdx)$/i.test(file_path);
     const newString = isMarkdown ? input.new_string : stripTrailingWhitespace(input.new_string);
 
+    let actualOld = '';
+    let styledNew = '';
     let replacements = 0;
-    const operationId = context.toolCallId;
     const written = await atomicTransformUtf8(
-      file_path,
-      operationId,
-      context.signal,
+      fullPath,
+      invocation.toolCallId,
+      invocation.signal,
       current => {
         if (!current.existed || current.content === null || current.mtimeMs === null) {
           throw new Error(`File no longer exists: ${file_path}`);
@@ -232,8 +183,9 @@ Rules:
           );
         }
         replacements = replace_all ? occurrences : 1;
+        actualOld = actual;
         // 文件用弯引号时把 newString 直引号转回弯引号,保持排版风格
-        const styledNew = preserveQuoteStyle(actual, newString);
+        styledNew = preserveQuoteStyle(actual, newString);
         // 删除场景:连同紧跟换行一起删,避免留空行
         if (styledNew === '' && !actual.endsWith('\n') && current.content.includes(actual + '\n')) {
           return current.content.split(actual + '\n').join('');
@@ -245,7 +197,7 @@ Rules:
       false,
     );
 
-    // 用编辑后内容更新缓存
+    // 用编辑后内容更新缓存,后续 Read/Edit 命中新版本。
     context.readFileState.set(fullPath, {
       content: written.content,
       timestamp: written.mtimeMs,
@@ -254,9 +206,27 @@ Rules:
       isPartialView: false,
       truncated: false,
     });
+
     return {
       filePath: file_path,
+      oldString: actualOld,
+      newString: styledNew,
+      originalFile: written.previousContent ?? '',
+      structuredPatch: buildStructuredPatch(
+        file_path,
+        written.previousContent ?? '',
+        written.content,
+      ),
+      replaceAll: replace_all,
       replacements,
     };
+  },
+
+  mapResultToModelContent(output) {
+    if (output.replaceAll) {
+      return `The file ${output.filePath} has been updated. `
+        + `All ${output.replacements} occurrences were successfully replaced.`;
+    }
+    return `The file ${output.filePath} has been updated successfully.`;
   },
 });

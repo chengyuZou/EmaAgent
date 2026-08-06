@@ -240,7 +240,7 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, FileReadToo
     }
 
     // 内容级二进制探测: 扩展名伪装(.exe 改名 .txt)在前 8KB 的 NUL/不可打印
-    // 字符面前无效, 与 Claude 同款判定。
+    // 字符面前无效。
     if (isBinaryContent(fullPath)) {
       throw new Error(`File appears to be binary (NUL or non-printable content): ${fullPath}`);
     }

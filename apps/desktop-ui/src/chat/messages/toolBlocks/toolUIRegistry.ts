@@ -2,7 +2,12 @@
 // Renderer 来自各 Tool 自己目录的 UI.tsx(经 @ema-agent/tool-builtin/ui 出口);
 // 注册表只做查找与回落, 权限卡、状态条、耗时、错误外壳仍在 ToolCallBlock。
 import type { JSX } from 'react';
-import { FileReadArgsView, FileReadResultView } from '@ema-agent/tool-builtin/ui';
+import {
+  FileEditArgsView,
+  FileEditResultView,
+  FileReadArgsView,
+  FileReadResultView,
+} from '@ema-agent/tool-builtin/ui';
 
 export interface ToolUIEntry {
   /** 参数区;缺省回落通用 key-value 平铺。 */
@@ -13,6 +18,7 @@ export interface ToolUIEntry {
 
 const TOOL_UI_REGISTRY: Readonly<Record<string, ToolUIEntry>> = {
   Read: { ArgsView: FileReadArgsView, ResultView: FileReadResultView },
+  Edit: { ArgsView: FileEditArgsView, ResultView: FileEditResultView },
 };
 
 export function lookupToolUI(toolName: string): ToolUIEntry | undefined {

@@ -2,3 +2,9 @@
 // 每个复杂 Tool 在自己的目录提供 UI.tsx, 这里统一再导出, 前端注册表按 toolId 取用。
 
 export { FileReadArgsView, FileReadResultView } from './tools/FileReadTool/UI.js';
+export {
+  asFileEditResult,
+  FileEditArgsView,
+  FileEditResultView,
+} from './tools/FileEditTool/UI.js';
+export { patchToUnifiedText } from './tools/FileEditTool/patch.js';

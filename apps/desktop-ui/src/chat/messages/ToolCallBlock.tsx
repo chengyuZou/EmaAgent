@@ -73,9 +73,6 @@ export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBloc
   const isBash      = BASH_TOOLS.has(slice.name);
   const fileChange = slice.presentation?.kind === 'file_change' ? slice.presentation : null;
   const backgroundProcess = slice.presentation?.kind === 'background_process' ? slice.presentation : null;
-  const editDiff = fileChange
-    ? fileChange.unifiedDiff
-    : argsReady ? buildEditDiff(slice.name, slice.args) : null;
 
   const resultView = hasResult && slice.result !== null ? renderToolResult(slice.name, slice.result) : null;
   // 专属 UI 优先;返回 null(类型守卫失败/未注册)回落通用平铺。渲染函数必须纯(无 hooks)。
@@ -84,6 +81,13 @@ export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBloc
   const customResult = toolUI?.ResultView && hasResult && slice.result != null
     ? toolUI.ResultView({ data: slice.result })
     : null;
+  // 专属结果卡(权威 structuredPatch)落地后不再走旧 editDiff 通道;
+  // 运行中尚无 data,仍用 args 推导的 diff 做预览。
+  const editDiff = customResult !== null
+    ? null
+    : fileChange
+      ? fileChange.unifiedDiff
+      : argsReady ? buildEditDiff(slice.name, slice.args) : null;
   // bash 结果沿用原终端融合渲染（不进 renderToolResult）;已转交后台的进程引用 JSON 不渲染,由卡片表达。
   const bashResultStr = isBash && hasResult && slice.result !== null && !backgroundProcess
     ? formatJson(slice.result)
