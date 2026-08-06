@@ -152,16 +152,15 @@ export class SessionBackupRestorer {
 
     const tool = this.db.prepare(`
       INSERT INTO tool_executions (
-        call_id, session_id, turn_id, agent_run_id, tool_name, input_json, input_digest,
-        status, result_preview, error_code, error_message, started_at, completed_at,
+        call_id, session_id, turn_id, agent_run_id, tool_name,
+        status, started_at, completed_at,
         version, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     for (const row of input.toolExecutions) {
       tool.run(
         row.call_id, session.id, row.turn_id, row.agent_run_id, row.tool_name,
-        row.input_json, row.input_digest, row.status, row.result_preview, row.error_code,
-        row.error_message, row.started_at, row.completed_at, row.version,
+        row.status, row.started_at, row.completed_at, row.version,
         row.created_at, row.updated_at,
       );
     }
@@ -210,14 +209,14 @@ export class SessionBackupRestorer {
       INSERT INTO usage_records (
         id, session_id, turn_id, provider_id, model_id, capability, status,
         input_tokens, output_tokens, cache_read_input_tokens, cache_write_input_tokens,
-        quantity, unit, cost_usd, duration_ms, error_code, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        quantity, unit, duration_ms, error_code, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     for (const row of input.usageRecords) {
       usage.run(
         row.id, session.id, row.turn_id, row.provider_id, row.model_id, row.capability,
         row.status, row.input_tokens, row.output_tokens, row.cache_read_input_tokens,
-        row.cache_write_input_tokens, row.quantity, row.unit, row.cost_usd,
+        row.cache_write_input_tokens, row.quantity, row.unit,
         row.duration_ms, row.error_code, row.created_at,
       );
     }

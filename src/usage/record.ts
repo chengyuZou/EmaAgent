@@ -22,7 +22,6 @@ export interface UsageRecordInput {
   readonly cacheWriteInputTokens?: number | null;
   readonly quantity?: number | null;
   readonly unit?: string | null;
-  readonly costUsd?: number | null;
   readonly errorCode?: string | null;
 }
 
@@ -46,7 +45,6 @@ export function createUsageRecord(input: UsageRecordInput): UsageRecord {
     cacheWriteInputTokens: input.cacheWriteInputTokens ?? null,
     quantity: input.quantity ?? null,
     unit: input.unit ?? null,
-    costUsd: input.costUsd ?? null,
     durationMs: Math.max(0, input.durationMs),
     errorCode: input.errorCode ?? null,
     createdAt: input.startedAt,

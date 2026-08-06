@@ -23,7 +23,6 @@ export interface UsageRecord {
   cacheWriteInputTokens: number | null;
   quantity: number | null;
   unit: string | null;
-  costUsd: number | null;
   durationMs: number;
   errorCode: string | null;
   createdAt: number;

@@ -33,7 +33,7 @@ describe('UsageRecordsRepo', () => {
     id, sessionId: 'session-a', turnId: 'turn-a', providerId: 'provider-a', modelId: 'model-a',
     capability: 'llm', status: 'completed', inputTokens: 10, outputTokens: 20,
     cacheReadInputTokens: null, cacheWriteInputTokens: null, quantity: null, unit: null,
-    costUsd: null, durationMs: 100, errorCode: null, createdAt,
+    durationMs: 100, errorCode: null, createdAt,
   });
 
   it('同一 Turn 的多次调用不会互相覆盖', () => {

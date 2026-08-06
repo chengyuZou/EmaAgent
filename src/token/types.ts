@@ -6,6 +6,10 @@ export type TokenEstimateWarningCode =
   | 'documentPageCountUnknown'
   | 'toolDefinitionSerializationFailed';
 
+/**
+ * breakdown 代表各类 token 的估算量, 但不保证总和等于 totalTokens,
+ * 因为模型可能有额外的 envelope/metadata token。
+ */
 export interface TokenEstimateBreakdown {
   textTokens: number;
   messageEnvelopeTokens: number;

@@ -323,7 +323,6 @@ CREATE TABLE "usage_records" (
   cache_write_input_tokens INTEGER CHECK (cache_write_input_tokens IS NULL OR cache_write_input_tokens >= 0),
   quantity                 REAL CHECK (quantity IS NULL OR quantity >= 0),
   unit                     TEXT,
-  cost_usd                 REAL CHECK (cost_usd IS NULL OR cost_usd >= 0),
   duration_ms              INTEGER NOT NULL CHECK (duration_ms >= 0),
   error_code               TEXT,
   created_at               INTEGER NOT NULL,

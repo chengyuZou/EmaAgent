@@ -726,14 +726,14 @@ export class SessionStatsRepo {
         INSERT INTO usage_records (
           id, session_id, turn_id, provider_id, model_id, capability, status,
           input_tokens, output_tokens, cache_read_input_tokens, cache_write_input_tokens,
-          quantity, unit, cost_usd, duration_ms, error_code, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          quantity, unit, duration_ms, error_code, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const u of p.usageRecords) {
         stmtUsageRecord.run(
           u.id, p.session.id, u.turn_id, u.provider_id, u.model_id, u.capability, u.status,
           u.input_tokens, u.output_tokens, u.cache_read_input_tokens, u.cache_write_input_tokens,
-          u.quantity, u.unit, u.cost_usd, u.duration_ms, u.error_code, u.created_at,
+          u.quantity, u.unit, u.duration_ms, u.error_code, u.created_at,
         );
       }
 

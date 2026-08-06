@@ -19,12 +19,7 @@ export interface SessionBackupToolExecutionRow {
   turn_id: string;
   agent_run_id: string | null;
   tool_name: string;
-  input_json: string;
-  input_digest: string;
   status: 'prepared' | 'authorized' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'outcome_unknown';
-  result_preview: string | null;
-  error_code: string | null;
-  error_message: string | null;
   started_at: number | null;
   completed_at: number | null;
   version: number;

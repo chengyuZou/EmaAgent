@@ -143,7 +143,7 @@ describe('SessionStatsRepo restore integration', () => {
       id: 'usage-1', session_id: payload.session.id, turn_id: 'turn-child',
       provider_id: 'provider-1', model_id: 'model-1', capability: 'llm', status: 'completed',
       input_tokens: 30, output_tokens: 40, cache_read_input_tokens: null,
-      cache_write_input_tokens: null, quantity: null, unit: null, cost_usd: null,
+      cache_write_input_tokens: null, quantity: null, unit: null,
       duration_ms: 500, error_code: null, created_at: 150,
     });
     payload.notes = { body: 'session notes', tokensAtLastUpdate: 3, updatedAt: 160 };

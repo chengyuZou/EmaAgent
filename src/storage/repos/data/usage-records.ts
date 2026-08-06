@@ -17,7 +17,6 @@ export interface UsageRecordRow {
   cache_write_input_tokens: number | null;
   quantity: number | null;
   unit: string | null;
-  cost_usd: number | null;
   duration_ms: number;
   error_code: string | null;
   created_at: number;
@@ -31,8 +30,8 @@ export class UsageRecordsRepo {
       INSERT INTO usage_records (
         id, session_id, turn_id, provider_id, model_id, capability, status,
         input_tokens, output_tokens, cache_read_input_tokens, cache_write_input_tokens,
-        quantity, unit, cost_usd, duration_ms, error_code, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        quantity, unit, duration_ms, error_code, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         session_id = excluded.session_id,
         turn_id = excluded.turn_id,
@@ -46,7 +45,6 @@ export class UsageRecordsRepo {
         cache_write_input_tokens = excluded.cache_write_input_tokens,
         quantity = excluded.quantity,
         unit = excluded.unit,
-        cost_usd = excluded.cost_usd,
         duration_ms = excluded.duration_ms,
         error_code = excluded.error_code,
         created_at = excluded.created_at
@@ -55,7 +53,7 @@ export class UsageRecordsRepo {
       record.id, record.sessionId, record.turnId, record.providerId, record.modelId,
       record.capability, record.status, record.inputTokens, record.outputTokens,
       record.cacheReadInputTokens, record.cacheWriteInputTokens, record.quantity,
-      record.unit, record.costUsd, record.durationMs, record.errorCode, record.createdAt,
+      record.unit, record.durationMs, record.errorCode, record.createdAt,
     );
   }
 
