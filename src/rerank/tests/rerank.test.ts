@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UsageRecord, UsageRecorder } from '@ema-agent/usage';
 import { CohereRerankAdapter } from '../adapters/cohere.js';
+import { RerankError } from '../errors.js';
 import { RerankRuntime } from '../runtime.js';
 import type { RerankProviderConfig } from '../types.js';
 
@@ -187,5 +188,66 @@ describe('RerankRuntime 有限重试', () => {
     await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
     expect(Date.now() - startedAt).toBeLessThan(500);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('RerankRuntime 错误码', () => {
+  it('缺失分数时显式失败，而不是静默置 0', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      results: [{ index: 0 }],
+    }), { status: 200 }));
+    const runtime = new RerankRuntime([config], { usageRecorder: noopRecorder });
+
+    await expect(runtime.rerank({
+      providerId: config.id, model: 'rerank-model', query: 'query',
+      documents: ['a'], topK: 1,
+    })).rejects.toThrow('rerank/missing_score');
+  });
+
+  it('非法 topK 抛出带稳定错误码的 RerankError', async () => {
+    const runtime = new RerankRuntime([config], { usageRecorder: noopRecorder });
+
+    await expect(runtime.rerank({
+      providerId: config.id, model: 'rerank-model', query: 'query',
+      documents: ['a'], topK: 0,
+    })).rejects.toMatchObject({ code: 'rerank/invalid_top_k' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('超时错误写入 usage 的 errorCode 为 rerank/timeout', async () => {
+    const records: UsageRecord[] = [];
+    const runtime = new RerankRuntime(
+      [config],
+      { usageRecorder: { record: (record) => records.push(record) } },
+      () => ({
+        rerank: async (): Promise<never> => {
+          throw new DOMException('timed out', 'TimeoutError');
+        },
+      }),
+    );
+
+    await expect(runtime.rerank({
+      providerId: config.id, model: 'rerank-model', query: 'query',
+      documents: ['a'], topK: 1,
+    })).rejects.toMatchObject({ name: 'TimeoutError' });
+    expect(records[0]).toMatchObject({
+      capability: 'rerank',
+      status: 'failed',
+      errorCode: 'rerank/timeout',
+    });
+  });
+
+  it('HTTP 错误保留 status 并携带统一错误码', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('denied', { status: 401 }));
+    const runtime = new RerankRuntime([config], { usageRecorder: noopRecorder });
+
+    await expect(runtime.rerank({
+      providerId: config.id, model: 'rerank-model', query: 'query',
+      documents: ['a'], topK: 1,
+    })).rejects.toMatchObject({
+      code: 'rerank/http_error',
+      status: 401,
+    });
+    expect(RerankError).toBeTypeOf('function');
   });
 });

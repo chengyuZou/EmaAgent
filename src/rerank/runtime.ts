@@ -1,6 +1,7 @@
 // 执行 Rerank 请求，并维护配置、Adapter 与 Usage 的原子运行时入口。
 import { createUsageRecord, reportUsage } from '@ema-agent/usage';
 import { CohereRerankAdapter } from './adapters/cohere.js';
+import { RerankError } from './errors.js';
 import { withOneRetry } from './retry.js';
 import type {
   RerankAdapter,
@@ -53,7 +54,12 @@ export class RerankRuntime {
 
   async rerank(request: RerankRequest): Promise<RerankResponse> {
     const entry = this.entries.get(request.providerId);
-    if (!entry) throw new Error(`rerank/not_configured: ${request.providerId}`);
+    if (!entry) {
+      throw new RerankError(
+        'rerank/not_configured',
+        `rerank/not_configured: ${request.providerId}`,
+      );
+    }
     if (request.documents.length === 0) return { results: [] };
     const topK = normalizeTopK(request.topK, request.documents.length);
     const startedAt = Date.now();
@@ -108,7 +114,12 @@ export class RerankRuntime {
   ): Map<string, RerankRuntimeEntry> {
     const entries = new Map<string, RerankRuntimeEntry>();
     for (const config of configs) {
-      if (entries.has(config.id)) throw new Error(`rerank/duplicate_config: ${config.id}`);
+      if (entries.has(config.id)) {
+        throw new RerankError(
+          'rerank/duplicate_config',
+          `rerank/duplicate_config: ${config.id}`,
+        );
+      }
       const oldEntry = previous?.get(config.id);
       entries.set(
         config.id,
@@ -155,7 +166,9 @@ function configsEqual(left: Readonly<RerankProviderConfig>, right: RerankProvide
 
 function normalizeTopK(topK: number | undefined, documentCount: number): number {
   if (topK === undefined) return Math.min(5, documentCount);
-  if (!Number.isSafeInteger(topK) || topK <= 0) throw new RangeError(`rerank/invalid_top_k: ${topK}`);
+  if (!Number.isSafeInteger(topK) || topK <= 0) {
+    throw new RerankError('rerank/invalid_top_k', `rerank/invalid_top_k: ${topK}`);
+  }
   return Math.min(topK, documentCount);
 }
 
@@ -180,23 +193,31 @@ function normalizeScoresToUnitRange(results: RerankItem[]): RerankItem[] {
 }
 
 function validateResponse(response: RerankResponse, documentCount: number, topK: number): void {
-  if (response.results.length > topK) throw new Error('rerank/too_many_results');
+  if (response.results.length > topK) {
+    throw new RerankError('rerank/too_many_results', 'rerank/too_many_results');
+  }
   const seen = new Set<number>();
   for (const item of response.results) {
     if (!Number.isSafeInteger(item.index) || item.index < 0 || item.index >= documentCount) {
-      throw new Error(`rerank/invalid_index: ${item.index}`);
+      throw new RerankError('rerank/invalid_index', `rerank/invalid_index: ${item.index}`);
     }
-    if (seen.has(item.index)) throw new Error(`rerank/duplicate_index: ${item.index}`);
-    if (!Number.isFinite(item.score)) throw new Error(`rerank/invalid_score: ${item.score}`);
+    if (seen.has(item.index)) {
+      throw new RerankError('rerank/duplicate_index', `rerank/duplicate_index: ${item.index}`);
+    }
+    if (!Number.isFinite(item.score)) {
+      throw new RerankError('rerank/invalid_score', `rerank/invalid_score: ${item.score}`);
+    }
     seen.add(item.index);
   }
 }
 
 function usageErrorCode(error: unknown): string {
+  if (error instanceof RerankError) return error.code;
   if (error instanceof Error) {
+    if (error.name === 'AbortError') return 'rerank/aborted';
+    if (error.name === 'TimeoutError') return 'rerank/timeout';
     const code = (error as Error & { code?: unknown }).code;
     if (typeof code === 'string' && code.length > 0) return code;
-    if (error.name === 'AbortError') return 'rerank/aborted';
   }
   return 'rerank/provider_failed';
 }

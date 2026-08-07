@@ -21,7 +21,7 @@ export async function withOneRetry<T>(
 }
 
 function isRetryableFailure(error: unknown): boolean {
-  // fetch 网络层错误（DNS/连接拒绝/重置）没有 HTTP 状态，是最值得补一枪的瞬时故障。
+  // fetch 网络层错误（DNS/连接拒绝/重置）没有 HTTP 状态
   if (error instanceof TypeError) return true;
   const status = (error as { status?: unknown } | null)?.status;
   return status === 429 || status === 408
