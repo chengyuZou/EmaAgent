@@ -1,34 +1,46 @@
-// 这里统一导出 Skill 的存储、运行、安装、解析和 Marketplace 接口。
-export { SkillStore, SkillNotFoundError, SkillReadonlyError } from './store.js';
-export { SkillRunner }                   from './runner.js';
-export {
-  ActiveSkillState,
-  renderActiveSkillContext,
-} from './activeSkillState.js';
-export { SkillInstaller }                from './installer.js';
-export { computeSkillBundleRevision }    from './bundle-files.js';
-export { parseSkillMd, validateSkillMd } from './parser.js';
-export {
-  SkillMarketAdapter, SKILL_SEEDS,
-  listGithubSource, listJsonIndexSource,
-} from './market/index.js';
 export type {
-  GithubSkillSourceConfig,
-  SkillJsonIndexConfig,
-} from './market/index.js';
-export type {
+  SkillDescriptor,
+  SkillInstallProvenance,
+  SkillKey,
+  SkillPool,
+  SkillScope,
   SkillManifest,
-  ActivatedSkill,
-  SkillRecord,
-  SkillSummary,
-  SkillRoot,
-  SkillSource,
   SkillFrontmatter,
-  SkillRunnerPort,
-  ActiveSkillStatePort,
-  SkillFile,
-  SkillFileKind,
-  MarketSkillEntry,
-  GithubSkillCoords,
-}                                        from './types.js';
-export { GithubSkillCoordsSchema, SkillNameSchema } from './types.js';
+} from './types.js';
+export {
+  SkillFrontmatterSchema,
+  SkillNameSchema,
+  MAX_SKILL_BYTES,
+  MAX_SKILL_BUNDLE_BYTES,
+  MAX_SKILL_BUNDLE_FILES,
+  SKILL_LISTING_BUDGET_BYTES,
+  SKILL_LISTING_ENTRY_MAX_CHARS,
+} from './types.js';
+export {
+  disabledSkillKeysSetting,
+  disabledProjectSourcesSetting,
+  builtinSkillsEnabledSetting,
+} from './settings.js';
+export { parseSkillMd, validateSkillMd, readSkillFileBounded } from './parser.js';
+export { freezeSkillPool, renderSkillListing } from './skillPool.js';
+export type { SkillPoolFreezeInput } from './skillPool.js';
+export type { SkillRegistry, SkillRegistryDeps } from './registry.js';
+export { createSkillRegistry } from './registry.js';
+export { createSkillStore, STAGING_PREFIX } from './store.js';
+export type { SkillStore, SkillStoreDeps, ReconcileResult } from './store.js';
+export { PROJECT_ECOSYSTEMS, scanProjectSkills } from './sources/project.js';
+export type { ProjectEcosystem, ProjectScanOptions } from './sources/project.js';
+export { scanBuiltinSkills } from './sources/builtin.js';
+export type { BuiltinScanDeps } from './sources/builtin.js';
+export { SkillSiteStore, parseSiteIndex, siteIdForUrl } from './sources/sites/siteStore.js';
+export type { SkillSite, SkillSiteIndex, SkillSiteEntry, SkillSiteCreateInput } from './sources/sites/siteStore.js';
+export { fetchSiteIndex } from './sources/sites/siteClient.js';
+export type { SiteFetchResult } from './sources/sites/siteClient.js';
+export { refreshSites, reconcileUpdatesOffline, applySkillUpdates } from './sources/sites/refresh.js';
+export type { SiteRefreshReport, SkillUpdateCandidate, OfflineReconcileInput, OfflineReconcileResult } from './sources/sites/refresh.js';
+export { downloadBundle } from './installer/download.js';
+export { extractBundle } from './installer/extract.js';
+export type { ExtractedBundle } from './installer/extract.js';
+export { installSkillFromSite } from './installer/install.js';
+export type { SiteInstallInput, InstallDeps } from './installer/install.js';
+export { SkillNotFoundError, SkillReadonlyError, SkillPathError, SkillCollisionError } from './errors.js';

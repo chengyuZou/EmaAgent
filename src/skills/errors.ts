@@ -1,4 +1,3 @@
-// 这里定义 Skill 查询, 只读限制, 路径越界和目录碰撞错误.
 export class SkillNotFoundError extends Error {
   constructor(name: string) {
     super(`Skill "${name}" not found`);

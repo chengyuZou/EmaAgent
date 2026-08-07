@@ -1,244 +1,138 @@
-// 这里测试 Skill 安装、Bundle 完整性、升级回滚、路径边界和重命名事务。
-import { createHash } from 'node:crypto';
-import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+// SkillStore 全链路测试:对账(新增/变更/消失/损坏跳过)、安装落位、删除守卫、孤儿清扫。
+// 真实临时目录 + 内存 SkillsRepo 存根,不碰 SQLite。
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, renameSync, existsSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Database, SkillsRepo } from '@ema-agent/storage';
-import {
-  computeSkillBundleRevision,
-} from '../bundle-files.js';
-import { SkillStore } from '../store.js';
+import { afterEach, describe, expect, it } from 'vitest';
+import type { SkillRow, SkillsRepo } from '@ema-agent/storage';
+import { createSkillStore, STAGING_PREFIX, type SkillStore } from '../store.js';
 
-let rootPath: string;
-let database: Database;
-let repo: SkillsRepo;
-let store: SkillStore;
+const SKILL_MD = (name: string, version = '1.0.0') =>
+  `---\nname: ${name}\nversion: ${version}\ndescription: ${name} desc\n---\n# ${name}\n`;
 
-beforeEach(async () => {
-  rootPath = await mkdtemp(join(tmpdir(), 'ema-skill-store-'));
-  database = new Database({ memory: true, kind: 'profile' });
-  database.migrate();
-  repo = new SkillsRepo(database.sqlite);
-  store = new SkillStore(repo, [{ path: rootPath, source: 'user' }]);
+const dirs: string[] = [];
+function makeRoot(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'ema-skill-store-'));
+  dirs.push(dir);
+  return dir;
+}
+afterEach(() => {
+  while (dirs.length > 0) rmSync(dirs.pop()!, { recursive: true, force: true });
 });
 
-afterEach(async () => {
-  database.close();
-  await rm(rootPath, { recursive: true, force: true });
-});
-
-describe('SkillStore', () => {
-  it('激活时冻结 SKILL.md 与资源文件的独立路径和 Bundle revision', async () => {
-    await store.install(
-      '---\nname: review\nversion: 1.0.0\ndescription: test\n' +
-      'allowed-tools:\n  - Read\n  - "mcp__github__*"\n---\n' +
-      '检查 $ARGUMENTS\n目录 ${SKILL_DIR}\n',
-      {
-        assets: {
-          'scripts/check.js': new TextEncoder().encode('console.log("ok")'),
-          'references/rules.md': new TextEncoder().encode('# rules'),
-        },
-      },
-    );
-
-    const activation = await store.activate('review', 'src/agent');
-
-    expect(activation.name).toBe('review');
-    expect(activation.path).toBe(join(rootPath, 'review', 'SKILL.md'));
-    expect(activation.allowedToolPatterns).toEqual(['Read', 'mcp__github__*']);
-    expect(activation.instructions).toContain('检查 src/agent');
-    expect(activation.instructions).toContain(rootPath.replaceAll('\\', '/'));
-    expect(activation.bundleRevision).toMatch(/^[a-f0-9]{64}$/);
-    expect(activation.files).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        path: join(rootPath, 'review', 'SKILL.md'),
-        relativePath: 'SKILL.md',
-        kind: 'instructions',
-      }),
-      expect.objectContaining({
-        path: join(rootPath, 'review', 'scripts', 'check.js'),
-        relativePath: 'scripts/check.js',
-        kind: 'script',
-      }),
-      expect.objectContaining({
-        path: join(rootPath, 'review', 'references', 'rules.md'),
-        relativePath: 'references/rules.md',
-        kind: 'reference',
-      }),
-    ]));
-    expect(store.findByName('review')?.path).toBe(
-      join(rootPath, 'review', 'SKILL.md'),
-    );
-  });
-
-  it('市场安装按完整 Bundle revision 校验，资源被替换时不会覆盖旧版本', async () => {
-    const rawMd = skillMd('verified', 'old body');
-    const script = new TextEncoder().encode('console.log("trusted")');
-    const expectedBundleSha256 = computeSkillBundleRevision([
-      {
-        relativePath: 'SKILL.md',
-        sha256: sha256(rawMd),
-      },
-      {
-        relativePath: 'scripts/check.js',
-        sha256: sha256(script),
-      },
-    ]);
-    await store.install(rawMd, {
-      sourceUrl: 'https://example.com/verified/SKILL.md',
-      expectedBundleSha256,
-      assets: { 'scripts/check.js': script },
-    });
-    expect(repo.findByName('verified')?.sha256).toBe(expectedBundleSha256);
-
-    await expect(store.install(skillMd('verified', 'new body'), {
-      sourceUrl: 'https://example.com/verified/SKILL.md',
-      expectedBundleSha256,
-      assets: {
-        'scripts/check.js': new TextEncoder().encode('console.log("tampered")'),
-      },
-    })).rejects.toThrow('Bundle integrity check failed');
-
-    expect(await store.readRawMd('verified')).toContain('old body');
-    expect(await readFile(
-      join(rootPath, 'verified', 'scripts', 'check.js'),
-      'utf8',
-    )).toBe('console.log("trusted")');
-  });
-
-  it('SQL 更新失败时恢复旧目录和旧正文', async () => {
-    await store.install(skillMd('demo', 'old body'));
-    vi.spyOn(repo, 'upsertByName').mockImplementationOnce(() => {
-      throw new Error('database unavailable');
-    });
-
-    await expect(store.install(skillMd('demo', 'new body'))).rejects.toThrow('database unavailable');
-
-    expect(await store.readRawMd('demo')).toContain('old body');
-    expect((await readdir(rootPath)).filter(name => name.startsWith('.ema-skill-'))).toEqual([]);
-  });
-
-  it('不同名称映射到同一 slug 时拒绝覆盖已有 Skill', async () => {
-    await store.install(skillMd('Foo Bar', 'first'));
-    await expect(store.install(skillMd('foo-bar', 'second'))).rejects.toThrow('slug collision');
-    expect(await store.readRawMd('Foo Bar')).toContain('first');
-  });
-
-  it('中文名称生成不同的可移植目录，Windows 保留名会加安全前缀', async () => {
-    await store.install(skillMd('绘图助手', 'first'));
-    await store.install(skillMd('文档助手', 'second'));
-    await store.install(skillMd('CON', 'third'));
-
-    expect(store.findByName('绘图助手')?.dirPath).toBe(join(rootPath, '绘图助手'));
-    expect(store.findByName('文档助手')?.dirPath).toBe(join(rootPath, '文档助手'));
-    expect(store.findByName('CON')?.dirPath).toBe(join(rootPath, 'skill-con'));
-  });
-
-  it.each(['../escape', 'folder\\escape', '...'])('拒绝无法安全寻址的 Skill 名称: %s', async name => {
-    await expect(store.install(skillMd(name, 'body'))).rejects.toThrow();
-  });
-
-  it.each([
-    '../outside.txt',
-    'scripts\\run.ps1',
-    'CON/readme.txt',
-    'assets/file. ',
-    'SKILL.md',
-  ])('拒绝无法跨平台安全落盘的 Bundle 路径: %s', async assetPath => {
-    await expect(store.install(skillMd('unsafe', 'body'), {
-      assets: { [assetPath]: new Uint8Array([1]) },
-    })).rejects.toThrow();
-    expect(await readdir(rootPath)).toEqual([]);
-  });
-
-  it('拒绝只在大小写敏感系统中看似不同的 asset 路径', async () => {
-    await expect(store.install(skillMd('unsafe', 'body'), {
-      assets: {
-        'assets/Icon.png': new Uint8Array([1]),
-        'assets/icon.png': new Uint8Array([2]),
-      },
-    })).rejects.toThrow('跨平台重名');
-    expect(await readdir(rootPath)).toEqual([]);
-  });
-
-  it('数据库中的越界 dir_path 不能驱动递归删除', async () => {
-    const outside = await mkdtemp(join(tmpdir(), 'ema-skill-outside-'));
-    try {
-      await writeFile(join(outside, 'SKILL.md'), skillMd('outside', 'keep me'), 'utf8');
-      repo.upsertByName({
-        id: 'outside-id',
-        name: 'outside',
-        version: '1.0.0',
-        description: '',
-        arg_hint: null,
-        dir_path: outside,
-        source: 'user',
-        source_url: null,
-        sha256: null,
-        size_bytes: 1,
-        enabled: 1,
-        content_mtime: 1,
-        installed_at: 1,
-      });
-
-      await expect(store.remove('outside')).rejects.toThrow('escapes configured root');
-      expect(await readFile(join(outside, 'SKILL.md'), 'utf8')).toContain('keep me');
-      expect(repo.findByName('outside')).not.toBeNull();
-    } finally {
-      await rm(outside, { recursive: true, force: true });
-    }
-  });
-
-  it('重命名同步切换目录, frontmatter 和 SQL 索引', async () => {
-    await store.install(skillMd('Old Name', 'body'));
-    await store.rename('Old Name', 'New Name');
-
-    expect(store.findByName('Old Name')).toBeNull();
-    const renamed = store.findByName('New Name');
-    expect(renamed?.dirPath).toBe(join(rootPath, 'new-name'));
-    expect(await store.readRawMd('New Name')).toContain('name: "New Name"');
-    expect(await readdir(rootPath)).toEqual(['new-name']);
-  });
-
-  it('仅增加首尾空白不触发伪重命名或名称碰撞', async () => {
-    await store.install(skillMd('demo', 'body'));
-
-    await expect(store.rename('demo', '  demo  ')).resolves.toBeUndefined();
-
-    expect(store.findByName('demo')).not.toBeNull();
-    expect(await readdir(rootPath)).toEqual(['demo']);
-  });
-
-  it('relocate 不能把 Skill 移到未配置目录', async () => {
-    await store.install(skillMd('demo', 'body'));
-    const outside = await mkdtemp(join(tmpdir(), 'ema-skill-target-'));
-    try {
-      await expect(store.relocate('demo', outside)).rejects.toThrow('configured writable root');
-      expect(await store.readRawMd('demo')).toContain('body');
-    } finally {
-      await rm(outside, { recursive: true, force: true });
-    }
-  });
-
-  it('扫描忽略事务内部目录, 不把 staging 当成 Skill', async () => {
-    await mkdir(join(rootPath, '.ema-skill-stage-demo-orphan'));
-    await writeFile(
-      join(rootPath, '.ema-skill-stage-demo-orphan', 'SKILL.md'),
-      skillMd('hidden', 'body'),
-      'utf8',
-    );
-
-    const result = await store.scanAndReconcile();
-    expect(result.indexed).toBe(0);
-    expect(store.findByName('hidden')).toBeNull();
-  });
-});
-
-function skillMd(name: string, body: string): string {
-  return `---\nname: ${JSON.stringify(name)}\nversion: 1.0.0\ndescription: test\n---\n${body}\n`;
+function writeSkill(root: string, dirName: string, name: string, version = '1.0.0'): string {
+  const dir = join(root, dirName);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'SKILL.md'), SKILL_MD(name, version));
+  return dir;
 }
 
-function sha256(value: string | Uint8Array): string {
-  return createHash('sha256').update(value).digest('hex');
+/** 内存 SkillsRepo:行表存 Map,方法与真实 repo 同形。 */
+function makeRepo() {
+  const rows = new Map<string, SkillRow>();
+  const repo: SkillsRepo = {
+    upsertById: (row) => { rows.set(row.id, { ...row }); },
+    findById: (id) => rows.get(id) ?? null,
+    listAll: () => [...rows.values()],
+    listBySite: (siteId) => [...rows.values()].filter((r) => r.site_id === siteId),
+    deleteById: (id) => { rows.delete(id); },
+  } as SkillsRepo;
+  return { repo, rows };
 }
+
+describe('reconcileUserRoot', () => {
+  it('新增目录入索引;消失目录删索引;损坏目录跳过不拖垮整轮', async () => {
+    const root = makeRoot();
+    writeSkill(root, 'alpha', 'alpha');
+    writeSkill(root, 'beta', 'beta');
+    mkdirSync(join(root, 'broken'));  // 无 SKILL.md
+    const { repo, rows } = makeRepo();
+    const store = createSkillStore({ repo, userRoot: root });
+
+    const first = await store.reconcileUserRoot();
+    expect(first.entries.map((e) => e.name).sort()).toEqual(['alpha', 'beta']);
+    expect(first.skipped).toHaveLength(1);
+    expect(rows.size).toBe(2);
+
+    // beta 删除后应对账删除索引。
+    rmSync(join(root, 'beta'), { recursive: true, force: true });
+    const second = await store.reconcileUserRoot();
+    expect(second.entries.map((e) => e.name)).toEqual(['alpha']);
+    expect(rows.size).toBe(1);
+  });
+
+  it('手动放置目录改名 = 新技能(新 id),旧行被对账删除', async () => {
+    const root = makeRoot();
+    const dir = writeSkill(root, 'gamma', 'gamma');
+    const { repo, rows } = makeRepo();
+    const store = createSkillStore({ repo, userRoot: root });
+
+    await store.reconcileUserRoot();
+    const oldIds = [...rows.keys()];
+    renameSync(dir, join(root, 'gamma-renamed'));
+    await store.reconcileUserRoot();
+    const newIds = [...rows.keys()];
+    expect(newIds).not.toEqual(oldIds);
+    expect(rows.size).toBe(1);
+  });
+
+  it('站点安装目录(site_ 前缀)的溯源在对账后保留', async () => {
+    const root = makeRoot();
+    writeSkill(root, 'site_shop_pdf-qa', 'PDFQA', '1.2.0');
+    const { repo, rows } = makeRepo();
+    const store = createSkillStore({ repo, userRoot: root });
+
+    await store.reconcileUserRoot();
+    const row = rows.get('site_shop_pdf-qa')!;
+    expect(row.site_id).toBeNull();  // 首轮对账无溯源
+
+    // 模拟安装时写入的溯源,再对账不得回退。
+    rows.set(row.id, { ...row, site_id: 'shop', site_entry_id: 'pdf-qa', sha256: 'abc', source_url: 'https://x/y.zip', version: '9.9.9' });
+    const result = await store.reconcileUserRoot();
+    const kept = rows.get('site_shop_pdf-qa')!;
+    expect(kept.site_id).toBe('shop');
+    expect(kept.version).toBe('9.9.9');  // 站点索引版本不被 frontmatter 回写
+    expect(result.entries[0]!.provenance).toMatchObject({ kind: 'site', siteId: 'shop' });
+  });
+});
+
+describe('finalizeInstall / deleteUserSkill / sweepOrphanStaging', () => {
+  it('staging 原子落位并写溯源;删除后目录与索引同清', async () => {
+    const root = makeRoot();
+    const { repo, rows } = makeRepo();
+    const store = createSkillStore({ repo, userRoot: root });
+
+    const staging = join(root, `${STAGING_PREFIX}test-1`);
+    writeSkill(root, `${STAGING_PREFIX}test-1`, 'PDFQA', '1.2.0');
+
+    const descriptor = await store.finalizeInstall(staging, {
+      kind: 'site',
+      siteId: 'shop',
+      siteEntryId: 'pdf-qa',
+      version: '1.2.0',
+      bundleUrl: 'https://x/pdf-qa.zip',
+      bundleSha256: 'deadbeef',
+    });
+
+    expect(descriptor.key).toBe('user:site_shop_pdf-qa');
+    expect(existsSync(join(root, 'site_shop_pdf-qa', 'SKILL.md'))).toBe(true);
+    expect(existsSync(staging)).toBe(false);
+    expect(rows.get('site_shop_pdf-qa')).toMatchObject({ site_id: 'shop', sha256: 'deadbeef' });
+
+    await store.deleteUserSkill(descriptor.key);
+    expect(existsSync(join(root, 'site_shop_pdf-qa'))).toBe(false);
+    expect(rows.size).toBe(0);
+  });
+
+  it('孤儿 staging 目录被清扫,正常目录不受影响', async () => {
+    const root = makeRoot();
+    writeSkill(root, 'alpha', 'alpha');
+    mkdirSync(join(root, `${STAGING_PREFIX}orphan`));
+    const { repo } = makeRepo();
+    const store = createSkillStore({ repo, userRoot: root });
+
+    await store.sweepOrphanStaging();
+    const remaining = readdirSync(root);
+    expect(remaining).toEqual(['alpha']);
+  });
+});

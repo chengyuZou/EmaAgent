@@ -20,11 +20,10 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@ema-agent/ids": "workspace:*",
-    "@ema-agent/marketplace": "workspace:*",
-    "@ema-agent/prompts": "workspace:*",
+    "@ema-agent/public-http": "workspace:*",
+    "@ema-agent/settings": "workspace:*",
     "@ema-agent/storage": "workspace:*",
-    "@ema-agent/turn": "workspace:*",
+    "fflate": "^0.8.2",
     "gray-matter": "^4.0.3",
     "zod": "^3.23.0"
   },
