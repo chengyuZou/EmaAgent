@@ -30,9 +30,6 @@ export const knowledgeModelsSetting = defineSetting<KnowledgeModelSettings>({
       },
     };
   },
-  encode(value) {
-    return value;
-  },
 });
 
 function decodeModelRef(value: unknown): KnowledgeModelRef | undefined | null {
@@ -83,9 +80,6 @@ export const knowledgeRetrievalSetting = defineSetting<KnowledgeRetrievalSetting
     if (!ratioInRange(merged.rerankBlendWeight)) return { ok: false };
     if (!integerInRange(merged.resultMaxChars, 1_000, 50_000)) return { ok: false };
     return { ok: true, value: merged as KnowledgeRetrievalSettings };
-  },
-  encode(value) {
-    return value;
   },
 });
 

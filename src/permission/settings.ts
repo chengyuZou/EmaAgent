@@ -20,7 +20,4 @@ export const permissionAskTimeoutSetting = defineSetting<number | null>({
       ? { ok: true as const, value: value as number }
       : { ok: false as const };
   },
-  encode(value) {
-    return value;
-  },
 });

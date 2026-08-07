@@ -35,7 +35,6 @@ export const attachmentSetting = defineSetting<AttachmentSettings>({
     }
     return { ok: true, value: merged as AttachmentSettings };
   },
-  encode: value => value,
 });
 
 function integerInRange(value: unknown, min: number, max: number): value is number {

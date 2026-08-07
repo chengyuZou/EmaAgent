@@ -23,7 +23,6 @@ export const contextCompactionSetting = defineSetting<ContextCompactionSettings>
     if (!integerInRange(merged.maximumConsecutiveFailures, 1, 10)) return { ok: false };
     return { ok: true, value: merged as ContextCompactionSettings };
   },
-  encode: value => value,
 });
 
 function integerInRange(value: unknown, min: number, max: number): value is number {

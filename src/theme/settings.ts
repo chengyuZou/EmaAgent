@@ -38,9 +38,6 @@ export const themeSetting = defineSetting<ThemeSettings>({
       },
     };
   },
-  encode(value) {
-    return value;
-  },
 });
 
 function isFontPreset(value: unknown): value is ContentFontPreset {

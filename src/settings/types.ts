@@ -19,7 +19,8 @@ export interface SettingDefinition<T> {
   readonly apply: SettingApplyPolicy;
   readonly defaultValue: T;
   decode(value: unknown): SettingDecodeResult<T>;
-  encode(value: T): unknown;
+  /** 把类型化值转成持久化形状;缺省恒等——值本就是 JSON 原生形状时无需声明。 */
+  encode?(value: T): unknown;
 }
 
 export interface SettingDescriptor {

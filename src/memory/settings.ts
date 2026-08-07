@@ -56,7 +56,6 @@ export const memoryModelsSetting = defineSetting<MemoryModelSettings>({
       },
     };
   },
-  encode: value => value,
 });
 
 export const memoryMaintenanceSetting = defineSetting<MemoryMaintenanceSettings>({
@@ -79,7 +78,6 @@ export const memoryMaintenanceSetting = defineSetting<MemoryMaintenanceSettings>
       },
     };
   },
-  encode: value => value,
 });
 
 export const memoryStorageSetting = defineSetting<MemoryStorageSettings>({
@@ -99,7 +97,6 @@ export const memoryStorageSetting = defineSetting<MemoryStorageSettings>({
     }
     return { ok: true, value: { maxBytes: merged.maxBytes } };
   },
-  encode: value => value,
 });
 
 function decodeModelRef(value: unknown): MemoryModelRef | undefined | null {

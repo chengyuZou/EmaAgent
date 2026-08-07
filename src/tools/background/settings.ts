@@ -20,7 +20,6 @@ export const backgroundProcessSetting = defineSetting<BackgroundProcessSettings>
     if (!integerInRange(merged.maxRuntimeHours, 1, 168)) return { ok: false };
     return { ok: true, value: merged as BackgroundProcessSettings };
   },
-  encode: value => value,
 });
 
 function integerInRange(value: unknown, min: number, max: number): value is number {

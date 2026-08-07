@@ -35,7 +35,6 @@ export const agentSetting = defineSetting<AgentSettings>({
     if (merged.maxConcurrentSubagents > merged.maxSubagents) return { ok: false };
     return { ok: true, value: merged as AgentSettings };
   },
-  encode: value => value,
 });
 
 function integerInRange(value: unknown, min: number, max: number): value is number {

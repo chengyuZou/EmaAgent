@@ -23,7 +23,6 @@ export const visionSetting = defineSetting<VisionLimits>({
     if (!integerInRange(merged.timeoutMs, 5_000, 300_000)) return { ok: false };
     return { ok: true, value: merged as VisionLimits };
   },
-  encode: value => value,
 });
 
 function integerInRange(value: unknown, min: number, max: number): value is number {
