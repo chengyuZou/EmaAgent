@@ -71,16 +71,6 @@ export type ProviderAuthDefinition =
   | { type: 'none' }
   | { type: 'bearer'; required: boolean };
 
-export interface ProviderOnboardingField {
-  key: string;
-  type: 'text' | 'password';
-  label: string;
-  description?: string;
-  placeholder?: string;
-  required?: boolean;
-  defaultValue?: string;
-}
-
 export interface ProviderDefinition {
   /** 写入数据库和模型绑定的稳定身份，发布后不能随显示名称一起改动。 */
   id: string;
@@ -94,9 +84,6 @@ export interface ProviderDefinition {
     auth: ProviderAuthDefinition;
   };
   capabilities: ProviderCapabilityDefinitions;
-  onboarding?: {
-    fields: readonly ProviderOnboardingField[];
-  };
 }
 
 export type ProviderCredentialOperation =

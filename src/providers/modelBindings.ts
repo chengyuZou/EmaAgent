@@ -9,7 +9,6 @@ export const MODEL_BINDING_MODULES = [
   'tts',
   'stt',
   'vision',
-  'imagegen',
 ] as const;
 
 export type ModelBindingModule = typeof MODEL_BINDING_MODULES[number];
@@ -56,14 +55,15 @@ export interface ModelBindingStore {
   deleteByProviderModel(providerConfigId: string, model: string): number;
 }
 
-export interface ModelBindingRuntime {
+/** 绑定变更后需要同步的外部副作用（当前仅 Narrative Bridge）。 */
+export interface ModelBindingSync {
   syncNarrativeBridge(): Promise<void>;
 }
 
 export class ModelBindingControl {
   constructor(
     private readonly store: ModelBindingStore,
-    private readonly runtime: ModelBindingRuntime,
+    private readonly sync: ModelBindingSync,
   ) {}
 
   list(): ResolvedModelBinding[] {
@@ -101,7 +101,7 @@ export class ModelBindingControl {
 
   private syncNarrativeBridgeIfNeeded(module: ModelBindingModule): void {
     if (!NARRATIVE_BRIDGE_BINDING_MODULES.has(module)) return;
-    void this.runtime.syncNarrativeBridge().catch((error: unknown) => {
+    void this.sync.syncNarrativeBridge().catch((error: unknown) => {
       console.warn('[model-bindings] narrative bridge sync failed:', error);
     });
   }

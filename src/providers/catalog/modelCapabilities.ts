@@ -2,10 +2,15 @@
 import type { ModelsDevCatalog, ModelsDevSpec } from './modelsDevCatalog.js';
 
 export type ModelCapabilityState = 'supported' | 'unsupported' | 'unknown';
-export type ModelCapabilitySource = 'catalog' | 'live' | 'manual' | 'unknown';
+/**
+ * 模型能力的来源。
+ * - models-dev: 由 models.dev 网站提供的能力事实。
+ * - live: 从 provider fetch 时该供应商可能自带
+ */
+export type ModelCapabilitySource = 'models-dev' | 'live' | 'manual' | 'unknown'; 
 
 /** 当前 Provider + Model 的只读能力事实。 */
-export interface ModelCapabilitySnapshot {
+export interface ModelCapability {
   input: {
     text: ModelCapabilityState;
     image: ModelCapabilityState;
@@ -29,7 +34,7 @@ export interface ModelCapabilityQuery {
 
 /** Provider 模块向 Context、LLM 和设置页提供的统一能力查询边界。 */
 export interface ModelCapabilityResolver {
-  resolve(query: ModelCapabilityQuery): ModelCapabilitySnapshot;
+  resolve(query: ModelCapabilityQuery): ModelCapability;
 }
 
 export function createModelCapabilityResolver(
@@ -52,7 +57,7 @@ export function createModelCapabilityResolver(
   };
 }
 
-export function unknownModelCapabilities(): ModelCapabilitySnapshot {
+export function unknownModelCapabilities(): ModelCapability {
   return {
     input: {
       // 能进入 LLM 模型池至少说明它接受文本；其他模态禁止靠协议猜测。
@@ -68,7 +73,7 @@ export function unknownModelCapabilities(): ModelCapabilitySnapshot {
   };
 }
 
-export function capabilitiesFromCatalog(spec: ModelsDevSpec): ModelCapabilitySnapshot {
+export function capabilitiesFromCatalog(spec: ModelsDevSpec): ModelCapability {
   return {
     input: {
       text: modalityState(spec.inputModalities, 'text', true),
@@ -81,16 +86,16 @@ export function capabilitiesFromCatalog(spec: ModelsDevSpec): ModelCapabilitySna
     temperature: spec.temperature ? 'supported' : 'unsupported',
     contextWindow: spec.contextWindow,
     maxOutput: spec.maxOutput,
-    source: 'catalog',
+    source: 'models-dev',
   };
 }
 
 /** Catalog 未收录时，设置页启用的 Vision 模型可作为显式人工声明。 */
-export function capabilitiesFromManualVision(): ModelCapabilitySnapshot {
-  const snapshot = unknownModelCapabilities();
+export function capabilitiesFromManualVision(): ModelCapability {
+  const capability = unknownModelCapabilities();
   return {
-    ...snapshot,
-    input: { ...snapshot.input, image: 'supported' },
+    ...capability,
+    input: { ...capability.input, image: 'supported' },
     source: 'manual',
   };
 }

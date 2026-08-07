@@ -109,6 +109,10 @@ export class ModelsDevCatalog {
     }
   }
 
+  /** 
+  * 单个模型在不同的供应商里参数不一定全部相同 
+  * 在调用时，必须使用 providerId + modelId 精确身份查询能力/窗口。
+  */
   get(modelsDevId: string, modelId: string): ModelsDevSpec | undefined {
     return this.index.get(modelsDevId)?.get(modelId);
   }

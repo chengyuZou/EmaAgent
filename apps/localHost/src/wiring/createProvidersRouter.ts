@@ -8,8 +8,8 @@ import {
   modelsDevIdFor,
   providerCatalog,
   staticModelsFor,
-  type Capability,
   type ConfiguredProvider,
+  type ModelProbeCapability,
 } from '@ema-agent/provider';
 import { TtsVoicePreview } from '@ema-agent/tts';
 import { providersRoute } from '../routes/providers/index.js';
@@ -46,10 +46,6 @@ export function createProvidersRouter(bindings: AppBindings): Hono {
             return bindings.providerRerankModels.listByProvider(providerId)[0]?.model;
           case 'vision':
             return bindings.providerVisionModels.listByProvider(providerId)[0]?.model;
-          case 'tts':
-            return bindings.providerTtsModels.listByProvider(providerId)[0]?.model;
-          case 'stt':
-            return bindings.providerSttModels.listByProvider(providerId)[0]?.model;
         }
       },
       firstCatalog: (provider, capability) => {
@@ -125,7 +121,7 @@ export function createProvidersRouter(bindings: AppBindings): Hono {
 function firstCatalogModel(
   bindings: Pick<AppBindings, 'modelCatalog'>,
   provider: ConfiguredProvider,
-  capability: Capability,
+  capability: ModelProbeCapability,
 ): string | undefined {
   const definition = providerCatalog.get(provider.definitionId);
   if (!definition) return undefined;

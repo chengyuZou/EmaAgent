@@ -38,17 +38,17 @@ export interface ConfiguredProvider {
   capabilities: ProviderCapabilityConfiguration[];
 }
 
-export interface ProviderHealthSnapshot {
+export interface ProviderHealthResult {
   status: 'ok' | 'failed' | 'unknown';
   lastProbedAt: number | null;
   latencyMs: number | null;
   lastError: string | null;
-  consecutiveFails: number;
 }
 
-export interface ProviderConfigurationSnapshot {
+/** 配置 + 最近一次探测结果的查询聚合（设置页列表/详情一次拿全）。 */
+export interface ProviderWithHealth {
   config: ConfiguredProvider;
-  health: ProviderHealthSnapshot | null;
+  health: ProviderHealthResult | null;
 }
 
 export interface SaveProviderConfiguration {
@@ -63,8 +63,8 @@ export interface SaveProviderConfiguration {
 
 export interface ProviderConfigurationStore {
   get(id: string): ConfiguredProvider | undefined;
-  getWithHealth(id: string): ProviderConfigurationSnapshot | undefined;
-  listWithHealth(): ProviderConfigurationSnapshot[];
+  getWithHealth(id: string): ProviderWithHealth | undefined;
+  listWithHealth(): ProviderWithHealth[];
   save(input: SaveProviderConfiguration): void;
   delete(id: string): void;
 }
@@ -106,18 +106,18 @@ export class ProviderConfiguration {
     return this.definitions.list();
   }
 
-  definition(id: string): ProviderDefinition | undefined {
+  getDefinition(id: string): ProviderDefinition | undefined {
     return this.definitions.get(id);
   }
 
-  list(): ProviderConfigurationSnapshot[] {
+  listWithHealth(): ProviderWithHealth[] {
     return this.store.listWithHealth();
   }
 
-  get(id: string): ProviderConfigurationSnapshot {
-    const snapshot = this.store.getWithHealth(id);
-    if (!snapshot) throw new ProviderConfigurationError('not_found', 'Provider 不存在');
-    return snapshot;
+  getWithHealth(id: string): ProviderWithHealth {
+    const withHealth = this.store.getWithHealth(id);
+    if (!withHealth) throw new ProviderConfigurationError('not_found', 'Provider 不存在');
+    return withHealth;
   }
 
   revealCredential(id: string): string {
@@ -283,4 +283,121 @@ function toConflict(binding: ResolvedModelBinding) {
     module: binding.module,
     model: binding.model,
   };
+}
+
+// ── Provider 探测编排 ─────────────────────────────────────────────────────────
+
+export interface ProviderProbeResult {
+  ok: boolean;
+  model: string;
+  latencyMs: number | null;
+  error?: string;
+}
+
+/** 需要按模型探测的能力；tts/stt 只探配置连通性（无模型参数）。 */
+export type ModelProbeCapability = 'llm' | 'embed' | 'rerank' | 'vision';
+
+export interface ProviderProbeModelSource {
+  firstEnabled(
+    providerId: string,
+    capability: ModelProbeCapability,
+  ): string | undefined;
+  firstCatalog(
+    provider: ConfiguredProvider,
+    capability: ModelProbeCapability,
+  ): string | undefined;
+}
+
+export interface ProviderProbeExecutor {
+  probe(
+    providerId: string,
+    capability: Capability,
+    model: string | undefined,
+    signal?: AbortSignal,
+  ): Promise<{ ok: boolean; latencyMs?: number; error?: string }>;
+}
+
+export interface ProviderHealthRecorder {
+  record(
+    providerId: string,
+    result: { ok: boolean; latencyMs?: number; error?: string },
+  ): void;
+}
+
+function isModelProbeCapability(capability: Capability): capability is ModelProbeCapability {
+  return capability === 'llm'
+    || capability === 'embed'
+    || capability === 'rerank'
+    || capability === 'vision';
+}
+
+/**
+ * 按能力执行连通性探测，并把真实结果写回健康状态。
+ * 模型类能力(llm/embed/rerank/vision)按"指定 → 已启用 → 目录首个"选模型;
+ * tts/stt 直接由 executor 探配置连通性。
+ */
+export class ProviderProbe {
+  constructor(
+    private readonly configurations: Pick<ProviderConfigurationStore, 'get'>,
+    private readonly models: ProviderProbeModelSource,
+    private readonly executor: ProviderProbeExecutor,
+    private readonly health: ProviderHealthRecorder,
+  ) {}
+
+  async run(
+    providerId: string,
+    capability: Capability,
+    requestedModel: string | undefined,
+    signal?: AbortSignal,
+  ): Promise<ProviderProbeResult> {
+    const provider = this.requireCapability(providerId, capability);
+    const model = isModelProbeCapability(capability)
+      ? requestedModel
+        ?? this.models.firstEnabled(providerId, capability)
+        ?? this.models.firstCatalog(provider, capability)
+      : undefined;
+
+    if (isModelProbeCapability(capability) && !model) {
+      return {
+        ok: false,
+        model: '',
+        latencyMs: null,
+        error: '没有可探测的模型，请先在下方"模型"启用一个',
+      };
+    }
+
+    const result = await this.executor.probe(
+      providerId,
+      capability,
+      model,
+      signal,
+    );
+    this.health.record(providerId, result);
+    return {
+      ok: result.ok,
+      model: model ?? '',
+      latencyMs: result.latencyMs ?? null,
+      error: result.error,
+    };
+  }
+
+  private requireCapability(
+    providerId: string,
+    capability: Capability,
+  ): ConfiguredProvider {
+    const provider = this.configurations.get(providerId);
+    if (!provider) {
+      throw new ProviderConfigurationError('not_found', 'Provider 不存在');
+    }
+    const enabled = provider.capabilities.some(
+      (item) => item.capability === capability && item.enabled !== false,
+    );
+    if (!enabled) {
+      throw new ProviderConfigurationError(
+        'capability_not_supported',
+        `Provider 未启用 ${capability} 能力`,
+      );
+    }
+    return provider;
+  }
 }

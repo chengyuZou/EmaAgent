@@ -62,3 +62,9 @@ export function providersWithCapability(capability: Capability): readonly Provid
 export function listProviderDefinitionIds(): readonly string[] {
   return ALL_DEFINITIONS.map((definition) => definition.id);
 }
+
+/** 目录 get/list 的纯函数绑定，供控制面注入与现有调用点使用。 */
+export const providerCatalog = {
+  get: getProviderDefinition,
+  list: listProviderDefinitions,
+};

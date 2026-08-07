@@ -18,12 +18,11 @@ types.ts               基础类型:Capability、ProtocolFamily(14 种协议)、
 definition-utils.ts    定义查询函数:能力列表、协议列表、默认地址解析、models.dev/静态模型来源、
                        isXxxProtocol 类型守卫
 registry.ts            19 家内置供应商的静态目录(数组顺序即设置页展示顺序,新增时显式选位)
-facade.ts              ProviderCatalogFacade:目录只读查询的唯一业务入口,导出单例 providerCatalog
 configuration.ts       ProviderConfiguration:配置生命周期(create/update/delete)、能力校验、
+                       并含 ProviderProbe:探测编排(模型类能力选模型,tts/stt 探连通性),健康落库
                        凭据三态写(保留/清空/替换)、删除/禁用前的绑定冲突保护
 modelBindings.ts       ModelBindingControl:业务模块→Provider+模型 绑定;8 个合法模块,
                        lightrag-* 绑定变更后触发 Bridge 配置同步
-probe.ts               ProviderProbe:按能力选探测模型(启用池→目录回退)、执行探测、健康落库
 errors.ts              ProviderConfigurationError:六个稳定错误码 + 绑定冲突明细
 index.ts               公共出口;外部禁止穿透内部文件
 
@@ -55,7 +54,7 @@ tests/                 目录完整性约束(身份唯一、协议匹配能力�
 
 | 导出 | 用途 |
 |---|---|
-| `providerCatalog` (`ProviderCatalogFacade`) | 定义查询：get/list/ids/listByCapability/protocolsOf/defaultBaseUrlFor/modelSourcesOf |
+| `providerCatalog`（registry 对象） | 定义目录 get/list；其余查询函数从包入口直出 |
 | `ProviderConfiguration` | 配置生命周期；构造注入 `ProviderDefinitionCatalog`、存储、绑定查询、运行时刷新、id 工厂 |
 | `ModelBindingControl` | 绑定读写；`lightrag-*` 变更后自动触发 `syncNarrativeBridge()` |
 | `ProviderProbe` | 探测编排；模型类能力（llm/embed/rerank/vision）按"指定→已启用→目录首个"选模型，tts/stt 探端点 |

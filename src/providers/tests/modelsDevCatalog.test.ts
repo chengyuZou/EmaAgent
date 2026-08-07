@@ -47,14 +47,14 @@ describe('ModelsDevCatalog', () => {
       reasoning: 'supported',
       contextWindow: 128_000,
       maxOutput: 16_000,
-      source: 'catalog',
+      source: 'models-dev',
     });
     expect(providerB).toMatchObject({
       input: { image: 'unsupported' },
       tools: 'unsupported',
       reasoning: 'unsupported',
       contextWindow: 32_000,
-      source: 'catalog',
+      source: 'models-dev',
     });
   });
 

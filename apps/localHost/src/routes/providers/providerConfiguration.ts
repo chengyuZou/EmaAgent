@@ -7,7 +7,7 @@ import {
   ProviderConfigurationError,
   type ConfiguredProvider,
   type ProviderConfiguration,
-  type ProviderConfigurationSnapshot,
+  type ProviderWithHealth,
   type ProviderDefinition,
 } from '@ema-agent/provider';
 
@@ -51,9 +51,9 @@ export function providerConfigurationRoute(
   app.get('/definitions', (c) => c.json(configuration.definitionsList()));
 
   app.get('/', (c) => {
-    return c.json(configuration.list().map((snapshot) => shapeSnapshot(
+    return c.json(configuration.listWithHealth().map((snapshot) => shapeSnapshot(
       snapshot,
-      configuration.definition(snapshot.config.definitionId),
+      configuration.getDefinition(snapshot.config.definitionId),
     )));
   });
 
@@ -73,7 +73,7 @@ export function providerConfigurationRoute(
       return c.json(shapeConfig(
         config,
         null,
-        configuration.definition(config.definitionId),
+        configuration.getDefinition(config.definitionId),
       ), 201);
     } catch (error) {
       return providerConfigurationError(c, error);
@@ -82,10 +82,10 @@ export function providerConfigurationRoute(
 
   app.get('/:id', (c) => {
     try {
-      const snapshot = configuration.get(c.req.param('id'));
+      const snapshot = configuration.getWithHealth(c.req.param('id'));
       return c.json(shapeSnapshot(
         snapshot,
-        configuration.definition(snapshot.config.definitionId),
+        configuration.getDefinition(snapshot.config.definitionId),
       ));
     } catch (error) {
       return providerConfigurationError(c, error);
@@ -99,10 +99,10 @@ export function providerConfigurationRoute(
     }
     try {
       configuration.update(c.req.param('id'), parsed.data);
-      const snapshot = configuration.get(c.req.param('id'));
+      const snapshot = configuration.getWithHealth(c.req.param('id'));
       return c.json(shapeSnapshot(
         snapshot,
-        configuration.definition(snapshot.config.definitionId),
+        configuration.getDefinition(snapshot.config.definitionId),
       ));
     } catch (error) {
       return providerConfigurationError(c, error);
@@ -133,7 +133,7 @@ export function providerConfigurationRoute(
 }
 
 function shapeSnapshot(
-  snapshot: ProviderConfigurationSnapshot,
+  snapshot: ProviderWithHealth,
   definition: ProviderDefinition | undefined,
 ) {
   return shapeConfig(snapshot.config, snapshot.health, definition);
@@ -141,7 +141,7 @@ function shapeSnapshot(
 
 function shapeConfig(
   config: ConfiguredProvider,
-  health: ProviderConfigurationSnapshot['health'],
+  health: ProviderWithHealth['health'],
   definition: ProviderDefinition | undefined,
 ) {
   return {
