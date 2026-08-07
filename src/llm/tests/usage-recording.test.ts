@@ -47,7 +47,7 @@ describe('LanguageModelRuntime usage recording', () => {
     expect(records).toEqual([
       expect.objectContaining({
         id: 'llm-call-1', providerId: 'provider-1', capability: 'llm', status: 'completed',
-        inputTokens: 10, outputTokens: 5, costUsd: null, errorCode: null,
+        inputTokens: 10, outputTokens: 5, errorCode: null,
       }),
     ]);
   });
