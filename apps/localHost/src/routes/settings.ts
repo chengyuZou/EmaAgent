@@ -15,7 +15,7 @@ import {
   type SettingsCatalog,
   type SettingsStore,
 } from '@ema-agent/settings';
-import { themeSetting } from '@ema-agent/theme';
+import { themeSetting } from '../settings/themeSetting.js';
 import {
   DEFAULT_EVENT_DISPLAY,
   eventDisplaySetting,

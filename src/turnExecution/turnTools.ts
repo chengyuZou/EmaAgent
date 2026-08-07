@@ -264,7 +264,7 @@ export class TurnToolsBuilder {
       scratchpad: scratchpadDir
         ? { dir: scratchpadDir, author: 'main' }
         : undefined,
-      askUser: this.buildAskUser(turn, signal),
+      askUser: this.buildAskUser(turn, signal, relay),
     };
 
     const profile = executionProfilePolicy(
@@ -382,19 +382,34 @@ export class TurnToolsBuilder {
   private buildAskUser(
     turn: Turn,
     signal: AbortSignal,
-  ): BuiltinToolContext['askUser'] {
+    relay: TurnEventRelay,
+  ): ToolUseContext['askUser'] {
     const interaction = this.deps.askUserInteraction;
     if (!interaction) return undefined;
 
-    return async (promptId, questions, request) => {
+    return async (promptId, questions, request, resolveEvent) => {
       void questions;
-      return awaitUserAnswer({
-        promptId,
-        request: request as AskUserRequiredEvent,
-        turnId: turn.id,
-        signal,
-        interaction,
-      });
+      // 事件发射归 port:required 进 Turn 事件流,resolved 由 Tool 的工厂构造。
+      relay.emit?.(request as TurnExecutionEvent);
+      try {
+        const result = await awaitUserAnswer({
+          promptId,
+          request: request as AskUserRequiredEvent,
+          turnId: turn.id,
+          signal,
+          interaction,
+        });
+        if (resolveEvent) {
+          relay.emit?.(resolveEvent(result.answers) as TurnExecutionEvent);
+        }
+        return result;
+      } catch (error) {
+        // 取消/失败也要清前端卡片;空答案 resolved 是清卡信号,不是成功。
+        if (resolveEvent) {
+          relay.emit?.(resolveEvent({}) as TurnExecutionEvent);
+        }
+        throw error;
+      }
     };
   }
 }

@@ -1,10 +1,17 @@
-// 定义桌面主题选择与正文阅读字体的可调范围。
+// 定义桌面主题与正文阅读字体的可调范围;frontend.* 域例外,托管于 localHost(见 src/settings/README)。
 
 import { defineSetting } from '@ema-agent/settings';
-import type {
-  ContentFontPreset,
-  ThemeSettings,
-} from './types.js';
+
+export type ThemeMode = 'light' | 'dark';
+export type ContentFontPreset = 'system' | 'rounded' | 'reading' | 'custom';
+
+export interface ThemeSettings {
+  hue: number;
+  radius: number;
+  mode: ThemeMode;
+  contentFontPreset: ContentFontPreset;
+  contentFontFamily: string;
+}
 
 export const DEFAULT_THEME_SETTINGS: ThemeSettings = {
   hue: 200,

@@ -54,7 +54,6 @@
     "@ema-agent/storage": "workspace:*",
     "@ema-agent/stt": "workspace:*",
     "@ema-agent/system": "workspace:*",
-    "@ema-agent/theme": "workspace:*",
     "@ema-agent/tasks": "workspace:*",
     "@ema-agent/token": "workspace:*",
     "@ema-agent/tool-builtin": "workspace:*",

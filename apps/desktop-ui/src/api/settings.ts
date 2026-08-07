@@ -2,12 +2,17 @@
  * 读写事件展示、权限超时、主题和知识库模型等通用设置。
  */
 import { sidecarClient } from './sidecar-client.js';
-import type {
-  ContentFontPreset,
-  ThemeSettings,
-} from '@ema-agent/theme';
 
-export type { ContentFontPreset } from '@ema-agent/theme';
+// 与 localHost settings/themeSetting.ts 的 ThemeSettings 同形;桌面外观 wire 由前端本地镜像。
+export type ContentFontPreset = 'system' | 'rounded' | 'reading' | 'custom';
+
+export interface ThemeSettings {
+  hue: number;
+  radius: number;
+  mode: 'light' | 'dark';
+  contentFontPreset: ContentFontPreset;
+  contentFontFamily: string;
+}
 
 // ── Wire-format types ────────────────────────────────────────────────────────
 
