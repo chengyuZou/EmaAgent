@@ -14,6 +14,8 @@ import {
   GlobResultView,
   GrepArgsView,
   GrepResultView,
+  SkillArgsView,
+  SkillResultView,
   SubagentResultView,
   NarrativeSearchArgsView,
   NarrativeSearchResultView,
@@ -35,6 +37,7 @@ const TOOL_UI_REGISTRY: Readonly<Record<string, ToolUIEntry>> = {
   Glob: { ArgsView: GlobArgsView, ResultView: GlobResultView },
   Grep: { ArgsView: GrepArgsView, ResultView: GrepResultView },
   AskUser: { ResultView: AskUserResultView },
+  Skill: { ArgsView: SkillArgsView, ResultView: SkillResultView },
   Subagent: { ResultView: SubagentResultView },
   NarrativeSearch: {
     ArgsView: NarrativeSearchArgsView,

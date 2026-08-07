@@ -31,7 +31,7 @@ export const BuiltinTools = Object.freeze({
     id: 'builtin.narrative.search',
     name: 'NarrativeSearch',
   }),
-  SkillCall: Object.freeze({ id: 'builtin.skill.call', name: 'SkillCall' }),
+  Skill: Object.freeze({ id: 'builtin.skill', name: 'Skill' }),
   ScratchpadWrite:  Object.freeze({ id: 'builtin.scratchpad.write',  name: 'ScratchpadWrite' }),
   ScratchpadRead:   Object.freeze({ id: 'builtin.scratchpad.read',   name: 'ScratchpadRead' }),
   ScratchpadList:   Object.freeze({ id: 'builtin.scratchpad.list',   name: 'ScratchpadList' }),

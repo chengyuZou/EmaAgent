@@ -21,7 +21,6 @@ import type {
   SubagentSpawnerPort,
 } from '@ema-agent/tool-builtin';
 import type { PermissionAuthorizer, PermissionMode } from '@ema-agent/permission';
-import type { SkillRunnerPort } from '@ema-agent/skills';
 import { AgentRunTranscriptProjection } from './runs/agentRunTranscriptProjection.js';
 import type {
   AgentRunStorePort,
@@ -34,9 +33,6 @@ import {
   isAgentRunEvent,
   type AgentExecutionEvent,
 } from './events.js';
-import {
-  ActiveSkillState,
-} from '@ema-agent/skills';
 
 // ── 子 Agent 调度入口 ─────────────────────────────────────────────────────────
 // 负责全部子 Agent 面板事件：
@@ -63,7 +59,6 @@ export interface SubagentSpawnerDeps {
   /** spawn 瞬间读取父 Agent 的当前 ToolPool，Skill 收窄会沿任务树传播。 */
   getParentToolPool: () => ToolPool;
   buildAsk?: StreamingToolExecutorOptions['buildAsk'];
-  skillRunner?: SkillRunnerPort;
   agentRunStore?: AgentRunStorePort;
   agentRunTranscriptWriter?: AgentRunTranscriptWriter;
   toolExecutionState?: ToolExecutionStatePort;
@@ -94,7 +89,6 @@ export class SubagentSpawner implements SubagentSpawnerPort {
     private readonly parentEmit?:           (ev: AgentExecutionEvent) => void,
     private readonly kbSearch?:             KnowledgeSearchPort,
     private readonly budget:                TurnBudget = new TurnBudget(),
-    private readonly parentActiveSkillState: ActiveSkillState = new ActiveSkillState(),
   ) {}
 
   // ── 后台执行 ─────────────────────────────────────────────────────────────
@@ -207,21 +201,16 @@ export class SubagentSpawner implements SubagentSpawnerPort {
 
     // 子 Agent 与父 Turn 在同一工作区和沙箱能力内执行，但拥有独立的可变文件状态。
     // fork 继承父执行已读取文件的快照；fresh 子 Agent 必须自行读取后才能编辑。
-    // Task、AskUser 和新的 SubagentSpawner 不注入，递归与用户交互能力由 Context 投影隐藏。
+    // Task、AskUser、Subagent 与 Skill 不注入，递归/用户交互/技能能力由 Context 投影隐藏。
     const readFileState: ReadFileState = kind === 'fork'
       ? new Map(this.parentReadFileState)
       : new Map();
-    const activeSkillState = kind === 'fork'
-      ? this.parentActiveSkillState.fork()
-      : new ActiveSkillState();
     const capabilityContext: ToolUseContext = {
       workspaceRoot:    this.workspaceRoot,
       platform:         process.platform,
       commandRunner:    this.commandRunner,
       backgroundProcesses: this.deps.backgroundProcesses,
       readFileState,
-      skillRunner:      this.deps.skillRunner,
-      activeSkillState,
       knowledgeSearch:  this.kbSearch,
       scratchpad:       this.scratchpadDir
         ? { dir: this.scratchpadDir, author: `subagent:${agentRunId.slice(0, 8)}` }
@@ -233,7 +222,6 @@ export class SubagentSpawner implements SubagentSpawnerPort {
     const policy = new TurnPolicy(childToolPool);
     const toolContext: ToolUseContext = Object.freeze({
       ...capabilityContext,
-      toolCapabilities: policy.capabilities(),
     });
 
     // 持久化或启动事件订阅者都可能抛错；循环开始前失败时也必须释放监听和索引。

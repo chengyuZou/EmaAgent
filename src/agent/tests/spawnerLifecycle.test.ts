@@ -155,11 +155,6 @@ describe('SubagentSpawner 生命周期', () => {
       undefined,
       new Map(),
     );
-    parentPolicy.capabilities().restrict({
-      source: 'skill:allowed-only',
-      allowedToolPatterns: ['Allowed'],
-    });
-
     await spawner.spawn('answer directly', {
       agentRunId: asAgentRunId('33333333-3333-4333-8333-333333333333'),
     }, new AbortController().signal);

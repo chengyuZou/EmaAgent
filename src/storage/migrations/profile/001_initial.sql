@@ -305,9 +305,12 @@ CREATE TABLE settings (
   updated_at INTEGER NOT NULL
 );
 
+-- skills: 目录是事实源,本表只是索引/溯源/对账。
+-- 无 enabled 列:启用状态统一由 Settings skill.disabledKeys 决定(deny-list)。
+-- id 稳定:手动放置 = 归一化路径哈希;站点安装 = site_<siteId>_<entryId>。
 CREATE TABLE skills (
   id            TEXT PRIMARY KEY,
-  name          TEXT NOT NULL UNIQUE,
+  name          TEXT NOT NULL,
   version       TEXT NOT NULL DEFAULT '1.0.0',
   description   TEXT NOT NULL DEFAULT '',
   arg_hint      TEXT,
@@ -315,10 +318,31 @@ CREATE TABLE skills (
   source        TEXT NOT NULL DEFAULT 'user',
   source_url    TEXT,
   sha256        TEXT,
+  site_id       TEXT,
+  site_entry_id TEXT,
   size_bytes    INTEGER NOT NULL DEFAULT 0,
-  enabled       INTEGER NOT NULL DEFAULT 1,
   content_mtime INTEGER NOT NULL DEFAULT 0,
   installed_at  INTEGER NOT NULL
+);
+
+-- skill_sites: 市场面站点实体 + 索引缓存。站点的 enabled 是实体状态,与技能启用无关。
+CREATE TABLE skill_sites (
+  id             TEXT PRIMARY KEY,
+  label          TEXT NOT NULL,
+  index_url      TEXT NOT NULL,
+  enabled        INTEGER NOT NULL DEFAULT 1,
+  builtin        INTEGER NOT NULL DEFAULT 0,
+  sort_order     INTEGER NOT NULL DEFAULT 0,
+  auto_update    INTEGER NOT NULL DEFAULT 0,
+  created_at     INTEGER NOT NULL,
+  index_json     TEXT,
+  schema_version INTEGER,
+  last_fetch_at  INTEGER,
+  fetch_status   TEXT NOT NULL DEFAULT 'never',
+  last_error     TEXT,
+  etag           TEXT,
+  last_modified  TEXT,
+  updated_at     INTEGER NOT NULL
 );
 
 CREATE UNIQUE INDEX idx_character_cards_active

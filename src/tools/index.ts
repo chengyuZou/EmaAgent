@@ -2,9 +2,6 @@
 export type {
   ReadFileEntry,
   ReadFileState,
-  ToolCapabilityRestriction,
-  ToolCapabilitySnapshot,
-  ToolCapabilityScope,
 } from './types.js';
 export type {
   Tool,

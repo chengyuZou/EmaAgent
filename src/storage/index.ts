@@ -63,6 +63,8 @@ export { McpServersRepo }  from './repos/profile/mcp-servers.js';
 export type { McpServerRow } from './repos/profile/mcp-servers.js';
 export { SkillsRepo }      from './repos/profile/skills.js';
 export type { SkillRow }   from './repos/profile/skills.js';
+export { SkillSitesRepo }  from './repos/profile/skill-sites.js';
+export type { SkillSiteRow, SkillSiteInsert } from './repos/profile/skill-sites.js';
 export { MarketSourcesRepo } from './repos/profile/market-sources.js';
 export type { MarketSourceRow } from './repos/profile/market-sources.js';
 export { PermissionRulesRepo } from './repos/profile/permissionRules.js';

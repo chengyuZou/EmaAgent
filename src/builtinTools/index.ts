@@ -18,7 +18,7 @@ import { TaskGetTool } from './tools/TaskGetTool/TaskGetTool.js';
 import { TaskListTool } from './tools/TaskListTool/TaskListTool.js';
 import { TaskUpdateTool } from './tools/TaskUpdateTool/TaskUpdateTool.js';
 import { AskUserTool } from './tools/AskUserTool/AskUserTool.js';
-import { SkillCallTool } from './tools/SkillCallTool/SkillCallTool.js';
+import { SkillTool } from './tools/SkillTool/SkillTool.js';
 import { KnowledgeBaseSearchTool } from './tools/KnowledgeBaseSearchTool/KnowledgeBaseSearchTool.js';
 import { NarrativeSearchTool } from './tools/NarrativeSearchTool/NarrativeSearchTool.js';
 import { SubagentTool } from './tools/SubagentTool/SubagentTool.js';
@@ -69,7 +69,7 @@ export {
   TaskListTool,
   TaskUpdateTool,
   AskUserTool,
-  SkillCallTool,
+  SkillTool,
   KnowledgeBaseSearchTool,
   NarrativeSearchTool,
   SubagentTool,
@@ -105,7 +105,7 @@ export type {
 } from './tools/TaskListTool/TaskListTool.js';
 export type { TaskUpdateResult } from './tools/TaskUpdateTool/TaskUpdateTool.js';
 export type { AskUserResult } from './tools/AskUserTool/AskUserTool.js';
-export type { SkillCallResult } from './tools/SkillCallTool/SkillCallTool.js';
+export type { SkillToolResult } from './tools/SkillTool/SkillTool.js';
 export type { NarrativeSearchResult } from './tools/NarrativeSearchTool/NarrativeSearchTool.js';
 // ── 注册 ──────────────────────────────────────────────────────────────────────
 
@@ -129,7 +129,7 @@ const ALL_BUILTIN_TOOLS: Tool<any, any, any, any>[] = [
   TaskListTool,
   TaskUpdateTool,
   AskUserTool,
-  SkillCallTool,
+  SkillTool,
   KnowledgeBaseSearchTool,
   NarrativeSearchTool,
   SubagentTool,

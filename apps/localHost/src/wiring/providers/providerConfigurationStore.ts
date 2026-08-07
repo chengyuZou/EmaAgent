@@ -2,9 +2,9 @@
 import type {
   ConfiguredProvider,
   ProviderCapabilityConfiguration,
-  ProviderConfigurationSnapshot,
   ProviderConfigurationStore,
   ProviderHealthSnapshot,
+  ProviderWithHealth,
   SaveProviderConfiguration,
 } from '@ema-agent/provider';
 import type {
@@ -22,7 +22,7 @@ export class StorageProviderConfigurationStore implements ProviderConfigurationS
     return row ? mapProvider(row) : undefined;
   }
 
-  getWithHealth(id: string): ProviderConfigurationSnapshot | undefined {
+  getWithHealth(id: string): ProviderWithHealth | undefined {
     const snapshot = this.repo.getWithHealth(id);
     if (!snapshot) return undefined;
     return {
@@ -31,7 +31,7 @@ export class StorageProviderConfigurationStore implements ProviderConfigurationS
     };
   }
 
-  listWithHealth(): ProviderConfigurationSnapshot[] {
+  listWithHealth(): ProviderWithHealth[] {
     return this.repo.listWithHealth().map((snapshot) => ({
       config: mapProvider(snapshot.config),
       health: mapHealth(snapshot.health),
@@ -84,6 +84,5 @@ function mapHealth(row: ProviderHealthRow | null): ProviderHealthSnapshot | null
     lastProbedAt: row.last_probed_at,
     latencyMs: row.latency_ms,
     lastError: row.last_error,
-    consecutiveFails: row.consecutive_fails,
   };
 }

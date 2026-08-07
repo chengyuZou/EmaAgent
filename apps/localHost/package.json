@@ -55,7 +55,6 @@
     "@ema-agent/attachment": "workspace:*",
     "@ema-agent/skills":    "workspace:*",
     "@ema-agent/mcp": "workspace:*",
-    "@ema-agent/marketplace": "workspace:*",
     "@ema-agent/system": "workspace:*",
     "@ema-agent/git-utils": "workspace:*",
     "@hono/node-server": "^1.14.3",

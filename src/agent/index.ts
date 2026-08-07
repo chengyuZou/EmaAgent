@@ -1,9 +1,5 @@
 // 统一导出 Agent 循环、策略、预算和子 Agent 执行能力。
 export { TurnPolicy } from './policy.js';
-export {
-  AgentToolCapabilityScope,
-  ToolCapabilityRestrictionError,
-} from './tool-capability-scope.js';
 export { SubagentSpawner } from './spawner.js';
 export type { SubagentSpawnerDeps } from './spawner.js';
 export { AgentRunStore } from './runs/agentRunStore.js';

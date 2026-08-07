@@ -7,14 +7,8 @@ import type { CommandRunnerPort } from '@ema-agent/sandbox';
 import type { TaskStorePort } from '@ema-agent/tasks';
 import type { KnowledgeSearchPort } from '@ema-agent/knowledge';
 import type { NarrativeSearchPort } from '@ema-agent/narrative';
-import type {
-  ActiveSkillStatePort,
-  SkillRunnerPort,
-} from '@ema-agent/skills';
-import type {
-  ReadFileState,
-  ToolCapabilityScope,
-} from '../types.js';
+import type { SkillPool } from '@ema-agent/skills';
+import type { ReadFileState } from '../types.js';
 import type { AskUserQuestionSpec } from '../events.js';
 import type { BackgroundProcessPort } from '../background/types.js';
 
@@ -108,16 +102,12 @@ export interface ToolUseContext {
   readonly taskStore?: TaskStorePort;
   /** Subagent 工具的子 Agent 启动器。 */
   readonly subagentSpawner?: SubagentSpawnerPort;
-  /** SkillCall 工具的 Skill 运行器。 */
-  readonly skillRunner?: SkillRunnerPort;
-  /** 当前 Agent 独占的 Skill 激活状态。 */
-  readonly activeSkillState?: ActiveSkillStatePort;
+  /** Skill 工具的本根 Turn 冻结技能池;缺省(子 Agent、chat 态)时 Skill 工具不可见。 */
+  readonly skillPool?: SkillPool;
   /** Scratchpad 工具的 Turn 级临时存储位置。 */
   readonly scratchpad?: ScratchpadPort;
   /** File 工具在当前 Turn 内共享的读取状态，用于去重和写入前校验。 */
   readonly readFileState?: ReadFileState;
-  /** SkillCall 收窄当前 Agent 工具能力的能力边界。 */
-  readonly toolCapabilities?: ToolCapabilityScope;
   /** AskUser 工具的问询解析器。 */
   readonly askUser?: AskUserPort;
 }
