@@ -23,14 +23,14 @@ export const ModelPicker = (): React.JSX.Element => {
   const [model, setModel] = useState('deepseek-v4-flash');
   return (
     <Frame>
-      <h2 className="text-sm uppercase tracking-wider text-neutral-400">model picker (⌨️ 搜索)</h2>
+      <h2 className="text-sm uppercase tracking-wider text-[var(--ema-text-tertiary)]">model picker (⌨️ 搜索)</h2>
       <Combobox
         options={MODELS}
         value={model}
         onChange={setModel}
         placeholder="选择模型…"
       />
-      <p className="text-xs text-neutral-500">
+      <p className="text-xs text-[var(--ema-text-tertiary)]">
         当前选中：{model}。输入 "qwen" 筛选，↓↑ 导航，Enter 选择。
       </p>
     </Frame>
@@ -39,13 +39,13 @@ export const ModelPicker = (): React.JSX.Element => {
 
 export const Preselected = (): React.JSX.Element => (
   <Frame>
-    <h2 className="text-sm uppercase tracking-wider text-neutral-400">pre-selected value</h2>
+    <h2 className="text-sm uppercase tracking-wider text-[var(--ema-text-tertiary)]">pre-selected value</h2>
     <Combobox
       options={MODELS}
       value="gpt-4o"
       onChange={() => { /* noop for demo */ }}
     />
-    <p className="text-xs text-neutral-500">GPT-4o 已选中但 disabled，不可通过键盘/鼠标改选。</p>
+    <p className="text-xs text-[var(--ema-text-tertiary)]">GPT-4o 已选中但 disabled，不可通过键盘/鼠标改选。</p>
   </Frame>
 );
 
@@ -57,7 +57,7 @@ export const ManyOptions = (): React.JSX.Element => {
   const [val, setVal] = useState('option-0');
   return (
     <Frame>
-      <h2 className="text-sm uppercase tracking-wider text-neutral-400">50 选项（滚动 + 键盘导航）</h2>
+      <h2 className="text-sm uppercase tracking-wider text-[var(--ema-text-tertiary)]">50 选项（滚动 + 键盘导航）</h2>
       <Combobox options={bigList} value={val} onChange={setVal} placeholder="输入筛选…" />
     </Frame>
   );
@@ -65,7 +65,7 @@ export const ManyOptions = (): React.JSX.Element => {
 
 export const Empty = (): React.JSX.Element => (
   <Frame>
-    <h2 className="text-sm uppercase tracking-wider text-neutral-400">无匹配</h2>
+    <h2 className="text-sm uppercase tracking-wider text-[var(--ema-text-tertiary)]">无匹配</h2>
     <Combobox
       options={MODELS}
       value="deepseek-v4-flash"

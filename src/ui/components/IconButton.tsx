@@ -4,16 +4,9 @@ import { cn } from '../utils/cn.js';
 
 // ── IconButton ──────────────────────────────────────────────────────────────
 //
-// Forced-circular button used wherever an action is icon-only:
-//   - FloatingDock buttons
-//   - Chat input embedded send button (textarea bottom-right iconNode)
-//   - Toolbar attachments / mic / TTS toggle
-//
-// Differences from <Button/>:
-//   - Always circular (rounded-full, locked aspect-ratio 1:1)
-//   - Children replaced by `icon` (string class) or `iconNode` (ReactNode for SVG)
-//   - `label` is required for accessibility (aria-label)
-//   - No text content rendered visually; tooltip is consumer's responsibility
+// 强制圆形的纯图标按钮(FloatingDock / 聊天输入框内嵌发送 / 工具栏附件等)。
+// 与 Button 的差异:始终圆形、内容用 icon 类或 iconNode、label 必填(无障碍),
+// 不渲染可见文本,tooltip 由调用方负责。
 
 export type IconButtonVariant = 'default' | 'primary' | 'danger';
 export type IconButtonSize    = 'sm' | 'md' | 'lg';

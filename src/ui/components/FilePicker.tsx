@@ -11,11 +11,8 @@ import {
 import { cn } from '../utils/cn.js';
 
 // ── FilePicker ───────────────────────────────────────────────────────────────
-//
-// Hidden native <input type="file"> wrapped behind a trigger. Lets call sites
-// avoid raw <input> (CLAUDE.md red line) while keeping the native file dialog.
-// For directory picks or Tauri-managed dialogs, use tauriBridge.openFileDialog
-// directly instead.
+// 隐藏原生 file input,由触发按钮唤起系统文件对话框;
+// 目录选择或 Tauri 托管对话框请直接用 tauriBridge.openFileDialog。
 
 export interface FilePickerProps {
   /** accept attribute, e.g. "image/*", ".json,.csv". */

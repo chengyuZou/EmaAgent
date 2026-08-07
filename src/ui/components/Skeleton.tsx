@@ -1,15 +1,8 @@
 import { cn } from '../utils/cn.js';
 
 // ── Skeleton ────────────────────────────────────────────────────────────────
-//
-// Loading placeholder. Two animation styles:
-//   - pulse: opacity-only breathing (cheap, default)
-//   - wave:  ::after gradient sweep (richer, slightly more expensive)
-//
-// Animation keyframes live in apps/desktop-ui/src/styles/ so they are
-// tree-shakeable and consistent with the rest of the design system.
-//
-// Sized via `width` / `height` props (CSS strings) or className overrides.
+// 加载占位:动画类 ema-skeleton-pulse/wave 定义在 desktop-ui styles,
+// 与设计系统保持一致;尺寸用 width/height prop 或 className 覆盖。
 
 export type SkeletonAnimation = 'pulse' | 'wave' | 'none';
 

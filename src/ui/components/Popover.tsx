@@ -4,11 +4,7 @@ import { cn } from '../utils/cn.js';
 
 // ── Popover ─────────────────────────────────────────────────────────────────
 //
-// Click-triggered floating panel. Used for:
-//   - Session switcher (chat top bar)
-//   - Model picker (chat bottom bar)
-//   - Context window breakdown
-//   - Mode picker (input toolbar)
+// 点击触发的浮层面板:会话切换、模型选择、上下文窗口明细、模式选择等。
 
 export interface PopoverProps {
   /** Trigger element. The trigger ref forwarding is handled by Radix. */

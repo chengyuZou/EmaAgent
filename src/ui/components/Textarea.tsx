@@ -11,17 +11,11 @@ import type { ReactNode, TextareaHTMLAttributes } from 'react';
 import { cn } from '../utils/cn.js';
 
 // ── Textarea ────────────────────────────────────────────────────────────────
-//
-// Multi-line text input with:
-//   - Auto-grow (height tracks content up to `maxRows`)
-//   - `embeddedAction` slot — absolute-positioned ReactNode at bottom-right
-//     INSIDE the textarea visual. This is THE slot used by ChatInput for its
-//     circular send button. See docs/frontend-skeleton.md §5.
-//
-// The action is rendered in a sibling positioned div, NOT inside the
-// <textarea> element itself (textareas can't contain children). We pad the
-// textarea's bottom-right corner to reserve space so typed text never collides
-// with the action.
+// 多行文本输入,支持:
+//   - 自动增高(高度随内容增长,上限 maxRows)
+//   - embeddedAction 插槽——绝对定位于输入框右下角的 ReactNode,
+//     即 ChatInput 的圆形发送按钮。按钮渲染在与 textarea 同级的 div 中
+//     (textarea 不能包含子元素),并通过右下角 padding 预留空间避免文字重叠。
 
 export interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
   /** Right-bottom corner inset slot (e.g. circular send button). */

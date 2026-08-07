@@ -4,14 +4,8 @@ import { cn } from '../utils/cn.js';
 
 // ── DropdownMenu ────────────────────────────────────────────────────────────
 //
-// Click-triggered menu. Used by the chat mode picker (with submenu for Agent
-// plan/debug/full), chat history actions (copy/delete), etc.
-//
-// Item types:
-//   { kind: 'item', label, icon?, danger?, disabled?, onSelect, shortcut? }
-//   { kind: 'separator' }
-//   { kind: 'submenu', label, icon?, items: MenuItem[] }
-//   { kind: 'checkbox', label, checked, onCheckedChange }
+// 点击触发的菜单(聊天模式切换、历史操作等)。
+// 条目类型:item / separator / submenu(递归) / checkbox。
 
 export type MenuItem =
   | { kind: 'item';      label: string; icon?: string; danger?: boolean; disabled?: boolean; shortcut?: string; onSelect(): void }

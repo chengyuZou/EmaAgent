@@ -15,13 +15,13 @@ export const Basic = (): React.JSX.Element => {
   const [text, setText] = useState('');
   return (
     <Frame>
-      <h2 className="mb-3 text-sm uppercase tracking-wider text-neutral-400">basic auto-grow</h2>
+      <h2 className="mb-3 text-sm uppercase tracking-wider text-[var(--ema-text-tertiary)]">basic auto-grow</h2>
       <Textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
         placeholder="输入消息…"
       />
-      <p className="mt-2 text-xs text-neutral-500">高度跟着内容长，达到 maxRows=8 后内部滚动。</p>
+      <p className="mt-2 text-xs text-[var(--ema-text-tertiary)]">高度跟着内容长，达到 maxRows=8 后内部滚动。</p>
     </Frame>
   );
 };
@@ -39,7 +39,7 @@ export const WithEmbeddedSend = (): React.JSX.Element => {
 
   return (
     <Frame>
-      <h2 className="mb-3 text-sm uppercase tracking-wider text-neutral-400">
+      <h2 className="mb-3 text-sm uppercase tracking-wider text-[var(--ema-text-tertiary)]">
         circular send button (frontend-skeleton §5)
       </h2>
       <Textarea
@@ -63,7 +63,7 @@ export const WithEmbeddedSend = (): React.JSX.Element => {
           />
         }
       />
-      <p className="mt-2 text-xs text-neutral-500">
+      <p className="mt-2 text-xs text-[var(--ema-text-tertiary)]">
         圆形按钮位于 textarea 内部右下角。空文本时按钮变 default；有内容时变 primary 高亮。
       </p>
     </Frame>
@@ -72,7 +72,7 @@ export const WithEmbeddedSend = (): React.JSX.Element => {
 
 export const ErrorState = (): React.JSX.Element => (
   <Frame>
-    <h2 className="mb-3 text-sm uppercase tracking-wider text-neutral-400">error state</h2>
+    <h2 className="mb-3 text-sm uppercase tracking-wider text-[var(--ema-text-tertiary)]">error state</h2>
     <Textarea
       defaultValue="超过 1000 字会失败"
       error
@@ -83,7 +83,7 @@ export const ErrorState = (): React.JSX.Element => (
 
 export const Disabled = (): React.JSX.Element => (
   <Frame>
-    <h2 className="mb-3 text-sm uppercase tracking-wider text-neutral-400">disabled</h2>
+    <h2 className="mb-3 text-sm uppercase tracking-wider text-[var(--ema-text-tertiary)]">disabled</h2>
     <Textarea
       defaultValue="只读内容"
       disabled

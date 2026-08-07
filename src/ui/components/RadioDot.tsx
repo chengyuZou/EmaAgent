@@ -2,9 +2,7 @@ import type { JSX } from 'react';
 import { cn } from '../utils/cn.js';
 
 // ── RadioDot ─────────────────────────────────────────────────────────────────
-//
-// Radio selection dot: ring + inner dot when selected.
-// Replaces the duplicate radio dot markup in BindingsTab (provider card + model card).
+// 单选圆点:未选中为空心环,选中时填充主色内点。
 
 export interface RadioDotProps {
   selected: boolean;

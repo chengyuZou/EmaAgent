@@ -119,8 +119,8 @@ export function emaSharedPreset(options: EmaSharedPresetOptions = {}): Preset[] 
       // dark mode is class-driven (toggled via root `.dark` class).
       dark: 'class',
     }),
-    // OKLCH dynamic color system — primary (pink) + violet derived from one hue var.
-    // Changing --chromatic-hue at runtime shifts both palettes simultaneously.
+    // OKLCH 动态色板——主色(water-blue)与 violet 都由同一个 hue 变量派生,
+    // 运行时修改 --chromatic-hue 同时驱动两套色阶。
     chromatic({
       baseHue: EMA_PRIMARY_HUE,
       colors: {

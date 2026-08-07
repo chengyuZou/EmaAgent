@@ -11,14 +11,9 @@ import { cn } from '../utils/cn.js';
 
 // ── Field ───────────────────────────────────────────────────────────────────
 //
-// Form field wrapper. AIRI's field-*.vue pattern ported to React: a consistent
-// label → description → input → error layout block.
-//
-// Use: Every setting form row, every provider editor field.
-//
-// The `inputId` prop links the <label htmlFor> to the input's `id`, providing
-// accessible click-to-focus behaviour without wrapping the input in the label
-// (the input is rendered by the consumer as `children`).
+// 表单字段包装:统一的 标签 → 描述 → 输入 → 错误 布局块。
+// inputId 连接 label 与输入控件,实现无障碍点击聚焦;
+// 控件由调用方以 children 传入,不强制包裹。
 
 export interface FieldProps {
   /** Label text, or ReactNode for rich content. */

@@ -2,9 +2,8 @@ import * as RadixCheckbox from '@radix-ui/react-checkbox';
 import { cn } from '../utils/cn.js';
 
 // ── Checkbox ────────────────────────────────────────────────────────────────
-//
-// Supports three states: unchecked / checked / indeterminate.
-// `showLabel` wraps in a <label> for click-to-toggle on the text.
+// 支持三态:未选中 / 选中 / 不确定(indeterminate);
+// showLabel 时用 <label> 包裹,点击文字可切换。
 
 export interface CheckboxProps {
   checked?:        boolean | 'indeterminate';

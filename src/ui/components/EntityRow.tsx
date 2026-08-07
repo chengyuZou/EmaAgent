@@ -2,14 +2,9 @@ import type { CSSProperties, JSX, ReactNode } from 'react';
 import { cn } from '../utils/cn.js';
 
 // ── EntityRow ────────────────────────────────────────────────────────────────
-//
-// Generic list-item card base: decorate + active/inactive border + stagger.
-// Padding/layout/actions passed via className + children (slot pattern) so the
-// 12 heterogeneous list items (CardListItem / NodeRow / ServerRow / DocumentRow
-// / LibraryRow / IngestJobRow / DataDirRow / SessionRow / RefAudioRow /
-// ShortcutRow / SkillRow / ItemRow) can share one base without forcing a layout.
-//
-// Renders <button> when onClick is given (clickable row), else <div>.
+// 通用列表项卡片基座:装饰 + 激活/未激活边框 + stagger 入场。
+// 布局/内边距/操作全部由 className + children 传入(slot 模式),
+// 让各类异构列表行共用同一基座;有 onClick 时渲染 button,否则 div。
 
 export interface EntityRowProps {
   /** `ema-card-decorate--xxx` variant. */

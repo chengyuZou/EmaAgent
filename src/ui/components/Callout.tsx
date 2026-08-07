@@ -2,9 +2,7 @@ import type { ReactNode } from 'react';
 import { cn } from '../utils/cn.js';
 
 // ── Callout ─────────────────────────────────────────────────────────────────
-//
-// Banner / notice. Four semantic colors. Has a left accent stripe
-// (via ::before pseudo using inset border-left).
+// 横幅提示:四种语义色,左侧强调色条(::before inset 实现)。
 
 export type CalloutVariant = 'info' | 'success' | 'warn' | 'danger';
 

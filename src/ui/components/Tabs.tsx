@@ -5,8 +5,7 @@ import { cn } from '../utils/cn.js';
 
 // ── Tabs ────────────────────────────────────────────────────────────────────
 //
-// Horizontal or vertical Tabs. Mostly a thin Radix wrap with styled triggers
-// and content panes.
+// 水平/垂直标签页,基于 Radix 的薄封装,自带触发器样式与内容面板。
 //
 // horizontal underline/pill 用滑动指示器(抄 AIRI select-tab):List ::before 滑块
 // 按 --tab-active-index/--tab-count calc 平滑滑动,trigger 等宽(flex-1)。

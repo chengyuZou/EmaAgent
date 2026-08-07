@@ -2,9 +2,7 @@ import type { JSX } from 'react';
 import { cn } from '../utils/cn.js';
 
 // ── EmptyState ───────────────────────────────────────────────────────────────
-//
-// Centered icon + title + optional hint, for empty/loading-fallback states.
-// Replaces the scattered bare <div>/<p> empty states across settings tabs.
+// 居中图标 + 标题 + 可选提示,用于空态/加载兜底,替代设置页散落的裸 div 空态。
 
 export interface EmptyStateProps {
   /** UnoCSS icon class, e.g. "i-mdi:store-outline". */

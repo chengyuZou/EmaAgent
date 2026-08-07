@@ -3,11 +3,8 @@ import type { ButtonHTMLAttributes } from 'react';
 import { cn } from '../utils/cn.js';
 
 // ── CardButton ───────────────────────────────────────────────────────────────
-//
-// Clickable card. For "card-as-button" selection patterns (provider picker,
-// model grid, session row, swatch) where raw <button> + card styles would be
-// re-implemented per call site. Carries an optional `selected` state
-// (primary border + muted bg). Token-driven, light/dark safe.
+// 可点击卡片:供应商选择/模型网格/会话行等"整卡即按钮"场景,
+// 自带 selected 状态(主色描边 + muted 底色),token 驱动,明暗安全。
 
 export type CardButtonPadding = 'none' | 'sm' | 'md' | 'lg';
 

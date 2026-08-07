@@ -2,9 +2,7 @@ import type { ReactNode } from 'react';
 import { cn } from '../utils/cn.js';
 
 // ── Badge ───────────────────────────────────────────────────────────────────
-//
-// Small chip / tag. Use for status indicators, counts, mode labels.
-// `dot=true` renders a minimal colored circle (used in status bars).
+// 小徽标/标签:状态、计数、模式标识;dot=true 时渲染纯色圆点(状态条用)。
 
 export type BadgeVariant = 'neutral' | 'primary' | 'violet' | 'success' | 'warn' | 'danger';
 

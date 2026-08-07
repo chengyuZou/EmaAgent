@@ -3,10 +3,8 @@ import { Callout } from './Callout.js';
 import { Button } from './Button.js';
 
 // ── ConfirmDialog ───────────────────────────────────────────────────────────
-//
-// Confirmation modal for destructive / irreversible actions. Replaces native
-// confirm(). Built on Dialog + Callout + Button (all token-driven, light/dark
-// safe). Esc / overlay-click = cancel.
+// 确认弹窗:替代原生 confirm(),由 Dialog + Callout + Button 组成;
+// Esc / 点击遮罩 = 取消。
 
 export interface ConfirmDialogProps {
   open:         boolean;

@@ -4,10 +4,7 @@ import { Input } from './Input.js';
 import { Button } from './Button.js';
 
 // ── PromptDialog ─────────────────────────────────────────────────────────────
-//
-// Single-line input modal. Replaces native prompt(). Built on Dialog + Input +
-// Button (all token-driven, light/dark safe). Esc / overlay-click = cancel.
-// Enter = confirm.
+// 单行输入弹窗:替代原生 prompt();Esc/遮罩点击 = 取消,Enter = 确认。
 
 export interface PromptDialogProps {
   open:         boolean;

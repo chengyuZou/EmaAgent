@@ -1,9 +1,7 @@
 import type { JSX } from 'react';
 
 // ── ToolSpecItem ─────────────────────────────────────────────────────────────
-//
-// MCP tool spec row: name + params + description + optional schema.
-// Replaces the 3 duplicate white-box tool list items in McpTab (probe / expand / detail).
+// MCP 工具规格行:名称 + 参数 + 描述 + 可选 schema。
 
 export interface ToolSpecItemProps {
   name:         string;

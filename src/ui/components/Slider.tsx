@@ -4,9 +4,8 @@ import { cn } from '../utils/cn.js';
 
 // ── Slider ──────────────────────────────────────────────────────────────────
 //
-// Discrete-step slider for things like LLM "Effort" (Low / Medium / High / Max).
-// `steps` defines all valid stops + their visible labels. We render the
-// labels under the track.
+// 离散步进滑杆(如 LLM Effort 的 Low/Medium/High/Max);
+// steps 定义全部有效档位及其标签,标签渲染在轨道下方。
 
 export interface SliderStep<T = number> {
   value: T;

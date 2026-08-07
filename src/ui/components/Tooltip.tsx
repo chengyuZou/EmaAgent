@@ -4,12 +4,8 @@ import { cn } from '../utils/cn.js';
 
 // ── Tooltip ─────────────────────────────────────────────────────────────────
 //
-// Hover/focus-triggered text label. Wrap any focusable element. Used by
-// DockButton, IconButton consumers, etc. Single-line only — for richer
-// floating content use <Popover/>.
-//
-// NOTE: a <Tooltip.Provider> must be mounted somewhere above (typically in
-// the app root). We expose <TooltipProvider> as a convenience re-export.
+// 悬停/聚焦触发的文字标签,包裹任意可聚焦元素;仅单行文本,
+// 更丰富的内容请用 <Popover/>。应用根部需挂载 <TooltipProvider>。
 
 export const TooltipProvider = RadixTooltip.Provider;
 

@@ -5,19 +5,9 @@ import { Popover } from './Popover.js';
 
 // ── Combobox ────────────────────────────────────────────────────────────────
 //
-// Searchable select built on the existing Popover component. Key behaviours:
-//   - Type to filter the list
-//   - ↓↑ arrow keys cycle through ENABLED options only (wrap-around), Enter
-//     selects the highlighted option, Esc closes
-//   - Highlight never rests on a disabled option; filter change resets it to
-//     the first enabled option
-//   - Click outside closes
-//   - Selection callback fires with the chosen option value
-//
-// Uses Popover's trigger/children pattern — the input IS the trigger.
-// Sufficient for V1 use cases: model picker (~10 items), session switcher (~50
-// items). For >500 filtered items, a virtualised alternative would be warranted
-// (V2).
+// 基于 Popover 的可搜索单选:输入过滤、↓↑ 只在可用项间循环(Enter 选择/Esc 关闭)、
+// 高亮不落在禁用项、点击外部关闭。输入框即 trigger。
+// 适用 V1 场景(模型选择约 10 项、会话切换约 50 项);超过 500 项需虚拟列表。
 
 export interface ComboboxOption {
   value:    string;

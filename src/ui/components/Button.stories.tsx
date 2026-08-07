@@ -18,7 +18,7 @@ const Frame = ({ children }: { children: React.ReactNode }): React.JSX.Element =
 
 export const Variants = (): React.JSX.Element => (
   <Frame>
-    <h2 className="mb-4 text-sm uppercase tracking-wider text-neutral-400">variants</h2>
+    <h2 className="mb-4 text-sm uppercase tracking-wider text-[var(--ema-text-tertiary)]">variants</h2>
     <div className="flex flex-wrap gap-3">
       {VARIANTS.map((v) => (
         <Button key={v} variant={v}>{v}</Button>
@@ -29,7 +29,7 @@ export const Variants = (): React.JSX.Element => (
 
 export const Sizes = (): React.JSX.Element => (
   <Frame>
-    <h2 className="mb-4 text-sm uppercase tracking-wider text-neutral-400">sizes</h2>
+    <h2 className="mb-4 text-sm uppercase tracking-wider text-[var(--ema-text-tertiary)]">sizes</h2>
     <div className="flex flex-wrap items-center gap-3">
       {SIZES.map((s) => (
         <Button key={s} variant="primary" size={s}>{s} button</Button>
@@ -40,7 +40,7 @@ export const Sizes = (): React.JSX.Element => (
 
 export const Shapes = (): React.JSX.Element => (
   <Frame>
-    <h2 className="mb-4 text-sm uppercase tracking-wider text-neutral-400">shapes</h2>
+    <h2 className="mb-4 text-sm uppercase tracking-wider text-[var(--ema-text-tertiary)]">shapes</h2>
     <div className="flex flex-wrap gap-3">
       {SHAPES.map((s) => (
         <Button key={s} variant="secondary" shape={s}>{s}</Button>
@@ -51,7 +51,7 @@ export const Shapes = (): React.JSX.Element => (
 
 export const WithIcon = (): React.JSX.Element => (
   <Frame>
-    <h2 className="mb-4 text-sm uppercase tracking-wider text-neutral-400">with icon</h2>
+    <h2 className="mb-4 text-sm uppercase tracking-wider text-[var(--ema-text-tertiary)]">with icon</h2>
     <div className="flex flex-wrap gap-3">
       <Button variant="primary"   icon="i-mdi:send">    发送</Button>
       <Button variant="secondary" icon="i-mdi:cog">    设置</Button>
@@ -63,7 +63,7 @@ export const WithIcon = (): React.JSX.Element => (
 
 export const States = (): React.JSX.Element => (
   <Frame>
-    <h2 className="mb-4 text-sm uppercase tracking-wider text-neutral-400">states</h2>
+    <h2 className="mb-4 text-sm uppercase tracking-wider text-[var(--ema-text-tertiary)]">states</h2>
     <div className="flex flex-wrap gap-3">
       <Button variant="primary">normal</Button>
       <Button variant="primary" loading>loading</Button>
@@ -74,7 +74,7 @@ export const States = (): React.JSX.Element => (
 
 export const Block = (): React.JSX.Element => (
   <Frame>
-    <h2 className="mb-4 text-sm uppercase tracking-wider text-neutral-400">block (full width)</h2>
+    <h2 className="mb-4 text-sm uppercase tracking-wider text-[var(--ema-text-tertiary)]">block (full width)</h2>
     <div className="max-w-sm space-y-3">
       <Button variant="primary"   block>主要操作</Button>
       <Button variant="secondary" block>次要操作</Button>
@@ -84,10 +84,10 @@ export const Block = (): React.JSX.Element => (
 
 export const Matrix = (): React.JSX.Element => (
   <Frame>
-    <h2 className="mb-4 text-sm uppercase tracking-wider text-neutral-400">full matrix</h2>
+    <h2 className="mb-4 text-sm uppercase tracking-wider text-[var(--ema-text-tertiary)]">full matrix</h2>
     <table className="border-collapse">
       <thead>
-        <tr className="text-xs text-neutral-500">
+        <tr className="text-xs text-[var(--ema-text-tertiary)]">
           <th className="px-3 pb-2 text-left">variant ↓ / size →</th>
           {SIZES.map((s) => <th key={s} className="px-3 pb-2 text-left">{s}</th>)}
         </tr>
@@ -95,7 +95,7 @@ export const Matrix = (): React.JSX.Element => (
       <tbody>
         {VARIANTS.map((v) => (
           <tr key={v}>
-            <td className="px-3 py-2 text-xs text-neutral-400">{v}</td>
+            <td className="px-3 py-2 text-xs text-[var(--ema-text-tertiary)]">{v}</td>
             {SIZES.map((s) => (
               <td key={s} className="px-3 py-2">
                 <Button variant={v} size={s}>label</Button>

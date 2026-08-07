@@ -3,14 +3,8 @@ import { cn } from '../utils/cn.js';
 import { clampFinite } from '../utils/number.js';
 
 // ── Progress ────────────────────────────────────────────────────────────────
-//
-// Horizontal progress bar with optional shine animation (copied from AIRI's
-// progress.vue). Used for:
-//   - Model download / load progress
-//   - TTS synthesis batch progress
-//   - Any indeterminate → determinate transition
-//
-// Shine animation triggers when progress < 100 and `animated` is true.
+// 水平进度条,可选流光动画(progress < 100 且 animated=true 时触发)。
+// 用于模型下载/加载、TTS 批量合成等进度展示。
 
 export interface ProgressProps {
   /** 0-100 percentage. */

@@ -4,9 +4,8 @@ import type { ReactNode } from 'react';
 import { cn } from '../utils/cn.js';
 
 // ── Dialog ──────────────────────────────────────────────────────────────────
-//
-// Modal dialog. Used for confirmations, prompts, dangerous-action gating.
-// Built on Radix — handles focus trap, escape close, scroll lock, a11y.
+// 模态对话框:确认/输入/危险操作门禁。
+// 基于 Radix,自带焦点陷阱、Esc 关闭、滚动锁定与无障碍关联。
 
 interface DialogBaseProps {
   open:         boolean;
@@ -45,7 +44,6 @@ export function Dialog(props: DialogProps): React.JSX.Element {
           )}
         />
         <RadixDialog.Content
-          aria-describedby={description ? undefined : undefined}
           className={cn(
             'fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2',
             'w-[92vw]', widthClass,

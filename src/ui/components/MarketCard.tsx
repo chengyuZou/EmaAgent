@@ -4,10 +4,8 @@ import { Badge } from './Badge.js';
 import { Button } from './Button.js';
 
 // ── MarketCard ───────────────────────────────────────────────────────────────
-//
-// Market entry card: left content (title/badges/desc/meta via children) +
-// right install/installed button. Replaces SkillsTab + McpTab market cards.
-// Decorate prop takes `ema-card-decorate--xxx`; unifies border-2 (Skills vs Mcp had 1px).
+// 市场条目卡:左侧内容(children)+ 右侧安装/已安装按钮;
+// decorate 传 ema-card-decorate--xxx,统一 border-2。
 
 export interface MarketCardProps {
   decorate?:       string;

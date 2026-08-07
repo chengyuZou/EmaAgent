@@ -18,25 +18,25 @@ export const Determinate = (): React.JSX.Element => {
   }, []);
   return (
     <Frame>
-      <h2 className="text-sm uppercase tracking-wider text-neutral-400">determinate with shine</h2>
+      <h2 className="text-sm uppercase tracking-wider text-[var(--ema-text-tertiary)]">determinate with shine</h2>
       <Progress progress={pct} />
-      <p className="text-xs text-neutral-500">sinatra animation (AIRI-style progress-shine) while {'<'} 100%</p>
+      <p className="text-xs text-[var(--ema-text-tertiary)]">shine animation (AIRI-style progress-shine) while {'<'} 100%</p>
     </Frame>
   );
 };
 
 export const Complete = (): React.JSX.Element => (
   <Frame>
-    <h2 className="text-sm uppercase tracking-wider text-neutral-400">complete (no shine)</h2>
+    <h2 className="text-sm uppercase tracking-wider text-[var(--ema-text-tertiary)]">complete (no shine)</h2>
     <Progress progress={100} />
   </Frame>
 );
 
 export const IndeterminateHint = (): React.JSX.Element => (
   <Frame>
-    <h2 className="text-sm uppercase tracking-wider text-neutral-400">animated=false for indeterminate-like</h2>
+    <h2 className="text-sm uppercase tracking-wider text-[var(--ema-text-tertiary)]">animated=false for indeterminate-like</h2>
     <Progress progress={70} animated={false} />
-    <p className="text-xs text-neutral-500">
+    <p className="text-xs text-[var(--ema-text-tertiary)]">
       使用 animated=false 时无 shine。真正的 indeterminate 模式走 <code>Spinner</code>。
     </p>
   </Frame>
@@ -44,14 +44,14 @@ export const IndeterminateHint = (): React.JSX.Element => (
 
 export const CustomBarColor = (): React.JSX.Element => (
   <Frame>
-    <h2 className="text-sm uppercase tracking-wider text-neutral-400">danger bar colour</h2>
+    <h2 className="text-sm uppercase tracking-wider text-[var(--ema-text-tertiary)]">danger bar colour</h2>
     <Progress progress={80} barClass="bg-red-400/80" />
   </Frame>
 );
 
 export const Zero = (): React.JSX.Element => (
   <Frame>
-    <h2 className="text-sm uppercase tracking-wider text-neutral-400">0% (empty)</h2>
+    <h2 className="text-sm uppercase tracking-wider text-[var(--ema-text-tertiary)]">0% (empty)</h2>
     <Progress progress={0} />
   </Frame>
 );

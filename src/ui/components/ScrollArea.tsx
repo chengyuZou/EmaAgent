@@ -4,9 +4,7 @@ import { cn } from '../utils/cn.js';
 
 // ── ScrollArea ──────────────────────────────────────────────────────────────
 //
-// Custom-styled scrollbar (thinner, only visible on hover). Use anywhere the
-// native scrollbar would clash with the app's dark / glass aesthetic
-// (session list, message history, settings sections).
+// 自定义滚动条(更细、悬停才显示),用于原生滚动条与暗色玻璃质感冲突的场合。
 
 export interface ScrollAreaProps {
   /** 'vertical' (default), 'horizontal', or 'both'. */

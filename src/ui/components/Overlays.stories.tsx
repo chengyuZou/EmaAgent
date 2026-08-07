@@ -23,7 +23,7 @@ export const DialogExample = (): React.JSX.Element => {
   const [open, setOpen] = useState(false);
   return (
     <Frame>
-      <h2 className="mb-3 text-sm uppercase tracking-wider text-neutral-400">dialog</h2>
+      <h2 className="mb-3 text-sm uppercase tracking-wider text-[var(--ema-text-tertiary)]">dialog</h2>
       <Button variant="primary" onClick={() => setOpen(true)}>打开 dialog</Button>
       <Dialog
         open={open}
@@ -42,14 +42,14 @@ export const DialogExample = (): React.JSX.Element => {
 
 export const PopoverExample = (): React.JSX.Element => (
   <Frame>
-    <h2 className="mb-3 text-sm uppercase tracking-wider text-neutral-400">popover</h2>
+    <h2 className="mb-3 text-sm uppercase tracking-wider text-[var(--ema-text-tertiary)]">popover</h2>
     <Popover
       widthClass="w-64"
       trigger={<Button variant="secondary" icon="i-mdi:chevron-down">点开 popover</Button>}
     >
       <div className="p-2">
         <p className="text-sm">这是一个 popover 面板。可以放任何内容。</p>
-        <ul className="mt-2 text-xs text-neutral-400 space-y-0.5">
+        <ul className="mt-2 text-xs text-[var(--ema-text-tertiary)] space-y-0.5">
           <li>• 鼠标点外部自动关</li>
           <li>• Esc 也能关</li>
           <li>• Radix 处理 focus trap</li>
@@ -61,7 +61,7 @@ export const PopoverExample = (): React.JSX.Element => (
 
 export const TooltipExample = (): React.JSX.Element => (
   <Frame>
-    <h2 className="mb-3 text-sm uppercase tracking-wider text-neutral-400">tooltip</h2>
+    <h2 className="mb-3 text-sm uppercase tracking-wider text-[var(--ema-text-tertiary)]">tooltip</h2>
     <div className="flex gap-3">
       <Tooltip content="hover 看 tooltip">
         <IconButton icon="i-mdi:information" label="info" />
@@ -75,7 +75,7 @@ export const TooltipExample = (): React.JSX.Element => (
 
 export const DropdownMenuExample = (): React.JSX.Element => (
   <Frame>
-    <h2 className="mb-3 text-sm uppercase tracking-wider text-neutral-400">dropdown menu</h2>
+    <h2 className="mb-3 text-sm uppercase tracking-wider text-[var(--ema-text-tertiary)]">dropdown menu</h2>
     <DropdownMenu
       trigger={<Button variant="secondary" icon="i-mdi:dots-vertical">操作</Button>}
       items={[
@@ -102,7 +102,7 @@ export const SelectExample = (): React.JSX.Element => {
   const [value, setValue] = useState('deepseek-v4-flash');
   return (
     <Frame>
-      <h2 className="mb-3 text-sm uppercase tracking-wider text-neutral-400">select</h2>
+      <h2 className="mb-3 text-sm uppercase tracking-wider text-[var(--ema-text-tertiary)]">select</h2>
       <div className="max-w-xs">
         <Select
           value={value}
@@ -114,7 +114,7 @@ export const SelectExample = (): React.JSX.Element => {
             { value: 'gpt-4o',            label: 'GPT-4o' },
           ]}
         />
-        <p className="mt-2 text-xs text-neutral-500">当前: {value}</p>
+        <p className="mt-2 text-xs text-[var(--ema-text-tertiary)]">当前: {value}</p>
       </div>
     </Frame>
   );

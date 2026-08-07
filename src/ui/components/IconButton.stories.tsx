@@ -18,7 +18,7 @@ const Frame = ({ children }: { children: React.ReactNode }): React.JSX.Element =
 
 export const Variants = (): React.JSX.Element => (
   <Frame>
-    <h2 className="mb-4 text-sm uppercase tracking-wider text-neutral-400">variants</h2>
+    <h2 className="mb-4 text-sm uppercase tracking-wider text-[var(--ema-text-tertiary)]">variants</h2>
     <div className="flex flex-wrap items-center gap-3">
       {VARIANTS.map((v) => (
         <IconButton key={v} variant={v} icon="i-mdi:chat" label={`${v} chat`} />
@@ -29,7 +29,7 @@ export const Variants = (): React.JSX.Element => (
 
 export const Sizes = (): React.JSX.Element => (
   <Frame>
-    <h2 className="mb-4 text-sm uppercase tracking-wider text-neutral-400">sizes</h2>
+    <h2 className="mb-4 text-sm uppercase tracking-wider text-[var(--ema-text-tertiary)]">sizes</h2>
     <div className="flex flex-wrap items-center gap-3">
       {SIZES.map((s) => (
         <IconButton key={s} size={s} icon="i-mdi:send" label={`size ${s}`} />
@@ -45,7 +45,7 @@ export const ToggledState = (): React.JSX.Element => {
 
   return (
     <Frame>
-      <h2 className="mb-4 text-sm uppercase tracking-wider text-neutral-400">
+      <h2 className="mb-4 text-sm uppercase tracking-wider text-[var(--ema-text-tertiary)]">
         toggled state (click to flip)
       </h2>
       <div className="flex flex-wrap items-center gap-3">
@@ -75,7 +75,7 @@ export const ToggledState = (): React.JSX.Element => {
 
 export const States = (): React.JSX.Element => (
   <Frame>
-    <h2 className="mb-4 text-sm uppercase tracking-wider text-neutral-400">states</h2>
+    <h2 className="mb-4 text-sm uppercase tracking-wider text-[var(--ema-text-tertiary)]">states</h2>
     <div className="flex flex-wrap items-center gap-3">
       <IconButton icon="i-mdi:check" label="normal" />
       <IconButton icon="i-mdi:check" label="loading" loading />
@@ -87,7 +87,7 @@ export const States = (): React.JSX.Element => (
 
 export const DangerHover = (): React.JSX.Element => (
   <Frame>
-    <h2 className="mb-4 text-sm uppercase tracking-wider text-neutral-400">
+    <h2 className="mb-4 text-sm uppercase tracking-wider text-[var(--ema-text-tertiary)]">
       danger variant (hover to see red)
     </h2>
     <div className="flex flex-wrap items-center gap-3">
@@ -99,14 +99,14 @@ export const DangerHover = (): React.JSX.Element => (
 
 export const InTextareaSlot = (): React.JSX.Element => (
   <Frame>
-    <h2 className="mb-4 text-sm uppercase tracking-wider text-neutral-400">
+    <h2 className="mb-4 text-sm uppercase tracking-wider text-[var(--ema-text-tertiary)]">
       simulated send button inside textarea (the real use case)
     </h2>
-    <div className="relative max-w-lg rounded-lg border border-primary-200/15 bg-neutral-900/80 p-3">
+    <div className="relative max-w-lg rounded-lg border border-[var(--ema-border)] bg-[var(--ema-surface-2)] p-3">
       <textarea
         placeholder="输入消息…"
         rows={4}
-        className="w-full resize-none bg-transparent text-neutral-100 outline-none pb-10 pr-10"
+        className="w-full resize-none bg-transparent text-[var(--ema-text-primary)] outline-none pb-10 pr-10"
       />
       <div className="absolute bottom-3 right-3">
         <IconButton
@@ -117,7 +117,7 @@ export const InTextareaSlot = (): React.JSX.Element => (
         />
       </div>
     </div>
-    <p className="mt-4 text-xs text-neutral-500">
+    <p className="mt-4 text-xs text-[var(--ema-text-tertiary)]">
       圆形发送按钮内嵌 textarea 右下角，符合 frontend-skeleton.md §5 规范。
     </p>
   </Frame>
@@ -125,7 +125,7 @@ export const InTextareaSlot = (): React.JSX.Element => (
 
 export const DockPreview = (): React.JSX.Element => (
   <Frame>
-    <h2 className="mb-4 text-sm uppercase tracking-wider text-neutral-400">
+    <h2 className="mb-4 text-sm uppercase tracking-wider text-[var(--ema-text-tertiary)]">
       floating dock preview (vertical column, glass panel)
     </h2>
     <div className="panel-glass inline-flex flex-col gap-2 rounded-lg p-2">

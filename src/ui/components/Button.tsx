@@ -4,11 +4,8 @@ import { cn } from '../utils/cn.js';
 
 // ── Button ──────────────────────────────────────────────────────────────────
 //
-// Standard rectangular(-ish, always rounded) button. For circular icon-only
-// buttons (dock, send, toolbar) use <IconButton/>.
-//
-// Three-axis composition: variant × size × shape. All classes use UnoCSS
-// atomic utilities; no inline style, no CSS file.
+// 标准矩形按钮(始终圆角);圆形纯图标按钮(工具栏/发送)请用 <IconButton/>。
+// 三轴组合:variant × size × shape,全部走 UnoCSS 原子类。
 
 export type ButtonVariant =
   | 'primary'         // Water-blue accented, signature action

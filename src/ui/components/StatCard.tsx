@@ -2,10 +2,8 @@ import type { CSSProperties, JSX } from 'react';
 import { cn } from '../utils/cn.js';
 
 // ── StatCard ─────────────────────────────────────────────────────────────────
-//
-// Compact statistic card: icon + label + value + optional sub.
-// Replaces duplicate StatCard definitions in MemoryTab / StorageTab.
-// size="lg" = big number (memory overview), size="md" = compact (storage stats).
+// 紧凑统计卡:图标 + 标签 + 数值 + 可选副文案。
+// size=lg 大数字(memory 概览),md 紧凑(storage 统计)。
 
 export interface StatCardProps {
   label:     string;

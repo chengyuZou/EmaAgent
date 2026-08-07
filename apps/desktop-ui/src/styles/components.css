@@ -364,12 +364,19 @@
   position: absolute;
   inset: 0;
   z-index: 0;
-  background-image: radial-gradient(circle, var(--ema-text-tertiary) 1px, transparent 1px);
-  background-size: 10px 10px;
+  background-image:
+    radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--ema-primary) 30%, transparent), transparent 45%),
+    radial-gradient(circle at 70% 70%, color-mix(in srgb, var(--ema-violet) 28%, transparent), transparent 50%),
+    radial-gradient(circle, color-mix(in srgb, var(--ema-text-tertiary) 30%, transparent) 1px, transparent 1.5px);
+  background-size: 100% 100%, 100% 100%, 10px 10px;
   -webkit-mask-image: linear-gradient(165deg, white 30%, transparent 50%);
   mask-image: linear-gradient(165deg, white 30%, transparent 50%);
-  opacity: 0.25;
+  opacity: 1;
   pointer-events: none;
+  transition: background-size 280ms var(--ema-ease), opacity 280ms var(--ema-ease);
+}
+.ema-card-glow:hover::after {
+  background-size: 108% 108%, 108% 108%, 10px 10px;
 }
 
 /* ── ema-card-decorate 修饰类:按块换纹理 ──────────────────────────────────────

@@ -180,10 +180,10 @@ export const TabsSidebar = (): React.JSX.Element => {
 
 export const ScrollAreaDemo = (): React.JSX.Element => (
   <Frame label="ScrollArea (custom scrollbar)">
-    <ScrollArea className="h-48 max-w-md rounded-md border border-neutral-700/40 bg-neutral-900/40">
+    <ScrollArea className="h-48 max-w-md rounded-md border border-[var(--ema-border)] bg-[var(--ema-surface-1)]">
       <div className="p-4 space-y-2">
         {Array.from({ length: 30 }, (_, i) => (
-          <div key={i} className="text-sm text-neutral-300">行 {i + 1} —— 这是滚动区域里的一行内容</div>
+          <div key={i} className="text-sm text-[var(--ema-text-secondary)]">行 {i + 1} —— 这是滚动区域里的一行内容</div>
         ))}
       </div>
     </ScrollArea>

@@ -4,9 +4,8 @@ import type { AriaAttributes, ReactNode } from 'react';
 import { cn } from '../utils/cn.js';
 
 // ── Select ──────────────────────────────────────────────────────────────────
-//
-// Single-select dropdown. Use for form fields (provider picker, model picker
-// when it's a simple binding edit). For ad-hoc menus use <DropdownMenu/>.
+// 单选下拉,用于表单字段(供应商选择/简单模型绑定);
+// 临时菜单请用 <DropdownMenu/>。
 
 export interface SelectOption {
   value:     string;
@@ -25,7 +24,7 @@ export interface SelectProps extends Pick<
   options:       SelectOption[];
   placeholder?:  string;
   disabled?:     boolean;
-  /** Show below the trigger; full popover width. */
+  /** 应用到 trigger 元素上的样式类。 */
   className?:    string;
   /** Trigger element override (e.g. ghost-styled in tight UIs). */
   trigger?:      ReactNode;

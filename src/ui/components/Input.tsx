@@ -3,10 +3,6 @@ import type { InputHTMLAttributes } from 'react';
 import { cn } from '../utils/cn.js';
 
 // ── Input ───────────────────────────────────────────────────────────────────
-//
-// Single-line text input. Uses controlled or uncontrolled depending on
-// whether `value` is provided (standard React semantics).
-
 export type InputSize = 'sm' | 'md' | 'lg';
 
 export interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> {

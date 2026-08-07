@@ -10,8 +10,7 @@
 export default {
   stories:   'components/**/*.stories.{ts,tsx}',
   defaultStory: 'atoms-button--variants',
-  // Use the same Vite config dir; Ladle picks up vite.config.* automatically
-  // if present. We don't ship one yet — Ladle's defaults are fine for now.
+  // 复用同目录的 vite.config.ts(仅接 UnoCSS),保证组件示例的原子类能生成 CSS。
   hotkeys: {
     fullscreen:  ['f'],
     storySearch: ['mod+/'],

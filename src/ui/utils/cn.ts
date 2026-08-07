@@ -3,10 +3,8 @@ import { twMerge } from 'tailwind-merge';
 
 // ── cn() — class name composer ──────────────────────────────────────────────
 //
-// Combines clsx (conditional class composition) with tailwind-merge
-// (resolves conflicting Tailwind/Wind utilities by keeping only the last).
-//
-// Use everywhere instead of template strings or array joins.
+// clsx(条件类名组合) + tailwind-merge(同类工具类后者覆盖前者),
+// 全项目统一用它替代模板字符串拼接。
 //
 // Examples:
 //   cn('p-4', 'bg-primary-500', condition && 'hidden')
