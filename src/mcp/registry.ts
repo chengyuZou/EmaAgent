@@ -2,7 +2,7 @@
 
 import { randomUUID }       from 'node:crypto';
 import { ToolListChangedNotificationSchema } from '@modelcontextprotocol/sdk/types.js';
-import type { McpToolOwner, McpToolRegistration, ToolRegistry } from '@ema-agent/tools';
+import type { Tool, ToolRegistry } from '@ema-agent/tools';
 import type { McpServerStore }                            from './store.js';
 import type {
   McpServerConfig,
@@ -17,6 +17,7 @@ import { openConnection }                                from './connection.js';
 import type { OpenedConnection }                         from './connection.js';
 import { discoverServerTools, buildMcpBuiltTool }       from './discovery.js';
 import { callMcpTool }                                   from './execution.js';
+import type { McpToolOutput }                            from './execution.js';
 import {
   cleanupQuietly,
   connectionInfo,
@@ -108,27 +109,27 @@ export class McpRegistry {
    * 在/替代急切 connect-all 之前。
    */
   primeFromCache(): number {
-    const registrations: McpToolRegistration[] = [];
+    const tools: AnyMcpTool[] = [];
     const pending = new Map<string, McpToolInfo[]>();
     for (const record of this.store.listEnabled()) {
       if (record.config.type === 'stdio' && !this.stdioEnabled) continue;
       const runtime = this.runtimes.get(record.name);
       if (runtime?.opened || runtime?.connectTask) continue;    // 已在线或正在连接
-      const tools = record.cachedTools;
-      if (!tools || tools.length === 0) continue;
-      registrations.push(...toRegistrations(tools, this));
-      pending.set(record.name, tools);
+      const cached = record.cachedTools;
+      if (!cached || cached.length === 0) continue;
+      tools.push(...toTools(cached, this));
+      pending.set(record.name, cached);
     }
 
-    this.toolRegistry.registerMcpBatch(registrations);
-    for (const [serverName, tools] of pending) {
-      this.primed.set(serverName, tools);
+    this.toolRegistry.registerMcpBatch(tools);
+    for (const [serverName, cached] of pending) {
+      this.primed.set(serverName, cached);
       const runtime = this.runtimeFor(serverName);
       if (runtime.info.status === 'disconnected') {
-        runtime.info = connectionInfo(serverName, 'disconnected', tools);
+        runtime.info = connectionInfo(serverName, 'disconnected', cached);
       }
     }
-    return registrations.length;
+    return tools.length;
   }
 
   async disconnect(serverName: string): Promise<void> {
@@ -149,9 +150,7 @@ export class McpRegistry {
     // 注销缓存 primed 的工具(无实时连接时注册的)。
     const primedTools = this.primed.get(serverName);
     if (primedTools) {
-      for (const tool of primedTools) {
-        this.toolRegistry.unregisterMcp(tool.qualifiedName, ownerOf(tool));
-      }
+      unregisterTools(this.toolRegistry, primedTools);
       this.primed.delete(serverName);
     }
 
@@ -175,7 +174,12 @@ export class McpRegistry {
     toolName:   string,
     args:       Record<string, unknown>,
     signal?:    AbortSignal,
-  ): Promise<unknown> {
+  ): Promise<McpToolOutput> {
+    // per-server toolTimeoutSec 覆盖默认 120s;记录只在此处查一次(SQLite µs 级)。
+    const record = this.store.findByName(serverName);
+    const timeoutMs = record?.config.toolTimeoutSec !== undefined
+      ? record.config.toolTimeoutSec * 1000
+      : undefined;
     let conn = this.runtimes.get(serverName)?.opened;
     // 懒连接:工具可能从缓存 primed(可见但未连接)。首次实际调用时开 transport。
     if (!conn) {
@@ -185,7 +189,7 @@ export class McpRegistry {
     if (!conn) {
       throw new McpServerNotFoundError(`${serverName} (not connected)`);
     }
-    return callMcpTool({ client: conn.client, serverName, toolName, args, signal });
+    return callMcpTool({ client: conn.client, serverName, toolName, args, signal, timeoutMs });
   }
 
   // ── 自省 ─────────────────────────────────────────────────────────────────
@@ -212,6 +216,10 @@ export class McpRegistry {
     provenance?: McpInstallProvenance,
   ): string {
     return this.store.register(name, config, sourceUrl, provenance);
+  }
+
+  findByName(name: string) {
+    return this.store.findByName(name);
   }
 
   setEnabled(name: string, enabled: boolean): void {
@@ -258,27 +266,27 @@ export class McpRegistry {
       },
     );
 
-    const registrations: McpToolRegistration[] = [];
+    const tools: AnyMcpTool[] = [];
     const pending = new Map<string, McpToolInfo[]>();
     for (const record of records) {
-      const tools = discovered.get(record.name);
-      if (!tools) continue;
+      const discoveredTools = discovered.get(record.name);
+      if (!discoveredTools) continue;
       const runtime = this.runtimes.get(record.name);
       // 用户可能在后台发现期间显式连接；实时连接拥有更新的 Schema，不能被缓存覆盖。
       if (runtime?.opened || runtime?.connectTask) continue;
-      registrations.push(...toRegistrations(tools, this));
-      pending.set(record.name, tools);
+      tools.push(...toTools(discoveredTools, this));
+      pending.set(record.name, discoveredTools);
     }
 
     // 整批所有权校验成功后才写缓存，避免把无法注册的冲突 Schema 留给下次启动。
-    this.toolRegistry.registerMcpBatch(registrations);
-    for (const [serverName, tools] of pending) {
-      try { this.store.cacheTools(serverName, tools); } catch { /* 实时工具仍可使用 */ }
-      this.primed.set(serverName, tools);
+    this.toolRegistry.registerMcpBatch(tools);
+    for (const [serverName, discoveredTools] of pending) {
+      try { this.store.cacheTools(serverName, discoveredTools); } catch { /* 实时工具仍可使用 */ }
+      this.primed.set(serverName, discoveredTools);
       const runtime = this.runtimeFor(serverName);
-      runtime.info = connectionInfo(serverName, 'disconnected', tools);
+      runtime.info = connectionInfo(serverName, 'disconnected', discoveredTools);
     }
-    return registrations.length;
+    return tools.length;
   }
 
   // ── 探测 ────────────────────────────────────────────────────────────────
@@ -448,7 +456,7 @@ export class McpRegistry {
       if (closedError) throw closedError;
 
       // 新批次先整体校验并提交，再移除缓存中已经消失的旧工具，避免半注册。
-      this.toolRegistry.registerMcpBatch(toRegistrations(tools, this));
+      this.toolRegistry.registerMcpBatch(toTools(tools, this));
       const primedTools = this.primed.get(serverName) ?? [];
       const liveNames = new Set(tools.map((tool) => tool.qualifiedName));
       unregisterTools(
@@ -614,7 +622,7 @@ export class McpRegistry {
     nextTools: readonly McpToolInfo[],
   ): void {
     // registerMcpBatch 会先验证整批再同步提交；随后在同一事件循环片段移除旧工具。
-    this.toolRegistry.registerMcpBatch(toRegistrations(nextTools, this));
+    this.toolRegistry.registerMcpBatch(toTools(nextTools, this));
     const nextNames = new Set(nextTools.map((tool) => tool.qualifiedName));
     unregisterTools(
       this.toolRegistry,
@@ -623,26 +631,20 @@ export class McpRegistry {
   }
 }
 
-function ownerOf(tool: McpToolInfo): McpToolOwner {
-  return {
-    serverName: tool.originalServerName,
-    serverToolName: tool.serverToolName,
-  };
-}
+// ToolRegistry 保存类型各异的 Tool;MCP 侧统一由 buildMcpBuiltTool 产生。
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyMcpTool = Tool<any, any, any, any>;
 
-function toRegistrations(
+function toTools(
   tools: readonly McpToolInfo[],
   registry: McpRegistry,
-): McpToolRegistration[] {
-  return tools.map((tool) => ({
-    tool: buildMcpBuiltTool(tool, registry),
-    owner: ownerOf(tool),
-  }));
+): AnyMcpTool[] {
+  return tools.map((tool) => buildMcpBuiltTool(tool, registry));
 }
 
 function unregisterTools(toolRegistry: ToolRegistry, tools: readonly McpToolInfo[]): void {
   for (const tool of tools) {
-    toolRegistry.unregisterMcp(tool.qualifiedName, ownerOf(tool));
+    toolRegistry.unregisterMcp(tool.originalServerName, tool.serverToolName);
   }
 }
 

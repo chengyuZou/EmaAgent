@@ -82,18 +82,6 @@ CREATE TABLE knowledge_bases (
   updated_at INTEGER NOT NULL
 );
 
-CREATE TABLE market_sources (
-  id          TEXT PRIMARY KEY,
-  kind        TEXT NOT NULL,
-  type        TEXT NOT NULL,
-  label       TEXT NOT NULL,
-  config      TEXT NOT NULL,
-  enabled     INTEGER NOT NULL DEFAULT 1,
-  builtin     INTEGER NOT NULL DEFAULT 0,
-  sort_order  INTEGER NOT NULL DEFAULT 0,
-  created_at  INTEGER NOT NULL
-);
-
 CREATE TABLE mcp_servers (
   id           TEXT PRIMARY KEY,
   name         TEXT NOT NULL UNIQUE,
@@ -102,9 +90,28 @@ CREATE TABLE mcp_servers (
   enabled      INTEGER NOT NULL DEFAULT 1,
   tools_cache  TEXT,
   cached_at    INTEGER NOT NULL DEFAULT 0,
-  installed_at INTEGER NOT NULL
-, install_source TEXT NOT NULL DEFAULT 'manual'
-  CHECK (install_source IN ('manual', 'import', 'market')), market_source_id TEXT, market_source_type TEXT, package_registry TEXT, package_name TEXT, package_version TEXT, package_integrity TEXT);
+  installed_at INTEGER NOT NULL,
+  -- 安装溯源:registry 形态的 registry_source_id 允许悬空(源删除后保留记录,
+  -- UI 显示"来源已删除"),故不加外键;启动规格锁定在 config_json 本体。
+  install_source TEXT NOT NULL DEFAULT 'manual'
+    CHECK (install_source IN ('manual', 'import', 'registry')),
+  registry_source_id TEXT,
+  registry_entry_id  TEXT,
+  registry_version   TEXT
+);
+
+-- MCP Registry 目录源:官方 Registry 是 builtin=1 的种子记录,用户可加同协议镜像。
+-- 浏览与更新检查都是即时拉取,目录不落库,故无 fetch 状态/etag 列。
+CREATE TABLE mcp_registry_sources (
+  id           TEXT PRIMARY KEY,
+  label        TEXT NOT NULL,
+  registry_url TEXT NOT NULL,
+  enabled      INTEGER NOT NULL DEFAULT 1,
+  builtin      INTEGER NOT NULL DEFAULT 0,
+  sort_order   INTEGER NOT NULL DEFAULT 0,
+  created_at   INTEGER NOT NULL,
+  updated_at   INTEGER NOT NULL
+);
 
 CREATE TABLE memory_edges (
   id                 TEXT PRIMARY KEY,
@@ -376,8 +383,6 @@ CREATE UNIQUE INDEX idx_kb_name   ON knowledge_bases(name);
 
 CREATE INDEX idx_lazy_updates_node
   ON memory_node_lazy_updates(node_id, created_at ASC, id ASC);
-
-CREATE INDEX idx_market_sources_kind ON market_sources(kind);
 
 CREATE INDEX idx_memory_edges_from ON memory_edges(from_node_id);
 

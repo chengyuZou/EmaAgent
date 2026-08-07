@@ -71,12 +71,13 @@ describe('MCP 工具执行取消', () => {
       })),
     } as unknown as Client;
 
-    const result = await callMcpTool({
+    const output = await callMcpTool({
       client,
       serverName: 'remote',
       toolName: 'large_text',
       args: {},
-    }) as Array<{ type: string; text?: string }>;
+    });
+    const result = output.content as Array<{ type: string; text?: string }>;
 
     expect(Buffer.byteLength(JSON.stringify(result), 'utf8')).toBeLessThanOrEqual(1024 * 1024);
     expect(result[0]?.text).toContain('[truncated]');
@@ -93,12 +94,13 @@ describe('MCP 工具执行取消', () => {
       callTool: vi.fn(async () => ({ content })),
     } as unknown as Client;
 
-    const result = await callMcpTool({
+    const output = await callMcpTool({
       client,
       serverName: 'remote',
       toolName: 'large_binary',
       args: {},
-    }) as Array<Record<string, unknown>>;
+    });
+    const result = output.content as Array<Record<string, unknown>>;
 
     expect(result.some((block) => block.type === 'image')).toBe(false);
     expect(result.length).toBeLessThanOrEqual(101);

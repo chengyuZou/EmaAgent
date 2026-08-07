@@ -30,6 +30,10 @@ export class BackgroundProcessScheduler {
     this.pump();
   }
 
+  /**
+   * cancel 取消的是排队(还没启动)的进程
+   * 它们从未占用 activeCount 槽位 所以 cancel 不需要碰 activeCount
+   */
   cancel(id: string, reason: Error): boolean {
     for (const [sessionId, queue] of this.queues) {
       const index = queue.findIndex(item => item.id === id);
@@ -60,9 +64,9 @@ export class BackgroundProcessScheduler {
       }
 
       this.activeCount += 1;
-      if (queue.length === 0) this.removeEmptySession(sessionId);
-      else this.cursor = (this.cursor + 1) % this.sessionOrder.length;
       try {
+        if (queue.length === 0) this.removeEmptySession(sessionId);
+        else this.cursor = (this.cursor + 1) % this.sessionOrder.length;
         item.start();
       } catch (error) {
         // start() 的契约是自吞业务错误;异常逃逸属于调度器级缺陷。
@@ -74,6 +78,8 @@ export class BackgroundProcessScheduler {
   }
 
   private removeEmptySession(sessionId: SessionId): void {
+    const queue = this.queues.get(sessionId);
+    if (queue && queue.length > 0) return; 
     this.queues.delete(sessionId);
     const index = this.sessionOrder.indexOf(sessionId);
     if (index < 0) return;

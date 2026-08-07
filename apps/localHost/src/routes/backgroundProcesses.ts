@@ -78,7 +78,7 @@ export function backgroundProcessesRoute(
     if (!parsed.success) return invalidRequest(context, parsed.error);
     try {
       return context.json({
-        process: processes.stop(
+        process: await processes.stop(
           asSessionId(parsed.data.sessionId),
           asBackgroundProcessId(path.data.backgroundProcessId),
         ),

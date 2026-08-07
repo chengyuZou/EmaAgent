@@ -3,15 +3,18 @@
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { PermissionAuthorizer } from '@ema-agent/permission';
-import type { GitInstallResult } from '@ema-agent/sandbox';
+import type { GitInstallResult } from '../src/gitInstaller.js';
 
 const { mockProbeBash, mockInstallGit } = vi.hoisted(() => ({
-  mockProbeBash: vi.fn(() => ({ available: true as const, path: '/bin/bash' })),
+  mockProbeBash: vi.fn(async () => ({ available: true as const, source: 'native' as const, path: '/bin/bash' })),
   mockInstallGit: vi.fn(),
 }));
 
 vi.mock('@ema-agent/sandbox', () => ({
   probeBash: mockProbeBash,
+}));
+
+vi.mock('../src/gitInstaller.js', () => ({
   installGitViaWinget: mockInstallGit,
 }));
 

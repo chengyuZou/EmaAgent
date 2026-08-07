@@ -32,7 +32,7 @@ afterEach(() => {
 describe('Sandbox runtime wiring', () => {
   it('没有系统级沙箱时默认关闭 Execute Tool 和本地 stdio MCP', () => {
     const policy = resolveSandboxRuntimePolicy(
-      { backend: 'app-layer', degradeReason: 'sandbox unavailable' },
+      { backend: 'unisolated', degradeReason: 'sandbox unavailable' },
       { shell: false, localMcpStdio: false, network: false },
     );
 
@@ -41,7 +41,7 @@ describe('Sandbox runtime wiring', () => {
       localMcpStdioEnabled: false,
       networkAccess: 'none',
       status: {
-        backend: 'app-layer',
+        kind: 'unisolated',
         isolation: 'application-only',
         shellExecution: 'disabled',
         localMcpStdio: 'disabled',
@@ -51,9 +51,9 @@ describe('Sandbox runtime wiring', () => {
     expect(policy.status.warning).toContain('sandbox unavailable');
   });
 
-  it('显式开发开关只标记不安全能力，不把 app-layer 伪装成系统隔离', () => {
+  it('显式开发开关只标记不安全能力，不把 unisolated 伪装成系统隔离', () => {
     const policy = resolveSandboxRuntimePolicy(
-      { backend: 'app-layer' },
+      { backend: 'unisolated' },
       { shell: true, localMcpStdio: true, network: true },
     );
 

@@ -1,12 +1,11 @@
-// 测试 MCP 管理路由的连接态合并、注册免连接和探测失败映射。
+// 测试 MCP 管理路由的连接态合并、注册免连接、探测失败映射与 Registry 源 CRUD。
 
 import { describe, expect, it, vi } from 'vitest';
-import type { McpConnection, McpServerRecord } from '@ema-agent/mcp';
+import type { McpConnection, McpRegistrySource, McpServerRecord } from '@ema-agent/mcp';
 import { createMcpRouter } from '../src/routes/mcp.js';
 
 type McpRegistryArg = Parameters<typeof createMcpRouter>[0];
-type MarketSourcesArg = Parameters<typeof createMcpRouter>[1];
-type MarketRegistryArg = Parameters<typeof createMcpRouter>[2];
+type McpSourcesArg = Parameters<typeof createMcpRouter>[1];
 
 function record(name: string): McpServerRecord {
   return {
@@ -24,11 +23,28 @@ function connection(name: string, status: McpConnection['status']): McpConnectio
   return { serverName: name, status, tools: [] };
 }
 
-function createApp(overrides: Partial<McpRegistryArg> = {}) {
+function source(id: string, builtin = false): McpRegistrySource {
+  return {
+    id,
+    label: id,
+    registryUrl: 'https://registry.example/v0/servers',
+    enabled: true,
+    builtin,
+    sortOrder: 0,
+    createdAt: 1,
+    updatedAt: 1,
+  };
+}
+
+function createApp(
+  overrides: Partial<McpRegistryArg> = {},
+  sourceOverrides: Partial<McpSourcesArg> = {},
+) {
   const mcpRegistry: McpRegistryArg = {
     listRecords: vi.fn(() => []),
     getAllConnections: vi.fn(() => []),
     register: vi.fn(() => 'new-id'),
+    findByName: vi.fn(() => null),
     connectConfig: vi.fn(async () => connection('srv', 'connected')),
     getConnection: vi.fn(() => null),
     setEnabled: vi.fn(),
@@ -38,10 +54,19 @@ function createApp(overrides: Partial<McpRegistryArg> = {}) {
     probe: vi.fn(async () => ({ ok: true, tools: [] })),
     ...overrides,
   };
-  const marketSources: MarketSourcesArg = { listEnabled: vi.fn(() => []) };
-  const marketRegistry: MarketRegistryArg = { listAll: vi.fn(async () => []) };
-  const app = createMcpRouter(mcpRegistry, marketSources, marketRegistry);
-  return { app, mcpRegistry };
+  const mcpSources: McpSourcesArg = {
+    list: vi.fn(() => []),
+    listEnabled: vi.fn(() => []),
+    get: vi.fn(() => null),
+    add: vi.fn((label: string, registryUrl: string) => ({
+      ...source('new-source'), label, registryUrl,
+    })),
+    update: vi.fn(),
+    remove: vi.fn(() => true),
+    ...sourceOverrides,
+  };
+  const app = createMcpRouter(mcpRegistry, mcpSources);
+  return { app, mcpRegistry, mcpSources };
 }
 
 describe('MCP 管理路由', () => {
@@ -126,5 +151,23 @@ describe('MCP 管理路由', () => {
 
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toMatchObject({ ok: false });
+  });
+
+  it('GET /registry-sources 返回源列表;DELETE 内置源被 404 拒绝', async () => {
+    const { app } = createApp({}, {
+      list: vi.fn(() => [source('official-mcp-registry', true)]),
+      remove: vi.fn(() => false),   // repo 层 builtin 保护
+    });
+
+    const listResponse = await app.request('/registry-sources');
+    expect(listResponse.status).toBe(200);
+    await expect(listResponse.json()).resolves.toMatchObject({
+      sources: [{ id: 'official-mcp-registry', builtin: true }],
+    });
+
+    const deleteResponse = await app.request('/registry-sources/official-mcp-registry', {
+      method: 'DELETE',
+    });
+    expect(deleteResponse.status).toBe(404);
   });
 });

@@ -22,6 +22,15 @@ export interface ImportedServer {
 }
 
 export function parseImportedMcpServers(input: unknown, fallbackName = 'mcp-server'): ImportedServer[] {
+  // 裸 URL 粘贴(ModelScope Remote 页签复制出来的形态)直接归为单条 http server。
+  if (typeof input === 'string') {
+    const url = input.trim();
+    if (/^https?:\/\//.test(url)) {
+      return [{ name: fallbackName, config: McpServerConfigSchema.parse({ type: 'http', url }) }];
+    }
+    throw new Error('Invalid MCP config: expected a JSON object or an http(s) URL.');
+  }
+
   const root = coerceObject(input);
   if (!root) throw new Error('Invalid MCP config: expected a JSON object.');
 
@@ -61,9 +70,19 @@ function normalizeOne(raw: unknown, name: string): McpServerConfig {
   const o = coerceObject(raw);
   if (!o) throw new Error(`Invalid MCP server "${name}": expected an object.`);
 
+  // 判别键兼容:Claude Desktop/mcp.so 用 type,ModelScope/AstrBot 用 transport。
+  // 取值统一成小写连字符形(streamable_http → streamable-http)。
+  const rawDiscriminator = o['type'] ?? o['transport'];
+  const explicit = typeof rawDiscriminator === 'string'
+    ? rawDiscriminator.toLowerCase().replace(/_/g, '-')
+    : undefined;
+
   let candidate: Record<string, unknown>;
 
   if (typeof o['command'] === 'string') {
+    if (explicit !== undefined && explicit !== 'stdio') {
+      throw new Error(`Invalid MCP server "${name}": transport "${rawDiscriminator}" conflicts with "command".`);
+    }
     candidate = {
       type:    'stdio',
       command: o['command'],
@@ -72,10 +91,12 @@ function normalizeOne(raw: unknown, name: string): McpServerConfig {
       ...(typeof o['cwd'] === 'string' ? { cwd: o['cwd'] } : {}),
     };
   } else if (typeof o['url'] === 'string') {
-    const explicit = o['type'];
     const url = o['url'];
     if (explicit === 'sse' || (explicit === undefined && looksLikeLegacySseEndpoint(url))) {
       throw new McpUnsupportedTransportError(name, 'sse');
+    }
+    if (explicit !== undefined && explicit !== 'http' && explicit !== 'streamable-http') {
+      throw new Error(`Invalid MCP server "${name}": unsupported transport "${rawDiscriminator}".`);
     }
     candidate = {
       type: 'http',

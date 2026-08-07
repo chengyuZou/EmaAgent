@@ -301,9 +301,6 @@ importers:
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../../src/llm
-      '@ema-agent/marketplace':
-        specifier: workspace:*
-        version: link:../../src/marketplace
       '@ema-agent/mcp':
         specifier: workspace:*
         version: link:../../src/mcp
@@ -958,42 +955,17 @@ importers:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
-  src/marketplace:
+  src/mcp:
     dependencies:
-      '@ema-agent/ids':
+      '@ema-agent/credential':
         specifier: workspace:*
-        version: link:../ids
+        version: link:../../packages/credential
+      '@ema-agent/llm':
+        specifier: workspace:*
+        version: link:../llm
       '@ema-agent/public-http':
         specifier: workspace:*
         version: link:../../packages/public-http
-      '@ema-agent/storage':
-        specifier: workspace:*
-        version: link:../storage
-    devDependencies:
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.39
-      rimraf:
-        specifier: ^5.0.0
-        version: 5.0.10
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: ^2.0.0
-        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
-
-  src/mcp:
-    dependencies:
-      '@ema-agent/ids':
-        specifier: workspace:*
-        version: link:../ids
-      '@ema-agent/marketplace':
-        specifier: workspace:*
-        version: link:../marketplace
-      '@ema-agent/permission':
-        specifier: workspace:*
-        version: link:../permission
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage
@@ -1007,6 +979,9 @@ importers:
         specifier: ^3.23.0
         version: 3.25.76
     devDependencies:
+      '@ema-agent/permission':
+        specifier: workspace:*
+        version: link:../permission
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.39
@@ -1240,21 +1215,18 @@ importers:
 
   src/skills:
     dependencies:
-      '@ema-agent/ids':
+      '@ema-agent/public-http':
         specifier: workspace:*
-        version: link:../ids
-      '@ema-agent/marketplace':
+        version: link:../../packages/public-http
+      '@ema-agent/settings':
         specifier: workspace:*
-        version: link:../marketplace
-      '@ema-agent/prompts':
-        specifier: workspace:*
-        version: link:../prompts
+        version: link:../settings
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage
-      '@ema-agent/turn':
-        specifier: workspace:*
-        version: link:../turn
+      fflate:
+        specifier: ^0.8.2
+        version: 0.8.3
       gray-matter:
         specifier: ^4.0.3
         version: 4.0.3
@@ -1682,6 +1654,9 @@ importers:
       unocss:
         specifier: ^66.0.0
         version: 66.7.0(vite@5.4.21(@types/node@20.19.39))
+      vite:
+        specifier: ^5.4.10
+        version: 5.4.21(@types/node@20.19.39)
       vitest:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))

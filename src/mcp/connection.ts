@@ -9,34 +9,20 @@ const CLIENT_NAME    = 'ema-agent';
 const CLIENT_VERSION = '1.0.0';
 const CONNECT_TIMEOUT_MS = 30_000;
 
-// ── stdio 安全校验(权限门禁之上的纵深防御)────────────────────────────────────
+// ── stdio 基础校验(权限门禁之上只留机械合法性)────────────────────────────────
+//
+// 不设命令白名单/元字符检查:SDK spawn 走 shell:false,元字符不被解释;
+// python -c / node -e 这类"猜测式拦截"会在用户批准后误伤合法配置(假阳性工厂)。
+// 真正的安全边界是 McpRegistry 的 stdioGate(用户批准完整启动意图)。
 
-const SHELL_META_RE   = /[;&|`$(){}<>\n\r]/;
 // eslint-disable-next-line no-control-regex
 const CONTROL_CHAR_RE = /[\x00-\x1f]/;
 
-/**
- * 拉起子进程前拒绝明显不安全的 stdio 配置:命令含 shell 元字符、args 含控制字符、
- * 以及会在预期 MCP server 入口外跑任意代码的内联代码标志(python -c、node -e/--eval)。
- */
 function assertSafeStdioConfig(command: string, args: readonly string[]): void {
   if (!command.trim()) throw new Error('MCP stdio command must not be empty.');
-  if (SHELL_META_RE.test(command)) {
-    throw new Error('MCP stdio command contains unsafe shell metacharacters.');
-  }
   for (const arg of args) {
     if (CONTROL_CHAR_RE.test(arg)) {
       throw new Error('MCP stdio args must not contain control characters.');
-    }
-  }
-  const base = command.replace(/\\/g, '/').split('/').pop()?.toLowerCase().replace(/\.(exe|cmd|bat)$/, '') ?? '';
-  if (base.startsWith('python') || base === 'py') {
-    if (args.some((a) => a === '-c')) {
-      throw new Error('MCP stdio Python servers may not use inline code (-c).');
-    }
-  } else if (base === 'node' || base === 'deno' || base === 'bun' || base.startsWith('node')) {
-    if (args.some((a) => a === '-e' || a === '--eval' || a === '-p' || a === '--print')) {
-      throw new Error('MCP stdio JavaScript servers may not use inline eval (-e/--eval).');
     }
   }
 }
@@ -51,8 +37,12 @@ function buildTransport(config: McpServerConfig): StdioClientTransport | Streama
       cwd:     config.cwd,
       // 必须合并 SDK 默认 env(PATH、HOME 等)。只传用户 env 会丢 PATH,
       // 破坏 `npx`/`node`/`uvx` 解析 - 这是"stdio server 起不来"的头号原因。
-      // 用户键覆盖默认。
-      env:     { ...getDefaultEnvironment(), ...(config.env ?? {}) },
+      // 合并顺序:SDK 默认 < envPassthrough 白名单透传 < 用户显式 env。
+      env:     {
+        ...getDefaultEnvironment(),
+        ...pickPassthroughEnv(config.envPassthrough),
+        ...(config.env ?? {}),
+      },
     });
   }
   // 远程 MCP 统一使用 Streamable HTTP；旧 SSE transport 已从配置层移除。
@@ -60,6 +50,16 @@ function buildTransport(config: McpServerConfig): StdioClientTransport | Streama
     new URL(config.url),
     config.headers ? { requestInit: { headers: config.headers } } : undefined,
   );
+}
+
+/** 按名字白名单从宿主进程透传环境变量;未设置的名字静默跳过。 */
+function pickPassthroughEnv(names: readonly string[] | undefined): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const name of names ?? []) {
+    const value = process.env[name];
+    if (value !== undefined) out[name] = value;
+  }
+  return out;
 }
 
 export interface OpenedConnection {

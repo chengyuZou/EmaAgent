@@ -1,7 +1,7 @@
 // 探测本机 Shell，并在权限审批后执行 Git 安装。
 import { Hono } from 'hono';
-import { probeBash, installGitViaWinget } from '@ema-agent/sandbox';
-import type { GitInstallResult } from '@ema-agent/sandbox';
+import { probeBash } from '@ema-agent/sandbox';
+import { installGitViaWinget, type GitInstallResult } from '../gitInstaller.js';
 import type { PermissionAuthorizer } from '@ema-agent/permission';
 
 // 安装是系统级副作用: 同一时刻只允许一个在跑, 并发请求明确拒绝而不是再起 winget。
@@ -14,9 +14,9 @@ export function shellRoute(permission: PermissionAuthorizer): Hono {
    * GET /api/system/shell
    * Returns the current shell probe result (cached; use ?fresh=1 to re-probe).
    */
-  app.get('/', (c) => {
+  app.get('/', async (c) => {
     const fresh = c.req.query('fresh') === '1';
-    return c.json(probeBash({ fresh }));
+    return c.json(await probeBash({ fresh }));
   });
 
   /**

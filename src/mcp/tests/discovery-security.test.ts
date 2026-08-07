@@ -4,7 +4,6 @@ import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { PermissionEngine, InMemoryPermissionRuleStore } from '@ema-agent/permission';
 import { DEFAULT_MAX_RESULT_BYTES } from '@ema-agent/tools';
 import type { McpToolInfo } from '../types.js';
-import { McpToolInfoListSchema } from '../types.js';
 import { buildMcpBuiltTool, discoverServerTools } from '../discovery.js';
 import {
   MAX_MCP_TOOLS_PER_SERVER,
@@ -121,7 +120,7 @@ describe('MCP 工具发现安全边界', () => {
     };
     const tool = buildMcpBuiltTool(toolInfo({ inputSchema }), registryStub());
 
-    expect(tool.descriptor().inputJsonSchema).toEqual(inputSchema);
+    expect(tool.inputJsonSchemaOverride).toEqual(inputSchema);
     expect(tool.origin).toEqual({
       kind: 'mcp',
       serverName: 'test',
@@ -137,30 +136,13 @@ describe('MCP 工具发现安全边界', () => {
       registryStub(),
     );
 
-    await expect(destructive.getPermissionIntent({}, {})).resolves.toEqual({
+    expect(await destructive.getPermissionIntent({}, {})).toEqual({
       riskLevel: 'high',
       accessType: 'execute',
       promptPolicy: 'whenRequired',
     });
     expect(destructive.isReadOnly({})).toBe(false);
     expect(destructive.isConcurrencySafe({})).toBe(false);
-  });
-
-  it('旧缓存字段只迁移为远端提示，不恢复旧的安全语义', () => {
-    const parsed = McpToolInfoListSchema.parse([{
-      serverToolName: 'legacy',
-      qualifiedName: 'mcp__test__legacy',
-      originalServerName: 'test',
-      description: 'legacy cache',
-      inputSchema: { type: 'object' },
-      isReadOnly: true,
-      isDestructive: false,
-    }]);
-
-    expect(parsed[0]).toMatchObject({
-      reportedReadOnly: true,
-      reportedDestructive: false,
-    });
   });
 });
 

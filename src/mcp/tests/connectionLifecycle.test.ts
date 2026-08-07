@@ -90,9 +90,9 @@ describe('McpRegistry 连接生命周期', () => {
     });
     expect(toolRegistry.has('mcp__local__search')).toBe(true);
 
-    await expect(registry.callTool('local', 'search', {})).resolves.toEqual([
-      { type: 'text', text: 'ok' },
-    ]);
+    await expect(registry.callTool('local', 'search', {})).resolves.toEqual({
+      content: [{ type: 'text', text: 'ok' }],
+    });
     expect(registry.getConnection('local')).toMatchObject({ status: 'connected' });
     expect(connection.openConnection).toHaveBeenCalledTimes(2);
   });

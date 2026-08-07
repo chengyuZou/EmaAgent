@@ -2,14 +2,14 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import type { AppEvent } from '@ema-agent/events';
-import type { SandboxStatusWire } from '@ema-agent/sandbox';
+import type { SandboxStatusWire } from '../src/wiring/createSandboxRuntime.js';
 import { systemRoute } from '../src/routes/system.js';
 import { systemEventsRoute } from '../src/routes/system-events.js';
 
 type RouteSystemBus = Parameters<typeof systemEventsRoute>[0];
 
 const sandboxStatus: SandboxStatusWire = {
-  backend: 'app-layer',
+  kind: 'unisolated',
   isolation: 'application-only',
   shellExecution: 'unsafe-override',
   sandboxNetwork: 'none',

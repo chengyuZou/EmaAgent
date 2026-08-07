@@ -1,15 +1,28 @@
+// MCP 工具调用的协议出口:超时、取消、结果限界与模型投影的唯一实现。
 import { CallToolResultSchema } from '@modelcontextprotocol/sdk/types.js';
 import type { CallToolResult }  from '@modelcontextprotocol/sdk/types.js';
 import type { Client }          from '@modelcontextprotocol/sdk/client/index.js';
+import type { ToolResultContentPart } from '@ema-agent/llm';
 import { Buffer }               from 'node:buffer';
 import { McpToolCallError }     from './errors.js';
 
-const DEFAULT_TOOL_TIMEOUT_MS = 120_000; // 2 分钟 - 同 bash 默认
+const DEFAULT_TOOL_TIMEOUT_MS = 120_000; // 2 分钟 - 同 bash 默认;可被 server 配置 toolTimeoutSec 覆盖
 const MAX_RESULT_BYTES = 1024 * 1024;
 const MAX_BINARY_DATA_BYTES = 256 * 1024;
 const MAX_CONTENT_BLOCKS = 100;
 const RESULT_NOTICE_RESERVE_BYTES = 512;
 const MAX_ERROR_MESSAGE_BYTES = 4 * 1024;
+
+/**
+ * MCP 工具的类型化真实结果(执行信封 data 槽事实)。
+ * content 是协议层限界后的原始块;structuredContent 与 _meta 分槽存放,
+ * 模型投影只消费前两者,_meta 绝不发给模型。
+ */
+export interface McpToolOutput {
+  readonly content: readonly unknown[];
+  readonly structuredContent?: unknown;
+  readonly meta?: Record<string, unknown>;
+}
 
 export interface CallToolOptions {
   client:      Client;
@@ -22,9 +35,9 @@ export interface CallToolOptions {
 
 /**
  * 在已连接的 MCP 服务器 client 上调一个工具。
- * 返回原始 MCP result content。
+ * 返回限界后的 McpToolOutput;isError 结果转成 McpToolCallError 抛出。
  */
-export async function callMcpTool(opts: CallToolOptions): Promise<unknown> {
+export async function callMcpTool(opts: CallToolOptions): Promise<McpToolOutput> {
   const { client, serverName, toolName, args, signal, timeoutMs } = opts;
   const ms = timeoutMs ?? DEFAULT_TOOL_TIMEOUT_MS;
   const controller = new AbortController();
@@ -73,12 +86,131 @@ export async function callMcpTool(opts: CallToolOptions): Promise<unknown> {
       );
     }
 
-    return boundMcpContent(result.content);
+    const content = boundMcpContent(
+      Array.isArray(result.content) ? result.content : [],
+    );
+
+    // structuredContent 与 content 共用 1MB 预算;超限整体丢弃并追加说明块,
+    // 结构不可部分截断。
+    let structuredContent: unknown = result.structuredContent;
+    if (structuredContent !== undefined && jsonBytes(structuredContent) > MAX_RESULT_BYTES) {
+      structuredContent = undefined;
+      content.push({
+        type: 'text',
+        text: `[EmaAgent: MCP structuredContent exceeded ${MAX_RESULT_BYTES} bytes and was dropped.]`,
+      });
+    }
+
+    return {
+      content,
+      ...(structuredContent !== undefined ? { structuredContent } : {}),
+      ...(isRecord(result._meta) ? { meta: result._meta } : {}),
+    };
   } finally {
     if (timeoutId !== undefined) clearTimeout(timeoutId);
     signal?.removeEventListener('abort', relayAbort);
   }
 }
+
+// ── 模型投影(Tool.mapResultToModelContent 的唯一实现)──────────────────────────
+//
+// 规则(CLAUDE.md MCP Adapter 约定):
+//   text              → 文本块原样
+//   image             → image_data 内容块
+//   resource(text)    → 带来源前缀的文本块
+//   resource(blob)    → 图片 mime 转 image_data;其他 mime 给说明文本
+//   audio/未知块      → 说明文本(V1 不落盘:没有模型/UI 消费方)
+//   structuredContent → 稳定 JSON 文本,追加在 content 之后
+//   _meta             → 不投影,只留在 TOutput 供宿主消费
+
+export function projectMcpToolOutput(output: McpToolOutput): ToolResultContentPart[] {
+  const parts: ToolResultContentPart[] = [];
+  for (const block of output.content) {
+    parts.push(projectContentBlock(block));
+  }
+  if (output.structuredContent !== undefined) {
+    parts.push({
+      type: 'text',
+      text: JSON.stringify(output.structuredContent, null, 2),
+    });
+  }
+  if (parts.length === 0) {
+    parts.push({ type: 'text', text: '(empty result)' });
+  }
+  return parts;
+}
+
+function projectContentBlock(block: unknown): ToolResultContentPart {
+  if (!isRecord(block) || typeof block.type !== 'string') {
+    return { type: 'text', text: `[MCP: unrecognized content block] ${safePreview(block)}` };
+  }
+
+  if (block.type === 'text' && typeof block.text === 'string') {
+    return { type: 'text', text: block.text };
+  }
+
+  if (block.type === 'image' && typeof block.data === 'string') {
+    return {
+      type: 'image_data',
+      data: block.data,
+      mimeType: typeof block.mimeType === 'string' ? block.mimeType : 'image/png',
+    };
+  }
+
+  if (block.type === 'audio') {
+    return {
+      type: 'text',
+      text: `[MCP: audio content omitted (${describeMime(block)}, ${byteSizeOf(block.data)}); this version cannot play audio]`,
+    };
+  }
+
+  if (block.type === 'resource' && isRecord(block.resource)) {
+    const resource = block.resource;
+    const uri = typeof resource.uri === 'string' ? resource.uri : '';
+    if (typeof resource.text === 'string') {
+      return { type: 'text', text: `[Resource from ${uri}]\n${resource.text}` };
+    }
+    if (typeof resource.blob === 'string') {
+      const mime = describeMime(resource);
+      if (mime.startsWith('image/')) {
+        return { type: 'image_data', data: resource.blob, mimeType: mime };
+      }
+      return {
+        type: 'text',
+        text: `[MCP: resource blob omitted (${mime}, ${byteSizeOf(resource.blob)}) from ${uri}]`,
+      };
+    }
+    return { type: 'text', text: `[MCP: empty resource block from ${uri}]` };
+  }
+
+  if (block.type === 'resource_link') {
+    const name = typeof block.name === 'string' ? block.name : 'resource';
+    const uri = typeof block.uri === 'string' ? block.uri : '';
+    return { type: 'text', text: `[Resource link: ${name}] ${uri}` };
+  }
+
+  return { type: 'text', text: `[MCP: unsupported content block type "${block.type}"]` };
+}
+
+function describeMime(block: Record<string, unknown>): string {
+  return typeof block.mimeType === 'string' ? block.mimeType : 'unknown mime';
+}
+
+function byteSizeOf(value: unknown): string {
+  if (typeof value !== 'string') return '0 B';
+  const bytes = Buffer.byteLength(value, 'utf8');
+  return bytes >= 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${bytes} B`;
+}
+
+function safePreview(value: unknown): string {
+  try {
+    return truncateUtf8(JSON.stringify(value) ?? '', 256);
+  } catch {
+    return '[unserializable]';
+  }
+}
+
+// ── 协议层安全阀(1MB / 100 块 / 256KB 二进制,防异常 Server 消耗资源)────────────
 
 function boundMcpContent(content: readonly unknown[]): unknown[] {
   const bounded: unknown[] = [];
