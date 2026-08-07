@@ -21,12 +21,15 @@
   --ema-duration-panel:  280ms;
 
   /* Border radius */
-  --ema-radius-xs:    4px;
-  --ema-radius-sm:    6px;
-  --ema-radius-md:    10px;
-  --ema-radius-lg:    14px;
-  --ema-radius-xl:    20px;
-  --ema-radius-panel: 16px;
+  /* 基础值随 --ema-radius 乘数(0-3)缩放,uno rounded-* 与 styles 内部统一引用;
+     pill 固定不缩放。--ema-radius 的事实源在本文件。 */
+  --ema-radius:        1;
+  --ema-radius-xs:    calc(4px  * var(--ema-radius, 1));
+  --ema-radius-sm:    calc(6px  * var(--ema-radius, 1));
+  --ema-radius-md:    calc(10px * var(--ema-radius, 1));
+  --ema-radius-lg:    calc(14px * var(--ema-radius, 1));
+  --ema-radius-xl:    calc(20px * var(--ema-radius, 1));
+  --ema-radius-panel: calc(16px * var(--ema-radius, 1));
   --ema-radius-pill:  999px;
 
   /* Shadows - 暖暗晕(任意桌面背景都好看)*/

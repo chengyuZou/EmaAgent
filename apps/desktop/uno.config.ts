@@ -1,5 +1,5 @@
 // Desktop app UnoCSS config — consumes the shared EmaAgent design system
-// from @ema-agent/ui (chromatic pink/violet palettes, icons, radius scale,
+// from @ema-agent/ui (chromatic water-blue/violet palettes, icons, radius scale,
 // glass shortcuts) and adds app-specific scanning + safelist on top.
 //
 // NOTE: no `unocss` aggregate imports here or in the shared config — the

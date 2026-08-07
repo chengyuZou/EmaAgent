@@ -28,15 +28,18 @@ export const EMA_PRIMARY_HUE = 200;
 
 /**
  * Violet secondary hue offset from primary.
- * 350 + (-65) = 285° ≈ violet/purple — stays ~65° "behind" primary for any hue.
+ * 200 + 85 = 285° ≈ violet/purple — stays ~85° "ahead" of primary.
+ * Matches tokens.css --ema-violet (285° at the default hue).
  */
-export const EMA_VIOLET_OFFSET = -65;
+export const EMA_VIOLET_OFFSET = 85;
 
 // ── CSS variable names ────────────────────────────────────────────────────────
 
 export const VAR_HUE        = '--chromatic-hue';
 export const VAR_BRIGHTNESS = '--chromatic-bri';
 export const VAR_SATURATION = '--chromatic-sat';
+/** CSS variable that scales all rounded-* values at runtime (tokens.css defines it). */
+export const VAR_RADIUS = '--ema-radius';
 
 export type Shade = 'DEFAULT' | 50 | 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900 | 950;
 

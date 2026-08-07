@@ -11,7 +11,7 @@ import { cn } from '../utils/cn.js';
 // atomic utilities; no inline style, no CSS file.
 
 export type ButtonVariant =
-  | 'primary'         // Pink-white accented, signature action
+  | 'primary'         // Water-blue accented, signature action
   | 'secondary'       // Neutral, frosted-glass look
   | 'ghost'           // Transparent, hover-only background
   | 'danger';         // Red, destructive

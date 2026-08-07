@@ -1,9 +1,6 @@
 // 读写经过有限数值校验的全局主题色相与圆角倍率。
-import { VAR_HUE, EMA_PRIMARY_HUE } from '../uno-preset-chromatic.js';
+import { VAR_HUE, VAR_RADIUS, EMA_PRIMARY_HUE } from '../uno-preset-chromatic.js';
 import { clampFinite, finiteOr } from './number.js';
-
-/** Mirrors VAR_RADIUS exported from uno.config.ts — kept in sync manually. */
-const VAR_RADIUS = '--ema-radius';
 
 /** Default radius multiplier — matches the :root preflight. */
 const DEFAULT_RADIUS = 1;
@@ -39,7 +36,7 @@ export function getThemeHue(): number {
 }
 
 /**
- * Reset primary hue back to Ema's default pink (350°).
+ * Reset primary hue back to Ema's default water-blue (200°).
  */
 export function resetThemeHue(): void {
   document.documentElement.style.removeProperty(VAR_HUE);

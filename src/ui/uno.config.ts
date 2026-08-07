@@ -32,30 +32,31 @@ import {
   EMA_PRIMARY_HUE,
   EMA_VIOLET_OFFSET,
   VAR_HUE,
+  VAR_RADIUS,
 } from './uno-preset-chromatic.js';
 
-/** CSS variable that scales all rounded-* values at runtime. */
-export const VAR_RADIUS = '--ema-radius';
-
 /**
- * Universal rounding scale driven by --ema-radius (default 1).
- * Set --ema-radius: 0 for sharp UI, 1.5 for softer look.
- * pill/full are fixed — they never scale with the radius var.
+ * Universal rounding scale - references the tokens.css radius variables
+ * (apps/desktop-ui/src/styles/tokens.css) so Uno rounded-* and hand-written
+ * CSS resolve the same --ema-radius multiplier. pill/full stay fixed.
  */
 export const RADIUS_SCALE = {
-  sm:      `calc(6px  * var(${VAR_RADIUS}))`,  // tags, dot badges, small chips
-  DEFAULT: `calc(8px  * var(${VAR_RADIUS}))`,  // buttons, inputs, dropdowns
-  md:      `calc(10px * var(${VAR_RADIUS}))`,  // cards
-  lg:      `calc(14px * var(${VAR_RADIUS}))`,  // dialogs, popovers, sub-window panels
-  xl:      `calc(20px * var(${VAR_RADIUS}))`,  // main window itself, hero containers
-  pill:    '9999px',                            // pill buttons — always full pill
-  full:    '50%',                               // circular icon buttons, dots, avatars
+  sm:      'var(--ema-radius-sm)',    // tags, dot badges, small chips
+  DEFAULT: 'var(--ema-radius-xs)',    // bare `rounded` - smallest default radius
+  md:      'var(--ema-radius-md)',    // cards
+  lg:      'var(--ema-radius-lg)',    // dialogs, popovers, sub-window panels
+  xl:      'var(--ema-radius-xl)',    // main window itself, hero containers
+  pill:    'var(--ema-radius-pill)',  // pill buttons - fixed 999px
+  full:    '50%',                     // circular icon buttons, dots, avatars
 } as const;
 
-/** Default text font stack — mixed CJK + Latin */
+/**
+ * Text font stacks - reference tokens.css variables so Uno font-mono/font-sans
+ * and CSS var(--ema-font-*) resolve to the same faces.
+ */
 export const FONT_FAMILY = {
-  sans: '"Microsoft YaHei", "PingFang SC", "Helvetica Neue", system-ui, sans-serif',
-  mono: 'Consolas, Monaco, "Courier New", monospace',
+  sans: 'var(--ema-font-ui)',
+  mono: 'var(--ema-font-mono)',
 } as const;
 
 // ── Safelist ────────────────────────────────────────────────────────────────
@@ -123,8 +124,8 @@ export function emaSharedPreset(options: EmaSharedPresetOptions = {}): Preset[] 
     chromatic({
       baseHue: EMA_PRIMARY_HUE,
       colors: {
-        primary: 0,                // stays at EMA_PRIMARY_HUE (350 = pink)
-        violet:  EMA_VIOLET_OFFSET, // 350 + (-65) = 285 = violet
+        primary: 0,                // stays at EMA_PRIMARY_HUE (200 = water-blue)
+        violet:  EMA_VIOLET_OFFSET, // 200 + 85 = 285 = violet
       },
     }) as unknown as Preset,
     // 仅识别 un-* 属性，避免把 React 的 icon/items/options props 误判成工具类。
@@ -164,6 +165,8 @@ export function emaSharedPreset(options: EmaSharedPresetOptions = {}): Preset[] 
       ],
     },
     // -- Shape system: --ema-radius scales all rounded-* values at runtime --
+    // Fact source is tokens.css; this preflight only guarantees the variable
+    // exists in environments (e.g. Ladle) that do not load desktop-ui styles.
     {
       name: 'ema-shape',
       preflights: [
