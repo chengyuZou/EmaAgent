@@ -28,7 +28,6 @@ export const PROMPT_DYNAMIC_BOUNDARY = '__EMA_PROMPT_DYNAMIC_BOUNDARY__';
 
 /** 本轮模型与运行时事实;由调用方注入,本包不自行探测。 */
 export interface PromptEnvironment {
-  readonly currentDate: string;
   readonly platform: NodeJS.Platform;
   readonly workspaceRoot: string | null;
   readonly providerId: string;
@@ -65,7 +64,6 @@ function runtimeEnvironment(env: PromptEnvironment): string {
     : '- 当前没有可操作的工作区。';
   return [
     '# 本轮运行环境',
-    `- 当前日期：${env.currentDate}`,
     `- 操作系统：${env.platform}`,
     `- 当前模型：${env.providerId} / ${env.modelId}`,
     workspace,

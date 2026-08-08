@@ -1,4 +1,4 @@
-# @ema-agent/prompts — System Prompt 装配(扁平有序数组,Claude 形)
+# @ema-agent/prompts — System Prompt 装配
 
 System Prompt 的唯一组装者。架构定案:**一个扁平有序数组装完整个 System Prompt**,
 顺序即代码顺序,条件就地展开,`null` 过滤。
