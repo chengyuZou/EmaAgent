@@ -1,6 +1,7 @@
 // 测试 System Prompt 扁平数组装配:顺序、边界哨兵位置、条件展开与 null 过滤。
 import { describe, expect, it } from 'vitest';
 import type { CharacterPromptSections } from '@ema-agent/characters';
+import { BuiltinTools } from '@ema-agent/tool-builtin/identity';
 import {
   getSystemPrompt,
   PROMPT_DYNAMIC_BOUNDARY,
@@ -16,7 +17,12 @@ function input(overrides: Partial<Parameters<typeof getSystemPrompt>[0]> = {}) {
   return {
     characterPrompt: () => CHARACTER,
     executionProfile: 'work' as const,
-    toolNames: ['FileRead', 'FileEdit', 'Skill', 'mcp__demo__search'],
+    toolNames: [
+      BuiltinTools.FileRead.name,
+      BuiltinTools.FileEdit.name,
+      BuiltinTools.Skill.name,
+      'mcp__demo__search',
+    ],
     environment: {
       currentDate: '2026-08-08',
       platform: 'win32' as const,
@@ -36,10 +42,17 @@ describe('getSystemPrompt', () => {
       mcpInstructions: ['serverA 的用法指引'],
     }));
 
-    expect(sections[0]).toContain('# Ema 基本行为');
-    expect(sections[1]).toContain('# 工具使用通用原则');
+    expect(sections.slice(0, 7).map((section) => section.split('\n')[0])).toEqual([
+      '# EmaAgent',
+      '# 系统规则',
+      '# 完成任务',
+      '# 谨慎执行操作',
+      '# 使用工具',
+      '# 与用户沟通',
+      '# 基础表达',
+    ]);
     const boundary = sections.indexOf(PROMPT_DYNAMIC_BOUNDARY);
-    expect(boundary).toBe(2);
+    expect(boundary).toBe(7);
     const after = sections.slice(boundary + 1);
     expect(after[0]).toBe(CHARACTER.identity);
     expect(after[1]).toBe(CHARACTER.presentation);
@@ -51,11 +64,15 @@ describe('getSystemPrompt', () => {
     expect(after.some((s) => s.includes('serverA 的用法指引'))).toBe(true);
   });
 
-  it('无激活角色时角色段整体缺席,其余顺序不变', () => {
-    const sections = getSystemPrompt(input({ characterPrompt: () => null }));
-    expect(sections[2]).toBe(PROMPT_DYNAMIC_BOUNDARY);
-    expect(sections[3]).toContain('当前执行方式');
-    expect(sections.some((s) => s.includes('测试娘'))).toBe(false);
+  it('产品静态段不抢占角色姓名,角色身份只来自 Character', () => {
+    const sections = getSystemPrompt(input());
+    const boundary = sections.indexOf(PROMPT_DYNAMIC_BOUNDARY);
+    const stablePrefix = sections.slice(0, boundary).join('\n');
+
+    expect(stablePrefix).not.toContain('你是 Ema');
+    expect(stablePrefix).toContain('EmaAgent 是产品与运行环境的名称');
+    expect(sections[boundary + 1]).toBe(CHARACTER.identity);
+    expect(sections[boundary + 1]).toContain('测试娘');
   });
 
   it('可选数据级输入缺省时无空洞、无 null 残留', () => {
@@ -80,7 +97,9 @@ describe('getSystemPrompt', () => {
     expect(guidance).toContain('mcp__');
     expect(guidance).not.toContain('Subagent');
 
-    const withoutMcp = getSystemPrompt(input({ toolNames: ['FileRead'] }));
+    const withoutMcp = getSystemPrompt(input({
+      toolNames: [BuiltinTools.FileRead.name],
+    }));
     expect(withoutMcp.some((s) => s.includes('mcp__'))).toBe(false);
     expect(withoutMcp.some((s) => s.includes('本轮能力引导'))).toBe(false);
 
@@ -90,7 +109,13 @@ describe('getSystemPrompt', () => {
   });
 
   it('不出现已退役的工具名(重命名漂移防线)', () => {
-    const retired = ['SkillCall', 'TodoWrite', 'SkillCallTool'];
+    const retired = [
+      'SkillCall',
+      'TodoWrite',
+      'SkillCallTool',
+      'ToolSearch',
+      'DiscoverSkills',
+    ];
     const text = getSystemPrompt(input({
       workspaceInstructions: 'x',
       skillCatalog: 'x',
@@ -99,5 +124,8 @@ describe('getSystemPrompt', () => {
     for (const name of retired) {
       expect(text).not.toContain(name);
     }
+    expect(text).not.toContain('Claude Code');
+    expect(text).not.toContain('Anthropic');
+    expect(text).not.toContain('不受上下文窗口限制');
   });
 });
