@@ -16,7 +16,7 @@ import { join } from 'node:path';
 import sharp from 'sharp';
 import { asCharacterVoiceReferenceId } from '@ema-agent/ids';
 import { Database } from '@ema-agent/storage';
-import { CharacterCardStore, buildCharacterPromptSections } from '../index.js';
+import { CharacterCardStore, buildCharacterPrompt } from '../index.js';
 
 describe('character validation', () => {
   let database: Database;
@@ -47,7 +47,7 @@ describe('character validation', () => {
       'UPDATE character_cards SET system_prompt = ? WHERE id = ?',
     ).run(' ', card.id);
 
-    expect(() => buildCharacterPromptSections(store.get(card.id)!))
+    expect(() => buildCharacterPrompt(store.get(card.id)!))
       .toThrow('character prompt is empty');
   });
 

@@ -100,6 +100,17 @@ export class CharacterVoiceReferencesRepo {
     ).all(characterCardId) as CharacterVoiceReferenceRow[];
   }
 
+  /** 批量取多张卡的资源,替代逐卡 listForCard 的 N+1 查询。 */
+  listForCards(characterCardIds: readonly CharacterCardId[]): CharacterVoiceReferenceRow[] {
+    if (characterCardIds.length === 0) return [];
+    const placeholders = characterCardIds.map(() => '?').join(', ');
+    return this.db.prepare(
+      `SELECT * FROM character_voice_references
+       WHERE character_card_id IN (${placeholders})
+       ORDER BY character_card_id ASC, position ASC, id ASC`,
+    ).all(...characterCardIds) as CharacterVoiceReferenceRow[];
+  }
+
   setPrimary(
     characterCardId: CharacterCardId,
     id: CharacterVoiceReferenceId,

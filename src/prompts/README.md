@@ -25,7 +25,7 @@ PromptEnvironment
   角色人设归 characters 包、Skill 目录归 skills 包、MCP 指引归 mcp 包、工作区指令归
   工作区模块。本包只摆它们的位置,不替任何业务写文案。
 - **产品名不是角色名**:`EmaAgent` 只表示产品和运行环境。当前姓名、身份、人设与
-  表达方式全部来自 characters 包产出的 `CharacterPromptSections`;产品静态段不得
+  表达方式全部来自 characters 包产出的 `CharacterPrompt`;产品静态段不得
   再声明“你是 Ema”或任何固定角色。
 - 前台根 Agent 始终以当前激活角色行动。Chat/Work 只改变执行方式,不切换身份;
   Subagent 是否继承角色由 Agent/Character 接线决定,本包不另造“纯 Agent 身份”。
@@ -50,12 +50,12 @@ PromptEnvironment
 ## 输入注入契约(接线方)
 
 - `characterPrompt`:角色包公共口,每根 Turn 现取当下全局唯一激活角色
-  (`() => buildCharacterPromptSections(card.current())`)。角色 Store 在启动时保证 Seed
+  (`() => buildCharacterPrompt(card.current())`)。角色 Store 在启动时保证 Seed
   和唯一激活角色,因此该接口不接受 `null`;角色 Prompt 无效时应在 Character 边界失败,
   不能静默退化成没有身份的 Agent。角色可任意时刻更换,换角色只影响下一根 Turn。
 - `toolNames`:根 Turn 已冻结 ToolPool 的稳定名称集合,只决定动态能力引导是否出现;
   每个 Tool 的参数 Schema 与详细用法仍由 Provider `tools[]` 提供。
-- `environment`:本轮日期、平台、工作区和模型事实,由调用方冻结后注入。
+- `environment`:本轮平台、工作区和模型事实,由调用方冻结后注入。
 - `workspaceInstructions` / `skillCatalog` / `mcpInstructions`:可选,由调用方
   在根 Turn 装配时注入;变化只影响下一根 Turn。
 
@@ -70,11 +70,11 @@ toolSelectionRules          │
 communicationRules          │
 baseToneRules               ┘
 PROMPT_DYNAMIC_BOUNDARY     ← 哨兵:Context 在此切分并落 cacheBreakpoint
-character.identity          ┐ 角色(切换才变)
+character.prompt            ┐ 角色(切换才变)
 character.presentation      ┘
 executionProfile            chat/work(每根 Turn 可变)
 sessionCapabilityGuidance   当轮 ToolPool 派生的完整跨工具规则
-runtimeEnvironment          日期/平台/工作区/模型
+runtimeEnvironment          平台/工作区/模型
 workspaceInstructions       ┐ 数据级(框架文案声明"非指令")
 skillCatalog                │
 mcpInstructions…            ┘

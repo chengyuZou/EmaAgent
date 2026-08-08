@@ -1,24 +1,20 @@
-// 把角色身份与表达能力转换为模型可见的角色指令片段。
-
 import type { CharacterCard } from './types.js';
 import { assertCharacterPrompt } from './validation/characterPromptValidation.js';
 
-export interface CharacterPromptSections {
-  identity: string;
+export interface CharacterPrompt {
+  prompt: string;
   presentation: string;
-  version: string;
 }
 
 /** Prompt 只装配片段，角色文案及其表达协议由 Character 领域提供。 */
-export function buildCharacterPromptSections(
+export function buildCharacterPrompt(
   card: CharacterCard,
-): CharacterPromptSections {
+): CharacterPrompt {
   // 数据库可能被旧版本或外部工具直接改坏；每次新模型请求仍在领域边界拒绝空 Prompt。
   assertCharacterPrompt(card.systemPrompt, card.id);
   return {
-    identity: card.systemPrompt,
+    prompt: card.systemPrompt,
     presentation: buildActProtocolPrompt(card),
-    version: `${card.id}:${card.version}:${card.updatedAt}`,
   };
 }
 

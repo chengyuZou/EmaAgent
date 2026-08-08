@@ -186,8 +186,9 @@ export class CharacterCardStore {
         this.repository.insert(seed.card, { id: cardId, isBuiltin: true });
       }
 
-      const live2dIds = new Set(this.live2d.list(cardId).map((item) => item.id));
-      const live2dPaths = new Set(this.live2d.list(cardId).map((item) => item.entryPath));
+      const existingLive2d = this.live2d.list(cardId);
+      const live2dIds = new Set(existingLive2d.map((item) => item.id));
+      const live2dPaths = new Set(existingLive2d.map((item) => item.entryPath));
       for (const input of seed.live2dVariants) {
         if (!input.id) throw new Error(`builtin Live2D resource requires id: ${seed.id}`);
         // v17 迁移行的 id 口径与种子不同但路径相同;id 或路径任一命中即视为已存在。
@@ -196,8 +197,9 @@ export class CharacterCardStore {
         }
       }
 
-      const portraitIds = new Set(this.portraits.list(cardId).map((item) => item.id));
-      const portraitPaths = new Set(this.portraits.list(cardId).map((item) => item.relativePath));
+      const existingPortraits = this.portraits.list(cardId);
+      const portraitIds = new Set(existingPortraits.map((item) => item.id));
+      const portraitPaths = new Set(existingPortraits.map((item) => item.relativePath));
       for (const input of seed.portraits) {
         if (!input.id) throw new Error(`builtin portrait resource requires id: ${seed.id}`);
         if (!portraitIds.has(input.id) && !portraitPaths.has(input.relativePath)) {
@@ -205,12 +207,9 @@ export class CharacterCardStore {
         }
       }
 
-      const voiceIds = new Set(
-        this.voiceReferences.list(cardId).map((item) => item.id),
-      );
-      const voicePaths = new Set(
-        this.voiceReferences.list(cardId).map((item) => item.relativePath),
-      );
+      const existingVoices = this.voiceReferences.list(cardId);
+      const voiceIds = new Set(existingVoices.map((item) => item.id));
+      const voicePaths = new Set(existingVoices.map((item) => item.relativePath));
       for (const input of seed.voiceReferences) {
         if (!input.id) throw new Error(`builtin voice resource requires id: ${seed.id}`);
         if (!voiceIds.has(input.id) && !voicePaths.has(input.relativePath)) {
@@ -236,7 +235,18 @@ export class CharacterCardStore {
   }
 
   list(): CharacterCard[] {
-    return this.repository.list().map((card) => this.withResources(card));
+    const cards = this.repository.list();
+    const ids = cards.map((card) => card.id);
+    // 批量分组查询:N 张卡 4 次 SQL(1 卡表 + 3 资源表),不是 1 + 3N。
+    const live2dByCard = this.live2d.listForCards(ids);
+    const portraitsByCard = this.portraits.listForCards(ids);
+    const voiceByCard = this.voiceReferences.listForCards(ids);
+    return cards.map((card) => ({
+      ...card,
+      live2dVariants: live2dByCard.get(card.id) ?? [],
+      portraits: portraitsByCard.get(card.id) ?? [],
+      voiceReferences: voiceByCard.get(card.id) ?? [],
+    }));
   }
 
   get(id: CharacterCardId): CharacterCard | undefined {
@@ -252,12 +262,11 @@ export class CharacterCardStore {
     const active = this.repository.findActive();
     const before = active ? this.withResources(active) : null;
     this.repository.activate(id);
-    const after = this.current();
 
     // 只有激活 id 真的变了才 emit。重新激活同一张卡是 no-op--
     // 省得订阅者跑多余的 reset 循环。
-    if (!before || before.id !== after.id) {
-      this.emitSwitched(after, before);
+    if (!before || before.id !== target.id) {
+      this.emitSwitched(target, before);
     }
     return id;
   }
@@ -276,7 +285,8 @@ export class CharacterCardStore {
   }
 
   duplicate(id: CharacterCardId): CharacterCard {
-    const original = this.get(id);
+    // 复制只取角色定义,不复制资源路径;用窄查询,不触发三表资源装配。
+    const original = this.repository.findById(id);
     if (!original) throw new Error(`character card not found: ${id}`);
     return this.repository.insert(
       {
@@ -284,8 +294,6 @@ export class CharacterCardStore {
         version: original.version,
         description: original.description ?? undefined,
         systemPrompt: original.systemPrompt,
-        speechPatterns: original.speechPatterns,
-        forbiddenTopics: original.forbiddenTopics,
         emotionVocabulary: original.emotionVocabulary,
         motionVocabulary: original.motionVocabulary,
       },
@@ -305,9 +313,6 @@ export class CharacterCardStore {
         commit: () => {
           setStage('publishing');
           this.repository.delete(id);
-          if (this.repository.findById(id)) {
-            throw new Error(`character delete was not committed: ${id}`);
-          }
         },
         isReferenced: () => this.repository.findById(id) !== undefined,
       });
@@ -347,15 +352,6 @@ export class CharacterCardStore {
     this.assertMutableResourceCard(id);
     assertResourcePatch(patch);
     const resource = this.live2d.update(id, resourceId, patch);
-    if (resource) this.emitPresentationChanged(id);
-    return resource;
-  }
-
-  deleteLive2dVariant(
-    id: CharacterCardId,
-    resourceId: CharacterLive2dId,
-  ): CharacterLive2dVariant | undefined {
-    const resource = this.live2d.delete(id, resourceId);
     if (resource) this.emitPresentationChanged(id);
     return resource;
   }
@@ -407,15 +403,6 @@ export class CharacterCardStore {
     this.assertMutableResourceCard(id);
     assertResourcePatch(patch);
     const resource = this.portraits.update(id, resourceId, patch);
-    if (resource) this.emitPresentationChanged(id);
-    return resource;
-  }
-
-  deletePortrait(
-    id: CharacterCardId,
-    resourceId: CharacterPortraitId,
-  ): CharacterPortrait | undefined {
-    const resource = this.portraits.delete(id, resourceId);
     if (resource) this.emitPresentationChanged(id);
     return resource;
   }

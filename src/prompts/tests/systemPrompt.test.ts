@@ -1,16 +1,15 @@
 // 测试 System Prompt 扁平数组装配:顺序、边界哨兵位置、条件展开与 null 过滤。
 import { describe, expect, it } from 'vitest';
-import type { CharacterPromptSections } from '@ema-agent/characters';
+import type { CharacterPrompt } from '@ema-agent/characters';
 import { BuiltinTools } from '@ema-agent/tool-builtin/identity';
 import {
   getSystemPrompt,
   PROMPT_DYNAMIC_BOUNDARY,
 } from '../systemPrompt.js';
 
-const CHARACTER: CharacterPromptSections = {
-  identity: '# 角色:测试娘',
+const CHARACTER: CharacterPrompt = {
+  prompt: '# 角色:测试娘',
   presentation: '# 演出规则',
-  version: 'test:v1',
 };
 
 function input(overrides: Partial<Parameters<typeof getSystemPrompt>[0]> = {}) {
@@ -24,7 +23,6 @@ function input(overrides: Partial<Parameters<typeof getSystemPrompt>[0]> = {}) {
       'mcp__demo__search',
     ],
     environment: {
-      currentDate: '2026-08-08',
       platform: 'win32' as const,
       workspaceRoot: 'D:\\proj',
       providerId: 'openai',
@@ -54,7 +52,7 @@ describe('getSystemPrompt', () => {
     const boundary = sections.indexOf(PROMPT_DYNAMIC_BOUNDARY);
     expect(boundary).toBe(7);
     const after = sections.slice(boundary + 1);
-    expect(after[0]).toBe(CHARACTER.identity);
+    expect(after[0]).toBe(CHARACTER.prompt);
     expect(after[1]).toBe(CHARACTER.presentation);
     expect(after.some((s) => s.includes('当前执行方式：Work'))).toBe(true);
     expect(after.some((s) => s.includes('本轮能力引导'))).toBe(true);
@@ -71,7 +69,7 @@ describe('getSystemPrompt', () => {
 
     expect(stablePrefix).not.toContain('你是 Ema');
     expect(stablePrefix).toContain('EmaAgent 是产品与运行环境的名称');
-    expect(sections[boundary + 1]).toBe(CHARACTER.identity);
+    expect(sections[boundary + 1]).toBe(CHARACTER.prompt);
     expect(sections[boundary + 1]).toContain('测试娘');
   });
 

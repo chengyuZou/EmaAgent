@@ -1,96 +1,70 @@
-# @ema-agent/character-card
+# @ema-agent/characters — 角色领域
 
-> EmaAgent 的角色卡领域模型 —— 管理角色数据、SQLite 持久化，以及角色身份与表达能力的模型可见投影。
-> 本包不依赖通用生命周期总线，也不装配完整 System Prompt；它只把自己的角色语义输出为明确片段。
+EmaAgent 的角色领域:角色定义、三类表现资源(Live2D 变体 / 立绘 / 参考音频)、
+全局唯一激活角色、Prompt 硬门与资源文件生命周期。本包是角色事实的唯一所有者。
 
----
+## 公共接口(冻结)
 
-## 整体架构
-
-```
-                    ┌─────────────────────────┐
-    Controller /    │   CharacterCardStore    │
-    CLI / API  ────►│                         │
-                    │  ┌───────────────────┐  │
-                    │  │ activate(id)      │  │
-                    │  │ create(input)     │  │
-                    │  │ list()            │  │
-                    │  │ get(id)           │  │
-                    │  │ update(id, patch) │  │
-                    │  │ duplicate(id)     │  │
-                    │  └───────┬───────────┘  │
-                    │          │               │
-                    │  ┌───────▼───────────┐  │
-                    │  │ Card / Resources  │  │
-                    │  │ SQLite Repos      │  │
-                    │  └───────────────────┘  │
-                    └─────────────────────────┘
+```ts
+CharacterCardStore          // 唯一协调入口
+buildCharacterPrompt(card)  // 角色 → CharacterPrompt 投影
+CharacterPromptInvalidError / CharacterResourcePathError / CharacterResourceValidationError
+EMA_CARD_ID / BUILTIN_CARDS / BuiltinCharacterSeed
 ```
 
-模块提供：
+类型出口:`CharacterCard`、`CharacterCardInput`、`CharacterPrompt`、三类资源及其
+Input/Patch/Import 类型、`CharacterHealth` 投影、`CharacterEvent`、资源操作与
+恢复报告类型。外部只从本 `index.ts` 导入,禁止穿透内部 repository/resources/validation 文件。
 
-- **纯数据抽象**：不包含特定的应用层逻辑或事件发射器。
-- **SQLite 持久层外观**：基于 `@ema-agent/storage` 提供的数据库接口进行操作封装。
-- **显式资源聚合**：角色定义与 Live2D 变体、立绘、参考音频分别持久化，由 Store 返回统一角色投影。
-- **安全 CRUD**：包括激活策略、内置角色种子的初始化、资源主项切换和数据库外键约束。
+## 所有权与不变量
 
----
+- **全局单激活**:任何时刻至多一张 `is_active` 卡;`activate()` 在 SQL 事务内
+  先清后置,切换可在任意时刻发生,不绑定 Session。`ensureSeed()` 保证内置 Ema 卡
+  存在且在无激活卡时激活它;调用方不得假设"一个 Session 一个角色"。
+- **Prompt 硬门**:写入(create/update)、激活(activate)、Prompt 装配
+  (`buildCharacterPrompt`)三处都拒绝空白 `systemPrompt`;空 Prompt 角色不能激活、
+  不能启动新 Turn。数据库被外部写坏时同样在领域边界失败,不静默降级。
+- **角色定义与资源分表**:`character_cards` 只存定义;Live2D / portraits /
+  voiceReferences 各自一表,外键归属角色。候选顺序由后端冻结
+  (isPrimary → position → id),前端不得自行排序或扫描文件。
+- **聚合装配**:`CharacterCard` 永远带齐三类资源数组;`list()` 用按卡分组的批量
+  查询(4 条 SQL),不允许消费方逐卡补查。
+- **激活前健康门**:Route 层激活前必须过 `inspectHealth(id).executionAvailable`;
+  Store 的 `activate()` 自身只做 Prompt 硬门。
 
-## 文件结构
+## 资源文件语义
 
-```
-src/
-├── index.ts             # 入口，统一导出
-├── store.ts             # 聚合角色定义和三类资源，提供领域 API
-├── repository.ts        # 角色卡核心字段的 SQLite 适配
-├── types.ts             # 角色卡聚合类型
-├── live2d/              # Live2D 变体类型与仓储适配
-├── portraits/           # 角色图片类型与仓储适配
-├── voiceReferences/     # 参考音频类型与仓储适配
-├── resources/           # 路径规范、staging/trash 文件事务、启动恢复与资源生命周期
-├── validation/          # Prompt 硬门与 CharacterHealth 资源校验投影
-├── transfer/            # 同盘暂存发布（.imports）
-├── characterPrompt.ts   # 角色身份与 ACT 表达能力的模型可见片段
-└── seed/                # 内置角色定义与显式资源种子
-tests/
-└── store.spec.ts      # Vitest 单元测试
-```
+- 资源文件走 `.imports/.trash` 同盘事务 + manifest:SQLite 提交失败原位恢复,
+  崩溃残留由启动恢复按数据库事实源处理,不猜测未知目录。
+- 删除一律走 `deleteManaged*`:文件进 `.trash` 与 SQL 删除同事务;裸删 SQL 行的
+  接口不存在(文件会泄漏)。活动角色、内置角色拒绝删除。
+- 资源相对路径过 `CharacterResourcePaths`:拒绝绝对路径、反斜杠、空段、`..` 与
+  Windows 保留名,按 realpath 阻止符号链接/Junction 逃逸。Live2D 是目录资源,
+  立绘与参考音频是 `portraits/`、`voiceRefs/` 下单文件;参考音频属于角色目录,
+  不存在顶层 voiceRefs。
+- 同一角色的资源操作严格串行(`CharacterResourceOperations`),阶段可经
+  `inspectResourceOperation()` 观察。
 
----
+## CharacterPrompt 投影
 
-## 当前边界（V1 内测）
+`buildCharacterPrompt(card)` 产出 `{ prompt, presentation }`:
 
-- 单项资源管理已完整：Live2D、立绘、参考音频各自支持导入、导出、删除与主用切换，文件经 `.imports/.trash` 事务保证 SQL 失败或断电可恢复。
-- **V1 内测暂不支持完整角色包导入/导出（card.json + 整目录）与 `importAsCopy/replace` 冲突策略**；该能力推迟到 V1 正式版，依据内测反馈决定是否实现。不要在内测期创建半成品 Route 或空 manifest 类型。
-- 结构化元数据（资源 ID、相对路径、主用、排序、摘要）在 SQLite；媒体正文（Live2D 目录、图片、音频）在文件系统 `cards/<id>/` 下。
+- `prompt` = 角色的 `systemPrompt` 原文(人设事实,经过硬门校验);
+- `presentation` = ACT 表达协议文案,由 `emotionVocabulary`/`motionVocabulary`
+  生成可用标签清单。
 
----
+完整 System Prompt 的顺序、哨兵切分与序列化归 `@ema-agent/prompts`;本包不读
+上下文、不碰消息数组、不装配 Prompt。
 
-## 核心设计要点
+## 事件
 
-### 1. 角色事件归角色领域
-角色卡切换或外观修改通过角色包自己的事件出口广播。`store.ts` 不依赖通用生命周期总线，也不装配跨域副作用；上层订阅者分别刷新 emotion、stage 与 tts。`activate(id)` 只负责提交角色切换并返回激活的 `CharacterCardId`。
+`onSwitched` / `onPresentationChanged` 是角色领域自己的事件出口(返回反注册函数);
+不依赖通用生命周期总线。订阅者(前端表现层等)自行刷新,Store 不聚合跨域副作用。
 
-### 2. 角色语义与 Prompt 装配分离
-`characterPrompt.ts` 负责把 `systemPrompt`、`emotionVocabulary` 和 `motionVocabulary` 转成 Character Identity 与 Presentation 片段，因为这些语义属于角色。完整 Slot 排序、版本快照和 System Prompt 序列化仍由 **`@ema-agent/prompts`** 处理；Character 不读取其他上下文，也不修改消息数组。
+## 不负责
 
-### 3. 角色定义与资源分表
-`character_cards` 只保存角色身份和 Prompt 等核心字段。Live2D、图片与参考音频各自拥有明确资源表，并通过 `character_card_id` 外键归属角色。这样可以保存多个候选资源、确定主资源，又不会把路径数组塞回万能 JSON。
-
-复制角色只复制角色定义，不共享原角色的资源路径；资源复制、导入和删除将在可恢复文件生命周期中单独完成。
-
----
-
-## `CharacterCardStore` API 概览
-
-| 方法签名 | 说明 |
-|---|---|
-| `ensureSeed(): void` | 初始化检查，若内置角色（EMA）不存在则插入；若当前无激活卡则默认激活 EMA。 |
-| `current(): CharacterCard` | 获取当前正在处于“激活”状态的角色卡对象，缺失则抛出异常。 |
-| `list(): CharacterCard[]` | 枚举数据库中所有的角色卡列表。 |
-| `get(id: CharacterCardId): CharacterCard \| undefined` | 根据 ID 检索指定的角色卡。 |
-| `activate(id: CharacterCardId): CharacterCardId` | 同步激活目标角色卡并返回其 ID，若 ID 不存在引发 `Error`。 |
-| `create(input: CharacterCardInput): CharacterCard` | 接收表单输入并插入到数据库。 |
-| `update(id: CharacterCardId, patch: Partial): CharacterCard` | 对指定的角色卡执行局部更新。 |
-| `duplicate(id: CharacterCardId): CharacterCard` | 克隆角色定义并生成 “(Copy)” 记录，不复制原角色资源路径。 |
-| `delete(id: CharacterCardId): void` | 硬删除指定的角色卡信息。 |
+- 不装配 System Prompt,不认识 ExecutionProfile/Narrative;
+- 不管理 Session 绑定、不做多角色并存或 Team 身份;
+- 完整角色便携包(card.json + 整目录导入导出、冲突策略)推到 V1 正式版,
+  内测期不建半成品 Route 或空 manifest 类型;
+- 媒体正文解析、Live2D 渲染、TTS 播放归各自消费方,本包只提供路径与元数据。

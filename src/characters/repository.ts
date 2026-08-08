@@ -1,4 +1,4 @@
-// 这里把角色卡领域对象和数据库行互相转换，是 store 和 storage repo 之间的薄适配层。
+// 角色卡领域对象和数据库行互相转换，是 store 和 storage repo 之间的薄适配层。
 
 import { randomUUID } from 'node:crypto';
 import type { CharacterCardsRepo, CharacterCardRow } from '@ema-agent/storage';
@@ -15,8 +15,6 @@ function fromRow(row: CharacterCardRow): CharacterCard {
     version:          row.version,
     description:      row.description,
     systemPrompt:     row.system_prompt,
-    speechPatterns:   JSON.parse(row.speech_patterns_json) as string[],
-    forbiddenTopics:  JSON.parse(row.forbidden_topics_json) as string[],
     emotionVocabulary: JSON.parse(row.emotion_vocab_json) as string[],
     motionVocabulary:  JSON.parse(row.motion_vocab_json) as string[],
     live2dVariants:   [],
@@ -62,8 +60,6 @@ export class CharacterCardRepository {
       version:              input.version,
       description:          input.description,
       systemPrompt:         input.systemPrompt,
-      speechPatternsJson:   JSON.stringify(input.speechPatterns ?? []),
-      forbiddenTopicsJson:  JSON.stringify(input.forbiddenTopics ?? []),
       emotionVocabJson:     JSON.stringify(input.emotionVocabulary ?? []),
       motionVocabJson:      JSON.stringify(input.motionVocabulary ?? []),
       isActive:             opts.isActive ?? false,
@@ -81,10 +77,6 @@ export class CharacterCardRepository {
       version:              patch.version,
       description:          patch.description,
       systemPrompt:         patch.systemPrompt,
-      speechPatternsJson:   patch.speechPatterns !== undefined
-                              ? JSON.stringify(patch.speechPatterns) : undefined,
-      forbiddenTopicsJson:  patch.forbiddenTopics !== undefined
-                              ? JSON.stringify(patch.forbiddenTopics) : undefined,
       emotionVocabJson:     patch.emotionVocabulary !== undefined
                               ? JSON.stringify(patch.emotionVocabulary) : undefined,
       motionVocabJson:      patch.motionVocabulary !== undefined

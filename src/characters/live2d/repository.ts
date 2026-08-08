@@ -1,5 +1,3 @@
-// 将 Live2D/VRM 领域资源映射到角色变体存储记录。
-
 import { randomUUID } from 'node:crypto';
 import {
   CharacterLive2dVariantsRepo,
@@ -41,6 +39,20 @@ export class CharacterLive2dRepository {
 
   list(characterCardId: CharacterCardId): CharacterLive2dVariant[] {
     return this.repo.listForCard(characterCardId).map(fromRow);
+  }
+
+  /** 批量取多张卡的变体并按卡分组;Store 全量聚合用它替代逐卡查询。 */
+  listForCards(
+    characterCardIds: readonly CharacterCardId[],
+  ): Map<CharacterCardId, CharacterLive2dVariant[]> {
+    const grouped = new Map<CharacterCardId, CharacterLive2dVariant[]>();
+    for (const row of this.repo.listForCards(characterCardIds)) {
+      const cardId = row.character_card_id as CharacterCardId;
+      const list = grouped.get(cardId) ?? [];
+      list.push(fromRow(row));
+      grouped.set(cardId, list);
+    }
+    return grouped;
   }
 
   insert(

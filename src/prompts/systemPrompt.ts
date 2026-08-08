@@ -9,7 +9,7 @@
 // 文案归属:本包只写产品级文案(productPrompt/executionProfilePrompt);
 // 角色人设由 characters 包产出,Skill 目录由 skills 包产出,MCP 指引由 mcp 包捕获,
 // 工作区指令由工作区模块产出——本包只摆它们的位置。
-import type { CharacterPromptSections } from '@ema-agent/characters';
+import type { CharacterPrompt} from '@ema-agent/characters';
 import type { ExecutionProfile } from '@ema-agent/turn';
 import {
   actionSafetyRules,
@@ -36,7 +36,7 @@ export interface PromptEnvironment {
 
 export interface GetSystemPromptInput {
   /** 角色包公共口：取当下全局唯一激活角色的 Prompt 段落。 */
-  readonly characterPrompt: () => CharacterPromptSections;
+  readonly characterPrompt: () => CharacterPrompt;
   readonly executionProfile: ExecutionProfile;
   /**
    * 当根 Turn 冻结 ToolPool 的工具名集合(与 Provider tools[] 同一个 Pool 投影)。
@@ -86,7 +86,7 @@ export function getSystemPrompt(
     baseToneRules(),
     PROMPT_DYNAMIC_BOUNDARY,
     // ── 动态尾部:角色 → Profile → 能力 → 环境 → 数据级内容 ──
-    character.identity,
+    character.prompt,
     character.presentation,
     executionProfileInstructions(input.executionProfile),
     sessionCapabilityGuidance(input.toolNames),

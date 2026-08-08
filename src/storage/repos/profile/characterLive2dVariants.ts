@@ -102,6 +102,17 @@ export class CharacterLive2dVariantsRepo {
     ).all(characterCardId) as CharacterLive2dVariantRow[];
   }
 
+  /** 批量取多张卡的资源,替代逐卡 listForCard 的 N+1 查询。 */
+  listForCards(characterCardIds: readonly CharacterCardId[]): CharacterLive2dVariantRow[] {
+    if (characterCardIds.length === 0) return [];
+    const placeholders = characterCardIds.map(() => '?').join(', ');
+    return this.db.prepare(
+      `SELECT * FROM character_live2d_variants
+       WHERE character_card_id IN (${placeholders})
+       ORDER BY character_card_id ASC, position ASC, id ASC`,
+    ).all(...characterCardIds) as CharacterLive2dVariantRow[];
+  }
+
   setPrimary(
     characterCardId: CharacterCardId,
     id: CharacterLive2dId,

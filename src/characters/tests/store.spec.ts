@@ -154,14 +154,11 @@ describe('CharacterCardStore', () => {
       const input: CharacterCardInput = {
         name: 'Full Card',
         systemPrompt: 'Full prompt.',
-        speechPatterns: ['hello', 'bye'],
-        forbiddenTopics: ['violence'],
         emotionVocabulary: ['happy', 'sad'],
         motionVocabulary: ['wave', 'nod'],
       };
       const card = store.create(input);
       expect(card.name).toBe('Full Card');
-      expect(card.speechPatterns).toEqual(['hello', 'bye']);
       expect(card.emotionVocabulary).toEqual(['happy', 'sad']);
       expect(card.motionVocabulary).toEqual(['wave', 'nod']);
       expect(card.isBuiltin).toBe(false);
@@ -172,7 +169,6 @@ describe('CharacterCardStore', () => {
       const card = store.create(minimalInput());
       expect(card.name).toBe('Test Card');
       expect(card.systemPrompt).toBe('You are a test.');
-      expect(card.speechPatterns).toEqual([]);
       expect(card.emotionVocabulary).toEqual([]);
       expect(card.motionVocabulary).toEqual([]);
     });
@@ -213,6 +209,30 @@ describe('CharacterCardStore', () => {
   });
 
   describe('resource metadata updates', () => {
+    it('list() 批量装配:多张卡的资源正确分组,不串卡', () => {
+      const alpha = store.create(minimalInput({ name: 'Alpha' }));
+      const beta = store.create(minimalInput({ name: 'Beta' }));
+      store.addLive2dVariant(alpha.id, {
+        label: 'AlphaModel', format: 'live2d', entryPath: 'live2d/a.model3.json',
+      });
+      store.addPortrait(beta.id, {
+        label: 'BetaPortrait', relativePath: 'portraits/b.png',
+        mimeType: 'image/png', byteSize: 10, width: 1, height: 1,
+      });
+      store.addVoiceReference(beta.id, {
+        label: 'BetaVoice', relativePath: 'voiceRefs/b.mp3',
+        promptText: 'x', promptLang: 'zh', mimeType: 'audio/mpeg',
+      });
+
+      const byId = new Map(store.list().map((card) => [card.id, card]));
+      expect(byId.get(alpha.id)!.live2dVariants).toHaveLength(1);
+      expect(byId.get(alpha.id)!.portraits).toHaveLength(0);
+      expect(byId.get(alpha.id)!.voiceReferences).toHaveLength(0);
+      expect(byId.get(beta.id)!.live2dVariants).toHaveLength(0);
+      expect(byId.get(beta.id)!.portraits).toHaveLength(1);
+      expect(byId.get(beta.id)!.voiceReferences).toHaveLength(1);
+    });
+
     it('禁用主 Live2D 后提升下一候选，并让资源 revision 单调前进', () => {
       const card = store.create(minimalInput());
       const first = store.addLive2dVariant(card.id, {
@@ -322,14 +342,12 @@ describe('CharacterCardStore', () => {
       expect(store.get(card.id)?.name).toBe('Renamed');
     });
 
-    it('updates systemPrompt and speechPatterns', () => {
+    it('updates systemPrompt', () => {
       const card = store.create(minimalInput());
       const updated = store.update(card.id, {
         systemPrompt: 'New prompt',
-        speechPatterns: ['ahoy'],
       });
       expect(updated.systemPrompt).toBe('New prompt');
-      expect(updated.speechPatterns).toEqual(['ahoy']);
     });
 
     it('does not affect fields not included in patch', () => {
@@ -358,7 +376,6 @@ describe('CharacterCardStore', () => {
       const dup = store.duplicate(ema.id);
       expect(dup.emotionVocabulary).toEqual(ema.emotionVocabulary);
       expect(dup.motionVocabulary).toEqual(ema.motionVocabulary);
-      expect(dup.speechPatterns).toEqual(ema.speechPatterns);
     });
 
     it('只复制角色定义，不复用原角色的资源路径', () => {

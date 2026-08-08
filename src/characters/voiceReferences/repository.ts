@@ -43,6 +43,20 @@ export class CharacterVoiceReferenceRepository {
     return this.repo.listForCard(characterCardId).map(fromRow);
   }
 
+  /** 批量取多张卡的参考音频并按卡分组;Store 全量聚合用它替代逐卡查询。 */
+  listForCards(
+    characterCardIds: readonly CharacterCardId[],
+  ): Map<CharacterCardId, CharacterVoiceReference[]> {
+    const grouped = new Map<CharacterCardId, CharacterVoiceReference[]>();
+    for (const row of this.repo.listForCards(characterCardIds)) {
+      const cardId = row.character_card_id as CharacterCardId;
+      const list = grouped.get(cardId) ?? [];
+      list.push(fromRow(row));
+      grouped.set(cardId, list);
+    }
+    return grouped;
+  }
+
   insert(
     characterCardId: CharacterCardId,
     input: CharacterVoiceReferenceInput,

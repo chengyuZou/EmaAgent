@@ -8,8 +8,6 @@ export interface CharacterCardRow {
   version: string;
   description: string | null;
   system_prompt: string;
-  speech_patterns_json: string;
-  forbidden_topics_json: string;
   emotion_vocab_json: string;
   motion_vocab_json: string;
   is_active: number;
@@ -24,8 +22,6 @@ export interface CharacterCardInsert {
   version?: string;
   description?: string | null;
   systemPrompt: string;
-  speechPatternsJson?: string;
-  forbiddenTopicsJson?: string;
   emotionVocabJson?: string;
   motionVocabJson?: string;
   isActive?: boolean;
@@ -40,8 +36,6 @@ export interface CharacterCardUpdate {
   version?: string;
   description?: string | null;
   systemPrompt?: string;
-  speechPatternsJson?: string;
-  forbiddenTopicsJson?: string;
   emotionVocabJson?: string;
   motionVocabJson?: string;
   updatedAt?: number;
@@ -67,10 +61,10 @@ export class CharacterCardsRepo {
     this.db
       .prepare(
         `INSERT INTO character_cards
-           (id, name, version, description, system_prompt, speech_patterns_json,
-            forbidden_topics_json, emotion_vocab_json, motion_vocab_json, is_active,
+           (id, name, version, description, system_prompt, 
+            emotion_vocab_json, motion_vocab_json, is_active,
             is_builtin, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         c.id,
@@ -78,8 +72,6 @@ export class CharacterCardsRepo {
         c.version ?? 'v1.0.0',
         c.description ?? null,
         c.systemPrompt,
-        c.speechPatternsJson ?? '[]',
-        c.forbiddenTopicsJson ?? '[]',
         c.emotionVocabJson ?? '[]',
         c.motionVocabJson ?? '[]',
         c.isActive ? 1 : 0,
@@ -141,8 +133,6 @@ export class CharacterCardsRepo {
     if (patch.version !== undefined)             { fields.push('version = ?'); values.push(patch.version); }
     if (patch.description !== undefined)         { fields.push('description = ?'); values.push(patch.description); }
     if (patch.systemPrompt !== undefined)        { fields.push('system_prompt = ?'); values.push(patch.systemPrompt); }
-    if (patch.speechPatternsJson !== undefined)  { fields.push('speech_patterns_json = ?'); values.push(patch.speechPatternsJson); }
-    if (patch.forbiddenTopicsJson !== undefined) { fields.push('forbidden_topics_json = ?'); values.push(patch.forbiddenTopicsJson); }
     if (patch.emotionVocabJson !== undefined)    { fields.push('emotion_vocab_json = ?'); values.push(patch.emotionVocabJson); }
     if (patch.motionVocabJson !== undefined)     { fields.push('motion_vocab_json = ?'); values.push(patch.motionVocabJson); }
     if (fields.length === 0) return;

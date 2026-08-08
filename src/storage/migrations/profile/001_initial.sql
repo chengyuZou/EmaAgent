@@ -7,8 +7,6 @@ CREATE TABLE character_cards (
   version               TEXT NOT NULL DEFAULT 'v1.0.0',
   description           TEXT,
   system_prompt         TEXT NOT NULL,
-  speech_patterns_json  TEXT NOT NULL DEFAULT '[]',
-  forbidden_topics_json TEXT NOT NULL DEFAULT '[]',
   emotion_vocab_json    TEXT NOT NULL DEFAULT '[]',
   motion_vocab_json     TEXT NOT NULL DEFAULT '[]',
   is_active             INTEGER NOT NULL DEFAULT 0,

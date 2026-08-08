@@ -42,6 +42,20 @@ export class CharacterPortraitRepository {
     return this.repo.listForCard(characterCardId).map(fromRow);
   }
 
+  /** 批量取多张卡的立绘并按卡分组;Store 全量聚合用它替代逐卡查询。 */
+  listForCards(
+    characterCardIds: readonly CharacterCardId[],
+  ): Map<CharacterCardId, CharacterPortrait[]> {
+    const grouped = new Map<CharacterCardId, CharacterPortrait[]>();
+    for (const row of this.repo.listForCards(characterCardIds)) {
+      const cardId = row.character_card_id as CharacterCardId;
+      const list = grouped.get(cardId) ?? [];
+      list.push(fromRow(row));
+      grouped.set(cardId, list);
+    }
+    return grouped;
+  }
+
   insert(
     characterCardId: CharacterCardId,
     input: CharacterPortraitInput,

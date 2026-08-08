@@ -36,8 +36,8 @@ export type {
   CharacterVoiceReferencePatch,
   ImportCharacterVoiceReferenceInput,
 } from './voiceReferences/types.js';
-export { buildCharacterPromptSections } from './characterPrompt.js';
-export type { CharacterPromptSections } from './characterPrompt.js';
+export { buildCharacterPrompt} from './characterPrompt.js';
+export type { CharacterPrompt } from './characterPrompt.js';
 export type {
   CharacterCardSwitchedEvent,
   CharacterEvent,
