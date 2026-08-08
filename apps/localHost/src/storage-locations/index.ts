@@ -9,7 +9,7 @@ export {
   scratchpadTurnDir, removeSessionDir, removeTurnFiles,
   sweepOrphanSessionDirectories, sweepOrphanTurnFiles,
   ensureProfileLayout,
-  cardsDir, builtinCardsDir,
+  cardsDir, builtinCardsDir, builtinSkillsDir, bundledSkillsDir,
 } from './paths.js';
 
 export {

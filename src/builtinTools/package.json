@@ -11,6 +11,10 @@
     "./ui": {
       "import": "./dist/ui.js",
       "types": "./dist/ui.d.ts"
+    },
+    "./identity": {
+      "import": "./dist/BuiltinToolIdentity.js",
+      "types": "./dist/BuiltinToolIdentity.d.ts"
     }
   },
   "main": "./dist/index.js",

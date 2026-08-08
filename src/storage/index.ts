@@ -61,12 +61,12 @@ export type {
 export type { SessionBackupRestoreInput } from './repos/data/sessionBackupRestore.js';
 export { McpServersRepo }  from './repos/profile/mcp-servers.js';
 export type { McpServerRow } from './repos/profile/mcp-servers.js';
+export { McpRegistrySourcesRepo } from './repos/profile/mcp-registry-sources.js';
+export type { McpRegistrySourceRow, McpRegistrySourceInsert } from './repos/profile/mcp-registry-sources.js';
 export { SkillsRepo }      from './repos/profile/skills.js';
 export type { SkillRow }   from './repos/profile/skills.js';
 export { SkillSitesRepo }  from './repos/profile/skill-sites.js';
 export type { SkillSiteRow, SkillSiteInsert } from './repos/profile/skill-sites.js';
-export { MarketSourcesRepo } from './repos/profile/market-sources.js';
-export type { MarketSourceRow } from './repos/profile/market-sources.js';
 export { PermissionRulesRepo } from './repos/profile/permissionRules.js';
 export type { PermissionRuleRow } from './repos/profile/permissionRules.js';
 export type { ProtectedDeleteResult } from './repos/profile/mutation-results.js';

@@ -1,8 +1,6 @@
 // 在 LocalHost 组合根中构造并排序所有 HTTP 业务路由。
 
-import { createSkillsRouter } from '../routes/skills.js';
 import { createMcpRouter } from '../routes/mcp.js';
-import { createMarketRouter } from '../routes/market.js';
 import { healthRoute } from '../routes/health.js';
 import { permissionRoute } from '../routes/permission.js';
 import { memoryRoute } from '../routes/memory.js';
@@ -80,25 +78,11 @@ export function createHttpRoutes(bindings: AppBindings): readonly MountedHttpRou
     },
     { path: '/api/cards', router: cardsRoute(bindings.card, bindings.fileAccess) },
     {
-      path: '/api',
-      router: createSkillsRouter(
-        bindings.skillStore,
-        bindings.skillInstaller,
-        bindings.marketSourceStore,
-        bindings.marketRegistry,
-      ),
-    },
-    {
       path: '/api/mcp',
       router: createMcpRouter(
         bindings.mcpRegistry,
-        bindings.marketSourceStore,
-        bindings.marketRegistry,
+        bindings.mcpRegistrySources,
       ),
-    },
-    {
-      path: '/api/market',
-      router: createMarketRouter(bindings.marketSourceStore, bindings.marketRegistry),
     },
     {
       path: '/api/kb',

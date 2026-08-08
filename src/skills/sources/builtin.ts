@@ -1,6 +1,7 @@
 // sources/builtin:内置技能的物化对账与扫描。
-// 随包资源 → <profileDir>/resources/skills;指纹 marker 对账(Codex install_system_skills 模式):
+// 随包只读源 → <profileDir>/resources/skills;指纹 marker 对账(Codex install_system_skills 模式):
 // marker 匹配跳过,不匹配整目录重写(临时目录 + rename 交换,不留半成品)。
+// 卸载重装、版本升级、用户误删物化副本都靠指纹不符时重建自愈。
 // builtin 不落 SQL、默认启用;物化失败降级 warning,SkillPool 缺内置技能继续运行。
 import { createHash } from 'node:crypto';
 import { cp, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';

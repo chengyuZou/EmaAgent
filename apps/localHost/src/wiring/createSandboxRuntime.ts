@@ -6,15 +6,29 @@ import type { SessionStore } from '@ema-agent/session';
 import {
   CommandRunner,
   detectBackend,
+  probeBash,
+  type BackendKind,
   type CommandRunnerPort,
   type DetectResult,
-  type SandboxStatusWire,
 } from '@ema-agent/sandbox';
 import {
   dataDbPathFor,
   profileDbPath,
   sqliteFileSet,
 } from '../storage-locations/index.js';
+
+/**
+ * LocalHost 组装给系统接口与设置页的沙箱状态。
+ * 这是宿主组合事实,不是 Sandbox 执行器自己的类型。
+ */
+export interface SandboxStatusWire {
+  readonly kind: BackendKind;
+  readonly isolation: 'os' | 'application-only';
+  readonly shellExecution: 'isolated' | 'disabled' | 'unsafe-override';
+  readonly sandboxNetwork: 'none' | 'full';
+  readonly localMcpStdio: 'isolated' | 'disabled' | 'unsafe-override';
+  readonly warning?: string;
+}
 
 interface SandboxUnsafeOverrides {
   readonly shell: boolean;
@@ -38,19 +52,19 @@ export interface SandboxRuntimePolicy {
 
 /**
  * 把机器探测结果和显式开发开关收敛成一份安全策略。
- * app-layer 只能说明应用做了参数检查，不能伪装成系统级隔离。
+ * unisolated 只能说明应用做了参数检查，不能伪装成系统级隔离。
  */
 export function resolveSandboxRuntimePolicy(
   detection: DetectResult,
   overrides: SandboxUnsafeOverrides,
 ): SandboxRuntimePolicy {
   const disableExecuteTools =
-    detection.backend === 'app-layer' && !overrides.shell;
+    detection.backend === 'unisolated' && !overrides.shell;
   const localMcpStdioEnabled = overrides.localMcpStdio;
   const networkAccess = overrides.network ? 'full' as const : 'none' as const;
   const warnings = [
     detection.degradeReason,
-    detection.backend === 'app-layer' && overrides.shell
+    detection.backend === 'unisolated' && overrides.shell
       ? 'Shell is running without OS-level isolation because AGEN_UNSAFE_SHELL=1.'
       : undefined,
     localMcpStdioEnabled
@@ -66,11 +80,11 @@ export function resolveSandboxRuntimePolicy(
     localMcpStdioEnabled,
     networkAccess,
     status: Object.freeze({
-      backend: detection.backend,
-      isolation: detection.backend === 'app-layer' ? 'application-only' : 'os',
+      kind: detection.backend,
+      isolation: detection.backend === 'unisolated' ? 'application-only' : 'os',
       shellExecution: disableExecuteTools
         ? 'disabled'
-        : detection.backend === 'app-layer'
+        : detection.backend === 'unisolated'
           ? 'unsafe-override'
           : 'isolated',
       localMcpStdio: localMcpStdioEnabled ? 'unsafe-override' : 'disabled',
@@ -101,8 +115,8 @@ export function readSandboxUnsafeOverrides(
   return overrides;
 }
 
-/** 返回 Sandbox 必须永远拒绝写入的 Profile/Data SQLite 文件族。 */
-export function sandboxProtectedPaths(activeDataDir: string): readonly string[] {
+/** 返回 Sandbox 必须永远禁止读写的 Profile/Data SQLite 文件族。 */
+export function sandboxForbiddenPaths(activeDataDir: string): readonly string[] {
   return Object.freeze([
     ...sqliteFileSet(profileDbPath()),
     ...sqliteFileSet(dataDbPathFor(activeDataDir)),
@@ -117,7 +131,10 @@ export function createSandboxRuntime(
     detectBackend(),
     readSandboxUnsafeOverrides(process.env),
   );
-  const protectedPaths = sandboxProtectedPaths(activeDataDir);
+  // 启动预热 bash 探测: 异步回退链在后台跑完,
+  // 首个 Shell 命令到达时 CommandRunner 的同步 peek 直接命中,不阻塞事件循环。
+  void probeBash();
+  const forbiddenPaths = sandboxForbiddenPaths(activeDataDir);
   const runners = new Map<SessionId, CommandRunnerPort>();
 
   const getCommandRunner = (
@@ -135,7 +152,7 @@ export function createSandboxRuntime(
     const runner = new CommandRunner({
       workspaceRoot,
       writablePaths: [workspaceRoot, ...temporaryWritePaths],
-      protectedPaths,
+      forbiddenPaths,
       networkAccess: policy.networkAccess,
     });
     runners.set(sessionId, runner);

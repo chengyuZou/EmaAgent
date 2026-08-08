@@ -32,7 +32,7 @@ export function createTurnsRouter(bindings: AppBindings): Hono {
     bindings.interactionQueue,
     {
       session: bindings.session,
-      toolExecutionJournal: bindings.toolExecutionJournal,
+      toolExecutionState: bindings.toolExecutionState,
     },
     {
       session: bindings.session,

@@ -1,37 +1,33 @@
-// 装配 MCP、Marketplace 与 Skill 的本地扩展入口，不在构造阶段连接服务器或扫描目录。
+// 装配 MCP 与 Skill 的本地扩展入口，不在构造阶段连接服务器或扫描目录。
 
 import path from 'node:path';
 import {
-  MarketRegistry,
-  MarketSourceStore,
-} from '@ema-agent/marketplace';
-import {
-  McpMarketAdapter,
   McpRegistry,
+  McpRegistrySourceStore,
   McpServerStore,
   type McpStdioLaunchIntent,
 } from '@ema-agent/mcp';
 import type { PermissionAuthorizer } from '@ema-agent/permission';
+import type { CredentialFacade } from '@ema-agent/credential';
 import {
-  SkillInstaller,
-  SkillMarketAdapter,
-  SkillRunner,
-  SkillStore,
+  createSkillRegistry,
+  createSkillStore,
 } from '@ema-agent/skills';
 import {
-  MarketSourcesRepo,
+  McpRegistrySourcesRepo,
   McpServersRepo,
   SkillsRepo,
   type Database,
 } from '@ema-agent/storage';
 import type { ToolRegistry } from '@ema-agent/tools';
-import { profileDir } from '../storage-locations/index.js';
+import { bundledSkillsDir, builtinSkillsDir, profileDir } from '../storage-locations/index.js';
 
 export function createExtensionRuntime(
   profileDb: Database,
   tools: ToolRegistry,
   permission: PermissionAuthorizer,
   localMcpStdioEnabled: boolean,
+  credentials: CredentialFacade,
 ) {
   const mcpStdioGate = async (
     intent: McpStdioLaunchIntent,
@@ -68,32 +64,32 @@ export function createExtensionRuntime(
   };
 
   const mcpRegistry = new McpRegistry(
-    new McpServerStore(new McpServersRepo(profileDb.sqlite)),
+    new McpServerStore(new McpServersRepo(profileDb.sqlite), credentials),
     tools,
     mcpStdioGate,
     localMcpStdioEnabled,
   );
 
-  const marketRegistry = new MarketRegistry();
-  marketRegistry.registerAdapter(new McpMarketAdapter());
-  marketRegistry.registerAdapter(new SkillMarketAdapter());
-
-  const skillStore = new SkillStore(
-    new SkillsRepo(profileDb.sqlite),
-    [{
-      path: path.join(profileDir(), 'skills'),
-      source: 'user',
-    }],
+  const mcpRegistrySources = new McpRegistrySourceStore(
+    new McpRegistrySourcesRepo(profileDb.sqlite),
   );
+
+  const skillUserRoot = path.join(profileDir(), 'skills');
+  const skillStore = createSkillStore({
+    repo: new SkillsRepo(profileDb.sqlite),
+    userRoot: skillUserRoot,
+  });
+  const skillRegistry = createSkillRegistry({
+    userRoot: skillUserRoot,
+    builtinRoot: builtinSkillsDir(),
+    bundledSkillsSource: bundledSkillsDir(),
+    store: skillStore,
+  });
 
   return {
     mcpRegistry,
-    marketRegistry,
-    marketSourceStore: new MarketSourceStore(
-      new MarketSourcesRepo(profileDb.sqlite),
-    ),
+    mcpRegistrySources,
     skillStore,
-    skillRunner: new SkillRunner(skillStore),
-    skillInstaller: new SkillInstaller(skillStore),
+    skillRegistry,
   };
 }

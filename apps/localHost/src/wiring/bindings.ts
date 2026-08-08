@@ -19,9 +19,8 @@ import {
   type AttachmentStore,
   type FileAccessFacade,
 } from '@ema-agent/attachment';
-import type { McpRegistry } from '@ema-agent/mcp';
-import type { SkillStore, SkillRunner, SkillInstaller } from '@ema-agent/skills';
-import type { MarketRegistry, MarketSourceStore } from '@ema-agent/marketplace';
+import type { McpRegistry, McpRegistrySourceStore } from '@ema-agent/mcp';
+import type { SkillRegistry, SkillStore } from '@ema-agent/skills';
 import type { LanguageModelRuntime } from '@ema-agent/llm';
 import {
   type ModelsDevCatalog,
@@ -57,10 +56,11 @@ import type {
   TurnId,
 } from '@ema-agent/ids';
 import type { KbManager } from '@ema-agent/knowledge';
-import type { CommandRunnerPort, SandboxStatusWire } from '@ema-agent/sandbox';
+import type { CommandRunnerPort } from '@ema-agent/sandbox';
+import type { SandboxStatusWire } from './createSandboxRuntime.js';
 import type {
   BackgroundProcessRuntime,
-  ToolExecutionJournal,
+  ToolExecutionState,
   ToolRegistry,
   ToolResultStore,
 } from '@ema-agent/tools';
@@ -172,9 +172,9 @@ export interface AppBindings {
    */
   invalidateSessionRuntime: (sessionId: SessionId) => void;
   /**
-   * 会话删除专用(B-026)：清掉该会话的 Runner 与 Tool Result Store 引用。
+   * 会话删除专用(B-026)：停止后台进程并清掉该会话的 Runner 与 Tool Result Store 引用。
    */
-  removeSessionRuntime: (sessionId: SessionId) => void;
+  removeSessionRuntime: (sessionId: SessionId) => Promise<void>;
   /** 按 Session 缓存外置 Tool Result 存储。 */
   getSessionToolResultStore: (sessionId: SessionId) => ToolResultStore;
   /** 子 Agent 实际执行的持久化入口；根 Turn 不会写入该存储。 */
@@ -182,7 +182,7 @@ export interface AppBindings {
   /** 根 Turn 可见的持久工作清单；普通 Subagent 不继承该入口。 */
   taskStore: TaskStore;
   /** 工具副作用执行日志的唯一业务入口。 */
-  toolExecutionJournal: ToolExecutionJournal;
+  toolExecutionState: ToolExecutionState;
   /** 子 Agent 执行追加和查询共用的领域 transcript 存储。 */
   agentRunTranscript: AgentRunTranscriptStore;
 
@@ -215,12 +215,10 @@ export interface AppBindings {
   storageStats:     DataDirStatsRepo;
   sessionNotes:     SessionNotesRepo;
   mcpRegistry:      McpRegistry;
-  /** 市场源注册表 + 通用 store(MCP/Skill 共用,kind 不约束)。 */
-  marketRegistry:     MarketRegistry;
-  marketSourceStore:  MarketSourceStore;
+  /** MCP Registry 目录源(官方种子 + 用户镜像)。 */
+  mcpRegistrySources: McpRegistrySourceStore;
   skillStore:     SkillStore;
-  skillRunner:    SkillRunner;
-  skillInstaller: SkillInstaller;
+  skillRegistry:  SkillRegistry;
 
   /** Multi-KB manager. Routes use openActiveEntry() to get the active KB's client/queue. */
   kb: KbManager;
@@ -334,7 +332,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     agentRunTranscript,
     agentRunStore,
     taskStore,
-    toolExecutionJournal,
+    toolExecutionState,
     backgroundProcesses,
   } = createToolInfrastructure(
     dataDb,
@@ -347,8 +345,8 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   const invalidateSessionRuntime = (sessionId: SessionId): void => {
     invalidateSessionRunner(sessionId);
   };
-  const removeSessionRuntime = (sessionId: SessionId): void => {
-    backgroundProcesses.discardSession(sessionId);
+  const removeSessionRuntime = async (sessionId: SessionId): Promise<void> => {
+    await backgroundProcesses.discardSession(sessionId);
     removeSessionRunner(sessionId);
     removeSessionToolState(sessionId);
   };
@@ -381,16 +379,15 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
 
   const {
     mcpRegistry,
-    marketRegistry,
-    marketSourceStore,
+    mcpRegistrySources,
     skillStore,
-    skillRunner,
-    skillInstaller,
+    skillRegistry,
   } = createExtensionRuntime(
     profileDb,
     tools,
     permission,
     localMcpStdioEnabled,
+    credentials,
   );
 
   const { kb, kbSearch } = createKnowledgeRuntime(
@@ -423,7 +420,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
       memory,
       session,
       agentRunStore,
-      toolExecutionJournal,
+      toolExecutionState,
       backgroundProcesses,
       card,
     ),
@@ -439,8 +436,8 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
   );
   const lifecycle = new LocalHostLifecycle(
     kb,
-    marketSourceStore,
-    skillStore,
+    mcpRegistrySources,
+    skillRegistry,
     modelCatalog,
     providerRuntime,
     backgroundWork,
@@ -458,7 +455,7 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     buildAskForTurn, getCommandRunner,
     invalidateSessionRuntime, removeSessionRuntime,
     getSessionToolResultStore, agentRunStore, taskStore,
-    toolExecutionJournal, agentRunTranscript,
+    toolExecutionState, agentRunTranscript,
     memory, memoryBackgroundHealth,
     systemBus,
     providers, settings, ttsVoiceHandles,
@@ -467,8 +464,8 @@ export function buildBindings(args: BuildBindingsArgs): AppBindings {
     attachmentStore, attachmentDerivationCache,
     sessionStats, storageStats, sessionNotes,
     mcpRegistry,
-    marketRegistry, marketSourceStore,
-    skillStore, skillRunner, skillInstaller,
+    mcpRegistrySources,
+    skillStore, skillRegistry,
     kb, kbSearch,
   };
 }

@@ -60,6 +60,20 @@ export function builtinCardsDir(): string {
     ?? path.join(REPO_ROOT, 'apps', 'desktop', 'public', 'cards');
 }
 
+/** 内置 Skill 的物化目标:<profileDir>/resources/skills,内容以随包源为准,可整目录重建。 */
+export function builtinSkillsDir(): string {
+  return path.join(profileDir(), 'resources', 'skills');
+}
+
+/**
+ * 内置 Skill 随包只读源(权威事实源)。正式包路径随 sidecar 打包决定,
+ * 用 EMA_BUNDLED_SKILLS_DIR 指向;开发期回退到仓库内 resources/skills。
+ */
+export function bundledSkillsDir(): string {
+  return process.env['EMA_BUNDLED_SKILLS_DIR']
+    ?? path.join(REPO_ROOT, 'resources', 'skills');
+}
+
 /** Create the profile-side directories that aren't part of profile.db itself. */
 export function ensureProfileLayout(): void {
   fs.mkdirSync(cardsDir(), { recursive: true });
