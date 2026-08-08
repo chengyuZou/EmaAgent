@@ -13,7 +13,7 @@ interface SessionLifecycleStore {
 
 interface SessionRuntimeState {
   invalidateSessionRuntime(sessionId: SessionId): void;
-  removeSessionRuntime(sessionId: SessionId): void;
+  removeSessionRuntime(sessionId: SessionId): Promise<void>;
 }
 
 interface SessionInteractionState {
@@ -58,7 +58,7 @@ export class SessionLifecycle {
     try {
       this.deps.interactions.cancelForSession(sessionId, 'session deleted');
       this.deps.permissions.clearSession(sessionId);
-      this.deps.runtime.removeSessionRuntime(sessionId);
+      await this.deps.runtime.removeSessionRuntime(sessionId);
       await this.deps.memory.beforeSessionDelete(sessionId);
       try {
         this.deps.session.deleteSession(sessionId);

@@ -28,10 +28,8 @@ export interface AttachmentReferenceBlock {
   mimeType: string;
 }
 
-/** Session 比模型消息多保存耗时、错误码和客户端展示数据。 */
-export interface ToolResultBlock extends Omit<ToolResult, 'content'> {
-  content: string | ToolResultContentPart[];
-}
+/** ToolResult 信封即持久块; data/durationMs/errorCode 都在信封上, 不再重复投影。 */
+export type ToolResultBlock = ToolResult;
 
 export type UserBlock = MessageContentPart | ToolResultBlock | AttachmentReferenceBlock;
 export type MessageBlocks = string | AssistantBlock[] | UserBlock[] | NarrativeContextBlocks;
