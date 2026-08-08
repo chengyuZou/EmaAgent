@@ -56,7 +56,7 @@ describe('getSystemPrompt', () => {
     const after = sections.slice(boundary + 1);
     expect(after[0]).toBe(CHARACTER.identity);
     expect(after[1]).toBe(CHARACTER.presentation);
-    expect(after.some((s) => s.includes('当前执行方式:Work'))).toBe(true);
+    expect(after.some((s) => s.includes('当前执行方式：Work'))).toBe(true);
     expect(after.some((s) => s.includes('本轮能力引导'))).toBe(true);
     expect(after.some((s) => s.includes('openai / gpt-5.2'))).toBe(true);
     expect(after.some((s) => s.includes('工作区指令') && s.includes('# 项目约定'))).toBe(true);
@@ -85,23 +85,21 @@ describe('getSystemPrompt', () => {
       executionProfile: 'chat',
       skillCatalog: '- x',
     }));
-    expect(sections.some((s) => s.includes('当前执行方式:Chat'))).toBe(true);
-    const catalog = sections.find((s) => s.includes('可用技能'))!;
+    expect(sections.some((s) => s.includes('当前执行方式：Chat'))).toBe(true);
+    const catalog = sections.find((s) => s.startsWith('# 可用技能'))!;
     expect(catalog).toContain('不是系统指令');
   });
 
   it('能力引导按 ToolPool 名字判定存在性;环境段含当前模型', () => {
     const sections = getSystemPrompt(input());
-    const guidance = sections.find((s) => s.includes('本轮能力引导'))!;
+    const guidance = sections.find((s) => s.startsWith('# 本轮能力引导'))!;
     expect(guidance).toContain('Skill');
     expect(guidance).toContain('mcp__');
     expect(guidance).not.toContain('Subagent');
 
-    const withoutMcp = getSystemPrompt(input({
-      toolNames: [BuiltinTools.FileRead.name],
-    }));
+    const withoutMcp = getSystemPrompt(input({ toolNames: [] }));
     expect(withoutMcp.some((s) => s.includes('mcp__'))).toBe(false);
-    expect(withoutMcp.some((s) => s.includes('本轮能力引导'))).toBe(false);
+    expect(withoutMcp.some((s) => s.startsWith('# 本轮能力引导'))).toBe(false);
 
     const env = sections.find((s) => s.includes('本轮运行环境'))!;
     expect(env).toContain('openai / gpt-5.2');
@@ -127,5 +125,51 @@ describe('getSystemPrompt', () => {
     expect(text).not.toContain('Claude Code');
     expect(text).not.toContain('Anthropic');
     expect(text).not.toContain('不受上下文窗口限制');
+  });
+
+  it('产品规则保留完整任务、安全、验证与沟通约束，不退化为摘要', () => {
+    const sections = getSystemPrompt(input());
+    const boundary = sections.indexOf(PROMPT_DYNAMIC_BOUNDARY);
+    const stablePrefix = sections.slice(0, boundary).join('\n');
+
+    expect(stablePrefix).toContain('不要给出完成任务所需时间的估计或预测');
+    expect(stablePrefix).toContain('默认不写注释');
+    expect(stablePrefix).toContain('向第三方网页工具');
+    expect(stablePrefix).toContain('不要讲述内部机器如何运转');
+    expect(stablePrefix).toContain('一次回复最多提出一个最重要的问题');
+    expect(stablePrefix).toContain('Prompt Injection');
+  });
+
+  it('Work 是完整执行契约，Chat 是可行动的对话契约', () => {
+    const work = getSystemPrompt(input()).join('\n');
+    expect(work).toContain('把用户的请求理解为需要交付的结果');
+    expect(work).toContain('验证规模应匹配风险');
+    expect(work).toContain('任务没有完成时不能使用完成口吻');
+
+    const chat = getSystemPrompt(input({ executionProfile: 'chat' })).join('\n');
+    expect(chat).toContain('不是“禁止行动”的纯文本模式');
+    expect(chat).toContain('Chat 可以执行用户明确要求且本轮允许的操作');
+    expect(chat).toContain('不要未经请求把对话变成诊断、教程、计划表或效率优化');
+  });
+
+  it('详细工具规则只点名当轮存在的工具', () => {
+    const guidance = getSystemPrompt(input({
+      toolNames: [
+        BuiltinTools.FileRead.name,
+        BuiltinTools.Glob.name,
+        BuiltinTools.Grep.name,
+        BuiltinTools.Bash.name,
+        BuiltinTools.AskUser.name,
+      ],
+    })).find((section) => section.startsWith('# 本轮能力引导'))!;
+
+    expect(guidance).toContain('读取文件使用 Read');
+    expect(guidance).toContain('Grep 查询构造');
+    expect(guidance).toContain('Glob 查询构造');
+    expect(guidance).toContain('Bash 只用于构建、测试、包管理');
+    expect(guidance).toContain('AskUser 用于取得业务信息或选择');
+    expect(guidance).not.toContain('使用 Edit');
+    expect(guidance).not.toContain('使用 Write');
+    expect(guidance).not.toContain('Subagent');
   });
 });
