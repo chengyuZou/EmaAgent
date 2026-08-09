@@ -1,11 +1,11 @@
 // 把根 Turn 文本事件装饰为带语音事件的输出流，并保证根终态最后发送。
 
 import type { SessionId, TurnId } from '@ema-agent/ids';
-import type { FinalizedAudio, AudioArchive } from './archive.js';
-import { TtsCoordinator } from './coordinator.js';
-import type { TtsEvent } from './events.js';
-import type { TtsRuntime } from './ttsRuntime.js';
-import type { TtsAudioFormat, TtsVoiceRef } from './types.js';
+import type { TextToSpeech, TtsAudioFormat, TtsVoice } from '@ema-agent/tts';
+import type { UsageRecord, UsageRecorder } from '@ema-agent/usage';
+import type { FinalizedAudio, AudioArchive } from './audioArchive.js';
+import { SpeechCoordinator } from './speechCoordinator.js';
+import type { SpeechEvent } from './events.js';
 
 const TERMINAL_EVENT_TYPES = new Set([
   'turn_completed',
@@ -23,12 +23,16 @@ export interface TurnSpeechSourceEvent {
 }
 
 export interface TurnSpeechSynthesis {
-  readonly voice: TtsVoiceRef;
-  readonly providerId: string;
+  readonly voice: TtsVoice;
+  readonly providerConfigId: string;
   readonly model: string;
-  readonly ttsClient: TtsRuntime;
+  readonly textToSpeech: TextToSpeech;
   readonly archive?: AudioArchive;
   readonly format?: TtsAudioFormat;
+  readonly usageRecorder?: UsageRecorder;
+  readonly onUsageRecordError?: (error: unknown, record: UsageRecord) => void;
+  readonly sentenceTimeoutMs?: number;
+  readonly maxBytesPerSentence?: number;
   readonly maxBytesPerTurn?: number;
 }
 
@@ -74,21 +78,21 @@ export class TurnSpeechOutput {
 
   decorate<TEvent extends TurnSpeechSourceEvent>(
     request: TurnSpeechOutputRequest<TEvent>,
-  ): AsyncIterable<TEvent | TtsEvent> {
+  ): AsyncIterable<TEvent | SpeechEvent> {
     return this.stream(request);
   }
 
   private async *stream<TEvent extends TurnSpeechSourceEvent>(
     request: TurnSpeechOutputRequest<TEvent>,
-  ): AsyncGenerator<TEvent | TtsEvent, void, void> {
+  ): AsyncGenerator<TEvent | SpeechEvent, void, void> {
     if (!request.enabled) {
       yield* request.events;
       return;
     }
 
     const controller = new AbortController();
-    const queue = new SpeechEventQueue<TtsEvent>();
-    let coordinator: TtsCoordinator | null = null;
+    const queue = new SpeechEventQueue<SpeechEvent>();
+    let coordinator: SpeechCoordinator | null = null;
 
     try {
       const synthesis = await this.dependencies.resolveSynthesis({
@@ -105,17 +109,21 @@ export class TurnSpeechOutput {
         return;
       }
 
-      coordinator = new TtsCoordinator({
+      coordinator = new SpeechCoordinator({
         turnId: request.turnId,
         sessionId: request.sessionId,
         voice: synthesis.voice,
-        providerId: synthesis.providerId,
+        providerConfigId: synthesis.providerConfigId,
         model: synthesis.model,
-        ttsClient: synthesis.ttsClient,
+        textToSpeech: synthesis.textToSpeech,
         emit: (event) => queue.push(event),
         archive: synthesis.archive,
         format: synthesis.format,
         signal: controller.signal,
+        usageRecorder: synthesis.usageRecorder,
+        onUsageRecordError: synthesis.onUsageRecordError,
+        sentenceTimeoutMs: synthesis.sentenceTimeoutMs,
+        maxBytesPerSentence: synthesis.maxBytesPerSentence,
         maxBytesPerTurn: synthesis.maxBytesPerTurn,
       });
     } catch (error) {
@@ -132,7 +140,7 @@ export class TurnSpeechOutput {
     try {
       for await (const event of mergeSpeechEvents(request.events, coordinator, queue)) {
         if (isTerminalEvent(event)) {
-          // TtsEvent 不定义根终态；命中终态字符串的成员必然来自源 Turn 流。
+          // SpeechEvent 不定义根终态；命中终态字符串的成员必然来自源 Turn 流。
           terminal = event as TEvent;
           continue;
         }
@@ -161,7 +169,7 @@ export class TurnSpeechOutput {
   private async recordFinalizedAudio<TEvent extends TurnSpeechSourceEvent>(
     request: TurnSpeechOutputRequest<TEvent>,
     audio: FinalizedAudio,
-  ): Promise<TtsEvent | null> {
+  ): Promise<SpeechEvent | null> {
     if (!this.dependencies.recordFinalizedAudio) return null;
     try {
       await this.dependencies.recordFinalizedAudio({
@@ -229,9 +237,9 @@ class SpeechEventQueue<T> {
 
 async function* mergeSpeechEvents<TEvent extends TurnSpeechSourceEvent>(
   events: AsyncIterable<TEvent>,
-  coordinator: TtsCoordinator,
-  queue: SpeechEventQueue<TtsEvent>,
-): AsyncGenerator<TEvent | TtsEvent, void, void> {
+  coordinator: SpeechCoordinator,
+  queue: SpeechEventQueue<SpeechEvent>,
+): AsyncGenerator<TEvent | SpeechEvent, void, void> {
   const iterator = events[Symbol.asyncIterator]();
   let nextEvent = iterator.next();
 
@@ -268,7 +276,7 @@ function isTerminalEvent(event: TurnSpeechSourceEvent): boolean {
 function setupWarning<TEvent extends TurnSpeechSourceEvent>(
   request: TurnSpeechOutputRequest<TEvent>,
   error: unknown,
-): TtsEvent {
+): SpeechEvent {
   return {
     type: 'tts_warning',
     sessionId: request.sessionId,

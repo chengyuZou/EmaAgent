@@ -1,63 +1,46 @@
-// 将 fetch、HTTP 状态和 WebSocket close code 归一为稳定的 TTS 错误码。
+export type TtsErrorCode =
+  | 'tts/invalid_request'
+  | 'tts/invalid_response'
+  | 'tts/unsupported_model'
+  | 'tts/unsupported_voice'
+  | 'tts/credentials'
+  | 'tts/reference_audio_missing'
+  | 'tts/network'
+  | 'tts/provider_error'
+  | 'tts/aborted'
+  | 'tts/resource_exhausted';
 
-import type { TtsErrorCode } from './types.js';
-import type { TtsStreamEvent } from './types.js';
-
-/**
- * 构造一个 error 类型的 TtsStreamEvent。
- * adapter 用它把 classify 出的 code + message 包成可 yield 的事件。
- */
-export function errorEvent(code: TtsErrorCode, message: string): TtsStreamEvent {
-  return { type: 'error', code, message };
-}
-
-/**
- * 把 fetch 抛的错误归一成 TtsErrorCode。
- * signal 是 requestScope 的领域原因通道：取消与超时不能靠错误名反推
- * （两者都是 AbortError），先查登记簿，查不到再按错误名兜底。
- */
-export function classifyFetchError(err: unknown, signal?: AbortSignal): TtsErrorCode {
-  if (signal?.aborted) {
-    if (signal.reason === 'aborted') return 'aborted';
-    if (signal.reason === 'resource_exhausted') return 'resource_exhausted';
-    if (signal.reason === 'timeout') return 'transient_timeout';
+/** 对外只暴露稳定错误码，不把各协议的响应形状泄漏给调用方。 */
+export class TtsError extends Error {
+  constructor(
+    readonly code: TtsErrorCode,
+    message: string,
+    readonly cause?: unknown,
+  ) {
+    super(message);
+    this.name = 'TtsError';
   }
-  const name = (err as { name?: string }).name;
-  if (name === 'AbortError') return 'transient_timeout';
-  return 'transient_network';
 }
 
-export function classifyProbeFailure(err: unknown, signal?: AbortSignal): string {
-  if (signal?.aborted) {
-    if (signal.reason === 'aborted') return 'tts/aborted';
-    if (signal.reason === 'timeout') return 'tts/transient_timeout';
+export function isTtsError(error: unknown): error is TtsError {
+  return error instanceof TtsError;
+}
+
+export function ttsErrorFromHttp(status: number, message: string): TtsError {
+  if (status === 401 || status === 403) return new TtsError('tts/credentials', message);
+  if (status === 404) return new TtsError('tts/unsupported_model', message);
+  if (status === 413) return new TtsError('tts/resource_exhausted', message);
+  if (status === 400 || status === 422) return new TtsError('tts/invalid_request', message);
+  return new TtsError('tts/provider_error', message);
+}
+
+export function ttsErrorFromNetwork(error: unknown, signal?: AbortSignal): TtsError {
+  if (signal?.aborted || (error as { name?: string }).name === 'AbortError') {
+    return new TtsError('tts/aborted', 'TTS request was aborted', error);
   }
-  return `tts/${classifyFetchError(err)}`;
-}
-
-/**
- * 把 HTTP 响应状态码归一成 TtsErrorCode。
- * 401/403 -> 凭证错；400/422 -> 请求错；404 -> 模型不支持；
- * 408/429 -> 超时(可重试)；5xx -> 服务器错(可重试)；其他 -> unknown。
- */
-export function classifyHttpStatus(status: number): TtsErrorCode {
-  if (status === 401 || status === 403) return 'permanent_credentials';
-  if (status === 400 || status === 422) return 'permanent_bad_request';
-  if (status === 404)                   return 'permanent_unsupported_model';
-  if (status === 408 || status === 429) return 'transient_timeout';
-  if (status >= 500)                    return 'transient_server';
-  return 'unknown';
-}
-
-/**
- * 把 WebSocket close code 归一成 TtsErrorCode。
- * 1000 正常关闭；1006 网络异常关闭；1008 策略违规(请求错)；
- * 4001/4003 凭证错；其他 -> 服务器错(可重试)。
- */
-export function classifyCloseCode(code: number): TtsErrorCode {
-  if (code === 1000) return 'unknown';               // normal close
-  if (code === 1006) return 'transient_network';     // abnormal close (network)
-  if (code === 1008) return 'permanent_bad_request'; // policy violation
-  if (code === 4001 || code === 4003) return 'permanent_credentials';
-  return 'transient_server';
+  return new TtsError(
+    'tts/network',
+    error instanceof Error ? error.message : 'TTS network request failed',
+    error,
+  );
 }

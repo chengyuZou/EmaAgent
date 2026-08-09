@@ -1,5 +1,5 @@
 {
-  "name": "@ema-agent/tts",
+  "name": "@ema-agent/speech",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -20,12 +20,12 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@ema-agent/provider": "workspace:*",
-    "ws": "^8.18.0"
+    "@ema-agent/ids": "workspace:*",
+    "@ema-agent/tts": "workspace:*",
+    "@ema-agent/usage": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "@types/ws": "^8.5.13",
     "rimraf": "^5.0.0",
     "typescript": "^5.9.3",
     "vitest": "^2.0.0"

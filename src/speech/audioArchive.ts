@@ -3,7 +3,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { once } from 'node:events';
-import { mimeFromExt } from './utils.js';
 
 export interface FinalizedAudio {
   path: string;
@@ -389,4 +388,17 @@ function byNumericPrefix(a: string, b: string): number {
   const right = Number.parseInt(b, 10);
   if (Number.isFinite(left) && Number.isFinite(right)) return left - right;
   return a.localeCompare(b);
+}
+
+function mimeFromExt(ext: string): string {
+  switch (ext) {
+    case 'mp3': return 'audio/mpeg';
+    case 'wav': return 'audio/wav';
+    case 'ogg':
+    case 'opus': return 'audio/ogg';
+    case 'm4a': return 'audio/mp4';
+    case 'pcm': return 'audio/L16';
+    case 'aac': return 'audio/aac';
+    default: return 'application/octet-stream';
+  }
 }

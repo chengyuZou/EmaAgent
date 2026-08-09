@@ -1,4 +1,4 @@
-// 提供多个 TTS Adapter 共用的 MIME、字节拼接和安全响应读取工具。
+// 提供多个 TTS 协议实现共用的 MIME、字节拼接和安全响应读取函数。
 
 /** 音频格式（mp3/pcm/wav/opus）-> MIME 类型。openai-tts / dashscope-tts 共用。 */
 export function mimeForFormat(format: string): string {
@@ -11,10 +11,7 @@ export function mimeForFormat(format: string): string {
   }
 }
 
-/**
- * 文件扩展名 -> MIME 类型。取 openai-tts（uploadVoice 用，含 flac/m4a）
- * 和 archive（finalizeTurn 用，含 pcm/aac）的并集。
- */
+/** 参考音频扩展名 -> 上传时使用的 MIME 类型。 */
 export function mimeFromExt(ext: string): string {
   switch (ext) {
     case 'mp3':  return 'audio/mpeg';
@@ -29,7 +26,7 @@ export function mimeFromExt(ext: string): string {
   }
 }
 
-/** 拼接两个 Uint8Array。adapter 把零散音频块累积成 ~8KB 块时用。 */
+/** 拼接两个 Uint8Array，供 HTTP 音频流重新分成约 8 KiB 的块。 */
 export function concatBytes(a: Uint8Array<ArrayBufferLike>, b: Uint8Array<ArrayBufferLike>): Uint8Array<ArrayBufferLike> {
   const out = new Uint8Array(a.length + b.length);
   out.set(a, 0);

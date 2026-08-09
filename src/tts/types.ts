@@ -1,158 +1,65 @@
-import type { UsageContext } from '@ema-agent/usage';
 import type { TtsProtocol } from '@ema-agent/provider';
 
-// 重新导出 TtsProtocol，调用方无需跨包拼装 Provider 协议类型。
 export type { TtsProtocol } from '@ema-agent/provider';
 
-// ── TTS 内部类型 ──────────────────────────────────────────────────────────────
-
-/** 传给每次 synthesize 调用的已解析 voice 引用。 */
-export interface TtsProviderVoiceHandle {
-  /** Provider 实际接受的 voice ID、注册句柄或短期上传 URI。 */
-  value: string;
-  /**
-   * 未经 Provider 明确保证持久有效时必须使用 ephemeral。
-   * ephemeral 句柄只允许进入进程内缓存，不能写入用户设置或 SQLite。
-   */
-  lifetime: 'ephemeral' | 'durable';
-  /** 临时句柄的绝对过期时间；缓存层会为缺省值补上保守 TTL。 */
-  expiresAt?: number;
+/** Provider 已解析好的 TTS 协议连接。 */
+export interface TtsConnection {
+  readonly protocol: TtsProtocol;
+  /** 本地 GPT-SoVITS 可以不需要凭据。 */
+  readonly apiKey?: string;
+  readonly baseUrl?: string;
 }
 
-export interface TtsVoiceRef {
-  /** 引用音频文件的 profile 作用域绝对路径。 */
-  refAudioPath: string;
-  /** 用于 voice cloning 的提示文本(部分 provider 允许空)。 */
-  promptText:   string;
-  /** 语言代码,如 'zh'、'en'。 */
-  promptLang:   string;
-  /** 云端协议使用的声音句柄；本地 GPT-SoVITS 直接读取 refAudioPath。 */
-  providerVoice?: TtsProviderVoiceHandle;
-}
-
-/** 向 adapter 请求的输出音频格式。 */
 export type TtsAudioFormat = 'mp3' | 'pcm' | 'wav' | 'opus';
 
-/** adapter 产出的粗粒度错误类别。 */
-export type TtsErrorCode =
-  | 'permanent_refaudio_missing'
-  | 'permanent_credentials'
-  | 'permanent_unsupported_voice_kind'
-  | 'permanent_unsupported_model'
-  | 'permanent_bad_request'
-  | 'transient_network'
-  | 'transient_timeout'
-  | 'transient_server'
-  | 'aborted'
-  | 'resource_exhausted'
-  | 'invalid_stream'
-  | 'unknown';
-
-/** 描述适配器当前真实交付方式，不根据模型名称猜测供应商能力。 */
-export type TtsAudioDelivery = 'buffered' | 'http_chunks' | 'websocket_frames';
-
-export interface TtsAdapterCapabilities {
-  audioDelivery: TtsAudioDelivery;
-  supportsAbort: boolean;
+/** 角色包提供的本地参考音频；TTS 只读取它，不拥有角色语义。 */
+export interface TtsVoiceReference {
+  readonly kind: 'reference';
+  readonly audioPath: string;
+  readonly promptText: string;
+  readonly promptLanguage: string;
 }
 
-export interface TtsLimits {
-  timeoutMsPerSentence: number;
-  maxBytesPerSentence: number;
+/** 云端协议注册参考音频后返回的声音标识。 */
+export interface TtsProviderVoice {
+  readonly kind: 'provider';
+  readonly id: string;
+  /** 未明确保证长期有效的声音标识只能进入进程内缓存。 */
+  readonly lifetime: 'ephemeral' | 'durable';
+  readonly expiresAt?: number;
 }
 
-/** adapter 产出的 wire 事件。 */
-export type TtsStreamEvent =
-  | { type: 'audio_chunk';     bytes: Uint8Array<ArrayBufferLike>; mime: string }
-  | { type: 'sentence_started'; index: number; text: string }
-  | { type: 'sentence_done';    index: number; durationMs?: number }
-  | { type: 'done';             totalBytes: number; firstByteMs: number }
-  | { type: 'error';            code: TtsErrorCode; message: string };
+export type TtsVoice = TtsVoiceReference | TtsProviderVoice;
 
-// ── 公共 TTS 请求(Facade 入口)────────────────────────────────────────────
-//
-// 与 LlmRequest 模式对齐:纯数据,无业务语义。
-// 调用方负责从角色卡解析 voice，TtsCoordinator 只消费已解析的引用，
-// 并在调 cloud adapter 的 synthesize 前确保 providerVoice 已填。
-
-/**
- * 完全解析后的合成请求。
- *
- * `voice` 由 apps/localHost 从当前角色卡解析。
- * openai-tts 和 dashscope-tts 协议下,调 `synthesize()` 前必须填好
- * `voice.providerVoice`,否则 adapter 产出 `permanent_unsupported_voice_kind`。
- * gpt-sovits-tts 直接读 `voice.refAudioPath`,从不需要 Provider 句柄。
- */
+/** 单次文本转语音请求；切句、超时、重试和归档均由上层拥有。 */
 export interface TtsRequest {
-  providerId:   string;
-  model:        string;
-  text:         string;
-  voice:        TtsVoiceRef;
-  format?:      TtsAudioFormat;
-  sampleRate?:  number;
-  speed?:       number;
-  abortSignal?: AbortSignal;
-  usageContext?: UsageContext;
+  readonly model: string;
+  readonly text: string;
+  readonly voice: TtsVoice;
+  readonly format?: TtsAudioFormat;
+  readonly sampleRate?: number;
+  readonly speed?: number;
+  readonly signal?: AbortSignal;
 }
 
-// ── Provider 配置(每协议的凭证与端点)────────────────────────────────────
+export type TtsStreamEvent =
+  | {
+      readonly type: 'audio_chunk';
+      readonly bytes: Uint8Array<ArrayBufferLike>;
+      readonly mime: string;
+    }
+  | {
+      readonly type: 'done';
+      readonly totalBytes: number;
+      readonly firstByteMs: number;
+    };
 
-export interface TtsProviderConfig {
-  /** 对应 profile.db 的 provider_configs.id */
-  id:       string;
-  protocol: TtsProtocol;
-  apiKey:   string;
-  baseUrl:  string;
-}
-
-// ── 健康检查 ──────────────────────────────────────────────────────────────────
-
-export interface TtsProviderHealth {
-  providerId: string;
-  protocol:   TtsProtocol;
-  ok:         boolean;
-  /** ok=false 时存在。 */
-  reason?:    string;
-}
-
-export interface TtsHealthResult {
-  ok:        boolean;
-  providers: TtsProviderHealth[];
-}
-
-export interface TtsProbeResult {
-  ok:        boolean;
-  latencyMs?: number;
-  error?:    string;
-}
-
-// ── Adapter 契约 ──────────────────────────────────────────────────────────────
-
-export interface TtsAdapter {
-  readonly protocol: TtsProtocol;
-
-  /** 同一协议可按实现分支采用不同交付方式，例如 DashScope 的 Qwen/CosyVoice。 */
-  capabilitiesFor(req: Pick<TtsRequest, 'model'>): TtsAdapterCapabilities;
-
-  /**
-   * 流式产出单个文本段的音频。
-   * 接收完整 TtsRequest - 与 LlmAdapter.stream(LlmRequest) 对称。
-   */
-  stream(req: TtsRequest): AsyncIterable<TtsStreamEvent>;
-
-  /**
-   * 上传参考音频文件用于 voice cloning。
-   * 返回 Provider 声音句柄。没有明确持久化保证的实现必须标记为 ephemeral。
-   * 并非所有 adapter 都支持 - 不支持的 adapter 抛错。
-   */
-  uploadVoice?(
-    refAudioPath: string,
-    promptText: string,
-    promptLang: string,
+/** 私有协议实现交给唯一创建入口的执行形状。 */
+export interface TtsProtocolImplementation {
+  prepareVoice(
+    reference: TtsVoiceReference,
     model: string,
     signal?: AbortSignal,
-  ): Promise<TtsProviderVoiceHandle>;
-
-  /** 实时连通性检查。可选 - 缺失时 service 回退 ok=false。 */
-  probe?(signal?: AbortSignal): Promise<TtsProbeResult>;
+  ): Promise<TtsVoice>;
+  synthesize(request: TtsRequest): AsyncIterable<TtsStreamEvent>;
 }
