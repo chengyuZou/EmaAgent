@@ -6,7 +6,8 @@ export type EmbeddingNormalization = 'l2';
 export interface EmbeddingSpace {
   /** 不包含 API Key、Base URL 等秘密或部署细节。 */
   id: string;
-  providerId: string;
+  /** `provider_configs.id`，用于区分用户配置的实际向量端点。 */
+  providerConfigId: string;
   model: string;
   dim: number;
   normalization: EmbeddingNormalization;
@@ -14,7 +15,7 @@ export interface EmbeddingSpace {
 }
 
 export interface EmbeddingSpaceInput {
-  providerId: string;
+  providerConfigId: string;
   model: string;
   dim: number;
   normalization?: EmbeddingNormalization;
@@ -22,7 +23,7 @@ export interface EmbeddingSpaceInput {
 }
 
 export function createEmbeddingSpace(input: EmbeddingSpaceInput): EmbeddingSpace {
-  const providerId = requiredText('providerId', input.providerId);
+  const providerConfigId = requiredText('providerConfigId', input.providerConfigId);
   const model = requiredText('model', input.model);
   if (!Number.isSafeInteger(input.dim) || input.dim <= 0) {
     throw new RangeError(`Embedding dimension must be a positive safe integer, got ${input.dim}`);
@@ -31,7 +32,7 @@ export function createEmbeddingSpace(input: EmbeddingSpaceInput): EmbeddingSpace
   const revision = requiredText('revision', input.revision ?? 'provider-managed');
   const canonical = JSON.stringify([
     'ema-embedding-space-v1',
-    providerId,
+    providerConfigId,
     model,
     input.dim,
     normalization,
@@ -39,7 +40,7 @@ export function createEmbeddingSpace(input: EmbeddingSpaceInput): EmbeddingSpace
   ]);
   return {
     id: createHash('sha256').update(canonical, 'utf8').digest('hex'),
-    providerId,
+    providerConfigId,
     model,
     dim: input.dim,
     normalization,

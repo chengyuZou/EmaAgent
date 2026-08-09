@@ -1,52 +1,30 @@
 import type { RerankProtocol } from '@ema-agent/provider';
-import type { UsageContext, UsageRecord, UsageRecorder } from '@ema-agent/usage';
 
-export type { RerankProtocol };
+export type { RerankProtocol } from '@ema-agent/provider';
 
-export interface RerankProviderConfig {
-  /** `provider_configs.id`，不是静态 Provider Definition ID。 */
-  id: string;
-  protocol: RerankProtocol;
-  apiKey: string;
-  baseUrl?: string;
+/** Provider 已解析好的 Rerank 协议连接。 */
+export interface RerankConnection {
+  readonly protocol: RerankProtocol;
+  /** 本地或受信网关可以不需要凭据。 */
+  readonly apiKey?: string;
+  readonly baseUrl?: string;
 }
 
+/** 单次 Rerank 请求；模型返回的 index 对应 documents 的原始下标。 */
 export interface RerankRequest {
-  providerId: string;
-  model: string;
-  query: string;
-  documents: string[];
-  topK?: number;
-  signal?: AbortSignal;
-  usageContext?: UsageContext;
+  readonly model: string;
+  readonly query: string;
+  readonly documents: readonly string[];
+  readonly topK?: number;
+  readonly signal?: AbortSignal;
 }
 
 export interface RerankItem {
-  index: number;
-  score: number;
+  readonly index: number;
+  /** Provider 原始相关度分数，不做跨批次伪归一化。 */
+  readonly score: number;
 }
 
-export interface RerankResponse {
-  results: RerankItem[];
-}
-
-export interface RerankProbeResult {
-  ok: boolean;
-  latencyMs?: number;
-  error?: string;
-}
-
-export interface RerankRuntimeOptions {
-  usageRecorder: UsageRecorder;
-  onUsageRecordError?: (error: unknown, record: UsageRecord) => void;
-}
-
-export interface RerankAdapter {
-  rerank(
-    query: string,
-    documents: string[],
-    topK: number,
-    model: string,
-    signal?: AbortSignal,
-  ): Promise<RerankResponse>;
+export interface RerankResult {
+  readonly results: readonly RerankItem[];
 }

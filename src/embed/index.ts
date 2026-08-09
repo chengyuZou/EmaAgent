@@ -1,4 +1,7 @@
-export { EmbedRuntime } from './runtime.js';
+export { createEmbeddingModel } from './embeddingModel.js';
+export type { EmbeddingModel } from './embeddingModel.js';
+export { EmbeddingError } from './errors.js';
+export type { EmbeddingErrorCode } from './errors.js';
 export { createEmbeddingSpace } from './embeddingSpace.js';
 export type {
   EmbeddingNormalization,
@@ -6,12 +9,8 @@ export type {
   EmbeddingSpaceInput,
 } from './embeddingSpace.js';
 export type {
-  EmbedAdapter,
-  EmbedProbeResult,
+  EmbeddingConnection,
+  EmbeddingRequest,
+  EmbeddingResult,
   EmbedProtocol,
-  EmbedProviderConfig,
-  EmbedRequest,
-  EmbedResponse,
-  EmbedRuntimeOptions,
-  RawEmbedResponse,
 } from './types.js';

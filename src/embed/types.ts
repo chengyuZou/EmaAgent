@@ -1,49 +1,30 @@
 import type { EmbedProtocol } from '@ema-agent/provider';
-import type { UsageContext, UsageRecord, UsageRecorder } from '@ema-agent/usage';
-import type { EmbeddingSpace } from './embeddingSpace.js';
 
-export type { EmbedProtocol };
+export type { EmbedProtocol } from '@ema-agent/provider';
 
-export interface EmbedProviderConfig {
-  /** `provider_configs.id`，不是静态 Provider Definition ID。 */
-  id: string;
-  protocol: EmbedProtocol;
-  apiKey: string;
-  baseUrl?: string;
-  /** Provider 能暴露固定模型版本时填写；缺省表示版本由 Provider 托管。 */
-  embeddingRevision?: string;
+/** Provider 已解析好的 Embedding 协议连接。 */
+export interface EmbeddingConnection {
+  readonly protocol: EmbedProtocol;
+  /** 本地或受信网关可以不需要凭据。 */
+  readonly apiKey?: string;
+  readonly baseUrl?: string;
 }
 
-export interface EmbedRequest {
-  providerId: string;
-  model: string;
-  texts: string[];
-  signal?: AbortSignal;
-  usageContext?: UsageContext;
+/** 单次 Embedding 请求；路由身份、重试和 Usage 归上层。 */
+export interface EmbeddingRequest {
+  readonly model: string;
+  readonly texts: readonly string[];
+  readonly signal?: AbortSignal;
 }
 
-export interface EmbedResponse {
-  embeddings: number[][];
-  dim: number;
-  space: EmbeddingSpace;
+/** 向量已执行 L2 归一化，顺序与请求 texts 严格一致。 */
+export interface EmbeddingResult {
+  readonly embeddings: readonly (readonly number[])[];
+  readonly dim: number;
 }
 
-export interface RawEmbedResponse {
-  embeddings: number[][];
-  dim: number;
-}
-
-export interface EmbedProbeResult {
-  ok: boolean;
-  latencyMs?: number;
-  error?: string;
-}
-
-export interface EmbedRuntimeOptions {
-  usageRecorder: UsageRecorder;
-  onUsageRecordError?: (error: unknown, record: UsageRecord) => void;
-}
-
-export interface EmbedAdapter {
-  embed(texts: string[], model: string, signal?: AbortSignal): Promise<RawEmbedResponse>;
+/** 协议实现返回的未校验向量，不从包入口导出。 */
+export interface RawEmbeddingResult {
+  readonly embeddings: readonly (readonly number[])[];
+  readonly dim: number;
 }

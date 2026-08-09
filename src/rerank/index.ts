@@ -1,13 +1,11 @@
-export { RerankRuntime } from './runtime.js';
+export { createReranker } from './reranker.js';
+export type { Reranker } from './reranker.js';
 export { RerankError } from './errors.js';
 export type { RerankErrorCode } from './errors.js';
 export type {
-  RerankAdapter,
+  RerankConnection,
   RerankItem,
-  RerankProbeResult,
   RerankProtocol,
-  RerankProviderConfig,
   RerankRequest,
-  RerankResponse,
-  RerankRuntimeOptions,
+  RerankResult,
 } from './types.js';
