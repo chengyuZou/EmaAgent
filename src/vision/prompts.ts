@@ -16,10 +16,10 @@ const TASK_INSTRUCTIONS: Record<VisionTask, string> = {
 };
 
 export interface BuildVisionExtractionPromptArgs {
-  task: VisionTask;
-  language?: string;
-  imageCount: number;
-  customInstruction?: string;
+  readonly task: VisionTask;
+  readonly language?: string;
+  readonly imageCount: number;
+  readonly instruction?: string;
 }
 
 export function buildVisionExtractionPrompt(args: BuildVisionExtractionPromptArgs): string {
@@ -27,8 +27,8 @@ export function buildVisionExtractionPrompt(args: BuildVisionExtractionPromptArg
     ? `Preferred output language: ${args.language}.`
     : 'Use the source language when extracting text; use concise English for neutral labels when needed.';
 
-  const custom = args.customInstruction?.trim()
-    ? `\nAdditional caller instruction:\n${args.customInstruction.trim()}\n`
+  const custom = args.instruction?.trim()
+    ? `\nAdditional caller instruction:\n${args.instruction.trim()}\n`
     : '';
 
   return [

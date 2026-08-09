@@ -1,166 +1,75 @@
-import type { UsageContext } from '@ema-agent/usage';
 import type { VisionProtocol } from '@ema-agent/provider';
 
-/** 传给 LLM 告诉它这次任务目标
- * - auto: 让 LLM 自行判断任务类型
- * - caption: 生成图片描述
- * - ocr: 识别图片中的文字
- * - layout: 识别图片中的布局结构
- * - table: 识别图片中的表格
- */
-export type VisionTask =
-  | 'auto'
-  | 'caption'
-  | 'ocr'
-  | 'layout'
-  | 'table';
+export type { VisionProtocol } from '@ema-agent/provider';
 
-export type VisionParseMode = 'strict' | 'best_effort';
-
-/** 谁在调用 vision
- * - turn_attachment: 来自当前对话轮的附件
- * - ema_live_vision: 来自 EMA Live Vision 功能(// TODO 想做成实时读屏幕那种暂时没想好等等后续扩展)
- * - system: 系统调用--如 KB 文档解析时的 OCR(PDF 页面转文字)
- */
-export type VisionCaller =
-  | 'turn_attachment'
-  | 'ema_live_vision'
-  | 'system';
-
-export interface VisionInvocationContext {
-  caller:     VisionCaller;
-  sessionId?: string;
-  turnId?:    string;
-  traceId?:   string;
+/** Provider 已解析好的 Vision 协议连接。 */
+export interface VisionConnection {
+  readonly protocol: VisionProtocol;
+  /** 本地或受信网关可以不需要凭据。 */
+  readonly apiKey?: string;
+  readonly baseUrl?: string;
 }
 
-// ── Provider 运行配置 ─────────────────────────────────────────────────────────
+/** 单次视觉请求希望模型完成的任务。 */
+export type VisionTask = 'auto' | 'caption' | 'ocr' | 'layout' | 'table';
 
-export interface VisionProviderConfig {
-  /** `provider_configs.id`，不是静态 Provider Definition ID。 */
-  id: string;
-  protocol: VisionProtocol;
-  apiKey: string;
-  baseUrl?: string;
-}
+export type VisionImageMime = 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif';
 
-export type VisionImageMime =
-  | 'image/png'
-  | 'image/jpeg'
-  | 'image/webp'
-  | 'image/gif';
-
-export interface VisionSourceRef {
-  localPath?: string;
-  url?:       string;
-  label?:     string;
-}
-
-export type VisionImageInput =
+export type VisionImage =
   | {
-      kind: 'bytes';
-      bytes: Uint8Array;
-      mimeType: VisionImageMime;
-      name?: string;
-      source?: VisionSourceRef;
+      readonly kind: 'bytes';
+      readonly bytes: Uint8Array;
+      readonly mimeType: VisionImageMime;
     }
   | {
-      kind: 'base64';
-      data: string;
-      mimeType: VisionImageMime;
-      name?: string;
-      source?: VisionSourceRef;
+      readonly kind: 'base64';
+      readonly data: string;
+      readonly mimeType: VisionImageMime;
     }
   | {
-      kind: 'url';
-      url: string;
-      mimeType?: VisionImageMime;
-      name?: string;
-      source?: VisionSourceRef;
+      readonly kind: 'url';
+      readonly url: string;
+      readonly mimeType?: VisionImageMime;
     };
 
-/** LLM 返回的 blocks 数组里每个 block 的 kind 字段，parse.ts 的 BLOCK_KINDS 校验合法性(不合法退回 text)
- * - text: 纯文本块
- * - table: 表格块
- * - image: 图片块
- * - layout: 布局块
- * - formula: 公式块
- * - caption: 图片描述块
- */
-export type VisionBlockKind =
-  | 'text'
-  | 'table'
-  | 'image'
-  | 'layout'
-  | 'formula'
-  | 'caption';
+export type VisionBlockKind = 'text' | 'table' | 'image' | 'layout' | 'formula' | 'caption';
 
 export interface VisionBlock {
-  id: string;
-  kind: VisionBlockKind;
-  text: string;
-  markdown?: string;
-  /**
-   * 归一化边界框（阅读坐标系）：[x, y, 宽, 高]。
-   * provider 能估布局时取值在 0-1 之间。
-   */
-  bbox?: [number, number, number, number];
-  confidence?: number;
-  source?: VisionSourceRef;
+  readonly id: string;
+  readonly kind: VisionBlockKind;
+  readonly text: string;
+  readonly markdown?: string;
+  /** 归一化阅读坐标：[x, y, width, height]。 */
+  readonly bbox?: readonly [number, number, number, number];
+  readonly confidence?: number;
 }
 
+/** 单次协议请求；调用身份、载荷限制、并发、重试和持久化均由上层拥有。 */
 export interface VisionRequest {
-  context?: VisionInvocationContext;
-  usageContext?: UsageContext;
-  /** 底层模型 provider 的 provider_configs.id。 */
-  providerId: string;
-  /** 所选 provider 期望的原始模型名。 */
-  model: string;
-  task?: VisionTask;
-  inputs: VisionImageInput[];
-  language?: string;
-  /**
-   * 调用方给的额外任务指令。追加到 system 提取 prompt 后面；
-   * 不要放原始用户聊天记录。
-   */
-  prompt?: string;
-  parseMode?: VisionParseMode;
-  maxTokens?: number;
-  temperature?: number;
-  signal?: AbortSignal;
-  limits?: Partial<VisionLimits>;
+  readonly model: string;
+  readonly images: readonly VisionImage[];
+  readonly task?: VisionTask;
+  readonly language?: string;
+  /** 只描述本次视觉任务，不应携带对话历史。 */
+  readonly instruction?: string;
+  readonly maxOutputTokens?: number;
+  readonly temperature?: number;
+  readonly signal?: AbortSignal;
 }
 
-export interface VisionLimits {
-  maxImages: number;
-  maxBytesPerImage: number;
-  maxTotalBytes: number;
-  maxConcurrentGlobal: number;
-  maxConcurrentPerProvider: number;
-  /** 等待并发槽位的请求上限，防止调用方突发流量形成无界 Promise 队列。 */
-  maxQueuedRequests: number;
-  timeoutMs: number;
+/** VisionModel 填好默认任务后交给私有协议实现的形状。 */
+export interface VisionProtocolRequest extends Omit<VisionRequest, 'task'> {
+  readonly task: VisionTask;
 }
 
-export interface VisionExtractionResult {
-  context?: VisionInvocationContext;
-  providerId: string;
-  model: string;
-  task: VisionTask;
-  text: string;
-  markdown?: string;
-  blocks: VisionBlock[];
-  sources: VisionSourceRef[];
-  usage?: {
-    inputTokens: number;
-    outputTokens: number;
-  };
-  warnings?: string[];
-  rawText?: string;
+export interface VisionTokenUsage {
+  readonly inputTokens: number;
+  readonly outputTokens: number;
 }
 
-export interface VisionProbeResult {
-  ok: boolean;
-  latencyMs?: number;
-  error?: string;
+export interface VisionResult {
+  readonly text: string;
+  readonly markdown?: string;
+  readonly blocks: readonly VisionBlock[];
+  readonly usage?: VisionTokenUsage;
 }
