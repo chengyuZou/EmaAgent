@@ -1,9 +1,9 @@
-// 测试 Provider 凭据只以受保护信封落盘并可升级未保护值。
+// 测试普通 Provider 查询不泄露凭据，显式读取时可从加密信封恢复。
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Database, ProvidersRepo } from '../../index.js';
 import { createTestCredentialFacade } from '../helpers/test-credential-facade.js';
 
-describe('Provider 凭据落盘保护', () => {
+describe('Provider 凭据保护', () => {
   let database: Database;
   let providers: ProvidersRepo;
 
@@ -15,36 +15,38 @@ describe('Provider 凭据落盘保护', () => {
 
   afterEach(() => database.close());
 
-  it('Repo 对业务返回明文，但 SQLite 中只保存认证加密信封', () => {
-    providers.upsert({
+  it('SQLite 只保存加密信封，普通查询只暴露 hasCredential', () => {
+    providers.save({
       id: 'provider-1',
       definitionId: 'openai',
       displayName: 'OpenAI',
-      apiKey: 'sk-sensitive',
-      capabilities: [{ capability: 'llm' }],
+      credential: 'sk-sensitive',
+      enabled: true,
+      capabilities: [
+        { capability: 'llm', protocol: 'openai-llm', baseUrl: 'https://api.openai.com/v1', enabled: true },
+      ],
     });
 
-    const raw = database.sqlite
-      .prepare('SELECT credential_envelope FROM provider_configs WHERE id = ?')
-      .get('provider-1') as { credential_envelope: string };
+    const raw = database.sqlite.prepare(
+      'SELECT credential_envelope FROM provider_configs WHERE id = ?',
+    ).get('provider-1') as { credential_envelope: string };
     expect(raw.credential_envelope).toMatch(/^ema-credential:v1:/);
     expect(raw.credential_envelope).not.toContain('sk-sensitive');
-    expect(providers.get('provider-1')?.credential).toBe('sk-sensitive');
+    expect(providers.get('provider-1')).toMatchObject({ hasCredential: true });
+    expect(providers.revealCredential('provider-1')).toBe('sk-sensitive');
   });
 
-  it('旧库明文在单事务中原地升级，业务读取保持兼容', () => {
-    const now = Date.now();
-    database.sqlite.prepare(
-      `INSERT INTO provider_configs
-         (id, definition_id, display_name, credential_envelope, enabled, created_at, updated_at)
-       VALUES (?, ?, ?, ?, 1, ?, ?)`,
-    ).run('legacy-provider', 'openai', 'Legacy', 'legacy-secret', now, now);
-
-    expect(providers.protectLegacyCredentials()).toBe(1);
-    const raw = database.sqlite
-      .prepare('SELECT credential_envelope FROM provider_configs WHERE id = ?')
-      .get('legacy-provider') as { credential_envelope: string };
-    expect(raw.credential_envelope).toMatch(/^ema-credential:v1:/);
-    expect(providers.get('legacy-provider')?.credential).toBe('legacy-secret');
+  it('undefined 保留凭据，null 明确清空凭据', () => {
+    const base = {
+      id: 'provider-1', definitionId: 'openai', displayName: 'OpenAI', enabled: true,
+      capabilities: [
+        { capability: 'llm' as const, protocol: 'openai-llm' as const, baseUrl: 'https://api.openai.com/v1', enabled: true },
+      ],
+    };
+    providers.save({ ...base, credential: 'secret' });
+    providers.save(base);
+    expect(providers.revealCredential('provider-1')).toBe('secret');
+    providers.save({ ...base, credential: null });
+    expect(providers.revealCredential('provider-1')).toBeNull();
   });
 });

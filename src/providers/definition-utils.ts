@@ -1,23 +1,16 @@
-// 解析供应商能力、协议、模型来源和最终连接地址，避免调用方猜测定义结构。
+// 读取内置 Provider 预设；用户连接的最终协议与地址由 configuration.ts 解析。
 import type {
   Capability,
+  CapabilityProtocol,
   ProtocolFamily,
   ProviderCapabilityDefinition,
   ProviderDefinition,
-  ProviderModelSource,
 } from './types.js';
 
 export function listProviderCapabilities(definition: ProviderDefinition): Capability[] {
   return (Object.keys(definition.capabilities) as Capability[]).filter(
     (capability) => definition.capabilities[capability] !== undefined,
   );
-}
-
-export function providerSupportsCapability(
-  definition: ProviderDefinition,
-  capability: Capability,
-): boolean {
-  return definition.capabilities[capability] !== undefined;
 }
 
 export function getCapabilityDefinition(
@@ -27,86 +20,84 @@ export function getCapabilityDefinition(
   return definition.capabilities[capability] as ProviderCapabilityDefinition | undefined;
 }
 
-export function protocolsForCapability(
+export function providerSupportsCapability(
   definition: ProviderDefinition,
   capability: Capability,
-): ProtocolFamily[] {
-  return getCapabilityDefinition(definition, capability)?.transports.map(
-    (transport) => transport.protocol,
-  ) ?? [];
+): boolean {
+  return getCapabilityDefinition(definition, capability) !== undefined;
 }
 
-export function resolveBaseUrl(
+export function defaultProtocolFor<TCapability extends Capability>(
+  definition: ProviderDefinition,
+  capability: TCapability,
+): CapabilityProtocol<TCapability> | undefined {
+  return getCapabilityDefinition(definition, capability)?.transports[0]?.protocol as
+    | CapabilityProtocol<TCapability>
+    | undefined;
+}
+
+export function presetBaseUrlFor(
   definition: ProviderDefinition,
   capability: Capability,
-  protocol?: ProtocolFamily,
+  protocol: ProtocolFamily,
 ): string | undefined {
-  const transports = getCapabilityDefinition(definition, capability)?.transports ?? [];
-  const selected = protocol === undefined
-    ? transports[0]
-    : transports.find((transport) => transport.protocol === protocol);
-  return selected?.baseUrl ?? definition.connection.defaultBaseUrl;
-}
-
-export function modelSourcesFor(
-  definition: ProviderDefinition,
-  capability: Capability,
-): readonly ProviderModelSource[] {
-  return getCapabilityDefinition(definition, capability)?.models?.sources ?? [];
+  const capabilityDefinition = getCapabilityDefinition(definition, capability);
+  if (!capabilityDefinition) return undefined;
+  const transport = capabilityDefinition.transports.find(
+    (candidate) => candidate.protocol === protocol,
+  );
+  if (!transport) return undefined;
+  return transport.baseUrl ?? definition.connection.defaultBaseUrl;
 }
 
 export function modelsDevIdFor(
   definition: ProviderDefinition,
   capability: Capability,
 ): string | undefined {
-  const source = modelSourcesFor(definition, capability).find(
-    (candidate): candidate is Extract<ProviderModelSource, { type: 'models-dev' }> =>
-      candidate.type === 'models-dev',
-  );
-  return source?.providerId;
+  return getCapabilityDefinition(definition, capability)?.models?.modelsDevId;
 }
 
 export function staticModelsFor(
   definition: ProviderDefinition,
   capability: Capability,
 ): readonly string[] {
-  return modelSourcesFor(definition, capability).flatMap((source) =>
-    source.type === 'static' ? [...source.models] : [],
-  );
+  return getCapabilityDefinition(definition, capability)?.models?.staticModels ?? [];
+}
+
+export function supportsLiveModelListing(
+  definition: ProviderDefinition,
+  capability: Capability,
+): boolean {
+  return getCapabilityDefinition(definition, capability)?.models?.supportsLiveListing === true;
 }
 
 export function requiresCredentials(definition: ProviderDefinition): boolean {
-  return definition.connection.auth.type !== 'none'
-    && definition.connection.auth.required;
+  return definition.connection.auth.type !== 'none' && definition.connection.auth.required;
 }
 
-export function isLlmProtocol(protocol: ProtocolFamily | undefined): protocol is Extract<ProtocolFamily, `${string}-llm`> {
-  return protocol === 'openai-llm'
-    || protocol === 'openai-responses-llm'
-    || protocol === 'anthropic-llm'
-    || protocol === 'gemini-llm';
-}
-
-export function isEmbedProtocol(protocol: ProtocolFamily | undefined): protocol is Extract<ProtocolFamily, `${string}-embed`> {
-  return protocol === 'openai-embed' || protocol === 'gemini-embed';
-}
-
-export function isRerankProtocol(protocol: ProtocolFamily | undefined): protocol is Extract<ProtocolFamily, `${string}-rerank`> {
-  return protocol === 'cohere-rerank';
-}
-
-export function isVisionProtocol(protocol: ProtocolFamily | undefined): protocol is Extract<ProtocolFamily, `${string}-vision`> {
-  return protocol === 'openai-vision'
-    || protocol === 'anthropic-vision'
-    || protocol === 'gemini-vision';
-}
-
-export function isTtsProtocol(protocol: ProtocolFamily | undefined): protocol is Extract<ProtocolFamily, `${string}-tts`> {
-  return protocol === 'openai-tts'
-    || protocol === 'dashscope-tts'
-    || protocol === 'gpt-sovits-tts';
-}
-
-export function isSttProtocol(protocol: ProtocolFamily | undefined): protocol is Extract<ProtocolFamily, `${string}-stt`> {
-  return protocol === 'openai-stt';
+export function isProtocolForCapability<TCapability extends Capability>(
+  capability: TCapability,
+  protocol: ProtocolFamily,
+): protocol is CapabilityProtocol<TCapability> {
+  switch (capability) {
+    case 'llm':
+      return protocol === 'openai-llm'
+        || protocol === 'openai-responses-llm'
+        || protocol === 'anthropic-llm'
+        || protocol === 'gemini-llm';
+    case 'embed':
+      return protocol === 'openai-embed' || protocol === 'gemini-embed';
+    case 'rerank':
+      return protocol === 'cohere-rerank';
+    case 'vision':
+      return protocol === 'openai-vision'
+        || protocol === 'anthropic-vision'
+        || protocol === 'gemini-vision';
+    case 'tts':
+      return protocol === 'openai-tts'
+        || protocol === 'dashscope-tts'
+        || protocol === 'gpt-sovits-tts';
+    case 'stt':
+      return protocol === 'openai-stt';
+  }
 }

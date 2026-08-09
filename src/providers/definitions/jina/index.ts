@@ -11,21 +11,11 @@ export const provider = defineProvider({
   capabilities: {
     embed: {
       transports: [{ protocol: 'openai-embed' }],
-      models: {
-        sources: [
-          { type: 'static', models: ['jina-embeddings-v3', 'jina-embeddings-v2-base-zh'] },
-          { type: 'manual' },
-        ],
-      },
+      models: { staticModels: ['jina-embeddings-v3', 'jina-embeddings-v2-base-zh'] },
     },
     rerank: {
       transports: [{ protocol: 'cohere-rerank' }],
-      models: {
-        sources: [
-          { type: 'static', models: ['jina-reranker-v2-base-multilingual'] },
-          { type: 'manual' },
-        ],
-      },
+      models: { staticModels: ['jina-reranker-v2-base-multilingual'] },
     },
   },
 });

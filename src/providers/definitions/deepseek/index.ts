@@ -14,7 +14,7 @@ export const provider = defineProvider({
         { protocol: 'openai-llm' },
         { protocol: 'anthropic-llm', baseUrl: 'https://api.deepseek.com/anthropic' },
       ],
-      models: { sources: [{ type: 'models-dev', providerId: 'deepseek' }, { type: 'manual' }] },
+      models: { modelsDevId: 'deepseek' },
     },
   },
 });

@@ -6,6 +6,7 @@ import {
   KbRegistryRepo,
   MarketSourcesRepo,
   ModelBindingsRepo,
+  ProviderModelsRepo,
   ProvidersRepo,
 } from '../../index.js';
 import { createTestCredentialFacade } from '../helpers/test-credential-facade.js';
@@ -99,19 +100,32 @@ describe('profile 仓储防御性业务', () => {
 
   it('删除 Provider 前可以确定性列出全部业务绑定', () => {
     const providers = new ProvidersRepo(database.sqlite, createTestCredentialFacade());
-    providers.upsert({
+    providers.save({
       id: 'provider-1',
       definitionId: 'siliconflow',
       displayName: 'Provider',
-      apiKey: 'secret',
-      capabilities: [{ capability: 'llm' }, { capability: 'embed' }],
+      credential: 'secret',
+      enabled: true,
+      capabilities: [
+        { capability: 'llm', protocol: 'openai-llm', baseUrl: 'https://example.com/v1', enabled: true },
+        { capability: 'embed', protocol: 'openai-embed', baseUrl: 'https://example.com/v1', enabled: true },
+      ],
     });
+    const models = new ProviderModelsRepo(database.sqlite);
+    for (const model of ['z-model', 'a-model']) {
+      models.save({
+        providerConfigId: 'provider-1', capability: 'llm', model,
+        contextWindow: 32_000, maxOutput: null, toolCall: null,
+        reasoning: null, temperature: null, inputImage: null,
+      });
+    }
     const bindings = new ModelBindingsRepo(database.sqlite);
-    bindings.upsert({ module: 'lightrag-llm', providerConfigId: 'provider-1', model: 'z-model' });
-    bindings.upsert({ module: 'memory', providerConfigId: 'provider-1', model: 'a-model' });
+    bindings.set({ module: 'lightrag-llm', capability: 'llm', providerConfigId: 'provider-1', model: 'z-model' });
+    bindings.set({ module: 'memory', capability: 'llm', providerConfigId: 'provider-1', model: 'a-model' });
 
     expect(bindings.listByProviderConfig('provider-1').map((binding) => binding.module))
       .toEqual(['lightrag-llm', 'memory']);
-    expect(() => providers.delete('provider-1')).toThrow(/FOREIGN KEY constraint failed/);
+    providers.delete('provider-1');
+    expect(bindings.listByProviderConfig('provider-1')).toEqual([]);
   });
 });

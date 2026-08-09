@@ -1,13 +1,10 @@
 // 声明 SiliconFlow 图像理解线路和经过筛选的推荐模型。
-import { defineVisionCapability } from '../../types.js';
+import type { ProviderCapabilityDefinition } from '../../types.js';
 
-export const siliconFlowVision = defineVisionCapability({
+export const siliconFlowVision = {
   transports: [{ protocol: 'openai-vision' }],
   models: {
-    sources: [
-      { type: 'models-dev', providerId: 'siliconflow' },
-      { type: 'static', models: ['Qwen/Qwen2-VL-72B-Instruct', 'Pro/Qwen/Qwen2.5-VL-7B-Instruct'] },
-      { type: 'manual' },
-    ],
+    modelsDevId: 'siliconflow',
+    staticModels: ['Qwen/Qwen2-VL-72B-Instruct', 'Pro/Qwen/Qwen2.5-VL-7B-Instruct'],
   },
-});
+} satisfies ProviderCapabilityDefinition<'openai-vision'>;

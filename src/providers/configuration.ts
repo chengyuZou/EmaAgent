@@ -1,76 +1,72 @@
-// 管理 Provider 配置生命周期，统一能力校验、密钥操作、绑定冲突和运行时刷新。
+// 管理用户 Provider 连接，并把能力配置解析为六个 API 包可直接消费的连接。
 import {
+  defaultProtocolFor,
+  isProtocolForCapability,
   listProviderCapabilities,
-  providerSupportsCapability,
-  protocolsForCapability,
+  presetBaseUrlFor,
+  requiresCredentials,
 } from './definition-utils.js';
 import { ProviderConfigurationError } from './errors.js';
-import {
-  MODEL_BINDING_CAPABILITIES,
-  type ModelBindingStore,
-  type ResolvedModelBinding,
-} from './modelBindings.js';
+import type { ModelBindingStore } from './modelBindings.js';
 import type {
   Capability,
+  CapabilityProtocol,
   ProtocolFamily,
+  ProviderConnection,
   ProviderCredentialOperation,
   ProviderDefinition,
 } from './types.js';
+import { PROVIDER_CONFIG_LIMITS } from './types.js';
 
-export interface ProviderCapabilityConfiguration {
-  capability: Capability;
-  /** 留空（undefined/null）表示使用 Provider 定义中该能力的首选协议。 */
-  protocol?: ProtocolFamily | null;
-  /** 留空表示使用 Provider 定义或协议声明的默认地址。 */
-  baseUrl?: string | null;
-  /** 仅 Embed 使用：区分同名模型的向量空间版本（换维度/换代时避免索引混用）。 */
-  embeddingRevision?: string | null;
-  enabled?: boolean;
+export interface ProviderCapabilityConfiguration<
+  TCapability extends Capability = Capability,
+> {
+  capability: TCapability;
+  protocol: CapabilityProtocol<TCapability>;
+  baseUrl: string;
+  enabled: boolean;
 }
 
 export interface ConfiguredProvider {
   id: string;
-  definitionId: string;
+  /** null 表示用户自定义连接，不伪造内置 Provider 身份。 */
+  definitionId: string | null;
   displayName: string;
-  /** 只允许在本机进程内短暂存在；HTTP 默认只投影 hasApiKey。 */
-  credential: string | null;
+  hasCredential: boolean;
   enabled: boolean;
-  capabilities: ProviderCapabilityConfiguration[];
+  capabilities: readonly ProviderCapabilityConfiguration[];
 }
 
-export interface ProviderHealthResult {
+export interface ProviderHealth {
   status: 'ok' | 'failed' | 'unknown';
   lastProbedAt: number | null;
   latencyMs: number | null;
   lastError: string | null;
 }
 
-/** 配置 + 最近一次探测结果的查询聚合（设置页列表/详情一次拿全）。 */
 export interface ProviderWithHealth {
   config: ConfiguredProvider;
-  health: ProviderHealthResult | null;
+  health: ProviderHealth | null;
 }
 
 export interface SaveProviderConfiguration {
   id: string;
-  definitionId: string;
+  definitionId: string | null;
   displayName: string;
   /** undefined 保留，null 清空，string 替换。 */
   credential?: string | null;
   enabled: boolean;
-  capabilities: ProviderCapabilityConfiguration[];
+  capabilities: readonly ProviderCapabilityConfiguration[];
 }
 
 export interface ProviderConfigurationStore {
   get(id: string): ConfiguredProvider | undefined;
   getWithHealth(id: string): ProviderWithHealth | undefined;
   listWithHealth(): ProviderWithHealth[];
+  revealCredential(id: string): string | null;
   save(input: SaveProviderConfiguration): void;
   delete(id: string): void;
-}
-
-export interface ProviderConfigurationRuntime {
-  refresh(): void;
+  recordHealth(providerConfigId: string, health: ProviderHealth): void;
 }
 
 export interface ProviderDefinitionCatalog {
@@ -78,87 +74,90 @@ export interface ProviderDefinitionCatalog {
   list(): readonly ProviderDefinition[];
 }
 
+export interface RequestedCapabilityConfiguration {
+  capability: Capability;
+  protocol?: ProtocolFamily;
+  baseUrl?: string;
+  enabled?: boolean;
+}
+
 export interface CreateProviderConfiguration {
-  definitionId: string;
+  definitionId?: string | null;
   displayName?: string;
   credential?: string;
   enabled: boolean;
-  capabilities?: ProviderCapabilityConfiguration[];
+  capabilities?: readonly RequestedCapabilityConfiguration[];
 }
 
 export interface UpdateProviderConfiguration {
   displayName?: string;
   credential?: ProviderCredentialOperation;
   enabled?: boolean;
-  capability?: ProviderCapabilityConfiguration;
+  capability?: RequestedCapabilityConfiguration;
 }
 
-export class ProviderConfiguration {
+export class ProviderConfigurations {
   constructor(
     private readonly definitions: ProviderDefinitionCatalog,
     private readonly store: ProviderConfigurationStore,
     private readonly bindings: Pick<ModelBindingStore, 'listByProviderConfig'>,
-    private readonly runtime: ProviderConfigurationRuntime,
     private readonly createId: () => string,
   ) {}
 
-  definitionsList(): readonly ProviderDefinition[] {
+  listDefinitions(): readonly ProviderDefinition[] {
     return this.definitions.list();
   }
 
-  getDefinition(id: string): ProviderDefinition | undefined {
-    return this.definitions.get(id);
-  }
-
-  listWithHealth(): ProviderWithHealth[] {
+  list(): ProviderWithHealth[] {
     return this.store.listWithHealth();
   }
 
-  getWithHealth(id: string): ProviderWithHealth {
-    const withHealth = this.store.getWithHealth(id);
-    if (!withHealth) throw new ProviderConfigurationError('not_found', 'Provider 不存在');
-    return withHealth;
+  get(id: string): ProviderWithHealth {
+    const provider = this.store.getWithHealth(id);
+    if (!provider) throw notFound();
+    return provider;
   }
 
   revealCredential(id: string): string {
-    const config = this.store.get(id);
-    if (!config) throw new ProviderConfigurationError('not_found', 'Provider 不存在');
-    return config.credential ?? '';
+    this.requireConfig(id);
+    return this.store.revealCredential(id) ?? '';
   }
 
   create(input: CreateProviderConfiguration): ConfiguredProvider {
-    const id = this.createId();
-    const definition = this.requireDefinition(input.definitionId);
+    const definition = input.definitionId
+      ? this.requireDefinition(input.definitionId)
+      : undefined;
     const requested = input.capabilities
-      ?? listProviderCapabilities(definition).map((capability) => ({ capability }));
-    const capabilities = validateCapabilityConfigurations(definition, requested);
+      ?? (definition
+        ? listProviderCapabilities(definition).map((capability) => ({ capability }))
+        : []);
+    const capabilities = normalizeCapabilities(definition, requested);
+    const displayName = normalizeDisplayName(input.displayName ?? definition?.name);
 
+    const id = this.createId();
     this.store.save({
       id,
-      definitionId: input.definitionId,
-      displayName: input.displayName ?? definition.name,
-      credential: input.credential,
+      definitionId: definition?.id ?? null,
+      displayName,
+      credential: normalizeCredential(input.credential),
       enabled: input.enabled,
       capabilities,
     });
-    this.runtime.refresh();
     return this.requireConfig(id);
   }
 
   update(id: string, input: UpdateProviderConfiguration): ConfiguredProvider {
     const existing = this.requireConfig(id);
-    const definition = this.requireDefinition(existing.definitionId);
-    let capabilities = existing.capabilities;
+    const definition = existing.definitionId
+      ? this.requireDefinition(existing.definitionId)
+      : undefined;
+    let capabilities = [...existing.capabilities];
 
     if (input.capability) {
-      const incoming = validateCapabilityConfigurations(definition, [input.capability])[0]!;
-      if (incoming.enabled === false) {
-        this.assertCapabilityNotInUse(id, incoming.capability);
-      }
+      const incoming = normalizeCapabilities(definition, [input.capability])[0]!;
+      if (!incoming.enabled) this.assertCapabilityNotInUse(id, incoming.capability);
       capabilities = [
-        ...existing.capabilities.filter(
-          (capability) => capability.capability !== incoming.capability,
-        ),
+        ...capabilities.filter((entry) => entry.capability !== incoming.capability),
         incoming,
       ];
     }
@@ -166,12 +165,13 @@ export class ProviderConfiguration {
     this.store.save({
       id,
       definitionId: existing.definitionId,
-      displayName: input.displayName ?? existing.displayName,
+      displayName: input.displayName === undefined
+        ? existing.displayName
+        : normalizeDisplayName(input.displayName),
       credential: resolveCredentialWrite(input.credential),
       enabled: input.enabled ?? existing.enabled,
       capabilities,
     });
-    this.runtime.refresh();
     return this.requireConfig(id);
   }
 
@@ -182,28 +182,61 @@ export class ProviderConfiguration {
       throw new ProviderConfigurationError(
         'provider_in_use',
         '请先将使用该 Provider 的业务模块换绑或解绑',
-        conflicts.map(toConflict),
+        conflicts,
       );
     }
     this.store.delete(id);
-    this.runtime.refresh();
+  }
+
+  resolveConnection<TCapability extends Capability>(
+    providerConfigId: string,
+    capability: TCapability,
+  ): ProviderConnection<TCapability> {
+    const provider = this.requireConfig(providerConfigId);
+    if (!provider.enabled) {
+      throw new ProviderConfigurationError('capability_disabled', 'Provider 已停用');
+    }
+    const configured = provider.capabilities.find(
+      (entry): entry is ProviderCapabilityConfiguration<TCapability> =>
+        entry.capability === capability,
+    );
+    if (!configured?.enabled) {
+      throw new ProviderConfigurationError(
+        'capability_disabled',
+        `Provider 未启用 ${capability} 能力`,
+      );
+    }
+
+    const credential = this.store.revealCredential(providerConfigId);
+    const definition = provider.definitionId
+      ? this.requireDefinition(provider.definitionId)
+      : undefined;
+    if (definition && requiresCredentials(definition) && !credential) {
+      throw new ProviderConfigurationError('credential_missing', 'Provider 缺少 API Key');
+    }
+
+    return {
+      protocol: configured.protocol,
+      baseUrl: configured.baseUrl,
+      ...(credential ? { apiKey: credential } : {}),
+    };
+  }
+
+  recordHealth(id: string, health: ProviderHealth): void {
+    this.requireConfig(id);
+    this.store.recordHealth(id, health);
   }
 
   private requireConfig(id: string): ConfiguredProvider {
-    const config = this.store.get(id);
-    if (!config) throw new ProviderConfigurationError('not_found', 'Provider 不存在');
-    return config;
+    const provider = this.store.get(id);
+    if (!provider) throw notFound();
+    return provider;
   }
 
   private requireDefinition(id: string): ProviderDefinition {
     const definition = this.definitions.get(id);
     if (!definition) {
-      throw new ProviderConfigurationError(
-        'unknown_definition',
-        `未知 Provider 定义：${id}`,
-        [],
-        id,
-      );
+      throw new ProviderConfigurationError('unknown_definition', `未知 Provider 定义：${id}`);
     }
     return definition;
   }
@@ -211,63 +244,80 @@ export class ProviderConfiguration {
   private assertCapabilityNotInUse(id: string, capability: Capability): void {
     const conflicts = this.bindings
       .listByProviderConfig(id)
-      .filter((binding) => MODEL_BINDING_CAPABILITIES[binding.module] === capability);
+      .filter((binding) => binding.capability === capability);
     if (conflicts.length === 0) return;
     throw new ProviderConfigurationError(
       'provider_capability_in_use',
-      '请先将使用该能力的业务模块换绑或解绑',
-      conflicts.map((binding) => ({
-        ...toConflict(binding),
-        capability,
-      })),
+      `请先解绑正在使用 ${capability} 的业务模块`,
+      conflicts,
     );
   }
 }
 
-export function validateCapabilityConfigurations(
-  definition: ProviderDefinition,
-  requested: readonly ProviderCapabilityConfiguration[],
+export function normalizeCapabilities(
+  definition: ProviderDefinition | undefined,
+  requested: readonly RequestedCapabilityConfiguration[],
 ): ProviderCapabilityConfiguration[] {
   if (requested.length === 0) {
-    throw new ProviderConfigurationError(
-      'invalid_capability_config',
-      '至少需要启用一项 Provider 能力',
-    );
+    throw invalid('至少需要配置一项 Provider 能力');
   }
 
   const seen = new Set<Capability>();
-  return requested.map((configuration) => {
-    if (seen.has(configuration.capability)) {
-      throw new ProviderConfigurationError(
-        'invalid_capability_config',
-        `能力 ${configuration.capability} 重复`,
-      );
-    }
-    seen.add(configuration.capability);
+  return requested.map((entry) => {
+    if (seen.has(entry.capability)) throw invalid(`能力 ${entry.capability} 重复`);
+    seen.add(entry.capability);
 
-    if (!providerSupportsCapability(definition, configuration.capability)) {
-      throw new ProviderConfigurationError(
-        'invalid_capability_config',
-        `${definition.name} 不支持 ${configuration.capability}`,
-      );
+    const protocol = entry.protocol
+      ?? (definition ? defaultProtocolFor(definition, entry.capability) : undefined);
+    if (!protocol || !isProtocolForCapability(entry.capability, protocol)) {
+      throw invalid(`${entry.capability} 缺少有效协议`);
     }
-    if (configuration.protocol) {
-      const choices = protocolsForCapability(definition, configuration.capability);
-      if (!choices.includes(configuration.protocol)) {
-        throw new ProviderConfigurationError(
-          'invalid_capability_config',
-          `${configuration.capability} 不支持协议 ${configuration.protocol}`,
-        );
-      }
+
+    const baseUrl = entry.baseUrl
+      ?? (definition ? presetBaseUrlFor(definition, entry.capability, protocol) : undefined);
+    if (!baseUrl) {
+      throw invalid(`${entry.capability} 使用非预设协议时必须填写 baseUrl`);
     }
-    if (configuration.embeddingRevision && configuration.capability !== 'embed') {
-      throw new ProviderConfigurationError(
-        'invalid_capability_config',
-        'embeddingRevision 仅适用于 Embed 能力',
-      );
-    }
-    return { ...configuration };
+    validateBaseUrl(baseUrl);
+
+    return {
+      capability: entry.capability,
+      protocol,
+      baseUrl,
+      enabled: entry.enabled ?? true,
+    } as ProviderCapabilityConfiguration;
   });
+}
+
+function normalizeDisplayName(value: string | undefined): string {
+  const normalized = value?.trim() ?? '';
+  if (normalized.length === 0 || normalized.length > PROVIDER_CONFIG_LIMITS.displayNameChars) {
+    throw invalid('Provider 显示名称不能为空或过长');
+  }
+  return normalized;
+}
+
+function normalizeCredential(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const normalized = value.trim();
+  if (normalized.length === 0) return undefined;
+  if (normalized.length > PROVIDER_CONFIG_LIMITS.apiKeyChars) {
+    throw invalid('Provider API Key 过长');
+  }
+  return normalized;
+}
+
+function validateBaseUrl(value: string): void {
+  if (value.length > PROVIDER_CONFIG_LIMITS.baseUrlChars) throw invalid('Provider baseUrl 过长');
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw invalid(`无效的 Provider baseUrl：${value}`);
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw invalid('Provider baseUrl 只允许 http 或 https');
+  }
 }
 
 function resolveCredentialWrite(
@@ -275,129 +325,13 @@ function resolveCredentialWrite(
 ): string | null | undefined {
   if (!operation || operation.type === 'keep') return undefined;
   if (operation.type === 'clear') return null;
-  return operation.value;
+  return normalizeCredential(operation.value) ?? null;
 }
 
-function toConflict(binding: ResolvedModelBinding) {
-  return {
-    module: binding.module,
-    model: binding.model,
-  };
+function invalid(message: string): ProviderConfigurationError {
+  return new ProviderConfigurationError('invalid_configuration', message);
 }
 
-// ── Provider 探测编排 ─────────────────────────────────────────────────────────
-
-export interface ProviderProbeResult {
-  ok: boolean;
-  model: string;
-  latencyMs: number | null;
-  error?: string;
-}
-
-/** 需要按模型探测的能力；tts/stt 只探配置连通性（无模型参数）。 */
-export type ModelProbeCapability = 'llm' | 'embed' | 'rerank' | 'vision';
-
-export interface ProviderProbeModelSource {
-  firstEnabled(
-    providerId: string,
-    capability: ModelProbeCapability,
-  ): string | undefined;
-  firstCatalog(
-    provider: ConfiguredProvider,
-    capability: ModelProbeCapability,
-  ): string | undefined;
-}
-
-export interface ProviderProbeExecutor {
-  probe(
-    providerId: string,
-    capability: Capability,
-    model: string | undefined,
-    signal?: AbortSignal,
-  ): Promise<{ ok: boolean; latencyMs?: number; error?: string }>;
-}
-
-export interface ProviderHealthRecorder {
-  record(
-    providerId: string,
-    result: { ok: boolean; latencyMs?: number; error?: string },
-  ): void;
-}
-
-function isModelProbeCapability(capability: Capability): capability is ModelProbeCapability {
-  return capability === 'llm'
-    || capability === 'embed'
-    || capability === 'rerank'
-    || capability === 'vision';
-}
-
-/**
- * 按能力执行连通性探测，并把真实结果写回健康状态。
- * 模型类能力(llm/embed/rerank/vision)按"指定 → 已启用 → 目录首个"选模型;
- * tts/stt 直接由 executor 探配置连通性。
- */
-export class ProviderProbe {
-  constructor(
-    private readonly configurations: Pick<ProviderConfigurationStore, 'get'>,
-    private readonly models: ProviderProbeModelSource,
-    private readonly executor: ProviderProbeExecutor,
-    private readonly health: ProviderHealthRecorder,
-  ) {}
-
-  async run(
-    providerId: string,
-    capability: Capability,
-    requestedModel: string | undefined,
-    signal?: AbortSignal,
-  ): Promise<ProviderProbeResult> {
-    const provider = this.requireCapability(providerId, capability);
-    const model = isModelProbeCapability(capability)
-      ? requestedModel
-        ?? this.models.firstEnabled(providerId, capability)
-        ?? this.models.firstCatalog(provider, capability)
-      : undefined;
-
-    if (isModelProbeCapability(capability) && !model) {
-      return {
-        ok: false,
-        model: '',
-        latencyMs: null,
-        error: '没有可探测的模型，请先在下方"模型"启用一个',
-      };
-    }
-
-    const result = await this.executor.probe(
-      providerId,
-      capability,
-      model,
-      signal,
-    );
-    this.health.record(providerId, result);
-    return {
-      ok: result.ok,
-      model: model ?? '',
-      latencyMs: result.latencyMs ?? null,
-      error: result.error,
-    };
-  }
-
-  private requireCapability(
-    providerId: string,
-    capability: Capability,
-  ): ConfiguredProvider {
-    const provider = this.configurations.get(providerId);
-    if (!provider) {
-      throw new ProviderConfigurationError('not_found', 'Provider 不存在');
-    }
-    const enabled = provider.capabilities.some(
-      (item) => item.capability === capability && item.enabled !== false,
-    );
-    if (!enabled) {
-      throw new ProviderConfigurationError(
-        'capability_not_supported',
-        `Provider 未启用 ${capability} 能力`,
-      );
-    }
-    return provider;
-  }
+function notFound(): ProviderConfigurationError {
+  return new ProviderConfigurationError('not_found', 'Provider 不存在');
 }

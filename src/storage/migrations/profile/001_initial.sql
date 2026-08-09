@@ -190,20 +190,6 @@ CREATE TABLE memory_nodes (
   meta_json             TEXT NOT NULL DEFAULT '{}'
 , embedding_normalization TEXT, embedding_revision TEXT, embedding_space_id TEXT, embedding_evicted_at INTEGER, last_decayed_at INTEGER);
 
-CREATE TABLE "model_bindings" (
-  module             TEXT    NOT NULL
-                     CHECK(module IN (
-                       'memory', 'title',
-                       'lightrag-embed', 'lightrag-llm',
-                       'tts',
-                       'stt', 'vision', 'imagegen'
-                     )),
-  provider_config_id TEXT    NOT NULL REFERENCES provider_configs(id) ON DELETE RESTRICT,
-  model              TEXT    NOT NULL,
-  embedding_dimension INTEGER CHECK(embedding_dimension IS NULL OR embedding_dimension > 0),
-  PRIMARY KEY (module, provider_config_id, model)
-);
-
 CREATE TABLE permission_rules (
   id             TEXT PRIMARY KEY,
   action         TEXT NOT NULL
@@ -228,19 +214,17 @@ CREATE TABLE permission_rules (
 CREATE TABLE provider_capability_configs (
   provider_config_id TEXT    NOT NULL REFERENCES provider_configs(id) ON DELETE CASCADE,
   capability         TEXT    NOT NULL CHECK(capability IN ('llm','embed','rerank','vision','tts','stt')),
-  protocol           TEXT,
-  base_url            TEXT,
-  embedding_revision  TEXT,
+  protocol           TEXT    NOT NULL,
+  base_url            TEXT    NOT NULL,
   enabled             INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0, 1)),
   created_at          INTEGER NOT NULL,
   updated_at          INTEGER NOT NULL,
-  PRIMARY KEY (provider_config_id, capability),
-  CHECK(embedding_revision IS NULL OR capability = 'embed')
+  PRIMARY KEY (provider_config_id, capability)
 );
 
 CREATE TABLE provider_configs (
   id                TEXT PRIMARY KEY,
-  definition_id     TEXT NOT NULL,
+  definition_id     TEXT,
   display_name      TEXT NOT NULL,
   credential_envelope     TEXT,
   enabled           INTEGER NOT NULL DEFAULT 0,
@@ -248,60 +232,70 @@ CREATE TABLE provider_configs (
   updated_at        INTEGER NOT NULL
 );
 
-CREATE TABLE provider_embed_models (
-  provider_config_id TEXT    NOT NULL REFERENCES provider_configs(id) ON DELETE CASCADE,
-  model              TEXT    NOT NULL,
-  dim                INTEGER NOT NULL,
-  dim_source         TEXT    NOT NULL DEFAULT 'table' CHECK(dim_source IN ('live','table','manual')),
-  created_at         INTEGER NOT NULL,
-  PRIMARY KEY (provider_config_id, model)
-);
-
 CREATE TABLE provider_health (
   provider_config_id TEXT PRIMARY KEY REFERENCES provider_configs(id) ON DELETE CASCADE,
-  status             TEXT NOT NULL CHECK(status IN ('ok','failed','probing','unknown')),
+  status             TEXT NOT NULL CHECK(status IN ('ok','failed','unknown')),
   last_probed_at     INTEGER,
   latency_ms         INTEGER,
-  last_error         TEXT,
-  consecutive_fails  INTEGER NOT NULL DEFAULT 0
+  last_error         TEXT
 );
 
-CREATE TABLE provider_llm_models (
-  provider_config_id TEXT    NOT NULL REFERENCES provider_configs(id) ON DELETE CASCADE,
+CREATE TABLE provider_models (
+  provider_config_id TEXT    NOT NULL,
+  capability         TEXT    NOT NULL CHECK(capability IN ('llm','embed','rerank','vision','tts','stt')),
   model              TEXT    NOT NULL,
-  context_window     INTEGER NOT NULL,
-  context_source     TEXT    NOT NULL DEFAULT 'table' CHECK(context_source IN ('live','table','manual')),
+  context_window     INTEGER,
+  max_output         INTEGER,
+  tool_call          INTEGER CHECK(tool_call IS NULL OR tool_call IN (0,1)),
+  reasoning          INTEGER CHECK(reasoning IS NULL OR reasoning IN (0,1)),
+  temperature        INTEGER CHECK(temperature IS NULL OR temperature IN (0,1)),
+  input_image        INTEGER CHECK(input_image IS NULL OR input_image IN (0,1)),
+  embedding_dim      INTEGER,
+  rerank_max_chunks  INTEGER,
   created_at         INTEGER NOT NULL,
-  PRIMARY KEY (provider_config_id, model)
+  updated_at         INTEGER NOT NULL,
+  PRIMARY KEY (provider_config_id, capability, model),
+  FOREIGN KEY (provider_config_id, capability)
+    REFERENCES provider_capability_configs(provider_config_id, capability)
+    ON DELETE CASCADE,
+  CHECK(
+    (capability = 'llm' AND context_window > 0 AND embedding_dim IS NULL AND rerank_max_chunks IS NULL)
+    OR
+    (capability = 'embed' AND embedding_dim > 0 AND context_window IS NULL
+      AND max_output IS NULL AND tool_call IS NULL AND reasoning IS NULL
+      AND temperature IS NULL AND input_image IS NULL AND rerank_max_chunks IS NULL)
+    OR
+    (capability = 'rerank' AND context_window IS NULL AND max_output IS NULL
+      AND tool_call IS NULL AND reasoning IS NULL AND temperature IS NULL
+      AND input_image IS NULL AND embedding_dim IS NULL)
+    OR
+    (capability IN ('vision','tts','stt') AND context_window IS NULL AND max_output IS NULL
+      AND tool_call IS NULL AND reasoning IS NULL AND temperature IS NULL
+      AND input_image IS NULL AND embedding_dim IS NULL AND rerank_max_chunks IS NULL)
+  ),
+  CHECK(max_output IS NULL OR max_output > 0),
+  CHECK(rerank_max_chunks IS NULL OR rerank_max_chunks > 0)
 );
 
-CREATE TABLE provider_rerank_models (
-  provider_config_id TEXT    NOT NULL REFERENCES provider_configs(id) ON DELETE CASCADE,
-  model              TEXT    NOT NULL,
-  max_chunks         INTEGER,
-  created_at         INTEGER NOT NULL,
-  PRIMARY KEY (provider_config_id, model)
-);
-
-CREATE TABLE provider_stt_models (
-  provider_config_id TEXT    NOT NULL REFERENCES provider_configs(id) ON DELETE CASCADE,
-  model              TEXT    NOT NULL,
-  created_at         INTEGER NOT NULL,
-  PRIMARY KEY (provider_config_id, model)
-);
-
-CREATE TABLE provider_tts_models (
-  provider_config_id TEXT    NOT NULL REFERENCES provider_configs(id) ON DELETE CASCADE,
-  model              TEXT    NOT NULL,
-  created_at         INTEGER NOT NULL,
-  PRIMARY KEY (provider_config_id, model)
-);
-
-CREATE TABLE provider_vision_models (
-  provider_config_id TEXT    NOT NULL REFERENCES provider_configs(id) ON DELETE CASCADE,
-  model              TEXT    NOT NULL,
-  created_at         INTEGER NOT NULL,
-  PRIMARY KEY (provider_config_id, model)
+CREATE TABLE model_bindings (
+  module             TEXT PRIMARY KEY CHECK(module IN (
+                       'memory', 'title',
+                       'lightrag-embed', 'lightrag-llm',
+                       'tts', 'stt', 'vision'
+                     )),
+  capability         TEXT NOT NULL CHECK(capability IN ('llm','embed','rerank','vision','tts','stt')),
+  provider_config_id TEXT NOT NULL,
+  model              TEXT NOT NULL,
+  CHECK(
+    (module IN ('memory','title','lightrag-llm') AND capability = 'llm')
+    OR (module = 'lightrag-embed' AND capability = 'embed')
+    OR (module = 'tts' AND capability = 'tts')
+    OR (module = 'stt' AND capability = 'stt')
+    OR (module = 'vision' AND capability = 'vision')
+  ),
+  FOREIGN KEY (provider_config_id, capability, model)
+    REFERENCES provider_models(provider_config_id, capability, model)
+    ON DELETE CASCADE
 );
 
 CREATE TABLE settings (
@@ -434,6 +428,5 @@ ON permission_rules(
 CREATE INDEX idx_provider_capability_enabled
   ON provider_capability_configs(capability, enabled, provider_config_id);
 
-CREATE INDEX idx_provider_embed_models_model ON provider_embed_models(model);
-
-CREATE INDEX idx_provider_llm_models_model ON provider_llm_models(model);
+CREATE INDEX idx_provider_models_capability_model
+  ON provider_models(capability, model, provider_config_id);

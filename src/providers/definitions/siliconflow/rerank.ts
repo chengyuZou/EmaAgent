@@ -1,12 +1,7 @@
 // 声明 SiliconFlow 重排序线路和推荐模型。
-import { defineRerankCapability } from '../../types.js';
+import type { ProviderCapabilityDefinition } from '../../types.js';
 
-export const siliconFlowRerank = defineRerankCapability({
+export const siliconFlowRerank = {
   transports: [{ protocol: 'cohere-rerank' }],
-  models: {
-    sources: [
-      { type: 'static', models: ['BAAI/bge-reranker-v2-m3'] },
-      { type: 'manual' },
-    ],
-  },
-});
+  models: { staticModels: ['BAAI/bge-reranker-v2-m3'] },
+} satisfies ProviderCapabilityDefinition<'cohere-rerank'>;

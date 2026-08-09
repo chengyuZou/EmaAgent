@@ -11,26 +11,20 @@ export const provider = defineProvider({
   capabilities: {
     llm: {
       transports: [{ protocol: 'openai-llm' }],
-      models: { sources: [{ type: 'live' }, { type: 'manual' }] },
+      models: { supportsLiveListing: true },
     },
     embed: {
       transports: [{ protocol: 'openai-embed' }],
       models: {
-        sources: [
-          { type: 'static', models: ['nomic-embed-text', 'mxbai-embed-large'] },
-          { type: 'live' },
-          { type: 'manual' },
-        ],
+        staticModels: ['nomic-embed-text', 'mxbai-embed-large'],
+        supportsLiveListing: true,
       },
     },
     vision: {
       transports: [{ protocol: 'openai-vision' }],
       models: {
-        sources: [
-          { type: 'static', models: ['llava', 'llava-llama3', 'moondream'] },
-          { type: 'live' },
-          { type: 'manual' },
-        ],
+        staticModels: ['llava', 'llava-llama3', 'moondream'],
+        supportsLiveListing: true,
       },
     },
   },

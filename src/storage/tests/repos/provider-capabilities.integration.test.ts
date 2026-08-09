@@ -1,9 +1,9 @@
-// 测试 Provider 能力级协议、地址、版本和开关在 SQLite 中独立持久化并稳定查询。
+// 测试 capability 级协议、地址和开关在 SQLite 中明确持久化。
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { Database, ProvidersRepo } from '../../index.js';
+import { Database, ProviderModelsRepo, ProvidersRepo } from '../../index.js';
 import { createTestCredentialFacade } from '../helpers/test-credential-facade.js';
 
-describe('Provider 能力级配置', () => {
+describe('Provider 能力配置', () => {
   let database: Database;
   let providers: ProvidersRepo;
 
@@ -15,102 +15,76 @@ describe('Provider 能力级配置', () => {
 
   afterEach(() => database.close());
 
-  it('物理删除已经由能力表取代的 Provider 顶层列', () => {
-    const columns = database.sqlite.prepare('PRAGMA table_info(provider_configs)')
-      .all() as Array<{ name: string }>;
-    expect(columns.map((column) => column.name)).not.toEqual(expect.arrayContaining([
-      'base_url',
-      'config_json',
-      'capabilities_json',
-    ]));
-  });
-
-  it('同一 Provider 的 LLM、Embed 和 TTS 保留各自协议与地址', () => {
-    providers.upsert({
-      id: 'openai-main',
-      definitionId: 'openai',
-      displayName: 'OpenAI',
-      apiKey: 'secret',
+  it('自定义 Provider 使用 null Definition 并保留每项能力的明确连接', () => {
+    providers.save({
+      id: 'custom-main',
+      definitionId: null,
+      displayName: 'Custom',
+      enabled: true,
       capabilities: [
-        {
-          capability: 'llm',
-          protocol: 'openai-responses-llm',
-          baseUrl: 'https://gateway.example/v1',
-        },
-        {
-          capability: 'embed',
-          protocol: 'openai-embed',
-          baseUrl: 'https://embed.example/v1',
-          embeddingRevision: '2026-07',
-        },
-        {
-          capability: 'tts',
-          protocol: 'openai-tts',
-          baseUrl: null,
-        },
+        { capability: 'llm', protocol: 'openai-responses-llm', baseUrl: 'https://llm.example/v1', enabled: true },
+        { capability: 'embed', protocol: 'openai-embed', baseUrl: 'https://embed.example/v1', enabled: true },
+        { capability: 'tts', protocol: 'openai-tts', baseUrl: 'https://tts.example/v1', enabled: false },
       ],
     });
 
-    expect(providers.get('openai-main')?.capabilities).toEqual([
-      expect.objectContaining({
-        capability: 'embed',
-        protocol: 'openai-embed',
-        base_url: 'https://embed.example/v1',
-        embedding_revision: '2026-07',
-      }),
-      expect.objectContaining({
-        capability: 'llm',
-        protocol: 'openai-responses-llm',
-        base_url: 'https://gateway.example/v1',
-      }),
-      expect.objectContaining({
-        capability: 'tts',
-        protocol: 'openai-tts',
-        base_url: null,
-      }),
+    expect(providers.get('custom-main')).toMatchObject({
+      definitionId: null,
+      enabled: true,
+      capabilities: [
+        { capability: 'embed', baseUrl: 'https://embed.example/v1', enabled: true },
+        { capability: 'llm', baseUrl: 'https://llm.example/v1', enabled: true },
+        { capability: 'tts', baseUrl: 'https://tts.example/v1', enabled: false },
+      ],
+    });
+  });
+
+  it('保存全量能力配置时删除已经移除的能力', () => {
+    providers.save({
+      id: 'provider-1', definitionId: 'openai', displayName: 'OpenAI', enabled: true,
+      capabilities: [
+        { capability: 'llm', protocol: 'openai-llm', baseUrl: 'https://api.openai.com/v1', enabled: true },
+        { capability: 'vision', protocol: 'openai-vision', baseUrl: 'https://api.openai.com/v1', enabled: true },
+      ],
+    });
+    providers.save({
+      id: 'provider-1', definitionId: 'openai', displayName: 'OpenAI', enabled: true,
+      capabilities: [
+        { capability: 'llm', protocol: 'openai-responses-llm', baseUrl: 'https://api.openai.com/v1', enabled: true },
+      ],
+    });
+
+    expect(providers.get('provider-1')?.capabilities).toEqual([
+      { capability: 'llm', protocol: 'openai-responses-llm', baseUrl: 'https://api.openai.com/v1', enabled: true },
     ]);
   });
 
-  it('关闭单项能力不会关闭 Provider 或其他能力', () => {
-    providers.upsert({
-      id: 'multi',
-      definitionId: 'siliconflow',
-      displayName: 'SiliconFlow',
+  it('更新已有能力不删除模型事实，移除能力才级联清理', () => {
+    providers.save({
+      id: 'provider-1', definitionId: 'openai', displayName: 'OpenAI', enabled: true,
       capabilities: [
-        { capability: 'llm' },
-        { capability: 'vision', enabled: false },
+        { capability: 'llm', protocol: 'openai-llm', baseUrl: 'https://api.openai.com/v1', enabled: true },
+        { capability: 'vision', protocol: 'openai-vision', baseUrl: 'https://api.openai.com/v1', enabled: true },
+      ],
+    });
+    const models = new ProviderModelsRepo(database.sqlite);
+    models.save({
+      providerConfigId: 'provider-1', capability: 'llm', model: 'gpt-test',
+      contextWindow: 32_000, maxOutput: null, toolCall: null,
+      reasoning: null, temperature: null, inputImage: null,
+    });
+    models.save({
+      providerConfigId: 'provider-1', capability: 'vision', model: 'vision-test',
+    });
+
+    providers.save({
+      id: 'provider-1', definitionId: 'openai', displayName: 'OpenAI Updated', enabled: true,
+      capabilities: [
+        { capability: 'llm', protocol: 'openai-responses-llm', baseUrl: 'https://api.openai.com/v1', enabled: true },
       ],
     });
 
-    expect(providers.listByCapability('llm').map((row) => row.id)).toEqual(['multi']);
-    expect(providers.listByCapability('vision')).toEqual([]);
-    expect(providers.get('multi')?.enabled).toBe(1);
-  });
-
-  it('更新一项能力不会覆盖其他能力配置', () => {
-    providers.upsert({
-      id: 'multi',
-      definitionId: 'siliconflow',
-      displayName: 'SiliconFlow',
-      capabilities: [
-        { capability: 'llm', baseUrl: 'https://llm.example/v1' },
-        { capability: 'stt', baseUrl: 'https://stt.example/v1' },
-      ],
-    });
-
-    providers.upsertCapability('multi', {
-      capability: 'llm',
-      protocol: 'openai-responses-llm',
-      baseUrl: 'https://new-llm.example/v1',
-    });
-
-    const capabilities = providers.get('multi')?.capabilities ?? [];
-    expect(capabilities.find((item) => item.capability === 'llm')).toMatchObject({
-      protocol: 'openai-responses-llm',
-      base_url: 'https://new-llm.example/v1',
-    });
-    expect(capabilities.find((item) => item.capability === 'stt')).toMatchObject({
-      base_url: 'https://stt.example/v1',
-    });
+    expect(models.get('provider-1', 'llm', 'gpt-test')).toBeDefined();
+    expect(models.get('provider-1', 'vision', 'vision-test')).toBeUndefined();
   });
 });

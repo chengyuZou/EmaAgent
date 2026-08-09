@@ -11,11 +11,11 @@ export const provider = defineProvider({
   capabilities: {
     llm: {
       transports: [{ protocol: 'anthropic-llm' }],
-      models: { sources: [{ type: 'models-dev', providerId: 'anthropic' }, { type: 'manual' }] },
+      models: { modelsDevId: 'anthropic' },
     },
     vision: {
       transports: [{ protocol: 'anthropic-vision' }],
-      models: { sources: [{ type: 'models-dev', providerId: 'anthropic' }, { type: 'manual' }] },
+      models: { modelsDevId: 'anthropic' },
     },
   },
 });

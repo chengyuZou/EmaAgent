@@ -26,7 +26,8 @@ export { CharacterVoiceReferencesRepo } from './repos/profile/characterVoiceRefe
 export { SettingsRepo } from './repos/profile/settings.js';
 export { UsageRecordsRepo } from './repos/data/usage-records.js';
 export { ProvidersRepo } from './repos/profile/providers.js';
-export { ModelBindingsRepo } from './repos/profile/model-bindings.js';
+export { ProviderModelsRepo } from './repos/profile/providerModels.js';
+export { ModelBindingsRepo } from './repos/profile/modelBindings.js';
 export { AttachmentRepo }  from './repos/data/attachment.js';
 export type { AttachmentRow, AttachmentInsert } from './repos/data/attachment.js';
 export { AttachmentDerivationsRepo } from './repos/data/attachmentDerivations.js';
@@ -116,15 +117,6 @@ export { SettingSerializationError } from './repos/profile/settings.js';
 export type { SettingRow, SettingReadResult } from './repos/profile/settings.js';
 export type { SettingWrite } from './repos/profile/settings.js';
 export type { UsageRecordRow } from './repos/data/usage-records.js';
-export type {
-  ProviderConfigRow,
-  ProviderConfigInsert,
-  ProviderCapabilityConfigRow,
-  ProviderCapabilityConfigInput,
-  ProviderHealthRow,
-  ProviderWithHealth,
-  HealthStatus,
-} from './repos/profile/providers.js';
 // ── Memory 子系统类型 ──────────────────────────────────────────────────────────
 export type {
   MemoryNodeRow,
@@ -168,20 +160,6 @@ export type {
 } from './repos/profile/memory-extraction-runs.js';
 export type { MemoryNodeSourceRow } from './repos/profile/memory-node-sources.js';
 export type { MemoryStorageFootprint } from './repos/profile/memoryStorage.js';
-
-// ── 各 Provider 模型池 ─────────────────────────────────────────────────────────
-export { ProviderLlmModelsRepo } from './repos/profile/provider-llm-models.js';
-export type { ProviderLlmModelRow, ProviderLlmModelInsert, ContextSource } from './repos/profile/provider-llm-models.js';
-export { ProviderEmbedModelsRepo } from './repos/profile/provider-embed-models.js';
-export type { ProviderEmbedModelRow, ProviderEmbedModelInsert, DimSource } from './repos/profile/provider-embed-models.js';
-export { ProviderRerankModelsRepo } from './repos/profile/provider-rerank-models.js';
-export type { ProviderRerankModelRow, ProviderRerankModelInsert } from './repos/profile/provider-rerank-models.js';
-export { ProviderTtsModelsRepo } from './repos/profile/provider-tts-models.js';
-export type { ProviderTtsModelRow, ProviderTtsModelInsert } from './repos/profile/provider-tts-models.js';
-export { ProviderSttModelsRepo } from './repos/profile/provider-stt-models.js';
-export type { ProviderSttModelRow, ProviderSttModelInsert } from './repos/profile/provider-stt-models.js';
-export { ProviderVisionModelsRepo } from './repos/profile/provider-vision-models.js';
-export type { ProviderVisionModelRow, ProviderVisionModelInsert } from './repos/profile/provider-vision-models.js';
 
 // ── AgentRun 存储 ─────────────────────────────────────────────────────────────
 export { AgentRunsRepo } from './repos/data/agent-runs.js';

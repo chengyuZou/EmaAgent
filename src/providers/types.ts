@@ -1,4 +1,4 @@
-export type Capability = 'llm' | 'embed' | 'rerank' | 'vision' | 'tts' | 'stt'; 
+export type Capability = 'llm' | 'embed' | 'rerank' | 'vision' | 'tts' | 'stt';
 
 export const PROTOCOL_FAMILIES = [
   'openai-llm',
@@ -18,7 +18,6 @@ export const PROTOCOL_FAMILIES = [
 ] as const;
 
 export type ProtocolFamily = typeof PROTOCOL_FAMILIES[number];
-
 export type LlmProtocol = Extract<ProtocolFamily, `${string}-llm`>;
 export type EmbedProtocol = Extract<ProtocolFamily, `${string}-embed`>;
 export type RerankProtocol = Extract<ProtocolFamily, `${string}-rerank`>;
@@ -26,34 +25,41 @@ export type VisionProtocol = Extract<ProtocolFamily, `${string}-vision`>;
 export type TtsProtocol = Extract<ProtocolFamily, `${string}-tts`>;
 export type SttProtocol = Extract<ProtocolFamily, `${string}-stt`>;
 
-/**
- * 同一供应商可能同时提供多种协议兼容端点。
- * 例如 DeepSeek 的 LLM 可以按用户配置选择 OpenAI 或 Anthropic 协议。
- */
+export interface CapabilityProtocolMap {
+  llm: LlmProtocol;
+  embed: EmbedProtocol;
+  rerank: RerankProtocol;
+  vision: VisionProtocol;
+  tts: TtsProtocol;
+  stt: SttProtocol;
+}
+
+export type CapabilityProtocol<TCapability extends Capability> =
+  CapabilityProtocolMap[TCapability];
+
+/** Provider 解析出的连接可直接传给对应 API 包，不包含请求执行状态。 */
+export interface ProviderConnection<TCapability extends Capability> {
+  protocol: CapabilityProtocol<TCapability>;
+  baseUrl: string;
+  apiKey?: string;
+}
+
 export interface ProviderTransport<TProtocol extends ProtocolFamily = ProtocolFamily> {
   protocol: TProtocol;
-  /** 仅当该协议不使用供应商默认地址时填写。 */
+  /** 仅当该协议不使用 Provider 默认地址时填写。 */
   baseUrl?: string;
 }
 
-export type ProviderModelSource =
-  /** LLM 与 Vision 通过 models.dev 获取供应商模型目录。 */
-  | { type: 'models-dev'; providerId: string }
-  /** 定义内硬编码的模型清单（本地/小众供应商的固定模型集）。 */
-  | { type: 'static'; models: readonly string[] }
-  /** 调用 Provider 自己的 /models 端点实时拉取（Ollama 等本地运行时）。 */
-  | { type: 'live' }
-  /** 目录未收录的模型由用户在设置页手动填写。 */
-  | { type: 'manual' };
-
+/** 内置目录只提供模型建议；手动添加模型是所有 Provider 的通用能力。 */
 export interface ProviderModelCatalogDefinition {
-  sources: readonly ProviderModelSource[];
+  modelsDevId?: string;
+  staticModels?: readonly string[];
+  supportsLiveListing?: boolean;
 }
 
 export interface ProviderCapabilityDefinition<
   TProtocol extends ProtocolFamily = ProtocolFamily,
 > {
-  /** 同一能力可声明多种兼容协议，最终使用哪一种由用户的能力配置决定。 */
   transports: readonly ProviderTransport<TProtocol>[];
   models?: ProviderModelCatalogDefinition;
 }
@@ -72,11 +78,10 @@ export type ProviderAuthDefinition =
   | { type: 'bearer'; required: boolean };
 
 export interface ProviderDefinition {
-  /** 写入数据库和模型绑定的稳定身份，发布后不能随显示名称一起改动。 */
+  /** 内置预设的稳定身份；用户自定义连接不伪造 Definition。 */
   id: string;
   name: string;
   branding: {
-    /** 与具体 UI 图标库无关的稳定图标身份。 */
     iconId: string;
   };
   connection: {
@@ -94,44 +99,9 @@ export type ProviderCredentialOperation =
 export const PROVIDER_CONFIG_LIMITS = Object.freeze({
   apiKeyChars: 8_192,
   baseUrlChars: 2_048,
+  displayNameChars: 120,
 });
 
 export function defineProvider<const T extends ProviderDefinition>(definition: T): T {
-  return definition;
-}
-
-export function defineLlmCapability<
-  const T extends ProviderCapabilityDefinition<LlmProtocol>,
->(definition: T): T {
-  return definition;
-}
-
-export function defineEmbedCapability<
-  const T extends ProviderCapabilityDefinition<EmbedProtocol>,
->(definition: T): T {
-  return definition;
-}
-
-export function defineRerankCapability<
-  const T extends ProviderCapabilityDefinition<RerankProtocol>,
->(definition: T): T {
-  return definition;
-}
-
-export function defineVisionCapability<
-  const T extends ProviderCapabilityDefinition<VisionProtocol>,
->(definition: T): T {
-  return definition;
-}
-
-export function defineTtsCapability<
-  const T extends ProviderCapabilityDefinition<TtsProtocol>,
->(definition: T): T {
-  return definition;
-}
-
-export function defineSttCapability<
-  const T extends ProviderCapabilityDefinition<SttProtocol>,
->(definition: T): T {
   return definition;
 }

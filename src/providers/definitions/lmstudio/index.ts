@@ -11,11 +11,11 @@ export const provider = defineProvider({
   capabilities: {
     llm: {
       transports: [{ protocol: 'openai-llm' }],
-      models: { sources: [{ type: 'live' }, { type: 'manual' }] },
+      models: { supportsLiveListing: true },
     },
     embed: {
       transports: [{ protocol: 'openai-embed' }],
-      models: { sources: [{ type: 'static', models: ['auto'] }, { type: 'live' }, { type: 'manual' }] },
+      models: { staticModels: ['auto'], supportsLiveListing: true },
     },
   },
 });

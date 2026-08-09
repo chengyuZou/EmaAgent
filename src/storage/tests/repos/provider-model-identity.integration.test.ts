@@ -1,166 +1,75 @@
+// 测试统一 Provider 模型表保留复合身份、判别字段和三态能力。
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import {
-  Database,
-  ProviderEmbedModelsRepo,
-  ProviderLlmModelsRepo,
-  ProviderRerankModelsRepo,
-  ProviderSttModelsRepo,
-  ProviderTtsModelsRepo,
-  ProviderVisionModelsRepo,
-  ProvidersRepo,
-} from '../../index.js';
+import { Database, ProviderModelsRepo, ProvidersRepo } from '../../index.js';
 import { createTestCredentialFacade } from '../helpers/test-credential-facade.js';
 
-describe('N-008 Provider + Model 复合身份', () => {
+describe('ProviderModelsRepo', () => {
   let database: Database;
-  let llmModels: ProviderLlmModelsRepo;
-  let embedModels: ProviderEmbedModelsRepo;
-  let rerankModels: ProviderRerankModelsRepo;
-  let ttsModels: ProviderTtsModelsRepo;
-  let sttModels: ProviderSttModelsRepo;
-  let visionModels: ProviderVisionModelsRepo;
+  let models: ProviderModelsRepo;
 
   beforeEach(() => {
     database = new Database({ memory: true, kind: 'profile' });
     database.migrate();
-
     const providers = new ProvidersRepo(database.sqlite, createTestCredentialFacade());
-    providers.upsert({
-      id: 'provider-a',
-      definitionId: 'provider-a',
-      displayName: 'Provider A',
-      capabilities: [
-        { capability: 'llm' },
-        { capability: 'embed' },
-        { capability: 'rerank' },
-        { capability: 'tts' },
-        { capability: 'stt' },
-        { capability: 'vision' },
-      ],
-    });
-    providers.upsert({
-      id: 'provider-b',
-      definitionId: 'provider-b',
-      displayName: 'Provider B',
-      capabilities: [
-        { capability: 'llm' },
-        { capability: 'embed' },
-        { capability: 'rerank' },
-        { capability: 'tts' },
-        { capability: 'stt' },
-        { capability: 'vision' },
-      ],
-    });
-
-    llmModels = new ProviderLlmModelsRepo(database.sqlite);
-    embedModels = new ProviderEmbedModelsRepo(database.sqlite);
-    rerankModels = new ProviderRerankModelsRepo(database.sqlite);
-    ttsModels = new ProviderTtsModelsRepo(database.sqlite);
-    sttModels = new ProviderSttModelsRepo(database.sqlite);
-    visionModels = new ProviderVisionModelsRepo(database.sqlite);
+    for (const id of ['provider-a', 'provider-b']) {
+      providers.save({
+        id,
+        definitionId: null,
+        displayName: id,
+        enabled: true,
+        capabilities: [
+          { capability: 'llm', protocol: 'openai-llm', baseUrl: 'https://example.com/v1', enabled: true },
+          { capability: 'embed', protocol: 'openai-embed', baseUrl: 'https://example.com/v1', enabled: true },
+          { capability: 'rerank', protocol: 'cohere-rerank', baseUrl: 'https://example.com/v1', enabled: true },
+          { capability: 'vision', protocol: 'openai-vision', baseUrl: 'https://example.com/v1', enabled: true },
+          { capability: 'tts', protocol: 'openai-tts', baseUrl: 'https://example.com/v1', enabled: true },
+          { capability: 'stt', protocol: 'openai-stt', baseUrl: 'https://example.com/v1', enabled: true },
+        ],
+      });
+    }
+    models = new ProviderModelsRepo(database.sqlite);
   });
 
   afterEach(() => database.close());
 
-  it('同名 LLM 按 Provider 精确返回各自 context window', () => {
-    llmModels.upsert({
-      providerConfigId: 'provider-a',
-      model: 'shared-model',
-      contextWindow: 128_000,
+  it('同名 LLM 按 Provider 精确保留不同模型事实', () => {
+    models.save({
+      providerConfigId: 'provider-a', capability: 'llm', model: 'shared',
+      contextWindow: 128_000, maxOutput: 16_000, toolCall: true,
+      reasoning: true, temperature: null, inputImage: true,
     });
-    llmModels.upsert({
-      providerConfigId: 'provider-b',
-      model: 'shared-model',
-      contextWindow: 32_000,
+    models.save({
+      providerConfigId: 'provider-b', capability: 'llm', model: 'shared',
+      contextWindow: 32_000, maxOutput: null, toolCall: null,
+      reasoning: false, temperature: true, inputImage: false,
     });
 
-    expect(llmModels.contextWindowFor('provider-a', 'shared-model')).toBe(128_000);
-    expect(llmModels.contextWindowFor('provider-b', 'shared-model')).toBe(32_000);
-    expect(llmModels.contextWindowFor('missing-provider', 'shared-model')).toBeUndefined();
+    expect(models.get('provider-a', 'llm', 'shared')).toMatchObject({
+      contextWindow: 128_000, toolCall: true, temperature: null,
+    });
+    expect(models.get('provider-b', 'llm', 'shared')).toMatchObject({
+      contextWindow: 32_000, toolCall: null, reasoning: false,
+    });
   });
 
-  it('同名 Embedding 模型按 Provider 精确返回各自维度', () => {
-    embedModels.upsert({
-      providerConfigId: 'provider-a',
-      model: 'shared-embed',
-      dim: 1_536,
-    });
-    embedModels.upsert({
-      providerConfigId: 'provider-b',
-      model: 'shared-embed',
-      dim: 3_072,
-    });
+  it('六类模型从同一表恢复为对应判别联合', () => {
+    models.save({ providerConfigId: 'provider-a', capability: 'embed', model: 'embed', dim: 1_536 });
+    models.save({ providerConfigId: 'provider-a', capability: 'rerank', model: 'rerank', maxChunks: 100 });
+    models.save({ providerConfigId: 'provider-a', capability: 'vision', model: 'vision' });
+    models.save({ providerConfigId: 'provider-a', capability: 'tts', model: 'tts' });
+    models.save({ providerConfigId: 'provider-a', capability: 'stt', model: 'stt' });
 
-    expect(embedModels.dimFor('provider-a', 'shared-embed')).toBe(1_536);
-    expect(embedModels.dimFor('provider-b', 'shared-embed')).toBe(3_072);
-    expect(embedModels.dimFor('missing-provider', 'shared-embed')).toBeUndefined();
+    expect(models.listByProvider('provider-a').map((row) => row.capability))
+      .toEqual(['embed', 'rerank', 'stt', 'tts', 'vision']);
+    expect(models.get('provider-a', 'embed', 'embed')).toMatchObject({ dim: 1_536 });
+    expect(models.get('provider-a', 'rerank', 'rerank')).toMatchObject({ maxChunks: 100 });
   });
 
-  it('同名 Rerank 模型保留各 Provider 的 maxChunks', () => {
-    rerankModels.upsert({
-      providerConfigId: 'provider-a',
-      model: 'shared-rerank',
-      maxChunks: 100,
-    });
-    rerankModels.upsert({
-      providerConfigId: 'provider-b',
-      model: 'shared-rerank',
-      maxChunks: 500,
-    });
-
-    expect(rerankModels.get('provider-a', 'shared-rerank')?.max_chunks).toBe(100);
-    expect(rerankModels.get('provider-b', 'shared-rerank')?.max_chunks).toBe(500);
-  });
-
-  it('TTS、STT、Vision 同名模型都保留 Provider 复合身份', () => {
-    const pools = [ttsModels, sttModels, visionModels];
-    for (const pool of pools) {
-      pool.upsert({ providerConfigId: 'provider-a', model: 'shared-media-model' });
-      pool.upsert({ providerConfigId: 'provider-b', model: 'shared-media-model' });
-
-      expect(pool.get('provider-a', 'shared-media-model')?.provider_config_id)
-        .toBe('provider-a');
-      expect(pool.get('provider-b', 'shared-media-model')?.provider_config_id)
-        .toBe('provider-b');
-      expect(pool.listByModel('shared-media-model').map((row) => row.provider_config_id))
-        .toEqual(['provider-a', 'provider-b']);
-    }
-  });
-
-  it('六类模型池在同毫秒写入时都按 model 稳定排序', () => {
-    llmModels.upsert({ providerConfigId: 'provider-a', model: 'z-model', contextWindow: 1 });
-    llmModels.upsert({ providerConfigId: 'provider-a', model: 'a-model', contextWindow: 1 });
-    embedModels.upsert({ providerConfigId: 'provider-a', model: 'z-model', dim: 1 });
-    embedModels.upsert({ providerConfigId: 'provider-a', model: 'a-model', dim: 1 });
-    rerankModels.upsert({ providerConfigId: 'provider-a', model: 'z-model' });
-    rerankModels.upsert({ providerConfigId: 'provider-a', model: 'a-model' });
-    ttsModels.upsert({ providerConfigId: 'provider-a', model: 'z-model' });
-    ttsModels.upsert({ providerConfigId: 'provider-a', model: 'a-model' });
-    sttModels.upsert({ providerConfigId: 'provider-a', model: 'z-model' });
-    sttModels.upsert({ providerConfigId: 'provider-a', model: 'a-model' });
-    visionModels.upsert({ providerConfigId: 'provider-a', model: 'z-model' });
-    visionModels.upsert({ providerConfigId: 'provider-a', model: 'a-model' });
-
-    for (const table of [
-      'provider_llm_models',
-      'provider_embed_models',
-      'provider_rerank_models',
-      'provider_tts_models',
-      'provider_stt_models',
-      'provider_vision_models',
-    ]) {
-      database.sqlite.prepare(`UPDATE ${table} SET created_at = 100`).run();
-    }
-
-    for (const rows of [
-      llmModels.listByProvider('provider-a'),
-      embedModels.listByProvider('provider-a'),
-      rerankModels.listByProvider('provider-a'),
-      ttsModels.listByProvider('provider-a'),
-      sttModels.listByProvider('provider-a'),
-      visionModels.listByProvider('provider-a'),
-    ]) {
-      expect(rows.map((row) => row.model)).toEqual(['a-model', 'z-model']);
-    }
+  it('SQLite 约束拒绝能力与字段形状不一致的行', () => {
+    expect(() => database.sqlite.prepare(
+      `INSERT INTO provider_models
+         (provider_config_id, capability, model, context_window, embedding_dim, created_at, updated_at)
+       VALUES ('provider-a', 'embed', 'broken', 100, 10, 1, 1)`,
+    ).run()).toThrow(/CHECK constraint failed/);
   });
 });

@@ -1,14 +1,14 @@
-// 测试内置 Provider 目录的身份、能力、协议、地址与模型来源满足可装配约束。
+// 测试内置 Provider 预设的身份、协议和模型建议满足控制面约束。
 import { describe, expect, it } from 'vitest';
 import {
+  getCapabilityDefinition,
   listProviderCapabilities,
-  modelSourcesFor,
-  protocolsForCapability,
   providerCatalog,
+  staticModelsFor,
 } from '../index.js';
 
-describe('ProviderCatalogFacade', () => {
-  it('目录身份唯一且可按 ID 完整取回', () => {
+describe('Provider Definition 目录', () => {
+  it('内置身份唯一且可按 ID 取回', () => {
     const definitions = providerCatalog.list();
     const ids = definitions.map((definition) => definition.id);
 
@@ -21,31 +21,27 @@ describe('ProviderCatalogFacade', () => {
     }
   });
 
-  it('每项能力至少声明一条匹配的协议且没有重复', () => {
+  it('每项能力至少声明一条同族协议且没有重复', () => {
     for (const definition of providerCatalog.list()) {
       for (const capability of listProviderCapabilities(definition)) {
-        const protocols = protocolsForCapability(definition, capability);
+        const transports = getCapabilityDefinition(definition, capability)!.transports;
+        const protocols = transports.map((transport) => transport.protocol);
         expect(protocols.length, `${definition.id}/${capability}`).toBeGreaterThan(0);
         expect(new Set(protocols).size, `${definition.id}/${capability}`).toBe(protocols.length);
-        for (const protocol of protocols) {
-          expect(protocol.endsWith(`-${capability}`), `${definition.id}/${protocol}`).toBe(true);
-        }
+        expect(protocols.every((protocol) => protocol.endsWith(`-${capability}`))).toBe(true);
       }
     }
   });
 
-  it('连接地址有效且静态模型目录没有空值或重复项', () => {
+  it('预设地址有效且静态模型建议没有空值或重复项', () => {
     for (const definition of providerCatalog.list()) {
       if (definition.connection.defaultBaseUrl) {
         expect(() => new URL(definition.connection.defaultBaseUrl!)).not.toThrow();
       }
       for (const capability of listProviderCapabilities(definition)) {
-        for (const source of modelSourcesFor(definition, capability)) {
-          if (source.type !== 'static') continue;
-          expect(source.models.length, `${definition.id}/${capability}`).toBeGreaterThan(0);
-          expect(new Set(source.models).size, `${definition.id}/${capability}`).toBe(source.models.length);
-          expect(source.models.every((model) => model.trim().length > 0)).toBe(true);
-        }
+        const models = staticModelsFor(definition, capability);
+        expect(new Set(models).size, `${definition.id}/${capability}`).toBe(models.length);
+        expect(models.every((model) => model.trim().length > 0)).toBe(true);
       }
     }
   });

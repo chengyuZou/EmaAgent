@@ -1,4 +1,6 @@
-// 定义业务模块到 Provider 模型的稳定绑定身份，并统一处理绑定变化后的运行时同步。
+// 让每个业务模块只绑定一个已启用模型，不在 Provider 内触发业务副作用。
+import { ProviderConfigurationError } from './errors.js';
+import type { ProviderModelStore } from './models.js';
 import type { Capability } from './types.js';
 
 export const MODEL_BINDING_MODULES = [
@@ -13,96 +15,68 @@ export const MODEL_BINDING_MODULES = [
 
 export type ModelBindingModule = typeof MODEL_BINDING_MODULES[number];
 
-export const MODEL_BINDING_CAPABILITIES: Partial<
-  Readonly<Record<ModelBindingModule, Capability>>
-> = Object.freeze({
-  memory: 'llm',
-  title: 'llm',
-  'lightrag-llm': 'llm',
-  'lightrag-embed': 'embed',
-  tts: 'tts',
-  stt: 'stt',
-  vision: 'vision',
-});
-
-const NARRATIVE_BRIDGE_BINDING_MODULES = new Set<ModelBindingModule>([
-  'lightrag-embed',
-  'lightrag-llm',
-]);
+export const MODEL_BINDING_CAPABILITIES: Readonly<Record<ModelBindingModule, Capability>> =
+  Object.freeze({
+    memory: 'llm',
+    title: 'llm',
+    'lightrag-llm': 'llm',
+    'lightrag-embed': 'embed',
+    tts: 'tts',
+    stt: 'stt',
+    vision: 'vision',
+  });
 
 export interface ModelBindingInput {
   module: ModelBindingModule;
   providerConfigId: string;
   model: string;
-  /** 仅 LightRAG Embed 绑定使用；其他模块保持为空。 */
-  embeddingDimension?: number;
 }
 
-export interface ResolvedModelBinding {
-  module: ModelBindingModule;
-  providerConfigId: string;
-  model: string;
-  embeddingDimension: number | null;
+export interface ModelBinding extends ModelBindingInput {
+  capability: Capability;
 }
 
 export interface ModelBindingStore {
-  list(): ResolvedModelBinding[];
-  listByModule(module: ModelBindingModule): ResolvedModelBinding[];
-  listByProviderConfig(providerConfigId: string): ResolvedModelBinding[];
-  setSingle(input: ModelBindingInput): void;
-  upsert(input: ModelBindingInput): void;
-  delete(module: ModelBindingModule, providerConfigId: string, model: string): void;
-  deleteByProviderModel(providerConfigId: string, model: string): number;
+  get(module: ModelBindingModule): ModelBinding | undefined;
+  list(): ModelBinding[];
+  listByProviderConfig(providerConfigId: string): ModelBinding[];
+  set(binding: ModelBinding): void;
+  delete(module: ModelBindingModule): void;
 }
 
-/** 绑定变更后需要同步的外部副作用（当前仅 Narrative Bridge）。 */
-export interface ModelBindingSync {
-  syncNarrativeBridge(): Promise<void>;
-}
-
-export class ModelBindingControl {
+export class ModelBindings {
   constructor(
+    private readonly models: Pick<ProviderModelStore, 'get'>,
     private readonly store: ModelBindingStore,
-    private readonly sync: ModelBindingSync,
   ) {}
 
-  list(): ResolvedModelBinding[] {
+  get(module: ModelBindingModule): ModelBinding | undefined {
+    return this.store.get(module);
+  }
+
+  list(): ModelBinding[] {
     return this.store.list();
   }
 
-  listByModule(module: ModelBindingModule): ResolvedModelBinding[] {
-    return this.store.listByModule(module);
-  }
-
-  listByProviderConfig(providerConfigId: string): ResolvedModelBinding[] {
+  listByProviderConfig(providerConfigId: string): ModelBinding[] {
     return this.store.listByProviderConfig(providerConfigId);
   }
 
-  setSingle(input: ModelBindingInput): ResolvedModelBinding[] {
-    this.store.setSingle(input);
-    this.syncNarrativeBridgeIfNeeded(input.module);
-    return this.store.listByModule(input.module);
+  set(input: ModelBindingInput): ModelBinding {
+    const capability = MODEL_BINDING_CAPABILITIES[input.module];
+    const model = this.models.get(input.providerConfigId, capability, input.model);
+    if (!model) {
+      throw new ProviderConfigurationError(
+        'model_not_found',
+        `${input.module} 只能绑定已启用的 ${capability} 模型`,
+      );
+    }
+    const binding = { ...input, capability };
+    this.store.set(binding);
+    return binding;
   }
 
-  upsert(input: ModelBindingInput): ResolvedModelBinding[] {
-    this.store.upsert(input);
-    this.syncNarrativeBridgeIfNeeded(input.module);
-    return this.store.listByModule(input.module);
-  }
-
-  delete(module: ModelBindingModule, providerConfigId: string, model: string): void {
-    this.store.delete(module, providerConfigId, model);
-    this.syncNarrativeBridgeIfNeeded(module);
-  }
-
-  deleteByProviderModel(providerConfigId: string, model: string): number {
-    return this.store.deleteByProviderModel(providerConfigId, model);
-  }
-
-  private syncNarrativeBridgeIfNeeded(module: ModelBindingModule): void {
-    if (!NARRATIVE_BRIDGE_BINDING_MODULES.has(module)) return;
-    void this.sync.syncNarrativeBridge().catch((error: unknown) => {
-      console.warn('[model-bindings] narrative bridge sync failed:', error);
-    });
+  delete(module: ModelBindingModule): void {
+    this.store.delete(module);
   }
 }

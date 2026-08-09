@@ -11,20 +11,15 @@ export const provider = defineProvider({
   capabilities: {
     llm: {
       transports: [{ protocol: 'openai-llm' }],
-      models: { sources: [{ type: 'models-dev', providerId: 'togetherai' }, { type: 'manual' }] },
+      models: { modelsDevId: 'togetherai' },
     },
     embed: {
       transports: [{ protocol: 'openai-embed' }],
-      models: {
-        sources: [
-          { type: 'static', models: ['togethercomputer/m2-bert-80M-8k-retrieval'] },
-          { type: 'manual' },
-        ],
-      },
+      models: { staticModels: ['togethercomputer/m2-bert-80M-8k-retrieval'] },
     },
     vision: {
       transports: [{ protocol: 'openai-vision' }],
-      models: { sources: [{ type: 'models-dev', providerId: 'togetherai' }, { type: 'manual' }] },
+      models: { modelsDevId: 'togetherai' },
     },
   },
 });

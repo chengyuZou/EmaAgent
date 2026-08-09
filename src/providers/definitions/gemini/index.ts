@@ -11,11 +11,11 @@ export const provider = defineProvider({
   capabilities: {
     llm: {
       transports: [{ protocol: 'gemini-llm' }],
-      models: { sources: [{ type: 'models-dev', providerId: 'google' }, { type: 'manual' }] },
+      models: { modelsDevId: 'google' },
     },
     vision: {
       transports: [{ protocol: 'gemini-vision' }],
-      models: { sources: [{ type: 'models-dev', providerId: 'google' }, { type: 'manual' }] },
+      models: { modelsDevId: 'google' },
     },
   },
 });

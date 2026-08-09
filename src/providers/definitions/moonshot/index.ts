@@ -11,11 +11,11 @@ export const provider = defineProvider({
   capabilities: {
     llm: {
       transports: [{ protocol: 'openai-llm' }],
-      models: { sources: [{ type: 'models-dev', providerId: 'moonshotai' }, { type: 'manual' }] },
+      models: { modelsDevId: 'moonshotai' },
     },
     vision: {
       transports: [{ protocol: 'openai-vision' }],
-      models: { sources: [{ type: 'models-dev', providerId: 'moonshotai' }, { type: 'manual' }] },
+      models: { modelsDevId: 'moonshotai' },
     },
   },
 });

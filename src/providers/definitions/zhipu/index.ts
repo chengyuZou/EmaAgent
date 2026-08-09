@@ -11,15 +11,15 @@ export const provider = defineProvider({
   capabilities: {
     llm: {
       transports: [{ protocol: 'openai-llm' }],
-      models: { sources: [{ type: 'models-dev', providerId: 'zhipuai' }, { type: 'manual' }] },
+      models: { modelsDevId: 'zhipuai' },
     },
     embed: {
       transports: [{ protocol: 'openai-embed' }],
-      models: { sources: [{ type: 'static', models: ['embedding-3'] }, { type: 'manual' }] },
+      models: { staticModels: ['embedding-3'] },
     },
     vision: {
       transports: [{ protocol: 'openai-vision' }],
-      models: { sources: [{ type: 'models-dev', providerId: 'zhipuai' }, { type: 'manual' }] },
+      models: { modelsDevId: 'zhipuai' },
     },
   },
 });

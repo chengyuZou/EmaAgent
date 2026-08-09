@@ -1,4 +1,4 @@
-// 读取 models.dev 目录，并建立跨模态的供应商模型事实索引。
+// 解析 models.dev 目录建议；缺失字段保持未知，不冒充运行时模型事实。
 /**
  * models.dev catalog - 从 https://models.dev/api.json 拉取 LLM/Vision 模型事实,
  * 而非硬编码上下文窗口和能力标志。
@@ -13,8 +13,7 @@
  * 对应的 models.dev provider。models.dev 未收录的 provider(本地运行时、
  * 仅 embed/rerank/tts)没有条目,回退到 provider 自己的 `/models` endpoint 或手填。
  *
- * 纯逻辑:无 fs,除可注入的 fetch 外无硬编码 I/O。apps/localHost 负责缓存持久化
- * (把原始 payload 写盘,启动时 re-`loadFromJson`)和启动后台 `refresh()`。
+ * 本文件是纯解析器，不读文件也不发网络请求。外层应用负责下载和缓存原始快照。
  */
 
 export const MODELS_DEV_API_URL = 'https://models.dev/api.json';
@@ -29,11 +28,11 @@ export interface ModelsDevSpec {
   inputModalities:   string[];
   /** 输出模态,如 ['text'] 或 ['image']。 */
   outputModalities:  string[];
-  toolCall:          boolean;
-  reasoning:         boolean;
+  toolCall?:         boolean;
+  reasoning?:        boolean;
   /** false -> 模型拒绝 `temperature`(o-series / reasoning 模型)。 */
-  temperature:       boolean;
-  structuredOutput:  boolean;
+  temperature?:      boolean;
+  inputImage?:       boolean;
 }
 
 function asRecord(v: unknown): Record<string, unknown> | undefined {
@@ -73,11 +72,12 @@ export class ModelsDevCatalog {
           maxOutput:        limit ? asNumber(limit['output'])  : undefined,
           inputModalities:  modalities ? asStringArray(modalities['input'])  : [],
           outputModalities: modalities ? asStringArray(modalities['output']) : [],
-          toolCall:         m['tool_call'] === true,
-          reasoning:        m['reasoning'] === true,
-          // temperature 标志缺失 -> 假定支持(大多数 chat 模型接受)。
-          temperature:      m['temperature'] !== false,
-          structuredOutput: m['structured_output'] === true,
+          toolCall:         asBoolean(m['tool_call']),
+          reasoning:        asBoolean(m['reasoning']),
+          temperature:      asBoolean(m['temperature']),
+          inputImage:       modalities
+            ? asStringArray(modalities['input']).includes('image')
+            : undefined,
         };
         modelMap.set(modelId, spec);
       }
@@ -87,26 +87,6 @@ export class ModelsDevCatalog {
     // 整体替换 - refresh 总是反映最新快照。
     this.index.clear();
     for (const [k, v] of next) this.index.set(k, v);
-  }
-
-  /**
-   * 从 models.dev 拉取 + 解析。成功返回原始 payload(供调用方缓存),
-   * 失败返回 null - 保留现有索引。
-   */
-  async refresh(opts: { fetchFn?: typeof fetch; url?: string; signal?: AbortSignal } = {}): Promise<unknown | null> {
-    const doFetch = opts.fetchFn ?? fetch;
-    try {
-      const res = await doFetch(opts.url ?? MODELS_DEV_API_URL, { signal: opts.signal });
-      if (!res.ok) return null;
-      const payload: unknown = await res.json();
-      const candidate = new ModelsDevCatalog();
-      candidate.loadFromJson(payload);
-      if (candidate.size === 0) return null;
-      this.loadFromJson(payload);
-      return payload;
-    } catch {
-      return null;
-    }
   }
 
   /** 
@@ -138,16 +118,14 @@ export class ModelsDevCatalog {
       .map(s => s.id);
   }
 
-  /** Vision 门禁:该 LLM 是否接受图像输入?驱动 orchestrator 回退。 */
-  supportsImageInput(modelsDevId: string, modelId: string): boolean {
-    // 能力门禁必须使用 Provider + Model 精确身份；同名模型禁止跨 Provider 回退。
-    return this.get(modelsDevId, modelId)?.inputModalities.includes('image') ?? false;
-  }
-
   /** 已收录的模型条目总数(跨 provider 求和),仅用于"目录是否为空"判断与日志。 */
   get size(): number {
     let total = 0;
     for (const models of this.index.values()) total += models.size;
     return total;
   }
+}
+
+function asBoolean(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined;
 }
