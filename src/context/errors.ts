@@ -1,6 +1,9 @@
 export type ContextAssemblyErrorCode =
-  | 'context/empty-contribution-id'
-  | 'context/duplicate-contribution-id';
+  | 'context/prompt-boundary-missing'
+  | 'context/prompt-boundary-duplicated'
+  | 'context/empty-static-prompt'
+  | 'context/invalid-current-date'
+  | 'context/system-message-outside-prompt';
 
 export class ContextAssemblyError extends Error {
   constructor(

@@ -27,7 +27,7 @@ export interface MacroCompactArgs {
   readonly signal?: AbortSignal;
 }
 
-export type MacroCompactResult =
+type MacroCompactResult =
   | {
       readonly succeeded: true;
       readonly summary: string;

@@ -6,11 +6,11 @@ import { estimateMessagesTokens } from '@ema-agent/token';
 
 const TRUNCATED_MARKER = '\n\n[摘要已按当前模型上下文预算截断]';
 
-export interface FittedCompactHistory {
+interface FittedCompactHistory {
   readonly history: Message[];
+  /** history 中实际使用的摘要，可能比模型原始输出更短。 */
   readonly summary: string;
   readonly afterTokens: number;
-  readonly summaryTruncated: boolean;
 }
 
 export function fitCompactHistory(args: {
@@ -41,7 +41,6 @@ export function fitCompactHistory(args: {
       history: full,
       summary: args.summary,
       afterTokens: fullTokens,
-      summaryTruncated: false,
     };
   }
 
@@ -59,7 +58,7 @@ export function fitCompactHistory(args: {
     );
     const afterTokens = estimateTotal(history);
     if (afterTokens <= args.tokenLimit) {
-      best = { history, summary, afterTokens, summaryTruncated: true };
+      best = { history, summary, afterTokens };
       low = middle + 1;
     } else {
       high = middle - 1;

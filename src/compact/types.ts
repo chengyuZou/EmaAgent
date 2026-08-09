@@ -3,14 +3,14 @@ import type { Message } from '@ema-agent/llm';
 import type { ExecutionProfile } from '@ema-agent/turn';
 import type { CompactEvent } from './events.js';
 
-/** 必须启用自动压缩 */
+/** 根 Turn 冻结的自动压缩预算、保留窗口与失败熔断设置。 */
 export interface CompactSettings {
-  enabled: boolean;
-  bufferTokens: number;
-  defaultReservedOutputTokens: number;
-  maximumReservedOutputTokens: number;
-  keepRecentToolResults: number;
-  maximumConsecutiveFailures: number;
+  readonly enabled: boolean;
+  readonly bufferTokens: number;
+  readonly defaultReservedOutputTokens: number;
+  readonly maximumReservedOutputTokens: number;
+  readonly keepRecentToolResults: number;
+  readonly maximumConsecutiveFailures: number;
 }
 
 export const DEFAULT_COMPACT_SETTINGS: CompactSettings = {
@@ -42,38 +42,24 @@ export interface CompactRequest {
   readonly settings?: Readonly<CompactSettings>;
 }
 
-interface CompactResultBase {
-  readonly history: Message[];
-  readonly microCleared: number;
-  /** 固定输入与历史的合计估算。 */
-  readonly beforeTokens: number;
-  /** 固定输入与返回历史的合计估算。 */
-  readonly afterTokens: number;
-  readonly savedTokens: number;
-}
-
+/**
+ * Compact 的唯一返回值。所有分支都返回下一次装配应使用的 history；只有 Macro
+ * 额外返回需要由 TurnExecution 持久化的摘要事实。
+ */
 export type CompactResult =
-  | (CompactResultBase & {
-      readonly status: 'not_needed';
-      readonly reason: 'disabled' | 'below_threshold' | 'empty_history';
-    })
-  | (CompactResultBase & {
-      readonly status: 'skipped';
-      readonly reason: 'circuit_open';
-      readonly detail: string;
-    })
-  | (CompactResultBase & {
-      readonly status: 'failed';
-      readonly reason: 'macro_failed' | 'budget_exceeded';
-      readonly detail: string;
-    })
-  | (CompactResultBase & {
-      readonly status: 'completed';
-      readonly method: 'micro';
-    })
-  | (CompactResultBase & {
-      readonly status: 'completed';
-      readonly method: 'macro';
-      /** TurnExecution 可以持久化这份摘要；Compact 不写 Session。 */
+  | {
+      readonly kind: 'unchanged';
+      readonly history: readonly Message[];
+    }
+  | {
+      readonly kind: 'micro';
+      readonly history: readonly Message[];
+    }
+  | {
+      readonly kind: 'macro';
+      readonly history: readonly Message[];
+      /** 已经按最终历史预算裁剪过的摘要正文，持久化时必须使用这一份。 */
       readonly summary: string;
-    });
+      /** 被摘要替换的模型历史条数；接线层据此映射稳定的 SQL 截止游标。 */
+      readonly compactedMessageCount: number;
+    };

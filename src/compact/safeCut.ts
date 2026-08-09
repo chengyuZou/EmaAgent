@@ -2,7 +2,7 @@
 import type { Message as ModelMessage } from '@ema-agent/llm';
 
 /** 从期望位置向前寻找安全边界，保证 tail 内每个 tool_result 的调用也留在 tail。 */
-export function findSafeCutPoint(messages: ModelMessage[], desiredCut: number): number {
+export function findSafeCutPoint(messages: readonly ModelMessage[], desiredCut: number): number {
   const toolUseIndexes = new Map<string, number>();
   const toolResults: Array<{ toolCallId: string; messageIndex: number }> = [];
 
@@ -40,7 +40,7 @@ export function findSafeCutPoint(messages: ModelMessage[], desiredCut: number): 
 
 /** 从期望位置向后寻找安全边界，供预算不足时扩大待摘要的旧历史。 */
 export function findSafeCutPointAtOrAfter(
-  messages: ModelMessage[],
+  messages: readonly ModelMessage[],
   desiredCut: number,
 ): number {
   const start = Math.min(Math.max(0, desiredCut), messages.length);
@@ -49,4 +49,3 @@ export function findSafeCutPointAtOrAfter(
   }
   return messages.length;
 }
-

@@ -23,13 +23,12 @@ const COMPACTABLE_TOOLS = new Set<string>([
  *   - 保留最近的 `keepRecent` 个可压缩的 tool_results 不变
  *   - 超过最近窗口的所有内容都将其内容替换为占位符
  *
- * 返回一个新的消息数组——不会修改输入。
- * 还会报告清除的 tool_result 数量供压缩结果诊断。
+ * 返回新的历史数组，不修改输入。
  */
 export function microCompact(
-  messages: ModelMessage[],
+  messages: readonly ModelMessage[],
   opts: { keepRecent: number } = { keepRecent: 6 },
-): { messages: ModelMessage[]; cleared: number } {
+): ModelMessage[] {
   // 从 assistant 的 tool_use 块中构建 toolCallId → toolName 映射。
   // 先收集完整映射，才能处理历史中跨消息出现的 Tool 调用与结果。
   const toolNameById = new Map<string, string>();
@@ -56,7 +55,7 @@ export function microCompact(
   }
 
   if (locs.length <= opts.keepRecent) {
-    return { messages, cleared: 0 };
+    return [...messages];
   }
 
   // 最近的 keepRecent 个结果保持原文。
@@ -83,7 +82,7 @@ export function microCompact(
     return { role: 'user', content: newContent };
   });
 
-  return { messages: out, cleared: cutoff };
+  return out;
 }
 
 function isToolResult(blk: UserBlock | AssistantBlock): blk is ToolResultBlock {

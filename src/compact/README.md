@@ -1,12 +1,12 @@
 # @ema-agent/compact
 
-`compact` 只负责在模型输入预算不足时改写可压缩历史。它不组装 Context、不读取 Memory/Narrative/Skill、不投影 ToolPool，也不写 Session。
+Compact 只负责在模型输入预算不足时改写 Provider 中立的历史 `Message[]`。它不组装 Context、不读取 Session、不写 SQL，也不重新获取 Memory、Narrative、Skill 或 ToolPool。
 
-唯一入口是 `CompactMessages.compact(request)`：调用方提交可改写历史、完整候选请求的最新 Token 估算和模型窗口；返回新的历史与诊断。Macro 成功时额外返回 `summary`，由 TurnExecution 决定是否持久化。
+## 唯一入口
 
 ```ts
-const compact = new CompactMessages(languageModel, defaultSettings);
-const result = await compact.compact({
+const compact = createCompact(languageModel, defaultSettings);
+const result = await compact({
   sessionId,
   turnId,
   executionProfile,
@@ -23,9 +23,31 @@ const result = await compact.compact({
 });
 ```
 
-`estimatedInputTokens` 是 Context 对完整候选请求的最新估算，不是单独的历史估算。Compact 用同一 `@ema-agent/token` 实现计算历史改写前后的差值，使最近一次真实 Provider Usage 仍可作为总量锚点。
+`createCompact()` 返回一个函数。闭包只保存每个 Session 的连续失败次数，不保存 Message、Prompt 或 Session 数据，因此无需 `CompactManager`/`CompactService` 类。
 
-执行顺序固定：
+## 返回值
+
+所有分支都返回下一次 Context 装配应该使用的 `history`：
+
+```ts
+type CompactResult =
+  | { kind: 'unchanged'; history: readonly Message[] }
+  | { kind: 'micro'; history: readonly Message[] }
+  | {
+      kind: 'macro';
+      history: readonly Message[];
+      summary: string;
+      compactedMessageCount: number;
+    };
+```
+
+- `unchanged`：未达到阈值、关闭、熔断或 Macro 失败；原历史不变；
+- `micro`：只清理了确定可重取的旧 Tool Result；
+- `macro`：用 `summary` 替换了前 `compactedMessageCount` 条模型历史。
+
+`summary` 是预算适配后真正放进 `history` 的正文，不一定等于摘要模型的原始全文。未来持久化必须使用该字段，不能重新从 Message 字符串反向解析。
+
+## 固定流水线
 
 ```text
 阈值检查
@@ -36,16 +58,21 @@ const result = await compact.compact({
   → 成功清零 Session 熔断；失败累计熔断
 ```
 
-System Prompt、当前 Turn、Memory/Narrative Recall 与激活 Skill 等受保护内容不得出现在 `history`；它们只通过完整请求估算影响预算，Compact 不提供第二条恢复消息注入通路。单个 Tool Result 的外置、截断与清理由 Tools Results 负责，不属于本包。
+`estimatedInputTokens` 是完整候选请求的估算。Compact 使用同一 `@ema-agent/token` 实现扣除历史外成本，但永远看不到 System Prompt、Tool definitions、Runtime Reminder 或 Current Turn 的正文。
 
-结果语义：
+## Macro 持久化接线
 
-- `not_needed`：历史原样返回；
-- `completed + method: micro`：只提交确定性的旧只读 Tool Result 清理；
-- `completed + method: macro`：提交摘要与安全保留的近期历史；
-- `failed/skipped`：历史原样返回，绝不泄漏中间 Micro 结果；
-- 取消发送 `compact_cancelled` 后直接抛给当前 Turn，不计入失败熔断。
+本包只返回持久化事实，不持有 Storage 端口。未来 TurnExecution 在 `kind === 'macro'` 时负责：
 
-`force` 只表示 Provider 已报告输入超限的响应式恢复。它绕过自动压缩开关、阈值和自动失败熔断，但仍然只允许上层在同一逻辑调用中触发一次。
+1. 把 `compactedMessageCount` 映射到原始 Session Message 的稳定截止游标；
+2. 在单个 SQL 事务中写入 `kind='summary'` 的 Message 和截止游标；
+3. 保证当前 Turn 的用户 Query 与截止点之后的消息不被 Summary 查询吞掉；
+4. SQL 成功后才采用 `result.history` 继续本轮；失败则继续使用原历史。
 
-Micro 只清理旧的成功 `Read/Glob/Grep/WebFetch/WebSearch` 结果，并保留最近 N 条。Shell、写入、AskUser、Skill、MCP 和错误结果都不可被确定性清理；它们只能由 Macro 摘要。这个集合依据 LLM Message 中实际保存的 Tool 名称判断，不接管 Tool 注册或 Tool Result 文件。
+当前 `messages` 表以 Summary 插入时间作为边界，无法严谨表达“Summary 创建于当前 Turn，但只覆盖更早历史”。接线批必须为 Summary 增加明确的覆盖截止游标，或建立等价的稳定顺序语义；不能只依赖 `created_at`。最近用户 Query 可以按 `sessionId + role='user'` 一次 SQL 读取，但它是恢复保护，不替代 Summary 截止游标。
+
+## 保护范围
+
+Micro 只清理旧的成功 `Read/Glob/Grep/WebFetch/WebSearch` 结果并保留最近 N 条。Shell、写入、AskUser、Skill、MCP 和错误结果不可确定性清理，只能由 Macro 摘要。
+
+单个 Tool Result 的字节上限、预览、外置文件和清理由 Tools Results 负责，不属于 Compact。

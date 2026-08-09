@@ -21,7 +21,17 @@ export const compactSetting = defineSetting<CompactSettings>({
     if (merged.defaultReservedOutputTokens > merged.maximumReservedOutputTokens) return { ok: false };
     if (!integerInRange(merged.keepRecentToolResults, 1, 32)) return { ok: false };
     if (!integerInRange(merged.maximumConsecutiveFailures, 1, 10)) return { ok: false };
-    return { ok: true, value: merged as CompactSettings };
+    return {
+      ok: true,
+      value: {
+        enabled: merged.enabled,
+        bufferTokens: merged.bufferTokens,
+        defaultReservedOutputTokens: merged.defaultReservedOutputTokens,
+        maximumReservedOutputTokens: merged.maximumReservedOutputTokens,
+        keepRecentToolResults: merged.keepRecentToolResults,
+        maximumConsecutiveFailures: merged.maximumConsecutiveFailures,
+      },
+    };
   },
 });
 

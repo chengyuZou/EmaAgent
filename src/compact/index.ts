@@ -1,4 +1,4 @@
-export { CompactMessages } from './compactMessages.js';
+export { createCompact } from './compactMessages.js';
 export { compactSetting } from './settings.js';
 export { DEFAULT_COMPACT_SETTINGS } from './types.js';
 export type {

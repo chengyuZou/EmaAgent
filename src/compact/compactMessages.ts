@@ -17,213 +17,171 @@ import {
 
 const MIN_SUMMARY_BUDGET_TOKENS = 256;
 
-export class CompactMessages {
-  private readonly settings: CompactSettings;
-  private readonly consecutiveFailures = new Map<SessionId, number>();
+/**
+ * 建立一个带 Session 级失败熔断的压缩函数。
+ *
+ * 闭包只保存连续失败次数，不保存 Message、Prompt 或 Session 数据。这样既保留
+ * Claude 风格的函数管线，也避免把跨调用状态藏进一个大型 Manager 类。
+ */
+export function createCompact(
+  llm: LanguageModel,
+  overrides: Partial<CompactSettings> = {},
+): (request: CompactRequest) => Promise<CompactResult> {
+  const defaults = { ...DEFAULT_COMPACT_SETTINGS, ...overrides };
+  const consecutiveFailures = new Map<SessionId, number>();
 
-  constructor(
-    private readonly llm: LanguageModel,
-    overrides: Partial<CompactSettings> = {},
+  return (request) => compactMessages({
+    request,
+    llm,
+    defaults,
+    consecutiveFailures,
+  });
+}
+
+async function compactMessages(args: {
+  readonly request: CompactRequest;
+  readonly llm: LanguageModel;
+  readonly defaults: Readonly<CompactSettings>;
+  readonly consecutiveFailures: Map<SessionId, number>;
+}): Promise<CompactResult> {
+  const { request } = args;
+  validateRequest(request);
+  request.signal?.throwIfAborted();
+
+  const settings = request.settings ?? args.defaults;
+  const startedAt = Date.now();
+  const history = [...request.history];
+  const unchanged = (): CompactResult => ({ kind: 'unchanged', history });
+  const originalHistoryTokens = estimateMessagesTokens(history);
+  const tokensOutsideHistory = Math.max(
+    0,
+    request.estimatedInputTokens - originalHistoryTokens,
+  );
+  const estimate = (candidate: readonly Message[]): number => Math.max(
+    0,
+    tokensOutsideHistory + estimateMessagesTokens([...candidate]),
+  );
+  const beforeTokens = request.estimatedInputTokens;
+
+  if (history.length === 0) return unchanged();
+  if (!settings.enabled && !request.force) return unchanged();
+
+  const reservedOutputTokens = Math.min(
+    request.maxOutputTokens ?? settings.defaultReservedOutputTokens,
+    settings.maximumReservedOutputTokens,
+  );
+  const tokenLimit = Math.max(
+    1,
+    request.contextWindow - reservedOutputTokens - settings.bufferTokens,
+  );
+
+  if (!request.force && beforeTokens <= tokenLimit) return unchanged();
+  if (
+    !request.force
+    && failureCount(args.consecutiveFailures, request.sessionId)
+      >= settings.maximumConsecutiveFailures
   ) {
-    this.settings = { ...DEFAULT_COMPACT_SETTINGS, ...overrides };
+    return unchanged();
   }
 
-  async compact(request: CompactRequest): Promise<CompactResult> {
-    validateRequest(request);
-    request.signal?.throwIfAborted();
+  const micro = microCompact(history, {
+    keepRecent: settings.keepRecentToolResults,
+  });
+  const afterMicroTokens = estimate(micro);
+  if (!request.force && afterMicroTokens <= tokenLimit) {
+    args.consecutiveFailures.delete(request.sessionId);
+    return { kind: 'micro', history: micro };
+  }
 
-    const settings = request.settings ?? this.settings;
-    const startedAt = Date.now();
-    const history = [...request.history];
-    const originalHistoryTokens = estimateMessagesTokens(history);
-    const tokensOutsideHistory = Math.max(
-      0,
-      request.estimatedInputTokens - originalHistoryTokens,
-    );
-    const estimate = (candidate: readonly Message[]): number => Math.max(
-      0,
-      tokensOutsideHistory + estimateMessagesTokens([...candidate]),
-    );
-    const beforeTokens = request.estimatedInputTokens;
+  const safeCut = chooseSafeCut({
+    messages: micro,
+    desiredCut: preferredCut(micro.length),
+    tokensOutsideHistory,
+    tokenLimit,
+  });
+  const head = micro.slice(0, safeCut);
+  const tail = micro.slice(safeCut);
+  const compactId = asCompactId(randomUUID());
+  request.emit?.({
+    type: 'compact_started',
+    compactId,
+    sessionId: request.sessionId,
+    turnId: request.turnId,
+    beforeTokens,
+  });
 
-    if (history.length === 0) return unchanged('empty_history', history, beforeTokens);
-    if (!settings.enabled && !request.force) {
-      return unchanged('disabled', history, beforeTokens);
-    }
-
-    const reservedOutputTokens = Math.min(
-      request.maxOutputTokens ?? settings.defaultReservedOutputTokens,
-      settings.maximumReservedOutputTokens,
-    );
-    const tokenLimit = Math.max(
-      1,
-      request.contextWindow - reservedOutputTokens - settings.bufferTokens,
-    );
-
-    if (!request.force && beforeTokens <= tokenLimit) {
-      return unchanged('below_threshold', history, beforeTokens);
-    }
-    if (
-      !request.force &&
-      this.failureCount(request.sessionId) >= settings.maximumConsecutiveFailures
-    ) {
-      return skipped(
-        '连续自动压缩失败次数已达上限；响应式压缩仍可进行最后一次恢复尝试',
-        history,
-        beforeTokens,
-      );
-    }
-
-    const micro = microCompact(history, {
-      keepRecent: settings.keepRecentToolResults,
-    });
-    const afterMicroTokens = estimate(micro.messages);
-    if (!request.force && afterMicroTokens <= tokenLimit) {
-      this.consecutiveFailures.delete(request.sessionId);
-      return {
-        status: 'completed',
-        method: 'micro',
-        history: micro.messages,
-        microCleared: micro.cleared,
-        beforeTokens,
-        afterTokens: afterMicroTokens,
-        savedTokens: Math.max(0, beforeTokens - afterMicroTokens),
-      };
-    }
-
-    const desiredCut = preferredCut(micro.messages.length);
-    const safeCut = chooseSafeCut({
-      messages: micro.messages,
-      desiredCut,
-      tokensOutsideHistory,
-      tokenLimit,
-    });
-    const head = micro.messages.slice(0, safeCut);
-    const tail = micro.messages.slice(safeCut);
-    const compactId = asCompactId(randomUUID());
-    request.emit?.({
-      type: 'compact_started',
-      compactId,
-      sessionId: request.sessionId,
-      turnId: request.turnId,
-      beforeTokens,
-    });
-
-    let macro: Awaited<ReturnType<typeof runMacroCompact>>;
-    try {
-      macro = await runMacroCompact({
-        llm: this.llm,
-        providerId: request.providerId,
-        model: request.model,
-        executionProfile: request.executionProfile,
-        toCompact: head,
-        modelContextWindow: request.contextWindow,
-        signal: request.signal,
-      });
-    } catch (error) {
-      if (!isAbort(error, request.signal)) throw error;
-      request.emit?.({
-        type: 'compact_cancelled',
-        compactId,
-        sessionId: request.sessionId,
-        turnId: request.turnId,
-        beforeTokens,
-        durationMs: Date.now() - startedAt,
-      });
-      throw error;
-    }
-    if (!macro.succeeded) {
-      return this.fail({
-        request,
-        compactId,
-        originalHistory: history,
-        beforeTokens,
-        reason: 'macro_failed',
-        detail: macro.detail,
-        startedAt,
-      });
-    }
-
-    const fitted = fitCompactHistory({
-      summary: macro.summary,
-      tail,
+  let macro: Awaited<ReturnType<typeof runMacroCompact>>;
+  try {
+    macro = await runMacroCompact({
+      llm: args.llm,
+      providerId: request.providerId,
+      model: request.model,
       executionProfile: request.executionProfile,
-      tokenLimit,
-      tokensOutsideHistory,
+      toCompact: head,
+      modelContextWindow: request.contextWindow,
+      signal: request.signal,
     });
-    if (!fitted) {
-      return this.fail({
-        request,
-        compactId,
-        originalHistory: history,
-        beforeTokens,
-        reason: 'budget_exceeded',
-        detail: `摘要与近期历史无法放入 ${tokenLimit} Token 的历史预算`,
-        startedAt,
-      });
-    }
-
-    this.consecutiveFailures.delete(request.sessionId);
+  } catch (error) {
+    if (!isAbort(error, request.signal)) throw error;
     request.emit?.({
-      type: 'compact_completed',
+      type: 'compact_cancelled',
       compactId,
       sessionId: request.sessionId,
       turnId: request.turnId,
       beforeTokens,
-      afterTokens: fitted.afterTokens,
-      savedTokens: Math.max(0, beforeTokens - fitted.afterTokens),
       durationMs: Date.now() - startedAt,
     });
-    return {
-      status: 'completed',
-      method: 'macro',
-      history: fitted.history,
-      summary: fitted.summary,
-      microCleared: micro.cleared,
+    throw error;
+  }
+
+  if (!macro.succeeded) {
+    recordFailure({
+      request,
+      compactId,
       beforeTokens,
-      afterTokens: fitted.afterTokens,
-      savedTokens: Math.max(0, beforeTokens - fitted.afterTokens),
-    };
-  }
-
-  private failureCount(sessionId: SessionId): number {
-    return this.consecutiveFailures.get(sessionId) ?? 0;
-  }
-
-  private fail(args: {
-    readonly request: CompactRequest;
-    readonly compactId: CompactId;
-    readonly originalHistory: Message[];
-    readonly beforeTokens: number;
-    readonly reason: Extract<CompactResult, { status: 'failed' }>['reason'];
-    readonly detail: string;
-    readonly startedAt: number;
-  }): Extract<CompactResult, { status: 'failed' }> {
-    this.consecutiveFailures.set(
-      args.request.sessionId,
-      this.failureCount(args.request.sessionId) + 1,
-    );
-    args.request.emit?.({
-      type: 'compact_failed',
-      compactId: args.compactId,
-      sessionId: args.request.sessionId,
-      turnId: args.request.turnId,
-      error: args.detail,
-      beforeTokens: args.beforeTokens,
-      afterTokens: args.beforeTokens,
-      durationMs: Date.now() - args.startedAt,
+      detail: macro.detail,
+      startedAt,
+      consecutiveFailures: args.consecutiveFailures,
     });
-    return {
-      status: 'failed',
-      reason: args.reason,
-      detail: args.detail,
-      history: args.originalHistory,
-      microCleared: 0,
-      beforeTokens: args.beforeTokens,
-      afterTokens: args.beforeTokens,
-      savedTokens: 0,
-    };
+    return unchanged();
   }
+
+  const fitted = fitCompactHistory({
+    summary: macro.summary,
+    tail,
+    executionProfile: request.executionProfile,
+    tokenLimit,
+    tokensOutsideHistory,
+  });
+  if (!fitted) {
+    recordFailure({
+      request,
+      compactId,
+      beforeTokens,
+      detail: `摘要与近期历史无法放入 ${tokenLimit} Token 的历史预算`,
+      startedAt,
+      consecutiveFailures: args.consecutiveFailures,
+    });
+    return unchanged();
+  }
+
+  args.consecutiveFailures.delete(request.sessionId);
+  request.emit?.({
+    type: 'compact_completed',
+    compactId,
+    sessionId: request.sessionId,
+    turnId: request.turnId,
+    beforeTokens,
+    afterTokens: fitted.afterTokens,
+    savedTokens: Math.max(0, beforeTokens - fitted.afterTokens),
+    durationMs: Date.now() - startedAt,
+  });
+  return {
+    kind: 'macro',
+    history: fitted.history,
+    summary: fitted.summary,
+    compactedMessageCount: safeCut,
+  };
 }
 
 function preferredCut(messageCount: number): number {
@@ -240,14 +198,45 @@ function chooseSafeCut(args: {
   readonly tokensOutsideHistory: number;
   readonly tokenLimit: number;
 }): number {
-  let cut = findSafeCutPoint([...args.messages], args.desiredCut);
+  let cut = findSafeCutPoint(args.messages, args.desiredCut);
   while (cut < args.messages.length) {
     const tail = args.messages.slice(cut);
     const tailTokens = args.tokensOutsideHistory + estimateMessagesTokens([...tail]);
     if (tailTokens + MIN_SUMMARY_BUDGET_TOKENS < args.tokenLimit) return cut;
-    cut = findSafeCutPointAtOrAfter([...args.messages], cut + 1);
+    cut = findSafeCutPointAtOrAfter(args.messages, cut + 1);
   }
   return args.messages.length;
+}
+
+function recordFailure(args: {
+  readonly request: CompactRequest;
+  readonly compactId: CompactId;
+  readonly beforeTokens: number;
+  readonly detail: string;
+  readonly startedAt: number;
+  readonly consecutiveFailures: Map<SessionId, number>;
+}): void {
+  args.consecutiveFailures.set(
+    args.request.sessionId,
+    failureCount(args.consecutiveFailures, args.request.sessionId) + 1,
+  );
+  args.request.emit?.({
+    type: 'compact_failed',
+    compactId: args.compactId,
+    sessionId: args.request.sessionId,
+    turnId: args.request.turnId,
+    error: args.detail,
+    beforeTokens: args.beforeTokens,
+    afterTokens: args.beforeTokens,
+    durationMs: Date.now() - args.startedAt,
+  });
+}
+
+function failureCount(
+  failures: ReadonlyMap<SessionId, number>,
+  sessionId: SessionId,
+): number {
+  return failures.get(sessionId) ?? 0;
 }
 
 function validateRequest(request: CompactRequest): void {
@@ -258,8 +247,8 @@ function validateRequest(request: CompactRequest): void {
     throw new RangeError('contextWindow 必须是正有限数值');
   }
   if (
-    request.maxOutputTokens !== undefined &&
-    (!Number.isFinite(request.maxOutputTokens) || request.maxOutputTokens < 0)
+    request.maxOutputTokens !== undefined
+    && (!Number.isFinite(request.maxOutputTokens) || request.maxOutputTokens < 0)
   ) {
     throw new RangeError('maxOutputTokens 必须是非负有限数值');
   }
@@ -270,37 +259,4 @@ function validateRequest(request: CompactRequest): void {
 
 function isAbort(error: unknown, signal: AbortSignal | undefined): boolean {
   return signal?.aborted === true || (error instanceof Error && error.name === 'AbortError');
-}
-
-function unchanged(
-  reason: Extract<CompactResult, { status: 'not_needed' }>['reason'],
-  history: Message[],
-  tokenCount: number,
-): Extract<CompactResult, { status: 'not_needed' }> {
-  return {
-    status: 'not_needed',
-    reason,
-    history,
-    microCleared: 0,
-    beforeTokens: tokenCount,
-    afterTokens: tokenCount,
-    savedTokens: 0,
-  };
-}
-
-function skipped(
-  detail: string,
-  history: Message[],
-  tokenCount: number,
-): Extract<CompactResult, { status: 'skipped' }> {
-  return {
-    status: 'skipped',
-    reason: 'circuit_open',
-    detail,
-    history,
-    microCleared: 0,
-    beforeTokens: tokenCount,
-    afterTokens: tokenCount,
-    savedTokens: 0,
-  };
 }

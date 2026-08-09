@@ -1,120 +1,217 @@
-// 按结构化来源对一次模型调用做上下文用量分类估算,禁止对最终字符串猜关键词。
+// 按结构化来源估算一次最终请求，并把 Provider Usage 覆盖为同一完整投影。
+import type {
+  AssistantBlock,
+  LlmTokenUsage,
+  LlmToolDef,
+  Message,
+  UserBlock,
+} from '@ema-agent/llm';
 import {
   estimateLlmInputTokens,
-  estimateMessagesTokens,
   estimateTextTokens,
+  type TokenEstimateAccuracy,
 } from '@ema-agent/token';
-import type { Message } from '@ema-agent/llm';
-import type { PromptSnapshot } from '@ema-agent/prompts';
-import type { ToolPool } from '@ema-agent/tools';
-import { projectToolPool } from './contextAssembler.js';
-import type { ContextContribution } from './types.js';
+import type { RenderedSystemReminder } from './systemReminder.js';
 
-export interface ContextUsageCategories {
-  readonly systemPrompt: number;
-  readonly toolInstructions: number;
-  readonly toolSchemas: number;
-  readonly workspaceInstructions: number;
-  readonly skills: number;
-  readonly memory: number;
-  readonly narrative: number;
-  readonly messages: number;
-  readonly attachments: number;
-  readonly other: number;
+export type ContextUsageCategoryKind =
+  | 'promptSection'
+  | 'toolInstructions'
+  | 'toolSchemas'
+  | 'runtimeContext'
+  | 'memoryRecall'
+  | 'narrativeRecall'
+  | 'messages'
+  | 'toolCalls'
+  | 'toolResults'
+  | 'attachments'
+  | 'other';
+
+export interface ContextUsageCategory {
+  readonly kind: ContextUsageCategoryKind;
+  /** Prompt section 使用标题作为展示名；kind 才是稳定业务身份。 */
+  readonly name?: string;
+  readonly tokens: number;
 }
 
-/**
- * 分类合计恒等于 totalTokens(由构造保证);
- * accuracy 恒为估算诊断,Provider 返回的 usage 才是真实总量。
- */
 export interface ContextUsageEstimate {
   readonly contextWindow: number;
-  readonly totalTokens: number;
-  readonly accuracy: 'heuristic';
-  readonly categories: ContextUsageCategories;
+  readonly estimatedInputTokens: number;
+  readonly accuracy: TokenEstimateAccuracy;
+  readonly categories: readonly ContextUsageCategory[];
 }
 
-export interface ContextUsageInput {
-  readonly prompt: PromptSnapshot;
-  readonly toolPool: ToolPool;
-  /** 压缩后的最终循环历史(snapshot.history),不是压缩前原历史。 */
-  readonly history: readonly Message[];
-  /** 当前 Turn 消息,不参与压缩;媒体 token 归入 attachments 而非 messages。 */
-  readonly currentTurn: readonly Message[];
-  readonly contributions?: readonly ContextContribution[];
-  readonly restoreContributions?: readonly ContextContribution[];
+export interface ContextUsage {
   readonly contextWindow: number;
+  readonly inputTokens: number;
+  readonly source: 'estimate' | 'provider';
+  /** Provider 不提供分类事实，因此这里始终保留 Context 的估算分类。 */
+  readonly categories: readonly ContextUsageCategory[];
+  readonly cacheReadInputTokens?: number;
+  readonly cacheWriteInputTokens?: number;
 }
 
-export function computeContextUsage(input: ContextUsageInput): ContextUsageEstimate {
-  let systemPrompt = 0;
-  let toolInstructions = 0;
-  let workspaceInstructions = 0;
-  let skills = 0;
-  for (const slot of input.prompt.slots) {
-    const tokens = estimateTextTokens(slot.content);
-    if (slot.id === 'workspace.instructions') workspaceInstructions += tokens;
-    else if (
-      slot.id === 'extension.skillCatalog'
-      || slot.id.startsWith('skills.required.')
-      || slot.id.startsWith('skills.active.')
-    ) skills += tokens;
-    else systemPrompt += tokens;
+interface PromptUsageSection {
+  readonly name: string;
+  readonly message: Message;
+}
+
+interface ContextUsageInput {
+  readonly contextWindow: number;
+  readonly messages: readonly Message[];
+  readonly tools: readonly LlmToolDef[];
+  readonly promptSections: readonly PromptUsageSection[];
+  readonly history: readonly Message[];
+  readonly reminder: RenderedSystemReminder;
+  readonly currentTurn: readonly Message[];
+}
+
+/** Context 装配过程的内部估算入口；分类总和严格等于完整请求估算。 */
+export function estimateContextUsage(input: ContextUsageInput): ContextUsageEstimate {
+  const categories: ContextUsageCategory[] = [];
+
+  for (const section of input.promptSections) {
+    categories.push({
+      kind: 'promptSection',
+      name: section.name,
+      tokens: estimateLlmInputTokens([section.message]).totalTokens,
+    });
   }
 
-  let toolSchemas = 0;
-  if (input.toolPool.tools.length > 0) {
-    const definitions = projectToolPool(input.toolPool);
-    toolInstructions = estimateLlmInputTokens([], {
-      tools: definitions.map((definition) => ({
-        ...definition,
-        parameters: {},
-      })),
+  if (input.tools.length > 0) {
+    const instructionTokens = estimateLlmInputTokens([], {
+      tools: input.tools.map((tool) => ({ ...tool, parameters: {} })),
     }).totalTokens;
-    const completeToolDefinitions = estimateLlmInputTokens([], {
-      tools: definitions,
+    const completeToolTokens = estimateLlmInputTokens([], {
+      tools: input.tools,
     }).totalTokens;
-    toolSchemas = Math.max(0, completeToolDefinitions - toolInstructions);
+    pushCategory(categories, 'toolInstructions', instructionTokens);
+    pushCategory(categories, 'toolSchemas', Math.max(0, completeToolTokens - instructionTokens));
   }
 
-  let memory = 0;
-  let narrative = 0;
-  let other = 0;
-  for (const contribution of [
-    ...(input.contributions ?? []),
-    ...(input.restoreContributions ?? []),
-  ]) {
-    const tokens = estimateMessagesTokens([contribution.message as Message]);
-    if (contribution.source === 'memory') memory += tokens;
-    else if (contribution.source === 'narrative') narrative += tokens;
-    else if (contribution.source === 'skills') skills += tokens;
-    else other += tokens;
+  const reminderTokens = estimateLlmInputTokens([input.reminder.message]);
+  let reminderContentBudget = Math.max(
+    0,
+    reminderTokens.totalTokens - reminderTokens.breakdown.messageEnvelopeTokens,
+  );
+  for (const section of input.reminder.sections) {
+    const tokens = Math.min(reminderContentBudget, estimateTextTokens(section.content));
+    pushCategory(categories, section.kind, tokens);
+    reminderContentBudget -= tokens;
   }
 
-  let messages = estimateLlmInputTokens(input.history).totalTokens;
-  let attachments = 0;
-  const current = estimateLlmInputTokens(input.currentTurn);
-  attachments += current.breakdown.imageTokens
-    + current.breakdown.audioTokens
-    + current.breakdown.documentTokens;
-  messages += current.totalTokens - attachments;
+  const messageUsage = classifyMessages([...input.history, ...input.currentTurn]);
+  pushCategory(categories, 'messages', messageUsage.messages);
+  pushCategory(categories, 'toolCalls', messageUsage.toolCalls);
+  pushCategory(categories, 'toolResults', messageUsage.toolResults);
+  pushCategory(categories, 'attachments', messageUsage.attachments);
 
-  const categories: ContextUsageCategories = {
-    systemPrompt,
-    toolInstructions,
-    toolSchemas,
-    workspaceInstructions,
-    skills,
-    memory,
-    narrative,
-    messages,
-    attachments,
-    other,
-  };
+  const complete = estimateLlmInputTokens(input.messages, { tools: input.tools });
+  const classified = categories.reduce((sum, category) => sum + category.tokens, 0);
+  pushCategory(categories, 'other', Math.max(0, complete.totalTokens - classified));
+
   return {
     contextWindow: input.contextWindow,
-    totalTokens: Object.values(categories).reduce((sum, value) => sum + value, 0),
-    accuracy: 'heuristic',
+    estimatedInputTokens: complete.totalTokens,
+    accuracy: complete.accuracy,
     categories,
   };
+}
+
+export function estimatedContextUsage(estimate: ContextUsageEstimate): ContextUsage {
+  return {
+    contextWindow: estimate.contextWindow,
+    inputTokens: estimate.estimatedInputTokens,
+    source: 'estimate',
+    categories: estimate.categories,
+  };
+}
+
+export function providerContextUsage(
+  estimate: ContextUsageEstimate,
+  usage: LlmTokenUsage,
+): ContextUsage {
+  return {
+    contextWindow: estimate.contextWindow,
+    inputTokens: usage.inputTokens,
+    source: 'provider',
+    categories: estimate.categories,
+    ...(usage.cacheReadInputTokens !== undefined
+      ? { cacheReadInputTokens: usage.cacheReadInputTokens }
+      : {}),
+    ...(usage.cacheWriteInputTokens !== undefined
+      ? { cacheWriteInputTokens: usage.cacheWriteInputTokens }
+      : {}),
+  };
+}
+
+interface MessageUsage {
+  messages: number;
+  toolCalls: number;
+  toolResults: number;
+  attachments: number;
+}
+
+function classifyMessages(messages: readonly Message[]): MessageUsage {
+  const usage: MessageUsage = {
+    messages: 0,
+    toolCalls: 0,
+    toolResults: 0,
+    attachments: 0,
+  };
+
+  for (const message of messages) {
+    const complete = estimateLlmInputTokens([message]);
+    usage.messages += complete.breakdown.messageEnvelopeTokens;
+    if (typeof message.content === 'string') {
+      usage.messages += complete.totalTokens - complete.breakdown.messageEnvelopeTokens;
+      continue;
+    }
+    // assembleContext 已拒绝 history/currentTurn 中的 system message；此处保留
+    // 分支以让独立估算函数在类型层也不把 system 误当成数组消息。
+    if (message.role === 'system') continue;
+
+    for (const block of message.content) {
+      const tokens = estimateBlockTokens(message.role, block);
+      if (block.type === 'tool_use') usage.toolCalls += tokens;
+      else if (block.type === 'tool_result') usage.toolResults += tokens;
+      else if (isAttachment(block)) usage.attachments += tokens;
+      else usage.messages += tokens;
+    }
+  }
+
+  return usage;
+}
+
+function estimateBlockTokens(
+  role: 'user' | 'assistant',
+  block: UserBlock | AssistantBlock,
+): number {
+  const message: Message = role === 'user'
+    ? { role, content: [block as UserBlock] }
+    : { role, content: [block as AssistantBlock] };
+  const estimate = estimateLlmInputTokens([message]);
+  return Math.max(0, estimate.totalTokens - estimate.breakdown.messageEnvelopeTokens);
+}
+
+function isAttachment(block: UserBlock | AssistantBlock): boolean {
+  return block.type === 'image_url'
+    || block.type === 'image_data'
+    || block.type === 'audio_data'
+    || block.type === 'file_data'
+    || block.type === 'file_url';
+}
+
+function pushCategory(
+  categories: ContextUsageCategory[],
+  kind: ContextUsageCategoryKind,
+  tokens: number,
+): void {
+  if (tokens <= 0) return;
+  const existing = categories.find((category) => category.kind === kind && category.name === undefined);
+  if (existing) {
+    const index = categories.indexOf(existing);
+    categories[index] = { ...existing, tokens: existing.tokens + tokens };
+    return;
+  }
+  categories.push({ kind, tokens });
 }

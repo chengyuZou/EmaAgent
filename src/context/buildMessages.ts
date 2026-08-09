@@ -1,4 +1,4 @@
-// 把持久化 Session Message 投影为 Provider 无关的 LLM Message。
+// 把持久化 Session Message 投影为 Provider 中立历史，并只保留可安全重放的 Tool 配对。
 import type {
   AssistantBlock,
   ContentPart,
@@ -8,33 +8,20 @@ import type {
 } from '@ema-agent/llm';
 import type { Message as SessionMessage } from '@ema-agent/session';
 
-interface NarrativeTimeline {
-  name: string;
-  text: string;
-}
-
-/** 历史投影只保留跨 Provider 可安全重放的内容。 */
-export function buildModelMessages(history: readonly SessionMessage[]): ModelMessage[] {
+/**
+ * Session 中的 system 与 narrative_context 都不是模型历史：System Prompt 每次重新
+ * 生成，Narrative always Recall 每根 Turn 重新查询；把它们重放会制造重复事实。
+ */
+export function buildMessages(history: readonly SessionMessage[]): ModelMessage[] {
   const messages: ModelMessage[] = [];
   const pairedToolIds = collectPairedToolIds(history);
 
   for (const message of history) {
-    if (message.role === 'system') {
-      messages.push({
-        role: 'system',
-        content: typeof message.blocks === 'string' ? message.blocks : '',
-      });
-      continue;
-    }
+    if (message.role === 'system' || message.kind === 'narrative_context') continue;
 
     if (message.role === 'user') {
-      if (message.kind === 'narrative_context') {
-        const narrative = projectNarrativeContext(message.blocks);
-        if (narrative) messages.push(narrative);
-        continue;
-      }
       if (typeof message.blocks === 'string') {
-        messages.push({ role: 'user', content: message.blocks });
+        if (message.blocks.trim()) messages.push({ role: 'user', content: message.blocks });
         continue;
       }
       if (Array.isArray(message.blocks)) {
@@ -57,29 +44,6 @@ export function buildModelMessages(history: readonly SessionMessage[]): ModelMes
   return messages;
 }
 
-function projectNarrativeContext(blocks: unknown): ModelMessage | undefined {
-  if (!blocks || typeof blocks !== 'object' || Array.isArray(blocks)) return undefined;
-  const timelines = (blocks as { timelines?: unknown }).timelines;
-  if (!Array.isArray(timelines)) return undefined;
-
-  const sections = timelines
-    .filter(isNarrativeTimeline)
-    .map((timeline) => `## ${timeline.name}\n${timeline.text}`);
-  if (sections.length === 0) return undefined;
-
-  return {
-    role: 'user',
-    content: '[NARRATIVE CONTEXT - do not quote verbatim; use as background]\n\n'
-      + sections.join('\n\n'),
-  };
-}
-
-function isNarrativeTimeline(value: unknown): value is NarrativeTimeline {
-  if (!value || typeof value !== 'object') return false;
-  const candidate = value as Partial<NarrativeTimeline>;
-  return typeof candidate.name === 'string' && typeof candidate.text === 'string';
-}
-
 function projectAssistantBlock(
   block: unknown,
   pairedToolIds: ReadonlySet<string>,
@@ -92,9 +56,10 @@ function projectAssistantBlock(
     name?: unknown;
     args?: unknown;
   };
-  if (candidate.type === 'text' && typeof candidate.text === 'string') {
+  if (candidate.type === 'text' && typeof candidate.text === 'string' && candidate.text.trim()) {
     return { type: 'text', text: candidate.text };
   }
+  // thinking 不跨 Provider 重放；只有完整配对的 tool_use 才能进入下一次请求。
   if (
     candidate.type === 'tool_use'
     && typeof candidate.id === 'string'
@@ -166,24 +131,49 @@ function projectToolResultPart(block: unknown): ToolResultContentPart | undefine
 }
 
 function collectPairedToolIds(history: readonly SessionMessage[]): ReadonlySet<string> {
-  const toolCallIds = new Set<string>();
-  const toolResultIds = new Set<string>();
+  const calls = new Map<string, { count: number; position: number }>();
+  const results = new Map<string, { count: number; position: number }>();
+  let position = 0;
 
   for (const message of history) {
     if (!Array.isArray(message.blocks)) continue;
     for (const block of message.blocks) {
+      position += 1;
       if (!block || typeof block !== 'object') continue;
       const candidate = block as { type?: unknown; id?: unknown; toolCallId?: unknown };
-      if (candidate.type === 'tool_use' && typeof candidate.id === 'string') {
-        toolCallIds.add(candidate.id);
+      if (
+        message.role === 'assistant'
+        && candidate.type === 'tool_use'
+        && typeof candidate.id === 'string'
+      ) {
+        recordOccurrence(calls, candidate.id, position);
       }
-      if (candidate.type === 'tool_result' && typeof candidate.toolCallId === 'string') {
-        toolResultIds.add(candidate.toolCallId);
+      if (
+        message.role === 'user'
+        && candidate.type === 'tool_result'
+        && typeof candidate.toolCallId === 'string'
+      ) {
+        recordOccurrence(results, candidate.toolCallId, position);
       }
     }
   }
 
-  return new Set([...toolCallIds].filter((id) => toolResultIds.has(id)));
+  return new Set([...calls].flatMap(([id, call]) => {
+    const result = results.get(id);
+    return call.count === 1 && result?.count === 1 && call.position < result.position ? [id] : [];
+  }));
+}
+
+function recordOccurrence(
+  target: Map<string, { count: number; position: number }>,
+  id: string,
+  position: number,
+): void {
+  const existing = target.get(id);
+  target.set(id, {
+    count: (existing?.count ?? 0) + 1,
+    position: existing?.position ?? position,
+  });
 }
 
 function projectContentPart(block: unknown): ContentPart | undefined {
@@ -192,7 +182,9 @@ function projectContentPart(block: unknown): ContentPart | undefined {
 
   switch (part.type) {
     case 'text':
-      return typeof part.text === 'string' ? { type: 'text', text: part.text } : undefined;
+      return typeof part.text === 'string' && part.text.trim()
+        ? { type: 'text', text: part.text }
+        : undefined;
     case 'image_url':
       return typeof part.url === 'string'
         ? optionalImageFields({ type: 'image_url', url: part.url }, part)

@@ -1,52 +1,45 @@
-import type { Message, LlmToolDef } from '@ema-agent/llm';
-import type { SessionId, TurnId } from '@ema-agent/ids';
-import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/turn';
+import type { GitSummary } from '@ema-agent/git';
+import type { LlmToolDef, Message } from '@ema-agent/llm';
+import type { ExecutionProfile } from '@ema-agent/turn';
+import type { ToolPool } from '@ema-agent/tools';
+import type { ContextUsageEstimate } from './contextUsage.js';
 
-export type ContextContributionSource =
-  | 'memory'
-  | 'narrative'
-  | 'scratchpad'
-  | 'mailbox'
-  | 'tasks'
-  | 'skills';
-
-export type ContextContributionPlacement =
-  | 'beforeCurrentTurn'
-  | 'afterCurrentTurn';
-
-/** 本轮临时上下文拥有明确来源和位置，不得混入可持久化、可压缩的会话历史。 */
-export interface ContextContribution {
-  readonly id: string;
-  readonly source: ContextContributionSource;
-  readonly placement: ContextContributionPlacement;
-  readonly message: Message;
+/** 当前 LLM Call 的运行时事实；字段顺序由 systemReminder 固定，调用方不能自由插队。 */
+export interface ContextReminder {
+  /** 调用方冻结的 ISO 日期或日期时间，Context 不读取系统时钟。 */
+  readonly currentDate: string;
+  /** Git 包本次读取的只读事实；Context 只在 Work 模式投影可用仓库摘要。 */
+  readonly gitSummary?: GitSummary;
+  /** Memory 本根 Turn 的召回正文，不写回 Session History。 */
+  readonly memoryRecall?: string;
+  /** Narrative always 策略本根 Turn 的召回正文。 */
+  readonly narrativeRecall?: string;
+  /** Task 包生成的低频任务提醒。 */
+  readonly taskReminder?: string;
+  /** 当前 Agent 的 Scratchpad 投影，每次 LLM Call 可以变化。 */
+  readonly scratchpad?: string;
+  /** 子 Agent 邮箱本次原子取出的消息。 */
+  readonly mailboxMessages?: readonly string[];
 }
 
-export interface ContextCompactionView {
-  readonly prefixMessages: readonly Message[];
-  readonly historyMessages: readonly Message[];
-  readonly suffixMessages: readonly Message[];
-  /** Macro 后必须恢复的 Agent 运行态；预算不足时压缩失败，不能静默丢弃。 */
-  readonly requiredRestoreMessages: readonly Message[];
-  readonly tools: readonly LlmToolDef[];
-}
-
-export type ContextHistoryCompactor = (
-  view: ContextCompactionView,
-  options?: { readonly force?: boolean },
-) => Promise<readonly Message[]>;
-
-export interface ContextContributionRequest<TEvent = never> {
-  readonly sessionId: SessionId;
-  readonly turnId: TurnId;
+/** 组装一次 Provider 中立请求所需的全部事实。 */
+export interface AssembleContextInput {
   readonly executionProfile: ExecutionProfile;
-  readonly narrativePolicy: NarrativePolicy;
-  readonly userInput: string;
-  readonly signal?: AbortSignal;
-  /** Contribution 业务域可选的观察事件；Context 不拥有其联合类型。 */
-  readonly emit?: (event: TEvent) => void;
+  /** getSystemPrompt() 的原始有序结果，必须恰好包含一个动态边界哨兵。 */
+  readonly systemPrompt: readonly string[];
+  /** 与执行器共享的同一个根 Turn 冻结 ToolPool。 */
+  readonly toolPool: ToolPool;
+  /** 唯一允许 Compact 改写的消息区间，不得包含 system 消息。 */
+  readonly history: readonly Message[];
+  /** 当前根 Turn 的工作消息，包含用户输入和已完成的本 Turn 工具轮次。 */
+  readonly currentTurn: readonly Message[];
+  readonly reminder: ContextReminder;
+  readonly contextWindow: number;
 }
 
-export type ContextContributionProvider<TEvent = never> = (
-  request: ContextContributionRequest<TEvent>,
-) => Promise<readonly ContextContribution[]>;
+/** 一次 LLM Call 真正发送前的最终 Provider 中立输入。 */
+export interface PreparedContext {
+  readonly messages: readonly Message[];
+  readonly tools: readonly LlmToolDef[];
+  readonly usage: ContextUsageEstimate;
+}
