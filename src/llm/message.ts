@@ -25,7 +25,7 @@ export type ToolResultContentPart =
 export interface ToolResultBlock {
   type: 'tool_result';
   toolCallId: string;
-  content: string | ToolResultContentPart[];
+  content: string | readonly ToolResultContentPart[];
   isError?: boolean;
 }
 
@@ -39,5 +39,5 @@ export type UserBlock = ContentPart | ToolResultBlock;
  */
 export type Message =
   | { role: 'system'; content: string; cacheBreakpoint?: true }
-  | { role: 'user'; content: string | UserBlock[]; cacheBreakpoint?: true }
-  | { role: 'assistant'; content: AssistantBlock[]; cacheBreakpoint?: true };
+  | { role: 'user'; content: string | readonly UserBlock[]; cacheBreakpoint?: true }
+  | { role: 'assistant'; content: readonly AssistantBlock[]; cacheBreakpoint?: true };

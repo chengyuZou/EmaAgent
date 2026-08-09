@@ -1,11 +1,7 @@
-// 定义 LLM Provider 配置、统一请求、流式分块和完成结果。
-import type { UsageContext } from '@ema-agent/usage';
 import type { LlmProtocol } from '@ema-agent/provider';
-import type { LlmCallId } from './ids.js';
 import type { AssistantBlock, Message } from './message.js';
 import type { LlmTokenUsage } from './usage.js';
 
-// 公开类型由各自所有者定义，调用方仍可从 LLM 入口一次导入。
 export type { LlmProtocol } from '@ema-agent/provider';
 export type { LlmTokenUsage } from './usage.js';
 export type {
@@ -16,126 +12,81 @@ export type {
   ToolResultContentPart,
   UserBlock,
 } from './message.js';
-export type { LlmCallId } from './ids.js';
 
-// ── Provider 配置 ───────────────────────────────────────────────────────────
-
-export interface ProviderConfig {
-  id:           string;
-  protocol:     LlmProtocol;
-  apiKey:       string;
-  baseUrl?:     string;
-  /** models.dev Provider id；用于按 Provider + Model 精确解析能力。 */
-  modelsDevId?: string;
+/** Provider 已解析好的协议连接；Provider 身份、模型目录和业务状态不进入执行面。 */
+export interface LlmConnection {
+  readonly protocol: LlmProtocol;
+  /** 本地或受信网关可以不需要凭据，因此凭据允许缺省。 */
+  readonly apiKey?: string;
+  readonly baseUrl?: string;
 }
 
-// ── 工具定义 ──────────────────────────────────────────────────────────
-
-export interface LlmToolDef {
-  name: string;
-  description: string;
-  parameters: Record<string, unknown>;
+/** ToolPool 投影给模型协议的函数定义。 */
+export interface LlmTool {
+  readonly name: string;
+  readonly description: string;
+  readonly inputSchema: Readonly<Record<string, unknown>>;
 }
 
-// ── thinking 控制 ─────────────────────────────────────────────────────
+export type LlmToolChoice = 'auto' | 'none' | { readonly name: string };
 
-export type ThinkingEffort = 'high' | 'max';
+/**
+ * 跨协议的推理控制。协议只消费自己支持的字段：
+ * OpenAI 系协议使用 effort，Anthropic/Gemini 使用 budgetTokens。
+ */
+export interface LlmThinking {
+  readonly enabled: 'auto' | boolean;
+  readonly effort?: 'low' | 'medium' | 'high' | 'max';
+  readonly budgetTokens?: number;
+}
 
-export type ThinkingMode =
-  | {
-      /**
-       * 保留 provider/model 默认行为。当 provider 支持不带显式开关的 effort 控制时,
-       * 仍可能发送 `effort`。
-       */
-      enabled: 'auto';
-      effort?: ThinkingEffort;
-      budgetTokens?: number;
-      includeThoughts?: boolean;
-    }
-  | {
-      /** 本次请求强制开启 provider 侧 thinking。 */
-      enabled: true;
-      effort?: ThinkingEffort;
-      budgetTokens?: number;
-      includeThoughts?: boolean;
-    }
-  | {
-      /** 支持时,本次请求强制关闭 provider 侧 thinking。 */
-      enabled: false;
-    };
-
-// ── 归一化消息格式 ─────────────────────────────────────────────────
-// Adapter 只能把 Message 翻译成 Provider 线路协议。
-
+/** 单次协议请求；调用身份、重试策略和持久化均由上层拥有。 */
 export interface LlmRequest {
-  providerId: string;
-  model: string;
-  messages: Message[];
-  tools?: LlmToolDef[];
-  toolChoice?: 'auto' | 'none' | { name: string };
-  thinking?: ThinkingMode;
-  maxTokens?: number;
-  temperature?: number;
-  signal?: AbortSignal;
-  /** 业务调用身份由上层传入；省略时运行时为内部调用生成独立身份。 */
-  usageContext?: UsageContext<LlmCallId>;
+  readonly model: string;
+  readonly messages: readonly Message[];
+  readonly tools?: readonly LlmTool[];
+  readonly toolChoice?: LlmToolChoice;
+  readonly thinking?: LlmThinking;
+  readonly maxOutputTokens?: number;
+  readonly temperature?: number;
+  readonly signal?: AbortSignal;
 }
 
-// ── 流式输出 ─────────────────────────────────────────────────────
-
-export type StopReason = 'end_turn' | 'tool_use' | 'max_tokens' | 'stop_sequence';
+export type LlmStopReason =
+  | 'end_turn'
+  | 'tool_use'
+  | 'max_tokens'
+  | 'stop_sequence';
 
 /**
- * 每个 adapter 发出的统一流式 chunk。
- *
- * `blockIndex` 出现在所有承载内容的 chunk 上,反映该 block 在 assistant 内容数组中的位置。
- * engine 用它来:
- *   1. 重建正确的交错顺序以入库。
- *   2. 检测 OpenAI 的 index 跳变是否表示一个 tool call 已完成。
- *
- * 单次流的序列:
- *   (text_delta | thinking_delta | tool_use_delta | tool_use_complete | usage)*
- *   -> done
- *
- * `usage` 是当前逻辑调用的 Provider 累计快照，不是相对上一个事件的增量。
- * Adapter 可以在 Provider 给出可靠计数时多次发送，上游必须按快照求差后聚合。
- *
- * 单次流可在不同 index 处交错 text 与 tool block,
- * 与 Claude 的投递方式完全一致。
+ * 四种协议统一发出的流事件。承载内容的事件必须带 blockIndex，调用方据此
+ * 重建 text、thinking 与 tool_use 的原始交错顺序。
  */
-export type LlmStreamChunk =
+export type LlmStreamEvent =
+  | { readonly type: 'text_delta'; readonly blockIndex: number; readonly delta: string }
+  | { readonly type: 'thinking_delta'; readonly blockIndex: number; readonly delta: string }
+  | { readonly type: 'thinking_complete'; readonly blockIndex: number; readonly signature?: string }
   | {
-      type: 'request_degraded';
-      attempt: number;
-      reason: string;
-      removed: Array<'image' | 'audio' | 'file' | 'parameter'>;
-      replacements: Array<'description' | 'placeholder' | 'parameter_omitted'>;
+      readonly type: 'tool_use_delta';
+      readonly blockIndex: number;
+      readonly callId: string;
+      readonly name: string;
+      readonly argsDelta: string;
     }
-  | { type: 'text_delta';        blockIndex: number; delta: string }
-  | { type: 'thinking_delta';    blockIndex: number; delta: string }
-  | { type: 'thinking_complete';  blockIndex: number; signature: string }
-  | { type: 'tool_use_delta';    blockIndex: number; callId: string; name: string; argsDelta: string }
-  | { type: 'tool_use_complete'; blockIndex: number; callId: string; name: string; args: unknown }
-  | ({ type: 'usage' } & LlmTokenUsage)
-  | { type: 'done';              stopReason: StopReason };
+  | {
+      readonly type: 'tool_use_complete';
+      readonly blockIndex: number;
+      readonly callId: string;
+      readonly name: string;
+      readonly args: unknown;
+    }
+  /** Provider 可能多次发送同一次调用的累计快照，调用方按快照求差。 */
+  | ({ readonly type: 'usage' } & LlmTokenUsage)
+  | { readonly type: 'done'; readonly stopReason: LlmStopReason };
 
-// ── 非流式输出 ──────────────────────────────────────────────────────
-
-/**
- * complete() 调用收集到的结果。
- * `blocks` 是完整 AssistantBlock[],保持原始顺序 - text、thinking 与
- * tool_use block 按模型产出的顺序交错。
- */
+/** complete() 对同一条流的无损收集结果。 */
 export interface LlmCompletion {
-  blocks: AssistantBlock[];
-  stopReason: StopReason;
-  usage: LlmTokenUsage;
-}
-
-// ── probe 结果 ──────────────────────────────────────────────────────
-
-export interface ProbeResult {
-  ok:         boolean;
-  latencyMs?: number;
-  error?:     string;
+  readonly blocks: readonly AssistantBlock[];
+  readonly stopReason: LlmStopReason;
+  readonly usage: LlmTokenUsage;
 }

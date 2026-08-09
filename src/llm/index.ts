@@ -1,54 +1,29 @@
-export { LanguageModelRuntime }                           from './languageModelRuntime.js';
-export type { LanguageModelRuntimeOptions }               from './languageModelRuntime.js';
-export type { LanguageModel }                            from './languageModel.js';
-export { validateContentParts }                           from './validate.js';
-export { CircuitBreaker, LlmStreamRuntime } from './streamRuntime.js';
-export type {
-  CircuitBreakerOptions,
-  CircuitPermit,
-  LlmCompatibilityRecovery,
-  LlmStreamRuntimeOptions,
-} from './streamRuntime.js';
-
-export type { LlmAdapter }                   from './adapters/base.js';
-export { OpenAiResponsesAdapter }            from './adapters/openaiResponses.js';
-export type { UnsupportedPart }              from './validate.js';
-
+export { createLanguageModel } from './languageModel.js';
+export type { LanguageModel } from './languageModel.js';
 export {
-  CircuitOpenError,
   ContextWindowExceededError,
   llmProviderErrorCode,
+  LlmProtocolInputError,
   LlmProviderResponseError,
   LlmStreamProtocolError,
   LlmToolArgumentsParseError,
-  LlmModelCapabilityError,
 } from './errors.js';
-export type {
-  LlmCapabilityIssue,
-  LlmErrorCode,
-  LlmFeatureCapabilityIssue,
-  LlmInputCapabilityIssue,
-} from './errors.js';
-export { createCompatibilityRecovery } from './compatibilityRecovery.js';
-export type { CompatibilityRecoveryController } from './compatibilityRecovery.js';
 export { advanceLlmUsageSnapshot } from './usage.js';
 export type {
-  LlmProtocol,
-  LlmTokenUsage,
-  StopReason,
-  ProviderConfig,
-  ThinkingEffort,
-  ThinkingMode,
-  LlmToolDef,
-  Message,
-  LlmRequest,
-  LlmStreamChunk,
-  LlmContentPart,
-  LlmCompletion,
   AssistantBlock,
+  LlmCompletion,
+  LlmConnection,
+  LlmContentPart,
+  LlmProtocol,
+  LlmRequest,
+  LlmStopReason,
+  LlmStreamEvent,
+  LlmThinking,
+  LlmTokenUsage,
+  LlmTool,
+  LlmToolChoice,
+  Message,
+  ToolResultBlock,
+  ToolResultContentPart,
   UserBlock,
-  ProbeResult,
 } from './types.js';
-export { asLlmCallId } from './ids.js';
-export type { LlmCallId } from './ids.js';
-export type { ContentPart, ToolResultBlock, ToolResultContentPart } from './message.js';

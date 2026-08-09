@@ -1,75 +1,105 @@
-# @ema-agent/llm
+# LLM
 
-Ema 产品源码中的语言模型调用模块。它把 OpenAI Chat Completions、OpenAI Responses、Anthropic Messages 与 Gemini generateContent 转成统一的 `LlmRequest` 和 `LlmStreamChunk`，但不负责 Session、Turn 编排、上下文压缩或工具执行。
+`src/llm` 是 Ema 的语言模型执行面：接收已经解析好的协议连接与中立请求，把请求翻译给 Provider SDK，再返回统一流事件。
 
-目录位于根 `src`，因为模型调用策略属于 Ema 产品能力；内部包名 `@ema-agent/llm` 只提供稳定的编译与依赖边界。
+它不拥有 Provider 配置、模型目录、能力选择、Session/Turn、Context/Compact、重试策略或 Usage 持久化。
 
-## 调用链
+## 唯一调用链
 
 ```text
-Agent / Conversation / Memory
-    ↓ LanguageModel
-LanguageModelRuntime
-    ↓ 获取 ProviderRuntimeEntry 原子快照
-LlmRequestPreparer
-    ├─ 复制轻量消息结构，不复制附件二进制
-    ├─ 通过 Provider 注入的 Resolver 查询模型能力
-    ├─ 执行 Adapter 前的最终媒体与协议门禁
-    ├─ 保留 Context 从根 Turn ToolPool 投影出的顺序
-    └─ 按模型 maxOutput 裁剪调用方给出的输出预算
-    ↓
-LlmStreamRuntime
-    ├─ 首个业务 Chunk 前重试
-    ├─ 取消与熔断
-    └─ 统一 done 终态校验
-    ↓
-Protocol Adapter
-    ↓
-OpenAI / Anthropic / Gemini API
+Provider / 接线层
+  └─ 解析 provider config + model capability
+       └─ createLanguageModel({ protocol, apiKey, baseUrl })
+            ├─ stream(LlmRequest)   → AsyncIterable<LlmStreamEvent>
+            └─ complete(LlmRequest) → LlmCompletion
+                 └─ 收集同一条 stream，不存在第二条非流式线路
 ```
 
-`maxOutput` 是模型允许的输出上限，不是默认输出预算。请求未提供 `maxTokens` 时保持未指定；真正的上下文 Token 计算、历史裁剪和压缩由 Context 业务负责。
+支持的协议由 `@ema-agent/provider` 的 `LlmProtocol` 定义：
 
-## 公共边界
+- `openai-llm`：OpenAI Chat Completions 及兼容网关；
+- `openai-responses-llm`：OpenAI Responses API；
+- `anthropic-llm`：Anthropic Messages；
+- `gemini-llm`：Gemini 原生 generateContent。
 
-| 类型 | 职责 |
-|---|---|
-| `LanguageModel` | 业务模块可见的调用接口。核心能力是 `stream` 与 `complete` |
-| `LanguageModelRuntime` | Core 装配的运行实现，并提供 probe 与 Provider 热重载 |
-| `LlmAdapter` | 单一 Provider 协议的流式转换接口 |
-| `ModelCapabilityResolver` | Provider 模块注入的模型能力查询边界；LLM 不持有 Catalog |
+Provider 是协议词汇和连接配置的唯一所有者。LLM 只消费 `LlmProtocol`，不得复制一份协议联合或按 Provider 品牌分发。
 
-业务模块依赖 `LanguageModel`，只有 Core 装配和 Provider 生命周期代码持有 `LanguageModelRuntime`。不要重新建立 `LlmRouter` 或强制增加 `LlmFacade`。
+## 公共接口
 
-## 关键语义
+```ts
+const llm = createLanguageModel({
+  protocol: 'openai-llm',
+  apiKey,
+  baseUrl,
+});
 
-- Provider 配置与 Adapter 保存在同一个 `ProviderRuntimeEntry` 中，热重载以完整 Map 换代；进行中的调用继续持有旧条目。
-- 请求快照只复制数组和消息 Block 等结构，图片、音频和文件内容仍共享字符串或稳定引用。
-- 历史媒体占位和本轮附件策略由 Context 负责；LLM 只保留 Adapter 前的最终 fail-closed 门禁，禁止 Hook 或 Tool 绕过能力检查。
-- OpenAI Chat 只接受 `finish_reason`，Anthropic 只接受 `message_stop`，Gemini 只接受有效 `finishReason` 作为成功终态。自然断流抛出 `LlmStreamProtocolError`。
-- Block Index 按 Provider 内容实际出现顺序连续分配，不使用 `1000 + index` 人工改变文本与工具顺序。
-- 首个业务 Chunk 出现前可进行有界重试；已经向上游发送内容后不得从头重试，避免重复文本、Tool Call 和计费。
-- Provider 明确拒绝 `temperature`、`thinking` 或 `toolChoice` 时，可以在总重试预算内省略对应可选参数。
+for await (const event of llm.stream({
+  model,
+  messages,
+  tools,
+  maxOutputTokens,
+  signal,
+})) {
+  // Agent 处理 delta、Tool 调用、Usage 快照和 done。
+}
+```
 
-## 文件
+`LlmConnection` 只含建立 SDK Client 所需的协议、凭据和地址。`LlmRequest` 只含一次调用变化的模型、消息、Tool 定义、生成参数与取消信号。
 
-| 文件 | 职责 |
-|---|---|
-| `languageModel.ts` | 业务调用接口 |
-| `languageModelRuntime.ts` | 调用入口、结果聚合、Usage 与运行时管理 |
-| `providerRuntimeRegistry.ts` | ProviderConfig 与 Adapter 原子快照 |
-| `llmRequestPreparer.ts` | 请求快照、能力和协议门禁、输出上限 |
-| `streamRuntime.ts` | 熔断、首包前重试、取消和统一终态校验 |
-| `adapters/*` | 四种协议与统一事件之间的转换 |
-| `modelInputValidation.ts` | Adapter 前覆盖 Hook/Tool 新增内容的最终模型能力门禁 |
-| `compatibilityRecovery.ts` | Provider 拒绝可选参数后的有界恢复 |
-| `usage.ts` / `validate.ts` / `retry.ts` | Usage、协议内容校验和重试判断 |
+以下字段明确不属于本包：
 
-## 不属于 LLM 模块
+- `providerId/modelsDevId`：Provider 控制面身份；
+- `sessionId/turnId/llmCallId`：Turn/Agent 调用身份；
+- `usageContext`：Usage 记录归属；
+- retry/circuit/fallback：上层调用策略；
+- 模型能力快照与附件降级：Provider + Context 决策；
+- SQL、事件总线和前端 DTO。
 
-- Session、Turn、角色和 Narrative 业务；
-- 历史 Token 计算、上下文裁剪、Summary 与 Compaction；
-- Prompt 前缀策略、ToolPool 稳定化和历史媒体降级；
-- 模型绑定和“应该选择哪个模型”的产品决策；
-- Permission、Sandbox 和 Tool 执行；
-- API Key 持久化与普通日志展示。
+## 流协议
+
+每条正常流必须以一个显式 `done` 结束。SDK 自然断流、取消或 Provider 失败不会伪装成 `done`。
+
+```text
+(text_delta
+ | thinking_delta
+ | thinking_complete
+ | tool_use_delta
+ | tool_use_complete
+ | usage)*
+→ done
+```
+
+承载内容的事件带 `blockIndex`，上层用它恢复 text、thinking 与 tool_use 的交错顺序。`usage` 是 Provider 对当前调用给出的累计快照；`advanceLlmUsageSnapshot()` 负责把重复或倒退快照归一为单调快照和增量。
+
+## 输入与协议边界
+
+`Message` 是中立模型消息，不是 Session SQL 行，也不含 UI 字段。协议转换前会检查真实的表达限制：例如 Chat Completions 不接受文件块，Anthropic 不接受音频。无法表达时抛出 `LlmProtocolInputError`，禁止静默删除附件或把媒体替换成占位文本。
+
+thinking 历史是唯一有意不跨协议重放的内容。不同 Provider 的签名与往返语义不兼容；Anthropic 只重放带原生 signature 的 thinking，其余协议只保留本次响应流供 UI/审计使用。
+
+Anthropic 的 `cache_control` 是协议专属投影：中立 Message 只携带 `cacheBreakpoint: true`，其他协议忽略该提示。
+
+## 重试所有权
+
+OpenAI 与 Anthropic SDK 的内建重试在创建 Client 时关闭。LLM 本包不重试：它不知道这次请求属于交互聊天、Macro Compact、Memory 提取还是后台任务，也无权决定是否重复计费或重新执行。
+
+若上层确实需要重试，只能由一个调用边界拥有，并复用同一次业务调用身份；LLM 仍只执行一次协议请求。
+
+## 文件职责
+
+```text
+src/llm/
+├─ languageModel.ts      唯一创建入口与 complete 流收集
+├─ types.ts              请求、连接、Tool 投影和统一流事件
+├─ message.ts            Provider 中立消息
+├─ protocolInput.ts      真实协议输入限制，防止静默丢内容
+├─ errors.ts             SDK 错误、取消与终态归一化
+├─ usage.ts              调用级 Token 快照归一化
+└─ protocols/
+   ├─ openAiChat.ts
+   ├─ openAiResponses.ts
+   ├─ anthropic.ts
+   └─ gemini.ts
+```
+
+协议文件只做三件事：创建并复用对应 SDK Client、转换请求、转换响应。它们不是公共 Adapter 注册表，也不拥有 Provider 热更新。
