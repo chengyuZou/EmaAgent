@@ -2,24 +2,26 @@
 // 位于知识库 readers 层: PDF 扫描页和图片附件都经它进入知识库。
 
 import { readFile } from 'node:fs/promises';
+import type { VisionModel, VisionImageMime } from '@ema-agent/vision';
 import type { DocumentBlock } from '../types.js';
 import type { DocumentReader, ReadResult, ReaderSource } from './base.js';
 import { nextBlockId } from './base.js';
-import type { KbVisionAdapter, KbVisionTask } from '../adapters/vision.js';
 
-const MIME_MAP: Record<string, string> = {
+const MIME_MAP: Record<string, VisionImageMime> = {
   png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif',
 };
 
+/** KB 可调用的 Vision 任务: ocr=整页识字, caption=图表/画面内容描述。 */
+export type KbVisionTask = 'ocr' | 'caption';
+
 export interface ImageReaderOptions {
-  providerId: string;
   model:      string;
   signal?:    AbortSignal;
 }
 
 export class ImageReader implements DocumentReader {
   constructor(
-    private readonly vision: KbVisionAdapter,
+    private readonly vision: VisionModel,
     private readonly opts:   ImageReaderOptions,
   ) {}
 
@@ -39,11 +41,10 @@ export class ImageReader implements DocumentReader {
       ? new Uint8Array(await readFile(source.path))
       : source.bytes;
 
-    const result = await this.vision.extract({
-      providerId: this.opts.providerId,
+    const result = await this.vision.analyze({
       model:      this.opts.model,
       task,
-      inputs:     [{ bytes, mimeType: mime, name }],
+      images:     [{ kind: 'bytes', bytes, mimeType: mime }],
       signal:     this.opts.signal,
     });
 

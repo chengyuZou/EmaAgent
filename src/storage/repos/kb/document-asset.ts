@@ -191,7 +191,7 @@ export class DocumentAssetRepo {
 
   setEmbeddingSpace(id: string, space: {
     id: string;
-    providerId: string;
+    providerConfigId: string;
     model: string;
     dim: number;
     normalization: string;
@@ -204,7 +204,7 @@ export class DocumentAssetRepo {
             ebd_stale = 0, updated_at = ?
         WHERE id = ?`)
       .run(
-        space.providerId, space.model, space.dim,
+        space.providerConfigId, space.model, space.dim,
         space.normalization, space.revision, space.id,
         Date.now(), id,
       );

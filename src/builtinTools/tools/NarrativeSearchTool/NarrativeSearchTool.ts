@@ -95,8 +95,8 @@ export const NarrativeSearchTool = buildTool<
     if (output.failures.length > 0) {
       sections.push(
         `检索失败的剧情线：${output.failures
-          .map((failure) => `${failure.timeline}（${failure.message}）`)
-          .join('，')}`,
+          .map((failure) => `${failure.timeline} (${failure.message})`)
+          .join('')}`,
       );
     }
     return sections.length > 0

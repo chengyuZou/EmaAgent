@@ -1,11 +1,11 @@
-// 定义宿主装配给工具系统的业务能力全集。
+// 定义宿主在单次工具调用中提供的业务能力集合。
 import type {
   AgentRunId,
   TaskId,
 } from '@ema-agent/ids';
 import type { CommandRunnerPort } from '@ema-agent/sandbox';
 import type { TaskStore } from '@ema-agent/tasks';
-import type { KnowledgeSearchPort } from '@ema-agent/knowledge';
+import type { KnowledgeSearch } from '@ema-agent/knowledge';
 import type { NarrativeSearchPort } from '@ema-agent/narrative';
 import type { SkillPool } from '@ema-agent/skills';
 import type { ReadFileState } from '../types.js';
@@ -94,7 +94,7 @@ export interface ToolUseContext {
   /** Bash 与 Process 工具族共享的持久后台进程入口。 */
   readonly backgroundProcesses?: BackgroundProcessPort;
   /** KB 检索工具的搜索入口。 */
-  readonly knowledgeSearch?: KnowledgeSearchPort;
+  readonly knowledgeSearch?: KnowledgeSearch;
   /** Narrative 剧情资料的按需检索入口，仅在 auto 策略下装配。 */
   readonly narrativeSearch?: NarrativeSearchPort;
   /** Task 工具族的持久存储。 */

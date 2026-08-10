@@ -6,7 +6,7 @@ import type { DocumentBlock } from '../types.js';
 import type { DocumentReader, ReadFailure, ReadResult, ReaderSource } from './base.js';
 import { nextBlockId } from './base.js';
 import type { ImageReader } from './image.js';
-import { isKbVisionAdapterError } from '../adapters/vision.js';
+import { VisionError } from '@ema-agent/vision';
 
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
@@ -288,13 +288,13 @@ export class PdfReader implements DocumentReader {
               textLayerError ?? new Error('OCR 未返回可索引文本'),
             ));
           } catch (error) {
-            if (isKbVisionAdapterError(error) && error.code === 'vision/aborted') throw error;
+            if (isAbort(error)) throw error;
             // 单页失败不终止其他页面，但必须写入持久失败分片，不能伪装成完整成功。
             blocks.push(scannedPlaceholder(p));
             failures.push(pageFailure(
               p,
-              isKbVisionAdapterError(error) ? error.code : 'kb/pdf-ocr-failed',
-              isKbVisionAdapterError(error) ? error.retryable : true,
+              error instanceof VisionError ? error.code : 'kb/pdf-ocr-failed',
+              visionFailureRetryable(error),
               error,
             ));
           }
@@ -353,11 +353,11 @@ export class PdfReader implements DocumentReader {
         new Error('Vision 未返回可用的图表描述'),
       ));
     } catch (error) {
-      if (isKbVisionAdapterError(error) && error.code === 'vision/aborted') throw error;
+      if (isAbort(error)) throw error;
       failures.push(pageFailure(
         p,
-        isKbVisionAdapterError(error) ? error.code : 'kb/pdf-figure-failed',
-        isKbVisionAdapterError(error) ? error.retryable : true,
+        error instanceof VisionError ? error.code : 'kb/pdf-figure-failed',
+        visionFailureRetryable(error),
         error,
       ));
     }
@@ -525,6 +525,20 @@ function itemsToBlocks(items: PdfItem[], median: number, page: number, stack: st
 function hToLevel(h: number, median: number): number {
   const r = h / median;
   if (r >= 2.0) return 1; if (r >= 1.6) return 2; if (r >= 1.3) return 3; return 4;
+}
+
+/** 调用方取消在 vision 协议边界保持原始 AbortError;取消必须中断整篇解析。 */
+function isAbort(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError';
+}
+
+/** 页级失败分片的重试判定:5xx/429/网络类可重试,参数或响应形状类重试无意义。 */
+function visionFailureRetryable(error: unknown): boolean {
+  if (error instanceof VisionError) {
+    return error.code === 'vision/http_error'
+      && (error.status === undefined || error.status === 429 || error.status >= 500);
+  }
+  return true;
 }
 function endsWithPunct(t: string): boolean { return /[.!?。！？;；:：]\s*$/.test(t.trimEnd()); }
 function looksLikeContinuation(t: string): boolean {

@@ -266,12 +266,11 @@ export function sessionCapabilityGuidance(toolNames: readonly string[]): string 
   }
 
   if (names.has(BuiltinTools.Subagent.name)) {
-    const canMessage = names.has(BuiltinTools.SubagentSendMessage.name);
     const canAwait = names.has(BuiltinTools.SubagentAwait.name);
     sections.push(`## ${BuiltinTools.Subagent.name}
 - 独立、多步骤、适合并行的调查或会产生大量中间输出的工作可以委托给子 Agent，以并行推进或保护主上下文；简单定向搜索直接由主 Agent 完成。
 - 委托时给出自包含的目标、边界、已知事实和期望结果。不要同时重复执行已经委托的同一份工作，也不要为了看起来并行而过度创建子 Agent。
-- 子 Agent 的结果由主 Agent 判断、整合和对用户负责；不要把未经核验的子 Agent 结论直接冒充最终事实。${canMessage ? `需要补充信息时可用 ${BuiltinTools.SubagentSendMessage.name}。` : ''}${canAwait ? `需要等待已启动执行时可用 ${BuiltinTools.SubagentAwait.name}。` : ''}`);
+- 子 Agent 的结果由主 Agent 判断、整合和对用户负责；不要把未经核验的子 Agent 结论直接冒充最终事实。${canAwait ? `需要等待已启动执行时可用 ${BuiltinTools.SubagentAwait.name}。` : ''}`);
   }
 
   const scratchpadNames = [

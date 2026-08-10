@@ -1,7 +1,4 @@
 // ── Document block (reader output) ───────────────────────────────────────────
-import type { SessionId, TurnId } from '@ema-agent/ids';
-import type { KbAssetScope } from '@ema-agent/turn';
-
 export interface DocumentSourceRef {
   assetId: string;
   fileName: string;
@@ -26,18 +23,17 @@ export interface KbSearchResult {
   hits: KbSearchHit[];
 }
 
-/** Knowledge 检索的一次完整请求；宿主可以在转交给 Tool 前冻结范围与调用身份。 */
+/** Knowledge 检索的一次完整请求；宿主在转交给 Tool 前冻结文档范围。 */
 export interface KnowledgeSearchRequest {
   readonly query: string;
   readonly topK?: number;
-  readonly kbIds?: readonly string[];
-  readonly assetScopes?: readonly KbAssetScope[];
-  readonly sessionId?: SessionId;
-  readonly turnId?: TurnId;
+  /** 活跃库内的文档范围;由宿主按用户选择冻结注入。 */
+  readonly assetIds?: readonly string[];
+  readonly signal?: AbortSignal;
 }
 
 /** Tool、Turn 与进程宿主共同复用的唯一 Knowledge 检索入口。 */
-export type KnowledgeSearchPort = (
+export type KnowledgeSearch = (
   request: KnowledgeSearchRequest,
 ) => Promise<KbSearchResult>;
 
@@ -152,59 +148,26 @@ export interface IngestOptions {
   /** Pre-generated asset id (so the caller can return it before ingest finishes
    *  and correlate background progress events). Defaults to a fresh uuid. */
   assetId?: string;
-  /** 持久队列任务 ID；与 assetId 分离，只由 IngestQueue 注入。 */
-  taskId?: string;
-  /** 当前任务尝试次数，用于拒绝上一轮迟到的进度事件。 */
-  attempt?: number;
-  /** partial_failed 重试时只处理这些失败 chunk。 */
-  retryChunkIds?: string[];
-  /** 页级解析失败重试时替换上一轮的文档、chunk 与 preview。 */
-  replaceExistingAsset?: boolean;
   /** staging 后 asset.filePath 写入的 KB 相对路径；缺省时回退为读取路径。 */
   stagedRelativePath?: string;
-  /** Vision provider id for image/scanned-PDF OCR. */
-  visionProviderId?: string;
-  visionModel?:      string;
-  /** Embedding provider for semantic chunking (optional; falls back to sentence chunker). */
-  ebdProviderId?: string;
-  ebdModel?:      string;
   /** Override auto-detected MIME type. */
   mimeType?: string;
   signal?:   AbortSignal;
-}
-
-export interface IngestFailureShard {
-  stage:      'parse' | 'embed';
-  shardKey:   string;
-  itemIds:    string[];
-  retryable:  boolean;
-  errorCode?: string;
-  error:      string;
-}
-
-export interface IngestItemCounts {
-  total:     number;
-  completed: number;
-  failed:    number;
 }
 
 export interface IngestResult {
   asset:        DocumentAsset;
   chunks:       number;
   preview:      DocumentPreview;
-  outcome:      'completed' | 'partial_failed';
-  counts:       IngestItemCounts;
-  failureShards: IngestFailureShard[];
+  /** PDF 等 Reader 忽略的局部问题；不改变任务完成状态。 */
+  warnings?: readonly string[];
 }
 
 // ── Search ────────────────────────────────────────────────────────────────────
 
 export interface SearchOptions {
-  /** Per-KB document scope from the chat picker. KbManager uses this to pass the
-   *  right assetIds to each KB's client. Ignored by KnowledgeClient.search() directly. */
-  assetScopes?: KbAssetScope[];
-  /** Single-KB asset filter (used by KnowledgeClient.search() internally). */
-  assetIds?:  string[];
+  /** 活跃库内的文档范围过滤;undefined = 全库。显式空范围由调用方语义处理。 */
+  assetIds?:  readonly string[];
   topK?:      number;
   /** BM25 / vector blend weight (0 = pure BM25, 1 = pure vector). Default 0.5. */
   alpha?:     number;
@@ -212,14 +175,5 @@ export interface SearchOptions {
   rerankBlendWeight?: number;
   /** 命中正文的总字符预算；超出后低分命中降级为 citation-only 引用卡。 */
   maxResultChars?: number;
-  /** Embedding provider for dense retrieval (optional). */
-  ebdProviderId?:    string;
-  ebdModel?:         string;
-  /** Reranker provider (optional; applied after hybrid fusion). */
-  rerankProviderId?: string;
-  rerankModel?:      string;
-  /** Turn context for activation logging (kb_activations). Omit → no per-session log. */
-  sessionId?:        string;
-  turnId?:           string;
   signal?:           AbortSignal;
 }

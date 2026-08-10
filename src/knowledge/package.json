@@ -20,13 +20,12 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@ema-agent/ids":  "workspace:*",
     "@ema-agent/settings": "workspace:*",
     "@ema-agent/embed": "workspace:*",
     "@ema-agent/rerank": "workspace:*",
     "@ema-agent/storage":    "workspace:*",
     "@ema-agent/token":      "workspace:*",
-    "@ema-agent/turn":       "workspace:*",
+    "@ema-agent/vision":     "workspace:*",
     "cheerio":     "^1.0.0",
     "domhandler":  "^5.0.3",
     "mammoth":     "^1.8.0",

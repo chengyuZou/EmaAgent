@@ -6,6 +6,7 @@ import type { KbActivationRow }     from './kb-activations.js';
 import type { AgentRunRow }         from './agent-runs.js';
 import type { UsageRecordRow }      from './usage-records.js';
 import type { TaskDependencyRow, TaskRow } from './tasks.js';
+import type { AttachmentRowKind } from './attachments.js';
 
 export type {
   AgentRunMessageRow,
@@ -120,8 +121,11 @@ export interface AudioRestoreRow {
 }
 
 export interface AttachmentRestoreRow {
-  id: string; turnId: string; name: string; mime: string;
-  size: number; mtime: number; localPath: string; createdAt: number;
+  id: string; turnId: string; kind: AttachmentRowKind; name: string; mime: string;
+  byteSize: number; sourceModifiedAt: number;
+  sourcePath: string;
+  imagePath: string | null; imageByteSize: number | null;
+  createdAt: number;
 }
 
 export interface NotesRestoreData {
@@ -378,7 +382,7 @@ export class SessionStatsRepo {
         (SELECT COALESCE(SUM(byte_size),0) FROM turn_audio_merged  WHERE session_id = ?) AS audio_total_bytes,
         (SELECT COALESCE(SUM(duration_ms),0) FROM turn_audio_merged WHERE session_id = ?) AS audio_total_duration_ms,
         (SELECT COUNT(*)              FROM turn_attachments WHERE session_id = ?) AS attachment_count,
-        (SELECT COALESCE(SUM(size),0) FROM turn_attachments WHERE session_id = ?) AS attachment_total_bytes
+        (SELECT COALESCE(SUM(byte_size),0) FROM turn_attachments WHERE session_id = ?) AS attachment_total_bytes
     `).get(
       sessionId, sessionId, sessionId, sessionId,
       sessionId, sessionId, sessionId,
@@ -588,14 +592,15 @@ export class SessionStatsRepo {
       // 10. Attachment(文件已由调用方写入)
       const stmtAtt = this.db.prepare(`
         INSERT INTO turn_attachments
-          (id, turn_id, session_id, name, mime, size, mtime, local_path, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (id, turn_id, session_id, kind, name, mime, source_path, byte_size, source_modified_at,
+           image_path, image_byte_size, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const a of p.attachments) {
         stmtAtt.run(
-          a.id, a.turnId, p.session.id,
-          a.name, a.mime, a.size, a.mtime ?? 0,
-          a.localPath, a.createdAt,
+          a.id, a.turnId, p.session.id, a.kind,
+          a.name, a.mime, a.sourcePath, a.byteSize, a.sourceModifiedAt,
+          a.imagePath, a.imageByteSize, a.createdAt,
         );
       }
 

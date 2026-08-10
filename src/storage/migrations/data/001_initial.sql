@@ -35,42 +35,16 @@ CREATE TABLE agent_runs (
   completed_at        INTEGER
 );
 
-CREATE TABLE attachment_cached_images (
-  content_sha256 TEXT PRIMARY KEY
-    CHECK(length(content_sha256) = 64 AND content_sha256 NOT GLOB '*[^0-9a-f]*'),
-  relative_path TEXT NOT NULL UNIQUE,
-  mime TEXT NOT NULL CHECK(mime IN ('image/png', 'image/jpeg', 'image/webp')),
-  byte_size INTEGER NOT NULL CHECK(byte_size >= 0),
-  width INTEGER NOT NULL CHECK(width > 0),
-  height INTEGER NOT NULL CHECK(height > 0),
-  created_at INTEGER NOT NULL,
-  last_used_at INTEGER NOT NULL
-);
-
-CREATE TABLE attachment_vision_derivations (
-  id TEXT PRIMARY KEY,
-  content_sha256 TEXT NOT NULL
-    REFERENCES attachment_cached_images(content_sha256) ON DELETE CASCADE,
-  task TEXT NOT NULL CHECK(task IN ('auto', 'caption', 'ocr', 'layout', 'table')),
-  provider_config_id TEXT NOT NULL,
-  model_id TEXT NOT NULL,
-  prompt_sha256 TEXT NOT NULL
-    CHECK(length(prompt_sha256) = 64 AND prompt_sha256 NOT GLOB '*[^0-9a-f]*'),
-  transform_version TEXT NOT NULL,
-  language TEXT NOT NULL DEFAULT '',
-  relative_path TEXT NOT NULL UNIQUE,
-  byte_size INTEGER NOT NULL CHECK(byte_size >= 0),
-  created_at INTEGER NOT NULL,
-  last_used_at INTEGER NOT NULL,
-  UNIQUE (
-    content_sha256,
-    task,
-    provider_config_id,
-    model_id,
-    prompt_sha256,
-    transform_version,
-    language
-  )
+CREATE TABLE attachment_vision_descriptions (
+  attachment_id       TEXT NOT NULL REFERENCES turn_attachments(id) ON DELETE CASCADE,
+  provider_config_id  TEXT NOT NULL,
+  model_id            TEXT NOT NULL,
+  instruction_revision TEXT NOT NULL,
+  text                TEXT NOT NULL,
+  byte_size           INTEGER NOT NULL CHECK(byte_size >= 0),
+  created_at          INTEGER NOT NULL,
+  last_accessed_at    INTEGER NOT NULL,
+  PRIMARY KEY (attachment_id, provider_config_id, model_id, instruction_revision)
 );
 
 CREATE TABLE background_processes (
@@ -253,16 +227,21 @@ CREATE TABLE tool_executions (
 , agent_run_id TEXT REFERENCES agent_runs(id) ON DELETE SET NULL);
 
 CREATE TABLE turn_attachments (
-  id         TEXT    PRIMARY KEY,
-  turn_id    TEXT    NOT NULL REFERENCES turns(id)    ON DELETE CASCADE,
-  session_id TEXT    NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  name       TEXT    NOT NULL,
-  mime       TEXT    NOT NULL,
-  size       INTEGER NOT NULL,
-  mtime      INTEGER NOT NULL,
-  local_path TEXT    NOT NULL,
-  created_at INTEGER NOT NULL,
-  status     TEXT    NOT NULL
+  id                 TEXT PRIMARY KEY,
+  turn_id            TEXT NOT NULL REFERENCES turns(id)    ON DELETE CASCADE,
+  session_id         TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  kind               TEXT NOT NULL CHECK(kind IN ('file', 'image')),
+  name               TEXT NOT NULL,
+  mime               TEXT NOT NULL,
+  -- 用户原文件(canonical 绝对路径)及其登记时元数据;文件被移动/删除后用于状态检查。
+  source_path        TEXT NOT NULL,
+  byte_size          INTEGER NOT NULL CHECK(byte_size >= 0),
+  source_modified_at INTEGER NOT NULL,
+  -- 仅 image:Ema 持有的原始字节受管副本(sessions/<sid>/attachments/ 下)。
+  image_path         TEXT,
+  image_byte_size    INTEGER CHECK(image_byte_size >= 0),
+  created_at         INTEGER NOT NULL,
+  CHECK ((kind = 'image') = (image_path IS NOT NULL))
 );
 
 CREATE TABLE turn_audio_merged (
@@ -350,11 +329,8 @@ CREATE INDEX idx_agent_runs_task
   ON agent_runs(task_id, created_at ASC, id ASC)
   WHERE task_id IS NOT NULL;
 
-CREATE INDEX idx_attachment_cached_images_lru
-  ON attachment_cached_images(last_used_at ASC, content_sha256 ASC);
-
-CREATE INDEX idx_attachment_vision_derivations_lru
-  ON attachment_vision_derivations(last_used_at ASC, id ASC);
+CREATE INDEX idx_attachment_vision_descriptions_lru
+  ON attachment_vision_descriptions(last_accessed_at ASC, attachment_id ASC);
 
 CREATE INDEX idx_audio_merged_session ON turn_audio_merged(session_id, created_at DESC);
 

@@ -2,16 +2,16 @@ import { estimateTextTokens } from '@ema-agent/token';
 import type { DocumentBlock, DocumentChunk, DocumentBlockKind } from '../types.js';
 
 export interface ChunkOptions {
-  maxTokens: number;   // default 512
-  overlap:   number;   // default 64
+  maxTokens: number;
+  overlap:   number;
   minTokens: number;   // default 20
   /** Asset id — used as prefix for chunk ids. Default 'doc'. */
   assetId?:  string;
 }
 
 export const DEFAULT_CHUNK_OPTIONS: ChunkOptions = {
-  maxTokens: 512,
-  overlap:   64,
+  maxTokens: 256,
+  overlap:   48,
   minTokens: 20,
 };
 

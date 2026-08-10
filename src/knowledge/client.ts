@@ -1,347 +1,164 @@
-// 负责知识库文档写入、重嵌入、混合检索与内存向量索引生命周期。
+// 负责单个知识库的文档写入、重嵌入、混合检索与内存向量索引。
 
+import type { EmbeddingModel, EmbeddingSpace } from '@ema-agent/embed';
+import { createEmbeddingSpace } from '@ema-agent/embed';
+import type { Reranker } from '@ema-agent/rerank';
+import type { VisionModel } from '@ema-agent/vision';
+import type { AssetUsage, ChunkPage } from '@ema-agent/storage';
 import type {
-  DocumentAsset, DocumentChunk, DocumentPreview,
-  IngestOptions, IngestResult, SearchOptions, AssetListPage,
-  KbSearchResult, DocumentSourceRef,
+  AssetListPage,
+  DocumentAsset,
+  DocumentChunk,
+  DocumentPreview,
+  DocumentSourceRef,
+  IngestOptions,
+  IngestResult,
+  KbSearchResult,
+  SearchOptions,
 } from './types.js';
-import type { EmbedRuntime, EmbeddingSpace } from '@ema-agent/embed';
-import type { RerankRuntime } from '@ema-agent/rerank';
-import type { ChunkPage, AssetUsage } from '@ema-agent/storage';
-import { ingest as runIngest } from './ingest/index.js';
+import type { KnowledgeModelRef } from './settings.js';
 import type { KnowledgeStore } from './store/index.js';
-import type { KbVisionAdapter } from './adapters/vision.js';
-import type { KbHydeAdapter }   from './adapters/hyde.js';
-import type { KbAutoQuestionAdapter } from './adapters/auto-questions.js';
-import { DocumentEventEmitter } from './events/emitter.js';
-import { weightedRank }         from './retrieval/hybrid.js';
-import { applyResultBudget }    from './retrieval/resultBudget.js';
-import type { VectorIndex }     from './index/vector-index.js';
-import { createVectorIndex }    from './index/factory.js';
-import { normalizeF32 } from './embed/normalize.js';
+import type { VectorIndex } from './index/vector-index.js';
+import { createVectorIndex } from './index/factory.js';
+import { ingest as runIngest, type IngestStage } from './ingest/index.js';
+import { weightedRank } from './retrieval/hybrid.js';
+import { applyResultBudget } from './retrieval/resultBudget.js';
 import { removeStagedAssetFiles } from './ingest/staging.js';
+import {
+  KnowledgeEmbeddingSpaceMismatchError,
+  KnowledgeInvalidRequestError,
+  KnowledgeNotConfiguredError,
+} from './errors.js';
 
-// rerank 分数在 RerankRuntime 出口已归一到 [0,1]；RRF 分按本批最高分归一。
-// 两路信号加权混合：rerank 低分结果被压后而不是整条消失，保留 RRF 命中的信息；
-// "知识库没有答案"由稀疏/dense 均无命中自然表达，不再用分数门槛制造。
 const RERANK_BLEND_WEIGHT = 0.6;
+const EMBED_BATCH_SIZE = 32;
+
+export interface KnowledgeEmbeddingSelection {
+  readonly providerConfigId: string;
+  readonly model: string;
+  readonly embedding: EmbeddingModel;
+}
+
+export interface KnowledgeRerankSelection {
+  readonly model: string;
+  readonly reranker: Reranker;
+}
+
+export interface KnowledgeVisionSelection {
+  readonly model: string;
+  readonly vision: VisionModel;
+}
 
 export interface KnowledgeClientDeps {
-  store:          KnowledgeStore;
-  embedRuntime?:  EmbedRuntime;
-  rerankRuntime?: RerankRuntime;
-  visionAdapter?: KbVisionAdapter;
-  hydeAdapter?:   KbHydeAdapter;
-  /** KB 根目录；提供时删除文档会同步清理 files/ 下的 staged 副本。 */
-  kbRoot?:        string;
-  /** Index-time question generation (RAGFlow-style). Interface only — unwired in V1,
-   *  pending a frontend/product decision on how questions feed embedding. */
-  autoQuestionAdapter?: KbAutoQuestionAdapter;
+  readonly store: KnowledgeStore;
+  readonly resolveEmbedding: () => KnowledgeEmbeddingSelection | undefined;
+  readonly resolveEmbeddingByRef: (ref: KnowledgeModelRef) => EmbeddingModel | undefined;
+  readonly resolveReranker: () => KnowledgeRerankSelection | undefined;
+  readonly resolveVision: () => KnowledgeVisionSelection | undefined;
+  readonly kbRoot?: string;
 }
 
 export class KnowledgeClient {
-  readonly events = new DocumentEventEmitter();
-
-  // In-memory HNSW (or brute-force fallback). null until init() is called.
-  private hnsw: VectorIndex | null = null;
-  private hnswSpaceId: string | null = null;
-  // chunkId → assetId, so HNSW hits can be filtered to the turn's selected docs.
+  private vectorIndex: VectorIndex | null = null;
+  private vectorIndexSpaceId: string | null = null;
   private readonly chunkToAsset = new Map<string, string>();
 
   constructor(private readonly deps: KnowledgeClientDeps) {}
 
-  /**
-   * Build the in-memory HNSW index from persisted BLOB embeddings.
-   * Must be called once after construction (or after a reembed completes).
-   * Safe to call again — clears and rebuilds the index.
-   */
-  async init(): Promise<void> {
-    // 当前空间要由一次真实 embedding 响应确定，不能从旧行猜测。
-    this.hnsw = null;
-    this.hnswSpaceId = null;
-    this.chunkToAsset.clear();
-  }
-
-  // ── Ingest ────────────────────────────────────────────────────────────────
-
-  async ingest(filePath: string, opts: IngestOptions): Promise<IngestResult> {
-    const result = await runIngest(filePath, opts, {
-      store:         this.deps.store,
-      events:        this.events,
-      embedRuntime:  this.deps.embedRuntime,
-      visionAdapter: this.deps.visionAdapter,
+  async ingest(
+    filePath: string,
+    options: IngestOptions,
+    onProgress?: (assetId: string, stage: IngestStage, progress: number) => void,
+  ): Promise<IngestResult> {
+    const result = await runIngest(filePath, options, {
+      store: this.deps.store,
+      embedding: this.deps.resolveEmbedding(),
+      vision: this.deps.resolveVision(),
+      onProgress,
     });
-
     const stored = this.deps.store.getAsset(result.asset.id);
     if (stored?.ebdSpaceId && stored.ebdDim) {
       await this.rebuildIndex(stored.ebdSpaceId, stored.ebdDim);
     }
-
     return result;
   }
 
-  private async rebuildIndex(spaceId: string, dim: number): Promise<void> {
-    // 先在局部变量中完整构建，再一次替换当前索引。构建中失败时，搜索仍可
-    // 使用上一份完整索引，不会观察到只写入一半的 HNSW 和映射表。
-    const nextIndex = await createVectorIndex(dim);
-    const nextChunkToAsset = new Map<string, string>();
-    const rows = this.deps.store.getAllEmbeddings(spaceId);
-    for (const { id, assetId, embedding } of rows) {
-      const vec = normalizeF32(bufferToFloat32(embedding));
-      nextIndex.add(id, vec);
-      nextChunkToAsset.set(id, assetId);
-    }
-    this.hnsw = nextIndex;
-    this.hnswSpaceId = spaceId;
-    this.chunkToAsset.clear();
-    for (const [chunkId, assetId] of nextChunkToAsset) {
-      this.chunkToAsset.set(chunkId, assetId);
-    }
-  }
-
-  private async ensureIndex(space: EmbeddingSpace): Promise<void> {
-    // Provider 配置中的 revision 改变时前端未必能感知；真实响应是最终权威。
-    this.deps.store.markStaleExcept(space.id);
-    if (this.hnswSpaceId !== space.id || this.hnsw?.dim !== space.dim) {
-      await this.rebuildIndex(space.id, space.dim);
-    }
-  }
-
-  // ── Embedding model invalidation ──────────────────────────────────────────
-
-  /**
-   * Call this when the user switches embedding providers/models.
-   * Marks all assets with a different model as stale in the DB and removes
-   * their chunk vectors from the in-memory HNSW index.
-   * Returns the number of assets marked stale.
-   */
   invalidateEmbeddings(newSpaceId: string): number {
     const count = this.deps.store.markStaleExcept(newSpaceId);
-    this.hnsw = null;
-    this.hnswSpaceId = null;
-    this.chunkToAsset.clear();
+    this.clearIndex();
     return count;
   }
 
-  /**
-   * 由 ReembedQueue 驱动的重建扫描: 逐资产重嵌, 单资产失败只记账不中断整场。
-   * Client 只发送逐资产进度事件并返回业务结果；终态落库和终态事件由
-   * ReembedQueue 在 CAS 成功后统一发布，避免 SSE 与持久状态互相矛盾。
-   */
-  async reembedSweep(opts: {
-    /** 缺省 = 全部 stale 资产; 有值 = 单文档重建。 */
-    assetId?: string;
-    ebdProviderId: string;
-    ebdModel: string;
-    taskId: string;
-    attempt: number;
-    signal: AbortSignal;
-    onProgress?: (done: number, total: number, failed: number) => void;
-  }): Promise<{
-    total: number;
-    done: number;
-    failed: Array<{ assetId: string; error: string }>;
-  }> {
-    if (!this.deps.embedRuntime) throw new Error('未配置 Embedding Provider');
+  async reembed(
+    input: {
+      readonly assetId?: string;
+      readonly embedding: KnowledgeModelRef;
+      readonly signal: AbortSignal;
+      readonly onProgress?: (completed: number, total: number) => void;
+    },
+  ): Promise<{ total: number; completed: number }> {
+    const model = this.deps.resolveEmbeddingByRef(input.embedding);
+    if (!model) {
+      throw new KnowledgeNotConfiguredError(
+        `Embedding 配置已删除或模型未启用: ${input.embedding.providerConfigId} / ${input.embedding.model}`,
+      );
+    }
 
-    const targets = opts.assetId
-      ? [opts.assetId]
-      : this.deps.store.listStaleAssets().map(asset => asset.id);
-    const total = targets.length;
-    let done = 0;
-    const failed: Array<{ assetId: string; error: string }> = [];
-    let resolvedSpace: EmbeddingSpace | undefined;
+    const assetIds = input.assetId
+      ? [input.assetId]
+      : this.deps.store.listStaleAssets().map((asset) => asset.id);
+    let completed = 0;
+    let operationSpace: EmbeddingSpace | undefined;
 
-    for (const assetId of targets) {
-      if (opts.signal.aborted) break;
-      try {
-        const assetSpace = await this.reembedAssetOrThrow(assetId, opts, resolvedSpace);
-        resolvedSpace ??= assetSpace;
-        done++;
-      } catch (error) {
-        failed.push({ assetId, error: error instanceof Error ? error.message : String(error) });
-      }
-      opts.onProgress?.(done, total, failed.length);
-      this.events.emit({
+    for (const assetId of assetIds) {
+      if (input.signal.aborted) throw input.signal.reason;
+      operationSpace = await this.reembedAsset(
         assetId,
-        taskId: opts.taskId,
-        attempt: opts.attempt,
-        kind: 'embed',
-        progress: total === 0 ? 1 : (done + failed.length) / total,
-        totalItems: total,
-        completedItems: done,
-        failedItems: failed.length,
-        operation: 'reembed',
-      });
+        input.embedding,
+        model,
+        operationSpace,
+        input.signal,
+      );
+      completed++;
+      input.onProgress?.(completed, assetIds.length);
     }
 
-    if (opts.signal.aborted) {
-      // 已经写入 SQLite 的成功分片仍然正确，但旧内存索引可能与数据库不一致。
-      // 取消时直接清空派生缓存，后续搜索按 SQL exact-space fallback 工作。
-      this.hnsw = null;
-      this.hnswSpaceId = null;
-      this.chunkToAsset.clear();
-      return { total, done, failed };
+    if (operationSpace) {
+      this.deps.store.markStaleExcept(operationSpace.id);
+      await this.rebuildIndex(operationSpace.id, operationSpace.dim);
     }
-
-    // 一场任务只重建一次索引。逐资产重建会导致同一空间的后续资产无法进入
-    // 已存在的 HNSW；统一在所有成功资产落库后，从 SQLite 事实源完整重建。
-    if (resolvedSpace) {
-      this.deps.store.markStaleExcept(resolvedSpace.id);
-      await this.rebuildIndex(resolvedSpace.id, resolvedSpace.dim);
-    }
-    return { total, done, failed };
+    return { total: assetIds.length, completed };
   }
 
-  /** 单资产重嵌, 失败原样抛出(由 sweep 逐资产捕获记账)。 */
-  private async reembedAssetOrThrow(
-    assetId: string,
-    opts: { ebdProviderId: string; ebdModel: string; signal?: AbortSignal },
-    expectedSpace?: EmbeddingSpace,
-  ): Promise<EmbeddingSpace> {
-    if (!this.deps.embedRuntime) throw new Error('未配置 Embedding Provider');
-    const chunks = this.deps.store.getChunks(assetId);
-    let space: EmbeddingSpace | undefined;
-    const BATCH = 32;
-    for (let i = 0; i < chunks.length; i += BATCH) {
-      const batch = chunks.slice(i, i + BATCH);
-      const res = await this.deps.embedRuntime.embed({
-        providerId: opts.ebdProviderId,
-        model:      opts.ebdModel,
-        texts:      batch.map(c => c.text),
-        signal:     opts.signal,
-      });
-      if (expectedSpace && expectedSpace.id !== res.space.id) {
-        throw new Error('Embedding space changed between assets during re-embed');
-      }
-      if (space && space.id !== res.space.id) throw new Error('Embedding space changed during re-embed');
-      space = res.space;
-      for (let j = 0; j < batch.length; j++) {
-        const vec = res.embeddings[j];
-        if (vec?.length) {
-          this.deps.store.storeEmbedding(batch[j]!.id, vec, res.space.id);
-        }
-      }
-    }
-    if (!space) throw new Error('Embedding provider returned no space');
-    this.deps.store.setEmbeddingSpace(assetId, space);
-    return space;
-  }
+  async search(query: string, options: SearchOptions = {}): Promise<KbSearchResult> {
+    validateSearch(query, options);
+    if (options.assetIds?.length === 0) return { query, hits: [] };
 
-  // ── Search ────────────────────────────────────────────────────────────────
+    const assetIds = options.assetIds
+      ? this.deps.store.filterExistingAssetIds(options.assetIds)
+      : undefined;
+    if (options.assetIds && assetIds?.length === 0) return { query, hits: [] };
 
-  async search(query: string, opts: SearchOptions = {}): Promise<KbSearchResult> {
-    const topK  = opts.topK  ?? 10;
-    const alpha = opts.alpha ?? 0.5;
-    const scopedAssetIds = opts.assetIds && opts.assetIds.length > 0
-      ? this.deps.store.recordActivation(opts.assetIds, {
-          sessionId: opts.sessionId,
-          turnId: opts.turnId,
-        })
-      : opts.assetIds;
+    const topK = options.topK ?? 10;
+    const alpha = options.alpha ?? 0.5;
+    const searchOptions = { assetIds, topK: topK * 3 };
+    const selected = assetIds ? new Set(assetIds) : undefined;
+    const sparse = this.deps.store.searchFts(query, searchOptions)
+      .map((hit) => ({ id: hit.chunkId, score: hit.score }));
+    const dense = await this.searchDense(query, topK, searchOptions, selected, options.signal);
+    let ranked = weightedRank(sparse, dense, alpha, topK * 2);
 
-    // 调用方明确指定了文档范围却没有任何 ID 属于当前 KB 时必须返回空结果。
-    // 不能把过滤后的 [] 解释成“不限文档”，否则恶意或过期 scope 会扩大读取范围。
-    if (opts.assetIds && opts.assetIds.length > 0 && scopedAssetIds?.length === 0) {
-      return { query, hits: [] };
-    }
-
-    const searchOpts = { assetIds: scopedAssetIds, topK: topK * 3 };
-    const selected = scopedAssetIds ? new Set(scopedAssetIds) : null;
-
-    const toRanked = (hits: Array<{ chunkId: string; score: number }>) =>
-      hits.map(h => ({ id: h.chunkId, score: h.score }));
-
-    // ── Sparse (FTS5 BM25, always available) ──────────────────────────────────
-    const sparseHits = toRanked(this.deps.store.searchFts(query, searchOpts));
-
-    // ── Dense (HNSW in-memory, falls back to SQL cosine when not initialised) ─
-    let denseHits: typeof sparseHits = [];
-    if (this.deps.embedRuntime && opts.ebdProviderId && opts.ebdModel) {
+    const rerank = this.deps.resolveReranker();
+    if (rerank && ranked.length > 0) {
       try {
-        // Optional HyDE: generate a hypothetical passage before embedding
-        let embedQuery = query;
-        if (this.deps.hydeAdapter) {
-          try {
-            embedQuery = await this.deps.hydeAdapter.generateHypoDoc(query, opts.signal);
-          } catch {
-            // HyDE failed — fall back to raw query
-          }
-        }
-
-        const res = await this.deps.embedRuntime.embed({
-          providerId: opts.ebdProviderId,
-          model:      opts.ebdModel,
-          texts:      [embedQuery],
-          signal:     opts.signal,
-          usageContext: {
-            callId: randomUUID(),
-            sessionId: opts.sessionId,
-            turnId: opts.turnId,
-          },
-        });
-        const queryVec = res.embeddings[0];
-        if (queryVec?.length) {
-          await this.ensureIndex(res.space);
-          if (this.hnsw) {
-            // HNSW path: search with extra budget, then filter by scope
-            const f32 = normalizeF32(new Float32Array(queryVec));
-            const raw = this.hnsw.search(f32, topK * 6);
-            denseHits = raw
-              .filter(h => {
-                const assetId = this.chunkToAsset.get(h.id);
-                if (!assetId) return false;
-                // Filter to the turn's selected KBs (null = all KBs).
-                return selected ? selected.has(assetId) : true;
-              })
-              .slice(0, topK * 3)
-              .map(h => ({ id: h.id, score: h.score }));
-          } else {
-            // Fallback: O(n) SQL cosine scan
-            denseHits = toRanked(this.deps.store.searchByEmbedding(queryVec, res.space.id, searchOpts));
-          }
-        }
-      } catch {
-        // Embedding unavailable — fall back to sparse-only
-      }
-    }
-
-    // ── Hybrid fusion ─────────────────────────────────────────────────────────
-    let ranked = weightedRank(sparseHits, denseHits, alpha, topK * 2);
-
-    // ── Optional rerank ───────────────────────────────────────────────────────
-    if (this.deps.rerankRuntime && opts.rerankProviderId && opts.rerankModel && ranked.length > 0) {
-      const blendWeight = opts.rerankBlendWeight ?? RERANK_BLEND_WEIGHT;
-      try {
-        const rerankRes = await this.deps.rerankRuntime.rerank({
-          providerId: opts.rerankProviderId,
-          model:      opts.rerankModel,
+        const response = await rerank.reranker.rerank({
+          model: rerank.model,
           query,
-          documents:  ranked.map(r => {
-            const c = this.deps.store.getChunk(r.id);
-            return c?.text ?? '';
-          }),
+          documents: ranked.map((item) => this.deps.store.getChunk(item.id)?.text ?? ''),
           topK,
-          usageContext: {
-            callId: randomUUID(),
-            sessionId: opts.sessionId,
-            turnId: opts.turnId,
-          },
+          signal: options.signal,
         });
-        const maxRrf = ranked[0]?.score ?? 0;
-        const rerankById = new Map(
-          rerankRes.results
-            .filter((r) => r.index >= 0 && r.index < ranked.length)
-            .map((r) => [ranked[r.index]!.id, r.score] as const),
-        );
-        ranked = ranked
-          .map((r) => ({
-            id:    r.id,
-            score: (1 - blendWeight) * (maxRrf > 0 ? r.score / maxRrf : 0)
-                 + blendWeight * (rerankById.get(r.id) ?? 0),
-          }))
-          .sort((a, b) => b.score - a.score)
-          .slice(0, topK);
+        ranked = blendRerank(ranked, response.results, options.rerankBlendWeight ?? RERANK_BLEND_WEIGHT, topK);
       } catch {
         ranked = ranked.slice(0, topK);
       }
@@ -349,94 +166,226 @@ export class KnowledgeClient {
       ranked = ranked.slice(0, topK);
     }
 
-    // ── Build result hits with source attribution ─────────────────────────────
-    // Parent-child (small-to-big): a matched child returns its parent window
-    // (momText) for richer context, and sibling children of the same parent
-    // collapse into one hit (keep the best-scored, which `ranked` lists first).
-    const seenMom = new Set<string>();
-    const hits: KbSearchResult['hits'] = [];
-    for (const r of ranked) {
-      const chunk = this.deps.store.getChunk(r.id);
-      if (!chunk?.assetId) continue;
-      if (chunk.momId) {
-        if (seenMom.has(chunk.momId)) continue;
-        seenMom.add(chunk.momId);
-      }
-      const asset = this.deps.store.getAsset(chunk.assetId);
-      if (!asset) continue;
-      const source: DocumentSourceRef = {
-        assetId:      asset.id,
-        fileName:     asset.fileName,
-        page:         chunk.page,
-        sectionPath:  chunk.sectionPath,
-        chunkPreview: chunk.text.slice(0, 200),  // preview stays the matched child
-      };
-      hits.push({
-        chunkId: chunk.id,
-        text:    chunk.momText ?? chunk.text,    // return the parent window when present
-        markdown: chunk.markdown,
-        score:   r.score,
-        source,
-      });
-    }
-
-    return { query, hits: applyResultBudget(hits, opts.maxResultChars) };
+    return {
+      query,
+      hits: applyResultBudget(this.buildHits(ranked), options.maxResultChars),
+    };
   }
 
-  // ── Asset accessors ───────────────────────────────────────────────────────
-
-  getAsset(id: string): DocumentAsset | undefined              { return this.deps.store.getAsset(id); }
-  getChunks(assetId: string): DocumentChunk[]                  { return this.deps.store.getChunks(assetId); }
-  getChunksPaged(assetId: string, opts: { cursor?: number; limit?: number } = {}): ChunkPage {
-    return this.deps.store.getChunksPaged(assetId, opts);
+  getAsset(id: string): DocumentAsset | undefined {
+    return this.deps.store.getAsset(id);
   }
+
+  getChunks(assetId: string): DocumentChunk[] {
+    return this.deps.store.getChunks(assetId);
+  }
+
+  getChunksPaged(assetId: string, options: { cursor?: number; limit?: number } = {}): ChunkPage {
+    return this.deps.store.getChunksPaged(assetId, options);
+  }
+
   getAssetUsage(assetId: string): AssetUsage {
     return this.deps.store.getAssetUsage(assetId);
   }
-  getPreview(assetId: string): DocumentPreview | undefined     { return this.deps.store.getPreview(assetId); }
 
-  /** Cursor-paginated KB list for the UI (newest first), optional keyword. */
-  listAssets(opts: { cursor?: string; limit?: number; keyword?: string } = {}): AssetListPage {
-    return this.deps.store.listAssetsPaged(opts);
+  getPreview(assetId: string): DocumentPreview | undefined {
+    return this.deps.store.getPreview(assetId);
   }
 
-  /** KBs not selected in the last `days` days (default 30). For the stale-KB view. */
+  listAssets(options: { cursor?: string; limit?: number; keyword?: string } = {}): AssetListPage {
+    return this.deps.store.listAssetsPaged(options);
+  }
+
   listInactiveAssets(days = 30): DocumentAsset[] {
     return this.deps.store.listInactiveAssets(Date.now() - days * 24 * 60 * 60 * 1000);
   }
 
   async deleteAsset(id: string): Promise<void> {
-    // Remove from HNSW before deleting from DB
-    if (this.hnsw) {
+    if (this.vectorIndex) {
       for (const [chunkId, assetId] of this.chunkToAsset) {
-        if (assetId === id) {
-          this.hnsw.remove(chunkId);
-          this.chunkToAsset.delete(chunkId);
-        }
+        if (assetId !== id) continue;
+        this.vectorIndex.remove(chunkId);
+        this.chunkToAsset.delete(chunkId);
       }
     }
     this.deps.store.deleteAsset(id);
-    if (this.deps.kbRoot) {
-      // DB 行已是事实源；staged 清理失败只留孤儿文件，不影响删除语义。
-      try {
-        await removeStagedAssetFiles(this.deps.kbRoot, id);
-      } catch (error) {
-        console.warn(`[kb] staged 文件清理失败（文档已删除）: ${errorMessage(error)}`);
+    if (!this.deps.kbRoot) return;
+    try {
+      await removeStagedAssetFiles(this.deps.kbRoot, id);
+    } catch (error) {
+      console.warn(`[kb] staged 文件清理失败（文档已删除）: ${errorMessage(error)}`);
+    }
+  }
+
+  private async searchDense(
+    query: string,
+    topK: number,
+    searchOptions: { assetIds?: string[]; topK: number },
+    selected: ReadonlySet<string> | undefined,
+    signal: AbortSignal | undefined,
+  ): Promise<Array<{ id: string; score: number }>> {
+    const embedding = this.deps.resolveEmbedding();
+    if (!embedding) return [];
+    try {
+      const response = await embedding.embedding.embed({ model: embedding.model, texts: [query], signal });
+      const vector = response.embeddings[0];
+      if (!vector) return [];
+      const space = createEmbeddingSpace({
+        providerConfigId: embedding.providerConfigId,
+        model: embedding.model,
+        dim: response.dim,
+      });
+      await this.ensureIndex(space);
+      if (!this.vectorIndex) {
+        return this.deps.store.searchByEmbedding([...vector], space.id, searchOptions)
+          .map((hit) => ({ id: hit.chunkId, score: hit.score }));
       }
+      return this.vectorIndex.search(new Float32Array(vector), topK * 6)
+        .filter((hit) => {
+          const assetId = this.chunkToAsset.get(hit.id);
+          return assetId !== undefined && (!selected || selected.has(assetId));
+        })
+        .slice(0, topK * 3)
+        .map((hit) => ({ id: hit.id, score: hit.score }));
+    } catch {
+      return [];
+    }
+  }
+
+  private buildHits(ranked: readonly { id: string; score: number }[]): KbSearchResult['hits'] {
+    const seenParents = new Set<string>();
+    const hits: KbSearchResult['hits'] = [];
+    for (const item of ranked) {
+      const chunk = this.deps.store.getChunk(item.id);
+      if (!chunk?.assetId) continue;
+      if (chunk.momId) {
+        if (seenParents.has(chunk.momId)) continue;
+        seenParents.add(chunk.momId);
+      }
+      const asset = this.deps.store.getAsset(chunk.assetId);
+      if (!asset) continue;
+      const source: DocumentSourceRef = {
+        assetId: asset.id,
+        fileName: asset.fileName,
+        page: chunk.page,
+        sectionPath: chunk.sectionPath,
+        chunkPreview: chunk.text.slice(0, 200),
+      };
+      hits.push({
+        chunkId: chunk.id,
+        text: chunk.momText ?? chunk.text,
+        markdown: chunk.markdown,
+        score: item.score,
+        source,
+      });
+    }
+    return hits;
+  }
+
+  private async reembedAsset(
+    assetId: string,
+    selection: KnowledgeModelRef,
+    embedding: EmbeddingModel,
+    expectedSpace: EmbeddingSpace | undefined,
+    signal: AbortSignal,
+  ): Promise<EmbeddingSpace> {
+    const chunks = this.deps.store.getChunks(assetId);
+    let space: EmbeddingSpace | undefined;
+    for (let offset = 0; offset < chunks.length; offset += EMBED_BATCH_SIZE) {
+      const batch = chunks.slice(offset, offset + EMBED_BATCH_SIZE);
+      const response = await embedding.embed({
+        model: selection.model,
+        texts: batch.map((chunk) => chunk.text),
+        signal,
+      });
+      const responseSpace = createEmbeddingSpace({
+        providerConfigId: selection.providerConfigId,
+        model: selection.model,
+        dim: response.dim,
+      });
+      const required = space ?? expectedSpace;
+      if (required && required.id !== responseSpace.id) {
+        throw new KnowledgeEmbeddingSpaceMismatchError(required.id, responseSpace.id);
+      }
+      space = responseSpace;
+      for (let index = 0; index < batch.length; index++) {
+        this.deps.store.storeEmbedding(batch[index]!.id, [...response.embeddings[index]!], responseSpace.id);
+      }
+    }
+    if (!space) throw new Error(`Knowledge asset has no chunks: ${assetId}`);
+    this.deps.store.setEmbeddingSpace(assetId, space);
+    return space;
+  }
+
+  private async ensureIndex(space: EmbeddingSpace): Promise<void> {
+    this.deps.store.markStaleExcept(space.id);
+    if (this.vectorIndexSpaceId !== space.id || this.vectorIndex?.dim !== space.dim) {
+      await this.rebuildIndex(space.id, space.dim);
+    }
+  }
+
+  private async rebuildIndex(spaceId: string, dim: number): Promise<void> {
+    const next = await createVectorIndex(dim);
+    const mapping = new Map<string, string>();
+    for (const row of this.deps.store.getAllEmbeddings(spaceId)) {
+      next.add(row.id, bufferToFloat32(row.embedding));
+      mapping.set(row.id, row.assetId);
+    }
+    this.vectorIndex = next;
+    this.vectorIndexSpaceId = spaceId;
+    this.chunkToAsset.clear();
+    for (const [chunkId, assetId] of mapping) this.chunkToAsset.set(chunkId, assetId);
+  }
+
+  private clearIndex(): void {
+    this.vectorIndex = null;
+    this.vectorIndexSpaceId = null;
+    this.chunkToAsset.clear();
+  }
+}
+
+function validateSearch(query: string, options: SearchOptions): void {
+  if (!query.trim()) throw new KnowledgeInvalidRequestError('Knowledge query must not be empty');
+  if (options.topK !== undefined && (!Number.isSafeInteger(options.topK) || options.topK < 1 || options.topK > 20)) {
+    throw new KnowledgeInvalidRequestError('Knowledge topK must be an integer between 1 and 20');
+  }
+  for (const value of [options.alpha, options.rerankBlendWeight]) {
+    if (value !== undefined && (!Number.isFinite(value) || value < 0 || value > 1)) {
+      throw new KnowledgeInvalidRequestError('Knowledge ranking weights must be between 0 and 1');
     }
   }
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+function blendRerank(
+  ranked: readonly { id: string; score: number }[],
+  reranked: readonly { index: number; score: number }[],
+  weight: number,
+  topK: number,
+): Array<{ id: string; score: number }> {
+  const maxRank = ranked[0]?.score ?? 0;
+  const byId = new Map(
+    reranked
+      .filter((item) => item.index >= 0 && item.index < ranked.length)
+      .map((item) => [ranked[item.index]!.id, item.score] as const),
+  );
+  return ranked
+    .map((item) => ({
+      id: item.id,
+      score: (1 - weight) * (maxRank > 0 ? item.score / maxRank : 0)
+        + weight * (byId.get(item.id) ?? 0),
+    }))
+    .sort((left, right) => right.score - left.score)
+    .slice(0, topK);
+}
 
-function bufferToFloat32(buf: Buffer): Float32Array {
-  const f32 = new Float32Array(buf.byteLength / 4);
-  for (let i = 0; i < f32.length; i++) f32[i] = buf.readFloatLE(i * 4);
-  return f32;
+function bufferToFloat32(buffer: Buffer): Float32Array {
+  const values = new Float32Array(buffer.byteLength / 4);
+  for (let index = 0; index < values.length; index++) {
+    values[index] = buffer.readFloatLE(index * 4);
+  }
+  return values;
 }
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
-// 知识库客户端负责文档检索、向量召回和重排，并把 Turn 身份传给模型调用账本。
-import { randomUUID } from 'node:crypto';
