@@ -2,7 +2,7 @@
 import { Buffer }                from 'node:buffer';
 import { randomUUID }            from 'node:crypto';
 import type { CredentialFacade } from '@ema-agent/credential';
-import type { McpServersRepo }   from '@ema-agent/storage';
+import type { McpServersRepo, McpServerRow } from '@ema-agent/storage';
 import type { McpInstallProvenance, McpServerConfig, McpServerRecord, McpToolInfo } from './types.js';
 import { McpInstallProvenanceSchema, McpServerConfigSchema, McpToolInfoListSchema } from './types.js';
 import { McpServerNotFoundError, McpUnsupportedTransportError } from './errors.js';
@@ -131,14 +131,7 @@ export class McpServerStore {
 
   // ── 私有 ──────────────────────────────────────────────────────────────
 
-  private rowToRecord(row: {
-    id: string; name: string; source_url: string | null;
-    install_source?: 'manual' | 'import' | 'registry';
-    registry_source_id?: string | null; registry_entry_id?: string | null;
-    registry_version?: string | null;
-    config_json: string; tools_cache?: string | null; cached_at?: number;
-    enabled: number; installed_at: number;
-  }): McpServerRecord {
+  private rowToRecord(row: McpServerRow): McpServerRecord {
     const rawConfig = JSON.parse(row.config_json) as unknown;
     if (
       rawConfig !== null &&
@@ -182,7 +175,7 @@ export class McpServerStore {
         : { sourceKind: 'manual' },
       config:      this.revealConfig(row.id, McpServerConfigSchema.parse(rawConfig)),
       cachedTools,
-      cachedAt:    row.cached_at ?? 0,
+      cachedAt:    row.cached_at,
       enabled:     row.enabled === 1,
       installedAt: row.installed_at,
     };

@@ -1,9 +1,10 @@
-// 这里为 stdio 或 Streamable HTTP 配置创建 MCP SDK 连接并负责清理。
+// 为 stdio 或 Streamable HTTP 配置创建 MCP SDK 连接并负责清理。
 import { Client }             from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport, getDefaultEnvironment } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { McpServerConfig } from './types.js';
 import { McpConnectionError, McpTimeoutError } from './errors.js';
+import { linkedAbortController, waitForPromise, withTimeout } from './runtime-utils.js';
 
 const CLIENT_NAME    = 'ema-agent';
 const CLIENT_VERSION = '1.0.0';
@@ -82,43 +83,30 @@ export async function openConnection(
     { capabilities: {} },
   );
 
-  // SDK 原生接收 AbortSignal；本地 timeout 触发时同时 abort 握手并关闭 transport，
+  // 外部取消经 linked controller 透传给 SDK;本地超时触发时同时 abort 握手,
   // 不能只让外层 Promise 提前返回而让 stdio 子进程或 HTTP 请求继续运行。
-  const controller = new AbortController();
-  const relayAbort = () => controller.abort(signal?.reason);
-  if (signal?.aborted) relayAbort();
-  else signal?.addEventListener('abort', relayAbort, { once: true });
-
-  const connectPromise = client.connect(transport, {
-    signal: controller.signal,
-    timeout: CONNECT_TIMEOUT_MS,
-    maxTotalTimeout: CONNECT_TIMEOUT_MS,
-  });
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timeoutId = setTimeout(() => {
-      const error = new McpTimeoutError(serverName, 'connect', CONNECT_TIMEOUT_MS);
-      controller.abort(error);
-      reject(error);
-    }, CONNECT_TIMEOUT_MS);
-  });
-
-  const cancelled = new Promise<never>((_, reject) => {
-    const rejectAbort = () => reject(abortReason(controller.signal));
-    if (controller.signal.aborted) rejectAbort();
-    else controller.signal.addEventListener('abort', rejectAbort, { once: true });
-  });
-
+  const linked = linkedAbortController(signal);
   try {
-    await Promise.race([connectPromise, timeout, cancelled]);
+    await waitForPromise(
+      withTimeout(
+        client.connect(transport, {
+          signal: linked.controller.signal,
+          timeout: CONNECT_TIMEOUT_MS,
+          maxTotalTimeout: CONNECT_TIMEOUT_MS,
+        }),
+        CONNECT_TIMEOUT_MS,
+        () => new McpTimeoutError(serverName, 'connect', CONNECT_TIMEOUT_MS),
+        (error) => linked.controller.abort(error),
+      ),
+      linked.controller.signal,
+    );
   } catch (err) {
     // 失败时尝试优雅关闭 transport
     try { await transport.close(); } catch { /* ignore */ }
-    if (err instanceof McpTimeoutError || controller.signal.aborted) throw err;
+    if (err instanceof McpTimeoutError || linked.controller.signal.aborted) throw err;
     throw new McpConnectionError(serverName, (err as Error).message ?? String(err));
   } finally {
-    if (timeoutId !== undefined) clearTimeout(timeoutId);
-    signal?.removeEventListener('abort', relayAbort);
+    linked.dispose();
   }
 
   const cleanup = async () => {
@@ -126,9 +114,4 @@ export async function openConnection(
   };
 
   return { client, cleanup };
-}
-
-function abortReason(signal: AbortSignal): Error {
-  if (signal.reason instanceof Error) return signal.reason;
-  return new DOMException('The MCP connection was aborted', 'AbortError');
 }

@@ -10,7 +10,7 @@ import type { McpToolOutput }    from './execution.js';
 import { projectMcpToolOutput }  from './execution.js';
 import { assertMcpToolSchemaLimits } from './toolSchemaLimits.js';
 
-const MAX_DESCRIPTION_LEN = 2048;
+const MAX_DESCRIPTION_LEN = 4096;
 
 // MCP 工具不需要任何宿主业务能力;单次调用身份与取消信号来自 ToolInvocation。
 type McpToolContext = Record<string, never>;

@@ -1,10 +1,10 @@
 // MCP 工具调用的协议出口:超时、取消、结果限界与模型投影的唯一实现。
 import { CallToolResultSchema } from '@modelcontextprotocol/sdk/types.js';
-import type { CallToolResult }  from '@modelcontextprotocol/sdk/types.js';
 import type { Client }          from '@modelcontextprotocol/sdk/client/index.js';
 import type { ToolResultContentPart } from '@ema-agent/llm';
 import { Buffer }               from 'node:buffer';
 import { McpToolCallError }     from './errors.js';
+import { linkedAbortController, waitForPromise, withTimeout } from './runtime-utils.js';
 
 const DEFAULT_TOOL_TIMEOUT_MS = 120_000; // 2 分钟 - 同 bash 默认;可被 server 配置 toolTimeoutSec 覆盖
 const MAX_RESULT_BYTES = 1024 * 1024;
@@ -40,40 +40,28 @@ export interface CallToolOptions {
 export async function callMcpTool(opts: CallToolOptions): Promise<McpToolOutput> {
   const { client, serverName, toolName, args, signal, timeoutMs } = opts;
   const ms = timeoutMs ?? DEFAULT_TOOL_TIMEOUT_MS;
-  const controller = new AbortController();
-  const relayAbort = () => controller.abort(signal?.reason);
-  if (signal?.aborted) relayAbort();
-  else signal?.addEventListener('abort', relayAbort, { once: true });
-
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    timeoutId = setTimeout(() => {
-      const error = new McpToolCallError(serverName, toolName, `timed out after ${ms}ms`);
-      controller.abort(error);
-      reject(error);
-    }, ms);
-  });
-  const cancelled = new Promise<never>((_, reject) => {
-    const rejectAbort = () => reject(abortReason(controller.signal, serverName, toolName));
-    if (controller.signal.aborted) rejectAbort();
-    else controller.signal.addEventListener('abort', rejectAbort, { once: true });
-  });
+  // 外部取消经 linked controller 透传给 SDK;本地超时同时 abort 在途调用,
+  // 不能让外层 Promise 提前返回而调用仍在 Server 侧悬挂。
+  const linked = linkedAbortController(signal);
 
   try {
-    const callPromise = client.callTool(
-      { name: toolName, arguments: args },
-      CallToolResultSchema,
-      {
-        signal: controller.signal,
-        timeout: ms,
-        maxTotalTimeout: ms,
-      },
+    const result = await waitForPromise(
+      withTimeout(
+        client.callTool(
+          { name: toolName, arguments: args },
+          CallToolResultSchema,
+          {
+            signal: linked.controller.signal,
+            timeout: ms,
+            maxTotalTimeout: ms,
+          },
+        ),
+        ms,
+        () => new McpToolCallError(serverName, toolName, `timed out after ${ms}ms`),
+        (error) => linked.controller.abort(error),
+      ),
+      linked.controller.signal,
     );
-    const result = await Promise.race([
-      callPromise,
-      timeoutPromise,
-      cancelled,
-    ]) as CallToolResult;
 
     if (result.isError) {
       const text = Array.isArray(result.content) && result.content.length > 0
@@ -107,8 +95,7 @@ export async function callMcpTool(opts: CallToolOptions): Promise<McpToolOutput>
       ...(isRecord(result._meta) ? { meta: result._meta } : {}),
     };
   } finally {
-    if (timeoutId !== undefined) clearTimeout(timeoutId);
-    signal?.removeEventListener('abort', relayAbort);
+    linked.dispose();
   }
 }
 
@@ -325,13 +312,4 @@ function jsonBytes(value: unknown): number {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-function abortReason(
-  signal: AbortSignal,
-  serverName: string,
-  toolName: string,
-): Error {
-  if (signal.reason instanceof Error) return signal.reason;
-  return new McpToolCallError(serverName, toolName, 'aborted');
 }

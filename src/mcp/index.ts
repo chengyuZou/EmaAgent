@@ -46,6 +46,7 @@ export type {
 export {
   McpConnectionError,
   McpToolCallError,
+  McpToolSchemaLimitError,
   McpTimeoutError,
   McpServerNotFoundError,
   McpConnectionSupersededError,

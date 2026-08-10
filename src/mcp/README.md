@@ -42,6 +42,7 @@ McpToolOutput / projectMcpToolOutput
 
 - **凭据边界**:stdio `env` 与 http `headers` 的全部值在写边界 `protect`、读边界 `reveal`,AAD 绑定记录 id;domain 形式永远是明文,连接层不知道加密存在。备份导出只含密文信封。
 - **启动路径**:`primeFromCache()` 用 SQL `tools_cache` 预填工具(不拉起进程),`discoverUncached()` 后台探测无缓存 server;真实 transport 在首次 `callTool` 懒建连。不做开机急切全连。
+- **生命周期配对收在领域内**:禁用即断开并摘除全部工具;启用即以缓存恢复惰性可见;删除即先断开。禁用服务器的 `connect`/`callTool` 一律拒绝(不拉进程、不发请求)。`callTool` 走 `connectConfig` 管道:懒连接与配置漂移重连共用 configKey 判别,更新配置后不会用到旧连接。
 - **Tool 注册**:MCP 工具经 `ToolRegistry.registerMcpBatch` 原子替换;当前根 Turn 的 ToolPool 已冻结,`list_changed`/重连只影响下一根 Turn。
 - **annotations 单向**:远端自报 `readOnlyHint` 只进 UI 展示;`destructiveHint` 只能把权限风险提到 high,任何自报都不能降低本地风险或开放并发。
 - **结果两道阀**:协议层 1MB/100块/256KB 二进制(防异常 Server);模型投影走 Tool 统一的 50KB 结果预算。`_meta` 只进 data 槽,绝不发给模型。

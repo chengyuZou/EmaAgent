@@ -1,4 +1,3 @@
-// MCP 公共类型描述服务器配置、安装溯源、工具发现结果、连接状态和公开 Schema。
 import { z } from 'zod';
 import { MAX_MCP_TOOLS_PER_SERVER } from './toolSchemaLimits.js';
 

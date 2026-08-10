@@ -106,7 +106,9 @@ function resolvePackage(
   const env: Record<string, string> = {};
   const requiredInputs: McpRequiredInput[] = [];
   for (const envVar of pkg.environment_variables ?? []) {
-    if (envVar.default !== undefined) {
+    // 带 {placeholder} 模板的 default 不落库(会把模板字符串原样写进子进程环境);
+    // 与 header 同规则:必填的冒到安装表单,可选的直接丢弃。
+    if (envVar.default !== undefined && !hasTemplate(envVar.default)) {
       env[envVar.name] = envVar.default;
     } else if (envVar.is_required) {
       requiredInputs.push({

@@ -1,4 +1,3 @@
-// 这里集中定义 MCP 连接、调用、超时、权限和协议迁移错误。
 export class McpConnectionError extends Error {
   constructor(serverName: string, message: string) {
     super(`[MCP:${serverName}] Connection failed: ${message}`);
