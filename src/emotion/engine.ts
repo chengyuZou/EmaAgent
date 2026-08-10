@@ -14,7 +14,6 @@ import {
 interface SessionEmotionState {
   state:               EmotionStateInternal;
   scanner:             StreamingActScanner;
-  strippedAccumulated: string;
 }
 
 // ── EmotionEngine ─────────────────────────────────────────────────────────────
@@ -83,7 +82,6 @@ export class EmotionEngine {
     this.sessions.set(sessionId as string, {
       state:               existing?.state ?? makeInitialState(),
       scanner:             new StreamingActScanner(),
-      strippedAccumulated: '',
     });
   }
 
@@ -117,7 +115,6 @@ export class EmotionEngine {
     if (!s) return { cleaned: delta, events: [] };
 
     const { cleaned, tags } = s.scanner.scan(delta);
-    s.strippedAccumulated += cleaned;
     return { cleaned, events: this.tagsToEvents(tags, turnId, sessionId, s) };
   }
 
@@ -133,7 +130,6 @@ export class EmotionEngine {
     if (!s) return { cleaned: '', events: [] };
 
     const { cleaned } = s.scanner.flush();
-    if (cleaned) s.strippedAccumulated += cleaned;
     void turnId;
     return { cleaned, events: [] };
   }

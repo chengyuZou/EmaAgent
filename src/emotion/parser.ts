@@ -24,7 +24,7 @@ const PARTIAL_TAG_START_RE = /<\|/;
 
 /**
  * Stateful scanner that handles ACT tags split across streaming deltas.
- *```
+ *
  * Usage:
  *   const scanner = new StreamingActScanner();
  *   for await (const chunk of stream) {
@@ -32,7 +32,6 @@ const PARTIAL_TAG_START_RE = /<\|/;
  *     // use cleaned for SSE output, tags for state updates
  *   }
  *   const { cleaned } = scanner.flush(); // release any buffered tail
- * ```
  */
 export class StreamingActScanner {
   /**
@@ -64,8 +63,7 @@ export class StreamingActScanner {
     // Everything after the last complete tag
     const remainder = input.slice(lastEnd);
 
-    // Check for a partial tag starting somewhere in the remainder.
-    // We look for the LAST 【 that has no matching 】 after it.
+    // 检查 remainder 里是否有未闭合的 <|——它可能是跨 chunk 的半截 tag。
     const partialIdx = lastPartialStart(remainder);
     if (partialIdx !== -1) {
       cleanedParts.push(remainder.slice(0, partialIdx));
