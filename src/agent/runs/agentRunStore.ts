@@ -44,20 +44,6 @@ export class AgentRunStore {
   constructor(private readonly repo: AgentRunsRepo) {}
 
   start(input: AgentRunStart): AgentRun {
-    const existing = this.repo.findById(input.agentRunId);
-    if (existing) {
-      const run = fromRow(existing);
-      if (
-        run.sessionId !== input.sessionId
-        || run.parentTurnId !== input.parentTurnId
-        || run.taskId !== input.taskId
-        || run.kind !== input.kind
-      ) {
-        throw new Error(`AgentRun ${input.agentRunId} 已存在且身份不一致`);
-      }
-      return run;
-    }
-
     const now = Date.now();
     const inserted = this.repo.insert({
       id: input.agentRunId,
@@ -72,9 +58,7 @@ export class AgentRunStore {
       createdAt: now,
     });
     if (!inserted) {
-      const raced = this.repo.findById(input.agentRunId);
-      if (raced) return fromRow(raced);
-      throw new Error(`AgentRun ${input.agentRunId} 创建失败`);
+      throw new Error(`AgentRun ${input.agentRunId} 已存在`);
     }
     return fromRow(inserted);
   }
@@ -94,7 +78,13 @@ export class AgentRunStore {
     return this.finishTransition(
       'complete',
       agentRunId,
-      this.repo.complete(agentRunId, current.row.version, completion, Date.now()),
+      this.repo.complete(agentRunId, current.row.version, {
+        iterations: completion.iterations,
+        toolCallCount: completion.toolCallCount,
+        inputTokens: completion.inputTokens,
+        outputTokens: completion.outputTokens,
+        outputExcerpt: completion.outputExcerpt,
+      }, Date.now()),
     );
   }
 

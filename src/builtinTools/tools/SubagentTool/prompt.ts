@@ -1,6 +1,6 @@
 // SubagentTool 的模型说明书, 单点维护。
 // 主体对照 Claude AgentTool/prompt.ts(When to fork / Writing the prompt / 示例),
-// 按我方事实修正: 无 agent 类型与 worktree;后台族为 SubagentAwait/SubagentSendMessage;
+// 按我方事实修正: 无 agent 类型与 worktree;后台结果由 SubagentAwait 获取;
 // fork 用 kind 参数表达; 同步等待超 30 秒自动转后台。
 
 export const SUBAGENT_DESCRIPTION = `Launch a sub-agent to handle a complex, multi-step task autonomously. The sub-agent runs its own think→act loop with the same workspace and permission boundaries as you, and reports back when done.
@@ -17,7 +17,7 @@ Usage notes:
 - The agent's output should generally be trusted.
 - Clearly tell the agent whether you expect it to write code or just do research (search, file reads, web fetches) — it is not aware of the user's intent.
 - Foreground (default) blocks until the agent finishes — use it when you need the results before you can proceed. A synchronous wait longer than 30 seconds transfers to background automatically and returns the same reference shape.
-- runInBackground=true returns the agentRunId immediately. You will be notified when the agent completes — do NOT sleep, poll, or proactively check on its progress. Use SubagentAwait to collect the result within the current turn; use SubagentSendMessage to deliver a mid-run correction (it lands at the agent's next iteration boundary).
+- runInBackground=true returns the agentRunId immediately. You will be notified when the agent completes — do NOT sleep, poll, or proactively check on its progress. Use SubagentAwait to collect the result within the current turn.
 - If the parent turn is aborted, running sub-agents are cancelled with it.
 
 ## When to fork (kind="fork")

@@ -6,30 +6,29 @@ export type AgentRunTranscriptRole =
   | 'assistant'
   | 'tool_call'
   | 'tool_result'
-  | 'reasoning'
-  | 'coordinator';
+  | 'reasoning';
 
 export interface AgentRun {
-  id: AgentRunId;
-  sessionId: SessionId;
-  parentTurnId: TurnId;
-  parentAgentRunId?: AgentRunId;
-  taskId?: TaskId;
-  kind: AgentRunKind;
-  purpose?: string;
-  providerConfigId?: string;
-  modelId?: string;
-  status: AgentRunStatus;
-  error?: string;
-  iterations?: number;
-  toolCallCount?: number;
-  inputTokens?: number;
-  outputTokens?: number;
-  outputExcerpt?: string;
-  version: number;
-  createdAt: number;
-  updatedAt: number;
-  completedAt?: number;
+  readonly id: AgentRunId;
+  readonly sessionId: SessionId;
+  readonly parentTurnId: TurnId;
+  readonly parentAgentRunId?: AgentRunId;
+  readonly taskId?: TaskId;
+  readonly kind: AgentRunKind;
+  readonly purpose?: string;
+  readonly providerConfigId?: string;
+  readonly modelId?: string;
+  readonly status: AgentRunStatus;
+  readonly error?: string;
+  readonly iterations?: number;
+  readonly toolCallCount?: number;
+  readonly inputTokens?: number;
+  readonly outputTokens?: number;
+  readonly outputExcerpt?: string;
+  readonly version: number;
+  readonly createdAt: number;
+  readonly updatedAt: number;
+  readonly completedAt?: number;
 }
 
 export interface AgentRunStart {
@@ -63,34 +62,11 @@ export type AgentRunTransitionResult =
       current?: AgentRun;
     };
 
-export interface AgentRunStorePort {
-  start(input: AgentRunStart): AgentRun;
-  complete(
-    agentRunId: AgentRunId,
-    completion: AgentRunCompletion,
-  ): AgentRunTransitionResult;
-  fail(agentRunId: AgentRunId, reason: string): AgentRunTransitionResult;
-  cancel(agentRunId: AgentRunId, reason: string): AgentRunTransitionResult;
-}
-
-export interface AgentRunTranscriptAppend {
-  agentRunId: AgentRunId;
-  role: AgentRunTranscriptRole;
-  content: unknown;
-  createdAt: number;
-}
-
-export interface AgentRunTranscriptMessage extends AgentRunTranscriptAppend {
-  id: string;
-  sequence: number;
-}
-
-/** AgentRun 执行链只获得追加能力，不能借此查询或修改既有记录。 */
-export interface AgentRunTranscriptWriter {
-  insert(message: AgentRunTranscriptAppend): void;
-}
-
-/** HTTP、CLI 等查询入口只读取领域消息，不接触 SQLite 行或 JSON 列。 */
-export interface AgentRunTranscriptReader {
-  listForRun(agentRunId: AgentRunId): readonly AgentRunTranscriptMessage[];
+export interface AgentRunTranscriptMessage {
+  readonly id: string;
+  readonly agentRunId: AgentRunId;
+  readonly role: AgentRunTranscriptRole;
+  readonly content: unknown;
+  readonly sequence: number;
+  readonly createdAt: number;
 }

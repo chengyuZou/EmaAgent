@@ -8,8 +8,7 @@ export type AgentRunMessageRole =
   | 'assistant'
   | 'tool_call'
   | 'tool_result'
-  | 'reasoning'
-  | 'coordinator';
+  | 'reasoning';
 
 export interface AgentRunMessageRow {
   id: string;

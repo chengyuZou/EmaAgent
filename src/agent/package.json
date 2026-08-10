@@ -21,19 +21,11 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@ema-agent/context": "workspace:*",
     "@ema-agent/ids": "workspace:*",
-    "@ema-agent/knowledge": "workspace:*",
     "@ema-agent/llm": "workspace:*",
-    "@ema-agent/permission": "workspace:*",
-    "@ema-agent/sandbox": "workspace:*",
     "@ema-agent/settings": "workspace:*",
-    "@ema-agent/skills": "workspace:*",
     "@ema-agent/storage": "workspace:*",
-    "@ema-agent/token": "workspace:*",
-    "@ema-agent/tool-builtin": "workspace:*",
-    "@ema-agent/tools": "workspace:*",
-    "@ema-agent/turn": "workspace:*"
+    "@ema-agent/tools": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

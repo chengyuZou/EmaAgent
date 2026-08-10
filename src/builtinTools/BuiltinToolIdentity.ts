@@ -38,9 +38,5 @@ export const BuiltinTools = Object.freeze({
   ScratchpadDelete: Object.freeze({ id: 'builtin.scratchpad.delete', name: 'ScratchpadDelete' }),
   ScratchpadClear:  Object.freeze({ id: 'builtin.scratchpad.clear',  name: 'ScratchpadClear' }),
   Subagent: Object.freeze({ id: 'builtin.subagent.run', name: 'Subagent' }),
-  SubagentSendMessage: Object.freeze({
-    id: 'builtin.subagent.send_message',
-    name: 'SubagentSendMessage',
-  }),
   SubagentAwait: Object.freeze({ id: 'builtin.subagent.await', name: 'SubagentAwait' }),
 } satisfies Record<string, BuiltinToolIdentity>);

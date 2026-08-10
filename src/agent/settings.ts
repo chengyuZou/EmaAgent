@@ -1,7 +1,4 @@
-// 定义根 Agent 与子 Agent 在下一轮采用的用户可调资源上限。
-
 import { defineSetting } from '@ema-agent/settings';
-import { DEFAULT_TURN_BUDGET_LIMITS } from './turn-budget.js';
 
 export interface AgentSettings {
   chatMaxIterations: number;
@@ -12,11 +9,11 @@ export interface AgentSettings {
 }
 
 export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
-  chatMaxIterations: 8,
-  workMaxIterations: 30,
-  maxToolCalls: DEFAULT_TURN_BUDGET_LIMITS.maxToolCalls,
-  maxSubagents: DEFAULT_TURN_BUDGET_LIMITS.maxSubagents,
-  maxConcurrentSubagents: DEFAULT_TURN_BUDGET_LIMITS.maxConcurrentSubagents,
+  chatMaxIterations: 20,
+  workMaxIterations: 50,
+  maxToolCalls: 512,
+  maxSubagents: 16,
+  maxConcurrentSubagents: 4,
 };
 
 export const agentSetting = defineSetting<AgentSettings>({

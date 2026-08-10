@@ -2,7 +2,7 @@
 import type { SqliteDb } from '../../database/database.js';
 import type { AgentRunMessageRow } from './agent-run-messages.js';
 import type { AgentRunRow } from './agent-runs.js';
-import type { AttachmentRow } from './attachment.js';
+import type { AttachmentRow } from './attachments.js';
 import type { BackgroundProcessRow } from './backgroundProcesses.js';
 import type { KbActivationRow } from './kb-activations.js';
 import type { MessageRow } from './messages.js';

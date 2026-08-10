@@ -4,7 +4,7 @@
 CREATE TABLE agent_run_messages (
   id           TEXT    PRIMARY KEY,
   agent_run_id TEXT    NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE,
-  role         TEXT    NOT NULL CHECK (role IN ('assistant', 'tool_call', 'tool_result', 'reasoning', 'coordinator')),
+  role         TEXT    NOT NULL CHECK (role IN ('assistant', 'tool_call', 'tool_result', 'reasoning')),
   content_json TEXT    NOT NULL,
   sequence     INTEGER NOT NULL,
   created_at   INTEGER NOT NULL,
@@ -261,7 +261,8 @@ CREATE TABLE turn_attachments (
   size       INTEGER NOT NULL,
   mtime      INTEGER NOT NULL,
   local_path TEXT    NOT NULL,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  status     TEXT    NOT NULL
 );
 
 CREATE TABLE turn_audio_merged (

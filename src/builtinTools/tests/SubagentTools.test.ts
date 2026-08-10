@@ -1,10 +1,8 @@
-// Subagent 三件套收口测试: 同步/后台/auto 转交三形态、限时等待取消、
-// SendMessage 与 Await 语义、map 投影。
+// Subagent 工具测试同步、后台、自动转交、取消与等待结果语义。
 import { describe, expect, it, vi } from 'vitest';
 import { asSessionId, asToolCallId, asTurnId } from '@ema-agent/ids';
 import type { ToolInvocation } from '@ema-agent/tools';
 import { SubagentTool } from '../tools/SubagentTool/SubagentTool.js';
-import { SubagentSendMessageTool } from '../tools/SubagentTool/SubagentSendMessageTool.js';
 import { SubagentAwaitTool } from '../tools/SubagentTool/SubagentAwaitTool.js';
 
 const AGENT_RUN_ID = '11111111-1111-4111-8111-111111111111';
@@ -115,24 +113,7 @@ describe('SubagentTool — 三形态', () => {
   });
 });
 
-describe('SubagentSendMessage / SubagentAwait', () => {
-  it('SendMessage 投递与 map 语义', async () => {
-    const queueMessage = vi.fn(() => true);
-    const projection = SubagentSendMessageTool.validateContext({
-      subagentSpawner: { spawn: vi.fn(), queueMessage },
-    } as never);
-    if (!projection.valid) throw new Error('投影应成功');
-
-    const result = await SubagentSendMessageTool.execute(
-      { agentRunId: AGENT_RUN_ID, message: '停止扩展范围' },
-      projection.context,
-    );
-
-    expect(result).toEqual({ queued: true });
-    expect(queueMessage).toHaveBeenCalledWith(AGENT_RUN_ID, '停止扩展范围');
-    expect(SubagentSendMessageTool.mapResultToModelContent!(result)).toContain('queued');
-  });
-
+describe('SubagentAwait', () => {
   it('Await 返回输出; 未知 id 返回 output:null 并如实投影', async () => {
     const awaitBackground = vi.fn(async () => null);
     const projection = SubagentAwaitTool.validateContext({

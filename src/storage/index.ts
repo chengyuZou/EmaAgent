@@ -28,8 +28,8 @@ export { UsageRecordsRepo } from './repos/data/usage-records.js';
 export { ProvidersRepo } from './repos/profile/providers.js';
 export { ProviderModelsRepo } from './repos/profile/providerModels.js';
 export { ModelBindingsRepo } from './repos/profile/modelBindings.js';
-export { AttachmentRepo }  from './repos/data/attachment.js';
-export type { AttachmentRow, AttachmentInsert } from './repos/data/attachment.js';
+export { AttachmentRepo }  from './repos/data/attachments.js';
+export type { AttachmentRow, AttachmentInsert } from './repos/data/attachments.js';
 export { AttachmentDerivationsRepo } from './repos/data/attachmentDerivations.js';
 export type {
   AttachmentVisionDerivationIdentity,

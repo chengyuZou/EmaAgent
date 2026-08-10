@@ -45,7 +45,6 @@ export interface SubagentSpawnerPort {
     signal: AbortSignal,
   ): AgentRunId;
   awaitBackground?(agentRunId: AgentRunId): Promise<SubagentRunResult | null>;
-  queueMessage?(agentRunId: AgentRunId, message: string): boolean;
   abortSubagent?(agentRunId: AgentRunId): boolean;
 }
 

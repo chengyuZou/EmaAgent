@@ -63,7 +63,6 @@ export interface TurnContextAssembly {
   readonly history: readonly ModelMessage[];
   readonly currentTurn: readonly ModelMessage[];
   readonly scratchpadContext?: string;
-  readonly mailboxMessages: readonly string[];
   readonly activeSkills: readonly ActivatedSkill[];
   readonly toolPool: ToolPool;
   readonly forceCompaction: boolean;
@@ -300,15 +299,6 @@ export class TurnContextBuilder {
         message: { role: 'user', content: request.scratchpadContext },
       });
     }
-    request.mailboxMessages.forEach((content, index) => {
-      contributions.push({
-        id: `mailbox.${index}`,
-        source: 'mailbox',
-        placement: 'afterCurrentTurn',
-        message: { role: 'user', content: `[Coordinator]: ${content}` },
-      });
-    });
-
     const activeSkillContext = renderActiveSkillContext(request.activeSkills);
     const assemblyInput = {
       prompt: input.prompt,

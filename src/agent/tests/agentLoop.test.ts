@@ -1,300 +1,197 @@
-// 测试 Agent 循环的终止保护、LLM 调用标识和工具上下文预算接线。
-import { describe, expect, it, vi } from 'vitest';
-import { ContextWindowExceededError } from '@ema-agent/llm';
-import type { LlmCallId, Message as ModelMessage } from '@ema-agent/llm';
-import type { ModelContextSnapshot } from '@ema-agent/context';
-import type { ToolExecutionRuntime } from '@ema-agent/tools';
-import type { TurnPolicy } from '../policy.js';
-import {
-  runAgentLoop,
-  type AgentLoopEvent,
-  type AgentLoopOutcome,
-} from '../agentLoop.js';
-import { TurnBudget } from '../turn-budget.js';
+// 验证 AgentLoop 的调用准备、响应式压缩与工具持久化握手。
 
-function makePolicy(): TurnPolicy {
-  return {
-    toolDefs: () => [],
-  } as unknown as TurnPolicy;
+import { describe, expect, it, vi } from 'vitest';
+import type { LanguageModel, LlmRequest, LlmTokenUsage, Message } from '@ema-agent/llm';
+import { ContextWindowExceededError } from '@ema-agent/llm';
+import type { StreamingToolExecutor, ToolResult } from '@ema-agent/tools';
+import { runAgentLoop } from '../agentLoop.js';
+import type { AgentLoopEvent } from '../events.js';
+import type { AgentBudget, AgentLoopInput } from '../types.js';
+
+class TestBudget implements AgentBudget {
+  readonly recorded: LlmTokenUsage[] = [];
+  toolCalls = 0;
+
+  assertWithinLimits(): void {}
+  remainingOutputTokens(): number { return 64; }
+  recordUsage(usage: LlmTokenUsage): void { this.recorded.push(usage); }
+  reserveToolCall(): void { this.toolCalls += 1; }
+  enterSubagent(): () => void { return () => undefined; }
 }
 
-function makeExecutor(): ToolExecutionRuntime {
+function model(
+  stream: LanguageModel['stream'],
+): LanguageModel {
   return {
-    reset: () => undefined,
-    addTool: () => undefined,
+    protocol: 'openai-llm',
+    stream,
+    complete: vi.fn(),
+  } as unknown as LanguageModel;
+}
+
+function idleExecutor(): StreamingToolExecutor {
+  return {
+    addTool: vi.fn(),
+    start: vi.fn(),
     allDone: () => true,
     hasWaitingUserTool: () => false,
-    getResults: () => [],
-  } as unknown as ToolExecutionRuntime;
+    takeCompletedResults: () => [],
+    acknowledgeResult: vi.fn(),
+  } as unknown as StreamingToolExecutor;
 }
 
-async function collectAgentLoop(
-  loop: AsyncGenerator<AgentLoopEvent<never>, AgentLoopOutcome>,
-): Promise<{ events: Array<AgentLoopEvent<never>>; outcome: AgentLoopOutcome }> {
-  const events: Array<AgentLoopEvent<never>> = [];
-  let step = await loop.next();
-  while (!step.done) {
-    events.push(step.value);
-    step = await loop.next();
-  }
-  return { events, outcome: step.value };
-}
-
-describe('AgentLoop LLM 生命周期', () => {
-  it('累计 Usage 快照只按差值计入 Turn，不重复计算输入 Token', async () => {
-    const stream = vi.fn(() => (async function* () {
-      yield { type: 'usage' as const, inputTokens: 100, outputTokens: 0 };
-      yield { type: 'text_delta' as const, blockIndex: 0, delta: 'done' };
-      yield { type: 'usage' as const, inputTokens: 100, outputTokens: 20 };
-      yield { type: 'done' as const, stopReason: 'end_turn' as const };
-    })());
-    const usageSnapshots: Array<{ inputTokens: number; outputTokens: number }> = [];
-    const result = await collectAgentLoop(runAgentLoop<never>({
-      messages: [{ role: 'user', content: 'hello' }],
-      policy: makePolicy(),
-      buildExecutor: () => makeExecutor(),
-      llm: { stream } as never,
-      providerId: 'provider-1',
-      model: 'model-1',
-      signal: new AbortController().signal,
-      maxIterations: 1,
-      budget: new TurnBudget({
-        maxWallTimeMs: 60_000,
-        maxInputTokens: 150,
-        maxOutputTokens: 30,
-        maxToolCalls: 1,
-        maxSubagents: 1,
-        maxConcurrentSubagents: 1,
-      }),
-      sessionId: 'session-1',
-    }));
-    for (const event of result.events) {
-      if (event.type === 'loop_usage') usageSnapshots.push(event.usage);
-    }
-
-    expect(usageSnapshots).toEqual([
-      { inputTokens: 100, outputTokens: 0 },
-      { inputTokens: 100, outputTokens: 20 },
-    ]);
-    expect(stream).toHaveBeenCalledWith(expect.objectContaining({ maxTokens: 30 }));
-    expect(result.outcome.state.usage).toEqual({ inputTokens: 100, outputTokens: 20 });
-  });
-
-  it('把本轮工具定义同时交给上下文压缩和 LLM 请求', async () => {
-    const tools = [{
-      name: 'Read',
-      description: '读取文件',
-      parameters: {
-        type: 'object',
-        properties: { path: { type: 'string' } },
-        required: ['path'],
-      },
-    }];
-    const assembleContext = vi.fn(async ({
-      history,
-      currentTurn,
-    }: {
-      history: readonly ModelMessage[];
-      currentTurn: readonly ModelMessage[];
-    }): Promise<ModelContextSnapshot> => ({
-      messages: [...history, ...currentTurn],
-      history: [...history],
-      tools,
-      promptRevision: 'prompt-revision',
-      toolManifestRevision: 'tool-revision',
-      contextRevision: 'context-revision',
-    }));
-    const stream = vi.fn(() => (async function* () {
-      yield { type: 'done' as const, stopReason: 'end_turn' as const };
-    })());
-
-    const result = await collectAgentLoop(runAgentLoop<never>({
-      messages: [{ role: 'user', content: 'read it' }],
-      policy: { toolDefs: () => tools } as unknown as TurnPolicy,
-      buildExecutor: () => makeExecutor(),
-      llm: { stream } as never,
-      providerId: 'provider-1',
-      model: 'model-1',
-      signal: new AbortController().signal,
-      maxIterations: 1,
-      budget: new TurnBudget(),
-      sessionId: 'session-1',
-      historyMessageCount: 0,
-      assembleContext,
-    }));
-    for (const event of result.events) {
-      expect(event.type).toBeDefined();
-    }
-
-    expect(assembleContext).toHaveBeenCalledWith(expect.objectContaining({
+function baseInput(overrides: Partial<AgentLoopInput>): AgentLoopInput {
+  const messages: readonly Message[] = [{ role: 'user', content: 'hello' }];
+  return {
+    history: [],
+    currentMessages: messages,
+    prepareIteration: async ({ currentMessages }) => ({
+      request: { model: 'test', messages: currentMessages },
       history: [],
-      currentTurn: [{ role: 'user', content: 'read it' }],
-      forceCompaction: false,
-    }));
-    expect(stream).toHaveBeenCalledWith(expect.objectContaining({ tools }));
-  });
+    }),
+    llm: model(() => (async function* () {
+      yield { type: 'text_delta' as const, blockIndex: 0, delta: 'done' };
+      yield { type: 'done' as const, stopReason: 'end_turn' as const };
+    })()),
+    createToolExecutor: () => idleExecutor(),
+    budget: new TestBudget(),
+    signal: new AbortController().signal,
+    maxIterations: 4,
+    ...overrides,
+  };
+}
 
-  it('连续三次权限拒绝后终止当前 Turn，避免模型无限重试', async () => {
-    let call = 0;
-    const stream = vi.fn(() => (async function* () {
-      call++;
-      yield {
-        type: 'tool_use_complete' as const,
-        callId: `call-${call}`,
-        name: 'shell_command',
-        args: { command: 'npm publish' },
-        blockIndex: 0,
-      };
-      yield { type: 'done' as const, stopReason: 'tool_use' as const };
+async function collect(
+  input: AgentLoopInput,
+  inspect?: (event: AgentLoopEvent) => void,
+): Promise<AgentLoopEvent[]> {
+  const events: AgentLoopEvent[] = [];
+  for await (const event of runAgentLoop(input)) {
+    events.push(event);
+    inspect?.(event);
+  }
+  return events;
+}
+
+function terminalEvent(events: readonly AgentLoopEvent[]) {
+  return events.find(
+    (event): event is Extract<AgentLoopEvent, { type: 'loop_stopped' }> =>
+      event.type === 'loop_stopped',
+  );
+}
+
+describe('runAgentLoop', () => {
+  it('每次迭代都经 prepareIteration，并按预算裁剪输出上限与累计 Usage 差值', async () => {
+    const budget = new TestBudget();
+    const stream = vi.fn((_request: LlmRequest) => (async function* () {
+      yield { type: 'usage' as const, inputTokens: 10, outputTokens: 0 };
+      yield { type: 'usage' as const, inputTokens: 10, outputTokens: 4 };
+      yield { type: 'text_delta' as const, blockIndex: 0, delta: 'ok' };
+      yield { type: 'done' as const, stopReason: 'end_turn' as const };
     })());
-    const executor = {
-      reset: () => undefined,
-      addTool: () => undefined,
-      allDone: () => true,
-      hasWaitingUserTool: () => false,
-      getResults: () => [{
-        type: 'tool_result' as const,
-        toolCallId: `call-${call}`,
-        content: 'Permission denied: user denied',
-        isError: true,
-        errorCode: 'permission/denied',
-      }],
-    } as unknown as ToolExecutionRuntime;
-    const result = await collectAgentLoop(runAgentLoop<never>({
-      messages: [{ role: 'user', content: 'publish it' }],
-      policy: makePolicy(),
-      buildExecutor: () => executor,
-      llm: { stream } as never,
-      providerId: 'provider-1',
-      model: 'model-1',
-      signal: new AbortController().signal,
-      maxIterations: 10,
-      budget: new TurnBudget(),
-      sessionId: 'session-1',
-    }));
-
-    expect(stream).toHaveBeenCalledTimes(3);
-    expect(result.events).toContainEqual({
-      type: 'loop_breaker',
-      reason: 'permission denied 3 consecutive times',
-    });
-    expect(result.outcome.state.transition).toBe('permission_denial_loop');
-  });
-
-  it('每个逻辑轮次配对 iteration + llmCallId，并限制 max_tokens 恢复次数', async () => {
-    const stream = vi.fn(() => (async function* () {
-      yield {
-        type: 'usage' as const,
-        inputTokens: 100,
-        outputTokens: 20,
-        cacheReadInputTokens: 75,
-        cacheHitRate: 0.75,
-      };
-      yield { type: 'done' as const, stopReason: 'max_tokens' as const };
-    })());
-
-    const before: Array<{
-      iteration: number;
-      llmCallId: LlmCallId;
-      messages: ModelMessage[];
-    }> = [];
-    const completed: Array<{
-      iteration: number;
-      llmCallId: LlmCallId;
-      cacheReadInputTokens?: number;
-      cacheHitRate?: number;
-      promptPrefixHash: string | null;
-    }> = [];
-    const eventTypes: string[] = [];
-
-    const result = await collectAgentLoop(runAgentLoop<never>({
-      messages: [{ role: 'user', content: 'hello' }],
-      policy: makePolicy(),
-      buildExecutor: () => makeExecutor(),
-      llm: { stream } as never,
-      providerId: 'provider-1',
-      model: 'model-1',
-      signal: new AbortController().signal,
-      maxIterations: 10,
-      budget: new TurnBudget(),
-      sessionId: 'session-1',
-      onLlmRequestPrepared: (call) => {
-        before.push({
-          iteration: call.iteration,
-          llmCallId: call.llmCallId,
-          messages: [...call.messages],
-        });
+    const prepareIteration = vi.fn(async () => ({
+      request: {
+        model: 'test',
+        messages: [{ role: 'user' as const, content: 'hello' }],
+        maxOutputTokens: 100,
       },
+      history: [],
     }));
-    for (const event of result.events) {
-      eventTypes.push(event.type);
-      if (event.type === 'loop_llm_complete') {
-        completed.push({
-          iteration: event.iteration,
-          llmCallId: event.llmCallId,
-          cacheReadInputTokens: event.usage.cacheReadInputTokens,
-          cacheHitRate: event.usage.cacheHitRate,
-          promptPrefixHash: event.promptPrefixHash,
-        });
-      }
-    }
 
-    expect(stream).toHaveBeenCalledTimes(2);
-    expect(before.map((call) => call.iteration)).toEqual([1, 2]);
-    expect(completed.map(({ iteration, llmCallId }) => ({ iteration, llmCallId })))
-      .toEqual(before.map(({ iteration, llmCallId }) => ({ iteration, llmCallId })));
-    expect(completed.map((call) => call.cacheReadInputTokens)).toEqual([75, 75]);
-    expect(completed.map((call) => call.cacheHitRate)).toEqual([0.75, 0.75]);
-    // 只读观察者不再伪造 cache breakpoint；没有显式断点时应诚实返回 null。
-    expect(completed.map((call) => call.promptPrefixHash)).toEqual([null, null]);
-    expect(new Set(before.map((call) => call.llmCallId)).size).toBe(2);
-    expect(before[1]?.messages.some((message) => message.role === 'system')).toBe(false);
-    expect(eventTypes).toContain('loop_breaker');
-    expect(result.outcome.state.transition).toBe('max_output_tokens_recovery');
+    const result = await collect(baseInput({
+      budget,
+      prepareIteration,
+      llm: model(stream),
+    }));
+
+    expect(prepareIteration).toHaveBeenCalledTimes(1);
+    expect(stream).toHaveBeenCalledWith(expect.objectContaining({ maxOutputTokens: 64 }));
+    expect(budget.recorded).toEqual([
+      { inputTokens: 10, outputTokens: 0 },
+      { inputTokens: 0, outputTokens: 4 },
+    ]);
+    expect(terminalEvent(result)?.finalText).toBe('ok');
   });
 
-  it('响应式压缩生成新快照后重新通知请求观察者，并保持同一 llmCallId', async () => {
+  it('Provider 报上下文超限时以同一 iteration 报告恢复原因', async () => {
     let attempt = 0;
     const stream = vi.fn(() => (async function* () {
       attempt += 1;
       if (attempt === 1) throw new ContextWindowExceededError();
       yield { type: 'done' as const, stopReason: 'end_turn' as const };
     })());
-    const observedCallIds: LlmCallId[] = [];
-    const assembleContext = vi.fn(async ({ forceCompaction }: { forceCompaction: boolean }) => ({
-      messages: [{ role: 'user' as const, content: forceCompaction ? 'compacted' : 'original' }],
-      history: [],
-      tools: [],
-      promptRevision: 'prompt-revision',
-      toolManifestRevision: 'tool-revision',
-      contextRevision: forceCompaction ? 'forced-revision' : 'initial-revision',
-    }));
+    const recoveryReasons: Array<string | undefined> = [];
+    const prepareIteration: AgentLoopInput['prepareIteration'] = vi.fn(async (input) => {
+      recoveryReasons.push(input.recoveryReason);
+      return {
+        request: { model: 'test', messages: input.currentMessages },
+        history: input.recoveryReason === 'context_window_exceeded'
+          ? [{ role: 'user', content: 'compacted history' }]
+          : input.history,
+      };
+    });
 
-    await collectAgentLoop(runAgentLoop<never>({
-      messages: [{ role: 'user', content: 'hello' }],
-      historyMessageCount: 0,
-      policy: makePolicy(),
-      buildExecutor: () => makeExecutor(),
-      llm: { stream } as never,
-      providerId: 'provider-1',
-      model: 'model-1',
-      signal: new AbortController().signal,
-      maxIterations: 1,
-      budget: new TurnBudget(),
-      sessionId: 'session-1',
-      assembleContext,
-      onLlmRequestPrepared: (call) => {
-        observedCallIds.push(call.llmCallId);
+    await collect(baseInput({ prepareIteration, llm: model(stream) }));
+
+    expect(recoveryReasons).toEqual([undefined, 'context_window_exceeded']);
+  });
+
+  it('消费方恢复事件流后才启动工具，并在 ToolResult 落库边界后才 acknowledge', async () => {
+    let llmCall = 0;
+    let started = false;
+    let acknowledged = false;
+    let delivered = false;
+    const result: ToolResult = {
+      type: 'tool_result',
+      toolCallId: 'call-1',
+      content: 'read result',
+      data: { uiOnly: true },
+    };
+    const executor = {
+      addTool: vi.fn(),
+      start: vi.fn(() => { started = true; }),
+      allDone: () => started,
+      hasWaitingUserTool: () => false,
+      takeCompletedResults: () => {
+        if (!started || delivered) return [];
+        delivered = true;
+        return [result];
       },
-    }));
+      acknowledgeResult: vi.fn(() => { acknowledged = true; }),
+    } as unknown as StreamingToolExecutor;
+    const stream = vi.fn(() => (async function* () {
+      llmCall += 1;
+      if (llmCall === 1) {
+        yield {
+          type: 'tool_use_complete' as const,
+          blockIndex: 0,
+          callId: 'call-1',
+          name: 'Read',
+          args: { path: 'a.ts' },
+        };
+        yield { type: 'done' as const, stopReason: 'tool_use' as const };
+        return;
+      }
+      yield { type: 'text_delta' as const, blockIndex: 0, delta: 'finished' };
+      yield { type: 'done' as const, stopReason: 'end_turn' as const };
+    })());
 
-    expect(assembleContext).toHaveBeenLastCalledWith(expect.objectContaining({
-      forceCompaction: true,
-    }));
-    expect(observedCallIds).toHaveLength(2);
-    expect(new Set(observedCallIds).size).toBe(1);
-    expect(stream).toHaveBeenLastCalledWith(expect.objectContaining({
-      messages: [{ role: 'user', content: 'compacted' }],
-    }));
+    const observations: Array<[string, boolean, boolean]> = [];
+    const collected = await collect(baseInput({
+      llm: model(stream),
+      createToolExecutor: () => llmCall === 0 ? executor : idleExecutor(),
+    }), event => observations.push([event.type, started, acknowledged]));
+
+    expect(observations.find(([type]) => type === 'tool_use_completed')).toEqual([
+      'tool_use_completed', false, false,
+    ]);
+    expect(observations.find(([type]) => type === 'assistant_message_completed')).toEqual([
+      'assistant_message_completed', false, false,
+    ]);
+    expect(observations.find(([type]) => type === 'tool_result')).toEqual([
+      'tool_result', true, false,
+    ]);
+    expect(acknowledged).toBe(true);
+    expect(terminalEvent(collected)?.finalText).toBe('finished');
   });
 });
