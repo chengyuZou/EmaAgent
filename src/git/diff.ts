@@ -72,8 +72,7 @@ async function queryScopeDiff(
   // 未跟踪文件只属于未暂存维度:ls-files 列清单,逐文件 --no-index 伪 diff。
   if (scope === 'unstaged') {
     const untracked = await listUntrackedFiles(repoRoot, overrides);
-    const budget = Math.max(0, MAX_UNTRACKED_FILES - 0);
-    const selected = untracked.slice(0, budget);
+    const selected = untracked.slice(0, MAX_UNTRACKED_FILES);
     omittedFiles += Math.max(0, untracked.length - selected.length);
     for (let i = 0; i < selected.length; i += UNTRACKED_DIFF_CONCURRENCY) {
       const batch = selected.slice(i, i + UNTRACKED_DIFF_CONCURRENCY);
@@ -108,7 +107,7 @@ async function queryScopeDiff(
   };
 }
 
-// ── 比较 diff(批次 D2b):提交记录与分支比较,只读,复用同一解析与封顶 ──────────
+// ── 比较 diff:提交记录与分支比较,只读,复用同一解析与封顶 ─────────────────────
 
 export type GitCompareTarget =
   /** 该提交自身的补丁(git show)。 */
@@ -180,7 +179,8 @@ async function collectTrackedDiff(
  * 仓库可通过 filter.<driver>.clean/process 配置可执行 helper,diff 工作区文件时会触发;
  * 与 hooksPath=NUL 同一威胁模型,逐一查出并置空(codex 同款)。
  */
-async function filterDriverOverrides(repoRoot: string): Promise<readonly string[]> {  const { stdout } = await runGit(repoRoot, [
+async function filterDriverOverrides(repoRoot: string): Promise<readonly string[]> {
+  const { stdout } = await runGit(repoRoot, [
     'config', '--null', '--name-only', '--get-regexp', '^filter\\..*\\.(clean|process)$',
   ], { allowedExitCodes: [1] });
   const drivers = new Set<string>();

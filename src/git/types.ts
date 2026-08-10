@@ -46,7 +46,7 @@ export type GitSummary =
   | GitSummaryUnavailable
   | GitSummaryError;
 
-// ── 工作区 diff(批次 E)─────────────────────────────────────────────────────
+// ── 工作区 diff ─────────────────────────────────────────────────────────────
 
 export type GitFileStatus = 'added' | 'modified' | 'deleted' | 'renamed';
 
@@ -86,7 +86,7 @@ export type GitWorkspaceDiffResult =
   | GitSummaryUnavailable
   | GitSummaryError;
 
-// ── 比较 diff 与分支/提交清单(批次 D2b)──────────────────────────────────────
+// ── 比较 diff 与分支/提交清单 ─────────────────────────────────────────────────
 
 export interface GitCompareOk {
   readonly capability: 'ok';
