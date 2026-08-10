@@ -4,7 +4,7 @@ import type {
   TaskId,
 } from '@ema-agent/ids';
 import type { CommandRunnerPort } from '@ema-agent/sandbox';
-import type { TaskStorePort } from '@ema-agent/tasks';
+import type { TaskStore } from '@ema-agent/tasks';
 import type { KnowledgeSearchPort } from '@ema-agent/knowledge';
 import type { NarrativeSearchPort } from '@ema-agent/narrative';
 import type { SkillPool } from '@ema-agent/skills';
@@ -98,7 +98,7 @@ export interface ToolUseContext {
   /** Narrative 剧情资料的按需检索入口，仅在 auto 策略下装配。 */
   readonly narrativeSearch?: NarrativeSearchPort;
   /** Task 工具族的持久存储。 */
-  readonly taskStore?: TaskStorePort;
+  readonly taskStore?: TaskStore;
   /** Subagent 工具的子 Agent 启动器。 */
   readonly subagentSpawner?: SubagentSpawnerPort;
   /** Skill 工具的本根 Turn 冻结技能池;缺省(子 Agent、chat 态)时 Skill 工具不可见。 */

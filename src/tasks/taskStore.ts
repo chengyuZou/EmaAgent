@@ -9,19 +9,17 @@ import type {
   TaskRow,
   TasksRepo,
 } from '@ema-agent/storage';
-import type { TaskSnapshot } from './events.js';
 import type {
   Task,
   TaskCreateInput,
   TaskMutationFailure,
-  TaskStorePort,
   TaskUpdateInput,
   TaskUpdateResult,
 } from './types.js';
 
 const DEFAULT_REMINDER_TURNS = 10;
 
-export class TaskStore implements TaskStorePort {
+export class TaskStore {
   constructor(private readonly repo: TasksRepo) {}
 
   create(input: TaskCreateInput): Task {
@@ -118,31 +116,6 @@ export class TaskStore implements TaskStorePort {
     );
   }
 
-  toSnapshot(task: Task): TaskSnapshot {
-    return {
-      id: task.id,
-      sessionId: task.sessionId,
-      displayNumber: task.displayNumber,
-      subject: task.subject,
-      description: task.description,
-      status: task.status,
-      blocks: [...task.blocks],
-      blockedBy: [...task.blockedBy],
-      createdByTurnId: task.createdByTurnId,
-      version: task.version,
-      createdAt: task.createdAt,
-      updatedAt: task.updatedAt,
-      ...(task.activeForm !== undefined ? { activeForm: task.activeForm } : {}),
-      ...(task.activeAgentRunId !== undefined
-        ? { activeAgentRunId: task.activeAgentRunId }
-        : {}),
-      ...(task.completedAt !== undefined ? { completedAt: task.completedAt } : {}),
-      ...(task.completedByTurnId !== undefined
-        ? { completedByTurnId: task.completedByTurnId }
-        : {}),
-    };
-  }
-
   private mapMutationResult(
     sessionId: SessionId,
     result: RepoMutationResult,
@@ -166,7 +139,10 @@ export class TaskStore implements TaskStorePort {
   }
 
   private mapRows(sessionId: SessionId, rows: readonly TaskRow[]): Task[] {
-    const dependencies = this.repo.listDependencies(sessionId);
+    const dependencies = this.repo.listDependenciesFor(
+      sessionId,
+      rows.map((row) => row.id),
+    );
     const blocks = dependencyMap(dependencies, 'blocker_task_id', 'blocked_task_id');
     const blockedBy = dependencyMap(dependencies, 'blocked_task_id', 'blocker_task_id');
     return rows.map((row) => ({

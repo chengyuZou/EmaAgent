@@ -134,6 +134,23 @@ export class TasksRepo {
     ).all(sessionId) as TaskDependencyRow[];
   }
 
+  /** 只查指定任务集合参与的依赖边；单行读取走这里,避免全表扫描。 */
+  listDependenciesFor(
+    sessionId: SessionId,
+    taskIds: readonly TaskId[],
+  ): TaskDependencyRow[] {
+    if (taskIds.length === 0) return [];
+    const placeholders = taskIds.map(() => '?').join(', ');
+    return this.db.prepare(
+      `SELECT session_id, blocker_task_id, blocked_task_id, created_at
+         FROM task_dependencies
+        WHERE session_id = ?
+          AND (blocker_task_id IN (${placeholders})
+            OR blocked_task_id IN (${placeholders}))
+        ORDER BY blocker_task_id ASC, blocked_task_id ASC`,
+    ).all(sessionId, ...taskIds, ...taskIds) as TaskDependencyRow[];
+  }
+
   mutate(input: TaskMutation): TaskMutationResult {
     return this.db.transaction(() => {
       const current = this.findById(input.id, input.sessionId);

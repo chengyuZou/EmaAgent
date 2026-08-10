@@ -18,8 +18,6 @@ export interface ContextReminder {
   readonly taskReminder?: string;
   /** 当前 Agent 的 Scratchpad 投影，每次 LLM Call 可以变化。 */
   readonly scratchpad?: string;
-  /** 子 Agent 邮箱本次原子取出的消息。 */
-  readonly mailboxMessages?: readonly string[];
 }
 
 /** 组装一次 Provider 中立请求所需的全部事实。 */

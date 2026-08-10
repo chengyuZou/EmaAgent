@@ -1,5 +1,4 @@
 import type { AgentRunId, SessionId, TaskId, TurnId } from '@ema-agent/ids';
-import type { TaskSnapshot } from './events.js';
 
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
 
@@ -61,12 +60,3 @@ export type TaskUpdateResult =
   | { ok: true; changed: boolean; deleted: false; task: Task }
   | { ok: true; changed: true; deleted: true; taskId: TaskId }
   | { ok: false; reason: TaskMutationFailure; current?: Task; taskId?: TaskId };
-
-export interface TaskStorePort {
-  create(input: TaskCreateInput): Task;
-  get(sessionId: SessionId, taskId: TaskId): Task | undefined;
-  list(sessionId: SessionId): Task[];
-  update(input: TaskUpdateInput): TaskUpdateResult;
-  takeContextReminder(sessionId: SessionId, minimumTurns?: number): Task[];
-  toSnapshot(task: Task): TaskSnapshot;
-}

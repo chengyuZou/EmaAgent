@@ -8,13 +8,13 @@ import {
   contextOk,
   type ToolUseContext,
 } from '@ema-agent/tools';
-import type { TaskStatus, TaskStorePort } from '@ema-agent/tasks';
+import type { TaskStatus, TaskStore } from '@ema-agent/tasks';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { TASK_LIST_DESCRIPTION } from './prompt.js';
 
 /** Task 列表工具的窄 Context:只有持久存储;调用身份由 ToolInvocation 提供。 */
 interface TaskListToolContext {
-  taskStore: TaskStorePort;
+  taskStore: TaskStore;
 }
 
 const inputSchema = z.object({}).strict();

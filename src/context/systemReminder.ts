@@ -43,17 +43,6 @@ export function renderSystemReminder(
   pushSection(sections, 'other', '任务提醒', input.taskReminder);
   pushSection(sections, 'other', 'Scratchpad', input.scratchpad);
 
-  const mailbox = input.mailboxMessages
-    ?.map((message) => message.trim())
-    .filter(Boolean);
-  if (mailbox && mailbox.length > 0) {
-    sections.push(section(
-      'other',
-      '子 Agent 邮箱',
-      mailbox.map((message) => `- ${message}`).join('\n'),
-    ));
-  }
-
   return {
     message: {
       role: 'user',

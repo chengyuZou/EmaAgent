@@ -10,7 +10,7 @@ import {
   asTurnId,
 } from '@ema-agent/ids';
 import type { ToolInvocation } from '@ema-agent/tools';
-import type { Task, TaskSnapshot, TaskStorePort } from '@ema-agent/tasks';
+import type { Task, TaskStore } from '@ema-agent/tasks';
 import { TaskCreateTool } from '../tools/TaskCreateTool/TaskCreateTool.js';
 import { TaskGetTool } from '../tools/TaskGetTool/TaskGetTool.js';
 import { TaskListTool } from '../tools/TaskListTool/TaskListTool.js';
@@ -30,7 +30,7 @@ function makeInvocation(): ToolInvocation {
 }
 
 // 经 validateContext 从 ToolUseContext 投影窄 Context;缺 taskStore 时必须拒绝(子 Agent 环境)。
-function project(store: TaskStorePort) {
+function project(store: TaskStore) {
   const projection = TaskCreateTool.validateContext({ taskStore: store } as never);
   if (!projection.valid) throw new Error('投影应成功');
   return projection.context;
@@ -199,8 +199,8 @@ function makeTask(overrides: Partial<Task> = {}): Task {
   };
 }
 
-function makeStore(task: Task): TaskStorePort {
-  const snapshot = task as TaskSnapshot;
+function makeStore(task: Task): TaskStore {
+  // 测试夹具：结构化假件伪造成 TaskStore（生产代码禁止此类强转，测试豁免）。
   return {
     create: vi.fn(() => task),
     get: vi.fn(() => task),
@@ -212,6 +212,5 @@ function makeStore(task: Task): TaskStorePort {
       task,
     })),
     takeContextReminder: vi.fn(() => []),
-    toSnapshot: vi.fn(() => snapshot),
-  };
+  } as unknown as TaskStore;
 }

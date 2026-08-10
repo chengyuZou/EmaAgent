@@ -7,13 +7,13 @@ import {
   contextOk,
   type ToolUseContext,
 } from '@ema-agent/tools';
-import type { TaskSnapshot, TaskStorePort } from '@ema-agent/tasks';
+import type { Task, TaskStore } from '@ema-agent/tasks';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { TASK_CREATE_DESCRIPTION } from './prompt.js';
 
 /** Task 写入工具的窄 Context:只有持久存储;调用身份由 ToolInvocation 提供。 */
 interface TaskCreateToolContext {
-  taskStore: TaskStorePort;
+  taskStore: TaskStore;
 }
 
 const inputSchema = z.object({
@@ -42,7 +42,7 @@ type TaskCreateInput = z.infer<typeof inputSchema>;
 
 export interface TaskCreateResult {
   message: string;
-  task: TaskSnapshot;
+  task: Task;
 }
 
 export const TaskCreateTool = buildTool<TaskCreateInput, TaskCreateResult, TaskCreateToolContext>({
@@ -77,7 +77,7 @@ export const TaskCreateTool = buildTool<TaskCreateInput, TaskCreateResult, TaskC
     });
     return {
       message: `Task #${task.displayNumber} created successfully: ${task.subject}`,
-      task: context.taskStore.toSnapshot(task),
+      task,
     };
   },
 });

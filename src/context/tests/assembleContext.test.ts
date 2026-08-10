@@ -19,7 +19,6 @@ function input(overrides: Record<string, unknown> = {}) {
     reminder: {
       currentDate: '2026-08-09',
       memoryRecall: '用户喜欢红茶',
-      mailboxMessages: ['子 Agent 已完成检索'],
     },
     contextWindow: 100_000,
     ...overrides,

@@ -9,13 +9,13 @@ import {
   contextOk,
   type ToolUseContext,
 } from '@ema-agent/tools';
-import type { TaskSnapshot, TaskStorePort, TaskMutationFailure } from '@ema-agent/tasks';
+import type { Task, TaskStore, TaskMutationFailure } from '@ema-agent/tasks';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { TASK_UPDATE_DESCRIPTION } from './prompt.js';
 
 /** Task 更新工具的窄 Context:只有持久存储;调用身份由 ToolInvocation 提供。 */
 interface TaskUpdateToolContext {
-  taskStore: TaskStorePort;
+  taskStore: TaskStore;
 }
 
 const taskIdList = z.array(z.string().uuid()).max(100);
@@ -81,8 +81,8 @@ export interface TaskUpdateResult {
   changed: boolean;
   deleted: boolean;
   taskId: string;
-  task?: TaskSnapshot;
-  current?: TaskSnapshot;
+  task?: Task;
+  current?: Task;
   reason?: TaskMutationFailure;
 }
 
@@ -138,7 +138,7 @@ export const TaskUpdateTool = buildTool<TaskUpdateInput, TaskUpdateResult, TaskU
         deleted: false,
         taskId,
         reason: result.reason,
-        ...(result.current ? { current: context.taskStore.toSnapshot(result.current) } : {}),
+        ...(result.current ? { current: result.current } : {}),
       };
     }
 
@@ -152,16 +152,16 @@ export const TaskUpdateTool = buildTool<TaskUpdateInput, TaskUpdateResult, TaskU
       };
     }
 
-    const snapshot = context.taskStore.toSnapshot(result.task);
+    const updated = result.task;
     return {
       success: true,
       message: result.changed
-        ? `Task #${snapshot.displayNumber} updated to version ${snapshot.version}.`
-        : `Task #${snapshot.displayNumber} already matches the requested state.`,
+        ? `Task #${updated.displayNumber} updated to version ${updated.version}.`
+        : `Task #${updated.displayNumber} already matches the requested state.`,
       changed: result.changed,
       deleted: false,
       taskId,
-      task: snapshot,
+      task: updated,
     };
   },
 });

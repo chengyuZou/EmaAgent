@@ -8,13 +8,13 @@ import {
   contextOk,
   type ToolUseContext,
 } from '@ema-agent/tools';
-import type { TaskSnapshot, TaskStorePort } from '@ema-agent/tasks';
+import type { Task, TaskStore } from '@ema-agent/tasks';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { TASK_GET_DESCRIPTION } from './prompt.js';
 
 /** Task 读取工具的窄 Context:只有持久存储;调用身份由 ToolInvocation 提供。 */
 interface TaskGetToolContext {
-  taskStore: TaskStorePort;
+  taskStore: TaskStore;
 }
 
 const inputSchema = z.object({
@@ -25,7 +25,7 @@ type TaskGetInput = z.infer<typeof inputSchema>;
 
 export interface TaskGetResult {
   message: string;
-  task: TaskSnapshot | null;
+  task: Task | null;
 }
 
 export const TaskGetTool = buildTool<TaskGetInput, TaskGetResult, TaskGetToolContext>({
@@ -55,7 +55,7 @@ export const TaskGetTool = buildTool<TaskGetInput, TaskGetResult, TaskGetToolCon
     return task
       ? {
           message: `Task #${task.displayNumber}: ${task.subject}`,
-          task: context.taskStore.toSnapshot(task),
+          task,
         }
       : { message: 'Task not found in the current Session.', task: null };
   },
