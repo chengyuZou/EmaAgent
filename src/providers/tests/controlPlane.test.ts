@@ -2,20 +2,20 @@
 import { describe, expect, it } from 'vitest';
 import {
   ModelBindings,
-  ProviderConfigurations,
+  ProviderConfigs,
   ProviderModels,
   providerCatalog,
-  type ConfiguredProvider,
   type ModelBinding,
-  type ProviderConfigurationStore,
+  type ProviderConfig,
+  type ProviderConfigStore,
   type ProviderHealth,
   type ProviderModel,
   type ProviderWithHealth,
-  type SaveProviderConfiguration,
+  type SaveProviderConfig,
 } from '../index.js';
 
-class MemoryControlStore implements ProviderConfigurationStore {
-  readonly providers = new Map<string, ConfiguredProvider>();
+class MemoryControlStore implements ProviderConfigStore {
+  readonly providers = new Map<string, ProviderConfig>();
   readonly credentials = new Map<string, string>();
   get(id: string) { return this.providers.get(id); }
   getWithHealth(id: string): ProviderWithHealth | undefined {
@@ -26,14 +26,14 @@ class MemoryControlStore implements ProviderConfigurationStore {
     return [...this.providers.values()].map((config) => ({ config, health: null }));
   }
   revealCredential(id: string) { return this.credentials.get(id) ?? null; }
-  save(input: SaveProviderConfiguration) {
+  save(input: SaveProviderConfig) {
     if (input.credential !== undefined) {
       if (input.credential === null) this.credentials.delete(input.id);
       else this.credentials.set(input.id, input.credential);
     }
     this.providers.set(input.id, {
       id: input.id,
-      definitionId: input.definitionId,
+      providerId: input.providerId,
       displayName: input.displayName,
       hasCredential: this.credentials.has(input.id),
       enabled: input.enabled,
@@ -48,7 +48,7 @@ describe('Provider 控制面', () => {
   it('内置 Provider 能选择同能力的非预设协议', () => {
     const store = new MemoryControlStore();
     const bindings: ModelBinding[] = [];
-    const control = new ProviderConfigurations(
+    const control = new ProviderConfigs(
       providerCatalog,
       store,
       { listByProviderConfig: (id) => bindings.filter((item) => item.providerConfigId === id) },
@@ -56,7 +56,7 @@ describe('Provider 控制面', () => {
     );
 
     control.create({
-      definitionId: 'siliconflow',
+      providerId: 'siliconflow',
       enabled: true,
       credential: 'secret',
       capabilities: [{
@@ -75,7 +75,7 @@ describe('Provider 控制面', () => {
 
   it('内置预设没有声明的协议必须显式填写地址', () => {
     const store = new MemoryControlStore();
-    const control = new ProviderConfigurations(
+    const control = new ProviderConfigs(
       providerCatalog,
       store,
       { listByProviderConfig: () => [] },
@@ -83,7 +83,7 @@ describe('Provider 控制面', () => {
     );
 
     expect(() => control.create({
-      definitionId: 'openai',
+      providerId: 'openai',
       enabled: true,
       capabilities: [{ capability: 'rerank', protocol: 'cohere-rerank' }],
     })).toThrow(/必须填写 baseUrl/);
@@ -92,14 +92,14 @@ describe('Provider 控制面', () => {
   it('模型绑定从统一模型事实中确认能力', () => {
     const configurations = new MemoryControlStore();
     configurations.providers.set('provider-1', {
-      id: 'provider-1', definitionId: null, displayName: 'Custom', hasCredential: false,
+      id: 'provider-1', providerId: null, displayName: 'Custom', hasCredential: false,
       enabled: true,
       capabilities: [{ capability: 'llm', protocol: 'openai-llm', baseUrl: 'http://localhost/v1', enabled: true }],
     });
     const modelRows = new Map<string, ProviderModel>();
     const modelStore = {
-      get: (providerId: string, capability: ProviderModel['capability'], model: string) =>
-        modelRows.get(`${providerId}/${capability}/${model}`),
+      get: (providerConfigId: string, capability: ProviderModel['capability'], model: string) =>
+        modelRows.get(`${providerConfigId}/${capability}/${model}`),
       listByProvider: () => [], listByCapability: () => [],
       save: (model: ProviderModel) => modelRows.set(`${model.providerConfigId}/${model.capability}/${model.model}`, model),
       delete: () => {},

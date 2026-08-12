@@ -25,23 +25,22 @@ Provider 不拥有：
 
 ```text
 src/providers/
-├─ types.ts                 capability、协议、Definition 与 ProviderConnection
-├─ definition-utils.ts      读取内置预设
-├─ registry.ts              注册 19 个内置 Provider Definition
-├─ configuration.ts         用户配置 CRUD 与连接解析
+├─ types.ts                 ModelCapability、协议、Provider 预设与 ProviderConnection
+├─ registry.ts              19 个内置 Provider 预设目录 + 单预设纯读取函数
+├─ configuration.ts         用户配置 CRUD 与连接解析（ProviderConfigs）
 ├─ models.ts                已启用模型的判别联合与业务入口
 ├─ modelBindings.ts         每个业务模块唯一的模型绑定
 ├─ errors.ts                稳定业务错误
 ├─ catalog/
 │  └─ modelsDevCatalog.ts   外部目录的纯解析器
-└─ definitions/             发行时内置预设
+└─ providers/               发行时内置预设，每厂一个目录
 ```
 
 ## 核心接口
 
-### `ProviderConfigurations`
+### `ProviderConfigs`
 
-配置可以引用内置 Definition，也可以令 `definitionId` 为 `null`，表示完全由用户填写的连接。每项 capability 都保存明确的协议和地址；数据库不使用“空值代表跟随预设”的隐式语义。
+配置可以引用内置预设，也可以令 `providerId` 为 `null`，表示完全由用户填写的连接。每项 capability 都保存明确的协议和地址；数据库不使用“空值代表跟随预设”的隐式语义。
 
 ```ts
 const connection = configurations.resolveConnection(providerConfigId, 'llm');
@@ -88,7 +87,7 @@ models.dev / 实况列表 / 用户手填
 
 `ProvidersRepo`、`ProviderModelsRepo` 和 `ModelBindingsRepo` 实现 Provider 所有的持久化接口。SQL Row 只存在于 Storage 内部：
 
-- `provider_configs.definition_id` 可空；
+- `provider_configs.provider_id` 可空；
 - `provider_capability_configs` 保存明确的协议和地址；
 - `provider_models` 是六类模型的唯一事实表；
 - `model_bindings.module` 是主键，并通过复合外键指向精确模型；
@@ -108,4 +107,4 @@ LocalHost 将被替换，因此本批没有给旧 Route/Wiring 做过渡适配�
   → 执行单次 API 调用
 ```
 
-Probe 同样由应用组合层创建真实执行对象并发起真实请求，最后只把健康结果交给 `ProviderConfigurations.recordHealth()`。不得在 Provider 内恢复 Probe Executor 或 Runtime Map。
+Probe 同样由应用组合层创建真实执行对象并发起真实请求，最后只把健康结果交给 `ProviderConfigs.recordHealth()`。不得在 Provider 内恢复 Probe Executor 或 Runtime Map。

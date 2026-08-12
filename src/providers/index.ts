@@ -1,5 +1,4 @@
 export * from './types.js';
-export * from './definition-utils.js';
 export * from './registry.js';
 export * from './configuration.js';
 export * from './models.js';

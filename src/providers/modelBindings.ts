@@ -1,7 +1,7 @@
 // 让每个业务模块只绑定一个已启用模型，不在 Provider 内触发业务副作用。
-import { ProviderConfigurationError } from './errors.js';
+import { ProviderConfigError } from './errors.js';
 import type { ProviderModelStore } from './models.js';
-import type { Capability } from './types.js';
+import type { ModelCapability } from './types.js';
 
 export const MODEL_BINDING_MODULES = [
   'memory',
@@ -15,7 +15,7 @@ export const MODEL_BINDING_MODULES = [
 
 export type ModelBindingModule = typeof MODEL_BINDING_MODULES[number];
 
-export const MODEL_BINDING_CAPABILITIES: Readonly<Record<ModelBindingModule, Capability>> =
+export const MODEL_BINDING_CAPABILITIES: Readonly<Record<ModelBindingModule, ModelCapability>> =
   Object.freeze({
     memory: 'llm',
     title: 'llm',
@@ -33,7 +33,7 @@ export interface ModelBindingInput {
 }
 
 export interface ModelBinding extends ModelBindingInput {
-  capability: Capability;
+  capability: ModelCapability;
 }
 
 export interface ModelBindingStore {
@@ -66,7 +66,7 @@ export class ModelBindings {
     const capability = MODEL_BINDING_CAPABILITIES[input.module];
     const model = this.models.get(input.providerConfigId, capability, input.model);
     if (!model) {
-      throw new ProviderConfigurationError(
+      throw new ProviderConfigError(
         'model_not_found',
         `${input.module} 只能绑定已启用的 ${capability} 模型`,
       );

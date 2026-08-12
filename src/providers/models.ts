@@ -1,9 +1,9 @@
 // 保存用户已经启用的模型事实；Catalog 只负责创建或编辑时预填这些字段。
-import type { Capability } from './types.js';
-import type { ProviderConfigurationStore } from './configuration.js';
-import { ProviderConfigurationError } from './errors.js';
+import type { ModelCapability } from './types.js';
+import type { ProviderConfigStore } from './configuration.js';
+import { ProviderConfigError } from './errors.js';
 
-interface ProviderModelIdentity<TCapability extends Capability> {
+interface ProviderModelIdentity<TCapability extends ModelCapability> {
   providerConfigId: string;
   capability: TCapability;
   model: string;
@@ -39,31 +39,31 @@ export type ProviderModel =
   | SttProviderModel;
 
 export interface ProviderModelStore {
-  get(providerConfigId: string, capability: Capability, model: string): ProviderModel | undefined;
-  listByProvider(providerConfigId: string, capability?: Capability): ProviderModel[];
-  listByCapability(capability: Capability): ProviderModel[];
+  get(providerConfigId: string, capability: ModelCapability, model: string): ProviderModel | undefined;
+  listByProvider(providerConfigId: string, capability?: ModelCapability): ProviderModel[];
+  listByCapability(capability: ModelCapability): ProviderModel[];
   save(model: ProviderModel): void;
-  delete(providerConfigId: string, capability: Capability, model: string): void;
+  delete(providerConfigId: string, capability: ModelCapability, model: string): void;
 }
 
 export class ProviderModels {
   constructor(
-    private readonly configurations: Pick<ProviderConfigurationStore, 'get'>,
+    private readonly configurations: Pick<ProviderConfigStore, 'get'>,
     private readonly store: ProviderModelStore,
   ) {}
 
-  listByProvider(providerConfigId: string, capability?: Capability): ProviderModel[] {
+  listByProvider(providerConfigId: string, capability?: ModelCapability): ProviderModel[] {
     this.requireProvider(providerConfigId);
     return this.store.listByProvider(providerConfigId, capability);
   }
 
-  listByCapability(capability: Capability): ProviderModel[] {
+  listByCapability(capability: ModelCapability): ProviderModel[] {
     return this.store.listByCapability(capability);
   }
 
-  get(providerConfigId: string, capability: Capability, model: string): ProviderModel {
+  get(providerConfigId: string, capability: ModelCapability, model: string): ProviderModel {
     const found = this.store.get(providerConfigId, capability, model);
-    if (!found) throw new ProviderConfigurationError('model_not_found', 'Provider 模型不存在');
+    if (!found) throw new ProviderConfigError('model_not_found', 'Provider 模型不存在');
     return found;
   }
 
@@ -73,7 +73,7 @@ export class ProviderModels {
       (entry) => entry.capability === model.capability && entry.enabled,
     );
     if (!configured) {
-      throw new ProviderConfigurationError(
+      throw new ProviderConfigError(
         'capability_disabled',
         `Provider 未启用 ${model.capability} 能力`,
       );
@@ -83,21 +83,21 @@ export class ProviderModels {
     return this.get(model.providerConfigId, model.capability, model.model);
   }
 
-  delete(providerConfigId: string, capability: Capability, model: string): void {
+  delete(providerConfigId: string, capability: ModelCapability, model: string): void {
     this.get(providerConfigId, capability, model);
     this.store.delete(providerConfigId, capability, model);
   }
 
   private requireProvider(providerConfigId: string) {
     const provider = this.configurations.get(providerConfigId);
-    if (!provider) throw new ProviderConfigurationError('not_found', 'Provider 不存在');
+    if (!provider) throw new ProviderConfigError('not_found', 'Provider 不存在');
     return provider;
   }
 }
 
 function validateModel(model: ProviderModel): void {
   if (model.model.trim().length === 0) {
-    throw new ProviderConfigurationError('invalid_configuration', '模型名称不能为空');
+    throw new ProviderConfigError('invalid_configuration', '模型名称不能为空');
   }
   if (model.capability === 'llm') {
     positive(model.contextWindow, 'contextWindow');
@@ -111,6 +111,6 @@ function validateModel(model: ProviderModel): void {
 
 function positive(value: number, field: string): void {
   if (!Number.isInteger(value) || value <= 0) {
-    throw new ProviderConfigurationError('invalid_configuration', `${field} 必须是正整数`);
+    throw new ProviderConfigError('invalid_configuration', `${field} 必须是正整数`);
   }
 }
