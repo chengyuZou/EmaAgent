@@ -1,20 +1,20 @@
 // 把 Provider 控制面对象映射到 profile.db，并确保普通查询永不泄露明文凭据。
 import type { CredentialFacade } from '@ema-agent/credential';
 import type {
-  Capability,
-  ConfiguredProvider,
-  ProviderCapabilityConfiguration,
-  ProviderConfigurationStore,
+  ModelCapability,
+  ProviderConfig,
+  ProviderCapabilityConfig,
+  ProviderConfigStore,
   ProviderHealth,
   ProviderWithHealth,
-  SaveProviderConfiguration,
+  SaveProviderConfig,
 } from '@ema-agent/provider';
-import type { ProtocolFamily } from '@ema-agent/provider';
+import type { Protocol } from '@ema-agent/provider';
 import type { SqliteDb } from '../../database/database.js';
 
 interface ProviderRow {
   id: string;
-  definition_id: string | null;
+  provider_id: string | null;
   display_name: string;
   credential_envelope: string | null;
   enabled: number;
@@ -22,8 +22,8 @@ interface ProviderRow {
 
 interface CapabilityRow {
   provider_config_id: string;
-  capability: Capability;
-  protocol: ProtocolFamily;
+  capability: ModelCapability;
+  protocol: Protocol;
   base_url: string;
   enabled: number;
 }
@@ -35,13 +35,13 @@ interface HealthRow {
   last_error: string | null;
 }
 
-export class ProvidersRepo implements ProviderConfigurationStore {
+export class ProvidersRepo implements ProviderConfigStore {
   constructor(
     private readonly db: SqliteDb,
     private readonly credentials: CredentialFacade,
   ) {}
 
-  get(id: string): ConfiguredProvider | undefined {
+  get(id: string): ProviderConfig | undefined {
     const row = this.getRow(id);
     return row ? this.toProvider(row, this.listCapabilities(id)) : undefined;
   }
@@ -54,7 +54,7 @@ export class ProvidersRepo implements ProviderConfigurationStore {
 
   listWithHealth(): ProviderWithHealth[] {
     const rows = this.db.prepare(
-      `SELECT id, definition_id, display_name, credential_envelope, enabled
+      `SELECT id, provider_id, display_name, credential_envelope, enabled
        FROM provider_configs
        ORDER BY created_at ASC, id ASC`,
     ).all() as ProviderRow[];
@@ -69,7 +69,7 @@ export class ProvidersRepo implements ProviderConfigurationStore {
     return envelope ? this.credentials.reveal(id, envelope) : null;
   }
 
-  save(input: SaveProviderConfiguration): void {
+  save(input: SaveProviderConfig): void {
     const now = Date.now();
     const existingEnvelope = this.getRow(input.id)?.credential_envelope ?? null;
     const envelope = input.credential === undefined
@@ -81,17 +81,17 @@ export class ProvidersRepo implements ProviderConfigurationStore {
     this.db.transaction(() => {
       this.db.prepare(
         `INSERT INTO provider_configs
-           (id, definition_id, display_name, credential_envelope, enabled, created_at, updated_at)
+           (id, provider_id, display_name, credential_envelope, enabled, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
-           definition_id = excluded.definition_id,
+           provider_id = excluded.provider_id,
            display_name = excluded.display_name,
            credential_envelope = excluded.credential_envelope,
            enabled = excluded.enabled,
            updated_at = excluded.updated_at`,
       ).run(
         input.id,
-        input.definitionId,
+        input.providerId,
         input.displayName,
         envelope,
         input.enabled ? 1 : 0,
@@ -157,7 +157,7 @@ export class ProvidersRepo implements ProviderConfigurationStore {
 
   private getRow(id: string): ProviderRow | undefined {
     return this.db.prepare(
-      `SELECT id, definition_id, display_name, credential_envelope, enabled
+      `SELECT id, provider_id, display_name, credential_envelope, enabled
        FROM provider_configs WHERE id = ?`,
     ).get(id) as ProviderRow | undefined;
   }
@@ -187,10 +187,10 @@ export class ProvidersRepo implements ProviderConfigurationStore {
   private toProvider(
     row: ProviderRow,
     capabilities: readonly CapabilityRow[],
-  ): ConfiguredProvider {
+  ): ProviderConfig {
     return {
       id: row.id,
-      definitionId: row.definition_id,
+      providerId: row.provider_id,
       displayName: row.display_name,
       hasCredential: row.credential_envelope !== null,
       enabled: row.enabled === 1,
@@ -199,7 +199,7 @@ export class ProvidersRepo implements ProviderConfigurationStore {
         protocol: entry.protocol,
         baseUrl: entry.base_url,
         enabled: entry.enabled === 1,
-      } as ProviderCapabilityConfiguration)),
+      } as ProviderCapabilityConfig)),
     };
   }
 }

@@ -224,7 +224,7 @@ CREATE TABLE provider_capability_configs (
 
 CREATE TABLE provider_configs (
   id                TEXT PRIMARY KEY,
-  definition_id     TEXT,
+  provider_id       TEXT,
   display_name      TEXT NOT NULL,
   credential_envelope     TEXT,
   enabled           INTEGER NOT NULL DEFAULT 0,

@@ -4,12 +4,12 @@ import type {
   ModelBindingModule,
   ModelBindingStore,
 } from '@ema-agent/provider';
-import type { Capability } from '@ema-agent/provider';
+import type { ModelCapability } from '@ema-agent/provider';
 import type { SqliteDb } from '../../database/database.js';
 
 interface ModelBindingRow {
   module: ModelBindingModule;
-  capability: Capability;
+  capability: ModelCapability;
   provider_config_id: string;
   model: string;
 }

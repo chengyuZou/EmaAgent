@@ -1,10 +1,10 @@
 // 在一张表中持久化六类模型，并在 Repo 边界恢复 ProviderModel 判别联合。
-import type { Capability, ProviderModel, ProviderModelStore } from '@ema-agent/provider';
+import type { ModelCapability, ProviderModel, ProviderModelStore } from '@ema-agent/provider';
 import type { SqliteDb } from '../../database/database.js';
 
 interface ProviderModelRow {
   provider_config_id: string;
-  capability: Capability;
+  capability: ModelCapability;
   model: string;
   context_window: number | null;
   max_output: number | null;
@@ -21,7 +21,7 @@ export class ProviderModelsRepo implements ProviderModelStore {
 
   get(
     providerConfigId: string,
-    capability: Capability,
+    capability: ModelCapability,
     model: string,
   ): ProviderModel | undefined {
     const row = this.db.prepare(
@@ -31,7 +31,7 @@ export class ProviderModelsRepo implements ProviderModelStore {
     return row ? fromRow(row) : undefined;
   }
 
-  listByProvider(providerConfigId: string, capability?: Capability): ProviderModel[] {
+  listByProvider(providerConfigId: string, capability?: ModelCapability): ProviderModel[] {
     const rows = capability === undefined
       ? this.db.prepare(
         `SELECT * FROM provider_models
@@ -44,7 +44,7 @@ export class ProviderModelsRepo implements ProviderModelStore {
     return (rows as ProviderModelRow[]).map(fromRow);
   }
 
-  listByCapability(capability: Capability): ProviderModel[] {
+  listByCapability(capability: ModelCapability): ProviderModel[] {
     const rows = this.db.prepare(
       `SELECT * FROM provider_models
        WHERE capability = ? ORDER BY provider_config_id ASC, model ASC`,
@@ -88,7 +88,7 @@ export class ProviderModelsRepo implements ProviderModelStore {
     );
   }
 
-  delete(providerConfigId: string, capability: Capability, model: string): void {
+  delete(providerConfigId: string, capability: ModelCapability, model: string): void {
     this.db.prepare(
       `DELETE FROM provider_models
        WHERE provider_config_id = ? AND capability = ? AND model = ?`,
