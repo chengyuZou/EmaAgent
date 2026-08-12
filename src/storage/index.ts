@@ -29,16 +29,12 @@ export { ProvidersRepo } from './repos/profile/providers.js';
 export { ProviderModelsRepo } from './repos/profile/providerModels.js';
 export { ModelBindingsRepo } from './repos/profile/modelBindings.js';
 export { AttachmentRepo }  from './repos/data/attachments.js';
-export type { AttachmentRow, AttachmentInsert } from './repos/data/attachments.js';
-export { AttachmentDerivationsRepo } from './repos/data/attachmentDerivations.js';
+export type { AttachmentRow, AttachmentInsertRow, AttachmentRowKind } from './repos/data/attachments.js';
+export { AttachmentVisionDescriptionsRepo } from './repos/data/attachmentVisionDescriptions.js';
 export type {
-  AttachmentVisionDerivationIdentity,
-  AttachmentVisionDerivationInsert,
-  AttachmentVisionDerivationRow,
-  AttachmentVisionTask,
-  CachedAttachmentImageInsert,
-  CachedAttachmentImageRow,
-} from './repos/data/attachmentDerivations.js';
+  AttachmentVisionDescriptionKey,
+  AttachmentVisionDescriptionRow,
+} from './repos/data/attachmentVisionDescriptions.js';
 export { SessionStatsRepo, DataDirStatsRepo, SessionRestoreValidationError } from './repos/data/storage-stats.js';
 export { SessionBackupReader } from './repos/data/sessionBackup.js';
 export {
@@ -214,15 +210,11 @@ export { KbIngestTasksRepo }   from './repos/kb/kb-ingest-tasks.js';
 export type {
   KbIngestTask,
   KbIngestStatus,
-  KbIngestFailureShard,
-  KbIngestFailureStage,
 } from './repos/kb/kb-ingest-tasks.js';
 export { KbReembedTasksRepo }  from './repos/kb/kb-reembed-tasks.js';
 export type {
   KbReembedTask,
   KbReembedStatus,
-  KbReembedFailureShard,
-  KbReembedFailureStage,
 } from './repos/kb/kb-reembed-tasks.js';
 export { KbRegistryRepo }      from './repos/profile/kb-registry.js';
 export type { KbRecord }       from './repos/profile/kb-registry.js';

@@ -103,8 +103,9 @@ describe('SessionStatsRepo restore integration', () => {
       mimeType: 'audio/wav', byteSize: 128, durationMs: 500, segmentCount: 1, createdAt: 150,
     });
     payload.attachments.push({
-      id: 'attachment-1', turnId: 'turn-child', name: 'note.txt', mime: 'text/plain',
-      size: 4, mtime: 1, localPath: 'attachments/note.txt', createdAt: 150,
+      id: 'attachment-1', turnId: 'turn-child', kind: 'file', name: 'note.txt', mime: 'text/plain',
+      byteSize: 4, sourceModifiedAt: 1, sourcePath: 'attachments/note.txt',
+      imagePath: null, imageByteSize: null, createdAt: 150,
     });
     payload.agentRuns.push({
       id: 'run-1',

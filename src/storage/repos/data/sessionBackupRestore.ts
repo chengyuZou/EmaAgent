@@ -184,13 +184,16 @@ export class SessionBackupRestorer {
     }
 
     const attachment = this.db.prepare(`
-      INSERT INTO turn_attachments (id, turn_id, session_id, name, mime, size, mtime, local_path, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO turn_attachments (
+        id, turn_id, session_id, kind, name, mime, source_path, byte_size, source_modified_at,
+        image_path, image_byte_size, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     for (const row of input.attachments) {
       attachment.run(
-        row.id, row.turnId, session.id, row.name, row.mime, row.size,
-        row.mtime, row.localPath, row.createdAt,
+        row.id, row.turnId, session.id, row.kind, row.name, row.mime,
+        row.sourcePath, row.byteSize, row.sourceModifiedAt,
+        row.imagePath, row.imageByteSize, row.createdAt,
       );
     }
     const audio = this.db.prepare(`

@@ -450,8 +450,8 @@ describe('SessionsRepo integration', () => {
   function insertAttachment(id: string, turnId: string, sessionId: string): void {
     database.db.prepare(`
       INSERT INTO turn_attachments
-        (id, turn_id, session_id, name, mime, size, mtime, local_path, created_at)
-      VALUES (?, ?, ?, 'fixture.txt', 'text/plain', 7, 1, 'fixture.txt', 1)
+        (id, turn_id, session_id, kind, name, mime, source_path, byte_size, source_modified_at, created_at)
+      VALUES (?, ?, ?, 'file', 'fixture.txt', 'text/plain', 'fixture.txt', 7, 1, 1)
     `).run(id, turnId, sessionId);
   }
 });

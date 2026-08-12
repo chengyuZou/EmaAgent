@@ -551,8 +551,11 @@ export class SessionsRepo {
       //    (attachmentStore.listByTurn(newTurnId) 会是空的)。
       this.db.prepare(
         `INSERT INTO turn_attachments
-           (id, turn_id, session_id, name, mime, size, mtime, local_path, created_at)
-         SELECT lower(hex(randomblob(16))), m.new_id, ?, ta.name, ta.mime, ta.size, ta.mtime, ta.local_path, ta.created_at
+           (id, turn_id, session_id, kind, name, mime, source_path, byte_size, source_modified_at,
+            image_path, image_byte_size, created_at)
+         SELECT lower(hex(randomblob(16))), m.new_id, ?, ta.kind, ta.name, ta.mime,
+                ta.source_path, ta.byte_size, ta.source_modified_at,
+                ta.image_path, ta.image_byte_size, ta.created_at
          FROM turn_attachments ta
          JOIN _turn_id_map m ON m.old_id = ta.turn_id`,
       ).run(newId);
