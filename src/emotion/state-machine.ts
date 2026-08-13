@@ -17,10 +17,10 @@ export function makeInitialState(): EmotionStateInternal {
 // ── Transition ────────────────────────────────────────────────────────────────
 
 /**
- * Attempt to transition to a new emotion.
+ * 尝试过渡到新的情绪。
  *
- * Returns a new state object if the transition is valid and represents a change,
- * or `null` if the transition is rejected (unknown emotion or no actual change).
+ * 如果过渡有效且表示更改，则返回新的状态对象，
+ * 如果过渡被拒绝（未知情绪或没有实际更改），则返回 `null`。
  */
 export function transitionEmotion(
   current: EmotionStateInternal,

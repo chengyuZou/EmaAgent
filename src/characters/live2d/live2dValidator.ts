@@ -46,7 +46,10 @@ export async function copyAndValidateLive2dDirectory({
       throw new CharacterResourceValidationError('live2d_entry_invalid');
     }
     if (runtimeConfig) {
-      await assertJsonFile(resolvePackageFile(destinationDirectory, runtimeConfig));
+      await assertJsonFile(
+        resolvePackageFile(destinationDirectory, runtimeConfig),
+        'live2d_runtime_config_invalid',
+      );
     }
 
     const resourceVersion = format === 'live2d'
@@ -166,21 +169,27 @@ function extractCubismReferences(manifest: Record<string, unknown>): string[] {
   return [...new Set(result)];
 }
 
-async function assertJsonFile(filePath: string): Promise<void> {
-  await readJsonFile(filePath);
+async function assertJsonFile(
+  filePath: string,
+  reason: 'live2d_entry_invalid' | 'live2d_runtime_config_invalid',
+): Promise<void> {
+  await readJsonFile(filePath, reason);
 }
 
-async function readJsonFile(filePath: string): Promise<Record<string, unknown>> {
+async function readJsonFile(
+  filePath: string,
+  reason: 'live2d_entry_invalid' | 'live2d_runtime_config_invalid' = 'live2d_entry_invalid',
+): Promise<Record<string, unknown>> {
   const stat = await fs.promises.stat(filePath);
   if (!stat.isFile() || stat.size > CHARACTER_RESOURCE_LIMITS.live2dManifestBytes) {
-    throw new CharacterResourceValidationError('live2d_entry_invalid');
+    throw new CharacterResourceValidationError(reason);
   }
   try {
     const parsed: unknown = JSON.parse(await fs.promises.readFile(filePath, 'utf8'));
     if (!isRecord(parsed)) throw new Error('not object');
     return parsed;
   } catch {
-    throw new CharacterResourceValidationError('live2d_entry_invalid');
+    throw new CharacterResourceValidationError(reason);
   }
 }
 

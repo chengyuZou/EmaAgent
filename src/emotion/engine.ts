@@ -1,7 +1,8 @@
+// 本文件解析模型流中的角色表现标签，并维护各 Session 独立的情绪状态。
 import type { TurnId, SessionId } from '@ema-agent/ids';
 import type { EmotionState, EmotionStreamEvent } from './events.js';
-import { StreamingActScanner } from './parser.js';
-import type { ParsedActTag } from './types.js';
+import { StreamingCharacterTagScanner } from './parser.js';
+import type { ParsedCharacterTag } from './types.js';
 import {
   makeInitialState,
   transitionEmotion,
@@ -9,48 +10,46 @@ import {
   type EmotionStateInternal,
 } from './state-machine.js';
 
-// ── Per-session state ─────────────────────────────────────────────────────────
+// ── Session 状态 ──────────────────────────────────────────────────────────────
 
 interface SessionEmotionState {
   state:               EmotionStateInternal;
-  scanner:             StreamingActScanner;
+  scanner:             StreamingCharacterTagScanner;
 }
 
-// ── EmotionEngine ─────────────────────────────────────────────────────────────
+// ── 情绪引擎 ──────────────────────────────────────────────────────────────────
 
 export interface EmotionEngineOptions {
-  /** Allowed emotion names from the active character card. */
+  /** 当前角色卡允许使用的情绪名称。 */
   vocabulary: string[];
 }
 
 /**
- * EmotionEngine — Facade for ACT tag parsing + emotion state machine.
+ * EmotionEngine 解析角色表现标签并维护每个 Session 的情绪状态。
  *
- * One engine instance is shared across ALL sessions in the LocalHost process.
- * Internal state is keyed by sessionId so concurrent turns
- * in different sessions never interfere.
+ * LocalHost 进程中的所有 Session 共用一个引擎实例。内部状态按 sessionId
+ * 隔离，因此不同 Session 中并发执行的 Turn 不会相互污染。
  *
- * ## Lifecycle per turn
+ * ## 每个 Turn 的生命周期
  *
- *   1. `beginTurn(sessionId)` — reset the streaming scanner for this session.
- *      Emotional state is preserved across turns so the character remembers
- *      how she feels between messages.
+ *   1. `beginTurn(sessionId)`：重置该 Session 的流式标签扫描器。
+ *      情绪状态跨 Turn 保留，使角色在连续消息之间保持情绪延续。
  *
- *   2. For each LLM `text_delta`:
+ *   2. 每收到一段 LLM `text_delta`：
  *      `processChunk(delta, turnId, sessionId)` → `{ cleaned, events }`
  *
- *   3. After the LLM stream ends:
+ *   3. LLM 流结束后：
  *      `flush(turnId, sessionId)` → `{ cleaned, events }`
  *
- * ## Card switch
+ * ## 切换角色卡
  *
- *   `reset()` — clears ALL session states back to neutral AND zeroes the scanner.
- *   Call alongside `updateVocabulary()` when the active character card changes.
+ *   `reset()`：清除所有 Session 的状态和扫描器，使其恢复中性状态。
+ *   当前激活角色卡改变时，应与 `updateVocabulary()` 一同调用。
  *
- * ## Session cleanup
+ * ## Session 清理
  *
- *   `evictSession(sessionId)` — call when a session is deleted so the internal
- *   map entry is freed. Not required for correctness; purely a memory hygiene.
+ *   `evictSession(sessionId)`：删除 Session 时释放对应的内部状态。
+ *   它只负责回收内存，不影响执行正确性。
  */
 export class EmotionEngine {
   private vocabulary: readonly string[];
@@ -60,51 +59,51 @@ export class EmotionEngine {
     this.vocabulary = opts.vocabulary;
   }
 
-  // ── Public API ──────────────────────────────────────────────────────────────
+  // ── 公共接口 ────────────────────────────────────────────────────────────────
 
-  /** Current emotion state for a session, or null if the session has no state yet. */
+  /** 返回 Session 的当前情绪状态；尚未建立状态时返回 null。 */
   current(sessionId: SessionId): EmotionState | null {
     const s = this.sessions.get(sessionId as string);
     return s ? toPublicState(s.state) : null;
   }
 
-  /** Swap vocabulary when the active character card changes. */
+  /** 当前激活角色卡改变后，替换允许使用的情绪词汇。 */
   updateVocabulary(vocabulary: string[]): void {
     this.vocabulary = vocabulary;
   }
 
   /**
-   * Prepare for a new turn for the given session.
-   * Resets the streaming scanner and per-turn buffer; emotional state is kept.
+   * 为指定 Session 的新 Turn 做准备。
+   * 重置流式扫描器及本轮缓冲区，但保留已有情绪状态。
    */
   beginTurn(sessionId: SessionId): void {
     const existing = this.sessions.get(sessionId as string);
     this.sessions.set(sessionId as string, {
       state:               existing?.state ?? makeInitialState(),
-      scanner:             new StreamingActScanner(),
+      scanner:             new StreamingCharacterTagScanner(),
     });
   }
 
   /**
-   * Full reset — clears ALL session states and scanners back to neutral.
-   * Call on character card switch (card is shared across all sessions).
+   * 完整重置所有 Session 的情绪状态与扫描器。
+   * 角色卡由所有 Session 共享，因此切换角色卡时调用此方法。
    */
   reset(): void {
     this.sessions.clear();
   }
 
   /**
-   * Release state for a deleted session. Memory hygiene only.
+   * 释放已删除 Session 的状态，仅用于回收内存。
    */
   evictSession(sessionId: SessionId): void {
     this.sessions.delete(sessionId as string);
   }
 
   /**
-   * Process one streaming delta for the given session.
-   * Strips ACT tags, updates internal state, and returns:
-   *   - `cleaned`: delta text with tags removed
-   *   - `events`: SSE events (`emotion_changed`, `stage_cue`) to yield
+   * 处理指定 Session 的一段流式增量。
+   * 移除角色表现标签、更新内部状态，并返回：
+   *   - `cleaned`：移除标签后的正文增量；
+   *   - `events`：需要发出的 SSE 事件（`emotion_changed`、`stage_cue`）。
    */
   processChunk(
     delta:     string,
@@ -119,8 +118,8 @@ export class EmotionEngine {
   }
 
   /**
-   * Flush any buffered tail at end-of-stream for the given session.
-   * Incomplete tags become plain text; no new ACT events on flush.
+   * 流结束时释放指定 Session 中尚未处理的缓冲尾部。
+   * 未闭合标签作为普通正文释放，flush 不产生新的表现事件。
    */
   flush(
     turnId:    TurnId,
@@ -134,10 +133,10 @@ export class EmotionEngine {
     return { cleaned, events: [] };
   }
 
-  // ── Internals ───────────────────────────────────────────────────────────────
+  // ── 内部实现 ────────────────────────────────────────────────────────────────
 
   private tagsToEvents(
-    tags:      ParsedActTag[],
+    tags:      ParsedCharacterTag[],
     turnId:    TurnId,
     sessionId: SessionId,
     s:         SessionEmotionState,
@@ -167,16 +166,6 @@ export class EmotionEngine {
             cue: { motion: tag.value, priority: 1 },
           });
           break;
-        case 'delay': {
-          const durationMs = Math.round(parseFloat(tag.value) * 1000);
-          events.push({
-            type: 'stage_cue',
-            sessionId,
-            turnId,
-            cue: { durationMs, priority: 0 },
-          });
-          break;
-        }
       }
     }
 

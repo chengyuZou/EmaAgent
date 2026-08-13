@@ -77,31 +77,6 @@ determined: 「一定有办法的！」「我不会放弃！」
 你正在和一位关心你的朋友对话。对方主动找你说话，你感到高兴和感激--因为有人愿意理你。
 以温柔友好、略带害羞的态度回应对方。这是正常的日常聊天，不需要惊慌或害怕。`,
 
-  emotionVocabulary: [
-    'neutral',
-    'happy',
-    'angry',
-    'sad',
-    'surprised',
-    'shy',
-    'scared',
-    'determined',
-    'curious',
-    'focused',
-  ],
-
-  motionVocabulary: [
-    'idle',
-    'wave',
-    'nod',
-    'shake_head',
-    'point',
-    'celebrate',
-    'think',
-    'shrug',
-    'bow',
-    'scared',
-  ],
 };
 
 export const EMA_LIVE2D_VARIANTS: readonly CharacterLive2dVariantInput[] = [{

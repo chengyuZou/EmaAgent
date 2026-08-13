@@ -14,6 +14,7 @@ import {
 import type { CharacterCard } from '../types.js';
 import type {
   CharacterLive2dVariant,
+  CharacterLive2dVariantInput,
   ImportCharacterLive2dInput,
 } from '../live2d/types.js';
 import { CharacterLive2dRepository } from '../live2d/repository.js';
@@ -55,6 +56,14 @@ export class CharacterResourceLifecycle {
     private readonly trash: CharacterResourceTrash,
     private readonly staging: CharacterResourceStaging,
     private readonly operations: CharacterResourceOperations,
+    private readonly insertLive2d: (
+      id: CharacterCardId,
+      input: CharacterLive2dVariantInput,
+    ) => CharacterLive2dVariant,
+    private readonly deleteLive2dRecord: (
+      id: CharacterCardId,
+      resourceId: CharacterLive2dId,
+    ) => CharacterLive2dVariant | undefined,
     private readonly presentationChanged: (id: CharacterCardId) => void,
   ) {}
 
@@ -89,7 +98,7 @@ export class CharacterResourceLifecycle {
         }),
         commit: prepared => {
           setStage('publishing');
-          const inserted = this.live2d.insert(id, {
+          const inserted = this.insertLive2d(id, {
             id: resourceId,
             label: input.label,
             format: input.format,
@@ -155,7 +164,7 @@ export class CharacterResourceLifecycle {
         targetRelativePath: live2dPackagePath(current),
         commit: () => {
           setStage('publishing');
-          const result = this.live2d.delete(id, resourceId);
+          const result = this.deleteLive2dRecord(id, resourceId);
           if (!result) throw new Error(`Live2D resource disappeared: ${resourceId}`);
           this.presentationChanged(id);
           return result;

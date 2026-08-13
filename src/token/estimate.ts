@@ -1,6 +1,6 @@
 // 估算消息、媒体和工具定义占用的上下文 Token，为压缩与预算决策提供统一依据。
 import type {
-  ContentPart as MessageContentPart,
+  LlmContentPart as MessageContentPart,
   Message as ModelMessage,
   ToolResultContentPart,
 } from '@ema-agent/llm';

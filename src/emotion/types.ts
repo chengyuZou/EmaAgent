@@ -1,20 +1,20 @@
-// ── ACT tag types ─────────────────────────────────────────────────────────────
+// ── 角色表现标签类型 ───────────────────────────────────────────────────────────
 
-export type ActTagKind = 'emotion' | 'motion' | 'delay';
+export type CharacterTagKind = 'emotion' | 'motion';
 
-export interface ParsedActTag {
-  kind: ActTagKind;
-  /** Emotion/motion name, or delay seconds as a numeric string. */
+export interface ParsedCharacterTag {
+  kind: CharacterTagKind;
+  /** 当前角色运行配置声明的情绪或动作名称。 */
   value: string;
-  /** The full tag text, e.g. <|ACT:emotion:happy|> */
+  /** 完整原始标签，例如 `<emotion>happy</emotion>`。 */
   raw: string;
 }
 
 // ── Scanner result ────────────────────────────────────────────────────────────
 
 export interface ScanResult {
-  /** Delta text with all complete ACT tags stripped. */
+  /** 去除所有完整角色表现标签后的文本。 */
   cleaned: string;
-  /** All complete ACT tags found in this delta (in order). */
-  tags: ParsedActTag[];
+  /** 在此 delta 中找到的所有完整角色表现标签（按顺序）。 */
+  tags: ParsedCharacterTag[];
 }

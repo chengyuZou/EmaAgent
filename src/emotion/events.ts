@@ -4,7 +4,6 @@ import type { SessionId, TurnId } from '@ema-agent/ids';
 export interface StageCue {
   motion?: string;
   expression?: string;
-  durationMs?: number;
   priority: number;
 }
 

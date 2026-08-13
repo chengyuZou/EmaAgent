@@ -1,6 +1,6 @@
 // 聚合角色定义与三类表现资源，并负责角色 CRUD、激活、内置种子和切换广播。
 
-import type { Database, CharacterCardsRepo } from '@ema-agent/storage';
+import type { Database, CharacterCardsRepo, SqliteDb } from '@ema-agent/storage';
 import {
   CharacterCardsRepo as Repo,
   CharacterLive2dVariantsRepo,
@@ -69,6 +69,10 @@ import {
 } from './validation/characterValidator.js';
 import { assertCharacterPrompt } from './validation/characterPromptValidation.js';
 import { CharacterResourceLifecycle } from './resources/characterResourceLifecycle.js';
+import {
+  readLive2dVocabulary,
+  type Live2dVocabulary,
+} from './live2d/runtimeConfigVocabulary.js';
 
 // ── 事件监听器类型 ─────────────────────────────────────────────────────────────
 
@@ -94,6 +98,7 @@ export type CardSwitchedListener = (
 export type CharacterPresentationChangedListener = (card: CharacterCard) => void;
 
 export class CharacterCardStore {
+  private readonly sqlite: SqliteDb;
   private readonly repository: CharacterCardRepository;
   private readonly live2d: CharacterLive2dRepository;
   private readonly portraits: CharacterPortraitRepository;
@@ -116,6 +121,7 @@ export class CharacterCardStore {
     db: Database;
     resourceRoots: CharacterResourceRoots;
   }) {
+    this.sqlite = db.sqlite;
     const repo: CharacterCardsRepo = new Repo(db.sqlite);
     this.repository = new CharacterCardRepository(repo);
     this.live2d = new CharacterLive2dRepository(
@@ -144,6 +150,8 @@ export class CharacterCardStore {
       this.resourceTrash,
       this.resourceStaging,
       this.resourceOperations,
+      (id, input) => this.insertLive2dAndRefreshVocabulary(id, input),
+      (id, resourceId) => this.deleteLive2dAndRefreshVocabulary(id, resourceId),
       id => this.emitPresentationChanged(id),
     );
   }
@@ -191,11 +199,14 @@ export class CharacterCardStore {
       const live2dPaths = new Set(existingLive2d.map((item) => item.entryPath));
       for (const input of seed.live2dVariants) {
         if (!input.id) throw new Error(`builtin Live2D resource requires id: ${seed.id}`);
-        // v17 迁移行的 id 口径与种子不同但路径相同;id 或路径任一命中即视为已存在。
+        // id 或路径任一命中即视为已存在。
         if (!live2dIds.has(input.id) && !live2dPaths.has(input.entryPath)) {
-          this.live2d.insert(cardId, input);
+          this.insertLive2dAndRefreshVocabulary(cardId, input);
         }
       }
+
+      // 旧种子行可能仍保存手写词汇；启动时以当前主用模型配置纠正一次。
+      this.refreshPrimaryLive2dVocabulary(cardId);
 
       const existingPortraits = this.portraits.list(cardId);
       const portraitIds = new Set(existingPortraits.map((item) => item.id));
@@ -294,8 +305,6 @@ export class CharacterCardStore {
         version: original.version,
         description: original.description ?? undefined,
         systemPrompt: original.systemPrompt,
-        emotionVocabulary: original.emotionVocabulary,
-        motionVocabulary: original.motionVocabulary,
       },
       { isBuiltin: false },
     );
@@ -333,13 +342,24 @@ export class CharacterCardStore {
     if (input.runtimeConfigPath) {
       this.validateResourceInput(id, input.runtimeConfigPath, 'live2d');
     }
-    const resource = this.live2d.insert(id, input);
+    const resource = this.insertLive2dAndRefreshVocabulary(id, input);
     this.emitPresentationChanged(id);
     return resource;
   }
 
   setPrimaryLive2dVariant(id: CharacterCardId, resourceId: CharacterLive2dId): boolean {
-    const changed = this.live2d.setPrimary(id, resourceId);
+    const card = this.get(id);
+    if (!card) throw new Error(`character card not found: ${id}`);
+    const target = card.live2dVariants.find(resource => resource.id === resourceId);
+    if (!target || !target.enabled) return false;
+
+    // 配置先读成功，再进入数据库事务；失败时当前主用模型和词汇都保持不变。
+    const vocabulary = this.readVocabulary(card, target);
+    const changed = this.sqlite.transaction(() => {
+      const selected = this.live2d.setPrimary(id, resourceId);
+      if (selected) this.writeVocabulary(id, vocabulary);
+      return selected;
+    })();
     if (changed) this.emitPresentationChanged(id);
     return changed;
   }
@@ -351,7 +371,26 @@ export class CharacterCardStore {
   ): CharacterLive2dVariant | undefined {
     this.assertMutableResourceCard(id);
     assertResourcePatch(patch);
-    const resource = this.live2d.update(id, resourceId, patch);
+    const card = this.get(id);
+    if (!card) throw new Error(`character card not found: ${id}`);
+    const current = card.live2dVariants.find(resource => resource.id === resourceId);
+    if (!current) return undefined;
+
+    const projected = card.live2dVariants.map(resource => resource.id === resourceId
+      ? {
+          ...resource,
+          label: patch.label ?? resource.label,
+          position: patch.position ?? resource.position,
+          enabled: patch.enabled ?? resource.enabled,
+        }
+      : resource);
+    const nextPrimary = selectPrimaryLive2d(projected);
+    const vocabulary = nextPrimary ? this.readVocabulary(card, nextPrimary) : EMPTY_VOCABULARY;
+    const resource = this.sqlite.transaction(() => {
+      const updated = this.live2d.update(id, resourceId, patch);
+      if (updated) this.writeVocabulary(id, vocabulary);
+      return updated;
+    })();
     if (resource) this.emitPresentationChanged(id);
     return resource;
   }
@@ -545,6 +584,88 @@ export class CharacterCardStore {
     };
   }
 
+  private insertLive2dAndRefreshVocabulary(
+    id: CharacterCardId,
+    input: CharacterLive2dVariantInput,
+  ): CharacterLive2dVariant {
+    const card = this.get(id);
+    if (!card) throw new Error(`character card not found: ${id}`);
+
+    const becomesPrimary = input.enabled !== false
+      && (input.isPrimary === true || !selectPrimaryLive2d(card.live2dVariants));
+    const vocabulary = becomesPrimary
+      ? this.readVocabulary(card, {
+          runtimeConfigPath: input.runtimeConfigPath ?? null,
+        })
+      : null;
+
+    return this.sqlite.transaction(() => {
+      const inserted = this.live2d.insert(id, {
+        ...input,
+        isPrimary: becomesPrimary,
+      });
+      if (vocabulary) this.writeVocabulary(id, vocabulary);
+      return inserted;
+    })();
+  }
+
+  private deleteLive2dAndRefreshVocabulary(
+    id: CharacterCardId,
+    resourceId: CharacterLive2dId,
+  ): CharacterLive2dVariant | undefined {
+    const card = this.get(id);
+    if (!card) throw new Error(`character card not found: ${id}`);
+    const current = card.live2dVariants.find(resource => resource.id === resourceId);
+    if (!current) return undefined;
+
+    const nextPrimary = current.isPrimary
+      ? selectPrimaryLive2d(card.live2dVariants.filter(resource => resource.id !== resourceId))
+      : null;
+    const vocabulary = nextPrimary ? this.readVocabulary(card, nextPrimary) : EMPTY_VOCABULARY;
+
+    return this.sqlite.transaction(() => {
+      const deleted = this.live2d.delete(id, resourceId);
+      if (deleted && current.isPrimary) this.writeVocabulary(id, vocabulary);
+      return deleted;
+    })();
+  }
+
+  private refreshPrimaryLive2dVocabulary(id: CharacterCardId): void {
+    const card = this.get(id);
+    if (!card) throw new Error(`character card not found: ${id}`);
+    const primary = selectPrimaryLive2d(card.live2dVariants);
+    this.writeVocabulary(
+      id,
+      primary ? this.readVocabulary(card, primary) : EMPTY_VOCABULARY,
+    );
+  }
+
+  private readVocabulary(
+    card: CharacterCard,
+    resource: Pick<CharacterLive2dVariant, 'runtimeConfigPath'>,
+  ): Live2dVocabulary {
+    if (!resource.runtimeConfigPath) return EMPTY_VOCABULARY;
+    const filePath = this.resourcePaths.resolve(
+      card.id,
+      card.isBuiltin,
+      resource.runtimeConfigPath,
+      'live2d',
+    );
+    return readLive2dVocabulary(filePath);
+  }
+
+  private writeVocabulary(id: CharacterCardId, vocabulary: Live2dVocabulary): void {
+    const current = this.repository.findById(id);
+    if (
+      current
+      && sameWords(current.emotionVocabulary, vocabulary.emotions)
+      && sameWords(current.motionVocabulary, vocabulary.motions)
+    ) {
+      return;
+    }
+    this.repository.updateLive2dVocabulary(id, vocabulary.emotions, vocabulary.motions);
+  }
+
   private emitPresentationChanged(id: CharacterCardId): void {
     const card = this.get(id);
     if (!card) return;
@@ -593,6 +714,21 @@ export class CharacterCardStore {
       ),
     };
   }
+}
+
+const EMPTY_VOCABULARY: Live2dVocabulary = { emotions: [], motions: [] };
+
+function selectPrimaryLive2d(
+  resources: readonly CharacterLive2dVariant[],
+): CharacterLive2dVariant | undefined {
+  const enabled = resources.filter(resource => resource.enabled);
+  return enabled.find(resource => resource.isPrimary)
+    ?? enabled.sort((left, right) => left.position - right.position
+      || String(left.id).localeCompare(String(right.id)))[0];
+}
+
+function sameWords(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 function assertResourcePatch(

@@ -29,6 +29,10 @@ Input/Patch/Import 类型、`CharacterHealth` 投影、`CharacterEvent`、资源
   (isPrimary → position → id),前端不得自行排序或扫描文件。
 - **聚合装配**:`CharacterCard` 永远带齐三类资源数组;`list()` 用按卡分组的批量
   查询(4 条 SQL),不允许消费方逐卡补查。
+- **主用 Live2D 决定表现词汇**:`emotionVocabulary` / `motionVocabulary` 是当前
+  主用 Live2D `runtime-config.json` 的持久化投影,不是用户输入。切换、禁用、删除、
+  首次导入主用模型时,资源主项与两列词汇在同一 SQLite 事务内更新;没有可用模型时
+  两列清空。Prompt 不读文件,设置页也不得直接写这两列。
 - **激活前健康门**:Route 层激活前必须过 `inspectHealth(id).executionAvailable`;
   Store 的 `activate()` 自身只做 Prompt 硬门。
 
@@ -50,8 +54,9 @@ Input/Patch/Import 类型、`CharacterHealth` 投影、`CharacterEvent`、资源
 `buildCharacterPrompt(card)` 产出 `{ prompt, presentation }`:
 
 - `prompt` = 角色的 `systemPrompt` 原文(人设事实,经过硬门校验);
-- `presentation` = ACT 表达协议文案,由 `emotionVocabulary`/`motionVocabulary`
-  生成可用标签清单。
+- `presentation` = 角色表现协议文案,由 `emotionVocabulary`/`motionVocabulary`
+  生成 `<emotion>name</emotion>` 与 `<motion>name</motion>` 清单。停顿和持续时间由
+  Live2D 运行配置与 motion 资源负责,不向模型开放独立控制标签。
 
 完整 System Prompt 的顺序、哨兵切分与序列化归 `@ema-agent/prompts`;本包不读
 上下文、不碰消息数组、不装配 Prompt。

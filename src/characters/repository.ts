@@ -60,8 +60,8 @@ export class CharacterCardRepository {
       version:              input.version,
       description:          input.description,
       systemPrompt:         input.systemPrompt,
-      emotionVocabJson:     JSON.stringify(input.emotionVocabulary ?? []),
-      motionVocabJson:      JSON.stringify(input.motionVocabulary ?? []),
+      emotionVocabJson:     '[]',
+      motionVocabJson:      '[]',
       isActive:             opts.isActive ?? false,
       isBuiltin:            opts.isBuiltin ?? false,
       createdAt:            now,
@@ -77,11 +77,20 @@ export class CharacterCardRepository {
       version:              patch.version,
       description:          patch.description,
       systemPrompt:         patch.systemPrompt,
-      emotionVocabJson:     patch.emotionVocabulary !== undefined
-                              ? JSON.stringify(patch.emotionVocabulary) : undefined,
-      motionVocabJson:      patch.motionVocabulary !== undefined
-                              ? JSON.stringify(patch.motionVocabulary) : undefined,
       updatedAt:            Date.now(),
+    });
+  }
+
+  /** 仅供主用 Live2D 变更流程写入派生词汇，普通角色编辑不能修改这两列。 */
+  updateLive2dVocabulary(
+    id: CharacterCardId,
+    emotionVocabulary: readonly string[],
+    motionVocabulary: readonly string[],
+  ): void {
+    this.repo.update(id, {
+      emotionVocabJson: JSON.stringify(emotionVocabulary),
+      motionVocabJson: JSON.stringify(motionVocabulary),
+      updatedAt: Date.now(),
     });
   }
 

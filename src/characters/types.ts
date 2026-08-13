@@ -25,6 +25,4 @@ export interface CharacterCardInput {
   version?:         string;
   description?:     string | null;
   systemPrompt:     string;
-  emotionVocabulary?: string[];
-  motionVocabulary?:  string[];
 }
