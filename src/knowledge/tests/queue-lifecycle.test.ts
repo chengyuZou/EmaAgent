@@ -39,8 +39,8 @@ describe('IngestQueue 重试防连点', () => {
   });
 });
 
-describe('ReembedQueue 部分失败', () => {
-  it('failedAssetIds 非空时任务标 failed、清单入 error、retry 可接上', async () => {
+describe('ReembedQueue 单行失败', () => {
+  it('执行抛错时任务标 failed、retry 生成同资产新行', async () => {
     const database = new Database({ memory: true, kind: 'kb' });
     database.migrate();
     const tasks = new KbReembedTasksRepo(database.sqlite);
@@ -48,17 +48,42 @@ describe('ReembedQueue 部分失败', () => {
     const queue = new ReembedQueue({
       kbId: 'kb-1',
       tasks,
-      reembed: async () => ({ total: 3, completed: 2, failedAssetIds: ['asset-bad'] }),
+      reembed: async () => { throw new Error('provider 500'); },
       emit: (event) => events.push(event.type),
     });
 
-    const task = queue.enqueue({ embedding: { providerConfigId: 'p', model: 'm' } });
+    const task = queue.enqueue({ assetId: 'asset-bad', embedding: { providerConfigId: 'p', model: 'm' } });
     await waitUntil(() => tasks.get(task.id)?.status === 'failed');
 
-    expect(tasks.get(task.id)?.error).toContain('asset-bad');
+    expect(tasks.get(task.id)?.error).toContain('provider 500');
     expect(events).toContain('kb_reembed_failed');
     expect(events).not.toContain('kb_reembed_completed');
-    expect(queue.retry(task.id)?.id).not.toBe(task.id);
+    const retried = queue.retry(task.id);
+    expect(retried?.id).not.toBe(task.id);
+    expect(retried?.assetId).toBe('asset-bad');
+    await queue.shutdown();
+    database.close();
+  });
+
+  it('同资产有在途任务时拒绝重复入队', async () => {
+    const database = new Database({ memory: true, kind: 'kb' });
+    database.migrate();
+    const tasks = new KbReembedTasksRepo(database.sqlite);
+    const queue = new ReembedQueue({
+      kbId: 'kb-1',
+      tasks,
+      reembed: async () => { await new Promise((resolve) => setTimeout(resolve, 30)); },
+      emit: () => {},
+    });
+
+    const task = queue.enqueue({ assetId: 'asset-1', embedding: { providerConfigId: 'p', model: 'm' } });
+    await waitUntil(() => tasks.get(task.id)?.status === 'running');
+    expect(() => queue.enqueue({ assetId: 'asset-1', embedding: { providerConfigId: 'p', model: 'm' } }))
+      .toThrow('该文档已有重嵌任务进行中');
+    // 别的资产不受影响。
+    expect(() => queue.enqueue({ assetId: 'asset-2', embedding: { providerConfigId: 'p', model: 'm' } }))
+      .not.toThrow();
+    await queue.shutdown();
     database.close();
   });
 });
@@ -79,7 +104,6 @@ describe('ReembedQueue 并发', () => {
         await new Promise((resolve) => setTimeout(resolve, 30));
         inFlight--;
         onProgress(1, 1);
-        return { total: 1, completed: 1, failedAssetIds: [] };
       },
       emit: () => {},
     });

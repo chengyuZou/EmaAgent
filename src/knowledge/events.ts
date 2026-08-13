@@ -26,7 +26,7 @@ export type KnowledgeEvent =
       readonly type: 'kb_reembed_progress';
       readonly kbId: string;
       readonly taskId: string;
-      readonly assetId?: string;
+      readonly assetId: string;
       readonly progress: number;
       readonly completed: number;
       readonly total: number;
@@ -35,20 +35,18 @@ export type KnowledgeEvent =
       readonly type: 'kb_reembed_completed';
       readonly kbId: string;
       readonly taskId: string;
-      readonly assetId?: string;
-      readonly completed: number;
-      readonly total: number;
+      readonly assetId: string;
     }
   | {
       readonly type: 'kb_reembed_cancelled';
       readonly kbId: string;
       readonly taskId: string;
-      readonly assetId?: string;
+      readonly assetId: string;
     }
   | {
       readonly type: 'kb_reembed_failed';
       readonly kbId: string;
       readonly taskId: string;
-      readonly assetId?: string;
+      readonly assetId: string;
       readonly error: string;
     };

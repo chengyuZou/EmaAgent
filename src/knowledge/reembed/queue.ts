@@ -1,4 +1,5 @@
 // 在单个应用进程内按并发上限执行向量重建任务，并持久化可查询的任务终态。
+// 一行任务 = 一个资产；整库重建由 KbManager fan-out 成多行，本队列只认单行。
 
 import { randomUUID } from 'node:crypto';
 import type { KbReembedTask, KbReembedTasksRepo } from '@ema-agent/storage';
@@ -6,18 +7,18 @@ import { KnowledgeInvalidRequestError } from '../errors.js';
 import type { KnowledgeEvent } from '../events.js';
 import type { KnowledgeModelRef } from '../settings.js';
 
-// 任务内部已有资产级并发（probe 后 3 路），队列级默认 2 个任务，避免叠加打满 Provider 限流。
-const DEFAULT_CONCURRENCY = 2;
+// 每行是一个资产的按批 embed 流；3 路并发对齐旧 sweep 内资产池的吞吐。
+const DEFAULT_CONCURRENCY = 3;
 
 export interface ReembedQueueDeps {
   readonly kbId: string;
   readonly tasks: KbReembedTasksRepo;
   readonly reembed: (input: {
-    readonly assetId?: string;
+    readonly assetId: string;
     readonly embedding: KnowledgeModelRef;
     readonly signal: AbortSignal;
     readonly onProgress: (completed: number, total: number) => void;
-  }) => Promise<{ total: number; completed: number; failedAssetIds: string[] }>;
+  }) => Promise<void>;
   readonly emit: (event: KnowledgeEvent) => void;
   readonly concurrency?: number;
 }
@@ -33,16 +34,16 @@ export class ReembedQueue {
   }
 
   enqueue(input: {
-    readonly assetId?: string;
+    readonly assetId: string;
     readonly embedding: KnowledgeModelRef;
   }): KbReembedTask {
-    // 整库重建只允许一个在途：两个 sweep 会拉到同一份 stale 清单重复付费。
-    if (input.assetId === undefined && this.deps.tasks.findActiveSweep()) {
-      throw new KnowledgeInvalidRequestError('已有整库重建任务进行中');
+    // 同一资产只允许一个在途任务（连点或 fan-out 重入都只会产生重复付费）。
+    if (this.deps.tasks.findActiveByAssetId(input.assetId)) {
+      throw new KnowledgeInvalidRequestError(`该文档已有重嵌任务进行中: ${input.assetId}`);
     }
     const task = this.deps.tasks.insert({
       id: randomUUID(),
-      ...(input.assetId === undefined ? {} : { assetId: input.assetId }),
+      assetId: input.assetId,
       embeddingProviderConfigId: input.embedding.providerConfigId,
       embeddingModel: input.embedding.model,
     });
@@ -54,7 +55,7 @@ export class ReembedQueue {
     const previous = this.deps.tasks.get(taskId);
     if (!previous || previous.status !== 'failed') return undefined;
     return this.enqueue({
-      ...(previous.assetId === undefined ? {} : { assetId: previous.assetId }),
+      assetId: previous.assetId,
       embedding: {
         providerConfigId: previous.embeddingProviderConfigId,
         model: previous.embeddingModel,
@@ -63,12 +64,14 @@ export class ReembedQueue {
   }
 
   cancel(taskId: string): boolean {
-    if (!this.deps.tasks.cancel(taskId)) return false;
+    const task = this.deps.tasks.get(taskId);
+    if (!task || !this.deps.tasks.cancel(taskId)) return false;
     this.controllers.get(taskId)?.abort(new Error('Knowledge 重嵌入已取消'));
     this.deps.emit({
       type: 'kb_reembed_cancelled',
       kbId: this.deps.kbId,
       taskId,
+      assetId: task.assetId,
     });
     return true;
   }
@@ -106,8 +109,8 @@ export class ReembedQueue {
     const controller = new AbortController();
     this.controllers.set(task.id, controller);
     try {
-      const result = await this.deps.reembed({
-        ...(task.assetId === undefined ? {} : { assetId: task.assetId }),
+      await this.deps.reembed({
+        assetId: task.assetId,
         embedding: {
           providerConfigId: task.embeddingProviderConfigId,
           model: task.embeddingModel,
@@ -120,35 +123,19 @@ export class ReembedQueue {
             type: 'kb_reembed_progress',
             kbId: this.deps.kbId,
             taskId: task.id,
-            ...(task.assetId === undefined ? {} : { assetId: task.assetId }),
+            assetId: task.assetId,
             progress,
             completed,
             total,
           });
         },
       });
-      // 部分失败 = 任务失败：失败清单写进任务行（可重试、重启后仍可查）；
-      // 成功资产已冻结新空间，retry 只会补跑仍 stale 的。
-      if (result.failedAssetIds.length > 0) {
-        const message = `${result.failedAssetIds.length}/${result.total} 个文档重嵌失败: ${result.failedAssetIds.join(', ')}`;
-        if (!this.deps.tasks.fail(task.id, message)) return;
-        this.deps.emit({
-          type: 'kb_reembed_failed',
-          kbId: this.deps.kbId,
-          taskId: task.id,
-          ...(task.assetId === undefined ? {} : { assetId: task.assetId }),
-          error: message,
-        });
-        return;
-      }
       if (!this.deps.tasks.complete(task.id)) return;
       this.deps.emit({
         type: 'kb_reembed_completed',
         kbId: this.deps.kbId,
         taskId: task.id,
-        ...(task.assetId === undefined ? {} : { assetId: task.assetId }),
-        completed: result.completed,
-        total: result.total,
+        assetId: task.assetId,
       });
     } catch (error) {
       if (this.deps.tasks.get(task.id)?.status === 'cancelled') return;
@@ -158,7 +145,7 @@ export class ReembedQueue {
         type: 'kb_reembed_failed',
         kbId: this.deps.kbId,
         taskId: task.id,
-        ...(task.assetId === undefined ? {} : { assetId: task.assetId }),
+        assetId: task.assetId,
         error: message,
       });
     } finally {

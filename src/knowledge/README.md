@@ -23,7 +23,7 @@ AgenticRAG 知识库包。用户给的资料经 **解析 → 分块 → embeddin
 | 库管理 | `listKbs / getKb / getActiveKb / createKb / renameKb / setActiveKb / unregisterKb / ensureDefault` | 多 KB；`unregisterKb` 先 shutdown 两个队列再关库 |
 | 检索 | `search` | 当前激活库；无激活库返回空结果而非报错 |
 | 摄入 | `enqueueIngest / listIngestTasks / retryIngest / cancelIngest` | 任务持久化，可重试可取消 |
-| 重嵌 | `enqueueReembed / listReembedTasks / retryReembed / cancelReembed` | 换 embedding 模型后的整库或单资产重建 |
+| 重嵌 | `enqueueReembed / listStaleAssetIds / listReembedTasks / retryReembed / cancelReembed` | 一行任务绑定一个显式资产；整库重建 = 取 stale 清单后整单传入 |
 | 资产 | `listAssets / listInactiveAssets / getAsset / getPreview / getChunks / getAssetUsage / deleteAsset` | 分页、预览、块查看、用量统计；`deleteAsset` 先取消该资产在途任务并等落定再删 |
 | 空间失效 | `invalidateEmbeddings / invalidateAllEmbeddings` | 某空间之外的向量全部标 stale，等待 reembed |
 
@@ -51,8 +51,8 @@ document_chunks    检索的最小单位，asset_id FK 级联
 document_previews  摘要 + 缩略图引用，只供 UI 列表，不参与检索
 
 kb_ingest_tasks    一次「文件 → 资产」一行，终态 completed / failed / cancelled
-kb_reembed_tasks   一次整库或单资产重建一行，部分失败即任务 failed
-                   （失败资产清单写入 error 列，retry 只补跑仍 stale 的）
+kb_reembed_tasks   一行一个资产（asset_id NOT NULL），终态 completed / failed / cancelled，
+                   failed 行独立 retry；不存在跨资产的 sweep 行
 ```
 
 `kb_activations`（使用统计）在 `data.db`，跨库裸引用——SQLite 跨库无法建 FK。
@@ -78,17 +78,21 @@ validate（扩展名/MIME/体积）
 
 ## 重嵌流水线
 
-换 embedding 模型 → 旧空间失效（`invalidateEmbeddings`）→ `enqueueReembed`：
+换 embedding 模型 → 旧空间失效（`invalidateEmbeddings`）→ 逐资产建行重建。**一行任务 = 一个资产**（`asset_id` NOT NULL），没有 sweep 概念：
 
 ```text
-probe：第一个 stale 资产串行跑完，冻结新空间（拿到真实 dim、验证模型可用）
-  → 其余资产 3 路并发池逐资产重建（空间期待值已冻结，不符即该资产失败）
-  → 单资产失败不拖垮整库：记入 failedAssetIds，进度照走
-  → 收尾：markStaleExcept(新空间) + 内存索引全量重建
-  → failedAssetIds 非空 → 任务 failed，可 retry（只补跑仍 stale 的）
+listStaleAssetIds() 取显式清单
+  → enqueueReembed({ assetIds, embedding })：逐个校验存在 + status='ready'；
+    批量（>1 个）先做一次短文本预检 embed，key/模型/维度不通则一行都不建
+  → 每个资产一行任务入队，队列 3 路并发领取
+  → 单行内按批 embed + 事务批量写向量，全部批次成功后 setEmbeddingSpace 冻结
+  → 内存索引空间一致时增量挂载；不一致留给检索侧惰性重建
 ```
 
-并发是三层叠加：队列级 2 个任务 × 任务内 3 个资产 × 每资产按批 embed，最坏 6 个批量请求同时在飞。整库重建只允许一个在途（入队与 retry 统一经守卫拒绝第二个 sweep）；单资产重建要求资产 `status='ready'`，indexing/failed 走摄入重试而非重嵌。
+- 原子粒度是**一个资产**：中途断电/取消时资产行仍指旧空间、stale 仍在，已写入的半批向量对检索与索引不可见（都按资产行空间过滤）；retry 整个资产重来并覆盖无主向量。不做批次级断点续跑。
+- 失败互不拖累：单行失败只影响自己，failed 行可独立 retry；同资产有在途任务时拒绝重复入队。
+- 跨批次空间一致性由"同一批任务同一模型"天然保证；资产内跨批漂移才报空间不符。
+- 并发两层：队列 3 个资产任务 × 每任务按批 embed 流。
 
 ## 检索流水线
 

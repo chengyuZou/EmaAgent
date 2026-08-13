@@ -5,13 +5,13 @@ import type { SqliteDb } from '../../database/database.js';
 export type KbReembedStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 
 interface KbReembedTaskRow {
-  id: string; asset_id: string | null; embedding_provider_config_id: string; embedding_model: string;
+  id: string; asset_id: string; embedding_provider_config_id: string; embedding_model: string;
   status: KbReembedStatus; stage: string | null; progress: number; error: string | null;
   created_at: number; updated_at: number;
 }
 
 export interface KbReembedTask {
-  readonly id: string; readonly assetId?: string; readonly embeddingProviderConfigId: string;
+  readonly id: string; readonly assetId: string; readonly embeddingProviderConfigId: string;
   readonly embeddingModel: string; readonly status: KbReembedStatus; readonly stage?: string;
   readonly progress: number; readonly error?: string; readonly createdAt: number; readonly updatedAt: number;
 }
@@ -19,13 +19,13 @@ export interface KbReembedTask {
 export class KbReembedTasksRepo {
   constructor(private readonly db: SqliteDb) {}
 
-  insert(task: { id: string; assetId?: string; embeddingProviderConfigId: string; embeddingModel: string }): KbReembedTask {
+  insert(task: { id: string; assetId: string; embeddingProviderConfigId: string; embeddingModel: string }): KbReembedTask {
     const now = Date.now();
     this.db.prepare(
       `INSERT INTO kb_reembed_tasks
        (id, asset_id, embedding_provider_config_id, embedding_model, status, progress, created_at, updated_at)
        VALUES (?, ?, ?, ?, 'pending', 0, ?, ?)`,
-    ).run(task.id, task.assetId ?? null, task.embeddingProviderConfigId, task.embeddingModel, now, now);
+    ).run(task.id, task.assetId, task.embeddingProviderConfigId, task.embeddingModel, now, now);
     return this.get(task.id)!;
   }
 
@@ -69,14 +69,21 @@ export class KbReembedTasksRepo {
     return row ? rowToTask(row) : undefined;
   }
 
-  /** 在途的整库重建任务（asset_id 为空且 pending/running），用于双 sweep 入队守卫。 */
-  findActiveSweep(): KbReembedTask | undefined {
+  /** 同资产的在途任务，用于入队防重。 */
+  findActiveByAssetId(assetId: string): KbReembedTask | undefined {
     const row = this.db.prepare(
       `SELECT * FROM kb_reembed_tasks
-        WHERE asset_id IS NULL AND status IN ('pending', 'running')
+        WHERE asset_id = ? AND status IN ('pending', 'running')
         ORDER BY created_at DESC, id DESC LIMIT 1`,
-    ).get() as KbReembedTaskRow | undefined;
+    ).get(assetId) as KbReembedTaskRow | undefined;
     return row ? rowToTask(row) : undefined;
+  }
+
+  /** 是否还有任何在途任务：整库 fan-out 前要求队列排空，避免两批模型目标混杂。 */
+  hasActive(): boolean {
+    return this.db.prepare(
+      `SELECT 1 FROM kb_reembed_tasks WHERE status IN ('pending', 'running') LIMIT 1`,
+    ).get() !== undefined;
   }
 
   list(): KbReembedTask[] {
@@ -94,7 +101,7 @@ export class KbReembedTasksRepo {
 
 function rowToTask(row: KbReembedTaskRow): KbReembedTask {
   return {
-    id: row.id, ...(row.asset_id === null ? {} : { assetId: row.asset_id }),
+    id: row.id, assetId: row.asset_id,
     embeddingProviderConfigId: row.embedding_provider_config_id,
     embeddingModel: row.embedding_model, status: row.status,
     ...(row.stage === null ? {} : { stage: row.stage }), progress: row.progress,

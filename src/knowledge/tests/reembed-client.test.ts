@@ -1,4 +1,4 @@
-// 测试重嵌入：probe 冻结空间后有界并发，单资产失败不拖死全场，终末统一失效判定 + 索引重建。
+// 测试单资产重嵌入：分批写向量、空间冻结与清理 stale、进度回调、abort 上抛、预检。
 
 import { describe, expect, it } from 'vitest';
 import type { EmbeddingModel } from '@ema-agent/embed';
@@ -22,14 +22,12 @@ class ReembedStore {
   readonly chunks = new Map<string, DocumentChunk>();
   readonly assets = new Map<string, DocumentAsset>();
   readonly embedded = new Map<string, { vector: number[]; spaceId: string }>();
-  readonly markedSpaceIds: string[] = [];
 
   add(assetId: string, fileName: string, chunkIds: string[]): void {
     this.assets.set(assetId, makeAsset(assetId, fileName));
     for (const id of chunkIds) this.chunks.set(id, makeChunk(id, assetId, `text-of-${id}`));
   }
 
-  listStaleAssets(): DocumentAsset[] { return [...this.assets.values()]; }
   getChunks(assetId: string): DocumentChunk[] {
     return [...this.chunks.values()].filter((chunk) => chunk.assetId === assetId);
   }
@@ -40,29 +38,16 @@ class ReembedStore {
     const asset = this.assets.get(assetId);
     if (asset) this.assets.set(assetId, { ...asset, embeddingSpaceId: space.id, embeddingStale: false });
   }
-  markStaleExcept(spaceId: string): number {
-    this.markedSpaceIds.push(spaceId);
-    return 0;
-  }
-  getAllEmbeddings(spaceId: string): Array<{ id: string; assetId: string; embedding: Buffer }> {
-    return [...this.embedded.entries()]
-      .filter(([, value]) => value.spaceId === spaceId)
-      .map(([id, value]) => ({
-        id,
-        assetId: this.chunks.get(id)!.assetId!,
-        embedding: Buffer.from(Float32Array.from(value.vector).buffer),
-      }));
-  }
 }
 
 function makeDeps(
   store: ReembedStore,
-  embed: EmbeddingModel['embed'],
+  embed: EmbeddingModel['embed'] | undefined,
 ): KnowledgeClientDeps {
   return {
     store: store as unknown as KnowledgeStore,
     resolveEmbedding: () => undefined,
-    resolveEmbeddingByRef: () => ({ embed }) as unknown as EmbeddingModel,
+    resolveEmbeddingByRef: () => (embed ? ({ embed }) as unknown as EmbeddingModel : undefined),
     resolveReranker: () => undefined,
     resolveVision: () => undefined,
   };
@@ -70,62 +55,71 @@ function makeDeps(
 
 const REF = { providerConfigId: 'provider-1', model: 'embed-1' };
 
-describe('重嵌入并发与失败容忍', () => {
-  it('多资产有界并发，收尾只做一次失效判定', async () => {
+describe('单资产重嵌入', () => {
+  it('分批写向量并冻结空间、清理 stale、逐批报进度', async () => {
     const store = new ReembedStore();
-    for (let i = 0; i < 5; i++) store.add(`asset-${i}`, `${i}.txt`, [`asset-${i}-c0`]);
-    let inFlight = 0;
-    let peak = 0;
-    const client = new KnowledgeClient(makeDeps(store, async ({ texts }) => {
-      inFlight++;
-      peak = Math.max(peak, inFlight);
-      await new Promise((resolve) => setTimeout(resolve, 10));
-      inFlight--;
-      return { embeddings: texts.map(() => [1, 0]), dim: 2 };
-    }));
+    const chunkIds = Array.from({ length: 40 }, (_, index) => `chunk-${index}`);
+    store.add('asset-a', 'a.txt', chunkIds);
+    const client = new KnowledgeClient(makeDeps(store, async ({ texts }) => ({
+      embeddings: texts.map(() => [1, 0]),
+      dim: 2,
+    })));
+    const progress: Array<[number, number]> = [];
 
-    const result = await client.reembed({
-      embedding: REF,
-      signal: new AbortController().signal,
-    });
+    const space = await client.reembedAsset('asset-a', REF, new AbortController().signal,
+      (completed, total) => progress.push([completed, total]));
 
-    expect(result).toMatchObject({ total: 5, completed: 5, failedAssetIds: [] });
-    expect(peak).toBeGreaterThan(1);
-    expect(peak).toBeLessThanOrEqual(3);
-    expect(store.markedSpaceIds).toHaveLength(1);
-    expect([...store.assets.values()].every((a) => a.embeddingStale === false)).toBe(true);
+    expect(store.embedded.size).toBe(40);
+    expect([...store.embedded.values()].every((value) => value.spaceId === space.id)).toBe(true);
+    expect(store.assets.get('asset-a')!.embeddingSpaceId).toBe(space.id);
+    expect(store.assets.get('asset-a')!.embeddingStale).toBe(false);
+    // 40 块 = 32 + 8 两批，各报一次进度。
+    expect(progress).toEqual([[32, 40], [40, 40]]);
   });
 
-  it('单资产失败记录 failedAssetIds，其余照常完成', async () => {
-    const store = new ReembedStore();
-    store.add('asset-ok', 'ok.txt', ['asset-ok-c0']);
-    store.add('asset-bad', 'bad.txt', ['asset-bad-c0']);
-    const client = new KnowledgeClient(makeDeps(store, async ({ texts }) => {
-      if (texts[0]!.includes('bad')) throw new Error('provider 500');
-      return { embeddings: texts.map(() => [1, 0]), dim: 2 };
-    }));
-
-    const result = await client.reembed({
-      embedding: REF,
-      signal: new AbortController().signal,
-    });
-
-    expect(result.completed).toBe(1);
-    expect(result.failedAssetIds).toEqual(['asset-bad']);
-    expect(store.assets.get('asset-bad')!.embeddingStale).toBe(true);
-    expect(store.markedSpaceIds).toHaveLength(1);
-  });
-
-  it('abort 中断整场并向上抛', async () => {
+  it('abort 时把 signal 透给执行面并向上抛', async () => {
     const store = new ReembedStore();
     store.add('asset-a', 'a.txt', ['asset-a-c0']);
     const controller = new AbortController();
     controller.abort(new Error('user cancelled'));
-    const client = new KnowledgeClient(makeDeps(store, async ({ texts }) => {
-      return { embeddings: texts.map(() => [1, 0]), dim: 2 };
+    const client = new KnowledgeClient(makeDeps(store, async ({ signal }) => {
+      throw signal?.aborted ? signal.reason : new Error('unreachable');
     }));
 
-    await expect(client.reembed({ embedding: REF, signal: controller.signal }))
+    await expect(client.reembedAsset('asset-a', REF, controller.signal))
       .rejects.toThrow('user cancelled');
+    // 未冻结空间：资产保持 stale，retry 时整个资产重来。
+    expect(store.assets.get('asset-a')!.embeddingStale).toBe(true);
+  });
+
+  it('模型配置缺失时抛未配置错误', async () => {
+    const store = new ReembedStore();
+    store.add('asset-a', 'a.txt', ['asset-a-c0']);
+    const client = new KnowledgeClient(makeDeps(store, undefined));
+
+    await expect(client.reembedAsset('asset-a', REF, new AbortController().signal))
+      .rejects.toThrow('Embedding 配置已删除或模型未启用');
+  });
+});
+
+describe('预检', () => {
+  it('probeEmbeddingSpace 用响应维度构造空间', async () => {
+    const store = new ReembedStore();
+    const client = new KnowledgeClient(makeDeps(store, async ({ texts }) => {
+      expect(texts).toHaveLength(1);
+      return { embeddings: [[1, 0, 0]], dim: 3 };
+    }));
+
+    const space = await client.probeEmbeddingSpace(REF);
+    expect(space.dim).toBe(3);
+    expect(space.id).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it('模型配置缺失时预检直接失败', async () => {
+    const store = new ReembedStore();
+    const client = new KnowledgeClient(makeDeps(store, undefined));
+
+    await expect(client.probeEmbeddingSpace(REF))
+      .rejects.toThrow('Embedding 配置已删除或模型未启用');
   });
 });

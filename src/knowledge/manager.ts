@@ -146,28 +146,40 @@ export class KbManager {
     return (await this.required(kbId)).ingestQueue.cancel(taskId);
   }
 
+  /** 每行任务绑定一个显式资产：传入几个资产就建几行，返回与输入一一对应的任务行。 */
   async enqueueReembed(input: {
     readonly kbId?: string;
-    readonly assetId?: string;
+    readonly assetIds: readonly string[];
     readonly embedding: KnowledgeModelRef;
-  }): Promise<KbReembedTask> {
+  }): Promise<KbReembedTask[]> {
     const entry = await this.required(input.kbId);
-    if (input.assetId) {
-      const asset = entry.client.getAsset(input.assetId);
+    if (input.assetIds.length === 0) return [];
+    for (const assetId of input.assetIds) {
+      const asset = entry.client.getAsset(assetId);
       if (!asset) {
-        throw new KnowledgeInvalidRequestError(`Knowledge 文档不存在: ${input.assetId}`);
+        throw new KnowledgeInvalidRequestError(`Knowledge 文档不存在: ${assetId}`);
       }
       // 只有 ready 资产有重建资格：indexing/failed 应走摄入重试，不是重嵌。
       if (asset.status !== 'ready') {
         throw new KnowledgeInvalidRequestError(
-          `Knowledge 文档未就绪（${asset.status}），请重新导入: ${input.assetId}`,
+          `Knowledge 文档未就绪（${asset.status}），请重新导入: ${assetId}`,
         );
       }
     }
-    return entry.reembedQueue.enqueue({
-      ...(input.assetId === undefined ? {} : { assetId: input.assetId }),
+    // 批量建行前预检一次短文本 embed，key/模型/维度不通则一行都不建；
+    // 单资产不预检：那一行自己的失败就是报告。
+    if (input.assetIds.length > 1) {
+      await entry.client.probeEmbeddingSpace(input.embedding);
+    }
+    return input.assetIds.map((assetId) => entry.reembedQueue.enqueue({
+      assetId,
       embedding: input.embedding,
-    });
+    }));
+  }
+
+  /** 整库重建的显式清单来源：调用方先取 stale 清单，再整单传给 enqueueReembed。 */
+  async listStaleAssetIds(kbId?: string): Promise<string[]> {
+    return (await this.required(kbId)).client.listStaleAssetIds();
   }
 
   async listReembedTasks(kbId?: string): Promise<KbReembedTask[]> {
@@ -283,7 +295,14 @@ export class KbManager {
     const reembedQueue = new ReembedQueue({
       kbId: record.id,
       tasks: reembedTasks,
-      reembed: (input) => client.reembed(input),
+      reembed: async (input) => {
+        await client.reembedAsset(
+          input.assetId,
+          input.embedding,
+          input.signal,
+          input.onProgress,
+        );
+      },
       emit,
       ...(this.deps.reembedConcurrency === undefined
         ? {}

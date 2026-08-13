@@ -33,7 +33,6 @@ import {
 
 const RERANK_BLEND_WEIGHT = 0.6;
 const EMBED_BATCH_SIZE = 32;
-const REEMBED_CONCURRENCY = 3;
 
 export interface KnowledgeEmbeddingSelection {
   readonly providerConfigId: string;
@@ -99,65 +98,73 @@ export class KnowledgeClient {
     return count;
   }
 
-  async reembed(
-    input: {
-      readonly assetId?: string;
-      readonly embedding: KnowledgeModelRef;
-      readonly signal: AbortSignal;
-      readonly onProgress?: (completed: number, total: number) => void;
-    },
-  ): Promise<{ total: number; completed: number; failedAssetIds: string[] }> {
-    const model = this.deps.resolveEmbeddingByRef(input.embedding);
+  /** 全量重建 fan-out 前的预检：一次短文本 embed 验证 key/模型/维度，失败则一行任务都不建。 */
+  async probeEmbeddingSpace(ref: KnowledgeModelRef, signal?: AbortSignal): Promise<EmbeddingSpace> {
+    const model = this.deps.resolveEmbeddingByRef(ref);
     if (!model) {
       throw new KnowledgeNotConfiguredError(
-        `Embedding 配置已删除或模型未启用: ${input.embedding.providerConfigId} / ${input.embedding.model}`,
+        `Embedding 配置已删除或模型未启用: ${ref.providerConfigId} / ${ref.model}`,
       );
     }
+    const response = await model.embed({ model: ref.model, texts: ['空间预检'], ...(signal === undefined ? {} : { signal }) });
+    return createEmbeddingSpace({
+      providerConfigId: ref.providerConfigId,
+      model: ref.model,
+      dim: response.dim,
+    });
+  }
 
-    const assetIds = input.assetId
-      ? [input.assetId]
-      : this.deps.store.listStaleAssets().map((asset) => asset.id);
+  listStaleAssetIds(): string[] {
+    return this.deps.store.listStaleAssets().map((asset) => asset.id);
+  }
+
+  /** 重建单个资产的向量并冻结新空间；内存索引空间一致时增量挂载，否则留给检索侧惰性重建。 */
+  async reembedAsset(
+    assetId: string,
+    selection: KnowledgeModelRef,
+    signal: AbortSignal,
+    onProgress?: (completed: number, total: number) => void,
+  ): Promise<EmbeddingSpace> {
+    const embedding = this.deps.resolveEmbeddingByRef(selection);
+    if (!embedding) {
+      throw new KnowledgeNotConfiguredError(
+        `Embedding 配置已删除或模型未启用: ${selection.providerConfigId} / ${selection.model}`,
+      );
+    }
+    const chunks = this.deps.store.getChunks(assetId);
     let space: EmbeddingSpace | undefined;
-    let completed = 0;
-    const failedAssetIds: string[] = [];
-
-    const runOne = async (assetId: string): Promise<void> => {
-      try {
-        const assetSpace = await this.reembedAsset(assetId, input.embedding, model, space, input.signal);
-        // 单线程赋值：probe 或首个成功资产冻结空间，后续资产以此为期待值。
-        space ??= assetSpace;
-        completed++;
-      } catch (error) {
-        if (input.signal.aborted) throw error;
-        failedAssetIds.push(assetId);
+    for (let offset = 0; offset < chunks.length; offset += EMBED_BATCH_SIZE) {
+      const batch = chunks.slice(offset, offset + EMBED_BATCH_SIZE);
+      const response = await embedding.embed({
+        model: selection.model,
+        texts: batch.map((chunk) => chunk.text),
+        signal,
+      });
+      const responseSpace = createEmbeddingSpace({
+        providerConfigId: selection.providerConfigId,
+        model: selection.model,
+        dim: response.dim,
+      });
+      // 同一资产内跨批次的维度漂移才算空间不符；跨资产一致性由"同批任务同一模型"保证。
+      if (space && space.id !== responseSpace.id) {
+        throw new KnowledgeEmbeddingSpaceMismatchError(space.id, responseSpace.id);
       }
-      input.onProgress?.(completed + failedAssetIds.length, assetIds.length);
-    };
-
-    // probe：先串行跑第一个资产冻结空间，再对其余资产开有界并发池。
-    const [first, ...rest] = assetIds;
-    if (first !== undefined) {
-      if (input.signal.aborted) throw input.signal.reason;
-      await runOne(first);
+      space = responseSpace;
+      this.deps.store.storeEmbeddings(
+        batch.map((chunk, index) => ({ id: chunk.id, vector: [...response.embeddings[index]!] })),
+        responseSpace.id,
+      );
+      onProgress?.(Math.min(offset + batch.length, chunks.length), chunks.length);
     }
-    let cursor = 0;
-    const worker = async (): Promise<void> => {
-      for (;;) {
-        if (input.signal.aborted) throw input.signal.reason;
-        const index = cursor++;
-        if (index >= rest.length) return;
-        await runOne(rest[index]!);
-      }
-    };
-    await Promise.all(
-      Array.from({ length: Math.min(REEMBED_CONCURRENCY, rest.length) }, () => worker()),
-    );
-
-    if (space) {
-      this.deps.store.markStaleExcept(space.id);
-      await this.rebuildIndex(space.id, space.dim);
+    if (!space) {
+      // 调用方只在有 chunk 时进来；防御的是"embed 全程无响应"这条不可达路径。
+      throw new KnowledgeDocumentProcessingError(`Knowledge asset has no chunks: ${assetId}`);
     }
-    return { total: assetIds.length, completed, failedAssetIds };
+    this.deps.store.setEmbeddingSpace(assetId, space);
+    if (this.vectorIndex && this.vectorIndexSpaceId === space.id) {
+      await this.addAssetToIndex(assetId, space.id, space.dim);
+    }
+    return space;
   }
 
   async search(query: string, options: SearchOptions = {}): Promise<KbSearchResult> {
@@ -314,45 +321,6 @@ export class KnowledgeClient {
       });
     }
     return hits;
-  }
-
-  private async reembedAsset(
-    assetId: string,
-    selection: KnowledgeModelRef,
-    embedding: EmbeddingModel,
-    expectedSpace: EmbeddingSpace | undefined,
-    signal: AbortSignal,
-  ): Promise<EmbeddingSpace> {
-    const chunks = this.deps.store.getChunks(assetId);
-    let space: EmbeddingSpace | undefined;
-    for (let offset = 0; offset < chunks.length; offset += EMBED_BATCH_SIZE) {
-      const batch = chunks.slice(offset, offset + EMBED_BATCH_SIZE);
-      const response = await embedding.embed({
-        model: selection.model,
-        texts: batch.map((chunk) => chunk.text),
-        signal,
-      });
-      const responseSpace = createEmbeddingSpace({
-        providerConfigId: selection.providerConfigId,
-        model: selection.model,
-        dim: response.dim,
-      });
-      const required = space ?? expectedSpace;
-      if (required && required.id !== responseSpace.id) {
-        throw new KnowledgeEmbeddingSpaceMismatchError(required.id, responseSpace.id);
-      }
-      space = responseSpace;
-      this.deps.store.storeEmbeddings(
-        batch.map((chunk, index) => ({ id: chunk.id, vector: [...response.embeddings[index]!] })),
-        responseSpace.id,
-      );
-    }
-    if (!space) {
-      // 调用方只在有 chunk 时进来；防御的是"embed 全程无响应"这条不可达路径。
-      throw new KnowledgeDocumentProcessingError(`Knowledge asset has no chunks: ${assetId}`);
-    }
-    this.deps.store.setEmbeddingSpace(assetId, space);
-    return space;
   }
 
   private async ensureIndex(space: EmbeddingSpace): Promise<void> {
