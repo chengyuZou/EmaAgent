@@ -17,8 +17,6 @@ export interface CharacterLive2dVariant {
   position: number;
   isPrimary: boolean;
   enabled: boolean;
-  resourceVersion: string | null;
-  contentSha256: string | null;
   byteSize: number | null;
   isBuiltin: boolean;
   createdAt: number;
@@ -34,8 +32,6 @@ export interface CharacterLive2dVariantInput {
   position?: number;
   isPrimary?: boolean;
   enabled?: boolean;
-  resourceVersion?: string | null;
-  contentSha256?: string | null;
   byteSize?: number | null;
   isBuiltin?: boolean;
 }

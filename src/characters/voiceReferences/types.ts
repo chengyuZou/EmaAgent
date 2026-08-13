@@ -17,7 +17,6 @@ export interface CharacterVoiceReference {
   mimeType: string;
   byteSize: number | null;
   durationMs: number | null;
-  contentSha256: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -34,7 +33,6 @@ export interface CharacterVoiceReferenceInput {
   mimeType: string;
   byteSize?: number | null;
   durationMs?: number | null;
-  contentSha256?: string | null;
 }
 
 export interface CharacterVoiceReferencePatch {

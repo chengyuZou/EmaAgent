@@ -1,7 +1,6 @@
 // 校验参考音频真实文件头、时长和大小，不信任扩展名或客户端 MIME。
 
 import fs from 'node:fs';
-import { createHash } from 'node:crypto';
 import { CharacterResourceValidationError } from '../errors.js';
 import { CHARACTER_RESOURCE_LIMITS } from '../resources/characterResourceLimits.js';
 
@@ -10,7 +9,6 @@ export interface ValidatedVoiceReference {
   readonly extension: 'wav' | 'mp3' | 'flac' | 'ogg' | 'm4a';
   readonly byteSize: number;
   readonly durationMs: number;
-  readonly contentSha256: string;
 }
 
 export async function validateVoiceReferenceFile(
@@ -35,7 +33,6 @@ export async function validateVoiceReferenceFile(
   return {
     ...detected,
     byteSize: stat.size,
-    contentSha256: await sha256File(filePath),
   };
 }
 
@@ -43,7 +40,7 @@ function detectAudio(
   head: Buffer,
   byteSize: number,
   filePath: string,
-): Omit<ValidatedVoiceReference, 'byteSize' | 'contentSha256'> {
+): Omit<ValidatedVoiceReference, 'byteSize'> {
   if (head.subarray(0, 4).toString('ascii') === 'RIFF'
     && head.subarray(8, 12).toString('ascii') === 'WAVE') {
     return {
@@ -196,12 +193,4 @@ async function readRange(filePath: string, offset: number, length: number): Prom
   } finally {
     await descriptor.close();
   }
-}
-
-async function sha256File(filePath: string): Promise<string> {
-  const digest = createHash('sha256');
-  for await (const chunk of fs.createReadStream(filePath)) {
-    digest.update(chunk as Buffer);
-  }
-  return digest.digest('hex');
 }

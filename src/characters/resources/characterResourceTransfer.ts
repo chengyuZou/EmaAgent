@@ -1,15 +1,13 @@
-// 以流式、有界且不跟随链接的方式复制角色文件和目录，并返回稳定内容摘要。
+// 以流式、有界且不跟随链接的方式复制角色文件和目录，并返回实际字节数。
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { createHash } from 'node:crypto';
 import { pipeline } from 'node:stream/promises';
 import { Transform } from 'node:stream';
 import { CharacterResourceValidationError } from '../errors.js';
 
 export interface CopiedResource {
   readonly byteSize: number;
-  readonly contentSha256: string;
 }
 
 export interface DirectoryCopyLimits {
@@ -25,7 +23,6 @@ export async function copyFileBounded(
 ): Promise<CopiedResource> {
   const before = await assertRegularSourceFile(source, maxBytes);
   await fs.promises.mkdir(path.dirname(destination), { recursive: true });
-  const hash = createHash('sha256');
   let copied = 0;
   const observer = new Transform({
     transform(chunk: Buffer, _encoding, callback) {
@@ -34,7 +31,6 @@ export async function copyFileBounded(
         callback(new CharacterResourceValidationError('resource_too_large'));
         return;
       }
-      hash.update(chunk);
       callback(null, chunk);
     },
   });
@@ -52,7 +48,7 @@ export async function copyFileBounded(
     ) {
       throw new CharacterResourceValidationError('source_changed_during_copy');
     }
-    return { byteSize: copied, contentSha256: hash.digest('hex') };
+    return { byteSize: copied };
   } catch (error) {
     await fs.promises.rm(destination, { force: true }).catch(() => undefined);
     throw error;
@@ -71,7 +67,6 @@ export async function copyDirectoryBounded(
 
   const entries = await collectDirectoryFiles(source, limits);
   await fs.promises.mkdir(destination, { recursive: false });
-  const digest = createHash('sha256');
   let total = 0;
   try {
     for (const entry of entries) {
@@ -85,10 +80,6 @@ export async function copyDirectoryBounded(
       if (total > limits.maxTotalBytes) {
         throw new CharacterResourceValidationError('resource_directory_too_large');
       }
-      digest.update(entry.relativePath, 'utf8');
-      digest.update('\0');
-      digest.update(copied.contentSha256, 'ascii');
-      digest.update('\0');
     }
     const after = await collectDirectoryFiles(source, limits);
     if (
@@ -102,7 +93,7 @@ export async function copyDirectoryBounded(
     ) {
       throw new CharacterResourceValidationError('source_changed_during_copy');
     }
-    return { byteSize: total, contentSha256: digest.digest('hex') };
+    return { byteSize: total };
   } catch (error) {
     await fs.promises.rm(destination, { recursive: true, force: true })
       .catch(() => undefined);

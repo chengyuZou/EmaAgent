@@ -30,7 +30,6 @@ function fromRow(row: CharacterVoiceReferenceRow): CharacterVoiceReference {
     mimeType: row.mime_type,
     byteSize: row.byte_size,
     durationMs: row.duration_ms,
-    contentSha256: row.content_sha256,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

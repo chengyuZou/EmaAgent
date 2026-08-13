@@ -25,8 +25,6 @@ CREATE TABLE character_live2d_variants (
   position            INTEGER NOT NULL DEFAULT 0 CHECK(position >= 0),
   is_primary          INTEGER NOT NULL DEFAULT 0 CHECK(is_primary IN (0,1)),
   enabled             INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)),
-  resource_version    TEXT,
-  content_sha256      TEXT,
   byte_size           INTEGER CHECK(byte_size IS NULL OR byte_size >= 0),
   is_builtin          INTEGER NOT NULL DEFAULT 0 CHECK(is_builtin IN (0,1)),
   created_at          INTEGER NOT NULL,
@@ -46,7 +44,6 @@ CREATE TABLE character_portraits (
   byte_size         INTEGER NOT NULL CHECK(byte_size >= 0),
   width             INTEGER NOT NULL CHECK(width > 0),
   height            INTEGER NOT NULL CHECK(height > 0),
-  content_sha256    TEXT,
   created_at        INTEGER NOT NULL,
   updated_at        INTEGER NOT NULL,
   UNIQUE(character_card_id, relative_path)
@@ -65,7 +62,6 @@ CREATE TABLE character_voice_references (
   mime_type         TEXT NOT NULL,
   byte_size         INTEGER CHECK(byte_size IS NULL OR byte_size >= 0),
   duration_ms       INTEGER CHECK(duration_ms IS NULL OR duration_ms >= 0),
-  content_sha256    TEXT,
   created_at        INTEGER NOT NULL,
   updated_at        INTEGER NOT NULL,
   UNIQUE(character_card_id, relative_path)

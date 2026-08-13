@@ -18,7 +18,6 @@ export interface CharacterPortrait {
   byteSize: number;
   width: number;
   height: number;
-  contentSha256: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -34,7 +33,6 @@ export interface CharacterPortraitInput {
   byteSize: number;
   width: number;
   height: number;
-  contentSha256?: string | null;
 }
 
 export interface CharacterPortraitPatch {

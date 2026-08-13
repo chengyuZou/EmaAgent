@@ -106,8 +106,6 @@ export class CharacterResourceLifecycle {
             runtimeConfigPath,
             position: input.position,
             isPrimary: input.isPrimary ?? card.live2dVariants.length === 0,
-            resourceVersion: prepared.resourceVersion,
-            contentSha256: prepared.contentSha256,
             byteSize: prepared.byteSize,
           });
           this.presentationChanged(id);
@@ -205,7 +203,6 @@ export class CharacterResourceLifecycle {
             byteSize: prepared.byteSize,
             width: prepared.width,
             height: prepared.height,
-            contentSha256: prepared.contentSha256,
           });
           this.presentationChanged(id);
           return inserted;
@@ -297,7 +294,6 @@ export class CharacterResourceLifecycle {
             mimeType: prepared.mimeType,
             byteSize: prepared.byteSize,
             durationMs: prepared.durationMs,
-            contentSha256: prepared.contentSha256,
           });
         },
         isReferenced: () => this.voiceReferences.list(id).some(
@@ -346,7 +342,6 @@ export class CharacterResourceLifecycle {
             mimeType: prepared.mimeType,
             byteSize: prepared.byteSize,
             durationMs: prepared.durationMs,
-            contentSha256: prepared.contentSha256,
           });
         },
         isReferenced: () => this.voiceReferences.list(id).some(

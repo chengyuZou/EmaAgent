@@ -1,7 +1,6 @@
-// 解码并重写立绘以移除 EXIF 等隐式元数据，同时冻结真实格式、尺寸和摘要。
+// 解码并重写立绘以移除 EXIF 等隐式元数据，同时冻结真实格式和尺寸。
 
 import fs from 'node:fs';
-import { createHash } from 'node:crypto';
 import sharp from 'sharp';
 import { CharacterResourceValidationError } from '../errors.js';
 import { CHARACTER_RESOURCE_LIMITS } from '../resources/characterResourceLimits.js';
@@ -13,7 +12,6 @@ export interface NormalizedPortrait {
   readonly byteSize: number;
   readonly width: number;
   readonly height: number;
-  readonly contentSha256: string;
 }
 
 export async function normalizePortrait(
@@ -66,7 +64,6 @@ export async function normalizePortrait(
       byteSize: output.size,
       width,
       height,
-      contentSha256: await sha256File(destinationPath),
     };
   } catch (error) {
     await fs.promises.rm(destinationPath, { force: true }).catch(() => undefined);
@@ -86,12 +83,4 @@ function dimensionsAllowed(width: number, height: number): boolean {
     && width <= CHARACTER_RESOURCE_LIMITS.portraitEdge
     && height <= CHARACTER_RESOURCE_LIMITS.portraitEdge
     && width * height <= CHARACTER_RESOURCE_LIMITS.portraitPixels;
-}
-
-async function sha256File(filePath: string): Promise<string> {
-  const digest = createHash('sha256');
-  for await (const chunk of fs.createReadStream(filePath)) {
-    digest.update(chunk as Buffer);
-  }
-  return digest.digest('hex');
 }

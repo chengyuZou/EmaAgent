@@ -12,6 +12,7 @@ export interface CharacterCard {
   emotionVocabulary: string[];
   motionVocabulary:  string[];
   live2dVariants:   readonly CharacterLive2dVariant[];
+  /** 角色立绘 没有Live2D时可以使用代替 */
   portraits:        readonly CharacterPortrait[];
   voiceReferences:  readonly CharacterVoiceReference[];
   isActive:         boolean;

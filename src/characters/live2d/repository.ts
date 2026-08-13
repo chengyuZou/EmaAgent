@@ -25,8 +25,6 @@ function fromRow(row: CharacterLive2dVariantRow): CharacterLive2dVariant {
     position: row.position,
     isPrimary: row.is_primary === 1,
     enabled: row.enabled === 1,
-    resourceVersion: row.resource_version,
-    contentSha256: row.content_sha256,
     byteSize: row.byte_size,
     isBuiltin: row.is_builtin === 1,
     createdAt: row.created_at,

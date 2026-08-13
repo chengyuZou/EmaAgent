@@ -29,7 +29,6 @@ function fromRow(row: CharacterPortraitRow): CharacterPortrait {
     byteSize: row.byte_size,
     width: row.width,
     height: row.height,
-    contentSha256: row.content_sha256,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

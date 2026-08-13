@@ -14,7 +14,6 @@ import type { CharacterLive2dFormat } from './types.js';
 export interface ValidatedLive2dDirectory extends CopiedResource {
   readonly entryRelativePath: string;
   readonly runtimeConfigRelativePath: string | null;
-  readonly resourceVersion: string | null;
 }
 
 export async function copyAndValidateLive2dDirectory({
@@ -52,14 +51,15 @@ export async function copyAndValidateLive2dDirectory({
       );
     }
 
-    const resourceVersion = format === 'live2d'
-      ? await validateCubism(destinationDirectory, entryPath)
-      : await validateVrm(entryPath);
+    if (format === 'live2d') {
+      await validateCubism(destinationDirectory, entryPath);
+    } else {
+      await validateVrm(entryPath);
+    }
     return {
       ...copied,
       entryRelativePath: entry,
       runtimeConfigRelativePath: runtimeConfig,
-      resourceVersion,
     };
   } catch (error) {
     await fs.promises.rm(destinationDirectory, { recursive: true, force: true })
@@ -68,7 +68,7 @@ export async function copyAndValidateLive2dDirectory({
   }
 }
 
-async function validateCubism(root: string, entryPath: string): Promise<string | null> {
+async function validateCubism(root: string, entryPath: string): Promise<void> {
   if (!entryPath.toLocaleLowerCase('en-US').endsWith('.model3.json')) {
     throw new CharacterResourceValidationError('live2d_entry_invalid');
   }
@@ -121,12 +121,9 @@ async function validateCubism(root: string, entryPath: string): Promise<string |
       throw new CharacterResourceValidationError('live2d_texture_invalid');
     }
   }
-  return typeof manifest.Version === 'number' || typeof manifest.Version === 'string'
-    ? String(manifest.Version)
-    : null;
 }
 
-async function validateVrm(entryPath: string): Promise<string | null> {
+async function validateVrm(entryPath: string): Promise<void> {
   if (!entryPath.toLocaleLowerCase('en-US').endsWith('.vrm')) {
     throw new CharacterResourceValidationError('live2d_entry_invalid');
   }
@@ -137,7 +134,6 @@ async function validateVrm(entryPath: string): Promise<string | null> {
     if (bytesRead !== 12 || header.subarray(0, 4).toString('ascii') !== 'glTF') {
       throw new CharacterResourceValidationError('live2d_entry_invalid');
     }
-    return String(header.readUInt32LE(4));
   } finally {
     await descriptor.close();
   }

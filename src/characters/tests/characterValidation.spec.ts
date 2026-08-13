@@ -298,7 +298,6 @@ describe('character validation', () => {
       entryRelativePath: 'avatar.model3.json',
     });
     expect(variant).toMatchObject({
-      resourceVersion: '3',
       isPrimary: true,
     });
     const entry = store.resolveResourcePath(card.id, variant.entryPath, 'live2d');
@@ -309,7 +308,7 @@ describe('character validation', () => {
     expect(existsSync(entry)).toBe(false);
   });
 
-  it('C3b 参考音频只信任真实文件头并冻结时长与摘要', async () => {
+  it('C3b 参考音频只信任真实文件头并冻结时长', async () => {
     const card = store.create({ name: 'Voice', systemPrompt: 'valid' });
     const source = join(root, 'voice-source.wav');
     writeFileSync(source, createWav(8_000, 500));
@@ -322,7 +321,6 @@ describe('character validation', () => {
     });
     expect(reference.mimeType).toBe('audio/wav');
     expect(reference.durationMs).toBe(500);
-    expect(reference.contentSha256).toMatch(/^[0-9a-f]{64}$/u);
   });
 
   it('启动恢复按数据库事实源恢复中断删除并清理孤儿发布', () => {
