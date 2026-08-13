@@ -69,6 +69,16 @@ export class KbReembedTasksRepo {
     return row ? rowToTask(row) : undefined;
   }
 
+  /** 在途的整库重建任务（asset_id 为空且 pending/running），用于双 sweep 入队守卫。 */
+  findActiveSweep(): KbReembedTask | undefined {
+    const row = this.db.prepare(
+      `SELECT * FROM kb_reembed_tasks
+        WHERE asset_id IS NULL AND status IN ('pending', 'running')
+        ORDER BY created_at DESC, id DESC LIMIT 1`,
+    ).get() as KbReembedTaskRow | undefined;
+    return row ? rowToTask(row) : undefined;
+  }
+
   list(): KbReembedTask[] {
     return (this.db.prepare('SELECT * FROM kb_reembed_tasks ORDER BY created_at DESC, id DESC').all() as KbReembedTaskRow[])
       .map(rowToTask);
