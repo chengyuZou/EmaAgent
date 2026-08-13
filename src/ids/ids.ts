@@ -15,6 +15,7 @@ export type CompactId = BrandedId<'CompactId'>;
 export type ToolCallId = BrandedId<'ToolCallId'>;
 export type HookInvocationId = BrandedId<'HookInvocationId'>;
 export type BackgroundProcessId = BrandedId<'BackgroundProcessId'>;
+export type AttachmentId = BrandedId<'AttachmentId'>;
 
 export function asSessionId(value: string): SessionId { return value as SessionId; }
 export function asTurnId(value: string): TurnId { return value as TurnId; }
@@ -37,3 +38,4 @@ export function asHookInvocationId(value: string): HookInvocationId { return val
 export function asBackgroundProcessId(value: string): BackgroundProcessId {
   return value as BackgroundProcessId;
 }
+export function asAttachmentId(value: string): AttachmentId { return value as AttachmentId; }

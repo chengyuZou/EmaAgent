@@ -35,7 +35,7 @@ import {
   DEFAULT_KNOWLEDGE_RETRIEVAL_SETTINGS,
   type KnowledgeRetrievalSettings,
 } from './settings.js';
-import { KnowledgeStore } from './store/index.js';
+import { KnowledgeStore } from './store/store.js';
 import type {
   AssetListPage,
   DocumentAsset,
@@ -43,7 +43,7 @@ import type {
   KbSearchResult,
   KnowledgeSearchRequest,
 } from './types.js';
-import { KnowledgeNotConfiguredError } from './errors.js';
+import { KnowledgeInvalidRequestError, KnowledgeNotConfiguredError } from './errors.js';
 
 interface OpenKnowledgeBase {
   readonly db: Database;
@@ -63,6 +63,7 @@ export interface KbManagerDeps {
   readonly resolveVision: () => KnowledgeVisionSelection | undefined;
   readonly resolveRetrievalSettings?: () => KnowledgeRetrievalSettings;
   readonly ingestConcurrency?: number;
+  readonly reembedConcurrency?: number;
 }
 
 export class KbManager {
@@ -77,9 +78,15 @@ export class KbManager {
   renameKb(id: string, name: string): void { this.deps.registry.rename(id, name); }
   setActiveKb(id: string): boolean { return this.deps.registry.setActive(id); }
 
-  unregisterKb(id: string): void {
-    this.opened.get(id)?.db.close();
-    this.opened.delete(id);
+  async unregisterKb(id: string): Promise<void> {
+    const entry = this.opened.get(id);
+    if (entry) {
+      // 先停队列再关库：在途任务的终态写入不能打到已关闭的连接上。
+      await entry.ingestQueue.shutdown();
+      await entry.reembedQueue.shutdown();
+      entry.db.close();
+      this.opened.delete(id);
+    }
     this.deps.registry.delete(id);
   }
 
@@ -145,8 +152,17 @@ export class KbManager {
     readonly embedding: KnowledgeModelRef;
   }): Promise<KbReembedTask> {
     const entry = await this.required(input.kbId);
-    if (input.assetId && !entry.client.getAsset(input.assetId)) {
-      throw new KnowledgeNotConfiguredError(`Knowledge 文档不存在: ${input.assetId}`);
+    if (input.assetId) {
+      const asset = entry.client.getAsset(input.assetId);
+      if (!asset) {
+        throw new KnowledgeInvalidRequestError(`Knowledge 文档不存在: ${input.assetId}`);
+      }
+      // 只有 ready 资产有重建资格：indexing/failed 应走摄入重试，不是重嵌。
+      if (asset.status !== 'ready') {
+        throw new KnowledgeInvalidRequestError(
+          `Knowledge 文档未就绪（${asset.status}），请重新导入: ${input.assetId}`,
+        );
+      }
     }
     return entry.reembedQueue.enqueue({
       ...(input.assetId === undefined ? {} : { assetId: input.assetId }),
@@ -193,6 +209,8 @@ export class KbManager {
   async deleteAsset(id: string, kbId?: string): Promise<boolean> {
     const entry = await this.required(kbId);
     if (!entry.client.getAsset(id)) return false;
+    // 先停该资产的在途摄入任务并等落定，再删行与文件。
+    await entry.ingestQueue.cancelByAssetId(id);
     await entry.client.deleteAsset(id);
     return true;
   }
@@ -267,6 +285,9 @@ export class KbManager {
       tasks: reembedTasks,
       reembed: (input) => client.reembed(input),
       emit,
+      ...(this.deps.reembedConcurrency === undefined
+        ? {}
+        : { concurrency: this.deps.reembedConcurrency }),
     });
     ingestQueue.markInterruptedTasks();
     reembedQueue.markInterruptedTasks();

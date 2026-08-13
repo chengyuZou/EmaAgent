@@ -87,6 +87,17 @@ describe('B-060 DocumentAsset 复合游标', () => {
       ...existingIds.slice(0, 404),
     ]);
   });
+
+  it('content_hash 唯一约束拒绝同内容双份入库', () => {
+    repo.insert({
+      id: 'asset-a', filePath: 'files/a.txt', fileName: 'a.txt', mimeType: 'text/plain',
+      wordCount: 1, status: 'ready', contentHash: 'hash-x', createdAt: 1, updatedAt: 1,
+    });
+    expect(() => repo.insert({
+      id: 'asset-b', filePath: 'files/b.txt', fileName: 'b.txt', mimeType: 'text/plain',
+      wordCount: 1, status: 'ready', contentHash: 'hash-x', createdAt: 1, updatedAt: 1,
+    })).toThrow(/UNIQUE/);
+  });
 });
 
 function insertAsset(
@@ -101,7 +112,7 @@ function insertAsset(
     fileName,
     mimeType: 'text/plain',
     wordCount: 1,
-    status: 'indexed',
+    status: 'ready',
     createdAt,
     updatedAt: createdAt,
   });

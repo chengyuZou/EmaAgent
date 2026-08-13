@@ -1,4 +1,4 @@
-// ── Document block (reader output) ───────────────────────────────────────────
+// ── 文档块（reader 输出）──────────────────────────────────────────────────────
 export interface DocumentSourceRef {
   assetId: string;
   fileName: string;
@@ -51,11 +51,11 @@ export interface DocumentBlock {
   kind:        DocumentBlockKind;
   text:        string;
   markdown?:   string;
-  /** Heading depth 1–6. Only present when kind = 'title'. */
+  /** 标题层级 1–6；仅当 kind = 'title' 时存在。 */
   level?:      number;
-  /** 1-based page number. Undefined for formats without pages. */
+  /** 从 1 起的页码；无分页的格式为 undefined。 */
   page?:       number;
-  /** Ancestor heading breadcrumb, e.g. ['Intro', 'Motivation']. */
+  /** 祖先标题面包屑，例如 ['Intro', 'Motivation']。 */
   sectionPath: string[];
   /**
    * 内容来源: text-layer=PDF 文本层, vision-ocr=Vision 整页识字,
@@ -65,15 +65,15 @@ export interface DocumentBlock {
   source?:     'text-layer' | 'vision-ocr' | 'vision-figure';
 }
 
-/** Reader output grouped by page (for preview/thumbnail generation). */
+/** reader 按页分组的输出（供预览/缩略图生成）。 */
 export interface DocumentPage {
   pageNum: number;
   blocks:  DocumentBlock[];
 }
 
-// ── Document asset ────────────────────────────────────────────────────────────
+// ── 文档资产 ──────────────────────────────────────────────────────────────────
 
-export type DocumentIndexStatus = 'pending' | 'indexing' | 'indexed' | 'error';
+export type DocumentIndexStatus = 'indexing' | 'ready' | 'failed';
 export interface DocumentAsset {
   id:          string;
   filePath:    string;
@@ -86,32 +86,29 @@ export interface DocumentAsset {
   contentHash?: string;
   createdAt:   number;
   updatedAt:   number;
-  /** Times this KB has been selected for a turn. */
+  /** 该 KB 被选入某个 Turn 的次数。 */
   useCount:    number;
-  /** Last time selected for a turn (ms). Undefined → never; UI falls back to createdAt. */
+  /** 最近一次被选入 Turn 的时间（毫秒）；undefined = 从未，UI 回退用 createdAt。 */
   lastActivatedAt?: number;
-  ebdProviderId?:   string;
-  ebdModel?:        string;
-  ebdDim?:          number;
-  ebdNormalization?: string;
-  ebdRevision?:     string;
-  ebdSpaceId?:      string;
-  ebdStale?:        boolean;
+  embeddingProviderConfigId?: string;
+  embeddingModel?:   string;
+  embeddingDim?:     number;
+  embeddingSpaceId?: string;
+  embeddingStale?:   boolean;
 }
 
-/** One page of a cursor-paginated asset list. */
+/** 游标分页资产列表的一页。 */
 export interface AssetListPage {
   items:      DocumentAsset[];
-  /** V1 opaque composite cursor to pass for the next page; null = no more. */
+  /** V1 不透明复合游标，用于取下一页；null = 没有更多。 */
   nextCursor: string | null;
 }
 
-// ── Document chunk (chunker output, stored in DB) ─────────────────────────────
+// ── 文档分块（chunker 输出，存入 DB）──────────────────────────────────────────
 
 export interface DocumentChunk {
   id:          string;
-  /** Set by the ingest layer after the asset row exists. Optional so chunkers
-   *  can produce chunks before the DB write. */
+  /** 由 ingest 层在资产行落库后写入；可选是为了让 chunker 可以在写库前先产出分块。 */
   assetId?:    string;
   text:        string;
   markdown?:   string;
@@ -119,19 +116,14 @@ export interface DocumentChunk {
   tokenCount:  number;
   page?:       number;
   sectionPath: string[];
-  prev?:       string;
-  next?:       string;
-  // ── Parent-child (small-to-big) retrieval (RAGFlow-style) ─────────────────
-  /** Parent ("mom") window id this child belongs to. Children of the same
-   *  parent share it; undefined when parent-child is disabled. */
-  momId?:      string;
-  /** Full text of the parent window. Carried on each child so retrieval can
-   *  return the larger parent context without a separate parent row (mirrors
-   *  RAGFlow's mom_with_weight). */
-  momText?:    string;
+  // ── 父子（小到大）检索（RAGFlow 风格）─────────────────────────────────────
+  /** 该子块所属的父窗口 id；同一父块的子块共享此值；未启用父子模式时为 undefined。 */
+  parentId?:   string;
+  /** 父窗口的完整文本；随每个子块携带，检索时无需独立父行即可返回更大的父上下文。 */
+  parentText?: string;
 }
 
-// ── Preview ───────────────────────────────────────────────────────────────────
+// ── 预览 ─────────────────────────────────────────────────────────────────────
 
 export interface DocumentPreview {
   assetId:        string;
@@ -142,15 +134,14 @@ export interface DocumentPreview {
   wordCount:      number;
 }
 
-// ── Ingest ────────────────────────────────────────────────────────────────────
+// ── 摄取（Ingest）─────────────────────────────────────────────────────────────
 
 export interface IngestOptions {
-  /** Pre-generated asset id (so the caller can return it before ingest finishes
-   *  and correlate background progress events). Defaults to a fresh uuid. */
+  /** 预生成的资产 id（让调用方能在 ingest 完成前先返回它，并关联后台进度事件）；缺省生成新 uuid。 */
   assetId?: string;
   /** staging 后 asset.filePath 写入的 KB 相对路径；缺省时回退为读取路径。 */
   stagedRelativePath?: string;
-  /** Override auto-detected MIME type. */
+  /** 覆盖自动探测的 MIME 类型。 */
   mimeType?: string;
   signal?:   AbortSignal;
 }
@@ -163,13 +154,13 @@ export interface IngestResult {
   warnings?: readonly string[];
 }
 
-// ── Search ────────────────────────────────────────────────────────────────────
+// ── 检索 ──────────────────────────────────────────────────────────────────────
 
 export interface SearchOptions {
   /** 活跃库内的文档范围过滤;undefined = 全库。显式空范围由调用方语义处理。 */
   assetIds?:  readonly string[];
   topK?:      number;
-  /** BM25 / vector blend weight (0 = pure BM25, 1 = pure vector). Default 0.5. */
+  /** BM25 / 向量混合权重（0 = 纯 BM25，1 = 纯向量）。默认 0.5。 */
   alpha?:     number;
   /** rerank 分在混合排序中的权重（0-1）；缺省由实现默认值决定。 */
   rerankBlendWeight?: number;

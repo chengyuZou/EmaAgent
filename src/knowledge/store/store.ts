@@ -34,12 +34,6 @@ export class KnowledgeStore {
     return this.assets.findById(id) as DocumentAsset | undefined;
   }
 
-  /** All assets (unpaginated) — for HNSW priming / indexing, not the UI list. */
-  listAllAssets(): DocumentAsset[] {
-    return this.assets.listAll() as DocumentAsset[];
-  }
-
-  /** Cursor-paginated list for the UI (newest first), optional keyword filter. */
   listAssetsPaged(opts: { cursor?: string; limit?: number; keyword?: string } = {}): AssetListPage {
     return this.assets.listPaged(opts) as AssetListPage;
   }
@@ -98,18 +92,6 @@ export class KnowledgeStore {
     return this.chunks.findByAsset(assetId) as DocumentChunk[];
   }
 
-  getChunksByIds(assetId: string, ids: readonly string[]): DocumentChunk[] {
-    return this.chunks.findByIdsForAsset(assetId, ids) as DocumentChunk[];
-  }
-
-  embeddingCoverage(assetId: string, spaceId: string): { total: number; embedded: number } {
-    return this.chunks.embeddingCoverage(assetId, spaceId);
-  }
-
-  findMissingEmbeddingIds(assetId: string, spaceId: string): string[] {
-    return this.chunks.findMissingEmbeddingIds(assetId, spaceId);
-  }
-
   /** Cursor-paginated chunk summaries for the document detail viewer. */
   getChunksPaged(assetId: string, opts: { cursor?: number; limit?: number } = {}): ChunkPage {
     return this.chunks.findByAssetPaged(assetId, opts);
@@ -124,8 +106,8 @@ export class KnowledgeStore {
     return this.chunks.findById(id) as DocumentChunk | undefined;
   }
 
-  storeEmbedding(chunkId: string, vector: number[], spaceId: string): void {
-    this.chunks.storeEmbedding(chunkId, vector, spaceId);
+  storeEmbeddings(entries: Array<{ id: string; vector: number[] }>, spaceId: string): void {
+    this.chunks.storeEmbeddings(entries, spaceId);
   }
 
   /** BM25 full-text search via SQLite FTS5. */
@@ -152,18 +134,23 @@ export class KnowledgeStore {
     this.assets.setEmbeddingSpace(assetId, space);
   }
 
-  /** Mark all assets with a different ebd_model as stale. Returns count. */
+  /** 把空间 id 不等于 currentSpaceId 的就绪资产标 stale（切回原空间会清回）。 */
   markStaleExcept(currentSpaceId: string): number {
     return this.assets.markStaleExcept(currentSpaceId);
   }
 
   listStaleAssets(): DocumentAsset[] {
-    return this.assets.listEbdStale() as DocumentAsset[];
+    return this.assets.listEmbeddingStale() as DocumentAsset[];
   }
 
   /** Load all non-stale embedded chunks for rebuilding the HNSW index. */
   getAllEmbeddings(spaceId: string): Array<{ id: string; assetId: string; embedding: Buffer }> {
     return this.chunks.getAllEmbeddings(spaceId);
+  }
+
+  /** 摄入成功后按 asset 增量加载 embedding，避免整库重建内存索引。 */
+  getEmbeddingsForAsset(assetId: string, spaceId: string): Array<{ id: string; embedding: Buffer }> {
+    return this.chunks.getEmbeddingsForAsset(assetId, spaceId);
   }
 
   // ── Delete ─────────────────────────────────────────────────────────────────

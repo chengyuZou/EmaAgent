@@ -51,12 +51,4 @@ export type KnowledgeEvent =
       readonly taskId: string;
       readonly assetId?: string;
       readonly error: string;
-    }
-  | {
-      readonly type: 'kb_embeddings_staled';
-      readonly markedStale: number;
-      readonly kbCount: number;
-      readonly failedKbIds: readonly string[];
-      readonly providerConfigId: string;
-      readonly model: string;
     };

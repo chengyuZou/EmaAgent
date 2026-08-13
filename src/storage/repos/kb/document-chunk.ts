@@ -11,10 +11,8 @@ export interface DocumentChunkRow {
   token_count:       number;
   page:              number | null;
   section_path_json: string;
-  prev_id:           string | null;
-  next_id:           string | null;
-  mom_id:            string | null;
-  mom_text:          string | null;
+  parent_id:         string | null;
+  parent_text:       string | null;
   embedding:         Buffer | null;
   embedding_space_id: string | null;
 }
@@ -28,10 +26,8 @@ export interface DocumentChunkInsert {
   tokenCount:  number;
   page?:       number;
   sectionPath: string[];
-  prev?:       string;
-  next?:       string;
-  momId?:      string;
-  momText?:    string;
+  parentId?:   string;
+  parentText?: string;
 }
 
 export interface ChunkSearchHit { chunkId: string; score: number }
@@ -62,10 +58,8 @@ function rowToChunk(row: DocumentChunkRow) {
     tokenCount:  row.token_count,
     page:        row.page ?? undefined,
     sectionPath: JSON.parse(row.section_path_json) as string[],
-    prev:        row.prev_id ?? undefined,
-    next:        row.next_id ?? undefined,
-    momId:       row.mom_id ?? undefined,
-    momText:     row.mom_text ?? undefined,
+    parentId:    row.parent_id ?? undefined,
+    parentText:  row.parent_text ?? undefined,
   };
 }
 
@@ -182,8 +176,8 @@ export class DocumentChunkRepo {
   insertMany(chunks: DocumentChunkInsert[]): void {
     const stmt = this.db.prepare(
       `INSERT OR REPLACE INTO document_chunks
-         (id, asset_id, text, tokens, markdown, block_kinds_json, token_count, page, section_path_json, prev_id, next_id, mom_id, mom_text)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, asset_id, text, tokens, markdown, block_kinds_json, token_count, page, section_path_json, parent_id, parent_text)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     this.db.transaction(() => {
       for (const c of chunks) {
@@ -191,8 +185,7 @@ export class DocumentChunkRepo {
         stmt.run(c.id, c.assetId, c.text, segmentForFts(c.text), c.markdown ?? null,
           JSON.stringify(c.blockKinds), c.tokenCount,
           c.page ?? null, JSON.stringify(c.sectionPath),
-          c.prev ?? null, c.next ?? null,
-          c.momId ?? null, c.momText ?? null);
+          c.parentId ?? null, c.parentText ?? null);
       }
     })();
   }
@@ -204,42 +197,12 @@ export class DocumentChunkRepo {
     return rows.map(rowToChunk);
   }
 
-  /** 只加载指定文档中的失败 chunk，供 partial_failed 精确重嵌。 */
-  findByIdsForAsset(assetId: string, ids: readonly string[]): ReturnType<typeof rowToChunk>[] {
-    if (ids.length === 0) return [];
-    const rows: DocumentChunkRow[] = [];
-    for (const batch of createSqliteIdBatches(this.db, ids, { fixedParameterCount: 1 })) {
-      rows.push(...this.db.prepare(
-        `SELECT * FROM document_chunks
-          WHERE asset_id = ? AND id IN (${batch.map(() => '?').join(', ')})`,
-      ).all(assetId, ...batch) as DocumentChunkRow[]);
-    }
-    const byId = new Map(rows.map(row => [row.id, row]));
-    return [...new Set(ids)]
-      .map(id => byId.get(id))
-      .filter((row): row is DocumentChunkRow => row !== undefined)
-      .map(rowToChunk);
-  }
-
-  embeddingCoverage(assetId: string, spaceId: string): { total: number; embedded: number } {
-    return this.db.prepare(
-      `SELECT COUNT(*) AS total,
-              SUM(CASE
-                    WHEN embedding IS NOT NULL AND embedding_space_id = ? THEN 1
-                    ELSE 0
-                  END) AS embedded
-         FROM document_chunks
-        WHERE asset_id = ?`,
-    ).get(spaceId, assetId) as { total: number; embedded: number };
-  }
-
-  findMissingEmbeddingIds(assetId: string, spaceId: string): string[] {
-    return this.db.prepare(
-      `SELECT id FROM document_chunks
-        WHERE asset_id = ?
-          AND (embedding IS NULL OR embedding_space_id IS NULL OR embedding_space_id <> ?)
-        ORDER BY rowid ASC`,
-    ).pluck().all(assetId, spaceId) as string[];
+  /** 加载单个 asset 在指定空间下的全部 embedding，供摄入后增量加入内存索引。 */
+  getEmbeddingsForAsset(assetId: string, spaceId: string): Array<{ id: string; embedding: Buffer }> {
+    return this.db.prepare(`
+      SELECT id, embedding FROM document_chunks
+      WHERE asset_id = ? AND embedding IS NOT NULL AND embedding_space_id = ?
+    `).all(assetId, spaceId) as Array<{ id: string; embedding: Buffer }>;
   }
 
   /**
@@ -290,10 +253,16 @@ export class DocumentChunkRepo {
     return row ? rowToChunk(row) : undefined;
   }
 
-  storeEmbedding(id: string, vector: number[], spaceId: string): void {
-    this.db
-      .prepare('UPDATE document_chunks SET embedding = ?, embedding_space_id = ? WHERE id = ?')
-      .run(vecToBlob(vector), spaceId, id);
+  // 一批向量一个事务：逐条 UPDATE 会各自隐式提交刷一次 WAL，整批只刷一次。
+  storeEmbeddings(entries: Array<{ id: string; vector: number[] }>, spaceId: string): void {
+    const stmt = this.db.prepare(
+      'UPDATE document_chunks SET embedding = ?, embedding_space_id = ? WHERE id = ?',
+    );
+    this.db.transaction(() => {
+      for (const entry of entries) {
+        stmt.run(vecToBlob(entry.vector), spaceId, entry.id);
+      }
+    })();
   }
 
   /** FTS5 BM25 全文检索，通过 JOIN 做 scope 过滤。
@@ -331,7 +300,9 @@ export class DocumentChunkRepo {
       const rows = this.db.prepare(`
         SELECT fts.chunk_id, bm25(document_chunks_fts) AS score
         FROM   document_chunks_fts fts
+        JOIN   document_assets da ON da.id = fts.asset_id
         WHERE  document_chunks_fts MATCH ?
+               AND da.status = 'ready'
                ${assetFilter}
         ORDER  BY score, chunk_id
         LIMIT  ?
@@ -370,8 +341,9 @@ export class DocumentChunkRepo {
         JOIN   document_assets da ON da.id = dc.asset_id
         WHERE  dc.embedding IS NOT NULL
                AND dc.embedding_space_id = ?
-               AND da.ebd_space_id = ?
-               AND da.ebd_stale = 0
+               AND da.embedding_space_id = ?
+               AND da.embedding_stale = 0
+               AND da.status = 'ready'
                ${assetFilter}
       `).iterate(spaceId, spaceId, ...(batch ?? [])) as IterableIterator<{ id: string; embedding: Buffer }>;
 
@@ -386,7 +358,7 @@ export class DocumentChunkRepo {
   }
 
   /** 加载所有非 stale 的已 embedding chunk，用于构建内存 HNSW 索引。
-   *  仅返回 asset 的 ebd_stale = 0 且有 stored embedding 的 chunk。 */
+   *  仅返回 asset 的 embedding_stale = 0 且有 stored embedding 的 chunk。 */
   getAllEmbeddings(spaceId: string): Array<{ id: string; assetId: string; embedding: Buffer }> {
     return this.db.prepare(`
       SELECT dc.id, dc.asset_id AS assetId, dc.embedding
@@ -394,8 +366,9 @@ export class DocumentChunkRepo {
       JOIN   document_assets da ON da.id = dc.asset_id
       WHERE  dc.embedding IS NOT NULL
         AND  dc.embedding_space_id = ?
-        AND  da.ebd_space_id = ?
-        AND  da.ebd_stale = 0
+        AND  da.embedding_space_id = ?
+        AND  da.embedding_stale = 0
+        AND  da.status = 'ready'
     `).all(spaceId, spaceId) as Array<{ id: string; assetId: string; embedding: Buffer }>;
   }
 

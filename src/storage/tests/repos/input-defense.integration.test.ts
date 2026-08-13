@@ -217,7 +217,7 @@ function insertAsset(database: Database, id: string): void {
     fileName: `${id}.txt`,
     mimeType: 'text/plain',
     wordCount: 0,
-    status: 'indexed',
+    status: 'ready',
     createdAt: 1,
     updatedAt: 1,
   });

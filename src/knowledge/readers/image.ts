@@ -2,7 +2,7 @@
 // 位于知识库 readers 层: PDF 扫描页和图片附件都经它进入知识库。
 
 import { readFile } from 'node:fs/promises';
-import type { VisionModel, VisionImageMime } from '@ema-agent/vision';
+import type { VisionModel, VisionImageMime, VisionTask } from '@ema-agent/vision';
 import type { DocumentBlock } from '../types.js';
 import type { DocumentReader, ReadResult, ReaderSource } from './base.js';
 import { nextBlockId } from './base.js';
@@ -12,7 +12,7 @@ const MIME_MAP: Record<string, VisionImageMime> = {
 };
 
 /** KB 可调用的 Vision 任务: ocr=整页识字, caption=图表/画面内容描述。 */
-export type KbVisionTask = 'ocr' | 'caption';
+export type KbVisionTask = Extract<VisionTask, 'ocr' | 'caption'>;
 
 export interface ImageReaderOptions {
   model:      string;

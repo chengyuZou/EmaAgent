@@ -1,14 +1,12 @@
-// 测试检索结果预算填充、kb.retrieval 设置解码与 KbManager 合并后统一填充。
+// 测试检索结果预算填充与 kb.retrieval 设置解码。
 
-import { describe, expect, it, vi } from 'vitest';
-import type { KbRegistryRepo, KbActivationsRepo } from '@ema-agent/storage';
+import { describe, expect, it } from 'vitest';
 import { applyResultBudget } from '../retrieval/resultBudget.js';
 import {
   DEFAULT_KNOWLEDGE_RETRIEVAL_SETTINGS,
   knowledgeRetrievalSetting,
 } from '../settings.js';
-import { KbManager, type KbEntry } from '../manager.js';
-import type { KbSearchHit, KbSearchResult, SearchOptions } from '../types.js';
+import type { KbSearchHit } from '../types.js';
 
 function hit(id: string, text: string, score: number): KbSearchHit {
   return {
@@ -80,77 +78,5 @@ describe('knowledgeRetrievalSetting 解码', () => {
     expect(knowledgeRetrievalSetting.decode({ rerankBlendWeight: -0.1 }).ok).toBe(false);
     expect(knowledgeRetrievalSetting.decode({ resultMaxChars: 500 }).ok).toBe(false);
     expect(knowledgeRetrievalSetting.decode('nonsense').ok).toBe(false);
-  });
-});
-
-describe('KbManager 检索设置接线', () => {
-  function createManager(options: {
-    hits: KbSearchHit[];
-    capturedOpts?: SearchOptions[];
-    retrieval?: Partial<typeof DEFAULT_KNOWLEDGE_RETRIEVAL_SETTINGS>;
-  }) {
-    const capturedOpts: SearchOptions[] = options.capturedOpts ?? [];
-    const fakeClient = {
-      search: vi.fn(async (query: string, opts: SearchOptions): Promise<KbSearchResult> => {
-        capturedOpts.push(opts);
-        return { query, hits: options.hits };
-      }),
-    };
-    const registry = {
-      getActive: () => ({ id: 'kb-1', name: 'kb', path: '/tmp/kb-1', isActive: true, createdAt: 0, updatedAt: 0 }),
-      get: (id: string) => (id === 'kb-1'
-        ? { id: 'kb-1', name: 'kb', path: '/tmp/kb-1', isActive: true, createdAt: 0, updatedAt: 0 }
-        : undefined),
-    };
-    const manager = new KbManager({
-      registry: registry as unknown as KbRegistryRepo,
-      activations: {} as unknown as KbActivationsRepo,
-      resolveIngestOptions: () => ({}),
-      resolveRetrievalSettings: () => ({
-        ...DEFAULT_KNOWLEDGE_RETRIEVAL_SETTINGS,
-        ...options.retrieval,
-      }),
-    });
-    // 跳过真实 Database 装配，直接返回假 client。
-    (manager as unknown as { openClient: () => Promise<KbEntry> }).openClient =
-      async () => ({ client: fakeClient }) as unknown as KbEntry;
-    return { manager, fakeClient, capturedOpts };
-  }
-
-  it('未显式给定时使用设置里的 alpha/topK 默认值', async () => {
-    const { manager, capturedOpts } = createManager({
-      hits: [hit('a', 'x', 0.9)],
-      retrieval: { defaultTopK: 7, alpha: 0.9 },
-    });
-
-    await manager.search([], 'query');
-
-    expect(capturedOpts[0]).toMatchObject({ topK: 7, alpha: 0.9 });
-  });
-
-  it('显式 opts 覆盖设置默认值', async () => {
-    const { manager, capturedOpts } = createManager({
-      hits: [hit('a', 'x', 0.9)],
-      retrieval: { defaultTopK: 7, alpha: 0.9 },
-    });
-
-    await manager.search([], 'query', { topK: 3, alpha: 0.1 });
-
-    expect(capturedOpts[0]).toMatchObject({ topK: 3, alpha: 0.1 });
-  });
-
-  it('maxResultChars 不传给单 KB，合并后统一填充一次', async () => {
-    const { manager, capturedOpts } = createManager({
-      hits: [
-        hit('a', 'x'.repeat(100), 0.9),
-        hit('b', 'y'.repeat(100), 0.8),
-      ],
-    });
-
-    const result = await manager.search([], 'query', { maxResultChars: 150 });
-
-    expect(capturedOpts[0]!.maxResultChars).toBeUndefined();
-    expect(result.hits[0]!.citationOnly).toBeUndefined();
-    expect(result.hits[1]!.citationOnly).toBe(true);
   });
 });

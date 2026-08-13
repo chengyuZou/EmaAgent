@@ -1,8 +1,11 @@
+// 语义 chunker：按相邻句嵌入的相似度断点切分文本；原子块（code/table/image）不参与，
+// 嵌入失败或结果不可信时整体降级到递归分块。
 import { estimateTextTokens } from '@ema-agent/token';
 import type { EmbeddingModel } from '@ema-agent/embed';
 import type { DocumentBlock, DocumentChunk } from '../types.js';
+import { SemanticFallbackWarning, KnowledgeEmbedAbortedError, KnowledgeEmbedBatchError } from '../errors.js';
 import type { ChunkOptions } from './base.js';
-import { chunkId, linkChunks, normalizeChunkSizes } from './base.js';
+import { chunkId, normalizeChunkSizes } from './base.js';
 import { recursiveChunk, RecursiveChunker } from './recursive.js';
 import { splitSentences, cosineSimilarity, smoothSimilarities, percentile } from './utils/sentences.js';
 
@@ -12,41 +15,31 @@ export interface SemanticChunkOptions extends ChunkOptions {
   /** 操作开始时已冻结的嵌入模型;model 为每次请求的模型身份。 */
   embedding: EmbeddingModel;
   model:       string;
-  breakThreshold?:     number;   // default 0.5
-  breakPercentile?:    number;   // overrides breakThreshold
-  smoothWindow?:       number;   // default 3
-  bufferSize?:         number;   // default 1
-  batchSize?:          number;   // default 32
+  /** 相邻句余弦相似度低于该值即断点。default 0.5。 */
+  breakThreshold?:     number;
+  /** 按相似度分布的分位数取断点阈值（0-100），覆盖 breakThreshold；自适应长短文档。 */
+  breakPercentile?:    number;
+  /** 相似度平滑的尾随窗口大小，抑制单点抖动造成的误断点。default 3。 */
+  smoothWindow?:       number;
+  /** embed 输入的上下文窗口：每句前后各带几句一起嵌入。default 1。 */
+  bufferSize?:         number;
+  /** 单次 embed 请求的句数。default 32。 */
+  batchSize?:          number;
   /** embed 批次有界并发上限。default 4。大文档上千句时防止一次性打满云 API 限流。 */
-  concurrency?:        number;   // default 4
-  maxSentencesPerGroup?: number; // default 50
-  timeoutMs?:          number;   // default 30_000
-  maxRetries?:         number;   // default 2
+  concurrency?:        number;
+  /** 单组句数硬上限，相似度失真时也能强制断开。default 50。 */
+  maxSentencesPerGroup?: number;
+  /** 单次 embed 尝试的超时（每次重试独立计时）。default 30_000。 */
+  timeoutMs?:          number;
+  /** 每批失败后的重试次数，指数退避。default 2。 */
+  maxRetries?:         number;
   signal?:             AbortSignal;
   onBatchFailure?: (failures: Array<{ batchIndex: number; error: string; sentenceCount: number }>) => void;
   onFallback?:     (warn: SemanticFallbackWarning) => void;
 }
 
-// ── Error types ───────────────────────────────────────────────────────────────
-//
-// embed 路径的错误统一走 ../errors.ts 的 KbError(classifyKbError 集中分类 +
-// retryable 标记)。这里只保留 SemanticFallbackWarning——它是"降级到递归分块"
-// 的观察性警告,不是 embed 调用错误,语义独立。
-
-export class SemanticFallbackWarning extends Error {
-  readonly reason: string;
-  constructor(reason: string) {
-    super(`SemanticChunker fell back to sentence chunking: ${reason}`);
-    this.name = 'SemanticFallbackWarning'; this.reason = reason;
-  }
-}
-
-// ── SemanticChunker ───────────────────────────────────────────────────────────
-// Intentionally does NOT implement Chunker — requires SemanticChunkOptions.
-
 /** Embed 批次默认并发上限；数值暂与 Vision 全局默认并发一致，但两者独立控制。 */
 const DEFAULT_EMBED_CONCURRENCY = 4;
-// Intentionally does NOT implement Chunker — requires SemanticChunkOptions.
 
 export class SemanticChunker {
   async chunk(blocks: DocumentBlock[], opts: SemanticChunkOptions): Promise<DocumentChunk[]> {
@@ -55,6 +48,7 @@ export class SemanticChunker {
     const all: DocumentChunk[] = [];
     let   docIdx = 0;
 
+    // 原子块（code/table/image）原样成块，不与散文混切——它们的边界本身就是语义边界。
     for (const run of segmentRuns(blocks)) {
       if (run.kind === 'atomic') {
         all.push(makeAtomicChunk(run.blk, chunkId(assetId, docIdx++), assetId));
@@ -68,7 +62,6 @@ export class SemanticChunker {
     // Shared post-pass: orphan-merge (maxTokens-guarded, atomic-safe). Parent-child
     // (assignParents) is applied later by the ingest pipeline for both chunkers.
     const normalized = normalizeChunkSizes(all, opts, assetId);
-    linkChunks(normalized);
     return normalized;
   }
 
@@ -98,6 +91,8 @@ export class SemanticChunker {
     const rawSims: number[] = [];
     for (let i = 0; i < embeddings.length - 1; i++) rawSims.push(cosineSimilarity(embeddings[i]!, embeddings[i + 1]!));
 
+    // 零向量/维度不齐会让余弦产出 NaN；占比过半说明嵌入整体失真，与其切出垃圾
+    // 不如降级。少量 NaN 由下面的中位数填充吸收。
     const nanCount = rawSims.filter(s => Number.isNaN(s)).length;
     if (rawSims.length > 0 && nanCount / rawSims.length > 0.5) return this.fallback(blks, opts, `too many NaN similarities: ${nanCount}/${rawSims.length}`);
 
@@ -233,11 +228,15 @@ export async function embedBatches(texts: string[], embedding: EmbeddingModel, o
   return { embeddings, failedBatches };
 }
 
+/**
+ * 单次 embed 尝试带独立超时；外部 abort 经 onAbort 传播进同一条取消链。
+ * 退避 500ms·2^attempt；最终失败抛出统一文案的错误（cause 链保留原始错误）。
+ */
 async function embedWithRetry(texts: string[], embedding: EmbeddingModel, opts: EmbedBatchOpts & { batchIndex: number }): Promise<number[][]> {
   let lastErr: Error | undefined;
   for (let attempt = 0; attempt <= opts.maxRetries; attempt++) {
     if (opts.signal?.aborted) {
-      throw abortError(opts.signal.reason);
+      throw new KnowledgeEmbedAbortedError(opts.signal.reason);
     }
     const ctrl = new AbortController();
     const tid  = setTimeout(() => ctrl.abort(new Error('Embedding request timed out')), opts.timeoutMs);
@@ -250,20 +249,13 @@ async function embedWithRetry(texts: string[], embedding: EmbeddingModel, opts: 
     } catch (err) {
       clearTimeout(tid); opts.signal?.removeEventListener('abort', onAbort);
       if (opts.signal?.aborted) {
-        throw abortError(opts.signal.reason ?? err);
+        throw new KnowledgeEmbedAbortedError(opts.signal.reason ?? err);
       }
       lastErr = toError(err);
       if (attempt < opts.maxRetries) await sleep(500 * 2 ** attempt, opts.signal);
     }
   }
-  throw new Error(
-    `Embedding batch ${opts.batchIndex} failed after retries (model ${opts.model})`,
-    { cause: lastErr },
-  );
-}
-
-function abortError(cause: unknown): Error {
-  return new Error('Embedding request was aborted', { cause });
+  throw new KnowledgeEmbedBatchError(opts.batchIndex, opts.model, lastErr);
 }
 
 function toError(error: unknown): Error {
@@ -278,6 +270,7 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
+/** 语义组超 maxTokens 时按预算顺次切成多段；单句本身就超预算时原样成块（不拆句）。 */
 function splitByBudget(sents: { text: string; blk: DocumentBlock }[], opts: ChunkOptions, assetId: string, startIdx: number): DocumentChunk[] {
   const chunks: DocumentChunk[] = [];
   let buf: typeof sents = [], bufToks = 0, idx = startIdx;

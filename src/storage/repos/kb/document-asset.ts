@@ -15,13 +15,11 @@ export interface DocumentAssetRow {
   content_hash:      string | null;
   created_at:        number;
   updated_at:        number;
-  ebd_model:         string | null;
-  ebd_dim:           number | null;
-  ebd_provider_id:   string | null;
-  ebd_normalization: string | null;
-  ebd_revision:      string | null;
-  ebd_space_id:      string | null;
-  ebd_stale:         number;
+  embedding_provider_config_id: string | null;
+  embedding_model:   string | null;
+  embedding_dim:     number | null;
+  embedding_space_id: string | null;
+  embedding_stale:   number;
   use_count:         number;
   last_activated_at: number | null;
 }
@@ -69,17 +67,15 @@ function rowToAsset(row: DocumentAssetRow) {
     title:           row.title ?? undefined,
     wordCount:       row.word_count,
     pageCount:       row.page_count ?? undefined,
-    status:          row.status as 'pending' | 'indexing' | 'indexed' | 'error',
+    status:          row.status as 'indexing' | 'ready' | 'failed',
     contentHash:     row.content_hash ?? undefined,
     createdAt:       row.created_at,
     updatedAt:       row.updated_at,
-    ebdModel:        row.ebd_model ?? undefined,
-    ebdDim:          row.ebd_dim ?? undefined,
-    ebdProviderId:   row.ebd_provider_id ?? undefined,
-    ebdNormalization: row.ebd_normalization ?? undefined,
-    ebdRevision:     row.ebd_revision ?? undefined,
-    ebdSpaceId:      row.ebd_space_id ?? undefined,
-    ebdStale:        row.ebd_stale === 1,
+    embeddingProviderConfigId: row.embedding_provider_config_id ?? undefined,
+    embeddingModel:  row.embedding_model ?? undefined,
+    embeddingDim:    row.embedding_dim ?? undefined,
+    embeddingSpaceId: row.embedding_space_id ?? undefined,
+    embeddingStale:  row.embedding_stale === 1,
     useCount:        row.use_count,
     lastActivatedAt: row.last_activated_at ?? undefined,
   };
@@ -110,18 +106,8 @@ export class DocumentAssetRepo {
     return row ? rowToAsset(row) : undefined;
   }
 
-  /** 所有 asset（不分页）-用于索引/HNSW 预热，非 UI 列表。 */
-  listAll(): ReturnType<typeof rowToAsset>[] {
-    const rows = this.db.prepare(
-      'SELECT * FROM document_assets ORDER BY created_at DESC, id DESC',
-    ).all() as DocumentAssetRow[];
-    return rows.map(rowToAsset);
-  }
-
-  /**
-   * 面向 UI 的 keyset 分页列表，最新优先。Cursor 封装上一页最后一条的
-   * `(created_at, id)`；首页传 undefined。可选对 file_name/title 搜索。
-   */
+  /** 面向 UI 的 keyset 分页列表，最新优先。Cursor 封装上一页最后一条的
+   *  `(created_at, id)`；首页传 undefined。可选对 file_name/title 搜索。 */
   listPaged(opts: { cursor?: string; limit?: number; keyword?: string } = {}): AssetPage {
     const limit = Math.min(Math.max(opts.limit ?? 20, 1), 100);
     const where: string[] = [];
@@ -194,18 +180,14 @@ export class DocumentAssetRepo {
     providerConfigId: string;
     model: string;
     dim: number;
-    normalization: string;
-    revision: string;
   }): void {
     this.db
       .prepare(`UPDATE document_assets
-        SET ebd_provider_id = ?, ebd_model = ?, ebd_dim = ?,
-            ebd_normalization = ?, ebd_revision = ?, ebd_space_id = ?,
-            ebd_stale = 0, updated_at = ?
+        SET embedding_provider_config_id = ?, embedding_model = ?, embedding_dim = ?,
+            embedding_space_id = ?, embedding_stale = 0, updated_at = ?
         WHERE id = ?`)
       .run(
-        space.providerConfigId, space.model, space.dim,
-        space.normalization, space.revision, space.id,
+        space.providerConfigId, space.model, space.dim, space.id,
         Date.now(), id,
       );
   }
@@ -229,17 +211,17 @@ export class DocumentAssetRepo {
   markStaleExcept(currentSpaceId: string): number {
     const info = this.db
       .prepare(`UPDATE document_assets
-        SET ebd_stale = CASE WHEN ebd_space_id IS ? THEN 0 ELSE 1 END,
+        SET embedding_stale = CASE WHEN embedding_space_id IS ? THEN 0 ELSE 1 END,
             updated_at = ?
-        WHERE status = 'indexed'
-          AND ebd_stale <> CASE WHEN ebd_space_id IS ? THEN 0 ELSE 1 END`)
+        WHERE status = 'ready'
+          AND embedding_stale <> CASE WHEN embedding_space_id IS ? THEN 0 ELSE 1 END`)
       .run(currentSpaceId, Date.now(), currentSpaceId);
     return info.changes;
   }
-  /** embedding 已 stale 的 asset（模型变更）-需重新 embedding。 */
-  listEbdStale(): ReturnType<typeof rowToAsset>[] {
+  /** embedding 已 stale 的 asset（模型变更）——需重新 embedding。 */
+  listEmbeddingStale(): ReturnType<typeof rowToAsset>[] {
     const rows = this.db
-      .prepare('SELECT * FROM document_assets WHERE ebd_stale = 1 ORDER BY created_at')
+      .prepare('SELECT * FROM document_assets WHERE embedding_stale = 1 ORDER BY created_at')
       .all() as DocumentAssetRow[];
     return rows.map(rowToAsset);
   }

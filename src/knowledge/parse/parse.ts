@@ -1,4 +1,5 @@
 import type { DocumentBlock } from '../types.js';
+import { KnowledgeMissingImageReaderError } from '../errors.js';
 import type { ReaderSource } from '../readers/base.js';
 import { TextReader }  from '../readers/text.js';
 import { HtmlReader }  from '../readers/html.js';
@@ -45,6 +46,7 @@ export interface ParseResult {
   failures:  ReadFailure[];
 }
 
+/** 根据文件类型调用专属的Reader解析文档 */
 export async function parseDocument(source: ReaderSource, opts: ParseOptions = {}): Promise<ParseResult> {
   const name     = source.kind === 'path' ? source.path : source.name;
   const ext      = name.split('.').pop()?.toLowerCase() ?? '';
@@ -55,7 +57,7 @@ export async function parseDocument(source: ReaderSource, opts: ParseOptions = {
   let failures: ReadFailure[] = [];
 
   if (mimeType.startsWith('image/')) {
-    if (!opts.imageReader) throw new Error('[kb/parse] imageReader required for image/* sources');
+    if (!opts.imageReader) throw new KnowledgeMissingImageReaderError(`读取${name}时,知识库缺少图片读取工具,无法处理图像文件。`);
     const result = await opts.imageReader.read(source);
     blocks = result.blocks;
   } else {

@@ -6,12 +6,11 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Database, KbIngestTasksRepo } from '@ema-agent/storage';
-import { DocumentEventEmitter } from '../events/emitter.js';
-import { ingest } from '../ingest/index.js';
+import { ingest } from '../ingest/pipeline.js';
 import { IngestQueue } from '../ingest/queue.js';
 import { stageIngestFile } from '../ingest/staging.js';
 import { KnowledgeClient } from '../client.js';
-import type { KnowledgeStore } from '../store/index.js';
+import type { KnowledgeStore } from '../store/store.js';
 import type { DocumentAsset, DocumentChunk, DocumentPreview } from '../types.js';
 
 const tmpDirs: string[] = [];
@@ -48,6 +47,7 @@ describe('KB staging', () => {
     const tasks = new KbIngestTasksRepo(database.sqlite);
     const seen: Array<{ filePath: string; stagedRelativePath?: string; content: string }> = [];
     const queue = new IngestQueue({
+      kbId: 'kb-1',
       tasks,
       ingest: async (filePath, options) => {
         seen.push({
@@ -57,8 +57,8 @@ describe('KB staging', () => {
         });
         return completedResult(options.assetId!);
       },
-      resolveOptions: () => ({}),
       stageFile: (src, assetId) => stageIngestFile(kbRoot, assetId, src),
+      emit: () => {},
       concurrency: 1,
     });
 
@@ -71,7 +71,7 @@ describe('KB staging', () => {
 
     // 入队后立即删除源文件——staging 保证任务不受影响。
     await fsp.rm(sourcePath);
-    await waitUntil(() => tasks.get(task.id) === undefined);
+    await waitUntil(() => tasks.get(task.id)?.status === 'completed');
 
     expect(seen).toHaveLength(1);
     const call = seen[0]!;
@@ -87,10 +87,11 @@ describe('KB staging', () => {
     database.migrate();
     const tasks = new KbIngestTasksRepo(database.sqlite);
     const queue = new IngestQueue({
+      kbId: 'kb-1',
       tasks,
       ingest: vi.fn(),
-      resolveOptions: () => ({}),
       stageFile: (src, assetId) => stageIngestFile(kbRoot, assetId, src),
+      emit: () => {},
       concurrency: 1,
     });
 
@@ -129,12 +130,83 @@ describe('indexing 残留接管', () => {
     const result = await ingest(
       filePath,
       { assetId: 'asset-crash' },
-      { store: store as unknown as KnowledgeStore, events: new DocumentEventEmitter() },
+      { store: store as unknown as KnowledgeStore },
     );
 
-    expect(result.outcome).toBe('completed');
-    expect(store.asset?.status).toBe('indexed');
+    expect(result.asset.status).toBe('ready');
+    expect(store.asset?.status).toBe('ready');
     expect(store.asset?.id).toBe('asset-crash');
+  });
+});
+
+describe('导入取消', () => {
+  it('预先取消：在 validate 边界停下，不产生资产行', async () => {
+    const dir = await makeTmpDir();
+    const filePath = path.join(dir, 'doc.txt');
+    await fsp.writeFile(filePath, '内容', 'utf8');
+
+    const store = new InMemoryIngestStore();
+    const controller = new AbortController();
+    controller.abort(new Error('user cancelled'));
+
+    await expect(ingest(
+      filePath,
+      { assetId: 'asset-x', signal: controller.signal },
+      { store: store as unknown as KnowledgeStore },
+    )).rejects.toThrow('user cancelled');
+    expect(store.asset).toBeUndefined();
+  });
+
+  it('中途取消：资产标 failed，可重试接管', async () => {
+    const dir = await makeTmpDir();
+    const filePath = path.join(dir, 'doc.txt');
+    await fsp.writeFile(filePath, '内容', 'utf8');
+
+    const store = new InMemoryIngestStore();
+    const controller = new AbortController();
+    // addAsset 之后取消，模拟解析/分块进行中的取消。
+    const originalAdd = store.addAsset.bind(store);
+    store.addAsset = (asset) => {
+      originalAdd(asset);
+      controller.abort(new Error('user cancelled'));
+    };
+
+    await expect(ingest(
+      filePath,
+      { assetId: 'asset-x', signal: controller.signal },
+      { store: store as unknown as KnowledgeStore },
+    )).rejects.toThrow('user cancelled');
+    expect(store.asset?.status).toBe('failed');
+  });
+});
+
+describe('重复内容回退', () => {
+  it('并发下同内容已入库时返回既有资产，不产生新文档', async () => {
+    const dir = await makeTmpDir();
+    const filePath = path.join(dir, 'doc.txt');
+    await fsp.writeFile(filePath, '重复内容', 'utf8');
+
+    const existing: DocumentAsset = {
+      id: 'asset-existing', filePath: 'files/asset-existing/doc.txt', fileName: 'doc.txt',
+      mimeType: 'text/plain', wordCount: 2, status: 'ready',
+      createdAt: 1, updatedAt: 1, useCount: 0,
+    };
+    const store = new InMemoryIngestStore();
+    // 第一次哈希检查（放行）→ addAsset 撞唯一约束 → 第二次哈希检查返回 ready 资产。
+    let hashLookups = 0;
+    store.findAssetByHash = () => (++hashLookups > 1 ? existing : undefined);
+    store.addAsset = () => {
+      throw new Error('UNIQUE constraint failed: document_assets.content_hash');
+    };
+
+    const result = await ingest(
+      filePath,
+      { assetId: 'asset-new' },
+      { store: store as unknown as KnowledgeStore },
+    );
+
+    expect(result.asset.id).toBe('asset-existing');
+    expect(store.asset).toBeUndefined();
   });
 });
 
@@ -150,6 +222,10 @@ describe('删除文档清理', () => {
     };
     const client = new KnowledgeClient({
       store: store as unknown as KnowledgeStore,
+      resolveEmbedding: () => undefined,
+      resolveEmbeddingByRef: () => undefined,
+      resolveReranker: () => undefined,
+      resolveVision: () => undefined,
       kbRoot,
     });
 
@@ -171,6 +247,14 @@ class InMemoryIngestStore {
 
   findAssetByHash(): DocumentAsset | undefined {
     return undefined;
+  }
+
+  getPreview(): DocumentPreview | undefined {
+    return this.preview;
+  }
+
+  getChunks(): DocumentChunk[] {
+    return this.chunks;
   }
 
   addAsset(asset: DocumentAsset): void {
@@ -195,7 +279,7 @@ class InMemoryIngestStore {
     this.chunks.push(...chunks);
   }
 
-  storeEmbedding(): void {}
+  storeEmbeddings(): void {}
 
   setEmbeddingSpace(): void {}
 
@@ -209,8 +293,5 @@ function completedResult(assetId: string) {
     asset: { id: assetId } as DocumentAsset,
     chunks: 0,
     preview: { assetId, text: '', wordCount: 0 } as DocumentPreview,
-    outcome: 'completed' as const,
-    counts: { total: 0, completed: 0, failed: 0 },
-    failureShards: [],
   };
 }

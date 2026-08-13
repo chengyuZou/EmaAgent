@@ -6,7 +6,7 @@ import type {
   DocumentPreviewRepo,
   KbActivationsRepo,
 } from '@ema-agent/storage';
-import { KnowledgeStore } from '../store/index.js';
+import { KnowledgeStore } from '../store/store.js';
 import { KnowledgeClient } from '../client.js';
 
 describe('KB activation 资产归属', () => {
@@ -46,10 +46,16 @@ describe('KB activation 资产归属', () => {
   it('显式范围全部不属于当前 KB 时直接返回空结果', async () => {
     const searchFts = vi.fn();
     const store = {
-      recordActivation: vi.fn(() => []),
+      filterExistingAssetIds: vi.fn(() => []),
       searchFts,
     } as unknown as KnowledgeStore;
-    const client = new KnowledgeClient({ store });
+    const client = new KnowledgeClient({
+      store,
+      resolveEmbedding: () => undefined,
+      resolveEmbeddingByRef: () => undefined,
+      resolveReranker: () => undefined,
+      resolveVision: () => undefined,
+    });
 
     await expect(client.search('query', { assetIds: ['foreign'] })).resolves.toEqual({
       query: 'query',

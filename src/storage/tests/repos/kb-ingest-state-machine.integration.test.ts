@@ -1,159 +1,87 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+// 测试 kb_ingest_tasks 的单进程队列语义：原子领取、进度、终态、取消与中断恢复。
+
+import { afterEach, describe, expect, it } from 'vitest';
 import { Database } from '../../database/database.js';
 import { KbIngestTasksRepo } from '../../repos/kb/kb-ingest-tasks.js';
 
-describe('B-011/B-012 KB 导入任务状态机', () => {
-  let database: Database;
-  let repo: KbIngestTasksRepo;
+describe('KbIngestTasksRepo', () => {
+  const databases: Database[] = [];
 
-  beforeEach(() => {
-    database = new Database({ memory: true, kind: 'kb' });
+  afterEach(() => {
+    for (const database of databases.splice(0)) database.close();
+  });
+
+  function setup(): KbIngestTasksRepo {
+    const database = new Database({ memory: true, kind: 'kb' });
+    databases.push(database);
     database.migrate();
-    repo = new KbIngestTasksRepo(database.sqlite);
+    return new KbIngestTasksRepo(database.sqlite);
+  }
+
+  function insert(repo: KbIngestTasksRepo, id: string, assetId = `asset-${id}`): void {
+    repo.insert({ id, assetId, filePath: `/files/${assetId}/doc.txt`, fileName: 'doc.txt' });
+  }
+
+  it('insert/get/list 与 findLatestByAssetId', () => {
+    const repo = setup();
+    insert(repo, 't1');
+    insert(repo, 't2');
+    insert(repo, 't3', 'asset-t1');
+
+    expect(repo.get('t1')).toMatchObject({ status: 'pending', assetId: 'asset-t1' });
+    expect(repo.list().map((task) => task.id)).toEqual(['t3', 't2', 't1']);
+    // 同一 asset 的最新任务排在最前
+    expect(repo.findLatestByAssetId('asset-t1')?.id).toBe('t3');
   });
 
-  afterEach(() => database.close());
+  it('startNext 原子领取最早的 pending，重复领取落空', () => {
+    const repo = setup();
+    insert(repo, 't1');
+    insert(repo, 't2');
 
-  it('分离 taskId 与 assetId，并用 lease/version CAS 拒绝迟到 Worker', () => {
-    const now = Date.now();
-    repo.insert({
-      id: 'task-1',
-      assetId: 'asset-1',
-      filePath: 'D:/docs/one.md',
-      fileName: 'one.md',
-      mimeType: 'text/markdown',
-    });
-
-    const first = repo.claimNextPending({
-      leaseToken: 'lease-1',
-      leaseExpiresAt: now + 60_000,
-      now,
-    });
-    expect(first).toMatchObject({
-      id: 'task-1',
-      assetId: 'asset-1',
-      status: 'running',
-      attempt: 1,
-      version: 1,
-      leaseToken: 'lease-1',
-    });
-    expect(repo.updateProgress('task-1', 0, 'parse', 0.5)).toBe(false);
-    expect(repo.updateProgress('task-1', 1, 'parse', 0.5)).toBe(true);
-
-    const conflicted = repo.partialFail({
-      id: 'task-1',
-      leaseToken: 'lease-1',
-      version: 0,
-      stage: 'embed',
-      errorCode: 'kb/partial_failed',
-      error: '旧 Worker 的迟到结果',
-      totalItems: 2,
-      completedItems: 1,
-      failedItems: 1,
-      failures: [embeddingFailure('chunk-stale')],
-    });
-    expect(conflicted).toBeUndefined();
-    expect(repo.listFailures('task-1')).toEqual([]);
-
-    const partial = repo.partialFail({
-      id: 'task-1',
-      leaseToken: 'lease-1',
-      version: first!.version,
-      stage: 'embed',
-      errorCode: 'kb/partial_failed',
-      error: '1 个分片失败',
-      totalItems: 2,
-      completedItems: 1,
-      failedItems: 1,
-      failures: [embeddingFailure('chunk-2')],
-    });
-    expect(partial).toMatchObject({
-      status: 'partial_failed',
-      attempt: 1,
-      version: 2,
-      totalItems: 2,
-      completedItems: 1,
-      failedItems: 1,
-    });
-    expect(repo.listFailures('task-1')).toMatchObject([
-      { taskId: 'task-1', stage: 'embed', itemIds: ['chunk-2'], attempt: 1 },
-    ]);
-
-    expect(repo.retry('task-1', 1)).toBeUndefined();
-    const pending = repo.retry('task-1', partial!.version);
-    expect(pending).toMatchObject({ status: 'pending', attempt: 1, version: 3 });
-
-    const second = repo.claimNextPending({
-      leaseToken: 'lease-2',
-      leaseExpiresAt: now + 60_000,
-      now: now + 3_000,
-    });
-    expect(second).toMatchObject({ attempt: 2, version: 4, leaseToken: 'lease-2' });
-
-    expect(repo.complete('task-1', 'lease-1', first!.version)).toBe(false);
-    expect(repo.complete('task-1', 'lease-2', second!.version)).toBe(true);
-    expect(repo.get('task-1')).toBeUndefined();
-    expect(repo.listFailures('task-1')).toEqual([]);
+    const first = repo.startNext();
+    expect(first?.id).toBe('t1');
+    expect(first?.status).toBe('running');
+    expect(first?.stage).toBe('validate');
+    expect(repo.startNext()?.id).toBe('t2');
+    expect(repo.startNext()).toBeUndefined();
   });
 
-  it('应用重启后将幽灵 running 任务安全地重新排队', () => {
-    const now = Date.now();
-    repo.insert({
-      id: 'task-restart',
-      assetId: 'asset-restart',
-      filePath: 'D:/docs/restart.txt',
-      fileName: 'restart.txt',
-    });
-    repo.claimNextPending({
-      leaseToken: 'dead-worker',
-      leaseExpiresAt: now + 2_000,
-      now,
-    });
+  it('updateProgress 只在 running 时推进并夹取 0..1', () => {
+    const repo = setup();
+    insert(repo, 't1');
+    expect(repo.updateProgress('t1', 'embed', 0.5)).toBe(false);
 
-    expect(repo.recoverInterrupted(now + 3_000)).toBe(1);
-    expect(repo.get('task-restart')).toMatchObject({
-      status: 'pending',
-      errorCode: 'kb/process_interrupted',
-      version: 2,
-    });
+    repo.startNext();
+    expect(repo.updateProgress('t1', 'embed', 0.5)).toBe(true);
+    expect(repo.get('t1')).toMatchObject({ stage: 'embed', progress: 0.5 });
+    repo.updateProgress('t1', 'embed', 1.7);
+    expect(repo.get('t1')?.progress).toBe(1);
   });
 
-  it('下一个 claim 会回收已过期租约，并使旧版本失效', () => {
-    const now = Date.now();
-    repo.insert({
-      id: 'task-expired',
-      assetId: 'asset-expired',
-      filePath: 'D:/docs/expired.txt',
-      fileName: 'expired.txt',
-    });
-    const expired = repo.claimNextPending({
-      leaseToken: 'lease-expired',
-      leaseExpiresAt: now + 10,
-      now,
-    });
+  it('complete/fail 只对 running 生效', () => {
+    const repo = setup();
+    insert(repo, 't1');
+    expect(repo.complete('t1')).toBe(false);
 
-    const reclaimed = repo.claimNextPending({
-      leaseToken: 'lease-current',
-      leaseExpiresAt: now + 60_000,
-      now: now + 11,
-    });
-    expect(reclaimed).toMatchObject({
-      id: 'task-expired',
-      attempt: 2,
-      version: 3,
-      leaseToken: 'lease-current',
-    });
-    expect(repo.complete('task-expired', 'lease-expired', expired!.version)).toBe(false);
+    repo.startNext();
+    expect(repo.complete('t1')).toBe(true);
+    expect(repo.get('t1')?.status).toBe('completed');
+    expect(repo.fail('t1', 'late')).toBe(false);
+  });
+
+  it('cancel 把 pending/running 置为 cancelled', () => {
+    const repo = setup();
+    insert(repo, 't1');
+    expect(repo.cancel('t1')).toBe(true);
+    expect(repo.get('t1')?.status).toBe('cancelled');
+  });
+
+  it('markRunningInterrupted 把幽灵 running 标 failed', () => {
+    const repo = setup();
+    insert(repo, 't1');
+    repo.startNext();
+    expect(repo.markRunningInterrupted()).toBe(1);
+    expect(repo.get('t1')).toMatchObject({ status: 'failed' });
   });
 });
-
-function embeddingFailure(chunkId: string) {
-  return {
-    stage: 'embed' as const,
-    shardKey: 'embed:0',
-    itemIds: [chunkId],
-    retryable: true,
-    errorCode: 'kb/embed-batch-failed',
-    error: 'provider unavailable',
-  };
-}

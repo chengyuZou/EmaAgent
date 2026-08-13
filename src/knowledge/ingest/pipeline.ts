@@ -8,16 +8,19 @@ import type {
   KnowledgeEmbeddingSelection,
   KnowledgeVisionSelection,
 } from '../client.js';
-import type { KnowledgeStore } from '../store/index.js';
-import { EXT_TO_MIME, parseDocument } from '../parse/index.js';
-import { buildPreview } from '../preview/index.js';
+import type { KnowledgeStore } from '../store/store.js';
+import { EXT_TO_MIME, parseDocument } from '../parse/parse.js';
+import { buildPreview } from '../preview/buildPreview.js';
 import { RecursiveChunker } from '../chunking/recursive.js';
 import { SemanticChunker } from '../chunking/semantic.js';
 import { assignParents, DEFAULT_CHUNK_OPTIONS } from '../chunking/base.js';
 import { ImageReader } from '../readers/image.js';
 import { validateFile } from './validate.js';
-import { planIngest } from './plan.js';
-import { KnowledgeEmbeddingSpaceMismatchError } from '../errors.js';
+import {
+  KnowledgeDocumentProcessingError,
+  KnowledgeEmbeddingSpaceMismatchError,
+  KnowledgeInvalidRequestError,
+} from '../errors.js';
 
 const EMBED_BATCH_SIZE = 32;
 const PARENT_MAX_TOKENS = 1024;
@@ -38,11 +41,12 @@ export async function ingest(
 ): Promise<IngestResult> {
   const assetId = options.assetId ?? randomUUID();
   const existing = deps.store.getAsset(assetId);
-  if (existing?.status === 'error') {
-    // 整体重试复用已经落盘的原文件，但从数据库重新建立一份完整文档事实。
+  if (existing && existing.status !== 'ready') {
+    // failed / 崩溃遗留的 indexing 都是非终态残留：
+    // 重试复用已落盘的原文件，但从数据库重新建立一份完整文档事实。
     deps.store.deleteAsset(assetId);
   } else if (existing) {
-    throw new Error(`Knowledge asset already exists: ${assetId}`);
+    throw new KnowledgeInvalidRequestError(`Knowledge asset already exists: ${assetId}`);
   }
 
   const bytes = new Uint8Array(await readFile(filePath));
@@ -50,13 +54,16 @@ export async function ingest(
   const mimeType = options.mimeType ?? EXT_TO_MIME[extension] ?? 'text/plain';
 
   report(deps, assetId, 'validate', 0);
+  options.signal?.throwIfAborted();
   const validation = validateFile(bytes, mimeType);
-  if (!validation.ok) throw new Error(`Knowledge document validation failed: ${validation.error}`);
+  if (!validation.ok) {
+    throw new KnowledgeDocumentProcessingError(`Knowledge document validation failed: ${validation.error}`);
+  }
 
   const duplicate = validation.hash
     ? deps.store.findAssetByHash(validation.hash)
     : undefined;
-  if (duplicate?.status === 'indexed') {
+  if (duplicate?.status === 'ready') {
     return duplicateResult(duplicate, deps.store);
   }
 
@@ -73,7 +80,14 @@ export async function ingest(
     updatedAt: Date.now(),
     useCount: 0,
   };
-  deps.store.addAsset(asset);
+  try {
+    deps.store.addAsset(asset);
+  } catch (error) {
+    // 并发下同内容已被另一任务先入库（content_hash 唯一约束）：退回既有资产，本任务不产生新文档。
+    const winner = validation.hash ? deps.store.findAssetByHash(validation.hash) : undefined;
+    if (winner?.status === 'ready') return duplicateResult(winner, deps.store);
+    throw error;
+  }
 
   try {
     report(deps, assetId, 'parse', 0.2);
@@ -98,10 +112,13 @@ export async function ingest(
       pageCount: parsed.pageCount,
     });
 
+    // 阶段边界统一响应取消：无嵌入的纯文本路径不消费 signal，只能靠这些检查点。
+    options.signal?.throwIfAborted();
+
     report(deps, assetId, 'chunk', 0.4);
     const chunkOptions = { ...DEFAULT_CHUNK_OPTIONS, assetId };
-    const plan = planIngest(mimeType, deps.embedding !== undefined);
-    const rawChunks = plan.useSemanticChunking && deps.embedding
+    const semantic = useSemanticChunking(mimeType, deps.embedding !== undefined);
+    const rawChunks = semantic && deps.embedding
       ? await new SemanticChunker().chunk(parsed.blocks, {
           ...chunkOptions,
           embedding: deps.embedding.embedding,
@@ -112,6 +129,7 @@ export async function ingest(
     const chunks = rawChunks.map((chunk) => ({ ...chunk, assetId }));
     assignParents(chunks, PARENT_MAX_TOKENS);
     deps.store.addChunks(chunks);
+    options.signal?.throwIfAborted();
 
     if (deps.embedding && chunks.length > 0) {
       report(deps, assetId, 'embed', 0.5);
@@ -124,6 +142,7 @@ export async function ingest(
       );
       deps.store.setEmbeddingSpace(assetId, space);
     }
+    options.signal?.throwIfAborted();
 
     const preview = await buildPreview(parsed.blocks, {
       assetId,
@@ -132,7 +151,7 @@ export async function ingest(
       pageCount: parsed.pageCount,
     });
     deps.store.addPreview(preview);
-    deps.store.updateStatus(assetId, 'indexed');
+    deps.store.updateStatus(assetId, 'ready');
     const warnings = parsed.failures.map((failure) => failure.error);
     return {
       asset: {
@@ -140,7 +159,7 @@ export async function ingest(
         title: parsed.title,
         wordCount: parsed.wordCount,
         pageCount: parsed.pageCount,
-        status: 'indexed',
+        status: 'ready',
         updatedAt: Date.now(),
       },
       chunks: chunks.length,
@@ -148,7 +167,7 @@ export async function ingest(
       ...(warnings.length > 0 ? { warnings } : {}),
     };
   } catch (error) {
-    deps.store.updateStatus(assetId, 'error');
+    deps.store.updateStatus(assetId, 'failed');
     throw error;
   }
 }
@@ -177,14 +196,21 @@ async function embedChunks(
       throw new KnowledgeEmbeddingSpaceMismatchError(space.id, responseSpace.id);
     }
     space = responseSpace;
-    for (let index = 0; index < batch.length; index++) {
-      store.storeEmbedding(batch[index]!.id, [...response.embeddings[index]!], responseSpace.id);
-    }
+    store.storeEmbeddings(
+      batch.map((chunk, index) => ({ id: chunk.id, vector: [...response.embeddings[index]!] })),
+      responseSpace.id,
+    );
     onProgress(Math.min(1, (offset + batch.length) / chunks.length));
   }
-  if (!space) throw new Error('Embedding provider returned no vector space');
+  if (!space) throw new KnowledgeDocumentProcessingError('Embedding provider returned no vector space');
   return space;
 }
+
+// 决定本次摄入使用语义分块还是递归分块：有嵌入模型且非图片时用语义分块。
+function useSemanticChunking(mimeType: string, hasEmbedding: boolean): boolean {
+  return hasEmbedding && !mimeType.startsWith('image/');
+}
+
 
 function report(deps: IngestDeps, assetId: string, stage: IngestStage, progress: number): void {
   deps.onProgress?.(assetId, stage, progress);

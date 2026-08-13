@@ -1,9 +1,11 @@
 // 测试 KB 检索的 RRF 与 rerank 加权混合：低 rerank 分不消失、混合下限守卫空答案。
 
 import { describe, expect, it } from 'vitest';
-import type { RerankRuntime } from '@ema-agent/rerank';
+import type { Reranker } from '@ema-agent/rerank';
+import type { EmbeddingModel } from '@ema-agent/embed';
 import { KnowledgeClient } from '../client.js';
-import type { KnowledgeStore } from '../store/index.js';
+import type { KnowledgeClientDeps } from '../client.js';
+import type { KnowledgeStore } from '../store/store.js';
 import type { DocumentAsset, DocumentChunk } from '../types.js';
 
 function makeChunk(id: string, assetId: string, text: string): DocumentChunk {
@@ -51,20 +53,30 @@ class BlendStore {
   }
 }
 
-function rerankRuntimeReturning(
+function rerankerReturning(
   results: Array<{ index: number; score: number }>,
-): RerankRuntime {
+): Reranker {
   return {
     rerank: async () => ({ results }),
-  } as unknown as RerankRuntime;
+  } as unknown as Reranker;
 }
 
-function failingRerankRuntime(): RerankRuntime {
+function failingReranker(): Reranker {
   return {
     rerank: async () => {
       throw new Error('rerank down');
     },
-  } as unknown as RerankRuntime;
+  } as unknown as Reranker;
+}
+
+function makeDeps(store: BlendStore, reranker?: Reranker): KnowledgeClientDeps {
+  return {
+    store: store as unknown as KnowledgeStore,
+    resolveEmbedding: () => undefined,
+    resolveEmbeddingByRef: () => undefined,
+    resolveReranker: reranker ? () => ({ model: 'rerank-model', reranker }) : () => undefined,
+    resolveVision: () => undefined,
+  };
 }
 
 describe('KB 检索混合排序', () => {
@@ -85,20 +97,15 @@ describe('KB 检索混合排序', () => {
   it('rerank 低分结果被压后而不是整条消失', async () => {
     const store = prepare();
     // rerank 只评了两条：b 高分、a 低分；c 未被 rerank 覆盖。
-    const client = new KnowledgeClient({
-      store: store as unknown as KnowledgeStore,
-      rerankRuntime: rerankRuntimeReturning([
+    const client = new KnowledgeClient(makeDeps(
+      store,
+      rerankerReturning([
         { index: 1, score: 0.9 },
         { index: 0, score: 0.1 },
       ]),
-      // 无 embedRuntime → 只有稀疏通道
-    });
+    ));
 
-    const result = await client.search('query', {
-      topK: 3,
-      rerankProviderId: 'rerank-provider',
-      rerankModel: 'rerank-model',
-    });
+    const result = await client.search('query', { topK: 3 });
 
     // RRF 分按本批最高归一后三者接近（a≈1, b≈0.98, c≈0.97），混合分：
     //   b: 0.4*0.98 + 0.6*0.9 ≈ 0.93  → 第一
@@ -111,20 +118,16 @@ describe('KB 检索混合排序', () => {
 
   it('rerank 全部给 0 分时退回按 RRF 信号排序', async () => {
     const store = prepare();
-    const client = new KnowledgeClient({
-      store: store as unknown as KnowledgeStore,
-      rerankRuntime: rerankRuntimeReturning([
+    const client = new KnowledgeClient(makeDeps(
+      store,
+      rerankerReturning([
         { index: 0, score: 0 },
         { index: 1, score: 0 },
         { index: 2, score: 0 },
       ]),
-    });
+    ));
 
-    const result = await client.search('query', {
-      topK: 2,
-      rerankProviderId: 'rerank-provider',
-      rerankModel: 'rerank-model',
-    });
+    const result = await client.search('query', { topK: 2 });
 
     // rerank 分全为 0 时混合分 = 0.4 * rrfNorm，顺序与 RRF 一致。
     expect(result.hits.map((h) => h.chunkId)).toEqual(['chunk-a', 'chunk-b']);
@@ -132,28 +135,51 @@ describe('KB 检索混合排序', () => {
 
   it('rerank 调用失败时回退 RRF 顺序', async () => {
     const store = prepare();
-    const client = new KnowledgeClient({
-      store: store as unknown as KnowledgeStore,
-      rerankRuntime: failingRerankRuntime(),
-    });
+    const client = new KnowledgeClient(makeDeps(store, failingReranker()));
 
-    const result = await client.search('query', {
-      topK: 2,
-      rerankProviderId: 'rerank-provider',
-      rerankModel: 'rerank-model',
-    });
+    const result = await client.search('query', { topK: 2 });
 
     expect(result.hits.map((h) => h.chunkId)).toEqual(['chunk-a', 'chunk-b']);
   });
 
   it('未配置 rerank 时直接按 RRF 顺序截断', async () => {
     const store = prepare();
-    const client = new KnowledgeClient({
-      store: store as unknown as KnowledgeStore,
-    });
+    const client = new KnowledgeClient(makeDeps(store));
 
     const result = await client.search('query', { topK: 2 });
 
     expect(result.hits.map((h) => h.chunkId)).toEqual(['chunk-a', 'chunk-b']);
+  });
+
+  it('rerank 期间的取消向上传播，不伪装成降级结果', async () => {
+    const store = prepare();
+    const controller = new AbortController();
+    controller.abort(new Error('user cancelled'));
+    // 真实客户端在 abort 后会以连接错误抛出；关键是 signal 已 abort。
+    const client = new KnowledgeClient(makeDeps(store, failingReranker()));
+
+    await expect(client.search('query', { topK: 2, signal: controller.signal }))
+      .rejects.toThrow('user cancelled');
+  });
+
+  it('dense 路嵌入失败遇上取消同样向上传播', async () => {
+    const store = prepare();
+    const controller = new AbortController();
+    controller.abort(new Error('user cancelled'));
+    const client = new KnowledgeClient({
+      ...makeDeps(store),
+      resolveEmbedding: () => ({
+        providerConfigId: 'p',
+        model: 'm',
+        embedding: {
+          embed: async () => {
+            throw new Error('socket closed');
+          },
+        } as unknown as EmbeddingModel,
+      }),
+    });
+
+    await expect(client.search('query', { topK: 2, signal: controller.signal }))
+      .rejects.toThrow('user cancelled');
   });
 });

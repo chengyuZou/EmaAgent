@@ -13,6 +13,10 @@ export function weightedRank(
   alpha = 0.5,
   topK  = 10,
 ): RankedHit[] {
+  // alpha 触边界时是纯单路语义：零权重侧的候选不得以 0 分占位混入结果。
+  if (alpha <= 0) return toRanked(sparse, topK);
+  if (alpha >= 1) return toRanked(dense, topK);
+
   const sortedSparse = [...sparse].sort((a, b) => b.score - a.score);
   const sortedDense  = [...dense].sort((a, b) => b.score - a.score);
 
@@ -32,4 +36,11 @@ export function weightedRank(
     .sort(([, a], [, b]) => b - a)
     .slice(0, topK)
     .map(([id, score]) => ({ id, score }));
+}
+
+function toRanked(hits: Array<{ id: string; score: number }>, topK: number): RankedHit[] {
+  return [...hits]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, topK)
+    .map((hit) => ({ id: hit.id, score: hit.score }));
 }

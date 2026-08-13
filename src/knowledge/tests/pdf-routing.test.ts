@@ -4,7 +4,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { DocumentBlock } from '../types.js';
 import type { ImageReader } from '../readers/image.js';
-import { KbVisionAdapterError } from '../adapters/vision.js';
+import { VisionError } from '@ema-agent/vision';
 
 // pdfjs 在本测试中整体 mock; OPS 值与真实 4.10.x 枚举一致(见 legacy/build/pdf.mjs)。
 const { mockGetDocument, OPS } = vi.hoisted(() => ({
@@ -261,14 +261,14 @@ describe('B-074 PDF 三路路由', () => {
     const reader = {
       read: vi.fn(),
       readWithTask: vi.fn(async (): Promise<never> => {
-        throw new KbVisionAdapterError('vision/server_error', true);
+        throw new VisionError('vision/http_error', 'server boom', 500);
       }),
     } as unknown as ImageReader;
     const result = await new PdfReader(reader).read(SRC);
 
     expect(result.blocks.every(b => b.source === 'text-layer')).toBe(true);
     expect(result.failures).toHaveLength(1);
-    expect(result.failures[0]!.errorCode).toBe('vision/server_error');
+    expect(result.failures[0]!.errorCode).toBe('vision/http_error');
     expect(result.failures[0]!.retryable).toBe(true);
   });
 

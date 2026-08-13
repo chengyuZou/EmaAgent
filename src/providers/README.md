@@ -36,6 +36,65 @@ src/providers/
 └─ providers/               发行时内置预设，每厂一个目录
 ```
 
+## 数据结构
+
+三种身份严格分开：`providerId`（内置预设）/ `providerConfigId`（用户配置）/ `modelId`（模型）。
+
+### 预设（`providers/` 目录的内置品牌卡片）
+
+```ts
+Provider {
+  id                          // 'openai'、'deepseek'…，预设稳定身份
+  name, branding.iconId
+  connection: {
+    defaultBaseUrl?           // 该厂默认地址，单档协议可各自覆盖
+    auth                      // { type: 'none' } | { type: 'bearer', required }
+  }
+  capabilities: {             // 预设声明的能力，键即 ModelCapability
+    llm?, embed?, rerank?, vision?, tts?, stt?
+    // 每项 = ProviderCapability {
+    //   protocols: ProviderProtocolOption[]    // 可选协议档位；baseUrl 仅当该档不走默认地址时填
+    //   catalog?: ProviderModelCatalogSource   // 模型建议来源 { modelsDevId?, staticModels?, supportsLiveListing? }
+    // }
+  }
+}
+```
+
+### 用户配置（前端称"服务来源"，`provider_configs` 表）
+
+```ts
+ProviderConfig {
+  id                          // providerConfigId
+  providerId: string | null   // 引用的预设；null = 全自定义连接
+  displayName, hasCredential, enabled
+  capabilities: ProviderCapabilityConfig[]
+}
+
+ProviderCapabilityConfig {
+  capability
+  activeProtocol?             // 当前使用的协议；undefined = 停用（已配协议保留）
+  protocols: ProviderCapabilityProtocol[]   // [{ protocol, baseUrl }]，同一能力可记多档
+}
+```
+
+### 已启用模型（`provider_models` 表，按能力判别联合）
+
+```ts
+ProviderModel =                // 共同身份 (providerConfigId, capability, model)
+  | LlmProviderModel      // contextWindow 必填；maxOutput/toolCall/reasoning/temperature/inputImage 三态（true/false/null=未知）
+  | EmbedProviderModel    // dim 必填——它是 EmbeddingSpace 哈希输入，是事实不是"设置"
+  | RerankProviderModel   // maxChunks 可空
+  | VisionProviderModel | TtsProviderModel | SttProviderModel   // 仅身份
+```
+
+### 业务绑定（`model_bindings` 表，每模块一行）
+
+```ts
+ModelBinding { module, capability, providerConfigId, model }
+// module：memory / title / lightrag-llm / lightrag-embed / tts / stt / vision
+// 主对话模型不走这张表——chat/work 在 Session 层由用户直接挑选各 Provider 已启用的模型
+```
+
 ## 核心接口
 
 ### `ProviderConfigs`
@@ -49,7 +108,7 @@ const connection = configurations.resolveConnection(providerConfigId, 'llm');
 const llm = createLanguageModel(connection);
 ```
 
-用户可以在同一 capability 内选择任何 Ema 已实现的同族协议，不受品牌预设限制。只有选中的协议恰好存在 Definition 预设时，`baseUrl` 才可以从预设补全；否则必须显式填写。
+用户可以在同一 capability 内选择任何 Ema 已实现的同族协议，不受品牌预设限制。只有选中的协议恰好存在预设档位时，`baseUrl` 才可以从预设补全；否则必须显式填写。
 
 普通查询只返回 `hasCredential`。明文凭据只在 `revealCredential()` 和 `resolveConnection()` 的短生命周期内出现。
 

@@ -21,17 +21,15 @@ describe('B-072 embedding fallback 流式 Top-K', () => {
         fileName: `${assetId}.txt`,
         mimeType: 'text/plain',
         wordCount: 1,
-        status: 'indexed',
+        status: 'ready',
         createdAt: 1,
         updatedAt: 1,
       });
       assets.setEmbeddingSpace(assetId, {
         id: SPACE,
-        providerId: 'provider-test',
+        providerConfigId: 'provider-test',
         model: 'model-test',
         dim: 2,
-        normalization: 'l2',
-        revision: 'provider-managed',
       });
     }
 
@@ -42,10 +40,12 @@ describe('B-072 embedding fallback 流式 Top-K', () => {
       makeChunk('chunk-c', 'asset-b'),
       makeChunk('chunk-d', 'asset-b'),
     ]);
-    chunks.storeEmbedding('chunk-a', [1, 0], SPACE);
-    chunks.storeEmbedding('chunk-b', [0.8, 0.2], SPACE);
-    chunks.storeEmbedding('chunk-c', [0, 1], SPACE);
-    chunks.storeEmbedding('chunk-d', [-1, 0], SPACE);
+    chunks.storeEmbeddings([
+      { id: 'chunk-a', vector: [1, 0] },
+      { id: 'chunk-b', vector: [0.8, 0.2] },
+      { id: 'chunk-c', vector: [0, 1] },
+      { id: 'chunk-d', vector: [-1, 0] },
+    ], SPACE);
   });
 
   afterEach(() => database.close());
@@ -79,9 +79,11 @@ describe('B-072 embedding fallback 流式 Top-K', () => {
   });
 
   it('同分时按 chunkId 稳定排序且堆容量严格等于 K', () => {
-    chunks.storeEmbedding('chunk-a', [1, 0], SPACE);
-    chunks.storeEmbedding('chunk-b', [1, 0], SPACE);
-    chunks.storeEmbedding('chunk-c', [1, 0], SPACE);
+    chunks.storeEmbeddings([
+      { id: 'chunk-a', vector: [1, 0] },
+      { id: 'chunk-b', vector: [1, 0] },
+      { id: 'chunk-c', vector: [1, 0] },
+    ], SPACE);
 
     expect(chunks.searchByEmbedding([1, 0], SPACE, undefined, 2).map((hit) => hit.chunkId))
       .toEqual(['chunk-a', 'chunk-b']);
@@ -95,7 +97,7 @@ describe('B-072 embedding fallback 流式 Top-K', () => {
         ((index * 29) % 31) - 15,
       ];
       chunks.insertMany([makeChunk(id, 'asset-a')]);
-      chunks.storeEmbedding(id, vector, SPACE);
+      chunks.storeEmbeddings([{ id, vector }], SPACE);
     }
 
     const allRows = database.sqlite.prepare(`
@@ -126,12 +128,21 @@ describe('B-072 embedding fallback 流式 Top-K', () => {
   });
 
   it('不会召回旧空间或已标记 stale 的文档向量', () => {
-    chunks.storeEmbedding('chunk-a', [1, 0], 'legacy-space');
+    chunks.storeEmbeddings([{ id: 'chunk-a', vector: [1, 0] }], 'legacy-space');
     expect(chunks.searchByEmbedding([1, 0], SPACE, undefined, 10).map((hit) => hit.chunkId))
       .not.toContain('chunk-a');
 
-    database.sqlite.prepare('UPDATE document_assets SET ebd_stale = 1 WHERE id = ?').run('asset-b');
+    database.sqlite.prepare('UPDATE document_assets SET embedding_stale = 1 WHERE id = ?').run('asset-b');
     expect(chunks.searchByEmbedding([1, 0], SPACE, undefined, 10).map((hit) => hit.chunkId))
+      .not.toContain('chunk-c');
+  });
+
+  it('failed 资产不进 dense 检索与内存索引候选', () => {
+    database.sqlite.prepare(`UPDATE document_assets SET status = 'failed' WHERE id = ?`).run('asset-b');
+
+    expect(chunks.searchByEmbedding([1, 0], SPACE, undefined, 10).map((hit) => hit.chunkId))
+      .not.toContain('chunk-c');
+    expect(chunks.getAllEmbeddings(SPACE).map((row) => row.id))
       .not.toContain('chunk-c');
   });
 });

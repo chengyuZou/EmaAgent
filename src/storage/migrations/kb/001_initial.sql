@@ -85,7 +85,8 @@ CREATE TABLE kb_reembed_tasks (
 CREATE INDEX idx_doc_assets_created ON document_assets(created_at DESC, id DESC);
 CREATE INDEX idx_doc_assets_embedding_space ON document_assets(embedding_space_id, embedding_stale);
 CREATE INDEX idx_doc_assets_embedding_stale ON document_assets(embedding_stale) WHERE embedding_stale = 1;
-CREATE INDEX idx_doc_assets_hash ON document_assets(content_hash);
+-- 内容哈希唯一：并发导入同内容文件时第二个写入方吃约束冲突，不静默双份入库。
+CREATE UNIQUE INDEX idx_doc_assets_hash ON document_assets(content_hash) WHERE content_hash IS NOT NULL;
 CREATE INDEX idx_doc_assets_lastact ON document_assets(last_activated_at);
 CREATE INDEX idx_doc_assets_status ON document_assets(status);
 CREATE INDEX idx_doc_chunks_asset ON document_chunks(asset_id);

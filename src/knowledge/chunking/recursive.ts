@@ -1,19 +1,19 @@
+// 递归分隔符 chunker：先按标题章节归组，再按段落→行→句→词的优先级把文本切进 token 预算。
 import { estimateTextTokens } from '@ema-agent/token';
 import type { DocumentBlock, DocumentChunk, DocumentBlockKind } from '../types.js';
 import type { Chunker, ChunkOptions } from './base.js';
-import { DEFAULT_CHUNK_OPTIONS, chunkId, linkChunks, normalizeChunkSizes } from './base.js';
+import { DEFAULT_CHUNK_OPTIONS, chunkId, normalizeChunkSizes } from './base.js';
 
-// Split priority: paragraph → line → CJK sentence → Latin sentence → word
-// CJK standalone punctuation separators are listed before the regex so that
-// Chinese text (which uses no spaces between sentences) splits cleanly at
-// full-stop characters before falling through to the look-behind regex.
+// 切分优先级：段落 → 行 → 中文句 → 英文句 → 词。
+// 中文标点单独列在正则之前——中文句子之间没有空格，
+// 需要先按句号类标点干净切分，再回落到后顾正则。
 const SEPARATORS = ['\n\n', '\n', '。', '！', '？', '；', '…', /(?<=[.!?])\s+/, ' '] as const;
 
 export class RecursiveChunker implements Chunker {
   async chunk(blocks: DocumentBlock[], opts: ChunkOptions = DEFAULT_CHUNK_OPTIONS): Promise<DocumentChunk[]> {
     const assetId = opts.assetId ?? 'doc';
 
-    // Group contiguous blocks into sections by sectionPath boundary
+    // 按 sectionPath 边界把连续块归组为章节
     const sections = groupIntoSections(blocks);
     const raw: DocumentChunk[] = [];
     let idx = 0;
@@ -37,12 +37,11 @@ export class RecursiveChunker implements Chunker {
 
     const merged   = normalizeChunkSizes(raw, opts, assetId);
     const overlapped = applyOverlap(merged, opts);
-    linkChunks(overlapped);
     return overlapped;
   }
 }
 
-/** Public helper so SemanticChunker can use it as fallback without a class instance. */
+/** 公共辅助：让 SemanticChunker 无需类实例即可作为兜底使用。 */
 export function recursiveChunk(
   blocks:  DocumentBlock[],
   opts:    ChunkOptions = DEFAULT_CHUNK_OPTIONS,
@@ -71,14 +70,18 @@ export function recursiveChunk(
 
   const merged    = normalizeChunkSizes(raw, opts, assetId);
   const overlapped = applyOverlap(merged, opts);
-  linkChunks(overlapped);
   return overlapped;
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── 辅助函数 ───────────────────────────────────────────────────────────────────
 
 interface Section { path: string[]; blocks: DocumentBlock[] }
 
+/**
+ * 按阅读序做 run-length 归组：只与当前打开的 Section 比 path。
+ * 相同 path 被不同 path 隔开（A B A）时不合流——同名标题会在文档里复现，
+ * 两个 A 字面相等但属于不同的节，合流会把不相邻内容粘进同一分块。
+ */
 function groupIntoSections(blocks: DocumentBlock[]): Section[] {
   const secs: Section[] = [];
   let cur: Section = { path: [], blocks: [] };
@@ -98,46 +101,59 @@ function groupIntoSections(blocks: DocumentBlock[]): Section[] {
   return secs;
 }
 
+/**
+ * 贪心装包 + 逐级下切：当前档分隔符切出的片段顺次累积进预算；
+ * 单段仍超预算时升到下一档分隔符重切——这是唯一的递归点。
+ */
 function splitRecursive(text: string, maxTokens: number, sepIdx = 0): string[] {
   if (estimateTextTokens(text) <= maxTokens) return [text];
 
   const sep = SEPARATORS[sepIdx];
-  if (sep === undefined) {
-    // No more separators: hard-cut by approximate character ratio
-    const midChar = Math.floor(text.length / 2);
-    return [
-      ...splitRecursive(text.slice(0, midChar), maxTokens, 0),
-      ...splitRecursive(text.slice(midChar), maxTokens, 0),
-    ];
-  }
-
-  const parts = typeof sep === 'string'
-    ? text.split(sep)
-    : text.split(sep);
+  // 所有分隔符都用尽仍超长：按字符对半硬切，语义完整性让位于预算上限。
+  if (sep === undefined) return hardCutToFit(text, maxTokens);
 
   const results: string[] = [];
   let current = '';
-
-  for (const part of parts) {
+  for (const part of text.split(sep)) {
     if (!part.trim()) continue;
     const candidate = current ? current + (typeof sep === 'string' ? sep : ' ') + part : part;
     if (estimateTextTokens(candidate) <= maxTokens) {
       current = candidate;
+      continue;
+    }
+    // current 只由放得下的片段累积而来，必然已满足预算——直接收尾，不递归。
+    if (current) results.push(current);
+    current = '';
+    if (estimateTextTokens(part) <= maxTokens) {
+      current = part;
     } else {
-      if (current) results.push(...splitRecursive(current, maxTokens, sepIdx));
-      current = estimateTextTokens(part) <= maxTokens ? part : '';
-      if (estimateTextTokens(part) > maxTokens) {
-        results.push(...splitRecursive(part, maxTokens, sepIdx + 1));
-      }
+      results.push(...splitRecursive(part, maxTokens, sepIdx + 1));
     }
   }
-  if (current) results.push(...splitRecursive(current, maxTokens, sepIdx));
+  if (current) results.push(current);
   return results;
 }
 
+/** 字符对半硬切。显式栈保持阅读序；单字符兜底（旧递归版在 length=1 时 mid=0 会无限递归）。 */
+function hardCutToFit(text: string, maxTokens: number): string[] {
+  const out: string[] = [];
+  const stack = [text];
+  while (stack.length > 0) {
+    const piece = stack.pop()!;
+    if (estimateTextTokens(piece) <= maxTokens || piece.length <= 1) {
+      out.push(piece);
+      continue;
+    }
+    const mid = Math.floor(piece.length / 2);
+    // 后段先入栈，弹出顺序即阅读序。
+    stack.push(piece.slice(mid), piece.slice(0, mid));
+  }
+  return out;
+}
+
 /**
- * Prepend the last `overlap` tokens of the previous chunk to the current one.
- * This gives retrieval the context it needs to resolve cross-chunk references.
+ * 把前一个分块的末尾 `overlap` 个 token 前置到当前分块，
+ * 让检索能拿到跨块引用的上下文。
  */
 function applyOverlap(chunks: DocumentChunk[], opts: ChunkOptions): DocumentChunk[] {
   if (opts.overlap <= 0 || chunks.length < 2) return chunks;
@@ -152,10 +168,10 @@ function applyOverlap(chunks: DocumentChunk[], opts: ChunkOptions): DocumentChun
 }
 
 function takeTailTokens(text: string, targetTokens: number): string {
-  // Approximate: 1 token ≈ 4 chars for English, less for CJK
+  // 近似：英文 1 token ≈ 4 字符，中文更少
   const approxChars = targetTokens * 4;
   const tail = text.slice(-approxChars);
-  // Trim to word boundary
+  // 截到词边界
   const spaceIdx = tail.indexOf(' ');
   return spaceIdx > 0 ? tail.slice(spaceIdx + 1) : tail;
 }

@@ -1,6 +1,5 @@
 import { readFile } from 'node:fs/promises';
 import mammoth from 'mammoth';
-import type { DocumentBlock } from '../types.js';
 import type { DocumentReader, ReadResult, ReaderSource } from './base.js';
 import { parseHtml } from './html.js';
 
