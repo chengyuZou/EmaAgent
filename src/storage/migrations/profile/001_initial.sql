@@ -214,12 +214,25 @@ CREATE TABLE permission_rules (
 CREATE TABLE provider_capability_configs (
   provider_config_id TEXT    NOT NULL REFERENCES provider_configs(id) ON DELETE CASCADE,
   capability         TEXT    NOT NULL CHECK(capability IN ('llm','embed','rerank','vision','tts','stt')),
-  protocol           TEXT    NOT NULL,
-  base_url            TEXT    NOT NULL,
-  enabled             INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0, 1)),
+  -- 当前使用的协议；NULL = 该能力停用（已配协议保留在 protocols 表）
+  active_protocol    TEXT,
   created_at          INTEGER NOT NULL,
   updated_at          INTEGER NOT NULL,
   PRIMARY KEY (provider_config_id, capability)
+);
+
+-- 同一能力允许配置多档协议（如 DeepSeek LLM 的 openai/anthropic 双协议），
+-- 切换激活协议不丢另一档的自定义地址。
+CREATE TABLE provider_capability_protocols (
+  provider_config_id TEXT NOT NULL,
+  capability         TEXT NOT NULL,
+  protocol           TEXT NOT NULL,
+  base_url           TEXT NOT NULL,
+  created_at         INTEGER NOT NULL,
+  updated_at         INTEGER NOT NULL,
+  PRIMARY KEY (provider_config_id, capability, protocol),
+  FOREIGN KEY (provider_config_id, capability)
+    REFERENCES provider_capability_configs(provider_config_id, capability) ON DELETE CASCADE
 );
 
 CREATE TABLE provider_configs (
@@ -425,8 +438,9 @@ ON permission_rules(
   IFNULL(path_glob, '')
 );
 
-CREATE INDEX idx_provider_capability_enabled
-  ON provider_capability_configs(capability, enabled, provider_config_id);
+CREATE INDEX idx_provider_capability_active
+  ON provider_capability_configs(capability, provider_config_id)
+  WHERE active_protocol IS NOT NULL;
 
 CREATE INDEX idx_provider_models_capability_model
   ON provider_models(capability, model, provider_config_id);

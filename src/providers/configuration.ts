@@ -18,13 +18,20 @@ import type {
 } from './types.js';
 import { PROVIDER_CONFIG_LIMITS } from './types.js';
 
+/** 能力下已配置的一条协议及其地址。 */
+export interface ProviderCapabilityProtocol {
+  protocol: Protocol;
+  baseUrl: string;
+}
+
 export interface ProviderCapabilityConfig<
   TCapability extends ModelCapability = ModelCapability,
 > {
   capability: TCapability;
-  protocol: ModelCapabilityProtocol<TCapability>;
-  baseUrl: string;
-  enabled: boolean;
+  /** 当前使用的协议；undefined = 该能力停用（已配协议保留）。 */
+  activeProtocol?: ModelCapabilityProtocol<TCapability>;
+  /** 该能力已配置的协议；同一能力可配多档（如 DeepSeek LLM 的 openai/anthropic 双协议）。 */
+  protocols: readonly ProviderCapabilityProtocol[];
 }
 
 export interface ProviderConfig {
@@ -76,9 +83,11 @@ export interface ProviderCatalog {
 
 export interface ProviderCapabilityConfigInput {
   capability: ModelCapability;
+  /** 缺省时取预设该能力的默认协议。 */
   protocol?: Protocol;
   baseUrl?: string;
-  enabled?: boolean;
+  /** true = 设为该能力当前协议；false = 停用该能力（已配协议保留）；缺省 = 该能力未启用时激活这条协议。 */
+  active?: boolean;
 }
 
 export interface CreateProviderConfig {
@@ -108,14 +117,14 @@ export class ProviderConfigs {
     return this.providers.list();
   }
 
-  listConfigs(): ProviderWithHealth[] {
+  listConfigsWithHealth(): ProviderWithHealth[] {
     return this.store.listWithHealth();
   }
 
-  getConfig(id: string): ProviderWithHealth {
-    const provider = this.store.getWithHealth(id);
-    if (!provider) throw notFound();
-    return provider;
+  getConfigWithHealth(id: string): ProviderWithHealth {
+    const config = this.store.getWithHealth(id);
+    if (!config) throw notFound();
+    return config;
   }
 
   revealCredential(id: string): string {
@@ -154,11 +163,25 @@ export class ProviderConfigs {
     let capabilities = [...existing.capabilities];
 
     if (input.capability) {
-      const incoming = normalizeCapabilities(preset, [input.capability])[0]!;
-      if (!incoming.enabled) this.assertCapabilityNotInUse(id, incoming.capability);
-      capabilities = [
-        ...capabilities.filter((entry) => entry.capability !== incoming.capability),
+      const requested = input.capability;
+      const current = existing.capabilities.find(
+        (entry) => entry.capability === requested.capability,
+      );
+      const incoming = normalizeCapabilityProtocol(preset, requested);
+      const protocols = [
+        ...(current?.protocols.filter((entry) => entry.protocol !== incoming.protocol) ?? []),
         incoming,
+      ];
+      let activeProtocol = current?.activeProtocol;
+      if (requested.active === false) {
+        this.assertCapabilityNotInUse(id, requested.capability);
+        activeProtocol = undefined;
+      } else if (requested.active === true || activeProtocol === undefined) {
+        activeProtocol = incoming.protocol as ProviderCapabilityConfig['activeProtocol'];
+      }
+      capabilities = [
+        ...capabilities.filter((entry) => entry.capability !== requested.capability),
+        { capability: requested.capability, activeProtocol, protocols },
       ];
     }
 
@@ -192,15 +215,17 @@ export class ProviderConfigs {
     providerConfigId: string,
     capability: TCapability,
   ): ProviderConnection<TCapability> {
-    const provider = this.requireConfig(providerConfigId);
-    if (!provider.enabled) {
+    const config = this.requireConfig(providerConfigId);
+    if (!config.enabled) {
       throw new ProviderConfigError('capability_disabled', 'Provider 已停用');
     }
-    const configured = provider.capabilities.find(
-      (entry): entry is ProviderCapabilityConfig<TCapability> =>
-        entry.capability === capability,
+    const configured = config.capabilities.find(
+      (entry) => entry.capability === capability,
     );
-    if (!configured?.enabled) {
+    const active = configured?.protocols.find(
+      (entry) => entry.protocol === configured.activeProtocol,
+    );
+    if (!configured || !active) {
       throw new ProviderConfigError(
         'capability_disabled',
         `Provider 未启用 ${capability} 能力`,
@@ -208,16 +233,16 @@ export class ProviderConfigs {
     }
 
     const credential = this.store.revealCredential(providerConfigId);
-    const preset = provider.providerId
-      ? this.requireProvider(provider.providerId)
+    const preset = config.providerId
+      ? this.requireProvider(config.providerId)
       : undefined;
     if (preset && requiresCredentials(preset) && !credential) {
       throw new ProviderConfigError('credential_missing', 'Provider 缺少 API Key');
     }
 
     return {
-      protocol: configured.protocol,
-      baseUrl: configured.baseUrl,
+      protocol: active.protocol as ModelCapabilityProtocol<TCapability>,
+      baseUrl: active.baseUrl,
       ...(credential ? { apiKey: credential } : {}),
     };
   }
@@ -228,9 +253,9 @@ export class ProviderConfigs {
   }
 
   private requireConfig(id: string): ProviderConfig {
-    const provider = this.store.get(id);
-    if (!provider) throw notFound();
-    return provider;
+    const config = this.store.get(id);
+    if (!config) throw notFound();
+    return config;
   }
 
   private requireProvider(id: string): Provider {
@@ -262,31 +287,45 @@ export function normalizeCapabilities(
     throw invalid('至少需要配置一项 Provider 能力');
   }
 
-  const seen = new Set<ModelCapability>();
-  return requested.map((entry) => {
-    if (seen.has(entry.capability)) throw invalid(`能力 ${entry.capability} 重复`);
-    seen.add(entry.capability);
-
-    const protocol = entry.protocol
-      ?? (preset ? defaultProtocolFor(preset, entry.capability) : undefined);
-    if (!protocol || !isProtocolForCapability(entry.capability, protocol)) {
-      throw invalid(`${entry.capability} 缺少有效协议`);
+  const byCapability = new Map<ModelCapability, ProviderCapabilityConfigInput[]>();
+  for (const entry of requested) {
+    const entries = byCapability.get(entry.capability) ?? [];
+    if (entry.protocol !== undefined
+      && entries.some((item) => item.protocol === entry.protocol)) {
+      throw invalid(`能力 ${entry.capability} 的协议 ${entry.protocol} 重复`);
     }
+    entries.push(entry);
+    byCapability.set(entry.capability, entries);
+  }
 
-    const baseUrl = entry.baseUrl
-      ?? (preset ? presetBaseUrlFor(preset, entry.capability, protocol) : undefined);
-    if (!baseUrl) {
-      throw invalid(`${entry.capability} 使用非预设协议时必须填写 baseUrl`);
-    }
-    validateBaseUrl(baseUrl);
-
+  return [...byCapability.entries()].map(([capability, entries]) => {
+    const protocols = entries.map((entry) => normalizeCapabilityProtocol(preset, entry));
+    const activeIndex = entries.findIndex((entry) => entry.active === true);
+    const active = protocols[activeIndex >= 0 ? activeIndex : 0]!;
     return {
-      capability: entry.capability,
-      protocol,
-      baseUrl,
-      enabled: entry.enabled ?? true,
+      capability,
+      activeProtocol: active.protocol,
+      protocols,
     } as ProviderCapabilityConfig;
   });
+}
+
+function normalizeCapabilityProtocol(
+  preset: Provider | undefined,
+  entry: ProviderCapabilityConfigInput,
+): ProviderCapabilityProtocol {
+  const protocol = entry.protocol
+    ?? (preset ? defaultProtocolFor(preset, entry.capability) : undefined);
+  if (!protocol || !isProtocolForCapability(entry.capability, protocol)) {
+    throw invalid(`${entry.capability} 缺少有效协议`);
+  }
+  const baseUrl = entry.baseUrl
+    ?? (preset ? presetBaseUrlFor(preset, entry.capability, protocol) : undefined);
+  if (!baseUrl) {
+    throw invalid(`${entry.capability} 使用非预设协议时必须填写 baseUrl`);
+  }
+  validateBaseUrl(baseUrl);
+  return { protocol, baseUrl };
 }
 
 function normalizeDisplayName(value: string | undefined): string {

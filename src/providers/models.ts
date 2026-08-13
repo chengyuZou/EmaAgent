@@ -70,7 +70,7 @@ export class ProviderModels {
   save(model: ProviderModel): ProviderModel {
     const provider = this.requireProvider(model.providerConfigId);
     const configured = provider.capabilities.find(
-      (entry) => entry.capability === model.capability && entry.enabled,
+      (entry) => entry.capability === model.capability && entry.activeProtocol !== undefined,
     );
     if (!configured) {
       throw new ProviderConfigError(

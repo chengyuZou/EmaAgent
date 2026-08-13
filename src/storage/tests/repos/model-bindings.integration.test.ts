@@ -13,13 +13,13 @@ describe('ModelBindingsRepo', () => {
     database.migrate();
     new ProvidersRepo(database.sqlite, createTestCredentialFacade()).save({
       id: 'provider-1',
-      definitionId: 'siliconflow',
+      providerId: 'siliconflow',
       displayName: 'Provider',
       credential: 'secret',
       enabled: true,
       capabilities: [
-        { capability: 'llm', protocol: 'openai-llm', baseUrl: 'https://example.com/v1', enabled: true },
-        { capability: 'vision', protocol: 'openai-vision', baseUrl: 'https://example.com/v1', enabled: true },
+        { capability: 'llm', activeProtocol: 'openai-llm', protocols: [{ protocol: 'openai-llm', baseUrl: 'https://example.com/v1' }] },
+        { capability: 'vision', activeProtocol: 'openai-vision', protocols: [{ protocol: 'openai-vision', baseUrl: 'https://example.com/v1' }] },
       ],
     });
     models = new ProviderModelsRepo(database.sqlite);

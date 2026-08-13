@@ -23,9 +23,14 @@ interface ProviderRow {
 interface CapabilityRow {
   provider_config_id: string;
   capability: ModelCapability;
+  active_protocol: Protocol | null;
+}
+
+interface CapabilityProtocolRow {
+  provider_config_id: string;
+  capability: ModelCapability;
   protocol: Protocol;
   base_url: string;
-  enabled: number;
 }
 
 interface HealthRow {
@@ -99,31 +104,41 @@ export class ProvidersRepo implements ProviderConfigStore {
         now,
       );
 
-      const upsert = this.db.prepare(
+      const upsertCapability = this.db.prepare(
         `INSERT INTO provider_capability_configs
-           (provider_config_id, capability, protocol, base_url, enabled, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
+           (provider_config_id, capability, active_protocol, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?)
          ON CONFLICT(provider_config_id, capability) DO UPDATE SET
-           protocol = excluded.protocol,
-           base_url = excluded.base_url,
-           enabled = excluded.enabled,
+           active_protocol = excluded.active_protocol,
            updated_at = excluded.updated_at`,
       );
+      const insertProtocol = this.db.prepare(
+        `INSERT INTO provider_capability_protocols
+           (provider_config_id, capability, protocol, base_url, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      );
       for (const capability of input.capabilities) {
-        upsert.run(
+        upsertCapability.run(
           input.id,
           capability.capability,
-          capability.protocol,
-          capability.baseUrl,
-          capability.enabled ? 1 : 0,
+          capability.activeProtocol ?? null,
           now,
           now,
         );
+        // 协议全量替换：协议+地址的记忆以本次保存为准；能力行保留则模型事实不丢。
+        this.db.prepare(
+          `DELETE FROM provider_capability_protocols
+           WHERE provider_config_id = ? AND capability = ?`,
+        ).run(input.id, capability.capability);
+        for (const protocol of capability.protocols) {
+          insertProtocol.run(input.id, capability.capability, protocol.protocol, protocol.baseUrl, now, now);
+        }
       }
 
       const retained = new Set(input.capabilities.map((entry) => entry.capability));
       for (const existing of this.listCapabilities(input.id)) {
         if (retained.has(existing.capability)) continue;
+        // 能力行删除经 FK 级联清理协议与模型事实。
         this.db.prepare(
           `DELETE FROM provider_capability_configs
            WHERE provider_config_id = ? AND capability = ?`,
@@ -164,11 +179,20 @@ export class ProvidersRepo implements ProviderConfigStore {
 
   private listCapabilities(providerConfigId: string): CapabilityRow[] {
     return this.db.prepare(
-      `SELECT provider_config_id, capability, protocol, base_url, enabled
+      `SELECT provider_config_id, capability, active_protocol
        FROM provider_capability_configs
        WHERE provider_config_id = ?
        ORDER BY capability ASC`,
     ).all(providerConfigId) as CapabilityRow[];
+  }
+
+  private listCapabilityProtocols(providerConfigId: string): CapabilityProtocolRow[] {
+    return this.db.prepare(
+      `SELECT provider_config_id, capability, protocol, base_url
+       FROM provider_capability_protocols
+       WHERE provider_config_id = ?
+       ORDER BY capability ASC, protocol ASC`,
+    ).all(providerConfigId) as CapabilityProtocolRow[];
   }
 
   private getHealth(providerConfigId: string): ProviderHealth | null {
@@ -188,6 +212,7 @@ export class ProvidersRepo implements ProviderConfigStore {
     row: ProviderRow,
     capabilities: readonly CapabilityRow[],
   ): ProviderConfig {
+    const protocols = this.listCapabilityProtocols(row.id);
     return {
       id: row.id,
       providerId: row.provider_id,
@@ -196,9 +221,10 @@ export class ProvidersRepo implements ProviderConfigStore {
       enabled: row.enabled === 1,
       capabilities: capabilities.map((entry) => ({
         capability: entry.capability,
-        protocol: entry.protocol,
-        baseUrl: entry.base_url,
-        enabled: entry.enabled === 1,
+        ...(entry.active_protocol === null ? {} : { activeProtocol: entry.active_protocol }),
+        protocols: protocols
+          .filter((protocol) => protocol.capability === entry.capability)
+          .map((protocol) => ({ protocol: protocol.protocol, baseUrl: protocol.base_url })),
       } as ProviderCapabilityConfig)),
     };
   }

@@ -7,20 +7,18 @@ CREATE TABLE document_assets (
   title             TEXT,
   word_count        INTEGER NOT NULL DEFAULT 0,
   page_count        INTEGER,
-  status            TEXT NOT NULL DEFAULT 'pending'
-                    CHECK (status IN ('pending', 'indexing', 'indexed', 'error')),
+  status            TEXT NOT NULL
+                    CHECK (status IN ('indexing', 'ready', 'failed')),
   content_hash      TEXT,
-  ebd_model         TEXT,
-  ebd_dim           INTEGER,
-  ebd_stale         INTEGER NOT NULL DEFAULT 0,
+  embedding_provider_config_id TEXT,
+  embedding_model   TEXT,
+  embedding_dim     INTEGER,
+  embedding_space_id TEXT,
+  embedding_stale   INTEGER NOT NULL DEFAULT 0,
   use_count         INTEGER NOT NULL DEFAULT 0,
   last_activated_at INTEGER,
   created_at        INTEGER NOT NULL,
-  updated_at        INTEGER NOT NULL,
-  ebd_provider_id   TEXT,
-  ebd_normalization TEXT,
-  ebd_revision      TEXT,
-  ebd_space_id      TEXT
+  updated_at        INTEGER NOT NULL
 );
 
 CREATE TABLE document_chunks (
@@ -33,10 +31,8 @@ CREATE TABLE document_chunks (
   token_count        INTEGER NOT NULL DEFAULT 0,
   page               INTEGER,
   section_path_json  TEXT NOT NULL DEFAULT '[]',
-  prev_id            TEXT,
-  next_id            TEXT,
-  mom_id             TEXT,
-  mom_text           TEXT,
+  parent_id          TEXT,
+  parent_text        TEXT,
   embedding          BLOB,
   embedding_space_id TEXT
 );
@@ -75,8 +71,8 @@ CREATE TABLE kb_ingest_tasks (
 CREATE TABLE kb_reembed_tasks (
   id              TEXT PRIMARY KEY,
   asset_id        TEXT,
-  ebd_provider_id TEXT NOT NULL,
-  ebd_model       TEXT NOT NULL,
+  embedding_provider_config_id TEXT NOT NULL,
+  embedding_model TEXT NOT NULL,
   status          TEXT NOT NULL DEFAULT 'pending'
                   CHECK (status IN ('pending', 'running', 'completed', 'failed', 'cancelled')),
   stage           TEXT,
@@ -87,15 +83,15 @@ CREATE TABLE kb_reembed_tasks (
 );
 
 CREATE INDEX idx_doc_assets_created ON document_assets(created_at DESC, id DESC);
-CREATE INDEX idx_doc_assets_ebd_space ON document_assets(ebd_space_id, ebd_stale);
-CREATE INDEX idx_doc_assets_ebd_stale ON document_assets(ebd_stale) WHERE ebd_stale = 1;
+CREATE INDEX idx_doc_assets_embedding_space ON document_assets(embedding_space_id, embedding_stale);
+CREATE INDEX idx_doc_assets_embedding_stale ON document_assets(embedding_stale) WHERE embedding_stale = 1;
 CREATE INDEX idx_doc_assets_hash ON document_assets(content_hash);
 CREATE INDEX idx_doc_assets_lastact ON document_assets(last_activated_at);
 CREATE INDEX idx_doc_assets_status ON document_assets(status);
 CREATE INDEX idx_doc_chunks_asset ON document_chunks(asset_id);
 CREATE INDEX idx_doc_chunks_embedding_space
   ON document_chunks(embedding_space_id) WHERE embedding IS NOT NULL;
-CREATE INDEX idx_doc_chunks_mom ON document_chunks(mom_id);
+CREATE INDEX idx_doc_chunks_parent ON document_chunks(parent_id);
 CREATE INDEX idx_kb_ingest_status ON kb_ingest_tasks(status, created_at, id);
 CREATE INDEX idx_kb_reembed_status ON kb_reembed_tasks(status, created_at, id);
 

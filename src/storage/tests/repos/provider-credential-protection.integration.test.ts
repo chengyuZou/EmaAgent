@@ -18,12 +18,12 @@ describe('Provider 凭据保护', () => {
   it('SQLite 只保存加密信封，普通查询只暴露 hasCredential', () => {
     providers.save({
       id: 'provider-1',
-      definitionId: 'openai',
+      providerId: 'openai',
       displayName: 'OpenAI',
       credential: 'sk-sensitive',
       enabled: true,
       capabilities: [
-        { capability: 'llm', protocol: 'openai-llm', baseUrl: 'https://api.openai.com/v1', enabled: true },
+        { capability: 'llm', activeProtocol: 'openai-llm', protocols: [{ protocol: 'openai-llm', baseUrl: 'https://api.openai.com/v1' }] },
       ],
     });
 
@@ -38,9 +38,9 @@ describe('Provider 凭据保护', () => {
 
   it('undefined 保留凭据，null 明确清空凭据', () => {
     const base = {
-      id: 'provider-1', definitionId: 'openai', displayName: 'OpenAI', enabled: true,
+      id: 'provider-1', providerId: 'openai', displayName: 'OpenAI', enabled: true,
       capabilities: [
-        { capability: 'llm' as const, protocol: 'openai-llm' as const, baseUrl: 'https://api.openai.com/v1', enabled: true },
+        { capability: 'llm' as const, activeProtocol: 'openai-llm' as const, protocols: [{ protocol: 'openai-llm' as const, baseUrl: 'https://api.openai.com/v1' }] },
       ],
     };
     providers.save({ ...base, credential: 'secret' });

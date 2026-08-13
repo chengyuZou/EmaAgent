@@ -14,16 +14,16 @@ describe('ProviderModelsRepo', () => {
     for (const id of ['provider-a', 'provider-b']) {
       providers.save({
         id,
-        definitionId: null,
+        providerId: null,
         displayName: id,
         enabled: true,
         capabilities: [
-          { capability: 'llm', protocol: 'openai-llm', baseUrl: 'https://example.com/v1', enabled: true },
-          { capability: 'embed', protocol: 'openai-embed', baseUrl: 'https://example.com/v1', enabled: true },
-          { capability: 'rerank', protocol: 'cohere-rerank', baseUrl: 'https://example.com/v1', enabled: true },
-          { capability: 'vision', protocol: 'openai-vision', baseUrl: 'https://example.com/v1', enabled: true },
-          { capability: 'tts', protocol: 'openai-tts', baseUrl: 'https://example.com/v1', enabled: true },
-          { capability: 'stt', protocol: 'openai-stt', baseUrl: 'https://example.com/v1', enabled: true },
+          { capability: 'llm', activeProtocol: 'openai-llm', protocols: [{ protocol: 'openai-llm', baseUrl: 'https://example.com/v1' }] },
+          { capability: 'embed', activeProtocol: 'openai-embed', protocols: [{ protocol: 'openai-embed', baseUrl: 'https://example.com/v1' }] },
+          { capability: 'rerank', activeProtocol: 'cohere-rerank', protocols: [{ protocol: 'cohere-rerank', baseUrl: 'https://example.com/v1' }] },
+          { capability: 'vision', activeProtocol: 'openai-vision', protocols: [{ protocol: 'openai-vision', baseUrl: 'https://example.com/v1' }] },
+          { capability: 'tts', activeProtocol: 'openai-tts', protocols: [{ protocol: 'openai-tts', baseUrl: 'https://example.com/v1' }] },
+          { capability: 'stt', activeProtocol: 'openai-stt', protocols: [{ protocol: 'openai-stt', baseUrl: 'https://example.com/v1' }] },
         ],
       });
     }

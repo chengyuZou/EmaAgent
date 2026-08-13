@@ -88,7 +88,8 @@ models.dev / 实况列表 / 用户手填
 `ProvidersRepo`、`ProviderModelsRepo` 和 `ModelBindingsRepo` 实现 Provider 所有的持久化接口。SQL Row 只存在于 Storage 内部：
 
 - `provider_configs.provider_id` 可空；
-- `provider_capability_configs` 保存明确的协议和地址；
+- `provider_capability_configs` 保存能力行与当前激活协议（`active_protocol`，NULL = 停用）；
+- `provider_capability_protocols` 按 `(配置, 能力, 协议)` 保存每一条已配地址——同一能力可记多档协议，切换激活不丢地址；
 - `provider_models` 是六类模型的唯一事实表；
 - `model_bindings.module` 是主键，并通过复合外键指向精确模型；
 - 删除模型会由外键级联删除对应绑定。

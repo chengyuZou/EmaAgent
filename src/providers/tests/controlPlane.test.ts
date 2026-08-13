@@ -94,7 +94,11 @@ describe('Provider 控制面', () => {
     configurations.providers.set('provider-1', {
       id: 'provider-1', providerId: null, displayName: 'Custom', hasCredential: false,
       enabled: true,
-      capabilities: [{ capability: 'llm', protocol: 'openai-llm', baseUrl: 'http://localhost/v1', enabled: true }],
+      capabilities: [{
+        capability: 'llm',
+        activeProtocol: 'openai-llm',
+        lines: [{ protocol: 'openai-llm', baseUrl: 'http://localhost/v1' }],
+      }],
     });
     const modelRows = new Map<string, ProviderModel>();
     const modelStore = {
