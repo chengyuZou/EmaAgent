@@ -36,7 +36,7 @@ downloadBundle / extractBundle / installSkillFromSite
 ## 其他包不得复用/穿透的
 
 - **`paths.ts`、installer 内部、`sources/*` 的内部函数**不是公共件;跨包只准走上面的出口。
-- **桌面前端不得 import 本包类型**(`GithubSkillCoords`/`SkillRecord` 这类历史 import 已随旧市场 UI 删除波次清除);前端要的是 wire 镜像,技能信息经 localHost Route 下发。
+- **桌面前端不得 import 本包类型**(`GithubSkillCoords`/`SkillRecord` 这类历史 import 已随旧市场 UI 删除波次清除);前端要的是 wire 镜像,技能信息经 server Route 下发。
 - 启用状态**不在**本包任何 SQL 行里——SkillsRepo/SkillSitesRepo 都不提供 enabled 语义;禁用只经 Settings deny-list,接线方不得给 store 加 setEnabled 一类方法。
 
 ## 不变量
@@ -55,4 +55,4 @@ downloadBundle / extractBundle / installSkillFromSite
 ## 接线契约(归接线批,本包不接线)
 
 - turnExecution：每根 Turn `freezeSkillPool(registry.list(), settings...)` 的结果塞进 `ToolUseContext.skillPool`;子 Agent 不注入(Skill 工具天然不可见)。
-- localHost:skills 路由组(sites CRUD / install / check-updates / 技能管理)调本包出口,不复制字段。
+- server:skills 路由组(sites CRUD / install / check-updates / 技能管理)调本包出口,不复制字段。

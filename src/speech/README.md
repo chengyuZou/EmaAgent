@@ -20,7 +20,7 @@ Turn output_text_delta
 - `SpeechVoiceCache` 只缓存短期 Provider 声音标识，不写 SQLite；缓存键包含角色、Provider 配置和模型。
 - `SpeechVoicePreview` 复用同一个 `TextToSpeech` 与声音准备路径，不建立第二套协议调用。
 - `FsAudioArchive` 把结果写到 `{sessionsRoot}/{sessionId}/audio`，因此归档身份属于 Speech 而不是 TTS。
-- 角色选择、Provider binding 与 `TextToSpeech` Map 由 LocalHost 装配；本包不读取角色 Repo 或 Provider Repo。
+- 角色选择、Provider binding 与 `TextToSpeech` Map 由 Server 装配；本包不读取角色 Repo 或 Provider Repo。
 
 ## 不属于本包
 

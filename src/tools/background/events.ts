@@ -1,4 +1,4 @@
-// 描述后台 Shell 状态变化，供 LocalHost 投影到 Session 事件通道。
+// 描述后台 Shell 状态变化，供 Server 投影到 Session 事件通道。
 
 import type {
   BackgroundProcessId,

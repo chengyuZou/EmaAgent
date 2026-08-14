@@ -1,11 +1,11 @@
-// Permission 永久规则的窄存储接口与内存实现；SQL 实现由 Storage Repo 和 LocalHost 装配适配。
+// Permission 永久规则的窄存储接口与内存实现；SQL 实现由 Storage Repo 和 Server 装配适配。
 import { randomUUID } from 'node:crypto';
 import type { PermissionRule, PersistedPermissionRule } from '../types.js';
 
 /**
  * Permission 业务需要的永久规则窄存储接口。
  *
- * 生产实现由 LocalHost 用 PermissionRulesRepo 适配（SQL → profile.db.permission_rules）；
+ * 生产实现由 Server 用 PermissionRulesRepo 适配（SQL → profile.db.permission_rules）；
  * 测试用 InMemoryPermissionRuleStore。session 级临时授权不进此接口,
  * 由 PermissionEngine 内存 SessionGrantStore 管理。
  */

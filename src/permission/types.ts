@@ -136,7 +136,7 @@ export interface PermissionPrompt {
   readonly toolCallId?: ToolCallId;
 }
 
-/** LocalHost 暂存的待批准快照；Promise、计时器和内部指纹不进入事件协议。 */
+/** Server 暂存的待批准快照；Promise、计时器和内部指纹不进入事件协议。 */
 export interface PendingPermissionPrompt {
   readonly promptId: string;
   readonly createdAt: number;

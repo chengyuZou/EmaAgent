@@ -12,7 +12,7 @@ export interface DetectResult {
   backend: BackendKind
   /**
    * 当本该有 OS 级沙箱的平台却降级到 unisolated 时，给出人类可读的原因。
-   * 由 LocalHost 组装到沙箱状态展示中。
+   * 由 Server 组装到沙箱状态展示中。
    */
   degradeReason?: string
 }

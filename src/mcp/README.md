@@ -34,7 +34,7 @@ McpToolOutput / projectMcpToolOutput
 ## 其他包不得复用/穿透的
 
 - **`connection.ts`、`runtime-utils.ts`、`toolSchemaLimits.ts`、`registrySources/` 内部**不是公共件;连接只能经 `McpRegistry`/`probe` 建立。
-- **前端不得 import 本包类型**;server/源/条目经 localHost Route 下发 wire 投影。
+- **前端不得 import 本包类型**;server/源/条目经 server Route 下发 wire 投影。
 - 不得绕过 `McpServerStore` 直写 `mcp_servers` 表——`config_json` 里的 env/headers 值是 credential 信封,只有 Store 知道加解密边界。
 - `McpRegistry` 的连接状态机(generation/primed/refresh)是内部实现;消费方只读 `getConnection(s)` 投影。
 
@@ -57,7 +57,7 @@ McpToolOutput / projectMcpToolOutput
 
 ## 接线契约(归各装配方,本包不接线)
 
-- localHost:`McpServerStore` 注入 `CredentialFacade` 单例;`McpRegistrySourceStore.ensureOfficialSeed()` 在启动期调用;stdio 拉起经 `stdioGate` 接 PermissionAuthorizer。
+- server:`McpServerStore` 注入 `CredentialFacade` 单例;`McpRegistrySourceStore.ensureOfficialSeed()` 在启动期调用;stdio 拉起经 `stdioGate` 接 PermissionAuthorizer。
 - turnExecution:MCP 工具经全局 `ToolRegistry` 进 ToolPool,本包不参与每 Turn 冻结。
 - 备份:导入侧遇 reveal 失败的受保护值应剥除并要求用户重填(归备份批)。
 

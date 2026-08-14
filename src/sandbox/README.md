@@ -18,11 +18,11 @@
 
 **本包不拥有（禁止反向依赖）：**
 
-- 安全策略（unisolated 时是否隐藏执行类工具、AGEN_UNSAFE_* 开关）——归 LocalHost wiring(`createSandboxRuntime`);
-- Git/WSL 安装动作（归 `apps/localHost/src/gitInstaller.ts`，本包只提供探测与缓存重置入口）;
+- 安全策略（unisolated 时是否隐藏执行类工具、AGEN_UNSAFE_* 开关）——归 Server wiring(`createSandboxRuntime`);
+- Git/WSL 安装动作（归 `apps/server/src/gitInstaller.ts`，本包只提供探测与缓存重置入口）;
 - Permission 决策（归 `@ema-agent/permission`；本包不判断"该不该跑"，只负责"跑了就按能力约束跑");
 - 具体工具（BashTool 等归 `src/builtinTools`)、后台进程调度（归 `@ema-agent/tools/background`);
-- `SandboxStatusWire` 等 UI 协议形状（归 LocalHost wiring 组装）;
+- `SandboxStatusWire` 等 UI 协议形状（归 Server wiring 组装）;
 - SQL/Row/持久化（本包无任何存储依赖）。
 
 ## 目录
@@ -53,7 +53,7 @@ src/sandbox/
 - `CommandRunOptions`(`cwd/timeoutMs/signal/onOutput`)、`CommandProcessHandle`(`completion/stop`)、`CommandRunResult`、`CommandOutputChunk`;
 - `start()` 是同步路径（后台调度立即持有句柄）:shell 冷窗口与无 bash 都**抛错**，调用方按 Tool Error 如实上报。
 
-**装配层消费**(LocalHost wiring):
+**装配层消费**(Server wiring):
 
 - `CommandRunner`(per-Session 构造，能力快照构造即冻结）、`SandboxCapability`;
 - `detectBackend()` → `DetectResult { backend, degradeReason? }`（进程级缓存，启动期调用）;
@@ -66,7 +66,7 @@ src/sandbox/
 
 1. **探测二分。** `detectPlatform` 只做环境分类（同步、微秒级、纯函数可测）;"能不能用哪个后端"一律由 `detectBackend` 的真实冒烟终审——二进制存在 ≠ namespace/策略允许。
 2. **能力构造即冻结。** `workspaceRoot` 必填，空串拒绝构造，禁止回退进程 cwd;`writablePaths/forbiddenPaths` 冻结后不可变。
-3. **Permission 与 Sandbox 物理分层。** 本包不裁决策略；`unisolated` 只如实报告"无 OS 隔离"，是否允许执行由 LocalHost 策略决定（默认隐藏执行类工具）。
+3. **Permission 与 Sandbox 物理分层。** 本包不裁决策略；`unisolated` 只如实报告"无 OS 隔离"，是否允许执行由 Server 策略决定（默认隐藏执行类工具）。
 4. **环境只白名单重建。** 子进程环境清空后按白名单重建，不继承后删；凭据/注入类变量默认不存在。
 5. **路径比较一律真实路径。** cwd 校验与配置绑定同口径 realpath(Windows 剥 `\\?\` 前缀）；符号链接/junction 逃逸 fail-closed。
 6. **结算一次、终止一次、清理一次。** `settled` 防多终态事件重复结算；`terminating` 幂等入口收编超时/取消/stop 三源；每条结局路径对称清理（补枪定时器必须撤——进程提前退出后 PGID 复用会误杀无辜）。
@@ -95,7 +95,7 @@ src/sandbox/
 - 绕过 `CommandRunnerPort` 直接 `child_process.spawn` 执行模型命令——能力约束（cwd/环境/超时/树杀）全部失效；
 - 在命令执行路径读 `process.env` 或自行拼环境——环境只来自本包白名单重建；
 - 把 `BashProbeResult.path` 当恒真路径（wsl 形态无路径），或在同步路径 `await probeBash()`——同步路径用 `probeBashSettled()` 并诚实处理 `undefined`;
-- 在本包加策略判断（"该不该跑")、安装动作（装 Git/WSL）或 UI 协议类型——能力层不管策略，安装归 localHost,Wire 归 wiring;
+- 在本包加策略判断（"该不该跑")、安装动作（装 Git/WSL）或 UI 协议类型——能力层不管策略，安装归 server,Wire 归 wiring;
 - 每次执行重新探测后端/shell——探测均进程级缓存，CommandRunner 构造一次；
 - 业务包重复定义 `BackendKind`、`ShellSpec`、`CommandRunResult` 等本包联合（前端经 Wire 协议取，不镜像本包类型）;
 - 依赖字符上限防 fork 炸弹——资源耗尽防护见 TODO #9.1 的分层结论（策略门/WSL2 VM 围墙/超时树杀），V1 如实标注无进程数墙。

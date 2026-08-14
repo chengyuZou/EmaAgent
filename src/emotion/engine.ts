@@ -27,7 +27,7 @@ export interface EmotionEngineOptions {
 /**
  * EmotionEngine 解析角色表现标签并维护每个 Session 的情绪状态。
  *
- * LocalHost 进程中的所有 Session 共用一个引擎实例。内部状态按 sessionId
+ * Server 进程中的所有 Session 共用一个引擎实例。内部状态按 sessionId
  * 隔离，因此不同 Session 中并发执行的 Turn 不会相互污染。
  *
  * ## 每个 Turn 的生命周期

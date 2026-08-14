@@ -157,7 +157,7 @@ models.dev / 实况列表 / 用户手填
 
 ## 尚未接线的应用职责
 
-LocalHost 将被替换，因此本批没有给旧 Route/Wiring 做过渡适配。新应用组合层必须按以下顺序接线：
+Server 将被替换，因此本批没有给旧 Route/Wiring 做过渡适配。新应用组合层必须按以下顺序接线：
 
 ```text
 读取 ModelBinding

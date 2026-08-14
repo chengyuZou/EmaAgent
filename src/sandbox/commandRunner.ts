@@ -48,7 +48,7 @@ export class CommandRunner implements CommandRunnerPort {
     const detection = detectBackend();
     this.backend = selectBackend(detection.backend);
 
-    // 兜底预热 shell 探测(正常由 LocalHost 启动期提前发起):
+    // 兜底预热 shell 探测(正常由 Server 启动期提前发起):
     // 让首个 start() 的 probeBashSettled 尽量命中已结算缓存。
     void probeBash();
 

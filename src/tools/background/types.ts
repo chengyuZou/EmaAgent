@@ -148,7 +148,7 @@ export interface BackgroundProcessCompletionClaim {
   completions: BackgroundProcessCompletion[];
 }
 
-/** LocalHost 用它把进程自然终态转换为内部 Turn；模型工具看不到领取能力。 */
+/** Server 用它把进程自然终态转换为内部 Turn；模型工具看不到领取能力。 */
 export interface BackgroundProcessCompletionSource {
   setCompletionListener(listener?: (sessionId: SessionId) => void): void;
   pendingCompletionSessions(): SessionId[];

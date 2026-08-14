@@ -1,4 +1,4 @@
-// 把 LocalHost 传入的路径能力快照整理成各系统沙箱使用的配置。
+// 把 Server 传入的路径能力快照整理成各系统沙箱使用的配置。
 
 import { realpathSync, statSync } from 'node:fs';
 import path from 'node:path';

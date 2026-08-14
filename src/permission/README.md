@@ -99,13 +99,13 @@ V1 只保留两种真实持久规则：
 - `global`：全部工作区生效；
 - `workspace`：绑定创建规则时的规范化工作区绝对路径。
 
-Session 临时授权只存在内存，不混入永久规则表。Permission 定义 `PermissionRuleStore` 窄端口；生产 SQL 适配器由 LocalHost 装配并使用 Storage Repo，Permission 包不依赖 Storage。
+Session 临时授权只存在内存，不混入永久规则表。Permission 定义 `PermissionRuleStore` 窄端口；生产 SQL 适配器由 Server 装配并使用 Storage Repo，Permission 包不依赖 Storage。
 
 执行器只接收 `PermissionAuthorizer`，规则 Route 只接收 `PermissionRuleCatalog`，不能给调用方一个宽对象后让它随意跨职责调用。
 
 ## 路径边界
 
-- 相对路径必须有明确 `workspaceRoot`，禁止回退到 LocalHost 的 `process.cwd()`；
+- 相对路径必须有明确 `workspaceRoot`，禁止回退到 Server 的 `process.cwd()`；
 - 原路径和 symlink/junction 真实路径都参加安全、规则和工作区判断；
 - 新文件不存在时解析最近存在的父目录，防止父目录链接逃逸；
 - Windows/WSL 的 ADS、设备路径、UNC、DOS 设备名与尾点尾空格会被拒绝；

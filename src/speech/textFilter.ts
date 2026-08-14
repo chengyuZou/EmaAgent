@@ -295,7 +295,7 @@ export class TextFilterStream {
 // 最后 URL/路径等行内容物——顺序颠倒会让前一棒的产物被后一棒二次匹配。
 //
 // 注意：ACT 标签（<|ACT:...|>）由 @ema-agent/emotion 包在 engine 内先处理。
-// TTS 只接收 apps/localHost 转发的可见 output_text_delta，此处不做任何 ACT 清理。
+// TTS 只接收 apps/server 转发的可见 output_text_delta，此处不做任何 ACT 清理。
 
 const RE_HTML_TAG      = /<\/?[a-zA-Z][^>]*>/g;
 const RE_MD_IMAGE      = /!\[[^\]]*\]\([^)]+\)/g;

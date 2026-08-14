@@ -5,7 +5,7 @@ import type { SandboxBackend, ShellSpec, WrappedCommand } from '../types.js';
 /**
  * 命令原样交给 Shell 执行，不提供任何物理隔离。
  * 后端探测只是如实报告"当前没有 OS 级隔离"，是否允许执行由
- * LocalHost 的安全策略决定（默认隐藏执行类工具）。
+ * Server 的安全策略决定（默认隐藏执行类工具）。
  */
 export class UnisolatedBackend implements SandboxBackend {
   readonly kind = 'unisolated';

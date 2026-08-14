@@ -150,7 +150,7 @@ const EXECUTE_TOOL_IDS: ReadonlySet<string> = new Set([
 export interface RegisterOptions {
   /**
    * true 时，Shell 执行工具 Bash 从注册表省略。
-   * 后端探测为 `unisolated`(即无物理沙箱)时由 LocalHost 设置。
+   * 后端探测为 `unisolated`(即无物理沙箱)时由 Server 设置。
    * 开发时可设 AGEN_UNSAFE_SHELL=1 重新启用。
    */
   disableExecuteTools?: boolean;
@@ -159,7 +159,7 @@ export interface RegisterOptions {
 /**
  * 把所有内置工具注册进 ToolRegistry。
  *
- * apps/localHost 在应用启动时调一次。当前 sandbox 后端为 `unisolated`
+ * apps/server 在应用启动时调一次。当前 sandbox 后端为 `unisolated`
  * (无 OS 级隔离)时传 `disableExecuteTools: true`,防止 LLM 在无物理
  * 沙箱时调 shell 工具。
  */

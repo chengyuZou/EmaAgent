@@ -67,12 +67,12 @@ src/tools/
 - `ToolUseContext`、`ToolInvocation`、`ToolInputValidationResult`、`ToolContextValidation`;
 - 宿主 Port 类型：`SubagentSpawnerPort`、`AskUserPort`、`ScratchpadPort`、`CommandRunnerPort`(sandbox 转出口径）。
 
-**装配层消费**(LocalHost wiring):
+**装配层消费**(Server wiring):
 
 - `ToolRegistry`(Builtin 启动注册、MCP 热更新）、`assembleToolPool`、`ToolPool`;
 - `StreamingToolExecutor` + `StreamingToolExecutorOptions` —— **执行的唯一公开入口；`ToolCallExecution` 不导出，任何包不得绕过协调器直接单发**;
 - `ToolExecutionState` + `ToolExecutionStateStore`（端口）+ `ToolExecutionStateReader`（审计只读）——SQL 实现在 storage,Core 注入;
-- `BackgroundProcessRuntime` + `BackgroundProcessStore`（端口）+ `BackgroundProcessPort`(Bash/Process 工具消费的窄口）+ `BackgroundProcessCompletionSource`(LocalHost 完成通知）;
+- `BackgroundProcessRuntime` + `BackgroundProcessStore`（端口）+ `BackgroundProcessPort`(Bash/Process 工具消费的窄口）+ `BackgroundProcessCompletionSource`(Server 完成通知）;
 - `ToolResultStore`、`ToolResultCleaner`、`backgroundProcessSetting`。
 
 **Agent/Turn 消费**:

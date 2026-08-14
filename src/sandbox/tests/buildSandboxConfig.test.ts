@@ -1,4 +1,4 @@
-// 这里测试 Sandbox 只保护 LocalHost 传入的真实私有路径，不再自行猜旧设置文件位置。
+// 这里测试 Sandbox 只保护 Server 传入的真实私有路径，不再自行猜旧设置文件位置。
 
 import fs from 'node:fs';
 import os from 'node:os';
@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { buildSandboxConfig } from '../buildSandboxConfig.js';
 
 describe('buildSandboxConfig 私有路径', () => {
-  it('只采用 LocalHost 明确注入的可写路径', () => {
+  it('只采用 Server 明确注入的可写路径', () => {
     const workspaceRoot = path.resolve('D:/workspace');
     const explicitCache = path.resolve('D:/ema-cache');
     const result = buildSandboxConfig({
@@ -23,7 +23,7 @@ describe('buildSandboxConfig 私有路径', () => {
     ]);
   });
 
-  it('同时禁止读取和修改 LocalHost 传入的每一个路径', () => {
+  it('同时禁止读取和修改 Server 传入的每一个路径', () => {
     const profileDir = path.resolve('D:/ema-profile');
     const dataDb = path.resolve('E:/ema-data/data.db');
     const workspaceRoot = path.resolve('D:/workspace');

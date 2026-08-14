@@ -1,5 +1,5 @@
 // 命令工作目录解析: 规范化、真实路径(符号链接/junction)与能力范围校验。
-// CommandRunnerPort 是公共能力, 调用方传入的 cwd 不能越出 LocalHost 冻结的快照。
+// CommandRunnerPort 是公共能力, 调用方传入的 cwd 不能越出 Server 冻结的快照。
 
 import fs from 'node:fs';
 import path from 'node:path';

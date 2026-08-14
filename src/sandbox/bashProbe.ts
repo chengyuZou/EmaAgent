@@ -1,6 +1,6 @@
 // 探测当前平台的 bash 可用性(本模块只探测 bash, 不是泛指 shell)。
 // 异步探测链: where bash → git 反推 → 注册表 → WSL,回退顺序即"便宜到贵"。
-// 结果按 Promise 缓存: LocalHost 启动预热后,同步执行路径经 probeBashSettled 零成本命中。
+// 结果按 Promise 缓存: Server 启动预热后,同步执行路径经 probeBashSettled 零成本命中。
 
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -164,7 +164,7 @@ function runProbe(): Promise<BashProbeResult> {
 
 /**
  * 探测当前平台的 bash 可用性。结果按 Promise 缓存, 并发调用共享同一次探测。
- * LocalHost 启动时应 fire-and-forget 预热; 传 `{ fresh: true }` 强制重探。
+ * Server 启动时应 fire-and-forget 预热; 传 `{ fresh: true }` 强制重探。
  */
 export function probeBash(opts?: { fresh?: boolean }): Promise<BashProbeResult> {
   if (!opts?.fresh && probeCache.promise !== undefined) return probeCache.promise;
