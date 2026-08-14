@@ -67,7 +67,7 @@ export class SessionBackupReader {
         turns: this.iterate<TurnRow>(
           `SELECT * FROM turns
            WHERE session_id = ?
-           ORDER BY started_at ASC, id ASC`,
+           ORDER BY created_at ASC, id ASC`,
           sessionId,
         ),
         messages: this.iterate<MessageRow>(
@@ -115,7 +115,7 @@ export class SessionBackupReader {
           sessionId,
         ),
         attachments: this.iterate<AttachmentRow>(
-          `SELECT * FROM turn_attachments
+          `SELECT * FROM attachments
            WHERE session_id = ?
            ORDER BY created_at ASC, id ASC`,
           sessionId,
@@ -123,7 +123,7 @@ export class SessionBackupReader {
         audio: this.iterate<AudioEntryRow>(
           `SELECT turn_id, mime_type, byte_size, duration_ms,
                   segment_count, created_at, storage_path
-           FROM turn_audio_merged
+           FROM speech_outputs
            WHERE session_id = ?
            ORDER BY created_at ASC, turn_id ASC`,
           sessionId,

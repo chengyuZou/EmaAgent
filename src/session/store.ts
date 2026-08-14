@@ -10,6 +10,7 @@ import {
   type TurnIdPageCursor,
 } from '@ema-agent/storage';
 import { type SessionId, type TurnId, type MessageId, asSessionId, asTurnId, asMessageId } from '@ema-agent/ids';
+import type { CompleteTurnInput, StartTurnInput, Turn } from '@ema-agent/turn';
 import { SessionOwnershipError } from './errors.js';
 import type { SessionOwnershipFacade } from './types.js';
 import type { Database } from '@ema-agent/storage';
@@ -19,17 +20,15 @@ import {
   toMessage,
   toSearchHit,
   toSession,
-  toSessionEnriched,
+  toSessionListItem,
   toTurn,
 } from './persistence/rowMapping.js';
 import type {
   Session,
-  Turn,
+  SessionListItem,
   Message,
   CreateSessionInput,
   PatchSessionInput,
-  StartTurnInput,
-  CompleteTurnInput,
   AppendMessageInput,
   ListSessionsInput,
   ListSessionsOutput,
@@ -38,6 +37,7 @@ import type {
   TurnIndexPage,
   ListMessageWindowInput,
   MessageWindow,
+  PersistedToolInteraction,
   SearchSessionsInput,
   SearchSessionsOutput,
 } from './types.js';
@@ -100,7 +100,6 @@ export class SessionStore implements SessionOwnershipFacade {
       id,
       title,
       workspaceRoot:    input.workspaceRoot,
-      parentSessionId:  input.parentSessionId,
       createdAt:        now,
       updatedAt:        now,
       lastActivityAt:   now,
@@ -123,27 +122,27 @@ export class SessionStore implements SessionOwnershipFacade {
     const rows = this.sessionsRepo.listActive(limit + 1, input.cursor);
     const hasMore = rows.length > limit;
     const visible = hasMore ? rows.slice(0, limit) : rows;
-    const sessions = visible.map(toSessionEnriched);
+    const sessions = visible.map(toSessionListItem);
     const nextCursor = hasMore
       ? nextCursorFor(visible[visible.length - 1]!)
       : undefined;
     return { sessions, nextCursor };
   }
 
-  /** 返回左侧 Session 栏需要的分组投影。 */
-  listSessionsGrouped(): {
-    pinned:   Session[];
-    byGroup:  Array<{ label: string; sessions: Session[] }>;
-    recent:   Session[];
-    archived: Session[];
+  /** 侧栏四区投影：Session 置顶 / 项目分组 / 最近 / 已归档。 */
+  listProjects(): {
+    pinned:   SessionListItem[];
+    byProject: Array<{ workspaceRoot: string; sessions: SessionListItem[] }>;
+    recent:   SessionListItem[];
+    archived: SessionListItem[];
   } {
-    const grouped = this.sessionsRepo.listGrouped();
-    const map = (rows: SessionRowEnriched[]) => rows.map(toSessionEnriched);
+    const projected = this.sessionsRepo.listProjects();
+    const map = (rows: SessionRowEnriched[]) => rows.map(toSessionListItem);
     return {
-      pinned:   map(grouped.pinned),
-      byGroup:  grouped.byGroup.map(g => ({ label: g.label, sessions: map(g.sessions) })),
-      recent:   map(grouped.recent),
-      archived: map(grouped.archived),
+      pinned:   map(projected.pinned),
+      byProject: projected.byProject.map(g => ({ workspaceRoot: g.workspaceRoot, sessions: map(g.sessions) })),
+      recent:   map(projected.recent),
+      archived: map(projected.archived),
     };
   }
 
@@ -167,7 +166,7 @@ export class SessionStore implements SessionOwnershipFacade {
 
   /**
    * 在一个事务内更新 Session 偏好。
-   * `groupLabel` 的 null 表示移出分组，undefined 表示保持不变。
+   * `workspaceRoot` 的 null 表示移出工作区，undefined 表示保持不变。
    */
   patchSession(
     id: SessionId,
@@ -180,12 +179,6 @@ export class SessionStore implements SessionOwnershipFacade {
       if (trimmed) cleaned.title = trimmed;
     }
     if (patch.pinned !== undefined)     cleaned.pinned     = patch.pinned;
-    if (patch.groupLabel !== undefined) {
-      const normalised = patch.groupLabel === null
-        ? null
-        : patch.groupLabel.trim() || null;
-      cleaned.groupLabel = normalised;
-    }
     if (patch.workspaceRoot !== undefined) {
       cleaned.workspaceRoot = patch.workspaceRoot;
     }
@@ -208,13 +201,6 @@ export class SessionStore implements SessionOwnershipFacade {
 
   unpinSession(id: SessionId): void {
     this.sessionsRepo.unpin(id);
-  }
-
-  // ── 分组 ───────────────────────────────────────────────────────────────────
-
-  setSessionGroup(id: SessionId, label: string | null): void {
-    const normalised = label?.trim() || null;
-    this.sessionsRepo.setGroup(id, normalised);
   }
 
   // ── 归档 ───────────────────────────────────────────────────────────────────
@@ -286,7 +272,7 @@ export class SessionStore implements SessionOwnershipFacade {
       throw new Error('session_busy: a turn is already running for this session');
     }
 
-    // started_at 严格递增，保证分页和“之后”的语义唯一。
+    // created_at 严格递增，保证分页和"之后"的语义唯一。
     const now = this.nextTs();
 
     // 新 Turn 开始前收口同 Session 的崩溃残留状态。
@@ -300,8 +286,7 @@ export class SessionStore implements SessionOwnershipFacade {
       triggerType: input.triggerType,
       executionProfile: input.executionProfile,
       narrativePolicy: input.narrativePolicy,
-      userInput:    input.userInput,
-      startedAt:    now,
+      createdAt:    now,
     });
     this.turnsRepo.setRunning(turnId);
     this.sessionsRepo.touchActivity(input.sessionId, now);
@@ -379,7 +364,7 @@ export class SessionStore implements SessionOwnershipFacade {
     return this.registry.activeSessionCount() > 0;
   }
 
-  /** LocalHost 通过活动数量变化及时抢占低优先级维护，不需要轮询 Session。 */
+  /** Server 通过活动数量变化及时抢占低优先级维护，不需要轮询 Session。 */
   subscribeActiveTurns(listener: (activeCount: number) => void): () => void {
     return this.registry.subscribe(listener);
   }
@@ -473,7 +458,7 @@ export class SessionStore implements SessionOwnershipFacade {
     this.messagesRepo.insert({
       id,
       sessionId:   input.sessionId,
-      turnId:      input.turnId,
+      turnId:      input.turnId ?? undefined,
       role:        input.role,
       kind:        input.kind ?? 'normal',
       blocksJson,
@@ -495,6 +480,40 @@ export class SessionStore implements SessionOwnershipFacade {
   /** 加载一个 Turn 的全部消息，供 Turn 后处理使用。 */
   loadMessagesForTurn(turnId: TurnId): Message[] {
     return this.history.loadMessagesForTurn(turnId);
+  }
+
+  /** 启动恢复按 Tool Call ID 找回模型原始调用与已经落库的结果。 */
+  findToolInteraction(
+    turnId: TurnId,
+    callId: string,
+  ): PersistedToolInteraction | undefined {
+    let interaction: PersistedToolInteraction | undefined;
+    for (const message of this.loadMessagesForTurn(turnId)) {
+      if (!Array.isArray(message.blocks)) continue;
+      if (message.role === 'assistant') {
+        const call = message.blocks.find(block => (
+          typeof block === 'object'
+          && block !== null
+          && 'type' in block
+          && block.type === 'tool_use'
+          && block.id === callId
+        ));
+        if (call?.type === 'tool_use') {
+          interaction = { name: call.name, args: call.args };
+        }
+        continue;
+      }
+      if (!interaction || message.kind !== 'tool_results') continue;
+      const result = message.blocks.find(block => (
+        typeof block === 'object'
+        && block !== null
+        && 'type' in block
+        && block.type === 'tool_result'
+        && block.toolCallId === callId
+      ));
+      if (result?.type === 'tool_result') interaction.result = result;
+    }
+    return interaction;
   }
 
   /** 兼容现有聊天页的时间游标读取，结果保持最新优先。 */

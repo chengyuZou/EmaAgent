@@ -3,24 +3,14 @@ import type {
   AssistantBlock as LlmAssistantBlock,
   ToolResultContentPart,
 } from '@ema-agent/llm';
-import type { MessageKind, MessageRole } from '@ema-agent/storage';
+import type { MessageRole } from '@ema-agent/storage';
 import type { TurnContentPart } from '@ema-agent/turn';
 import type { ToolResult } from '@ema-agent/tools';
 
 export type AssistantBlock = LlmAssistantBlock;
 export type MessageContentPart = TurnContentPart;
 
-export interface NarrativeTimelineRecall {
-  name: string;
-  charCount: number;
-  text: string;
-}
-
-export interface NarrativeContextBlocks {
-  timelines: NarrativeTimelineRecall[];
-}
-
-/** 附件正文不进入 Message JSON；这里只保存可回查 turn_attachments 的稳定引用。 */
+/** 附件正文不进入 Message JSON；这里只保存可回查 attachments 的稳定引用。 */
 export interface AttachmentReferenceBlock {
   type: 'attachment_ref';
   attachmentId: string;
@@ -32,7 +22,7 @@ export interface AttachmentReferenceBlock {
 export type ToolResultBlock = ToolResult;
 
 export type UserBlock = MessageContentPart | ToolResultBlock | AttachmentReferenceBlock;
-export type MessageBlocks = string | AssistantBlock[] | UserBlock[] | NarrativeContextBlocks;
+export type MessageBlocks = string | AssistantBlock[] | UserBlock[];
 
 const INVALID_MESSAGE_PLACEHOLDER = '[消息内容无法读取]';
 
@@ -40,7 +30,6 @@ const INVALID_MESSAGE_PLACEHOLDER = '[消息内容无法读取]';
 export function parseMessageBlocksJson(
   raw: string,
   role: MessageRole,
-  kind: MessageKind,
 ): MessageBlocks {
   let value: unknown;
   try {
@@ -49,9 +38,6 @@ export function parseMessageBlocksJson(
     return INVALID_MESSAGE_PLACEHOLDER;
   }
 
-  if (kind === 'narrative_context') {
-    return isNarrativeContextBlocks(value) ? value : INVALID_MESSAGE_PLACEHOLDER;
-  }
   if (role === 'system') {
     return typeof value === 'string' ? value : INVALID_MESSAGE_PLACEHOLDER;
   }
@@ -60,16 +46,6 @@ export function parseMessageBlocksJson(
   }
   if (typeof value === 'string') return value;
   return isUserBlocks(value) ? value : INVALID_MESSAGE_PLACEHOLDER;
-}
-
-function isNarrativeContextBlocks(value: unknown): value is NarrativeContextBlocks {
-  if (!isRecord(value) || !Array.isArray(value.timelines)) return false;
-  return value.timelines.every((timeline) => (
-    isRecord(timeline)
-    && typeof timeline.name === 'string'
-    && typeof timeline.charCount === 'number'
-    && typeof timeline.text === 'string'
-  ));
 }
 
 function isAssistantBlocks(value: unknown): value is AssistantBlock[] {

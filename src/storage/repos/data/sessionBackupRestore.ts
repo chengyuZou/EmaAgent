@@ -19,9 +19,7 @@ export interface SessionBackupRestoreInput {
     lastActivityAt: number;
     archivedAt: number | null;
     pinned: boolean;
-    pinnedAt: number | null;
-    groupLabel: string | null;
-    parentSessionId: string | null;
+    forkedFromSessionId: string | null;
     executionProfile: 'chat' | 'work';
     narrativePolicy: 'auto' | 'always' | 'off';
     preferredProviderConfigId: string | null;
@@ -62,34 +60,37 @@ export class SessionBackupRestorer {
 
   private restoreInTransaction(input: SessionBackupRestoreInput): void {
     const session = input.session;
-    const parentSessionId = session.parentSessionId
-      && this.db.prepare('SELECT 1 FROM sessions WHERE id = ?').pluck().get(session.parentSessionId)
-      ? session.parentSessionId
+    const forkedFromSessionId = session.forkedFromSessionId
+      && this.db.prepare('SELECT 1 FROM sessions WHERE id = ?').pluck().get(session.forkedFromSessionId)
+      ? session.forkedFromSessionId
       : null;
     this.db.prepare(`
       INSERT INTO sessions (
         id, title, workspace_root, created_at, updated_at, last_activity_at,
-        archived_at, pinned, pinned_at, group_label, parent_session_id,
+        archived_at, pinned, forked_from_session_id,
         execution_profile, narrative_policy, preferred_provider_config_id, preferred_model_id
-      ) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       session.id, session.title, session.createdAt, session.updatedAt, session.lastActivityAt,
-      session.archivedAt, session.pinned ? 1 : 0, session.pinnedAt, session.groupLabel,
-      parentSessionId, session.executionProfile, session.narrativePolicy,
+      session.archivedAt, session.pinned ? 1 : 0,
+      forkedFromSessionId, session.executionProfile, session.narrativePolicy,
       session.preferredProviderConfigId, session.preferredModelId,
     );
 
     const turn = this.db.prepare(`
       INSERT INTO turns (
-        id, session_id, trigger_type, execution_profile, narrative_policy, status,
-        user_input, started_at, completed_at, error_code, error_message,
+        id, session_id, trigger_type, execution_profile, narrative_policy,
+        provider_config_id, model_id, status,
+        created_at, completed_at, error_code, error_message,
         iterations, usage_input_tokens, usage_output_tokens
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     for (const row of input.turns) {
       turn.run(
-        row.id, session.id, row.triggerType, row.executionProfile, row.narrativePolicy,
-        row.status, row.userInput, row.startedAt, row.completedAt, row.errorCode,
+        row.id, session.id, row.triggerType,
+        row.executionProfile, row.narrativePolicy,
+        row.providerConfigId ?? null, row.modelId ?? null,
+        row.status, row.createdAt, row.completedAt, row.errorCode,
         row.errorMessage, row.iterations, row.usageInputTokens, row.usageOutputTokens,
       );
     }
@@ -184,7 +185,7 @@ export class SessionBackupRestorer {
     }
 
     const attachment = this.db.prepare(`
-      INSERT INTO turn_attachments (
+      INSERT INTO attachments (
         id, turn_id, session_id, kind, name, mime, source_path, byte_size, source_modified_at,
         image_path, image_byte_size, created_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -197,7 +198,7 @@ export class SessionBackupRestorer {
       );
     }
     const audio = this.db.prepare(`
-      INSERT INTO turn_audio_merged (
+      INSERT INTO speech_outputs (
         turn_id, session_id, storage_path, mime_type, byte_size, duration_ms, segment_count, created_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
@@ -253,8 +254,8 @@ export class SessionBackupRestorer {
 function validateSession(input: SessionBackupRestoreInput): void {
   const session = input.session;
   if (!session.id) throw new SessionBackupRestoreError('Session id 不能为空');
-  if (session.parentSessionId === session.id) {
-    throw new SessionBackupRestoreError('Session 不能把自身设为 parentSessionId');
+  if (session.forkedFromSessionId === session.id) {
+    throw new SessionBackupRestoreError('Session 不能把自身设为 forkedFromSessionId');
   }
   if ((session.preferredProviderConfigId === null) !== (session.preferredModelId === null)) {
     throw new SessionBackupRestoreError('模型偏好必须同时包含供应商配置和模型');

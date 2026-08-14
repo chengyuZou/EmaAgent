@@ -1,4 +1,4 @@
-// 测试数据库消息 JSON 的角色校验、Narrative 结构和损坏内容安全降级。
+// 测试数据库消息 JSON 的角色校验与损坏内容安全降级。
 import { describe, expect, it } from 'vitest';
 import { parseMessageBlocksJson } from '../message.js';
 
@@ -10,30 +10,30 @@ describe('parseMessageBlocksJson', () => {
       name: 'map.png',
       mimeType: 'image/png',
     }];
-    expect(parseMessageBlocksJson(JSON.stringify(reference), 'user', 'normal')).toEqual(reference);
+    expect(parseMessageBlocksJson(JSON.stringify(reference), 'user')).toEqual(reference);
   });
   it('保留 Session 需要持久化的工具终态字段', () => {
     const rawBlocks = [0, 1].map((index) => ({
       type: 'tool_result',
-      toolUseId: `call-${index}`,
+      toolCallId: `call-${index}`,
       content: 'done',
       durationMs: 12,
       errorCode: 'tool/error',
     }));
 
-    expect(parseMessageBlocksJson(JSON.stringify(rawBlocks), 'user', 'tool_results'))
+    expect(parseMessageBlocksJson(JSON.stringify(rawBlocks), 'user'))
       .toEqual(rawBlocks);
   });
 
   it('拒绝类型错误的工具终态字段', () => {
     const invalid = [{
       type: 'tool_result',
-      toolUseId: 'call-1',
+      toolCallId: 'call-1',
       content: 'done',
       durationMs: 'slow',
     }];
 
-    expect(parseMessageBlocksJson(JSON.stringify(invalid), 'user', 'tool_results'))
+    expect(parseMessageBlocksJson(JSON.stringify(invalid), 'user'))
       .toBe('[消息内容无法读取]');
   });
 
@@ -46,15 +46,8 @@ describe('parseMessageBlocksJson', () => {
   });
 
   it('损坏 JSON 不再把原始数据库内容展示给用户', () => {
-    expect(parseMessageBlocksJson('{private-json', 'user', 'normal'))
+    expect(parseMessageBlocksJson('{private-json', 'user'))
       .toBe('[消息内容无法读取]');
   });
 
-  it('只接受完整的 Narrative 持久化结构', () => {
-    expect(parseMessageBlocksJson(JSON.stringify({
-      timelines: [{ name: '1st_Loop', charCount: 4, text: 'plot' }],
-    }), 'user', 'narrative_context')).toEqual({
-      timelines: [{ name: '1st_Loop', charCount: 4, text: 'plot' }],
-    });
-  });
 });

@@ -14,9 +14,9 @@ import type {
   ListTurnIndexInput,
   Message,
   MessageWindow,
-  Turn,
   TurnIndexPage,
 } from '../types.js';
+import type { Turn } from '@ema-agent/turn';
 import { SessionOwnershipError } from '../errors.js';
 import { toMessage, toTurn } from '../persistence/rowMapping.js';
 
@@ -56,12 +56,12 @@ export class SessionHistory {
     return {
       items: page.rows.map((row) => ({
         turnId: row.id as TurnId,
-        startedAt: row.started_at,
+        createdAt: row.created_at,
         completedAt: row.completed_at,
         status: row.status,
         triggerType: row.trigger_type,
         executionProfile: row.execution_profile,
-        preview: formatTurnPreview(row.user_input_preview),
+        preview: formatTurnPreview(row.preview),
       })),
       nextCursor: page.nextCursor ? encodeTurnIndexCursor(page.nextCursor) : undefined,
     };
@@ -176,9 +176,8 @@ function formatTurnPreview(userInput: string): string {
 
 function encodeTurnIndexCursor(cursor: TurnIdPageCursor): string {
   return Buffer.from(JSON.stringify({
-    version: 1,
-    startedAt: cursor.startedAt,
-    id: cursor.id,
+    a: cursor.createdAt,
+    i: cursor.id,
   }), 'utf8').toString('base64url');
 }
 
@@ -186,16 +185,15 @@ function decodeTurnIndexCursor(value: string): TurnIdPageCursor {
   try {
     const parsed = JSON.parse(
       Buffer.from(value, 'base64url').toString('utf8'),
-    ) as { version?: unknown; startedAt?: unknown; id?: unknown };
+    ) as { a?: unknown; i?: unknown };
     if (
-      parsed.version !== 1
-      || !Number.isSafeInteger(parsed.startedAt)
-      || typeof parsed.id !== 'string'
-      || parsed.id.length === 0
+      !Number.isSafeInteger(parsed.a)
+      || typeof parsed.i !== 'string'
+      || parsed.i.length === 0
     ) {
       throw new Error('invalid');
     }
-    return { startedAt: parsed.startedAt as number, id: parsed.id };
+    return { createdAt: parsed.a as number, id: parsed.i };
   } catch {
     throw new Error('Invalid turn index cursor');
   }

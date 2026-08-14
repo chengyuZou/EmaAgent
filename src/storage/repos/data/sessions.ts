@@ -1,27 +1,32 @@
-import type { TurnStatus } from '@ema-agent/turn';
-// 读写 Session 行、稳定分页、搜索投影、Fork 和事务性偏好更新。
+// 读写 Session 行、稳定分页、搜索投影、项目分组投影、Fork 和事务性偏好更新。
+// Row 枚举由 storage 自持（SQL CHECK 的映射）；领域词汇归 @ema-agent/turn 叶子，业务包在边界显式映射。
 import type { SqliteDb } from '../../database/database.js';
 import type { SessionId, TurnId } from '@ema-agent/ids';
-import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/turn';
+import type { TurnStatusRow } from './turns.js';
 import { buildFtsQuery } from '../../search/zh-tokenizer.js';
+import { escapeLikePattern } from '../../search/like-utils.js';
+
+/** sessions/turns 行上的执行范围枚举（SQL CHECK 原样）。 */
+export type ExecutionProfileRow = 'chat' | 'work';
+/** sessions/turns 行上的剧情策略枚举（SQL CHECK 原样）。 */
+export type NarrativePolicyRow = 'auto' | 'always' | 'off';
 
 export interface SessionRow {
   id: string;
   title: string;
   workspace_root:     string | null;
   created_at: number;
-  /** 行元数据更新时间:title/group/pin/workspace/Profile 编辑。不用于 UI 中 Session 侧栏排序。 */
+  /** 行元数据更新时间:title/pin/workspace/Profile 编辑。不用于 UI 中 Session 侧栏排序。 */
   updated_at: number;
   /** 对话活动时间:新 turn/message 开始时推进。用于UI中session侧栏排序。 */
   last_activity_at: number;
   archived_at: number | null;
   pinned:        number;        // 0 | 1
-  pinned_at:     number | null;
-  group_label:   string | null;
-  /** 整个session fork 使用 表示 fork 溯源 */
-  parent_session_id: string | null;
-  execution_profile: ExecutionProfile;
-  narrative_policy: NarrativePolicy;
+  /** fork 溯源：来源 Session 与截断点 Turn（完整复制时截断点为 null）。 */
+  forked_from_session_id: string | null;
+  forked_from_turn_id:    string | null;
+  execution_profile: ExecutionProfileRow;
+  narrative_policy: NarrativePolicyRow;
   /** 用户希望该 Session 下一轮默认使用的供应商配置；null 表示使用系统默认选择。 */
   preferred_provider_config_id: string | null;
   /** 用户希望该 Session 下一轮默认使用的模型；null 表示使用系统默认选择。 */
@@ -31,7 +36,7 @@ export interface SessionRow {
 
 /** SessionRow 带 JOIN 查询派生的 turn 字段。 */
 export interface SessionRowEnriched extends SessionRow {
-  last_turn_status:       TurnStatus | null;
+  last_turn_status:       TurnStatusRow | null;
   last_turn_completed_at: number | null;
   running_turn_count:     number;
 }
@@ -48,9 +53,10 @@ export interface SessionInsert {
   id: SessionId;
   title: string;
   workspaceRoot?:  string | null;
-  parentSessionId?: string;
-  executionProfile?: ExecutionProfile;
-  narrativePolicy?: NarrativePolicy;
+  forkedFromSessionId?: string;
+  forkedFromTurnId?: string | null;
+  executionProfile?: ExecutionProfileRow;
+  narrativePolicy?: NarrativePolicyRow;
   preferredModel?: {
     providerConfigId: string;
     modelId: string;
@@ -60,9 +66,13 @@ export interface SessionInsert {
   lastActivityAt?: number;
 }
 
-export interface SessionsGrouped {
+/**
+ * 侧栏四区投影。项目是 workspace_root 的派生分组，不是实体：
+ * 有工作区的 Session 按工作区归入 byProject，无工作区的才进 pinned/recent。
+ */
+export interface SessionsProjected {
   pinned:   SessionRowEnriched[];
-  byGroup:  Array<{ label: string; sessions: SessionRowEnriched[] }>;
+  byProject: Array<{ workspaceRoot: string; sessions: SessionRowEnriched[] }>;
   recent:   SessionRowEnriched[];
   archived: SessionRowEnriched[];
 }
@@ -75,14 +85,16 @@ export class SessionsRepo {
       .prepare(
         `INSERT INTO sessions
            (id, title, workspace_root,
-            parent_session_id, execution_profile, narrative_policy,
+            forked_from_session_id, forked_from_turn_id,
+            execution_profile, narrative_policy,
             preferred_provider_config_id, preferred_model_id,
             created_at, updated_at, last_activity_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(s.id, s.title,
         s.workspaceRoot ?? null,
-        s.parentSessionId ?? null,
+        s.forkedFromSessionId ?? null,
+        s.forkedFromTurnId ?? null,
         s.executionProfile ?? 'chat',
         s.narrativePolicy ?? 'auto',
         s.preferredModel?.providerConfigId ?? null,
@@ -98,7 +110,7 @@ export class SessionsRepo {
   }
 
   /**
-   * 基于 V1 不透明 cursor 的稳定 keyset 分页。
+   * 基于不透明 cursor 的稳定 keyset 分页。
    *
    * 排序键为 `(pinned DESC, last_activity_at DESC, id DESC)`。随机文本 ID
    * 不需要具备时间含义，只负责在前两个字段相同时提供稳定且唯一的
@@ -116,7 +128,7 @@ export class SessionsRepo {
                t.completed_at,
                ROW_NUMBER() OVER (
                  PARTITION BY t.session_id
-                 ORDER BY t.started_at DESC, t.id DESC
+                 ORDER BY t.created_at DESC, t.id DESC
                ) AS row_number
              FROM turns t
            ),
@@ -164,7 +176,7 @@ export class SessionsRepo {
              t.completed_at,
              ROW_NUMBER() OVER (
                PARTITION BY t.session_id
-               ORDER BY t.started_at DESC, t.id DESC
+               ORDER BY t.created_at DESC, t.id DESC
              ) AS row_number
            FROM turns t
          ),
@@ -181,7 +193,7 @@ export class SessionsRepo {
            COALESCE(rt.running_turn_count, 0) AS running_turn_count
          FROM sessions s
          LEFT JOIN latest_turn lt
-           ON lt.session_id = s.id
+         ON lt.session_id = s.id
           AND lt.row_number = 1
          LEFT JOIN running_turns rt ON rt.session_id = s.id
          WHERE s.archived_at IS NULL
@@ -192,22 +204,13 @@ export class SessionsRepo {
   }
 
   /**
-   * 侧边栏 UI 的分组列表:
-   *   pinned   - 置顶 session(最近更新优先)
-   *   byGroup  - 带 group_label 的 session,按 label 分组
-   *   recent   - 未置顶、未分组、活跃 session
-   *   archived - 软删除 session
+   * 侧栏四区投影。折叠/展开与项目置顶是前端逻辑，后端只返回扁平 bucket：
+   *   byProject - workspace_root 分组（含组内置顶成员），按组内最新活动排序
+   *   pinned    - 置顶且无工作区的 session
+   *   recent    - 其余未归档、未置顶、无工作区的 session
+   *   archived  - 软删除
    */
-  /**
-   * 侧边栏布局:
-   *   byGroup  - 带 group_label 的 session,每组内置顶优先
-   *   pinned   - 置顶但无 group_label 的 session
-   *   recent   - 其余(未归档、未置顶、无分组)
-   *   archived - 软删除
-   *
-   * 折叠/展开纯前端逻辑--后端返回扁平 bucket。
-   */
-  listGrouped(): { pinned: SessionRowEnriched[]; byGroup: Array<{ label: string; sessions: SessionRowEnriched[] }>; recent: SessionRowEnriched[]; archived: SessionRowEnriched[] } {
+  listProjects(): SessionsProjected {
     const all = this.db
       .prepare(`
         WITH latest_turn AS (
@@ -217,7 +220,7 @@ export class SessionsRepo {
             t.completed_at,
             ROW_NUMBER() OVER (
               PARTITION BY t.session_id
-              ORDER BY t.started_at DESC, t.id DESC
+              ORDER BY t.created_at DESC, t.id DESC
             ) AS row_number
           FROM turns t
         ),
@@ -241,34 +244,29 @@ export class SessionsRepo {
       `)
       .all() as SessionRowEnriched[];
 
-    const groupedMap = new Map<string, SessionRowEnriched[]>();
+    const projectMap = new Map<string, SessionRowEnriched[]>();
     const pinned:   SessionRowEnriched[] = [];
     const recent:   SessionRowEnriched[] = [];
     const archived: SessionRowEnriched[] = [];
 
     for (const s of all) {
       if (s.archived_at) { archived.push(s); continue; }
-
-      // 分组 session 同时包含置顶和非置顶--前端在每个分组视觉区段内
-      // 按置顶优先排序。
-      if (s.group_label) {
-        const list = groupedMap.get(s.group_label) ?? ([] as SessionRowEnriched[]);
+      if (s.workspace_root) {
+        const list = projectMap.get(s.workspace_root) ?? ([] as SessionRowEnriched[]);
         list.push(s);
-        groupedMap.set(s.group_label, list);
+        projectMap.set(s.workspace_root, list);
         continue;
       }
-
-      // 未分组
       if (s.pinned) { pinned.push(s); continue; }
       recent.push(s);
     }
 
-    return {
-      pinned,
-      byGroup: [...groupedMap.entries()].map(([label, sessions]) => ({ label, sessions })),
-      recent,
-      archived,
-    };
+    // 项目排序键 = 组内最新活动时间；成员已按 pinned/activity 排好。
+    const byProject = [...projectMap.entries()]
+      .map(([workspaceRoot, sessions]) => ({ workspaceRoot, sessions }))
+      .sort((a, b) => (b.sessions[0]?.last_activity_at ?? 0) - (a.sessions[0]?.last_activity_at ?? 0));
+
+    return { pinned, byProject, recent, archived };
   }
 
   search(query: string, limit: number): SessionSearchRow[] {
@@ -286,7 +284,7 @@ export class SessionsRepo {
             t.completed_at,
             ROW_NUMBER() OVER (
               PARTITION BY t.session_id
-              ORDER BY t.started_at DESC, t.id DESC
+              ORDER BY t.created_at DESC, t.id DESC
             ) AS row_number
           FROM turns t
         ),
@@ -365,26 +363,17 @@ export class SessionsRepo {
 
   // ── 置顶 / 取消置顶 ────────────────────────────────────────────────────────
 
-  pin(id: SessionId, pinnedAt: number): void {
+  pin(id: SessionId, now: number): void {
     this.db
-      .prepare('UPDATE sessions SET pinned = 1, pinned_at = ?, updated_at = ? WHERE id = ?')
-      .run(pinnedAt, pinnedAt, id);
+      .prepare('UPDATE sessions SET pinned = 1, updated_at = ? WHERE id = ?')
+      .run(now, id);
   }
 
   unpin(id: SessionId): void {
     const now = Date.now();
     this.db
-      .prepare('UPDATE sessions SET pinned = 0, pinned_at = NULL, updated_at = ? WHERE id = ?')
+      .prepare('UPDATE sessions SET pinned = 0, updated_at = ? WHERE id = ?')
       .run(now, id);
-  }
-
-  // ── 分组 ──────────────────────────────────────────────────────────────────────
-
-  setGroup(id: SessionId, label: string | null): void {
-    const now = Date.now();
-    this.db
-      .prepare('UPDATE sessions SET group_label = ?, updated_at = ? WHERE id = ?')
-      .run(label, now, id);
   }
 
   // ── 归档 / 取消归档 ────────────────────────────────────────────────────────────
@@ -407,8 +396,8 @@ export class SessionsRepo {
    * 把一个 Session 的 Turn、Message 和 Attachment 克隆为独立 Session。
    *
    * 所有实体重新生成 ID，Message 与 Attachment 通过临时映射表指向新 Turn。
-   * `untilTurnId` 提供时只复制到该 Turn（含）为止，不能把同毫秒的后续
-   * Turn 或无归属消息误带进新 Session。
+   * `untilTurnId` 提供时只复制到该 Turn（含）为止并记为 forked_from_turn_id，
+   * 不能把同毫秒的后续 Turn 或无归属消息误带进新 Session。
    *
    * 返回复制的 message 数量。
    */
@@ -424,31 +413,31 @@ export class SessionsRepo {
 
     this.db.transaction(() => {
       // 1. 新 Session 行复制 Workspace、执行偏好和下一轮模型偏好。
-      //    parent_session_id 指回来源 session，用于 Fork 溯源。
+      //    forked_from_* 指回来源 Session 与截断 Turn，用于 Fork 溯源。
       this.db.prepare(
         `INSERT INTO sessions
            (id, title, workspace_root,
-            parent_session_id, execution_profile, narrative_policy,
+            forked_from_session_id, forked_from_turn_id,
+            execution_profile, narrative_policy,
             preferred_provider_config_id, preferred_model_id,
             created_at, updated_at, last_activity_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(newId, title, src.workspace_root,
-        srcId, src.execution_profile, src.narrative_policy,
+        srcId, untilTurnId ?? null,
+        src.execution_profile, src.narrative_policy,
         src.preferred_provider_config_id, src.preferred_model_id,
         createdAt, createdAt, createdAt);
 
       // 2. 构建 old->new turn id 映射。Turn 被复制以使 fork 出的 session
-      //    保留触发来源、Profile、Narrative 策略、status、usage 与时序。
-      //    没有它们，前端会丢失执行标签、Token 统计、TTS 重播和 Tool Result 分组。
+      //    保留触发来源、Profile、模型冻结、usage 与时序。
       this.db.prepare('CREATE TEMP TABLE _turn_id_map (old_id TEXT PRIMARY KEY, new_id TEXT NOT NULL)').run();
 
       const cutoffTurn = untilTurnId
         ? this.db.prepare(
-          'SELECT id, started_at, completed_at FROM turns WHERE id = ? AND session_id = ?',
+          'SELECT id, created_at FROM turns WHERE id = ? AND session_id = ?',
         ).get(untilTurnId, srcId) as {
           id: string;
-          started_at: number;
-          completed_at: number | null;
+          created_at: number;
         } | undefined
         : undefined;
 
@@ -462,34 +451,35 @@ export class SessionsRepo {
              SELECT id, lower(hex(randomblob(16))) FROM turns
              WHERE session_id = ?
                AND (
-                 started_at < ?
-                 OR (started_at = ? AND id <= ?)
+                 created_at < ?
+                 OR (created_at = ? AND id <= ?)
                )`
           : `INSERT INTO _turn_id_map (old_id, new_id)
              SELECT id, lower(hex(randomblob(16))) FROM turns WHERE session_id = ?`,
       ).run(srcId, ...(cutoffTurn
-        ? [cutoffTurn.started_at, cutoffTurn.started_at, cutoffTurn.id]
+        ? [cutoffTurn.created_at, cutoffTurn.created_at, cutoffTurn.id]
         : []));
 
       // 3. 复制 Turn，并重新生成 ID。
       this.db.prepare(
         `INSERT INTO turns
-           (id, session_id, trigger_type, execution_profile, narrative_policy,
-            status, user_input, started_at, completed_at,
-            error_code, error_message, iterations, usage_input_tokens, usage_output_tokens)
-         SELECT m.new_id, ?, t.trigger_type, t.execution_profile, t.narrative_policy,
-                t.status, t.user_input, t.started_at, t.completed_at,
-                t.error_code, t.error_message, t.iterations,
-                t.usage_input_tokens, t.usage_output_tokens
+           (id, session_id, status, trigger_type,
+            execution_profile, narrative_policy, provider_config_id, model_id,
+            iterations, usage_input_tokens, usage_output_tokens,
+            created_at, completed_at, error_code, error_message)
+         SELECT m.new_id, ?, t.status, t.trigger_type,
+                t.execution_profile, t.narrative_policy, t.provider_config_id, t.model_id,
+                t.iterations, t.usage_input_tokens, t.usage_output_tokens,
+                t.created_at, t.completed_at, t.error_code, t.error_message
          FROM turns t JOIN _turn_id_map m ON m.old_id = t.id
-         ORDER BY t.started_at ASC`,
+         ORDER BY t.created_at ASC`,
       ).run(newId);
 
       // 4. 复制 message。带 turn_id 的消息严格跟随已选 Turn 集合，不能只按
       //    created_at 截断，否则相同时间戳的后续 Turn 会混入 fork。
       //    无 turn_id 的 session 级消息优先按目标 Turn 最后一条消息的稳定复合边界复制。
-      //    目标 Turn 没有消息时，已完成 Turn 回退到 completed_at，未完成 Turn 回退到
-      //    started_at，避免合法的 session 级系统上下文被整批丢弃。
+      //    目标 Turn 没有消息时，已完成 Turn 回退到 completed_at，否则回退到
+      //    created_at，避免合法的 session 级系统上下文被整批丢弃。
       const messageCutoff = untilTurnId
         ? this.db.prepare(`
             SELECT created_at, id
@@ -499,9 +489,13 @@ export class SessionsRepo {
             LIMIT 1
           `).get(srcId, untilTurnId) as { created_at: number; id: string } | undefined
         : undefined;
+      const cutoffCompletedAt = untilTurnId
+        ? (this.db.prepare('SELECT completed_at FROM turns WHERE id = ?')
+            .get(untilTurnId) as { completed_at: number | null }).completed_at
+        : undefined;
       const messageCutoffAt = messageCutoff?.created_at
-        ?? cutoffTurn?.completed_at
-        ?? cutoffTurn?.started_at;
+        ?? cutoffCompletedAt
+        ?? cutoffTurn?.created_at;
       const messageCutoffId = messageCutoff?.id;
 
       this.db.prepare(
@@ -546,17 +540,17 @@ export class SessionsRepo {
         ]
         : []));
 
-      // 5. 复制 turn_attachments--新 id,turn_id 重映射,session_id = 新。
+      // 5. 复制 attachments--新 id,turn_id 重映射,session_id = 新。
       //    不复制的话,fork 中用户消息的 attachment 角标会消失
       //    (attachmentStore.listByTurn(newTurnId) 会是空的)。
       this.db.prepare(
-        `INSERT INTO turn_attachments
+        `INSERT INTO attachments
            (id, turn_id, session_id, kind, name, mime, source_path, byte_size, source_modified_at,
             image_path, image_byte_size, created_at)
          SELECT lower(hex(randomblob(16))), m.new_id, ?, ta.kind, ta.name, ta.mime,
                 ta.source_path, ta.byte_size, ta.source_modified_at,
                 ta.image_path, ta.image_byte_size, ta.created_at
-         FROM turn_attachments ta
+         FROM attachments ta
          JOIN _turn_id_map m ON m.old_id = ta.turn_id`,
       ).run(newId);
 
@@ -585,28 +579,20 @@ export class SessionsRepo {
     this.db.prepare('DELETE FROM sessions WHERE id = ?').run(id);
   }
 
-
   // ── Patch(事务性部分更新)──────────────────────────────────────────────────────
 
   /**
-   * 原子地应用部分更新。用于 `PUT /api/sessions/:id`,
-   * 客户端可在一次请求中改 `title` + `pinned` + `groupLabel`。
-   *
-   * 所有子更新在单个 SQLite 事务内执行;任何失败回滚整个 patch,
-   * 行不会处于半改状态。
-   *
-   * `groupLabel === null` 是显式的"移出分组"信号;
-   * 调用方必须区分它与 `undefined`(不触碰)。
+   * 原子地应用部分更新。所有子更新在单个 SQLite 事务内执行;
+   * 任何失败回滚整个 patch,行不会处于半改状态。
    */
   patch(
     id: SessionId,
     patch: {
       title?:          string;
       pinned?:         boolean;
-      groupLabel?:     string | null;
       workspaceRoot?:  string | null;
-      executionProfile?: ExecutionProfile;
-      narrativePolicy?: NarrativePolicy;
+      executionProfile?: ExecutionProfileRow;
+      narrativePolicy?: NarrativePolicyRow;
       preferredModel?: {
         providerConfigId: string;
         modelId: string;
@@ -622,14 +608,9 @@ export class SessionsRepo {
       values.push(patch.title);
     }
     if (patch.pinned === true) {
-      setClauses.push('pinned = 1', 'pinned_at = ?');
-      values.push(now);
+      setClauses.push('pinned = 1');
     } else if (patch.pinned === false) {
-      setClauses.push('pinned = 0', 'pinned_at = NULL');
-    }
-    if (patch.groupLabel !== undefined) {
-      setClauses.push('group_label = ?');
-      values.push(patch.groupLabel);
+      setClauses.push('pinned = 0');
     }
     if (patch.workspaceRoot !== undefined) {
       setClauses.push('workspace_root = ?');
@@ -668,23 +649,21 @@ export class SessionsRepo {
 // ── Cursor 辅助 ─────────────────────────────────────────────────────────────────
 
 interface ParsedCursor {
-  version: 1;
   pinned:    number;     // 0 | 1
   lastActivityAt: number;
   id: string;
 }
 
 /**
- * 解析 Base64URL 编码的 V1 cursor。畸形 cursor 会明确抛错，
+ * 解析 Base64URL 编码的 keyset cursor。畸形 cursor 会明确抛错，
  * 防止客户端静默回到第一页后产生重复分页循环。
  */
 function parseCursor(cursor: string | undefined): ParsedCursor | null {
   if (!cursor) return null;
   try {
     const decoded = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as unknown;
-    if (!isCursorV1(decoded)) throw new Error('cursor payload schema mismatch');
+    if (!isCursorPayload(decoded)) throw new Error('cursor payload schema mismatch');
     return {
-      version: 1,
       pinned: decoded.p,
       lastActivityAt: decoded.a,
       id: decoded.i,
@@ -700,28 +679,16 @@ function parseCursor(cursor: string | undefined): ParsedCursor | null {
  */
 export function nextCursorFor(row: SessionRow): string {
   return Buffer.from(JSON.stringify({
-    v: 1,
     p: row.pinned,
     a: row.last_activity_at,
     i: row.id,
   }), 'utf8').toString('base64url');
 }
 
-function isCursorV1(value: unknown): value is { v: 1; p: 0 | 1; a: number; i: string } {
+function isCursorPayload(value: unknown): value is { p: number; a: number; i: string } {
   if (typeof value !== 'object' || value === null) return false;
-  const candidate = value as Record<string, unknown>;
-  return candidate.v === 1
-    && (candidate.p === 0 || candidate.p === 1)
-    && typeof candidate.a === 'number'
-    && Number.isSafeInteger(candidate.a)
-    && typeof candidate.i === 'string'
-    && candidate.i.length > 0;
-}
-
-/** 转义 SQLite LIKE 中具有通配语义的字符，使用户输入按字面匹配。
- * 用户搜 100% 会被解释成"100 后接任意串"(匹配所有 ≥100 的内容)。
- * 必须转义:%->\%、_->\_、\->\\,SQL 加 ESCAPE '\' 声明转义符。
- */
-function escapeLikePattern(value: string): string {
-  return value.replace(/[\\%_]/g, '\\$&');
+  const v = value as Record<string, unknown>;
+  return (v['p'] === 0 || v['p'] === 1)
+    && typeof v['a'] === 'number'
+    && typeof v['i'] === 'string';
 }

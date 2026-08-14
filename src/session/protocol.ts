@@ -79,9 +79,9 @@ export interface SessionWire {
   lastActivityAt: number;
   archivedAt: number | null;
   pinned: boolean;
-  pinnedAt: number | null;
-  groupLabel: string | null;
-  parentSessionId: string | null;
+  forkedFromSessionId: string | null;
+  forkedFromTurnId: string | null;
+  /** 列表投影三字段：仅列表/搜索路径有真值。 */
   runningTurnCount: number;
   /** 下一 Turn 默认采用的执行能力范围。 */
   executionProfile: ExecutionProfile;
@@ -101,7 +101,7 @@ export interface SessionsListResult {
 
 export interface SessionsGroupedResult {
   pinned: SessionWire[];
-  byGroup: Array<{ label: string; sessions: SessionWire[] }>;
+  byProject: Array<{ workspaceRoot: string; sessions: SessionWire[] }>;
   recent: SessionWire[];
   archived: SessionWire[];
 }
@@ -130,14 +130,15 @@ export interface TurnWire {
   executionProfile: ExecutionProfile;
   narrativePolicy: NarrativePolicy;
   status: TurnStatus;
-  userInput: string;
-  startedAt: number;
-  completedAt: number | null;
-  errorCode: string | null;
-  errorMessage: string | null;
+  providerConfigId: string | null;
+  modelId: string | null;
   iterations: number;
   usageInputTokens: number;
   usageOutputTokens: number;
+  createdAt: number;
+  completedAt: number | null;
+  errorCode: string | null;
+  errorMessage: string | null;
 }
 
 export interface MessageWire {
@@ -159,7 +160,7 @@ export interface SessionMessagesResult {
 
 export interface TurnIndexItemWire {
   turnId: string;
-  startedAt: number;
+  createdAt: number;
   completedAt: number | null;
   status: TurnStatus;
   triggerType: TurnTriggerType;

@@ -30,12 +30,10 @@ export type {
 
 export type {
   Session,
-  Turn,
+  SessionListItem,
   Message,
   CreateSessionInput,
   PatchSessionInput,
-  StartTurnInput,
-  CompleteTurnInput,
   AppendMessageInput,
   ListSessionsInput,
   ListSessionsOutput,
@@ -57,8 +55,6 @@ export type {
   AssistantBlock,
   MessageBlocks,
   MessageContentPart,
-  NarrativeContextBlocks,
-  NarrativeTimelineRecall,
   ToolResultBlock,
   UserBlock,
 } from './message.js';

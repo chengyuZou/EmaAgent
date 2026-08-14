@@ -12,14 +12,13 @@ function makeStore() {
 
 function startTurn(
   store: SessionStore,
-  input: { sessionId: SessionId; executionProfile: 'chat' | 'work'; userInput: string },
+  input: { sessionId: SessionId; executionProfile: 'chat' | 'work'; userInput?: string },
 ) {
   return store.startTurn({
     sessionId: input.sessionId,
     triggerType: 'userMessage',
     executionProfile: input.executionProfile,
     narrativePolicy: 'off',
-    userInput: input.userInput,
   });
 }
 
@@ -152,14 +151,19 @@ describe('SessionStore — Turn ID 游标遍历', () => {
 });
 
 describe('SessionStore — 聊天历史导航', () => {
-  it('Turn 索引使用不透明游标分页，并只返回有界预览', () => {
+  it('Turn 索引使用不透明游标分页，预览取自首条 User Message', () => {
     const store = makeStore();
     const session = store.createSession();
     for (let index = 0; index < 3; index++) {
       const { turn } = startTurn(store, {
         sessionId: session.id,
         executionProfile: 'chat',
-        userInput: index === 0 ? 'a'.repeat(300) : `turn ${index}`,
+      });
+      store.appendMessage({
+        sessionId: session.id,
+        turnId: turn.id,
+        role: 'user',
+        blocks: index === 0 ? 'a'.repeat(300) : `turn ${index}`,
       });
       store.completeTurn(turn.id);
       store.clearRunning(session.id, turn.id);
@@ -266,7 +270,6 @@ describe('SessionStore — turn concurrency', () => {
     });
 
     expect(turn.status).toBe('running');
-    expect(turn.userInput).toBe('Hello');
     expect(signal).toBeInstanceOf(AbortSignal);
     expect(signal.aborted).toBe(false);
   });

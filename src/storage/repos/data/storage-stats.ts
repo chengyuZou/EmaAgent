@@ -1,6 +1,7 @@
 // 汇总数据目录与 Session 统计，并执行完整 Session 备份恢复事务。
 import type { SqliteDb } from '../../database/database.js';
-import type { ExecutionProfile, NarrativePolicy, TurnTriggerType } from '@ema-agent/turn';
+import type { ExecutionProfileRow, NarrativePolicyRow } from './sessions.js';
+import type { TurnTriggerTypeRow } from './turns.js';
 import type { AgentRunMessageRow } from './agent-run-messages.js';
 import type { KbActivationRow }     from './kb-activations.js';
 import type { AgentRunRow }         from './agent-runs.js';
@@ -39,8 +40,8 @@ export class DataDirStatsRepo {
         (SELECT COUNT(*) FROM turns)       AS turn_count,
         (SELECT COUNT(*) FROM messages)    AS message_count,
         (SELECT COUNT(*) FROM agent_runs) AS agent_run_count,
-        (SELECT COUNT(*)                      FROM turn_audio_merged) AS audio_count,
-        (SELECT COALESCE(SUM(duration_ms), 0) FROM turn_audio_merged) AS audio_duration_ms
+        (SELECT COUNT(*)                      FROM speech_outputs) AS audio_count,
+        (SELECT COALESCE(SUM(duration_ms), 0) FROM speech_outputs) AS audio_duration_ms
     `).get() as {
       session_count: number; turn_count: number; message_count: number;
       agent_run_count: number;
@@ -100,10 +101,13 @@ export interface MemoryStateRow {
 
 export interface TurnRestoreRow {
   id: string; sessionId: string;
-  triggerType: TurnTriggerType;
-  executionProfile: ExecutionProfile;
-  narrativePolicy: NarrativePolicy;
-  status: string; userInput: string; startedAt: number;
+  triggerType: TurnTriggerTypeRow;
+  executionProfile: ExecutionProfileRow;
+  narrativePolicy: NarrativePolicyRow;
+  providerConfigId: string | null;
+  modelId: string | null;
+  status: string;
+  createdAt: number;
   completedAt: number | null; errorCode: string | null; errorMessage: string | null;
   iterations: number; usageInputTokens: number; usageOutputTokens: number;
 }
@@ -139,11 +143,11 @@ export interface SessionRestorePayload {
     id: string; title: string;
     workspaceRoot: string | null; createdAt: number; updatedAt: number;
     lastActivityAt: number; archivedAt: number | null;
-    pinned: boolean; pinnedAt: number | null;
-    groupLabel: string | null; parentSessionId: string | null;
-    executionProfile: ExecutionProfile;
-    narrativePolicy: NarrativePolicy;
-    /** 旧 ZIP v1 没有这两个字段，导入时按 null 兼容。 */
+    pinned: boolean;
+    forkedFromSessionId: string | null; forkedFromTurnId: string | null;
+    executionProfile: ExecutionProfileRow;
+    narrativePolicy: NarrativePolicyRow;
+    /** 旧 ZIP 没有这两个字段，导入时按 null 兼容。 */
     preferredProviderConfigId?: string | null;
     preferredModelId?: string | null;
   };
@@ -183,8 +187,8 @@ function validateSessionRestorePayload(payload: SessionRestorePayload): void {
   if (!['auto', 'always', 'off'].includes(payload.session.narrativePolicy)) {
     throw new SessionRestoreValidationError('Session narrativePolicy 非法');
   }
-  if (payload.session.parentSessionId === sessionId) {
-    throw new SessionRestoreValidationError('Session 不能把自身设为 parentSessionId');
+  if (payload.session.forkedFromSessionId === sessionId) {
+    throw new SessionRestoreValidationError('Session 不能把自身设为 forkedFromSessionId');
   }
   const preferredProviderConfigId = payload.session.preferredProviderConfigId ?? null;
   const preferredModelId = payload.session.preferredModelId ?? null;
@@ -378,11 +382,11 @@ export class SessionStatsRepo {
         (SELECT COUNT(*) FROM turns
           WHERE session_id = ? AND narrative_policy = 'always') AS narrative_always_turns,
         (SELECT COUNT(*) FROM turns WHERE session_id = ? AND execution_profile = 'work') AS work_turns,
-        (SELECT COUNT(*)                   FROM turn_audio_merged  WHERE session_id = ?) AS audio_turn_count,
-        (SELECT COALESCE(SUM(byte_size),0) FROM turn_audio_merged  WHERE session_id = ?) AS audio_total_bytes,
-        (SELECT COALESCE(SUM(duration_ms),0) FROM turn_audio_merged WHERE session_id = ?) AS audio_total_duration_ms,
-        (SELECT COUNT(*)              FROM turn_attachments WHERE session_id = ?) AS attachment_count,
-        (SELECT COALESCE(SUM(byte_size),0) FROM turn_attachments WHERE session_id = ?) AS attachment_total_bytes
+        (SELECT COUNT(*)                   FROM speech_outputs  WHERE session_id = ?) AS audio_turn_count,
+        (SELECT COALESCE(SUM(byte_size),0) FROM speech_outputs  WHERE session_id = ?) AS audio_total_bytes,
+        (SELECT COALESCE(SUM(duration_ms),0) FROM speech_outputs WHERE session_id = ?) AS audio_total_duration_ms,
+        (SELECT COUNT(*)              FROM attachments WHERE session_id = ?) AS attachment_count,
+        (SELECT COALESCE(SUM(byte_size),0) FROM attachments WHERE session_id = ?) AS attachment_total_bytes
     `).get(
       sessionId, sessionId, sessionId, sessionId,
       sessionId, sessionId, sessionId,
@@ -417,7 +421,7 @@ export class SessionStatsRepo {
   listAudioEntries(sessionId: string): AudioEntryRow[] {
     return this.db.prepare(`
       SELECT turn_id, mime_type, byte_size, duration_ms, segment_count, created_at, storage_path
-      FROM turn_audio_merged
+      FROM speech_outputs
       WHERE session_id = ?
       ORDER BY created_at ASC
     `).all(sessionId) as AudioEntryRow[];
@@ -438,7 +442,7 @@ export class SessionStatsRepo {
     createdAt:    number;
   }): void {
     this.db.prepare(`
-      INSERT OR REPLACE INTO turn_audio_merged
+      INSERT OR REPLACE INTO speech_outputs
         (turn_id, session_id, storage_path, mime_type, byte_size, duration_ms, segment_count, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
@@ -518,26 +522,26 @@ export class SessionStatsRepo {
     this.db.transaction(() => {
       // 单 Session 备份不包含来源 Session。目标库已有来源时保留 fork 溯源，
       // 否则降级为 NULL，保证备份可独立恢复且不制造悬空外键。
-      const parentSessionId = p.session.parentSessionId
-        && this.db.prepare('SELECT 1 FROM sessions WHERE id = ?').pluck().get(p.session.parentSessionId)
-        ? p.session.parentSessionId
+      const forkedFromSessionId = p.session.forkedFromSessionId
+        && this.db.prepare('SELECT 1 FROM sessions WHERE id = ?').pluck().get(p.session.forkedFromSessionId)
+        ? p.session.forkedFromSessionId
         : null;
 
       // 1. 恢复 Session 基础行。
       this.db.prepare(`
         INSERT INTO sessions
           (id, title, workspace_root, created_at, updated_at,
-           last_activity_at, archived_at, pinned, pinned_at, group_label,
-           parent_session_id, execution_profile, narrative_policy,
+           last_activity_at, archived_at, pinned,
+           forked_from_session_id, forked_from_turn_id, execution_profile, narrative_policy,
            preferred_provider_config_id, preferred_model_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         p.session.id, p.session.title, p.session.workspaceRoot ?? null,
         p.session.createdAt, p.session.updatedAt,
         p.session.lastActivityAt ?? p.session.updatedAt,
         p.session.archivedAt ?? null,
-        p.session.pinned ? 1 : 0, p.session.pinnedAt ?? null,
-        p.session.groupLabel ?? null, parentSessionId,
+        p.session.pinned ? 1 : 0,
+        forkedFromSessionId, null,
         p.session.executionProfile,
         p.session.narrativePolicy,
         p.session.preferredProviderConfigId ?? null,
@@ -548,15 +552,17 @@ export class SessionStatsRepo {
       const stmtTurn = this.db.prepare(`
         INSERT INTO turns
           (id, session_id, trigger_type, execution_profile, narrative_policy,
-           status, user_input,
-           started_at, completed_at, error_code, error_message,
+           provider_config_id, model_id, status,
+           created_at, completed_at, error_code, error_message,
            iterations, usage_input_tokens, usage_output_tokens)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const t of p.turns) {
         stmtTurn.run(
-          t.id, p.session.id, t.triggerType, t.executionProfile, t.narrativePolicy,
-          t.status, t.userInput, t.startedAt, t.completedAt ?? null,
+          t.id, p.session.id, t.triggerType,
+          t.executionProfile, t.narrativePolicy,
+          t.providerConfigId ?? null, t.modelId ?? null,
+          t.status, t.createdAt, t.completedAt ?? null,
           t.errorCode ?? null, t.errorMessage ?? null,
           t.iterations ?? 0, t.usageInputTokens ?? 0, t.usageOutputTokens ?? 0,
         );
@@ -577,7 +583,7 @@ export class SessionStatsRepo {
 
       // 9. 音频合并行(文件已由调用方写入)
       const stmtAudio = this.db.prepare(`
-        INSERT INTO turn_audio_merged
+        INSERT INTO speech_outputs
           (turn_id, session_id, storage_path, mime_type, byte_size, duration_ms, segment_count, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `);
@@ -591,7 +597,7 @@ export class SessionStatsRepo {
 
       // 10. Attachment(文件已由调用方写入)
       const stmtAtt = this.db.prepare(`
-        INSERT INTO turn_attachments
+        INSERT INTO attachments
           (id, turn_id, session_id, kind, name, mime, source_path, byte_size, source_modified_at,
            image_path, image_byte_size, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)

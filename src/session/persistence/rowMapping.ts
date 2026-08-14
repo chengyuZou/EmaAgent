@@ -1,4 +1,5 @@
-// 把 Storage 数据库行转换为 Session 领域对象和搜索投影。
+// 把 Storage 数据库行显式映射为 Session 领域对象和列表/搜索投影。
+// Row 枚举（storage 自持）→ 领域词汇（turn 叶子）在此逐字段过界，恒等也写出来。
 
 import type { MessageId, SessionId, TurnId } from '@ema-agent/ids';
 import type {
@@ -8,48 +9,43 @@ import type {
   SessionSearchRow,
   TurnRow,
 } from '@ema-agent/storage';
+import type { Turn, TurnStatus } from '@ema-agent/turn';
 import { parseMessageBlocksJson } from '../message.js';
 import type {
   Message,
   SearchSessionsOutput,
   Session,
-  Turn,
+  SessionListItem,
 } from '../types.js';
 
 export function toSession(row: SessionRow): Session {
   return {
     id: row.id as SessionId,
     title: row.title,
-    workspaceRoot: row.workspace_root ?? null,
+    workspaceRoot: row.workspace_root,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     lastActivityAt: row.last_activity_at,
     archivedAt: row.archived_at,
     pinned: row.pinned === 1,
-    pinnedAt: row.pinned_at,
-    groupLabel: row.group_label,
-    parentSessionId: row.parent_session_id as SessionId | null,
-    runningTurnCount: 0,
+    forkedFromSessionId: row.forked_from_session_id as SessionId | null,
+    forkedFromTurnId: row.forked_from_turn_id as TurnId | null,
     executionProfile: row.execution_profile,
     narrativePolicy: row.narrative_policy,
-    preferredProviderConfigId: row.preferred_provider_config_id ?? null,
-    preferredModelId: row.preferred_model_id ?? null,
-    lastViewedAt: row.last_viewed_at ?? null,
-    lastTurnStatus: null,
-    hasUnread: false,
+    preferredProviderConfigId: row.preferred_provider_config_id,
+    preferredModelId: row.preferred_model_id,
+    lastViewedAt: row.last_viewed_at,
   };
 }
 
-export function toSessionEnriched(row: SessionRowEnriched): Session {
-  const session = toSession(row);
-  const lastTurnStatus = (row.last_turn_status ?? null) as Session['lastTurnStatus'];
-  const lastTurnCompletedAt = row.last_turn_completed_at ?? 0;
+/** 仅列表/搜索路径使用：投影三字段来自 enriched 行的 CTE 计算结果。 */
+export function toSessionListItem(row: SessionRowEnriched): SessionListItem {
+  const lastTurnStatus: TurnStatus | null = row.last_turn_status;
   return {
-    ...session,
+    ...toSession(row),
     runningTurnCount: row.running_turn_count,
     lastTurnStatus,
-    hasUnread: lastTurnStatus === 'completed'
-      && lastTurnCompletedAt > (row.last_viewed_at ?? 0),
+    hasUnread: row.last_activity_at > (row.last_viewed_at ?? 0),
   };
 }
 
@@ -57,18 +53,19 @@ export function toTurn(row: TurnRow): Turn {
   return {
     id: row.id as TurnId,
     sessionId: row.session_id as SessionId,
+    status: row.status,
     triggerType: row.trigger_type,
     executionProfile: row.execution_profile,
     narrativePolicy: row.narrative_policy,
-    status: row.status,
-    userInput: row.user_input,
-    startedAt: row.started_at,
-    completedAt: row.completed_at,
-    errorCode: row.error_code,
-    errorMessage: row.error_message,
+    providerConfigId: row.provider_config_id,
+    modelId: row.model_id,
     iterations: row.iterations,
     usageInputTokens: row.usage_input_tokens,
     usageOutputTokens: row.usage_output_tokens,
+    createdAt: row.created_at,
+    completedAt: row.completed_at,
+    errorCode: row.error_code,
+    errorMessage: row.error_message,
   };
 }
 
@@ -79,7 +76,7 @@ export function toMessage(row: MessageRow): Message {
     turnId: row.turn_id as TurnId | null,
     role: row.role,
     kind: row.kind,
-    blocks: parseMessageBlocksJson(row.blocks_json, row.role, row.kind),
+    blocks: parseMessageBlocksJson(row.blocks_json, row.role),
     interrupted: row.interrupted === 1,
     createdAt: row.created_at,
   };
@@ -89,7 +86,7 @@ export function toSearchHit(
   row: SessionSearchRow,
 ): SearchSessionsOutput['results'][number] {
   return {
-    session: toSessionEnriched(row),
+    session: toSessionListItem(row),
     matchKind: row.match_kind,
     snippet: row.match_kind === 'title'
       ? row.title
