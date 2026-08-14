@@ -9,8 +9,10 @@ import type { CharacterHealth } from '@ema-agent/characters';
 import type { CharacterCardId } from '@ema-agent/ids';
 
 export interface ResourcePatch {
-  label?: string;
-  position?: number;
+  name?: string;
+  stageScale?: number;
+  stageOffsetX?: number;
+  stageOffsetY?: number;
   enabled?: boolean;
 }
 
@@ -31,44 +33,39 @@ export interface CardStoreState {
   patch(id: CharacterCardId, input: Partial<CharacterCardInput>): Promise<void>;
   delete(id: CharacterCardId):                     Promise<void>;
   setPrimaryLive2d(id: CharacterCardId, resourceId: string): Promise<void>;
-  setPrimaryPortrait(id: CharacterCardId, resourceId: string): Promise<void>;
+  setPrimaryIllustration(id: CharacterCardId, resourceId: string): Promise<void>;
 
-  uploadVoiceRef(cardId: CharacterCardId, file: Blob, meta: {
-    label: string;
+  uploadVoiceReference(cardId: CharacterCardId, file: Blob, meta: {
+    name: string;
     promptText: string;
     promptLang: string;
     setPrimary?: boolean;
   }): Promise<void>;
-  deleteVoiceRef(cardId: CharacterCardId, refId: string): Promise<void>;
-  setPrimaryVoiceRef(cardId: CharacterCardId, refId: string): Promise<void>;
+  deleteVoiceReference(cardId: CharacterCardId, refId: string): Promise<void>;
+  setPrimaryVoiceReference(cardId: CharacterCardId, refId: string): Promise<void>;
 
   // ── 三类资源管理(C3b 能力句柄式)─────────────────────────────────────────
 
   importLive2d(id: CharacterCardId, input: {
     sourceHandle: string;
-    label: string;
-    format: 'live2d' | 'vrm';
-    entryRelativePath: string;
-    runtimeConfigRelativePath?: string | null;
-    position?: number;
+    name: string;
     isPrimary?: boolean;
   }): Promise<void>;
   exportLive2d(id: CharacterCardId, resourceId: string, destinationHandle: string): Promise<string>;
   patchLive2d(id: CharacterCardId, resourceId: string, patch: ResourcePatch): Promise<void>;
   deleteLive2d(id: CharacterCardId, resourceId: string): Promise<void>;
 
-  importPortrait(id: CharacterCardId, input: {
+  importIllustration(id: CharacterCardId, input: {
     sourceHandle: string;
-    label: string;
-    position?: number;
+    name: string;
     isPrimary?: boolean;
   }): Promise<void>;
-  exportPortrait(id: CharacterCardId, resourceId: string, destinationHandle: string): Promise<string>;
-  patchPortrait(id: CharacterCardId, resourceId: string, patch: ResourcePatch): Promise<void>;
-  deletePortrait(id: CharacterCardId, resourceId: string): Promise<void>;
+  exportIllustration(id: CharacterCardId, resourceId: string, destinationHandle: string): Promise<string>;
+  patchIllustration(id: CharacterCardId, resourceId: string, patch: ResourcePatch): Promise<void>;
+  deleteIllustration(id: CharacterCardId, resourceId: string): Promise<void>;
 
-  exportVoiceRef(cardId: CharacterCardId, resourceId: string, destinationHandle: string): Promise<string>;
-  patchVoiceRef(cardId: CharacterCardId, resourceId: string, patch: ResourcePatch): Promise<void>;
+  exportVoiceReference(cardId: CharacterCardId, resourceId: string, destinationHandle: string): Promise<string>;
+  patchVoiceReference(cardId: CharacterCardId, resourceId: string, patch: Pick<ResourcePatch, 'name' | 'enabled'>): Promise<void>;
 }
 
 // ── Store ────────────────────────────────────────────────────────────────────
@@ -169,20 +166,20 @@ export const useCardStore = create<CardStoreState>((set, get) => ({
     }
   },
 
-  async setPrimaryPortrait(id, resourceId) {
+  async setPrimaryIllustration(id, resourceId) {
     try {
-      await cardsApi.setPrimaryPortrait(id, resourceId);
+      await cardsApi.setPrimaryIllustration(id, resourceId);
       await get().load();
       void get().refreshHealth(id);
     } catch (err: unknown) {
-      set({ error: err instanceof Error ? err.message : 'Failed to switch portrait' });
+      set({ error: err instanceof Error ? err.message : '切换立绘失败' });
       throw err;
     }
   },
 
-  async uploadVoiceRef(cardId, file, meta) {
+  async uploadVoiceReference(cardId, file, meta) {
     try {
-      await cardsApi.uploadVoiceRef(cardId, file, meta);
+      await cardsApi.uploadVoiceReference(cardId, file, meta);
       await get().load();
       void get().refreshHealth(cardId);
     } catch (err: unknown) {
@@ -191,9 +188,9 @@ export const useCardStore = create<CardStoreState>((set, get) => ({
     }
   },
 
-  async deleteVoiceRef(cardId, refId) {
+  async deleteVoiceReference(cardId, refId) {
     try {
-      await cardsApi.deleteVoiceRef(cardId, refId);
+      await cardsApi.deleteVoiceReference(cardId, refId);
       await get().load();
       void get().refreshHealth(cardId);
     } catch (err: unknown) {
@@ -202,9 +199,9 @@ export const useCardStore = create<CardStoreState>((set, get) => ({
     }
   },
 
-  async setPrimaryVoiceRef(cardId, refId) {
+  async setPrimaryVoiceReference(cardId, refId) {
     try {
-      await cardsApi.setPrimaryVoiceRef(cardId, refId);
+      await cardsApi.setPrimaryVoiceReference(cardId, refId);
       await get().load();
       void get().refreshHealth(cardId);
     } catch (err: unknown) {
@@ -258,52 +255,52 @@ export const useCardStore = create<CardStoreState>((set, get) => ({
     }
   },
 
-  async importPortrait(id, input) {
+  async importIllustration(id, input) {
     try {
-      await cardsApi.importPortrait(id, input);
+      await cardsApi.importIllustration(id, input);
       await get().load();
       void get().refreshHealth(id);
     } catch (err: unknown) {
-      set({ error: err instanceof Error ? err.message : 'Failed to import portrait' });
+      set({ error: err instanceof Error ? err.message : '导入立绘失败' });
       throw err;
     }
   },
 
-  async exportPortrait(id, resourceId, destinationHandle) {
+  async exportIllustration(id, resourceId, destinationHandle) {
     try {
-      const res = await cardsApi.exportPortrait(id, resourceId, destinationHandle);
+      const res = await cardsApi.exportIllustration(id, resourceId, destinationHandle);
       return res.destinationPath;
     } catch (err: unknown) {
-      set({ error: err instanceof Error ? err.message : 'Failed to export portrait' });
+      set({ error: err instanceof Error ? err.message : '导出立绘失败' });
       throw err;
     }
   },
 
-  async patchPortrait(id, resourceId, patch) {
+  async patchIllustration(id, resourceId, patch) {
     try {
-      await cardsApi.patchPortrait(id, resourceId, patch);
+      await cardsApi.patchIllustration(id, resourceId, patch);
       await get().load();
       void get().refreshHealth(id);
     } catch (err: unknown) {
-      set({ error: err instanceof Error ? err.message : 'Failed to update portrait' });
+      set({ error: err instanceof Error ? err.message : '更新立绘失败' });
       throw err;
     }
   },
 
-  async deletePortrait(id, resourceId) {
+  async deleteIllustration(id, resourceId) {
     try {
-      await cardsApi.deletePortrait(id, resourceId);
+      await cardsApi.deleteIllustration(id, resourceId);
       await get().load();
       void get().refreshHealth(id);
     } catch (err: unknown) {
-      set({ error: err instanceof Error ? err.message : 'Failed to delete portrait' });
+      set({ error: err instanceof Error ? err.message : '删除立绘失败' });
       throw err;
     }
   },
 
-  async exportVoiceRef(cardId, resourceId, destinationHandle) {
+  async exportVoiceReference(cardId, resourceId, destinationHandle) {
     try {
-      const res = await cardsApi.exportVoiceRef(cardId, resourceId, destinationHandle);
+      const res = await cardsApi.exportVoiceReference(cardId, resourceId, destinationHandle);
       return res.destinationPath;
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to export voice ref' });
@@ -311,9 +308,9 @@ export const useCardStore = create<CardStoreState>((set, get) => ({
     }
   },
 
-  async patchVoiceRef(cardId, resourceId, patch) {
+  async patchVoiceReference(cardId, resourceId, patch) {
     try {
-      await cardsApi.patchVoiceRef(cardId, resourceId, patch);
+      await cardsApi.patchVoiceReference(cardId, resourceId, patch);
       await get().load();
       void get().refreshHealth(cardId);
     } catch (err: unknown) {

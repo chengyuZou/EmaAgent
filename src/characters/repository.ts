@@ -12,13 +12,12 @@ function fromRow(row: CharacterCardRow): CharacterCard {
   return {
     id:               asCharacterCardId(row.id),
     name:             row.name,
-    version:          row.version,
     description:      row.description,
     systemPrompt:     row.system_prompt,
     emotionVocabulary: JSON.parse(row.emotion_vocab_json) as string[],
     motionVocabulary:  JSON.parse(row.motion_vocab_json) as string[],
     live2dVariants:   [],
-    portraits:        [],
+    illustrations:    [],
     voiceReferences:  [],
     isActive:         row.is_active === 1,
     isBuiltin:        row.is_builtin === 1,
@@ -26,8 +25,6 @@ function fromRow(row: CharacterCardRow): CharacterCard {
     updatedAt:        row.updated_at,
   };
 }
-
-// ── CharacterCardRepository ──────────────────────────────────────────────────
 
 /** CharacterCardsRepo 上的薄领域适配层--领域类型 <-> DB 行。 */
 export class CharacterCardRepository {
@@ -57,7 +54,6 @@ export class CharacterCardRepository {
     this.repo.insert({
       id,
       name:                 input.name,
-      version:              input.version,
       description:          input.description,
       systemPrompt:         input.systemPrompt,
       emotionVocabJson:     '[]',
@@ -74,7 +70,6 @@ export class CharacterCardRepository {
   update(id: CharacterCardId, patch: Partial<CharacterCardInput>): void {
     this.repo.update(id, {
       name:                 patch.name,
-      version:              patch.version,
       description:          patch.description,
       systemPrompt:         patch.systemPrompt,
       updatedAt:            Date.now(),

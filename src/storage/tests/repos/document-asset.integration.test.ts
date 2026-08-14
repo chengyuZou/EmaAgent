@@ -52,13 +52,13 @@ describe('B-060 DocumentAsset 复合游标', () => {
     expect(second.nextCursor).toBeNull();
   });
 
-  it('畸形或版本未知的 cursor 会明确失败', () => {
+  it('畸形 cursor 会明确失败', () => {
     expect(() => repo.listPaged({ cursor: 'not-a-cursor' }))
       .toThrow(DocumentAssetCursorError);
 
-    const futureCursor = Buffer.from(JSON.stringify({ v: 2, a: 1, i: 'asset-a' }))
+    const wrongShape = Buffer.from(JSON.stringify({ a: 'not-a-number', i: 'asset-a' }))
       .toString('base64url');
-    expect(() => repo.listPaged({ cursor: futureCursor }))
+    expect(() => repo.listPaged({ cursor: wrongShape }))
       .toThrow('Invalid document asset cursor');
   });
 

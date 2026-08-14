@@ -231,8 +231,8 @@ function insertAgentRun(database: Database, id: string): void {
   database.sqlite.prepare(`
     INSERT INTO turns (
       id, session_id, trigger_type, execution_profile, narrative_policy,
-      status, user_input, started_at
-    ) VALUES ('turn-a', 'session-a', 'userMessage', 'work', 'auto', 'running', 'test', 1)
+      status, created_at
+    ) VALUES ('turn-a', 'session-a', 'userMessage', 'work', 'auto', 'running', 1)
   `).run();
   new AgentRunsRepo(database.sqlite).insert({
     id: asAgentRunId(id),

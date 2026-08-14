@@ -265,9 +265,9 @@ importers:
       '@ema-agent/agent':
         specifier: workspace:*
         version: link:../../src/agent
-      '@ema-agent/attachment':
+      '@ema-agent/attachments':
         specifier: workspace:*
-        version: link:../../src/attachment
+        version: link:../../src/attachments
       '@ema-agent/backup':
         specifier: workspace:*
         version: link:../../src/backup
@@ -469,7 +469,7 @@ importers:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
-  src/attachment:
+  src/attachments:
     dependencies:
       '@ema-agent/ids':
         specifier: workspace:*
@@ -477,18 +477,15 @@ importers:
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../llm
+      '@ema-agent/session':
+        specifier: workspace:*
+        version: link:../session
       '@ema-agent/settings':
         specifier: workspace:*
         version: link:../settings
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage
-      '@ema-agent/turn':
-        specifier: workspace:*
-        version: link:../turn
-      sharp:
-        specifier: ^0.33.5
-        version: 0.33.5
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -817,21 +814,6 @@ importers:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
-  src/gitUtils:
-    devDependencies:
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.39
-      rimraf:
-        specifier: ^5.0.0
-        version: 5.0.10
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: ^2.0.0
-        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
-
   src/ids:
     devDependencies:
       rimraf:
@@ -846,9 +828,6 @@ importers:
       '@ema-agent/embed':
         specifier: workspace:*
         version: link:../embed
-      '@ema-agent/ids':
-        specifier: workspace:*
-        version: link:../ids
       '@ema-agent/rerank':
         specifier: workspace:*
         version: link:../rerank
@@ -861,9 +840,9 @@ importers:
       '@ema-agent/token':
         specifier: workspace:*
         version: link:../token
-      '@ema-agent/turn':
+      '@ema-agent/vision':
         specifier: workspace:*
-        version: link:../turn
+        version: link:../vision
       cheerio:
         specifier: ^1.0.0
         version: 1.2.0
@@ -1516,9 +1495,9 @@ importers:
       '@ema-agent/agent':
         specifier: workspace:*
         version: link:../agent
-      '@ema-agent/attachment':
+      '@ema-agent/attachments':
         specifier: workspace:*
-        version: link:../attachment
+        version: link:../attachments
       '@ema-agent/context':
         specifier: workspace:*
         version: link:../context

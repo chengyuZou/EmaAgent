@@ -30,8 +30,7 @@ describe('SessionBackupReader', () => {
         triggerType: 'userMessage',
         executionProfile: 'work',
         narrativePolicy: 'auto',
-        userInput: `${index}`,
-        startedAt: index,
+        createdAt: index,
       });
     }
 

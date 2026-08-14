@@ -7,14 +7,14 @@ import type {
   CharacterHealth,
   CharacterHealthIssue,
   CharacterLive2dVariant,
-  CharacterPortrait,
+  CharacterIllustration,
   CharacterResourceOperation,
   CharacterVoiceReference,
 } from '@ema-agent/characters';
 import type { Live2DModelRuntimeConfig } from '@ema-agent/live2d-react';
 
 export type { CharacterCard, CharacterCardInput, CharacterVoiceReference };
-export type { CharacterLive2dVariant, CharacterPortrait };
+export type { CharacterLive2dVariant, CharacterIllustration };
 
 export type CharacterStageCandidate =
   | {
@@ -26,7 +26,7 @@ export type CharacterStageCandidate =
       runtimeConfig: Live2DModelRuntimeConfig | null;
     }
   | {
-      kind: 'portrait';
+      kind: 'illustration';
       resourceId: string;
       label: string;
       resourceRevision: string;
@@ -98,53 +98,53 @@ export const cardsApi = {
     });
   },
 
-  async setPrimaryPortrait(id: CharacterCardId, resourceId: string): Promise<void> {
-    await sidecarClient.request(`/api/cards/${id}/portraits/primary`, {
+  async setPrimaryIllustration(id: CharacterCardId, resourceId: string): Promise<void> {
+    await sidecarClient.request(`/api/cards/${id}/illustration/primary`, {
       method: 'PUT',
       json: { resourceId },
     });
   },
 
-  // ── Voice-refs ──────────────────────────────────────────────────────────
+  // ── 参考音频 ────────────────────────────────────────────────────────────
 
-  /** GET /api/cards/:cardId/voice-refs */
-  async listVoiceRefs(cardId: CharacterCardId): Promise<CharacterVoiceReference[]> {
-    return sidecarClient.request<CharacterVoiceReference[]>(`/api/cards/${cardId}/voice-refs`);
+  /** GET /api/cards/:cardId/voice */
+  async listVoiceReferences(cardId: CharacterCardId): Promise<CharacterVoiceReference[]> {
+    return sidecarClient.request<CharacterVoiceReference[]>(`/api/cards/${cardId}/voice`);
   },
 
-  /** POST /api/cards/:cardId/voice-refs — multipart upload */
-  async uploadVoiceRef(
+  /** POST /api/cards/:cardId/voice — multipart upload */
+  async uploadVoiceReference(
     cardId: CharacterCardId,
     file: Blob,
-    meta: { label: string; promptText: string; promptLang: string; setPrimary?: boolean },
+    meta: { name: string; promptText: string; promptLang: string; setPrimary?: boolean },
   ): Promise<{ reference: CharacterVoiceReference; primaryId: string | null }> {
     const form = new FormData();
     form.set('file', file);
-    form.set('label', meta.label);
+    form.set('name', meta.name);
     form.set('promptText', meta.promptText);
     form.set('promptLang', meta.promptLang);
     if (meta.setPrimary) form.set('setPrimary', 'true');
 
-    return sidecarClient.request(`/api/cards/${cardId}/voice-refs`, {
+    return sidecarClient.request(`/api/cards/${cardId}/voice`, {
       method: 'POST',
       body: form,
     });
   },
 
-  /** GET /api/cards/:cardId/voice-refs/:refId — download audio blob */
-  async downloadVoiceRef(cardId: CharacterCardId, refId: string): Promise<Blob> {
-    const res = await sidecarClient.requestRaw(`/api/cards/${cardId}/voice-refs/${refId}`);
+  /** GET /api/cards/:cardId/voice/:refId — download audio blob */
+  async downloadVoiceReference(cardId: CharacterCardId, refId: string): Promise<Blob> {
+    const res = await sidecarClient.requestRaw(`/api/cards/${cardId}/voice/${refId}`);
     return res.blob();
   },
 
-  /** DELETE /api/cards/:cardId/voice-refs/:refId */
-  async deleteVoiceRef(cardId: CharacterCardId, refId: string): Promise<void> {
-    await sidecarClient.request(`/api/cards/${cardId}/voice-refs/${refId}`, { method: 'DELETE' });
+  /** DELETE /api/cards/:cardId/voice/:refId */
+  async deleteVoiceReference(cardId: CharacterCardId, refId: string): Promise<void> {
+    await sidecarClient.request(`/api/cards/${cardId}/voice/${refId}`, { method: 'DELETE' });
   },
 
-  /** PUT /api/cards/:cardId/voice-refs/primary */
-  async setPrimaryVoiceRef(cardId: CharacterCardId, refId: string): Promise<{ primaryId: string }> {
-    return sidecarClient.request<{ primaryId: string }>(`/api/cards/${cardId}/voice-refs/primary`, {
+  /** PUT /api/cards/:cardId/voice/primary */
+  async setPrimaryVoiceReference(cardId: CharacterCardId, refId: string): Promise<{ primaryId: string }> {
+    return sidecarClient.request<{ primaryId: string }>(`/api/cards/${cardId}/voice/primary`, {
       method: 'PUT',
       json: { refId },
     });
@@ -173,11 +173,7 @@ export const cardsApi = {
     id: CharacterCardId,
     input: {
       sourceHandle: string;
-      label: string;
-      format: 'live2d' | 'vrm';
-      entryRelativePath: string;
-      runtimeConfigRelativePath?: string | null;
-      position?: number;
+      name: string;
       isPrimary?: boolean;
     },
   ): Promise<{ resource: CharacterLive2dVariant }> {
@@ -201,7 +197,13 @@ export const cardsApi = {
   async patchLive2d(
     id: CharacterCardId,
     resourceId: string,
-    patch: { label?: string; position?: number; enabled?: boolean },
+    patch: {
+      name?: string;
+      stageScale?: number;
+      stageOffsetX?: number;
+      stageOffsetY?: number;
+      enabled?: boolean;
+    },
   ): Promise<{ resource: CharacterLive2dVariant }> {
     return sidecarClient.request(`/api/cards/${id}/live2d/${resourceId}`, {
       method: 'PATCH',
@@ -213,59 +215,65 @@ export const cardsApi = {
     await sidecarClient.request(`/api/cards/${id}/live2d/${resourceId}`, { method: 'DELETE' });
   },
 
-  async importPortrait(
+  async importIllustration(
     id: CharacterCardId,
-    input: { sourceHandle: string; label: string; position?: number; isPrimary?: boolean },
-  ): Promise<{ resource: CharacterPortrait }> {
-    return sidecarClient.request(`/api/cards/${id}/portraits/import`, {
+    input: { sourceHandle: string; name: string; isPrimary?: boolean },
+  ): Promise<{ resource: CharacterIllustration }> {
+    return sidecarClient.request(`/api/cards/${id}/illustration/import`, {
       method: 'POST',
       json: input,
     });
   },
 
-  async exportPortrait(
+  async exportIllustration(
     id: CharacterCardId,
     resourceId: string,
     destinationHandle: string,
   ): Promise<{ destinationPath: string }> {
-    return sidecarClient.request(`/api/cards/${id}/portraits/${resourceId}/export`, {
+    return sidecarClient.request(`/api/cards/${id}/illustration/${resourceId}/export`, {
       method: 'POST',
       json: { destinationHandle },
     });
   },
 
-  async patchPortrait(
+  async patchIllustration(
     id: CharacterCardId,
     resourceId: string,
-    patch: { label?: string; position?: number; enabled?: boolean },
-  ): Promise<{ resource: CharacterPortrait }> {
-    return sidecarClient.request(`/api/cards/${id}/portraits/${resourceId}`, {
+    patch: {
+      name?: string;
+      stageScale?: number;
+      stageOffsetX?: number;
+      stageOffsetY?: number;
+      enabled?: boolean;
+    },
+  ): Promise<{ resource: CharacterIllustration }> {
+    return sidecarClient.request(`/api/cards/${id}/illustration/${resourceId}`, {
       method: 'PATCH',
       json: patch,
     });
   },
 
-  async deletePortrait(id: CharacterCardId, resourceId: string): Promise<void> {
-    await sidecarClient.request(`/api/cards/${id}/portraits/${resourceId}`, { method: 'DELETE' });
+  async deleteIllustration(id: CharacterCardId, resourceId: string): Promise<void> {
+    await sidecarClient.request(`/api/cards/${id}/illustration/${resourceId}`, { method: 'DELETE' });
   },
 
-  async exportVoiceRef(
+  async exportVoiceReference(
     cardId: CharacterCardId,
     resourceId: string,
     destinationHandle: string,
   ): Promise<{ destinationPath: string }> {
-    return sidecarClient.request(`/api/cards/${cardId}/voice-refs/${resourceId}/export`, {
+    return sidecarClient.request(`/api/cards/${cardId}/voice/${resourceId}/export`, {
       method: 'POST',
       json: { destinationHandle },
     });
   },
 
-  async patchVoiceRef(
+  async patchVoiceReference(
     cardId: CharacterCardId,
     resourceId: string,
-    patch: { label?: string; position?: number; enabled?: boolean },
+    patch: { name?: string; enabled?: boolean },
   ): Promise<{ resource: CharacterVoiceReference }> {
-    return sidecarClient.request(`/api/cards/${cardId}/voice-refs/${resourceId}`, {
+    return sidecarClient.request(`/api/cards/${cardId}/voice/${resourceId}`, {
       method: 'PATCH',
       json: patch,
     });

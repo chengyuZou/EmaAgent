@@ -1,8 +1,8 @@
-// 锁定 turn_attachments 新表结构:kind 判别列、图片受管副本列、无 status 死列。
+// 锁定 attachments 表结构:kind 判别列、图片受管副本列、无 status 死列。
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Database } from '../../index.js';
 
-describe('turn_attachments schema（file/image 判别联合）', () => {
+describe('attachments schema（file/image 判别联合）', () => {
   let database: Database;
 
   beforeEach(() => {
@@ -14,7 +14,7 @@ describe('turn_attachments schema（file/image 判别联合）', () => {
 
   it('表字段集稳定:kind 判别 + 受管副本列,无 status/local_path', () => {
     const cols = database.sqlite
-      .prepare('PRAGMA table_info(turn_attachments)')
+      .prepare('PRAGMA table_info(attachments)')
       .all() as Array<{ name: string }>;
     const colNames = cols.map((c) => c.name);
 

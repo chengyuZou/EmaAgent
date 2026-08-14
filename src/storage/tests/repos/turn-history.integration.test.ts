@@ -1,4 +1,4 @@
-// 测试 Turn 稳定分页、锚点窗口和对应消息读取不会丢行或重复。
+// 测试 Turn 按 created_at 稳定分页、锚点窗口和索引预览改读首条 User Message。
 import { describe, expect, it } from 'vitest';
 import { asMessageId, asSessionId, asTurnId } from '@ema-agent/ids';
 import { Database } from '../../database/database.js';
@@ -33,8 +33,7 @@ describe('Turn 历史读取', () => {
         triggerType: 'userMessage',
         executionProfile: 'chat',
         narrativePolicy: 'off',
-        userInput: id,
-        startedAt: 10,
+        createdAt: 10,
       });
     }
 
@@ -55,8 +54,7 @@ describe('Turn 历史读取', () => {
         triggerType: 'userMessage',
         executionProfile: 'chat',
         narrativePolicy: 'off',
-        userInput: `turn ${index}`,
-        startedAt: index + 1,
+        createdAt: index + 1,
       });
       messages.insert({
         id: asMessageId(`message-${index}`),
@@ -79,14 +77,79 @@ describe('Turn 历史读取', () => {
     expect(rows.map((row) => row.id)).toEqual(['message-1', 'message-2', 'message-3']);
   });
 
+  it('Turn 索引预览取自首条 User Message，无消息时为空串', () => {
+    const { turns, messages, sessionId } = createFixture();
+    turns.insert({
+      id: asTurnId('turn-a'),
+      sessionId,
+      triggerType: 'userMessage',
+      executionProfile: 'chat',
+      narrativePolicy: 'off',
+      createdAt: 1,
+    });
+    messages.insert({
+      id: asMessageId('message-user'),
+      sessionId,
+      turnId: asTurnId('turn-a'),
+      role: 'user',
+      kind: 'normal',
+      blocksJson: JSON.stringify([{ type: 'text', text: '用户首条输入' }]),
+      createdAt: 1,
+    });
+    messages.insert({
+      id: asMessageId('message-assistant'),
+      sessionId,
+      turnId: asTurnId('turn-a'),
+      role: 'assistant',
+      blocksJson: JSON.stringify([{ type: 'text', text: '助手回复不应作预览' }]),
+      createdAt: 2,
+    });
+    turns.insert({
+      id: asTurnId('turn-b'),
+      sessionId,
+      triggerType: 'backgroundProcessCompleted',
+      executionProfile: 'chat',
+      narrativePolicy: 'off',
+      createdAt: 3,
+    });
+
+    const page = turns.listForSessionPage(sessionId, undefined, 10);
+    expect(page.rows.map((row) => [row.id, row.preview])).toEqual([
+      ['turn-b', ''],
+      ['turn-a', '用户首条输入'],
+    ]);
+    expect(page.rows[0]).toMatchObject({ trigger_type: 'backgroundProcessCompleted' });
+  });
+
+  it('模型冻结成对写入，残缺写入被数据库拒绝', () => {
+    const { database, turns, sessionId } = createFixture();
+    turns.insert({
+      id: asTurnId('turn-a'),
+      sessionId,
+      triggerType: 'userMessage',
+      executionProfile: 'chat',
+      narrativePolicy: 'off',
+      createdAt: 1,
+    });
+    turns.setModel(asTurnId('turn-a'), 'provider-config-1', 'model-1');
+    expect(turns.findById(asTurnId('turn-a'))).toMatchObject({
+      provider_config_id: 'provider-config-1',
+      model_id: 'model-1',
+    });
+
+    expect(() => database.sqlite.prepare(`
+      UPDATE turns SET model_id = NULL WHERE id = 'turn-a'
+    `).run()).toThrow(/both provider and model/);
+  });
+
   it('Turn 索引分页使用 Session 最新 Turn 索引', () => {
     const { database } = createFixture();
     const plan = database.sqlite.prepare(`
       EXPLAIN QUERY PLAN
       SELECT * FROM turns
       WHERE session_id = ?
-        AND (started_at < ? OR (started_at = ? AND id < ?))
-      ORDER BY started_at DESC, id DESC
+        AND (created_at < ? OR (created_at = ? AND id < ?))
+      ORDER BY created_at DESC, id DESC
       LIMIT ?
     `).all('session-history', 10, 10, 'turn-z', 20) as Array<{ detail: string }>;
 

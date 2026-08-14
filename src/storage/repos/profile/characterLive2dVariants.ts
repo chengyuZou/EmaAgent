@@ -1,4 +1,4 @@
-// 持久化角色拥有的 Live2D/VRM 变体及其稳定排序和主项选择。
+// 持久化角色拥有的 Live2D 资源、舞台位置和主项选择。
 
 import type {
   CharacterCardId,
@@ -6,22 +6,16 @@ import type {
 } from '@ema-agent/ids';
 import type { SqliteDb } from '../../database/database.js';
 
-export type CharacterLive2dFormat = 'live2d' | 'vrm';
-
 export interface CharacterLive2dVariantRow {
   id: string;
   character_card_id: string;
-  label: string;
-  format: CharacterLive2dFormat;
-  entry_path: string;
-  runtime_config_path: string | null;
-  position: number;
+  name: string;
+  stage_scale: number;
+  stage_offset_x: number;
+  stage_offset_y: number;
   is_primary: number;
   enabled: number;
-  resource_version: string | null;
-  content_sha256: string | null;
   byte_size: number | null;
-  is_builtin: number;
   created_at: number;
   updated_at: number;
 }
@@ -29,24 +23,22 @@ export interface CharacterLive2dVariantRow {
 export interface CharacterLive2dVariantInsert {
   id: CharacterLive2dId;
   characterCardId: CharacterCardId;
-  label: string;
-  format: CharacterLive2dFormat;
-  entryPath: string;
-  runtimeConfigPath?: string | null;
-  position?: number;
+  name: string;
+  stageScale?: number;
+  stageOffsetX?: number;
+  stageOffsetY?: number;
   isPrimary?: boolean;
   enabled?: boolean;
-  resourceVersion?: string | null;
-  contentSha256?: string | null;
   byteSize?: number | null;
-  isBuiltin?: boolean;
   createdAt: number;
   updatedAt: number;
 }
 
 export interface CharacterLive2dVariantUpdate {
-  label?: string;
-  position?: number;
+  name?: string;
+  stageScale?: number;
+  stageOffsetX?: number;
+  stageOffsetY?: number;
   enabled?: boolean;
 }
 
@@ -60,24 +52,20 @@ export class CharacterLive2dVariantsRepo {
       }
       this.db.prepare(
         `INSERT INTO character_live2d_variants (
-           id, character_card_id, label, format, entry_path, runtime_config_path,
-           position, is_primary, enabled, resource_version, content_sha256,
-           byte_size, is_builtin, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           id, character_card_id, name, stage_scale,
+           stage_offset_x, stage_offset_y, is_primary, enabled,
+           byte_size, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(
         input.id,
         input.characterCardId,
-        input.label,
-        input.format,
-        input.entryPath,
-        input.runtimeConfigPath ?? null,
-        input.position ?? 0,
+        input.name,
+        input.stageScale ?? 1,
+        input.stageOffsetX ?? 0,
+        input.stageOffsetY ?? 0,
         input.isPrimary ? 1 : 0,
         input.enabled === false ? 0 : 1,
-        input.resourceVersion ?? null,
-        input.contentSha256 ?? null,
         input.byteSize ?? null,
-        input.isBuiltin ? 1 : 0,
         input.createdAt,
         input.updatedAt,
       );
@@ -98,7 +86,7 @@ export class CharacterLive2dVariantsRepo {
     return this.db.prepare(
       `SELECT * FROM character_live2d_variants
        WHERE character_card_id = ?
-       ORDER BY position ASC, id ASC`,
+       ORDER BY created_at ASC, id ASC`,
     ).all(characterCardId) as CharacterLive2dVariantRow[];
   }
 
@@ -109,7 +97,7 @@ export class CharacterLive2dVariantsRepo {
     return this.db.prepare(
       `SELECT * FROM character_live2d_variants
        WHERE character_card_id IN (${placeholders})
-       ORDER BY character_card_id ASC, position ASC, id ASC`,
+       ORDER BY character_card_id ASC, created_at ASC, id ASC`,
     ).all(...characterCardIds) as CharacterLive2dVariantRow[];
   }
 
@@ -145,24 +133,30 @@ export class CharacterLive2dVariantsRepo {
       const current = this.findById(characterCardId, id);
       if (!current) return undefined;
 
-      const label = patch.label ?? current.label;
-      const position = patch.position ?? current.position;
+      const name = patch.name ?? current.name;
+      const stageScale = patch.stageScale ?? current.stage_scale;
+      const stageOffsetX = patch.stageOffsetX ?? current.stage_offset_x;
+      const stageOffsetY = patch.stageOffsetY ?? current.stage_offset_y;
       const enabled = patch.enabled ?? current.enabled === 1;
-      const changed = label !== current.label
-        || position !== current.position
+      const changed = name !== current.name
+        || stageScale !== current.stage_scale
+        || stageOffsetX !== current.stage_offset_x
+        || stageOffsetY !== current.stage_offset_y
         || enabled !== (current.enabled === 1);
       if (!changed) return current;
       const revisionAt = Math.max(updatedAt, current.updated_at + 1);
 
       this.db.prepare(
         `UPDATE character_live2d_variants
-         SET label = ?, position = ?, enabled = ?,
+         SET name = ?, stage_scale = ?, stage_offset_x = ?, stage_offset_y = ?, enabled = ?,
              is_primary = CASE WHEN ? = 1 THEN is_primary ELSE 0 END,
              updated_at = ?
          WHERE character_card_id = ? AND id = ?`,
       ).run(
-        label,
-        position,
+        name,
+        stageScale,
+        stageOffsetX,
+        stageOffsetY,
         enabled ? 1 : 0,
         enabled ? 1 : 0,
         revisionAt,
@@ -210,7 +204,7 @@ export class CharacterLive2dVariantsRepo {
        WHERE id = (
          SELECT id FROM character_live2d_variants
          WHERE character_card_id = ? AND enabled = 1
-         ORDER BY position ASC, id ASC
+         ORDER BY created_at ASC, id ASC
          LIMIT 1
        )`,
     ).run(updatedAt, characterCardId);

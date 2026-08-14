@@ -1,14 +1,15 @@
-// 统一执行三类角色资源的深检、原子导入导出和可恢复删除。
+// 导入、导出和删除角色的 Live2D、立绘与参考音频文件。
 
 import fs from 'node:fs';
+import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import {
+  asCharacterIllustrationId,
   asCharacterLive2dId,
-  asCharacterPortraitId,
   asCharacterVoiceReferenceId,
   type CharacterCardId,
+  type CharacterIllustrationId,
   type CharacterLive2dId,
-  type CharacterPortraitId,
   type CharacterVoiceReferenceId,
 } from '@ema-agent/ids';
 import type { CharacterCard } from '../types.js';
@@ -18,31 +19,24 @@ import type {
   ImportCharacterLive2dInput,
 } from '../live2d/types.js';
 import { CharacterLive2dRepository } from '../live2d/repository.js';
-import {
-  copyAndValidateLive2dDirectory,
-} from '../live2d/live2dValidator.js';
+import { findLive2dPackageFiles } from '../live2d/live2dValidator.js';
 import type {
-  CharacterPortrait,
-  ImportCharacterPortraitInput,
-} from '../portraits/types.js';
-import { CharacterPortraitRepository } from '../portraits/repository.js';
-import { normalizePortrait } from '../portraits/portraitNormalizer.js';
+  CharacterIllustration,
+  ImportCharacterIllustrationInput,
+} from '../illustration/types.js';
+import { CharacterIllustrationRepository } from '../illustration/repository.js';
 import type {
   CharacterVoiceReference,
   CharacterVoiceReferenceInput,
   ImportCharacterVoiceReferenceInput,
-} from '../voiceReferences/types.js';
-import { CharacterVoiceReferenceRepository } from '../voiceReferences/repository.js';
-import {
-  validateVoiceReferenceFile,
-} from '../voiceReferences/voiceReferenceValidator.js';
+} from '../voice/types.js';
+import { CharacterVoiceReferenceRepository } from '../voice/repository.js';
+import { validateVoiceReferenceFile } from '../voice/voiceReferenceValidator.js';
 import { CharacterResourcePaths } from './characterResourcePaths.js';
-import { CharacterResourceOperations } from './characterResourceOperations.js';
-import { CharacterResourceTrash } from './characterResourceTrash.js';
-import { CharacterResourceStaging } from '../transfer/staging.js';
 import {
-  copyFileBounded,
-  exportPathAtomically,
+  copyCharacterDirectory,
+  copyCharacterFile,
+  exportCharacterResource,
 } from './characterResourceTransfer.js';
 import { CHARACTER_RESOURCE_LIMITS } from './characterResourceLimits.js';
 
@@ -50,15 +44,12 @@ export class CharacterResourceLifecycle {
   constructor(
     private readonly getCard: (id: CharacterCardId) => CharacterCard | undefined,
     private readonly live2d: CharacterLive2dRepository,
-    private readonly portraits: CharacterPortraitRepository,
+    private readonly illustrations: CharacterIllustrationRepository,
     private readonly voiceReferences: CharacterVoiceReferenceRepository,
     private readonly paths: CharacterResourcePaths,
-    private readonly trash: CharacterResourceTrash,
-    private readonly staging: CharacterResourceStaging,
-    private readonly operations: CharacterResourceOperations,
     private readonly insertLive2d: (
       id: CharacterCardId,
-      input: CharacterLive2dVariantInput,
+      input: CharacterLive2dVariantInput & { id: CharacterLive2dId },
     ) => CharacterLive2dVariant,
     private readonly deleteLive2dRecord: (
       id: CharacterCardId,
@@ -67,389 +58,191 @@ export class CharacterResourceLifecycle {
     private readonly presentationChanged: (id: CharacterCardId) => void,
   ) {}
 
-  importLive2d(
+  async importLive2d(
     id: CharacterCardId,
     input: ImportCharacterLive2dInput,
   ): Promise<CharacterLive2dVariant> {
+    const card = this.assertMutableCard(id);
+    await findLive2dPackageFiles(input.sourceDirectory);
     const resourceId = asCharacterLive2dId(randomUUID());
-    const packageRelativePath = `live2d/${resourceId}`;
-    const entryPath = `${packageRelativePath}/${input.entryRelativePath}`;
-    const runtimeConfigPath = input.runtimeConfigRelativePath
-      ? `${packageRelativePath}/${input.runtimeConfigRelativePath}`
-      : null;
-    return this.operations.run(id, 'resourceImport', async ({ setStage }) => {
-      const card = this.assertMutableCard(id);
-      setStage('validating');
-      this.paths.resolve(id, false, entryPath, 'live2d');
-      if (runtimeConfigPath) this.paths.resolve(id, false, runtimeConfigPath, 'live2d');
-      setStage('staging');
-      const resource = await this.staging.publishPrepared({
-        characterId: id,
-        resourceKind: 'live2d',
-        resourceId,
-        relativePath: entryPath,
-        targetRelativePath: packageRelativePath,
-        prepare: payload => copyAndValidateLive2dDirectory({
-          sourceDirectory: input.sourceDirectory,
-          destinationDirectory: payload,
-          format: input.format,
-          entryRelativePath: input.entryRelativePath,
-          runtimeConfigRelativePath: input.runtimeConfigRelativePath,
-        }),
-        commit: prepared => {
-          setStage('publishing');
-          const inserted = this.insertLive2d(id, {
-            id: resourceId,
-            label: input.label,
-            format: input.format,
-            entryPath,
-            runtimeConfigPath,
-            position: input.position,
-            isPrimary: input.isPrimary ?? card.live2dVariants.length === 0,
-            byteSize: prepared.byteSize,
-          });
-          this.presentationChanged(id);
-          return inserted;
-        },
-        isReferenced: () => this.live2d.list(id).some(
-          item => item.id === resourceId && item.entryPath === entryPath,
-        ),
-      });
-      setStage('finalizing');
-      return resource;
+    const destination = this.paths.live2dDirectory(id, resourceId);
+    const byteSize = await copyCharacterDirectory(input.sourceDirectory, destination);
+    await findLive2dPackageFiles(destination);
+    const resource = this.insertLive2d(id, {
+      id: resourceId,
+      name: input.name,
+      isPrimary: input.isPrimary ?? card.live2dVariants.length === 0,
+      byteSize,
     });
+    this.presentationChanged(id);
+    return resource;
   }
 
-  exportLive2d(
+  async exportLive2d(
     id: CharacterCardId,
     resourceId: CharacterLive2dId,
     destinationDirectory: string,
   ): Promise<string> {
-    return this.operations.run(id, 'resourceExport', async ({ setStage }) => {
-      const card = this.assertMutableCard(id);
-      const resource = card.live2dVariants.find(item => item.id === resourceId);
-      if (!resource) throw new Error(`Live2D resource not found: ${resourceId}`);
-      const packageRelativePath = live2dPackagePath(resource);
-      setStage('validating');
-      const source = this.paths.resolve(id, false, packageRelativePath, 'live2d');
-      setStage('publishing');
-      const exported = await exportPathAtomically(
-        source,
-        destinationDirectory,
-        String(resource.id),
-        live2dExportLimits(),
-      );
-      setStage('finalizing');
-      return exported;
-    });
+    const card = this.getRequiredCard(id);
+    const resource = card.live2dVariants.find(item => item.id === resourceId);
+    if (!resource) throw new Error(`Live2D resource not found: ${resourceId}`);
+    return exportCharacterResource(
+      this.paths.live2dDirectory(id, resourceId),
+      destinationDirectory,
+      resource.name,
+    );
   }
 
-  deleteLive2d(
+  async deleteLive2d(
     id: CharacterCardId,
     resourceId: CharacterLive2dId,
   ): Promise<CharacterLive2dVariant | undefined> {
-    return this.operations.run(id, 'resourceDelete', async ({ setStage }) => {
-      this.assertMutableCard(id);
-      setStage('validating');
-      const current = this.live2d.list(id).find(item => item.id === resourceId);
-      if (!current) return undefined;
-      setStage('staging');
-      const deleted = this.trash.delete({
-        characterId: id,
-        resourceKind: 'live2d',
-        resourceId,
-        relativePath: current.entryPath,
-        targetRelativePath: live2dPackagePath(current),
-        commit: () => {
-          setStage('publishing');
-          const result = this.deleteLive2dRecord(id, resourceId);
-          if (!result) throw new Error(`Live2D resource disappeared: ${resourceId}`);
-          this.presentationChanged(id);
-          return result;
-        },
-        isReferenced: () => this.live2d.list(id).some(item => item.id === resourceId),
-      });
-      setStage('finalizing');
-      return deleted;
-    });
+    this.assertMutableCard(id);
+    const current = this.live2d.list(id).find(item => item.id === resourceId);
+    if (!current) return undefined;
+    await fs.promises.rm(this.paths.live2dDirectory(id, resourceId), { recursive: true });
+    const deleted = this.deleteLive2dRecord(id, resourceId);
+    if (deleted) this.presentationChanged(id);
+    return deleted;
   }
 
-  importPortrait(
+  async importIllustration(
     id: CharacterCardId,
-    input: ImportCharacterPortraitInput,
-  ): Promise<CharacterPortrait> {
-    const resourceId = asCharacterPortraitId(randomUUID());
-    const relativePath = `portraits/${resourceId}`;
-    return this.operations.run(id, 'resourceImport', async ({ setStage }) => {
-      const card = this.assertMutableCard(id);
-      setStage('validating');
-      this.paths.resolve(id, false, relativePath, 'portrait');
-      setStage('staging');
-      const resource = await this.staging.publishPrepared({
-        characterId: id,
-        resourceKind: 'portrait',
-        resourceId,
-        relativePath,
-        prepare: payload => normalizePortrait(input.sourceFile, payload),
-        commit: prepared => {
-          setStage('publishing');
-          const inserted = this.portraits.insert(id, {
-            id: resourceId,
-            label: input.label,
-            relativePath,
-            position: input.position,
-            isPrimary: input.isPrimary ?? card.portraits.length === 0,
-            mimeType: prepared.mimeType,
-            byteSize: prepared.byteSize,
-            width: prepared.width,
-            height: prepared.height,
-          });
-          this.presentationChanged(id);
-          return inserted;
-        },
-        isReferenced: () => this.portraits.list(id).some(
-          item => item.id === resourceId && item.relativePath === relativePath,
-        ),
-      });
-      setStage('finalizing');
-      return resource;
+    input: ImportCharacterIllustrationInput,
+  ): Promise<CharacterIllustration> {
+    const card = this.assertMutableCard(id);
+    const resourceId = asCharacterIllustrationId(randomUUID());
+    const destination = this.paths.illustrationImportPath(
+      id,
+      resourceId,
+      path.extname(input.sourceFile),
+    );
+    const byteSize = await copyCharacterFile(
+      input.sourceFile,
+      destination,
+      CHARACTER_RESOURCE_LIMITS.illustrationBytes,
+    );
+    const resource = this.illustrations.insert(id, {
+      id: resourceId,
+      name: input.name,
+      isPrimary: input.isPrimary ?? card.illustrations.length === 0,
+      byteSize,
     });
+    this.presentationChanged(id);
+    return resource;
   }
 
-  exportPortrait(
+  async exportIllustration(
     id: CharacterCardId,
-    resourceId: CharacterPortraitId,
+    resourceId: CharacterIllustrationId,
     destinationDirectory: string,
   ): Promise<string> {
-    return this.operations.run(id, 'resourceExport', async ({ setStage }) => {
-      const card = this.assertMutableCard(id);
-      const resource = card.portraits.find(item => item.id === resourceId);
-      if (!resource) throw new Error(`portrait resource not found: ${resourceId}`);
-      setStage('validating');
-      const source = this.paths.resolve(id, false, resource.relativePath, 'portrait');
-      setStage('publishing');
-      const exported = await exportPathAtomically(
-        source,
-        destinationDirectory,
-        `${resource.id}.${portraitExtension(resource.mimeType)}`,
-        singleFileExportLimits(CHARACTER_RESOURCE_LIMITS.portraitOutputBytes),
-      );
-      setStage('finalizing');
-      return exported;
-    });
+    const card = this.getRequiredCard(id);
+    const resource = card.illustrations.find(item => item.id === resourceId);
+    if (!resource) throw new Error(`illustration resource not found: ${resourceId}`);
+    return exportCharacterResource(
+      this.paths.illustrationFile(id, resourceId),
+      destinationDirectory,
+      resource.name,
+    );
   }
 
-  deletePortrait(
+  async deleteIllustration(
     id: CharacterCardId,
-    resourceId: CharacterPortraitId,
-  ): Promise<CharacterPortrait | undefined> {
-    return this.operations.run(id, 'resourceDelete', async ({ setStage }) => {
-      this.assertMutableCard(id);
-      setStage('validating');
-      const current = this.portraits.list(id).find(item => item.id === resourceId);
-      if (!current) return undefined;
-      setStage('staging');
-      const deleted = this.trash.delete({
-        characterId: id,
-        resourceKind: 'portrait',
-        resourceId,
-        relativePath: current.relativePath,
-        commit: () => {
-          setStage('publishing');
-          const result = this.portraits.delete(id, resourceId);
-          if (!result) throw new Error(`portrait resource disappeared: ${resourceId}`);
-          this.presentationChanged(id);
-          return result;
-        },
-        isReferenced: () => this.portraits.list(id).some(item => item.id === resourceId),
-      });
-      setStage('finalizing');
-      return deleted;
-    });
+    resourceId: CharacterIllustrationId,
+  ): Promise<CharacterIllustration | undefined> {
+    this.assertMutableCard(id);
+    const current = this.illustrations.list(id).find(item => item.id === resourceId);
+    if (!current) return undefined;
+    await fs.promises.rm(this.paths.illustrationFile(id, resourceId));
+    const deleted = this.illustrations.delete(id, resourceId);
+    if (deleted) this.presentationChanged(id);
+    return deleted;
   }
 
-  publishVoice(
+  async publishVoice(
     id: CharacterCardId,
     input: CharacterVoiceReferenceInput & { id: CharacterVoiceReferenceId },
     bytes: Uint8Array,
+    extension: string,
   ): Promise<CharacterVoiceReference> {
-    return this.operations.run(id, 'voiceReferenceUpload', async ({ setStage }) => {
-      this.assertMutableCard(id);
-      setStage('validating');
-      this.paths.resolve(id, false, input.relativePath, 'voiceReference');
-      setStage('staging');
-      const published = await this.staging.publishPrepared({
-        characterId: id,
-        resourceKind: 'voiceReference',
-        resourceId: input.id,
-        relativePath: input.relativePath,
-        prepare: async payload => {
-          await fs.promises.writeFile(payload, bytes, { flag: 'wx' });
-          return validateVoiceReferenceFile(payload);
-        },
-        commit: prepared => {
-          setStage('publishing');
-          return this.voiceReferences.insert(id, {
-            ...input,
-            mimeType: prepared.mimeType,
-            byteSize: prepared.byteSize,
-            durationMs: prepared.durationMs,
-          });
-        },
-        isReferenced: () => this.voiceReferences.list(id).some(
-          item => item.id === input.id && item.relativePath === input.relativePath,
-        ),
+    this.assertMutableCard(id);
+    const destination = this.paths.voiceImportPath(id, input.id, extension);
+    await fs.promises.mkdir(path.dirname(destination), { recursive: true });
+    await fs.promises.writeFile(destination, bytes, { flag: 'wx' });
+    try {
+      const validated = await validateVoiceReferenceFile(destination);
+      return this.voiceReferences.insert(id, {
+        ...input,
+        mimeType: validated.mimeType,
+        byteSize: validated.byteSize,
+        durationMs: validated.durationMs,
       });
-      setStage('finalizing');
-      return published;
-    });
+    } catch (error) {
+      await fs.promises.rm(destination, { force: true });
+      throw error;
+    }
   }
 
-  importVoice(
+  async importVoice(
     id: CharacterCardId,
     input: ImportCharacterVoiceReferenceInput,
   ): Promise<CharacterVoiceReference> {
+    const card = this.assertMutableCard(id);
+    const validated = await validateVoiceReferenceFile(input.sourceFile);
     const resourceId = asCharacterVoiceReferenceId(randomUUID());
-    const relativePath = `voiceRefs/${resourceId}`;
-    return this.operations.run(id, 'resourceImport', async ({ setStage }) => {
-      const card = this.assertMutableCard(id);
-      setStage('validating');
-      this.paths.resolve(id, false, relativePath, 'voiceReference');
-      setStage('staging');
-      const resource = await this.staging.publishPrepared({
-        characterId: id,
-        resourceKind: 'voiceReference',
-        resourceId,
-        relativePath,
-        prepare: async payload => {
-          await copyFileBounded(
-            input.sourceFile,
-            payload,
-            CHARACTER_RESOURCE_LIMITS.voiceBytes,
-          );
-          return validateVoiceReferenceFile(payload);
-        },
-        commit: prepared => {
-          setStage('publishing');
-          return this.voiceReferences.insert(id, {
-            id: resourceId,
-            label: input.label,
-            relativePath,
-            promptText: input.promptText,
-            promptLang: input.promptLang,
-            position: input.position,
-            isPrimary: input.isPrimary ?? card.voiceReferences.length === 0,
-            mimeType: prepared.mimeType,
-            byteSize: prepared.byteSize,
-            durationMs: prepared.durationMs,
-          });
-        },
-        isReferenced: () => this.voiceReferences.list(id).some(
-          item => item.id === resourceId && item.relativePath === relativePath,
-        ),
-      });
-      setStage('finalizing');
-      return resource;
+    await copyCharacterFile(
+      input.sourceFile,
+      this.paths.voiceImportPath(id, resourceId, `.${validated.extension}`),
+      CHARACTER_RESOURCE_LIMITS.voiceBytes,
+    );
+    return this.voiceReferences.insert(id, {
+      id: resourceId,
+      name: input.name,
+      promptText: input.promptText,
+      promptLang: input.promptLang,
+      isPrimary: input.isPrimary ?? card.voiceReferences.length === 0,
+      mimeType: validated.mimeType,
+      byteSize: validated.byteSize,
+      durationMs: validated.durationMs,
     });
   }
 
-  exportVoice(
+  async exportVoice(
     id: CharacterCardId,
     resourceId: CharacterVoiceReferenceId,
     destinationDirectory: string,
   ): Promise<string> {
-    return this.operations.run(id, 'resourceExport', async ({ setStage }) => {
-      const card = this.assertMutableCard(id);
-      const resource = card.voiceReferences.find(item => item.id === resourceId);
-      if (!resource) throw new Error(`voice reference not found: ${resourceId}`);
-      setStage('validating');
-      const source = this.paths.resolve(id, false, resource.relativePath, 'voiceReference');
-      setStage('publishing');
-      const exported = await exportPathAtomically(
-        source,
-        destinationDirectory,
-        `${resource.id}.${voiceExtension(resource.mimeType)}`,
-        singleFileExportLimits(CHARACTER_RESOURCE_LIMITS.voiceBytes),
-      );
-      setStage('finalizing');
-      return exported;
-    });
+    const card = this.getRequiredCard(id);
+    const resource = card.voiceReferences.find(item => item.id === resourceId);
+    if (!resource) throw new Error(`voice reference not found: ${resourceId}`);
+    return exportCharacterResource(
+      this.paths.voiceFile(id, resourceId),
+      destinationDirectory,
+      resource.name,
+    );
   }
 
-  deleteVoice(
+  async deleteVoice(
     id: CharacterCardId,
     resourceId: CharacterVoiceReferenceId,
   ): Promise<CharacterVoiceReference | undefined> {
-    return this.operations.run(id, 'voiceReferenceDelete', async ({ setStage }) => {
-      this.assertMutableCard(id);
-      setStage('validating');
-      const current = this.voiceReferences.list(id).find(item => item.id === resourceId);
-      if (!current) return undefined;
-      setStage('staging');
-      const deleted = this.trash.delete({
-        characterId: id,
-        resourceKind: 'voiceReference',
-        resourceId,
-        relativePath: current.relativePath,
-        commit: () => {
-          setStage('publishing');
-          const result = this.voiceReferences.delete(id, resourceId);
-          if (!result) throw new Error(`voice reference disappeared: ${resourceId}`);
-          return result;
-        },
-        isReferenced: () => this.voiceReferences.list(id).some(
-          item => item.id === resourceId && item.relativePath === current.relativePath,
-        ),
-      });
-      setStage('finalizing');
-      return deleted;
-    });
+    this.assertMutableCard(id);
+    const current = this.voiceReferences.list(id).find(item => item.id === resourceId);
+    if (!current) return undefined;
+    await fs.promises.rm(this.paths.voiceFile(id, resourceId));
+    return this.voiceReferences.delete(id, resourceId);
+  }
+
+  private getRequiredCard(id: CharacterCardId): CharacterCard {
+    const card = this.getCard(id);
+    if (!card) throw new Error(`character card not found: ${id}`);
+    return card;
   }
 
   private assertMutableCard(id: CharacterCardId): CharacterCard {
-    const card = this.getCard(id);
-    if (!card) throw new Error(`character card not found: ${id}`);
+    const card = this.getRequiredCard(id);
     if (card.isBuiltin) throw new Error(`builtin character is read-only: ${id}`);
     return card;
   }
-}
-
-function live2dPackagePath(resource: CharacterLive2dVariant): string {
-  const expected = `live2d/${resource.id}/`;
-  if (!resource.entryPath.startsWith(expected)) {
-    throw new Error(`Live2D resource is not managed by C3b: ${resource.id}`);
-  }
-  return expected.slice(0, -1);
-}
-
-function live2dExportLimits() {
-  return {
-    maxFiles: CHARACTER_RESOURCE_LIMITS.live2dFiles,
-    maxSingleFileBytes: CHARACTER_RESOURCE_LIMITS.live2dSingleFileBytes,
-    maxTotalBytes: CHARACTER_RESOURCE_LIMITS.live2dTotalBytes,
-    maxFileBytes: CHARACTER_RESOURCE_LIMITS.live2dSingleFileBytes,
-  };
-}
-
-function singleFileExportLimits(maxBytes: number) {
-  return {
-    maxFiles: 1,
-    maxSingleFileBytes: maxBytes,
-    maxTotalBytes: maxBytes,
-    maxFileBytes: maxBytes,
-  };
-}
-
-function portraitExtension(mimeType: CharacterPortrait['mimeType']): string {
-  if (mimeType === 'image/jpeg') return 'jpg';
-  if (mimeType === 'image/webp') return 'webp';
-  return 'png';
-}
-
-function voiceExtension(mimeType: string): string {
-  if (mimeType === 'audio/mpeg') return 'mp3';
-  if (mimeType === 'audio/flac') return 'flac';
-  if (mimeType === 'audio/ogg') return 'ogg';
-  if (mimeType === 'audio/mp4') return 'm4a';
-  return 'wav';
 }

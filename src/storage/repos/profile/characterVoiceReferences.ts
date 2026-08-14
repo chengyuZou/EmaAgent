@@ -1,4 +1,4 @@
-// 持久化角色参考音频及其提示文本、稳定排序和主音频选择。
+// 持久化角色参考音频及其提示文本和主音频选择。
 
 import type {
   CharacterCardId,
@@ -9,17 +9,14 @@ import type { SqliteDb } from '../../database/database.js';
 export interface CharacterVoiceReferenceRow {
   id: string;
   character_card_id: string;
-  label: string;
-  relative_path: string;
+  name: string;
   prompt_text: string;
   prompt_lang: string;
-  position: number;
   is_primary: number;
   enabled: number;
   mime_type: string;
   byte_size: number | null;
   duration_ms: number | null;
-  content_sha256: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -27,24 +24,20 @@ export interface CharacterVoiceReferenceRow {
 export interface CharacterVoiceReferenceInsert {
   id: CharacterVoiceReferenceId;
   characterCardId: CharacterCardId;
-  label: string;
-  relativePath: string;
+  name: string;
   promptText: string;
   promptLang: string;
-  position?: number;
   isPrimary?: boolean;
   enabled?: boolean;
   mimeType: string;
   byteSize?: number | null;
   durationMs?: number | null;
-  contentSha256?: string | null;
   createdAt: number;
   updatedAt: number;
 }
 
 export interface CharacterVoiceReferenceUpdate {
-  label?: string;
-  position?: number;
+  name?: string;
   enabled?: boolean;
 }
 
@@ -58,24 +51,21 @@ export class CharacterVoiceReferencesRepo {
       }
       this.db.prepare(
         `INSERT INTO character_voice_references (
-           id, character_card_id, label, relative_path, prompt_text,
-           prompt_lang, position, is_primary, enabled, mime_type,
-           byte_size, duration_ms, content_sha256, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           id, character_card_id, name, prompt_text,
+           prompt_lang, is_primary, enabled, mime_type,
+           byte_size, duration_ms, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(
         input.id,
         input.characterCardId,
-        input.label,
-        input.relativePath,
+        input.name,
         input.promptText,
         input.promptLang,
-        input.position ?? 0,
         input.isPrimary ? 1 : 0,
         input.enabled === false ? 0 : 1,
         input.mimeType,
         input.byteSize ?? null,
         input.durationMs ?? null,
-        input.contentSha256 ?? null,
         input.createdAt,
         input.updatedAt,
       );
@@ -96,7 +86,7 @@ export class CharacterVoiceReferencesRepo {
     return this.db.prepare(
       `SELECT * FROM character_voice_references
        WHERE character_card_id = ?
-       ORDER BY position ASC, id ASC`,
+       ORDER BY created_at ASC, id ASC`,
     ).all(characterCardId) as CharacterVoiceReferenceRow[];
   }
 
@@ -107,7 +97,7 @@ export class CharacterVoiceReferencesRepo {
     return this.db.prepare(
       `SELECT * FROM character_voice_references
        WHERE character_card_id IN (${placeholders})
-       ORDER BY character_card_id ASC, position ASC, id ASC`,
+       ORDER BY character_card_id ASC, created_at ASC, id ASC`,
     ).all(...characterCardIds) as CharacterVoiceReferenceRow[];
   }
 
@@ -143,24 +133,21 @@ export class CharacterVoiceReferencesRepo {
       const current = this.findById(characterCardId, id);
       if (!current) return undefined;
 
-      const label = patch.label ?? current.label;
-      const position = patch.position ?? current.position;
+      const name = patch.name ?? current.name;
       const enabled = patch.enabled ?? current.enabled === 1;
-      const changed = label !== current.label
-        || position !== current.position
+      const changed = name !== current.name
         || enabled !== (current.enabled === 1);
       if (!changed) return current;
       const revisionAt = Math.max(updatedAt, current.updated_at + 1);
 
       this.db.prepare(
         `UPDATE character_voice_references
-         SET label = ?, position = ?, enabled = ?,
+         SET name = ?, enabled = ?,
              is_primary = CASE WHEN ? = 1 THEN is_primary ELSE 0 END,
              updated_at = ?
          WHERE character_card_id = ? AND id = ?`,
       ).run(
-        label,
-        position,
+        name,
         enabled ? 1 : 0,
         enabled ? 1 : 0,
         revisionAt,
@@ -207,7 +194,7 @@ export class CharacterVoiceReferencesRepo {
        WHERE id = (
          SELECT id FROM character_voice_references
          WHERE character_card_id = ? AND enabled = 1
-         ORDER BY position ASC, id ASC
+         ORDER BY created_at ASC, id ASC
          LIMIT 1
        )`,
     ).run(updatedAt, characterCardId);

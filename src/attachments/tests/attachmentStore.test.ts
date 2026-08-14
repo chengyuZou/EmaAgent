@@ -32,8 +32,8 @@ beforeEach(() => {
   `).run(sessionId);
   database.sqlite.prepare(`
     INSERT INTO turns (id, session_id, trigger_type, execution_profile, narrative_policy,
-      status, user_input, started_at)
-    VALUES (?, ?, 'userMessage', 'chat', 'off', 'completed', '', 1)
+      status, created_at)
+    VALUES (?, ?, 'userMessage', 'chat', 'off', 'completed', 1)
   `).run(turnId, sessionId);
   store = new AttachmentStore({ repo: new AttachmentRepo(database.sqlite), dataDir });
 });

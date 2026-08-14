@@ -26,7 +26,7 @@ export function readLive2dVocabulary(filePath: string): Live2dVocabulary {
 function readRuntimeConfig(filePath: string): Record<string, unknown> {
   try {
     const stat = fs.statSync(filePath);
-    if (!stat.isFile() || stat.size > CHARACTER_RESOURCE_LIMITS.live2dManifestBytes) {
+    if (!stat.isFile() || stat.size > CHARACTER_RESOURCE_LIMITS.live2dRuntimeConfigBytes) {
       throw new Error('runtime config is not a bounded file');
     }
     const parsed: unknown = JSON.parse(fs.readFileSync(filePath, 'utf8'));

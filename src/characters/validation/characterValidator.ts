@@ -1,31 +1,27 @@
-// 将 Prompt 与三类表现资源检查汇总为唯一 CharacterHealth 投影。
+// 汇总角色 Prompt 与三类资源的真实可用性，输出主窗口降级顺序。
 
 import fs from 'node:fs';
 import type {
+  CharacterIllustrationId,
   CharacterLive2dId,
-  CharacterPortraitId,
   CharacterVoiceReferenceId,
 } from '@ema-agent/ids';
-import { CharacterResourcePathError } from '../errors.js';
 import type { CharacterCard } from '../types.js';
-import { inspectPortraitFile } from '../portraits/portraitValidator.js';
-import type { CharacterResourceKind } from '../resources/characterResourcePaths.js';
+import { findLive2dPackageFilesSync } from '../live2d/live2dValidator.js';
 import { CharacterResourcePaths } from '../resources/characterResourcePaths.js';
+import { CHARACTER_RESOURCE_LIMITS } from '../resources/characterResourceLimits.js';
 
 export type CharacterHealthStatus = 'healthy' | 'degraded' | 'invalid';
-export type CharacterPresentation = 'live2d' | 'portrait' | 'placeholder';
+export type CharacterPresentation = 'live2d' | 'illustration' | 'placeholder';
 export type CharacterHealthIssueSeverity = 'error' | 'warning';
 
 export type CharacterHealthIssueCode =
   | 'prompt_empty'
-  | 'resource_path_invalid'
   | 'resource_missing'
-  | 'portrait_format_unsupported'
-  | 'portrait_too_large'
-  | 'portrait_dimensions_invalid'
-  | 'portrait_metadata_mismatch'
+  | 'illustration_too_large'
+  | 'live2d_invalid'
   | 'live2d_unavailable'
-  | 'portrait_unavailable'
+  | 'illustration_unavailable'
   | 'voice_reference_unavailable';
 
 export interface CharacterHealthIssue {
@@ -36,14 +32,8 @@ export interface CharacterHealthIssue {
 }
 
 export type CharacterPresentationCandidate =
-  | {
-      readonly kind: 'live2d';
-      readonly resourceId: CharacterLive2dId;
-    }
-  | {
-      readonly kind: 'portrait';
-      readonly resourceId: CharacterPortraitId;
-    };
+  | { readonly kind: 'live2d'; readonly resourceId: CharacterLive2dId }
+  | { readonly kind: 'illustration'; readonly resourceId: CharacterIllustrationId };
 
 export interface CharacterHealth {
   readonly characterId: CharacterCard['id'];
@@ -51,10 +41,9 @@ export interface CharacterHealth {
   readonly executionAvailable: boolean;
   readonly presentation: CharacterPresentation;
   readonly selectedLive2dVariantId: CharacterLive2dId | null;
-  readonly selectedPortraitId: CharacterPortraitId | null;
+  readonly selectedIllustrationId: CharacterIllustrationId | null;
   readonly selectedVoiceReferenceId: CharacterVoiceReferenceId | null;
   readonly voiceReferenceAvailable: boolean;
-  /** 已通过文件边界检查的表现资源，顺序就是主窗口的降级顺序。 */
   readonly presentationCandidates: readonly CharacterPresentationCandidate[];
   readonly issues: readonly CharacterHealthIssue[];
 }
@@ -62,7 +51,7 @@ export interface CharacterHealth {
 export class CharacterValidator {
   constructor(private readonly paths: CharacterResourcePaths) {}
 
-  async inspect(card: CharacterCard, deep = false): Promise<CharacterHealth> {
+  async inspect(card: CharacterCard): Promise<CharacterHealth> {
     const issues: CharacterHealthIssue[] = [];
     if (card.systemPrompt.trim().length === 0) {
       issues.push({
@@ -72,44 +61,54 @@ export class CharacterValidator {
       });
     }
 
-    const live2dCandidates = orderedEnabled(card.live2dVariants)
-      .filter((resource) => this.inspectPath(
-        card,
-        resource.id,
-        resource.entryPath,
-        'live2d',
-        issues,
-      ) !== null);
-    const portraitCandidates: CharacterCard['portraits'][number][] = [];
-    for (const resource of orderedEnabled(card.portraits)) {
-      const absolutePath = this.inspectPath(
-        card,
-        resource.id,
-        resource.relativePath,
-        'portrait',
-        issues,
-      );
-      if (!absolutePath) continue;
-      const failure = await inspectPortraitFile(resource, absolutePath, deep);
-      if (failure) {
+    const live2dCandidates = orderedEnabled(card.live2dVariants).filter(resource => {
+      const directory = this.paths.live2dDirectory(card.id, resource.id);
+      if (!isDirectory(directory)) {
+        pushMissing(issues, resource.id, directory);
+        return false;
+      }
+      try {
+        findLive2dPackageFilesSync(directory);
+        return true;
+      } catch {
         issues.push({
+          code: 'live2d_invalid',
           severity: 'warning',
           resourceId: resource.id,
-          ...failure,
+          message: 'Live2D 目录缺少唯一的模型入口或 runtime-config.json。',
         });
-        continue;
+        return false;
       }
-      portraitCandidates.push(resource);
-    }
+    });
+
+    const illustrationCandidates = orderedEnabled(card.illustrations).filter(resource => {
+      let file: string;
+      try {
+        file = this.paths.illustrationFile(card.id, resource.id);
+      } catch {
+        pushMissing(issues, resource.id, String(resource.id));
+        return false;
+      }
+      if (fs.statSync(file).size > CHARACTER_RESOURCE_LIMITS.illustrationBytes) {
+        issues.push({
+          code: 'illustration_too_large',
+          severity: 'warning',
+          resourceId: resource.id,
+          message: `角色立绘超过 ${CHARACTER_RESOURCE_LIMITS.illustrationBytes} 字节限制。`,
+        });
+        return false;
+      }
+      return true;
+    });
 
     const voiceCandidates = orderedEnabled(card.voiceReferences);
-    const voice = voiceCandidates.find((resource) => this.inspectPath(
-      card,
-      resource.id,
-      resource.relativePath,
-      'voiceReference',
-      issues,
-    ) !== null);
+    const voice = voiceCandidates.find(resource => {
+      try {
+        return fs.statSync(this.paths.voiceFile(card.id, resource.id)).isFile();
+      } catch {
+        return false;
+      }
+    });
 
     if (live2dCandidates.length === 0) {
       issues.push({
@@ -118,9 +117,9 @@ export class CharacterValidator {
         message: '没有可用的 Live2D 资源，将尝试使用角色立绘。',
       });
     }
-    if (portraitCandidates.length === 0) {
+    if (illustrationCandidates.length === 0) {
       issues.push({
-        code: 'portrait_unavailable',
+        code: 'illustration_unavailable',
         severity: 'warning',
         message: '没有可用的角色立绘，主窗口只能显示占位状态。',
       });
@@ -133,86 +132,63 @@ export class CharacterValidator {
       });
     }
 
-    const executionAvailable = !issues.some((issue) => issue.severity === 'error');
+    const executionAvailable = !issues.some(issue => issue.severity === 'error');
     const presentationCandidates: CharacterPresentationCandidate[] = [
-      ...live2dCandidates.map((resource) => ({
-        kind: 'live2d' as const,
-        resourceId: resource.id,
-      })),
-      ...portraitCandidates.map((resource) => ({
-        kind: 'portrait' as const,
+      ...live2dCandidates.map(resource => ({ kind: 'live2d' as const, resourceId: resource.id })),
+      ...illustrationCandidates.map(resource => ({
+        kind: 'illustration' as const,
         resourceId: resource.id,
       })),
     ];
     return {
       characterId: card.id,
-      status: !executionAvailable
-        ? 'invalid'
-        : issues.length > 0 ? 'degraded' : 'healthy',
+      status: !executionAvailable ? 'invalid' : issues.length > 0 ? 'degraded' : 'healthy',
       executionAvailable,
       presentation: live2dCandidates.length > 0
         ? 'live2d'
-        : portraitCandidates.length > 0 ? 'portrait' : 'placeholder',
+        : illustrationCandidates.length > 0 ? 'illustration' : 'placeholder',
       selectedLive2dVariantId: live2dCandidates[0]?.id ?? null,
-      selectedPortraitId: portraitCandidates[0]?.id ?? null,
+      selectedIllustrationId: illustrationCandidates[0]?.id ?? null,
       selectedVoiceReferenceId: voice?.id ?? null,
       voiceReferenceAvailable: voice !== undefined,
       presentationCandidates,
       issues,
     };
   }
+}
 
-  private inspectPath(
-    card: CharacterCard,
-    resourceId: string,
-    relativePath: string,
-    kind: CharacterResourceKind,
-    issues: CharacterHealthIssue[],
-  ): string | null {
-    let absolutePath: string;
-    try {
-      absolutePath = this.paths.resolve(card.id, card.isBuiltin, relativePath, kind);
-    } catch (error) {
-      issues.push({
-        code: 'resource_path_invalid',
-        severity: 'warning',
-        resourceId,
-        message: error instanceof CharacterResourcePathError
-          ? error.message
-          : `角色资源路径无效：${relativePath}`,
-      });
-      return null;
-    }
-    try {
-      if (fs.statSync(absolutePath).isFile()) return absolutePath;
-    } catch {
-      // 文件可能在 exists/stat 之间被删，统一投影为 missing。
-    }
-    {
-      issues.push({
-        code: 'resource_missing',
-        severity: 'warning',
-        resourceId,
-        message: `角色资源文件不存在：${relativePath}`,
-      });
-      return null;
-    }
+function isDirectory(directory: string): boolean {
+  try {
+    return fs.statSync(directory).isDirectory();
+  } catch {
+    return false;
   }
+}
+
+function pushMissing(
+  issues: CharacterHealthIssue[],
+  resourceId: string,
+  file: string,
+): void {
+  issues.push({
+    code: 'resource_missing',
+    severity: 'warning',
+    resourceId,
+    message: `角色资源不存在：${file}`,
+  });
 }
 
 function orderedEnabled<T extends {
   id: string;
   enabled: boolean;
   isPrimary: boolean;
-  position: number;
-}>(
-  values: readonly T[],
-): T[] {
+  createdAt: number;
+}>(values: readonly T[]): T[] {
   return values
-    .filter((value) => value.enabled)
+    .filter(value => value.enabled)
     .sort((left, right) => (
       Number(right.isPrimary) - Number(left.isPrimary)
-      || left.position - right.position
+      || left.createdAt - right.createdAt
       || left.id.localeCompare(right.id)
     ));
 }

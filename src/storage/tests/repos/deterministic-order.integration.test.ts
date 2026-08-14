@@ -142,8 +142,8 @@ function insertSessionAndTurn(database: Database): void {
   `).run();
   database.sqlite.prepare(`
     INSERT INTO turns
-      (id, session_id, trigger_type, execution_profile, narrative_policy, status, user_input, started_at)
-    VALUES ('turn-a', 'session-a', 'userMessage', 'work', 'off', 'completed', 'test', 1)
+      (id, session_id, trigger_type, execution_profile, narrative_policy, status, created_at)
+    VALUES ('turn-a', 'session-a', 'userMessage', 'work', 'off', 'completed', 1)
   `).run();
 }
 

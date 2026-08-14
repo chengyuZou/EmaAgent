@@ -5,7 +5,6 @@ import type { ProtectedDeleteResult } from './mutation-results.js';
 export interface CharacterCardRow {
   id: string;
   name: string;
-  version: string;
   description: string | null;
   system_prompt: string;
   emotion_vocab_json: string;
@@ -19,7 +18,6 @@ export interface CharacterCardRow {
 export interface CharacterCardInsert {
   id: CharacterCardId;
   name: string;
-  version?: string;
   description?: string | null;
   systemPrompt: string;
   emotionVocabJson?: string;
@@ -33,7 +31,6 @@ export interface CharacterCardInsert {
 /** 普通编辑允许修改的字段；激活状态和内置标记由专用流程管理。 */
 export interface CharacterCardUpdate {
   name?: string;
-  version?: string;
   description?: string | null;
   systemPrompt?: string;
   emotionVocabJson?: string;
@@ -61,15 +58,14 @@ export class CharacterCardsRepo {
     this.db
       .prepare(
         `INSERT INTO character_cards
-           (id, name, version, description, system_prompt, 
+           (id, name, description, system_prompt, 
             emotion_vocab_json, motion_vocab_json, is_active,
             is_builtin, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         c.id,
         c.name,
-        c.version ?? 'v1.0.0',
         c.description ?? null,
         c.systemPrompt,
         c.emotionVocabJson ?? '[]',
@@ -130,7 +126,6 @@ export class CharacterCardsRepo {
     const values: unknown[] = [];
 
     if (patch.name !== undefined)                { fields.push('name = ?'); values.push(patch.name); }
-    if (patch.version !== undefined)             { fields.push('version = ?'); values.push(patch.version); }
     if (patch.description !== undefined)         { fields.push('description = ?'); values.push(patch.description); }
     if (patch.systemPrompt !== undefined)        { fields.push('system_prompt = ?'); values.push(patch.systemPrompt); }
     if (patch.emotionVocabJson !== undefined)    { fields.push('emotion_vocab_json = ?'); values.push(patch.emotionVocabJson); }

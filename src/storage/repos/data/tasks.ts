@@ -337,7 +337,7 @@ export class TasksRepo {
         `SELECT COUNT(*)
            FROM turns
           WHERE session_id = ?
-            AND started_at > ?`,
+            AND created_at > ?`,
       ).pluck().get(sessionId, since) as number;
       if (turnCount < minimumTurns) return false;
 

@@ -1,0 +1,72 @@
+{
+  "name": "@ema-agent/local-host",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "rimraf dist && tsc -p tsconfig.json && node scripts/finalize-build.mjs && node --input-type=module -e \"await import('./dist/index.js')\"",
+    "start": "node dist/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@ema-agent/backup": "workspace:*",
+    "@ema-agent/ids": "workspace:*",
+    "@ema-agent/events": "workspace:*",
+    "@ema-agent/turn": "workspace:*",
+    "@ema-agent/context": "workspace:*",
+    "@ema-agent/provider": "workspace:*",
+    "@ema-agent/credential": "workspace:*",
+    "@ema-agent/storage": "workspace:*",
+    "@ema-agent/token": "workspace:*",
+    "@ema-agent/llm": "workspace:*",
+    "@ema-agent/usage": "workspace:*",
+    "@ema-agent/prompts": "workspace:*",
+    "@ema-agent/characters": "workspace:*",
+    "@ema-agent/session": "workspace:*",
+    "@ema-agent/settings": "workspace:*",
+    "@ema-agent/emotion": "workspace:*",
+    "@ema-agent/agent": "workspace:*",
+    "@ema-agent/turn-execution": "workspace:*",
+    "@ema-agent/tasks": "workspace:*",
+    "@ema-agent/embed": "workspace:*",
+    "@ema-agent/rerank": "workspace:*",
+    "@ema-agent/narrative": "workspace:*",
+    "@ema-agent/permission": "workspace:*",
+    "@ema-agent/tools": "workspace:*",
+    "@ema-agent/tool-builtin": "workspace:*",
+    "@ema-agent/sandbox": "workspace:*",
+    "@ema-agent/knowledge": "workspace:*",
+    "@ema-agent/memory": "workspace:*",
+    "@ema-agent/tts": "workspace:*",
+    "@ema-agent/stt": "workspace:*",
+    "@ema-agent/vision": "workspace:*",
+    "@ema-agent/attachments": "workspace:*",
+    "@ema-agent/skills":    "workspace:*",
+    "@ema-agent/mcp": "workspace:*",
+    "@ema-agent/system": "workspace:*",
+    "@ema-agent/git": "workspace:*",
+    "@hono/node-server": "^1.14.3",
+    "fflate": "^0.8.2",
+    "hono": "^4.7.10",
+    "zod": "^3.24.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "rimraf": "^5.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^2.0.0"
+  }
+}

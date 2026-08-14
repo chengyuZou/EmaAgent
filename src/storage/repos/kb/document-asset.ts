@@ -40,11 +40,10 @@ export interface DocumentAssetInsert {
 
 export interface AssetPage {
   items:      ReturnType<typeof rowToAsset>[];
-  nextCursor: string | null;   // V1 不透明复合 cursor（null = 结束）
+  nextCursor: string | null;   // 不透明复合 cursor（null = 结束）
 }
 
-interface DocumentAssetCursorV1 {
-  v: 1;
+interface DocumentAssetCursor {
   a: number;
   i: string;
 }
@@ -232,15 +231,15 @@ export class DocumentAssetRepo {
 }
 
 function encodeDocumentAssetCursor(row: Pick<DocumentAssetRow, 'created_at' | 'id'>): string {
-  const payload: DocumentAssetCursorV1 = { v: 1, a: row.created_at, i: row.id };
+  const payload: DocumentAssetCursor = { a: row.created_at, i: row.id };
   return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
 }
 
-function parseDocumentAssetCursor(cursor: string | undefined): DocumentAssetCursorV1 | null {
+function parseDocumentAssetCursor(cursor: string | undefined): DocumentAssetCursor | null {
   if (cursor === undefined) return null;
   try {
     const decoded = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as unknown;
-    if (!isDocumentAssetCursorV1(decoded)) {
+    if (!isDocumentAssetCursor(decoded)) {
       throw new Error('cursor payload schema mismatch');
     }
     return decoded;
@@ -249,11 +248,10 @@ function parseDocumentAssetCursor(cursor: string | undefined): DocumentAssetCurs
   }
 }
 
-function isDocumentAssetCursorV1(value: unknown): value is DocumentAssetCursorV1 {
+function isDocumentAssetCursor(value: unknown): value is DocumentAssetCursor {
   if (typeof value !== 'object' || value === null) return false;
   const candidate = value as Record<string, unknown>;
-  return candidate.v === 1
-    && typeof candidate.a === 'number'
+  return typeof candidate.a === 'number'
     && Number.isSafeInteger(candidate.a)
     && typeof candidate.i === 'string'
     && candidate.i.length > 0

@@ -1,5 +1,5 @@
 import type { CharacterCard } from './types.js';
-import { assertCharacterPrompt } from './validation/characterPromptValidation.js';
+import { CharacterPromptInvalidError } from './errors.js';
 
 export interface CharacterPrompt {
   prompt: string;
@@ -16,6 +16,16 @@ export function buildCharacterPrompt(
     prompt: card.systemPrompt,
     presentation: buildActProtocolPrompt(card),
   };
+}
+
+/** 空角色 Prompt 会让新 Turn 失去身份，因此在激活与装配边界直接拒绝。 */
+export function assertCharacterPrompt(
+  systemPrompt: string,
+  characterId?: string,
+): void {
+  if (systemPrompt.trim().length === 0) {
+    throw new CharacterPromptInvalidError(characterId);
+  }
 }
 
 function buildActProtocolPrompt(card: CharacterCard): string {

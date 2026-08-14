@@ -36,7 +36,7 @@ CREATE TABLE agent_runs (
 );
 
 CREATE TABLE attachment_vision_descriptions (
-  attachment_id       TEXT NOT NULL REFERENCES turn_attachments(id) ON DELETE CASCADE,
+  attachment_id       TEXT NOT NULL REFERENCES attachments(id) ON DELETE CASCADE,
   provider_config_id  TEXT NOT NULL,
   model_id            TEXT NOT NULL,
   instruction_revision TEXT NOT NULL,
@@ -124,7 +124,7 @@ CREATE TABLE messages (
   turn_id     TEXT REFERENCES turns(id) ON DELETE SET NULL,
   role        TEXT NOT NULL CHECK(role IN ('system','user','assistant')),
   kind        TEXT NOT NULL DEFAULT 'normal'
-              CHECK(kind IN ('normal','context','tool_results','summary','persona_reminder','narrative_context')),
+              CHECK(kind IN ('normal','tool_results','summary')),
   blocks_json TEXT NOT NULL,
   interrupted INTEGER NOT NULL DEFAULT 0,
   created_at  INTEGER NOT NULL);
@@ -151,18 +151,21 @@ CREATE TABLE sessions (
   id                   TEXT PRIMARY KEY,
   title                TEXT NOT NULL,
   workspace_root       TEXT,
-  group_label          TEXT,
   pinned               INTEGER NOT NULL DEFAULT 0,
-  pinned_at            INTEGER,
   archived_at          INTEGER,
-  parent_session_id    TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+  forked_from_session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+  forked_from_turn_id  TEXT REFERENCES turns(id) ON DELETE SET NULL,
   last_viewed_at       INTEGER,
   last_activity_at     INTEGER NOT NULL DEFAULT 0,
   created_at           INTEGER NOT NULL,
-  updated_at           INTEGER NOT NULL
-, preferred_provider_config_id TEXT, preferred_model_id TEXT, execution_profile TEXT NOT NULL DEFAULT 'chat'
-  CHECK(execution_profile IN ('chat', 'work')), narrative_policy TEXT NOT NULL DEFAULT 'auto'
-  CHECK(narrative_policy IN ('auto', 'always', 'off')));
+  updated_at           INTEGER NOT NULL,
+  preferred_provider_config_id TEXT,
+  preferred_model_id   TEXT,
+  execution_profile    TEXT NOT NULL DEFAULT 'chat'
+                       CHECK(execution_profile IN ('chat', 'work')),
+  narrative_policy     TEXT NOT NULL DEFAULT 'auto'
+                       CHECK(narrative_policy IN ('auto', 'always', 'off'))
+);
 
 CREATE TABLE task_context_state (
   session_id       TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
@@ -226,7 +229,7 @@ CREATE TABLE tool_executions (
   updated_at     INTEGER NOT NULL
 , agent_run_id TEXT REFERENCES agent_runs(id) ON DELETE SET NULL);
 
-CREATE TABLE turn_attachments (
+CREATE TABLE attachments (
   id                 TEXT PRIMARY KEY,
   turn_id            TEXT NOT NULL REFERENCES turns(id)    ON DELETE CASCADE,
   session_id         TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
@@ -244,7 +247,8 @@ CREATE TABLE turn_attachments (
   CHECK ((kind = 'image') = (image_path IS NOT NULL))
 );
 
-CREATE TABLE turn_audio_merged (
+-- Speech 包拥有的 TTS 输出：整轮合并音频与逐句分段。
+CREATE TABLE speech_outputs (
   turn_id       TEXT PRIMARY KEY REFERENCES turns(id) ON DELETE CASCADE,
   session_id    TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   storage_path  TEXT NOT NULL,
@@ -255,7 +259,7 @@ CREATE TABLE turn_audio_merged (
   created_at    INTEGER NOT NULL
 );
 
-CREATE TABLE turn_audio_segments (
+CREATE TABLE speech_segments (
   id             TEXT PRIMARY KEY,
   turn_id        TEXT NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
   session_id     TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
@@ -269,24 +273,26 @@ CREATE TABLE turn_audio_segments (
   UNIQUE(turn_id, sentence_index)
 );
 
+-- Turn 排序、分页、时长与 fork 截断一律使用 created_at（创建即启动，无独立 pending 态）。
 CREATE TABLE turns (
   id                   TEXT PRIMARY KEY,
   session_id           TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   status               TEXT NOT NULL CHECK(status IN ('pending','running','completed','failed','aborted')),
-  user_input           TEXT NOT NULL,
-  started_at           INTEGER NOT NULL,
-  completed_at         INTEGER,
-  error_code           TEXT,
-  error_message        TEXT,
-  iterations           INTEGER NOT NULL DEFAULT 0,
-  usage_input_tokens   INTEGER NOT NULL DEFAULT 0,
-  usage_output_tokens  INTEGER NOT NULL DEFAULT 0,
   trigger_type         TEXT NOT NULL DEFAULT 'userMessage'
                        CHECK(trigger_type IN ('userMessage','backgroundProcessCompleted')),
   execution_profile    TEXT NOT NULL DEFAULT 'chat'
                        CHECK(execution_profile IN ('chat','work')),
   narrative_policy     TEXT NOT NULL DEFAULT 'auto'
-                       CHECK(narrative_policy IN ('auto','always','off'))
+                       CHECK(narrative_policy IN ('auto','always','off')),
+  provider_config_id   TEXT,
+  model_id             TEXT,
+  iterations           INTEGER NOT NULL DEFAULT 0,
+  usage_input_tokens   INTEGER NOT NULL DEFAULT 0,
+  usage_output_tokens  INTEGER NOT NULL DEFAULT 0,
+  created_at           INTEGER NOT NULL,
+  completed_at         INTEGER,
+  error_code           TEXT,
+  error_message        TEXT
 );
 
 CREATE TABLE "usage_records" (
@@ -332,11 +338,11 @@ CREATE INDEX idx_agent_runs_task
 CREATE INDEX idx_attachment_vision_descriptions_lru
   ON attachment_vision_descriptions(last_accessed_at ASC, attachment_id ASC);
 
-CREATE INDEX idx_audio_merged_session ON turn_audio_merged(session_id, created_at DESC);
+CREATE INDEX idx_speech_outputs_session ON speech_outputs(session_id, created_at DESC);
 
-CREATE INDEX idx_audio_seg_session ON turn_audio_segments(session_id, created_at DESC);
+CREATE INDEX idx_speech_seg_session ON speech_segments(session_id, created_at DESC);
 
-CREATE INDEX idx_audio_seg_turn    ON turn_audio_segments(turn_id, sentence_index);
+CREATE INDEX idx_speech_seg_turn    ON speech_segments(turn_id, sentence_index);
 
 CREATE INDEX idx_background_processes_completion
   ON background_processes(session_id, model_notified_at, completion_claimed_at, completed_at, id);
@@ -381,7 +387,9 @@ CREATE INDEX idx_pending_fragments_session
 CREATE INDEX idx_sessions_activity
   ON sessions(pinned DESC, last_activity_at DESC, id DESC);
 
-CREATE INDEX idx_sessions_list ON sessions(pinned DESC, group_label, last_activity_at DESC);
+CREATE INDEX idx_sessions_workspace
+  ON sessions(workspace_root, last_activity_at DESC, id DESC)
+  WHERE workspace_root IS NOT NULL;
 
 CREATE INDEX idx_task_dependencies_blocked
   ON task_dependencies(blocked_task_id, blocker_task_id);
@@ -405,18 +413,18 @@ CREATE INDEX idx_tool_executions_recovery
 CREATE INDEX idx_tool_executions_turn
   ON tool_executions(turn_id, created_at, call_id);
 
-CREATE INDEX idx_turn_attachments_session ON turn_attachments(session_id, created_at DESC);
+CREATE INDEX idx_attachments_session ON attachments(session_id, created_at DESC);
 
-CREATE INDEX idx_turn_attachments_turn    ON turn_attachments(turn_id);
+CREATE INDEX idx_attachments_turn    ON attachments(turn_id);
 
 CREATE INDEX idx_turns_running_by_session
   ON turns(session_id)
   WHERE status IN ('pending', 'running');
 
-CREATE INDEX idx_turns_session ON turns(session_id, started_at);
+CREATE INDEX idx_turns_session ON turns(session_id, created_at);
 
 CREATE INDEX idx_turns_session_latest
-  ON turns(session_id, started_at DESC, id DESC);
+  ON turns(session_id, created_at DESC, id DESC);
 
 CREATE INDEX idx_turns_status ON turns(status);
 
@@ -572,77 +580,77 @@ BEGIN
 END;
 
 CREATE TRIGGER trg_attachments_owner_insert
-BEFORE INSERT ON turn_attachments
+BEFORE INSERT ON attachments
 WHEN NOT EXISTS (
   SELECT 1 FROM turns t
    WHERE t.id = NEW.turn_id AND t.session_id = NEW.session_id
 )
 BEGIN
-  SELECT RAISE(ABORT, 'ownership_violation: turn_attachments.turn_id');
+  SELECT RAISE(ABORT, 'ownership_violation: attachments.turn_id');
 END;
 
 CREATE TRIGGER trg_attachments_owner_update
-BEFORE UPDATE OF session_id, turn_id ON turn_attachments
+BEFORE UPDATE OF session_id, turn_id ON attachments
 BEGIN
   SELECT CASE
     WHEN NEW.session_id <> OLD.session_id
-    THEN RAISE(ABORT, 'ownership_violation: turn_attachments.session_id is immutable')
+    THEN RAISE(ABORT, 'ownership_violation: attachments.session_id is immutable')
   END;
   SELECT CASE
     WHEN NOT EXISTS (
       SELECT 1 FROM turns t
        WHERE t.id = NEW.turn_id AND t.session_id = NEW.session_id
-    ) THEN RAISE(ABORT, 'ownership_violation: turn_attachments.turn_id')
+    ) THEN RAISE(ABORT, 'ownership_violation: attachments.turn_id')
   END;
 END;
 
-CREATE TRIGGER trg_audio_merged_owner_insert
-BEFORE INSERT ON turn_audio_merged
+CREATE TRIGGER trg_speech_outputs_owner_insert
+BEFORE INSERT ON speech_outputs
 WHEN NOT EXISTS (
   SELECT 1 FROM turns t
    WHERE t.id = NEW.turn_id AND t.session_id = NEW.session_id
 )
 BEGIN
-  SELECT RAISE(ABORT, 'ownership_violation: turn_audio_merged.turn_id');
+  SELECT RAISE(ABORT, 'ownership_violation: speech_outputs.turn_id');
 END;
 
-CREATE TRIGGER trg_audio_merged_owner_update
-BEFORE UPDATE OF session_id, turn_id ON turn_audio_merged
+CREATE TRIGGER trg_speech_outputs_owner_update
+BEFORE UPDATE OF session_id, turn_id ON speech_outputs
 BEGIN
   SELECT CASE
     WHEN NEW.session_id <> OLD.session_id
-    THEN RAISE(ABORT, 'ownership_violation: turn_audio_merged.session_id is immutable')
+    THEN RAISE(ABORT, 'ownership_violation: speech_outputs.session_id is immutable')
   END;
   SELECT CASE
     WHEN NOT EXISTS (
       SELECT 1 FROM turns t
        WHERE t.id = NEW.turn_id AND t.session_id = NEW.session_id
-    ) THEN RAISE(ABORT, 'ownership_violation: turn_audio_merged.turn_id')
+    ) THEN RAISE(ABORT, 'ownership_violation: speech_outputs.turn_id')
   END;
 END;
 
-CREATE TRIGGER trg_audio_segments_owner_insert
-BEFORE INSERT ON turn_audio_segments
+CREATE TRIGGER trg_speech_segments_owner_insert
+BEFORE INSERT ON speech_segments
 WHEN NOT EXISTS (
   SELECT 1 FROM turns t
    WHERE t.id = NEW.turn_id AND t.session_id = NEW.session_id
 )
 BEGIN
-  SELECT RAISE(ABORT, 'ownership_violation: turn_audio_segments.turn_id');
+  SELECT RAISE(ABORT, 'ownership_violation: speech_segments.turn_id');
 END;
 
-CREATE TRIGGER trg_audio_segments_owner_update
-BEFORE UPDATE OF session_id, turn_id ON turn_audio_segments
+CREATE TRIGGER trg_speech_segments_owner_update
+BEFORE UPDATE OF session_id, turn_id ON speech_segments
 BEGIN
   SELECT CASE
     WHEN NEW.session_id <> OLD.session_id
-    THEN RAISE(ABORT, 'ownership_violation: turn_audio_segments.session_id is immutable')
+    THEN RAISE(ABORT, 'ownership_violation: speech_segments.session_id is immutable')
   END;
   SELECT CASE
     WHEN NOT EXISTS (
       SELECT 1 FROM turns t
        WHERE t.id = NEW.turn_id AND t.session_id = NEW.session_id
-    ) THEN RAISE(ABORT, 'ownership_violation: turn_audio_segments.turn_id')
+    ) THEN RAISE(ABORT, 'ownership_violation: speech_segments.turn_id')
   END;
 END;
 
@@ -899,10 +907,18 @@ BEGIN
   END;
 END;
 
-CREATE TRIGGER trg_turns_owner_delete_cleanup
-AFTER DELETE ON turns
+CREATE TRIGGER trg_turns_model_pair_insert
+BEFORE INSERT ON turns
+WHEN (NEW.provider_config_id IS NULL) <> (NEW.model_id IS NULL)
 BEGIN
-  DELETE FROM messages WHERE turn_id = OLD.id;
+  SELECT RAISE(ABORT, 'turn model freeze must contain both provider and model');
+END;
+
+CREATE TRIGGER trg_turns_model_pair_update
+BEFORE UPDATE OF provider_config_id, model_id ON turns
+WHEN (NEW.provider_config_id IS NULL) <> (NEW.model_id IS NULL)
+BEGIN
+  SELECT RAISE(ABORT, 'turn model freeze must contain both provider and model');
 END;
 
 CREATE TRIGGER trg_turns_owner_update

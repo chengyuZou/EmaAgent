@@ -21,7 +21,7 @@ export type {
 export { MessagesRepo } from './repos/data/messages.js';
 export { CharacterCardsRepo } from './repos/profile/character-cards.js';
 export { CharacterLive2dVariantsRepo } from './repos/profile/characterLive2dVariants.js';
-export { CharacterPortraitsRepo } from './repos/profile/characterPortraits.js';
+export { CharacterIllustrationsRepo } from './repos/profile/characterIllustrations.js';
 export { CharacterVoiceReferencesRepo } from './repos/profile/characterVoiceReferences.js';
 export { SettingsRepo } from './repos/profile/settings.js';
 export { UsageRecordsRepo } from './repos/data/usage-records.js';
@@ -83,7 +83,8 @@ export { MemoryNodeSourcesRepo }      from './repos/profile/memory-node-sources.
 export { MemoryStorageRepo }          from './repos/profile/memoryStorage.js';
 
 export type { DatabaseOptions, SqliteDb } from './database/database.js';
-export type { SessionRow, SessionRowEnriched, SessionSearchRow, SessionInsert, SessionsGrouped } from './repos/data/sessions.js';
+export type { SessionRow, SessionRowEnriched, SessionSearchRow, SessionInsert, SessionsProjected, ExecutionProfileRow, NarrativePolicyRow } from './repos/data/sessions.js';
+export type { TurnStatusRow, TurnTriggerTypeRow } from './repos/data/turns.js';
 export type { TurnRow, TurnInsert, TurnCompletion } from './repos/data/turns.js';
 export type { MessageRow, MessageInsert, MessageRole, MessageKind } from './repos/data/messages.js';
 export { CharacterCardUpdateContractError } from './repos/profile/character-cards.js';
@@ -93,17 +94,15 @@ export type {
   CharacterCardUpdate,
 } from './repos/profile/character-cards.js';
 export type {
-  CharacterLive2dFormat,
   CharacterLive2dVariantInsert,
   CharacterLive2dVariantRow,
   CharacterLive2dVariantUpdate,
 } from './repos/profile/characterLive2dVariants.js';
 export type {
-  CharacterPortraitInsert,
-  CharacterPortraitMime,
-  CharacterPortraitRow,
-  CharacterPortraitUpdate,
-} from './repos/profile/characterPortraits.js';
+  CharacterIllustrationInsert,
+  CharacterIllustrationRow,
+  CharacterIllustrationUpdate,
+} from './repos/profile/characterIllustrations.js';
 export type {
   CharacterVoiceReferenceInsert,
   CharacterVoiceReferenceRow,

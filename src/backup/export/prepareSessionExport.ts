@@ -181,10 +181,12 @@ function writeRecords(
   });
   writeLines('attachments', snapshot.attachments, (row) => {
     const archivePath = `files/attachments/${safeComponent(row.id)}/${safeFileName(row.name)}`;
+    // 图片导出受管副本（原文件可能已移动/删除）；普通文件导出原路径内容。
     pendingFiles.push({
-      kind: 'attachment', id: row.id, sourcePath: row.local_path,
+      kind: 'attachment', id: row.id,
+      sourcePath: row.kind === 'image' ? row.image_path! : row.source_path,
       archivePath, maxBytes: limits.maxAttachmentBytes,
-      expectedBytes: row.size,
+      expectedBytes: row.byte_size,
     });
     return toAttachmentRecord(row, archivePath);
   });

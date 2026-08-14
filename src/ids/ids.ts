@@ -9,7 +9,7 @@ export type TaskId = BrandedId<'TaskId'>;
 export type MessageId = BrandedId<'MessageId'>;
 export type CharacterCardId = BrandedId<'CharacterCardId'>;
 export type CharacterLive2dId = BrandedId<'CharacterLive2dId'>;
-export type CharacterPortraitId = BrandedId<'CharacterPortraitId'>;
+export type CharacterIllustrationId = BrandedId<'CharacterIllustrationId'>;
 export type CharacterVoiceReferenceId = BrandedId<'CharacterVoiceReferenceId'>;
 export type CompactId = BrandedId<'CompactId'>;
 export type ToolCallId = BrandedId<'ToolCallId'>;
@@ -26,8 +26,8 @@ export function asCharacterCardId(value: string): CharacterCardId { return value
 export function asCharacterLive2dId(value: string): CharacterLive2dId {
   return value as CharacterLive2dId;
 }
-export function asCharacterPortraitId(value: string): CharacterPortraitId {
-  return value as CharacterPortraitId;
+export function asCharacterIllustrationId(value: string): CharacterIllustrationId {
+  return value as CharacterIllustrationId;
 }
 export function asCharacterVoiceReferenceId(value: string): CharacterVoiceReferenceId {
   return value as CharacterVoiceReferenceId;

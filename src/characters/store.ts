@@ -1,16 +1,17 @@
 // 聚合角色定义与三类表现资源，并负责角色 CRUD、激活、内置种子和切换广播。
 
+import fs from 'node:fs';
 import type { Database, CharacterCardsRepo, SqliteDb } from '@ema-agent/storage';
 import {
   CharacterCardsRepo as Repo,
   CharacterLive2dVariantsRepo,
-  CharacterPortraitsRepo,
+  CharacterIllustrationsRepo,
   CharacterVoiceReferencesRepo,
 } from '@ema-agent/storage';
 import type {
   CharacterCardId,
   CharacterLive2dId,
-  CharacterPortraitId,
+  CharacterIllustrationId,
   CharacterVoiceReferenceId,
 } from '@ema-agent/ids';
 import {
@@ -27,48 +28,27 @@ import type {
 } from './live2d/types.js';
 import { CharacterLive2dRepository } from './live2d/repository.js';
 import type {
-  CharacterPortrait,
-  CharacterPortraitInput,
-  CharacterPortraitPatch,
-  ImportCharacterPortraitInput,
-} from './portraits/types.js';
-import { CharacterPortraitRepository } from './portraits/repository.js';
+  CharacterIllustration,
+  CharacterIllustrationInput,
+  CharacterIllustrationPatch,
+  ImportCharacterIllustrationInput,
+} from './illustration/types.js';
+import { CharacterIllustrationRepository } from './illustration/repository.js';
 import type {
   CharacterVoiceReference,
   CharacterVoiceReferenceInput,
   CharacterVoiceReferencePatch,
   ImportCharacterVoiceReferenceInput,
-} from './voiceReferences/types.js';
-import { CharacterVoiceReferenceRepository } from './voiceReferences/repository.js';
-import {
-  CharacterResourcePaths,
-  type CharacterResourceKind,
-  type CharacterResourceRoots,
-} from './resources/characterResourcePaths.js';
-import {
-  CharacterResourceOperations,
-  type CharacterResourceOperation,
-  type CharacterResourceOperationContext,
-  type CharacterResourceOperationKind,
-} from './resources/characterResourceOperations.js';
-import {
-  CharacterResourceTrash,
-} from './resources/characterResourceTrash.js';
-import {
-  CharacterResourceRecovery,
-  type CharacterResourceRecoveryReport,
-  type CharacterResourceReference,
-} from './resources/characterResourceRecovery.js';
-import type {
-  CharacterResourceTransactionManifest,
-} from './resources/characterResourceFiles.js';
-import { CharacterResourceStaging } from './transfer/staging.js';
+} from './voice/types.js';
+import { CharacterVoiceReferenceRepository } from './voice/repository.js';
+import { CharacterResourcePaths } from './resources/characterResourcePaths.js';
 import {
   CharacterValidator,
   type CharacterHealth,
 } from './validation/characterValidator.js';
-import { assertCharacterPrompt } from './validation/characterPromptValidation.js';
+import { assertCharacterPrompt } from './characterPrompt.js';
 import { CharacterResourceLifecycle } from './resources/characterResourceLifecycle.js';
+import { findLive2dPackageFilesSync } from './live2d/live2dValidator.js';
 import {
   readLive2dVocabulary,
   type Live2dVocabulary,
@@ -101,25 +81,21 @@ export class CharacterCardStore {
   private readonly sqlite: SqliteDb;
   private readonly repository: CharacterCardRepository;
   private readonly live2d: CharacterLive2dRepository;
-  private readonly portraits: CharacterPortraitRepository;
+  private readonly illustrations: CharacterIllustrationRepository;
   private readonly voiceReferences: CharacterVoiceReferenceRepository;
   private readonly resourcePaths: CharacterResourcePaths;
-  private readonly resourceTrash: CharacterResourceTrash;
-  private readonly resourceStaging: CharacterResourceStaging;
-  private readonly resourceRecovery: CharacterResourceRecovery;
   private readonly validator: CharacterValidator;
   private readonly resourceLifecycle: CharacterResourceLifecycle;
-  private readonly resourceOperations = new CharacterResourceOperations();
   private readonly switchedListeners = new Set<CardSwitchedListener>();
   private readonly presentationChangedListeners =
     new Set<CharacterPresentationChangedListener>();
 
   constructor({
     db,
-    resourceRoots,
+    charactersRoot,
   }: {
     db: Database;
-    resourceRoots: CharacterResourceRoots;
+    charactersRoot: string;
   }) {
     this.sqlite = db.sqlite;
     const repo: CharacterCardsRepo = new Repo(db.sqlite);
@@ -127,29 +103,20 @@ export class CharacterCardStore {
     this.live2d = new CharacterLive2dRepository(
       new CharacterLive2dVariantsRepo(db.sqlite),
     );
-    this.portraits = new CharacterPortraitRepository(
-      new CharacterPortraitsRepo(db.sqlite),
+    this.illustrations = new CharacterIllustrationRepository(
+      new CharacterIllustrationsRepo(db.sqlite),
     );
     this.voiceReferences = new CharacterVoiceReferenceRepository(
       new CharacterVoiceReferencesRepo(db.sqlite),
     );
-    this.resourcePaths = new CharacterResourcePaths(resourceRoots);
-    this.resourceTrash = new CharacterResourceTrash(this.resourcePaths);
-    this.resourceStaging = new CharacterResourceStaging(this.resourcePaths);
-    this.resourceRecovery = new CharacterResourceRecovery(
-      this.resourcePaths,
-      manifest => this.lookupResourceReference(manifest),
-    );
+    this.resourcePaths = new CharacterResourcePaths(charactersRoot);
     this.validator = new CharacterValidator(this.resourcePaths);
     this.resourceLifecycle = new CharacterResourceLifecycle(
       id => this.get(id),
       this.live2d,
-      this.portraits,
+      this.illustrations,
       this.voiceReferences,
       this.resourcePaths,
-      this.resourceTrash,
-      this.resourceStaging,
-      this.resourceOperations,
       (id, input) => this.insertLive2dAndRefreshVocabulary(id, input),
       (id, resourceId) => this.deleteLive2dAndRefreshVocabulary(id, resourceId),
       id => this.emitPresentationChanged(id),
@@ -196,34 +163,30 @@ export class CharacterCardStore {
 
       const existingLive2d = this.live2d.list(cardId);
       const live2dIds = new Set(existingLive2d.map((item) => item.id));
-      const live2dPaths = new Set(existingLive2d.map((item) => item.entryPath));
       for (const input of seed.live2dVariants) {
         if (!input.id) throw new Error(`builtin Live2D resource requires id: ${seed.id}`);
-        // id 或路径任一命中即视为已存在。
-        if (!live2dIds.has(input.id) && !live2dPaths.has(input.entryPath)) {
-          this.insertLive2dAndRefreshVocabulary(cardId, input);
+        if (!live2dIds.has(input.id)) {
+          this.insertLive2dAndRefreshVocabulary(cardId, { ...input, id: input.id });
         }
       }
 
       // 旧种子行可能仍保存手写词汇；启动时以当前主用模型配置纠正一次。
       this.refreshPrimaryLive2dVocabulary(cardId);
 
-      const existingPortraits = this.portraits.list(cardId);
-      const portraitIds = new Set(existingPortraits.map((item) => item.id));
-      const portraitPaths = new Set(existingPortraits.map((item) => item.relativePath));
-      for (const input of seed.portraits) {
-        if (!input.id) throw new Error(`builtin portrait resource requires id: ${seed.id}`);
-        if (!portraitIds.has(input.id) && !portraitPaths.has(input.relativePath)) {
-          this.portraits.insert(cardId, input);
+      const existingIllustrations = this.illustrations.list(cardId);
+      const illustrationIds = new Set(existingIllustrations.map(item => item.id));
+      for (const input of seed.illustrations) {
+        if (!input.id) throw new Error(`builtin illustration resource requires id: ${seed.id}`);
+        if (!illustrationIds.has(input.id)) {
+          this.illustrations.insert(cardId, input);
         }
       }
 
       const existingVoices = this.voiceReferences.list(cardId);
       const voiceIds = new Set(existingVoices.map((item) => item.id));
-      const voicePaths = new Set(existingVoices.map((item) => item.relativePath));
       for (const input of seed.voiceReferences) {
         if (!input.id) throw new Error(`builtin voice resource requires id: ${seed.id}`);
-        if (!voiceIds.has(input.id) && !voicePaths.has(input.relativePath)) {
+        if (!voiceIds.has(input.id)) {
           this.voiceReferences.insert(cardId, input);
         }
       }
@@ -250,12 +213,12 @@ export class CharacterCardStore {
     const ids = cards.map((card) => card.id);
     // 批量分组查询:N 张卡 4 次 SQL(1 卡表 + 3 资源表),不是 1 + 3N。
     const live2dByCard = this.live2d.listForCards(ids);
-    const portraitsByCard = this.portraits.listForCards(ids);
+    const illustrationsByCard = this.illustrations.listForCards(ids);
     const voiceByCard = this.voiceReferences.listForCards(ids);
     return cards.map((card) => ({
       ...card,
       live2dVariants: live2dByCard.get(card.id) ?? [],
-      portraits: portraitsByCard.get(card.id) ?? [],
+      illustrations: illustrationsByCard.get(card.id) ?? [],
       voiceReferences: voiceByCard.get(card.id) ?? [],
     }));
   }
@@ -302,7 +265,6 @@ export class CharacterCardStore {
     return this.repository.insert(
       {
         name: `${original.name}(Copy)`,
-        version: original.version,
         description: original.description ?? undefined,
         systemPrompt: original.systemPrompt,
       },
@@ -311,40 +273,19 @@ export class CharacterCardStore {
   }
 
   async deleteManagedCharacter(id: CharacterCardId): Promise<void> {
-    await this.resourceOperations.run(id, 'resourceDelete', async ({ setStage }) => {
-      const card = this.get(id);
-      if (!card) throw new Error(`character card not found: ${id}`);
-      if (card.isBuiltin) throw new Error(`builtin character is read-only: ${id}`);
-      if (card.isActive) throw new Error(`active character cannot be deleted: ${id}`);
-      setStage('staging');
-      this.resourceTrash.deleteCharacter({
-        characterId: id,
-        commit: () => {
-          setStage('publishing');
-          this.repository.delete(id);
-        },
-        isReferenced: () => this.repository.findById(id) !== undefined,
-      });
-      setStage('finalizing');
+    const card = this.get(id);
+    if (!card) throw new Error(`character card not found: ${id}`);
+    if (card.isBuiltin) throw new Error(`builtin character is read-only: ${id}`);
+    if (card.isActive) throw new Error(`active character cannot be deleted: ${id}`);
+    await fs.promises.rm(this.resourcePaths.cardRoot(id), {
+      recursive: true,
+      force: true,
     });
-    this.resourceOperations.forget(id);
+    this.repository.delete(id);
   }
 
   listLive2dVariants(id: CharacterCardId): CharacterLive2dVariant[] {
     return this.live2d.list(id);
-  }
-
-  addLive2dVariant(
-    id: CharacterCardId,
-    input: CharacterLive2dVariantInput,
-  ): CharacterLive2dVariant {
-    this.validateResourceInput(id, input.entryPath, 'live2d');
-    if (input.runtimeConfigPath) {
-      this.validateResourceInput(id, input.runtimeConfigPath, 'live2d');
-    }
-    const resource = this.insertLive2dAndRefreshVocabulary(id, input);
-    this.emitPresentationChanged(id);
-    return resource;
   }
 
   setPrimaryLive2dVariant(id: CharacterCardId, resourceId: CharacterLive2dId): boolean {
@@ -379,8 +320,10 @@ export class CharacterCardStore {
     const projected = card.live2dVariants.map(resource => resource.id === resourceId
       ? {
           ...resource,
-          label: patch.label ?? resource.label,
-          position: patch.position ?? resource.position,
+          name: patch.name ?? resource.name,
+          stageScale: patch.stageScale ?? resource.stageScale,
+          stageOffsetX: patch.stageOffsetX ?? resource.stageOffsetX,
+          stageOffsetY: patch.stageOffsetY ?? resource.stageOffsetY,
           enabled: patch.enabled ?? resource.enabled,
         }
       : resource);
@@ -417,55 +360,57 @@ export class CharacterCardStore {
     return this.resourceLifecycle.deleteLive2d(id, resourceId);
   }
 
-  listPortraits(id: CharacterCardId): CharacterPortrait[] {
-    return this.portraits.list(id);
+  listIllustrations(id: CharacterCardId): CharacterIllustration[] {
+    return this.illustrations.list(id);
   }
 
-  addPortrait(id: CharacterCardId, input: CharacterPortraitInput): CharacterPortrait {
-    this.validateResourceInput(id, input.relativePath, 'portrait');
-    const resource = this.portraits.insert(id, input);
+  addIllustration(
+    id: CharacterCardId,
+    input: CharacterIllustrationInput,
+  ): CharacterIllustration {
+    const resource = this.illustrations.insert(id, input);
     this.emitPresentationChanged(id);
     return resource;
   }
 
-  setPrimaryPortrait(id: CharacterCardId, resourceId: CharacterPortraitId): boolean {
-    const changed = this.portraits.setPrimary(id, resourceId);
+  setPrimaryIllustration(id: CharacterCardId, resourceId: CharacterIllustrationId): boolean {
+    const changed = this.illustrations.setPrimary(id, resourceId);
     if (changed) this.emitPresentationChanged(id);
     return changed;
   }
 
-  updatePortrait(
+  updateIllustration(
     id: CharacterCardId,
-    resourceId: CharacterPortraitId,
-    patch: CharacterPortraitPatch,
-  ): CharacterPortrait | undefined {
+    resourceId: CharacterIllustrationId,
+    patch: CharacterIllustrationPatch,
+  ): CharacterIllustration | undefined {
     this.assertMutableResourceCard(id);
     assertResourcePatch(patch);
-    const resource = this.portraits.update(id, resourceId, patch);
+    const resource = this.illustrations.update(id, resourceId, patch);
     if (resource) this.emitPresentationChanged(id);
     return resource;
   }
 
-  importPortraitFile(
+  importIllustrationFile(
     id: CharacterCardId,
-    input: ImportCharacterPortraitInput,
-  ): Promise<CharacterPortrait> {
-    return this.resourceLifecycle.importPortrait(id, input);
+    input: ImportCharacterIllustrationInput,
+  ): Promise<CharacterIllustration> {
+    return this.resourceLifecycle.importIllustration(id, input);
   }
 
-  exportPortraitFile(
+  exportIllustrationFile(
     id: CharacterCardId,
-    resourceId: CharacterPortraitId,
+    resourceId: CharacterIllustrationId,
     destinationDirectory: string,
   ): Promise<string> {
-    return this.resourceLifecycle.exportPortrait(id, resourceId, destinationDirectory);
+    return this.resourceLifecycle.exportIllustration(id, resourceId, destinationDirectory);
   }
 
-  deleteManagedPortrait(
+  deleteManagedIllustration(
     id: CharacterCardId,
-    resourceId: CharacterPortraitId,
-  ): Promise<CharacterPortrait | undefined> {
-    return this.resourceLifecycle.deletePortrait(id, resourceId);
+    resourceId: CharacterIllustrationId,
+  ): Promise<CharacterIllustration | undefined> {
+    return this.resourceLifecycle.deleteIllustration(id, resourceId);
   }
 
   listVoiceReferences(id: CharacterCardId): CharacterVoiceReference[] {
@@ -476,7 +421,6 @@ export class CharacterCardStore {
     id: CharacterCardId,
     input: CharacterVoiceReferenceInput,
   ): CharacterVoiceReference {
-    this.validateResourceInput(id, input.relativePath, 'voiceReference');
     return this.voiceReferences.insert(id, input);
   }
 
@@ -501,8 +445,9 @@ export class CharacterCardStore {
     id: CharacterCardId,
     input: CharacterVoiceReferenceInput & { id: CharacterVoiceReferenceId },
     bytes: Uint8Array,
+    extension: string,
   ): Promise<CharacterVoiceReference> {
-    return this.resourceLifecycle.publishVoice(id, input, bytes);
+    return this.resourceLifecycle.publishVoice(id, input, bytes, extension);
   }
 
   importVoiceReferenceFile(
@@ -527,46 +472,28 @@ export class CharacterCardStore {
     return this.resourceLifecycle.deleteVoice(id, resourceId);
   }
 
-  recoverResourceFiles(): CharacterResourceRecoveryReport {
-    return this.resourceRecovery.run();
-  }
-
-  inspectHealth(id: CharacterCardId, deep = false): Promise<CharacterHealth> {
+  inspectHealth(id: CharacterCardId): Promise<CharacterHealth> {
     const card = this.get(id);
     if (!card) throw new Error(`character card not found: ${id}`);
-    return this.validator.inspect(card, deep);
+    return this.validator.inspect(card);
   }
 
-  resolveResourcePath(
+  resolveLive2dDirectory(id: CharacterCardId, resourceId: CharacterLive2dId): string {
+    return this.resourcePaths.live2dDirectory(id, resourceId);
+  }
+
+  resolveIllustrationFile(
     id: CharacterCardId,
-    relativePath: string,
-    kind: CharacterResourceKind,
+    resourceId: CharacterIllustrationId,
   ): string {
-    const card = this.get(id);
-    if (!card) throw new Error(`character card not found: ${id}`);
-    return this.resourcePaths.resolve(id, card.isBuiltin, relativePath, kind);
+    return this.resourcePaths.illustrationFile(id, resourceId);
   }
 
-  runResourceOperation<T>(
+  resolveVoiceReferenceFile(
     id: CharacterCardId,
-    kind: CharacterResourceOperationKind,
-    operation: (context: CharacterResourceOperationContext) => Promise<T>,
-  ): Promise<T> {
-    return this.resourceOperations.run(id, kind, operation);
-  }
-
-  inspectResourceOperation(id: CharacterCardId): CharacterResourceOperation | undefined {
-    return this.resourceOperations.inspect(id);
-  }
-
-  private validateResourceInput(
-    id: CharacterCardId,
-    relativePath: string,
-    kind: CharacterResourceKind,
-  ): void {
-    const card = this.get(id);
-    if (!card) throw new Error(`character card not found: ${id}`);
-    this.resourcePaths.resolve(id, card.isBuiltin, relativePath, kind);
+    resourceId: CharacterVoiceReferenceId,
+  ): string {
+    return this.resourcePaths.voiceFile(id, resourceId);
   }
 
   private assertMutableResourceCard(id: CharacterCardId): void {
@@ -579,14 +506,14 @@ export class CharacterCardStore {
     return {
       ...card,
       live2dVariants: this.live2d.list(card.id),
-      portraits: this.portraits.list(card.id),
+      illustrations: this.illustrations.list(card.id),
       voiceReferences: this.voiceReferences.list(card.id),
     };
   }
 
   private insertLive2dAndRefreshVocabulary(
     id: CharacterCardId,
-    input: CharacterLive2dVariantInput,
+    input: CharacterLive2dVariantInput & { id: CharacterLive2dId },
   ): CharacterLive2dVariant {
     const card = this.get(id);
     if (!card) throw new Error(`character card not found: ${id}`);
@@ -594,9 +521,7 @@ export class CharacterCardStore {
     const becomesPrimary = input.enabled !== false
       && (input.isPrimary === true || !selectPrimaryLive2d(card.live2dVariants));
     const vocabulary = becomesPrimary
-      ? this.readVocabulary(card, {
-          runtimeConfigPath: input.runtimeConfigPath ?? null,
-        })
+      ? this.readVocabulary(card, input)
       : null;
 
     return this.sqlite.transaction(() => {
@@ -642,16 +567,11 @@ export class CharacterCardStore {
 
   private readVocabulary(
     card: CharacterCard,
-    resource: Pick<CharacterLive2dVariant, 'runtimeConfigPath'>,
+    resource: Pick<CharacterLive2dVariant, 'id'>,
   ): Live2dVocabulary {
-    if (!resource.runtimeConfigPath) return EMPTY_VOCABULARY;
-    const filePath = this.resourcePaths.resolve(
-      card.id,
-      card.isBuiltin,
-      resource.runtimeConfigPath,
-      'live2d',
-    );
-    return readLive2dVocabulary(filePath);
+    const directory = this.resourcePaths.live2dDirectory(card.id, resource.id);
+    const { runtimeConfigPath } = findLive2dPackageFilesSync(directory);
+    return readLive2dVocabulary(runtimeConfigPath);
   }
 
   private writeVocabulary(id: CharacterCardId, vocabulary: Live2dVocabulary): void {
@@ -678,42 +598,6 @@ export class CharacterCardStore {
     }
   }
 
-  private lookupResourceReference(
-    manifest: CharacterResourceTransactionManifest,
-  ): CharacterResourceReference {
-    const card = this.get(manifest.characterId);
-    if (manifest.resourceKind === 'character') {
-      return {
-        sameResource: card !== undefined,
-        pathReferenced: card !== undefined,
-      };
-    }
-    if (!card) return { sameResource: false, pathReferenced: false };
-
-    const resources = manifest.resourceKind === 'live2d'
-      ? card.live2dVariants.map(resource => ({
-        id: resource.id,
-        relativePath: resource.entryPath,
-      }))
-      : manifest.resourceKind === 'portrait'
-        ? card.portraits.map(resource => ({
-          id: resource.id,
-          relativePath: resource.relativePath,
-        }))
-        : card.voiceReferences.map(resource => ({
-          id: resource.id,
-          relativePath: resource.relativePath,
-        }));
-    return {
-      sameResource: resources.some(resource => (
-        resource.id === manifest.resourceId
-        && resource.relativePath === manifest.relativePath
-      )),
-      pathReferenced: resources.some(
-        resource => resource.relativePath === manifest.relativePath,
-      ),
-    };
-  }
 }
 
 const EMPTY_VOCABULARY: Live2dVocabulary = { emotions: [], motions: [] };
@@ -723,7 +607,7 @@ function selectPrimaryLive2d(
 ): CharacterLive2dVariant | undefined {
   const enabled = resources.filter(resource => resource.enabled);
   return enabled.find(resource => resource.isPrimary)
-    ?? enabled.sort((left, right) => left.position - right.position
+    ?? enabled.sort((left, right) => left.createdAt - right.createdAt
       || String(left.id).localeCompare(String(right.id)))[0];
 }
 
@@ -733,25 +617,39 @@ function sameWords(left: readonly string[], right: readonly string[]): boolean {
 
 function assertResourcePatch(
   patch: {
-    label?: string;
-    position?: number;
+    name?: string;
+    stageScale?: number;
+    stageOffsetX?: number;
+    stageOffsetY?: number;
     enabled?: boolean;
   },
 ): void {
   if (
-    patch.label === undefined
-    && patch.position === undefined
+    patch.name === undefined
+    && patch.stageScale === undefined
+    && patch.stageOffsetX === undefined
+    && patch.stageOffsetY === undefined
     && patch.enabled === undefined
   ) {
     throw new Error('character resource patch is empty');
   }
-  if (patch.label !== undefined && patch.label.trim().length === 0) {
-    throw new Error('character resource label is empty');
+  if (patch.name !== undefined && patch.name.trim().length === 0) {
+    throw new Error('character resource name is empty');
   }
-  if (
-    patch.position !== undefined
-    && (!Number.isSafeInteger(patch.position) || patch.position < 0)
-  ) {
-    throw new Error('character resource position is invalid');
+  if (patch.stageScale !== undefined && (
+    !Number.isFinite(patch.stageScale)
+    || patch.stageScale < 0.1
+    || patch.stageScale > 5
+  )) {
+    throw new Error('character resource stage scale is invalid');
+  }
+  for (const offset of [patch.stageOffsetX, patch.stageOffsetY]) {
+    if (offset !== undefined && (
+      !Number.isFinite(offset)
+      || offset < -1
+      || offset > 1
+    )) {
+      throw new Error('character resource stage offset is invalid');
+    }
   }
 }

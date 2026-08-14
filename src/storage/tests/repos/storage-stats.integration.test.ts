@@ -185,7 +185,7 @@ describe('SessionStatsRepo restore integration', () => {
     `).pluck().get()).toBe(1);
 
     for (const table of [
-      'turn_audio_merged', 'turn_attachments', 'agent_run_messages',
+      'speech_outputs', 'attachments', 'agent_run_messages',
       'memory_session_state', 'kb_activations', 'usage_records', 'session_notes',
     ]) {
       expect(database.db.prepare(`SELECT COUNT(*) FROM ${table}`).pluck().get(), table).toBe(1);
@@ -194,12 +194,12 @@ describe('SessionStatsRepo restore integration', () => {
 
   it('restores a forked Session without requiring its source Session backup', () => {
     const payload = restorePayload();
-    payload.session.parentSessionId = 'source-session-not-in-backup';
+    payload.session.forkedFromSessionId = 'source-session-not-in-backup';
 
     repo.restoreRows(payload);
 
     expect(database.db.prepare(
-      'SELECT parent_session_id FROM sessions WHERE id = ?',
+      'SELECT forked_from_session_id FROM sessions WHERE id = ?',
     ).pluck().get(payload.session.id)).toBeNull();
   });
 
@@ -216,8 +216,8 @@ describe('SessionStatsRepo restore integration', () => {
     `).run();
     database.db.prepare(`
       INSERT INTO turns
-        (id, session_id, trigger_type, execution_profile, narrative_policy, status, user_input, started_at)
-      VALUES (?, 'existing-session', 'userMessage', 'chat', 'off', 'completed', '', 1)
+        (id, session_id, trigger_type, execution_profile, narrative_policy, status, created_at)
+      VALUES (?, 'existing-session', 'userMessage', 'chat', 'off', 'completed', 1)
     `).run(turnId);
   }
 });
@@ -233,9 +233,8 @@ function restorePayload(): SessionRestorePayload {
       lastActivityAt: 200,
       archivedAt: null,
       pinned: false,
-      pinnedAt: null,
-      groupLabel: null,
-      parentSessionId: null,
+      forkedFromSessionId: null,
+      forkedFromTurnId: null,
       executionProfile: 'chat',
       narrativePolicy: 'off',
     },
@@ -246,9 +245,10 @@ function restorePayload(): SessionRestorePayload {
         triggerType: 'userMessage',
         executionProfile: 'chat',
         narrativePolicy: 'off',
+        providerConfigId: null,
+        modelId: null,
         status: 'completed',
-        userInput: 'root',
-        startedAt: 100,
+        createdAt: 100,
         completedAt: 110,
         errorCode: null,
         errorMessage: null,
@@ -262,9 +262,10 @@ function restorePayload(): SessionRestorePayload {
         triggerType: 'userMessage',
         executionProfile: 'chat',
         narrativePolicy: 'off',
+        providerConfigId: null,
+        modelId: null,
         status: 'completed',
-        userInput: 'child',
-        startedAt: 130,
+        createdAt: 130,
         completedAt: 140,
         errorCode: null,
         errorMessage: null,

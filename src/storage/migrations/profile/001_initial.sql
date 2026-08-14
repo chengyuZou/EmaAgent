@@ -4,7 +4,6 @@
 CREATE TABLE character_cards (
   id                    TEXT PRIMARY KEY,
   name                  TEXT NOT NULL,
-  version               TEXT NOT NULL DEFAULT 'v1.0.0',
   description           TEXT,
   system_prompt         TEXT NOT NULL,
   emotion_vocab_json    TEXT NOT NULL DEFAULT '[]',
@@ -18,53 +17,44 @@ CREATE TABLE character_cards (
 CREATE TABLE character_live2d_variants (
   id                  TEXT PRIMARY KEY,
   character_card_id   TEXT NOT NULL REFERENCES character_cards(id) ON DELETE CASCADE,
-  label               TEXT NOT NULL,
-  format              TEXT NOT NULL CHECK(format IN ('live2d','vrm')),
-  entry_path          TEXT NOT NULL COLLATE NOCASE,
-  runtime_config_path TEXT COLLATE NOCASE,
-  position            INTEGER NOT NULL DEFAULT 0 CHECK(position >= 0),
+  name                TEXT NOT NULL,
+  stage_scale         REAL NOT NULL DEFAULT 1 CHECK(stage_scale BETWEEN 0.1 AND 5),
+  stage_offset_x      REAL NOT NULL DEFAULT 0 CHECK(stage_offset_x BETWEEN -1 AND 1),
+  stage_offset_y      REAL NOT NULL DEFAULT 0 CHECK(stage_offset_y BETWEEN -1 AND 1),
   is_primary          INTEGER NOT NULL DEFAULT 0 CHECK(is_primary IN (0,1)),
   enabled             INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)),
   byte_size           INTEGER CHECK(byte_size IS NULL OR byte_size >= 0),
-  is_builtin          INTEGER NOT NULL DEFAULT 0 CHECK(is_builtin IN (0,1)),
   created_at          INTEGER NOT NULL,
-  updated_at          INTEGER NOT NULL,
-  UNIQUE(character_card_id, entry_path)
+  updated_at          INTEGER NOT NULL
 );
 
-CREATE TABLE character_portraits (
+CREATE TABLE character_illustrations (
   id                TEXT PRIMARY KEY,
   character_card_id TEXT NOT NULL REFERENCES character_cards(id) ON DELETE CASCADE,
-  label             TEXT NOT NULL,
-  relative_path     TEXT NOT NULL COLLATE NOCASE,
-  position          INTEGER NOT NULL DEFAULT 0 CHECK(position >= 0),
+  name              TEXT NOT NULL,
+  stage_scale       REAL NOT NULL DEFAULT 1 CHECK(stage_scale BETWEEN 0.1 AND 5),
+  stage_offset_x    REAL NOT NULL DEFAULT 0 CHECK(stage_offset_x BETWEEN -1 AND 1),
+  stage_offset_y    REAL NOT NULL DEFAULT 0 CHECK(stage_offset_y BETWEEN -1 AND 1),
   is_primary        INTEGER NOT NULL DEFAULT 0 CHECK(is_primary IN (0,1)),
   enabled           INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)),
-  mime_type         TEXT NOT NULL CHECK(mime_type IN ('image/png','image/jpeg','image/webp')),
   byte_size         INTEGER NOT NULL CHECK(byte_size >= 0),
-  width             INTEGER NOT NULL CHECK(width > 0),
-  height            INTEGER NOT NULL CHECK(height > 0),
   created_at        INTEGER NOT NULL,
-  updated_at        INTEGER NOT NULL,
-  UNIQUE(character_card_id, relative_path)
+  updated_at        INTEGER NOT NULL
 );
 
 CREATE TABLE character_voice_references (
   id                TEXT PRIMARY KEY,
   character_card_id TEXT NOT NULL REFERENCES character_cards(id) ON DELETE CASCADE,
-  label             TEXT NOT NULL,
-  relative_path     TEXT NOT NULL COLLATE NOCASE,
+  name              TEXT NOT NULL,
   prompt_text       TEXT NOT NULL,
   prompt_lang       TEXT NOT NULL,
-  position          INTEGER NOT NULL DEFAULT 0 CHECK(position >= 0),
   is_primary        INTEGER NOT NULL DEFAULT 0 CHECK(is_primary IN (0,1)),
   enabled           INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)),
   mime_type         TEXT NOT NULL,
   byte_size         INTEGER CHECK(byte_size IS NULL OR byte_size >= 0),
   duration_ms       INTEGER CHECK(duration_ms IS NULL OR duration_ms >= 0),
   created_at        INTEGER NOT NULL,
-  updated_at        INTEGER NOT NULL,
-  UNIQUE(character_card_id, relative_path)
+  updated_at        INTEGER NOT NULL
 );
 
 CREATE TABLE knowledge_bases (
@@ -358,21 +348,21 @@ CREATE UNIQUE INDEX idx_character_cards_active
   WHERE is_active = 1;
 
 CREATE INDEX idx_character_live2d_order
-  ON character_live2d_variants(character_card_id, position ASC, id ASC);
+  ON character_live2d_variants(character_card_id, created_at ASC, id ASC);
 
 CREATE UNIQUE INDEX idx_character_live2d_primary
   ON character_live2d_variants(character_card_id)
   WHERE is_primary = 1;
 
-CREATE INDEX idx_character_portraits_order
-  ON character_portraits(character_card_id, position ASC, id ASC);
+CREATE INDEX idx_character_illustrations_order
+  ON character_illustrations(character_card_id, created_at ASC, id ASC);
 
-CREATE UNIQUE INDEX idx_character_portraits_primary
-  ON character_portraits(character_card_id)
+CREATE UNIQUE INDEX idx_character_illustrations_primary
+  ON character_illustrations(character_card_id)
   WHERE is_primary = 1;
 
 CREATE INDEX idx_character_voice_order
-  ON character_voice_references(character_card_id, position ASC, id ASC);
+  ON character_voice_references(character_card_id, created_at ASC, id ASC);
 
 CREATE UNIQUE INDEX idx_character_voice_primary
   ON character_voice_references(character_card_id)

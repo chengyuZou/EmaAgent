@@ -1,4 +1,4 @@
-// turn_attachments 的 SQL 层:判别联合行映射、单事务批量写入、按 Turn/Session 查询。
+// attachments 的 SQL 层:判别联合行映射、单事务批量写入、按 Turn/Session 查询。
 import type { SqliteDb } from '../../database/database.js';
 
 export type AttachmentRowKind = 'file' | 'image';
@@ -27,7 +27,7 @@ export class AttachmentRepo {
   insertMany(rows: readonly AttachmentInsertRow[]): void {
     this.db.transaction(() => {
       const stmt = this.db.prepare(`
-        INSERT INTO turn_attachments (
+        INSERT INTO attachments (
           id, turn_id, session_id, kind, name, mime,
           source_path, byte_size, source_modified_at,
           image_path, image_byte_size, created_at
@@ -47,19 +47,19 @@ export class AttachmentRepo {
     if (ids.length === 0) return [];
     const placeholders = ids.map(() => '?').join(', ');
     return this.db.prepare(
-      `SELECT * FROM turn_attachments WHERE id IN (${placeholders})`,
+      `SELECT * FROM attachments WHERE id IN (${placeholders})`,
     ).all(...ids) as AttachmentRow[];
   }
 
   listByTurn(turnId: string): AttachmentRow[] {
     return this.db
-      .prepare(`SELECT * FROM turn_attachments WHERE turn_id = ? ORDER BY created_at ASC`)
+      .prepare(`SELECT * FROM attachments WHERE turn_id = ? ORDER BY created_at ASC`)
       .all(turnId) as AttachmentRow[];
   }
 
   listBySession(sessionId: string): AttachmentRow[] {
     return this.db
-      .prepare(`SELECT * FROM turn_attachments WHERE session_id = ? ORDER BY created_at DESC`)
+      .prepare(`SELECT * FROM attachments WHERE session_id = ? ORDER BY created_at DESC`)
       .all(sessionId) as AttachmentRow[];
   }
 }

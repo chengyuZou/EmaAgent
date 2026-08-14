@@ -8,6 +8,7 @@ export {
   EMA_LIVE2D_VARIANTS,
   EMA_VOICE_REFERENCES,
   BUILTIN_CARDS,
+  installBuiltinCharacterResources,
 } from './seed/index.js';
 export type { BuiltinCharacterSeed } from './seed/index.js';
 
@@ -17,26 +18,24 @@ export type {
 } from './types.js';
 
 export type {
-  CharacterLive2dFormat,
   CharacterLive2dVariant,
   CharacterLive2dVariantInput,
   CharacterLive2dVariantPatch,
   ImportCharacterLive2dInput,
 } from './live2d/types.js';
 export type {
-  CharacterPortrait,
-  CharacterPortraitInput,
-  CharacterPortraitMime,
-  CharacterPortraitPatch,
-  ImportCharacterPortraitInput,
-} from './portraits/types.js';
+  CharacterIllustration,
+  CharacterIllustrationInput,
+  CharacterIllustrationPatch,
+  ImportCharacterIllustrationInput,
+} from './illustration/types.js';
 export type {
   CharacterVoiceReference,
   CharacterVoiceReferenceInput,
   CharacterVoiceReferencePatch,
   ImportCharacterVoiceReferenceInput,
-} from './voiceReferences/types.js';
-export { buildCharacterPrompt} from './characterPrompt.js';
+} from './voice/types.js';
+export { assertCharacterPrompt, buildCharacterPrompt } from './characterPrompt.js';
 export type { CharacterPrompt } from './characterPrompt.js';
 export type {
   CharacterCardSwitchedEvent,
@@ -48,19 +47,6 @@ export {
   CharacterResourcePathError,
   CharacterResourceValidationError,
 } from './errors.js';
-export type {
-  CharacterResourceKind,
-  CharacterResourceRoots,
-} from './resources/characterResourcePaths.js';
-export type {
-  CharacterResourceOperation,
-  CharacterResourceOperationContext,
-  CharacterResourceOperationKind,
-  CharacterResourceOperationStage,
-} from './resources/characterResourceOperations.js';
-export type {
-  CharacterResourceRecoveryReport,
-} from './resources/characterResourceRecovery.js';
 export type {
   CharacterHealth,
   CharacterHealthIssue,

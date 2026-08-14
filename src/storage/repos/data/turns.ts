@@ -1,38 +1,44 @@
-// 管理 Turn 的创建、状态流转、稳定分页和锚点窗口查询。
-import type { TurnStatus } from '@ema-agent/turn';
+// 管理 Turn 的创建、状态流转、模型冻结、稳定分页和锚点窗口查询。
+// Row 枚举由 storage 自持（SQL CHECK 的映射）；领域词汇归 @ema-agent/turn 叶子，业务包在边界显式映射。
 import type { SqliteDb } from '../../database/database.js';
 import type { TurnId, SessionId } from '@ema-agent/ids';
-import type { ExecutionProfile, NarrativePolicy, TurnTriggerType } from '@ema-agent/turn';
+import type { ExecutionProfileRow, NarrativePolicyRow } from './sessions.js';
+
+/** turns.status 的 SQL CHECK 原样。 */
+export type TurnStatusRow = 'pending' | 'running' | 'completed' | 'failed' | 'aborted';
+/** turns.trigger_type 的 SQL CHECK 原样。 */
+export type TurnTriggerTypeRow = 'userMessage' | 'backgroundProcessCompleted';
 
 export interface TurnRow {
   id: string;
   session_id: string;
-  trigger_type: TurnTriggerType;
-  execution_profile: ExecutionProfile;
-  narrative_policy: NarrativePolicy;
-  status: TurnStatus;
-  user_input: string;
-  started_at: number;
-  completed_at: number | null;
-  error_code: string | null;
-  error_message: string | null;
+  status: TurnStatusRow;
+  trigger_type: TurnTriggerTypeRow;
+  execution_profile: ExecutionProfileRow;
+  narrative_policy: NarrativePolicyRow;
+  /** 操作开始冻结的模型选择；prepare 阶段解析成功前为 null。 */
+  provider_config_id: string | null;
+  model_id: string | null;
   iterations: number;
   usage_input_tokens: number;
   usage_output_tokens: number;
+  created_at: number;
+  completed_at: number | null;
+  error_code: string | null;
+  error_message: string | null;
 }
 
 export interface TurnInsert {
   id: TurnId;
   sessionId: SessionId;
-  triggerType: TurnTriggerType;
-  executionProfile: ExecutionProfile;
-  narrativePolicy: NarrativePolicy;
-  userInput: string;
-  startedAt: number;
+  triggerType: TurnTriggerTypeRow;
+  executionProfile: ExecutionProfileRow;
+  narrativePolicy: NarrativePolicyRow;
+  createdAt: number;
 }
 
 export interface TurnCompletion {
-  status: TurnStatus;
+  status: TurnStatusRow;
   completedAt: number;
   errorCode?: string;
   errorMessage?: string;
@@ -42,7 +48,7 @@ export interface TurnCompletion {
 }
 
 export interface TurnIdPageCursor {
-  startedAt: number;
+  createdAt: number;
   id: string;
 }
 
@@ -53,11 +59,14 @@ export interface TurnIdPage {
 
 export interface TurnIndexRow {
   id: string;
-  trigger_type: TurnTriggerType;
-  execution_profile: ExecutionProfile;
-  status: TurnStatus;
-  user_input_preview: string;
-  started_at: number;
+  trigger_type: TurnTriggerTypeRow;
+  execution_profile: ExecutionProfileRow;
+  status: TurnStatusRow;
+  /** 首条 User Message 的正文预览；用户输入的唯一事实源是 Message。 */
+  preview: string;
+  provider_config_id: string | null;
+  model_id: string | null;
+  created_at: number;
   completed_at: number | null;
 }
 
@@ -79,9 +88,9 @@ export class TurnsRepo {
     this.db
       .prepare(
         `INSERT INTO turns
-           (id, session_id, trigger_type, execution_profile, narrative_policy,
-            status, user_input, started_at)
-         VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)`,
+           (id, session_id, status, trigger_type,
+            execution_profile, narrative_policy, created_at)
+         VALUES (?, ?, 'pending', ?, ?, ?, ?)`,
       )
       .run(
         t.id,
@@ -89,30 +98,37 @@ export class TurnsRepo {
         t.triggerType,
         t.executionProfile,
         t.narrativePolicy,
-        t.userInput,
-        t.startedAt,
+        t.createdAt,
       );
+  }
+
+  /** 操作开始冻结模型选择；prepare 解析成功后写入，整轮不再变。 */
+  setModel(id: TurnId, providerConfigId: string, modelId: string): void {
+    this.db
+      .prepare('UPDATE turns SET provider_config_id = ?, model_id = ? WHERE id = ?')
+      .run(providerConfigId, modelId, id);
   }
 
   /**
    * 把一个已完成 turn 行复制到新 session(新 id)。用于 fork
-   * 使 fork 出的 session 保留触发来源、Profile、Narrative 策略、
+   * 使 fork 出的 session 保留触发来源、Profile、模型冻结、
    * status、usage 与时序。
    */
   copyTurn(src: TurnRow, newSessionId: SessionId, newId: TurnId): void {
     this.db
       .prepare(
         `INSERT INTO turns
-           (id, session_id, trigger_type, execution_profile, narrative_policy,
-            status, user_input, started_at, completed_at,
-            error_code, error_message, iterations, usage_input_tokens, usage_output_tokens)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, session_id, status, trigger_type,
+            execution_profile, narrative_policy, provider_config_id, model_id,
+            iterations, usage_input_tokens, usage_output_tokens,
+            created_at, completed_at, error_code, error_message)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
-        newId, newSessionId, src.trigger_type, src.execution_profile, src.narrative_policy,
-        src.status, src.user_input, src.started_at, src.completed_at,
-        src.error_code, src.error_message, src.iterations, src.usage_input_tokens,
-        src.usage_output_tokens,
+        newId, newSessionId, src.status, src.trigger_type,
+        src.execution_profile, src.narrative_policy, src.provider_config_id, src.model_id,
+        src.iterations, src.usage_input_tokens, src.usage_output_tokens,
+        src.created_at, src.completed_at, src.error_code, src.error_message,
       );
   }
 
@@ -152,11 +168,11 @@ export class TurnsRepo {
 
   listForSession(sessionId: SessionId, limit = 100): TurnRow[] {
     return this.db
-      .prepare('SELECT * FROM turns WHERE session_id = ? ORDER BY started_at DESC, id DESC LIMIT ?')
+      .prepare('SELECT * FROM turns WHERE session_id = ? ORDER BY created_at DESC, id DESC LIMIT ?')
       .all(sessionId, limit) as TurnRow[];
   }
 
-  /** 按稳定复合游标读取 Turn，页面内部保持最新优先。 */
+  /** 按稳定复合游标读取 Turn 索引页，页面内部保持最新优先。 */
   listForSessionPage(
     sessionId: SessionId,
     cursor?: TurnIdPageCursor,
@@ -165,22 +181,34 @@ export class TurnsRepo {
     const pageSize = Math.min(Math.max(limit, 1), 2_000);
     const rows = cursor
       ? this.db.prepare(`
-          SELECT id, trigger_type, execution_profile, status,
-                 substr(user_input, 1, 512) AS user_input_preview,
-                 started_at, completed_at
-          FROM turns
-          WHERE session_id = ?
-            AND (started_at < ? OR (started_at = ? AND id < ?))
-          ORDER BY started_at DESC, id DESC
+          SELECT t.id, t.trigger_type, t.execution_profile, t.status,
+                 COALESCE((
+                   SELECT substr(ema_message_search_text(m.blocks_json), 1, 512)
+                   FROM messages m
+                   WHERE m.turn_id = t.id AND m.role = 'user' AND m.kind = 'normal'
+                   ORDER BY m.created_at ASC, m.id ASC LIMIT 1
+                 ), '') AS preview,
+                 t.provider_config_id, t.model_id,
+                 t.created_at, t.completed_at
+          FROM turns t
+          WHERE t.session_id = ?
+            AND (t.created_at < ? OR (t.created_at = ? AND t.id < ?))
+          ORDER BY t.created_at DESC, t.id DESC
           LIMIT ?
-        `).all(sessionId, cursor.startedAt, cursor.startedAt, cursor.id, pageSize + 1)
+        `).all(sessionId, cursor.createdAt, cursor.createdAt, cursor.id, pageSize + 1)
       : this.db.prepare(`
-          SELECT id, trigger_type, execution_profile, status,
-                 substr(user_input, 1, 512) AS user_input_preview,
-                 started_at, completed_at
-          FROM turns
-          WHERE session_id = ?
-          ORDER BY started_at DESC, id DESC
+          SELECT t.id, t.trigger_type, t.execution_profile, t.status,
+                 COALESCE((
+                   SELECT substr(ema_message_search_text(m.blocks_json), 1, 512)
+                   FROM messages m
+                   WHERE m.turn_id = t.id AND m.role = 'user' AND m.kind = 'normal'
+                   ORDER BY m.created_at ASC, m.id ASC LIMIT 1
+                 ), '') AS preview,
+                 t.provider_config_id, t.model_id,
+                 t.created_at, t.completed_at
+          FROM turns t
+          WHERE t.session_id = ?
+          ORDER BY t.created_at DESC, t.id DESC
           LIMIT ?
         `).all(sessionId, pageSize + 1);
     const typedRows = rows as TurnIndexRow[];
@@ -189,7 +217,7 @@ export class TurnsRepo {
     return {
       rows: pageRows,
       nextCursor: typedRows.length > pageSize && last
-        ? { startedAt: last.started_at, id: last.id }
+        ? { createdAt: last.created_at, id: last.id }
         : null,
     };
   }
@@ -203,25 +231,25 @@ export class TurnsRepo {
     const pageSize = Math.min(Math.max(limit, 1), 2_000);
     const rows = cursor
       ? this.db.prepare(`
-          SELECT id, started_at FROM turns
+          SELECT id, created_at FROM turns
           WHERE session_id = ?
-            AND (started_at < ? OR (started_at = ? AND id < ?))
-          ORDER BY started_at DESC, id DESC
+            AND (created_at < ? OR (created_at = ? AND id < ?))
+          ORDER BY created_at DESC, id DESC
           LIMIT ?
-        `).all(sessionId, cursor.startedAt, cursor.startedAt, cursor.id, pageSize + 1)
+        `).all(sessionId, cursor.createdAt, cursor.createdAt, cursor.id, pageSize + 1)
       : this.db.prepare(`
-          SELECT id, started_at FROM turns
+          SELECT id, created_at FROM turns
           WHERE session_id = ?
-          ORDER BY started_at DESC, id DESC
+          ORDER BY created_at DESC, id DESC
           LIMIT ?
         `).all(sessionId, pageSize + 1);
-    const typedRows = rows as Array<{ id: string; started_at: number }>;
+    const typedRows = rows as Array<{ id: string; created_at: number }>;
     const pageRows = typedRows.slice(0, pageSize);
     const last = pageRows.at(-1);
     return {
       ids: pageRows.map((row) => row.id),
       nextCursor: typedRows.length > pageSize && last
-        ? { startedAt: last.started_at, id: last.id }
+        ? { createdAt: last.created_at, id: last.id }
         : null,
     };
   }
@@ -244,13 +272,13 @@ export class TurnsRepo {
     const olderRows = this.db.prepare(`
       SELECT * FROM turns
       WHERE session_id = ?
-        AND (started_at < ? OR (started_at = ? AND id < ?))
-      ORDER BY started_at DESC, id DESC
+        AND (created_at < ? OR (created_at = ? AND id < ?))
+      ORDER BY created_at DESC, id DESC
       LIMIT ?
     `).all(
       sessionId,
-      anchor.started_at,
-      anchor.started_at,
+      anchor.created_at,
+      anchor.created_at,
       anchor.id,
       beforeLimit + 1,
     ) as TurnRow[];
@@ -258,13 +286,13 @@ export class TurnsRepo {
     const newerRows = this.db.prepare(`
       SELECT * FROM turns
       WHERE session_id = ?
-        AND (started_at > ? OR (started_at = ? AND id > ?))
-      ORDER BY started_at ASC, id ASC
+        AND (created_at > ? OR (created_at = ? AND id > ?))
+      ORDER BY created_at ASC, id ASC
       LIMIT ?
     `).all(
       sessionId,
-      anchor.started_at,
-      anchor.started_at,
+      anchor.created_at,
+      anchor.created_at,
       anchor.id,
       afterLimit + 1,
     ) as TurnRow[];

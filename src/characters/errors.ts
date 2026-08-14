@@ -34,8 +34,6 @@ export type CharacterResourceValidationCode =
   | 'symbolic_link_not_allowed'
   | 'source_changed_during_copy'
   | 'export_destination_exists'
-  | 'portrait_format_unsupported'
-  | 'portrait_dimensions_invalid'
   | 'voice_format_unsupported'
   | 'voice_duration_invalid'
   | 'live2d_entry_invalid'

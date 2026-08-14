@@ -2,7 +2,7 @@
 
 import type { CharacterCardInput } from '../types.js';
 import type { CharacterLive2dVariantInput } from '../live2d/types.js';
-import type { CharacterVoiceReferenceInput } from '../voiceReferences/types.js';
+import type { CharacterVoiceReferenceInput } from '../voice/types.js';
 import {
   asCharacterLive2dId,
   asCharacterVoiceReferenceId,
@@ -16,7 +16,6 @@ export const EMA_CARD_ID = 'ema' as const;
  */
 export const EMA_CARD_INPUT: CharacterCardInput = {
   name: '樱羽艾玛',
-  version: 'v1.0.0',
   description: '来自《魔法少女的魔女审判》的囚犯少女，编号658。温柔善良、害怕孤独，但内心坚韧。现在是你的 AI 桌宠兼助手。',
 
   systemPrompt: `# 角色：樱羽艾玛(桜羽エマ / Sakuraba Ema)
@@ -80,23 +79,16 @@ determined: 「一定有办法的！」「我不会放弃！」
 };
 
 export const EMA_LIVE2D_VARIANTS: readonly CharacterLive2dVariantInput[] = [{
-  id: asCharacterLive2dId('ema:ema'),
-  label: '默认',
-  format: 'live2d',
-  entryPath: 'live2d/ema.model3.json',
-  runtimeConfigPath: 'live2d/runtime-config.json',
-  position: 0,
+  id: asCharacterLive2dId('ema-live2d-default'),
+  name: '默认',
   isPrimary: true,
-  isBuiltin: true,
 }];
 
 export const EMA_VOICE_REFERENCES: readonly CharacterVoiceReferenceInput[] = [{
-  id: asCharacterVoiceReferenceId('ema:voice:ra_ema001'),
-  label: '默认',
-  relativePath: 'voiceRefs/ra_ema001.mp3',
+  id: asCharacterVoiceReferenceId('ema-voice-default'),
+  name: '默认',
   promptText: '我就是担心这种伤风败俗的东西如果被身心尚幼的小朋友们看到会造成不好的影响，所以我想提前为小朋友们做好预防措施。',
   promptLang: 'zh',
-  position: 0,
   isPrimary: true,
   mimeType: 'audio/mpeg',
 }];
