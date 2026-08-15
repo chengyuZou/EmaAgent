@@ -1,87 +1,41 @@
 # Session
 
-> 状态：目标接口已冻结，当前 `store.ts/types.ts/protocol.ts` 仍包含待迁出的 Turn 与 Wire 职责。
+`src/session` 拥有持久会话、项目分组与消息历史的**业务规则**：什么能写、怎么写、写完联动什么。SQL 归 storage，协议归 server，Turn 执行归 turn 包。
 
-`src/session` 只拥有持久会话、Session 偏好和消息历史。它不知道一次 Turn 怎么运行，也不提供 HTTP DTO。
+## 领域事实
 
-## 领域内容
+- **Session**：标题、workspaceRoot（项目内锁定为项目主文件夹）、projectId、createdAt/updatedAt/lastActivityAt、archivedAt、pinned、fork 溯源双列、executionProfile、narrativePolicy、当前模型（ProviderConfigId/ModelId）、lastViewedAt。
+- **SessionListItem** = Session + 列表投影三字段（hasActiveTurn / lastTurnStatus / hasUnread）。三字段只由列表/搜索 SQL 的 CTE 算出；单查路径返回裸 Session，不允许伪造投影。
+- **Project**：可编辑名称 + 多源文件夹，恰好一个主文件夹（按 updatedAt 倒序首位即主）。
+- **Message**：sessionId、可空 turnId（null = /compact summary 等 Session 级消息）、role、kind（normal / tool_results / summary）、blocks、interrupted、createdAt。
 
-Session 持久事实：
+## 公共入口
 
-- id、标题、workspace、创建/更新时间；
-- 归档、置顶、分组、父 Session；
-- 默认 Chat/Work、Narrative 策略和模型偏好；
-- lastViewedAt。
+`SessionStore` 是唯一读写聚合：
 
-`runningTurnCount`、`lastTurnStatus`、`hasUnread` 是列表读模型，不是可修改 Session 实体。需要同时展示 Session 与 Turn 状态时，由 Application Server 查询层联合两个业务结果。
+- **Session**：createSession / getSession / sessionExists / patchSession（项目成员改工作区抛 `session_workspace_locked_by_project`）/ pin / archive / setViewedAt / updateTitle；
+- **侧栏**：`listSessionsGrouped()` 五桶（置顶 Session / 置顶项目 / 其余项目 / 最近 / 已归档；Session 同时满足 pinned 与 project 时进置顶桶）；`searchSessions` 不搜归档；
+- **Project**：createProject / rename / delete / pin / 文件夹增删 / 设主 / 拖入拖出；主文件夹变更或继位时同事务级联改写全部成员的 workspace_root；
+- **Fork**：forkSession 复制 Turn/Message/Attachment 并重映射 ID，不带 Task、AgentRun 或任何在跑的外部副作用；
+- **Message**：appendMessage（turnId 归属校验）/ loadHistory（从最近 summary 起，LLM 可见历史）/ listMessages（热尾游标）/ listMessagesForTurns（供 Turn 窗口拼装）/ loadMessagesForTurn / findToolInteraction（启动恢复）/ markMessageInterrupted / assertMessageOwnership；
+- **删除**：deleteSession 只删本聚合的数据库行并触发 onSessionRemoved 文件清理；活动 Turn 的取消与运行态收口归 TurnStore，由删除用例（Server 编排）先行调用。
 
-Message 持久事实：
+其余出口：
 
-- sessionId、可选 turnId、role、kind；
-- text、thinking、tool_use、tool_result、媒体引用等内容块；
-- createdAt 与 interrupted。
+- `generateSessionTitle(query, complete)`：让模型生成 7–15 字标题，失败或为空时截断原文前 100 字兜底；返回空串表示没有可用输入。持久化不在此发生，调用方拿返回值走 `SessionStore.updateTitle`。
+- `parseMessageBlocksJson`：blocks_json 的唯一解析点。
+- `SessionOwnershipError`：跨 Session 引用的稳定错误。
 
-Session Message 不是 `LlmRequest`。Context 负责把持久消息投影成 Provider 中立 `llm.Message`。
+## 边界（本包不负责）
 
-## Store 边界
-
-```ts
-class SessionStore {
-  createSession(...): Session;
-  getSession(...): Session;
-  listSessionsGrouped(...): SessionsGrouped;
-  patchSession(...): Session;
-  archiveSession(...): void;
-  forkSession(...): ForkedSession;
-  assertWritable(...): void;
-  deleteRows(...): void;
-}
-
-class MessageStore {
-  append(...): Message;
-  appendOrUpdateAssistantBlock(...): Message;
-  appendToolResult(...): Message;
-  markInterrupted(...): void;
-  loadHistory(...): Message[];
-  listMessages(...): Message[];
-  writeSummaryBoundary(...): void;
-}
-```
-
-这里列的是职责，不要求为了方法数量再套 Port/Facade。`SessionStore` 不创建 Turn，`MessageStore` 不执行 Context 或 Compact。
-
-## 必须迁出
-
-- Turn 类型、start/complete/fail/abort/recover/rewind、Turn index 和锚点窗口 → `src/turn`；
-- `ActiveTurnRegistry` → `src/turn`；
-- `SessionOwnershipFacade.assertTurnOwnership` → `TurnStore`；
-- `protocol.ts` 全部 Wire DTO → `apps/server/src/routes`；
-- `SessionLifecycle` 的 Runtime/Permission/Memory/文件级联 → `apps/server/src/application/deleteSession.ts`；
-- `NarrativeContextBlocks` 等已退役历史兼容类型直接删除，不在新 Message 契约里续命。
-
-Session 永久删除确实跨多个业务包，因此 Application Server 的删除用例负责顺序：停止活动 Turn、取消决定、清理 Runtime、调用 Memory 删除钩子、删除数据库聚合、清理受控文件。Session 包只执行自己的数据库动作。
-
-## 目标目录
-
-```text
-src/session/
-├─ README.md
-├─ types.ts
-├─ message.ts
-├─ errors.ts
-├─ sessionStore.ts
-├─ messageStore.ts
-├─ sessionTitle.ts
-└─ tests/
-```
-
-Turn 导航属于 TurnQueries，不为现有 `history/sessionHistory.ts` 保留子目录。Session 标题是一个真实 Session 用例，可用注入的单次 completion 函数并带确定性回退；它不需要 Provider Runtime。
+- Turn 生命周期、运行态（取消信号/运行锁）、导航查询、rewind、Session 删除守卫 → `@ema-agent/turn` 的 `TurnStore`；
+- Wire DTO 不在本包——server/desktop 的协议类型在接线批按真实消费方重建；
+- 跨包删除编排（Runtime/Permission/Memory 级联）→ server 侧的 SessionLifecycle。
 
 ## 依赖方向
 
 ```text
-turn ──> session ──> ids / storage
-                    └─ llm、tools 的持久内容类型
+session ──> ids / storage / @ema-agent/turn/turns（零依赖词汇叶，唯一允许导入的 turn 文件）
 ```
 
-Session 不导入 Turn、Agent、Context、Compact、Memory、Permission、Speech 或应用 Route。
+不 import turn 业务实现、agent、context、compact、memory、permission 或应用 Route。

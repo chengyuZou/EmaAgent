@@ -1,35 +1,9 @@
 export { SessionStore } from './store.js';
 export type { SessionStoreDeps } from './store.js';
-export { SessionLifecycle } from './sessionLifecycle.js';
-export type { SessionLifecycleDeps } from './sessionLifecycle.js';
-export { SessionTitleGenerator } from './sessionTitleGenerator.js';
-export type { SessionTitleCompletionPort } from './sessionTitleGenerator.js';
+export { generateSessionTitle } from './sessionTitle.js';
+export type { SessionTitleCompletion } from './sessionTitle.js';
 export { SessionOwnershipError } from './errors.js';
 export { parseMessageBlocksJson } from './message.js';
-export type {
-  SessionWire,
-  SessionsGroupedResult,
-  ProjectWire,
-  ProjectFolderWire,
-  ProjectGroupWire,
-  SessionSearchItem,
-  SessionsSearchResult,
-  ForkResult,
-  TurnWire,
-  MessageWire,
-  SessionMessagesResult,
-  TurnIndexItemWire,
-  TurnIndexPageWire,
-  SessionMessageWindowWire,
-  SessionAttachmentFileStatus,
-  SessionAttachmentWire,
-  SessionAttachmentsResult,
-  AudioEntryWire,
-  SessionNoteEntryWire,
-  SessionNoteWire,
-  SessionDashboardWire,
-} from './protocol.js';
-
 export type {
   Session,
   SessionListItem,
@@ -41,11 +15,6 @@ export type {
   PatchSessionInput,
   AppendMessageInput,
   ListMessagesInput,
-  ListTurnIndexInput,
-  TurnIndexItem,
-  TurnIndexPage,
-  ListMessageWindowInput,
-  MessageWindow,
   SearchSessionsInput,
   SessionSearchHit,
   SearchSessionsOutput,

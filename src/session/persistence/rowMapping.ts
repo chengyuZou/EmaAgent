@@ -9,9 +9,8 @@ import type {
   SessionRow,
   SessionRowEnriched,
   SessionSearchRow,
-  TurnRow,
 } from '@ema-agent/storage';
-import type { Turn, TurnStatus } from '@ema-agent/turn';
+import type { TurnStatus } from '@ema-agent/turn/turns';
 import { parseMessageBlocksJson } from '../message.js';
 import type {
   Message,
@@ -70,26 +69,6 @@ export function toSessionListItem(row: SessionRowEnriched): SessionListItem {
     hasActiveTurn: row.has_active_turn === 1,
     lastTurnStatus,
     hasUnread: row.last_activity_at > (row.last_viewed_at ?? 0),
-  };
-}
-
-export function toTurn(row: TurnRow): Turn {
-  return {
-    id: row.id as TurnId,
-    sessionId: row.session_id as SessionId,
-    status: row.status,
-    triggerType: row.trigger_type,
-    executionProfile: row.execution_profile,
-    narrativePolicy: row.narrative_policy,
-    providerConfigId: row.provider_config_id,
-    modelId: row.model_id,
-    iterations: row.iterations,
-    usageInputTokens: row.usage_input_tokens,
-    usageOutputTokens: row.usage_output_tokens,
-    createdAt: row.created_at,
-    completedAt: row.completed_at,
-    errorCode: row.error_code,
-    errorMessage: row.error_message,
   };
 }
 
