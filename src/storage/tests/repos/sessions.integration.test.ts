@@ -1,7 +1,7 @@
 // 测试 Session 行新形状（fork 溯源/无 group 与 pinned_at）、项目分组投影、搜索投影与 Fork 重映射。
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { SessionId, TurnId } from '@ema-agent/ids';
-import { SessionsRepo, nextCursorFor, type SessionRow } from '../../repos/data/sessions.js';
+import { SessionsRepo } from '../../repos/data/sessions.js';
 import { createTestDatabase, type TestDatabase } from '../helpers/create-test-database.js';
 
 describe('SessionsRepo integration', () => {
@@ -130,21 +130,6 @@ describe('SessionsRepo integration', () => {
       asTurnId('other-turn'),
     )).toThrow(/session|turn/i);
     expect(repo.findById(asSessionId('fork'))).toBeUndefined();
-  });
-
-  it('keyset 分页不丢边界行，畸形 cursor 明确报错', () => {
-    for (const id of ['session-a', 'session-b', 'session-c', 'session-d']) {
-      insertSession({ id, pinned: true, lastActivityAt: 1_000 });
-    }
-
-    const firstPage = repo.listActive(2);
-    const cursor = nextCursorFor(firstPage[firstPage.length - 1] as SessionRow);
-    const secondPage = repo.listActive(2, cursor);
-    const ids = [...firstPage, ...secondPage].map((row) => row.id);
-
-    expect(ids).toHaveLength(4);
-    expect(new Set(ids).size).toBe(4);
-    expect(() => repo.listActive(10, 'not-base64url-json')).toThrow('Invalid sessions cursor');
   });
 
   function insertSession(fixture: {

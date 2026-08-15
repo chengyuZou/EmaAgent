@@ -47,23 +47,27 @@ describe('SessionStore — session', () => {
     expect(() => store.getSession('bad-id' as SessionId)).toThrow('session_not_found');
   });
 
-  it('listSessions returns active sessions newest-first', () => {
-    const store = makeStore();
-    store.createSession({ title: 'A' });
-    store.createSession({ title: 'B' });
-    const { sessions } = store.listSessions();
-
-    expect(sessions.length).toBe(2);
-    expect(sessions[0]!.title).toBe('B'); // newest first
-  });
-
-  it('archiveSession hides session from list', () => {
+  it('归档的 Session 进入侧栏归档桶，不再出现在最近桶', () => {
     const store = makeStore();
     const s = store.createSession();
     store.archiveSession(s.id);
 
-    const { sessions } = store.listSessions();
-    expect(sessions).toHaveLength(0);
+    const grouped = store.listSessionsGrouped();
+    expect(grouped.recent).toHaveLength(0);
+    expect(grouped.archived.map((item) => item.id)).toEqual([s.id]);
+  });
+
+  it('同时属于项目和置顶的 Session 进置顶桶，项目桶不再列出它', () => {
+    const store = makeStore();
+    const project = store.createProject('Demo', 'D:/main');
+    const s = store.createSession();
+    store.assignSessionToProject(s.id, project.id);
+    store.pinSession(s.id);
+
+    const grouped = store.listSessionsGrouped();
+    expect(grouped.pinned.map((item) => item.id)).toEqual([s.id]);
+    const group = grouped.projects.find((g) => g.project.id === project.id)!;
+    expect(group.sessions).toHaveLength(0);
   });
 
   it('updateTitle changes title', () => {
@@ -147,7 +151,7 @@ describe('SessionStore — 项目', () => {
 
     store.assignSessionToProject(session.id, project.id, true);
 
-    const group = store.listProjects().projects.find((g) => g.project.id === project.id)!;
+    const group = store.listSessionsGrouped().projects.find((g) => g.project.id === project.id)!;
     expect(group.folders.map((folder) => folder.path)).toContain('D:/loose');
     expect(group.folders.find((folder) => folder.path === 'D:/loose')!.isPrimary).toBe(false);
     expect(store.getSession(session.id).workspaceRoot).toBe('D:/main');
@@ -163,7 +167,7 @@ describe('SessionStore — 项目', () => {
     store.setProjectPrimaryFolder(project.id, 'D:/second');
 
     expect(store.getSession(session.id).workspaceRoot).toBe('D:/second');
-    const group = store.listProjects().projects.find((g) => g.project.id === project.id)!;
+    const group = store.listSessionsGrouped().projects.find((g) => g.project.id === project.id)!;
     expect(group.folders[0]!.path).toBe('D:/second');
   });
 });

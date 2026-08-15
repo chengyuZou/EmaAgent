@@ -5,7 +5,6 @@ import {
   ProjectsRepo,
   SessionsRepo,
   TurnsRepo,
-  nextCursorFor,
   type SessionRowEnriched,
   type TurnIdPage,
   type TurnIdPageCursor,
@@ -34,8 +33,6 @@ import type {
   CreateSessionInput,
   PatchSessionInput,
   AppendMessageInput,
-  ListSessionsInput,
-  ListSessionsOutput,
   ListMessagesInput,
   ListTurnIndexInput,
   TurnIndexPage,
@@ -122,21 +119,8 @@ export class SessionStore {
     return this.sessionsRepo.findById(id) !== undefined;
   }
 
-  listSessions(input: ListSessionsInput = {}): ListSessionsOutput {
-    const limit = input.limit ?? 50;
-    // 多取一行判断是否仍有下一页。
-    const rows = this.sessionsRepo.listActive(limit + 1, input.cursor);
-    const hasMore = rows.length > limit;
-    const visible = hasMore ? rows.slice(0, limit) : rows;
-    const sessions = visible.map(toSessionListItem);
-    const nextCursor = hasMore
-      ? nextCursorFor(visible[visible.length - 1]!)
-      : undefined;
-    return { sessions, nextCursor };
-  }
-
   /** 侧栏投影：置顶 Session / 置顶项目 / 其余项目 / 最近 / 已归档。 */
-  listProjects(): {
+  listSessionsGrouped(): {
     pinned:   SessionListItem[];
     pinnedProjects: ProjectGroup[];
     projects: ProjectGroup[];
@@ -144,6 +128,8 @@ export class SessionStore {
     archived: SessionListItem[];
   } {
     const all = this.sessionsRepo.listEnrichedAll();
+
+    // 列出所有项目的文件夹 按 project_id 分组。
     const foldersByProject = new Map<string, ReturnType<typeof toProjectFolder>[]>();
     for (const folder of this.projectsRepo.listAllFolders()) {
       const list = foldersByProject.get(folder.project_id) ?? [];
@@ -158,13 +144,14 @@ export class SessionStore {
 
     for (const row of all) {
       if (row.archived_at) { archived.push(toSessionListItem(row)); continue; }
+      // 如果一个Session同时有project_id和pinned 则pin的优先级更高
+      if (row.pinned) { pinned.push(toSessionListItem(row)); continue; }
       if (row.project_id) {
         const list = membersByProject.get(row.project_id) ?? [];
         list.push(row);
         membersByProject.set(row.project_id, list);
         continue;
       }
-      if (row.pinned) { pinned.push(toSessionListItem(row)); continue; }
       recent.push(toSessionListItem(row));
     }
 
@@ -410,6 +397,7 @@ export class SessionStore {
     const signal = this.registry.register(input.sessionId, turnId);
     return { turn: this.requireTurn(turnId), signal };
   }
+  
   completeTurn(turnId: TurnId, usage: CompleteTurnInput = {}): void {
     this.requireTurn(turnId);
     this.turnsRepo.complete(turnId, {

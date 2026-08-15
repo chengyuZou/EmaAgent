@@ -95,11 +95,6 @@ export interface SessionWire {
   hasUnread: boolean;
 }
 
-export interface SessionsListResult {
-  sessions: SessionWire[];
-  nextCursor?: string;
-}
-
 export interface ProjectFolderWire {
   path: string;
   isPrimary: boolean;

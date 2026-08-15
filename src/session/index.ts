@@ -8,7 +8,6 @@ export { SessionOwnershipError } from './errors.js';
 export { parseMessageBlocksJson } from './message.js';
 export type {
   SessionWire,
-  SessionsListResult,
   SessionsGroupedResult,
   ProjectWire,
   ProjectFolderWire,
@@ -41,8 +40,6 @@ export type {
   CreateSessionInput,
   PatchSessionInput,
   AppendMessageInput,
-  ListSessionsInput,
-  ListSessionsOutput,
   ListMessagesInput,
   ListTurnIndexInput,
   TurnIndexItem,

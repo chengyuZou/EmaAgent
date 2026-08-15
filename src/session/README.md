@@ -29,7 +29,7 @@ Session Message 不是 `LlmRequest`。Context 负责把持久消息投影成 Pro
 class SessionStore {
   createSession(...): Session;
   getSession(...): Session;
-  listSessions(...): SessionPage;
+  listSessionsGrouped(...): SessionsGrouped;
   patchSession(...): Session;
   archiveSession(...): void;
   forkSession(...): ForkedSession;

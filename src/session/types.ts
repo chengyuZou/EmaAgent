@@ -126,22 +126,6 @@ export interface AppendMessageInput {
   interrupted?: boolean;
 }
 
-export interface ListSessionsInput {
-  /** 单页最多返回的 Session 数量。 */
-  limit?: number;
-  /**
-   * 上一页返回的不透明 cursor。调用方只能原样回传，不能解析或构造。
-   * 服务端使用 `(pinned DESC, last_activity_at DESC, id DESC)` 做稳定分页。
-   */
-  cursor?: string;
-}
-
-export interface ListSessionsOutput {
-  sessions: SessionListItem[];
-  /** 仍有下一页时返回，调用方应原样作为下一次的 cursor。 */
-  nextCursor?: string;
-}
-
 export interface ListMessagesInput {
   /** 加载早于该时间戳的消息，供 UI 热历史分页。 */
   before?: number;

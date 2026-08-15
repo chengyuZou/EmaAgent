@@ -9,7 +9,7 @@ export {
 } from './database/sqlite-id-batches.js';
 export type { SqliteIdBatchOptions } from './database/sqlite-id-batches.js';
 
-export { SessionsRepo, nextCursorFor } from './repos/data/sessions.js';
+export { SessionsRepo } from './repos/data/sessions.js';
 export { ProjectsRepo, ProjectFolderError } from './repos/data/projects.js';
 export type { ProjectRow, ProjectFolderRow } from './repos/data/projects.js';
 export { TurnsRepo } from './repos/data/turns.js';
