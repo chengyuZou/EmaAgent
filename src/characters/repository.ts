@@ -2,15 +2,13 @@
 
 import { randomUUID } from 'node:crypto';
 import type { CharacterCardsRepo, CharacterCardRow } from '@ema-agent/storage';
-import { asCharacterCardId } from '@ema-agent/ids';
-import type { CharacterCardId } from '@ema-agent/ids';
 import type { CharacterCard, CharacterCardInput } from './types.js';
 
 // ── 数据库行 -> 领域对象 ──────────────────────────────────────────────────────────
 
 function fromRow(row: CharacterCardRow): CharacterCard {
   return {
-    id:               asCharacterCardId(row.id),
+    id:               row.id,
     name:             row.name,
     description:      row.description,
     systemPrompt:     row.system_prompt,
@@ -30,7 +28,7 @@ function fromRow(row: CharacterCardRow): CharacterCard {
 export class CharacterCardRepository {
   constructor(private readonly repo: CharacterCardsRepo) {}
 
-  findById(id: CharacterCardId): CharacterCard | undefined {
+  findById(id: string): CharacterCard | undefined {
     const row = this.repo.findById(id);
     return row ? fromRow(row) : undefined;
   }
@@ -49,7 +47,7 @@ export class CharacterCardRepository {
     opts: { id?: string; isBuiltin?: boolean; isActive?: boolean } = {},
   ): CharacterCard {
     const now = Date.now();
-    const id = asCharacterCardId(opts.id ?? randomUUID());
+    const id = opts.id ?? randomUUID();
 
     this.repo.insert({
       id,
@@ -67,7 +65,7 @@ export class CharacterCardRepository {
     return this.findById(id)!;
   }
 
-  update(id: CharacterCardId, patch: Partial<CharacterCardInput>): void {
+  update(id: string, patch: Partial<CharacterCardInput>): void {
     this.repo.update(id, {
       name:                 patch.name,
       description:          patch.description,
@@ -78,7 +76,7 @@ export class CharacterCardRepository {
 
   /** 仅供主用 Live2D 变更流程写入派生词汇，普通角色编辑不能修改这两列。 */
   updateLive2dVocabulary(
-    id: CharacterCardId,
+    id: string,
     emotionVocabulary: readonly string[],
     motionVocabulary: readonly string[],
   ): void {
@@ -89,12 +87,12 @@ export class CharacterCardRepository {
     });
   }
 
-  activate(id: CharacterCardId): void {
+  activate(id: string): void {
     this.repo.activate(id, Date.now());
   }
 
   /** 静默拒绝删除内置卡（由 storage repo 强制）。 */
-  delete(id: CharacterCardId): void {
+  delete(id: string): void {
     this.repo.delete(id);
   }
 }

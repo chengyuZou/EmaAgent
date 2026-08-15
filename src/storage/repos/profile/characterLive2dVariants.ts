@@ -1,9 +1,5 @@
 // 持久化角色拥有的 Live2D 资源、舞台位置和主项选择。
 
-import type {
-  CharacterCardId,
-  CharacterLive2dId,
-} from '@ema-agent/ids';
 import type { SqliteDb } from '../../database/database.js';
 
 export interface CharacterLive2dVariantRow {
@@ -21,8 +17,8 @@ export interface CharacterLive2dVariantRow {
 }
 
 export interface CharacterLive2dVariantInsert {
-  id: CharacterLive2dId;
-  characterCardId: CharacterCardId;
+  id: string;
+  characterCardId: string;
   name: string;
   stageScale?: number;
   stageOffsetX?: number;
@@ -73,8 +69,8 @@ export class CharacterLive2dVariantsRepo {
   }
 
   findById(
-    characterCardId: CharacterCardId,
-    id: CharacterLive2dId,
+    characterCardId: string,
+    id: string,
   ): CharacterLive2dVariantRow | undefined {
     return this.db.prepare(
       `SELECT * FROM character_live2d_variants
@@ -82,7 +78,7 @@ export class CharacterLive2dVariantsRepo {
     ).get(characterCardId, id) as CharacterLive2dVariantRow | undefined;
   }
 
-  listForCard(characterCardId: CharacterCardId): CharacterLive2dVariantRow[] {
+  listForCard(characterCardId: string): CharacterLive2dVariantRow[] {
     return this.db.prepare(
       `SELECT * FROM character_live2d_variants
        WHERE character_card_id = ?
@@ -91,7 +87,7 @@ export class CharacterLive2dVariantsRepo {
   }
 
   /** 批量取多张卡的资源,替代逐卡 listForCard 的 N+1 查询。 */
-  listForCards(characterCardIds: readonly CharacterCardId[]): CharacterLive2dVariantRow[] {
+  listForCards(characterCardIds: readonly string[]): CharacterLive2dVariantRow[] {
     if (characterCardIds.length === 0) return [];
     const placeholders = characterCardIds.map(() => '?').join(', ');
     return this.db.prepare(
@@ -102,8 +98,8 @@ export class CharacterLive2dVariantsRepo {
   }
 
   setPrimary(
-    characterCardId: CharacterCardId,
-    id: CharacterLive2dId,
+    characterCardId: string,
+    id: string,
     updatedAt: number,
   ): boolean {
     return this.db.transaction(() => {
@@ -124,8 +120,8 @@ export class CharacterLive2dVariantsRepo {
   }
 
   update(
-    characterCardId: CharacterCardId,
-    id: CharacterLive2dId,
+    characterCardId: string,
+    id: string,
     patch: CharacterLive2dVariantUpdate,
     updatedAt: number,
   ): CharacterLive2dVariantRow | undefined {
@@ -169,8 +165,8 @@ export class CharacterLive2dVariantsRepo {
   }
 
   delete(
-    characterCardId: CharacterCardId,
-    id: CharacterLive2dId,
+    characterCardId: string,
+    id: string,
     updatedAt: number,
   ): CharacterLive2dVariantRow | undefined {
     return this.db.transaction(() => {
@@ -189,7 +185,7 @@ export class CharacterLive2dVariantsRepo {
     })();
   }
 
-  private clearPrimary(characterCardId: CharacterCardId): void {
+  private clearPrimary(characterCardId: string): void {
     this.db.prepare(
       `UPDATE character_live2d_variants
        SET is_primary = 0
@@ -197,7 +193,7 @@ export class CharacterLive2dVariantsRepo {
     ).run(characterCardId);
   }
 
-  private promoteFirstEnabled(characterCardId: CharacterCardId, updatedAt: number): void {
+  private promoteFirstEnabled(characterCardId: string, updatedAt: number): void {
     this.db.prepare(
       `UPDATE character_live2d_variants
        SET is_primary = 1, updated_at = ?
@@ -210,7 +206,7 @@ export class CharacterLive2dVariantsRepo {
     ).run(updatedAt, characterCardId);
   }
 
-  private ensurePrimary(characterCardId: CharacterCardId, updatedAt: number): void {
+  private ensurePrimary(characterCardId: string, updatedAt: number): void {
     const primary = this.db.prepare(
       `SELECT 1 FROM character_live2d_variants
        WHERE character_card_id = ? AND enabled = 1 AND is_primary = 1`,

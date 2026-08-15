@@ -1,9 +1,5 @@
 // 持久化角色参考音频及其提示文本和主音频选择。
 
-import type {
-  CharacterCardId,
-  CharacterVoiceReferenceId,
-} from '@ema-agent/ids';
 import type { SqliteDb } from '../../database/database.js';
 
 export interface CharacterVoiceReferenceRow {
@@ -22,8 +18,8 @@ export interface CharacterVoiceReferenceRow {
 }
 
 export interface CharacterVoiceReferenceInsert {
-  id: CharacterVoiceReferenceId;
-  characterCardId: CharacterCardId;
+  id: string;
+  characterCardId: string;
   name: string;
   promptText: string;
   promptLang: string;
@@ -73,8 +69,8 @@ export class CharacterVoiceReferencesRepo {
   }
 
   findById(
-    characterCardId: CharacterCardId,
-    id: CharacterVoiceReferenceId,
+    characterCardId: string,
+    id: string,
   ): CharacterVoiceReferenceRow | undefined {
     return this.db.prepare(
       `SELECT * FROM character_voice_references
@@ -82,7 +78,7 @@ export class CharacterVoiceReferencesRepo {
     ).get(characterCardId, id) as CharacterVoiceReferenceRow | undefined;
   }
 
-  listForCard(characterCardId: CharacterCardId): CharacterVoiceReferenceRow[] {
+  listForCard(characterCardId: string): CharacterVoiceReferenceRow[] {
     return this.db.prepare(
       `SELECT * FROM character_voice_references
        WHERE character_card_id = ?
@@ -91,7 +87,7 @@ export class CharacterVoiceReferencesRepo {
   }
 
   /** 批量取多张卡的资源,替代逐卡 listForCard 的 N+1 查询。 */
-  listForCards(characterCardIds: readonly CharacterCardId[]): CharacterVoiceReferenceRow[] {
+  listForCards(characterCardIds: readonly string[]): CharacterVoiceReferenceRow[] {
     if (characterCardIds.length === 0) return [];
     const placeholders = characterCardIds.map(() => '?').join(', ');
     return this.db.prepare(
@@ -102,8 +98,8 @@ export class CharacterVoiceReferencesRepo {
   }
 
   setPrimary(
-    characterCardId: CharacterCardId,
-    id: CharacterVoiceReferenceId,
+    characterCardId: string,
+    id: string,
     updatedAt: number,
   ): boolean {
     return this.db.transaction(() => {
@@ -124,8 +120,8 @@ export class CharacterVoiceReferencesRepo {
   }
 
   update(
-    characterCardId: CharacterCardId,
-    id: CharacterVoiceReferenceId,
+    characterCardId: string,
+    id: string,
     patch: CharacterVoiceReferenceUpdate,
     updatedAt: number,
   ): CharacterVoiceReferenceRow | undefined {
@@ -160,8 +156,8 @@ export class CharacterVoiceReferencesRepo {
   }
 
   delete(
-    characterCardId: CharacterCardId,
-    id: CharacterVoiceReferenceId,
+    characterCardId: string,
+    id: string,
     updatedAt: number,
   ): CharacterVoiceReferenceRow | undefined {
     return this.db.transaction(() => {
@@ -179,7 +175,7 @@ export class CharacterVoiceReferencesRepo {
     })();
   }
 
-  private clearPrimary(characterCardId: CharacterCardId): void {
+  private clearPrimary(characterCardId: string): void {
     this.db.prepare(
       `UPDATE character_voice_references
        SET is_primary = 0
@@ -187,7 +183,7 @@ export class CharacterVoiceReferencesRepo {
     ).run(characterCardId);
   }
 
-  private promoteFirstEnabled(characterCardId: CharacterCardId, updatedAt: number): void {
+  private promoteFirstEnabled(characterCardId: string, updatedAt: number): void {
     this.db.prepare(
       `UPDATE character_voice_references
        SET is_primary = 1, updated_at = ?
@@ -200,7 +196,7 @@ export class CharacterVoiceReferencesRepo {
     ).run(updatedAt, characterCardId);
   }
 
-  private ensurePrimary(characterCardId: CharacterCardId, updatedAt: number): void {
+  private ensurePrimary(characterCardId: string, updatedAt: number): void {
     const primary = this.db.prepare(
       `SELECT 1 FROM character_voice_references
        WHERE character_card_id = ? AND enabled = 1 AND is_primary = 1`,

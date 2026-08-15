@@ -1,18 +1,13 @@
 // 验证 AgentRun 的父 Turn 归属、CAS 终态和异常退出恢复。
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import {
-  asAgentRunId,
-  asSessionId,
-  asTurnId,
-} from '@ema-agent/ids';
 import { AgentRunsRepo } from '../../repos/data/agent-runs.js';
 import { createTestDatabase, type TestDatabase } from '../helpers/create-test-database.js';
 
 describe('AgentRun 持久化状态机', () => {
   let database: TestDatabase;
   let repo: AgentRunsRepo;
-  const agentRunId = asAgentRunId('run-a');
+  const agentRunId = 'run-a';
 
   beforeEach(() => {
     database = createTestDatabase();
@@ -30,8 +25,8 @@ describe('AgentRun 持久化状态机', () => {
     repo = new AgentRunsRepo(database.db);
     repo.insert({
       id: agentRunId,
-      sessionId: asSessionId('session-a'),
-      parentTurnId: asTurnId('turn-a'),
+      sessionId: 'session-a',
+      parentTurnId: 'turn-a',
       kind: 'subagent',
       createdAt: 3,
     });

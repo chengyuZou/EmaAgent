@@ -5,11 +5,6 @@ import {
   CharacterIllustrationsRepo,
   type CharacterIllustrationRow,
 } from '@ema-agent/storage';
-import {
-  asCharacterIllustrationId,
-  type CharacterCardId,
-  type CharacterIllustrationId,
-} from '@ema-agent/ids';
 import type {
   CharacterIllustration,
   CharacterIllustrationInput,
@@ -18,8 +13,8 @@ import type {
 
 function fromRow(row: CharacterIllustrationRow): CharacterIllustration {
   return {
-    id: asCharacterIllustrationId(row.id),
-    characterCardId: row.character_card_id as CharacterCardId,
+    id: row.id,
+    characterCardId: row.character_card_id,
     name: row.name,
     stageScale: row.stage_scale,
     stageOffsetX: row.stage_offset_x,
@@ -35,17 +30,17 @@ function fromRow(row: CharacterIllustrationRow): CharacterIllustration {
 export class CharacterIllustrationRepository {
   constructor(private readonly repo: CharacterIllustrationsRepo) {}
 
-  list(characterCardId: CharacterCardId): CharacterIllustration[] {
+  list(characterCardId: string): CharacterIllustration[] {
     return this.repo.listForCard(characterCardId).map(fromRow);
   }
 
   /** 批量取多张卡的立绘并按卡分组;Store 全量聚合用它替代逐卡查询。 */
   listForCards(
-    characterCardIds: readonly CharacterCardId[],
-  ): Map<CharacterCardId, CharacterIllustration[]> {
-    const grouped = new Map<CharacterCardId, CharacterIllustration[]>();
+    characterCardIds: readonly string[],
+  ): Map<string, CharacterIllustration[]> {
+    const grouped = new Map<string, CharacterIllustration[]>();
     for (const row of this.repo.listForCards(characterCardIds)) {
-      const cardId = row.character_card_id as CharacterCardId;
+      const cardId = row.character_card_id;
       const list = grouped.get(cardId) ?? [];
       list.push(fromRow(row));
       grouped.set(cardId, list);
@@ -54,10 +49,10 @@ export class CharacterIllustrationRepository {
   }
 
   insert(
-    characterCardId: CharacterCardId,
+    characterCardId: string,
     input: CharacterIllustrationInput,
   ): CharacterIllustration {
-    const id = input.id ?? asCharacterIllustrationId(randomUUID());
+    const id = input.id ?? randomUUID();
     const now = Date.now();
     this.repo.insert({
       ...input,
@@ -69,13 +64,13 @@ export class CharacterIllustrationRepository {
     return fromRow(this.repo.findById(characterCardId, id)!);
   }
 
-  setPrimary(characterCardId: CharacterCardId, id: CharacterIllustrationId): boolean {
+  setPrimary(characterCardId: string, id: string): boolean {
     return this.repo.setPrimary(characterCardId, id, Date.now());
   }
 
   update(
-    characterCardId: CharacterCardId,
-    id: CharacterIllustrationId,
+    characterCardId: string,
+    id: string,
     patch: CharacterIllustrationPatch,
   ): CharacterIllustration | undefined {
     const row = this.repo.update(characterCardId, id, patch, Date.now());
@@ -83,8 +78,8 @@ export class CharacterIllustrationRepository {
   }
 
   delete(
-    characterCardId: CharacterCardId,
-    id: CharacterIllustrationId,
+    characterCardId: string,
+    id: string,
   ): CharacterIllustration | undefined {
     const row = this.repo.delete(characterCardId, id, Date.now());
     return row ? fromRow(row) : undefined;

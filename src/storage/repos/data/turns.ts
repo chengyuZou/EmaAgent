@@ -1,7 +1,6 @@
 // 管理 Turn 的创建、状态流转、模型冻结、稳定分页和锚点窗口查询。
 // Row 枚举由 storage 自持（SQL CHECK 的映射）；领域词汇归 @ema-agent/turn 叶子，业务包在边界显式映射。
 import type { SqliteDb } from '../../database/database.js';
-import type { TurnId, SessionId } from '@ema-agent/ids';
 import type { ExecutionProfileRow, NarrativePolicyRow } from './sessions.js';
 
 /** turns.status 的 SQL CHECK 原样。 */
@@ -29,8 +28,8 @@ export interface TurnRow {
 }
 
 export interface TurnInsert {
-  id: TurnId;
-  sessionId: SessionId;
+  id: string;
+  sessionId: string;
   triggerType: TurnTriggerTypeRow;
   executionProfile: ExecutionProfileRow;
   narrativePolicy: NarrativePolicyRow;
@@ -103,7 +102,7 @@ export class TurnsRepo {
   }
 
   /** 操作开始冻结模型选择；prepare 解析成功后写入，整轮不再变。 */
-  setModel(id: TurnId, providerConfigId: string, modelId: string): void {
+  setModel(id: string, providerConfigId: string, modelId: string): void {
     this.db
       .prepare('UPDATE turns SET provider_config_id = ?, model_id = ? WHERE id = ?')
       .run(providerConfigId, modelId, id);
@@ -114,7 +113,7 @@ export class TurnsRepo {
    * 使 fork 出的 session 保留触发来源、Profile、模型冻结、
    * status、usage 与时序。
    */
-  copyTurn(src: TurnRow, newSessionId: SessionId, newId: TurnId): void {
+  copyTurn(src: TurnRow, newSessionId: string, newId: string): void {
     this.db
       .prepare(
         `INSERT INTO turns
@@ -132,7 +131,7 @@ export class TurnsRepo {
       );
   }
   
-  complete(id: TurnId, c: TurnCompletion): void {
+  complete(id: string, c: TurnCompletion): void {
     this.db
       .prepare(
         `UPDATE turns SET
@@ -152,15 +151,15 @@ export class TurnsRepo {
       );
   }
 
-  findById(id: TurnId): TurnRow | undefined {
+  findById(id: string): TurnRow | undefined {
     return this.db.prepare('SELECT * FROM turns WHERE id = ?').get(id) as TurnRow | undefined;
   }
 
-  delete(id: TurnId): void {
+  delete(id: string): void {
     this.db.prepare('DELETE FROM turns WHERE id = ?').run(id);
   }
 
-  listForSession(sessionId: SessionId, limit = 100): TurnRow[] {
+  listForSession(sessionId: string, limit = 100): TurnRow[] {
     return this.db
       .prepare('SELECT * FROM turns WHERE session_id = ? ORDER BY created_at DESC, id DESC LIMIT ?')
       .all(sessionId, limit) as TurnRow[];
@@ -168,7 +167,7 @@ export class TurnsRepo {
 
   /** 按稳定复合游标读取 Turn 索引页，页面内部保持最新优先。 */
   listForSessionPage(
-    sessionId: SessionId,
+    sessionId: string,
     cursor?: TurnIdPageCursor,
     limit = 1_000,
   ): TurnPage {
@@ -218,7 +217,7 @@ export class TurnsRepo {
 
   /** 启动恢复等内部任务只读取 ID 与游标列，避免加载用户正文。 */
   listIdsForSessionPage(
-    sessionId: SessionId,
+    sessionId: string,
     cursor?: TurnIdPageCursor,
     limit = 1_000,
   ): TurnIdPage {
@@ -253,8 +252,8 @@ export class TurnsRepo {
    * 额外读取一行仅用于判断两侧是否还有数据。
    */
   listWindowAround(
-    sessionId: SessionId,
-    anchorTurnId: TurnId,
+    sessionId: string,
+    anchorTurnId: string,
     beforeLimit: number,
     afterLimit: number,
   ): TurnWindow | undefined {
@@ -302,13 +301,13 @@ export class TurnsRepo {
     };
   }
 
-  findRunning(sessionId: SessionId): TurnRow | undefined {
+  findRunning(sessionId: string): TurnRow | undefined {
     return this.db
       .prepare("SELECT * FROM turns WHERE session_id = ? AND status = 'running' LIMIT 1")
       .get(sessionId) as TurnRow | undefined;
   }
 
-  abortStale(sessionId: SessionId, now: number): void {
+  abortStale(sessionId: string, now: number): void {
     this.db
       .prepare(
         `UPDATE turns SET status = 'aborted', completed_at = ?

@@ -1,12 +1,6 @@
 // 统一管理 Bash 的 15 秒结果转交、后台公平队列、日志与终态。
 
 import crypto from 'node:crypto';
-import {
-  asBackgroundProcessId,
-  type BackgroundProcessId,
-  type SessionId,
-  type TurnId,
-} from '@ema-agent/ids';
 import type {
   CommandProcessHandle,
   CommandRunResult,
@@ -85,11 +79,11 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
   private readonly interactiveScheduler: BackgroundProcessScheduler;
   /** 持久后台任务的坑位池,上限来自用户设置。 */
   private readonly backgroundScheduler: BackgroundProcessScheduler;
-  private readonly active = new Map<BackgroundProcessId, ActiveProcess>();
-  private readonly queued = new Map<BackgroundProcessId, QueuedProcess>();
-  private readonly changeWaiters = new Map<BackgroundProcessId, Set<() => void>>();
+  private readonly active = new Map<string, ActiveProcess>();
+  private readonly queued = new Map<string, QueuedProcess>();
+  private readonly changeWaiters = new Map<string, Set<() => void>>();
   private shuttingDown = false;
-  private completionListener?: (sessionId: SessionId) => void;
+  private completionListener?: (sessionId: string) => void;
 
   constructor(private readonly deps: BackgroundProcessRuntimeDeps) {
     this.output = new BackgroundProcessOutputStore(deps.outputPath);
@@ -108,7 +102,7 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
     });
   }
 
-  setCompletionListener(listener?: (sessionId: SessionId) => void): void {
+  setCompletionListener(listener?: (sessionId: string) => void): void {
     this.completionListener = listener;
     if (!listener) return;
     for (const sessionId of this.pendingCompletionSessions()) {
@@ -116,13 +110,13 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
     }
   }
 
-  pendingCompletionSessions(): SessionId[] {
+  pendingCompletionSessions(): string[] {
     return this.deps.store.listSessionsWithPendingCompletions();
   }
 
   claimCompletionBatch(
-    sessionId: SessionId,
-    continuationTurnId: TurnId,
+    sessionId: string,
+    continuationTurnId: string,
   ): BackgroundProcessCompletionClaim | undefined {
     const records = this.deps.store.claimCompletionBatch(
       sessionId,
@@ -151,7 +145,7 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
     };
   }
 
-  markCompletionDelivered(continuationTurnId: TurnId): number {
+  markCompletionDelivered(continuationTurnId: string): number {
     return this.deps.store.markCompletionDelivered(continuationTurnId, Date.now());
   }
 
@@ -165,7 +159,7 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
     if (this.shuttingDown) {
       throw new BackgroundProcessError('shutting_down', 'Background process runtime is shutting down');
     }
-    const id = asBackgroundProcessId(crypto.randomUUID());
+    const id = crypto.randomUUID();
     const writer = this.output.create(request.sessionId, id);
     const timeoutMs = this.resolveTimeout(request.timeoutMs);
     // 进度透传只在调用存活期有效:本函数一旦返回/抛出(包括转交后台),
@@ -189,7 +183,7 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
   }
 
   private async runCommandInner(
-    id: BackgroundProcessId,
+    id: string,
     writer: BackgroundProcessOutputWriter,
     request: BackgroundCommandRequest,
     frozenRequest: BackgroundCommandRequest & { timeoutMs: number },
@@ -329,7 +323,7 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
   }
 
   list(
-    sessionId: SessionId,
+    sessionId: string,
     options: BackgroundProcessListOptions = {},
   ): BackgroundProcessSummary[] {
     return this.deps.store.listForSession(sessionId, options)
@@ -337,8 +331,8 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
   }
 
   async readOutput(
-    sessionId: SessionId,
-    id: BackgroundProcessId,
+    sessionId: string,
+    id: string,
     options: BackgroundProcessOutputOptions = {},
   ): Promise<BackgroundProcessOutput> {
     let record = this.requireOwned(sessionId, id);
@@ -368,7 +362,7 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
    * 停止指定进程。排队中的同步落终态;运行中的等待进程退出后再返回,
    * 调用方拿到的始终是真实终态快照,不是"停止前的 running"。
    */
-  async stop(sessionId: SessionId, id: BackgroundProcessId): Promise<BackgroundProcessSummary> {
+  async stop(sessionId: string, id: string): Promise<BackgroundProcessSummary> {
     const record = this.requireOwned(sessionId, id);
     if (!isLive(record.status)) return this.toSummary(record);
 
@@ -408,7 +402,7 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
    * 避免 Windows 因子进程仍持有日志句柄而无法删除 Session 目录。
    * 数据库行随后由 Session 外键级联删除。
    */
-  async discardSession(sessionId: SessionId): Promise<void> {
+  async discardSession(sessionId: string): Promise<void> {
     for (const [id, queued] of this.queued) {
       if (queued.request.sessionId !== sessionId) continue;
       this.backgroundScheduler.cancel(id, new BackgroundProcessError('session_deleted', 'Session deleted'));
@@ -457,7 +451,7 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
     await Promise.allSettled(completions);
   }
 
-  private enqueuePersistent(id: BackgroundProcessId): void {
+  private enqueuePersistent(id: string): void {
     const queued = this.queued.get(id);
     if (!queued) return;
     this.backgroundScheduler.enqueue(queued.request.sessionId, {
@@ -506,8 +500,8 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
   }
 
   private acquireInteractiveSlot(
-    id: BackgroundProcessId,
-    sessionId: SessionId,
+    id: string,
+    sessionId: string,
     signal: AbortSignal,
   ): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -532,7 +526,7 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
   }
 
   private startProcess(
-    id: BackgroundProcessId,
+    id: string,
     request: BackgroundCommandRequest,
     writer: BackgroundProcessOutputWriter,
     persisted: boolean,
@@ -569,7 +563,7 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
     return active;
   }
 
-  private async finishActive(id: BackgroundProcessId, active: ActiveProcess): Promise<void> {
+  private async finishActive(id: string, active: ActiveProcess): Promise<void> {
     let result: CommandRunResult;
     try {
       result = await active.handle.completion;
@@ -616,7 +610,7 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
     return Math.min(Math.max(requested ?? max, 1_000), max);
   }
 
-  private requireOwned(sessionId: SessionId, id: BackgroundProcessId): BackgroundProcessRecord {
+  private requireOwned(sessionId: string, id: string): BackgroundProcessRecord {
     const record = this.deps.store.findById(id);
     if (!record || record.sessionId !== sessionId) {
       throw new BackgroundProcessError('not_found', 'Background process not found in the current Session');
@@ -674,14 +668,14 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
     });
   }
 
-  private notifyChanged(id: BackgroundProcessId): void {
+  private notifyChanged(id: string): void {
     const waiters = this.changeWaiters.get(id);
     if (!waiters) return;
     this.changeWaiters.delete(id);
     for (const resolve of waiters) resolve();
   }
 
-  private waitForChange(id: BackgroundProcessId, waitMs: number): Promise<void> {
+  private waitForChange(id: string, waitMs: number): Promise<void> {
     return new Promise(resolve => {
       const waiters = this.changeWaiters.get(id) ?? new Set<() => void>();
       let timer: ReturnType<typeof setTimeout>;

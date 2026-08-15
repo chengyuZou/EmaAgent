@@ -1,9 +1,5 @@
 // 持久化角色立绘的展示名称、舞台位置和主图选择。
 
-import type {
-  CharacterCardId,
-  CharacterIllustrationId,
-} from '@ema-agent/ids';
 import type { SqliteDb } from '../../database/database.js';
 
 export interface CharacterIllustrationRow {
@@ -21,8 +17,8 @@ export interface CharacterIllustrationRow {
 }
 
 export interface CharacterIllustrationInsert {
-  id: CharacterIllustrationId;
-  characterCardId: CharacterCardId;
+  id: string;
+  characterCardId: string;
   name: string;
   stageScale?: number;
   stageOffsetX?: number;
@@ -73,8 +69,8 @@ export class CharacterIllustrationsRepo {
   }
 
   findById(
-    characterCardId: CharacterCardId,
-    id: CharacterIllustrationId,
+    characterCardId: string,
+    id: string,
   ): CharacterIllustrationRow | undefined {
     return this.db.prepare(
       `SELECT * FROM character_illustrations
@@ -82,7 +78,7 @@ export class CharacterIllustrationsRepo {
     ).get(characterCardId, id) as CharacterIllustrationRow | undefined;
   }
 
-  listForCard(characterCardId: CharacterCardId): CharacterIllustrationRow[] {
+  listForCard(characterCardId: string): CharacterIllustrationRow[] {
     return this.db.prepare(
       `SELECT * FROM character_illustrations
        WHERE character_card_id = ?
@@ -91,7 +87,7 @@ export class CharacterIllustrationsRepo {
   }
 
   /** 批量取多张卡的资源,替代逐卡 listForCard 的 N+1 查询。 */
-  listForCards(characterCardIds: readonly CharacterCardId[]): CharacterIllustrationRow[] {
+  listForCards(characterCardIds: readonly string[]): CharacterIllustrationRow[] {
     if (characterCardIds.length === 0) return [];
     const placeholders = characterCardIds.map(() => '?').join(', ');
     return this.db.prepare(
@@ -102,8 +98,8 @@ export class CharacterIllustrationsRepo {
   }
 
   setPrimary(
-    characterCardId: CharacterCardId,
-    id: CharacterIllustrationId,
+    characterCardId: string,
+    id: string,
     updatedAt: number,
   ): boolean {
     return this.db.transaction(() => {
@@ -124,8 +120,8 @@ export class CharacterIllustrationsRepo {
   }
 
   update(
-    characterCardId: CharacterCardId,
-    id: CharacterIllustrationId,
+    characterCardId: string,
+    id: string,
     patch: CharacterIllustrationUpdate,
     updatedAt: number,
   ): CharacterIllustrationRow | undefined {
@@ -169,8 +165,8 @@ export class CharacterIllustrationsRepo {
   }
 
   delete(
-    characterCardId: CharacterCardId,
-    id: CharacterIllustrationId,
+    characterCardId: string,
+    id: string,
     updatedAt: number,
   ): CharacterIllustrationRow | undefined {
     return this.db.transaction(() => {
@@ -188,7 +184,7 @@ export class CharacterIllustrationsRepo {
     })();
   }
 
-  private clearPrimary(characterCardId: CharacterCardId): void {
+  private clearPrimary(characterCardId: string): void {
     this.db.prepare(
       `UPDATE character_illustrations
        SET is_primary = 0
@@ -196,7 +192,7 @@ export class CharacterIllustrationsRepo {
     ).run(characterCardId);
   }
 
-  private promoteFirstEnabled(characterCardId: CharacterCardId, updatedAt: number): void {
+  private promoteFirstEnabled(characterCardId: string, updatedAt: number): void {
     this.db.prepare(
       `UPDATE character_illustrations
        SET is_primary = 1, updated_at = ?
@@ -209,7 +205,7 @@ export class CharacterIllustrationsRepo {
     ).run(updatedAt, characterCardId);
   }
 
-  private ensurePrimary(characterCardId: CharacterCardId, updatedAt: number): void {
+  private ensurePrimary(characterCardId: string, updatedAt: number): void {
     const primary = this.db.prepare(
       `SELECT 1 FROM character_illustrations
        WHERE character_card_id = ? AND enabled = 1 AND is_primary = 1`,

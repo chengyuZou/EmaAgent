@@ -1,4 +1,3 @@
-import type { SessionId, TurnId, MessageId } from '@ema-agent/ids';
 import type { MessageKind, MessageRole } from '@ema-agent/storage';
 import type {
   ExecutionProfile,
@@ -33,7 +32,7 @@ export interface ProjectGroup {
 }
 
 export interface Session {
-  id: SessionId;
+  id: string;
   title: string;
   /** 可空：未选=纯 chat 且 work 锁定；在项目内锁定为项目主文件夹。 */
   workspaceRoot: string | null;
@@ -48,8 +47,8 @@ export interface Session {
   archivedAt: number | null;
   pinned: boolean;
   /** fork 溯源：来源 Session 与截断点 Turn（完整复制时为 null）。 */
-  forkedFromSessionId: SessionId | null;
-  forkedFromTurnId: TurnId | null;
+  forkedFromSessionId: string | null;
+  forkedFromTurnId: string | null;
   executionProfile: ExecutionProfile;
   narrativePolicy: NarrativePolicy;
   /** 用户希望该 Session 使用的供应商配置；null 表示使用系统默认选择。 */
@@ -73,10 +72,10 @@ export interface SessionListItem extends Session {
 }
 
 export interface Message {
-  id: MessageId;
-  sessionId: SessionId;
+  id: string;
+  sessionId: string;
   /** null = Session 级消息（如 /compact 的 summary），不归属任何 Turn。 */
-  turnId: TurnId | null;
+  turnId: string | null;
   role: MessageRole;
   kind: MessageKind;
   /**
@@ -116,8 +115,8 @@ export interface PatchSessionInput {
 }
 
 export interface AppendMessageInput {
-  turnId: TurnId | null;
-  sessionId: SessionId;
+  turnId: string | null;
+  sessionId: string;
   role: MessageRole;
   kind?: MessageKind;
   blocks: MessageBlocks;
@@ -139,7 +138,7 @@ export interface SessionSearchHit {
   session: SessionListItem;
   matchKind: 'title' | 'message';
   snippet: string;
-  messageId: MessageId | null;
+  messageId: string | null;
   messageAt: number | null;
 }
 

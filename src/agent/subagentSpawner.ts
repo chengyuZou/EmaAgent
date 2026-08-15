@@ -1,12 +1,6 @@
 // 管理子 AgentRun 的持久生命周期、取消树与后台等待。
 
 import { randomUUID } from 'node:crypto';
-import {
-  asAgentRunId,
-  type AgentRunId,
-  type SessionId,
-  type TurnId,
-} from '@ema-agent/ids';
 import type {
   SubagentRunResult,
   SubagentSpawnerPort,
@@ -21,7 +15,7 @@ import { AgentRunTranscript } from './runs/agentRunTranscript.js';
 const OUTPUT_EXCERPT_MAX = 200;
 
 export interface PrepareSubagentInput {
-  readonly agentRunId: AgentRunId;
+  readonly agentRunId: string;
   readonly prompt: string;
   readonly options: SubagentSpawnOptions;
   readonly signal: AbortSignal;
@@ -32,9 +26,9 @@ export type PrepareSubagent = (
 ) => Promise<AgentLoopInput>;
 
 export interface SubagentSpawnerOptions {
-  readonly parentSessionId: SessionId;
-  readonly parentTurnId: TurnId;
-  readonly parentAgentRunId?: AgentRunId;
+  readonly parentSessionId: string;
+  readonly parentTurnId: string;
+  readonly parentAgentRunId?: string;
   readonly providerConfigId?: string;
   readonly defaultModelId?: string;
   readonly budget: AgentBudget;
@@ -45,9 +39,9 @@ export interface SubagentSpawnerOptions {
 }
 
 export class SubagentSpawner implements SubagentSpawnerPort {
-  private readonly controllers = new Map<AgentRunId, AbortController>();
-  private readonly activeRuns = new Map<AgentRunId, Promise<SubagentRunResult>>();
-  private readonly backgroundRuns = new Map<AgentRunId, Promise<SubagentRunResult>>();
+  private readonly controllers = new Map<string, AbortController>();
+  private readonly activeRuns = new Map<string, Promise<SubagentRunResult>>();
+  private readonly backgroundRuns = new Map<string, Promise<SubagentRunResult>>();
   private stoppingReason: string | undefined;
 
   constructor(private readonly options: SubagentSpawnerOptions) {}
@@ -57,7 +51,7 @@ export class SubagentSpawner implements SubagentSpawnerPort {
     options: SubagentSpawnOptions,
     signal: AbortSignal,
   ): Promise<SubagentRunResult> {
-    const agentRunId = options.agentRunId ?? asAgentRunId(randomUUID());
+    const agentRunId = options.agentRunId ?? randomUUID();
     return this.start(prompt, { ...options, agentRunId }, signal);
   }
 
@@ -65,8 +59,8 @@ export class SubagentSpawner implements SubagentSpawnerPort {
     prompt: string,
     options: SubagentSpawnOptions,
     signal: AbortSignal,
-  ): AgentRunId {
-    const agentRunId = options.agentRunId ?? asAgentRunId(randomUUID());
+  ): string {
+    const agentRunId = options.agentRunId ?? randomUUID();
     const promise = this.start(prompt, { ...options, agentRunId }, signal);
     this.backgroundRuns.set(agentRunId, promise);
     // 后台结果由 awaitBackground 读取；无人读取时也不能产生未处理拒绝。
@@ -74,7 +68,7 @@ export class SubagentSpawner implements SubagentSpawnerPort {
     return agentRunId;
   }
 
-  async awaitBackground(agentRunId: AgentRunId): Promise<SubagentRunResult | null> {
+  async awaitBackground(agentRunId: string): Promise<SubagentRunResult | null> {
     const promise = this.backgroundRuns.get(agentRunId);
     if (!promise) return null;
     try {
@@ -84,7 +78,7 @@ export class SubagentSpawner implements SubagentSpawnerPort {
     }
   }
 
-  abortSubagent(agentRunId: AgentRunId): boolean {
+  abortSubagent(agentRunId: string): boolean {
     const controller = this.controllers.get(agentRunId);
     if (!controller) return false;
     controller.abort(new Error('Sub-agent aborted by user'));
@@ -103,7 +97,7 @@ export class SubagentSpawner implements SubagentSpawnerPort {
 
   private start(
     prompt: string,
-    spawnOptions: SubagentSpawnOptions & { readonly agentRunId: AgentRunId },
+    spawnOptions: SubagentSpawnOptions & { readonly agentRunId: string },
     parentSignal: AbortSignal,
   ): Promise<SubagentRunResult> {
     const { agentRunId } = spawnOptions;
@@ -122,7 +116,7 @@ export class SubagentSpawner implements SubagentSpawnerPort {
 
   private async execute(
     prompt: string,
-    spawnOptions: SubagentSpawnOptions & { readonly agentRunId: AgentRunId },
+    spawnOptions: SubagentSpawnOptions & { readonly agentRunId: string },
     parentSignal: AbortSignal,
   ): Promise<SubagentRunResult> {
     const { agentRunId } = spawnOptions;
@@ -247,7 +241,7 @@ export class SubagentSpawner implements SubagentSpawnerPort {
 }
 
 function assertTransitionCompleted(
-  agentRunId: AgentRunId,
+  agentRunId: string,
   result: ReturnType<AgentRunStore['complete']>,
   action: 'complete' | 'fail' | 'cancel',
 ): void {

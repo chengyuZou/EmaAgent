@@ -8,15 +8,6 @@ import {
   CharacterIllustrationsRepo,
   CharacterVoiceReferencesRepo,
 } from '@ema-agent/storage';
-import type {
-  CharacterCardId,
-  CharacterLive2dId,
-  CharacterIllustrationId,
-  CharacterVoiceReferenceId,
-} from '@ema-agent/ids';
-import {
-  asCharacterCardId,
-} from '@ema-agent/ids';
 import type { CharacterCard, CharacterCardInput } from './types.js';
 import { CharacterCardRepository } from './repository.js';
 import { EMA_CARD_ID, BUILTIN_CARDS } from './seed/index.js';
@@ -155,7 +146,7 @@ export class CharacterCardStore {
     // 种子所有内置卡（不只 Ema）。每张缺失则插入。
     // 新增内置角色只需在 seed/index.ts 的 BUILTIN_CARDS 里 push--这里不用改接线。
     for (const seed of BUILTIN_CARDS) {
-      const cardId = asCharacterCardId(seed.id);
+      const cardId = seed.id;
       if (!this.repository.findById(cardId)) {
         assertCharacterPrompt(seed.card.systemPrompt, cardId);
         this.repository.insert(seed.card, { id: cardId, isBuiltin: true });
@@ -195,7 +186,7 @@ export class CharacterCardStore {
     // 没有激活卡时激活 Ema。
     const before = this.repository.findActive();
     if (!before) {
-      const emaId = asCharacterCardId(EMA_CARD_ID);
+      const emaId = EMA_CARD_ID;
       this.repository.activate(emaId);
       const after = this.get(emaId);
       if (after) this.emitSwitched(after, null);
@@ -223,12 +214,12 @@ export class CharacterCardStore {
     }));
   }
 
-  get(id: CharacterCardId): CharacterCard | undefined {
+  get(id: string): CharacterCard | undefined {
     const card = this.repository.findById(id);
     return card ? this.withResources(card) : undefined;
   }
 
-  activate(id: CharacterCardId): CharacterCardId {
+  activate(id: string): string {
     const target = this.get(id);
     if (!target) throw new Error(`character card not found: ${id}`);
     assertCharacterPrompt(target.systemPrompt, id);
@@ -250,7 +241,7 @@ export class CharacterCardStore {
     return this.withResources(this.repository.insert(input));
   }
 
-  update(id: CharacterCardId, patch: Partial<CharacterCardInput>): CharacterCard {
+  update(id: string, patch: Partial<CharacterCardInput>): CharacterCard {
     if (patch.systemPrompt !== undefined) {
       assertCharacterPrompt(patch.systemPrompt, id);
     }
@@ -258,7 +249,7 @@ export class CharacterCardStore {
     return this.get(id)!;
   }
 
-  duplicate(id: CharacterCardId): CharacterCard {
+  duplicate(id: string): CharacterCard {
     // 复制只取角色定义,不复制资源路径;用窄查询,不触发三表资源装配。
     const original = this.repository.findById(id);
     if (!original) throw new Error(`character card not found: ${id}`);
@@ -272,7 +263,7 @@ export class CharacterCardStore {
     );
   }
 
-  async deleteManagedCharacter(id: CharacterCardId): Promise<void> {
+  async deleteManagedCharacter(id: string): Promise<void> {
     const card = this.get(id);
     if (!card) throw new Error(`character card not found: ${id}`);
     if (card.isBuiltin) throw new Error(`builtin character is read-only: ${id}`);
@@ -284,11 +275,11 @@ export class CharacterCardStore {
     this.repository.delete(id);
   }
 
-  listLive2dVariants(id: CharacterCardId): CharacterLive2dVariant[] {
+  listLive2dVariants(id: string): CharacterLive2dVariant[] {
     return this.live2d.list(id);
   }
 
-  setPrimaryLive2dVariant(id: CharacterCardId, resourceId: CharacterLive2dId): boolean {
+  setPrimaryLive2dVariant(id: string, resourceId: string): boolean {
     const card = this.get(id);
     if (!card) throw new Error(`character card not found: ${id}`);
     const target = card.live2dVariants.find(resource => resource.id === resourceId);
@@ -306,8 +297,8 @@ export class CharacterCardStore {
   }
 
   updateLive2dVariant(
-    id: CharacterCardId,
-    resourceId: CharacterLive2dId,
+    id: string,
+    resourceId: string,
     patch: CharacterLive2dVariantPatch,
   ): CharacterLive2dVariant | undefined {
     this.assertMutableResourceCard(id);
@@ -339,33 +330,33 @@ export class CharacterCardStore {
   }
 
   importLive2dDirectory(
-    id: CharacterCardId,
+    id: string,
     input: ImportCharacterLive2dInput,
   ): Promise<CharacterLive2dVariant> {
     return this.resourceLifecycle.importLive2d(id, input);
   }
 
   exportLive2dDirectory(
-    id: CharacterCardId,
-    resourceId: CharacterLive2dId,
+    id: string,
+    resourceId: string,
     destinationDirectory: string,
   ): Promise<string> {
     return this.resourceLifecycle.exportLive2d(id, resourceId, destinationDirectory);
   }
 
   deleteManagedLive2dVariant(
-    id: CharacterCardId,
-    resourceId: CharacterLive2dId,
+    id: string,
+    resourceId: string,
   ): Promise<CharacterLive2dVariant | undefined> {
     return this.resourceLifecycle.deleteLive2d(id, resourceId);
   }
 
-  listIllustrations(id: CharacterCardId): CharacterIllustration[] {
+  listIllustrations(id: string): CharacterIllustration[] {
     return this.illustrations.list(id);
   }
 
   addIllustration(
-    id: CharacterCardId,
+    id: string,
     input: CharacterIllustrationInput,
   ): CharacterIllustration {
     const resource = this.illustrations.insert(id, input);
@@ -373,15 +364,15 @@ export class CharacterCardStore {
     return resource;
   }
 
-  setPrimaryIllustration(id: CharacterCardId, resourceId: CharacterIllustrationId): boolean {
+  setPrimaryIllustration(id: string, resourceId: string): boolean {
     const changed = this.illustrations.setPrimary(id, resourceId);
     if (changed) this.emitPresentationChanged(id);
     return changed;
   }
 
   updateIllustration(
-    id: CharacterCardId,
-    resourceId: CharacterIllustrationId,
+    id: string,
+    resourceId: string,
     patch: CharacterIllustrationPatch,
   ): CharacterIllustration | undefined {
     this.assertMutableResourceCard(id);
@@ -392,48 +383,48 @@ export class CharacterCardStore {
   }
 
   importIllustrationFile(
-    id: CharacterCardId,
+    id: string,
     input: ImportCharacterIllustrationInput,
   ): Promise<CharacterIllustration> {
     return this.resourceLifecycle.importIllustration(id, input);
   }
 
   exportIllustrationFile(
-    id: CharacterCardId,
-    resourceId: CharacterIllustrationId,
+    id: string,
+    resourceId: string,
     destinationDirectory: string,
   ): Promise<string> {
     return this.resourceLifecycle.exportIllustration(id, resourceId, destinationDirectory);
   }
 
   deleteManagedIllustration(
-    id: CharacterCardId,
-    resourceId: CharacterIllustrationId,
+    id: string,
+    resourceId: string,
   ): Promise<CharacterIllustration | undefined> {
     return this.resourceLifecycle.deleteIllustration(id, resourceId);
   }
 
-  listVoiceReferences(id: CharacterCardId): CharacterVoiceReference[] {
+  listVoiceReferences(id: string): CharacterVoiceReference[] {
     return this.voiceReferences.list(id);
   }
 
   addVoiceReference(
-    id: CharacterCardId,
+    id: string,
     input: CharacterVoiceReferenceInput,
   ): CharacterVoiceReference {
     return this.voiceReferences.insert(id, input);
   }
 
   setPrimaryVoiceReference(
-    id: CharacterCardId,
-    resourceId: CharacterVoiceReferenceId,
+    id: string,
+    resourceId: string,
   ): boolean {
     return this.voiceReferences.setPrimary(id, resourceId);
   }
 
   updateVoiceReference(
-    id: CharacterCardId,
-    resourceId: CharacterVoiceReferenceId,
+    id: string,
+    resourceId: string,
     patch: CharacterVoiceReferencePatch,
   ): CharacterVoiceReference | undefined {
     this.assertMutableResourceCard(id);
@@ -442,8 +433,8 @@ export class CharacterCardStore {
   }
 
   publishVoiceReference(
-    id: CharacterCardId,
-    input: CharacterVoiceReferenceInput & { id: CharacterVoiceReferenceId },
+    id: string,
+    input: CharacterVoiceReferenceInput & { id: string },
     bytes: Uint8Array,
     extension: string,
   ): Promise<CharacterVoiceReference> {
@@ -451,52 +442,52 @@ export class CharacterCardStore {
   }
 
   importVoiceReferenceFile(
-    id: CharacterCardId,
+    id: string,
     input: ImportCharacterVoiceReferenceInput,
   ): Promise<CharacterVoiceReference> {
     return this.resourceLifecycle.importVoice(id, input);
   }
 
   exportVoiceReferenceFile(
-    id: CharacterCardId,
-    resourceId: CharacterVoiceReferenceId,
+    id: string,
+    resourceId: string,
     destinationDirectory: string,
   ): Promise<string> {
     return this.resourceLifecycle.exportVoice(id, resourceId, destinationDirectory);
   }
 
   deleteManagedVoiceReference(
-    id: CharacterCardId,
-    resourceId: CharacterVoiceReferenceId,
+    id: string,
+    resourceId: string,
   ): Promise<CharacterVoiceReference | undefined> {
     return this.resourceLifecycle.deleteVoice(id, resourceId);
   }
 
-  inspectHealth(id: CharacterCardId): Promise<CharacterHealth> {
+  inspectHealth(id: string): Promise<CharacterHealth> {
     const card = this.get(id);
     if (!card) throw new Error(`character card not found: ${id}`);
     return this.validator.inspect(card);
   }
 
-  resolveLive2dDirectory(id: CharacterCardId, resourceId: CharacterLive2dId): string {
+  resolveLive2dDirectory(id: string, resourceId: string): string {
     return this.resourcePaths.live2dDirectory(id, resourceId);
   }
 
   resolveIllustrationFile(
-    id: CharacterCardId,
-    resourceId: CharacterIllustrationId,
+    id: string,
+    resourceId: string,
   ): string {
     return this.resourcePaths.illustrationFile(id, resourceId);
   }
 
   resolveVoiceReferenceFile(
-    id: CharacterCardId,
-    resourceId: CharacterVoiceReferenceId,
+    id: string,
+    resourceId: string,
   ): string {
     return this.resourcePaths.voiceFile(id, resourceId);
   }
 
-  private assertMutableResourceCard(id: CharacterCardId): void {
+  private assertMutableResourceCard(id: string): void {
     const card = this.get(id);
     if (!card) throw new Error(`character card not found: ${id}`);
     if (card.isBuiltin) throw new Error(`builtin character is read-only: ${id}`);
@@ -512,8 +503,8 @@ export class CharacterCardStore {
   }
 
   private insertLive2dAndRefreshVocabulary(
-    id: CharacterCardId,
-    input: CharacterLive2dVariantInput & { id: CharacterLive2dId },
+    id: string,
+    input: CharacterLive2dVariantInput & { id: string },
   ): CharacterLive2dVariant {
     const card = this.get(id);
     if (!card) throw new Error(`character card not found: ${id}`);
@@ -535,8 +526,8 @@ export class CharacterCardStore {
   }
 
   private deleteLive2dAndRefreshVocabulary(
-    id: CharacterCardId,
-    resourceId: CharacterLive2dId,
+    id: string,
+    resourceId: string,
   ): CharacterLive2dVariant | undefined {
     const card = this.get(id);
     if (!card) throw new Error(`character card not found: ${id}`);
@@ -555,7 +546,7 @@ export class CharacterCardStore {
     })();
   }
 
-  private refreshPrimaryLive2dVocabulary(id: CharacterCardId): void {
+  private refreshPrimaryLive2dVocabulary(id: string): void {
     const card = this.get(id);
     if (!card) throw new Error(`character card not found: ${id}`);
     const primary = selectPrimaryLive2d(card.live2dVariants);
@@ -574,7 +565,7 @@ export class CharacterCardStore {
     return readLive2dVocabulary(runtimeConfigPath);
   }
 
-  private writeVocabulary(id: CharacterCardId, vocabulary: Live2dVocabulary): void {
+  private writeVocabulary(id: string, vocabulary: Live2dVocabulary): void {
     const current = this.repository.findById(id);
     if (
       current
@@ -586,7 +577,7 @@ export class CharacterCardStore {
     this.repository.updateLive2dVocabulary(id, vocabulary.emotions, vocabulary.motions);
   }
 
-  private emitPresentationChanged(id: CharacterCardId): void {
+  private emitPresentationChanged(id: string): void {
     const card = this.get(id);
     if (!card) return;
     for (const listener of this.presentationChangedListeners) {

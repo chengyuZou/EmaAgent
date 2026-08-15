@@ -132,7 +132,7 @@ export const restoreUsage = (r: UsageRecord): UsageRecordRow => ({
   input_tokens: r.inputTokens, output_tokens: r.outputTokens,
   cache_read_input_tokens: r.cacheReadInputTokens,
   cache_write_input_tokens: r.cacheWriteInputTokens, quantity: r.quantity, unit: r.unit,
-  cost_usd: r.costUsd, duration_ms: r.durationMs, error_code: r.errorCode,
+  duration_ms: r.durationMs, error_code: r.errorCode,
   created_at: r.createdAt,
 });
 

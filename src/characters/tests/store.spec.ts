@@ -7,7 +7,6 @@ import { join } from 'node:path';
 import { CharacterCardStore } from '../store.js';
 import { EMA_CARD_ID } from '../seed/index.js';
 import type { CharacterCardInput } from '../types.js';
-import type { CharacterCardId } from '@ema-agent/ids';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -137,13 +136,13 @@ describe('CharacterCardStore', () => {
 
   describe('get', () => {
     it('returns the card by id', () => {
-      const card = store.get(EMA_CARD_ID as CharacterCardId);
+      const card = store.get(EMA_CARD_ID);
       expect(card).toBeDefined();
       expect(card!.id).toBe(EMA_CARD_ID);
     });
 
     it('returns undefined for unknown id', () => {
-      expect(store.get('nonexistent' as CharacterCardId)).toBeUndefined();
+      expect(store.get('nonexistent')).toBeUndefined();
     });
   });
 
@@ -315,12 +314,12 @@ describe('CharacterCardStore', () => {
       expect(result).toBe(card.id);
       expect(store.current().id).toBe(card.id);
 
-      const old = store.get(EMA_CARD_ID as CharacterCardId);
+      const old = store.get(EMA_CARD_ID);
       expect(old?.isActive).toBe(false);
     });
 
     it('throws when activating a non-existent card', () => {
-      expect(() => store.activate('ghost' as CharacterCardId)).toThrow();
+      expect(() => store.activate('ghost')).toThrow();
     });
 
     it('数据库被外部写坏后仍拒绝激活空 Prompt', () => {
@@ -362,7 +361,7 @@ describe('CharacterCardStore', () => {
 
   describe('duplicate', () => {
     it('creates a copy with (Copy) suffix and distinct id', () => {
-      const ema = store.get(EMA_CARD_ID as CharacterCardId)!;
+      const ema = store.get(EMA_CARD_ID)!;
       const dup = store.duplicate(ema.id);
       expect(dup.id).not.toBe(ema.id);
       expect(dup.name).toContain(ema.name);
@@ -372,7 +371,7 @@ describe('CharacterCardStore', () => {
     });
 
     it('copies vocabularies and optional fields', () => {
-      const ema = store.get(EMA_CARD_ID as CharacterCardId)!;
+      const ema = store.get(EMA_CARD_ID)!;
       const dup = store.duplicate(ema.id);
       expect(dup.emotionVocabulary).toEqual(ema.emotionVocabulary);
       expect(dup.motionVocabulary).toEqual(ema.motionVocabulary);
@@ -397,7 +396,7 @@ describe('CharacterCardStore', () => {
     });
 
     it('throws when duplicating a non-existent card', () => {
-      expect(() => store.duplicate('ghost' as CharacterCardId)).toThrow(
+      expect(() => store.duplicate('ghost')).toThrow(
         'character card not found',
       );
     });

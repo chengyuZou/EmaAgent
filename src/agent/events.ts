@@ -1,4 +1,3 @@
-import type { AgentRunId } from '@ema-agent/ids';
 import type { LlmStopReason, LlmTokenUsage } from '@ema-agent/llm';
 import type { ToolResult } from '@ema-agent/tools';
 import type { AgentLoopState } from './agentLoopState.js';
@@ -50,7 +49,7 @@ export type AgentLoopEvent =
 export type AgentRunEvent =
   | {
       readonly type: 'agent_run_started';
-      readonly agentRunId: AgentRunId;
+      readonly agentRunId: string;
       readonly kind: AgentRunKind;
       readonly modelId?: string;
       readonly description?: string;
@@ -58,25 +57,25 @@ export type AgentRunEvent =
     }
   | {
       readonly type: 'agent_run_event';
-      readonly agentRunId: AgentRunId;
+      readonly agentRunId: string;
       readonly event: AgentLoopEvent;
     }
   | {
       readonly type: 'agent_run_completed';
-      readonly agentRunId: AgentRunId;
+      readonly agentRunId: string;
       readonly finalText: string;
       readonly state: AgentLoopState;
       readonly durationMs: number;
     }
   | {
       readonly type: 'agent_run_failed';
-      readonly agentRunId: AgentRunId;
+      readonly agentRunId: string;
       readonly error: string;
       readonly durationMs: number;
     }
   | {
       readonly type: 'agent_run_aborted';
-      readonly agentRunId: AgentRunId;
+      readonly agentRunId: string;
       readonly reason: string;
       readonly durationMs: number;
     };

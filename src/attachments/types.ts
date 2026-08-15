@@ -1,10 +1,9 @@
 // Attachments 领域语言：file/image 判别联合、源文件状态、Message 稳定引用。
-import type { AttachmentId, SessionId, TurnId } from '@ema-agent/ids';
 
 interface AttachmentBase {
-  readonly id: AttachmentId;
-  readonly turnId: TurnId;
-  readonly sessionId: SessionId;
+  readonly id: string;
+  readonly turnId: string;
+  readonly sessionId: string;
   /** basename(realpath)，由 Server 产生。 */
   readonly name: string;
   readonly createdAt: number;

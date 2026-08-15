@@ -1,6 +1,4 @@
 // 定义角色情绪状态与舞台提示进入统一事件流时使用的协议。
-import type { SessionId, TurnId } from '@ema-agent/ids';
-
 export interface StageCue {
   motion?: string;
   expression?: string;
@@ -15,5 +13,5 @@ export interface EmotionState {
 }
 
 export type EmotionStreamEvent =
-  | { type: 'stage_cue'; sessionId: SessionId; turnId: TurnId; cue: StageCue }
-  | { type: 'emotion_changed'; sessionId: SessionId; turnId: TurnId; state: EmotionState };
+  | { type: 'stage_cue'; sessionId: string; turnId: string; cue: StageCue }
+  | { type: 'emotion_changed'; sessionId: string; turnId: string; state: EmotionState };

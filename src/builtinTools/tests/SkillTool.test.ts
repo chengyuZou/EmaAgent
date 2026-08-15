@@ -4,7 +4,6 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { asSessionId, asToolCallId, asTurnId } from '@ema-agent/ids';
 import type { ToolInvocation } from '@ema-agent/tools';
 import { freezeSkillPool, type SkillDescriptor } from '@ema-agent/skills';
 import { SkillTool } from '../tools/SkillTool/SkillTool.js';
@@ -16,9 +15,9 @@ afterEach(() => {
 
 function makeInvocation(): ToolInvocation {
   return {
-    sessionId: asSessionId('00000000-0000-4000-8000-0000000000d1'),
-    turnId: asTurnId('00000000-0000-4000-8000-0000000000d2'),
-    toolCallId: asToolCallId('call-skill-1'),
+    sessionId: '00000000-0000-4000-8000-0000000000d1',
+    turnId: '00000000-0000-4000-8000-0000000000d2',
+    toolCallId: 'call-skill-1',
     signal: new AbortController().signal,
   };
 }

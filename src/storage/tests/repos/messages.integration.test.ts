@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { asMessageId, asSessionId } from '@ema-agent/ids';
 import type { MessageKind } from '../../index.js';
 import { MessagesRepo } from '../../repos/data/messages.js';
 import { createTestDatabase, type TestDatabase } from '../helpers/create-test-database.js';
@@ -7,7 +6,7 @@ import { createTestDatabase, type TestDatabase } from '../helpers/create-test-da
 describe('MessagesRepo 历史加载集成测试', () => {
   let database: TestDatabase;
   let repo: MessagesRepo;
-  const sessionId = asSessionId('history-session');
+  const sessionId = 'history-session';
 
   beforeEach(() => {
     database = createTestDatabase();
@@ -60,7 +59,7 @@ describe('MessagesRepo 历史加载集成测试', () => {
 
   function insertMessage(id: string, createdAt: number, kind: MessageKind = 'normal'): void {
     repo.insert({
-      id: asMessageId(id),
+      id,
       sessionId,
       role: 'user',
       kind,

@@ -1,10 +1,4 @@
 import type {
-  BackgroundProcessId,
-  SessionId,
-  ToolCallId,
-  TurnId,
-} from '@ema-agent/ids';
-import type {
   CommandOutputChunk,
   CommandRunResult,
   CommandRunnerPort,
@@ -30,10 +24,10 @@ export interface BackgroundProcessSettings {
 }
 
 export interface BackgroundProcessSummary {
-  id: BackgroundProcessId;
-  sessionId: SessionId;
-  originTurnId?: TurnId;
-  toolCallId?: ToolCallId;
+  id: string;
+  sessionId: string;
+  originTurnId?: string;
+  toolCallId?: string;
   command: string;
   description?: string;
   cwd: string;
@@ -60,9 +54,9 @@ export interface BackgroundProcessOutput {
 }
 
 export interface BackgroundCommandRequest {
-  sessionId: SessionId;
-  turnId: TurnId;
-  toolCallId: ToolCallId;
+  sessionId: string;
+  turnId: string;
+  toolCallId: string;
   runner: CommandRunnerPort;
   command: string;
   description?: string;
@@ -86,7 +80,7 @@ export type BackgroundCommandResult =
     }
   | {
       kind: 'processReference';
-      backgroundProcessId: BackgroundProcessId;
+      backgroundProcessId: string;
       status: 'queued' | 'running';
       outputPreview: string;
       /** 日志落盘位置(相对数据目录), 供模型后续 Read 完整输出。 */
@@ -107,16 +101,16 @@ export interface BackgroundProcessOutputOptions {
 export interface BackgroundProcessPort {
   runCommand(request: BackgroundCommandRequest): Promise<BackgroundCommandResult>;
   list(
-    sessionId: SessionId,
+    sessionId: string,
     options?: BackgroundProcessListOptions,
   ): BackgroundProcessSummary[];
   readOutput(
-    sessionId: SessionId,
-    id: BackgroundProcessId,
+    sessionId: string,
+    id: string,
     options?: BackgroundProcessOutputOptions,
   ): Promise<BackgroundProcessOutput>;
   /** 停止请求会在进程退出后返回真实终态快照。 */
-  stop(sessionId: SessionId, id: BackgroundProcessId): Promise<BackgroundProcessSummary>;
+  stop(sessionId: string, id: string): Promise<BackgroundProcessSummary>;
 }
 
 export interface BackgroundProcessOutputLocation {
@@ -125,8 +119,8 @@ export interface BackgroundProcessOutputLocation {
 }
 
 export type BackgroundProcessOutputPathFactory = (
-  sessionId: SessionId,
-  processId: BackgroundProcessId,
+  sessionId: string,
+  processId: string,
 ) => BackgroundProcessOutputLocation;
 
 /** 读取期把行内存储的相对路径解析为当前数据目录下的绝对位置。 */
@@ -135,8 +129,8 @@ export type BackgroundProcessOutputLocationResolver = (
 ) => BackgroundProcessOutputLocation;
 
 export interface BackgroundProcessCompletion {
-  processId: BackgroundProcessId;
-  originTurnId?: TurnId;
+  processId: string;
+  originTurnId?: string;
   status: BackgroundProcessNotifiableStatus;
   exitCode?: number;
   command: string;
@@ -144,17 +138,17 @@ export interface BackgroundProcessCompletion {
 }
 
 export interface BackgroundProcessCompletionClaim {
-  continuationTurnId: TurnId;
+  continuationTurnId: string;
   completions: BackgroundProcessCompletion[];
 }
 
 /** Server 用它把进程自然终态转换为内部 Turn；模型工具看不到领取能力。 */
 export interface BackgroundProcessCompletionSource {
-  setCompletionListener(listener?: (sessionId: SessionId) => void): void;
-  pendingCompletionSessions(): SessionId[];
+  setCompletionListener(listener?: (sessionId: string) => void): void;
+  pendingCompletionSessions(): string[];
   claimCompletionBatch(
-    sessionId: SessionId,
-    continuationTurnId: TurnId,
+    sessionId: string,
+    continuationTurnId: string,
   ): BackgroundProcessCompletionClaim | undefined;
-  markCompletionDelivered(continuationTurnId: TurnId): number;
+  markCompletionDelivered(continuationTurnId: string): number;
 }

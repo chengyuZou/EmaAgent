@@ -1,6 +1,5 @@
 // 测试 Turn 按 created_at 稳定分页、锚点窗口和索引预览改读首条 User Message。
 import { describe, expect, it } from 'vitest';
-import { asMessageId, asSessionId, asTurnId } from '@ema-agent/ids';
 import { Database } from '../../database/database.js';
 import { MessagesRepo } from '../../repos/data/messages.js';
 import { SessionsRepo } from '../../repos/data/sessions.js';
@@ -12,7 +11,7 @@ function createFixture() {
   const sessions = new SessionsRepo(database.sqlite);
   const turns = new TurnsRepo(database.sqlite);
   const messages = new MessagesRepo(database.sqlite);
-  const sessionId = asSessionId('session-history');
+  const sessionId = 'session-history';
   sessions.insert({
     id: sessionId,
     title: 'history',
@@ -28,7 +27,7 @@ describe('Turn 历史读取', () => {
     const { turns, sessionId } = createFixture();
     for (const id of ['turn-a', 'turn-b', 'turn-c']) {
       turns.insert({
-        id: asTurnId(id),
+        id,
         sessionId,
         triggerType: 'userMessage',
         executionProfile: 'chat',
@@ -47,7 +46,7 @@ describe('Turn 历史读取', () => {
   it('锚点窗口按旧到新返回，并只读取窗口内消息', () => {
     const { turns, messages, sessionId } = createFixture();
     for (let index = 0; index < 5; index++) {
-      const turnId = asTurnId(`turn-${index}`);
+      const turnId = `turn-${index}`;
       turns.insert({
         id: turnId,
         sessionId,
@@ -57,7 +56,7 @@ describe('Turn 历史读取', () => {
         createdAt: index + 1,
       });
       messages.insert({
-        id: asMessageId(`message-${index}`),
+        id: `message-${index}`,
         sessionId,
         turnId,
         role: 'user',
@@ -66,13 +65,13 @@ describe('Turn 历史读取', () => {
       });
     }
 
-    const window = turns.listWindowAround(sessionId, asTurnId('turn-2'), 1, 1);
+    const window = turns.listWindowAround(sessionId, 'turn-2', 1, 1);
     expect(window?.rows.map((row) => row.id)).toEqual(['turn-1', 'turn-2', 'turn-3']);
     expect(window).toMatchObject({ hasOlder: true, hasNewer: true });
 
     const rows = messages.listForTurns(
       sessionId,
-      window!.rows.map((row) => asTurnId(row.id)),
+      window!.rows.map((row) => row.id),
     );
     expect(rows.map((row) => row.id)).toEqual(['message-1', 'message-2', 'message-3']);
   });
@@ -80,7 +79,7 @@ describe('Turn 历史读取', () => {
   it('Turn 索引预览取自首条 User Message，无消息时为空串', () => {
     const { turns, messages, sessionId } = createFixture();
     turns.insert({
-      id: asTurnId('turn-a'),
+      id: 'turn-a',
       sessionId,
       triggerType: 'userMessage',
       executionProfile: 'chat',
@@ -88,24 +87,24 @@ describe('Turn 历史读取', () => {
       createdAt: 1,
     });
     messages.insert({
-      id: asMessageId('message-user'),
+      id: 'message-user',
       sessionId,
-      turnId: asTurnId('turn-a'),
+      turnId: 'turn-a',
       role: 'user',
       kind: 'normal',
       blocksJson: JSON.stringify([{ type: 'text', text: '用户首条输入' }]),
       createdAt: 1,
     });
     messages.insert({
-      id: asMessageId('message-assistant'),
+      id: 'message-assistant',
       sessionId,
-      turnId: asTurnId('turn-a'),
+      turnId: 'turn-a',
       role: 'assistant',
       blocksJson: JSON.stringify([{ type: 'text', text: '助手回复不应作预览' }]),
       createdAt: 2,
     });
     turns.insert({
-      id: asTurnId('turn-b'),
+      id: 'turn-b',
       sessionId,
       triggerType: 'backgroundProcessCompleted',
       executionProfile: 'chat',
@@ -124,15 +123,15 @@ describe('Turn 历史读取', () => {
   it('模型冻结成对写入，残缺写入被数据库拒绝', () => {
     const { database, turns, sessionId } = createFixture();
     turns.insert({
-      id: asTurnId('turn-a'),
+      id: 'turn-a',
       sessionId,
       triggerType: 'userMessage',
       executionProfile: 'chat',
       narrativePolicy: 'off',
       createdAt: 1,
     });
-    turns.setModel(asTurnId('turn-a'), 'provider-config-1', 'model-1');
-    expect(turns.findById(asTurnId('turn-a'))).toMatchObject({
+    turns.setModel('turn-a', 'provider-config-1', 'model-1');
+    expect(turns.findById('turn-a')).toMatchObject({
       provider_config_id: 'provider-config-1',
       model_id: 'model-1',
     });

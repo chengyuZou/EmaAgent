@@ -26,16 +26,6 @@ export class SessionImportFileCommit {
     return destination;
   }
 
-  copyAttachment(source: string, attachmentId: string, safeName: string): string {
-    assertPortableImportId(attachmentId, 'Attachment id');
-    const root = resolvePathInside(this.activeDataDir, 'attachments');
-    fs.mkdirSync(root, { recursive: true });
-    const destination = resolvePathInside(root, `${attachmentId}_${safeName}`);
-    this.copyExclusive(source, destination);
-    this.createdSharedFiles.push(destination);
-    return destination;
-  }
-
   commit(): void { this.committed = true; }
 
   rollback(): void {

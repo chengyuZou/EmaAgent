@@ -3,12 +3,6 @@
 // 事件不在此处断言:task_created/updated/deleted 由 wiring 侧 store 装饰器发出,Tool 不发射。
 
 import { describe, expect, it, vi } from 'vitest';
-import {
-  asSessionId,
-  asTaskId,
-  asToolCallId,
-  asTurnId,
-} from '@ema-agent/ids';
 import type { ToolInvocation } from '@ema-agent/tools';
 import type { Task, TaskStore } from '@ema-agent/tasks';
 import { TaskCreateTool } from '../tools/TaskCreateTool/TaskCreateTool.js';
@@ -16,15 +10,15 @@ import { TaskGetTool } from '../tools/TaskGetTool/TaskGetTool.js';
 import { TaskListTool } from '../tools/TaskListTool/TaskListTool.js';
 import { TaskUpdateTool } from '../tools/TaskUpdateTool/TaskUpdateTool.js';
 
-const taskId = asTaskId('11111111-1111-4111-8111-111111111111');
-const sessionId = asSessionId('00000000-0000-4000-8000-0000000000b1');
-const turnId = asTurnId('00000000-0000-4000-8000-0000000000b2');
+const taskId = '11111111-1111-4111-8111-111111111111';
+const sessionId = '00000000-0000-4000-8000-0000000000b1';
+const turnId = '00000000-0000-4000-8000-0000000000b2';
 
 function makeInvocation(): ToolInvocation {
   return {
     sessionId,
     turnId,
-    toolCallId: asToolCallId('call-task-1'),
+    toolCallId: 'call-task-1',
     signal: new AbortController().signal,
   };
 }
@@ -78,7 +72,7 @@ describe('TaskGetTool', () => {
 describe('TaskListTool', () => {
   it('已完成的阻塞项从 blockedBy 中隐藏,活跃 AgentRun 如实透出', async () => {
     const blocker = makeTask({
-      id: asTaskId('22222222-2222-4222-8222-222222222222'),
+      id: '22222222-2222-4222-8222-222222222222',
       status: 'completed',
     });
     const blocked = makeTask({

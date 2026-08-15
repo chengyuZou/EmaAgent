@@ -1,7 +1,6 @@
 // 列出当前 Session 的 Task 摘要;已完成的阻塞项从 blockedBy 中隐藏,让模型直接看到可启动的工作。
 
 import { z } from 'zod';
-import type { AgentRunId, TaskId } from '@ema-agent/ids';
 import {
   buildTool,
   contextFail,
@@ -26,12 +25,12 @@ export interface TaskListResult {
 }
 
 export interface TaskListItem {
-  id: TaskId;
+  id: string;
   displayNumber: number;
   subject: string;
   status: TaskStatus;
-  blockedBy: TaskId[];
-  activeAgentRunId?: AgentRunId;
+  blockedBy: string[];
+  activeAgentRunId?: string;
   version: number;
 }
 

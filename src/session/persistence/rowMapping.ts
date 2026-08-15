@@ -1,7 +1,5 @@
 // 把 Storage 数据库行显式映射为 Session 领域对象和列表/搜索投影。
 // Row 枚举（storage 自持）→ 领域词汇（turn 叶子）在此逐字段过界，恒等也写出来。
-
-import type { MessageId, SessionId, TurnId } from '@ema-agent/ids';
 import type {
   MessageRow,
   ProjectFolderRow,
@@ -42,7 +40,7 @@ export function toProjectFolder(row: ProjectFolderRow): ProjectFolder {
 
 export function toSession(row: SessionRow): Session {
   return {
-    id: row.id as SessionId,
+    id: row.id,
     title: row.title,
     workspaceRoot: row.workspace_root,
     projectId: row.project_id,
@@ -51,8 +49,8 @@ export function toSession(row: SessionRow): Session {
     lastActivityAt: row.last_activity_at,
     archivedAt: row.archived_at,
     pinned: row.pinned === 1,
-    forkedFromSessionId: row.forked_from_session_id as SessionId | null,
-    forkedFromTurnId: row.forked_from_turn_id as TurnId | null,
+    forkedFromSessionId: row.forked_from_session_id,
+    forkedFromTurnId: row.forked_from_turn_id,
     executionProfile: row.execution_profile,
     narrativePolicy: row.narrative_policy,
     ProviderConfigId: row.provider_config_id,
@@ -74,9 +72,9 @@ export function toSessionListItem(row: SessionRowEnriched): SessionListItem {
 
 export function toMessage(row: MessageRow): Message {
   return {
-    id: row.id as MessageId,
-    sessionId: row.session_id as SessionId,
-    turnId: row.turn_id as TurnId | null,
+    id: row.id,
+    sessionId: row.session_id,
+    turnId: row.turn_id as string | null,
     role: row.role,
     kind: row.kind,
     blocks: parseMessageBlocksJson(row.blocks_json, row.role),
@@ -94,7 +92,7 @@ export function toSearchHit(
     snippet: row.match_kind === 'title'
       ? row.title
       : blocksJsonToSearchText(row.snippet_json),
-    messageId: row.message_id as MessageId | null,
+    messageId: row.message_id,
     messageAt: row.message_created_at,
   };
 }

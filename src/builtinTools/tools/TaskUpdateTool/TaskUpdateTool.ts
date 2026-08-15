@@ -2,7 +2,6 @@
 // task_updated/task_deleted 事件由 wiring 侧的 store 装饰器发出,Tool 不直接发射。
 
 import { z } from 'zod';
-import { asTaskId } from '@ema-agent/ids';
 import {
   buildTool,
   contextFail,
@@ -113,7 +112,7 @@ export const TaskUpdateTool = buildTool<TaskUpdateInput, TaskUpdateResult, TaskU
 
   async execute(input, context, invocation): Promise<TaskUpdateResult> {
     const sessionId = invocation.sessionId;
-    const taskId = asTaskId(input.taskId);
+    const taskId = input.taskId;
     const result = context.taskStore.update({
       sessionId,
       turnId: invocation.turnId,
@@ -124,10 +123,10 @@ export const TaskUpdateTool = buildTool<TaskUpdateInput, TaskUpdateResult, TaskU
       activeForm: input.activeForm,
       status: input.status,
       action: input.action,
-      addBlocks: input.addBlocks?.map(asTaskId),
-      addBlockedBy: input.addBlockedBy?.map(asTaskId),
-      removeBlocks: input.removeBlocks?.map(asTaskId),
-      removeBlockedBy: input.removeBlockedBy?.map(asTaskId),
+      addBlocks: input.addBlocks?.map((id) => id),
+      addBlockedBy: input.addBlockedBy?.map((id) => id),
+      removeBlocks: input.removeBlocks?.map((id) => id),
+      removeBlockedBy: input.removeBlockedBy?.map((id) => id),
     });
 
     if (!result.ok) {

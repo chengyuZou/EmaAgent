@@ -1,5 +1,3 @@
-// 定义当前 Session 备份入口的分块输入、流式输出和结果契约。
-
 export type SessionBackupFormat = 'zip';
 
 export interface BackupArchiveSource {

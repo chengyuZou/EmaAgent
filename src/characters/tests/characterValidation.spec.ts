@@ -14,7 +14,6 @@ import { stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
-import { asCharacterVoiceReferenceId } from '@ema-agent/ids';
 import { Database } from '@ema-agent/storage';
 import { CharacterCardStore, buildCharacterPrompt } from '../index.js';
 
@@ -213,7 +212,7 @@ describe('character validation', () => {
     writeFileSync(source, 'original');
 
     await expect(store.publishVoiceReference(card.id, {
-      id: asCharacterVoiceReferenceId('voice-collision'),
+      id: 'voice-collision',
       label: 'Voice',
       relativePath: 'voiceRefs/voice.mp3',
       promptText: 'hello',

@@ -1,7 +1,6 @@
 // 读取单个 Task 的完整字段、依赖与当前活动 AgentRun;TaskUpdate 的 expectedVersion 从这里来。
 
 import { z } from 'zod';
-import { asTaskId } from '@ema-agent/ids';
 import {
   buildTool,
   contextFail,
@@ -51,7 +50,7 @@ export const TaskGetTool = buildTool<TaskGetInput, TaskGetResult, TaskGetToolCon
   },
 
   async execute(input, context, invocation): Promise<TaskGetResult> {
-    const task = context.taskStore.get(invocation.sessionId, asTaskId(input.taskId));
+    const task = context.taskStore.get(invocation.sessionId, input.taskId);
     return task
       ? {
           message: `Task #${task.displayNumber}: ${task.subject}`,

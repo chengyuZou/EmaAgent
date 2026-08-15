@@ -8,7 +8,6 @@ import {
   TurnsRepo,
   type SessionRowEnriched,
 } from '@ema-agent/storage';
-import { type SessionId, type TurnId, type MessageId, asSessionId, asMessageId } from '@ema-agent/ids';
 import { SessionOwnershipError } from './errors.js';
 import type { Database } from '@ema-agent/storage';
 import {
@@ -74,7 +73,7 @@ export class SessionStore {
   // ── Session ─────────────────────────────────────────────────────────────────
 
   createSession(input: CreateSessionInput = {}): Session {
-    const id  = asSessionId(crypto.randomUUID());
+    const id  = crypto.randomUUID();
     const now = this.nextTs();
     const title = (input.title?.trim() || '新对话');
     this.sessionsRepo.insert({
@@ -88,12 +87,12 @@ export class SessionStore {
     return this.requireSession(id);
   }
 
-  getSession(id: SessionId): Session {
+  getSession(id: string): Session {
     return this.requireSession(id);
   }
 
   /** 无异常检查，供调用方识别删库后残留的客户端 Session ID。 */
-  sessionExists(id: SessionId): boolean {
+  sessionExists(id: string): boolean {
     return this.sessionsRepo.findById(id) !== undefined;
   }
 
@@ -156,11 +155,11 @@ export class SessionStore {
     return { results };
   }
 
-  setViewedAt(id: SessionId): void {
+  setViewedAt(id: string): void {
     this.sessionsRepo.setViewedAt(id, Date.now());
   }
 
-  updateTitle(id: SessionId, title: string): void {
+  updateTitle(id: string, title: string): void {
     const trimmed = title.trim();
     if (!trimmed) return;
     this.sessionsRepo.updateTitle(id, trimmed, Date.now());
@@ -171,7 +170,7 @@ export class SessionStore {
    * `workspaceRoot` 的 null 表示移出工作区，undefined 表示保持不变。
    */
   patchSession(
-    id: SessionId,
+    id: string,
     patch: PatchSessionInput,
   ): void {
     const cleaned: Parameters<SessionsRepo['patch']>[1] = {};
@@ -201,21 +200,21 @@ export class SessionStore {
 
   // ── 置顶 ───────────────────────────────────────────────────────────────────
 
-  pinSession(id: SessionId): void {
+  pinSession(id: string): void {
     this.sessionsRepo.pin(id, Date.now());
   }
 
-  unpinSession(id: SessionId): void {
+  unpinSession(id: string): void {
     this.sessionsRepo.unpin(id);
   }
 
   // ── 归档 ───────────────────────────────────────────────────────────────────
 
-  archiveSession(id: SessionId): void {
+  archiveSession(id: string): void {
     this.sessionsRepo.archive(id, Date.now());
   }
 
-  unarchiveSession(id: SessionId): void {
+  unarchiveSession(id: string): void {
     this.sessionsRepo.unarchive(id);
   }
 
@@ -270,7 +269,7 @@ export class SessionStore {
    * 非主文件夹（弹窗"是否加入原工作区"选确认的那条路径）。
    */
   assignSessionToProject(
-    sessionId: SessionId,
+    sessionId: string,
     projectId: string,
     includeCurrentWorkspace = false,
   ): void {
@@ -290,7 +289,7 @@ export class SessionStore {
   }
 
   /** 拖出项目：解除成员资格，workspace_root 保留原值恢复自由。 */
-  removeSessionFromProject(sessionId: SessionId): void {
+  removeSessionFromProject(sessionId: string): void {
     this.sessionsRepo.removeFromProject(sessionId, Date.now());
   }
 
@@ -302,11 +301,11 @@ export class SessionStore {
    * AgentRun 或正在运行的外部副作用。
    */
   forkSession(
-    srcId:        SessionId,
-    untilTurnId?: TurnId,
-  ): { sessionId: SessionId; messageCount: number } {
+    srcId:        string,
+    untilTurnId?: string,
+  ): { sessionId: string; messageCount: number } {
     const src   = this.requireSession(srcId);
-    const newId = asSessionId(crypto.randomUUID());
+    const newId = crypto.randomUUID();
     const title = `${src.title} (fork)`;
     const now   = this.nextTs();
     const messageCount = this.sessionsRepo.forkInto(srcId, newId, title, now, untilTurnId);
@@ -319,10 +318,10 @@ export class SessionStore {
    * 删除本聚合的数据库行并触发文件清理。活动 Turn 的取消与运行态收口
    * 归 TurnStore，由删除用例（Server 编排）先行调用。
    */
-  deleteSession(id: SessionId): void {
+  deleteSession(id: string): void {
     this.sessionsRepo.delete(id);
     // 数据库行由外键级联；文件目录需要显式清理。
-    this.onSessionRemoved?.(id as string);
+    this.onSessionRemoved?.(id);
   }
 
   // ── Message ─────────────────────────────────────────────────────────────────
@@ -337,7 +336,7 @@ export class SessionStore {
         );
       }
     }
-    const id  = asMessageId(crypto.randomUUID());
+    const id  = crypto.randomUUID();
     const now = this.nextTs();
     const blocksJson = JSON.stringify(input.blocks);
     this.messagesRepo.insert({
@@ -353,30 +352,30 @@ export class SessionStore {
     return this.requireMessage(id);
   }
 
-  markMessageInterrupted(id: MessageId): void {
+  markMessageInterrupted(id: string): void {
     this.messagesRepo.markInterrupted(id);
   }
 
   /** 加载 LLM 可见历史；从最近 Summary 开始并保持时间正序。 */
-  loadHistory(sessionId: SessionId, limit = DEFAULT_HISTORY_LIMIT): Message[] {
+  loadHistory(sessionId: string, limit = DEFAULT_HISTORY_LIMIT): Message[] {
     this.requireSession(sessionId);
     return this.messagesRepo.listForSessionFromSummary(sessionId, limit).map(toMessage);
   }
 
   /** 加载一个 Turn 的全部消息，供 Turn 后处理使用。 */
-  loadMessagesForTurn(turnId: TurnId): Message[] {
+  loadMessagesForTurn(turnId: string): Message[] {
     return this.messagesRepo.listForTurn(turnId).map(toMessage);
   }
 
   /** 按 Turn 集合读取消息（时间正序），供 Turn 窗口在拼装层合成完整视图。 */
-  listMessagesForTurns(sessionId: SessionId, turnIds: readonly TurnId[]): Message[] {
+  listMessagesForTurns(sessionId: string, turnIds: readonly string[]): Message[] {
     this.requireSession(sessionId);
     return this.messagesRepo.listForTurns(sessionId, turnIds).map(toMessage);
   }
 
   /** 启动恢复按 Tool Call ID 找回模型原始调用与已经落库的结果。 */
   findToolInteraction(
-    turnId: TurnId,
+    turnId: string,
     callId: string,
   ): PersistedToolInteraction | undefined {
     let interaction: PersistedToolInteraction | undefined;
@@ -409,7 +408,7 @@ export class SessionStore {
   }
 
   /** 兼容现有聊天页的时间游标读取，结果保持最新优先。 */
-  listMessages(sessionId: SessionId, input: ListMessagesInput = {}): Message[] {
+  listMessages(sessionId: string, input: ListMessagesInput = {}): Message[] {
     const limit = input.limit ?? 50;
     this.requireSession(sessionId);
     if (input.before === undefined) {
@@ -419,7 +418,7 @@ export class SessionStore {
   }
 
   /** 校验 message 属于指定 session；不向调用方暴露仓储。 */
-  assertMessageOwnership(sessionId: SessionId, messageId: MessageId): void {
+  assertMessageOwnership(sessionId: string, messageId: string): void {
     const message = this.requireMessage(messageId);
     if (message.sessionId !== sessionId) {
       throw new SessionOwnershipError(
@@ -430,13 +429,13 @@ export class SessionStore {
 
   // ── 归属读取 ────────────────────────────────────────────────────────────────
 
-  private requireSession(id: SessionId): Session {
+  private requireSession(id: string): Session {
     const row = this.sessionsRepo.findById(id);
     if (!row) throw new Error(`session_not_found: ${id}`);
     return toSession(row);
   }
 
-  private requireMessage(id: MessageId): Message {
+  private requireMessage(id: string): Message {
     const row = this.messagesRepo.findById(id);
     if (!row) throw new Error(`message_not_found: ${id}`);
     return toMessage(row);

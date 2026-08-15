@@ -1,7 +1,6 @@
 // 依次执行阈值判断、微压缩、安全切割、摘要压缩和 Session 级失败熔断。
 
 import { randomUUID } from 'node:crypto';
-import { asCompactId, type CompactId, type SessionId } from '@ema-agent/ids';
 import type { LanguageModel, Message } from '@ema-agent/llm';
 import { estimateMessagesTokens } from '@ema-agent/token';
 import { fitCompactHistory } from './budget.js';
@@ -28,7 +27,7 @@ export function createCompact(
   overrides: Partial<CompactSettings> = {},
 ): (request: CompactRequest) => Promise<CompactResult> {
   const defaults = { ...DEFAULT_COMPACT_SETTINGS, ...overrides };
-  const consecutiveFailures = new Map<SessionId, number>();
+  const consecutiveFailures = new Map<string, number>();
 
   return (request) => compactMessages({
     request,
@@ -42,7 +41,7 @@ async function compactMessages(args: {
   readonly request: CompactRequest;
   readonly llm: LanguageModel;
   readonly defaults: Readonly<CompactSettings>;
-  readonly consecutiveFailures: Map<SessionId, number>;
+  readonly consecutiveFailures: Map<string, number>;
 }): Promise<CompactResult> {
   const { request } = args;
   validateRequest(request);
@@ -101,7 +100,7 @@ async function compactMessages(args: {
   });
   const head = micro.slice(0, safeCut);
   const tail = micro.slice(safeCut);
-  const compactId = asCompactId(randomUUID());
+  const compactId = randomUUID();
   request.emit?.({
     type: 'compact_started',
     compactId,
@@ -210,11 +209,11 @@ function chooseSafeCut(args: {
 
 function recordFailure(args: {
   readonly request: CompactRequest;
-  readonly compactId: CompactId;
+  readonly compactId: string;
   readonly beforeTokens: number;
   readonly detail: string;
   readonly startedAt: number;
-  readonly consecutiveFailures: Map<SessionId, number>;
+  readonly consecutiveFailures: Map<string, number>;
 }): void {
   args.consecutiveFailures.set(
     args.request.sessionId,
@@ -233,8 +232,8 @@ function recordFailure(args: {
 }
 
 function failureCount(
-  failures: ReadonlyMap<SessionId, number>,
-  sessionId: SessionId,
+  failures: ReadonlyMap<string, number>,
+  sessionId: string,
 ): number {
   return failures.get(sessionId) ?? 0;
 }

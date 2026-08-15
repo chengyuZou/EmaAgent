@@ -1,11 +1,6 @@
-import type {
-  CharacterCardId,
-  CharacterVoiceReferenceId,
-} from '@ema-agent/ids';
-
 export interface CharacterVoiceReference {
-  id: CharacterVoiceReferenceId;
-  characterCardId: CharacterCardId;
+  id: string;
+  characterCardId: string;
   name: string;
   promptText: string;
   promptLang: string;
@@ -19,7 +14,7 @@ export interface CharacterVoiceReference {
 }
 
 export interface CharacterVoiceReferenceInput {
-  id?: CharacterVoiceReferenceId;
+  id?: string;
   name: string;
   promptText: string;
   promptLang: string;

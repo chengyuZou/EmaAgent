@@ -1,18 +1,12 @@
 // 后台进程持久化的窄端口:Tools 拥有状态语义,Storage 以原子操作实现它。
-import type {
-  BackgroundProcessId,
-  SessionId,
-  ToolCallId,
-  TurnId,
-} from '@ema-agent/ids';
 import type { BackgroundProcessStatus } from './types.js';
 
 /** 持久化一行的领域形状;不出现 SQL 列名与 null。 */
 export interface BackgroundProcessRecord {
-  id: BackgroundProcessId;
-  sessionId: SessionId;
-  originTurnId?: TurnId;
-  toolCallId?: ToolCallId;
+  id: string;
+  sessionId: string;
+  originTurnId?: string;
+  toolCallId?: string;
   command: string;
   description?: string;
   cwd: string;
@@ -30,15 +24,15 @@ export interface BackgroundProcessRecord {
   /** 日志目录的相对路径(相对数据目录),是日志位置的唯一事实源。 */
   outputRelativePath: string;
   completionClaimedAt?: number;
-  continuationTurnId?: TurnId;
+  continuationTurnId?: string;
   modelNotifiedAt?: number;
 }
 
 export interface BackgroundProcessInsertRecord {
-  id: BackgroundProcessId;
-  sessionId: SessionId;
-  originTurnId: TurnId;
-  toolCallId: ToolCallId;
+  id: string;
+  sessionId: string;
+  originTurnId: string;
+  toolCallId: string;
   command: string;
   description?: string;
   cwd: string;
@@ -73,27 +67,27 @@ export interface BackgroundProcessListFilter {
  */
 export interface BackgroundProcessStore {
   insert(value: BackgroundProcessInsertRecord): BackgroundProcessRecord;
-  findById(id: BackgroundProcessId): BackgroundProcessRecord | undefined;
+  findById(id: string): BackgroundProcessRecord | undefined;
   listForSession(
-    sessionId: SessionId,
+    sessionId: string,
     filter?: BackgroundProcessListFilter,
   ): BackgroundProcessRecord[];
   transitionToRunning(
-    id: BackgroundProcessId,
+    id: string,
     expectedVersion: number,
     startedAt: number,
   ): BackgroundProcessRecord | undefined;
   finish(
-    id: BackgroundProcessId,
+    id: string,
     expectedVersion: number,
     terminal: BackgroundProcessTerminalRecord,
   ): BackgroundProcessRecord | undefined;
   recoverInterrupted(at: number): BackgroundProcessRecord[];
   claimCompletionBatch(
-    sessionId: SessionId,
-    continuationTurnId: TurnId,
+    sessionId: string,
+    continuationTurnId: string,
     at: number,
   ): BackgroundProcessRecord[];
-  markCompletionDelivered(continuationTurnId: TurnId, at: number): number;
-  listSessionsWithPendingCompletions(): SessionId[];
+  markCompletionDelivered(continuationTurnId: string, at: number): number;
+  listSessionsWithPendingCompletions(): string[];
 }

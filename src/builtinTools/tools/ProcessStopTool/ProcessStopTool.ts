@@ -1,6 +1,5 @@
 // 终止当前 Session 的一个后台进程，实际停止仍由 Sandbox 杀整棵进程树。
 import { z } from 'zod';
-import { asBackgroundProcessId } from '@ema-agent/ids';
 import {
   buildTool,
   type BackgroundProcessPort,
@@ -56,7 +55,7 @@ export const ProcessStopTool = buildTool<
   ): Promise<ProcessStopResult> {
     return context.backgroundProcesses.stop(
       invocation.sessionId,
-      asBackgroundProcessId(input.backgroundProcessId),
+      input.backgroundProcessId,
     );
   },
 

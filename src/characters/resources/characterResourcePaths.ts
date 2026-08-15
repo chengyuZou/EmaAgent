@@ -2,28 +2,22 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import type {
-  CharacterCardId,
-  CharacterLive2dId,
-  CharacterIllustrationId,
-  CharacterVoiceReferenceId,
-} from '@ema-agent/ids';
 import { CharacterResourcePathError } from '../errors.js';
 
 export class CharacterResourcePaths {
   constructor(private readonly root: string) {}
 
-  cardRoot(characterId: CharacterCardId): string {
+  cardRoot(characterId: string): string {
     return path.join(this.root, safeId(characterId));
   }
 
-  live2dDirectory(characterId: CharacterCardId, resourceId: CharacterLive2dId): string {
+  live2dDirectory(characterId: string, resourceId: string): string {
     return path.join(this.cardRoot(characterId), 'live2d', safeId(resourceId));
   }
 
   illustrationImportPath(
-    characterId: CharacterCardId,
-    resourceId: CharacterIllustrationId,
+    characterId: string,
+    resourceId: string,
     extension: string,
   ): string {
     return path.join(
@@ -33,7 +27,7 @@ export class CharacterResourcePaths {
     );
   }
 
-  illustrationFile(characterId: CharacterCardId, resourceId: CharacterIllustrationId): string {
+  illustrationFile(characterId: string, resourceId: string): string {
     return findResourceFile(
       path.join(this.cardRoot(characterId), 'illustration'),
       safeId(resourceId),
@@ -41,8 +35,8 @@ export class CharacterResourcePaths {
   }
 
   voiceImportPath(
-    characterId: CharacterCardId,
-    resourceId: CharacterVoiceReferenceId,
+    characterId: string,
+    resourceId: string,
     extension: string,
   ): string {
     return path.join(
@@ -52,7 +46,7 @@ export class CharacterResourcePaths {
     );
   }
 
-  voiceFile(characterId: CharacterCardId, resourceId: CharacterVoiceReferenceId): string {
+  voiceFile(characterId: string, resourceId: string): string {
     return findResourceFile(
       path.join(this.cardRoot(characterId), 'voice'),
       safeId(resourceId),

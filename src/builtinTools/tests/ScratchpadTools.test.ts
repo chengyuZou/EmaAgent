@@ -5,7 +5,6 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { asSessionId, asToolCallId, asTurnId } from '@ema-agent/ids';
 import type { ToolInvocation } from '@ema-agent/tools';
 import {
   ScratchpadClearTool,
@@ -29,9 +28,9 @@ afterEach(() => {
 
 function makeInvocation(signal?: AbortSignal): ToolInvocation {
   return {
-    sessionId: asSessionId('00000000-0000-4000-8000-0000000000c1'),
-    turnId: asTurnId('00000000-0000-4000-8000-0000000000c2'),
-    toolCallId: asToolCallId('call-scratchpad-1'),
+    sessionId: '00000000-0000-4000-8000-0000000000c1',
+    turnId: '00000000-0000-4000-8000-0000000000c2',
+    toolCallId: 'call-scratchpad-1',
     signal: signal ?? new AbortController().signal,
   };
 }

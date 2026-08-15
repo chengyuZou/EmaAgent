@@ -71,10 +71,11 @@ export interface MessageRecord {
 export interface AttachmentRecord {
   readonly id: string;
   readonly turnId: string;
+  readonly kind: 'file' | 'image';
   readonly name: string;
   readonly mime: string;
-  readonly size: number;
-  readonly mtime: number;
+  readonly byteSize: number;
+  readonly sourceModifiedAt: number;
   readonly createdAt: number;
   /** ZIP 内 files/ 下的相对路径,由安全 ID 与清洗文件名构成。 */
   readonly filePath: string;
@@ -148,7 +149,7 @@ export interface AgentRunRecord {
 export interface AgentRunMessageRecord {
   readonly id: string;
   readonly agentRunId: string;
-  readonly role: 'assistant' | 'tool_call' | 'tool_result' | 'reasoning' | 'coordinator';
+  readonly role: 'assistant' | 'tool_call' | 'tool_result' | 'reasoning';
   readonly contentJson: string;
   readonly sequence: number;
   readonly createdAt: number;
@@ -210,7 +211,6 @@ export interface UsageRecord {
   readonly cacheWriteInputTokens: number | null;
   readonly quantity: number | null;
   readonly unit: string | null;
-  readonly costUsd: number | null;
   readonly durationMs: number;
   readonly errorCode: string | null;
   readonly createdAt: number;

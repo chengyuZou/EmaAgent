@@ -1,17 +1,16 @@
 // AgentRun 数据库操作只保存子 Agent 执行，不再复制根 Turn 生命周期。
 
-import type { AgentRunId, SessionId, TaskId, TurnId } from '@ema-agent/ids';
 import type { SqliteDb } from '../../database/database.js';
 
 export type AgentRunStatus = 'running' | 'completed' | 'failed' | 'cancelled';
 export type AgentRunKind = 'subagent' | 'fork';
 
 export interface AgentRunRow {
-  id:                  AgentRunId;
-  session_id:          SessionId;
-  parent_turn_id:      TurnId;
-  parent_agent_run_id: AgentRunId | null;
-  task_id:             TaskId | null;
+  id:                  string;
+  session_id:          string;
+  parent_turn_id:      string;
+  parent_agent_run_id: string | null;
+  task_id:             string | null;
   kind:                AgentRunKind;
   purpose:             string | null;
   provider_config_id:  string | null;
@@ -30,11 +29,11 @@ export interface AgentRunRow {
 }
 
 export interface AgentRunInsert {
-  id: AgentRunId;
-  sessionId: SessionId;
-  parentTurnId: TurnId;
-  parentAgentRunId?: AgentRunId;
-  taskId?: TaskId;
+  id: string;
+  sessionId: string;
+  parentTurnId: string;
+  parentAgentRunId?: string;
+  taskId?: string;
   kind: AgentRunKind;
   purpose?: string;
   providerConfigId?: string;
@@ -76,7 +75,7 @@ export class AgentRunsRepo {
   }
 
   complete(
-    id: AgentRunId,
+    id: string,
     expectedVersion: number,
     completion: AgentRunCompletion,
     at: number,
@@ -109,7 +108,7 @@ export class AgentRunsRepo {
   }
 
   fail(
-    id: AgentRunId,
+    id: string,
     expectedVersion: number,
     error: string,
     at: number,
@@ -118,7 +117,7 @@ export class AgentRunsRepo {
   }
 
   cancel(
-    id: AgentRunId,
+    id: string,
     expectedVersion: number,
     reason: string,
     at: number,
@@ -126,24 +125,24 @@ export class AgentRunsRepo {
     return this.finish(id, expectedVersion, 'cancelled', reason, at);
   }
 
-  delete(id: AgentRunId): void {
+  delete(id: string): void {
     this.db.prepare('DELETE FROM agent_runs WHERE id = ?').run(id);
   }
 
-  deleteTerminalForSession(sessionId: SessionId): number {
+  deleteTerminalForSession(sessionId: string): number {
     return this.db.prepare(
       `DELETE FROM agent_runs
         WHERE session_id = ? AND status IN ('completed', 'failed', 'cancelled')`,
     ).run(sessionId).changes;
   }
 
-  findById(id: AgentRunId): AgentRunRow | undefined {
+  findById(id: string): AgentRunRow | undefined {
     return this.db.prepare(
       'SELECT * FROM agent_runs WHERE id = ?',
     ).get(id) as AgentRunRow | undefined;
   }
 
-  listForSession(sessionId: SessionId, limit = 200): AgentRunRow[] {
+  listForSession(sessionId: string, limit = 200): AgentRunRow[] {
     return this.db.prepare(
       `SELECT * FROM agent_runs
         WHERE session_id = ?
@@ -174,7 +173,7 @@ export class AgentRunsRepo {
   }
 
   private finish(
-    id: AgentRunId,
+    id: string,
     expectedVersion: number,
     status: 'failed' | 'cancelled',
     error: string,

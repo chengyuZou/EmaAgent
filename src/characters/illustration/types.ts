@@ -1,12 +1,7 @@
-import type {
-  CharacterCardId,
-  CharacterIllustrationId,
-} from '@ema-agent/ids';
-
 // 单张角色立绘
 export interface CharacterIllustration {
-  id: CharacterIllustrationId;
-  characterCardId: CharacterCardId;
+  id: string;
+  characterCardId: string;
   name: string;
   /** 主窗口中的缩放比例与归一化偏移，原图字节保持不变。 */
   stageScale: number;
@@ -20,7 +15,7 @@ export interface CharacterIllustration {
 }
 
 export interface CharacterIllustrationInput {
-  id?: CharacterIllustrationId;
+  id?: string;
   name: string;
   stageScale?: number;
   stageOffsetX?: number;

@@ -1,4 +1,3 @@
-import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { Message } from '@ema-agent/llm';
 import type { ExecutionProfile } from '@ema-agent/turn';
 import type { CompactEvent } from './events.js';
@@ -23,8 +22,8 @@ export const DEFAULT_COMPACT_SETTINGS: CompactSettings = {
 };
 
 export interface CompactRequest {
-  readonly sessionId: SessionId;
-  readonly turnId: TurnId;
+  readonly sessionId: string;
+  readonly turnId: string;
   readonly executionProfile: ExecutionProfile;
   /** 仅包含允许被改写的历史；System Prompt、当前 Turn 与临时召回不在这里。 */
   readonly history: readonly Message[];

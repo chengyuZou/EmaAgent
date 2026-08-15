@@ -1,6 +1,5 @@
 // 测试调用级用量记录可在同一 Turn 下共存，并保持确定性查询顺序。
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { asSessionId, asTurnId } from '@ema-agent/ids';
 import type { UsageRecord } from '@ema-agent/usage';
 import { UsageRecordsRepo } from '../../repos/data/usage-records.js';
 import { createTestDatabase, type TestDatabase } from '../helpers/create-test-database.js';
@@ -40,14 +39,14 @@ describe('UsageRecordsRepo', () => {
     expect(database.db.pragma('user_version', { simple: true })).toBe(1);
     repo.record(record('call-b', 10));
     repo.record(record('call-a', 10));
-    expect(repo.forTurn(asTurnId('turn-a')).map((row) => row.id)).toEqual(['call-a', 'call-b']);
-    expect(repo.forSession(asSessionId('session-a'))).toHaveLength(2);
+    expect(repo.forTurn('turn-a').map((row) => row.id)).toEqual(['call-a', 'call-b']);
+    expect(repo.forSession('session-a')).toHaveLength(2);
   });
 
   it('重复上报同一调用不会制造重复账单', () => {
     repo.record(record('call-a', 10));
     repo.record({ ...record('call-a', 20), outputTokens: 999 });
-    expect(repo.forTurn(asTurnId('turn-a'))).toEqual([
+    expect(repo.forTurn('turn-a')).toEqual([
       expect.objectContaining({ id: 'call-a', output_tokens: 20, created_at: 10 }),
     ]);
   });
@@ -56,7 +55,7 @@ describe('UsageRecordsRepo', () => {
     repo.record({ ...record('call-retry', 10), status: 'failed', errorCode: 'llm/context_too_large' });
     repo.record({ ...record('call-retry', 20), status: 'completed', outputTokens: 30 });
 
-    expect(repo.forTurn(asTurnId('turn-a'))).toEqual([
+    expect(repo.forTurn('turn-a')).toEqual([
       expect.objectContaining({
         id: 'call-retry', status: 'completed', output_tokens: 30, error_code: null, created_at: 20,
       }),
@@ -75,7 +74,7 @@ describe('UsageRecordsRepo', () => {
       outputTokens: 30,
     });
 
-    expect(repo.forTurn(asTurnId('turn-a'))).toEqual([
+    expect(repo.forTurn('turn-a')).toEqual([
       expect.objectContaining({
         id: 'call-cancelled',
         status: 'cancelled',

@@ -1,5 +1,4 @@
 import type { SqliteDb } from '../../database/database.js';
-import type { CharacterCardId } from '@ema-agent/ids';
 import type { ProtectedDeleteResult } from './mutation-results.js';
 
 export interface CharacterCardRow {
@@ -16,7 +15,7 @@ export interface CharacterCardRow {
 }
 
 export interface CharacterCardInsert {
-  id: CharacterCardId;
+  id: string;
   name: string;
   description?: string | null;
   systemPrompt: string;
@@ -77,7 +76,7 @@ export class CharacterCardsRepo {
       );
   }
 
-  findById(id: CharacterCardId): CharacterCardRow | undefined {
+  findById(id: string): CharacterCardRow | undefined {
     return this.db
       .prepare('SELECT * FROM character_cards WHERE id = ?')
       .get(id) as CharacterCardRow | undefined;
@@ -95,7 +94,7 @@ export class CharacterCardsRepo {
       .all() as CharacterCardRow[];
   }
 
-  activate(id: CharacterCardId, updatedAt: number): boolean {
+  activate(id: string, updatedAt: number): boolean {
     return this.db.transaction(() => {
       const target = this.db
         .prepare('SELECT is_active FROM character_cards WHERE id = ?')
@@ -113,7 +112,7 @@ export class CharacterCardsRepo {
     })();
   }
 
-  update(id: CharacterCardId, patch: CharacterCardUpdate): void {
+  update(id: string, patch: CharacterCardUpdate): void {
     const untrustedPatch = patch as CharacterCardUpdate & Record<string, unknown>;
     for (const field of ['isActive', 'isBuiltin'] as const) {
       if (Object.prototype.hasOwnProperty.call(untrustedPatch, field)) {
@@ -137,7 +136,7 @@ export class CharacterCardsRepo {
     this.db.prepare(`UPDATE character_cards SET ${fields.join(', ')} WHERE id = ?`).run(...values);
   }
 
-  delete(id: CharacterCardId): ProtectedDeleteResult {
+  delete(id: string): ProtectedDeleteResult {
     return this.db.transaction(() => {
       const deleted = this.db
         .prepare('DELETE FROM character_cards WHERE id = ? AND is_builtin = 0')

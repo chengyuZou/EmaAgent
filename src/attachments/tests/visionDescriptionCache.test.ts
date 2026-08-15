@@ -4,7 +4,6 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { asSessionId, asTurnId } from '@ema-agent/ids';
 import {
   AttachmentRepo,
   AttachmentVisionDescriptionsRepo,
@@ -15,8 +14,8 @@ import { AttachmentCacheMaintenance } from '../cacheMaintenance.js';
 import { VisionDescriptionCache } from '../visionDescriptionCache.js';
 import type { ImageAttachment } from '../types.js';
 
-const sessionId = asSessionId('session-cache');
-const turnId = asTurnId('turn-cache');
+const sessionId = 'session-cache';
+const turnId = 'turn-cache';
 
 let database: Database;
 let dataDir: string;

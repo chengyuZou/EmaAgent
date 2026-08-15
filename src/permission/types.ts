@@ -1,5 +1,3 @@
-import type { SessionId, ToolCallId, TurnId } from '@ema-agent/ids';
-
 export type Platform = 'windows' | 'wsl' | 'linux' | 'macos';
 
 /** 权限模式属于一次执行快照，不能作为 PermissionEngine 的跨 Session 全局状态。 
@@ -76,9 +74,9 @@ export interface PermissionContext {
   readonly mode: PermissionMode;
   /** 没有工作区时省略；相对路径在这种情况下必须 fail-closed。 */
   readonly workspaceRoot?: string;
-  readonly sessionId?: SessionId;
-  readonly turnId?: TurnId;
-  readonly toolCallId?: ToolCallId;
+  readonly sessionId?: string;
+  readonly turnId?: string;
+  readonly toolCallId?: string;
   /** 宿主显式授予本次执行的内部目录，Permission 不自行拼接这些路径。 */
   readonly internalPaths?: InternalPathCapabilities;
 }
@@ -97,7 +95,7 @@ export type PermissionDecisionReason =
   | { readonly type: 'pathSafety'; readonly reason: string }
   | { readonly type: 'rule'; readonly rules: readonly PermissionRule[] }
   | { readonly type: 'mode'; readonly mode: PermissionMode }
-  | { readonly type: 'sessionGrant'; readonly sessionId: SessionId }
+  | { readonly type: 'sessionGrant'; readonly sessionId: string }
   | { readonly type: 'workspace' }
   | { readonly type: 'internalPath' }
   | { readonly type: 'internalCapability'; readonly capability: InternalPathCapability }
@@ -131,9 +129,9 @@ export interface PermissionPrompt {
   readonly accessType: AccessType;
   readonly targets: readonly PermissionPathTarget[];
   readonly gateReason?: string;
-  readonly sessionId?: SessionId;
-  readonly turnId?: TurnId;
-  readonly toolCallId?: ToolCallId;
+  readonly sessionId?: string;
+  readonly turnId?: string;
+  readonly toolCallId?: string;
 }
 
 /** Server 暂存的待批准快照；Promise、计时器和内部指纹不进入事件协议。 */
@@ -152,7 +150,7 @@ export type AskPermissionFn = (prompt: PermissionPrompt) => Promise<PermissionRe
 
 export interface PermissionAuthorizer {
   authorize(request: PermissionRequest, ask?: AskPermissionFn): Promise<PermissionDecision>;
-  clearSession(sessionId: SessionId): void;
+  clearSession(sessionId: string): void;
 }
 
 export interface PermissionRuleCatalog {

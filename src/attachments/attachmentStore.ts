@@ -4,14 +4,6 @@
 import { randomUUID } from 'node:crypto';
 import { copyFile, mkdir, realpath, rename, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
-import {
-  asAttachmentId,
-  asSessionId,
-  asTurnId,
-  type AttachmentId,
-  type SessionId,
-  type TurnId,
-} from '@ema-agent/ids';
 import type { AttachmentInsertRow, AttachmentRepo, AttachmentRow } from '@ema-agent/storage';
 import { AttachmentLimitError, AttachmentPreparationError } from './errors.js';
 import type { TurnAttachmentInput } from './protocol.js';
@@ -32,7 +24,7 @@ export interface AttachmentStoreDeps {
 }
 
 interface PreparedAttachment {
-  readonly id: AttachmentId;
+  readonly id: string;
   readonly kind: 'file' | 'image';
   readonly name: string;
   readonly mimeType: string;
@@ -50,8 +42,8 @@ export class AttachmentStore {
    */
   async addAll(
     inputs: readonly TurnAttachmentInput[],
-    turnId: TurnId,
-    sessionId: SessionId,
+    turnId: string,
+    sessionId: string,
     limits: Readonly<AttachmentInputSettings> = DEFAULT_ATTACHMENT_INPUT_SETTINGS,
   ): Promise<readonly Attachment[]> {
     if (inputs.length === 0) return [];
@@ -119,20 +111,20 @@ export class AttachmentStore {
     return rows.map((row) => rowToAttachment(row));
   }
 
-  listByTurn(turnId: TurnId): readonly Attachment[] {
+  listByTurn(turnId: string): readonly Attachment[] {
     return this.deps.repo.listByTurn(turnId).map((row) => rowToAttachment(row));
   }
 
-  getMany(ids: readonly AttachmentId[]): ReadonlyMap<AttachmentId, Attachment> {
-    const map = new Map<AttachmentId, Attachment>();
+  getMany(ids: readonly string[]): ReadonlyMap<string, Attachment> {
+    const map = new Map<string, Attachment>();
     for (const row of this.deps.repo.findByIds(ids)) {
-      map.set(asAttachmentId(row.id), rowToAttachment(row));
+      map.set(row.id, rowToAttachment(row));
     }
     return map;
   }
 
   /** 逐条检查用户原文件当前状态；网络盘慢速时按小批并发，避免一次压上百个 stat。 */
-  async inspectBySession(sessionId: SessionId): Promise<readonly InspectedAttachment[]> {
+  async inspectBySession(sessionId: string): Promise<readonly InspectedAttachment[]> {
     const rows = this.deps.repo.listBySession(sessionId);
     const inspected: InspectedAttachment[] = [];
     const batchSize = 16;
@@ -167,7 +159,7 @@ export class AttachmentStore {
     const name = path.basename(canonical);
     const mimeType = mimeForFileName(name);
     return {
-      id: asAttachmentId(randomUUID()),
+      id: randomUUID(),
       kind: LLM_IMAGE_MIMES.has(mimeType) ? 'image' : 'file',
       name,
       mimeType,
@@ -179,7 +171,7 @@ export class AttachmentStore {
 
   /** 原始字节复制：临时名写入后同卷 rename 原子发布；不做任何转码。 */
   private async publishImageCopy(
-    sessionId: SessionId,
+    sessionId: string,
     item: PreparedAttachment,
   ): Promise<{ imagePath: string; imageByteSize: number }> {
     const dir = path.join(this.deps.dataDir, 'sessions', sessionId, 'attachments');
@@ -201,9 +193,9 @@ export class AttachmentStore {
 
 function rowToAttachment(row: AttachmentRow): Attachment {
   const base = {
-    id: asAttachmentId(row.id),
-    turnId: asTurnId(row.turn_id),
-    sessionId: asSessionId(row.session_id),
+    id: row.id,
+    turnId: row.turn_id,
+    sessionId: row.session_id,
     name: row.name,
     createdAt: row.created_at,
   };

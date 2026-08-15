@@ -4,7 +4,6 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { asSessionId, asToolCallId, asTurnId } from '@ema-agent/ids';
 import type { ReadFileState, ToolInvocation } from '@ema-agent/tools';
 import { FileEditTool } from '../tools/FileEditTool/FileEditTool.js';
 
@@ -18,9 +17,9 @@ afterEach(() => {
 
 function makeInvocation(callId = 'call-edit-1', signal?: AbortSignal): ToolInvocation {
   return {
-    sessionId: asSessionId('00000000-0000-4000-8000-0000000000e1'),
-    turnId: asTurnId('00000000-0000-4000-8000-0000000000e2'),
-    toolCallId: asToolCallId(callId),
+    sessionId: '00000000-0000-4000-8000-0000000000e1',
+    turnId: '00000000-0000-4000-8000-0000000000e2',
+    toolCallId: callId,
     signal: signal ?? new AbortController().signal,
   };
 }

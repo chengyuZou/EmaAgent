@@ -1,11 +1,8 @@
 // 定义历史压缩过程向当前 Turn 公开的业务事件。
-
-import type { CompactId, SessionId, TurnId } from '@ema-agent/ids';
-
 interface CompactEventBase {
-  readonly compactId: CompactId;
-  readonly sessionId: SessionId;
-  readonly turnId: TurnId;
+  readonly compactId: string;
+  readonly sessionId: string;
+  readonly turnId: string;
   readonly beforeTokens: number;
 }
 

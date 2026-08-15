@@ -1,11 +1,6 @@
-import type {
-  CharacterCardId,
-  CharacterLive2dId,
-} from '@ema-agent/ids';
-
 export interface CharacterLive2dVariant {
-  id: CharacterLive2dId;
-  characterCardId: CharacterCardId;
+  id: string;
+  characterCardId: string;
   name: string;
   /** 主窗口中的缩放比例与归一化偏移，不修改模型源文件。 */
   stageScale: number;
@@ -19,7 +14,7 @@ export interface CharacterLive2dVariant {
 }
 
 export interface CharacterLive2dVariantInput {
-  id?: CharacterLive2dId;
+  id?: string;
   name: string;
   stageScale?: number;
   stageOffsetX?: number;

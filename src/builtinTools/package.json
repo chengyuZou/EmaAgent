@@ -31,7 +31,6 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@ema-agent/ids": "workspace:*",
     "@ema-agent/knowledge": "workspace:*",
     "@ema-agent/llm": "workspace:*",
     "@ema-agent/narrative": "workspace:*",

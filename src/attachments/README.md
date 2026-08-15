@@ -36,7 +36,6 @@ attachmentCacheSetting   // attachments.cache（nextOperation；默认 64MiB 文
 ## 不变量
 
 - 权威事实只认 Server 的 `realpath/stat`；wire 上的 name/mime/size/mtime 仅展示。
-- 附件 ID 一律由 Server 生成（`AttachmentId` 品牌在 `@ema-agent/ids`）。
 - 图片受管副本：`{dataDir}/sessions/{sessionId}/attachments/{attachmentId}{ext}`，
   原始字节直拷（不规范化）；随 Session 目录删除，孤儿由启动既有清扫兜底。
 - Message 只存 `attachment_ref`；禁止 Base64/路径/名称副本进 `blocks_json`。

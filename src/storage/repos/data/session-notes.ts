@@ -1,5 +1,4 @@
 import type { SqliteDb } from '../../database/database.js';
-import type { SessionId, MessageId } from '@ema-agent/ids';
 
 // ── 类型─────────────────────────────────────────────────────────────────────
 
@@ -12,9 +11,9 @@ export interface SessionNoteRow {
 }
 
 export interface SessionNoteUpsert {
-  sessionId:           SessionId;
+  sessionId:           string;
   body:                string;
-  lastMessageId?:      MessageId;
+  lastMessageId?:      string;
   tokensAtLastUpdate:  number;
   updatedAt:           number;
 }
@@ -54,7 +53,7 @@ export class SessionNotesRepo {
       );
   }
 
-  findBySession(sessionId: SessionId): SessionNoteRow | undefined {
+  findBySession(sessionId: string): SessionNoteRow | undefined {
     return this.db
       .prepare('SELECT * FROM session_notes WHERE session_id = ?')
       .get(sessionId) as SessionNoteRow | undefined;
@@ -70,7 +69,7 @@ export class SessionNotesRepo {
       .get() as SessionNotesStats;
   }
 
-  delete(sessionId: SessionId): void {
+  delete(sessionId: string): void {
     this.db.prepare('DELETE FROM session_notes WHERE session_id = ?').run(sessionId);
   }
 }

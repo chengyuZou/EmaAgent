@@ -1,5 +1,4 @@
 // 定义一次原子 Narrative Recall 的开始、完成和整体失败事件。
-import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { NarrativeClientErrorCode } from './errors.js';
 import type { NarrativeTimelineFailure } from './types.js';
 
@@ -16,13 +15,13 @@ export interface NarrativeTimelineSummary {
 export type NarrativeEvent =
   | {
       type: 'narrative_recall_started';
-      sessionId: SessionId;
-      turnId: TurnId;
+      sessionId: string;
+      turnId: string;
     }
   | {
       type: 'narrative_recall_completed';
-      sessionId: SessionId;
-      turnId: TurnId;
+      sessionId: string;
+      turnId: string;
       generationId: string;
       timelineOrder: readonly string[];
       timelines: readonly NarrativeTimelineSummary[];
@@ -30,8 +29,8 @@ export type NarrativeEvent =
     }
   | {
       type: 'narrative_recall_failed';
-      sessionId: SessionId;
-      turnId: TurnId;
+      sessionId: string;
+      turnId: string;
       code: NarrativeRecallFailureCode;
       message: string;
       retryable: boolean;

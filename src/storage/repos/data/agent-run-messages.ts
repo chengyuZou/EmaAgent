@@ -1,7 +1,6 @@
 // AgentRun 转录按单调序号保存子 Agent 的输出、推理和工具活动。
 
 import { randomUUID } from 'node:crypto';
-import type { AgentRunId } from '@ema-agent/ids';
 import type { SqliteDb } from '../../database/database.js';
 
 export type AgentRunMessageRole =
@@ -12,7 +11,7 @@ export type AgentRunMessageRole =
 
 export interface AgentRunMessageRow {
   id: string;
-  agent_run_id: AgentRunId;
+  agent_run_id: string;
   role: AgentRunMessageRole;
   content_json: string;
   sequence: number;
@@ -20,7 +19,7 @@ export interface AgentRunMessageRow {
 }
 
 export interface AgentRunMessageInsert {
-  agentRunId: AgentRunId;
+  agentRunId: string;
   role: AgentRunMessageRole;
   content: unknown;
   createdAt: number;
@@ -30,7 +29,7 @@ export class AgentRunMessageSerializationError extends Error {
   readonly code = 'storage/agent-run-message-serialization-failed';
 
   constructor(
-    readonly agentRunId: AgentRunId,
+    readonly agentRunId: string,
     readonly role: AgentRunMessageRole,
     cause?: unknown,
   ) {
@@ -85,7 +84,7 @@ export class AgentRunMessagesRepo {
     );
   }
 
-  listForRun(agentRunId: AgentRunId): AgentRunMessageRow[] {
+  listForRun(agentRunId: string): AgentRunMessageRow[] {
     return this.db.prepare(
       `SELECT * FROM agent_run_messages
        WHERE agent_run_id = ?

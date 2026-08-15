@@ -1,7 +1,6 @@
 // 统一完成路径安全、规则、执行模式、Session 授权和用户批准判定。
 
 import path from 'node:path';
-import type { SessionId } from '@ema-agent/ids';
 import {
   checkPathSafety,
   getDangerousPathReason,
@@ -87,7 +86,7 @@ export class PermissionEngine implements PermissionAuthorizer, PermissionRuleCat
     return this.promptUser(prepared, ask, evaluation.gateReason);
   }
 
-  clearSession(sessionId: SessionId): void {
+  clearSession(sessionId: string): void {
     this.sessionGrants.clear(sessionId);
   }
 

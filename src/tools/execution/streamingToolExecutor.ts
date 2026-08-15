@@ -1,6 +1,5 @@
 // 调度流式到达的工具调用，维护并发屏障、取消、进度事件和 FIFO 终态。
 
-import { asToolCallId } from '@ema-agent/ids';
 import type { ToolExecutionEvent } from '../events.js';
 import type { ToolResultStore } from '../results/toolResultStore.js';
 import {
@@ -103,7 +102,7 @@ export class StreamingToolExecutor {
     let track!: TrackedTool;
     const execution = new ToolCallExecution(
       this.options,
-      { callId: asToolCallId(id), name, args },
+      { callId: id, name, args },
       (event: ToolExecutionLiveEvent) => {
         if (!track.suppressEvents) this.options.pushEv(event);
       },

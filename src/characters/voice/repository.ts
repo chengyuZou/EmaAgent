@@ -5,11 +5,6 @@ import {
   CharacterVoiceReferencesRepo,
   type CharacterVoiceReferenceRow,
 } from '@ema-agent/storage';
-import {
-  asCharacterVoiceReferenceId,
-  type CharacterCardId,
-  type CharacterVoiceReferenceId,
-} from '@ema-agent/ids';
 import type {
   CharacterVoiceReference,
   CharacterVoiceReferenceInput,
@@ -18,8 +13,8 @@ import type {
 
 function fromRow(row: CharacterVoiceReferenceRow): CharacterVoiceReference {
   return {
-    id: asCharacterVoiceReferenceId(row.id),
-    characterCardId: row.character_card_id as CharacterCardId,
+    id: row.id,
+    characterCardId: row.character_card_id,
     name: row.name,
     promptText: row.prompt_text,
     promptLang: row.prompt_lang,
@@ -36,17 +31,17 @@ function fromRow(row: CharacterVoiceReferenceRow): CharacterVoiceReference {
 export class CharacterVoiceReferenceRepository {
   constructor(private readonly repo: CharacterVoiceReferencesRepo) {}
 
-  list(characterCardId: CharacterCardId): CharacterVoiceReference[] {
+  list(characterCardId: string): CharacterVoiceReference[] {
     return this.repo.listForCard(characterCardId).map(fromRow);
   }
 
   /** 批量取多张卡的参考音频并按卡分组;Store 全量聚合用它替代逐卡查询。 */
   listForCards(
-    characterCardIds: readonly CharacterCardId[],
-  ): Map<CharacterCardId, CharacterVoiceReference[]> {
-    const grouped = new Map<CharacterCardId, CharacterVoiceReference[]>();
+    characterCardIds: readonly string[],
+  ): Map<string, CharacterVoiceReference[]> {
+    const grouped = new Map<string, CharacterVoiceReference[]>();
     for (const row of this.repo.listForCards(characterCardIds)) {
-      const cardId = row.character_card_id as CharacterCardId;
+      const cardId = row.character_card_id;
       const list = grouped.get(cardId) ?? [];
       list.push(fromRow(row));
       grouped.set(cardId, list);
@@ -55,10 +50,10 @@ export class CharacterVoiceReferenceRepository {
   }
 
   insert(
-    characterCardId: CharacterCardId,
+    characterCardId: string,
     input: CharacterVoiceReferenceInput,
   ): CharacterVoiceReference {
-    const id = input.id ?? asCharacterVoiceReferenceId(randomUUID());
+    const id = input.id ?? randomUUID();
     const now = Date.now();
     this.repo.insert({
       ...input,
@@ -71,15 +66,15 @@ export class CharacterVoiceReferenceRepository {
   }
 
   setPrimary(
-    characterCardId: CharacterCardId,
-    id: CharacterVoiceReferenceId,
+    characterCardId: string,
+    id: string,
   ): boolean {
     return this.repo.setPrimary(characterCardId, id, Date.now());
   }
 
   update(
-    characterCardId: CharacterCardId,
-    id: CharacterVoiceReferenceId,
+    characterCardId: string,
+    id: string,
     patch: CharacterVoiceReferencePatch,
   ): CharacterVoiceReference | undefined {
     const row = this.repo.update(characterCardId, id, patch, Date.now());
@@ -87,8 +82,8 @@ export class CharacterVoiceReferenceRepository {
   }
 
   delete(
-    characterCardId: CharacterCardId,
-    id: CharacterVoiceReferenceId,
+    characterCardId: string,
+    id: string,
   ): CharacterVoiceReference | undefined {
     const row = this.repo.delete(characterCardId, id, Date.now());
     return row ? fromRow(row) : undefined;

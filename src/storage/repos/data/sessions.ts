@@ -1,7 +1,6 @@
 // 读写 Session 行、稳定分页、搜索投影、项目分组投影、Fork 和事务性偏好更新。
 // Row 枚举由 storage 自持（SQL CHECK 的映射）；领域词汇归 @ema-agent/turn 叶子，业务包在边界显式映射。
 import type { SqliteDb } from '../../database/database.js';
-import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { TurnStatusRow } from './turns.js';
 import { buildFtsQuery } from '../../search/zh-tokenizer.js';
 import { escapeLikePattern } from '../../search/like-utils.js';
@@ -52,7 +51,7 @@ export interface SessionSearchRow extends SessionRowEnriched {
 }
 
 export interface SessionInsert {
-  id: SessionId;
+  id: string;
   title: string;
   workspaceRoot?:  string | null;
   projectId?: string | null;
@@ -96,7 +95,7 @@ export class SessionsRepo {
         s.lastActivityAt ?? s.createdAt);
   }
 
-  findById(id: SessionId): SessionRow | undefined {
+  findById(id: string): SessionRow | undefined {
     return this.db
       .prepare('SELECT * FROM sessions WHERE id = ?')
       .get(id) as SessionRow | undefined;
@@ -143,14 +142,14 @@ export class SessionsRepo {
   // ── 项目成员资格 ────────────────────────────────────────────────────────────
 
   /** 拖入项目：锁定成员资格并把 workspace_root 锁定为项目主文件夹。 */
-  assignToProject(id: SessionId, projectId: string, workspaceRoot: string, now: number): void {
+  assignToProject(id: string, projectId: string, workspaceRoot: string, now: number): void {
     this.db
       .prepare('UPDATE sessions SET project_id = ?, workspace_root = ?, updated_at = ? WHERE id = ?')
       .run(projectId, workspaceRoot, now, id);
   }
 
   /** 拖出项目：只解除成员资格，workspace_root 保留原值恢复自由。 */
-  removeFromProject(id: SessionId, now: number): void {
+  removeFromProject(id: string, now: number): void {
     this.db
       .prepare('UPDATE sessions SET project_id = NULL, updated_at = ? WHERE id = ?')
       .run(now, id);
@@ -237,19 +236,19 @@ export class SessionsRepo {
       .all(ftsQuery, pattern, pattern, pattern, limit) as SessionSearchRow[];
   }
 
-  setViewedAt(id: SessionId, now: number): void {
+  setViewedAt(id: string, now: number): void {
     this.db
       .prepare('UPDATE sessions SET last_viewed_at = ? WHERE id = ?')
       .run(now, id);
   }
 
-  updateTitle(id: SessionId, title: string, updatedAt: number): void {
+  updateTitle(id: string, title: string, updatedAt: number): void {
     this.db
       .prepare('UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?')
       .run(title, updatedAt, id);
   }
 
-  touchActivity(id: SessionId, at: number): void {
+  touchActivity(id: string, at: number): void {
     this.db
       .prepare('UPDATE sessions SET updated_at = ?, last_activity_at = ? WHERE id = ?')
       .run(at, at, id);
@@ -257,13 +256,13 @@ export class SessionsRepo {
 
   // ── 置顶 / 取消置顶 ────────────────────────────────────────────────────────
 
-  pin(id: SessionId, now: number): void {
+  pin(id: string, now: number): void {
     this.db
       .prepare('UPDATE sessions SET pinned = 1, updated_at = ? WHERE id = ?')
       .run(now, id);
   }
 
-  unpin(id: SessionId): void {
+  unpin(id: string): void {
     const now = Date.now();
     this.db
       .prepare('UPDATE sessions SET pinned = 0, updated_at = ? WHERE id = ?')
@@ -272,13 +271,13 @@ export class SessionsRepo {
 
   // ── 归档 / 取消归档 ────────────────────────────────────────────────────────────
 
-  archive(id: SessionId, archivedAt: number): void {
+  archive(id: string, archivedAt: number): void {
     this.db
       .prepare('UPDATE sessions SET archived_at = ?, updated_at = ? WHERE id = ?')
       .run(archivedAt, archivedAt, id);
   }
 
-  unarchive(id: SessionId): void {
+  unarchive(id: string): void {
     this.db
       .prepare('UPDATE sessions SET archived_at = NULL, updated_at = ? WHERE id = ?')
       .run(Date.now(), id);
@@ -296,11 +295,11 @@ export class SessionsRepo {
    * 返回复制的 message 数量。
    */
   forkInto(
-    srcId:       SessionId,
-    newId:       SessionId,
+    srcId:       string,
+    newId:       string,
     title:       string,
     createdAt:   number,
-    untilTurnId?: TurnId,
+    untilTurnId?: string,
   ): number {
     const src = this.findById(srcId);
     if (!src) throw new Error(`Source session not found: ${srcId}`);
@@ -460,7 +459,7 @@ export class SessionsRepo {
 
   // ── 删除 ──────────────────────────────────────────────────────────────────────
 
-  delete(id: SessionId): void {
+  delete(id: string): void {
     this.db.prepare('DELETE FROM sessions WHERE id = ?').run(id);
   }
 
@@ -471,7 +470,7 @@ export class SessionsRepo {
    * 任何失败回滚整个 patch,行不会处于半改状态。
    */
   patch(
-    id: SessionId,
+    id: string,
     patch: {
       title?:          string;
       pinned?:         boolean;

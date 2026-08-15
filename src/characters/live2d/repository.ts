@@ -3,11 +3,6 @@ import {
   CharacterLive2dVariantsRepo,
   type CharacterLive2dVariantRow,
 } from '@ema-agent/storage';
-import {
-  asCharacterLive2dId,
-  type CharacterCardId,
-  type CharacterLive2dId,
-} from '@ema-agent/ids';
 import type {
   CharacterLive2dVariant,
   CharacterLive2dVariantInput,
@@ -16,8 +11,8 @@ import type {
 
 function fromRow(row: CharacterLive2dVariantRow): CharacterLive2dVariant {
   return {
-    id: asCharacterLive2dId(row.id),
-    characterCardId: row.character_card_id as CharacterCardId,
+    id: row.id,
+    characterCardId: row.character_card_id,
     name: row.name,
     stageScale: row.stage_scale,
     stageOffsetX: row.stage_offset_x,
@@ -33,17 +28,17 @@ function fromRow(row: CharacterLive2dVariantRow): CharacterLive2dVariant {
 export class CharacterLive2dRepository {
   constructor(private readonly repo: CharacterLive2dVariantsRepo) {}
 
-  list(characterCardId: CharacterCardId): CharacterLive2dVariant[] {
+  list(characterCardId: string): CharacterLive2dVariant[] {
     return this.repo.listForCard(characterCardId).map(fromRow);
   }
 
   /** 批量取多张卡的变体并按卡分组;Store 全量聚合用它替代逐卡查询。 */
   listForCards(
-    characterCardIds: readonly CharacterCardId[],
-  ): Map<CharacterCardId, CharacterLive2dVariant[]> {
-    const grouped = new Map<CharacterCardId, CharacterLive2dVariant[]>();
+    characterCardIds: readonly string[],
+  ): Map<string, CharacterLive2dVariant[]> {
+    const grouped = new Map<string, CharacterLive2dVariant[]>();
     for (const row of this.repo.listForCards(characterCardIds)) {
-      const cardId = row.character_card_id as CharacterCardId;
+      const cardId = row.character_card_id;
       const list = grouped.get(cardId) ?? [];
       list.push(fromRow(row));
       grouped.set(cardId, list);
@@ -52,10 +47,10 @@ export class CharacterLive2dRepository {
   }
 
   insert(
-    characterCardId: CharacterCardId,
+    characterCardId: string,
     input: CharacterLive2dVariantInput,
   ): CharacterLive2dVariant {
-    const id = input.id ?? asCharacterLive2dId(randomUUID());
+    const id = input.id ?? randomUUID();
     const now = Date.now();
     this.repo.insert({
       ...input,
@@ -67,13 +62,13 @@ export class CharacterLive2dRepository {
     return fromRow(this.repo.findById(characterCardId, id)!);
   }
 
-  setPrimary(characterCardId: CharacterCardId, id: CharacterLive2dId): boolean {
+  setPrimary(characterCardId: string, id: string): boolean {
     return this.repo.setPrimary(characterCardId, id, Date.now());
   }
 
   update(
-    characterCardId: CharacterCardId,
-    id: CharacterLive2dId,
+    characterCardId: string,
+    id: string,
     patch: CharacterLive2dVariantPatch,
   ): CharacterLive2dVariant | undefined {
     const row = this.repo.update(characterCardId, id, patch, Date.now());
@@ -81,8 +76,8 @@ export class CharacterLive2dRepository {
   }
 
   delete(
-    characterCardId: CharacterCardId,
-    id: CharacterLive2dId,
+    characterCardId: string,
+    id: string,
   ): CharacterLive2dVariant | undefined {
     const row = this.repo.delete(characterCardId, id, Date.now());
     return row ? fromRow(row) : undefined;

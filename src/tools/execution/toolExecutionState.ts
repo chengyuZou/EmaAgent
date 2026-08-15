@@ -1,6 +1,4 @@
 // 以 CAS 保存 Tool 调用的副作用边界，供崩溃恢复判断是否可以安全重试。
-
-import type { AgentRunId, SessionId, ToolCallId, TurnId } from '@ema-agent/ids';
 import { ToolExecutionStateConflictError } from '../errors.js';
 
 export type ToolExecutionStatus =
@@ -14,10 +12,10 @@ export type ToolExecutionStatus =
 
 /** 一次 Tool 调用的薄执行状态；完整输入和结果都由 Message 保存。 */
 export interface ToolExecutionRecord {
-  callId: ToolCallId;
-  sessionId: SessionId;
-  turnId: TurnId;
-  agentRunId?: AgentRunId;
+  callId: string;
+  sessionId: string;
+  turnId: string;
+  agentRunId?: string;
   toolName: string;
   status: ToolExecutionStatus;
   startedAt?: number;
@@ -28,10 +26,10 @@ export interface ToolExecutionRecord {
 }
 
 export interface ToolExecutionPrepareRecord {
-  callId: ToolCallId;
-  sessionId: SessionId;
-  turnId: TurnId;
-  agentRunId?: AgentRunId;
+  callId: string;
+  sessionId: string;
+  turnId: string;
+  agentRunId?: string;
   toolName: string;
   createdAt: number;
 }
@@ -43,10 +41,10 @@ export interface ToolExecutionTerminalDetails {
 /** Storage 实现原子读写，Tools 保留状态转换和恢复语义。 */
 export interface ToolExecutionStateStore {
   insertPrepared(value: ToolExecutionPrepareRecord): ToolExecutionRecord | undefined;
-  findByCallId(callId: ToolCallId): ToolExecutionRecord | undefined;
-  listForTurn(turnId: TurnId): ToolExecutionRecord[];
+  findByCallId(callId: string): ToolExecutionRecord | undefined;
+  listForTurn(turnId: string): ToolExecutionRecord[];
   transition(
-    callId: ToolCallId,
+    callId: string,
     expectedVersion: number,
     from: readonly ToolExecutionStatus[],
     to: ToolExecutionStatus,
@@ -59,27 +57,27 @@ export interface ToolExecutionStateStore {
 /** Agent 只依赖该端口，不接触 SQL Repo。 */
 export interface ToolExecutionStatePort {
   prepare(args: {
-    callId: ToolCallId;
-    sessionId: SessionId;
-    turnId: TurnId;
-    agentRunId?: AgentRunId;
+    callId: string;
+    sessionId: string;
+    turnId: string;
+    agentRunId?: string;
     toolName: string;
   }): ToolExecutionRecord;
-  authorize(callId: ToolCallId): ToolExecutionRecord;
-  start(callId: ToolCallId): ToolExecutionRecord;
-  succeed(callId: ToolCallId): ToolExecutionRecord;
-  fail(callId: ToolCallId): ToolExecutionRecord;
-  cancel(callId: ToolCallId): ToolExecutionRecord;
-  outcomeUnknown(callId: ToolCallId): ToolExecutionRecord;
+  authorize(callId: string): ToolExecutionRecord;
+  start(callId: string): ToolExecutionRecord;
+  succeed(callId: string): ToolExecutionRecord;
+  fail(callId: string): ToolExecutionRecord;
+  cancel(callId: string): ToolExecutionRecord;
+  outcomeUnknown(callId: string): ToolExecutionRecord;
   completeFromMessage(
-    callId: ToolCallId,
+    callId: string,
     result: { isError?: boolean; errorCode?: string },
   ): ToolExecutionRecord;
 }
 
 /** 审计接口只读取持久执行记录，不能推进工具状态机。 */
 export interface ToolExecutionStateReader {
-  listForTurn(turnId: TurnId): ToolExecutionRecord[];
+  listForTurn(turnId: string): ToolExecutionRecord[];
 }
 
 /**
@@ -93,10 +91,10 @@ export class ToolExecutionState
   constructor(private readonly store: ToolExecutionStateStore) {}
 
   prepare(args: {
-    callId: ToolCallId;
-    sessionId: SessionId;
-    turnId: TurnId;
-    agentRunId?: AgentRunId;
+    callId: string;
+    sessionId: string;
+    turnId: string;
+    agentRunId?: string;
     toolName: string;
   }): ToolExecutionRecord {
     const now = Date.now();
@@ -128,35 +126,35 @@ export class ToolExecutionState
     return existing;
   }
 
-  authorize(callId: ToolCallId): ToolExecutionRecord {
+  authorize(callId: string): ToolExecutionRecord {
     return this.move(callId, ['prepared'], 'authorized');
   }
 
-  start(callId: ToolCallId): ToolExecutionRecord {
+  start(callId: string): ToolExecutionRecord {
     return this.move(callId, ['authorized'], 'running');
   }
 
-  succeed(callId: ToolCallId): ToolExecutionRecord {
+  succeed(callId: string): ToolExecutionRecord {
     return this.move(callId, ['running'], 'succeeded');
   }
 
-  fail(callId: ToolCallId): ToolExecutionRecord {
+  fail(callId: string): ToolExecutionRecord {
     return this.move(callId, ['prepared', 'authorized', 'running'], 'failed');
   }
 
-  cancel(callId: ToolCallId): ToolExecutionRecord {
+  cancel(callId: string): ToolExecutionRecord {
     return this.move(callId, ['prepared', 'authorized'], 'cancelled');
   }
 
-  outcomeUnknown(callId: ToolCallId): ToolExecutionRecord {
+  outcomeUnknown(callId: string): ToolExecutionRecord {
     return this.move(callId, ['running'], 'outcome_unknown');
   }
 
-  get(callId: ToolCallId): ToolExecutionRecord | undefined {
+  get(callId: string): ToolExecutionRecord | undefined {
     return this.store.findByCallId(callId);
   }
 
-  listForTurn(turnId: TurnId): ToolExecutionRecord[] {
+  listForTurn(turnId: string): ToolExecutionRecord[] {
     return this.store.listForTurn(turnId);
   }
 
@@ -165,7 +163,7 @@ export class ToolExecutionState
   }
 
   completeFromMessage(
-    callId: ToolCallId,
+    callId: string,
     result: { isError?: boolean; errorCode?: string },
   ): ToolExecutionRecord {
     const terminal = result.errorCode === 'tool/outcome_unknown'
@@ -183,7 +181,7 @@ export class ToolExecutionState
   }
 
   private move(
-    callId: ToolCallId,
+    callId: string,
     from: readonly ToolExecutionStatus[],
     to: ToolExecutionStatus,
     details?: Omit<ToolExecutionTerminalDetails, 'completedAt'>,

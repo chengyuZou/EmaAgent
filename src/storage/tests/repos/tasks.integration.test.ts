@@ -1,12 +1,6 @@
 // 验证持久 Task 的 CAS、依赖图和 AgentRun 绑定不会产生互相矛盾的状态。
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import {
-  asAgentRunId,
-  asSessionId,
-  asTaskId,
-  asTurnId,
-} from '@ema-agent/ids';
 import { AgentRunsRepo } from '../../repos/data/agent-runs.js';
 import { TasksRepo } from '../../repos/data/tasks.js';
 import { createTestDatabase, type TestDatabase } from '../helpers/create-test-database.js';
@@ -16,10 +10,10 @@ describe('Task 持久化边界', () => {
   let tasks: TasksRepo;
   let runs: AgentRunsRepo;
 
-  const sessionId = asSessionId('session-task');
-  const turnId = asTurnId('turn-task');
-  const taskA = asTaskId('task-a');
-  const taskB = asTaskId('task-b');
+  const sessionId = 'session-task';
+  const turnId = 'turn-task';
+  const taskA = 'task-a';
+  const taskB = 'task-b';
 
   beforeEach(() => {
     database = createTestDatabase();
@@ -83,7 +77,7 @@ describe('Task 持久化边界', () => {
       row: { status: 'in_progress', version: 2 },
     });
 
-    const taskC = asTaskId('task-c');
+    const taskC = 'task-c';
     createTask(taskC, 'Running task', 5);
     expect(tasks.mutate(mutation(taskC, 0, {
       patch: { status: 'in_progress' },
@@ -99,7 +93,7 @@ describe('Task 持久化边界', () => {
     }))).toMatchObject({ ok: true });
 
     expect(() => runs.insert({
-      id: asAgentRunId('run-blocked'),
+      id: 'run-blocked',
       sessionId,
       parentTurnId: turnId,
       taskId: taskB,
@@ -115,7 +109,7 @@ describe('Task 持久化边界', () => {
       },
     }))).toMatchObject({ ok: true });
 
-    const runId = asAgentRunId('run-active');
+    const runId = 'run-active';
     expect(runs.insert({
       id: runId,
       sessionId,
@@ -125,7 +119,7 @@ describe('Task 持久化边界', () => {
       createdAt: 7,
     })).toMatchObject({ status: 'running', task_id: taskB });
     expect(runs.insert({
-      id: asAgentRunId('run-second'),
+      id: 'run-second',
       sessionId,
       parentTurnId: turnId,
       taskId: taskB,
@@ -164,7 +158,7 @@ describe('Task 持久化边界', () => {
     expect(tasks.shouldRemind(sessionId, 10, 21)).toBe(false);
   });
 
-  function createTask(id: ReturnType<typeof asTaskId>, subject: string, createdAt: number): void {
+  function createTask(id: string, subject: string, createdAt: number): void {
     tasks.create({
       id,
       sessionId,
@@ -176,7 +170,7 @@ describe('Task 持久化边界', () => {
   }
 
   function mutation(
-    id: ReturnType<typeof asTaskId>,
+    id: string,
     expectedVersion: number,
     overrides: Partial<Parameters<TasksRepo['mutate']>[0]>,
   ): Parameters<TasksRepo['mutate']>[0] {

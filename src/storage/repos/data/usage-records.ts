@@ -1,5 +1,4 @@
 // 持久化各类模型的调用级用量，并按 Turn 或 Session 提供确定性查询。
-import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { UsageRecord } from '@ema-agent/usage';
 import type { SqliteDb } from '../../database/database.js';
 
@@ -57,7 +56,7 @@ export class UsageRecordsRepo {
     );
   }
 
-  forTurn(turnId: TurnId): UsageRecordRow[] {
+  forTurn(turnId: string): UsageRecordRow[] {
     return this.db.prepare(`
       SELECT * FROM usage_records
       WHERE turn_id = ?
@@ -65,7 +64,7 @@ export class UsageRecordsRepo {
     `).all(turnId) as UsageRecordRow[];
   }
 
-  forSession(sessionId: SessionId): UsageRecordRow[] {
+  forSession(sessionId: string): UsageRecordRow[] {
     return this.db.prepare(`
       SELECT * FROM usage_records
       WHERE session_id = ?

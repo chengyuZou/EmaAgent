@@ -1,16 +1,15 @@
 // BashTool 收口测试: Schema 字段、Context 投影、受控后台执行、
 // 交互期 onProgress 流式(含跨 chunk 字符拼接)、30K 命令上限、map 投影。
 import { describe, expect, it, vi } from 'vitest';
-import { asSessionId, asToolCallId, asTurnId } from '@ema-agent/ids';
 import type { ToolInvocation } from '@ema-agent/tools';
 import { BashTool, type BashProgress } from '../tools/BashTool/BashTool.js';
 import { extractBashCommentLabel } from '../tools/BashTool/commentLabel.js';
 
 function makeInvocation(): ToolInvocation {
   return {
-    sessionId: asSessionId('00000000-0000-4000-8000-0000000000c1'),
-    turnId: asTurnId('00000000-0000-4000-8000-0000000000c2'),
-    toolCallId: asToolCallId('call-bash-1'),
+    sessionId: '00000000-0000-4000-8000-0000000000c1',
+    turnId: '00000000-0000-4000-8000-0000000000c2',
+    toolCallId: 'call-bash-1',
     signal: new AbortController().signal,
   };
 }

@@ -1,20 +1,18 @@
-import type { AgentRunId, SessionId, TaskId, TurnId } from '@ema-agent/ids';
-
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
 
 export interface Task {
-  id: TaskId;
-  sessionId: SessionId;
+  id: string;
+  sessionId: string;
   displayNumber: number;
   subject: string;
   description: string;
   activeForm?: string;
   status: TaskStatus;
-  blocks: readonly TaskId[];
-  blockedBy: readonly TaskId[];
-  activeAgentRunId?: AgentRunId;
-  createdByTurnId: TurnId;
-  completedByTurnId?: TurnId;
+  blocks: readonly string[];
+  blockedBy: readonly string[];
+  activeAgentRunId?: string;
+  createdByTurnId: string;
+  completedByTurnId?: string;
   version: number;
   createdAt: number;
   updatedAt: number;
@@ -22,8 +20,8 @@ export interface Task {
 }
 
 export interface TaskCreateInput {
-  sessionId: SessionId;
-  turnId: TurnId;
+  sessionId: string;
+  turnId: string;
   subject: string;
   description: string;
   activeForm?: string;
@@ -32,19 +30,19 @@ export interface TaskCreateInput {
 export type TaskUpdateAction = 'cancel' | 'delete';
 
 export interface TaskUpdateInput {
-  sessionId: SessionId;
-  turnId: TurnId;
-  taskId: TaskId;
+  sessionId: string;
+  turnId: string;
+  taskId: string;
   expectedVersion: number;
   subject?: string;
   description?: string;
   activeForm?: string | null;
   status?: 'pending' | 'in_progress' | 'completed';
   action?: TaskUpdateAction;
-  addBlocks?: readonly TaskId[];
-  addBlockedBy?: readonly TaskId[];
-  removeBlocks?: readonly TaskId[];
-  removeBlockedBy?: readonly TaskId[];
+  addBlocks?: readonly string[];
+  addBlockedBy?: readonly string[];
+  removeBlocks?: readonly string[];
+  removeBlockedBy?: readonly string[];
 }
 
 export type TaskMutationFailure =
@@ -58,5 +56,5 @@ export type TaskMutationFailure =
 
 export type TaskUpdateResult =
   | { ok: true; changed: boolean; deleted: false; task: Task }
-  | { ok: true; changed: true; deleted: true; taskId: TaskId }
-  | { ok: false; reason: TaskMutationFailure; current?: Task; taskId?: TaskId };
+  | { ok: true; changed: true; deleted: true; taskId: string }
+  | { ok: false; reason: TaskMutationFailure; current?: Task; taskId?: string };

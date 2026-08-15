@@ -1,5 +1,4 @@
 // 使用当前角色参考声音沿正式协议入口生成一段有界试听音频。
-import type { CharacterCardId } from '@ema-agent/ids';
 import type { TextToSpeech, TtsVoiceReference } from '@ema-agent/tts';
 import { prepareSpeechVoice, SpeechVoiceCache } from './voiceHandleCache.js';
 
@@ -21,7 +20,7 @@ export class SpeechVoicePreviewError extends Error {
 }
 
 export interface SpeechVoicePreviewSource {
-  current(): { readonly cardId: CharacterCardId; readonly voice: TtsVoiceReference } | null;
+  current(): { readonly cardId: string; readonly voice: TtsVoiceReference } | null;
 }
 
 export interface SpeechVoicePreviewResult {

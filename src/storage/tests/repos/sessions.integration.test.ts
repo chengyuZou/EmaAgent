@@ -1,6 +1,5 @@
 // 测试 Session 行新形状（fork 溯源/无 group 与 pinned_at）、项目分组投影、搜索投影与 Fork 重映射。
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { SessionId, TurnId } from '@ema-agent/ids';
 import { SessionsRepo } from '../../repos/data/sessions.js';
 import { createTestDatabase, type TestDatabase } from '../helpers/create-test-database.js';
 
@@ -206,10 +205,10 @@ describe('SessionsRepo integration', () => {
   }
 });
 
-function asSessionId(value: string): SessionId {
-  return value as SessionId;
+function asSessionId(value: string): string {
+  return value;
 }
 
-function asTurnId(value: string): TurnId {
-  return value as TurnId;
+function asTurnId(value: string): string {
+  return value;
 }

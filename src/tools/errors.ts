@@ -1,6 +1,5 @@
 // 集中定义 src/tools 模块的错误类、错误码与取消错误构造助手。
 import { ZodError } from 'zod';
-import type { ToolCallId } from '@ema-agent/ids';
 import type { ToolOrigin } from './Tool/tool.js';
 import type { ToolExecutionStatus } from './execution/toolExecutionState.js';
 
@@ -50,7 +49,7 @@ export class ToolInputError extends Error {
 /** 工具执行状态机发生非法迁移（CAS 冲突或调用不存在）。 */
 export class ToolExecutionStateConflictError extends Error {
   constructor(
-    readonly callId: ToolCallId,
+    readonly callId: string,
     readonly expected: readonly ToolExecutionStatus[],
     readonly actual?: ToolExecutionStatus,
   ) {

@@ -1,6 +1,5 @@
 // Subagent 工具测试同步、后台、自动转交、取消与等待结果语义。
 import { describe, expect, it, vi } from 'vitest';
-import { asSessionId, asToolCallId, asTurnId } from '@ema-agent/ids';
 import type { ToolInvocation } from '@ema-agent/tools';
 import { SubagentTool } from '../tools/SubagentTool/SubagentTool.js';
 import { SubagentAwaitTool } from '../tools/SubagentTool/SubagentAwaitTool.js';
@@ -9,9 +8,9 @@ const AGENT_RUN_ID = '11111111-1111-4111-8111-111111111111';
 
 function makeInvocation(signal?: AbortSignal): ToolInvocation {
   return {
-    sessionId: asSessionId('00000000-0000-4000-8000-0000000000a1'),
-    turnId: asTurnId('00000000-0000-4000-8000-0000000000a2'),
-    toolCallId: asToolCallId('call-sub-1'),
+    sessionId: '00000000-0000-4000-8000-0000000000a1',
+    turnId: '00000000-0000-4000-8000-0000000000a2',
+    toolCallId: 'call-sub-1',
     signal: signal ?? new AbortController().signal,
   };
 }

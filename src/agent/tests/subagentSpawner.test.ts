@@ -1,7 +1,6 @@
 // 验证 SubagentSpawner 只编排 AgentRun 生命周期与同一 AgentLoop。
 
 import { describe, expect, it, vi } from 'vitest';
-import { asAgentRunId, asSessionId, asTurnId } from '@ema-agent/ids';
 import type { LanguageModel } from '@ema-agent/llm';
 import type { StreamingToolExecutor } from '@ema-agent/tools';
 import { SubagentSpawner } from '../subagentSpawner.js';
@@ -70,8 +69,8 @@ describe('SubagentSpawner', () => {
     });
     const events: string[] = [];
     const spawner = new SubagentSpawner({
-      parentSessionId: asSessionId('session-1'),
-      parentTurnId: asTurnId('turn-1'),
+      parentSessionId: 'session-1',
+      parentTurnId: 'turn-1',
       budget,
       prepareSubagent,
       agentRunStore,
@@ -85,7 +84,7 @@ describe('SubagentSpawner', () => {
         events.push(event.type);
       },
     });
-    const agentRunId = asAgentRunId('run-1');
+    const agentRunId = 'run-1';
 
     spawner.spawnBackground(
       'inspect code',

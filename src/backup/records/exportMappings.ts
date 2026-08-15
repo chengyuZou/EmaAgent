@@ -108,8 +108,9 @@ export const toBackgroundProcessRecord = (
 });
 
 export const toAttachmentRecord = (r: AttachmentRow, filePath: string): AttachmentRecord => ({
-  id: r.id, turnId: r.turn_id, name: r.name, mime: r.mime, size: r.size,
-  mtime: r.mtime, createdAt: r.created_at, filePath,
+  id: r.id, turnId: r.turn_id, kind: r.kind, name: r.name, mime: r.mime,
+  byteSize: r.byte_size, sourceModifiedAt: r.source_modified_at,
+  createdAt: r.created_at, filePath,
 });
 
 export const toAudioRecord = (r: AudioEntryRow, sessionId: string, filePath: string): AudioRecord => ({
@@ -124,7 +125,7 @@ export const toUsageRecord = (r: UsageRecordRow): UsageRecord => ({
   inputTokens: r.input_tokens, outputTokens: r.output_tokens,
   cacheReadInputTokens: r.cache_read_input_tokens,
   cacheWriteInputTokens: r.cache_write_input_tokens, quantity: r.quantity, unit: r.unit,
-  costUsd: r.cost_usd, durationMs: r.duration_ms, errorCode: r.error_code,
+  durationMs: r.duration_ms, errorCode: r.error_code,
   createdAt: r.created_at,
 });
 

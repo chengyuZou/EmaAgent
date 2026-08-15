@@ -1,6 +1,5 @@
 // 分页读取当前 Session 后台进程的增量输出，可短暂等待新内容而不轮询 Agent。
 import { z } from 'zod';
-import { asBackgroundProcessId } from '@ema-agent/ids';
 import {
   buildTool,
   type BackgroundProcessOutput,
@@ -61,7 +60,7 @@ After the process finishes, prefer reading the complete log file with the Read t
   ): Promise<ProcessOutputResult> {
     return context.backgroundProcesses.readOutput(
       invocation.sessionId,
-      asBackgroundProcessId(input.backgroundProcessId),
+      input.backgroundProcessId,
       { cursor: input.cursor, waitMs: input.waitMs },
     );
   },

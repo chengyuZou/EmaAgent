@@ -3,7 +3,6 @@
 // 模型说明书见 prompt.ts。
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { asAgentRunId, asTaskId } from '@ema-agent/ids';
 import {
   buildTool,
   contextFail,
@@ -154,13 +153,13 @@ export const SubagentTool = buildTool<SubagentInput, SubagentResult, SubagentToo
     // 预分配 ID,以便 spawner 在阻塞前 emit subagent_started。
     // 所有 dashboard 事件(started/progress/stream/completed/failed/aborted)由
     // spawner emit - 它有 model/timing/usage 信息,工具没有。
-    const agentRunId = asAgentRunId(randomUUID());
+    const agentRunId = randomUUID();
     const options = {
       model: input.model,
       description: input.description,
       kind: input.kind ?? ('subagent' as const),
       agentRunId,
-      taskId: input.taskId ? asTaskId(input.taskId) : undefined,
+      taskId: input.taskId ? input.taskId : undefined,
     };
 
     if (input.runInBackground) {

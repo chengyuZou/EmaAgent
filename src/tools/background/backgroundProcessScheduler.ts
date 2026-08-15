@@ -4,8 +4,6 @@
 // 把下一个空位让给下一个 Session;队列清空则从轮转表移除,cursor 不动,
 // 数组删除后自然指向下一个。任何 Session 都无法独占空位。
 
-import type { SessionId } from '@ema-agent/ids';
-
 interface ScheduledStart {
   readonly id: string;
   readonly start: () => void;
@@ -13,14 +11,14 @@ interface ScheduledStart {
 }
 
 export class BackgroundProcessScheduler {
-  private readonly queues = new Map<SessionId, ScheduledStart[]>();
-  private readonly sessionOrder: SessionId[] = [];
+  private readonly queues = new Map<string, ScheduledStart[]>();
+  private readonly sessionOrder: string[] = [];
   private activeCount = 0;
   private cursor = 0;
 
   constructor(private readonly maxConcurrent: () => number) {}
 
-  enqueue(sessionId: SessionId, item: ScheduledStart): void {
+  enqueue(sessionId: string, item: ScheduledStart): void {
     const queue = this.queues.get(sessionId);
     if (queue) queue.push(item);
     else {
@@ -77,7 +75,7 @@ export class BackgroundProcessScheduler {
     }
   }
 
-  private removeEmptySession(sessionId: SessionId): void {
+  private removeEmptySession(sessionId: string): void {
     const queue = this.queues.get(sessionId);
     if (queue && queue.length > 0) return; 
     this.queues.delete(sessionId);

@@ -1,5 +1,4 @@
 // 本文件解析模型流中的角色表现标签，并维护各 Session 独立的情绪状态。
-import type { TurnId, SessionId } from '@ema-agent/ids';
 import type { EmotionState, EmotionStreamEvent } from './events.js';
 import { StreamingCharacterTagScanner } from './parser.js';
 import type { ParsedCharacterTag } from './types.js';
@@ -62,8 +61,8 @@ export class EmotionEngine {
   // ── 公共接口 ────────────────────────────────────────────────────────────────
 
   /** 返回 Session 的当前情绪状态；尚未建立状态时返回 null。 */
-  current(sessionId: SessionId): EmotionState | null {
-    const s = this.sessions.get(sessionId as string);
+  current(sessionId: string): EmotionState | null {
+    const s = this.sessions.get(sessionId);
     return s ? toPublicState(s.state) : null;
   }
 
@@ -76,9 +75,9 @@ export class EmotionEngine {
    * 为指定 Session 的新 Turn 做准备。
    * 重置流式扫描器及本轮缓冲区，但保留已有情绪状态。
    */
-  beginTurn(sessionId: SessionId): void {
-    const existing = this.sessions.get(sessionId as string);
-    this.sessions.set(sessionId as string, {
+  beginTurn(sessionId: string): void {
+    const existing = this.sessions.get(sessionId);
+    this.sessions.set(sessionId, {
       state:               existing?.state ?? makeInitialState(),
       scanner:             new StreamingCharacterTagScanner(),
     });
@@ -95,8 +94,8 @@ export class EmotionEngine {
   /**
    * 释放已删除 Session 的状态，仅用于回收内存。
    */
-  evictSession(sessionId: SessionId): void {
-    this.sessions.delete(sessionId as string);
+  evictSession(sessionId: string): void {
+    this.sessions.delete(sessionId);
   }
 
   /**
@@ -107,10 +106,10 @@ export class EmotionEngine {
    */
   processChunk(
     delta:     string,
-    turnId:    TurnId,
-    sessionId: SessionId,
+    turnId:    string,
+    sessionId: string,
   ): { cleaned: string; events: EmotionStreamEvent[] } {
-    const s = this.sessions.get(sessionId as string);
+    const s = this.sessions.get(sessionId);
     if (!s) return { cleaned: delta, events: [] };
 
     const { cleaned, tags } = s.scanner.scan(delta);
@@ -122,10 +121,10 @@ export class EmotionEngine {
    * 未闭合标签作为普通正文释放，flush 不产生新的表现事件。
    */
   flush(
-    turnId:    TurnId,
-    sessionId: SessionId,
+    turnId:    string,
+    sessionId: string,
   ): { cleaned: string; events: EmotionStreamEvent[] } {
-    const s = this.sessions.get(sessionId as string);
+    const s = this.sessions.get(sessionId);
     if (!s) return { cleaned: '', events: [] };
 
     const { cleaned } = s.scanner.flush();
@@ -137,8 +136,8 @@ export class EmotionEngine {
 
   private tagsToEvents(
     tags:      ParsedCharacterTag[],
-    turnId:    TurnId,
-    sessionId: SessionId,
+    turnId:    string,
+    sessionId: string,
     s:         SessionEmotionState,
   ): EmotionStreamEvent[] {
     const events: EmotionStreamEvent[] = [];

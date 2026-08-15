@@ -1,5 +1,4 @@
 // 协调单个 Turn 的文本清理、切句、顺序合成、事件发射和音频归档。
-import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { TextToSpeech, TtsAudioFormat, TtsVoice } from '@ema-agent/tts';
 import { createUsageRecord, reportUsage } from '@ema-agent/usage';
 import type { UsageRecord, UsageRecorder } from '@ema-agent/usage';
@@ -15,8 +14,8 @@ const DEFAULT_MAX_BYTES_PER_TURN = 64 * 1024 * 1024;
 const DEFAULT_SENTENCE_TIMEOUT_MS = 120_000;
 
 export interface SpeechCoordinatorArgs {
-  readonly sessionId: SessionId;
-  readonly turnId: TurnId;
+  readonly sessionId: string;
+  readonly turnId: string;
   readonly providerConfigId: string;
   readonly model: string;
   readonly voice: TtsVoice;
@@ -244,8 +243,8 @@ export class SpeechCoordinator {
 }
 
 function warningEvent(
-  sessionId: SessionId,
-  turnId: TurnId,
+  sessionId: string,
+  turnId: string,
   code: string,
   error: unknown,
 ): SpeechEvent {

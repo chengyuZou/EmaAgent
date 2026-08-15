@@ -1,11 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  asAgentRunId,
-  asCharacterCardId,
-  asSessionId,
-  asTurnId,
-} from '@ema-agent/ids';
-import {
   AgentRunMessageSerializationError,
   AgentRunMessagesRepo,
   AgentRunsRepo,
@@ -74,7 +68,7 @@ describe('N-004 CharacterCard 更新契约', () => {
   it('拒绝通过普通 update 修改激活状态和内置标记', () => {
     withDatabase('profile', (database) => {
       const repo = new CharacterCardsRepo(database.sqlite);
-      const id = asCharacterCardId('card-a');
+      const id = 'card-a';
       repo.insert({
         id,
         name: 'Card A',
@@ -96,7 +90,7 @@ describe('N-004 CharacterCard 更新契约', () => {
   it('普通业务字段仍可更新', () => {
     withDatabase('profile', (database) => {
       const repo = new CharacterCardsRepo(database.sqlite);
-      const id = asCharacterCardId('card-a');
+      const id = 'card-a';
       repo.insert({
         id,
         name: 'Before',
@@ -174,14 +168,14 @@ describe('AgentRunMessage 序列化防御', () => {
       insertAgentRun(database, 'run-a');
       const repo = new AgentRunMessagesRepo(database.sqlite);
       repo.insert({
-        agentRunId: asAgentRunId('run-a'),
+        agentRunId: 'run-a',
         role: 'assistant',
         content: { text: 'hello' },
         createdAt: 2,
       });
 
-      expect(repo.listForRun(asAgentRunId('run-a'))).toHaveLength(1);
-      expect(JSON.parse(repo.listForRun(asAgentRunId('run-a'))[0]!.content_json))
+      expect(repo.listForRun('run-a')).toHaveLength(1);
+      expect(JSON.parse(repo.listForRun('run-a')[0]!.content_json))
         .toEqual({ text: 'hello' });
     });
   });
@@ -194,18 +188,18 @@ describe('AgentRunMessage 序列化防御', () => {
       circular['self'] = circular;
 
       expect(() => repo.insert({
-        agentRunId: asAgentRunId('run-a'),
+        agentRunId: 'run-a',
         role: 'assistant',
         content: undefined,
         createdAt: 2,
       })).toThrow(AgentRunMessageSerializationError);
       expect(() => repo.insert({
-        agentRunId: asAgentRunId('run-a'),
+        agentRunId: 'run-a',
         role: 'tool_result',
         content: circular,
         createdAt: 3,
       })).toThrow(AgentRunMessageSerializationError);
-      expect(repo.listForRun(asAgentRunId('run-a'))).toEqual([]);
+      expect(repo.listForRun('run-a')).toEqual([]);
     });
   });
 });
@@ -235,9 +229,9 @@ function insertAgentRun(database: Database, id: string): void {
     ) VALUES ('turn-a', 'session-a', 'userMessage', 'work', 'auto', 'running', 1)
   `).run();
   new AgentRunsRepo(database.sqlite).insert({
-    id: asAgentRunId(id),
-    sessionId: asSessionId('session-a'),
-    parentTurnId: asTurnId('turn-a'),
+    id,
+    sessionId: 'session-a',
+    parentTurnId: 'turn-a',
     kind: 'subagent',
     createdAt: 1,
   });

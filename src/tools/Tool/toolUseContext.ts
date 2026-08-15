@@ -1,8 +1,4 @@
 // 定义宿主在单次工具调用中提供的业务能力集合。
-import type {
-  AgentRunId,
-  TaskId,
-} from '@ema-agent/ids';
 import type { CommandRunnerPort } from '@ema-agent/sandbox';
 import type { TaskStore } from '@ema-agent/tasks';
 import type { KnowledgeSearch } from '@ema-agent/knowledge';
@@ -19,12 +15,12 @@ export interface SubagentSpawnOptions {
   model?: string;
   description?: string;
   kind?: SubagentContextMode;
-  agentRunId?: AgentRunId;
-  taskId?: TaskId;
+  agentRunId?: string;
+  taskId?: string;
 }
 
 export interface SubagentRunResult {
-  agentRunId: AgentRunId;
+  agentRunId: string;
   output: string;
   usage: {
     inputTokens: number;
@@ -43,9 +39,9 @@ export interface SubagentSpawnerPort {
     prompt: string,
     options: SubagentSpawnOptions,
     signal: AbortSignal,
-  ): AgentRunId;
-  awaitBackground?(agentRunId: AgentRunId): Promise<SubagentRunResult | null>;
-  abortSubagent?(agentRunId: AgentRunId): boolean;
+  ): string;
+  awaitBackground?(agentRunId: string): Promise<SubagentRunResult | null>;
+  abortSubagent?(agentRunId: string): boolean;
 }
 
 /**

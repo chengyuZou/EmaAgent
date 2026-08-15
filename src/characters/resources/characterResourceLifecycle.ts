@@ -3,15 +3,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import {
-  asCharacterIllustrationId,
-  asCharacterLive2dId,
-  asCharacterVoiceReferenceId,
-  type CharacterCardId,
-  type CharacterIllustrationId,
-  type CharacterLive2dId,
-  type CharacterVoiceReferenceId,
-} from '@ema-agent/ids';
 import type { CharacterCard } from '../types.js';
 import type {
   CharacterLive2dVariant,
@@ -42,29 +33,29 @@ import { CHARACTER_RESOURCE_LIMITS } from './characterResourceLimits.js';
 
 export class CharacterResourceLifecycle {
   constructor(
-    private readonly getCard: (id: CharacterCardId) => CharacterCard | undefined,
+    private readonly getCard: (id: string) => CharacterCard | undefined,
     private readonly live2d: CharacterLive2dRepository,
     private readonly illustrations: CharacterIllustrationRepository,
     private readonly voiceReferences: CharacterVoiceReferenceRepository,
     private readonly paths: CharacterResourcePaths,
     private readonly insertLive2d: (
-      id: CharacterCardId,
-      input: CharacterLive2dVariantInput & { id: CharacterLive2dId },
+      id: string,
+      input: CharacterLive2dVariantInput & { id: string },
     ) => CharacterLive2dVariant,
     private readonly deleteLive2dRecord: (
-      id: CharacterCardId,
-      resourceId: CharacterLive2dId,
+      id: string,
+      resourceId: string,
     ) => CharacterLive2dVariant | undefined,
-    private readonly presentationChanged: (id: CharacterCardId) => void,
+    private readonly presentationChanged: (id: string) => void,
   ) {}
 
   async importLive2d(
-    id: CharacterCardId,
+    id: string,
     input: ImportCharacterLive2dInput,
   ): Promise<CharacterLive2dVariant> {
     const card = this.assertMutableCard(id);
     await findLive2dPackageFiles(input.sourceDirectory);
-    const resourceId = asCharacterLive2dId(randomUUID());
+    const resourceId = randomUUID();
     const destination = this.paths.live2dDirectory(id, resourceId);
     const byteSize = await copyCharacterDirectory(input.sourceDirectory, destination);
     await findLive2dPackageFiles(destination);
@@ -79,8 +70,8 @@ export class CharacterResourceLifecycle {
   }
 
   async exportLive2d(
-    id: CharacterCardId,
-    resourceId: CharacterLive2dId,
+    id: string,
+    resourceId: string,
     destinationDirectory: string,
   ): Promise<string> {
     const card = this.getRequiredCard(id);
@@ -94,8 +85,8 @@ export class CharacterResourceLifecycle {
   }
 
   async deleteLive2d(
-    id: CharacterCardId,
-    resourceId: CharacterLive2dId,
+    id: string,
+    resourceId: string,
   ): Promise<CharacterLive2dVariant | undefined> {
     this.assertMutableCard(id);
     const current = this.live2d.list(id).find(item => item.id === resourceId);
@@ -107,11 +98,11 @@ export class CharacterResourceLifecycle {
   }
 
   async importIllustration(
-    id: CharacterCardId,
+    id: string,
     input: ImportCharacterIllustrationInput,
   ): Promise<CharacterIllustration> {
     const card = this.assertMutableCard(id);
-    const resourceId = asCharacterIllustrationId(randomUUID());
+    const resourceId = randomUUID();
     const destination = this.paths.illustrationImportPath(
       id,
       resourceId,
@@ -133,8 +124,8 @@ export class CharacterResourceLifecycle {
   }
 
   async exportIllustration(
-    id: CharacterCardId,
-    resourceId: CharacterIllustrationId,
+    id: string,
+    resourceId: string,
     destinationDirectory: string,
   ): Promise<string> {
     const card = this.getRequiredCard(id);
@@ -148,8 +139,8 @@ export class CharacterResourceLifecycle {
   }
 
   async deleteIllustration(
-    id: CharacterCardId,
-    resourceId: CharacterIllustrationId,
+    id: string,
+    resourceId: string,
   ): Promise<CharacterIllustration | undefined> {
     this.assertMutableCard(id);
     const current = this.illustrations.list(id).find(item => item.id === resourceId);
@@ -161,8 +152,8 @@ export class CharacterResourceLifecycle {
   }
 
   async publishVoice(
-    id: CharacterCardId,
-    input: CharacterVoiceReferenceInput & { id: CharacterVoiceReferenceId },
+    id: string,
+    input: CharacterVoiceReferenceInput & { id: string },
     bytes: Uint8Array,
     extension: string,
   ): Promise<CharacterVoiceReference> {
@@ -185,12 +176,12 @@ export class CharacterResourceLifecycle {
   }
 
   async importVoice(
-    id: CharacterCardId,
+    id: string,
     input: ImportCharacterVoiceReferenceInput,
   ): Promise<CharacterVoiceReference> {
     const card = this.assertMutableCard(id);
     const validated = await validateVoiceReferenceFile(input.sourceFile);
-    const resourceId = asCharacterVoiceReferenceId(randomUUID());
+    const resourceId = randomUUID();
     await copyCharacterFile(
       input.sourceFile,
       this.paths.voiceImportPath(id, resourceId, `.${validated.extension}`),
@@ -209,8 +200,8 @@ export class CharacterResourceLifecycle {
   }
 
   async exportVoice(
-    id: CharacterCardId,
-    resourceId: CharacterVoiceReferenceId,
+    id: string,
+    resourceId: string,
     destinationDirectory: string,
   ): Promise<string> {
     const card = this.getRequiredCard(id);
@@ -224,8 +215,8 @@ export class CharacterResourceLifecycle {
   }
 
   async deleteVoice(
-    id: CharacterCardId,
-    resourceId: CharacterVoiceReferenceId,
+    id: string,
+    resourceId: string,
   ): Promise<CharacterVoiceReference | undefined> {
     this.assertMutableCard(id);
     const current = this.voiceReferences.list(id).find(item => item.id === resourceId);
@@ -234,13 +225,13 @@ export class CharacterResourceLifecycle {
     return this.voiceReferences.delete(id, resourceId);
   }
 
-  private getRequiredCard(id: CharacterCardId): CharacterCard {
+  private getRequiredCard(id: string): CharacterCard {
     const card = this.getCard(id);
     if (!card) throw new Error(`character card not found: ${id}`);
     return card;
   }
 
-  private assertMutableCard(id: CharacterCardId): CharacterCard {
+  private assertMutableCard(id: string): CharacterCard {
     const card = this.getRequiredCard(id);
     if (card.isBuiltin) throw new Error(`builtin character is read-only: ${id}`);
     return card;

@@ -1,13 +1,5 @@
 // 验证 Process 三件套: 窄 Context、Session 身份走 ToolInvocation、端口调用与模型投影。
 import { describe, expect, it, vi } from 'vitest';
-import {
-  asBackgroundProcessId,
-  asSessionId,
-  asToolCallId,
-  asTurnId,
-  type BackgroundProcessId,
-  type SessionId,
-} from '@ema-agent/ids';
 import type {
   BackgroundProcessListOptions,
   BackgroundProcessPort,
@@ -22,8 +14,8 @@ function summary(
   overrides: Partial<BackgroundProcessSummary> = {},
 ): BackgroundProcessSummary {
   return {
-    id: asBackgroundProcessId('00000000-0000-4000-8000-000000000001'),
-    sessionId: asSessionId('session-proc'),
+    id: '00000000-0000-4000-8000-000000000001',
+    sessionId: 'session-proc',
     command: 'npm test',
     cwd: 'D:/work',
     status: 'running',
@@ -38,7 +30,7 @@ function summary(
 }
 
 function makePort(): BackgroundProcessPort & {
-  list: ReturnType<typeof vi.fn<(sessionId: SessionId, options?: BackgroundProcessListOptions) => BackgroundProcessSummary[]>>;
+  list: ReturnType<typeof vi.fn<(sessionId: string, options?: BackgroundProcessListOptions) => BackgroundProcessSummary[]>>;
   readOutput: ReturnType<typeof vi.fn>;
   stop: ReturnType<typeof vi.fn>;
 } {
@@ -48,7 +40,7 @@ function makePort(): BackgroundProcessPort & {
     readOutput: vi.fn(),
     stop: vi.fn(),
   } as unknown as BackgroundProcessPort & {
-    list: ReturnType<typeof vi.fn<(sessionId: SessionId, options?: BackgroundProcessListOptions) => BackgroundProcessSummary[]>>;
+    list: ReturnType<typeof vi.fn<(sessionId: string, options?: BackgroundProcessListOptions) => BackgroundProcessSummary[]>>;
     readOutput: ReturnType<typeof vi.fn>;
     stop: ReturnType<typeof vi.fn>;
   };
@@ -56,9 +48,9 @@ function makePort(): BackgroundProcessPort & {
 
 function invocation(): ToolInvocation {
   return Object.freeze({
-    sessionId: asSessionId('session-proc'),
-    turnId: asTurnId('turn-proc'),
-    toolCallId: asToolCallId('toolcall-proc'),
+    sessionId: 'session-proc',
+    turnId: 'turn-proc',
+    toolCallId: 'toolcall-proc',
     signal: new AbortController().signal,
   });
 }
@@ -96,7 +88,7 @@ describe('ProcessListTool', () => {
     port.list.mockReturnValue([
       summary({ status: 'running' }),
       summary({
-        id: asBackgroundProcessId('00000000-0000-4000-8000-000000000002'),
+        id: '00000000-0000-4000-8000-000000000002',
         status: 'completed',
         exitCode: 0,
       }),
@@ -106,7 +98,7 @@ describe('ProcessListTool', () => {
     const result = await ProcessListTool.execute(input, narrowContext(port), invocation());
     expect(result.processes).toHaveLength(2);
     expect(port.list).toHaveBeenCalledWith(
-      asSessionId('session-proc'),
+      'session-proc',
       { status: 'running', limit: 20 },
     );
 
@@ -136,7 +128,7 @@ describe('ProcessListTool', () => {
 describe('ProcessOutputTool', () => {
   it('按 Session 与游标读取增量输出', async () => {
     const port = makePort();
-    const processId = asBackgroundProcessId('00000000-0000-4000-8000-000000000003');
+    const processId = '00000000-0000-4000-8000-000000000003';
     port.readOutput.mockResolvedValue({
       process: summary({ status: 'running' }),
       stdout: 'hello',
@@ -152,7 +144,7 @@ describe('ProcessOutputTool', () => {
 
     const result = await ProcessOutputTool.execute(input, narrowContext(port), invocation());
     expect(port.readOutput).toHaveBeenCalledWith(
-      asSessionId('session-proc'),
+      'session-proc',
       processId,
       { cursor: 'cursor-1', waitMs: 500 },
     );
@@ -172,14 +164,14 @@ describe('ProcessOutputTool', () => {
 describe('ProcessStopTool', () => {
   it('按 Session 停止进程并投影终态', async () => {
     const port = makePort();
-    const processId = asBackgroundProcessId('00000000-0000-4000-8000-000000000004');
+    const processId = '00000000-0000-4000-8000-000000000004';
     port.stop.mockResolvedValue(summary({ status: 'stopped' }));
     const input = ProcessStopTool.inputSchema.parse({
       backgroundProcessId: processId,
     });
 
     const result = await ProcessStopTool.execute(input, narrowContext(port), invocation());
-    expect(port.stop).toHaveBeenCalledWith(asSessionId('session-proc'), processId);
+    expect(port.stop).toHaveBeenCalledWith('session-proc', processId);
     expect(String(ProcessStopTool.mapResultToModelContent!(result)))
       .toContain('最终状态: stopped');
   });

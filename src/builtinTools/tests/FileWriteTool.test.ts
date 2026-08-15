@@ -4,7 +4,6 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { asToolCallId, asSessionId, asTurnId } from '@ema-agent/ids';
 import type { ToolInvocation } from '@ema-agent/tools';
 import { BuiltinTools } from '../BuiltinToolIdentity.js';
 import { FileWriteTool } from '../tools/FileWriteTool/FileWriteTool.js';
@@ -25,9 +24,9 @@ afterEach(() => {
 
 function makeInvocation(signal?: AbortSignal): ToolInvocation {
   return {
-    sessionId: asSessionId('00000000-0000-4000-8000-0000000000d1'),
-    turnId: asTurnId('00000000-0000-4000-8000-0000000000d2'),
-    toolCallId: asToolCallId('call-write'),
+    sessionId: '00000000-0000-4000-8000-0000000000d1',
+    turnId: '00000000-0000-4000-8000-0000000000d2',
+    toolCallId: 'call-write',
     signal: signal ?? new AbortController().signal,
   };
 }
@@ -166,7 +165,7 @@ describe('FileWriteTool — 原子写与恢复', () => {
   it('启动恢复只删除日志明确对应的中断写入临时文件', () => {
     const directory = makeTempDir();
     const target = path.join(directory, 'recover.txt');
-    const callId = asToolCallId('call-recover');
+    const callId = 'call-recover';
     const matching = path.join(directory, `${atomicTempPrefix(target, callId)}one.tmp`);
     const unrelated = path.join(directory, `${atomicTempPrefix(target, 'other-call')}two.tmp`);
     fs.writeFileSync(matching, '半成品', 'utf8');
@@ -174,7 +173,7 @@ describe('FileWriteTool — 原子写与恢复', () => {
 
     const result = cleanupInterruptedFileWriteTemps([
       interruptedCall(callId, target, true),
-      interruptedCall(asToolCallId('call-finished'), target, false),
+      interruptedCall('call-finished', target, false),
     ]);
 
     expect(result).toEqual({ removed: [matching], failed: [] });
@@ -258,7 +257,7 @@ function listWriteTemps(directory: string): string[] {
 }
 
 function interruptedCall(
-  callId: ReturnType<typeof asToolCallId>,
+  callId: string,
   target: string,
   outcomeUnknown: boolean,
 ): InterruptedFileWriteCall {

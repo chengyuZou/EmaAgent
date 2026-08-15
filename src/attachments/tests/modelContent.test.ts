@@ -4,7 +4,6 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { asAttachmentId, asSessionId, asTurnId, type AttachmentId } from '@ema-agent/ids';
 import { resolveAttachmentReferences } from '../modelContent.js';
 import type { Attachment, ImageAttachment } from '../types.js';
 
@@ -13,12 +12,12 @@ let dir: string;
 beforeEach(() => { dir = mkdtempSync(path.join(tmpdir(), 'ema-att-proj-')); });
 afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
 
-const sessionId = asSessionId('s1');
-const turnId = asTurnId('t1');
+const sessionId = 's1';
+const turnId = 't1';
 
 function fileAttachment(id: string): Attachment {
   return {
-    id: asAttachmentId(id), turnId, sessionId, kind: 'file',
+    id, turnId, sessionId, kind: 'file',
     name: 'report.pdf', mimeType: 'application/pdf',
     sourcePath: 'D:\\docs\\report.pdf', byteSize: 100, sourceModifiedAt: 1, createdAt: 1,
   };
@@ -28,14 +27,14 @@ function imageAttachment(id: string): Attachment {
   const imagePath = path.join(dir, `${id}.png`);
   writeFileSync(imagePath, Buffer.from([9, 8, 7]));
   return {
-    id: asAttachmentId(id), turnId, sessionId, kind: 'image',
+    id, turnId, sessionId, kind: 'image',
     name: 'photo.png', mimeType: 'image/png',
     sourcePath: 'D:\\pics\\photo.png', sourceByteSize: 3, sourceModifiedAt: 1,
     imagePath, imageByteSize: 3, createdAt: 1,
   };
 }
 
-function mapOf(...attachments: Attachment[]): ReadonlyMap<AttachmentId, Attachment> {
+function mapOf(...attachments: Attachment[]): ReadonlyMap<string, Attachment> {
   return new Map(attachments.map((a) => [a.id, a]));
 }
 

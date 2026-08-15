@@ -1,41 +1,40 @@
 // Task 数据库操作在单个事务内完成 CAS 更新、依赖校验和短序号分配。
 
-import type { AgentRunId, SessionId, TaskId, TurnId } from '@ema-agent/ids';
 import type { SqliteDb } from '../../database/database.js';
 
 export type TaskRowStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
 
 export interface TaskRow {
-  id: TaskId;
-  session_id: SessionId;
+  id: string;
+  session_id: string;
   display_number: number;
   subject: string;
   description: string;
   active_form: string | null;
   status: TaskRowStatus;
-  created_by_turn_id: TurnId;
-  completed_by_turn_id: TurnId | null;
+  created_by_turn_id: string;
+  completed_by_turn_id: string | null;
   version: number;
   created_at: number;
   updated_at: number;
   completed_at: number | null;
-  active_agent_run_id: AgentRunId | null;
+  active_agent_run_id: string | null;
 }
 
 export interface TaskDependencyRow {
-  session_id: SessionId;
-  blocker_task_id: TaskId;
-  blocked_task_id: TaskId;
+  session_id: string;
+  blocker_task_id: string;
+  blocked_task_id: string;
   created_at: number;
 }
 
 export interface TaskCreateRow {
-  id: TaskId;
-  sessionId: SessionId;
+  id: string;
+  sessionId: string;
   subject: string;
   description: string;
   activeForm?: string;
-  createdByTurnId: TurnId;
+  createdByTurnId: string;
   createdAt: number;
 }
 
@@ -44,19 +43,19 @@ export interface TaskRowPatch {
   description?: string;
   activeForm?: string | null;
   status?: TaskRowStatus;
-  completedByTurnId?: TurnId | null;
+  completedByTurnId?: string | null;
   completedAt?: number | null;
 }
 
 export interface TaskMutation {
-  id: TaskId;
-  sessionId: SessionId;
+  id: string;
+  sessionId: string;
   expectedVersion: number;
   patch: TaskRowPatch;
-  addBlocks: readonly TaskId[];
-  addBlockedBy: readonly TaskId[];
-  removeBlocks: readonly TaskId[];
-  removeBlockedBy: readonly TaskId[];
+  addBlocks: readonly string[];
+  addBlockedBy: readonly string[];
+  removeBlocks: readonly string[];
+  removeBlockedBy: readonly string[];
   updatedAt: number;
 }
 
@@ -70,7 +69,7 @@ export type TaskMutationFailure =
 
 export type TaskMutationResult =
   | { ok: true; changed: boolean; row: TaskRow }
-  | { ok: false; reason: TaskMutationFailure; current?: TaskRow; taskId?: TaskId };
+  | { ok: false; reason: TaskMutationFailure; current?: TaskRow; taskId?: string };
 
 export type TaskDeleteResult =
   | { ok: true }
@@ -110,14 +109,14 @@ export class TasksRepo {
     })();
   }
 
-  findById(id: TaskId, sessionId: SessionId): TaskRow | undefined {
+  findById(id: string, sessionId: string): TaskRow | undefined {
     return this.db.prepare(
       `${TASK_SELECT}
         WHERE task.id = ? AND task.session_id = ?`,
     ).get(id, sessionId) as TaskRow | undefined;
   }
 
-  listForSession(sessionId: SessionId): TaskRow[] {
+  listForSession(sessionId: string): TaskRow[] {
     return this.db.prepare(
       `${TASK_SELECT}
         WHERE task.session_id = ?
@@ -125,7 +124,7 @@ export class TasksRepo {
     ).all(sessionId) as TaskRow[];
   }
 
-  listDependencies(sessionId: SessionId): TaskDependencyRow[] {
+  listDependencies(sessionId: string): TaskDependencyRow[] {
     return this.db.prepare(
       `SELECT session_id, blocker_task_id, blocked_task_id, created_at
          FROM task_dependencies
@@ -136,8 +135,8 @@ export class TasksRepo {
 
   /** 只查指定任务集合参与的依赖边；单行读取走这里,避免全表扫描。 */
   listDependenciesFor(
-    sessionId: SessionId,
-    taskIds: readonly TaskId[],
+    sessionId: string,
+    taskIds: readonly string[],
   ): TaskDependencyRow[] {
     if (taskIds.length === 0) return [];
     const placeholders = taskIds.map(() => '?').join(', ');
@@ -293,8 +292,8 @@ export class TasksRepo {
   }
 
   delete(
-    id: TaskId,
-    sessionId: SessionId,
+    id: string,
+    sessionId: string,
     expectedVersion: number,
   ): TaskDeleteResult {
     return this.db.transaction(() => {
@@ -316,7 +315,7 @@ export class TasksRepo {
   }
 
   shouldRemind(
-    sessionId: SessionId,
+    sessionId: string,
     minimumTurns: number,
     now: number,
   ): boolean {
@@ -360,7 +359,7 @@ export class TasksRepo {
         `SELECT blocker_task_id
            FROM task_dependencies
           WHERE session_id = ? AND blocked_task_id = ?`,
-      ).pluck().all(input.sessionId, input.id) as TaskId[],
+      ).pluck().all(input.sessionId, input.id) as string[],
     );
     for (const edge of removals) {
       if (edge.blockedId === input.id) blockerIds.delete(edge.blockerId);
@@ -375,7 +374,7 @@ export class TasksRepo {
     return false;
   }
 
-  private wouldCreateCycle(blockerId: TaskId, blockedId: TaskId): boolean {
+  private wouldCreateCycle(blockerId: string, blockedId: string): boolean {
     return this.db.prepare(
       `WITH RECURSIVE downstream(task_id) AS (
          SELECT blocked_task_id
@@ -395,8 +394,8 @@ export class TasksRepo {
 }
 
 interface DependencyEdge {
-  blockerId: TaskId;
-  blockedId: TaskId;
+  blockerId: string;
+  blockedId: string;
 }
 
 function dependencyAdditions(input: TaskMutation): DependencyEdge[] {

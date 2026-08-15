@@ -355,14 +355,19 @@ function restoreAttachments(
       warnings.push(`附件 ${record.id} 没有可恢复文件，已跳过`);
       continue;
     }
-    const destination = files.copyAttachment(entry.filePath, record.id, safeFileName(record.name));
+    const suffix = path.extname(record.filePath) || '';
+    const destination = files.copyToSession(entry.filePath, 'attachments', `${record.id}${suffix}`);
     const size = fs.statSync(destination).size;
-    if (size !== record.size || size > BACKUP_LIMITS.maxAttachmentBytes) {
+    if (size !== record.byteSize || size > BACKUP_LIMITS.maxAttachmentBytes) {
       throw new SessionImportError('invalid_format', `附件大小不匹配或超过限制: ${record.id}`);
     }
     output.push({
-      id: record.id, turnId: record.turnId, name: record.name, mime: record.mime,
-      size, mtime: record.mtime, localPath: destination, createdAt: record.createdAt,
+      id: record.id, turnId: record.turnId, kind: record.kind, name: record.name, mime: record.mime,
+      byteSize: size, sourceModifiedAt: record.sourceModifiedAt,
+      sourcePath: destination,
+      imagePath: record.kind === 'image' ? destination : null,
+      imageByteSize: record.kind === 'image' ? size : null,
+      createdAt: record.createdAt,
     });
   }
   return output;
@@ -474,12 +479,6 @@ function mapMemoryState(record: MemoryStateRecord | null): {
     surfaced_json: record.surfacedJson,
     overrides_json: record.overridesJson,
   } : null;
-}
-
-function safeFileName(value: string): string {
-  const name = path.basename(value).replace(/[/\\?%*:|"<>]/g, '_').slice(0, 80);
-  if (!name) throw new SessionImportError('invalid_format', '附件名称无效');
-  return name;
 }
 
 function assertResourcePath(

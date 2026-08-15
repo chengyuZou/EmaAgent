@@ -1,10 +1,9 @@
 // 把中立音频字节编码成前端可消费的 Turn 语音事件。
-import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { SpeechEvent } from './events.js';
 
 export function audioChunkEvent(
-  sessionId: SessionId,
-  turnId: TurnId,
+  sessionId: string,
+  turnId: string,
   sentenceIndex: number,
   bytes: Uint8Array<ArrayBufferLike>,
   mime: string,
@@ -19,6 +18,6 @@ export function audioChunkEvent(
   };
 }
 
-export function makeSentenceId(turnId: TurnId, sentenceIndex: number): string {
+export function makeSentenceId(turnId: string, sentenceIndex: number): string {
   return `${turnId as string}-${sentenceIndex}`;
 }

@@ -1,11 +1,5 @@
 // 持久化后台 Shell 状态、完成通知领取和断电后的 interrupted 收口。
 
-import type {
-  BackgroundProcessId,
-  SessionId,
-  ToolCallId,
-  TurnId,
-} from '@ema-agent/ids';
 import type { SqliteDb } from '../../database/database.js';
 
 export type BackgroundProcessStatus =
@@ -19,10 +13,10 @@ export type BackgroundProcessStatus =
 
 /** SQLite 原始行结构;备份链路按列名消费,不进入 Tools 运行态。 */
 export interface BackgroundProcessRow {
-  id: BackgroundProcessId;
-  session_id: SessionId;
-  origin_turn_id: TurnId | null;
-  tool_call_id: ToolCallId | null;
+  id: string;
+  session_id: string;
+  origin_turn_id: string | null;
+  tool_call_id: string | null;
   command: string;
   description: string | null;
   cwd: string;
@@ -39,16 +33,16 @@ export interface BackgroundProcessRow {
   output_truncated: 0 | 1;
   output_relative_path: string;
   completion_claimed_at: number | null;
-  continuation_turn_id: TurnId | null;
+  continuation_turn_id: string | null;
   model_notified_at: number | null;
 }
 
 /** 提供给 Tools 端口的领域形状,不泄露 SQL 列名与 null。 */
 interface StoredBackgroundProcess {
-  id: BackgroundProcessId;
-  sessionId: SessionId;
-  originTurnId?: TurnId;
-  toolCallId?: ToolCallId;
+  id: string;
+  sessionId: string;
+  originTurnId?: string;
+  toolCallId?: string;
   command: string;
   description?: string;
   cwd: string;
@@ -65,15 +59,15 @@ interface StoredBackgroundProcess {
   outputTruncated: boolean;
   outputRelativePath: string;
   completionClaimedAt?: number;
-  continuationTurnId?: TurnId;
+  continuationTurnId?: string;
   modelNotifiedAt?: number;
 }
 
 export interface BackgroundProcessInsert {
-  id: BackgroundProcessId;
-  sessionId: SessionId;
-  originTurnId: TurnId;
-  toolCallId: ToolCallId;
+  id: string;
+  sessionId: string;
+  originTurnId: string;
+  toolCallId: string;
   command: string;
   description?: string;
   cwd: string;
@@ -129,7 +123,7 @@ export class BackgroundProcessesRepo {
     return fromSqlRow(row);
   }
 
-  findById(id: BackgroundProcessId): StoredBackgroundProcess | undefined {
+  findById(id: string): StoredBackgroundProcess | undefined {
     const row = this.db.prepare(
       'SELECT * FROM background_processes WHERE id = ?',
     ).get(id) as BackgroundProcessRow | undefined;
@@ -137,7 +131,7 @@ export class BackgroundProcessesRepo {
   }
 
   listForSession(
-    sessionId: SessionId,
+    sessionId: string,
     options: { status?: BackgroundProcessStatus; limit?: number } = {},
   ): StoredBackgroundProcess[] {
     const limit = Math.min(Math.max(options.limit ?? 100, 1), 500);
@@ -160,7 +154,7 @@ export class BackgroundProcessesRepo {
   }
 
   transitionToRunning(
-    id: BackgroundProcessId,
+    id: string,
     expectedVersion: number,
     startedAt: number,
   ): StoredBackgroundProcess | undefined {
@@ -176,7 +170,7 @@ export class BackgroundProcessesRepo {
   }
 
   finish(
-    id: BackgroundProcessId,
+    id: string,
     expectedVersion: number,
     terminal: BackgroundProcessTerminal,
   ): StoredBackgroundProcess | undefined {
@@ -224,8 +218,8 @@ export class BackgroundProcessesRepo {
    * Turn 行尚未创建时不能建立 FK，但身份仍由业务层用 BackgroundProcessId 幂等校验。
    */
   claimCompletionBatch(
-    sessionId: SessionId,
-    continuationTurnId: TurnId,
+    sessionId: string,
+    continuationTurnId: string,
     at: number,
     limit = 20,
   ): StoredBackgroundProcess[] {
@@ -248,7 +242,7 @@ export class BackgroundProcessesRepo {
             AND model_notified_at IS NULL
           ORDER BY completed_at ASC, id ASC
           LIMIT ?`,
-      ).all(sessionId, limit) as Array<{ id: BackgroundProcessId }>;
+      ).all(sessionId, limit) as Array<{ id: string }>;
       if (candidates.length === 0) return [];
 
       const placeholders = candidates.map(() => '?').join(', ');
@@ -270,7 +264,7 @@ export class BackgroundProcessesRepo {
     return claim().map(fromSqlRow);
   }
 
-  markCompletionDelivered(continuationTurnId: TurnId, at: number): number {
+  markCompletionDelivered(continuationTurnId: string, at: number): number {
     return this.db.prepare(
       `UPDATE background_processes
           SET model_notified_at = ?,
@@ -280,7 +274,7 @@ export class BackgroundProcessesRepo {
     ).run(at, continuationTurnId).changes;
   }
 
-  listSessionsWithPendingCompletions(limit = 100): SessionId[] {
+  listSessionsWithPendingCompletions(limit = 100): string[] {
     const rows = this.db.prepare(
       `SELECT session_id, MIN(completed_at) AS first_completed_at
          FROM background_processes
@@ -289,7 +283,7 @@ export class BackgroundProcessesRepo {
         GROUP BY session_id
         ORDER BY first_completed_at ASC, session_id ASC
         LIMIT ?`,
-    ).all(Math.min(Math.max(limit, 1), 500)) as Array<{ session_id: SessionId }>;
+    ).all(Math.min(Math.max(limit, 1), 500)) as Array<{ session_id: string }>;
     return rows.map(row => row.session_id);
   }
 }

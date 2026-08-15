@@ -1,5 +1,4 @@
 // 在当前进程内缓存云端声音标识，避免每句话重复上传参考音频。
-import type { CharacterCardId } from '@ema-agent/ids';
 import type {
   TextToSpeech,
   TtsProviderVoice,
@@ -24,7 +23,7 @@ export class SpeechVoiceCache {
     this.now = options.now ?? Date.now;
   }
 
-  get(cardId: CharacterCardId, providerConfigId: string, model: string): TtsProviderVoice | null {
+  get(cardId: string, providerConfigId: string, model: string): TtsProviderVoice | null {
     const key = voiceKey(cardId, providerConfigId, model);
     const voice = this.entries.get(key);
     if (!voice) return null;
@@ -36,7 +35,7 @@ export class SpeechVoiceCache {
   }
 
   set(
-    cardId: CharacterCardId,
+    cardId: string,
     providerConfigId: string,
     model: string,
     voice: TtsProviderVoice,
@@ -63,7 +62,7 @@ export async function prepareSpeechVoice(
   reference: TtsVoiceReference,
   textToSpeech: TextToSpeech,
   model: string,
-  cardId: CharacterCardId,
+  cardId: string,
   providerConfigId: string,
   cache: SpeechVoiceCache,
   signal?: AbortSignal,
@@ -76,6 +75,6 @@ export async function prepareSpeechVoice(
     : voice;
 }
 
-function voiceKey(cardId: CharacterCardId, providerConfigId: string, model: string): string {
+function voiceKey(cardId: string, providerConfigId: string, model: string): string {
   return `${cardId}\u0000${providerConfigId}\u0000${model}`;
 }

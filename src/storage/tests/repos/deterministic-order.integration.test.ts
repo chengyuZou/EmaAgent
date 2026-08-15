@@ -1,11 +1,6 @@
 // 测试 Data/Profile 事件在相同时间戳下仍保持确定顺序。
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-  asAgentRunId,
-  asSessionId,
-  asTurnId,
-} from '@ema-agent/ids';
-import {
   AgentRunMessagesRepo,
   AgentRunsRepo,
   Database,
@@ -28,9 +23,9 @@ describe('N-012 Data DB 确定性事件顺序', () => {
   it('AgentRun transcript 使用 run 内 sequence 保留真实写入顺序', () => {
     const runs = new AgentRunsRepo(database.sqlite);
     runs.insert({
-      id: asAgentRunId('run-a'),
-      sessionId: asSessionId('session-a'),
-      parentTurnId: asTurnId('turn-a'),
+      id: 'run-a',
+      sessionId: 'session-a',
+      parentTurnId: 'turn-a',
       kind: 'subagent',
       createdAt: 1,
     });
@@ -41,14 +36,14 @@ describe('N-012 Data DB 确定性事件顺序', () => {
       ['assistant', 'answer'],
     ] as const) {
       messages.insert({
-        agentRunId: asAgentRunId('run-a'),
+        agentRunId: 'run-a',
         role,
         content: { text },
         createdAt: 1_000,
       });
     }
 
-    const rows = messages.listForRun(asAgentRunId('run-a'));
+    const rows = messages.listForRun('run-a');
     expect(rows.map((row) => row.sequence)).toEqual([1, 2, 3]);
     expect(rows.map((row) => JSON.parse(row.content_json).text))
       .toEqual(['call', 'result', 'answer']);
@@ -57,8 +52,8 @@ describe('N-012 Data DB 确定性事件顺序', () => {
   it('PendingFragment 优先按业务时间 at，再使用 created_at 和 id 稳定排序', () => {
     const repo = new PendingFragmentsRepo(database.sqlite);
     const base = {
-      sessionId: asSessionId('session-a'),
-      turnId: asTurnId('turn-a'),
+      sessionId: 'session-a',
+      turnId: 'turn-a',
       role: 'user' as const,
       createdAt: 1_000,
     };
@@ -72,7 +67,7 @@ describe('N-012 Data DB 确定性事件顺序', () => {
       at: 101,
     });
 
-    expect(repo.listBySession(asSessionId('session-a')).map((row) => row.id))
+    expect(repo.listBySession('session-a').map((row) => row.id))
       .toEqual(['a-same-time', 'z-same-time', 'assistant-later']);
   });
 

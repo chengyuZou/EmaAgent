@@ -1,6 +1,5 @@
 // 持久化 Session 消息，并提供 Turn 归属读取与压缩边界查询。
 import type { SqliteDb } from '../../database/database.js';
-import type { MessageId, SessionId, TurnId } from '@ema-agent/ids';
 
 export type MessageRole = 'system' | 'user' | 'assistant';
 const MESSAGE_TURN_READ_LIMIT = 50;
@@ -24,9 +23,9 @@ export interface MessageRow {
 }
 
 export interface MessageInsert {
-  id:         MessageId;
-  sessionId:  SessionId;
-  turnId?:    TurnId;
+  id:         string;
+  sessionId:  string;
+  turnId?:    string;
   role:       MessageRole;
   kind?:      MessageKind;
   /** 预序列化的 JSON 字符串（传入前调 JSON.stringify(blocks)）。 */
@@ -57,11 +56,11 @@ export class MessagesRepo {
       );
   }
 
-  findById(id: MessageId): MessageRow | undefined {
+  findById(id: string): MessageRow | undefined {
     return this.db.prepare('SELECT * FROM messages WHERE id = ?').get(id) as MessageRow | undefined;
   }
 
-  listForSession(sessionId: SessionId, limit = 500): MessageRow[] {
+  listForSession(sessionId: string, limit = 500): MessageRow[] {
     return this.db
       .prepare(
         'SELECT * FROM messages WHERE session_id = ? ORDER BY created_at DESC, id DESC LIMIT ?',
@@ -69,14 +68,14 @@ export class MessagesRepo {
       .all(sessionId, limit) as MessageRow[];
   }
 
-  listForTurn(turnId: TurnId): MessageRow[] {
+  listForTurn(turnId: string): MessageRow[] {
     return this.db
       .prepare('SELECT * FROM messages WHERE turn_id = ? ORDER BY created_at ASC, id ASC')
       .all(turnId) as MessageRow[];
   }
 
   /** 读取一组已限定 Turn 的消息，供历史窗口按时间正序展示。 */
-  listForTurns(sessionId: SessionId, turnIds: readonly TurnId[]): MessageRow[] {
+  listForTurns(sessionId: string, turnIds: readonly string[]): MessageRow[] {
     if (turnIds.length === 0) return [];
     if (turnIds.length > MESSAGE_TURN_READ_LIMIT) {
       throw new RangeError(`message_turn_read_limit: ${turnIds.length}`);
@@ -91,16 +90,16 @@ export class MessagesRepo {
       .all(sessionId, ...turnIds) as MessageRow[];
   }
 
-  markInterrupted(id: MessageId): void {
+  markInterrupted(id: string): void {
     this.db.prepare('UPDATE messages SET interrupted = 1 WHERE id = ?').run(id);
   }
 
-  deleteForTurn(turnId: TurnId): void {
+  deleteForTurn(turnId: string): void {
     this.db.prepare('DELETE FROM messages WHERE turn_id = ?').run(turnId);
   }
 
   /** Cursor 分页：created_at < before 的行，按最新优先。 */
-  listBefore(sessionId: SessionId, before: number, limit: number): MessageRow[] {
+  listBefore(sessionId: string, before: number, limit: number): MessageRow[] {
     return this.db
       .prepare(
         `SELECT * FROM messages
@@ -111,7 +110,7 @@ export class MessagesRepo {
       .all(sessionId, before, limit) as MessageRow[];
   }
 
-  countForSession(sessionId: SessionId): number {
+  countForSession(sessionId: string): number {
     const row = this.db
       .prepare('SELECT COUNT(*) as n FROM messages WHERE session_id = ?')
       .get(sessionId) as { n: number };
@@ -121,7 +120,7 @@ export class MessagesRepo {
   // ── Summary / compaction 边界辅助 ──────────────────────────────────
 
   /** 该 session 中最近一条 kind='summary' 的 message（若有）。 */
-  findLastSummary(sessionId: SessionId): MessageRow | undefined {
+  findLastSummary(sessionId: string): MessageRow | undefined {
     return this.db
       .prepare(
         `SELECT * FROM messages
@@ -141,7 +140,7 @@ export class MessagesRepo {
    * 两层排序是刻意的：内层倒序利用索引截取最新 N 条，外层再恢复为
    * LLM 需要的正序。`id` 是同毫秒消息的稳定排序键。
    */
-  listForSessionFromSummary(sessionId: SessionId, limit = 500): MessageRow[] {
+  listForSessionFromSummary(sessionId: string, limit = 500): MessageRow[] {
     const boundedLimit = Number.isSafeInteger(limit) && limit > 0 ? limit : 500;
 
     return this.db

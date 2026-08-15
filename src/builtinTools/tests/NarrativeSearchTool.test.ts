@@ -1,15 +1,14 @@
 // 验证 NarrativeSearchTool 只消费宿主授予的检索端口, 并诚实区分完整/部分/空/不可用结果。
 import { describe, expect, it, vi } from 'vitest';
-import { asSessionId, asToolCallId, asTurnId } from '@ema-agent/ids';
 import type { NarrativeSearchPort } from '@ema-agent/narrative';
 import type { ToolInvocation } from '@ema-agent/tools';
 import { NarrativeSearchTool } from '../tools/NarrativeSearchTool/NarrativeSearchTool.js';
 
 function invocation(): ToolInvocation {
   return Object.freeze({
-    sessionId: asSessionId('session-narrative-tool'),
-    turnId: asTurnId('turn-narrative-tool'),
-    toolCallId: asToolCallId('toolcall-narrative-tool'),
+    sessionId: 'session-narrative-tool',
+    turnId: 'turn-narrative-tool',
+    toolCallId: 'toolcall-narrative-tool',
     signal: new AbortController().signal,
   });
 }

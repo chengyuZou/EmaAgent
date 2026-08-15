@@ -1,7 +1,6 @@
 import type { SqliteDb } from '../../database/database.js';
 import { createSqliteIdBatches } from '../../database/sqlite-id-batches.js';
 import { escapeLikePattern } from '../../search/like-utils.js';
-import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { MemoryEmbeddingPageCursor } from './memory-embedding-page.js';
 import type { ExecutionProfile } from '@ema-agent/turn';
 
@@ -47,8 +46,8 @@ export interface MemoryItemInsert {
   embeddingNormalization?: string;
   embeddingRevision?:  string;
   embeddingSpaceId?:   string;
-  sourceSessionId?:    SessionId;
-  sourceTurnId?:       TurnId;
+  sourceSessionId?:    string;
+  sourceTurnId?:       string;
   importance?:         number;
   expiresAt?:          number;
   createdAt:           number;

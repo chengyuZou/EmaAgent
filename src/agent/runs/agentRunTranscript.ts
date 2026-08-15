@@ -1,6 +1,5 @@
 // 把子 AgentLoop 已发生的内容事实立即写入独立 transcript，并提供按运行查询。
 
-import type { AgentRunId } from '@ema-agent/ids';
 import type {
   AgentRunMessageInsert,
   AgentRunMessagesRepo,
@@ -15,12 +14,12 @@ export class AgentRunTranscript {
    * 在 AgentLoop generator 恢复前同步落库。这样 tool_use 与 tool_result 的
    * 持久化顺序会自然早于工具启动和结果关账，进程中断时也保留最后一个已见事实。
    */
-  record(agentRunId: AgentRunId, event: AgentLoopEvent): void {
+  record(agentRunId: string, event: AgentLoopEvent): void {
     const message = transcriptMessageFor(agentRunId, event);
     if (message) this.repo.insert(message);
   }
 
-  listForRun(agentRunId: AgentRunId): readonly AgentRunTranscriptMessage[] {
+  listForRun(agentRunId: string): readonly AgentRunTranscriptMessage[] {
     return this.repo.listForRun(agentRunId).map((row) => ({
       id: row.id,
       agentRunId: row.agent_run_id,
@@ -34,7 +33,7 @@ export class AgentRunTranscript {
 }
 
 function transcriptMessageFor(
-  agentRunId: AgentRunId,
+  agentRunId: string,
   event: AgentLoopEvent,
 ): AgentRunMessageInsert | undefined {
   const createdAt = Date.now();

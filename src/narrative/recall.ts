@@ -1,5 +1,4 @@
 // 把一次原子 Narrative Recall 投影为模型上下文和前端生命周期事件。
-import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { NarrativeClient } from './client.js';
 import { NarrativeClientError } from './errors.js';
 import type { NarrativeEvent } from './events.js';
@@ -27,8 +26,8 @@ export type NarrativeSearchPort = (
 ) => Promise<NarrativeRecallResult>;
 
 export interface PrepareNarrativeRecallInput {
-  readonly sessionId: SessionId;
-  readonly turnId: TurnId;
+  readonly sessionId: string;
+  readonly turnId: string;
   readonly userInput: string;
   readonly signal?: AbortSignal;
   readonly emit?: (event: NarrativeEvent) => void;

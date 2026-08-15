@@ -1,5 +1,3 @@
-import type { AgentRunId, SessionId, TaskId, TurnId } from '@ema-agent/ids';
-
 export type AgentRunStatus = 'running' | 'completed' | 'failed' | 'cancelled';
 export type AgentRunKind = 'subagent' | 'fork';
 export type AgentRunTranscriptRole =
@@ -9,11 +7,11 @@ export type AgentRunTranscriptRole =
   | 'reasoning';
 
 export interface AgentRun {
-  readonly id: AgentRunId;
-  readonly sessionId: SessionId;
-  readonly parentTurnId: TurnId;
-  readonly parentAgentRunId?: AgentRunId;
-  readonly taskId?: TaskId;
+  readonly id: string;
+  readonly sessionId: string;
+  readonly parentTurnId: string;
+  readonly parentAgentRunId?: string;
+  readonly taskId?: string;
   readonly kind: AgentRunKind;
   readonly purpose?: string;
   readonly providerConfigId?: string;
@@ -32,11 +30,11 @@ export interface AgentRun {
 }
 
 export interface AgentRunStart {
-  agentRunId: AgentRunId;
-  sessionId: SessionId;
-  parentTurnId: TurnId;
-  parentAgentRunId?: AgentRunId;
-  taskId?: TaskId;
+  agentRunId: string;
+  sessionId: string;
+  parentTurnId: string;
+  parentAgentRunId?: string;
+  taskId?: string;
   kind: AgentRunKind;
   purpose?: string;
   providerConfigId?: string;
@@ -64,7 +62,7 @@ export type AgentRunTransitionResult =
 
 export interface AgentRunTranscriptMessage {
   readonly id: string;
-  readonly agentRunId: AgentRunId;
+  readonly agentRunId: string;
   readonly role: AgentRunTranscriptRole;
   readonly content: unknown;
   readonly sequence: number;

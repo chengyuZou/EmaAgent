@@ -1,14 +1,13 @@
 // AskUserTool 收口测试: 问询通道要求、spec 构造、答案键归一(问题文本)、map 投影。
 import { describe, expect, it, vi } from 'vitest';
-import { asSessionId, asToolCallId, asTurnId } from '@ema-agent/ids';
 import type { ToolInvocation } from '@ema-agent/tools';
 import { AskUserTool } from '../tools/AskUserTool/AskUserTool.js';
 
 function makeInvocation(): ToolInvocation {
   return {
-    sessionId: asSessionId('00000000-0000-4000-8000-0000000000b1'),
-    turnId: asTurnId('00000000-0000-4000-8000-0000000000b2'),
-    toolCallId: asToolCallId('call-ask-1'),
+    sessionId: '00000000-0000-4000-8000-0000000000b1',
+    turnId: '00000000-0000-4000-8000-0000000000b2',
+    toolCallId: 'call-ask-1',
     signal: new AbortController().signal,
   };
 }

@@ -1,6 +1,5 @@
 // AgentRunStore 管理子 Agent 执行的 CAS 终态、查询和崩溃恢复。
 
-import type { AgentRunId, SessionId } from '@ema-agent/ids';
 import type { AgentRunRow, AgentRunsRepo } from '@ema-agent/storage';
 import type {
   AgentRun,
@@ -64,7 +63,7 @@ export class AgentRunStore {
   }
 
   complete(
-    agentRunId: AgentRunId,
+    agentRunId: string,
     completion: AgentRunCompletion,
   ): AgentRunTransitionResult {
     const current = this.currentFor('complete', agentRunId);
@@ -88,7 +87,7 @@ export class AgentRunStore {
     );
   }
 
-  fail(agentRunId: AgentRunId, reason: string): AgentRunTransitionResult {
+  fail(agentRunId: string, reason: string): AgentRunTransitionResult {
     const current = this.currentFor('fail', agentRunId);
     if (!current.ok) return current.result;
     if (current.row.status === 'failed' && current.row.error === reason) {
@@ -102,7 +101,7 @@ export class AgentRunStore {
     );
   }
 
-  cancel(agentRunId: AgentRunId, reason: string): AgentRunTransitionResult {
+  cancel(agentRunId: string, reason: string): AgentRunTransitionResult {
     const current = this.currentFor('cancel', agentRunId);
     if (!current.ok) return current.result;
     if (current.row.status === 'cancelled') {
@@ -116,20 +115,20 @@ export class AgentRunStore {
     );
   }
 
-  get(agentRunId: AgentRunId): AgentRun | undefined {
+  get(agentRunId: string): AgentRun | undefined {
     const row = this.repo.findById(agentRunId);
     return row ? fromRow(row) : undefined;
   }
 
-  listForSession(sessionId: SessionId): AgentRun[] {
+  listForSession(sessionId: string): AgentRun[] {
     return this.repo.listForSession(sessionId).map(fromRow);
   }
 
-  delete(agentRunId: AgentRunId): void {
+  delete(agentRunId: string): void {
     this.repo.delete(agentRunId);
   }
 
-  clearTerminalForSession(sessionId: SessionId): number {
+  clearTerminalForSession(sessionId: string): number {
     return this.repo.deleteTerminalForSession(sessionId);
   }
 
@@ -139,7 +138,7 @@ export class AgentRunStore {
 
   private currentFor(
     action: AgentRunTransitionAction,
-    agentRunId: AgentRunId,
+    agentRunId: string,
   ):
     | { ok: true; row: AgentRunRow }
     | { ok: false; result: AgentRunTransitionResult } {
@@ -150,7 +149,7 @@ export class AgentRunStore {
 
   private finishTransition(
     action: AgentRunTransitionAction,
-    agentRunId: AgentRunId,
+    agentRunId: string,
     updated: AgentRunRow | undefined,
   ): AgentRunTransitionResult {
     if (updated) return { ok: true, changed: true, run: fromRow(updated) };

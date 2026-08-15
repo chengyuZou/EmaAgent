@@ -5,7 +5,6 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { asSessionId, asToolCallId, asTurnId } from '@ema-agent/ids';
 import type { ReadFileState, ToolInvocation } from '@ema-agent/tools';
 import { FileReadTool, type FileReadResult } from '../tools/FileReadTool/FileReadTool.js';
 
@@ -15,9 +14,9 @@ function makeCtx(workspaceRoot = ''): { readFileState: ReadFileState; workspaceR
 
 function makeInvocation(signal?: AbortSignal): ToolInvocation {
   return {
-    sessionId: asSessionId('00000000-0000-4000-8000-0000000000f1'),
-    turnId: asTurnId('00000000-0000-4000-8000-0000000000f2'),
-    toolCallId: asToolCallId('call-read-1'),
+    sessionId: '00000000-0000-4000-8000-0000000000f1',
+    turnId: '00000000-0000-4000-8000-0000000000f2',
+    toolCallId: 'call-read-1',
     signal: signal ?? new AbortController().signal,
   };
 }

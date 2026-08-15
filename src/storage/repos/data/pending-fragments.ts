@@ -1,5 +1,4 @@
 import type { SqliteDb } from '../../database/database.js';
-import type { SessionId, TurnId } from '@ema-agent/ids';
 
 // ── 类型─────────────────────────────────────────────────────────────────────
 
@@ -16,8 +15,8 @@ export interface PendingFragmentRow {
 
 export interface PendingFragmentInsert {
   id:        string;
-  sessionId: SessionId;
-  turnId:    TurnId;
+  sessionId: string;
+  turnId:    string;
   role:      'user' | 'assistant';
   content:   string;
   at:        number;
@@ -55,7 +54,7 @@ export class PendingFragmentsRepo {
   }
 
   /** 删除某 session 的所有 fragment。在提取成功后调用。 */
-  clearBySession(sessionId: SessionId): void {
+  clearBySession(sessionId: string): void {
     this.db
       .prepare('DELETE FROM pending_fragments WHERE session_id = ?')
       .run(sessionId);
@@ -64,7 +63,7 @@ export class PendingFragmentsRepo {
   // ── 读取────────────────────────────────────────────────────────────────────
 
   /** 某 session 的所有未处理 fragment，按业务时间和稳定次序正序排列。 */
-  listBySession(sessionId: SessionId): PendingFragmentRow[] {
+  listBySession(sessionId: string): PendingFragmentRow[] {
     return this.db
       .prepare(
         `SELECT * FROM pending_fragments
@@ -89,7 +88,7 @@ export class PendingFragmentsRepo {
     return row.n;
   }
 
-  countBySession(sessionId: SessionId): number {
+  countBySession(sessionId: string): number {
     const row = this.db
       .prepare('SELECT COUNT(*) AS n FROM pending_fragments WHERE session_id = ?')
       .get(sessionId) as { n: number };

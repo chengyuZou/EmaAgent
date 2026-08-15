@@ -1,11 +1,4 @@
 // 完成单次 Tool 调用的解析、校验、授权、执行与审计终态。
-
-import type {
-  AgentRunId,
-  SessionId,
-  ToolCallId,
-  TurnId,
-} from '@ema-agent/ids';
 import type { ToolResultContentPart } from '@ema-agent/llm';
 import type {
   AskPermissionFn,
@@ -36,10 +29,10 @@ export type ToolExecutionLiveEvent = ToolExecutionEvent | PermissionStreamEvent;
 
 /** 同一 Turn 内每个单调用共享的执行环境。 */
 export interface ToolExecutionEnvironment {
-  readonly sessionId: SessionId;
-  readonly turnId: TurnId;
+  readonly sessionId: string;
+  readonly turnId: string;
   /** 子 Agent 调用仍属于父 Turn，只额外关联自己的 AgentRun。 */
-  readonly agentRunId?: AgentRunId;
+  readonly agentRunId?: string;
   /** 父执行取消信号；每个 ToolInvocation 会再派生自己的 signal。 */
   readonly abortSignal: AbortSignal;
   /** 根 Turn 已经筛选并冻结的唯一 Tool 集合。 */
@@ -48,9 +41,9 @@ export interface ToolExecutionEnvironment {
   readonly permissionContext: PermissionContext;
   readonly toolContext: ToolUseContext;
   readonly buildAsk?: (args: {
-    sessionId: SessionId;
-    turnId: TurnId;
-    toolCallId: ToolCallId;
+    sessionId: string;
+    turnId: string;
+    toolCallId: string;
     emit: (event: PermissionStreamEvent) => void;
   }) => AskPermissionFn;
   readonly toolResultStore?: ToolResultStore;
@@ -58,7 +51,7 @@ export interface ToolExecutionEnvironment {
 }
 
 export interface ToolExecutionCall {
-  readonly callId: ToolCallId;
+  readonly callId: string;
   readonly name: string;
   readonly args: unknown;
 }
@@ -83,7 +76,7 @@ type ResultDisposition = 'succeeded' | 'failed' | 'cancelled' | 'outcome_unknown
  * 对模型参数只 parse 一次，然后让校验、Permission 和 execute 共用该局部输入。
  */
 export class ToolCallExecution {
-  readonly id: ToolCallId;
+  readonly id: string;
   readonly name: string;
   readonly isConcurrencySafe: boolean;
   readonly requiresUserInteraction: boolean;

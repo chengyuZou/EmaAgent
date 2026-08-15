@@ -1,11 +1,6 @@
 // 汇总角色 Prompt 与三类资源的真实可用性，输出主窗口降级顺序。
 
 import fs from 'node:fs';
-import type {
-  CharacterIllustrationId,
-  CharacterLive2dId,
-  CharacterVoiceReferenceId,
-} from '@ema-agent/ids';
 import type { CharacterCard } from '../types.js';
 import { findLive2dPackageFilesSync } from '../live2d/live2dValidator.js';
 import { CharacterResourcePaths } from '../resources/characterResourcePaths.js';
@@ -32,17 +27,17 @@ export interface CharacterHealthIssue {
 }
 
 export type CharacterPresentationCandidate =
-  | { readonly kind: 'live2d'; readonly resourceId: CharacterLive2dId }
-  | { readonly kind: 'illustration'; readonly resourceId: CharacterIllustrationId };
+  | { readonly kind: 'live2d'; readonly resourceId: string }
+  | { readonly kind: 'illustration'; readonly resourceId: string };
 
 export interface CharacterHealth {
   readonly characterId: CharacterCard['id'];
   readonly status: CharacterHealthStatus;
   readonly executionAvailable: boolean;
   readonly presentation: CharacterPresentation;
-  readonly selectedLive2dVariantId: CharacterLive2dId | null;
-  readonly selectedIllustrationId: CharacterIllustrationId | null;
-  readonly selectedVoiceReferenceId: CharacterVoiceReferenceId | null;
+  readonly selectedLive2dVariantId: string | null;
+  readonly selectedIllustrationId: string | null;
+  readonly selectedVoiceReferenceId: string | null;
   readonly voiceReferenceAvailable: boolean;
   readonly presentationCandidates: readonly CharacterPresentationCandidate[];
   readonly issues: readonly CharacterHealthIssue[];

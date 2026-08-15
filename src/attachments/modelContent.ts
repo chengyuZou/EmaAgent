@@ -2,7 +2,6 @@
 // Context/Compact/LLM 不查询 AttachmentStore——本函数是引用消失的唯一地点。
 
 import { readFile } from 'node:fs/promises';
-import { asAttachmentId, type AttachmentId } from '@ema-agent/ids';
 import type { UserBlock as LlmUserBlock } from '@ema-agent/llm';
 import type { UserBlock as SessionUserBlock } from '@ema-agent/session';
 import type { Attachment, ImageAttachment } from './types.js';
@@ -27,7 +26,7 @@ export interface ResolveAttachmentOptions {
  */
 export async function resolveAttachmentReferences(
   blocks: readonly SessionUserBlock[],
-  attachments: ReadonlyMap<AttachmentId, Attachment>,
+  attachments: ReadonlyMap<string, Attachment>,
   options: ResolveAttachmentOptions,
 ): Promise<LlmUserBlock[]> {
   const output: LlmUserBlock[] = [];
@@ -38,7 +37,7 @@ export async function resolveAttachmentReferences(
       continue;
     }
     output.push(await resolveOne(
-      asAttachmentId(block.attachmentId),
+      block.attachmentId,
       attachments,
       options,
     ));
@@ -47,8 +46,8 @@ export async function resolveAttachmentReferences(
 }
 
 async function resolveOne(
-  id: AttachmentId,
-  attachments: ReadonlyMap<AttachmentId, Attachment>,
+  id: string,
+  attachments: ReadonlyMap<string, Attachment>,
   options: ResolveAttachmentOptions,
 ): Promise<LlmUserBlock> {
   const attachment = attachments.get(id);

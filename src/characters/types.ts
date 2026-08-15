@@ -1,10 +1,9 @@
-import type { CharacterCardId } from '@ema-agent/ids';
 import type { CharacterLive2dVariant } from './live2d/types.js';
 import type { CharacterIllustration } from './illustration/types.js';
 import type { CharacterVoiceReference } from './voice/types.js';
 
 export interface CharacterCard {
-  id:               CharacterCardId;
+  id:               string;
   name:             string;
   description:      string | null;
   systemPrompt:     string;

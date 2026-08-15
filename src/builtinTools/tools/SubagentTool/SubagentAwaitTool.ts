@@ -1,6 +1,5 @@
 // 阻塞等待后台子 Agent 完成并取回最终输出。
 import { z } from 'zod';
-import { asAgentRunId } from '@ema-agent/ids';
 import {
   buildTool,
   contextFail,
@@ -60,7 +59,7 @@ Returns output:null if the agentRunId is unknown or already collected.`,
         'Sub-agents cannot await other sub-agents.',
       );
     }
-    const result = await context.spawner.awaitBackground(asAgentRunId(input.agentRunId));
+    const result = await context.spawner.awaitBackground(input.agentRunId);
     if (!result) return { output: null };
     return { output: result.output, usage: result.usage };
   },

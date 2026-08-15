@@ -3,10 +3,6 @@
 import type { CharacterCardInput } from '../types.js';
 import type { CharacterLive2dVariantInput } from '../live2d/types.js';
 import type { CharacterVoiceReferenceInput } from '../voice/types.js';
-import {
-  asCharacterLive2dId,
-  asCharacterVoiceReferenceId,
-} from '@ema-agent/ids';
 
 export const EMA_CARD_ID = 'ema' as const;
 
@@ -79,13 +75,13 @@ determined: 「一定有办法的！」「我不会放弃！」
 };
 
 export const EMA_LIVE2D_VARIANTS: readonly CharacterLive2dVariantInput[] = [{
-  id: asCharacterLive2dId('ema-live2d-default'),
+  id: 'ema-live2d-default',
   name: '默认',
   isPrimary: true,
 }];
 
 export const EMA_VOICE_REFERENCES: readonly CharacterVoiceReferenceInput[] = [{
-  id: asCharacterVoiceReferenceId('ema-voice-default'),
+  id: 'ema-voice-default',
   name: '默认',
   promptText: '我就是担心这种伤风败俗的东西如果被身心尚幼的小朋友们看到会造成不好的影响，所以我想提前为小朋友们做好预防措施。',
   promptLang: 'zh',

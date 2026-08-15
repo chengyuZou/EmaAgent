@@ -1,8 +1,6 @@
 // TaskStore 把 SQLite 原子操作映射成稳定工作项，并保持 Task 与 AgentRun 生命周期独立。
 
 import { randomUUID } from 'node:crypto';
-import { asTaskId } from '@ema-agent/ids';
-import type { SessionId, TaskId } from '@ema-agent/ids';
 import type {
   TaskDependencyRow,
   TaskMutationResult as RepoMutationResult,
@@ -24,7 +22,7 @@ export class TaskStore {
 
   create(input: TaskCreateInput): Task {
     const row = this.repo.create({
-      id: asTaskId(randomUUID()),
+      id: randomUUID(),
       sessionId: input.sessionId,
       subject: input.subject,
       description: input.description,
@@ -35,12 +33,12 @@ export class TaskStore {
     return this.mapRows(input.sessionId, [row])[0]!;
   }
 
-  get(sessionId: SessionId, taskId: TaskId): Task | undefined {
+  get(sessionId: string, taskId: string): Task | undefined {
     const row = this.repo.findById(taskId, sessionId);
     return row ? this.mapRows(sessionId, [row])[0] : undefined;
   }
 
-  list(sessionId: SessionId): Task[] {
+  list(sessionId: string): Task[] {
     return this.mapRows(sessionId, this.repo.listForSession(sessionId));
   }
 
@@ -107,7 +105,7 @@ export class TaskStore {
   }
 
   takeContextReminder(
-    sessionId: SessionId,
+    sessionId: string,
     minimumTurns = DEFAULT_REMINDER_TURNS,
   ): Task[] {
     if (!this.repo.shouldRemind(sessionId, minimumTurns, Date.now())) return [];
@@ -117,7 +115,7 @@ export class TaskStore {
   }
 
   private mapMutationResult(
-    sessionId: SessionId,
+    sessionId: string,
     result: RepoMutationResult,
   ): TaskUpdateResult {
     if (result.ok) {
@@ -138,7 +136,7 @@ export class TaskStore {
     };
   }
 
-  private mapRows(sessionId: SessionId, rows: readonly TaskRow[]): Task[] {
+  private mapRows(sessionId: string, rows: readonly TaskRow[]): Task[] {
     const dependencies = this.repo.listDependenciesFor(
       sessionId,
       rows.map((row) => row.id),
@@ -174,8 +172,8 @@ function dependencyMap(
   rows: readonly TaskDependencyRow[],
   key: 'blocker_task_id' | 'blocked_task_id',
   value: 'blocker_task_id' | 'blocked_task_id',
-): Map<TaskId, TaskId[]> {
-  const mapped = new Map<TaskId, TaskId[]>();
+): Map<string, string[]> {
+  const mapped = new Map<string, string[]>();
   for (const row of rows) {
     const current = mapped.get(row[key]) ?? [];
     current.push(row[value]);

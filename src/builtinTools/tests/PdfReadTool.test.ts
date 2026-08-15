@@ -3,7 +3,6 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { asSessionId, asToolCallId, asTurnId } from '@ema-agent/ids';
 import type { ToolInvocation } from '@ema-agent/tools';
 import { PdfReadTool } from '../tools/PdfReadTool/PdfReadTool.js';
 
@@ -32,9 +31,9 @@ afterEach(() => {
 
 function invocation(): ToolInvocation {
   return Object.freeze({
-    sessionId: asSessionId('session-pdf-tool'),
-    turnId: asTurnId('turn-pdf-tool'),
-    toolCallId: asToolCallId('toolcall-pdf-tool'),
+    sessionId: 'session-pdf-tool',
+    turnId: 'turn-pdf-tool',
+    toolCallId: 'toolcall-pdf-tool',
     signal: new AbortController().signal,
   });
 }

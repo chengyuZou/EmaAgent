@@ -5,7 +5,6 @@ import { readFile, readdir, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { asSessionId, asTurnId } from '@ema-agent/ids';
 import {
   AttachmentRepo,
   Database,
@@ -13,8 +12,8 @@ import {
 import { AttachmentStore } from '../attachmentStore.js';
 import { AttachmentLimitError, AttachmentPreparationError } from '../errors.js';
 
-const sessionId = asSessionId('session-att');
-const turnId = asTurnId('turn-att');
+const sessionId = 'session-att';
+const turnId = 'turn-att';
 
 const temporary: string[] = [];
 let database: Database;
@@ -128,7 +127,7 @@ describe('AttachmentStore.addAll', () => {
     // 无父 Turn 的 turnId 会触发归属/外键约束，insertMany 必然失败。
     await expect(store.addAll(
       [{ sourcePath: image }],
-      asTurnId('turn-nonexistent'), sessionId,
+      'turn-nonexistent', sessionId,
     )).rejects.toThrow(AttachmentPreparationError);
 
     const managed = path.join(dataDir, 'sessions', sessionId, 'attachments');

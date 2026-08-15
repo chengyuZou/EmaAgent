@@ -1,6 +1,4 @@
 // 把根 Turn 文本事件装饰为带语音事件的输出流，并保证根终态最后发送。
-
-import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { TextToSpeech, TtsAudioFormat, TtsVoice } from '@ema-agent/tts';
 import type { UsageRecord, UsageRecorder } from '@ema-agent/usage';
 import type { FinalizedAudio, AudioArchive } from './audioArchive.js';
@@ -37,14 +35,14 @@ export interface TurnSpeechSynthesis {
 }
 
 export interface TurnSpeechSetupRequest {
-  readonly sessionId: SessionId;
-  readonly turnId: TurnId;
+  readonly sessionId: string;
+  readonly turnId: string;
   readonly signal: AbortSignal;
 }
 
 export interface FinalizedTurnAudio {
-  readonly sessionId: SessionId;
-  readonly turnId: TurnId;
+  readonly sessionId: string;
+  readonly turnId: string;
   readonly audio: FinalizedAudio;
 }
 
@@ -64,8 +62,8 @@ export interface TurnSpeechOutputDependencies {
 
 export interface TurnSpeechOutputRequest<TEvent extends TurnSpeechSourceEvent> {
   readonly enabled: boolean;
-  readonly sessionId: SessionId;
-  readonly turnId: TurnId;
+  readonly sessionId: string;
+  readonly turnId: string;
   readonly events: AsyncIterable<TEvent>;
 }
 
