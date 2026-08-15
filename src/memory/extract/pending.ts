@@ -1,5 +1,4 @@
 import crypto from 'node:crypto';
-import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { PendingFragmentsRepo } from '@ema-agent/storage';
 import { estimateTextTokens } from '@ema-agent/token';
 import type { PendingFragment } from './types.js';
@@ -8,10 +7,10 @@ import type { PendingFragment } from './types.js';
 
 export function readPending(
   repo: PendingFragmentsRepo,
-  sessionId: SessionId,
+  sessionId: string,
 ): PendingFragment[] {
   return repo.listBySession(sessionId).map(row => ({
-    turnId:  row.turn_id as TurnId,
+    turnId:  row.turn_id,
     role:    row.role,
     content: row.content,
     at:      row.at,
@@ -20,14 +19,14 @@ export function readPending(
 
 export function appendPending(
   repo: PendingFragmentsRepo,
-  sessionId: SessionId,
+  sessionId: string,
   fragment: PendingFragment,
   now: number,
 ): void {
   repo.insert({
     id:        crypto.randomUUID(),
     sessionId,
-    turnId:    fragment.turnId as TurnId,
+    turnId:    fragment.turnId,
     role:      fragment.role,
     content:   fragment.content,
     at:        fragment.at,
@@ -37,7 +36,7 @@ export function appendPending(
 
 export function clearPending(
   repo: PendingFragmentsRepo,
-  sessionId: SessionId,
+  sessionId: string,
   _now: number,   // kept for call-site compat; DELETE doesn't need a timestamp
 ): void {
   repo.clearBySession(sessionId);
@@ -79,7 +78,7 @@ export function shouldExtract(
  * can see Ema's perspective too ("I'll remember that you said X").
  */
 export function buildFragmentsFromTurn(args: {
-  turnId:        TurnId;
+  turnId:        string;
   userText:      string;
   assistantText: string;
   at:            number;

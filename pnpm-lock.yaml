@@ -32,9 +32,6 @@ importers:
       '@ema-agent/desktop-ui':
         specifier: workspace:*
         version: link:../desktop-ui
-      '@ema-agent/ids':
-        specifier: workspace:*
-        version: link:../../src/ids
       '@ema-agent/live2d-react':
         specifier: workspace:*
         version: link:../../src/live2d-react
@@ -126,15 +123,9 @@ importers:
       '@ema-agent/emotion':
         specifier: workspace:*
         version: link:../../src/emotion
-      '@ema-agent/events':
-        specifier: workspace:*
-        version: link:../../src/events
       '@ema-agent/git':
         specifier: workspace:*
         version: link:../../src/git
-      '@ema-agent/ids':
-        specifier: workspace:*
-        version: link:../../src/ids
       '@ema-agent/live2d-react':
         specifier: workspace:*
         version: link:../../src/live2d-react
@@ -254,7 +245,7 @@ importers:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
-  apps/localHost:
+  apps/server:
     dependencies:
       '@ema-agent/agent':
         specifier: workspace:*
@@ -280,15 +271,9 @@ importers:
       '@ema-agent/emotion':
         specifier: workspace:*
         version: link:../../src/emotion
-      '@ema-agent/events':
-        specifier: workspace:*
-        version: link:../../src/events
       '@ema-agent/git':
         specifier: workspace:*
         version: link:../../src/git
-      '@ema-agent/ids':
-        specifier: workspace:*
-        version: link:../../src/ids
       '@ema-agent/knowledge':
         specifier: workspace:*
         version: link:../../src/knowledge
@@ -434,9 +419,6 @@ importers:
 
   src/agent:
     dependencies:
-      '@ema-agent/ids':
-        specifier: workspace:*
-        version: link:../ids
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../llm
@@ -465,9 +447,6 @@ importers:
 
   src/attachments:
     dependencies:
-      '@ema-agent/ids':
-        specifier: workspace:*
-        version: link:../ids
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../llm
@@ -496,9 +475,6 @@ importers:
 
   src/backup:
     dependencies:
-      '@ema-agent/ids':
-        specifier: workspace:*
-        version: link:../ids
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage
@@ -521,9 +497,6 @@ importers:
 
   src/builtinTools:
     dependencies:
-      '@ema-agent/ids':
-        specifier: workspace:*
-        version: link:../ids
       '@ema-agent/knowledge':
         specifier: workspace:*
         version: link:../knowledge
@@ -606,15 +579,9 @@ importers:
 
   src/characters:
     dependencies:
-      '@ema-agent/ids':
-        specifier: workspace:*
-        version: link:../ids
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage
-      sharp:
-        specifier: ^0.33.5
-        version: 0.33.5
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -631,9 +598,6 @@ importers:
 
   src/compact:
     dependencies:
-      '@ema-agent/ids':
-        specifier: workspace:*
-        version: link:../ids
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../llm
@@ -687,9 +651,6 @@ importers:
         specifier: ^3.23.0
         version: 3.25.2(zod@3.25.76)
     devDependencies:
-      '@ema-agent/ids':
-        specifier: workspace:*
-        version: link:../ids
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.39
@@ -723,10 +684,6 @@ importers:
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
   src/emotion:
-    dependencies:
-      '@ema-agent/ids':
-        specifier: workspace:*
-        version: link:../ids
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -740,58 +697,6 @@ importers:
       vitest:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
-
-  src/events:
-    dependencies:
-      '@ema-agent/agent':
-        specifier: workspace:*
-        version: link:../agent
-      '@ema-agent/characters':
-        specifier: workspace:*
-        version: link:../characters
-      '@ema-agent/context':
-        specifier: workspace:*
-        version: link:../context
-      '@ema-agent/emotion':
-        specifier: workspace:*
-        version: link:../emotion
-      '@ema-agent/knowledge':
-        specifier: workspace:*
-        version: link:../knowledge
-      '@ema-agent/memory':
-        specifier: workspace:*
-        version: link:../memory
-      '@ema-agent/narrative':
-        specifier: workspace:*
-        version: link:../narrative
-      '@ema-agent/permission':
-        specifier: workspace:*
-        version: link:../permission
-      '@ema-agent/provider':
-        specifier: workspace:*
-        version: link:../providers
-      '@ema-agent/system':
-        specifier: workspace:*
-        version: link:../system
-      '@ema-agent/tasks':
-        specifier: workspace:*
-        version: link:../tasks
-      '@ema-agent/tools':
-        specifier: workspace:*
-        version: link:../tools
-      '@ema-agent/tts':
-        specifier: workspace:*
-        version: link:../tts
-      '@ema-agent/turn':
-        specifier: workspace:*
-        version: link:../turn
-    devDependencies:
-      rimraf:
-        specifier: ^5.0.0
-        version: 5.0.10
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
 
   src/git:
     devDependencies:
@@ -807,15 +712,6 @@ importers:
       vitest:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
-
-  src/ids:
-    devDependencies:
-      rimraf:
-        specifier: ^5.0.0
-        version: 5.0.10
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
 
   src/knowledge:
     dependencies:
@@ -983,9 +879,6 @@ importers:
       '@ema-agent/embed':
         specifier: workspace:*
         version: link:../embed
-      '@ema-agent/ids':
-        specifier: workspace:*
-        version: link:../ids
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../llm
@@ -1029,10 +922,6 @@ importers:
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
   src/narrative:
-    dependencies:
-      '@ema-agent/ids':
-        specifier: workspace:*
-        version: link:../ids
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -1049,9 +938,6 @@ importers:
 
   src/permission:
     dependencies:
-      '@ema-agent/ids':
-        specifier: workspace:*
-        version: link:../ids
       '@ema-agent/settings':
         specifier: workspace:*
         version: link:../settings
@@ -1145,9 +1031,6 @@ importers:
 
   src/session:
     dependencies:
-      '@ema-agent/ids':
-        specifier: workspace:*
-        version: link:../ids
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../llm
@@ -1229,9 +1112,6 @@ importers:
 
   src/speech:
     dependencies:
-      '@ema-agent/ids':
-        specifier: workspace:*
-        version: link:../ids
       '@ema-agent/tts':
         specifier: workspace:*
         version: link:../tts
@@ -1257,9 +1137,6 @@ importers:
       '@ema-agent/credential':
         specifier: workspace:*
         version: link:../../packages/credential
-      '@ema-agent/ids':
-        specifier: workspace:*
-        version: link:../ids
       '@ema-agent/provider':
         specifier: workspace:*
         version: link:../providers
@@ -1328,9 +1205,6 @@ importers:
 
   src/tasks:
     dependencies:
-      '@ema-agent/ids':
-        specifier: workspace:*
-        version: link:../ids
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage
@@ -1372,9 +1246,6 @@ importers:
 
   src/tools:
     dependencies:
-      '@ema-agent/ids':
-        specifier: workspace:*
-        version: link:../ids
       '@ema-agent/knowledge':
         specifier: workspace:*
         version: link:../knowledge
@@ -1464,9 +1335,12 @@ importers:
 
   src/turn:
     dependencies:
-      '@ema-agent/ids':
+      '@ema-agent/llm':
         specifier: workspace:*
-        version: link:../ids
+        version: link:../llm
+      '@ema-agent/storage':
+        specifier: workspace:*
+        version: link:../storage
     devDependencies:
       rimraf:
         specifier: ^5.0.0
@@ -1492,9 +1366,6 @@ importers:
       '@ema-agent/emotion':
         specifier: workspace:*
         version: link:../emotion
-      '@ema-agent/ids':
-        specifier: workspace:*
-        version: link:../ids
       '@ema-agent/knowledge':
         specifier: workspace:*
         version: link:../knowledge
@@ -2906,212 +2777,35 @@ packages:
     peerDependencies:
       '@pixi/core': 7.4.3
 
-  '@pixi/filter-adjustment@5.1.1':
-    resolution: {integrity: sha512-AUHe03rmqXwV1ylAHq62t19AolPWOOYomCcL+Qycb1tf+LbM8FWpGXC6wmU1PkUrhgNc958uM9TrA9nRpplViA==}
-    peerDependencies:
-      '@pixi/core': ^7.0.0-X
-
-  '@pixi/filter-advanced-bloom@5.1.1':
-    resolution: {integrity: sha512-C5AWmkWKvoYvJ+600qS7rC81E1X1clvrQLw4QE4IiFec5j1b07KhKE78w/BSRYMrBVa0cQ/ju0J1f7XoQYJfdQ==}
-    peerDependencies:
-      '@pixi/core': ^7.0.0-X
-
   '@pixi/filter-alpha@7.4.3':
     resolution: {integrity: sha512-YFdUB1I53USQb+9TEhS849dV2KZhbnNGIoBbOSThUJfXQc4pDguIFWMagVToAQYgmZ4C4AtYfVjaSEELrMcCdA==}
     peerDependencies:
       '@pixi/core': 7.4.3
-
-  '@pixi/filter-ascii@5.1.1':
-    resolution: {integrity: sha512-uGfpd7aYZuiEzkBH8asL/2j7L/7k/jCZRURjAU9c0unWlkagwIjvUwoPMsdzPNMh2DNQzCG1FPWseSbRFjUNow==}
-    peerDependencies:
-      '@pixi/core': ^7.0.0-X
-
-  '@pixi/filter-bevel@5.1.1':
-    resolution: {integrity: sha512-UGik6YEW+fnzVu1DV8ctbxS7eClJQzqaM2sPYI0MopaEE2mW35yjAcg9py9Kwx27BX8FniVRqtJOyKEw1A3mBA==}
-    peerDependencies:
-      '@pixi/core': ^7.0.0-X
-
-  '@pixi/filter-bloom@5.1.1':
-    resolution: {integrity: sha512-4/i+tMxAQdgezahxsVCqzkAyBAH4TxtuY/zo1wuCJybEqkKFIzOJ76Y4R/lJevEHS9CGpCTrvjRpup0Hze8k0Q==}
-    peerDependencies:
-      '@pixi/core': ^7.0.0-X
-      '@pixi/filter-alpha': ^7.0.0-X
-      '@pixi/filter-blur': ^7.0.0-X
 
   '@pixi/filter-blur@7.4.3':
     resolution: {integrity: sha512-ZFzS9L/whdRbs5A/EUgF3yQaBcxNarmbuwaMgrfnpQ84mRczkGByqDLGToadiufyals07ufTrXBGRle9lbtEDA==}
     peerDependencies:
       '@pixi/core': 7.4.3
 
-  '@pixi/filter-bulge-pinch@5.1.1':
-    resolution: {integrity: sha512-80I3g813td7Fnzi7IJSiR3z8gZlKblk6WN+5z6WnscQROcNEpck6lgWS/Lf/IdeHB/FtUKJCbx7RzxkUhiRTvA==}
-    peerDependencies:
-      '@pixi/core': ^7.0.0-X
-
-  '@pixi/filter-color-gradient@5.3.0':
-    resolution: {integrity: sha512-dMgBVkSsHOcmTs7HCmlO2hURsk7sT5sOUfnDw46iGqzGgQ+10gCZNaa/oybrDiyEkj+ijyVQVHwapHS3KUgAUQ==}
-    peerDependencies:
-      '@pixi/core': ^7.0.0-X
-
-  '@pixi/filter-color-map@5.1.1':
-    resolution: {integrity: sha512-WvDKvweXkg/t9t40thFlN1d/kUrWXGsxpRpFPNmkrZF6hNxdRjqgfg4wxUOev7uZwHIjcZtTfoLRKhJjF+1uqw==}
-    peerDependencies:
-      '@pixi/core': ^7.0.0-X
-
   '@pixi/filter-color-matrix@7.4.3':
     resolution: {integrity: sha512-TNu0h20SrzjUWIb5v19dAp1vPpqtG0w2XF9kIHN91bMNaf3R1jzhpWG6TtaVO9eo1IolWcEJLw38jIohyC+KNw==}
     peerDependencies:
       '@pixi/core': 7.4.3
-
-  '@pixi/filter-color-overlay@5.1.1':
-    resolution: {integrity: sha512-u8xuWsUePQ1NFBqpxDAFEujW4kImFIIvlp4D2xbRZqJ0RRbeeKEW31Sk4cxl1yFJKWIq0XLyT/TAepT9iIlEXg==}
-    peerDependencies:
-      '@pixi/core': ^7.0.0-X
-
-  '@pixi/filter-color-replace@5.1.1':
-    resolution: {integrity: sha512-t+FEEnuqvlU1cKMSe8939tIGCNJsqpyc7o5BzIunMxsZsHjMQWzZtWQKls+FSdSlFyk2TWYSXWAxtj2VBzBZBg==}
-    peerDependencies:
-      '@pixi/core': ^7.0.0-X
-
-  '@pixi/filter-convolution@5.1.1':
-    resolution: {integrity: sha512-68NNa7lXBFlRgP/ac/L/0bKk/9QvU8urh7CEeOnR9WJxjymglbAa0nM69TBlhg++Fus3t7Mz/jc/GIfPJ/VL6Q==}
-    peerDependencies:
-      '@pixi/core': ^7.0.0-X
-
-  '@pixi/filter-cross-hatch@5.1.1':
-    resolution: {integrity: sha512-g1hPHZYmGBpZtGojOtUOBWH6tqhtQGDo5xAp3o3gwmn2QnY087ZiYWFHF5ml+nTL62fEJ78uIpODscz4Y04e8w==}
-    peerDependencies:
-      '@pixi/core': ^7.0.0-X
-
-  '@pixi/filter-crt@5.1.1':
-    resolution: {integrity: sha512-w+rRbR7eTsPf18QPB68Wiyx8laC+v7fYb3hRVhnq/j6yRUJKQgg4HK5KLP9jfUJ9FJvxy4bzLSDQulvxbOMJZg==}
-    peerDependencies:
-      '@pixi/core': ^7.0.0-X
 
   '@pixi/filter-displacement@7.4.3':
     resolution: {integrity: sha512-ax+cFA2mEnKgqf9F8qInpv09GNWzjwnASLETpwPXzWBtlAlNCeHV2tCv3+SlMdEKUkwG9sA7AmjjjC2JBUyt+Q==}
     peerDependencies:
       '@pixi/core': 7.4.3
 
-  '@pixi/filter-dot@5.1.1':
-    resolution: {integrity: sha512-w3g6bumHzZgv9ktzegEWQS7OWuHH0QG76sbg/hZBy5K01dyuGAe1uUUnzVN5hZuFTD6q77T2UPlifhNI5j4ixg==}
-    peerDependencies:
-      '@pixi/core': ^7.0.0-X
-
-  '@pixi/filter-drop-shadow@5.2.0':
-    resolution: {integrity: sha512-cYS2KDER7cwCu0V4VNSxTHGvzmNcEXdC9j3031YBOkUAE3+p17LMS/TAt6XeMfJV7KaPuusvXy2NFgGkv3RDbw==}
-    peerDependencies:
-      '@pixi/core': ^7.0.0-X
-
-  '@pixi/filter-emboss@5.1.1':
-    resolution: {integrity: sha512-AoAFVzrMcCXldU+27hvJ95tcKNOVLnanlq1z838l2SzYGgso+ICbLauUz+o2PL/znudUJE6oky+I6WJzeavDsQ==}
-    peerDependencies:
-      '@pixi/core': ^7.0.0-X
-
   '@pixi/filter-fxaa@7.4.3':
     resolution: {integrity: sha512-y9jhho5cCflhEsPtNqqsd+XJHsb+/ysht4rG/VHQ8Z6pScHYpbgiEpowryGq8uSMQQwx6zKNS2DPiXdiOHPZsg==}
     peerDependencies:
       '@pixi/core': 7.4.3
 
-  '@pixi/filter-glitch@5.1.1':
-    resolution: {integrity: sha512-pl6jOQlzQGg6NwqCwlgioYhlwue2OSRBGByDzh6Y6Y/qxMBuzQi7W56GunhQW79Kpvj9ynDLAGxomvZsrX88qg==}
-    peerDependencies:
-      '@pixi/core': ^7.0.0-X
-
-  '@pixi/filter-glow@5.2.1':
-    resolution: {integrity: sha512-94I4XePDF9yqqA6KQuhPSphEHPJ2lXfqJLn0Bes8VVdwft0Ianj1wALqjoSUeBWqiJbhjBEXGDNkRZhPHvY3Xg==}
-    peerDependencies:
-      '@pixi/core': ^7.0.0-X
-
-  '@pixi/filter-godray@5.1.1':
-    resolution: {integrity: sha512-JCvNiKBF/01VyaBYzeusULg+h6kmBaYg0NruHwe/FaJMWCRIPOUBHMQIUavJR0JGE5s6bEIR8kRtdpf3RHiwqw==}
-    peerDependencies:
-      '@pixi/core': ^7.0.0-X
-
-  '@pixi/filter-grayscale@5.1.1':
-    resolution: {integrity: sha512-tRyggOhTdAQlQpgH/IzjCbORICua/Gm0JkKGOcdDQOHqt4bTVvAehQ59e2+A6A1yA8pevu2L/C25qQhsPgNW9w==}
-    peerDependencies:
-      '@pixi/core': ^7.0.0-X
-
-  '@pixi/filter-hsl-adjustment@5.3.0':
-    resolution: {integrity: sha512-F7gNLrPADGHkToX5toAp0yYs7FenVtHvbC6oC8fydu7/cuDmH0noobI6ShqTcdWJpJbBk1i9LMS93ifiz/13Aw==}
-    peerDependencies:
-      '@pixi/core': ^7.0.0-X
-
-  '@pixi/filter-kawase-blur@5.1.1':
-    resolution: {integrity: sha512-nPnJ1ChBFP+4pgFCwC0RJgHAJCetiHcQU3INH7zCdq88cFABmVmhN+wCKRNg4H7lF1EJjaXgFDkTrTreOD/bnw==}
-    peerDependencies:
-      '@pixi/core': ^7.0.0-X
-
-  '@pixi/filter-motion-blur@5.1.1':
-    resolution: {integrity: sha512-I94s3pW2GutjCyXiKQ/dI4Vl9JKne+Q8QgGRn1mrk0Uwg6DDO/OQI3jqv01S+SCTU3LZqhR/p8AQyxeDmOhr2w==}
-    peerDependencies:
-      '@pixi/core': ^7.0.0-X
-
-  '@pixi/filter-multi-color-replace@5.1.1':
-    resolution: {integrity: sha512-P1shsJXEOpJGe9FdCUgCMi/nius86lBfb6cDIFM4oXdZfzuBUfWjZfUm7uofOvK7IWSrlXYrYoqp75H0XrLZ8A==}
-    peerDependencies:
-      '@pixi/core': ^7.0.0-X
-
   '@pixi/filter-noise@7.4.3':
     resolution: {integrity: sha512-rwgSO3BKe1jW/P5CaOcfLKjfpl674aBEo/igi/3QLxA3ORhILNqWRsKkOwP8xF/ejI5NE4rMEkdv0LScbdGFhA==}
     peerDependencies:
       '@pixi/core': 7.4.3
-
-  '@pixi/filter-old-film@5.1.1':
-    resolution: {integrity: sha512-Jgq3eLbcQW48o+YxLe8+T4vsQrvBnKrZAHS3cu3yc2aBLaiVIj8EfYP3vpOPjkQlZ7JVRZNdELpYA6KCR+abXw==}
-    peerDependencies:
-      '@pixi/core': ^7.0.0-X
-
-  '@pixi/filter-outline@5.2.0':
-    resolution: {integrity: sha512-xKfAouhZNKl6A0RvxT5i+2/ean7r16dE/QswwIkbWvr2hhHlp4p9U6XsqdgUERCDxK+IZibMAumbWs4DGxOUeQ==}
-    peerDependencies:
-      '@pixi/core': ^7.0.0-X
-
-  '@pixi/filter-pixelate@5.1.1':
-    resolution: {integrity: sha512-qTs0Sv10aIbMFW//BPlhcFh1ByyKiVmvXfytYTTXNLrlK5DU3H3x8Pgy5Vy4lacS9VtOO69/CQ1QObBFCHnEBQ==}
-    peerDependencies:
-      '@pixi/core': ^7.0.0-X
-
-  '@pixi/filter-radial-blur@5.1.1':
-    resolution: {integrity: sha512-q6RreUM+RO25HZaxc6ceEOSi6chadv8vrCOvupNLSY+1lvXue0KyFK6vxMcMInNdqRGYWSyJ+ql3RyHMTr93aw==}
-    peerDependencies:
-      '@pixi/core': ^7.0.0-X
-
-  '@pixi/filter-reflection@5.1.1':
-    resolution: {integrity: sha512-ksmfrRfBqXZ+rEFuA0l2tf4k+yzTU8VcNMuhW7U+ggkWOP2OEHga+oOlJg6TnHjOEbxudCpag5Us6e9aCeKpEw==}
-    peerDependencies:
-      '@pixi/core': ^7.0.0-X
-
-  '@pixi/filter-rgb-split@5.1.1':
-    resolution: {integrity: sha512-DEeAYoPU2lbUTeNYK8e6q89jqtLeUYSkEdFK/a9IyxYkvJP2CPk+nVXIe48v3wORUf5DdP20k6yQzqoPZyP3ww==}
-    peerDependencies:
-      '@pixi/core': ^7.0.0-X
-
-  '@pixi/filter-shockwave@5.1.1':
-    resolution: {integrity: sha512-ovzOdAC2LCyWdxJC5PW97wSzHTNfjmKq4c/61cIO4sZp+9DB6n3b/6Rrad2jU346UATtM6K2XkmPY5p7SrRRXA==}
-    peerDependencies:
-      '@pixi/core': ^7.0.0-X
-
-  '@pixi/filter-simple-lightmap@5.1.1':
-    resolution: {integrity: sha512-S3cHUgbVvUgeef93f3trdL50+162Nyqa7DBYufkGw0dPjPecXyjTH47GJzxDqQPooRwHWWUG9W5EYC+XEwlV9w==}
-    peerDependencies:
-      '@pixi/core': ^7.0.0-X
-
-  '@pixi/filter-tilt-shift@5.2.0':
-    resolution: {integrity: sha512-bCQE/BTGsqu8EhRMyiGg+9/FXsPBYxjfODbGTWWQNsXtbFVqZXvg1vEjUZQXvuso1v/Fh/BtZ3u+t2kFfWpBXA==}
-    peerDependencies:
-      '@pixi/core': ^7.0.0-X
-
-  '@pixi/filter-twist@5.1.1':
-    resolution: {integrity: sha512-ZUxLmSHu7ZcP1OYmO9EsKgWDV/Ophf622N7YVei4opBrj/gBMuQZNvFIfnsm4l8yhqAwwzndSTVLNehq1A2ONw==}
-    peerDependencies:
-      '@pixi/core': ^7.0.0-X
-
-  '@pixi/filter-zoom-blur@5.1.1':
-    resolution: {integrity: sha512-0n10xOqACC2vm9Lpsq37Y/edDvp/B7xsBdkuWxeCI7Ta7J22fsJ8IHG1iUyxgdZGa+SCPcKiFoTrYEUu5PLCpA==}
-    peerDependencies:
-      '@pixi/core': ^7.0.0-X
 
   '@pixi/graphics@7.4.3':
     resolution: {integrity: sha512-wWLivD8/URb8A7X4TqCZGG39C91IE+aOuWY/z9NCz5Z6WvA/VWnsc5fLTlO+ggjGHgKF0cSucCXZfUe1wm0AOQ==}
@@ -6199,9 +5893,6 @@ packages:
     resolution: {integrity: sha512-QP88BAKvMam/3NxH6vj2o21R6MjxZUAd6nlwAS/pnGvN9IVLocLHxGYIzFhg6fUQ+5th6P4dv4eW9jX3DSIj7A==}
     engines: {node: '>=12'}
 
-  pixi-filters@5.3.0:
-    resolution: {integrity: sha512-Dyop7gqgHl5Jc/Bm0QH0CQIDogdICp3hf2CihvgI4AvQebIotPY3yX2MZ/YUcE/7b2aIQQQ2CCt/uc2bBnLRAg==}
-
   pixi-live2d-display@0.5.0-beta:
     resolution: {integrity: sha512-U2G20FnhmrepYuvWB4l0CLyIH43kz1lusuX9aC05+Ed11aBQCJIBKadIJuSzKXV6sqjTiH1aBZrS/CR2aUrEBQ==}
     peerDependencies:
@@ -8219,46 +7910,11 @@ snapshots:
     dependencies:
       '@pixi/core': 7.4.3
 
-  '@pixi/filter-adjustment@5.1.1(@pixi/core@7.4.3)':
-    dependencies:
-      '@pixi/core': 7.4.3
-
-  '@pixi/filter-advanced-bloom@5.1.1(@pixi/core@7.4.3)':
-    dependencies:
-      '@pixi/core': 7.4.3
-      '@pixi/filter-kawase-blur': 5.1.1(@pixi/core@7.4.3)
-
   '@pixi/filter-alpha@7.4.3(@pixi/core@7.4.3)':
     dependencies:
       '@pixi/core': 7.4.3
 
-  '@pixi/filter-ascii@5.1.1(@pixi/core@7.4.3)':
-    dependencies:
-      '@pixi/core': 7.4.3
-
-  '@pixi/filter-bevel@5.1.1(@pixi/core@7.4.3)':
-    dependencies:
-      '@pixi/core': 7.4.3
-
-  '@pixi/filter-bloom@5.1.1(@pixi/core@7.4.3)(@pixi/filter-alpha@7.4.3(@pixi/core@7.4.3))(@pixi/filter-blur@7.4.3(@pixi/core@7.4.3))':
-    dependencies:
-      '@pixi/core': 7.4.3
-      '@pixi/filter-alpha': 7.4.3(@pixi/core@7.4.3)
-      '@pixi/filter-blur': 7.4.3(@pixi/core@7.4.3)
-
   '@pixi/filter-blur@7.4.3(@pixi/core@7.4.3)':
-    dependencies:
-      '@pixi/core': 7.4.3
-
-  '@pixi/filter-bulge-pinch@5.1.1(@pixi/core@7.4.3)':
-    dependencies:
-      '@pixi/core': 7.4.3
-
-  '@pixi/filter-color-gradient@5.3.0(@pixi/core@7.4.3)':
-    dependencies:
-      '@pixi/core': 7.4.3
-
-  '@pixi/filter-color-map@5.1.1(@pixi/core@7.4.3)':
     dependencies:
       '@pixi/core': 7.4.3
 
@@ -8266,40 +7922,7 @@ snapshots:
     dependencies:
       '@pixi/core': 7.4.3
 
-  '@pixi/filter-color-overlay@5.1.1(@pixi/core@7.4.3)':
-    dependencies:
-      '@pixi/core': 7.4.3
-
-  '@pixi/filter-color-replace@5.1.1(@pixi/core@7.4.3)':
-    dependencies:
-      '@pixi/core': 7.4.3
-
-  '@pixi/filter-convolution@5.1.1(@pixi/core@7.4.3)':
-    dependencies:
-      '@pixi/core': 7.4.3
-
-  '@pixi/filter-cross-hatch@5.1.1(@pixi/core@7.4.3)':
-    dependencies:
-      '@pixi/core': 7.4.3
-
-  '@pixi/filter-crt@5.1.1(@pixi/core@7.4.3)':
-    dependencies:
-      '@pixi/core': 7.4.3
-
   '@pixi/filter-displacement@7.4.3(@pixi/core@7.4.3)':
-    dependencies:
-      '@pixi/core': 7.4.3
-
-  '@pixi/filter-dot@5.1.1(@pixi/core@7.4.3)':
-    dependencies:
-      '@pixi/core': 7.4.3
-
-  '@pixi/filter-drop-shadow@5.2.0(@pixi/core@7.4.3)':
-    dependencies:
-      '@pixi/core': 7.4.3
-      '@pixi/filter-kawase-blur': 5.1.1(@pixi/core@7.4.3)
-
-  '@pixi/filter-emboss@5.1.1(@pixi/core@7.4.3)':
     dependencies:
       '@pixi/core': 7.4.3
 
@@ -8307,83 +7930,7 @@ snapshots:
     dependencies:
       '@pixi/core': 7.4.3
 
-  '@pixi/filter-glitch@5.1.1(@pixi/core@7.4.3)':
-    dependencies:
-      '@pixi/core': 7.4.3
-
-  '@pixi/filter-glow@5.2.1(@pixi/core@7.4.3)':
-    dependencies:
-      '@pixi/core': 7.4.3
-
-  '@pixi/filter-godray@5.1.1(@pixi/core@7.4.3)':
-    dependencies:
-      '@pixi/core': 7.4.3
-
-  '@pixi/filter-grayscale@5.1.1(@pixi/core@7.4.3)':
-    dependencies:
-      '@pixi/core': 7.4.3
-
-  '@pixi/filter-hsl-adjustment@5.3.0(@pixi/core@7.4.3)':
-    dependencies:
-      '@pixi/core': 7.4.3
-
-  '@pixi/filter-kawase-blur@5.1.1(@pixi/core@7.4.3)':
-    dependencies:
-      '@pixi/core': 7.4.3
-
-  '@pixi/filter-motion-blur@5.1.1(@pixi/core@7.4.3)':
-    dependencies:
-      '@pixi/core': 7.4.3
-
-  '@pixi/filter-multi-color-replace@5.1.1(@pixi/core@7.4.3)':
-    dependencies:
-      '@pixi/core': 7.4.3
-
   '@pixi/filter-noise@7.4.3(@pixi/core@7.4.3)':
-    dependencies:
-      '@pixi/core': 7.4.3
-
-  '@pixi/filter-old-film@5.1.1(@pixi/core@7.4.3)':
-    dependencies:
-      '@pixi/core': 7.4.3
-
-  '@pixi/filter-outline@5.2.0(@pixi/core@7.4.3)':
-    dependencies:
-      '@pixi/core': 7.4.3
-
-  '@pixi/filter-pixelate@5.1.1(@pixi/core@7.4.3)':
-    dependencies:
-      '@pixi/core': 7.4.3
-
-  '@pixi/filter-radial-blur@5.1.1(@pixi/core@7.4.3)':
-    dependencies:
-      '@pixi/core': 7.4.3
-
-  '@pixi/filter-reflection@5.1.1(@pixi/core@7.4.3)':
-    dependencies:
-      '@pixi/core': 7.4.3
-
-  '@pixi/filter-rgb-split@5.1.1(@pixi/core@7.4.3)':
-    dependencies:
-      '@pixi/core': 7.4.3
-
-  '@pixi/filter-shockwave@5.1.1(@pixi/core@7.4.3)':
-    dependencies:
-      '@pixi/core': 7.4.3
-
-  '@pixi/filter-simple-lightmap@5.1.1(@pixi/core@7.4.3)':
-    dependencies:
-      '@pixi/core': 7.4.3
-
-  '@pixi/filter-tilt-shift@5.2.0(@pixi/core@7.4.3)':
-    dependencies:
-      '@pixi/core': 7.4.3
-
-  '@pixi/filter-twist@5.1.1(@pixi/core@7.4.3)':
-    dependencies:
-      '@pixi/core': 7.4.3
-
-  '@pixi/filter-zoom-blur@5.1.1(@pixi/core@7.4.3)':
     dependencies:
       '@pixi/core': 7.4.3
 
@@ -11964,48 +11511,6 @@ snapshots:
   picomatch@2.3.2: {}
 
   picomatch@4.0.4: {}
-
-  pixi-filters@5.3.0(@pixi/core@7.4.3)(@pixi/filter-alpha@7.4.3(@pixi/core@7.4.3))(@pixi/filter-blur@7.4.3(@pixi/core@7.4.3)):
-    dependencies:
-      '@pixi/filter-adjustment': 5.1.1(@pixi/core@7.4.3)
-      '@pixi/filter-advanced-bloom': 5.1.1(@pixi/core@7.4.3)
-      '@pixi/filter-ascii': 5.1.1(@pixi/core@7.4.3)
-      '@pixi/filter-bevel': 5.1.1(@pixi/core@7.4.3)
-      '@pixi/filter-bloom': 5.1.1(@pixi/core@7.4.3)(@pixi/filter-alpha@7.4.3(@pixi/core@7.4.3))(@pixi/filter-blur@7.4.3(@pixi/core@7.4.3))
-      '@pixi/filter-bulge-pinch': 5.1.1(@pixi/core@7.4.3)
-      '@pixi/filter-color-gradient': 5.3.0(@pixi/core@7.4.3)
-      '@pixi/filter-color-map': 5.1.1(@pixi/core@7.4.3)
-      '@pixi/filter-color-overlay': 5.1.1(@pixi/core@7.4.3)
-      '@pixi/filter-color-replace': 5.1.1(@pixi/core@7.4.3)
-      '@pixi/filter-convolution': 5.1.1(@pixi/core@7.4.3)
-      '@pixi/filter-cross-hatch': 5.1.1(@pixi/core@7.4.3)
-      '@pixi/filter-crt': 5.1.1(@pixi/core@7.4.3)
-      '@pixi/filter-dot': 5.1.1(@pixi/core@7.4.3)
-      '@pixi/filter-drop-shadow': 5.2.0(@pixi/core@7.4.3)
-      '@pixi/filter-emboss': 5.1.1(@pixi/core@7.4.3)
-      '@pixi/filter-glitch': 5.1.1(@pixi/core@7.4.3)
-      '@pixi/filter-glow': 5.2.1(@pixi/core@7.4.3)
-      '@pixi/filter-godray': 5.1.1(@pixi/core@7.4.3)
-      '@pixi/filter-grayscale': 5.1.1(@pixi/core@7.4.3)
-      '@pixi/filter-hsl-adjustment': 5.3.0(@pixi/core@7.4.3)
-      '@pixi/filter-kawase-blur': 5.1.1(@pixi/core@7.4.3)
-      '@pixi/filter-motion-blur': 5.1.1(@pixi/core@7.4.3)
-      '@pixi/filter-multi-color-replace': 5.1.1(@pixi/core@7.4.3)
-      '@pixi/filter-old-film': 5.1.1(@pixi/core@7.4.3)
-      '@pixi/filter-outline': 5.2.0(@pixi/core@7.4.3)
-      '@pixi/filter-pixelate': 5.1.1(@pixi/core@7.4.3)
-      '@pixi/filter-radial-blur': 5.1.1(@pixi/core@7.4.3)
-      '@pixi/filter-reflection': 5.1.1(@pixi/core@7.4.3)
-      '@pixi/filter-rgb-split': 5.1.1(@pixi/core@7.4.3)
-      '@pixi/filter-shockwave': 5.1.1(@pixi/core@7.4.3)
-      '@pixi/filter-simple-lightmap': 5.1.1(@pixi/core@7.4.3)
-      '@pixi/filter-tilt-shift': 5.2.0(@pixi/core@7.4.3)
-      '@pixi/filter-twist': 5.1.1(@pixi/core@7.4.3)
-      '@pixi/filter-zoom-blur': 5.1.1(@pixi/core@7.4.3)
-    transitivePeerDependencies:
-      - '@pixi/core'
-      - '@pixi/filter-alpha'
-      - '@pixi/filter-blur'
 
   pixi-live2d-display@0.5.0-beta(pixi.js@7.4.3):
     dependencies:

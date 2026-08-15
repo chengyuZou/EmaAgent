@@ -1,10 +1,9 @@
 // 以 Session 和 Turn 双重身份记录当前活动根 Turn
 
-import type { SessionId, TurnId } from '@ema-agent/ids';
 import { ActiveTurnAlreadyRegisteredError } from './errors.js';
 
 interface ActiveTurn {
-  turnId: TurnId;
+  turnId: string;
   abortController: AbortController;
 }
 
@@ -16,10 +15,10 @@ export class ActiveTurnRegistry {
    */
   private readonly listeners = new Set<(activeCount: number) => void>();
 
-  register(sessionId: SessionId, turnId: TurnId): AbortSignal {
-    const key = sessionId as string;
+  register(sessionId: string, turnId: string): AbortSignal {
+    const key = sessionId;
     if (this.turns.has(key)) {
-      throw new ActiveTurnAlreadyRegisteredError(sessionId as string);
+      throw new ActiveTurnAlreadyRegisteredError(sessionId);
     }
 
     const abortController = new AbortController();
@@ -29,24 +28,24 @@ export class ActiveTurnRegistry {
   }
 
   /** 只取消身份匹配的活动 Turn；迟到请求不会影响后继 Turn。 */
-  abort(sessionId: SessionId, turnId: TurnId): boolean {
-    const active = this.turns.get(sessionId as string);
+  abort(sessionId: string, turnId: string): boolean {
+    const active = this.turns.get(sessionId);
     if (!active || active.turnId !== turnId) return false;
     active.abortController.abort();
     return true;
   }
 
-  isRunning(sessionId: SessionId): boolean {
-    return this.turns.has(sessionId as string);
+  isRunning(sessionId: string): boolean {
+    return this.turns.has(sessionId);
   }
 
-  getActiveTurnId(sessionId: SessionId): TurnId | undefined {
-    return this.turns.get(sessionId as string)?.turnId;
+  getActiveTurnId(sessionId: string): string | undefined {
+    return this.turns.get(sessionId)?.turnId;
   }
 
   /** 只清除身份匹配的活动 Turn；返回 false 表示条目已更换或不存在。 */
-  clear(sessionId: SessionId, turnId: TurnId): boolean {
-    const key = sessionId as string;
+  clear(sessionId: string, turnId: string): boolean {
+    const key = sessionId;
     const active = this.turns.get(key);
     if (!active || active.turnId !== turnId) return false;
     this.turns.delete(key);
@@ -55,8 +54,8 @@ export class ActiveTurnRegistry {
   }
 
   /** Session 永久删除时丢弃运行态；普通 Turn 终态不得使用该入口。 */
-  discardSession(sessionId: SessionId): boolean {
-    if (!this.turns.delete(sessionId as string)) return false;
+  discardSession(sessionId: string): boolean {
+    if (!this.turns.delete(sessionId)) return false;
     this.notifyListeners();
     return true;
   }

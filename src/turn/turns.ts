@@ -1,7 +1,6 @@
 // 定义 Turn 的领域词汇、领域对象、创建输入、Wire 请求与终态统计。
 // 本文件是词汇叶（只依赖 ids 与 llm 的内容词汇类型）：任何包都可以 import 它，它永不 import 业务包。
 
-import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { ContentPart } from '@ema-agent/llm';
 
 /** 用户提交给 Turn 的附件能力与展示元数据。 */
@@ -32,8 +31,8 @@ export type TurnTriggerType = 'userMessage' | 'backgroundProcessCompleted';
 // ── Turn 领域对象（事实源；持久化行见 storage TurnRow，边界显式映射） ──────────
 
 export interface Turn {
-  readonly id: TurnId;
-  readonly sessionId: SessionId;
+  readonly id: string;
+  readonly sessionId: string;
   readonly status: TurnStatus;
   readonly triggerType: TurnTriggerType;
   readonly executionProfile: ExecutionProfile;
@@ -53,8 +52,8 @@ export interface Turn {
 
 export interface StartTurnInput {
   /** 内部恢复流程可预留稳定身份；公开请求始终由 Store 生成。 */
-  readonly turnId?: TurnId;
-  readonly sessionId: SessionId;
+  readonly turnId?: string;
+  readonly sessionId: string;
   readonly triggerType: TurnTriggerType;
   readonly executionProfile: ExecutionProfile;
   readonly narrativePolicy: NarrativePolicy;
@@ -75,7 +74,7 @@ export interface ListTurnIndexInput {
 }
 
 export interface TurnIndexItem {
-  turnId: TurnId;
+  turnId: string;
   createdAt: number;
   completedAt: number | null;
   status: TurnStatus;
@@ -91,7 +90,7 @@ export interface TurnIndexPage {
 }
 
 export interface ListTurnWindowInput {
-  anchorTurnId: TurnId;
+  anchorTurnId: string;
   /** 锚点之前需要读取的较旧 Turn 数量。 */
   beforeTurns?: number;
   /** 锚点之后需要读取的较新 Turn 数量。 */
@@ -100,7 +99,7 @@ export interface ListTurnWindowInput {
 
 /** 锚点窗口只含 Turn；消息正文由 session 侧按 turnIds 另取后由拼装层合成。 */
 export interface TurnWindow {
-  anchorTurnId: TurnId;
+  anchorTurnId: string;
   turns: Turn[];
   hasOlder: boolean;
   hasNewer: boolean;

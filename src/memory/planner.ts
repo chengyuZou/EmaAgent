@@ -1,5 +1,4 @@
 // 组织长期记忆的检索、提取、维护和后台修复，并向编排层提供窄入口。
-import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { ContextContributionRequest } from '@ema-agent/context';
 import { estimateTextTokens } from '@ema-agent/token';
 import type { MemoryDeps } from './deps.js';
@@ -182,11 +181,11 @@ export class MemoryPlanner {
 
   // ── Per-session overrides ───────────────────────────────────────────────────
 
-  getSessionOverrides(sessionId: SessionId): ResolvedSessionOverrides {
+  getSessionOverrides(sessionId: string): ResolvedSessionOverrides {
     return readOverrides(this.deps.memorySessionState, sessionId);
   }
 
-  setSessionOverrides(sessionId: SessionId, overrides: MemorySessionOverrides): void {
+  setSessionOverrides(sessionId: string, overrides: MemorySessionOverrides): void {
     writeOverrides(this.deps.memorySessionState, sessionId, overrides);
   }
 
@@ -281,7 +280,7 @@ export class MemoryPlanner {
   // ── Background work ─────────────────────────────────────────────────────────
 
   async recordTurnForExtraction(ctx: {
-    sessionId:     SessionId;
+    sessionId:     string;
     turnId:        string;
     executionProfile: ContextContributionRequest['executionProfile'];
     userText:      string;
@@ -290,7 +289,7 @@ export class MemoryPlanner {
     return recordTurnForExtraction(this.deps, this.settings, this.runner, (sid) => this.getSessionOverrides(sid), ctx);
   }
 
-  async forceExtract(sessionId: SessionId, executionProfile: ContextContributionRequest['executionProfile']): Promise<void> {
+  async forceExtract(sessionId: string, executionProfile: ContextContributionRequest['executionProfile']): Promise<void> {
     return handleForceExtract(this.runner, sessionId, executionProfile);
   }
 
@@ -301,12 +300,12 @@ export class MemoryPlanner {
   }
 
   /** Session 删除前停止新提取、撤销任务租约并取消事务外模型调用。 */
-  async beforeSessionDelete(sessionId: SessionId): Promise<void> {
+  async beforeSessionDelete(sessionId: string): Promise<void> {
     await this.runner.cancelSession(sessionId);
   }
 
   /** Data DB 删除成功后清理 Profile DB 软引用；长期 Memory 正文继续保留。 */
-  async afterSessionDelete(sessionId: SessionId): Promise<void> {
+  async afterSessionDelete(sessionId: string): Promise<void> {
     try {
       await this.commitCoordinator.runExclusive(() =>
         cleanupSessionMemoryReferences(this.deps, sessionId),
@@ -317,7 +316,7 @@ export class MemoryPlanner {
   }
 
   /** Session 删除在 Data DB 提交前失败时恢复 Extraction 入口。 */
-  cancelSessionDelete(sessionId: SessionId): void {
+  cancelSessionDelete(sessionId: string): void {
     this.runner.releaseSession(sessionId);
   }
 

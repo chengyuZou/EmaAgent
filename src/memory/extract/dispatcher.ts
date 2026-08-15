@@ -1,5 +1,4 @@
 import type { ExecutionProfile } from '@ema-agent/turn';
-import type { SessionId } from '@ema-agent/ids';
 import { bestEffort } from '../best-effort.js';
 import type { MemoryDeps } from '../deps.js';
 import type { MemorySettings } from '../types.js';
@@ -12,9 +11,9 @@ export async function recordTurnForExtraction(
   deps:                MemoryDeps,
   settings:            MemorySettings,
   runner:              MemoryTaskRunner,
-  getSessionOverrides: (sessionId: SessionId) => ResolvedSessionOverrides,
+  getSessionOverrides: (sessionId: string) => ResolvedSessionOverrides,
   ctx: {
-    sessionId:     SessionId;
+    sessionId:     string;
     turnId:        string;
     executionProfile: ExecutionProfile;
     userText:      string;
@@ -57,7 +56,7 @@ export async function recordTurnForExtraction(
 
 export async function handleForceExtract(
   runner:    MemoryTaskRunner,
-  sessionId: SessionId,
+  sessionId: string,
   executionProfile: ExecutionProfile,
 ): Promise<void> {
   bestEffort('forceExtract enqueue', () => {

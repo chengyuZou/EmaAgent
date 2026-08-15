@@ -1,5 +1,4 @@
 // 定义 Memory 召回、提取、维护和后台任务产生的业务事件。
-import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { ExecutionProfile } from '@ema-agent/turn';
 
 export type MemoryRecallLayer = 'layer0' | 'layer1' | 'layer2';
@@ -47,8 +46,8 @@ export interface MemoryRecallLayerReport {
 export type MemoryRecallEvent =
   | {
       type: 'memory_recall_evidence';
-      sessionId: SessionId;
-      turnId: TurnId;
+      sessionId: string;
+      turnId: string;
       executionProfile: ExecutionProfile;
       layer: MemoryRecallLayer;
       report: MemoryRecallLayerReport;
@@ -56,17 +55,17 @@ export type MemoryRecallEvent =
   | {
       /** 召回整体失败并降级为空贡献；Turn 继续，不带 Memory 上下文。 */
       type: 'memory_recall_unavailable';
-      sessionId: SessionId;
-      turnId: TurnId;
+      sessionId: string;
+      turnId: string;
       error: string;
       retryable: boolean;
     };
 
 export type MemoryBackgroundEvent =
-  | { type: 'memory_extraction_started'; sessionId: SessionId; turnId?: TurnId; queueDepth: number }
-  | { type: 'memory_extraction_completed'; sessionId: SessionId; nodes: number; edges: number; items: number; lazyQueued: number; durationMs: number }
-  | { type: 'memory_extraction_failed'; sessionId: SessionId; error: string }
-  | { type: 'memory_extraction_skipped'; sessionId: SessionId; reason: string }
+  | { type: 'memory_extraction_started'; sessionId: string; turnId?: string; queueDepth: number }
+  | { type: 'memory_extraction_completed'; sessionId: string; nodes: number; edges: number; items: number; lazyQueued: number; durationMs: number }
+  | { type: 'memory_extraction_failed'; sessionId: string; error: string }
+  | { type: 'memory_extraction_skipped'; sessionId: string; reason: string }
   | { type: 'memory_index_rebuilt'; backend: string; nodes: number; items: number; durationMs: number }
   | { type: 'memory_consolidation_started'; nodeCount: number }
   | { type: 'memory_consolidation_completed'; consolidated: number; durationMs: number }
@@ -88,7 +87,7 @@ export type MemoryBackgroundEvent =
       health: MemoryBackgroundHealth;
     }
   | { type: 'memory_node_merged'; nodeId: string; label: string; fragmentCount: number }
-  | { type: 'memory_task_started'; taskId: string; kind: string; sessionId?: SessionId }
+  | { type: 'memory_task_started'; taskId: string; kind: string; sessionId?: string }
   | { type: 'memory_task_completed'; taskId: string; kind: string; durationMs: number }
   | { type: 'memory_task_failed'; taskId: string; kind: string; error: string };
 

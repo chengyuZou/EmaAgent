@@ -2,7 +2,6 @@
 import { describe, it, expect } from 'vitest';
 import { Database, TurnsRepo } from '@ema-agent/storage';
 import { SessionStore } from '../store.js';
-import type { SessionId, TurnId } from '@ema-agent/ids';
 
 function makeStore() {
   const db = new Database({ memory: true, kind: 'data' });
@@ -12,8 +11,8 @@ function makeStore() {
 
 let turnSeq = 0;
 /** 消息夹具需要的 Turn 行；Turn 生命周期本身由 TurnStore 的测试覆盖。 */
-function insertTurnFixture(db: Database, sessionId: SessionId): TurnId {
-  const turnId = `turn-${++turnSeq}` as TurnId;
+function insertTurnFixture(db: Database, sessionId: string): string {
+  const turnId = `turn-${++turnSeq}`;
   new TurnsRepo(db.sqlite).insert({
     id: turnId,
     sessionId,
@@ -47,7 +46,7 @@ describe('SessionStore — session', () => {
 
   it('getSession throws for unknown id', () => {
     const { store } = makeStore();
-    expect(() => store.getSession('bad-id' as SessionId)).toThrow('session_not_found');
+    expect(() => store.getSession('bad-id')).toThrow('session_not_found');
   });
 
   it('归档的 Session 进入侧栏归档桶，不再出现在最近桶', () => {

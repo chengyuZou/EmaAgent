@@ -1,7 +1,6 @@
 // 执行 Memory 提取的模型准备、跨库提交、恢复标记和全局索引更新流水线。
 
 import type { ExecutionProfile } from '@ema-agent/turn';
-import type { SessionId } from '@ema-agent/ids';
 import type {
   MemoryNodeType,
   MemoryNodeRow,
@@ -59,7 +58,7 @@ export interface PipelineResult {
 export async function runExtractionPipeline(
   deps: ExtractionPipelineDeps,
   args: {
-    sessionId:           SessionId;
+    sessionId:           string;
     executionProfile:    ExecutionProfile;
     /** memory_tasks.id；同一任务重试时保持不变，用作跨数据库恢复键。 */
     runId:               string;
@@ -310,7 +309,7 @@ function validatePreparedExtraction(
 
 function validateRecoveryRun(
   run: MemoryExtractionRunRow,
-  sessionId: SessionId,
+  sessionId: string,
   sourceTurnId?: string,
 ): void {
   if (run.session_id !== sessionId) {

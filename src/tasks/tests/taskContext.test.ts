@@ -1,7 +1,6 @@
 // 验证动态 Task 提醒使用 Session 短序号表达依赖，不把内部 UUID 暴露给模型。
 
 import { describe, expect, it } from 'vitest';
-import { asSessionId, asTaskId, asTurnId } from '@ema-agent/ids';
 import type { Task } from '../types.js';
 import { formatTaskContextReminder } from '../taskContext.js';
 
@@ -25,15 +24,15 @@ function makeTask(
   blockedBy: Task['blockedBy'] = [],
 ): Task {
   return {
-    id: asTaskId(id),
-    sessionId: asSessionId('session-task'),
+    id,
+    sessionId: 'session-task',
     displayNumber,
     subject,
     description: subject,
     status: 'pending',
     blocks: [],
     blockedBy,
-    createdByTurnId: asTurnId('turn-task'),
+    createdByTurnId: 'turn-task',
     version: 0,
     createdAt: 1,
     updatedAt: 1,

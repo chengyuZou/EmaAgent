@@ -1,5 +1,4 @@
 import type { ExecutionProfile } from '@ema-agent/turn';
-import type { SessionId } from '@ema-agent/ids';
 import { estimateTextTokens } from '@ema-agent/token';
 import { buildNoteCompactionPrompt } from '@ema-agent/context';
 import { extractCompactionSummary } from '@ema-agent/context';
@@ -13,7 +12,7 @@ import type { ExtractionPipelineDeps } from './pipeline.js';
  */
 export function appendSessionNote(
   deps: ExtractionPipelineDeps,
-  sessionId: SessionId,
+  sessionId: string,
   delta: string,
   turnId: string,
 ): void {
@@ -35,7 +34,7 @@ export function appendSessionNote(
 
 export async function compactSessionNoteIfNeeded(
   deps: ExtractionPipelineDeps,
-  sessionId: SessionId,
+  sessionId: string,
   executionProfile: ExecutionProfile,
   signal?: AbortSignal,
   assertWritable?: () => void,

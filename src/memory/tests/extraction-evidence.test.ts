@@ -12,7 +12,6 @@ import {
   SessionNotesRepo,
   MemoryExtractionRunsRepo,
 } from '@ema-agent/storage';
-import { asSessionId, asTurnId } from '@ema-agent/ids';
 import { runExtraction } from '../extract/llm-call.js';
 import { buildExtractionPrompt } from '../extract/prompts.js';
 import { runExtractionPipeline } from '../extract/pipeline.js';
@@ -127,8 +126,8 @@ describe('未配置模型的显式跳过', () => {
     profileDb.migrate();
     dataDb.migrate();
 
-    const sessionId = asSessionId('session-skip');
-    const turnId = asTurnId('turn-skip');
+    const sessionId = 'session-skip';
+    const turnId = 'turn-skip';
     dataDb.sqlite
       .prepare(
         `INSERT INTO sessions

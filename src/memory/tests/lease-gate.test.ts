@@ -1,6 +1,5 @@
 // 测试提取流水线在租约丢失时的三个提交关闸：profile 前、data 前与 consolidation 前。
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { SessionId, TurnId } from '@ema-agent/ids';
 import {
   Database,
   MemoryEdgesRepo,
@@ -19,8 +18,8 @@ import { DEFAULT_MEMORY_SETTINGS } from '../types.js';
 import type { EmbedService } from '../embed/service.js';
 import { MemoryCommitCoordinator } from '../tasks/commit-coordinator.js';
 
-const sessionId = 'session-lease' as SessionId;
-const turnId = 'turn-lease' as TurnId;
+const sessionId = 'session-lease';
+const turnId = 'turn-lease';
 
 const opened: Database[] = [];
 

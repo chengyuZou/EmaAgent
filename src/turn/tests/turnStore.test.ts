@@ -1,7 +1,6 @@
 // 测试 Turn 生命周期、单 Session 运行锁、取消信号、删除守卫、导航查询与最后一轮回滚。
 import { describe, expect, it } from 'vitest';
 import { Database, MessagesRepo, SessionsRepo } from '@ema-agent/storage';
-import type { MessageId, SessionId, TurnId } from '@ema-agent/ids';
 import { TurnStore } from '../turnStore.js';
 
 let seq = 100;
@@ -12,17 +11,17 @@ function makeStore() {
   return { store: new TurnStore({ db }), db };
 }
 
-function insertSession(db: Database, id: string): SessionId {
+function insertSession(db: Database, id: string): string {
   new SessionsRepo(db.sqlite).insert({
-    id: id as SessionId,
+    id: id,
     title: id,
     createdAt: 1,
     updatedAt: 1,
   });
-  return id as SessionId;
+  return id;
 }
 
-function startTurn(store: TurnStore, sessionId: SessionId) {
+function startTurn(store: TurnStore, sessionId: string) {
   return store.startTurn({
     sessionId,
     triggerType: 'userMessage',
@@ -33,10 +32,10 @@ function startTurn(store: TurnStore, sessionId: SessionId) {
 
 function insertMessage(
   db: Database,
-  fixture: { sessionId: SessionId; turnId: TurnId; text: string; role?: 'user' | 'assistant' },
+  fixture: { sessionId: string; turnId: string; text: string; role?: 'user' | 'assistant' },
 ): void {
   new MessagesRepo(db.sqlite).insert({
-    id: `message-${seq}` as MessageId,
+    id: `message-${seq}`,
     sessionId: fixture.sessionId,
     turnId: fixture.turnId,
     role: fixture.role ?? 'user',
@@ -226,7 +225,7 @@ describe('TurnStore — 导航查询', () => {
   it('围绕锚点读取前后 Turn 窗口', () => {
     const { store, db } = makeStore();
     const sessionId = insertSession(db, 's1');
-    const turns: TurnId[] = [];
+    const turns: string[] = [];
     for (let index = 0; index < 5; index++) {
       const { turn } = startTurn(store, sessionId);
       turns.push(turn.id);
@@ -287,6 +286,6 @@ describe('TurnStore — 回滚', () => {
     store.abortTurn(s1, turn.id);
     store.clearRunning(s1, turn.id);
     expect(() => store.rewindLastTurn(s2, turn.id)).toThrow(/turn_ownership_violation/);
-    expect(() => store.rewindLastTurn(s1, 'turn-ghost' as TurnId)).toThrow(/turn_not_found/);
+    expect(() => store.rewindLastTurn(s1, 'turn-ghost')).toThrow(/turn_not_found/);
   });
 });

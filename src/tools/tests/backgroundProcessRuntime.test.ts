@@ -3,7 +3,6 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { asSessionId, asToolCallId, asTurnId, type SessionId, type ToolCallId, type TurnId } from '@ema-agent/ids';
 import type {
   CommandOutputChunk,
   CommandProcessHandle,
@@ -17,9 +16,9 @@ import type {
   BackgroundProcessEvent,
 } from '../background/types.js';
 
-const SESSION_ID = asSessionId('00000000-0000-4000-8000-0000000000a1');
-const TURN_ID = asTurnId('00000000-0000-4000-8000-0000000000b1');
-const TOOL_CALL_ID = asToolCallId('call-1');
+const SESSION_ID = '00000000-0000-4000-8000-0000000000a1';
+const TURN_ID = '00000000-0000-4000-8000-0000000000b1';
+const TOOL_CALL_ID = 'call-1';
 
 // ── 可控假进程 ───────────────────────────────────────────────────────────────
 
@@ -93,7 +92,7 @@ interface Fixture {
   runtime: BackgroundProcessRuntime;
   runner: FakeRunner;
   events: BackgroundProcessEvent[];
-  notified: SessionId[];
+  notified: string[];
   repo: BackgroundProcessesRepo;
   dataDir: string;
   db: Database;

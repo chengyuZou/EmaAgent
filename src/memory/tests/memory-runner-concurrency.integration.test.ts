@@ -1,7 +1,6 @@
 // 测试 Memory worker 只并发不同 Session、同 Session 保序，并在关机后停止认领新任务。
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { asSessionId } from '@ema-agent/ids';
 import { Database, MemoryTasksRepo } from '@ema-agent/storage';
 import { MemoryCommitCoordinator } from '../tasks/commit-coordinator.js';
 import {

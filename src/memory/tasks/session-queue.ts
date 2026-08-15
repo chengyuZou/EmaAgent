@@ -1,5 +1,3 @@
-import type { SessionId } from '@ema-agent/ids';
-
 /**
  * Serialises async work within a single session. Different sessions run their
  * tasks in parallel — only same-session work is forced into a chain.
@@ -11,9 +9,9 @@ import type { SessionId } from '@ema-agent/ids';
  * task never blocks the next — failure handling lives inside each task.
  */
 export class SessionTaskQueue {
-  private readonly chains = new Map<SessionId, Promise<unknown>>();
+  private readonly chains = new Map<string, Promise<unknown>>();
 
-  enqueue<T>(sessionId: SessionId, task: () => Promise<T>): Promise<T> {
+  enqueue<T>(sessionId: string, task: () => Promise<T>): Promise<T> {
     const prev = this.chains.get(sessionId) ?? Promise.resolve();
     const next = prev.then(task, task);
     const stored = next.catch(() => undefined);
@@ -27,7 +25,7 @@ export class SessionTaskQueue {
   }
 
   /** Wait for all currently-queued work for a session to finish. */
-  async drain(sessionId: SessionId): Promise<void> {
+  async drain(sessionId: string): Promise<void> {
     const chain = this.chains.get(sessionId);
     if (chain) {
       try { await chain; } catch { /* swallowed by allSettled-style chain */ }

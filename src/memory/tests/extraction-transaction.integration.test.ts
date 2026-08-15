@@ -1,6 +1,5 @@
 // 测试 Memory 提取在 profile/data 双数据库间失败后的事务回滚与幂等恢复。
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { SessionId, TurnId } from '@ema-agent/ids';
 import {
   Database,
   MemoryEdgesRepo,
@@ -18,8 +17,8 @@ import { DEFAULT_MEMORY_SETTINGS } from '../types.js';
 import type { EmbedService } from '../embed/service.js';
 import { MemoryCommitCoordinator } from '../tasks/commit-coordinator.js';
 
-const sessionId = 'session-b015' as SessionId;
-const turnId = 'turn-b015' as TurnId;
+const sessionId = 'session-b015';
+const turnId = 'turn-b015';
 
 interface Harness {
   profileDb: Database;

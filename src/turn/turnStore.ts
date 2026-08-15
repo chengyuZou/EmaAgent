@@ -12,7 +12,6 @@ import {
   type TurnIdPageCursor,
   type TurnRow,
 } from '@ema-agent/storage';
-import { type SessionId, type TurnId, asTurnId } from '@ema-agent/ids';
 import type {
   CompleteTurnInput,
   ListTurnIndexInput,
@@ -77,7 +76,7 @@ export class TurnStore {
     this.turnsRepo.abortStale(input.sessionId, now);
 
     this.requireSessionRow(input.sessionId);
-    const turnId = input.turnId ?? asTurnId(crypto.randomUUID());
+    const turnId = input.turnId ?? crypto.randomUUID();
     this.turnsRepo.insert({
       id:           turnId,
       sessionId:    input.sessionId,
@@ -92,7 +91,7 @@ export class TurnStore {
     return { turn: this.requireTurn(turnId), signal };
   }
 
-  completeTurn(turnId: TurnId, usage: CompleteTurnInput = {}): void {
+  completeTurn(turnId: string, usage: CompleteTurnInput = {}): void {
     this.requireTurn(turnId);
     this.turnsRepo.complete(turnId, {
       status:             'completed',
@@ -105,7 +104,7 @@ export class TurnStore {
 
   /** 提交 failed 终态；失败前已产生的迭代与 token 用量仍是真实事实，随终态一起写入。 */
   failTurn(
-    turnId: TurnId,
+    turnId: string,
     failure: { errorCode: string; errorMessage?: string; usage?: CompleteTurnInput },
   ): void {
     this.requireTurn(turnId);
@@ -119,7 +118,7 @@ export class TurnStore {
   }
 
   /** 触发取消信号并提交 Turn 的 aborted 终态。 */
-  abortTurn(sessionId: SessionId, turnId: TurnId): void {
+  abortTurn(sessionId: string, turnId: string): void {
     this.assertTurnOwnership(sessionId, turnId);
     const activeTurnId = this.registry.getActiveTurnId(sessionId);
     if (activeTurnId !== turnId) {
@@ -137,12 +136,12 @@ export class TurnStore {
    * 提交 Turn 终态，只发信号；执行流收拢工具和 Subagent 后由自己提交
    * aborted/cancelled，避免协调层与执行器双写终态。用户主动取消走 abortTurn。
    */
-  requestAbort(sessionId: SessionId, turnId: TurnId): void {
+  requestAbort(sessionId: string, turnId: string): void {
     this.registry.abort(sessionId, turnId);
   }
 
   /** 只释放指定 Turn 的运行锁，迟到 finally 不得清掉同 Session 的后继 Turn。 */
-  clearRunning(sessionId: SessionId, turnId: TurnId): void {
+  clearRunning(sessionId: string, turnId: string): void {
     this.registry.clear(sessionId, turnId);
   }
 
@@ -154,12 +153,12 @@ export class TurnStore {
 
   // ── 运行态读取 ──────────────────────────────────────────────────────────────
 
-  getTurn(id: TurnId): Turn | undefined {
+  getTurn(id: string): Turn | undefined {
     const row = this.turnsRepo.findById(id);
     return row ? toTurn(row) : undefined;
   }
 
-  getActiveTurn(sessionId: SessionId): Turn | undefined {
+  getActiveTurn(sessionId: string): Turn | undefined {
     const turnId = this.registry.getActiveTurnId(sessionId);
     return turnId ? this.getTurn(turnId) : undefined;
   }
@@ -181,7 +180,7 @@ export class TurnStore {
    * 活动表只覆盖"正在跑"的 Turn；删除窗口内（运行中 Turn 已中止、数据库行还没删）
    * 新的用户输入仍可能到达，没有这个守卫就会在被删除的 Session 上再开一轮。
    */
-  beginSessionDeletion(id: SessionId): void {
+  beginSessionDeletion(id: string): void {
     this.requireSessionRow(id);
     if (this.deletingSessions.has(id)) {
       throw new Error(`session_deleting: ${id}`);
@@ -192,25 +191,25 @@ export class TurnStore {
   }
 
   /** 跨模块准备失败时恢复 Session 的可运行状态。 */
-  cancelSessionDeletion(id: SessionId): void {
+  cancelSessionDeletion(id: string): void {
     this.deletingSessions.delete(id);
   }
 
   /** Session 行删除后丢弃其运行态条目；普通 Turn 终态不得使用该入口。 */
-  discardSession(id: SessionId): void {
+  discardSession(id: string): void {
     this.registry.discardSession(id);
     this.deletingSessions.delete(id);
   }
 
   // ── 导航查询 ────────────────────────────────────────────────────────────────
 
-  listTurns(sessionId: SessionId, limit = 50): Turn[] {
+  listTurns(sessionId: string, limit = 50): Turn[] {
     return this.turnsRepo.listForSession(sessionId, limit).map(toTurn);
   }
 
   /** 为长 Session 提供不含消息正文的轻量 Turn 导航索引。 */
   listTurnIndex(
-    sessionId: SessionId,
+    sessionId: string,
     input: ListTurnIndexInput = {},
   ): TurnIndexPage {
     this.requireSessionRow(sessionId);
@@ -225,7 +224,7 @@ export class TurnStore {
 
     return {
       items: page.rows.map((row) => ({
-        turnId: row.id as TurnId,
+        turnId: row.id,
         createdAt: row.created_at,
         completedAt: row.completed_at,
         status: row.status,
@@ -241,7 +240,7 @@ export class TurnStore {
    * 按锚点 Turn 读取前后有界窗口（旧到新）。消息正文由 SessionStore
    * 按窗口内 turnIds 另取，拼装层（Server 路由）合成完整窗口。
    */
-  listTurnWindow(sessionId: SessionId, input: ListTurnWindowInput): TurnWindow {
+  listTurnWindow(sessionId: string, input: ListTurnWindowInput): TurnWindow {
     this.requireSessionRow(sessionId);
     this.assertTurnOwnership(sessionId, input.anchorTurnId);
     const beforeTurns = normaliseIntegerLimit(
@@ -280,7 +279,7 @@ export class TurnStore {
 
   /** 启动恢复等内部任务使用的轻量 Turn ID 游标页，不加载正文和其他领域对象。 */
   listTurnIdsPage(
-    sessionId: SessionId,
+    sessionId: string,
     cursor?: TurnIdPageCursor,
     limit = 1_000,
   ): TurnIdPage {
@@ -295,7 +294,7 @@ export class TurnStore {
    * 这不是任意历史删除：运行中的 Turn、非最新 Turn，以及已被持久 Task
    * 引用的 Turn 都会拒绝。文件、网络请求等外部副作用不会被伪装成已撤销。
    */
-  rewindLastTurn(sessionId: SessionId, turnId: TurnId): { turnId: TurnId } {
+  rewindLastTurn(sessionId: string, turnId: string): { turnId: string } {
     this.assertTurnOwnership(sessionId, turnId);
     if (this.registry.isRunning(sessionId)) {
       throw new Error(`turn_running: ${turnId}`);
@@ -322,7 +321,7 @@ export class TurnStore {
   }
 
   /** 校验 turn 属于指定 session；跨模块写入前的归属防线。 */
-  assertTurnOwnership(sessionId: SessionId, turnId: TurnId): void {
+  assertTurnOwnership(sessionId: string, turnId: string): void {
     const turn = this.requireTurn(turnId);
     if (turn.sessionId !== sessionId) {
       throw new TurnOwnershipError(
@@ -333,13 +332,13 @@ export class TurnStore {
 
   // ── 归属读取与监听器 ─────────────────────────────────────────────────────────
 
-  private requireSessionRow(id: SessionId): void {
+  private requireSessionRow(id: string): void {
     if (!this.sessionsRepo.findById(id)) {
       throw new Error(`session_not_found: ${id}`);
     }
   }
 
-  private requireTurn(id: TurnId): Turn {
+  private requireTurn(id: string): Turn {
     const row = this.turnsRepo.findById(id);
     if (!row) throw new Error(`turn_not_found: ${id}`);
     return toTurn(row);
@@ -350,8 +349,8 @@ export class TurnStore {
 
 function toTurn(row: TurnRow): Turn {
   return {
-    id: row.id as TurnId,
-    sessionId: row.session_id as SessionId,
+    id: row.id,
+    sessionId: row.session_id,
     status: row.status,
     triggerType: row.trigger_type,
     executionProfile: row.execution_profile,

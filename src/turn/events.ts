@@ -1,5 +1,4 @@
 // 定义一次 Turn 自身的生命周期、模型输出投影与请求降级事件。
-import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { TurnFailureCode } from './errors.js';
 import type { ExecutionProfile, NarrativePolicy, TurnStats } from './turns.js';
 
@@ -16,41 +15,41 @@ export interface RequestDegradationNotice {
 export type TurnEvent =
   | {
       type: 'turn_started';
-      sessionId: SessionId;
-      turnId: TurnId;
+      sessionId: string;
+      turnId: string;
       executionProfile: ExecutionProfile;
       narrativePolicy: NarrativePolicy;
     }
   | {
       type: 'usage_update';
-      sessionId: SessionId;
-      turnId: TurnId;
+      sessionId: string;
+      turnId: string;
       inputTokens: number;
       outputTokens: number;
     }
   | {
       type: 'turn_completed';
-      sessionId: SessionId;
-      turnId: TurnId;
+      sessionId: string;
+      turnId: string;
       stats: TurnStats;
     }
   | {
       type: 'turn_failed';
-      sessionId: SessionId;
-      turnId: TurnId;
+      sessionId: string;
+      turnId: string;
       code: TurnFailureCode;
       message: string;
     }
   | {
       type: 'turn_aborted';
-      sessionId: SessionId;
-      turnId: TurnId;
+      sessionId: string;
+      turnId: string;
       reason: string;
     }
   | {
       type: 'turn_projection_warning';
-      sessionId: SessionId;
-      turnId: TurnId;
+      sessionId: string;
+      turnId: string;
       projection: 'subagent_transcript' | 'turn_audio';
       code: string;
       message: string;
@@ -58,26 +57,26 @@ export type TurnEvent =
     }
   | ({
       type: 'request_degraded';
-      sessionId: SessionId;
-      turnId: TurnId;
+      sessionId: string;
+      turnId: string;
     } & RequestDegradationNotice)
   | {
       type: 'output_text_delta';
-      sessionId: SessionId;
-      turnId: TurnId;
+      sessionId: string;
+      turnId: string;
       blockIndex: number;
       delta: string;
     }
   | {
       type: 'reasoning_delta';
-      sessionId: SessionId;
-      turnId: TurnId;
+      sessionId: string;
+      turnId: string;
       blockIndex: number;
       delta: string;
     }
   | {
       type: 'reasoning_complete';
-      sessionId: SessionId;
-      turnId: TurnId;
+      sessionId: string;
+      turnId: string;
       blockIndex: number;
     };

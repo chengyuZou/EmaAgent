@@ -1,5 +1,4 @@
 import crypto from 'node:crypto';
-import type { SessionId } from '@ema-agent/ids';
 import type { EmbeddedText } from '../types.js';
 import type { ExtractedNode, ExtractionOutput, PendingFragment } from './types.js';
 import { unpackEmbedding } from '../embed/similarity.js';
@@ -58,7 +57,7 @@ export async function planNodeDuplicateJudgments(
 
 export function processNodes(
   deps: ExtractionPipelineDeps,
-  sessionId: SessionId,
+  sessionId: string,
   output: ExtractionOutput,
   fragments: PendingFragment[],
   stats: PipelineResult,
@@ -86,7 +85,7 @@ export function processNodes(
 
 export function routeCandidateNode(
   deps: ExtractionPipelineDeps,
-  sessionId: SessionId,
+  sessionId: string,
   candidate: ExtractedNode,
   embedded: EmbeddedText | null,
   fragments: PendingFragment[],
@@ -161,7 +160,7 @@ export function enqueueLazyUpdate(
   nodeId: string,
   candidate: ExtractedNode,
   fragments: PendingFragment[],
-  sessionId: SessionId,
+  sessionId: string,
   stats: PipelineResult,
 ): void {
   const source = fragments[0];

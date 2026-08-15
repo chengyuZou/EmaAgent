@@ -4,7 +4,6 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { asSessionId, asTurnId } from '@ema-agent/ids';
 import { PermissionEngine } from '../permissionEngine.js';
 import { InMemoryPermissionRuleStore } from '../policy/permissionRuleStore.js';
 import type { PermissionRequest } from '../types.js';
@@ -77,8 +76,8 @@ describe('Permission 路径授权', () => {
       },
       context: {
         mode: 'default',
-        sessionId: asSessionId('session-a'),
-        turnId: asTurnId('turn-a'),
+        sessionId: 'session-a',
+        turnId: 'turn-a',
         internalPaths: { turnScratchpad: runtimeRoot },
       },
     };

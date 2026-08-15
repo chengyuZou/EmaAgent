@@ -1,12 +1,11 @@
 // 测试原子 Narrative Recall 的结构化部分失败、空结果、整体失败与取消语义。
 import { describe, expect, it } from 'vitest';
-import type { SessionId, TurnId } from '@ema-agent/ids';
 import { NarrativeRequestError } from '../errors.js';
 import type { NarrativeEvent } from '../events.js';
 import { prepareNarrativeRecall } from '../recall.js';
 
-const sessionId = 'session-narrative' as SessionId;
-const turnId = 'turn-narrative' as TurnId;
+const sessionId = 'session-narrative';
+const turnId = 'turn-narrative';
 
 describe('Narrative 原子召回', () => {
   it('一次响应保留成功时间线和结构化部分失败', async () => {

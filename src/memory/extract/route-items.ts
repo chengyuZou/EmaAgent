@@ -1,6 +1,5 @@
 import type { ExecutionProfile } from '@ema-agent/turn';
 import crypto from 'node:crypto';
-import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { EmbeddedText } from '../types.js';
 import type { ExtractionOutput } from './types.js';
 import { unpackEmbedding } from '../embed/similarity.js';
@@ -9,12 +8,12 @@ import type { PendingIndexMutation } from './index-mutations.js';
 
 export function processItems(
   deps: ExtractionPipelineDeps,
-  sessionId: SessionId,
+  sessionId: string,
   executionProfile: ExecutionProfile,
   output: ExtractionOutput,
   stats: PipelineResult,
   precomputedEmbeddings: EmbeddedText[] | null,
-  extractionTurnId: TurnId,
+  extractionTurnId: string,
   indexMutations: PendingIndexMutation[],
 ): void {
   if (output.memory_items.length === 0) return;

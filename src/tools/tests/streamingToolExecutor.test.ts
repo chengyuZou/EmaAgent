@@ -1,7 +1,6 @@
 // 测试流式调度器的并发屏障、模型顺序 FIFO、交付/关账握手与取消。
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { asSessionId, asTurnId } from '@ema-agent/ids';
 import type { PermissionAuthorizer } from '@ema-agent/permission';
 import {
   buildTool,
@@ -15,8 +14,8 @@ import {
 } from '../execution/streamingToolExecutor.js';
 import type { ToolExecutionLiveEvent } from '../execution/toolCallExecution.js';
 
-const SESSION_ID = asSessionId('00000000-0000-4000-8000-0000000000a1');
-const TURN_ID = asTurnId('00000000-0000-4000-8000-0000000000b1');
+const SESSION_ID = '00000000-0000-4000-8000-0000000000a1';
+const TURN_ID = '00000000-0000-4000-8000-0000000000b1';
 
 const ALLOW_PERMISSION: PermissionAuthorizer = {
   authorize: async () => ({ outcome: 'allow', reason: { type: 'mode', mode: 'default' } }),

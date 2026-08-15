@@ -2,7 +2,6 @@
 
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { asSessionId, asToolCallId, asTurnId } from '@ema-agent/ids';
 import { PermissionEngine } from '../permissionEngine.js';
 import { InMemoryPermissionRuleStore } from '../policy/permissionRuleStore.js';
 import type { AskPermissionFn, PermissionRequest } from '../types.js';
@@ -19,9 +18,9 @@ function request(session = 'session-a'): PermissionRequest {
     context: {
       mode: 'default',
       workspaceRoot: path.resolve('D:/workspace'),
-      sessionId: asSessionId(session),
-      turnId: asTurnId(`turn-${session}`),
-      toolCallId: asToolCallId(`call-${session}`),
+      sessionId: session,
+      turnId: `turn-${session}`,
+      toolCallId: `call-${session}`,
     },
   };
 }

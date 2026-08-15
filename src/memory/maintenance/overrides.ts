@@ -1,4 +1,3 @@
-import type { SessionId } from '@ema-agent/ids';
 import type { MemorySessionStateRepo } from '@ema-agent/storage';
 
 // ── Per-session memory overrides ─────────────────────────────────────────────
@@ -46,7 +45,7 @@ export const DEFAULT_OVERRIDES: ResolvedSessionOverrides = {
 
 export function readOverrides(
   repo:      MemorySessionStateRepo,
-  sessionId: SessionId,
+  sessionId: string,
 ): ResolvedSessionOverrides {
   const stored = repo.getOverrides(sessionId);
   if (!stored || typeof stored !== 'object' || Object.keys(stored).length === 0) {
@@ -57,7 +56,7 @@ export function readOverrides(
 
 export function writeOverrides(
   repo:      MemorySessionStateRepo,
-  sessionId: SessionId,
+  sessionId: string,
   overrides: MemorySessionOverrides,
 ): void {
   repo.setOverrides(sessionId, overrides as Record<string, unknown>);

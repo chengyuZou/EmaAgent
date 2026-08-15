@@ -1,6 +1,5 @@
 // 清理 Session 删除后留在 Profile DB 的 Memory 软引用，同时保留已经形成的长期记忆。
 
-import { asSessionId, type SessionId } from '@ema-agent/ids';
 import type { MemoryDeps } from './deps.js';
 
 export interface SessionMemoryCleanupReport {
@@ -18,7 +17,7 @@ export interface OrphanSessionMemoryCleanupReport {
 /** 在一个 Profile DB 事务中清掉指定 Session 的全部跨库软引用。 */
 export function cleanupSessionMemoryReferences(
   deps: MemoryDeps,
-  sessionId: SessionId,
+  sessionId: string,
 ): SessionMemoryCleanupReport {
   return deps.runProfileTransaction(() => ({
     nodeSourcesDeleted: deps.nodeSources.deleteBySession(sessionId),
@@ -45,7 +44,7 @@ export function cleanupOrphanSessionMemoryReferences(
   let orphanSessions = 0;
   let referencesChanged = 0;
   for (const rawSessionId of [...referencedSessions].sort()) {
-    const sessionId = asSessionId(rawSessionId);
+    const sessionId = rawSessionId;
     if (deps.session.sessionExists(sessionId)) continue;
 
     const report = cleanupSessionMemoryReferences(deps, sessionId);

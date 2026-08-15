@@ -1,4 +1,3 @@
-import type { SessionId } from '@ema-agent/ids';
 import { estimateTextTokens } from '@ema-agent/token';
 import { bestEffort, bestEffortAsync } from '../best-effort.js';
 import type { MemoryDeps } from '../deps.js';
@@ -69,7 +68,7 @@ export async function recordSurfaced(
   deps:      MemoryDeps,
   commitCoordinator: MemoryCommitCoordinator,
   settings:  MemorySettings,
-  sessionId: SessionId,
+  sessionId: string,
   prior:     AlreadySurfaced,
   bundle:    { layer0?: GraphRecallResult | null; layer2?: EpisodicRecallResult | null },
 ): Promise<void> {
@@ -121,7 +120,7 @@ export async function planRecall(
   itemsIndex:          VectorIndex | null,
   indexSpaceId:        string | null,
   commitCoordinator:   MemoryCommitCoordinator,
-  getSessionOverrides: (sessionId: SessionId) => ResolvedSessionOverrides,
+  getSessionOverrides: (sessionId: string) => ResolvedSessionOverrides,
   ctx:                 PlanContext,
 ): Promise<RecallBundle> {
   if (!settings.enabled) {

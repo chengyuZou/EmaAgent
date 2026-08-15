@@ -1,7 +1,6 @@
 // 测试 Session 删除与启动恢复只清理跨库来源软引用，不误删全局 Memory 正文。
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { asSessionId } from '@ema-agent/ids';
 import {
   Database,
   MemoryExtractionRunsRepo,

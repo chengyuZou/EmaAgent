@@ -1,4 +1,3 @@
-import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { ExecutionProfile } from '@ema-agent/turn';
 import type { MemoryEvent, MemoryRecallEvent } from './events.js';
 import type { MemoryNodeType, MemoryItemKind } from '@ema-agent/storage';
@@ -12,8 +11,8 @@ import type {
 // ── Recall planning input：Turn Context 在根执行开始前提供的检索事实 ──────────
 
 export interface PlanContext {
-  sessionId:    SessionId;
-  turnId:       TurnId;
+  sessionId:    string;
+  turnId:       string;
   executionProfile: ExecutionProfile;
   /** Plain-text excerpt of the current user message used as the recall query. */
   userInput:    string;

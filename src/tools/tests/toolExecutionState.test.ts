@@ -1,6 +1,5 @@
 // 测试 Tool 执行状态机的合法迁移、CAS 冲突防护与从 Message 事实推终态。
 import { describe, expect, it } from 'vitest';
-import { asSessionId, asToolCallId, asTurnId, type SessionId, type TurnId } from '@ema-agent/ids';
 import {
   ToolExecutionState,
   ToolExecutionStateConflictError,
@@ -9,8 +8,8 @@ import {
   type ToolExecutionStatus,
 } from '../index.js';
 
-const SESSION_ID = asSessionId('00000000-0000-4000-8000-0000000000a1');
-const TURN_ID = asTurnId('00000000-0000-4000-8000-0000000000b1');
+const SESSION_ID = '00000000-0000-4000-8000-0000000000a1';
+const TURN_ID = '00000000-0000-4000-8000-0000000000b1';
 
 /** 内存版原子存储:与 SQL 实现同语义(version CAS + from 集合)。 */
 class InMemoryStore implements ToolExecutionStateStore {
@@ -32,7 +31,7 @@ class InMemoryStore implements ToolExecutionStateStore {
     return this.rows.get(callId);
   }
 
-  listForTurn(turnId: TurnId) {
+  listForTurn(turnId: string) {
     return [...this.rows.values()].filter(row => row.turnId === turnId);
   }
 
@@ -66,7 +65,7 @@ class InMemoryStore implements ToolExecutionStateStore {
 
 function createState(): { state: ToolExecutionState; callId: ReturnType<typeof asToolCallId> } {
   const state = new ToolExecutionState(new InMemoryStore());
-  const callId = asToolCallId('call-1');
+  const callId = 'call-1';
   state.prepare({
     callId,
     sessionId: SESSION_ID,
@@ -117,7 +116,7 @@ describe('ToolExecutionState', () => {
     expect(() => state.prepare({
       callId,
       sessionId: SESSION_ID,
-      turnId: asTurnId('00000000-0000-4000-8000-0000000000c1'),
+      turnId: '00000000-0000-4000-8000-0000000000c1',
       toolName: 'Bash',
     })).toThrow(ToolExecutionStateConflictError);
   });

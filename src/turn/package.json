@@ -24,7 +24,6 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@ema-agent/ids": "workspace:*",
     "@ema-agent/storage": "workspace:*",
     "@ema-agent/llm": "workspace:*"
   },

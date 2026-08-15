@@ -1,6 +1,5 @@
 // 测试提取流水线端到端的 L0 节点溯源登记：新建节点与 lazy update 路径都记录来源 Session/Turn。
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { SessionId, TurnId } from '@ema-agent/ids';
 import {
   Database,
   MemoryEdgesRepo,
@@ -18,9 +17,9 @@ import { DEFAULT_MEMORY_SETTINGS } from '../types.js';
 import type { EmbedService } from '../embed/service.js';
 import { MemoryCommitCoordinator } from '../tasks/commit-coordinator.js';
 
-const sessionId = 'session-src' as SessionId;
-const turn1 = 'turn-src-1' as TurnId;
-const turn2 = 'turn-src-2' as TurnId;
+const sessionId = 'session-src';
+const turn1 = 'turn-src-1';
+const turn2 = 'turn-src-2';
 
 const opened: Database[] = [];
 
@@ -91,7 +90,7 @@ function createHarness(llmOutputs: unknown[]) {
 async function runOnce(
   harness: ReturnType<typeof createHarness>,
   runId: string,
-  turnId: TurnId,
+  turnId: string,
   fragmentId: string,
 ): Promise<void> {
   harness.pending.insert({

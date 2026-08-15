@@ -1,7 +1,6 @@
 // 测试单次 Tool 调用管线:查找、Schema、Context、业务校验、权限、执行与取消语义。
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { asSessionId, asToolCallId, asTurnId } from '@ema-agent/ids';
 import type { PermissionAuthorizer, PermissionIntent, PermissionDecision } from '@ema-agent/permission';
 import {
   buildTool,
@@ -17,8 +16,8 @@ import {
   type ToolExecutionLiveEvent,
 } from '../execution/toolCallExecution.js';
 
-const SESSION_ID = asSessionId('00000000-0000-4000-8000-0000000000a1');
-const TURN_ID = asTurnId('00000000-0000-4000-8000-0000000000b1');
+const SESSION_ID = '00000000-0000-4000-8000-0000000000a1';
+const TURN_ID = '00000000-0000-4000-8000-0000000000b1';
 
 const ALLOW: PermissionDecision = { outcome: 'allow', reason: { type: 'mode', mode: 'default' } };
 
@@ -110,7 +109,7 @@ function makeCall(env: ToolExecutionEnvironment, name: string, args: unknown): {
   const events: ToolExecutionLiveEvent[] = [];
   const execution = new ToolCallExecution(
     env,
-    { callId: asToolCallId('call-1'), name, args },
+    { callId: 'call-1', name, args },
     event => events.push(event),
   );
   return { execution, events };

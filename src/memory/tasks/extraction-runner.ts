@@ -2,7 +2,6 @@
 
 import crypto from 'node:crypto';
 import type { ExecutionProfile } from '@ema-agent/turn';
-import type { SessionId } from '@ema-agent/ids';
 import type {
   MemoryTaskKind, MemoryTaskRow,
 } from '@ema-agent/storage';
@@ -41,7 +40,7 @@ export interface MemoryTaskRunnerDeps {
   getItemsIndex: () => VectorIndex | null;
   getIndexSpaceId: () => string | null;
   /** Resolves per-session overrides — used to skip consolidation when off. */
-  getSessionOverrides: (sessionId: SessionId) => ResolvedSessionOverrides;
+  getSessionOverrides: (sessionId: string) => ResolvedSessionOverrides;
   commitCoordinator: MemoryCommitCoordinator;
   /** SQLite 已提交但 ANN 同步失败时，在同一提交序列内恢复派生索引。 */
   refreshIndexes: () => Promise<void>;
@@ -72,13 +71,13 @@ export class MemoryTaskRunner {
   private currentTick: Promise<void> | null = null;
   private stopping = false;
   private lastCleanupAt = 0;
-  private readonly blockedSessions = new Set<SessionId>();
-  private readonly activeExtractions = new Map<SessionId, AbortController>();
+  private readonly blockedSessions = new Set<string>();
+  private readonly activeExtractions = new Map<string, AbortController>();
 
   constructor(private readonly deps: MemoryTaskRunnerDeps) {}
 
   /** Enqueue a fresh task. Returns the task id so callers can correlate. */
-  enqueue(kind: RunnableMemoryTaskKind, sessionId: SessionId, payload: Record<string, unknown>): string {
+  enqueue(kind: RunnableMemoryTaskKind, sessionId: string, payload: Record<string, unknown>): string {
     if (this.blockedSessions.has(sessionId)) {
       throw new MemoryLeaseLostError('memory: session deletion rejected extraction enqueue');
     }
@@ -128,14 +127,14 @@ export class MemoryTaskRunner {
    * 删除任务行让租约立即失效，AbortSignal 尽快停止事务外模型调用；调用方
    * 不等待可能忽略取消的 Provider，短提交由 MemoryCommitCoordinator 排空。
    */
-  async cancelSession(sessionId: SessionId): Promise<void> {
+  async cancelSession(sessionId: string): Promise<void> {
     this.blockedSessions.add(sessionId);
     this.deps.memory.memoryTasks.deleteForSession(sessionId);
     this.activeExtractions.get(sessionId)?.abort();
   }
 
   /** 删除失败时恢复入队；删除成功后释放临时阻塞集合。 */
-  releaseSession(sessionId: SessionId): void {
+  releaseSession(sessionId: string): void {
     this.blockedSessions.delete(sessionId);
   }
 
@@ -196,7 +195,7 @@ export class MemoryTaskRunner {
       type:      'memory_task_started',
       taskId:    row.id,
       kind:      row.kind,
-      sessionId: payload.sessionId as SessionId | undefined,
+      sessionId: payload.sessionId,
     });
 
     try {
@@ -260,7 +259,7 @@ export class MemoryTaskRunner {
     if (!payload.sessionId || !payload.executionProfile) {
       throw new Error('Invalid task payload: missing sessionId or executionProfile');
     }
-    const sid = payload.sessionId as SessionId;
+    const sid = payload.sessionId;
     const executionProfile = payload.executionProfile;
     const abortController = new AbortController();
     const ownsLease = (): boolean =>

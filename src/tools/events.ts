@@ -1,5 +1,4 @@
 // 定义工具调用、原始结果与用户询问产生的业务事件。
-import type { SessionId, TurnId } from '@ema-agent/ids';
 import type { TaskEvent } from '@ema-agent/tasks';
 
 export interface ToolError {
@@ -18,40 +17,40 @@ export interface AskUserQuestionSpec {
 }
 
 export type ToolStreamEvent =
-  | { type: 'tool_call_partial'; sessionId: SessionId; blockIndex: number; callId: string; name: string; argsDelta: string }
-  | { type: 'tool_call_complete'; sessionId: SessionId; blockIndex: number; callId: string; name: string; args: unknown }
+  | { type: 'tool_call_partial'; sessionId: string; blockIndex: number; callId: string; name: string; argsDelta: string }
+  | { type: 'tool_call_complete'; sessionId: string; blockIndex: number; callId: string; name: string; args: unknown }
   | {
       type: 'tool_progress';
-      sessionId: SessionId;
-      turnId: TurnId;
+      sessionId: string;
+      turnId: string;
       callId: string;
       name: string;
       /** 不同 Tool 的进度形状由自己的 TProgress 定义，SSE 只负责透明传输。 */
       progress: unknown;
     }
-  | { type: 'tool_result'; sessionId: SessionId; callId: string; name: string; output?: unknown; error?: ToolError; durationMs: number }
+  | { type: 'tool_result'; sessionId: string; callId: string; name: string; output?: unknown; error?: ToolError; durationMs: number }
   | {
       type: 'ask_user_required';
-      sessionId: SessionId;
-      turnId: TurnId;
+      sessionId: string;
+      turnId: string;
       promptId: string;
       questions: AskUserQuestionSpec[];
       humanDescription?: string;
     }
   | {
       type: 'ask_user_resolved';
-      sessionId: SessionId;
+      sessionId: string;
       promptId: string;
       answers: Record<string, string>;
     }
-  | { type: 'ask_confirm_required'; sessionId: SessionId; turnId: TurnId; promptId: string; question: string; humanDescription?: string }
-  | { type: 'ask_confirm_resolved'; sessionId: SessionId; promptId: string; confirmed: boolean }
-  | { type: 'ask_text_required'; sessionId: SessionId; turnId: TurnId; promptId: string; question: string; humanDescription?: string; placeholder?: string }
-  | { type: 'ask_text_resolved'; sessionId: SessionId; promptId: string; text: string }
+  | { type: 'ask_confirm_required'; sessionId: string; turnId: string; promptId: string; question: string; humanDescription?: string }
+  | { type: 'ask_confirm_resolved'; sessionId: string; promptId: string; confirmed: boolean }
+  | { type: 'ask_text_required'; sessionId: string; turnId: string; promptId: string; question: string; humanDescription?: string; placeholder?: string }
+  | { type: 'ask_text_resolved'; sessionId: string; promptId: string; text: string }
   | {
       type: 'ask_choice_required';
-      sessionId: SessionId;
-      turnId: TurnId;
+      sessionId: string;
+      turnId: string;
       promptId: string;
       question: string;
       humanDescription?: string;
@@ -59,7 +58,7 @@ export type ToolStreamEvent =
       multiSelect?: boolean;
       allowCustom?: boolean;
     }
-  | { type: 'ask_choice_resolved'; sessionId: SessionId; promptId: string; selected: string[]; customText?: string };
+  | { type: 'ask_choice_resolved'; sessionId: string; promptId: string; selected: string[]; customText?: string };
 
 /** 工具执行上下文允许业务工具向外发出的领域事件。 */
 export type ToolExecutionEvent = ToolStreamEvent | TaskEvent;
