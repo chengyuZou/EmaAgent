@@ -10,6 +10,8 @@ export {
 export type { SqliteIdBatchOptions } from './database/sqlite-id-batches.js';
 
 export { SessionsRepo, nextCursorFor } from './repos/data/sessions.js';
+export { ProjectsRepo, ProjectFolderError } from './repos/data/projects.js';
+export type { ProjectRow, ProjectFolderRow } from './repos/data/projects.js';
 export { TurnsRepo } from './repos/data/turns.js';
 export type {
   TurnIdPage,
@@ -83,7 +85,7 @@ export { MemoryNodeSourcesRepo }      from './repos/profile/memory-node-sources.
 export { MemoryStorageRepo }          from './repos/profile/memoryStorage.js';
 
 export type { DatabaseOptions, SqliteDb } from './database/database.js';
-export type { SessionRow, SessionRowEnriched, SessionSearchRow, SessionInsert, SessionsProjected, ExecutionProfileRow, NarrativePolicyRow } from './repos/data/sessions.js';
+export type { SessionRow, SessionRowEnriched, SessionSearchRow, SessionInsert, ExecutionProfileRow, NarrativePolicyRow } from './repos/data/sessions.js';
 export type { TurnStatusRow, TurnTriggerTypeRow } from './repos/data/turns.js';
 export type { TurnRow, TurnInsert, TurnCompletion } from './repos/data/turns.js';
 export type { MessageRow, MessageInsert, MessageRole, MessageKind } from './repos/data/messages.js';

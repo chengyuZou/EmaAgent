@@ -15,6 +15,8 @@ export interface SessionRow {
   id: string;
   title: string;
   workspace_root:     string | null;
+  /** 项目成员资格；在项目内 workspace_root 锁定为项目主文件夹。 */
+  project_id:         string | null;
   created_at: number;
   /** 行元数据更新时间:title/pin/workspace/Profile 编辑。不用于 UI 中 Session 侧栏排序。 */
   updated_at: number;
@@ -53,6 +55,7 @@ export interface SessionInsert {
   id: SessionId;
   title: string;
   workspaceRoot?:  string | null;
+  projectId?: string | null;
   forkedFromSessionId?: string;
   forkedFromTurnId?: string | null;
   executionProfile?: ExecutionProfileRow;
@@ -66,17 +69,6 @@ export interface SessionInsert {
   lastActivityAt?: number;
 }
 
-/**
- * 侧栏四区投影。项目是 workspace_root 的派生分组，不是实体：
- * 有工作区的 Session 按工作区归入 byProject，无工作区的才进 pinned/recent。
- */
-export interface SessionsProjected {
-  pinned:   SessionRowEnriched[];
-  byProject: Array<{ workspaceRoot: string; sessions: SessionRowEnriched[] }>;
-  recent:   SessionRowEnriched[];
-  archived: SessionRowEnriched[];
-}
-
 export class SessionsRepo {
   constructor(private readonly db: SqliteDb) {}
 
@@ -84,15 +76,16 @@ export class SessionsRepo {
     this.db
       .prepare(
         `INSERT INTO sessions
-           (id, title, workspace_root,
+           (id, title, workspace_root, project_id,
             forked_from_session_id, forked_from_turn_id,
             execution_profile, narrative_policy,
             provider_config_id, model_id,
             created_at, updated_at, last_activity_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(s.id, s.title,
         s.workspaceRoot ?? null,
+        s.projectId ?? null,
         s.forkedFromSessionId ?? null,
         s.forkedFromTurnId ?? null,
         s.executionProfile ?? 'chat',
@@ -204,14 +197,10 @@ export class SessionsRepo {
   }
 
   /**
-   * 侧栏四区投影。折叠/展开与项目置顶是前端逻辑，后端只返回扁平 bucket：
-   *   byProject - workspace_root 分组（含组内置顶成员），按组内最新活动排序
-   *   pinned    - 置顶且无工作区的 session
-   *   recent    - 其余未归档、未置顶、无工作区的 session
-   *   archived  - 软删除
+   * 侧栏四区用的全量 enriched 行（含 archived），分桶由业务层按 project_id 实体完成。
    */
-  listProjects(): SessionsProjected {
-    const all = this.db
+  listEnrichedAll(): SessionRowEnriched[] {
+    return this.db
       .prepare(`
         WITH latest_turn AS (
           SELECT
@@ -243,30 +232,29 @@ export class SessionsRepo {
         ORDER BY s.pinned DESC, s.last_activity_at DESC, s.id DESC
       `)
       .all() as SessionRowEnriched[];
+  }
 
-    const projectMap = new Map<string, SessionRowEnriched[]>();
-    const pinned:   SessionRowEnriched[] = [];
-    const recent:   SessionRowEnriched[] = [];
-    const archived: SessionRowEnriched[] = [];
+  // ── 项目成员资格 ────────────────────────────────────────────────────────────
 
-    for (const s of all) {
-      if (s.archived_at) { archived.push(s); continue; }
-      if (s.workspace_root) {
-        const list = projectMap.get(s.workspace_root) ?? ([] as SessionRowEnriched[]);
-        list.push(s);
-        projectMap.set(s.workspace_root, list);
-        continue;
-      }
-      if (s.pinned) { pinned.push(s); continue; }
-      recent.push(s);
-    }
+  /** 拖入项目：锁定成员资格并把 workspace_root 锁定为项目主文件夹。 */
+  assignToProject(id: SessionId, projectId: string, workspaceRoot: string, now: number): void {
+    this.db
+      .prepare('UPDATE sessions SET project_id = ?, workspace_root = ?, updated_at = ? WHERE id = ?')
+      .run(projectId, workspaceRoot, now, id);
+  }
 
-    // 项目排序键 = 组内最新活动时间；成员已按 pinned/activity 排好。
-    const byProject = [...projectMap.entries()]
-      .map(([workspaceRoot, sessions]) => ({ workspaceRoot, sessions }))
-      .sort((a, b) => (b.sessions[0]?.last_activity_at ?? 0) - (a.sessions[0]?.last_activity_at ?? 0));
+  /** 拖出项目：只解除成员资格，workspace_root 保留原值恢复自由。 */
+  removeFromProject(id: SessionId, now: number): void {
+    this.db
+      .prepare('UPDATE sessions SET project_id = NULL, updated_at = ? WHERE id = ?')
+      .run(now, id);
+  }
 
-    return { pinned, byProject, recent, archived };
+  /** 项目换主/继位时级联改写全部成员的 workspace_root。 */
+  cascadeWorkspaceForProject(projectId: string, workspaceRoot: string, now: number): void {
+    this.db
+      .prepare('UPDATE sessions SET workspace_root = ?, updated_at = ? WHERE project_id = ?')
+      .run(workspaceRoot, now, projectId);
   }
 
   search(query: string, limit: number): SessionSearchRow[] {
@@ -412,17 +400,18 @@ export class SessionsRepo {
     if (!src) throw new Error(`Source session not found: ${srcId}`);
 
     this.db.transaction(() => {
-      // 1. 新 Session 行复制 Workspace、执行偏好和下一轮模型偏好。
+      // 1. 新 Session 行复制 Workspace、项目成员、执行偏好和当前模型选择。
       //    forked_from_* 指回来源 Session 与截断 Turn，用于 Fork 溯源。
       this.db.prepare(
         `INSERT INTO sessions
-           (id, title, workspace_root,
+           (id, title, workspace_root, project_id,
             forked_from_session_id, forked_from_turn_id,
             execution_profile, narrative_policy,
             provider_config_id, model_id,
             created_at, updated_at, last_activity_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(newId, title, src.workspace_root,
+        src.project_id,
         srcId, untilTurnId ?? null,
         src.execution_profile, src.narrative_policy,
         src.provider_config_id, src.model_id,

@@ -121,6 +121,53 @@ describe('SessionStore — session', () => {
   });
 });
 
+describe('SessionStore — 项目', () => {
+  it('拖入项目锁定工作区为主文件夹，锁定期间 patch 工作区被拒绝', () => {
+    const store = makeStore();
+    const session = store.createSession();
+    const project = store.createProject('Demo', 'D:/main');
+
+    store.assignSessionToProject(session.id, project.id);
+    const assigned = store.getSession(session.id);
+    expect(assigned.projectId).toBe(project.id);
+    expect(assigned.workspaceRoot).toBe('D:/main');
+
+    expect(() => store.patchSession(session.id, { workspaceRoot: 'D:/other' }))
+      .toThrow('session_workspace_locked_by_project');
+
+    store.removeSessionFromProject(session.id);
+    expect(store.getSession(session.id).projectId).toBeNull();
+    expect(() => store.patchSession(session.id, { workspaceRoot: 'D:/other' })).not.toThrow();
+  });
+
+  it('拖入时确认保留原工作区会把它加为非主文件夹', () => {
+    const store = makeStore();
+    const session = store.createSession({ workspaceRoot: 'D:/loose' });
+    const project = store.createProject('Demo', 'D:/main');
+
+    store.assignSessionToProject(session.id, project.id, true);
+
+    const group = store.listProjects().projects.find((g) => g.project.id === project.id)!;
+    expect(group.folders.map((folder) => folder.path)).toContain('D:/loose');
+    expect(group.folders.find((folder) => folder.path === 'D:/loose')!.isPrimary).toBe(false);
+    expect(store.getSession(session.id).workspaceRoot).toBe('D:/main');
+  });
+
+  it('更换主文件夹级联改写成员工作区', () => {
+    const store = makeStore();
+    const session = store.createSession();
+    const project = store.createProject('Demo', 'D:/main');
+    store.addProjectFolder(project.id, 'D:/second');
+    store.assignSessionToProject(session.id, project.id);
+
+    store.setProjectPrimaryFolder(project.id, 'D:/second');
+
+    expect(store.getSession(session.id).workspaceRoot).toBe('D:/second');
+    const group = store.listProjects().projects.find((g) => g.project.id === project.id)!;
+    expect(group.folders[0]!.path).toBe('D:/second');
+  });
+});
+
 describe('SessionStore — Turn ID 游标遍历', () => {
   it('复合游标覆盖同一 Session 的全部 Turn 且不重复', () => {
     const store = makeStore();

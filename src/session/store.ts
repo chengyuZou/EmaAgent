@@ -2,6 +2,7 @@
 import crypto from 'node:crypto';
 import {
   MessagesRepo,
+  ProjectsRepo,
   SessionsRepo,
   TurnsRepo,
   nextCursorFor,
@@ -17,6 +18,8 @@ import { ActiveTurnRegistry } from './activeTurnRegistry.js';
 import { SessionHistory } from './history/sessionHistory.js';
 import {
   toMessage,
+  toProject,
+  toProjectFolder,
   toSearchHit,
   toSession,
   toSessionListItem,
@@ -26,6 +29,8 @@ import type {
   Session,
   SessionListItem,
   Message,
+  Project,
+  ProjectGroup,
   CreateSessionInput,
   PatchSessionInput,
   AppendMessageInput,
@@ -56,6 +61,7 @@ export class SessionStore {
   private readonly sessionsRepo: SessionsRepo;
   private readonly turnsRepo:    TurnsRepo;
   private readonly messagesRepo: MessagesRepo;
+  private readonly projectsRepo: ProjectsRepo;
   private readonly registry:     ActiveTurnRegistry;
   private readonly history:      SessionHistory;
   private readonly db:           Database;
@@ -69,6 +75,7 @@ export class SessionStore {
     this.sessionsRepo = new SessionsRepo(db.sqlite);
     this.turnsRepo    = new TurnsRepo(db.sqlite);
     this.messagesRepo = new MessagesRepo(db.sqlite);
+    this.projectsRepo = new ProjectsRepo(db.sqlite);
     this.registry     = new ActiveTurnRegistry();
     this.history      = new SessionHistory({
       sessionsRepo: this.sessionsRepo,
@@ -128,21 +135,52 @@ export class SessionStore {
     return { sessions, nextCursor };
   }
 
-  /** 侧栏四区投影：Session 置顶 / 项目分组 / 最近 / 已归档。 */
+  /** 侧栏投影：置顶 Session / 置顶项目 / 其余项目 / 最近 / 已归档。 */
   listProjects(): {
     pinned:   SessionListItem[];
-    byProject: Array<{ workspaceRoot: string; sessions: SessionListItem[] }>;
+    pinnedProjects: ProjectGroup[];
+    projects: ProjectGroup[];
     recent:   SessionListItem[];
     archived: SessionListItem[];
   } {
-    const projected = this.sessionsRepo.listProjects();
-    const map = (rows: SessionRowEnriched[]) => rows.map(toSessionListItem);
-    return {
-      pinned:   map(projected.pinned),
-      byProject: projected.byProject.map(g => ({ workspaceRoot: g.workspaceRoot, sessions: map(g.sessions) })),
-      recent:   map(projected.recent),
-      archived: map(projected.archived),
-    };
+    const all = this.sessionsRepo.listEnrichedAll();
+    const foldersByProject = new Map<string, ReturnType<typeof toProjectFolder>[]>();
+    for (const folder of this.projectsRepo.listAllFolders()) {
+      const list = foldersByProject.get(folder.project_id) ?? [];
+      list.push(toProjectFolder(folder));
+      foldersByProject.set(folder.project_id, list);
+    }
+
+    const membersByProject = new Map<string, SessionRowEnriched[]>();
+    const pinned:   SessionListItem[] = [];
+    const recent:   SessionListItem[] = [];
+    const archived: SessionListItem[] = [];
+
+    for (const row of all) {
+      if (row.archived_at) { archived.push(toSessionListItem(row)); continue; }
+      if (row.project_id) {
+        const list = membersByProject.get(row.project_id) ?? [];
+        list.push(row);
+        membersByProject.set(row.project_id, list);
+        continue;
+      }
+      if (row.pinned) { pinned.push(toSessionListItem(row)); continue; }
+      recent.push(toSessionListItem(row));
+    }
+
+    const pinnedProjects: ProjectGroup[] = [];
+    const projects: ProjectGroup[] = [];
+    for (const projectRow of this.projectsRepo.list()) {
+      const group: ProjectGroup = {
+        project: toProject(projectRow),
+        folders: foldersByProject.get(projectRow.id) ?? [],
+        sessions: (membersByProject.get(projectRow.id) ?? []).map(toSessionListItem),
+      };
+      if (group.project.pinned) pinnedProjects.push(group);
+      else projects.push(group);
+    }
+
+    return { pinned, pinnedProjects, projects, recent, archived };
   }
 
   searchSessions(input: SearchSessionsInput): SearchSessionsOutput {
@@ -179,6 +217,10 @@ export class SessionStore {
     }
     if (patch.pinned !== undefined)     cleaned.pinned     = patch.pinned;
     if (patch.workspaceRoot !== undefined) {
+      // 项目成员的工作区锁定为项目主文件夹，只能经项目操作变更。
+      if (this.requireSession(id).projectId !== null) {
+        throw new Error('session_workspace_locked_by_project');
+      }
       cleaned.workspaceRoot = patch.workspaceRoot;
     }
     if (patch.executionProfile !== undefined) cleaned.executionProfile = patch.executionProfile;
@@ -210,6 +252,81 @@ export class SessionStore {
 
   unarchiveSession(id: SessionId): void {
     this.sessionsRepo.unarchive(id);
+  }
+
+  // ── 项目 ────────────────────────────────────────────────────────────────────
+
+  createProject(name: string, firstFolderPath?: string): Project {
+    const trimmed = name.trim();
+    if (!trimmed) throw new Error('project_name_empty');
+    const id = crypto.randomUUID();
+    this.projectsRepo.insert({ id, name: trimmed, now: Date.now() });
+    if (firstFolderPath) this.projectsRepo.addFolder(id, firstFolderPath);
+    return toProject(this.projectsRepo.findById(id)!);
+  }
+
+  renameProject(id: string, name: string): void {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    this.projectsRepo.rename(id, trimmed, Date.now());
+  }
+
+  /** 删除项目：成员 Session 由外键 SET NULL 掉到非项目区，工作区保留恢复自由。 */
+  deleteProject(id: string): void {
+    this.projectsRepo.remove(id);
+  }
+
+  pinProject(id: string, pinned: boolean): void {
+    this.projectsRepo.setPinned(id, pinned, Date.now());
+  }
+
+  addProjectFolder(projectId: string, path: string): void {
+    this.projectsRepo.addFolder(projectId, path);
+  }
+
+  /** 移除文件夹；若触发主文件夹继位，同事务级联改写成员 workspace_root。 */
+  removeProjectFolder(projectId: string, path: string): void {
+    const { newPrimaryPath } = this.projectsRepo.removeFolder(projectId, path);
+    if (newPrimaryPath !== null) {
+      this.sessionsRepo.cascadeWorkspaceForProject(projectId, newPrimaryPath, Date.now());
+    }
+  }
+
+  /** 更换主文件夹并级联全部成员。 */
+  setProjectPrimaryFolder(projectId: string, path: string): void {
+    this.projectsRepo.setPrimaryFolder(projectId, path);
+    const primary = this.projectsRepo.primaryFolderPath(projectId);
+    if (primary) this.sessionsRepo.cascadeWorkspaceForProject(projectId, primary, Date.now());
+  }
+
+  /**
+   * 拖入项目：workspace_root 立即改写为项目主工作区并锁定。
+   * `includeCurrentWorkspace` 为 true 且原工作区不在项目文件夹清单时，先把它加为
+   * 非主文件夹（弹窗"是否加入原工作区"选确认的那条路径）。
+   */
+  assignSessionToProject(
+    sessionId: SessionId,
+    projectId: string,
+    includeCurrentWorkspace = false,
+  ): void {
+    const session = this.requireSession(sessionId);
+    const primary = this.projectsRepo.primaryFolderPath(projectId);
+    if (!primary) throw new Error(`project_has_no_folder: ${projectId}`);
+
+    this.db.sqlite.transaction(() => {
+      if (includeCurrentWorkspace && session.workspaceRoot) {
+        const folders = this.projectsRepo.listFolders(projectId);
+        if (!folders.some((folder) => folder.path === session.workspaceRoot)) {
+          this.projectsRepo.addFolder(projectId, session.workspaceRoot);
+        }
+      }
+      this.sessionsRepo.assignToProject(sessionId, projectId, primary, Date.now());
+    })();
+  }
+
+  /** 拖出项目：解除成员资格，workspace_root 保留原值恢复自由。 */
+  removeSessionFromProject(sessionId: SessionId): void {
+    this.sessionsRepo.removeFromProject(sessionId, Date.now());
   }
 
   // ── 独立 Session Fork ──────────────────────────────────────────────────────

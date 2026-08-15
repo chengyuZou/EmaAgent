@@ -4,6 +4,8 @@
 import type { MessageId, SessionId, TurnId } from '@ema-agent/ids';
 import type {
   MessageRow,
+  ProjectFolderRow,
+  ProjectRow,
   SessionRow,
   SessionRowEnriched,
   SessionSearchRow,
@@ -13,16 +15,38 @@ import type { Turn, TurnStatus } from '@ema-agent/turn';
 import { parseMessageBlocksJson } from '../message.js';
 import type {
   Message,
+  Project,
+  ProjectFolder,
   SearchSessionsOutput,
   Session,
   SessionListItem,
 } from '../types.js';
+
+export function toProject(row: ProjectRow): Project {
+  return {
+    id: row.id,
+    name: row.name,
+    pinned: row.pinned === 1,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function toProjectFolder(row: ProjectFolderRow): ProjectFolder {
+  return {
+    path: row.path,
+    isPrimary: row.is_primary === 1,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
 
 export function toSession(row: SessionRow): Session {
   return {
     id: row.id as SessionId,
     title: row.title,
     workspaceRoot: row.workspace_root,
+    projectId: row.project_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     lastActivityAt: row.last_activity_at,

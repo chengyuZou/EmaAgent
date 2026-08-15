@@ -151,6 +151,7 @@ CREATE TABLE sessions (
   id                   TEXT PRIMARY KEY,
   title                TEXT NOT NULL,
   workspace_root       TEXT,
+  project_id           TEXT REFERENCES projects(id) ON DELETE SET NULL,
   pinned               INTEGER NOT NULL DEFAULT 0,
   archived_at          INTEGER,
   forked_from_session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
@@ -171,6 +172,29 @@ CREATE TABLE task_context_state (
   session_id       TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
   last_reminded_at INTEGER NOT NULL
 );
+
+-- 项目是实体：可编辑名称、多源文件夹、恰好一个主文件夹。
+CREATE TABLE projects (
+  id         TEXT PRIMARY KEY,
+  name       TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 100),
+  pinned     INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+-- updated_at 只在"设为主要"时写入（NULL=从未当过主），按 updated_at DESC 排序主文件夹永远第一。
+CREATE TABLE project_folders (
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  path       TEXT NOT NULL,
+  is_primary INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER,
+  PRIMARY KEY (project_id, path)
+);
+
+-- 至多一个主文件夹（"至少一个"由 repo 拒绝末位删除保证）。
+CREATE UNIQUE INDEX idx_project_folders_primary
+  ON project_folders(project_id) WHERE is_primary = 1;
 
 CREATE TABLE task_dependencies (
   session_id      TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
@@ -390,6 +414,10 @@ CREATE INDEX idx_sessions_activity
 CREATE INDEX idx_sessions_workspace
   ON sessions(workspace_root, last_activity_at DESC, id DESC)
   WHERE workspace_root IS NOT NULL;
+
+CREATE INDEX idx_sessions_project
+  ON sessions(project_id, last_activity_at DESC, id DESC)
+  WHERE project_id IS NOT NULL;
 
 CREATE INDEX idx_task_dependencies_blocked
   ON task_dependencies(blocked_task_id, blocker_task_id);

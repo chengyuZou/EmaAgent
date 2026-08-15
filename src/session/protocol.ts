@@ -74,6 +74,7 @@ export interface SessionWire {
   id: string;
   title: string;
   workspaceRoot: string | null;
+  projectId: string | null;
   createdAt: number;
   updatedAt: number;
   lastActivityAt: number;
@@ -99,9 +100,33 @@ export interface SessionsListResult {
   nextCursor?: string;
 }
 
+export interface ProjectFolderWire {
+  path: string;
+  isPrimary: boolean;
+  createdAt: number;
+  updatedAt: number | null;
+  /** Server 探测的存活状态：文件夹被移动/删除/改名后标 missing，UI 标红。 */
+  status: 'ok' | 'missing';
+}
+
+export interface ProjectWire {
+  id: string;
+  name: string;
+  pinned: boolean;
+  createdAt: number;
+  updatedAt: number;
+  folders: ProjectFolderWire[];
+}
+
+export interface ProjectGroupWire {
+  project: ProjectWire;
+  sessions: SessionWire[];
+}
+
 export interface SessionsGroupedResult {
   pinned: SessionWire[];
-  byProject: Array<{ workspaceRoot: string; sessions: SessionWire[] }>;
+  pinnedProjects: ProjectGroupWire[];
+  projects: ProjectGroupWire[];
   recent: SessionWire[];
   archived: SessionWire[];
 }

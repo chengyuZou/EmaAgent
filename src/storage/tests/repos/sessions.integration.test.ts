@@ -38,29 +38,23 @@ describe('SessionsRepo integration', () => {
     expect(turnColumns).not.toContain('started_at');
   });
 
-  it('listProjects 按 workspace_root 分组：有工作区的进项目区，无工作区的进 pinned/recent', () => {
-    insertSession({ id: 'proj-a-1', workspaceRoot: 'D:/work/a', lastActivityAt: 30 });
-    insertSession({ id: 'proj-a-2', workspaceRoot: 'D:/work/a', lastActivityAt: 20 });
-    insertSession({ id: 'proj-b-1', workspaceRoot: 'D:/work/b', lastActivityAt: 40 });
-    insertSession({ id: 'pinned', pinned: true, lastActivityAt: 50 });
-    insertSession({ id: 'loose', lastActivityAt: 10 });
-    insertSession({ id: 'archived', archivedAt: 60 });
+  it('listEnrichedAll 返回带投影的扁平行（分桶归业务层）', () => {
+    insertSession({ id: 'a', workspaceRoot: 'D:/work/a', lastActivityAt: 30 });
+    insertSession({ id: 'b', pinned: true, lastActivityAt: 50 });
+    insertSession({ id: 'c', archivedAt: 60 });
 
-    const projected = repo.listProjects();
-    expect(projected.byProject.map((group) => group.workspaceRoot)).toEqual(['D:/work/b', 'D:/work/a']);
-    expect(projected.byProject[1]?.sessions.map((row) => row.id)).toEqual(['proj-a-1', 'proj-a-2']);
-    expect(projected.pinned.map((row) => row.id)).toEqual(['pinned']);
-    expect(projected.recent.map((row) => row.id)).toEqual(['loose']);
-    expect(projected.archived.map((row) => row.id)).toEqual(['archived']);
+    const rows = repo.listEnrichedAll();
+    expect(rows.map((row) => row.id)).toEqual(['b', 'a', 'c']);
+    expect(rows[0]).toMatchObject({ has_active_turn: 0, last_turn_status: null });
   });
 
-  it('列表投影返回最新 Turn 状态与活动标记', () => {
+  it('enriched 行返回最新 Turn 状态与活动标记', () => {
     insertSession({ id: 's1' });
     insertTurn({ id: 'turn-a', sessionId: 's1', status: 'completed', createdAt: 100, completedAt: 110 });
     insertTurn({ id: 'turn-z', sessionId: 's1', status: 'failed', createdAt: 100, completedAt: 120 });
     insertTurn({ id: 'turn-r', sessionId: 's1', status: 'running', createdAt: 130 });
 
-    expect(repo.listProjects().recent[0]).toMatchObject({
+    expect(repo.listEnrichedAll()[0]).toMatchObject({
       id: 's1',
       last_turn_status: 'running',
       has_active_turn: 1,

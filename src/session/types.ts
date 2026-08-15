@@ -10,11 +10,37 @@ import type {
 import type { MessageBlocks } from './message.js';
 import type { ToolResultBlock } from './message.js';
 
+/** 项目实体：可编辑名称 + 多源文件夹（恰好一个主文件夹）。 */
+export interface Project {
+  id: string;
+  name: string;
+  pinned: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ProjectFolder {
+  path: string;
+  isPrimary: boolean;
+  createdAt: number;
+  /** 只在"设为主要"时写入；null = 从未当过主，排序沉底。 */
+  updatedAt: number | null;
+}
+
+/** 侧栏一个项目槽：实体 + 文件夹 + 成员 Session。 */
+export interface ProjectGroup {
+  project: Project;
+  folders: ProjectFolder[];
+  sessions: SessionListItem[];
+}
+
 export interface Session {
   id: SessionId;
   title: string;
-  /** 可空：未选=纯 chat 且 work 锁定；选定后可变（只影响后续 Turn 的运行环境）。 */
+  /** 可空：未选=纯 chat 且 work 锁定；在项目内锁定为项目主文件夹。 */
   workspaceRoot: string | null;
+  /** 项目成员资格；拖入锁定跟随主工作区，拖出恢复自由。 */
+  projectId: string | null;
   createdAt: number;
   /** 行属性更新时间：标题、置顶、Workspace 或执行偏好发生变化。 */
   updatedAt: number;
