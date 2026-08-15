@@ -79,20 +79,20 @@ describe('SessionStore — session', () => {
     const session = store.createSession();
 
     store.patchSession(session.id, {
-      preferredModel: {
+      model: {
         providerConfigId: 'provider-config-1',
         modelId: 'model-1',
       },
     });
     expect(store.getSession(session.id)).toMatchObject({
-      preferredProviderConfigId: 'provider-config-1',
-      preferredModelId: 'model-1',
+      ProviderConfigId: 'provider-config-1',
+      ModelId: 'model-1',
     });
 
-    store.patchSession(session.id, { preferredModel: null });
+    store.patchSession(session.id, { model: null });
     expect(store.getSession(session.id)).toMatchObject({
-      preferredProviderConfigId: null,
-      preferredModelId: null,
+      ProviderConfigId: null,
+      ModelId: null,
     });
   });
 
@@ -100,7 +100,7 @@ describe('SessionStore — session', () => {
     const store = makeStore();
     const session = store.createSession();
     store.patchSession(session.id, {
-      preferredModel: {
+      model: {
         providerConfigId: 'provider-config-1',
         modelId: 'model-1',
       },
@@ -115,8 +115,8 @@ describe('SessionStore — session', () => {
 
     const fork = store.forkSession(session.id);
     expect(store.getSession(fork.sessionId)).toMatchObject({
-      preferredProviderConfigId: 'provider-config-1',
-      preferredModelId: 'model-1',
+      ProviderConfigId: 'provider-config-1',
+      ModelId: 'model-1',
     });
   });
 });

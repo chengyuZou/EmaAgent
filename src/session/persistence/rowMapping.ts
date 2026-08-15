@@ -32,8 +32,8 @@ export function toSession(row: SessionRow): Session {
     forkedFromTurnId: row.forked_from_turn_id as TurnId | null,
     executionProfile: row.execution_profile,
     narrativePolicy: row.narrative_policy,
-    preferredProviderConfigId: row.preferred_provider_config_id,
-    preferredModelId: row.preferred_model_id,
+    ProviderConfigId: row.provider_config_id,
+    ModelId: row.model_id,
     lastViewedAt: row.last_viewed_at,
   };
 }
@@ -43,7 +43,7 @@ export function toSessionListItem(row: SessionRowEnriched): SessionListItem {
   const lastTurnStatus: TurnStatus | null = row.last_turn_status;
   return {
     ...toSession(row),
-    runningTurnCount: row.running_turn_count,
+    hasActiveTurn: row.has_active_turn === 1,
     lastTurnStatus,
     hasUnread: row.last_activity_at > (row.last_viewed_at ?? 0),
   };

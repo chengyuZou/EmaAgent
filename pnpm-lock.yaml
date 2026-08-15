@@ -53,12 +53,6 @@ importers:
       '@unocss/preset-wind':
         specifier: ^66.7.0
         version: 66.7.0
-      pixi-live2d-display:
-        specifier: 0.5.0-beta
-        version: 0.5.0-beta(pixi.js@7.4.3)
-      pixi.js:
-        specifier: ^7.4.3
-        version: 7.4.3
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -881,18 +875,12 @@ importers:
 
   src/live2d-react:
     dependencies:
-      pixi-filters:
-        specifier: ^5.3.0
-        version: 5.3.0(@pixi/core@7.4.3)(@pixi/filter-alpha@7.4.3(@pixi/core@7.4.3))(@pixi/filter-blur@7.4.3(@pixi/core@7.4.3))
       pixi-live2d-display:
         specifier: 0.5.0-beta
         version: 0.5.0-beta(pixi.js@7.4.3)
       pixi.js:
         specifier: ^7.4.3
         version: 7.4.3
-      zustand:
-        specifier: ^5.0.2
-        version: 5.0.13(@types/react@18.3.29)(react@18.3.1)
     devDependencies:
       '@types/react':
         specifier: ^18.3.12

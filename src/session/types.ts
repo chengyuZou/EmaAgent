@@ -10,16 +10,6 @@ import type {
 import type { MessageBlocks } from './message.js';
 import type { ToolResultBlock } from './message.js';
 
-// TODO: 禁止一切facade字段出现
-/** Session 聚合向其他模块提供的归属校验端口。 */
-export interface SessionOwnershipFacade {
-  assertTurnOwnership(sessionId: SessionId, turnId: TurnId): void;
-  assertMessageOwnership(sessionId: SessionId, messageId: MessageId): void;
-}
-
-// TODO: 字段没用
-export type SessionOwnedEntity = 'message' | 'turn';
-
 export interface Session {
   id: SessionId;
   title: string;
@@ -38,10 +28,10 @@ export interface Session {
   forkedFromTurnId: TurnId | null;
   executionProfile: ExecutionProfile;
   narrativePolicy: NarrativePolicy;
-  /** 用户希望该 Session 下一轮默认使用的供应商配置；null 表示使用系统默认选择。 */
-  preferredProviderConfigId: string | null;
-  /** 用户希望该 Session 下一轮默认使用的模型；null 表示使用系统默认选择。 */
-  preferredModelId: string | null;
+  /** 用户希望该 Session 使用的供应商配置；null 表示使用系统默认选择。 */
+  ProviderConfigId: string | null;
+  /** 用户希望该 Session 使用的模型；null 表示使用系统默认选择。 */
+  ModelId: string | null;
   lastViewedAt: number | null;
 }
 
@@ -50,9 +40,8 @@ export interface Session {
  * 单条查询返回 Session 本体，不允许伪造投影。
  */
 export interface SessionListItem extends Session {
-  // TODO: 一般来说 一个Session里面最多跑一个Turn 所以这个字段可能没用 要么改为 Turn数量
-  /** 当前 running 状态的 Turn 数（侧栏运行指示）。 */
-  runningTurnCount: number;
+  /** 当前是否有 running 状态的根 Turn（侧栏运行指示；同一 Session 至多一个在跑）。 */
+  hasActiveTurn: boolean;
   /** 最近一次 Turn 的终态（侧栏红点；null = 从未运行）。 */
   lastTurnStatus: TurnStatus | null;
   /** 离开后有新活动：lastActivityAt > lastViewedAt（侧栏绿点）。 */
@@ -96,7 +85,7 @@ export interface PatchSessionInput {
   workspaceRoot?: string | null;
   executionProfile?: ExecutionProfile;
   narrativePolicy?: NarrativePolicy;
-  preferredModel?: {
+  model?: {
     providerConfigId: string;
     modelId: string;
   } | null;

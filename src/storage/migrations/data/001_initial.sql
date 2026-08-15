@@ -159,8 +159,8 @@ CREATE TABLE sessions (
   last_activity_at     INTEGER NOT NULL DEFAULT 0,
   created_at           INTEGER NOT NULL,
   updated_at           INTEGER NOT NULL,
-  preferred_provider_config_id TEXT,
-  preferred_model_id   TEXT,
+  provider_config_id   TEXT,
+  model_id             TEXT,
   execution_profile    TEXT NOT NULL DEFAULT 'chat'
                        CHECK(execution_profile IN ('chat', 'work')),
   narrative_policy     TEXT NOT NULL DEFAULT 'auto'
@@ -478,18 +478,18 @@ AFTER UPDATE OF blocks_json, kind, session_id, created_at ON messages BEGIN
   WHERE NEW.kind IN ('normal', 'summary');
 END;
 
-CREATE TRIGGER sessions_preferred_model_pair_insert
+CREATE TRIGGER sessions_model_pair_insert
 BEFORE INSERT ON sessions
-WHEN (NEW.preferred_provider_config_id IS NULL) <> (NEW.preferred_model_id IS NULL)
+WHEN (NEW.provider_config_id IS NULL) <> (NEW.model_id IS NULL)
 BEGIN
-  SELECT RAISE(ABORT, 'session preferred model must contain both provider and model');
+  SELECT RAISE(ABORT, 'session model preference must contain both provider and model');
 END;
 
-CREATE TRIGGER sessions_preferred_model_pair_update
-BEFORE UPDATE OF preferred_provider_config_id, preferred_model_id ON sessions
-WHEN (NEW.preferred_provider_config_id IS NULL) <> (NEW.preferred_model_id IS NULL)
+CREATE TRIGGER sessions_model_pair_update
+BEFORE UPDATE OF provider_config_id, model_id ON sessions
+WHEN (NEW.provider_config_id IS NULL) <> (NEW.model_id IS NULL)
 BEGIN
-  SELECT RAISE(ABORT, 'session preferred model must contain both provider and model');
+  SELECT RAISE(ABORT, 'session model preference must contain both provider and model');
 END;
 
 CREATE TRIGGER trg_agent_runs_owner_insert

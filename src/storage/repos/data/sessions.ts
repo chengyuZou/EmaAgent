@@ -27,10 +27,10 @@ export interface SessionRow {
   forked_from_turn_id:    string | null;
   execution_profile: ExecutionProfileRow;
   narrative_policy: NarrativePolicyRow;
-  /** 用户希望该 Session 下一轮默认使用的供应商配置；null 表示使用系统默认选择。 */
-  preferred_provider_config_id: string | null;
-  /** 用户希望该 Session 下一轮默认使用的模型；null 表示使用系统默认选择。 */
-  preferred_model_id: string | null;
+  /** 该 Session 当前使用的供应商配置；null 表示使用系统默认选择。 */
+  provider_config_id: string | null;
+  /** 该 Session 当前使用的模型；null 表示使用系统默认选择。 */
+  model_id: string | null;
   last_viewed_at:   number | null;
 }
 
@@ -38,7 +38,7 @@ export interface SessionRow {
 export interface SessionRowEnriched extends SessionRow {
   last_turn_status:       TurnStatusRow | null;
   last_turn_completed_at: number | null;
-  running_turn_count:     number;
+  has_active_turn:       number;
 }
 
 /** SessionRow 带 JOIN 查询派生的 turn 字段 + 搜索匹配字段 用于查找 session标题/session内Message */
@@ -57,7 +57,7 @@ export interface SessionInsert {
   forkedFromTurnId?: string | null;
   executionProfile?: ExecutionProfileRow;
   narrativePolicy?: NarrativePolicyRow;
-  preferredModel?: {
+  model?: {
     providerConfigId: string;
     modelId: string;
   } | null;
@@ -87,7 +87,7 @@ export class SessionsRepo {
            (id, title, workspace_root,
             forked_from_session_id, forked_from_turn_id,
             execution_profile, narrative_policy,
-            preferred_provider_config_id, preferred_model_id,
+            provider_config_id, model_id,
             created_at, updated_at, last_activity_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
@@ -97,8 +97,8 @@ export class SessionsRepo {
         s.forkedFromTurnId ?? null,
         s.executionProfile ?? 'chat',
         s.narrativePolicy ?? 'auto',
-        s.preferredModel?.providerConfigId ?? null,
-        s.preferredModel?.modelId ?? null,
+        s.model?.providerConfigId ?? null,
+        s.model?.modelId ?? null,
         s.createdAt, s.updatedAt,
         s.lastActivityAt ?? s.createdAt);
   }
@@ -133,7 +133,7 @@ export class SessionsRepo {
              FROM turns t
            ),
            running_turns AS (
-             SELECT session_id, COUNT(*) AS running_turn_count
+             SELECT session_id, 1 AS has_active_turn
              FROM turns
              WHERE status = 'running'
              GROUP BY session_id
@@ -142,7 +142,7 @@ export class SessionsRepo {
              s.*,
              lt.status AS last_turn_status,
              lt.completed_at AS last_turn_completed_at,
-             COALESCE(rt.running_turn_count, 0) AS running_turn_count
+             COALESCE(rt.has_active_turn, 0) AS has_active_turn
            FROM sessions s
            LEFT JOIN latest_turn lt
              ON lt.session_id = s.id
@@ -181,7 +181,7 @@ export class SessionsRepo {
            FROM turns t
          ),
          running_turns AS (
-           SELECT session_id, COUNT(*) AS running_turn_count
+           SELECT session_id, 1 AS has_active_turn
            FROM turns
            WHERE status = 'running'
            GROUP BY session_id
@@ -190,7 +190,7 @@ export class SessionsRepo {
            s.*,
            lt.status AS last_turn_status,
            lt.completed_at AS last_turn_completed_at,
-           COALESCE(rt.running_turn_count, 0) AS running_turn_count
+           COALESCE(rt.has_active_turn, 0) AS has_active_turn
          FROM sessions s
          LEFT JOIN latest_turn lt
          ON lt.session_id = s.id
@@ -225,7 +225,7 @@ export class SessionsRepo {
           FROM turns t
         ),
         running_turns AS (
-          SELECT session_id, COUNT(*) AS running_turn_count
+          SELECT session_id, 1 AS has_active_turn
           FROM turns
           WHERE status = 'running'
           GROUP BY session_id
@@ -234,7 +234,7 @@ export class SessionsRepo {
           s.*,
           lt.status AS last_turn_status,
           lt.completed_at AS last_turn_completed_at,
-          COALESCE(rt.running_turn_count, 0) AS running_turn_count
+          COALESCE(rt.has_active_turn, 0) AS has_active_turn
         FROM sessions s
         LEFT JOIN latest_turn lt
           ON lt.session_id = s.id
@@ -289,7 +289,7 @@ export class SessionsRepo {
           FROM turns t
         ),
         running_turns AS (
-          SELECT session_id, COUNT(*) AS running_turn_count
+          SELECT session_id, 1 AS has_active_turn
           FROM turns
           WHERE status = 'running'
           GROUP BY session_id
@@ -313,7 +313,7 @@ export class SessionsRepo {
           s.*,
           lt.status AS last_turn_status,
           lt.completed_at AS last_turn_completed_at,
-          COALESCE(rt.running_turn_count, 0) AS running_turn_count,
+          COALESCE(rt.has_active_turn, 0) AS has_active_turn,
           CASE
             WHEN lower(s.title) LIKE ? ESCAPE '\\' THEN 'title'
             ELSE 'message'
@@ -419,13 +419,13 @@ export class SessionsRepo {
            (id, title, workspace_root,
             forked_from_session_id, forked_from_turn_id,
             execution_profile, narrative_policy,
-            preferred_provider_config_id, preferred_model_id,
+            provider_config_id, model_id,
             created_at, updated_at, last_activity_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(newId, title, src.workspace_root,
         srcId, untilTurnId ?? null,
         src.execution_profile, src.narrative_policy,
-        src.preferred_provider_config_id, src.preferred_model_id,
+        src.provider_config_id, src.model_id,
         createdAt, createdAt, createdAt);
 
       // 2. 构建 old->new turn id 映射。Turn 被复制以使 fork 出的 session
@@ -563,16 +563,6 @@ export class SessionsRepo {
     return count.cnt;
   }
 
-  // ── 运行中 turn 计数 ───────────────────────────────────────────────────────────
-
-  /** 该 session 当前有多少 turn 正在运行。 */
-  runningTurnCount(id: SessionId): number {
-    const row = this.db
-      .prepare("SELECT COUNT(*) as cnt FROM turns WHERE session_id = ? AND status = 'running'")
-      .get(id) as { cnt: number };
-    return row.cnt;
-  }
-
   // ── 删除 ──────────────────────────────────────────────────────────────────────
 
   delete(id: SessionId): void {
@@ -593,7 +583,7 @@ export class SessionsRepo {
       workspaceRoot?:  string | null;
       executionProfile?: ExecutionProfileRow;
       narrativePolicy?: NarrativePolicyRow;
-      preferredModel?: {
+      model?: {
         providerConfigId: string;
         modelId: string;
       } | null;
@@ -624,11 +614,11 @@ export class SessionsRepo {
       setClauses.push('narrative_policy = ?');
       values.push(patch.narrativePolicy);
     }
-    if (patch.preferredModel !== undefined) {
-      setClauses.push('preferred_provider_config_id = ?', 'preferred_model_id = ?');
+    if (patch.model !== undefined) {
+      setClauses.push('provider_config_id = ?', 'model_id = ?');
       values.push(
-        patch.preferredModel?.providerConfigId ?? null,
-        patch.preferredModel?.modelId ?? null,
+        patch.model?.providerConfigId ?? null,
+        patch.model?.modelId ?? null,
       );
     }
 

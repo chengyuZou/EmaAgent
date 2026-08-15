@@ -12,7 +12,6 @@ import {
 import { type SessionId, type TurnId, type MessageId, asSessionId, asTurnId, asMessageId } from '@ema-agent/ids';
 import type { CompleteTurnInput, StartTurnInput, Turn } from '@ema-agent/turn';
 import { SessionOwnershipError } from './errors.js';
-import type { SessionOwnershipFacade } from './types.js';
 import type { Database } from '@ema-agent/storage';
 import { ActiveTurnRegistry } from './activeTurnRegistry.js';
 import { SessionHistory } from './history/sessionHistory.js';
@@ -53,7 +52,7 @@ export interface SessionStoreDeps {
 }
 
 /** 管理 Session 聚合；当前同一 Session 只允许一个根 Turn 运行。 */
-export class SessionStore implements SessionOwnershipFacade {
+export class SessionStore {
   private readonly sessionsRepo: SessionsRepo;
   private readonly turnsRepo:    TurnsRepo;
   private readonly messagesRepo: MessagesRepo;
@@ -184,8 +183,8 @@ export class SessionStore implements SessionOwnershipFacade {
     }
     if (patch.executionProfile !== undefined) cleaned.executionProfile = patch.executionProfile;
     if (patch.narrativePolicy !== undefined) cleaned.narrativePolicy = patch.narrativePolicy;
-    if (patch.preferredModel !== undefined) {
-      cleaned.preferredModel = patch.preferredModel;
+    if (patch.model !== undefined) {
+      cleaned.model = patch.model;
     }
 
     if (Object.keys(cleaned).length === 0) return;
@@ -430,11 +429,13 @@ export class SessionStore implements SessionOwnershipFacade {
     return this.history.listTurnIdsPage(sessionId, cursor, limit);
   }
 
-  /** 校验 turn 属于指定 session；供跨模块写入前通过 Facade 调用。 */
+  /** 校验 turn 属于指定 session；跨模块写入前的归属防线。 */
   assertTurnOwnership(sessionId: SessionId, turnId: TurnId): void {
     const turn = this.requireTurn(turnId);
     if (turn.sessionId !== sessionId) {
-      throw new SessionOwnershipError('turn', turnId, sessionId, turn.sessionId);
+      throw new SessionOwnershipError(
+        `turn ${turnId} belongs to session ${turn.sessionId}, not ${sessionId}`,
+      );
     }
   }
 
@@ -442,7 +443,9 @@ export class SessionStore implements SessionOwnershipFacade {
   assertMessageOwnership(sessionId: SessionId, messageId: MessageId): void {
     const message = this.requireMessage(messageId);
     if (message.sessionId !== sessionId) {
-      throw new SessionOwnershipError('message', messageId, sessionId, message.sessionId);
+      throw new SessionOwnershipError(
+        `message ${messageId} belongs to session ${message.sessionId}, not ${sessionId}`,
+      );
     }
   }
 

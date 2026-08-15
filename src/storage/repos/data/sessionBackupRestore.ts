@@ -22,8 +22,8 @@ export interface SessionBackupRestoreInput {
     forkedFromSessionId: string | null;
     executionProfile: 'chat' | 'work';
     narrativePolicy: 'auto' | 'always' | 'off';
-    preferredProviderConfigId: string | null;
-    preferredModelId: string | null;
+    providerConfigId: string | null;
+    modelId: string | null;
   };
   readonly turns: Iterable<TurnRestoreRow>;
   readonly messages: Iterable<MessageRestoreRow>;
@@ -68,13 +68,13 @@ export class SessionBackupRestorer {
       INSERT INTO sessions (
         id, title, workspace_root, created_at, updated_at, last_activity_at,
         archived_at, pinned, forked_from_session_id,
-        execution_profile, narrative_policy, preferred_provider_config_id, preferred_model_id
+        execution_profile, narrative_policy, provider_config_id, model_id
       ) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       session.id, session.title, session.createdAt, session.updatedAt, session.lastActivityAt,
       session.archivedAt, session.pinned ? 1 : 0,
       forkedFromSessionId, session.executionProfile, session.narrativePolicy,
-      session.preferredProviderConfigId, session.preferredModelId,
+      session.providerConfigId, session.modelId,
     );
 
     const turn = this.db.prepare(`
@@ -257,8 +257,8 @@ function validateSession(input: SessionBackupRestoreInput): void {
   if (session.forkedFromSessionId === session.id) {
     throw new SessionBackupRestoreError('Session 不能把自身设为 forkedFromSessionId');
   }
-  if ((session.preferredProviderConfigId === null) !== (session.preferredModelId === null)) {
-    throw new SessionBackupRestoreError('模型偏好必须同时包含供应商配置和模型');
+  if ((session.providerConfigId === null) !== (session.modelId === null)) {
+    throw new SessionBackupRestoreError('模型选择必须同时包含供应商配置和模型');
   }
 }
 

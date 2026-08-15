@@ -144,10 +144,7 @@ export class SessionHistory {
     if (!turn) throw new Error(`turn_not_found: ${turnId}`);
     if (turn.session_id !== (sessionId as string)) {
       throw new SessionOwnershipError(
-        'turn',
-        turnId,
-        sessionId,
-        turn.session_id as SessionId,
+        `turn ${turnId} belongs to session ${turn.session_id}, not ${sessionId}`,
       );
     }
   }

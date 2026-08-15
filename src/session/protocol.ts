@@ -82,13 +82,13 @@ export interface SessionWire {
   forkedFromSessionId: string | null;
   forkedFromTurnId: string | null;
   /** 列表投影三字段：仅列表/搜索路径有真值。 */
-  runningTurnCount: number;
+  hasActiveTurn: boolean;
   /** 下一 Turn 默认采用的执行能力范围。 */
   executionProfile: ExecutionProfile;
   /** 下一 Turn 默认采用的剧情检索策略。 */
   narrativePolicy: NarrativePolicy;
-  preferredProviderConfigId: string | null;
-  preferredModelId: string | null;
+  providerConfigId: string | null;
+  modelId: string | null;
   lastViewedAt: number | null;
   lastTurnStatus: TurnStatus | null;
   hasUnread: boolean;

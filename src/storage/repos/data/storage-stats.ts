@@ -148,8 +148,8 @@ export interface SessionRestorePayload {
     executionProfile: ExecutionProfileRow;
     narrativePolicy: NarrativePolicyRow;
     /** 旧 ZIP 没有这两个字段，导入时按 null 兼容。 */
-    preferredProviderConfigId?: string | null;
-    preferredModelId?: string | null;
+    providerConfigId?: string | null;
+    modelId?: string | null;
   };
   turns:             TurnRestoreRow[];
   messages:          MessageRestoreRow[];
@@ -190,13 +190,13 @@ function validateSessionRestorePayload(payload: SessionRestorePayload): void {
   if (payload.session.forkedFromSessionId === sessionId) {
     throw new SessionRestoreValidationError('Session 不能把自身设为 forkedFromSessionId');
   }
-  const preferredProviderConfigId = payload.session.preferredProviderConfigId ?? null;
-  const preferredModelId = payload.session.preferredModelId ?? null;
-  if ((preferredProviderConfigId === null) !== (preferredModelId === null)) {
-    throw new SessionRestoreValidationError('Session 下一轮模型偏好必须同时包含供应商配置和模型');
+  const providerConfigId = payload.session.providerConfigId ?? null;
+  const modelId = payload.session.modelId ?? null;
+  if ((providerConfigId === null) !== (modelId === null)) {
+    throw new SessionRestoreValidationError('Session 模型选择必须同时包含供应商配置和模型');
   }
-  if (preferredProviderConfigId !== null && (!preferredProviderConfigId.trim() || !preferredModelId?.trim())) {
-    throw new SessionRestoreValidationError('Session 下一轮模型偏好不能为空字符串');
+  if (providerConfigId !== null && (!providerConfigId.trim() || !modelId?.trim())) {
+    throw new SessionRestoreValidationError('Session 模型选择不能为空字符串');
   }
 
   const turnIds = uniqueIds(payload.turns, 'Turn');
@@ -533,7 +533,7 @@ export class SessionStatsRepo {
           (id, title, workspace_root, created_at, updated_at,
            last_activity_at, archived_at, pinned,
            forked_from_session_id, forked_from_turn_id, execution_profile, narrative_policy,
-           preferred_provider_config_id, preferred_model_id)
+           provider_config_id, model_id)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         p.session.id, p.session.title, p.session.workspaceRoot ?? null,
@@ -544,8 +544,8 @@ export class SessionStatsRepo {
         forkedFromSessionId, null,
         p.session.executionProfile,
         p.session.narrativePolicy,
-        p.session.preferredProviderConfigId ?? null,
-        p.session.preferredModelId ?? null,
+        p.session.providerConfigId ?? null,
+        p.session.modelId ?? null,
       );
 
       // 2. 恢复线性 Turn。
@@ -555,7 +555,7 @@ export class SessionStatsRepo {
            provider_config_id, model_id, status,
            created_at, completed_at, error_code, error_message,
            iterations, usage_input_tokens, usage_output_tokens)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const t of p.turns) {
         stmtTurn.run(

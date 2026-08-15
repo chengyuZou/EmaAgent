@@ -46,8 +46,6 @@ export type {
   SearchSessionsInput,
   SessionSearchHit,
   SearchSessionsOutput,
-  SessionOwnershipFacade,
-  SessionOwnedEntity,
 } from './types.js';
 
 export type {

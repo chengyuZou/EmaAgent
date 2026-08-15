@@ -23,7 +23,7 @@ describe('SessionsRepo integration', () => {
     expect(sessionColumns).toEqual(expect.arrayContaining([
       'pinned', 'forked_from_session_id', 'forked_from_turn_id',
       'execution_profile', 'narrative_policy',
-      'preferred_provider_config_id', 'preferred_model_id',
+      'provider_config_id', 'model_id',
     ]));
     expect(sessionColumns).not.toContain('group_label');
     expect(sessionColumns).not.toContain('pinned_at');
@@ -54,7 +54,7 @@ describe('SessionsRepo integration', () => {
     expect(projected.archived.map((row) => row.id)).toEqual(['archived']);
   });
 
-  it('列表投影返回最新 Turn 状态与运行计数', () => {
+  it('列表投影返回最新 Turn 状态与活动标记', () => {
     insertSession({ id: 's1' });
     insertTurn({ id: 'turn-a', sessionId: 's1', status: 'completed', createdAt: 100, completedAt: 110 });
     insertTurn({ id: 'turn-z', sessionId: 's1', status: 'failed', createdAt: 100, completedAt: 120 });
@@ -63,7 +63,7 @@ describe('SessionsRepo integration', () => {
     expect(repo.listProjects().recent[0]).toMatchObject({
       id: 's1',
       last_turn_status: 'running',
-      running_turn_count: 1,
+      has_active_turn: 1,
     });
   });
 
