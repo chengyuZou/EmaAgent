@@ -24,7 +24,6 @@ export type {
   AttachmentReferenceBlock,
   AssistantBlock,
   MessageBlocks,
-  MessageContentPart,
   ToolResultBlock,
   UserBlock,
 } from './message.js';

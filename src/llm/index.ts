@@ -13,7 +13,7 @@ export type {
   AssistantBlock,
   LlmCompletion,
   LlmConnection,
-  LlmContentPart,
+  ContentPart,
   LlmProtocol,
   LlmRequest,
   LlmStopReason,

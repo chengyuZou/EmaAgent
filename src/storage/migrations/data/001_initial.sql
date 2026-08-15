@@ -301,7 +301,7 @@ CREATE TABLE speech_segments (
 CREATE TABLE turns (
   id                   TEXT PRIMARY KEY,
   session_id           TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  status               TEXT NOT NULL CHECK(status IN ('pending','running','completed','failed','aborted')),
+  status               TEXT NOT NULL CHECK(status IN ('running','completed','failed','aborted')),
   trigger_type         TEXT NOT NULL DEFAULT 'userMessage'
                        CHECK(trigger_type IN ('userMessage','backgroundProcessCompleted')),
   execution_profile    TEXT NOT NULL DEFAULT 'chat'
@@ -447,7 +447,7 @@ CREATE INDEX idx_attachments_turn    ON attachments(turn_id);
 
 CREATE INDEX idx_turns_running_by_session
   ON turns(session_id)
-  WHERE status IN ('pending', 'running');
+  WHERE status = 'running';
 
 CREATE INDEX idx_turns_session ON turns(session_id, created_at);
 

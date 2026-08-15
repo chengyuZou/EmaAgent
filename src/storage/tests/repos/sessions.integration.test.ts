@@ -159,7 +159,7 @@ describe('SessionsRepo integration', () => {
   function insertTurn(fixture: {
     id: string;
     sessionId: string;
-    status?: 'pending' | 'running' | 'completed' | 'failed' | 'aborted';
+    status?: 'running' | 'completed' | 'failed' | 'aborted';
     createdAt: number;
     completedAt?: number | null;
   }): void {

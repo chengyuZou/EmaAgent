@@ -18,3 +18,23 @@ export type TurnFailurePhase =
   | 'persistence'
   | 'tool'
   | 'unknown';
+
+/** 业务层发现跨 Session 引用 Turn 时抛出的稳定错误。 */
+export class TurnOwnershipError extends Error {
+  readonly code = 'turn_ownership_violation' as const;
+
+  constructor(message: string) {
+    super(`turn_ownership_violation: ${message}`);
+    this.name = 'TurnOwnershipError';
+  }
+}
+
+/** 同一 Session 已有活动根 Turn 时又注册一个，抛出的进程内不变量错误。 */
+export class ActiveTurnAlreadyRegisteredError extends Error {
+  readonly code = 'active_turn_already_registered' as const;
+
+  constructor(sessionId: string) {
+    super(`active_turn_already_registered: ${sessionId}`);
+    this.name = 'ActiveTurnAlreadyRegisteredError';
+  }
+}

@@ -6,7 +6,7 @@ export type { LlmProtocol } from '@ema-agent/provider';
 export type { LlmTokenUsage } from './usage.js';
 export type {
   AssistantBlock,
-  ContentPart as LlmContentPart,
+  ContentPart,
   Message,
   ToolResultBlock,
   ToolResultContentPart,

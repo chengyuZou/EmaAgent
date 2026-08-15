@@ -1,6 +1,6 @@
 // 估算消息、媒体和工具定义占用的上下文 Token，为压缩与预算决策提供统一依据。
 import type {
-  LlmContentPart as MessageContentPart,
+  ContentPart,
   Message as ModelMessage,
   ToolResultContentPart,
 } from '@ema-agent/llm';
@@ -109,7 +109,7 @@ const DOCUMENT_UNKNOWN_FALLBACK_TOKENS = 8_000;
 const DOCUMENT_TOKENS_PER_PAGE = 2_000;
 
 function estimateMediaPart(
-  part: MessageContentPart,
+  part: ContentPart,
   breakdown: TokenEstimateBreakdown,
   warnings: Set<TokenEstimateWarningCode>,
 ): void {

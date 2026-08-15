@@ -23,7 +23,6 @@ export { AttachmentLimitError, AttachmentPreparationError } from './errors.js';
 export type { TurnAttachmentInput } from './protocol.js';
 export type {
   Attachment,
-  AttachmentReferenceBlock,
   AttachmentSourceStatus,
   FileAttachment,
   ImageAttachment,

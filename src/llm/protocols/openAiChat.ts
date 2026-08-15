@@ -11,7 +11,7 @@ import type { ToolResultBlock } from '../message.js';
 import type {
   AssistantBlock,
   LlmConnection,
-  LlmContentPart,
+  ContentPart,
   LlmRequest,
   LlmStopReason,
   LlmStreamEvent,
@@ -200,7 +200,7 @@ function toOpenAiMessages(
           });
           continue;
         }
-        content.push(toOpenAiContentPart(block as LlmContentPart));
+        content.push(toOpenAiContentPart(block as ContentPart));
       }
       if (content.length > 0) result.push({ role: 'user', content });
       continue;
@@ -228,7 +228,7 @@ function toOpenAiMessages(
   return result;
 }
 
-function toOpenAiContentPart(part: LlmContentPart): OpenAI.ChatCompletionContentPart {
+function toOpenAiContentPart(part: ContentPart): OpenAI.ChatCompletionContentPart {
   switch (part.type) {
     case 'text':
       return { type: 'text', text: part.text };

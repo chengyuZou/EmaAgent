@@ -1,14 +1,13 @@
 // 定义 Session 持久化消息结构，并在数据库 JSON 进入业务层时完成校验。
 import type {
   AssistantBlock as LlmAssistantBlock,
+  ContentPart,
   ToolResultContentPart,
 } from '@ema-agent/llm';
 import type { MessageRole } from '@ema-agent/storage';
-import type { TurnContentPart } from '@ema-agent/turn';
 import type { ToolResult } from '@ema-agent/tools';
 
 export type AssistantBlock = LlmAssistantBlock;
-export type MessageContentPart = TurnContentPart;
 
 /** 附件正文不进入 Message JSON；这里只保存可回查 attachments 的稳定引用。 */
 export interface AttachmentReferenceBlock {
@@ -21,7 +20,7 @@ export interface AttachmentReferenceBlock {
 /** ToolResult 信封即持久块; data/durationMs/errorCode 都在信封上, 不再重复投影。 */
 export type ToolResultBlock = ToolResult;
 
-export type UserBlock = MessageContentPart | ToolResultBlock | AttachmentReferenceBlock;
+export type UserBlock = ContentPart | ToolResultBlock | AttachmentReferenceBlock;
 export type MessageBlocks = string | AssistantBlock[] | UserBlock[];
 
 const INVALID_MESSAGE_PLACEHOLDER = '[消息内容无法读取]';
@@ -65,7 +64,7 @@ function isAssistantBlocks(value: unknown): value is AssistantBlock[] {
 
 function isUserBlocks(value: unknown): value is UserBlock[] {
   return Array.isArray(value) && value.every((block) => (
-    isTurnContentPart(block) || isToolResultBlock(block) || isAttachmentReferenceBlock(block)
+    isContentPart(block) || isToolResultBlock(block) || isAttachmentReferenceBlock(block)
   ));
 }
 
@@ -104,7 +103,7 @@ function isToolResultParts(value: unknown): value is ToolResultContentPart[] {
   });
 }
 
-function isTurnContentPart(value: unknown): value is TurnContentPart {
+function isContentPart(value: unknown): value is ContentPart {
   if (!isRecord(value)) return false;
   switch (value.type) {
     case 'text':

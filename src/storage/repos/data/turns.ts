@@ -5,7 +5,7 @@ import type { TurnId, SessionId } from '@ema-agent/ids';
 import type { ExecutionProfileRow, NarrativePolicyRow } from './sessions.js';
 
 /** turns.status 的 SQL CHECK 原样。 */
-export type TurnStatusRow = 'pending' | 'running' | 'completed' | 'failed' | 'aborted';
+export type TurnStatusRow = 'running' | 'completed' | 'failed' | 'aborted';
 /** turns.trigger_type 的 SQL CHECK 原样。 */
 export type TurnTriggerTypeRow = 'userMessage' | 'backgroundProcessCompleted';
 
@@ -90,7 +90,7 @@ export class TurnsRepo {
         `INSERT INTO turns
            (id, session_id, status, trigger_type,
             execution_profile, narrative_policy, created_at)
-         VALUES (?, ?, 'pending', ?, ?, ?, ?)`,
+         VALUES (?, ?, 'running', ?, ?, ?, ?)`,
       )
       .run(
         t.id,
@@ -131,13 +131,7 @@ export class TurnsRepo {
         src.created_at, src.completed_at, src.error_code, src.error_message,
       );
   }
-
-  setRunning(id: TurnId): void {
-    this.db
-      .prepare("UPDATE turns SET status = 'running' WHERE id = ?")
-      .run(id);
-  }
-
+  
   complete(id: TurnId, c: TurnCompletion): void {
     this.db
       .prepare(
@@ -318,7 +312,7 @@ export class TurnsRepo {
     this.db
       .prepare(
         `UPDATE turns SET status = 'aborted', completed_at = ?
-         WHERE session_id = ? AND status IN ('pending','running')`,
+         WHERE session_id = ? AND status = 'running'`,
       )
       .run(now, sessionId);
   }
@@ -328,7 +322,7 @@ export class TurnsRepo {
     const result = this.db
       .prepare(
         `UPDATE turns SET status = 'aborted', completed_at = ?
-         WHERE status IN ('pending','running')`,
+         WHERE status = 'running'`,
       )
       .run(now);
     return result.changes;

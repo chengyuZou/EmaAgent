@@ -47,11 +47,3 @@ export type AttachmentSourceStatus =
 export type InspectedAttachment = Attachment & {
   readonly sourceStatus: AttachmentSourceStatus;
 };
-
-// ── Message 引用 ──────────────────────────────────────────────────────────────
-
-/** Message 只保存稳定引用；附件事实只存在 turn_attachments 一处。 */
-export interface AttachmentReferenceBlock {
-  readonly type: 'attachment_ref';
-  readonly attachmentId: AttachmentId;
-}

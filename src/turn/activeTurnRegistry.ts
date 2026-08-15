@@ -1,25 +1,25 @@
-// 以 Session 和 Turn 双重身份记录当前活动根 Turn，避免迟到清理误伤后继执行。
+// 以 Session 和 Turn 双重身份记录当前活动根 Turn
 
 import type { SessionId, TurnId } from '@ema-agent/ids';
+import { ActiveTurnAlreadyRegisteredError } from './errors.js';
 
 interface ActiveTurn {
   turnId: TurnId;
   abortController: AbortController;
 }
 
-/**
- * 运行态只用于快速判断和取消；崩溃恢复仍以 SQLite 中的 Turn 终态为准。
- * 所有改变已有条目的操作都必须携带 TurnId，防止旧执行流清理同 Session 的新 Turn。
- */
 export class ActiveTurnRegistry {
   private readonly turns = new Map<string, ActiveTurn>();
+  /**
+   * 订阅方是 Server 的后台维护调度：低优先级维护只在无前台 Turn 时运行，
+   * 订阅让最后一个 Turn 结束时后台立刻被唤醒，而不是轮询空转。
+   */
   private readonly listeners = new Set<(activeCount: number) => void>();
 
-  /** 注册活动 Turn；同一 Session 已有运行项时拒绝覆盖。 */
   register(sessionId: SessionId, turnId: TurnId): AbortSignal {
     const key = sessionId as string;
     if (this.turns.has(key)) {
-      throw new Error(`active_turn_already_registered: ${sessionId}`);
+      throw new ActiveTurnAlreadyRegisteredError(sessionId as string);
     }
 
     const abortController = new AbortController();
@@ -65,7 +65,10 @@ export class ActiveTurnRegistry {
     return this.turns.size;
   }
 
-  /** 订阅活动根 Turn 数量，并立即收到当前快照。 */
+  /**
+   * 订阅活动根 Turn 数量，并立即收到当前快照。唯一的订阅方是 Server 后台
+   * 维护调度；notifyListeners/notifyListener 是它的扇出与单播辅助。
+   */
   subscribe(listener: (activeCount: number) => void): () => void {
     this.listeners.add(listener);
     this.notifyListener(listener);
