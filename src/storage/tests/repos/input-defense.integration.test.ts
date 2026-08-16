@@ -232,7 +232,7 @@ function insertAgentRun(database: Database, id: string): void {
     id,
     sessionId: 'session-a',
     parentTurnId: 'turn-a',
-    kind: 'subagent',
+    contextMode: 'subagent',
     createdAt: 1,
   });
 }

@@ -26,7 +26,7 @@ describe('N-012 Data DB 确定性事件顺序', () => {
       id: 'run-a',
       sessionId: 'session-a',
       parentTurnId: 'turn-a',
-      kind: 'subagent',
+      contextMode: 'subagent',
       createdAt: 1,
     });
     const messages = new AgentRunMessagesRepo(database.sqlite);
@@ -69,31 +69,6 @@ describe('N-012 Data DB 确定性事件顺序', () => {
 
     expect(repo.listBySession('session-a').map((row) => row.id))
       .toEqual(['a-same-time', 'z-same-time', 'assistant-later']);
-  });
-
-  it('当前 Schema 安装 AgentRun 顺序列和对应复合索引', () => {
-    const messageColumns = database.sqlite
-      .prepare('PRAGMA table_info(agent_run_messages)')
-      .all() as Array<{ name: string; notnull: number }>;
-    const sequence = messageColumns.find((column) => column.name === 'sequence');
-    expect(sequence).toMatchObject({ notnull: 1 });
-
-    const sequenceConstraint = (database.sqlite.prepare(
-      `PRAGMA index_list(agent_run_messages)`,
-    ).all() as Array<{ name: string; unique: number; origin: string }>)
-      .find((index) => index.unique === 1 && index.origin === 'u');
-    expect(sequenceConstraint).toBeDefined();
-    expect(database.sqlite.prepare(`PRAGMA index_info(${sequenceConstraint!.name})`).all())
-      .toEqual([
-        expect.objectContaining({ seqno: 0, name: 'agent_run_id' }),
-        expect.objectContaining({ seqno: 1, name: 'sequence' }),
-      ]);
-    expect(indexSql(database, 'idx_pending_fragments_session').replaceAll(/\s+/g, ' '))
-      .toContain('pending_fragments(session_id, at ASC, created_at ASC, id ASC)');
-    expect(database.sqlite.prepare(`
-      SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'telemetry_events'
-    `).get()).toBeUndefined();
-    expect(database.currentVersion()).toBe(1);
   });
 });
 

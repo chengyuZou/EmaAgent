@@ -1,7 +1,7 @@
 import type { LlmStopReason, LlmTokenUsage } from '@ema-agent/llm';
 import type { ToolResult } from '@ema-agent/tools';
+import type { SubagentContextMode } from '@ema-agent/tools';
 import type { AgentLoopState } from './agentLoopState.js';
-import type { AgentRunKind } from './runs/types.js';
 
 export type AgentLoopEvent =
   | {
@@ -50,7 +50,7 @@ export type AgentRunEvent =
   | {
       readonly type: 'agent_run_started';
       readonly agentRunId: string;
-      readonly kind: AgentRunKind;
+      readonly contextMode: SubagentContextMode;
       readonly modelId?: string;
       readonly description?: string;
       readonly startedAt: number;

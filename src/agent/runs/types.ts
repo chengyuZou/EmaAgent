@@ -1,6 +1,7 @@
+import type { SubagentContextMode } from '@ema-agent/tools';
+
 export type AgentRunStatus = 'running' | 'completed' | 'failed' | 'cancelled';
-export type AgentRunKind = 'subagent' | 'fork';
-export type AgentRunTranscriptRole =
+export type AgentRunMessageRole =
   | 'assistant'
   | 'tool_call'
   | 'tool_result'
@@ -12,9 +13,9 @@ export interface AgentRun {
   readonly parentTurnId: string;
   readonly parentAgentRunId?: string;
   readonly taskId?: string;
-  readonly kind: AgentRunKind;
-  readonly purpose?: string;
-  readonly providerConfigId?: string;
+  readonly contextMode: SubagentContextMode;
+  readonly description?: string;
+  readonly providerId?: string;
   readonly modelId?: string;
   readonly status: AgentRunStatus;
   readonly error?: string;
@@ -35,9 +36,9 @@ export interface AgentRunStart {
   parentTurnId: string;
   parentAgentRunId?: string;
   taskId?: string;
-  kind: AgentRunKind;
-  purpose?: string;
-  providerConfigId?: string;
+  contextMode: SubagentContextMode;
+  description?: string;
+  providerId?: string;
   modelId?: string;
 }
 
@@ -60,10 +61,10 @@ export type AgentRunTransitionResult =
       current?: AgentRun;
     };
 
-export interface AgentRunTranscriptMessage {
+export interface AgentRunMessage {
   readonly id: string;
   readonly agentRunId: string;
-  readonly role: AgentRunTranscriptRole;
+  readonly role: AgentRunMessageRole;
   readonly content: unknown;
   readonly sequence: number;
   readonly createdAt: number;

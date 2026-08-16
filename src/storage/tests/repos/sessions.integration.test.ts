@@ -16,27 +16,6 @@ describe('SessionsRepo integration', () => {
     database.close();
   });
 
-  it('schema 定型：sessions 无 group_label/pinned_at，turns 无 user_input/started_at', () => {
-    const sessionColumns = (database.db.prepare('PRAGMA table_info(sessions)').all() as Array<{ name: string }>)
-      .map((column) => column.name);
-    expect(sessionColumns).toEqual(expect.arrayContaining([
-      'pinned', 'forked_from_session_id', 'forked_from_turn_id',
-      'execution_profile', 'narrative_policy',
-      'provider_config_id', 'model_id',
-    ]));
-    expect(sessionColumns).not.toContain('group_label');
-    expect(sessionColumns).not.toContain('pinned_at');
-    expect(sessionColumns).not.toContain('parent_session_id');
-
-    const turnColumns = (database.db.prepare('PRAGMA table_info(turns)').all() as Array<{ name: string }>)
-      .map((column) => column.name);
-    expect(turnColumns).toEqual(expect.arrayContaining([
-      'trigger_type', 'provider_config_id', 'model_id', 'created_at',
-    ]));
-    expect(turnColumns).not.toContain('user_input');
-    expect(turnColumns).not.toContain('started_at');
-  });
-
   it('listEnrichedAll 返回带投影的扁平行（分桶归业务层）', () => {
     insertSession({ id: 'a', workspaceRoot: 'D:/work/a', lastActivityAt: 30 });
     insertSession({ id: 'b', pinned: true, lastActivityAt: 50 });

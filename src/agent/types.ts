@@ -9,8 +9,8 @@ import type {
 } from '@ema-agent/tools';
 
 export interface PrepareAgentIterationInput {
-  readonly history: readonly Message[];
-  readonly currentMessages: readonly Message[];
+  /** 当前工作历史全文；实现可以返回被 Compact 改写的版本，循环整体替换继续使用。 */
+  readonly messages: readonly Message[];
   /** Agent 只报告重试原因，是否 Compact 由 Turn 的实现决定。 */
   readonly recoveryReason?: 'context_window_exceeded';
 }
@@ -18,9 +18,16 @@ export interface PrepareAgentIterationInput {
 export interface PreparedAgentIteration {
   readonly request: LlmRequest;
   /** Compact 可能改写工作历史；后续调用必须继续使用这里返回的版本。 */
-  readonly history: readonly Message[];
+  readonly messages: readonly Message[];
 }
 
+/**
+ * 每次模型调用前的准备闭包。为什么不是把 systemPrompt/ToolPool/Compact 等原料
+ * 交给 Agent 自己编排：装配（assembleContext → 超预算则 Compact → Macro 摘要
+ * 落库 → 再装配）涉及持久化与 Context 知识，全归 Turn；Agent 拿到原料自己编排
+ * 就必须导入 Context/Compact/持久化，正是边界禁止的方向。根 Turn 与子 Agent
+ * 的装配差异也靠这个闭包各自实现、互不感知。
+ */
 export type PrepareAgentIteration = (
   input: PrepareAgentIterationInput,
 ) => Promise<PreparedAgentIteration>;
@@ -34,14 +41,20 @@ export interface AgentBudget {
   enterSubagent(): () => void;
 }
 
-/** Tool 进度和审批事件由创建执行器的 Turn 直接接收，不能绕进 Agent 事件。 */
+/**
+ * 每次 LlmCall 创建一个全新执行器。创建时机是 Turn 绑定工具进度、Permission
+ * 与 AskUser 事件出口的唯一位置（这些事件由创建它的 Turn 直接接收，不进入
+ * Agent 事件），因此必须是工厂而不是现成实例。
+ * `wake` 是执行器→循环的唤醒针：执行器状态变化（完成/进度/等待用户输入）时
+ * 唤醒循环重新检查可取结果，没有它循环只能轮询。
+ */
 export type ToolExecutorFactory = (
   wake: () => void,
 ) => StreamingToolExecutor;
 
 export interface AgentLoopInput {
-  readonly history: readonly Message[];
-  readonly currentMessages: readonly Message[];
+  /** 初始工作历史（持久基线 + 本轮种子消息）；循环在其上持续追加。 */
+  readonly messages: readonly Message[];
   readonly prepareIteration: PrepareAgentIteration;
   readonly llm: LanguageModel;
   readonly createToolExecutor: ToolExecutorFactory;

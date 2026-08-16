@@ -654,7 +654,7 @@ export class SessionStatsRepo {
       const stmtAgentRun = this.db.prepare(`
         INSERT INTO agent_runs
           (id, session_id, parent_turn_id, parent_agent_run_id, task_id,
-           kind, purpose, provider_config_id, model_id, status, error,
+           context_mode, description, provider_id, model_id, status, error,
            iterations, tool_call_count, input_tokens, output_tokens, output_excerpt,
            version, created_at, updated_at, completed_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -666,9 +666,9 @@ export class SessionStatsRepo {
           run.parent_turn_id,
           run.parent_agent_run_id,
           run.task_id,
-          run.kind,
-          run.purpose,
-          run.provider_config_id,
+          run.context_mode,
+          run.description,
+          run.provider_id,
           run.model_id,
           run.status,
           run.error,

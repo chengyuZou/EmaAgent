@@ -17,9 +17,9 @@ CREATE TABLE agent_runs (
   parent_turn_id      TEXT    NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
   parent_agent_run_id TEXT    REFERENCES agent_runs(id) ON DELETE SET NULL,
   task_id             TEXT,
-  kind                TEXT    NOT NULL CHECK (kind IN ('subagent', 'fork')),
-  purpose             TEXT,
-  provider_config_id  TEXT,
+  context_mode        TEXT    NOT NULL CHECK (context_mode IN ('subagent', 'fork')),
+  description         TEXT,
+  provider_id         TEXT,
   model_id            TEXT,
   status              TEXT    NOT NULL DEFAULT 'running'
                               CHECK (status IN ('running', 'completed', 'failed', 'cancelled')),

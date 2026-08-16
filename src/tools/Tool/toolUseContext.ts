@@ -8,15 +8,25 @@ import type { ReadFileState } from '../types.js';
 import type { AskUserQuestionSpec } from '../events.js';
 import type { BackgroundProcessPort } from '../background/types.js';
 
-/** 子 Agent 启动时如何取得父执行上下文。 */
+/** 
+ * 子 Agent 启动时如何取得父执行上下文。
+ * `subagent` 模式下，子agent不继承父agent的上下文，子agent的上下文由宿主提供，子agent的上下文与父agent的上下文是隔离的。
+ * `fork` 模式下，子agent继承父agent的上下文，子agent的上下文与父agent的上下文是共享的。
+ */
 export type SubagentContextMode = 'subagent' | 'fork';
 
 export interface SubagentSpawnOptions {
-  model?: string;
+  providerId?: string;
+  modelId?: string;
+  /** 任务短描述（3–5 词），展示在 dashboard 与日志；映射自 SubagentTool 的 description 入参。 */
   description?: string;
-  kind?: SubagentContextMode;
+  contextMode?: SubagentContextMode;
   agentRunId?: string;
   taskId?: string;
+  /** 角色注入的 system prompt；由 PrepareSubagent 装配进子 Agent 上下文。 */
+  systemPrompt?: string;
+  /** 类型级工具收窄（按模型可见工具名匹配）；由 PrepareSubagent 收窄子 ToolPool。 */
+  disallowedTools?: readonly string[];
 }
 
 export interface SubagentRunResult {

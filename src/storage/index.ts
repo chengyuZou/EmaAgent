@@ -180,7 +180,7 @@ export {
 export type {
   AgentRunCompletion,
   AgentRunInsert,
-  AgentRunKind,
+  AgentRunContextModeRow,
   AgentRunRow,
   AgentRunStatus,
 } from './repos/data/agent-runs.js';

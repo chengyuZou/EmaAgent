@@ -27,7 +27,7 @@ describe('AgentRun 持久化状态机', () => {
       id: agentRunId,
       sessionId: 'session-a',
       parentTurnId: 'turn-a',
-      kind: 'subagent',
+      contextMode: 'subagent',
       createdAt: 3,
     });
   });

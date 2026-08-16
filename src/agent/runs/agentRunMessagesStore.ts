@@ -1,13 +1,14 @@
-// 把子 AgentLoop 已发生的内容事实立即写入独立 transcript，并提供按运行查询。
+// 按序记录一次子 Agent 运行的内容消息（文本/思考/工具调用/结果），供按运行回放。
+// 一次运行 N 行；运行状态机与终态统计归 agentRunStore.ts。
 
 import type {
   AgentRunMessageInsert,
   AgentRunMessagesRepo,
 } from '@ema-agent/storage';
 import type { AgentLoopEvent } from '../events.js';
-import type { AgentRunTranscriptMessage } from './types.js';
+import type { AgentRunMessage } from './types.js';
 
-export class AgentRunTranscript {
+export class AgentRunMessagesStore {
   constructor(private readonly repo: AgentRunMessagesRepo) {}
 
   /**
@@ -15,11 +16,11 @@ export class AgentRunTranscript {
    * 持久化顺序会自然早于工具启动和结果关账，进程中断时也保留最后一个已见事实。
    */
   record(agentRunId: string, event: AgentLoopEvent): void {
-    const message = transcriptMessageFor(agentRunId, event);
+    const message = messageFor(agentRunId, event);
     if (message) this.repo.insert(message);
   }
 
-  listForRun(agentRunId: string): readonly AgentRunTranscriptMessage[] {
+  listForRun(agentRunId: string): readonly AgentRunMessage[] {
     return this.repo.listForRun(agentRunId).map((row) => ({
       id: row.id,
       agentRunId: row.agent_run_id,
@@ -29,10 +30,9 @@ export class AgentRunTranscript {
       createdAt: row.created_at,
     }));
   }
-
 }
 
-function transcriptMessageFor(
+function messageFor(
   agentRunId: string,
   event: AgentLoopEvent,
 ): AgentRunMessageInsert | undefined {

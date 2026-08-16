@@ -2,8 +2,12 @@
 
 import type { LlmTokenUsage } from '@ema-agent/llm';
 
+/**
+ * 循环还活着时的形态 + 终态。失败不是相位：Provider/执行错误以异常逃出
+ * generator，终态由 Turn 的 failTurn 或 Spawner 的 agent_run_failed 承担。
+ * （Claude 侧无相位枚举，Terminal reason 同样不含 ready。）
+ */
 export type AgentLoopPhase =
-  | 'ready'
   | 'thinking'
   | 'acting'
   | 'waiting_user'
@@ -18,6 +22,7 @@ export type AgentLoopStopReason =
 
 export interface AgentLoopState {
   readonly phase: AgentLoopPhase;
+  // 当前的迭代次数
   readonly iterations: number;
   readonly usage: LlmTokenUsage;
   readonly stopReason?: AgentLoopStopReason;
@@ -25,7 +30,7 @@ export interface AgentLoopState {
 
 export function createAgentLoopState(): AgentLoopState {
   return Object.freeze({
-    phase: 'ready',
+    phase: 'thinking',
     iterations: 0,
     usage: { inputTokens: 0, outputTokens: 0 },
   });

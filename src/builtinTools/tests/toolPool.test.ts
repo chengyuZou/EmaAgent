@@ -68,7 +68,7 @@ describe('Builtin ToolPool 能力装配', () => {
       BuiltinTools.ScratchpadWrite.name,
     ]));
     expect(names).not.toContain(BuiltinTools.Bash.name);
-    expect(names).not.toContain(BuiltinTools.SkillCall.name);
+    expect(names).not.toContain(BuiltinTools.Skill.name);
   });
 
   it('问询工具显式免普通权限审批(它自己就是询问通道)', () => {

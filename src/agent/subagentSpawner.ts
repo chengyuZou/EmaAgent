@@ -10,7 +10,7 @@ import { runAgentLoop } from './agentLoop.js';
 import type { AgentLoopEvent, AgentRunEvent } from './events.js';
 import type { AgentLoopInput, AgentBudget } from './types.js';
 import { AgentRunStore } from './runs/agentRunStore.js';
-import { AgentRunTranscript } from './runs/agentRunTranscript.js';
+import { AgentRunMessagesStore } from './runs/agentRunMessagesStore.js';
 
 const OUTPUT_EXCERPT_MAX = 200;
 
@@ -29,12 +29,12 @@ export interface SubagentSpawnerOptions {
   readonly parentSessionId: string;
   readonly parentTurnId: string;
   readonly parentAgentRunId?: string;
-  readonly providerConfigId?: string;
+  readonly providerId?: string; 
   readonly defaultModelId?: string;
   readonly budget: AgentBudget;
   readonly prepareSubagent: PrepareSubagent;
   readonly agentRunStore: AgentRunStore;
-  readonly transcript: AgentRunTranscript;
+  readonly messagesStore: AgentRunMessagesStore;
   readonly emit: (event: AgentRunEvent) => void;
 }
 
@@ -128,8 +128,9 @@ export class SubagentSpawner implements SubagentSpawnerPort {
     this.controllers.set(agentRunId, controller);
 
     const startedAt = Date.now();
-    const kind = spawnOptions.kind ?? 'subagent';
-    const modelId = spawnOptions.model ?? this.options.defaultModelId;
+    const contextMode = spawnOptions.contextMode ?? 'subagent';
+    const providerId = spawnOptions.providerId ?? this.options.providerId;
+    const modelId = spawnOptions.modelId ?? this.options.defaultModelId;
     let toolCallCount = 0;
 
     this.options.agentRunStore.start({
@@ -140,19 +141,19 @@ export class SubagentSpawner implements SubagentSpawnerPort {
         ? { parentAgentRunId: this.options.parentAgentRunId }
         : {}),
       ...(spawnOptions.taskId !== undefined ? { taskId: spawnOptions.taskId } : {}),
-      kind,
+      contextMode,
       ...(spawnOptions.description !== undefined
-        ? { purpose: spawnOptions.description }
+        ? { description: spawnOptions.description }
         : {}),
-      ...(this.options.providerConfigId !== undefined
-        ? { providerConfigId: this.options.providerConfigId }
+      ...(providerId !== undefined
+        ? { providerId }
         : {}),
       ...(modelId !== undefined ? { modelId } : {}),
     });
     this.options.emit({
       type: 'agent_run_started',
       agentRunId,
-      kind,
+      contextMode,
       ...(modelId !== undefined ? { modelId } : {}),
       ...(spawnOptions.description !== undefined
         ? { description: spawnOptions.description }
@@ -170,8 +171,8 @@ export class SubagentSpawner implements SubagentSpawnerPort {
       let terminal: Extract<AgentLoopEvent, { type: 'loop_stopped' }> | undefined;
       for await (const event of runAgentLoop(loopInput)) {
         if (event.type === 'tool_use_completed') toolCallCount += 1;
-        // 先写 transcript，再恢复 generator，严格守住工具副作用和结果关账边界。
-        this.options.transcript.record(agentRunId, event);
+        // 先写消息记录，再恢复 generator，严格守住工具副作用和结果关账边界。
+        this.options.messagesStore.record(agentRunId, event);
         this.options.emit({ type: 'agent_run_event', agentRunId, event });
         if (event.type === 'loop_stopped') terminal = event;
       }

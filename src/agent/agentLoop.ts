@@ -4,7 +4,6 @@ import type {
   AssistantBlock,
   LlmStopReason,
   LlmTokenUsage,
-  Message,
   ToolResultBlock,
 } from '@ema-agent/llm';
 import {
@@ -23,6 +22,9 @@ import type { AgentLoopInput } from './types.js';
 
 const CONTINUE_OUTPUT_MESSAGE =
   '[系统] 你的输出被截断，请从中断处继续输出剩余内容，不要重复已输出的部分。';
+const STUCK_GUIDE_MESSAGE =
+  '[系统] 你已连续多轮以完全相同的参数调用相同的工具，没有获得新的信息。请换一个方法、缩小范围，或直接向用户说明当前阻碍。';
+const STUCK_BATCH_STREAK = 3;
 
 interface IterationResponse {
   readonly textByIndex: ReadonlyMap<number, string>;
@@ -41,10 +43,13 @@ export async function* runAgentLoop(
   input: AgentLoopInput,
 ): AsyncGenerator<AgentLoopEvent, void> {
   let state = createAgentLoopState();
-  let history = [...input.history];
-  const currentMessages = [...input.currentMessages];
+  let messages = [...input.messages];
   const continuedOutput: string[] = [];
-  let outputRecoveryCount = 0;
+  let escalatedMaxOutputTokens = false;
+  let injectedContinuation = false;
+  let lastBatchSignature: string | undefined;
+  let sameBatchStreak = 0;
+  let stuckGuideInjected = false;
 
   // AgentLoop 同一时刻最多等待一个工具批次。ToolExecutor 状态变化时调用
   // signalWake 唤醒这个 waiter；唤醒后立即清空，避免旧回调误唤醒下一次等待。
@@ -72,7 +77,7 @@ export async function* runAgentLoop(
       return;
     }
 
-    const continuesOutput = outputRecoveryCount > 0;
+    const continuesOutput = injectedContinuation;
     state = updateAgentLoopState(state, {
       phase: 'thinking',
       iterations: iteration,
@@ -84,11 +89,8 @@ export async function* runAgentLoop(
       state,
     };
 
-    let prepared = await input.prepareIteration({
-      history,
-      currentMessages,
-    });
-    history = [...prepared.history];
+    let prepared = await input.prepareIteration({ messages });
+    messages = [...prepared.messages];
 
     const executor = input.createToolExecutor(signalWake);
     let response!: IterationResponse;
@@ -110,10 +112,13 @@ export async function* runAgentLoop(
       let receivedResponseEvent = false;
 
       const remainingOutputTokens = input.budget.remainingOutputTokens();
-      const requestMax = prepared.request.maxOutputTokens ?? remainingOutputTokens;
+      // 升级重试时放开 prepare 的默认上限，直接顶到预算允许的最大值。
+      const preparedMax = escalatedMaxOutputTokens
+        ? remainingOutputTokens
+        : (prepared.request.maxOutputTokens ?? remainingOutputTokens);
       const request = {
         ...prepared.request,
-        maxOutputTokens: Math.min(requestMax, remainingOutputTokens),
+        maxOutputTokens: Math.min(preparedMax, remainingOutputTokens),
         signal: input.signal,
       };
 
@@ -226,11 +231,10 @@ export async function* runAgentLoop(
         ) {
           recoveryAttempted = true;
           prepared = await input.prepareIteration({
-            history,
-            currentMessages,
+            messages,
             recoveryReason: 'context_window_exceeded',
           });
-          history = [...prepared.history];
+          messages = [...prepared.messages];
           continue;
         }
         throw error;
@@ -263,8 +267,13 @@ export async function* runAgentLoop(
     if (toolUseByIndex.size > 0) executor.start();
 
     if (stopReason === 'max_tokens' && toolUseByIndex.size === 0) {
+      if (!escalatedMaxOutputTokens) {
+        // 升级重试：半截输出作废、不注入任何消息，同一任务顶到预算上限直接重来。
+        escalatedMaxOutputTokens = true;
+        continue;
+      }
       continuedOutput.push(callText);
-      if (outputRecoveryCount === 0) {
+      if (!injectedContinuation) {
         const partialBlocks = buildAssistantBlocks(
           textByIndex,
           thinkingByIndex,
@@ -272,10 +281,10 @@ export async function* runAgentLoop(
           new Map(),
         );
         if (partialBlocks.length > 0) {
-          currentMessages.push({ role: 'assistant', content: partialBlocks });
+          messages.push({ role: 'assistant', content: partialBlocks });
         }
-        currentMessages.push({ role: 'user', content: CONTINUE_OUTPUT_MESSAGE });
-        outputRecoveryCount = 1;
+        messages.push({ role: 'user', content: CONTINUE_OUTPUT_MESSAGE });
+        injectedContinuation = true;
         continue;
       }
 
@@ -289,7 +298,7 @@ export async function* runAgentLoop(
 
     if (toolUseByIndex.size === 0) {
       continuedOutput.push(callText);
-      currentMessages.push({
+      messages.push({
         role: 'assistant',
         content: buildAssistantBlocks(
           textByIndex,
@@ -306,7 +315,8 @@ export async function* runAgentLoop(
       return;
     }
 
-    outputRecoveryCount = 0;
+    escalatedMaxOutputTokens = false;
+    injectedContinuation = false;
     continuedOutput.length = 0;
     state = updateAgentLoopState(state, { phase: 'acting' });
     yield { type: 'phase_changed', state };
@@ -342,14 +352,31 @@ export async function* runAgentLoop(
       executor.acknowledgeResult(result.toolCallId);
     }
 
+    // 连续多轮完全相同的工具批次视为原地空转：注入一次软引导让模型换方法，
+    // 不硬停（轮询类合法重复不能误杀），硬兜底仍归 maxIterations 与 budget。
+    const batchSignature = [...toolUseByIndex.values()]
+      .map((use) => `${use.name}:${JSON.stringify(use.args)}`)
+      .sort()
+      .join('|');
+    if (batchSignature === lastBatchSignature) {
+      sameBatchStreak += 1;
+    } else {
+      lastBatchSignature = batchSignature;
+      sameBatchStreak = 1;
+    }
+    if (sameBatchStreak >= STUCK_BATCH_STREAK && !stuckGuideInjected) {
+      stuckGuideInjected = true;
+      messages.push({ role: 'user', content: STUCK_GUIDE_MESSAGE });
+    }
+
     const assistantBlocks = buildAssistantBlocks(
       textByIndex,
       thinkingByIndex,
       thinkingSignatureByIndex,
       toolUseByIndex,
     ).filter((block) => block.type !== 'thinking');
-    currentMessages.push({ role: 'assistant', content: assistantBlocks });
-    currentMessages.push({
+    messages.push({ role: 'assistant', content: assistantBlocks });
+    messages.push({
       role: 'user',
       content: results.map(toModelToolResult),
     });

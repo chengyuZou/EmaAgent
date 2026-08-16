@@ -5,15 +5,14 @@ export type {
   SubagentSpawnerOptions,
 } from './subagentSpawner.js';
 export { AgentRunStore } from './runs/agentRunStore.js';
-export { AgentRunTranscript } from './runs/agentRunTranscript.js';
+export { AgentRunMessagesStore } from './runs/agentRunMessagesStore.js';
 export type {
   AgentRun,
   AgentRunCompletion,
-  AgentRunKind,
+  AgentRunMessage,
+  AgentRunMessageRole,
   AgentRunStart,
   AgentRunStatus,
-  AgentRunTranscriptMessage,
-  AgentRunTranscriptRole,
   AgentRunTransitionAction,
   AgentRunTransitionResult,
 } from './runs/types.js';

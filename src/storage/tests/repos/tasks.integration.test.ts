@@ -97,7 +97,7 @@ describe('Task 持久化边界', () => {
       sessionId,
       parentTurnId: turnId,
       taskId: taskB,
-      kind: 'subagent',
+      contextMode: 'subagent',
       createdAt: 5,
     })).toThrow(/unresolved dependency/);
 
@@ -115,7 +115,7 @@ describe('Task 持久化边界', () => {
       sessionId,
       parentTurnId: turnId,
       taskId: taskB,
-      kind: 'subagent',
+      contextMode: 'subagent',
       createdAt: 7,
     })).toMatchObject({ status: 'running', task_id: taskB });
     expect(runs.insert({
@@ -123,7 +123,7 @@ describe('Task 持久化边界', () => {
       sessionId,
       parentTurnId: turnId,
       taskId: taskB,
-      kind: 'subagent',
+      contextMode: 'subagent',
       createdAt: 8,
     })).toBeUndefined();
 

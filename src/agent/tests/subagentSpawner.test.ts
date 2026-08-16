@@ -6,7 +6,7 @@ import type { StreamingToolExecutor } from '@ema-agent/tools';
 import { SubagentSpawner } from '../subagentSpawner.js';
 import type { AgentBudget, AgentLoopInput } from '../types.js';
 import type { AgentRunStore } from '../runs/agentRunStore.js';
-import type { AgentRunTranscript } from '../runs/agentRunTranscript.js';
+import type { AgentRunMessagesStore } from '../runs/agentRunMessagesStore.js';
 
 const budget: AgentBudget = {
   assertWithinLimits: () => undefined,
@@ -39,9 +39,9 @@ describe('SubagentSpawner', () => {
       fail: vi.fn(),
       cancel: vi.fn(),
     } as unknown as AgentRunStore;
-    const transcript = {
+    const messagesStore = {
       record: vi.fn((_id, event) => { order.push(`transcript:${event.type}`); }),
-    } as unknown as AgentRunTranscript;
+    } as unknown as AgentRunMessagesStore;
     let releasePreparation!: () => void;
     const preparationGate = new Promise<void>((resolve) => { releasePreparation = resolve; });
     const prepareSubagent = vi.fn(async (input): Promise<AgentLoopInput> => {
@@ -54,11 +54,10 @@ describe('SubagentSpawner', () => {
         })(),
       } as unknown as LanguageModel;
       return {
-        history: [],
-        currentMessages: [{ role: 'user', content: input.prompt }],
-        prepareIteration: async ({ currentMessages }) => ({
-          request: { model: 'test', messages: currentMessages },
-          history: [],
+        messages: [{ role: 'user', content: input.prompt }],
+        prepareIteration: async ({ messages }) => ({
+          request: { model: 'test', messages },
+          messages,
         }),
         llm,
         createToolExecutor: () => idleExecutor(),
@@ -74,7 +73,7 @@ describe('SubagentSpawner', () => {
       budget,
       prepareSubagent,
       agentRunStore,
-      transcript,
+      messagesStore,
       emit: (event) => {
         order.push(
           event.type === 'agent_run_event'

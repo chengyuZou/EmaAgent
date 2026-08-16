@@ -127,7 +127,7 @@ describe('NarrativeSearchTool 模型投影与摘要', () => {
       }],
     }));
     expect(content).toContain('## 1st_Loop\n剧情正文');
-    expect(content).toContain('2nd_Loop（检索失败）');
+    expect(content).toContain('检索失败的剧情线：2nd_Loop (检索失败)');
   });
 
   it('空结果给模型明确提示', () => {

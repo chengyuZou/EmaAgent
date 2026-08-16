@@ -3,7 +3,8 @@
 import type { SqliteDb } from '../../database/database.js';
 
 export type AgentRunStatus = 'running' | 'completed' | 'failed' | 'cancelled';
-export type AgentRunKind = 'subagent' | 'fork';
+/** agent_runs.context_mode 的 SQL CHECK 原样。 */
+export type AgentRunContextModeRow = 'subagent' | 'fork';
 
 export interface AgentRunRow {
   id:                  string;
@@ -11,9 +12,9 @@ export interface AgentRunRow {
   parent_turn_id:      string;
   parent_agent_run_id: string | null;
   task_id:             string | null;
-  kind:                AgentRunKind;
-  purpose:             string | null;
-  provider_config_id:  string | null;
+  context_mode:        AgentRunContextModeRow;
+  description:         string | null;
+  provider_id:         string | null;
   model_id:            string | null;
   status:              AgentRunStatus;
   error:               string | null;
@@ -34,9 +35,9 @@ export interface AgentRunInsert {
   parentTurnId: string;
   parentAgentRunId?: string;
   taskId?: string;
-  kind: AgentRunKind;
-  purpose?: string;
-  providerConfigId?: string;
+  contextMode: AgentRunContextModeRow;
+  description?: string;
+  providerId?: string;
   modelId?: string;
   createdAt: number;
 }
@@ -56,7 +57,7 @@ export class AgentRunsRepo {
     return this.db.prepare(
       `INSERT OR IGNORE INTO agent_runs (
          id, session_id, parent_turn_id, parent_agent_run_id, task_id,
-         kind, purpose, provider_config_id, model_id, status, created_at, updated_at
+         context_mode, description, provider_id, model_id, status, created_at, updated_at
        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?)
        RETURNING *`,
     ).get(
@@ -65,9 +66,9 @@ export class AgentRunsRepo {
       value.parentTurnId,
       value.parentAgentRunId ?? null,
       value.taskId ?? null,
-      value.kind,
-      value.purpose ?? null,
-      value.providerConfigId ?? null,
+      value.contextMode,
+      value.description ?? null,
+      value.providerId ?? null,
       value.modelId ?? null,
       value.createdAt,
       value.createdAt,

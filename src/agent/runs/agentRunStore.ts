@@ -1,4 +1,5 @@
-// AgentRunStore 管理子 Agent 执行的 CAS 终态、查询和崩溃恢复。
+// 管理一次子 Agent 运行的状态机与终态统计（一次运行一行）。
+// 内容消息流水（文本/思考/工具调用/结果）归 agentRunMessagesStore.ts。
 
 import type { AgentRunRow, AgentRunsRepo } from '@ema-agent/storage';
 import type {
@@ -15,7 +16,7 @@ function fromRow(row: AgentRunRow): AgentRun {
     id: row.id,
     sessionId: row.session_id,
     parentTurnId: row.parent_turn_id,
-    kind: row.kind,
+    contextMode: row.context_mode,
     status: row.status as AgentRunStatus,
     version: row.version,
     createdAt: row.created_at,
@@ -24,9 +25,9 @@ function fromRow(row: AgentRunRow): AgentRun {
       ? { parentAgentRunId: row.parent_agent_run_id }
       : {}),
     ...(row.task_id !== null ? { taskId: row.task_id } : {}),
-    ...(row.purpose !== null ? { purpose: row.purpose } : {}),
-    ...(row.provider_config_id !== null
-      ? { providerConfigId: row.provider_config_id }
+    ...(row.description !== null ? { description: row.description } : {}),
+    ...(row.provider_id !== null
+      ? { providerId: row.provider_id }
       : {}),
     ...(row.model_id !== null ? { modelId: row.model_id } : {}),
     ...(row.error !== null ? { error: row.error } : {}),
@@ -50,9 +51,9 @@ export class AgentRunStore {
       parentTurnId: input.parentTurnId,
       parentAgentRunId: input.parentAgentRunId,
       taskId: input.taskId,
-      kind: input.kind,
-      purpose: input.purpose,
-      providerConfigId: input.providerConfigId,
+      contextMode: input.contextMode,
+      description: input.description,
+      providerId: input.providerId,
       modelId: input.modelId,
       createdAt: now,
     });

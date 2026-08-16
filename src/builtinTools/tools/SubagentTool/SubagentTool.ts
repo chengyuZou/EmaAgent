@@ -7,11 +7,13 @@ import {
   buildTool,
   contextFail,
   contextOk,
+  SubagentSpawnOptions,
   type SubagentSpawnerPort,
   type ToolInvocation,
 } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { SUBAGENT_DESCRIPTION } from './prompt.js';
+import { AGENT_ROLES, DEFAULT_AGENT_ROLE, getAgentRole } from './agentRoles.js';
 
 /** Subagent 工具的窄 Context：子 Agent 启动器;取消与身份走 ToolInvocation。 */
 interface SubagentToolContext {
@@ -26,6 +28,8 @@ const AUTO_BACKGROUND_WAIT_MS = 30_000;
 
 // ── 输入 schema ──────────────────────────────────────────────────────────────
 
+const ROLE_IDS = AGENT_ROLES.map((role) => role.agentType) as [string, ...string[]];
+
 const inputSchema = z.object({
   prompt: z
     .string()
@@ -34,7 +38,18 @@ const inputSchema = z.object({
       'Task prompt for the sub-agent. In the default "subagent" mode it must include all ' +
         'needed context because parent conversation history is not inherited.',
     ),
-  model: z
+  role: z
+    .enum(ROLE_IDS)
+    .optional()
+    .describe(
+      `Sub-agent role (default "${DEFAULT_AGENT_ROLE}"). `
+        + AGENT_ROLES.map((role) => `${role.agentType}: ${role.whenToUse}`).join(' '),
+    ),
+  providerId: z
+    .string()
+    .optional()
+    .describe('Override provider ID for this sub-agent. Defaults to the parent agent\'s provider.'),
+  modelId: z
     .string()
     .optional()
     .describe('Override model ID for this sub-agent. Defaults to the parent agent\'s model.'),
@@ -44,7 +59,7 @@ const inputSchema = z.object({
     .min(1)
     .max(200)
     .describe('Short description of this sub-agent\'s role (shown in the dashboard and logs).'),
-  kind: z
+  contextMode: z
     .enum(['subagent', 'fork'])
     .optional()
     .describe(
@@ -126,7 +141,9 @@ function raceWithAbort<T>(
 export const SubagentTool = buildTool<SubagentInput, SubagentResult, SubagentToolContext>({
   id: BuiltinTools.Subagent.id,
   name: BuiltinTools.Subagent.name,
-  description: SUBAGENT_DESCRIPTION,
+  description: SUBAGENT_DESCRIPTION
+    + `\n\nAvailable roles (role parameter; default "${DEFAULT_AGENT_ROLE}"):\n`
+    + AGENT_ROLES.map((role) => `- ${role.agentType}: ${role.whenToUse}`).join('\n'),
 
   inputSchema,
   isReadOnly: () => false,
@@ -154,12 +171,21 @@ export const SubagentTool = buildTool<SubagentInput, SubagentResult, SubagentToo
     // 所有 dashboard 事件(started/progress/stream/completed/failed/aborted)由
     // spawner emit - 它有 model/timing/usage 信息,工具没有。
     const agentRunId = randomUUID();
-    const options = {
-      model: input.model,
+    const role = getAgentRole(input.role ?? DEFAULT_AGENT_ROLE);
+    if (!role) {
+      throw new Error(
+        `Unknown subagent role: ${input.role}. Available: ${AGENT_ROLES.map((r) => r.agentType).join(', ')}`,
+      );
+    }
+    const options: SubagentSpawnOptions = {
+      providerId: input.providerId,
+      modelId: input.modelId ?? role.modelId,
       description: input.description,
-      kind: input.kind ?? ('subagent' as const),
+      contextMode: input.contextMode ?? role.contextMode ?? ('subagent' as const),
       agentRunId,
       taskId: input.taskId ? input.taskId : undefined,
+      systemPrompt: role.systemPrompt,
+      disallowedTools: role.disallowedTools,
     };
 
     if (input.runInBackground) {
