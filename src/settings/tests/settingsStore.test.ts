@@ -1,17 +1,71 @@
-// 测试类型化设置的读写顺序:写必须先落库再发事件;读每次过 decode,坏值回落默认。
+// 测试类型化设置的读写顺序:写必须先落库再发事件;读每次过 zod safeParse,
+// 坏值回落默认;有跨字段约束的组在写入时整组 refine。
 
-import { describe, expect, it, vi } from 'vitest';
-import { SettingsStore, defineSetting } from '../index.js';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
+import {
+  InvalidSettingGroupValueError,
+  InvalidSettingValueError,
+  SettingsStore,
+  defineSetting,
+} from '../index.js';
+import type { SettingGroup } from '../types.js';
 
-// 故意不声明 encode:JSON 原生形状走缺省恒等。
 const countSetting = defineSetting<number>({
   key: 'test.count',
-  kind: 'number',
   apply: 'immediate',
   defaultValue: 3,
-  decode: value => Number.isInteger(value) && (value as number) >= 0
-    ? { ok: true, value: value as number }
-    : { ok: false },
+  schema: z.number().int().min(0),
+});
+
+// 组内跨字段约束示例:maxConcurrentSubagents ≤ maxSubagents
+const maxSubagentsSetting = defineSetting<number>({
+  key: 'agent.limits.maxSubagents',
+  apply: 'nextTurn',
+  defaultValue: 16,
+  schema: z.number().int().min(1).max(32),
+  group: 'agent.limits',
+});
+const maxConcurrentSubagentsSetting = defineSetting<number>({
+  key: 'agent.limits.maxConcurrentSubagents',
+  apply: 'nextTurn',
+  defaultValue: 4,
+  schema: z.number().int().min(1).max(8),
+  group: 'agent.limits',
+});
+
+const agentLimitsGroup: SettingGroup = {
+  id: 'agent.limits',
+  definitions: [maxSubagentsSetting, maxConcurrentSubagentsSetting],
+  schema: z
+    .object({
+      'agent.limits.maxSubagents': z.number(),
+      'agent.limits.maxConcurrentSubagents': z.number(),
+    })
+    .refine(
+      g =>
+        g['agent.limits.maxConcurrentSubagents'] <=
+        g['agent.limits.maxSubagents'],
+      { message: 'maxConcurrentSubagents 不能大于 maxSubagents' },
+    ),
+};
+
+const memory: Record<string, unknown> = {};
+
+function makeStore(options: { groups?: readonly SettingGroup[] } = {}) {
+  return new SettingsStore(
+    {
+      read: key => (key in memory ? { status: 'found', value: memory[key] } : { status: 'missing' }),
+      set: (key, value) => { memory[key] = value; },
+      setMany: entries => { for (const e of entries) memory[e.key] = e.value; },
+      delete: key => { delete memory[key]; },
+    },
+    options,
+  );
+}
+
+beforeEach(() => {
+  for (const key of Object.keys(memory)) delete memory[key];
 });
 
 describe('SettingsStore', () => {
@@ -49,20 +103,76 @@ describe('SettingsStore', () => {
     expect(invalid.get(countSetting)).toBe(3);
   });
 
-  it('set 成功后发一次事件并携带变更键;读取返回持久化后的规范化值', () => {
+  it('set 成功后发一次事件并携带变更键;读取返回校验后的规范化值', () => {
     const listener = vi.fn();
-    let persisted: unknown = 1;
-    const store = new SettingsStore({
-      read: () => ({ status: 'found', value: persisted }),
-      set: (_key, value) => { persisted = value; },
-      setMany: () => {},
-      delete: () => {},
-    });
+    const store = makeStore();
     store.subscribe(listener);
 
     expect(store.set(countSetting, 9)).toBe(9);
     expect(store.get(countSetting)).toBe(9);
     expect(listener).toHaveBeenCalledWith({ revision: 1, changedKeys: ['test.count'] });
+  });
+
+  it('set 时单 key 校验失败抛 InvalidSettingValueError 且不落库', () => {
+    const store = makeStore();
+    expect(() => store.set(countSetting, -5)).toThrow(InvalidSettingValueError);
+    expect(store.get(countSetting)).toBe(3);
+  });
+
+  it('组内改一个 key 时,用组内其余 key 当前值整组 refine;违反跨字段约束则拒绝', () => {
+    const store = makeStore({ groups: [agentLimitsGroup] });
+    // 先把 maxConcurrentSubagents 设为 8(默认 maxSubagents=16,8≤16 合法)
+    store.set(maxConcurrentSubagentsSetting, 8);
+    // 再把 maxSubagents 改成 4 → 整组 8 ≤ 4 不成立 → 拒绝
+    expect(() => store.set(maxSubagentsSetting, 4))
+      .toThrow(InvalidSettingGroupValueError);
+    // 未落库:仍是默认 16
+    expect(store.get(maxSubagentsSetting)).toBe(16);
+  });
+
+  it('组内合法组合正常通过并落库', () => {
+    const store = makeStore({ groups: [agentLimitsGroup] });
+    store.set(maxSubagentsSetting, 8);
+    store.set(maxConcurrentSubagentsSetting, 4); // 4 ≤ 8 → 通过
+    expect(store.get(maxConcurrentSubagentsSetting)).toBe(4);
+  });
+
+  it('setMany 提交一组时整组校验;组内未改动 key 用当前值', () => {
+    const store = makeStore({ groups: [agentLimitsGroup] });
+    store.set(maxSubagentsSetting, 16);
+    // 同一批:maxSubagents=2, maxConcurrentSubagents=4 → 4 > 2 拒绝
+    expect(() =>
+      store.setMany([
+        { definition: maxSubagentsSetting, value: 2 },
+        { definition: maxConcurrentSubagentsSetting, value: 4 },
+      ]),
+    ).toThrow(InvalidSettingGroupValueError);
+    // 未落库
+    expect(store.get(maxSubagentsSetting)).toBe(16);
+  });
+
+  it('目录职能:构造时注册定义,listDefinitions 带 schema 且按 key 排序,findDefinition 可查', () => {
+    const store = makeStore({
+      definitions: [countSetting, maxSubagentsSetting],
+      groups: [agentLimitsGroup],
+    });
+
+    const list = store.listDefinitions();
+    expect(list.map(d => d.key)).toEqual([
+      'agent.limits.maxSubagents',
+      'test.count',
+    ]);
+    expect(list[0]!.schema).toBe(maxSubagentsSetting.schema);
+    expect(list[0]!.defaultValue).toBe(16);
+    expect(list[0]!.group).toBe('agent.limits');
+
+    expect(store.findDefinition('test.count')).toBe(countSetting);
+    expect(store.findDefinition('no.such.key')).toBeUndefined();
+  });
+
+  it('注册重复 key 启动期 fail-fast', () => {
+    const store = makeStore({ definitions: [countSetting] });
+    expect(() => store.register(countSetting)).toThrow('Duplicate setting key');
   });
 });
 

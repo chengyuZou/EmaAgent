@@ -6,3 +6,12 @@ export class InvalidSettingValueError extends Error {
     this.name = 'InvalidSettingValueError';
   }
 }
+
+export class InvalidSettingGroupValueError extends Error {
+  readonly code = 'settings/invalid-group-value';
+
+  constructor(readonly groupId: string, detail?: string) {
+    super(detail ?? `设置组未通过跨字段校验: ${groupId}`);
+    this.name = 'InvalidSettingGroupValueError';
+  }
+}

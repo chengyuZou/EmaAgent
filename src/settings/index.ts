@@ -1,7 +1,12 @@
 export { SettingsStore } from './settingsStore.js';
-export type { SettingsRepository } from './settingsStore.js';
-export { SettingsCatalog } from './settingsCatalog.js';
-export { InvalidSettingValueError } from './errors.js';
+export type {
+  SettingsRepository,
+  SettingsStoreOptions,
+} from './settingsStore.js';
+export {
+  InvalidSettingGroupValueError,
+  InvalidSettingValueError,
+} from './errors.js';
 export { defineSetting, describeSetting } from './types.js';
 export type {
   SettingsChangedEvent,
@@ -9,8 +14,7 @@ export type {
 } from './events.js';
 export type {
   SettingApplyPolicy,
-  SettingDecodeResult,
   SettingDefinition,
   SettingDescriptor,
-  SettingValueKind,
+  SettingGroup,
 } from './types.js';
