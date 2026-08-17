@@ -5,6 +5,7 @@ import path from 'node:path';
 import { z } from 'zod';
 import {
   buildTool,
+  contentHashOf,
   contextFail,
   contextOk,
   type ReadFileState,
@@ -287,11 +288,12 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, FileReadToo
     const content = formatWithLineNumbers(result.lines, startLine);
 
     // ── 更新去重缓存 ──────────────────────────────────────────────────────────
-    // 整读存完整原文(FileEdit 防覆盖需要逐字节精确比对);
-    // 分页只存选中切片(Edit 拒绝局部视图, 缓存仅供去重回放), 不再整文件占内存。
+    // 整读存完整原文(FileEdit 防覆盖需要);分页只存选中切片(Edit 拒绝局部视图,
+    // 缓存仅供去重回放),不再整文件占内存。contentHash 是外部修改检测的指纹。
     if (isPartialView) {
       context.readFileState.set(fullPath, {
         content: result.lines.join('\n'),
+        contentHash: contentHashOf(result.lines.join('\n')),
         timestamp: mtimeMs,
         offset,
         limit,
@@ -302,6 +304,7 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, FileReadToo
     } else {
       context.readFileState.set(fullPath, {
         content: result.raw ?? result.lines.join('\n'),
+        contentHash: contentHashOf(result.raw ?? result.lines.join('\n')),
         timestamp: mtimeMs,
         isPartialView: false,
         truncated: result.truncated,

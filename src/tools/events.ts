@@ -7,13 +7,12 @@ export interface ToolError {
 }
 
 export interface AskUserQuestionSpec {
+  /** 回答键（q0/q1…）；模型看到的最终答案以问题文本为键，Tool 负责映射。 */
   id: string;
   question: string;
   header: string;
   options?: Array<{ label: string; description?: string }>;
   multiSelect?: boolean;
-  allowCustom?: boolean;
-  placeholder?: string;
 }
 
 export type ToolStreamEvent =
@@ -33,46 +32,22 @@ export type ToolStreamEvent =
       type: 'ask_user_required';
       sessionId: string;
       turnId: string;
-      promptId: string;
+      /** 问询锚点 = 发起它的那次 Tool 调用；一个交互只可能属于一次 toolCall，不再另设 promptId。 */
+      toolCallId: string;
       questions: AskUserQuestionSpec[];
       humanDescription?: string;
     }
   | {
       type: 'ask_user_resolved';
       sessionId: string;
-      promptId: string;
+      toolCallId: string;
       answers: Record<string, string>;
-    }
-  | { type: 'ask_confirm_required'; sessionId: string; turnId: string; promptId: string; question: string; humanDescription?: string }
-  | { type: 'ask_confirm_resolved'; sessionId: string; promptId: string; confirmed: boolean }
-  | { type: 'ask_text_required'; sessionId: string; turnId: string; promptId: string; question: string; humanDescription?: string; placeholder?: string }
-  | { type: 'ask_text_resolved'; sessionId: string; promptId: string; text: string }
-  | {
-      type: 'ask_choice_required';
-      sessionId: string;
-      turnId: string;
-      promptId: string;
-      question: string;
-      humanDescription?: string;
-      options: Array<{ label: string; description?: string }>;
-      multiSelect?: boolean;
-      allowCustom?: boolean;
-    }
-  | { type: 'ask_choice_resolved'; sessionId: string; promptId: string; selected: string[]; customText?: string };
+    };
 
 /** 工具执行上下文允许业务工具向外发出的领域事件。 */
 export type ToolExecutionEvent = ToolStreamEvent | TaskEvent;
 
-export type AskUserRequiredEvent = Extract<
-  ToolStreamEvent,
-  {
-    type:
-      | 'ask_user_required'
-      | 'ask_confirm_required'
-      | 'ask_text_required'
-      | 'ask_choice_required';
-  }
->;
+export type AskUserRequiredEvent = Extract<ToolStreamEvent, { type: 'ask_user_required' }>;
 
 export interface PendingAskUserPrompt {
   createdAt: number;

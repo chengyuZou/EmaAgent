@@ -33,22 +33,20 @@ describe('AskUserTool', () => {
     expect(verdict.valid).toBe(false);
   });
 
-  it('构造的 request 携带 sessionId/turnId/promptId/specs', async () => {
+  it('以 invocation.toolCallId 为锚点调用问询通道，specs 与 signal 透传', async () => {
     const askUser = vi.fn().mockResolvedValue({ answers: {} });
+    const invocation = makeInvocation();
     await AskUserTool.execute(
       { questions: [...QUESTIONS] },
       { askUser },
-      makeInvocation(),
+      invocation,
     );
 
-    const [promptId, specs, request] = askUser.mock.calls[0]!;
-    expect(typeof promptId).toBe('string');
+    const [toolCallId, specs, signal] = askUser.mock.calls[0]!;
+    expect(toolCallId).toBe('call-ask-1');
     expect(specs[0]).toMatchObject({ id: 'q0', question: '选哪种方案？' });
-    expect(request).toMatchObject({
-      type: 'ask_user_required',
-      turnId: '00000000-0000-4000-8000-0000000000b2',
-      promptId,
-    });
+    expect(specs[1]).toMatchObject({ id: 'q1', question: '节奏怎么定？' });
+    expect(signal).toBe(invocation.signal);
   });
 
   it('答案键从 spec id 归一为问题文本;缺答给空串', async () => {

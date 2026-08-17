@@ -5,6 +5,7 @@ import path from 'node:path';
 import { z } from 'zod';
 import {
   buildTool,
+  contentHashOf,
   contextFail,
   contextOk,
   type ReadFileState,
@@ -158,8 +159,9 @@ export const FileEditTool = buildTool<FileEditInput, FileEditResult, FileEditToo
           throw new Error(`File no longer exists: ${file_path}`);
         }
 
-        // Windows 上云同步或杀毒软件可能只改变 mtime；内容一致时仍可安全继续。
-        if (current.mtimeMs !== cached.timestamp && current.content !== cached.content) {
+        // 外部修改检测：内容指纹(sha256)与缓存基准比对——内容变必哈希变，与 mtime 无关；
+        // 只改 mtime 不改内容(云同步/杀软触碰)哈希不变，照常放行，不误报。
+        if (contentHashOf(current.content) !== cached.contentHash) {
           throw new Error(
             `File "${file_path}" was modified externally since it was read. ` +
               'Re-read it with Read before editing.',
@@ -198,8 +200,10 @@ export const FileEditTool = buildTool<FileEditInput, FileEditResult, FileEditToo
     );
 
     // 用编辑后内容更新缓存,后续 Read/Edit 命中新版本。
+    // contentHash 一并刷新,使下一次 Edit 的"外部修改"检测基准滚动到本次落盘状态。
     context.readFileState.set(fullPath, {
       content: written.content,
+      contentHash: contentHashOf(written.content),
       timestamp: written.mtimeMs,
       offset: undefined,
       limit: undefined,

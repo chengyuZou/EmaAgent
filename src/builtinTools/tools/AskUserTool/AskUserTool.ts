@@ -1,7 +1,6 @@
 // 一次向用户提出一个或多个结构化问题，并等待统一回答。
 // 模型说明书见 prompt.ts。问询通道由 AskUserPort 抽象:
 // 事件发射(ask_user_required/resolved)归 port 实现, Tool 不触碰事件总线。
-import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
   buildTool,
@@ -110,7 +109,6 @@ export const AskUserTool = buildTool<AskUserInput, AskUserResult, AskUserToolCon
     context: AskUserToolContext,
     invocation: ToolInvocation,
   ): Promise<AskUserResult> {
-    const promptId = randomUUID();
     const specs: AskUserQuestionSpec[] = input.questions.map((q, i) => ({
       id:          `q${i}`,
       question:    q.question,
@@ -118,32 +116,13 @@ export const AskUserTool = buildTool<AskUserInput, AskUserResult, AskUserToolCon
       options:     q.options,
       multiSelect: q.multiSelect,
     }));
-    const request = {
-      type: 'ask_user_required',
-      sessionId: invocation.sessionId,
-      turnId: invocation.turnId,
-      promptId,
-      questions: specs,
-    } as const;
 
-    // port 返回答案以 spec id 为键;模型看到的是问题文本键。
-    // resolved 事件形状是本 Tool 专属的,工厂交给 port 在结算点发射。
-    const result = await context.askUser(
-      promptId,
-      specs,
-      request,
-      (answers) => ({
-        type: 'ask_user_resolved',
-        sessionId: invocation.sessionId,
-        promptId,
-        answers,
-      }),
-    );
+    // 问询锚点 = 本次 toolCallId；事件发射（required/resolved）归 port。
+    // port 返回答案以 spec id 为键；模型看到的是问题文本键。
+    const result = await context.askUser(invocation.toolCallId, specs, invocation.signal);
     const answers: Record<string, string> = {};
     for (const spec of specs) {
-      const byId = result.answers[spec.id];
-      const byQuestion = result.answers[spec.question];
-      answers[spec.question] = byId ?? byQuestion ?? '';
+      answers[spec.question] = result.answers[spec.id] ?? '';
     }
     return { answers };
   },

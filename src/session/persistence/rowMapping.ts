@@ -54,7 +54,7 @@ export function toSession(row: SessionRow): Session {
     executionProfile: row.execution_profile,
     narrativePolicy: row.narrative_policy,
     providerId: row.provider_id,
-    ModelId: row.model_id,
+    modelId: row.model_id,
     lastViewedAt: row.last_viewed_at,
   };
 }

@@ -54,7 +54,7 @@ export interface Session {
   /** 用户希望该 Session 使用的供应商配置；null 表示使用系统默认选择。 */
   providerId: string | null;
   /** 用户希望该 Session 使用的模型；null 表示使用系统默认选择。 */
-  ModelId: string | null;
+  modelId: string | null;
   lastViewedAt: number | null;
 }
 

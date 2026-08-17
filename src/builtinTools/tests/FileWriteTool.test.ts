@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ToolInvocation } from '@ema-agent/tools';
+import { contentHashOf, type ToolInvocation } from '@ema-agent/tools';
 import { BuiltinTools } from '../BuiltinToolIdentity.js';
 import { FileWriteTool } from '../tools/FileWriteTool/FileWriteTool.js';
 import { atomicTempPrefix, atomicWriteUtf8 } from '../tools/FileWriteTool/atomicWrite.js';
@@ -84,6 +84,7 @@ describe('FileWriteTool — 新建与覆盖', () => {
     const ctx = makeContext();
     ctx.readFileState.set(path.resolve(target), {
       content: '第一行\n旧内容\n',
+      contentHash: contentHashOf('第一行\n旧内容\n'),
       timestamp: stat.mtimeMs,
       isPartialView: false,
       truncated: false,
@@ -106,6 +107,7 @@ describe('FileWriteTool — 新建与覆盖', () => {
     const ctx = makeContext();
     ctx.readFileState.set(path.resolve(target), {
       content: '原版',
+      contentHash: contentHashOf('原版'),
       timestamp: fs.statSync(target).mtimeMs,
       isPartialView: false,
       truncated: false,

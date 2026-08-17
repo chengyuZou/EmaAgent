@@ -58,16 +58,15 @@ export interface SubagentSpawnerPort {
  * AskUser 工具向宿主提出的问询解析器：发出结构化问询请求并等待答案。
  * 宿主在 Turn 装配时注入（绑定到该 Turn 的 per-session FIFO 回答通道）。
  *
- * 事件发射归 port 实现,不归 Tool:port 发射 request(required)、
- * 等待回答后发射 resolveEvent(answers)(resolved);取消/失败时发射
- * resolveEvent({}) 清前端卡片并原样抛出。resolveEvent 由 Tool 提供,
- * 因为 resolved 事件的形状是 Tool 变体专属的(answers/selected/text…)。
+ * 事件发射归 port 实现，不归 Tool：port 发射 ask_user_required、等待回答后
+ * 发射 ask_user_resolved；取消/失败时发射空答案 resolved 清前端卡片并原样抛出。
+ * 问询锚点是 toolCallId——一个交互只可能属于一次 Tool 调用，不再需要独立的 promptId。
  */
 export type AskUserPort = (
-  promptId: string,
+  toolCallId: string,
   specs: readonly AskUserQuestionSpec[],
-  request: unknown,
-  resolveEvent: (answers: Record<string, string>) => unknown,
+  /** 单调用级取消：Turn abort 与兄弟取消都经它中断等待；用户取消卡片走队列终态。 */
+  signal: AbortSignal,
 ) => Promise<{ answers: Record<string, string> }>;
 
 /**

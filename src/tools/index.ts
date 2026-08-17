@@ -1,4 +1,7 @@
 // 统一导出工具框架的定义、注册、执行和结果边界。
+export {
+  contentHashOf,
+} from './types.js';
 export type {
   ReadFileEntry,
   ReadFileState,

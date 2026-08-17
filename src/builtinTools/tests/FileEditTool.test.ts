@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { ReadFileState, ToolInvocation } from '@ema-agent/tools';
+import { contentHashOf, type ReadFileState, type ToolInvocation } from '@ema-agent/tools';
 import { FileEditTool } from '../tools/FileEditTool/FileEditTool.js';
 
 const tempDirs: string[] = [];
@@ -32,10 +32,12 @@ function makeContext(callId: string) {
   };
 }
 
-/** 模拟"已完整读取":把当前文件内容+_mtime 写入读取状态。 */
+/** 模拟"已完整读取":把当前文件内容+mtime+内容指纹写入读取状态。 */
 function markRead(ctx: ReturnType<typeof makeContext>, target: string): void {
+  const content = fs.readFileSync(target, 'utf8');
   ctx.readFileState.set(path.resolve(target), {
-    content: fs.readFileSync(target, 'utf8'),
+    content,
+    contentHash: contentHashOf(content),
     timestamp: fs.statSync(target).mtimeMs,
     isPartialView: false,
     truncated: false,
@@ -89,6 +91,7 @@ describe('FileEditTool — 输入与先读守卫', () => {
     const ctx = makeContext('c2');
     ctx.readFileState.set(path.resolve(target), {
       content: 'a\nb',
+      contentHash: contentHashOf('a\nb'),
       timestamp: fs.statSync(target).mtimeMs,
       offset: 1,
       limit: 2,
@@ -165,6 +168,18 @@ describe('FileEditTool — 替换语义', () => {
     markRead(ctx, target);
     await new Promise(r => setTimeout(r, 20));
     fs.writeFileSync(target, '外部改动\n');
+
+    await expect(edit(target, '原版', '新版', ctx)).rejects.toThrow('modified externally');
+  });
+
+  it('外部修改内容但 mtime 被还原(如 FAT32 粗粒度)时仍拒绝', async () => {
+    const target = makeFile('stale-mtime.txt', '原版\n');
+    const ctx = makeContext('c8');
+    markRead(ctx, target);
+    const originalMtime = fs.statSync(target).mtimeMs;
+    fs.writeFileSync(target, '外部改动\n');
+    // 把 mtime 还原到读取时的值,模拟粗粒度文件系统上"内容变但 mtime 未变"。
+    fs.utimesSync(target, new Date(originalMtime), new Date(originalMtime));
 
     await expect(edit(target, '原版', '新版', ctx)).rejects.toThrow('modified externally');
   });

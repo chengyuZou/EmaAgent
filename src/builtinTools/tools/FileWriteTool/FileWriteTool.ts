@@ -5,6 +5,7 @@ import path from 'node:path';
 import { z } from 'zod';
 import {
   buildTool,
+  contentHashOf,
   contextFail,
   contextOk,
   type ReadFileState,
@@ -110,7 +111,8 @@ export const FileWriteTool = buildTool<FileWriteInput, FileWriteResult, FileWrit
               `Call Read("${file_path}") without offset/limit before overwriting it.`,
           );
         }
-        if (current.content !== cached.content) {
+        // current.existed 已保证内容非空;空守卫仅为类型收窄。
+        if (current.content === null || contentHashOf(current.content) !== cached.contentHash) {
           throw new Error(
             `File "${file_path}" was modified externally since it was read. ` +
               'Re-read it with Read before overwriting it.',
@@ -124,6 +126,7 @@ export const FileWriteTool = buildTool<FileWriteInput, FileWriteResult, FileWrit
     // 更新 read-state 缓存，使后续 Edit 无需重新读取即可工作。
     context.readFileState.set(fullPath, {
       content,
+      contentHash: contentHashOf(content),
       timestamp: mtimeMs,
       offset: undefined,
       limit: undefined,
