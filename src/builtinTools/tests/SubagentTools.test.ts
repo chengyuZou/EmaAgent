@@ -18,8 +18,10 @@ function makeInvocation(signal?: AbortSignal): ToolInvocation {
 const INPUT = {
   prompt: '检查文件边界',
   description: '检查边界',
-  kind: undefined,
-  model: undefined,
+  role: undefined,
+  providerId: undefined,
+  modelId: undefined,
+  contextMode: undefined,
   taskId: undefined,
   runInBackground: undefined,
 };
@@ -42,7 +44,7 @@ describe('SubagentTool — 三形态', () => {
     expect(result.via).toBe('requested');
     expect(spawnBackground).toHaveBeenCalledWith(
       '检查文件边界',
-      expect.objectContaining({ kind: 'subagent' }),
+      expect.objectContaining({ contextMode: 'subagent' }),
       expect.any(AbortSignal),
     );
   });
@@ -109,6 +111,41 @@ describe('SubagentTool — 三形态', () => {
 
   it('子 Agent 环境(无 spawner)投影失败: 深度限制 1', () => {
     expect(SubagentTool.validateContext({} as never).valid).toBe(false);
+  });
+});
+
+describe('SubagentTool — 模型身份成对校验', () => {
+  it('只给 modelId 不给 providerId 直接拒绝（同名模型可存在于多个 provider）', async () => {
+    const projection = SubagentTool.validateContext({
+      subagentSpawner: { spawn: vi.fn(), spawnBackground: vi.fn() },
+    } as never);
+    if (!projection.valid) throw new Error('投影应成功');
+
+    await expect(SubagentTool.execute(
+      { ...INPUT, modelId: 'deepseek-chat' },
+      projection.context,
+      makeInvocation(),
+    )).rejects.toThrow(/providerId/);
+  });
+
+  it('modelId+providerId 成对传递进 spawn options', async () => {
+    const spawnBackground = vi.fn();
+    const projection = SubagentTool.validateContext({
+      subagentSpawner: { spawn: vi.fn(), spawnBackground },
+    } as never);
+    if (!projection.valid) throw new Error('投影应成功');
+
+    await SubagentTool.execute(
+      { ...INPUT, runInBackground: true, modelId: 'deepseek-chat', providerId: 'deepseek' },
+      projection.context,
+      makeInvocation(),
+    );
+
+    expect(spawnBackground).toHaveBeenCalledWith(
+      '检查文件边界',
+      expect.objectContaining({ providerId: 'deepseek', modelId: 'deepseek-chat' }),
+      expect.any(AbortSignal),
+    );
   });
 });
 

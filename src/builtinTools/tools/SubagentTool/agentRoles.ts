@@ -14,8 +14,10 @@ export interface AgentRole {
   readonly systemPrompt: string;
   /** 类型级工具收窄（模型可见名，取自 BuiltinToolIdentity）；省略表示继承父 ToolPool 全量。 */
   readonly disallowedTools?: readonly string[];
-  /** 默认模型偏好；省略时继承父 Agent 模型。 */
+  /** 默认模型偏好；省略时继承父 Agent 模型。钉模型时必须与 providerId 成对。 */
   readonly modelId?: string;
+  /** 默认模型所属 provider；modelId 跨 provider 不唯一，成对才是精确身份。 */
+  readonly providerId?: string;
   /** 默认上下文策略；省略时 'subagent'（自包含 prompt，不继承父历史）。 */
   readonly contextMode?: 'subagent' | 'fork';
 }

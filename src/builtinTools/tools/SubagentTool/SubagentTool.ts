@@ -48,11 +48,17 @@ const inputSchema = z.object({
   providerId: z
     .string()
     .optional()
-    .describe('Override provider ID for this sub-agent. Defaults to the parent agent\'s provider.'),
+    .describe(
+      'Provider of the model override. Must be given together with modelId — ' +
+        'a modelId alone is not unique across providers. Defaults to the parent agent\'s provider.',
+    ),
   modelId: z
     .string()
     .optional()
-    .describe('Override model ID for this sub-agent. Defaults to the parent agent\'s model.'),
+    .describe(
+      'Model override for this sub-agent. Must be given together with providerId. ' +
+        'Defaults to the parent agent\'s model.',
+    ),
   description: z
     .string()
     .trim()
@@ -177,9 +183,19 @@ export const SubagentTool = buildTool<SubagentInput, SubagentResult, SubagentToo
         `Unknown subagent role: ${input.role}. Available: ${AGENT_ROLES.map((r) => r.agentType).join(', ')}`,
       );
     }
+    const modelId = input.modelId ?? role.modelId;
+    const providerId = input.providerId ?? role.providerId;
+    // modelId 跨 provider 不唯一（同名可能是不同权重/量化/托管）；
+    // 只给 modelId 不给 providerId = 让编排层猜，直接拒绝。
+    if (modelId !== undefined && providerId === undefined) {
+      throw new Error(
+        'Sub-agent model override requires both providerId and modelId. ' +
+          'A modelId alone is ambiguous — the same model id can exist on multiple providers.',
+      );
+    }
     const options: SubagentSpawnOptions = {
-      providerId: input.providerId,
-      modelId: input.modelId ?? role.modelId,
+      providerId,
+      modelId,
       description: input.description,
       contextMode: input.contextMode ?? role.contextMode ?? ('subagent' as const),
       agentRunId,

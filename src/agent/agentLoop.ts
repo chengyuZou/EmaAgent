@@ -44,9 +44,14 @@ export async function* runAgentLoop(
 ): AsyncGenerator<AgentLoopEvent, void> {
   let state = createAgentLoopState();
   let messages = [...input.messages];
+  // 最近一次工具批之后累计的输出文本；max_tokens 续写时靠它把几段拼回完整答案。
   const continuedOutput: string[] = [];
+  // max_tokens 恢复两步走：先升级重试（顶到预算上限、半截作废重来），
+  // 再注入续写提示接着写；两步都失败才判 output_recovery_failed。
   let escalatedMaxOutputTokens = false;
   let injectedContinuation = false;
+  // 同一批工具（工具名+参数完全相同）连续调用记轮数；连续 3 轮视为空转，
+  // 注入一次提醒让模型换方法，防止原地烧 Token。不硬停，硬兜底靠 maxIterations。
   let lastBatchSignature: string | undefined;
   let sameBatchStreak = 0;
   let stuckGuideInjected = false;
