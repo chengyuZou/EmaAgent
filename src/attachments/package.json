@@ -11,7 +11,9 @@
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
@@ -23,7 +25,8 @@
     "@ema-agent/llm": "workspace:*",
     "@ema-agent/session": "workspace:*",
     "@ema-agent/settings": "workspace:*",
-    "@ema-agent/storage": "workspace:*"
+    "@ema-agent/storage": "workspace:*",
+    "zod": "^4"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

@@ -12,12 +12,6 @@ import type {
   UsageRecordRow,
 } from '@ema-agent/storage';
 import {
-  asAgentRunId,
-  asSessionId,
-  asTaskId,
-  asTurnId,
-} from '@ema-agent/ids';
-import {
   freezeAgentRun,
   freezeBackgroundProcess,
   freezeTask,
@@ -57,27 +51,27 @@ export const restoreMessage = (r: MessageRecord): MessageRestoreRow => ({
 export const restoreTask = (record: TaskRecord): Omit<TaskRow, 'active_agent_run_id'> => {
   const r = freezeTask(record);
   return {
-    id: asTaskId(r.id), session_id: asSessionId(r.sessionId), display_number: r.displayNumber,
+    id: r.id, session_id: r.sessionId, display_number: r.displayNumber,
     subject: r.subject, description: r.description, active_form: r.activeForm,
-    status: r.status, created_by_turn_id: asTurnId(r.createdByTurnId),
-    completed_by_turn_id: r.completedByTurnId ? asTurnId(r.completedByTurnId) : null,
+    status: r.status, created_by_turn_id: r.createdByTurnId,
+    completed_by_turn_id: r.completedByTurnId ? r.completedByTurnId : null,
     version: r.version, created_at: r.createdAt, updated_at: r.updatedAt,
     completed_at: r.completedAt,
   };
 };
 
 export const restoreTaskDependency = (r: TaskDependencyRecord): TaskDependencyRow => ({
-  session_id: asSessionId(r.sessionId), blocker_task_id: asTaskId(r.blockerTaskId),
-  blocked_task_id: asTaskId(r.blockedTaskId), created_at: r.createdAt,
+  session_id: r.sessionId, blocker_task_id: r.blockerTaskId,
+  blocked_task_id: r.blockedTaskId, created_at: r.createdAt,
 });
 
 export const restoreAgentRun = (record: AgentRunRecord, importedAt: number): AgentRunRow => {
   const r = freezeAgentRun(record, importedAt);
   return {
-    id: asAgentRunId(r.id), session_id: asSessionId(r.sessionId),
-    parent_turn_id: asTurnId(r.parentTurnId),
-    parent_agent_run_id: r.parentAgentRunId ? asAgentRunId(r.parentAgentRunId) : null,
-    task_id: r.taskId ? asTaskId(r.taskId) : null, kind: r.kind,
+    id: r.id, session_id: r.sessionId,
+    parent_turn_id: r.parentTurnId,
+    parent_agent_run_id: r.parentAgentRunId ? r.parentAgentRunId : null,
+    task_id: r.taskId ? r.taskId : null, kind: r.kind,
     purpose: r.purpose, provider_config_id: r.providerConfigId, model_id: r.modelId,
     status: r.status, error: r.error, iterations: r.iterations,
     tool_call_count: r.toolCallCount, input_tokens: r.inputTokens,
@@ -87,7 +81,7 @@ export const restoreAgentRun = (record: AgentRunRecord, importedAt: number): Age
 };
 
 export const restoreAgentRunMessage = (r: AgentRunMessageRecord): AgentRunMessageRow => ({
-  id: r.id, agent_run_id: asAgentRunId(r.agentRunId), role: r.role, content_json: r.contentJson,
+  id: r.id, agent_run_id: r.agentRunId, role: r.role, content_json: r.contentJson,
   sequence: r.sequence, created_at: r.createdAt,
 });
 

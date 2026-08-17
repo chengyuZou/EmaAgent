@@ -49,7 +49,7 @@ export interface Tool<TInput, TOutput, TContext, TProgress = never> {
   /** 根据规范化输入生成批准卡片摘要。 */
   readonly getToolUseSummary?: (input: TInput) => string | undefined;
   /** 所有模型输入必须先通过该 Schema，注册表不会直接执行原始参数。 */
-  readonly inputSchema: z.ZodType<TInput, z.ZodTypeDef, unknown>;
+  readonly inputSchema: z.ZodType<TInput, unknown>;
   /** MCP 等已有可信 JSON Schema 的工具可以覆盖 Zod 派生结果。 */
   readonly inputJsonSchemaOverride?: Readonly<Record<string, unknown>>;
   /** 模型可见结果超过该 UTF-8 字节数时由结果层落盘。 */

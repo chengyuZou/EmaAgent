@@ -1,44 +1,124 @@
 // 定义下一根 Turn 使用的自动压缩预算与失败熔断设置。
+// 设置接口与字段统一在此文件:类型、默认、定义、组、聚合读取全部在 settings.ts,
+// types.ts 只保留业务请求/结果类型(CompactRequest 等)。
+// 拆细为一字段一 key;defaultReserved ≤ maximumReserved 是跨字段约束,
+// 故声明 group 'context.compact' 由 SettingsStore 整组 refine。
 
+import type { SettingsStore, SettingGroup } from '@ema-agent/settings';
 import { defineSetting } from '@ema-agent/settings';
-import {
-  DEFAULT_COMPACT_SETTINGS,
-  type CompactSettings,
-} from './types.js';
+import { z } from 'zod';
 
-export const compactSetting = defineSetting<CompactSettings>({
-  key: 'context.compact',
-  kind: 'object',
-  apply: 'nextTurn',
-  defaultValue: DEFAULT_COMPACT_SETTINGS,
-  decode(value) {
-    if (!isRecord(value)) return { ok: false };
-    const merged = { ...DEFAULT_COMPACT_SETTINGS, ...value };
-    if (typeof merged.enabled !== 'boolean') return { ok: false };
-    if (!integerInRange(merged.bufferTokens, 1_000, 64_000)) return { ok: false };
-    if (!integerInRange(merged.defaultReservedOutputTokens, 1_000, 64_000)) return { ok: false };
-    if (!integerInRange(merged.maximumReservedOutputTokens, 1_000, 128_000)) return { ok: false };
-    if (merged.defaultReservedOutputTokens > merged.maximumReservedOutputTokens) return { ok: false };
-    if (!integerInRange(merged.keepRecentToolResults, 1, 32)) return { ok: false };
-    if (!integerInRange(merged.maximumConsecutiveFailures, 1, 10)) return { ok: false };
-    return {
-      ok: true,
-      value: {
-        enabled: merged.enabled,
-        bufferTokens: merged.bufferTokens,
-        defaultReservedOutputTokens: merged.defaultReservedOutputTokens,
-        maximumReservedOutputTokens: merged.maximumReservedOutputTokens,
-        keepRecentToolResults: merged.keepRecentToolResults,
-        maximumConsecutiveFailures: merged.maximumConsecutiveFailures,
-      },
-    };
-  },
-});
-
-function integerInRange(value: unknown, min: number, max: number): value is number {
-  return Number.isInteger(value) && (value as number) >= min && (value as number) <= max;
+/** 根 Turn 冻结的自动压缩预算、保留窗口与失败熔断设置。 */
+export interface CompactSettings {
+  readonly enabled: boolean;
+  readonly bufferTokens: number;
+  readonly defaultReservedOutputTokens: number;
+  readonly maximumReservedOutputTokens: number;
+  readonly keepRecentToolResults: number;
+  readonly maximumConsecutiveFailures: number;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
+export const COMPACT_GROUP = 'context.compact';
+
+export const compactEnabledSetting = defineSetting<boolean>({
+  key: 'context.compact.enabled',
+  apply: 'nextTurn',
+  defaultValue: true,
+  schema: z.boolean(),
+  group: COMPACT_GROUP,
+});
+
+export const compactBufferTokensSetting = defineSetting<number>({
+  key: 'context.compact.bufferTokens',
+  apply: 'nextTurn',
+  defaultValue: 13_000,
+  schema: z.number().int().min(1_000).max(64_000),
+  group: COMPACT_GROUP,
+});
+
+export const compactDefaultReservedOutputTokensSetting = defineSetting<number>({
+  key: 'context.compact.defaultReservedOutputTokens',
+  apply: 'nextTurn',
+  defaultValue: 8_000,
+  schema: z.number().int().min(1_000).max(64_000),
+  group: COMPACT_GROUP,
+});
+
+export const compactMaximumReservedOutputTokensSetting = defineSetting<number>({
+  key: 'context.compact.maximumReservedOutputTokens',
+  apply: 'nextTurn',
+  defaultValue: 20_000,
+  schema: z.number().int().min(1_000).max(128_000),
+  group: COMPACT_GROUP,
+});
+
+export const compactKeepRecentToolResultsSetting = defineSetting<number>({
+  key: 'context.compact.keepRecentToolResults',
+  apply: 'nextTurn',
+  defaultValue: 6,
+  schema: z.number().int().min(1).max(32),
+  group: COMPACT_GROUP,
+});
+
+export const compactMaximumConsecutiveFailuresSetting = defineSetting<number>({
+  key: 'context.compact.maximumConsecutiveFailures',
+  apply: 'nextTurn',
+  defaultValue: 3,
+  schema: z.number().int().min(1).max(10),
+  group: COMPACT_GROUP,
+});
+
+/** context.compact 组内全部字段定义(供 SettingsStore 注册组)。 */
+export const COMPACT_SETTINGS = [
+  compactEnabledSetting,
+  compactBufferTokensSetting,
+  compactDefaultReservedOutputTokensSetting,
+  compactMaximumReservedOutputTokensSetting,
+  compactKeepRecentToolResultsSetting,
+  compactMaximumConsecutiveFailuresSetting,
+] as const;
+
+/**
+ * context.compact 设置组:跨字段约束 defaultReservedOutputTokens ≤ maximumReservedOutputTokens。
+ */
+export const compactGroup: SettingGroup = {
+  id: COMPACT_GROUP,
+  definitions: COMPACT_SETTINGS,
+  schema: z
+    .object({
+      'context.compact.enabled': z.boolean(),
+      'context.compact.bufferTokens': z.number(),
+      'context.compact.defaultReservedOutputTokens': z.number(),
+      'context.compact.maximumReservedOutputTokens': z.number(),
+      'context.compact.keepRecentToolResults': z.number(),
+      'context.compact.maximumConsecutiveFailures': z.number(),
+    })
+    .refine(
+      g =>
+        g['context.compact.defaultReservedOutputTokens'] <=
+        g['context.compact.maximumReservedOutputTokens'],
+      { message: 'defaultReservedOutputTokens 不能大于 maximumReservedOutputTokens' },
+    ),
+};
+
+/** 整组默认快照(供消费方默认参数与测试),单一事实源是各 setting 的 defaultValue。 */
+export const DEFAULT_COMPACT_SETTINGS: CompactSettings = {
+  enabled: compactEnabledSetting.defaultValue,
+  bufferTokens: compactBufferTokensSetting.defaultValue,
+  defaultReservedOutputTokens: compactDefaultReservedOutputTokensSetting.defaultValue,
+  maximumReservedOutputTokens: compactMaximumReservedOutputTokensSetting.defaultValue,
+  keepRecentToolResults: compactKeepRecentToolResultsSetting.defaultValue,
+  maximumConsecutiveFailures: compactMaximumConsecutiveFailuresSetting.defaultValue,
+};
+
+/** 聚合读取整块压缩预算快照(坏值/缺失自动回落默认)。 */
+export function readCompactSettings(store: SettingsStore): CompactSettings {
+  return {
+    enabled: store.get(compactEnabledSetting),
+    bufferTokens: store.get(compactBufferTokensSetting),
+    defaultReservedOutputTokens: store.get(compactDefaultReservedOutputTokensSetting),
+    maximumReservedOutputTokens: store.get(compactMaximumReservedOutputTokensSetting),
+    keepRecentToolResults: store.get(compactKeepRecentToolResultsSetting),
+    maximumConsecutiveFailures: store.get(compactMaximumConsecutiveFailuresSetting),
+  };
 }

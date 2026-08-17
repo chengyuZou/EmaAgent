@@ -34,5 +34,16 @@ export type {
   PrepareAgentIterationInput,
   ToolExecutorFactory,
 } from './types.js';
-export { agentSetting, DEFAULT_AGENT_SETTINGS } from './settings.js';
+export {
+  AGENT_LIMITS_GROUP,
+  AGENT_LIMITS_SETTINGS,
+  DEFAULT_AGENT_SETTINGS,
+  agentLimitsGroup,
+  chatMaxIterationsSetting,
+  maxConcurrentSubagentsSetting,
+  maxSubagentsSetting,
+  maxToolCallsSetting,
+  readAgentSettings,
+  workMaxIterationsSetting,
+} from './settings.js';
 export type { AgentSettings } from './settings.js';

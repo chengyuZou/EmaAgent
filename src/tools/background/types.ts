@@ -18,10 +18,7 @@ export type BackgroundProcessNotifiableStatus =
   | 'failed'
   | 'timedOut';
 
-export interface BackgroundProcessSettings {
-  maxConcurrent: number;
-  maxRuntimeHours: number;
-}
+// BackgroundProcessSettings 已移入 settings.ts(设置接口统一在 settings 文件)。
 
 export interface BackgroundProcessSummary {
   id: string;

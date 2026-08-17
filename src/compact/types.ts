@@ -1,25 +1,9 @@
 import type { Message } from '@ema-agent/llm';
 import type { ExecutionProfile } from '@ema-agent/turn';
+import type { CompactSettings } from './settings.js';
 import type { CompactEvent } from './events.js';
 
-/** 根 Turn 冻结的自动压缩预算、保留窗口与失败熔断设置。 */
-export interface CompactSettings {
-  readonly enabled: boolean;
-  readonly bufferTokens: number;
-  readonly defaultReservedOutputTokens: number;
-  readonly maximumReservedOutputTokens: number;
-  readonly keepRecentToolResults: number;
-  readonly maximumConsecutiveFailures: number;
-}
-
-export const DEFAULT_COMPACT_SETTINGS: CompactSettings = {
-  enabled: true,
-  bufferTokens: 13_000,
-  defaultReservedOutputTokens: 8_000,
-  maximumReservedOutputTokens: 20_000,
-  keepRecentToolResults: 6,
-  maximumConsecutiveFailures: 3,
-};
+// 设置接口(CompactSettings)与默认快照(DEFAULT_COMPACT_SETTINGS)统一在 settings.ts。
 
 export interface CompactRequest {
   readonly sessionId: string;

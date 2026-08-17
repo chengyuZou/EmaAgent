@@ -29,9 +29,13 @@ export type {
   InspectedAttachment,
 } from './types.js';
 export {
-  attachmentCacheSetting,
-  attachmentInputSetting,
   DEFAULT_ATTACHMENT_CACHE_SETTINGS,
   DEFAULT_ATTACHMENT_INPUT_SETTINGS,
+  attachmentCacheMaxBytesSetting,
+  maxFilesPerTurnSetting,
+  maxImageBytesSetting,
+  maxImagesPerTurnSetting,
+  readAttachmentCacheSettings,
+  readAttachmentInputSettings,
 } from './settings.js';
 export type { AttachmentCacheSettings, AttachmentInputSettings } from './settings.js';

@@ -9,9 +9,11 @@ import { microCompact } from './microCompact.js';
 import { findSafeCutPoint, findSafeCutPointAtOrAfter } from './safeCut.js';
 import {
   DEFAULT_COMPACT_SETTINGS,
-  type CompactRequest,
-  type CompactResult,
   type CompactSettings,
+} from './settings.js';
+import type {
+  CompactRequest,
+  CompactResult,
 } from './types.js';
 
 const MIN_SUMMARY_BUDGET_TOKENS = 256;

@@ -8,9 +8,12 @@ export type {
   BackgroundProcessTerminalRecord,
 } from './backgroundProcessStore.js';
 export {
-  backgroundProcessSetting,
   DEFAULT_BACKGROUND_PROCESS_SETTINGS,
+  maxConcurrentBackgroundSetting,
+  maxRuntimeHoursBackgroundSetting,
+  readBackgroundProcessSettings,
 } from './settings.js';
+export type { BackgroundProcessSettings } from './settings.js';
 export type { BackgroundProcessEvent } from './events.js';
 export type {
   BackgroundCommandRequest,
@@ -25,7 +28,6 @@ export type {
   BackgroundProcessOutputOptions,
   BackgroundProcessOutputPathFactory,
   BackgroundProcessPort,
-  BackgroundProcessSettings,
   BackgroundProcessStatus,
   BackgroundProcessSummary,
 } from './types.js';

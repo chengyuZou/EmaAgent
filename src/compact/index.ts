@@ -1,9 +1,20 @@
 export { createCompact } from './compactMessages.js';
-export { compactSetting } from './settings.js';
-export { DEFAULT_COMPACT_SETTINGS } from './types.js';
+export {
+  COMPACT_GROUP,
+  COMPACT_SETTINGS,
+  DEFAULT_COMPACT_SETTINGS,
+  compactBufferTokensSetting,
+  compactDefaultReservedOutputTokensSetting,
+  compactEnabledSetting,
+  compactGroup,
+  compactKeepRecentToolResultsSetting,
+  compactMaximumConsecutiveFailuresSetting,
+  compactMaximumReservedOutputTokensSetting,
+  readCompactSettings,
+} from './settings.js';
+export type { CompactSettings } from './settings.js';
 export type {
   CompactRequest,
   CompactResult,
-  CompactSettings,
 } from './types.js';
 export type { CompactEvent } from './events.js';

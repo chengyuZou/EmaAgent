@@ -30,10 +30,10 @@ import type {
   BackgroundProcessCompletionClaim,
   BackgroundProcessCompletionSource,
   BackgroundProcessPort,
-  BackgroundProcessSettings,
   BackgroundProcessStatus,
   BackgroundProcessSummary,
 } from './types.js';
+import type { BackgroundProcessSettings } from './settings.js';
 
 const IMMEDIATE_RESULT_WAIT_MS = 15_000;
 /** 交互命令的独立小池:最多 15s 即完成或转交,与后台长任务互不饿死。 */

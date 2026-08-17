@@ -1,6 +1,9 @@
 // 定义附件输入限额与 Vision 描述缓存预算的用户可调范围。
+// 拆细为一字段一 key;消费方仍要整块快照,由 read* 聚合函数提供。
 
+import type { SettingsStore } from '@ema-agent/settings';
 import { defineSetting } from '@ema-agent/settings';
+import { z } from 'zod';
 
 export interface AttachmentInputSettings {
   readonly maxImagesPerTurn: number;
@@ -8,63 +11,67 @@ export interface AttachmentInputSettings {
   readonly maxImageBytes: number;
 }
 
-export const DEFAULT_ATTACHMENT_INPUT_SETTINGS: AttachmentInputSettings = {
-  maxImagesPerTurn: 10,
-  maxFilesPerTurn: 10,
-  maxImageBytes: 5 * 1024 * 1024,
-};
-
-export const attachmentInputSetting = defineSetting<AttachmentInputSettings>({
-  key: 'attachments.input',
-  kind: 'object',
+export const maxImagesPerTurnSetting = defineSetting<number>({
+  key: 'attachments.input.maxImagesPerTurn',
   apply: 'nextTurn',
-  defaultValue: DEFAULT_ATTACHMENT_INPUT_SETTINGS,
-  decode(value) {
-    if (!isRecord(value)) return { ok: false };
-    const merged = { ...DEFAULT_ATTACHMENT_INPUT_SETTINGS, ...value };
-    // 产品硬上限：图片 10 张 / 单图 5 MiB；设置只允许在硬上限以内调小。
-    if (!integerInRange(merged.maxImagesPerTurn, 1, 10)) return { ok: false };
-    if (!integerInRange(merged.maxFilesPerTurn, 1, 20)) return { ok: false };
-    if (!integerInRange(merged.maxImageBytes, 1024 * 1024, 5 * 1024 * 1024)) return { ok: false };
-    return {
-      ok: true,
-      value: {
-        maxImagesPerTurn: merged.maxImagesPerTurn,
-        maxFilesPerTurn: merged.maxFilesPerTurn,
-        maxImageBytes: merged.maxImageBytes,
-      },
-    };
-  },
+  defaultValue: 10,
+  // 产品硬上限：图片 10 张；设置只允许在硬上限以内调小。
+  schema: z.number().int().min(1).max(10),
 });
+
+export const maxFilesPerTurnSetting = defineSetting<number>({
+  key: 'attachments.input.maxFilesPerTurn',
+  apply: 'nextTurn',
+  defaultValue: 10,
+  schema: z.number().int().min(1).max(20),
+});
+
+export const maxImageBytesSetting = defineSetting<number>({
+  key: 'attachments.input.maxImageBytes',
+  apply: 'nextTurn',
+  defaultValue: 5 * 1024 * 1024,
+  // 产品硬上限：单图 5 MiB；设置只允许在硬上限以内调小。
+  schema: z.number().int().min(1024 * 1024).max(5 * 1024 * 1024),
+});
+
+export const DEFAULT_ATTACHMENT_INPUT_SETTINGS: AttachmentInputSettings = {
+  maxImagesPerTurn: maxImagesPerTurnSetting.defaultValue,
+  maxFilesPerTurn: maxFilesPerTurnSetting.defaultValue,
+  maxImageBytes: maxImageBytesSetting.defaultValue,
+};
 
 export interface AttachmentCacheSettings {
   readonly maxBytes: number;
 }
 
-export const DEFAULT_ATTACHMENT_CACHE_SETTINGS: AttachmentCacheSettings = {
-  // Vision 描述是纯文本（一条约 1 KB 量级），64 MiB 约等于六万条描述。
-  maxBytes: 64 * 1024 * 1024,
-};
-
-export const attachmentCacheSetting = defineSetting<AttachmentCacheSettings>({
-  key: 'attachments.cache',
-  kind: 'object',
+export const attachmentCacheMaxBytesSetting = defineSetting<number>({
+  key: 'attachments.cache.maxBytes',
   apply: 'nextOperation',
-  defaultValue: DEFAULT_ATTACHMENT_CACHE_SETTINGS,
-  decode(value) {
-    if (!isRecord(value)) return { ok: false };
-    const merged = { ...DEFAULT_ATTACHMENT_CACHE_SETTINGS, ...value };
-    if (!integerInRange(merged.maxBytes, 4 * 1024 * 1024, 1024 * 1024 * 1024)) {
-      return { ok: false };
-    }
-    return { ok: true, value: { maxBytes: merged.maxBytes } };
-  },
+  // Vision 描述是纯文本（一条约 1 KB 量级），64 MiB 约等于六万条描述。
+  defaultValue: 64 * 1024 * 1024,
+  schema: z.number().int().min(4 * 1024 * 1024).max(1024 * 1024 * 1024),
 });
 
-function integerInRange(value: unknown, min: number, max: number): value is number {
-  return Number.isSafeInteger(value) && (value as number) >= min && (value as number) <= max;
+export const DEFAULT_ATTACHMENT_CACHE_SETTINGS: AttachmentCacheSettings = {
+  maxBytes: attachmentCacheMaxBytesSetting.defaultValue,
+};
+
+/** 聚合读取附件输入限额快照(坏值/缺失自动回落默认)。 */
+export function readAttachmentInputSettings(
+  store: SettingsStore,
+): AttachmentInputSettings {
+  return {
+    maxImagesPerTurn: store.get(maxImagesPerTurnSetting),
+    maxFilesPerTurn: store.get(maxFilesPerTurnSetting),
+    maxImageBytes: store.get(maxImageBytesSetting),
+  };
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
+/** 聚合读取附件缓存预算快照。 */
+export function readAttachmentCacheSettings(
+  store: SettingsStore,
+): AttachmentCacheSettings {
+  return {
+    maxBytes: store.get(attachmentCacheMaxBytesSetting),
+  };
 }
