@@ -1,7 +1,6 @@
 // 测试每个业务模块只有一个绑定，并由统一模型外键保证能力和删除语义。
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Database, ModelBindingsRepo, ProviderModelsRepo, ProvidersRepo } from '../../index.js';
-import { createTestCredentialFacade } from '../helpers/test-credential-facade.js';
 
 describe('ModelBindingsRepo', () => {
   let database: Database;
@@ -11,11 +10,10 @@ describe('ModelBindingsRepo', () => {
   beforeEach(() => {
     database = new Database({ memory: true, kind: 'profile' });
     database.migrate();
-    new ProvidersRepo(database.sqlite, createTestCredentialFacade()).save({
-      id: 'provider-1',
-      providerId: 'siliconflow',
-      displayName: 'Provider',
-      credential: 'secret',
+    new ProvidersRepo(database.sqlite).save({
+      id: 'siliconflow',
+      name: 'Provider',
+      authType: 'bearer',
       enabled: true,
       capabilities: [
         { capability: 'llm', activeProtocol: 'openai-llm', protocols: [{ protocol: 'openai-llm', baseUrl: 'https://example.com/v1' }] },
@@ -24,12 +22,12 @@ describe('ModelBindingsRepo', () => {
     });
     models = new ProviderModelsRepo(database.sqlite);
     models.save({
-      providerConfigId: 'provider-1', capability: 'llm', model: 'old-model',
+      providerId: 'siliconflow', capability: 'llm', modelId: 'old-model',
       contextWindow: 32_000, maxOutput: null, toolCall: null,
       reasoning: null, temperature: null, inputImage: null,
     });
     models.save({
-      providerConfigId: 'provider-1', capability: 'llm', model: 'new-model',
+      providerId: 'siliconflow', capability: 'llm', modelId: 'new-model',
       contextWindow: 64_000, maxOutput: null, toolCall: true,
       reasoning: null, temperature: null, inputImage: null,
     });
@@ -39,22 +37,22 @@ describe('ModelBindingsRepo', () => {
   afterEach(() => database.close());
 
   it('set 原子替换模块原有绑定', () => {
-    bindings.set({ module: 'memory', capability: 'llm', providerConfigId: 'provider-1', model: 'old-model' });
-    bindings.set({ module: 'memory', capability: 'llm', providerConfigId: 'provider-1', model: 'new-model' });
+    bindings.set({ module: 'memory', capability: 'llm', providerId: 'siliconflow', modelId: 'old-model' });
+    bindings.set({ module: 'memory', capability: 'llm', providerId: 'siliconflow', modelId: 'new-model' });
 
-    expect(bindings.get('memory')?.model).toBe('new-model');
+    expect(bindings.get('memory')?.modelId).toBe('new-model');
     expect(bindings.list()).toHaveLength(1);
   });
 
   it('模块与能力不匹配时由 Schema 拒绝', () => {
     expect(() => bindings.set({
-      module: 'vision', capability: 'llm', providerConfigId: 'provider-1', model: 'old-model',
+      module: 'vision', capability: 'llm', providerId: 'siliconflow', modelId: 'old-model',
     })).toThrow(/CHECK constraint failed/);
   });
 
   it('删除模型时级联删除对应绑定', () => {
-    bindings.set({ module: 'memory', capability: 'llm', providerConfigId: 'provider-1', model: 'old-model' });
-    models.delete('provider-1', 'llm', 'old-model');
+    bindings.set({ module: 'memory', capability: 'llm', providerId: 'siliconflow', modelId: 'old-model' });
+    models.delete('siliconflow', 'llm', 'old-model');
     expect(bindings.get('memory')).toBeUndefined();
   });
 });

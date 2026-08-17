@@ -52,7 +52,7 @@ describe('ReembedQueue 单行失败', () => {
       emit: (event) => events.push(event.type),
     });
 
-    const task = queue.enqueue({ assetId: 'asset-bad', embedding: { providerConfigId: 'p', model: 'm' } });
+    const task = queue.enqueue({ assetId: 'asset-bad', embedding: { providerId: 'p', model: 'm' } });
     await waitUntil(() => tasks.get(task.id)?.status === 'failed');
 
     expect(tasks.get(task.id)?.error).toContain('provider 500');
@@ -76,12 +76,12 @@ describe('ReembedQueue 单行失败', () => {
       emit: () => {},
     });
 
-    const task = queue.enqueue({ assetId: 'asset-1', embedding: { providerConfigId: 'p', model: 'm' } });
+    const task = queue.enqueue({ assetId: 'asset-1', embedding: { providerId: 'p', model: 'm' } });
     await waitUntil(() => tasks.get(task.id)?.status === 'running');
-    expect(() => queue.enqueue({ assetId: 'asset-1', embedding: { providerConfigId: 'p', model: 'm' } }))
+    expect(() => queue.enqueue({ assetId: 'asset-1', embedding: { providerId: 'p', model: 'm' } }))
       .toThrow('该文档已有重嵌任务进行中');
     // 别的资产不受影响。
-    expect(() => queue.enqueue({ assetId: 'asset-2', embedding: { providerConfigId: 'p', model: 'm' } }))
+    expect(() => queue.enqueue({ assetId: 'asset-2', embedding: { providerId: 'p', model: 'm' } }))
       .not.toThrow();
     await queue.shutdown();
     database.close();
@@ -108,8 +108,8 @@ describe('ReembedQueue 并发', () => {
       emit: () => {},
     });
 
-    const first = queue.enqueue({ assetId: 'asset-1', embedding: { providerConfigId: 'p', model: 'm' } });
-    const second = queue.enqueue({ assetId: 'asset-2', embedding: { providerConfigId: 'p', model: 'm' } });
+    const first = queue.enqueue({ assetId: 'asset-1', embedding: { providerId: 'p', model: 'm' } });
+    const second = queue.enqueue({ assetId: 'asset-2', embedding: { providerId: 'p', model: 'm' } });
     await waitUntil(() =>
       tasks.get(first.id)?.status === 'completed'
       && tasks.get(second.id)?.status === 'completed');

@@ -90,7 +90,7 @@ export interface DocumentAsset {
   useCount:    number;
   /** 最近一次被选入 Turn 的时间（毫秒）；undefined = 从未，UI 回退用 createdAt。 */
   lastActivatedAt?: number;
-  embeddingProviderConfigId?: string;
+  embeddingProviderId?: string;
   embeddingModel?:   string;
   embeddingDim?:     number;
   embeddingSpaceId?: string;

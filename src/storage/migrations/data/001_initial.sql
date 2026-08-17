@@ -37,14 +37,14 @@ CREATE TABLE agent_runs (
 
 CREATE TABLE attachment_vision_descriptions (
   attachment_id       TEXT NOT NULL REFERENCES attachments(id) ON DELETE CASCADE,
-  provider_config_id  TEXT NOT NULL,
+  provider_id  TEXT NOT NULL,
   model_id            TEXT NOT NULL,
   instruction_revision TEXT NOT NULL,
   text                TEXT NOT NULL,
   byte_size           INTEGER NOT NULL CHECK(byte_size >= 0),
   created_at          INTEGER NOT NULL,
   last_accessed_at    INTEGER NOT NULL,
-  PRIMARY KEY (attachment_id, provider_config_id, model_id, instruction_revision)
+  PRIMARY KEY (attachment_id, provider_id, model_id, instruction_revision)
 );
 
 CREATE TABLE background_processes (
@@ -160,7 +160,7 @@ CREATE TABLE sessions (
   last_activity_at     INTEGER NOT NULL DEFAULT 0,
   created_at           INTEGER NOT NULL,
   updated_at           INTEGER NOT NULL,
-  provider_config_id   TEXT,
+  provider_id   TEXT,
   model_id             TEXT,
   execution_profile    TEXT NOT NULL DEFAULT 'chat'
                        CHECK(execution_profile IN ('chat', 'work')),
@@ -308,7 +308,7 @@ CREATE TABLE turns (
                        CHECK(execution_profile IN ('chat','work')),
   narrative_policy     TEXT NOT NULL DEFAULT 'auto'
                        CHECK(narrative_policy IN ('auto','always','off')),
-  provider_config_id   TEXT,
+  provider_id   TEXT,
   model_id             TEXT,
   iterations           INTEGER NOT NULL DEFAULT 0,
   usage_input_tokens   INTEGER NOT NULL DEFAULT 0,
@@ -508,14 +508,14 @@ END;
 
 CREATE TRIGGER sessions_model_pair_insert
 BEFORE INSERT ON sessions
-WHEN (NEW.provider_config_id IS NULL) <> (NEW.model_id IS NULL)
+WHEN (NEW.provider_id IS NULL) <> (NEW.model_id IS NULL)
 BEGIN
   SELECT RAISE(ABORT, 'session model preference must contain both provider and model');
 END;
 
 CREATE TRIGGER sessions_model_pair_update
-BEFORE UPDATE OF provider_config_id, model_id ON sessions
-WHEN (NEW.provider_config_id IS NULL) <> (NEW.model_id IS NULL)
+BEFORE UPDATE OF provider_id, model_id ON sessions
+WHEN (NEW.provider_id IS NULL) <> (NEW.model_id IS NULL)
 BEGIN
   SELECT RAISE(ABORT, 'session model preference must contain both provider and model');
 END;
@@ -937,14 +937,14 @@ END;
 
 CREATE TRIGGER trg_turns_model_pair_insert
 BEFORE INSERT ON turns
-WHEN (NEW.provider_config_id IS NULL) <> (NEW.model_id IS NULL)
+WHEN (NEW.provider_id IS NULL) <> (NEW.model_id IS NULL)
 BEGIN
   SELECT RAISE(ABORT, 'turn model freeze must contain both provider and model');
 END;
 
 CREATE TRIGGER trg_turns_model_pair_update
-BEFORE UPDATE OF provider_config_id, model_id ON turns
-WHEN (NEW.provider_config_id IS NULL) <> (NEW.model_id IS NULL)
+BEFORE UPDATE OF provider_id, model_id ON turns
+WHEN (NEW.provider_id IS NULL) <> (NEW.model_id IS NULL)
 BEGIN
   SELECT RAISE(ABORT, 'turn model freeze must contain both provider and model');
 END;

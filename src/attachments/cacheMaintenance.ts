@@ -68,13 +68,13 @@ function sumBytes(rows: readonly { byte_size: number }[]): number {
 
 function toKey(row: {
   attachment_id: string;
-  provider_config_id: string;
+  provider_id: string;
   model_id: string;
   instruction_revision: string;
 }) {
   return {
     attachmentId: row.attachment_id,
-    providerConfigId: row.provider_config_id,
+    providerId: row.provider_id,
     modelId: row.model_id,
     instructionRevision: row.instruction_revision,
   };

@@ -1,7 +1,6 @@
 // 验证 Compact 的提交原子性、响应式恢复、取消、熔断和 Tool 配对边界。
 
 import { describe, expect, it, vi } from 'vitest';
-import { asSessionId, asTurnId } from '@ema-agent/ids';
 import type {
   LanguageModel,
   LlmCompletion,
@@ -14,8 +13,8 @@ import { createCompact } from '../compactMessages.js';
 import { microCompact } from '../microCompact.js';
 import type { CompactRequest } from '../types.js';
 
-const sessionId = asSessionId('compact-session');
-const turnId = asTurnId('compact-turn');
+const sessionId = 'compact-session';
+const turnId = 'compact-turn';
 
 function completion(text = '<summary>压缩后的工作摘要</summary>'): LlmCompletion {
   return {

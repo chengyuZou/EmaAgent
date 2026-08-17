@@ -38,7 +38,7 @@ export interface Turn {
   readonly executionProfile: ExecutionProfile;
   readonly narrativePolicy: NarrativePolicy;
   /** 操作开始冻结的模型选择；prepare 解析成功前为 null。 */
-  readonly providerConfigId: string | null;
+  readonly providerId: string | null;
   readonly modelId: string | null;
   readonly iterations: number;
   readonly usageInputTokens: number;

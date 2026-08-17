@@ -1,5 +1,5 @@
 // 让每个业务模块只绑定一个已启用模型，不在 Provider 内触发业务副作用。
-import { ProviderConfigError } from './errors.js';
+import { ProviderError } from './errors.js';
 import type { ProviderModelStore } from './models.js';
 import type { ModelCapability } from './types.js';
 
@@ -28,8 +28,8 @@ export const MODEL_BINDING_CAPABILITIES: Readonly<Record<ModelBindingModule, Mod
 
 export interface ModelBindingInput {
   module: ModelBindingModule;
-  providerConfigId: string;
-  model: string;
+  providerId: string;
+  modelId: string;
 }
 
 export interface ModelBinding extends ModelBindingInput {
@@ -39,7 +39,7 @@ export interface ModelBinding extends ModelBindingInput {
 export interface ModelBindingStore {
   get(module: ModelBindingModule): ModelBinding | undefined;
   list(): ModelBinding[];
-  listByProviderConfig(providerConfigId: string): ModelBinding[];
+  listByProvider(providerId: string): ModelBinding[];
   set(binding: ModelBinding): void;
   delete(module: ModelBindingModule): void;
 }
@@ -58,15 +58,15 @@ export class ModelBindings {
     return this.store.list();
   }
 
-  listByProviderConfig(providerConfigId: string): ModelBinding[] {
-    return this.store.listByProviderConfig(providerConfigId);
+  listByProvider(providerId: string): ModelBinding[] {
+    return this.store.listByProvider(providerId);
   }
 
   set(input: ModelBindingInput): ModelBinding {
     const capability = MODEL_BINDING_CAPABILITIES[input.module];
-    const model = this.models.get(input.providerConfigId, capability, input.model);
+    const model = this.models.get(input.providerId, capability, input.modelId);
     if (!model) {
-      throw new ProviderConfigError(
+      throw new ProviderError(
         'model_not_found',
         `${input.module} 只能绑定已启用的 ${capability} 模型`,
       );

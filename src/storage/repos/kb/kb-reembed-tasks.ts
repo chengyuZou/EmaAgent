@@ -5,13 +5,13 @@ import type { SqliteDb } from '../../database/database.js';
 export type KbReembedStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 
 interface KbReembedTaskRow {
-  id: string; asset_id: string; embedding_provider_config_id: string; embedding_model: string;
+  id: string; asset_id: string; embedding_provider_id: string; embedding_model: string;
   status: KbReembedStatus; stage: string | null; progress: number; error: string | null;
   created_at: number; updated_at: number;
 }
 
 export interface KbReembedTask {
-  readonly id: string; readonly assetId: string; readonly embeddingProviderConfigId: string;
+  readonly id: string; readonly assetId: string; readonly embeddingProviderId: string;
   readonly embeddingModel: string; readonly status: KbReembedStatus; readonly stage?: string;
   readonly progress: number; readonly error?: string; readonly createdAt: number; readonly updatedAt: number;
 }
@@ -19,13 +19,13 @@ export interface KbReembedTask {
 export class KbReembedTasksRepo {
   constructor(private readonly db: SqliteDb) {}
 
-  insert(task: { id: string; assetId: string; embeddingProviderConfigId: string; embeddingModel: string }): KbReembedTask {
+  insert(task: { id: string; assetId: string; embeddingProviderId: string; embeddingModel: string }): KbReembedTask {
     const now = Date.now();
     this.db.prepare(
       `INSERT INTO kb_reembed_tasks
-       (id, asset_id, embedding_provider_config_id, embedding_model, status, progress, created_at, updated_at)
+       (id, asset_id, embedding_provider_id, embedding_model, status, progress, created_at, updated_at)
        VALUES (?, ?, ?, ?, 'pending', 0, ?, ?)`,
-    ).run(task.id, task.assetId, task.embeddingProviderConfigId, task.embeddingModel, now, now);
+    ).run(task.id, task.assetId, task.embeddingProviderId, task.embeddingModel, now, now);
     return this.get(task.id)!;
   }
 
@@ -102,7 +102,7 @@ export class KbReembedTasksRepo {
 function rowToTask(row: KbReembedTaskRow): KbReembedTask {
   return {
     id: row.id, assetId: row.asset_id,
-    embeddingProviderConfigId: row.embedding_provider_config_id,
+    embeddingProviderId: row.embedding_provider_id,
     embeddingModel: row.embedding_model, status: row.status,
     ...(row.stage === null ? {} : { stage: row.stage }), progress: row.progress,
     ...(row.error === null ? {} : { error: row.error }), createdAt: row.created_at, updatedAt: row.updated_at,

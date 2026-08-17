@@ -132,7 +132,7 @@ describe('Turn 历史读取', () => {
     });
     turns.setModel('turn-a', 'provider-config-1', 'model-1');
     expect(turns.findById('turn-a')).toMatchObject({
-      provider_config_id: 'provider-config-1',
+      provider_id: 'provider-config-1',
       model_id: 'model-1',
     });
 

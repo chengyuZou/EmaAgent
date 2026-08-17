@@ -29,7 +29,7 @@ export interface SessionRow {
   execution_profile: ExecutionProfileRow;
   narrative_policy: NarrativePolicyRow;
   /** 该 Session 当前使用的供应商配置；null 表示使用系统默认选择。 */
-  provider_config_id: string | null;
+  provider_id: string | null;
   /** 该 Session 当前使用的模型；null 表示使用系统默认选择。 */
   model_id: string | null;
   last_viewed_at:   number | null;
@@ -60,7 +60,7 @@ export interface SessionInsert {
   executionProfile?: ExecutionProfileRow;
   narrativePolicy?: NarrativePolicyRow;
   model?: {
-    providerConfigId: string;
+    providerId: string;
     modelId: string;
   } | null;
   createdAt: number;
@@ -78,7 +78,7 @@ export class SessionsRepo {
            (id, title, workspace_root, project_id,
             forked_from_session_id, forked_from_turn_id,
             execution_profile, narrative_policy,
-            provider_config_id, model_id,
+            provider_id, model_id,
             created_at, updated_at, last_activity_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
@@ -89,7 +89,7 @@ export class SessionsRepo {
         s.forkedFromTurnId ?? null,
         s.executionProfile ?? 'chat',
         s.narrativePolicy ?? 'auto',
-        s.model?.providerConfigId ?? null,
+        s.model?.providerId ?? null,
         s.model?.modelId ?? null,
         s.createdAt, s.updatedAt,
         s.lastActivityAt ?? s.createdAt);
@@ -312,14 +312,14 @@ export class SessionsRepo {
            (id, title, workspace_root, project_id,
             forked_from_session_id, forked_from_turn_id,
             execution_profile, narrative_policy,
-            provider_config_id, model_id,
+            provider_id, model_id,
             created_at, updated_at, last_activity_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(newId, title, src.workspace_root,
         src.project_id,
         srcId, untilTurnId ?? null,
         src.execution_profile, src.narrative_policy,
-        src.provider_config_id, src.model_id,
+        src.provider_id, src.model_id,
         createdAt, createdAt, createdAt);
 
       // 2. 构建 old->new turn id 映射。Turn 被复制以使 fork 出的 session
@@ -358,11 +358,11 @@ export class SessionsRepo {
       this.db.prepare(
         `INSERT INTO turns
            (id, session_id, status, trigger_type,
-            execution_profile, narrative_policy, provider_config_id, model_id,
+            execution_profile, narrative_policy, provider_id, model_id,
             iterations, usage_input_tokens, usage_output_tokens,
             created_at, completed_at, error_code, error_message)
          SELECT m.new_id, ?, t.status, t.trigger_type,
-                t.execution_profile, t.narrative_policy, t.provider_config_id, t.model_id,
+                t.execution_profile, t.narrative_policy, t.provider_id, t.model_id,
                 t.iterations, t.usage_input_tokens, t.usage_output_tokens,
                 t.created_at, t.completed_at, t.error_code, t.error_message
          FROM turns t JOIN _turn_id_map m ON m.old_id = t.id
@@ -478,7 +478,7 @@ export class SessionsRepo {
       executionProfile?: ExecutionProfileRow;
       narrativePolicy?: NarrativePolicyRow;
       model?: {
-        providerConfigId: string;
+        providerId: string;
         modelId: string;
       } | null;
     },
@@ -509,9 +509,9 @@ export class SessionsRepo {
       values.push(patch.narrativePolicy);
     }
     if (patch.model !== undefined) {
-      setClauses.push('provider_config_id = ?', 'model_id = ?');
+      setClauses.push('provider_id = ?', 'model_id = ?');
       values.push(
-        patch.model?.providerConfigId ?? null,
+        patch.model?.providerId ?? null,
         patch.model?.modelId ?? null,
       );
     }

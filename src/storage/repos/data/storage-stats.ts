@@ -104,7 +104,7 @@ export interface TurnRestoreRow {
   triggerType: TurnTriggerTypeRow;
   executionProfile: ExecutionProfileRow;
   narrativePolicy: NarrativePolicyRow;
-  providerConfigId: string | null;
+  providerId: string | null;
   modelId: string | null;
   status: string;
   createdAt: number;
@@ -148,7 +148,7 @@ export interface SessionRestorePayload {
     executionProfile: ExecutionProfileRow;
     narrativePolicy: NarrativePolicyRow;
     /** 旧 ZIP 没有这两个字段，导入时按 null 兼容。 */
-    providerConfigId?: string | null;
+    providerId?: string | null;
     modelId?: string | null;
   };
   turns:             TurnRestoreRow[];
@@ -190,12 +190,12 @@ function validateSessionRestorePayload(payload: SessionRestorePayload): void {
   if (payload.session.forkedFromSessionId === sessionId) {
     throw new SessionRestoreValidationError('Session 不能把自身设为 forkedFromSessionId');
   }
-  const providerConfigId = payload.session.providerConfigId ?? null;
+  const providerId = payload.session.providerId ?? null;
   const modelId = payload.session.modelId ?? null;
-  if ((providerConfigId === null) !== (modelId === null)) {
+  if ((providerId === null) !== (modelId === null)) {
     throw new SessionRestoreValidationError('Session 模型选择必须同时包含供应商配置和模型');
   }
-  if (providerConfigId !== null && (!providerConfigId.trim() || !modelId?.trim())) {
+  if (providerId !== null && (!providerId.trim() || !modelId?.trim())) {
     throw new SessionRestoreValidationError('Session 模型选择不能为空字符串');
   }
 
@@ -533,7 +533,7 @@ export class SessionStatsRepo {
           (id, title, workspace_root, created_at, updated_at,
            last_activity_at, archived_at, pinned,
            forked_from_session_id, forked_from_turn_id, execution_profile, narrative_policy,
-           provider_config_id, model_id)
+           provider_id, model_id)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         p.session.id, p.session.title, p.session.workspaceRoot ?? null,
@@ -544,7 +544,7 @@ export class SessionStatsRepo {
         forkedFromSessionId, null,
         p.session.executionProfile,
         p.session.narrativePolicy,
-        p.session.providerConfigId ?? null,
+        p.session.providerId ?? null,
         p.session.modelId ?? null,
       );
 
@@ -552,7 +552,7 @@ export class SessionStatsRepo {
       const stmtTurn = this.db.prepare(`
         INSERT INTO turns
           (id, session_id, trigger_type, execution_profile, narrative_policy,
-           provider_config_id, model_id, status,
+           provider_id, model_id, status,
            created_at, completed_at, error_code, error_message,
            iterations, usage_input_tokens, usage_output_tokens)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -561,7 +561,7 @@ export class SessionStatsRepo {
         stmtTurn.run(
           t.id, p.session.id, t.triggerType,
           t.executionProfile, t.narrativePolicy,
-          t.providerConfigId ?? null, t.modelId ?? null,
+          t.providerId ?? null, t.modelId ?? null,
           t.status, t.createdAt, t.completedAt ?? null,
           t.errorCode ?? null, t.errorMessage ?? null,
           t.iterations ?? 0, t.usageInputTokens ?? 0, t.usageOutputTokens ?? 0,

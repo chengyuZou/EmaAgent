@@ -10,8 +10,8 @@ import type { SqliteDb } from '../../database/database.js';
 interface ModelBindingRow {
   module: ModelBindingModule;
   capability: ModelCapability;
-  provider_config_id: string;
-  model: string;
+  provider_id: string;
+  model_id: string;
 }
 
 export class ModelBindingsRepo implements ModelBindingStore {
@@ -31,23 +31,23 @@ export class ModelBindingsRepo implements ModelBindingStore {
     return rows.map(fromRow);
   }
 
-  listByProviderConfig(providerConfigId: string): ModelBinding[] {
+  listByProvider(providerId: string): ModelBinding[] {
     const rows = this.db.prepare(
       `SELECT * FROM model_bindings
-       WHERE provider_config_id = ? ORDER BY module ASC`,
-    ).all(providerConfigId) as ModelBindingRow[];
+       WHERE provider_id = ? ORDER BY module ASC`,
+    ).all(providerId) as ModelBindingRow[];
     return rows.map(fromRow);
   }
 
   set(binding: ModelBinding): void {
     this.db.prepare(
-      `INSERT INTO model_bindings (module, capability, provider_config_id, model)
+      `INSERT INTO model_bindings (module, capability, provider_id, model_id)
        VALUES (?, ?, ?, ?)
        ON CONFLICT(module) DO UPDATE SET
          capability = excluded.capability,
-         provider_config_id = excluded.provider_config_id,
-         model = excluded.model`,
-    ).run(binding.module, binding.capability, binding.providerConfigId, binding.model);
+         provider_id = excluded.provider_id,
+         model_id = excluded.model_id`,
+    ).run(binding.module, binding.capability, binding.providerId, binding.modelId);
   }
 
   delete(module: ModelBindingModule): void {
@@ -59,7 +59,7 @@ function fromRow(row: ModelBindingRow): ModelBinding {
   return {
     module: row.module,
     capability: row.capability,
-    providerConfigId: row.provider_config_id,
-    model: row.model,
+    providerId: row.provider_id,
+    modelId: row.model_id,
   };
 }

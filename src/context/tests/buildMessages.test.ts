@@ -1,11 +1,10 @@
 // 验证 Session 历史只投影可重放内容，并丢弃旧系统、Narrative 和未配对 Tool 块。
 import { describe, expect, it } from 'vitest';
-import { asMessageId, asSessionId, asTurnId } from '@ema-agent/ids';
 import type { Message as SessionMessage } from '@ema-agent/session';
 import { buildMessages } from '../buildMessages.js';
 
-const sessionId = asSessionId('session-1');
-const turnId = asTurnId('turn-1');
+const sessionId = 'session-1';
+const turnId = 'turn-1';
 
 function message(
   id: string,
@@ -14,7 +13,7 @@ function message(
   kind: SessionMessage['kind'] = 'chat',
 ): SessionMessage {
   return {
-    id: asMessageId(id),
+    id,
     sessionId,
     turnId,
     role,

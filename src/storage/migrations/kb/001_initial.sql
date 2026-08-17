@@ -10,7 +10,7 @@ CREATE TABLE document_assets (
   status            TEXT NOT NULL
                     CHECK (status IN ('indexing', 'ready', 'failed')),
   content_hash      TEXT,
-  embedding_provider_config_id TEXT,
+  embedding_provider_id TEXT,
   embedding_model   TEXT,
   embedding_dim     INTEGER,
   embedding_space_id TEXT,
@@ -72,7 +72,7 @@ CREATE TABLE kb_ingest_tasks (
 CREATE TABLE kb_reembed_tasks (
   id              TEXT PRIMARY KEY,
   asset_id        TEXT NOT NULL,
-  embedding_provider_config_id TEXT NOT NULL,
+  embedding_provider_id TEXT NOT NULL,
   embedding_model TEXT NOT NULL,
   status          TEXT NOT NULL DEFAULT 'pending'
                   CHECK (status IN ('pending', 'running', 'completed', 'failed', 'cancelled')),

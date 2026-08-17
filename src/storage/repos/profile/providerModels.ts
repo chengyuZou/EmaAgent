@@ -3,9 +3,10 @@ import type { ModelCapability, ProviderModel, ProviderModelStore } from '@ema-ag
 import type { SqliteDb } from '../../database/database.js';
 
 interface ProviderModelRow {
-  provider_config_id: string;
+  provider_id: string;
   capability: ModelCapability;
-  model: string;
+  model_id: string;
+  name: string | null;
   context_window: number | null;
   max_output: number | null;
   tool_call: number | null;
@@ -20,34 +21,34 @@ export class ProviderModelsRepo implements ProviderModelStore {
   constructor(private readonly db: SqliteDb) {}
 
   get(
-    providerConfigId: string,
+    providerId: string,
     capability: ModelCapability,
-    model: string,
+    modelId: string,
   ): ProviderModel | undefined {
     const row = this.db.prepare(
       `SELECT * FROM provider_models
-       WHERE provider_config_id = ? AND capability = ? AND model = ?`,
-    ).get(providerConfigId, capability, model) as ProviderModelRow | undefined;
+       WHERE provider_id = ? AND capability = ? AND model_id = ?`,
+    ).get(providerId, capability, modelId) as ProviderModelRow | undefined;
     return row ? fromRow(row) : undefined;
   }
 
-  listByProvider(providerConfigId: string, capability?: ModelCapability): ProviderModel[] {
+  listByProvider(providerId: string, capability?: ModelCapability): ProviderModel[] {
     const rows = capability === undefined
       ? this.db.prepare(
         `SELECT * FROM provider_models
-         WHERE provider_config_id = ? ORDER BY capability ASC, model ASC`,
-      ).all(providerConfigId)
+         WHERE provider_id = ? ORDER BY capability ASC, model_id ASC`,
+      ).all(providerId)
       : this.db.prepare(
         `SELECT * FROM provider_models
-         WHERE provider_config_id = ? AND capability = ? ORDER BY model ASC`,
-      ).all(providerConfigId, capability);
+         WHERE provider_id = ? AND capability = ? ORDER BY model_id ASC`,
+      ).all(providerId, capability);
     return (rows as ProviderModelRow[]).map(fromRow);
   }
 
   listByCapability(capability: ModelCapability): ProviderModel[] {
     const rows = this.db.prepare(
       `SELECT * FROM provider_models
-       WHERE capability = ? ORDER BY provider_config_id ASC, model ASC`,
+       WHERE capability = ? ORDER BY provider_id ASC, model_id ASC`,
     ).all(capability) as ProviderModelRow[];
     return rows.map(fromRow);
   }
@@ -57,11 +58,12 @@ export class ProviderModelsRepo implements ProviderModelStore {
     const fields = toColumns(model);
     this.db.prepare(
       `INSERT INTO provider_models
-         (provider_config_id, capability, model, context_window, max_output,
+         (provider_id, capability, model_id, name, context_window, max_output,
           tool_call, reasoning, temperature, input_image, embedding_dim,
           rerank_max_chunks, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(provider_config_id, capability, model) DO UPDATE SET
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(provider_id, capability, model_id) DO UPDATE SET
+         name = excluded.name,
          context_window = excluded.context_window,
          max_output = excluded.max_output,
          tool_call = excluded.tool_call,
@@ -72,9 +74,10 @@ export class ProviderModelsRepo implements ProviderModelStore {
          rerank_max_chunks = excluded.rerank_max_chunks,
          updated_at = excluded.updated_at`,
     ).run(
-      model.providerConfigId,
+      model.providerId,
       model.capability,
-      model.model,
+      model.modelId,
+      model.name ?? null,
       fields.contextWindow,
       fields.maxOutput,
       fields.toolCall,
@@ -88,19 +91,20 @@ export class ProviderModelsRepo implements ProviderModelStore {
     );
   }
 
-  delete(providerConfigId: string, capability: ModelCapability, model: string): void {
+  delete(providerId: string, capability: ModelCapability, modelId: string): void {
     this.db.prepare(
       `DELETE FROM provider_models
-       WHERE provider_config_id = ? AND capability = ? AND model = ?`,
-    ).run(providerConfigId, capability, model);
+       WHERE provider_id = ? AND capability = ? AND model_id = ?`,
+    ).run(providerId, capability, modelId);
   }
 }
 
 function fromRow(row: ProviderModelRow): ProviderModel {
   const identity = {
-    providerConfigId: row.provider_config_id,
+    providerId: row.provider_id,
     capability: row.capability,
-    model: row.model,
+    modelId: row.model_id,
+    ...(row.name === null ? {} : { name: row.name }),
   };
   switch (row.capability) {
     case 'llm':
@@ -118,20 +122,31 @@ function fromRow(row: ProviderModelRow): ProviderModel {
       return { ...identity, capability: 'embed', dim: row.embedding_dim! };
     case 'rerank':
       return { ...identity, capability: 'rerank', maxChunks: row.rerank_max_chunks };
-    case 'vision': return { ...identity, capability: 'vision' };
+    case 'vision':
+      return {
+        ...identity,
+        capability: 'vision',
+        contextWindow: row.context_window!,
+        maxOutput: row.max_output,
+        toolCall: fromBoolean(row.tool_call),
+        reasoning: fromBoolean(row.reasoning),
+        temperature: fromBoolean(row.temperature),
+        inputImage: fromBoolean(row.input_image),
+      };
     case 'tts': return { ...identity, capability: 'tts' };
     case 'stt': return { ...identity, capability: 'stt' };
   }
 }
 
 function toColumns(model: ProviderModel) {
+  const withWindow = model.capability === 'llm' || model.capability === 'vision';
   return {
-    contextWindow: model.capability === 'llm' ? model.contextWindow : null,
-    maxOutput: model.capability === 'llm' ? model.maxOutput : null,
-    toolCall: model.capability === 'llm' ? toBoolean(model.toolCall) : null,
-    reasoning: model.capability === 'llm' ? toBoolean(model.reasoning) : null,
-    temperature: model.capability === 'llm' ? toBoolean(model.temperature) : null,
-    inputImage: model.capability === 'llm' ? toBoolean(model.inputImage) : null,
+    contextWindow: withWindow ? model.contextWindow : null,
+    maxOutput: withWindow ? model.maxOutput : null,
+    toolCall: withWindow ? toBoolean(model.toolCall) : null,
+    reasoning: withWindow ? toBoolean(model.reasoning) : null,
+    temperature: withWindow ? toBoolean(model.temperature) : null,
+    inputImage: withWindow ? toBoolean(model.inputImage) : null,
     embeddingDim: model.capability === 'embed' ? model.dim : null,
     rerankMaxChunks: model.capability === 'rerank' ? model.maxChunks : null,
   };

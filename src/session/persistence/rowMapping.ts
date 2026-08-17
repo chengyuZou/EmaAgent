@@ -53,7 +53,7 @@ export function toSession(row: SessionRow): Session {
     forkedFromTurnId: row.forked_from_turn_id,
     executionProfile: row.execution_profile,
     narrativePolicy: row.narrative_policy,
-    ProviderConfigId: row.provider_config_id,
+    providerId: row.provider_id,
     ModelId: row.model_id,
     lastViewedAt: row.last_viewed_at,
   };

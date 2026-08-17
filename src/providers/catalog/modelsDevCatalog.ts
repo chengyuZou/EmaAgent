@@ -9,17 +9,23 @@
  *               modalities: { input: string[], output: string[] }, limit: { context, output? } }
  *
  * 以 `modelsDevId`(provider 的 models.dev 文件夹 id - 见
- * Provider capability 的 models-dev source)为索引,这样配置好的 EmaAgent provider 能解析到
+ * provider_capabilities.models_dev_id)为索引,这样配置好的 EmaAgent provider 能解析到
  * 对应的 models.dev provider。models.dev 未收录的 provider(本地运行时、
  * 仅 embed/rerank/tts)没有条目,回退到 provider 自己的 `/models` endpoint 或手填。
  *
- * 本文件是纯解析器，不读文件也不发网络请求。外层应用负责下载和缓存原始快照。
+ * ModelsDevCatalog 是纯解析器；models-dev.json 本地快照的读盘与刷新归本文件底部的
+ * getModelsDevCatalog/refreshModelsDevCatalog（快照是拉取产物，gitignored 不入库）。
  */
+import { readFileSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { fetchPublicResource } from '@ema-agent/public-http';
 
 export const MODELS_DEV_API_URL = 'https://models.dev/api.json';
 
 export interface ModelsDevSpec {
   id:                string;
+  /** 模型显示名（api.json 的 name 字段）；预填 provider_models.name 用。 */
+  name?:             string;
   /** 上下文窗口(token)。models.dev 未声明时 undefined。 */
   contextWindow?:    number;
   /** 最大输出 token。未声明时 undefined。 */
@@ -68,6 +74,7 @@ export class ModelsDevCatalog {
         const modalities = asRecord(m['modalities']);
         const spec: ModelsDevSpec = {
           id:               typeof m['id'] === 'string' ? m['id'] : modelId,
+          name:             typeof m['name'] === 'string' ? m['name'] : undefined,
           contextWindow:    limit ? asNumber(limit['context']) : undefined,
           maxOutput:        limit ? asNumber(limit['output'])  : undefined,
           inputModalities:  modalities ? asStringArray(modalities['input'])  : [],
@@ -128,4 +135,47 @@ export class ModelsDevCatalog {
 
 function asBoolean(value: unknown): boolean | undefined {
   return typeof value === 'boolean' ? value : undefined;
+}
+
+// ── 本地快照的加载与刷新 ─────────────────────────────────────────────────────
+// models-dev.json 是 api.json 的本地缓存（gitignored，拉取产物不入库）；
+// get 惰性读盘一次，refresh 有更新才覆写并重载。快照缺失时 get 返回空目录，
+// 模型发现回退到 live fetch 与手填，不阻塞主链路。
+
+const SNAPSHOT_PATH = fileURLToPath(new URL('./models-dev.json', import.meta.url));
+
+let cached: ModelsDevCatalog | undefined;
+
+export function getModelsDevCatalog(): ModelsDevCatalog {
+  if (cached) return cached;
+  const catalog = new ModelsDevCatalog();
+  try {
+    catalog.loadFromJson(JSON.parse(readFileSync(SNAPSHOT_PATH, 'utf8')));
+  } catch {
+    // 首次运行或文件损坏：空目录，由 refresh 补齐
+  }
+  cached = catalog;
+  return catalog;
+}
+
+/** 拉取 models.dev 最新目录；内容有变化才覆写快照并重载内存。返回是否有更新。 */
+export async function refreshModelsDevCatalog(signal?: AbortSignal): Promise<boolean> {
+  const response = await fetchPublicResource(MODELS_DEV_API_URL, {
+    maxBytes: 8 * 1024 * 1024,
+    timeoutMs: 30_000,
+    ...(signal ? { signal } : {}),
+  });
+  const text = response.body.toString('utf8');
+  let previous = '';
+  try {
+    previous = readFileSync(SNAPSHOT_PATH, 'utf8');
+  } catch {
+    // 首次运行：没有旧快照可比，直接写入
+  }
+  if (previous === text) return false;
+  writeFileSync(SNAPSHOT_PATH, text, 'utf8');
+  const catalog = new ModelsDevCatalog();
+  catalog.loadFromJson(JSON.parse(text));
+  cached = catalog;
+  return true;
 }

@@ -11,7 +11,6 @@ export interface McpServerRow {
   registry_entry_id:  string | null;
   registry_version:   string | null;
   config_json:  string;        // 原始 McpServerConfig JSON,由 mcp 包解析;
-                               // env/headers 值是 credential 信封,由 mcp 包 reveal
   tools_cache:  string | null; // 上次成功 listTools 返回的 JSON McpToolInfo[]
   cached_at:    number;        // 毫秒;0 = 从未缓存
   enabled:      number;        // 0 | 1

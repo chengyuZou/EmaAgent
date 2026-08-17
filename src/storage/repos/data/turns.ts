@@ -16,7 +16,7 @@ export interface TurnRow {
   execution_profile: ExecutionProfileRow;
   narrative_policy: NarrativePolicyRow;
   /** 操作开始冻结的模型选择；prepare 阶段解析成功前为 null。 */
-  provider_config_id: string | null;
+  provider_id: string | null;
   model_id: string | null;
   iterations: number;
   usage_input_tokens: number;
@@ -63,7 +63,7 @@ export interface TurnIndexRow {
   status: TurnStatusRow;
   /** 首条 User Message 的正文预览；用户输入的唯一事实源是 Message。 */
   preview: string;
-  provider_config_id: string | null;
+  provider_id: string | null;
   model_id: string | null;
   created_at: number;
   completed_at: number | null;
@@ -102,10 +102,10 @@ export class TurnsRepo {
   }
 
   /** 操作开始冻结模型选择；prepare 解析成功后写入，整轮不再变。 */
-  setModel(id: string, providerConfigId: string, modelId: string): void {
+  setModel(id: string, providerId: string, modelId: string): void {
     this.db
-      .prepare('UPDATE turns SET provider_config_id = ?, model_id = ? WHERE id = ?')
-      .run(providerConfigId, modelId, id);
+      .prepare('UPDATE turns SET provider_id = ?, model_id = ? WHERE id = ?')
+      .run(providerId, modelId, id);
   }
 
   /**
@@ -118,14 +118,14 @@ export class TurnsRepo {
       .prepare(
         `INSERT INTO turns
            (id, session_id, status, trigger_type,
-            execution_profile, narrative_policy, provider_config_id, model_id,
+            execution_profile, narrative_policy, provider_id, model_id,
             iterations, usage_input_tokens, usage_output_tokens,
             created_at, completed_at, error_code, error_message)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         newId, newSessionId, src.status, src.trigger_type,
-        src.execution_profile, src.narrative_policy, src.provider_config_id, src.model_id,
+        src.execution_profile, src.narrative_policy, src.provider_id, src.model_id,
         src.iterations, src.usage_input_tokens, src.usage_output_tokens,
         src.created_at, src.completed_at, src.error_code, src.error_message,
       );
@@ -181,7 +181,7 @@ export class TurnsRepo {
                    WHERE m.turn_id = t.id AND m.role = 'user' AND m.kind = 'normal'
                    ORDER BY m.created_at ASC, m.id ASC LIMIT 1
                  ), '') AS preview,
-                 t.provider_config_id, t.model_id,
+                 t.provider_id, t.model_id,
                  t.created_at, t.completed_at
           FROM turns t
           WHERE t.session_id = ?
@@ -197,7 +197,7 @@ export class TurnsRepo {
                    WHERE m.turn_id = t.id AND m.role = 'user' AND m.kind = 'normal'
                    ORDER BY m.created_at ASC, m.id ASC LIMIT 1
                  ), '') AS preview,
-                 t.provider_config_id, t.model_id,
+                 t.provider_id, t.model_id,
                  t.created_at, t.completed_at
           FROM turns t
           WHERE t.session_id = ?

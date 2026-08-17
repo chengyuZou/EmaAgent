@@ -11,6 +11,6 @@ Provider / 接线层
             └─ { embeddings, dim }
 ```
 
-`EmbeddingSpace` 是向量索引的领域事实，不是协议路由。调用方根据已选择的 `providerConfigId`、模型目录维度和 revision 调用 `createEmbeddingSpace()`，防止不同向量空间混写。`embed()` 不接受 Provider ID，也不替调用方选择空间。
+`EmbeddingSpace` 是向量索引的领域事实，不是协议路由。调用方根据已选择的 `providerId`、模型目录维度和 revision 调用 `createEmbeddingSpace()`，防止不同向量空间混写。`embed()` 不接受 Provider ID，也不替调用方选择空间。
 
 正常请求只执行一次。批处理、限时、重试和 Usage 记录由知道具体业务语义的 Knowledge、Memory 或接线层拥有。

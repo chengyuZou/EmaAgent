@@ -22,7 +22,7 @@ export interface SessionBackupRestoreInput {
     forkedFromSessionId: string | null;
     executionProfile: 'chat' | 'work';
     narrativePolicy: 'auto' | 'always' | 'off';
-    providerConfigId: string | null;
+    providerId: string | null;
     modelId: string | null;
   };
   readonly turns: Iterable<TurnRestoreRow>;
@@ -68,19 +68,19 @@ export class SessionBackupRestorer {
       INSERT INTO sessions (
         id, title, workspace_root, created_at, updated_at, last_activity_at,
         archived_at, pinned, forked_from_session_id,
-        execution_profile, narrative_policy, provider_config_id, model_id
+        execution_profile, narrative_policy, provider_id, model_id
       ) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       session.id, session.title, session.createdAt, session.updatedAt, session.lastActivityAt,
       session.archivedAt, session.pinned ? 1 : 0,
       forkedFromSessionId, session.executionProfile, session.narrativePolicy,
-      session.providerConfigId, session.modelId,
+      session.providerId, session.modelId,
     );
 
     const turn = this.db.prepare(`
       INSERT INTO turns (
         id, session_id, trigger_type, execution_profile, narrative_policy,
-        provider_config_id, model_id, status,
+        provider_id, model_id, status,
         created_at, completed_at, error_code, error_message,
         iterations, usage_input_tokens, usage_output_tokens
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -89,7 +89,7 @@ export class SessionBackupRestorer {
       turn.run(
         row.id, session.id, row.triggerType,
         row.executionProfile, row.narrativePolicy,
-        row.providerConfigId ?? null, row.modelId ?? null,
+        row.providerId ?? null, row.modelId ?? null,
         row.status, row.createdAt, row.completedAt, row.errorCode,
         row.errorMessage, row.iterations, row.usageInputTokens, row.usageOutputTokens,
       );
@@ -257,7 +257,7 @@ function validateSession(input: SessionBackupRestoreInput): void {
   if (session.forkedFromSessionId === session.id) {
     throw new SessionBackupRestoreError('Session 不能把自身设为 forkedFromSessionId');
   }
-  if ((session.providerConfigId === null) !== (session.modelId === null)) {
+  if ((session.providerId === null) !== (session.modelId === null)) {
     throw new SessionBackupRestoreError('模型选择必须同时包含供应商配置和模型');
   }
 }

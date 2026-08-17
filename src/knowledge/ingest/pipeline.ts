@@ -188,7 +188,7 @@ async function embedChunks(
       signal,
     });
     const responseSpace = createEmbeddingSpace({
-      providerConfigId: embedding.providerConfigId,
+      providerId: embedding.providerId,
       model: embedding.model,
       dim: response.dim,
     });

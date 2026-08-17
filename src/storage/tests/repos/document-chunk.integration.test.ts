@@ -27,7 +27,7 @@ describe('B-072 embedding fallback 流式 Top-K', () => {
       });
       assets.setEmbeddingSpace(assetId, {
         id: SPACE,
-        providerConfigId: 'provider-test',
+        providerId: 'provider-test',
         model: 'model-test',
         dim: 2,
       });

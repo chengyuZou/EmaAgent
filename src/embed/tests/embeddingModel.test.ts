@@ -74,7 +74,7 @@ describe('EmbeddingModel', () => {
 describe('EmbeddingSpace', () => {
   it('相同事实生成相同 ID，模型或维度变化会生成不同 ID', () => {
     const base = {
-      providerConfigId: 'provider-a',
+      providerId: 'provider-a',
       model: 'bge-m3',
       dim: 1024,
       revision: 'v1',

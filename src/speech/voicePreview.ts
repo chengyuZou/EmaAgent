@@ -30,18 +30,18 @@ export interface SpeechVoicePreviewResult {
 
 export class SpeechVoicePreview {
   constructor(
-    private readonly resolveTextToSpeech: (providerConfigId: string) => TextToSpeech | undefined,
+    private readonly resolveTextToSpeech: (providerId: string) => TextToSpeech | undefined,
     private readonly voices: SpeechVoicePreviewSource,
     private readonly voiceCache: SpeechVoiceCache,
   ) {}
 
   async synthesize(
-    providerConfigId: string,
+    providerId: string,
     model: string,
     text: string,
     signal?: AbortSignal,
   ): Promise<SpeechVoicePreviewResult> {
-    const textToSpeech = this.resolveTextToSpeech(providerConfigId);
+    const textToSpeech = this.resolveTextToSpeech(providerId);
     if (!textToSpeech) {
       throw new SpeechVoicePreviewError('client_unavailable', 'TTS Provider 运行时不可用');
     }
@@ -56,7 +56,7 @@ export class SpeechVoicePreview {
         textToSpeech,
         model,
         current.cardId,
-        providerConfigId,
+        providerId,
         this.voiceCache,
         signal,
       );

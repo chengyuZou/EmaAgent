@@ -35,7 +35,7 @@ const RERANK_BLEND_WEIGHT = 0.6;
 const EMBED_BATCH_SIZE = 32;
 
 export interface KnowledgeEmbeddingSelection {
-  readonly providerConfigId: string;
+  readonly providerId: string;
   readonly model: string;
   readonly embedding: EmbeddingModel;
 }
@@ -103,12 +103,12 @@ export class KnowledgeClient {
     const model = this.deps.resolveEmbeddingByRef(ref);
     if (!model) {
       throw new KnowledgeNotConfiguredError(
-        `Embedding 配置已删除或模型未启用: ${ref.providerConfigId} / ${ref.model}`,
+        `Embedding 配置已删除或模型未启用: ${ref.providerId} / ${ref.model}`,
       );
     }
     const response = await model.embed({ model: ref.model, texts: ['空间预检'], ...(signal === undefined ? {} : { signal }) });
     return createEmbeddingSpace({
-      providerConfigId: ref.providerConfigId,
+      providerId: ref.providerId,
       model: ref.model,
       dim: response.dim,
     });
@@ -128,7 +128,7 @@ export class KnowledgeClient {
     const embedding = this.deps.resolveEmbeddingByRef(selection);
     if (!embedding) {
       throw new KnowledgeNotConfiguredError(
-        `Embedding 配置已删除或模型未启用: ${selection.providerConfigId} / ${selection.model}`,
+        `Embedding 配置已删除或模型未启用: ${selection.providerId} / ${selection.model}`,
       );
     }
     const chunks = this.deps.store.getChunks(assetId);
@@ -141,7 +141,7 @@ export class KnowledgeClient {
         signal,
       });
       const responseSpace = createEmbeddingSpace({
-        providerConfigId: selection.providerConfigId,
+        providerId: selection.providerId,
         model: selection.model,
         dim: response.dim,
       });
@@ -270,7 +270,7 @@ export class KnowledgeClient {
       const vector = response.embeddings[0];
       if (!vector) return [];
       const space = createEmbeddingSpace({
-        providerConfigId: embedding.providerConfigId,
+        providerId: embedding.providerId,
         model: embedding.model,
         dim: response.dim,
       });

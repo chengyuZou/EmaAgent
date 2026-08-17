@@ -1,7 +1,6 @@
-// 测试 McpServerStore 在写边界加密 env/headers、读边界 reveal 回明文 domain。
+// 测试 McpServerStore 对 env/headers 的明文持久化与读取(V1 不做凭据加密)。
 import { describe, expect, it } from 'vitest';
 import { McpServerStore } from '../store.js';
-import { createTestCredentialFacade } from './helpers/test-credential-facade.js';
 
 function memoryRepo() {
   const rows = new Map<string, Record<string, unknown>>();
@@ -25,9 +24,9 @@ function memoryRepo() {
 }
 
 describe('McpServerStore 凭据边界', () => {
-  it('stdio env 值落库为信封,读取回明文', () => {
+  it('stdio env 值明文落库,读取回原值', () => {
     const repo = memoryRepo();
-    const store = new McpServerStore(repo as never, createTestCredentialFacade());
+    const store = new McpServerStore(repo as never);
 
     store.register('github', {
       type: 'stdio',
@@ -37,10 +36,9 @@ describe('McpServerStore 凭据边界', () => {
     });
 
     const persisted = JSON.parse(repo.findByName('github')!.config_json as string);
-    // 全部值都加密,不分类;明文绝不落库
-    expect(persisted.env.GITHUB_TOKEN).toMatch(/^ema-credential:v1:/);
-    expect(persisted.env.GITHUB_TOKEN).not.toContain('ghp_secret');
-    expect(persisted.env.DEBUG).toMatch(/^ema-credential:v1:/);
+    // V1 明文直存,不加密
+    expect(persisted.env.GITHUB_TOKEN).toBe('ghp_secret');
+    expect(persisted.env.DEBUG).toBe('1');
 
     const record = store.findByName('github')!;
     expect(record.config).toMatchObject({
@@ -49,9 +47,9 @@ describe('McpServerStore 凭据边界', () => {
     });
   });
 
-  it('http headers 值落库为信封,读取回明文', () => {
+  it('http headers 值明文落库,读取回原值', () => {
     const repo = memoryRepo();
-    const store = new McpServerStore(repo as never, createTestCredentialFacade());
+    const store = new McpServerStore(repo as never);
 
     store.register('remote', {
       type: 'http',
@@ -60,8 +58,7 @@ describe('McpServerStore 凭据边界', () => {
     });
 
     const persisted = JSON.parse(repo.findByName('remote')!.config_json as string);
-    expect(persisted.headers.Authorization).toMatch(/^ema-credential:v1:/);
-    expect(persisted.headers.Authorization).not.toContain('tok_123');
+    expect(persisted.headers.Authorization).toBe('Bearer tok_123');
 
     expect(store.findByName('remote')!.config).toMatchObject({
       type: 'http',
@@ -69,16 +66,9 @@ describe('McpServerStore 凭据边界', () => {
     });
   });
 
-  it('AAD 绑定记录 id:把信封换到另一条记录下拒绝解密', () => {
-    const facade = createTestCredentialFacade();
-    const envelope = facade.protect('server-a', 'secret');
-    expect(facade.reveal('server-a', envelope)).toBe('secret');
-    expect(() => facade.reveal('server-b', envelope)).toThrow();
-  });
-
-  it('更新同名 server 沿用既有 id,旧信封仍可 reveal', () => {
+  it('更新同名 server 沿用既有 id,配置覆盖', () => {
     const repo = memoryRepo();
-    const store = new McpServerStore(repo as never, createTestCredentialFacade());
+    const store = new McpServerStore(repo as never);
 
     store.register('s', { type: 'http', url: 'https://a.example/mcp', headers: { 'X-Key': 'one' } });
     store.register('s', { type: 'http', url: 'https://b.example/mcp', headers: { 'X-Key': 'two' } });
@@ -92,7 +82,7 @@ describe('McpServerStore 凭据边界', () => {
 
   it('registry provenance 三列往返;损坏 provenance 降级 manual', () => {
     const repo = memoryRepo();
-    const store = new McpServerStore(repo as never, createTestCredentialFacade());
+    const store = new McpServerStore(repo as never);
 
     store.register('marked', { type: 'http', url: 'https://a.example/mcp' }, undefined, {
       sourceKind: 'registry',

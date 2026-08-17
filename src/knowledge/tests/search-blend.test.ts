@@ -169,7 +169,7 @@ describe('KB 检索混合排序', () => {
     const client = new KnowledgeClient({
       ...makeDeps(store),
       resolveEmbedding: () => ({
-        providerConfigId: 'p',
+        providerId: 'p',
         model: 'm',
         embedding: {
           embed: async () => {

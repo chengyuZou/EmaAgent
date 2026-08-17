@@ -16,7 +16,7 @@ const DEFAULT_SENTENCE_TIMEOUT_MS = 120_000;
 export interface SpeechCoordinatorArgs {
   readonly sessionId: string;
   readonly turnId: string;
-  readonly providerConfigId: string;
+  readonly providerId: string;
   readonly model: string;
   readonly voice: TtsVoice;
   readonly textToSpeech: TextToSpeech;
@@ -224,7 +224,7 @@ export class SpeechCoordinator {
     if (!this.args.usageRecorder) return;
     const record = createUsageRecord({
       capability: 'tts',
-      providerId: this.args.providerConfigId,
+      providerId: this.args.providerId,
       modelId: this.args.model,
       status: errorCode === null ? 'completed' : 'failed',
       startedAt,

@@ -6,7 +6,6 @@ import { installRegistryEntry } from '../registrySources/install.js';
 import type { RawRegistryServer } from '../registrySources/types.js';
 import type { McpRegistrySource } from '../registrySources/types.js';
 import { McpServerStore } from '../store.js';
-import { createTestCredentialFacade } from './helpers/test-credential-facade.js';
 
 function page(servers: unknown[], nextCursor?: string) {
   return {
@@ -177,7 +176,7 @@ describe('installRegistryEntry', () => {
     };
     return {
       rows,
-      store: new McpServerStore(repo as never, createTestCredentialFacade()),
+      store: new McpServerStore(repo as never),
     };
   }
 
@@ -199,7 +198,7 @@ describe('installRegistryEntry', () => {
     });
   });
 
-  it('必填输入缺失时拒绝安装;提供后合并进 env 并加密落库', () => {
+  it('必填输入缺失时拒绝安装;提供后合并进 env 明文落库', () => {
     const { rows, store } = memoryStore();
     const entry = resolveRegistryEntry({
       name: 'io.example/fetch', version: '2.0.0',
@@ -215,7 +214,6 @@ describe('installRegistryEntry', () => {
 
     installRegistryEntry({ store, source, entry, inputs: { API_KEY: 'sk-live' } });
     const persisted = JSON.parse([...rows.values()][0]!.config_json as string);
-    expect(persisted.env.API_KEY).toMatch(/^ema-credential:v1:/);
-    expect(persisted.env.API_KEY).not.toContain('sk-live');
+    expect(persisted.env.API_KEY).toBe('sk-live');
   });
 });

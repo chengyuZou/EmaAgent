@@ -39,7 +39,7 @@ AgenticRAG 知识库包。用户给的资料经 **解析 → 分块 → embeddin
 document_assets    一个导入文件一行
   status                             indexing → ready | failed（三态，无默认值）
   content_hash                       同内容拒绝二次入库（部分唯一索引）
-  embedding_provider_config_id / embedding_model / embedding_dim / embedding_space_id
+  embedding_provider_id / embedding_model / embedding_dim / embedding_space_id
                                      空间冻结：本资产的向量是谁、哪个模型、多少维嵌的；
                                      空间不同维的向量永不混检
 

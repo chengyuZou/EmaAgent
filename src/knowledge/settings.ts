@@ -3,7 +3,7 @@
 import { defineSetting } from '@ema-agent/settings';
 
 export interface KnowledgeModelRef {
-  providerConfigId: string;
+  providerId: string;
   model: string;
 }
 
@@ -35,11 +35,11 @@ export const knowledgeModelsSetting = defineSetting<KnowledgeModelSettings>({
 function decodeModelRef(value: unknown): KnowledgeModelRef | undefined | null {
   if (value === undefined || value === null) return undefined;
   if (!isRecord(value)) return null;
-  const providerConfigId = value['providerConfigId'];
+  const providerId = value['providerId'];
   const model = value['model'];
-  if (typeof providerConfigId !== 'string' || providerConfigId.length === 0) return null;
+  if (typeof providerId !== 'string' || providerId.length === 0) return null;
   if (typeof model !== 'string' || model.length === 0) return null;
-  return { providerConfigId, model };
+  return { providerId, model };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

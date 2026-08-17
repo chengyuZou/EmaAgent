@@ -1,8 +1,8 @@
 import type { ModelCapability } from './types.js';
 import type { ModelBindingModule } from './modelBindings.js';
 
-export type ProviderConfigErrorCode =
-  | 'unknown_provider'
+export type ProviderErrorCode =
+  | 'already_exists'
   | 'invalid_configuration'
   | 'not_found'
   | 'capability_disabled'
@@ -13,17 +13,17 @@ export type ProviderConfigErrorCode =
 
 export interface ProviderBindingConflict {
   module: ModelBindingModule;
-  model: string;
+  modelId: string;
   capability: ModelCapability;
 }
 
-export class ProviderConfigError extends Error {
+export class ProviderError extends Error {
   constructor(
-    readonly code: ProviderConfigErrorCode,
+    readonly code: ProviderErrorCode,
     message: string,
     readonly conflicts: readonly ProviderBindingConflict[] = [],
   ) {
     super(message);
-    this.name = 'ProviderConfigError';
+    this.name = 'ProviderError';
   }
 }

@@ -28,7 +28,6 @@ export const McpStdioConfigSchema = z.object({
 export const McpHttpConfigSchema = z.object({
   type:    z.literal('http'),
   url:     z.string().url(),
-  /** 值在持久化边界经 CredentialFacade 加密落库;domain 形式永远是明文。 */
   headers: z.record(z.string(), z.string()).optional(),
   toolTimeoutSec: TOOL_TIMEOUT_SCHEMA,
 });

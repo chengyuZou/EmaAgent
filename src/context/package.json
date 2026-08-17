@@ -29,7 +29,6 @@
     "zod-to-json-schema": "^3.23.0"
   },
   "devDependencies": {
-    "@ema-agent/ids": "workspace:*",
     "@types/node": "^20.0.0",
     "rimraf": "^5.0.0",
     "typescript": "^5.9.3",

@@ -355,7 +355,7 @@ function toTurn(row: TurnRow): Turn {
     triggerType: row.trigger_type,
     executionProfile: row.execution_profile,
     narrativePolicy: row.narrative_policy,
-    providerConfigId: row.provider_config_id,
+    providerId: row.provider_id,
     modelId: row.model_id,
     iterations: row.iterations,
     usageInputTokens: row.usage_input_tokens,

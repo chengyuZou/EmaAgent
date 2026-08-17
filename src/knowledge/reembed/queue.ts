@@ -44,7 +44,7 @@ export class ReembedQueue {
     const task = this.deps.tasks.insert({
       id: randomUUID(),
       assetId: input.assetId,
-      embeddingProviderConfigId: input.embedding.providerConfigId,
+      embeddingProviderId: input.embedding.providerId,
       embeddingModel: input.embedding.model,
     });
     this.drain();
@@ -57,7 +57,7 @@ export class ReembedQueue {
     return this.enqueue({
       assetId: previous.assetId,
       embedding: {
-        providerConfigId: previous.embeddingProviderConfigId,
+        providerId: previous.embeddingProviderId,
         model: previous.embeddingModel,
       },
     });
@@ -112,7 +112,7 @@ export class ReembedQueue {
       await this.deps.reembed({
         assetId: task.assetId,
         embedding: {
-          providerConfigId: task.embeddingProviderConfigId,
+          providerId: task.embeddingProviderId,
           model: task.embeddingModel,
         },
         signal: controller.signal,

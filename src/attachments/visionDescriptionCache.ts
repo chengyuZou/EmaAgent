@@ -9,7 +9,7 @@ import type { ImageAttachment } from './types.js';
 const DEFAULT_MEMORY_ENTRIES = 256;
 
 export interface VisionDescriptionIdentity {
-  readonly providerConfigId: string;
+  readonly providerId: string;
   readonly modelId: string;
   /** 描述指令变化时旧描述失效。 */
   readonly instructionRevision: string;
@@ -71,7 +71,7 @@ export class VisionDescriptionCache {
   ): Promise<string> {
     const repoKey = {
       attachmentId: attachment.id,
-      providerConfigId: identity.providerConfigId,
+      providerId: identity.providerId,
       modelId: identity.modelId,
       instructionRevision: identity.instructionRevision,
     };
@@ -107,7 +107,7 @@ export class VisionDescriptionCache {
 function cacheKey(attachmentId: string, identity: VisionDescriptionIdentity): string {
   return [
     attachmentId,
-    identity.providerConfigId,
+    identity.providerId,
     identity.modelId,
     identity.instructionRevision,
   ].join('');

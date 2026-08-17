@@ -24,7 +24,7 @@ let image: ImageAttachment;
 const temporary: string[] = [];
 
 const identity = {
-  providerConfigId: 'provider-1',
+  providerId: 'provider-1',
   modelId: 'vision-1',
   instructionRevision: 'caption-v1',
 };
@@ -153,13 +153,13 @@ describe('AttachmentCacheMaintenance', () => {
     expect(report.deletedDescriptions).toBe(1);
     expect(repo.find({
       attachmentId: image.id,
-      providerConfigId: identity.providerConfigId,
+      providerId: identity.providerId,
       modelId: identity.modelId,
       instructionRevision: 'caption-v1',
     })).toBeUndefined();
     expect(repo.find({
       attachmentId: image.id,
-      providerConfigId: identity.providerConfigId,
+      providerId: identity.providerId,
       modelId: identity.modelId,
       instructionRevision: 'caption-v2',
     })).toBeDefined();

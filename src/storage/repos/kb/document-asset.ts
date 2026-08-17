@@ -15,7 +15,7 @@ export interface DocumentAssetRow {
   content_hash:      string | null;
   created_at:        number;
   updated_at:        number;
-  embedding_provider_config_id: string | null;
+  embedding_provider_id: string | null;
   embedding_model:   string | null;
   embedding_dim:     number | null;
   embedding_space_id: string | null;
@@ -70,7 +70,7 @@ function rowToAsset(row: DocumentAssetRow) {
     contentHash:     row.content_hash ?? undefined,
     createdAt:       row.created_at,
     updatedAt:       row.updated_at,
-    embeddingProviderConfigId: row.embedding_provider_config_id ?? undefined,
+    embeddingProviderId: row.embedding_provider_id ?? undefined,
     embeddingModel:  row.embedding_model ?? undefined,
     embeddingDim:    row.embedding_dim ?? undefined,
     embeddingSpaceId: row.embedding_space_id ?? undefined,
@@ -176,17 +176,17 @@ export class DocumentAssetRepo {
 
   setEmbeddingSpace(id: string, space: {
     id: string;
-    providerConfigId: string;
+    providerId: string;
     model: string;
     dim: number;
   }): void {
     this.db
       .prepare(`UPDATE document_assets
-        SET embedding_provider_config_id = ?, embedding_model = ?, embedding_dim = ?,
+        SET embedding_provider_id = ?, embedding_model = ?, embedding_dim = ?,
             embedding_space_id = ?, embedding_stale = 0, updated_at = ?
         WHERE id = ?`)
       .run(
-        space.providerConfigId, space.model, space.dim, space.id,
+        space.providerId, space.model, space.dim, space.id,
         Date.now(), id,
       );
   }

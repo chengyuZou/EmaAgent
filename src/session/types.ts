@@ -52,7 +52,7 @@ export interface Session {
   executionProfile: ExecutionProfile;
   narrativePolicy: NarrativePolicy;
   /** 用户希望该 Session 使用的供应商配置；null 表示使用系统默认选择。 */
-  ProviderConfigId: string | null;
+  providerId: string | null;
   /** 用户希望该 Session 使用的模型；null 表示使用系统默认选择。 */
   ModelId: string | null;
   lastViewedAt: number | null;
@@ -109,7 +109,7 @@ export interface PatchSessionInput {
   executionProfile?: ExecutionProfile;
   narrativePolicy?: NarrativePolicy;
   model?: {
-    providerConfigId: string;
+    providerId: string;
     modelId: string;
   } | null;
 }

@@ -45,66 +45,41 @@ export interface ProviderConnection<TModelCapability extends ModelCapability> {
   apiKey?: string;
 }
 
-/** 预设中某一能力下的一档可选协议；baseUrl 仅当该档不走预设默认地址时填写。 */
-export interface ProviderProtocolOption<TProtocol extends Protocol = Protocol> {
-  protocol: TProtocol;
-  baseUrl?: string;
-}
-
-/** 内置目录只提供模型建议；手动添加模型是所有 Provider 的通用能力。 */
-export interface ProviderModelCatalogSource {
-  modelsDevId?: string;
-  staticModels?: readonly string[];
-  supportsLiveListing?: boolean;
-}
-
-/** 预设中单个能力的声明：可选协议档位与模型建议来源。 */
-export interface ProviderCapability<
-  TProtocol extends Protocol = Protocol,
-> {
-  protocols: readonly ProviderProtocolOption<TProtocol>[];
-  catalog?: ProviderModelCatalogSource;
-}
-
-/** 预设的全部能力声明，按能力分键。 */
-export interface ProviderCapabilities {
-  llm?: ProviderCapability<LlmProtocol>;
-  embed?: ProviderCapability<EmbedProtocol>;
-  rerank?: ProviderCapability<RerankProtocol>;
-  vision?: ProviderCapability<VisionProtocol>;
-  tts?: ProviderCapability<TtsProtocol>;
-  stt?: ProviderCapability<SttProtocol>;
-}
-
-export type ProviderAuth =
-  | { type: 'none' }
-  | { type: 'bearer'; required: boolean };
-
-export interface Provider {
-  /** 内置预设的稳定身份；用户自定义连接不伪造预设。 */
-  id: string;
-  name: string;
-  branding: {
-    iconId: string;
-  };
-  connection: {
-    defaultBaseUrl?: string;
-    auth: ProviderAuth;
-  };
-  capabilities: ProviderCapabilities;
-}
-
-export type ProviderCredentialOperation =
-  | { type: 'keep' }
-  | { type: 'replace'; value: string }
-  | { type: 'clear' };
-
-export const PROVIDER_CONFIG_LIMITS = Object.freeze({
+export const PROVIDER_LIMITS = Object.freeze({
+  idChars: 64,
   apiKeyChars: 8_192,
   baseUrlChars: 2_048,
-  displayNameChars: 120,
+  nameChars: 120,
 });
 
-export function defineProvider<const T extends Provider>(provider: T): T {
-  return provider;
+export function isProtocolForCapability<TCapability extends ModelCapability>(
+  capability: TCapability,
+  protocol: Protocol,
+): protocol is ModelCapabilityProtocol<TCapability> {
+  switch (capability) {
+    case 'llm':
+      return protocol === 'openai-llm'
+        || protocol === 'openai-responses-llm'
+        || protocol === 'anthropic-llm'
+        || protocol === 'gemini-llm';
+    case 'embed':
+      return protocol === 'openai-embed' || protocol === 'gemini-embed';
+    case 'rerank':
+      return protocol === 'cohere-rerank';
+    case 'vision':
+      return protocol === 'openai-vision'
+        || protocol === 'anthropic-vision'
+        || protocol === 'gemini-vision';
+    case 'tts':
+      return protocol === 'openai-tts'
+        || protocol === 'dashscope-tts'
+        || protocol === 'gpt-sovits-tts';
+    case 'stt':
+      return protocol === 'openai-stt';
+  }
+}
+
+/** OpenAI 兼容端点天然支持 GET /models 实时拉取模型清单；其余协议族只能 models.dev 或手填。 */
+export function protocolSupportsLiveListing(protocol: Protocol): boolean {
+  return protocol.startsWith('openai-');
 }

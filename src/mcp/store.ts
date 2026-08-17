@@ -1,7 +1,6 @@
-// MCP 存储入口负责服务器配置与工具缓存的持久化转换、凭据加解密和运行时校验。
+// MCP 存储入口负责服务器配置与工具缓存的持久化转换和运行时校验。
 import { Buffer }                from 'node:buffer';
 import { randomUUID }            from 'node:crypto';
-import type { CredentialFacade } from '@ema-agent/credential';
 import type { McpServersRepo, McpServerRow } from '@ema-agent/storage';
 import type { McpInstallProvenance, McpServerConfig, McpServerRecord, McpToolInfo } from './types.js';
 import { McpInstallProvenanceSchema, McpServerConfigSchema, McpToolInfoListSchema } from './types.js';
@@ -17,8 +16,7 @@ import {
 //
 // 职责:
 //   - 解析/序列化 McpServerConfig(JSON Schema 校验)
-//   - stdio env 与 http headers 的值在写边界 protect、读边界 reveal;
-//     domain 形式永远是明文,连接层不知道加密存在
+//   - env/headers 明文直存直读(V1 暂不做凭据加密,后续在此收口)
 //   - 用领域类型(非裸 DB 行)表达 CRUD
 //
 // 不管连接 - 那是 McpRegistry 的事。
@@ -26,7 +24,6 @@ import {
 export class McpServerStore {
   constructor(
     private readonly repo: McpServersRepo,
-    private readonly credentials: CredentialFacade,
   ) {}
 
   register(
@@ -37,9 +34,9 @@ export class McpServerStore {
   ): string {
     const trustedProvenance = McpInstallProvenanceSchema.parse(provenance);
     const existing = this.repo.findByName(name);
-    // AAD 绑定记录 id:更新沿用既有 id,旧信封仍可 reveal;新记录先取 id 再加密。
+    // 更新沿用既有 id,保持记录身份稳定。
     const id = existing?.id ?? randomUUID();
-    const configJson = JSON.stringify(this.protectConfig(id, config));
+    const configJson = JSON.stringify(config);
     if (existing) {
       this.repo.update(existing.id, {
         configJson,
@@ -98,39 +95,6 @@ export class McpServerStore {
     return this.repo.listEnabled().map((r) => this.rowToRecord(r));
   }
 
-  // ── 凭据边界:写保护、读揭示 ──────────────────────────────────────────────
-  //
-  // env/headers 的全部值一律加密,不猜"哪些算敏感";GCM AAD 绑定记录 id,
-  // 两行密文被交换会拒绝解密。备份导出只含密文信封,结构上满足凭据不导出。
-
-  private protectConfig(id: string, config: McpServerConfig): McpServerConfig {
-    if (config.type === 'stdio') {
-      if (!config.env) return config;
-      return { ...config, env: this.mapValues(config.env, (v) => this.credentials.protect(id, v)) };
-    }
-    if (!config.headers) return config;
-    return { ...config, headers: this.mapValues(config.headers, (v) => this.credentials.protect(id, v)) };
-  }
-
-  private revealConfig(id: string, config: McpServerConfig): McpServerConfig {
-    // reveal 对非信封值原样透传(兼容加密迁移前写入的明文行)。
-    if (config.type === 'stdio') {
-      if (!config.env) return config;
-      return { ...config, env: this.mapValues(config.env, (v) => this.credentials.reveal(id, v)) };
-    }
-    if (!config.headers) return config;
-    return { ...config, headers: this.mapValues(config.headers, (v) => this.credentials.reveal(id, v)) };
-  }
-
-  private mapValues(
-    record: Record<string, string>,
-    fn: (value: string) => string,
-  ): Record<string, string> {
-    return Object.fromEntries(Object.entries(record).map(([k, v]) => [k, fn(v)]));
-  }
-
-  // ── 私有 ──────────────────────────────────────────────────────────────
-
   private rowToRecord(row: McpServerRow): McpServerRecord {
     const rawConfig = JSON.parse(row.config_json) as unknown;
     if (
@@ -173,7 +137,7 @@ export class McpServerStore {
       provenance: parsedProvenance.success
         ? parsedProvenance.data
         : { sourceKind: 'manual' },
-      config:      this.revealConfig(row.id, McpServerConfigSchema.parse(rawConfig)),
+      config:      McpServerConfigSchema.parse(rawConfig),
       cachedTools,
       cachedAt:    row.cached_at,
       enabled:     row.enabled === 1,

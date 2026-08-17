@@ -53,7 +53,7 @@ function makeDeps(
   };
 }
 
-const REF = { providerConfigId: 'provider-1', model: 'embed-1' };
+const REF = { providerId: 'provider-1', model: 'embed-1' };
 
 describe('单资产重嵌入', () => {
   it('分批写向量并冻结空间、清理 stale、逐批报进度', async () => {

@@ -197,52 +197,71 @@ CREATE TABLE permission_rules (
   )
 );
 
-CREATE TABLE provider_capability_configs (
-  provider_config_id TEXT    NOT NULL REFERENCES provider_configs(id) ON DELETE CASCADE,
-  capability         TEXT    NOT NULL CHECK(capability IN ('llm','embed','rerank','vision','tts','stt')),
+CREATE TABLE providers (
+  id         TEXT PRIMARY KEY,
+  name       TEXT NOT NULL,
+  -- UI 图标注册表 key；NULL = 不显示图标（自建 provider 可以没有品牌图标）
+  icon_id    TEXT,
+  auth_type  TEXT NOT NULL CHECK(auth_type IN ('none','bearer')),
+  enabled    INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+-- 不同能力的 key 可能不同，provider_keys 表按能力拆开。
+CREATE TABLE provider_keys (
+  id          TEXT PRIMARY KEY,
+  provider_id TEXT NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
+  capability  TEXT NOT NULL CHECK(capability IN ('llm','embed','rerank','vision','tts','stt')),
+  -- V1 明文入库；恢复加密时 repo 读写两点接回
+  key_value   TEXT NOT NULL,
+  created_at  INTEGER NOT NULL
+);
+
+CREATE TABLE provider_capabilities (
+  provider_id     TEXT NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
+  capability      TEXT NOT NULL CHECK(capability IN ('llm','embed','rerank','vision','tts','stt')),
   -- 当前使用的协议；NULL = 该能力停用（已配协议保留在 protocols 表）
-  active_protocol    TEXT,
-  created_at          INTEGER NOT NULL,
-  updated_at          INTEGER NOT NULL,
-  PRIMARY KEY (provider_config_id, capability)
+  active_protocol TEXT,
+  -- 当前使用哪把 key；换 key = 拨这个指针，历史 key 行保留
+  active_key_id   TEXT REFERENCES provider_keys(id),
+  -- 该能力的 models.dev 源 id（加模型时的参数预填来源）
+  models_dev_id   TEXT,
+  created_at      INTEGER NOT NULL,
+  updated_at      INTEGER NOT NULL,
+  PRIMARY KEY (provider_id, capability)
 );
 
 -- 同一能力允许配置多档协议（如 DeepSeek LLM 的 openai/anthropic 双协议），
 -- 切换激活协议不丢另一档的自定义地址。
-CREATE TABLE provider_capability_protocols (
-  provider_config_id TEXT NOT NULL,
-  capability         TEXT NOT NULL,
-  protocol           TEXT NOT NULL,
-  base_url           TEXT NOT NULL,
-  created_at         INTEGER NOT NULL,
-  updated_at         INTEGER NOT NULL,
-  PRIMARY KEY (provider_config_id, capability, protocol),
-  FOREIGN KEY (provider_config_id, capability)
-    REFERENCES provider_capability_configs(provider_config_id, capability) ON DELETE CASCADE
-);
-
-CREATE TABLE provider_configs (
-  id                TEXT PRIMARY KEY,
-  provider_id       TEXT,
-  display_name      TEXT NOT NULL,
-  credential_envelope     TEXT,
-  enabled           INTEGER NOT NULL DEFAULT 0,
-  created_at        INTEGER NOT NULL,
-  updated_at        INTEGER NOT NULL
+CREATE TABLE provider_protocols (
+  provider_id TEXT NOT NULL,
+  capability  TEXT NOT NULL,
+  protocol    TEXT NOT NULL,
+  base_url    TEXT NOT NULL,
+  created_at  INTEGER NOT NULL,
+  updated_at  INTEGER NOT NULL,
+  PRIMARY KEY (provider_id, capability, protocol),
+  FOREIGN KEY (provider_id, capability)
+    REFERENCES provider_capabilities(provider_id, capability) ON DELETE CASCADE
 );
 
 CREATE TABLE provider_health (
-  provider_config_id TEXT PRIMARY KEY REFERENCES provider_configs(id) ON DELETE CASCADE,
-  status             TEXT NOT NULL CHECK(status IN ('ok','failed','unknown')),
-  last_probed_at     INTEGER,
-  latency_ms         INTEGER,
-  last_error         TEXT
+  provider_id    TEXT NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
+  capability     TEXT NOT NULL CHECK(capability IN ('llm','embed','rerank','vision','tts','stt')),
+  status         TEXT NOT NULL CHECK(status IN ('ok','failed','unknown')),
+  last_probed_at INTEGER,
+  latency_ms     INTEGER,
+  last_error     TEXT,
+  PRIMARY KEY (provider_id, capability)
 );
 
 CREATE TABLE provider_models (
-  provider_config_id TEXT    NOT NULL,
+  provider_id        TEXT    NOT NULL,
   capability         TEXT    NOT NULL CHECK(capability IN ('llm','embed','rerank','vision','tts','stt')),
-  model              TEXT    NOT NULL,
+  model_id           TEXT    NOT NULL,
+  -- 用户可改的显示名；NULL = 前端回退显示 model_id
+  name               TEXT,
   context_window     INTEGER,
   max_output         INTEGER,
   tool_call          INTEGER CHECK(tool_call IS NULL OR tool_call IN (0,1)),
@@ -253,12 +272,12 @@ CREATE TABLE provider_models (
   rerank_max_chunks  INTEGER,
   created_at         INTEGER NOT NULL,
   updated_at         INTEGER NOT NULL,
-  PRIMARY KEY (provider_config_id, capability, model),
-  FOREIGN KEY (provider_config_id, capability)
-    REFERENCES provider_capability_configs(provider_config_id, capability)
+  PRIMARY KEY (provider_id, capability, model_id),
+  FOREIGN KEY (provider_id, capability)
+    REFERENCES provider_capabilities(provider_id, capability)
     ON DELETE CASCADE,
   CHECK(
-    (capability = 'llm' AND context_window > 0 AND embedding_dim IS NULL AND rerank_max_chunks IS NULL)
+    (capability IN ('llm','vision') AND context_window > 0 AND embedding_dim IS NULL AND rerank_max_chunks IS NULL)
     OR
     (capability = 'embed' AND embedding_dim > 0 AND context_window IS NULL
       AND max_output IS NULL AND tool_call IS NULL AND reasoning IS NULL
@@ -268,7 +287,7 @@ CREATE TABLE provider_models (
       AND tool_call IS NULL AND reasoning IS NULL AND temperature IS NULL
       AND input_image IS NULL AND embedding_dim IS NULL)
     OR
-    (capability IN ('vision','tts','stt') AND context_window IS NULL AND max_output IS NULL
+    (capability IN ('tts','stt') AND context_window IS NULL AND max_output IS NULL
       AND tool_call IS NULL AND reasoning IS NULL AND temperature IS NULL
       AND input_image IS NULL AND embedding_dim IS NULL AND rerank_max_chunks IS NULL)
   ),
@@ -277,14 +296,14 @@ CREATE TABLE provider_models (
 );
 
 CREATE TABLE model_bindings (
-  module             TEXT PRIMARY KEY CHECK(module IN (
-                       'memory', 'title',
-                       'lightrag-embed', 'lightrag-llm',
-                       'tts', 'stt', 'vision'
-                     )),
-  capability         TEXT NOT NULL CHECK(capability IN ('llm','embed','rerank','vision','tts','stt')),
-  provider_config_id TEXT NOT NULL,
-  model              TEXT NOT NULL,
+  module      TEXT PRIMARY KEY CHECK(module IN (
+                'memory', 'title',
+                'lightrag-embed', 'lightrag-llm',
+                'tts', 'stt', 'vision'
+              )),
+  capability  TEXT NOT NULL CHECK(capability IN ('llm','embed','rerank','vision','tts','stt')),
+  provider_id TEXT NOT NULL,
+  model_id    TEXT NOT NULL,
   CHECK(
     (module IN ('memory','title','lightrag-llm') AND capability = 'llm')
     OR (module = 'lightrag-embed' AND capability = 'embed')
@@ -292,8 +311,8 @@ CREATE TABLE model_bindings (
     OR (module = 'stt' AND capability = 'stt')
     OR (module = 'vision' AND capability = 'vision')
   ),
-  FOREIGN KEY (provider_config_id, capability, model)
-    REFERENCES provider_models(provider_config_id, capability, model)
+  FOREIGN KEY (provider_id, capability, model_id)
+    REFERENCES provider_models(provider_id, capability, model_id)
     ON DELETE CASCADE
 );
 
@@ -425,8 +444,8 @@ ON permission_rules(
 );
 
 CREATE INDEX idx_provider_capability_active
-  ON provider_capability_configs(capability, provider_config_id)
+  ON provider_capabilities(capability, provider_id)
   WHERE active_protocol IS NOT NULL;
 
 CREATE INDEX idx_provider_models_capability_model
-  ON provider_models(capability, model, provider_config_id);
+  ON provider_models(capability, model_id, provider_id);

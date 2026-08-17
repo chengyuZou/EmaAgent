@@ -1,6 +1,5 @@
 export * from './types.js';
-export * from './registry.js';
-export * from './configuration.js';
+export * from './providers.js';
 export * from './models.js';
 export * from './modelBindings.js';
 export * from './errors.js';

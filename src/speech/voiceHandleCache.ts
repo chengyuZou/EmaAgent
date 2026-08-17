@@ -23,8 +23,8 @@ export class SpeechVoiceCache {
     this.now = options.now ?? Date.now;
   }
 
-  get(cardId: string, providerConfigId: string, model: string): TtsProviderVoice | null {
-    const key = voiceKey(cardId, providerConfigId, model);
+  get(cardId: string, providerId: string, model: string): TtsProviderVoice | null {
+    const key = voiceKey(cardId, providerId, model);
     const voice = this.entries.get(key);
     if (!voice) return null;
     if (voice.expiresAt !== undefined && voice.expiresAt <= this.now()) {
@@ -36,7 +36,7 @@ export class SpeechVoiceCache {
 
   set(
     cardId: string,
-    providerConfigId: string,
+    providerId: string,
     model: string,
     voice: TtsProviderVoice,
   ): TtsProviderVoice {
@@ -48,7 +48,7 @@ export class SpeechVoiceCache {
           lifetime: 'ephemeral' as const,
           expiresAt: voice.expiresAt ?? this.now() + this.ephemeralTtlMs,
         };
-    this.entries.set(voiceKey(cardId, providerConfigId, model), normalized);
+    this.entries.set(voiceKey(cardId, providerId, model), normalized);
     return { ...normalized };
   }
 
@@ -63,18 +63,18 @@ export async function prepareSpeechVoice(
   textToSpeech: TextToSpeech,
   model: string,
   cardId: string,
-  providerConfigId: string,
+  providerId: string,
   cache: SpeechVoiceCache,
   signal?: AbortSignal,
 ): Promise<TtsVoice> {
-  const cached = cache.get(cardId, providerConfigId, model);
+  const cached = cache.get(cardId, providerId, model);
   if (cached) return cached;
   const voice = await textToSpeech.prepareVoice(reference, model, signal);
   return voice.kind === 'provider'
-    ? cache.set(cardId, providerConfigId, model, voice)
+    ? cache.set(cardId, providerId, model, voice)
     : voice;
 }
 
-function voiceKey(cardId: string, providerConfigId: string, model: string): string {
-  return `${cardId}\u0000${providerConfigId}\u0000${model}`;
+function voiceKey(cardId: string, providerId: string, model: string): string {
+  return `${cardId}\u0000${providerId}\u0000${model}`;
 }

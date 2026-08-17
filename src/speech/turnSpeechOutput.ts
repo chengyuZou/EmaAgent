@@ -22,7 +22,7 @@ export interface TurnSpeechSourceEvent {
 
 export interface TurnSpeechSynthesis {
   readonly voice: TtsVoice;
-  readonly providerConfigId: string;
+  readonly providerId: string;
   readonly model: string;
   readonly textToSpeech: TextToSpeech;
   readonly archive?: AudioArchive;
@@ -111,7 +111,7 @@ export class TurnSpeechOutput {
         turnId: request.turnId,
         sessionId: request.sessionId,
         voice: synthesis.voice,
-        providerConfigId: synthesis.providerConfigId,
+        providerId: synthesis.providerId,
         model: synthesis.model,
         textToSpeech: synthesis.textToSpeech,
         emit: (event) => queue.push(event),
