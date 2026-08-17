@@ -84,4 +84,5 @@ install.cmd
 
 docs/**
 
-
+# models.dev 目录本地缓存（启动/手动 refresh 拉取覆写，不入库）
+src/providers/catalog/models-dev.json
