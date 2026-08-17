@@ -1,4 +1,6 @@
-// 生成 Embedding 空间的稳定身份，防止不同模型、维度或版本的向量混用。
+// 生成 Embedding 空间的稳定身份，防止不同端点、模型或维度的向量混用。
+// providerId 承担"同名不同权重"的隔离：不同 provider 的同名模型属于不同空间，
+// 换端点 = 换空间 = 重新嵌入（安全方向：宁可重嵌，绝不混写）。
 import { createHash } from 'node:crypto';
 
 export type EmbeddingNormalization = 'l2';

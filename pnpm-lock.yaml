@@ -262,9 +262,6 @@ importers:
       '@ema-agent/context':
         specifier: workspace:*
         version: link:../../src/context
-      '@ema-agent/credential':
-        specifier: workspace:*
-        version: link:../../packages/credential
       '@ema-agent/embed':
         specifier: workspace:*
         version: link:../../src/embed
@@ -379,21 +376,6 @@ importers:
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
   bridges/narrative: {}
-
-  packages/credential:
-    devDependencies:
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.39
-      rimraf:
-        specifier: ^5.0.0
-        version: 5.0.10
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: ^2.0.0
-        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
   packages/public-http:
     dependencies:
@@ -833,9 +815,6 @@ importers:
 
   src/mcp:
     dependencies:
-      '@ema-agent/credential':
-        specifier: workspace:*
-        version: link:../../packages/credential
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../llm
@@ -984,6 +963,10 @@ importers:
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
   src/providers:
+    dependencies:
+      '@ema-agent/public-http':
+        specifier: workspace:*
+        version: link:../../packages/public-http
     devDependencies:
       rimraf:
         specifier: ^5.0.0
@@ -1134,9 +1117,6 @@ importers:
 
   src/storage:
     dependencies:
-      '@ema-agent/credential':
-        specifier: workspace:*
-        version: link:../../packages/credential
       '@ema-agent/provider':
         specifier: workspace:*
         version: link:../providers

@@ -72,15 +72,17 @@ describe('EmbeddingModel', () => {
 });
 
 describe('EmbeddingSpace', () => {
-  it('相同事实生成相同 ID，模型或维度变化会生成不同 ID', () => {
+  it('相同事实生成相同 ID，provider/模型/维度任一变化都生成不同 ID', () => {
     const base = {
       providerId: 'provider-a',
       model: 'bge-m3',
       dim: 1024,
-      revision: 'v1',
     };
     expect(createEmbeddingSpace(base)).toEqual(createEmbeddingSpace(base));
     expect(createEmbeddingSpace(base).id).toMatch(/^[a-f0-9]{64}$/);
+    // providerId 承担"同名不同权重"的隔离：不同 provider 的同名模型永不混写
+    expect(createEmbeddingSpace({ ...base, providerId: 'provider-b' }).id)
+      .not.toBe(createEmbeddingSpace(base).id);
     expect(createEmbeddingSpace({ ...base, model: 'other' }).id)
       .not.toBe(createEmbeddingSpace(base).id);
     expect(createEmbeddingSpace({ ...base, dim: 768 }).id)
