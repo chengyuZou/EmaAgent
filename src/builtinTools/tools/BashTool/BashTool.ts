@@ -1,9 +1,6 @@
-// 把 Bash 命令交给独立 Sandbox Runner 执行, 返回有界输出。
-// 安全链: bashSecurity 静态分析(validateInput 硬拦 + execute 复查)
-// + Permission 规则裁决 + Sandbox 隔离, 三层互不替代。
-// 模型说明书见 prompt.ts。
 import { StringDecoder } from 'node:string_decoder';
 import { z } from 'zod';
+import { findMatchingContentRule, matchShellRule } from '@ema-agent/permission';
 import {
   buildTool,
   contextFail,
@@ -13,7 +10,7 @@ import {
 } from '@ema-agent/tools';
 import type { CommandRunnerPort } from '@ema-agent/sandbox';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
-import { analyzeBashCommand, splitCommandSegments } from './bashSecurity.js';
+import { analyzeBashCommand, splitCommandSegments } from './security/bashSecurity.js';
 import { interpretExitCode } from './commandSemantics.js';
 import { BASH_DESCRIPTION } from './prompt.js';
 
@@ -138,11 +135,44 @@ export const BashTool = buildTool<BashInput, BashResult, BashToolContext, BashPr
       : { valid: true };
   },
 
-  getPermissionIntent: () => ({
-    riskLevel: 'high',
-    accessType: 'execute',
-    promptPolicy: 'whenRequired',
-  }),
+  // 内容规则按 shell 模式匹配（exact / :* / wildcard）；deny → ask → allow。
+  // 命令安全由 bashSecurity（validateInput 硬拦 + execute 复查）兜底，二者互补。
+  async checkPermissions(input, _context, permissionContext) {
+    const command = input.command;
+    const denyRule = findMatchingContentRule(
+      permissionContext, BuiltinTools.Bash.name, 'deny',
+      (content) => matchShellRule(content, command),
+    );
+    if (denyRule) {
+      return {
+        behavior: 'deny',
+        message: `已禁止执行: ${command}`,
+        decisionReason: { type: 'rule', rule: denyRule },
+      };
+    }
+    const askRule = findMatchingContentRule(
+      permissionContext, BuiltinTools.Bash.name, 'ask',
+      (content) => matchShellRule(content, command),
+    );
+    if (askRule) {
+      return {
+        behavior: 'ask',
+        message: `执行 ${command} 需要用户确认`,
+        decisionReason: { type: 'rule', rule: askRule },
+      };
+    }
+    const allowRule = findMatchingContentRule(
+      permissionContext, BuiltinTools.Bash.name, 'allow',
+      (content) => matchShellRule(content, command),
+    );
+    if (allowRule) {
+      return {
+        behavior: 'allow',
+        decisionReason: { type: 'rule', rule: allowRule },
+      };
+    }
+    return { behavior: 'passthrough', message: '执行命令需要用户确认' };
+  },
 
   async execute(
     input: BashInput,

@@ -1,5 +1,6 @@
-// 验证 WebFetchTool 的 schema、输入校验、权限意图、模型投影与缓存/转换细节, 不发起网络请求。
+// 验证 WebFetchTool 的 schema、输入校验、权限判定、模型投影与缓存/转换细节, 不发起网络请求。
 import { describe, expect, it } from 'vitest';
+import type { ToolPermissionContext } from '@ema-agent/permission';
 import {
   WebFetchTool,
   type WebFetchResult,
@@ -44,24 +45,44 @@ describe('WebFetchTool validateInput', () => {
   });
 });
 
-describe('WebFetchTool 权限意图', () => {
-  it('预批准域名免询问', async () => {
-    const intent = await WebFetchTool.getPermissionIntent!({
-      url: 'https://docs.python.org/3/reference/',
-    });
-    expect(intent.promptPolicy).toBe('neverForTrustedBuiltin');
+function makePermissionContext(): ToolPermissionContext {
+  return {
+    mode: 'default',
+    alwaysAllowRules: {},
+    alwaysDenyRules: {},
+    alwaysAskRules: {},
+    isBypassPermissionsModeAvailable: false,
+    sessionId: 's1',
+    toolCallId: 'c1',
+  };
+}
+
+describe('WebFetchTool 权限判定', () => {
+  it('预批准域名放行', async () => {
+    const decision = await WebFetchTool.checkPermissions(
+      { url: 'https://docs.python.org/3/reference/' },
+      undefined,
+      makePermissionContext(),
+    );
+    expect(decision.behavior).toBe('allow');
   });
 
-  it('其他域名保持 whenRequired', async () => {
-    const intent = await WebFetchTool.getPermissionIntent!({
-      url: 'https://example.com/page',
-    });
-    expect(intent.promptPolicy).toBe('whenRequired');
+  it('其他域名交给中央(默认询问)', async () => {
+    const decision = await WebFetchTool.checkPermissions(
+      { url: 'https://example.com/page' },
+      undefined,
+      makePermissionContext(),
+    );
+    expect(decision.behavior).toBe('passthrough');
   });
 
-  it('无法解析的 URL 回退 whenRequired, 不抛错', async () => {
-    const intent = await WebFetchTool.getPermissionIntent!({ url: 'not-a-url' });
-    expect(intent.promptPolicy).toBe('whenRequired');
+  it('无法解析的 URL 不抛错, 交给中央', async () => {
+    const decision = await WebFetchTool.checkPermissions(
+      { url: 'not-a-url' },
+      undefined,
+      makePermissionContext(),
+    );
+    expect(decision.behavior).toBe('passthrough');
   });
 });
 

@@ -1,7 +1,7 @@
 # @ema-agent/skills — Skill 域(技能注册、冻结池、user 持久化、市场站点、安装)
 
 技能的定义、扫描、启用过滤、安装与站点市场的唯一业务所有者。
-架构冻结于 `EmaSkillArchitecture.md` v4(deny 三开关、无 snapshot/原语层/journal)。
+架构硬规则：deny 三开关、无 snapshot/原语层/journal。
 
 ## 稳定公共接口(只允许从这里消费)
 

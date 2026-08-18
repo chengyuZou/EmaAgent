@@ -1,16 +1,9 @@
 /**
- * shell-quote 库的安全封装（摘取自 claude-code src/utils/bash/shellQuote.ts）。
- *
  * 摘取 bashSecurity 23 项检查与 commands.ts 实际使用的函数：
  *   - tryParseShellCommand        ：shell-quote.parse 的 try/catch 封装
  *   - tryQuoteShellArgs / quote   ：参数安全转义（reconstructCommand 用）
  *   - hasMalformedTokens          ：畸形 token 注入检测（HackerOne #3482049）
  *   - hasShellQuoteSingleQuoteBug ：单引号内反斜杠导致的解析器失步检测
- *
- * 适配点：logError → console.error；jsonStringify → JSON.stringify
- * （原依赖 claude 的 log.ts / slowOperations.ts 深链，已移除）。
- *
- * 依赖 npm 包：shell-quote（@ema-agent/tool-builtin 已添加）。
  */
 
 import { type ParseEntry, parse as shellQuoteParse, quote as shellQuoteQuote } from 'shell-quote'

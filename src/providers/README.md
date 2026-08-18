@@ -152,5 +152,3 @@ src/providers/
 ```
 
 依赖方向：`llm/embed/vision/tts/stt 执行包 ──> providers ──> storage`；本包不导入任何执行面 Adapter，Probe 执行器由组合层拥有。
-
-设计考证：种子演进与删除语义见 `docs/todo/EmaProviderIdSweep.md`（施工单含完整决策轨迹）。

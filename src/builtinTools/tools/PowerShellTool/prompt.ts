@@ -18,6 +18,7 @@ PowerShell edition notes (this machine runs either Windows PowerShell 5.1 or Pow
 - Ternary (\`?:\`), null-coalescing (\`??\`), and null-conditional (\`?.\`) operators are 7+ only. Use \`if/else\` and explicit \`$null -eq\` checks for compatibility.
 - Avoid \`2>&1\` on native executables under 5.1: it wraps each stderr line in an ErrorRecord and sets \`$?\` to \`$false\` even when the exe returned 0. stderr is already captured for you — don't redirect it.
 - On 5.1 the default file encoding is UTF-16 LE with BOM. When writing files other tools will read, pass \`-Encoding utf8\` to \`Out-File\`/\`Set-Content\`.
+- On 5.1, \`ConvertFrom-Json\` returns a PSCustomObject, not a hashtable; \`-AsHashtable\` is not available.
 
 Before executing the command, follow these steps:
 

@@ -1,5 +1,6 @@
 // 测试每次根 Turn 装配只向模型暴露当前宿主 Context 真正拥有的工具能力。
 import { describe, expect, it } from 'vitest';
+import type { ToolPermissionContext } from '@ema-agent/permission';
 import {
   assembleToolPool,
   ToolRegistry,
@@ -71,14 +72,21 @@ describe('Builtin ToolPool 能力装配', () => {
     expect(names).not.toContain(BuiltinTools.Skill.name);
   });
 
-  it('问询工具显式免普通权限审批(它自己就是询问通道)', () => {
+  it('问询工具固定走 ask(它自己就是询问通道, 不由规则绕过)', async () => {
     const registry = new ToolRegistry();
     registerBuiltinTools(registry);
 
     const registered = registry.get(BuiltinTools.AskUser.name);
     expect(registered).toBeDefined();
-    expect(registered!.getPermissionIntent({}, {} as never)).toMatchObject({
-      promptPolicy: 'neverForTrustedBuiltin',
-    });
+    const permissionContext: ToolPermissionContext = {
+      mode: 'default',
+      alwaysAllowRules: {},
+      alwaysDenyRules: {},
+      alwaysAskRules: {},
+      isBypassPermissionsModeAvailable: false,
+    };
+    await expect(
+      registered!.checkPermissions({}, {} as never, permissionContext),
+    ).resolves.toMatchObject({ behavior: 'ask' });
   });
 });

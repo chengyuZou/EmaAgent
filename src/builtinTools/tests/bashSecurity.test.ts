@@ -6,7 +6,7 @@ import {
   analyzeBashCommand,
   splitCommandSegments,
   stripWrappers,
-} from '../tools/BashTool/bashSecurity.js';
+} from '../tools/BashTool/security/bashSecurity.js';
 import { interpretExitCode } from '../tools/BashTool/commandSemantics.js';
 import { BashTool } from '../tools/BashTool/BashTool.js';
 
