@@ -4,7 +4,7 @@ import type { Client }          from '@modelcontextprotocol/sdk/client/index.js'
 import type { ToolResultContentPart } from '@ema-agent/llm';
 import { Buffer }               from 'node:buffer';
 import { McpToolCallError }     from './errors.js';
-import { linkedAbortController, waitForPromise, withTimeout } from './runtime-utils.js';
+import { linkedAbortController, waitForPromise, withTimeout } from './utils.js';
 
 const DEFAULT_TOOL_TIMEOUT_MS = 120_000; // 2 分钟 - 同 bash 默认;可被 server 配置 toolTimeoutSec 覆盖
 const MAX_RESULT_BYTES = 1024 * 1024;

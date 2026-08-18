@@ -4,7 +4,7 @@ import { StdioClientTransport, getDefaultEnvironment } from '@modelcontextprotoc
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { McpServerConfig } from './types.js';
 import { McpConnectionError, McpTimeoutError } from './errors.js';
-import { linkedAbortController, waitForPromise, withTimeout } from './runtime-utils.js';
+import { linkedAbortController, waitForPromise, withTimeout } from './utils.js';
 
 const CLIENT_NAME    = 'ema-agent';
 const CLIENT_VERSION = '1.0.0';

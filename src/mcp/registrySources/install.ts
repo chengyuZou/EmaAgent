@@ -1,19 +1,11 @@
 // 把 Registry 条目落成一条 MCP server 记录:补全必填输入、组装配置、写溯源。
-import type { McpInstallProvenance, McpServerConfig } from '../types.js';
+import type { McpServerConfig } from '../types.js';
 import type { McpRegistryEntry, McpRegistrySource } from './types.js';
-
-/** 安装落库只依赖 register;McpServerStore 与 McpRegistry 的 register 同签名。 */
-export interface McpServerRegistrationPort {
-  register(
-    name: string,
-    config: McpServerConfig,
-    sourceUrl?: string,
-    provenance?: McpInstallProvenance,
-  ): string;
-}
+import type { McpServerStore } from '../store.js';
 
 export interface InstallRegistryEntryInput {
-  store:  McpServerRegistrationPort;
+  /** 安装落库只依赖 register 方法;McpServerStore 与 McpRegistry 的 register 同签名。 */
+  store:  Pick<McpServerStore, 'register'>;
   source: McpRegistrySource;
   entry:  McpRegistryEntry;
   /** 用户可见别名;缺省取条目标题,再退化为 name 末段。 */
