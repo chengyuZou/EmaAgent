@@ -20,7 +20,7 @@ export interface NarrativeRecallResult {
 }
 
 /** Narrative Tool 使用的业务入口；宿主负责绑定本次 Turn 的身份与事件。 */
-export type NarrativeSearchPort = (
+export type NarrativeSearch = (
   query: string,
   signal: AbortSignal,
 ) => Promise<NarrativeRecallResult>;

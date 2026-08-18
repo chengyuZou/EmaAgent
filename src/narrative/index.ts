@@ -25,6 +25,6 @@ export { prepareNarrativeRecall } from './recall.js';
 export type {
   NarrativeRecallResult,
   NarrativeRecallTimeline,
-  NarrativeSearchPort,
+  NarrativeSearch,
   PrepareNarrativeRecallInput,
 } from './recall.js';

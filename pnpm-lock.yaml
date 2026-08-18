@@ -644,9 +644,9 @@ importers:
       '@ema-agent/turn-terms':
         specifier: workspace:*
         version: link:../turn-terms
-      zod-to-json-schema:
-        specifier: ^3.23.0
-        version: 3.25.2(zod@4.4.3)
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -1339,12 +1339,24 @@ importers:
 
   src/turn:
     dependencies:
+      '@ema-agent/agent':
+        specifier: workspace:*
+        version: link:../agent
+      '@ema-agent/attachments':
+        specifier: workspace:*
+        version: link:../attachments
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../llm
+      '@ema-agent/permission':
+        specifier: workspace:*
+        version: link:../permission
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage
+      '@ema-agent/tools':
+        specifier: workspace:*
+        version: link:../tools
       '@ema-agent/turn-terms':
         specifier: workspace:*
         version: link:../turn-terms

@@ -16,7 +16,6 @@ import type {
   CommandRunOptions,
   CommandProcessHandle,
   CommandRunResult,
-  CommandRunnerPort,
   SandboxBackend,
   SandboxCapability,
   SandboxConfig,
@@ -26,7 +25,11 @@ import type {
 const DEFAULT_TIMEOUT_MS = 120_000;
 const MAX_TIMEOUT_MS = 7 * 24 * 60 * 60 * 1_000;
 
-export class CommandRunner implements CommandRunnerPort {
+/**
+ * Session 冻结的沙箱命令执行器。当前仅此一个实现, 消费方直接用类类型;
+ * 将来若出现第二个实现(自定义沙箱后端)再抽接口。
+ */
+export class CommandRunner {
   private readonly capability: SandboxCapability;
   private readonly backend: SandboxBackend;
   private readonly config: SandboxConfig;

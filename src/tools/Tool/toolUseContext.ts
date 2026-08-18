@@ -1,8 +1,8 @@
 // 定义宿主在单次工具调用中提供的业务能力集合。
-import type { CommandRunnerPort } from '@ema-agent/sandbox';
+import type { CommandRunner } from '@ema-agent/sandbox';
 import type { TaskStore } from '@ema-agent/tasks';
 import type { KnowledgeSearch } from '@ema-agent/knowledge';
-import type { NarrativeSearchPort } from '@ema-agent/narrative';
+import type { NarrativeSearch } from '@ema-agent/narrative';
 import type { SkillPool } from '@ema-agent/skills';
 import type { VisionModel } from '@ema-agent/vision';
 import type { ReadFileState } from '../types.js';
@@ -39,8 +39,8 @@ export interface SubagentRunResult {
   };
 }
 
-/** Subagent Tool 消费的执行端口；Agent 只需结构化实现，不被 Tools 反向导入。 */
-export interface SubagentSpawnerPort {
+/** Subagent Tool 消费的子 Agent 启动能力；Agent 提供结构化实现，不被 Tools 反向导入。 */
+export interface SubagentSpawnerFn {
   spawn(
     prompt: string,
     options: SubagentSpawnOptions,
@@ -74,7 +74,7 @@ export type AskUserPort = (
  * Scratchpad 工具所需的 Turn 级临时存储位置。
  * dir 由宿主按 Turn 隔离，author 标记写入方（主 Agent / 子 Agent）。
  */
-export interface ScratchpadPort {
+export interface Scratchpad {
   readonly dir: string;
   readonly author: string;
 }
@@ -105,21 +105,21 @@ export interface ToolUseContext {
 
   // ── 装配时绑定的执行能力 ──────────────────────────────────────────────────
   /** Bash 工具的受控命令执行器（per-session 缓存）。 */
-  readonly commandRunner?: CommandRunnerPort;
+  readonly commandRunner?: CommandRunner;
   /** Bash 与 Process 工具族共享的持久后台进程入口。 */
   readonly backgroundProcesses?: BackgroundProcessPort;
   /** KB 检索工具的搜索入口。 */
   readonly knowledgeSearch?: KnowledgeSearch;
   /** Narrative 剧情资料的按需检索入口，仅在 auto 策略下装配。 */
-  readonly narrativeSearch?: NarrativeSearchPort;
+  readonly narrativeSearch?: NarrativeSearch;
   /** Task 工具族的持久存储。 */
   readonly taskStore?: TaskStore;
   /** Subagent 工具的子 Agent 启动器。 */
-  readonly subagentSpawner?: SubagentSpawnerPort;
+  readonly subagentSpawner?: SubagentSpawnerFn;
   /** Skill 工具的本根 Turn 冻结技能池;缺省(子 Agent、chat 态)时 Skill 工具不可见。 */
   readonly skillPool?: SkillPool;
   /** Scratchpad 工具的 Turn 级临时存储位置。 */
-  readonly scratchpad?: ScratchpadPort;
+  readonly scratchpad?: Scratchpad;
   /** File 工具在当前 Turn 内共享的读取状态，用于去重和写入前校验。 */
   readonly readFileState?: ReadFileState;
   /** AskUser 工具的问询解析器。 */

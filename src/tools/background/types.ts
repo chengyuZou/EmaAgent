@@ -1,7 +1,7 @@
 import type {
   CommandOutputChunk,
+  CommandRunner,
   CommandRunResult,
-  CommandRunnerPort,
 } from '@ema-agent/sandbox';
 
 export type BackgroundProcessStatus =
@@ -54,7 +54,7 @@ export interface BackgroundCommandRequest {
   sessionId: string;
   turnId: string;
   toolCallId: string;
-  runner: CommandRunnerPort;
+  runner: CommandRunner;
   command: string;
   description?: string;
   cwd: string;

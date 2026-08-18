@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type {
   CommandOutputChunk,
   CommandProcessHandle,
-  CommandRunnerPort,
+  CommandRunner,
   CommandRunResult,
 } from '@ema-agent/sandbox';
 import { Database, BackgroundProcessesRepo } from '@ema-agent/storage';
@@ -27,7 +27,7 @@ class FakeProcess {
   stopDelayMs = 0;
   stopped = false;
   private readonly resolveCompletion!: (result: CommandRunResult) => void;
-  private options?: Parameters<CommandRunnerPort['start']>[1];
+  private options?: Parameters<CommandRunner['start']>[1];
   readonly completion: Promise<CommandRunResult>;
 
   constructor() {
@@ -43,7 +43,7 @@ class FakeProcess {
     };
   }
 
-  attach(options: Parameters<CommandRunnerPort['start']>[1]): void {
+  attach(options: Parameters<CommandRunner['start']>[1]): void {
     this.options = options;
   }
 
@@ -69,10 +69,10 @@ function killedResult(): CommandRunResult {
   return { stdout: '', stderr: '', exitCode: -1, timedOut: false, truncated: false, aborted: true };
 }
 
-class FakeRunner implements CommandRunnerPort {
+class FakeRunner {
   readonly processes: FakeProcess[] = [];
 
-  start(_command: string, options?: Parameters<CommandRunnerPort['start']>[1]): CommandProcessHandle {
+  start(_command: string, options?: Parameters<CommandRunner['start']>[1]): CommandProcessHandle {
     const process = new FakeProcess();
     process.attach(options);
     this.processes.push(process);

@@ -17,11 +17,11 @@ export { contextFail, contextOk } from './Tool/tool.js';
 export type { ToolInvocation } from './Tool/toolInvocation.js';
 export type {
   AskUserPort,
-  ScratchpadPort,
+  Scratchpad,
   SubagentContextMode,
   SubagentRunResult,
   SubagentSpawnOptions,
-  SubagentSpawnerPort,
+  SubagentSpawnerFn,
   ToolUseContext,
   ToolVisionSelection,
 } from './Tool/toolUseContext.js';

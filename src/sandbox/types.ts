@@ -92,8 +92,4 @@ export interface CommandProcessHandle {
   stop(): void;
 }
 
-/** Tool 执行层只依赖这项能力，不接触 Sandbox 的配置和后端实现。 */
-export interface CommandRunnerPort {
-  start(command: string, options?: CommandRunOptions): CommandProcessHandle;
-  run(command: string, options?: CommandRunOptions): Promise<CommandRunResult>;
-}
+

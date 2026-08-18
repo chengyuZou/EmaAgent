@@ -21,5 +21,4 @@ export type {
   CommandOutputChunk,
   CommandProcessHandle,
   CommandRunResult,
-  CommandRunnerPort,
 } from './types.js';
