@@ -94,6 +94,13 @@ export class MessagesRepo {
     this.db.prepare('UPDATE messages SET interrupted = 1 WHERE id = ?').run(id);
   }
 
+  /** 覆盖整条消息的 blocks_json（流式续写/追加 tool_use 用）。返回受影响行数。 */
+  updateBlocks(id: string, blocksJson: string): number {
+    return this.db
+      .prepare('UPDATE messages SET blocks_json = ? WHERE id = ?')
+      .run(blocksJson, id).changes;
+  }
+
   deleteForTurn(turnId: string): void {
     this.db.prepare('DELETE FROM messages WHERE turn_id = ?').run(turnId);
   }

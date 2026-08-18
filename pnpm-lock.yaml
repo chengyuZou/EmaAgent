@@ -1348,6 +1348,12 @@ importers:
       '@ema-agent/compact':
         specifier: workspace:*
         version: link:../compact
+      '@ema-agent/context':
+        specifier: workspace:*
+        version: link:../context
+      '@ema-agent/git':
+        specifier: workspace:*
+        version: link:../git
       '@ema-agent/knowledge':
         specifier: workspace:*
         version: link:../knowledge

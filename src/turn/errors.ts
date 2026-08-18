@@ -33,3 +33,13 @@ export class TurnPreparationError extends Error {
     this.name = 'TurnPreparationError';
   }
 }
+
+/** 根 Agent 或子 Agent 申请额度时预算已耗尽；turn.ts 映射为 turn/budget_exceeded 失败终态。 */
+export class TurnBudgetExceededError extends Error {
+  readonly code = 'turn/budget_exceeded' as const;
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'TurnBudgetExceededError';
+  }
+}

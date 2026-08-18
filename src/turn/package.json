@@ -24,6 +24,8 @@
     "@ema-agent/attachments": "workspace:*",
     "@ema-agent/characters": "workspace:*",
     "@ema-agent/compact": "workspace:*",
+    "@ema-agent/context": "workspace:*",
+    "@ema-agent/git": "workspace:*",
     "@ema-agent/knowledge": "workspace:*",
     "@ema-agent/llm": "workspace:*",
     "@ema-agent/narrative": "workspace:*",

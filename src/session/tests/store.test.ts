@@ -206,6 +206,35 @@ describe('SessionStore — message', () => {
     expect(msg.blocks).toEqual(blocks);
   });
 
+  it('updateMessageBlocks 整体替换消息的 blocks（流式续写/追加 tool_use）', () => {
+    const { store, db } = makeStore();
+    const s = store.createSession();
+    const turnId = insertTurnFixture(db, s.id);
+
+    const msg = store.appendMessage({
+      sessionId: s.id,
+      turnId,
+      role: 'assistant',
+      blocks: [{ type: 'text', text: '第 1 段' }],
+    });
+    const next = [
+      { type: 'text' as const, text: '第 1 段' },
+      { type: 'tool_use' as const, id: 'c1', name: 'Bash', args: { cmd: 'ls' } },
+    ];
+    store.updateMessageBlocks(msg.id, next);
+
+    const row = db.sqlite.prepare('SELECT blocks_json FROM messages WHERE id = ?')
+      .get(msg.id) as { blocks_json: string };
+    expect(JSON.parse(row.blocks_json)).toEqual(next);
+  });
+
+  it('updateMessageBlocks 对不存在的消息抛错', () => {
+    const { store } = makeStore();
+    expect(() =>
+      store.updateMessageBlocks('no-such-id', [{ type: 'text', text: 'x' }]),
+    ).toThrow('message_not_found');
+  });
+
   it('loadHistory returns messages in chronological order', () => {
     const { store, db } = makeStore();
     const s = store.createSession();

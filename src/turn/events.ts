@@ -1,5 +1,6 @@
 // 定义一次 Turn 自身的生命周期、模型输出投影与请求降级事件。
 import type { AgentRunEvent } from '@ema-agent/agent';
+import type { CompactEvent } from '@ema-agent/compact';
 import type {
   PermissionRequiredEvent,
   PermissionResolvedEvent,
@@ -91,4 +92,5 @@ export type TurnStreamEvent =
   | AgentRunEvent
   | ToolExecutionEvent
   | PermissionRequiredEvent
-  | PermissionResolvedEvent;
+  | PermissionResolvedEvent
+  | CompactEvent;

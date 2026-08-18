@@ -32,6 +32,7 @@ import type {
   SearchSessionsInput,
   SearchSessionsOutput,
 } from './types.js';
+import type { MessageBlocks } from './message.js';
 
 // ── Session 聚合 ─────────────────────────────────────────────────────────────
 
@@ -354,6 +355,19 @@ export class SessionStore {
 
   markMessageInterrupted(id: string): void {
     this.messagesRepo.markInterrupted(id);
+  }
+
+  /**
+   * 流式落库的 block 级更新口：调用方持有 messageId，整体替换 blocks。
+   * 序列化在业务层，storage 只收 JSON 串（与 appendMessage 分工一致）。
+   * 消息不存在时抛错，防止流式续写写进已删消息而静默丢失。
+   */
+  updateMessageBlocks(messageId: string, blocks: MessageBlocks): void {
+    const changed = this.messagesRepo.updateBlocks(
+      messageId,
+      JSON.stringify(blocks),
+    );
+    if (changed === 0) throw new Error(`message_not_found: ${messageId}`);
   }
 
   /** 加载 LLM 可见历史；从最近 Summary 开始并保持时间正序。 */

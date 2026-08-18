@@ -21,6 +21,14 @@ describe('MessagesRepo 历史加载集成测试', () => {
     database.close();
   });
 
+  it('updateBlocks 覆盖 blocks_json 并返回受影响行数', () => {
+    insertMessage('message-upd', 100);
+    const changed = repo.updateBlocks('message-upd', '{"new":true}');
+    expect(changed).toBe(1);
+    expect(repo.findById('message-upd')!.blocks_json).toBe('{"new":true}');
+    expect(repo.updateBlocks('missing', '{}')).toBe(0);
+  });
+
   it('没有 summary 时返回最新 N 条，并按稳定正序输出', () => {
     insertMessage('message-a', 100);
     insertMessage('message-b', 100);

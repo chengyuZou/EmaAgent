@@ -72,6 +72,7 @@ export interface FrozenSelectedSkill {
 
 /** 一个根 Turn 的冻结事实；运行期只读取这一份，不再回读 Settings/Registry/Session。 */
 export interface PreparedTurn {
+  readonly executionProfile: ExecutionProfile;
   readonly workspaceRoot: string;
   readonly projectId: string | null;
   readonly scratchpadDir?: string;
@@ -79,6 +80,8 @@ export interface PreparedTurn {
   readonly providerId: string;
   readonly modelId: string;
   readonly contextWindow: number;
+  /** 模型单次输出上限（null = 未知，仅按预算裁剪）。 */
+  readonly maxOutput: number | null;
   readonly supportsImageInput: boolean;
   readonly thinkingEnabled: boolean;
   readonly systemPrompt: readonly string[];
@@ -306,6 +309,7 @@ export async function prepareTurn(
   });
 
   return Object.freeze({
+    executionProfile: start.executionProfile,
     workspaceRoot,
     projectId,
     ...(scratchpadDir ? { scratchpadDir } : {}),
@@ -313,6 +317,7 @@ export async function prepareTurn(
     providerId,
     modelId,
     contextWindow: modelFacts.contextWindow,
+    maxOutput: modelFacts.maxOutput,
     supportsImageInput,
     thinkingEnabled: start.thinkingEnabled ?? false,
     systemPrompt,
