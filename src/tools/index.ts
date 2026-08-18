@@ -16,7 +16,7 @@ export type {
 export { contextFail, contextOk } from './Tool/tool.js';
 export type { ToolInvocation } from './Tool/toolInvocation.js';
 export type {
-  AskUserPort,
+  AskUser,
   Scratchpad,
   SubagentContextMode,
   SubagentRunResult,

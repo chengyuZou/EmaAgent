@@ -7,7 +7,7 @@ import type { SkillPool } from '@ema-agent/skills';
 import type { VisionModel } from '@ema-agent/vision';
 import type { ReadFileState } from '../types.js';
 import type { AskUserQuestionSpec } from '../events.js';
-import type { BackgroundProcessPort } from '../background/types.js';
+import type { BackgroundProcess } from '../background/backgroundProcess.js';
 
 /** 
  * 子 Agent 启动时如何取得父执行上下文。
@@ -59,11 +59,11 @@ export interface SubagentSpawnerFn {
  * AskUser 工具向宿主提出的问询解析器：发出结构化问询请求并等待答案。
  * 宿主在 Turn 装配时注入（绑定到该 Turn 的 per-session FIFO 回答通道）。
  *
- * 事件发射归 port 实现，不归 Tool：port 发射 ask_user_required、等待回答后
+ * 事件发射归宿主实现，不归 Tool：宿主发射 ask_user_required、等待回答后
  * 发射 ask_user_resolved；取消/失败时发射空答案 resolved 清前端卡片并原样抛出。
  * 问询锚点是 toolCallId——一个交互只可能属于一次 Tool 调用，不再需要独立的 promptId。
  */
-export type AskUserPort = (
+export type AskUser = (
   toolCallId: string,
   specs: readonly AskUserQuestionSpec[],
   /** 单调用级取消：Turn abort 与兄弟取消都经它中断等待；用户取消卡片走队列终态。 */
@@ -107,7 +107,7 @@ export interface ToolUseContext {
   /** Bash 工具的受控命令执行器（per-session 缓存）。 */
   readonly commandRunner?: CommandRunner;
   /** Bash 与 Process 工具族共享的持久后台进程入口。 */
-  readonly backgroundProcesses?: BackgroundProcessPort;
+  readonly backgroundProcesses?: BackgroundProcess;
   /** KB 检索工具的搜索入口。 */
   readonly knowledgeSearch?: KnowledgeSearch;
   /** Narrative 剧情资料的按需检索入口，仅在 auto 策略下装配。 */
@@ -123,7 +123,7 @@ export interface ToolUseContext {
   /** File 工具在当前 Turn 内共享的读取状态，用于去重和写入前校验。 */
   readonly readFileState?: ReadFileState;
   /** AskUser 工具的问询解析器。 */
-  readonly askUser?: AskUserPort;
+  readonly askUser?: AskUser;
   /** 视觉模型选择（vision 绑定）: PdfReadTool 扫描页 OCR / 图注描述用; 缺省时 PDF 只读文本层。 */
   readonly vision?: ToolVisionSelection;
 }

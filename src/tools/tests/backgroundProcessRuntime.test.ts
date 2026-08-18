@@ -10,7 +10,7 @@ import type {
   CommandRunResult,
 } from '@ema-agent/sandbox';
 import { Database, BackgroundProcessesRepo } from '@ema-agent/storage';
-import { BackgroundProcessRuntime } from '../background/backgroundProcessRuntime.js';
+import { BackgroundProcess } from '../background/backgroundProcess.js';
 import type {
   BackgroundCommandRequest,
   BackgroundProcessEvent,
@@ -89,7 +89,7 @@ class FakeRunner {
 // ── 夹具 ─────────────────────────────────────────────────────────────────────
 
 interface Fixture {
-  runtime: BackgroundProcessRuntime;
+  runtime: BackgroundProcess;
   runner: FakeRunner;
   events: BackgroundProcessEvent[];
   notified: string[];
@@ -122,7 +122,7 @@ function createFixture(options?: {
   const notified: SessionId[] = [];
   const runner = new FakeRunner();
   const repo = new BackgroundProcessesRepo(db.sqlite);
-  const runtime = new BackgroundProcessRuntime({
+  const runtime = new BackgroundProcess({
     store: repo,
     outputPath: (sessionId, processId) => {
       const relativeDirectory = path.join('sessions', sessionId, 'background-processes', processId);
@@ -195,7 +195,7 @@ function tracked(options?: Parameters<typeof createFixture>[0]): Fixture {
 
 // ── 测试 ─────────────────────────────────────────────────────────────────────
 
-describe('BackgroundProcessRuntime', () => {
+describe('BackgroundProcess', () => {
   it('15 秒内完成:返回普通结果,不留 DB 行,日志目录已清理', async () => {
     const fixture = tracked();
     const pending = fixture.runtime.runCommand(makeRequest(fixture));

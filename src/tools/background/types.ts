@@ -94,21 +94,7 @@ export interface BackgroundProcessOutputOptions {
   waitMs?: number;
 }
 
-/** Bash 与 Process 工具只依赖这项窄能力，不直接接触 Repo、文件路径或调度器。 */
-export interface BackgroundProcessPort {
-  runCommand(request: BackgroundCommandRequest): Promise<BackgroundCommandResult>;
-  list(
-    sessionId: string,
-    options?: BackgroundProcessListOptions,
-  ): BackgroundProcessSummary[];
-  readOutput(
-    sessionId: string,
-    id: string,
-    options?: BackgroundProcessOutputOptions,
-  ): Promise<BackgroundProcessOutput>;
-  /** 停止请求会在进程退出后返回真实终态快照。 */
-  stop(sessionId: string, id: string): Promise<BackgroundProcessSummary>;
-}
+
 
 export interface BackgroundProcessOutputLocation {
   absoluteDirectory: string;

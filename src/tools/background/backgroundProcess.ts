@@ -29,7 +29,6 @@ import type {
   BackgroundProcessCompletion,
   BackgroundProcessCompletionClaim,
   BackgroundProcessCompletionSource,
-  BackgroundProcessPort,
   BackgroundProcessStatus,
   BackgroundProcessSummary,
 } from './types.js';
@@ -59,7 +58,7 @@ interface QueuedProcess {
   version: number;
 }
 
-export interface BackgroundProcessRuntimeDeps {
+export interface BackgroundProcessDeps {
   /** 持久化窄端口;SQL 实现由 Core 装配注入。 */
   store: BackgroundProcessStore;
   /** 创建期:按 Session 与进程 id 推导日志位置。 */
@@ -72,8 +71,8 @@ export interface BackgroundProcessRuntimeDeps {
   immediateResultWaitMs?: number;
 }
 
-export class BackgroundProcessRuntime
-implements BackgroundProcessPort, BackgroundProcessCompletionSource {
+export class BackgroundProcess
+implements BackgroundProcessCompletionSource {
   private readonly output: BackgroundProcessOutputStore;
   /** 交互命令(15s 内完成或转交)的独立坑位池。 */
   private readonly interactiveScheduler: BackgroundProcessScheduler;
@@ -85,7 +84,7 @@ implements BackgroundProcessPort, BackgroundProcessCompletionSource {
   private shuttingDown = false;
   private completionListener?: (sessionId: string) => void;
 
-  constructor(private readonly deps: BackgroundProcessRuntimeDeps) {
+  constructor(private readonly deps: BackgroundProcessDeps) {
     this.output = new BackgroundProcessOutputStore(deps.outputPath);
     this.interactiveScheduler = new BackgroundProcessScheduler(
       () => INTERACTIVE_MAX_CONCURRENT,

@@ -1,5 +1,5 @@
-export { BackgroundProcessRuntime } from './backgroundProcessRuntime.js';
-export type { BackgroundProcessRuntimeDeps } from './backgroundProcessRuntime.js';
+export { BackgroundProcess } from './backgroundProcess.js';
+export type { BackgroundProcessDeps } from './backgroundProcess.js';
 export type {
   BackgroundProcessInsertRecord,
   BackgroundProcessRecord,
@@ -26,7 +26,6 @@ export type {
   BackgroundProcessOutputLocation,
   BackgroundProcessOutputOptions,
   BackgroundProcessOutputPathFactory,
-  BackgroundProcessPort,
   BackgroundProcessStatus,
   BackgroundProcessSummary,
 } from './types.js';
