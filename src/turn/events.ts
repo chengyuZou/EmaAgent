@@ -1,4 +1,10 @@
 // 定义一次 Turn 自身的生命周期、模型输出投影与请求降级事件。
+import type { AgentRunEvent } from '@ema-agent/agent';
+import type {
+  PermissionRequiredEvent,
+  PermissionResolvedEvent,
+} from '@ema-agent/permission';
+import type { ToolExecutionEvent } from '@ema-agent/tools';
 import type {
   ExecutionProfile,
   NarrativePolicy,
@@ -75,3 +81,14 @@ export type TurnEvent =
       turnId: string;
       blockIndex: number;
     };
+
+/**
+ * 根 Turn 事件流的全部成员。各域事件由拥有方定义（turn/agent/tools/permission），
+ * 这里只做流组合，不重复声明；AgentLoop 事件经执行器翻译为带身份的 TurnEvent 成员后入流。
+ */
+export type TurnStreamEvent =
+  | TurnEvent
+  | AgentRunEvent
+  | ToolExecutionEvent
+  | PermissionRequiredEvent
+  | PermissionResolvedEvent;

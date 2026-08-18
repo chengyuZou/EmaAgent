@@ -20,13 +20,29 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@ema-agent/storage": "workspace:*",
+    "@ema-agent/agent": "workspace:*",
+    "@ema-agent/attachments": "workspace:*",
+    "@ema-agent/characters": "workspace:*",
+    "@ema-agent/compact": "workspace:*",
+    "@ema-agent/knowledge": "workspace:*",
     "@ema-agent/llm": "workspace:*",
+    "@ema-agent/narrative": "workspace:*",
+    "@ema-agent/permission": "workspace:*",
+    "@ema-agent/prompts": "workspace:*",
+    "@ema-agent/providers": "workspace:*",
+    "@ema-agent/sandbox": "workspace:*",
+    "@ema-agent/session": "workspace:*",
+    "@ema-agent/settings": "workspace:*",
+    "@ema-agent/skills": "workspace:*",
+    "@ema-agent/storage": "workspace:*",
+    "@ema-agent/tasks": "workspace:*",
+    "@ema-agent/tools": "workspace:*",
     "@ema-agent/turn-terms": "workspace:*"
   },
   "devDependencies": {
     "rimraf": "^5.0.0",
     "typescript": "^5.9.3",
-    "vitest": "^2.0.0"
+    "vitest": "^2.0.0",
+    "zod": "^4"
   }
 }
