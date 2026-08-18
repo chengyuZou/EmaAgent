@@ -59,7 +59,6 @@ function fakeTool(name: string, options: {
 
 function makeDeps(options: {
   tools: ReturnType<typeof fakeTool>[];
-  events: TurnStreamEvent[];
   queue: SessionInteractionQueue<PermissionRequest, PermissionResponse, AskUserRequiredEvent>;
   settings: SettingsStore;
 }): TurnToolsDeps {
@@ -71,11 +70,13 @@ function makeDeps(options: {
     settings: options.settings,
     agentRunStore: {} as unknown as AgentRunStore,
     agentRunMessagesStore: {} as unknown as AgentRunMessagesStore,
-    emit: event => options.events.push(event),
   };
 }
 
-function makeInput(overrides: Partial<Parameters<typeof prepareTurnTools>[1]> = {}) {
+function makeInput(options: {
+  events: TurnStreamEvent[];
+  overrides?: Partial<Parameters<typeof prepareTurnTools>[1]>;
+}) {
   return {
     sessionId: SESSION_ID,
     turnId: TURN_ID,
@@ -92,13 +93,14 @@ function makeInput(overrides: Partial<Parameters<typeof prepareTurnTools>[1]> = 
     prepareSubagent: async () => { throw new Error('不应派生子 Agent'); },
     parentMessages: [],
     model: { providerId: 'p', modelId: 'm' },
+    emit: (event: TurnStreamEvent) => { options.events.push(event); },
     permission: {
       mode: 'default' as const,
       buckets: { alwaysAllowRules: {}, alwaysDenyRules: {}, alwaysAskRules: {} },
       isBypassPermissionsModeAvailable: false,
     },
     signal: new AbortController().signal,
-    ...overrides,
+    ...(options.overrides ?? {}),
   };
 }
 
@@ -108,16 +110,15 @@ describe('prepareTurnTools', () => {
     const bashTool = fakeTool('Bash', { id: BuiltinTools.Bash.id });
     const deps = makeDeps({
       tools: [readTool, bashTool],
-      events: [],
       queue: new SessionInteractionQueue(null, reason => ({ action: 'deny', reason })),
       settings: fakeSettings(),
     });
 
-    const chat = prepareTurnTools(deps, makeInput({ executionProfile: 'chat' }));
+    const chat = prepareTurnTools(deps, makeInput({ events: [], overrides: { executionProfile: 'chat' } }));
     expect(chat.toolPool.get('Read')).toBeDefined();
     expect(chat.toolPool.get('Bash')).toBeUndefined();
 
-    const work = prepareTurnTools(deps, makeInput({ executionProfile: 'work' }));
+    const work = prepareTurnTools(deps, makeInput({ events: [] }));
     expect(work.toolPool.get('Bash')).toBeDefined();
   });
 
@@ -130,11 +131,10 @@ describe('prepareTurnTools', () => {
     const settings = fakeSettings();
     const deps = makeDeps({
       tools: [fakeTool('Echo', { askWithSuggestion: true })],
-      events,
       queue,
       settings,
     });
-    const assembly = prepareTurnTools(deps, makeInput());
+    const assembly = prepareTurnTools(deps, makeInput({ events }));
     const executor = assembly.createExecutor(() => undefined);
     executor.addTool(0, 'call-1', 'Echo', {});
     executor.start();
@@ -161,11 +161,13 @@ describe('prepareTurnTools', () => {
     const controller = new AbortController();
     const deps = makeDeps({
       tools: [fakeTool('Echo', { askWithSuggestion: true })],
-      events: [],
       queue,
       settings: fakeSettings(),
     });
-    const assembly = prepareTurnTools(deps, makeInput({ signal: controller.signal }));
+    const assembly = prepareTurnTools(deps, makeInput({
+      events: [],
+      overrides: { signal: controller.signal },
+    }));
     const executor = assembly.createExecutor(() => undefined);
     executor.addTool(0, 'call-1', 'Echo', {});
     executor.start();

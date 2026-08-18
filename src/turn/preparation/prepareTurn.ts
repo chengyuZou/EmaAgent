@@ -56,6 +56,7 @@ import type {
   Turn,
 } from '@ema-agent/turn-terms';
 import { TurnPreparationError } from '../errors.js';
+import type { TurnStreamEvent } from '../events.js';
 import type { StartTurn } from '../types.js';
 import { prepareImagesForModel } from './mediaCompatibility.js';
 import {
@@ -107,6 +108,8 @@ export interface PrepareTurnDeps extends TurnToolsDeps {
   readonly characterPrompt: () => CharacterPrompt;
   /** SkillRegistry 当前全量条目；冻结在 Pool 之前读取一次。 */
   readonly skillEntries: () => readonly SkillDescriptor[];
+  /** 默认 llm 包的 createLanguageModel；测试注入脚本化模型。 */
+  readonly createLlm?: (connection: Parameters<typeof createLanguageModel>[0]) => LanguageModel;
   readonly workspaceInstructions?: () => string | null;
   readonly mcpInstructions?: () => readonly string[];
   /** 模型不支持图片时的 Vision 描述入口；缺失时原始图片将准备失败而非试探透传。 */
@@ -123,6 +126,8 @@ export interface PrepareTurnInput {
   readonly budget: AgentBudget;
   readonly prepareSubagent: PrepareSubagent;
   readonly parentMessages: Message[];
+  /** 事件出口由 turn.ts 绑定到本 Turn 的事件通道（每 Turn 一个）。 */
+  readonly emit: (event: TurnStreamEvent) => void;
   readonly signal: AbortSignal;
 }
 
@@ -157,7 +162,7 @@ export async function prepareTurn(
       `模型未在该 Provider 下启用：${providerId} / ${modelId}`,
     );
   }
-  const llm = createLanguageModel(
+  const llm = (deps.createLlm ?? createLanguageModel)(
     deps.providers.resolveConnection(providerId, 'llm'),
   );
   const supportsImageInput = modelFacts.inputImage === true;
@@ -284,6 +289,7 @@ export async function prepareTurn(
     prepareSubagent: input.prepareSubagent,
     parentMessages: input.parentMessages,
     model: { providerId, modelId },
+    emit: input.emit,
     permission: {
       mode: permissionMode,
       buckets: permissionBuckets,

@@ -1,0 +1,424 @@
+// 根 Turn 的唯一公开执行入口：创建、驱动、唯一终态与取消。
+import * as fs from 'node:fs';
+import {
+  readAgentSettings,
+  runAgentLoop,
+  type AgentLoopEvent,
+} from '@ema-agent/agent';
+import { buildMessages } from '@ema-agent/context';
+import type { CompactRequest, CompactResult } from '@ema-agent/compact';
+import type {
+  LanguageModel,
+  Message,
+} from '@ema-agent/llm';
+import type { SessionStore } from '@ema-agent/session';
+import type {
+  Turn,
+  TurnFailureCode,
+} from '@ema-agent/turn-terms';
+import {
+  TurnEventChannel,
+  TurnEventChannelClosedError,
+} from './eventChannel.js';
+import {
+  failureCodeOf,
+  failureMessageOf,
+  TurnBudgetExceededError,
+} from './errors.js';
+import type { TurnStreamEvent } from './events.js';
+import { createPrepareLlmCall } from './loop/prepareLlmCall.js';
+import { createPrepareSubagent } from './loop/prepareSubagent.js';
+import { TurnBudget } from './loop/turnBudget.js';
+import { TurnMessageWriter } from './loop/turnMessageWriter.js';
+import {
+  prepareTurn,
+  type PreparedTurn,
+  type PrepareTurnDeps,
+} from './preparation/prepareTurn.js';
+import type { TurnToolsAssembly } from './preparation/prepareTurnTools.js';
+import type { TurnStore } from './turnStore.js';
+import type {
+  StartTurn,
+  TurnHandle,
+  TurnOutcome,
+} from './types.js';
+
+/** 本包常量预算；工具/子 Agent 额度来自 agent 包 settings，时长与输出上限 V1 不做设置项。 */
+const DEFAULT_MAX_DURATION_MS = 30 * 60_000;
+const DEFAULT_MAX_OUTPUT_TOKENS = 200_000;
+
+export interface TurnExecutorDeps extends PrepareTurnDeps {
+  readonly turns: TurnStore;
+  readonly sessions: Pick<
+    SessionStore,
+    'getSession' | 'appendMessage' | 'loadHistory' | 'markMessageInterrupted' | 'updateMessageBlocks'
+  >;
+  readonly createCompact: (
+    llm: LanguageModel,
+  ) => (request: CompactRequest) => Promise<CompactResult>;
+  readonly reminderSources: Parameters<typeof createPrepareLlmCall>[0]['reminderSources'];
+  /** Turn 成功提交后执行的非关键观察者；失败不得反向改写 Turn 终态。 */
+  readonly completedObserver?: { record(turn: Turn): void | Promise<void> };
+}
+
+/**
+ * TurnExecutor 持有跨 Turn 共享的协作者；每个 Turn 的通道、预算、工具层与
+ * 事件翻译都在 start() 内按 Turn 创建。Route 只拿这个入口，不接触任何内部件。
+ */
+export class TurnExecutor {
+  /** 活动 Turn 的工具层快照，供 abortTool/abortAgentRun 按 turnId 定位。 */
+  private readonly runningTools = new Map<string, TurnToolsAssembly>();
+
+  constructor(private readonly deps: TurnExecutorDeps) {}
+
+  start(input: StartTurn): TurnHandle {
+    const { turn, signal } = this.deps.turns.startTurn({
+      turnId: input.turnId,
+      sessionId: input.sessionId,
+      triggerType: input.triggerType,
+      executionProfile: input.executionProfile,
+      narrativePolicy: input.narrativePolicy,
+    });
+    const channel = new TurnEventChannel<TurnStreamEvent>(() => {
+      this.deps.turns.requestAbort(turn.sessionId, turn.id);
+    });
+
+    let resolveCompletion!: (outcome: TurnOutcome) => void;
+    let rejectCompletion!: (error: unknown) => void;
+    const completion = new Promise<TurnOutcome>((resolve, reject) => {
+      resolveCompletion = resolve;
+      rejectCompletion = reject;
+    });
+    // Server 主要消费 events；预先观察 rejection，避免极端持久化故障形成未处理 Promise。
+    void completion.catch(() => undefined);
+
+    void this.pumpTurn({
+      input,
+      turn,
+      signal,
+      channel,
+      resolveCompletion,
+      rejectCompletion,
+    });
+
+    return Object.freeze({
+      sessionId: turn.sessionId,
+      turnId: turn.id,
+      events: channel,
+      completion,
+      abort: () => {
+        this.deps.turns.requestAbort(turn.sessionId, turn.id);
+      },
+    });
+  }
+
+  /** 只取消当前仍活动的指定根 Turn；历史句柄不能误杀后继 Turn。 */
+  abort(sessionId: string, turnId: string): boolean {
+    const active = this.deps.turns.getActiveTurn(sessionId);
+    if (active?.id !== turnId) return false;
+    this.deps.turns.requestAbort(sessionId, turnId);
+    return true;
+  }
+
+  abortTool(turnId: string, toolCallId: string): boolean {
+    return this.runningTools.get(turnId)?.abortTool(toolCallId) ?? false;
+  }
+
+  abortAgentRun(turnId: string, agentRunId: string): boolean {
+    return this.runningTools.get(turnId)?.abortAgentRun(agentRunId) ?? false;
+  }
+
+  private async pumpTurn(args: {
+    input: StartTurn;
+    turn: Turn;
+    signal: AbortSignal;
+    channel: TurnEventChannel<TurnStreamEvent>;
+    resolveCompletion: (outcome: TurnOutcome) => void;
+    rejectCompletion: (error: unknown) => void;
+  }): Promise<void> {
+    const { input, turn, signal, channel, resolveCompletion, rejectCompletion } = args;
+    const { sessionId } = turn;
+    const turnId = turn.id;
+    const emit = (event: TurnStreamEvent): void => {
+      void channel.push(event).catch(() => undefined);
+    };
+
+    const writer = new TurnMessageWriter(sessionId, turnId, this.deps.sessions);
+    let prepared: PreparedTurn | undefined;
+    let tools: TurnToolsAssembly | undefined;
+    let terminal: 'completed' | 'failed' | 'aborted' = 'failed';
+
+    try {
+      emit({
+        type: 'turn_started',
+        sessionId,
+        turnId,
+        executionProfile: turn.executionProfile,
+        narrativePolicy: turn.narrativePolicy,
+      });
+
+      // 预算的额度来自 agent 包 settings（settings 直读 µs 级；prepareTurn 内部也会冻结同一份）。
+      const agentSettings = readAgentSettings(this.deps.settings);
+      const budget = new TurnBudget({
+        maxDurationMs: DEFAULT_MAX_DURATION_MS,
+        maxOutputTokens: DEFAULT_MAX_OUTPUT_TOKENS,
+        maxToolCalls: agentSettings.maxToolCalls,
+        maxSubagents: agentSettings.maxSubagents,
+        maxConcurrentSubagents: agentSettings.maxConcurrentSubagents,
+      });
+      // compact 闭包按 Turn 创建一次（内部含失败熔断计数）；prepared 就绪前延迟求值。
+      let compactForTurn: ((request: CompactRequest) => Promise<CompactResult>) | undefined;
+      const parentMessages: Message[] = [];
+      const prepareSubagent = createPrepareSubagent({
+        sessionId,
+        turnId,
+        prepared: () => {
+          if (!prepared) throw new Error('prepared 尚未就绪');
+          return prepared;
+        },
+        providers: this.deps.providers,
+        compact: request => compactForTurn!(request),
+        sessions: this.deps.sessions,
+        emit,
+        budget,
+        parentMessages,
+      });
+
+      prepared = await prepareTurn(this.deps, {
+        start: input,
+        turn,
+        budget,
+        prepareSubagent,
+        parentMessages,
+        emit,
+        signal,
+      });
+      tools = prepared.tools;
+      this.runningTools.set(turnId, tools);
+      this.deps.turns.setModel(turnId, prepared.providerId, prepared.modelId);
+      compactForTurn = this.deps.createCompact(prepared.llm);
+
+      for (const degradation of prepared.degradations) {
+        emit({ type: 'request_degraded', sessionId, turnId, ...degradation });
+      }
+
+      this.deps.sessions.appendMessage({
+        turnId,
+        sessionId,
+        role: 'user',
+        blocks: prepared.userMessageBlocks,
+      });
+
+      const historyMessages = buildMessages(
+        this.deps.sessions.loadHistory(sessionId),
+      );
+      const initialMessages: Message[] = [
+        ...historyMessages,
+        { role: 'user', content: prepared.userMessageParts },
+      ];
+
+      const prepareIteration = createPrepareLlmCall({
+        sessionId,
+        turnId,
+        prepared,
+        compact: compactForTurn,
+        sessions: this.deps.sessions,
+        emit,
+        budget,
+        baselineMessageCount: historyMessages.length,
+        reminderSources: this.deps.reminderSources,
+        signal,
+        onRequestPrepared: messages => {
+          parentMessages.splice(0, parentMessages.length, ...messages);
+        },
+      });
+
+      let stopped: Extract<AgentLoopEvent, { type: 'loop_stopped' }> | undefined;
+      const toolNames = new Map<string, string>();
+      for await (const event of runAgentLoop({
+        messages: initialMessages,
+        prepareIteration,
+        llm: prepared.llm,
+        createToolExecutor: tools.createExecutor,
+        budget,
+        signal,
+        maxIterations: prepared.maxIterations,
+      })) {
+        await writer.apply(event);
+        this.translate(event, sessionId, turnId, toolNames, emit);
+        if (event.type === 'loop_stopped') stopped = event;
+      }
+
+      if (!stopped) throw new Error('AgentLoop 未产生终止事件');
+
+      const startedAt = turn.createdAt;
+      if (stopped.state.stopReason === 'aborted') {
+        terminal = 'aborted';
+        this.deps.turns.abortTurn(sessionId, turnId);
+        const outcome: TurnOutcome = { status: 'aborted', sessionId, turnId, reason: 'user_stop' };
+        emit({ type: 'turn_aborted', sessionId, turnId, reason: outcome.reason });
+        await this.finishSafely(channel, writer, terminal, tools, turnId, () => resolveCompletion(outcome));
+        return;
+      }
+
+      if (stopped.state.stopReason === 'completed') {
+        terminal = 'completed';
+        const stats = {
+          iterations: stopped.state.iterations,
+          usageInputTokens: stopped.state.usage.inputTokens,
+          usageOutputTokens: stopped.state.usage.outputTokens,
+        };
+        this.deps.turns.completeTurn(turnId, stats);
+        try {
+          await this.deps.completedObserver?.record(turn);
+        } catch {
+          // 非关键观察者故障不能把已提交的 completed 改写成 failed。
+        }
+        const outcome: TurnOutcome = {
+          status: 'completed',
+          sessionId,
+          turnId,
+          stats: {
+            inputTokens: stats.usageInputTokens,
+            outputTokens: stats.usageOutputTokens,
+            durationMs: Date.now() - startedAt,
+          },
+        };
+        emit({ type: 'turn_completed', sessionId, turnId, stats: outcome.stats });
+        await this.finishSafely(channel, writer, terminal, tools, turnId, () => resolveCompletion(outcome));
+        return;
+      }
+
+      terminal = 'failed';
+      const code: TurnFailureCode = stopped.state.stopReason === 'max_iterations'
+        ? 'turn/budget_exceeded'
+        : 'turn/execution_failed';
+      const outcome = this.failTurn(turn, code, `AgentLoop 终止：${stopped.state.stopReason}`, emit);
+      await this.finishSafely(channel, writer, terminal, tools, turnId, () => resolveCompletion(outcome));
+    } catch (error) {
+      if (signal.aborted || error instanceof TurnEventChannelClosedError) {
+        terminal = 'aborted';
+        this.deps.turns.abortTurn(sessionId, turnId);
+        const outcome: TurnOutcome = { status: 'aborted', sessionId, turnId, reason: 'user_stop' };
+        emit({ type: 'turn_aborted', sessionId, turnId, reason: outcome.reason });
+        await this.finishSafely(channel, writer, terminal, tools, turnId, () => resolveCompletion(outcome));
+        return;
+      }
+
+      terminal = 'failed';
+      try {
+        const outcome = this.failTurn(turn, failureCodeOf(error), failureMessageOf(error), emit);
+        await this.finishSafely(channel, writer, terminal, tools, turnId, () => resolveCompletion(outcome));
+      } catch (terminalError) {
+        await this.finishSafely(channel, writer, terminal, tools, turnId, () => undefined);
+        rejectCompletion(terminalError);
+      }
+    } finally {
+      this.runningTools.delete(turnId);
+      this.deps.turns.clearRunning(sessionId, turnId);
+      if (prepared?.scratchpadDir) {
+        try {
+          fs.rmSync(prepared.scratchpadDir, { recursive: true, force: true });
+        } catch {
+          // 临时目录清理失败不能覆盖已经确定的 Turn 终态。
+        }
+      }
+    }
+  }
+
+  /** 终态提交后的统一收尾：writer 收口、交互清理、工具与子 Agent 停止、通道关闭。 */
+  private async finishSafely(
+    channel: TurnEventChannel<TurnStreamEvent>,
+    writer: TurnMessageWriter,
+    terminal: 'completed' | 'failed' | 'aborted',
+    tools: TurnToolsAssembly | undefined,
+    turnId: string,
+    resolve: () => void,
+  ): Promise<void> {
+    try {
+      await writer.finish(terminal);
+    } catch {
+      // 收口持久化失败已由 turn 终态承载，不再二次失败。
+    }
+    try {
+      this.deps.decisionQueue.cancelForTurn(turnId, `turn ${terminal}`);
+    } catch {
+      // 队列清理失败不能覆盖终态。
+    }
+    if (tools) {
+      try {
+        await tools.shutdown(terminal);
+      } catch {
+        // 工具关闭失败不能覆盖终态。
+      }
+    }
+    resolve();
+    channel.finish();
+  }
+
+  private failTurn(
+    turn: Turn,
+    code: TurnFailureCode,
+    message: string,
+    emit: (event: TurnStreamEvent) => void,
+  ): TurnOutcome {
+    this.deps.turns.failTurn(turn.id, { errorCode: code, errorMessage: message });
+    emit({ type: 'turn_failed', sessionId: turn.sessionId, turnId: turn.id, code, message });
+    return {
+      status: 'failed',
+      sessionId: turn.sessionId,
+      turnId: turn.id,
+      code,
+      message,
+    };
+  }
+
+  private translate(
+    event: AgentLoopEvent,
+    sessionId: string,
+    turnId: string,
+    toolNames: Map<string, string>,
+    emit: (event: TurnStreamEvent) => void,
+  ): void {
+    switch (event.type) {
+      case 'iteration_started':
+        emit({ type: 'agent_iteration', sessionId, turnId, n: event.iteration });
+        return;
+      case 'text_delta':
+        emit({ type: 'output_text_delta', sessionId, turnId, blockIndex: event.blockIndex, delta: event.delta });
+        return;
+      case 'thinking_delta':
+        emit({ type: 'reasoning_delta', sessionId, turnId, blockIndex: event.blockIndex, delta: event.delta });
+        return;
+      case 'thinking_completed':
+        emit({ type: 'reasoning_complete', sessionId, turnId, blockIndex: event.blockIndex });
+        return;
+      case 'tool_use_partial':
+        emit({ type: 'tool_call_partial', sessionId, blockIndex: event.blockIndex, callId: event.toolCallId, name: event.toolName, argsDelta: event.argsDelta });
+        return;
+      case 'tool_use_completed':
+        toolNames.set(event.toolCallId, event.toolName);
+        emit({ type: 'tool_call_complete', sessionId, blockIndex: event.blockIndex, callId: event.toolCallId, name: event.toolName, args: event.args });
+        return;
+      case 'usage_updated':
+        emit({ type: 'usage_update', sessionId, turnId, inputTokens: event.usage.inputTokens, outputTokens: event.usage.outputTokens });
+        return;
+      case 'tool_result': {
+        const { result } = event;
+        emit({
+          type: 'tool_result',
+          sessionId,
+          callId: result.toolCallId,
+          name: toolNames.get(result.toolCallId) ?? 'unknown',
+          ...(result.isError
+            ? { error: { code: result.errorCode ?? 'tool/error', message: String(result.content) } }
+            : { output: result.content }),
+          durationMs: result.durationMs ?? 0,
+        });
+        return;
+      }
+      default:
+        return;
+    }
+  }
+}

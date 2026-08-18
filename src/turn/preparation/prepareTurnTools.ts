@@ -75,8 +75,6 @@ export interface TurnToolsDeps {
   readonly commandRunner?: (sessionId: string) => CommandRunner | undefined;
   readonly toolResultStore?: (sessionId: string) => ToolResultStore;
   readonly toolExecutionState?: ToolExecutionState;
-  /** 事件出口由 turn.ts 绑定到本 Turn 的事件通道。 */
-  readonly emit: (event: TurnStreamEvent) => void;
 }
 
 export interface PrepareTurnToolsInput {
@@ -94,6 +92,8 @@ export interface PrepareTurnToolsInput {
   /** fork 子 Agent 继承用的最终请求视图；turn.ts 持有并在每次请求后 splice 更新。 */
   readonly parentMessages: Message[];
   readonly model: { readonly providerId: string; readonly modelId: string };
+  /** 事件出口由 turn.ts 绑定到本 Turn 的事件通道（每 Turn 一个）。 */
+  readonly emit: (event: TurnStreamEvent) => void;
   readonly permission: {
     readonly mode: PermissionMode;
     readonly buckets: {
@@ -112,6 +112,13 @@ export interface TurnToolsAssembly {
   readonly permissionContext: ToolPermissionContext;
   readonly spawner: SubagentSpawner;
   readonly createExecutor: (wake: () => void) => StreamingToolExecutorType;
+  /** 子 Agent 执行器：收窄后的独立 ToolPool、关联 agentRunId、无 askPermission（headless）。 */
+  readonly createSubagentExecutor: (args: {
+    agentRunId: string;
+    toolPool: ToolPool;
+    signal: AbortSignal;
+    wake: () => void;
+  }) => StreamingToolExecutorType;
   readonly abortTool: (toolCallId: string) => boolean;
   readonly abortAgentRun: (agentRunId: string) => boolean;
   /** 根 Turn 终态前调用：先停工具再停子 Agent；幂等。 */
@@ -134,7 +141,8 @@ export function prepareTurnTools(
     prepareSubagent: input.prepareSubagent,
     agentRunStore: deps.agentRunStore,
     messagesStore: deps.agentRunMessagesStore,
-    emit: event => deps.emit(event),
+    // agent 包事件不携带根身份；进入 Turn 事件流时补上。
+    emit: event => input.emit({ ...event, sessionId, turnId }),
   });
 
   const permissionContext: ToolPermissionContext = {
@@ -152,7 +160,7 @@ export function prepareTurnTools(
     request: PermissionRequest,
     signal: AbortSignal,
   ): Promise<PermissionResponse> => {
-    deps.emit({ type: 'permission_required', ...request });
+    input.emit({ type: 'permission_required', ...request });
     const { promise } = deps.decisionQueue.enqueuePermission({
       sessionId,
       turnId,
@@ -162,7 +170,7 @@ export function prepareTurnTools(
     const response = await awaitInteraction(promise, signal, () => {
       deps.decisionQueue.cancel(request.toolCallId, 'turn aborted');
     });
-    deps.emit({
+    input.emit({
       type: 'permission_resolved',
       sessionId,
       turnId,
@@ -188,7 +196,7 @@ export function prepareTurnTools(
       toolCallId,
       questions: [...specs],
     };
-    deps.emit(request);
+    input.emit(request);
     const { promise } = deps.decisionQueue.enqueueAskUser({
       toolCallId,
       sessionId,
@@ -199,7 +207,7 @@ export function prepareTurnTools(
       deps.decisionQueue.cancel(toolCallId, 'turn aborted');
     });
     // 取消/超时也要发空答案清前端卡片；空答案 resolved 是清卡信号，不是成功。
-    deps.emit({
+    input.emit({
       type: 'ask_user_resolved',
       sessionId,
       toolCallId,
@@ -261,7 +269,7 @@ export function prepareTurnTools(
       ...(deps.toolExecutionState
         ? { toolExecutionState: deps.toolExecutionState }
         : {}),
-      pushEv: event => deps.emit(event),
+      pushEv: event => input.emit(event),
       wake,
     });
     currentExecutor = executor;
@@ -275,6 +283,25 @@ export function prepareTurnTools(
     permissionContext,
     spawner,
     createExecutor,
+    createSubagentExecutor: ({ agentRunId, toolPool: subPool, signal, wake }) => {
+      const executor = new StreamingToolExecutor({
+        sessionId,
+        turnId,
+        agentRunId,
+        abortSignal: signal,
+        toolPool: subPool,
+        permissionContext,
+        // 子 Agent 无 askPermission：headless，中央把 ask 收口为 deny。
+        toolContext,
+        toolResultStore,
+        ...(deps.toolExecutionState
+          ? { toolExecutionState: deps.toolExecutionState }
+          : {}),
+        pushEv: event => input.emit(event),
+        wake,
+      });
+      return executor;
+    },
     abortTool: toolCallId => currentExecutor?.abortTool(toolCallId) ?? false,
     abortAgentRun: agentRunId => spawner.abortSubagent(agentRunId),
     shutdown: async reason => {

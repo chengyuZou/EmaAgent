@@ -91,8 +91,12 @@ export class TurnStore {
     return { turn: this.requireTurn(turnId), signal };
   }
 
-  completeTurn(turnId: string, usage: CompleteTurnInput = {}): void {
-    this.requireTurn(turnId);
+  /** 输入准备解析出模型身份后回填；只能在终态前调用一次的事实修正。 */
+  setModel(turnId: string, providerId: string, modelId: string): void {
+    this.turnsRepo.setModel(turnId, providerId, modelId);
+  }
+
+  completeTurn(turnId: string, usage: CompleteTurnInput = {}): void {    this.requireTurn(turnId);
     this.turnsRepo.complete(turnId, {
       status:             'completed',
       completedAt:        Date.now(),

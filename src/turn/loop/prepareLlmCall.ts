@@ -36,6 +36,10 @@ export interface PrepareLlmCallDeps {
   readonly baselineMessageCount: number;
   readonly reminderSources: PrepareLlmCallReminderSources;
   readonly signal: AbortSignal;
+  /** 根 Turn true（Macro 摘要落 Session）；子 Agent false——只能压缩自己的工作历史。 */
+  readonly persistMacro?: boolean;
+  /** 每次请求装配完成后回调；根 Turn 用它更新 fork 子 Agent 的继承视图。 */
+  readonly onRequestPrepared?: (messages: readonly Message[]) => void;
 }
 
 /**
@@ -109,7 +113,7 @@ export function createPrepareLlmCall(deps: PrepareLlmCallDeps): PrepareAgentIter
 
     let nextMessages = messages;
     if (result.kind !== 'unchanged') {
-      if (result.kind === 'macro') {
+      if (result.kind === 'macro' && deps.persistMacro !== false) {
         deps.sessions.appendMessage({
           turnId: null,
           sessionId: deps.sessionId,
@@ -122,6 +126,8 @@ export function createPrepareLlmCall(deps: PrepareLlmCallDeps): PrepareAgentIter
       nextMessages = [...result.history, ...currentTurn];
       assembled = assemble(result.history);
     }
+
+    deps.onRequestPrepared?.(assembled.messages);
 
     return {
       request: {

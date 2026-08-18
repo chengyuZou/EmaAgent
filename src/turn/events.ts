@@ -57,6 +57,12 @@ export type TurnEvent =
       message: string;
       retryable: boolean;
     }
+  | {
+      type: 'agent_iteration';
+      sessionId: string;
+      turnId: string;
+      n: number;
+    }
   | ({
       type: 'request_degraded';
       sessionId: string;
@@ -84,12 +90,20 @@ export type TurnEvent =
     };
 
 /**
+ * AgentRun 事件进入 Turn 事件流时补上根身份（agent 包不感知 sessionId/turnId）。
+ */
+export type TurnAgentRunEvent = AgentRunEvent & {
+  readonly sessionId: string;
+  readonly turnId: string;
+};
+
+/**
  * 根 Turn 事件流的全部成员。各域事件由拥有方定义（turn/agent/tools/permission），
  * 这里只做流组合，不重复声明；AgentLoop 事件经执行器翻译为带身份的 TurnEvent 成员后入流。
  */
 export type TurnStreamEvent =
   | TurnEvent
-  | AgentRunEvent
+  | TurnAgentRunEvent
   | ToolExecutionEvent
   | PermissionRequiredEvent
   | PermissionResolvedEvent
