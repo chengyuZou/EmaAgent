@@ -1,7 +1,7 @@
 // 测试 MCP Server 的动态 Schema、结果预算和自报 annotations 都受 Ema Tool 契约约束。
 import { describe, expect, it, vi } from 'vitest';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { PermissionEngine, InMemoryPermissionRuleStore } from '@ema-agent/permission';
+import type { ToolPermissionContext } from '@ema-agent/permission';
 import { DEFAULT_MAX_RESULT_BYTES } from '@ema-agent/tools';
 import type { McpToolInfo } from '../types.js';
 import { buildMcpBuiltTool, discoverServerTools } from '../discovery.js';
@@ -9,6 +9,14 @@ import {
   MAX_MCP_TOOLS_PER_SERVER,
   MAX_MCP_TOOL_SCHEMA_BYTES,
 } from '../toolSchemaLimits.js';
+
+const PERMISSION_CONTEXT: ToolPermissionContext = {
+  mode: 'default',
+  alwaysAllowRules: {},
+  alwaysDenyRules: {},
+  alwaysAskRules: {},
+  isBypassPermissionsModeAvailable: false,
+};
 
 describe('MCP 工具发现安全边界', () => {
   it('把取消信号交给 SDK listTools', async () => {
@@ -82,34 +90,14 @@ describe('MCP 工具发现安全边界', () => {
     ]);
   });
 
-  it('readOnlyHint 不能生成 low/read 权限，也不能开放并发', async () => {
+  it('readOnlyHint 不能让工具自我放行，也不能开放并发', async () => {
     const tool = buildMcpBuiltTool(toolInfo({ reportedReadOnly: true }), registryStub());
-    const ask = vi.fn(async () => ({ action: 'deny' as const }));
-    const permission = new PermissionEngine(new InMemoryPermissionRuleStore());
 
-    const intent = await tool.getPermissionIntent({}, {});
-    expect(intent).toEqual({
-      riskLevel: 'medium',
-      accessType: 'execute',
-      promptPolicy: 'whenRequired',
-    });
+    // passthrough = "我没有放行理由,交中央收口"——远端自报 readOnly 换不来 allow。
+    await expect(tool.checkPermissions({}, {}, PERMISSION_CONTEXT))
+      .resolves.toMatchObject({ behavior: 'passthrough' });
     expect(tool.isReadOnly({})).toBe(false);
     expect(tool.isConcurrencySafe({})).toBe(false);
-
-    const outcome = await permission.authorize({
-      tool: { id: tool.id, name: tool.name },
-      input: {},
-      intent,
-      context: { mode: 'default' },
-    }, ask);
-
-    expect(outcome.outcome).toBe('deny');
-    expect(ask).toHaveBeenCalledWith(expect.objectContaining({
-      toolId: tool.id,
-      toolName: tool.name,
-      riskLevel: 'medium',
-      accessType: 'execute',
-    }));
   });
 
   it('通过统一 buildTool 保留真实 JSON Schema 并继承 Ema 结果预算', () => {
@@ -130,17 +118,18 @@ describe('MCP 工具发现安全边界', () => {
     expect(tool.requiresUserInteraction({})).toBe(false);
   });
 
-  it('destructiveHint 只能单向提升到 high，和 readOnlyHint 冲突时仍按 high', async () => {
+  it('destructiveHint 单向升级为强制询问，和 readOnlyHint 冲突时仍升级', async () => {
     const destructive = buildMcpBuiltTool(
       toolInfo({ reportedReadOnly: true, reportedDestructive: true }),
       registryStub(),
     );
 
-    expect(await destructive.getPermissionIntent({}, {})).toEqual({
-      riskLevel: 'high',
-      accessType: 'execute',
-      promptPolicy: 'whenRequired',
-    });
+    // ask 在中央优先级里先于 bypassPermissions——远端自报破坏性无法被模式跳过。
+    await expect(destructive.checkPermissions({}, {}, PERMISSION_CONTEXT))
+      .resolves.toMatchObject({
+        behavior: 'ask',
+        decisionReason: { type: 'safetyCheck', reason: 'destructiveHint' },
+      });
     expect(destructive.isReadOnly({})).toBe(false);
     expect(destructive.isConcurrencySafe({})).toBe(false);
   });

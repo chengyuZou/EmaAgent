@@ -68,19 +68,26 @@ export function buildMcpBuiltTool(
       serverToolName: info.serverToolName,
     },
     description:       `[MCP:${serverName}] ${info.description}`,
-    inputSchema:       z.record(z.unknown()),
+    inputSchema:       z.record(z.string(), z.unknown()),
     inputJsonSchemaOverride: info.inputSchema,
     // 远端自报 readOnly 只进 UI 展示;并发调度与 Permission 都不信任远端声明,
     // 一律按有副作用串行处理。
     isReadOnly:        () => false,
     isConcurrencySafe: () => false,
     getToolUseSummary: () => `${serverName} / ${info.serverToolName}`,
-    // MCP annotations 只能提高风险,不能让远端 Server 自报安全后绕过询问。
-    getPermissionIntent: () => ({
-      riskLevel: info.reportedDestructive ? 'high' : 'medium',
-      accessType: 'execute',
-      promptPolicy: 'whenRequired',
-    }),
+    // MCP 没有内容级规则语义:整体规则与模式由中央收口(passthrough)。
+    // 远端自报只能单向升风险:destructiveHint → 强制询问(ask 先于 bypass);
+    // readOnlyHint 永不在此出现——它只进 UI 展示,不能换来自我放行。
+    checkPermissions: async () => info.reportedDestructive
+      ? {
+          behavior: 'ask' as const,
+          message: `MCP Server "${serverName}" 自报 "${info.serverToolName}" 具有破坏性（destructiveHint）`,
+          decisionReason: { type: 'safetyCheck' as const, reason: 'destructiveHint' },
+        }
+      : {
+          behavior: 'passthrough' as const,
+          message: `调用 MCP Server "${serverName}" 的 "${info.serverToolName}"`,
+        },
     validateContext: () => contextOk({}),
     execute: (input, _context, invocation) => registry.callTool(
       serverName,

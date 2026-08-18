@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { globIterate } from 'glob';
 import { buildTool, contextFail, contextOk, type ToolInvocation } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
+import { checkReadPathPermission } from '../shared/pathPermission.js';
 import { runBoundedProcess } from '../shared/BoundedProcess.js';
 import { sortPathsByMtimeDesc } from '../shared/fileMtimeSort.js';
 import { GLOB_DESCRIPTION } from './prompt.js';
@@ -93,15 +94,15 @@ export const GlobTool = buildTool<GlobInput, GlobResult, GlobToolContext>({
     return { valid: true };
   },
 
-  getPermissionIntent: (input, context) => ({
-    riskLevel: 'low',
-    accessType: 'read',
-    targets: [{
-      path: input.path ? path.resolve(context.workspaceRoot, input.path) : context.workspaceRoot,
-      accessType: 'read',
-    }],
-    promptPolicy: 'whenRequired',
-  }),
+  checkPermissions: async (input, context, permissionContext) =>
+    checkReadPathPermission({
+      toolName: BuiltinTools.Glob.name,
+      path: input.path
+        ? path.resolve(context.workspaceRoot, input.path)
+        : context.workspaceRoot,
+      workspaceRoot: context.workspaceRoot,
+      permissionContext,
+    }),
 
   async execute(
     input: GlobInput,

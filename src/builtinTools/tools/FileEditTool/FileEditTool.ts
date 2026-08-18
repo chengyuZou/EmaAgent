@@ -12,6 +12,7 @@ import {
   type ToolInvocation,
 } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
+import { checkWritePathPermission } from '../shared/pathPermission.js';
 import { atomicTransformUtf8 } from '../FileWriteTool/atomicWrite.js';
 import { buildStructuredPatch, type PatchHunk } from './patch.js';
 import { FILE_EDIT_DESCRIPTION } from './prompt.js';
@@ -100,12 +101,13 @@ export const FileEditTool = buildTool<FileEditInput, FileEditResult, FileEditToo
     return { valid: true };
   },
 
-  getPermissionIntent: (input) => ({
-    riskLevel: 'medium',
-    accessType: 'write',
-    targets: [{ path: input.file_path, accessType: 'write' }],
-    promptPolicy: 'whenRequired',
-  }),
+  checkPermissions: async (input, context, permissionContext) =>
+    checkWritePathPermission({
+      toolName: BuiltinTools.FileEdit.name,
+      path: path.resolve(context.workspaceRoot, input.file_path),
+      workspaceRoot: context.workspaceRoot,
+      permissionContext,
+    }),
 
   async execute(
     input: FileEditInput,

@@ -23,6 +23,7 @@ export type {
   SubagentSpawnOptions,
   SubagentSpawnerPort,
   ToolUseContext,
+  ToolVisionSelection,
 } from './Tool/toolUseContext.js';
 export type {
   AskUserQuestionSpec,

@@ -44,7 +44,7 @@ McpToolOutput / projectMcpToolOutput
 - **启动路径**:`primeFromCache()` 用 SQL `tools_cache` 预填工具(不拉起进程),`discoverUncached()` 后台探测无缓存 server;真实 transport 在首次 `callTool` 懒建连。不做开机急切全连。
 - **生命周期配对收在领域内**:禁用即断开并摘除全部工具;启用即以缓存恢复惰性可见;删除即先断开。禁用服务器的 `connect`/`callTool` 一律拒绝(不拉进程、不发请求)。`callTool` 走 `connectConfig` 管道:懒连接与配置漂移重连共用 configKey 判别,更新配置后不会用到旧连接。
 - **Tool 注册**:MCP 工具经 `ToolRegistry.registerMcpBatch` 原子替换;当前根 Turn 的 ToolPool 已冻结,`list_changed`/重连只影响下一根 Turn。
-- **annotations 单向**:远端自报 `readOnlyHint` 只进 UI 展示;`destructiveHint` 只能把权限风险提到 high,任何自报都不能降低本地风险或开放并发。
+- **annotations 单向**:远端自报 `readOnlyHint` 只进 UI 展示;`destructiveHint` 只能升级为强制询问(`checkPermissions` 返回 ask,先于 bypassPermissions),任何自报都不能让工具自我放行或开放并发。
 - **结果两道阀**:协议层 1MB/100块/256KB 二进制(防异常 Server);模型投影走 Tool 统一的 50KB 结果预算。`_meta` 只进 data 槽,绝不发给模型。
 
 ## 失败语义
@@ -57,7 +57,7 @@ McpToolOutput / projectMcpToolOutput
 
 ## 接线契约(归各装配方,本包不接线)
 
-- server:`McpServerStore` 注入 `CredentialFacade` 单例;`McpRegistrySourceStore.ensureOfficialSeed()` 在启动期调用;stdio 拉起经 `stdioGate` 接 PermissionAuthorizer。
+- server:`McpServerStore` 注入 `CredentialFacade` 单例;`McpRegistrySourceStore.ensureOfficialSeed()` 在启动期调用;stdio 拉起经 `stdioGate` 接非 Turn 的用户批准通道。
 - turnExecution:MCP 工具经全局 `ToolRegistry` 进 ToolPool,本包不参与每 Turn 冻结。
 - 备份:导入侧遇 reveal 失败的受保护值应剥除并要求用户重填(归备份批)。
 

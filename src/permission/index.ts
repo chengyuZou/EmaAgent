@@ -28,6 +28,28 @@ export {
   type PermissionRuleBuckets,
 } from './rules/loader.js';
 export {
+  DANGEROUS_DIRS,
+  DANGEROUS_FILES,
+  getPathsForPermissionCheck,
+  hasSuspiciousWindowsPath,
+  normalizeCaseForComparison,
+  normalizeMacOsSymlinks,
+} from './paths/pathSafety.js';
+export {
+  pathInAnyWorkingDir,
+  pathInWorkingDir,
+} from './paths/workspaceBoundary.js';
+export {
+  checkInternalPath,
+  type InternalPathRoots,
+} from './paths/internalPaths.js';
+export {
+  getPlatform,
+  resetPlatformCache,
+  toPortablePath,
+  type Platform,
+} from './paths/platformPaths.js';
+export {
   applyPermissionUpdate,
   clearSessionRules,
   getSessionAllowRules,

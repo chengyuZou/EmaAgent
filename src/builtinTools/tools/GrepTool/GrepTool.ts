@@ -5,6 +5,7 @@ import path from 'node:path';
 import { z } from 'zod';
 import { buildTool, contextFail, contextOk, type ToolInvocation } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
+import { checkReadPathPermission } from '../shared/pathPermission.js';
 import { runBoundedProcess } from '../shared/BoundedProcess.js';
 import { sortPathsByMtimeDesc } from '../shared/fileMtimeSort.js';
 import { GREP_DESCRIPTION } from './prompt.js';
@@ -153,15 +154,15 @@ export const GrepTool = buildTool<GrepInput, GrepResult, GrepToolContext>({
     return { valid: true };
   },
 
-  getPermissionIntent: (input, context) => ({
-    riskLevel: 'low',
-    accessType: 'read',
-    targets: [{
-      path: input.path ? path.resolve(context.workspaceRoot, input.path) : context.workspaceRoot,
-      accessType: 'read',
-    }],
-    promptPolicy: 'whenRequired',
-  }),
+  checkPermissions: async (input, context, permissionContext) =>
+    checkReadPathPermission({
+      toolName: BuiltinTools.Grep.name,
+      path: input.path
+        ? path.resolve(context.workspaceRoot, input.path)
+        : context.workspaceRoot,
+      workspaceRoot: context.workspaceRoot,
+      permissionContext,
+    }),
 
   async execute(
     input: GrepInput,

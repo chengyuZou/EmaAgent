@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@ema-agent/knowledge": "workspace:*",
+    "@ema-agent/vision": "workspace:*",
     "@ema-agent/llm": "workspace:*",
     "@ema-agent/narrative": "workspace:*",
     "@ema-agent/permission": "workspace:*",

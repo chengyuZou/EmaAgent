@@ -4,6 +4,7 @@ import type { TaskStore } from '@ema-agent/tasks';
 import type { KnowledgeSearch } from '@ema-agent/knowledge';
 import type { NarrativeSearchPort } from '@ema-agent/narrative';
 import type { SkillPool } from '@ema-agent/skills';
+import type { VisionModel } from '@ema-agent/vision';
 import type { ReadFileState } from '../types.js';
 import type { AskUserQuestionSpec } from '../events.js';
 import type { BackgroundProcessPort } from '../background/types.js';
@@ -79,6 +80,15 @@ export interface ScratchpadPort {
 }
 
 /**
+ * 视觉模型选择（来自 model_bindings 的 vision 绑定）：装配层解析 VisionModel 后注入。
+ * PdfReadTool 等需要读图的工具在 validateContext 里取它做 OCR/图注描述。
+ */
+export interface ToolVisionSelection {
+  readonly model: string;
+  readonly vision: VisionModel;
+}
+
+/**
  * Ema 工具宿主能力全集。
  *
  * 该对象只描述本轮宿主能提供哪些业务能力。Session、Turn、ToolCall 身份和取消
@@ -114,4 +124,6 @@ export interface ToolUseContext {
   readonly readFileState?: ReadFileState;
   /** AskUser 工具的问询解析器。 */
   readonly askUser?: AskUserPort;
+  /** 视觉模型选择（vision 绑定）: PdfReadTool 扫描页 OCR / 图注描述用; 缺省时 PDF 只读文本层。 */
+  readonly vision?: ToolVisionSelection;
 }

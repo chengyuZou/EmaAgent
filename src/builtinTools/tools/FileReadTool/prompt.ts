@@ -19,6 +19,7 @@ Usage:
 - Use \`offset\` and \`limit\` to paginate large text files (limit up to ${MAX_READ_LINES} lines); omit both to read the entire file. Pagination streams the file — reading a slice of a huge file does not load it into memory.
 - Each text read returns at most ${SELECTED_BYTES_LIMIT / 1024} KB of content; larger selections are truncated with a \`nextOffset\` to continue from. Files over 10 MiB can only be read with pagination.
 - Image files (PNG/JPEG/GIF/WebP up to ${IMAGE_FILE_SIZE_LIMIT / 1024 / 1024} MiB) are returned as visual content you can see. \`offset\`/\`limit\` do not apply to images.
+- Notebook files (.ipynb) are parsed into cells with their outputs; oversized outputs are summarized. \`offset\`/\`limit\` do not apply to notebooks.
 - PDF files are read with the PdfRead tool instead. Other binary files, device files, and UNC paths are refused.
 - If the same file+range is read twice without the file changing, the tool reports it is unchanged — refer to the earlier content instead of re-reading.`;
 

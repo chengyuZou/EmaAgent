@@ -19,3 +19,7 @@ export const TEXT_WHOLE_READ_LIMIT = 10 * 1024 * 1024;
 
 /** 图片原文件上限: 取各 Provider 图片限制的保守下限(Anthropic ~5MB)。 */
 export const IMAGE_FILE_SIZE_LIMIT = 5 * 1024 * 1024;
+
+/** Notebook(.ipynb)原文件上限: JSON 文本可含大量输出(base64 图片), 但仍是文本;
+ *  50MiB 是防 JSON.parse 一次性加载 OOM 的保守上限。 */
+export const NOTEBOOK_SIZE_LIMIT = 50 * 1024 * 1024;

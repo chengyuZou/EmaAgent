@@ -15,18 +15,20 @@ const MAX_RESPONSE_CHARS = 100_000;
 // ── 输入 schema ──────────────────────────────────────────────────────────────
 
 const inputSchema = z.object({
-  url: z.string().url().describe('HTTP or HTTPS URL to fetch.'),
+  url: z.url().describe('HTTP or HTTPS URL to fetch.'),
   max_length: z
     .number()
     .int()
     .min(1)
     .max(MAX_RESPONSE_CHARS)
+    .optional()
     .default(MAX_RESPONSE_CHARS)
     .describe('Maximum characters of response body to return.'),
   start_index: z
     .number()
     .int()
     .min(0)
+    .optional()
     .default(0)
     .describe('Character offset to start reading from (for pagination).'),
   raw: z

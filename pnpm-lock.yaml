@@ -1286,6 +1286,9 @@ importers:
       '@ema-agent/turn':
         specifier: workspace:*
         version: link:../turn
+      '@ema-agent/vision':
+        specifier: workspace:*
+        version: link:../vision
       diff:
         specifier: ^9.0.0
         version: 9.0.0

@@ -2,9 +2,16 @@
 import { open, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
-import { PdfReader, type DocumentBlock } from '@ema-agent/knowledge';
-import { buildTool, contextFail, contextOk, type ToolInvocation } from '@ema-agent/tools';
+import { ImageReader, PdfReader, type DocumentBlock } from '@ema-agent/knowledge';
+import {
+  buildTool,
+  contextFail,
+  contextOk,
+  type ToolInvocation,
+  type ToolVisionSelection,
+} from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
+import { checkReadPathPermission } from '../shared/pathPermission.js';
 import { isBlockedDevice } from '../FileReadTool/FileReadTool.js';
 import {
   DEFAULT_PAGE_COUNT,
@@ -28,9 +35,10 @@ const inputSchema = z.object({
 
 type PdfReadInput = z.infer<typeof inputSchema>;
 
-/** PdfReadTool 的窄 Context：只取工作区根; 取消与身份走 ToolInvocation。 */
+/** PdfReadTool 的窄 Context：工作区根 + 可选视觉模型; 取消与身份走 ToolInvocation。 */
 interface PdfReadToolContext {
   workspaceRoot: string;
+  vision?: ToolVisionSelection;
 }
 
 export interface PdfReadWarning {
@@ -67,7 +75,8 @@ export const PdfReadTool = buildTool<PdfReadInput, PdfReadResult, PdfReadToolCon
     if (!context.workspaceRoot) {
       return contextFail('PDF 读取工具未装配工作区。');
     }
-    return contextOk({ workspaceRoot: context.workspaceRoot });
+    // vision 可选: 缺省时 PDF 只读文本层(扫描页/图表占位 + warning), 不阻断。
+    return contextOk({ workspaceRoot: context.workspaceRoot, vision: context.vision });
   },
 
   // 路径形状在 Permission 之前校验; 文件存在/签名/体积留在 execute 用 fs 复查。
@@ -78,12 +87,13 @@ export const PdfReadTool = buildTool<PdfReadInput, PdfReadResult, PdfReadToolCon
       : { valid: true };
   },
 
-  getPermissionIntent: (input) => ({
-    riskLevel: 'low',
-    accessType: 'read',
-    targets: [{ path: input.file_path, accessType: 'read' }],
-    promptPolicy: 'whenRequired',
-  }),
+  checkPermissions: async (input, context, permissionContext) =>
+    checkReadPathPermission({
+      toolName: BuiltinTools.PdfRead.name,
+      path: path.resolve(context.workspaceRoot, input.file_path),
+      workspaceRoot: context.workspaceRoot,
+      permissionContext,
+    }),
 
   async execute(
     input: PdfReadInput,
@@ -107,7 +117,14 @@ export const PdfReadTool = buildTool<PdfReadInput, PdfReadResult, PdfReadToolCon
     const startPage = input.start_page ?? 1;
     const requestedPageCount = input.page_count ?? DEFAULT_PAGE_COUNT;
     const requestedEndPage = startPage + requestedPageCount - 1;
-    const result = await new PdfReader().readRange(
+    // 配了 vision 绑定 → 扫描页 OCR / 图注描述; 缺省降级纯文本(占位 + warning)。
+    const imageReader = context.vision
+      ? new ImageReader(context.vision.vision, {
+          model: context.vision.model,
+          signal: invocation.signal,
+        })
+      : undefined;
+    const result = await new PdfReader(imageReader).readRange(
       { kind: 'path', path: filePath },
       {
         startPage,

@@ -107,7 +107,7 @@ export const McpToolInfoSchema = z.object({
   /** 用户配置的原始服务器名,不可从清洗后的 qualifiedName 反推。 */
   originalServerName: z.string().min(1),
   description: z.string(),
-  inputSchema: z.record(z.unknown()),
+  inputSchema: z.record(z.string(), z.unknown()),
   /** 远端 Server 自报的只读提示,仅供 UI 展示;并发调度与权限都不信任它。 */
   reportedReadOnly: z.boolean().default(false),
   /** 远端 Server 自报的破坏性提示,可以单向提升本地风险等级。 */

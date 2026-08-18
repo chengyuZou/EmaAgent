@@ -12,7 +12,14 @@ import {
   type ToolInvocation,
 } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
+import { checkReadPathPermission } from '../shared/pathPermission.js';
 import { imageMediaTypeFor, readImageFile, type FileReadImageResult } from './imageReader.js';
+import {
+  isNotebookPath,
+  readNotebookFile,
+  renderNotebookCells,
+  type FileReadNotebookResult,
+} from './notebookReader.js';
 import { MAX_READ_LINES, MAX_RESULT_BYTES, SELECTED_BYTES_LIMIT, TEXT_WHOLE_READ_LIMIT } from './limits.js';
 import { FILE_READ_DESCRIPTION, FILE_UNCHANGED_STUB, imageResultNotice } from './prompt.js';
 import { readTextInRange } from './readTextInRange.js';
@@ -98,7 +105,8 @@ export interface FileReadUnchangedResult {
 export type FileReadResult =
   | FileReadTextResult
   | FileReadUnchangedResult
-  | FileReadImageResult;
+  | FileReadImageResult
+  | FileReadNotebookResult;
 
 // ── 辅助函数 ───────────────────────────────────────────────────────────────────
 
@@ -180,12 +188,13 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, FileReadToo
     });
   },
 
-  getPermissionIntent: (input) => ({
-    riskLevel: 'low',
-    accessType: 'read',
-    targets: [{ path: input.file_path, accessType: 'read' }],
-    promptPolicy: 'whenRequired',
-  }),
+  checkPermissions: async (input, context, permissionContext) =>
+    checkReadPathPermission({
+      toolName: BuiltinTools.FileRead.name,
+      path: path.resolve(context.workspaceRoot, input.file_path),
+      workspaceRoot: context.workspaceRoot,
+      permissionContext,
+    }),
 
   async execute(
     input: FileReadInput,
@@ -234,6 +243,19 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, FileReadToo
         fullPath,
         displayPath: file_path,
         mediaType: imageMediaType,
+        sizeBytes: stat.size,
+        signal: invocation.signal,
+      });
+    }
+
+    // ── Notebook 分支: .ipynb 是 JSON, 映射为 cells(含输出), 不走文本分支 ──
+    if (isNotebookPath(fullPath)) {
+      if (offset !== undefined || limit !== undefined) {
+        throw new Error('offset/limit do not apply to notebook files.');
+      }
+      return readNotebookFile({
+        fullPath,
+        displayPath: file_path,
         sizeBytes: stat.size,
         signal: invocation.signal,
       });
@@ -341,6 +363,8 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, FileReadToo
           },
           { type: 'image_data', data: output.base64, mimeType: output.mediaType },
         ];
+      case 'notebook_content':
+        return renderNotebookCells(output.cells);
       case 'file_content': {
         const notice = output.notice ? `\n${output.notice}` : '';
         return `${output.content}${notice}`;

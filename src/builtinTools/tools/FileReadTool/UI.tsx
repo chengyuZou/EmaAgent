@@ -23,6 +23,10 @@ function asFileReadResult(data: unknown): FileReadResult | null {
       return typeof data['base64'] === 'string' && typeof data['mediaType'] === 'string'
         ? (data as unknown as FileReadResult)
         : null;
+    case 'notebook_content':
+      return typeof data['totalCells'] === 'number' && Array.isArray(data['cells'])
+        ? (data as unknown as FileReadResult)
+        : null;
     default:
       return null;
   }
@@ -79,6 +83,40 @@ export function FileReadResultView({ data }: { data: unknown }): JSX.Element | n
           </span>
         </div>
       );
+
+    case 'notebook_content': {
+      // 摘要 + 每 cell 一行轻量 chrome(类型/语言/字符数/输出数), 不渲染 source 内容。
+      if (result.totalCells < 1) {
+        return <Badge variant="danger">Notebook 没有 cell</Badge>;
+      }
+      return (
+        <div className="flex flex-col gap-1 pr-6">
+          <span className="text-[11px] text-[var(--ema-text-secondary)]">
+            读取 <span className="font-medium">{result.totalCells.toLocaleString()}</span> 个 cell
+          </span>
+          <div className="flex max-h-40 flex-col gap-0.5 overflow-y-auto">
+            {result.cells.map((cell, index) => (
+              <div key={index} className="flex items-center gap-2 text-[11px] leading-relaxed">
+                <Badge variant={cell.cellType === 'code' ? 'neutral' : 'success'}>
+                  {cell.cellType === 'code' ? 'code' : 'md'}
+                </Badge>
+                {cell.cellType === 'code' && (
+                  <span className="text-[var(--ema-text-tertiary)]">{cell.language}</span>
+                )}
+                <span className="text-[var(--ema-text-tertiary)]">
+                  {cell.source.length.toLocaleString()} 字符
+                </span>
+                {cell.outputs && cell.outputs.length > 0 && (
+                  <span className="text-[var(--ema-text-tertiary)]">
+                    · {cell.outputs.length} 输出
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
 
     case 'file_content': {
       const readLines = result.content === '' ? 0 : result.content.split('\n').length;

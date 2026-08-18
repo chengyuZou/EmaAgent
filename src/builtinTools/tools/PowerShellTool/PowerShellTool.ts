@@ -1,10 +1,11 @@
 // PowerShell 命令执行工具:无沙箱 Windows 的"AST 分析 + 逐条权限"路线。
-// 安全链:validateInput(长度闸门 + AST 硬拦 deny 档) → getPermissionIntent(同一
-// 分析映射风险档,经 LRU 缓存不重复起进程) → 引擎裁决 → powershellRunner 直接执行。
+// 安全链:validateInput(长度闸门 + AST 硬拦 deny 档) → checkPermissions(内容规则 +
+// 默认询问) → 中央裁决 → powershellRunner 直接执行。
 // 与 BashTool 的分工:Bash 走 OS 沙箱(bwrap/WSL),无沙箱时整体隐藏;
 // 本工具专为无沙箱 Windows 存在,安全性不依赖 OS 隔离。
 
 import { z } from 'zod';
+import { findMatchingContentRule, matchShellRule } from '@ema-agent/permission';
 import {
   buildTool,
   contextFail,
@@ -21,7 +22,6 @@ import {
   parsePowerShellCommand,
 } from './psParser.js';
 import { powershellCommandIsSafe } from './security/powershellSecurity.js';
-import { isReadOnlyCommand } from './security/readOnlyValidation.js';
 import { interpretCommandResult } from './security/commandSemantics.js';
 import { runPowerShellCommand } from './powershellRunner.js';
 import { POWERSHELL_DESCRIPTION } from './prompt.js';
@@ -71,22 +71,47 @@ export const PowerShellTool = buildTool<PowerShellInput, PowerShellCommandResult
   description: POWERSHELL_DESCRIPTION,
 
   inputSchema,
-  // 静态只读证明需要 AST,而 isReadOnly 是同步钩子;保守报 false,
-  // 只读优待(并发/低风险档)由 getPermissionIntent 里的真实分析给出。
+  // 静态只读证明需要 AST,而 isReadOnly 是同步钩子;保守报 false。
   isReadOnly: () => false,
   isConcurrencySafe: () => false,
 
-  getPermissionIntent: async (input) => {
-    const parsed = await parsePowerShellCommand(input.command);
-    const verdict = powershellCommandIsSafe(input.command, parsed);
-    // ask 档(含 parse 失败的兜底):高风险、必须走规则/用户裁决。
-    if (verdict.behavior !== 'passthrough') {
-      return { riskLevel: 'high', accessType: 'execute', promptPolicy: 'whenRequired' };
+  // 内容规则(shell 模式)优先;无规则默认询问(与旧 whenRequired 全档一致)。
+  // AST 分析不在此处重复:deny 档已在 validateInput 硬拦,execute 内复查兜底。
+  async checkPermissions(input, _context, permissionContext) {
+    const command = input.command;
+    const denyRule = findMatchingContentRule(
+      permissionContext, BuiltinTools.PowerShell.name, 'deny',
+      (content) => matchShellRule(content, command),
+    );
+    if (denyRule) {
+      return {
+        behavior: 'deny',
+        message: `已禁止执行: ${command}`,
+        decisionReason: { type: 'rule', rule: denyRule },
+      };
     }
-    if (isReadOnlyCommand(input.command, parsed)) {
-      return { riskLevel: 'low', accessType: 'read', promptPolicy: 'whenRequired' };
+    const askRule = findMatchingContentRule(
+      permissionContext, BuiltinTools.PowerShell.name, 'ask',
+      (content) => matchShellRule(content, command),
+    );
+    if (askRule) {
+      return {
+        behavior: 'ask',
+        message: `执行 ${command} 需要用户确认`,
+        decisionReason: { type: 'rule', rule: askRule },
+      };
     }
-    return { riskLevel: 'medium', accessType: 'execute', promptPolicy: 'whenRequired' };
+    const allowRule = findMatchingContentRule(
+      permissionContext, BuiltinTools.PowerShell.name, 'allow',
+      (content) => matchShellRule(content, command),
+    );
+    if (allowRule) {
+      return {
+        behavior: 'allow',
+        decisionReason: { type: 'rule', rule: allowRule },
+      };
+    }
+    return { behavior: 'passthrough', message: '执行 PowerShell 命令需要用户确认' };
   },
 
   validateContext(ctx: ToolUseContext) {
