@@ -1,11 +1,10 @@
 // 完成单次 Tool 调用的解析、校验、授权、执行与审计终态。
 import type { ToolResultContentPart } from '@ema-agent/llm';
-import type {
-  AskPermissionFn,
-  PermissionAuthorizer,
-  PermissionContext,
-  PermissionIntent,
-  PermissionStreamEvent,
+import {
+  hasPermissionsToUseTool,
+  type PermissionRequest,
+  type PermissionResponse,
+  type ToolPermissionContext,
 } from '@ema-agent/permission';
 import { ZodError } from 'zod';
 import type { ToolPool } from '../assembly/toolPool.js';
@@ -25,8 +24,6 @@ import type { ToolResult } from '../results/toolResult.js';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyTool = Tool<any, any, any, any>;
 
-export type ToolExecutionLiveEvent = ToolExecutionEvent | PermissionStreamEvent;
-
 /** 同一 Turn 内每个单调用共享的执行环境。 */
 export interface ToolExecutionEnvironment {
   readonly sessionId: string;
@@ -37,15 +34,19 @@ export interface ToolExecutionEnvironment {
   readonly abortSignal: AbortSignal;
   /** 根 Turn 已经筛选并冻结的唯一 Tool 集合。 */
   readonly toolPool: ToolPool;
-  readonly permission: PermissionAuthorizer;
-  readonly permissionContext: PermissionContext;
+  /** Turn 准备期冻结的权限判定上下文（模式 + 三桶规则 + 工作区）。 */
+  readonly permissionContext: ToolPermissionContext;
+  /**
+   * 权限交互通道：存在即 interactive，ask 决策经它等用户回答；
+   * 缺失（子 Agent/headless）时中央把 ask 收口为 deny(headless)。
+   * 由 Turn 层实现（交互队列 + permission_required/resolved 事件 +
+   * allowSession 的规则沉淀），执行链只消费最终回答。
+   */
+  readonly askPermission?: (
+    request: PermissionRequest,
+    signal: AbortSignal,
+  ) => Promise<PermissionResponse>;
   readonly toolContext: ToolUseContext;
-  readonly buildAsk?: (args: {
-    sessionId: string;
-    turnId: string;
-    toolCallId: string;
-    emit: (event: PermissionStreamEvent) => void;
-  }) => AskPermissionFn;
   readonly toolResultStore?: ToolResultStore;
   readonly toolExecutionState?: ToolExecutionStatePort;
 }
@@ -96,7 +97,7 @@ export class ToolCallExecution {
   constructor(
     private readonly environment: ToolExecutionEnvironment,
     call: ToolExecutionCall,
-    private readonly emit: (event: ToolExecutionLiveEvent) => void,
+    private readonly emit: (event: ToolExecutionEvent) => void,
   ) {
     this.id = call.callId;
     this.name = call.name;
@@ -290,44 +291,57 @@ export class ToolCallExecution {
     }
   }
 
+  /**
+   * 中央固定优先级判定 → allow 放行 / deny 失败 / ask 走交互通道。
+   * 规则沉淀（allowSession → PermissionUpdate）由 askPermission 的实现方
+   * 在等回答时完成，执行链不接触 settings。
+   */
   private async requestPermission(
     tool: AnyTool,
     input: unknown,
     narrowedContext: unknown,
   ): Promise<boolean> {
-    const { sessionId, turnId, permission, permissionContext, buildAsk } = this.environment;
+    const { sessionId, turnId, permissionContext, askPermission } = this.environment;
     const signal = this.abortController.signal;
-    const callPermissionContext: PermissionContext = {
-      ...permissionContext,
-      sessionId,
-      turnId,
-      toolCallId: this.id,
-    };
-    const ask = buildAsk?.({
-      sessionId,
-      turnId,
-      toolCallId: this.id,
-      emit: this.emit,
-    });
 
     try {
-      const declaredIntent = await tool.getPermissionIntent(input, narrowedContext);
-      const summary = tool.getToolUseSummary?.(input);
-      const outcome = await permission.authorize({
-        tool: {
-          id: tool.id,
-          name: tool.name,
-          ...(summary ? { description: summary } : {}),
-        },
+      const decision = await hasPermissionsToUseTool(
+        tool,
         input,
-        intent: enforceOriginPermission(tool, declaredIntent),
-        context: callPermissionContext,
-      }, ask);
-      if (outcome.outcome === 'allow') return true;
+        narrowedContext,
+        permissionContext,
+        { interactive: askPermission !== undefined },
+      );
+      if (decision.behavior === 'allow') return true;
+      if (decision.behavior === 'deny') {
+        await this.completeFailure({
+          code: 'permission/denied',
+          message: decision.message,
+        });
+        return false;
+      }
 
+      // ask：无交互通道时中央已收口 deny，能到这里 askPermission 必然存在。
+      const summary = tool.getToolUseSummary?.(input);
+      const response = await askPermission!({
+        toolName: tool.name,
+        ...(summary ? { toolDescription: summary } : {}),
+        input,
+        ...(decision.decisionReason ? { decisionReason: decision.decisionReason } : {}),
+        ...(decision.ruleSuggestion ? { ruleSuggestion: decision.ruleSuggestion } : {}),
+        sessionId,
+        turnId,
+        toolCallId: this.id,
+      }, signal);
+
+      if (isCancelled(signal, this.environment.abortSignal)) {
+        this.completeCancellation();
+        return false;
+      }
+      if (response.action === 'allow' || response.action === 'allowSession') return true;
       await this.completeFailure({
         code: 'permission/denied',
-        message: outcome.message,
+        message: response.reason ?? '用户拒绝了本次调用',
       });
       return false;
     } catch (error) {
@@ -519,17 +533,6 @@ function classifyInputFailure(toolName: string, error: unknown): ToolFailure {
       ? 'tool/validation_failed'
       : 'tool/input_preparation_failed',
     message: errorMessage(inputError),
-  };
-}
-
-/** MCP Server 只能申报更严格的意图，不能把自己降级为低风险或免询问。 */
-function enforceOriginPermission(tool: AnyTool, intent: PermissionIntent): PermissionIntent {
-  if (tool.origin.kind === 'builtin') return intent;
-  return {
-    ...intent,
-    riskLevel: intent.riskLevel === 'high' ? 'high' : 'medium',
-    accessType: 'execute',
-    promptPolicy: 'whenRequired',
   };
 }
 

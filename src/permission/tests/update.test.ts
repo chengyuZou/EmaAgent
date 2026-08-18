@@ -91,7 +91,7 @@ describe('applyPermissionUpdate', () => {
   it('setMode 写 permission.mode 设置', () => {
     const { store } = makeStore();
     applyPermissionUpdate(store, {
-      type: 'setMode', destination: 'userSettings', mode: 'acceptEdits',
+      type: 'setMode', mode: 'acceptEdits',
     }, { sessionId: 's1' });
     expect(store.get(permissionModeSetting)).toBe('acceptEdits');
   });

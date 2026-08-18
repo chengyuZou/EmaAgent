@@ -1,7 +1,10 @@
 // 测试单次 Tool 调用管线:查找、Schema、Context、业务校验、权限、执行与取消语义。
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import type { PermissionAuthorizer, PermissionIntent, PermissionDecision } from '@ema-agent/permission';
+import type {
+  PermissionRequest,
+  ToolPermissionContext,
+} from '@ema-agent/permission';
 import {
   buildTool,
   contextOk,
@@ -13,36 +16,18 @@ import {
 import {
   ToolCallExecution,
   type ToolExecutionEnvironment,
-  type ToolExecutionLiveEvent,
 } from '../execution/toolCallExecution.js';
 
 const SESSION_ID = '00000000-0000-4000-8000-0000000000a1';
 const TURN_ID = '00000000-0000-4000-8000-0000000000b1';
 
-const ALLOW: PermissionDecision = { outcome: 'allow', reason: { type: 'mode', mode: 'default' } };
-
-function allowAllPermission(): PermissionAuthorizer & { intents: PermissionIntent[] } {
-  const intents: PermissionIntent[] = [];
-  return {
-    intents,
-    authorize: async (request) => {
-      intents.push(request.intent);
-      return ALLOW;
-    },
-    clearSession: () => undefined,
-  };
-}
-
-function denyPermission(): PermissionAuthorizer {
-  return {
-    authorize: async () => ({
-      outcome: 'deny',
-      message: '用户拒绝了本次操作',
-      reason: { type: 'user', action: 'deny' },
-    }),
-    clearSession: () => undefined,
-  };
-}
+const PERMISSION_CONTEXT: ToolPermissionContext = {
+  mode: 'default',
+  alwaysAllowRules: {},
+  alwaysDenyRules: {},
+  alwaysAskRules: {},
+  isBypassPermissionsModeAvailable: false,
+};
 
 /** 记录状态迁移顺序的假审计端口。 */
 function fakeState() {
@@ -75,11 +60,7 @@ function echoTool(overrides: Partial<Parameters<typeof buildTool>[0]> = {}): Any
     validateContext: () => contextOk({}),
     isReadOnly: () => true,
     isConcurrencySafe: () => true,
-    getPermissionIntent: () => ({
-      riskLevel: 'low',
-      accessType: 'read',
-      promptPolicy: 'whenRequired',
-    }),
+    checkPermissions: async () => ({ behavior: 'allow' as const }),
     execute: async (input: EchoInput) => ({ echoed: input.value }),
     ...overrides,
   }) as AnyTestTool;
@@ -87,7 +68,7 @@ function echoTool(overrides: Partial<Parameters<typeof buildTool>[0]> = {}): Any
 
 function makeEnv(options: {
   tools: AnyTestTool[];
-  permission?: PermissionAuthorizer;
+  askPermission?: ToolExecutionEnvironment['askPermission'];
   state?: ToolExecutionStatePort;
 }): ToolExecutionEnvironment {
   return {
@@ -95,8 +76,8 @@ function makeEnv(options: {
     turnId: TURN_ID,
     abortSignal: new AbortController().signal,
     toolPool: new ToolPool(options.tools as never),
-    permission: options.permission ?? allowAllPermission(),
-    permissionContext: { mode: 'default' },
+    permissionContext: PERMISSION_CONTEXT,
+    ...(options.askPermission ? { askPermission: options.askPermission } : {}),
     toolContext: { workspaceRoot: '', platform: process.platform },
     ...(options.state ? { toolExecutionState: options.state } : {}),
   };
@@ -104,9 +85,9 @@ function makeEnv(options: {
 
 function makeCall(env: ToolExecutionEnvironment, name: string, args: unknown): {
   execution: ToolCallExecution;
-  events: ToolExecutionLiveEvent[];
+  events: ToolExecutionEvent[];
 } {
-  const events: ToolExecutionLiveEvent[] = [];
+  const events: ToolExecutionEvent[] = [];
   const execution = new ToolCallExecution(
     env,
     { callId: 'call-1', name, args },
@@ -147,13 +128,14 @@ describe('ToolCallExecution', () => {
   });
 
   it('validateInput 失败 → 业务错误码,不进入权限阶段', async () => {
-    const permission = allowAllPermission();
+    const checkPermissions = vi.fn(async () => ({ behavior: 'allow' as const }));
     const tool = echoTool({
       validateInput: () => ({ valid: false as const, message: '已存在', code: 'file/exists' }),
+      checkPermissions,
     });
     const state = fakeState();
     const { execution } = makeCall(
-      makeEnv({ tools: [tool], permission, state: state.port }),
+      makeEnv({ tools: [tool], state: state.port }),
       'Echo',
       { value: 1 },
     );
@@ -161,13 +143,16 @@ describe('ToolCallExecution', () => {
     const { result } = await execution.run();
 
     expect(result.errorCode).toBe('file/exists');
-    expect(permission.intents).toHaveLength(0);
+    expect(checkPermissions).not.toHaveBeenCalled();
   });
 
-  it('权限拒绝 → permission/denied,不越过 running 边界', async () => {
+  it('Tool 自检拒绝 → permission/denied,不越过 running 边界', async () => {
+    const tool = echoTool({
+      checkPermissions: async () => ({ behavior: 'deny' as const, message: '危险输入' }),
+    });
     const state = fakeState();
     const { execution } = makeCall(
-      makeEnv({ tools: [echoTool()], permission: denyPermission(), state: state.port }),
+      makeEnv({ tools: [tool], state: state.port }),
       'Echo',
       { value: 1 },
     );
@@ -176,6 +161,72 @@ describe('ToolCallExecution', () => {
 
     expect(result.errorCode).toBe('permission/denied');
     expect(state.transitions).toEqual(['prepared']);
+  });
+
+  it('ask 决策走交互通道:请求携带身份、摘要与规则建议,allowSession 后放行', async () => {
+    const seen: PermissionRequest[] = [];
+    const tool = echoTool({
+      getToolUseSummary: () => '回显一个数字',
+      checkPermissions: async () => ({
+        behavior: 'ask' as const,
+        message: '需要确认',
+        ruleSuggestion: { toolName: 'Echo' },
+      }),
+    });
+    const { execution } = makeCall(
+      makeEnv({
+        tools: [tool],
+        askPermission: async (request) => {
+          seen.push(request);
+          return { action: 'allowSession' };
+        },
+      }),
+      'Echo',
+      { value: 1 },
+    );
+
+    const { result } = await execution.run();
+
+    expect(result.isError).toBe(false);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({
+      toolName: 'Echo',
+      toolDescription: '回显一个数字',
+      toolCallId: 'call-1',
+      sessionId: SESSION_ID,
+      turnId: TURN_ID,
+      ruleSuggestion: { toolName: 'Echo' },
+    });
+  });
+
+  it('ask 决策被用户拒绝 → permission/denied 并带用户理由', async () => {
+    const tool = echoTool({
+      checkPermissions: async () => ({ behavior: 'ask' as const, message: '需要确认' }),
+    });
+    const { execution } = makeCall(
+      makeEnv({
+        tools: [tool],
+        askPermission: async () => ({ action: 'deny' as const, reason: '不想做' }),
+      }),
+      'Echo',
+      { value: 1 },
+    );
+
+    const { result } = await execution.run();
+
+    expect(result.errorCode).toBe('permission/denied');
+    expect(result.content).toBe('不想做');
+  });
+
+  it('ask 决策无交互通道 → deny(headless),不调用任何通道', async () => {
+    const tool = echoTool({
+      checkPermissions: async () => ({ behavior: 'ask' as const, message: '需要确认' }),
+    });
+    const { execution } = makeCall(makeEnv({ tools: [tool] }), 'Echo', { value: 1 });
+
+    const { result } = await execution.run();
+
+    expect(result.errorCode).toBe('permission/denied');
   });
 
   it('成功执行:结果规范化、终态事件齐备、commitResult 后落 succeeded', async () => {
@@ -254,30 +305,5 @@ describe('ToolCallExecution', () => {
     expect(terminalEvent).toMatchObject({
       error: { code: 'tool/cancelled' },
     });
-  });
-
-  it('MCP 工具申报的意图被强制加固:风险不低于 medium、execute、必询问', async () => {
-    const permission = allowAllPermission();
-    const tool = echoTool({
-      origin: { kind: 'mcp', serverName: 'srv', serverToolName: 'echo' },
-      getPermissionIntent: () => ({
-        riskLevel: 'low',
-        accessType: 'read',
-        promptPolicy: 'neverForTrustedBuiltin',
-      }),
-    });
-    const { execution } = makeCall(
-      makeEnv({ tools: [tool], permission }),
-      'Echo',
-      { value: 1 },
-    );
-
-    await execution.run();
-
-    expect(permission.intents).toEqual([{
-      riskLevel: 'medium',
-      accessType: 'execute',
-      promptPolicy: 'whenRequired',
-    }]);
   });
 });

@@ -1,25 +1,28 @@
 // 测试流式调度器的并发屏障、模型顺序 FIFO、交付/关账握手与取消。
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import type { PermissionAuthorizer } from '@ema-agent/permission';
+import type { ToolPermissionContext } from '@ema-agent/permission';
 import {
   buildTool,
   contextOk,
   ToolPool,
   type Tool,
+  type ToolExecutionEvent,
 } from '../index.js';
 import {
   StreamingToolExecutor,
   type StreamingToolExecutorEvent,
 } from '../execution/streamingToolExecutor.js';
-import type { ToolExecutionLiveEvent } from '../execution/toolCallExecution.js';
 
 const SESSION_ID = '00000000-0000-4000-8000-0000000000a1';
 const TURN_ID = '00000000-0000-4000-8000-0000000000b1';
 
-const ALLOW_PERMISSION: PermissionAuthorizer = {
-  authorize: async () => ({ outcome: 'allow', reason: { type: 'mode', mode: 'default' } }),
-  clearSession: () => undefined,
+const PERMISSION_CONTEXT: ToolPermissionContext = {
+  mode: 'default',
+  alwaysAllowRules: {},
+  alwaysDenyRules: {},
+  alwaysAskRules: {},
+  isBypassPermissionsModeAvailable: false,
 };
 
 type AnyTestTool = Tool<{ value: number }, unknown, Record<string, never>, never>;
@@ -41,7 +44,7 @@ function gatedTool(name: string, concurrencySafe: boolean): {
     validateContext: () => contextOk({}),
     isReadOnly: () => concurrencySafe,
     isConcurrencySafe: () => concurrencySafe,
-    getPermissionIntent: () => ({ riskLevel: 'low', accessType: 'read', promptPolicy: 'whenRequired' }),
+    checkPermissions: async () => ({ behavior: 'allow' as const }),
     execute: async (_input, _context, invocation) => {
       markStarted();
       await gate;
@@ -55,16 +58,15 @@ function gatedTool(name: string, concurrencySafe: boolean): {
 
 function makeExecutor(tools: AnyTestTool[]): {
   executor: StreamingToolExecutor;
-  events: ToolExecutionLiveEvent[];
+  events: ToolExecutionEvent[];
 } {
-  const events: ToolExecutionLiveEvent[] = [];
+  const events: ToolExecutionEvent[] = [];
   const executor = new StreamingToolExecutor({
     sessionId: SESSION_ID,
     turnId: TURN_ID,
     abortSignal: new AbortController().signal,
     toolPool: new ToolPool(tools as never),
-    permission: ALLOW_PERMISSION,
-    permissionContext: { mode: 'default' },
+    permissionContext: PERMISSION_CONTEXT,
     toolContext: { workspaceRoot: '', platform: process.platform },
     pushEv: event => events.push(event),
     wake: () => undefined,
@@ -76,9 +78,9 @@ function tick(): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, 0));
 }
 
-function terminalNames(events: ToolExecutionLiveEvent[]): string[] {
+function terminalNames(events: StreamingToolExecutorEvent[]): string[] {
   return events
-    .filter((event): event is Extract<ToolExecutionLiveEvent, { type: 'tool_result' }> =>
+    .filter((event): event is Extract<StreamingToolExecutorEvent, { type: 'tool_result' }> =>
       event.type === 'tool_result')
     .map(event => event.name);
 }

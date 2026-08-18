@@ -18,7 +18,7 @@ type ToolDefinition<TInput, TOutput, TContext, TProgress> =
 
 /**
  * buildTool 只提供安全默认值，不创建第二套 BuiltTool 或公开 unsafe 方法。
- * 类型擦除属于 ToolPool；MCP 权限加固属于单次 ToolExecution 授权边界。
+ * 类型擦除属于 ToolPool；MCP 自报风险只升不降由 MCP Tool 自己的 checkPermissions 保证。
  */
 export function buildTool<TInput, TOutput, TContext, TProgress = never>(
   definition: ToolDefinition<TInput, TOutput, TContext, TProgress>,

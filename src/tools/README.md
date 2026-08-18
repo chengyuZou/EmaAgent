@@ -84,7 +84,7 @@ src/tools/
 ## 关键不变量
 
 1. **ToolPool 即冻结快照。** 根 Turn 冻结后不回读 Registry;MCP 热更新只影响下一根 Turn。不存在独立 Manifest/PreparedToolCall——Provider `tools[]`、缓存诊断、执行查找都从同一个 Pool 取。
-2. **输入解析一次。** `inputSchema.parse` 只在单调用入口做一次，同一个局部 `input` 依次经过 validateInput → getPermissionIntent → execute。Permission 不修改输入；规范化必须由 Tool 显式返回新输入。
+2. **输入解析一次。** `inputSchema.parse` 只在单调用入口做一次，同一个局部 `input` 依次经过 validateInput → checkPermissions → execute。Permission 不修改输入；规范化必须由 Tool 显式返回新输入。
 3. **`validateContext` 一身二任。** 装配时决定可见性，执行前重新投影——不得恢复 `requires` 第二份能力清单。
 4. **running 是副作用边界。** `ToolExecutionState.start()` 落库成功后才能 `execute()`;running 后断电/取消按 `outcome_unknown` 关账，不伪装干净 cancelled。
 5. **Message 先落，状态后关。** `acknowledgeResult`（写 Message）先于 `commitResult`（推进状态机）——先持久化后关账。
@@ -104,13 +104,13 @@ src/tools/
 | 权限拒绝 | `permission/denied`，不越过 running |
 | 执行中用户取消 | 模型见 `tool/cancelled`，审计 `outcome_unknown` |
 | running 后断电 | 启动恢复标 `outcome_unknown`，合成一次结果进 Message |
-| MCP 自报低风险/免询问 | 强制加固为 `medium/execute/whenRequired` |
+| MCP 自报低风险/免询问 | MCP Tool 自己的 checkPermissions 只升不降（`destructiveHint` 可升 ask） |
 
 ## 反模式（其他包禁止的行为）
 
 - 从本包以外 import `toolCallExecution.js`（内部实现）或直接构造执行环境——只能消费 `StreamingToolExecutor`;
 - 让本包 import `@ema-agent/storage`——持久化端口在 `toolExecutionState.ts` 与 `background/backgroundProcessStore.ts`,SQL 适配由 Core 装配；
-- 在 Tool 上声明 `requires`、`permissionMeta` 或第二份安全状态——能力走 `validateContext`,意图走 `getPermissionIntent`;
+- 在 Tool 上声明 `requires`、`permissionMeta` 或第二份安全状态——能力走 `validateContext`,权限语义走 `checkPermissions`;
 - 用 `WeakMap`、全局 Map 或模块级单例给一次调用塞旁路数据——调用事实只活在 `ToolCallExecution` 局部与 `ToolResult`;
-- 绕过 `getPermissionIntent` 在 Tool 里自行审批，或让 MCP 自报 `promptPolicy: neverForTrustedBuiltin`（执行边界强制加固）;
+- 绕过 `checkPermissions` 在 Tool 里自行审批,或让 MCP 自报 annotations 降低本地风险（自报只能升风险,详见 `@ema-agent/permission` README）;
 - 业务包重复定义 `BackgroundProcessStatus`、`ToolExecutionStatus` 等本包联合类型（备份链路消费 storage Row 是已登记的唯一例外）。

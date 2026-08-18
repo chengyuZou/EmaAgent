@@ -13,11 +13,7 @@ function makeBuiltin(name: string, id = name) {
     inputSchema: z.object({}),
     isReadOnly: () => true,
     isConcurrencySafe: () => true,
-    getPermissionIntent: () => ({
-      riskLevel: 'low',
-      accessType: 'read',
-      promptPolicy: 'neverForTrustedBuiltin',
-    }),
+    checkPermissions: async () => ({ behavior: 'allow' as const }),
     validateContext: () => ({ valid: true, context: {} }),
     execute: async () => 'ok',
   });
@@ -37,11 +33,7 @@ function makeMcp(
     inputSchema: z.object({}),
     isReadOnly: () => true,
     isConcurrencySafe: () => true,
-    getPermissionIntent: () => ({
-      riskLevel: 'medium',
-      accessType: 'execute',
-      promptPolicy: 'whenRequired',
-    }),
+    checkPermissions: async () => ({ behavior: 'passthrough' as const, message: 'MCP 一律收口中央' }),
     validateContext: () => ({ valid: true, context: {} }),
     execute: async () => 'ok',
   });

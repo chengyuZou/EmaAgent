@@ -176,27 +176,6 @@ CREATE TABLE memory_nodes (
   meta_json             TEXT NOT NULL DEFAULT '{}'
 , embedding_normalization TEXT, embedding_revision TEXT, embedding_space_id TEXT, embedding_evicted_at INTEGER, last_decayed_at INTEGER);
 
-CREATE TABLE permission_rules (
-  id             TEXT PRIMARY KEY,
-  action         TEXT NOT NULL
-                 CHECK(action IN ('allow', 'deny', 'ask')),
-  tool_id        TEXT NOT NULL,
-  path_glob      TEXT,
-  scope          TEXT NOT NULL
-                 CHECK(scope IN ('global', 'workspace')),
-  workspace_root TEXT,
-  enabled        INTEGER NOT NULL DEFAULT 1
-                 CHECK(enabled IN (0, 1)),
-  created_at     INTEGER NOT NULL,
-  updated_at     INTEGER NOT NULL,
-
-  CHECK(
-    (scope = 'global' AND workspace_root IS NULL)
-    OR
-    (scope = 'workspace' AND workspace_root IS NOT NULL)
-  )
-);
-
 CREATE TABLE providers (
   id         TEXT PRIMARY KEY,
   name       TEXT NOT NULL,
@@ -438,17 +417,6 @@ CREATE UNIQUE INDEX idx_memory_nodes_label_type ON memory_nodes(label, node_type
 CREATE INDEX idx_memory_nodes_lastref    ON memory_nodes(last_referenced_at DESC);
 
 CREATE INDEX idx_memory_nodes_type       ON memory_nodes(node_type);
-
-CREATE INDEX idx_permission_rules_enabled
-ON permission_rules(enabled, scope, tool_id);
-
-CREATE UNIQUE INDEX idx_permission_rules_selector
-ON permission_rules(
-  scope,
-  IFNULL(workspace_root, ''),
-  tool_id,
-  IFNULL(path_glob, '')
-);
 
 CREATE INDEX idx_provider_capability_active
   ON provider_capabilities(capability, provider_id)

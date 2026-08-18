@@ -109,8 +109,8 @@ function createFixture(options?: {
     `INSERT INTO sessions (id, title, created_at, updated_at) VALUES (?, '', 1, 1)`,
   ).run(SESSION_ID);
   db.sqlite.prepare(
-    `INSERT INTO turns (id, session_id, trigger_type, execution_profile, narrative_policy, status, user_input, started_at)
-     VALUES (?, ?, 'userMessage', 'work', 'off', 'running', '', 1)`,
+    `INSERT INTO turns (id, session_id, status, created_at)
+     VALUES (?, ?, 'running', 1)`,
   ).run(TURN_ID, SESSION_ID);
   // background_processes.tool_call_id 有归属触发器,必须指向真实 tool_executions.call_id。
   db.sqlite.prepare(

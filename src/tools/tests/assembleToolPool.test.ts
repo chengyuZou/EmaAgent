@@ -39,13 +39,7 @@ function makeTool(
     },
     isReadOnly: () => true,
     isConcurrencySafe: () => true,
-    getPermissionIntent: () => ({
-      riskLevel: origin.kind === 'builtin' ? 'low' : 'medium',
-      accessType: origin.kind === 'builtin' ? 'read' : 'execute',
-      promptPolicy: origin.kind === 'builtin'
-        ? 'neverForTrustedBuiltin'
-        : 'whenRequired',
-    }),
+    checkPermissions: async () => ({ behavior: 'allow' as const }),
     execute: async () => 'ok',
   });
 }

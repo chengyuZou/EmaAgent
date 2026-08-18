@@ -5,7 +5,6 @@ import type { ToolResultStore } from '../results/toolResultStore.js';
 import {
   ToolCallExecution,
   type ToolExecutionEnvironment,
-  type ToolExecutionLiveEvent,
 } from './toolCallExecution.js';
 import type { ToolResult } from '../results/toolResult.js';
 
@@ -21,7 +20,7 @@ interface TrackedTool {
   promise?: Promise<void>;
 }
 
-export type StreamingToolExecutorEvent = ToolExecutionLiveEvent;
+export type StreamingToolExecutorEvent = ToolExecutionEvent;
 
 export interface StreamingToolExecutorOptions extends ToolExecutionEnvironment {
   /** 写入 Agent 待发送事件队列；实现方同时负责唤醒流式排空循环。 */
@@ -103,7 +102,7 @@ export class StreamingToolExecutor {
     const execution = new ToolCallExecution(
       this.options,
       { callId: id, name, args },
-      (event: ToolExecutionLiveEvent) => {
+      (event: ToolExecutionEvent) => {
         if (!track.suppressEvents) this.options.pushEv(event);
       },
     );

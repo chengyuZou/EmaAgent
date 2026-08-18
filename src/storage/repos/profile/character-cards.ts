@@ -1,5 +1,9 @@
 import type { SqliteDb } from '../../database/database.js';
-import type { ProtectedDeleteResult } from './mutation-results.js';
+
+export type ProtectedDeleteResult =
+  | 'deleted'
+  | 'not_found'
+  | 'builtin_protected';
 
 export interface CharacterCardRow {
   id: string;

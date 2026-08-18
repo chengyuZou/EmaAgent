@@ -29,7 +29,10 @@ export interface PermissionRule {
 
 export type PermissionUpdateDestination = PermissionRuleSource;
 
-/** 用户选择沉淀为配置更新："本 Session 允许" = addRules(session)；写设置 = addRules(user/project)。 */
+/**
+ * 用户选择沉淀为配置更新："本 Session 允许" = addRules(session)；写设置 = addRules(user/project)。
+ * mode 只有 settings KV 一个家，setMode 无 destination。
+ */
 export type PermissionUpdate =
   | {
       readonly type: 'addRules';
@@ -45,7 +48,6 @@ export type PermissionUpdate =
     }
   | {
       readonly type: 'setMode';
-      readonly destination: PermissionUpdateDestination;
       readonly mode: PermissionMode;
     };
 
@@ -73,6 +75,13 @@ export interface PermissionAskDecision {
   readonly behavior: 'ask';
   readonly message: string;
   readonly decisionReason?: PermissionDecisionReason;
+  /**
+   * "本 Session 允许"该沉淀成什么规则；只有 Tool 自己知道同类输入的边界
+   * （Bash→`Bash(git status)`，FileEdit→`FileEdit(./src/**)`）。
+   * 执行链抄进 PermissionRequest，用户选 allowSession 时按它 addRules(session)；
+   * 缺省时批准卡不提供"本 Session 允许"。
+   */
+  readonly ruleSuggestion?: PermissionRuleValue;
 }
 
 export interface PermissionDenyDecision {
@@ -108,7 +117,11 @@ export type ToolPermissionRulesBySource = Partial<
   Record<PermissionRuleSource, readonly string[]>
 >;
 
-/** 一次判定的完整上下文：模式 + 冻结规则集 + 身份。settings 源规则 Turn 冻结；session 源本 Turn 即效。 */
+/**
+ * 一次判定的完整上下文：模式 + 冻结规则集 + 工作区。settings 源规则 Turn 冻结；
+ * session 源本 Turn 即效。调用身份（sessionId/turnId/toolCallId）不属于判定上下文——
+ * Tool 自检不需要它，批准卡身份由执行链装配进 PermissionRequest。
+ */
 export interface ToolPermissionContext {
   readonly mode: PermissionMode;
   readonly alwaysAllowRules: ToolPermissionRulesBySource;
@@ -117,8 +130,6 @@ export interface ToolPermissionContext {
   /** 正式构建 false；只有显式开发入口可为 true。 */
   readonly isBypassPermissionsModeAvailable: boolean;
   readonly workspaceRoot?: string;
-  readonly sessionId: string;
-  readonly toolCallId: string;
 }
 
 
@@ -128,6 +139,8 @@ export interface PermissionRequest {
   readonly toolDescription?: string;
   readonly input: unknown;
   readonly decisionReason?: PermissionDecisionReason;
+  /** ask 决策自带的规则建议；用户选 allowSession 时沉淀为 session allow 规则。 */
+  readonly ruleSuggestion?: PermissionRuleValue;
   readonly sessionId: string;
   readonly turnId: string;
   readonly toolCallId: string;

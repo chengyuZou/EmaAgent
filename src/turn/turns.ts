@@ -55,6 +55,8 @@ export interface StartTurnInput {
   readonly turnId?: string;
   readonly sessionId: string;
   readonly triggerType: TurnTriggerType;
+  readonly providerId?: string | null;
+  readonly modelId?: string | null;
   readonly executionProfile: ExecutionProfile;
   readonly narrativePolicy: NarrativePolicy;
 }
@@ -130,7 +132,7 @@ export interface TurnRequest {
   /** provider_configs.id — 本次 turn 使用的供应商实例。和 model 成对使用。 */
   providerId?:   string;
   /** 模型名。如果有 providerId，此模型必须在该供应商下已启用。 */
-  model?:        string;
+  modelId?:        string;
   ttsEnabled?:      boolean;
   /** 用户开启“思考”开关；支持范围由模型能力快照和输入准备层校验。 */
   thinkingEnabled?: boolean;

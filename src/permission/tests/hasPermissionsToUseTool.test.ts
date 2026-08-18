@@ -16,8 +16,6 @@ function makeContext(overrides: Partial<ToolPermissionContext> = {}): ToolPermis
     alwaysDenyRules: {},
     alwaysAskRules: {},
     isBypassPermissionsModeAvailable: false,
-    sessionId: 's1',
-    toolCallId: 'c1',
     ...overrides,
   };
 }

@@ -49,7 +49,7 @@ flowchart TD
 checkPermissions(
   input: TInput,
   context: TContext,                      // validateContext 投影出的窄 Context（宿主能力）
-  permissionContext: ToolPermissionContext, // 模式 + 冻结规则桶 + 身份
+  permissionContext: ToolPermissionContext, // 模式 + 冻结规则桶
 ): Promise<PermissionResult>;
 ```
 
@@ -63,11 +63,11 @@ interface ToolPermissionContext {
   alwaysAskRules: ToolPermissionRulesBySource;
   isBypassPermissionsModeAvailable: boolean;
   workspaceRoot?: string;
-  sessionId: string;
-  toolCallId: string;
 }
 // ToolPermissionRulesBySource = Partial<Record<'userSettings'|'projectSettings'|'session', readonly string[]>>
 // source 优先级：session > projectSettings > userSettings（具体先生效）
+// 调用身份（sessionId/turnId/toolCallId）不在这里——Tool 自检不需要；
+// 批准卡身份由执行链装配进 PermissionRequest。
 ```
 
 `PermissionResult` 四种返回：
@@ -76,7 +76,7 @@ interface ToolPermissionContext {
 |---|---|---|
 | `{ behavior: 'allow', decisionReason? }` | Tool 自己放行（如：工作区内读取、规则命中 allow） | 自检确认安全 |
 | `{ behavior: 'deny', message, decisionReason? }` | Tool 自己拒绝 | 危险输入（AST 硬拦、敏感路径） |
-| `{ behavior: 'ask', message, decisionReason? }` | 需要用户确认（**先于 bypass 生效**） | 写操作、命中 ask 规则、必须交互 |
+| `{ behavior: 'ask', message, decisionReason?, ruleSuggestion? }` | 需要用户确认（**先于 bypass 生效**）。`ruleSuggestion` 是"本 Session 允许"要沉淀的规则（只有 Tool 知道同类输入的边界）；缺省时卡片只给允许一次/拒绝 | 写操作、命中 ask 规则、必须交互 |
 | `{ behavior: 'passthrough', message }` | Tool 没有允许/拒绝的理由，交中央收口 | MCP、无特殊语义的 Tool |
 
 `decisionReason` 窄联合：`rule / mode / subcommandResults(Bash 复合命令逐条) / workingDir / safetyCheck / user / headless / other`。
@@ -101,7 +101,7 @@ interface ToolPermissionContext {
 | FileRead / FileEdit / FileWrite | `paths/` 语料 + `matchPathRule`；检查顺序照抄 Claude filesystem.ts：危险路径 → read 专属 deny → read 专属 ask → edit 蕴含 read → 工作区读 allow（default）/ 工作区写（acceptEdits）→ 内部路径 → allow 规则 → 默认 ask |
 | WebFetch | 域名规则匹配（URL host × 规则） |
 | MCP Tool | `passthrough`；自报 annotations 只能升风险（`readOnlyHint` 只进 UI，`destructiveHint` 可升 ask，不可降） |
-| AskUser | 固定 `ask`（必须交互） | DS |
+| AskUser | 固定 `ask`（必须交互） |
 | Task / Skill / Subagent / 其余 | `passthrough`（由整体规则或模式收口） |
 
 acceptEdits 模式语义归文件 Tool（"工作区内写入放行"）；default/bypassPermissions 归中央。

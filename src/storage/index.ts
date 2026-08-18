@@ -66,9 +66,6 @@ export { SkillsRepo }      from './repos/profile/skills.js';
 export type { SkillRow }   from './repos/profile/skills.js';
 export { SkillSitesRepo }  from './repos/profile/skill-sites.js';
 export type { SkillSiteRow, SkillSiteInsert } from './repos/profile/skill-sites.js';
-export { PermissionRulesRepo } from './repos/profile/permissionRules.js';
-export type { PermissionRuleRow } from './repos/profile/permissionRules.js';
-export type { ProtectedDeleteResult } from './repos/profile/mutation-results.js';
 
 // ── Memory 子系统 ──────────────────────────────────────────────────────────────
 export { MemoryNodesRepo }       from './repos/profile/memory-nodes.js';
@@ -94,6 +91,7 @@ export type {
   CharacterCardRow,
   CharacterCardInsert,
   CharacterCardUpdate,
+  ProtectedDeleteResult
 } from './repos/profile/character-cards.js';
 export type {
   CharacterLive2dVariantInsert,

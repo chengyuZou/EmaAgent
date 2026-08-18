@@ -1,6 +1,9 @@
 // 定义工具作者、注册表与执行器共同遵守的唯一 Tool 契约。
 import type { ToolResultContentPart } from '@ema-agent/llm';
-import type { PermissionIntent } from '@ema-agent/permission';
+import type {
+  PermissionResult,
+  ToolPermissionContext,
+} from '@ema-agent/permission';
 import type { z } from 'zod';
 import type { ToolInvocation } from './toolInvocation.js';
 import type { ToolUseContext } from './toolUseContext.js';
@@ -75,11 +78,17 @@ export interface Tool<TInput, TOutput, TContext, TProgress = never> {
   /** AskUser 等工具会暂停当前 Turn；普通权限审批不属于工具交互。 */
   readonly requiresUserInteraction: (input: TInput) => boolean;
 
-  /** 把已校验调用投影为封口 Permission 包唯一理解的授权意图。 */
-  readonly getPermissionIntent: (
+  /**
+   * Tool 对自己输入的权限自我解释：读规则桶、解路径/命令/域名，
+   * 返回 allow / deny / ask / passthrough。中央 hasPermissionsToUseTool
+   * 按固定优先级在它前后套整体规则与模式；ask 先于 bypass 生效。
+   * 判定上下文只含模式与冻结规则桶，调用身份由执行链装配进批准卡。
+   */
+  readonly checkPermissions: (
     input: TInput,
     context: TContext,
-  ) => PermissionIntent | Promise<PermissionIntent>;
+    permissionContext: ToolPermissionContext,
+  ) => Promise<PermissionResult>;
 
   /** 工具只取得窄业务 Context、调用身份和自己的进度出口。 */
   readonly execute: (
