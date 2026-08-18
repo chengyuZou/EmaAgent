@@ -63,7 +63,7 @@ class InMemoryStore implements ToolExecutionStateStore {
   }
 }
 
-function createState(): { state: ToolExecutionState; callId: ReturnType<typeof asToolCallId> } {
+function createState(): { state: ToolExecutionState; callId: string } {
   const state = new ToolExecutionState(new InMemoryStore());
   const callId = 'call-1';
   state.prepare({

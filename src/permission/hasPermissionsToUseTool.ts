@@ -2,6 +2,7 @@
 // 模式分工：default/bypassPermissions 由中央处理；acceptEdits 是 Tool 侧语义
 // （"工作区内写入放行"只有文件 Tool 知道怎么判定，归各自的 checkPermissions）。
 import type {
+  PermissionBehavior,
   PermissionDecision,
   PermissionResult,
   PermissionRule,
@@ -139,4 +140,65 @@ function findWholeToolRule(
     }
   }
   return undefined;
+}
+
+/**
+ * 内容级规则查询：findWholeToolRule 的内容版——该工具全部带 ruleContent 的规则。
+ * 只含 ruleContent（整体规则 Bash 不参与）；source 优先级 session > project > user。
+ * 精确匹配（域名/路径语义串）用 findContentRule；模式匹配（Bash git *）遍历本数组。
+ */
+export function listContentRules(
+  permissionContext: ToolPermissionContext,
+  toolName: string,
+  behavior: PermissionBehavior,
+): PermissionRule[] {
+  const rules: PermissionRule[] = [];
+  for (const source of SOURCE_PRECEDENCE) {
+    for (const ruleString of rulesBySource(permissionContext, behavior)[source] ?? []) {
+      const ruleValue = permissionRuleValueFromString(ruleString);
+      if (ruleValue.ruleContent === undefined || ruleValue.toolName !== toolName) continue;
+      rules.push({ source, ruleBehavior: behavior, ruleValue });
+    }
+  }
+  return rules;
+}
+
+/** 单条内容规则精确命中（ruleContent 是 Tool 自转的语义串，如 WebFetch 域名）。 */
+export function findContentRule(
+  permissionContext: ToolPermissionContext,
+  toolName: string,
+  behavior: PermissionBehavior,
+  ruleContent: string,
+): PermissionRule | undefined {
+  for (const rule of listContentRules(permissionContext, toolName, behavior)) {
+    if (rule.ruleValue.ruleContent === ruleContent) return rule;
+  }
+  return undefined;
+}
+
+/**
+ * 谓词匹配：规则内容是模式（Bash `git *`、路径 glob），Tool 传语义匹配谓词。
+ * Bash 传 (c) => matchShellRule(c, command)；文件 Tool 传 (c) => matchPathRule(c, path, root)。
+ */
+export function findMatchingContentRule(
+  permissionContext: ToolPermissionContext,
+  toolName: string,
+  behavior: PermissionBehavior,
+  matches: (ruleContent: string) => boolean,
+): PermissionRule | undefined {
+  for (const rule of listContentRules(permissionContext, toolName, behavior)) {
+    if (matches(rule.ruleValue.ruleContent!)) return rule;
+  }
+  return undefined;
+}
+
+function rulesBySource(
+  permissionContext: ToolPermissionContext,
+  behavior: PermissionBehavior,
+): ToolPermissionRulesBySource {
+  switch (behavior) {
+    case 'allow': return permissionContext.alwaysAllowRules;
+    case 'deny': return permissionContext.alwaysDenyRules;
+    case 'ask': return permissionContext.alwaysAskRules;
+  }
 }

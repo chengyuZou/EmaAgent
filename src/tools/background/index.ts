@@ -2,7 +2,6 @@ export { BackgroundProcessRuntime } from './backgroundProcessRuntime.js';
 export type { BackgroundProcessRuntimeDeps } from './backgroundProcessRuntime.js';
 export type {
   BackgroundProcessInsertRecord,
-  BackgroundProcessListFilter,
   BackgroundProcessRecord,
   BackgroundProcessStore,
   BackgroundProcessTerminalRecord,

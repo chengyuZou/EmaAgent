@@ -1,5 +1,5 @@
 // 后台进程持久化的窄端口:Tools 拥有状态语义,Storage 以原子操作实现它。
-import type { BackgroundProcessStatus } from './types.js';
+import type { BackgroundProcessListOptions, BackgroundProcessStatus } from './types.js';
 
 /** 持久化一行的领域形状;不出现 SQL 列名与 null。 */
 export interface BackgroundProcessRecord {
@@ -56,11 +56,6 @@ export interface BackgroundProcessTerminalRecord {
   outputTruncated: boolean;
 }
 
-export interface BackgroundProcessListFilter {
-  status?: BackgroundProcessStatus;
-  limit?: number;
-}
-
 /**
  * Runtime 只通过这些原子操作读写持久状态;调度、通知与恢复语义留在 Tools。
  * SQL 实现是 Storage 的 BackgroundProcessesRepo,由 Core 装配注入。
@@ -70,7 +65,7 @@ export interface BackgroundProcessStore {
   findById(id: string): BackgroundProcessRecord | undefined;
   listForSession(
     sessionId: string,
-    filter?: BackgroundProcessListFilter,
+    filter?: BackgroundProcessListOptions,
   ): BackgroundProcessRecord[];
   transitionToRunning(
     id: string,

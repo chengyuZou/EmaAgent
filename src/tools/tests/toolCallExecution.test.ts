@@ -8,10 +8,13 @@ import type {
 import {
   buildTool,
   contextOk,
+  ToolExecutionState,
   ToolPool,
   type Tool,
   type ToolExecutionEvent,
-  type ToolExecutionStatePort,
+  type ToolExecutionRecord,
+  type ToolExecutionStateStore,
+  type ToolExecutionStatus,
 } from '../index.js';
 import {
   ToolCallExecution,
@@ -29,24 +32,63 @@ const PERMISSION_CONTEXT: ToolPermissionContext = {
   isBypassPermissionsModeAvailable: false,
 };
 
-/** 记录状态迁移顺序的假审计端口。 */
-function fakeState() {
-  const transitions: string[] = [];
-  const record = (status: string) => {
-    transitions.push(status);
-    return { status } as never;
-  };
-  const port: ToolExecutionStatePort = {
-    prepare: () => record('prepared'),
-    authorize: () => record('authorized'),
-    start: () => record('running'),
-    succeed: () => record('succeeded'),
-    fail: () => record('failed'),
-    cancel: () => record('cancelled'),
-    outcomeUnknown: () => record('outcome_unknown'),
-    completeFromMessage: () => record('completeFromMessage'),
-  };
-  return { port, transitions };
+/** 内存版原子存储:与 SQL 实现同语义(version CAS + from 集合)。 */
+class InMemoryStore implements ToolExecutionStateStore {
+  private readonly rows = new Map<string, ToolExecutionRecord>();
+
+  insertPrepared(value: Parameters<ToolExecutionStateStore['insertPrepared']>[0]) {
+    if (this.rows.has(value.callId)) return undefined;
+    const record: ToolExecutionRecord = {
+      ...value,
+      status: 'prepared',
+      version: 0,
+      updatedAt: value.createdAt,
+    };
+    this.rows.set(value.callId, record);
+    return record;
+  }
+
+  findByCallId(callId: Parameters<ToolExecutionStateStore['findByCallId']>[0]) {
+    return this.rows.get(callId);
+  }
+
+  listForTurn(turnId: string) {
+    return [...this.rows.values()].filter(row => row.turnId === turnId);
+  }
+
+  transition(
+    callId: Parameters<ToolExecutionStateStore['transition']>[0],
+    expectedVersion: number,
+    from: readonly ToolExecutionStatus[],
+    to: ToolExecutionStatus,
+    at: number,
+    terminal?: { completedAt: number },
+  ) {
+    const row = this.rows.get(callId);
+    if (!row || row.version !== expectedVersion || !from.includes(row.status)) return undefined;
+    const updated: ToolExecutionRecord = {
+      ...row,
+      status: to,
+      version: row.version + 1,
+      updatedAt: at,
+      ...(to === 'running' && row.startedAt === undefined ? { startedAt: at } : {}),
+      ...(terminal ? { completedAt: terminal.completedAt } : {}),
+    };
+    this.rows.set(callId, updated);
+    return updated;
+  }
+
+  listInterrupted() {
+    return [...this.rows.values()].filter(
+      row => row.status === 'prepared' || row.status === 'authorized' || row.status === 'running',
+    );
+  }
+}
+
+/** 真实状态机 + 内存 store;测试直接断言持久记录而非迁移录音。 */
+function makeState() {
+  const store = new InMemoryStore();
+  return { state: new ToolExecutionState(store), store };
 }
 
 type EchoInput = { value: number };
@@ -69,7 +111,7 @@ function echoTool(overrides: Partial<Parameters<typeof buildTool>[0]> = {}): Any
 function makeEnv(options: {
   tools: AnyTestTool[];
   askPermission?: ToolExecutionEnvironment['askPermission'];
-  state?: ToolExecutionStatePort;
+  state?: ToolExecutionState;
 }): ToolExecutionEnvironment {
   return {
     sessionId: SESSION_ID,
@@ -98,14 +140,14 @@ function makeCall(env: ToolExecutionEnvironment, name: string, args: unknown): {
 
 describe('ToolCallExecution', () => {
   it('模型幻觉不存在的工具名 → tool/unavailable,不产生状态迁移', async () => {
-    const state = fakeState();
-    const { execution } = makeCall(makeEnv({ tools: [], state: state.port }), 'Ghost', {});
+    const { state, store } = makeState();
+    const { execution } = makeCall(makeEnv({ tools: [], state }), 'Ghost', {});
 
     const { result } = await execution.run();
 
     expect(result.isError).toBe(true);
     expect(result.errorCode).toBe('tool/unavailable');
-    expect(state.transitions).toHaveLength(0);
+    expect(store.listForTurn(TURN_ID)).toHaveLength(0);
   });
 
   it('Schema 解析失败 → tool/validation_failed', async () => {
@@ -133,9 +175,9 @@ describe('ToolCallExecution', () => {
       validateInput: () => ({ valid: false as const, message: '已存在', code: 'file/exists' }),
       checkPermissions,
     });
-    const state = fakeState();
+    const { state, store } = makeState();
     const { execution } = makeCall(
-      makeEnv({ tools: [tool], state: state.port }),
+      makeEnv({ tools: [tool], state }),
       'Echo',
       { value: 1 },
     );
@@ -144,15 +186,16 @@ describe('ToolCallExecution', () => {
 
     expect(result.errorCode).toBe('file/exists');
     expect(checkPermissions).not.toHaveBeenCalled();
+    expect(store.listForTurn(TURN_ID)).toHaveLength(0);
   });
 
   it('Tool 自检拒绝 → permission/denied,不越过 running 边界', async () => {
     const tool = echoTool({
       checkPermissions: async () => ({ behavior: 'deny' as const, message: '危险输入' }),
     });
-    const state = fakeState();
+    const { state, store } = makeState();
     const { execution } = makeCall(
-      makeEnv({ tools: [tool], state: state.port }),
+      makeEnv({ tools: [tool], state }),
       'Echo',
       { value: 1 },
     );
@@ -160,7 +203,7 @@ describe('ToolCallExecution', () => {
     const { result } = await execution.run();
 
     expect(result.errorCode).toBe('permission/denied');
-    expect(state.transitions).toEqual(['prepared']);
+    expect(store.findByCallId('call-1')?.status).toBe('prepared');
   });
 
   it('ask 决策走交互通道:请求携带身份、摘要与规则建议,allowSession 后放行', async () => {
@@ -230,9 +273,9 @@ describe('ToolCallExecution', () => {
   });
 
   it('成功执行:结果规范化、终态事件齐备、commitResult 后落 succeeded', async () => {
-    const state = fakeState();
+    const { state, store } = makeState();
     const { execution, events } = makeCall(
-      makeEnv({ tools: [echoTool()], state: state.port }),
+      makeEnv({ tools: [echoTool()], state }),
       'Echo',
       { value: 42 },
     );
@@ -243,7 +286,7 @@ describe('ToolCallExecution', () => {
     expect(result.isError).toBe(false);
     expect(JSON.parse(result.content as string)).toEqual({ echoed: 42 });
     expect(terminalEvent.type).toBe('tool_result');
-    expect(state.transitions).toEqual(['prepared', 'authorized', 'running', 'succeeded']);
+    expect(store.findByCallId('call-1')?.status).toBe('succeeded');
     expect(events.some(e => e.type === 'tool_result')).toBe(false);
   });
 
@@ -283,9 +326,9 @@ describe('ToolCallExecution', () => {
         throw new DOMException('The operation was aborted', 'AbortError');
       },
     });
-    const state = fakeState();
+    const { state, store } = makeState();
     const { execution } = makeCall(
-      makeEnv({ tools: [tool], state: state.port }),
+      makeEnv({ tools: [tool], state }),
       'Echo',
       { value: 1 },
     );
@@ -299,9 +342,7 @@ describe('ToolCallExecution', () => {
     expect(result.isError).toBe(true);
     expect(result.errorCode).toBe('tool/cancelled');
     // 模型看到的是取消;审计按 outcome_unknown 关账——running 后的取消无法证明干净。
-    expect(state.transitions).toEqual(['prepared', 'authorized', 'running', 'outcome_unknown']);
-    expect(state.transitions).not.toContain('succeeded');
-    expect(state.transitions).not.toContain('cancelled');
+    expect(store.findByCallId('call-1')?.status).toBe('outcome_unknown');
     expect(terminalEvent).toMatchObject({
       error: { code: 'tool/cancelled' },
     });

@@ -1,25 +1,23 @@
 // 同 Session 串行、跨 Session 并行的统一交互队列;Permission 与 AskUser 按进入顺序共同排队。
-import { randomUUID } from 'node:crypto';
 
 // ── 联合交互类型 ─────────────────────────────────────────────────────────────
 
-/** Permission 交互条目;resolve 收 PermissionResponse。 */
+/** Permission 交互条目;锚点 toolCallId = 触发审批的那次 Tool 调用;resolve 收 PermissionResponse。 */
 export interface PermissionInteraction<TPermissionPrompt, TPermissionResponse> {
   readonly kind:        'permission';
-  readonly promptId:    string;
+  readonly toolCallId:  string;
   readonly sessionId:   string;
   readonly turnId:      string;
-  readonly toolCallId:  string;
   readonly createdAt:   number;
   readonly timeoutMs:   number | null;
   readonly prompt:      TPermissionPrompt;
   readonly resolve:     (response: TPermissionResponse) => void;
 }
 
-/** AskUser 交互条目;resolve 收用户答案。 */
+/** AskUser 交互条目;resolve 收用户答案。锚点 toolCallId = 发起问询的那次 Tool 调用。 */
 export interface AskUserInteraction<TAskRequest> {
   readonly kind:        'askUser';
-  readonly promptId:    string;
+  readonly toolCallId:  string;
   readonly sessionId:   string;
   readonly turnId:      string;
   readonly createdAt:   number;
@@ -41,8 +39,8 @@ export type AskUserInteractionOutcome =
 
 /** listPending 返回的可恢复快照;不暴露 Promise 与 timer。 */
 export type PendingInteraction<TPermissionPrompt, TAskRequest> =
-  | { readonly kind: 'permission'; readonly promptId: string; readonly createdAt: number; readonly prompt: TPermissionPrompt }
-  | { readonly kind: 'askUser';    readonly promptId: string; readonly createdAt: number; readonly request: TAskRequest };
+  | { readonly kind: 'permission'; readonly toolCallId: string; readonly createdAt: number; readonly prompt: TPermissionPrompt }
+  | { readonly kind: 'askUser';    readonly toolCallId: string; readonly createdAt: number; readonly request: TAskRequest };
 
 // ── 内部 FIFO ────────────────────────────────────────────────────────────────
 
@@ -63,13 +61,14 @@ interface SessionFifo<TPermissionPrompt, TPermissionResponse, TAskRequest> {
  *     独占超时计时;队首之外的条目排队等待,不计时。队首 resolve/cancel/超时后,
  *     下一个条目升为队首才开始自己的超时。
  *   - 不同 Session 互相独立,可并行等待用户。
- *   - 响应按全局 promptId 定位(promptId 跨 Session 唯一),不按当前页面或工具名猜。
+ *   - 响应按 toolCallId 查址(全局唯一):一次交互永远由唯一一次 Tool 调用触发,
+ *     Permission 锚 = 触发审批的调用,AskUser 锚 = 发起问询的调用。
  *   - listPending(sessionId?) 供 SSE 重连恢复指定 Session 的队列快照。
  */
 export class SessionInteractionQueue<TPermissionPrompt, TPermissionResponse, TAskRequest> {
   private readonly sessions =
     new Map<string, SessionFifo<TPermissionPrompt, TPermissionResponse, TAskRequest>>();
-  /** promptId → { fifo, entry },O(1) 定位 respond/cancel。 */
+  /** toolCallId → { fifo, entry },O(1) 定位 respond/cancel。 */
   private readonly index = new Map<string, {
     fifo: SessionFifo<TPermissionPrompt, TPermissionResponse, TAskRequest>;
     entry: SessionInteraction<TPermissionPrompt, TPermissionResponse, TAskRequest>;
@@ -91,7 +90,8 @@ export class SessionInteractionQueue<TPermissionPrompt, TPermissionResponse, TAs
   }
 
   /**
-   * 预约一个 Permission 审批槽。返回全局唯一 promptId 与一个在用户响应或超时后
+   * 预约一个 Permission 审批槽。锚点 toolCallId 由 Tool 执行链提供（= 触发审批的
+   * 那次 Tool 调用）并随 permission_required 事件发出；返回在用户响应或超时后
    * resolve 的 Promise。若该 Session 队列为空,新条目立即成为队首并开始超时;
    * 否则排队,等升为队首才计时。
    */
@@ -101,8 +101,7 @@ export class SessionInteractionQueue<TPermissionPrompt, TPermissionResponse, TAs
     toolCallId: string;
     prompt:     TPermissionPrompt;
     timeoutMs?: number | null;
-  }): { promptId: string; createdAt: number; promise: Promise<TPermissionResponse> } {
-    const promptId   = randomUUID();
+  }): { createdAt: number; promise: Promise<TPermissionResponse> } {
     const timeoutMs  = args.timeoutMs ?? this.defaultTimeoutMs;
     const createdAt  = Date.now();
 
@@ -111,26 +110,26 @@ export class SessionInteractionQueue<TPermissionPrompt, TPermissionResponse, TAs
 
     const entry: PermissionInteraction<TPermissionPrompt, TPermissionResponse> = {
       kind:       'permission',
-      promptId,
+      toolCallId: args.toolCallId,
       resolve,
       sessionId:  args.sessionId,
       turnId:     args.turnId,
-      toolCallId: args.toolCallId,
       createdAt,
       timeoutMs,
       prompt:     args.prompt,
     };
 
     this.pushEntry(entry);
-    return { promptId, createdAt, promise };
+    return { createdAt, promise };
   }
 
   /**
-   * 预约一个 AskUser 问询槽。promptId 由 Tool 执行链生成并随
-   * ask_user_required 事件发出；返回在用户回答或超时后 resolve 的 Promise。
+   * 预约一个 AskUser 问询槽。锚点 toolCallId 由 Tool 执行链提供（= 发起问询的
+   * 那次 Tool 调用）并随 ask_user_required 事件发出；返回在用户回答或超时后
+   * resolve 的 Promise。
    */
   enqueueAskUser(args: {
-    promptId:   string;
+    toolCallId: string;
     sessionId:  string;
     turnId:     string;
     request:    TAskRequest;
@@ -144,7 +143,7 @@ export class SessionInteractionQueue<TPermissionPrompt, TPermissionResponse, TAs
 
     const entry: AskUserInteraction<TAskRequest> = {
       kind:       'askUser',
-      promptId:   args.promptId,
+      toolCallId: args.toolCallId,
       resolve,
       sessionId:  args.sessionId,
       turnId:     args.turnId,
@@ -159,39 +158,39 @@ export class SessionInteractionQueue<TPermissionPrompt, TPermissionResponse, TAs
 
   /** 用用户响应解决一条 Permission 待审批;同时核对 Turn,防止陈旧卡片误答。 */
   respondPermission(
-    promptId: string,
+    toolCallId: string,
     response: TPermissionResponse,
     expectedTurnId?: string,
   ): boolean {
-    const record = this.index.get(promptId);
+    const record = this.index.get(toolCallId);
     if (!record || record.entry.kind !== 'permission') return false;
     if (record.fifo.entries[0] !== record.entry) return false;
     if (expectedTurnId !== undefined && record.entry.turnId !== expectedTurnId) return false;
-    return this.evict(promptId, response);
+    return this.evict(toolCallId, response);
   }
 
-  /** 用用户答案解决一条 AskUser 问询;promptId 未知或已解决时返回 false。 */
+  /** 用用户答案解决一条 AskUser 问询;toolCallId 未知或已解决时返回 false。 */
   respondAskUser(
-    promptId: string,
+    toolCallId: string,
     answers: Record<string, string>,
     expectedTurnId?: string,
   ): boolean {
-    const record = this.index.get(promptId);
+    const record = this.index.get(toolCallId);
     if (!record || record.entry.kind !== 'askUser') return false;
     if (record.fifo.entries[0] !== record.entry) return false;
     if (expectedTurnId !== undefined && record.entry.turnId !== expectedTurnId) return false;
-    return this.evict(promptId, { status: 'answered', answers });
+    return this.evict(toolCallId, { status: 'answered', answers });
   }
 
   /** 只允许 Permission 路由取消匹配 Turn 的活动 Permission 队首。 */
   cancelPermission(
-    promptId: string,
+    toolCallId: string,
     reason = 'cancelled',
     expectedTurnId?: string,
   ): boolean {
     return this.cancelActiveByKind(
       'permission',
-      promptId,
+      toolCallId,
       reason,
       expectedTurnId,
     );
@@ -199,13 +198,13 @@ export class SessionInteractionQueue<TPermissionPrompt, TPermissionResponse, TAs
 
   /** 只允许 AskUser 路由取消匹配 Turn 的活动 AskUser 队首。 */
   cancelAskUser(
-    promptId: string,
+    toolCallId: string,
     reason = 'cancelled',
     expectedTurnId?: string,
   ): boolean {
     return this.cancelActiveByKind(
       'askUser',
-      promptId,
+      toolCallId,
       reason,
       expectedTurnId,
     );
@@ -217,36 +216,36 @@ export class SessionInteractionQueue<TPermissionPrompt, TPermissionResponse, TAs
    */
   private cancelActiveByKind(
     kind: 'permission' | 'askUser',
-    promptId: string,
+    id: string,
     reason: string,
     expectedTurnId?: string,
   ): boolean {
-    const record = this.index.get(promptId);
+    const record = this.index.get(id);
     if (!record || record.fifo.entries[0] !== record.entry) return false;
     if (record.entry.kind !== kind) return false;
     if (expectedTurnId !== undefined && record.entry.turnId !== expectedTurnId) return false;
-    return this.cancel(promptId, reason);
+    return this.cancel(id, reason);
   }
 
   /**
    * 不带真实响应地取消一条(用于 turn abort)。按 kind resolve:
    * permission→deny,askUser→cancelled。使 gate/askUser 干净退出。
    */
-  cancel(promptId: string, reason = 'cancelled'): boolean {
-    const record = this.index.get(promptId);
+  cancel(id: string, reason = 'cancelled'): boolean {
+    const record = this.index.get(id);
     if (!record) return false;
     // evict 内部按 entry.kind 分发 resolve;payload 类型由调用方保证与 kind 匹配。
     if (record.entry.kind === 'permission') {
-      return this.evict(promptId, this.permissionCancellation(reason));
+      return this.evict(id, this.permissionCancellation(reason));
     }
-    return this.evict(promptId, { status: 'cancelled', reason });
+    return this.evict(id, { status: 'cancelled', reason });
   }
 
   /** 取消某 Turn 的全部待交互(turn abort 时用)。 */
   cancelForTurn(turnId: string, reason = 'turn aborted'): number {
     const ids = [...this.index.values()]
       .filter(({ entry }) => entry.turnId === turnId)
-      .map(({ entry }) => entry.promptId);
+      .map(({ entry }) => interactionIdOf(entry));
     let n = 0;
     for (const id of ids) {
       if (this.cancel(id, reason)) n++;
@@ -258,7 +257,7 @@ export class SessionInteractionQueue<TPermissionPrompt, TPermissionResponse, TAs
   cancelForSession(sessionId: string, reason = 'session deleted'): number {
     const fifo = this.sessions.get(sessionId);
     if (!fifo) return 0;
-    const ids = fifo.entries.map(e => e.promptId);
+    const ids = fifo.entries.map(interactionIdOf);
     for (const id of ids) {
       this.cancel(id, reason);
     }
@@ -291,8 +290,9 @@ export class SessionInteractionQueue<TPermissionPrompt, TPermissionResponse, TAs
   private pushEntry(
     entry: SessionInteraction<TPermissionPrompt, TPermissionResponse, TAskRequest>,
   ): void {
-    if (this.index.has(entry.promptId)) {
-      throw new Error(`Duplicate interaction promptId: ${entry.promptId}`);
+    const id = interactionIdOf(entry);
+    if (this.index.has(id)) {
+      throw new Error(`Duplicate interaction id: ${id}`);
     }
     let fifo = this.sessions.get(entry.sessionId);
     if (!fifo) {
@@ -301,7 +301,7 @@ export class SessionInteractionQueue<TPermissionPrompt, TPermissionResponse, TAs
     }
     const wasEmpty = fifo.entries.length === 0;
     fifo.entries.push(entry);
-    this.index.set(entry.promptId, { fifo, entry });
+    this.index.set(id, { fifo, entry });
     if (wasEmpty) {
       this.startHeadTimer(fifo);
     }
@@ -329,22 +329,22 @@ export class SessionInteractionQueue<TPermissionPrompt, TPermissionResponse, TAs
       const reason = `timed out after ${head.timeoutMs}ms`;
       // 超时按 kind resolve:permission→deny,askUser→明确超时终态。
       if (head.kind === 'permission') {
-        this.evict(head.promptId, this.permissionCancellation(reason));
+        this.evict(head.toolCallId, this.permissionCancellation(reason));
       } else {
-        this.evict(head.promptId, { status: 'timed_out', reason });
+        this.evict(head.toolCallId, { status: 'timed_out', reason });
       }
     }, head.timeoutMs);
   }
 
   /**
-   * 把 promptId 对应条目移出 fifo 并 resolve。
+   * 把 id 对应条目移出 fifo 并 resolve。
    * 若移除的是队首,清理 timer 并让下一个升为队首开始计时;若队列空,移除 SessionFifo。
    */
   private evict(
-    promptId: string,
+    id: string,
     payload: TPermissionResponse | AskUserInteractionOutcome,
   ): boolean {
-    const record = this.index.get(promptId);
+    const record = this.index.get(id);
     if (!record) return false;
     const { fifo, entry } = record;
     const wasHead = fifo.entries[0] === entry;
@@ -354,7 +354,7 @@ export class SessionInteractionQueue<TPermissionPrompt, TPermissionResponse, TAs
       fifo.timer = undefined;
     }
     fifo.entries = fifo.entries.filter(e => e !== entry);
-    this.index.delete(promptId);
+    this.index.delete(id);
     // 按 kind 分发 resolve;permission→PermissionResponse,askUser→answers。
     if (entry.kind === 'permission') {
       entry.resolve(payload as TPermissionResponse);
@@ -379,29 +379,39 @@ function toPending<TPermissionPrompt, TPermissionResponse, TAskRequest>(
   if (entry.kind === 'permission') {
     return {
       kind:      'permission',
-      promptId:  entry.promptId,
+      toolCallId: entry.toolCallId,
       createdAt: entry.createdAt,
       prompt:    entry.prompt,
     };
   }
   return {
     kind:      'askUser',
-    promptId:  entry.promptId,
+    toolCallId: entry.toolCallId,
     createdAt: entry.createdAt,
     request:   entry.request,
   };
 }
 
+/**
+ * 条目的定位锚：两种交互都锚定触发它的那次 Tool 调用（toolCallId 全局唯一，
+ * 由 Tool 执行链分配）。同一时刻一个 toolCallId 至多触发一种交互。
+ */
+function interactionIdOf<TPermissionPrompt, TPermissionResponse, TAskRequest>(
+  entry: SessionInteraction<TPermissionPrompt, TPermissionResponse, TAskRequest>,
+): string {
+  return entry.toolCallId;
+}
+
 /** 按业务 kind 过滤统一快照;路由层各自只关心自己负责的 Payload。 */
 export function filterPermissionPending<TPermissionPrompt, TAskRequest>(
   pending: readonly PendingInteraction<TPermissionPrompt, TAskRequest>[],
-): Array<{ promptId: string; createdAt: number; prompt: TPermissionPrompt }> {
+): Array<{ toolCallId: string; createdAt: number; prompt: TPermissionPrompt }> {
   return pending
     .filter((p): p is Extract<
       PendingInteraction<TPermissionPrompt, TAskRequest>,
       { kind: 'permission' }
     > => p.kind === 'permission')
-    .map(p => ({ promptId: p.promptId, createdAt: p.createdAt, prompt: p.prompt }));
+    .map(p => ({ toolCallId: p.toolCallId, createdAt: p.createdAt, prompt: p.prompt }));
 }
 
 /** 按业务 kind 过滤统一快照;AskUser 路由只恢复 askUser 问询。 */

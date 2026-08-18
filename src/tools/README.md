@@ -71,7 +71,7 @@ src/tools/
 
 - `ToolRegistry`(Builtin 启动注册、MCP 热更新）、`assembleToolPool`、`ToolPool`;
 - `StreamingToolExecutor` + `StreamingToolExecutorOptions` —— **执行的唯一公开入口；`ToolCallExecution` 不导出，任何包不得绕过协调器直接单发**;
-- `ToolExecutionState` + `ToolExecutionStateStore`（端口）+ `ToolExecutionStateReader`（审计只读）——SQL 实现在 storage,Core 注入;
+- `ToolExecutionState` + `ToolExecutionStateStore`（Storage 适配端口）——SQL 实现在 storage,Core 注入;执行链、审计路由与启动恢复都直接消费 `ToolExecutionState` 类;
 - `BackgroundProcessRuntime` + `BackgroundProcessStore`（端口）+ `BackgroundProcessPort`(Bash/Process 工具消费的窄口）+ `BackgroundProcessCompletionSource`(Server 完成通知）;
 - `ToolResultStore`、`ToolResultCleaner`、`backgroundProcessSetting`。
 

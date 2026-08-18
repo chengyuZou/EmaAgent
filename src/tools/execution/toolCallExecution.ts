@@ -14,7 +14,7 @@ import type { Tool } from '../Tool/tool.js';
 import type { ToolInvocation } from '../Tool/toolInvocation.js';
 import type { ToolUseContext } from '../Tool/toolUseContext.js';
 import type {
-  ToolExecutionStatePort,
+  ToolExecutionState,
   ToolExecutionStatus,
 } from './toolExecutionState.js';
 import type { ToolResultStore } from '../results/toolResultStore.js';
@@ -48,7 +48,7 @@ export interface ToolExecutionEnvironment {
   ) => Promise<PermissionResponse>;
   readonly toolContext: ToolUseContext;
   readonly toolResultStore?: ToolResultStore;
-  readonly toolExecutionState?: ToolExecutionStatePort;
+  readonly toolExecutionState?: ToolExecutionState;
 }
 
 export interface ToolExecutionCall {

@@ -65,13 +65,10 @@ export {
 } from './results/index.js';
 export { ToolExecutionState } from './execution/toolExecutionState.js';
 export type {
-  ToolExecutionStatePort,
-  ToolExecutionStateReader,
   ToolExecutionStateStore,
   ToolExecutionPrepareRecord,
   ToolExecutionRecord,
   ToolExecutionStatus,
-  ToolExecutionTerminalDetails,
 } from './execution/toolExecutionState.js';
 export type {
   AggregateResultCandidate,

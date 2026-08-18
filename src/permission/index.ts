@@ -1,7 +1,10 @@
 export * from './types.js';
 export * from './events.js';
 export {
+  findContentRule,
+  findMatchingContentRule,
   hasPermissionsToUseTool,
+  listContentRules,
   type HasPermissionsOptions,
   type PermissionCheckableTool,
 } from './hasPermissionsToUseTool.js';

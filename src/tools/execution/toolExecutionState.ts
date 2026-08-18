@@ -34,10 +34,6 @@ export interface ToolExecutionPrepareRecord {
   createdAt: number;
 }
 
-export interface ToolExecutionTerminalDetails {
-  completedAt: number;
-}
-
 /** Storage 实现原子读写，Tools 保留状态转换和恢复语义。 */
 export interface ToolExecutionStateStore {
   insertPrepared(value: ToolExecutionPrepareRecord): ToolExecutionRecord | undefined;
@@ -49,45 +45,18 @@ export interface ToolExecutionStateStore {
     from: readonly ToolExecutionStatus[],
     to: ToolExecutionStatus,
     at: number,
-    terminal?: ToolExecutionTerminalDetails,
+    terminal?: { completedAt: number },
   ): ToolExecutionRecord | undefined;
   listInterrupted(): ToolExecutionRecord[];
 }
 
-/** Agent 只依赖该端口，不接触 SQL Repo。 */
-export interface ToolExecutionStatePort {
-  prepare(args: {
-    callId: string;
-    sessionId: string;
-    turnId: string;
-    agentRunId?: string;
-    toolName: string;
-  }): ToolExecutionRecord;
-  authorize(callId: string): ToolExecutionRecord;
-  start(callId: string): ToolExecutionRecord;
-  succeed(callId: string): ToolExecutionRecord;
-  fail(callId: string): ToolExecutionRecord;
-  cancel(callId: string): ToolExecutionRecord;
-  outcomeUnknown(callId: string): ToolExecutionRecord;
-  completeFromMessage(
-    callId: string,
-    result: { isError?: boolean; errorCode?: string },
-  ): ToolExecutionRecord;
-}
-
-/** 审计接口只读取持久执行记录，不能推进工具状态机。 */
-export interface ToolExecutionStateReader {
-  listForTurn(turnId: string): ToolExecutionRecord[];
-}
-
 /**
- * 工具执行状态机。
+ * 工具执行状态机，执行链与恢复器共同依赖的具体入口。
  *
  * 执行器只能通过该入口推进状态；每一步使用 version CAS，防止取消流程、
  * 迟到的工具 Promise 和崩溃恢复互相覆盖。
  */
-export class ToolExecutionState
-  implements ToolExecutionStatePort, ToolExecutionStateReader {
+export class ToolExecutionState {
   constructor(private readonly store: ToolExecutionStateStore) {}
 
   prepare(args: {
@@ -150,10 +119,6 @@ export class ToolExecutionState
     return this.move(callId, ['running'], 'outcome_unknown');
   }
 
-  get(callId: string): ToolExecutionRecord | undefined {
-    return this.store.findByCallId(callId);
-  }
-
   listForTurn(turnId: string): ToolExecutionRecord[] {
     return this.store.listForTurn(turnId);
   }
@@ -184,7 +149,6 @@ export class ToolExecutionState
     callId: string,
     from: readonly ToolExecutionStatus[],
     to: ToolExecutionStatus,
-    details?: Omit<ToolExecutionTerminalDetails, 'completedAt'>,
   ): ToolExecutionRecord {
     const current = this.store.findByCallId(callId);
     if (!current) throw new ToolExecutionStateConflictError(callId, from);
@@ -196,7 +160,7 @@ export class ToolExecutionState
       from,
       to,
       now,
-      isTerminal(to) ? { ...details, completedAt: now } : undefined,
+      isTerminal(to) ? { completedAt: now } : undefined,
     );
     if (updated) return updated;
 
