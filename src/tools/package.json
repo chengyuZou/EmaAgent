@@ -33,7 +33,6 @@
     "@ema-agent/skills": "workspace:*",
     "@ema-agent/tasks": "workspace:*",
     "@ema-agent/token": "workspace:*",
-    "@ema-agent/turn": "workspace:*",
     "diff": "^9.0.0",
     "glob": "^11.0.0",
     "zod": "^4.4.3",

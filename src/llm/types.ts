@@ -1,8 +1,8 @@
-import type { LlmProtocol } from '@ema-agent/provider';
+import type { LlmProtocol } from '@ema-agent/providers';
 import type { AssistantBlock, Message } from './message.js';
 import type { LlmTokenUsage } from './usage.js';
 
-export type { LlmProtocol } from '@ema-agent/provider';
+export type { LlmProtocol } from '@ema-agent/providers';
 export type { LlmTokenUsage } from './usage.js';
 export type {
   AssistantBlock,

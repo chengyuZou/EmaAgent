@@ -9,7 +9,7 @@ import type {
   ProviderInput,
   ProviderKey,
   ProviderStore,
-} from '@ema-agent/provider';
+} from '@ema-agent/providers';
 import type { SqliteDb } from '../../database/database.js';
 
 interface ProviderRow {

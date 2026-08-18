@@ -1,5 +1,5 @@
 // 在中立消息跨入具体协议前拒绝无法无损表达的内容。
-import type { LlmProtocol } from '@ema-agent/provider';
+import type { LlmProtocol } from '@ema-agent/providers';
 import { LlmProtocolInputError } from './errors.js';
 import type {
   ContentPart,

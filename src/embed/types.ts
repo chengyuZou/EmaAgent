@@ -1,6 +1,6 @@
-import type { EmbedProtocol } from '@ema-agent/provider';
+import type { EmbedProtocol } from '@ema-agent/providers';
 
-export type { EmbedProtocol } from '@ema-agent/provider';
+export type { EmbedProtocol } from '@ema-agent/providers';
 
 /** Provider 已解析好的 Embedding 协议连接。 */
 export interface EmbeddingConnection {

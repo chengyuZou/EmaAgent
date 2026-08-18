@@ -1,6 +1,6 @@
-import type { RerankProtocol } from '@ema-agent/provider';
+import type { RerankProtocol } from '@ema-agent/providers';
 
-export type { RerankProtocol } from '@ema-agent/provider';
+export type { RerankProtocol } from '@ema-agent/providers';
 
 /** Provider 已解析好的 Rerank 协议连接。 */
 export interface RerankConnection {

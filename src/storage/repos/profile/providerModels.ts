@@ -1,5 +1,5 @@
 // 在一张表中持久化六类模型，并在 Repo 边界恢复 ProviderModel 判别联合。
-import type { ModelCapability, ProviderModel, ProviderModelStore } from '@ema-agent/provider';
+import type { ModelCapability, ProviderModel, ProviderModelStore } from '@ema-agent/providers';
 import type { SqliteDb } from '../../database/database.js';
 
 interface ProviderModelRow {

@@ -1,6 +1,6 @@
-import type { SttProtocol } from '@ema-agent/provider';
+import type { SttProtocol } from '@ema-agent/providers';
 
-export type { SttProtocol } from '@ema-agent/provider';
+export type { SttProtocol } from '@ema-agent/providers';
 
 /** Provider 已解析好的 STT 协议连接。 */
 export interface SttConnection {

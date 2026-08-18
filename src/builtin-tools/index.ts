@@ -35,13 +35,13 @@ import type { ToolRegistry, Tool } from '@ema-agent/tools';
 
 // ── 宿主 Context 与装配 ──────────────────────────────────────────────────────
 export type {
-  AskUserPort,
+  AskUser,
   ToolUseContext,
-  ScratchpadPort,
+  Scratchpad,
   SubagentContextMode,
   SubagentRunResult,
   SubagentSpawnOptions,
-  SubagentSpawnerPort,
+  SubagentSpawnerFn,
 } from '@ema-agent/tools';
 export { contextOk, contextFail } from '@ema-agent/tools';
 

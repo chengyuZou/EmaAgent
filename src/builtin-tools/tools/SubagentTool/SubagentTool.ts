@@ -8,7 +8,7 @@ import {
   contextFail,
   contextOk,
   SubagentSpawnOptions,
-  type SubagentSpawnerPort,
+  type SubagentSpawnerFn,
   type ToolInvocation,
 } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
@@ -17,7 +17,7 @@ import { AGENT_ROLES, DEFAULT_AGENT_ROLE, getAgentRole } from './agentRoles.js';
 
 /** Subagent 工具的窄 Context：子 Agent 启动器;取消与身份走 ToolInvocation。 */
 interface SubagentToolContext {
-  spawner: SubagentSpawnerPort;
+  spawner: SubagentSpawnerFn;
 }
 
 /**

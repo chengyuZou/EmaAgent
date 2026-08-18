@@ -1,8 +1,8 @@
 // 验证 Process 三件套: 窄 Context、Session 身份走 ToolInvocation、端口调用与模型投影。
 import { describe, expect, it, vi } from 'vitest';
 import type {
+  BackgroundProcess,
   BackgroundProcessListOptions,
-  BackgroundProcessPort,
   BackgroundProcessSummary,
   ToolInvocation,
 } from '@ema-agent/tools';
@@ -29,7 +29,7 @@ function summary(
   };
 }
 
-function makePort(): BackgroundProcessPort & {
+function makePort(): BackgroundProcess & {
   list: ReturnType<typeof vi.fn<(sessionId: string, options?: BackgroundProcessListOptions) => BackgroundProcessSummary[]>>;
   readOutput: ReturnType<typeof vi.fn>;
   stop: ReturnType<typeof vi.fn>;
@@ -39,7 +39,7 @@ function makePort(): BackgroundProcessPort & {
     list: vi.fn(() => []),
     readOutput: vi.fn(),
     stop: vi.fn(),
-  } as unknown as BackgroundProcessPort & {
+  } as unknown as BackgroundProcess & {
     list: ReturnType<typeof vi.fn<(sessionId: string, options?: BackgroundProcessListOptions) => BackgroundProcessSummary[]>>;
     readOutput: ReturnType<typeof vi.fn>;
     stop: ReturnType<typeof vi.fn>;
@@ -55,7 +55,7 @@ function invocation(): ToolInvocation {
   });
 }
 
-function narrowContext(port: BackgroundProcessPort): { backgroundProcesses: BackgroundProcessPort } {
+function narrowContext(port: BackgroundProcess): { backgroundProcesses: BackgroundProcess } {
   const result = ProcessListTool.validateContext({ backgroundProcesses: port } as never);
   if (!result.valid) throw new Error(result.reason);
   return result.context;

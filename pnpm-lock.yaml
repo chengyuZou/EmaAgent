@@ -141,7 +141,7 @@ importers:
       '@ema-agent/permission':
         specifier: workspace:*
         version: link:../../src/permission
-      '@ema-agent/provider':
+      '@ema-agent/providers':
         specifier: workspace:*
         version: link:../../src/providers
       '@ema-agent/session':
@@ -295,7 +295,7 @@ importers:
       '@ema-agent/prompts':
         specifier: workspace:*
         version: link:../../src/prompts
-      '@ema-agent/provider':
+      '@ema-agent/providers':
         specifier: workspace:*
         version: link:../../src/providers
       '@ema-agent/rerank':
@@ -663,7 +663,7 @@ importers:
 
   src/embed:
     dependencies:
-      '@ema-agent/provider':
+      '@ema-agent/providers':
         specifier: workspace:*
         version: link:../providers
     devDependencies:
@@ -805,7 +805,7 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.39.0
         version: 0.39.0
-      '@ema-agent/provider':
+      '@ema-agent/providers':
         specifier: workspace:*
         version: link:../providers
       '@google/genai':
@@ -1004,7 +1004,7 @@ importers:
 
   src/rerank:
     dependencies:
-      '@ema-agent/provider':
+      '@ema-agent/providers':
         specifier: workspace:*
         version: link:../providers
     devDependencies:
@@ -1144,7 +1144,7 @@ importers:
 
   src/storage:
     dependencies:
-      '@ema-agent/provider':
+      '@ema-agent/providers':
         specifier: workspace:*
         version: link:../providers
       '@ema-agent/usage':
@@ -1178,7 +1178,7 @@ importers:
 
   src/stt:
     dependencies:
-      '@ema-agent/provider':
+      '@ema-agent/providers':
         specifier: workspace:*
         version: link:../providers
     devDependencies:
@@ -1277,9 +1277,6 @@ importers:
       '@ema-agent/token':
         specifier: workspace:*
         version: link:../token
-      '@ema-agent/turn':
-        specifier: workspace:*
-        version: link:../turn
       '@ema-agent/vision':
         specifier: workspace:*
         version: link:../vision
@@ -1314,7 +1311,7 @@ importers:
 
   src/tts:
     dependencies:
-      '@ema-agent/provider':
+      '@ema-agent/providers':
         specifier: workspace:*
         version: link:../providers
       ws:
@@ -1345,15 +1342,48 @@ importers:
       '@ema-agent/attachments':
         specifier: workspace:*
         version: link:../attachments
+      '@ema-agent/characters':
+        specifier: workspace:*
+        version: link:../characters
+      '@ema-agent/compact':
+        specifier: workspace:*
+        version: link:../compact
+      '@ema-agent/knowledge':
+        specifier: workspace:*
+        version: link:../knowledge
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../llm
+      '@ema-agent/narrative':
+        specifier: workspace:*
+        version: link:../narrative
       '@ema-agent/permission':
         specifier: workspace:*
         version: link:../permission
+      '@ema-agent/prompts':
+        specifier: workspace:*
+        version: link:../prompts
+      '@ema-agent/providers':
+        specifier: workspace:*
+        version: link:../providers
+      '@ema-agent/sandbox':
+        specifier: workspace:*
+        version: link:../sandbox
+      '@ema-agent/session':
+        specifier: workspace:*
+        version: link:../session
+      '@ema-agent/settings':
+        specifier: workspace:*
+        version: link:../settings
+      '@ema-agent/skills':
+        specifier: workspace:*
+        version: link:../skills
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage
+      '@ema-agent/tasks':
+        specifier: workspace:*
+        version: link:../tasks
       '@ema-agent/tools':
         specifier: workspace:*
         version: link:../tools
@@ -1370,6 +1400,9 @@ importers:
       vitest:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
+      zod:
+        specifier: ^4
+        version: 4.4.3
 
   src/turn-terms:
     dependencies:
@@ -1422,7 +1455,7 @@ importers:
       '@ema-agent/prompts':
         specifier: workspace:*
         version: link:../prompts
-      '@ema-agent/provider':
+      '@ema-agent/providers':
         specifier: workspace:*
         version: link:../providers
       '@ema-agent/sandbox':
@@ -1574,7 +1607,7 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.39.0
         version: 0.39.0
-      '@ema-agent/provider':
+      '@ema-agent/providers':
         specifier: workspace:*
         version: link:../providers
       '@google/genai':

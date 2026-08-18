@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { buildTool, contextFail, contextOk, type ToolInvocation } from '@ema-agent/tools';
 import type {
   NarrativeRecallTimeline,
-  NarrativeSearchPort,
+  NarrativeSearch,
   NarrativeTimelineFailure,
 } from '@ema-agent/narrative';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
@@ -32,7 +32,7 @@ export interface NarrativeSearchResult {
 
 /** NarrativeSearch 工具的窄 Context：只取按需检索端口; 取消与身份走 ToolInvocation。 */
 interface NarrativeSearchToolContext {
-  readonly narrativeSearch: NarrativeSearchPort;
+  readonly narrativeSearch: NarrativeSearch;
 }
 
 export const NarrativeSearchTool = buildTool<

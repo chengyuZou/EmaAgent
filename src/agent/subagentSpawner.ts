@@ -3,7 +3,7 @@
 import { randomUUID } from 'node:crypto';
 import type {
   SubagentRunResult,
-  SubagentSpawnerPort,
+  SubagentSpawnerFn,
   SubagentSpawnOptions,
 } from '@ema-agent/tools';
 import { runAgentLoop } from './agentLoop.js';
@@ -38,7 +38,7 @@ export interface SubagentSpawnerOptions {
   readonly emit: (event: AgentRunEvent) => void;
 }
 
-export class SubagentSpawner implements SubagentSpawnerPort {
+export class SubagentSpawner implements SubagentSpawnerFn {
   private readonly controllers = new Map<string, AbortController>();
   private readonly activeRuns = new Map<string, Promise<SubagentRunResult>>();
   private readonly backgroundRuns = new Map<string, Promise<SubagentRunResult>>();

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import {
   buildTool,
   type BackgroundProcessOutput,
-  type BackgroundProcessPort,
+  type BackgroundProcess,
   contextFail,
   contextOk,
   type ToolInvocation,
@@ -12,7 +12,7 @@ import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 
 /** Process 工具族的窄 Context：只取后台进程端口; Session 身份走 ToolInvocation。 */
 interface ProcessOutputToolContext {
-  backgroundProcesses: BackgroundProcessPort;
+  backgroundProcesses: BackgroundProcess;
 }
 
 const inputSchema = z.object({

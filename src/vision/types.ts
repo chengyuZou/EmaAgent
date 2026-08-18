@@ -1,6 +1,6 @@
-import type { VisionProtocol } from '@ema-agent/provider';
+import type { VisionProtocol } from '@ema-agent/providers';
 
-export type { VisionProtocol } from '@ema-agent/provider';
+export type { VisionProtocol } from '@ema-agent/providers';
 
 /** Provider 已解析好的 Vision 协议连接。 */
 export interface VisionConnection {

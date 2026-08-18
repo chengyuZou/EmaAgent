@@ -4,13 +4,13 @@ import {
   buildTool,
   contextFail,
   contextOk,
-  type SubagentSpawnerPort,
+  type SubagentSpawnerFn,
 } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 
 /** 窄 Context：启动器自带等待端口;身份与取消走 ToolInvocation。 */
 interface SubagentAwaitContext {
-  spawner: SubagentSpawnerPort;
+  spawner: SubagentSpawnerFn;
 }
 
 const inputSchema = z.object({

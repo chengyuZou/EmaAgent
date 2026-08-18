@@ -1,6 +1,6 @@
-import type { TtsProtocol } from '@ema-agent/provider';
+import type { TtsProtocol } from '@ema-agent/providers';
 
-export type { TtsProtocol } from '@ema-agent/provider';
+export type { TtsProtocol } from '@ema-agent/providers';
 
 /** Provider 已解析好的 TTS 协议连接。 */
 export interface TtsConnection {

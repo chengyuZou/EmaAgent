@@ -1,6 +1,6 @@
 // 验证 NarrativeSearchTool 只消费宿主授予的检索端口, 并诚实区分完整/部分/空/不可用结果。
 import { describe, expect, it, vi } from 'vitest';
-import type { NarrativeSearchPort } from '@ema-agent/narrative';
+import type { NarrativeSearch } from '@ema-agent/narrative';
 import type { ToolInvocation } from '@ema-agent/tools';
 import { NarrativeSearchTool } from '../tools/NarrativeSearchTool/NarrativeSearchTool.js';
 
@@ -22,7 +22,7 @@ describe('NarrativeSearchTool validateContext', () => {
   });
 
   it('有 Port 时只投影窄 Context', () => {
-    const narrativeSearch: NarrativeSearchPort = async () => ({
+    const narrativeSearch: NarrativeSearch = async () => ({
       generationId: 'generation-1',
       timelines: [],
       failures: [],

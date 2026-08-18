@@ -6,7 +6,7 @@ import {
   buildTool,
   contextFail,
   contextOk,
-  type ScratchpadPort,
+  type Scratchpad,
   type ToolUseContext,
 } from '@ema-agent/tools';
 import { estimateTextTokens } from '@ema-agent/token';
@@ -37,7 +37,7 @@ const KEY_SCHEMA = z.string().regex(
 
 /** Scratchpad 工具族的窄 Context:只有 Turn 级存储位置;取消信号由 ToolInvocation 提供。 */
 interface ScratchpadToolContext {
-  scratchpad: ScratchpadPort;
+  scratchpad: Scratchpad;
 }
 
 /** 五件套共用:scratchpad 必须装配(仅 work Turn),否则工具不可见。 */

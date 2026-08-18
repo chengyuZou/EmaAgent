@@ -1,5 +1,5 @@
 // 把协议输入错误、Provider 失败、取消和不完整流归一成稳定错误。
-import type { LlmProtocol } from '@ema-agent/provider';
+import type { LlmProtocol } from '@ema-agent/providers';
 
 export type LlmErrorCode =
   | 'provider/context_too_long'

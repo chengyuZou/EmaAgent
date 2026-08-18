@@ -1,12 +1,12 @@
 // 一次向用户提出一个或多个结构化问题，并等待统一回答。
-// 模型说明书见 prompt.ts。问询通道由 AskUserPort 抽象:
+// 模型说明书见 prompt.ts。问询通道由 AskUser 抽象:
 // 事件发射(ask_user_required/resolved)归 port 实现, Tool 不触碰事件总线。
 import { z } from 'zod';
 import {
   buildTool,
   contextFail,
   contextOk,
-  type AskUserPort,
+  type AskUser,
   type ToolInvocation,
 } from '@ema-agent/tools';
 import type { AskUserQuestionSpec } from '@ema-agent/tools';
@@ -15,7 +15,7 @@ import { ASK_USER_DESCRIPTION } from './prompt.js';
 
 /** AskUser 工具的窄 Context：只取问询解析器;身份与取消走 ToolInvocation。 */
 interface AskUserToolContext {
-  askUser: AskUserPort;
+  askUser: AskUser;
 }
 
 // ── 输入 schema ──────────────────────────────────────────────────────────────

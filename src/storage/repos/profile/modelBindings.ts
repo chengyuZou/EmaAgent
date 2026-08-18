@@ -3,8 +3,8 @@ import type {
   ModelBinding,
   ModelBindingModule,
   ModelBindingStore,
-} from '@ema-agent/provider';
-import type { ModelCapability } from '@ema-agent/provider';
+} from '@ema-agent/providers';
+import type { ModelCapability } from '@ema-agent/providers';
 import type { SqliteDb } from '../../database/database.js';
 
 interface ModelBindingRow {

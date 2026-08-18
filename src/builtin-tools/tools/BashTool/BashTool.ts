@@ -5,10 +5,10 @@ import {
   buildTool,
   contextFail,
   contextOk,
-  type BackgroundProcessPort,
+  type BackgroundProcess,
   type ToolInvocation,
 } from '@ema-agent/tools';
-import type { CommandRunnerPort } from '@ema-agent/sandbox';
+import type { CommandRunner } from '@ema-agent/sandbox';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { analyzeBashCommand, splitCommandSegments } from './security/bashSecurity.js';
 import { interpretExitCode } from './commandSemantics.js';
@@ -16,8 +16,8 @@ import { BASH_DESCRIPTION } from './prompt.js';
 
 /** Bash 工具的窄 Context：命令执行器与后台进程入口;身份与取消走 ToolInvocation。 */
 interface BashToolContext {
-  runner: CommandRunnerPort;
-  backgroundProcesses: BackgroundProcessPort;
+  runner: CommandRunner;
+  backgroundProcesses: BackgroundProcess;
   workspaceRoot: string;
 }
 
