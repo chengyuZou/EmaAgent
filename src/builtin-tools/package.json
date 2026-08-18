@@ -1,5 +1,5 @@
 {
-  "name": "@ema-agent/tool-builtin",
+  "name": "@ema-agent/builtin-tools",
   "version": "0.1.0",
   "private": true,
   "type": "module",
