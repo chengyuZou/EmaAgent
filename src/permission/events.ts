@@ -1,12 +1,8 @@
 // 定义权限等待与决策结果进入统一事件流时使用的稳定协议。
-import type { PermissionPrompt } from './types.js';
+import type { PermissionRequest } from './types.js';
 
-export interface PermissionRequiredEvent extends PermissionPrompt {
+export interface PermissionRequiredEvent extends PermissionRequest {
   readonly type: 'permission_required';
-  readonly sessionId: string;
-  readonly turnId: string;
-  readonly toolCallId: string;
-  readonly promptId: string;
 }
 
 export interface PermissionResolvedEvent {
@@ -14,7 +10,6 @@ export interface PermissionResolvedEvent {
   readonly sessionId: string;
   readonly turnId: string;
   readonly toolCallId: string;
-  readonly promptId: string;
   readonly decision: 'allow' | 'deny';
 }
 

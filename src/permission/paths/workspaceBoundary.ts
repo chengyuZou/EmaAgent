@@ -3,7 +3,6 @@
 import path, { posix } from 'node:path';
 import { normalizeCaseForComparison, normalizeMacOsSymlinks, getPathsForPermissionCheck } from './pathSafety.js';
 import { getPlatform, toPortablePath } from './platformPaths.js';
-import type { PermissionContext } from '../types.js';
 
 /** 返回统一分隔符的跨平台相对路径，供工作区边界比较。 */
 function relativePosixPath(from: string, to: string): string {
@@ -42,7 +41,7 @@ export function pathInWorkingDir(targetPath: string, workingDir: string): boolea
  */
 export function pathInAnyWorkingDir(
   targetPath: string,
-  context:    Pick<PermissionContext, 'workspaceRoot'>,
+  context:    { readonly workspaceRoot?: string },
 ): boolean {
   // 缺少工作区必须直接拒绝，不能让 path.resolve('') 把宿主 cwd 变成隐式授权目录。
   if (!context.workspaceRoot) return false;

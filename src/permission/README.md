@@ -1,139 +1,134 @@
 # Permission
 
-Permission 只回答一个问题：**一次已经完成业务校验的操作，在当前规则、模式和用户选择下能否继续执行。**
+`src/permission` 是 Ema 的权限判定域：一张**中央固定优先级表** + 各 Tool 的**自我解释权**（`checkPermissions`）+ 规则的配置沉淀（`PermissionUpdate`）。中央永远不知道"这条命令危不危险"——它只知道规则命中顺序和模式语义；具体输入（命令、路径、URL）由 Tool 自己解释。
 
-它不解析 Tool Schema，不执行 Tool，不启动 Sandbox，不实现 Session 队列，也不直接访问 SQLite。批准只代表策略允许；真实副作用仍必须经过 Sandbox 或对应平台执行器。
+## 为什么这么设计
 
-## 唯一授权入口
+- **中央靠抽象字段（riskLevel/accessType/targets）猜所有 Tool 语义已被判死** 每个 Tool 自己最懂自己的输入：Bash 拆命令、文件 Tool 解路径、WebFetch 解域名。中央只保留不可破坏的判定顺序。
+- **规则是原始字符串**（`'Tool'` 或 `'Tool(content)'`），context 里按 source 分桶存放，**解析推迟到各 Tool 家族 match 时**——中央因此永远不需要懂 ruleContent 的语义。
+- **"本 Session 允许"不是特殊决策**：一次 `allow` 附带一条 session destination 规则（内存表，本 Turn 即效，进程退出即消失）。没有指纹机、没有 SessionGrantStore。
+- **Permission 永不修改 Tool 输入**（无 updatedInput）；Permission/Sandbox 物理分层（批准 ≠ 已隔离）。
 
-```ts
-const decision = await permissionAuthorizer.authorize(request, askPermission);
+## 主流程
+
+```mermaid
+flowchart TD
+    A[LLM tool_use 意图] --> B[inputSchema.parse 一次]
+    B --> C[tool.validateContext → 窄 Context]
+    C --> D[hasPermissionsToUseTool 中央固定优先级]
+    D --> D1{"1. 整体 deny 规则命中？"}
+    D1 -->|是| Z[deny 终态]
+    D1 -->|否| D2{"2. 整体 ask 规则命中？"}
+    D2 -->|是| ASK[ask 进入交互回路]
+    D2 -->|否| D3["3. tool.checkPermissions（Tool 自我解释）"]
+    D3 -->|deny| Z
+    D3 -->|ask| ASK
+    D3 -->|"allow / passthrough"| D4{"4. bypassPermissions 且构建可用？"}
+    D4 -->|是| ALLOW[allow → tool.execute 同一份 input]
+    D4 -->|否| D5{"5. 整体 allow 规则命中？"}
+    D5 -->|是| ALLOW
+    D5 -->|否| D6{"6. Tool 自检结果"}
+    D6 -->|allow| ALLOW
+    D6 -->|passthrough| ASK
+    ASK --> H{有交互通道？}
+    H -->|无（headless/子 Agent）| ZD[deny headless]
+    H -->|有| Q[SessionInteractionQueue<br/>锚 = toolCallId]
+    Q --> UI[前端批准卡 PermissionRequest]
+    UI -->|允许一次| ALLOW
+    UI -->|本 Session 允许| U[allow + PermissionUpdate<br/>addRules session → 内存表即效]
+    UI -->|拒绝| Z
+    U --> ALLOW
 ```
 
-执行链固定为：
+## Tool 契约
 
-```text
-Tool Schema 与 Context 校验
-  → Tool 业务硬安全校验
-  → Tool 生成纯数据 PermissionIntent
-  → PermissionAuthorizer.authorize()
-  → Sandbox / 平台能力约束
-  → Tool.execute()
-```
-
-任何调用方都不能因 Tool 属于 Builtin、MCP 或内部模块而绕过 `authorize()`。可信 Builtin 只能通过 `promptPolicy: 'neverForTrustedBuiltin'` 跳过普通询问，通用路径安全和 deny 规则仍然执行。
-
-## 公共契约
-
-`PermissionRequest` 由四部分组成：
-
-- `tool`：稳定 Tool id 和批准界面名称；
-- `input`：单调用执行器完成一次 Schema 解析后的同一份输入；
-- `intent`：Tool 投影出的风险、访问类型和路径目标；
-- `context`：本次调用的模式、工作区和 Session/Turn/ToolCall 身份。
-
-一次操作可以包含多个 `targets`，例如复制文件同时包含读取源路径和写入目标路径。Permission 不再用 `extractPath()` 猜某个输入字段，也不保存 Tool 的 `safetyCheck()` 回调。
+每个 Tool 把权限意图从"声明抽象字段"改为"自我解释"：
 
 ```ts
-interface PermissionIntent {
-  readonly riskLevel: 'low' | 'medium' | 'high';
-  readonly accessType: 'read' | 'write' | 'execute';
-  readonly targets?: readonly {
-    readonly path: string;
-    readonly accessType: 'read' | 'write';
-  }[];
-  readonly internalPathCapability?: 'turnScratchpad';
-  readonly promptPolicy: 'whenRequired' | 'neverForTrustedBuiltin';
+// 取代旧 getPermissionIntent。执行链在 validateContext 之后、execute 之前调用。
+checkPermissions(
+  input: TInput,
+  context: TContext,                      // validateContext 投影出的窄 Context（宿主能力）
+  permissionContext: ToolPermissionContext, // 模式 + 冻结规则桶 + 身份
+): Promise<PermissionResult>;
+```
+
+`ToolPermissionContext`：
+
+```ts
+interface ToolPermissionContext {
+  mode: PermissionMode;                     // 'default' | 'acceptEdits' | 'bypassPermissions'
+  alwaysAllowRules: ToolPermissionRulesBySource;  // 原始规则字符串桶
+  alwaysDenyRules: ToolPermissionRulesBySource;
+  alwaysAskRules: ToolPermissionRulesBySource;
+  isBypassPermissionsModeAvailable: boolean;
+  workspaceRoot?: string;
+  sessionId: string;
+  toolCallId: string;
 }
+// ToolPermissionRulesBySource = Partial<Record<'userSettings'|'projectSettings'|'session', readonly string[]>>
+// source 优先级：session > projectSettings > userSettings（具体先生效）
 ```
 
-## 决策顺序
+`PermissionResult` 四种返回：
 
-```text
-请求完整性
-  → 全部目标的原路径与真实路径解析
-  → 通用路径硬安全
-  → deny 规则
-  → ask 规则
-  → Session 精确授权
-  → allow 规则（必须覆盖全部目标）
-  → 显式内部目录能力
-  → 工作区读取
-  → acceptEdits 的工作区写入
-  → 开发构建显式允许的 bypassPermissions
-  → 可信 Builtin 免普通询问
-  → 用户询问；没有询问端口时拒绝
-```
+| 返回 | 语义 | 何时用 |
+|---|---|---|
+| `{ behavior: 'allow', decisionReason? }` | Tool 自己放行（如：工作区内读取、规则命中 allow） | 自检确认安全 |
+| `{ behavior: 'deny', message, decisionReason? }` | Tool 自己拒绝 | 危险输入（AST 硬拦、敏感路径） |
+| `{ behavior: 'ask', message, decisionReason? }` | 需要用户确认（**先于 bypass 生效**） | 写操作、命中 ask 规则、必须交互 |
+| `{ behavior: 'passthrough', message }` | Tool 没有允许/拒绝的理由，交中央收口 | MCP、无特殊语义的 Tool |
 
-规则优先级为 `deny > ask > Session grant > allow > mode/default`。`bypassPermissions` 也不能越过请求完整性、路径硬安全、deny 和 ask 规则。
+`decisionReason` 窄联合：`rule / mode / subcommandResults(Bash 复合命令逐条) / workingDir / safetyCheck / user / headless / other`。
 
-## Permission Mode
+## 可用的匹配器（rules/，直接用，不要自己重写）
 
-| 模式 | 语义 |
+| 函数 | 用途 |
 |---|---|
-| `default` | 工作区读取自动允许，其余按规则或询问 |
-| `acceptEdits` | 额外允许工作区文件写入，不允许 execute |
-| `bypassPermissions` | 仅显式开发入口可开启；正式装配必须禁用 |
+| `permissionRuleValueFromString / ToString` | `'Bash(npm:*)'` ↔ `{toolName, ruleContent}` |
+| `matchesWholeTool(ruleValue, toolName)` | 整体 Tool 规则判定（ruleContent 空 + 同名） |
+| `matchShellRule(ruleContent, command)` | shell 命令 × 规则（exact / `npm:*` 前缀 / wildcard） |
+| `matchWildcardPattern(pattern, command)` | wildcard 底层（`git *` 兼容裸 `git`） |
+| `matchPathRule(ruleContent, candidatePath, workspaceRoot?)` | 路径 × gitignore 规则（`'./src/**'`、`'//abs/path/**'`） |
 
-Mode 是每个请求的不可变执行快照，不是 `PermissionEngine` 的全局状态。不同 Session 并行时不会互相切换权限模式。
+内容级规则匹配的标准姿势：从桶里取 `alwaysAllowRules` 等原始字符串 → `permissionRuleValueFromString` 解析出 `ruleContent` → 喂对应家族的 matcher。
 
-## 批准等待与 Session 授权
+## 各 Tool 的 checkPermissions 分布
 
-批准等待由 `src/turn/interaction` 的统一 Session 队列负责：同 Session 的 Permission 与 AskUser 严格 FIFO，跨 Session 可以并行。Permission 本身只提交 `PermissionPrompt` 并等待 `PermissionResponse`。
+| Tool | checkPermissions 内容 |
+|---|---|
+| Bash / PowerShellTool | 用户自研安全分析（AST/命令拆解，**用户本人正在写**）+ `matchShellRule` 内容规则匹配；复合命令逐子命令出 `decisionReason.subcommandResults` |
+| FileRead / FileEdit / FileWrite | `paths/` 语料 + `matchPathRule`；检查顺序照抄 Claude filesystem.ts：危险路径 → read 专属 deny → read 专属 ask → edit 蕴含 read → 工作区读 allow（default）/ 工作区写（acceptEdits）→ 内部路径 → allow 规则 → 默认 ask |
+| WebFetch | 域名规则匹配（URL host × 规则） |
+| MCP Tool | `passthrough`；自报 annotations 只能升风险（`readOnlyHint` 只进 UI，`destructiveHint` 可升 ask，不可降） |
+| AskUser | 固定 `ask`（必须交互） | DS |
+| Task / Skill / Subagent / 其余 | `passthrough`（由整体规则或模式收口） |
 
-- 默认没有倒计时，卡片会一直等待用户选择；
-- 只有用户在设置中明确填写 5 至 600 秒，队首才在到期后自动拒绝；
-- 排队但尚未成为队首的卡片不计时；
-- Turn abort、Session 删除或应用退出仍会主动取消等待；
-- SSE 断开不会自动拒绝，重连后从 pending snapshot 恢复卡片；
-- 进程崩溃或断电不会把旧批准恢复成可执行操作。
+acceptEdits 模式语义归文件 Tool（"工作区内写入放行"）；default/bypassPermissions 归中央。
 
-`allowSession` 只保存当前 Session 内的精确请求指纹。指纹覆盖 Tool id、规范化输入、Mode、权限意图、工作区、全部真实路径和内部能力根；不包含 TurnId/ToolCallId 等动态身份。同一请求可在当前 Session 复用，输入、路径、模式或 Session 任一不同都必须重新询问。
+## 规则存储与生命周期
 
-用户响应后会重新计算完整指纹，并再次执行通用路径安全和 deny 规则。等待期间请求、symlink 目标或能力根发生变化时返回 `requestChanged`，不会执行也不会保存 Session 授权。
+- **settings KV 六个 key**：`permission.rules.user.{allow,deny,ask}`（`string[]`）、`permission.rules.project.{allow,deny,ask}`（`Record<projectId, string[]>`）；`apply: 'nextTurn'`（settings 源次 Turn 冻结生效）。
+- **session 规则**：`rules/update.ts` 的内存 per-session 表（本 Turn 即效，不落盘）。
+- `applyPermissionUpdate(store, update, {sessionId, projectId?})`：addRules/removeRules/setMode 的唯一写入点。
+- 项目删除 → `purgeProjectRules(store, projectId)`；开机 → `reconcileProjectRules(store, existingProjectIds)`（崩溃收敛，装配层注入项目列表）。
+- `loadPermissionRuleBuckets(store, sessionId, projectId?)`：Turn 准备时装配三桶（settings 源冻结 + session 并入 allow 桶）。
 
-## 规则与持久化
-
-V1 只保留两种真实持久规则：
-
-- `global`：全部工作区生效；
-- `workspace`：绑定创建规则时的规范化工作区绝对路径。
-
-Session 临时授权只存在内存，不混入永久规则表。Permission 定义 `PermissionRuleStore` 窄端口；生产 SQL 适配器由 Server 装配并使用 Storage Repo，Permission 包不依赖 Storage。
-
-执行器只接收 `PermissionAuthorizer`，规则 Route 只接收 `PermissionRuleCatalog`，不能给调用方一个宽对象后让它随意跨职责调用。
-
-## 路径边界
-
-- 相对路径必须有明确 `workspaceRoot`，禁止回退到 Server 的 `process.cwd()`；
-- 原路径和 symlink/junction 真实路径都参加安全、规则和工作区判断；
-- 新文件不存在时解析最近存在的父目录，防止父目录链接逃逸；
-- Windows/WSL 的 ADS、设备路径、UNC、DOS 设备名与尾点尾空格会被拒绝；
-- Unix 虚拟文件系统和 shell/glob 注入形式会被拒绝；
-- Tool 隐藏真实路径时必须声明受信任的内部目录能力，Permission 不根据 SessionId 自行拼路径。
-
-## 文件职责
+## 文件结构
 
 ```text
 src/permission/
-├─ permissionEngine.ts       唯一 authorize 主链和规则管理实现
-├─ requestFingerprint.ts     批准复核与 Session grant 共用指纹
-├─ types.ts                  公共请求、意图、决策、Prompt 与规则契约
-├─ events.ts                 Permission 跨业务事件
-├─ settings.ts               批准等待时间设置
-├─ paths/                    路径安全、工作区和内部目录能力
-├─ policy/                   规则匹配、Store 端口和 Session grant
-└─ tests/                    授权顺序、路径、请求完整性和 Prompt
+├─ types.ts                    词汇：Behavior/Mode/Source/Rule/Update/Result/DecisionReason/ToolPermissionContext/PermissionRequest
+├─ hasPermissionsToUseTool.ts  中央固定优先级（外层无通道 ask→deny）
+├─ rules/
+│  ├─ permissionRuleParser.ts  规则字符串 ↔ 结构 + 整体匹配
+│  ├─ shellRuleMatching.ts     shell 三形态匹配
+│  ├─ pathRuleMatching.ts      路径 gitignore 匹配（POSIX 盘符归一）
+│  ├─ loader.ts                settings 读出装配桶 + reconcileProjectRules
+│  └─ update.ts                PermissionUpdate 应用 + session 内存表 + purgeProjectRules
+├─ settings.ts                 7 个 settings key（mode/rules×6/askTimeoutMs，全带 describe）
+├─ events.ts                   permission_required/resolved（PermissionRequest + toolCallId）
+├─ paths/                      pathSafety/workspaceBoundary/platformPaths/internalPaths（文件 Tool 语料）
+└─ tests/                      六组测试（parser/shell/path/update/loader/central，29 条）
 ```
 
-根出口不会公开 path helper、rule matcher 或 SessionGrantStore，外部不能用内部函数拼出第二条授权流水线。
-
-## 当前不做
-
-- LLM 自动审批；
-- 企业托管策略和仓库内权限配置；
-- Plan Mode 专属 Permission 枚举；
-- Hook 覆盖 Permission 决策；
-- Permission 内部的重复拒绝追踪。
-
-连续拒绝后提醒模型改变策略属于 AgentLoop 行为，不应让 Permission 持有跨调用的模型控制状态。

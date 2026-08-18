@@ -1,7 +1,8 @@
 // 识别 Permission 路径检查需要的平台差异，并统一跨平台比较格式。
 
 import fs from 'node:fs';
-import type { Platform } from '../types.js';
+
+export type Platform = 'windows' | 'wsl' | 'linux' | 'macos';
 
 let cachedPlatform: Platform | undefined;
 
