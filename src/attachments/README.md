@@ -1,6 +1,6 @@
 # @ema-agent/attachments — Turn 附件（登记、受管副本、源状态、模型投影、Vision 描述缓存）
 
-用户输入框附件的唯一业务所有者。冻结规格见 `docs/EmaAttachmentsBatch.md`（V2）。
+用户输入框附件的唯一业务所有者。
 
 ## 业务边界
 

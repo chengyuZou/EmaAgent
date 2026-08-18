@@ -5,5 +5,5 @@
     "outDir": "dist",
     "types": ["node"]
   },
-  "include": ["*.ts"]
+  "include": ["*.ts", "Tool/BuiltinToolIdentity.ts"]
 }

@@ -78,3 +78,16 @@ export type {
   ToolResultCleanerSettings,
 } from './results/index.js';
 export * from './background/index.js';
+export {
+  BuiltinTools,
+  type BuiltinToolIdentity,
+} from './Tool/BuiltinToolIdentity.js';
+export {
+  ASK_USER_TOOL_ID,
+  DEFAULT_TOOL_SETTINGS,
+  disabledToolsSetting,
+  readToolSettings,
+} from './settings.js';
+export type { ToolSettings } from './settings.js';
+export { describeToolForCatalog } from './catalog.js';
+export type { ToolCatalogItem } from './catalog.js';

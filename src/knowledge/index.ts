@@ -32,6 +32,8 @@ export type {
 } from './types.js';
 export { PdfReader } from './readers/pdf.js';
 export type { PdfReadRange } from './readers/pdf.js';
+export { ImageReader } from './readers/image.js';
+export type { ImageReaderOptions } from './readers/image.js';
 export {
   DEFAULT_KNOWLEDGE_RETRIEVAL_SETTINGS,
   kbAlphaSetting,
