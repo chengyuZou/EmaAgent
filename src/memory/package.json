@@ -33,7 +33,7 @@
     "@ema-agent/settings": "workspace:*",
     "@ema-agent/storage": "workspace:*",
     "@ema-agent/token": "workspace:*",
-    "@ema-agent/turn": "workspace:*",
+    "@ema-agent/turn-terms": "workspace:*",
     "zod": "^4"
   },
   "optionalDependencies": {

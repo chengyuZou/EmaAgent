@@ -1,6 +1,6 @@
 // 定义跨角色、会话和模型保持稳定的产品规则，以及按当轮 ToolPool 展开的工具使用指引。
 
-import { BuiltinTools } from '@ema-agent/tool-builtin/identity';
+import { BuiltinTools } from '@ema-agent/builtin-tools/identity';
 
 function bullets(items: readonly string[]): string {
   return items.map((item) => `- ${item}`).join('\n');

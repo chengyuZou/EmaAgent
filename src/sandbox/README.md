@@ -21,7 +21,7 @@
 - 安全策略（unisolated 时是否隐藏执行类工具、AGEN_UNSAFE_* 开关）——归 Server wiring(`createSandboxRuntime`);
 - Git/WSL 安装动作（归 `apps/server/src/gitInstaller.ts`，本包只提供探测与缓存重置入口）;
 - Permission 决策（归 `@ema-agent/permission`；本包不判断"该不该跑"，只负责"跑了就按能力约束跑");
-- 具体工具（BashTool 等归 `src/builtinTools`)、后台进程调度（归 `@ema-agent/tools/background`);
+- 具体工具（BashTool 等归 `src/builtin-tools`)、后台进程调度（归 `@ema-agent/tools/background`);
 - `SandboxStatusWire` 等 UI 协议形状（归 Server wiring 组装）;
 - SQL/Row/持久化（本包无任何存储依赖）。
 

@@ -41,7 +41,6 @@ describe('parseMessageBlocksJson', () => {
     expect(parseMessageBlocksJson(
       JSON.stringify([{ type: 'image_url', url: 'https://example.com/a.png' }]),
       'assistant',
-      'normal',
     )).toBe('[消息内容无法读取]');
   });
 

@@ -1,7 +1,7 @@
 // 把明确的运行时事实按固定顺序序列化为紧邻当前 Turn 的 system-reminder。
 import type { GitSummary } from '@ema-agent/git';
 import type { Message } from '@ema-agent/llm';
-import type { ExecutionProfile } from '@ema-agent/turn';
+import type { ExecutionProfile } from '@ema-agent/turn-terms';
 import { ContextAssemblyError } from './errors.js';
 import type { ContextReminder } from './types.js';
 

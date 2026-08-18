@@ -3,7 +3,7 @@ import type {
   ExecutionProfile,
   NarrativePolicy,
   TurnStatus,
-} from '@ema-agent/turn/turns';
+} from '@ema-agent/turn-terms';
 import type { MessageBlocks } from './message.js';
 import type { ToolResultBlock } from './message.js';
 

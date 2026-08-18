@@ -1,4 +1,4 @@
-import type { ExecutionProfile } from '@ema-agent/turn';
+import type { ExecutionProfile } from '@ema-agent/turn-terms';
 import type { MemoryEvent, MemoryRecallEvent } from './events.js';
 import type { MemoryNodeType, MemoryItemKind } from '@ema-agent/storage';
 import type { EmbeddingSpace } from '@ema-agent/embed';

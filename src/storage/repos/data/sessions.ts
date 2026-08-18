@@ -1,5 +1,5 @@
 // 读写 Session 行、稳定分页、搜索投影、项目分组投影、Fork 和事务性偏好更新。
-// Row 枚举由 storage 自持（SQL CHECK 的映射）；领域词汇归 @ema-agent/turn 叶子，业务包在边界显式映射。
+// Row 枚举由 storage 自持（SQL CHECK 的映射）；领域词汇归 @ema-agent/turn-terms 叶子，业务包在边界显式映射。
 import type { SqliteDb } from '../../database/database.js';
 import type { TurnStatusRow } from './turns.js';
 import { buildFtsQuery } from '../../search/zh-tokenizer.js';

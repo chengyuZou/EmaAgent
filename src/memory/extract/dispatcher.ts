@@ -1,4 +1,4 @@
-import type { ExecutionProfile } from '@ema-agent/turn';
+import type { ExecutionProfile } from '@ema-agent/turn-terms';
 import { bestEffort } from '../best-effort.js';
 import type { MemoryDeps } from '../deps.js';
 import type { MemorySettings } from '../types.js';

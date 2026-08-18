@@ -1,7 +1,7 @@
 // 运行已持久化的 Memory 提取任务，并拒绝尚未实现的任务类型进入成功终态。
 
 import crypto from 'node:crypto';
-import type { ExecutionProfile } from '@ema-agent/turn';
+import type { ExecutionProfile } from '@ema-agent/turn-terms';
 import type {
   MemoryTaskKind, MemoryTaskRow,
 } from '@ema-agent/storage';

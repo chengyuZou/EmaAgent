@@ -1,7 +1,7 @@
 // 测试 System Prompt 扁平数组装配:顺序、边界哨兵位置、条件展开与 null 过滤。
 import { describe, expect, it } from 'vitest';
 import type { CharacterPrompt } from '@ema-agent/characters';
-import { BuiltinTools } from '@ema-agent/tool-builtin/identity';
+import { BuiltinTools } from '@ema-agent/builtin-tools/identity';
 import {
   getSystemPrompt,
   PROMPT_DYNAMIC_BOUNDARY,

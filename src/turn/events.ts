@@ -1,16 +1,11 @@
 // 定义一次 Turn 自身的生命周期、模型输出投影与请求降级事件。
-import type { TurnFailureCode } from './errors.js';
-import type { ExecutionProfile, NarrativePolicy, TurnStats } from './turns.js';
-
-export type { TurnStats };
-
-/** 请求在调用 Provider 前执行的可观测兼容降级。 */
-export interface RequestDegradationNotice {
-  attempt: number;
-  reason: string;
-  removed: Array<'image' | 'audio' | 'file' | 'parameter'>;
-  replacements: Array<'description' | 'placeholder' | 'parameter_omitted'>;
-}
+import type {
+  ExecutionProfile,
+  NarrativePolicy,
+  RequestDegradationNotice,
+  TurnFailureCode,
+  TurnStats,
+} from '@ema-agent/turn-terms';
 
 export type TurnEvent =
   | {

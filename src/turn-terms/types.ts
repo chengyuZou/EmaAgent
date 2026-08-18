@@ -1,5 +1,9 @@
-// 定义 Turn 的领域词汇、领域对象、创建输入、Wire 请求与终态统计。
-// 本文件是词汇叶（只依赖 ids 与 llm 的内容词汇类型）：任何包都可以 import 它，它永不 import 业务包。
+// Turn 领域词汇的唯一事实源（叶子包：只依赖 @ema-agent/llm 的内容词汇类型）。
+// 任何包都可以 import 它，它永不 import 业务包。
+// 词汇拼齐自三个来源：turn/turns.ts（领域对象、创建输入、Wire 请求与终态统计）、
+// turn/events.ts（请求降级词汇）、turn/errors.ts（失败码/阶段纯联合）。
+// 不进本包：执行器公共契约（StartTurn/TurnOutcome/TurnHandle，归 turn/types.ts）、
+// 交互队列词汇（归 interaction 队列）、TurnEvent（事件归 turn/events.ts）。
 
 import type { ContentPart } from '@ema-agent/llm';
 
@@ -134,7 +138,7 @@ export interface TurnRequest {
   /** 模型名。如果有 providerId，此模型必须在该供应商下已启用。 */
   modelId?:        string;
   ttsEnabled?:      boolean;
-  /** 用户开启“思考”开关；支持范围由模型能力快照和输入准备层校验。 */
+  /** 用户开启"思考"开关；支持范围由模型能力快照和输入准备层校验。 */
   thinkingEnabled?: boolean;
   /** 用户在聊天选择器中选中的唯一 KB；只影响本 Turn 的检索范围。 */
   kbId?:            string;
@@ -155,8 +159,6 @@ export function hasTurnRequestInput(input: TurnRequestInput): boolean {
   );
 }
 
-
-
 // ── 本轮统计（被 turn_completed SSE 事件引用） ────────────────────────────────
 //
 // 命名注意：这是"turn 终态摘要"不是 provider 的 usage 对象——token（账单）与
@@ -169,3 +171,37 @@ export interface TurnStats {
   outputTokens: number;
   durationMs:   number;
 }
+
+// ── 请求在调用 Provider 前执行的可观测兼容降级（词汇，非事件） ────────────────
+
+export interface RequestDegradationNotice {
+  attempt: number;
+  reason: string;
+  removed: Array<'image' | 'audio' | 'file' | 'parameter'>;
+  replacements: Array<'description' | 'placeholder' | 'parameter_omitted'>;
+}
+
+// ── Turn 失败终态对前端公开的稳定错误码与阶段（纯联合词汇） ────────────────────
+// 两个 Error 类（TurnOwnershipError/ActiveTurnAlreadyRegisteredError）留在
+// turn/errors.ts，不属于词汇叶。
+
+/** Turn 失败终态对前端公开的稳定错误码；领域内部错误在进入终态时映射到这里。 */
+export type TurnFailureCode =
+  | 'auth/api_key_invalid'
+  | 'provider/context_too_long'
+  | 'provider/model_capability_unsupported'
+  | 'provider/server_error'
+  | 'provider/tool_arguments_invalid_json'
+  | 'provider/not_configured'
+  | 'turn/budget_exceeded'
+  | 'turn/attachment_failed'
+  | 'turn/setup_failed'
+  | 'turn/execution_failed';
+
+/** Turn 失败发生的业务阶段；用于诊断，不参与执行控制。 */
+export type TurnFailurePhase =
+  | 'setup'
+  | 'provider'
+  | 'persistence'
+  | 'tool'
+  | 'unknown';

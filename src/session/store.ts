@@ -1,5 +1,5 @@
 // 集中管理 Session、项目与消息读写的领域规则：什么能写、怎么写、写完联动什么。
-// Turn 生命周期、运行态与导航归 @ema-agent/turn 的 TurnStore；本包只经 storage repo 读取归属。
+// Turn 生命周期、运行态与导航由 turn 包的 TurnStore 承担；本包只经 storage repo 读取归属。
 import crypto from 'node:crypto';
 import {
   MessagesRepo,

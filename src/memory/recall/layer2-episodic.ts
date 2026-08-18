@@ -1,6 +1,6 @@
 import type { MemoryItemRow } from '@ema-agent/storage';
 import type { MemoryDeps } from '../deps.js';
-import type { ExecutionProfile } from '@ema-agent/turn';
+import type { ExecutionProfile } from '@ema-agent/turn-terms';
 import type {
   EpisodicRecallResult, RecalledItem, MemorySettings, EmbeddedText,
 } from '../types.js';

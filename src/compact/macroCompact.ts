@@ -8,7 +8,7 @@ import type {
   UserBlock,
 } from '@ema-agent/llm';
 import { estimateMessagesTokens } from '@ema-agent/token';
-import type { ExecutionProfile } from '@ema-agent/turn';
+import type { ExecutionProfile } from '@ema-agent/turn-terms';
 import { buildCompactPrompt, extractCompactSummary } from './compactPrompt.js';
 
 const MAX_ATTEMPTS = 3;
@@ -78,10 +78,9 @@ export async function runMacroCompact(
 
     try {
       const completion = await args.llm.complete({
-        providerId: args.providerId,
         model: args.model,
         messages: [{ role: 'user', content: prompt }],
-        maxTokens: Math.min(desiredOutputTokens, remainingOutputTokens),
+        maxOutputTokens: Math.min(desiredOutputTokens, remainingOutputTokens),
         temperature: 0.2,
         signal: args.signal,
       });
@@ -186,7 +185,7 @@ function formatBlock(block: UserBlock | AssistantBlock): string {
   return '';
 }
 
-function formatToolResult(content: string | ToolResultContentPart[]): string {
+function formatToolResult(content: string | readonly ToolResultContentPart[]): string {
   if (typeof content === 'string') return content;
   return content
     .map((part) => part.type === 'text' ? part.text : `[${part.type}]`)

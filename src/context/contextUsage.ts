@@ -2,7 +2,7 @@
 import type {
   AssistantBlock,
   LlmTokenUsage,
-  LlmToolDef,
+  LlmTool,
   Message,
   UserBlock,
 } from '@ema-agent/llm';
@@ -58,7 +58,7 @@ interface PromptUsageSection {
 interface ContextUsageInput {
   readonly contextWindow: number;
   readonly messages: readonly Message[];
-  readonly tools: readonly LlmToolDef[];
+  readonly tools: readonly LlmTool[];
   readonly promptSections: readonly PromptUsageSection[];
   readonly history: readonly Message[];
   readonly reminder: RenderedSystemReminder;
@@ -79,10 +79,18 @@ export function estimateContextUsage(input: ContextUsageInput): ContextUsageEsti
 
   if (input.tools.length > 0) {
     const instructionTokens = estimateLlmInputTokens([], {
-      tools: input.tools.map((tool) => ({ ...tool, parameters: {} })),
+      tools: input.tools.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        parameters: {},
+      })),
     }).totalTokens;
     const completeToolTokens = estimateLlmInputTokens([], {
-      tools: input.tools,
+      tools: input.tools.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.inputSchema as Record<string, unknown>,
+      })),
     }).totalTokens;
     pushCategory(categories, 'toolInstructions', instructionTokens);
     pushCategory(categories, 'toolSchemas', Math.max(0, completeToolTokens - instructionTokens));
@@ -105,7 +113,13 @@ export function estimateContextUsage(input: ContextUsageInput): ContextUsageEsti
   pushCategory(categories, 'toolResults', messageUsage.toolResults);
   pushCategory(categories, 'attachments', messageUsage.attachments);
 
-  const complete = estimateLlmInputTokens(input.messages, { tools: input.tools });
+  const complete = estimateLlmInputTokens(input.messages, {
+    tools: input.tools.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.inputSchema as Record<string, unknown>,
+    })),
+  });
   const classified = categories.reduce((sum, category) => sum + category.tokens, 0);
   pushCategory(categories, 'other', Math.max(0, complete.totalTokens - classified));
 

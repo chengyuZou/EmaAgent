@@ -35,7 +35,7 @@
 ## 依赖方向
 
 ```text
-session ──> ids / storage / @ema-agent/turn/turns（零依赖词汇叶，唯一允许导入的 turn 文件）
+session ──> ids / storage / @ema-agent/turn-terms（零依赖词汇叶，唯一允许导入的 turn 词汇包）
 ```
 
 不 import turn 业务实现、agent、context、compact、memory、permission 或应用 Route。

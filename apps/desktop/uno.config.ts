@@ -80,7 +80,7 @@ const config: UserConfig = {
       '../desktop-ui/src/**/*.{ts,tsx}',
       '../../src/ui/**/*.{ts,tsx}',
       '../../src/live2d-react/**/*.{ts,tsx}',
-      // Tool 目录里的 UI.tsx(每个复杂 Tool 自带的展示,经 @ema-agent/tool-builtin/ui 出口)
+      // Tool 目录里的 UI.tsx(每个复杂 Tool 自带的展示,经 @ema-agent/builtin-tools/ui 出口)
       '../../src/builtinTools/**/*.{ts,tsx}',
     ],
   },

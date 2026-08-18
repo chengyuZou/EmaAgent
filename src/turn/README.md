@@ -97,7 +97,6 @@ Turn 先提交 Message/Turn 状态，再发 `TurnEvent`。Application Server 稳
 ```text
 src/turn/
 ├─ README.md
-├─ turns.ts（词汇叶，含导航查询类型；任何包可经 ./turns 子路径导入）
 ├─ events.ts
 ├─ errors.ts
 ├─ turnStore.ts（生命周期 + 运行态 + 删除守卫 + 导航查询 + rewind）

@@ -9,15 +9,16 @@ import type {
 import type { Message as SessionMessage } from '@ema-agent/session';
 
 /**
- * Session 中的 system 与 narrative_context 都不是模型历史：System Prompt 每次重新
- * 生成，Narrative always Recall 每根 Turn 重新查询；把它们重放会制造重复事实。
+ * Session 中的 system 不是模型历史：System Prompt 每次重新生成，把它重放会
+ * 制造重复事实。（narrative_context 消息形态已从 MessageKind 移除，不再是
+ * 持久化 Session 消息，无需在此过滤。）
  */
 export function buildMessages(history: readonly SessionMessage[]): ModelMessage[] {
   const messages: ModelMessage[] = [];
   const pairedToolIds = collectPairedToolIds(history);
 
   for (const message of history) {
-    if (message.role === 'system' || message.kind === 'narrative_context') continue;
+    if (message.role === 'system') continue;
 
     if (message.role === 'user') {
       if (typeof message.blocks === 'string') {

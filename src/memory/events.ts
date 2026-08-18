@@ -1,5 +1,5 @@
 // 定义 Memory 召回、提取、维护和后台任务产生的业务事件。
-import type { ExecutionProfile } from '@ema-agent/turn';
+import type { ExecutionProfile } from '@ema-agent/turn-terms';
 
 export type MemoryRecallLayer = 'layer0' | 'layer1' | 'layer2';
 export type MemoryRecallLayerStatus = 'succeeded' | 'skipped' | 'failed';

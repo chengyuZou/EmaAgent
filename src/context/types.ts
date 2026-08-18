@@ -1,6 +1,6 @@
 import type { GitSummary } from '@ema-agent/git';
-import type { LlmToolDef, Message } from '@ema-agent/llm';
-import type { ExecutionProfile } from '@ema-agent/turn';
+import type { LlmTool, Message } from '@ema-agent/llm';
+import type { ExecutionProfile } from '@ema-agent/turn-terms';
 import type { ToolPool } from '@ema-agent/tools';
 import type { ContextUsageEstimate } from './contextUsage.js';
 
@@ -38,6 +38,6 @@ export interface AssembleContextInput {
 /** 一次 LLM Call 真正发送前的最终 Provider 中立输入。 */
 export interface PreparedContext {
   readonly messages: readonly Message[];
-  readonly tools: readonly LlmToolDef[];
+  readonly tools: readonly LlmTool[];
   readonly usage: ContextUsageEstimate;
 }

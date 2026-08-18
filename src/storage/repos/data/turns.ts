@@ -1,5 +1,5 @@
 // 管理 Turn 的创建、状态流转、模型冻结、稳定分页和锚点窗口查询。
-// Row 枚举由 storage 自持（SQL CHECK 的映射）；领域词汇归 @ema-agent/turn 叶子，业务包在边界显式映射。
+// Row 枚举由 storage 自持（SQL CHECK 的映射）；领域词汇归 @ema-agent/turn-terms 叶子，业务包在边界显式映射。
 import type { SqliteDb } from '../../database/database.js';
 import type { ExecutionProfileRow, NarrativePolicyRow } from './sessions.js';
 

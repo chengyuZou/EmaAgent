@@ -10,7 +10,7 @@
 // 角色人设由 characters 包产出,Skill 目录由 skills 包产出,MCP 指引由 mcp 包捕获,
 // 工作区指令由工作区模块产出——本包只摆它们的位置。
 import type { CharacterPrompt} from '@ema-agent/characters';
-import type { ExecutionProfile } from '@ema-agent/turn';
+import type { ExecutionProfile } from '@ema-agent/turn-terms';
 import {
   actionSafetyRules,
   baseToneRules,

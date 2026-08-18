@@ -1,5 +1,5 @@
 {
-  "name": "@ema-agent/compact",
+  "name": "@ema-agent/turn-terms",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -11,24 +11,18 @@
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "files": [
-    "dist"
-  ],
+  "files": ["dist"],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "rimraf dist && tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --passWithNoTests",
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@ema-agent/llm": "workspace:*",
-    "@ema-agent/settings": "workspace:*",
-    "@ema-agent/token": "workspace:*",
-    "@ema-agent/turn-terms": "workspace:*",
-    "zod": "^4"
+    "@ema-agent/llm": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
     "rimraf": "^5.0.0",
     "typescript": "^5.9.3",
     "vitest": "^2.0.0"

@@ -1,4 +1,4 @@
-import type { ExecutionProfile } from '@ema-agent/turn';
+import type { ExecutionProfile } from '@ema-agent/turn-terms';
 import crypto from 'node:crypto';
 import type { EmbeddedText } from '../types.js';
 import type { ExtractionOutput } from './types.js';

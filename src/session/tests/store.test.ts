@@ -92,13 +92,13 @@ describe('SessionStore — session', () => {
     });
     expect(store.getSession(session.id)).toMatchObject({
       providerId: 'provider-config-1',
-      ModelId: 'model-1',
+      modelId: 'model-1',
     });
 
     store.patchSession(session.id, { model: null });
     expect(store.getSession(session.id)).toMatchObject({
       providerId: null,
-      ModelId: null,
+      modelId: null,
     });
   });
 
@@ -115,7 +115,7 @@ describe('SessionStore — session', () => {
     const fork = store.forkSession(session.id);
     expect(store.getSession(fork.sessionId)).toMatchObject({
       providerId: 'provider-config-1',
-      ModelId: 'model-1',
+      modelId: 'model-1',
     });
   });
 });

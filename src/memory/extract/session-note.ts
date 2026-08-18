@@ -1,4 +1,4 @@
-import type { ExecutionProfile } from '@ema-agent/turn';
+import type { ExecutionProfile } from '@ema-agent/turn-terms';
 import { estimateTextTokens } from '@ema-agent/token';
 import { buildNoteCompactionPrompt } from '@ema-agent/context';
 import { extractCompactionSummary } from '@ema-agent/context';

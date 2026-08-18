@@ -37,7 +37,7 @@ PromptEnvironment
   ToolPool 投影；Prompt 不复制参数说明。跨工具的选择顺序、专用工具优先、搜索构造、
   并行策略以及 Task/Skill/Subagent 协作规则属于 Agent 行为，因此由动态能力引导负责。
 - 能力引导只读取同一 ToolPool 的稳定工具名，并只展开当轮真实存在的规则。
-  `@ema-agent/tool-builtin/identity` 是纯常量子路径,用于避免工具重命名后 Prompt 漂移;
+  `@ema-agent/builtin-tools/identity` 是纯常量子路径,用于避免工具重命名后 Prompt 漂移;
   本包不导入内置 Tool 实现。
 - `productPrompt.ts` 以 Claude Code `src/constants/prompts.ts` 的 Intro、System、
   Doing tasks、Actions、Using tools、Communication 与 Tone 为逐项来源。只删除 Ema

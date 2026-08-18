@@ -20,13 +20,13 @@
   },
   "dependencies": {
     "@ema-agent/git": "workspace:*",
-    "@ema-agent/turn": "workspace:*",
+    "@ema-agent/turn-terms": "workspace:*",
     "@ema-agent/llm": "workspace:*",
     "@ema-agent/prompts": "workspace:*",
     "@ema-agent/session": "workspace:*",
     "@ema-agent/token": "workspace:*",
     "@ema-agent/tools": "workspace:*",
-    "zod-to-json-schema": "^3.23.0"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

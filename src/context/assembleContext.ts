@@ -1,8 +1,8 @@
 // 组装一次 LLM Call 的 Provider 中立输入；是否压缩由调用方在本函数之外决定。
-import type { LlmToolDef, Message } from '@ema-agent/llm';
+import type { LlmTool, Message } from '@ema-agent/llm';
 import { PROMPT_DYNAMIC_BOUNDARY } from '@ema-agent/prompts';
 import type { Tool, ToolPool } from '@ema-agent/tools';
-import { zodToJsonSchema } from 'zod-to-json-schema';
+import { toJSONSchema } from 'zod';
 import { ContextAssemblyError } from './errors.js';
 import { estimateContextUsage } from './contextUsage.js';
 import { renderSystemReminder } from './systemReminder.js';
@@ -139,15 +139,12 @@ function assertNoSystemMessages(messages: readonly Message[]): void {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyTool = Tool<any, any, any, any>;
 
-function projectToolPool(toolPool: ToolPool): LlmToolDef[] {
-  return toolPool.tools.map((tool: AnyTool): LlmToolDef => ({
+function projectToolPool(toolPool: ToolPool): LlmTool[] {
+  return toolPool.tools.map((tool: AnyTool): LlmTool => ({
     name: tool.name,
     description: tool.description,
-    parameters: tool.inputJsonSchemaOverride
+    inputSchema: tool.inputJsonSchemaOverride
       ? { ...tool.inputJsonSchemaOverride }
-      : zodToJsonSchema(tool.inputSchema, {
-          target: 'jsonSchema7',
-          $refStrategy: 'none',
-        }) as Record<string, unknown>,
+      : toJSONSchema(tool.inputSchema) as Record<string, unknown>,
   }));
 }

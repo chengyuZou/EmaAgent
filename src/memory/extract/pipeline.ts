@@ -1,6 +1,6 @@
 // 执行 Memory 提取的模型准备、跨库提交、恢复标记和全局索引更新流水线。
 
-import type { ExecutionProfile } from '@ema-agent/turn';
+import type { ExecutionProfile } from '@ema-agent/turn-terms';
 import type {
   MemoryNodeType,
   MemoryNodeRow,

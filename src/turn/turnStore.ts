@@ -20,7 +20,7 @@ import type {
   Turn,
   TurnIndexPage,
   TurnWindow,
-} from './turns.js';
+} from '@ema-agent/turn-terms';
 import { ActiveTurnRegistry } from './activeTurnRegistry.js';
 import { TurnOwnershipError } from './errors.js';
 

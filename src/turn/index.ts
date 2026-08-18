@@ -1,5 +1,6 @@
 // 暴露 Turn 请求、生命周期统计、TurnStore 与 Turn 自有事件。
-export * from './turns.js';
+// 领域词汇来自 @ema-agent/turn-terms（唯一事实源），此处仅表面组合。
+export * from '@ema-agent/turn-terms';
 export * from './events.js';
 export { TurnStore } from './turnStore.js';
 export type { TurnStoreDeps } from './turnStore.js';

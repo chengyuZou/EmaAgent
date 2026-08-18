@@ -7,10 +7,6 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
-    },
-    "./turns": {
-      "import": "./dist/turns.js",
-      "types": "./dist/turns.d.ts"
     }
   },
   "main": "./dist/index.js",
@@ -25,7 +21,8 @@
   },
   "dependencies": {
     "@ema-agent/storage": "workspace:*",
-    "@ema-agent/llm": "workspace:*"
+    "@ema-agent/llm": "workspace:*",
+    "@ema-agent/turn-terms": "workspace:*"
   },
   "devDependencies": {
     "rimraf": "^5.0.0",

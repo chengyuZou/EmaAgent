@@ -12,7 +12,7 @@ AgenticRAG 知识库包。用户给的资料经 **解析 → 分块 → embeddin
 
 本包唯一拥有：知识库注册与激活、文档资产（Asset）与块（Chunk）的事实、嵌入空间冻结、ingest/reembed 两类任务的生命周期、混合检索。
 
-不拥有：embedding/rerank/vision 模型的解析与调用（经 `KbManagerDeps` 注入的选择函数取得，由 `@ema-agent/embed` / `@ema-agent/rerank` 执行）；HTTP DTO 与路由（归 Application Server 接线）；模型可见的检索工具定义（归 builtinTools，只消费本包公共入口）。
+不拥有：embedding/rerank/vision 模型的解析与调用（经 `KbManagerDeps` 注入的选择函数取得，由 `@ema-agent/embed` / `@ema-agent/rerank` 执行）；HTTP DTO 与路由（归 Application Server 接线）；模型可见的检索工具定义（归 builtin-tools，只消费本包公共入口）。
 
 ## 公共入口
 

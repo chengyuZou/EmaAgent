@@ -2,7 +2,6 @@ import type { SqliteDb } from '../../database/database.js';
 import { createSqliteIdBatches } from '../../database/sqlite-id-batches.js';
 import { escapeLikePattern } from '../../search/like-utils.js';
 import type { MemoryEmbeddingPageCursor } from './memory-embedding-page.js';
-import type { ExecutionProfile } from '@ema-agent/turn';
 
 // ── 类型 ─────────────────────────────────────────────────────────────────────
 
@@ -38,7 +37,8 @@ export interface MemoryItemInsert {
   kind:                MemoryItemKind;
   title:               string;
   body:                string;
-  profiles:           ExecutionProfile[];
+  /** 持久化表示：Chat/Work 标签的 string 形态；领域枚举由 memory 包在边界映射。 */
+  profiles:           string[];
   embedding?:          Buffer;
   embeddingProviderId?: string;
   embeddingModel?:     string;
@@ -100,7 +100,7 @@ export interface MemoryItemStatsRow {
 export interface MemoryItemsBrowseOptions {
   limit?: number;
   kind?: MemoryItemKind;
-  executionProfile?: ExecutionProfile;
+  executionProfile?: string;
   minImportance?: number;
   orderBy?: 'lastRef' | 'importance' | 'created';
   search?: string;
@@ -209,7 +209,7 @@ export class MemoryItemsRepo {
    * 列出 profiles_json 数组中包含给定执行 Profile 的 item。
    * 使用 JSON1-我们打包的每个 SQLite 构建都有（better-sqlite3 默认）。
    */
-  listByProfile(executionProfile: ExecutionProfile, limit = 500): MemoryItemRow[] {
+  listByProfile(executionProfile: string, limit = 500): MemoryItemRow[] {
     return this.db
       .prepare(
         `SELECT * FROM memory_items

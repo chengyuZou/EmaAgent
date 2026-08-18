@@ -21,8 +21,8 @@
   },
   "dependencies": {
     "@ema-agent/characters": "workspace:*",
-    "@ema-agent/tool-builtin": "workspace:*",
-    "@ema-agent/turn": "workspace:*"
+    "@ema-agent/builtin-tools": "workspace:*",
+    "@ema-agent/turn-terms": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

@@ -1,4 +1,4 @@
-import type { ExecutionProfile } from '@ema-agent/turn';
+import type { ExecutionProfile } from '@ema-agent/turn-terms';
 
 
 // ── Extraction LLM prompts (one template per execution profile) ─────────────

@@ -25,7 +25,7 @@ function completion(text = '<summary>压缩后的工作摘要</summary>'): LlmCo
 }
 
 function languageModel(complete: (request: LlmRequest) => Promise<LlmCompletion>): LanguageModel {
-  return { complete, stream: vi.fn() as never };
+  return { protocol: 'openai-llm', complete, stream: vi.fn() as never };
 }
 
 function request(history: readonly Message[], overrides: Partial<CompactRequest> = {}): CompactRequest {
@@ -115,12 +115,15 @@ describe('createCompact', () => {
     if (firstResult.role !== 'user' || typeof firstResult.content === 'string') {
       throw new Error('测试夹具不是 Tool Result');
     }
-    firstResult.content[0] = {
-      type: 'tool_result',
-      toolCallId: 'read-0',
-      content: 'read failed',
-      isError: true,
-    };
+    firstResult.content = [
+      {
+        type: 'tool_result',
+        toolCallId: 'read-0',
+        content: 'read failed',
+        isError: true,
+      },
+      ...firstResult.content.slice(1),
+    ];
 
     const result = microCompact(history, { keepRecent: 1 });
     const cleared = result[1]!;
