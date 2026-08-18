@@ -20,7 +20,7 @@ export async function judgeDuplicateEntity(
   input: DuplicateJudgmentInput,
   signal?: AbortSignal,
 ): Promise<boolean | null> {
-  const binding = modelBindings.get('memory');
+  const binding = modelBindings.get('memory-llm');
   if (!binding) return null;
 
   const prompt = [

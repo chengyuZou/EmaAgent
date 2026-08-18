@@ -20,15 +20,15 @@ export type {
 } from './types.js';
 export { DEFAULT_MEMORY_SETTINGS } from './types.js';
 export {
-  memoryModelsSetting,
-  memoryMaintenanceSetting,
-  memoryStorageSetting,
   DEFAULT_MEMORY_MAINTENANCE_SETTINGS,
   DEFAULT_MEMORY_STORAGE_SETTINGS,
+  memoryColdDeleteAfterDaysSetting,
+  memoryDecayAfterDaysSetting,
+  memoryDecayAmountSetting,
+  memoryStorageMaxBytesSetting,
+  readMemorySettings,
 } from './settings.js';
 export type {
-  MemoryModelRef,
-  MemoryModelSettings,
   MemoryMaintenanceSettings,
   MemoryStorageSettings,
   MemoryUserSettingsSnapshot,

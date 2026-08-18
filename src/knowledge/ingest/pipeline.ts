@@ -7,7 +7,7 @@ import type { DocumentAsset, DocumentChunk, IngestOptions, IngestResult } from '
 import type {
   KnowledgeEmbeddingSelection,
   KnowledgeVisionSelection,
-} from '../client.js';
+} from '../types.js';
 import type { KnowledgeStore } from '../store/store.js';
 import { EXT_TO_MIME, parseDocument } from '../parse/parse.js';
 import { buildPreview } from '../preview/buildPreview.js';

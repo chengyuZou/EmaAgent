@@ -3,8 +3,10 @@
 import { describe, expect, it } from 'vitest';
 import { applyResultBudget } from '../retrieval/resultBudget.js';
 import {
-  DEFAULT_KNOWLEDGE_RETRIEVAL_SETTINGS,
-  knowledgeRetrievalSetting,
+  kbAlphaSetting,
+  kbDefaultTopKSetting,
+  kbRerankBlendWeightSetting,
+  kbResultMaxCharsSetting,
 } from '../settings.js';
 import type { KbSearchHit } from '../types.js';
 
@@ -62,21 +64,20 @@ describe('applyResultBudget', () => {
   });
 });
 
-describe('knowledgeRetrievalSetting 解码', () => {
-  it('部分字段按默认值合并', () => {
-    const decoded = knowledgeRetrievalSetting.decode({ alpha: 0.8 });
-    expect(decoded).toEqual({
-      ok: true,
-      value: { ...DEFAULT_KNOWLEDGE_RETRIEVAL_SETTINGS, alpha: 0.8 },
-    });
+describe('kb.retrieval 设置校验', () => {
+  it('合法值通过', () => {
+    expect(kbDefaultTopKSetting.schema.safeParse(5).success).toBe(true);
+    expect(kbAlphaSetting.schema.safeParse(0.8).success).toBe(true);
+    expect(kbRerankBlendWeightSetting.schema.safeParse(0.6).success).toBe(true);
+    expect(kbResultMaxCharsSetting.schema.safeParse(12_000).success).toBe(true);
   });
 
   it('越界值拒绝', () => {
-    expect(knowledgeRetrievalSetting.decode({ defaultTopK: 0 }).ok).toBe(false);
-    expect(knowledgeRetrievalSetting.decode({ defaultTopK: 21 }).ok).toBe(false);
-    expect(knowledgeRetrievalSetting.decode({ alpha: 1.5 }).ok).toBe(false);
-    expect(knowledgeRetrievalSetting.decode({ rerankBlendWeight: -0.1 }).ok).toBe(false);
-    expect(knowledgeRetrievalSetting.decode({ resultMaxChars: 500 }).ok).toBe(false);
-    expect(knowledgeRetrievalSetting.decode('nonsense').ok).toBe(false);
+    expect(kbDefaultTopKSetting.schema.safeParse(0).success).toBe(false);
+    expect(kbDefaultTopKSetting.schema.safeParse(21).success).toBe(false);
+    expect(kbAlphaSetting.schema.safeParse(1.5).success).toBe(false);
+    expect(kbRerankBlendWeightSetting.schema.safeParse(-0.1).success).toBe(false);
+    expect(kbResultMaxCharsSetting.schema.safeParse(500).success).toBe(false);
+    expect(kbResultMaxCharsSetting.schema.safeParse('nonsense').success).toBe(false);
   });
 });

@@ -1,3 +1,24 @@
+import type { EmbeddingModel } from '@ema-agent/embed';
+import type { Reranker } from '@ema-agent/rerank';
+import type { VisionModel } from '@ema-agent/vision';
+
+// ── 模型选择（装配层解析 model_bindings 后注入）────────────────────────────────
+export interface KnowledgeEmbeddingSelection {
+  readonly providerId: string;
+  readonly model: string;
+  readonly embedding: EmbeddingModel;
+}
+
+export interface KnowledgeRerankSelection {
+  readonly model: string;
+  readonly reranker: Reranker;
+}
+
+export interface KnowledgeVisionSelection {
+  readonly model: string;
+  readonly vision: VisionModel;
+}
+
 // ── 文档块（reader 输出）──────────────────────────────────────────────────────
 export interface DocumentSourceRef {
   assetId: string;

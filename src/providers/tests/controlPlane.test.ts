@@ -190,7 +190,7 @@ describe('Provider 控制面', () => {
       delete: (module) => { rows.delete(module); },
     });
 
-    expect(bindings.set({ module: 'memory', providerId: 'custom-main', modelId: 'model-a' }))
+    expect(bindings.set({ module: 'memory-llm', providerId: 'custom-main', modelId: 'model-a' }))
       .toMatchObject({ capability: 'llm' });
     expect(() => bindings.set({ module: 'vision', providerId: 'custom-main', modelId: 'model-a' }))
       .toThrow(/vision/);

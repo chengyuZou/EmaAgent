@@ -46,14 +46,13 @@ function makeDeps(
 ): KnowledgeClientDeps {
   return {
     store: store as unknown as KnowledgeStore,
-    resolveEmbedding: () => undefined,
-    resolveEmbeddingByRef: () => (embed ? ({ embed }) as unknown as EmbeddingModel : undefined),
+    resolveEmbedding: () => (embed
+      ? { providerId: 'provider-1', model: 'embed-1', embedding: { embed } as unknown as EmbeddingModel }
+      : undefined),
     resolveReranker: () => undefined,
     resolveVision: () => undefined,
   };
 }
-
-const REF = { providerId: 'provider-1', model: 'embed-1' };
 
 describe('单资产重嵌入', () => {
   it('分批写向量并冻结空间、清理 stale、逐批报进度', async () => {
@@ -66,7 +65,7 @@ describe('单资产重嵌入', () => {
     })));
     const progress: Array<[number, number]> = [];
 
-    const space = await client.reembedAsset('asset-a', REF, new AbortController().signal,
+    const space = await client.reembedAsset('asset-a', new AbortController().signal,
       (completed, total) => progress.push([completed, total]));
 
     expect(store.embedded.size).toBe(40);
@@ -86,7 +85,7 @@ describe('单资产重嵌入', () => {
       throw signal?.aborted ? signal.reason : new Error('unreachable');
     }));
 
-    await expect(client.reembedAsset('asset-a', REF, controller.signal))
+    await expect(client.reembedAsset('asset-a', controller.signal))
       .rejects.toThrow('user cancelled');
     // 未冻结空间：资产保持 stale，retry 时整个资产重来。
     expect(store.assets.get('asset-a')!.embeddingStale).toBe(true);
@@ -97,7 +96,7 @@ describe('单资产重嵌入', () => {
     store.add('asset-a', 'a.txt', ['asset-a-c0']);
     const client = new KnowledgeClient(makeDeps(store, undefined));
 
-    await expect(client.reembedAsset('asset-a', REF, new AbortController().signal))
+    await expect(client.reembedAsset('asset-a', new AbortController().signal))
       .rejects.toThrow('Embedding 配置已删除或模型未启用');
   });
 });
@@ -110,7 +109,7 @@ describe('预检', () => {
       return { embeddings: [[1, 0, 0]], dim: 3 };
     }));
 
-    const space = await client.probeEmbeddingSpace(REF);
+    const space = await client.probeEmbeddingSpace();
     expect(space.dim).toBe(3);
     expect(space.id).toMatch(/^[a-f0-9]{64}$/);
   });
@@ -119,7 +118,7 @@ describe('预检', () => {
     const store = new ReembedStore();
     const client = new KnowledgeClient(makeDeps(store, undefined));
 
-    await expect(client.probeEmbeddingSpace(REF))
+    await expect(client.probeEmbeddingSpace())
       .rejects.toThrow('Embedding 配置已删除或模型未启用');
   });
 });

@@ -223,7 +223,6 @@ describe('删除文档清理', () => {
     const client = new KnowledgeClient({
       store: store as unknown as KnowledgeStore,
       resolveEmbedding: () => undefined,
-      resolveEmbeddingByRef: () => undefined,
       resolveReranker: () => undefined,
       resolveVision: () => undefined,
       kbRoot,

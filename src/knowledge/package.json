@@ -11,7 +11,9 @@
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
@@ -20,26 +22,27 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@ema-agent/settings": "workspace:*",
     "@ema-agent/embed": "workspace:*",
     "@ema-agent/rerank": "workspace:*",
-    "@ema-agent/storage":    "workspace:*",
-    "@ema-agent/token":      "workspace:*",
-    "@ema-agent/vision":     "workspace:*",
-    "cheerio":     "^1.0.0",
-    "domhandler":  "^5.0.3",
-    "mammoth":     "^1.8.0",
-    "pdfjs-dist":  "^4.10.38",
-    "sharp":       "^0.33.5"
+    "@ema-agent/settings": "workspace:*",
+    "@ema-agent/storage": "workspace:*",
+    "@ema-agent/token": "workspace:*",
+    "@ema-agent/vision": "workspace:*",
+    "cheerio": "^1.0.0",
+    "domhandler": "^5.0.3",
+    "mammoth": "^1.8.0",
+    "pdfjs-dist": "^4.10.38",
+    "sharp": "^0.33.5",
+    "zod": "^4"
   },
   "optionalDependencies": {
-    "canvas":   "^2.11.2",
-    "usearch":  "^2.25.1"
+    "canvas": "^2.11.2",
+    "usearch": "^2.25.1"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "rimraf":      "^5.0.0",
-    "typescript":  "^5.9.3",
-    "vitest":      "^2.0.0"
+    "rimraf": "^5.0.0",
+    "typescript": "^5.9.3",
+    "vitest": "^2.0.0"
   }
 }

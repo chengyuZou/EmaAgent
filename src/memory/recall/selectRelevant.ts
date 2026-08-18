@@ -27,7 +27,7 @@ export async function selectRelevantMemories(args: {
   signal?: AbortSignal;
 }): Promise<RecallSelection | null> {
   if (args.nodes.length === 0 && args.items.length === 0) return null;
-  const binding = args.modelBindings.get('memory');
+  const binding = args.modelBindings.get('memory-llm');
   if (!binding) return null;
 
   const nodes = args.nodes.slice(0, MAX_CANDIDATES_PER_KIND);

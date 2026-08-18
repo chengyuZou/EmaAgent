@@ -37,10 +37,10 @@ describe('ModelBindingsRepo', () => {
   afterEach(() => database.close());
 
   it('set 原子替换模块原有绑定', () => {
-    bindings.set({ module: 'memory', capability: 'llm', providerId: 'siliconflow', modelId: 'old-model' });
-    bindings.set({ module: 'memory', capability: 'llm', providerId: 'siliconflow', modelId: 'new-model' });
+    bindings.set({ module: 'memory-llm', capability: 'llm', providerId: 'siliconflow', modelId: 'old-model' });
+    bindings.set({ module: 'memory-llm', capability: 'llm', providerId: 'siliconflow', modelId: 'new-model' });
 
-    expect(bindings.get('memory')?.modelId).toBe('new-model');
+    expect(bindings.get('memory-llm')?.modelId).toBe('new-model');
     expect(bindings.list()).toHaveLength(1);
   });
 
@@ -51,8 +51,8 @@ describe('ModelBindingsRepo', () => {
   });
 
   it('删除模型时级联删除对应绑定', () => {
-    bindings.set({ module: 'memory', capability: 'llm', providerId: 'siliconflow', modelId: 'old-model' });
+    bindings.set({ module: 'memory-llm', capability: 'llm', providerId: 'siliconflow', modelId: 'old-model' });
     models.delete('siliconflow', 'llm', 'old-model');
-    expect(bindings.get('memory')).toBeUndefined();
+    expect(bindings.get('memory-llm')).toBeUndefined();
   });
 });

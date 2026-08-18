@@ -115,7 +115,7 @@ export async function compactSessionNoteIfNeeded(
 export function resolveMemoryBindingLocal(
   deps: ExtractionPipelineDeps,
 ): { providerId: string; model: string } | null {
-  const binding = deps.memory.modelBindings.get('memory');
+  const binding = deps.memory.modelBindings.get('memory-llm');
   return binding
     ? { providerId: binding.providerConfigId, model: binding.model }
     : null;

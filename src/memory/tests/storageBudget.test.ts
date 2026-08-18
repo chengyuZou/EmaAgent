@@ -11,9 +11,8 @@ import type { MemoryDeps } from '../deps.js';
 import type { MemoryBackgroundEvent } from '../events.js';
 import { enforceMemoryStorageBudget } from '../maintenance/storageBudget.js';
 import {
-  memoryMaintenanceSetting,
-  memoryModelsSetting,
-  memoryStorageSetting,
+  memoryColdDeleteAfterDaysSetting,
+  memoryStorageMaxBytesSetting,
 } from '../settings.js';
 import { MemoryCommitCoordinator } from '../tasks/commit-coordinator.js';
 
@@ -139,45 +138,13 @@ describe('Memory 全局逻辑字节预算', () => {
 });
 
 describe('Memory 用户设置边界', () => {
-  it('模型使用 Provider 配置实例身份，拒绝缺失模型名的模糊绑定', () => {
-    expect(memoryModelsSetting.decode({
-      embed: { providerConfigId: 'provider-config-1', model: 'embed-1' },
-    })).toEqual({
-      ok: true,
-      value: {
-        embed: { providerConfigId: 'provider-config-1', model: 'embed-1' },
-      },
-    });
-    expect(memoryModelsSetting.decode({
-      embed: { providerConfigId: 'provider-config-1' },
-    })).toEqual({ ok: false });
-  });
+  // 模型选择已迁出到 model_bindings(memory-embed/memory-rerank),不再有 settings 校验。
 
   it('维护期限和存储预算只能落在产品安全范围内', () => {
-    expect(memoryMaintenanceSetting.decode({
-      coldDeleteAfterDays: 90,
-      unknownField: 'discard-me',
-    })).toEqual({
-      ok: true,
-      value: {
-        decayAfterDays: 30,
-        decayAmount: 10,
-        coldDeleteAfterDays: 90,
-      },
-    });
-    expect(memoryMaintenanceSetting.decode({
-      coldDeleteAfterDays: 1,
-    })).toEqual({ ok: false });
-    expect(memoryStorageSetting.decode({
-      maxBytes: 64 * 1024 * 1024,
-      unknownField: 'discard-me',
-    })).toEqual({
-      ok: true,
-      value: { maxBytes: 64 * 1024 * 1024 },
-    });
-    expect(memoryStorageSetting.decode({
-      maxBytes: 1024,
-    })).toEqual({ ok: false });
+    expect(memoryColdDeleteAfterDaysSetting.schema.safeParse(90).success).toBe(true);
+    expect(memoryColdDeleteAfterDaysSetting.schema.safeParse(1).success).toBe(false);
+    expect(memoryStorageMaxBytesSetting.schema.safeParse(64 * 1024 * 1024).success).toBe(true);
+    expect(memoryStorageMaxBytesSetting.schema.safeParse(1024).success).toBe(false);
   });
 });
 

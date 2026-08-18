@@ -73,7 +73,6 @@ function makeDeps(store: BlendStore, reranker?: Reranker): KnowledgeClientDeps {
   return {
     store: store as unknown as KnowledgeStore,
     resolveEmbedding: () => undefined,
-    resolveEmbeddingByRef: () => undefined,
     resolveReranker: reranker ? () => ({ model: 'rerank-model', reranker }) : () => undefined,
     resolveVision: () => undefined,
   };

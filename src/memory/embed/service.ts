@@ -1,29 +1,32 @@
 import { randomUUID } from 'node:crypto';
 import type { EmbedRuntime, EmbeddingSpace } from '@ema-agent/embed';
 import type { RerankRuntime } from '@ema-agent/rerank';
+import type { ModelBindingsRepo } from '@ema-agent/storage';
 import { packEmbedding, normalizeQueryVector } from './similarity.js';
 import type { EmbeddedText } from '../types.js';
-import type { MemoryModelSettings } from '../settings.js';
+
+/** 只依赖 binding 的 get:memory-embed / memory-rerank 两个 module。 */
+type EmbedBindingGetter = Pick<ModelBindingsRepo, 'get'>;
 
 export class EmbedService {
   constructor(
     private readonly embedRuntime:   EmbedRuntime,
     private readonly rerankRuntime:  RerankRuntime,
-    private readonly readModels: () => MemoryModelSettings,
+    private readonly modelBindings:  EmbedBindingGetter,
   ) {}
 
-  /** 每次操作读取当前 Embed 设置，让设置更新无需重建 MemoryPlanner。 */
+  /** 每次操作读取当前 Embed 绑定，让模型切换无需重建 MemoryPlanner。 */
   resolveEmbed(): { providerId: string; model: string } | null {
-    const selected = this.readModels().embed;
-    return selected
-      ? { providerId: selected.providerConfigId, model: selected.model }
+    const binding = this.modelBindings.get('memory-embed');
+    return binding
+      ? { providerId: binding.providerId, model: binding.modelId }
       : null;
   }
 
   private resolveRerank(): { providerId: string; model: string } | null {
-    const selected = this.readModels().rerank;
-    return selected
-      ? { providerId: selected.providerConfigId, model: selected.model }
+    const binding = this.modelBindings.get('memory-rerank');
+    return binding
+      ? { providerId: binding.providerId, model: binding.modelId }
       : null;
   }
 

@@ -3,7 +3,6 @@
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { EmbeddingModel } from '@ema-agent/embed';
 import {
   Database,
   DocumentAssetRepo,
@@ -19,22 +18,21 @@ import {
   type KbReembedTask,
   type KbRegistryRepo,
 } from '@ema-agent/storage';
-import {
-  KnowledgeClient,
-  type KnowledgeEmbeddingSelection,
-  type KnowledgeRerankSelection,
-  type KnowledgeVisionSelection,
-} from './client.js';
+import { KnowledgeClient } from './client.js';
 import type { KnowledgeEvent } from './events.js';
 import { KnowledgeEvents } from './events/emitter.js';
 import { IngestQueue } from './ingest/queue.js';
 import { stageIngestFile } from './ingest/staging.js';
 import { ReembedQueue } from './reembed/queue.js';
-import type { KnowledgeModelRef } from './settings.js';
 import {
   DEFAULT_KNOWLEDGE_RETRIEVAL_SETTINGS,
   type KnowledgeRetrievalSettings,
 } from './settings.js';
+import type {
+  KnowledgeEmbeddingSelection,
+  KnowledgeRerankSelection,
+  KnowledgeVisionSelection,
+} from './types.js';
 import { KnowledgeStore } from './store/store.js';
 import type {
   AssetListPage,
@@ -58,7 +56,6 @@ export interface KbManagerDeps {
   readonly registry: KbRegistryRepo;
   readonly activations: KbActivationsRepo;
   readonly resolveEmbedding: () => KnowledgeEmbeddingSelection | undefined;
-  readonly resolveEmbeddingByRef: (ref: KnowledgeModelRef) => EmbeddingModel | undefined;
   readonly resolveReranker: () => KnowledgeRerankSelection | undefined;
   readonly resolveVision: () => KnowledgeVisionSelection | undefined;
   readonly resolveRetrievalSettings?: () => KnowledgeRetrievalSettings;
@@ -146,11 +143,11 @@ export class KbManager {
     return (await this.required(kbId)).ingestQueue.cancel(taskId);
   }
 
-  /** 每行任务绑定一个显式资产：传入几个资产就建几行，返回与输入一一对应的任务行。 */
+  /** 每行任务绑定一个显式资产：传入几个资产就建几行，返回与输入一一对应的任务行。
+   *  重嵌目标模型统一为当前绑定（kb-embed），任务行只记录入队时刻的模型。 */
   async enqueueReembed(input: {
     readonly kbId?: string;
     readonly assetIds: readonly string[];
-    readonly embedding: KnowledgeModelRef;
   }): Promise<KbReembedTask[]> {
     const entry = await this.required(input.kbId);
     if (input.assetIds.length === 0) return [];
@@ -166,14 +163,15 @@ export class KbManager {
         );
       }
     }
+    const selection = this.requireEmbedding();
     // 批量建行前预检一次短文本 embed，key/模型/维度不通则一行都不建；
     // 单资产不预检：那一行自己的失败就是报告。
     if (input.assetIds.length > 1) {
-      await entry.client.probeEmbeddingSpace(input.embedding);
+      await entry.client.probeEmbeddingSpace();
     }
     return input.assetIds.map((assetId) => entry.reembedQueue.enqueue({
       assetId,
-      embedding: input.embedding,
+      embedding: selection,
     }));
   }
 
@@ -186,8 +184,18 @@ export class KbManager {
     return (await this.required(kbId)).reembedTasks.list();
   }
 
+  /** retry 也用当前绑定模型，不沿袭任务行里的旧模型（绑定可能已切换）。 */
   async retryReembed(taskId: string, kbId?: string): Promise<KbReembedTask | undefined> {
-    return (await this.required(kbId)).reembedQueue.retry(taskId);
+    return (await this.required(kbId)).reembedQueue.retry(taskId, this.requireEmbedding());
+  }
+
+  /** 当前绑定缺失时抛未配置错误；返回 selection 供任务行记录模型。 */
+  private requireEmbedding(): KnowledgeEmbeddingSelection {
+    const selection = this.deps.resolveEmbedding();
+    if (!selection) {
+      throw new KnowledgeNotConfiguredError('Embedding 配置已删除或模型未启用');
+    }
+    return selection;
   }
 
   async cancelReembed(taskId: string, kbId?: string): Promise<boolean> {
@@ -274,7 +282,6 @@ export class KbManager {
     const client = new KnowledgeClient({
       store,
       resolveEmbedding: this.deps.resolveEmbedding,
-      resolveEmbeddingByRef: this.deps.resolveEmbeddingByRef,
       resolveReranker: this.deps.resolveReranker,
       resolveVision: this.deps.resolveVision,
       kbRoot: record.path,
@@ -296,12 +303,7 @@ export class KbManager {
       kbId: record.id,
       tasks: reembedTasks,
       reembed: async (input) => {
-        await client.reembedAsset(
-          input.assetId,
-          input.embedding,
-          input.signal,
-          input.onProgress,
-        );
+        await client.reembedAsset(input.assetId, input.signal, input.onProgress);
       },
       emit,
       ...(this.deps.reembedConcurrency === undefined

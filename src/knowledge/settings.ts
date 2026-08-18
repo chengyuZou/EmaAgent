@@ -1,52 +1,11 @@
-// 定义 Knowledge Base 使用的 Embed 与 Rerank 模型选择。
+// Knowledge Base 的检索参数设置(模型选择已迁出到 model_bindings)。
+// Embed/Rerank 模型选择(kb-embed/kb-rerank)由装配层从 model_bindings 读取并
+// 解析成 EmbeddingModel 后注入,不再存 settings;这里只留标量检索参数。
+// 设置接口与字段统一在此文件,拆细为一字段一 key。
 
+import type { SettingsStore } from '@ema-agent/settings';
 import { defineSetting } from '@ema-agent/settings';
-
-export interface KnowledgeModelRef {
-  providerId: string;
-  model: string;
-}
-
-export interface KnowledgeModelSettings {
-  embed?: KnowledgeModelRef;
-  rerank?: KnowledgeModelRef;
-}
-
-export const knowledgeModelsSetting = defineSetting<KnowledgeModelSettings>({
-  key: 'kb.models',
-  kind: 'object',
-  apply: 'nextOperation',
-  defaultValue: {},
-  decode(value: unknown) {
-    if (!isRecord(value)) return { ok: false };
-    const embed = decodeModelRef(value['embed']);
-    const rerank = decodeModelRef(value['rerank']);
-    if (embed === null || rerank === null) return { ok: false };
-    return {
-      ok: true,
-      value: {
-        ...(embed ? { embed } : {}),
-        ...(rerank ? { rerank } : {}),
-      },
-    };
-  },
-});
-
-function decodeModelRef(value: unknown): KnowledgeModelRef | undefined | null {
-  if (value === undefined || value === null) return undefined;
-  if (!isRecord(value)) return null;
-  const providerId = value['providerId'];
-  const model = value['model'];
-  if (typeof providerId !== 'string' || providerId.length === 0) return null;
-  if (typeof model !== 'string' || model.length === 0) return null;
-  return { providerId, model };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-// ── 检索参数 ──────────────────────────────────────────────────────────────────
+import { z } from 'zod';
 
 /** 每次检索操作时读取的用户可调参数；显式传入调用选项时以调用方为准。 */
 export interface KnowledgeRetrievalSettings {
@@ -60,33 +19,50 @@ export interface KnowledgeRetrievalSettings {
   resultMaxChars: number;
 }
 
-export const DEFAULT_KNOWLEDGE_RETRIEVAL_SETTINGS: KnowledgeRetrievalSettings = {
-  defaultTopK: 5,
-  alpha: 0.5,
-  rerankBlendWeight: 0.6,
-  resultMaxChars: 12_000,
-};
-
-export const knowledgeRetrievalSetting = defineSetting<KnowledgeRetrievalSettings>({
-  key: 'kb.retrieval',
-  kind: 'object',
+export const kbDefaultTopKSetting = defineSetting<number>({
+  key: 'kb.retrieval.defaultTopK',
   apply: 'nextOperation',
-  defaultValue: DEFAULT_KNOWLEDGE_RETRIEVAL_SETTINGS,
-  decode(value) {
-    if (!isRecord(value)) return { ok: false };
-    const merged = { ...DEFAULT_KNOWLEDGE_RETRIEVAL_SETTINGS, ...value };
-    if (!integerInRange(merged.defaultTopK, 1, 20)) return { ok: false };
-    if (!ratioInRange(merged.alpha)) return { ok: false };
-    if (!ratioInRange(merged.rerankBlendWeight)) return { ok: false };
-    if (!integerInRange(merged.resultMaxChars, 1_000, 50_000)) return { ok: false };
-    return { ok: true, value: merged as KnowledgeRetrievalSettings };
-  },
+  defaultValue: 5,
+  schema: z.number().int().min(1).max(20),
 });
 
-function integerInRange(value: unknown, min: number, max: number): value is number {
-  return Number.isInteger(value) && (value as number) >= min && (value as number) <= max;
-}
+export const kbAlphaSetting = defineSetting<number>({
+  key: 'kb.retrieval.alpha',
+  apply: 'nextOperation',
+  defaultValue: 0.5,
+  schema: z.number().min(0).max(1),
+});
 
-function ratioInRange(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1;
+export const kbRerankBlendWeightSetting = defineSetting<number>({
+  key: 'kb.retrieval.rerankBlendWeight',
+  apply: 'nextOperation',
+  defaultValue: 0.6,
+  schema: z.number().min(0).max(1),
+});
+
+export const kbResultMaxCharsSetting = defineSetting<number>({
+  key: 'kb.retrieval.resultMaxChars',
+  apply: 'nextOperation',
+  defaultValue: 12_000,
+  schema: z.number().int().min(1_000).max(50_000),
+});
+
+/** 整组默认快照(供消费方默认参数与测试),单一事实源是各 setting 的 defaultValue。 */
+export const DEFAULT_KNOWLEDGE_RETRIEVAL_SETTINGS: KnowledgeRetrievalSettings = {
+  defaultTopK: kbDefaultTopKSetting.defaultValue,
+  alpha: kbAlphaSetting.defaultValue,
+  rerankBlendWeight: kbRerankBlendWeightSetting.defaultValue,
+  resultMaxChars: kbResultMaxCharsSetting.defaultValue,
+};
+
+/** 聚合读取检索参数快照(坏值/缺失自动回落默认)。 */
+export function readKnowledgeRetrievalSettings(
+  store: SettingsStore,
+): KnowledgeRetrievalSettings {
+  return {
+    defaultTopK: store.get(kbDefaultTopKSetting),
+    alpha: store.get(kbAlphaSetting),
+    rerankBlendWeight: store.get(kbRerankBlendWeightSetting),
+    resultMaxChars: store.get(kbResultMaxCharsSetting),
+  };
 }

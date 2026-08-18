@@ -5,10 +5,12 @@ export type { KbManagerDeps } from './manager.js';
 export { KnowledgeClient } from './client.js';
 export type {
   KnowledgeClientDeps,
+} from './client.js';
+export type {
   KnowledgeEmbeddingSelection,
   KnowledgeRerankSelection,
   KnowledgeVisionSelection,
-} from './client.js';
+} from './types.js';
 export type { KnowledgeEvent } from './events.js';
 export type {
   AssetListPage,
@@ -31,12 +33,14 @@ export type {
 export { PdfReader } from './readers/pdf.js';
 export type { PdfReadRange } from './readers/pdf.js';
 export {
-  knowledgeModelsSetting,
-  knowledgeRetrievalSetting,
+  DEFAULT_KNOWLEDGE_RETRIEVAL_SETTINGS,
+  kbAlphaSetting,
+  kbDefaultTopKSetting,
+  kbRerankBlendWeightSetting,
+  kbResultMaxCharsSetting,
+  readKnowledgeRetrievalSettings,
 } from './settings.js';
 export type {
-  KnowledgeModelRef,
-  KnowledgeModelSettings,
   KnowledgeRetrievalSettings,
 } from './settings.js';
 export {

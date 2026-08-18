@@ -9,7 +9,7 @@ export async function runMemoryJsonCompletion(
   prompt: string,
   signal?: AbortSignal,
 ): Promise<unknown | null> {
-  const binding = modelBindings.get('memory');
+  const binding = modelBindings.get('memory-llm');
   if (!binding) return null;
 
   const completion = await llm.complete({

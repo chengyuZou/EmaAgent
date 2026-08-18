@@ -295,9 +295,15 @@ CREATE TABLE provider_models (
   CHECK(rerank_max_chunks IS NULL OR rerank_max_chunks > 0)
 );
 
+-- 模型绑定:每个业务模块只绑定一个已启用模型。
+-- module 枚举与 providers/modelBindings.ts 的 MODEL_BINDING_MODULES 保持一致;
+-- 命名统一为 <域>-<能力>(memory-llm/memory-embed/...);memory/kb 的 embed/rerank
+-- 原来在 settings JSON,已迁出到本表。
 CREATE TABLE model_bindings (
   module      TEXT PRIMARY KEY CHECK(module IN (
-                'memory', 'title',
+                'memory-llm', 'memory-embed', 'memory-rerank',
+                'kb-embed', 'kb-rerank',
+                'title',
                 'lightrag-embed', 'lightrag-llm',
                 'tts', 'stt', 'vision'
               )),
@@ -305,8 +311,9 @@ CREATE TABLE model_bindings (
   provider_id TEXT NOT NULL,
   model_id    TEXT NOT NULL,
   CHECK(
-    (module IN ('memory','title','lightrag-llm') AND capability = 'llm')
-    OR (module = 'lightrag-embed' AND capability = 'embed')
+    (module IN ('memory-llm','title','lightrag-llm') AND capability = 'llm')
+    OR (module IN ('memory-embed','kb-embed','lightrag-embed') AND capability = 'embed')
+    OR (module IN ('memory-rerank','kb-rerank') AND capability = 'rerank')
     OR (module = 'tts' AND capability = 'tts')
     OR (module = 'stt' AND capability = 'stt')
     OR (module = 'vision' AND capability = 'vision')

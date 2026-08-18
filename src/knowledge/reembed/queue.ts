@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import type { KbReembedTask, KbReembedTasksRepo } from '@ema-agent/storage';
 import { KnowledgeInvalidRequestError } from '../errors.js';
 import type { KnowledgeEvent } from '../events.js';
-import type { KnowledgeModelRef } from '../settings.js';
+import type { KnowledgeEmbeddingSelection } from '../types.js';
 
 // 每行是一个资产的按批 embed 流；3 路并发对齐旧 sweep 内资产池的吞吐。
 const DEFAULT_CONCURRENCY = 3;
@@ -15,7 +15,6 @@ export interface ReembedQueueDeps {
   readonly tasks: KbReembedTasksRepo;
   readonly reembed: (input: {
     readonly assetId: string;
-    readonly embedding: KnowledgeModelRef;
     readonly signal: AbortSignal;
     readonly onProgress: (completed: number, total: number) => void;
   }) => Promise<void>;
@@ -35,7 +34,7 @@ export class ReembedQueue {
 
   enqueue(input: {
     readonly assetId: string;
-    readonly embedding: KnowledgeModelRef;
+    readonly embedding: KnowledgeEmbeddingSelection;
   }): KbReembedTask {
     // 同一资产只允许一个在途任务（连点或 fan-out 重入都只会产生重复付费）。
     if (this.deps.tasks.findActiveByAssetId(input.assetId)) {
@@ -51,16 +50,11 @@ export class ReembedQueue {
     return task;
   }
 
-  retry(taskId: string): KbReembedTask | undefined {
+  // retry 的模型由业务包传入当前绑定，不从任务行读旧模型（绑定可能已切换）。
+  retry(taskId: string, embedding: KnowledgeEmbeddingSelection): KbReembedTask | undefined {
     const previous = this.deps.tasks.get(taskId);
     if (!previous || previous.status !== 'failed') return undefined;
-    return this.enqueue({
-      assetId: previous.assetId,
-      embedding: {
-        providerId: previous.embeddingProviderId,
-        model: previous.embeddingModel,
-      },
-    });
+    return this.enqueue({ assetId: previous.assetId, embedding });
   }
 
   cancel(taskId: string): boolean {
@@ -111,10 +105,6 @@ export class ReembedQueue {
     try {
       await this.deps.reembed({
         assetId: task.assetId,
-        embedding: {
-          providerId: task.embeddingProviderId,
-          model: task.embeddingModel,
-        },
         signal: controller.signal,
         onProgress: (completed, total) => {
           const progress = total === 0 ? 1 : completed / total;

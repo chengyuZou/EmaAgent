@@ -69,7 +69,6 @@ export class MemoryPlanner {
     private readonly deps: MemoryDeps,
     overrides: Partial<MemorySettings> = {},
     readUserSettings: () => MemoryUserSettingsSnapshot = () => ({
-      models: {},
       maintenance: DEFAULT_MEMORY_MAINTENANCE_SETTINGS,
       storage: DEFAULT_MEMORY_STORAGE_SETTINGS,
     }),
@@ -82,10 +81,11 @@ export class MemoryPlanner {
       maintenance: { ...DEFAULT_MEMORY_SETTINGS.maintenance, ...overrides.maintenance },
     };
     this.readUserSettings = readUserSettings;
+    // Embed/Rerank 模型选择走 model_bindings(memory-embed/memory-rerank),不进 settings。
     this.embed = new EmbedService(
       deps.embedRuntime,
       deps.rerankRuntime,
-      () => this.readUserSettings().models,
+      deps.modelBindings,
     );
     this.indexMgr = new IndexManager(deps, this.embed);
     this.queue    = new SessionTaskQueue();

@@ -1,9 +1,7 @@
 // 负责单个知识库的文档写入、重嵌入、混合检索与内存向量索引。
 
-import type { EmbeddingModel, EmbeddingSpace } from '@ema-agent/embed';
+import type { EmbeddingSpace } from '@ema-agent/embed';
 import { createEmbeddingSpace } from '@ema-agent/embed';
-import type { Reranker } from '@ema-agent/rerank';
-import type { VisionModel } from '@ema-agent/vision';
 import type { AssetUsage, ChunkPage } from '@ema-agent/storage';
 import type {
   AssetListPage,
@@ -16,8 +14,12 @@ import type {
   KbSearchResult,
   SearchOptions,
 } from './types.js';
-import type { KnowledgeModelRef } from './settings.js';
 import type { KnowledgeStore } from './store/store.js';
+import type {
+  KnowledgeEmbeddingSelection,
+  KnowledgeRerankSelection,
+  KnowledgeVisionSelection,
+} from './types.js';
 import type { VectorIndex } from './vector-index/vector-index.js';
 import { createVectorIndex } from './vector-index/factory.js';
 import { ingest as runIngest, type IngestStage } from './ingest/pipeline.js';
@@ -34,26 +36,9 @@ import {
 const RERANK_BLEND_WEIGHT = 0.6;
 const EMBED_BATCH_SIZE = 32;
 
-export interface KnowledgeEmbeddingSelection {
-  readonly providerId: string;
-  readonly model: string;
-  readonly embedding: EmbeddingModel;
-}
-
-export interface KnowledgeRerankSelection {
-  readonly model: string;
-  readonly reranker: Reranker;
-}
-
-export interface KnowledgeVisionSelection {
-  readonly model: string;
-  readonly vision: VisionModel;
-}
-
 export interface KnowledgeClientDeps {
   readonly store: KnowledgeStore;
   readonly resolveEmbedding: () => KnowledgeEmbeddingSelection | undefined;
-  readonly resolveEmbeddingByRef: (ref: KnowledgeModelRef) => EmbeddingModel | undefined;
   readonly resolveReranker: () => KnowledgeRerankSelection | undefined;
   readonly resolveVision: () => KnowledgeVisionSelection | undefined;
   readonly kbRoot?: string;
@@ -98,18 +83,21 @@ export class KnowledgeClient {
     return count;
   }
 
-  /** 全量重建 fan-out 前的预检：一次短文本 embed 验证 key/模型/维度，失败则一行任务都不建。 */
-  async probeEmbeddingSpace(ref: KnowledgeModelRef, signal?: AbortSignal): Promise<EmbeddingSpace> {
-    const model = this.deps.resolveEmbeddingByRef(ref);
-    if (!model) {
-      throw new KnowledgeNotConfiguredError(
-        `Embedding 配置已删除或模型未启用: ${ref.providerId} / ${ref.model}`,
-      );
+  /** 全量重建 fan-out 前的预检：一次短文本 embed 验证 key/模型/维度，失败则一行任务都不建。
+   *  重嵌入永远用当前绑定（kb-embed）模型。 */
+  async probeEmbeddingSpace(signal?: AbortSignal): Promise<EmbeddingSpace> {
+    const selection = this.deps.resolveEmbedding();
+    if (!selection) {
+      throw new KnowledgeNotConfiguredError('Embedding 配置已删除或模型未启用');
     }
-    const response = await model.embed({ model: ref.model, texts: ['空间预检'], ...(signal === undefined ? {} : { signal }) });
+    const response = await selection.embedding.embed({
+      model: selection.model,
+      texts: ['空间预检'],
+      ...(signal === undefined ? {} : { signal }),
+    });
     return createEmbeddingSpace({
-      providerId: ref.providerId,
-      model: ref.model,
+      providerId: selection.providerId,
+      model: selection.model,
       dim: response.dim,
     });
   }
@@ -118,24 +106,22 @@ export class KnowledgeClient {
     return this.deps.store.listStaleAssets().map((asset) => asset.id);
   }
 
-  /** 重建单个资产的向量并冻结新空间；内存索引空间一致时增量挂载，否则留给检索侧惰性重建。 */
+  /** 重建单个资产的向量并冻结新空间；内存索引空间一致时增量挂载，否则留给检索侧惰性重建。
+   *  重嵌入永远用当前绑定（kb-embed）模型。 */
   async reembedAsset(
     assetId: string,
-    selection: KnowledgeModelRef,
     signal: AbortSignal,
     onProgress?: (completed: number, total: number) => void,
   ): Promise<EmbeddingSpace> {
-    const embedding = this.deps.resolveEmbeddingByRef(selection);
-    if (!embedding) {
-      throw new KnowledgeNotConfiguredError(
-        `Embedding 配置已删除或模型未启用: ${selection.providerId} / ${selection.model}`,
-      );
+    const selection = this.deps.resolveEmbedding();
+    if (!selection) {
+      throw new KnowledgeNotConfiguredError('Embedding 配置已删除或模型未启用');
     }
     const chunks = this.deps.store.getChunks(assetId);
     let space: EmbeddingSpace | undefined;
     for (let offset = 0; offset < chunks.length; offset += EMBED_BATCH_SIZE) {
       const batch = chunks.slice(offset, offset + EMBED_BATCH_SIZE);
-      const response = await embedding.embed({
+      const response = await selection.embedding.embed({
         model: selection.model,
         texts: batch.map((chunk) => chunk.text),
         signal,
