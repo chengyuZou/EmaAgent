@@ -55,11 +55,8 @@ export const SkillTool = buildTool<SkillInput, SkillToolResult, SkillToolContext
   isReadOnly: () => true,
   isConcurrencySafe: () => false,
 
-  getPermissionIntent: () => ({
-    riskLevel: 'low',
-    accessType: 'read',
-    promptPolicy: 'neverForTrustedBuiltin',
-  }),
+  // 技能只读执行(目录由根 Turn 冻结), 内置信任放行。
+  checkPermissions: async () => ({ behavior: 'allow' }),
 
   validateContext(ctx: ToolUseContext) {
     // Pool 由根 Turn 装配;子 Agent 与 chat 态不注入,天然不可见。

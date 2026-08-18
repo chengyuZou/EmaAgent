@@ -98,11 +98,8 @@ export const AskUserTool = buildTool<AskUserInput, AskUserResult, AskUserToolCon
     return contextOk({ askUser: ctx.askUser });
   },
 
-  getPermissionIntent: () => ({
-    riskLevel: 'low',
-    accessType: 'read',
-    promptPolicy: 'neverForTrustedBuiltin',
-  }),
+  // AskUser 本身即用户交互: 必须经过批准, 不由规则绕过。
+  checkPermissions: async () => ({ behavior: 'ask', message: 'AskUser 需要用户交互' }),
 
   async execute(
     input: AskUserInput,

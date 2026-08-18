@@ -54,11 +54,8 @@ export const TaskCreateTool = buildTool<TaskCreateInput, TaskCreateResult, TaskC
   isReadOnly: () => false,
   isConcurrencySafe: () => true,
   getToolUseSummary: (input) => `创建任务:${input.subject}`,
-  getPermissionIntent: () => ({
-    riskLevel: 'low',
-    accessType: 'write',
-    promptPolicy: 'whenRequired',
-  }),
+  // 创建任务有副作用, 交给中央规则与模式收口(默认询问)。
+  checkPermissions: async () => ({ behavior: 'passthrough', message: '创建任务需要用户确认' }),
 
   validateContext(ctx: ToolUseContext) {
     if (!ctx.taskStore) {

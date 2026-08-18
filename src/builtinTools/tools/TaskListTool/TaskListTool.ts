@@ -42,11 +42,8 @@ export const TaskListTool = buildTool<TaskListInput, TaskListResult, TaskListToo
   inputSchema,
   isReadOnly: () => true,
   isConcurrencySafe: () => true,
-  getPermissionIntent: () => ({
-    riskLevel: 'low',
-    accessType: 'read',
-    promptPolicy: 'neverForTrustedBuiltin',
-  }),
+  // 只读任务查询, 内置信任放行。
+  checkPermissions: async () => ({ behavior: 'allow' }),
 
   validateContext(ctx: ToolUseContext) {
     if (!ctx.taskStore) {

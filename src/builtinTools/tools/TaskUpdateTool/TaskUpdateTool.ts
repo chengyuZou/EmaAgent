@@ -97,11 +97,8 @@ export const TaskUpdateTool = buildTool<TaskUpdateInput, TaskUpdateResult, TaskU
     const operation = input.action ?? input.status ?? '更新字段';
     return `更新任务:${input.taskId.slice(0, 8)} → ${operation}`;
   },
-  getPermissionIntent: () => ({
-    riskLevel: 'low',
-    accessType: 'write',
-    promptPolicy: 'whenRequired',
-  }),
+  // 更新任务有副作用, 交给中央规则与模式收口(默认询问)。
+  checkPermissions: async () => ({ behavior: 'passthrough', message: '更新任务需要用户确认' }),
 
   validateContext(ctx: ToolUseContext) {
     if (!ctx.taskStore) {

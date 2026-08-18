@@ -39,11 +39,8 @@ After the process finishes, prefer reading the complete log file with the Read t
   maxResultBytes: 160_000,
   isReadOnly: () => true,
   isConcurrencySafe: () => true,
-  getPermissionIntent: () => ({
-    riskLevel: 'low',
-    accessType: 'read',
-    promptPolicy: 'neverForTrustedBuiltin',
-  }),
+  // 只读本 Session 后台进程输出, 内置信任放行。
+  checkPermissions: async () => ({ behavior: 'allow' }),
   getToolUseSummary: (input) => `读取后台进程输出 ${input.backgroundProcessId}`,
 
   validateContext(ctx) {

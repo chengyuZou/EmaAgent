@@ -48,15 +48,8 @@ function validateScratchpad(ctx: ToolUseContext) {
   return contextOk<ScratchpadToolContext>({ scratchpad: ctx.scratchpad });
 }
 
-// Turn 内部目录,无用户授权对象:permission 引擎按 internalPath 能力直接放行。
-const SCRATCHPAD_INTENT = {
-  riskLevel: 'low',
-  accessType: 'read',
-  internalPathCapability: 'turnScratchpad',
-  promptPolicy: 'neverForTrustedBuiltin',
-} as const;
-
-const SCRATCHPAD_WRITE_INTENT = { ...SCRATCHPAD_INTENT, accessType: 'write' } as const;
+// Turn 内部目录, 无用户授权对象: key 受 KEY_SCHEMA 约束, 落在 scratchpad.dir 内, 直接放行。
+const scratchpadAllow: () => Promise<{ behavior: 'allow' }> = async () => ({ behavior: 'allow' });
 
 // ── ScratchpadWrite ───────────────────────────────────────────────────────────
 
@@ -85,7 +78,7 @@ export const ScratchpadWriteTool = buildTool<
   isReadOnly:        () => false,
   isConcurrencySafe: () => false,
 
-  getPermissionIntent: () => SCRATCHPAD_WRITE_INTENT,
+  checkPermissions: scratchpadAllow,
 
   validateContext: validateScratchpad,
 
@@ -122,7 +115,7 @@ export const ScratchpadReadTool = buildTool<
   isReadOnly:        () => true,
   isConcurrencySafe: () => true,
 
-  getPermissionIntent: () => SCRATCHPAD_INTENT,
+  checkPermissions: scratchpadAllow,
 
   validateContext: validateScratchpad,
 
@@ -152,7 +145,7 @@ export const ScratchpadListTool = buildTool<
   isReadOnly:        () => true,
   isConcurrencySafe: () => true,
 
-  getPermissionIntent: () => SCRATCHPAD_INTENT,
+  checkPermissions: scratchpadAllow,
 
   validateContext: validateScratchpad,
 
@@ -190,7 +183,7 @@ export const ScratchpadDeleteTool = buildTool<
   isReadOnly:        () => false,
   isConcurrencySafe: () => false,
 
-  getPermissionIntent: () => SCRATCHPAD_WRITE_INTENT,
+  checkPermissions: scratchpadAllow,
 
   validateContext: validateScratchpad,
 
@@ -214,7 +207,7 @@ export const ScratchpadClearTool = buildTool<
   isReadOnly:        () => false,
   isConcurrencySafe: () => false,
 
-  getPermissionIntent: () => SCRATCHPAD_WRITE_INTENT,
+  checkPermissions: scratchpadAllow,
 
   validateContext: validateScratchpad,
 

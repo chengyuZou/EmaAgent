@@ -155,11 +155,8 @@ export const SubagentTool = buildTool<SubagentInput, SubagentResult, SubagentToo
   isReadOnly: () => false,
   isConcurrencySafe: () => true,
 
-  getPermissionIntent: () => ({
-    riskLevel: 'high',
-    accessType: 'execute',
-    promptPolicy: 'whenRequired',
-  }),
+  // 启动子 Agent 有副作用与成本, 交给中央规则与模式收口(默认询问)。
+  checkPermissions: async () => ({ behavior: 'passthrough', message: '启动子 Agent 需要用户确认' }),
 
   validateContext(ctx) {
     if (!ctx.subagentSpawner) {

@@ -52,11 +52,8 @@ export const NarrativeSearchTool = buildTool<
   // LightRAG 查询会更新内部缓存，同一 Turn 内保持顺序，避免多个查询争用缓存写入。
   isConcurrencySafe: () => false,
 
-  getPermissionIntent: () => ({
-    riskLevel: 'low',
-    accessType: 'read',
-    promptPolicy: 'neverForTrustedBuiltin',
-  }),
+  // 只读剧情检索(按需启用), 内置信任放行。
+  checkPermissions: async () => ({ behavior: 'allow' }),
 
   validateContext(ctx) {
     if (!ctx.narrativeSearch) {

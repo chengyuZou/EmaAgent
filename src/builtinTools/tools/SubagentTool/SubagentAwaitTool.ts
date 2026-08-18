@@ -39,11 +39,8 @@ Returns output:null if the agentRunId is unknown or already collected.`,
   isReadOnly:        () => false,
   isConcurrencySafe: () => true,
 
-  getPermissionIntent: () => ({
-    riskLevel: 'low',
-    accessType: 'read',
-    promptPolicy: 'neverForTrustedBuiltin',
-  }),
+  // 等待本会话子 Agent 结果, 内置信任放行。
+  checkPermissions: async () => ({ behavior: 'allow' }),
 
   validateContext(ctx) {
     if (!ctx.subagentSpawner) {

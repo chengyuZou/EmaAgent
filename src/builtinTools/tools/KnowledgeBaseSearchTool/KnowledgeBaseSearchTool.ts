@@ -46,11 +46,8 @@ The active knowledge base and any document scope selected by the user are suppli
   isConcurrencySafe: () => true,
   getToolUseSummary: (input) => `Search knowledge base for: ${input.query} (top ${input.top_k} hits)`,
 
-  getPermissionIntent: () => ({
-    riskLevel: 'low',
-    accessType: 'read',
-    promptPolicy: 'neverForTrustedBuiltin',
-  }),
+  // 只读检索用户选定的文档, 内置信任放行。
+  checkPermissions: async () => ({ behavior: 'allow' }),
 
   validateContext(ctx) {
     if (!ctx.knowledgeSearch) {

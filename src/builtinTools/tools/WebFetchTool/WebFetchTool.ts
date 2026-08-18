@@ -1,5 +1,6 @@
 // 在网络安全与响应大小边界内获取公开网页内容, 转换结果按 URL 缓存。
 import { z } from 'zod';
+import { findContentRule } from '@ema-agent/permission';
 import { isObviouslyUnsafePublicUrl } from '@ema-agent/public-http';
 import { buildTool, contextOk, type ToolInvocation } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
@@ -77,15 +78,46 @@ export const WebFetchTool = buildTool<WebFetchInput, WebFetchResult, undefined>(
       : { valid: true };
   },
 
-  // 预批准域名只对 WebFetch 的 GET 放行, 不继承到其他工具或沙箱网络规则。
-  getPermissionIntent(input) {
-    return {
-      riskLevel: 'medium',
-      accessType: 'read',
-      promptPolicy: isPreapprovedUrl(input.url)
-        ? 'neverForTrustedBuiltin'
-        : 'whenRequired',
-    };
+  // 域名内容规则(用户显式 deny/ask/allow 优先) → 预批准域名 → passthrough(中央收口)。
+  async checkPermissions(input, _context, permissionContext) {
+    const ruleContent = webFetchInputToPermissionRuleContent(input.url);
+    const denyRule = findContentRule(
+      permissionContext, BuiltinTools.WebFetch.name, 'deny', ruleContent,
+    );
+    if (denyRule) {
+      return {
+        behavior: 'deny',
+        message: `${BuiltinTools.WebFetch.name} 已禁止访问 ${ruleContent}`,
+        decisionReason: { type: 'rule', rule: denyRule },
+      };
+    }
+    const askRule = findContentRule(
+      permissionContext, BuiltinTools.WebFetch.name, 'ask', ruleContent,
+    );
+    if (askRule) {
+      return {
+        behavior: 'ask',
+        message: `访问 ${ruleContent} 需要用户确认`,
+        decisionReason: { type: 'rule', rule: askRule },
+      };
+    }
+    const allowRule = findContentRule(
+      permissionContext, BuiltinTools.WebFetch.name, 'allow', ruleContent,
+    );
+    if (allowRule) {
+      return {
+        behavior: 'allow',
+        decisionReason: { type: 'rule', rule: allowRule },
+      };
+    }
+    // 预批准域名只对 WebFetch 的 GET 放行, 不继承到其他工具或沙箱网络规则。
+    if (isPreapprovedUrl(input.url)) {
+      return {
+        behavior: 'allow',
+        decisionReason: { type: 'other', reason: 'Preapproved host' },
+      };
+    }
+    return { behavior: 'passthrough', message: '获取网页需要用户确认' };
   },
 
   // 本工具不消费宿主能力: 网络边界由 public-http 提供, 无需窄 Context。
@@ -131,5 +163,14 @@ function isPreapprovedUrl(rawUrl: string): boolean {
     return isPreapprovedHost(url.hostname, url.pathname);
   } catch {
     return false;
+  }
+}
+
+/** input → 内容规则语义串: domain:hostname。 */
+function webFetchInputToPermissionRuleContent(url: string): string {
+  try {
+    return `domain:${new URL(url).hostname}`;
+  } catch {
+    return `input:${url}`;
   }
 }

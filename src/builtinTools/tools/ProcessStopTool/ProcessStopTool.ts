@@ -35,11 +35,8 @@ export const ProcessStopTool = buildTool<
   maxResultBytes: 50_000,
   isReadOnly: () => false,
   isConcurrencySafe: () => false,
-  getPermissionIntent: () => ({
-    riskLevel: 'high',
-    accessType: 'execute',
-    promptPolicy: 'whenRequired',
-  }),
+  // 终止后台进程有副作用, 交给中央规则与模式收口(默认询问)。
+  checkPermissions: async () => ({ behavior: 'passthrough', message: '停止后台进程需要用户确认' }),
 
   validateContext(ctx) {
     if (!ctx.backgroundProcesses) {

@@ -49,11 +49,8 @@ export const ProcessListTool = buildTool<
   maxResultBytes: 100_000,
   isReadOnly: () => true,
   isConcurrencySafe: () => true,
-  getPermissionIntent: () => ({
-    riskLevel: 'low',
-    accessType: 'read',
-    promptPolicy: 'neverForTrustedBuiltin',
-  }),
+  // 只读查询本 Session 后台进程, 内置信任放行。
+  checkPermissions: async () => ({ behavior: 'allow' }),
   getToolUseSummary: (input) => input.status
     ? `列出 ${input.status} 后台进程`
     : '列出后台进程',

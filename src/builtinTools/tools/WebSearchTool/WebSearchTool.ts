@@ -54,11 +54,8 @@ export const WebSearchTool = buildTool<WebSearchInput, WebSearchResult, undefine
 
   getToolUseSummary: (input) => input.query,
 
-  getPermissionIntent: () => ({
-    riskLevel: 'medium',
-    accessType: 'read',
-    promptPolicy: 'whenRequired',
-  }),
+  // 联网检索走公网出口, 交给中央规则与模式收口(默认询问)。
+  checkPermissions: async () => ({ behavior: 'passthrough', message: 'Web 搜索需要用户确认' }),
 
   // 本工具不消费宿主能力: 只依赖环境配置与 public-http, 无需窄 Context。
   validateContext() {
