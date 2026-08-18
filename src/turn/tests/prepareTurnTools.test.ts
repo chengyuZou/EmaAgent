@@ -15,7 +15,7 @@ import {
   ToolRegistry,
   type AskUserRequiredEvent,
 } from '@ema-agent/tools';
-import { SessionInteractionQueue } from '../interaction/sessionInteractionQueue.js';
+import { SessionDecisionQueue } from '../interaction/decisionQueue.js';
 import type { TurnStreamEvent } from '../events.js';
 import {
   prepareTurnTools,
@@ -59,7 +59,7 @@ function fakeTool(name: string, options: {
 
 function makeDeps(options: {
   tools: ReturnType<typeof fakeTool>[];
-  queue: SessionInteractionQueue<PermissionRequest, PermissionResponse, AskUserRequiredEvent>;
+  queue: SessionDecisionQueue<PermissionRequest, PermissionResponse, AskUserRequiredEvent>;
   settings: SettingsStore;
 }): TurnToolsDeps {
   const registry = new ToolRegistry();
@@ -110,7 +110,7 @@ describe('prepareTurnTools', () => {
     const bashTool = fakeTool('Bash', { id: BuiltinTools.Bash.id });
     const deps = makeDeps({
       tools: [readTool, bashTool],
-      queue: new SessionInteractionQueue(null, reason => ({ action: 'deny', reason })),
+      queue: new SessionDecisionQueue(null, reason => ({ action: 'deny', reason })),
       settings: fakeSettings(),
     });
 
@@ -124,7 +124,7 @@ describe('prepareTurnTools', () => {
 
   it('ask 决策经队列等用户；allowSession 沉淀 session 规则并发出 resolved', async () => {
     const events: TurnStreamEvent[] = [];
-    const queue = new SessionInteractionQueue<PermissionRequest, PermissionResponse, AskUserRequiredEvent>(
+    const queue = new SessionDecisionQueue<PermissionRequest, PermissionResponse, AskUserRequiredEvent>(
       null,
       reason => ({ action: 'deny', reason }),
     );
@@ -154,7 +154,7 @@ describe('prepareTurnTools', () => {
   });
 
   it('Turn abort 时等待中的权限询问按取消收口（模型见 tool/cancelled）', async () => {
-    const queue = new SessionInteractionQueue<PermissionRequest, PermissionResponse, AskUserRequiredEvent>(
+    const queue = new SessionDecisionQueue<PermissionRequest, PermissionResponse, AskUserRequiredEvent>(
       null,
       reason => ({ action: 'deny', reason }),
     );

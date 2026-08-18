@@ -17,14 +17,14 @@ export {
 } from './errors.js';
 export type { TurnFailureCode, TurnFailurePhase } from './errors.js';
 export {
-  SessionInteractionQueue,
+  SessionDecisionQueue,
   filterPermissionPending,
   filterAskUserPending,
-} from './interaction/sessionInteractionQueue.js';
+} from './interaction/decisionQueue.js';
 export type {
   SessionInteraction,
   PermissionInteraction,
   AskUserInteraction,
   AskUserInteractionOutcome,
   PendingInteraction,
-} from './interaction/sessionInteractionQueue.js';
+} from './interaction/decisionQueue.js';

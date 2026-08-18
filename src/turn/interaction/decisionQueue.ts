@@ -50,7 +50,7 @@ interface SessionFifo<TPermissionPrompt, TPermissionResponse, TAskRequest> {
   timer:   ReturnType<typeof setTimeout> | undefined;
 }
 
-// ── SessionInteractionQueue ──────────────────────────────────────────────────
+// ── SessionDecisionQueue ──────────────────────────────────────────────────
 
 /**
  * 内存交互队列。Process-local,无持久化——Turn abort 或进程重启取消全部待交互
@@ -65,7 +65,7 @@ interface SessionFifo<TPermissionPrompt, TPermissionResponse, TAskRequest> {
  *     Permission 锚 = 触发审批的调用,AskUser 锚 = 发起问询的调用。
  *   - listPending(sessionId?) 供 SSE 重连恢复指定 Session 的队列快照。
  */
-export class SessionInteractionQueue<TPermissionPrompt, TPermissionResponse, TAskRequest> {
+export class SessionDecisionQueue<TPermissionPrompt, TPermissionResponse, TAskRequest> {
   private readonly sessions =
     new Map<string, SessionFifo<TPermissionPrompt, TPermissionResponse, TAskRequest>>();
   /** toolCallId → { fifo, entry },O(1) 定位 respond/cancel。 */

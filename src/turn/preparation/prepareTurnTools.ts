@@ -40,8 +40,8 @@ import type {
   NarrativePolicy,
 } from '@ema-agent/turn-terms';
 import type {
-  SessionInteractionQueue,
-} from '../interaction/sessionInteractionQueue.js';
+  SessionDecisionQueue,
+} from '../interaction/decisionQueue.js';
 import type { TurnStreamEvent } from '../events.js';
 
 /** Chat 只暴露只读检索工具；写文件、Shell、Task、子 Agent 与 Skill 属于 Work。 */
@@ -55,7 +55,7 @@ const CHAT_TOOL_IDS: ReadonlySet<string> = new Set([
   BuiltinTools.NarrativeSearch.id,
 ]);
 
-type DecisionQueue = SessionInteractionQueue<
+type DecisionQueue = SessionDecisionQueue<
   PermissionRequest,
   PermissionResponse,
   AskUserRequiredEvent

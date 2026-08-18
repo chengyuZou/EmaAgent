@@ -1,11 +1,11 @@
 // 测试统一交互队列的 per-Session FIFO、Permission/AskUser 混合排队、跨 Session 并行与队首超时。
 import { describe, expect, it, vi } from 'vitest';
 import {
-  SessionInteractionQueue,
+  SessionDecisionQueue,
   filterPermissionPending,
   filterAskUserPending,
   type PendingInteraction,
-} from '../interaction/sessionInteractionQueue.js';
+} from '../interaction/decisionQueue.js';
 
 /** 快照定位锚：两种交互都锚定触发它的 toolCallId。 */
 const idOf = (p: PendingInteraction<TestPermissionPrompt, TestAskRequest>): string =>
@@ -30,12 +30,12 @@ interface TestAskRequest {
   questions: readonly unknown[];
 }
 
-function makeQueue(timeoutMs: number | null = 60_000): SessionInteractionQueue<
+function makeQueue(timeoutMs: number | null = 60_000): SessionDecisionQueue<
   TestPermissionPrompt,
   TestPermissionResponse,
   TestAskRequest
 > {
-  return new SessionInteractionQueue(
+  return new SessionDecisionQueue(
     timeoutMs,
     reason => ({ action: 'deny', reason }),
   );
@@ -55,7 +55,7 @@ function makeAskUserRequest(toolCallId: string, sessionId = 's1', turnId = 't1')
   };
 }
 
-describe('SessionInteractionQueue Permission FIFO', () => {
+describe('SessionDecisionQueue Permission FIFO', () => {
   it('同一 Session 严格 FIFO:队首解决后下一个才升为队首', async () => {
     const q = makeQueue();
     const a = q.enqueuePermission({ sessionId: 's1', turnId: 't1', toolCallId: 'c1', prompt: makePermissionPrompt('a') });
@@ -122,7 +122,7 @@ describe('SessionInteractionQueue Permission FIFO', () => {
   });
 });
 
-describe('SessionInteractionQueue AskUser FIFO', () => {
+describe('SessionDecisionQueue AskUser FIFO', () => {
   it('同一 Session AskUser 串行排队', async () => {
     const q = makeQueue();
     const a = q.enqueueAskUser({ toolCallId: 'p1', sessionId: 's1', turnId: 't1', request: makeAskUserRequest('p1') });
@@ -175,7 +175,7 @@ describe('SessionInteractionQueue AskUser FIFO', () => {
   });
 });
 
-describe('SessionInteractionQueue Permission 与 AskUser 混合 FIFO', () => {
+describe('SessionDecisionQueue Permission 与 AskUser 混合 FIFO', () => {
   it('同 Session [permission, askUser, permission] 按进入顺序共同排队', async () => {
     const q = makeQueue();
     const perm1 = q.enqueuePermission({ sessionId: 's1', turnId: 't1', toolCallId: 'c1', prompt: makePermissionPrompt('perm1') });
@@ -361,7 +361,7 @@ describe('SessionInteractionQueue Permission 与 AskUser 混合 FIFO', () => {
   });
 });
 
-describe('SessionInteractionQueue 过滤辅助', () => {
+describe('SessionDecisionQueue 过滤辅助', () => {
   it('filterPermissionPending 只返回 permission 快照', () => {
     const q = makeQueue();
     q.enqueuePermission({ sessionId: 's1', turnId: 't1', toolCallId: 'c1', prompt: makePermissionPrompt('a') });

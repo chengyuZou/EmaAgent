@@ -15,7 +15,7 @@ import {
   ToolRegistry,
   type AskUserRequiredEvent,
 } from '@ema-agent/tools';
-import { SessionInteractionQueue } from '../interaction/sessionInteractionQueue.js';
+import { SessionDecisionQueue } from '../interaction/decisionQueue.js';
 import { TurnExecutor, type TurnExecutorDeps } from '../turn.js';
 import { TurnStore } from '../turnStore.js';
 import type { StartTurn } from '../types.js';
@@ -85,7 +85,7 @@ function makeDeps(options: {
     skillEntries: () => [],
     createLlm: () => llm,
     registry,
-    decisionQueue: new SessionInteractionQueue<PermissionRequest, PermissionResponse, AskUserRequiredEvent>(
+    decisionQueue: new SessionDecisionQueue<PermissionRequest, PermissionResponse, AskUserRequiredEvent>(
       null,
       reason => ({ action: 'deny', reason }),
     ),

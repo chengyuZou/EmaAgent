@@ -15,7 +15,7 @@ import {
   type AskUserRequiredEvent,
 } from '@ema-agent/tools';
 import type { Turn } from '@ema-agent/turn-terms';
-import { SessionInteractionQueue } from '../interaction/sessionInteractionQueue.js';
+import { SessionDecisionQueue } from '../interaction/decisionQueue.js';
 import { TurnPreparationError } from '../errors.js';
 import {
   prepareTurn,
@@ -94,13 +94,12 @@ function makeDeps(overrides: Partial<PrepareTurnDeps> = {}): PrepareTurnDeps {
     characterPrompt: () => ({ prompt: '你是角色', presentation: '' }),
     skillEntries: () => [],
     registry: new ToolRegistry(),
-    decisionQueue: new SessionInteractionQueue<PermissionRequest, PermissionResponse, AskUserRequiredEvent>(
+    decisionQueue: new SessionDecisionQueue<PermissionRequest, PermissionResponse, AskUserRequiredEvent>(
       null,
       reason => ({ action: 'deny', reason }),
     ),
     agentRunStore: {} as unknown as AgentRunStore,
     agentRunMessagesStore: {} as unknown as AgentRunMessagesStore,
-    emit: () => undefined,
     ...overrides,
   };
 }
@@ -129,6 +128,7 @@ function makeRuntime(start: StartTurn) {
     },
     prepareSubagent: async () => { throw new Error('不应派生子 Agent'); },
     parentMessages: [],
+    emit: () => undefined,
     signal: new AbortController().signal,
   };
 }
