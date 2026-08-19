@@ -1,51 +1,30 @@
 // 测试统一交互队列的 per-Session FIFO、Permission/AskUser 混合排队、跨 Session 并行与队首超时。
 import { describe, expect, it, vi } from 'vitest';
+import type { PermissionRequest } from '@ema-agent/permission';
+import type { AskUserRequiredEvent } from '@ema-agent/tools';
 import {
-  SessionDecisionQueue,
-  filterPermissionPending,
-  filterAskUserPending,
+  SessionInteractionQueue,
   type PendingInteraction,
-} from '../interaction/decisionQueue.js';
+} from '../interactionQueue.js';
 
-/** 快照定位锚：两种交互都锚定触发它的 toolCallId。 */
-const idOf = (p: PendingInteraction<TestPermissionPrompt, TestAskRequest>): string =>
-  p.toolCallId;
+/** 快照定位锚：两种交互都锚定触发它的 toolCallId（含于请求本体内）。 */
+const idOf = (p: PendingInteraction): string => p.request.toolCallId;
 
-interface TestPermissionPrompt {
-  toolId: string;
-  toolName: string;
-  input: object;
-  riskLevel: 'low';
+function makeQueue(timeoutMs: number | null = 60_000): SessionInteractionQueue {
+  return new SessionInteractionQueue(timeoutMs);
 }
 
-type TestPermissionResponse =
-  | { action: 'allow'; reason?: string }
-  | { action: 'deny'; reason?: string };
-
-interface TestAskRequest {
-  type: 'ask_user_required';
-  sessionId: string;
-  turnId: string;
-  toolCallId: string;
-  questions: readonly unknown[];
+function makePermissionRequest(toolCallId: string, sessionId = 's1', turnId = 't1'): PermissionRequest {
+  return {
+    toolName: 'Bash',
+    input:   { command: 'ls' },
+    sessionId,
+    turnId,
+    toolCallId,
+  };
 }
 
-function makeQueue(timeoutMs: number | null = 60_000): SessionDecisionQueue<
-  TestPermissionPrompt,
-  TestPermissionResponse,
-  TestAskRequest
-> {
-  return new SessionDecisionQueue(
-    timeoutMs,
-    reason => ({ action: 'deny', reason }),
-  );
-}
-
-function makePermissionPrompt(toolId: string): TestPermissionPrompt {
-  return { toolId, toolName: toolId, input: {}, riskLevel: 'low' };
-}
-
-function makeAskUserRequest(toolCallId: string, sessionId = 's1', turnId = 't1'): TestAskRequest {
+function makeAskUserRequest(toolCallId: string, sessionId = 's1', turnId = 't1'): AskUserRequiredEvent {
   return {
     type: 'ask_user_required',
     sessionId,
@@ -55,11 +34,11 @@ function makeAskUserRequest(toolCallId: string, sessionId = 's1', turnId = 't1')
   };
 }
 
-describe('SessionDecisionQueue Permission FIFO', () => {
+describe('SessionInteractionQueue Permission FIFO', () => {
   it('同一 Session 严格 FIFO:队首解决后下一个才升为队首', async () => {
     const q = makeQueue();
-    const a = q.enqueuePermission({ sessionId: 's1', turnId: 't1', toolCallId: 'c1', prompt: makePermissionPrompt('a') });
-    const b = q.enqueuePermission({ sessionId: 's1', turnId: 't1', toolCallId: 'c2', prompt: makePermissionPrompt('b') });
+    const a = q.enqueuePermission(makePermissionRequest('c1'));
+    const b = q.enqueuePermission(makePermissionRequest('c2'));
 
     expect(q.listPending('s1').map(idOf)).toEqual(['c1', 'c2']);
 
@@ -74,8 +53,8 @@ describe('SessionDecisionQueue Permission FIFO', () => {
 
   it('跨 Session 并行:不同 Session 各有独立队首', async () => {
     const q = makeQueue();
-    const a = q.enqueuePermission({ sessionId: 's1', turnId: 't1', toolCallId: 'c1', prompt: makePermissionPrompt('a') });
-    const b = q.enqueuePermission({ sessionId: 's2', turnId: 't2', toolCallId: 'c2', prompt: makePermissionPrompt('b') });
+    q.enqueuePermission(makePermissionRequest('c1'));
+    q.enqueuePermission(makePermissionRequest('c2', 's2', 't2'));
 
     expect(q.listPending('s1').map(idOf)).toEqual(['c1']);
     expect(q.listPending('s2').map(idOf)).toEqual(['c2']);
@@ -86,7 +65,7 @@ describe('SessionDecisionQueue Permission FIFO', () => {
 
   it('respondPermission 按 toolCallId 定位,未知或已解决返回 false', () => {
     const q = makeQueue();
-    const a = q.enqueuePermission({ sessionId: 's1', turnId: 't1', toolCallId: 'c1', prompt: makePermissionPrompt('a') });
+    q.enqueuePermission(makePermissionRequest('c1'));
     expect(q.respondPermission('nonexistent', { action: 'allow' })).toBe(false);
     expect(q.respondPermission('c1', { action: 'allow' })).toBe(true);
     expect(q.respondPermission('c1', { action: 'allow' })).toBe(false);
@@ -94,12 +73,7 @@ describe('SessionDecisionQueue Permission FIFO', () => {
 
   it('Permission 响应必须属于 URL 指定的 Turn', () => {
     const q = makeQueue();
-    q.enqueuePermission({
-      sessionId: 'session-a',
-      turnId: 'turn-a',
-      toolCallId: 'call-a',
-      prompt: makePermissionPrompt('bash'),
-    });
+    q.enqueuePermission(makePermissionRequest('call-a', 'session-a', 'turn-a'));
 
     expect(q.respondPermission('call-a', { action: 'allow' }, 'turn-stale')).toBe(false);
     expect(q.respondPermission('call-a', { action: 'allow' }, 'turn-a')).toBe(true);
@@ -107,26 +81,26 @@ describe('SessionDecisionQueue Permission FIFO', () => {
 
   it('respondAskUser 不能解决 Permission 条目(类型互斥)', () => {
     const q = makeQueue();
-    q.enqueuePermission({ sessionId: 's1', turnId: 't1', toolCallId: 'c1', prompt: makePermissionPrompt('a') });
+    q.enqueuePermission(makePermissionRequest('c1'));
     expect(q.respondAskUser('c1', {})).toBe(false);
     expect(q.size()).toBe(1);
   });
 
   it('Permission 非队首不能越过当前活动交互', () => {
     const q = makeQueue();
-    q.enqueuePermission({ sessionId: 's1', turnId: 't1', toolCallId: 'c1', prompt: makePermissionPrompt('a') });
-    q.enqueuePermission({ sessionId: 's1', turnId: 't1', toolCallId: 'c2', prompt: makePermissionPrompt('b') });
+    q.enqueuePermission(makePermissionRequest('c1'));
+    q.enqueuePermission(makePermissionRequest('c2'));
 
     expect(q.respondPermission('c2', { action: 'allow' })).toBe(false);
     expect(q.listPending('s1').map(idOf)).toEqual(['c1', 'c2']);
   });
 });
 
-describe('SessionDecisionQueue AskUser FIFO', () => {
+describe('SessionInteractionQueue AskUser FIFO', () => {
   it('同一 Session AskUser 串行排队', async () => {
     const q = makeQueue();
-    const a = q.enqueueAskUser({ toolCallId: 'p1', sessionId: 's1', turnId: 't1', request: makeAskUserRequest('p1') });
-    const b = q.enqueueAskUser({ toolCallId: 'p2', sessionId: 's1', turnId: 't1', request: makeAskUserRequest('p2') });
+    const a = q.enqueueAskUser(makeAskUserRequest('p1'));
+    const b = q.enqueueAskUser(makeAskUserRequest('p2'));
 
     expect(q.listPending('s1').map(idOf)).toEqual(['p1', 'p2']);
 
@@ -140,7 +114,7 @@ describe('SessionDecisionQueue AskUser FIFO', () => {
 
   it('respondAskUser 按 toolCallId 定位', () => {
     const q = makeQueue();
-    q.enqueueAskUser({ toolCallId: 'p1', sessionId: 's1', turnId: 't1', request: makeAskUserRequest('p1') });
+    q.enqueueAskUser(makeAskUserRequest('p1'));
     expect(q.respondAskUser('nonexistent', {})).toBe(false);
     expect(q.respondAskUser('p1', { q0: 'yes' })).toBe(true);
     expect(q.respondAskUser('p1', { q0: 'yes' })).toBe(false);
@@ -148,26 +122,17 @@ describe('SessionDecisionQueue AskUser FIFO', () => {
 
   it('拒绝重复交互 id，避免覆盖索引后遗留永不结束的等待项', () => {
     const q = makeQueue();
-    q.enqueueAskUser({
-      toolCallId: 'duplicate',
-      sessionId: 's1',
-      turnId: 't1',
-      request: makeAskUserRequest('duplicate'),
-    });
+    q.enqueueAskUser(makeAskUserRequest('duplicate'));
 
-    expect(() => q.enqueueAskUser({
-      toolCallId: 'duplicate',
-      sessionId: 's2',
-      turnId: 't2',
-      request: makeAskUserRequest('duplicate', 's2', 't2'),
-    })).toThrow('Duplicate interaction id: duplicate');
+    expect(() => q.enqueueAskUser(makeAskUserRequest('duplicate', 's2', 't2')))
+      .toThrow('Duplicate interaction id: duplicate');
     expect(q.size()).toBe(1);
   });
 
   it('拒绝响应非队首条目和 Turn 身份不匹配的陈旧卡片', () => {
     const q = makeQueue();
-    q.enqueueAskUser({ toolCallId: 'p1', sessionId: 's1', turnId: 't1', request: makeAskUserRequest('p1') });
-    q.enqueueAskUser({ toolCallId: 'p2', sessionId: 's1', turnId: 't2', request: makeAskUserRequest('p2', 's1', 't2') });
+    q.enqueueAskUser(makeAskUserRequest('p1'));
+    q.enqueueAskUser(makeAskUserRequest('p2', 's1', 't2'));
 
     expect(q.respondAskUser('p2', { q0: 'early' }, 't2')).toBe(false);
     expect(q.respondAskUser('p1', { q0: 'wrong turn' }, 't2')).toBe(false);
@@ -175,16 +140,15 @@ describe('SessionDecisionQueue AskUser FIFO', () => {
   });
 });
 
-describe('SessionDecisionQueue Permission 与 AskUser 混合 FIFO', () => {
+describe('SessionInteractionQueue Permission 与 AskUser 混合 FIFO', () => {
   it('同 Session [permission, askUser, permission] 按进入顺序共同排队', async () => {
     const q = makeQueue();
-    const perm1 = q.enqueuePermission({ sessionId: 's1', turnId: 't1', toolCallId: 'c1', prompt: makePermissionPrompt('perm1') });
-    const ask1  = q.enqueueAskUser({ toolCallId: 'a1', sessionId: 's1', turnId: 't1', request: makeAskUserRequest('a1') });
-    const perm2 = q.enqueuePermission({ sessionId: 's1', turnId: 't1', toolCallId: 'c2', prompt: makePermissionPrompt('perm2') });
+    const perm1 = q.enqueuePermission(makePermissionRequest('c1'));
+    const ask1  = q.enqueueAskUser(makeAskUserRequest('a1'));
+    const perm2 = q.enqueuePermission(makePermissionRequest('c2'));
 
     // 队首是 perm1,其余排队
-    const ids = q.listPending('s1').map(idOf);
-    expect(ids).toEqual(['c1', 'a1', 'c2']);
+    expect(q.listPending('s1').map(idOf)).toEqual(['c1', 'a1', 'c2']);
 
     // 解决队首 perm1,ask1 升为队首
     q.respondPermission('c1', { action: 'allow' });
@@ -204,8 +168,8 @@ describe('SessionDecisionQueue Permission 与 AskUser 混合 FIFO', () => {
 
   it('跨 Session Permission 与 AskUser 并行互不阻塞', () => {
     const q = makeQueue();
-    q.enqueuePermission({ sessionId: 's1', turnId: 't1', toolCallId: 'c1', prompt: makePermissionPrompt('p1') });
-    q.enqueueAskUser({ toolCallId: 'a1', sessionId: 's2', turnId: 't2', request: makeAskUserRequest('a1', 's2', 't2') });
+    q.enqueuePermission(makePermissionRequest('c1'));
+    q.enqueueAskUser(makeAskUserRequest('a1', 's2', 't2'));
 
     // 两个 Session 各有独立队首,互不阻塞
     expect(q.listPending('s1').map(idOf)).toHaveLength(1);
@@ -214,10 +178,10 @@ describe('SessionDecisionQueue Permission 与 AskUser 混合 FIFO', () => {
 
   it('cancelForTurn 混合取消:一次取消该 Turn 全部 Permission 与 AskUser', async () => {
     const q = makeQueue();
-    const perm1 = q.enqueuePermission({ sessionId: 's1', turnId: 't1', toolCallId: 'c1', prompt: makePermissionPrompt('p1') });
-    const ask1  = q.enqueueAskUser({ toolCallId: 'a1', sessionId: 's1', turnId: 't1', request: makeAskUserRequest('a1') });
+    const perm1 = q.enqueuePermission(makePermissionRequest('c1'));
+    const ask1  = q.enqueueAskUser(makeAskUserRequest('a1'));
     // 不同 Turn 的条目应保留
-    const perm2 = q.enqueuePermission({ sessionId: 's1', turnId: 't2', toolCallId: 'c2', prompt: makePermissionPrompt('p2') });
+    q.enqueuePermission(makePermissionRequest('c2', 's1', 't2'));
 
     const n = q.cancelForTurn('t1', 'turn aborted');
     expect(n).toBe(2);
@@ -233,10 +197,10 @@ describe('SessionDecisionQueue Permission 与 AskUser 混合 FIFO', () => {
 
   it('cancelForSession 混合取消:取消该 Session 全部待交互', async () => {
     const q = makeQueue();
-    const perm1 = q.enqueuePermission({ sessionId: 's1', turnId: 't1', toolCallId: 'c1', prompt: makePermissionPrompt('p1') });
-    const ask1  = q.enqueueAskUser({ toolCallId: 'a1', sessionId: 's1', turnId: 't1', request: makeAskUserRequest('a1') });
+    const perm1 = q.enqueuePermission(makePermissionRequest('c1'));
+    const ask1  = q.enqueueAskUser(makeAskUserRequest('a1'));
     // 不同 Session 的条目应保留
-    const perm2 = q.enqueuePermission({ sessionId: 's2', turnId: 't2', toolCallId: 'c2', prompt: makePermissionPrompt('p2') });
+    q.enqueuePermission(makePermissionRequest('c2', 's2', 't2'));
 
     const n = q.cancelForSession('s1', 'session deleted');
     expect(n).toBe(2);
@@ -250,11 +214,11 @@ describe('SessionDecisionQueue Permission 与 AskUser 混合 FIFO', () => {
 
   it('listPending(sessionId) 混合快照队首在前;不传返回全部按 createdAt 升序', () => {
     const q = makeQueue();
-    q.enqueuePermission({ sessionId: 's1', turnId: 't1', toolCallId: 'c1', prompt: makePermissionPrompt('a') });
-    q.enqueueAskUser({ toolCallId: 'b1', sessionId: 's1', turnId: 't1', request: makeAskUserRequest('b1') });
-    q.enqueuePermission({ sessionId: 's2', turnId: 't2', toolCallId: 'c2', prompt: makePermissionPrompt('c') });
+    q.enqueuePermission(makePermissionRequest('c1'));
+    q.enqueueAskUser(makeAskUserRequest('b1'));
+    q.enqueuePermission(makePermissionRequest('c2', 's2', 't2'));
 
-    // s1 混合快照:队首 a 在前,b 在后
+    // s1 混合快照:队首 c1 在前,b1 在后
     const s1 = q.listPending('s1');
     expect(s1.map(p => ({ kind: p.kind, id: idOf(p) }))).toEqual([
       { kind: 'permission', id: 'c1' },
@@ -270,8 +234,8 @@ describe('SessionDecisionQueue Permission 与 AskUser 混合 FIFO', () => {
     vi.useFakeTimers();
     try {
       const q = makeQueue(1_000);
-      const perm = q.enqueuePermission({ sessionId: 's1', turnId: 't1', toolCallId: 'c1', prompt: makePermissionPrompt('perm') });
-      const ask  = q.enqueueAskUser({ toolCallId: 'a1', sessionId: 's1', turnId: 't1', request: makeAskUserRequest('a1') });
+      const perm = q.enqueuePermission(makePermissionRequest('c1'));
+      const ask  = q.enqueueAskUser(makeAskUserRequest('a1'));
 
       // 推进 1000ms:只有队首 perm 应超时
       await vi.advanceTimersByTimeAsync(1_000);
@@ -295,12 +259,7 @@ describe('SessionDecisionQueue Permission 与 AskUser 混合 FIFO', () => {
     vi.useFakeTimers();
     try {
       const q = makeQueue(null);
-      const pending = q.enqueuePermission({
-        sessionId: 's1',
-        turnId: 't1',
-        toolCallId: 'c1',
-        prompt: makePermissionPrompt('permission'),
-      });
+      const pending = q.enqueuePermission(makePermissionRequest('c1'));
 
       await vi.advanceTimersByTimeAsync(24 * 60 * 60 * 1_000);
       expect(q.listPending('s1')).toHaveLength(1);
@@ -313,11 +272,12 @@ describe('SessionDecisionQueue Permission 与 AskUser 混合 FIFO', () => {
 
   it('cancel 单条按 kind resolve:permission→deny,askUser→明确取消终态', async () => {
     const q = makeQueue();
-    const perm = q.enqueuePermission({ sessionId: 's1', turnId: 't1', toolCallId: 'c1', prompt: makePermissionPrompt('p1') });
-    const ask  = q.enqueueAskUser({ toolCallId: 'a1', sessionId: 's2', turnId: 't2', request: makeAskUserRequest('a1', 's2', 't2') });
+    const perm = q.enqueuePermission(makePermissionRequest('c1'));
+    const ask  = q.enqueueAskUser(makeAskUserRequest('a1', 's2', 't2'));
 
     expect(q.cancel('c1', 'test')).toBe(true);
     expect((await perm.promise).action).toBe('deny');
+    expect((await perm.promise).reason).toBe('test');
 
     expect(q.cancel('a1', 'test')).toBe(true);
     expect(await ask.promise).toEqual({
@@ -329,57 +289,24 @@ describe('SessionDecisionQueue Permission 与 AskUser 混合 FIFO', () => {
 
   it('用户取消只接受匹配 Turn 的活动队首', () => {
     const q = makeQueue();
-    q.enqueueAskUser({ toolCallId: 'a1', sessionId: 's1', turnId: 't1', request: makeAskUserRequest('a1') });
-    q.enqueueAskUser({ toolCallId: 'a2', sessionId: 's1', turnId: 't2', request: makeAskUserRequest('a2', 's1', 't2') });
+    q.enqueueAskUser(makeAskUserRequest('a1'));
+    q.enqueueAskUser(makeAskUserRequest('a2', 's1', 't2'));
 
     expect(q.cancelAskUser('a2', 'cancelled', 't2')).toBe(false);
     expect(q.cancelAskUser('a1', 'cancelled', 'wrong-turn')).toBe(false);
     expect(q.listPending('s1').map(idOf)).toEqual(['a1', 'a2']);
   });
 
-  it('HTTP 取消入口不能跨 Permission 与 AskUser 类型操作', () => {
+  it('路由取消入口不能跨 Permission 与 AskUser 类型操作', () => {
     const q = makeQueue();
-    q.enqueuePermission({
-      sessionId: 's1',
-      turnId: 't1',
-      toolCallId: 'tc1',
-      prompt: makePermissionPrompt('tc1'),
-    });
+    q.enqueuePermission(makePermissionRequest('tc1'));
 
     expect(q.cancelAskUser('tc1', 'wrong kind', 't1')).toBe(false);
     expect(q.cancelPermission('tc1', 'cancelled', 't1')).toBe(true);
 
-    q.enqueueAskUser({
-      toolCallId: 'a1',
-      sessionId: 's1',
-      turnId: 't1',
-      request: makeAskUserRequest('a1'),
-    });
+    q.enqueueAskUser(makeAskUserRequest('a1'));
 
     expect(q.cancelPermission('a1', 'wrong kind', 't1')).toBe(false);
     expect(q.cancelAskUser('a1', 'cancelled', 't1')).toBe(true);
-  });
-});
-
-describe('SessionDecisionQueue 过滤辅助', () => {
-  it('filterPermissionPending 只返回 permission 快照', () => {
-    const q = makeQueue();
-    q.enqueuePermission({ sessionId: 's1', turnId: 't1', toolCallId: 'c1', prompt: makePermissionPrompt('a') });
-    q.enqueueAskUser({ toolCallId: 'b1', sessionId: 's1', turnId: 't1', request: makeAskUserRequest('b1') });
-
-    const permOnly = filterPermissionPending(q.listPending());
-    expect(permOnly).toHaveLength(1);
-    expect(permOnly[0]!.toolCallId).toBe('c1');
-    expect(permOnly[0]!.prompt).toEqual(makePermissionPrompt('a'));
-  });
-
-  it('filterAskUserPending 只返回 askUser 快照', () => {
-    const q = makeQueue();
-    q.enqueuePermission({ sessionId: 's1', turnId: 't1', toolCallId: 'c1', prompt: makePermissionPrompt('a') });
-    q.enqueueAskUser({ toolCallId: 'b1', sessionId: 's1', turnId: 't1', request: makeAskUserRequest('b1') });
-
-    const askOnly = filterAskUserPending(q.listPending());
-    expect(askOnly).toHaveLength(1);
-    expect(askOnly[0]!.request.toolCallId).toBe('b1');
   });
 });

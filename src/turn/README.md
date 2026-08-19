@@ -68,9 +68,9 @@ start
 ## 权限与交互
 
 - 权限判定上下文（模式 + 三桶规则）Turn 冻结；settings 源次 Turn 生效，session 源本 Turn 即效。
-- 根 Turn 始终 interactive：`askPermission` 口子 = permission_required/resolved 事件 + decisionQueue 等回答 + `allowSession` 经 `applyPermissionUpdate` 沉淀 session 规则（`ruleSuggestion` 来自 Tool 的 ask 决策）。
+- 根 Turn 始终 interactive：`askPermission` 口子 = permission_required/resolved 事件 + interactionQueue 等回答 + `allowSession` 经 `applyPermissionUpdate` 沉淀 session 规则（`ruleSuggestion` 来自 Tool 的 ask 决策）。
 - 子 Agent headless：`createSubagentExecutor` 不提供 askPermission 口子，中央把 ask 收口为 deny。
-- Permission 与 AskUser 统一 toolCallId 锚，共用 `interaction/decisionQueue.ts` 的 Session FIFO（跨 Session 并行，Turn 终态统一取消）。
+- Permission 与 AskUser 统一 toolCallId 锚，共用 `interactionQueue.ts` 的 Session FIFO（跨 Session 并行，Turn 终态统一取消）。
 
 ## 子 Agent
 
@@ -93,6 +93,7 @@ src/turn/
 ├─ turnStore.ts             Turn 行 CRUD + 唯一终态 + 运行态/删除守卫 + 导航查询
 ├─ activeTurnRegistry.ts    同 Session 一个活动 Turn
 ├─ eventChannel.ts          TurnEvent 单消费者有界通道
+├─ interactionQueue.ts      SessionInteractionQueue（Permission/AskUser 共用的 Session FIFO）
 ├─ preparation/             Turn 启动一次性冻结
 │  ├─ prepareTurn.ts        输入规范化与冻结编排
 │  ├─ prepareTurnTools.ts   工具层装配 + 权限/问询口子
@@ -102,8 +103,6 @@ src/turn/
 │  ├─ turnMessageWriter.ts  事件驱动流式落库
 │  ├─ prepareSubagent.ts    子 Agent AgentLoopInput 工厂
 │  └─ turnBudget.ts         AgentBudget 本包实现
-├─ interaction/
-│  └─ decisionQueue.ts      SessionDecisionQueue（Permission/AskUser FIFO）
 └─ tests/
 ```
 

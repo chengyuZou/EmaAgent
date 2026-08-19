@@ -39,9 +39,7 @@ import type {
   ExecutionProfile,
   NarrativePolicy,
 } from '@ema-agent/turn-terms';
-import type {
-  SessionDecisionQueue,
-} from '../interaction/decisionQueue.js';
+import type { SessionInteractionQueue } from '../interactionQueue.js';
 import type { TurnStreamEvent } from '../events.js';
 
 /** Chat 只暴露只读检索工具；写文件、Shell、Task、子 Agent 与 Skill 属于 Work。 */
@@ -55,15 +53,9 @@ const CHAT_TOOL_IDS: ReadonlySet<string> = new Set([
   BuiltinTools.NarrativeSearch.id,
 ]);
 
-type DecisionQueue = SessionDecisionQueue<
-  PermissionRequest,
-  PermissionResponse,
-  AskUserRequiredEvent
->;
-
 export interface TurnToolsDeps {
   readonly registry: ToolRegistry;
-  readonly decisionQueue: DecisionQueue;
+  readonly decisionQueue: SessionInteractionQueue;
   readonly settings: SettingsStore;
   readonly agentRunStore: AgentRunStore;
   readonly agentRunMessagesStore: AgentRunMessagesStore;
@@ -161,12 +153,7 @@ export function prepareTurnTools(
     signal: AbortSignal,
   ): Promise<PermissionResponse> => {
     input.emit({ type: 'permission_required', ...request });
-    const { promise } = deps.decisionQueue.enqueuePermission({
-      sessionId,
-      turnId,
-      toolCallId: request.toolCallId,
-      prompt: request,
-    });
+    const { promise } = deps.decisionQueue.enqueuePermission(request);
     const response = await awaitInteraction(promise, signal, () => {
       deps.decisionQueue.cancel(request.toolCallId, 'turn aborted');
     });
@@ -197,12 +184,7 @@ export function prepareTurnTools(
       questions: [...specs],
     };
     input.emit(request);
-    const { promise } = deps.decisionQueue.enqueueAskUser({
-      toolCallId,
-      sessionId,
-      turnId,
-      request,
-    });
+    const { promise } = deps.decisionQueue.enqueueAskUser(request);
     const outcome = await awaitInteraction(promise, signal, () => {
       deps.decisionQueue.cancel(toolCallId, 'turn aborted');
     });

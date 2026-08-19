@@ -2,20 +2,15 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type { AgentRunMessagesStore, AgentRunStore } from '@ema-agent/agent';
-import {
-  getSessionAllowRules,
-  type PermissionRequest,
-  type PermissionResponse,
-} from '@ema-agent/permission';
+import { getSessionAllowRules } from '@ema-agent/permission';
 import type { SettingsStore } from '@ema-agent/settings';
 import {
   buildTool,
   BuiltinTools,
   contextOk,
   ToolRegistry,
-  type AskUserRequiredEvent,
 } from '@ema-agent/tools';
-import { SessionDecisionQueue } from '../interaction/decisionQueue.js';
+import { SessionInteractionQueue } from '../interactionQueue.js';
 import type { TurnStreamEvent } from '../events.js';
 import {
   prepareTurnTools,
@@ -59,7 +54,7 @@ function fakeTool(name: string, options: {
 
 function makeDeps(options: {
   tools: ReturnType<typeof fakeTool>[];
-  queue: SessionDecisionQueue<PermissionRequest, PermissionResponse, AskUserRequiredEvent>;
+  queue: SessionInteractionQueue;
   settings: SettingsStore;
 }): TurnToolsDeps {
   const registry = new ToolRegistry();
@@ -110,7 +105,7 @@ describe('prepareTurnTools', () => {
     const bashTool = fakeTool('Bash', { id: BuiltinTools.Bash.id });
     const deps = makeDeps({
       tools: [readTool, bashTool],
-      queue: new SessionDecisionQueue(null, reason => ({ action: 'deny', reason })),
+      queue: new SessionInteractionQueue(null),
       settings: fakeSettings(),
     });
 
@@ -124,10 +119,7 @@ describe('prepareTurnTools', () => {
 
   it('ask 决策经队列等用户；allowSession 沉淀 session 规则并发出 resolved', async () => {
     const events: TurnStreamEvent[] = [];
-    const queue = new SessionDecisionQueue<PermissionRequest, PermissionResponse, AskUserRequiredEvent>(
-      null,
-      reason => ({ action: 'deny', reason }),
-    );
+    const queue = new SessionInteractionQueue(null);
     const settings = fakeSettings();
     const deps = makeDeps({
       tools: [fakeTool('Echo', { askWithSuggestion: true })],
@@ -154,10 +146,7 @@ describe('prepareTurnTools', () => {
   });
 
   it('Turn abort 时等待中的权限询问按取消收口（模型见 tool/cancelled）', async () => {
-    const queue = new SessionDecisionQueue<PermissionRequest, PermissionResponse, AskUserRequiredEvent>(
-      null,
-      reason => ({ action: 'deny', reason }),
-    );
+    const queue = new SessionInteractionQueue(null);
     const controller = new AbortController();
     const deps = makeDeps({
       tools: [fakeTool('Echo', { askWithSuggestion: true })],

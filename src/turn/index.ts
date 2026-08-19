@@ -16,15 +16,5 @@ export {
   TurnPreparationError,
 } from './errors.js';
 export type { TurnFailureCode, TurnFailurePhase } from './errors.js';
-export {
-  SessionDecisionQueue,
-  filterPermissionPending,
-  filterAskUserPending,
-} from './interaction/decisionQueue.js';
-export type {
-  SessionInteraction,
-  PermissionInteraction,
-  AskUserInteraction,
-  AskUserInteractionOutcome,
-  PendingInteraction,
-} from './interaction/decisionQueue.js';
+export { SessionInteractionQueue } from './interactionQueue.js';
+export type { PendingInteraction } from './interactionQueue.js';

@@ -4,7 +4,6 @@ import { z } from 'zod';
 import type { AgentRunMessagesStore, AgentRunStore } from '@ema-agent/agent';
 import type { AttachmentStore } from '@ema-agent/attachments';
 import type { LanguageModel, LlmStreamEvent } from '@ema-agent/llm';
-import type { PermissionRequest, PermissionResponse } from '@ema-agent/permission';
 import type { ProviderModels, Providers } from '@ema-agent/providers';
 import { Database } from '@ema-agent/storage';
 import { SessionStore } from '@ema-agent/session';
@@ -13,9 +12,8 @@ import {
   buildTool,
   contextOk,
   ToolRegistry,
-  type AskUserRequiredEvent,
 } from '@ema-agent/tools';
-import { SessionDecisionQueue } from '../interaction/decisionQueue.js';
+import { SessionInteractionQueue } from '../interactionQueue.js';
 import { TurnExecutor, type TurnExecutorDeps } from '../turn.js';
 import { TurnStore } from '../turnStore.js';
 import type { StartTurn } from '../types.js';
@@ -85,10 +83,7 @@ function makeDeps(options: {
     skillEntries: () => [],
     createLlm: () => llm,
     registry,
-    decisionQueue: new SessionDecisionQueue<PermissionRequest, PermissionResponse, AskUserRequiredEvent>(
-      null,
-      reason => ({ action: 'deny', reason }),
-    ),
+    decisionQueue: new SessionInteractionQueue(null),
     agentRunStore: {} as unknown as AgentRunStore,
     agentRunMessagesStore: {} as unknown as AgentRunMessagesStore,
     createCompact: () => async request => ({ kind: 'unchanged' as const, history: request.history }),

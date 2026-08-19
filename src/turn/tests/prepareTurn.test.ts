@@ -9,13 +9,9 @@ import type { ProviderModels, Providers } from '@ema-agent/providers';
 import type { SessionStore } from '@ema-agent/session';
 import type { SettingsStore } from '@ema-agent/settings';
 import type { SkillDescriptor } from '@ema-agent/skills';
-import type { PermissionRequest, PermissionResponse } from '@ema-agent/permission';
-import {
-  ToolRegistry,
-  type AskUserRequiredEvent,
-} from '@ema-agent/tools';
+import { ToolRegistry } from '@ema-agent/tools';
 import type { Turn } from '@ema-agent/turn-terms';
-import { SessionDecisionQueue } from '../interaction/decisionQueue.js';
+import { SessionInteractionQueue } from '../interactionQueue.js';
 import { TurnPreparationError } from '../errors.js';
 import {
   prepareTurn,
@@ -94,10 +90,7 @@ function makeDeps(overrides: Partial<PrepareTurnDeps> = {}): PrepareTurnDeps {
     characterPrompt: () => ({ prompt: '你是角色', presentation: '' }),
     skillEntries: () => [],
     registry: new ToolRegistry(),
-    decisionQueue: new SessionDecisionQueue<PermissionRequest, PermissionResponse, AskUserRequiredEvent>(
-      null,
-      reason => ({ action: 'deny', reason }),
-    ),
+    decisionQueue: new SessionInteractionQueue(null),
     agentRunStore: {} as unknown as AgentRunStore,
     agentRunMessagesStore: {} as unknown as AgentRunMessagesStore,
     ...overrides,
