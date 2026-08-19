@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CharacterStore } from '../store.js';
-import { EMA_CARD_ID } from '../seed/index.js';
+import { EMA_CHARACTER_ID } from '../seed/index.js';
 import {
   CHARACTER_SETTING_DEFINITIONS,
   characterPromptLimitsGroup,
@@ -55,7 +55,7 @@ describe('CharacterStore', () => {
   describe('ensureSeed', () => {
     it('sets the built-in Ema as active on first call, with blocks and resources', () => {
       const current = store.current();
-      expect(current.id).toBe(EMA_CARD_ID);
+      expect(current.id).toBe(EMA_CHARACTER_ID);
       expect(current.isBuiltin).toBe(true);
       expect(current.isActive).toBe(true);
       expect(current.promptBlocks).toHaveLength(1);
@@ -75,7 +75,7 @@ describe('CharacterStore', () => {
       store.ensureSeed();
       store.ensureSeed();
       const characters = store.list();
-      expect(characters.filter(c => c.id === EMA_CARD_ID)).toHaveLength(1);
+      expect(characters.filter(c => c.id === EMA_CHARACTER_ID)).toHaveLength(1);
     });
   });
 
@@ -115,9 +115,9 @@ describe('CharacterStore', () => {
     });
 
     it('refuses editing built-in character fields and prompt blocks', () => {
-      expect(() => store.update(EMA_CARD_ID, { name: 'Changed' }))
+      expect(() => store.update(EMA_CHARACTER_ID, { name: 'Changed' }))
         .toThrow(CharacterReadOnlyError);
-      expect(() => store.addPromptBlock(EMA_CARD_ID, { name: 'x', content: 'y' }))
+      expect(() => store.addPromptBlock(EMA_CHARACTER_ID, { name: 'x', content: 'y' }))
         .toThrow(CharacterReadOnlyError);
     });
   });
@@ -146,7 +146,7 @@ describe('CharacterStore', () => {
     });
 
     it('refuses builtin characters', async () => {
-      await expect(store.deleteManagedCharacter(EMA_CARD_ID))
+      await expect(store.deleteManagedCharacter(EMA_CHARACTER_ID))
         .rejects.toThrow(CharacterReadOnlyError);
     });
 

@@ -4,13 +4,13 @@ import type { CharacterInput } from '../types.js';
 import type { CharacterLive2dModelInput } from '../live2d/types.js';
 import type { CharacterVoiceSampleInput } from '../voice/types.js';
 
-export const EMA_CARD_ID = 'ema' as const;
+export const EMA_CHARACTER_ID = 'ema' as const;
 
 /**
  * 内置 Ema 卡--樱羽艾玛(Sakuraba Ema)，《魔法少女的魔女审判》。
  * 完整人设原样放入「基础人设」Block，不在结构迁移时顺手改写角色文案。
  */
-export const EMA_CARD_INPUT: CharacterInput = {
+export const EMA_CHARACTER_INPUT: CharacterInput = {
   name: '樱羽艾玛',
   description: '来自《魔法少女的魔女审判》的囚犯少女，编号658。温柔善良、害怕孤独，但内心坚韧。现在是你的 AI 桌宠兼助手。',
 

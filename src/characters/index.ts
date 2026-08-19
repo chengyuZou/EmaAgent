@@ -6,11 +6,11 @@ export type {
   CharacterPresentationChangedListener,
 } from './store.js';
 export {
-  EMA_CARD_ID,
-  EMA_CARD_INPUT,
+  EMA_CHARACTER_ID,
+  EMA_CHARACTER_INPUT,
   EMA_LIVE2D_MODELS,
   EMA_VOICE_SAMPLES,
-  BUILTIN_CARDS,
+  BUILTIN_CHARACTERS,
   installBuiltinCharacterResources,
 } from './seed/index.js';
 export type { BuiltinCharacterSeed } from './seed/index.js';

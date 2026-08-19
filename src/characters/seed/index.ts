@@ -3,32 +3,20 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-/**
- * 内置角色卡种子。
- *
- * 每个内置角色一个文件。新增内置角色：
- *   1. 在这里建 `<id>-seed.ts`，导出一个 `CharacterInput`
- *   2. 把角色资源放进打包资源目录。开发期临时从
- *      `apps/desktop/public/cards/<id>/` 安装，运行时始终只读 Home 目录。
- *   3. 把种子 push 进下面的 BUILTIN_CARDS
- *
- * 本地后端启动时自动注册 BUILTIN_CARDS 里每条（幂等--已在 DB 的跳过）。
- * 没有死代码：新角色就是数据 + 一次 push，无需改接线。
- */
 import type { CharacterInput } from '../types.js';
 import type { CharacterLive2dModelInput } from '../live2d/types.js';
 import type { CharacterIllustrationInput } from '../illustration/types.js';
 import type { CharacterVoiceSampleInput } from '../voice/types.js';
 import {
-  EMA_CARD_INPUT,
-  EMA_CARD_ID,
+  EMA_CHARACTER_ID,
+  EMA_CHARACTER_INPUT,
   EMA_LIVE2D_MODELS,
   EMA_VOICE_SAMPLES,
 } from './ema-seed.js';
 
 export {
-  EMA_CARD_INPUT,
-  EMA_CARD_ID,
+  EMA_CHARACTER_ID,
+  EMA_CHARACTER_INPUT,
   EMA_LIVE2D_MODELS,
   EMA_VOICE_SAMPLES,
 };
@@ -42,52 +30,60 @@ export interface BuiltinCharacterSeed {
 }
 
 /**
- * 所有内置角色。启动 seeder 遍历此列表，逐条 upsert 进
- * characters 与三类角色资源表。
+ * 所有内置角色。启动 seeder 遍历此列表，逐条幂等落库；资源文件按下面的
+ * installBuiltinCharacterResources 复制。新角色 = 一个 <id>-seed.ts + 这里一次 push。
  */
-export const BUILTIN_CARDS: readonly BuiltinCharacterSeed[] = [
+export const BUILTIN_CHARACTERS: readonly BuiltinCharacterSeed[] = [
   {
-    id: EMA_CARD_ID,
-    card: EMA_CARD_INPUT,
+    id: EMA_CHARACTER_ID,
+    card: EMA_CHARACTER_INPUT,
     live2dModels: EMA_LIVE2D_MODELS,
     illustrations: [],
     voiceSamples: EMA_VOICE_SAMPLES,
   },
-  // 未来的内置角色放这里--push 种子即可。
 ];
 
 /**
  * 开发期 sourceRoot 指向 `apps/desktop/public/cards`；正式包只替换这个来源。
+ * 逐角色按种子清单安装：live2d 源目录整体复制到每个声明的模型目录（V1 内置角色
+ * 只有一个模型；多模型出现时源目录按 directoryName 分层，本函数同步演进），
+ * 立绘与参考音频按 fileName 逐个复制。目标已存在即跳过，幂等。
  * 复制完成后，Character 运行时不再读取 sourceRoot。
  */
 export function installBuiltinCharacterResources(
   sourceRoot: string,
   charactersRoot: string,
 ): void {
-  const emaSource = path.join(sourceRoot, EMA_CARD_ID);
-  if (!fs.existsSync(emaSource)) return;
+  for (const seed of BUILTIN_CHARACTERS) {
+    const characterSource = path.join(sourceRoot, seed.id);
+    if (!fs.existsSync(characterSource)) continue;
+    const characterTarget = path.join(charactersRoot, seed.id);
 
-  const live2dSource = path.join(emaSource, 'live2d');
-  const live2dTarget = path.join(
-    charactersRoot,
-    EMA_CARD_ID,
-    'live2d',
-    EMA_LIVE2D_MODELS[0]!.directoryName,
-  );
-  if (fs.existsSync(live2dSource) && !fs.existsSync(live2dTarget)) {
-    fs.mkdirSync(path.dirname(live2dTarget), { recursive: true });
-    fs.cpSync(live2dSource, live2dTarget, { recursive: true });
+    for (const model of seed.live2dModels) {
+      const source = path.join(characterSource, 'live2d');
+      const target = path.join(characterTarget, 'live2d', model.directoryName);
+      if (fs.existsSync(source) && !fs.existsSync(target)) {
+        fs.mkdirSync(path.dirname(target), { recursive: true });
+        fs.cpSync(source, target, { recursive: true });
+      }
+    }
+    for (const illustration of seed.illustrations) {
+      copyFileOnce(
+        path.join(characterSource, 'illustration', illustration.fileName),
+        path.join(characterTarget, 'illustration', illustration.fileName),
+      );
+    }
+    for (const sample of seed.voiceSamples) {
+      copyFileOnce(
+        path.join(characterSource, 'voice', sample.fileName),
+        path.join(characterTarget, 'voice', sample.fileName),
+      );
+    }
   }
+}
 
-  const voiceSource = path.join(emaSource, 'voice', 'ra_ema001.mp3');
-  const voiceTarget = path.join(
-    charactersRoot,
-    EMA_CARD_ID,
-    'voice',
-    EMA_VOICE_SAMPLES[0]!.fileName,
-  );
-  if (fs.existsSync(voiceSource) && !fs.existsSync(voiceTarget)) {
-    fs.mkdirSync(path.dirname(voiceTarget), { recursive: true });
-    fs.copyFileSync(voiceSource, voiceTarget, fs.constants.COPYFILE_EXCL);
-  }
+function copyFileOnce(source: string, target: string): void {
+  if (!fs.existsSync(source) || fs.existsSync(target)) return;
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.copyFileSync(source, target, fs.constants.COPYFILE_EXCL);
 }

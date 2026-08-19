@@ -26,9 +26,13 @@ export function buildCharacterPrompt(
   ].filter(hasContent);
 }
 
+/** 校验只消费名称/内容/启用；持久行的 id 仅用于错误定位，候选输入没有 id。 */
+export type PromptBlockValidationInput =
+  Pick<CharacterPromptBlock, 'name' | 'content' | 'enabled'> & { readonly id?: string };
+
 /** 空角色 Prompt 会让新 Turn 失去身份，因此在激活与装配边界直接拒绝。 */
 export function assertCharacterPromptBlocks(
-  blocks: readonly CharacterPromptBlock[],
+  blocks: readonly PromptBlockValidationInput[],
   limits: CharacterSettings['prompt'],
   characterId?: string,
 ): void {

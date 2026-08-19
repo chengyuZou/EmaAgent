@@ -21,7 +21,7 @@ import type {
   CharacterPromptBlockPatch,
 } from './types.js';
 import { CharacterRepository } from './repository.js';
-import { EMA_CARD_ID, BUILTIN_CARDS } from './seed/index.js';
+import { EMA_CHARACTER_ID, BUILTIN_CHARACTERS } from './seed/index.js';
 import type {
   CharacterLive2dModel,
   CharacterLive2dModelInput,
@@ -137,9 +137,9 @@ export class CharacterStore {
 
   ensureSeed(): void {
     const settings = this.settings();
-    for (const seed of BUILTIN_CARDS) {
+    for (const seed of BUILTIN_CHARACTERS) {
       const input = normalizeCharacterInput(seed.card);
-      assertCharacterPromptBlocks(toProjectedBlocks(input.promptBlocks), settings.prompt, seed.id);
+      assertCharacterPromptBlocks(input.promptBlocks, settings.prompt, seed.id);
       if (!this.repository.findById(seed.id)) {
         this.repository.insert(input, seed.id, seed.id, true);
       }
@@ -183,8 +183,8 @@ export class CharacterStore {
     }
 
     if (!this.repository.findActive()) {
-      this.repository.activate(EMA_CARD_ID);
-      const active = this.get(EMA_CARD_ID);
+      this.repository.activate(EMA_CHARACTER_ID);
+      const active = this.get(EMA_CHARACTER_ID);
       if (active) this.emitSwitched(active, null);
     }
   }
@@ -226,7 +226,7 @@ export class CharacterStore {
 
   create(input: CharacterInput): Character {
     const normalized = normalizeCharacterInput(input);
-    assertCharacterPromptBlocks(toProjectedBlocks(normalized.promptBlocks), this.settings().prompt);
+    assertCharacterPromptBlocks(normalized.promptBlocks, this.settings().prompt);
     return this.createWithDirectory(normalized, physicalName(normalized.name));
   }
 
@@ -271,7 +271,7 @@ export class CharacterStore {
   addPromptBlock(id: string, input: CharacterPromptBlockInput): CharacterPromptBlock {
     const character = this.assertMutableCharacter(id);
     const normalized = normalizePromptBlockInput(input);
-    const projected = [...character.promptBlocks, projectedBlock(id, normalized, character.promptBlocks.length)];
+    const projected = [...character.promptBlocks, normalized];
     assertCharacterPromptBlocks(projected, this.settings().prompt, id);
     return this.repository.insertBlock(id, normalized);
   }
@@ -345,7 +345,7 @@ export class CharacterStore {
     resourceId: string,
     patch: CharacterLive2dModelPatch,
   ): CharacterLive2dModel | undefined {
-    const character = this.assertMutableResourceCharacter(id);
+    const character = this.assertMutableCharacter(id);
     const normalized = normalizeResourcePatch(patch);
     const current = character.live2dModels.find((resource) => resource.id === resourceId);
     if (!current) return undefined;
@@ -367,7 +367,7 @@ export class CharacterStore {
     id: string,
     input: ImportCharacterLive2dModelInput,
   ): Promise<CharacterLive2dModel> {
-    const character = this.assertMutableResourceCharacter(id);
+    const character = this.assertMutableCharacter(id);
     const settings = this.settings();
     const files = await importLive2dZip(
       input.sourceZipFile,
@@ -415,7 +415,7 @@ export class CharacterStore {
   }
 
   async deleteLive2dModel(id: string, resourceId: string): Promise<CharacterLive2dModel | undefined> {
-    const character = this.assertMutableResourceCharacter(id);
+    const character = this.assertMutableCharacter(id);
     const current = character.live2dModels.find((resource) => resource.id === resourceId);
     if (!current) return undefined;
     await deleteLive2dDirectory(
@@ -441,7 +441,7 @@ export class CharacterStore {
     resourceId: string,
     patch: CharacterIllustrationPatch,
   ): CharacterIllustration | undefined {
-    this.assertMutableResourceCharacter(id);
+    this.assertMutableCharacter(id);
     const resource = this.illustrations.update(id, resourceId, normalizeResourcePatch(patch));
     if (resource) this.emitPresentationChanged(id);
     return resource;
@@ -451,7 +451,7 @@ export class CharacterStore {
     id: string,
     input: ImportCharacterIllustrationInput,
   ): Promise<CharacterIllustration> {
-    const character = this.assertMutableResourceCharacter(id);
+    const character = this.assertMutableCharacter(id);
     const files = await importIllustrationFile(
       input.sourceFile,
       this.paths.illustrationRoot(character.directoryName),
@@ -492,7 +492,7 @@ export class CharacterStore {
     id: string,
     resourceId: string,
   ): Promise<CharacterIllustration | undefined> {
-    const character = this.assertMutableResourceCharacter(id);
+    const character = this.assertMutableCharacter(id);
     const current = character.illustrations.find((resource) => resource.id === resourceId);
     if (!current) return undefined;
     await deleteIllustrationFile(
@@ -516,12 +516,12 @@ export class CharacterStore {
     resourceId: string,
     patch: CharacterVoiceSamplePatch,
   ): CharacterVoiceSample | undefined {
-    this.assertMutableResourceCharacter(id);
+    this.assertMutableCharacter(id);
     return this.voiceSamples.update(id, resourceId, normalizeResourcePatch(patch));
   }
 
   async publishVoiceSample(id: string, input: PublishCharacterVoiceSampleInput): Promise<CharacterVoiceSample> {
-    const character = this.assertMutableResourceCharacter(id);
+    const character = this.assertMutableCharacter(id);
     const fileName = physicalName(path.basename(input.fileName));
     const displayName = sourceBaseName(fileName);
     const destination = this.paths.voiceFile(character.directoryName, fileName);
@@ -547,7 +547,7 @@ export class CharacterStore {
   }
 
   async importVoiceSample(id: string, input: ImportCharacterVoiceSampleInput): Promise<CharacterVoiceSample> {
-    const character = this.assertMutableResourceCharacter(id);
+    const character = this.assertMutableCharacter(id);
     const settings = this.settings();
     const validated = await validateVoiceSampleFile(input.sourceFile, settings.voice);
     const files = await importVoiceFile(
@@ -585,7 +585,7 @@ export class CharacterStore {
   }
 
   async deleteVoiceSample(id: string, resourceId: string): Promise<CharacterVoiceSample | undefined> {
-    const character = this.assertMutableResourceCharacter(id);
+    const character = this.assertMutableCharacter(id);
     const current = character.voiceSamples.find((resource) => resource.id === resourceId);
     if (!current) return undefined;
     await deleteVoiceFile(this.paths.voiceFile(character.directoryName, current.fileName));
@@ -604,6 +604,16 @@ export class CharacterStore {
     const character = this.getRequired(id);
     const resource = requiredResource(character.live2dModels, resourceId, 'live2d_model');
     return this.paths.live2dModelDirectory(character.directoryName, resource.directoryName);
+  }
+
+  /**
+   * 返回渲染器真正加载的 model3.json。模型入口发现规则属于 Character，
+   * Server 和前端不能再次遍历 Live2D 目录并各自决定入口。
+   */
+  resolveLive2dModelFile(id: string, resourceId: string): string {
+    return findLive2dPackageFilesSync(
+      this.resolveLive2dModelDirectory(id, resourceId),
+    ).modelPath;
   }
 
   resolveIllustrationFile(id: string, resourceId: string): string {
@@ -634,10 +644,6 @@ export class CharacterStore {
     const character = this.get(id);
     if (!character) throw new CharacterNotFoundError(id);
     return character;
-  }
-
-  private assertMutableResourceCharacter(id: string): Character {
-    return this.assertMutableCharacter(id);
   }
 
   private assertMutableCharacter(id: string): Character {
@@ -755,7 +761,11 @@ export class CharacterStore {
 
 const EMPTY_VOCABULARY: Live2dVocabulary = { emotions: [], motions: [] };
 
-function normalizeCharacterInput(input: CharacterInput): CharacterInput {
+function normalizeCharacterInput(input: CharacterInput): {
+  name: string;
+  description: string | null;
+  promptBlocks: Pick<CharacterPromptBlock, 'name' | 'content' | 'enabled'>[];
+} {
   const name = input.name.trim();
   if (!name) throw new CharacterInputInvalidError('character_name_empty');
   return {
@@ -765,34 +775,14 @@ function normalizeCharacterInput(input: CharacterInput): CharacterInput {
   };
 }
 
-function normalizePromptBlockInput(input: CharacterPromptBlockInput): CharacterPromptBlockInput {
-  const normalized = normalizePromptBlock({
+function normalizePromptBlockInput(
+  input: CharacterPromptBlockInput,
+): Pick<CharacterPromptBlock, 'name' | 'content' | 'enabled'> {
+  return normalizePromptBlock({
     name: input.name,
     content: input.content,
     enabled: input.enabled ?? true,
   });
-  return normalized;
-}
-
-function toProjectedBlocks(inputs: readonly CharacterPromptBlockInput[]): CharacterPromptBlock[] {
-  return inputs.map((input, index) => projectedBlock('', input, index));
-}
-
-function projectedBlock(
-  characterId: string,
-  input: CharacterPromptBlockInput,
-  sortOrder: number,
-): CharacterPromptBlock {
-  return {
-    id: `input:${sortOrder}`,
-    characterId,
-    name: input.name,
-    content: input.content,
-    enabled: input.enabled ?? true,
-    sortOrder,
-    createdAt: 0,
-    updatedAt: 0,
-  };
 }
 
 function withResources(

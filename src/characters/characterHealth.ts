@@ -39,8 +39,8 @@ export interface CharacterHealth {
   readonly presentation: CharacterPresentation;
   readonly selectedLive2dModelId: string | null;
   readonly selectedIllustrationId: string | null;
+  /** null = 当前无可用参考音频（声音克隆能力禁用）。 */
   readonly selectedVoiceSampleId: string | null;
-  readonly voiceSampleAvailable: boolean;
   readonly presentationCandidates: readonly CharacterPresentationCandidate[];
   readonly issues: readonly CharacterHealthIssue[];
 }
@@ -155,7 +155,6 @@ export async function inspectCharacterHealth(
     selectedLive2dModelId: live2dModelCandidates[0]?.id ?? null,
     selectedIllustrationId: illustrationCandidates[0]?.id ?? null,
     selectedVoiceSampleId: voiceSample?.id ?? null,
-    voiceSampleAvailable: voiceSample !== undefined,
     presentationCandidates,
     issues,
   };
