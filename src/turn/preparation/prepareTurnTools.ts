@@ -8,7 +8,8 @@ import {
 } from '@ema-agent/agent';
 import type { KnowledgeSearch } from '@ema-agent/knowledge';
 import type { Message } from '@ema-agent/llm';
-import type { NarrativeSearch } from '@ema-agent/narrative';
+import type { NarrativeClient } from '@ema-agent/narrative';
+import { prepareNarrativeRecall } from '@ema-agent/narrative';
 import {
   applyPermissionUpdate,
   type PermissionMode,
@@ -61,8 +62,8 @@ export interface TurnToolsDeps {
   readonly agentRunMessagesStore: AgentRunMessagesStore;
   readonly taskStore?: TaskStore;
   readonly knowledgeSearch?: KnowledgeSearch;
-  /** narrativePolicy = 'auto' 时宿主注入的剧情检索入口；'always'/'off' 不装配。 */
-  readonly narrativeSearch?: NarrativeSearch;
+  /** narrativePolicy = 'auto' 时按本 Turn 身份构建剧情检索入口；'always'/'off' 不装配。 */
+  readonly narrativeClient?: NarrativeClient;
   readonly backgroundProcesses?: BackgroundProcess;
   readonly commandRunner?: (sessionId: string) => CommandRunner | undefined;
   readonly toolResultStore?: (sessionId: string) => ToolResultStore;
@@ -218,8 +219,18 @@ export function prepareTurnTools(
           })) as KnowledgeSearch,
         }
       : {}),
-    ...(input.narrativePolicy === 'auto' && deps.narrativeSearch
-      ? { narrativeSearch: deps.narrativeSearch }
+    ...(input.narrativePolicy === 'auto' && deps.narrativeClient
+      ? {
+          // 召回事件携带本 Turn 身份进入事件流；Tool 路径与 reminder 路径共用同一召回实现。
+          narrativeSearch: (query: string, signal: AbortSignal) =>
+            prepareNarrativeRecall(deps.narrativeClient!, {
+              sessionId,
+              turnId,
+              userInput: query,
+              signal,
+              emit: event => input.emit(event),
+            }),
+        }
       : {}),
     ...(deps.taskStore ? { taskStore: deps.taskStore } : {}),
     subagentSpawner: spawner,

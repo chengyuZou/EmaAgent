@@ -1,6 +1,7 @@
 // 定义一次 Turn 自身的生命周期、模型输出投影与请求降级事件。
 import type { AgentRunEvent } from '@ema-agent/agent';
 import type { CompactEvent } from '@ema-agent/compact';
+import type { NarrativeEvent } from '@ema-agent/narrative';
 import type {
   PermissionRequiredEvent,
   PermissionResolvedEvent,
@@ -98,8 +99,10 @@ export type TurnAgentRunEvent = AgentRunEvent & {
 };
 
 /**
- * 根 Turn 事件流的全部成员。各域事件由拥有方定义（turn/agent/tools/permission），
- * 这里只做流组合，不重复声明；AgentLoop 事件经执行器翻译为带身份的 TurnEvent 成员后入流。
+ * 根 Turn 事件流的全部成员。各域事件由拥有方定义（turn/agent/tools/permission/
+ * compact/narrative），这里只做流组合，不重复声明；AgentLoop 事件经执行器翻译为
+ * 带身份的 TurnEvent 成员后入流。Narrative 召回发生在 Turn 内（每 Turn 至多一次），
+ * 其生命周期事件随本 Turn 事件流有序到达。
  */
 export type TurnStreamEvent =
   | TurnEvent
@@ -107,4 +110,5 @@ export type TurnStreamEvent =
   | ToolExecutionEvent
   | PermissionRequiredEvent
   | PermissionResolvedEvent
-  | CompactEvent;
+  | CompactEvent
+  | NarrativeEvent;

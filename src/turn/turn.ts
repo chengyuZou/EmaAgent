@@ -8,6 +8,7 @@ import {
 import { buildMessages } from '@ema-agent/context';
 import type { CompactRequest, CompactResult } from '@ema-agent/compact';
 import type {
+  ContentPart,
   LanguageModel,
   Message,
 } from '@ema-agent/llm';
@@ -26,7 +27,7 @@ import {
   TurnBudgetExceededError,
 } from './errors.js';
 import type { TurnStreamEvent } from './events.js';
-import { createPrepareLlmCall } from './loop/prepareLlmCall.js';
+import { createPrepareLlmCall, type PrepareLlmCallReminderSources } from './loop/prepareLlmCall.js';
 import { createPrepareSubagent } from './loop/prepareSubagent.js';
 import { TurnBudget } from './loop/turnBudget.js';
 import { TurnMessageWriter } from './loop/turnMessageWriter.js';
@@ -47,6 +48,21 @@ import type {
 const DEFAULT_MAX_DURATION_MS = 30 * 60_000;
 const DEFAULT_MAX_OUTPUT_TOKENS = 200_000;
 
+/**
+ * Reminder 工厂的作用域：git/任务/scratchpad 等工作区与 Session 事实、Narrative 召回
+ * 所需的用户输入、以及召回事件的 Turn 事件流出口，全部按 Turn 绑定。
+ */
+export interface TurnReminderScope {
+  readonly sessionId: string;
+  readonly turnId: string;
+  readonly executionProfile: Turn['executionProfile'];
+  /** auto = NarrativeSearchTool 可见；always = 每轮召回注入 reminder；off = 两者皆无。 */
+  readonly narrativePolicy: Turn['narrativePolicy'];
+  /** 本 Turn 用户文本（附件降级后）；backgroundProcessCompleted 等触发可为空串。 */
+  readonly userText: string;
+  readonly emit: (event: TurnStreamEvent) => void;
+}
+
 export interface TurnExecutorDeps extends PrepareTurnDeps {
   readonly turns: TurnStore;
   readonly sessions: Pick<
@@ -56,7 +72,10 @@ export interface TurnExecutorDeps extends PrepareTurnDeps {
   readonly createCompact: (
     llm: LanguageModel,
   ) => (request: CompactRequest) => Promise<CompactResult>;
-  readonly reminderSources: Parameters<typeof createPrepareLlmCall>[0]['reminderSources'];
+  /** 每 Turn 调用一次；允许 async（git 探测等启动期读取在此完成并冻结进闭包）。 */
+  readonly reminderSources: (
+    scope: TurnReminderScope,
+  ) => Promise<PrepareLlmCallReminderSources> | PrepareLlmCallReminderSources;
   /** Turn 成功提交后执行的非关键观察者；失败不得反向改写 Turn 终态。 */
   readonly completedObserver?: { record(turn: Turn): void | Promise<void> };
 }
@@ -68,6 +87,8 @@ export interface TurnExecutorDeps extends PrepareTurnDeps {
 export class TurnExecutor {
   /** 活动 Turn 的工具层快照，供 abortTool/abortAgentRun 按 turnId 定位。 */
   private readonly runningTools = new Map<string, TurnToolsAssembly>();
+  /** 活动 Turn 的 completion，供 abortAndAwait（Session 删除等编排）等待终态落库。 */
+  private readonly runningCompletions = new Map<string, Promise<TurnOutcome>>();
 
   constructor(private readonly deps: TurnExecutorDeps) {}
 
@@ -91,6 +112,7 @@ export class TurnExecutor {
     });
     // Server 主要消费 events；预先观察 rejection，避免极端持久化故障形成未处理 Promise。
     void completion.catch(() => undefined);
+    this.runningCompletions.set(turn.id, completion);
 
     void this.pumpTurn({
       input,
@@ -118,6 +140,15 @@ export class TurnExecutor {
     if (active?.id !== turnId) return false;
     this.deps.turns.requestAbort(sessionId, turnId);
     return true;
+  }
+
+  /**
+   * 取消并等待该 Turn 终态落库。Session 删除等编排必须先让活动 Turn 走完
+   * finish 链（writer 收口、队列清理），否则删除会与在飞持久化竞争。
+   */
+  async abortAndAwait(sessionId: string, turnId: string): Promise<void> {
+    this.abort(sessionId, turnId);
+    await this.runningCompletions.get(turnId)?.catch(() => undefined);
   }
 
   abortTool(turnId: string, toolCallId: string): boolean {
@@ -217,6 +248,18 @@ export class TurnExecutor {
         { role: 'user', content: prepared.userMessageParts },
       ];
 
+      const userText = prepared.userMessageParts
+        .filter((part): part is Extract<ContentPart, { type: 'text' }> => part.type === 'text')
+        .map(part => part.text)
+        .join('\n');
+      const reminderSources = await this.deps.reminderSources({
+        sessionId,
+        turnId,
+        executionProfile: turn.executionProfile,
+        narrativePolicy: turn.narrativePolicy,
+        userText,
+        emit,
+      });
       const prepareIteration = createPrepareLlmCall({
         sessionId,
         turnId,
@@ -226,7 +269,7 @@ export class TurnExecutor {
         emit,
         budget,
         baselineMessageCount: historyMessages.length,
-        reminderSources: this.deps.reminderSources,
+        reminderSources,
         signal,
         onRequestPrepared: messages => {
           parentMessages.splice(0, parentMessages.length, ...messages);
@@ -315,6 +358,7 @@ export class TurnExecutor {
       }
     } finally {
       this.runningTools.delete(turnId);
+      this.runningCompletions.delete(turnId);
       this.deps.turns.clearRunning(sessionId, turnId);
       if (prepared?.scratchpadDir) {
         try {

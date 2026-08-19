@@ -262,6 +262,9 @@ importers:
       '@ema-agent/characters':
         specifier: workspace:*
         version: link:../../src/characters
+      '@ema-agent/compact':
+        specifier: workspace:*
+        version: link:../../src/compact
       '@ema-agent/context':
         specifier: workspace:*
         version: link:../../src/context
@@ -313,6 +316,9 @@ importers:
       '@ema-agent/skills':
         specifier: workspace:*
         version: link:../../src/skills
+      '@ema-agent/speech':
+        specifier: workspace:*
+        version: link:../../src/speech
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../../src/storage
@@ -337,6 +343,9 @@ importers:
       '@ema-agent/turn':
         specifier: workspace:*
         version: link:../../src/turn
+      '@ema-agent/turn-terms':
+        specifier: workspace:*
+        version: link:../../src/turn-terms
       '@ema-agent/usage':
         specifier: workspace:*
         version: link:../../src/usage

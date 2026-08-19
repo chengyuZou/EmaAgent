@@ -1,13 +1,12 @@
 // 验证 AgentRun HTTP 边界直接返回执行身份与 transcript，不再投影成 AgentTask。
 import { describe, expect, it, vi } from 'vitest';
-import { asAgentRunId, asSessionId, asTurnId } from '@ema-agent/ids';
 import type { AgentRun } from '@ema-agent/agent';
 import { agentRunsRoute } from '../src/routes/agentRuns.js';
 
 const run: AgentRun = {
-  id: asAgentRunId('agent-run-route'),
-  sessionId: asSessionId('session-route'),
-  parentTurnId: asTurnId('turn-route'),
+  id: 'agent-run-route',
+  sessionId: 'session-route',
+  parentTurnId: 'turn-route',
   kind: 'subagent',
   purpose: '检查实现',
   status: 'completed',
@@ -59,7 +58,7 @@ describe('AgentRun 路由', () => {
     const response = await app.request('/?sessionId=session-route');
 
     expect(response.status).toBe(200);
-    expect(listForSession).toHaveBeenCalledWith(asSessionId('session-route'));
+    expect(listForSession).toHaveBeenCalledWith('session-route');
     expect(await response.json()).toEqual({
       runs: [expect.objectContaining({
         id: run.id,

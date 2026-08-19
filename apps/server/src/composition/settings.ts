@@ -1,0 +1,69 @@
+// 设置一族：SettingsStore 构造时注册全部业务包设置定义与组（原 SettingsCatalog 已并入 Store）。
+import { AGENT_LIMITS_SETTINGS, agentLimitsGroup } from '@ema-agent/agent';
+import {
+  attachmentCacheMaxBytesSetting,
+  maxFilesPerTurnSetting,
+  maxImageBytesSetting,
+  maxImagesPerTurnSetting,
+} from '@ema-agent/attachments';
+import { COMPACT_SETTINGS, compactGroup } from '@ema-agent/compact';
+import {
+  kbAlphaSetting,
+  kbDefaultTopKSetting,
+  kbRerankBlendWeightSetting,
+  kbResultMaxCharsSetting,
+} from '@ema-agent/knowledge';
+import { PERMISSION_SETTINGS } from '@ema-agent/permission';
+import { SettingsStore } from '@ema-agent/settings';
+import {
+  builtinSkillsEnabledSetting,
+  disabledProjectSourcesSetting,
+  disabledSkillKeysSetting,
+} from '@ema-agent/skills';
+import { SettingsRepo, type Database } from '@ema-agent/storage';
+import {
+  disabledToolsSetting,
+  maxConcurrentBackgroundSetting,
+  maxRuntimeHoursBackgroundSetting,
+} from '@ema-agent/tools';
+import { workspaceInstructionFilesSetting } from '@ema-agent/turn';
+import { eventDisplaySetting } from './settings/eventDisplaySetting.js';
+import { themeSetting } from './settings/themeSetting.js';
+
+export interface SettingsComposition {
+  readonly settings: SettingsStore;
+}
+
+/**
+ * 构造类型化设置入口。定义与组在构造时全量注册，重复 key 启动期 fail-fast。
+ * Memory 域设置归 Sol 的 Memory 包收口后注册；knowledge 的模型绑定设置
+ * 随 Provider 折叠改为 model_bindings 表，不再是 settings key。
+ */
+export function openSettings(profileDb: Database): SettingsComposition {
+  const settings = new SettingsStore(new SettingsRepo(profileDb.sqlite), {
+    definitions: [
+      ...AGENT_LIMITS_SETTINGS,
+      ...COMPACT_SETTINGS,
+      ...PERMISSION_SETTINGS,
+      attachmentCacheMaxBytesSetting,
+      maxFilesPerTurnSetting,
+      maxImageBytesSetting,
+      maxImagesPerTurnSetting,
+      kbAlphaSetting,
+      kbDefaultTopKSetting,
+      kbRerankBlendWeightSetting,
+      kbResultMaxCharsSetting,
+      builtinSkillsEnabledSetting,
+      disabledProjectSourcesSetting,
+      disabledSkillKeysSetting,
+      disabledToolsSetting,
+      maxConcurrentBackgroundSetting,
+      maxRuntimeHoursBackgroundSetting,
+      workspaceInstructionFilesSetting,
+      themeSetting,
+      eventDisplaySetting,
+    ],
+    groups: [agentLimitsGroup, compactGroup],
+  });
+  return { settings };
+}

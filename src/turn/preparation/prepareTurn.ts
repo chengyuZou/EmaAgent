@@ -110,8 +110,8 @@ export interface PrepareTurnDeps extends TurnToolsDeps {
   readonly skillEntries: () => readonly SkillDescriptor[];
   /** 默认 llm 包的 createLanguageModel；测试注入脚本化模型。 */
   readonly createLlm?: (connection: Parameters<typeof createLanguageModel>[0]) => LanguageModel;
-  readonly workspaceInstructions?: () => string | null;
-  readonly mcpInstructions?: () => readonly string[];
+  /** 工作区指令（EMA.md/CLAUDE.md）按本 Turn 的工作区读取；无工作区时不会调用。 */
+  readonly workspaceInstructions?: (workspaceRoot: string) => string | null;
   /** 模型不支持图片时的 Vision 描述入口；缺失时原始图片将准备失败而非试探透传。 */
   readonly describeImage?: DescribeAttachmentImage;
   readonly describeRawImage?: (image: Extract<ContentPart, { type: 'image_data' }>) => Promise<string>;
@@ -309,9 +309,10 @@ export async function prepareTurn(
       providerId,
       modelId,
     },
-    workspaceInstructions: deps.workspaceInstructions?.() ?? null,
+    workspaceInstructions: workspaceRoot ? (deps.workspaceInstructions?.(workspaceRoot) ?? null) : null,
     skillCatalog: skillPool ? renderSkillListing(skillPool) : null,
-    mcpInstructions: deps.mcpInstructions?.() ?? null,
+    // MCP server instructions 尚无生产者（MCP 包未存 InitializeResult instructions），到位后恢复。
+    mcpInstructions: null,
   });
 
   return Object.freeze({

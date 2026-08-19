@@ -1,0 +1,87 @@
+// 持久化一族：profile/data 两个 Database 的打开、迁移与全部存储层 Store 构造。
+import {
+  AgentRunMessagesRepo,
+  AgentRunsRepo,
+  AttachmentRepo,
+  Database,
+  TasksRepo,
+} from '@ema-agent/storage';
+import { AgentRunMessagesStore, AgentRunStore } from '@ema-agent/agent';
+import { AttachmentStore } from '@ema-agent/attachments';
+import { SessionStore } from '@ema-agent/session';
+import { TaskStore } from '@ema-agent/tasks';
+import { TurnStore } from '@ema-agent/turn';
+import {
+  dataDbPathFor,
+  profileDbPath,
+  removeSessionDir,
+  removeTurnFiles,
+} from '../platform/paths.js';
+
+export interface DatabaseComposition {
+  /** `~/.ema-agent/profile.db`：Provider 配置、模型绑定、角色卡、设置。跨数据目录共享。 */
+  readonly profileDb: Database;
+  /** `{activeDataDir}/data.db`：Session/Turn/Message/附件/后台进程。 */
+  readonly dataDb: Database;
+  /** 当前活动数据目录绝对路径；文件类存储（附件、音频、后台日志）都落在它下面。 */
+  readonly activeDataDir: string;
+
+  readonly session: SessionStore;
+  readonly turns: TurnStore;
+  readonly attachments: AttachmentStore;
+  readonly tasks: TaskStore;
+  readonly agentRuns: AgentRunStore;
+  readonly agentRunMessages: AgentRunMessagesStore;
+
+  /** 关闭两个数据库；进程关闭序列的最后一步。 */
+  close(): void;
+}
+
+/**
+ * 打开并迁移两个数据库，构造全部存储层 Store。
+ * activeDataDir 由 main.ts 经 dataDirRegistry + lockfile 决议后传入——本函数不决定"用哪个目录"。
+ */
+export function openDatabases(activeDataDir: string): DatabaseComposition {
+  const profileDb = new Database({ path: profileDbPath(), kind: 'profile' });
+  try {
+    profileDb.migrate();
+  } catch (err) {
+    profileDb.close();
+    throw err;
+  }
+
+  const dataDb = new Database({ path: dataDbPathFor(activeDataDir), kind: 'data' });
+  try {
+    dataDb.migrate();
+  } catch (err) {
+    dataDb.close();
+    profileDb.close();
+    throw err;
+  }
+
+  const session = new SessionStore({
+    db: dataDb,
+    // Session 删除提交后清理库外文件（音频、附件、工具结果、scratchpad）。
+    onSessionRemoved: sessionId => removeSessionDir(activeDataDir, sessionId),
+  });
+  const turns = new TurnStore({
+    db: dataDb,
+    onTurnRemoved: (sessionId, turnId) => removeTurnFiles(activeDataDir, sessionId, turnId),
+  });
+
+  return {
+    profileDb,
+    dataDb,
+    activeDataDir,
+    session,
+    turns,
+    attachments: new AttachmentStore({ repo: new AttachmentRepo(dataDb.sqlite), dataDir: activeDataDir }),
+    tasks: new TaskStore(new TasksRepo(dataDb.sqlite)),
+    agentRuns: new AgentRunStore(new AgentRunsRepo(dataDb.sqlite)),
+    agentRunMessages: new AgentRunMessagesStore(new AgentRunMessagesRepo(dataDb.sqlite)),
+    close() {
+      dataDb.close();
+      profileDb.close();
+    },
+  };
+}

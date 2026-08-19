@@ -87,7 +87,7 @@ function makeDeps(options: {
     agentRunStore: {} as unknown as AgentRunStore,
     agentRunMessagesStore: {} as unknown as AgentRunMessagesStore,
     createCompact: () => async request => ({ kind: 'unchanged' as const, history: request.history }),
-    reminderSources: {},
+    reminderSources: () => ({}),
   };
 }
 

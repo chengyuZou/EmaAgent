@@ -7,14 +7,13 @@
 
 import type { ContentPart } from '@ema-agent/llm';
 
-/** 用户提交给 Turn 的附件能力与展示元数据。 */
+/** 用户提交给 Turn 的附件；桌面宿主文件选择器给出真实路径，服务端读取并登记受管副本。 */
 export interface TurnAttachment {
-  id: string;
+  path: string;
   name: string;
   mimeType: string;
   size?: number;
   mtime?: number;
-  fileHandle?: string | null;
 }
 
 /** 一次 Turn 的执行能力范围；输入渠道和连接协议不属于 Profile。 */

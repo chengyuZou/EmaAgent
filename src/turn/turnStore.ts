@@ -22,7 +22,7 @@ import type {
   TurnWindow,
 } from '@ema-agent/turn-terms';
 import { ActiveTurnRegistry } from './activeTurnRegistry.js';
-import { TurnOwnershipError } from './errors.js';
+import { SessionBusyError, TurnOwnershipError } from './errors.js';
 
 export interface TurnStoreDeps {
   db: Database;
@@ -66,7 +66,7 @@ export class TurnStore {
       throw new Error(`session_deleting: ${input.sessionId}`);
     }
     if (this.registry.isRunning(input.sessionId)) {
-      throw new Error('session_busy: a turn is already running for this session');
+      throw new SessionBusyError(input.sessionId);
     }
 
     // created_at 严格递增，保证分页和"之后"的语义唯一。

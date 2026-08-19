@@ -79,7 +79,9 @@ start
 
 ## 事件
 
-`turn/events.ts` 只拥有 Turn 自有生命周期事件；`TurnStreamEvent` 是流组合（TurnEvent | TurnAgentRunEvent | ToolExecutionEvent | permission 两事件 | CompactEvent），各域事件由拥有方定义。AgentRun 事件入流时由工具层补上 sessionId/turnId（agent 包不感知根身份）。
+`turn/events.ts` 只拥有 Turn 自有生命周期事件；`TurnStreamEvent` 是流组合（TurnEvent | TurnAgentRunEvent | ToolExecutionEvent | permission 两事件 | CompactEvent | NarrativeEvent），各域事件由拥有方定义。AgentRun 事件入流时由工具层补上 sessionId/turnId（agent 包不感知根身份）。
+
+Reminder 源是 TurnExecutor 的每 Turn 工厂（`TurnReminderScope`：sessionId/turnId/executionProfile/userText/emit）——git/任务/scratchpad 的工作区与 Session 事实、Narrative 召回所需的用户输入、召回事件出口全部按 Turn 绑定；git 探测等启动期读取在工厂内完成并冻结进闭包，`prepareLlmCall` 只消费同步快照。
 
 ## 目录
 
@@ -94,6 +96,7 @@ src/turn/
 ├─ activeTurnRegistry.ts    同 Session 一个活动 Turn
 ├─ eventChannel.ts          TurnEvent 单消费者有界通道
 ├─ interactionQueue.ts      SessionInteractionQueue（Permission/AskUser 共用的 Session FIFO）
+├─ settings.ts              workspace.instructionFiles（用户多选工作区指令文件，nextTurn 生效）
 ├─ preparation/             Turn 启动一次性冻结
 │  ├─ prepareTurn.ts        输入规范化与冻结编排
 │  ├─ prepareTurnTools.ts   工具层装配 + 权限/问询口子

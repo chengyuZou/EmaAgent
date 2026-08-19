@@ -14,7 +14,13 @@ export {
   TurnOwnershipError,
   ActiveTurnAlreadyRegisteredError,
   TurnPreparationError,
+  SessionBusyError,
 } from './errors.js';
 export type { TurnFailureCode, TurnFailurePhase } from './errors.js';
 export { SessionInteractionQueue } from './interactionQueue.js';
 export type { PendingInteraction } from './interactionQueue.js';
+export {
+  WORKSPACE_INSTRUCTION_FILE_CANDIDATES,
+  workspaceInstructionFilesSetting,
+} from './settings.js';
+export { TurnExecutor, TurnReminderScope } from './turn.js';
