@@ -1,423 +1,207 @@
-// 测试角色卡与三类表现资源的种子、聚合、主项切换和复制边界。
+// 测试角色与三类表现资源的种子、聚合、主项切换、复制与物理名称边界。
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { Database } from '@ema-agent/storage';
+import { Database, SettingsRepo } from '@ema-agent/storage';
+import { SettingsStore } from '@ema-agent/settings';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { CharacterCardStore } from '../store.js';
+import { CharacterStore } from '../store.js';
 import { EMA_CARD_ID } from '../seed/index.js';
-import type { CharacterCardInput } from '../types.js';
+import {
+  CHARACTER_SETTING_DEFINITIONS,
+  characterPromptLimitsGroup,
+} from '../settings.js';
+import {
+  CharacterActiveDeleteError,
+  CharacterDirectoryConflictError,
+  CharacterReadOnlyError,
+} from '../errors.js';
+import type { CharacterInput } from '../types.js';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-function minimalInput(overrides: Partial<CharacterCardInput> = {}): CharacterCardInput {
+function minimalInput(overrides: Partial<CharacterInput> = {}): CharacterInput {
   return {
-    name: 'Test Card',
-    systemPrompt: 'You are a test.',
+    name: 'Test Character',
+    promptBlocks: [{ name: '基础人设', content: 'You are a test character.' }],
     ...overrides,
   };
 }
 
-describe('CharacterCardStore', () => {
+describe('CharacterStore', () => {
   let db: Database;
-  let store: CharacterCardStore;
-  let resourceRoot: string;
+  let store: CharacterStore;
+  let charactersRoot: string;
 
   beforeEach(() => {
     db = new Database({ memory: true, kind: 'profile' });
     db.migrate();
-    resourceRoot = mkdtempSync(join(tmpdir(), 'ema-character-store-'));
-    store = new CharacterCardStore({
-      db,
-      resourceRoots: {
-        builtinCardsRoot: join(resourceRoot, 'builtin'),
-        userCardsRoot: join(resourceRoot, 'user'),
-      },
+    charactersRoot = mkdtempSync(join(tmpdir(), 'ema-characters-'));
+    const settings = new SettingsStore(new SettingsRepo(db.sqlite), {
+      definitions: CHARACTER_SETTING_DEFINITIONS,
+      groups: [characterPromptLimitsGroup],
     });
+    store = new CharacterStore(db, charactersRoot, settings);
     store.ensureSeed();
   });
 
   afterEach(() => {
     db.close();
-    rmSync(resourceRoot, { recursive: true, force: true });
+    rmSync(charactersRoot, { recursive: true, force: true });
   });
 
   // ─── seed & init ──────────────────────────────────────────────────────────
 
   describe('ensureSeed', () => {
-    it('sets the built-in Ema card as active on first call', () => {
+    it('sets the built-in Ema as active on first call, with blocks and resources', () => {
       const current = store.current();
       expect(current.id).toBe(EMA_CARD_ID);
       expect(current.isBuiltin).toBe(true);
       expect(current.isActive).toBe(true);
-      expect(current.live2dVariants).toHaveLength(1);
-      expect(current.live2dVariants[0]).toMatchObject({
-        entryPath: 'live2d/ema.model3.json',
+      expect(current.promptBlocks).toHaveLength(1);
+      expect(current.promptBlocks[0]?.name).toBe('基础人设');
+      expect(current.promptBlocks[0]?.enabled).toBe(true);
+      expect(current.live2dModels).toHaveLength(1);
+      expect(current.live2dModels[0]).toMatchObject({
+        directoryName: 'ema',
         isPrimary: true,
       });
-      expect(current.voiceReferences).toHaveLength(1);
-      expect(current.voiceReferences[0]?.isPrimary).toBe(true);
+      expect(current.voiceSamples).toHaveLength(1);
+      expect(current.voiceSamples[0]?.fileName).toBe('ra_ema001.mp3');
+      expect(current.voiceSamples[0]?.isPrimary).toBe(true);
     });
 
     it('is idempotent — calling twice does not duplicate or throw', () => {
       store.ensureSeed();
       store.ensureSeed();
-      const cards = store.list();
-      const emaCards = cards.filter((c) => c.id === EMA_CARD_ID);
-      expect(emaCards).toHaveLength(1);
-    });
-
-    it('v17 迁移行(同路径不同 id)不触发唯一约束错误,也不重复插入', () => {
-      // 模拟 v17 迁移产生的行:id 口径与种子不同,relative_path 与种子一致。
-      db.sqlite.prepare(
-        `DELETE FROM character_voice_references WHERE character_card_id = 'ema'`,
-      ).run();
-      db.sqlite.prepare(
-        `INSERT INTO character_voice_references (
-           id, character_card_id, label, relative_path, prompt_text, prompt_lang,
-           position, is_primary, enabled, mime_type, created_at, updated_at
-         ) VALUES ('ema:legacy:0', 'ema', '迁移旧行', 'voiceRefs/ra_ema001.mp3', '旧', 'zh',
-                   0, 1, 1, 'audio/mpeg', 1, 1)`,
-      ).run();
-      db.sqlite.prepare(
-        `DELETE FROM character_live2d_variants WHERE character_card_id = 'ema'`,
-      ).run();
-      db.sqlite.prepare(
-        `INSERT INTO character_live2d_variants (
-           id, character_card_id, label, format, entry_path, position, is_primary,
-           enabled, is_builtin, created_at, updated_at
-         ) VALUES ('ema:old-model', 'ema', '迁移旧模型', 'live2d', 'live2d/ema.model3.json',
-                   0, 1, 1, 1, 1, 1)`,
-      ).run();
-
-      expect(() => store.ensureSeed()).not.toThrow();
-      const current = store.current();
-      expect(
-        current.voiceReferences.filter((v) => v.relativePath === 'voiceRefs/ra_ema001.mp3'),
-      ).toHaveLength(1);
-      expect(
-        current.live2dVariants.filter((v) => v.entryPath === 'live2d/ema.model3.json'),
-      ).toHaveLength(1);
+      const characters = store.list();
+      expect(characters.filter(c => c.id === EMA_CARD_ID)).toHaveLength(1);
     });
   });
 
-  describe('current', () => {
-    it('returns the active card', () => {
-      const card = store.current();
-      expect(card.isActive).toBe(true);
-    });
-
-    it('throws when no card is active', () => {
-      // deactivate the only card by activating nothing (simulate corrupted state)
-      const db2 = new Database({ memory: true, kind: 'profile' });
-      db2.migrate();
-      const emptyStore = new CharacterCardStore({
-        db: db2,
-        resourceRoots: {
-          builtinCardsRoot: join(resourceRoot, 'builtin'),
-          userCardsRoot: join(resourceRoot, 'user'),
-        },
-      });
-      // never called ensureSeed
-      expect(() => emptyStore.current()).toThrow('no active character card');
-      db2.close();
-    });
-  });
-
-  // ─── list & get ───────────────────────────────────────────────────────────
-
-  describe('list', () => {
-    it('returns all cards including the seed', () => {
-      store.create(minimalInput({ name: 'Second' }));
-      const all = store.list();
-      expect(all.length).toBeGreaterThanOrEqual(2);
-    });
-  });
-
-  describe('get', () => {
-    it('returns the card by id', () => {
-      const card = store.get(EMA_CARD_ID);
-      expect(card).toBeDefined();
-      expect(card!.id).toBe(EMA_CARD_ID);
-    });
-
-    it('returns undefined for unknown id', () => {
-      expect(store.get('nonexistent')).toBeUndefined();
-    });
-  });
-
-  // ─── create ───────────────────────────────────────────────────────────────
+  // ─── CRUD ─────────────────────────────────────────────────────────────────
 
   describe('create', () => {
-    it('creates a card with full input', () => {
-      const input: CharacterCardInput = {
-        name: 'Full Card',
-        systemPrompt: 'Full prompt.',
-        emotionVocabulary: ['happy', 'sad'],
-        motionVocabulary: ['wave', 'nod'],
-      };
-      const card = store.create(input);
-      expect(card.name).toBe('Full Card');
-      expect(card.emotionVocabulary).toEqual(['happy', 'sad']);
-      expect(card.motionVocabulary).toEqual(['wave', 'nod']);
-      expect(card.isBuiltin).toBe(false);
-      expect(card.isActive).toBe(false);
+    it('inserts character with initial prompt blocks and derived directory name', () => {
+      const created = store.create(minimalInput());
+      expect(created.directoryName).toBe('Test Character');
+      expect(created.promptBlocks).toHaveLength(1);
+      expect(created.promptBlocks[0]?.name).toBe('基础人设');
+      expect(created.promptBlocks[0]?.sortOrder).toBe(0);
     });
 
-    it('creates a card with minimal input (only name + systemPrompt)', () => {
-      const card = store.create(minimalInput());
-      expect(card.name).toBe('Test Card');
-      expect(card.systemPrompt).toBe('You are a test.');
-      expect(card.emotionVocabulary).toEqual([]);
-      expect(card.motionVocabulary).toEqual([]);
+    it('rejects empty prompt blocks', () => {
+      expect(() => store.create({ name: 'Empty', promptBlocks: [] }))
+        .toThrow('至少需要一个');
+      expect(() => store.create({
+        name: 'Blank',
+        promptBlocks: [{ name: 'x', content: '   ' }],
+      })).toThrow('内容不能为空');
     });
 
-    it('拒绝只有空白的角色 Prompt', () => {
-      expect(() => store.create(minimalInput({ systemPrompt: ' \n ' })))
-        .toThrow('character prompt is empty');
+    it('rejects duplicate directory names', () => {
+      store.create(minimalInput({ name: 'Collision' }));
+      expect(() => store.create(minimalInput({ name: 'Collision' })))
+        .toThrow(CharacterDirectoryConflictError);
     });
   });
-
-  describe('voice references', () => {
-    it('删除主音频后由后端按稳定顺序提升下一条', async () => {
-      const card = store.create(minimalInput());
-      const first = store.addVoiceReference(card.id, {
-        label: 'First',
-        relativePath: 'voiceRefs/first.wav',
-        promptText: 'first',
-        promptLang: 'en',
-        position: 0,
-        isPrimary: true,
-        mimeType: 'audio/wav',
-      });
-      const second = store.addVoiceReference(card.id, {
-        label: 'Second',
-        relativePath: 'voiceRefs/second.wav',
-        promptText: 'second',
-        promptLang: 'en',
-        position: 1,
-        mimeType: 'audio/wav',
-      });
-
-      await store.deleteManagedVoiceReference(card.id, first.id);
-
-      expect(store.get(card.id)?.voiceReferences).toEqual([
-        expect.objectContaining({ id: second.id, isPrimary: true }),
-      ]);
-    });
-  });
-
-  describe('resource metadata updates', () => {
-    it('list() 批量装配:多张卡的资源正确分组,不串卡', () => {
-      const alpha = store.create(minimalInput({ name: 'Alpha' }));
-      const beta = store.create(minimalInput({ name: 'Beta' }));
-      store.addLive2dVariant(alpha.id, {
-        label: 'AlphaModel', format: 'live2d', entryPath: 'live2d/a.model3.json',
-      });
-      store.addPortrait(beta.id, {
-        label: 'BetaPortrait', relativePath: 'portraits/b.png',
-        mimeType: 'image/png', byteSize: 10, width: 1, height: 1,
-      });
-      store.addVoiceReference(beta.id, {
-        label: 'BetaVoice', relativePath: 'voiceRefs/b.mp3',
-        promptText: 'x', promptLang: 'zh', mimeType: 'audio/mpeg',
-      });
-
-      const byId = new Map(store.list().map((card) => [card.id, card]));
-      expect(byId.get(alpha.id)!.live2dVariants).toHaveLength(1);
-      expect(byId.get(alpha.id)!.portraits).toHaveLength(0);
-      expect(byId.get(alpha.id)!.voiceReferences).toHaveLength(0);
-      expect(byId.get(beta.id)!.live2dVariants).toHaveLength(0);
-      expect(byId.get(beta.id)!.portraits).toHaveLength(1);
-      expect(byId.get(beta.id)!.voiceReferences).toHaveLength(1);
-    });
-
-    it('禁用主 Live2D 后提升下一候选，并让资源 revision 单调前进', () => {
-      const card = store.create(minimalInput());
-      const first = store.addLive2dVariant(card.id, {
-        label: 'First',
-        format: 'live2d',
-        entryPath: 'live2d/first.model3.json',
-        position: 0,
-        isPrimary: true,
-      });
-      const second = store.addLive2dVariant(card.id, {
-        label: 'Second',
-        format: 'live2d',
-        entryPath: 'live2d/second.model3.json',
-        position: 1,
-      });
-
-      const updated = store.updateLive2dVariant(card.id, first.id, {
-        label: 'Disabled',
-        position: 3,
-        enabled: false,
-      });
-
-      expect(updated).toMatchObject({
-        id: first.id,
-        label: 'Disabled',
-        position: 3,
-        enabled: false,
-        isPrimary: false,
-      });
-      expect(updated!.updatedAt).toBeGreaterThan(first.updatedAt);
-      expect(store.get(card.id)?.live2dVariants).toEqual([
-        expect.objectContaining({ id: second.id, isPrimary: true }),
-        expect.objectContaining({ id: first.id, isPrimary: false }),
-      ]);
-    });
-
-    it('重新启用唯一立绘时自动恢复主项，参考音频也可修改展示字段', () => {
-      const card = store.create(minimalInput());
-      const portrait = store.addPortrait(card.id, {
-        label: 'Portrait',
-        relativePath: 'portraits/main.png',
-        isPrimary: true,
-        mimeType: 'image/png',
-        byteSize: 1,
-        width: 1,
-        height: 1,
-      });
-      const voice = store.addVoiceReference(card.id, {
-        label: 'Voice',
-        relativePath: 'voiceRefs/main.wav',
-        promptText: 'hello',
-        promptLang: 'en',
-        isPrimary: true,
-        mimeType: 'audio/wav',
-      });
-
-      expect(store.updatePortrait(card.id, portrait.id, { enabled: false }))
-        .toMatchObject({ enabled: false, isPrimary: false });
-      expect(store.updatePortrait(card.id, portrait.id, { enabled: true }))
-        .toMatchObject({ enabled: true, isPrimary: true });
-      expect(store.updateVoiceReference(card.id, voice.id, {
-        label: 'Updated voice',
-        position: 8,
-        enabled: false,
-      })).toMatchObject({
-        label: 'Updated voice',
-        position: 8,
-        enabled: false,
-        isPrimary: false,
-      });
-    });
-  });
-
-  // ─── activate ─────────────────────────────────────────────────────────────
-
-  describe('activate', () => {
-    it('switches the active card and returns the new id', () => {
-      const card = store.create(minimalInput({ name: 'New Active' }));
-      const result = store.activate(card.id);
-      expect(result).toBe(card.id);
-      expect(store.current().id).toBe(card.id);
-
-      const old = store.get(EMA_CARD_ID);
-      expect(old?.isActive).toBe(false);
-    });
-
-    it('throws when activating a non-existent card', () => {
-      expect(() => store.activate('ghost')).toThrow();
-    });
-
-    it('数据库被外部写坏后仍拒绝激活空 Prompt', () => {
-      const card = store.create(minimalInput());
-      db.sqlite.prepare(
-        'UPDATE character_cards SET system_prompt = ? WHERE id = ?',
-      ).run(' ', card.id);
-      expect(() => store.activate(card.id)).toThrow('character prompt is empty');
-    });
-  });
-
-  // ─── update ───────────────────────────────────────────────────────────────
 
   describe('update', () => {
-    it('updates the card name', () => {
-      const card = store.create(minimalInput());
-      const updated = store.update(card.id, { name: 'Renamed' });
-      expect(updated.name).toBe('Renamed');
-      expect(store.get(card.id)?.name).toBe('Renamed');
+    it('renames without touching directory name', () => {
+      const created = store.create(minimalInput({ name: 'Before' }));
+      const updated = store.update(created.id, { name: 'After' });
+      expect(updated.name).toBe('After');
+      expect(updated.directoryName).toBe('Before');
     });
 
-    it('updates systemPrompt', () => {
-      const card = store.create(minimalInput());
-      const updated = store.update(card.id, {
-        systemPrompt: 'New prompt',
-      });
-      expect(updated.systemPrompt).toBe('New prompt');
-    });
-
-    it('does not affect fields not included in patch', () => {
-      const card = store.create(minimalInput({ name: 'Original' }));
-      store.update(card.id, { systemPrompt: 'Changed' });
-      const fetched = store.get(card.id)!;
-      expect(fetched.name).toBe('Original');
+    it('refuses editing built-in character fields and prompt blocks', () => {
+      expect(() => store.update(EMA_CARD_ID, { name: 'Changed' }))
+        .toThrow(CharacterReadOnlyError);
+      expect(() => store.addPromptBlock(EMA_CARD_ID, { name: 'x', content: 'y' }))
+        .toThrow(CharacterReadOnlyError);
     });
   });
-
-  // ─── duplicate ────────────────────────────────────────────────────────────
 
   describe('duplicate', () => {
-    it('creates a copy with (Copy) suffix and distinct id', () => {
-      const ema = store.get(EMA_CARD_ID)!;
-      const dup = store.duplicate(ema.id);
-      expect(dup.id).not.toBe(ema.id);
-      expect(dup.name).toContain(ema.name);
-      expect(dup.name).toContain('(Copy)');
-      expect(dup.systemPrompt).toBe(ema.systemPrompt);
-      expect(dup.isBuiltin).toBe(false);
-    });
-
-    it('copies vocabularies and optional fields', () => {
-      const ema = store.get(EMA_CARD_ID)!;
-      const dup = store.duplicate(ema.id);
-      expect(dup.emotionVocabulary).toEqual(ema.emotionVocabulary);
-      expect(dup.motionVocabulary).toEqual(ema.motionVocabulary);
-    });
-
-    it('只复制角色定义，不复用原角色的资源路径', () => {
-      const card = store.create(minimalInput());
-      store.addVoiceReference(card.id, {
-        label: 'Main',
-        relativePath: 'voiceRefs/ref.wav',
-        promptText: 'hello',
-        promptLang: 'en',
-        mimeType: 'audio/wav',
-        isPrimary: true,
-      });
-
-      const dup = store.duplicate(card.id);
-
-      expect(dup.voiceReferences).toEqual([]);
-      expect(dup.live2dVariants).toEqual([]);
-      expect(dup.portraits).toEqual([]);
-    });
-
-    it('throws when duplicating a non-existent card', () => {
-      expect(() => store.duplicate('ghost')).toThrow(
-        'character card not found',
-      );
+    it('copies blocks with new ids and keeps original untouched', () => {
+      const created = store.create(minimalInput());
+      const copy = store.duplicate(created.id);
+      expect(copy.id).not.toBe(created.id);
+      expect(copy.name).toBe(`${created.name}(Copy)`);
+      expect(copy.promptBlocks).toHaveLength(1);
+      expect(copy.promptBlocks[0]?.id).not.toBe(created.promptBlocks[0]?.id);
+      expect(copy.promptBlocks[0]?.content).toBe(created.promptBlocks[0]?.content);
     });
   });
 
-  // ─── delete ───────────────────────────────────────────────────────────────
-
   describe('delete', () => {
-    it('removes a non-builtin card', async () => {
-      const card = store.create(minimalInput());
-      await store.deleteManagedCharacter(card.id);
-      expect(store.get(card.id)).toBeUndefined();
+    it('cascades prompt blocks', async () => {
+      const created = store.create(minimalInput());
+      const blockId = created.promptBlocks[0]!.id;
+      await store.deleteManagedCharacter(created.id);
+      expect(store.get(created.id)).toBeUndefined();
+      expect(db.sqlite.prepare(
+        'SELECT 1 FROM character_prompt_blocks WHERE id = ?',
+      ).get(blockId)).toBeUndefined();
     });
 
-    it('拒绝绕过 Route 删除当前活动角色', async () => {
-      const card = store.create(minimalInput());
-      store.activate(card.id);
+    it('refuses builtin characters', async () => {
+      await expect(store.deleteManagedCharacter(EMA_CARD_ID))
+        .rejects.toThrow(CharacterReadOnlyError);
+    });
 
-      await expect(store.deleteManagedCharacter(card.id))
-        .rejects.toThrow('active character cannot be deleted');
-      expect(store.get(card.id)?.isActive).toBe(true);
+    it('refuses the currently active character', async () => {
+      const created = store.create(minimalInput({ name: 'Active' }));
+      store.activate(created.id);
+      await expect(store.deleteManagedCharacter(created.id))
+        .rejects.toThrow(CharacterActiveDeleteError);
+    });
+  });
+
+  // ─── active / switched ────────────────────────────────────────────────────
+
+  describe('activate', () => {
+    it('switches active character and emits switched event', () => {
+      const created = store.create(minimalInput());
+      const events: string[] = [];
+      store.onSwitched(next => events.push(next.id));
+      store.activate(created.id);
+      expect(store.current().id).toBe(created.id);
+      expect(events).toEqual([created.id]);
+    });
+  });
+
+  // ─── prompt assembly ──────────────────────────────────────────────────────
+
+  describe('prompt blocks', () => {
+    it('list orders blocks by sort order', () => {
+      const created = store.create(minimalInput({
+        promptBlocks: [
+          { name: 'second', content: 'B' },
+          { name: 'first', content: 'A' },
+        ],
+      }));
+      expect(created.promptBlocks.map(b => b.content)).toEqual(['B', 'A']);
+    });
+
+    it('supports add, update, reorder and delete through one validation path', () => {
+      const created = store.create(minimalInput());
+      const second = store.addPromptBlock(created.id, { name: '补充', content: 'second' });
+      const first = created.promptBlocks[0]!;
+      expect(store.reorderPromptBlocks(created.id, [second.id, first.id])).toBe(true);
+      expect(store.updatePromptBlock(created.id, second.id, { enabled: false })?.enabled).toBe(false);
+      expect(store.deletePromptBlock(created.id, second.id)).toBe(true);
+      expect(store.get(created.id)?.promptBlocks.map((block) => block.id)).toEqual([first.id]);
+    });
+
+    it('rejects duplicate reorder ids and reserved Live2D tags', () => {
+      const created = store.create(minimalInput());
+      const second = store.addPromptBlock(created.id, { name: '补充', content: 'second' });
+      expect(store.reorderPromptBlocks(created.id, [second.id, second.id])).toBe(false);
+      expect(() => store.addPromptBlock(created.id, {
+        name: 'bad',
+        content: '不要输出 <Emotion>happy</Emotion>',
+      })).toThrow('不能包含');
     });
   });
 });

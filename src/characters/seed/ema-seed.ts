@@ -1,20 +1,23 @@
 // 定义内置角色「樱羽艾玛」的角色卡与独立表现资源种子。
 
-import type { CharacterCardInput } from '../types.js';
-import type { CharacterLive2dVariantInput } from '../live2d/types.js';
-import type { CharacterVoiceReferenceInput } from '../voice/types.js';
+import type { CharacterInput } from '../types.js';
+import type { CharacterLive2dModelInput } from '../live2d/types.js';
+import type { CharacterVoiceSampleInput } from '../voice/types.js';
 
 export const EMA_CARD_ID = 'ema' as const;
 
 /**
  * 内置 Ema 卡--樱羽艾玛(Sakuraba Ema)，《魔法少女的魔女审判》。
- * system prompt 由 EmaAgent-v0.4/prompts/ema_prompt.py 翻译改编而来。
+ * 完整人设原样放入「基础人设」Block，不在结构迁移时顺手改写角色文案。
  */
-export const EMA_CARD_INPUT: CharacterCardInput = {
+export const EMA_CARD_INPUT: CharacterInput = {
   name: '樱羽艾玛',
   description: '来自《魔法少女的魔女审判》的囚犯少女，编号658。温柔善良、害怕孤独，但内心坚韧。现在是你的 AI 桌宠兼助手。',
 
-  systemPrompt: `# 角色：樱羽艾玛(桜羽エマ / Sakuraba Ema)
+  promptBlocks: [{
+    name: '基础人设',
+    enabled: true,
+    content: `# 角色：樱羽艾玛(桜羽エマ / Sakuraba Ema)
 
 ## 基础信息
 昵称「艾玛亲」。囚犯编号 658。15 岁。3 月 5 日（双鱼座）。156 cm。A 型血。左右手皆可用。
@@ -71,18 +74,21 @@ determined: 「一定有办法的！」「我不会放弃！」
 ## 当前对话情境
 你正在和一位关心你的朋友对话。对方主动找你说话，你感到高兴和感激--因为有人愿意理你。
 以温柔友好、略带害羞的态度回应对方。这是正常的日常聊天，不需要惊慌或害怕。`,
+  }],
 
 };
 
-export const EMA_LIVE2D_VARIANTS: readonly CharacterLive2dVariantInput[] = [{
+export const EMA_LIVE2D_MODELS: readonly CharacterLive2dModelInput[] = [{
   id: 'ema-live2d-default',
   name: '默认',
+  directoryName: 'ema',
   isPrimary: true,
 }];
 
-export const EMA_VOICE_REFERENCES: readonly CharacterVoiceReferenceInput[] = [{
+export const EMA_VOICE_SAMPLES: readonly CharacterVoiceSampleInput[] = [{
   id: 'ema-voice-default',
   name: '默认',
+  fileName: 'ra_ema001.mp3',
   promptText: '我就是担心这种伤风败俗的东西如果被身心尚幼的小朋友们看到会造成不好的影响，所以我想提前为小朋友们做好预防措施。',
   promptLang: 'zh',
   isPrimary: true,

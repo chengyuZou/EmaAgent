@@ -1,98 +1,181 @@
-// 角色卡领域对象和数据库行互相转换，是 store 和 storage repo 之间的薄适配层。
+// 在一个 SQLite 事务内维护角色定义与 Prompt Block 聚合，并完成数据库行映射。
 
 import { randomUUID } from 'node:crypto';
-import type { CharacterCardsRepo, CharacterCardRow } from '@ema-agent/storage';
-import type { CharacterCard, CharacterCardInput } from './types.js';
+import {
+  CharacterRepo,
+  CharacterPromptBlockRepo,
+  type CharacterRow,
+  type CharacterPromptBlockRow,
+  type ProtectedDeleteResult,
+  type SqliteDb,
+} from '@ema-agent/storage';
+import type {
+  Character,
+  CharacterInput,
+  CharacterPromptBlock,
+  CharacterPromptBlockInput,
+  CharacterPromptBlockPatch,
+} from './types.js';
 
-// ── 数据库行 -> 领域对象 ──────────────────────────────────────────────────────────
-
-function fromRow(row: CharacterCardRow): CharacterCard {
+function fromRow(row: CharacterRow, blocks: readonly CharacterPromptBlock[]): Character {
   return {
-    id:               row.id,
-    name:             row.name,
-    description:      row.description,
-    systemPrompt:     row.system_prompt,
-    emotionVocabulary: JSON.parse(row.emotion_vocab_json) as string[],
-    motionVocabulary:  JSON.parse(row.motion_vocab_json) as string[],
-    live2dVariants:   [],
-    illustrations:    [],
-    voiceReferences:  [],
-    isActive:         row.is_active === 1,
-    isBuiltin:        row.is_builtin === 1,
-    createdAt:        row.created_at,
-    updatedAt:        row.updated_at,
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    directoryName: row.directory_name,
+    promptBlocks: blocks,
+    emotionVocabulary: [],
+    motionVocabulary: [],
+    live2dModels: [],
+    illustrations: [],
+    voiceSamples: [],
+    isActive: row.is_active === 1,
+    isBuiltin: row.is_builtin === 1,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 
-/** CharacterCardsRepo 上的薄领域适配层--领域类型 <-> DB 行。 */
-export class CharacterCardRepository {
-  constructor(private readonly repo: CharacterCardsRepo) {}
+function fromBlockRow(row: CharacterPromptBlockRow): CharacterPromptBlock {
+  return {
+    id: row.id,
+    characterId: row.character_id,
+    name: row.name,
+    content: row.content,
+    enabled: row.enabled === 1,
+    sortOrder: row.sort_order,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
 
-  findById(id: string): CharacterCard | undefined {
-    const row = this.repo.findById(id);
-    return row ? fromRow(row) : undefined;
+export class CharacterRepository {
+  constructor(
+    private readonly db: SqliteDb,
+    private readonly characters: CharacterRepo,
+    private readonly blocks: CharacterPromptBlockRepo,
+  ) {}
+
+  findById(id: string): Character | undefined {
+    const row = this.characters.findById(id);
+    return row ? fromRow(row, this.listBlocks(id)) : undefined;
   }
 
-  findActive(): CharacterCard | undefined {
-    const row = this.repo.findActive();
-    return row ? fromRow(row) : undefined;
+  findActive(): Character | undefined {
+    const row = this.characters.findActive();
+    return row ? fromRow(row, this.listBlocks(row.id)) : undefined;
   }
 
-  list(): CharacterCard[] {
-    return this.repo.list().map(fromRow);
+  list(): Character[] {
+    const rows = this.characters.list();
+    const grouped = new Map<string, CharacterPromptBlock[]>();
+    for (const block of this.blocks.listForCharacters(rows.map((row) => row.id))) {
+      const values = grouped.get(block.character_id) ?? [];
+      values.push(fromBlockRow(block));
+      grouped.set(block.character_id, values);
+    }
+    return rows.map((row) => fromRow(row, grouped.get(row.id) ?? []));
   }
 
   insert(
-    input: CharacterCardInput,
-    opts: { id?: string; isBuiltin?: boolean; isActive?: boolean } = {},
-  ): CharacterCard {
+    input: CharacterInput,
+    directoryName: string,
+    id: string = randomUUID(),
+    isBuiltin = false,
+    isActive = false,
+  ): Character {
+    if (this.characters.findByDirectoryName(directoryName)) {
+      throw new Error(`character directory name already exists: ${directoryName}`);
+    }
     const now = Date.now();
-    const id = opts.id ?? randomUUID();
-
-    this.repo.insert({
-      id,
-      name:                 input.name,
-      description:          input.description,
-      systemPrompt:         input.systemPrompt,
-      emotionVocabJson:     '[]',
-      motionVocabJson:      '[]',
-      isActive:             opts.isActive ?? false,
-      isBuiltin:            opts.isBuiltin ?? false,
-      createdAt:            now,
-      updatedAt:            now,
-    });
-
+    this.db.transaction(() => {
+      this.characters.insert({
+        id,
+        name: input.name,
+        description: input.description ?? null,
+        directoryName,
+        isActive,
+        isBuiltin,
+        createdAt: now,
+        updatedAt: now,
+      });
+      this.blocks.insertMany(input.promptBlocks.map((block, index) =>
+        toBlockInsert(id, block, index, now),
+      ));
+    })();
     return this.findById(id)!;
   }
 
-  update(id: string, patch: Partial<CharacterCardInput>): void {
-    this.repo.update(id, {
-      name:                 patch.name,
-      description:          patch.description,
-      systemPrompt:         patch.systemPrompt,
-      updatedAt:            Date.now(),
-    });
-  }
-
-  /** 仅供主用 Live2D 变更流程写入派生词汇，普通角色编辑不能修改这两列。 */
-  updateLive2dVocabulary(
-    id: string,
-    emotionVocabulary: readonly string[],
-    motionVocabulary: readonly string[],
-  ): void {
-    this.repo.update(id, {
-      emotionVocabJson: JSON.stringify(emotionVocabulary),
-      motionVocabJson: JSON.stringify(motionVocabulary),
-      updatedAt: Date.now(),
-    });
+  update(id: string, name: string | undefined, description: string | null | undefined): void {
+    this.characters.update(id, { name, description, updatedAt: Date.now() });
   }
 
   activate(id: string): void {
-    this.repo.activate(id, Date.now());
+    this.characters.activate(id, Date.now());
   }
 
-  /** 静默拒绝删除内置卡（由 storage repo 强制）。 */
-  delete(id: string): void {
-    this.repo.delete(id);
+  delete(id: string): ProtectedDeleteResult {
+    return this.characters.delete(id);
   }
+
+  listBlocks(characterId: string): CharacterPromptBlock[] {
+    return this.blocks.listForCharacter(characterId).map(fromBlockRow);
+  }
+
+  insertBlock(characterId: string, input: CharacterPromptBlockInput): CharacterPromptBlock {
+    const now = Date.now();
+    const sortOrder = this.blocks.listForCharacter(characterId).length;
+    const row = toBlockInsert(characterId, input, sortOrder, now);
+    this.blocks.insert(row);
+    return fromBlockRow(this.blocks.findById(characterId, row.id)!);
+  }
+
+  updateBlock(
+    characterId: string,
+    blockId: string,
+    patch: CharacterPromptBlockPatch,
+  ): CharacterPromptBlock | undefined {
+    const row = this.blocks.update(characterId, blockId, {
+      name: patch.name,
+      content: patch.content,
+      enabled: patch.enabled,
+      updatedAt: Date.now(),
+    });
+    return row ? fromBlockRow(row) : undefined;
+  }
+
+  deleteBlock(characterId: string, blockId: string): boolean {
+    return this.blocks.delete(characterId, blockId);
+  }
+
+  reorderBlocks(characterId: string, orderedIds: readonly string[]): boolean {
+    return this.blocks.reorder(characterId, orderedIds, Date.now());
+  }
+}
+
+function toBlockInsert(
+  characterId: string,
+  block: CharacterPromptBlockInput,
+  sortOrder: number,
+  now: number,
+): {
+  id: string;
+  characterId: string;
+  name: string;
+  content: string;
+  enabled: boolean;
+  sortOrder: number;
+  createdAt: number;
+  updatedAt: number;
+} {
+  return {
+    id: randomUUID(),
+    characterId,
+    name: block.name,
+    content: block.content,
+    enabled: block.enabled ?? true,
+    sortOrder,
+    createdAt: now,
+    updatedAt: now,
+  };
 }

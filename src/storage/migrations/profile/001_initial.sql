@@ -1,23 +1,36 @@
 -- profile.db 当前开发基线。
 -- 由压缩前完整迁移链生成最终 Schema 后规范化导出。
 -- 后续结构变更从 002_*.sql 开始追加。
-CREATE TABLE character_cards (
+CREATE TABLE characters (
   id                    TEXT PRIMARY KEY,
   name                  TEXT NOT NULL,
   description           TEXT,
-  system_prompt         TEXT NOT NULL,
-  emotion_vocab_json    TEXT NOT NULL DEFAULT '[]',
-  motion_vocab_json     TEXT NOT NULL DEFAULT '[]',
+  directory_name        TEXT NOT NULL,
   is_active             INTEGER NOT NULL DEFAULT 0,
   is_builtin            INTEGER NOT NULL DEFAULT 0,
   created_at            INTEGER NOT NULL,
-  updated_at            INTEGER NOT NULL
+  updated_at            INTEGER NOT NULL,
+  UNIQUE(directory_name)
 );
 
-CREATE TABLE character_live2d_variants (
+CREATE TABLE character_prompt_blocks (
+  id                TEXT PRIMARY KEY,
+  character_id      TEXT NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+  name              TEXT NOT NULL,
+  content           TEXT NOT NULL,
+  enabled           INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)),
+  sort_order        INTEGER NOT NULL,
+  created_at        INTEGER NOT NULL,
+  updated_at        INTEGER NOT NULL
+);
+
+CREATE TABLE character_live2d_models (
   id                  TEXT PRIMARY KEY,
-  character_card_id   TEXT NOT NULL REFERENCES character_cards(id) ON DELETE CASCADE,
+  character_id        TEXT NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
   name                TEXT NOT NULL,
+  directory_name      TEXT NOT NULL,
+  emotion_vocab_json  TEXT NOT NULL DEFAULT '[]',
+  motion_vocab_json   TEXT NOT NULL DEFAULT '[]',
   stage_scale         REAL NOT NULL DEFAULT 1 CHECK(stage_scale BETWEEN 0.1 AND 5),
   stage_offset_x      REAL NOT NULL DEFAULT 0 CHECK(stage_offset_x BETWEEN -1 AND 1),
   stage_offset_y      REAL NOT NULL DEFAULT 0 CHECK(stage_offset_y BETWEEN -1 AND 1),
@@ -25,13 +38,15 @@ CREATE TABLE character_live2d_variants (
   enabled             INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)),
   byte_size           INTEGER CHECK(byte_size IS NULL OR byte_size >= 0),
   created_at          INTEGER NOT NULL,
-  updated_at          INTEGER NOT NULL
+  updated_at          INTEGER NOT NULL,
+  UNIQUE(character_id, directory_name)
 );
 
 CREATE TABLE character_illustrations (
   id                TEXT PRIMARY KEY,
-  character_card_id TEXT NOT NULL REFERENCES character_cards(id) ON DELETE CASCADE,
+  character_id      TEXT NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
   name              TEXT NOT NULL,
+  file_name         TEXT NOT NULL,
   stage_scale       REAL NOT NULL DEFAULT 1 CHECK(stage_scale BETWEEN 0.1 AND 5),
   stage_offset_x    REAL NOT NULL DEFAULT 0 CHECK(stage_offset_x BETWEEN -1 AND 1),
   stage_offset_y    REAL NOT NULL DEFAULT 0 CHECK(stage_offset_y BETWEEN -1 AND 1),
@@ -39,13 +54,15 @@ CREATE TABLE character_illustrations (
   enabled           INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)),
   byte_size         INTEGER NOT NULL CHECK(byte_size >= 0),
   created_at        INTEGER NOT NULL,
-  updated_at        INTEGER NOT NULL
+  updated_at        INTEGER NOT NULL,
+  UNIQUE(character_id, file_name)
 );
 
-CREATE TABLE character_voice_references (
+CREATE TABLE character_voice_samples (
   id                TEXT PRIMARY KEY,
-  character_card_id TEXT NOT NULL REFERENCES character_cards(id) ON DELETE CASCADE,
+  character_id      TEXT NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
   name              TEXT NOT NULL,
+  file_name         TEXT NOT NULL,
   prompt_text       TEXT NOT NULL,
   prompt_lang       TEXT NOT NULL,
   is_primary        INTEGER NOT NULL DEFAULT 0 CHECK(is_primary IN (0,1)),
@@ -54,7 +71,8 @@ CREATE TABLE character_voice_references (
   byte_size         INTEGER CHECK(byte_size IS NULL OR byte_size >= 0),
   duration_ms       INTEGER CHECK(duration_ms IS NULL OR duration_ms >= 0),
   created_at        INTEGER NOT NULL,
-  updated_at        INTEGER NOT NULL
+  updated_at        INTEGER NOT NULL,
+  UNIQUE(character_id, file_name)
 );
 
 CREATE TABLE knowledge_bases (
@@ -348,29 +366,32 @@ CREATE TABLE skill_sites (
   updated_at     INTEGER NOT NULL
 );
 
-CREATE UNIQUE INDEX idx_character_cards_active
-  ON character_cards(is_active)
+CREATE UNIQUE INDEX idx_characters_active
+  ON characters(is_active)
   WHERE is_active = 1;
 
-CREATE INDEX idx_character_live2d_order
-  ON character_live2d_variants(character_card_id, created_at ASC, id ASC);
+CREATE INDEX idx_character_prompt_blocks_order
+  ON character_prompt_blocks(character_id, sort_order, id);
 
-CREATE UNIQUE INDEX idx_character_live2d_primary
-  ON character_live2d_variants(character_card_id)
+CREATE INDEX idx_character_live2d_models_order
+  ON character_live2d_models(character_id, created_at ASC, id ASC);
+
+CREATE UNIQUE INDEX idx_character_live2d_models_primary
+  ON character_live2d_models(character_id)
   WHERE is_primary = 1;
 
 CREATE INDEX idx_character_illustrations_order
-  ON character_illustrations(character_card_id, created_at ASC, id ASC);
+  ON character_illustrations(character_id, created_at ASC, id ASC);
 
 CREATE UNIQUE INDEX idx_character_illustrations_primary
-  ON character_illustrations(character_card_id)
+  ON character_illustrations(character_id)
   WHERE is_primary = 1;
 
-CREATE INDEX idx_character_voice_order
-  ON character_voice_references(character_card_id, created_at ASC, id ASC);
+CREATE INDEX idx_character_voice_samples_order
+  ON character_voice_samples(character_id, created_at ASC, id ASC);
 
-CREATE UNIQUE INDEX idx_character_voice_primary
-  ON character_voice_references(character_card_id)
+CREATE UNIQUE INDEX idx_character_voice_samples_primary
+  ON character_voice_samples(character_id)
   WHERE is_primary = 1;
 
 CREATE UNIQUE INDEX idx_kb_active ON knowledge_bases(is_active) WHERE is_active = 1;

@@ -1,75 +1,77 @@
-# @ema-agent/characters — 角色领域
+# Character
 
-EmaAgent 的角色领域:角色定义、三类表现资源(Live2D 变体 / 立绘 / 参考音频)、
-全局唯一激活角色、Prompt 硬门与资源文件生命周期。本包是角色事实的唯一所有者。
+Character 负责一张角色的人设 Prompt、Live2D、立绘和参考音频。它不负责 Turn 冻结、Prompt 总装配、Live2D 逐帧渲染、TTS 调用或前端表单。
 
-## 公共接口(冻结)
+## 领域对象
 
-```ts
-CharacterCardStore          // 唯一协调入口
-buildCharacterPrompt(card)  // 角色 → CharacterPrompt 投影
-CharacterPromptInvalidError / CharacterResourcePathError / CharacterResourceValidationError
-EMA_CARD_ID / BUILTIN_CARDS / BuiltinCharacterSeed
+`CharacterStore` 是唯一业务入口。角色由以下内容组成：
+
+- 可编辑的角色名称与描述；
+- 有序 `CharacterPromptBlock[]`；
+- 多个 Live2D、立绘和参考音频资源；
+- 当前激活状态与内置只读标记。
+
+角色及资源的随机 `id` 只用于 SQLite 关联，不进入磁盘路径。显示 `name` 可以修改，也不会移动资源。
+
+## 磁盘结构
+
+```text
+~/.ema-agent/characters/<character.directoryName>/
+├─ live2d/<live2dModel.directoryName>/
+├─ illustration/<illustration.fileName>
+└─ voice/<voiceSample.fileName>
 ```
 
-类型出口:`CharacterCard`、`CharacterCardInput`、`CharacterPrompt`、三类资源及其
-Input/Patch/Import 类型、`CharacterHealth` 投影、`CharacterEvent`、资源操作与
-恢复报告类型。外部只从本 `index.ts` 导入,禁止穿透内部 repository/resources/validation 文件。
+`directoryName/fileName` 在导入时从 ZIP 或源文件名取得，创建后不可修改；同一目标已存在时直接拒绝，不覆盖也不自动追加后缀。
 
-## 所有权与不变量
+## Prompt Block
 
-- **全局单激活**:任何时刻至多一张 `is_active` 卡;`activate()` 在 SQL 事务内
-  先清后置,切换可在任意时刻发生,不绑定 Session。`ensureSeed()` 保证内置 Ema 卡
-  存在且在无激活卡时激活它;调用方不得假设"一个 Session 一个角色"。
-- **Prompt 硬门**:写入(create/update)、激活(activate)、Prompt 装配
-  (`buildCharacterPrompt`)三处都拒绝空白 `systemPrompt`;空 Prompt 角色不能激活、
-  不能启动新 Turn。数据库被外部写坏时同样在领域边界失败,不静默降级。
-- **角色定义与资源分表**:`character_cards` 只存定义;Live2D / portraits /
-  voiceReferences 各自一表,外键归属角色。候选顺序由后端冻结
-  (isPrimary → position → id),前端不得自行排序或扫描文件。
-- **聚合装配**:`CharacterCard` 永远带齐三类资源数组;`list()` 用按卡分组的批量
-  查询(4 条 SQL),不允许消费方逐卡补查。
-- **主用 Live2D 决定表现词汇**:`emotionVocabulary` / `motionVocabulary` 是当前
-  主用 Live2D `runtime-config.json` 的持久化投影,不是用户输入。切换、禁用、删除、
-  首次导入主用模型时,资源主项与两列词汇在同一 SQLite 事务内更新;没有可用模型时
-  两列清空。Prompt 不读文件,设置页也不得直接写这两列。
-- **激活前健康门**:Route 层激活前必须过 `inspectHealth(id).executionAvailable`;
-  Store 的 `activate()` 自身只做 Prompt 硬门。
+角色 Prompt 是按 `sortOrder` 排序后的启用 Block 内容平铺数组。Live2D 控制协议在 Block 之后动态追加，不落入 Block 表，也不能被用户编辑或禁用。
 
-## 资源文件语义
+CharacterStore 提供：
 
-- 资源文件走 `.imports/.trash` 同盘事务 + manifest:SQLite 提交失败原位恢复,
-  崩溃残留由启动恢复按数据库事实源处理,不猜测未知目录。
-- 删除一律走 `deleteManaged*`:文件进 `.trash` 与 SQL 删除同事务;裸删 SQL 行的
-  接口不存在(文件会泄漏)。活动角色、内置角色拒绝删除。
-- 资源相对路径过 `CharacterResourcePaths`:拒绝绝对路径、反斜杠、空段、`..` 与
-  Windows 保留名,按 realpath 阻止符号链接/Junction 逃逸。Live2D 是目录资源,
-  立绘与参考音频是 `portraits/`、`voiceRefs/` 下单文件;参考音频属于角色目录,
-  不存在顶层 voiceRefs。
-- 同一角色的资源操作严格串行(`CharacterResourceOperations`),阶段可经
-  `inspectResourceOperation()` 观察。
+- `addPromptBlock`
+- `updatePromptBlock`
+- `deletePromptBlock`
+- `reorderPromptBlocks`
 
-## CharacterPrompt 投影
+所有写入都经过同一套规则：名称和内容 trim、非空、数量与字符上限、至少一个启用 Block。用户 Block 禁止出现 `<emotion>` 和 `<motion>`，包括大小写变体与未闭合标签，避免占用系统控制协议。
 
-`buildCharacterPrompt(card)` 产出 `{ prompt, presentation }`:
+限制由 [settings.ts](./settings.ts) 定义并在每次操作时从 `SettingsStore` 读取。四个 Prompt 上限属于 `characters.promptLimits` 设置组，先保证单块上限不大于总上限。设置页面提交更小上限前，应用编排层必须调用 `validateCharacterPromptLimits()` 检查全部现有角色；这条接线不属于 Character 单包。
 
-- `prompt` = 角色的 `systemPrompt` 原文(人设事实,经过硬门校验);
-- `presentation` = 角色表现协议文案,由 `emotionVocabulary`/`motionVocabulary`
-  生成 `<emotion>name</emotion>` 与 `<motion>name</motion>` 清单。停顿和持续时间由
-  Live2D 运行配置与 motion 资源负责,不向模型开放独立控制标签。
+## 资源导入与删除
 
-完整 System Prompt 的顺序、哨兵切分与序列化归 `@ema-agent/prompts`;本包不读
-上下文、不碰消息数组、不装配 Prompt。
+Live2D 只接受 ZIP：
 
-## 事件
+1. 从 ZIP 文件名派生稳定目录名；
+2. 解压到最终目录，限制条目数、展开总字节和路径穿越；
+3. 要求恰好一个 `*.model3.json`；
+4. `runtime-config.json` 可缺失，缺失代表没有情绪/动作词汇；存在但损坏则拒绝；
+5. 文件成功后插入 SQLite；SQL 失败只删除本次新建目录。
 
-`onSwitched` / `onPresentationChanged` 是角色领域自己的事件出口(返回反注册函数);
-不依赖通用生命周期总线。订阅者(前端表现层等)自行刷新,Store 不聚合跨域副作用。
+Live2D 导出会把当前展开目录打包成 `<显示名>.zip`。
 
-## 不负责
+立绘和参考音频保留用户原文件字节。立绘只检查大小与常见图片文件头，不归一化、不裁剪；参考音频检查格式、大小和时长。
 
-- 不装配 System Prompt,不认识 ExecutionProfile/Narrative;
-- 不管理 Session 绑定、不做多角色并存或 Team 身份;
-- 完整角色便携包(card.json + 整目录导入导出、冲突策略)推到 V1 正式版,
-  内测期不建半成品 Route 或空 manifest 类型;
-- 媒体正文解析、Live2D 渲染、TTS 播放归各自消费方,本包只提供路径与元数据。
+删除顺序统一为“先文件、后 SQLite”。文件已经被用户手工删除时仍允许删除数据库记录；其他文件系统错误则保留记录并返回错误。
+
+## 主用项与降级
+
+每类资源最多一个启用的主用项。主用项被停用或删除后，存储层提升最早创建的启用资源。Live2D 主用切换会先读取新资源的可选运行配置，读取成功后才在同一 SQLite 事务中切换主用项并写入派生词汇，避免界面已经切换但模型仍拿旧词汇。
+
+`inspectHealth()` 输出单个角色的实际可用顺序：
+
+```text
+有效 Live2D → 有效立绘 → 占位
+```
+
+Prompt 无效是 error；Live2D、立绘或参考音频缺失是 warning。健康检查不做哈希、版本兼容、深度修复或自动重绑定。
+
+`inspectAllHealth()` 用于启动检查：除了逐个角色的健康结果，还会把角色根目录和三类资源目录第一层中“磁盘存在但 SQL 没有引用”的路径列为 `orphanedPaths`。它不猜测重命名关系，不自动删除或重绑定。
+
+## 生命周期边界
+
+- 新 Turn 在编排层冻结当时的 Character 与 Prompt 数组；运行中的 Turn 不随角色切换改变。
+- `onSwitched` 和 `onPresentationChanged` 只发布领域变化；订阅者自行重新装配舞台、TTS 或 Prompt。
+- 内置资源开发期可以由 `installBuiltinCharacterResources()` 从桌面静态目录复制；正式包只替换来源，运行时始终读取 Home 目录。
+- 整张 Character 的归档导入导出暂不实现。当前 ZIP 仅用于单个 Live2D 资源。

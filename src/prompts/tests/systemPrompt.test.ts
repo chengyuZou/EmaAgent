@@ -1,16 +1,15 @@
 // 测试 System Prompt 扁平数组装配:顺序、边界哨兵位置、条件展开与 null 过滤。
 import { describe, expect, it } from 'vitest';
-import type { CharacterPrompt } from '@ema-agent/characters';
 import { BuiltinTools } from '@ema-agent/builtin-tools/identity';
 import {
   getSystemPrompt,
   PROMPT_DYNAMIC_BOUNDARY,
 } from '../systemPrompt.js';
 
-const CHARACTER: CharacterPrompt = {
-  prompt: '# 角色:测试娘',
-  presentation: '# 演出规则',
-};
+const CHARACTER: readonly string[] = [
+  '# 角色:测试娘',
+  '# 演出规则',
+];
 
 function input(overrides: Partial<Parameters<typeof getSystemPrompt>[0]> = {}) {
   return {
@@ -52,8 +51,8 @@ describe('getSystemPrompt', () => {
     const boundary = sections.indexOf(PROMPT_DYNAMIC_BOUNDARY);
     expect(boundary).toBe(7);
     const after = sections.slice(boundary + 1);
-    expect(after[0]).toBe(CHARACTER.prompt);
-    expect(after[1]).toBe(CHARACTER.presentation);
+    expect(after[0]).toBe(CHARACTER[0]);
+    expect(after[1]).toBe(CHARACTER[1]);
     expect(after.some((s) => s.includes('当前执行方式：Work'))).toBe(true);
     expect(after.some((s) => s.includes('本轮能力引导'))).toBe(true);
     expect(after.some((s) => s.includes('openai / gpt-5.2'))).toBe(true);
@@ -69,7 +68,7 @@ describe('getSystemPrompt', () => {
 
     expect(stablePrefix).not.toContain('你是 Ema');
     expect(stablePrefix).toContain('EmaAgent 是产品与运行环境的名称');
-    expect(sections[boundary + 1]).toBe(CHARACTER.prompt);
+    expect(sections[boundary + 1]).toBe(CHARACTER[0]);
     expect(sections[boundary + 1]).toContain('测试娘');
   });
 

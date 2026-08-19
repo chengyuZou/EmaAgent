@@ -79,7 +79,7 @@ function makeDeps(options: {
     } as unknown as ProviderModels,
     attachments: { addAll: async () => [] } as unknown as AttachmentStore,
     settings: fakeSettingsStore(),
-    characterPrompt: () => ({ prompt: '你是测试角色', presentation: '' }),
+    characterPrompt: () => ['你是测试角色'],
     skillEntries: () => [],
     createLlm: () => llm,
     registry,

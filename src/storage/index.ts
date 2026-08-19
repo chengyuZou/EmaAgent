@@ -21,10 +21,11 @@ export type {
   TurnWindow,
 } from './repos/data/turns.js';
 export { MessagesRepo } from './repos/data/messages.js';
-export { CharacterCardsRepo } from './repos/profile/character-cards.js';
-export { CharacterLive2dVariantsRepo } from './repos/profile/characterLive2dVariants.js';
-export { CharacterIllustrationsRepo } from './repos/profile/characterIllustrations.js';
-export { CharacterVoiceReferencesRepo } from './repos/profile/characterVoiceReferences.js';
+export { CharacterRepo } from './repos/profile/character.js';
+export { CharacterLive2dModelRepo } from './repos/profile/characterLive2dModel.js';
+export { CharacterIllustrationRepo } from './repos/profile/characterIllustration.js';
+export { CharacterVoiceSampleRepo } from './repos/profile/characterVoiceSample.js';
+export { CharacterPromptBlockRepo } from './repos/profile/characterPromptBlock.js';
 export { SettingsRepo } from './repos/profile/settings.js';
 export { UsageRecordsRepo } from './repos/data/usage-records.js';
 export { ProvidersRepo } from './repos/profile/providers.js';
@@ -86,28 +87,33 @@ export type { SessionRow, SessionRowEnriched, SessionSearchRow, SessionInsert, E
 export type { TurnStatusRow, TurnTriggerTypeRow } from './repos/data/turns.js';
 export type { TurnRow, TurnInsert, TurnCompletion } from './repos/data/turns.js';
 export type { MessageRow, MessageInsert, MessageRole, MessageKind } from './repos/data/messages.js';
-export { CharacterCardUpdateContractError } from './repos/profile/character-cards.js';
+export { CharacterUpdateContractError } from './repos/profile/character.js';
 export type {
-  CharacterCardRow,
-  CharacterCardInsert,
-  CharacterCardUpdate,
+  CharacterRow,
+  CharacterInsert,
+  CharacterUpdate,
   ProtectedDeleteResult
-} from './repos/profile/character-cards.js';
+} from './repos/profile/character.js';
 export type {
-  CharacterLive2dVariantInsert,
-  CharacterLive2dVariantRow,
-  CharacterLive2dVariantUpdate,
-} from './repos/profile/characterLive2dVariants.js';
+  CharacterLive2dModelInsert,
+  CharacterLive2dModelRow,
+  CharacterLive2dModelUpdate,
+} from './repos/profile/characterLive2dModel.js';
 export type {
   CharacterIllustrationInsert,
   CharacterIllustrationRow,
   CharacterIllustrationUpdate,
-} from './repos/profile/characterIllustrations.js';
+} from './repos/profile/characterIllustration.js';
 export type {
-  CharacterVoiceReferenceInsert,
-  CharacterVoiceReferenceRow,
-  CharacterVoiceReferenceUpdate,
-} from './repos/profile/characterVoiceReferences.js';
+  CharacterVoiceSampleInsert,
+  CharacterVoiceSampleRow,
+  CharacterVoiceSampleUpdate,
+} from './repos/profile/characterVoiceSample.js';
+export type {
+  CharacterPromptBlockRow,
+  CharacterPromptBlockInsert,
+  CharacterPromptBlockUpdate,
+} from './repos/profile/characterPromptBlock.js';
 export { SettingSerializationError } from './repos/profile/settings.js';
 export type { SettingRow, SettingReadResult } from './repos/profile/settings.js';
 export type { SettingWrite } from './repos/profile/settings.js';

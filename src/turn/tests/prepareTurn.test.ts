@@ -87,7 +87,7 @@ function makeDeps(overrides: Partial<PrepareTurnDeps> = {}): PrepareTurnDeps {
         settingsValues.has(def.key) ? settingsValues.get(def.key) : def.defaultValue,
       set: (def: { key: string }, value: unknown) => { settingsValues.set(def.key, value); },
     } as unknown as SettingsStore,
-    characterPrompt: () => ({ prompt: '你是角色', presentation: '' }),
+    characterPrompt: () => ['你是角色'],
     skillEntries: () => [],
     registry: new ToolRegistry(),
     decisionQueue: new SessionInteractionQueue(null),

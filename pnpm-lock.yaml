@@ -576,9 +576,18 @@ importers:
 
   src/characters:
     dependencies:
+      '@ema-agent/settings':
+        specifier: workspace:*
+        version: link:../settings
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage
+      fflate:
+        specifier: ^0.8.2
+        version: 0.8.3
+      zod:
+        specifier: ^4
+        version: 4.4.3
     devDependencies:
       '@types/node':
         specifier: ^20.0.0

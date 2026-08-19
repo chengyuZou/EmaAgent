@@ -1,8 +1,7 @@
-// 从主用 Live2D 的运行配置中提取模型真正可执行的情绪和动作名称。
+// 从可选 runtime-config.json 提取当前 Live2D 真正提供的情绪和动作名称。
 
 import fs from 'node:fs';
 import { CharacterResourceValidationError } from '../errors.js';
-import { CHARACTER_RESOURCE_LIMITS } from '../resources/characterResourceLimits.js';
 
 export interface Live2dVocabulary {
   readonly emotions: string[];
@@ -11,29 +10,26 @@ export interface Live2dVocabulary {
 
 const VOCABULARY_NAME = /^[a-z][a-z0-9_]*$/u;
 
-/**
- * `emotionMap`/`motionMap` 是模型语义能力的事实源。
- * 空的 emotion target 不会产生舞台效果，因此不进入发给模型的词汇表。
- */
-export function readLive2dVocabulary(filePath: string): Live2dVocabulary {
-  const config = readRuntimeConfig(filePath);
+export function readLive2dVocabulary(
+  filePath: string | null,
+  maxBytes: number,
+): Live2dVocabulary {
+  if (filePath === null) return { emotions: [], motions: [] };
+  const config = readRuntimeConfig(filePath, maxBytes);
   return {
     emotions: readEmotionNames(config.emotionMap),
     motions: readMotionNames(config.motionMap),
   };
 }
 
-function readRuntimeConfig(filePath: string): Record<string, unknown> {
+function readRuntimeConfig(filePath: string, maxBytes: number): Record<string, unknown> {
   try {
     const stat = fs.statSync(filePath);
-    if (!stat.isFile() || stat.size > CHARACTER_RESOURCE_LIMITS.live2dRuntimeConfigBytes) {
-      throw new Error('runtime config is not a bounded file');
-    }
+    if (!stat.isFile() || stat.size > maxBytes) throw new Error('runtime config is too large');
     const parsed: unknown = JSON.parse(fs.readFileSync(filePath, 'utf8'));
     if (!isRecord(parsed)) throw new Error('runtime config must be an object');
     return parsed;
-  } catch (error) {
-    if (error instanceof CharacterResourceValidationError) throw error;
+  } catch {
     throw new CharacterResourceValidationError('live2d_runtime_config_invalid');
   }
 }
@@ -41,12 +37,10 @@ function readRuntimeConfig(filePath: string): Record<string, unknown> {
 function readEmotionNames(value: unknown): string[] {
   if (value === undefined) return [];
   if (!isRecord(value)) invalidRuntimeConfig();
-
   const names: string[] = [];
   for (const [name, target] of Object.entries(value)) {
     assertVocabularyName(name);
     if (!isRecord(target)) invalidRuntimeConfig();
-
     const hasExpression = target.expression !== undefined;
     if (hasExpression && !nonEmptyString(target.expression)) invalidRuntimeConfig();
     const hasMotion = target.motion !== undefined;
@@ -59,7 +53,6 @@ function readEmotionNames(value: unknown): string[] {
 function readMotionNames(value: unknown): string[] {
   if (value === undefined) return [];
   if (!isRecord(value)) invalidRuntimeConfig();
-
   const names: string[] = [];
   for (const [name, target] of Object.entries(value)) {
     assertVocabularyName(name);

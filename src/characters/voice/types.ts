@@ -1,7 +1,9 @@
-export interface CharacterVoiceReference {
+export interface CharacterVoiceSample {
   id: string;
-  characterCardId: string;
+  characterId: string;
   name: string;
+  /** 创建时确定、此后不可修改的磁盘文件名。 */
+  fileName: string;
   promptText: string;
   promptLang: string;
   isPrimary: boolean;
@@ -13,9 +15,10 @@ export interface CharacterVoiceReference {
   updatedAt: number;
 }
 
-export interface CharacterVoiceReferenceInput {
+export interface CharacterVoiceSampleInput {
   id?: string;
   name: string;
+  fileName: string;
   promptText: string;
   promptLang: string;
   isPrimary?: boolean;
@@ -25,15 +28,22 @@ export interface CharacterVoiceReferenceInput {
   durationMs?: number | null;
 }
 
-export interface CharacterVoiceReferencePatch {
+export interface CharacterVoiceSamplePatch {
   name?: string;
   enabled?: boolean;
 }
 
-export interface ImportCharacterVoiceReferenceInput {
+export interface ImportCharacterVoiceSampleInput {
   sourceFile: string;
-  name: string;
   promptText: string;
   promptLang: string;
   isPrimary?: boolean;
+}
+
+export interface PublishCharacterVoiceSampleInput {
+  fileName: string;
+  promptText: string;
+  promptLang: string;
+  isPrimary?: boolean;
+  bytes: Uint8Array;
 }

@@ -1,21 +1,22 @@
-// 将角色参考音频领域对象映射到参考音频存储记录。
+// 将角色参考音频领域对象映射到音频存储记录。
 
 import { randomUUID } from 'node:crypto';
 import {
-  CharacterVoiceReferencesRepo,
-  type CharacterVoiceReferenceRow,
+  CharacterVoiceSampleRepo,
+  type CharacterVoiceSampleRow,
 } from '@ema-agent/storage';
 import type {
-  CharacterVoiceReference,
-  CharacterVoiceReferenceInput,
-  CharacterVoiceReferencePatch,
+  CharacterVoiceSample,
+  CharacterVoiceSampleInput,
+  CharacterVoiceSamplePatch,
 } from './types.js';
 
-function fromRow(row: CharacterVoiceReferenceRow): CharacterVoiceReference {
+function fromRow(row: CharacterVoiceSampleRow): CharacterVoiceSample {
   return {
     id: row.id,
-    characterCardId: row.character_card_id,
+    characterId: row.character_id,
     name: row.name,
+    fileName: row.file_name,
     promptText: row.prompt_text,
     promptLang: row.prompt_lang,
     isPrimary: row.is_primary === 1,
@@ -28,64 +29,64 @@ function fromRow(row: CharacterVoiceReferenceRow): CharacterVoiceReference {
   };
 }
 
-export class CharacterVoiceReferenceRepository {
-  constructor(private readonly repo: CharacterVoiceReferencesRepo) {}
+export class CharacterVoiceSampleRepository {
+  constructor(private readonly repo: CharacterVoiceSampleRepo) {}
 
-  list(characterCardId: string): CharacterVoiceReference[] {
-    return this.repo.listForCard(characterCardId).map(fromRow);
+  list(characterId: string): CharacterVoiceSample[] {
+    return this.repo.listForCharacter(characterId).map(fromRow);
   }
 
-  /** 批量取多张卡的参考音频并按卡分组;Store 全量聚合用它替代逐卡查询。 */
-  listForCards(
-    characterCardIds: readonly string[],
-  ): Map<string, CharacterVoiceReference[]> {
-    const grouped = new Map<string, CharacterVoiceReference[]>();
-    for (const row of this.repo.listForCards(characterCardIds)) {
-      const cardId = row.character_card_id;
-      const list = grouped.get(cardId) ?? [];
+  /** 批量取多张角色的音频并按角色分组；Store 全量聚合用它替代逐角色查询。 */
+  listForCharacters(
+    characterIds: readonly string[],
+  ): Map<string, CharacterVoiceSample[]> {
+    const grouped = new Map<string, CharacterVoiceSample[]>();
+    for (const row of this.repo.listForCharacters(characterIds)) {
+      const key = row.character_id;
+      const list = grouped.get(key) ?? [];
       list.push(fromRow(row));
-      grouped.set(cardId, list);
+      grouped.set(key, list);
     }
     return grouped;
   }
 
   insert(
-    characterCardId: string,
-    input: CharacterVoiceReferenceInput,
-  ): CharacterVoiceReference {
+    characterId: string,
+    input: CharacterVoiceSampleInput,
+  ): CharacterVoiceSample {
     const id = input.id ?? randomUUID();
     const now = Date.now();
     this.repo.insert({
       ...input,
       id,
-      characterCardId,
+      characterId,
       createdAt: now,
       updatedAt: now,
     });
-    return fromRow(this.repo.findById(characterCardId, id)!);
+    return fromRow(this.repo.findById(characterId, id)!);
   }
 
   setPrimary(
-    characterCardId: string,
+    characterId: string,
     id: string,
   ): boolean {
-    return this.repo.setPrimary(characterCardId, id, Date.now());
+    return this.repo.setPrimary(characterId, id, Date.now());
   }
 
   update(
-    characterCardId: string,
+    characterId: string,
     id: string,
-    patch: CharacterVoiceReferencePatch,
-  ): CharacterVoiceReference | undefined {
-    const row = this.repo.update(characterCardId, id, patch, Date.now());
+    patch: CharacterVoiceSamplePatch,
+  ): CharacterVoiceSample | undefined {
+    const row = this.repo.update(characterId, id, patch, Date.now());
     return row ? fromRow(row) : undefined;
   }
 
   delete(
-    characterCardId: string,
+    characterId: string,
     id: string,
-  ): CharacterVoiceReference | undefined {
-    const row = this.repo.delete(characterCardId, id, Date.now());
+  ): CharacterVoiceSample | undefined {
+    const row = this.repo.delete(characterId, id, Date.now());
     return row ? fromRow(row) : undefined;
   }
 }

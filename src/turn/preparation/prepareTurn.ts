@@ -13,7 +13,6 @@ import {
   type Attachment,
   type DescribeAttachmentImage,
 } from '@ema-agent/attachments';
-import type { CharacterPrompt } from '@ema-agent/characters';
 import {
   readCompactSettings,
   type CompactSettings,
@@ -105,7 +104,7 @@ export interface PrepareTurnDeps extends TurnToolsDeps {
   readonly providers: Providers;
   readonly providerModels: ProviderModels;
   readonly attachments: AttachmentStore;
-  readonly characterPrompt: () => CharacterPrompt;
+  readonly characterPrompt: () => readonly string[];
   /** SkillRegistry 当前全量条目；冻结在 Pool 之前读取一次。 */
   readonly skillEntries: () => readonly SkillDescriptor[];
   /** 默认 llm 包的 createLanguageModel；测试注入脚本化模型。 */

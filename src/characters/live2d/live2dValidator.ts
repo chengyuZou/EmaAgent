@@ -6,35 +6,7 @@ import { CharacterResourceValidationError } from '../errors.js';
 
 export interface Live2dPackageFiles {
   readonly modelPath: string;
-  readonly runtimeConfigPath: string;
-}
-
-export async function findLive2dPackageFiles(
-  directory: string,
-): Promise<Live2dPackageFiles> {
-  const stat = await fs.promises.stat(directory).catch(() => null);
-  if (!stat?.isDirectory()) {
-    throw new CharacterResourceValidationError('source_directory_required');
-  }
-
-  const files = await listFiles(directory);
-  const modelPaths = files.filter(file => file.toLowerCase().endsWith('.model3.json'));
-  const runtimeConfigPaths = files.filter(
-    file => path.basename(file).toLowerCase() === 'runtime-config.json',
-  );
-  if (modelPaths.length !== 1) {
-    throw new CharacterResourceValidationError('live2d_entry_invalid');
-  }
-  if (runtimeConfigPaths.length !== 1) {
-    throw new CharacterResourceValidationError('live2d_runtime_config_invalid');
-  }
-
-  await readJsonObject(modelPaths[0]!, 'live2d_entry_invalid');
-  await readJsonObject(runtimeConfigPaths[0]!, 'live2d_runtime_config_invalid');
-  return {
-    modelPath: modelPaths[0]!,
-    runtimeConfigPath: runtimeConfigPaths[0]!,
-  };
+  readonly runtimeConfigPath: string | null;
 }
 
 export function findLive2dPackageFilesSync(directory: string): Live2dPackageFiles {
@@ -55,25 +27,14 @@ export function findLive2dPackageFilesSync(directory: string): Live2dPackageFile
   if (modelPaths.length !== 1) {
     throw new CharacterResourceValidationError('live2d_entry_invalid');
   }
-  if (runtimeConfigPaths.length !== 1) {
+  if (runtimeConfigPaths.length > 1) {
     throw new CharacterResourceValidationError('live2d_runtime_config_invalid');
   }
   readJsonObjectSync(modelPaths[0]!, 'live2d_entry_invalid');
-  readJsonObjectSync(runtimeConfigPaths[0]!, 'live2d_runtime_config_invalid');
-  return { modelPath: modelPaths[0]!, runtimeConfigPath: runtimeConfigPaths[0]! };
-}
-
-async function listFiles(root: string): Promise<string[]> {
-  const result: string[] = [];
-  async function walk(directory: string): Promise<void> {
-    for (const entry of await fs.promises.readdir(directory, { withFileTypes: true })) {
-      const absolutePath = path.join(directory, entry.name);
-      if (entry.isDirectory()) await walk(absolutePath);
-      else if (entry.isFile()) result.push(absolutePath);
-    }
+  if (runtimeConfigPaths[0]) {
+    readJsonObjectSync(runtimeConfigPaths[0], 'live2d_runtime_config_invalid');
   }
-  await walk(root);
-  return result;
+  return { modelPath: modelPaths[0]!, runtimeConfigPath: runtimeConfigPaths[0] ?? null };
 }
 
 function listFilesSync(root: string): string[] {
@@ -87,20 +48,6 @@ function listFilesSync(root: string): string[] {
   }
   walk(root);
   return result;
-}
-
-async function readJsonObject(
-  filePath: string,
-  reason: 'live2d_entry_invalid' | 'live2d_runtime_config_invalid',
-): Promise<void> {
-  try {
-    const value: unknown = JSON.parse(await fs.promises.readFile(filePath, 'utf8'));
-    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-      throw new Error('JSON root is not an object');
-    }
-  } catch {
-    throw new CharacterResourceValidationError(reason);
-  }
 }
 
 function readJsonObjectSync(

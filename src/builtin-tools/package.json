@@ -42,7 +42,6 @@
     "@ema-agent/tasks": "workspace:*",
     "@ema-agent/token": "workspace:*",
     "@ema-agent/tools": "workspace:*",
-    "@ema-agent/turn": "workspace:*",
     "@ema-agent/ui": "workspace:*",
     "diff": "^9.0.0",
     "glob": "^11.0.0",

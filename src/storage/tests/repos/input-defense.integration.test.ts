@@ -3,8 +3,8 @@ import {
   AgentRunMessageSerializationError,
   AgentRunMessagesRepo,
   AgentRunsRepo,
-  CharacterCardsRepo,
-  CharacterCardUpdateContractError,
+  CharacterRepo,
+  CharacterUpdateContractError,
   Database,
   DocumentAssetRepo,
   DocumentPreviewRepo,
@@ -64,15 +64,15 @@ describe('N-003 Settings JSON 防御', () => {
   });
 });
 
-describe('N-004 CharacterCard 更新契约', () => {
-  it('拒绝通过普通 update 修改激活状态和内置标记', () => {
+describe('N-004 Character 更新契约', () => {
+  it('拒绝通过普通 update 修改激活状态、内置标记和目录名', () => {
     withDatabase('profile', (database) => {
-      const repo = new CharacterCardsRepo(database.sqlite);
-      const id = 'card-a';
+      const repo = new CharacterRepo(database.sqlite);
+      const id = 'character-a';
       repo.insert({
         id,
-        name: 'Card A',
-        systemPrompt: 'prompt',
+        name: 'Character A',
+        directoryName: 'character-a',
         isActive: true,
         isBuiltin: true,
         createdAt: 1,
@@ -80,21 +80,23 @@ describe('N-004 CharacterCard 更新契约', () => {
       });
 
       expect(() => repo.update(id, { isActive: false } as never))
-        .toThrow(CharacterCardUpdateContractError);
+        .toThrow(CharacterUpdateContractError);
       expect(() => repo.update(id, { isBuiltin: false } as never))
-        .toThrow(CharacterCardUpdateContractError);
+        .toThrow(CharacterUpdateContractError);
+      expect(() => repo.update(id, { directoryName: 'renamed' } as never))
+        .toThrow(CharacterUpdateContractError);
       expect(repo.findById(id)).toMatchObject({ is_active: 1, is_builtin: 1 });
     });
   });
 
   it('普通业务字段仍可更新', () => {
     withDatabase('profile', (database) => {
-      const repo = new CharacterCardsRepo(database.sqlite);
-      const id = 'card-a';
+      const repo = new CharacterRepo(database.sqlite);
+      const id = 'character-a';
       repo.insert({
         id,
         name: 'Before',
-        systemPrompt: 'prompt',
+        directoryName: 'before',
         createdAt: 1,
         updatedAt: 1,
       });
@@ -102,6 +104,27 @@ describe('N-004 CharacterCard 更新契约', () => {
       repo.update(id, { name: 'After', updatedAt: 2 });
 
       expect(repo.findById(id)).toMatchObject({ name: 'After', updated_at: 2 });
+    });
+  });
+
+  it('目录名唯一约束拒绝重复物理名称', () => {
+    withDatabase('profile', (database) => {
+      const repo = new CharacterRepo(database.sqlite);
+      repo.insert({
+        id: 'a',
+        name: 'A',
+        directoryName: 'same',
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      expect(() => repo.insert({
+        id: 'b',
+        name: 'B',
+        directoryName: 'same',
+        createdAt: 2,
+        updatedAt: 2,
+      })).toThrow();
+      expect(repo.findByDirectoryName('same')?.id).toBe('a');
     });
   });
 });
