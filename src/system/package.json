@@ -20,6 +20,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "clean": "rimraf dist"
   },
+  "dependencies": {
+    "@ema-agent/sandbox": "workspace:*"
+  },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "rimraf": "^5.0.0",
