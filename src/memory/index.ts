@@ -41,6 +41,36 @@ export {
   clearMemoryDirectory,
   clearMemoryFiles,
 } from './common/clearMemory.js';
+export { measureMemoryStorageBytes } from './capacity/measureStorageBytes.js';
+export {
+  DEFAULT_MEMORY_STORAGE_LIMIT,
+  readMemoryStorageLimit,
+  evaluateMemoryStorage,
+} from './capacity/storageLimit.js';
+export type {
+  MemoryStorageLevel,
+  MemoryStorageLimit,
+  MemoryStorageStatus,
+} from './capacity/storageLimit.js';
+export {
+  DEFAULT_MEMORY_BUDGETS,
+  readMemoryBudgets,
+} from './capacity/budgets.js';
+export type { MemoryBudgets } from './capacity/budgets.js';
+export {
+  MEMORY_SETTINGS,
+  memoryBudgetsGroup,
+  memoryStorageMaxBytesSetting,
+  memorySummaryTokensSetting,
+  memoryCoreFileBytesSetting,
+  memoryTopicFileBytesSetting,
+  memoryHistoryFileBytesSetting,
+  memoryTurnEvidenceFileBytesSetting,
+  memoryTurnEvidenceFilesSetting,
+  memoryConsolidationItemsSetting,
+  memoryConsolidationInputBytesSetting,
+  memoryGitDiffBytesSetting,
+} from './settings.js';
 export {
   MemoryNoteAlreadyExistsError,
   MemoryNoteCharacterRequiredError,
