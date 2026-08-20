@@ -1,81 +1,48 @@
-// Memory 包出口(重构占位)。
-// 旧架构已清空,新架构(work/chat 双轨 + common 工程层)施工中。
-// 当前只暴露 common/ 纯文件层;work/chat 与对外契约(recallForTurn 注入、提取、整合)待讨论后补。
+// 导出 Memory 当前已经定型的文件能力.
+
 export {
   memoryRootDir,
-  workRootDir,
-  chatRootDir,
-  characterDir,
-  workNotesDir,
-  characterNotesDir,
+  workMemoryDir,
+  relationshipMemoryDir,
+  relationshipCharacterDir,
+  workMemoryNotesDir,
+  sharedRelationshipNotesDir,
+  characterRelationshipNotesDir,
   turnEvidenceDir,
-  sanitizeDirSegment,
+  memorySummaryFile,
+  memoryFileSlug,
 } from './common/paths.js';
 export {
-  workWorkspace,
-  chatWorkspace,
-  renderDiffFile,
-} from './common/workspace.js';
-export type { TrackWorkspace } from './common/workspace.js';
-export { clearMemoryRoot } from './common/control.js';
+  memoryGitDiffFile,
+  prepareMemoryGitWorkspace,
+  readMemoryGitDiff,
+  writeMemoryGitDiff,
+  acceptMemoryGitChanges,
+  removeMemoryGitDiff,
+  renderMemoryGitDiff,
+} from './common/gitWorkspace.js';
 export {
-  FILE_LIMITS,
-  PRESSURE_ACTIONS,
-  isOverBudget,
-} from './common/capacity.js';
-export type { PressureAction } from './common/capacity.js';
+  syncTurnEvidence,
+  turnEvidenceFileName,
+  renderTurnEvidence,
+} from './common/turnEvidence.js';
+export type { TurnEvidence } from './common/turnEvidence.js';
 export {
-  noteFilename,
-  sanitizeSlug,
-  workNotePath,
-  characterNotePath,
+  readMemorySummary,
+  truncateMemorySummary,
+} from './common/memorySummary.js';
+export {
+  memoryNoteFileName,
+  createMemoryNote,
 } from './common/notes.js';
+export type { MemoryNoteTarget } from './common/notes.js';
 export {
-  loadSummaryForInjection,
-  truncateToTokens,
-  renderMemoryGuide,
-  SUMMARY_VERSION_MARKER,
-} from './common/inject.js';
-export type {
-  SummaryInjection,
-  SummaryInjectionOptions,
-  LoadSummaryResult,
-} from './common/inject.js';
+  clearAllMemory,
+  clearMemoryDirectory,
+  clearMemoryFiles,
+} from './common/clearMemory.js';
 export {
-  ensureTurnEvidenceLayout,
-  rebuildTurnEvidenceFiles,
-  syncTurnEvidenceFiles,
-  pruneTurnEvidenceFiles,
-  writeTurnEvidenceFile,
-  renderTurnEvidenceBody,
-  retainedRows,
-  turnEvidenceFileStem,
-  turnEvidenceFileStemFromParts,
-} from './common/storage.js';
-export type { StageOutputRow } from './common/storage.js';
-export {
-  memoryBudgetOk,
-  budgetCheck,
-  snapshotAllowsStartup,
-  dirSizeBytes,
-  BUDGET_EXCLUDED_DIRS,
-  BUDGET_SCAN_ENTRY_LIMIT,
-} from './common/guard.js';
-export type { BudgetSnapshot } from './common/guard.js';
-export {
-  parseMemoryCitation,
-  parseMemoryCitationEntry,
-} from './common/citations.js';
-export type {
-  MemoryCitation,
-  MemoryCitationEntry,
-} from './common/citations.js';
-export {
-  memoryUsageKindsFromToolCall,
-  kindFromPath,
-  MEMORY_TOOL_NAMES,
-} from './common/usage.js';
-export type {
-  MemoryUsageKind,
-  MemoryToolCallArgs,
-} from './common/usage.js';
+  MemoryNoteAlreadyExistsError,
+  MemoryNoteCharacterRequiredError,
+  MemoryNoteEmptyError,
+} from './errors.js';
