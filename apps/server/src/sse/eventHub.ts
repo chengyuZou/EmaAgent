@@ -98,6 +98,11 @@ export class EventHub {
     return total;
   }
 
+  /** 诊断用：应用通道当前订阅者数。 */
+  appSubscriberCount(): number {
+    return this.appSubscribers.size;
+  }
+
   appSubscriberCount(): number {
     return this.appSubscribers.size;
   }

@@ -2,6 +2,7 @@
 
 import type { EmbeddingSpace } from '@ema-agent/embed';
 import type { AssetUsage, ChunkPage } from '@ema-agent/storage';
+import { DocumentAssetCursorError } from '@ema-agent/storage';
 import type {
   AssetListPage,
   DocumentAsset,
@@ -206,7 +207,15 @@ export class KnowledgeClient {
   }
 
   listAssets(options: { cursor?: string; limit?: number; keyword?: string } = {}): AssetListPage {
-    return this.deps.store.listAssetsPaged(options);
+    try {
+      return this.deps.store.listAssetsPaged(options);
+    } catch (error) {
+      // 公共入口抛出的错误类型归本包：storage 游标错误在边界转换为无效请求。
+      if (error instanceof DocumentAssetCursorError) {
+        throw new KnowledgeInvalidRequestError(error.message);
+      }
+      throw error;
+    }
   }
 
   listInactiveAssets(days = 30): DocumentAsset[] {

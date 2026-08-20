@@ -20,6 +20,7 @@ import type { SettingsStore } from '@ema-agent/settings';
 import {
   createSkillRegistry,
   createSkillStore,
+  SkillSiteStore,
   type SkillRegistry,
   type SkillStore,
 } from '@ema-agent/skills';
@@ -27,6 +28,7 @@ import {
   McpRegistrySourcesRepo,
   McpServersRepo,
   SkillsRepo,
+  SkillSitesRepo,
   ToolExecutionsRepo,
   BackgroundProcessesRepo,
   type Database,
@@ -131,6 +133,9 @@ export interface ToolsComposition {
   readonly mcpSources: McpRegistrySourceStore;
   readonly skills: SkillRegistry;
   readonly skillStore: SkillStore;
+  /** 技能市场站点注册表与安装落位根目录（staging 与 rename 同卷的约束来源）。 */
+  readonly skillSites: SkillSiteStore;
+  readonly skillUserRoot: string;
   readonly stdioApprovals: McpStdioApprovalChannel;
   readonly sandboxStatus: SandboxStatusWire;
   /** 按 Session 缓存的命令运行器；workspaceRoot 变化后必须 invalidate。 */
@@ -269,6 +274,7 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
     bundledSkillsSource: bundledSkillsDir(),
     store: skillStore,
   });
+  const skillSites = new SkillSiteStore(new SkillSitesRepo(profileDb.sqlite));
 
   return {
     registry,
@@ -280,6 +286,8 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
     mcpSources,
     skills,
     skillStore,
+    skillSites,
+    skillUserRoot,
     stdioApprovals,
     sandboxStatus,
     getCommandRunner,

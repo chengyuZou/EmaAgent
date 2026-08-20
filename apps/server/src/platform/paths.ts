@@ -37,7 +37,7 @@ export function lockfilePath(): string {
 
 // ── 角色资源包 ────────────────────────────────────────────────────────────────
 
-/** 所有角色的唯一运行时资源根：`<profileDir>/characters/<cardId>/{live2d,portraits,voiceRefs}/`。 */
+/** 所有角色的唯一运行时资源根：`<profileDir>/characters/<directoryName>/{live2d,illustration,voice}/`。 */
 export function charactersDir(): string {
   return path.join(profileDir(), 'characters');
 }
