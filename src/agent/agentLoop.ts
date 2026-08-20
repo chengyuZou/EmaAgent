@@ -37,6 +37,7 @@ interface IterationResponse {
   >;
   readonly stopReason: LlmStopReason;
   readonly usage: LlmTokenUsage;
+  readonly durationMs: number;
 }
 
 export async function* runAgentLoop(
@@ -104,6 +105,7 @@ export async function* runAgentLoop(
     while (true) {
       // Context 超限后的重试仍属于同一次 Agent iteration；每次尝试使用全新累加器，
       // 失败尝试的半截 block 不得混入恢复后的 Assistant Message。
+      const callStartedAt = Date.now();
       const textByIndex = new Map<number, string>();
       const thinkingByIndex = new Map<number, string>();
       const thinkingSignatureByIndex = new Map<number, string>();
@@ -221,6 +223,7 @@ export async function* runAgentLoop(
           toolUseByIndex,
           stopReason,
           usage,
+          durationMs: Date.now() - callStartedAt,
         };
         break;
       } catch (error) {
@@ -254,6 +257,7 @@ export async function* runAgentLoop(
       toolUseByIndex,
       stopReason,
       usage,
+      durationMs,
     } = response;
     const callText = orderedText(textByIndex);
     for (const blockIndex of thinkingByIndex.keys()) {
@@ -266,6 +270,7 @@ export async function* runAgentLoop(
       iteration,
       usage,
       stopReason,
+      durationMs,
     };
 
     // 恢复 generator 说明外层已经保存完整 assistant block；此后才允许工具执行。

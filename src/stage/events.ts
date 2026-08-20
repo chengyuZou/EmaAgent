@@ -12,6 +12,6 @@ export interface EmotionState {
   intensity: number;
 }
 
-export type EmotionStreamEvent =
+export type StageStreamEvent =
   | { type: 'stage_cue'; sessionId: string; turnId: string; cue: StageCue }
   | { type: 'emotion_changed'; sessionId: string; turnId: string; state: EmotionState };

@@ -18,6 +18,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "clean": "rimraf dist"
   },
+  "dependencies": {
+    "@ema-agent/providers": "workspace:*"
+  },
   "devDependencies": {
     "rimraf": "^5.0.0",
     "typescript": "^5.9.3",

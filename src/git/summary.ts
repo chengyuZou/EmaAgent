@@ -1,12 +1,16 @@
 // gitSummary:能力裁决 → 并行只读查询 → 组装对外摘要;任何失败都归入明确 capability,不抛出。
-import { GitError } from './errors.js';
 import { findRepoRoot } from './repoDetection.js';
+import { mapGitError } from './errors.js';
 import { queryBranch } from './queries/branch.js';
 import { queryChangeStats } from './queries/changeStats.js';
 import { queryUntrackedCount } from './queries/status.js';
 import { queryUpstream } from './queries/upstream.js';
 import { queryOriginUrl } from './queries/remote.js';
-import type { GitSummary } from './types.js';
+import type {
+  GitSummary,
+  GitSummaryUnavailable,
+  GitSummaryError,
+} from './types.js';
 
 export async function gitSummary(workspaceRoot: string): Promise<GitSummary> {
   const repoRoot = await findRepoRoot(workspaceRoot);
@@ -33,10 +37,9 @@ export async function gitSummary(workspaceRoot: string): Promise<GitSummary> {
       originUrl,
     };
   } catch (error) {
-    if (error instanceof GitError) {
-      if (error.code === 'git/unavailable') return { capability: 'git-unavailable' };
-      return { capability: 'error', message: error.stderr ?? error.message };
-    }
-    throw error;
+    return mapGitError(error, (kind, message): GitSummaryUnavailable | GitSummaryError =>
+      kind === 'unavailable'
+        ? { capability: 'git-unavailable' }
+        : { capability: 'error', message });
   }
 }

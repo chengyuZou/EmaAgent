@@ -17,6 +17,7 @@ import type {
   Turn,
   TurnFailureCode,
 } from '@ema-agent/turn-terms';
+import { reportUsage, createUsageRecord, type UsageRecorder } from '@ema-agent/usage';
 import {
   TurnEventChannel,
   TurnEventChannelClosedError,
@@ -76,6 +77,8 @@ export interface TurnExecutorDeps extends PrepareTurnDeps {
   readonly reminderSources: (
     scope: TurnReminderScope,
   ) => Promise<PrepareLlmCallReminderSources> | PrepareLlmCallReminderSources;
+  /** 逐次 LLM 调用用量记录；缺省不记账（观测不阻断主链）。 */
+  readonly usageRecorder?: UsageRecorder;
   /** Turn 成功提交后执行的非关键观察者；失败不得反向改写 Turn 终态。 */
   readonly completedObserver?: { record(turn: Turn): void | Promise<void> };
 }
@@ -289,6 +292,9 @@ export class TurnExecutor {
       })) {
         await writer.apply(event);
         this.translate(event, sessionId, turnId, toolNames, emit);
+        if (event.type === 'assistant_message_completed') {
+          recordCallUsage(this.deps.usageRecorder, prepared, sessionId, turnId, event);
+        }
         if (event.type === 'loop_stopped') stopped = event;
       }
 
@@ -465,4 +471,39 @@ export class TurnExecutor {
         return;
     }
   }
+}
+
+/** 逐次 LLM 调用记账；零消耗（首个 token 前就中止）不产生记录。观测失败不阻断主链。 */
+function recordCallUsage(
+  recorder: UsageRecorder | undefined,
+  prepared: PreparedTurn,
+  sessionId: string,
+  turnId: string,
+  event: Extract<AgentLoopEvent, { type: 'assistant_message_completed' }>,
+): void {
+  if (!recorder) return;
+  const { usage } = event;
+  if (
+    usage.inputTokens <= 0
+    && usage.outputTokens <= 0
+    && (usage.cacheReadInputTokens ?? 0) <= 0
+    && (usage.cacheWriteInputTokens ?? 0) <= 0
+  ) return;
+  reportUsage(
+    recorder,
+    createUsageRecord({
+      capability: 'llm',
+      providerId: prepared.providerId,
+      modelId: prepared.modelId,
+      status: 'completed',
+      startedAt: Date.now() - event.durationMs,
+      durationMs: event.durationMs,
+      usageContext: { callId: `${turnId}:${event.iteration}`, sessionId, turnId },
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      cacheReadInputTokens: usage.cacheReadInputTokens ?? null,
+      cacheWriteInputTokens: usage.cacheWriteInputTokens ?? null,
+    }),
+    error => console.warn('[usage] LLM 调用记账失败:', error),
+  );
 }

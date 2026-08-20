@@ -1,10 +1,14 @@
 // gitRefs:分支列表 + 最近提交 + 当前分支的一次性组装,供比较范围选择器。
-import { GitError } from './errors.js';
 import { findRepoRoot } from './repoDetection.js';
+import { mapGitError } from './errors.js';
 import { queryBranch } from './queries/branch.js';
 import { queryBranches } from './queries/branches.js';
 import { queryRecentCommits } from './queries/commits.js';
-import type { GitRefsResult } from './types.js';
+import type {
+  GitRefsResult,
+  GitSummaryUnavailable,
+  GitSummaryError,
+} from './types.js';
 
 export async function gitRefs(workspaceRoot: string): Promise<GitRefsResult> {
   const repoRoot = await findRepoRoot(workspaceRoot);
@@ -23,10 +27,9 @@ export async function gitRefs(workspaceRoot: string): Promise<GitRefsResult> {
       commits,
     };
   } catch (error) {
-    if (error instanceof GitError) {
-      if (error.code === 'git/unavailable') return { capability: 'git-unavailable' };
-      return { capability: 'error', message: error.stderr ?? error.message };
-    }
-    throw error;
+    return mapGitError(error, (kind, message): GitSummaryUnavailable | GitSummaryError =>
+      kind === 'unavailable'
+        ? { capability: 'git-unavailable' }
+        : { capability: 'error', message });
   }
 }

@@ -2,9 +2,8 @@
 // 安全约束与 codex git-utils 一致:只读查询绝不能触发仓库配置的 hook,也不抢 .git/index.lock。
 import { execFile } from 'node:child_process';
 import { GitError } from './errors.js';
+import { DEFAULT_GIT_SETTINGS } from './settings.js';
 
-const GIT_TIMEOUT_MS = 5_000;
-const MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
 /** 让内部查询绕过仓库 hooksPath;Windows 空设备为 NUL,其余为 /dev/null。 */
 const DISABLED_HOOKS_PATH = process.platform === 'win32' ? 'NUL' : '/dev/null';
 
@@ -18,6 +17,10 @@ export interface RunGitOptions {
   readonly allowedExitCodes?: readonly number[];
   /** 单次输出上限,默认 4MB;合并 patch 可能超过默认值,调用方显式抬高。 */
   readonly maxOutputBytes?: number;
+  /** 额外全局配置(-c key=value),注入到内置安全配置之后、子命令之前。用于 commit 等需要作者/签名配置的写操作。 */
+  readonly extraConfig?: readonly string[];
+  /** 超时(ms),默认 settings 的 git.timeout.readMs(5s);写操作(init/add/commit/apply)应显式传 git.timeout.writeMs。 */
+  readonly timeoutMs?: number;
 }
 
 export function runGit(
@@ -32,12 +35,13 @@ export function runGit(
         '-c', `core.hooksPath=${DISABLED_HOOKS_PATH}`,
         // 仓库可配置任意 fsmonitor 可执行 helper,内部查询一律禁用,不移植 codex 的探测逻辑。
         '-c', 'core.fsmonitor=false',
+        ...(options.extraConfig?.flatMap((cfg) => ['-c', cfg]) ?? []),
         ...args,
       ],
       {
         cwd,
-        timeout: GIT_TIMEOUT_MS,
-        maxBuffer: options.maxOutputBytes ?? MAX_OUTPUT_BYTES,
+        timeout: options.timeoutMs ?? DEFAULT_GIT_SETTINGS.readTimeoutMs,
+        maxBuffer: options.maxOutputBytes ?? DEFAULT_GIT_SETTINGS.maxOutputBytes,
         windowsHide: true,
         env: {
           ...process.env,
@@ -58,7 +62,7 @@ export function runGit(
           return;
         }
         if (err.killed) {
-          reject(new GitError('git/timeout', `git ${args.join(' ')}: timed out after ${GIT_TIMEOUT_MS}ms`));
+          reject(new GitError('git/timeout', `git ${args.join(' ')}: timed out after ${options.timeoutMs ?? DEFAULT_GIT_SETTINGS.readTimeoutMs}ms`));
           return;
         }
         if (typeof err.code === 'number' && options.allowedExitCodes?.includes(err.code)) {

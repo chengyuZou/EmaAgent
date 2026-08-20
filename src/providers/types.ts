@@ -1,5 +1,8 @@
 // 模型能力：六个执行面入口(LLM / 嵌入 / 重排 / 视觉 / 语音合成 / 语音识别) 未来可加入imagegen / 视频等 等更新吧
-export type ModelCapability = 'llm' | 'embed' | 'rerank' | 'vision' | 'tts' | 'stt';
+/** 运行时能力清单是全词汇的唯一事实源；类型由它推导，两边不可能漂移。 */
+export const MODEL_CAPABILITIES = ['llm', 'embed', 'rerank', 'vision', 'tts', 'stt'] as const;
+
+export type ModelCapability = typeof MODEL_CAPABILITIES[number];
 
 export const PROTOCOLS = [
   'openai-llm',

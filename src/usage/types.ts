@@ -1,4 +1,6 @@
-export type UsageCapability = 'llm' | 'vision' | 'embed' | 'rerank' | 'stt' | 'tts';
+import type { ModelCapability } from '@ema-agent/providers';
+
+export type UsageCapability = ModelCapability;
 
 export type UsageRecordStatus = 'completed' | 'failed' | 'cancelled';
 

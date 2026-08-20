@@ -1,6 +1,6 @@
 // 校验调用级用量记录，拒绝会在存储层触发约束错误或污染统计的非法字段。
+import { MODEL_CAPABILITIES } from '@ema-agent/providers';
 import type {
-  UsageCapability,
   UsageRecord,
   UsageRecordStatus,
 } from './types.js';
@@ -38,8 +38,7 @@ export interface UsageRecordIssue {
   readonly message: string;
 }
 
-const CAPABILITIES: readonly UsageCapability[] =
-  ['llm', 'vision', 'embed', 'rerank', 'stt', 'tts'];
+const CAPABILITIES: readonly string[] = MODEL_CAPABILITIES;
 
 const STATUSES: readonly UsageRecordStatus[] =
   ['completed', 'failed', 'cancelled'];
