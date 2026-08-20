@@ -16,7 +16,8 @@ export interface SiteInstallInput {
 }
 
 export interface InstallDeps {
-  readonly store: SkillStore;
+  /** 安装落位只消费 finalizeInstall；按真实消费收窄。 */
+  readonly store: Pick<SkillStore, 'finalizeInstall'>;
   /** userRoot;staging 建在其中保证 rename 同卷原子。 */
   readonly userRoot: string;
   /** 测试注入的下载替身;生产默认走 downloadBundle(public-http)。 */

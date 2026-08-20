@@ -10,6 +10,8 @@ export type {
 export {
   SkillFrontmatterSchema,
   SkillNameSchema,
+  SKILL_KEY_PATTERN,
+  parseSkillKey,
   MAX_SKILL_BYTES,
   MAX_SKILL_BUNDLE_BYTES,
   MAX_SKILL_BUNDLE_FILES,
@@ -22,8 +24,8 @@ export {
   builtinSkillsEnabledSetting,
 } from './settings.js';
 export { parseSkillMd, validateSkillMd, readSkillFileBounded } from './parser.js';
-export { freezeSkillPool, renderSkillListing } from './skillPool.js';
-export type { SkillPoolFreezeInput } from './skillPool.js';
+export { freezeSkillPool, isSkillEnabled, renderSkillListing } from './skillPool.js';
+export type { SkillEnablement, SkillPoolFreezeInput } from './skillPool.js';
 export type { SkillRegistry, SkillRegistryDeps } from './registry.js';
 export { createSkillRegistry } from './registry.js';
 export { createSkillStore, STAGING_PREFIX } from './store.js';

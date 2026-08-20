@@ -2,8 +2,8 @@
 // 一字段一 key;原 decode 的过滤/去重/上限由 zod 的 regex/max/transform 承担。
 import { defineSetting } from '@ema-agent/settings';
 import { z } from 'zod';
+import { SKILL_KEY_PATTERN } from './types.js';
 
-const SKILL_KEY = /^(builtin|user|project):.+$/;
 const SOURCE_ID = /^[a-z][a-z0-9-]*$/;
 
 /** 唯一逐技能禁用:SkillKey deny-list,builtin/user/project 三作用域统一。 */
@@ -12,7 +12,7 @@ export const disabledSkillKeysSetting = defineSetting<string[]>({
   apply: 'nextTurn',
   defaultValue: [],
   schema: z
-    .array(z.string().regex(SKILL_KEY))
+    .array(z.string().regex(SKILL_KEY_PATTERN))
     .max(500)
     .transform(keys => [...new Set(keys)]),
 });

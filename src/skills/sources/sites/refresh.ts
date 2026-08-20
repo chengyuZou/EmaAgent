@@ -124,7 +124,7 @@ export async function applySkillUpdates(
  * 调用方在刷新成功后做更新对账;auto_update=1 的站点随后调 applySkillUpdates。
  */
 export async function refreshSites(deps: {
-  store: SkillSiteStore;
+  store: Pick<SkillSiteStore, 'listEnabled' | 'touchFetched' | 'saveFetchSuccess' | 'saveFetchFailure'>;
   fetchIndex?: SiteIndexFetchFn;
 }): Promise<SiteRefreshReport[]> {
   const fetchIndex = deps.fetchIndex ?? fetchSiteIndex;

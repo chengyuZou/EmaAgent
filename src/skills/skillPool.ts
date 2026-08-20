@@ -19,20 +19,25 @@ export interface SkillPoolFreezeInput {
   readonly builtinEnabled: boolean;
 }
 
+/** 启用判定的输入：三个 deny 开关的当前值。 */
+export type SkillEnablement = Omit<SkillPoolFreezeInput, 'entries'>;
+
 const SCOPE_RANK: Record<SkillScope, number> = { builtin: 0, user: 1, project: 2 };
+
+/** 单条启用判定：denyKeys → builtin 总开关 → project 来源禁用；Pool 冻结与 UI 投影共用。 */
+export function isSkillEnabled(entry: SkillDescriptor, input: SkillEnablement): boolean {
+  if (input.disabledKeys.includes(entry.key)) return false;
+  if (entry.scope === 'builtin' && !input.builtinEnabled) return false;
+  if (entry.scope === 'project') {
+    const sourceId = projectSourceId(entry.key);
+    if (sourceId !== null && input.disabledProjectSources.includes(sourceId)) return false;
+  }
+  return true;
+}
 
 /** 根 Turn 冻结:deny 过滤 + 确定性排序 + callName 别名 + revision。 */
 export function freezeSkillPool(input: SkillPoolFreezeInput): SkillPool {
-  const disabledKeys = new Set(input.disabledKeys);
-  const disabledSources = new Set(input.disabledProjectSources);
-
-  const visible = input.entries.filter((entry) => {
-    if (disabledKeys.has(entry.key)) return false;
-    if (entry.scope === 'builtin' && !input.builtinEnabled) return false;
-    if (entry.scope === 'project' && projectSourceId(entry.key) !== null
-      && disabledSources.has(projectSourceId(entry.key)!)) return false;
-    return true;
-  });
+  const visible = input.entries.filter((entry) => isSkillEnabled(entry, input));
 
   const sorted = [...visible].sort((left, right) =>
     SCOPE_RANK[left.scope] - SCOPE_RANK[right.scope]

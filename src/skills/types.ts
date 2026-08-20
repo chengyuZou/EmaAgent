@@ -28,6 +28,14 @@ export type SkillScope = 'builtin' | 'user' | 'project';
  */
 export type SkillKey = `${SkillScope}:${string}`;
 
+/** SkillKey 格式校验（settings schema 与 wire 边界共用同一事实源）。 */
+export const SKILL_KEY_PATTERN = /^(builtin|user|project):.+$/;
+
+/** wire/输入边界的 SkillKey 窄化；不合法返回 null。 */
+export function parseSkillKey(raw: string): SkillKey | null {
+  return SKILL_KEY_PATTERN.test(raw) ? (raw as SkillKey) : null;
+}
+
 // ── 描述符(注册表与 Pool 的统一条目) ─────────────────────────────────────────
 
 export interface SkillDescriptor {
