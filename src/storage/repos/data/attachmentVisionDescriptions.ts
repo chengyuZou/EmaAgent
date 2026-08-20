@@ -6,7 +6,6 @@ export interface AttachmentVisionDescriptionRow {
   attachment_id:        string;
   provider_id:   string;
   model_id:             string;
-  instruction_revision: string;
   text:                 string;
   byte_size:            number;
   created_at:           number;
@@ -17,7 +16,6 @@ export interface AttachmentVisionDescriptionKey {
   attachmentId:       string;
   providerId:   string;
   modelId:            string;
-  instructionRevision: string;
 }
 
 export class AttachmentVisionDescriptionsRepo {
@@ -26,24 +24,23 @@ export class AttachmentVisionDescriptionsRepo {
   find(key: AttachmentVisionDescriptionKey): AttachmentVisionDescriptionRow | undefined {
     return this.db.prepare(`
       SELECT * FROM attachment_vision_descriptions
-       WHERE attachment_id = ? AND provider_id = ?
-         AND model_id = ? AND instruction_revision = ?
+       WHERE attachment_id = ? AND provider_id = ? AND model_id = ?
     `).get(
-      key.attachmentId, key.providerId, key.modelId, key.instructionRevision,
+      key.attachmentId, key.providerId, key.modelId,
     ) as AttachmentVisionDescriptionRow | undefined;
   }
 
   upsert(key: AttachmentVisionDescriptionKey, text: string, byteSize: number, now: number): void {
     this.db.prepare(`
       INSERT INTO attachment_vision_descriptions (
-        attachment_id, provider_id, model_id, instruction_revision,
+        attachment_id, provider_id, model_id,
         text, byte_size, created_at, last_accessed_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(attachment_id, provider_id, model_id, instruction_revision)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(attachment_id, provider_id, model_id)
       DO UPDATE SET text = excluded.text, byte_size = excluded.byte_size,
                     last_accessed_at = excluded.last_accessed_at
     `).run(
-      key.attachmentId, key.providerId, key.modelId, key.instructionRevision,
+      key.attachmentId, key.providerId, key.modelId,
       text, byteSize, now, now,
     );
   }
@@ -51,10 +48,9 @@ export class AttachmentVisionDescriptionsRepo {
   touch(key: AttachmentVisionDescriptionKey, now: number): void {
     this.db.prepare(`
       UPDATE attachment_vision_descriptions SET last_accessed_at = ?
-       WHERE attachment_id = ? AND provider_id = ?
-         AND model_id = ? AND instruction_revision = ?
+       WHERE attachment_id = ? AND provider_id = ? AND model_id = ?
     `).run(
-      now, key.attachmentId, key.providerId, key.modelId, key.instructionRevision,
+      now, key.attachmentId, key.providerId, key.modelId,
     );
   }
 
@@ -81,14 +77,13 @@ export class AttachmentVisionDescriptionsRepo {
     if (rows.length === 0) return 0;
     const stmt = this.db.prepare(`
       DELETE FROM attachment_vision_descriptions
-       WHERE attachment_id = ? AND provider_id = ?
-         AND model_id = ? AND instruction_revision = ?
+       WHERE attachment_id = ? AND provider_id = ? AND model_id = ?
     `);
     let deleted = 0;
     this.db.transaction(() => {
       for (const key of rows) {
         deleted += stmt.run(
-          key.attachmentId, key.providerId, key.modelId, key.instructionRevision,
+          key.attachmentId, key.providerId, key.modelId,
         ).changes;
       }
     })();

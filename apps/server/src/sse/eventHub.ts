@@ -2,6 +2,7 @@
 import type { CharacterEvent } from '@ema-agent/characters';
 import type { KnowledgeEvent } from '@ema-agent/knowledge';
 import type { SpeechEvent } from '@ema-agent/speech';
+import type { SystemWarningEvent } from '@ema-agent/system';
 import type { BackgroundProcessEvent } from '@ema-agent/tools';
 import type { TurnEvent, TurnStreamEvent } from '@ema-agent/turn';
 
@@ -39,17 +40,9 @@ export type AppEvent =
   | KnowledgeEvent
   | CharacterEvent
   | TurnActivityEvent
-  | {
-      readonly type: 'settings_changed';
-      readonly changedKeys: readonly string[];
-      readonly revision: number;
-    }
-  | {
-      readonly type: 'system_warning';
-      readonly level: 'info' | 'warn' | 'error';
-      readonly message: string;
-    }
+  | SystemWarningEvent
   | { readonly type: 'session_title_updated'; readonly sessionId: string; readonly title: string }
+  | { readonly type: 'settings_changed'; readonly changedKeys: readonly string[]; readonly revision: number }
   | { readonly type: 'mcp_stdio_launch_required'; readonly request: McpStdioApprovalRequest };
 
 export class EventHub {

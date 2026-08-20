@@ -13,6 +13,7 @@ import type {
   Message,
 } from '@ema-agent/llm';
 import type { SessionStore } from '@ema-agent/session';
+import type { StageEngine } from '@ema-agent/stage';
 import type {
   Turn,
   TurnFailureCode,
@@ -79,6 +80,11 @@ export interface TurnExecutorDeps extends PrepareTurnDeps {
   ) => Promise<PrepareLlmCallReminderSources> | PrepareLlmCallReminderSources;
   /** 逐次 LLM 调用用量记录；缺省不记账（观测不阻断主链）。 */
   readonly usageRecorder?: UsageRecorder;
+  /**
+   * 角色舞台：text delta 在落库与发射前经它剥离表现标签（cleaned 是唯一持久化与
+   * 发射形态），emotion_changed/stage_cue 随流发出。缺省时 delta 原样透传。
+   */
+  readonly stage?: StageEngine;
   /** Turn 成功提交后执行的非关键观察者；失败不得反向改写 Turn 终态。 */
   readonly completedObserver?: { record(turn: Turn): void | Promise<void> };
 }
@@ -281,6 +287,10 @@ export class TurnExecutor {
 
       let stopped: Extract<AgentLoopEvent, { type: 'loop_stopped' }> | undefined;
       const toolNames = new Map<string, string>();
+      const stage = this.deps.stage;
+      // 新 Turn 重置舞台扫描器；情绪状态跨 Turn 保留。
+      stage?.beginTurn(sessionId);
+      let lastTextBlockIndex: number | undefined;
       for await (const event of runAgentLoop({
         messages: initialMessages,
         prepareIteration,
@@ -290,12 +300,35 @@ export class TurnExecutor {
         signal,
         maxIterations: prepared.maxIterations,
       })) {
-        await writer.apply(event);
-        this.translate(event, sessionId, turnId, toolNames, emit);
-        if (event.type === 'assistant_message_completed') {
-          recordCallUsage(this.deps.usageRecorder, prepared, sessionId, turnId, event);
+        let downstream = event;
+        if (stage && event.type === 'text_delta') {
+          lastTextBlockIndex = event.blockIndex;
+          const { cleaned, events: stageEvents } = stage.processChunk(event.delta, turnId, sessionId);
+          for (const stageEvent of stageEvents) emit(stageEvent);
+          // 整段都是表现标签：不落库不发 delta（用户可见正文没有这一段）。
+          if (cleaned.length === 0) continue;
+          downstream = { ...event, delta: cleaned };
         }
-        if (event.type === 'loop_stopped') stopped = event;
+        await writer.apply(downstream);
+        this.translate(downstream, sessionId, turnId, toolNames, emit);
+        if (downstream.type === 'assistant_message_completed') {
+          recordCallUsage(this.deps.usageRecorder, prepared, sessionId, turnId, downstream);
+        }
+        if (downstream.type === 'loop_stopped') stopped = downstream;
+      }
+
+      // 扫描器未闭合尾部按正文释放：与 cleaned 同待遇（落库 + 发射），不吞模型输出。
+      if (stage) {
+        const { cleaned } = stage.flush(turnId, sessionId);
+        if (cleaned.length > 0) {
+          const flushed: AgentLoopEvent = {
+            type: 'text_delta',
+            blockIndex: lastTextBlockIndex ?? 0,
+            delta: cleaned,
+          };
+          await writer.apply(flushed);
+          this.translate(flushed, sessionId, turnId, toolNames, emit);
+        }
       }
 
       if (!stopped) throw new Error('AgentLoop 未产生终止事件');
@@ -391,7 +424,7 @@ export class TurnExecutor {
       // 收口持久化失败已由 turn 终态承载，不再二次失败。
     }
     try {
-      this.deps.decisionQueue.cancelForTurn(turnId, `turn ${terminal}`);
+      this.deps.interactionQueue.cancelForTurn(turnId, `turn ${terminal}`);
     } catch {
       // 队列清理失败不能覆盖终态。
     }

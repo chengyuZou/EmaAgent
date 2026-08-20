@@ -30,7 +30,7 @@
     "@ema-agent/compact": "workspace:*",
     "@ema-agent/context": "workspace:*",
     "@ema-agent/embed": "workspace:*",
-    "@ema-agent/emotion": "workspace:*",
+    "@ema-agent/stage": "workspace:*",
     "@ema-agent/git": "workspace:*",
     "@ema-agent/knowledge": "workspace:*",
     "@ema-agent/llm": "workspace:*",

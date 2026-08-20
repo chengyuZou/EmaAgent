@@ -51,25 +51,33 @@ export function buildComposition(input: { activeDataDir: string }): Composition 
     providers.providers,
     providers.modelBindings,
     settings.settings,
+    database.usageRecorder,
   );
-  const characters = openCharacters(database.profileDb);
+  const characters = openCharacters(database.profileDb, settings.settings);
   const narrative = openNarrative(providers.providers, providers.providerModels, providers.modelBindings);
   const speech = openSpeech(
     database.dataDb,
     input.activeDataDir,
+    database.usageRecorder,
     providers.providers,
     providers.modelBindings,
-    characters.cards,
+    characters.store,
   );
 
   // ── 跨族胶合（只允许在这里出现） ────────────────────────────────────────────
-  // 换卡：情绪词汇跟随 + 应用事件广播。
-  characters.cards.onSwitched(next => {
-    characters.emotion.updateVocabulary([...next.emotionVocabulary]);
-    eventHub.emitApp({ type: 'character_card_switched', cardId: next.id, name: next.name });
+  // 换角色：舞台词汇（情绪+动作）跟随 + 应用事件广播。
+  characters.store.onSwitched(next => {
+    characters.stage.updateVocabulary(
+      [...next.emotionVocabulary],
+      [...next.motionVocabulary],
+    );
+    eventHub.emitApp({ type: 'character_switched', characterId: next.id, name: next.name });
   });
-  characters.cards.onPresentationChanged(card => {
-    eventHub.emitApp({ type: 'character_presentation_changed', cardId: card.id });
+  characters.store.onPresentationChanged(character => {
+    eventHub.emitApp({
+      type: 'character_presentation_changed',
+      characterId: character.id,
+    });
   });
   // 设置变更：前端设置页以外的视图据此刷新。
   settings.settings.subscribe(({ changedKeys, revision }) => {
@@ -85,7 +93,8 @@ export function buildComposition(input: { activeDataDir: string }): Composition 
     tools,
     knowledge,
     narrative,
-    cards: characters.cards,
+    characters: characters.store,
+    stage: characters.stage,
     emitAppEvent: event => eventHub.emitApp(event),
   });
   const turnFanout = new TurnFanout({

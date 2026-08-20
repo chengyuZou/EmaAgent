@@ -61,7 +61,7 @@ function makeDeps(options: {
   for (const tool of options.tools) registry.register(tool);
   return {
     registry,
-    decisionQueue: options.queue,
+    interactionQueue: options.queue,
     settings: options.settings,
     agentRunStore: {} as unknown as AgentRunStore,
     agentRunMessagesStore: {} as unknown as AgentRunMessagesStore,

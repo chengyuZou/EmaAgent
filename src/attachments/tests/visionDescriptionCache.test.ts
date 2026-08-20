@@ -26,7 +26,6 @@ const temporary: string[] = [];
 const identity = {
   providerId: 'provider-1',
   modelId: 'vision-1',
-  instructionRevision: 'caption-v1',
 };
 
 beforeEach(async () => {
@@ -79,14 +78,14 @@ describe('VisionDescriptionCache', () => {
     expect(producer).toHaveBeenCalledTimes(1);
   });
 
-  it('指令版本或模型身份变化后重新生产', async () => {
+  it('模型身份变化后重新生产', async () => {
     const cache = new VisionDescriptionCache(repo);
     const producer = vi.fn(async () => 'v1 描述');
     await cache.getOrCreate(image, identity, new AbortController().signal, producer);
 
     const v2 = await cache.getOrCreate(
       image,
-      { ...identity, instructionRevision: 'caption-v2' },
+      { ...identity, modelId: 'vision-2' },
       new AbortController().signal,
       async () => 'v2 描述',
     );
@@ -130,16 +129,16 @@ describe('AttachmentCacheMaintenance', () => {
     await cache.getOrCreate(image, identity, new AbortController().signal, async () => '旧描述');
     await cache.getOrCreate(
       image,
-      { ...identity, instructionRevision: 'caption-v2' },
+      { ...identity, modelId: 'vision-2' },
       new AbortController().signal,
       async () => '新描述',
     );
     database.sqlite.prepare(
-      'UPDATE attachment_vision_descriptions SET last_accessed_at = ? WHERE instruction_revision = ?',
-    ).run(Date.now() - 1_000, 'caption-v1');
+      'UPDATE attachment_vision_descriptions SET last_accessed_at = ? WHERE model_id = ?',
+    ).run(Date.now() - 1_000, 'vision-1');
     database.sqlite.prepare(
-      'UPDATE attachment_vision_descriptions SET last_accessed_at = ? WHERE instruction_revision = ?',
-    ).run(Date.now(), 'caption-v2');
+      'UPDATE attachment_vision_descriptions SET last_accessed_at = ? WHERE model_id = ?',
+    ).run(Date.now(), 'vision-2');
 
     const total = repo.totalBytes();
     const maintenance = new AttachmentCacheMaintenance({
@@ -154,14 +153,12 @@ describe('AttachmentCacheMaintenance', () => {
     expect(repo.find({
       attachmentId: image.id,
       providerId: identity.providerId,
-      modelId: identity.modelId,
-      instructionRevision: 'caption-v1',
+      modelId: 'vision-1',
     })).toBeUndefined();
     expect(repo.find({
       attachmentId: image.id,
       providerId: identity.providerId,
-      modelId: identity.modelId,
-      instructionRevision: 'caption-v2',
+      modelId: 'vision-2',
     })).toBeDefined();
   });
 });

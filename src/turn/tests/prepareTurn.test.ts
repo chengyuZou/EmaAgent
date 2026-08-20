@@ -90,7 +90,7 @@ function makeDeps(overrides: Partial<PrepareTurnDeps> = {}): PrepareTurnDeps {
     characterPrompt: () => ['你是角色'],
     skillEntries: () => [],
     registry: new ToolRegistry(),
-    decisionQueue: new SessionInteractionQueue(null),
+    interactionQueue: new SessionInteractionQueue(null),
     agentRunStore: {} as unknown as AgentRunStore,
     agentRunMessagesStore: {} as unknown as AgentRunMessagesStore,
     ...overrides,

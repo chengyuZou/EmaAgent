@@ -1,28 +1,31 @@
-// 角色一族：内置角色资源幂等安装、CharacterCardStore 与 EmotionEngine。
+// 角色一族：安装内置资源并构造 CharacterStore 与 StageEngine。
 import {
-  CharacterCardStore,
+  CharacterStore,
   installBuiltinCharacterResources,
 } from '@ema-agent/characters';
-import { EmotionEngine } from '@ema-agent/emotion';
+import { StageEngine } from '@ema-agent/stage';
+import type { SettingsStore } from '@ema-agent/settings';
 import type { Database } from '@ema-agent/storage';
 import { bundledCharactersDir, charactersDir } from '../platform/paths.js';
 
 export interface CharactersComposition {
-  readonly cards: CharacterCardStore;
-  /** 情绪词汇跟随当前角色；换卡时的 vocabulary 替换与事件广播由 composition/index 接线。 */
-  readonly emotion: EmotionEngine;
+  readonly store: CharacterStore;
+  /** 情绪与动作词汇跟随当前角色；角色切换后的替换与事件广播由总装配点接线。 */
+  readonly stage: StageEngine;
 }
 
-/** 角色是 Prompt、Live2D、Emotion 与 TTS 的全局基础，种子不变量失败时禁止发布 ready。 */
-export function openCharacters(profileDb: Database): CharactersComposition {
+/** 角色是 Prompt、Live2D、舞台表现与 TTS 的全局基础，种子不变量失败时禁止发布 ready。 */
+export function openCharacters(
+  profileDb: Database,
+  settings: SettingsStore,
+): CharactersComposition {
   installBuiltinCharacterResources(bundledCharactersDir(), charactersDir());
-  const cards = new CharacterCardStore({
-    db: profileDb,
-    charactersRoot: charactersDir(),
+  const store = new CharacterStore(profileDb, charactersDir(), settings);
+  store.ensureSeed();
+  const current = store.current();
+  const stage = new StageEngine({
+    emotions: [...current.emotionVocabulary],
+    motions: [...current.motionVocabulary],
   });
-  cards.ensureSeed();
-  const emotion = new EmotionEngine({
-    vocabulary: [...cards.current().emotionVocabulary],
-  });
-  return { cards, emotion };
+  return { store, stage };
 }

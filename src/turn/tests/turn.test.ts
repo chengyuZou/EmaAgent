@@ -8,6 +8,7 @@ import type { ProviderModels, Providers } from '@ema-agent/providers';
 import { Database } from '@ema-agent/storage';
 import { SessionStore } from '@ema-agent/session';
 import type { SettingsStore } from '@ema-agent/settings';
+import { StageEngine } from '@ema-agent/stage';
 import {
   buildTool,
   contextOk,
@@ -83,7 +84,7 @@ function makeDeps(options: {
     skillEntries: () => [],
     createLlm: () => llm,
     registry,
-    decisionQueue: new SessionInteractionQueue(null),
+    interactionQueue: new SessionInteractionQueue(null),
     agentRunStore: {} as unknown as AgentRunStore,
     agentRunMessagesStore: {} as unknown as AgentRunMessagesStore,
     createCompact: () => async request => ({ kind: 'unchanged' as const, history: request.history }),
@@ -134,6 +135,42 @@ describe('TurnExecutor 集成', () => {
     expect(events).toContain('turn_started');
     expect(events).toContain('output_text_delta');
     expect(events).toContain('turn_completed');
+    db.close();
+  });
+
+  it('舞台清洗：表现标签剥离后落库与发射，emotion/motion 事件随流发出', async () => {
+    const db = new Database({ memory: true, kind: 'data' });
+    db.migrate();
+    const sessions = new SessionStore({ db });
+    const session = sessions.createSession({ workspaceRoot: '/w' });
+    const registry = new ToolRegistry();
+    const llm = scriptedLlm([
+      [
+        { type: 'text_delta', blockIndex: 0, delta: '你好<emotion>happy</emotion>，' },
+        { type: 'text_delta', blockIndex: 0, delta: '我是 Ema。<motion>wave</motion><emotion>angry</emotion>' },
+        { type: 'done', stopReason: 'end_turn' },
+      ],
+    ]);
+    const stage = new StageEngine({ emotions: ['happy'], motions: ['wave'] });
+    const deps = { ...makeDeps({ db, llm, sessionId: session.id, registry }), stage };
+    const executor = new TurnExecutor(deps);
+
+    const handle = executor.start(makeStart(session.id));
+    const outcome = await handle.completion;
+
+    expect(outcome.status).toBe('completed');
+    const messages = sessions.loadMessagesForTurn(handle.turnId);
+    const text = JSON.stringify(messages[1]!.blocks);
+    expect(text).toContain('你好，我是 Ema。');
+    expect(text).not.toContain('<emotion>');
+    expect(text).not.toContain('<motion>');
+
+    const types: string[] = [];
+    for await (const event of handle.events) types.push(event.type);
+    expect(types).toContain('emotion_changed');
+    expect(types).toContain('stage_cue');
+    // angry 不在当前角色词汇表：只清洗，不发事件。
+    expect(types.filter(t => t === 'emotion_changed')).toHaveLength(1);
     db.close();
   });
 

@@ -1,5 +1,5 @@
 // Vision 文本描述缓存：内存 + SQLite 两层复用已付费的描述，同键并发只生产一次。
-// 键 = attachmentId + Vision 模型身份 + 指令版本；受管副本不可变，不需要内容哈希。
+// 键 = attachmentId + Vision 模型身份；描述指令由 vision 包内置，受管副本不可变，不需要内容哈希。
 
 import type {
   AttachmentVisionDescriptionsRepo,
@@ -11,8 +11,6 @@ const DEFAULT_MEMORY_ENTRIES = 256;
 export interface VisionDescriptionIdentity {
   readonly providerId: string;
   readonly modelId: string;
-  /** 描述指令变化时旧描述失效。 */
-  readonly instructionRevision: string;
 }
 
 export type VisionDescriptionProducer = (
@@ -73,7 +71,6 @@ export class VisionDescriptionCache {
       attachmentId: attachment.id,
       providerId: identity.providerId,
       modelId: identity.modelId,
-      instructionRevision: identity.instructionRevision,
     };
 
     const persisted = this.repo.find(repoKey);
@@ -109,6 +106,5 @@ function cacheKey(attachmentId: string, identity: VisionDescriptionIdentity): st
     attachmentId,
     identity.providerId,
     identity.modelId,
-    identity.instructionRevision,
   ].join('');
 }

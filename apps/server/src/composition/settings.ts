@@ -8,6 +8,10 @@ import {
 } from '@ema-agent/attachments';
 import { COMPACT_SETTINGS, compactGroup } from '@ema-agent/compact';
 import {
+  CHARACTER_SETTING_DEFINITIONS,
+  characterPromptLimitsGroup,
+} from '@ema-agent/characters';
+import {
   kbAlphaSetting,
   kbDefaultTopKSetting,
   kbRerankBlendWeightSetting,
@@ -44,6 +48,7 @@ export function openSettings(profileDb: Database): SettingsComposition {
     definitions: [
       ...AGENT_LIMITS_SETTINGS,
       ...COMPACT_SETTINGS,
+      ...CHARACTER_SETTING_DEFINITIONS,
       ...PERMISSION_SETTINGS,
       attachmentCacheMaxBytesSetting,
       maxFilesPerTurnSetting,
@@ -63,7 +68,7 @@ export function openSettings(profileDb: Database): SettingsComposition {
       themeSetting,
       eventDisplaySetting,
     ],
-    groups: [agentLimitsGroup, compactGroup],
+    groups: [agentLimitsGroup, compactGroup, characterPromptLimitsGroup],
   });
   return { settings };
 }

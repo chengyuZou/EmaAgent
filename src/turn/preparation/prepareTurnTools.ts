@@ -56,7 +56,7 @@ const CHAT_TOOL_IDS: ReadonlySet<string> = new Set([
 
 export interface TurnToolsDeps {
   readonly registry: ToolRegistry;
-  readonly decisionQueue: SessionInteractionQueue;
+  readonly interactionQueue: SessionInteractionQueue;
   readonly settings: SettingsStore;
   readonly agentRunStore: AgentRunStore;
   readonly agentRunMessagesStore: AgentRunMessagesStore;
@@ -154,9 +154,9 @@ export function prepareTurnTools(
     signal: AbortSignal,
   ): Promise<PermissionResponse> => {
     input.emit({ type: 'permission_required', ...request });
-    const { promise } = deps.decisionQueue.enqueuePermission(request);
+    const { promise } = deps.interactionQueue.enqueuePermission(request);
     const response = await awaitInteraction(promise, signal, () => {
-      deps.decisionQueue.cancel(request.toolCallId, 'turn aborted');
+      deps.interactionQueue.cancel(request.toolCallId, 'turn aborted');
     });
     input.emit({
       type: 'permission_resolved',
@@ -185,9 +185,9 @@ export function prepareTurnTools(
       questions: [...specs],
     };
     input.emit(request);
-    const { promise } = deps.decisionQueue.enqueueAskUser(request);
+    const { promise } = deps.interactionQueue.enqueueAskUser(request);
     const outcome = await awaitInteraction(promise, signal, () => {
-      deps.decisionQueue.cancel(toolCallId, 'turn aborted');
+      deps.interactionQueue.cancel(toolCallId, 'turn aborted');
     });
     // 取消/超时也要发空答案清前端卡片；空答案 resolved 是清卡信号，不是成功。
     input.emit({

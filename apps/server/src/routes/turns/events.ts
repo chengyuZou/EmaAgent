@@ -1,26 +1,27 @@
-// 提供 Turn SSE 实时订阅、短时重放、心跳和终态关闭行为。
-
-import type { Hono } from 'hono';
-import type { TurnStreamEvent } from '@ema-agent/events';
-import { asTurnId } from '@ema-agent/ids';
+// Turn 事件流 SSE 端点：先订阅再重放，游标去重，终态事件到达后关闭连接。
+import { Hono } from 'hono';
 import {
   encodeEvent,
   encodePing,
 } from '../../sse/writer.js';
 import type {
+  EventHub,
   PublishedTurnEvent,
-  TurnEventHub,
-} from '../../sse/event-hub.js';
-import type { TurnEventStore } from '../../sse/event-store.js';
+  TurnWireEvent,
+} from '../../sse/eventHub.js';
+import type { TurnEventStore } from '../../sse/eventStore.js';
 
-export function registerTurnEventRoutes(
-  app: Hono,
-  eventStore: TurnEventStore,
-  eventHub: TurnEventHub,
-): void {
-  app.get('/:turnId/events', (context) => {
-    const turnId = asTurnId(context.req.param('turnId'));
-    if (!eventStore.has(turnId)) {
+export interface TurnEventsRouteDeps {
+  readonly hub: EventHub;
+  readonly store: TurnEventStore;
+}
+
+export function turnEventsRoute(deps: TurnEventsRouteDeps): Hono {
+  const app = new Hono();
+
+  app.get('/:turnId/events', context => {
+    const turnId = context.req.param('turnId');
+    if (!deps.store.has(turnId)) {
       return context.json({ error: 'turn_event_stream_not_found' }, 404);
     }
 
@@ -30,11 +31,11 @@ export function registerTurnEventRoutes(
     }
 
     let heartbeat: ReturnType<typeof setInterval> | undefined;
-    let unsubscribe: (() => void) | null = null;
+    let unsubscribe: (() => void) | undefined;
 
     const cleanup = (): void => {
       unsubscribe?.();
-      unsubscribe = null;
+      unsubscribe = undefined;
       if (heartbeat) clearInterval(heartbeat);
       heartbeat = undefined;
     };
@@ -68,23 +69,23 @@ export function registerTurnEventRoutes(
 
           const writeEvent = (published: PublishedTurnEvent): void => {
             writeEncoded(encodeEvent(published.event, published.cursor));
-            if (isTerminalTurnEvent(published.event)) close();
+            if (isTerminalWireEvent(published.event)) close();
           };
 
-          unsubscribe = eventHub.subscribe(turnId, (published) => {
+          unsubscribe = deps.hub.subscribeTurn(turnId, published => {
             if (published.cursor <= cursor) return;
             cursor = published.cursor;
             writeEvent(published);
           });
 
           // 先订阅再重放，避免在两步之间漏掉刚产生的事件。
-          for (const published of eventStore.replay(turnId, cursor)) {
+          for (const published of deps.store.replay(turnId, cursor)) {
             if (closed) break;
             cursor = published.cursor;
             writeEvent(published);
           }
 
-          if (closed || eventStore.isDone(turnId)) {
+          if (closed || deps.store.isDone(turnId)) {
             close();
             return;
           }
@@ -108,6 +109,8 @@ export function registerTurnEventRoutes(
       },
     );
   });
+
+  return app;
 }
 
 function parseLastEventId(value: string | undefined): number | null {
@@ -117,10 +120,8 @@ function parseLastEventId(value: string | undefined): number | null {
   return Number.isSafeInteger(parsed) ? parsed : null;
 }
 
-function isTerminalTurnEvent(event: TurnStreamEvent): boolean {
-  return (
-    event.type === 'turn_aborted' ||
-    event.type === 'turn_failed' ||
-    event.type === 'turn_completed'
-  );
+function isTerminalWireEvent(event: TurnWireEvent): boolean {
+  return event.type === 'turn_completed'
+    || event.type === 'turn_failed'
+    || event.type === 'turn_aborted';
 }

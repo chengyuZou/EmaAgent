@@ -5,12 +5,14 @@ import {
   AttachmentRepo,
   Database,
   TasksRepo,
+  UsageRecordsRepo,
 } from '@ema-agent/storage';
 import { AgentRunMessagesStore, AgentRunStore } from '@ema-agent/agent';
 import { AttachmentStore } from '@ema-agent/attachments';
 import { SessionStore } from '@ema-agent/session';
 import { TaskStore } from '@ema-agent/tasks';
 import { TurnStore } from '@ema-agent/turn';
+import type { UsageRecorder } from '@ema-agent/usage';
 import {
   dataDbPathFor,
   profileDbPath,
@@ -32,6 +34,8 @@ export interface DatabaseComposition {
   readonly tasks: TaskStore;
   readonly agentRuns: AgentRunStore;
   readonly agentRunMessages: AgentRunMessagesStore;
+  /** 全部能力调用共享的用量记账口（UsageRecordsRepo 直接满足 UsageRecorder 端口）。 */
+  readonly usageRecorder: UsageRecorder;
 
   /** 关闭两个数据库；进程关闭序列的最后一步。 */
   close(): void;
@@ -79,6 +83,7 @@ export function openDatabases(activeDataDir: string): DatabaseComposition {
     tasks: new TaskStore(new TasksRepo(dataDb.sqlite)),
     agentRuns: new AgentRunStore(new AgentRunsRepo(dataDb.sqlite)),
     agentRunMessages: new AgentRunMessagesStore(new AgentRunMessagesRepo(dataDb.sqlite)),
+    usageRecorder: new UsageRecordsRepo(dataDb.sqlite),
     close() {
       dataDb.close();
       profileDb.close();

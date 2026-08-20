@@ -5,7 +5,7 @@ import {
   VisionDescriptionCache,
   type DescribeAttachmentImage,
 } from '@ema-agent/attachments';
-import { buildCharacterPrompt, type CharacterCardStore } from '@ema-agent/characters';
+import { buildCharacterPrompt, type CharacterStore } from '@ema-agent/characters';
 import { createCompact } from '@ema-agent/compact';
 import { gitSummary } from '@ema-agent/git';
 import { createLanguageModel, type ContentPart } from '@ema-agent/llm';
@@ -13,6 +13,7 @@ import { prepareNarrativeRecall } from '@ema-agent/narrative';
 import { permissionAskTimeoutSetting } from '@ema-agent/permission';
 import { generateSessionTitle, type UserBlock } from '@ema-agent/session';
 import type { SettingsStore } from '@ema-agent/settings';
+import type { StageEngine } from '@ema-agent/stage';
 import { AttachmentVisionDescriptionsRepo } from '@ema-agent/storage';
 import { formatTaskContextReminder } from '@ema-agent/tasks';
 import {
@@ -22,7 +23,8 @@ import {
   type TurnReminderScope,
 } from '@ema-agent/turn';
 import type { Turn } from '@ema-agent/turn-terms';
-import { createVisionModel, type VisionImageMime } from '@ema-agent/vision';
+import { createUsageRecord, reportUsage, type UsageRecorder } from '@ema-agent/usage';
+import { createVisionModel, type VisionImageMime, type VisionTokenUsage } from '@ema-agent/vision';
 import { ensureScratchpadDir, scratchpadTurnDir } from '../platform/paths.js';
 import type { AppEvent } from '../sse/eventHub.js';
 import type { DatabaseComposition } from './database.js';
@@ -33,10 +35,6 @@ import type { ToolsComposition } from './tools.js';
 
 /** 单个指令文件超过 32KB 截断；工作区指令是上下文数据，不是系统权限。 */
 const WORKSPACE_INSTRUCTION_MAX_CHARS = 32 * 1024;
-/** Vision 降级描述的指令版本：指令文本变化时旧缓存描述失效。 */
-const DESCRIBE_INSTRUCTION_REVISION = 'v1';
-const DESCRIBE_INSTRUCTION =
-  '用中文简要描述这张图片的内容（两三句话），供不支持图片输入的对话模型理解。';
 
 export interface TurnComposition {
   readonly turnExecutor: TurnExecutor;
@@ -51,13 +49,15 @@ export interface TurnCompositionDeps {
   readonly tools: ToolsComposition;
   readonly knowledge: KnowledgeComposition;
   readonly narrative: NarrativeComposition;
-  readonly cards: CharacterCardStore;
+  readonly characters: CharacterStore;
+  /** 角色舞台：Turn 泵内剥离表现标签；实例由 characters 一族持有（词汇随角色切换）。 */
+  readonly stage: StageEngine;
   /** 应用事件出口（eventHub）。 */
   readonly emitAppEvent: (event: AppEvent) => void;
 }
 
 export function openTurns(deps: TurnCompositionDeps): TurnComposition {
-  const { database, settings, providers, tools, knowledge, narrative, cards } = deps;
+  const { database, settings, providers, tools, knowledge, narrative, characters, stage } = deps;
   const { activeDataDir } = database;
 
   const interactionQueue = new SessionInteractionQueue(
@@ -96,11 +96,12 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
       {
         providerId: selected.providerId,
         modelId: selected.modelId,
-        instructionRevision: DESCRIBE_INSTRUCTION_REVISION,
       },
       signal,
       async image => {
         const bytes = await fs.promises.readFile(image.imagePath);
+        const startedAt = Date.now();
+        // 描述指令用 vision 包内置的 caption 任务文本，不在装配层另写一份。
         const result = await selected.vision.analyze({
           model: selected.modelId,
           images: [{
@@ -109,9 +110,9 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
             mimeType: image.mimeType as VisionImageMime,
           }],
           task: 'caption',
-          instruction: DESCRIBE_INSTRUCTION,
           signal,
         });
+        recordVisionUsage(database.usageRecorder, selected.providerId, selected.modelId, startedAt, result.usage);
         return result.text;
       },
     );
@@ -121,12 +122,13 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
   ): Promise<string> => {
     const selected = resolveVision();
     if (!selected) throw new Error('未配置 vision 模型绑定，无法描述图片');
+    const startedAt = Date.now();
     const result = await selected.vision.analyze({
       model: selected.modelId,
       images: [{ kind: 'base64', data: image.data, mimeType: image.mimeType as VisionImageMime }],
       task: 'caption',
-      instruction: DESCRIBE_INSTRUCTION,
     });
+    recordVisionUsage(database.usageRecorder, selected.providerId, selected.modelId, startedAt, result.usage);
     return result.text;
   };
 
@@ -209,10 +211,10 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     providerModels: providers.providerModels,
     settings,
     attachments: database.attachments,
-    characterPrompt: () => buildCharacterPrompt(cards.current()),
+    characterPrompt: () => buildCharacterPrompt(characters.current()),
     skillEntries: () => tools.skills.list(),
     registry: tools.registry,
-    decisionQueue: interactionQueue,
+    interactionQueue,
     agentRunStore: database.agentRuns,
     agentRunMessagesStore: database.agentRunMessages,
     taskStore: database.tasks,
@@ -232,6 +234,8 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     isBypassPermissionsModeAvailable:
       process.env['EMA_BYPASS_PERMISSIONS'] === '1' && process.env.NODE_ENV !== 'production',
     reminderSources,
+    usageRecorder: database.usageRecorder,
+    stage,
     completedObserver,
   });
 
@@ -252,4 +256,28 @@ function readWorkspaceInstructions(
     } catch { /* 读取失败（权限/竞争删除）按无指令处理 */ }
   }
   return parts.length > 0 ? parts.join('\n\n') : null;
+}
+
+/** Vision 调用记账；Provider 未返回 usage 时只记延迟与状态。 */
+function recordVisionUsage(
+  recorder: UsageRecorder,
+  providerId: string,
+  modelId: string,
+  startedAt: number,
+  usage: VisionTokenUsage | undefined,
+): void {
+  reportUsage(
+    recorder,
+    createUsageRecord({
+      capability: 'vision',
+      providerId,
+      modelId,
+      status: 'completed',
+      startedAt,
+      durationMs: Date.now() - startedAt,
+      inputTokens: usage?.inputTokens ?? null,
+      outputTokens: usage?.outputTokens ?? null,
+    }),
+    error => console.warn('[usage] Vision 调用记账失败:', error),
+  );
 }

@@ -39,7 +39,7 @@ export const DEFAULT_EVENT_DISPLAY: Record<string, EventDisplayConfig> = {
   kb_reembed_cancelled:         { enabled: true,  color: '#94a3b8', durationMs: 3000 },
   kb_reembed_failed:            { enabled: true,  color: '#ef4444', durationMs: 5000 },
   tts_warning:                  { enabled: true,  color: '#f59e0b', durationMs: 4000, truncateChars: 120 },
-  character_card_switched:      { enabled: true,  color: '#f59e0b', durationMs: 4000 },
+  character_switched:             { enabled: true,  color: '#f59e0b', durationMs: 4000 },
   background_process_changed:   { enabled: true,  color: '#64748b', durationMs: 3000 },
   system_warning:               { enabled: true,  color: '#f59e0b', durationMs: 5000 },
   agent_run_started:            { enabled: true,  color: '#8b5cf6', durationMs: null },

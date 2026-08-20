@@ -36,6 +36,7 @@
     "@ema-agent/session": "workspace:*",
     "@ema-agent/settings": "workspace:*",
     "@ema-agent/skills": "workspace:*",
+    "@ema-agent/stage": "workspace:*",
     "@ema-agent/storage": "workspace:*",
     "@ema-agent/tasks": "workspace:*",
     "@ema-agent/tools": "workspace:*",
