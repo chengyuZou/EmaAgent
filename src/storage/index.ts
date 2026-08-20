@@ -75,7 +75,7 @@ export { MemoryEdgesRepo }       from './repos/profile/memory-edges.js';
 export { MemoryLazyUpdatesRepo } from './repos/profile/memory-lazy-updates.js';
 export { MemoryItemsRepo }       from './repos/profile/memory-items.js';
 export { SessionNotesRepo }      from './repos/data/session-notes.js';
-export { MemoryTasksRepo }   from './repos/data/memory-tasks.js';
+export { MemoryJobsRepo } from './repos/data/memory-jobs.js';
 export { PendingFragmentsRepo }       from './repos/data/pending-fragments.js';
 export { MemorySessionStateRepo }     from './repos/data/memory-session-state.js';
 export { MemoryExtractionRunsRepo }   from './repos/profile/memory-extraction-runs.js';
@@ -146,11 +146,15 @@ export type {
   SessionNoteUpsert,
 } from './repos/data/session-notes.js';
 export type {
-  MemoryTaskRow,
-  MemoryTaskEnqueue,
-  MemoryTaskKind,
-  MemoryTaskStatus,
-} from './repos/data/memory-tasks.js';
+  MemoryExtractionResult,
+  MemoryJob,
+  MemoryJobKind,
+  MemoryJobPath,
+  MemoryJobPathOperation,
+  MemoryJobStatus,
+  NewMemoryJob,
+  NewMemoryJobPath,
+} from './repos/data/memory-jobs.js';
 export type {
   PendingFragmentRow,
   PendingFragmentInsert,

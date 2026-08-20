@@ -90,16 +90,45 @@ CREATE TABLE memory_session_state (
   overrides_json TEXT NOT NULL DEFAULT '{}'
 );
 
-CREATE TABLE memory_tasks (
+CREATE TABLE memory_jobs (
   id           TEXT PRIMARY KEY,
-  kind         TEXT NOT NULL CHECK(kind IN ('extraction','maintenance','embedding_refresh','consolidation')),
-  status       TEXT NOT NULL CHECK(status IN ('pending','running','completed','failed')),
-  session_id   TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  payload_json TEXT NOT NULL,
-  attempts     INTEGER NOT NULL DEFAULT 0,
-  last_error   TEXT,
+  kind         TEXT NOT NULL CHECK(kind IN (
+                 'work_extraction',
+                 'relationship_extraction',
+                 'work_consolidation',
+                 'relationship_consolidation',
+                 'clear_memory',
+                 'storage_cleanup'
+               )),
+  status       TEXT NOT NULL CHECK(status IN (
+                 'pending', 'running', 'completed', 'failed', 'cancelled'
+               )),
+  turn_id      TEXT REFERENCES turns(id) ON DELETE CASCADE,
+  error        TEXT,
   created_at   INTEGER NOT NULL,
-  updated_at   INTEGER NOT NULL
+  started_at   INTEGER,
+  heartbeat_at INTEGER,
+  finished_at  INTEGER,
+  CHECK (
+    (kind IN ('work_extraction', 'relationship_extraction') AND turn_id IS NOT NULL)
+    OR
+    (kind NOT IN ('work_extraction', 'relationship_extraction') AND turn_id IS NULL)
+  )
+);
+
+CREATE TABLE memory_extraction_results (
+  job_id        TEXT PRIMARY KEY REFERENCES memory_jobs(id) ON DELETE CASCADE,
+  content       TEXT NOT NULL,
+  integrated_at INTEGER
+);
+
+CREATE TABLE memory_job_paths (
+  job_id        TEXT NOT NULL REFERENCES memory_jobs(id) ON DELETE CASCADE,
+  relative_path TEXT NOT NULL,
+  operation     TEXT NOT NULL CHECK(operation IN (
+                  'write_file', 'delete_file', 'delete_tree'
+                )),
+  PRIMARY KEY(job_id, relative_path)
 );
 
 CREATE TABLE message_search_documents (
@@ -386,9 +415,18 @@ CREATE INDEX idx_kb_act_call    ON kb_activations(call_id);
 
 CREATE INDEX idx_kb_act_session ON kb_activations(session_id);
 
-CREATE INDEX idx_memorytasks_session        ON memory_tasks(session_id);
+CREATE INDEX idx_memory_jobs_status_created
+  ON memory_jobs(status, created_at, id);
 
-CREATE INDEX idx_memorytasks_status_created ON memory_tasks(status, created_at);
+CREATE INDEX idx_memory_jobs_turn
+  ON memory_jobs(turn_id)
+  WHERE turn_id IS NOT NULL;
+
+CREATE INDEX idx_memory_extraction_results_unintegrated
+  ON memory_extraction_results(integrated_at, job_id);
+
+CREATE INDEX idx_memory_job_paths_path
+  ON memory_job_paths(relative_path, job_id);
 
 CREATE INDEX idx_message_search_documents_session
   ON message_search_documents(session_id, created_at DESC, message_id DESC);
