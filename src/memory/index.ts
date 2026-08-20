@@ -1,126 +1,81 @@
-// 统一导出 Memory Facade、任务、压缩、向量索引和维护能力。
-export { MemoryPlanner } from './planner.js';
-
-// ── Public types ─────────────────────────────────────────────────────────────
-export type { MemoryDeps } from './deps.js';
-export type {
-  PlanContext,
-  RecallBundle,
-  GraphRecallResult,
-  EpisodicRecallResult,
-  NarrativeRecallResult,
-  RecalledNode,
-  RecalledEdge,
-  RecalledItem,
-  MemorySettings,
-  MemoryRecallView,
-  MemoryRecallPort,
-  EmbeddedText,
-  AlreadySurfaced,
-} from './types.js';
-export { DEFAULT_MEMORY_SETTINGS } from './types.js';
+// Memory 包出口(重构占位)。
+// 旧架构已清空,新架构(work/chat 双轨 + common 工程层)施工中。
+// 当前只暴露 common/ 纯文件层;work/chat 与对外契约(recallForTurn 注入、提取、整合)待讨论后补。
 export {
-  DEFAULT_MEMORY_MAINTENANCE_SETTINGS,
-  DEFAULT_MEMORY_STORAGE_SETTINGS,
-  memoryColdDeleteAfterDaysSetting,
-  memoryDecayAfterDaysSetting,
-  memoryDecayAmountSetting,
-  memoryStorageMaxBytesSetting,
-  readMemorySettings,
-} from './settings.js';
-export type {
-  MemoryMaintenanceSettings,
-  MemoryStorageSettings,
-  MemoryUserSettingsSnapshot,
-} from './settings.js';
-export type {
-  MemoryEvent,
-  MemoryBackgroundEvent,
-  MemoryBackgroundFailure,
-  MemoryBackgroundHealth,
-  MemoryBackgroundOperation,
-  MemoryStoragePressure,
-  MemoryRecallEvent,
-  MemoryRecallLayer,
-  MemoryRecallLayerReport,
-  MemoryRecallLayerStatus,
-} from './events.js';
-
-// ── Sub-utilities (exported for testing / advanced wiring) ───────────────────
-export { EmbedService } from './embed/service.js';
+  memoryRootDir,
+  workRootDir,
+  chatRootDir,
+  characterDir,
+  workNotesDir,
+  characterNotesDir,
+  turnEvidenceDir,
+  sanitizeDirSegment,
+} from './common/paths.js';
 export {
-  normalize,
-  dotProduct,
-  cosineSim,
-  packEmbedding,
-  unpackEmbedding,
-  normalizeQueryVector,
-} from './embed/similarity.js';
-// Token estimation moved to @ema-agent/token (shared with the frontend).
-// Re-exported here for backward compatibility — prefer importing from
-// @ema-agent/token directly in new code.
-export { estimateTextTokens, estimateMessagesTokens } from '@ema-agent/token';
-
-// ── Vector index ─────────────────────────────────────────────────────────────
-export { createVectorIndex }                  from './vector-index/factory.js';
-export { BruteForceIndex }                    from './vector-index/brute-force.js';
-export { UsearchIndex }                       from './vector-index/usearch.js';
-export { rebuildNodesIndex, rebuildItemsIndex } from './vector-index/rebuild.js';
-export type { VectorIndex, SearchHit }        from './vector-index/vector-index.js';
-
-// ── Extraction pipeline ──────────────────────────────────────────────────────
-export { runExtractionPipeline }              from './extract/pipeline.js';
-export type { PipelineResult }                from './extract/pipeline.js';
-export type {
-  ExtractedNode, ExtractedEdge, ExtractedItem, ExtractionOutput,
-  PendingFragment,
-} from './extract/types.js';
-export type { ConsolidationReport } from './consolidation/consolidatePendingNodes.js';
-export type {
-  SessionMemoryCleanupReport,
-  OrphanSessionMemoryCleanupReport,
-} from './sessionCleanup.js';
-
-// ── Background tasks + recovery ──────────────────────────────────────────────
-export { SessionTaskQueue }                   from './tasks/session-queue.js';
-export { MemoryCommitCoordinator }            from './tasks/commit-coordinator.js';
+  workWorkspace,
+  chatWorkspace,
+  renderDiffFile,
+} from './common/workspace.js';
+export type { TrackWorkspace } from './common/workspace.js';
+export { clearMemoryRoot } from './common/control.js';
 export {
-  MemoryTaskRunner,
-  UnsupportedMemoryTaskKindError,
-} from './tasks/extraction-runner.js';
-export type { RunnableMemoryTaskKind } from './tasks/extraction-runner.js';
-export { runStartupRecovery }                 from './tasks/recovery.js';
-export type { RecoveryReport }                from './tasks/recovery.js';
-
-export { recordCompletedTurnMemory } from './completedTurn.js';
-
-// ── Maintenance: overrides ───────────────────────────────────────────────────
-export { DEFAULT_OVERRIDES }                  from './maintenance/overrides.js';
+  FILE_LIMITS,
+  PRESSURE_ACTIONS,
+  isOverBudget,
+} from './common/capacity.js';
+export type { PressureAction } from './common/capacity.js';
+export {
+  noteFilename,
+  sanitizeSlug,
+  workNotePath,
+  characterNotePath,
+} from './common/notes.js';
+export {
+  loadSummaryForInjection,
+  truncateToTokens,
+  renderMemoryGuide,
+  SUMMARY_VERSION_MARKER,
+} from './common/inject.js';
 export type {
-  MemorySessionOverrides,
-  ResolvedSessionOverrides,
-} from './maintenance/overrides.js';
-
-// ── Maintenance: stats + inspection ──────────────────────────────────────────
-export type { MemoryStats }                   from './maintenance/stats.js';
+  SummaryInjection,
+  SummaryInjectionOptions,
+  LoadSummaryResult,
+} from './common/inject.js';
+export {
+  ensureTurnEvidenceLayout,
+  rebuildTurnEvidenceFiles,
+  syncTurnEvidenceFiles,
+  pruneTurnEvidenceFiles,
+  writeTurnEvidenceFile,
+  renderTurnEvidenceBody,
+  retainedRows,
+  turnEvidenceFileStem,
+  turnEvidenceFileStemFromParts,
+} from './common/storage.js';
+export type { StageOutputRow } from './common/storage.js';
+export {
+  memoryBudgetOk,
+  budgetCheck,
+  snapshotAllowsStartup,
+  dirSizeBytes,
+  BUDGET_EXCLUDED_DIRS,
+  BUDGET_SCAN_ENTRY_LIMIT,
+} from './common/guard.js';
+export type { BudgetSnapshot } from './common/guard.js';
+export {
+  parseMemoryCitation,
+  parseMemoryCitationEntry,
+} from './common/citations.js';
 export type {
-  BrowseNodesOptions,
-  BrowseItemsOptions,
-} from './maintenance/browse.js';
-
-// ── Maintenance: decay + delete ──────────────────────────────────────────────           from './maintenance/decay.js';
+  MemoryCitation,
+  MemoryCitationEntry,
+} from './common/citations.js';
+export {
+  memoryUsageKindsFromToolCall,
+  kindFromPath,
+  MEMORY_TOOL_NAMES,
+} from './common/usage.js';
 export type {
-  MaintenanceOptions,
-  MaintenanceReport,
-  MaintenancePreview,
-} from './maintenance/decay.js';
-
-// ── Maintenance: embedding 修复 ───────────────────────────────────────────────
-export { repairStaleEmbeddings }              from './maintenance/embeddingRepair.js';
-export type { EmbeddingRepairReport }         from './maintenance/embeddingRepair.js';
-export { enforceMemoryStorageBudget }         from './maintenance/storageBudget.js';
-export type { MemoryStorageBudgetReport }     from './maintenance/storageBudget.js';
-
-// ── Errors ────────────────────────────────────────────────────────────────────
-export { MemoryLeaseLostError }               from './errors.js';
-export type { MemoryErrorCode }               from './errors.js';
+  MemoryUsageKind,
+  MemoryToolCallArgs,
+} from './common/usage.js';

@@ -24,20 +24,13 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@ema-agent/context": "workspace:*",
-    "@ema-agent/embed": "workspace:*",
+    "@ema-agent/git": "workspace:*",
     "@ema-agent/llm": "workspace:*",
-    "@ema-agent/narrative": "workspace:*",
-    "@ema-agent/rerank": "workspace:*",
-    "@ema-agent/session": "workspace:*",
     "@ema-agent/settings": "workspace:*",
     "@ema-agent/storage": "workspace:*",
     "@ema-agent/token": "workspace:*",
     "@ema-agent/turn-terms": "workspace:*",
     "zod": "^4"
-  },
-  "optionalDependencies": {
-    "usearch": "^2.25.1"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
