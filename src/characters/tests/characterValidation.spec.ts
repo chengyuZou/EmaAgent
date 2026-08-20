@@ -49,7 +49,7 @@ describe('character prompt assembly', () => {
         { name: 'off', content: 'disabled-content', enabled: false },
       ],
     });
-    const sections = buildCharacterPrompt(store.get(created.id)!, readCharacterSettings(settings).prompt);
+    const sections = buildCharacterPrompt(store.get(created.id)!);
     expect(sections).toEqual(['block-two', 'block-one']);
     expect(sections.every(s => typeof s === 'string')).toBe(true);
   });
@@ -65,8 +65,7 @@ describe('character prompt assembly', () => {
 
     expect(() => buildCharacterPrompt(
       store.get(created.id)!,
-      readCharacterSettings(settings).prompt,
-    )).toThrow('内容不能为空');
+    )).toThrow('至少需要一个启用的 Prompt Block');
   });
 
   it('omits the control prompt when no vocabulary is present', () => {
@@ -74,7 +73,7 @@ describe('character prompt assembly', () => {
       name: 'NoVocab',
       promptBlocks: [{ name: 'x', content: 'plain' }],
     });
-    const sections = buildCharacterPrompt(store.get(created.id)!, readCharacterSettings(settings).prompt);
+    const sections = buildCharacterPrompt(store.get(created.id)!);
     expect(sections).toEqual(['plain']);
     expect(buildLive2dControlPrompt(store.get(created.id)!)).toBe('');
   });
@@ -88,7 +87,7 @@ describe('character prompt assembly', () => {
       expect(buildLive2dControlPrompt(ema)).toBe('');
       return;
     }
-    const sections = buildCharacterPrompt(ema, readCharacterSettings(settings).prompt);
+    const sections = buildCharacterPrompt(ema);
     expect(sections.length).toBeGreaterThanOrEqual(2);
     expect(sections[0]).toContain('樱羽艾玛');
     expect(sections.at(-1)).toContain('角色表达控制协议');

@@ -10,20 +10,23 @@ export interface CharacterPromptLimitIssue {
   readonly message: string;
 }
 
-/** Prompt 只装配片段，角色文案及其表达协议由 Character 领域提供。 */
-export function buildCharacterPrompt(
-  character: Character,
-  limits: CharacterSettings['prompt'],
-): readonly string[] {
-  // 数据库可能被用户手工修改；模型请求边界必须重新验证当前真实内容。
-  assertCharacterPromptBlocks(character.promptBlocks, limits, character.id);
-  return [
+/**
+ * 装配角色 Prompt：启用 Block 按 sortOrder 平铺，追加不可由用户编辑的 Live2D 控制协议。
+ * 字符/数量上限由写入边界（Store 的全部变更入口）守住，装配处不重复数字符；
+ * 这里只守身份硬门——拍平后为空就拒，空 Prompt 角色不能启动新 Turn。
+ */
+export function buildCharacterPrompt(character: Character): readonly string[] {
+  const sections = [
     ...character.promptBlocks
       .filter((block) => block.enabled)
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .map((block) => block.content),
     buildLive2dControlPrompt(character),
   ].filter(hasContent);
+  if (sections.length === 0) {
+    throw new CharacterPromptInvalidError('角色至少需要一个启用的 Prompt Block', character.id);
+  }
+  return sections;
 }
 
 /** 校验只消费名称/内容/启用；持久行的 id 仅用于错误定位，候选输入没有 id。 */

@@ -28,6 +28,8 @@ Character 负责一张角色的人设 Prompt、Live2D、立绘和参考音频。
 
 角色 Prompt 是按 `sortOrder` 排序后的启用 Block 内容平铺数组。Live2D 控制协议在 Block 之后动态追加，不落入 Block 表，也不能被用户编辑或禁用。
 
+字符与数量上限由**写入边界**守住：CharacterStore 的全部变更入口（增/改/删/排序）与激活都过同一套校验，前端看到的报错就是这里拒写的回执。装配边界（`buildCharacterPrompt`）不再重复数字符，只守身份硬门——拍平后为空就拒绝启动新 Turn。
+
 CharacterStore 提供：
 
 - `addPromptBlock`
