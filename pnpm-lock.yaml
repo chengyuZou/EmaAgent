@@ -123,9 +123,6 @@ importers:
       '@ema-agent/context':
         specifier: workspace:*
         version: link:../../src/context
-      '@ema-agent/emotion':
-        specifier: workspace:*
-        version: link:../../src/emotion
       '@ema-agent/git':
         specifier: workspace:*
         version: link:../../src/git
@@ -150,6 +147,9 @@ importers:
       '@ema-agent/skills':
         specifier: workspace:*
         version: link:../../src/skills
+      '@ema-agent/stage':
+        specifier: workspace:*
+        version: link:../../src/stage
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../../src/storage
@@ -271,9 +271,6 @@ importers:
       '@ema-agent/embed':
         specifier: workspace:*
         version: link:../../src/embed
-      '@ema-agent/emotion':
-        specifier: workspace:*
-        version: link:../../src/emotion
       '@ema-agent/git':
         specifier: workspace:*
         version: link:../../src/git
@@ -319,6 +316,9 @@ importers:
       '@ema-agent/speech':
         specifier: workspace:*
         version: link:../../src/speech
+      '@ema-agent/stage':
+        specifier: workspace:*
+        version: link:../../src/stage
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../../src/storage
@@ -692,22 +692,14 @@ importers:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
-  src/emotion:
-    devDependencies:
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.39
-      rimraf:
-        specifier: ^5.0.0
-        version: 5.0.10
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: ^2.0.0
-        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
-
   src/git:
+    dependencies:
+      '@ema-agent/settings':
+        specifier: workspace:*
+        version: link:../settings
+      zod:
+        specifier: ^4
+        version: 4.4.3
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -882,24 +874,12 @@ importers:
 
   src/memory:
     dependencies:
-      '@ema-agent/context':
+      '@ema-agent/git':
         specifier: workspace:*
-        version: link:../context
-      '@ema-agent/embed':
-        specifier: workspace:*
-        version: link:../embed
+        version: link:../git
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../llm
-      '@ema-agent/narrative':
-        specifier: workspace:*
-        version: link:../narrative
-      '@ema-agent/rerank':
-        specifier: workspace:*
-        version: link:../rerank
-      '@ema-agent/session':
-        specifier: workspace:*
-        version: link:../session
       '@ema-agent/settings':
         specifier: workspace:*
         version: link:../settings
@@ -915,10 +895,6 @@ importers:
       zod:
         specifier: ^4
         version: 4.4.3
-    optionalDependencies:
-      usearch:
-        specifier: ^2.25.1
-        version: 2.25.1
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -1140,6 +1116,21 @@ importers:
       '@ema-agent/usage':
         specifier: workspace:*
         version: link:../usage
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
+
+  src/stage:
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -1412,6 +1403,9 @@ importers:
       '@ema-agent/turn-terms':
         specifier: workspace:*
         version: link:../turn-terms
+      '@ema-agent/usage':
+        specifier: workspace:*
+        version: link:../usage
     devDependencies:
       rimraf:
         specifier: ^5.0.0
@@ -1543,6 +1537,10 @@ importers:
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
   src/usage:
+    dependencies:
+      '@ema-agent/providers':
+        specifier: workspace:*
+        version: link:../providers
     devDependencies:
       rimraf:
         specifier: ^5.0.0

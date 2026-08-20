@@ -2,12 +2,9 @@
 
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { createEmbeddingSpace, type EmbeddingSpace } from '@ema-agent/embed';
+import type { EmbeddingSpace } from '@ema-agent/embed';
 import type { DocumentAsset, DocumentChunk, IngestOptions, IngestResult } from '../types.js';
-import type {
-  KnowledgeEmbeddingSelection,
-  KnowledgeVisionSelection,
-} from '../types.js';
+import type { CallEmbed, CallVision } from '../types.js';
 import type { KnowledgeStore } from '../store/store.js';
 import { EXT_TO_MIME, parseDocument } from '../parse/parse.js';
 import { buildPreview } from '../preview/buildPreview.js';
@@ -29,8 +26,8 @@ export type IngestStage = 'validate' | 'parse' | 'chunk' | 'embed';
 
 interface IngestDeps {
   readonly store: KnowledgeStore;
-  readonly embedding?: KnowledgeEmbeddingSelection;
-  readonly vision?: KnowledgeVisionSelection;
+  readonly embed?: CallEmbed;
+  readonly vision?: CallVision;
   readonly onProgress?: (assetId: string, stage: IngestStage, progress: number) => void;
 }
 
@@ -92,8 +89,7 @@ export async function ingest(
   try {
     report(deps, assetId, 'parse', 0.2);
     const imageReader = deps.vision
-      ? new ImageReader(deps.vision.vision, {
-          model: deps.vision.model,
+      ? new ImageReader(deps.vision, {
           signal: options.signal,
         })
       : undefined;
@@ -117,12 +113,11 @@ export async function ingest(
 
     report(deps, assetId, 'chunk', 0.4);
     const chunkOptions = { ...DEFAULT_CHUNK_OPTIONS, assetId };
-    const semantic = useSemanticChunking(mimeType, deps.embedding !== undefined);
-    const rawChunks = semantic && deps.embedding
+    const semantic = useSemanticChunking(mimeType, deps.embed !== undefined);
+    const rawChunks = semantic && deps.embed
       ? await new SemanticChunker().chunk(parsed.blocks, {
           ...chunkOptions,
-          embedding: deps.embedding.embedding,
-          model: deps.embedding.model,
+          embed: deps.embed,
           signal: options.signal,
         })
       : await new RecursiveChunker().chunk(parsed.blocks, chunkOptions);
@@ -131,11 +126,11 @@ export async function ingest(
     deps.store.addChunks(chunks);
     options.signal?.throwIfAborted();
 
-    if (deps.embedding && chunks.length > 0) {
+    if (deps.embed && chunks.length > 0) {
       report(deps, assetId, 'embed', 0.5);
       const space = await embedChunks(
         chunks,
-        deps.embedding,
+        deps.embed,
         options.signal,
         deps.store,
         (progress) => report(deps, assetId, 'embed', 0.5 + progress * 0.45),
@@ -174,7 +169,7 @@ export async function ingest(
 
 async function embedChunks(
   chunks: readonly DocumentChunk[],
-  embedding: KnowledgeEmbeddingSelection,
+  embed: CallEmbed,
   signal: AbortSignal | undefined,
   store: KnowledgeStore,
   onProgress: (progress: number) => void,
@@ -182,16 +177,11 @@ async function embedChunks(
   let space: EmbeddingSpace | undefined;
   for (let offset = 0; offset < chunks.length; offset += EMBED_BATCH_SIZE) {
     const batch = chunks.slice(offset, offset + EMBED_BATCH_SIZE);
-    const response = await embedding.embedding.embed({
-      model: embedding.model,
+    const response = await embed({
       texts: batch.map((chunk) => chunk.text),
       signal,
     });
-    const responseSpace = createEmbeddingSpace({
-      providerId: embedding.providerId,
-      model: embedding.model,
-      dim: response.dim,
-    });
+    const responseSpace = response.space;
     if (space && space.id !== responseSpace.id) {
       throw new KnowledgeEmbeddingSpaceMismatchError(space.id, responseSpace.id);
     }

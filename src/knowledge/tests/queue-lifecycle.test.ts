@@ -5,14 +5,6 @@ import { Database, KbIngestTasksRepo, KbReembedTasksRepo } from '@ema-agent/stor
 import { IngestQueue } from '../ingest/queue.js';
 import { ReembedQueue } from '../reembed/queue.js';
 import type { IngestResult } from '../types.js';
-import type { KnowledgeEmbeddingSelection } from '../types.js';
-
-/** 重嵌目标模型统一为当前绑定；测试里用固定 selection 模拟装配层注入。 */
-const EMBED_SELECTION: KnowledgeEmbeddingSelection = {
-  providerId: 'p',
-  model: 'm',
-  embedding: { embed: async () => ({ embeddings: [], dim: 0 }) } as never,
-};
 
 async function waitUntil(check: () => boolean, timeoutMs = 5000): Promise<void> {
   const start = Date.now();
@@ -60,13 +52,13 @@ describe('ReembedQueue 单行失败', () => {
       emit: (event) => events.push(event.type),
     });
 
-    const task = queue.enqueue({ assetId: 'asset-bad', embedding: EMBED_SELECTION });
+    const task = queue.enqueue({ assetId: 'asset-bad' });
     await waitUntil(() => tasks.get(task.id)?.status === 'failed');
 
     expect(tasks.get(task.id)?.error).toContain('provider 500');
     expect(events).toContain('kb_reembed_failed');
     expect(events).not.toContain('kb_reembed_completed');
-    const retried = queue.retry(task.id, EMBED_SELECTION);
+    const retried = queue.retry(task.id);
     expect(retried?.id).not.toBe(task.id);
     expect(retried?.assetId).toBe('asset-bad');
     await queue.shutdown();
@@ -84,12 +76,12 @@ describe('ReembedQueue 单行失败', () => {
       emit: () => {},
     });
 
-    const task = queue.enqueue({ assetId: 'asset-1', embedding: EMBED_SELECTION });
+    const task = queue.enqueue({ assetId: 'asset-1' });
     await waitUntil(() => tasks.get(task.id)?.status === 'running');
-    expect(() => queue.enqueue({ assetId: 'asset-1', embedding: EMBED_SELECTION }))
+    expect(() => queue.enqueue({ assetId: 'asset-1' }))
       .toThrow('该文档已有重嵌任务进行中');
     // 别的资产不受影响。
-    expect(() => queue.enqueue({ assetId: 'asset-2', embedding: EMBED_SELECTION }))
+    expect(() => queue.enqueue({ assetId: 'asset-2' }))
       .not.toThrow();
     await queue.shutdown();
     database.close();
@@ -116,8 +108,8 @@ describe('ReembedQueue 并发', () => {
       emit: () => {},
     });
 
-    const first = queue.enqueue({ assetId: 'asset-1', embedding: EMBED_SELECTION });
-    const second = queue.enqueue({ assetId: 'asset-2', embedding: EMBED_SELECTION });
+    const first = queue.enqueue({ assetId: 'asset-1' });
+    const second = queue.enqueue({ assetId: 'asset-2' });
     await waitUntil(() =>
       tasks.get(first.id)?.status === 'completed'
       && tasks.get(second.id)?.status === 'completed');

@@ -70,9 +70,9 @@ export class KnowledgeDocumentProcessingError extends Error {
 export class KnowledgeEmbedBatchError extends Error {
   readonly code = 'knowledge/embed_batch_failed' as const;
 
-  constructor(batchIndex: number, model: string, cause?: unknown) {
+  constructor(batchIndex: number, cause?: unknown) {
     super(
-      `Embedding batch ${batchIndex} failed after retries (model ${model})`,
+      `Embedding batch ${batchIndex} failed after retries`,
       cause === undefined ? undefined : { cause },
     );
     this.name = 'KnowledgeEmbedBatchError';

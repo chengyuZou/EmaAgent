@@ -17,14 +17,21 @@ export interface EmbeddingRequest {
   readonly signal?: AbortSignal;
 }
 
+/** Provider 报告的嵌入用量；不是所有协议都返回（Gemini 无 usage）。 */
+export interface EmbeddingUsage {
+  readonly inputTokens: number;
+}
+
 /** 向量已执行 L2 归一化，顺序与请求 texts 严格一致。 */
 export interface EmbeddingResult {
   readonly embeddings: readonly (readonly number[])[];
   readonly dim: number;
+  readonly usage?: EmbeddingUsage;
 }
 
 /** 协议实现返回的未校验向量，不从包入口导出。 */
 export interface RawEmbeddingResult {
   readonly embeddings: readonly (readonly number[])[];
   readonly dim: number;
+  readonly usage?: EmbeddingUsage;
 }

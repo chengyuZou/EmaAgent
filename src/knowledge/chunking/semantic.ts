@@ -1,8 +1,7 @@
 // 语义 chunker：按相邻句嵌入的相似度断点切分文本；原子块（code/table/image）不参与，
 // 嵌入失败或结果不可信时整体降级到递归分块。
 import { estimateTextTokens } from '@ema-agent/token';
-import type { EmbeddingModel } from '@ema-agent/embed';
-import type { DocumentBlock, DocumentChunk } from '../types.js';
+import type { CallEmbed, DocumentBlock, DocumentChunk } from '../types.js';
 import { SemanticFallbackWarning, KnowledgeEmbedAbortedError, KnowledgeEmbedBatchError } from '../errors.js';
 import type { ChunkOptions } from './base.js';
 import { chunkId, normalizeChunkSizes } from './base.js';
@@ -12,9 +11,8 @@ import { splitSentences, cosineSimilarity, smoothSimilarities, percentile } from
 // ── Public option type ────────────────────────────────────────────────────────
 
 export interface SemanticChunkOptions extends ChunkOptions {
-  /** 操作开始时已冻结的嵌入模型;model 为每次请求的模型身份。 */
-  embedding: EmbeddingModel;
-  model:       string;
+  /** 操作开始时已冻结的单次 embed 调用（模型身份在装配层冻结）。 */
+  embed:       CallEmbed;
   /** 相邻句余弦相似度低于该值即断点。default 0.5。 */
   breakThreshold?:     number;
   /** 按相似度分布的分位数取断点阈值（0-100），覆盖 breakThreshold；自适应长短文档。 */
@@ -82,7 +80,7 @@ export class SemanticChunker {
     if (sents.length < 2) return recursiveChunk(blks, opts, assetId);
 
     const inputs = buildBufferWindow(sents.map(s => s.text), bufferSize);
-    const { embeddings, failedBatches } = await embedBatches(inputs, opts.embedding, { model: opts.model, batchSize, concurrency, timeoutMs, maxRetries, signal: opts.signal });
+    const { embeddings, failedBatches } = await embedBatches(inputs, opts.embed, { batchSize, concurrency, timeoutMs, maxRetries, signal: opts.signal });
 
     if (failedBatches.length > 0) opts.onBatchFailure?.(failedBatches);
     if (opts.signal?.aborted) return this.fallback(blks, opts, 'aborted');
@@ -173,7 +171,7 @@ function buildBufferWindow(sents: string[], buf: number): string[] {
 
 interface BatchResult { embeddings: number[][]; failedBatches: Array<{ batchIndex: number; error: string; sentenceCount: number }> }
 
-interface EmbedBatchOpts { model: string; batchSize: number; concurrency: number; timeoutMs: number; maxRetries: number; signal?: AbortSignal }
+interface EmbedBatchOpts { batchSize: number; concurrency: number; timeoutMs: number; maxRetries: number; signal?: AbortSignal }
 
 /**
  * 有界并发 embed。N 个 worker 从共享 `next` 索引领 batch,结果按原下标写回 →
@@ -186,7 +184,7 @@ interface EmbedBatchOpts { model: string; batchSize: number; concurrency: number
  *   embedWithRetry 内部 abort 传播。已完成的向量保留(上层 fallback 自行决定)。
  * - 部分失败:某 batch 失败不杀其他 worker,failedBatches 记录,其余继续。
  */
-export async function embedBatches(texts: string[], embedding: EmbeddingModel, opts: EmbedBatchOpts): Promise<BatchResult> {
+export async function embedBatches(texts: string[], embed: CallEmbed, opts: EmbedBatchOpts): Promise<BatchResult> {
   const batches = chunk(texts, opts.batchSize);
   const failedBatches: BatchResult['failedBatches'] = [];
   if (batches.length === 0) return { embeddings: [], failedBatches };
@@ -202,7 +200,7 @@ export async function embedBatches(texts: string[], embedding: EmbeddingModel, o
       if (i >= batches.length) return;
       const batch = batches[i]!;
       try {
-        const vec = await embedWithRetry(batch, embedding, { ...opts, batchIndex: i });
+        const vec = await embedWithRetry(batch, embed, { ...opts, batchIndex: i });
         results[i] = { ok: true, vec };
       } catch (err) {
         results[i] = { ok: false, err: toError(err), count: batch.length };
@@ -232,7 +230,7 @@ export async function embedBatches(texts: string[], embedding: EmbeddingModel, o
  * 单次 embed 尝试带独立超时；外部 abort 经 onAbort 传播进同一条取消链。
  * 退避 500ms·2^attempt；最终失败抛出统一文案的错误（cause 链保留原始错误）。
  */
-async function embedWithRetry(texts: string[], embedding: EmbeddingModel, opts: EmbedBatchOpts & { batchIndex: number }): Promise<number[][]> {
+async function embedWithRetry(texts: string[], embed: CallEmbed, opts: EmbedBatchOpts & { batchIndex: number }): Promise<number[][]> {
   let lastErr: Error | undefined;
   for (let attempt = 0; attempt <= opts.maxRetries; attempt++) {
     if (opts.signal?.aborted) {
@@ -243,7 +241,7 @@ async function embedWithRetry(texts: string[], embedding: EmbeddingModel, opts: 
     const onAbort = (): void => ctrl.abort(opts.signal!.reason);
     opts.signal?.addEventListener('abort', onAbort, { once: true });
     try {
-      const res  = await embedding.embed({ model: opts.model, texts, signal: ctrl.signal });
+      const res  = await embed({ texts, signal: ctrl.signal });
       clearTimeout(tid); opts.signal?.removeEventListener('abort', onAbort);
       return res.embeddings.map((embedding) => [...embedding]);
     } catch (err) {
@@ -255,7 +253,7 @@ async function embedWithRetry(texts: string[], embedding: EmbeddingModel, opts: 
       if (attempt < opts.maxRetries) await sleep(500 * 2 ** attempt, opts.signal);
     }
   }
-  throw new KnowledgeEmbedBatchError(opts.batchIndex, opts.model, lastErr);
+  throw new KnowledgeEmbedBatchError(opts.batchIndex, lastErr);
 }
 
 function toError(error: unknown): Error {

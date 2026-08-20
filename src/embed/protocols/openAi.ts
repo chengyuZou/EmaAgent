@@ -28,6 +28,7 @@ export function createOpenAiEmbeddingProtocol(
     if (!response.ok) throw await httpError('openai-embed', response);
     const body = await readJson(response, 'openai-embed') as {
       data?: Array<{ embedding?: number[]; index?: number }>;
+      usage?: { prompt_tokens?: number };
     };
     if (!Array.isArray(body.data)) {
       throw new EmbeddingError('embed/invalid_response', 'openai-embed response is missing data');
@@ -58,7 +59,14 @@ export function createOpenAiEmbeddingProtocol(
       }
       return vector;
     });
-    return { embeddings, dim: embeddings[0]?.length ?? 0 };
+    const promptTokens = body.usage?.prompt_tokens;
+    return {
+      embeddings,
+      dim: embeddings[0]?.length ?? 0,
+      ...(typeof promptTokens === 'number' && Number.isFinite(promptTokens) && promptTokens >= 0
+        ? { usage: { inputTokens: promptTokens } }
+        : {}),
+    };
   };
 }
 

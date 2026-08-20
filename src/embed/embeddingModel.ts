@@ -29,6 +29,7 @@ export function createEmbeddingModel(connection: EmbeddingConnection): Embedding
       return {
         embeddings: raw.embeddings.map(normalizeEmbedding),
         dim: raw.dim,
+        ...(raw.usage ? { usage: raw.usage } : {}),
       };
     },
   };

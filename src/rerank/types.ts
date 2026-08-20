@@ -25,6 +25,12 @@ export interface RerankItem {
   readonly score: number;
 }
 
+/** Provider 报告的重排用量；只收协议正式返回的 token 数（Jina 的 total_tokens），不读 meta。 */
+export interface RerankUsage {
+  readonly totalTokens: number;
+}
+
 export interface RerankResult {
   readonly results: readonly RerankItem[];
+  readonly usage?: RerankUsage;
 }

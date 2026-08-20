@@ -72,8 +72,6 @@ CREATE TABLE kb_ingest_tasks (
 CREATE TABLE kb_reembed_tasks (
   id              TEXT PRIMARY KEY,
   asset_id        TEXT NOT NULL,
-  embedding_provider_id TEXT NOT NULL,
-  embedding_model TEXT NOT NULL,
   status          TEXT NOT NULL DEFAULT 'pending'
                   CHECK (status IN ('pending', 'running', 'completed', 'failed', 'cancelled')),
   stage           TEXT,

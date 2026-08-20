@@ -7,9 +7,10 @@ export type {
   KnowledgeClientDeps,
 } from './client.js';
 export type {
-  KnowledgeEmbeddingSelection,
-  KnowledgeRerankSelection,
-  KnowledgeVisionSelection,
+  CallEmbed,
+  CallEmbedResult,
+  CallRerank,
+  CallVision,
 } from './types.js';
 export type { KnowledgeEvent } from './events.js';
 export type {

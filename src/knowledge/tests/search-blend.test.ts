@@ -1,12 +1,10 @@
 // 测试 KB 检索的 RRF 与 rerank 加权混合：低 rerank 分不消失、混合下限守卫空答案。
 
 import { describe, expect, it } from 'vitest';
-import type { Reranker } from '@ema-agent/rerank';
-import type { EmbeddingModel } from '@ema-agent/embed';
 import { KnowledgeClient } from '../client.js';
 import type { KnowledgeClientDeps } from '../client.js';
 import type { KnowledgeStore } from '../store/store.js';
-import type { DocumentAsset, DocumentChunk } from '../types.js';
+import type { CallEmbed, CallRerank, DocumentAsset, DocumentChunk } from '../types.js';
 
 function makeChunk(id: string, assetId: string, text: string): DocumentChunk {
   return {
@@ -55,25 +53,21 @@ class BlendStore {
 
 function rerankerReturning(
   results: Array<{ index: number; score: number }>,
-): Reranker {
-  return {
-    rerank: async () => ({ results }),
-  } as unknown as Reranker;
+): CallRerank {
+  return async () => ({ results });
 }
 
-function failingReranker(): Reranker {
-  return {
-    rerank: async () => {
-      throw new Error('rerank down');
-    },
-  } as unknown as Reranker;
+function failingReranker(): CallRerank {
+  return async () => {
+    throw new Error('rerank down');
+  };
 }
 
-function makeDeps(store: BlendStore, reranker?: Reranker): KnowledgeClientDeps {
+function makeDeps(store: BlendStore, callRerank?: CallRerank): KnowledgeClientDeps {
   return {
     store: store as unknown as KnowledgeStore,
-    resolveEmbedding: () => undefined,
-    resolveReranker: reranker ? () => ({ model: 'rerank-model', reranker }) : () => undefined,
+    resolveEmbed: () => undefined,
+    resolveRerank: () => callRerank,
     resolveVision: () => undefined,
   };
 }
@@ -165,17 +159,12 @@ describe('KB 检索混合排序', () => {
     const store = prepare();
     const controller = new AbortController();
     controller.abort(new Error('user cancelled'));
+    const failingEmbed: CallEmbed = async () => {
+      throw new Error('socket closed');
+    };
     const client = new KnowledgeClient({
       ...makeDeps(store),
-      resolveEmbedding: () => ({
-        providerId: 'p',
-        model: 'm',
-        embedding: {
-          embed: async () => {
-            throw new Error('socket closed');
-          },
-        } as unknown as EmbeddingModel,
-      }),
+      resolveEmbed: () => failingEmbed,
     });
 
     await expect(client.search('query', { topK: 2, signal: controller.signal }))

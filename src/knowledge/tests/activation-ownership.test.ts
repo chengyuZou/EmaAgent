@@ -51,8 +51,8 @@ describe('KB activation 资产归属', () => {
     } as unknown as KnowledgeStore;
     const client = new KnowledgeClient({
       store,
-      resolveEmbedding: () => undefined,
-      resolveReranker: () => undefined,
+      resolveEmbed: () => undefined,
+      resolveRerank: () => undefined,
       resolveVision: () => undefined,
     });
 

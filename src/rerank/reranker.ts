@@ -28,6 +28,7 @@ export function createReranker(connection: RerankConnection): Reranker {
         results: [...result.results]
           .sort((left, right) => right.score - left.score || left.index - right.index)
           .slice(0, topK),
+        ...(result.usage ? { usage: result.usage } : {}),
       };
     },
   };

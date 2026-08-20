@@ -29,9 +29,9 @@ import {
   type KnowledgeRetrievalSettings,
 } from './settings.js';
 import type {
-  KnowledgeEmbeddingSelection,
-  KnowledgeRerankSelection,
-  KnowledgeVisionSelection,
+  CallEmbed,
+  CallRerank,
+  CallVision,
 } from './types.js';
 import { KnowledgeStore } from './store/store.js';
 import type {
@@ -55,9 +55,9 @@ interface OpenKnowledgeBase {
 export interface KbManagerDeps {
   readonly registry: KbRegistryRepo;
   readonly activations: KbActivationsRepo;
-  readonly resolveEmbedding: () => KnowledgeEmbeddingSelection | undefined;
-  readonly resolveReranker: () => KnowledgeRerankSelection | undefined;
-  readonly resolveVision: () => KnowledgeVisionSelection | undefined;
+  readonly resolveEmbed: () => CallEmbed | undefined;
+  readonly resolveRerank: () => CallRerank | undefined;
+  readonly resolveVision: () => CallVision | undefined;
   readonly resolveRetrievalSettings?: () => KnowledgeRetrievalSettings;
   readonly ingestConcurrency?: number;
   readonly reembedConcurrency?: number;
@@ -144,7 +144,7 @@ export class KbManager {
   }
 
   /** 每行任务绑定一个显式资产：传入几个资产就建几行，返回与输入一一对应的任务行。
-   *  重嵌目标模型统一为当前绑定（kb-embed），任务行只记录入队时刻的模型。 */
+   *  重嵌目标模型统一为当前绑定（kb-embed），执行时由闭包解析，任务行不记模型快照。 */
   async enqueueReembed(input: {
     readonly kbId?: string;
     readonly assetIds: readonly string[];
@@ -163,16 +163,13 @@ export class KbManager {
         );
       }
     }
-    const selection = this.requireEmbedding();
+    this.requireEmbed();
     // 批量建行前预检一次短文本 embed，key/模型/维度不通则一行都不建；
     // 单资产不预检：那一行自己的失败就是报告。
     if (input.assetIds.length > 1) {
       await entry.client.probeEmbeddingSpace();
     }
-    return input.assetIds.map((assetId) => entry.reembedQueue.enqueue({
-      assetId,
-      embedding: selection,
-    }));
+    return input.assetIds.map((assetId) => entry.reembedQueue.enqueue({ assetId }));
   }
 
   /** 整库重建的显式清单来源：调用方先取 stale 清单，再整单传给 enqueueReembed。 */
@@ -186,16 +183,17 @@ export class KbManager {
 
   /** retry 也用当前绑定模型，不沿袭任务行里的旧模型（绑定可能已切换）。 */
   async retryReembed(taskId: string, kbId?: string): Promise<KbReembedTask | undefined> {
-    return (await this.required(kbId)).reembedQueue.retry(taskId, this.requireEmbedding());
+    this.requireEmbed();
+    return (await this.required(kbId)).reembedQueue.retry(taskId);
   }
 
-  /** 当前绑定缺失时抛未配置错误；返回 selection 供任务行记录模型。 */
-  private requireEmbedding(): KnowledgeEmbeddingSelection {
-    const selection = this.deps.resolveEmbedding();
-    if (!selection) {
+  /** 当前绑定缺失时抛未配置错误；入队/重试前的存在性校验。 */
+  private requireEmbed(): CallEmbed {
+    const embed = this.deps.resolveEmbed();
+    if (!embed) {
       throw new KnowledgeNotConfiguredError('Embedding 配置已删除或模型未启用');
     }
-    return selection;
+    return embed;
   }
 
   async cancelReembed(taskId: string, kbId?: string): Promise<boolean> {
@@ -281,8 +279,8 @@ export class KbManager {
     );
     const client = new KnowledgeClient({
       store,
-      resolveEmbedding: this.deps.resolveEmbedding,
-      resolveReranker: this.deps.resolveReranker,
+      resolveEmbed: this.deps.resolveEmbed,
+      resolveRerank: this.deps.resolveRerank,
       resolveVision: this.deps.resolveVision,
       kbRoot: record.path,
     });

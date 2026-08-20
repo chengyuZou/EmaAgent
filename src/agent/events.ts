@@ -37,6 +37,8 @@ export type AgentLoopEvent =
       readonly iteration: number;
       readonly usage: LlmTokenUsage;
       readonly stopReason: LlmStopReason;
+      /** 本次 LLM 调用的实际耗时（成功那次尝试的流式时长）。 */
+      readonly durationMs: number;
     }
   | { readonly type: 'tool_result'; readonly result: ToolResult }
   | { readonly type: 'phase_changed'; readonly state: AgentLoopState }

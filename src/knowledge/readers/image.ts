@@ -2,8 +2,8 @@
 // 位于知识库 readers 层: PDF 扫描页和图片附件都经它进入知识库。
 
 import { readFile } from 'node:fs/promises';
-import type { VisionModel, VisionImageMime, VisionTask } from '@ema-agent/vision';
-import type { DocumentBlock } from '../types.js';
+import type { VisionImageMime, VisionTask } from '@ema-agent/vision';
+import type { CallVision, DocumentBlock } from '../types.js';
 import type { DocumentReader, ReadResult, ReaderSource } from './base.js';
 import { nextBlockId } from './base.js';
 
@@ -15,14 +15,13 @@ const MIME_MAP: Record<string, VisionImageMime> = {
 export type KbVisionTask = Extract<VisionTask, 'ocr' | 'caption'>;
 
 export interface ImageReaderOptions {
-  model:      string;
   signal?:    AbortSignal;
 }
 
 export class ImageReader implements DocumentReader {
   constructor(
-    private readonly vision: VisionModel,
-    private readonly opts:   ImageReaderOptions,
+    private readonly callVision: CallVision,
+    private readonly opts:       ImageReaderOptions,
   ) {}
 
   async read(source: ReaderSource): Promise<ReadResult> {
@@ -41,8 +40,7 @@ export class ImageReader implements DocumentReader {
       ? new Uint8Array(await readFile(source.path))
       : source.bytes;
 
-    const result = await this.vision.analyze({
-      model:      this.opts.model,
+    const result = await this.callVision({
       task,
       images:     [{ kind: 'bytes', bytes, mimeType: mime }],
       signal:     this.opts.signal,

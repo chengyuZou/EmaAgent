@@ -1,7 +1,6 @@
 // 负责单个知识库的文档写入、重嵌入、混合检索与内存向量索引。
 
 import type { EmbeddingSpace } from '@ema-agent/embed';
-import { createEmbeddingSpace } from '@ema-agent/embed';
 import type { AssetUsage, ChunkPage } from '@ema-agent/storage';
 import type {
   AssetListPage,
@@ -16,9 +15,9 @@ import type {
 } from './types.js';
 import type { KnowledgeStore } from './store/store.js';
 import type {
-  KnowledgeEmbeddingSelection,
-  KnowledgeRerankSelection,
-  KnowledgeVisionSelection,
+  CallEmbed,
+  CallRerank,
+  CallVision,
 } from './types.js';
 import type { VectorIndex } from './vector-index/vector-index.js';
 import { createVectorIndex } from './vector-index/factory.js';
@@ -38,9 +37,9 @@ const EMBED_BATCH_SIZE = 32;
 
 export interface KnowledgeClientDeps {
   readonly store: KnowledgeStore;
-  readonly resolveEmbedding: () => KnowledgeEmbeddingSelection | undefined;
-  readonly resolveReranker: () => KnowledgeRerankSelection | undefined;
-  readonly resolveVision: () => KnowledgeVisionSelection | undefined;
+  readonly resolveEmbed: () => CallEmbed | undefined;
+  readonly resolveRerank: () => CallRerank | undefined;
+  readonly resolveVision: () => CallVision | undefined;
   readonly kbRoot?: string;
 }
 
@@ -58,7 +57,7 @@ export class KnowledgeClient {
   ): Promise<IngestResult> {
     const result = await runIngest(filePath, options, {
       store: this.deps.store,
-      embedding: this.deps.resolveEmbedding(),
+      embed: this.deps.resolveEmbed(),
       vision: this.deps.resolveVision(),
       onProgress,
     });
@@ -86,20 +85,15 @@ export class KnowledgeClient {
   /** 全量重建 fan-out 前的预检：一次短文本 embed 验证 key/模型/维度，失败则一行任务都不建。
    *  重嵌入永远用当前绑定（kb-embed）模型。 */
   async probeEmbeddingSpace(signal?: AbortSignal): Promise<EmbeddingSpace> {
-    const selection = this.deps.resolveEmbedding();
-    if (!selection) {
+    const embed = this.deps.resolveEmbed();
+    if (!embed) {
       throw new KnowledgeNotConfiguredError('Embedding 配置已删除或模型未启用');
     }
-    const response = await selection.embedding.embed({
-      model: selection.model,
+    const response = await embed({
       texts: ['空间预检'],
       ...(signal === undefined ? {} : { signal }),
     });
-    return createEmbeddingSpace({
-      providerId: selection.providerId,
-      model: selection.model,
-      dim: response.dim,
-    });
+    return response.space;
   }
 
   listStaleAssetIds(): string[] {
@@ -113,24 +107,19 @@ export class KnowledgeClient {
     signal: AbortSignal,
     onProgress?: (completed: number, total: number) => void,
   ): Promise<EmbeddingSpace> {
-    const selection = this.deps.resolveEmbedding();
-    if (!selection) {
+    const embed = this.deps.resolveEmbed();
+    if (!embed) {
       throw new KnowledgeNotConfiguredError('Embedding 配置已删除或模型未启用');
     }
     const chunks = this.deps.store.getChunks(assetId);
     let space: EmbeddingSpace | undefined;
     for (let offset = 0; offset < chunks.length; offset += EMBED_BATCH_SIZE) {
       const batch = chunks.slice(offset, offset + EMBED_BATCH_SIZE);
-      const response = await selection.embedding.embed({
-        model: selection.model,
+      const response = await embed({
         texts: batch.map((chunk) => chunk.text),
         signal,
       });
-      const responseSpace = createEmbeddingSpace({
-        providerId: selection.providerId,
-        model: selection.model,
-        dim: response.dim,
-      });
+      const responseSpace = response.space;
       // 同一资产内跨批次的维度漂移才算空间不符；跨资产一致性由"同批任务同一模型"保证。
       if (space && space.id !== responseSpace.id) {
         throw new KnowledgeEmbeddingSpaceMismatchError(space.id, responseSpace.id);
@@ -171,11 +160,10 @@ export class KnowledgeClient {
     const dense = await this.searchDense(query, topK, searchOptions, selected, options.signal);
     let ranked = weightedRank(sparse, dense, alpha, topK * 2);
 
-    const rerank = this.deps.resolveReranker();
-    if (rerank && ranked.length > 0) {
+    const callRerank = this.deps.resolveRerank();
+    if (callRerank && ranked.length > 0) {
       try {
-        const response = await rerank.reranker.rerank({
-          model: rerank.model,
+        const response = await callRerank({
           query,
           documents: ranked.map((item) => this.deps.store.getChunk(item.id)?.text ?? ''),
           topK,
@@ -249,17 +237,13 @@ export class KnowledgeClient {
     selected: ReadonlySet<string> | undefined,
     signal: AbortSignal | undefined,
   ): Promise<Array<{ id: string; score: number }>> {
-    const embedding = this.deps.resolveEmbedding();
-    if (!embedding) return [];
+    const embed = this.deps.resolveEmbed();
+    if (!embed) return [];
     try {
-      const response = await embedding.embedding.embed({ model: embedding.model, texts: [query], signal });
+      const response = await embed({ texts: [query], signal });
       const vector = response.embeddings[0];
       if (!vector) return [];
-      const space = createEmbeddingSpace({
-        providerId: embedding.providerId,
-        model: embedding.model,
-        dim: response.dim,
-      });
+      const space = response.space;
       await this.ensureIndex(space);
       if (!this.vectorIndex) {
         return this.deps.store.searchByEmbedding([...vector], space.id, searchOptions)

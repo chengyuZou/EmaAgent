@@ -5,7 +5,6 @@ import { randomUUID } from 'node:crypto';
 import type { KbReembedTask, KbReembedTasksRepo } from '@ema-agent/storage';
 import { KnowledgeInvalidRequestError } from '../errors.js';
 import type { KnowledgeEvent } from '../events.js';
-import type { KnowledgeEmbeddingSelection } from '../types.js';
 
 // 每行是一个资产的按批 embed 流；3 路并发对齐旧 sweep 内资产池的吞吐。
 const DEFAULT_CONCURRENCY = 3;
@@ -32,10 +31,8 @@ export class ReembedQueue {
     this.concurrency = Math.max(1, Math.trunc(deps.concurrency ?? DEFAULT_CONCURRENCY));
   }
 
-  enqueue(input: {
-    readonly assetId: string;
-    readonly embedding: KnowledgeEmbeddingSelection;
-  }): KbReembedTask {
+  /** 入队只建行；执行时由 deps.reembed 内部解析当前绑定模型（绑定可能已切换）。 */
+  enqueue(input: { readonly assetId: string }): KbReembedTask {
     // 同一资产只允许一个在途任务（连点或 fan-out 重入都只会产生重复付费）。
     if (this.deps.tasks.findActiveByAssetId(input.assetId)) {
       throw new KnowledgeInvalidRequestError(`该文档已有重嵌任务进行中: ${input.assetId}`);
@@ -43,18 +40,16 @@ export class ReembedQueue {
     const task = this.deps.tasks.insert({
       id: randomUUID(),
       assetId: input.assetId,
-      embeddingProviderId: input.embedding.providerId,
-      embeddingModel: input.embedding.model,
     });
     this.drain();
     return task;
   }
 
-  // retry 的模型由业务包传入当前绑定，不从任务行读旧模型（绑定可能已切换）。
-  retry(taskId: string, embedding: KnowledgeEmbeddingSelection): KbReembedTask | undefined {
+  // retry 同样不沿袭任务行旧模型：执行时解析当前绑定。
+  retry(taskId: string): KbReembedTask | undefined {
     const previous = this.deps.tasks.get(taskId);
     if (!previous || previous.status !== 'failed') return undefined;
-    return this.enqueue({ assetId: previous.assetId, embedding });
+    return this.enqueue({ assetId: previous.assetId });
   }
 
   cancel(taskId: string): boolean {

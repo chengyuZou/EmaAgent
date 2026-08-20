@@ -1,11 +1,16 @@
 // 测试单资产重嵌入：分批写向量、空间冻结与清理 stale、进度回调、abort 上抛、预检。
 
 import { describe, expect, it } from 'vitest';
-import type { EmbeddingModel } from '@ema-agent/embed';
+import type { EmbeddingSpace } from '@ema-agent/embed';
 import { KnowledgeClient } from '../client.js';
 import type { KnowledgeClientDeps } from '../client.js';
 import type { KnowledgeStore } from '../store/store.js';
-import type { DocumentAsset, DocumentChunk } from '../types.js';
+import type { CallEmbed, DocumentAsset, DocumentChunk } from '../types.js';
+
+/** 测试用固定空间：空间构造（sha256 身份）归装配层，业务包只透传。 */
+const TEST_SPACE: EmbeddingSpace = {
+  id: 'test-space', providerId: 'provider-1', model: 'embed-1', dim: 2, normalization: 'l2',
+};
 
 function makeChunk(id: string, assetId: string, text: string): DocumentChunk {
   return { id, assetId, text, blockKinds: ['paragraph'], tokenCount: 1, sectionPath: [] };
@@ -42,14 +47,12 @@ class ReembedStore {
 
 function makeDeps(
   store: ReembedStore,
-  embed: EmbeddingModel['embed'] | undefined,
+  embed: CallEmbed | undefined,
 ): KnowledgeClientDeps {
   return {
     store: store as unknown as KnowledgeStore,
-    resolveEmbedding: () => (embed
-      ? { providerId: 'provider-1', model: 'embed-1', embedding: { embed } as unknown as EmbeddingModel }
-      : undefined),
-    resolveReranker: () => undefined,
+    resolveEmbed: () => embed,
+    resolveRerank: () => undefined,
     resolveVision: () => undefined,
   };
 }
@@ -62,6 +65,7 @@ describe('单资产重嵌入', () => {
     const client = new KnowledgeClient(makeDeps(store, async ({ texts }) => ({
       embeddings: texts.map(() => [1, 0]),
       dim: 2,
+      space: TEST_SPACE,
     })));
     const progress: Array<[number, number]> = [];
 
@@ -102,16 +106,17 @@ describe('单资产重嵌入', () => {
 });
 
 describe('预检', () => {
-  it('probeEmbeddingSpace 用响应维度构造空间', async () => {
+  it('probeEmbeddingSpace 透传闭包返回的空间', async () => {
     const store = new ReembedStore();
+    const probeSpace: EmbeddingSpace = { ...TEST_SPACE, id: 'probe-space', dim: 3 };
     const client = new KnowledgeClient(makeDeps(store, async ({ texts }) => {
       expect(texts).toHaveLength(1);
-      return { embeddings: [[1, 0, 0]], dim: 3 };
+      return { embeddings: [[1, 0, 0]], dim: 3, space: probeSpace };
     }));
 
     const space = await client.probeEmbeddingSpace();
+    expect(space).toBe(probeSpace);
     expect(space.dim).toBe(3);
-    expect(space.id).toMatch(/^[a-f0-9]{64}$/);
   });
 
   it('模型配置缺失时预检直接失败', async () => {
