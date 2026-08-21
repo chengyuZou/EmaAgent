@@ -2,6 +2,12 @@
 import type { CommandRunner } from '@ema-agent/sandbox';
 import type { TaskStore } from '@ema-agent/tasks';
 import type { CallVision, KnowledgeSearch } from '@ema-agent/knowledge';
+import type {
+  AddMemoryNote,
+  ListMemory,
+  ReadMemory,
+  SearchMemory,
+} from '@ema-agent/memory';
 import type { NarrativeSearch } from '@ema-agent/narrative';
 import type { SkillPool } from '@ema-agent/skills';
 import type { ReadFileState } from '../types.js';
@@ -120,4 +126,13 @@ export interface ToolUseContext {
   readonly askUser?: AskUser;
   /** 本 Turn 冻结的 vision 调用（OCR/图注）；缺省时 PdfReadTool 只读文本层。 */
   readonly vision?: CallVision;
+  // ── Memory 工具族的四个窄能力（类型由 @ema-agent/memory 导出） ──────────────
+  /** MemorySearch 工具的跨两轨关键词搜索能力。 */
+  readonly memorySearch?: SearchMemory;
+  /** MemoryRead 工具的按相对路径读取正式记忆能力。 */
+  readonly memoryRead?: ReadMemory;
+  /** MemoryList 工具的列记忆目录能力。 */
+  readonly memoryList?: ListMemory;
+  /** MemoryNote 工具创建便签的能力（根 Turn 注入，绑定本 Turn 角色）。 */
+  readonly memoryNote?: AddMemoryNote;
 }

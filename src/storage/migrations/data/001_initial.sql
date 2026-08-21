@@ -84,12 +84,6 @@ CREATE TABLE kb_activations (
   created_at  INTEGER NOT NULL
 );
 
-CREATE TABLE memory_session_state (
-  session_id     TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
-  surfaced_json  TEXT NOT NULL DEFAULT '{}',
-  overrides_json TEXT NOT NULL DEFAULT '{}'
-);
-
 CREATE TABLE memory_jobs (
   id           TEXT PRIMARY KEY,
   kind         TEXT NOT NULL CHECK(kind IN (
@@ -156,24 +150,6 @@ CREATE TABLE messages (
   blocks_json TEXT NOT NULL,
   interrupted INTEGER NOT NULL DEFAULT 0,
   created_at  INTEGER NOT NULL);
-
-CREATE TABLE pending_fragments (
-  id         TEXT    PRIMARY KEY,
-  session_id TEXT    NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  turn_id    TEXT    NOT NULL REFERENCES turns(id)    ON DELETE CASCADE,
-  role       TEXT    NOT NULL CHECK(role IN ('user', 'assistant')),
-  content    TEXT    NOT NULL,
-  at         INTEGER NOT NULL,
-  created_at INTEGER NOT NULL
-);
-
-CREATE TABLE session_notes (
-  session_id            TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
-  body                  TEXT NOT NULL DEFAULT '',
-  last_message_id       TEXT,
-  tokens_at_last_update INTEGER NOT NULL DEFAULT 0,
-  updated_at            INTEGER NOT NULL
-);
 
 CREATE TABLE sessions (
   id                   TEXT PRIMARY KEY,
@@ -338,6 +314,8 @@ CREATE TABLE turns (
                        CHECK(narrative_policy IN ('auto','always','off')),
   provider_id   TEXT,
   model_id             TEXT,
+  -- 本 Turn 激活角色的磁盘目录名（Character.directoryName 快照）；Memory relationship 提取经 turnId 回读。
+  character_directory_name TEXT,
   iterations           INTEGER NOT NULL DEFAULT 0,
   usage_input_tokens   INTEGER NOT NULL DEFAULT 0,
   usage_output_tokens  INTEGER NOT NULL DEFAULT 0,
@@ -422,6 +400,11 @@ CREATE INDEX idx_memory_jobs_turn
   ON memory_jobs(turn_id)
   WHERE turn_id IS NOT NULL;
 
+CREATE UNIQUE INDEX idx_memory_jobs_active_extraction
+  ON memory_jobs(turn_id, kind)
+  WHERE turn_id IS NOT NULL
+    AND status IN ('pending', 'running', 'completed');
+
 CREATE INDEX idx_memory_extraction_results_unintegrated
   ON memory_extraction_results(integrated_at, job_id);
 
@@ -441,9 +424,6 @@ CREATE INDEX idx_messages_session_latest_summary
   WHERE kind = 'summary';
 
 CREATE INDEX idx_messages_turn    ON messages(turn_id);
-
-CREATE INDEX idx_pending_fragments_session
-  ON pending_fragments(session_id, at ASC, created_at ASC, id ASC);
 
 CREATE INDEX idx_sessions_activity
   ON sessions(pinned DESC, last_activity_at DESC, id DESC);
@@ -781,14 +761,6 @@ BEGIN
   END;
 END;
 
-CREATE TRIGGER trg_messages_owner_delete_cleanup
-AFTER DELETE ON messages
-BEGIN
-  UPDATE session_notes
-     SET last_message_id = NULL
-   WHERE last_message_id = OLD.id AND session_id = OLD.session_id;
-END;
-
 CREATE TRIGGER trg_messages_owner_insert
 BEFORE INSERT ON messages
 WHEN NEW.turn_id IS NOT NULL
@@ -812,57 +784,6 @@ BEGIN
       SELECT 1 FROM turns t
        WHERE t.id = NEW.turn_id AND t.session_id = NEW.session_id
     ) THEN RAISE(ABORT, 'ownership_violation: messages.turn_id')
-  END;
-END;
-
-CREATE TRIGGER trg_pending_fragments_owner_insert
-BEFORE INSERT ON pending_fragments
-WHEN NOT EXISTS (
-  SELECT 1 FROM turns t
-   WHERE t.id = NEW.turn_id AND t.session_id = NEW.session_id
-)
-BEGIN
-  SELECT RAISE(ABORT, 'ownership_violation: pending_fragments.turn_id');
-END;
-
-CREATE TRIGGER trg_pending_fragments_owner_update
-BEFORE UPDATE OF session_id, turn_id ON pending_fragments
-BEGIN
-  SELECT CASE
-    WHEN NEW.session_id <> OLD.session_id
-    THEN RAISE(ABORT, 'ownership_violation: pending_fragments.session_id is immutable')
-  END;
-  SELECT CASE
-    WHEN NOT EXISTS (
-      SELECT 1 FROM turns t
-       WHERE t.id = NEW.turn_id AND t.session_id = NEW.session_id
-    ) THEN RAISE(ABORT, 'ownership_violation: pending_fragments.turn_id')
-  END;
-END;
-
-CREATE TRIGGER trg_session_notes_owner_insert
-BEFORE INSERT ON session_notes
-WHEN NEW.last_message_id IS NOT NULL
- AND NOT EXISTS (
-   SELECT 1 FROM messages m
-    WHERE m.id = NEW.last_message_id AND m.session_id = NEW.session_id
- )
-BEGIN
-  SELECT RAISE(ABORT, 'ownership_violation: session_notes.last_message_id');
-END;
-
-CREATE TRIGGER trg_session_notes_owner_update
-BEFORE UPDATE OF session_id, last_message_id ON session_notes
-BEGIN
-  SELECT CASE
-    WHEN NEW.session_id <> OLD.session_id
-    THEN RAISE(ABORT, 'ownership_violation: session_notes.session_id is immutable')
-  END;
-  SELECT CASE
-    WHEN NEW.last_message_id IS NOT NULL AND NOT EXISTS (
-      SELECT 1 FROM messages m
-       WHERE m.id = NEW.last_message_id AND m.session_id = NEW.session_id
-    ) THEN RAISE(ABORT, 'ownership_violation: session_notes.last_message_id')
   END;
 END;
 

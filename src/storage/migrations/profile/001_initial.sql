@@ -115,85 +115,6 @@ CREATE TABLE mcp_registry_sources (
   updated_at   INTEGER NOT NULL
 );
 
-CREATE TABLE memory_edges (
-  id                 TEXT PRIMARY KEY,
-  from_node_id       TEXT NOT NULL REFERENCES memory_nodes(id) ON DELETE CASCADE,
-  to_node_id         TEXT NOT NULL REFERENCES memory_nodes(id) ON DELETE CASCADE,
-  relation           TEXT NOT NULL,
-  mention_count      INTEGER NOT NULL DEFAULT 1,
-  created_at         INTEGER NOT NULL,
-  last_referenced_at INTEGER NOT NULL,
-  UNIQUE(from_node_id, to_node_id, relation)
-);
-
-CREATE TABLE memory_extraction_runs (
-  run_id               TEXT PRIMARY KEY CHECK(length(run_id) > 0),
-  session_id           TEXT NOT NULL CHECK(length(session_id) > 0),
-  source_turn_id       TEXT NOT NULL CHECK(length(source_turn_id) > 0),
-  note_delta           TEXT NOT NULL,
-  nodes_count          INTEGER NOT NULL CHECK(nodes_count >= 0),
-  edges_count          INTEGER NOT NULL CHECK(edges_count >= 0),
-  items_count          INTEGER NOT NULL CHECK(items_count >= 0),
-  lazy_updates_count   INTEGER NOT NULL CHECK(lazy_updates_count >= 0),
-  committed_at         INTEGER NOT NULL
-);
-
-CREATE TABLE memory_items (
-  id                    TEXT PRIMARY KEY,
-  kind                  TEXT NOT NULL CHECK(kind IN ('user','feedback','project','reference')),
-  title                 TEXT NOT NULL,
-  body                  TEXT NOT NULL,
-  embedding             BLOB,
-  embedding_provider_id TEXT,
-  embedding_model       TEXT,
-  embedding_dim         INTEGER,
-  source_session_id     TEXT,
-  source_turn_id        TEXT,
-  importance            INTEGER NOT NULL DEFAULT 50,
-  profiles_json            TEXT NOT NULL DEFAULT '["chat","work"]',
-  meta_json             TEXT NOT NULL DEFAULT '{}',
-  last_referenced_at    INTEGER NOT NULL DEFAULT 0,
-  expires_at            INTEGER,
-  created_at            INTEGER NOT NULL,
-  updated_at            INTEGER NOT NULL
-, embedding_normalization TEXT, embedding_revision TEXT, embedding_space_id TEXT, embedding_evicted_at INTEGER, last_decayed_at INTEGER);
-
-CREATE TABLE memory_node_lazy_updates (
-  id                TEXT PRIMARY KEY,
-  node_id           TEXT NOT NULL REFERENCES memory_nodes(id) ON DELETE CASCADE,
-  fragment          TEXT NOT NULL,
-  source_session_id TEXT,
-  source_turn_id    TEXT,
-  created_at        INTEGER NOT NULL
-);
-
-CREATE TABLE memory_node_sources (
-  node_id           TEXT NOT NULL REFERENCES memory_nodes(id) ON DELETE CASCADE,
-  source_session_id TEXT NOT NULL,
-  source_turn_id    TEXT NOT NULL DEFAULT '',
-  created_at        INTEGER NOT NULL,
-  PRIMARY KEY (node_id, source_session_id, source_turn_id)
-);
-
-CREATE TABLE memory_nodes (
-  id                    TEXT PRIMARY KEY,
-  label                 TEXT NOT NULL,
-  node_type             TEXT NOT NULL CHECK(node_type IN (
-                          'user_fact', 'entity', 'event',
-                          'emotion', 'preference', 'relationship'
-                        )),
-  description           TEXT NOT NULL,
-  embedding             BLOB,
-  embedding_provider_id TEXT,
-  embedding_model       TEXT,
-  embedding_dim         INTEGER,
-  importance            INTEGER NOT NULL DEFAULT 50 CHECK(importance BETWEEN 0 AND 100),
-  created_at            INTEGER NOT NULL,
-  updated_at            INTEGER NOT NULL,
-  last_referenced_at    INTEGER NOT NULL,
-  meta_json             TEXT NOT NULL DEFAULT '{}'
-, embedding_normalization TEXT, embedding_revision TEXT, embedding_space_id TEXT, embedding_evicted_at INTEGER, last_decayed_at INTEGER);
-
 CREATE TABLE providers (
   id         TEXT PRIMARY KEY,
   name       TEXT NOT NULL,
@@ -397,47 +318,6 @@ CREATE UNIQUE INDEX idx_character_voice_samples_primary
 CREATE UNIQUE INDEX idx_kb_active ON knowledge_bases(is_active) WHERE is_active = 1;
 
 CREATE UNIQUE INDEX idx_kb_name   ON knowledge_bases(name);
-
-CREATE INDEX idx_lazy_updates_node
-  ON memory_node_lazy_updates(node_id, created_at ASC, id ASC);
-
-CREATE INDEX idx_memory_edges_from ON memory_edges(from_node_id);
-
-CREATE INDEX idx_memory_edges_to   ON memory_edges(to_node_id);
-
-CREATE INDEX idx_memory_items_decay
-  ON memory_items(last_referenced_at ASC, last_decayed_at ASC, id ASC)
-  WHERE importance > 0;
-
-CREATE INDEX idx_memory_items_embedding_space
-  ON memory_items(embedding_space_id, updated_at, id)
-  WHERE embedding IS NOT NULL;
-
-CREATE INDEX idx_memory_items_importance ON memory_items(importance DESC);
-
-CREATE INDEX idx_memory_items_kind       ON memory_items(kind);
-
-CREATE INDEX idx_memory_items_lastref    ON memory_items(last_referenced_at DESC);
-
-CREATE INDEX idx_memory_items_updated    ON memory_items(updated_at DESC);
-
-CREATE INDEX idx_memory_node_sources_node ON memory_node_sources(node_id, created_at);
-
-CREATE INDEX idx_memory_nodes_decay
-  ON memory_nodes(last_referenced_at ASC, last_decayed_at ASC, id ASC)
-  WHERE importance > 0;
-
-CREATE INDEX idx_memory_nodes_embedding_space
-  ON memory_nodes(embedding_space_id, updated_at, id)
-  WHERE embedding IS NOT NULL;
-
-CREATE INDEX idx_memory_nodes_importance ON memory_nodes(importance DESC);
-
-CREATE UNIQUE INDEX idx_memory_nodes_label_type ON memory_nodes(label, node_type);
-
-CREATE INDEX idx_memory_nodes_lastref    ON memory_nodes(last_referenced_at DESC);
-
-CREATE INDEX idx_memory_nodes_type       ON memory_nodes(node_type);
 
 CREATE INDEX idx_provider_capability_active
   ON provider_capabilities(capability, provider_id)

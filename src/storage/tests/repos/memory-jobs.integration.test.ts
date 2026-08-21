@@ -24,6 +24,15 @@ describe('MemoryJobsRepo', () => {
         'off', 'completed', 1
       )
     `).run();
+    database.db.prepare(`
+      INSERT INTO turns(
+        id, session_id, trigger_type, execution_profile,
+        narrative_policy, status, created_at
+      ) VALUES (
+        'turn-b', 'session-a', 'userMessage', 'chat',
+        'off', 'completed', 2
+      )
+    `).run();
   });
 
   afterEach(() => database.close());
@@ -56,7 +65,7 @@ describe('MemoryJobsRepo', () => {
 
   it('Extraction 可并行，两轨 consolidation 可并行，清理等待写者结束', () => {
     enqueue('extract-a', 'work_extraction', 1, 'turn-a');
-    enqueue('extract-b', 'work_extraction', 2, 'turn-a');
+    enqueue('extract-b', 'work_extraction', 2, 'turn-b');
     enqueue('work-consolidate', 'work_consolidation', 3);
     enqueue('relationship-consolidate', 'relationship_consolidation', 4);
     enqueue('clear', 'clear_memory', 5);
@@ -73,7 +82,7 @@ describe('MemoryJobsRepo', () => {
     expect(repo.claimNext('clear_memory', 17)?.id).toBe('clear');
   });
 
-  it('提取正文与 completed 原子落库，整合后只标记结果', () => {
+  it('提取正文与终态原子落库，整合只标记本轮消费的结果', () => {
     enqueue('relationship-a', 'relationship_extraction', 1, 'turn-a');
     expect(repo.claimNext('relationship_extraction', 2)?.status).toBe('running');
     expect(repo.completeExtraction('relationship-a', '角色关系候选', 3)?.status)
@@ -87,9 +96,33 @@ describe('MemoryJobsRepo', () => {
         content: '角色关系候选',
         integratedAt: null,
       }]);
-    expect(repo.markExtractionResultIntegrated('relationship-a', 4)).toBe(true);
+    enqueue('relationship-consolidate', 'relationship_consolidation', 4);
+    expect(repo.claimNext('relationship_consolidation', 5)?.status).toBe('running');
+    expect(repo.completeConsolidation(
+      'relationship-consolidate',
+      ['relationship-a'],
+      6,
+    )?.status).toBe('completed');
     expect(repo.listUnintegratedExtractionResults('relationship_extraction', 10))
       .toEqual([]);
+  });
+
+  it('同一 Turn 同一轨反复入队只返回同一条有效 Job', () => {
+    const first = repo.enqueue({
+      id: 'work-first',
+      kind: 'work_extraction',
+      turnId: 'turn-a',
+      createdAt: 1,
+    });
+    const duplicate = repo.enqueue({
+      id: 'work-duplicate',
+      kind: 'work_extraction',
+      turnId: 'turn-a',
+      createdAt: 2,
+    });
+
+    expect(duplicate.id).toBe(first.id);
+    expect(repo.findById('work-duplicate')).toBeUndefined();
   });
 
   it('失败重试创建新 Job 并复制目标路径，取消和启动恢复阻止旧 Worker 收尾', () => {

@@ -14,10 +14,7 @@ export async function clearMemoryDirectory(
 ): Promise<void> {
   const directory = resolveInsideMemoryRoot(memoryRoot, relativeDirectory);
   const stat = await readFileStat(directory);
-  if (stat === undefined) {
-    await fs.mkdir(directory, { recursive: true });
-    return;
-  }
+  if (stat === undefined) return;
   if (!stat.isDirectory()) {
     throw new Error(`Memory clear target is not a directory: ${relativeDirectory}`);
   }

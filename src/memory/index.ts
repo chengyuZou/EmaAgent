@@ -34,8 +34,14 @@ export {
 export {
   memoryNoteFileName,
   createMemoryNote,
+  bindCharacterMemoryNote,
 } from './common/notes.js';
-export type { MemoryNoteTarget } from './common/notes.js';
+export type {
+  MemoryNoteTarget,
+  MemoryNoteTargetKind,
+  AddMemoryNoteRequest,
+  AddMemoryNote,
+} from './common/notes.js';
 export {
   clearAllMemory,
   clearMemoryDirectory,
@@ -57,10 +63,23 @@ export {
   readMemoryBudgets,
 } from './capacity/budgets.js';
 export type { MemoryBudgets } from './capacity/budgets.js';
+export { cleanupMemoryStorage } from './capacity/automaticCleanup.js';
+export {
+  listExpiredWorkHistoryFiles,
+  listWorkHistoryFilesOldestFirst,
+} from './work/retention.js';
+export {
+  listExpiredRelationshipHistoryFiles,
+  listRelationshipHistoryFilesOldestFirst,
+} from './relationship/lifecycle.js';
 export {
   MEMORY_SETTINGS,
   memoryBudgetsGroup,
+  memoryJobsGroup,
+  memoryLifecycleGroup,
   memoryStorageMaxBytesSetting,
+  memoryWorkHistoryRetentionDaysSetting,
+  memoryRelationshipHistoryActiveDaysSetting,
   memorySummaryTokensSetting,
   memoryCoreFileBytesSetting,
   memoryTopicFileBytesSetting,
@@ -70,9 +89,122 @@ export {
   memoryConsolidationItemsSetting,
   memoryConsolidationInputBytesSetting,
   memoryGitDiffBytesSetting,
+  memoryExtractionConcurrencySetting,
+  memoryHeartbeatSecondsSetting,
+} from './settings.js';
+export {
+  DEFAULT_MEMORY_JOBS_SETTINGS,
+  DEFAULT_MEMORY_LIFECYCLE_SETTINGS,
+  readMemoryJobsSettings,
+  readMemoryLifecycleSettings,
+} from './settings.js';
+export type {
+  MemoryJobsSettings,
+  MemoryLifecycleSettings,
 } from './settings.js';
 export {
   MemoryNoteAlreadyExistsError,
   MemoryNoteCharacterRequiredError,
   MemoryNoteEmptyError,
+  MemoryConsolidationError,
+  MemoryStorageLimitExceededError,
 } from './errors.js';
+export {
+  MEMORY_EXTRACTION_NO_RESULT,
+  runTurnExtraction,
+} from './common/extraction.js';
+export type {
+  CompleteExtraction,
+  CompletedTurnMemoryInput,
+  MemoryTurnMessage,
+} from './common/extraction.js';
+export {
+  buildWorkExtractionInput,
+  serializeWorkTurn,
+} from './work/extraction.js';
+export type {
+  WorkExtractionInput,
+} from './work/extraction.js';
+export {
+  buildRelationshipExtractionInput,
+  serializeRelationshipTurn,
+} from './relationship/extraction.js';
+export type {
+  RelationshipTurnMessage,
+  RelationshipExtractionInput,
+} from './relationship/extraction.js';
+export type { MemoryEvent, MemoryEventEmitter } from './events.js';
+export { JobAdmin } from './jobs/jobAdmin.js';
+export type { EnqueuedExtraction } from './jobs/jobAdmin.js';
+export type { MemoryJobEnqueueError } from './errors.js';
+export { runExtractionJobs } from './jobs/runExtractionJobs.js';
+export type {
+  ExtractionRunStats,
+  RunExtractionJobDeps,
+} from './jobs/runExtractionJobs.js';
+export { runConsolidationJobs } from './jobs/runConsolidationJobs.js';
+export type {
+  ConsolidateMemory,
+  ConsolidationKind,
+  ConsolidationRunResult,
+  RunConsolidationJobDeps,
+} from './jobs/runConsolidationJobs.js';
+export { runMaintenanceJobs } from './jobs/runMaintenanceJobs.js';
+export type {
+  MaintenanceKind,
+  MaintenanceRunResult,
+  RunMaintenanceJobDeps,
+} from './jobs/runMaintenanceJobs.js';
+export { createExtractTurn } from './extractTurn.js';
+export type {
+  CreateExtractTurnDeps,
+  ExtractTurn,
+} from './extractTurn.js';
+export { loadTemplate } from './templates/loader.js';
+export type { ExtractionTemplates } from './templates/loader.js';
+export {
+  CONSOLIDATION_INPUT_INSTRUCTION,
+  applyConsolidationEdits,
+  listMarkdownFiles,
+  parseConsolidationEdits,
+  runConsolidationLlm,
+  toPosixPath,
+} from './consolidation/consolidation.js';
+export type {
+  ConsolidationEdit,
+  ConsolidationPlan,
+  RunConsolidationLlmInput,
+} from './consolidation/consolidation.js';
+export {
+  createWorkConsolidate,
+  createWorkTargetPathCheck,
+  listWorkTargetPaths,
+} from './work/consolidation.js';
+export type { WorkConsolidationDeps } from './work/consolidation.js';
+export {
+  createRelationshipConsolidate,
+  createRelationshipTargetPathCheck,
+  listRelationshipTargetPaths,
+} from './relationship/consolidation.js';
+export type { RelationshipConsolidationDeps } from './relationship/consolidation.js';
+export { buildMemoryPrompt } from './prompt.js';
+export type { BuildMemoryPromptDeps } from './prompt.js';
+export {
+  searchMemoryFiles,
+  readMemoryFile,
+  listMemoryFiles,
+} from './common/memoryFiles.js';
+export type {
+  ListMemory,
+  MemoryListEntry,
+  MemoryListRequest,
+  MemoryListResponse,
+  MemoryReadRequest,
+  MemoryReadResponse,
+  MemorySearchMatch,
+  MemorySearchMatchMode,
+  MemorySearchRequest,
+  MemorySearchResponse,
+  ReadMemory,
+  SearchMemory,
+} from './common/memoryFiles.js';

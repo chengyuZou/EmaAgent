@@ -91,6 +91,26 @@ export async function resetBaseline(
 }
 
 /**
+ * 释放单提交基线因反复 amend 留下的旧对象。
+ * 只供拥有整个内部仓库的业务调用；普通用户仓库不能使用这个操作。
+ */
+export async function compactBaselineStorage(
+  root: string,
+  settings: GitSettings = DEFAULT_GIT_SETTINGS,
+): Promise<void> {
+  if (!(await hasUsableBaseline(root))) return;
+  const writeTimeout = settings.writeTimeoutMs;
+  await runGit(root, ['reflog', 'expire', '--expire=now', '--all'], {
+    extraConfig: BASELINE_GIT_CONFIG,
+    timeoutMs: writeTimeout,
+  });
+  await runGit(root, ['gc', '--prune=now', '--quiet'], {
+    extraConfig: BASELINE_GIT_CONFIG,
+    timeoutMs: writeTimeout,
+  });
+}
+
+/**
  * 返回自上次基线以来的变化:文件级清单(完整)+ unified diff(有界)。
  * tracked 变化走 git diff HEAD;untracked 新增复用 diff.ts 的 --no-index 伪 diff。
  * 变化文件过多时跳过 unified diff 渲染(快探),changes 仍完整。

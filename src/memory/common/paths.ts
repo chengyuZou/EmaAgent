@@ -54,7 +54,7 @@ export function memorySummaryFile(memoryDirectory: string): string {
 export function memoryFileSlug(value: string): string | undefined {
   const slug = value
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/[^\p{L}\p{N}]+/gu, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 80)
     .replace(/-+$/g, '');

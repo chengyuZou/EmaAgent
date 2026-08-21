@@ -12,6 +12,7 @@ export interface TurnEvidence {
   readonly content: string;
 }
 
+// TODO: 这里可能导致很多文件要写入但只取了 maxFiles 个
 export async function syncTurnEvidence(
   memoryDirectory: string,
   evidence: readonly TurnEvidence[],

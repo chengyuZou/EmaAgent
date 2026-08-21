@@ -102,10 +102,10 @@ describe('createMemoryNote', () => {
     expect(await fs.readFile(first, 'utf8')).toBe('first');
   });
 
-  it('uses a readable fallback when the title has no ASCII slug', () => {
+  it('保留中文标题并用毫秒避免同秒便签撞名', () => {
     expect(memoryNoteFileName(
       '角色约定',
       new Date('2026-08-20T14:30:22.000Z'),
-    )).toBe('2026-08-20T14-30-22-note.md');
+    )).toBe('2026-08-20T14-30-22-000-角色约定.md');
   });
 });

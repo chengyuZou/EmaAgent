@@ -38,27 +38,30 @@ export type {
   AttachmentVisionDescriptionKey,
   AttachmentVisionDescriptionRow,
 } from './repos/data/attachmentVisionDescriptions.js';
-export { SessionStatsRepo, DataDirStatsRepo, SessionRestoreValidationError } from './repos/data/storage-stats.js';
-export { SessionBackupReader } from './repos/data/sessionBackup.js';
+export { SessionStatsRepo, DataDirStatsRepo } from './repos/data/storage-stats.js';
 export {
+  SessionBackupReader,
   SessionBackupRestorer,
   SessionBackupRestoreError,
-} from './repos/data/sessionBackupRestore.js';
+} from './repos/data/sessionBackup.js';
+export { SpeechOutputsRepo, SpeechSegmentsRepo } from './repos/data/speechOutputs.js';
 export type {
-  SessionStats, AudioEntryRow,
-  MemoryStateRow,
-  TurnRestoreRow, MessageRestoreRow,
-  AudioRestoreRow, AttachmentRestoreRow, NotesRestoreData,
-  SessionRestorePayload,
-  TaskRestoreRow,
-  AgentRunMessageRestoreRow,
+  SessionStats,
   DataDirStats,
 } from './repos/data/storage-stats.js';
 export type {
+  SessionBackupRestoreInput,
   SessionBackupSnapshot,
+  SessionBackupTaskRow,
   SessionBackupToolExecutionRow,
 } from './repos/data/sessionBackup.js';
-export type { SessionBackupRestoreInput } from './repos/data/sessionBackupRestore.js';
+export type {
+  SpeechOutputInsert,
+  SpeechOutputRow,
+  SpeechSegmentInsert,
+  SpeechSegmentRow,
+  SpeechSegmentUsage,
+} from './repos/data/speechOutputs.js';
 export { McpServersRepo }  from './repos/profile/mcp-servers.js';
 export type { McpServerRow } from './repos/profile/mcp-servers.js';
 export { McpRegistrySourcesRepo } from './repos/profile/mcp-registry-sources.js';
@@ -67,21 +70,6 @@ export { SkillsRepo }      from './repos/profile/skills.js';
 export type { SkillRow }   from './repos/profile/skills.js';
 export { SkillSitesRepo }  from './repos/profile/skill-sites.js';
 export type { SkillSiteRow, SkillSiteInsert } from './repos/profile/skill-sites.js';
-
-// ── Memory 子系统 ──────────────────────────────────────────────────────────────
-export { MemoryNodesRepo }       from './repos/profile/memory-nodes.js';
-export type { MemoryEmbeddingPageCursor } from './repos/profile/memory-embedding-page.js';
-export { MemoryEdgesRepo }       from './repos/profile/memory-edges.js';
-export { MemoryLazyUpdatesRepo } from './repos/profile/memory-lazy-updates.js';
-export { MemoryItemsRepo }       from './repos/profile/memory-items.js';
-export { SessionNotesRepo }      from './repos/data/session-notes.js';
-export { MemoryJobsRepo } from './repos/data/memory-jobs.js';
-export { PendingFragmentsRepo }       from './repos/data/pending-fragments.js';
-export { MemorySessionStateRepo }     from './repos/data/memory-session-state.js';
-export { MemoryExtractionRunsRepo }   from './repos/profile/memory-extraction-runs.js';
-export { MemoryNodeSourcesRepo }      from './repos/profile/memory-node-sources.js';
-export { MemoryStorageRepo }          from './repos/profile/memoryStorage.js';
-
 export type { DatabaseOptions, SqliteDb } from './database/database.js';
 export type { SessionRow, SessionRowEnriched, SessionSearchRow, SessionInsert, ExecutionProfileRow, NarrativePolicyRow } from './repos/data/sessions.js';
 export type { TurnStatusRow, TurnTriggerTypeRow } from './repos/data/turns.js';
@@ -118,35 +106,9 @@ export { SettingSerializationError } from './repos/profile/settings.js';
 export type { SettingRow, SettingReadResult } from './repos/profile/settings.js';
 export type { SettingWrite } from './repos/profile/settings.js';
 export type { UsageRecordRow } from './repos/data/usage-records.js';
-// ── Memory 子系统类型 ──────────────────────────────────────────────────────────
-export type {
-  MemoryNodeRow,
-  MemoryNodeInsert,
-  MemoryNodeType,
-  MemoryNodeDescriptionUpdate,
-  MemoryNodeConsolidationUpdate,
-  MemoryNodeEmbeddingUpdate,
-} from './repos/profile/memory-nodes.js';
-export type {
-  MemoryEdgeRow,
-  MemoryEdgeUpsert,
-} from './repos/profile/memory-edges.js';
-export type {
-  MemoryNodeLazyUpdateRow,
-  MemoryNodeLazyUpdateInsert,
-} from './repos/profile/memory-lazy-updates.js';
-export type {
-  MemoryItemRow,
-  MemoryItemInsert,
-  MemoryItemKind,
-  MemoryItemEmbeddingUpdate,
-} from './repos/profile/memory-items.js';
-export type {
-  SessionNoteRow,
-  SessionNoteUpsert,
-} from './repos/data/session-notes.js';
 export type {
   MemoryExtractionResult,
+  MemoryExtractionJobKind,
   MemoryJob,
   MemoryJobKind,
   MemoryJobPath,
@@ -155,17 +117,6 @@ export type {
   NewMemoryJob,
   NewMemoryJobPath,
 } from './repos/data/memory-jobs.js';
-export type {
-  PendingFragmentRow,
-  PendingFragmentInsert,
-} from './repos/data/pending-fragments.js';
-export type {
-  MemoryExtractionRunRow,
-  MemoryExtractionRunInsert,
-} from './repos/profile/memory-extraction-runs.js';
-export type { MemoryNodeSourceRow } from './repos/profile/memory-node-sources.js';
-export type { MemoryStorageFootprint } from './repos/profile/memoryStorage.js';
-
 // ── AgentRun 存储 ─────────────────────────────────────────────────────────────
 export { AgentRunsRepo } from './repos/data/agent-runs.js';
 export {

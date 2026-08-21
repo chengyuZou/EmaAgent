@@ -10,6 +10,12 @@ export type MemoryJobKind =
   | 'clear_memory'
   | 'storage_cleanup';
 
+/** 提取 Job 的 kind 子集(work + relationship 两轨);入队/事件/错误接口统一用它。 */
+export type MemoryExtractionJobKind = Extract<
+  MemoryJobKind,
+  'work_extraction' | 'relationship_extraction'
+>;
+
 export type MemoryJobStatus =
   | 'pending'
   | 'running'
@@ -101,6 +107,10 @@ export class MemoryJobsRepo {
   enqueue(job: NewMemoryJob, paths: readonly NewMemoryJobPath[] = []): MemoryJob {
     assertTurnBinding(job.kind, job.turnId);
     return this.db.transaction(() => {
+      if (EXTRACTION_KINDS.has(job.kind)) {
+        const existing = this.findActiveExtraction(job.kind, job.turnId!);
+        if (existing) return existing;
+      }
       this.db.prepare(
         `INSERT INTO memory_jobs
            (id, kind, status, turn_id, created_at)
@@ -166,6 +176,34 @@ export class MemoryJobsRepo {
         `INSERT INTO memory_extraction_results(job_id, content)
          VALUES (?, ?)`,
       ).run(id, content);
+      return mapJob(row);
+    })();
+  }
+
+  /** 标记本轮实际处理的提取结果，并与整合 Job 终态在同一事务提交。 */
+  completeConsolidation(
+    id: string,
+    extractionJobIds: readonly string[],
+    at: number,
+  ): MemoryJob | undefined {
+    return this.db.transaction(() => {
+      const row = this.db.prepare(
+        `UPDATE memory_jobs
+            SET status = 'completed', error = NULL, finished_at = ?
+          WHERE id = ?
+            AND status = 'running'
+            AND kind IN ('work_consolidation', 'relationship_consolidation')
+          RETURNING *`,
+      ).get(at, id) as MemoryJobRow | undefined;
+      if (!row) return undefined;
+
+      const update = this.db.prepare(
+        `UPDATE memory_extraction_results SET integrated_at = ?
+          WHERE job_id = ? AND integrated_at IS NULL`,
+      );
+      for (const extractionJobId of extractionJobIds) {
+        update.run(at, extractionJobId);
+      }
       return mapJob(row);
     })();
   }
@@ -278,13 +316,6 @@ export class MemoryJobsRepo {
     ).all(kind, limit) as MemoryExtractionResultRow[]).map(mapExtractionResult);
   }
 
-  markExtractionResultIntegrated(jobId: string, at: number): boolean {
-    return this.db.prepare(
-      `UPDATE memory_extraction_results SET integrated_at = ?
-        WHERE job_id = ? AND integrated_at IS NULL`,
-    ).run(at, jobId).changes === 1;
-  }
-
   private finishRunning(
     id: string,
     status: 'completed' | 'failed',
@@ -308,6 +339,21 @@ export class MemoryJobsRepo {
     for (const target of paths) {
       insert.run(id, target.relativePath, target.operation);
     }
+  }
+
+  private findActiveExtraction(
+    kind: MemoryJobKind,
+    turnId: string,
+  ): MemoryJob | undefined {
+    const row = this.db.prepare(
+      `SELECT * FROM memory_jobs
+        WHERE kind = ?
+          AND turn_id = ?
+          AND status IN ('pending', 'running', 'completed')
+        ORDER BY created_at, id
+        LIMIT 1`,
+    ).get(kind, turnId) as MemoryJobRow | undefined;
+    return row ? mapJob(row) : undefined;
   }
 
   private findRequired(id: string): MemoryJob {

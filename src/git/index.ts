@@ -43,6 +43,7 @@ export {
   hasUsableBaseline,
   ensureBaseline,
   resetBaseline,
+  compactBaselineStorage,
   diffSinceBaseline,
 } from './baseline.js';
 export type {

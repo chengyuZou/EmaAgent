@@ -248,6 +248,13 @@ export class SessionsRepo {
       .run(title, updatedAt, id);
   }
 
+  /** 自动标题的条件写入：仅当前标题仍是默认值才覆盖；返回是否写入（0 = 用户已改名或行不存在）。 */
+  updateTitleIfDefault(id: string, title: string, defaultTitle: string, updatedAt: number): boolean {
+    return this.db
+      .prepare('UPDATE sessions SET title = ?, updated_at = ? WHERE id = ? AND title = ?')
+      .run(title, updatedAt, id, defaultTitle).changes === 1;
+  }
+
   touchActivity(id: string, at: number): void {
     this.db
       .prepare('UPDATE sessions SET updated_at = ?, last_activity_at = ? WHERE id = ?')

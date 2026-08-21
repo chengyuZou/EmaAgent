@@ -25,6 +25,7 @@
     "@ema-agent/knowledge": "workspace:*",
     "@ema-agent/vision": "workspace:*",
     "@ema-agent/llm": "workspace:*",
+    "@ema-agent/memory": "workspace:*",
     "@ema-agent/narrative": "workspace:*",
     "@ema-agent/permission": "workspace:*",
     "@ema-agent/public-http": "workspace:*",

@@ -18,6 +18,10 @@ import { TaskGetTool } from './tools/TaskGetTool/TaskGetTool.js';
 import { TaskListTool } from './tools/TaskListTool/TaskListTool.js';
 import { TaskUpdateTool } from './tools/TaskUpdateTool/TaskUpdateTool.js';
 import { AskUserTool } from './tools/AskUserTool/AskUserTool.js';
+import { MemorySearchTool } from './tools/MemoryTool/MemorySearchTool.js';
+import { MemoryReadTool } from './tools/MemoryTool/MemoryReadTool.js';
+import { MemoryListTool } from './tools/MemoryTool/MemoryListTool.js';
+import { MemoryNoteTool } from './tools/MemoryTool/MemoryNoteTool.js';
 import { SkillTool } from './tools/SkillTool/SkillTool.js';
 import { KnowledgeBaseSearchTool } from './tools/KnowledgeBaseSearchTool/KnowledgeBaseSearchTool.js';
 import { NarrativeSearchTool } from './tools/NarrativeSearchTool/NarrativeSearchTool.js';
@@ -71,6 +75,10 @@ export {
   SkillTool,
   KnowledgeBaseSearchTool,
   NarrativeSearchTool,
+  MemorySearchTool,
+  MemoryReadTool,
+  MemoryListTool,
+  MemoryNoteTool,
   SubagentTool,
   SubagentAwaitTool,
   ScratchpadWriteTool,
@@ -103,6 +111,8 @@ export type {
 } from './tools/TaskListTool/TaskListTool.js';
 export type { TaskUpdateResult } from './tools/TaskUpdateTool/TaskUpdateTool.js';
 export type { AskUserResult } from './tools/AskUserTool/AskUserTool.js';
+export type { MemoryReadToolResult } from './tools/MemoryTool/MemoryReadTool.js';
+export type { MemoryNoteToolResult } from './tools/MemoryTool/MemoryNoteTool.js';
 export type { SkillToolResult } from './tools/SkillTool/SkillTool.js';
 export type { NarrativeSearchResult } from './tools/NarrativeSearchTool/NarrativeSearchTool.js';
 // ── 注册 ──────────────────────────────────────────────────────────────────────
@@ -130,6 +140,10 @@ const ALL_BUILTIN_TOOLS: Tool<any, any, any, any>[] = [
   SkillTool,
   KnowledgeBaseSearchTool,
   NarrativeSearchTool,
+  MemorySearchTool,
+  MemoryReadTool,
+  MemoryListTool,
+  MemoryNoteTool,
   SubagentTool,
   SubagentAwaitTool,
   ScratchpadWriteTool,

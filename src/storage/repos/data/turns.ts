@@ -18,6 +18,8 @@ export interface TurnRow {
   /** 操作开始冻结的模型选择；prepare 阶段解析成功前为 null。 */
   provider_id: string | null;
   model_id: string | null;
+  /** 本 Turn 激活角色的磁盘目录名快照；prepare 完成回填，此前为 null。 */
+  character_directory_name: string | null;
   iterations: number;
   usage_input_tokens: number;
   usage_output_tokens: number;
@@ -108,6 +110,13 @@ export class TurnsRepo {
       .run(providerId, modelId, id);
   }
 
+  /** prepare 完成时冻结激活角色目录名；Memory relationship 提取经 turnId 回读此列。 */
+  setCharacterDirectoryName(id: string, characterDirectoryName: string): void {
+    this.db
+      .prepare('UPDATE turns SET character_directory_name = ? WHERE id = ?')
+      .run(characterDirectoryName, id);
+  }
+
   /**
    * 把一个已完成 turn 行复制到新 session(新 id)。用于 fork
    * 使 fork 出的 session 保留触发来源、Profile、模型冻结、
@@ -119,13 +128,15 @@ export class TurnsRepo {
         `INSERT INTO turns
            (id, session_id, status, trigger_type,
             execution_profile, narrative_policy, provider_id, model_id,
+            character_directory_name,
             iterations, usage_input_tokens, usage_output_tokens,
             created_at, completed_at, error_code, error_message)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         newId, newSessionId, src.status, src.trigger_type,
         src.execution_profile, src.narrative_policy, src.provider_id, src.model_id,
+        src.character_directory_name,
         src.iterations, src.usage_input_tokens, src.usage_output_tokens,
         src.created_at, src.completed_at, src.error_code, src.error_message,
       );

@@ -37,7 +37,7 @@ function wav(pcm: number[], sampleRate = 16_000): Buffer {
 }
 
 describe('FsAudioArchive', () => {
-  it('流式合并 PCM 后删除分段目录，避免双份占盘', async () => {
+  it('流式合并 PCM 后保留逐句片段库', async () => {
     const { archive, root } = createArchive();
     const first = archive.openSegment('s', 't', 0, 'pcm');
     first.write(new Uint8Array([1, 2]));
@@ -49,7 +49,19 @@ describe('FsAudioArchive', () => {
     const result = await archive.finalizeTurn('s', 't', 'pcm');
     expect(result?.byteSize).toBe(4);
     expect(fs.readFileSync(result!.path)).toEqual(Buffer.from([1, 2, 3, 4]));
-    expect(fs.existsSync(path.join(root, 's', 'audio', 'segments', 't'))).toBe(false);
+    expect(fs.readFileSync(path.join(root, 's', 'audio', 'segments', 't', '0.pcm')))
+      .toEqual(Buffer.from([1, 2]));
+    expect(fs.readFileSync(path.join(root, 's', 'audio', 'segments', 't', '1.pcm')))
+      .toEqual(Buffer.from([3, 4]));
+  });
+
+  it('失败的单句写入可单独丢弃，不污染可合并片段', () => {
+    const { archive, root } = createArchive();
+    const writer = archive.openSegment('s', 't', 0, 'mp3');
+    writer.write(new Uint8Array([1, 2, 3]));
+    writer.discard();
+
+    expect(fs.existsSync(path.join(root, 's', 'audio', 'segments', 't', '0.mp3'))).toBe(false);
   });
 
   it('重写 WAV 容器头并合并全部 PCM data', async () => {
