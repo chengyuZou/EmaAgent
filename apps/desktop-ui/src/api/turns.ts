@@ -2,14 +2,12 @@
  * Turns API — POST /api/turns, SSE events URL, merged audio URL.
  */
 import { sidecarClient } from './sidecar-client.js';
-import { hasTurnRequestInput } from '@ema-agent/turn/protocol';
-import type {
-  TurnId,
-} from '@ema-agent/ids';
+import { hasTurnRequestInput } from '@ema-agent/turn/turns';
+
 import type {
   TurnCreatedResponse,
   TurnRequest,
-} from '@ema-agent/turn/protocol';
+} from '@ema-agent/turn/turns';
 import type { PendingAskUserPrompt, ToolExecutionRecord } from '@ema-agent/tools';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -30,7 +28,7 @@ export interface AttachmentInputWire {
 }
 
 // Re-export the canonical wire types so existing import sites keep working.
-export type { TurnRequest, TurnCreatedResponse } from '@ema-agent/turn/protocol';
+export type { TurnRequest, TurnCreatedResponse } from '@ema-agent/turn/turns';
 
 // ── API object ────────────────────────────────────────────────────────────────
 
@@ -56,7 +54,7 @@ export const turnsApi = {
   },
 
   /** 打开 Turn 事件流，复用 Sidecar 的动态端口、认证与错误处理。 */
-  openEvents(turnId: TurnId, lastEventId: number, signal: AbortSignal): Promise<Response> {
+  openEvents(turnId: string, lastEventId: number, signal: AbortSignal): Promise<Response> {
     const params = new URLSearchParams();
     if (lastEventId > 0) params.set('lastEventId', String(lastEventId));
     const query = params.size > 0 ? `?${params.toString()}` : '';
@@ -67,7 +65,7 @@ export const turnsApi = {
   },
 
   /** Build the merged audio URL for a completed turn. */
-  async audioUrl(turnId: TurnId): Promise<string> {
+  async audioUrl(turnId: string): Promise<string> {
     return sidecarClient.streamUrl(`/api/turns/${turnId}/audio`);
   },
 

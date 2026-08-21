@@ -6,14 +6,13 @@ import { showToast } from '../../../lib/toast.js';
 import { tauriBridge, type AuthorizedFile } from '../../../lib/tauri-bridge.js';
 import { describeResourceError } from '../shared/characterResourceErrors.js';
 import { operationStageLabel, useResourceOperation } from '../shared/useResourceOperation.js';
-import type { CharacterCardId } from '@ema-agent/ids';
 
 export function PortraitImportDialog({
   cardId,
   open,
   onOpenChange,
 }: {
-  cardId: CharacterCardId;
+  cardId: string;
   open: boolean;
   onOpenChange(open: boolean): void;
 }): JSX.Element {

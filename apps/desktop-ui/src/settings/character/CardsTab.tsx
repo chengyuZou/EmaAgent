@@ -6,18 +6,17 @@ import type { CharacterCard } from '../../api/cards.js';
 import { CharacterCardEditor } from './CharacterCardEditor.js';
 import { CreateCardDialog } from './CreateCardDialog.js';
 import { showToast } from '../../lib/toast.js';
-import type { CharacterCardId } from '@ema-agent/ids';
 
 export function CardsTab(): JSX.Element {
   const cards        = useCardStore((s) => s.cards);
   const activeCardId = useCardStore((s) => s.activeCardId);
-  const [selectedId, setSelectedId]   = useState<CharacterCardId | null>(null);
+  const [selectedId, setSelectedId]   = useState<string | null>(null);
   const [createOpen, setCreateOpen]   = useState(false);
   const [pendingDelete, setPendingDelete] = useState<CharacterCard | null>(null);
 
   const selected = cards.find((c) => c.id === selectedId);
 
-  async function handleActivate(id: CharacterCardId): Promise<void> {
+  async function handleActivate(id: string): Promise<void> {
     try {
       await useCardStore.getState().activate(id);
       showToast('已切换角色', { variant: 'success' });
@@ -32,7 +31,7 @@ export function CardsTab(): JSX.Element {
     setPendingDelete(null);
     if (selectedId === card.id) setSelectedId(null);
     try {
-      await useCardStore.getState().delete(card.id as CharacterCardId);
+      await useCardStore.getState().delete(card.id);
       showToast(`已删除 ${card.name}`, { variant: 'success' });
     } catch (err: unknown) {
       showToast(`删除失败: ${err instanceof Error ? err.message : 'Unknown'}`, { variant: 'danger' });
@@ -57,7 +56,7 @@ export function CardsTab(): JSX.Element {
               key={card.id}
               card={card}
               isActive={card.id === activeCardId}
-              onSelect={() => setSelectedId(card.id as CharacterCardId)}
+              onSelect={() => setSelectedId(card.id)}
               onDelete={card.isBuiltin || card.id === activeCardId
                 ? undefined
                 : () => setPendingDelete(card)}
@@ -76,7 +75,7 @@ export function CardsTab(): JSX.Element {
         {selected && (
           <CharacterCardEditor
             card={selected}
-            onActivate={() => handleActivate(selected.id as CharacterCardId)}
+            onActivate={() => handleActivate(selected.id)}
           />
         )}
       </Dialog>

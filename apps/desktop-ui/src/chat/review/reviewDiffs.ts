@@ -1,18 +1,18 @@
 // 从当前 Session 的工具结果 data 槽聚合真实文件变更(Edit/Write 携带 structuredPatch)。
 // 聚合逻辑(按 callId 去重、倒序、最新 Turn 过滤)与数据源解耦;旧 presentation 通道已删。
 import { useMemo } from 'react';
-import type { TurnId } from '@ema-agent/ids';
+
 import {
   additionsToUnifiedText,
   asFileEditResult,
   asFileWriteResult,
   patchToUnifiedText,
-} from '@ema-agent/tool-builtin/ui';
+} from '@ema-agent/builtin-tools/ui';
 import { useConversationStore } from '../../stores/conversation-store.js';
 
 export interface SessionDiff {
   callId: string;
-  turnId?: TurnId;
+  turnId?: string;
   filePath: string;
   status: 'created' | 'modified';
   additions: number;
@@ -42,7 +42,7 @@ function countLines(patch: readonly ParsedHunks[]): { additions: number; deletio
 /** 依次试 Edit/Write 守卫;都不是(其他工具/错误结果/旧消息)返回 null。 */
 function toSessionDiff(
   callId: string,
-  turnId: TurnId | undefined,
+  turnId: string | undefined,
   data: unknown,
 ): SessionDiff | null {
   const edit = asFileEditResult(data);

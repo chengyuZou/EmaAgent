@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import { storageApi } from '../api/storage.js';
 import type { DataDirItem, StorageStatsWire, SessionDashboardWire } from '../api/storage.js';
-import type { SessionId } from '@ema-agent/ids';
 
 // ── State shape ───────────────────────────────────────────────────────────────
 
@@ -26,10 +25,10 @@ interface StorageStoreState {
 
   loadStats(): Promise<void>;
 
-  loadDashboard(sid: SessionId): Promise<void>;
-  clearDashboard(sid: SessionId): void;
-  isDashLoading(sid: SessionId): boolean;
-  getDashError(sid: SessionId): string | null;
+  loadDashboard(sid: string): Promise<void>;
+  clearDashboard(sid: string): void;
+  isDashLoading(sid: string): boolean;
+  getDashError(sid: string): string | null;
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────────

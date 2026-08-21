@@ -1,6 +1,6 @@
 // 已转交后台的 Bash 入口卡:块当场终结,卡片只给面板入口,不持续刷新。
 import type { JSX } from 'react';
-import type { SessionId } from '@ema-agent/ids';
+
 import { useConversationStore } from '../../../stores/conversation-store.js';
 import { useWorkspaceStore } from '../../../stores/workspaceStore.js';
 
@@ -23,7 +23,7 @@ export function BackgroundProcessCard({
         className="shrink-0 text-[var(--ema-primary)] hover:text-[var(--ema-primary-hover)] transition-colors"
         onClick={() => {
           if (sessionId) {
-            openTab(sessionId as SessionId, { id: 'backgroundProcesses', kind: 'backgroundProcesses' });
+            openTab(sessionId, { id: 'backgroundProcesses', kind: 'backgroundProcesses' });
           }
         }}
       >

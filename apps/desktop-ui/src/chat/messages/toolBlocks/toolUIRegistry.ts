@@ -1,5 +1,5 @@
 // 复杂 Tool 的专属 UI 注册表: 按模型可见名查找, 未注册的工具回落通用平铺渲染。
-// Renderer 来自各 Tool 自己目录的 UI.tsx(经 @ema-agent/tool-builtin/ui 出口);
+// Renderer 来自各 Tool 自己目录的 UI.tsx(经 @ema-agent/builtin-tools/ui 出口);
 // 注册表只做查找与回落, 权限卡、状态条、耗时、错误外壳仍在 ToolCallBlock。
 import type { JSX } from 'react';
 import {
@@ -21,7 +21,7 @@ import {
   NarrativeSearchResultView,
   PdfReadArgsView,
   PdfReadResultView,
-} from '@ema-agent/tool-builtin/ui';
+} from '@ema-agent/builtin-tools/ui';
 
 export interface ToolUIEntry {
   /** 参数区;缺省回落通用 key-value 平铺。 */

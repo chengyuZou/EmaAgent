@@ -6,7 +6,6 @@ import { Button, IconButton, Input } from '@ema-agent/ui';
 import { useCardStore } from '../../stores/card-store.js';
 import type { CharacterCard } from '../../api/cards.js';
 import { showToast } from '../../lib/toast.js';
-import type { CharacterCardId } from '@ema-agent/ids';
 
 function TagEditor({
   tags,
@@ -81,7 +80,7 @@ export function BehaviorTab({ card }: { card: CharacterCard }): JSX.Element {
     e.preventDefault();
     setSaving(true);
     try {
-      await useCardStore.getState().patch(card.id as CharacterCardId, {
+      await useCardStore.getState().patch(card.id, {
         speechPatterns,
         forbiddenTopics,
         emotionVocabulary: emotionVocab,

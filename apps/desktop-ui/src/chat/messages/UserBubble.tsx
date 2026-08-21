@@ -1,7 +1,7 @@
 // 渲染用户消息，并允许用户只重写当前 Session 的最后一轮。
 import { useRef, useState, type ChangeEvent, type JSX } from 'react';
 import { Button, IconButton, Textarea } from '@ema-agent/ui';
-import type { SessionId, TurnId } from '@ema-agent/ids';
+
 import { Markdown } from '../../markdown/renderer.js';
 import { sessionsApi } from '../../api/sessions.js';
 import { showToast } from '../../lib/toast.js';
@@ -48,7 +48,7 @@ export function UserBubble({ message, canEdit = false }: UserBubbleProps): JSX.E
     setSending(true);
     try {
       if (!rewoundRef.current) {
-        await sessionsApi.rewindLastTurn(viewedId, message.turnId as TurnId);
+        await sessionsApi.rewindLastTurn(viewedId, message.turnId);
         rewoundRef.current = true;
       }
       const session = useSessionStore.getState().sessions.byId.get(viewedId as string);
@@ -67,7 +67,7 @@ export function UserBubble({ message, canEdit = false }: UserBubbleProps): JSX.E
         loaded.delete(viewedId as string);
         return { messages, loadedMessageSessions: loaded };
       });
-      await useConversationStore.getState().loadMessages(viewedId as SessionId);
+      await useConversationStore.getState().loadMessages(viewedId);
     } catch (error) {
       showToast(
         editErrorMessage(error),

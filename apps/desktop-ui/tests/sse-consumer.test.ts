@@ -4,7 +4,7 @@ import {
   createSseConsumer,
   type SseConnectionOutcome,
 } from '../src/lib/sse-consumer.js';
-import type { ClientEvent } from '@ema-agent/events';
+
 
 function mockSseResponse(frames: string[], status = 200): Response {
   const encoder = new TextEncoder();

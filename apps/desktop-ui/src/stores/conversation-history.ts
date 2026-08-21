@@ -1,8 +1,5 @@
 // 把数据库消息还原成前端会话历史和工具展示切片。
-import type {
-  MessageId,
-  TurnId,
-} from '@ema-agent/ids';
+
 import type {
   ExecutionProfile,
   NarrativePolicy,
@@ -56,7 +53,7 @@ export interface StreamingAssistantMessage {
   content:   string;
   slices:    AnyAssistantSlice[];
   startedAt: number;
-  turnId:    TurnId;
+  turnId:    string;
   executionProfile: ExecutionProfile;
   narrativePolicy: NarrativePolicy;
 }
@@ -66,8 +63,8 @@ export interface ChatHistoryItem {
   content:      string;
   slices?:      AnyAssistantSlice[];
   createdAt:    number;
-  messageId?:   MessageId;
-  turnId?:      TurnId;
+  messageId?:   string;
+  turnId?:      string;
   stats?:       TurnStats;
   executionProfile?: ExecutionProfile;
   narrativePolicy?: NarrativePolicy;
@@ -77,7 +74,7 @@ export interface ChatHistoryItem {
 }
 
 export function createOptimisticUserMessage(
-  turnId: TurnId,
+  turnId: string,
   text: string,
   attachments: AttachmentInputWire[] | undefined,
   createdAt = Date.now(),
@@ -166,8 +163,8 @@ export function assembleHistory(
       content,
       slices,
       createdAt: m.createdAt,
-      messageId: m.id as MessageId,
-      turnId:    m.turnId !== null ? (m.turnId as TurnId) : undefined,
+      messageId: m.id,
+      turnId:    m.turnId !== null ? (m.turnId) : undefined,
     };
     if (m.role === 'user' && m.attachments && m.attachments.length > 0) {
       item.attachments = m.attachments.map((a) => ({
@@ -190,8 +187,8 @@ export function assembleHistory(
         content:   '',
         kind:      'narrative_context',
         createdAt: m.createdAt,
-        messageId: m.id as MessageId,
-        turnId:    m.turnId !== null ? (m.turnId as TurnId) : undefined,
+        messageId: m.id,
+        turnId:    m.turnId !== null ? (m.turnId) : undefined,
         slices:    [{
           type:              'narrative_status',
           status:            'completed',

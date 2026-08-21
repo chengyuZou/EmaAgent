@@ -1,14 +1,14 @@
 // 聊天列顶栏：会话标题与置顶摘要、底部面板、右侧栏三个工作区入口；
 // RightDock 全宽时替换为恢复面板宽度单按钮。
 import { useState, type JSX } from 'react';
-import type { SessionId } from '@ema-agent/ids';
+
 import { IconButton, Popover } from '@ema-agent/ui';
 import { useAgentRunStore } from '../stores/agentRunStore.js';
 import { isRightFullWidth, useWorkspaceStore } from '../stores/workspaceStore.js';
 import { PinnedSessionSummary } from './summary/PinnedSessionSummary.js';
 
 export interface ChatHeaderProps {
-  sessionId: SessionId | null;
+  sessionId: string | null;
   title: string;
   isFork: boolean;
 }

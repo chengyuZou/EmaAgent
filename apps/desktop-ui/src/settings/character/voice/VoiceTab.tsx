@@ -9,7 +9,7 @@ import { showToast } from '../../../lib/toast.js';
 import { tauriBridge } from '../../../lib/tauri-bridge.js';
 import { describeResourceError } from '../shared/characterResourceErrors.js';
 import { EnabledControl } from '../shared/ResourceControls.js';
-import type { CharacterCardId } from '@ema-agent/ids';
+
 import type { CharacterVoiceReference } from '@ema-agent/characters';
 
 const LANG_OPTIONS = [
@@ -23,7 +23,7 @@ export function VoiceTab({
   voiceReferences,
   isBuiltin,
 }: {
-  cardId:       CharacterCardId;
+  cardId:       string;
   voiceReferences: readonly CharacterVoiceReference[];
   isBuiltin:    boolean;
 }): JSX.Element {

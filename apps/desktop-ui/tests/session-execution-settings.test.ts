@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../src/lib/tts-playback.js', () => ({
   handleTtsChunk: vi.fn(), handleTtsSentenceComplete: vi.fn(), }));
 
-import { asSessionId } from '@ema-agent/ids';
 import type { SessionWire } from '@ema-agent/session';
 import { sessionsApi } from '../src/api/sessions.js';
 import { useSessionStore } from '../src/stores/session-store.js';
@@ -64,12 +63,12 @@ describe('Session execution settings', () => {
     }));
     sessionsApi.patch = patch;
 
-    await useSessionStore.getState().setExecutionSettings(asSessionId(original.id), {
+    await useSessionStore.getState().setExecutionSettings(original.id, {
       executionProfile: 'work',
       narrativePolicy: 'always',
     });
 
-    expect(patch).toHaveBeenCalledWith(asSessionId(original.id), {
+    expect(patch).toHaveBeenCalledWith(original.id, {
       executionProfile: 'work',
       narrativePolicy: 'always',
     });
@@ -86,7 +85,7 @@ describe('Session execution settings', () => {
       throw new Error('offline');
     });
 
-    await expect(useSessionStore.getState().setExecutionSettings(asSessionId(original.id), {
+    await expect(useSessionStore.getState().setExecutionSettings(original.id, {
       executionProfile: 'work',
       narrativePolicy: 'off',
     })).rejects.toThrow('offline');

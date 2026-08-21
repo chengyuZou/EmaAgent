@@ -5,7 +5,7 @@ import { useBackgroundProcessStore } from './backgroundProcessStore.js';
 import { useContextUsageStore } from './contextUsageStore.js';
 import { useConversationStore } from './conversation-store.js';
 import { useDecisionStore } from './decision-store.js';
-import type { SessionId, TurnId } from '@ema-agent/ids';
+
 import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/turn';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -24,13 +24,13 @@ export interface SessionStoreState {
   error:        string | null;
 
   loadSessions():                                                    Promise<void>;
-  createSession():                                                   Promise<SessionId>;
-  renameSession(id: SessionId, title: string):                       Promise<void>;
-  pinSession(id: SessionId, pinned: boolean):                        Promise<void>;
-  setSessionGroup(id: SessionId, label: string | null):              Promise<void>;
-  setWorkspaceRoot(id: SessionId, path: string | null):              Promise<void>;
+  createSession():                                                   Promise<string>;
+  renameSession(id: string, title: string):                       Promise<void>;
+  pinSession(id: string, pinned: boolean):                        Promise<void>;
+  setSessionGroup(id: string, label: string | null):              Promise<void>;
+  setWorkspaceRoot(id: string, path: string | null):              Promise<void>;
   setExecutionSettings(
-    id: SessionId,
+    id: string,
     patch: {
       executionProfile?: ExecutionProfile;
       narrativePolicy?: NarrativePolicy;
@@ -38,13 +38,13 @@ export interface SessionStoreState {
   ): Promise<void>;
   /** 保存用户希望该 Session 下一轮使用的供应商配置和模型。 */
   setPreferredModel(
-    id: SessionId,
+    id: string,
     preferredModel: { providerConfigId: string; modelId: string } | null,
   ): Promise<void>;
-  forkSession(id: SessionId, untilTurnId?: TurnId):                   Promise<SessionId>;
-  archiveSession(id: SessionId):                                     Promise<void>;
-  unarchiveSession(id: SessionId):                                   Promise<void>;
-  deleteSession(id: SessionId):                                      Promise<void>;
+  forkSession(id: string, untilTurnId?: string):                   Promise<string>;
+  archiveSession(id: string):                                     Promise<void>;
+  unarchiveSession(id: string):                                   Promise<void>;
+  deleteSession(id: string):                                      Promise<void>;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -117,7 +117,7 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
     try {
       const session = await sessionsApi.create();
       await get().loadSessions();
-      return session.id as SessionId;
+      return session.id;
     } catch (error: unknown) {
       set({
         error: error instanceof Error ? error.message : 'Failed to create session',
@@ -293,7 +293,7 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
     try {
       const result = await sessionsApi.fork(id, untilTurnId);
       await get().loadSessions();
-      return result.sessionId as SessionId;
+      return result.sessionId;
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to fork session' });
       throw err;

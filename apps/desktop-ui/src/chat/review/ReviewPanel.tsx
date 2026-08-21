@@ -8,7 +8,7 @@ import type {
   GitRefsResult,
   GitWorkspaceDiffResult,
 } from '@ema-agent/git-utils';
-import type { SessionId } from '@ema-agent/ids';
+
 import { gitApi } from '../../api/git.js';
 import { useWorkspaceStore } from '../../stores/workspaceStore.js';
 import { fileTab } from '../../stores/workspaceTypes.js';
@@ -205,7 +205,7 @@ export function ReviewPanel({ sessionId }: { sessionId: string | null }): JSX.El
   }, [pendingScrollKey, view, visibleItems]);
 
   const openFile = (absolutePath: string): void => {
-    if (sessionId) openTab(sessionId as SessionId, fileTab(absolutePath));
+    if (sessionId) openTab(sessionId, fileTab(absolutePath));
   };
 
   const jumpToFile = (key: string): void => {

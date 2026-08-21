@@ -2,7 +2,6 @@
 import { useEffect, useState } from 'react';
 import { cardsApi } from '../../../api/cards.js';
 import type { CharacterResourceOperation } from '@ema-agent/characters';
-import type { CharacterCardId } from '@ema-agent/ids';
 
 const STAGE_LABELS: Record<string, string> = {
   queued:     '排队中…',
@@ -20,7 +19,7 @@ export function operationStageLabel(stage: string): string {
 
 /** active=true 期间每 1.5s 轮询一次该角色的当前/最近资源操作;失败保留旧值。 */
 export function useResourceOperation(
-  cardId: CharacterCardId | null,
+  cardId: string | null,
   active: boolean,
 ): CharacterResourceOperation | null {
   const [operation, setOperation] = useState<CharacterResourceOperation | null>(null);

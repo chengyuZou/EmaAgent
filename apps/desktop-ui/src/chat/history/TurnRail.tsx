@@ -9,7 +9,7 @@ import {
   type WheelEvent,
 } from 'react';
 import { Tooltip, TooltipProvider } from '@ema-agent/ui';
-import type { SessionId, TurnId } from '@ema-agent/ids';
+
 import type { TurnIndexItemWire } from '@ema-agent/session';
 import {
   EMPTY_SESSION_HISTORY,
@@ -22,8 +22,8 @@ import {
 } from './turnRailModel.js';
 
 interface TurnRailProps {
-  sessionId: SessionId;
-  onSelectTurn(turnId: TurnId): void | Promise<void>;
+  sessionId: string;
+  onSelectTurn(turnId: string): void | Promise<void>;
 }
 
 type TurnRailMarkStyle = CSSProperties & {
@@ -141,7 +141,7 @@ export function TurnRail({ sessionId, onSelectTurn }: TurnRailProps): JSX.Elemen
                 onPointerEnter={() => setHoveredIndex(index)}
                 onFocus={() => setHoveredIndex(index)}
                 onBlur={() => setHoveredIndex(null)}
-                onClick={() => void onSelectTurn(item.turnId as TurnId)}
+                onClick={() => void onSelectTurn(item.turnId)}
                 aria-label={`跳转到 ${formatTurnTime(item.startedAt)} 的 Turn`}
                 aria-current={isCurrent ? 'step' : undefined}
               >

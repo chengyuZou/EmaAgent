@@ -1,9 +1,8 @@
 // 测试 workspaceStore 的标签唯一性、跨 Dock 移动、关闭折叠、每 Session 隔离与持久化。
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { SessionId } from '@ema-agent/ids';
 
-const S1 = 'sess_1' as SessionId;
-const S2 = 'sess_2' as SessionId;
+const S1 = 'sess_1';
+const S2 = 'sess_2';
 
 const STORAGE_KEY = 'ema-workspace-layout-v1';
 
@@ -24,7 +23,7 @@ vi.stubGlobal('localStorage', createLocalStorageMock());
 const { useWorkspaceStore, DEFAULT_RIGHT_WIDTH, DEFAULT_BOTTOM_HEIGHT, isRightFullWidth } = await import('./workspaceStore.js');
 const { fileTab, agentRunTab } = await import('./workspaceTypes.js');
 
-function layoutOf(sessionId: SessionId = S1) {
+function layoutOf(sessionId: string = S1) {
   return useWorkspaceStore.getState().layouts[sessionId as string];
 }
 

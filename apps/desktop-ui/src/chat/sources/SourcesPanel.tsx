@@ -1,7 +1,7 @@
 // Sources 标签内容：展示当前 Session 的持久化附件、磁盘状态，并安全交给操作系统打开。
 import { useEffect, useState, type JSX } from 'react';
 import { Button, ScrollArea } from '@ema-agent/ui';
-import type { SessionId } from '@ema-agent/ids';
+
 import type { SessionAttachmentFileStatus, SessionAttachmentWire } from '@ema-agent/session';
 import { tauriBridge } from '../../lib/tauri-bridge.js';
 import { useSessionAttachmentStore } from '../../stores/session-attachment-store.js';
@@ -121,7 +121,7 @@ export function SourcesPanel({ sessionId }: { sessionId: string | null }): JSX.E
   useEffect(() => {
     if (!sessionId) return;
     void useSessionAttachmentStore.getState()
-      .loadForSession(sessionId as SessionId, true)
+      .loadForSession(sessionId, true)
       .catch(() => {});
   }, [sessionId]);
 
@@ -142,7 +142,7 @@ export function SourcesPanel({ sessionId }: { sessionId: string | null }): JSX.E
           variant="secondary"
           size="sm"
           onClick={() => void useSessionAttachmentStore.getState()
-            .loadForSession(sessionId as SessionId, true)
+            .loadForSession(sessionId, true)
             .catch(() => {})}
         >
           重新加载

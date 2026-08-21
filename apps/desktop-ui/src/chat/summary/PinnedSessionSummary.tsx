@@ -1,7 +1,7 @@
 // 置顶摘要浮层：工作区事实、运行活动计数与来源概况，点击打开对应工作区标签。
 import { useEffect, useState, type JSX } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import type { SessionId } from '@ema-agent/ids';
+
 import { gitApi, type GitSummary } from '../../api/git.js';
 import type { GitSummaryOk } from '@ema-agent/git-utils';
 import { useAgentRunStore } from '../../stores/agentRunStore.js';
@@ -13,7 +13,7 @@ import { useWorkspaceStore } from '../../stores/workspaceStore.js';
 const SOURCES_PREVIEW_COUNT = 3;
 
 export interface PinnedSessionSummaryProps {
-  sessionId: SessionId;
+  sessionId: string;
 }
 
 export function PinnedSessionSummary({ sessionId }: PinnedSessionSummaryProps): JSX.Element {

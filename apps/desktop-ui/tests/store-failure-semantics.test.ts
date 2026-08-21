@@ -1,16 +1,5 @@
 // 测试 Session、AgentRun、Memory 与 KB 失败时不会伪造成功或丢失事实状态。
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { SessionId } from '@ema-agent/ids';
-
-vi.mock('@ema-agent/live2d-react', () => ({
-  useSpeechStore: {
-    getState: () => ({
-      setSpeaking: vi.fn(),
-      setRms: vi.fn(),
-      reset: vi.fn(),
-    }),
-  },
-}));
 
 import { sessionsApi } from '../src/api/sessions.js';
 import { agentRunsApi } from '../src/api/agentRuns.js';
@@ -24,7 +13,7 @@ import {
 import { useMemoryStore } from '../src/stores/memory-store.js';
 import { useKbStore, type IngestJob } from '../src/stores/kb-store.js';
 
-const SESSION_ID = 'session-failure-test' as SessionId;
+const SESSION_ID = 'session-failure-test';
 
 afterEach(() => {
   vi.useRealTimers();
@@ -32,7 +21,7 @@ afterEach(() => {
 });
 
 describe('Store 失败语义', () => {
-  it('创建 Session 失败时 reject，不再返回伪造的 SessionId', async () => {
+  it('创建 Session 失败时 reject，不再返回伪造的 string', async () => {
     const failure = new Error('database unavailable');
     vi.spyOn(sessionsApi, 'create').mockRejectedValueOnce(failure);
     useSessionStore.setState({ error: null });

@@ -1,12 +1,12 @@
 // 展示当前 Session 的热尾或旧历史窗口，并连接 TurnRail 快速导航。
 import { useRef, useEffect, useMemo, type JSX } from 'react';
 import { Button } from '@ema-agent/ui';
-import type { TurnId } from '@ema-agent/ids';
+
 import { useConversationStore, type ChatHistoryItem } from '../../stores/conversation-store.js';
 import { useChatHistoryScroll } from './useChatHistoryScroll.js';
 import { UserBubble } from '../messages/UserBubble.js';
 import { AssistantBubble } from '../messages/AssistantBubble.js';
-import { NarrativeStatusBlock } from '@ema-agent/tool-builtin/ui';
+import { NarrativeStatusBlock } from '@ema-agent/builtin-tools/ui';
 import {
   EMPTY_SESSION_HISTORY,
   useSessionHistoryStore,
@@ -92,7 +92,7 @@ export function ChatHistory(): JSX.Element {
         ))[0];
       const turnId = visible?.target.getAttribute('data-turn-id');
       if (turnId) {
-        useSessionHistoryStore.getState().setCurrentTurn(viewedId, turnId as TurnId);
+        useSessionHistoryStore.getState().setCurrentTurn(viewedId, turnId);
       }
     }, { root, threshold: 0.15 });
     const targets = root.querySelectorAll('[data-turn-id]');
@@ -100,7 +100,7 @@ export function ChatHistory(): JSX.Element {
     return () => observer.disconnect();
   }, [displayedMessages, displayedStreaming, viewedId]);
 
-  async function selectTurn(turnId: TurnId): Promise<void> {
+  async function selectTurn(turnId: string): Promise<void> {
     if (!viewedId) return;
     const inTail = messages.some((message) => message.turnId === turnId);
     if (inTail) {

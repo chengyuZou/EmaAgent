@@ -10,7 +10,6 @@ import { VoiceTab } from './voice/VoiceTab.js';
 import { Live2DTab } from './live2d/Live2DTab.js';
 import { PortraitsTab } from './portraits/PortraitsTab.js';
 import { HealthBadge } from './shared/HealthBadge.js';
-import type { CharacterCardId } from '@ema-agent/ids';
 
 export interface CharacterCardEditorProps {
   card:        CharacterCard;
@@ -44,7 +43,7 @@ export function CharacterCardEditor({ card, onActivate }: CharacterCardEditorPro
     {
       value:   'voice',
       label:   '音色',
-      content: <VoiceTab cardId={card.id as CharacterCardId} voiceReferences={card.voiceReferences} isBuiltin={card.isBuiltin} />,
+      content: <VoiceTab cardId={card.id} voiceReferences={card.voiceReferences} isBuiltin={card.isBuiltin} />,
     },
   ];
 
@@ -54,7 +53,7 @@ export function CharacterCardEditor({ card, onActivate }: CharacterCardEditorPro
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2 min-w-0">
           <h2 className="text-lg font-semibold text-[var(--ema-text-primary)] truncate">{card.name}</h2>
-          <HealthBadge cardId={card.id as CharacterCardId} />
+          <HealthBadge cardId={card.id} />
         </div>
         <div className="flex items-center gap-2">
           {card.isActive ? (

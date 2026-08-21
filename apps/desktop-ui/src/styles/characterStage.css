@@ -30,7 +30,13 @@
   visibility: hidden;
 }
 
-.ema-character-stage-ortrait {
+.ema-character-stage-resource-content {
+  position: absolute;
+  inset: 0;
+  transform-origin: center bottom;
+}
+
+.ema-character-stage-portrait {
   width: 100%;
   height: 100%;
   object-fit: contain;
@@ -75,7 +81,7 @@
     transition-duration: 0ms;
   }
 
-  .ema-character-stage-ortrait,
+  .ema-character-stage-portrait,
   .ema-character-stage-placeholder {
     animation: none;
   }

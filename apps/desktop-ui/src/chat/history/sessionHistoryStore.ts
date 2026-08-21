@@ -1,6 +1,6 @@
 // 管理每个 Session 的热尾/旧历史模式、轻量 Turn 索引和历史窗口缓存。
 import { create } from 'zustand';
-import type { SessionId, TurnId } from '@ema-agent/ids';
+
 import type { TurnIndexItemWire } from '@ema-agent/session';
 import { sessionsApi } from '../../api/sessions.js';
 import {
@@ -12,7 +12,7 @@ const ARCHIVE_WINDOW_CACHE_LIMIT = 3;
 const TURN_INDEX_PAGE_SIZE = 200;
 
 export interface ArchiveMessageWindow {
-  anchorTurnId: TurnId;
+  anchorTurnId: string;
   messages: ChatHistoryItem[];
   hasOlder: boolean;
   hasNewer: boolean;
@@ -26,22 +26,22 @@ export interface SessionHistoryState {
   turnIndexLoading: boolean;
   archiveLoading: boolean;
   archiveWindows: ArchiveMessageWindow[];
-  activeArchiveTurnId?: TurnId;
-  currentTurnId?: TurnId;
+  activeArchiveTurnId?: string;
+  currentTurnId?: string;
   unseenTailCount: number;
   error?: string;
 }
 
 interface SessionHistoryStore {
   bySession: Map<string, SessionHistoryState>;
-  loadTurnIndex(sessionId: SessionId, reset?: boolean): Promise<void>;
-  loadMoreTurnIndex(sessionId: SessionId): Promise<void>;
-  openArchive(sessionId: SessionId, anchorTurnId: TurnId): Promise<void>;
-  showTail(sessionId: SessionId): void;
-  setCurrentTurn(sessionId: SessionId, turnId: TurnId): void;
-  noteTailUpdate(sessionId: SessionId): void;
-  invalidateTurnIndex(sessionId: SessionId): void;
-  evictSession(sessionId: SessionId): void;
+  loadTurnIndex(sessionId: string, reset?: boolean): Promise<void>;
+  loadMoreTurnIndex(sessionId: string): Promise<void>;
+  openArchive(sessionId: string, anchorTurnId: string): Promise<void>;
+  showTail(sessionId: string): void;
+  setCurrentTurn(sessionId: string, turnId: string): void;
+  noteTailUpdate(sessionId: string): void;
+  invalidateTurnIndex(sessionId: string): void;
+  evictSession(sessionId: string): void;
 }
 
 export const EMPTY_SESSION_HISTORY: SessionHistoryState = {

@@ -6,7 +6,7 @@ import {
 import { useStorageStore } from '../../stores/storage-store.js';
 import { storageApi } from '../../api/storage.js';
 import { showToast } from '../../lib/toast.js';
-import type { SessionId } from '@ema-agent/ids';
+
 import type { SessionWire } from '../../api/sessions.js';
 import type { SessionDashboardWire } from '../../api/storage.js';
 import type { AudioEntryWire, SessionNoteEntryWire } from '@ema-agent/session';
@@ -146,7 +146,7 @@ function NotesTab({ notes }: { notes: SessionDashboardWire['notes'] }): JSX.Elem
 export function SessionDashboard({ session }: { session: SessionWire }): JSX.Element {
   const [tab,       setTab]       = useState('overview');
   const [exporting, setExporting] = useState(false);
-  const sid   = session.id as SessionId;
+  const sid   = session.id;
   const store = useStorageStore();
 
   const dashboard = store.dashBySession.get(session.id);

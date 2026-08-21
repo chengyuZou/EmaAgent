@@ -3,7 +3,7 @@
  * Types imported from @ema-agent/memory and @ema-agent/storage where available.
  */
 import { sidecarClient } from './sidecar-client.js';
-import type { SessionId } from '@ema-agent/ids';
+
 import type {
   MemoryBackgroundHealth,
   MemoryStats,
@@ -88,7 +88,7 @@ export const memoryApi = {
   },
 
   /** GET /api/memory/sessions/:id/overrides */
-  async getSessionOverrides(sessionId: SessionId): Promise<MemorySessionOverrides> {
+  async getSessionOverrides(sessionId: string): Promise<MemorySessionOverrides> {
     return sidecarClient.request<MemorySessionOverrides>(
       `/api/memory/sessions/${sessionId}/overrides`,
     );
@@ -96,7 +96,7 @@ export const memoryApi = {
 
   /** PUT /api/memory/sessions/:id/overrides */
   async setSessionOverrides(
-    sessionId: SessionId,
+    sessionId: string,
     overrides: MemorySessionOverrides,
   ): Promise<MemorySessionOverrides> {
     return sidecarClient.request<MemorySessionOverrides>(

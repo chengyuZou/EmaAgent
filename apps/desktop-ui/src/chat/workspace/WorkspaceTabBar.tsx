@@ -1,6 +1,6 @@
 // Chat 工作区 Dock 的标签条：激活、关闭、右 ⇄ 底移动与新建入口。
 import type { JSX } from 'react';
-import type { SessionId } from '@ema-agent/ids';
+
 import { Button, DropdownMenu, IconButton } from '@ema-agent/ui';
 import { useAgentRunStore } from '../../stores/agentRunStore.js';
 import { useWorkspaceStore } from '../../stores/workspaceStore.js';
@@ -44,7 +44,7 @@ function AgentRunTabLabel({ agentRunId }: { agentRunId: string }): JSX.Element {
 }
 
 export interface WorkspaceTabBarProps {
-  sessionId: SessionId;
+  sessionId: string;
   dock: WorkspaceDockId;
   tabs: WorkspaceTab[];
   activeTabId?: string;

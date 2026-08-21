@@ -20,7 +20,7 @@ import { AskConfirmPrompt } from './AskConfirmPrompt.js';
 import { AskTextPrompt } from './AskTextPrompt.js';
 import { AskChoicePrompt } from './AskChoicePrompt.js';
 import { AskUserBatchPrompt } from './AskUserBatchPrompt.js';
-import type { SessionId } from '@ema-agent/ids';
+
 import type { PermissionResponse } from '@ema-agent/permission';
 
 // ── Submission state ─────────────────────────────────────────────────────────
@@ -57,7 +57,7 @@ function PromptRouter({
   sessionId,
 }: {
   prompt:   DecisionPrompt;
-  sessionId: SessionId;
+  sessionId: string;
 }): JSX.Element {
   const timeoutMs = useSettingsStore((s) => s.permissionTimeoutMs);
   const submission = useDecisionSubmission();

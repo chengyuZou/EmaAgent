@@ -5,7 +5,7 @@ import type { SessionWire } from '../../api/sessions.js';
 import { useConversationStore } from '../../stores/conversation-store.js';
 import { useSessionStore } from '../../stores/session-store.js';
 import { runWithToast } from '../../lib/toast.js';
-import type { SessionId } from '@ema-agent/ids';
+
 import { WorkspacePicker } from '../WorkspacePicker.js';
 import { formatRelativeTime } from './sidebarFormat.js';
 
@@ -45,7 +45,7 @@ export function SidebarRow({ session, isActive, streaming, pendingCounts, nested
       kind:     'item',
       label:    session.pinned ? '取消固定' : '固定',
       icon:     session.pinned ? 'i-lucide:pin-off' : 'i-lucide:pin',
-      onSelect: () => void runWithToast(useSessionStore.getState().pinSession(session.id as SessionId, !session.pinned), '固定失败'),
+      onSelect: () => void runWithToast(useSessionStore.getState().pinSession(session.id, !session.pinned), '固定失败'),
     },
     {
       kind:     'item',
@@ -58,7 +58,7 @@ export function SidebarRow({ session, isActive, streaming, pendingCounts, nested
       label:    'Fork',
       icon:     'i-lucide:git-fork',
       onSelect: () => void (async () => {
-        const newId = await useSessionStore.getState().forkSession(session.id as SessionId);
+        const newId = await useSessionStore.getState().forkSession(session.id);
         void useConversationStore.getState().viewSession(newId);
       })(),
     },
@@ -78,7 +78,7 @@ export function SidebarRow({ session, isActive, streaming, pendingCounts, nested
       kind:     'item',
       label:    '归档',
       icon:     'i-lucide:archive',
-      onSelect: () => void runWithToast(useSessionStore.getState().archiveSession(session.id as SessionId), '归档失败'),
+      onSelect: () => void runWithToast(useSessionStore.getState().archiveSession(session.id), '归档失败'),
     },
     { kind: 'separator' },
     {
@@ -92,7 +92,7 @@ export function SidebarRow({ session, isActive, streaming, pendingCounts, nested
 
   function confirmDelete(): void {
     setPendingDelete(false);
-    void runWithToast(useSessionStore.getState().deleteSession(session.id as SessionId), '删除失败');
+    void runWithToast(useSessionStore.getState().deleteSession(session.id), '删除失败');
   }
 
   return (
@@ -104,7 +104,7 @@ export function SidebarRow({ session, isActive, streaming, pendingCounts, nested
           ? 'ema-active-rail bg-[var(--ema-surface-2)] text-[var(--ema-text-primary)] shadow-[var(--ema-shadow-1)]'
           : 'text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-2)] hover:text-[var(--ema-text-primary)]'
       }`}
-      onClick={() => void useConversationStore.getState().viewSession(session.id as SessionId)}
+      onClick={() => void useConversationStore.getState().viewSession(session.id)}
     >
       <span className="shrink-0 w-3 flex items-center justify-center">
         {dot ? (
@@ -182,7 +182,7 @@ export function SidebarRow({ session, isActive, streaming, pendingCounts, nested
         message="输入新的会话名称"
         initialValue={session.title}
         confirmText="重命名"
-        onConfirm={(name) => { setPromptRename(false); if (name) void runWithToast(useSessionStore.getState().renameSession(session.id as SessionId, name), '重命名失败'); }}
+        onConfirm={(name) => { setPromptRename(false); if (name) void runWithToast(useSessionStore.getState().renameSession(session.id, name), '重命名失败'); }}
         onCancel={() => setPromptRename(false)}
       />
 
@@ -192,7 +192,7 @@ export function SidebarRow({ session, isActive, streaming, pendingCounts, nested
         message="输入分组名称(留空取消分组)"
         initialValue={session.groupLabel ?? ''}
         confirmText="保存"
-        onConfirm={(label) => { setPromptGroup(false); void runWithToast(useSessionStore.getState().setSessionGroup(session.id as SessionId, label.trim() || null), '分组失败'); }}
+        onConfirm={(label) => { setPromptGroup(false); void runWithToast(useSessionStore.getState().setSessionGroup(session.id, label.trim() || null), '分组失败'); }}
         onCancel={() => setPromptGroup(false)}
       />
     </div>

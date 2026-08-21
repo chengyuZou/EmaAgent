@@ -5,7 +5,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../src/lib/tts-playback.js', () => ({
   handleTtsChunk: vi.fn(), handleTtsSentenceComplete: vi.fn(), }));
 
-import { asSessionId } from '@ema-agent/ids';
 import type { SessionWire } from '@ema-agent/session';
 import { sessionsApi } from '../src/api/sessions.js';
 import { findEnabledModel } from '../src/stores/model-catalog-store.js';
@@ -68,12 +67,12 @@ describe('Session model preference', () => {
     }));
     sessionsApi.patch = patch;
 
-    await useSessionStore.getState().setPreferredModel(asSessionId('session-a'), {
+    await useSessionStore.getState().setPreferredModel('session-a', {
       providerConfigId: 'provider-1',
       modelId: 'model-1',
     });
 
-    expect(patch).toHaveBeenCalledWith(asSessionId('session-a'), {
+    expect(patch).toHaveBeenCalledWith('session-a', {
       preferredModel: {
         providerConfigId: 'provider-1',
         modelId: 'model-1',
@@ -100,7 +99,7 @@ describe('Session model preference', () => {
       throw new Error('offline');
     });
 
-    await expect(useSessionStore.getState().setPreferredModel(asSessionId('session-a'), {
+    await expect(useSessionStore.getState().setPreferredModel('session-a', {
       providerConfigId: 'provider-new',
       modelId: 'model-new',
     })).rejects.toThrow('offline');
@@ -123,11 +122,11 @@ describe('Session model preference', () => {
       .mockImplementationOnce(() => secondResponse);
     sessionsApi.patch = patch;
 
-    const firstWrite = useSessionStore.getState().setPreferredModel(asSessionId('session-a'), {
+    const firstWrite = useSessionStore.getState().setPreferredModel('session-a', {
       providerConfigId: 'provider-a',
       modelId: 'model-a',
     });
-    const secondWrite = useSessionStore.getState().setPreferredModel(asSessionId('session-a'), {
+    const secondWrite = useSessionStore.getState().setPreferredModel('session-a', {
       providerConfigId: 'provider-b',
       modelId: 'model-b',
     });

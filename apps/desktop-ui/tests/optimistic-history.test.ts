@@ -1,15 +1,14 @@
 // 测试附件-only用户气泡的创建以及按 Turn 对账时不会重复或丢失。
 import { describe, expect, it } from 'vitest';
 
-import type { MessageId, TurnId } from '@ema-agent/ids';
 import {
   createOptimisticUserMessage,
   reconcileLoadedHistory,
   type ChatHistoryItem,
 } from '../src/stores/conversation-history.js';
 
-const TURN_1 = 'turn-1' as TurnId;
-const TURN_2 = 'turn-2' as TurnId;
+const TURN_1 = 'turn-1';
+const TURN_2 = 'turn-2';
 
 describe('optimistic user history', () => {
   it('为附件-only请求创建带 Turn 身份的用户消息', () => {
@@ -38,7 +37,7 @@ describe('optimistic user history', () => {
       content: 'hello',
       createdAt: 101,
       turnId: TURN_1,
-      messageId: 'message-1' as MessageId,
+      messageId: 'message-1',
     };
 
     const result = reconcileLoadedHistory([persisted], [optimistic]);
@@ -53,7 +52,7 @@ describe('optimistic user history', () => {
       content: 'older',
       createdAt: 100,
       turnId: TURN_1,
-      messageId: 'message-1' as MessageId,
+      messageId: 'message-1',
     };
 
     expect(reconcileLoadedHistory([loaded], [pending])).toEqual([loaded, pending]);

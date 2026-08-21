@@ -1,6 +1,6 @@
 // 组装会话侧栏、消息历史、输入区与工作区 Dock，并维护聊天窗口生命周期。
 import { useEffect, type JSX } from 'react';
-import type { SessionId } from '@ema-agent/ids';
+
 import { Popover } from '@ema-agent/ui';
 import { useConversationStore } from '../../stores/conversation-store.js';
 import { useSessionStore } from '../../stores/session-store.js';
@@ -55,7 +55,7 @@ export function ChatPanel(): JSX.Element {
           return !prev || ts > prev.ts ? { id: s.id, ts } : prev;
         }, null);
         const pick = best?.id ?? sessions.recent[0]?.id ?? sessions.pinned[0]?.id;
-        if (pick) void useConversationStore.getState().viewSession(pick as SessionId);
+        if (pick) void useConversationStore.getState().viewSession(pick);
       }
     })();
   }, []);

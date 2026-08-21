@@ -6,7 +6,6 @@ import { showToast } from '../../../lib/toast.js';
 import { tauriBridge, type AuthorizedDirectory } from '../../../lib/tauri-bridge.js';
 import { describeResourceError } from '../shared/characterResourceErrors.js';
 import { operationStageLabel, useResourceOperation } from '../shared/useResourceOperation.js';
-import type { CharacterCardId } from '@ema-agent/ids';
 
 const FORMAT_OPTIONS = [
   { value: 'live2d', label: 'Live2D (Cubism)' },
@@ -18,7 +17,7 @@ export function Live2DImportDialog({
   open,
   onOpenChange,
 }: {
-  cardId: CharacterCardId;
+  cardId: string;
   open: boolean;
   onOpenChange(open: boolean): void;
 }): JSX.Element {

@@ -1,7 +1,7 @@
 // 测试窗口重开后按 Session 恢复 Core 仍在等待的权限请求。
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { PendingPermissionPrompt } from '@ema-agent/permission';
-import { asSessionId, asTurnId } from '@ema-agent/ids';
+
 import { useDecisionStore } from '../src/stores/decision-store.js';
 
 describe('permission prompt recovery', () => {
@@ -26,7 +26,7 @@ describe('permission prompt recovery', () => {
 
     useDecisionStore.getState().restorePermissions([pending, pending]);
 
-    const queue = useDecisionStore.getState().sessions.get(asSessionId('session-1'));
+    const queue = useDecisionStore.getState().sessions.get('session-1');
     expect(queue).toHaveLength(1);
     expect(queue?.[0]).toEqual(expect.objectContaining({
       kind: 'permission',
@@ -42,15 +42,15 @@ describe('permission prompt recovery', () => {
       createdAt: 2,
       request: {
         type: 'ask_text_required',
-        sessionId: asSessionId('session-2'),
-        turnId: asTurnId('turn-2'),
+        sessionId: 'session-2',
+        turnId: 'turn-2',
         promptId: 'prompt-2',
         question: '请输入名称',
         placeholder: '名称',
       },
     }]);
 
-    expect(useDecisionStore.getState().sessions.get(asSessionId('session-2'))?.[0]).toEqual(
+    expect(useDecisionStore.getState().sessions.get('session-2')?.[0]).toEqual(
       expect.objectContaining({
         kind: 'ask_text',
         turnId: 'turn-2',

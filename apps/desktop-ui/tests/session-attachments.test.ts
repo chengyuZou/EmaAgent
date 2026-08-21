@@ -1,6 +1,6 @@
 // 测试 Session 附件缓存的会话隔离、强制刷新和过期响应保护。
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { asSessionId } from '@ema-agent/ids';
+
 import type { SessionAttachmentWire } from '@ema-agent/session';
 import { sessionsApi } from '../src/api/sessions.js';
 import { useSessionAttachmentStore } from '../src/stores/session-attachment-store.js';
@@ -41,8 +41,8 @@ describe('Session attachment store', () => {
     }));
 
     await Promise.all([
-      useSessionAttachmentStore.getState().loadForSession(asSessionId('session-a')),
-      useSessionAttachmentStore.getState().loadForSession(asSessionId('session-b')),
+      useSessionAttachmentStore.getState().loadForSession('session-a'),
+      useSessionAttachmentStore.getState().loadForSession('session-b'),
     ]);
 
     expect(useSessionAttachmentStore.getState().bySession.get('session-a')?.[0]?.sessionId)
@@ -57,7 +57,7 @@ describe('Session attachment store', () => {
     vi.spyOn(sessionsApi, 'listAttachments')
       .mockReturnValueOnce(oldRequest.promise)
       .mockReturnValueOnce(currentRequest.promise);
-    const sessionId = asSessionId('session-a');
+    const sessionId = 'session-a';
 
     const oldLoad = useSessionAttachmentStore.getState().loadForSession(sessionId);
     const currentLoad = useSessionAttachmentStore.getState().loadForSession(sessionId, true);
@@ -73,7 +73,7 @@ describe('Session attachment store', () => {
   it('逐出 Session 后，未完成响应不能恢复旧缓存', async () => {
     const request = deferred<{ attachments: SessionAttachmentWire[] }>();
     vi.spyOn(sessionsApi, 'listAttachments').mockReturnValueOnce(request.promise);
-    const sessionId = asSessionId('session-a');
+    const sessionId = 'session-a';
 
     const load = useSessionAttachmentStore.getState().loadForSession(sessionId);
     useSessionAttachmentStore.getState().evictSession(sessionId);

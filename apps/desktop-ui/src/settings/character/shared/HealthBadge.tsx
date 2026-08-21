@@ -2,9 +2,8 @@
 import { useEffect, type JSX } from 'react';
 import { Badge, Popover } from '@ema-agent/ui';
 import { useCardStore } from '../../../stores/card-store.js';
-import type { CharacterCardId } from '@ema-agent/ids';
 
-export function HealthBadge({ cardId }: { cardId: CharacterCardId }): JSX.Element | null {
+export function HealthBadge({ cardId }: { cardId: string }): JSX.Element | null {
   const health = useCardStore((s) => s.healthMap[cardId as string]);
 
   useEffect(() => {

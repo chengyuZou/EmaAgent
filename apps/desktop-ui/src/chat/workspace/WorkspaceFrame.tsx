@@ -2,7 +2,7 @@
 // 以及 RightDock 全宽展开模式下的 ChatInput 浮动条。
 import { useState, type JSX, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import type { SessionId } from '@ema-agent/ids';
+
 import { Button } from '@ema-agent/ui';
 import { isRightFullWidth, useWorkspaceStore } from '../../stores/workspaceStore.js';
 import { WorkspaceDock } from './WorkspaceDock.js';
@@ -15,7 +15,7 @@ import { BackgroundProcessesPanel } from '../backgroundProcesses/BackgroundProce
 import { FilePreview } from '../panels/FilePreview.js';
 
 export interface WorkspaceFrameProps {
-  sessionId: SessionId | null;
+  sessionId: string | null;
   header: ReactNode;
   history: ReactNode;
   activity: ReactNode;
@@ -137,7 +137,7 @@ function WorkspaceTabContent({
   tab, sessionId, onOpenFiles,
 }: {
   tab: WorkspaceTab;
-  sessionId: SessionId | null;
+  sessionId: string | null;
   onOpenFiles?: () => void;
 }): JSX.Element {
   switch (tab.kind) {

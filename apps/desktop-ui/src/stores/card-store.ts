@@ -6,7 +6,6 @@ import {
   type CharacterCardInput,
 } from '../api/cards.js';
 import type { CharacterHealth } from '@ema-agent/characters';
-import type { CharacterCardId } from '@ema-agent/ids';
 
 export interface ResourcePatch {
   name?: string;
@@ -20,52 +19,52 @@ export interface ResourcePatch {
 
 export interface CardStoreState {
   cards:         CharacterCard[];
-  activeCardId:  CharacterCardId | null;
+  activeCardId:  string | null;
   loading:       boolean;
   error:         string | null;
   /** 每卡健康投影;资源操作后显式刷新,不靠 card.updatedAt 碰运气。 */
   healthMap:     Record<string, CharacterHealth>;
 
   load():                                          Promise<void>;
-  refreshHealth(id: CharacterCardId):              Promise<void>;
-  activate(id: CharacterCardId):                   Promise<void>;
+  refreshHealth(id: string):              Promise<void>;
+  activate(id: string):                   Promise<void>;
   create(input: CharacterCardInput):               Promise<CharacterCard>;
-  patch(id: CharacterCardId, input: Partial<CharacterCardInput>): Promise<void>;
-  delete(id: CharacterCardId):                     Promise<void>;
-  setPrimaryLive2d(id: CharacterCardId, resourceId: string): Promise<void>;
-  setPrimaryIllustration(id: CharacterCardId, resourceId: string): Promise<void>;
+  patch(id: string, input: Partial<CharacterCardInput>): Promise<void>;
+  delete(id: string):                     Promise<void>;
+  setPrimaryLive2d(id: string, resourceId: string): Promise<void>;
+  setPrimaryIllustration(id: string, resourceId: string): Promise<void>;
 
-  uploadVoiceReference(cardId: CharacterCardId, file: Blob, meta: {
+  uploadVoiceReference(cardId: string, file: Blob, meta: {
     name: string;
     promptText: string;
     promptLang: string;
     setPrimary?: boolean;
   }): Promise<void>;
-  deleteVoiceReference(cardId: CharacterCardId, refId: string): Promise<void>;
-  setPrimaryVoiceReference(cardId: CharacterCardId, refId: string): Promise<void>;
+  deleteVoiceReference(cardId: string, refId: string): Promise<void>;
+  setPrimaryVoiceReference(cardId: string, refId: string): Promise<void>;
 
   // ── 三类资源管理(C3b 能力句柄式)─────────────────────────────────────────
 
-  importLive2d(id: CharacterCardId, input: {
+  importLive2d(id: string, input: {
     sourceHandle: string;
     name: string;
     isPrimary?: boolean;
   }): Promise<void>;
-  exportLive2d(id: CharacterCardId, resourceId: string, destinationHandle: string): Promise<string>;
-  patchLive2d(id: CharacterCardId, resourceId: string, patch: ResourcePatch): Promise<void>;
-  deleteLive2d(id: CharacterCardId, resourceId: string): Promise<void>;
+  exportLive2d(id: string, resourceId: string, destinationHandle: string): Promise<string>;
+  patchLive2d(id: string, resourceId: string, patch: ResourcePatch): Promise<void>;
+  deleteLive2d(id: string, resourceId: string): Promise<void>;
 
-  importIllustration(id: CharacterCardId, input: {
+  importIllustration(id: string, input: {
     sourceHandle: string;
     name: string;
     isPrimary?: boolean;
   }): Promise<void>;
-  exportIllustration(id: CharacterCardId, resourceId: string, destinationHandle: string): Promise<string>;
-  patchIllustration(id: CharacterCardId, resourceId: string, patch: ResourcePatch): Promise<void>;
-  deleteIllustration(id: CharacterCardId, resourceId: string): Promise<void>;
+  exportIllustration(id: string, resourceId: string, destinationHandle: string): Promise<string>;
+  patchIllustration(id: string, resourceId: string, patch: ResourcePatch): Promise<void>;
+  deleteIllustration(id: string, resourceId: string): Promise<void>;
 
-  exportVoiceReference(cardId: CharacterCardId, resourceId: string, destinationHandle: string): Promise<string>;
-  patchVoiceReference(cardId: CharacterCardId, resourceId: string, patch: Pick<ResourcePatch, 'name' | 'enabled'>): Promise<void>;
+  exportVoiceReference(cardId: string, resourceId: string, destinationHandle: string): Promise<string>;
+  patchVoiceReference(cardId: string, resourceId: string, patch: Pick<ResourcePatch, 'name' | 'enabled'>): Promise<void>;
 }
 
 // ── Store ────────────────────────────────────────────────────────────────────

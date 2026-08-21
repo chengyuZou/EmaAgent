@@ -1,6 +1,6 @@
 // Dock 空白或 + 触发时的工作区启动器：居中浮出菜单，只列有真实能力的入口。
 import { useEffect, type JSX } from 'react';
-import type { SessionId } from '@ema-agent/ids';
+
 import { Button } from '@ema-agent/ui';
 import { useWorkspaceStore } from '../../stores/workspaceStore.js';
 import { workspaceTabIcon } from './WorkspaceTabBar.js';
@@ -22,7 +22,7 @@ const LAUNCHER_LABELS: Record<string, string> = {
 };
 
 export interface WorkspaceLauncherProps {
-  sessionId: SessionId;
+  sessionId: string;
   dock: WorkspaceDockId;
   /** overlay 模式（已有标签时由 + 触发）可关闭；嵌入模式（空 Dock）常显。 */
   onClose?: () => void;

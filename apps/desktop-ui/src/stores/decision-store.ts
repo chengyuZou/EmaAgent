@@ -13,10 +13,7 @@ import type {
   PendingPermissionPrompt,
   PermissionPrompt,
 } from '@ema-agent/permission';
-import type {
-  SessionId,
-  TurnId,
-} from '@ema-agent/ids';
+
 import type {
   AskUserQuestionSpec,
   PendingAskUserPrompt,
@@ -28,8 +25,8 @@ import type {
 export interface PermissionDecisionPrompt extends PermissionPrompt {
   kind: 'permission';
   promptId: string;
-  turnId: TurnId;
-  sessionId: SessionId;
+  turnId: string;
+  sessionId: string;
 }
 
 export type DecisionPrompt =
@@ -37,16 +34,16 @@ export type DecisionPrompt =
   | {
       kind: 'ask_confirm';
       promptId: string;
-      turnId: TurnId;
-      sessionId?: SessionId;
+      turnId: string;
+      sessionId?: string;
       question: string;
       humanDescription?: string;
     }
   | {
       kind: 'ask_text';
       promptId: string;
-      turnId: TurnId;
-      sessionId?: SessionId;
+      turnId: string;
+      sessionId?: string;
       question: string;
       humanDescription?: string;
       placeholder?: string;
@@ -54,8 +51,8 @@ export type DecisionPrompt =
   | {
       kind: 'ask_choice';
       promptId: string;
-      turnId: TurnId;
-      sessionId?: SessionId;
+      turnId: string;
+      sessionId?: string;
       question: string;
       humanDescription?: string;
       options: Array<{ label: string; description?: string }>;
@@ -67,8 +64,8 @@ export type DecisionPrompt =
   | {
       kind: 'ask_user';
       promptId: string;
-      sessionId?: SessionId;
-      turnId: TurnId;
+      sessionId?: string;
+      turnId: string;
       questions: AskUserQuestionSpec[];
       humanDescription?: string;
     };
@@ -77,23 +74,23 @@ export type DecisionPrompt =
 
 export interface DecisionStoreState {
   /** Per-session FIFO queues. Each queue's [0] is that session's "current". */
-  sessions: Map<SessionId, DecisionPrompt[]>;
+  sessions: Map<string, DecisionPrompt[]>;
 
   /** Push a prompt onto its session's queue (deduped by promptId). */
   push(prompt: DecisionPrompt): void;
 
   /** Resolve the head of `sessionId`'s queue. */
-  resolve(sessionId: SessionId): void;
+  resolve(sessionId: string): void;
 
   /** Cancel the head of `sessionId`'s queue. */
-  cancel(sessionId: SessionId): void;
+  cancel(sessionId: string): void;
 
   /** Remove a specific prompt by promptId (scans all sessions). Used by
    *  `*_resolved` SSE events which carry only promptId. */
   dismiss(promptId: string): void;
 
   /** Drop a session's entire queue (called when the session is deleted). */
-  clearSession(sessionId: SessionId): void;
+  clearSession(sessionId: string): void;
 
   /** 窗口重开时把 Core 仍在等待的权限请求补回各 Session FIFO。 */
   restorePermissions(prompts: PendingPermissionPrompt[]): void;
@@ -150,7 +147,7 @@ export const useDecisionStore = create<DecisionStoreState>((set, get) => ({
   dismiss(promptId) {
     set((s) => {
       let changed = false;
-      const next = new Map<SessionId, DecisionPrompt[]>();
+      const next = new Map<string, DecisionPrompt[]>();
       for (const [sid, q] of s.sessions) {
         const filtered = q.filter((p) => p.promptId !== promptId);
         if (filtered.length !== q.length) changed = true;

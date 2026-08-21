@@ -2,7 +2,7 @@
 import { useEffect, useState, type JSX } from 'react';
 import { Button } from '@ema-agent/ui';
 import type { SessionWire } from '../../api/sessions.js';
-import type { SessionId } from '@ema-agent/ids';
+
 import type { ProjectGroup } from './sidebarGroups.js';
 import { SidebarRow } from './SidebarRow.js';
 
@@ -61,7 +61,7 @@ export function ProjectListSection({
 }: {
   label: string;
   groups: ProjectGroup[];
-  viewedId: SessionId | null;
+  viewedId: string | null;
   streaming: Map<string, unknown>;
   pendingCounts: Record<string, number>;
 }): JSX.Element {
@@ -99,7 +99,7 @@ function ProjectNode({
   group, viewedId, streaming, pendingCounts,
 }: {
   group: ProjectGroup;
-  viewedId: SessionId | null;
+  viewedId: string | null;
   streaming: Map<string, unknown>;
   pendingCounts: Record<string, number>;
 }): JSX.Element {
@@ -147,7 +147,7 @@ export function SidebarSection({
 }: {
   label: string;
   sessions: SessionWire[];
-  viewedId: SessionId | null;
+  viewedId: string | null;
   streaming: Map<string, unknown>;
   pendingCounts: Record<string, number>;
   collapsed?: boolean;

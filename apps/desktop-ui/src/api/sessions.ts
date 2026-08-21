@@ -1,6 +1,6 @@
 // 提供 Desktop 使用的 Session、消息历史与附件 HTTP 入口。
 import { sidecarClient } from './sidecar-client.js';
-import type { SessionId, TurnId } from '@ema-agent/ids';
+
 import type {
   SessionAttachmentsResult,
   SessionWire,
@@ -56,7 +56,7 @@ export const sessionsApi = {
 
   /** 局部更新 Session，并返回最新快照。 */
   async patch(
-    id: SessionId,
+    id: string,
     patch: {
       title?: string;
       pinned?: boolean;
@@ -79,7 +79,7 @@ export const sessionsApi = {
 
   /** 同时读取消息与 Turn，使前端可恢复每轮统计和聚合气泡。 */
   async listMessages(
-    id: SessionId,
+    id: string,
     opts?: { before?: number; limit?: number },
   ): Promise<SessionMessagesResult> {
     const params = new URLSearchParams();
@@ -91,7 +91,7 @@ export const sessionsApi = {
 
   /** 读取不含消息正文的轻量 Turn 导航索引。 */
   async listTurnIndex(
-    id: SessionId,
+    id: string,
     opts?: { cursor?: string; limit?: number },
   ): Promise<TurnIndexPageWire> {
     const params = new URLSearchParams();
@@ -105,8 +105,8 @@ export const sessionsApi = {
 
   /** 按锚点 Turn 读取有界历史窗口，不影响当前 SSE 热尾。 */
   async listMessageWindow(
-    id: SessionId,
-    opts: { anchorTurnId: TurnId; beforeTurns?: number; afterTurns?: number },
+    id: string,
+    opts: { anchorTurnId: string; beforeTurns?: number; afterTurns?: number },
   ): Promise<SessionMessageWindowWire> {
     const params = new URLSearchParams();
     params.set('anchorTurnId', opts.anchorTurnId as string);
@@ -122,14 +122,14 @@ export const sessionsApi = {
   },
 
   /** GET /api/sessions/:id/attachments — 当前会话的全部附件与本地文件状态。 */
-  async listAttachments(id: SessionId): Promise<SessionAttachmentsResult> {
+  async listAttachments(id: string): Promise<SessionAttachmentsResult> {
     return sidecarClient.request<SessionAttachmentsResult>(
       `/api/sessions/${encodeURIComponent(id as string)}/attachments`,
     );
   },
 
   /** 复制完整 Session，或只复制到指定 Turn（含）为止。 */
-  async fork(id: SessionId, untilTurnId?: TurnId): Promise<ForkResult> {
+  async fork(id: string, untilTurnId?: string): Promise<ForkResult> {
     return sidecarClient.request<ForkResult>(`/api/sessions/${id}/fork`, {
       method: 'POST',
       json: untilTurnId ? { untilTurnId } : {},
@@ -137,35 +137,35 @@ export const sessionsApi = {
   },
 
   /** 仅回滚最后一轮，供最后一条用户消息重新编辑。 */
-  async rewindLastTurn(id: SessionId, turnId: TurnId): Promise<{ turnId: TurnId }> {
-    return sidecarClient.request<{ turnId: TurnId }>(
+  async rewindLastTurn(id: string, turnId: string): Promise<{ turnId: string }> {
+    return sidecarClient.request<{ turnId: string }>(
       `/api/sessions/${id}/turns/${turnId}/rewind`,
       { method: 'POST' },
     );
   },
 
   /** 标记 Session 已查看并清除未读状态。 */
-  async markViewed(id: SessionId): Promise<void> {
+  async markViewed(id: string): Promise<void> {
     await sidecarClient.request(`/api/sessions/${id}/viewed`, { method: 'POST' });
   },
 
   /** POST /api/sessions/:id/archive */
-  async archive(id: SessionId): Promise<void> {
+  async archive(id: string): Promise<void> {
     await sidecarClient.request(`/api/sessions/${id}/archive`, { method: 'POST' });
   },
 
   /** POST /api/sessions/:id/unarchive */
-  async unarchive(id: SessionId): Promise<void> {
+  async unarchive(id: string): Promise<void> {
     await sidecarClient.request(`/api/sessions/${id}/unarchive`, { method: 'POST' });
   },
 
   /** DELETE /api/sessions/:id */
-  async delete(id: SessionId): Promise<void> {
+  async delete(id: string): Promise<void> {
     await sidecarClient.request(`/api/sessions/${id}`, { method: 'DELETE' });
   },
 
   /** 使用标题模型生成会话标题，失败时由后端降级处理。 */
-  async generateTitle(id: SessionId): Promise<{ title: string } | null> {
+  async generateTitle(id: string): Promise<{ title: string } | null> {
     try {
       return await sidecarClient.request<{ title: string }>(`/api/sessions/${id}/title`, {
         method: 'POST',

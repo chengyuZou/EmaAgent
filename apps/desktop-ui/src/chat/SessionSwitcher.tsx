@@ -5,7 +5,7 @@ import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore } from '../stores/session-store.js';
 import { runWithToast } from '../lib/toast.js';
 import type { SessionWire } from '../api/sessions.js';
-import type { SessionId } from '@ema-agent/ids';
+
 import { WorkspacePicker } from './WorkspacePicker.js';
 
 export function SessionSwitcher(): JSX.Element {
@@ -109,7 +109,7 @@ export function SessionSwitcher(): JSX.Element {
 function Section({
   label, sessions, viewedId, collapsed: initCollapsed = false, onClose,
 }: {
-  label: string; sessions: SessionWire[]; viewedId: SessionId | null;
+  label: string; sessions: SessionWire[]; viewedId: string | null;
   collapsed?: boolean; onClose(): void;
 }): JSX.Element {
   const [collapsed, setCollapsed] = useState(initCollapsed);
@@ -133,7 +133,7 @@ function Section({
               session={s}
               isActive={s.id === (viewedId as string)}
               onSelect={() => {
-                void useConversationStore.getState().viewSession(s.id as SessionId);
+                void useConversationStore.getState().viewSession(s.id);
                 onClose();
               }}
             />
@@ -146,7 +146,6 @@ function Section({
 
 // ── WorkspaceEditor ───────────────────────────────────────────────────────────
 // (removed — replaced by the shared WorkspacePicker component)
-
 
 // ── SessionRow ────────────────────────────────────────────────────────────────
 
@@ -163,7 +162,7 @@ function SessionRow({ session, isActive, onSelect }: {
       kind:     'item',
       label:    session.pinned ? '取消固定' : '固定',
       icon:     session.pinned ? 'i-lucide:pin-off' : 'i-lucide:pin',
-      onSelect: () => void runWithToast(useSessionStore.getState().pinSession(session.id as SessionId, !session.pinned), '固定失败'),
+      onSelect: () => void runWithToast(useSessionStore.getState().pinSession(session.id, !session.pinned), '固定失败'),
     },
     {
       kind:     'item',
@@ -176,7 +175,7 @@ function SessionRow({ session, isActive, onSelect }: {
       label:    'Fork',
       icon:     'i-lucide:git-fork',
       onSelect: () => void (async () => {
-        const newId = await useSessionStore.getState().forkSession(session.id as SessionId);
+        const newId = await useSessionStore.getState().forkSession(session.id);
         void useConversationStore.getState().viewSession(newId);
       })(),
     },
@@ -196,7 +195,7 @@ function SessionRow({ session, isActive, onSelect }: {
       kind:     'item',
       label:    '归档',
       icon:     'i-lucide:archive',
-      onSelect: () => void runWithToast(useSessionStore.getState().archiveSession(session.id as SessionId), '归档失败'),
+      onSelect: () => void runWithToast(useSessionStore.getState().archiveSession(session.id), '归档失败'),
     },
     { kind: 'separator' },
     {
@@ -210,7 +209,7 @@ function SessionRow({ session, isActive, onSelect }: {
 
   function confirmDelete(): void {
     setPendingDelete(false);
-    void runWithToast(useSessionStore.getState().deleteSession(session.id as SessionId), '删除失败');
+    void runWithToast(useSessionStore.getState().deleteSession(session.id), '删除失败');
   }
 
   return (
@@ -264,7 +263,7 @@ function SessionRow({ session, isActive, onSelect }: {
         message="输入新的会话名称"
         initialValue={session.title}
         confirmText="重命名"
-        onConfirm={(name) => { setPromptRename(false); if (name) void runWithToast(useSessionStore.getState().renameSession(session.id as SessionId, name), '重命名失败'); }}
+        onConfirm={(name) => { setPromptRename(false); if (name) void runWithToast(useSessionStore.getState().renameSession(session.id, name), '重命名失败'); }}
         onCancel={() => setPromptRename(false)}
       />
 
@@ -274,7 +273,7 @@ function SessionRow({ session, isActive, onSelect }: {
         message="输入分组名称(留空取消分组)"
         initialValue={session.groupLabel ?? ''}
         confirmText="保存"
-        onConfirm={(label) => { setPromptGroup(false); void runWithToast(useSessionStore.getState().setSessionGroup(session.id as SessionId, label.trim() || null), '分组失败'); }}
+        onConfirm={(label) => { setPromptGroup(false); void runWithToast(useSessionStore.getState().setSessionGroup(session.id, label.trim() || null), '分组失败'); }}
         onCancel={() => setPromptGroup(false)}
       />
     </div>

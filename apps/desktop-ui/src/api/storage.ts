@@ -1,5 +1,5 @@
 import { sidecarClient } from './sidecar-client.js';
-import type { SessionId } from '@ema-agent/ids';
+
 import type { SessionDashboardWire, SessionNoteWire } from '@ema-agent/session';
 
 // ── DataDir wire types ────────────────────────────────────────────────────────
@@ -84,17 +84,17 @@ export const storageApi = {
   // ── Session detail — lives at /api/storage/sessions/* ───────────────────
 
   /** GET /api/storage/sessions/:id/dashboard */
-  async getDashboard(id: SessionId): Promise<SessionDashboardWire> {
+  async getDashboard(id: string): Promise<SessionDashboardWire> {
     return sidecarClient.request<SessionDashboardWire>(`/api/storage/sessions/${id}/dashboard`);
   },
 
   /** GET /api/storage/sessions/:id/notes */
-  async getNotes(id: SessionId): Promise<SessionNoteWire | null> {
+  async getNotes(id: string): Promise<SessionNoteWire | null> {
     return sidecarClient.request<SessionNoteWire | null>(`/api/storage/sessions/${id}/notes`);
   },
 
   /** POST /api/storage/sessions/:id/export — download session as ZIP Blob with server filename. */
-  async exportSession(id: SessionId): Promise<{ blob: Blob; filename: string | null }> {
+  async exportSession(id: string): Promise<{ blob: Blob; filename: string | null }> {
     const res = await sidecarClient.requestRaw(`/api/storage/sessions/${id}/export`, { method: 'POST' });
     if (!res.ok) throw new Error(`Export failed: ${res.status}`);
     return { blob: await res.blob(), filename: contentDispositionFilename(res) };

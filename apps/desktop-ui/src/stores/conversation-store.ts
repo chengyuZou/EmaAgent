@@ -38,10 +38,7 @@ import {
   type ChatHistoryItem,
   type StreamingAssistantMessage,
   } from './conversation-history.js';
-import type {
-  SessionId,
-  TurnId,
-} from '@ema-agent/ids';
+
 import {
   type ExecutionProfile,
   type TurnContentPart as MessageContentPart,
@@ -55,7 +52,7 @@ import type {
   MemoryRecallLayer,
   MemoryRecallLayerReport,
 } from '@ema-agent/memory';
-import type { EmotionState } from '@ema-agent/emotion';
+import type { EmotionState } from '@ema-agent/stage';
 
 export type { AttachmentInputWire };
 
@@ -91,7 +88,7 @@ function settleInterruptedNarrativeSlices(
 // ── Send input ────────────────────────────────────────────────────────────────
 
 interface SendInput {
-  sessionId:     SessionId;
+  sessionId:     string;
   executionProfile: ExecutionProfile;
   narrativePolicy: NarrativePolicy;
   text?:         string;
@@ -115,7 +112,7 @@ const sseHandles         = new Map<string, { stop(): void }>();
 const sendQueues         = new Map<string, SendQueue<QueuedSendInput>>();
 const pendingTitleSessions = new Set<string>();
 
-function getOrCreateQueue(sessionId: SessionId): SendQueue<QueuedSendInput> {
+function getOrCreateQueue(sessionId: string): SendQueue<QueuedSendInput> {
   const key   = sessionId as string;
   const found = sendQueues.get(key);
   if (found) return found;
@@ -162,7 +159,7 @@ function getOrCreateQueue(sessionId: SessionId): SendQueue<QueuedSendInput> {
         ),
         onEvent(event) {
           const sid = ('sessionId' in event && event.sessionId)
-            ? event.sessionId as SessionId
+            ? event.sessionId
             : input.sessionId;
           dispatchSseEvent(event, sid, callbacks);
         },
@@ -191,8 +188,8 @@ function getOrCreateQueue(sessionId: SessionId): SendQueue<QueuedSendInput> {
 // ── Store interface ───────────────────────────────────────────────────────────
 
 export interface ConversationStoreState {
-  viewedSessionId:    SessionId | null;
-  ttsOwnerSessionId:  SessionId | null;
+  viewedSessionId:    string | null;
+  ttsOwnerSessionId:  string | null;
   emotionStateMap:    Map<string, EmotionState>;
   iterationCountMap:  Map<string, number>;
   recallEvidenceMap:  Map<string, Partial<Record<MemoryRecallLayer, MemoryRecallLayerReport>>>;
@@ -207,26 +204,26 @@ export interface ConversationStoreState {
   error:              string | null;
   scrollToTurnId:     string | null;
 
-  viewSession(id: SessionId):                                                Promise<void>;
+  viewSession(id: string):                                                Promise<void>;
   /** 新建会话前先复用空会话(F-051): viewed 会话还没有任何 turn 时直接复用, 不重复创建。 */
-  createFreshSession():                                                      Promise<SessionId | null>;
+  createFreshSession():                                                      Promise<string | null>;
   scrollToTurn(turnId: string):                                              void;
   /** Turn 创建成功后 resolve；后续 SSE 生命周期由会话状态独立管理。 */
-  sendMessage(sessionId: SessionId | null, input: Omit<SendInput, 'sessionId'>): Promise<void>;
-  stopStreaming(sessionId: SessionId):                                        void;
-  setDraft(sessionId: SessionId, text: string):                              void;
-  loadMessages(id: SessionId):                                               Promise<void>;
-  evictSession(id: SessionId):                                               void;
+  sendMessage(sessionId: string | null, input: Omit<SendInput, 'sessionId'>): Promise<void>;
+  stopStreaming(sessionId: string):                                        void;
+  setDraft(sessionId: string, text: string):                              void;
+  loadMessages(id: string):                                               Promise<void>;
+  evictSession(id: string):                                               void;
 
   beginStream(
-    sessionId: SessionId,
-    turnId: TurnId,
+    sessionId: string,
+    turnId: string,
     executionProfile?: ExecutionProfile,
     narrativePolicy?: NarrativePolicy,
   ): void;
-  appendDelta(sessionId: SessionId, slice: DeltaSlice, delta: DeltaPayload): void;
-  finalizeStream(sessionId: SessionId, stats: TurnStats | null):             void;
-  abortStream(sessionId: SessionId, reason: string):                         void;
+  appendDelta(sessionId: string, slice: DeltaSlice, delta: DeltaPayload): void;
+  finalizeStream(sessionId: string, stats: TurnStats | null):             void;
+  abortStream(sessionId: string, reason: string):                         void;
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────────
@@ -323,7 +320,7 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
 
     if (!targetId) {
       const newSession = await sessionsApi.create();
-      targetId = newSession.id as SessionId;
+      targetId = newSession.id;
       createdNewSession = true;
       void useSessionStore.getState().loadSessions();
       set({ viewedSessionId: targetId });
@@ -338,7 +335,7 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
     });
     void completion.catch((err: unknown) => acceptance.reject(err));
     const accepted = await acceptance.promise;
-    const acceptedSessionId = accepted.sessionId as SessionId;
+    const acceptedSessionId = accepted.sessionId;
 
     // 附件在 POST /turns 返回前已经持久化；面板若已加载，立即刷新当前 Session，
     // 未打开过的会话不额外发请求，首次打开时再按需加载。

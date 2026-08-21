@@ -1,7 +1,7 @@
 // 变更汇总卡:已编辑 N 个文件 + 增删计数 + 分页清单 + 审核入口;无真实撤销能力不渲染。
 import { useState, type JSX } from 'react';
 import { Button } from '@ema-agent/ui';
-import type { SessionId } from '@ema-agent/ids';
+
 import { useConversationStore } from '../../stores/conversation-store.js';
 import { useWorkspaceStore } from '../../stores/workspaceStore.js';
 import type { EditedFileEntry } from './workGroups.js';
@@ -34,7 +34,7 @@ export function EditedFilesCard({
           size="sm"
           className="px-2 py-0.5 text-[11px] text-[var(--ema-text-tertiary)]"
           onClick={() => {
-            if (sessionId) openTab(sessionId as SessionId, { id: 'review', kind: 'review' });
+            if (sessionId) openTab(sessionId, { id: 'review', kind: 'review' });
           }}
         >
           审核

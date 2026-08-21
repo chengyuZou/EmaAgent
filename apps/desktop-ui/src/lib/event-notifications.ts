@@ -1,5 +1,5 @@
 // 把结构化 SSE 事件转换为受用户设置控制的本地通知。
-import type { ClientEvent } from '@ema-agent/events';
+
 import { useSettingsStore, type EventDisplayConfig } from '../stores/settings-store.js';
 import { showToast, type ToastOptions } from './toast.js';
 

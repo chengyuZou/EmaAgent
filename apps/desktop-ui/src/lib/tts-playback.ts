@@ -1,8 +1,6 @@
 import { create } from 'zustand';
-import type { TurnId } from '@ema-agent/ids';
-import type { TurnStreamEvent } from '@ema-agent/events';
-import { useSpeechStore } from '@ema-agent/live2d-react';
-import type { SpeechAnimationState } from '@ema-agent/live2d-react';
+
+
 import { tauriBridge } from './tauri-bridge.js';
 import { showToast } from './toast.js';
 import { turnsApi } from '../api/turns.js';
@@ -95,7 +93,7 @@ function getSpeechChannel(): BroadcastChannel | null {
 }
 
 function publishSpeechState(
-  state: Pick<SpeechAnimationState, 'speaking' | 'rms'>,
+  state: { speaking: boolean; rms: number },
   force = false,
 ): void {
   const now = performance.now();
@@ -112,7 +110,6 @@ let rmsRaf = 0;
 function startRmsLoop(): void {
   if (rmsRaf) return;
   publishSpeechState({ speaking: true, rms: 0 }, true);
-  useSpeechStore.getState().setSpeaking(true);
   // fire-and-forget 启动 wLipSync 初始化；就绪前 loop 使用 RMS fallback
   void ensureLipSync();
 
@@ -134,7 +131,6 @@ function startRmsLoop(): void {
       }
       rms = Math.sqrt(sum / rmsData.length);
     }
-    useSpeechStore.getState().setRms(rms);
     publishSpeechState({ speaking: true, rms });
     rmsRaf = requestAnimationFrame(loop);
   };
@@ -146,7 +142,6 @@ function stopRmsLoop(): void {
     cancelAnimationFrame(rmsRaf);
     rmsRaf = 0;
   }
-  useSpeechStore.getState().reset();
   publishSpeechState({ speaking: false, rms: 0 }, true);
 }
 
@@ -511,7 +506,7 @@ export async function replayTurn(turnId: string): Promise<void> {
   // The audio route is auth-gated like every /api route — a bare fetch()
   // returns 401, which surfaced as "该轮没有可重播的语音" even though the
   // merged file was on disk. Attach the shared secret.
-  const url     = await turnsApi.audioUrl(turnId as TurnId);
+  const url     = await turnsApi.audioUrl(turnId);
   const headers = await sidecarClient.getAuthHeaders();
   const res     = await fetch(url, { headers });
   if (!res.ok) throw new Error(`[tts-playback] replay fetch failed: ${res.status}`);

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState, type JSX } from 'react';
 import { Button, Input } from '@ema-agent/ui';
 import { sessionsApi, type SessionWire, type SessionSearchItem } from '../../api/sessions.js';
 import { useConversationStore } from '../../stores/conversation-store.js';
-import type { SessionId } from '@ema-agent/ids';
+
 import { rankSearchResults, toRecentSearchItem } from './sidebarSearch.js';
 import { formatRelativeTime, projectLabelFor } from './sidebarFormat.js';
 
@@ -53,7 +53,7 @@ export function SessionSearchOverlay({
     : recentSessions.slice(0, 10).map(toRecentSearchItem);
 
   const selectSession = useCallback((id: string) => {
-    void useConversationStore.getState().viewSession(id as SessionId);
+    void useConversationStore.getState().viewSession(id);
     onClose();
   }, [onClose]);
 

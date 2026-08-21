@@ -5,7 +5,6 @@ import type {
   PermissionRule,
   PersistedPermissionRule,
 } from '@ema-agent/permission';
-import type { TurnId } from '@ema-agent/ids';
 
 export const permissionApi = {
   /** GET /api/permission/pending — recoverable in-flight prompt snapshots */
@@ -13,14 +12,14 @@ export const permissionApi = {
     return sidecarClient.request('/api/permission/pending');
   },
 
-  respond(turnId: TurnId, promptId: string, response: PermissionResponse): Promise<{ ok: boolean }> {
+  respond(turnId: string, promptId: string, response: PermissionResponse): Promise<{ ok: boolean }> {
     return sidecarClient.request(`/api/permission/${turnId}/${promptId}/respond`, {
       method: 'POST',
       json: response,
     });
   },
 
-  cancel(turnId: TurnId, promptId: string): Promise<{ ok: boolean }> {
+  cancel(turnId: string, promptId: string): Promise<{ ok: boolean }> {
     return sidecarClient.request(`/api/permission/${turnId}/${promptId}/cancel`, {
       method: 'POST',
     });

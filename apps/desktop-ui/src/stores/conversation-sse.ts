@@ -17,16 +17,13 @@ import {
   appendTextSlice,
   appendThinkingSlice,
   } from './conversation-history.js';
-import type {
-  SessionId,
-  TurnId,
-} from '@ema-agent/ids';
+
 import {
   type ExecutionProfile,
   type NarrativePolicy,
   TurnStats,
 } from '@ema-agent/turn';
-import type { TurnStreamEvent } from '@ema-agent/events';
+
 import type {
   MemoryRecallLayer,
   MemoryRecallLayerReport,
@@ -42,14 +39,14 @@ export type DeltaPayload =
 
 export interface StreamCallbacks {
   beginStream(
-    sessionId: SessionId,
-    turnId: TurnId,
+    sessionId: string,
+    turnId: string,
     executionProfile: ExecutionProfile,
     narrativePolicy: NarrativePolicy,
   ): void;
-  appendDelta(sessionId: SessionId, slice: DeltaSlice, delta: DeltaPayload): void;
-  finalizeStream(sessionId: SessionId, stats: TurnStats | null): void;
-  abortStream(sessionId: SessionId, reason: string): void;
+  appendDelta(sessionId: string, slice: DeltaSlice, delta: DeltaPayload): void;
+  finalizeStream(sessionId: string, stats: TurnStats | null): void;
+  abortStream(sessionId: string, reason: string): void;
 }
 
 // ── Module-level temp state ───────────────────────────────────────────────────
@@ -61,7 +58,7 @@ export const breakerReasons = new Map<string, string>();
 
 export function dispatchSseEvent(
   event:     TurnStreamEvent,
-  sessionId: SessionId,
+  sessionId: string,
   cb:        StreamCallbacks,
 ): void {
   presentConfiguredEvent(event);
@@ -288,7 +285,7 @@ export function dispatchSseEvent(
       };
       useDecisionStore.getState().push(p);
       void tauriBridge.emit('decision:push', p);
-      // 使用后端提供的 ToolCallId 精确关联；同名工具允许在一个 Turn 内并发。
+      // 使用后端提供的 string 精确关联；同名工具允许在一个 Turn 内并发。
       useConversationStore.setState((s) => {
         const sm = s.streamingMap.get(sessionId as string);
         if (!sm) return {};

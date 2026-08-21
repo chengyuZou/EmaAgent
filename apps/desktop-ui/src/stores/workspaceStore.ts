@@ -1,6 +1,6 @@
 // Chat 工作区每 Session 的标签布局状态机与前端本地持久化。
 import { create } from 'zustand';
-import type { SessionId } from '@ema-agent/ids';
+
 import type {
   WorkspaceDockId,
   WorkspaceLayoutState,
@@ -197,18 +197,18 @@ interface WorkspaceState {
    * 已存在于目标 Dock → 仅激活；已存在于另一个 Dock 且显式指定 dock → 移动同一实例；
    * 未指定 dock → 留在原 Dock 激活，新标签默认进右侧。
    */
-  openTab(sessionId: SessionId, tab: WorkspaceTab, opts?: { dock?: WorkspaceDockId }): void;
+  openTab(sessionId: string, tab: WorkspaceTab, opts?: { dock?: WorkspaceDockId }): void;
   /** 显式关闭；关闭后不再复活，关闭最后标签时该 Dock 自动折叠。 */
-  closeTab(sessionId: SessionId, tabId: string): void;
-  activateTab(sessionId: SessionId, tabId: string): void;
+  closeTab(sessionId: string, tabId: string): void;
+  activateTab(sessionId: string, tabId: string): void;
   /** 右 ⇄ 底移动，保持同一标签实例与内部状态。 */
-  moveTab(sessionId: SessionId, tabId: string, to: WorkspaceDockId): void;
+  moveTab(sessionId: string, tabId: string, to: WorkspaceDockId): void;
   /** 折叠只隐藏 Dock，标签保留，下次打开原样恢复。 */
-  setDockOpen(sessionId: SessionId, dock: WorkspaceDockId, open: boolean): void;
+  setDockOpen(sessionId: string, dock: WorkspaceDockId, open: boolean): void;
   setRightWidth(width: number): void;
   setBottomHeight(height: number): void;
   /** 进入/退出 RightDock 全宽展开；false 也用于折叠后清理。 */
-  setFullWidth(sessionId: SessionId, fullWidth: boolean): void;
+  setFullWidth(sessionId: string, fullWidth: boolean): void;
 }
 
 export const useWorkspaceStore = create<WorkspaceState>((set) => ({
@@ -310,7 +310,7 @@ useWorkspaceStore.subscribe((state) => {
 /** 派生有效全宽：标记 + RightDock 展开 + 有标签三者同时成立（§3.5）。 */
 export function isRightFullWidth(
   state: Pick<WorkspaceState, 'layouts' | 'fullWidthBySession'>,
-  sessionId: SessionId | null,
+  sessionId: string | null,
 ): boolean {
   if (!sessionId) return false;
   const layout = state.layouts[sessionId as string];

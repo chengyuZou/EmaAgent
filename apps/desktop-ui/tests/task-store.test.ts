@@ -1,11 +1,11 @@
 // 验证持久 Task 快照加载、事件更新，以及加载期间事件不会被旧快照覆盖。
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { SessionId, TaskId, TurnId } from '@ema-agent/ids';
+
 import type { TaskSnapshot } from '@ema-agent/tasks';
 import { tasksApi } from '../src/api/tasks.js';
 import { useTaskStore } from '../src/stores/taskStore.js';
 
-const SESSION_ID = 'task-store-session' as SessionId;
+const SESSION_ID = 'task-store-session';
 
 beforeEach(() => {
   vi.restoreAllMocks();
@@ -26,7 +26,7 @@ describe('Task store', () => {
     const sessionTasks = useTaskStore.getState().tasksBySession.get(SESSION_ID as string);
     expect([...sessionTasks?.keys() ?? []]).toEqual(['1', '2']);
 
-    useTaskStore.getState().remove(SESSION_ID, '1' as TaskId);
+    useTaskStore.getState().remove(SESSION_ID, '1');
     expect(sessionTasks?.get('1')?.status).toBe('pending');
     expect(useTaskStore.getState().tasksBySession.get(SESSION_ID as string)?.has('1')).toBe(false);
   });
@@ -60,7 +60,7 @@ function task(
   status: TaskSnapshot['status'] = 'pending',
 ): TaskSnapshot {
   return {
-    id: id as TaskId,
+    id: id,
     sessionId: SESSION_ID,
     displayNumber,
     subject: `Task ${id}`,
@@ -68,7 +68,7 @@ function task(
     status,
     blocks: [],
     blockedBy: [],
-    createdByTurnId: 'turn-1' as TurnId,
+    createdByTurnId: 'turn-1',
     version: 1,
     createdAt: 1,
     updatedAt: 1,

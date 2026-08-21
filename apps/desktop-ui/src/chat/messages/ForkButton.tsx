@@ -1,7 +1,7 @@
 // 从一条已完成回复复制出独立 Session，并立即切换到新会话。
 import type { JSX } from 'react';
 import { IconButton } from '@ema-agent/ui';
-import type { TurnId } from '@ema-agent/ids';
+
 import { useConversationStore } from '../../stores/conversation-store.js';
 import { useSessionStore } from '../../stores/session-store.js';
 import { showToast } from '../../lib/toast.js';
@@ -14,7 +14,7 @@ export function ForkButton({ turnId }: { turnId: string }): JSX.Element | null {
     try {
       const newId = await useSessionStore
         .getState()
-        .forkSession(viewedId, turnId as TurnId);
+        .forkSession(viewedId, turnId);
       await useConversationStore.getState().viewSession(newId);
       showToast('已从该回复创建新会话');
     } catch (error) {

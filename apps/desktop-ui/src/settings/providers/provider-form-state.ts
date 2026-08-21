@@ -1,5 +1,5 @@
 // 管理 Provider 编辑表单的快照比较、空密钥语义和提交资格。
-import type { ProviderCredentialOperation } from '@ema-agent/provider';
+import type { ProviderCredentialOperation } from '@ema-agent/providers';
 
 export interface ProviderFormSnapshot {
   baseUrl: string;

@@ -2,7 +2,7 @@
  * conversation-store.test.ts — per-session stream state machine tests.
  *
  * Covers: beginStream → appendDelta → finalizeStream / abortStream
- * All operations are scoped to a SessionId; parallel sessions don't interfere.
+ * All operations are scoped to a string; parallel sessions don't interfere.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
@@ -15,12 +15,11 @@ vi.mock('../lib/tts-playback.js', () => ({
 
 import { useConversationStore } from './conversation-store.js';
 import { useSessionStore } from './session-store.js';
-import type { TurnId, SessionId } from '@ema-agent/ids';
 
-const S1 = 'sess_1' as SessionId;
-const S2 = 'sess_2' as SessionId;
-const T1 = 'turn_1' as TurnId;
-const T2 = 'turn_2' as TurnId;
+const S1 = 'sess_1';
+const S2 = 'sess_2';
+const T1 = 'turn_1';
+const T2 = 'turn_2';
 
 function resetStore(): void {
   useConversationStore.setState({
@@ -36,7 +35,7 @@ function resetStore(): void {
   });
 }
 
-function appendRunningNarrativeSlice(sessionId: SessionId): void {
+function appendRunningNarrativeSlice(sessionId: string): void {
   const state = useConversationStore.getState();
   const stream = state.streamingMap.get(sessionId as string);
   if (!stream) throw new Error('测试必须先创建流');

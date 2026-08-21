@@ -1,5 +1,5 @@
 // 管理单个 Turn 的 SSE 重连、游标续传与业务终态。
-import type { TurnStreamEvent } from '@ema-agent/events';
+
 import {
   getSseOutcomeError,
   sseConsumer,

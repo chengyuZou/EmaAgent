@@ -2,7 +2,6 @@
 import { create } from 'zustand';
 import { memoryApi, type MemoryStats, type MaintenanceReport, type MemoryMaintenanceInput, type MemorySessionOverrides, type MemoryBackgroundHealth } from '../api/memory.js';
 import type { MemoryTaskKind } from '@ema-agent/storage';
-import type { SessionId } from '@ema-agent/ids';
 
 export type { MemorySessionOverrides };
 
@@ -116,11 +115,11 @@ export interface MemoryStoreState {
    */
   sessionOverrides: Map<string, MemorySessionOverrides>;
   /** Fetch and cache overrides for a session. Returns cached value if present. */
-  getSessionOverrides(sessionId: SessionId): Promise<MemorySessionOverrides>;
+  getSessionOverrides(sessionId: string): Promise<MemorySessionOverrides>;
   /** Persist overrides for a session (partial — only provided keys are changed). */
-  setSessionOverrides(sessionId: SessionId, overrides: MemorySessionOverrides): Promise<void>;
+  setSessionOverrides(sessionId: string, overrides: MemorySessionOverrides): Promise<void>;
   /** Remove a session's overrides from the cache (call when evicting the session). */
-  evictSessionOverrides(sessionId: SessionId): void;
+  evictSessionOverrides(sessionId: string): void;
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────────

@@ -6,7 +6,6 @@ import { Button, Field, Input, Textarea } from '@ema-agent/ui';
 import { useCardStore } from '../../stores/card-store.js';
 import type { CharacterCard } from '../../api/cards.js';
 import { showToast } from '../../lib/toast.js';
-import type { CharacterCardId } from '@ema-agent/ids';
 
 export function IdentityTab({ card }: { card: CharacterCard }): JSX.Element {
   const [name,         setName]         = useState(card.name);
@@ -20,7 +19,7 @@ export function IdentityTab({ card }: { card: CharacterCard }): JSX.Element {
     if (isBuiltin) return;
     setSaving(true);
     try {
-      await useCardStore.getState().patch(card.id as CharacterCardId, {
+      await useCardStore.getState().patch(card.id, {
         name,
         description: description || undefined,
         systemPrompt,
