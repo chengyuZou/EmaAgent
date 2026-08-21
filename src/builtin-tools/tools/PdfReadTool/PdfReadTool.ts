@@ -2,13 +2,12 @@
 import { open, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
-import { ImageReader, PdfReader, type DocumentBlock } from '@ema-agent/knowledge';
+import { ImageReader, PdfReader, type CallVision, type DocumentBlock } from '@ema-agent/knowledge';
 import {
   buildTool,
   contextFail,
   contextOk,
   type ToolInvocation,
-  type ToolVisionSelection,
 } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { checkReadPathPermission } from '../shared/pathPermission.js';
@@ -38,7 +37,7 @@ type PdfReadInput = z.infer<typeof inputSchema>;
 /** PdfReadTool 的窄 Context：工作区根 + 可选视觉模型; 取消与身份走 ToolInvocation。 */
 interface PdfReadToolContext {
   workspaceRoot: string;
-  vision?: ToolVisionSelection;
+  vision?: CallVision;
 }
 
 export interface PdfReadWarning {
@@ -119,8 +118,7 @@ export const PdfReadTool = buildTool<PdfReadInput, PdfReadResult, PdfReadToolCon
     const requestedEndPage = startPage + requestedPageCount - 1;
     // 配了 vision 绑定 → 扫描页 OCR / 图注描述; 缺省降级纯文本(占位 + warning)。
     const imageReader = context.vision
-      ? new ImageReader(context.vision.vision, {
-          model: context.vision.model,
+      ? new ImageReader(context.vision, {
           signal: invocation.signal,
         })
       : undefined;

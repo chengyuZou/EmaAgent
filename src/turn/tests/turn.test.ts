@@ -59,8 +59,9 @@ function makeDeps(options: {
   llm: LanguageModel;
   sessionId: string;
   registry: ToolRegistry;
+  titleStarter?: (sessionId: string, userText: string) => void;
 }): TurnExecutorDeps {
-  const { db, llm, sessionId, registry } = options;
+  const { db, llm, sessionId, registry, titleStarter } = options;
   return {
     turns: new TurnStore({ db }),
     sessions: new SessionStore({ db }),
@@ -89,6 +90,8 @@ function makeDeps(options: {
     agentRunMessagesStore: {} as unknown as AgentRunMessagesStore,
     createCompact: () => async request => ({ kind: 'unchanged' as const, history: request.history }),
     reminderSources: () => ({}),
+    characterDirectoryName: () => 'test-character',
+    ...(titleStarter ? { startSessionTitleGeneration: titleStarter } : {}),
   };
 }
 
@@ -171,6 +174,41 @@ describe('TurnExecutor 集成', () => {
     expect(types).toContain('stage_cue');
     // angry 不在当前角色词汇表：只清洗，不发事件。
     expect(types.filter(t => t === 'emotion_changed')).toHaveLength(1);
+    db.close();
+  });
+
+  it('标题生成：userMessage 落库后即异步启动，非用户触发不启动', async () => {
+    const db = new Database({ memory: true, kind: 'data' });
+    db.migrate();
+    const sessions = new SessionStore({ db });
+    const session = sessions.createSession({ workspaceRoot: '/w' });
+    const registry = new ToolRegistry();
+    const llm = scriptedLlm([
+      [
+        { type: 'text_delta', blockIndex: 0, delta: '你好。' },
+        { type: 'done', stopReason: 'end_turn' },
+      ],
+    ]);
+    const calls: Array<[string, string]> = [];
+    const deps = makeDeps({
+      db,
+      llm,
+      sessionId: session.id,
+      registry,
+      titleStarter: (sessionId, userText) => { calls.push([sessionId, userText]); },
+    });
+    const executor = new TurnExecutor(deps);
+
+    const handle = executor.start(makeStart(session.id));
+    await handle.completion;
+    expect(calls).toEqual([[session.id, '你好']]);
+
+    const second = executor.start({
+      ...makeStart(session.id),
+      triggerType: 'backgroundProcessCompleted',
+    });
+    await second.completion;
+    expect(calls).toHaveLength(1);
     db.close();
   });
 

@@ -74,6 +74,8 @@ Prompt 无效是 error；Live2D、立绘或参考音频缺失是 warning。健�
 ## 生命周期边界
 
 - 新 Turn 在编排层冻结当时的 Character 与 Prompt 数组；运行中的 Turn 不随角色切换改变。
+- Character 是全局激活对象。任意根 Turn 运行期间，应用层必须拒绝切换角色；前端在收到该 Turn 的 completed、failed 或 aborted 终态后再允许用户切换。CharacterStore 不监听 Turn，也不保存待切换意图。
+- Turn 持久化冻结的 `character.directoryName`，不是可编辑的显示 `name`。该字段在 Turn/Memory 中分别命名为 `characterDirectoryName` 与 `character_directory_name`。
 - `onSwitched` 和 `onPresentationChanged` 只发布领域变化；订阅者自行重新装配舞台、TTS 或 Prompt。
 - 内置资源开发期可以由 `installBuiltinCharacterResources()` 从桌面静态目录复制；正式包只替换来源，运行时始终读取 Home 目录。
 - 整张 Character 的归档导入导出暂不实现。当前 ZIP 仅用于单个 Live2D 资源。

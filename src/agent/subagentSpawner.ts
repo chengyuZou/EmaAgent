@@ -46,15 +46,6 @@ export class SubagentSpawner implements SubagentSpawnerFn {
 
   constructor(private readonly options: SubagentSpawnerOptions) {}
 
-  async spawn(
-    prompt: string,
-    options: SubagentSpawnOptions,
-    signal: AbortSignal,
-  ): Promise<SubagentRunResult> {
-    const agentRunId = options.agentRunId ?? randomUUID();
-    return this.start(prompt, { ...options, agentRunId }, signal);
-  }
-
   spawnBackground(
     prompt: string,
     options: SubagentSpawnOptions,

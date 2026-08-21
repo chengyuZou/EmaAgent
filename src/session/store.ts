@@ -36,6 +36,9 @@ import type { MessageBlocks } from './message.js';
 
 // ── Session 聚合 ─────────────────────────────────────────────────────────────
 
+/** 新会话默认标题；自动标题生成只覆盖这个值（用户改名后以用户为准）。 */
+export const DEFAULT_SESSION_TITLE = '新对话';
+
 export interface SessionStoreDeps {
   db: Database;
   /** Session 删除后清理数据库外的音频、附件和工具结果文件。 */
@@ -76,7 +79,7 @@ export class SessionStore {
   createSession(input: CreateSessionInput = {}): Session {
     const id  = crypto.randomUUID();
     const now = this.nextTs();
-    const title = (input.title?.trim() || '新对话');
+    const title = (input.title?.trim() || DEFAULT_SESSION_TITLE);
     this.sessionsRepo.insert({
       id,
       title,
@@ -164,6 +167,13 @@ export class SessionStore {
     const trimmed = title.trim();
     if (!trimmed) return;
     this.sessionsRepo.updateTitle(id, trimmed, Date.now());
+  }
+
+  /** 自动标题的条件写入：用户已改名（或会话已删）时返回 false，调用方不得发变更事件。 */
+  updateTitleIfDefault(id: string, title: string): boolean {
+    const trimmed = title.trim();
+    if (!trimmed) return false;
+    return this.sessionsRepo.updateTitleIfDefault(id, trimmed, DEFAULT_SESSION_TITLE, Date.now());
   }
 
   /**

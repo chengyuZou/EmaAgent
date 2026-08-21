@@ -1,4 +1,5 @@
 export { SessionStore } from './store.js';
+export { DEFAULT_SESSION_TITLE } from './store.js';
 export type { SessionStoreDeps } from './store.js';
 export { generateSessionTitle } from './sessionTitle.js';
 export type { SessionTitleCompletion } from './sessionTitle.js';

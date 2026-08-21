@@ -50,12 +50,6 @@ Returns output:null if the agentRunId is unknown or already collected.`,
   },
 
   async execute(input, context: SubagentAwaitContext) {
-    if (!context.spawner.awaitBackground) {
-      throw new Error(
-        'SubagentAwait is only available to the top-level agent. ' +
-        'Sub-agents cannot await other sub-agents.',
-      );
-    }
     const result = await context.spawner.awaitBackground(input.agentRunId);
     if (!result) return { output: null };
     return { output: result.output, usage: result.usage };

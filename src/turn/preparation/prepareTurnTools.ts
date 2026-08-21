@@ -6,7 +6,7 @@ import {
   type AgentRunStore,
   type PrepareSubagent,
 } from '@ema-agent/agent';
-import type { KnowledgeSearch } from '@ema-agent/knowledge';
+import type { CallVision, KnowledgeSearch } from '@ema-agent/knowledge';
 import type { Message } from '@ema-agent/llm';
 import type { NarrativeClient } from '@ema-agent/narrative';
 import { prepareNarrativeRecall } from '@ema-agent/narrative';
@@ -65,6 +65,8 @@ export interface TurnToolsDeps {
   /** narrativePolicy = 'auto' 时按本 Turn 身份构建剧情检索入口；'always'/'off' 不装配。 */
   readonly narrativeClient?: NarrativeClient;
   readonly backgroundProcesses?: BackgroundProcess;
+  /** 每 Turn 解析一次 vision 调用闭包；无绑定时返回 undefined（PDF 只读文本层）。 */
+  readonly resolveVision?: () => CallVision | undefined;
   readonly commandRunner?: (sessionId: string) => CommandRunner | undefined;
   readonly toolResultStore?: (sessionId: string) => ToolResultStore;
   readonly toolExecutionState?: ToolExecutionState;
@@ -201,10 +203,12 @@ export function prepareTurnTools(
   };
 
   const commandRunner = deps.commandRunner?.(sessionId);
+  const vision = deps.resolveVision?.();
   const toolContext: ToolUseContext = Object.freeze({
     workspaceRoot,
     platform: process.platform,
     ...(commandRunner ? { commandRunner } : {}),
+    ...(vision ? { vision } : {}),
     ...(deps.backgroundProcesses
       ? { backgroundProcesses: deps.backgroundProcesses }
       : {}),

@@ -1,10 +1,9 @@
 // 定义宿主在单次工具调用中提供的业务能力集合。
 import type { CommandRunner } from '@ema-agent/sandbox';
 import type { TaskStore } from '@ema-agent/tasks';
-import type { KnowledgeSearch } from '@ema-agent/knowledge';
+import type { CallVision, KnowledgeSearch } from '@ema-agent/knowledge';
 import type { NarrativeSearch } from '@ema-agent/narrative';
 import type { SkillPool } from '@ema-agent/skills';
-import type { VisionModel } from '@ema-agent/vision';
 import type { ReadFileState } from '../types.js';
 import type { AskUserQuestionSpec } from '../events.js';
 import type { BackgroundProcess } from '../background/backgroundProcess.js';
@@ -24,9 +23,9 @@ export interface SubagentSpawnOptions {
   contextMode?: SubagentContextMode;
   agentRunId?: string;
   taskId?: string;
-  /** 角色注入的 system prompt；由 PrepareSubagent 装配进子 Agent 上下文。 */
+  /** AgentRole 目录钉死的角色身份 Prompt（非模型入参）；由 PrepareSubagent 装配进子 Agent 上下文。 */
   systemPrompt?: string;
-  /** 类型级工具收窄（按模型可见工具名匹配）；由 PrepareSubagent 收窄子 ToolPool。 */
+  /** AgentRole 目录钉死的工具收窄（模型可见名）；PrepareSubagent 只从父 ToolPool 继续收窄，绝不扩权。 */
   disallowedTools?: readonly string[];
 }
 
@@ -39,28 +38,32 @@ export interface SubagentRunResult {
   };
 }
 
-/** Subagent Tool 消费的子 Agent 启动能力；Agent 提供结构化实现，不被 Tools 反向导入。 */
+/**
+ * Subagent Tool 消费的子 Agent 启动能力；实现归 agent 包 SubagentSpawner（implements 直赋，无适配层）。
+ * 接口站在 tools 包是依赖方向唯一允许的落点：agent → tools（ToolResult/执行器类型）已存在，
+ * 反向即环；builtinTools 不依赖 agent。三方法全部必填：子 Agent 的 ToolPool 不含 SubagentTool，
+ * 不存在"宿主没有后台通路"的形态——同步等待由 spawnBackground + awaitBackground 限时合成。
+ */
 export interface SubagentSpawnerFn {
-  spawn(
-    prompt: string,
-    options: SubagentSpawnOptions,
-    signal: AbortSignal,
-  ): Promise<SubagentRunResult>;
-  spawnBackground?(
+  /** 后台启动并立即返回 agentRunId。 */
+  spawnBackground(
     prompt: string,
     options: SubagentSpawnOptions,
     signal: AbortSignal,
   ): string;
-  awaitBackground?(agentRunId: string): Promise<SubagentRunResult | null>;
-  abortSubagent?(agentRunId: string): boolean;
+  /** 等待后台运行结果；未知 id 返回 null。 */
+  awaitBackground(agentRunId: string): Promise<SubagentRunResult | null>;
+  /** 取消运行中的子 Agent；未知 id 返回 false。 */
+  abortSubagent(agentRunId: string): boolean;
 }
 
 /**
  * AskUser 工具向宿主提出的问询解析器：发出结构化问询请求并等待答案。
  * 宿主在 Turn 装配时注入（绑定到该 Turn 的 per-session FIFO 回答通道）。
  *
- * 事件发射归宿主实现，不归 Tool：宿主发射 ask_user_required、等待回答后
- * 发射 ask_user_resolved；取消/失败时发射空答案 resolved 清前端卡片并原样抛出。
+ * 分层有意如此：Tool 只表达"我要问，给我答案"；事件发射（ask_user_required/
+ * ask_user_resolved）、队列排队、超时与取消清卡全是宿主职责——让 Tool 直接 emit
+ * 会把 Turn 事件通道与交互队列泄进本上下文，方向反而更差。
  * 问询锚点是 toolCallId——一个交互只可能属于一次 Tool 调用，不再需要独立的 promptId。
  */
 export type AskUser = (
@@ -77,15 +80,6 @@ export type AskUser = (
 export interface Scratchpad {
   readonly dir: string;
   readonly author: string;
-}
-
-/**
- * 视觉模型选择（来自 model_bindings 的 vision 绑定）：装配层解析 VisionModel 后注入。
- * PdfReadTool 等需要读图的工具在 validateContext 里取它做 OCR/图注描述。
- */
-export interface ToolVisionSelection {
-  readonly model: string;
-  readonly vision: VisionModel;
 }
 
 /**
@@ -124,6 +118,6 @@ export interface ToolUseContext {
   readonly readFileState?: ReadFileState;
   /** AskUser 工具的问询解析器。 */
   readonly askUser?: AskUser;
-  /** 视觉模型选择（vision 绑定）: PdfReadTool 扫描页 OCR / 图注描述用; 缺省时 PDF 只读文本层。 */
-  readonly vision?: ToolVisionSelection;
+  /** 本 Turn 冻结的 vision 调用（OCR/图注）；缺省时 PdfReadTool 只读文本层。 */
+  readonly vision?: CallVision;
 }

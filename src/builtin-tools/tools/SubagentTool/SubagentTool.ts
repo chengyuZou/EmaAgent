@@ -202,41 +202,29 @@ export const SubagentTool = buildTool<SubagentInput, SubagentResult, SubagentToo
     };
 
     if (input.runInBackground) {
-      if (!context.spawner.spawnBackground) {
-        throw new Error(
-          'Sub-agents cannot spawn further sub-agents (depth limit: 1). ' +
-            'Restructure the task so the top-level agent spawns all background workers directly.',
-        );
-      }
       context.spawner.spawnBackground(input.prompt, options, invocation.signal);
       return { kind: 'background', agentRunId, via: 'requested' };
     }
 
-    // 同步路径: 有后台通路就"拉起 + 限时等待",超时自动转交后台。
-    if (context.spawner.spawnBackground && context.spawner.awaitBackground) {
-      context.spawner.spawnBackground(input.prompt, options, invocation.signal);
-      const outcome = await raceWithAbort(
-        context.spawner.awaitBackground(agentRunId),
-        AUTO_BACKGROUND_WAIT_MS,
-        invocation.signal,
-      );
-      if (outcome.kind === 'timeout') {
-        return { kind: 'background', agentRunId, via: 'auto' };
-      }
-      if (outcome.kind === 'aborted') {
-        // 同步等待被取消: 取消子 Agent 再抛,不留孤儿运行。
-        context.spawner.abortSubagent?.(agentRunId);
-        throw outcome.reason instanceof Error ? outcome.reason : new Error(String(outcome.reason));
-      }
-      if (!outcome.result) {
-        throw new Error(`Sub-agent result unavailable (agentRunId: ${agentRunId})`);
-      }
-      return { kind: 'completed', ...outcome.result };
+    // 同步路径: 后台拉起 + 限时等待，超时自动转交后台。
+    context.spawner.spawnBackground(input.prompt, options, invocation.signal);
+    const outcome = await raceWithAbort(
+      context.spawner.awaitBackground(agentRunId),
+      AUTO_BACKGROUND_WAIT_MS,
+      invocation.signal,
+    );
+    if (outcome.kind === 'timeout') {
+      return { kind: 'background', agentRunId, via: 'auto' };
     }
-
-    // 无后台通路的兜底宿主: 直接阻塞 spawn。
-    const result = await context.spawner.spawn(input.prompt, options, invocation.signal);
-    return { kind: 'completed', ...result };
+    if (outcome.kind === 'aborted') {
+      // 同步等待被取消: 取消子 Agent 再抛,不留孤儿运行。
+      context.spawner.abortSubagent(agentRunId);
+      throw outcome.reason instanceof Error ? outcome.reason : new Error(String(outcome.reason));
+    }
+    if (!outcome.result) {
+      throw new Error(`Sub-agent result unavailable (agentRunId: ${agentRunId})`);
+    }
+    return { kind: 'completed', ...outcome.result };
   },
 
   mapResultToModelContent(output) {

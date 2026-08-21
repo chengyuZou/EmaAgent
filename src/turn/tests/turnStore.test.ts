@@ -86,7 +86,7 @@ describe('TurnStore — 生命周期与运行锁', () => {
     }).not.toThrow();
   });
 
-  it('终态提交后仍占用运行锁，clearRunning 后才允许新 Turn', () => {
+  it('终态提交即释放运行锁，新 Turn 可立即开始', () => {
     const { store, db } = makeStore();
     const sessionId = insertSession(db, 's1');
 
@@ -96,9 +96,6 @@ describe('TurnStore — 生命周期与运行锁', () => {
     const completed = store.getTurn(turn.id)!;
     expect(completed.status).toBe('completed');
     expect(completed.usageInputTokens).toBe(10);
-    expect(() => startTurn(store, sessionId)).toThrow('session_busy');
-
-    store.clearRunning(sessionId, turn.id);
     expect(() => startTurn(store, sessionId)).not.toThrow();
   });
 

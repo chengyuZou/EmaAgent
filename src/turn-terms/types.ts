@@ -43,6 +43,8 @@ export interface Turn {
   /** 操作开始冻结的模型选择；prepare 解析成功前为 null。 */
   readonly providerId: string | null;
   readonly modelId: string | null;
+  /** 本 Turn 激活角色的磁盘目录名快照（Memory relationship 提取的事实源）；prepare 完成回填，此前为 null。 */
+  readonly characterDirectoryName: string | null;
   readonly iterations: number;
   readonly usageInputTokens: number;
   readonly usageOutputTokens: number;

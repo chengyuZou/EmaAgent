@@ -96,6 +96,11 @@ export class TurnStore {
     this.turnsRepo.setModel(turnId, providerId, modelId);
   }
 
+  /** prepare 完成时冻结激活角色目录名；Memory 提取经 turnId 回读。 */
+  setCharacterDirectoryName(turnId: string, characterDirectoryName: string): void {
+    this.turnsRepo.setCharacterDirectoryName(turnId, characterDirectoryName);
+  }
+
   completeTurn(turnId: string, usage: CompleteTurnInput = {}): void {    this.requireTurn(turnId);
     this.turnsRepo.complete(turnId, {
       status:             'completed',
@@ -104,6 +109,9 @@ export class TurnStore {
       usageOutputTokens:  usage.usageOutputTokens,
       iterations:         usage.iterations,
     });
+    // 终态落库即释放运行锁：await completion/终态事件的消费方可以立即开新 Turn，
+    // 不等执行器 finally（它清的是同一把锁，幂等）。
+    this.registry.clear(this.requireTurn(turnId).sessionId, turnId);
   }
 
   /** 提交 failed 终态；失败前已产生的迭代与 token 用量仍是真实事实，随终态一起写入。 */
@@ -119,6 +127,7 @@ export class TurnStore {
       errorMessage: failure.errorMessage,
       ...failure.usage,
     });
+    this.registry.clear(this.requireTurn(turnId).sessionId, turnId);
   }
 
   /** 触发取消信号并提交 Turn 的 aborted 终态。 */
@@ -133,6 +142,7 @@ export class TurnStore {
       status:      'aborted',
       completedAt: Date.now(),
     });
+    this.registry.clear(sessionId, turnId);
   }
 
   /**
@@ -361,6 +371,7 @@ function toTurn(row: TurnRow): Turn {
     narrativePolicy: row.narrative_policy,
     providerId: row.provider_id,
     modelId: row.model_id,
+    characterDirectoryName: row.character_directory_name,
     iterations: row.iterations,
     usageInputTokens: row.usage_input_tokens,
     usageOutputTokens: row.usage_output_tokens,

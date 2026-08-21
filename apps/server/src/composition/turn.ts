@@ -11,7 +11,8 @@ import { gitSummary } from '@ema-agent/git';
 import { createLanguageModel, type ContentPart } from '@ema-agent/llm';
 import { prepareNarrativeRecall } from '@ema-agent/narrative';
 import { permissionAskTimeoutSetting } from '@ema-agent/permission';
-import { generateSessionTitle, type UserBlock } from '@ema-agent/session';
+import { DEFAULT_SESSION_TITLE, generateSessionTitle } from '@ema-agent/session';
+import type { CallVision } from '@ema-agent/knowledge';
 import type { SettingsStore } from '@ema-agent/settings';
 import type { StageEngine } from '@ema-agent/stage';
 import { AttachmentVisionDescriptionsRepo } from '@ema-agent/storage';
@@ -22,7 +23,6 @@ import {
   workspaceInstructionFilesSetting,
   type TurnReminderScope,
 } from '@ema-agent/turn';
-import type { Turn } from '@ema-agent/turn-terms';
 import { createUsageRecord, reportUsage, type UsageRecorder } from '@ema-agent/usage';
 import { createVisionModel, type VisionImageMime, type VisionTokenUsage } from '@ema-agent/vision';
 import { ensureScratchpadDir, scratchpadTurnDir } from '../platform/paths.js';
@@ -132,6 +132,19 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     return result.text;
   };
 
+  // Turn 工具面的 vision 闭包（PdfReadTool 扫描页 OCR 等）：无绑定即 undefined（降级纯文本），
+  // 模型身份在闭包内冻结，usage 从结果记录。
+  const resolveCallVision = (): CallVision | undefined => {
+    const selected = resolveVision();
+    if (!selected) return undefined;
+    return async (request) => {
+      const startedAt = Date.now();
+      const result = await selected.vision.analyze({ ...request, model: selected.modelId });
+      recordVisionUsage(database.usageRecorder, selected.providerId, selected.modelId, startedAt, result.usage);
+      return result;
+    };
+  };
+
   // ── Reminder 工厂（每 Turn 一次；git 探测在此 await 并冻结进闭包） ───────────
   const reminderSources = async (scope: TurnReminderScope) => {
     const workspaceRoot = database.session.getSession(scope.sessionId).workspaceRoot ?? '';
@@ -167,41 +180,45 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     };
   };
 
-  // ── Turn 完成后的非关键观察：标题仍是默认值的会话生成标题 ─────────────────────
-  const completedObserver = {
-    async record(turn: Turn) {
-      const session = database.session.getSession(turn.sessionId);
-      if (session.title.trim() !== '新对话') return;
-      const binding = providers.modelBindings.get('title');
-      if (!binding) return;
-      const firstUser = database.session
-        .loadMessagesForTurn(turn.id)
-        .find(message => message.role === 'user');
-      const blocks = firstUser?.blocks;
-      const query = typeof blocks === 'string'
-        ? blocks
-        : (blocks ?? [])
-            .filter((block): block is Extract<UserBlock, { type: 'text' }> => block.type === 'text')
-            .map(block => block.text)
-            .join('\n');
-      if (!query.trim()) return;
+  // ── 会话标题：用户消息落库即异步生成；读检/去重/条件写三层各挡一类浪费与覆盖 ──
+  const generatingTitles = new Set<string>();
+  const startSessionTitleGeneration = (sessionId: string, userText: string): void => {
+    // 同 Session 已有一路在生成：并发/连发只调一次模型。
+    if (generatingTitles.has(sessionId)) return;
+    // 标题已非默认（老会话或用户已改名）：连模型都不调。
+    if (database.session.getSession(sessionId).title !== DEFAULT_SESSION_TITLE) return;
+    const binding = providers.modelBindings.get('title');
+    if (!binding) return;
+    const query = userText.trim();
+    if (!query) return;
 
-      const llm = createLanguageModel(providers.providers.resolveConnection(binding.providerId, 'llm'));
-      const title = await generateSessionTitle(query, async prompt => {
-        let text = '';
-        for await (const event of llm.stream({
-          model: binding.modelId,
-          messages: [{ role: 'user', content: [{ type: 'text', text: prompt }] }],
-          maxOutputTokens: 64,
-        })) {
-          if (event.type === 'text_delta') text += event.delta;
+    generatingTitles.add(sessionId);
+    void (async () => {
+      try {
+        const llm = createLanguageModel(providers.providers.resolveConnection(binding.providerId, 'llm'));
+        const title = await generateSessionTitle(query, async prompt => {
+          const completion = await llm.complete({
+            model: binding.modelId,
+            messages: [{ role: 'user', content: [{ type: 'text', text: prompt }] }],
+            maxOutputTokens: 64,
+          });
+          const text = completion.blocks
+            .filter(block => block.type === 'text')
+            .map(block => block.text)
+            .join('');
+          return text.trim() || undefined;
+        });
+        if (!title) return;
+        // 条件写入是最后防线：生成期间用户改名/会话已删/另一路先完成都不覆盖。
+        if (database.session.updateTitleIfDefault(sessionId, title)) {
+          deps.emitAppEvent({ type: 'session_title_updated', sessionId, title });
         }
-        return text.trim() || undefined;
-      });
-      if (!title) return;
-      database.session.updateTitle(turn.sessionId, title);
-      deps.emitAppEvent({ type: 'session_title_updated', sessionId: turn.sessionId, title });
-    },
+      } catch {
+        // 标题是增强体验；失败静默，下一条用户消息会重试。
+      } finally {
+        generatingTitles.delete(sessionId);
+      }
+    })();
   };
 
   const turnExecutor = new TurnExecutor({
@@ -221,6 +238,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     knowledgeSearch: knowledge.knowledgeSearch,
     narrativeClient: narrative.narrative,
     backgroundProcesses: tools.backgroundProcesses,
+    resolveVision: resolveCallVision,
     commandRunner: tools.getCommandRunner,
     toolResultStore: tools.getSessionToolResultStore,
     toolExecutionState: tools.toolExecutionState,
@@ -236,7 +254,8 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     reminderSources,
     usageRecorder: database.usageRecorder,
     stage,
-    completedObserver,
+    startSessionTitleGeneration,
+    characterDirectoryName: () => characters.current().directoryName,
   });
 
   return { turnExecutor, interactionQueue };

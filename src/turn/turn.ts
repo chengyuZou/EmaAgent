@@ -85,8 +85,16 @@ export interface TurnExecutorDeps extends PrepareTurnDeps {
    * 发射形态），emotion_changed/stage_cue 随流发出。缺省时 delta 原样透传。
    */
   readonly stage?: StageEngine;
-  /** Turn 成功提交后执行的非关键观察者；失败不得反向改写 Turn 终态。 */
-  readonly completedObserver?: { record(turn: Turn): void | Promise<void> };
+  /**
+   * 用户消息落库后异步启动标题生成（内部自管读检/去重/条件写）；仅 userMessage
+   * 触发的 Turn 调用。不阻塞 AgentLoop，结果与 Turn 终态无关。
+   */
+  readonly startSessionTitleGeneration?: (sessionId: string, userText: string) => void;
+  /**
+   * prepare 完成时读取当前激活角色的磁盘目录名（Character.directoryName），
+   * 回填冻结到 Turn 行；与 characterPrompt 同一时点读取，保证同源。
+   */
+  readonly characterDirectoryName: () => string;
 }
 
 /**
@@ -236,11 +244,17 @@ export class TurnExecutor {
       tools = prepared.tools;
       this.runningTools.set(turnId, tools);
       this.deps.turns.setModel(turnId, prepared.providerId, prepared.modelId);
+      this.deps.turns.setCharacterDirectoryName(turnId, this.deps.characterDirectoryName());
       compactForTurn = this.deps.createCompact(prepared.llm);
 
       for (const degradation of prepared.degradations) {
         emit({ type: 'request_degraded', sessionId, turnId, ...degradation });
       }
+
+      const userText = prepared.userMessageParts
+        .filter((part): part is Extract<ContentPart, { type: 'text' }> => part.type === 'text')
+        .map(part => part.text)
+        .join('\n');
 
       this.deps.sessions.appendMessage({
         turnId,
@@ -248,6 +262,10 @@ export class TurnExecutor {
         role: 'user',
         blocks: prepared.userMessageBlocks,
       });
+      // 标题生成：用户消息落库即异步启动，不等 AgentLoop；只有用户消息触发的 Turn 参与。
+      if (input.triggerType === 'userMessage') {
+        this.deps.startSessionTitleGeneration?.(sessionId, userText);
+      }
 
       const historyMessages = buildMessages(
         this.deps.sessions.loadHistory(sessionId),
@@ -257,10 +275,6 @@ export class TurnExecutor {
         { role: 'user', content: prepared.userMessageParts },
       ];
 
-      const userText = prepared.userMessageParts
-        .filter((part): part is Extract<ContentPart, { type: 'text' }> => part.type === 'text')
-        .map(part => part.text)
-        .join('\n');
       const reminderSources = await this.deps.reminderSources({
         sessionId,
         turnId,
@@ -351,11 +365,6 @@ export class TurnExecutor {
           usageOutputTokens: stopped.state.usage.outputTokens,
         };
         this.deps.turns.completeTurn(turnId, stats);
-        try {
-          await this.deps.completedObserver?.record(turn);
-        } catch {
-          // 非关键观察者故障不能把已提交的 completed 改写成 failed。
-        }
         const outcome: TurnOutcome = {
           status: 'completed',
           sessionId,
