@@ -23,6 +23,7 @@ export const DEFAULT_THEME_SETTINGS: ThemeSettings = {
 
 export const themeSetting = defineSetting<ThemeSettings>({
   key: 'frontend.theme',
+  description: '桌面主题与正文阅读字体：主色调、圆角、明暗模式与字体预设。',
   apply: 'immediate',
   defaultValue: DEFAULT_THEME_SETTINGS,
   schema: themeSettingsSchema,

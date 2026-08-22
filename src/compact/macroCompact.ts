@@ -2,11 +2,12 @@
 
 import type {
   AssistantBlock,
-  LanguageModel,
+  CallLlm,
   Message,
   ToolResultContentPart,
   UserBlock,
 } from '@ema-agent/llm';
+import { createLlmCompletion } from '@ema-agent/llm';
 import { estimateMessagesTokens } from '@ema-agent/token';
 import type { ExecutionProfile } from '@ema-agent/turn-terms';
 import { buildCompactPrompt, extractCompactSummary } from './compactPrompt.js';
@@ -18,9 +19,7 @@ const COMPACT_OUTPUT_RATIO = 0.2;
 const MIN_COMPACT_OUTPUT_TOKENS = 2_000;
 const OMITTED_HISTORY_MARKER = '\n\n[部分历史因摘要模型输入上限被省略]\n\n';
 export interface MacroCompactArgs {
-  readonly llm: LanguageModel;
-  readonly providerId: string;
-  readonly model: string;
+  readonly callLlm: CallLlm;
   readonly executionProfile: ExecutionProfile;
   readonly toCompact: readonly Message[];
   readonly modelContextWindow: number;
@@ -77,13 +76,12 @@ export async function runMacroCompact(
     );
 
     try {
-      const completion = await args.llm.complete({
-        model: args.model,
+      const completion = await createLlmCompletion(args.callLlm({
         messages: [{ role: 'user', content: prompt }],
         maxOutputTokens: Math.min(desiredOutputTokens, remainingOutputTokens),
         temperature: 0.2,
         signal: args.signal,
-      });
+      }));
       const summary = extractCompactSummary(collectText(completion.blocks));
       if (!summary) {
         return {

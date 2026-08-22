@@ -5,6 +5,7 @@ import { z } from 'zod';
 
 export const permissionModeSetting = defineSetting({
   key: 'permission.mode',
+  description: '工具执行的权限模式：default=按规则或询问；acceptEdits=额外允许工作区文件写入；bypassPermissions=仅开发入口可开启。',
   apply: 'nextTurn',
   defaultValue: 'default' as const,
   schema: z.enum(['default', 'acceptEdits', 'bypassPermissions'])
@@ -19,6 +20,7 @@ const RULE_FORMAT_HINT = '格式："Tool" 或 "Tool(content)"，如 Bash(npm tes
 
 export const permissionRulesUserAllowSetting = defineSetting({
   key: 'permission.rules.user.allow',
+  description: '全局 allow 规则：命中即自动允许。格式："Tool" 或 "Tool(content)"，如 Bash(npm test:*)。',
   apply: 'nextTurn',
   defaultValue: [] as string[],
   schema: z.array(z.string())
@@ -27,6 +29,7 @@ export const permissionRulesUserAllowSetting = defineSetting({
 
 export const permissionRulesUserDenySetting = defineSetting({
   key: 'permission.rules.user.deny',
+  description: '全局 deny 规则：命中即拒绝（优先级最高，bypass 也救不了）。格式："Tool" 或 "Tool(content)"。',
   apply: 'nextTurn',
   defaultValue: [] as string[],
   schema: z.array(z.string())
@@ -35,6 +38,7 @@ export const permissionRulesUserDenySetting = defineSetting({
 
 export const permissionRulesUserAskSetting = defineSetting({
   key: 'permission.rules.user.ask',
+  description: '全局 ask 规则：命中即弹批准卡（先于 bypass 生效）。格式："Tool" 或 "Tool(content)"。',
   apply: 'nextTurn',
   defaultValue: [] as string[],
   schema: z.array(z.string())
@@ -47,6 +51,7 @@ const projectRuleRecord = (behavior: string) =>
 
 export const permissionRulesProjectAllowSetting = defineSetting({
   key: 'permission.rules.project.allow',
+  description: '按项目的 allow 规则：键为项目 id，值为该项目的规则列表（格式同全局规则）。',
   apply: 'nextTurn',
   defaultValue: {} as Record<string, string[]>,
   schema: projectRuleRecord('allow'),
@@ -54,6 +59,7 @@ export const permissionRulesProjectAllowSetting = defineSetting({
 
 export const permissionRulesProjectDenySetting = defineSetting({
   key: 'permission.rules.project.deny',
+  description: '按项目的 deny 规则：键为项目 id，值为该项目的规则列表（格式同全局规则）。',
   apply: 'nextTurn',
   defaultValue: {} as Record<string, string[]>,
   schema: projectRuleRecord('deny'),
@@ -61,6 +67,7 @@ export const permissionRulesProjectDenySetting = defineSetting({
 
 export const permissionRulesProjectAskSetting = defineSetting({
   key: 'permission.rules.project.ask',
+  description: '按项目的 ask 规则：键为项目 id，值为该项目的规则列表（格式同全局规则）。',
   apply: 'nextTurn',
   defaultValue: {} as Record<string, string[]>,
   schema: projectRuleRecord('ask'),
@@ -68,6 +75,7 @@ export const permissionRulesProjectAskSetting = defineSetting({
 
 export const permissionAskTimeoutSetting = defineSetting<number | null>({
   key: 'permission.askTimeoutMs',
+  description: '批准卡与问询卡的等待超时（毫秒）；null = 一直等待。',
   apply: 'nextOperation',
   defaultValue: DEFAULT_PERMISSION_ASK_TIMEOUT_MS,
   schema: z.union([

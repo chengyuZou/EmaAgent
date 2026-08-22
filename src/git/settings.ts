@@ -14,6 +14,7 @@ import { z } from 'zod';
 
 export const gitReadTimeoutMsSetting = defineSetting<number>({
   key: 'git.timeout.readMs',
+  description: '只读 git 查询超时（毫秒）；超时即报错。',
   apply: 'nextOperation',
   defaultValue: 5_000,
   schema: z.number().int().min(1_000).max(120_000),
@@ -21,6 +22,7 @@ export const gitReadTimeoutMsSetting = defineSetting<number>({
 
 export const gitWriteTimeoutMsSetting = defineSetting<number>({
   key: 'git.timeout.writeMs',
+  description: 'git 写操作（init/add/commit/apply）超时（毫秒），给大目录 add -A 留足时间。',
   apply: 'nextOperation',
   defaultValue: 30_000,
   schema: z.number().int().min(5_000).max(600_000),
@@ -28,6 +30,7 @@ export const gitWriteTimeoutMsSetting = defineSetting<number>({
 
 export const gitMaxOutputBytesSetting = defineSetting<number>({
   key: 'git.output.maxBytes',
+  description: 'git 命令输出字节上限。',
   apply: 'nextOperation',
   defaultValue: 4 * 1024 * 1024,
   schema: z.number().int().min(64 * 1024).max(64 * 1024 * 1024),
@@ -35,6 +38,7 @@ export const gitMaxOutputBytesSetting = defineSetting<number>({
 
 export const gitDiffContextLinesSetting = defineSetting<number>({
   key: 'git.diff.contextLines',
+  description: 'diff 渲染的上下文行数。',
   apply: 'nextOperation',
   defaultValue: 20,
   schema: z.number().int().min(1).max(100),
@@ -42,6 +46,7 @@ export const gitDiffContextLinesSetting = defineSetting<number>({
 
 export const gitDiffMaxFileCharsSetting = defineSetting<number>({
   key: 'git.diff.maxFileChars',
+  description: '单文件 diff 字符上限。',
   apply: 'nextOperation',
   defaultValue: 200_000,
   schema: z.number().int().min(1_000).max(4 * 1024 * 1024),
@@ -49,6 +54,7 @@ export const gitDiffMaxFileCharsSetting = defineSetting<number>({
 
 export const gitDiffMaxTotalCharsSetting = defineSetting<number>({
   key: 'git.diff.maxTotalChars',
+  description: '全部文件 diff 累计字符上限。',
   apply: 'nextOperation',
   defaultValue: 2_000_000,
   schema: z.number().int().min(10_000).max(64 * 1024 * 1024),
@@ -56,6 +62,7 @@ export const gitDiffMaxTotalCharsSetting = defineSetting<number>({
 
 export const gitDiffMaxFilesPerScopeSetting = defineSetting<number>({
   key: 'git.diff.maxFilesPerScope',
+  description: '每个作用域参与 diff 的文件数上限。',
   apply: 'nextOperation',
   defaultValue: 200,
   schema: z.number().int().min(10).max(2_000),
@@ -63,6 +70,7 @@ export const gitDiffMaxFilesPerScopeSetting = defineSetting<number>({
 
 export const gitDiffMaxUntrackedFilesSetting = defineSetting<number>({
   key: 'git.diff.maxUntrackedFiles',
+  description: '参与 diff 的未跟踪文件数上限。',
   apply: 'nextOperation',
   defaultValue: 50,
   schema: z.number().int().min(1).max(1_000),
@@ -70,6 +78,7 @@ export const gitDiffMaxUntrackedFilesSetting = defineSetting<number>({
 
 export const gitDiffUntrackedConcurrencySetting = defineSetting<number>({
   key: 'git.diff.untrackedConcurrency',
+  description: '未跟踪文件 diff 的并发数。',
   apply: 'nextOperation',
   defaultValue: 8,
   schema: z.number().int().min(1).max(32),
@@ -77,6 +86,7 @@ export const gitDiffUntrackedConcurrencySetting = defineSetting<number>({
 
 export const gitDiffProcessOutputBytesSetting = defineSetting<number>({
   key: 'git.diff.processOutputBytes',
+  description: 'diff 子进程输出字节上限。',
   apply: 'nextOperation',
   defaultValue: 8 * 1024 * 1024,
   schema: z.number().int().min(1024 * 1024).max(64 * 1024 * 1024),
@@ -84,6 +94,7 @@ export const gitDiffProcessOutputBytesSetting = defineSetting<number>({
 
 export const gitBaselineMaxDiffBytesSetting = defineSetting<number>({
   key: 'git.baseline.maxDiffBytes',
+  description: '基线 diff 字节上限。',
   apply: 'nextOperation',
   defaultValue: 4 * 1024 * 1024,
   schema: z.number().int().min(64 * 1024).max(64 * 1024 * 1024),
@@ -91,6 +102,7 @@ export const gitBaselineMaxDiffBytesSetting = defineSetting<number>({
 
 export const gitBaselineMaxChangesForUnifiedSetting = defineSetting<number>({
   key: 'git.baseline.maxChangesForUnified',
+  description: '基线 diff 采用 unified 格式的最大变更数。',
   apply: 'nextOperation',
   defaultValue: 200,
   schema: z.number().int().min(10).max(2_000),

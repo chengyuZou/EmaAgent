@@ -6,9 +6,9 @@
 
 ```text
 Provider / 接线层
-  └─ createEmbeddingModel({ protocol, apiKey, baseUrl })
-       └─ embed({ model, texts, signal })
-            └─ { embeddings, dim }
+  └─ createEmbedCall({ protocol, apiKey, baseUrl }, modelId)   // 连接与模型在创建点冻结
+       └─ CallEmbed({ texts, signal })
+            └─ { embeddings, dim, usage? }
 ```
 
 `EmbeddingSpace` 是向量索引的领域事实，不是协议路由。调用方根据已选择的 `providerId`、模型与维度调用 `createEmbeddingSpace()`，身份四元组 (providerId, model, dim, normalization) 任一变化即生成新空间——providerId 承担"同名不同权重"的隔离（换端点 = 换空间 = 重新嵌入，宁可重嵌绝不混写）。`embed()` 不接受 Provider ID，也不替调用方选择空间。

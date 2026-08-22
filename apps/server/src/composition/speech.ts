@@ -8,7 +8,9 @@ import {
 } from '@ema-agent/providers';
 import {
   FsAudioArchive,
+  readSpeechSegmentLibraryLimits,
   SpeechCoordinator,
+  SpeechSegmentLibrary,
   SpeechVoiceCache,
   SpeechVoicePreview,
   prepareSpeechVoice,
@@ -16,10 +18,12 @@ import {
   type SpeechEvent,
 } from '@ema-agent/speech';
 import {
-  SessionStatsRepo,
+  SpeechOutputsRepo,
+  SpeechSegmentsRepo,
   type Database,
 } from '@ema-agent/storage';
-import { createSpeechToText, type TranscriptionRequest, type TranscriptionResult } from '@ema-agent/stt';
+import type { SettingsStore } from '@ema-agent/settings';
+import { createSttCall, type TranscriptionRequest, type TranscriptionResult } from '@ema-agent/stt';
 import { createTextToSpeech, type TtsVoiceReference } from '@ema-agent/tts';
 import { createUsageRecord, reportUsage, type UsageRecorder } from '@ema-agent/usage';
 
@@ -62,10 +66,16 @@ export function openSpeech(
   providers: Providers,
   modelBindings: ModelBindings,
   characters: CharacterStore,
+  settings: SettingsStore,
 ): SpeechComposition {
   const audioArchive = new FsAudioArchive(path.join(activeDataDir, 'sessions'));
   const voiceCache = new SpeechVoiceCache();
-  const sessionStats = new SessionStatsRepo(dataDb.sqlite);
+  const speechOutputs = new SpeechOutputsRepo(dataDb.sqlite);
+  const segmentLibrary = new SpeechSegmentLibrary(
+    new SpeechSegmentsRepo(dataDb.sqlite),
+    audioArchive,
+  );
+  segmentLibrary.enforceLimits(readSpeechSegmentLibraryLimits(settings));
 
   /** 候选顺序：enabled + isPrimary 优先，其次任一 enabled。 */
   const resolveCharacterVoice = (character: Character): TtsVoiceReference | null => {
@@ -144,6 +154,8 @@ export function openSpeech(
       format: 'mp3',
       signal: setup.signal,
       usageRecorder,
+      onSegmentCompleted: segment => segmentLibrary.record(segment),
+      onTurnSegmentsDiscarded: turnId => segmentLibrary.discardTurn(turnId),
     });
 
     return {
@@ -152,7 +164,7 @@ export function openSpeech(
         const { audio } = await coordinator.finish();
         // 最终音频的持久统计是可重建投影，失败只损失统计，不影响 Turn。
         if (audio) {
-          sessionStats.recordAudioMerged({
+          speechOutputs.record({
             turnId: setup.turnId,
             sessionId: setup.sessionId,
             storagePath: audio.path,
@@ -163,6 +175,7 @@ export function openSpeech(
             createdAt: Date.now(),
           });
         }
+        segmentLibrary.enforceLimits(readSpeechSegmentLibraryLimits(settings));
       },
       abort: () => coordinator.abort(),
     };
@@ -171,9 +184,12 @@ export function openSpeech(
   const transcribe: SpeechComposition['transcribe'] = async request => {
     const binding = modelBindings.get('stt');
     if (!binding) return undefined;
-    const stt = createSpeechToText(providers.resolveConnection(binding.providerId, 'stt'));
+    const callStt = createSttCall(
+      providers.resolveConnection(binding.providerId, 'stt'),
+      binding.modelId,
+    );
     const startedAt = Date.now();
-    const result = await stt.transcribe({ ...request, model: binding.modelId });
+    const result = await callStt(request);
     const lastEndMs = result.segments?.reduce((max, s) => Math.max(max, s.endMs), 0) ?? 0;
     reportUsage(usageRecorder, createUsageRecord({
       capability: 'stt',

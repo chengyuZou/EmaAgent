@@ -2,15 +2,15 @@
 // tts/stt 没有无输入的诚实探活——它们的功能验证是 capabilities.ts 的试听与转写。
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { createEmbeddingModel } from '@ema-agent/embed';
-import { createLanguageModel } from '@ema-agent/llm';
+import { createEmbedCall } from '@ema-agent/embed';
+import { createLlmCall } from '@ema-agent/llm';
 import {
   ProviderError,
   type ModelCapability,
   type ProviderModels,
   type Providers,
 } from '@ema-agent/providers';
-import { createReranker } from '@ema-agent/rerank';
+import { createRerankCall } from '@ema-agent/rerank';
 import { providerError } from './configs.js';
 
 const PROBE_TIMEOUT_MS = 15_000;
@@ -93,10 +93,9 @@ async function runProbe(
   // 每个分支用字面量能力解析连接，泛型收窄到该能力的连接类型。
   switch (capability) {
     case 'llm': {
-      const llm = createLanguageModel(providers.resolveConnection(providerId, 'llm'));
+      const callLlm = createLlmCall(providers.resolveConnection(providerId, 'llm'), modelId);
       // 消费至流自然结束；任何协议层错误都在迭代中抛出。
-      for await (const event of llm.stream({
-        model: modelId,
+      for await (const event of callLlm({
         messages: [{ role: 'user', content: [{ type: 'text', text: 'ping' }] }],
         maxOutputTokens: 1,
         signal,
@@ -106,12 +105,10 @@ async function runProbe(
       return;
     }
     case 'embed':
-      await createEmbeddingModel(providers.resolveConnection(providerId, 'embed'))
-        .embed({ model: modelId, texts: ['ping'], signal });
+      await createEmbedCall(providers.resolveConnection(providerId, 'embed'), modelId)({ texts: ['ping'], signal });
       return;
     case 'rerank':
-      await createReranker(providers.resolveConnection(providerId, 'rerank')).rerank({
-        model: modelId,
+      await createRerankCall(providers.resolveConnection(providerId, 'rerank'), modelId)({
         query: 'ping',
         documents: ['a', 'b'],
         signal,

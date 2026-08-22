@@ -2,7 +2,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import type {
-  LanguageModel,
+  CallLlm,
   LlmCompletion,
   LlmRequest,
   Message,
@@ -24,8 +24,19 @@ function completion(text = '<summary>压缩后的工作摘要</summary>'): LlmCo
   };
 }
 
-function languageModel(complete: (request: LlmRequest) => Promise<LlmCompletion>): LanguageModel {
-  return { protocol: 'openai-llm', complete, stream: vi.fn() as never };
+function llmCompleting(
+  complete: (request: LlmRequest) => Promise<LlmCompletion>,
+): CallLlm {
+  return (request: LlmRequest) => (async function* () {
+    const result = await complete(request);
+    let blockIndex = 0;
+    for (const block of result.blocks) {
+      if (block.type === 'text') {
+        yield { type: 'text_delta' as const, blockIndex: blockIndex++, delta: block.text };
+      }
+    }
+    yield { type: 'done' as const, stopReason: result.stopReason };
+  })();
 }
 
 function request(history: readonly Message[], overrides: Partial<CompactRequest> = {}): CompactRequest {
@@ -37,8 +48,6 @@ function request(history: readonly Message[], overrides: Partial<CompactRequest>
     estimatedInputTokens: estimateMessagesTokens([...history]),
     contextWindow: 4_000,
     maxOutputTokens: 0,
-    providerId: 'provider-1',
-    model: 'model-1',
     ...overrides,
   };
 }
@@ -80,7 +89,7 @@ describe('createCompact', () => {
   it('低于阈值时原样返回历史且不调用模型', async () => {
     const complete = vi.fn(async (_request: LlmRequest) => completion());
     const history: Message[] = [{ role: 'user', content: 'short' }];
-    const compact = createCompact(languageModel(complete), {
+    const compact = createCompact(llmCompleting(complete), {
       bufferTokens: 0,
       defaultReservedOutputTokens: 0,
       maximumReservedOutputTokens: 0,
@@ -94,7 +103,7 @@ describe('createCompact', () => {
 
   it('Micro 足以恢复预算时直接返回清理后的历史', async () => {
     const complete = vi.fn(async () => completion());
-    const compact = createCompact(languageModel(complete), {
+    const compact = createCompact(llmCompleting(complete), {
       bufferTokens: 0,
       defaultReservedOutputTokens: 0,
       maximumReservedOutputTokens: 0,
@@ -139,7 +148,7 @@ describe('createCompact', () => {
   it('Macro 失败时丢弃中间 Micro 改写并原样返回历史', async () => {
     const complete = vi.fn(async () => { throw new Error('provider unavailable'); });
     const history = readHistory();
-    const compact = createCompact(languageModel(complete), {
+    const compact = createCompact(llmCompleting(complete), {
       bufferTokens: 0,
       defaultReservedOutputTokens: 0,
       maximumReservedOutputTokens: 0,
@@ -168,7 +177,7 @@ describe('createCompact', () => {
         throw new DOMException('aborted', 'AbortError');
       })
       .mockResolvedValue(completion());
-    const compact = createCompact(languageModel(complete), {
+    const compact = createCompact(llmCompleting(complete), {
       bufferTokens: 0,
       defaultReservedOutputTokens: 0,
       maximumReservedOutputTokens: 0,
@@ -195,7 +204,7 @@ describe('createCompact', () => {
     const complete = vi.fn()
       .mockRejectedValueOnce(new Error('provider unavailable'))
       .mockResolvedValue(completion());
-    const compact = createCompact(languageModel(complete), {
+    const compact = createCompact(llmCompleting(complete), {
       bufferTokens: 0,
       defaultReservedOutputTokens: 0,
       maximumReservedOutputTokens: 0,
@@ -226,7 +235,7 @@ describe('createCompact', () => {
 
   it('单条超大历史也会进入 Macro，而不是误判为历史不足', async () => {
     const complete = vi.fn(async (_request: LlmRequest) => completion());
-    const compact = createCompact(languageModel(complete), {
+    const compact = createCompact(llmCompleting(complete), {
       bufferTokens: 0,
       defaultReservedOutputTokens: 0,
       maximumReservedOutputTokens: 0,
@@ -251,7 +260,7 @@ describe('createCompact', () => {
 
   it('Macro 成功后的近期历史不包含孤立 Tool Result', async () => {
     const complete = vi.fn(async () => completion());
-    const compact = createCompact(languageModel(complete), {
+    const compact = createCompact(llmCompleting(complete), {
       bufferTokens: 0,
       defaultReservedOutputTokens: 0,
       maximumReservedOutputTokens: 0,
@@ -276,7 +285,7 @@ describe('createCompact', () => {
   it('最终预算无法容纳摘要时返回原历史并发送失败事件', async () => {
     const complete = vi.fn(async () => completion('summary '.repeat(100)));
     const history = textHistory();
-    const compact = createCompact(languageModel(complete), {
+    const compact = createCompact(llmCompleting(complete), {
       bufferTokens: 0,
       defaultReservedOutputTokens: 0,
       maximumReservedOutputTokens: 0,
@@ -298,7 +307,7 @@ describe('createCompact', () => {
   });
 
   it('拒绝把 System Prompt 混入可压缩历史', async () => {
-    const compact = createCompact(languageModel(async () => completion()));
+    const compact = createCompact(llmCompleting(async () => completion()));
     await expect(compact(request([
       { role: 'system', content: 'stable product rules' },
     ]))).rejects.toThrow('不能包含 System Prompt');

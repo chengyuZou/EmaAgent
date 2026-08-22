@@ -9,6 +9,7 @@ const SOURCE_ID = /^[a-z][a-z0-9-]*$/;
 /** 唯一逐技能禁用:SkillKey deny-list,builtin/user/project 三作用域统一。 */
 export const disabledSkillKeysSetting = defineSetting<string[]>({
   key: 'skill.disabledKeys',
+  description: '逐技能禁用：SkillKey deny-list，builtin/user/project 三作用域统一。',
   apply: 'nextTurn',
   defaultValue: [],
   schema: z
@@ -20,6 +21,7 @@ export const disabledSkillKeysSetting = defineSetting<string[]>({
 /** project 生态来源级禁用:空数组 = 全部启用;新出现的生态来源默认启用。 */
 export const disabledProjectSourcesSetting = defineSetting<{ disabledSourceIds: string[] }>({
   key: 'skill.disabledProjectSources',
+  description: 'project 生态来源级禁用：空数组 = 全部启用；新出现的生态来源默认启用。',
   apply: 'nextTurn',
   defaultValue: { disabledSourceIds: [] },
   schema: z
@@ -34,6 +36,7 @@ export const disabledProjectSourcesSetting = defineSetting<{ disabledSourceIds: 
 /** 内置来源总开关(Codex bundled.enabled 同款),默认开。 */
 export const builtinSkillsEnabledSetting = defineSetting<boolean>({
   key: 'skill.builtinEnabled',
+  description: '内置来源总开关（Codex bundled.enabled 同款），默认开。',
   apply: 'nextTurn',
   defaultValue: true,
   schema: z.boolean(),

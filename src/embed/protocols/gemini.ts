@@ -7,7 +7,7 @@ import type {
 } from '../types.js';
 
 export function createGeminiEmbeddingProtocol(
-  connection: EmbeddingConnection,
+  connection: EmbeddingConnection, modelId: string,
 ): (request: EmbeddingRequest) => Promise<RawEmbeddingResult> {
   const baseUrl = (
     connection.baseUrl ?? 'https://generativelanguage.googleapis.com/v1beta'
@@ -16,12 +16,12 @@ export function createGeminiEmbeddingProtocol(
   if (connection.apiKey) headers['x-goog-api-key'] = connection.apiKey;
 
   return async (request) => {
-    const response = await fetch(`${baseUrl}/models/${request.model}:batchEmbedContents`, {
+    const response = await fetch(`${baseUrl}/models/${modelId}:batchEmbedContents`, {
       method: 'POST',
       headers,
       body: JSON.stringify({
         requests: request.texts.map((text) => ({
-          model: `models/${request.model}`,
+          model: `models/${modelId}`,
           content: { parts: [{ text }] },
         })),
       }),

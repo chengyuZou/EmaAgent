@@ -1,5 +1,5 @@
 import type {
-  LanguageModel,
+  CallLlm,
   LlmRequest,
   LlmTokenUsage,
   Message,
@@ -56,7 +56,7 @@ export interface AgentLoopInput {
   /** 初始工作历史（持久基线 + 本轮种子消息）；循环在其上持续追加。 */
   readonly messages: readonly Message[];
   readonly prepareIteration: PrepareAgentIteration;
-  readonly llm: LanguageModel;
+  readonly callLlm: CallLlm;
   readonly createToolExecutor: ToolExecutorFactory;
   readonly budget: AgentBudget;
   readonly signal: AbortSignal;

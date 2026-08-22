@@ -8,11 +8,10 @@ import {
 import { buildCharacterPrompt, type CharacterStore } from '@ema-agent/characters';
 import { createCompact } from '@ema-agent/compact';
 import { gitSummary } from '@ema-agent/git';
-import { createLanguageModel, type ContentPart } from '@ema-agent/llm';
+import { createLlmCall, createLlmCompletion, type ContentPart } from '@ema-agent/llm';
 import { prepareNarrativeRecall } from '@ema-agent/narrative';
 import { permissionAskTimeoutSetting } from '@ema-agent/permission';
 import { DEFAULT_SESSION_TITLE, generateSessionTitle } from '@ema-agent/session';
-import type { CallVision } from '@ema-agent/knowledge';
 import type { SettingsStore } from '@ema-agent/settings';
 import type { StageEngine } from '@ema-agent/stage';
 import { AttachmentVisionDescriptionsRepo } from '@ema-agent/storage';
@@ -24,7 +23,7 @@ import {
   type TurnReminderScope,
 } from '@ema-agent/turn';
 import { createUsageRecord, reportUsage, type UsageRecorder } from '@ema-agent/usage';
-import { createVisionModel, type VisionImageMime, type VisionTokenUsage } from '@ema-agent/vision';
+import { createVisionCall, type CallVision, type VisionImageMime, type VisionTokenUsage } from '@ema-agent/vision';
 import { ensureScratchpadDir, scratchpadTurnDir } from '../platform/paths.js';
 import type { AppEvent } from '../sse/eventHub.js';
 import type { DatabaseComposition } from './database.js';
@@ -81,7 +80,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
       return {
         providerId: binding.providerId,
         modelId: binding.modelId,
-        vision: createVisionModel(providers.providers.resolveConnection(binding.providerId, 'vision')),
+        vision: createVisionCall(providers.providers.resolveConnection(binding.providerId, 'vision'), binding.modelId),
       };
     } catch {
       // 绑定存在但能力被禁用/缺 key：降级链缺省，由 prepareTurn 诚实报降级。
@@ -102,8 +101,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
         const bytes = await fs.promises.readFile(image.imagePath);
         const startedAt = Date.now();
         // 描述指令用 vision 包内置的 caption 任务文本，不在装配层另写一份。
-        const result = await selected.vision.analyze({
-          model: selected.modelId,
+        const result = await selected.vision({
           images: [{
             kind: 'bytes',
             bytes: new Uint8Array(bytes),
@@ -123,8 +121,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     const selected = resolveVision();
     if (!selected) throw new Error('未配置 vision 模型绑定，无法描述图片');
     const startedAt = Date.now();
-    const result = await selected.vision.analyze({
-      model: selected.modelId,
+    const result = await selected.vision({
       images: [{ kind: 'base64', data: image.data, mimeType: image.mimeType as VisionImageMime }],
       task: 'caption',
     });
@@ -139,7 +136,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     if (!selected) return undefined;
     return async (request) => {
       const startedAt = Date.now();
-      const result = await selected.vision.analyze({ ...request, model: selected.modelId });
+      const result = await selected.vision(request);
       recordVisionUsage(database.usageRecorder, selected.providerId, selected.modelId, startedAt, result.usage);
       return result;
     };
@@ -195,13 +192,12 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     generatingTitles.add(sessionId);
     void (async () => {
       try {
-        const llm = createLanguageModel(providers.providers.resolveConnection(binding.providerId, 'llm'));
+        const callLlm = createLlmCall(providers.providers.resolveConnection(binding.providerId, 'llm'), binding.modelId);
         const title = await generateSessionTitle(query, async prompt => {
-          const completion = await llm.complete({
-            model: binding.modelId,
+          const completion = await createLlmCompletion(callLlm({
             messages: [{ role: 'user', content: [{ type: 'text', text: prompt }] }],
             maxOutputTokens: 64,
-          });
+          }));
           const text = completion.blocks
             .filter(block => block.type === 'text')
             .map(block => block.text)

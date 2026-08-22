@@ -1,7 +1,7 @@
 // 验证 AgentLoop 的调用准备、输出恢复（升级/续写）、空转软引导与工具持久化握手。
 
 import { describe, expect, it, vi } from 'vitest';
-import type { LanguageModel, LlmRequest, LlmTokenUsage, Message } from '@ema-agent/llm';
+import type { CallLlm, LlmRequest, LlmTokenUsage, Message } from '@ema-agent/llm';
 import { ContextWindowExceededError } from '@ema-agent/llm';
 import type { StreamingToolExecutor, ToolResult } from '@ema-agent/tools';
 import { runAgentLoop } from '../agentLoop.js';
@@ -20,13 +20,9 @@ class TestBudget implements AgentBudget {
 }
 
 function model(
-  stream: LanguageModel['stream'],
-): LanguageModel {
-  return {
-    protocol: 'openai-llm',
-    stream,
-    complete: vi.fn(),
-  } as unknown as LanguageModel;
+  stream: CallLlm,
+): CallLlm {
+  return stream;
 }
 
 function idleExecutor(): StreamingToolExecutor {

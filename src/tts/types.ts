@@ -31,9 +31,8 @@ export interface TtsProviderVoice {
 
 export type TtsVoice = TtsVoiceReference | TtsProviderVoice;
 
-/** 单次文本转语音请求；切句、超时、重试和归档均由上层拥有。 */
+/** 单次文本转语音请求；模型在创建点冻结，切句、超时、重试和归档均由上层拥有。 */
 export interface TtsRequest {
-  readonly model: string;
   readonly text: string;
   readonly voice: TtsVoice;
   readonly format?: TtsAudioFormat;
@@ -41,6 +40,22 @@ export interface TtsRequest {
   readonly speed?: number;
   readonly signal?: AbortSignal;
 }
+
+/**
+ * 逐句合成调用：执行一次协议合成，返回以唯一 done 结束的中立音频流。
+ * 由 createTtsCall(connection, modelId) 创建，连接与模型在创建点冻结；
+ * voice 是 TtsVoiceRegistrar 的异步产出，创建时尚不存在，因此随请求传入。
+ */
+export type CallTts = (request: TtsRequest) => AsyncIterable<TtsStreamEvent>;
+
+/**
+ * 音色注册调用：本地协议直通参考音频，云端协议上传注册并返回声音标识。
+ * 由 createTtsVoiceRegistrar(connection, modelId) 创建，连接与目标模型在创建点冻结。
+ */
+export type TtsVoiceRegistrar = (
+  reference: TtsVoiceReference,
+  signal?: AbortSignal,
+) => Promise<TtsVoice>;
 
 export type TtsStreamEvent =
   | {
@@ -54,11 +69,10 @@ export type TtsStreamEvent =
       readonly firstByteMs: number;
     };
 
-/** 私有协议实现交给唯一创建入口的执行形状。 */
+/** 私有协议实现交给两个创建入口的执行形状；模型随创建点冻结进闭包。 */
 export interface TtsProtocolImplementation {
   prepareVoice(
     reference: TtsVoiceReference,
-    model: string,
     signal?: AbortSignal,
   ): Promise<TtsVoice>;
   synthesize(request: TtsRequest): AsyncIterable<TtsStreamEvent>;

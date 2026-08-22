@@ -1,7 +1,7 @@
 // 依次执行阈值判断、微压缩、安全切割、摘要压缩和 Session 级失败熔断。
 
 import { randomUUID } from 'node:crypto';
-import type { LanguageModel, Message } from '@ema-agent/llm';
+import type { CallLlm, Message } from '@ema-agent/llm';
 import { estimateMessagesTokens } from '@ema-agent/token';
 import { fitCompactHistory } from './budget.js';
 import { runMacroCompact } from './macroCompact.js';
@@ -25,7 +25,7 @@ const MIN_SUMMARY_BUDGET_TOKENS = 256;
  * Claude 风格的函数管线，也避免把跨调用状态藏进一个大型 Manager 类。
  */
 export function createCompact(
-  llm: LanguageModel,
+  callLlm: CallLlm,
   overrides: Partial<CompactSettings> = {},
 ): (request: CompactRequest) => Promise<CompactResult> {
   const defaults = { ...DEFAULT_COMPACT_SETTINGS, ...overrides };
@@ -33,7 +33,7 @@ export function createCompact(
 
   return (request) => compactMessages({
     request,
-    llm,
+    callLlm,
     defaults,
     consecutiveFailures,
   });
@@ -41,7 +41,7 @@ export function createCompact(
 
 async function compactMessages(args: {
   readonly request: CompactRequest;
-  readonly llm: LanguageModel;
+  readonly callLlm: CallLlm;
   readonly defaults: Readonly<CompactSettings>;
   readonly consecutiveFailures: Map<string, number>;
 }): Promise<CompactResult> {
@@ -114,9 +114,7 @@ async function compactMessages(args: {
   let macro: Awaited<ReturnType<typeof runMacroCompact>>;
   try {
     macro = await runMacroCompact({
-      llm: args.llm,
-      providerId: request.providerId,
-      model: request.model,
+      callLlm: args.callLlm,
       executionProfile: request.executionProfile,
       toCompact: head,
       modelContextWindow: request.contextWindow,

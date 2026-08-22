@@ -1,5 +1,7 @@
 // 负责单个知识库的文档写入、重嵌入、混合检索与内存向量索引。
 
+import type { CallRerank } from '@ema-agent/rerank';
+import type { CallVision } from '@ema-agent/vision';
 import type { EmbeddingSpace } from '@ema-agent/embed';
 import type { AssetUsage, ChunkPage } from '@ema-agent/storage';
 import { DocumentAssetCursorError } from '@ema-agent/storage';
@@ -17,8 +19,6 @@ import type {
 import type { KnowledgeStore } from './store/store.js';
 import type {
   CallEmbed,
-  CallRerank,
-  CallVision,
 } from './types.js';
 import type { VectorIndex } from './vector-index/vector-index.js';
 import { createVectorIndex } from './vector-index/factory.js';

@@ -3,7 +3,7 @@ import { RerankError } from '../errors.js';
 import type { RerankConnection, RerankRequest, RerankResult } from '../types.js';
 
 export function createCohereRerankProtocol(
-  connection: RerankConnection,
+  connection: RerankConnection, modelId: string,
 ): (request: RerankRequest & { readonly topK: number }) => Promise<RerankResult> {
   const baseUrl = (connection.baseUrl ?? 'https://api.cohere.com/v2').replace(/\/+$/, '');
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -14,7 +14,7 @@ export function createCohereRerankProtocol(
       method: 'POST',
       headers,
       body: JSON.stringify({
-        model: request.model,
+        model: modelId,
         query: request.query,
         documents: request.documents,
         top_n: request.topK,

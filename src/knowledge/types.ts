@@ -1,10 +1,9 @@
 import type { EmbeddingRequest, EmbeddingResult, EmbeddingSpace } from '@ema-agent/embed';
-import type { RerankRequest, RerankResult } from '@ema-agent/rerank';
-import type { VisionRequest, VisionResult } from '@ema-agent/vision';
 
 // ── 模型调用（装配层解析 model_bindings 后注入）─────────────────────────────────
 // 模型身份（providerId/modelId）在装配层冻结进闭包，调用方不可见、不可选；
 // usage 由装配层在闭包内从结果记录，knowledge 包不感知用量。
+// rerank/vision 调用直接使用 @ema-agent/rerank、@ema-agent/vision 的公共 CallXxx 类型，本包不另定义。
 
 export interface CallEmbedResult extends EmbeddingResult {
   /** 本次响应的向量空间身份（绑定 provider+model+dim），由装配层构造。 */
@@ -12,13 +11,7 @@ export interface CallEmbedResult extends EmbeddingResult {
 }
 
 /** 单次 embed 调用；每次调用（含重试的每次成功尝试）在装配层各记一条 usage。 */
-export type CallEmbed = (request: Omit<EmbeddingRequest, 'model'>) => Promise<CallEmbedResult>;
-
-/** 单次 rerank 调用；usage 语义同 CallEmbed。 */
-export type CallRerank = (request: Omit<RerankRequest, 'model'>) => Promise<RerankResult>;
-
-/** 单次 vision 调用；usage 语义同 CallEmbed。 */
-export type CallVision = (request: Omit<VisionRequest, 'model'>) => Promise<VisionResult>;
+export type CallEmbed = (request: EmbeddingRequest) => Promise<CallEmbedResult>;
 
 // ── 文档块（reader 输出）──────────────────────────────────────────────────────
 export interface DocumentSourceRef {

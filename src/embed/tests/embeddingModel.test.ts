@@ -1,6 +1,6 @@
 // 测试 Embedding 公共入口的协议转换、向量校验、归一化和空间身份。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createEmbeddingModel } from '../embeddingModel.js';
+import { createEmbedCall } from '../embeddingModel.js';
 import { createEmbeddingSpace } from '../embeddingSpace.js';
 
 const fetchMock = vi.fn<typeof fetch>();
@@ -12,7 +12,7 @@ beforeEach(() => {
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe('EmbeddingModel', () => {
+describe('CallEmbed', () => {
   it('调用 OpenAI 协议并按原输入顺序返回 L2 向量', async () => {
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
       data: [
@@ -20,13 +20,13 @@ describe('EmbeddingModel', () => {
         { index: 0, embedding: [3, 4] },
       ],
     }), { status: 200 }));
-    const model = createEmbeddingModel({
+    const embed = createEmbedCall({
       protocol: 'openai-embed',
       apiKey: 'secret',
       baseUrl: 'https://example.test/v1/',
-    });
+    }, 'embed-v1');
 
-    await expect(model.embed({ model: 'embed-v1', texts: ['one', 'two'] })).resolves.toEqual({
+    await expect(embed({ texts: ['one', 'two'] })).resolves.toEqual({
       embeddings: [[0.6, 0.8], [0, 1]],
       dim: 2,
     });
@@ -38,12 +38,12 @@ describe('EmbeddingModel', () => {
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
       embeddings: [{ values: [1, 0] }],
     }), { status: 200 }));
-    const model = createEmbeddingModel({
+    const embed = createEmbedCall({
       protocol: 'gemini-embed',
       apiKey: 'secret',
-    });
+    }, 'text-embedding-004');
 
-    await model.embed({ model: 'text-embedding-004', texts: ['hello'] });
+    await embed({ texts: ['hello'] });
 
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(String(url)).not.toContain('secret');
@@ -54,16 +54,16 @@ describe('EmbeddingModel', () => {
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
       data: [{ index: 0, embedding: [1, 2] }],
     }), { status: 200 }));
-    const model = createEmbeddingModel({ protocol: 'openai-embed' });
+    const embed = createEmbedCall({ protocol: 'openai-embed' }, 'embed-v1');
 
-    await expect(model.embed({ model: 'embed-v1', texts: ['one', 'two'] }))
+    await expect(embed({ texts: ['one', 'two'] }))
       .rejects.toMatchObject({ code: 'embed/invalid_response' });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('空批次不访问远端', async () => {
-    const model = createEmbeddingModel({ protocol: 'openai-embed' });
-    await expect(model.embed({ model: 'embed-v1', texts: [] })).resolves.toEqual({
+    const embed = createEmbedCall({ protocol: 'openai-embed' }, 'embed-v1');
+    await expect(embed({ texts: [] })).resolves.toEqual({
       embeddings: [],
       dim: 0,
     });

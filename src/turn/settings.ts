@@ -10,6 +10,7 @@ export const WORKSPACE_INSTRUCTION_FILE_CANDIDATES = ['CLAUDE.md', 'AGENTS.md'] 
 
 export const workspaceInstructionFilesSetting = defineSetting<string[]>({
   key: 'workspace.instructionFiles',
+  description: '作为工作区指令注入 Context 的候选文件（用户可多选，顺序即拼接顺序）。',
   apply: 'nextTurn',
   defaultValue: ['CLAUDE.md', 'AGENTS.md'],
   schema: z.array(z.enum(WORKSPACE_INSTRUCTION_FILE_CANDIDATES)).max(4),

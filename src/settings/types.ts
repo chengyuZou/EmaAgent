@@ -13,6 +13,8 @@ export type SettingApplyPolicy =
 export interface SettingDefinition<T> {
   /** 稳定业务键，也是 SQLite settings 表的主键。点号前缀分组（如 `memory.maintenance.decayAfterDays`）。 */
   readonly key: string;
+  /** 给前端设置页展示的中文说明（非空）；写清楚这个参数是干什么的。 */
+  readonly description: string;
   /** 新值何时进入业务（UI 据此显示"立即/下轮/重启生效"）。 */
   readonly apply: SettingApplyPolicy;
   /** zod schema：单 key 校验 + 类型推导。safeParse 失败视为坏值/非法输入。 */
@@ -57,6 +59,8 @@ export interface SettingDefinition<T> {
  */
 export interface SettingGroup {
   readonly id: string;
+  /** 给前端设置页展示的中文说明（非空）；说明这组设置是干什么的、成员间的跨字段约束。 */
+  readonly description: string;
   /** 组内各 key 的完整定义（含 defaultValue，用于组装时兜底）。 */
   readonly definitions: readonly SettingDefinition<unknown>[];
   /** 整组对象 schema（含 refine）。输入形状为 `{ [key]: 已解码值 }`。 */
@@ -66,6 +70,8 @@ export interface SettingGroup {
 /** 暴露给设置界面的只读描述：UI 从 schema 生成表单。 */
 export interface SettingDescriptor {
   key: string;
+  /** 前端设置页展示的中文说明。 */
+  description: string;
   apply: SettingApplyPolicy;
   schema: z.ZodType<unknown, unknown>;
   defaultValue: unknown;
@@ -73,12 +79,16 @@ export interface SettingDescriptor {
 }
 
 export function defineSetting<T>(definition: SettingDefinition<T>): SettingDefinition<T> {
+  if (definition.description.trim().length === 0) {
+    throw new Error(`Setting description must not be empty: ${definition.key}`);
+  }
   return definition;
 }
 
 export function describeSetting<T>(definition: SettingDefinition<T>): SettingDescriptor {
   return {
     key: definition.key,
+    description: definition.description,
     apply: definition.apply,
     schema: definition.schema,
     defaultValue: definition.defaultValue,

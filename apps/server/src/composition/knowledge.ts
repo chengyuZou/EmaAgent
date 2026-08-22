@@ -1,13 +1,11 @@
 // 知识库一族：KbManager（注册表/激活/摄入/检索）与其绑定模型调用的惰性解析。
 // 模型身份在闭包创建时冻结；usage 在闭包内"调接口得结果 → 从结果记录"，
 // knowledge 业务包不感知 providerId/modelId，也不感知用量。
-import { createEmbeddingModel, createEmbeddingSpace } from '@ema-agent/embed';
+import { createEmbedCall, createEmbeddingSpace } from '@ema-agent/embed';
 import {
   KbManager,
   readKnowledgeRetrievalSettings,
   type CallEmbed,
-  type CallRerank,
-  type CallVision,
   type KnowledgeSearch,
 } from '@ema-agent/knowledge';
 import {
@@ -16,11 +14,11 @@ import {
   type ModelBindings,
   type Providers,
 } from '@ema-agent/providers';
-import { createReranker } from '@ema-agent/rerank';
+import { createRerankCall, type CallRerank } from '@ema-agent/rerank';
 import type { SettingsStore } from '@ema-agent/settings';
 import { KbActivationsRepo, KbRegistryRepo, type Database } from '@ema-agent/storage';
 import { createUsageRecord, reportUsage, type UsageRecorder } from '@ema-agent/usage';
-import { createVisionCall } from '@ema-agent/vision';
+import { createVisionCall, type CallVision } from '@ema-agent/vision';
 
 export interface KnowledgeComposition {
   readonly kb: KbManager;
@@ -44,10 +42,10 @@ export function openKnowledge(
     const binding = modelBindings.get('kb-embed');
     if (!binding) return undefined;
     try {
-      const model = createEmbeddingModel(providers.resolveConnection(binding.providerId, 'embed'));
+      const callEmbed = createEmbedCall(providers.resolveConnection(binding.providerId, 'embed'), binding.modelId);
       return async (request) => {
         const startedAt = Date.now();
-        const result = await model.embed({ ...request, model: binding.modelId });
+        const result = await callEmbed(request);
         reportModelUsage(usageRecorder, 'embed', binding, startedAt, {
           inputTokens: result.usage?.inputTokens ?? null,
         });
@@ -69,10 +67,10 @@ export function openKnowledge(
     const binding = modelBindings.get('kb-rerank');
     if (!binding) return undefined;
     try {
-      const reranker = createReranker(providers.resolveConnection(binding.providerId, 'rerank'));
+      const callRerank = createRerankCall(providers.resolveConnection(binding.providerId, 'rerank'), binding.modelId);
       return async (request) => {
         const startedAt = Date.now();
-        const result = await reranker.rerank({ ...request, model: binding.modelId });
+        const result = await callRerank(request);
         reportModelUsage(usageRecorder, 'rerank', binding, startedAt, {
           inputTokens: result.usage?.totalTokens ?? null,
         });

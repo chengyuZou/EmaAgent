@@ -1,5 +1,6 @@
 // 协调命名知识库、文档任务与当前活跃库检索，对外隐藏数据库和队列实现。
 
+import type { CallRerank } from '@ema-agent/rerank';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -28,10 +29,9 @@ import {
   DEFAULT_KNOWLEDGE_RETRIEVAL_SETTINGS,
   type KnowledgeRetrievalSettings,
 } from './settings.js';
+import type { CallVision } from '@ema-agent/vision';
 import type {
   CallEmbed,
-  CallRerank,
-  CallVision,
 } from './types.js';
 import { KnowledgeStore } from './store/store.js';
 import type {

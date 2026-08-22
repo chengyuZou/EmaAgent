@@ -44,6 +44,7 @@
     "@ema-agent/token": "workspace:*",
     "@ema-agent/tools": "workspace:*",
     "@ema-agent/ui": "workspace:*",
+    "@ema-agent/vision": "workspace:*",
     "diff": "^9.0.0",
     "glob": "^11.0.0",
     "lru-cache": "^10.4.3",

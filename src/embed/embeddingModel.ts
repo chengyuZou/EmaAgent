@@ -1,54 +1,46 @@
-// 创建一个绑定协议连接的 Embedding 模型，并统一校验和归一化外部向量。
+// 创建点冻结连接与模型身份的 Embedding 调用入口，并统一校验和归一化外部向量。
 import { EmbeddingError } from './errors.js';
 import { createGeminiEmbeddingProtocol } from './protocols/gemini.js';
 import { createOpenAiEmbeddingProtocol } from './protocols/openAi.js';
 import type {
+  CallEmbed,
   EmbeddingConnection,
-  EmbeddingRequest,
   EmbeddingResult,
   RawEmbeddingResult,
 } from './types.js';
 
-export interface EmbeddingModel {
-  readonly protocol: EmbeddingConnection['protocol'];
-  embed(request: EmbeddingRequest): Promise<EmbeddingResult>;
-}
-
 /**
- * Embedding 唯一创建入口。连接在创建时绑定；每次请求只携带模型、文本和取消信号。
+ * Embedding 唯一创建入口。连接与 modelId 在创建时冻结；
+ * 每次调用只携带文本和取消信号。
  */
-export function createEmbeddingModel(connection: EmbeddingConnection): EmbeddingModel {
-  const protocolEmbed = createProtocolEmbed(connection);
-  return {
-    protocol: connection.protocol,
-    async embed(request) {
-      validateRequest(request);
-      if (request.texts.length === 0) return { embeddings: [], dim: 0 };
-      const raw = await protocolEmbed(request);
-      validateResponse(request.texts.length, raw);
-      return {
-        embeddings: raw.embeddings.map(normalizeEmbedding),
-        dim: raw.dim,
-        ...(raw.usage ? { usage: raw.usage } : {}),
-      };
-    },
+export function createEmbedCall(connection: EmbeddingConnection, modelId: string): CallEmbed {
+  if (!modelId.trim()) throw new EmbeddingError('embed/invalid_request', 'Embedding model must not be empty');
+  const protocolEmbed = createProtocolEmbed(connection, modelId);
+  return async (request) => {
+    validateRequest(request.texts);
+    if (request.texts.length === 0) return { embeddings: [], dim: 0 };
+    const raw = await protocolEmbed(request);
+    validateResponse(request.texts.length, raw);
+    return {
+      embeddings: raw.embeddings.map(normalizeEmbedding),
+      dim: raw.dim,
+      ...(raw.usage ? { usage: raw.usage } : {}),
+    };
   };
 }
 
 function createProtocolEmbed(
   connection: EmbeddingConnection,
-): (request: EmbeddingRequest) => Promise<RawEmbeddingResult> {
+  modelId: string,
+): CallEmbed {
   switch (connection.protocol) {
-    case 'openai-embed': return createOpenAiEmbeddingProtocol(connection);
-    case 'gemini-embed': return createGeminiEmbeddingProtocol(connection);
+    case 'openai-embed': return createOpenAiEmbeddingProtocol(connection, modelId);
+    case 'gemini-embed': return createGeminiEmbeddingProtocol(connection, modelId);
   }
 }
 
-function validateRequest(request: EmbeddingRequest): void {
-  if (!request.model.trim()) {
-    throw new EmbeddingError('embed/invalid_request', 'Embedding model must not be empty');
-  }
-  if (request.texts.some((text) => text.length === 0)) {
+function validateRequest(texts: readonly string[]): void {
+  if (texts.some((text) => text.length === 0)) {
     throw new EmbeddingError('embed/invalid_request', 'Embedding texts must not contain empty items');
   }
 }

@@ -10,12 +10,14 @@ export interface EmbeddingConnection {
   readonly baseUrl?: string;
 }
 
-/** 单次 Embedding 请求；路由身份、重试和 Usage 归上层。 */
+/** 单次 Embedding 请求；模型身份在创建点冻结（CallEmbed 创建时钉死），重试和 Usage 归上层。 */
 export interface EmbeddingRequest {
-  readonly model: string;
   readonly texts: readonly string[];
   readonly signal?: AbortSignal;
 }
+
+/** 创建点冻结连接与模型身份的单次 embed 调用。 */
+export type CallEmbed = (request: EmbeddingRequest) => Promise<EmbeddingResult>;
 
 /** Provider 报告的嵌入用量；不是所有协议都返回（Gemini 无 usage）。 */
 export interface EmbeddingUsage {

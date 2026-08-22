@@ -8,7 +8,7 @@
 runAgentLoop(input)
   ├─ prepareIteration({ messages })
   │    └─ 外层返回中立 LlmRequest 与可能被 Compact 改写的工作历史
-  ├─ LanguageModel.stream(request)
+  ├─ CallLlm(request)                  // 模型身份在装配层创建点冻结
   ├─ 持续发出 text / thinking / tool_use / usage 事实
   ├─ tool_use 完整事件被消费并持久化
   ├─ generator 恢复后才启动 StreamingToolExecutor

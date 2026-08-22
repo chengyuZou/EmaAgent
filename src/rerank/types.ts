@@ -10,14 +10,16 @@ export interface RerankConnection {
   readonly baseUrl?: string;
 }
 
-/** 单次 Rerank 请求；模型返回的 index 对应 documents 的原始下标。 */
+/** 单次 Rerank 请求；模型身份在创建点冻结，模型返回的 index 对应 documents 的原始下标。 */
 export interface RerankRequest {
-  readonly model: string;
   readonly query: string;
   readonly documents: readonly string[];
   readonly topK?: number;
   readonly signal?: AbortSignal;
 }
+
+/** 创建点冻结连接与模型身份的单次 rerank 调用。 */
+export type CallRerank = (request: RerankRequest) => Promise<RerankResult>;
 
 export interface RerankItem {
   readonly index: number;

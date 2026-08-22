@@ -1,62 +1,59 @@
-// 创建一个绑定协议连接的文本转语音入口，并统一校验中立请求和流终态。
+// TTS 的两个创建入口：音色注册与逐句合成，协议连接与模型在创建点冻结。
 import { TtsError } from './errors.js';
 import { createDashscopeTtsProtocol } from './protocols/dashscope/index.js';
 import { createGptSoVitsTtsProtocol } from './protocols/gptSoVits.js';
 import { createOpenAiTtsProtocol } from './protocols/openAi.js';
 import type {
+  CallTts,
   TtsConnection,
   TtsProtocolImplementation,
   TtsRequest,
   TtsStreamEvent,
-  TtsVoice,
   TtsVoiceReference,
+  TtsVoiceRegistrar,
 } from './types.js';
 
-export interface TextToSpeech {
-  readonly protocol: TtsConnection['protocol'];
-  /** 本地协议原样返回参考音频，云端协议在这里注册声音。 */
-  prepareVoice(
-    reference: TtsVoiceReference,
-    model: string,
-    signal?: AbortSignal,
-  ): Promise<TtsVoice>;
-  /** 执行一次已切分文本的语音合成。 */
-  synthesize(request: TtsRequest): AsyncIterable<TtsStreamEvent>;
-}
-
-/** TTS 唯一创建入口；不保存 Provider Map、Session、Usage 或重试状态。 */
-export function createTextToSpeech(connection: TtsConnection): TextToSpeech {
-  const implementation = createProtocol(connection);
-  return {
-    protocol: connection.protocol,
-    prepareVoice(reference, model, signal) {
-      validateReference(reference, model);
-      return implementation.prepareVoice(reference, model, signal);
-    },
-    synthesize(request) {
-      validateRequest(request);
-      return validateStream(implementation.synthesize(request));
-    },
+/** 音色注册创建入口；不保存 Provider Map、Session、Usage 或重试状态。 */
+export function createTtsVoiceRegistrar(
+  connection: TtsConnection,
+  modelId: string,
+): TtsVoiceRegistrar {
+  const implementation = createProtocol(connection, requireModelId(modelId));
+  return (reference, signal) => {
+    validateReference(reference);
+    return implementation.prepareVoice(reference, signal);
   };
 }
 
-function createProtocol(connection: TtsConnection): TtsProtocolImplementation {
+/** 逐句合成创建入口；返回的音频流必须经公共校验以唯一 done 结束。 */
+export function createTtsCall(connection: TtsConnection, modelId: string): CallTts {
+  const implementation = createProtocol(connection, requireModelId(modelId));
+  return request => {
+    validateRequest(request);
+    return validateStream(implementation.synthesize(request));
+  };
+}
+
+function createProtocol(connection: TtsConnection, modelId: string): TtsProtocolImplementation {
   switch (connection.protocol) {
-    case 'openai-tts': return createOpenAiTtsProtocol(connection);
-    case 'gpt-sovits-tts': return createGptSoVitsTtsProtocol(connection);
-    case 'dashscope-tts': return createDashscopeTtsProtocol(connection);
+    case 'openai-tts': return createOpenAiTtsProtocol(connection, modelId);
+    case 'gpt-sovits-tts': return createGptSoVitsTtsProtocol(connection, modelId);
+    case 'dashscope-tts': return createDashscopeTtsProtocol(connection, modelId);
   }
 }
 
-function validateReference(reference: TtsVoiceReference, model: string): void {
-  if (!model.trim()) throw new TtsError('tts/invalid_request', 'TTS model must not be empty');
+function requireModelId(modelId: string): string {
+  if (!modelId.trim()) throw new TypeError('TTS modelId must not be empty');
+  return modelId;
+}
+
+function validateReference(reference: TtsVoiceReference): void {
   if (!reference.audioPath.trim()) {
     throw new TtsError('tts/invalid_request', 'TTS reference audio path must not be empty');
   }
 }
 
 function validateRequest(request: TtsRequest): void {
-  if (!request.model.trim()) throw new TtsError('tts/invalid_request', 'TTS model must not be empty');
   if (!request.text.trim()) throw new TtsError('tts/invalid_request', 'TTS text must not be empty');
   if (request.sampleRate !== undefined && (!Number.isSafeInteger(request.sampleRate) || request.sampleRate <= 0)) {
     throw new TtsError('tts/invalid_request', 'TTS sampleRate must be a positive integer');

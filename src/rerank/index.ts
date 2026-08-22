@@ -1,8 +1,8 @@
-export { createReranker } from './reranker.js';
-export type { Reranker } from './reranker.js';
+export { createRerankCall } from './reranker.js';
 export { RerankError } from './errors.js';
 export type { RerankErrorCode } from './errors.js';
 export type {
+  CallRerank,
   RerankConnection,
   RerankItem,
   RerankProtocol,

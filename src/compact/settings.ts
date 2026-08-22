@@ -22,6 +22,7 @@ export const COMPACT_GROUP = 'context.compact';
 
 export const compactEnabledSetting = defineSetting<boolean>({
   key: 'context.compact.enabled',
+  description: '自动压缩开关：达到预算时自动压缩上下文。',
   apply: 'nextTurn',
   defaultValue: true,
   schema: z.boolean(),
@@ -30,6 +31,7 @@ export const compactEnabledSetting = defineSetting<boolean>({
 
 export const compactBufferTokensSetting = defineSetting<number>({
   key: 'context.compact.bufferTokens',
+  description: '压缩前预留的缓冲 token，避免临界值频繁触发压缩。',
   apply: 'nextTurn',
   defaultValue: 13_000,
   schema: z.number().int().min(1_000).max(64_000),
@@ -38,6 +40,7 @@ export const compactBufferTokensSetting = defineSetting<number>({
 
 export const compactDefaultReservedOutputTokensSetting = defineSetting<number>({
   key: 'context.compact.defaultReservedOutputTokens',
+  description: '压缩后默认保留的输出 token 预算（不能大于最大保留）。',
   apply: 'nextTurn',
   defaultValue: 8_000,
   schema: z.number().int().min(1_000).max(64_000),
@@ -46,6 +49,7 @@ export const compactDefaultReservedOutputTokensSetting = defineSetting<number>({
 
 export const compactMaximumReservedOutputTokensSetting = defineSetting<number>({
   key: 'context.compact.maximumReservedOutputTokens',
+  description: '压缩后最多保留的输出 token 预算。',
   apply: 'nextTurn',
   defaultValue: 20_000,
   schema: z.number().int().min(1_000).max(128_000),
@@ -54,6 +58,7 @@ export const compactMaximumReservedOutputTokensSetting = defineSetting<number>({
 
 export const compactKeepRecentToolResultsSetting = defineSetting<number>({
   key: 'context.compact.keepRecentToolResults',
+  description: '压缩时保留的最近工具结果条数。',
   apply: 'nextTurn',
   defaultValue: 6,
   schema: z.number().int().min(1).max(32),
@@ -62,6 +67,7 @@ export const compactKeepRecentToolResultsSetting = defineSetting<number>({
 
 export const compactMaximumConsecutiveFailuresSetting = defineSetting<number>({
   key: 'context.compact.maximumConsecutiveFailures',
+  description: '连续压缩失败的最大次数；超过后熔断暂停自动压缩。',
   apply: 'nextTurn',
   defaultValue: 3,
   schema: z.number().int().min(1).max(10),
@@ -83,6 +89,7 @@ export const COMPACT_SETTINGS = [
  */
 export const compactGroup: SettingGroup = {
   id: COMPACT_GROUP,
+  description: '自动压缩预算与保留窗口：defaultReservedOutputTokens 不能大于 maximumReservedOutputTokens。',
   definitions: COMPACT_SETTINGS,
   schema: z
     .object({

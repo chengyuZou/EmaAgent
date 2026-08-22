@@ -3,8 +3,9 @@
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import type { EmbeddingSpace } from '@ema-agent/embed';
+import type { CallVision } from '@ema-agent/vision';
 import type { DocumentAsset, DocumentChunk, IngestOptions, IngestResult } from '../types.js';
-import type { CallEmbed, CallVision } from '../types.js';
+import type { CallEmbed } from '../types.js';
 import type { KnowledgeStore } from '../store/store.js';
 import { EXT_TO_MIME, parseDocument } from '../parse/parse.js';
 import { buildPreview } from '../preview/buildPreview.js';

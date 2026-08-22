@@ -6,9 +6,9 @@
 
 ```text
 Provider / 接线层
-  └─ createReranker({ protocol, apiKey, baseUrl })
-       └─ rerank({ model, query, documents, topK, signal })
-            └─ { results: [{ index, score }] }
+  └─ createRerankCall({ protocol, apiKey, baseUrl }, modelId)   // 连接与模型在创建点冻结
+       └─ CallRerank({ query, documents, topK, signal })
+            └─ { results: [{ index, score }], usage? }
 ```
 
 `score` 保留 Provider 的原始相关度语义。包内只负责有限值、下标、重复项和结果数量校验，以及降序稳定排列；禁止按每批最小值和最大值重新映射分数，否则同一文档的阈值意义会随同批候选变化。

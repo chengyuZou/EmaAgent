@@ -1,7 +1,7 @@
 // 验证 SubagentSpawner 只编排 AgentRun 生命周期与同一 AgentLoop。
 
 import { describe, expect, it, vi } from 'vitest';
-import type { LanguageModel } from '@ema-agent/llm';
+import type { CallLlm } from '@ema-agent/llm';
 import type { StreamingToolExecutor } from '@ema-agent/tools';
 import { SubagentSpawner } from '../subagentSpawner.js';
 import type { AgentBudget, AgentLoopInput } from '../types.js';
@@ -46,17 +46,14 @@ describe('SubagentSpawner', () => {
     const preparationGate = new Promise<void>((resolve) => { releasePreparation = resolve; });
     const prepareSubagent = vi.fn(async (input): Promise<AgentLoopInput> => {
       await preparationGate;
-      const llm = {
-        protocol: 'openai-llm',
-        stream: () => (async function* () {
-          yield { type: 'text_delta' as const, blockIndex: 0, delta: 'answer' };
-          yield { type: 'done' as const, stopReason: 'end_turn' as const };
-        })(),
-      } as unknown as LanguageModel;
+      const llm: CallLlm = () => (async function* () {
+        yield { type: 'text_delta' as const, blockIndex: 0, delta: 'answer' };
+        yield { type: 'done' as const, stopReason: 'end_turn' as const };
+      })();
       return {
         messages: [{ role: 'user', content: input.prompt }],
         prepareIteration: async ({ messages }) => ({
-          request: { model: 'test', messages },
+          request: { messages },
           messages,
         }),
         llm,

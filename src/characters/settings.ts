@@ -8,6 +8,7 @@ export const CHARACTER_PROMPT_LIMITS_GROUP = 'characters.promptLimits';
 
 export const characterPromptMaxBlocksSetting = defineSetting<number>({
   key: 'characters.prompt.maxBlocks',
+  description: '角色 Prompt 的最大块数。',
   apply: 'immediate',
   defaultValue: 32,
   schema: z.number().int().min(1).max(128),
@@ -16,6 +17,7 @@ export const characterPromptMaxBlocksSetting = defineSetting<number>({
 
 export const characterPromptMaxBlockNameCharsSetting = defineSetting<number>({
   key: 'characters.prompt.maxBlockNameChars',
+  description: '角色 Prompt 单块名称的最大字符数。',
   apply: 'immediate',
   defaultValue: 80,
   schema: z.number().int().min(1).max(200),
@@ -24,6 +26,7 @@ export const characterPromptMaxBlockNameCharsSetting = defineSetting<number>({
 
 export const characterPromptMaxBlockCharsSetting = defineSetting<number>({
   key: 'characters.prompt.maxBlockChars',
+  description: '角色 Prompt 单块正文的最大字符数（不能大于总字符）。',
   apply: 'immediate',
   defaultValue: 16_000,
   schema: z.number().int().min(1_000).max(64_000),
@@ -32,6 +35,7 @@ export const characterPromptMaxBlockCharsSetting = defineSetting<number>({
 
 export const characterPromptMaxTotalCharsSetting = defineSetting<number>({
   key: 'characters.prompt.maxTotalChars',
+  description: '角色 Prompt 总字符上限。',
   apply: 'immediate',
   defaultValue: 64_000,
   schema: z.number().int().min(1_000).max(256_000),
@@ -40,6 +44,7 @@ export const characterPromptMaxTotalCharsSetting = defineSetting<number>({
 
 export const characterLive2dMaxRuntimeConfigBytesSetting = defineSetting<number>({
   key: 'characters.live2d.maxRuntimeConfigBytes',
+  description: 'Live2D 运行时配置字节上限。',
   apply: 'immediate',
   defaultValue: 1024 * 1024,
   schema: z.number().int().min(1024).max(16 * 1024 * 1024),
@@ -47,6 +52,7 @@ export const characterLive2dMaxRuntimeConfigBytesSetting = defineSetting<number>
 
 export const characterLive2dMaxZipEntriesSetting = defineSetting<number>({
   key: 'characters.live2d.maxZipEntries',
+  description: 'Live2D ZIP 条目数上限。',
   apply: 'immediate',
   defaultValue: 500,
   schema: z.number().int().min(10).max(10_000),
@@ -54,6 +60,7 @@ export const characterLive2dMaxZipEntriesSetting = defineSetting<number>({
 
 export const characterLive2dMaxZipTotalBytesSetting = defineSetting<number>({
   key: 'characters.live2d.maxZipTotalBytes',
+  description: 'Live2D ZIP 解压总字节上限。',
   apply: 'immediate',
   defaultValue: 200 * 1024 * 1024,
   schema: z.number().int().min(10 * 1024 * 1024).max(2 * 1024 * 1024 * 1024),
@@ -61,6 +68,7 @@ export const characterLive2dMaxZipTotalBytesSetting = defineSetting<number>({
 
 export const characterIllustrationMaxBytesSetting = defineSetting<number>({
   key: 'characters.illustration.maxBytes',
+  description: '角色插画文件字节上限。',
   apply: 'immediate',
   defaultValue: 20 * 1024 * 1024,
   schema: z.number().int().min(1024 * 1024).max(256 * 1024 * 1024),
@@ -68,6 +76,7 @@ export const characterIllustrationMaxBytesSetting = defineSetting<number>({
 
 export const characterVoiceMaxBytesSetting = defineSetting<number>({
   key: 'characters.voice.maxBytes',
+  description: '角色语音文件字节上限。',
   apply: 'immediate',
   defaultValue: 25 * 1024 * 1024,
   schema: z.number().int().min(1024 * 1024).max(256 * 1024 * 1024),
@@ -75,6 +84,7 @@ export const characterVoiceMaxBytesSetting = defineSetting<number>({
 
 export const characterVoiceMaxDurationMsSetting = defineSetting<number>({
   key: 'characters.voice.maxDurationMs',
+  description: '角色语音最大时长（毫秒）。',
   apply: 'immediate',
   defaultValue: 10 * 60 * 1_000,
   schema: z.number().int().min(1_000).max(60 * 60 * 1_000),
@@ -95,6 +105,7 @@ export const CHARACTER_SETTING_DEFINITIONS = [
 
 export const characterPromptLimitsGroup: SettingGroup = {
   id: CHARACTER_PROMPT_LIMITS_GROUP,
+  description: '角色 Prompt 结构上限：单个 Prompt Block 字符上限不能大于角色 Prompt 总字符上限。',
   definitions: [
     characterPromptMaxBlocksSetting,
     characterPromptMaxBlockNameCharsSetting,

@@ -7,7 +7,7 @@ import type {
 } from '../types.js';
 
 export function createOpenAiEmbeddingProtocol(
-  connection: EmbeddingConnection,
+  connection: EmbeddingConnection, modelId: string,
 ): (request: EmbeddingRequest) => Promise<RawEmbeddingResult> {
   const baseUrl = (connection.baseUrl ?? 'https://api.openai.com/v1').replace(/\/+$/, '');
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -18,7 +18,7 @@ export function createOpenAiEmbeddingProtocol(
       method: 'POST',
       headers,
       body: JSON.stringify({
-        model: request.model,
+        model: modelId,
         input: request.texts,
         encoding_format: 'float',
       }),

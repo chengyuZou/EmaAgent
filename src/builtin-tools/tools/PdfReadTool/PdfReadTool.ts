@@ -2,7 +2,8 @@
 import { open, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
-import { ImageReader, PdfReader, type CallVision, type DocumentBlock } from '@ema-agent/knowledge';
+import { ImageReader, PdfReader, type DocumentBlock } from '@ema-agent/knowledge';
+import type { CallVision } from '@ema-agent/vision';
 import {
   buildTool,
   contextFail,

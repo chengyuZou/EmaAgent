@@ -9,8 +9,6 @@ export type {
 export type {
   CallEmbed,
   CallEmbedResult,
-  CallRerank,
-  CallVision,
 } from './types.js';
 export type { KnowledgeEvent } from './events.js';
 export type {

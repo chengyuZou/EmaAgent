@@ -3,7 +3,8 @@
 
 import { readFile } from 'node:fs/promises';
 import type { VisionImageMime, VisionTask } from '@ema-agent/vision';
-import type { CallVision, DocumentBlock } from '../types.js';
+import type { CallVision } from '@ema-agent/vision';
+import type { DocumentBlock } from '../types.js';
 import type { DocumentReader, ReadResult, ReaderSource } from './base.js';
 import { nextBlockId } from './base.js';
 

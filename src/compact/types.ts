@@ -17,8 +17,6 @@ export interface CompactRequest {
   readonly force?: boolean;
   readonly contextWindow: number;
   readonly maxOutputTokens?: number;
-  readonly providerId: string;
-  readonly model: string;
   readonly signal?: AbortSignal;
   readonly emit?: (event: CompactEvent) => void;
   /** 根 Turn 启动时冻结的设置；不提供时使用构造时默认值。 */

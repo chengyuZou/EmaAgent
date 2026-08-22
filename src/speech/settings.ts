@@ -11,6 +11,7 @@ export interface SpeechSegmentLibraryLimits {
 
 export const speechSegmentMaxFilesSetting = defineSetting<number>({
   key: 'speech.segments.maxFiles',
+  description: '逐句音频片段库的最大文件数量。',
   apply: 'nextOperation',
   defaultValue: 20_000,
   schema: z.number().int().min(100).max(100_000),
@@ -18,6 +19,7 @@ export const speechSegmentMaxFilesSetting = defineSetting<number>({
 
 export const speechSegmentMaxBytesSetting = defineSetting<number>({
   key: 'speech.segments.maxBytes',
+  description: '逐句音频片段库的磁盘字节上限。',
   apply: 'nextOperation',
   defaultValue: 1024 * 1024 * 1024,
   schema: z.number().int().min(64 * 1024 * 1024).max(10 * 1024 * 1024 * 1024),

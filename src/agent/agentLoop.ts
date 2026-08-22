@@ -130,7 +130,7 @@ export async function* runAgentLoop(
       };
 
       try {
-        for await (const event of input.llm.stream(request)) {
+        for await (const event of input.callLlm(request)) {
           receivedResponseEvent = true;
           input.budget.assertWithinLimits();
           switch (event.type) {
