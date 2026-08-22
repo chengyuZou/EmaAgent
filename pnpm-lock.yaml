@@ -475,6 +475,9 @@ importers:
       fflate:
         specifier: ^0.8.2
         version: 0.8.3
+      zod:
+        specifier: ^4
+        version: 4.4.3
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -497,6 +500,9 @@ importers:
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../llm
+      '@ema-agent/memory':
+        specifier: workspace:*
+        version: link:../memory
       '@ema-agent/narrative':
         specifier: workspace:*
         version: link:../narrative
@@ -880,9 +886,6 @@ importers:
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../llm
-      '@ema-agent/session':
-        specifier: workspace:*
-        version: link:../session
       '@ema-agent/settings':
         specifier: workspace:*
         version: link:../settings
@@ -1113,12 +1116,21 @@ importers:
 
   src/speech:
     dependencies:
+      '@ema-agent/settings':
+        specifier: workspace:*
+        version: link:../settings
+      '@ema-agent/storage':
+        specifier: workspace:*
+        version: link:../storage
       '@ema-agent/tts':
         specifier: workspace:*
         version: link:../tts
       '@ema-agent/usage':
         specifier: workspace:*
         version: link:../usage
+      zod:
+        specifier: ^4
+        version: 4.4.3
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -1263,6 +1275,9 @@ importers:
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../llm
+      '@ema-agent/memory':
+        specifier: workspace:*
+        version: link:../memory
       '@ema-agent/narrative':
         specifier: workspace:*
         version: link:../narrative

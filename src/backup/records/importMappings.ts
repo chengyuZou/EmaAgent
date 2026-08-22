@@ -1,29 +1,31 @@
-// 把已校验并冻结的备份 wire 记录投影为 Storage 恢复命令，不把归档类型泄漏进数据库包。
+// 把已校验的 ZIP 记录转换为 Storage 行，并收口来源机未完成的执行状态。
 import type {
   AgentRunMessageRow,
   AgentRunRow,
+  AttachmentRow,
   BackgroundProcessRow,
   KbActivationRow,
-  MessageRestoreRow,
+  MessageRow,
+  SessionBackupRestoreRows,
+  SessionBackupTaskRow,
   SessionBackupToolExecutionRow,
+  SessionRow,
+  SpeechOutputRow,
+  SpeechSegmentRow,
   TaskDependencyRow,
-  TaskRow,
-  TurnRestoreRow,
+  TurnRow,
   UsageRecordRow,
 } from '@ema-agent/storage';
-import {
-  freezeAgentRun,
-  freezeBackgroundProcess,
-  freezeTask,
-  freezeToolExecution,
-  freezeTurn,
-} from '../state/freezeExecution.js';
 import type {
   AgentRunMessageRecord,
   AgentRunRecord,
+  AttachmentRecord,
   BackgroundProcessRecord,
   KbActivationRecord,
   MessageRecord,
+  SessionRecord,
+  SpeechOutputRecord,
+  SpeechSegmentRecord,
   TaskDependencyRecord,
   TaskRecord,
   ToolExecutionRecord,
@@ -31,106 +33,264 @@ import type {
   UsageRecord,
 } from './sessionRecords.js';
 
-export const restoreTurn = (record: TurnRecord, importedAt: number): TurnRestoreRow => {
-  const row = freezeTurn(record, importedAt);
-  return {
-    id: row.id, sessionId: row.sessionId, triggerType: row.triggerType,
-    executionProfile: row.executionProfile, narrativePolicy: row.narrativePolicy,
-    status: row.status, userInput: row.userInput, startedAt: row.startedAt,
-    completedAt: row.completedAt, errorCode: row.errorCode, errorMessage: row.errorMessage,
-    iterations: row.iterations, usageInputTokens: row.usageInputTokens,
-    usageOutputTokens: row.usageOutputTokens,
-  };
-};
+export type RestoreRows = SessionBackupRestoreRows;
 
-export const restoreMessage = (r: MessageRecord): MessageRestoreRow => ({
-  id: r.id, sessionId: r.sessionId, turnId: r.turnId, role: r.role, kind: r.kind,
-  blocksJson: r.blocksJson, interrupted: r.interrupted, createdAt: r.createdAt,
+export function restoreSessionRecord(record: SessionRecord): SessionRow {
+  return {
+    id: record.id,
+    title: record.title,
+    workspace_root: record.workspaceRoot,
+    project_id: record.projectId,
+    pinned: record.pinned ? 1 : 0,
+    archived_at: record.archivedAt,
+    forked_from_session_id: record.forkedFromSessionId,
+    forked_from_turn_id: record.forkedFromTurnId,
+    last_viewed_at: record.lastViewedAt,
+    last_activity_at: record.lastActivityAt,
+    created_at: record.createdAt,
+    updated_at: record.updatedAt,
+    provider_id: record.providerId,
+    model_id: record.modelId,
+    execution_profile: record.executionProfile,
+    narrative_policy: record.narrativePolicy,
+  };
+}
+
+export function restoreTurnRecord(record: TurnRecord, importedAt: number): TurnRow {
+  const unfinished = record.status === 'running';
+  return {
+    id: record.id,
+    session_id: record.sessionId,
+    status: unfinished ? 'aborted' : record.status,
+    trigger_type: record.triggerType,
+    execution_profile: record.executionProfile,
+    narrative_policy: record.narrativePolicy,
+    provider_id: record.providerId,
+    model_id: record.modelId,
+    character_directory_name: record.characterDirectoryName,
+    iterations: record.iterations,
+    usage_input_tokens: record.usageInputTokens,
+    usage_output_tokens: record.usageOutputTokens,
+    created_at: record.createdAt,
+    completed_at: unfinished ? record.completedAt ?? importedAt : record.completedAt,
+    error_code: unfinished ? 'backup/import_interrupted' : record.errorCode,
+    error_message: unfinished
+      ? 'Turn 导出时尚未完成，导入后不会继续执行'
+      : record.errorMessage,
+  };
+}
+
+export const restoreMessageRecord = (record: MessageRecord): MessageRow => ({
+  id: record.id,
+  session_id: record.sessionId,
+  turn_id: record.turnId,
+  role: record.role,
+  kind: record.kind,
+  blocks_json: record.blocksJson,
+  interrupted: record.interrupted ? 1 : 0,
+  created_at: record.createdAt,
 });
 
-export const restoreTask = (record: TaskRecord): Omit<TaskRow, 'active_agent_run_id'> => {
-  const r = freezeTask(record);
+export function restoreTaskRecord(record: TaskRecord): SessionBackupTaskRow {
+  const unfinished = record.status === 'in_progress';
   return {
-    id: r.id, session_id: r.sessionId, display_number: r.displayNumber,
-    subject: r.subject, description: r.description, active_form: r.activeForm,
-    status: r.status, created_by_turn_id: r.createdByTurnId,
-    completed_by_turn_id: r.completedByTurnId ? r.completedByTurnId : null,
-    version: r.version, created_at: r.createdAt, updated_at: r.updatedAt,
-    completed_at: r.completedAt,
+    id: record.id,
+    session_id: record.sessionId,
+    display_number: record.displayNumber,
+    subject: record.subject,
+    description: record.description,
+    active_form: record.activeForm,
+    status: unfinished ? 'pending' : record.status,
+    created_by_turn_id: record.createdByTurnId,
+    completed_by_turn_id: record.completedByTurnId,
+    version: unfinished ? record.version + 1 : record.version,
+    created_at: record.createdAt,
+    updated_at: record.updatedAt,
+    completed_at: record.completedAt,
   };
-};
+}
 
-export const restoreTaskDependency = (r: TaskDependencyRecord): TaskDependencyRow => ({
-  session_id: r.sessionId, blocker_task_id: r.blockerTaskId,
-  blocked_task_id: r.blockedTaskId, created_at: r.createdAt,
+export const restoreTaskDependencyRecord = (
+  record: TaskDependencyRecord,
+): TaskDependencyRow => ({
+  session_id: record.sessionId,
+  blocker_task_id: record.blockerTaskId,
+  blocked_task_id: record.blockedTaskId,
+  created_at: record.createdAt,
 });
 
-export const restoreAgentRun = (record: AgentRunRecord, importedAt: number): AgentRunRow => {
-  const r = freezeAgentRun(record, importedAt);
+export function restoreAgentRunRecord(record: AgentRunRecord, importedAt: number): AgentRunRow {
+  const unfinished = record.status === 'running';
   return {
-    id: r.id, session_id: r.sessionId,
-    parent_turn_id: r.parentTurnId,
-    parent_agent_run_id: r.parentAgentRunId ? r.parentAgentRunId : null,
-    task_id: r.taskId ? r.taskId : null, kind: r.kind,
-    purpose: r.purpose, provider_config_id: r.providerConfigId, model_id: r.modelId,
-    status: r.status, error: r.error, iterations: r.iterations,
-    tool_call_count: r.toolCallCount, input_tokens: r.inputTokens,
-    output_tokens: r.outputTokens, output_excerpt: r.outputExcerpt, version: r.version,
-    created_at: r.createdAt, updated_at: r.updatedAt, completed_at: r.completedAt,
+    id: record.id,
+    session_id: record.sessionId,
+    parent_turn_id: record.parentTurnId,
+    parent_agent_run_id: record.parentAgentRunId,
+    task_id: record.taskId,
+    context_mode: record.contextMode,
+    description: record.description,
+    provider_id: record.providerId,
+    model_id: record.modelId,
+    status: unfinished ? 'cancelled' : record.status,
+    error: unfinished ? 'AgentRun 导出时尚未完成，导入后不会继续执行' : record.error,
+    iterations: record.iterations,
+    tool_call_count: record.toolCallCount,
+    input_tokens: record.inputTokens,
+    output_tokens: record.outputTokens,
+    output_excerpt: record.outputExcerpt,
+    version: unfinished ? record.version + 1 : record.version,
+    created_at: record.createdAt,
+    updated_at: unfinished ? Math.max(record.updatedAt, importedAt) : record.updatedAt,
+    completed_at: unfinished ? record.completedAt ?? importedAt : record.completedAt,
   };
-};
+}
 
-export const restoreAgentRunMessage = (r: AgentRunMessageRecord): AgentRunMessageRow => ({
-  id: r.id, agent_run_id: r.agentRunId, role: r.role, content_json: r.contentJson,
-  sequence: r.sequence, created_at: r.createdAt,
+export const restoreAgentRunMessageRecord = (
+  record: AgentRunMessageRecord,
+): AgentRunMessageRow => ({
+  id: record.id,
+  agent_run_id: record.agentRunId,
+  role: record.role,
+  content_json: record.contentJson,
+  sequence: record.sequence,
+  created_at: record.createdAt,
 });
 
-export const restoreToolExecution = (
+export function restoreToolExecutionRecord(
   record: ToolExecutionRecord,
   importedAt: number,
-): SessionBackupToolExecutionRow => {
-  const r = freezeToolExecution(record, importedAt);
+): SessionBackupToolExecutionRow {
+  const unfinished = ['prepared', 'authorized', 'running'].includes(record.status);
   return {
-    call_id: r.callId, session_id: r.sessionId, turn_id: r.turnId,
-    agent_run_id: r.agentRunId, tool_name: r.toolName, status: r.status, started_at: r.startedAt,
-    completed_at: r.completedAt, version: r.version, created_at: r.createdAt,
-    updated_at: r.updatedAt,
+    call_id: record.callId,
+    session_id: record.sessionId,
+    turn_id: record.turnId,
+    agent_run_id: record.agentRunId,
+    tool_name: record.toolName,
+    status: unfinished
+      ? record.status === 'running' ? 'outcome_unknown' : 'cancelled'
+      : record.status,
+    started_at: record.startedAt,
+    completed_at: unfinished ? record.completedAt ?? importedAt : record.completedAt,
+    version: unfinished ? record.version + 1 : record.version,
+    created_at: record.createdAt,
+    updated_at: unfinished ? Math.max(record.updatedAt, importedAt) : record.updatedAt,
   };
-};
+}
 
-export const restoreBackgroundProcess = (
+export function restoreBackgroundProcessRecord(
   record: BackgroundProcessRecord,
   outputRelativePath: string,
+  stdoutBytes: number,
+  stderrBytes: number,
   importedAt: number,
-): BackgroundProcessRow => {
-  const r = freezeBackgroundProcess(record, importedAt);
+): BackgroundProcessRow {
+  const unfinished = record.status === 'queued' || record.status === 'running';
   return {
-    id: r.id as BackgroundProcessRow['id'],
-    session_id: r.sessionId as BackgroundProcessRow['session_id'],
-    origin_turn_id: r.originTurnId as BackgroundProcessRow['origin_turn_id'],
-    tool_call_id: r.toolCallId as BackgroundProcessRow['tool_call_id'],
-    command: r.command, description: r.description, cwd: r.cwd, status: r.status,
-    timeout_ms: r.timeoutMs, version: r.version, created_at: r.createdAt,
-    started_at: r.startedAt, completed_at: r.completedAt, exit_code: r.exitCode,
-    termination_reason: r.terminationReason, stdout_bytes: r.stdoutBytes,
-    stderr_bytes: r.stderrBytes, output_truncated: r.outputTruncated ? 1 : 0,
-    output_relative_path: outputRelativePath, completion_claimed_at: r.completionClaimedAt,
-    continuation_turn_id: r.continuationTurnId as BackgroundProcessRow['continuation_turn_id'],
-    model_notified_at: r.modelNotifiedAt,
+    id: record.id,
+    session_id: record.sessionId,
+    origin_turn_id: record.originTurnId,
+    tool_call_id: record.toolCallId,
+    command: record.command,
+    description: record.description,
+    cwd: record.cwd,
+    status: unfinished ? 'interrupted' : record.status,
+    timeout_ms: record.timeoutMs,
+    version: unfinished ? record.version + 1 : record.version,
+    created_at: record.createdAt,
+    started_at: record.startedAt,
+    completed_at: unfinished ? record.completedAt ?? importedAt : record.completedAt,
+    exit_code: record.exitCode,
+    termination_reason: unfinished
+      ? '后台进程导出时尚未完成，导入后不会重新启动'
+      : record.terminationReason,
+    stdout_bytes: stdoutBytes,
+    stderr_bytes: stderrBytes,
+    output_truncated: record.outputTruncated
+      || stdoutBytes !== record.stdoutBytes
+      || stderrBytes !== record.stderrBytes ? 1 : 0,
+    output_relative_path: outputRelativePath,
+    completion_claimed_at: unfinished ? null : record.completionClaimedAt,
+    continuation_turn_id: unfinished ? null : record.continuationTurnId,
+    model_notified_at: unfinished ? null : record.modelNotifiedAt,
   };
-};
+}
 
-export const restoreUsage = (r: UsageRecord): UsageRecordRow => ({
-  id: r.id, session_id: r.sessionId, turn_id: r.turnId, provider_id: r.providerId,
-  model_id: r.modelId, capability: r.capability, status: r.status,
-  input_tokens: r.inputTokens, output_tokens: r.outputTokens,
-  cache_read_input_tokens: r.cacheReadInputTokens,
-  cache_write_input_tokens: r.cacheWriteInputTokens, quantity: r.quantity, unit: r.unit,
-  duration_ms: r.durationMs, error_code: r.errorCode,
-  created_at: r.createdAt,
+export const restoreAttachmentRecord = (
+  record: AttachmentRecord,
+  filePath: string,
+): AttachmentRow => ({
+  id: record.id,
+  turn_id: record.turnId,
+  session_id: record.sessionId,
+  kind: record.kind,
+  name: record.name,
+  mime: record.mime,
+  source_path: filePath,
+  byte_size: record.byteSize,
+  source_modified_at: record.sourceModifiedAt,
+  image_path: record.kind === 'image' ? filePath : null,
+  image_byte_size: record.kind === 'image' ? record.byteSize : null,
+  created_at: record.createdAt,
 });
 
-export const restoreKbActivation = (r: KbActivationRecord): KbActivationRow => ({
-  id: r.id, call_id: r.callId, kb_id: r.kbId, asset_id: r.assetId,
-  session_id: r.sessionId, turn_id: r.turnId, created_at: r.createdAt,
+export const restoreSpeechOutputRecord = (
+  record: SpeechOutputRecord,
+  filePath: string,
+): SpeechOutputRow => ({
+  turn_id: record.turnId,
+  session_id: record.sessionId,
+  storage_path: filePath,
+  mime_type: record.mimeType,
+  byte_size: record.byteSize,
+  duration_ms: record.durationMs,
+  segment_count: record.segmentCount,
+  created_at: record.createdAt,
+});
+
+export const restoreSpeechSegmentRecord = (
+  record: SpeechSegmentRecord,
+  filePath: string,
+): SpeechSegmentRow => ({
+  id: record.id,
+  turn_id: record.turnId,
+  session_id: record.sessionId,
+  sentence_index: record.sentenceIndex,
+  storage_path: filePath,
+  mime_type: record.mimeType,
+  byte_size: record.byteSize,
+  duration_ms: record.durationMs,
+  text: record.text,
+  created_at: record.createdAt,
+});
+
+export const restoreUsageRecord = (record: UsageRecord): UsageRecordRow => ({
+  id: record.id,
+  session_id: record.sessionId,
+  turn_id: record.turnId,
+  provider_id: record.providerId,
+  model_id: record.modelId,
+  capability: record.capability,
+  status: record.status,
+  input_tokens: record.inputTokens,
+  output_tokens: record.outputTokens,
+  cache_read_input_tokens: record.cacheReadInputTokens,
+  cache_write_input_tokens: record.cacheWriteInputTokens,
+  quantity: record.quantity,
+  unit: record.unit,
+  duration_ms: record.durationMs,
+  error_code: record.errorCode,
+  created_at: record.createdAt,
+});
+
+export const restoreKbActivationRecord = (
+  record: KbActivationRecord,
+): KbActivationRow => ({
+  id: record.id,
+  call_id: record.callId,
+  kb_id: record.kbId,
+  asset_id: record.assetId,
+  session_id: record.sessionId,
+  turn_id: record.turnId,
+  created_at: record.createdAt,
 });

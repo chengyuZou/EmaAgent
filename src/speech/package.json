@@ -20,8 +20,11 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
+    "@ema-agent/settings": "workspace:*",
+    "@ema-agent/storage": "workspace:*",
     "@ema-agent/tts": "workspace:*",
-    "@ema-agent/usage": "workspace:*"
+    "@ema-agent/usage": "workspace:*",
+    "zod": "^4"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

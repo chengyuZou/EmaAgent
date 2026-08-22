@@ -1,4 +1,4 @@
-// 验证 Session 备份读取器在单次事务快照内完整流出记录，并对不存在的 Session 返回 null。
+// 验证 Session 备份读取器在单次事务内完整流出记录，并对不存在的 Session 返回 null。
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   SessionBackupReader,
@@ -16,7 +16,7 @@ describe('SessionBackupReader', () => {
     database = undefined;
   });
 
-  it('按稳定顺序消费完整快照且不施加旧列表上限', () => {
+  it('按稳定顺序消费完整记录且不施加旧列表上限', () => {
     database = createTestDatabase();
     const sessions = new SessionsRepo(database.db);
     const turns = new TurnsRepo(database.db);
@@ -51,13 +51,13 @@ describe('SessionBackupReader', () => {
       createdAt: 2,
     });
 
-    const result = new SessionBackupReader(database.db).withSnapshot(
+    const result = new SessionBackupReader(database.db).readSession(
       'session-backup',
-      snapshot => ({
-        sessionId: snapshot.session.id,
-        turnIds: [...snapshot.turns].map(turn => turn.id),
-        emptyMessages: [...snapshot.messages],
-        segmentIds: [...snapshot.speechSegments].map(segment => segment.id),
+      rows => ({
+        sessionId: rows.session.id,
+        turnIds: [...rows.turns].map(turn => turn.id),
+        emptyMessages: [...rows.messages],
+        segmentIds: [...rows.speechSegments].map(segment => segment.id),
       }),
     );
 
@@ -72,7 +72,7 @@ describe('SessionBackupReader', () => {
   it('不存在的 Session 不构造空备份', () => {
     database = createTestDatabase();
     expect(
-      new SessionBackupReader(database.db).withSnapshot('missing', () => true),
+      new SessionBackupReader(database.db).readSession('missing', () => true),
     ).toBeNull();
   });
 });

@@ -12,16 +12,24 @@ export interface FinalizedAudio {
   segmentCount: number;
 }
 
+export interface FinalizedAudioSegment {
+  path: string;
+  mime: string;
+  byteSize: number;
+}
+
 export interface AudioArchive {
   openSegment(sessionId: string, turnId: string, sentenceIndex: number, ext: string): SegmentWriter;
   finalizeTurn(sessionId: string, turnId: string, ext: string): Promise<FinalizedAudio | null>;
   discardTurn(sessionId: string, turnId: string): void;
+  removeSegment(storagePath: string): void;
   findMergedFor(sessionId: string, turnId: string): { path: string; mime: string } | null;
 }
 
 export interface SegmentWriter {
   write(bytes: Uint8Array): void;
-  close(): string;
+  close(): FinalizedAudioSegment;
+  discard(): void;
 }
 
 interface ByteRange {
@@ -72,13 +80,24 @@ export class FsAudioArchive implements AudioArchive {
         if (closed) throw new Error('TTS segment writer is already closed');
         fs.writeSync(fd, bytes);
       },
-      close(): string {
+      close(): FinalizedAudioSegment {
         // closed flag 幂等:coordinator 的 finally + 异常路径都可能调 close,防重复关抛 EBADF。
+        let byteSize: number;
+        if (!closed) {
+          byteSize = fs.fstatSync(fd).size;
+          fs.closeSync(fd);
+          closed = true;
+        } else {
+          byteSize = fs.statSync(filePath).size;
+        }
+        return { path: filePath, mime: mimeFromExt(ext), byteSize };
+      },
+      discard(): void {
         if (!closed) {
           fs.closeSync(fd);
           closed = true;
         }
-        return filePath;
+        fs.rmSync(filePath, { force: true });
       },
     };
   }
@@ -148,9 +167,6 @@ export class FsAudioArchive implements AudioArchive {
       }
 
       await replaceFile(temporary, target);
-      // 合并成功后分段已无消费方(回放只读 merged),删除避免双份占盘;
-      // 失败路径不走到这里,分段保留供排查。
-      fs.rmSync(segDir, { recursive: true, force: true });
       const stat = await fs.promises.stat(target);
       return {
         path: target,
@@ -180,6 +196,15 @@ export class FsAudioArchive implements AudioArchive {
       if (file.startsWith(`${turnId}.`) || file.startsWith(`.${turnId}.`)) {
         fs.rmSync(path.join(merged, file), { force: true });
       }
+    }
+  }
+
+  /** 容量治理只删除 SQL 选出的单个片段；空的 Turn 目录随手收口。 */
+  removeSegment(storagePath: string): void {
+    fs.rmSync(storagePath, { force: true });
+    const directory = path.dirname(storagePath);
+    if (fs.existsSync(directory) && fs.readdirSync(directory).length === 0) {
+      fs.rmdirSync(directory);
     }
   }
 

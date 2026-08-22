@@ -1,13 +1,8 @@
-export { SessionBackupFacade } from './facade.js';
-export { SessionExportError } from './export/errors.js';
-export { SessionImportError } from './import/errors.js';
+export { SessionBackup } from './sessionBackup.js';
+export { SessionExportError, SessionImportError } from './errors.js';
 export type {
   BackupArchiveSource,
-  BackupOutputSink,
-  OpenedSessionExport,
-  SessionBackupCapabilities,
-  SessionBackupFormat,
-  SessionImportRequest,
+  BackupOutput,
+  SessionExport,
   SessionImportResult,
-  SessionExportRequest,
 } from './types.js';

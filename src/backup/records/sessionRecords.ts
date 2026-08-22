@@ -1,233 +1,252 @@
-// 备份 records 的 wire DTO:显式 camelCase 字段,纯类型与映射,不碰文件、数据库与状态冻结。
-// 规则:本文件只定义形状;超过 500 行再按 conversation/execution/context 三组拆。
+// 定义 Session ZIP 的记录结构，并在导入外部归档时执行基础字段校验。
+import { z } from 'zod';
 
-// ── 清单与警告 ──────────────────────────────────────────────────────────────
+const id = z.string().min(1);
+const nullableId = id.nullable();
+const integer = z.number().int();
+const nonNegativeInteger = integer.nonnegative();
 
-export interface OmittedBackupFile {
-  readonly kind: 'attachment' | 'audio' | 'backgroundProcessOutput';
-  readonly id: string;
-  readonly reason: 'missing' | 'unreadable';
-}
+export const omittedSessionFileSchema = z.object({
+  kind: z.enum(['attachment', 'speechOutput', 'speechSegment', 'backgroundProcessOutput']),
+  id,
+  reason: z.enum(['missing', 'unreadable']),
+}).strict();
 
-export interface SessionBackupManifest {
-  readonly format: 'ema-session';
-  readonly version: 2;
-  readonly sessionId: string;
-  readonly exportedAt: number;
-  readonly generator: string;
-  /** 导出时已缺失/不可读而省略的文件;不含绝对路径。 */
-  readonly warnings: readonly OmittedBackupFile[];
-}
+export const sessionBackupManifestSchema = z.object({
+  format: z.literal('ema-session'),
+  version: z.literal(1),
+  sessionId: id,
+  omittedFiles: z.array(omittedSessionFileSchema),
+}).strict();
 
-// ── conversation 组 ─────────────────────────────────────────────────────────
+export const sessionRecordSchema = z.object({
+  id,
+  title: z.string(),
+  workspaceRoot: z.string().nullable(),
+  projectId: nullableId,
+  pinned: z.boolean(),
+  archivedAt: integer.nullable(),
+  forkedFromSessionId: nullableId,
+  forkedFromTurnId: nullableId,
+  lastViewedAt: integer.nullable(),
+  lastActivityAt: integer,
+  createdAt: integer,
+  updatedAt: integer,
+  providerId: nullableId,
+  modelId: nullableId,
+  executionProfile: z.enum(['chat', 'work']),
+  narrativePolicy: z.enum(['auto', 'always', 'off']),
+}).strict().refine(
+  value => (value.providerId === null) === (value.modelId === null),
+  { message: 'Session 模型选择必须同时包含 Provider 和 Model' },
+);
 
-export interface SessionRecord {
-  readonly id: string;
-  readonly title: string;
-  /** 导出时的来源工作区提示;导入时永不恢复为目标机工作目录。 */
-  readonly sourceWorkspaceRoot: string | null;
-  readonly createdAt: number;
-  readonly updatedAt: number;
-  readonly lastActivityAt: number;
-  readonly archivedAt: number | null;
-  readonly pinned: boolean;
-  readonly pinnedAt: number | null;
-  readonly groupLabel: string | null;
-  readonly parentSessionId: string | null;
-  readonly executionProfile: 'chat' | 'work';
-  readonly narrativePolicy: 'auto' | 'always' | 'off';
-  readonly preferredProviderConfigId: string | null;
-  readonly preferredModelId: string | null;
-}
+export const turnRecordSchema = z.object({
+  id,
+  sessionId: id,
+  status: z.enum(['running', 'completed', 'failed', 'aborted']),
+  triggerType: z.enum(['userMessage', 'backgroundProcessCompleted']),
+  executionProfile: z.enum(['chat', 'work']),
+  narrativePolicy: z.enum(['auto', 'always', 'off']),
+  providerId: nullableId,
+  modelId: nullableId,
+  characterDirectoryName: z.string().nullable(),
+  iterations: nonNegativeInteger,
+  usageInputTokens: nonNegativeInteger,
+  usageOutputTokens: nonNegativeInteger,
+  createdAt: integer,
+  completedAt: integer.nullable(),
+  errorCode: z.string().nullable(),
+  errorMessage: z.string().nullable(),
+}).strict();
 
-export interface TurnRecord {
-  readonly id: string;
-  readonly sessionId: string;
-  readonly triggerType: 'userMessage' | 'backgroundProcessCompleted';
-  readonly executionProfile: 'chat' | 'work';
-  readonly narrativePolicy: 'auto' | 'always' | 'off';
-  readonly status: 'pending' | 'running' | 'completed' | 'failed' | 'aborted';
-  readonly userInput: string;
-  readonly startedAt: number;
-  readonly completedAt: number | null;
-  readonly errorCode: string | null;
-  readonly errorMessage: string | null;
-  readonly iterations: number;
-  readonly usageInputTokens: number;
-  readonly usageOutputTokens: number;
-}
+export const messageRecordSchema = z.object({
+  id,
+  sessionId: id,
+  turnId: nullableId,
+  role: z.enum(['system', 'user', 'assistant']),
+  kind: z.enum(['normal', 'tool_results', 'summary']),
+  blocksJson: z.string(),
+  interrupted: z.boolean(),
+  createdAt: integer,
+}).strict();
 
-export interface MessageRecord {
-  readonly id: string;
-  readonly sessionId: string;
-  readonly turnId: string | null;
-  readonly role: 'system' | 'user' | 'assistant';
-  readonly kind: 'normal' | 'tool_results' | 'summary' | 'narrative_context';
-  readonly blocksJson: string;
-  readonly interrupted: boolean;
-  readonly createdAt: number;
-}
+export const taskRecordSchema = z.object({
+  id,
+  sessionId: id,
+  displayNumber: integer.positive(),
+  subject: z.string(),
+  description: z.string(),
+  activeForm: z.string().nullable(),
+  status: z.enum(['pending', 'in_progress', 'completed', 'cancelled']),
+  createdByTurnId: id,
+  completedByTurnId: nullableId,
+  version: nonNegativeInteger,
+  createdAt: integer,
+  updatedAt: integer,
+  completedAt: integer.nullable(),
+}).strict();
 
-export interface AttachmentRecord {
-  readonly id: string;
-  readonly turnId: string;
-  readonly kind: 'file' | 'image';
-  readonly name: string;
-  readonly mime: string;
-  readonly byteSize: number;
-  readonly sourceModifiedAt: number;
-  readonly createdAt: number;
-  /** ZIP 内 files/ 下的相对路径,由安全 ID 与清洗文件名构成。 */
-  readonly filePath: string;
-}
+export const taskDependencyRecordSchema = z.object({
+  sessionId: id,
+  blockerTaskId: id,
+  blockedTaskId: id,
+  createdAt: integer,
+}).strict();
 
-export interface AudioRecord {
-  readonly turnId: string;
-  readonly sessionId: string;
-  readonly mimeType: string;
-  readonly byteSize: number;
-  readonly durationMs: number | null;
-  readonly segmentCount: number;
-  readonly createdAt: number;
-  readonly filePath: string;
-}
+export const agentRunRecordSchema = z.object({
+  id,
+  sessionId: id,
+  parentTurnId: id,
+  parentAgentRunId: nullableId,
+  taskId: nullableId,
+  contextMode: z.enum(['subagent', 'fork']),
+  description: z.string().nullable(),
+  providerId: nullableId,
+  modelId: nullableId,
+  status: z.enum(['running', 'completed', 'failed', 'cancelled']),
+  error: z.string().nullable(),
+  iterations: nonNegativeInteger.nullable(),
+  toolCallCount: nonNegativeInteger.nullable(),
+  inputTokens: nonNegativeInteger.nullable(),
+  outputTokens: nonNegativeInteger.nullable(),
+  outputExcerpt: z.string().nullable(),
+  version: nonNegativeInteger,
+  createdAt: integer,
+  updatedAt: integer,
+  completedAt: integer.nullable(),
+}).strict();
 
-export interface SessionNotesRecord {
-  readonly body: string;
-  readonly tokensAtLastUpdate: number;
-  readonly updatedAt: number;
-}
+export const agentRunMessageRecordSchema = z.object({
+  id,
+  agentRunId: id,
+  role: z.enum(['assistant', 'tool_call', 'tool_result', 'reasoning']),
+  contentJson: z.string(),
+  sequence: nonNegativeInteger,
+  createdAt: integer,
+}).strict();
 
-// ── execution 组 ────────────────────────────────────────────────────────────
+export const toolExecutionRecordSchema = z.object({
+  callId: id,
+  sessionId: id,
+  turnId: id,
+  agentRunId: nullableId,
+  toolName: z.string().min(1),
+  status: z.enum([
+    'prepared', 'authorized', 'running', 'succeeded',
+    'failed', 'cancelled', 'outcome_unknown',
+  ]),
+  startedAt: integer.nullable(),
+  completedAt: integer.nullable(),
+  version: nonNegativeInteger,
+  createdAt: integer,
+  updatedAt: integer,
+}).strict();
 
-export interface TaskRecord {
-  readonly id: string;
-  readonly sessionId: string;
-  readonly displayNumber: number;
-  readonly subject: string;
-  readonly description: string;
-  readonly activeForm: string | null;
-  readonly status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
-  readonly createdByTurnId: string;
-  readonly completedByTurnId: string | null;
-  readonly version: number;
-  readonly createdAt: number;
-  readonly updatedAt: number;
-  readonly completedAt: number | null;
-}
+export const backgroundProcessRecordSchema = z.object({
+  id,
+  sessionId: id,
+  originTurnId: nullableId,
+  toolCallId: nullableId,
+  command: z.string(),
+  description: z.string().nullable(),
+  cwd: z.string(),
+  status: z.enum(['queued', 'running', 'completed', 'failed', 'timedOut', 'stopped', 'interrupted']),
+  timeoutMs: integer.positive(),
+  version: nonNegativeInteger,
+  createdAt: integer,
+  startedAt: integer.nullable(),
+  completedAt: integer.nullable(),
+  exitCode: integer.nullable(),
+  terminationReason: z.string().nullable(),
+  stdoutBytes: nonNegativeInteger,
+  stderrBytes: nonNegativeInteger,
+  outputTruncated: z.boolean(),
+  outputDirectoryPath: z.string(),
+  completionClaimedAt: integer.nullable(),
+  continuationTurnId: nullableId,
+  modelNotifiedAt: integer.nullable(),
+}).strict();
 
-export interface TaskDependencyRecord {
-  readonly sessionId: string;
-  readonly blockerTaskId: string;
-  readonly blockedTaskId: string;
-  readonly createdAt: number;
-}
+export const attachmentRecordSchema = z.object({
+  id,
+  turnId: id,
+  sessionId: id,
+  kind: z.enum(['file', 'image']),
+  name: z.string(),
+  mime: z.string(),
+  byteSize: nonNegativeInteger,
+  sourceModifiedAt: integer,
+  createdAt: integer,
+  filePath: z.string(),
+}).strict();
 
-export interface AgentRunRecord {
-  readonly id: string;
-  readonly sessionId: string;
-  readonly parentTurnId: string;
-  readonly parentAgentRunId: string | null;
-  readonly taskId: string | null;
-  readonly kind: 'subagent' | 'fork';
-  readonly purpose: string | null;
-  readonly providerConfigId: string | null;
-  readonly modelId: string | null;
-  readonly status: 'running' | 'completed' | 'failed' | 'cancelled';
-  readonly error: string | null;
-  readonly iterations: number | null;
-  readonly toolCallCount: number | null;
-  readonly inputTokens: number | null;
-  readonly outputTokens: number | null;
-  readonly outputExcerpt: string | null;
-  readonly version: number;
-  readonly createdAt: number;
-  readonly updatedAt: number;
-  readonly completedAt: number | null;
-}
+export const speechOutputRecordSchema = z.object({
+  turnId: id,
+  sessionId: id,
+  mimeType: z.string(),
+  byteSize: nonNegativeInteger,
+  durationMs: nonNegativeInteger.nullable(),
+  segmentCount: nonNegativeInteger,
+  createdAt: integer,
+  filePath: z.string(),
+}).strict();
 
-export interface AgentRunMessageRecord {
-  readonly id: string;
-  readonly agentRunId: string;
-  readonly role: 'assistant' | 'tool_call' | 'tool_result' | 'reasoning';
-  readonly contentJson: string;
-  readonly sequence: number;
-  readonly createdAt: number;
-}
+export const speechSegmentRecordSchema = z.object({
+  id,
+  turnId: id,
+  sessionId: id,
+  sentenceIndex: nonNegativeInteger,
+  mimeType: z.string(),
+  byteSize: nonNegativeInteger,
+  durationMs: nonNegativeInteger.nullable(),
+  text: z.string(),
+  createdAt: integer,
+  filePath: z.string(),
+}).strict();
 
-export interface ToolExecutionRecord {
-  readonly callId: string;
-  readonly sessionId: string;
-  readonly turnId: string;
-  readonly agentRunId: string | null;
-  readonly toolName: string;
-  readonly status: 'prepared' | 'authorized' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'outcome_unknown';
-  readonly startedAt: number | null;
-  readonly completedAt: number | null;
-  readonly version: number;
-  readonly createdAt: number;
-  readonly updatedAt: number;
-}
+export const usageRecordSchema = z.object({
+  id,
+  sessionId: id,
+  turnId: nullableId,
+  providerId: id,
+  modelId: id,
+  capability: z.enum(['llm', 'vision', 'embed', 'rerank', 'stt', 'tts']),
+  status: z.enum(['completed', 'failed', 'cancelled']),
+  inputTokens: nonNegativeInteger.nullable(),
+  outputTokens: nonNegativeInteger.nullable(),
+  cacheReadInputTokens: nonNegativeInteger.nullable(),
+  cacheWriteInputTokens: nonNegativeInteger.nullable(),
+  quantity: z.number().nonnegative().nullable(),
+  unit: z.string().nullable(),
+  durationMs: nonNegativeInteger,
+  errorCode: z.string().nullable(),
+  createdAt: integer,
+}).strict();
 
-export interface BackgroundProcessRecord {
-  readonly id: string;
-  readonly sessionId: string;
-  readonly originTurnId: string | null;
-  readonly toolCallId: string | null;
-  readonly command: string;
-  readonly description: string | null;
-  readonly cwd: string;
-  readonly status: 'queued' | 'running' | 'completed' | 'failed' | 'timedOut' | 'stopped' | 'interrupted';
-  readonly timeoutMs: number;
-  readonly version: number;
-  readonly createdAt: number;
-  readonly startedAt: number | null;
-  readonly completedAt: number | null;
-  readonly exitCode: number | null;
-  readonly terminationReason: string | null;
-  readonly stdoutBytes: number;
-  readonly stderrBytes: number;
-  readonly outputTruncated: boolean;
-  /** ZIP 内 files/ 下的输出目录(含 stdout.log/stderr.log),导入时重落到目标 Session 受控目录。 */
-  readonly outputDirectoryPath: string;
-  readonly completionClaimedAt: number | null;
-  readonly continuationTurnId: string | null;
-  readonly modelNotifiedAt: number | null;
-}
+export const kbActivationRecordSchema = z.object({
+  id,
+  callId: id,
+  kbId: id,
+  assetId: id,
+  sessionId: id,
+  turnId: nullableId,
+  createdAt: integer,
+}).strict();
 
-// ── context 组 ──────────────────────────────────────────────────────────────
-
-export interface UsageRecord {
-  readonly id: string;
-  readonly sessionId: string | null;
-  readonly turnId: string | null;
-  readonly providerId: string;
-  readonly modelId: string;
-  readonly capability: 'llm' | 'vision' | 'embed' | 'rerank' | 'stt' | 'tts';
-  readonly status: 'completed' | 'failed' | 'cancelled';
-  readonly inputTokens: number | null;
-  readonly outputTokens: number | null;
-  readonly cacheReadInputTokens: number | null;
-  readonly cacheWriteInputTokens: number | null;
-  readonly quantity: number | null;
-  readonly unit: string | null;
-  readonly durationMs: number;
-  readonly errorCode: string | null;
-  readonly createdAt: number;
-}
-
-export interface KbActivationRecord {
-  readonly id: string;
-  readonly callId: string;
-  readonly kbId: string;
-  readonly assetId: string;
-  readonly sessionId: string;
-  readonly turnId: string | null;
-  readonly createdAt: number;
-}
-
-export interface MemoryStateRecord {
-  readonly sessionId: string;
-  readonly surfacedJson: string;
-  readonly overridesJson: string;
-}
+export type OmittedSessionFile = z.infer<typeof omittedSessionFileSchema>;
+export type SessionBackupManifest = z.infer<typeof sessionBackupManifestSchema>;
+export type SessionRecord = z.infer<typeof sessionRecordSchema>;
+export type TurnRecord = z.infer<typeof turnRecordSchema>;
+export type MessageRecord = z.infer<typeof messageRecordSchema>;
+export type TaskRecord = z.infer<typeof taskRecordSchema>;
+export type TaskDependencyRecord = z.infer<typeof taskDependencyRecordSchema>;
+export type AgentRunRecord = z.infer<typeof agentRunRecordSchema>;
+export type AgentRunMessageRecord = z.infer<typeof agentRunMessageRecordSchema>;
+export type ToolExecutionRecord = z.infer<typeof toolExecutionRecordSchema>;
+export type BackgroundProcessRecord = z.infer<typeof backgroundProcessRecordSchema>;
+export type AttachmentRecord = z.infer<typeof attachmentRecordSchema>;
+export type SpeechOutputRecord = z.infer<typeof speechOutputRecordSchema>;
+export type SpeechSegmentRecord = z.infer<typeof speechSegmentRecordSchema>;
+export type UsageRecord = z.infer<typeof usageRecordSchema>;
+export type KbActivationRecord = z.infer<typeof kbActivationRecordSchema>;

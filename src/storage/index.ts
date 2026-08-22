@@ -50,8 +50,8 @@ export type {
   DataDirStats,
 } from './repos/data/storage-stats.js';
 export type {
-  SessionBackupRestoreInput,
-  SessionBackupSnapshot,
+  SessionBackupRestoreRows,
+  SessionBackupRows,
   SessionBackupTaskRow,
   SessionBackupToolExecutionRow,
 } from './repos/data/sessionBackup.js';

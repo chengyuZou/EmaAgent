@@ -1,141 +1,42 @@
-// 把已经冻结的 Session 条目写成带完整性清单的流式 ZIP，不读取数据库或猜测文件路径。
-import { createHash } from 'node:crypto';
-import {
-  BACKUP_FILE_ROOTS,
-  BACKUP_INTEGRITY_PATH,
-  BACKUP_MANIFEST_PATH,
-  BACKUP_RECORD_PATHS,
-} from '../records/recordRegistry.js';
-import type { SessionBackupManifest } from '../records/sessionRecords.js';
-import type { BackupLimits } from '../limits.js';
-import type { BackupOutputSink } from '../types.js';
-import {
-  StreamingZipWriter,
-  type StreamingZipEntry,
-} from './streamingZip.js';
+// 组织一次 Session 导出，并确保临时文件在写入成功或失败后都被删除。
+import type { SessionBackupReader } from '@ema-agent/storage';
+import type { SessionExport } from '../types.js';
+import { SessionExportError } from '../errors.js';
+import { stageSessionExport } from './stageSessionExport.js';
+import { writeStreamingZip } from './streamingZip.js';
 
-const encoder = new TextEncoder();
-
-export interface SessionExportEntry extends StreamingZipEntry {}
-
-export interface PreparedSessionExport {
-  readonly manifest: SessionBackupManifest;
-  /** manifest.json 与 integrity/sha256.json 由导出器生成，调用方不得重复提供。 */
-  entries(): AsyncIterable<SessionExportEntry>;
-}
-
-export interface IntegrityEntry {
-  readonly path: string;
-  readonly sha256: string;
-  readonly size: number;
-}
-
-export interface BackupIntegrityManifest {
-  readonly algorithm: 'sha256';
-  readonly entries: readonly IntegrityEntry[];
-}
-
-export async function exportPreparedSession(
-  prepared: PreparedSessionExport,
-  sink: BackupOutputSink,
-  limits: BackupLimits,
-): Promise<void> {
-  const writer = new StreamingZipWriter(sink, limits);
-  const integrity: IntegrityEntry[] = [];
-  const paths = new Set<string>();
-
-  try {
-    for await (const entry of prepared.entries()) {
-      assertArchiveEntryPath(entry.path);
-      assertUniquePath(paths, entry.path);
-      const measured = measureEntry(entry);
-      await writer.add(measured.entry);
-      integrity.push(measured.result());
-    }
-
-    const manifestEntry = bytesEntry(
-      BACKUP_MANIFEST_PATH,
-      encoder.encode(`${JSON.stringify(prepared.manifest)}\n`),
-    );
-    assertUniquePath(paths, manifestEntry.path);
-    const measuredManifest = measureEntry(manifestEntry);
-    await writer.add(measuredManifest.entry);
-    integrity.push(measuredManifest.result());
-
-    const integrityBytes = encoder.encode(`${JSON.stringify({
-      algorithm: 'sha256',
-      entries: integrity,
-    } satisfies BackupIntegrityManifest)}\n`);
-    assertUniquePath(paths, BACKUP_INTEGRITY_PATH);
-    await writer.add(bytesEntry(BACKUP_INTEGRITY_PATH, integrityBytes));
-    await writer.commit();
-  } catch (error) {
-    await writer.abort(error);
-    throw error;
-  }
-}
-
-function measureEntry(entry: SessionExportEntry): {
-  entry: SessionExportEntry;
-  result: () => IntegrityEntry;
-} {
-  const hash = createHash('sha256');
-  let size = 0;
-  let digest: string | undefined;
-
+export function createSessionExport(
+  sessionId: string,
+  activeDataDir: string,
+  temporaryRoot: string,
+  reader: SessionBackupReader,
+  signal?: AbortSignal,
+): SessionExport | null {
+  if (!reader.hasSession(sessionId)) return null;
   return {
-    entry: {
-      path: entry.path,
-      declaredSize: entry.declaredSize,
-      async *chunks() {
-        try {
-          for await (const chunk of entry.chunks()) {
-            hash.update(chunk);
-            size += chunk.byteLength;
-            yield chunk;
-          }
-          digest = hash.digest('hex');
-        } catch (error) {
-          throw error;
+    filename: `${safeFilename(sessionId)}.ema-session.zip`,
+    mimeType: 'application/zip',
+    async writeTo(output): Promise<void> {
+      const staged = stageSessionExport(sessionId, activeDataDir, temporaryRoot, reader, signal);
+      if (!staged) throw new SessionExportError('session_not_found', 'Session 不存在', 404);
+      try {
+        await writeStreamingZip(staged.entries(), output, signal);
+      } catch (error) {
+        if (signal?.aborted) {
+          throw new SessionExportError('export_cancelled', 'Session 导出已取消', 499);
         }
-      },
-    },
-    result: () => {
-      if (digest === undefined) throw new Error(`${entry.path} 尚未完成写入`);
-      return { path: entry.path, sha256: digest, size };
-    },
-  };
-}
-
-function bytesEntry(path: string, bytes: Uint8Array): SessionExportEntry {
-  return {
-    path,
-    declaredSize: bytes.byteLength,
-    async *chunks() {
-      yield bytes;
+        if (error instanceof SessionExportError) throw error;
+        throw new SessionExportError(
+          'export_failed',
+          error instanceof Error ? error.message : 'Session 导出失败',
+        );
+      } finally {
+        staged.dispose();
+      }
     },
   };
 }
 
-function assertUniquePath(paths: Set<string>, path: string): void {
-  if (paths.has(path)) throw new Error(`备份条目路径重复: ${path}`);
-  paths.add(path);
-}
-
-function assertArchiveEntryPath(path: string): void {
-  if (path.includes('\\') || path.startsWith('/') || path.split('/').includes('..')) {
-    throw new Error(`备份条目路径非法: ${path}`);
-  }
-  if (BACKUP_RECORD_PATHS.has(path)) return;
-
-  const parts = path.split('/');
-  if (
-    parts.length >= 4
-    && parts[0] === 'files'
-    && BACKUP_FILE_ROOTS.has(parts[1]!)
-    && parts.slice(2).every((part) => part.length > 0 && part !== '.')
-  ) {
-    return;
-  }
-  throw new Error(`备份条目不在白名单: ${path}`);
+function safeFilename(value: string): string {
+  return value.replace(/[^A-Za-z0-9._-]/g, '_');
 }

@@ -13,6 +13,20 @@ const DEFAULT_MAX_BYTES_PER_SENTENCE = 16 * 1024 * 1024;
 const DEFAULT_MAX_BYTES_PER_TURN = 64 * 1024 * 1024;
 const DEFAULT_SENTENCE_TIMEOUT_MS = 120_000;
 
+export interface CompletedSpeechSegment {
+  readonly id: string;
+  readonly sessionId: string;
+  readonly turnId: string;
+  readonly sentenceIndex: number;
+  readonly storagePath: string;
+  readonly mimeType: string;
+  readonly byteSize: number;
+  /** 当前 TTS 协议不返回音频时长，未知时明确存 null。 */
+  readonly durationMs: number | null;
+  readonly text: string;
+  readonly createdAt: number;
+}
+
 export interface SpeechCoordinatorArgs {
   readonly sessionId: string;
   readonly turnId: string;
@@ -26,6 +40,8 @@ export interface SpeechCoordinatorArgs {
   readonly signal?: AbortSignal;
   readonly usageRecorder?: UsageRecorder;
   readonly onUsageRecordError?: (error: unknown, record: UsageRecord) => void;
+  readonly onSegmentCompleted?: (segment: CompletedSpeechSegment) => void;
+  readonly onTurnSegmentsDiscarded?: (turnId: string) => void;
   readonly sentenceTimeoutMs?: number;
   readonly maxBytesPerSentence?: number;
   readonly maxBytesPerTurn?: number;
@@ -130,6 +146,7 @@ export class SpeechCoordinator {
   private async abortInternal(): Promise<void> {
     await this.chain.catch(() => undefined);
     this.args.archive?.discardTurn(this.args.sessionId as string, this.args.turnId as string);
+    this.args.onTurnSegmentsDiscarded?.(this.args.turnId);
     this.state = 'aborted';
   }
 
@@ -139,6 +156,7 @@ export class SpeechCoordinator {
       this.state = 'failed';
       this.abortController.abort('speech failed');
       this.args.archive?.discardTurn(this.args.sessionId as string, this.args.turnId as string);
+      this.args.onTurnSegmentsDiscarded?.(this.args.turnId);
       this.args.emit(warningEvent(this.args.sessionId, this.args.turnId, 'tts/coordinator', error));
     });
   }
@@ -192,7 +210,23 @@ export class SpeechCoordinator {
           event.mime,
         ));
       }
+      if (writer) {
+        const completed = writer.close();
+        this.args.onSegmentCompleted?.({
+          id: sentenceId,
+          sessionId: this.args.sessionId,
+          turnId: this.args.turnId,
+          sentenceIndex: index,
+          storagePath: completed.path,
+          mimeType: completed.mime,
+          byteSize: completed.byteSize,
+          durationMs: null,
+          text,
+          createdAt: Date.now(),
+        });
+      }
     } catch (error) {
+      writer?.discard();
       if (timeoutSignal.aborted && !this.abortController.signal.aborted) {
         errorCode = 'tts/timeout';
       } else {
@@ -202,7 +236,6 @@ export class SpeechCoordinator {
         this.args.emit(warningEvent(this.args.sessionId, this.args.turnId, errorCode, error));
       }
     } finally {
-      writer?.close();
       this.recordUsage(sentenceId, text.length, startedAt, errorCode);
       if (this.state === 'accepting' || this.state === 'finishing') {
         this.args.emit({
