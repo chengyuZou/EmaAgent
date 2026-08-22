@@ -21,11 +21,14 @@ Relationship 轨根目录即记忆根,正式记忆文件如下(路径相对记�
 - characters/<name>/MEMORY.md —— 单个角色的记忆手册。按角色分块组织,
   放该角色场景下的用户关系信号:偏好、纠正、兴趣、未完成话题。
   每个角色一个目录,互不混淆。
-- characters/<name>/history/<date>.md —— 该角色的历史/演进记录。
-  放时序信息,供回溯;不作为活跃检索主源。
-- memory_summary.md —— 跨任务摘要层,未来会注入系统提示。只放高层、
-  跨角色信号与路由摘要。保持高信号密度。注意:这是纯 markdown 文本,
+- characters/<name>/history/<YYYY-MM-DD>.md —— 该角色的历史/演进记录。
+  日期必须为 YYYY-MM-DD（如 2025-01-05.md），生命周期按此格式回收，
+  格式不符的文件永不清理。放时序信息,供回溯;不作为活跃检索主源。
+- memory_summary.md —— 跨任务摘要层,已注入系统提示(buildMemoryPrompt)。
+  只放高层、跨角色信号与路由摘要。保持高信号密度。注意:这是纯 markdown 文本,
   不需要任何版本标记(首行不要写 v1)。
+  ⚠️ 更新规则:必须基于现有正式记忆与本次证据重写(提炼/增删/纠正),
+  禁止直接沿用旧摘要段落或整段复制;它是主 Agent 的检索线索,不是独立事实源。
 - extensions/notes/<note>.md —— 便签。用户/Agent 随手记的原料,不是正式
   记忆;整合器把它合入正式文件后可以删除原便签。
 - characters/<name>/extensions/notes/<note>.md —— 只属于该角色的便签。

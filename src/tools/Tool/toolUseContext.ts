@@ -1,7 +1,7 @@
 // 定义宿主在单次工具调用中提供的业务能力集合。
 import type { CommandRunner } from '@ema-agent/sandbox';
 import type { TaskStore } from '@ema-agent/tasks';
-import type { CallVision, KnowledgeSearch } from '@ema-agent/knowledge';
+import type { KnowledgeSearch } from '@ema-agent/knowledge';
 import type {
   AddMemoryNote,
   ListMemory,
@@ -10,6 +10,7 @@ import type {
 } from '@ema-agent/memory';
 import type { NarrativeSearch } from '@ema-agent/narrative';
 import type { SkillPool } from '@ema-agent/skills';
+import type { CallVision } from '@ema-agent/vision';
 import type { ReadFileState } from '../types.js';
 import type { AskUserQuestionSpec } from '../events.js';
 import type { BackgroundProcess } from '../background/backgroundProcess.js';

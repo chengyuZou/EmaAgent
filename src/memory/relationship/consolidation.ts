@@ -16,6 +16,8 @@ import {
 import { loadTemplate } from '../templates/loader.js';
 import type { ConsolidateMemory } from '../jobs/runConsolidationJobs.js';
 
+// memory_summary.md 是注入源(buildMemoryPrompt 每 Turn 读它),整合器是唯一写者:
+// 允许 write 是设计使然,但模板强制"基于正式记忆与本次证据重写",防自激。
 const RELATIONSHIP_ROOT_FILES = [
   'shared_user_memory.md',
   'memory_summary.md',
@@ -68,19 +70,26 @@ export function createRelationshipTargetPathCheck(
     const segments = relativePath.split('/');
     if (segments.length === 3) {
       return segments[0] === 'characters'
-        && isCharacterDirectoryName(segments[1]!)
+        && isCharacterDirectoryName(memoryDirectory, segments[1]!)
         && segments[2] === 'MEMORY.md';
     }
     return segments.length === 4
       && segments[0] === 'characters'
-      && isCharacterDirectoryName(segments[1]!)
+      && isCharacterDirectoryName(memoryDirectory, segments[1]!)
       && segments[2] === 'history'
       && segments[3]!.endsWith('.md');
   };
 }
 
-function isCharacterDirectoryName(value: string): boolean {
-  return value.length > 0 && value !== '.' && value !== '..';
+/**
+ * 角色目录必须已存在——角色目录由角色实体生命周期创建（characters 包/便签），
+ * 整合器只能写已存在的角色，不能凭空创建新角色目录（对齐模板“不能发明角色目录”）。
+ */
+function isCharacterDirectoryName(memoryDirectory: string, value: string): boolean {
+  return value.length > 0
+    && value !== '.'
+    && value !== '..'
+    && existsSync(path.join(memoryDirectory, 'characters', value));
 }
 
 export interface RelationshipConsolidationDeps {

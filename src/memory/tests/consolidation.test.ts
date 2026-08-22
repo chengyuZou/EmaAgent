@@ -165,7 +165,9 @@ describe('listTargetPaths', () => {
     );
   });
 
-  it('两轨允许创建正式文件，但不允许创建便签', () => {
+  it('两轨允许创建正式文件，但不允许创建便签；关系角色目录必须已存在', async () => {
+    // 自包含：本测试自己建角色目录，不依赖其它测试的执行顺序。
+    await fs.mkdir(path.join(root, 'characters', 'ema'), { recursive: true });
     const workAllows = createWorkTargetPathCheck(root);
     const relationshipAllows = createRelationshipTargetPathCheck(root);
 
@@ -174,6 +176,9 @@ describe('listTargetPaths', () => {
     expect(relationshipAllows('characters/ema/MEMORY.md')).toBe(true);
     expect(relationshipAllows('characters/ema/history/2026-08-22.md')).toBe(true);
     expect(relationshipAllows('characters/ema/extensions/notes/new.md')).toBe(false);
+    // 方案 Y：不存在的角色目录被拒绝（不能发明角色目录）。
+    expect(relationshipAllows('characters/ghost/MEMORY.md')).toBe(false);
+    expect(relationshipAllows('characters/ghost/history/2026-08-22.md')).toBe(false);
   });
 
   it('只把完整进入本轮输入的提取结果列为已消费', async () => {

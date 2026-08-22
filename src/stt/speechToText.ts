@@ -1,43 +1,34 @@
-// 创建一个绑定协议连接的语音转文字入口，并统一校验中立转录结果。
+// 创建点冻结连接与模型身份的语音转文字调用，并统一校验中立转录结果。
 import { SttError } from './errors.js';
 import { createOpenAiSttProtocol } from './protocols/openAi.js';
 import type {
+  CallStt,
   SttConnection,
-  TranscriptionRequest,
   TranscriptionResult,
 } from './types.js';
 
-export interface SpeechToText {
-  readonly protocol: SttConnection['protocol'];
-  transcribe(request: TranscriptionRequest): Promise<TranscriptionResult>;
-}
-
-/** STT 唯一创建入口；请求只执行一次，超时和重试由调用方通过 signal 控制。 */
-export function createSpeechToText(connection: SttConnection): SpeechToText {
-  const protocolTranscribe = createProtocolTranscribe(connection);
-  return {
-    protocol: connection.protocol,
-    async transcribe(request) {
-      validateRequest(request);
-      const result = await protocolTranscribe(request);
-      validateResult(result);
-      return result;
-    },
+/** STT 唯一创建入口；modelId 在此冻结，此后每次调用只携带音频与取消信号。 */
+export function createSttCall(connection: SttConnection, modelId: string): CallStt {
+  if (!modelId.trim()) throw new SttError('stt/invalid_request', 'STT model must not be empty');
+  const protocolTranscribe = createProtocolTranscribe(connection, modelId);
+  return async (request) => {
+    validateRequest(request);
+    const result = await protocolTranscribe(request);
+    validateResult(result);
+    return result;
   };
 }
 
 function createProtocolTranscribe(
   connection: SttConnection,
-): (request: TranscriptionRequest) => Promise<TranscriptionResult> {
+  modelId: string,
+): CallStt {
   switch (connection.protocol) {
-    case 'openai-stt': return createOpenAiSttProtocol(connection);
+    case 'openai-stt': return createOpenAiSttProtocol(connection, modelId);
   }
 }
 
-function validateRequest(request: TranscriptionRequest): void {
-  if (!request.model.trim()) {
-    throw new SttError('stt/invalid_request', 'STT model must not be empty');
-  }
+function validateRequest(request: Parameters<CallStt>[0]): void {
   if (!request.mimeType.trim()) {
     throw new SttError('stt/invalid_request', 'STT mimeType must not be empty');
   }

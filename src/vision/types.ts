@@ -44,9 +44,8 @@ export interface VisionBlock {
   readonly confidence?: number;
 }
 
-/** 单次协议请求；调用身份、载荷限制、并发、重试和持久化均由上层拥有。 */
+/** 单次协议请求；模型身份在创建点冻结，载荷限制、并发、重试和持久化均由上层拥有。 */
 export interface VisionRequest {
-  readonly model: string;
   readonly images: readonly VisionImage[];
   readonly task?: VisionTask;
   readonly language?: string;
@@ -57,10 +56,13 @@ export interface VisionRequest {
   readonly signal?: AbortSignal;
 }
 
-/** VisionModel 填好默认任务后交给私有协议实现的形状。 */
+/** VisionCall 填好默认任务后交给私有协议实现的形状。 */
 export interface VisionProtocolRequest extends Omit<VisionRequest, 'task'> {
   readonly task: VisionTask;
 }
+
+/** 创建点冻结连接与模型身份的单次视觉调用。 */
+export type CallVision = (request: VisionRequest) => Promise<VisionResult>;
 
 export interface VisionTokenUsage {
   readonly inputTokens: number;

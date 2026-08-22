@@ -24,7 +24,7 @@ memories/
 │  ├─ MEMORY.md                 手册，按任务族组织（可检索）
 │  ├─ memory_summary.md         摘要（已注入下方，不要重新读取）
 │  ├─ topics/<topic>.md         主题细节（可检索）
-│  ├─ history/<date>.md         演进记录（可检索）
+│  ├─ history/<YYYY-MM-DD>.md   演进记录（可检索，日期=YYYY-MM-DD）
 │  ├─ extensions/notes/         便签（MemoryNoteTool 写入）
 │  ├─ turn_evidence/            内部证据（不作为记忆读取）
 │  └─ .git/                     内部 Git 基线（不可读）
@@ -34,7 +34,7 @@ memories/
    ├─ character_relations.md    角色关系记录（可检索）
    ├─ characters/<name>/        每个角色一个目录
    │  ├─ MEMORY.md              角色手册（可检索）
-   │  ├─ history/<date>.md      角色演进记录（可检索）
+   │  ├─ history/<YYYY-MM-DD>.md  角色演进记录（可检索）
    │  └─ extensions/notes/      角色便签
    ├─ extensions/notes/         共享便签
    ├─ turn_evidence/            内部证据（不作为记忆读取）

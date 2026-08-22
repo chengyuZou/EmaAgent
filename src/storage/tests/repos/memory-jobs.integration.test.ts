@@ -159,6 +159,33 @@ describe('MemoryJobsRepo', () => {
     });
   });
 
+  it('lastCompletedAt 只统计该轨整合 completed，从未成功返回 undefined', () => {
+    // 从未整合：undefined（提取/维护的完成时间不能当作基准）。
+    expect(repo.lastCompletedAt('work_consolidation')).toBeUndefined();
+    expect(repo.lastCompletedAt('relationship_consolidation')).toBeUndefined();
+
+    enqueue('wc-1', 'work_consolidation', 1);
+    enqueue('wc-2', 'work_consolidation', 2);
+    enqueue('rc-1', 'relationship_consolidation', 3);
+
+    expect(repo.claimNext('work_consolidation', 10)?.id).toBe('wc-1');
+    repo.fail('wc-1', '首次失败', 11);
+    // failed 不算冷却基准（只有 completed 算）。
+    expect(repo.lastCompletedAt('work_consolidation')).toBeUndefined();
+
+    expect(repo.claimNext('work_consolidation', 12)?.id).toBe('wc-2');
+    repo.complete('wc-2', 20);
+    expect(repo.lastCompletedAt('work_consolidation')).toBe(20);
+
+    // 其它 kind 不受影响：relationship 还没成功整合。
+    expect(repo.lastCompletedAt('relationship_consolidation')).toBeUndefined();
+    expect(repo.claimNext('relationship_consolidation', 30)?.id).toBe('rc-1');
+    repo.complete('rc-1', 40);
+    expect(repo.lastCompletedAt('relationship_consolidation')).toBe(40);
+    // work 轨仍保留自己的时间，不被 relationship 覆盖。
+    expect(repo.lastCompletedAt('work_consolidation')).toBe(20);
+  });
+
   function enqueue(
     id: string,
     kind:

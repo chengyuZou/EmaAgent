@@ -91,6 +91,7 @@ export {
   memoryGitDiffBytesSetting,
   memoryExtractionConcurrencySetting,
   memoryHeartbeatSecondsSetting,
+  memoryConsolidationCooldownHoursSetting,
 } from './settings.js';
 export {
   DEFAULT_MEMORY_JOBS_SETTINGS,

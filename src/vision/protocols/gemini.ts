@@ -11,18 +11,19 @@ import type {
 } from '../types.js';
 
 export function createGeminiVisionProtocol(
-  connection: VisionConnection,
+  connection: VisionConnection, modelId: string,
 ): (request: VisionProtocolRequest) => Promise<VisionResult> {
   const baseUrl = normalizeBaseUrl(connection.baseUrl);
   const client = new GoogleGenAI({
     apiKey: connection.apiKey ?? '',
     ...(baseUrl ? { httpOptions: { baseUrl } } : {}),
   });
-  return (request) => analyzeGemini(client, request);
+  return (request) => analyzeGemini(client, modelId, request);
 }
 
 async function analyzeGemini(
   client: GoogleGenAI,
+  modelId: string,
   request: VisionProtocolRequest,
 ): Promise<VisionResult> {
   const parts: Part[] = [
@@ -32,7 +33,7 @@ async function analyzeGemini(
   let response: Awaited<ReturnType<GoogleGenAI['models']['generateContent']>>;
   try {
     response = await client.models.generateContent({
-      model: request.model,
+      model: modelId,
       contents: [{ role: 'user', parts }],
       config: {
         maxOutputTokens: request.maxOutputTokens ?? defaultMaxTokensForVisionTask(request.task),

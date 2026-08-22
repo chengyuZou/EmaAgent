@@ -11,18 +11,19 @@ import type {
 } from '../types.js';
 
 export function createOpenAiVisionProtocol(
-  connection: VisionConnection,
+  connection: VisionConnection, modelId: string,
 ): (request: VisionProtocolRequest) => Promise<VisionResult> {
   const client = new OpenAI({
     apiKey: connection.apiKey ?? '',
     baseURL: connection.baseUrl,
     maxRetries: 0,
   });
-  return (request) => analyzeOpenAi(client, request);
+  return (request) => analyzeOpenAi(client, modelId, request);
 }
 
 async function analyzeOpenAi(
   client: OpenAI,
+  modelId: string,
   request: VisionProtocolRequest,
 ): Promise<VisionResult> {
   const content: OpenAI.ChatCompletionContentPart[] = [
@@ -32,7 +33,7 @@ async function analyzeOpenAi(
   let response: OpenAI.ChatCompletion;
   try {
     response = await client.chat.completions.create({
-      model: request.model,
+      model: modelId,
       messages: [{ role: 'user', content }],
       max_tokens: request.maxOutputTokens ?? defaultMaxTokensForVisionTask(request.task),
       temperature: request.temperature ?? 0,

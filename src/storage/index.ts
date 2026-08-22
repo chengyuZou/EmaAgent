@@ -116,6 +116,7 @@ export type {
   MemoryJobStatus,
   NewMemoryJob,
   NewMemoryJobPath,
+  MemoryJobsRepo,
 } from './repos/data/memory-jobs.js';
 // ── AgentRun 存储 ─────────────────────────────────────────────────────────────
 export { AgentRunsRepo } from './repos/data/agent-runs.js';

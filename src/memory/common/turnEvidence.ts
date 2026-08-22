@@ -12,7 +12,8 @@ export interface TurnEvidence {
   readonly content: string;
 }
 
-// TODO: 这里可能导致很多文件要写入但只取了 maxFiles 个
+// 只保留最新 maxFiles 个证据文件：先取最新 N 个计算保留集，再删除目录里
+// 不在保留集的 .md，最后写新增/变更（内容相同则跳过，避免重复写盘）。
 export async function syncTurnEvidence(
   memoryDirectory: string,
   evidence: readonly TurnEvidence[],

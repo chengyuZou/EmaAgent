@@ -15,7 +15,11 @@ import { applyConsolidationEdits } from '../consolidation/consolidation.js';
 import type { ConsolidationPlan } from '../consolidation/consolidation.js';
 import { workMemoryDir, relationshipMemoryDir } from '../common/paths.js';
 import { DEFAULT_MEMORY_BUDGETS } from '../capacity/budgets.js';
+import { DEFAULT_MEMORY_JOBS_SETTINGS } from '../settings.js';
 import type { JobAdmin } from './jobAdmin.js';
+
+/** 整合冷却的墙钟换算：小时 → 毫秒。 */
+const HOUR_MILLISECONDS = 60 * 60 * 1000;
 
 export type ConsolidationKind = 'work_consolidation' | 'relationship_consolidation';
 
@@ -36,6 +40,8 @@ export interface RunConsolidationJobDeps {
   readonly consolidationLimit?: number;
   readonly diffMaxBytes?: number;
   readonly heartbeatSeconds?: number;
+  /** 整合冷却小时数(0 = 关闭);缺省 memory.jobs.consolidationCooldownHours。 */
+  readonly cooldownHours?: number;
   readonly signal: AbortSignal;
 }
 
@@ -56,6 +62,20 @@ export async function runConsolidationJobs(
   kind: ConsolidationKind,
 ): Promise<ConsolidationRunResult> {
   if (deps.signal.aborted) return { claimed: false };
+  // 整合冷却：以该轨上次成功整合(completed)的 finished_at 为基准，冷却期内
+  // 不认领 Job——Job 留在 pending，第一步(prepareGitWorkspace/LLM)都不走。
+  // 基准只用本轨整合 kind，绝不用提取或其它 kind 的时间，否则会卡死整合。
+  const cooldownHours =
+    deps.cooldownHours ?? DEFAULT_MEMORY_JOBS_SETTINGS.consolidationCooldownHours;
+  if (cooldownHours > 0) {
+    const lastCompletedAt = deps.jobs.lastCompletedAt(kind);
+    if (
+      lastCompletedAt !== undefined
+      && Date.now() - lastCompletedAt < cooldownHours * HOUR_MILLISECONDS
+    ) {
+      return { claimed: false };
+    }
+  }
   const job = deps.jobs.claimNext(kind, Date.now());
   if (!job) return { claimed: false };
 

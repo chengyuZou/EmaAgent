@@ -11,18 +11,19 @@ import type {
 } from '../types.js';
 
 export function createAnthropicVisionProtocol(
-  connection: VisionConnection,
+  connection: VisionConnection, modelId: string,
 ): (request: VisionProtocolRequest) => Promise<VisionResult> {
   const client = new Anthropic({
     apiKey: connection.apiKey ?? '',
     baseURL: connection.baseUrl,
     maxRetries: 0,
   });
-  return (request) => analyzeAnthropic(client, request);
+  return (request) => analyzeAnthropic(client, modelId, request);
 }
 
 async function analyzeAnthropic(
   client: Anthropic,
+  modelId: string,
   request: VisionProtocolRequest,
 ): Promise<VisionResult> {
   const content: Anthropic.ContentBlockParam[] = [
@@ -32,7 +33,7 @@ async function analyzeAnthropic(
   let response: Anthropic.Message;
   try {
     response = await client.messages.create({
-      model: request.model,
+      model: modelId,
       messages: [{ role: 'user', content }],
       max_tokens: request.maxOutputTokens ?? defaultMaxTokensForVisionTask(request.task),
       ...(request.temperature === undefined ? {} : { temperature: request.temperature }),

@@ -6,7 +6,8 @@ import {
   type AgentRunStore,
   type PrepareSubagent,
 } from '@ema-agent/agent';
-import type { CallVision, KnowledgeSearch } from '@ema-agent/knowledge';
+import type { KnowledgeSearch } from '@ema-agent/knowledge';
+import type { CallVision } from '@ema-agent/vision';
 import type { Message } from '@ema-agent/llm';
 import type { NarrativeClient } from '@ema-agent/narrative';
 import { prepareNarrativeRecall } from '@ema-agent/narrative';

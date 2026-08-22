@@ -1,8 +1,8 @@
-export { createSpeechToText } from './speechToText.js';
-export type { SpeechToText } from './speechToText.js';
+export { createSttCall } from './speechToText.js';
 export { isSttError, SttError } from './errors.js';
 export type { SttErrorCode } from './errors.js';
 export type {
+  CallStt,
   SttConnection,
   SttProtocol,
   TranscriptionRequest,

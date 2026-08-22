@@ -1,6 +1,6 @@
 // 测试 Vision 公共入口冻结协议连接、只执行一次请求并保留协议差异。
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createVisionModel } from '../visionModel.js';
+import { createVisionCall } from '../visionModel.js';
 
 const sdkMocks = vi.hoisted(() => ({
   openAiConstructor: vi.fn(),
@@ -32,7 +32,7 @@ vi.mock('@google/genai', () => ({
   }),
 }));
 
-describe('createVisionModel', () => {
+describe('createVisionCall', () => {
   beforeEach(() => {
     for (const mock of Object.values(sdkMocks)) mock.mockReset();
   });
@@ -42,14 +42,13 @@ describe('createVisionModel', () => {
       choices: [{ message: { content: '{"text":"cat","blocks":[]}' } }],
       usage: { prompt_tokens: 12, completion_tokens: 4 },
     });
-    const vision = createVisionModel({
+    const vision = createVisionCall({
       protocol: 'openai-vision',
       apiKey: 'key',
       baseUrl: 'https://example.test/v1',
-    });
+    }, 'vision-model');
 
-    await expect(vision.analyze({
-      model: 'vision-model',
+    await expect(vision({
       images: [{ kind: 'base64', data: ' YQ== ', mimeType: 'image/png' }],
       task: 'caption',
     })).resolves.toEqual({
@@ -70,10 +69,9 @@ describe('createVisionModel', () => {
       content: [{ type: 'text', text: 'plain description' }],
       usage: { input_tokens: 8, output_tokens: 2 },
     });
-    const vision = createVisionModel({ protocol: 'anthropic-vision', apiKey: 'key' });
+    const vision = createVisionCall({ protocol: 'anthropic-vision', apiKey: 'key' }, 'claude-test');
 
-    await expect(vision.analyze({
-      model: 'claude-test',
+    await expect(vision({
       images: [{ kind: 'bytes', bytes: new Uint8Array([1]), mimeType: 'image/jpeg' }],
     })).resolves.toMatchObject({ text: 'plain description' });
     expect(sdkMocks.anthropicConstructor).toHaveBeenCalledWith({
@@ -84,20 +82,18 @@ describe('createVisionModel', () => {
   });
 
   it('Gemini 对普通 HTTP 图片明确失败，不静默漏图', async () => {
-    const vision = createVisionModel({ protocol: 'gemini-vision', apiKey: 'key' });
-    await expect(vision.analyze({
-      model: 'gemini-test',
+    const vision = createVisionCall({ protocol: 'gemini-vision', apiKey: 'key' }, 'gemini-test');
+    await expect(vision({
       images: [{ kind: 'url', url: 'https://example.test/image.png' }],
     })).rejects.toMatchObject({ code: 'vision/unsupported_input' });
     expect(sdkMocks.geminiGenerate).not.toHaveBeenCalled();
   });
 
   it('拒绝空模型、空图片与空载荷', async () => {
-    const vision = createVisionModel({ protocol: 'openai-vision', apiKey: 'key' });
-    await expect(vision.analyze({ model: '', images: [] }))
+    const vision = createVisionCall({ protocol: 'openai-vision', apiKey: 'key' }, 'model');
+    await expect(vision({ images: [] }))
       .rejects.toMatchObject({ code: 'vision/invalid_request' });
-    await expect(vision.analyze({
-      model: 'model',
+    await expect(vision({
       images: [{ kind: 'bytes', bytes: new Uint8Array(), mimeType: 'image/png' }],
     })).rejects.toMatchObject({ code: 'vision/invalid_request' });
   });

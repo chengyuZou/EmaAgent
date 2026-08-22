@@ -10,14 +10,16 @@ export interface SttConnection {
   readonly baseUrl?: string;
 }
 
-/** 单次整段音频转录请求；上传体积策略由接收文件的上层入口拥有。 */
+/** 单次整段音频转录请求；上传体积策略由接收文件的上层入口拥有；模型身份在创建点冻结。 */
 export interface TranscriptionRequest {
-  readonly model: string;
   readonly audio: Uint8Array;
   readonly mimeType: string;
   readonly language?: string;
   readonly signal?: AbortSignal;
 }
+
+/** 创建点冻结连接与模型身份的单次转录调用；超时和重试由调用方通过 signal 控制。 */
+export type CallStt = (request: TranscriptionRequest) => Promise<TranscriptionResult>;
 
 export interface TranscriptionSegment {
   readonly startMs: number;

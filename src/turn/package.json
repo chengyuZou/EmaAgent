@@ -41,7 +41,8 @@
     "@ema-agent/tasks": "workspace:*",
     "@ema-agent/tools": "workspace:*",
     "@ema-agent/turn-terms": "workspace:*",
-    "@ema-agent/usage": "workspace:*"
+    "@ema-agent/usage": "workspace:*",
+    "@ema-agent/vision": "workspace:*"
   },
   "devDependencies": {
     "rimraf": "^5.0.0",

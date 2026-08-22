@@ -533,6 +533,9 @@ importers:
       '@ema-agent/ui':
         specifier: workspace:*
         version: link:../ui
+      '@ema-agent/vision':
+        specifier: workspace:*
+        version: link:../vision
       diff:
         specifier: ^9.0.0
         version: 9.0.0
@@ -1427,6 +1430,9 @@ importers:
       '@ema-agent/usage':
         specifier: workspace:*
         version: link:../usage
+      '@ema-agent/vision':
+        specifier: workspace:*
+        version: link:../vision
     devDependencies:
       rimraf:
         specifier: ^5.0.0

@@ -275,6 +275,21 @@ export class MemoryJobsRepo {
     return row ? mapJob(row) : undefined;
   }
 
+  /**
+   * 该轨最近一次整合 completed 的 finished_at；从未成功整合过返回 undefined。
+   * 只查整合 kind——提取/维护的完成时间不能当作整合冷却基准。
+   */
+  lastCompletedAt(
+    kind: 'work_consolidation' | 'relationship_consolidation',
+  ): number | undefined {
+    const row = this.db.prepare(
+      `SELECT MAX(finished_at) AS finished_at
+         FROM memory_jobs
+        WHERE kind = ? AND status = 'completed'`,
+    ).get(kind) as { finished_at: number | null } | undefined;
+    return row?.finished_at ?? undefined;
+  }
+
   listRecent(limit = 100): MemoryJob[] {
     return (this.db.prepare(
       `SELECT * FROM memory_jobs

@@ -5,7 +5,6 @@ import type { Dirent } from 'node:fs';
 import path from 'node:path';
 import { estimateTextTokens } from '@ema-agent/token';
 
-// TODO: 这些扔到setting里面
 export const DEFAULT_SEARCH_MAX_RESULTS = 200;
 export const MAX_SEARCH_RESULTS = 200;
 export const DEFAULT_LIST_MAX_RESULTS = 2_000;
@@ -14,27 +13,48 @@ export const DEFAULT_READ_MAX_TOKENS = 20_000;
 
 // ── 公开请求与响应 ────────────────────────────────────────
 
+/**
+ * 关键词匹配
+ * - any：任一关键词命中即算；
+ * - all_on_same_line：全部关键词必须落在同一行；
+ * - all_within_lines：全部关键词必须落在同一邻近行窗口（readWindow 行数）内。
+ */
 export type MemorySearchMatchMode =
   | 'any'
   | 'all_on_same_line'
   | 'all_within_lines';
 
+/** 一条命中：文件路径、命中行号、片段起始行号与片段正文。 */
 export interface MemorySearchMatch {
+  /** 相对记忆根的 posix 路径。 */
   readonly path: string;
+  /** 命中行号（1-based）。 */
   readonly matchLineNumber: number;
+  /** 返回片段的首行号（contextLines > 0 时早于命中行）。 */
   readonly contentStartLineNumber: number;
+  /** 命中片段正文（含上下文行）。 */
   readonly content: string;
+  /** 本次实际命中的关键词（原始大小写）。 */
   readonly matchedQueries: readonly string[];
 }
 
+/** 搜索请求；queries 为子串关键词，其余字段全部可选。 */
 export interface MemorySearchRequest {
+  /** 要搜索的关键词（子串匹配；去空白后为空的全被忽略）。 */
   readonly queries: readonly string[];
+  /** 匹配模式，缺省 any。 */
   readonly matchMode?: MemorySearchMatchMode;
+  /** 限定搜索的相对子目录（如 work、relationship/characters/ema）。 */
   readonly path?: string;
+  /** 分页游标（来自上次结果的 next_cursor）。 */
   readonly cursor?: string;
+  /** 命中片段带多少上下文行（默认 0）。 */
   readonly contextLines?: number;
+  /** 大小写敏感（默认 true）。 */
   readonly caseSensitive?: boolean;
+  /** 分隔符归一后匹配（默认 false）。 */
   readonly normalized?: boolean;
+  /** 结果上限（默认 200）。 */
   readonly maxResults?: number;
   /** 工具执行取消信号；中止时抛出 signal.reason。 */
   readonly signal?: AbortSignal;
@@ -98,6 +118,8 @@ export async function searchMemoryFiles(
   memoryRoot: string,
   request: MemorySearchRequest,
 ): Promise<MemorySearchResponse> {
+  // 已中止则立即返回，避免先枚举全部可读文件白做工；循环内另有逐文件检查。
+  throwIfAborted(request.signal);
   const queries = request.queries
     .map((query) => query.trim())
     .filter((query) => query.length > 0);
@@ -182,7 +204,7 @@ function visitFileMatches(
     contextLines,
   } = options;
   const lines = content.split('\n');
-  const window = matchMode === 'all_within_lines' ? readWindow(matchMode) : 0;
+  const window = matchMode === 'all_within_lines' ? readWindow() : 0;
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = normalizeText(lines[index] ?? '', caseSensitive, normalized);
@@ -243,9 +265,8 @@ function matchQueriesOnLine(
     }
   }
 }
-
-function readWindow(matchMode: MemorySearchMatchMode): number {
-  // 固定窗口让相同查询在不同大小的文件上保持一致。
+/** all_within_lines 的邻近行窗口行数（固定 5，跨文件一致）。 */
+function readWindow(): number {
   return 5;
 }
 

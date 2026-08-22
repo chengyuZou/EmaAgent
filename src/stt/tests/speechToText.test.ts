@@ -1,6 +1,6 @@
 // 测试 STT 公共入口的 multipart 请求、响应映射、输入校验和单次调用语义。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createSpeechToText } from '../speechToText.js';
+import { createSttCall } from '../speechToText.js';
 
 const fetchMock = vi.fn<typeof fetch>();
 
@@ -11,20 +11,19 @@ beforeEach(() => {
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe('SpeechToText', () => {
+describe('CallStt', () => {
   it('发送 OpenAI multipart 请求并把秒转换为毫秒', async () => {
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
       text: '你好',
       segments: [{ start: 0.25, end: 1.5, text: '你好' }],
     }), { status: 200 }));
-    const stt = createSpeechToText({
+    const transcribe = createSttCall({
       protocol: 'openai-stt',
       apiKey: 'secret',
       baseUrl: 'https://example.test/v1/',
-    });
+    }, 'whisper-1');
 
-    await expect(stt.transcribe({
-      model: 'whisper-1',
+    await expect(transcribe({
       audio: new Uint8Array([1, 2, 3]),
       mimeType: 'audio/wav',
       language: 'zh',
@@ -40,9 +39,9 @@ describe('SpeechToText', () => {
   });
 
   it('空音频在访问 Provider 前失败', async () => {
-    const stt = createSpeechToText({ protocol: 'openai-stt' });
-    await expect(stt.transcribe({
-      model: 'whisper-1', audio: new Uint8Array(), mimeType: 'audio/wav',
+    const transcribe = createSttCall({ protocol: 'openai-stt' }, 'whisper-1');
+    await expect(transcribe({
+      audio: new Uint8Array(), mimeType: 'audio/wav',
     })).rejects.toMatchObject({ code: 'stt/invalid_request' });
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -52,20 +51,25 @@ describe('SpeechToText', () => {
       text: 'bad',
       segments: [{ start: 2, end: 1, text: 'bad' }],
     }), { status: 200 }));
-    const stt = createSpeechToText({ protocol: 'openai-stt' });
+    const transcribe = createSttCall({ protocol: 'openai-stt' }, 'whisper-1');
 
-    await expect(stt.transcribe({
-      model: 'whisper-1', audio: new Uint8Array([1]), mimeType: 'audio/wav',
+    await expect(transcribe({
+      audio: new Uint8Array([1]), mimeType: 'audio/wav',
     })).rejects.toMatchObject({ code: 'stt/invalid_response' });
   });
 
   it('429 原样失败，不在包内重试', async () => {
     fetchMock.mockResolvedValueOnce(new Response('slow down', { status: 429 }));
-    const stt = createSpeechToText({ protocol: 'openai-stt' });
+    const transcribe = createSttCall({ protocol: 'openai-stt' }, 'whisper-1');
 
-    await expect(stt.transcribe({
-      model: 'whisper-1', audio: new Uint8Array([1]), mimeType: 'audio/wav',
+    await expect(transcribe({
+      audio: new Uint8Array([1]), mimeType: 'audio/wav',
     })).rejects.toMatchObject({ code: 'stt/http_error', status: 429 });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('空模型身份在创建点失败', () => {
+    expect(() => createSttCall({ protocol: 'openai-stt' }, '  '))
+      .toThrowError(expect.objectContaining({ code: 'stt/invalid_request' }));
   });
 });

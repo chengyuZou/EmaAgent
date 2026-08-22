@@ -20,7 +20,7 @@ import { createReranker } from '@ema-agent/rerank';
 import type { SettingsStore } from '@ema-agent/settings';
 import { KbActivationsRepo, KbRegistryRepo, type Database } from '@ema-agent/storage';
 import { createUsageRecord, reportUsage, type UsageRecorder } from '@ema-agent/usage';
-import { createVisionModel } from '@ema-agent/vision';
+import { createVisionCall } from '@ema-agent/vision';
 
 export interface KnowledgeComposition {
   readonly kb: KbManager;
@@ -87,10 +87,10 @@ export function openKnowledge(
     const binding = modelBindings.get('vision');
     if (!binding) return undefined;
     try {
-      const vision = createVisionModel(providers.resolveConnection(binding.providerId, 'vision'));
+      const vision = createVisionCall(providers.resolveConnection(binding.providerId, 'vision'), binding.modelId);
       return async (request) => {
         const startedAt = Date.now();
-        const result = await vision.analyze({ ...request, model: binding.modelId });
+        const result = await vision(request);
         reportModelUsage(usageRecorder, 'vision', binding, startedAt, {
           inputTokens: result.usage?.inputTokens ?? null,
           outputTokens: result.usage?.outputTokens ?? null,

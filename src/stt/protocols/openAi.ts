@@ -8,6 +8,7 @@ import type {
 
 export function createOpenAiSttProtocol(
   connection: SttConnection,
+  modelId: string,
 ): (request: TranscriptionRequest) => Promise<TranscriptionResult> {
   const baseUrl = (connection.baseUrl ?? 'https://api.openai.com/v1').replace(/\/+$/, '');
 
@@ -18,7 +19,7 @@ export function createOpenAiSttProtocol(
       new Blob([toArrayBuffer(request.audio)], { type: request.mimeType }),
       filenameFor(request.mimeType),
     );
-    form.append('model', request.model);
+    form.append('model', modelId);
     form.append('response_format', 'verbose_json');
     if (request.language?.trim()) form.append('language', request.language.trim());
 

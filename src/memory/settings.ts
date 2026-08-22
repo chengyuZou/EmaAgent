@@ -119,6 +119,14 @@ export const memoryHeartbeatSecondsSetting = defineSetting<number>({
   group: 'memory.jobs',
 });
 
+export const memoryConsolidationCooldownHoursSetting = defineSetting<number>({
+  key: 'memory.jobs.consolidationCooldownHours',
+  apply: 'nextOperation',
+  defaultValue: 6,
+  schema: z.number().int().min(0).max(24),
+  group: 'memory.jobs',
+});
+
 export const MEMORY_SETTINGS = [
   memoryStorageMaxBytesSetting,
   memoryWorkHistoryRetentionDaysSetting,
@@ -134,6 +142,7 @@ export const MEMORY_SETTINGS = [
   memoryGitDiffBytesSetting,
   memoryExtractionConcurrencySetting,
   memoryHeartbeatSecondsSetting,
+  memoryConsolidationCooldownHoursSetting,
 ] as const;
 
 export const memoryLifecycleGroup: SettingGroup = {
@@ -193,21 +202,13 @@ export const memoryJobsGroup: SettingGroup = {
   definitions: [
     memoryExtractionConcurrencySetting,
     memoryHeartbeatSecondsSetting,
+    memoryConsolidationCooldownHoursSetting,
   ],
-  schema: z
-    .object({
-      'memory.jobs.extractionConcurrency': z.number(),
-      'memory.jobs.heartbeatSeconds': z.number(),
-    })
-    .refine(
-      (values) => (
-        values['memory.jobs.extractionConcurrency'] >= 1
-        && values['memory.jobs.heartbeatSeconds'] >= 5
-      ),
-      {
-        message: 'extractionConcurrency 至少 1;heartbeatSeconds 至少 5(避免写库过频)',
-      },
-    ),
+  schema: z.object({
+    'memory.jobs.extractionConcurrency': z.number(),
+    'memory.jobs.heartbeatSeconds': z.number(),
+    'memory.jobs.consolidationCooldownHours': z.number(),
+  }),
 };
 
 export interface MemoryJobsSettings {
@@ -215,6 +216,8 @@ export interface MemoryJobsSettings {
   readonly extractionConcurrency: number;
   /** 整合心跳间隔秒(失去所有权即中止)。 */
   readonly heartbeatSeconds: number;
+  /** 整合冷却小时数(0 = 关闭冷却);冷却期内该轨整合 Job 不被认领。 */
+  readonly consolidationCooldownHours: number;
 }
 
 export interface MemoryLifecycleSettings {
@@ -242,6 +245,7 @@ export function readMemoryLifecycleSettings(
 export const DEFAULT_MEMORY_JOBS_SETTINGS: MemoryJobsSettings = {
   extractionConcurrency: memoryExtractionConcurrencySetting.defaultValue,
   heartbeatSeconds: memoryHeartbeatSecondsSetting.defaultValue,
+  consolidationCooldownHours: memoryConsolidationCooldownHoursSetting.defaultValue,
 };
 
 /** 一次性读取 Memory 运行参数;坏值/缺失由 SettingsStore 回落默认。 */
@@ -249,5 +253,6 @@ export function readMemoryJobsSettings(store: SettingsStore): MemoryJobsSettings
   return {
     extractionConcurrency: store.get(memoryExtractionConcurrencySetting),
     heartbeatSeconds: store.get(memoryHeartbeatSecondsSetting),
+    consolidationCooldownHours: store.get(memoryConsolidationCooldownHoursSetting),
   };
 }

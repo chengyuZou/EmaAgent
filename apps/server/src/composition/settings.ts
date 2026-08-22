@@ -20,6 +20,10 @@ import {
 import { PERMISSION_SETTINGS } from '@ema-agent/permission';
 import { SettingsStore } from '@ema-agent/settings';
 import {
+  speechSegmentMaxBytesSetting,
+  speechSegmentMaxFilesSetting,
+} from '@ema-agent/speech';
+import {
   builtinSkillsEnabledSetting,
   disabledProjectSourcesSetting,
   disabledSkillKeysSetting,
@@ -62,6 +66,8 @@ export function openSettings(profileDb: Database): SettingsComposition {
       disabledProjectSourcesSetting,
       disabledSkillKeysSetting,
       disabledToolsSetting,
+      speechSegmentMaxFilesSetting,
+      speechSegmentMaxBytesSetting,
       maxConcurrentBackgroundSetting,
       maxRuntimeHoursBackgroundSetting,
       workspaceInstructionFilesSetting,
