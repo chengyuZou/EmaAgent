@@ -65,7 +65,7 @@ export const messageRecordSchema = z.object({
   sessionId: id,
   turnId: nullableId,
   role: z.enum(['system', 'user', 'assistant']),
-  kind: z.enum(['normal', 'tool_results', 'summary']),
+  kind: z.enum(['normal', 'tool_results', 'summary', 'reminder']),
   blocksJson: z.string(),
   interrupted: z.boolean(),
   createdAt: integer,

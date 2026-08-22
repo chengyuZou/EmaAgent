@@ -9,6 +9,14 @@ import { buildCharacterPrompt, type CharacterStore } from '@ema-agent/characters
 import { createCompact } from '@ema-agent/compact';
 import { gitSummary } from '@ema-agent/git';
 import { createLlmCall, createLlmCompletion, type ContentPart } from '@ema-agent/llm';
+import {
+  buildMemoryGuidance,
+  memorySummaryFile,
+  readMemoryBudgets,
+  readMemorySummary,
+  relationshipMemoryDir,
+  workMemoryDir,
+} from '@ema-agent/memory';
 import { prepareNarrativeRecall } from '@ema-agent/narrative';
 import { permissionAskTimeoutSetting } from '@ema-agent/permission';
 import { DEFAULT_SESSION_TITLE, generateSessionTitle } from '@ema-agent/session';
@@ -20,6 +28,7 @@ import {
   SessionInteractionQueue,
   TurnExecutor,
   workspaceInstructionFilesSetting,
+  type TurnReminderFacts,
   type TurnReminderScope,
 } from '@ema-agent/turn';
 import { createUsageRecord, reportUsage, type UsageRecorder } from '@ema-agent/usage';
@@ -142,38 +151,47 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     };
   };
 
-  // ── Reminder 工厂（每 Turn 一次；git 探测在此 await 并冻结进闭包） ───────────
-  const reminderSources = async (scope: TurnReminderScope) => {
+  // ── Reminder 事实（每根 Turn 读取一次；读取完成即冻结进持久化 reminder） ──────
+  const readTurnReminderFacts = async (scope: TurnReminderScope): Promise<TurnReminderFacts> => {
     const workspaceRoot = database.session.getSession(scope.sessionId).workspaceRoot ?? '';
     const git = scope.executionProfile === 'work' && workspaceRoot
       ? await gitSummary(workspaceRoot).catch(() => undefined)
       : undefined;
+    const summaryTokens = readMemoryBudgets(settings).summaryTokens;
+    const [memoryWork, memoryRelationship] = await Promise.all([
+      readMemorySummary(memorySummaryFile(workMemoryDir()), summaryTokens)
+        .catch(() => undefined),
+      readMemorySummary(memorySummaryFile(relationshipMemoryDir()), summaryTokens)
+        .catch(() => undefined),
+    ]);
+    const narrativeRecall = scope.narrativePolicy === 'always' && scope.userText.trim().length > 0
+      ? await prepareNarrativeRecall(narrative.narrative, {
+          sessionId: scope.sessionId,
+          turnId: scope.turnId,
+          userInput: scope.userText,
+          emit: scope.emit,
+        }).then(result => result.contextText ?? undefined)
+        .catch(() => undefined)
+      : undefined;
+    // takeContextReminder 是 take 语义（读取即消费），只能调用一次。
+    const pendingTasks = database.tasks.takeContextReminder(scope.sessionId);
+    const taskReminder = pendingTasks.length > 0
+      ? formatTaskContextReminder(pendingTasks)
+      : undefined;
+    const scratchpadDir = scratchpadTurnDir(activeDataDir, scope.sessionId, scope.turnId);
+    const scratchpadNames = fs.existsSync(scratchpadDir)
+      ? fs.readdirSync(scratchpadDir).slice(0, 50)
+      : [];
+    const scratchpad = scratchpadNames.length > 0
+      ? `本 Turn scratchpad 已有文件：${scratchpadNames.join('、')}`
+      : undefined;
     return {
-      ...(git ? { gitSummary: () => git } : {}),
-      // Memory 召回槽：Sol 的 Memory 包收口后在此接入。
-      ...(scope.narrativePolicy === 'always' && scope.userText.trim().length > 0
-        ? {
-            narrativeRecall: async () => {
-              const result = await prepareNarrativeRecall(narrative.narrative, {
-                sessionId: scope.sessionId,
-                turnId: scope.turnId,
-                userInput: scope.userText,
-                emit: scope.emit,
-              });
-              return result.contextText ?? undefined;
-            },
-          }
-        : {}),
-      taskReminder: () => {
-        const tasks = database.tasks.takeContextReminder(scope.sessionId);
-        return tasks.length > 0 ? formatTaskContextReminder(tasks) : undefined;
-      },
-      scratchpad: () => {
-        const dir = scratchpadTurnDir(activeDataDir, scope.sessionId, scope.turnId);
-        if (!fs.existsSync(dir)) return undefined;
-        const names = fs.readdirSync(dir).slice(0, 50);
-        return names.length > 0 ? `本 Turn scratchpad 已有文件：${names.join('、')}` : undefined;
-      },
+      ...(git ? { gitSummary: git } : {}),
+      ...(memoryWork ? { memoryWork } : {}),
+      ...(memoryRelationship ? { memoryRelationship } : {}),
+      ...(narrativeRecall ? { narrativeRecall } : {}),
+      ...(taskReminder ? { taskReminder } : {}),
+      ...(scratchpad ? { scratchpad } : {}),
     };
   };
 
@@ -247,7 +265,8 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
       ensureScratchpadDir(activeDataDir, sessionId, turnId),
     isBypassPermissionsModeAvailable:
       process.env['EMA_BYPASS_PERMISSIONS'] === '1' && process.env.NODE_ENV !== 'production',
-    reminderSources,
+    readTurnReminderFacts,
+    memoryGuidance: () => buildMemoryGuidance().catch(() => null),
     usageRecorder: database.usageRecorder,
     stage,
     startSessionTitleGeneration,

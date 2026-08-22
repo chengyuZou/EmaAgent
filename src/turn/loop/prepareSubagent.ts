@@ -81,7 +81,6 @@ export function createPrepareSubagent(deps: PrepareSubagentDeps): PrepareSubagen
       emit: deps.emit,
       budget: deps.budget,
       baselineMessageCount: fork ? deps.parentMessages.length : 0,
-      reminderSources: {},
       signal,
       persistMacro: false,
     });

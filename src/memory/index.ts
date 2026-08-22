@@ -188,8 +188,7 @@ export {
   listRelationshipTargetPaths,
 } from './relationship/consolidation.js';
 export type { RelationshipConsolidationDeps } from './relationship/consolidation.js';
-export { buildMemoryPrompt } from './prompt.js';
-export type { BuildMemoryPromptDeps } from './prompt.js';
+export { buildMemoryGuidance } from './prompt.js';
 export {
   searchMemoryFiles,
   readMemoryFile,

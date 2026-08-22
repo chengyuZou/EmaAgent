@@ -29,7 +29,7 @@ import {
   TurnBudgetExceededError,
 } from './errors.js';
 import type { TurnStreamEvent } from './events.js';
-import { createPrepareLlmCall, type PrepareLlmCallReminderSources } from './loop/prepareLlmCall.js';
+import { createPrepareLlmCall } from './loop/prepareLlmCall.js';
 import { createPrepareSubagent } from './loop/prepareSubagent.js';
 import { TurnBudget } from './loop/turnBudget.js';
 import { TurnMessageWriter } from './loop/turnMessageWriter.js';
@@ -38,6 +38,10 @@ import {
   type PreparedTurn,
   type PrepareTurnDeps,
 } from './preparation/prepareTurn.js';
+import {
+  renderTurnReminder,
+  type TurnReminderFacts,
+} from './preparation/turnReminder.js';
 import type { TurnToolsAssembly } from './preparation/prepareTurnTools.js';
 import type { TurnStore } from './turnStore.js';
 import type {
@@ -51,14 +55,14 @@ const DEFAULT_MAX_DURATION_MS = 30 * 60_000;
 const DEFAULT_MAX_OUTPUT_TOKENS = 200_000;
 
 /**
- * Reminder 工厂的作用域：git/任务/scratchpad 等工作区与 Session 事实、Narrative 召回
+ * Reminder 事实的作用域：git/任务/scratchpad 等工作区与 Session 事实、Narrative 召回
  * 所需的用户输入、以及召回事件的 Turn 事件流出口，全部按 Turn 绑定。
  */
 export interface TurnReminderScope {
   readonly sessionId: string;
   readonly turnId: string;
   readonly executionProfile: Turn['executionProfile'];
-  /** auto = NarrativeSearchTool 可见；always = 每轮召回注入 reminder；off = 两者皆无。 */
+  /** auto = NarrativeSearchTool 可见；always = Turn 开头查询一次并写入 reminder；off = 两者皆无。 */
   readonly narrativePolicy: Turn['narrativePolicy'];
   /** 本 Turn 用户文本（附件降级后）；backgroundProcessCompleted 等触发可为空串。 */
   readonly userText: string;
@@ -74,10 +78,14 @@ export interface TurnExecutorDeps extends PrepareTurnDeps {
   readonly createCompact: (
     callLlm: CallLlm,
   ) => (request: CompactRequest) => Promise<CompactResult>;
-  /** 每 Turn 调用一次；允许 async（git 探测等启动期读取在此完成并冻结进闭包）。 */
-  readonly reminderSources: (
+  /**
+   * 每根 Turn 调用一次，读取 reminder 所需的全部启动期事实（git 探测、Memory 摘要、
+   * Narrative always 召回、Task 一次性提醒、Scratchpad 快照）。结果即冻结，
+   * 本 Turn 后续 LLM Call 复用同一份持久化 reminder，不再回读。
+   */
+  readonly readTurnReminderFacts: (
     scope: TurnReminderScope,
-  ) => Promise<PrepareLlmCallReminderSources> | PrepareLlmCallReminderSources;
+  ) => Promise<TurnReminderFacts> | TurnReminderFacts;
   /** 逐次 LLM 调用用量记录；缺省不记账（观测不阻断主链）。 */
   readonly usageRecorder?: UsageRecorder;
   /**
@@ -256,6 +264,28 @@ export class TurnExecutor {
         .map(part => part.text)
         .join('\n');
 
+      // Reminder 先于用户消息落库：同一 Turn 的历史重放顺序即模型看到的顺序。
+      // reminder 表示"本 Turn 开始时的事实"，整 Turn 只有这一条，不随 LLM Call 重建。
+      const reminderFacts = await this.deps.readTurnReminderFacts({
+        sessionId,
+        turnId,
+        executionProfile: turn.executionProfile,
+        narrativePolicy: turn.narrativePolicy,
+        userText,
+        emit,
+      });
+      const reminderMessage = this.deps.sessions.appendMessage({
+        turnId,
+        sessionId,
+        role: 'user',
+        kind: 'reminder',
+        blocks: renderTurnReminder({
+          currentDate: new Date().toISOString().slice(0, 10),
+          facts: reminderFacts,
+          selectedSkills: prepared.selectedSkills,
+        }),
+      });
+
       this.deps.sessions.appendMessage({
         turnId,
         sessionId,
@@ -267,22 +297,22 @@ export class TurnExecutor {
         this.deps.startSessionTitleGeneration?.(sessionId, userText);
       }
 
-      const historyMessages = buildMessages(
-        this.deps.sessions.loadHistory(sessionId),
-      );
+      // 历史区间 = reminder 之前的旧消息；reminder 从持久化读回（与落库同一份字节），
+      // 用户输入以解析后的全量 parts 进入当前 Turn（附件真实内容只在这一形态）。
+      // 两者都在不可压缩区间：Compact 只能改写 reminder 之前的旧历史。
+      const persisted = this.deps.sessions.loadHistory(sessionId);
+      const reminderIndex = persisted.findIndex(message => message.id === reminderMessage.id);
+      if (reminderIndex < 0) {
+        throw new Error('reminder 消息落库后未能从 Session History 读回');
+      }
+      const historyMessages = buildMessages(persisted.slice(0, reminderIndex));
+      const reminderReplay = buildMessages(persisted.slice(reminderIndex, reminderIndex + 1));
       const initialMessages: Message[] = [
         ...historyMessages,
+        ...reminderReplay,
         { role: 'user', content: prepared.userMessageParts },
       ];
 
-      const reminderSources = await this.deps.reminderSources({
-        sessionId,
-        turnId,
-        executionProfile: turn.executionProfile,
-        narrativePolicy: turn.narrativePolicy,
-        userText,
-        emit,
-      });
       const prepareIteration = createPrepareLlmCall({
         sessionId,
         turnId,
@@ -292,7 +322,6 @@ export class TurnExecutor {
         emit,
         budget,
         baselineMessageCount: historyMessages.length,
-        reminderSources,
         signal,
         onRequestPrepared: messages => {
           parentMessages.splice(0, parentMessages.length, ...messages);

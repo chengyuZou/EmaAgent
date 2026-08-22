@@ -15,7 +15,7 @@ import {
 import { loadTemplate } from '../templates/loader.js';
 import type { ConsolidateMemory } from '../jobs/runConsolidationJobs.js';
 
-// memory_summary.md 是注入源(buildMemoryPrompt 每 Turn 读它),整合器是唯一写者:
+// memory_summary.md 是注入源(Turn 启动时读一次,进持久化 reminder),整合器是唯一写者:
 // 允许 write 是设计使然,但模板强制"基于正式记忆与本次证据重写",防自激。
 const WORK_ROOT_FILES = ['MEMORY.md', 'memory_summary.md'] as const;
 const WORK_SUBDIRS = ['topics', 'history'] as const;

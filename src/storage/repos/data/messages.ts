@@ -8,7 +8,8 @@ const MESSAGE_TURN_READ_LIMIT = 50;
 export type MessageKind =
   | 'normal'
   | 'tool_results'
-  | 'summary';
+  | 'summary'
+  | 'reminder';
 
 export interface MessageRow {
   id:          string;

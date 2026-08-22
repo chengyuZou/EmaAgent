@@ -32,7 +32,7 @@ function input(overrides: Partial<Parameters<typeof getSystemPrompt>[0]> = {}) {
 }
 
 describe('getSystemPrompt', () => {
-  it('完整输入:静态前缀 → 哨兵 → 角色 → Profile → 能力 → 环境 → 数据级内容', () => {
+  it('完整输入:静态前缀 → 哨兵 → 环境/数据级内容 → 角色 → Profile → 能力', () => {
     const sections = getSystemPrompt(input({
       workspaceInstructions: '# 项目约定',
       skillCatalog: '- review: 代码评审',
@@ -51,14 +51,16 @@ describe('getSystemPrompt', () => {
     const boundary = sections.indexOf(PROMPT_DYNAMIC_BOUNDARY);
     expect(boundary).toBe(7);
     const after = sections.slice(boundary + 1);
-    expect(after[0]).toBe(CHARACTER[0]);
-    expect(after[1]).toBe(CHARACTER[1]);
-    expect(after.some((s) => s.includes('当前执行方式：Work'))).toBe(true);
-    expect(after.some((s) => s.includes('本轮能力引导'))).toBe(true);
-    expect(after.some((s) => s.includes('openai / gpt-5.2'))).toBe(true);
+    // 动态尾部按稳定性排序：较稳定的环境/数据级内容在前，角色/Profile/能力在末端。
+    expect(after[0]).toContain('本轮运行环境');
     expect(after.some((s) => s.includes('工作区指令') && s.includes('# 项目约定'))).toBe(true);
     expect(after.some((s) => s.includes('可用技能'))).toBe(true);
     expect(after.some((s) => s.includes('serverA 的用法指引'))).toBe(true);
+    const characterIndex = after.indexOf(CHARACTER[0]);
+    expect(characterIndex).toBeGreaterThan(0);
+    expect(after[characterIndex + 1]).toBe(CHARACTER[1]);
+    expect(after[after.length - 2]).toContain('当前执行方式：Work');
+    expect(after[after.length - 1]).toContain('本轮能力引导');
   });
 
   it('产品静态段不抢占角色姓名,角色身份只来自 Character', () => {
@@ -68,8 +70,9 @@ describe('getSystemPrompt', () => {
 
     expect(stablePrefix).not.toContain('你是 Ema');
     expect(stablePrefix).toContain('EmaAgent 是产品与运行环境的名称');
-    expect(sections[boundary + 1]).toBe(CHARACTER[0]);
-    expect(sections[boundary + 1]).toContain('测试娘');
+    const characterIndex = sections.indexOf(CHARACTER[0]);
+    expect(characterIndex).toBeGreaterThan(boundary);
+    expect(sections[characterIndex]).toContain('测试娘');
   });
 
   it('可选数据级输入缺省时无空洞、无 null 残留', () => {

@@ -74,6 +74,8 @@ const startTurnBody = z.object({
   thinkingEnabled: z.boolean().optional(),
   kbId: z.string().min(1).optional(),
   kbAssetIds: z.array(z.string().min(1)).max(REQUEST_VALUE_LIMITS.maxTurnKbAssetScopes).optional(),
+  /** 用户显式选择的 SkillKey 数组（Skill Chip 提交）；不存在或已禁用在准备期拒绝。 */
+  selectedSkillKeys: z.array(z.string().min(1)).max(8).optional(),
 });
 
 export interface StartTurnRouteDeps {
@@ -125,6 +127,7 @@ export function startTurnRoute(deps: StartTurnRouteDeps): Hono {
         ...(body.thinkingEnabled !== undefined ? { thinkingEnabled: body.thinkingEnabled } : {}),
         ...(body.kbId ? { kbId: body.kbId } : {}),
         ...(body.kbAssetIds ? { kbAssetIds: body.kbAssetIds } : {}),
+        ...(body.selectedSkillKeys ? { selectedSkillKeys: body.selectedSkillKeys } : {}),
       });
     } catch (error) {
       if (error instanceof SessionBusyError) {

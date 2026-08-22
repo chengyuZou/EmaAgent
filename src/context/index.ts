@@ -15,6 +15,5 @@ export { ContextAssemblyError } from './errors.js';
 export type { ContextAssemblyErrorCode } from './errors.js';
 export type {
   AssembleContextInput,
-  ContextReminder,
   PreparedContext,
 } from './types.js';

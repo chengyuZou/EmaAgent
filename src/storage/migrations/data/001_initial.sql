@@ -136,7 +136,7 @@ CREATE TABLE messages (
   turn_id     TEXT REFERENCES turns(id) ON DELETE SET NULL,
   role        TEXT NOT NULL CHECK(role IN ('system','user','assistant')),
   kind        TEXT NOT NULL DEFAULT 'normal'
-              CHECK(kind IN ('normal','tool_results','summary')),
+              CHECK(kind IN ('normal','tool_results','summary','reminder')),
   blocks_json TEXT NOT NULL,
   interrupted INTEGER NOT NULL DEFAULT 0,
   created_at  INTEGER NOT NULL);

@@ -1,4 +1,4 @@
-// 测试 prepareLlmCall 的基线切分、compact 改写链、Macro 摘要落库与召回缓存。
+// 测试 prepareLlmCall 的基线切分、compact 改写链与 Macro 摘要落库。
 import { describe, expect, it, vi } from 'vitest';
 import type { AgentBudget } from '@ema-agent/agent';
 import type { CompactRequest, CompactResult } from '@ema-agent/compact';
@@ -44,7 +44,6 @@ function makeBudget(remaining = 50_000): AgentBudget {
 function makeDeps(overrides: {
   compact?: (request: CompactRequest) => Promise<CompactResult>;
   sessions?: Pick<SessionStore, 'appendMessage'>;
-  reminderSources?: Parameters<typeof createPrepareLlmCall>[0]['reminderSources'];
   prepared?: PreparedTurn;
 } = {}) {
   return {
@@ -56,7 +55,6 @@ function makeDeps(overrides: {
     emit: vi.fn(),
     budget: makeBudget(),
     baselineMessageCount: HISTORY.length,
-    reminderSources: overrides.reminderSources ?? {},
     signal: new AbortController().signal,
   };
 }
@@ -130,17 +128,6 @@ describe('prepareLlmCall', () => {
     await prepare({ messages: [...HISTORY, ...CURRENT], recoveryReason: 'context_window_exceeded' });
 
     expect(seen[0]?.force).toBe(true);
-  });
-
-  it('Memory/Narrative 召回同一 Turn 只计算一次', async () => {
-    const memoryRecall = vi.fn(async () => '召回内容');
-    const deps = makeDeps({ reminderSources: { memoryRecall } });
-    const prepare = createPrepareLlmCall(deps);
-
-    await prepare({ messages: [...HISTORY, ...CURRENT] });
-    await prepare({ messages: [...HISTORY, ...CURRENT] });
-
-    expect(memoryRecall).toHaveBeenCalledTimes(1);
   });
 
   it('输出上限取预算与模型上限的较小者', async () => {

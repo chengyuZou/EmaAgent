@@ -3,26 +3,12 @@ import type { AgentBudget, PrepareAgentIteration } from '@ema-agent/agent';
 import type { CompactRequest, CompactResult } from '@ema-agent/compact';
 import {
   assembleContext,
-  type ContextReminder,
   type PreparedContext,
 } from '@ema-agent/context';
-import type { GitSummary } from '@ema-agent/git';
 import type { Message } from '@ema-agent/llm';
 import type { SessionStore } from '@ema-agent/session';
 import type { TurnStreamEvent } from '../events.js';
 import type { PreparedTurn } from '../preparation/prepareTurn.js';
-
-/**
- * Reminder 数据源全部由宿主注入：git 摘要（仅 work）、Memory 召回（窄口，Sol 拆包后接线）、
- * Narrative 召回（always 策略）、Task 低频提醒、Scratchpad 投影。
- */
-export interface PrepareLlmCallReminderSources {
-  readonly gitSummary?: () => GitSummary | undefined;
-  readonly memoryRecall?: () => Promise<string | undefined>;
-  readonly narrativeRecall?: () => Promise<string | undefined>;
-  readonly taskReminder?: () => string | undefined;
-  readonly scratchpad?: () => string | undefined;
-}
 
 export interface PrepareLlmCallDeps {
   readonly sessionId: string;
@@ -34,7 +20,6 @@ export interface PrepareLlmCallDeps {
   readonly budget: AgentBudget;
   /** 初始工作历史中属于"历史区间"的条数（其后为本 Turn 工作消息）。 */
   readonly baselineMessageCount: number;
-  readonly reminderSources: PrepareLlmCallReminderSources;
   readonly signal: AbortSignal;
   /** 根 Turn true（Macro 摘要落 Session）；子 Agent false——只能压缩自己的工作历史。 */
   readonly persistMacro?: boolean;
@@ -46,37 +31,17 @@ export interface PrepareLlmCallDeps {
  * 每次模型调用前重建可见窗口：历史区间（唯一允许 Compact 改写）与本 Turn 工作消息
  * 分开处理；micro/macro 改写后整体替换循环的工作历史并重设基线，Macro 摘要本身即
  * 覆盖游标（历史重放永远从最新 summary 之后开始）。
+ *
+ * Reminder 不在此重建：它表示"本 Turn 开始时的事实"，由 Turn 在启动前持久化一次，
+ * 随本 Turn 工作消息（不可压缩区间）原样到达每一次装配。
  */
 export function createPrepareLlmCall(deps: PrepareLlmCallDeps): PrepareAgentIteration {
   const { prepared } = deps;
   let baselineCount = deps.baselineMessageCount;
-  // Memory/Narrative 召回本 Turn 只算一次；V1 没有运行中新用户输入，纯 Tool 迭代复用。
-  let recallLoaded = false;
-  let memoryRecall: string | undefined;
-  let narrativeRecall: string | undefined;
 
   return async ({ messages, recoveryReason }) => {
     const history = messages.slice(0, baselineCount);
     const currentTurn = messages.slice(baselineCount);
-
-    if (!recallLoaded) {
-      recallLoaded = true;
-      memoryRecall = await deps.reminderSources.memoryRecall?.();
-      narrativeRecall = await deps.reminderSources.narrativeRecall?.();
-    }
-    const gitSummary = prepared.executionProfile === 'work'
-      ? deps.reminderSources.gitSummary?.()
-      : undefined;
-    const taskReminder = deps.reminderSources.taskReminder?.();
-    const scratchpad = deps.reminderSources.scratchpad?.();
-    const reminder: ContextReminder = {
-      currentDate: new Date().toISOString().slice(0, 10),
-      ...(gitSummary ? { gitSummary } : {}),
-      ...(memoryRecall ? { memoryRecall } : {}),
-      ...(narrativeRecall ? { narrativeRecall } : {}),
-      ...(taskReminder ? { taskReminder } : {}),
-      ...(scratchpad ? { scratchpad } : {}),
-    };
 
     const maxOutputTokens = prepared.maxOutput !== null
       ? Math.min(deps.budget.remainingOutputTokens(), prepared.maxOutput)
@@ -84,12 +49,10 @@ export function createPrepareLlmCall(deps: PrepareLlmCallDeps): PrepareAgentIter
 
     const assemble = (historyPart: readonly Message[]): PreparedContext =>
       assembleContext({
-        executionProfile: prepared.executionProfile,
         systemPrompt: prepared.systemPrompt,
         toolPool: prepared.tools.toolPool,
         history: historyPart,
         currentTurn,
-        reminder,
         contextWindow: prepared.contextWindow,
       });
 

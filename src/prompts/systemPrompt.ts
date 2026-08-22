@@ -44,8 +44,9 @@ export interface GetSystemPromptInput {
   /** MCP server 自报指引(数据级),每条一个 server。 */
   readonly mcpInstructions?: readonly string[] | null;
   /**
-   * 记忆段(使用指引 + 两轨摘要,合成文本);由调用方闭包注入
-   * (memory 包 buildMemoryPrompt 产出),本包只摆位置。
+   * 记忆段（使用指引，静态模板文本）；由调用方闭包注入
+   * （memory 包 buildMemoryGuidance 产出），本包只摆位置。
+   * 两轨摘要不进 System Prompt——它们是"本 Turn 开始时的事实"，进持久化 reminder。
    */
   readonly memorySection?: string | null;
 }
@@ -83,10 +84,7 @@ export function getSystemPrompt(
     communicationRules(),
     baseToneRules(),
     PROMPT_DYNAMIC_BOUNDARY,
-    // ── 动态尾部:角色 → Profile → 能力 → 环境 → 数据级内容 ──
-    ...character,
-    executionProfileInstructions(input.executionProfile),
-    sessionCapabilityGuidance(input.toolNames),
+    // ── 动态尾部:按"较稳定 → 较易变化"排列,延长稳定字节的缓存前缀 ──
     runtimeEnvironment(input.environment),
     input.workspaceInstructions
       ? asDataSection('工作区指令', input.workspaceInstructions)
@@ -98,5 +96,9 @@ export function getSystemPrompt(
       ? asDataSection('可用技能', input.skillCatalog)
       : null,
     ...(input.mcpInstructions ?? []).map((text) => asDataSection('MCP 服务器指引', text)),
+    // 角色、Profile 与 ToolPool 能力说明排末端：它们的变化不应破坏前面各段的缓存前缀。
+    ...character,
+    executionProfileInstructions(input.executionProfile),
+    sessionCapabilityGuidance(input.toolNames),
   ].filter((section): section is string => section !== null);
 }

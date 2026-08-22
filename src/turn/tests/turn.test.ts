@@ -85,7 +85,7 @@ function makeDeps(options: {
     agentRunStore: {} as unknown as AgentRunStore,
     agentRunMessagesStore: {} as unknown as AgentRunMessagesStore,
     createCompact: () => async request => ({ kind: 'unchanged' as const, history: request.history }),
-    reminderSources: () => ({}),
+    readTurnReminderFacts: () => ({}),
     characterDirectoryName: () => 'test-character',
     ...(titleStarter ? { startSessionTitleGeneration: titleStarter } : {}),
   };
@@ -125,15 +125,62 @@ describe('TurnExecutor 集成', () => {
 
     expect(outcome.status).toBe('completed');
     const messages = sessions.loadMessagesForTurn(handle.turnId);
-    const roles = messages.map(m => m.role);
-    expect(roles).toEqual(['user', 'assistant']);
-    expect(JSON.stringify(messages[1]!.blocks)).toContain('你好，我是 Ema。');
+    // 每 Turn 的消息序列：reminder（本 Turn 初始背景）→ 用户输入 → assistant 回复。
+    expect(messages.map(m => `${m.role}:${m.kind}`)).toEqual([
+      'user:reminder',
+      'user:normal',
+      'assistant:normal',
+    ]);
+    expect(JSON.stringify(messages[2]!.blocks)).toContain('你好，我是 Ema。');
 
     const events: string[] = [];
     for await (const event of handle.events) events.push(event.type);
     expect(events).toContain('turn_started');
     expect(events).toContain('output_text_delta');
     expect(events).toContain('turn_completed');
+    db.close();
+  });
+
+  it('reminder：事实在 Turn 开始一次持久化并回放进请求，先于用户输入且不重复', async () => {
+    const db = new Database({ memory: true, kind: 'data' });
+    db.migrate();
+    const sessions = new SessionStore({ db });
+    const session = sessions.createSession({ workspaceRoot: '/w' });
+    const registry = new ToolRegistry();
+    const requests: unknown[] = [];
+    const llm: CallLlm = request => {
+      requests.push(request.messages);
+      return (async function* () {
+        yield { type: 'text_delta' as const, blockIndex: 0, delta: '好。' };
+        yield { type: 'done' as const, stopReason: 'end_turn' as const };
+      })();
+    };
+    const deps = {
+      ...makeDeps({ db, llm, sessionId: session.id, registry }),
+      readTurnReminderFacts: () => ({
+        memoryWork: '用户在做 EmaAgent',
+        taskReminder: '还有 2 个任务待处理',
+      }),
+    };
+    const executor = new TurnExecutor(deps);
+
+    const handle = executor.start(makeStart(session.id));
+    const outcome = await handle.completion;
+    expect(outcome.status).toBe('completed');
+
+    // 持久化顺序：reminder 行在用户消息之前，facts 内容进 reminder。
+    const messages = sessions.loadMessagesForTurn(handle.turnId);
+    expect(messages[0]!.kind).toBe('reminder');
+    const reminderBlocks = JSON.stringify(messages[0]!.blocks);
+    expect(reminderBlocks).toContain('本 Turn 开始时的状态');
+    expect(reminderBlocks).toContain('用户在做 EmaAgent');
+    expect(reminderBlocks).toContain('还有 2 个任务待处理');
+
+    // 首个 LLM 请求：reminder 回放出现在用户输入之前，且全文只出现一次。
+    const first = JSON.stringify(requests[0]);
+    expect(first.indexOf('用户在做 EmaAgent')).toBeGreaterThan(-1);
+    expect(first.indexOf('用户在做 EmaAgent')).toBeLessThan(first.indexOf('你好'));
+    expect(first.indexOf('用户在做 EmaAgent')).toBe(first.lastIndexOf('用户在做 EmaAgent'));
     db.close();
   });
 
@@ -159,7 +206,7 @@ describe('TurnExecutor 集成', () => {
 
     expect(outcome.status).toBe('completed');
     const messages = sessions.loadMessagesForTurn(handle.turnId);
-    const text = JSON.stringify(messages[1]!.blocks);
+    const text = JSON.stringify(messages[2]!.blocks);
     expect(text).toContain('你好，我是 Ema。');
     expect(text).not.toContain('<emotion>');
     expect(text).not.toContain('<motion>');
@@ -235,13 +282,14 @@ describe('TurnExecutor 集成', () => {
     const messages = sessions.loadMessagesForTurn(handle.turnId);
     const kinds = messages.map(m => `${m.role}:${m.kind ?? 'normal'}`);
     expect(kinds).toEqual([
+      'user:reminder',
       'user:normal',
       'assistant:normal',
       'user:tool_results',
       'assistant:normal',
     ]);
-    expect(JSON.stringify(messages[1]!.blocks)).toContain('Echo');
-    expect(JSON.stringify(messages[2]!.blocks)).toContain('echo-ok');
+    expect(JSON.stringify(messages[2]!.blocks)).toContain('Echo');
+    expect(JSON.stringify(messages[3]!.blocks)).toContain('echo-ok');
     db.close();
   });
 });

@@ -5,7 +5,6 @@ import type { Tool, ToolPool } from '@ema-agent/tools';
 import { toJSONSchema } from 'zod';
 import { ContextAssemblyError } from './errors.js';
 import { estimateContextUsage } from './contextUsage.js';
-import { renderSystemReminder } from './systemReminder.js';
 import type { AssembleContextInput, PreparedContext } from './types.js';
 
 /**
@@ -13,6 +12,7 @@ import type { AssembleContextInput, PreparedContext } from './types.js';
  *
  * 该函数没有时钟、数据库、模型调用或压缩副作用。同一份输入必然得到同一份
  * Provider 中立请求，因此 TurnExecution 可以在 Compact 前后安全地各调用一次。
+ * Reminder 不属于这里：它在 Turn 开始时由 Turn 持久化，经有序 History 进入本函数。
  */
 export function assembleContext(input: AssembleContextInput): PreparedContext {
   const history = stripCacheBreakpoints(input.history);
@@ -21,12 +21,10 @@ export function assembleContext(input: AssembleContextInput): PreparedContext {
   assertNoSystemMessages(currentTurn);
 
   const prompt = buildPromptMessages(input.systemPrompt);
-  const reminder = renderSystemReminder(input.reminder, input.executionProfile);
   const tools = projectToolPool(input.toolPool);
   const messages = markFinalCacheBreakpoint([
     ...prompt.messages,
     ...history,
-    reminder.message,
     ...currentTurn,
   ]);
   const usage = estimateContextUsage({
@@ -35,7 +33,6 @@ export function assembleContext(input: AssembleContextInput): PreparedContext {
     tools,
     promptSections: prompt.sections,
     history,
-    reminder,
     currentTurn,
   });
 

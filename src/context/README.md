@@ -1,17 +1,15 @@
 # @ema-agent/context
 
-Context 只负责把已经准备好的事实组装成一次 LLM Call 的 Provider 中立输入。它不读取数据库、不查询 Memory/Narrative、不调用模型，也不决定是否压缩。
+Context 只负责把已经准备好的事实组装成一次 LLM Call 的 Provider 中立输入。它不读取数据库、不查询 Memory/Narrative、不生成或插入 reminder、不调用模型，也不决定是否压缩。
 
 ## 唯一入口
 
 ```ts
 const prepared = assembleContext({
-  executionProfile,
   systemPrompt,
   toolPool,
   history,
   currentTurn,
-  reminder,
   contextWindow,
 });
 ```
@@ -32,40 +30,29 @@ const prepared = assembleContext({
 System Prompt 稳定段（尾部 cacheBreakpoint）
 System Prompt 动态段
 History
-<system-reminder> 当前调用运行时事实
-Current Turn（最后一条有效消息带 cacheBreakpoint）
+Current Turn（首条是本 Turn 持久化 reminder 的回放；最后一条有效消息带 cacheBreakpoint）
 
 tools = 当前 ToolPool 的原顺序投影
 ```
 
 Prompt 的动态边界哨兵只用于定位稳定缓存切口，发送前必须移除。Context 不重新排序 ToolPool，也不保存 Prompt revision、Manifest 或 Snapshot。
 
-## system-reminder
+## Reminder 不在本包
 
-`ContextReminder` 是固定输入，不是可注册的插槽。空字段省略，顺序如下：
-
-1. 当前日期；
-2. Git 摘要（只在 Work 模式且可读取时）；
-3. Memory Recall；
-4. Narrative Recall；
-5. Task 提醒；
-6. Scratchpad；
-7. 子 Agent Mailbox。
-
-这些事实由各自业务所有者生成，Context 只负责序列化。Git 命令仍归 `@ema-agent/git`，Memory/Narrative 查询也不进入本包。
+Turn reminder 表示"本 Turn 开始时的事实"：它在根 Turn 开始时由 Turn 生成一次并作为 `kind='reminder'` 的 Session Message 持久化，随后经有序 History 进入本包。本包只组装，不知道哪条是 reminder；Usage 分类把它计入 `messages`。
 
 ## Session Message 投影
 
 `buildMessages()` 是持久化 Session Message 到 LLM Message 的投影函数：
 
-- 丢弃旧 system 和 `narrative_context`；
+- 丢弃旧 system；
 - thinking 只供 UI/审计，不跨 Provider 重放；
 - 只保留完整配对的 `tool_use/tool_result`；
 - 历史附件引用变成明确占位，真实媒体兼容由 LLM Request Preparer 处理。
 
 ## 与 Compact 的关系
 
-Context 与 Compact 互不导入。未来的 TurnExecution 接线顺序是：
+Context 与 Compact 互不导入。TurnExecution 的接线顺序是：
 
 ```text
 candidate = assembleContext(originalHistory)
@@ -82,6 +69,7 @@ macro     → 先持久化摘要，再 assembleContext(compactResult.history) �
 
 - 压缩阈值、摘要和熔断：Compact；
 - Summary SQL 持久化：TurnExecution + Session/Storage；
+- Reminder 的生成与持久化：Turn；
 - 历史媒体兼容：LLM Request Preparer；
 - Tool Result 截断、落盘和清理：Tools Results；
 - Provider 协议与 `cache_control`：LLM Adapter；

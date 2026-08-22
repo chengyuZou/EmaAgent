@@ -43,11 +43,15 @@ start
   │    └─ prepareTurnTools：ToolUseContext + 根 ToolPool + askPermission/askUser 口子
   │        → getSystemPrompt（扁平数组，含工具名投影）
   ├─ setModel 回填 Turn 行
+  ├─ readTurnReminderFacts（每根 Turn 一次：git 仅 work、Memory 两轨摘要、Narrative always
+  │    一次召回、Task take 一次性提醒、scratchpad 快照）→ renderTurnReminder
+  │    → 落 kind='reminder' 消息（先于用户消息）
   ├─ 写 initial user Message
+  ├─ loadHistory 按 reminder 行切分：之前 = 可压缩历史区间；reminder 回放 + 全量用户 parts
+  │    = 当前 Turn 工作消息
   └─ runAgentLoop（唯一一个根循环）
        ├─ prepareLlmCall（loop/，每次模型调用前）
        │    ├─ 基线切分：history（唯一可压缩区间）+ currentTurn
-       │    ├─ reminder 装配（Memory/Narrative 召回一次缓存，git 仅 work，task/scratchpad 每轮）
        │    ├─ assembleContext → 未超直接返回
        │    └─ 超限 compact：micro 直接重装配；macro 落 kind='summary' 消息（turnId=null，
        │       摘要即覆盖游标）再重装配；返回可能被改写的整体工作历史
@@ -81,7 +85,7 @@ start
 
 `turn/events.ts` 只拥有 Turn 自有生命周期事件；`TurnStreamEvent` 是流组合（TurnEvent | TurnAgentRunEvent | ToolExecutionEvent | permission 两事件 | CompactEvent | NarrativeEvent），各域事件由拥有方定义。AgentRun 事件入流时由工具层补上 sessionId/turnId（agent 包不感知根身份）。
 
-Reminder 源是 TurnExecutor 的每 Turn 工厂（`TurnReminderScope`：sessionId/turnId/executionProfile/userText/emit）——git/任务/scratchpad 的工作区与 Session 事实、Narrative 召回所需的用户输入、召回事件出口全部按 Turn 绑定；git 探测等启动期读取在工厂内完成并冻结进闭包，`prepareLlmCall` 只消费同步快照。
+Reminder 表示"本 Turn 开始时的事实"：TurnExecutor 每根 Turn 调一次 `readTurnReminderFacts`（`TurnReminderScope`：sessionId/turnId/executionProfile/narrativePolicy/userText/emit）取回启动期事实，`renderTurnReminder` 渲染后经 `appendMessage(kind='reminder')` 持久化，再由 loadHistory 读回放进当前 Turn 工作消息——同一份字节，不随 LLM Call 重建，也不进可压缩区间。Narrative 三态：always 在取事实时查询一次写入 reminder；auto 只装配 NarrativeSearchTool；off 两者皆无。
 
 ## 目录
 
@@ -100,6 +104,7 @@ src/turn/
 ├─ preparation/             Turn 启动一次性冻结
 │  ├─ prepareTurn.ts        输入规范化与冻结编排
 │  ├─ prepareTurnTools.ts   工具层装配 + 权限/问询口子
+│  ├─ turnReminder.ts       本 Turn 初始背景消息（kind='reminder'）的唯一文本构建
 │  └─ mediaCompatibility.ts 原始图片块能力降级
 ├─ loop/                    运行期内部件
 │  ├─ prepareLlmCall.ts     PrepareAgentIteration 实现（assemble→compact→再 assemble）
@@ -118,5 +123,5 @@ turn ──> session / agent / context / compact / prompts / providers / skills 
 ```
 
 - 不实现任何 Provider、Tool、Memory、Narrative、Speech 或 HTTP 协议；Route 只拿 `TurnExecutor`，不接触内部件。
-- Memory 零 import：recall 经 `reminderSources.memoryRecall` 注入槽进入 ContextReminder；Sol 拆包后由 Server 接线。
+- Memory 零 import：两轨摘要与使用指引文本经 `readTurnReminderFacts` / `memoryGuidance` 注入闭包由 Server 装配。
 - 旧 `src/turnExecution` 已物理删除；不存在 RootAgentExecution 或任何第三层执行器。

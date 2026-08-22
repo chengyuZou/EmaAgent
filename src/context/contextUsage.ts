@@ -8,18 +8,13 @@ import type {
 } from '@ema-agent/llm';
 import {
   estimateLlmInputTokens,
-  estimateTextTokens,
   type TokenEstimateAccuracy,
 } from '@ema-agent/token';
-import type { RenderedSystemReminder } from './systemReminder.js';
 
 export type ContextUsageCategoryKind =
   | 'promptSection'
   | 'toolInstructions'
   | 'toolSchemas'
-  | 'runtimeContext'
-  | 'memoryRecall'
-  | 'narrativeRecall'
   | 'messages'
   | 'toolCalls'
   | 'toolResults'
@@ -61,7 +56,6 @@ interface ContextUsageInput {
   readonly tools: readonly LlmTool[];
   readonly promptSections: readonly PromptUsageSection[];
   readonly history: readonly Message[];
-  readonly reminder: RenderedSystemReminder;
   readonly currentTurn: readonly Message[];
 }
 
@@ -94,17 +88,6 @@ export function estimateContextUsage(input: ContextUsageInput): ContextUsageEsti
     }).totalTokens;
     pushCategory(categories, 'toolInstructions', instructionTokens);
     pushCategory(categories, 'toolSchemas', Math.max(0, completeToolTokens - instructionTokens));
-  }
-
-  const reminderTokens = estimateLlmInputTokens([input.reminder.message]);
-  let reminderContentBudget = Math.max(
-    0,
-    reminderTokens.totalTokens - reminderTokens.breakdown.messageEnvelopeTokens,
-  );
-  for (const section of input.reminder.sections) {
-    const tokens = Math.min(reminderContentBudget, estimateTextTokens(section.content));
-    pushCategory(categories, section.kind, tokens);
-    reminderContentBudget -= tokens;
   }
 
   const messageUsage = classifyMessages([...input.history, ...input.currentTurn]);

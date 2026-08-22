@@ -112,6 +112,8 @@ export interface PrepareTurnDeps extends TurnToolsDeps {
   readonly createLlmCall?: (connection: LlmConnection, modelId: string) => CallLlm;
   /** 工作区指令（EMA.md/CLAUDE.md）按本 Turn 的工作区读取；无工作区时不会调用。 */
   readonly workspaceInstructions?: (workspaceRoot: string) => string | null;
+  /** 记忆使用指引（静态模板文本，memory 包 buildMemoryGuidance 产出）；两轨摘要不在这里，进 reminder。 */
+  readonly memoryGuidance?: () => Promise<string | null> | string | null;
   /** 模型不支持图片时的 Vision 描述入口；缺失时原始图片将准备失败而非试探透传。 */
   readonly describeImage?: DescribeAttachmentImage;
   readonly describeRawImage?: (image: Extract<ContentPart, { type: 'image_data' }>) => Promise<string>;
@@ -311,6 +313,7 @@ export async function prepareTurn(
       modelId,
     },
     workspaceInstructions: workspaceRoot ? (deps.workspaceInstructions?.(workspaceRoot) ?? null) : null,
+    memorySection: await deps.memoryGuidance?.() ?? null,
     skillCatalog: skillPool ? renderSkillListing(skillPool) : null,
     // MCP server instructions 尚无生产者（MCP 包未存 InitializeResult instructions），到位后恢复。
     mcpInstructions: null,

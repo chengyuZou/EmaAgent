@@ -24,3 +24,8 @@ export {
   workspaceInstructionFilesSetting,
 } from './settings.js';
 export { TurnExecutor, TurnReminderScope } from './turn.js';
+export { renderTurnReminder } from './preparation/turnReminder.js';
+export type {
+  RenderTurnReminderInput,
+  TurnReminderFacts,
+} from './preparation/turnReminder.js';
