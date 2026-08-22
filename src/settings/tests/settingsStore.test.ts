@@ -13,6 +13,7 @@ import type { SettingGroup } from '../types.js';
 
 const countSetting = defineSetting<number>({
   key: 'test.count',
+  label: '测试计数',
   description: '测试计数设置。',
   apply: 'immediate',
   defaultValue: 3,
@@ -22,6 +23,7 @@ const countSetting = defineSetting<number>({
 // 组内跨字段约束示例:maxConcurrentSubagents ≤ maxSubagents
 const maxSubagentsSetting = defineSetting<number>({
   key: 'agent.limits.maxSubagents',
+  label: '最大子代理数',
   description: '测试：最大子代理数。',
   apply: 'nextTurn',
   defaultValue: 16,
@@ -30,6 +32,7 @@ const maxSubagentsSetting = defineSetting<number>({
 });
 const maxConcurrentSubagentsSetting = defineSetting<number>({
   key: 'agent.limits.maxConcurrentSubagents',
+  label: '最大并发子代理数',
   description: '测试：最大并发子代理数。',
   apply: 'nextTurn',
   defaultValue: 4,
@@ -39,7 +42,6 @@ const maxConcurrentSubagentsSetting = defineSetting<number>({
 
 const agentLimitsGroup: SettingGroup = {
   id: 'agent.limits',
-  description: '测试：Agent 执行限制组。',
   definitions: [maxSubagentsSetting, maxConcurrentSubagentsSetting],
   schema: z
     .object({
@@ -167,6 +169,7 @@ describe('SettingsStore', () => {
       'test.count',
     ]);
     expect(list[0]!.schema).toBe(maxSubagentsSetting.schema);
+    expect(list[0]!.label).toBe('最大子代理数');
     expect(list[0]!.defaultValue).toBe(16);
     expect(list[0]!.group).toBe('agent.limits');
 

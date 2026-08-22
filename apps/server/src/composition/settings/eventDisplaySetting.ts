@@ -15,6 +15,7 @@ export type EventDisplayConfig = z.infer<typeof eventDisplayConfigSchema>;
 /** 用户覆盖表：key 是 wire 事件类型名；未列出的类型走默认表。 */
 export const eventDisplaySetting = defineSetting<Record<string, EventDisplayConfig>>({
   key: 'frontend.eventDisplay',
+  label: '事件提示条外观覆盖',
   description: '前端事件提示条的用户覆盖表：键为事件类型名，未列出的类型走默认表。',
   apply: 'immediate',
   defaultValue: {},

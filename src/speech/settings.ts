@@ -11,6 +11,7 @@ export interface SpeechSegmentLibraryLimits {
 
 export const speechSegmentMaxFilesSetting = defineSetting<number>({
   key: 'speech.segments.maxFiles',
+  label: '语音片段数量上限',
   description: '逐句音频片段库的最大文件数量。',
   apply: 'nextOperation',
   defaultValue: 20_000,
@@ -19,6 +20,7 @@ export const speechSegmentMaxFilesSetting = defineSetting<number>({
 
 export const speechSegmentMaxBytesSetting = defineSetting<number>({
   key: 'speech.segments.maxBytes',
+  label: '语音片段体积上限',
   description: '逐句音频片段库的磁盘字节上限。',
   apply: 'nextOperation',
   defaultValue: 1024 * 1024 * 1024,

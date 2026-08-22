@@ -15,6 +15,7 @@ export const ASK_USER_TOOL_ID = BuiltinTools.AskUser.id;
  *  与执行模式白名单(chat/work)是独立维度: 这里禁掉的工具两种模式都不可见。 */
 export const disabledToolsSetting = defineSetting<string[]>({
   key: 'tools.disabled',
+  label: '内置工具禁用列表',
   description: '被禁用的内置工具稳定 id 列表；默认全开。禁用的工具在 chat/work 两种模式都不可见。',
   apply: 'nextTurn',
   defaultValue: [],

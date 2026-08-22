@@ -1,12 +1,16 @@
-// 设置值读写：单值 GET/PUT/DELETE（删即恢复默认）与批量保存（任一键非法整批拒绝）。
-import { Hono } from 'hono';
+// 设置值读写：全量一次读取、单值 GET/PUT/DELETE（删即恢复默认）与批量保存（任一键非法整批拒绝）。
+import { Hono, type Context } from 'hono';
 import { z } from 'zod';
-import { InvalidSettingValueError, type SettingsStore } from '@ema-agent/settings';
+import {
+  InvalidSettingGroupValueError,
+  InvalidSettingValueError,
+  type SettingsStore,
+} from '@ema-agent/settings';
 
 export interface SettingsValuesRouteDeps {
   readonly settings: Pick<
     SettingsStore,
-    'findDefinition' | 'get' | 'set' | 'setMany' | 'delete'
+    'listDefinitions' | 'findDefinition' | 'get' | 'set' | 'setMany' | 'delete'
   >;
 }
 
@@ -23,6 +27,15 @@ const batchBody = z.object({
 
 export function settingsValuesRoute(deps: SettingsValuesRouteDeps): Hono {
   const app = new Hono();
+
+  // 首开设置页一次拿全量生效值（覆盖值或默认值），不按 key 逐条请求。
+  app.get('/values', context => {
+    const items = deps.settings.listDefinitions().map(definition => ({
+      key: definition.key,
+      value: deps.settings.get(definition),
+    }));
+    return context.json({ items });
+  });
 
   app.get('/values/:key', context => {
     const definition = deps.settings.findDefinition(context.req.param('key'));
@@ -41,10 +54,7 @@ export function settingsValuesRoute(deps: SettingsValuesRouteDeps): Hono {
       const value = deps.settings.set(definition, parsed.data.value);
       return context.json({ key: definition.key, value });
     } catch (error) {
-      if (error instanceof InvalidSettingValueError) {
-        return context.json({ error: 'invalid_setting_value', key: definition.key }, 400);
-      }
-      throw error;
+      return writeError(context, error, definition.key);
     }
   });
 
@@ -66,10 +76,7 @@ export function settingsValuesRoute(deps: SettingsValuesRouteDeps): Hono {
       deps.settings.setMany(entries);
       return context.json({ ok: true });
     } catch (error) {
-      if (error instanceof InvalidSettingValueError) {
-        return context.json({ error: 'invalid_setting_value', key: error.message }, 400);
-      }
-      throw error;
+      return writeError(context, error, parsed.data.entries[0]?.key ?? '');
     }
   });
 
@@ -81,4 +88,15 @@ export function settingsValuesRoute(deps: SettingsValuesRouteDeps): Hono {
   });
 
   return app;
+}
+
+/** 单字段与跨字段约束的写错误分开映射；组错误带 groupId 供前端定位同组字段。 */
+function writeError(context: Context, error: unknown, key: string): Response {
+  if (error instanceof InvalidSettingGroupValueError) {
+    return context.json({ error: 'invalid_setting_group', groupId: error.groupId }, 400);
+  }
+  if (error instanceof InvalidSettingValueError) {
+    return context.json({ error: 'invalid_setting_value', key }, 400);
+  }
+  throw error;
 }

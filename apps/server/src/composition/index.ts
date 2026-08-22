@@ -47,7 +47,6 @@ export function buildComposition(input: { activeDataDir: string }): Composition 
   });
   const knowledge = openKnowledge(
     database.profileDb,
-    database.dataDb,
     providers.providers,
     providers.modelBindings,
     settings.settings,
@@ -62,6 +61,7 @@ export function buildComposition(input: { activeDataDir: string }): Composition 
     providers.providers,
     providers.modelBindings,
     characters.store,
+    settings.settings,
   );
 
   // ── 跨族胶合（只允许在这里出现） ────────────────────────────────────────────

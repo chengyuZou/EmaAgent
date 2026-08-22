@@ -36,8 +36,8 @@ describe('SubagentSpawner', () => {
         order.push('run:complete');
         return { ok: true, changed: true, run: {} };
       }),
-      fail: vi.fn(),
-      cancel: vi.fn(),
+      fail: vi.fn(() => ({ ok: true, changed: true, run: {} })),
+      cancel: vi.fn(() => ({ ok: true, changed: true, run: {} })),
     } as unknown as AgentRunStore;
     const messagesStore = {
       record: vi.fn((_id, event) => { order.push(`transcript:${event.type}`); }),
@@ -46,7 +46,7 @@ describe('SubagentSpawner', () => {
     const preparationGate = new Promise<void>((resolve) => { releasePreparation = resolve; });
     const prepareSubagent = vi.fn(async (input): Promise<AgentLoopInput> => {
       await preparationGate;
-      const llm: CallLlm = () => (async function* () {
+      const callLlm: CallLlm = () => (async function* () {
         yield { type: 'text_delta' as const, blockIndex: 0, delta: 'answer' };
         yield { type: 'done' as const, stopReason: 'end_turn' as const };
       })();
@@ -56,7 +56,7 @@ describe('SubagentSpawner', () => {
           request: { messages },
           messages,
         }),
-        llm,
+        callLlm,
         createToolExecutor: () => idleExecutor(),
         budget,
         signal: input.signal,

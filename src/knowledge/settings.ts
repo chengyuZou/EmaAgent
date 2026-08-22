@@ -1,6 +1,6 @@
 // Knowledge Base 的检索参数设置(模型选择已迁出到 model_bindings)。
 // Embed/Rerank 模型选择(kb-embed/kb-rerank)由装配层从 model_bindings 读取并
-// 解析成 EmbeddingModel 后注入,不再存 settings;这里只留标量检索参数。
+// 解析成 Call 闭包注入,不再存 settings;这里只留标量检索参数。
 // 设置接口与字段统一在此文件,拆细为一字段一 key。
 
 import type { SettingsStore } from '@ema-agent/settings';
@@ -21,6 +21,7 @@ export interface KnowledgeRetrievalSettings {
 
 export const kbDefaultTopKSetting = defineSetting<number>({
   key: 'kb.retrieval.defaultTopK',
+  label: '默认命中条数',
   description: '检索未显式指定 topK 时的默认命中条数。',
   apply: 'nextOperation',
   defaultValue: 5,
@@ -29,6 +30,7 @@ export const kbDefaultTopKSetting = defineSetting<number>({
 
 export const kbAlphaSetting = defineSetting<number>({
   key: 'kb.retrieval.alpha',
+  label: '向量路混合权重',
   description: 'RRF 融合中稠密（向量）路权重；1-alpha 为稀疏（BM25）路权重。',
   apply: 'nextOperation',
   defaultValue: 0.5,
@@ -37,6 +39,7 @@ export const kbAlphaSetting = defineSetting<number>({
 
 export const kbRerankBlendWeightSetting = defineSetting<number>({
   key: 'kb.retrieval.rerankBlendWeight',
+  label: '重排序混合权重',
   description: '混合排序中 rerank 分的权重；1-权重为 RRF 分权重。',
   apply: 'nextOperation',
   defaultValue: 0.6,
@@ -45,6 +48,7 @@ export const kbRerankBlendWeightSetting = defineSetting<number>({
 
 export const kbResultMaxCharsSetting = defineSetting<number>({
   key: 'kb.retrieval.resultMaxChars',
+  label: '检索结果字符预算',
   description: '模型工具检索结果的正文总字符预算；HTTP 面板不受此限。',
   apply: 'nextOperation',
   defaultValue: 12_000,

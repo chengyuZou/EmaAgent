@@ -19,6 +19,7 @@ export const AGENT_LIMITS_GROUP = 'agent.limits';
 
 export const chatMaxIterationsSetting = defineSetting<number>({
   key: 'agent.limits.chatMaxIterations',
+  label: 'Chat 单轮迭代上限',
   description: 'Chat 模式单 Turn 最大迭代次数。',
   apply: 'nextTurn',
   defaultValue: 20,
@@ -28,6 +29,7 @@ export const chatMaxIterationsSetting = defineSetting<number>({
 
 export const workMaxIterationsSetting = defineSetting<number>({
   key: 'agent.limits.workMaxIterations',
+  label: 'Work 单轮迭代上限',
   description: 'Work 模式单 Turn 最大迭代次数。',
   apply: 'nextTurn',
   defaultValue: 50,
@@ -37,6 +39,7 @@ export const workMaxIterationsSetting = defineSetting<number>({
 
 export const maxToolCallsSetting = defineSetting<number>({
   key: 'agent.limits.maxToolCalls',
+  label: '单轮工具调用上限',
   description: '单 Turn 最大工具调用次数。',
   apply: 'nextTurn',
   defaultValue: 512,
@@ -46,6 +49,7 @@ export const maxToolCallsSetting = defineSetting<number>({
 
 export const maxSubagentsSetting = defineSetting<number>({
   key: 'agent.limits.maxSubagents',
+  label: '单轮子代理上限',
   description: '单 Turn 最大子代理数。',
   apply: 'nextTurn',
   defaultValue: 16,
@@ -55,6 +59,7 @@ export const maxSubagentsSetting = defineSetting<number>({
 
 export const maxConcurrentSubagentsSetting = defineSetting<number>({
   key: 'agent.limits.maxConcurrentSubagents',
+  label: '并发子代理上限',
   description: '最大并发子代理数（不能大于最大子代理数）。',
   apply: 'nextTurn',
   defaultValue: 4,
@@ -90,7 +95,6 @@ export const AGENT_LIMITS_SETTINGS = [
  */
 export const agentLimitsGroup: SettingGroup = {
   id: AGENT_LIMITS_GROUP,
-  description: 'Agent 执行限制：最大并发子代理不能大于最大子代理数。',
   definitions: AGENT_LIMITS_SETTINGS,
   schema: z
     .object({

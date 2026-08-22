@@ -16,7 +16,7 @@ import {
 } from '@ema-agent/providers';
 import { createRerankCall, type CallRerank } from '@ema-agent/rerank';
 import type { SettingsStore } from '@ema-agent/settings';
-import { KbActivationsRepo, KbRegistryRepo, type Database } from '@ema-agent/storage';
+import { KbRegistryRepo, type Database } from '@ema-agent/storage';
 import { createUsageRecord, reportUsage, type UsageRecorder } from '@ema-agent/usage';
 import { createVisionCall, type CallVision } from '@ema-agent/vision';
 
@@ -32,7 +32,6 @@ export interface KnowledgeComposition {
  */
 export function openKnowledge(
   profileDb: Database,
-  dataDb: Database,
   providers: Providers,
   modelBindings: ModelBindings,
   settings: SettingsStore,
@@ -103,7 +102,6 @@ export function openKnowledge(
 
   const kb = new KbManager({
     registry: new KbRegistryRepo(profileDb.sqlite),
-    activations: new KbActivationsRepo(dataDb.sqlite),
     resolveEmbed,
     resolveRerank,
     resolveVision,

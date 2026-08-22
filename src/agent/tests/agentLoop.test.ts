@@ -58,10 +58,10 @@ function baseInput(overrides: Partial<AgentLoopInput>): AgentLoopInput {
   return {
     messages: [{ role: 'user', content: 'hello' }],
     prepareIteration: async ({ messages }) => ({
-      request: { model: 'test', messages },
+      request: { messages },
       messages,
     }),
-    llm: model(() => (async function* () {
+    callLlm: model(() => (async function* () {
       yield { type: 'text_delta' as const, blockIndex: 0, delta: 'done' };
       yield { type: 'done' as const, stopReason: 'end_turn' as const };
     })()),
@@ -103,7 +103,6 @@ describe('runAgentLoop', () => {
     })());
     const prepareIteration = vi.fn(async ({ messages }: PrepareAgentIterationInput) => ({
       request: {
-        model: 'test',
         messages: [...messages],
         maxOutputTokens: 100,
       },
@@ -113,7 +112,7 @@ describe('runAgentLoop', () => {
     const result = await collect(baseInput({
       budget,
       prepareIteration,
-      llm: model(stream),
+      callLlm: model(stream),
     }));
 
     expect(prepareIteration).toHaveBeenCalledTimes(1);
@@ -136,14 +135,14 @@ describe('runAgentLoop', () => {
     const prepareIteration: AgentLoopInput['prepareIteration'] = vi.fn(async (input) => {
       recoveryReasons.push(input.recoveryReason);
       return {
-        request: { model: 'test', messages: input.messages },
+        request: { messages: input.messages },
         messages: input.recoveryReason === 'context_window_exceeded'
           ? [{ role: 'user' as const, content: 'compacted history' }]
           : input.messages,
       };
     });
 
-    await collect(baseInput({ prepareIteration, llm: model(stream) }));
+    await collect(baseInput({ prepareIteration, callLlm: model(stream) }));
 
     expect(recoveryReasons).toEqual([undefined, 'context_window_exceeded']);
   });
@@ -190,7 +189,7 @@ describe('runAgentLoop', () => {
 
     const observations: Array<[string, boolean, boolean]> = [];
     const collected = await collect(baseInput({
-      llm: model(stream),
+      callLlm: model(stream),
       createToolExecutor: () => llmCall === 0 ? executor : idleExecutor(),
     }), event => observations.push([event.type, started, acknowledged]));
 
@@ -213,7 +212,7 @@ describe('runAgentLoop', () => {
     const prepareIteration = vi.fn(async ({ messages }: PrepareAgentIterationInput) => {
       seenMessages.push([...messages]);
       return {
-        request: { model: 'test', messages: [...messages], maxOutputTokens: 8 },
+        request: { messages: [...messages], maxOutputTokens: 8 },
         messages,
       };
     });
@@ -232,7 +231,7 @@ describe('runAgentLoop', () => {
       })();
     });
 
-    const events = await collect(baseInput({ prepareIteration, llm: model(stream) }));
+    const events = await collect(baseInput({ prepareIteration, callLlm: model(stream) }));
 
     expect(seen[0]!.maxOutputTokens).toBe(8);
     expect(seen[1]!.maxOutputTokens).toBe(64);
@@ -246,7 +245,7 @@ describe('runAgentLoop', () => {
     const seenMessages: Message[][] = [];
     const prepareIteration = vi.fn(async ({ messages }: PrepareAgentIterationInput) => {
       seenMessages.push([...messages]);
-      return { request: { model: 'test', messages: [...messages] }, messages };
+      return { request: { messages: [...messages] }, messages };
     });
     let llmCall = 0;
     const stream = vi.fn(() => (async function* () {
@@ -265,7 +264,7 @@ describe('runAgentLoop', () => {
       yield { type: 'done' as const, stopReason: 'end_turn' as const };
     })());
 
-    const events = await collect(baseInput({ prepareIteration, llm: model(stream) }));
+    const events = await collect(baseInput({ prepareIteration, callLlm: model(stream) }));
 
     const thirdIteration = seenMessages[2]!;
     expect(thirdIteration.some((message) => (
@@ -280,7 +279,7 @@ describe('runAgentLoop', () => {
       yield { type: 'done' as const, stopReason: 'max_tokens' as const };
     })());
 
-    const events = await collect(baseInput({ llm: model(stream) }));
+    const events = await collect(baseInput({ callLlm: model(stream) }));
 
     expect(terminalEvent(events)?.state.stopReason).toBe('output_recovery_failed');
     expect(terminalEvent(events)?.finalText).toBe('xx');
@@ -290,7 +289,7 @@ describe('runAgentLoop', () => {
     const seenMessages: Message[][] = [];
     const prepareIteration = vi.fn(async ({ messages }: PrepareAgentIterationInput) => {
       seenMessages.push([...messages]);
-      return { request: { model: 'test', messages: [...messages] }, messages };
+      return { request: { messages: [...messages] }, messages };
     });
     const stream = vi.fn(() => (async function* () {
       yield {
@@ -310,7 +309,7 @@ describe('runAgentLoop', () => {
 
     const events = await collect(baseInput({
       prepareIteration,
-      llm: model(stream),
+      callLlm: model(stream),
       createToolExecutor: () => oneShotExecutor(toolResult),
       maxIterations: 6,
     }));

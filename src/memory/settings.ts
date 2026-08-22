@@ -6,6 +6,7 @@ import { z } from 'zod';
 
 export const memoryStorageMaxBytesSetting = defineSetting<number>({
   key: 'memory.storage.maxBytes',
+  label: '记忆存储体积上限',
   description: 'Memory 物理存储硬上限（字节）。超过后触发自动清理，仍无法降回警告线则报错交用户处理。',
   apply: 'nextOperation',
   defaultValue: 256 * 1024 * 1024,
@@ -14,6 +15,7 @@ export const memoryStorageMaxBytesSetting = defineSetting<number>({
 
 export const memoryWorkHistoryRetentionDaysSetting = defineSetting<number>({
   key: 'memory.work.historyRetentionDays',
+  label: '工作历史保留天数',
   description: 'Work 轨历史文件按最后修改时间保留的墙钟天数；超过该天数的 history 文件成为自动清理候选。',
   apply: 'nextOperation',
   defaultValue: 90,
@@ -23,6 +25,7 @@ export const memoryWorkHistoryRetentionDaysSetting = defineSetting<number>({
 
 export const memoryRelationshipHistoryActiveDaysSetting = defineSetting<number>({
   key: 'memory.relationship.historyActiveDays',
+  label: '关系历史活跃天数',
   description: '每个角色保留的历史活跃日数量；只保留最近 N 个有历史记录的日期，用户离线不推进衰减。',
   apply: 'nextOperation',
   defaultValue: 180,
@@ -32,6 +35,7 @@ export const memoryRelationshipHistoryActiveDaysSetting = defineSetting<number>(
 
 export const memorySummaryTokensSetting = defineSetting<number>({
   key: 'memory.budgets.summaryTokens',
+  label: '摘要注入 token 预算',
   description: '每轨记忆摘要注入 system prompt 的 token 预算；摘要按此上限截断。',
   apply: 'nextTurn',
   defaultValue: 2_500,
@@ -41,6 +45,7 @@ export const memorySummaryTokensSetting = defineSetting<number>({
 
 export const memoryCoreFileBytesSetting = defineSetting<number>({
   key: 'memory.budgets.coreMemoryFileBytes',
+  label: '核心记忆文件体积上限',
   description: '核心正式记忆文件（如 MEMORY.md）的字节上限预算。',
   apply: 'nextOperation',
   defaultValue: 128 * 1024,
@@ -50,6 +55,7 @@ export const memoryCoreFileBytesSetting = defineSetting<number>({
 
 export const memoryTopicFileBytesSetting = defineSetting<number>({
   key: 'memory.budgets.topicFileBytes',
+  label: '主题文件体积上限',
   description: 'Work 轨主题文件（topics/*.md）的字节上限预算。',
   apply: 'nextOperation',
   defaultValue: 256 * 1024,
@@ -59,6 +65,7 @@ export const memoryTopicFileBytesSetting = defineSetting<number>({
 
 export const memoryHistoryFileBytesSetting = defineSetting<number>({
   key: 'memory.budgets.historyFileBytes',
+  label: '历史文件体积上限',
   description: '历史/演进文件（history/*.md）的字节上限预算。',
   apply: 'nextOperation',
   defaultValue: 256 * 1024,
@@ -68,6 +75,7 @@ export const memoryHistoryFileBytesSetting = defineSetting<number>({
 
 export const memoryTurnEvidenceFileBytesSetting = defineSetting<number>({
   key: 'memory.budgets.turnEvidenceFileBytes',
+  label: '单条证据文件体积上限',
   description: '单个 Turn 证据文件（turn_evidence/*.md）的字节上限预算。',
   apply: 'nextOperation',
   defaultValue: 64 * 1024,
@@ -77,6 +85,7 @@ export const memoryTurnEvidenceFileBytesSetting = defineSetting<number>({
 
 export const memoryTurnEvidenceFilesSetting = defineSetting<number>({
   key: 'memory.budgets.turnEvidenceFiles',
+  label: '证据文件保留数量',
   description: '保留的 Turn 证据文件数量上限；只保留最新 N 个。',
   apply: 'nextOperation',
   defaultValue: 200,
@@ -86,6 +95,7 @@ export const memoryTurnEvidenceFilesSetting = defineSetting<number>({
 
 export const memoryConsolidationItemsSetting = defineSetting<number>({
   key: 'memory.budgets.consolidationItems',
+  label: '单次整合条数上限',
   description: '单次整合消费的未整合提取结果条数上限。',
   apply: 'nextOperation',
   defaultValue: 256,
@@ -95,6 +105,7 @@ export const memoryConsolidationItemsSetting = defineSetting<number>({
 
 export const memoryConsolidationInputBytesSetting = defineSetting<number>({
   key: 'memory.budgets.consolidationInputBytes',
+  label: '单次整合输入体积预算',
   description: '单次整合 LLM 输入的字节预算；超限部分截断并标注。',
   apply: 'nextOperation',
   defaultValue: 2 * 1024 * 1024,
@@ -104,6 +115,7 @@ export const memoryConsolidationInputBytesSetting = defineSetting<number>({
 
 export const memoryGitDiffBytesSetting = defineSetting<number>({
   key: 'memory.budgets.gitDiffBytes',
+  label: '工作区 diff 体积预算',
   description: '整合前工作区 diff 渲染的字节预算。',
   apply: 'nextOperation',
   defaultValue: 4 * 1024 * 1024,
@@ -117,6 +129,7 @@ export const memoryGitDiffBytesSetting = defineSetting<number>({
 
 export const memoryExtractionConcurrencySetting = defineSetting<number>({
   key: 'memory.jobs.extractionConcurrency',
+  label: '提取任务并发上限',
   description: '提取 Job 的后台并发上限。',
   apply: 'nextOperation',
   defaultValue: 4,
@@ -126,6 +139,7 @@ export const memoryExtractionConcurrencySetting = defineSetting<number>({
 
 export const memoryHeartbeatSecondsSetting = defineSetting<number>({
   key: 'memory.jobs.heartbeatSeconds',
+  label: '任务心跳间隔（秒）',
   description: '整合/维护 Job 的心跳间隔秒；失去所有权即中止。',
   apply: 'nextOperation',
   defaultValue: 30,
@@ -135,6 +149,7 @@ export const memoryHeartbeatSecondsSetting = defineSetting<number>({
 
 export const memoryConsolidationCooldownHoursSetting = defineSetting<number>({
   key: 'memory.jobs.consolidationCooldownHours',
+  label: '整合冷却小时数',
   description: '整合冷却小时数（0 = 关闭）。冷却期内该轨整合 Job 不被认领，避免每个 Turn 都调整合 LLM。',
   apply: 'nextOperation',
   defaultValue: 6,
@@ -162,7 +177,6 @@ export const MEMORY_SETTINGS = [
 
 export const memoryLifecycleGroup: SettingGroup = {
   id: 'memory.lifecycle',
-  description: 'Memory 内容生命周期设置：Work 历史按墙钟保留天数，Relationship 按角色活跃日保留，用户离线不衰减。',
   definitions: [
     memoryWorkHistoryRetentionDaysSetting,
     memoryRelationshipHistoryActiveDaysSetting,
@@ -175,7 +189,6 @@ export const memoryLifecycleGroup: SettingGroup = {
 
 export const memoryBudgetsGroup: SettingGroup = {
   id: 'memory.budgets',
-  description: 'Memory 单次业务预算：控制摘要注入 token、各文件字节上限、整合输入与 diff 的字节/条数上限。',
   definitions: MEMORY_SETTINGS.filter(
     (definition) => definition.group === 'memory.budgets',
   ),
@@ -216,7 +229,6 @@ export const memoryBudgetsGroup: SettingGroup = {
 
 export const memoryJobsGroup: SettingGroup = {
   id: 'memory.jobs',
-  description: 'Memory 后台任务运行参数：提取并发、整合心跳间隔与整合冷却小时数。',
   definitions: [
     memoryExtractionConcurrencySetting,
     memoryHeartbeatSecondsSetting,

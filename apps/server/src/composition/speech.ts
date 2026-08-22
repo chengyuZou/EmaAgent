@@ -13,9 +13,9 @@ import {
   SpeechSegmentLibrary,
   SpeechVoiceCache,
   SpeechVoicePreview,
-  prepareSpeechVoice,
   type AudioArchive,
   type SpeechEvent,
+  type SpeechVoicePreviewTts,
 } from '@ema-agent/speech';
 import {
   SpeechOutputsRepo,
@@ -24,7 +24,12 @@ import {
 } from '@ema-agent/storage';
 import type { SettingsStore } from '@ema-agent/settings';
 import { createSttCall, type TranscriptionRequest, type TranscriptionResult } from '@ema-agent/stt';
-import { createTextToSpeech, type TtsVoiceReference } from '@ema-agent/tts';
+import {
+  createTtsCall,
+  createTtsVoiceRegistrar,
+  TtsError,
+  type TtsVoiceReference,
+} from '@ema-agent/tts';
 import { createUsageRecord, reportUsage, type UsageRecorder } from '@ema-agent/usage';
 
 /** 单 Turn 的语音输出句柄；由 turnFanout 喂文本增量并收口。 */
@@ -95,22 +100,26 @@ export function openSpeech(
     }
   };
 
-  const resolveTextToSpeech = (providerId: string) => {
+  /** 按 providerId + modelId 即时冻结一对 TTS 入口；连接不可用或未启用返回 undefined。 */
+  const resolveTts = (providerId: string, modelId: string): SpeechVoicePreviewTts | undefined => {
     try {
-      return createTextToSpeech(providers.resolveConnection(providerId, 'tts'));
+      const connection = providers.resolveConnection(providerId, 'tts');
+      return {
+        ttsVoiceRegistrar: createTtsVoiceRegistrar(connection, modelId),
+        callTts: createTtsCall(connection, modelId),
+      };
     } catch {
       return undefined;
     }
   };
 
   const voicePreview = new SpeechVoicePreview(
-    resolveTextToSpeech,
+    resolveTts,
     {
       current: () => {
         const character = characters.current();
         const voice = resolveCharacterVoice(character);
-        // Speech 当前以 cardId 命名缓存键，但其值语义就是角色 ID。
-        return voice ? { cardId: character.id, voice } : null;
+        return voice ? { characterId: character.id, voice } : null;
       },
     },
     voiceCache,
@@ -124,31 +133,34 @@ export function openSpeech(
     const reference = resolveCharacterVoice(character);
     if (!reference) return null;
 
-    let textToSpeech;
+    let callTts;
+    let ttsVoiceRegistrar;
     try {
-      textToSpeech = createTextToSpeech(providers.resolveConnection(binding.providerId, 'tts'));
+      const connection = providers.resolveConnection(binding.providerId, 'tts');
+      ttsVoiceRegistrar = createTtsVoiceRegistrar(connection, binding.modelId);
+      callTts = createTtsCall(connection, binding.modelId);
     } catch (err) {
-      if (err instanceof ProviderError) return null;
+      // 连接未启用（ProviderError）或 DashScope 模型族无法识别（TtsError）都降级为无语音。
+      if (err instanceof ProviderError || err instanceof TtsError) return null;
       throw err;
     }
 
-    const voice = await prepareSpeechVoice(
+    const voice = await voiceCache.prepare({
       reference,
-      textToSpeech,
-      binding.modelId,
-      character.id,
-      binding.providerId,
-      voiceCache,
-      setup.signal,
-    );
+      ttsVoiceRegistrar,
+      characterId: character.id,
+      providerId: binding.providerId,
+      modelId: binding.modelId,
+      signal: setup.signal,
+    });
 
     const coordinator = new SpeechCoordinator({
       sessionId: setup.sessionId,
       turnId: setup.turnId,
       providerId: binding.providerId,
-      model: binding.modelId,
+      modelId: binding.modelId,
       voice,
-      textToSpeech,
+      callTts,
       emit: setup.emit,
       archive: audioArchive,
       format: 'mp3',

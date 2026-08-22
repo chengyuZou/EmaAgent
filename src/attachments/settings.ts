@@ -13,6 +13,7 @@ export interface AttachmentInputSettings {
 
 export const maxImagesPerTurnSetting = defineSetting<number>({
   key: 'attachments.input.maxImagesPerTurn',
+  label: '每轮图片数量上限',
   description: '每 Turn 图片数量上限（产品硬上限 10，设置只能在硬上限以内调小）。',
   apply: 'nextTurn',
   defaultValue: 10,
@@ -22,6 +23,7 @@ export const maxImagesPerTurnSetting = defineSetting<number>({
 
 export const maxFilesPerTurnSetting = defineSetting<number>({
   key: 'attachments.input.maxFilesPerTurn',
+  label: '每轮附件数量上限',
   description: '每 Turn 附件文件数量上限。',
   apply: 'nextTurn',
   defaultValue: 10,
@@ -30,6 +32,7 @@ export const maxFilesPerTurnSetting = defineSetting<number>({
 
 export const maxImageBytesSetting = defineSetting<number>({
   key: 'attachments.input.maxImageBytes',
+  label: '单张图片体积上限',
   description: '单张图片字节上限（产品硬上限 5 MiB，设置只能在硬上限以内调小）。',
   apply: 'nextTurn',
   defaultValue: 5 * 1024 * 1024,
@@ -49,6 +52,7 @@ export interface AttachmentCacheSettings {
 
 export const attachmentCacheMaxBytesSetting = defineSetting<number>({
   key: 'attachments.cache.maxBytes',
+  label: '图片描述缓存体积上限',
   description: 'Vision 描述缓存字节上限（一条约 1 KB，64 MiB ≈ 六万条描述）。',
   apply: 'nextOperation',
   // Vision 描述是纯文本（一条约 1 KB 量级），64 MiB 约等于六万条描述。

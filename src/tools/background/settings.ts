@@ -14,6 +14,7 @@ export interface BackgroundProcessSettings {
 
 export const maxConcurrentBackgroundSetting = defineSetting<number>({
   key: 'tools.backgroundProcess.maxConcurrent',
+  label: '后台进程并发上限',
   description: '后台 Shell 后续新进程采用的并发数上限。',
   apply: 'nextOperation',
   defaultValue: 2,
@@ -22,6 +23,7 @@ export const maxConcurrentBackgroundSetting = defineSetting<number>({
 
 export const maxRuntimeHoursBackgroundSetting = defineSetting<number>({
   key: 'tools.backgroundProcess.maxRuntimeHours',
+  label: '后台进程时长上限（小时）',
   description: '后台 Shell 进程的最长运行时间（小时）。',
   apply: 'nextOperation',
   defaultValue: 24,
