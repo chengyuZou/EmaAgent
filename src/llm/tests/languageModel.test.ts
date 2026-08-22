@@ -1,6 +1,6 @@
 // 测试 LLM 公共入口只执行一次协议请求，并从同一条流收集完整结果。
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createLanguageModel } from '../languageModel.js';
+import { createLlmCompletion, createLlmCall } from '../languageModel.js';
 
 const openAiMock = vi.hoisted(() => ({
   constructor: vi.fn(),
@@ -21,20 +21,19 @@ async function* streamOf(items: readonly unknown[]): AsyncIterable<unknown> {
   for (const item of items) yield item;
 }
 
-describe('createLanguageModel', () => {
+describe('createLlmCall', () => {
   beforeEach(() => {
     openAiMock.constructor.mockClear();
     openAiMock.create.mockReset();
   });
 
   it('创建时冻结连接并关闭 SDK 内建重试', () => {
-    const llm = createLanguageModel({
+    createLlmCall({
       protocol: 'openai-llm',
       apiKey: 'key',
       baseUrl: 'https://example.test/v1',
-    });
+    }, 'test-model');
 
-    expect(llm.protocol).toBe('openai-llm');
     expect(openAiMock.constructor).toHaveBeenCalledWith({
       apiKey: 'key',
       baseURL: 'https://example.test/v1',
@@ -42,7 +41,12 @@ describe('createLanguageModel', () => {
     });
   });
 
-  it('complete 收集 text、tool、usage 和显式终态', async () => {
+  it('空模型身份在创建点失败', () => {
+    expect(() => createLlmCall({ protocol: 'openai-llm', apiKey: 'key' }, ' '))
+      .toThrow(TypeError);
+  });
+
+  it('collect 收集 text、tool、usage 和显式终态', async () => {
     openAiMock.create.mockResolvedValueOnce(streamOf([
       { choices: [{ delta: { content: '先读' }, finish_reason: null }] },
       {
@@ -63,12 +67,11 @@ describe('createLanguageModel', () => {
         usage: { prompt_tokens: 10, completion_tokens: 4 },
       },
     ]));
-    const llm = createLanguageModel({ protocol: 'openai-llm', apiKey: 'key' });
+    const call = createLlmCall({ protocol: 'openai-llm', apiKey: 'key' }, 'test-model');
 
-    await expect(llm.complete({
-      model: 'test-model',
+    await expect(createLlmCompletion(call({
       messages: [{ role: 'user', content: 'hello' }],
-    })).resolves.toEqual({
+    }))).resolves.toEqual({
       blocks: [
         { type: 'text', text: '先读' },
         { type: 'tool_use', id: 'call-1', name: 'Read', args: { path: 'a.txt' } },
@@ -83,12 +86,11 @@ describe('createLanguageModel', () => {
     openAiMock.create.mockResolvedValueOnce(streamOf([
       { choices: [{ delta: { content: 'partial' }, finish_reason: null }] },
     ]));
-    const llm = createLanguageModel({ protocol: 'openai-llm', apiKey: 'key' });
+    const call = createLlmCall({ protocol: 'openai-llm', apiKey: 'key' }, 'test-model');
 
-    await expect(llm.complete({
-      model: 'test-model',
+    await expect(createLlmCompletion(call({
       messages: [{ role: 'user', content: 'hello' }],
-    })).rejects.toMatchObject({
+    }))).rejects.toMatchObject({
       name: 'LlmStreamProtocolError',
       protocol: 'openai-llm',
     });
@@ -102,15 +104,14 @@ describe('createLanguageModel', () => {
       type: 'response.completed',
       response: { usage: null, incomplete_details: null },
     }]));
-    const llm = createLanguageModel({
+    const call = createLlmCall({
       protocol: 'openai-responses-llm',
       apiKey: 'key',
-    });
+    }, 'gpt-test');
 
-    await expect(llm.complete({
-      model: 'gpt-test',
+    await expect(createLlmCompletion(call({
       messages: [{ role: 'user', content: 'hello' }],
-    })).resolves.toEqual({
+    }))).resolves.toEqual({
       blocks: [{ type: 'text', text: 'ok' }],
       stopReason: 'end_turn',
       usage: { inputTokens: 0, outputTokens: 0 },

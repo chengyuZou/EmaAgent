@@ -62,13 +62,14 @@ function makeDeps(overrides: {
 }
 
 describe('prepareLlmCall', () => {
-  it('未超限时原样装配：请求带模型/工具/输出上限，工作历史不变', async () => {
+  it('未超限时原样装配：请求带工具/输出上限，工作历史不变', async () => {
     const deps = makeDeps();
     const prepare = createPrepareLlmCall(deps);
 
     const result = await prepare({ messages: [...HISTORY, ...CURRENT] });
 
-    expect(result.request.model).toBe('m');
+    // 模型身份在 CallLlm 创建点冻结，请求不再携带 model 字段。
+    expect('model' in result.request).toBe(false);
     expect(result.request.maxOutputTokens).toBe(8_000);
     expect(result.messages).toEqual([...HISTORY, ...CURRENT]);
     // system prompt 哨兵被剥除后进入请求消息，静态前缀在前。

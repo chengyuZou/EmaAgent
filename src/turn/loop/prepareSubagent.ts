@@ -3,7 +3,7 @@ import {
   type AgentBudget,
   type PrepareSubagent,
 } from '@ema-agent/agent';
-import { createLanguageModel } from '@ema-agent/llm';
+import { createLlmCall } from '@ema-agent/llm';
 import type { Message } from '@ema-agent/llm';
 import type { CompactRequest, CompactResult } from '@ema-agent/compact';
 import type { Providers } from '@ema-agent/providers';
@@ -43,9 +43,9 @@ export function createPrepareSubagent(deps: PrepareSubagentDeps): PrepareSubagen
     const prepared = deps.prepared();
     const providerId = options.providerId ?? prepared.providerId;
     const modelId = options.modelId ?? prepared.modelId;
-    const llm = providerId === prepared.providerId && modelId === prepared.modelId
-      ? prepared.llm
-      : createLanguageModel(deps.providers.resolveConnection(providerId, 'llm'));
+    const callLlm = providerId === prepared.providerId && modelId === prepared.modelId
+      ? prepared.callLlm
+      : createLlmCall(deps.providers.resolveConnection(providerId, 'llm'), modelId);
 
     const disallowed = new Set([
       ...(options.disallowedTools ?? []),
@@ -89,7 +89,7 @@ export function createPrepareSubagent(deps: PrepareSubagentDeps): PrepareSubagen
     return {
       messages: seed,
       prepareIteration,
-      llm,
+      callLlm,
       createToolExecutor: wake => prepared.tools.createSubagentExecutor({
         agentRunId,
         toolPool: subPool,

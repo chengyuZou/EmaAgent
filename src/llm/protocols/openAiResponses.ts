@@ -26,23 +26,24 @@ type ResponseInputItem = OpenAI.Responses.ResponseInputItem;
 type ResponseStreamEvent = OpenAI.Responses.ResponseStreamEvent;
 
 export function createOpenAiResponsesProtocol(
-  connection: LlmConnection,
+  connection: LlmConnection, modelId: string,
 ): (request: LlmRequest) => AsyncIterable<LlmStreamEvent> {
   const client = new OpenAI({
     apiKey: connection.apiKey ?? '',
     baseURL: connection.baseUrl,
     maxRetries: 0,
   });
-  return (request) => streamOpenAiResponses(client, request);
+  return (request) => streamOpenAiResponses(client, modelId, request);
 }
 
 async function* streamOpenAiResponses(
   client: OpenAI,
+  modelId: string,
   request: LlmRequest,
 ): AsyncIterable<LlmStreamEvent> {
   const { instructions, input } = toResponsesInput(request.messages);
   const params: OpenAI.Responses.ResponseCreateParamsStreaming = {
-    model: request.model,
+    model: modelId,
     input,
     stream: true,
     max_output_tokens: request.maxOutputTokens,

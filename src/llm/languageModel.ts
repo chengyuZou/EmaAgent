@@ -1,4 +1,5 @@
-// 创建一个绑定协议连接的语言模型入口，并从同一条流收集非流式结果。
+// 创建点冻结连接与模型身份的语言模型调用入口；stream 是唯一执行线，
+// createLlmCompletion 是同一条流的无损收集器（要一把拿结果的消费方自行调用）。
 import type { AssistantBlock } from './message.js';
 import { assertProtocolInput } from './protocolInput.js';
 import { createAnthropicProtocol } from './protocols/anthropic.js';
@@ -6,6 +7,7 @@ import { createGeminiProtocol } from './protocols/gemini.js';
 import { createOpenAiChatProtocol } from './protocols/openAiChat.js';
 import { createOpenAiResponsesProtocol } from './protocols/openAiResponses.js';
 import type {
+  CallLlm,
   LlmCompletion,
   LlmConnection,
   LlmRequest,
@@ -14,44 +16,34 @@ import type {
 } from './types.js';
 import { advanceLlmUsageSnapshot } from './usage.js';
 
-export interface LanguageModel {
-  readonly protocol: LlmConnection['protocol'];
-  stream(request: LlmRequest): AsyncIterable<LlmStreamEvent>;
-  complete(request: LlmRequest): Promise<LlmCompletion>;
-}
-
-/**
- * LLM 唯一创建入口。连接在创建时冻结并复用 SDK Client；请求只携带每次调用变化的数据。
- */
-export function createLanguageModel(connection: LlmConnection): LanguageModel {
-  const protocolStream = createProtocolStream(connection);
-  const stream = (request: LlmRequest): AsyncIterable<LlmStreamEvent> => {
+/** LLM 唯一创建入口；连接与 modelId 在创建时冻结并复用 SDK Client。 */
+export function createLlmCall(connection: LlmConnection, modelId: string): CallLlm {
+  if (!modelId.trim()) throw new TypeError('LLM model must not be empty');
+  const protocolStream = createProtocolStream(connection, modelId);
+  return (request: LlmRequest): AsyncIterable<LlmStreamEvent> => {
     assertProtocolInput(connection.protocol, request.messages);
     return protocolStream(request);
-  };
-  return {
-    protocol: connection.protocol,
-    stream,
-    complete: (request) => collectCompletion(stream(request)),
   };
 }
 
 function createProtocolStream(
   connection: LlmConnection,
-): (request: LlmRequest) => AsyncIterable<LlmStreamEvent> {
+  modelId: string,
+): CallLlm {
   switch (connection.protocol) {
     case 'openai-llm':
-      return createOpenAiChatProtocol(connection);
+      return createOpenAiChatProtocol(connection, modelId);
     case 'openai-responses-llm':
-      return createOpenAiResponsesProtocol(connection);
+      return createOpenAiResponsesProtocol(connection, modelId);
     case 'anthropic-llm':
-      return createAnthropicProtocol(connection);
+      return createAnthropicProtocol(connection, modelId);
     case 'gemini-llm':
-      return createGeminiProtocol(connection);
+      return createGeminiProtocol(connection, modelId);
   }
 }
 
-async function collectCompletion(
+/** 对一条 stream 的无损收集：块按原始 blockIndex 顺序聚合，usage 取末次快照差，stopReason 来自 done。 */
+export async function createLlmCompletion(
   stream: AsyncIterable<LlmStreamEvent>,
 ): Promise<LlmCompletion> {
   const blocks = new Map<number, AssistantBlock>();

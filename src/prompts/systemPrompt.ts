@@ -1,12 +1,6 @@
 // System Prompt 的唯一装配函数:扁平有序数组,顺序即代码顺序。
 //
-// 架构定案(完全 Claude 形):
-//   - 一个数组装完整个 System Prompt,条件就地展开,null 过滤;
-//   - PROMPT_DYNAMIC_BOUNDARY 哨兵之前是产品稳定前缀(跨会话共享缓存),
-//     之后随会话/角色/Turn 变化;Context 层按哨兵切分并剥掉它,哨兵不进模型文本;
-//   - 不存在槽位注册表、Snapshot、revision 哈希或 Turn 中途扩展入口。
 //
-// 文案归属:本包只写产品级文案(productPrompt/executionProfilePrompt);
 // 角色人设由 characters 包产出,Skill 目录由 skills 包产出,MCP 指引由 mcp 包捕获,
 // 工作区指令由工作区模块产出——本包只摆它们的位置。
 import type { ExecutionProfile } from '@ema-agent/turn-terms';
@@ -49,6 +43,11 @@ export interface GetSystemPromptInput {
   readonly skillCatalog?: string | null;
   /** MCP server 自报指引(数据级),每条一个 server。 */
   readonly mcpInstructions?: readonly string[] | null;
+  /**
+   * 记忆段(使用指引 + 两轨摘要,合成文本);由调用方闭包注入
+   * (memory 包 buildMemoryPrompt 产出),本包只摆位置。
+   */
+  readonly memorySection?: string | null;
 }
 
 /** 数据级内容(工作区/Skill/MCP)以框架文案明示信任级,不设 delivery 类型标记。 */
@@ -91,6 +90,9 @@ export function getSystemPrompt(
     runtimeEnvironment(input.environment),
     input.workspaceInstructions
       ? asDataSection('工作区指令', input.workspaceInstructions)
+      : null,
+    input.memorySection
+      ? asDataSection('记忆指令', input.memorySection)
       : null,
     input.skillCatalog
       ? asDataSection('可用技能', input.skillCatalog)

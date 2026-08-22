@@ -40,9 +40,8 @@ export interface LlmThinking {
   readonly budgetTokens?: number;
 }
 
-/** 单次协议请求；调用身份、重试策略和持久化均由上层拥有。 */
+/** 单次协议请求；模型身份在创建点冻结（见 CallLlm），重试策略和持久化均由上层拥有。 */
 export interface LlmRequest {
-  readonly model: string;
   readonly messages: readonly Message[];
   readonly tools?: readonly LlmTool[];
   readonly toolChoice?: LlmToolChoice;
@@ -51,6 +50,9 @@ export interface LlmRequest {
   readonly temperature?: number;
   readonly signal?: AbortSignal;
 }
+
+/** 创建点冻结连接与模型身份的单次调用；stream 是唯一执行线。 */
+export type CallLlm = (request: LlmRequest) => AsyncIterable<LlmStreamEvent>;
 
 export type LlmStopReason =
   | 'end_turn'
@@ -84,7 +86,7 @@ export type LlmStreamEvent =
   | ({ readonly type: 'usage' } & LlmTokenUsage)
   | { readonly type: 'done'; readonly stopReason: LlmStopReason };
 
-/** complete() 对同一条流的无损收集结果。 */
+/** createLlmCompletion() 对同一条流的无损收集结果。 */
 export interface LlmCompletion {
   readonly blocks: readonly AssistantBlock[];
   readonly stopReason: LlmStopReason;

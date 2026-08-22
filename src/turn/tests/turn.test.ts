@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import type { AgentRunMessagesStore, AgentRunStore } from '@ema-agent/agent';
 import type { AttachmentStore } from '@ema-agent/attachments';
-import type { LanguageModel, LlmStreamEvent } from '@ema-agent/llm';
+import type { CallLlm, LlmStreamEvent } from '@ema-agent/llm';
 import type { ProviderModels, Providers } from '@ema-agent/providers';
 import { Database } from '@ema-agent/storage';
 import { SessionStore } from '@ema-agent/session';
@@ -19,16 +19,12 @@ import { TurnExecutor, type TurnExecutorDeps } from '../turn.js';
 import { TurnStore } from '../turnStore.js';
 import type { StartTurn } from '../types.js';
 
-function scriptedLlm(calls: LlmStreamEvent[][]): LanguageModel {
+function scriptedLlm(calls: LlmStreamEvent[][]): CallLlm {
   let index = 0;
-  return {
-    protocol: 'openai-chat',
-    stream: async function* () {
-      const events = calls[Math.min(index, calls.length - 1)]!;
-      index += 1;
-      for (const event of events) yield event;
-    },
-    complete: async () => { throw new Error('测试不走 complete'); },
+  return async function* () {
+    const events = calls[Math.min(index, calls.length - 1)]!;
+    index += 1;
+    for (const event of events) yield event;
   };
 }
 
@@ -56,7 +52,7 @@ function echoTool() {
 
 function makeDeps(options: {
   db: Database;
-  llm: LanguageModel;
+  llm: CallLlm;
   sessionId: string;
   registry: ToolRegistry;
   titleStarter?: (sessionId: string, userText: string) => void;
@@ -83,7 +79,7 @@ function makeDeps(options: {
     settings: fakeSettingsStore(),
     characterPrompt: () => ['你是测试角色'],
     skillEntries: () => [],
-    createLlm: () => llm,
+    createLlmCall: () => llm,
     registry,
     interactionQueue: new SessionInteractionQueue(null),
     agentRunStore: {} as unknown as AgentRunStore,

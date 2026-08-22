@@ -104,8 +104,6 @@ export function createPrepareLlmCall(deps: PrepareLlmCallDeps): PrepareAgentIter
       ...(recoveryReason === 'context_window_exceeded' ? { force: true } : {}),
       contextWindow: prepared.contextWindow,
       maxOutputTokens,
-      providerId: prepared.providerId,
-      model: prepared.modelId,
       signal: deps.signal,
       emit: deps.emit,
       settings: prepared.compactSettings,
@@ -131,7 +129,6 @@ export function createPrepareLlmCall(deps: PrepareLlmCallDeps): PrepareAgentIter
 
     return {
       request: {
-        model: prepared.modelId,
         messages: assembled.messages,
         tools: assembled.tools,
         ...(prepared.thinkingEnabled ? { thinking: { enabled: true as const } } : {}),

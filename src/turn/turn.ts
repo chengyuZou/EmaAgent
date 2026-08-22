@@ -8,8 +8,8 @@ import {
 import { buildMessages } from '@ema-agent/context';
 import type { CompactRequest, CompactResult } from '@ema-agent/compact';
 import type {
+  CallLlm,
   ContentPart,
-  LanguageModel,
   Message,
 } from '@ema-agent/llm';
 import type { SessionStore } from '@ema-agent/session';
@@ -72,7 +72,7 @@ export interface TurnExecutorDeps extends PrepareTurnDeps {
     'getSession' | 'appendMessage' | 'loadHistory' | 'markMessageInterrupted' | 'updateMessageBlocks'
   >;
   readonly createCompact: (
-    llm: LanguageModel,
+    callLlm: CallLlm,
   ) => (request: CompactRequest) => Promise<CompactResult>;
   /** 每 Turn 调用一次；允许 async（git 探测等启动期读取在此完成并冻结进闭包）。 */
   readonly reminderSources: (
@@ -245,7 +245,7 @@ export class TurnExecutor {
       this.runningTools.set(turnId, tools);
       this.deps.turns.setModel(turnId, prepared.providerId, prepared.modelId);
       this.deps.turns.setCharacterDirectoryName(turnId, this.deps.characterDirectoryName());
-      compactForTurn = this.deps.createCompact(prepared.llm);
+      compactForTurn = this.deps.createCompact(prepared.callLlm);
 
       for (const degradation of prepared.degradations) {
         emit({ type: 'request_degraded', sessionId, turnId, ...degradation });
@@ -308,7 +308,7 @@ export class TurnExecutor {
       for await (const event of runAgentLoop({
         messages: initialMessages,
         prepareIteration,
-        llm: prepared.llm,
+        callLlm: prepared.callLlm,
         createToolExecutor: tools.createExecutor,
         budget,
         signal,

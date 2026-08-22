@@ -33,18 +33,19 @@ import type {
 import { createLlmTokenUsage } from '../usage.js';
 
 export function createGeminiProtocol(
-  connection: LlmConnection,
+  connection: LlmConnection, modelId: string,
 ): (request: LlmRequest) => AsyncIterable<LlmStreamEvent> {
   const baseUrl = normalizeGeminiBaseUrl(connection.baseUrl);
   const client = new GoogleGenAI({
     apiKey: connection.apiKey ?? '',
     ...(baseUrl ? { httpOptions: { baseUrl } } : {}),
   });
-  return (request) => streamGemini(client, request);
+  return (request) => streamGemini(client, modelId, request);
 }
 
 async function* streamGemini(
   client: GoogleGenAI,
+  modelId: string,
   request: LlmRequest,
 ): AsyncIterable<LlmStreamEvent> {
   const { system, contents } = toGeminiContents(request.messages);
@@ -73,7 +74,7 @@ async function* streamGemini(
   let stream: AsyncGenerator<GenerateContentResponse>;
   try {
     stream = await client.models.generateContentStream({
-      model: request.model,
+      model: modelId,
       contents,
       config,
     });

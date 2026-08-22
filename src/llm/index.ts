@@ -1,5 +1,5 @@
-export { createLanguageModel } from './languageModel.js';
-export type { LanguageModel } from './languageModel.js';
+export { createLlmCall } from './languageModel.js';
+export { createLlmCompletion } from './languageModel.js';
 export {
   ContextWindowExceededError,
   llmProviderErrorCode,
@@ -11,6 +11,7 @@ export {
 export { advanceLlmUsageSnapshot } from './usage.js';
 export type {
   AssistantBlock,
+  CallLlm,
   LlmCompletion,
   LlmConnection,
   ContentPart,

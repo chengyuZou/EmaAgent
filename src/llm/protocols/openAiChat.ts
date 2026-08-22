@@ -29,7 +29,7 @@ type OpenAiChatParams =
   };
 
 export function createOpenAiChatProtocol(
-  connection: LlmConnection,
+  connection: LlmConnection, modelId: string,
 ): (request: LlmRequest) => AsyncIterable<LlmStreamEvent> {
   const client = new OpenAI({
     apiKey: connection.apiKey ?? '',
@@ -37,16 +37,17 @@ export function createOpenAiChatProtocol(
     // 重试只能由调用方拥有，避免 SDK 与 Agent 各重试一次形成乘法放大。
     maxRetries: 0,
   });
-  return (request) => streamOpenAiChat(client, request);
+  return (request) => streamOpenAiChat(client, modelId, request);
 }
 
 async function* streamOpenAiChat(
   client: OpenAI,
+  modelId: string,
   request: LlmRequest,
 ): AsyncIterable<LlmStreamEvent> {
   const tools = request.tools?.map(toOpenAiTool);
   const params: OpenAiChatParams = {
-    model: request.model,
+    model: modelId,
     messages: toOpenAiMessages(request.messages),
     tools: tools?.length ? tools : undefined,
     tool_choice: tools?.length ? toOpenAiToolChoice(request.toolChoice) : undefined,

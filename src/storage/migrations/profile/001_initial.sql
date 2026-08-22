@@ -215,11 +215,11 @@ CREATE TABLE provider_models (
 
 -- 模型绑定:每个业务模块只绑定一个已启用模型。
 -- module 枚举与 providers/modelBindings.ts 的 MODEL_BINDING_MODULES 保持一致;
--- 命名统一为 <域>-<能力>(memory-llm/memory-embed/...);memory/kb 的 embed/rerank
--- 原来在 settings JSON,已迁出到本表。
+-- 命名统一为 <域>-<能力>(memory-llm/kb-embed/...);memory 只消费 llm(双轨重构后),
+-- kb 的 embed/rerank 原来在 settings JSON,已迁出到本表。
 CREATE TABLE model_bindings (
   module      TEXT PRIMARY KEY CHECK(module IN (
-                'memory-llm', 'memory-embed', 'memory-rerank',
+                'memory-llm',
                 'kb-embed', 'kb-rerank',
                 'title',
                 'lightrag-embed', 'lightrag-llm',
@@ -230,8 +230,8 @@ CREATE TABLE model_bindings (
   model_id    TEXT NOT NULL,
   CHECK(
     (module IN ('memory-llm','title','lightrag-llm') AND capability = 'llm')
-    OR (module IN ('memory-embed','kb-embed','lightrag-embed') AND capability = 'embed')
-    OR (module IN ('memory-rerank','kb-rerank') AND capability = 'rerank')
+    OR (module IN ('kb-embed','lightrag-embed') AND capability = 'embed')
+    OR (module = 'kb-rerank' AND capability = 'rerank')
     OR (module = 'tts' AND capability = 'tts')
     OR (module = 'stt' AND capability = 'stt')
     OR (module = 'vision' AND capability = 'vision')

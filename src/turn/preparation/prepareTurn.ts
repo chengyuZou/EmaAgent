@@ -18,9 +18,10 @@ import {
   type CompactSettings,
 } from '@ema-agent/compact';
 import {
-  createLanguageModel,
+  createLlmCall,
+  type CallLlm,
   type ContentPart,
-  type LanguageModel,
+  type LlmConnection,
   type Message,
 } from '@ema-agent/llm';
 import {
@@ -76,7 +77,7 @@ export interface PreparedTurn {
   readonly workspaceRoot: string;
   readonly projectId: string | null;
   readonly scratchpadDir?: string;
-  readonly llm: LanguageModel;
+  readonly callLlm: CallLlm;
   readonly providerId: string;
   readonly modelId: string;
   readonly contextWindow: number;
@@ -107,8 +108,8 @@ export interface PrepareTurnDeps extends TurnToolsDeps {
   readonly characterPrompt: () => readonly string[];
   /** SkillRegistry 当前全量条目；冻结在 Pool 之前读取一次。 */
   readonly skillEntries: () => readonly SkillDescriptor[];
-  /** 默认 llm 包的 createLanguageModel；测试注入脚本化模型。 */
-  readonly createLlm?: (connection: Parameters<typeof createLanguageModel>[0]) => LanguageModel;
+  /** 默认 llm 包的 createLlmCall；测试注入脚本化调用。 */
+  readonly createLlmCall?: (connection: LlmConnection, modelId: string) => CallLlm;
   /** 工作区指令（EMA.md/CLAUDE.md）按本 Turn 的工作区读取；无工作区时不会调用。 */
   readonly workspaceInstructions?: (workspaceRoot: string) => string | null;
   /** 模型不支持图片时的 Vision 描述入口；缺失时原始图片将准备失败而非试探透传。 */
@@ -161,8 +162,9 @@ export async function prepareTurn(
       `模型未在该 Provider 下启用：${providerId} / ${modelId}`,
     );
   }
-  const llm = (deps.createLlm ?? createLanguageModel)(
+  const callLlm = (deps.createLlmCall ?? createLlmCall)(
     deps.providers.resolveConnection(providerId, 'llm'),
+    modelId,
   );
   const supportsImageInput = modelFacts.inputImage === true;
   const degradations: RequestDegradationNotice[] = [];
@@ -319,7 +321,7 @@ export async function prepareTurn(
     workspaceRoot,
     projectId,
     ...(scratchpadDir ? { scratchpadDir } : {}),
-    llm,
+    callLlm,
     providerId,
     modelId,
     contextWindow: modelFacts.contextWindow,

@@ -26,18 +26,19 @@ import type {
 import { createLlmTokenUsage } from '../usage.js';
 
 export function createAnthropicProtocol(
-  connection: LlmConnection,
+  connection: LlmConnection, modelId: string,
 ): (request: LlmRequest) => AsyncIterable<LlmStreamEvent> {
   const client = new Anthropic({
     apiKey: connection.apiKey ?? '',
     baseURL: connection.baseUrl,
     maxRetries: 0,
   });
-  return (request) => streamAnthropic(client, request);
+  return (request) => streamAnthropic(client, modelId, request);
 }
 
 async function* streamAnthropic(
   client: Anthropic,
+  modelId: string,
   request: LlmRequest,
 ): AsyncIterable<LlmStreamEvent> {
   if (request.maxOutputTokens === undefined) {
@@ -49,7 +50,7 @@ async function* streamAnthropic(
     : request.tools?.map(toAnthropicTool);
   const thinkingEnabled = request.thinking?.enabled === true;
   const body: Anthropic.Messages.MessageStreamParams = {
-    model: request.model,
+    model: modelId,
     messages,
     max_tokens: request.maxOutputTokens,
     temperature: thinkingEnabled ? 1 : request.temperature,

@@ -9,10 +9,9 @@
 ```text
 Provider / 接线层
   └─ 解析 provider config + model capability
-       └─ createLanguageModel({ protocol, apiKey, baseUrl })
-            ├─ stream(LlmRequest)   → AsyncIterable<LlmStreamEvent>
-            └─ complete(LlmRequest) → LlmCompletion
-                 └─ 收集同一条 stream，不存在第二条非流式线路
+       └─ createLlmCall({ protocol, apiKey, baseUrl }, modelId)   // 连接与模型在创建点冻结
+            └─ CallLlm(LlmRequest) → AsyncIterable<LlmStreamEvent>
+                 └─ createLlmCompletion(stream) → LlmCompletion   // 同一条流的无损收集器，无第二条线路
 ```
 
 支持的协议由 `@ema-agent/provider` 的 `LlmProtocol` 定义：
@@ -27,14 +26,13 @@ Provider 是协议词汇和连接配置的唯一所有者。LLM 只消费 `LlmPr
 ## 公共接口
 
 ```ts
-const llm = createLanguageModel({
+const callLlm = createLlmCall({
   protocol: 'openai-llm',
   apiKey,
   baseUrl,
-});
+}, modelId);
 
-for await (const event of llm.stream({
-  model,
+for await (const event of callLlm({
   messages,
   tools,
   maxOutputTokens,
@@ -42,6 +40,9 @@ for await (const event of llm.stream({
 })) {
   // Agent 处理 delta、Tool 调用、Usage 快照和 done。
 }
+
+// 要一把拿结果（标题生成、摘要等）：收集同一条流。
+const completion = await createLlmCompletion(callLlm({ messages, signal }));
 ```
 
 `LlmConnection` 只含建立 SDK Client 所需的协议、凭据和地址。`LlmRequest` 只含一次调用变化的模型、消息、Tool 定义、生成参数与取消信号。

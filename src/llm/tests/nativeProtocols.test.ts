@@ -1,6 +1,6 @@
 // 测试 Anthropic 与 Gemini 原生协议都经公共入口产生显式完成流。
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createLanguageModel } from '../languageModel.js';
+import { createLlmCall } from '../languageModel.js';
 
 const sdkMocks = vi.hoisted(() => ({
   anthropicConstructor: vi.fn(),
@@ -55,10 +55,9 @@ describe('native LLM protocols', () => {
       },
       { type: 'message_stop' },
     ]));
-    const llm = createLanguageModel({ protocol: 'anthropic-llm', apiKey: 'key' });
+    const llm = createLlmCall({ protocol: 'anthropic-llm', apiKey: 'key' }, 'claude-test');
 
-    await expect(collectText(llm.stream({
-      model: 'claude-test',
+    await expect(collectText(llm({
       messages: [{ role: 'user', content: 'hello' }],
       maxOutputTokens: 128,
     }))).resolves.toBe('claude');
@@ -76,10 +75,9 @@ describe('native LLM protocols', () => {
         finishReason: 'STOP',
       }],
     }]));
-    const llm = createLanguageModel({ protocol: 'gemini-llm', apiKey: 'key' });
+    const llm = createLlmCall({ protocol: 'gemini-llm', apiKey: 'key' }, 'gemini-test');
 
-    await expect(collectText(llm.stream({
-      model: 'gemini-test',
+    await expect(collectText(llm({
       messages: [{ role: 'user', content: 'hello' }],
     }))).resolves.toBe('gemini');
     expect(sdkMocks.geminiConstructor).toHaveBeenCalledWith({ apiKey: 'key' });
