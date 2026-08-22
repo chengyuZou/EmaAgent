@@ -101,10 +101,6 @@ export interface DocumentAsset {
   contentHash?: string;
   createdAt:   number;
   updatedAt:   number;
-  /** 该 KB 被选入某个 Turn 的次数。 */
-  useCount:    number;
-  /** 最近一次被选入 Turn 的时间（毫秒）；undefined = 从未，UI 回退用 createdAt。 */
-  lastActivatedAt?: number;
   embeddingProviderId?: string;
   embeddingModel?:   string;
   embeddingDim?:     number;

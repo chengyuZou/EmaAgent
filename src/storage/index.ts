@@ -165,8 +165,6 @@ export {
   DocumentPreviewRepo,
   DocumentPreviewValidationError,
 } from './repos/kb/document-preview.js';
-export { KbActivationsRepo }   from './repos/data/kb-activations.js';
-export type { AssetUsage }     from './repos/data/kb-activations.js';
 export { KbIngestTasksRepo }   from './repos/kb/kb-ingest-tasks.js';
 export type {
   KbIngestTask,
@@ -187,4 +185,3 @@ export type {
   DocumentPreviewRow,
   DocumentPreviewUpsert,
 } from './repos/kb/document-preview.js';
-export type { KbActivationRow }                           from './repos/data/kb-activations.js';

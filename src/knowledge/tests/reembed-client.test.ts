@@ -19,7 +19,7 @@ function makeChunk(id: string, assetId: string, text: string): DocumentChunk {
 function makeAsset(id: string, fileName: string): DocumentAsset {
   return {
     id, filePath: fileName, fileName, mimeType: 'text/plain', wordCount: 1,
-    status: 'ready', createdAt: 1, updatedAt: 1, useCount: 0, embeddingStale: true,
+    status: 'ready', createdAt: 1, updatedAt: 1, embeddingStale: true,
   };
 }
 

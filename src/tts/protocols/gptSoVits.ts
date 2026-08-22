@@ -10,8 +10,10 @@ import { concatBytes, safeReadText } from '../utils.js';
 
 const CHUNK_BYTES = 8 * 1024;
 
+// GPT-SoVITS 本地协议的载荷没有模型字段；modelId 仅为创建点签名统一而传入。
 export function createGptSoVitsTtsProtocol(
   connection: TtsConnection,
+  _modelId: string,
 ): TtsProtocolImplementation {
   const baseUrl = (connection.baseUrl ?? 'http://127.0.0.1:9880').replace(/\/$/, '');
   return {

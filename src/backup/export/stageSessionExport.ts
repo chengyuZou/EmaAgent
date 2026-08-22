@@ -9,7 +9,6 @@ import {
   toAgentRunRecord,
   toAttachmentRecord,
   toBackgroundProcessRecord,
-  toKbActivationRecord,
   toMessageRecord,
   toSessionRecord,
   toSpeechOutputRecord,
@@ -155,7 +154,6 @@ function writeRecords(
     return toSpeechSegmentRecord(row, archivePath);
   }, signal);
   writeJsonl(directory, 'usageRecords', rows.usageRecords, toUsageRecord, signal);
-  writeJsonl(directory, 'kbActivations', rows.kbActivations, toKbActivationRecord, signal);
 }
 
 function writeJson(directory: string, name: 'session', value: unknown): void {

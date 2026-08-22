@@ -1,5 +1,5 @@
 // 协调单个 Turn 的文本清理、切句、顺序合成、事件发射和音频归档。
-import type { TextToSpeech, TtsAudioFormat, TtsVoice } from '@ema-agent/tts';
+import type { CallTts, TtsAudioFormat, TtsVoice } from '@ema-agent/tts';
 import { createUsageRecord, reportUsage } from '@ema-agent/usage';
 import type { UsageRecord, UsageRecorder } from '@ema-agent/usage';
 
@@ -31,9 +31,10 @@ export interface SpeechCoordinatorArgs {
   readonly sessionId: string;
   readonly turnId: string;
   readonly providerId: string;
-  readonly model: string;
+  /** 仅为每句 Usage 记录保留模型身份；合成调用本身已在创建点冻结模型。 */
+  readonly modelId: string;
   readonly voice: TtsVoice;
-  readonly textToSpeech: TextToSpeech;
+  readonly callTts: CallTts;
   readonly emit: (event: SpeechEvent) => void;
   readonly archive?: AudioArchive;
   readonly format?: TtsAudioFormat;
@@ -125,8 +126,8 @@ export class SpeechCoordinator {
     if (this.args.archive) {
       try {
         this.finalizedAudio = await this.args.archive.finalizeTurn(
-          this.args.sessionId as string,
-          this.args.turnId as string,
+          this.args.sessionId,
+          this.args.turnId,
           this.effectiveExtension ?? this.format,
         );
       } catch (error) {
@@ -145,7 +146,7 @@ export class SpeechCoordinator {
 
   private async abortInternal(): Promise<void> {
     await this.chain.catch(() => undefined);
-    this.args.archive?.discardTurn(this.args.sessionId as string, this.args.turnId as string);
+    this.args.archive?.discardTurn(this.args.sessionId, this.args.turnId);
     this.args.onTurnSegmentsDiscarded?.(this.args.turnId);
     this.state = 'aborted';
   }
@@ -155,7 +156,7 @@ export class SpeechCoordinator {
       if (this.state === 'aborting' || this.state === 'aborted') return;
       this.state = 'failed';
       this.abortController.abort('speech failed');
-      this.args.archive?.discardTurn(this.args.sessionId as string, this.args.turnId as string);
+      this.args.archive?.discardTurn(this.args.sessionId, this.args.turnId);
       this.args.onTurnSegmentsDiscarded?.(this.args.turnId);
       this.args.emit(warningEvent(this.args.sessionId, this.args.turnId, 'tts/coordinator', error));
     });
@@ -174,8 +175,7 @@ export class SpeechCoordinator {
     let errorCode: string | null = null;
 
     try {
-      for await (const event of this.args.textToSpeech.synthesize({
-        model: this.args.model,
+      for await (const event of this.args.callTts({
         text,
         voice: this.args.voice,
         format: this.format,
@@ -195,8 +195,8 @@ export class SpeechCoordinator {
           const extension = mimeToExtension(event.mime) ?? this.format;
           this.effectiveExtension ??= extension;
           writer = this.args.archive.openSegment(
-            this.args.sessionId as string,
-            this.args.turnId as string,
+            this.args.sessionId,
+            this.args.turnId,
             index,
             extension,
           );
@@ -258,14 +258,14 @@ export class SpeechCoordinator {
     const record = createUsageRecord({
       capability: 'tts',
       providerId: this.args.providerId,
-      modelId: this.args.model,
+      modelId: this.args.modelId,
       status: errorCode === null ? 'completed' : 'failed',
       startedAt,
       durationMs: Date.now() - startedAt,
       usageContext: {
         callId,
-        sessionId: this.args.sessionId as string,
-        turnId: this.args.turnId as string,
+        sessionId: this.args.sessionId,
+        turnId: this.args.turnId,
       },
       quantity: characterCount,
       unit: 'character',

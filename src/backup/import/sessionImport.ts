@@ -8,7 +8,6 @@ import {
   agentRunRecordSchema,
   attachmentRecordSchema,
   backgroundProcessRecordSchema,
-  kbActivationRecordSchema,
   messageRecordSchema,
   sessionBackupManifestSchema,
   sessionRecordSchema,
@@ -25,7 +24,6 @@ import {
   restoreAgentRunRecord,
   restoreAttachmentRecord,
   restoreBackgroundProcessRecord,
-  restoreKbActivationRecord,
   restoreMessageRecord,
   restoreSessionRecord,
   restoreSpeechOutputRecord,
@@ -64,7 +62,7 @@ export async function importSessionArchive(
     const [
       turns, messages, tasks, taskDependencies, agentRuns, agentRunMessages,
       toolExecutions, backgroundProcesses, attachments, speechOutputs,
-      speechSegments, usageRecords, kbActivations,
+      speechSegments, usageRecords,
     ] = await Promise.all([
       readJsonlRecords(archive, 'turns', turnRecordSchema),
       readJsonlRecords(archive, 'messages', messageRecordSchema),
@@ -78,13 +76,12 @@ export async function importSessionArchive(
       readJsonlRecords(archive, 'speechOutputs', speechOutputRecordSchema),
       readJsonlRecords(archive, 'speechSegments', speechSegmentRecordSchema),
       readJsonlRecords(archive, 'usageRecords', usageRecordSchema),
-      readJsonlRecords(archive, 'kbActivations', kbActivationRecordSchema),
     ]);
     throwIfCancelled(signal);
     assertSessionOwnership(manifest.sessionId, {
       turns, messages, tasks, taskDependencies, agentRuns, toolExecutions,
       backgroundProcesses, attachments, speechOutputs, speechSegments,
-      usageRecords, kbActivations,
+      usageRecords,
     });
 
     const warnings = manifest.omittedFiles.map(file => `${file.kind}:${file.id} 未包含文件内容`);
@@ -140,7 +137,6 @@ export async function importSessionArchive(
           return filePath ? [restoreSpeechSegmentRecord(row, filePath)] : [];
         }),
         usageRecords: usageRecords.map(restoreUsageRecord),
-        kbActivations: kbActivations.map(restoreKbActivationRecord),
       });
       files.commit();
     } catch (error) {

@@ -3,7 +3,7 @@
 import type { CallRerank } from '@ema-agent/rerank';
 import type { CallVision } from '@ema-agent/vision';
 import type { EmbeddingSpace } from '@ema-agent/embed';
-import type { AssetUsage, ChunkPage } from '@ema-agent/storage';
+import type { ChunkPage } from '@ema-agent/storage';
 import { DocumentAssetCursorError } from '@ema-agent/storage';
 import type {
   AssetListPage,
@@ -198,10 +198,6 @@ export class KnowledgeClient {
     return this.deps.store.getChunksPaged(assetId, options);
   }
 
-  getAssetUsage(assetId: string): AssetUsage {
-    return this.deps.store.getAssetUsage(assetId);
-  }
-
   getPreview(assetId: string): DocumentPreview | undefined {
     return this.deps.store.getPreview(assetId);
   }
@@ -216,10 +212,6 @@ export class KnowledgeClient {
       }
       throw error;
     }
-  }
-
-  listInactiveAssets(days = 30): DocumentAsset[] {
-    return this.deps.store.listInactiveAssets(Date.now() - days * 24 * 60 * 60 * 1000);
   }
 
   async deleteAsset(id: string): Promise<void> {

@@ -123,8 +123,6 @@ describe('indexing 残留接管', () => {
       status: 'indexing',
       createdAt: 1,
       updatedAt: 1,
-      useCount: 0,
-      lastActivatedAt: undefined,
     };
 
     const result = await ingest(
@@ -189,7 +187,7 @@ describe('重复内容回退', () => {
     const existing: DocumentAsset = {
       id: 'asset-existing', filePath: 'files/asset-existing/doc.txt', fileName: 'doc.txt',
       mimeType: 'text/plain', wordCount: 2, status: 'ready',
-      createdAt: 1, updatedAt: 1, useCount: 0,
+      createdAt: 1, updatedAt: 1,
     };
     const store = new InMemoryIngestStore();
     // 第一次哈希检查（放行）→ addAsset 撞唯一约束 → 第二次哈希检查返回 ready 资产。

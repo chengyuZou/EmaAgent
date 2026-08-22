@@ -5,10 +5,8 @@ import type {
 import type { DocumentAssetRepo }   from '@ema-agent/storage';
 import type { DocumentChunkRepo }   from '@ema-agent/storage';
 import type { DocumentPreviewRepo } from '@ema-agent/storage';
-import type { KbActivationsRepo }   from '@ema-agent/storage';
 import type { ChunkSearchHit }      from '@ema-agent/storage';
 import type { ChunkPage }           from '@ema-agent/storage';
-import type { AssetUsage }          from '@ema-agent/storage';
 import type { EmbeddingSpace }      from '@ema-agent/embed';
 
 export interface KbSearchOpts {
@@ -22,8 +20,6 @@ export class KnowledgeStore {
     private readonly assets:      DocumentAssetRepo,
     private readonly chunks:      DocumentChunkRepo,
     private readonly previews:    DocumentPreviewRepo,
-    private readonly activations: KbActivationsRepo,
-    private readonly kbId:        string,
   ) {}
 
   // ── Asset ──────────────────────────────────────────────────────────────────
@@ -38,36 +34,9 @@ export class KnowledgeStore {
     return this.assets.listPaged(opts) as AssetListPage;
   }
 
-  /** KBs not selected since `beforeTs` (last_activated_at, falling back to created_at). */
-  listInactiveAssets(beforeTs: number): DocumentAsset[] {
-    return this.assets.listInactiveSince(beforeTs) as DocumentAsset[];
-  }
-
   /** 把外部 asset scope 收窄到当前 KB 数据库真实拥有的文档。 */
   filterExistingAssetIds(assetIds: readonly string[]): string[] {
     return [...new Set(this.assets.findExistingIds(assetIds))];
-  }
-
-  /** Record a turn selecting these KBs: bump use_count + stamp last_activated_at,
-   *  and log one kb_activations call (per-asset rows) when a session is known. */
-  recordActivation(
-    assetIds: string[],
-    opts: { sessionId?: string; turnId?: string; ts?: number } = {},
-  ): string[] {
-    const ownedAssetIds = this.filterExistingAssetIds(assetIds);
-    if (ownedAssetIds.length === 0) return ownedAssetIds;
-    const ts = opts.ts ?? Date.now();
-    this.assets.recordActivation(ownedAssetIds, ts);
-    if (opts.sessionId) {
-      this.activations.recordCall({
-        kbId: this.kbId,
-        assetIds: ownedAssetIds,
-        sessionId: opts.sessionId,
-        turnId: opts.turnId,
-        ts,
-      });
-    }
-    return ownedAssetIds;
   }
 
   findAssetByHash(hash: string): DocumentAsset | undefined {
@@ -95,11 +64,6 @@ export class KnowledgeStore {
   /** Cursor-paginated chunk summaries for the document detail viewer. */
   getChunksPaged(assetId: string, opts: { cursor?: number; limit?: number } = {}): ChunkPage {
     return this.chunks.findByAssetPaged(assetId, opts);
-  }
-
-  /** Per-session usage breakdown for one KB document (which sessions, how many calls). */
-  getAssetUsage(assetId: string): AssetUsage {
-    return this.activations.usageForAsset(assetId);
   }
 
   getChunk(id: string): DocumentChunk | undefined {

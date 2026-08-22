@@ -11,9 +11,7 @@ import {
   DocumentPreviewRepo,
   KbIngestTasksRepo,
   KbReembedTasksRepo,
-  type AssetUsage,
   type ChunkPage,
-  type KbActivationsRepo,
   type KbIngestTask,
   type KbRecord,
   type KbReembedTask,
@@ -54,7 +52,6 @@ interface OpenKnowledgeBase {
 
 export interface KbManagerDeps {
   readonly registry: KbRegistryRepo;
-  readonly activations: KbActivationsRepo;
   readonly resolveEmbed: () => CallEmbed | undefined;
   readonly resolveRerank: () => CallRerank | undefined;
   readonly resolveVision: () => CallVision | undefined;
@@ -204,10 +201,6 @@ export class KbManager {
     return (await this.required(kbId)).client.listAssets(options);
   }
 
-  async listInactiveAssets(kbId?: string, days = 30): Promise<DocumentAsset[]> {
-    return (await this.required(kbId)).client.listInactiveAssets(days);
-  }
-
   async getAsset(id: string, kbId?: string): Promise<DocumentAsset | undefined> {
     return (await this.required(kbId)).client.getAsset(id);
   }
@@ -218,10 +211,6 @@ export class KbManager {
 
   async getChunks(id: string, kbId?: string, options: { cursor?: number; limit?: number } = {}): Promise<ChunkPage> {
     return (await this.required(kbId)).client.getChunksPaged(id, options);
-  }
-
-  async getAssetUsage(id: string, kbId?: string): Promise<AssetUsage> {
-    return (await this.required(kbId)).client.getAssetUsage(id);
   }
 
   async deleteAsset(id: string, kbId?: string): Promise<boolean> {
@@ -274,8 +263,6 @@ export class KbManager {
       new DocumentAssetRepo(db.sqlite),
       new DocumentChunkRepo(db.sqlite),
       new DocumentPreviewRepo(db.sqlite),
-      this.deps.activations,
-      record.id,
     );
     const client = new KnowledgeClient({
       store,

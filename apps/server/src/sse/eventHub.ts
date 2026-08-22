@@ -102,8 +102,4 @@ export class EventHub {
   appSubscriberCount(): number {
     return this.appSubscribers.size;
   }
-
-  appSubscriberCount(): number {
-    return this.appSubscribers.size;
-  }
 }

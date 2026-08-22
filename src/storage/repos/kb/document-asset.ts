@@ -1,4 +1,4 @@
-// 管理知识库文档资源的元数据、分页、激活记录和向量空间状态。
+// 管理知识库文档资源的元数据、分页和向量空间状态。
 import type { SqliteDb } from '../../database/database.js';
 import { escapeLikePattern } from '../../search/like-utils.js';
 import { createSqliteIdBatches } from '../../database/sqlite-id-batches.js';
@@ -20,8 +20,6 @@ export interface DocumentAssetRow {
   embedding_dim:     number | null;
   embedding_space_id: string | null;
   embedding_stale:   number;
-  use_count:         number;
-  last_activated_at: number | null;
 }
 
 export interface DocumentAssetInsert {
@@ -75,8 +73,6 @@ function rowToAsset(row: DocumentAssetRow) {
     embeddingDim:    row.embedding_dim ?? undefined,
     embeddingSpaceId: row.embedding_space_id ?? undefined,
     embeddingStale:  row.embedding_stale === 1,
-    useCount:        row.use_count,
-    lastActivatedAt: row.last_activated_at ?? undefined,
   };
 }
 
@@ -136,25 +132,6 @@ export class DocumentAssetRepo {
       items: pageRows.map(rowToAsset),
       nextCursor: hasMore ? encodeDocumentAssetCursor(pageRows[pageRows.length - 1]!) : null,
     };
-  }
-
-  /** 自 `beforeTs` 起未被选中的 KB（以 last_activated_at 为准，回退到 created_at）。 */
-  listInactiveSince(beforeTs: number): ReturnType<typeof rowToAsset>[] {
-    const rows = this.db.prepare(`
-      SELECT * FROM document_assets
-      WHERE COALESCE(last_activated_at, created_at) < ?
-      ORDER BY COALESCE(last_activated_at, created_at) ASC
-    `).all(beforeTs) as DocumentAssetRow[];
-    return rows.map(rowToAsset);
-  }
-
-  /** 记录某 turn 选中这些 KB：自增 use_count + 更新 last_activated_at。 */
-  recordActivation(ids: string[], ts: number): void {
-    if (ids.length === 0) return;
-    const stmt = this.db.prepare(
-      'UPDATE document_assets SET use_count = use_count + 1, last_activated_at = ? WHERE id = ?',
-    );
-    this.db.transaction(() => { for (const id of ids) stmt.run(ts, id); })();
   }
 
   updateStatus(id: string, status: string): void {

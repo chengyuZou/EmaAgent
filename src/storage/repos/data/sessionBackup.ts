@@ -4,7 +4,6 @@ import type { AgentRunMessageRow } from './agent-run-messages.js';
 import type { AgentRunRow } from './agent-runs.js';
 import type { AttachmentRow } from './attachments.js';
 import type { BackgroundProcessRow } from './backgroundProcesses.js';
-import type { KbActivationRow } from './kb-activations.js';
 import type { MessageRow } from './messages.js';
 import type { SessionRow } from './sessions.js';
 import type { SpeechOutputRow, SpeechSegmentRow } from './speechOutputs.js';
@@ -50,7 +49,6 @@ export interface SessionBackupRows {
   readonly speechOutputs: Iterable<SpeechOutputRow>;
   readonly speechSegments: Iterable<SpeechSegmentRow>;
   readonly usageRecords: Iterable<UsageRecordRow>;
-  readonly kbActivations: Iterable<KbActivationRow>;
 }
 
 /** Backup 已完成文件落位和状态收口后交给 Storage 的数据库行。 */
@@ -138,11 +136,6 @@ export class SessionBackupReader {
         `, sessionId),
         usageRecords: this.iterate<UsageRecordRow>(`
           SELECT * FROM usage_records
-          WHERE session_id = ?
-          ORDER BY created_at ASC, id ASC
-        `, sessionId),
-        kbActivations: this.iterate<KbActivationRow>(`
-          SELECT * FROM kb_activations
           WHERE session_id = ?
           ORDER BY created_at ASC, id ASC
         `, sessionId),
@@ -373,18 +366,6 @@ export class SessionBackupRestorer {
         row.capability, row.status, row.input_tokens, row.output_tokens,
         row.cache_read_input_tokens, row.cache_write_input_tokens,
         row.quantity, row.unit, row.duration_ms, row.error_code, row.created_at,
-      );
-    }
-
-    const insertKbActivation = this.db.prepare(`
-      INSERT INTO kb_activations (
-        id, call_id, kb_id, asset_id, session_id, turn_id, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
-    for (const row of rows.kbActivations) {
-      insertKbActivation.run(
-        row.id, row.call_id, row.kb_id, row.asset_id,
-        session.id, row.turn_id, row.created_at,
       );
     }
 

@@ -76,7 +76,6 @@ export async function ingest(
     status: 'indexing',
     createdAt: Date.now(),
     updatedAt: Date.now(),
-    useCount: 0,
   };
   try {
     deps.store.addAsset(asset);

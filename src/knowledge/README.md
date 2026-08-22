@@ -24,7 +24,7 @@ AgenticRAG 知识库包。用户给的资料经 **解析 → 分块 → embeddin
 | 检索 | `search` | 当前激活库；无激活库返回空结果而非报错 |
 | 摄入 | `enqueueIngest / listIngestTasks / retryIngest / cancelIngest` | 任务持久化，可重试可取消 |
 | 重嵌 | `enqueueReembed / listStaleAssetIds / listReembedTasks / retryReembed / cancelReembed` | 一行任务绑定一个显式资产；整库重建 = 取 stale 清单后整单传入 |
-| 资产 | `listAssets / listInactiveAssets / getAsset / getPreview / getChunks / getAssetUsage / deleteAsset` | 分页、预览、块查看、用量统计；`deleteAsset` 先取消该资产在途任务并等落定再删 |
+| 资产 | `listAssets / getAsset / getPreview / getChunks / deleteAsset` | 分页、预览、块查看；`deleteAsset` 先取消该资产在途任务并等落定再删 |
 | 空间失效 | `invalidateEmbeddings / invalidateAllEmbeddings` | 某空间之外的向量全部标 stale，等待 reembed |
 
 事件经 `KbManager.events` 订阅（`KnowledgeEvent`：ingest/reembed 的进度与终态）。
@@ -54,8 +54,6 @@ kb_ingest_tasks    一次「文件 → 资产」一行，终态 completed / fail
 kb_reembed_tasks   一行一个资产（asset_id NOT NULL），终态 completed / failed / cancelled，
                    failed 行独立 retry；不存在跨资产的 sweep 行
 ```
-
-`kb_activations`（使用统计）在 `data.db`，跨库裸引用——SQLite 跨库无法建 FK。
 
 ## 摄入流水线
 

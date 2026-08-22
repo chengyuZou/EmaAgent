@@ -19,5 +19,5 @@ export function audioChunkEvent(
 }
 
 export function makeSentenceId(turnId: string, sentenceIndex: number): string {
-  return `${turnId as string}-${sentenceIndex}`;
+  return `${turnId}-${sentenceIndex}`;
 }

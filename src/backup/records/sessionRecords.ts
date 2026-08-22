@@ -224,16 +224,6 @@ export const usageRecordSchema = z.object({
   createdAt: integer,
 }).strict();
 
-export const kbActivationRecordSchema = z.object({
-  id,
-  callId: id,
-  kbId: id,
-  assetId: id,
-  sessionId: id,
-  turnId: nullableId,
-  createdAt: integer,
-}).strict();
-
 export type OmittedSessionFile = z.infer<typeof omittedSessionFileSchema>;
 export type SessionBackupManifest = z.infer<typeof sessionBackupManifestSchema>;
 export type SessionRecord = z.infer<typeof sessionRecordSchema>;
@@ -249,4 +239,3 @@ export type AttachmentRecord = z.infer<typeof attachmentRecordSchema>;
 export type SpeechOutputRecord = z.infer<typeof speechOutputRecordSchema>;
 export type SpeechSegmentRecord = z.infer<typeof speechSegmentRecordSchema>;
 export type UsageRecord = z.infer<typeof usageRecordSchema>;
-export type KbActivationRecord = z.infer<typeof kbActivationRecordSchema>;

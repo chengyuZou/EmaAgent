@@ -1,9 +1,9 @@
 // 在当前进程内缓存云端声音标识，避免每句话重复上传参考音频。
 import type {
-  TextToSpeech,
   TtsProviderVoice,
   TtsVoice,
   TtsVoiceReference,
+  TtsVoiceRegistrar,
 } from '@ema-agent/tts';
 
 const DEFAULT_EPHEMERAL_TTL_MS = 2 * 60_000;
@@ -11,6 +11,17 @@ const DEFAULT_EPHEMERAL_TTL_MS = 2 * 60_000;
 export interface SpeechVoiceCacheOptions {
   readonly ephemeralTtlMs?: number;
   readonly now?: () => number;
+}
+
+/** get-or-register 的输入；registrar 的连接与模型已在装配层创建点冻结。 */
+export interface PrepareSpeechVoiceRequest {
+  readonly reference: TtsVoiceReference;
+  readonly ttsVoiceRegistrar: TtsVoiceRegistrar;
+  readonly characterId: string;
+  readonly providerId: string;
+  /** 缓存键组成：同一 Provider 换模型必须重新注册（云端注册绑定目标模型）。 */
+  readonly modelId: string;
+  readonly signal?: AbortSignal;
 }
 
 export class SpeechVoiceCache {
@@ -23,8 +34,8 @@ export class SpeechVoiceCache {
     this.now = options.now ?? Date.now;
   }
 
-  get(cardId: string, providerId: string, model: string): TtsProviderVoice | null {
-    const key = voiceKey(cardId, providerId, model);
+  get(characterId: string, providerId: string, modelId: string): TtsProviderVoice | null {
+    const key = voiceKey(characterId, providerId, modelId);
     const voice = this.entries.get(key);
     if (!voice) return null;
     if (voice.expiresAt !== undefined && voice.expiresAt <= this.now()) {
@@ -35,9 +46,9 @@ export class SpeechVoiceCache {
   }
 
   set(
-    cardId: string,
+    characterId: string,
     providerId: string,
-    model: string,
+    modelId: string,
     voice: TtsProviderVoice,
   ): TtsProviderVoice {
     const normalized = voice.lifetime === 'durable'
@@ -48,8 +59,18 @@ export class SpeechVoiceCache {
           lifetime: 'ephemeral' as const,
           expiresAt: voice.expiresAt ?? this.now() + this.ephemeralTtlMs,
         };
-    this.entries.set(voiceKey(cardId, providerId, model), normalized);
+    this.entries.set(voiceKey(characterId, providerId, modelId), normalized);
     return { ...normalized };
+  }
+
+  /** 本地声音直接使用；云端声音按角色、Provider 和模型短期复用。 */
+  async prepare(request: PrepareSpeechVoiceRequest): Promise<TtsVoice> {
+    const cached = this.get(request.characterId, request.providerId, request.modelId);
+    if (cached) return cached;
+    const voice = await request.ttsVoiceRegistrar(request.reference, request.signal);
+    return voice.kind === 'provider'
+      ? this.set(request.characterId, request.providerId, request.modelId, voice)
+      : voice;
   }
 
   clear(): void {
@@ -57,24 +78,6 @@ export class SpeechVoiceCache {
   }
 }
 
-/** 本地声音直接使用；云端声音按角色、Provider 和模型短期复用。 */
-export async function prepareSpeechVoice(
-  reference: TtsVoiceReference,
-  textToSpeech: TextToSpeech,
-  model: string,
-  cardId: string,
-  providerId: string,
-  cache: SpeechVoiceCache,
-  signal?: AbortSignal,
-): Promise<TtsVoice> {
-  const cached = cache.get(cardId, providerId, model);
-  if (cached) return cached;
-  const voice = await textToSpeech.prepareVoice(reference, model, signal);
-  return voice.kind === 'provider'
-    ? cache.set(cardId, providerId, model, voice)
-    : voice;
-}
-
-function voiceKey(cardId: string, providerId: string, model: string): string {
-  return `${cardId}\u0000${providerId}\u0000${model}`;
+function voiceKey(characterId: string, providerId: string, modelId: string): string {
+  return `${characterId} ${providerId} ${modelId}`;
 }

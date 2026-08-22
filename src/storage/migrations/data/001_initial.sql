@@ -74,16 +74,6 @@ CREATE TABLE background_processes (
   model_notified_at     INTEGER
 );
 
-CREATE TABLE kb_activations (
-  id          TEXT    PRIMARY KEY,
-  call_id     TEXT    NOT NULL,
-  kb_id       TEXT    NOT NULL,
-  asset_id    TEXT    NOT NULL,
-  session_id  TEXT    NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  turn_id     TEXT,
-  created_at  INTEGER NOT NULL
-);
-
 CREATE TABLE memory_jobs (
   id           TEXT PRIMARY KEY,
   kind         TEXT NOT NULL CHECK(kind IN (
@@ -386,12 +376,6 @@ CREATE INDEX idx_background_processes_recovery
 
 CREATE INDEX idx_background_processes_session
   ON background_processes(session_id, created_at DESC, id DESC);
-
-CREATE INDEX idx_kb_act_asset   ON kb_activations(kb_id, asset_id);
-
-CREATE INDEX idx_kb_act_call    ON kb_activations(call_id);
-
-CREATE INDEX idx_kb_act_session ON kb_activations(session_id);
 
 CREATE INDEX idx_memory_jobs_status_created
   ON memory_jobs(status, created_at, id);
@@ -732,32 +716,6 @@ BEGIN
        WHERE e.call_id = NEW.tool_call_id AND e.session_id = NEW.session_id
     )
     THEN RAISE(ABORT, 'ownership_violation: background_processes.tool_call_id')
-  END;
-END;
-
-CREATE TRIGGER trg_kb_activations_owner_insert
-BEFORE INSERT ON kb_activations
-WHEN NEW.turn_id IS NOT NULL
- AND NOT EXISTS (
-   SELECT 1 FROM turns t
-    WHERE t.id = NEW.turn_id AND t.session_id = NEW.session_id
- )
-BEGIN
-  SELECT RAISE(ABORT, 'ownership_violation: kb_activations.turn_id');
-END;
-
-CREATE TRIGGER trg_kb_activations_owner_update
-BEFORE UPDATE OF session_id, turn_id ON kb_activations
-BEGIN
-  SELECT CASE
-    WHEN NEW.session_id <> OLD.session_id
-    THEN RAISE(ABORT, 'ownership_violation: kb_activations.session_id is immutable')
-  END;
-  SELECT CASE
-    WHEN NEW.turn_id IS NOT NULL AND NOT EXISTS (
-      SELECT 1 FROM turns t
-       WHERE t.id = NEW.turn_id AND t.session_id = NEW.session_id
-    ) THEN RAISE(ABORT, 'ownership_violation: kb_activations.turn_id')
   END;
 END;
 

@@ -9,7 +9,7 @@ import {
   sweepOrphanSessionDirectories,
   sweepOrphanTurnFiles,
   removeLegacyArtifactDirectories,
-} from '../src/storage-locations/paths.js';
+} from '../src/platform/paths.js';
 
 describe('sqliteFileSet', () => {
   it('返回同一个数据库对应的三个文件', () => {

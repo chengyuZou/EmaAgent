@@ -10,6 +10,7 @@ const MAX_PCM_BYTES = 16 * 1024 * 1024;
 export async function* synthesizeQwenTts(
   webSocketBaseUrl: string,
   apiKey: string,
+  modelId: string,
   request: TtsRequest,
 ): AsyncGenerator<TtsStreamEvent> {
   if (request.voice.kind !== 'provider') {
@@ -17,7 +18,7 @@ export async function* synthesizeQwenTts(
   }
 
   const sampleRate = request.sampleRate ?? 24_000;
-  const url = `${webSocketBaseUrl.replace(/\/$/, '')}/api-ws/v1/realtime?model=${encodeURIComponent(request.model)}`;
+  const url = `${webSocketBaseUrl.replace(/\/$/, '')}/api-ws/v1/realtime?model=${encodeURIComponent(modelId)}`;
   const queue = new SocketEventQueue<TtsStreamEvent>();
   const pcmChunks: Buffer[] = [];
   const startedAt = Date.now();

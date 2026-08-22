@@ -1,9 +1,8 @@
-// 在 DashScope 协议族内部按模型选择 CosyVoice 或 Qwen TTS。
+// 在 DashScope 协议族内部按模型选择 CosyVoice 或 Qwen TTS；无法识别的模型在创建点即失败。
 import { TtsError } from '../../errors.js';
 import type {
   TtsConnection,
   TtsProtocolImplementation,
-  TtsRequest,
 } from '../../types.js';
 import { synthesizeCosyVoice } from './cosyVoice.js';
 import { synthesizeQwenTts } from './qwenTts.js';
@@ -13,45 +12,39 @@ type DashscopeTtsFamily = 'cosyvoice' | 'qwen-tts';
 
 export function createDashscopeTtsProtocol(
   connection: TtsConnection,
+  modelId: string,
 ): TtsProtocolImplementation {
+  const family = dashscopeFamily(modelId);
   const baseUrl = connection.baseUrl ?? 'https://dashscope.aliyuncs.com';
   const httpBaseUrl = toHttpBaseUrl(baseUrl);
   const webSocketBaseUrl = toWebSocketBaseUrl(baseUrl);
   const apiKey = connection.apiKey ?? '';
 
   return {
-    prepareVoice(reference, model, signal) {
+    prepareVoice(reference, signal) {
       return enrollDashscopeVoice(
         httpBaseUrl,
         apiKey,
-        dashscopeFamily(model),
+        family,
         reference,
-        model,
+        modelId,
         signal,
       );
     },
     synthesize(request) {
-      return synthesizeDashscope(webSocketBaseUrl, apiKey, request);
+      return family === 'cosyvoice'
+        ? synthesizeCosyVoice(webSocketBaseUrl, apiKey, modelId, request)
+        : synthesizeQwenTts(webSocketBaseUrl, apiKey, modelId, request);
     },
   };
 }
 
-function synthesizeDashscope(
-  webSocketBaseUrl: string,
-  apiKey: string,
-  request: TtsRequest,
-) {
-  return dashscopeFamily(request.model) === 'cosyvoice'
-    ? synthesizeCosyVoice(webSocketBaseUrl, apiKey, request)
-    : synthesizeQwenTts(webSocketBaseUrl, apiKey, request);
-}
-
-function dashscopeFamily(model: string): DashscopeTtsFamily {
-  if (model.startsWith('cosyvoice')) return 'cosyvoice';
-  if (model.startsWith('qwen') && model.includes('tts')) return 'qwen-tts';
+function dashscopeFamily(modelId: string): DashscopeTtsFamily {
+  if (modelId.startsWith('cosyvoice')) return 'cosyvoice';
+  if (modelId.startsWith('qwen') && modelId.includes('tts')) return 'qwen-tts';
   throw new TtsError(
     'tts/unsupported_model',
-    `DashScope does not recognize TTS model "${model}"`,
+    `DashScope does not recognize TTS model "${modelId}"`,
   );
 }
 

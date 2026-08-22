@@ -10,6 +10,7 @@ import { SocketEventQueue } from './socketEventQueue.js';
 export async function* synthesizeCosyVoice(
   webSocketBaseUrl: string,
   apiKey: string,
+  modelId: string,
   request: TtsRequest,
 ): AsyncGenerator<TtsStreamEvent> {
   if (request.voice.kind !== 'provider') {
@@ -53,7 +54,7 @@ export async function* synthesizeCosyVoice(
         task_group: 'audio',
         task: 'tts',
         function: 'SpeechSynthesizer',
-        model: request.model,
+        model: modelId,
         parameters: {
           text_type: 'PlainText',
           voice: request.voice.kind === 'provider' ? request.voice.id : '',

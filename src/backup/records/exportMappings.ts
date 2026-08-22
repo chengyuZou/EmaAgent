@@ -4,7 +4,6 @@ import type {
   AgentRunRow,
   AttachmentRow,
   BackgroundProcessRow,
-  KbActivationRow,
   MessageRow,
   SessionBackupTaskRow,
   SessionBackupToolExecutionRow,
@@ -20,7 +19,6 @@ import type {
   AgentRunRecord,
   AttachmentRecord,
   BackgroundProcessRecord,
-  KbActivationRecord,
   MessageRecord,
   SessionRecord,
   SpeechOutputRecord,
@@ -239,15 +237,5 @@ export const toUsageRecord = (row: UsageRecordRow): UsageRecord => ({
   unit: row.unit,
   durationMs: row.duration_ms,
   errorCode: row.error_code,
-  createdAt: row.created_at,
-});
-
-export const toKbActivationRecord = (row: KbActivationRow): KbActivationRecord => ({
-  id: row.id,
-  callId: row.call_id,
-  kbId: row.kb_id,
-  assetId: row.asset_id,
-  sessionId: row.session_id,
-  turnId: row.turn_id,
   createdAt: row.created_at,
 });

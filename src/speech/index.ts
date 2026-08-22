@@ -18,20 +18,15 @@ export {
 } from './settings.js';
 export type { SpeechSegmentLibraryLimits } from './settings.js';
 export { filterSentenceForTts, TextFilterStream } from './textFilter.js';
-export { TurnSpeechOutput } from './turnSpeechOutput.js';
+export { SpeechVoiceCache } from './voiceHandleCache.js';
 export type {
-  FinalizedTurnAudio,
-  TurnSpeechOutputDependencies,
-  TurnSpeechOutputRequest,
-  TurnSpeechSetupRequest,
-  TurnSpeechSourceEvent,
-  TurnSpeechSynthesis,
-} from './turnSpeechOutput.js';
-export { prepareSpeechVoice, SpeechVoiceCache } from './voiceHandleCache.js';
-export type { SpeechVoiceCacheOptions } from './voiceHandleCache.js';
+  PrepareSpeechVoiceRequest,
+  SpeechVoiceCacheOptions,
+} from './voiceHandleCache.js';
 export { SpeechVoicePreview, SpeechVoicePreviewError } from './voicePreview.js';
 export type {
   SpeechVoicePreviewErrorCode,
   SpeechVoicePreviewResult,
   SpeechVoicePreviewSource,
+  SpeechVoicePreviewTts,
 } from './voicePreview.js';

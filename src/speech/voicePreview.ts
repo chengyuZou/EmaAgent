@@ -1,6 +1,6 @@
 // 使用当前角色参考声音沿正式协议入口生成一段有界试听音频。
-import type { TextToSpeech, TtsVoiceReference } from '@ema-agent/tts';
-import { prepareSpeechVoice, SpeechVoiceCache } from './voiceHandleCache.js';
+import type { CallTts, TtsVoiceReference, TtsVoiceRegistrar } from '@ema-agent/tts';
+import { SpeechVoiceCache } from './voiceHandleCache.js';
 
 export type SpeechVoicePreviewErrorCode =
   | 'client_unavailable'
@@ -20,7 +20,13 @@ export class SpeechVoicePreviewError extends Error {
 }
 
 export interface SpeechVoicePreviewSource {
-  current(): { readonly cardId: string; readonly voice: TtsVoiceReference } | null;
+  current(): { readonly characterId: string; readonly voice: TtsVoiceReference } | null;
+}
+
+/** 试听所需的 TTS 入口对：Provider 连接与模型由装配层按请求即时冻结。 */
+export interface SpeechVoicePreviewTts {
+  readonly ttsVoiceRegistrar: TtsVoiceRegistrar;
+  readonly callTts: CallTts;
 }
 
 export interface SpeechVoicePreviewResult {
@@ -30,19 +36,22 @@ export interface SpeechVoicePreviewResult {
 
 export class SpeechVoicePreview {
   constructor(
-    private readonly resolveTextToSpeech: (providerId: string) => TextToSpeech | undefined,
+    private readonly resolveTts: (
+      providerId: string,
+      modelId: string,
+    ) => SpeechVoicePreviewTts | undefined,
     private readonly voices: SpeechVoicePreviewSource,
     private readonly voiceCache: SpeechVoiceCache,
   ) {}
 
   async synthesize(
     providerId: string,
-    model: string,
+    modelId: string,
     text: string,
     signal?: AbortSignal,
   ): Promise<SpeechVoicePreviewResult> {
-    const textToSpeech = this.resolveTextToSpeech(providerId);
-    if (!textToSpeech) {
+    const tts = this.resolveTts(providerId, modelId);
+    if (!tts) {
       throw new SpeechVoicePreviewError('client_unavailable', 'TTS Provider 运行时不可用');
     }
     const current = this.voices.current();
@@ -51,23 +60,21 @@ export class SpeechVoicePreview {
     }
 
     try {
-      const voice = await prepareSpeechVoice(
-        current.voice,
-        textToSpeech,
-        model,
-        current.cardId,
+      const voice = await this.voiceCache.prepare({
+        reference: current.voice,
+        ttsVoiceRegistrar: tts.ttsVoiceRegistrar,
+        characterId: current.characterId,
         providerId,
-        this.voiceCache,
-        signal,
-      );
+        modelId,
+        ...(signal === undefined ? {} : { signal }),
+      });
       const chunks: Uint8Array[] = [];
       let mime = 'audio/mpeg';
-      for await (const event of textToSpeech.synthesize({
-        model,
+      for await (const event of tts.callTts({
         text,
         voice,
         format: 'mp3',
-        signal,
+        ...(signal === undefined ? {} : { signal }),
       })) {
         if (event.type === 'audio_chunk') {
           chunks.push(event.bytes);

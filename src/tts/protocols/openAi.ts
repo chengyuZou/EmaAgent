@@ -18,12 +18,13 @@ const MAX_REFERENCE_AUDIO_BYTES = 25 * 1024 * 1024;
 
 export function createOpenAiTtsProtocol(
   connection: TtsConnection,
+  modelId: string,
 ): TtsProtocolImplementation {
   const baseUrl = (connection.baseUrl ?? 'https://api.openai.com/v1').replace(/\/$/, '');
   const authorization = `Bearer ${connection.apiKey ?? ''}`;
 
   return {
-    async prepareVoice(reference, model, signal) {
+    async prepareVoice(reference, signal) {
       const fileStat = await stat(reference.audioPath).catch((error: unknown) => {
         throw new TtsError('tts/reference_audio_missing', 'TTS reference audio is not readable', error);
       });
@@ -38,7 +39,7 @@ export function createOpenAiTtsProtocol(
       const extension = fileName.split('.').pop()?.toLowerCase() ?? '';
       const form = new FormData();
       form.set('file', new Blob([new Uint8Array(bytes)], { type: mimeFromExt(extension) }), fileName);
-      form.set('model', model);
+      form.set('model', modelId);
       form.set('customName', `ema-${fileName.replace(/\.[^.]+$/, '')}`);
       form.set('text', reference.promptText);
       form.set('language', reference.promptLanguage || 'zh');
@@ -64,7 +65,7 @@ export function createOpenAiTtsProtocol(
       return { kind: 'provider', id: payload.uri, lifetime: 'ephemeral' };
     },
     synthesize(request) {
-      return synthesizeOpenAi(baseUrl, authorization, request);
+      return synthesizeOpenAi(baseUrl, authorization, modelId, request);
     },
   };
 }
@@ -72,6 +73,7 @@ export function createOpenAiTtsProtocol(
 async function* synthesizeOpenAi(
   baseUrl: string,
   authorization: string,
+  modelId: string,
   request: TtsRequest,
 ): AsyncGenerator<TtsStreamEvent> {
   if (request.voice.kind !== 'provider') {
@@ -84,7 +86,7 @@ async function* synthesizeOpenAi(
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: authorization },
       body: JSON.stringify({
-        model: request.model,
+        model: modelId,
         voice: request.voice.id,
         input: request.text,
         response_format: request.format ?? 'mp3',
