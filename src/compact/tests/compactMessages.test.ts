@@ -14,7 +14,6 @@ import { microCompact } from '../microCompact.js';
 import type { CompactRequest } from '../types.js';
 
 const sessionId = 'compact-session';
-const turnId = 'compact-turn';
 
 function completion(text = '<summary>压缩后的工作摘要</summary>'): LlmCompletion {
   return {
@@ -42,7 +41,7 @@ function llmCompleting(
 function request(history: readonly Message[], overrides: Partial<CompactRequest> = {}): CompactRequest {
   return {
     sessionId,
-    turnId,
+
     executionProfile: 'work' as const,
     history,
     estimatedInputTokens: estimateMessagesTokens([...history]),
@@ -158,7 +157,7 @@ describe('createCompact', () => {
     const events: CompactEvent[] = [];
     const result = await compact(request(history, {
       force: true,
-      emit: (event) => events.push(event),
+      onEvent: (event) => events.push(event),
     }));
 
     expect(result).toEqual({ kind: 'unchanged', history });
@@ -187,7 +186,7 @@ describe('createCompact', () => {
     await expect(compact(request(textHistory(), {
       force: true,
       signal: controller.signal,
-      emit: (event) => events.push(event),
+      onEvent: (event) => events.push(event),
     }))).rejects.toMatchObject({ name: 'AbortError' });
 
     expect(events.map((event) => event.type)).toEqual([
@@ -213,7 +212,7 @@ describe('createCompact', () => {
 
     const history = textHistory();
     expect(await compact(request(history, {
-      emit: (event) => events.push(event),
+      onEvent: (event) => events.push(event),
     }))).toEqual({ kind: 'unchanged', history });
     expect(events.at(-1)?.type).toBe('compact_failed');
     expect(await compact(request(history))).toEqual({ kind: 'unchanged', history });
@@ -296,7 +295,7 @@ describe('createCompact', () => {
       force: true,
       contextWindow: 4_000,
       estimatedInputTokens: estimateMessagesTokens(history) + 3_990,
-      emit: (event) => events.push(event),
+      onEvent: (event) => events.push(event),
     }));
 
     expect(result).toEqual({ kind: 'unchanged', history });

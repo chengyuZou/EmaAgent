@@ -106,8 +106,8 @@ export interface PrepareTurnDeps extends TurnToolsDeps {
   readonly providerModels: ProviderModels;
   readonly attachments: AttachmentStore;
   readonly characterPrompt: () => readonly string[];
-  /** SkillRegistry 当前全量条目；冻结在 Pool 之前读取一次。 */
-  readonly skillEntries: () => readonly SkillDescriptor[];
+  /** SkillRegistry 当前全量条目（含本 Turn 工作区的 project 技能）；冻结在 Pool 之前读取一次。 */
+  readonly skillEntries: (workspaceRoot: string) => Promise<readonly SkillDescriptor[]>;
   /** 默认 llm 包的 createLlmCall；测试注入脚本化调用。 */
   readonly createLlmCall?: (connection: LlmConnection, modelId: string) => CallLlm;
   /** 工作区指令（EMA.md/CLAUDE.md）按本 Turn 的工作区读取；无工作区时不会调用。 */
@@ -242,7 +242,7 @@ export async function prepareTurn(
 
   // Skill 目录与 Pool 同步冻结；chat 态不建 Pool（Skill 工具不可见）。
   const skillEntries = start.executionProfile === 'work'
-    ? deps.skillEntries()
+    ? await deps.skillEntries(workspaceRoot)
     : [];
   const skillPool = skillEntries.length
     ? freezeSkillPool({

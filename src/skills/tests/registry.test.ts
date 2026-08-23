@@ -1,4 +1,4 @@
-// SkillRegistry 测试:三源合成、串行刷新不交错、单源失败降级。
+// SkillRegistry 测试：core 装载、project 按工作区现扫与隔离、串行刷新不交错、首装等待。
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -32,8 +32,15 @@ function makeRepo() {
   return repo;
 }
 
+function makeWorkspace(skillName: string): string {
+  const workspace = makeDir();
+  mkdirSync(join(workspace, '.agents/skills', skillName), { recursive: true });
+  writeFileSync(join(workspace, '.agents/skills', skillName, 'SKILL.md'), SKILL_MD(skillName));
+  return workspace;
+}
+
 describe('SkillRegistry', () => {
-  it('合成 builtin+user+project 三源;getByKey 可查', async () => {
+  it('refreshCore 装载 builtin+user；list 按工作区附带 project', async () => {
     const bundled = makeDir();
     mkdirSync(join(bundled, 'code-review'), { recursive: true });
     writeFileSync(join(bundled, 'code-review', 'SKILL.md'), SKILL_MD('code-review'));
@@ -41,9 +48,7 @@ describe('SkillRegistry', () => {
     const userRoot = makeDir();
     mkdirSync(join(userRoot, 'my-skill'), { recursive: true });
     writeFileSync(join(userRoot, 'my-skill', 'SKILL.md'), SKILL_MD('my-skill'));
-    const workspace = makeDir();
-    mkdirSync(join(workspace, '.agents/skills/proj-skill'), { recursive: true });
-    writeFileSync(join(workspace, '.agents/skills/proj-skill', 'SKILL.md'), SKILL_MD('proj-skill'));
+    const workspace = makeWorkspace('proj-skill');
 
     const store = createSkillStore({ repo: makeRepo(), userRoot });
     const registry = createSkillRegistry({
@@ -53,29 +58,69 @@ describe('SkillRegistry', () => {
       store,
     });
 
-    await registry.refresh(workspace);
-    const keys = registry.list().map((d) => d.key).sort();
-    expect(keys.some((k) => k === 'builtin:code-review')).toBe(true);
+    await registry.refreshCore();
+    // 不带工作区：只有 builtin+user
+    const coreKeys = (await registry.list()).map((d) => d.key);
+    expect(coreKeys).toContain('builtin:code-review');
+    expect(coreKeys.some((k) => k.startsWith('project:'))).toBe(false);
+    // 带工作区：合成 project
+    const keys = (await registry.list(workspace)).map((d) => d.key);
     expect(keys.some((k) => k.startsWith('project:agents:'))).toBe(true);
-    expect(registry.getByKey('builtin:code-review')?.name).toBe('code-review');
+    expect((await registry.getByKey('builtin:code-review'))?.name).toBe('code-review');
   });
 
-  it('并发 refresh 串行收尾,结果一致', async () => {
-    const bundled = makeDir();
-    const builtinRoot = makeDir();
+  it('不同工作区的 project 技能互不覆盖', async () => {
+    const userRoot = makeDir();
+    const registry = createSkillRegistry({
+      userRoot,
+      builtinRoot: makeDir(),
+      bundledSkillsSource: makeDir(),
+      store: createSkillStore({ repo: makeRepo(), userRoot }),
+    });
+    await registry.refreshCore();
+    const wsA = makeWorkspace('skill-a');
+    const wsB = makeWorkspace('skill-b');
+
+    const keysA = (await registry.list(wsA)).map((d) => d.name);
+    const keysB = (await registry.list(wsB)).map((d) => d.name);
+    expect(keysA).toContain('skill-a');
+    expect(keysA).not.toContain('skill-b');
+    expect(keysB).toContain('skill-b');
+    expect(keysB).not.toContain('skill-a');
+  });
+
+  it('并发 refreshCore 串行收尾,结果一致', async () => {
     const userRoot = makeDir();
     mkdirSync(join(userRoot, 'only'), { recursive: true });
     writeFileSync(join(userRoot, 'only', 'SKILL.md'), SKILL_MD('only'));
 
-    const store = createSkillStore({ repo: makeRepo(), userRoot });
     const registry = createSkillRegistry({
       userRoot,
-      builtinRoot,
-      bundledSkillsSource: bundled,
-      store,
+      builtinRoot: makeDir(),
+      bundledSkillsSource: makeDir(),
+      store: createSkillStore({ repo: makeRepo(), userRoot }),
     });
 
-    await Promise.all([registry.refresh(), registry.refresh(), registry.refresh()]);
-    expect(registry.list().map((d) => d.name)).toEqual(['only']);
+    await Promise.all([registry.refreshCore(), registry.refreshCore(), registry.refreshCore()]);
+    expect((await registry.list()).map((d) => d.name)).toEqual(['only']);
+  });
+
+  it('list 等待进行中的首次装载，不读到空目录', async () => {
+    const userRoot = makeDir();
+    mkdirSync(join(userRoot, 'late'), { recursive: true });
+    writeFileSync(join(userRoot, 'late', 'SKILL.md'), SKILL_MD('late'));
+
+    const registry = createSkillRegistry({
+      userRoot,
+      builtinRoot: makeDir(),
+      bundledSkillsSource: makeDir(),
+      store: createSkillStore({ repo: makeRepo(), userRoot }),
+    });
+
+    // 不 await refreshCore，直接 list：必须等到首装完成。
+    const pending = registry.refreshCore();
+    const names = (await registry.list()).map((d) => d.name);
+    await pending;
+    expect(names).toEqual(['late']);
   });
 });

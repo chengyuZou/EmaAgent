@@ -99,6 +99,9 @@ export type TurnAgentRunEvent = AgentRunEvent & {
   readonly turnId: string;
 };
 
+/** Compact 事件进入根 Turn 事件流时补上本 Turn 身份；Compact 包自身不感知 Turn。 */
+export type TurnCompactEvent = CompactEvent & { readonly turnId: string };
+
 /**
  * 根 Turn 事件流的全部成员。各域事件由拥有方定义（turn/agent/tools/permission/
  * compact/narrative/stage），这里只做流组合，不重复声明；AgentLoop 事件经执行器翻译为
@@ -112,6 +115,6 @@ export type TurnStreamEvent =
   | ToolExecutionEvent
   | PermissionRequiredEvent
   | PermissionResolvedEvent
-  | CompactEvent
+  | TurnCompactEvent
   | NarrativeEvent
   | StageStreamEvent;

@@ -274,6 +274,11 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
     bundledSkillsSource: bundledSkillsDir(),
     store: skillStore,
   });
+  // builtin+user 启动时装载一次；project 技能按工作区在 list() 时现扫。
+  // 首根 Turn 的 list() 会等待这次装载，无需在此阻塞装配。
+  void skills.refreshCore().catch(error => {
+    console.warn('[skills] 启动装载失败（Skill 目录本轮为空）:', error);
+  });
   const skillSites = new SkillSiteStore(new SkillSitesRepo(profileDb.sqlite));
 
   return {

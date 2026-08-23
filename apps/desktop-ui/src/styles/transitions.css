@@ -98,7 +98,7 @@
     opacity var(--ema-duration-base) var(--ema-ease);
 }
 
-.ema-activity-strip-slot--task { left: 0; }
+.ema-activity-strip-slot--todo { left: 0; }
 .ema-activity-strip-slot--diff { right: 0; }
 
 .ema-activity-strip-slot[data-visible='false'] {
@@ -106,7 +106,7 @@
   opacity: 0;
 }
 
-.ema-activity-strip-track[data-layout='task-only'] .ema-activity-strip-slot--task {
+.ema-activity-strip-track[data-layout='todo-only'] .ema-activity-strip-slot--todo {
   transform: translateX(calc(50% + 0.25rem));
 }
 

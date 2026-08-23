@@ -103,11 +103,11 @@ async function compactMessages(args: {
   const head = micro.slice(0, safeCut);
   const tail = micro.slice(safeCut);
   const compactId = randomUUID();
-  request.emit?.({
+  request.onEvent?.({
     type: 'compact_started',
     compactId,
     sessionId: request.sessionId,
-    turnId: request.turnId,
+
     beforeTokens,
   });
 
@@ -122,11 +122,10 @@ async function compactMessages(args: {
     });
   } catch (error) {
     if (!isAbort(error, request.signal)) throw error;
-    request.emit?.({
+    request.onEvent?.({
       type: 'compact_cancelled',
       compactId,
       sessionId: request.sessionId,
-      turnId: request.turnId,
       beforeTokens,
       durationMs: Date.now() - startedAt,
     });
@@ -165,11 +164,11 @@ async function compactMessages(args: {
   }
 
   args.consecutiveFailures.delete(request.sessionId);
-  request.emit?.({
+  request.onEvent?.({
     type: 'compact_completed',
     compactId,
     sessionId: request.sessionId,
-    turnId: request.turnId,
+
     beforeTokens,
     afterTokens: fitted.afterTokens,
     savedTokens: Math.max(0, beforeTokens - fitted.afterTokens),
@@ -219,11 +218,10 @@ function recordFailure(args: {
     args.request.sessionId,
     failureCount(args.consecutiveFailures, args.request.sessionId) + 1,
   );
-  args.request.emit?.({
+  args.request.onEvent?.({
     type: 'compact_failed',
     compactId: args.compactId,
     sessionId: args.request.sessionId,
-    turnId: args.request.turnId,
     error: args.detail,
     beforeTokens: args.beforeTokens,
     afterTokens: args.beforeTokens,

@@ -243,7 +243,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     settings,
     attachments: database.attachments,
     characterPrompt: () => buildCharacterPrompt(characters.current()),
-    skillEntries: () => tools.skills.list(),
+    skillEntries: (workspaceRoot: string) => tools.skills.list(workspaceRoot || undefined),
     registry: tools.registry,
     interactionQueue,
     agentRunStore: database.agentRuns,

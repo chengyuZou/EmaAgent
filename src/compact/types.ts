@@ -7,7 +7,6 @@ import type { CompactEvent } from './events.js';
 
 export interface CompactRequest {
   readonly sessionId: string;
-  readonly turnId: string;
   readonly executionProfile: ExecutionProfile;
   /** 仅包含允许被改写的历史；System Prompt、当前 Turn 与临时召回不在这里。 */
   readonly history: readonly Message[];
@@ -18,7 +17,8 @@ export interface CompactRequest {
   readonly contextWindow: number;
   readonly maxOutputTokens?: number;
   readonly signal?: AbortSignal;
-  readonly emit?: (event: CompactEvent) => void;
+  /** 过程事件出口（Session 域，无 Turn 身份）；投影为谁的事件由调用方决定。 */
+  readonly onEvent?: (event: CompactEvent) => void;
   /** 根 Turn 启动时冻结的设置；不提供时使用构造时默认值。 */
   readonly settings?: Readonly<CompactSettings>;
 }

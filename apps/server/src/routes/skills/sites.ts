@@ -4,6 +4,7 @@ import { z } from 'zod';
 import {
   installSkillFromSite,
   refreshSites,
+  type SkillRegistry,
   type SkillSiteStore,
   type SkillStore,
 } from '@ema-agent/skills';
@@ -22,6 +23,8 @@ export interface SkillSitesRouteDeps {
     | 'saveFetchFailure'
   >;
   readonly skillStore: Pick<SkillStore, 'finalizeInstall'>;
+  /** 安装成功后重扫 builtin+user，让新技能进入目录。 */
+  readonly skills: Pick<SkillRegistry, 'refreshCore'>;
   /** 安装 staging 与 rename 同卷的约束来源。 */
   readonly skillUserRoot: string;
 }
@@ -99,6 +102,7 @@ export function skillSitesRoute(deps: SkillSitesRouteDeps): Hono {
         { siteId: site.id, entry },
         { store: deps.skillStore, userRoot: deps.skillUserRoot },
       );
+      await deps.skills.refreshCore();
       return context.json(descriptor, 201);
     } catch (error) {
       return context.json({ error: 'install_failed', message: errorMessage(error) }, 422);

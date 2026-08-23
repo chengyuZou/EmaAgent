@@ -5,25 +5,24 @@ Compact 只负责在模型输入预算不足时改写 Provider 中立的历史 `
 ## 唯一入口
 
 ```ts
-const compact = createCompact(languageModel, defaultSettings);
+const compact = createCompact(callLlm, defaultSettings);
 const result = await compact({
   sessionId,
-  turnId,
   executionProfile,
   history,
   estimatedInputTokens,
   contextWindow,
   maxOutputTokens,
-  providerId,
-  model,
   force,
   signal,
-  emit,
+  onEvent,
   settings,
 });
 ```
 
 `createCompact()` 返回一个函数。闭包只保存每个 Session 的连续失败次数，不保存 Message、Prompt 或 Session 数据，因此无需 `CompactManager`/`CompactService` 类。
+
+请求与事件都不携带 Turn 身份：自动压缩由 Turn 把 `onEvent` 事件补 `turnId` 后投影进 Turn 事件流；手动压缩（`/compact`）由 Command 自己的出口返回结果。
 
 ## 返回值
 

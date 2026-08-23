@@ -60,7 +60,6 @@ export function createPrepareLlmCall(deps: PrepareLlmCallDeps): PrepareAgentIter
 
     const result = await deps.compact({
       sessionId: deps.sessionId,
-      turnId: deps.turnId,
       executionProfile: prepared.executionProfile,
       history,
       estimatedInputTokens: assembled.usage.estimatedInputTokens,
@@ -68,7 +67,8 @@ export function createPrepareLlmCall(deps: PrepareLlmCallDeps): PrepareAgentIter
       contextWindow: prepared.contextWindow,
       maxOutputTokens,
       signal: deps.signal,
-      emit: deps.emit,
+      // Compact 事件是 Session 域事实；进入本 Turn 事件流时在此补上 Turn 身份。
+      onEvent: event => deps.emit({ ...event, turnId: deps.turnId }),
       settings: prepared.compactSettings,
     });
 

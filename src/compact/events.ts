@@ -1,8 +1,8 @@
-// 定义历史压缩过程向当前 Turn 公开的业务事件。
+// 定义历史压缩过程公开的业务事件。Session 域事件：不携带 Turn 身份——
+// 自动压缩由 Turn 包一层投影为 TurnEvent，手动压缩由 Command 自己的出口返回。
 interface CompactEventBase {
   readonly compactId: string;
   readonly sessionId: string;
-  readonly turnId: string;
   readonly beforeTokens: number;
 }
 

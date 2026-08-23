@@ -16,7 +16,8 @@ disabledSkillKeysSetting / disabledProjectSourcesSetting / builtinSkillsEnabledS
 parseSkillMd / validateSkillMd / readSkillFileBounded
 
 // 注册表与冻结池
-createSkillRegistry(deps)      // 活注册表:串行刷新,持有全量(含禁用)
+createSkillRegistry(deps)      // 活注册表:refreshCore 装载 builtin+user(启动/安装/卸载后);
+                               // list(workspaceRoot) 现扫 project——多工作区互不覆盖
 freezeSkillPool(input)         // 根 Turn 冻结:过滤 deny + 排序 + callName + revision
 renderSkillListing(pool)       // Prompt 常驻目录(8KB 单遍截断)
 

@@ -1,6 +1,7 @@
 // 技能目录与正文：全量列表（含 enabled 投影）、单条详情、SKILL.md 正文与 user 技能删除。
 import { join } from 'node:path';
 import { Hono } from 'hono';
+import type { SessionStore } from '@ema-agent/session';
 import {
   builtinSkillsEnabledSetting,
   disabledProjectSourcesSetting,
@@ -16,24 +17,31 @@ import {
 import type { SettingsStore } from '@ema-agent/settings';
 
 export interface SkillListRouteDeps {
-  readonly skills: Pick<SkillRegistry, 'list' | 'getByKey'>;
+  readonly skills: Pick<SkillRegistry, 'list' | 'getByKey' | 'refreshCore'>;
   readonly skillStore: Pick<SkillStore, 'deleteUserSkill'>;
   readonly settings: Pick<SettingsStore, 'get'>;
+  /** sessionId → 工作区：project 技能按 Session 工作区合成；不传 sessionId 只见 builtin+user。 */
+  readonly sessions: Pick<SessionStore, 'getSession'>;
 }
 
 export function skillListRoute(deps: SkillListRouteDeps): Hono {
   const app = new Hono();
+  const workspaceOf = (sessionId: string | undefined): string | undefined => {
+    if (!sessionId) return undefined;
+    return deps.sessions.getSession(sessionId).workspaceRoot ?? undefined;
+  };
 
-  app.get('/', context => {
+  app.get('/', async context => {
     const enablement = readEnablement(deps.settings);
-    return context.json({ items: deps.skills.list().map(entry => toWire(entry, enablement)) });
+    const entries = await deps.skills.list(workspaceOf(context.req.query('sessionId')));
+    return context.json({ items: entries.map(entry => toWire(entry, enablement)) });
   });
 
   // key 含冒号与斜杠（project:<sourceId>:<relPath>），一律走 query 不走进路径段。
-  app.get('/descriptor', context => {
+  app.get('/descriptor', async context => {
     const key = parseSkillKey(context.req.query('key') ?? '');
     if (!key) return context.json({ error: 'invalid_skill_key' }, 400);
-    const entry = deps.skills.getByKey(key);
+    const entry = await deps.skills.getByKey(key, workspaceOf(context.req.query('sessionId')));
     if (!entry) return context.json({ error: 'skill_not_found' }, 404);
     return context.json(toWire(entry, readEnablement(deps.settings)));
   });
@@ -41,7 +49,7 @@ export function skillListRoute(deps: SkillListRouteDeps): Hono {
   app.get('/content', async context => {
     const key = parseSkillKey(context.req.query('key') ?? '');
     if (!key) return context.json({ error: 'invalid_skill_key' }, 400);
-    const entry = deps.skills.getByKey(key);
+    const entry = await deps.skills.getByKey(key, workspaceOf(context.req.query('sessionId')));
     if (!entry) return context.json({ error: 'skill_not_found' }, 404);
     const content = await readSkillFileBounded(join(entry.rootPath, 'SKILL.md'));
     return context.json({ key: entry.key, content });
@@ -51,12 +59,13 @@ export function skillListRoute(deps: SkillListRouteDeps): Hono {
   app.delete('/', async context => {
     const key = parseSkillKey(context.req.query('key') ?? '');
     if (!key) return context.json({ error: 'invalid_skill_key' }, 400);
-    const entry = deps.skills.getByKey(key);
+    const entry = await deps.skills.getByKey(key, workspaceOf(context.req.query('sessionId')));
     if (!entry) return context.json({ error: 'skill_not_found' }, 404);
     if (entry.scope !== 'user') {
       return context.json({ error: 'skill_not_deletable', message: '只有用户技能可以删除' }, 400);
     }
     await deps.skillStore.deleteUserSkill(key);
+    await deps.skills.refreshCore();
     return context.json({ ok: true });
   });
 
