@@ -109,7 +109,7 @@ describe('getSystemPrompt', () => {
   it('不出现已退役的工具名(重命名漂移防线)', () => {
     const retired = [
       'SkillCall',
-      'TodoWrite',
+      'todo_write',
       'SkillCallTool',
       'ToolSearch',
       'DiscoverSkills',
@@ -125,6 +125,25 @@ describe('getSystemPrompt', () => {
     expect(text).not.toContain('Claude Code');
     expect(text).not.toContain('Anthropic');
     expect(text).not.toContain('不受上下文窗口限制');
+  });
+
+  it('TodoWrite 与持久 Task 的能力说明使用注册表真名并明确分工', () => {
+    const sections = getSystemPrompt(input({
+      toolNames: [
+        BuiltinTools.TodoWrite.name,
+        BuiltinTools.TaskCreate.name,
+        BuiltinTools.TaskGet.name,
+        BuiltinTools.TaskList.name,
+        BuiltinTools.TaskUpdate.name,
+      ],
+    }));
+    const guidance = sections.find((section) => section.startsWith('# 本轮能力引导'))!;
+
+    expect(guidance).toContain(BuiltinTools.TodoWrite.name);
+    expect(guidance).toContain(BuiltinTools.TaskCreate.name);
+    expect(guidance).toContain('当前根 Turn');
+    expect(guidance).toContain('跨 Turn');
+    expect(guidance).toContain('不要把每条 TODO 复制成持久 Task');
   });
 
   it('产品规则保留完整任务、安全、验证与沟通约束，不退化为摘要', () => {

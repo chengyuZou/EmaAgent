@@ -27,6 +27,7 @@ describe('Builtin ToolPool 能力装配', () => {
 
     expect(names).toContain(BuiltinTools.WebFetch.name);
     expect(names).toContain(BuiltinTools.WebSearch.name);
+    expect(names).toContain(BuiltinTools.TodoWrite.name);
     expect(names).not.toContain(BuiltinTools.FileRead.name);
     expect(names).not.toContain(BuiltinTools.PdfRead.name);
     expect(names).not.toContain(BuiltinTools.Glob.name);
@@ -67,6 +68,7 @@ describe('Builtin ToolPool 能力装配', () => {
       BuiltinTools.KnowledgeBaseSearch.name,
       BuiltinTools.NarrativeSearch.name,
       BuiltinTools.ScratchpadWrite.name,
+      BuiltinTools.TodoWrite.name,
     ]));
     expect(names).not.toContain(BuiltinTools.Bash.name);
     expect(names).not.toContain(BuiltinTools.Skill.name);

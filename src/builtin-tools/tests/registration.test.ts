@@ -13,6 +13,7 @@ describe('V1 内置工具注册边界', () => {
       BuiltinTools.TaskGet.name,
       BuiltinTools.TaskList.name,
       BuiltinTools.TaskUpdate.name,
+      BuiltinTools.TodoWrite.name,
       BuiltinTools.PdfRead.name,
     ]));
   });

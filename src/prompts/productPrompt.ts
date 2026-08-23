@@ -249,13 +249,22 @@ export function sessionCapabilityGuidance(toolNames: readonly string[]): string 
 - 如果用户拒绝工具且原因不清楚，可以询问拒绝原因；不要机械重复被拒调用。`);
   }
 
+  if (names.has(BuiltinTools.TodoWrite.name)) {
+    const persistentTasksVisible = names.has(BuiltinTools.TaskCreate.name)
+      && names.has(BuiltinTools.TaskUpdate.name);
+    sections.push(`## 当前 Turn 执行清单
+- 当前请求包含三个以上有意义的步骤、多个独立要求或需要调查、实现、验证时，用 ${BuiltinTools.TodoWrite.name} 维护当前根 Turn 的完整执行清单；简单的一两步请求不要创建清单。
+- 每次调用提交完整清单，开始某项前标记 in_progress，完成并验证后立即标记 completed；同时最多一项 in_progress。
+- TODO 只记录当前 Turn 的执行进度，后续 Turn 不把历史 TODO 恢复成活动清单。${persistentTasksVisible ? `需要跨 Turn 保存、依赖或委派的工作使用 ${BuiltinTools.TaskCreate.name} / ${BuiltinTools.TaskUpdate.name}，不要把每条 TODO 复制成持久 Task。` : ''}`);
+  }
+
   if (names.has(BuiltinTools.TaskCreate.name) && names.has(BuiltinTools.TaskUpdate.name)) {
     const taskGet = names.has(BuiltinTools.TaskGet.name) ? `、${BuiltinTools.TaskGet.name}` : '';
     const taskList = names.has(BuiltinTools.TaskList.name) ? `、${BuiltinTools.TaskList.name}` : '';
     sections.push(`## 持久任务
-- 跨多个步骤或 Turn 的工作可以用 ${BuiltinTools.TaskCreate.name} 建立任务，并用 ${BuiltinTools.TaskUpdate.name}${taskGet}${taskList} 管理。
+- 需要跨 Turn 保存、存在依赖或需要委派的工作才用 ${BuiltinTools.TaskCreate.name} 建立任务，并用 ${BuiltinTools.TaskUpdate.name}${taskGet}${taskList} 管理。
 - 每完成一项就及时更新，不要积攒多项后批量标记；工具调用结束不等于任务目标已经完成。
-- 简短的一次性工作不需要创建持久任务。`);
+- 简短的一次性工作不需要创建持久任务；当前 Turn 的普通多步骤清单使用 ${names.has(BuiltinTools.TodoWrite.name) ? BuiltinTools.TodoWrite.name : '当轮执行清单'}，不要把两套状态相互复制。`);
   }
 
   if (names.has(BuiltinTools.Skill.name)) {

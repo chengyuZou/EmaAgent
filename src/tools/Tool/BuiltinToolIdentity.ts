@@ -21,6 +21,7 @@ export const BuiltinTools = Object.freeze({
   ProcessOutput: Object.freeze({ id: 'builtin.process.output', name: 'ProcessOutput' }),
   ProcessStop: Object.freeze({ id: 'builtin.process.stop', name: 'ProcessStop' }),
   AskUser:    Object.freeze({ id: 'builtin.user.ask',         name: 'AskUser' }),
+  TodoWrite:  Object.freeze({ id: 'builtin.todo.write',       name: 'TodoWrite' }),
   TaskCreate: Object.freeze({ id: 'builtin.task.create', name: 'TaskCreate' }),
   TaskGet:    Object.freeze({ id: 'builtin.task.get',    name: 'TaskGet' }),
   TaskList:   Object.freeze({ id: 'builtin.task.list',   name: 'TaskList' }),

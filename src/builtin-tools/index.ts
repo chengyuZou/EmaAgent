@@ -13,6 +13,7 @@ import { ProcessOutputTool } from './tools/ProcessOutputTool/ProcessOutputTool.j
 import { ProcessStopTool } from './tools/ProcessStopTool/ProcessStopTool.js';
 import { WebFetchTool } from './tools/WebFetchTool/WebFetchTool.js';
 import { WebSearchTool } from './tools/WebSearchTool/WebSearchTool.js';
+import { TodoWriteTool } from './tools/TodoWriteTool/TodoWriteTool.js';
 import { TaskCreateTool } from './tools/TaskCreateTool/TaskCreateTool.js';
 import { TaskGetTool } from './tools/TaskGetTool/TaskGetTool.js';
 import { TaskListTool } from './tools/TaskListTool/TaskListTool.js';
@@ -67,6 +68,7 @@ export {
   ProcessStopTool,
   WebFetchTool,
   WebSearchTool,
+  TodoWriteTool,
   TaskCreateTool,
   TaskGetTool,
   TaskListTool,
@@ -103,6 +105,11 @@ export type { ProcessOutputResult } from './tools/ProcessOutputTool/ProcessOutpu
 export type { ProcessStopResult } from './tools/ProcessStopTool/ProcessStopTool.js';
 export type { WebFetchResult } from './tools/WebFetchTool/WebFetchTool.js';
 export type { WebSearchResult, SearchResult } from './tools/WebSearchTool/WebSearchTool.js';
+export type {
+  TodoItem,
+  TodoWriteInput,
+  TodoWriteResult,
+} from './tools/TodoWriteTool/TodoWriteTool.js';
 export type { TaskCreateResult } from './tools/TaskCreateTool/TaskCreateTool.js';
 export type { TaskGetResult } from './tools/TaskGetTool/TaskGetTool.js';
 export type {
@@ -132,6 +139,7 @@ const ALL_BUILTIN_TOOLS: Tool<any, any, any, any>[] = [
   ProcessStopTool,
   WebFetchTool,
   WebSearchTool,
+  TodoWriteTool,
   TaskCreateTool,
   TaskGetTool,
   TaskListTool,

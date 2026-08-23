@@ -21,6 +21,7 @@ const SUBAGENT_DENIED_TOOL_NAMES: ReadonlySet<string> = new Set([
   BuiltinTools.TaskGet.name,
   BuiltinTools.TaskList.name,
   BuiltinTools.TaskUpdate.name,
+  BuiltinTools.TodoWrite.name,
   BuiltinTools.AskUser.name,
 ]);
 
