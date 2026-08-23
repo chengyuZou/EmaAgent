@@ -1,14 +1,12 @@
-// 验证持久 Task 的 CAS、依赖图和 AgentRun 绑定不会产生互相矛盾的状态。
+// 验证持久 Task 的 CAS 更新与低频提醒两阶段提交。
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { AgentRunsRepo } from '../../repos/data/agent-runs.js';
 import { TasksRepo } from '../../repos/data/tasks.js';
 import { createTestDatabase, type TestDatabase } from '../helpers/create-test-database.js';
 
 describe('Task 持久化边界', () => {
   let database: TestDatabase;
   let tasks: TasksRepo;
-  let runs: AgentRunsRepo;
 
   const sessionId = 'session-task';
   const turnId = 'turn-task';
@@ -29,7 +27,6 @@ describe('Task 持久化边界', () => {
     `).run(turnId, sessionId);
 
     tasks = new TasksRepo(database.db);
-    runs = new AgentRunsRepo(database.db);
     createTask(taskA, 'First task', 3);
     createTask(taskB, 'Second task', 4);
   });
@@ -56,95 +53,20 @@ describe('Task 持久化边界', () => {
     });
   });
 
-  it('阻止依赖环、阻塞状态跃迁和给运行中 Task 新增未完成依赖', () => {
+  it('完成/取消任务写入 completed 字段，幂等写不重复 bump version', () => {
     expect(tasks.mutate(mutation(taskB, 0, {
-      addBlockedBy: [taskA],
-    }))).toMatchObject({ ok: true, row: { version: 1 } });
-
-    expect(tasks.mutate(mutation(taskB, 1, {
-      patch: { status: 'in_progress' },
-    }))).toMatchObject({ ok: false, reason: 'blocked' });
-
-    expect(tasks.mutate(mutation(taskA, 0, {
-      addBlockedBy: [taskB],
-    }))).toMatchObject({ ok: false, reason: 'dependency_cycle' });
-
-    expect(tasks.mutate(mutation(taskB, 1, {
-      patch: { status: 'in_progress' },
-      removeBlockedBy: [taskA],
+      patch: { status: 'completed', completedByTurnId: turnId, completedAt: 6 },
     }))).toMatchObject({
       ok: true,
-      row: { status: 'in_progress', version: 2 },
+      changed: true,
+      row: { status: 'completed', version: 1, completed_by_turn_id: turnId },
     });
-
-    const taskC = 'task-c';
-    createTask(taskC, 'Running task', 5);
-    expect(tasks.mutate(mutation(taskC, 0, {
-      patch: { status: 'in_progress' },
-    }))).toMatchObject({ ok: true, row: { version: 1 } });
-    expect(tasks.mutate(mutation(taskC, 1, {
-      addBlockedBy: [taskA],
-    }))).toMatchObject({ ok: false, reason: 'blocked' });
-  });
-
-  it('AgentRun 只能绑定可执行 Task，且 Run 完成不会隐式完成 Task', () => {
-    expect(tasks.mutate(mutation(taskB, 0, {
-      addBlockedBy: [taskA],
-    }))).toMatchObject({ ok: true });
-
-    expect(() => runs.insert({
-      id: 'run-blocked',
-      sessionId,
-      parentTurnId: turnId,
-      taskId: taskB,
-      contextMode: 'subagent',
-      createdAt: 5,
-    })).toThrow(/unresolved dependency/);
-
-    expect(tasks.mutate(mutation(taskA, 0, {
-      patch: {
-        status: 'completed',
-        completedByTurnId: turnId,
-        completedAt: 6,
-      },
-    }))).toMatchObject({ ok: true });
-
-    const runId = 'run-active';
-    expect(runs.insert({
-      id: runId,
-      sessionId,
-      parentTurnId: turnId,
-      taskId: taskB,
-      contextMode: 'subagent',
-      createdAt: 7,
-    })).toMatchObject({ status: 'running', task_id: taskB });
-    expect(runs.insert({
-      id: 'run-second',
-      sessionId,
-      parentTurnId: turnId,
-      taskId: taskB,
-      contextMode: 'subagent',
-      createdAt: 8,
-    })).toBeUndefined();
-
     expect(tasks.mutate(mutation(taskB, 1, {
-      patch: {
-        status: 'completed',
-        completedByTurnId: turnId,
-        completedAt: 9,
-      },
-    }))).toMatchObject({ ok: false, reason: 'active_agent_run' });
-
-    expect(runs.complete(runId, 0, {
-      iterations: 1,
-      toolCallCount: 0,
-      inputTokens: 10,
-      outputTokens: 20,
-    }, 10)).toMatchObject({ status: 'completed' });
-    expect(tasks.findById(taskB, sessionId)).toMatchObject({ status: 'pending' });
+      patch: { status: 'completed', completedByTurnId: turnId, completedAt: 6 },
+    }))).toMatchObject({ ok: true, changed: false, row: { version: 1 } });
   });
 
-  it('动态提醒按 Turn 数低频触发，并在触发后重新计数', () => {
+  it('低频提醒先只检查不消费，markReminded 后才推进周期', () => {
     for (let index = 0; index < 10; index += 1) {
       database.db.prepare(`
         INSERT INTO turns (
@@ -154,8 +76,13 @@ describe('Task 持久化边界', () => {
       `).run(`turn-reminder-${index}`, sessionId, 5 + index);
     }
 
-    expect(tasks.shouldRemind(sessionId, 10, 20)).toBe(true);
-    expect(tasks.shouldRemind(sessionId, 10, 21)).toBe(false);
+    // 达到周期：只检查不写状态，重复检查仍通过（不消费）。
+    expect(tasks.shouldRemind(sessionId, 10)).toBe(true);
+    expect(tasks.shouldRemind(sessionId, 10)).toBe(true);
+
+    // 显式提交已提醒：周期推进，后续不再提醒。
+    tasks.markReminded(sessionId, 20);
+    expect(tasks.shouldRemind(sessionId, 10)).toBe(false);
   });
 
   function createTask(id: string, subject: string, createdAt: number): void {
@@ -179,10 +106,6 @@ describe('Task 持久化边界', () => {
       sessionId,
       expectedVersion,
       patch: {},
-      addBlocks: [],
-      addBlockedBy: [],
-      removeBlocks: [],
-      removeBlockedBy: [],
       updatedAt: 20,
       ...overrides,
     };

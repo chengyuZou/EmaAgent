@@ -1,4 +1,6 @@
-// 把持久化 Session Message 投影为 Provider 中立历史，并只保留可安全重放的 Tool 配对。
+// Session Message → LLM 历史的唯一转换入口：把持久化消息投影为 Provider 中立历史，
+// 只保留可安全重放的 Tool 配对；每条产出携带来源 Session Message id，
+// 供 Macro 摘要成功后映射 summarizedThroughMessageId（不进入 Compact 或 LLM 请求）。
 import type {
   AssistantBlock,
   ContentPart,
@@ -8,13 +10,20 @@ import type {
 } from '@ema-agent/llm';
 import type { Message as SessionMessage } from '@ema-agent/session';
 
+export interface LlmHistoryMessage {
+  readonly sessionMessageId: string;
+  readonly message: ModelMessage;
+}
+
 /**
  * Session 中的 system 不是模型历史：System Prompt 每次重新生成，把它重放会
- * 制造重复事实。（narrative_context 消息形态已从 MessageKind 移除，不再是
- * 持久化 Session 消息，无需在此过滤。）
+ * 制造重复事实。空块、未配对 tool_use/tool_result 与 thinking 同样被丢弃——
+ * 产出数组可能比输入短，身份映射只允许使用 sessionMessageId，不可用下标对齐输入。
  */
-export function buildMessages(history: readonly SessionMessage[]): ModelMessage[] {
-  const messages: ModelMessage[] = [];
+export function deriveLlmHistory(
+  history: readonly SessionMessage[],
+): LlmHistoryMessage[] {
+  const messages: LlmHistoryMessage[] = [];
   const pairedToolIds = collectPairedToolIds(history);
 
   for (const message of history) {
@@ -22,14 +31,24 @@ export function buildMessages(history: readonly SessionMessage[]): ModelMessage[
 
     if (message.role === 'user') {
       if (typeof message.blocks === 'string') {
-        if (message.blocks.trim()) messages.push({ role: 'user', content: message.blocks });
+        if (message.blocks.trim()) {
+          messages.push({
+            sessionMessageId: message.id,
+            message: { role: 'user', content: message.blocks },
+          });
+        }
         continue;
       }
       if (Array.isArray(message.blocks)) {
         const content = message.blocks
           .map((block) => projectUserBlock(block, pairedToolIds))
           .filter((part): part is UserBlock => part !== undefined);
-        if (content.length > 0) messages.push({ role: 'user', content });
+        if (content.length > 0) {
+          messages.push({
+            sessionMessageId: message.id,
+            message: { role: 'user', content },
+          });
+        }
       }
       continue;
     }
@@ -38,7 +57,12 @@ export function buildMessages(history: readonly SessionMessage[]): ModelMessage[
       const content = message.blocks
         .map((block) => projectAssistantBlock(block, pairedToolIds))
         .filter((block): block is AssistantBlock => block !== undefined);
-      if (content.length > 0) messages.push({ role: 'assistant', content });
+      if (content.length > 0) {
+        messages.push({
+          sessionMessageId: message.id,
+          message: { role: 'assistant', content },
+        });
+      }
     }
   }
 

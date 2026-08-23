@@ -101,14 +101,19 @@ export class TurnStore {
     this.turnsRepo.setCharacterDirectoryName(turnId, characterDirectoryName);
   }
 
-  completeTurn(turnId: string, usage: CompleteTurnInput = {}): void {    this.requireTurn(turnId);
-    this.turnsRepo.complete(turnId, {
-      status:             'completed',
-      completedAt:        Date.now(),
-      usageInputTokens:   usage.usageInputTokens,
-      usageOutputTokens:  usage.usageOutputTokens,
-      iterations:         usage.iterations,
-    });
+  completeTurn(turnId: string, usage: CompleteTurnInput = {}, withinTransaction?: () => void): void {    this.requireTurn(turnId);
+    // 终态与派生登记（如 Memory 提取入队）同一事务：崩溃不允许出现
+    // "Turn 已完成但提取 Job 缺失"的裂缝。
+    this.db.sqlite.transaction(() => {
+      this.turnsRepo.complete(turnId, {
+        status:             'completed',
+        completedAt:        Date.now(),
+        usageInputTokens:   usage.usageInputTokens,
+        usageOutputTokens:  usage.usageOutputTokens,
+        iterations:         usage.iterations,
+      });
+      withinTransaction?.();
+    })();
     // 终态落库即释放运行锁：await completion/终态事件的消费方可以立即开新 Turn，
     // 不等执行器 finally（它清的是同一把锁，幂等）。
     this.registry.clear(this.requireTurn(turnId).sessionId, turnId);

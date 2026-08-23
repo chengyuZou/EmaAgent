@@ -1,6 +1,5 @@
-// Task 四件套收口测试:窄 Context 投影、调用身份从 ToolInvocation 取(运行时修复核心)、
-// expectedVersion CAS 透传、失败原因映射、List 隐藏已完成阻塞项。
-// 事件不在此处断言:task_created/updated/deleted 由 wiring 侧 store 装饰器发出,Tool 不发射。
+// Task 四件套收口测试:窄 Context 投影、调用身份从 ToolInvocation 取、
+// expectedVersion CAS 透传、失败原因映射与 List 摘要。
 
 import { describe, expect, it, vi } from 'vitest';
 import type { ToolInvocation } from '@ema-agent/tools';
@@ -70,24 +69,20 @@ describe('TaskGetTool', () => {
 });
 
 describe('TaskListTool', () => {
-  it('已完成的阻塞项从 blockedBy 中隐藏,活跃 AgentRun 如实透出', async () => {
-    const blocker = makeTask({
-      id: '22222222-2222-4222-8222-222222222222',
-      status: 'completed',
-    });
-    const blocked = makeTask({
-      id: taskId,
-      blockedBy: [blocker.id],
-      activeAgentRunId: '33333333-3333-4333-8333-333333333333' as never,
-    });
-    const store = makeStore(blocked);
-    vi.mocked(store.list).mockReturnValue([blocker, blocked]);
+  it('按 displayNumber 返回摘要并携带 version', async () => {
+    const store = makeStore(makeTask({ displayNumber: 2 }));
+    vi.mocked(store.list).mockReturnValue([
+      makeTask({ id: '22222222-2222-4222-8222-222222222222', displayNumber: 1 }),
+      makeTask({ displayNumber: 2 }),
+    ]);
 
     const result = await TaskListTool.execute({}, project(store), makeInvocation());
 
+    expect(result.tasks).toHaveLength(2);
     const item = result.tasks.find((t) => t.id === taskId)!;
-    expect(item.blockedBy).toEqual([]);
-    expect(item.activeAgentRunId).toBeDefined();
+    expect(item).toMatchObject({ displayNumber: 2, version: 0, status: 'pending' });
+    expect(item.blockedBy).toBeUndefined();
+    expect(item.activeAgentRunId).toBeUndefined();
     expect(store.list).toHaveBeenCalledWith(sessionId);
   });
 });
@@ -183,8 +178,6 @@ function makeTask(overrides: Partial<Task> = {}): Task {
     description: 'Run the relevant integration tests',
     activeForm: 'Running tests',
     status: 'pending',
-    blocks: [],
-    blockedBy: [],
     createdByTurnId: turnId,
     version: 0,
     createdAt: 1,
@@ -205,6 +198,7 @@ function makeStore(task: Task): TaskStore {
       deleted: false,
       task,
     })),
-    takeContextReminder: vi.fn(() => []),
+    shouldRemind: vi.fn(() => false),
+    markReminded: vi.fn(),
   } as unknown as TaskStore;
 }

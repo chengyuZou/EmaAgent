@@ -131,7 +131,6 @@ export class SubagentSpawner implements SubagentSpawnerFn {
       ...(this.options.parentAgentRunId !== undefined
         ? { parentAgentRunId: this.options.parentAgentRunId }
         : {}),
-      ...(spawnOptions.taskId !== undefined ? { taskId: spawnOptions.taskId } : {}),
       contextMode,
       ...(spawnOptions.description !== undefined
         ? { description: spawnOptions.description }

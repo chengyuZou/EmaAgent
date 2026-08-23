@@ -12,7 +12,6 @@ export interface AgentRun {
   readonly sessionId: string;
   readonly parentTurnId: string;
   readonly parentAgentRunId?: string;
-  readonly taskId?: string;
   readonly contextMode: SubagentContextMode;
   readonly description?: string;
   readonly providerId?: string;
@@ -35,7 +34,6 @@ export interface AgentRunStart {
   sessionId: string;
   parentTurnId: string;
   parentAgentRunId?: string;
-  taskId?: string;
   contextMode: SubagentContextMode;
   description?: string;
   providerId?: string;

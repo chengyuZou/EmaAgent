@@ -16,7 +16,6 @@ CREATE TABLE agent_runs (
   session_id          TEXT    NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   parent_turn_id      TEXT    NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
   parent_agent_run_id TEXT    REFERENCES agent_runs(id) ON DELETE SET NULL,
-  task_id             TEXT,
   context_mode        TEXT    NOT NULL CHECK (context_mode IN ('subagent', 'fork')),
   description         TEXT,
   provider_id         TEXT,
@@ -139,7 +138,9 @@ CREATE TABLE messages (
               CHECK(kind IN ('normal','tool_results','summary','reminder')),
   blocks_json TEXT NOT NULL,
   interrupted INTEGER NOT NULL DEFAULT 0,
-  created_at  INTEGER NOT NULL);
+  created_at  INTEGER NOT NULL,
+  -- 仅 kind='summary' 行非空：摘要覆盖截止点（含该消息），历史边界按它切。
+  summarized_through_message_id TEXT);
 
 CREATE TABLE sessions (
   id                   TEXT PRIMARY KEY,
@@ -189,15 +190,6 @@ CREATE TABLE project_folders (
 -- 至多一个主文件夹（"至少一个"由 repo 拒绝末位删除保证）。
 CREATE UNIQUE INDEX idx_project_folders_primary
   ON project_folders(project_id) WHERE is_primary = 1;
-
-CREATE TABLE task_dependencies (
-  session_id      TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  blocker_task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-  blocked_task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-  created_at      INTEGER NOT NULL,
-  PRIMARY KEY (blocker_task_id, blocked_task_id),
-  CHECK (blocker_task_id <> blocked_task_id)
-);
 
 CREATE TABLE tasks (
   id                   TEXT    PRIMARY KEY,
@@ -335,10 +327,6 @@ CREATE TABLE "usage_records" (
   CHECK ((quantity IS NULL AND unit IS NULL) OR (quantity IS NOT NULL AND unit IS NOT NULL))
 );
 
-CREATE UNIQUE INDEX idx_agent_runs_one_active_per_task
-  ON agent_runs(task_id)
-  WHERE task_id IS NOT NULL AND status = 'running';
-
 CREATE INDEX idx_agent_runs_parent_run
   ON agent_runs(parent_agent_run_id);
 
@@ -350,10 +338,6 @@ CREATE INDEX idx_agent_runs_session
 
 CREATE INDEX idx_agent_runs_status
   ON agent_runs(status, created_at ASC, id ASC);
-
-CREATE INDEX idx_agent_runs_task
-  ON agent_runs(task_id, created_at ASC, id ASC)
-  WHERE task_id IS NOT NULL;
 
 CREATE INDEX idx_attachment_vision_descriptions_lru
   ON attachment_vision_descriptions(last_accessed_at ASC, attachment_id ASC);
@@ -409,6 +393,11 @@ CREATE INDEX idx_messages_session_latest_summary
 
 CREATE INDEX idx_messages_turn    ON messages(turn_id);
 
+-- 摘要覆盖截止游标：loadHistory 按游标反查消息、Fork/Backup 重映射游标都用它。
+CREATE INDEX idx_messages_summary_cursor
+  ON messages(summarized_through_message_id)
+  WHERE summarized_through_message_id IS NOT NULL;
+
 CREATE INDEX idx_sessions_activity
   ON sessions(pinned DESC, last_activity_at DESC, id DESC);
 
@@ -419,12 +408,6 @@ CREATE INDEX idx_sessions_workspace
 CREATE INDEX idx_sessions_project
   ON sessions(project_id, last_activity_at DESC, id DESC)
   WHERE project_id IS NOT NULL;
-
-CREATE INDEX idx_task_dependencies_blocked
-  ON task_dependencies(blocked_task_id, blocker_task_id);
-
-CREATE INDEX idx_task_dependencies_session
-  ON task_dependencies(session_id, blocked_task_id, blocker_task_id);
 
 CREATE INDEX idx_tasks_session_status
   ON tasks(session_id, status, display_number ASC);
@@ -556,56 +539,6 @@ BEGIN
       AND p.session_id = NEW.session_id
       AND p.parent_turn_id = NEW.parent_turn_id
   ) THEN RAISE(ABORT, 'ownership_violation: agent_runs.parent_agent_run_id') END;
-END;
-
-CREATE TRIGGER trg_agent_runs_task_insert
-BEFORE INSERT ON agent_runs
-WHEN NEW.task_id IS NOT NULL
-BEGIN
-  SELECT CASE WHEN NOT EXISTS (
-    SELECT 1 FROM tasks task
-     WHERE task.id = NEW.task_id
-       AND task.session_id = NEW.session_id
-  ) THEN RAISE(ABORT, 'task_binding_invalid: task unavailable') END;
-
-  SELECT CASE WHEN NEW.status = 'running' AND EXISTS (
-    SELECT 1 FROM tasks task
-     WHERE task.id = NEW.task_id
-       AND task.status NOT IN ('pending', 'in_progress')
-  ) THEN RAISE(ABORT, 'task_binding_invalid: task unavailable') END;
-
-  SELECT CASE WHEN NEW.status = 'running' AND EXISTS (
-    SELECT 1
-      FROM task_dependencies dependency
-      JOIN tasks blocker ON blocker.id = dependency.blocker_task_id
-     WHERE dependency.blocked_task_id = NEW.task_id
-       AND blocker.status <> 'completed'
-  ) THEN RAISE(ABORT, 'task_binding_invalid: unresolved dependency') END;
-END;
-
-CREATE TRIGGER trg_agent_runs_task_update
-BEFORE UPDATE OF task_id, session_id, status ON agent_runs
-WHEN NEW.task_id IS NOT NULL
-BEGIN
-  SELECT CASE WHEN NOT EXISTS (
-    SELECT 1 FROM tasks task
-     WHERE task.id = NEW.task_id
-       AND task.session_id = NEW.session_id
-  ) THEN RAISE(ABORT, 'task_binding_invalid: task unavailable') END;
-
-  SELECT CASE WHEN NEW.status = 'running' AND EXISTS (
-    SELECT 1 FROM tasks task
-     WHERE task.id = NEW.task_id
-       AND task.status NOT IN ('pending', 'in_progress')
-  ) THEN RAISE(ABORT, 'task_binding_invalid: task unavailable') END;
-
-  SELECT CASE WHEN NEW.status = 'running' AND EXISTS (
-    SELECT 1
-      FROM task_dependencies dependency
-      JOIN tasks blocker ON blocker.id = dependency.blocker_task_id
-     WHERE dependency.blocked_task_id = NEW.task_id
-       AND blocker.status <> 'completed'
-  ) THEN RAISE(ABORT, 'task_binding_invalid: unresolved dependency') END;
 END;
 
 CREATE TRIGGER trg_attachments_owner_insert
@@ -752,36 +685,6 @@ BEGIN
   SELECT RAISE(ABORT, 'ownership_violation: sessions.id is immutable');
 END;
 
-CREATE TRIGGER trg_task_dependencies_owner_insert
-BEFORE INSERT ON task_dependencies
-BEGIN
-  SELECT CASE WHEN NOT EXISTS (
-    SELECT 1 FROM tasks blocker
-     WHERE blocker.id = NEW.blocker_task_id
-       AND blocker.session_id = NEW.session_id
-  ) THEN RAISE(ABORT, 'ownership_violation: task_dependencies.blocker_task_id') END;
-
-  SELECT CASE WHEN NOT EXISTS (
-    SELECT 1 FROM tasks blocked
-     WHERE blocked.id = NEW.blocked_task_id
-       AND blocked.session_id = NEW.session_id
-  ) THEN RAISE(ABORT, 'ownership_violation: task_dependencies.blocked_task_id') END;
-END;
-
-CREATE TRIGGER trg_tasks_delete_cleanup
-BEFORE DELETE ON tasks
-BEGIN
-  SELECT CASE WHEN EXISTS (
-    SELECT 1 FROM agent_runs run
-     WHERE run.task_id = OLD.id
-       AND run.status = 'running'
-  ) THEN RAISE(ABORT, 'task_transition_conflict: active agent run') END;
-
-  UPDATE agent_runs
-     SET task_id = NULL
-   WHERE task_id = OLD.id;
-END;
-
 CREATE TRIGGER trg_tasks_owner_insert
 BEFORE INSERT ON tasks
 BEGIN
@@ -815,17 +718,6 @@ BEGIN
      WHERE t.id = NEW.completed_by_turn_id
        AND t.session_id = NEW.session_id
   ) THEN RAISE(ABORT, 'ownership_violation: tasks.completed_by_turn_id') END;
-END;
-
-CREATE TRIGGER trg_tasks_terminal_with_active_run
-BEFORE UPDATE OF status ON tasks
-WHEN NEW.status IN ('completed', 'cancelled')
-BEGIN
-  SELECT CASE WHEN EXISTS (
-    SELECT 1 FROM agent_runs run
-     WHERE run.task_id = NEW.id
-       AND run.status = 'running'
-  ) THEN RAISE(ABORT, 'task_transition_conflict: active agent run') END;
 END;
 
 CREATE TRIGGER trg_tool_executions_owner_insert

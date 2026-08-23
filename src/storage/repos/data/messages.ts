@@ -21,6 +21,8 @@ export interface MessageRow {
   blocks_json: string;
   interrupted: number;
   created_at:  number;
+  /** 仅 summary 行非空：摘要覆盖截止点（含该消息）。 */
+  summarized_through_message_id: string | null;
 }
 
 export interface MessageInsert {
@@ -33,6 +35,8 @@ export interface MessageInsert {
   blocksJson: string;
   interrupted?: boolean;
   createdAt:  number;
+  /** 仅 kind='summary'：摘要覆盖截止消息 id。 */
+  summarizedThroughMessageId?: string;
 }
 
 export class MessagesRepo {
@@ -42,8 +46,9 @@ export class MessagesRepo {
     this.db
       .prepare(
         `INSERT INTO messages
-           (id, session_id, turn_id, role, kind, blocks_json, interrupted, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, session_id, turn_id, role, kind, blocks_json, interrupted, created_at,
+            summarized_through_message_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         m.id,
@@ -54,6 +59,7 @@ export class MessagesRepo {
         m.blocksJson,
         m.interrupted ? 1 : 0,
         m.createdAt,
+        m.summarizedThroughMessageId ?? null,
       );
   }
 
@@ -143,7 +149,10 @@ export class MessagesRepo {
    * 加载面向 LLM 的有界历史，最终按时间正序返回。
    *
    * - 无 summary：返回最新 `limit` 条消息。
-   * - 有 summary：始终保留最新 summary，并返回其后最新的 `limit - 1` 条消息。
+   * - 有 summary：保留最新 summary，并返回覆盖截止游标之后最新的消息。
+   *   边界取游标消息（summarized_through_message_id）的位置，不是 summary 自己的
+   *   插入时间——否则活跃 Turn 在摘要生成期间写入的 reminder/用户消息会被错误吞掉。
+   *   游标缺失时退回 summary 自身位置（写入路径保证非空，这只是 SQL 兜底）。
    *
    * 两层排序是刻意的：内层倒序利用索引截取最新 N 条，外层再恢复为
    * LLM 需要的正序。`id` 是同毫秒消息的稳定排序键。
@@ -160,6 +169,22 @@ export class MessagesRepo {
             ORDER BY created_at DESC, id DESC
             LIMIT 1
          ),
+         coverage_boundary AS (
+           SELECT COALESCE(
+                    (SELECT m.created_at
+                       FROM messages m
+                       JOIN latest_summary s
+                         ON m.id = s.summarized_through_message_id),
+                    (SELECT s.created_at FROM latest_summary s)
+                  ) AS created_at,
+                  COALESCE(
+                    (SELECT m.id
+                       FROM messages m
+                       JOIN latest_summary s
+                         ON m.id = s.summarized_through_message_id),
+                    (SELECT s.id FROM latest_summary s)
+                  ) AS id
+         ),
          recent_messages AS (
            SELECT m.*
              FROM messages m
@@ -171,9 +196,9 @@ export class MessagesRepo {
                 NOT EXISTS (SELECT 1 FROM latest_summary)
                 OR EXISTS (
                   SELECT 1
-                    FROM latest_summary s
-                   WHERE m.created_at > s.created_at
-                      OR (m.created_at = s.created_at AND m.id > s.id)
+                    FROM coverage_boundary b
+                   WHERE m.created_at > b.created_at
+                      OR (m.created_at = b.created_at AND m.id > b.id)
                 )
               )
             ORDER BY m.created_at DESC, m.id DESC
@@ -184,9 +209,12 @@ export class MessagesRepo {
            UNION ALL
            SELECT * FROM recent_messages
          )
+         -- 展示顺序：summary 顶替最旧的历史段必须排第一；未覆盖消息可能先于摘要写入，
+         -- 纯按 created_at 排会把它们错误地放到 summary 前面。
          SELECT *
            FROM selected_messages
-          ORDER BY created_at ASC, id ASC`,
+          ORDER BY CASE WHEN id = (SELECT id FROM latest_summary) THEN 0 ELSE 1 END,
+                   created_at ASC, id ASC`,
       )
       .all(sessionId, sessionId, boundedLimit) as MessageRow[];
   }

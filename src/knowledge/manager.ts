@@ -240,6 +240,18 @@ export class KbManager {
     return { kbCount: records.length, markedStale, failedKbIds };
   }
 
+  /**
+   * kb-embed 绑定变更后的全库失效：用新绑定探出当前空间 id，再把全部库中
+   * 其余空间的嵌入标 stale 等待重嵌。一个库都没注册时没有嵌入可失效，直接返回。
+   */
+  async invalidateEmbeddingsForNewBinding(): Promise<void> {
+    const records = this.deps.registry.list();
+    if (records.length === 0) return;
+    const entry = await this.active() ?? await this.open(records[0]!.id);
+    const space = await entry.client.probeEmbeddingSpace();
+    await this.invalidateAllEmbeddings(space.id);
+  }
+
   private async required(kbId?: string): Promise<OpenKnowledgeBase> {
     const entry = kbId ? await this.open(kbId) : await this.active();
     if (!entry) throw new KnowledgeNotConfiguredError('请先创建并激活一个知识库');

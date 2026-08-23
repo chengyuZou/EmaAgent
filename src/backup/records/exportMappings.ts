@@ -10,7 +10,6 @@ import type {
   SessionRow,
   SpeechOutputRow,
   SpeechSegmentRow,
-  TaskDependencyRow,
   TurnRow,
   UsageRecordRow,
 } from '@ema-agent/storage';
@@ -23,7 +22,6 @@ import type {
   SessionRecord,
   SpeechOutputRecord,
   SpeechSegmentRecord,
-  TaskDependencyRecord,
   TaskRecord,
   ToolExecutionRecord,
   TurnRecord,
@@ -77,6 +75,7 @@ export const toMessageRecord = (row: MessageRow): MessageRecord => ({
   blocksJson: row.blocks_json,
   interrupted: row.interrupted === 1,
   createdAt: row.created_at,
+  summarizedThroughMessageId: row.summarized_through_message_id,
 });
 
 export const toTaskRecord = (row: SessionBackupTaskRow): TaskRecord => ({
@@ -95,19 +94,11 @@ export const toTaskRecord = (row: SessionBackupTaskRow): TaskRecord => ({
   completedAt: row.completed_at,
 });
 
-export const toTaskDependencyRecord = (row: TaskDependencyRow): TaskDependencyRecord => ({
-  sessionId: row.session_id,
-  blockerTaskId: row.blocker_task_id,
-  blockedTaskId: row.blocked_task_id,
-  createdAt: row.created_at,
-});
-
 export const toAgentRunRecord = (row: AgentRunRow): AgentRunRecord => ({
   id: row.id,
   sessionId: row.session_id,
   parentTurnId: row.parent_turn_id,
   parentAgentRunId: row.parent_agent_run_id,
-  taskId: row.task_id,
   contextMode: row.context_mode,
   description: row.description,
   providerId: row.provider_id,

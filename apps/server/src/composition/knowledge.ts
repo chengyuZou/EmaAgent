@@ -24,6 +24,11 @@ export interface KnowledgeComposition {
   readonly kb: KbManager;
   /** 模型工具路径的检索入口（KnowledgeSearch）；HTTP 面板直接用 KbManager。 */
   readonly knowledgeSearch: KnowledgeSearch;
+  /**
+   * kb-embed/kb-rerank 绑定变更后调用：探出新绑定空间并把全库其余空间嵌入标 stale。
+   * fire-and-forget——绑定保存的 HTTP 请求不等失效扫描完成。
+   */
+  readonly onKbEmbeddingBindingChanged: () => void;
 }
 
 /**
@@ -109,7 +114,14 @@ export function openKnowledge(
     resolveRetrievalSettings: () => readKnowledgeRetrievalSettings(settings),
   });
 
-  return { kb, knowledgeSearch: request => kb.search(request) };
+  return {
+    kb,
+    knowledgeSearch: request => kb.search(request),
+    onKbEmbeddingBindingChanged: () => {
+      void kb.invalidateEmbeddingsForNewBinding()
+        .catch(error => console.warn('[kb] 嵌入绑定变更后的失效扫描失败:', error));
+    },
+  };
 }
 
 /** 一次完成的模型调用记一条 usage；失败调用在闭包内抛错，走不到这里（只记 completed）。 */

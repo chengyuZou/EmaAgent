@@ -1,4 +1,4 @@
-// Task 数据库操作在单个事务内完成 CAS 更新、依赖校验和短序号分配。
+// Task 数据库操作在单个事务内完成 CAS 更新与短序号分配。
 
 import type { SqliteDb } from '../../database/database.js';
 
@@ -18,14 +18,6 @@ export interface TaskRow {
   created_at: number;
   updated_at: number;
   completed_at: number | null;
-  active_agent_run_id: string | null;
-}
-
-export interface TaskDependencyRow {
-  session_id: string;
-  blocker_task_id: string;
-  blocked_task_id: string;
-  created_at: number;
 }
 
 export interface TaskCreateRow {
@@ -52,30 +44,18 @@ export interface TaskMutation {
   sessionId: string;
   expectedVersion: number;
   patch: TaskRowPatch;
-  addBlocks: readonly string[];
-  addBlockedBy: readonly string[];
-  removeBlocks: readonly string[];
-  removeBlockedBy: readonly string[];
   updatedAt: number;
 }
 
-export type TaskMutationFailure =
-  | 'not_found'
-  | 'version_conflict'
-  | 'blocked'
-  | 'active_agent_run'
-  | 'dependency_not_found'
-  | 'dependency_cycle';
+export type TaskMutationFailure = 'not_found' | 'version_conflict';
 
 export type TaskMutationResult =
   | { ok: true; changed: boolean; row: TaskRow }
-  | { ok: false; reason: TaskMutationFailure; current?: TaskRow; taskId?: string };
+  | { ok: false; reason: TaskMutationFailure; current?: TaskRow };
 
 export type TaskDeleteResult =
   | { ok: true }
-  | { ok: false; reason: 'not_found' | 'version_conflict' | 'active_agent_run'; current?: TaskRow };
-
-interface TaskBaseRow extends Omit<TaskRow, 'active_agent_run_id'> {}
+  | { ok: false; reason: 'not_found' | 'version_conflict'; current?: TaskRow };
 
 export class TasksRepo {
   constructor(private readonly db: SqliteDb) {}
@@ -124,32 +104,6 @@ export class TasksRepo {
     ).all(sessionId) as TaskRow[];
   }
 
-  listDependencies(sessionId: string): TaskDependencyRow[] {
-    return this.db.prepare(
-      `SELECT session_id, blocker_task_id, blocked_task_id, created_at
-         FROM task_dependencies
-        WHERE session_id = ?
-        ORDER BY blocker_task_id ASC, blocked_task_id ASC`,
-    ).all(sessionId) as TaskDependencyRow[];
-  }
-
-  /** 只查指定任务集合参与的依赖边；单行读取走这里,避免全表扫描。 */
-  listDependenciesFor(
-    sessionId: string,
-    taskIds: readonly string[],
-  ): TaskDependencyRow[] {
-    if (taskIds.length === 0) return [];
-    const placeholders = taskIds.map(() => '?').join(', ');
-    return this.db.prepare(
-      `SELECT session_id, blocker_task_id, blocked_task_id, created_at
-         FROM task_dependencies
-        WHERE session_id = ?
-          AND (blocker_task_id IN (${placeholders})
-            OR blocked_task_id IN (${placeholders}))
-        ORDER BY blocker_task_id ASC, blocked_task_id ASC`,
-    ).all(sessionId, ...taskIds, ...taskIds) as TaskDependencyRow[];
-  }
-
   mutate(input: TaskMutation): TaskMutationResult {
     return this.db.transaction(() => {
       const current = this.findById(input.id, input.sessionId);
@@ -158,97 +112,8 @@ export class TasksRepo {
         return { ok: false, reason: 'version_conflict', current } as const;
       }
 
-      if (
-        input.patch.status === 'completed'
-        || input.patch.status === 'cancelled'
-      ) {
-        if (current.active_agent_run_id !== null) {
-          return { ok: false, reason: 'active_agent_run', current } as const;
-        }
-      }
-
-      const additions = dependencyAdditions(input);
-      const removals = dependencyRemovals(input);
-      for (const edge of additions) {
-        const blocker = edge.blockerId === input.id
-          ? current
-          : this.findById(edge.blockerId, input.sessionId);
-        const blocked = edge.blockedId === input.id
-          ? current
-          : this.findById(edge.blockedId, input.sessionId);
-        const missingTaskId = blocker ? (blocked ? undefined : edge.blockedId) : edge.blockerId;
-        if (missingTaskId !== undefined) {
-          return {
-            ok: false,
-            reason: 'dependency_not_found',
-            current,
-            taskId: missingTaskId,
-          } as const;
-        }
-        if (
-          edge.blockerId === edge.blockedId
-          || this.wouldCreateCycle(edge.blockerId, edge.blockedId)
-        ) {
-          return {
-            ok: false,
-            reason: 'dependency_cycle',
-            current,
-            taskId: edge.blockerId === input.id ? edge.blockedId : edge.blockerId,
-          } as const;
-        }
-        const blockedStatus = edge.blockedId === input.id
-          ? input.patch.status ?? current.status
-          : blocked!.status;
-        const blockerStatus = edge.blockerId === input.id
-          ? input.patch.status ?? current.status
-          : blocker!.status;
-        if (
-          blockerStatus !== 'completed'
-          && (blockedStatus === 'in_progress' || blockedStatus === 'completed')
-        ) {
-          return {
-            ok: false,
-            reason: 'blocked',
-            current,
-            taskId: edge.blockerId,
-          } as const;
-        }
-      }
-      if (
-        (
-          input.patch.status === 'in_progress'
-          || input.patch.status === 'completed'
-        )
-        && this.hasUnresolvedBlockerAfterMutation(
-          input,
-          additions,
-          removals,
-        )
-      ) {
-        return { ok: false, reason: 'blocked', current } as const;
-      }
-
-      let dependencyChanged = false;
-      for (const edge of removals) {
-        const result = this.db.prepare(
-          `DELETE FROM task_dependencies
-            WHERE session_id = ?
-              AND blocker_task_id = ?
-              AND blocked_task_id = ?`,
-        ).run(input.sessionId, edge.blockerId, edge.blockedId);
-        dependencyChanged = dependencyChanged || result.changes > 0;
-      }
-      for (const edge of additions) {
-        const result = this.db.prepare(
-          `INSERT OR IGNORE INTO task_dependencies (
-             session_id, blocker_task_id, blocked_task_id, created_at
-           ) VALUES (?, ?, ?, ?)`,
-        ).run(input.sessionId, edge.blockerId, edge.blockedId, input.updatedAt);
-        dependencyChanged = dependencyChanged || result.changes > 0;
-      }
-
-      const basicChanged = patchChangesRow(current, input.patch);
-      if (!basicChanged && !dependencyChanged) {
+      const changed = patchChangesRow(current, input.patch);
+      if (!changed) {
         return { ok: true, changed: false, row: current } as const;
       }
 
@@ -302,9 +167,6 @@ export class TasksRepo {
       if (current.version !== expectedVersion) {
         return { ok: false, reason: 'version_conflict', current } as const;
       }
-      if (current.active_agent_run_id !== null) {
-        return { ok: false, reason: 'active_agent_run', current } as const;
-      }
       const result = this.db.prepare(
         'DELETE FROM tasks WHERE id = ? AND session_id = ? AND version = ?',
       ).run(id, sessionId, expectedVersion);
@@ -314,112 +176,40 @@ export class TasksRepo {
     })();
   }
 
+  /** 只检查是否到了提醒周期，不写任何状态；调用方在提醒落库成功后调 markReminded 提交。 */
   shouldRemind(
     sessionId: string,
     minimumTurns: number,
-    now: number,
   ): boolean {
-    return this.db.transaction(() => {
-      const latestTaskUpdate = this.db.prepare(
-        `SELECT MAX(updated_at)
-           FROM tasks
-          WHERE session_id = ?
-            AND status IN ('pending', 'in_progress')`,
-      ).pluck().get(sessionId) as number | null;
-      if (latestTaskUpdate === null) return false;
+    const latestTaskUpdate = this.db.prepare(
+      `SELECT MAX(updated_at)
+         FROM tasks
+        WHERE session_id = ?
+          AND status IN ('pending', 'in_progress')`,
+    ).pluck().get(sessionId) as number | null;
+    if (latestTaskUpdate === null) return false;
 
-      const lastRemindedAt = this.db.prepare(
-        'SELECT last_reminded_at FROM task_context_state WHERE session_id = ?',
-      ).pluck().get(sessionId) as number | undefined;
-      const since = Math.max(latestTaskUpdate, lastRemindedAt ?? latestTaskUpdate);
-      const turnCount = this.db.prepare(
-        `SELECT COUNT(*)
-           FROM turns
-          WHERE session_id = ?
-            AND created_at > ?`,
-      ).pluck().get(sessionId, since) as number;
-      if (turnCount < minimumTurns) return false;
-
-      this.db.prepare(
-        `INSERT INTO task_context_state (session_id, last_reminded_at)
-         VALUES (?, ?)
-         ON CONFLICT(session_id) DO UPDATE SET last_reminded_at = excluded.last_reminded_at`,
-      ).run(sessionId, now);
-      return true;
-    })();
+    const lastRemindedAt = this.db.prepare(
+      'SELECT last_reminded_at FROM task_context_state WHERE session_id = ?',
+    ).pluck().get(sessionId) as number | undefined;
+    const since = Math.max(latestTaskUpdate, lastRemindedAt ?? latestTaskUpdate);
+    const turnCount = this.db.prepare(
+      `SELECT COUNT(*)
+         FROM turns
+        WHERE session_id = ?
+          AND created_at > ?`,
+    ).pluck().get(sessionId, since) as number;
+    return turnCount >= minimumTurns;
   }
 
-  private hasUnresolvedBlockerAfterMutation(
-    input: TaskMutation,
-    additions: readonly DependencyEdge[],
-    removals: readonly DependencyEdge[],
-  ): boolean {
-    const blockerIds = new Set(
-      this.db.prepare(
-        `SELECT blocker_task_id
-           FROM task_dependencies
-          WHERE session_id = ? AND blocked_task_id = ?`,
-      ).pluck().all(input.sessionId, input.id) as string[],
-    );
-    for (const edge of removals) {
-      if (edge.blockedId === input.id) blockerIds.delete(edge.blockerId);
-    }
-    for (const edge of additions) {
-      if (edge.blockedId === input.id) blockerIds.add(edge.blockerId);
-    }
-    for (const blockerId of blockerIds) {
-      const blocker = this.findById(blockerId, input.sessionId);
-      if (blocker && blocker.status !== 'completed') return true;
-    }
-    return false;
+  /** reminder Message 成功持久化后显式提交"已提醒"，避免 Turn 准备失败吞掉提醒周期。 */
+  markReminded(sessionId: string, now: number): void {
+    this.db.prepare(
+      `INSERT INTO task_context_state (session_id, last_reminded_at)
+       VALUES (?, ?)
+       ON CONFLICT(session_id) DO UPDATE SET last_reminded_at = excluded.last_reminded_at`,
+    ).run(sessionId, now);
   }
-
-  private wouldCreateCycle(blockerId: string, blockedId: string): boolean {
-    return this.db.prepare(
-      `WITH RECURSIVE downstream(task_id) AS (
-         SELECT blocked_task_id
-           FROM task_dependencies
-          WHERE blocker_task_id = ?
-         UNION
-         SELECT dependency.blocked_task_id
-           FROM task_dependencies dependency
-           JOIN downstream current
-             ON dependency.blocker_task_id = current.task_id
-       )
-       SELECT EXISTS (
-         SELECT 1 FROM downstream WHERE task_id = ?
-       )`,
-    ).pluck().get(blockedId, blockerId) === 1;
-  }
-}
-
-interface DependencyEdge {
-  blockerId: string;
-  blockedId: string;
-}
-
-function dependencyAdditions(input: TaskMutation): DependencyEdge[] {
-  return uniqueEdges([
-    ...input.addBlocks.map((blockedId) => ({ blockerId: input.id, blockedId })),
-    ...input.addBlockedBy.map((blockerId) => ({ blockerId, blockedId: input.id })),
-  ]);
-}
-
-function dependencyRemovals(input: TaskMutation): DependencyEdge[] {
-  return uniqueEdges([
-    ...input.removeBlocks.map((blockedId) => ({ blockerId: input.id, blockedId })),
-    ...input.removeBlockedBy.map((blockerId) => ({ blockerId, blockedId: input.id })),
-  ]);
-}
-
-function uniqueEdges(edges: readonly DependencyEdge[]): DependencyEdge[] {
-  const seen = new Set<string>();
-  return edges.filter((edge) => {
-    const key = `${edge.blockerId}\0${edge.blockedId}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
 }
 
 function patchChangesRow(current: TaskRow, patch: TaskRowPatch): boolean {
@@ -439,7 +229,7 @@ function patchChangesRow(current: TaskRow, patch: TaskRowPatch): boolean {
   );
 }
 
-function mergedRow(current: TaskRow, patch: TaskRowPatch): TaskBaseRow {
+function mergedRow(current: TaskRow, patch: TaskRowPatch): TaskRow {
   return {
     id: current.id,
     session_id: current.session_id,
@@ -461,14 +251,5 @@ function mergedRow(current: TaskRow, patch: TaskRowPatch): TaskBaseRow {
   };
 }
 
-const TASK_SELECT = `
-  SELECT task.*,
-         (
-           SELECT run.id
-             FROM agent_runs run
-            WHERE run.task_id = task.id
-              AND run.status = 'running'
-            ORDER BY run.created_at DESC, run.id DESC
-            LIMIT 1
-         ) AS active_agent_run_id
+const TASK_SELECT = `SELECT task.*
     FROM tasks task`;

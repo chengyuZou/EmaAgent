@@ -36,13 +36,13 @@ type CompactResult =
       kind: 'macro';
       history: readonly Message[];
       summary: string;
-      compactedMessageCount: number;
+      summarizedMessageCount: number;
     };
 ```
 
 - `unchanged`：未达到阈值、关闭、熔断或 Macro 失败；原历史不变；
 - `micro`：只清理了确定可重取的旧 Tool Result；
-- `macro`：用 `summary` 替换了前 `compactedMessageCount` 条模型历史。
+- `macro`：用 `summary` 替换了输入历史中从头开始的 `summarizedMessageCount` 条。
 
 `summary` 是预算适配后真正放进 `history` 的正文，不一定等于摘要模型的原始全文。未来持久化必须使用该字段，不能重新从 Message 字符串反向解析。
 
@@ -51,24 +51,26 @@ type CompactResult =
 ```text
 阈值检查
   → Micro：清理可重取的旧 Tool Result
-  → Safe Cut：不拆散 tool_use / tool_result
+  → Retained Start：从尾部按 retainRatio × contextWindow 的 Token 预算选近期起点
+  → Safe Cut：不拆散 tool_use / tool_result，硬预算不足时继续扩大旧前缀
   → Macro：当前模型生成结构化摘要
   → Budget：摘要 + 近期历史适配硬预算
   → 成功清零 Session 熔断；失败累计熔断
 ```
 
+近期尾部由 `findRetainedHistoryStart(history, retainTokens)` 决定：`retainRatio`（5%～25%，默认 16%）是期望保留量，不是无条件保证——硬预算优先于比例。
+
 `estimatedInputTokens` 是完整候选请求的估算。Compact 使用同一 `@ema-agent/token` 实现扣除历史外成本，但永远看不到 System Prompt、Tool definitions、Runtime Reminder 或 Current Turn 的正文。
 
 ## Macro 持久化接线
 
-本包只返回持久化事实，不持有 Storage 端口。未来 TurnExecution 在 `kind === 'macro'` 时负责：
+本包只返回持久化事实，不持有 Storage 端口。TurnExecution 在 `kind === 'macro'` 时负责：
 
-1. 把 `compactedMessageCount` 映射到原始 Session Message 的稳定截止游标；
-2. 在单个 SQL 事务中写入 `kind='summary'` 的 Message 和截止游标；
-3. 保证当前 Turn 的用户 Query 与截止点之后的消息不被 Summary 查询吞掉；
-4. SQL 成功后才采用 `result.history` 继续本轮；失败则继续使用原历史。
+1. 用 `LlmHistoryMessage[summarizedMessageCount - 1]` 把计数映射成 `summarizedThroughMessageId`；
+2. 经 `SessionStore.appendHistorySummary()` 写入 `kind='summary'` 的 Message 与覆盖截止游标；
+3. SQL 成功后才采用 `result.history` 继续本轮；失败则继续使用原历史。
 
-当前 `messages` 表以 Summary 插入时间作为边界，无法严谨表达“Summary 创建于当前 Turn，但只覆盖更早历史”。接线批必须为 Summary 增加明确的覆盖截止游标，或建立等价的稳定顺序语义；不能只依赖 `created_at`。最近用户 Query 可以按 `sessionId + role='user'` 一次 SQL 读取，但它是恢复保护，不替代 Summary 截止游标。
+`messages.summarized_through_message_id` 是 Summary 的覆盖截止游标；`loadHistory()` 按游标消息位置切边界，摘要不以自身插入时间吞掉生成期间写入的 reminder/用户消息。
 
 ## 保护范围
 

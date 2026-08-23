@@ -14,7 +14,7 @@ export interface TurnReminderFacts {
   readonly memoryRelationship?: string;
   /** NarrativePolicy='always' 时对本 Turn 用户输入的一次剧情检索结果。 */
   readonly narrativeRecall?: string;
-  /** Task 包的一次性低频提醒（take 语义，读取即消费）。 */
+  /** Task 包的低频提醒；宿主在 reminder 落库成功后显式提交"已提醒"，本包不消费。 */
   readonly taskReminder?: string;
   /** Turn 开始时已存在的 Scratchpad 摘要。 */
   readonly scratchpad?: string;

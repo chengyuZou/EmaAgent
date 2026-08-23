@@ -5,7 +5,6 @@ export type SessionRecordName =
   | 'turns'
   | 'messages'
   | 'tasks'
-  | 'taskDependencies'
   | 'agentRuns'
   | 'agentRunMessages'
   | 'toolExecutions'
@@ -36,7 +35,6 @@ export const SESSION_RECORD_FILES: readonly SessionRecordFile[] = Object.freeze(
   jsonl('turns'),
   jsonl('messages'),
   jsonl('tasks'),
-  jsonl('taskDependencies'),
   jsonl('agentRuns'),
   jsonl('agentRunMessages'),
   jsonl('toolExecutions'),

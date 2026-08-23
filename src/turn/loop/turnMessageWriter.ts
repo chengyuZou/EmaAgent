@@ -99,7 +99,7 @@ export class TurnMessageWriter {
 
   /**
    * Turn 终态收口：非 completed 时把未完成的 assistant 标 interrupted；
-   * 没有等到 tool_result 的 tool_use 合成取消结果补配对（下一轮 buildMessages
+   * 没有等到 tool_result 的 tool_use 合成取消结果补配对（下一轮 deriveLlmHistory
    * 的配对过滤器需要完整配对才重放）。
    */
   async finish(terminal: 'completed' | 'failed' | 'aborted'): Promise<void> {

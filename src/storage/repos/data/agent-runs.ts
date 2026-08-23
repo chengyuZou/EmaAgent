@@ -11,7 +11,6 @@ export interface AgentRunRow {
   session_id:          string;
   parent_turn_id:      string;
   parent_agent_run_id: string | null;
-  task_id:             string | null;
   context_mode:        AgentRunContextModeRow;
   description:         string | null;
   provider_id:         string | null;
@@ -34,7 +33,6 @@ export interface AgentRunInsert {
   sessionId: string;
   parentTurnId: string;
   parentAgentRunId?: string;
-  taskId?: string;
   contextMode: AgentRunContextModeRow;
   description?: string;
   providerId?: string;
@@ -56,16 +54,15 @@ export class AgentRunsRepo {
   insert(value: AgentRunInsert): AgentRunRow | undefined {
     return this.db.prepare(
       `INSERT OR IGNORE INTO agent_runs (
-         id, session_id, parent_turn_id, parent_agent_run_id, task_id,
+         id, session_id, parent_turn_id, parent_agent_run_id,
          context_mode, description, provider_id, model_id, status, created_at, updated_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?)
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?)
        RETURNING *`,
     ).get(
       value.id,
       value.sessionId,
       value.parentTurnId,
       value.parentAgentRunId ?? null,
-      value.taskId ?? null,
       value.contextMode,
       value.description ?? null,
       value.providerId ?? null,

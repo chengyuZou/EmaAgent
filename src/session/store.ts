@@ -363,6 +363,35 @@ export class SessionStore {
     return this.requireMessage(id);
   }
 
+  /**
+   * 写入 Session 级压缩摘要（turnId=null、kind='summary'）。
+   * summarizedThroughMessageId 是覆盖截止游标：摘要包含该消息在内的全部既有有效历史，
+   * loadHistory 按该消息位置切边界。游标必须属于本 Session，拒绝悬挂引用。
+   */
+  appendHistorySummary(input: {
+    sessionId: string;
+    summary: string;
+    summarizedThroughMessageId: string;
+  }): Message {
+    const through = this.messagesRepo.findById(input.summarizedThroughMessageId);
+    if (!through || through.session_id !== input.sessionId) {
+      throw new Error(
+        `summary_through_message_not_in_session: ${input.summarizedThroughMessageId}`,
+      );
+    }
+    const id = crypto.randomUUID();
+    this.messagesRepo.insert({
+      id,
+      sessionId: input.sessionId,
+      role: 'user',
+      kind: 'summary',
+      blocksJson: JSON.stringify(input.summary),
+      createdAt: this.nextTs(),
+      summarizedThroughMessageId: input.summarizedThroughMessageId,
+    });
+    return this.requireMessage(id);
+  }
+
   markMessageInterrupted(id: string): void {
     this.messagesRepo.markInterrupted(id);
   }

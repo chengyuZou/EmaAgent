@@ -3,9 +3,11 @@
 import { EventHub } from '../sse/eventHub.js';
 import { TurnEventStore } from '../sse/eventStore.js';
 import { TurnFanout } from '../sse/turnFanout.js';
+import { openBackup, type BackupComposition } from './backup.js';
 import { openCharacters, type CharactersComposition } from './characters.js';
 import { openDatabases, type DatabaseComposition } from './database.js';
 import { openKnowledge, type KnowledgeComposition } from './knowledge.js';
+import { openMemory, type MemoryComposition } from './memory.js';
 import { openNarrative, type NarrativeComposition } from './narrative.js';
 import { openProviders, type ProvidersComposition } from './providers.js';
 import { openSettings, type SettingsComposition } from './settings.js';
@@ -23,6 +25,8 @@ export interface Composition {
   readonly narrative: NarrativeComposition;
   readonly speech: SpeechComposition;
   readonly turn: TurnComposition;
+  readonly memory: MemoryComposition;
+  readonly backup: BackupComposition;
   readonly eventHub: EventHub;
   readonly turnEvents: TurnEventStore;
   readonly turnFanout: TurnFanout;
@@ -86,6 +90,18 @@ export function buildComposition(input: { activeDataDir: string }): Composition 
   // KB 域事件进应用通道。
   knowledge.kb.events.on(event => eventHub.emitApp(event));
 
+  // Memory 只依赖 database 层的 TurnStore/SessionStore，必须先于 openTurns 创建：
+  // Turn completed 终态事务内的提取入队闭包由它提供。
+  const memory = openMemory({
+    dataDb: database.dataDb,
+    settings: settings.settings,
+    providers: providers.providers,
+    modelBindings: providers.modelBindings,
+    session: database.session,
+    turns: database.turns,
+    usageRecorder: database.usageRecorder,
+    emitApp: event => eventHub.emitApp(event),
+  });
   const turn = openTurns({
     database,
     settings: settings.settings,
@@ -96,7 +112,9 @@ export function buildComposition(input: { activeDataDir: string }): Composition 
     characters: characters.store,
     stage: characters.stage,
     emitAppEvent: event => eventHub.emitApp(event),
+    onTurnCompletedInTransaction: turnId => memory.enqueueTurnExtraction(turnId),
   });
+  const backup = openBackup(database.dataDb, input.activeDataDir, providers.providerModels);
   const turnFanout = new TurnFanout({
     store: turnEvents,
     hub: eventHub,
@@ -114,10 +132,14 @@ export function buildComposition(input: { activeDataDir: string }): Composition 
     narrative,
     speech,
     turn,
+    memory,
+    backup,
     eventHub,
     turnEvents,
     turnFanout,
     close() {
+      // 先停 Memory 后台工作，再关库；在途 Job 终态遗留由启动恢复收口。
+      memory.shutdown();
       database.close();
     },
   };

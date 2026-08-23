@@ -8,9 +8,6 @@ export interface Task {
   description: string;
   activeForm?: string;
   status: TaskStatus;
-  blocks: readonly string[];
-  blockedBy: readonly string[];
-  activeAgentRunId?: string;
   createdByTurnId: string;
   completedByTurnId?: string;
   version: number;
@@ -39,22 +36,11 @@ export interface TaskUpdateInput {
   activeForm?: string | null;
   status?: 'pending' | 'in_progress' | 'completed';
   action?: TaskUpdateAction;
-  addBlocks?: readonly string[];
-  addBlockedBy?: readonly string[];
-  removeBlocks?: readonly string[];
-  removeBlockedBy?: readonly string[];
 }
 
-export type TaskMutationFailure =
-  | 'not_found'
-  | 'version_conflict'
-  | 'blocked'
-  | 'active_agent_run'
-  | 'dependency_not_found'
-  | 'dependency_cycle'
-  | 'invalid_update';
+export type TaskMutationFailure = 'not_found' | 'version_conflict' | 'invalid_update';
 
 export type TaskUpdateResult =
   | { ok: true; changed: boolean; deleted: false; task: Task }
   | { ok: true; changed: true; deleted: true; taskId: string }
-  | { ok: false; reason: TaskMutationFailure; current?: Task; taskId?: string };
+  | { ok: false; reason: TaskMutationFailure; current?: Task };

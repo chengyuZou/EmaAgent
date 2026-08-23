@@ -110,6 +110,31 @@ describe('SessionsRepo integration', () => {
     expect(repo.findById(asSessionId('fork'))).toBeUndefined();
   });
 
+  it('fork 重映射 summary 覆盖游标到新消息 ID', () => {
+    insertSession({ id: 'source' });
+    insertTurn({ id: 'turn-1', sessionId: 'source', status: 'completed', createdAt: 100, completedAt: 110 });
+    insertTurn({ id: 'turn-2', sessionId: 'source', status: 'completed', createdAt: 200, completedAt: 210 });
+    insertMessage({ id: 'message-a', sessionId: 'source', turnId: 'turn-1', text: 'old A', createdAt: 105 });
+    insertMessage({ id: 'message-summary', sessionId: 'source', turnId: 'turn-1', text: 'summary', createdAt: 115, kind: 'summary', through: 'message-a' });
+    insertMessage({ id: 'message-b', sessionId: 'source', turnId: 'turn-2', text: 'B', createdAt: 205 });
+
+    expect(repo.forkInto('source', 'fork', 'Fork', 1_000)).toBe(3);
+
+    const forkMessages = database.db
+      .prepare('SELECT id, kind, summarized_through_message_id FROM messages WHERE session_id = ? ORDER BY created_at, id')
+      .all('fork') as Array<{ id: string; kind: string; summarized_through_message_id: string | null }>;
+    expect(forkMessages).toHaveLength(3);
+
+    // 所有消息都重新生成 ID，不与源冲突。
+    expect(forkMessages.every((m) => !['message-a', 'message-summary', 'message-b'].includes(m.id))).toBe(true);
+
+    // summary 游标指向 fork 中的新 A（normal 消息），而不是 NULL。
+    const summary = forkMessages.find((m) => m.kind === 'summary')!;
+    expect(summary.summarized_through_message_id).not.toBeNull();
+    const cursorTarget = forkMessages.find((m) => m.id === summary.summarized_through_message_id)!;
+    expect(cursorTarget.kind).toBe('normal');
+  });
+
   function insertSession(fixture: {
     id: string;
     pinned?: boolean;
@@ -161,17 +186,21 @@ describe('SessionsRepo integration', () => {
     turnId?: string | null;
     text: string;
     createdAt: number;
+    kind?: 'normal' | 'summary' | 'reminder';
+    through?: string | null;
   }): void {
     database.db.prepare(`
       INSERT INTO messages
-        (id, session_id, turn_id, role, kind, blocks_json, created_at)
-      VALUES (?, ?, ?, 'assistant', 'normal', ?, ?)
+        (id, session_id, turn_id, role, kind, blocks_json, created_at, summarized_through_message_id)
+      VALUES (?, ?, ?, 'assistant', ?, ?, ?, ?)
     `).run(
       fixture.id,
       fixture.sessionId,
       fixture.turnId ?? null,
+      fixture.kind ?? 'normal',
       JSON.stringify([{ type: 'text', text: fixture.text }]),
       fixture.createdAt,
+      fixture.through ?? null,
     );
   }
 

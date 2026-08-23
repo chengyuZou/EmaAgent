@@ -1,6 +1,4 @@
 // 定义工具调用、原始结果与用户询问产生的业务事件。
-import type { TaskEvent } from '@ema-agent/tasks';
-
 export interface ToolError {
   code: string;
   message: string;
@@ -45,7 +43,7 @@ export type ToolStreamEvent =
     };
 
 /** 工具执行上下文允许业务工具向外发出的领域事件。 */
-export type ToolExecutionEvent = ToolStreamEvent | TaskEvent;
+export type ToolExecutionEvent = ToolStreamEvent;
 
 export type AskUserRequiredEvent = Extract<ToolStreamEvent, { type: 'ask_user_required' }>;
 

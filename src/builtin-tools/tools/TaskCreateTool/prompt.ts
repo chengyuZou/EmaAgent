@@ -34,5 +34,4 @@ All tasks are created with status \`pending\`.
 ## Tips
 
 - Call TaskList first to avoid creating duplicate tasks
-- Use TaskUpdate with addBlocks/addBlockedBy to set up dependencies after creation
 - Create tasks with clear, specific subjects that describe the outcome`;

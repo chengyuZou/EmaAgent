@@ -17,8 +17,6 @@ interface TaskUpdateToolContext {
   taskStore: TaskStore;
 }
 
-const taskIdList = z.array(z.string().uuid()).max(100);
-
 const inputSchema = z.object({
   taskId: z.string().uuid().describe('The stable UUID of the task to update.'),
   expectedVersion: z
@@ -40,20 +38,12 @@ const inputSchema = z.object({
     .enum(['cancel', 'delete'])
     .optional()
     .describe('Explicit destructive action. cancel keeps history; delete removes the Task.'),
-  addBlocks: taskIdList.optional().describe('Tasks that cannot start until this task completes.'),
-  addBlockedBy: taskIdList.optional().describe('Tasks that must complete before this task can start.'),
-  removeBlocks: taskIdList.optional().describe('Downstream dependencies to remove.'),
-  removeBlockedBy: taskIdList.optional().describe('Upstream dependencies to remove.'),
 }).strict().superRefine((value, ctx) => {
   const actionHasOtherMutation = value.action !== undefined && (
     value.status !== undefined
     || value.subject !== undefined
     || value.description !== undefined
     || value.activeForm !== undefined
-    || value.addBlocks !== undefined
-    || value.addBlockedBy !== undefined
-    || value.removeBlocks !== undefined
-    || value.removeBlockedBy !== undefined
   );
   if (actionHasOtherMutation) {
     ctx.addIssue({
@@ -120,16 +110,12 @@ export const TaskUpdateTool = buildTool<TaskUpdateInput, TaskUpdateResult, TaskU
       activeForm: input.activeForm,
       status: input.status,
       action: input.action,
-      addBlocks: input.addBlocks?.map((id) => id),
-      addBlockedBy: input.addBlockedBy?.map((id) => id),
-      removeBlocks: input.removeBlocks?.map((id) => id),
-      removeBlockedBy: input.removeBlockedBy?.map((id) => id),
     });
 
     if (!result.ok) {
       return {
         success: false,
-        message: failureMessage(result.reason, result.taskId),
+        message: failureMessage(result.reason),
         changed: false,
         deleted: false,
         taskId,
@@ -162,20 +148,12 @@ export const TaskUpdateTool = buildTool<TaskUpdateInput, TaskUpdateResult, TaskU
   },
 });
 
-function failureMessage(reason: TaskMutationFailure, relatedTaskId?: string): string {
+function failureMessage(reason: TaskMutationFailure): string {
   switch (reason) {
     case 'not_found':
       return 'Task not found in the current Session.';
     case 'version_conflict':
       return 'Task changed since it was read. Call TaskGet and retry with the latest version.';
-    case 'blocked':
-      return 'Task has unresolved dependencies and cannot enter the requested status.';
-    case 'active_agent_run':
-      return 'Task still has an active AgentRun and cannot enter a terminal state or be deleted.';
-    case 'dependency_not_found':
-      return `Dependency Task ${relatedTaskId ?? ''} was not found in the current Session.`.trim();
-    case 'dependency_cycle':
-      return `Dependency change would create a cycle involving Task ${relatedTaskId ?? ''}.`.trim();
     case 'invalid_update':
       return 'Task update is invalid. Submit cancel or delete as a standalone action.';
   }

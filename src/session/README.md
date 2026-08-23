@@ -17,7 +17,7 @@
 - **侧栏**：`listSessionsGrouped()` 五桶（置顶 Session / 置顶项目 / 其余项目 / 最近 / 已归档；Session 同时满足 pinned 与 project 时进置顶桶）；`searchSessions` 不搜归档；
 - **Project**：createProject / rename / delete / pin / 文件夹增删 / 设主 / 拖入拖出；主文件夹变更或继位时同事务级联改写全部成员的 workspace_root；
 - **Fork**：forkSession 复制 Turn/Message/Attachment 并重映射 ID，不带 Task、AgentRun 或任何在跑的外部副作用；
-- **Message**：appendMessage（turnId 归属校验）/ loadHistory（从最近 summary 起，LLM 可见历史）/ listMessages（热尾游标）/ listMessagesForTurns（供 Turn 窗口拼装）/ loadMessagesForTurn / findToolInteraction（启动恢复）/ markMessageInterrupted / assertMessageOwnership；
+- **Message**：appendMessage（turnId 归属校验）/ appendHistorySummary（Session 级压缩摘要，必须带覆盖截止游标）/ loadHistory（最新 summary + 其覆盖游标之后的消息，LLM 可见历史）/ listMessages（热尾游标）/ listMessagesForTurns（供 Turn 窗口拼装）/ loadMessagesForTurn / findToolInteraction（启动恢复）/ markMessageInterrupted / assertMessageOwnership；
 - **删除**：deleteSession 只删本聚合的数据库行并触发 onSessionRemoved 文件清理；活动 Turn 的取消与运行态收口归 TurnStore，由删除用例（Server 编排）先行调用。
 
 其余出口：

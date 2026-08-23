@@ -13,7 +13,6 @@ import {
   toSessionRecord,
   toSpeechOutputRecord,
   toSpeechSegmentRecord,
-  toTaskDependencyRecord,
   toTaskRecord,
   toToolExecutionRecord,
   toTurnRecord,
@@ -110,7 +109,6 @@ function writeRecords(
   writeJsonl(directory, 'turns', rows.turns, toTurnRecord, signal);
   writeJsonl(directory, 'messages', rows.messages, toMessageRecord, signal);
   writeJsonl(directory, 'tasks', rows.tasks, toTaskRecord, signal);
-  writeJsonl(directory, 'taskDependencies', rows.taskDependencies, toTaskDependencyRecord, signal);
   writeJsonl(directory, 'agentRuns', rows.agentRuns, toAgentRunRecord, signal);
   writeJsonl(directory, 'agentRunMessages', rows.agentRunMessages, toAgentRunMessageRecord, signal);
   writeJsonl(directory, 'toolExecutions', rows.toolExecutions, toToolExecutionRecord, signal);

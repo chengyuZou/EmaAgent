@@ -72,13 +72,6 @@ const inputSchema = z.object({
       'Context strategy. "subagent" is the default and starts with only the task prompt. ' +
         'Use "fork" only when the worker explicitly needs the parent conversation history.',
     ),
-  taskId: z
-    .string()
-    .uuid()
-    .optional()
-    .describe(
-      'Optional existing Task UUID to associate with this AgentRun. The Task must be in the current Session, non-terminal, and unblocked.',
-    ),
   runInBackground: z
     .boolean()
     .optional()
@@ -196,7 +189,6 @@ export const SubagentTool = buildTool<SubagentInput, SubagentResult, SubagentToo
       description: input.description,
       contextMode: input.contextMode ?? role.contextMode ?? ('subagent' as const),
       agentRunId,
-      taskId: input.taskId ? input.taskId : undefined,
       systemPrompt: role.systemPrompt,
       disallowedTools: role.disallowedTools,
     };

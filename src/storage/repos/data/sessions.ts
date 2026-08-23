@@ -399,14 +399,15 @@ export class SessionsRepo {
         ?? cutoffTurn?.created_at;
       const messageCutoffId = messageCutoff?.id;
 
+      // 4. 复制 message。先为将被复制的消息生成新 ID 写入 _message_id_map，再执行
+      //    复制：turn_id 经 _turn_id_map、summarized_through_message_id 经
+      //    _message_id_map 转换。不能在 INSERT SELECT 中临时 randomblob()，否则
+      //    Summary 无法知道游标目标的新 ID。
+      this.db.prepare('CREATE TEMP TABLE _message_id_map (old_id TEXT PRIMARY KEY, new_id TEXT NOT NULL)').run();
       this.db.prepare(
         untilTurnId
-          ? `INSERT INTO messages
-               (id, session_id, turn_id, role, kind, blocks_json, interrupted, created_at)
-             SELECT lower(hex(randomblob(16))), ?,
-                    (SELECT m.new_id FROM _turn_id_map m WHERE m.old_id = messages.turn_id),
-                    role, kind, blocks_json, interrupted, created_at
-             FROM messages
+          ? `INSERT INTO _message_id_map (old_id, new_id)
+             SELECT id, lower(hex(randomblob(16))) FROM messages
              WHERE session_id = ?
                AND (
                  turn_id IN (SELECT old_id FROM _turn_id_map)
@@ -421,18 +422,12 @@ export class SessionsRepo {
                       )
                     )
                   )
-               )
-             ORDER BY created_at ASC, id ASC`
-          : `INSERT INTO messages
-               (id, session_id, turn_id, role, kind, blocks_json, interrupted, created_at)
-             SELECT lower(hex(randomblob(16))), ?,
-                    (SELECT m.new_id FROM _turn_id_map m WHERE m.old_id = messages.turn_id),
-                    role, kind, blocks_json, interrupted, created_at
-             FROM messages
-             WHERE session_id = ?
-             ORDER BY created_at ASC, id ASC`,
-      ).run(newId, srcId, ...(untilTurnId
-         ? [
+               )`
+          : `INSERT INTO _message_id_map (old_id, new_id)
+             SELECT id, lower(hex(randomblob(16))) FROM messages
+             WHERE session_id = ?`,
+      ).run(srcId, ...(untilTurnId
+        ? [
           messageCutoffAt ?? null,
           messageCutoffAt ?? 0,
           messageCutoffAt ?? 0,
@@ -440,6 +435,21 @@ export class SessionsRepo {
           messageCutoffId ?? '',
         ]
         : []));
+
+      this.db.prepare(
+        `INSERT INTO messages
+           (id, session_id, turn_id, role, kind, blocks_json, interrupted, created_at,
+            summarized_through_message_id)
+         SELECT message_map.new_id, ?,
+                turn_map.new_id,
+                source.role, source.kind, source.blocks_json, source.interrupted, source.created_at,
+                cursor_map.new_id
+         FROM messages source
+         JOIN _message_id_map message_map ON message_map.old_id = source.id
+         LEFT JOIN _turn_id_map turn_map ON turn_map.old_id = source.turn_id
+         LEFT JOIN _message_id_map cursor_map ON cursor_map.old_id = source.summarized_through_message_id
+         ORDER BY source.created_at ASC, source.id ASC`,
+      ).run(newId);
 
       // 5. 复制 attachments--新 id,turn_id 重映射,session_id = 新。
       //    不复制的话,fork 中用户消息的 attachment 角标会消失
@@ -455,6 +465,7 @@ export class SessionsRepo {
          JOIN _turn_id_map m ON m.old_id = ta.turn_id`,
       ).run(newId);
 
+      this.db.prepare('DROP TABLE _message_id_map').run();
       this.db.prepare('DROP TABLE _turn_id_map').run();
     })();
 

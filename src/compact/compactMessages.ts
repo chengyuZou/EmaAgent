@@ -6,7 +6,11 @@ import { estimateMessagesTokens } from '@ema-agent/token';
 import { fitCompactHistory } from './budget.js';
 import { runMacroCompact } from './macroCompact.js';
 import { microCompact } from './microCompact.js';
-import { findSafeCutPoint, findSafeCutPointAtOrAfter } from './safeCut.js';
+import {
+  findRetainedHistoryStart,
+  findSafeCutPoint,
+  findSafeCutPointAtOrAfter,
+} from './safeCut.js';
 import {
   DEFAULT_COMPACT_SETTINGS,
   type CompactSettings,
@@ -94,12 +98,29 @@ async function compactMessages(args: {
     return { kind: 'micro', history: micro };
   }
 
+  // 近期尾部按 contextWindow × retainRatio 换算的 Token 预算选择；硬预算放不下时
+  // chooseSafeCut 会继续扩大旧前缀——retainRatio 是期望保留量，硬预算优先于比例。
+  const retainTokens = Math.floor(request.contextWindow * settings.retainRatio);
   const safeCut = chooseSafeCut({
     messages: micro,
-    desiredCut: preferredCut(micro.length),
+    desiredCut: findRetainedHistoryStart(micro, retainTokens),
     tokensOutsideHistory,
     tokenLimit,
   });
+  // 切点为 0 说明近期尾部本身就占满预算（或历史配对损坏），没有可摘要的旧前缀；
+  // 对空历史跑摘要模型只会产生空摘要，如实判失败交给熔断计数。
+  if (safeCut === 0) {
+    const compactId = randomUUID();
+    recordFailure({
+      request,
+      compactId,
+      beforeTokens,
+      detail: '近期原文已占满预算，没有可摘要的旧前缀',
+      startedAt,
+      consecutiveFailures: args.consecutiveFailures,
+    });
+    return unchanged();
+  }
   const head = micro.slice(0, safeCut);
   const tail = micro.slice(safeCut);
   const compactId = randomUUID();
@@ -163,6 +184,25 @@ async function compactMessages(args: {
     return unchanged();
   }
 
+  // Macro 摘要持久化在完成事件之前：只有保存成功才发 compact_completed，保证
+  // "完成" = 摘要已落库（根 Turn / /compact）或内存替换已应用（子 Agent 不提供闭包）。
+  if (request.saveMacroSummary) {
+    try {
+      request.saveMacroSummary(fitted.summary, safeCut);
+    } catch (error) {
+      request.onEvent?.({
+        type: 'compact_failed',
+        compactId,
+        sessionId: request.sessionId,
+        beforeTokens,
+        afterTokens: fitted.afterTokens,
+        error: error instanceof Error ? error.message : String(error),
+        durationMs: Date.now() - startedAt,
+      });
+      throw error;
+    }
+  }
+
   args.consecutiveFailures.delete(request.sessionId);
   request.onEvent?.({
     type: 'compact_completed',
@@ -178,16 +218,8 @@ async function compactMessages(args: {
     kind: 'macro',
     history: fitted.history,
     summary: fitted.summary,
-    compactedMessageCount: safeCut,
+    summarizedMessageCount: safeCut,
   };
-}
-
-function preferredCut(messageCount: number): number {
-  if (messageCount <= 1) return messageCount;
-  const tailSize = messageCount <= 8
-    ? 1
-    : Math.max(8, Math.ceil(messageCount * 0.25));
-  return Math.max(1, messageCount - tailSize);
 }
 
 function chooseSafeCut(args: {

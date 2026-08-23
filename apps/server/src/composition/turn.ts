@@ -62,6 +62,8 @@ export interface TurnCompositionDeps {
   readonly stage: StageEngine;
   /** 应用事件出口（eventHub）。 */
   readonly emitAppEvent: (event: AppEvent) => void;
+  /** completed 终态事务内的提取入队（Memory 一族）；事务提交后由它自己安排 drain。 */
+  readonly onTurnCompletedInTransaction: (turnId: string) => void;
 }
 
 export function openTurns(deps: TurnCompositionDeps): TurnComposition {
@@ -173,8 +175,12 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
         }).then(result => result.contextText ?? undefined)
         .catch(() => undefined)
       : undefined;
-    // takeContextReminder 是 take 语义（读取即消费），只能调用一次。
-    const pendingTasks = database.tasks.takeContextReminder(scope.sessionId);
+    // shouldRemind 只检查不消费；提醒随 reminder 落库成功后由 onReminderPersisted 提交 markReminded。
+    const pendingTasks = database.tasks.shouldRemind(scope.sessionId)
+      ? database.tasks.list(scope.sessionId).filter(
+          (task) => task.status === 'pending' || task.status === 'in_progress',
+        )
+      : [];
     const taskReminder = pendingTasks.length > 0
       ? formatTaskContextReminder(pendingTasks)
       : undefined;
@@ -266,11 +272,16 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     isBypassPermissionsModeAvailable:
       process.env['EMA_BYPASS_PERMISSIONS'] === '1' && process.env.NODE_ENV !== 'production',
     readTurnReminderFacts,
+    onReminderPersisted: (sessionId, facts) => {
+      // 只有 reminder Message 成功持久化才提交"已提醒"，避免 Turn 准备失败吞掉提醒周期。
+      if (facts.taskReminder) database.tasks.markReminded(sessionId);
+    },
     memoryGuidance: () => buildMemoryGuidance().catch(() => null),
     usageRecorder: database.usageRecorder,
     stage,
     startSessionTitleGeneration,
     characterDirectoryName: () => characters.current().directoryName,
+    onTurnCompletedInTransaction: deps.onTurnCompletedInTransaction,
   });
 
   return { turnExecutor, interactionQueue };

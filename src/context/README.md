@@ -43,12 +43,14 @@ Turn reminder 表示"本 Turn 开始时的事实"：它在根 Turn 开始时由 
 
 ## Session Message 投影
 
-`buildMessages()` 是持久化 Session Message 到 LLM Message 的投影函数：
+`deriveLlmHistory()` 是持久化 Session Message 到 LLM Message 的唯一转换入口，返回 `LlmHistoryMessage[]`（`sessionMessageId + message`）：
 
 - 丢弃旧 system；
 - thinking 只供 UI/审计，不跨 Provider 重放；
 - 只保留完整配对的 `tool_use/tool_result`；
 - 历史附件引用变成明确占位，真实媒体兼容由 LLM Request Preparer 处理。
+
+投影会丢消息（空块、未配对 Tool 块），产出比输入短；`sessionMessageId` 只用于 Macro 摘要成功后映射 `summarizedThroughMessageId`，不进入 Compact 或 LLM 请求，也不允许按下标对齐输入。
 
 ## 与 Compact 的关系
 

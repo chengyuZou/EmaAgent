@@ -226,6 +226,7 @@ describe('createCompact', () => {
         maximumReservedOutputTokens: 0,
         keepRecentToolResults: 6,
         maximumConsecutiveFailures: 1,
+        retainRatio: 0.16,
       },
     }));
     expect(JSON.stringify(forced)).toContain('压缩后的工作摘要');
@@ -249,7 +250,7 @@ describe('createCompact', () => {
     expect(result).toMatchObject({
       kind: 'macro',
       summary: '压缩后的工作摘要',
-      compactedMessageCount: 1,
+      summarizedMessageCount: 1,
     });
     expect(JSON.stringify(result.history)).toContain('压缩后的工作摘要');
     expect(complete).toHaveBeenCalledTimes(1);
@@ -303,6 +304,56 @@ describe('createCompact', () => {
       type: 'compact_failed',
       error: expect.stringContaining('历史预算'),
     });
+  });
+
+  it('saveMacroSummary 保存成功后才发 compact_completed', async () => {
+    const complete = vi.fn(async () => completion());
+    const compact = createCompact(llmCompleting(complete), {
+      bufferTokens: 0,
+      defaultReservedOutputTokens: 0,
+      maximumReservedOutputTokens: 0,
+    });
+    const events: CompactEvent[] = [];
+    const saved: Array<{ summary: string; count: number }> = [];
+
+    const result = await compact(request(textHistory(), {
+      force: true,
+      onEvent: (event) => events.push(event),
+      saveMacroSummary: (summary, count) => { saved.push({ summary, count }); },
+    }));
+
+    expect(result).toMatchObject({ kind: 'macro' });
+    if (result.kind !== 'macro') throw new Error('应为 macro');
+    expect(saved).toHaveLength(1);
+    expect(saved[0]).toEqual({
+      summary: '压缩后的工作摘要',
+      count: result.summarizedMessageCount,
+    });
+    expect(events.map((event) => event.type)).toEqual([
+      'compact_started',
+      'compact_completed',
+    ]);
+  });
+
+  it('saveMacroSummary 抛错：发 compact_failed、不发 completed、原错误上抛', async () => {
+    const complete = vi.fn(async () => completion());
+    const compact = createCompact(llmCompleting(complete), {
+      bufferTokens: 0,
+      defaultReservedOutputTokens: 0,
+      maximumReservedOutputTokens: 0,
+    });
+    const events: CompactEvent[] = [];
+
+    await expect(compact(request(textHistory(), {
+      force: true,
+      onEvent: (event) => events.push(event),
+      saveMacroSummary: () => { throw new Error('db down'); },
+    }))).rejects.toThrow('db down');
+
+    expect(events.map((event) => event.type)).toEqual([
+      'compact_started',
+      'compact_failed',
+    ]);
   });
 
   it('拒绝把 System Prompt 混入可压缩历史', async () => {

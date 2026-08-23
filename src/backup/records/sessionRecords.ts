@@ -69,7 +69,22 @@ export const messageRecordSchema = z.object({
   blocksJson: z.string(),
   interrupted: z.boolean(),
   createdAt: integer,
-}).strict();
+  // summary 必须携带覆盖截止游标，其他 kind 必须为 null；开发期不兼容缺失游标的旧 ZIP。
+  summarizedThroughMessageId: nullableId,
+}).strict().superRefine((value, ctx) => {
+  if (value.kind === 'summary' && value.summarizedThroughMessageId === null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'summary 消息必须携带覆盖截止游标 summarizedThroughMessageId',
+    });
+  }
+  if (value.kind !== 'summary' && value.summarizedThroughMessageId !== null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: '非 summary 消息不能携带覆盖截止游标 summarizedThroughMessageId',
+    });
+  }
+});
 
 export const taskRecordSchema = z.object({
   id,
@@ -87,19 +102,11 @@ export const taskRecordSchema = z.object({
   completedAt: integer.nullable(),
 }).strict();
 
-export const taskDependencyRecordSchema = z.object({
-  sessionId: id,
-  blockerTaskId: id,
-  blockedTaskId: id,
-  createdAt: integer,
-}).strict();
-
 export const agentRunRecordSchema = z.object({
   id,
   sessionId: id,
   parentTurnId: id,
   parentAgentRunId: nullableId,
-  taskId: nullableId,
   contextMode: z.enum(['subagent', 'fork']),
   description: z.string().nullable(),
   providerId: nullableId,
@@ -230,7 +237,6 @@ export type SessionRecord = z.infer<typeof sessionRecordSchema>;
 export type TurnRecord = z.infer<typeof turnRecordSchema>;
 export type MessageRecord = z.infer<typeof messageRecordSchema>;
 export type TaskRecord = z.infer<typeof taskRecordSchema>;
-export type TaskDependencyRecord = z.infer<typeof taskDependencyRecordSchema>;
 export type AgentRunRecord = z.infer<typeof agentRunRecordSchema>;
 export type AgentRunMessageRecord = z.infer<typeof agentRunMessageRecordSchema>;
 export type ToolExecutionRecord = z.infer<typeof toolExecutionRecordSchema>;

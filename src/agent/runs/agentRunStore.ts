@@ -24,7 +24,6 @@ function fromRow(row: AgentRunRow): AgentRun {
     ...(row.parent_agent_run_id !== null
       ? { parentAgentRunId: row.parent_agent_run_id }
       : {}),
-    ...(row.task_id !== null ? { taskId: row.task_id } : {}),
     ...(row.description !== null ? { description: row.description } : {}),
     ...(row.provider_id !== null
       ? { providerId: row.provider_id }
@@ -50,7 +49,6 @@ export class AgentRunStore {
       sessionId: input.sessionId,
       parentTurnId: input.parentTurnId,
       parentAgentRunId: input.parentAgentRunId,
-      taskId: input.taskId,
       contextMode: input.contextMode,
       description: input.description,
       providerId: input.providerId,

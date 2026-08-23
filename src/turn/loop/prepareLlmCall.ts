@@ -15,29 +15,40 @@ export interface PrepareLlmCallDeps {
   readonly turnId: string;
   readonly prepared: PreparedTurn;
   readonly compact: (request: CompactRequest) => Promise<CompactResult>;
-  readonly sessions: Pick<SessionStore, 'appendMessage'>;
   readonly emit: (event: TurnStreamEvent) => void;
   readonly budget: AgentBudget;
   /** 初始工作历史中属于"历史区间"的条数（其后为本 Turn 工作消息）。 */
   readonly baselineMessageCount: number;
+  /**
+   * 根 Turn 的 Macro 持久化能力；缺省（子 Agent）表示只压缩自己的工作历史，
+   * 不碰根 Session 的 Summary 边界。baselineMessageIds 与历史区间一一对应，
+   * 长度必须等于 baselineMessageCount。
+   */
+  readonly macroPersistence?: {
+    readonly sessions: Pick<SessionStore, 'appendHistorySummary'>;
+    readonly baselineMessageIds: readonly string[];
+  };
   readonly signal: AbortSignal;
-  /** 根 Turn true（Macro 摘要落 Session）；子 Agent false——只能压缩自己的工作历史。 */
-  readonly persistMacro?: boolean;
   /** 每次请求装配完成后回调；根 Turn 用它更新 fork 子 Agent 的继承视图。 */
   readonly onRequestPrepared?: (messages: readonly Message[]) => void;
 }
 
 /**
  * 每次模型调用前重建可见窗口：历史区间（唯一允许 Compact 改写）与本 Turn 工作消息
- * 分开处理；micro/macro 改写后整体替换循环的工作历史并重设基线，Macro 摘要本身即
- * 覆盖游标（历史重放永远从最新 summary 之后开始）。
+ * 分开处理；micro/macro 改写后整体替换循环的工作历史并重设基线。Macro 摘要经
+ * appendHistorySummary 携带明确覆盖截止游标（summarizedMessageCount 映射自基线身份），
+ * 历史重放从游标之后开始，与摘要写入时序无关。
  *
  * Reminder 不在此重建：它表示"本 Turn 开始时的事实"，由 Turn 在启动前持久化一次，
  * 随本 Turn 工作消息（不可压缩区间）原样到达每一次装配。
  */
 export function createPrepareLlmCall(deps: PrepareLlmCallDeps): PrepareAgentIteration {
-  const { prepared } = deps;
+  const { prepared, macroPersistence } = deps;
   let baselineCount = deps.baselineMessageCount;
+  if (macroPersistence && macroPersistence.baselineMessageIds.length !== baselineCount) {
+    throw new Error('macroPersistence.baselineMessageIds 必须与 baselineMessageCount 等长');
+  }
+  let baselineIds: readonly string[] = macroPersistence?.baselineMessageIds ?? [];
 
   return async ({ messages, recoveryReason }) => {
     const history = messages.slice(0, baselineCount);
@@ -70,19 +81,30 @@ export function createPrepareLlmCall(deps: PrepareLlmCallDeps): PrepareAgentIter
       // Compact 事件是 Session 域事实；进入本 Turn 事件流时在此补上 Turn 身份。
       onEvent: event => deps.emit({ ...event, turnId: deps.turnId }),
       settings: prepared.compactSettings,
+      // Macro 摘要由 Compact 在保存成功后发 completed；根 Turn 在此落库
+      // （/compact Command 复用同一闭包语义，子 Agent 不提供）。
+      ...(macroPersistence
+        ? {
+            saveMacroSummary: (summary: string, summarizedMessageCount: number) => {
+              // 先映射游标再落库；SQL 成功后才让 Compact 发 compact_completed。
+              const throughMessageId = baselineIds[summarizedMessageCount - 1]!;
+              const summaryMessage = macroPersistence.sessions.appendHistorySummary({
+                sessionId: deps.sessionId,
+                summary,
+                summarizedThroughMessageId: throughMessageId,
+              });
+              // 新基线 = [持久化的 summary, ...未被摘要的尾部身份]，供本 Turn 可能的再次压缩。
+              baselineIds = [
+                summaryMessage.id,
+                ...baselineIds.slice(summarizedMessageCount),
+              ];
+            },
+          }
+        : {}),
     });
 
     let nextMessages = messages;
     if (result.kind !== 'unchanged') {
-      if (result.kind === 'macro' && deps.persistMacro !== false) {
-        deps.sessions.appendMessage({
-          turnId: null,
-          sessionId: deps.sessionId,
-          role: 'user',
-          kind: 'summary',
-          blocks: result.summary,
-        });
-      }
       baselineCount = result.history.length;
       nextMessages = [...result.history, ...currentTurn];
       assembled = assemble(result.history);

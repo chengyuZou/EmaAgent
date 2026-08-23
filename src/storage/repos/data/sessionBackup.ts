@@ -7,7 +7,7 @@ import type { BackgroundProcessRow } from './backgroundProcesses.js';
 import type { MessageRow } from './messages.js';
 import type { SessionRow } from './sessions.js';
 import type { SpeechOutputRow, SpeechSegmentRow } from './speechOutputs.js';
-import type { TaskDependencyRow, TaskRow } from './tasks.js';
+import type { TaskRow } from './tasks.js';
 import type { TurnRow } from './turns.js';
 import type { UsageRecordRow } from './usage-records.js';
 
@@ -32,7 +32,7 @@ export interface SessionBackupToolExecutionRow {
   updated_at: number;
 }
 
-export type SessionBackupTaskRow = Omit<TaskRow, 'active_agent_run_id'>;
+export type SessionBackupTaskRow = TaskRow;
 
 /** Iterable 只允许在 readSession 回调期间消费，不能把 SQLite 游标带出事务。 */
 export interface SessionBackupRows {
@@ -40,7 +40,6 @@ export interface SessionBackupRows {
   readonly turns: Iterable<TurnRow>;
   readonly messages: Iterable<MessageRow>;
   readonly tasks: Iterable<SessionBackupTaskRow>;
-  readonly taskDependencies: Iterable<TaskDependencyRow>;
   readonly agentRuns: Iterable<AgentRunRow>;
   readonly agentRunMessages: Iterable<AgentRunMessageRow>;
   readonly toolExecutions: Iterable<SessionBackupToolExecutionRow>;
@@ -94,11 +93,6 @@ export class SessionBackupReader {
           FROM tasks
           WHERE session_id = ?
           ORDER BY display_number ASC, id ASC
-        `, sessionId),
-        taskDependencies: this.iterate<TaskDependencyRow>(`
-          SELECT * FROM task_dependencies
-          WHERE session_id = ?
-          ORDER BY blocker_task_id ASC, blocked_task_id ASC
         `, sessionId),
         agentRuns: this.iterate<AgentRunRow>(
           'SELECT * FROM agent_runs WHERE session_id = ? ORDER BY created_at ASC, id ASC',
@@ -214,13 +208,15 @@ export class SessionBackupRestorer {
 
     const insertMessage = this.db.prepare(`
       INSERT INTO messages (
-        id, session_id, turn_id, role, kind, blocks_json, interrupted, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        id, session_id, turn_id, role, kind, blocks_json, interrupted, created_at,
+        summarized_through_message_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     for (const row of rows.messages) {
       insertMessage.run(
         row.id, session.id, row.turn_id, row.role, row.kind,
         row.blocks_json, row.interrupted, row.created_at,
+        row.summarized_through_message_id,
       );
     }
 
@@ -239,28 +235,17 @@ export class SessionBackupRestorer {
       );
     }
 
-    const insertDependency = this.db.prepare(`
-      INSERT INTO task_dependencies (
-        session_id, blocker_task_id, blocked_task_id, created_at
-      ) VALUES (?, ?, ?, ?)
-    `);
-    for (const row of rows.taskDependencies) {
-      insertDependency.run(
-        session.id, row.blocker_task_id, row.blocked_task_id, row.created_at,
-      );
-    }
-
     const insertAgentRun = this.db.prepare(`
       INSERT INTO agent_runs (
-        id, session_id, parent_turn_id, parent_agent_run_id, task_id,
+        id, session_id, parent_turn_id, parent_agent_run_id,
         context_mode, description, provider_id, model_id, status, error,
         iterations, tool_call_count, input_tokens, output_tokens, output_excerpt,
         version, created_at, updated_at, completed_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     for (const row of orderAgentRuns(rows.agentRuns)) {
       insertAgentRun.run(
-        row.id, session.id, row.parent_turn_id, row.parent_agent_run_id, row.task_id,
+        row.id, session.id, row.parent_turn_id, row.parent_agent_run_id,
         row.context_mode, row.description, row.provider_id, row.model_id,
         row.status, row.error, row.iterations, row.tool_call_count,
         row.input_tokens, row.output_tokens, row.output_excerpt,

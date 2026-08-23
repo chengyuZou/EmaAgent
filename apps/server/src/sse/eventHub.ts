@@ -1,6 +1,7 @@
 // 事件扇出枢纽：Turn 流按 turnId 定向，应用事件全局广播；单个订阅者异常不拖垮其他连接。
 import type { CharacterEvent } from '@ema-agent/characters';
 import type { KnowledgeEvent } from '@ema-agent/knowledge';
+import type { MemoryEvent } from '@ema-agent/memory';
 import type { SpeechEvent } from '@ema-agent/speech';
 import type { SystemWarningEvent } from '@ema-agent/system';
 import type { BackgroundProcessEvent } from '@ema-agent/tools';
@@ -39,6 +40,7 @@ export type AppEvent =
   | BackgroundProcessEvent
   | KnowledgeEvent
   | CharacterEvent
+  | MemoryEvent
   | TurnActivityEvent
   | SystemWarningEvent
   | { readonly type: 'session_title_updated'; readonly sessionId: string; readonly title: string }

@@ -22,7 +22,6 @@ const INPUT = {
   providerId: undefined,
   modelId: undefined,
   contextMode: undefined,
-  taskId: undefined,
   runInBackground: undefined,
 };
 

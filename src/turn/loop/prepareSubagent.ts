@@ -7,7 +7,6 @@ import { createLlmCall } from '@ema-agent/llm';
 import type { Message } from '@ema-agent/llm';
 import type { CompactRequest, CompactResult } from '@ema-agent/compact';
 import type { Providers } from '@ema-agent/providers';
-import type { SessionStore } from '@ema-agent/session';
 import { BuiltinTools } from '@ema-agent/tools';
 import type { TurnStreamEvent } from '../events.js';
 import type { PreparedTurn } from '../preparation/prepareTurn.js';
@@ -32,7 +31,6 @@ export interface PrepareSubagentDeps {
   readonly prepared: () => PreparedTurn;
   readonly providers: Providers;
   readonly compact: (request: CompactRequest) => Promise<CompactResult>;
-  readonly sessions: Pick<SessionStore, 'appendMessage'>;
   readonly emit: (event: TurnStreamEvent) => void;
   readonly budget: AgentBudget;
   /** fork 子 Agent 继承的最终请求视图；根 Turn 每次请求装配后 splice 更新。 */
@@ -78,12 +76,10 @@ export function createPrepareSubagent(deps: PrepareSubagentDeps): PrepareSubagen
       turnId: deps.turnId,
       prepared: subPrepared,
       compact: deps.compact,
-      sessions: deps.sessions,
       emit: deps.emit,
       budget: deps.budget,
       baselineMessageCount: fork ? deps.parentMessages.length : 0,
       signal,
-      persistMacro: false,
     });
 
     return {

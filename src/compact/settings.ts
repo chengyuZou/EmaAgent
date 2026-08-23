@@ -16,6 +16,8 @@ export interface CompactSettings {
   readonly maximumReservedOutputTokens: number;
   readonly keepRecentToolResults: number;
   readonly maximumConsecutiveFailures: number;
+  /** 近期原文保留比例（相对 contextWindow）；硬预算不足时 Compact 会继续扩大摘要范围。 */
+  readonly retainRatio: number;
 }
 
 export const COMPACT_GROUP = 'context.compact';
@@ -80,6 +82,16 @@ export const compactMaximumConsecutiveFailuresSetting = defineSetting<number>({
   group: COMPACT_GROUP,
 });
 
+export const compactRetainRatioSetting = defineSetting<number>({
+  key: 'context.compact.retainRatio',
+  label: '近期原文保留比例',
+  description: '压缩时按上下文窗口比例保留近期原文尾部；硬预算放不下时会继续扩大摘要范围。',
+  apply: 'nextTurn',
+  defaultValue: 0.16,
+  schema: z.number().min(0.05).max(0.25),
+  group: COMPACT_GROUP,
+});
+
 /** context.compact 组内全部字段定义(供 SettingsStore 注册组)。 */
 export const COMPACT_SETTINGS = [
   compactEnabledSetting,
@@ -88,6 +100,7 @@ export const COMPACT_SETTINGS = [
   compactMaximumReservedOutputTokensSetting,
   compactKeepRecentToolResultsSetting,
   compactMaximumConsecutiveFailuresSetting,
+  compactRetainRatioSetting,
 ] as const;
 
 /**
@@ -104,6 +117,7 @@ export const compactGroup: SettingGroup = {
       'context.compact.maximumReservedOutputTokens': z.number(),
       'context.compact.keepRecentToolResults': z.number(),
       'context.compact.maximumConsecutiveFailures': z.number(),
+      'context.compact.retainRatio': z.number(),
     })
     .refine(
       g =>
@@ -121,6 +135,7 @@ export const DEFAULT_COMPACT_SETTINGS: CompactSettings = {
   maximumReservedOutputTokens: compactMaximumReservedOutputTokensSetting.defaultValue,
   keepRecentToolResults: compactKeepRecentToolResultsSetting.defaultValue,
   maximumConsecutiveFailures: compactMaximumConsecutiveFailuresSetting.defaultValue,
+  retainRatio: compactRetainRatioSetting.defaultValue,
 };
 
 /** 聚合读取整块压缩预算快照(坏值/缺失自动回落默认)。 */
@@ -132,5 +147,6 @@ export function readCompactSettings(store: SettingsStore): CompactSettings {
     maximumReservedOutputTokens: store.get(compactMaximumReservedOutputTokensSetting),
     keepRecentToolResults: store.get(compactKeepRecentToolResultsSetting),
     maximumConsecutiveFailures: store.get(compactMaximumConsecutiveFailuresSetting),
+    retainRatio: store.get(compactRetainRatioSetting),
   };
 }

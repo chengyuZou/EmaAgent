@@ -1,5 +1,26 @@
 // 寻找不会拆散 tool_use 与 tool_result 配对的安全压缩边界。
 import type { Message as ModelMessage } from '@ema-agent/llm';
+import { estimateMessagesTokens } from '@ema-agent/token';
+
+/**
+ * 从最新消息向前按 Token 累计，返回"近期原文尾部"的起点：尾部总量达到
+ * retainTokens 即停（最新一条永远保留），再向前调整到不拆散 Tool 配对的安全边界。
+ * retainTokens 是期望保留量不是保证；硬预算放不下时的扩张由调用方负责。
+ */
+export function findRetainedHistoryStart(
+  history: readonly ModelMessage[],
+  retainTokens: number,
+): number {
+  let accumulated = 0;
+  let start = history.length;
+  while (start > 0) {
+    const messageTokens = estimateMessagesTokens([history[start - 1]!]);
+    if (accumulated > 0 && accumulated + messageTokens > retainTokens) break;
+    accumulated += messageTokens;
+    start -= 1;
+  }
+  return findSafeCutPoint(history, start);
+}
 
 /** 从期望位置向前寻找安全边界，保证 tail 内每个 tool_result 的调用也留在 tail。 */
 export function findSafeCutPoint(messages: readonly ModelMessage[], desiredCut: number): number {

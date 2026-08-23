@@ -11,7 +11,6 @@ import type {
   SessionRow,
   SpeechOutputRow,
   SpeechSegmentRow,
-  TaskDependencyRow,
   TurnRow,
   UsageRecordRow,
 } from '@ema-agent/storage';
@@ -24,7 +23,6 @@ import type {
   SessionRecord,
   SpeechOutputRecord,
   SpeechSegmentRecord,
-  TaskDependencyRecord,
   TaskRecord,
   ToolExecutionRecord,
   TurnRecord,
@@ -87,6 +85,7 @@ export const restoreMessageRecord = (record: MessageRecord): MessageRow => ({
   blocks_json: record.blocksJson,
   interrupted: record.interrupted ? 1 : 0,
   created_at: record.createdAt,
+  summarized_through_message_id: record.summarizedThroughMessageId ?? null,
 });
 
 export function restoreTaskRecord(record: TaskRecord): SessionBackupTaskRow {
@@ -108,15 +107,6 @@ export function restoreTaskRecord(record: TaskRecord): SessionBackupTaskRow {
   };
 }
 
-export const restoreTaskDependencyRecord = (
-  record: TaskDependencyRecord,
-): TaskDependencyRow => ({
-  session_id: record.sessionId,
-  blocker_task_id: record.blockerTaskId,
-  blocked_task_id: record.blockedTaskId,
-  created_at: record.createdAt,
-});
-
 export function restoreAgentRunRecord(record: AgentRunRecord, importedAt: number): AgentRunRow {
   const unfinished = record.status === 'running';
   return {
@@ -124,7 +114,6 @@ export function restoreAgentRunRecord(record: AgentRunRecord, importedAt: number
     session_id: record.sessionId,
     parent_turn_id: record.parentTurnId,
     parent_agent_run_id: record.parentAgentRunId,
-    task_id: record.taskId,
     context_mode: record.contextMode,
     description: record.description,
     provider_id: record.providerId,

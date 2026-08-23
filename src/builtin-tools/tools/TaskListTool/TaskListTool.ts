@@ -1,4 +1,4 @@
-// 列出当前 Session 的 Task 摘要;已完成的阻塞项从 blockedBy 中隐藏,让模型直接看到可启动的工作。
+// 列出当前 Session 的 Task 摘要,让模型看到整体进度与可启动的工作。
 
 import { z } from 'zod';
 import {
@@ -29,8 +29,6 @@ export interface TaskListItem {
   displayNumber: number;
   subject: string;
   status: TaskStatus;
-  blockedBy: string[];
-  activeAgentRunId?: string;
   version: number;
 }
 
@@ -53,20 +51,12 @@ export const TaskListTool = buildTool<TaskListInput, TaskListResult, TaskListToo
   },
 
   async execute(_input, context, invocation): Promise<TaskListResult> {
-    const tasks = context.taskStore.list(invocation.sessionId);
-    const completed = new Set(
-      tasks.filter((task) => task.status === 'completed').map((task) => task.id),
-    );
-    const items = tasks.map((task): TaskListItem => ({
+    const items = context.taskStore.list(invocation.sessionId).map((task): TaskListItem => ({
       id: task.id,
       displayNumber: task.displayNumber,
       subject: task.subject,
       status: task.status,
-      blockedBy: task.blockedBy.filter((taskId) => !completed.has(taskId)),
       version: task.version,
-      ...(task.activeAgentRunId !== undefined
-        ? { activeAgentRunId: task.activeAgentRunId }
-        : {}),
     }));
     return {
       message: items.length === 0

@@ -15,26 +15,12 @@ Status progresses: \`pending\` → \`in_progress\` → \`completed\`.
 - ONLY mark a task completed when you have FULLY accomplished it. Never mark completed if: tests are failing, implementation is partial, you hit unresolved errors, or you couldn't find necessary files or dependencies
 - If blocked, keep the task pending or in_progress and create a new task describing what must be resolved
 
-A task with unresolved blockedBy entries cannot enter in_progress or completed. A task with an active AgentRun cannot enter a terminal state or be deleted.
-
-## Dependencies
-
-- **addBlocks**: Tasks that cannot start until this one completes
-- **addBlockedBy**: Tasks that must complete before this one can start
-- **removeBlocks / removeBlockedBy**: Correct existing dependencies
-
-Dependency cycles are rejected.
-
 ## Destructive Actions
 
 - \`action: "cancel"\` — work intentionally abandoned; history remains
 - \`action: "delete"\` — only for duplicates or mistakenly created tasks; removes the task permanently
 
 An action must be submitted alone — it cannot be combined with any other mutation in the same call.
-
-## Sub-agent Completion
-
-An AgentRun finishing never completes its bound Task automatically. The root agent must inspect the run's result and call TaskUpdate explicitly.
 
 ## Examples
 
@@ -44,8 +30,5 @@ Mark in progress when starting work:
 Mark completed after finishing:
 {"taskId": "<uuid>", "expectedVersion": 2, "status": "completed"}
 
-Set up a dependency:
-{"taskId": "<uuid>", "expectedVersion": 3, "addBlockedBy": ["<blocker-uuid>"]}
-
 Cancel abandoned work:
-{"taskId": "<uuid>", "expectedVersion": 4, "action": "cancel"}`;
+{"taskId": "<uuid>", "expectedVersion": 3, "action": "cancel"}`;

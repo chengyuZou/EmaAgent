@@ -29,7 +29,6 @@ export interface SubagentSpawnOptions {
   description?: string;
   contextMode?: SubagentContextMode;
   agentRunId?: string;
-  taskId?: string;
   /** AgentRole 目录钉死的角色身份 Prompt（非模型入参）；由 PrepareSubagent 装配进子 Agent 上下文。 */
   systemPrompt?: string;
   /** AgentRole 目录钉死的工具收窄（模型可见名）；PrepareSubagent 只从父 ToolPool 继续收窄，绝不扩权。 */

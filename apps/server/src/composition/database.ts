@@ -4,6 +4,8 @@ import {
   AgentRunsRepo,
   AttachmentRepo,
   Database,
+  DataDirStatsRepo,
+  SessionStatsRepo,
   TasksRepo,
   UsageRecordsRepo,
 } from '@ema-agent/storage';
@@ -36,6 +38,9 @@ export interface DatabaseComposition {
   readonly agentRunMessages: AgentRunMessagesStore;
   /** 全部能力调用共享的用量记账口（UsageRecordsRepo 直接满足 UsageRecorder 端口）。 */
   readonly usageRecorder: UsageRecorder;
+  /** 数据目录/单 Session 的存储统计只读投影。 */
+  readonly dataDirStats: DataDirStatsRepo;
+  readonly sessionStats: SessionStatsRepo;
 
   /** 关闭两个数据库；进程关闭序列的最后一步。 */
   close(): void;
@@ -84,6 +89,8 @@ export function openDatabases(activeDataDir: string): DatabaseComposition {
     agentRuns: new AgentRunStore(new AgentRunsRepo(dataDb.sqlite)),
     agentRunMessages: new AgentRunMessagesStore(new AgentRunMessagesRepo(dataDb.sqlite)),
     usageRecorder: new UsageRecordsRepo(dataDb.sqlite),
+    dataDirStats: new DataDirStatsRepo(dataDb.sqlite),
+    sessionStats: new SessionStatsRepo(dataDb.sqlite),
     close() {
       dataDb.close();
       profileDb.close();

@@ -44,8 +44,6 @@ export const REQUEST_VALUE_LIMITS = Object.freeze({
   maxTurnAttachments: 64,
   maxTurnKbIds: 128,
   maxTurnKbAssetScopes: 128,
-  maxCardVoiceFileBytes: 25 * MiB,
-  maxCardVoicePromptChars: 4_000,
   maxTtsTestTextChars: 2_000,
 });
 
@@ -64,9 +62,9 @@ export function resolveRequestBudget(
 
   const normalizedPath = path.length > 1 ? path.replace(/\/$/, '') : path;
   if (normalizedPath === '/api/turns') return REQUEST_BUDGETS.turn;
-  if (normalizedPath === '/api/transcribe') return REQUEST_BUDGETS.audioUpload;
-  if (normalizedPath === '/api/storage/sessions/import') return REQUEST_BUDGETS.sessionImport;
-  if (/^\/api\/cards\/[^/]+\/voice$/.test(normalizedPath)) {
+  if (normalizedPath === '/api/providers/transcribe') return REQUEST_BUDGETS.audioUpload;
+  if (normalizedPath === '/api/sessions/import') return REQUEST_BUDGETS.sessionImport;
+  if (/^\/api\/characters\/[^/]+\/voice\/publish$/.test(normalizedPath)) {
     return REQUEST_BUDGETS.audioUpload;
   }
   return REQUEST_BUDGETS.defaultJson;

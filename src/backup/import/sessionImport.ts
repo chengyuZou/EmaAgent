@@ -13,7 +13,6 @@ import {
   sessionRecordSchema,
   speechOutputRecordSchema,
   speechSegmentRecordSchema,
-  taskDependencyRecordSchema,
   taskRecordSchema,
   toolExecutionRecordSchema,
   turnRecordSchema,
@@ -28,12 +27,12 @@ import {
   restoreSessionRecord,
   restoreSpeechOutputRecord,
   restoreSpeechSegmentRecord,
-  restoreTaskDependencyRecord,
   restoreTaskRecord,
   restoreToolExecutionRecord,
   restoreTurnRecord,
   restoreUsageRecord,
 } from '../records/importMappings.js';
+import type { MessageRecord } from '../records/sessionRecords.js';
 import type { BackupArchiveSource, SessionImportResult } from '../types.js';
 import { extractSessionArchive } from './archive.js';
 import { readJsonRecord, readJsonlRecords } from './recordReader.js';
@@ -60,14 +59,13 @@ export async function importSessionArchive(
       throw new SessionImportError('invalid_format', 'manifest 与 Session id 不一致');
     }
     const [
-      turns, messages, tasks, taskDependencies, agentRuns, agentRunMessages,
+      turns, messages, tasks, agentRuns, agentRunMessages,
       toolExecutions, backgroundProcesses, attachments, speechOutputs,
       speechSegments, usageRecords,
     ] = await Promise.all([
       readJsonlRecords(archive, 'turns', turnRecordSchema),
       readJsonlRecords(archive, 'messages', messageRecordSchema),
       readJsonlRecords(archive, 'tasks', taskRecordSchema),
-      readJsonlRecords(archive, 'taskDependencies', taskDependencyRecordSchema),
       readJsonlRecords(archive, 'agentRuns', agentRunRecordSchema),
       readJsonlRecords(archive, 'agentRunMessages', agentRunMessageRecordSchema),
       readJsonlRecords(archive, 'toolExecutions', toolExecutionRecordSchema),
@@ -79,10 +77,11 @@ export async function importSessionArchive(
     ]);
     throwIfCancelled(signal);
     assertSessionOwnership(manifest.sessionId, {
-      turns, messages, tasks, taskDependencies, agentRuns, toolExecutions,
+      turns, messages, tasks, agentRuns, toolExecutions,
       backgroundProcesses, attachments, speechOutputs, speechSegments,
       usageRecords,
     });
+    assertSummaryCursors(messages);
 
     const warnings = manifest.omittedFiles.map(file => `${file.kind}:${file.id} 未包含文件内容`);
     const importedAt = Date.now();
@@ -113,7 +112,6 @@ export async function importSessionArchive(
         turns: turns.map(row => restoreTurnRecord(row, importedAt)),
         messages: messages.map(restoreMessageRecord),
         tasks: tasks.map(restoreTaskRecord),
-        taskDependencies: taskDependencies.map(restoreTaskDependencyRecord),
         agentRuns: agentRuns.map(row => restoreAgentRunRecord(row, importedAt)),
         agentRunMessages: agentRunMessages.map(restoreAgentRunMessageRecord),
         toolExecutions: toolExecutions.map(row => restoreToolExecutionRecord(row, importedAt)),
@@ -173,6 +171,26 @@ function assertSessionOwnership(sessionId: string, groups: Record<string, readon
   for (const [name, records] of Object.entries(groups)) {
     if (records.some(record => record.sessionId !== sessionId)) {
       throw new SessionImportError('invalid_format', `${name} 包含其他 Session 的记录`);
+    }
+  }
+}
+
+/** 每个 Summary 的覆盖截止游标必须指向本次归档中的同 Session 消息。 */
+function assertSummaryCursors(messages: readonly MessageRecord[]): void {
+  const messageIds = new Set(messages.map(message => message.id));
+  for (const message of messages) {
+    if (message.kind !== 'summary') continue;
+    if (message.summarizedThroughMessageId === null) {
+      throw new SessionImportError(
+        'invalid_format',
+        `summary 消息 ${message.id} 缺少覆盖截止游标`,
+      );
+    }
+    if (!messageIds.has(message.summarizedThroughMessageId)) {
+      throw new SessionImportError(
+        'invalid_format',
+        `summary 消息 ${message.id} 的覆盖截止游标不在本次归档的 messages 中`,
+      );
     }
   }
 }

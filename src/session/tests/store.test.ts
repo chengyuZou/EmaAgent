@@ -278,6 +278,41 @@ describe('SessionStore — message', () => {
       .toEqual(['summary', 'post-new-a', 'post-new-b']);
   });
 
+  it('appendHistorySummary 按覆盖游标切边界：先于摘要落库但未覆盖的消息不被吞掉', () => {
+    const { store, db } = makeStore();
+    const s = store.createSession();
+    const turnId = insertTurnFixture(db, s.id);
+
+    store.appendMessage({ sessionId: s.id, turnId, role: 'user', blocks: 'covered-a' });
+    const through = store.appendMessage({ sessionId: s.id, turnId, role: 'user', blocks: 'covered-b' });
+    // 摘要生成期间活跃 Turn 写入的消息：先于摘要落库，但不在覆盖范围内。
+    store.appendMessage({ sessionId: s.id, turnId, role: 'user', kind: 'reminder', blocks: 'current-reminder' });
+    store.appendHistorySummary({
+      sessionId: s.id,
+      summary: 'summary',
+      summarizedThroughMessageId: through.id,
+    });
+    store.appendMessage({ sessionId: s.id, turnId, role: 'user', blocks: 'after' });
+
+    // summary 顶替最旧段排第一；未覆盖的 reminder 早于摘要落库也必须存活。
+    expect(store.loadHistory(s.id).map((message) => message.blocks))
+      .toEqual(['summary', 'current-reminder', 'after']);
+  });
+
+  it('appendHistorySummary 拒绝其他 Session 的游标消息', () => {
+    const { store, db } = makeStore();
+    const a = store.createSession();
+    const b = store.createSession();
+    const turnId = insertTurnFixture(db, a.id);
+    const foreign = store.appendMessage({ sessionId: a.id, turnId, role: 'user', blocks: 'x' });
+
+    expect(() => store.appendHistorySummary({
+      sessionId: b.id,
+      summary: 's',
+      summarizedThroughMessageId: foreign.id,
+    })).toThrow(/summary_through_message_not_in_session/);
+  });
+
   it('listMessagesForTurns 按时间正序返回指定 Turn 集合的消息', () => {
     const { store, db } = makeStore();
     const s = store.createSession();

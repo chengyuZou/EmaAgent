@@ -19,6 +19,14 @@ export interface CompactRequest {
   readonly signal?: AbortSignal;
   /** 过程事件出口（Session 域，无 Turn 身份）；投影为谁的事件由调用方决定。 */
   readonly onEvent?: (event: CompactEvent) => void;
+  /**
+   * Macro 摘要持久化闭包（根 Turn / `/compact` Command 提供，子 Agent 不提供）。
+   * 保存成功后 Compact 才发 compact_completed；闭包抛错则发 compact_failed 并原样上抛。
+   */
+  readonly saveMacroSummary?: (
+    summary: string,
+    summarizedMessageCount: number,
+  ) => void;
   /** 根 Turn 启动时冻结的设置；不提供时使用构造时默认值。 */
   readonly settings?: Readonly<CompactSettings>;
 }
@@ -41,6 +49,10 @@ export type CompactResult =
       readonly history: readonly Message[];
       /** 已经按最终历史预算裁剪过的摘要正文，持久化时必须使用这一份。 */
       readonly summary: string;
-      /** 被摘要替换的模型历史条数；接线层据此映射稳定的 SQL 截止游标。 */
-      readonly compactedMessageCount: number;
+      /**
+       * 输入 LLM 历史中从头开始被 Summary 替换的消息数。Compact 不返回 Session
+       * Message ID；调用方经 LlmHistoryMessage[summarizedMessageCount - 1] 映射
+       * summarizedThroughMessageId。
+       */
+      readonly summarizedMessageCount: number;
     };

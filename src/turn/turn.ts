@@ -5,7 +5,7 @@ import {
   runAgentLoop,
   type AgentLoopEvent,
 } from '@ema-agent/agent';
-import { buildMessages } from '@ema-agent/context';
+import { deriveLlmHistory } from '@ema-agent/context';
 import type { CompactRequest, CompactResult } from '@ema-agent/compact';
 import type {
   CallLlm,
@@ -73,7 +73,7 @@ export interface TurnExecutorDeps extends PrepareTurnDeps {
   readonly turns: TurnStore;
   readonly sessions: Pick<
     SessionStore,
-    'getSession' | 'appendMessage' | 'loadHistory' | 'markMessageInterrupted' | 'updateMessageBlocks'
+    'getSession' | 'appendMessage' | 'appendHistorySummary' | 'loadHistory' | 'markMessageInterrupted' | 'updateMessageBlocks'
   >;
   readonly createCompact: (
     callLlm: CallLlm,
@@ -86,6 +86,14 @@ export interface TurnExecutorDeps extends PrepareTurnDeps {
   readonly readTurnReminderFacts: (
     scope: TurnReminderScope,
   ) => Promise<TurnReminderFacts> | TurnReminderFacts;
+  /**
+   * reminder Message 成功持久化后回调；宿主在这里提交"已提醒"（如 Task 低频提醒的
+   * markReminded），保证只有提醒确实送达才推进提醒周期，Turn 准备失败不吞掉周期。
+   */
+  readonly onReminderPersisted?: (
+    sessionId: string,
+    facts: TurnReminderFacts,
+  ) => void;
   /** 逐次 LLM 调用用量记录；缺省不记账（观测不阻断主链）。 */
   readonly usageRecorder?: UsageRecorder;
   /**
@@ -103,6 +111,11 @@ export interface TurnExecutorDeps extends PrepareTurnDeps {
    * 回填冻结到 Turn 行；与 characterPrompt 同一时点读取，保证同源。
    */
   readonly characterDirectoryName: () => string;
+  /**
+   * completed 终态的同事务登记口（Memory 提取入队）。在 completeTurn 的 SQL 事务内
+   * 同步调用：只许入队类写入，禁止在此启动异步工作。Memory 零 import——由装配层注入。
+   */
+  readonly onTurnCompletedInTransaction?: (turnId: string) => void;
 }
 
 /**
@@ -234,7 +247,6 @@ export class TurnExecutor {
         },
         providers: this.deps.providers,
         compact: request => compactForTurn!(request),
-        sessions: this.deps.sessions,
         emit,
         budget,
         parentMessages,
@@ -285,6 +297,9 @@ export class TurnExecutor {
           selectedSkills: prepared.selectedSkills,
         }),
       });
+      // reminder 已持久化成功：宿主在此提交"已提醒"（Task reminder 两阶段提交点）。
+      // 放在 appendMessage 之后，保证 Turn 准备失败不会吞掉低频提醒周期。
+      this.deps.onReminderPersisted?.(sessionId, reminderFacts);
 
       this.deps.sessions.appendMessage({
         turnId,
@@ -305,10 +320,11 @@ export class TurnExecutor {
       if (reminderIndex < 0) {
         throw new Error('reminder 消息落库后未能从 Session History 读回');
       }
-      const historyMessages = buildMessages(persisted.slice(0, reminderIndex));
-      const reminderReplay = buildMessages(persisted.slice(reminderIndex, reminderIndex + 1));
+      const historyWithIds = deriveLlmHistory(persisted.slice(0, reminderIndex));
+      const reminderReplay = deriveLlmHistory(persisted.slice(reminderIndex, reminderIndex + 1))
+        .map(entry => entry.message);
       const initialMessages: Message[] = [
-        ...historyMessages,
+        ...historyWithIds.map(entry => entry.message),
         ...reminderReplay,
         { role: 'user', content: prepared.userMessageParts },
       ];
@@ -318,10 +334,14 @@ export class TurnExecutor {
         turnId,
         prepared,
         compact: compactForTurn,
-        sessions: this.deps.sessions,
         emit,
         budget,
-        baselineMessageCount: historyMessages.length,
+        baselineMessageCount: historyWithIds.length,
+        // 根 Turn 的 Macro 摘要落 Session：身份数组供 summarizedMessageCount 映射覆盖游标。
+        macroPersistence: {
+          sessions: this.deps.sessions,
+          baselineMessageIds: historyWithIds.map(entry => entry.sessionMessageId),
+        },
         signal,
         onRequestPrepared: messages => {
           parentMessages.splice(0, parentMessages.length, ...messages);
@@ -393,7 +413,9 @@ export class TurnExecutor {
           usageInputTokens: stopped.state.usage.inputTokens,
           usageOutputTokens: stopped.state.usage.outputTokens,
         };
-        this.deps.turns.completeTurn(turnId, stats);
+        this.deps.turns.completeTurn(turnId, stats, () => {
+          this.deps.onTurnCompletedInTransaction?.(turnId);
+        });
         const outcome: TurnOutcome = {
           status: 'completed',
           sessionId,

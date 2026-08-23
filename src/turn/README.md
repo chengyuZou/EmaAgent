@@ -66,7 +66,7 @@ start
 
 - **yield 恢复 = 已保存**：`tool_use_completed` 落库后 AgentLoop 才登记调用；`assistant_message_completed` 落库后才允许 `executor.start()`；`tool_result` 落库后才 `acknowledgeResult()`。
 - 首个 delta 创建 assistant 消息，后续 delta 用 `updateMessageBlocks` 续写同一消息。
-- 终态非 completed 时未完成 assistant 标 `interrupted`；未等到 tool_result 的 tool_use 由 Turn 合成取消结果补配对（buildMessages 只重放完整配对）。
+- 终态非 completed 时未完成 assistant 标 `interrupted`；未等到 tool_result 的 tool_use 由 Turn 合成取消结果补配对（deriveLlmHistory 只重放完整配对）。
 - 先落库，再发事件：SSE 不是持久化触发器。
 
 ## 权限与交互
@@ -78,7 +78,7 @@ start
 
 ## 子 Agent
 
-- `loop/prepareSubagent.ts`：clean 上下文或 fork 继承（`parentMessages` 在每次根请求装配后 splice 更新）；ToolPool 只从父 Pool 收窄（disallowedTools + 内建拒绝：Subagent/SubagentAwait/Task 四件/AskUser）；可压缩自己的工作历史但 `persistMacro=false`，不碰根 Session 的 Macro 边界。
+- `loop/prepareSubagent.ts`：clean 上下文或 fork 继承（`parentMessages` 在每次根请求装配后 splice 更新）；ToolPool 只从父 Pool 收窄（disallowedTools + 内建拒绝：Subagent/SubagentAwait/Task 四件/AskUser）；可压缩自己的工作历史但没有 `macroPersistence`，不碰根 Session 的 Macro 边界。
 - `loop/turnBudget.ts` 的 `TurnBudget` 是根与全部子 Agent 共用的 AgentBudget 实现（时长/输出/工具/子 Agent 额度）。
 
 ## 事件
