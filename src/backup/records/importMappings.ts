@@ -63,6 +63,7 @@ export function restoreTurnRecord(record: TurnRecord, importedAt: number): TurnR
     narrative_policy: record.narrativePolicy,
     provider_id: record.providerId,
     model_id: record.modelId,
+    protocol: record.protocol ?? null,
     character_directory_name: record.characterDirectoryName,
     iterations: record.iterations,
     usage_input_tokens: record.usageInputTokens,

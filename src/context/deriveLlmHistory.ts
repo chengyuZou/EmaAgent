@@ -1,9 +1,11 @@
 // Session Message → LLM 历史的唯一转换入口：把持久化消息投影为 Provider 中立历史，
-// 只保留可安全重放的 Tool 配对；每条产出携带来源 Session Message id，
-// 供 Macro 摘要成功后映射 summarizedThroughMessageId（不进入 Compact 或 LLM 请求）。
+// 只保留完整配对的 Tool 配对；thinking 作为协议原生推理状态保留并携带生成来源
+// （generatedBy），重放/删除由目标协议 Adapter 裁决。每条产出携带来源 Session
+// Message id，供 Macro 摘要成功后映射 summarizedThroughMessageId（不进入 Compact 或 LLM 请求）。
 import type {
   AssistantBlock,
   ContentPart,
+  LlmGenerationSource,
   Message as ModelMessage,
   ToolResultContentPart,
   UserBlock,
@@ -17,11 +19,13 @@ export interface LlmHistoryMessage {
 
 /**
  * Session 中的 system 不是模型历史：System Prompt 每次重新生成，把它重放会
- * 制造重复事实。空块、未配对 tool_use/tool_result 与 thinking 同样被丢弃——
- * 产出数组可能比输入短，身份映射只允许使用 sessionMessageId，不可用下标对齐输入。
+ * 制造重复事实。空块与未配对 tool_use/tool_result 被丢弃；thinking 保留为
+ * 原生推理状态并 attach 所属 Turn 的生成来源。产出数组可能比输入短，
+ * 身份映射只允许使用 sessionMessageId，不可用下标对齐输入。
  */
 export function deriveLlmHistory(
   history: readonly SessionMessage[],
+  resolveGenerationTarget: (turnId: string) => LlmGenerationSource | undefined,
 ): LlmHistoryMessage[] {
   const messages: LlmHistoryMessage[] = [];
   const pairedToolIds = collectPairedToolIds(history);
@@ -58,9 +62,16 @@ export function deriveLlmHistory(
         .map((block) => projectAssistantBlock(block, pairedToolIds))
         .filter((block): block is AssistantBlock => block !== undefined);
       if (content.length > 0) {
+        const generatedBy = message.turnId
+          ? resolveGenerationTarget(message.turnId)
+          : undefined;
         messages.push({
           sessionMessageId: message.id,
-          message: { role: 'assistant', content },
+          message: {
+            role: 'assistant',
+            content,
+            ...(generatedBy ? { generatedBy } : {}),
+          },
         });
       }
     }
@@ -77,6 +88,7 @@ function projectAssistantBlock(
   const candidate = block as {
     type?: unknown;
     text?: unknown;
+    thinking?: unknown;
     id?: unknown;
     name?: unknown;
     args?: unknown;
@@ -84,7 +96,20 @@ function projectAssistantBlock(
   if (candidate.type === 'text' && typeof candidate.text === 'string' && candidate.text.trim()) {
     return { type: 'text', text: candidate.text };
   }
-  // thinking 不跨 Provider 重放；只有完整配对的 tool_use 才能进入下一次请求。
+  // thinking 保留为协议原生推理状态；是否重放由目标协议 Adapter 依据 generatedBy 裁决。
+  if (
+    candidate.type === 'thinking'
+    && typeof candidate.thinking === 'string'
+    && candidate.thinking.trim()
+  ) {
+    const signature = (block as { signature?: unknown }).signature;
+    return {
+      type: 'thinking',
+      thinking: candidate.thinking,
+      ...(typeof signature === 'string' && signature.length > 0 ? { signature } : {}),
+    };
+  }
+  // 只有完整配对的 tool_use 才能进入下一次请求。
   if (
     candidate.type === 'tool_use'
     && typeof candidate.id === 'string'

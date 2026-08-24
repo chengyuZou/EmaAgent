@@ -5,16 +5,13 @@ export * from './events.js';
 export * from './types.js';
 export { TurnStore } from './turnStore.js';
 export type { TurnStoreDeps } from './turnStore.js';
-export { ActiveTurnRegistry } from './activeTurnRegistry.js';
 export {
   TurnEventChannel,
   TurnEventChannelClosedError,
 } from './eventChannel.js';
 export {
   TurnOwnershipError,
-  ActiveTurnAlreadyRegisteredError,
   TurnPreparationError,
-  SessionBusyError,
 } from './errors.js';
 export type { TurnFailureCode, TurnFailurePhase } from './errors.js';
 export { SessionInteractionQueue } from './interactionQueue.js';

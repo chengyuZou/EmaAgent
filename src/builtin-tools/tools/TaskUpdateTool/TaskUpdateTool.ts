@@ -47,7 +47,7 @@ const inputSchema = z.object({
   );
   if (actionHasOtherMutation) {
     ctx.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: 'custom',
       message: 'action must be submitted alone and cannot be combined with other mutations',
     });
   }
@@ -56,7 +56,7 @@ const inputSchema = z.object({
   );
   if (!hasMutation) {
     ctx.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: 'custom',
       message: 'at least one field, dependency change, status, or action is required',
     });
   }

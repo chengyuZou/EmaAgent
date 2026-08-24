@@ -3,6 +3,7 @@
 import { EventHub } from '../sse/eventHub.js';
 import { TurnEventStore } from '../sse/eventStore.js';
 import { TurnFanout } from '../sse/turnFanout.js';
+import { BackgroundCompletion } from '../application/backgroundCompletion.js';
 import { openBackup, type BackupComposition } from './backup.js';
 import { openCharacters, type CharactersComposition } from './characters.js';
 import { openDatabases, type DatabaseComposition } from './database.js';
@@ -30,6 +31,8 @@ export interface Composition {
   readonly eventHub: EventHub;
   readonly turnEvents: TurnEventStore;
   readonly turnFanout: TurnFanout;
+  /** 后台进程完成 → 空闲后续跑 Turn 的驱动；start() 由 lifecycle 在 ready 后调用。 */
+  readonly backgroundCompletion: BackgroundCompletion;
   /** 进程关闭序列的最后一步；后台工作停驻由 platform/lifecycle 先行完成。 */
   close(): void;
 }
@@ -121,6 +124,13 @@ export function buildComposition(input: { activeDataDir: string }): Composition 
     startTurnSpeech: speech.startTurnSpeech,
     abortTurn: (sessionId, turnId) => turn.turnExecutor.abort(sessionId, turnId),
   });
+  const backgroundCompletion = new BackgroundCompletion({
+    source: tools.backgroundProcesses,
+    session: database.session,
+    turns: database.turns,
+    executor: turn.turnExecutor,
+    fanout: turnFanout,
+  });
 
   return {
     database,
@@ -137,6 +147,7 @@ export function buildComposition(input: { activeDataDir: string }): Composition 
     eventHub,
     turnEvents,
     turnFanout,
+    backgroundCompletion,
     close() {
       // 先停 Memory 后台工作，再关库；在途 Job 终态遗留由启动恢复收口。
       memory.shutdown();

@@ -13,26 +13,6 @@ export class TurnOwnershipError extends Error {
   }
 }
 
-/** 同一 Session 已有活动根 Turn 时拒绝开新 Turn；路由层映射为 409。 */
-export class SessionBusyError extends Error {
-  readonly code = 'session_busy' as const;
-
-  constructor(sessionId: string) {
-    super(`session_busy: a turn is already running for session ${sessionId}`);
-    this.name = 'SessionBusyError';
-  }
-}
-
-/** 同一 Session 已有活动根 Turn 时又注册一个，抛出的进程内不变量错误。 */
-export class ActiveTurnAlreadyRegisteredError extends Error {
-  readonly code = 'active_turn_already_registered' as const;
-
-  constructor(sessionId: string) {
-    super(`active_turn_already_registered: ${sessionId}`);
-    this.name = 'ActiveTurnAlreadyRegisteredError';
-  }
-}
-
 /** 输入准备阶段已完成领域错误映射，TurnExecutor 只负责提交统一失败终态。 */
 export class TurnPreparationError extends Error {
   constructor(

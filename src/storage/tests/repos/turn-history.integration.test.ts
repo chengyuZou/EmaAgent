@@ -120,7 +120,7 @@ describe('Turn 历史读取', () => {
     expect(page.rows[0]).toMatchObject({ trigger_type: 'backgroundProcessCompleted' });
   });
 
-  it('模型冻结成对写入，残缺写入被数据库拒绝', () => {
+  it('模型冻结成对写入（含调用协议），残缺写入被数据库拒绝', () => {
     const { database, turns, sessionId } = createFixture();
     turns.insert({
       id: 'turn-a',
@@ -130,15 +130,35 @@ describe('Turn 历史读取', () => {
       narrativePolicy: 'off',
       createdAt: 1,
     });
-    turns.setModel('turn-a', 'provider-config-1', 'model-1');
+    turns.setModel('turn-a', 'provider-config-1', 'model-1', 'openai-chat');
     expect(turns.findById('turn-a')).toMatchObject({
       provider_id: 'provider-config-1',
       model_id: 'model-1',
+      protocol: 'openai-chat',
     });
 
     expect(() => database.sqlite.prepare(`
       UPDATE turns SET model_id = NULL WHERE id = 'turn-a'
     `).run()).toThrow(/both provider and model/);
+  });
+
+  it('copyTurn 复制模型选择与调用协议', () => {
+    const { turns, sessionId } = createFixture();
+    turns.insert({
+      id: 'turn-a',
+      sessionId,
+      triggerType: 'userMessage',
+      executionProfile: 'chat',
+      narrativePolicy: 'off',
+      createdAt: 1,
+    });
+    turns.setModel('turn-a', 'provider-config-1', 'model-1', 'openai-chat');
+    turns.copyTurn(turns.findById('turn-a')!, sessionId, 'turn-copy');
+    expect(turns.findById('turn-copy')).toMatchObject({
+      provider_id: 'provider-config-1',
+      model_id: 'model-1',
+      protocol: 'openai-chat',
+    });
   });
 
   it('Turn 索引分页使用 Session 最新 Turn 索引', () => {

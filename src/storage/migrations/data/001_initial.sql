@@ -296,6 +296,8 @@ CREATE TABLE turns (
                        CHECK(narrative_policy IN ('auto','always','off')),
   provider_id   TEXT,
   model_id             TEXT,
+  -- prepare 解析出的实际调用协议（与 provider_id/model_id 同生命周期，setModel 回填前为 null）。
+  protocol             TEXT,
   -- 本 Turn 激活角色的磁盘目录名（Character.directoryName 快照）；Memory relationship 提取经 turnId 回读。
   character_directory_name TEXT,
   iterations           INTEGER NOT NULL DEFAULT 0,

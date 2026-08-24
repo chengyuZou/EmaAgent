@@ -62,13 +62,25 @@ type CompactResult =
 
 `estimatedInputTokens` 是完整候选请求的估算。Compact 使用同一 `@ema-agent/token` 实现扣除历史外成本，但永远看不到 System Prompt、Tool definitions、Runtime Reminder 或 Current Turn 的正文。
 
+## 摘要请求形状（KV 前缀共享）
+
+Macro 的摘要请求与主对话共享缓存前缀：
+
+```text
+systemMessages（调用方从本轮 Context 装配结果取出，同字节、含缓存断点）
++ 结构化历史原文（不扁平化；assembleContext 在历史/当前 Turn 边界 habitual 写缓存块）
++ 尾部 user 压缩指令（恒定文本；前缀命中区之外）
+```
+
+摘要模型输入超预算时按 `findRetainedHistoryStart` 从尾部 Token 累计收缩（不做砍半或字符串掐头去尾），被丢弃的最旧部分在指令里如实标注条数；Provider 仍判超时按 ×0.8 缩预算重试至多 3 次。
+
 ## Macro 持久化接线
 
-本包只返回持久化事实，不持有 Storage 端口。TurnExecution 在 `kind === 'macro'` 时负责：
+本包不持有 Storage 端口；调用方经 `CompactRequest.saveMacroSummary(summary, summarizedMessageCount)` 闭包落库（根 Turn / `/compact` Command 提供，子 Agent 不提供）：
 
-1. 用 `LlmHistoryMessage[summarizedMessageCount - 1]` 把计数映射成 `summarizedThroughMessageId`；
+1. 闭包内用 `LlmHistoryMessage[summarizedMessageCount - 1]` 把计数映射成 `summarizedThroughMessageId`；
 2. 经 `SessionStore.appendHistorySummary()` 写入 `kind='summary'` 的 Message 与覆盖截止游标；
-3. SQL 成功后才采用 `result.history` 继续本轮；失败则继续使用原历史。
+3. **保存成功才发 `compact_completed`**；闭包抛错则发 `compact_failed` 并原样上抛，调用方继续使用原历史。
 
 `messages.summarized_through_message_id` 是 Summary 的覆盖截止游标；`loadHistory()` 按游标消息位置切边界，摘要不以自身插入时间吞掉生成期间写入的 reminder/用户消息。
 

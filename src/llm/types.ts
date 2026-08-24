@@ -21,6 +21,13 @@ export interface LlmConnection {
   readonly baseUrl?: string;
 }
 
+/** 一次生成实际使用的调用目标；历史 Assistant 消息的生成来源事实。 */
+export interface LlmGenerationSource {
+  readonly providerId: string;
+  readonly modelId: string;
+  readonly protocol: LlmProtocol;
+}
+
 /** ToolPool 投影给模型协议的函数定义。 */
 export interface LlmTool {
   readonly name: string;
@@ -31,12 +38,18 @@ export interface LlmTool {
 export type LlmToolChoice = 'auto' | 'none' | { readonly name: string };
 
 /**
+ * 跨协议的推理强度档位（中立词汇）。OpenAI 系同名透传；
+ * Anthropic/Gemini 老协议形状由各自 Adapter 映射为 budget 数字（映射表归 Adapter）。
+ */
+export type LlmThinkingEffort = 'low' | 'medium' | 'high' | 'max';
+
+/**
  * 跨协议的推理控制。协议只消费自己支持的字段：
  * OpenAI 系协议使用 effort，Anthropic/Gemini 使用 budgetTokens。
  */
 export interface LlmThinking {
   readonly enabled: 'auto' | boolean;
-  readonly effort?: 'low' | 'medium' | 'high' | 'max';
+  readonly effort?: LlmThinkingEffort;
   readonly budgetTokens?: number;
 }
 

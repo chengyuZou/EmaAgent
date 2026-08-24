@@ -46,9 +46,11 @@ Turn reminder 表示"本 Turn 开始时的事实"：它在根 Turn 开始时由 
 `deriveLlmHistory()` 是持久化 Session Message 到 LLM Message 的唯一转换入口，返回 `LlmHistoryMessage[]`（`sessionMessageId + message`）：
 
 - 丢弃旧 system；
-- thinking 只供 UI/审计，不跨 Provider 重放；
+- thinking 作为协议原生推理状态保留，并为每条 Assistant 历史 attach 所属 Turn 的生成来源 `generatedBy`（providerId + modelId + protocol）；重放/删除由目标协议 Adapter 依据 `generatedBy` 与本次调用目标裁决，本包不判断协议兼容性；
 - 只保留完整配对的 `tool_use/tool_result`；
 - 历史附件引用变成明确占位，真实媒体兼容由 LLM Request Preparer 处理。
+
+`generatedBy` 只对模型生成的 Assistant 历史有意义；user/tool_result/reminder/summary 不伪造。Adapter 编码厂商 Wire 消息时消费并剥除，绝不序列化进请求。
 
 投影会丢消息（空块、未配对 Tool 块），产出比输入短；`sessionMessageId` 只用于 Macro 摘要成功后映射 `summarizedThroughMessageId`，不进入 Compact 或 LLM 请求，也不允许按下标对齐输入。
 

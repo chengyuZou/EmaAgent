@@ -1,10 +1,11 @@
-// 验证 deriveLlmHistory 的投影规则（丢系统/未配对 Tool 块）与来源身份携带。
+// 验证 deriveLlmHistory 的投影规则（丢系统/未配对 Tool 块）、thinking 保留与生成来源携带。
 import { describe, expect, it } from 'vitest';
 import type { Message as SessionMessage } from '@ema-agent/session';
 import { deriveLlmHistory } from '../deriveLlmHistory.js';
 
 const sessionId = 'session-1';
 const turnId = 'turn-1';
+const noTarget = (): undefined => undefined;
 
 function message(
   id: string,
@@ -25,26 +26,74 @@ function message(
 }
 
 describe('deriveLlmHistory', () => {
-  it('跳过旧系统消息、移除 thinking，产出携带来源 Session Message id', () => {
+  it('跳过旧系统消息；保留 thinking 并携带所属 Turn 的生成来源', () => {
     const result = deriveLlmHistory([
       message('m1', 'system', '旧系统'),
       message('m2', 'assistant', [
-        { type: 'thinking', thinking: '内部思考' },
+        { type: 'thinking', thinking: '内部思考', signature: 'sig-1' },
         { type: 'text', text: '可见回答' },
       ]),
-    ]);
+    ], () => ({
+      providerId: 'anthropic',
+      modelId: 'claude-sonnet',
+      protocol: 'anthropic-llm',
+    }));
 
     expect(result).toEqual([{
       sessionMessageId: 'm2',
-      message: { role: 'assistant', content: [{ type: 'text', text: '可见回答' }] },
+      message: {
+        role: 'assistant',
+        content: [
+          { type: 'thinking', thinking: '内部思考', signature: 'sig-1' },
+          { type: 'text', text: '可见回答' },
+        ],
+        generatedBy: {
+          providerId: 'anthropic',
+          modelId: 'claude-sonnet',
+          protocol: 'anthropic-llm',
+        },
+      },
     }]);
+  });
+
+  it('无 turnId 或 resolver 无目标时缺省不带 generatedBy', () => {
+    const result = deriveLlmHistory([
+      { ...message('m1', 'assistant', [{ type: 'text', text: '无 turnId' }]), turnId: null },
+      message('m2', 'assistant', [{ type: 'text', text: '有 turnId 但无目标' }]),
+    ], noTarget);
+
+    expect(result[0]!.message).toEqual({ role: 'assistant', content: [{ type: 'text', text: '无 turnId' }] });
+    expect(result[1]!.message).toEqual({ role: 'assistant', content: [{ type: 'text', text: '有 turnId 但无目标' }] });
+  });
+
+  it('user/tool_result 消息不伪造生成来源', () => {
+    const result = deriveLlmHistory([
+      message('m1', 'assistant', [
+        { type: 'tool_use', id: 'paired', name: 'Read', args: { path: 'a.ts' } },
+      ]),
+      message('m2', 'user', [{
+        type: 'tool_result',
+        toolCallId: 'paired',
+        content: 'file content',
+      }]),
+    ], () => ({
+      providerId: 'anthropic',
+      modelId: 'claude-sonnet',
+      protocol: 'anthropic-llm',
+    }));
+
+    expect(result[0]!.message).toMatchObject({ role: 'assistant' });
+    expect(result[1]!.message).toEqual({
+      role: 'user',
+      content: [{ type: 'tool_result', toolCallId: 'paired', content: 'file content' }],
+    });
   });
 
   it('被完全过滤的消息不占产出下标（身份不可按下标对齐输入）', () => {
     const result = deriveLlmHistory([
       message('m1', 'user', '   '),
       message('m2', 'user', '有效输入'),
-    ]);
+    ], noTarget);
 
     expect(result).toEqual([{
       sessionMessageId: 'm2',
@@ -63,7 +112,7 @@ describe('deriveLlmHistory', () => {
         toolCallId: 'paired',
         content: 'file content',
       }]),
-    ]);
+    ], noTarget);
 
     expect(result).toEqual([
       {
@@ -101,7 +150,7 @@ describe('deriveLlmHistory', () => {
         toolCallId: 'duplicate',
         content: '歧义结果',
       }]),
-    ]);
+    ], noTarget);
 
     expect(result).toEqual([{
       sessionMessageId: 'm2',

@@ -1,10 +1,7 @@
-// 测试 System Prompt 扁平数组装配:顺序、边界哨兵位置、条件展开与 null 过滤。
+// 测试 System Prompt 的 PromptBlock 装配:顺序、命名、断点标记、角色单块与条件展开。
 import { describe, expect, it } from 'vitest';
 import { BuiltinTools } from '@ema-agent/builtin-tools/identity';
-import {
-  getSystemPrompt,
-  PROMPT_DYNAMIC_BOUNDARY,
-} from '../systemPrompt.js';
+import { getSystemPrompt } from '../systemPrompt.js';
 
 const CHARACTER: readonly string[] = [
   '# 角色:测试娘',
@@ -32,78 +29,97 @@ function input(overrides: Partial<Parameters<typeof getSystemPrompt>[0]> = {}) {
 }
 
 describe('getSystemPrompt', () => {
-  it('完整输入:静态前缀 → 哨兵 → 环境/数据级内容 → 角色 → Profile → 能力', () => {
-    const sections = getSystemPrompt(input({
+  it('块顺序：产品静态单块 → 数据级 → 角色单块 → Profile → 能力 → 运行环境（最末）', () => {
+    const blocks = getSystemPrompt(input({
       workspaceInstructions: '# 项目约定',
+      memorySection: '使用 MemorySearch 按轨检索',
       skillCatalog: '- review: 代码评审',
       mcpInstructions: ['serverA 的用法指引'],
     }));
 
-    expect(sections.slice(0, 7).map((section) => section.split('\n')[0])).toEqual([
-      '# EmaAgent',
-      '# 系统规则',
-      '# 完成任务',
-      '# 谨慎执行操作',
-      '# 使用工具',
-      '# 与用户沟通',
-      '# 基础表达',
+    expect(blocks.map(block => block.name)).toEqual([
+      'product-rules',
+      'workspace-instructions',
+      'memory-guidance',
+      'skill-catalog',
+      'mcp-instructions',
+      'character',
+      'execution-profile',
+      'capability-guidance',
+      'runtime-environment',
     ]);
-    const boundary = sections.indexOf(PROMPT_DYNAMIC_BOUNDARY);
-    expect(boundary).toBe(7);
-    const after = sections.slice(boundary + 1);
-    // 动态尾部按稳定性排序：较稳定的环境/数据级内容在前，角色/Profile/能力在末端。
-    expect(after[0]).toContain('本轮运行环境');
-    expect(after.some((s) => s.includes('工作区指令') && s.includes('# 项目约定'))).toBe(true);
-    expect(after.some((s) => s.includes('可用技能'))).toBe(true);
-    expect(after.some((s) => s.includes('serverA 的用法指引'))).toBe(true);
-    const characterIndex = after.indexOf(CHARACTER[0]);
-    expect(characterIndex).toBeGreaterThan(0);
-    expect(after[characterIndex + 1]).toBe(CHARACTER[1]);
-    expect(after[after.length - 2]).toContain('当前执行方式：Work');
-    expect(after[after.length - 1]).toContain('本轮能力引导');
+    // 缓存断点只标在产品静态块上。
+    expect(blocks.filter(block => block.cacheBreakpoint).map(block => block.name))
+      .toEqual(['product-rules']);
+    // 产品静态块合并了全部稳定规则，并带全局外部内容信任级声明。
+    const productRules = blocks[0]!;
+    expect(productRules.content).toContain('EmaAgent 是产品与运行环境的名称');
+    expect(productRules.content).toContain('# 系统规则');
+    expect(productRules.content).toContain('# 使用工具');
+    expect(productRules.content).toContain('外部内容信任级');
+    // 角色是单块：角色包内部 section 合并为一块，不拆成独立分类单元。
+    const character = blocks.find(block => block.name === 'character')!;
+    expect(character.content).toBe(`${CHARACTER[0]}\n\n${CHARACTER[1]}`);
+    // 运行环境在最末：换模型只损失这一块。
+    const env = blocks.at(-1)!;
+    expect(env.content).toContain('openai / gpt-5.2');
+    expect(env.content).toContain('win32');
+    expect(blocks.at(-2)!.content).toContain('本轮能力引导');
+    expect(blocks.at(-3)!.content).toContain('当前执行方式：Work');
+  });
+
+  it('memorySection 缺省时没有 memory-guidance 块；可选输入缺省无空洞', () => {
+    const blocks = getSystemPrompt(input());
+    expect(blocks.some(block => block.name === 'memory-guidance')).toBe(false);
+    expect(blocks.some(block => block.name === 'workspace-instructions')).toBe(false);
+    expect(blocks.every(block => block.content.trim().length > 0)).toBe(true);
+  });
+
+  it('memorySection 存在时生成 memory-guidance 产品指引块（不带数据级护栏）', () => {
+    const blocks = getSystemPrompt(input({ memorySection: '使用 MemorySearch 按轨检索' }));
+    const memory = blocks.find(block => block.name === 'memory-guidance')!;
+    expect(memory.content).toContain('使用 MemorySearch 按轨检索');
+    expect(memory.content).not.toContain('不是系统指令');
   });
 
   it('产品静态段不抢占角色姓名,角色身份只来自 Character', () => {
-    const sections = getSystemPrompt(input());
-    const boundary = sections.indexOf(PROMPT_DYNAMIC_BOUNDARY);
-    const stablePrefix = sections.slice(0, boundary).join('\n');
+    const blocks = getSystemPrompt(input());
+    const stablePrefix = blocks.slice(0, 1).map(block => block.content).join('\n');
 
     expect(stablePrefix).not.toContain('你是 Ema');
     expect(stablePrefix).toContain('EmaAgent 是产品与运行环境的名称');
-    const characterIndex = sections.indexOf(CHARACTER[0]);
-    expect(characterIndex).toBeGreaterThan(boundary);
-    expect(sections[characterIndex]).toContain('测试娘');
+    const characterIndex = blocks.findIndex(block => block.name === 'character');
+    expect(characterIndex).toBeGreaterThan(0);
+    expect(blocks[characterIndex]!.content).toContain('测试娘');
   });
 
-  it('可选数据级输入缺省时无空洞、无 null 残留', () => {
-    const sections = getSystemPrompt(input());
-    expect(sections.every((s) => typeof s === 'string' && s.length > 0)).toBe(true);
+  it('产品静态段要求角色指令被遵守且禁止“扮演”元叙述', () => {
+    const blocks = getSystemPrompt(input());
+    const productRules = blocks.find(block => block.name === 'product-rules')!;
+    expect(productRules.content).toContain('角色指令与产品规则同为需要遵守的指令');
+    expect(productRules.content).toContain('你从一开始就是该角色');
   });
 
-  it('chat profile 产出 chat 文案;数据级段落带信任框架文案', () => {
-    const sections = getSystemPrompt(input({
-      executionProfile: 'chat',
-      skillCatalog: '- x',
-    }));
-    expect(sections.some((s) => s.includes('当前执行方式：Chat'))).toBe(true);
-    const catalog = sections.find((s) => s.startsWith('# 可用技能'))!;
-    expect(catalog).toContain('不是系统指令');
+  it('chat profile 产出 chat 文案;外部内容信任级统一由产品静态块声明', () => {
+    const blocks = getSystemPrompt(input({ executionProfile: 'chat', skillCatalog: '- x' }));
+    expect(blocks.some(block => block.content.includes('当前执行方式：Chat'))).toBe(true);
+    const catalog = blocks.find(block => block.name === 'skill-catalog')!;
+    expect(catalog.content).toContain('可用技能');
+    expect(catalog.content).not.toContain('不是系统指令');
+    // 信任级只出现在产品静态块的全局声明里，数据段自身不再重复。
+    const productRules = blocks.find(block => block.name === 'product-rules')!;
+    expect(productRules.content).toContain('外部内容信任级');
   });
 
-  it('能力引导按 ToolPool 名字判定存在性;环境段含当前模型', () => {
-    const sections = getSystemPrompt(input());
-    const guidance = sections.find((s) => s.startsWith('# 本轮能力引导'))!;
-    expect(guidance).toContain('Skill');
-    expect(guidance).toContain('mcp__');
-    expect(guidance).not.toContain('Subagent');
+  it('能力引导按 ToolPool 名字判定存在性;空 Pool 不产生能力块', () => {
+    const blocks = getSystemPrompt(input());
+    const guidance = blocks.find(block => block.name === 'capability-guidance')!;
+    expect(guidance.content).toContain('Skill');
+    expect(guidance.content).toContain('mcp__');
+    expect(guidance.content).not.toContain('Subagent');
 
     const withoutMcp = getSystemPrompt(input({ toolNames: [] }));
-    expect(withoutMcp.some((s) => s.includes('mcp__'))).toBe(false);
-    expect(withoutMcp.some((s) => s.startsWith('# 本轮能力引导'))).toBe(false);
-
-    const env = sections.find((s) => s.includes('本轮运行环境'))!;
-    expect(env).toContain('openai / gpt-5.2');
-    expect(env).toContain('win32');
+    expect(withoutMcp.some(block => block.name === 'capability-guidance')).toBe(true);
   });
 
   it('不出现已退役的工具名(重命名漂移防线)', () => {
@@ -118,7 +134,7 @@ describe('getSystemPrompt', () => {
       workspaceInstructions: 'x',
       skillCatalog: 'x',
       mcpInstructions: ['x'],
-    })).join('\n');
+    })).map(block => block.content).join('\n');
     for (const name of retired) {
       expect(text).not.toContain(name);
     }
@@ -128,7 +144,7 @@ describe('getSystemPrompt', () => {
   });
 
   it('TodoWrite 与持久 Task 的能力说明使用注册表真名并明确分工', () => {
-    const sections = getSystemPrompt(input({
+    const blocks = getSystemPrompt(input({
       toolNames: [
         BuiltinTools.TodoWrite.name,
         BuiltinTools.TaskCreate.name,
@@ -137,19 +153,20 @@ describe('getSystemPrompt', () => {
         BuiltinTools.TaskUpdate.name,
       ],
     }));
-    const guidance = sections.find((section) => section.startsWith('# 本轮能力引导'))!;
+    const guidance = blocks.find(block => block.name === 'capability-guidance')!;
 
-    expect(guidance).toContain(BuiltinTools.TodoWrite.name);
-    expect(guidance).toContain(BuiltinTools.TaskCreate.name);
-    expect(guidance).toContain('当前根 Turn');
-    expect(guidance).toContain('跨 Turn');
-    expect(guidance).toContain('不要把每条 TODO 复制成持久 Task');
+    expect(guidance.content).toContain(BuiltinTools.TodoWrite.name);
+    expect(guidance.content).toContain(BuiltinTools.TaskCreate.name);
+    expect(guidance.content).toContain('当前根 Turn');
+    expect(guidance.content).toContain('跨 Turn');
+    expect(guidance.content).toContain('不要把每条 TODO 复制成持久 Task');
   });
 
   it('产品规则保留完整任务、安全、验证与沟通约束，不退化为摘要', () => {
-    const sections = getSystemPrompt(input());
-    const boundary = sections.indexOf(PROMPT_DYNAMIC_BOUNDARY);
-    const stablePrefix = sections.slice(0, boundary).join('\n');
+    const stablePrefix = getSystemPrompt(input())
+      .slice(0, 7)
+      .map(block => block.content)
+      .join('\n');
 
     expect(stablePrefix).toContain('不要给出完成任务所需时间的估计或预测');
     expect(stablePrefix).toContain('默认不写注释');
@@ -160,12 +177,13 @@ describe('getSystemPrompt', () => {
   });
 
   it('Work 是完整执行契约，Chat 是可行动的对话契约', () => {
-    const work = getSystemPrompt(input()).join('\n');
+    const work = getSystemPrompt(input()).map(block => block.content).join('\n');
     expect(work).toContain('把用户的请求理解为需要交付的结果');
     expect(work).toContain('验证规模应匹配风险');
     expect(work).toContain('任务没有完成时不能使用完成口吻');
 
-    const chat = getSystemPrompt(input({ executionProfile: 'chat' })).join('\n');
+    const chat = getSystemPrompt(input({ executionProfile: 'chat' }))
+      .map(block => block.content).join('\n');
     expect(chat).toContain('不是“禁止行动”的纯文本模式');
     expect(chat).toContain('Chat 可以执行用户明确要求且本轮允许的操作');
     expect(chat).toContain('不要未经请求把对话变成诊断、教程、计划表或效率优化');
@@ -180,15 +198,15 @@ describe('getSystemPrompt', () => {
         BuiltinTools.Bash.name,
         BuiltinTools.AskUser.name,
       ],
-    })).find((section) => section.startsWith('# 本轮能力引导'))!;
+    })).find(block => block.name === 'capability-guidance')!;
 
-    expect(guidance).toContain('读取文件使用 Read');
-    expect(guidance).toContain('Grep 查询构造');
-    expect(guidance).toContain('Glob 查询构造');
-    expect(guidance).toContain('Bash 只用于构建、测试、包管理');
-    expect(guidance).toContain('AskUser 用于取得业务信息或选择');
-    expect(guidance).not.toContain('使用 Edit');
-    expect(guidance).not.toContain('使用 Write');
-    expect(guidance).not.toContain('Subagent');
+    expect(guidance.content).toContain('读取文件使用 Read');
+    expect(guidance.content).toContain('Grep 查询构造');
+    expect(guidance.content).toContain('Glob 查询构造');
+    expect(guidance.content).toContain('Bash 只用于构建、测试、包管理');
+    expect(guidance.content).toContain('AskUser 用于取得业务信息或选择');
+    expect(guidance.content).not.toContain('使用 Edit');
+    expect(guidance.content).not.toContain('使用 Write');
+    expect(guidance.content).not.toContain('Subagent');
   });
 });

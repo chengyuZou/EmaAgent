@@ -43,6 +43,8 @@ export interface Turn {
   /** 操作开始冻结的模型选择；prepare 解析成功前为 null。 */
   readonly providerId: string | null;
   readonly modelId: string | null;
+  /** prepare 解析出的实际调用协议（与 providerId/modelId 同生命周期，setModel 回填前为 null）。 */
+  readonly protocol: string | null;
   /** 本 Turn 激活角色的磁盘目录名快照（Memory relationship 提取的事实源）；prepare 完成回填，此前为 null。 */
   readonly characterDirectoryName: string | null;
   readonly iterations: number;
@@ -183,8 +185,8 @@ export interface RequestDegradationNotice {
 }
 
 // ── Turn 失败终态对前端公开的稳定错误码与阶段（纯联合词汇） ────────────────────
-// 两个 Error 类（TurnOwnershipError/ActiveTurnAlreadyRegisteredError）留在
-// turn/errors.ts，不属于词汇叶。
+// TurnOwnershipError 留在 turn/errors.ts；SessionBusyError 与活跃执行不变量错误
+// 归 session 包（坑位是 Session 级），都不属于词汇叶。
 
 /** Turn 失败终态对前端公开的稳定错误码；领域内部错误在进入终态时映射到这里。 */
 export type TurnFailureCode =

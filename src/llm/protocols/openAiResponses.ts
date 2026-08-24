@@ -1,4 +1,5 @@
 // 把中立请求转换为 OpenAI Responses API，并使用其显式终态归一化流。
+import { randomUUID } from 'node:crypto';
 import OpenAI from 'openai';
 import {
   createLlmProviderResponseError,
@@ -12,6 +13,7 @@ import type { ContentPart, ToolResultBlock } from '../message.js';
 import type {
   AssistantBlock,
   LlmConnection,
+  LlmGenerationSource,
   LlmRequest,
   LlmStopReason,
   LlmStreamEvent,
@@ -24,6 +26,14 @@ import { createLlmTokenUsage } from '../usage.js';
 type ResponseInput = OpenAI.Responses.ResponseInput;
 type ResponseInputItem = OpenAI.Responses.ResponseInputItem;
 type ResponseStreamEvent = OpenAI.Responses.ResponseStreamEvent;
+
+/** 只重放本模型生成的 reasoning：OpenAI 的 reasoning 模型私有，无来源/跨协议/跨模型都删除。 */
+function shouldReplayOpenAiReasoning(
+  generatedBy: LlmGenerationSource | undefined,
+  modelId: string,
+): boolean {
+  return generatedBy?.protocol === 'openai-responses-llm' && generatedBy.modelId === modelId;
+}
 
 export function createOpenAiResponsesProtocol(
   connection: LlmConnection, modelId: string,
@@ -41,7 +51,7 @@ async function* streamOpenAiResponses(
   modelId: string,
   request: LlmRequest,
 ): AsyncIterable<LlmStreamEvent> {
-  const { instructions, input } = toResponsesInput(request.messages);
+  const { instructions, input } = toResponsesInput(request.messages, modelId);
   const params: OpenAI.Responses.ResponseCreateParamsStreaming = {
     model: modelId,
     input,
@@ -192,8 +202,9 @@ async function* streamOpenAiResponses(
   throw new LlmStreamProtocolError('openai-responses-llm');
 }
 
-function toResponsesInput(
+export function toResponsesInput(
   messages: readonly Message[],
+  modelId: string,
 ): { instructions: string | undefined; input: ResponseInput } {
   const input: ResponseInputItem[] = [];
   let instructions: string | undefined;
@@ -235,8 +246,19 @@ function toResponsesInput(
 
     let text = '';
     const calls: OpenAI.Responses.ResponseFunctionToolCall[] = [];
+    const reasoning: ResponseInputItem[] = [];
+    // reasoning 只随生成它的同一个模型重放（reasoning 模型私有）；无来源、跨协议或
+    // 跨模型的历史 thinking 一律删除。V1 重放 summary 结构（encrypted_content 收集留后）。
+    const replayReasoning = shouldReplayOpenAiReasoning(message.generatedBy, modelId);
     for (const block of message.content as readonly AssistantBlock[]) {
       if (block.type === 'text') text += block.text;
+      if (block.type === 'thinking' && replayReasoning) {
+        reasoning.push({
+          type: 'reasoning',
+          id: randomUUID(),
+          summary: [{ type: 'summary_text', text: block.thinking }],
+        } as ResponseInputItem);
+      }
       if (block.type === 'tool_use') {
         calls.push({
           type: 'function_call',
@@ -247,6 +269,7 @@ function toResponsesInput(
         });
       }
     }
+    input.push(...reasoning);
     if (text) input.push({ role: 'assistant', content: text });
     input.push(...calls as ResponseInputItem[]);
   }

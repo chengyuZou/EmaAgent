@@ -2,7 +2,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { AgentBudget } from '@ema-agent/agent';
 import type { CompactRequest, CompactResult } from '@ema-agent/compact';
-import { PROMPT_DYNAMIC_BOUNDARY } from '@ema-agent/prompts';
 import type { Message } from '@ema-agent/llm';
 import type { Message as SessionMessage, SessionStore } from '@ema-agent/session';
 import { ToolPool } from '@ema-agent/tools';
@@ -22,8 +21,10 @@ function makePrepared(overrides: Partial<PreparedTurn> = {}): PreparedTurn {
     workspaceRoot: '/w',
     contextWindow: 100_000,
     maxOutput: 8_000,
-    thinkingEnabled: false,
-    systemPrompt: ['静态前缀', PROMPT_DYNAMIC_BOUNDARY, '动态尾部'],
+    systemPrompt: [
+      { name: 'static', content: '静态前缀', cacheBreakpoint: true },
+      { name: 'dynamic', content: '动态尾部' },
+    ],
     tools: { toolPool: new ToolPool([]) },
     compactSettings: {},
     providerId: 'p',

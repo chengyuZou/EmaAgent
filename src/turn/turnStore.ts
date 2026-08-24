@@ -1,6 +1,6 @@
 // Turn 生命周期、进程内运行态（取消信号/运行锁/删除守卫）与导航查询。
-// 面向 storage repo 工作，不 import session 包；AbortSignal 只活在内存，
-// 崩溃恢复以 SQLite 的 turns.status 为事实源。
+// 面向 storage repo 工作；Session 级活跃执行坑位由 session 包的 ActiveSessionRegistry
+// 提供。AbortSignal 只活在内存，崩溃恢复以 SQLite 的 turns.status 为事实源。
 
 import crypto from 'node:crypto';
 import {
@@ -12,6 +12,7 @@ import {
   type TurnIdPageCursor,
   type TurnRow,
 } from '@ema-agent/storage';
+import { ActiveSessionRegistry, SessionBusyError } from '@ema-agent/session';
 import type {
   CompleteTurnInput,
   ListTurnIndexInput,
@@ -21,8 +22,7 @@ import type {
   TurnIndexPage,
   TurnWindow,
 } from '@ema-agent/turn-terms';
-import { ActiveTurnRegistry } from './activeTurnRegistry.js';
-import { SessionBusyError, TurnOwnershipError } from './errors.js';
+import { TurnOwnershipError } from './errors.js';
 
 export interface TurnStoreDeps {
   db: Database;
@@ -39,7 +39,7 @@ export class TurnStore {
   private readonly onTurnRemoved?: (sessionId: string, turnId: string) => void;
   private readonly deletingSessions = new Set<string>();
   /** 进程内活动根 Turn 表；运行态只用于快速判断和取消，崩溃恢复以 SQLite 终态为准。 */
-  private readonly registry = new ActiveTurnRegistry();
+  private readonly registry = new ActiveSessionRegistry();
   /** 单调时间戳避免同毫秒写入破坏游标边界。 */
   private lastTs = 0;
 
@@ -91,9 +91,9 @@ export class TurnStore {
     return { turn: this.requireTurn(turnId), signal };
   }
 
-  /** 输入准备解析出模型身份后回填；只能在终态前调用一次的事实修正。 */
-  setModel(turnId: string, providerId: string, modelId: string): void {
-    this.turnsRepo.setModel(turnId, providerId, modelId);
+  /** 输入准备解析出模型身份与实际调用协议后回填；只能在终态前调用一次的事实修正。 */
+  setModel(turnId: string, providerId: string, modelId: string, protocol: string): void {
+    this.turnsRepo.setModel(turnId, providerId, modelId, protocol);
   }
 
   /** prepare 完成时冻结激活角色目录名；Memory 提取经 turnId 回读。 */
@@ -138,7 +138,7 @@ export class TurnStore {
   /** 触发取消信号并提交 Turn 的 aborted 终态。 */
   abortTurn(sessionId: string, turnId: string): void {
     this.assertTurnOwnership(sessionId, turnId);
-    const activeTurnId = this.registry.getActiveTurnId(sessionId);
+    const activeTurnId = this.registry.getActiveExecutionId(sessionId);
     if (activeTurnId !== turnId) {
       throw new Error(`turn_not_active: ${turnId}`);
     }
@@ -178,7 +178,7 @@ export class TurnStore {
   }
 
   getActiveTurn(sessionId: string): Turn | undefined {
-    const turnId = this.registry.getActiveTurnId(sessionId);
+    const turnId = this.registry.getActiveExecutionId(sessionId);
     return turnId ? this.getTurn(turnId) : undefined;
   }
 
@@ -205,7 +205,7 @@ export class TurnStore {
       throw new Error(`session_deleting: ${id}`);
     }
     this.deletingSessions.add(id);
-    const activeTurnId = this.registry.getActiveTurnId(id);
+    const activeTurnId = this.registry.getActiveExecutionId(id);
     if (activeTurnId) this.registry.abort(id, activeTurnId);
   }
 
@@ -376,6 +376,7 @@ function toTurn(row: TurnRow): Turn {
     narrativePolicy: row.narrative_policy,
     providerId: row.provider_id,
     modelId: row.model_id,
+    protocol: row.protocol,
     characterDirectoryName: row.character_directory_name,
     iterations: row.iterations,
     usageInputTokens: row.usage_input_tokens,

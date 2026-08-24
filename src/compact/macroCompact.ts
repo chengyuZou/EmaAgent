@@ -1,26 +1,38 @@
-// 把旧历史投影为纯文本摘要请求，并在模型拒绝过长输入时有界缩减请求。
+// 摘要请求与主对话共享 KV 前缀：systemMessages 同字节复用（含缓存断点标记），
+// 历史保持结构化原文，压缩指令是尾部最后一条 user 消息。
+// 超出摘要模型输入预算时按 Token 从尾部累计保留（findRetainedHistoryStart，一趟精确
+// 拟合且配对安全），不做砍半或字符串掐头去尾；Provider 仍判超时按比例缩预算重试。
 
 import type {
   AssistantBlock,
   CallLlm,
+  LlmThinking,
+  LlmTool,
   Message,
-  ToolResultContentPart,
-  UserBlock,
 } from '@ema-agent/llm';
 import { createLlmCompletion } from '@ema-agent/llm';
 import { estimateMessagesTokens } from '@ema-agent/token';
 import type { ExecutionProfile } from '@ema-agent/turn-terms';
 import { buildCompactPrompt, extractCompactSummary } from './compactPrompt.js';
+import { findRetainedHistoryStart } from './safeCut.js';
 
 const MAX_ATTEMPTS = 3;
-const FIRST_ATTEMPT_INPUT_RATIO = 0.85;
-const RETRY_INPUT_RATIO = 0.8;
+/** 本地输入预算占窗口比例，余量留给摘要输出。 */
+const INPUT_BUDGET_RATIO = 0.85;
+/** Provider 判超（本地估算误差）后每次重试的预算缩放。 */
+const RETRY_BUDGET_SCALE = 0.8;
 const COMPACT_OUTPUT_RATIO = 0.2;
 const MIN_COMPACT_OUTPUT_TOKENS = 2_000;
-const OMITTED_HISTORY_MARKER = '\n\n[部分历史因摘要模型输入上限被省略]\n\n';
+
 export interface MacroCompactArgs {
   readonly callLlm: CallLlm;
   readonly executionProfile: ExecutionProfile;
+  /** 与主对话逐字节一致的系统消息段（含缓存断点标记）；摘要请求的前缀共享来源。 */
+  readonly systemMessages: readonly Message[];
+  /** 根 Turn 冻结的 Tool 定义（同内容同顺序）；指令已声明工具只是上下文，不得调用。 */
+  readonly tools: readonly LlmTool[];
+  /** 与主请求一致的中立 thinking 配置；缺省表示未开启。 */
+  readonly thinking?: LlmThinking;
   readonly toCompact: readonly Message[];
   readonly modelContextWindow: number;
   readonly signal?: AbortSignal;
@@ -45,30 +57,37 @@ export async function runMacroCompact(
     return { succeeded: false, attempts: 0, detail: '没有可摘要的历史消息' };
   }
 
-  const history = formatHistory(args.toCompact);
-  let lastFailure = '摘要模型未返回结果';
+  // 指令固定在尾部（前缀命中区之外）；被预算裁掉的最旧部分在此如实告知摘要模型。
+  const instruction = (omittedCount: number): Message => ({
+    role: 'user',
+    content: buildCompactPrompt({ executionProfile: args.executionProfile })
+      + (omittedCount > 0
+        ? `\n\n（最早 ${omittedCount} 条消息因摘要模型输入预算未纳入，直接从现有首条开始摘要）`
+        : ''),
+  });
 
+  const inputBudget = Math.max(1, Math.floor(args.modelContextWindow * INPUT_BUDGET_RATIO));
+  const historyBudget = Math.max(
+    1,
+    inputBudget - estimateMessagesTokens([...args.systemMessages, instruction(0)]),
+  );
+
+  let budgetScale = 1;
+  let lastFailure = '摘要模型未返回结果';
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
     args.signal?.throwIfAborted();
-    const inputRatio = FIRST_ATTEMPT_INPUT_RATIO * RETRY_INPUT_RATIO ** (attempt - 1);
-    const inputTokenLimit = Math.max(1, Math.floor(args.modelContextWindow * inputRatio));
-    const prompt = fitPromptToTokenLimit({
-      history,
-      executionProfile: args.executionProfile,
-      inputTokenLimit,
-    });
-    if (!prompt) {
-      return {
-        succeeded: false,
-        attempts: attempt,
-        detail: '摘要指令本身已超过当前模型输入预算',
-      };
-    }
-
-    const estimatedInputTokens = estimatePromptTokens(prompt);
+    // 从尾部按 Token 预算累计保留；findRetainedHistoryStart 至少保留最新一条。
+    const candidate = args.toCompact.slice(
+      findRetainedHistoryStart(args.toCompact, Math.floor(historyBudget * budgetScale)),
+    );
+    const messages = [
+      ...args.systemMessages,
+      ...candidate,
+      instruction(args.toCompact.length - candidate.length),
+    ];
     const remainingOutputTokens = Math.max(
       1,
-      args.modelContextWindow - estimatedInputTokens,
+      args.modelContextWindow - estimateMessagesTokens(messages),
     );
     const desiredOutputTokens = Math.max(
       MIN_COMPACT_OUTPUT_TOKENS,
@@ -77,18 +96,16 @@ export async function runMacroCompact(
 
     try {
       const completion = await createLlmCompletion(args.callLlm({
-        messages: [{ role: 'user', content: prompt }],
+        messages,
+        tools: args.tools,
+        ...(args.thinking ? { thinking: args.thinking } : {}),
         maxOutputTokens: Math.min(desiredOutputTokens, remainingOutputTokens),
         temperature: 0.2,
         signal: args.signal,
       }));
       const summary = extractCompactSummary(collectText(completion.blocks));
       if (!summary) {
-        return {
-          succeeded: false,
-          attempts: attempt,
-          detail: '摘要模型返回了空内容',
-        };
+        return { succeeded: false, attempts: attempt, detail: '摘要模型返回了空内容' };
       }
       return { succeeded: true, summary, attempts: attempt };
     } catch (error) {
@@ -97,6 +114,7 @@ export async function runMacroCompact(
       if (!isPromptTooLong(lastFailure)) {
         return { succeeded: false, attempts: attempt, detail: lastFailure };
       }
+      budgetScale *= RETRY_BUDGET_SCALE;
     }
   }
 
@@ -105,89 +123,6 @@ export async function runMacroCompact(
     attempts: MAX_ATTEMPTS,
     detail: `摘要请求连续 ${MAX_ATTEMPTS} 次超过当前模型输入上限：${lastFailure}`,
   };
-}
-
-function fitPromptToTokenLimit(args: {
-  readonly history: string;
-  readonly executionProfile: ExecutionProfile;
-  readonly inputTokenLimit: number;
-}): string | null {
-  const fullPrompt = buildCompactPrompt(args);
-  if (estimatePromptTokens(fullPrompt) <= args.inputTokenLimit) return fullPrompt;
-
-  const codePoints = [...args.history];
-  let low = 0;
-  let high = Math.max(0, codePoints.length - 1);
-  let best: string | null = null;
-  while (low <= high) {
-    const retained = Math.floor((low + high) / 2);
-    const history = retainHistoryEdges(codePoints, retained);
-    const prompt = buildCompactPrompt({
-      executionProfile: args.executionProfile,
-      history,
-    });
-    if (estimatePromptTokens(prompt) <= args.inputTokenLimit) {
-      best = prompt;
-      low = retained + 1;
-    } else {
-      high = retained - 1;
-    }
-  }
-  return best;
-}
-
-function retainHistoryEdges(codePoints: readonly string[], retained: number): string {
-  if (retained >= codePoints.length) return codePoints.join('');
-  const prefixLength = Math.floor(retained / 3);
-  const suffixLength = retained - prefixLength;
-  const prefix = codePoints.slice(0, prefixLength).join('');
-  const suffix = suffixLength > 0 ? codePoints.slice(-suffixLength).join('') : '';
-  return `${prefix}${OMITTED_HISTORY_MARKER}${suffix}`;
-}
-
-function estimatePromptTokens(prompt: string): number {
-  return estimateMessagesTokens([{ role: 'user', content: prompt }]);
-}
-
-function formatHistory(messages: readonly Message[]): string {
-  const lines: string[] = [];
-  for (const message of messages) {
-    if (message.role === 'system') continue;
-    if (typeof message.content === 'string') {
-      lines.push(`[${message.role}]\n${message.content}\n`);
-      continue;
-    }
-    const parts = message.content.map(formatBlock).filter(Boolean);
-    lines.push(`[${message.role}]\n${parts.join('\n')}\n`);
-  }
-  return lines.join('\n');
-}
-
-function formatBlock(block: UserBlock | AssistantBlock): string {
-  switch (block.type) {
-    case 'text':
-      return block.text;
-    case 'thinking':
-      return '';
-    case 'tool_use':
-      return `<tool_use name="${block.name}">${JSON.stringify(block.args)}</tool_use>`;
-    case 'tool_result':
-      return `<tool_result${block.isError ? ' error="true"' : ''}>${formatToolResult(block.content)}</tool_result>`;
-    case 'image_url':
-    case 'image_data':
-    case 'audio_data':
-    case 'file_url':
-    case 'file_data':
-      return `[${block.type}]`;
-  }
-  return '';
-}
-
-function formatToolResult(content: string | readonly ToolResultContentPart[]): string {
-  if (typeof content === 'string') return content;
-  return content
-    .map((part) => part.type === 'text' ? part.text : `[${part.type}]`)
-    .join('\n');
 }
 
 function collectText(blocks: readonly AssistantBlock[]): string {

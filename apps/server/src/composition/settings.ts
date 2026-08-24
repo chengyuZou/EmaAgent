@@ -1,5 +1,5 @@
 // 设置一族：SettingsStore 构造时注册全部业务包设置定义与组（原 SettingsCatalog 已并入 Store）。
-import { AGENT_LIMITS_SETTINGS, agentLimitsGroup } from '@ema-agent/agent';
+import { AGENT_LIMITS_SETTINGS, agentLimitsGroup, thinkingEffortSetting } from '@ema-agent/agent';
 import {
   attachmentCacheMaxBytesSetting,
   maxFilesPerTurnSetting,
@@ -51,6 +51,7 @@ export function openSettings(profileDb: Database): SettingsComposition {
   const settings = new SettingsStore(new SettingsRepo(profileDb.sqlite), {
     definitions: [
       ...AGENT_LIMITS_SETTINGS,
+      thinkingEffortSetting,
       ...COMPACT_SETTINGS,
       ...CHARACTER_SETTING_DEFINITIONS,
       ...PERMISSION_SETTINGS,

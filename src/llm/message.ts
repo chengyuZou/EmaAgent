@@ -1,4 +1,5 @@
 // 定义单次语言模型调用使用的不可变消息，不承载 Session 持久化或界面展示字段。
+import type { LlmGenerationSource } from './types.js';
 
 /** Provider 可以接收的用户输入内容。 */
 export type ContentPart =
@@ -40,4 +41,14 @@ export type UserBlock = ContentPart | ToolResultBlock;
 export type Message =
   | { role: 'system'; content: string; cacheBreakpoint?: true }
   | { role: 'user'; content: string | readonly UserBlock[]; cacheBreakpoint?: true }
-  | { role: 'assistant'; content: readonly AssistantBlock[]; cacheBreakpoint?: true };
+  | {
+      role: 'assistant';
+      content: readonly AssistantBlock[];
+      cacheBreakpoint?: true;
+      /**
+       * 中立执行元数据：这条 Assistant 历史由哪个调用目标生成。Adapter 编码厂商
+       * Wire 消息时消费并剥除，绝不序列化进厂商请求；只对模型生成的 Assistant
+       * 历史有意义，user/tool/reminder/summary 不伪造。
+       */
+      generatedBy?: LlmGenerationSource;
+    };

@@ -22,6 +22,7 @@
 
 其余出口：
 
+- `ActiveSessionRegistry`：同 Session 一个活跃执行（当前只有根 Turn；手动 compact 复用同一坑位）。`SessionBusyError` 是业务拒绝（路由 409），`ActiveSessionAlreadyRegisteredError` 是进程内不变量。
 - `generateSessionTitle(query, complete)`：让模型生成 7–15 字标题，失败或为空时截断原文前 100 字兜底；返回空串表示没有可用输入。持久化不在此发生，调用方拿返回值走 `SessionStore.updateTitle`。
 - `parseMessageBlocksJson`：blocks_json 的唯一解析点。
 - `SessionOwnershipError`：跨 Session 引用的稳定错误。

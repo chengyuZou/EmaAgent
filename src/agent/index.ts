@@ -44,6 +44,7 @@ export {
   maxSubagentsSetting,
   maxToolCallsSetting,
   readAgentSettings,
+  thinkingEffortSetting,
   workMaxIterationsSetting,
 } from './settings.js';
 export type { AgentSettings } from './settings.js';

@@ -1,6 +1,5 @@
 // 验证 Context 的固定顺序、缓存切口和分类总量；压缩由 Compact 单独测试。
 import { describe, expect, it } from 'vitest';
-import { PROMPT_DYNAMIC_BOUNDARY } from '@ema-agent/prompts';
 import { ToolPool } from '@ema-agent/tools';
 import { assembleContext } from '../assembleContext.js';
 import { ContextAssemblyError } from '../errors.js';
@@ -8,9 +7,8 @@ import { ContextAssemblyError } from '../errors.js';
 function input(overrides: Record<string, unknown> = {}) {
   return {
     systemPrompt: [
-      '# 产品规则\n稳定内容',
-      PROMPT_DYNAMIC_BOUNDARY,
-      '# 当前角色\n动态内容',
+      { name: 'product', content: '# 产品规则\n稳定内容', cacheBreakpoint: true },
+      { name: 'character', content: '# 当前角色\n动态内容' },
     ],
     toolPool: new ToolPool([]),
     history: [{ role: 'user' as const, content: '历史消息' }],
@@ -24,7 +22,7 @@ function input(overrides: Record<string, unknown> = {}) {
 }
 
 describe('assembleContext', () => {
-  it('剥离 Prompt 哨兵，按 Prompt → 历史 → 当前 Turn 顺序组装', () => {
+  it('按 Prompt 块 → 历史 → 当前 Turn 顺序组装，块标记即断点', () => {
     const result = assembleContext(input());
 
     expect(result.messages.map((message) => message.content)).toEqual([
@@ -35,18 +33,27 @@ describe('assembleContext', () => {
       '当前输入',
     ]);
     expect(result.messages[0]).toMatchObject({ cacheBreakpoint: true });
+    // 块标记以外：历史/当前 Turn 边界与全文末尾各有一个装配断点。
+    expect(result.messages[2]).toMatchObject({ cacheBreakpoint: true });
     expect(result.messages.at(-1)).toMatchObject({ cacheBreakpoint: true });
-    expect(JSON.stringify(result.messages)).not.toContain(PROMPT_DYNAMIC_BOUNDARY);
     expect(result.usage.categories.reduce((sum, category) => sum + category.tokens, 0))
       .toBe(result.usage.estimatedInputTokens);
+    // Prompt 分类名直接来自块名，不再从标题首行推断。
+    expect(result.usage.categories.filter(c => c.kind === 'promptSection').map(c => c.name))
+      .toEqual(['product', 'character']);
   });
 
-  it('清除历史遗留的请求级缓存断点', () => {
+  it('清除历史遗留的请求级缓存断点，并在历史/当前 Turn 边界重打', () => {
     const result = assembleContext(input({
-      history: [{ role: 'user', content: '历史消息', cacheBreakpoint: true }],
+      history: [
+        { role: 'user', content: '更早历史', cacheBreakpoint: true },
+        { role: 'user', content: '历史消息' },
+      ],
     }));
+    // 遗留断点被剥除（输入投影绝不留存），边界断点是本次装配重新打的。
     expect(result.messages[2]).not.toHaveProperty('cacheBreakpoint');
-    expect(result.messages.filter((message) => message.cacheBreakpoint)).toHaveLength(2);
+    expect(result.messages[3]).toMatchObject({ cacheBreakpoint: true });
+    expect(result.messages.filter((message) => message.cacheBreakpoint)).toHaveLength(3);
   });
 
   it('拒绝把 system message 混进历史', () => {

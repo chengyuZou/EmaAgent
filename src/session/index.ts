@@ -4,6 +4,11 @@ export type { SessionStoreDeps } from './store.js';
 export { generateSessionTitle } from './sessionTitle.js';
 export type { SessionTitleCompletion } from './sessionTitle.js';
 export { SessionOwnershipError } from './errors.js';
+export {
+  ActiveSessionAlreadyRegisteredError,
+  SessionBusyError,
+} from './errors.js';
+export { ActiveSessionRegistry } from './activeSessionRegistry.js';
 export { parseMessageBlocksJson } from './message.js';
 export type {
   Session,

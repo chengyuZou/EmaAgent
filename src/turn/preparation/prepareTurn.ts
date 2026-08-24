@@ -22,6 +22,8 @@ import {
   type CallLlm,
   type ContentPart,
   type LlmConnection,
+  type LlmProtocol,
+  type LlmThinking,
   type Message,
 } from '@ema-agent/llm';
 import {
@@ -30,7 +32,7 @@ import {
   type PermissionMode,
   type PermissionRuleBuckets,
 } from '@ema-agent/permission';
-import { getSystemPrompt } from '@ema-agent/prompts';
+import { getSystemPrompt, type PromptBlock } from '@ema-agent/prompts';
 import type { ProviderModels, Providers } from '@ema-agent/providers';
 import type {
   AttachmentReferenceBlock,
@@ -80,12 +82,15 @@ export interface PreparedTurn {
   readonly callLlm: CallLlm;
   readonly providerId: string;
   readonly modelId: string;
+  /** prepare 解析出的实际调用协议（resolveConnection().protocol 冻结，与模型身份同时回填 Turn）。 */
+  readonly protocol: LlmProtocol;
   readonly contextWindow: number;
   /** 模型单次输出上限（null = 未知，仅按预算裁剪）。 */
   readonly maxOutput: number | null;
   readonly supportsImageInput: boolean;
-  readonly thinkingEnabled: boolean;
-  readonly systemPrompt: readonly string[];
+  /** 开启 thinking 时冻结的中立推理配置（enabled + effort），协议 Adapter 各自映射。 */
+  readonly thinking?: LlmThinking;
+  readonly systemPrompt: readonly PromptBlock[];
   /** 持久化用的用户消息块（附件为 attachment_ref，原始二进制写占位）。 */
   readonly userMessageBlocks: MessageBlocks;
   /** 首次模型调用看到的用户内容（附件已解析、原始图片已按能力降级）。 */
@@ -164,10 +169,8 @@ export async function prepareTurn(
       `模型未在该 Provider 下启用：${providerId} / ${modelId}`,
     );
   }
-  const callLlm = (deps.createLlmCall ?? createLlmCall)(
-    deps.providers.resolveConnection(providerId, 'llm'),
-    modelId,
-  );
+  const connection = deps.providers.resolveConnection(providerId, 'llm');
+  const callLlm = (deps.createLlmCall ?? createLlmCall)(connection, modelId);
   const supportsImageInput = modelFacts.inputImage === true;
   const degradations: RequestDegradationNotice[] = [];
 
@@ -327,10 +330,13 @@ export async function prepareTurn(
     callLlm,
     providerId,
     modelId,
+    protocol: connection.protocol,
     contextWindow: modelFacts.contextWindow,
     maxOutput: modelFacts.maxOutput,
     supportsImageInput,
-    thinkingEnabled: start.thinkingEnabled ?? false,
+    ...(start.thinkingEnabled
+      ? { thinking: { enabled: true as const, effort: agentSettings.thinkingEffort } }
+      : {}),
     systemPrompt,
     userMessageBlocks,
     userMessageParts: Object.freeze(userMessageParts),

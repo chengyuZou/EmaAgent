@@ -50,6 +50,8 @@ export const turnRecordSchema = z.object({
   narrativePolicy: z.enum(['auto', 'always', 'off']),
   providerId: nullableId,
   modelId: nullableId,
+  // 与 provider_id/model_id 同生命周期；开发期格式不兼容缺失该键的旧 ZIP。
+  protocol: nullableId,
   characterDirectoryName: z.string().nullable(),
   iterations: nonNegativeInteger,
   usageInputTokens: nonNegativeInteger,
@@ -74,13 +76,13 @@ export const messageRecordSchema = z.object({
 }).strict().superRefine((value, ctx) => {
   if (value.kind === 'summary' && value.summarizedThroughMessageId === null) {
     ctx.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: 'custom',
       message: 'summary 消息必须携带覆盖截止游标 summarizedThroughMessageId',
     });
   }
   if (value.kind !== 'summary' && value.summarizedThroughMessageId !== null) {
     ctx.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: 'custom',
       message: '非 summary 消息不能携带覆盖截止游标 summarizedThroughMessageId',
     });
   }

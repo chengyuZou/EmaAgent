@@ -18,6 +18,8 @@ export interface TurnRow {
   /** 操作开始冻结的模型选择；prepare 阶段解析成功前为 null。 */
   provider_id: string | null;
   model_id: string | null;
+  /** prepare 解析出的实际调用协议（与 provider_id/model_id 同生命周期，setModel 回填前为 null）。 */
+  protocol: string | null;
   /** 本 Turn 激活角色的磁盘目录名快照；prepare 完成回填，此前为 null。 */
   character_directory_name: string | null;
   iterations: number;
@@ -67,6 +69,7 @@ export interface TurnIndexRow {
   preview: string;
   provider_id: string | null;
   model_id: string | null;
+  protocol: string | null;
   created_at: number;
   completed_at: number | null;
 }
@@ -103,11 +106,11 @@ export class TurnsRepo {
       );
   }
 
-  /** 操作开始冻结模型选择；prepare 解析成功后写入，整轮不再变。 */
-  setModel(id: string, providerId: string, modelId: string): void {
+  /** 操作开始冻结模型选择与实际调用协议；prepare 解析成功后一次写入，整轮不再变。 */
+  setModel(id: string, providerId: string, modelId: string, protocol: string): void {
     this.db
-      .prepare('UPDATE turns SET provider_id = ?, model_id = ? WHERE id = ?')
-      .run(providerId, modelId, id);
+      .prepare('UPDATE turns SET provider_id = ?, model_id = ?, protocol = ? WHERE id = ?')
+      .run(providerId, modelId, protocol, id);
   }
 
   /** prepare 完成时冻结激活角色目录名；Memory relationship 提取经 turnId 回读此列。 */
@@ -127,7 +130,7 @@ export class TurnsRepo {
       .prepare(
         `INSERT INTO turns
            (id, session_id, status, trigger_type,
-            execution_profile, narrative_policy, provider_id, model_id,
+            execution_profile, narrative_policy, provider_id, model_id, protocol,
             character_directory_name,
             iterations, usage_input_tokens, usage_output_tokens,
             created_at, completed_at, error_code, error_message)
@@ -135,7 +138,7 @@ export class TurnsRepo {
       )
       .run(
         newId, newSessionId, src.status, src.trigger_type,
-        src.execution_profile, src.narrative_policy, src.provider_id, src.model_id,
+        src.execution_profile, src.narrative_policy, src.provider_id, src.model_id, src.protocol,
         src.character_directory_name,
         src.iterations, src.usage_input_tokens, src.usage_output_tokens,
         src.created_at, src.completed_at, src.error_code, src.error_message,
@@ -192,7 +195,7 @@ export class TurnsRepo {
                    WHERE m.turn_id = t.id AND m.role = 'user' AND m.kind = 'normal'
                    ORDER BY m.created_at ASC, m.id ASC LIMIT 1
                  ), '') AS preview,
-                 t.provider_id, t.model_id,
+                 t.provider_id, t.model_id, t.protocol,
                  t.created_at, t.completed_at
           FROM turns t
           WHERE t.session_id = ?
@@ -208,7 +211,7 @@ export class TurnsRepo {
                    WHERE m.turn_id = t.id AND m.role = 'user' AND m.kind = 'normal'
                    ORDER BY m.created_at ASC, m.id ASC LIMIT 1
                  ), '') AS preview,
-                 t.provider_id, t.model_id,
+                 t.provider_id, t.model_id, t.protocol,
                  t.created_at, t.completed_at
           FROM turns t
           WHERE t.session_id = ?

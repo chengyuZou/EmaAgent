@@ -68,11 +68,21 @@ export function createPrepareLlmCall(deps: PrepareLlmCallDeps): PrepareAgentIter
       });
 
     let assembled = assemble(history);
+    // 摘要请求复用本轮装配的系统消息段（同字节、含缓存断点），与主对话共享 KV 前缀。
+    const systemEnd = assembled.messages.findIndex(message => message.role !== 'system');
+    const systemMessages = assembled.messages.slice(
+      0,
+      systemEnd < 0 ? assembled.messages.length : systemEnd,
+    );
 
     const result = await deps.compact({
       sessionId: deps.sessionId,
       executionProfile: prepared.executionProfile,
       history,
+      systemMessages,
+      // 摘要请求复用根 Turn 冻结的 Tool 定义与 thinking 配置，保持与主请求一致的缓存前缀。
+      tools: assembled.tools,
+      ...(prepared.thinking ? { thinking: prepared.thinking } : {}),
       estimatedInputTokens: assembled.usage.estimatedInputTokens,
       ...(recoveryReason === 'context_window_exceeded' ? { force: true } : {}),
       contextWindow: prepared.contextWindow,
@@ -116,7 +126,7 @@ export function createPrepareLlmCall(deps: PrepareLlmCallDeps): PrepareAgentIter
       request: {
         messages: assembled.messages,
         tools: assembled.tools,
-        ...(prepared.thinkingEnabled ? { thinking: { enabled: true as const } } : {}),
+        ...(prepared.thinking ? { thinking: prepared.thinking } : {}),
         maxOutputTokens,
         signal: deps.signal,
       },

@@ -16,14 +16,61 @@ import type {
 import type {
   AssistantBlock,
   LlmConnection,
+  LlmGenerationSource,
   LlmRequest,
   LlmStopReason,
   LlmStreamEvent,
+  LlmThinking,
+  LlmThinkingEffort,
   LlmTokenUsage,
   LlmTool,
   Message,
 } from '../types.js';
 import { createLlmTokenUsage } from '../usage.js';
+
+/** Anthropic 扩展思考的 budget_tokens 下限（协议硬约束，且必须小于 max_tokens）。 */
+/** 只重放本模型生成的 thinking：signature 模型私有，无来源/跨协议/跨模型都删除。 */
+function shouldReplayAnthropicThinking(
+  generatedBy: LlmGenerationSource | undefined,
+  modelId: string,
+): boolean {
+  return generatedBy?.protocol === 'anthropic-llm' && generatedBy.modelId === modelId;
+}
+
+const MIN_THINKING_BUDGET_TOKENS = 1_024;
+const DEFAULT_THINKING_BUDGET_TOKENS = 8_000;
+/** 中立强度档 → budget_tokens 的产品取值（非官方对照；官方只给下限与 max_tokens 约束）。 */
+const EFFORT_BUDGET_TOKENS: Record<LlmThinkingEffort, number> = {
+  low: 2_000,
+  medium: 8_000,
+  high: 16_000,
+  max: 32_000,
+};
+
+/**
+ * 构造 Anthropic thinking 参数：budgetTokens 显式值 > effort 映射表 > 默认 8K；
+ * 预算 clamp 到 max_tokens - 1（协议硬约束）；输出上限连下限都放不下时直接拒绝。
+ */
+export function buildAnthropicThinking(
+  thinking: LlmThinking | undefined,
+  maxOutputTokens: number,
+): { type: 'enabled'; budget_tokens: number } | undefined {
+  if (thinking?.enabled !== true) return undefined;
+  if (maxOutputTokens <= MIN_THINKING_BUDGET_TOKENS) {
+    throw new TypeError(
+      `thinking 需要 maxOutputTokens > ${MIN_THINKING_BUDGET_TOKENS}（当前 ${maxOutputTokens}）`,
+    );
+  }
+  const desired = thinking.budgetTokens
+    ?? (thinking.effort ? EFFORT_BUDGET_TOKENS[thinking.effort] : DEFAULT_THINKING_BUDGET_TOKENS);
+  return {
+    type: 'enabled',
+    budget_tokens: Math.max(
+      MIN_THINKING_BUDGET_TOKENS,
+      Math.min(desired, maxOutputTokens - 1),
+    ),
+  };
+}
 
 export function createAnthropicProtocol(
   connection: LlmConnection, modelId: string,
@@ -44,11 +91,12 @@ async function* streamAnthropic(
   if (request.maxOutputTokens === undefined) {
     throw new TypeError('anthropic-llm requires maxOutputTokens');
   }
-  const { system, messages } = toAnthropicMessages(request.messages);
+  const { system, messages } = toAnthropicMessages(request.messages, modelId);
   const tools = request.toolChoice === 'none'
     ? undefined
     : request.tools?.map(toAnthropicTool);
   const thinkingEnabled = request.thinking?.enabled === true;
+  const thinking = buildAnthropicThinking(request.thinking, request.maxOutputTokens);
   const body: Anthropic.Messages.MessageStreamParams = {
     model: modelId,
     messages,
@@ -58,14 +106,7 @@ async function* streamAnthropic(
     ...(tools?.length
       ? { tools, tool_choice: toAnthropicToolChoice(request.toolChoice) }
       : {}),
-    ...(thinkingEnabled
-      ? {
-          thinking: {
-            type: 'enabled' as const,
-            budget_tokens: request.thinking?.budgetTokens ?? 8_000,
-          },
-        }
-      : {}),
+    ...(thinking ? { thinking } : {}),
   };
 
   let stream: AsyncIterable<Anthropic.MessageStreamEvent>;
@@ -225,7 +266,10 @@ interface AnthropicMessages {
   messages: Anthropic.MessageParam[];
 }
 
-export function toAnthropicMessages(messages: readonly Message[]): AnthropicMessages {
+export function toAnthropicMessages(
+  messages: readonly Message[],
+  modelId: string,
+): AnthropicMessages {
   const system: Anthropic.TextBlockParam[] = [];
   const result: Anthropic.MessageParam[] = [];
 
@@ -276,9 +320,12 @@ export function toAnthropicMessages(messages: readonly Message[]): AnthropicMess
     }
 
     const content: Anthropic.ContentBlockParam[] = [];
+    // thinking 只随生成它的同一个模型重放（signature 模型私有）；
+    // 无来源、跨协议或跨模型的历史 thinking 一律删除，text/tool_use 不受影响。
+    const replayThinking = shouldReplayAnthropicThinking(message.generatedBy, modelId);
     for (const block of message.content as readonly AssistantBlock[]) {
       if (block.type === 'text') content.push({ type: 'text', text: block.text });
-      if (block.type === 'thinking' && block.signature) {
+      if (block.type === 'thinking' && block.signature && replayThinking) {
         content.push({
           type: 'thinking',
           thinking: block.thinking,

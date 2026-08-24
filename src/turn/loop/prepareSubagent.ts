@@ -61,10 +61,11 @@ export function createPrepareSubagent(deps: PrepareSubagentDeps): PrepareSubagen
 
     const subPrepared: PreparedTurn = Object.freeze({
       ...prepared,
-      systemPrompt: Object.freeze([
-        options.systemPrompt
+      systemPrompt: Object.freeze([{
+        name: 'subagent',
+        content: options.systemPrompt
           ?? '你是 Ema 的子 Agent，只完成被委派的具体任务，并把结论返回给父 Agent。',
-      ]),
+      }]),
       tools: Object.freeze({
         ...prepared.tools,
         toolPool: subPool,

@@ -26,11 +26,43 @@ import type {
   LlmRequest,
   LlmStopReason,
   LlmStreamEvent,
+  LlmThinking,
+  LlmThinkingEffort,
   LlmTool,
   Message,
   UserBlock,
 } from '../types.js';
 import { createLlmTokenUsage } from '../usage.js';
+
+const DEFAULT_THINKING_BUDGET_TOKENS = 8_000;
+/** 中立强度档 → thinkingBudget 的产品取值（非官方对照；Google 只给每模型范围）。 */
+const EFFORT_BUDGET_TOKENS: Record<LlmThinkingEffort, number> = {
+  low: 2_000,
+  medium: 8_000,
+  high: 16_000,
+  max: 32_000,
+};
+
+/**
+ * 构造 Gemini thinkingConfig：enabled=false 显式关闭（thinkingBudget 0）；
+ * enabled=true 时 budgetTokens 显式值 > effort 映射表 > 默认 8K，
+ * 预算 clamp 到 maxOutputTokens - 1（thinking 计入输出）。
+ */
+export function buildGeminiThinkingConfig(
+  thinking: LlmThinking | undefined,
+  maxOutputTokens: number | undefined,
+): ThinkingConfig | undefined {
+  if (thinking?.enabled === false) return { thinkingBudget: 0 };
+  if (thinking?.enabled !== true) return undefined;
+  const desired = thinking.budgetTokens
+    ?? (thinking.effort ? EFFORT_BUDGET_TOKENS[thinking.effort] : DEFAULT_THINKING_BUDGET_TOKENS);
+  return {
+    includeThoughts: true,
+    thinkingBudget: maxOutputTokens === undefined
+      ? desired
+      : Math.min(desired, maxOutputTokens - 1),
+  };
+}
 
 export function createGeminiProtocol(
   connection: LlmConnection, modelId: string,
@@ -61,15 +93,8 @@ async function* streamGemini(
     }];
     config.toolConfig = toGeminiToolConfig(request.toolChoice);
   }
-  if (request.thinking?.enabled === true) {
-    const thinking: ThinkingConfig = {
-      includeThoughts: true,
-      thinkingBudget: request.thinking.budgetTokens ?? 8_000,
-    };
-    config.thinkingConfig = thinking;
-  } else if (request.thinking?.enabled === false) {
-    config.thinkingConfig = { thinkingBudget: 0 };
-  }
+  const thinkingConfig = buildGeminiThinkingConfig(request.thinking, request.maxOutputTokens);
+  if (thinkingConfig) config.thinkingConfig = thinkingConfig;
 
   let stream: AsyncGenerator<GenerateContentResponse>;
   try {

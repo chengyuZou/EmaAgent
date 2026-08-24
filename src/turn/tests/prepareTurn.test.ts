@@ -155,6 +155,8 @@ describe('prepareTurn', () => {
     expect(prepared.providerId).toBe('req-p');
     expect(prepared.contextWindow).toBe(128_000);
     expect(prepared.supportsImageInput).toBe(false);
+    // resolveConnection().protocol 在 prepare 时冻结为实际调用协议。
+    expect(prepared.protocol).toBe('openai-chat');
     expect(seen).toEqual(['req-p']);
 
     await expect(prepareTurn(deps, makeRuntime(makeStart()))).rejects.toThrow(/未在该 Provider 下启用/);

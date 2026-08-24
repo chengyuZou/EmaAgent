@@ -5,6 +5,7 @@
 
 import type { SettingsStore, SettingGroup } from '@ema-agent/settings';
 import { defineSetting } from '@ema-agent/settings';
+import type { LlmThinkingEffort } from '@ema-agent/llm';
 import { z } from 'zod';
 
 export interface AgentSettings {
@@ -13,6 +14,8 @@ export interface AgentSettings {
   maxToolCalls: number;
   maxSubagents: number;
   maxConcurrentSubagents: number;
+  /** 开启 thinking 的 Turn 使用的中立强度档（协议各自映射，nextTurn 生效）。 */
+  thinkingEffort: LlmThinkingEffort;
 }
 
 export const AGENT_LIMITS_GROUP = 'agent.limits';
@@ -68,6 +71,19 @@ export const maxConcurrentSubagentsSetting = defineSetting<number>({
 });
 
 /**
+ * 中立推理强度档：不属于 agent.limits 组（无跨字段约束），单独注册。
+ * 消费方是 Turn 冻结的 thinking 配置；协议 Adapter 各自映射为档位参数或预算。
+ */
+export const thinkingEffortSetting = defineSetting<LlmThinkingEffort>({
+  key: 'agent.thinking.effort',
+  label: '思考强度',
+  description: '模型内部推理的强度档位；开启 thinking 的 Turn 生效，各协议映射为对应参数。',
+  apply: 'nextTurn',
+  defaultValue: 'medium',
+  schema: z.enum(['low', 'medium', 'high', 'max']),
+});
+
+/**
  * 整组默认快照(供消费方默认参数与测试使用)。
  * 单一事实源是各 setting 的 defaultValue,这里只是聚合导出,不再手写重复值。
  */
@@ -77,6 +93,7 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   maxToolCalls: maxToolCallsSetting.defaultValue,
   maxSubagents: maxSubagentsSetting.defaultValue,
   maxConcurrentSubagents: maxConcurrentSubagentsSetting.defaultValue,
+  thinkingEffort: thinkingEffortSetting.defaultValue,
 };
 
 /** agent.limits 组内全部字段定义(供 SettingsStore 注册组)。 */
@@ -122,5 +139,6 @@ export function readAgentSettings(store: SettingsStore): AgentSettings {
     maxToolCalls: store.get(maxToolCallsSetting),
     maxSubagents: store.get(maxSubagentsSetting),
     maxConcurrentSubagents: store.get(maxConcurrentSubagentsSetting),
+    thinkingEffort: store.get(thinkingEffortSetting),
   };
 }

@@ -1,11 +1,12 @@
 import type { LlmTool, Message } from '@ema-agent/llm';
+import type { PromptBlock } from '@ema-agent/prompts';
 import type { ToolPool } from '@ema-agent/tools';
 import type { ContextUsageEstimate } from './contextUsage.js';
 
 /** 组装一次 Provider 中立请求所需的全部事实。 */
 export interface AssembleContextInput {
-  /** getSystemPrompt() 的原始有序结果，必须恰好包含一个动态边界哨兵。 */
-  readonly systemPrompt: readonly string[];
+  /** getSystemPrompt() 的原始有序块；数组顺序即发送顺序，断点只来自块自身标记。 */
+  readonly systemPrompt: readonly PromptBlock[];
   /** 与执行器共享的同一个根 Turn 冻结 ToolPool。 */
   readonly toolPool: ToolPool;
   /** 唯一允许 Compact 改写的消息区间，不得包含 system 消息。 */

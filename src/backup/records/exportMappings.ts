@@ -56,6 +56,7 @@ export const toTurnRecord = (row: TurnRow): TurnRecord => ({
   narrativePolicy: row.narrative_policy,
   providerId: row.provider_id,
   modelId: row.model_id,
+  protocol: row.protocol,
   characterDirectoryName: row.character_directory_name,
   iterations: row.iterations,
   usageInputTokens: row.usage_input_tokens,

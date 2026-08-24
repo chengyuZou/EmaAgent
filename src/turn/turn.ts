@@ -10,8 +10,11 @@ import type { CompactRequest, CompactResult } from '@ema-agent/compact';
 import type {
   CallLlm,
   ContentPart,
+  LlmGenerationSource,
+  LlmProtocol,
   Message,
 } from '@ema-agent/llm';
+import { PROTOCOLS } from '@ema-agent/providers';
 import type { SessionStore } from '@ema-agent/session';
 import type { StageEngine } from '@ema-agent/stage';
 import type {
@@ -53,6 +56,10 @@ import type {
 /** 本包常量预算；工具/子 Agent 额度来自 agent 包 settings，时长与输出上限 V1 不做设置项。 */
 const DEFAULT_MAX_DURATION_MS = 30 * 60_000;
 const DEFAULT_MAX_OUTPUT_TOKENS = 200_000;
+
+/** turn.protocol 是存储的普通 string；不在 LlmProtocol 词表内返回 undefined（不伪造）。 */
+const isLlmProtocol = (value: string): value is LlmProtocol =>
+  (PROTOCOLS as readonly string[]).includes(value);
 
 /**
  * Reminder 事实的作用域：git/任务/scratchpad 等工作区与 Session 事实、Narrative 召回
@@ -263,7 +270,7 @@ export class TurnExecutor {
       });
       tools = prepared.tools;
       this.runningTools.set(turnId, tools);
-      this.deps.turns.setModel(turnId, prepared.providerId, prepared.modelId);
+      this.deps.turns.setModel(turnId, prepared.providerId, prepared.modelId, prepared.protocol);
       this.deps.turns.setCharacterDirectoryName(turnId, this.deps.characterDirectoryName());
       compactForTurn = this.deps.createCompact(prepared.callLlm);
 
@@ -320,8 +327,17 @@ export class TurnExecutor {
       if (reminderIndex < 0) {
         throw new Error('reminder 消息落库后未能从 Session History 读回');
       }
-      const historyWithIds = deriveLlmHistory(persisted.slice(0, reminderIndex));
-      const reminderReplay = deriveLlmHistory(persisted.slice(reminderIndex, reminderIndex + 1))
+      // 每条 Assistant 历史关联所属 Turn 冻结的调用目标（providerId/modelId/protocol）；
+      // 查不到目标就缺省，由目标协议 Adapter 依据 generatedBy 裁决 thinking 重放。
+      const resolveGenerationTarget = (turnId: string): LlmGenerationSource | undefined => {
+        const turn = this.deps.turns.getTurn(turnId);
+        if (!turn?.providerId || !turn.modelId || !turn.protocol) return undefined;
+        return isLlmProtocol(turn.protocol)
+          ? { providerId: turn.providerId, modelId: turn.modelId, protocol: turn.protocol }
+          : undefined;
+      };
+      const historyWithIds = deriveLlmHistory(persisted.slice(0, reminderIndex), resolveGenerationTarget);
+      const reminderReplay = deriveLlmHistory(persisted.slice(reminderIndex, reminderIndex + 1), resolveGenerationTarget)
         .map(entry => entry.message);
       const initialMessages: Message[] = [
         ...historyWithIds.map(entry => entry.message),

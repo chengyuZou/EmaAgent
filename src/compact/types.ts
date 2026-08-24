@@ -1,4 +1,4 @@
-import type { Message } from '@ema-agent/llm';
+import type { LlmThinking, LlmTool, Message } from '@ema-agent/llm';
 import type { ExecutionProfile } from '@ema-agent/turn-terms';
 import type { CompactSettings } from './settings.js';
 import type { CompactEvent } from './events.js';
@@ -10,6 +10,16 @@ export interface CompactRequest {
   readonly executionProfile: ExecutionProfile;
   /** 仅包含允许被改写的历史；System Prompt、当前 Turn 与临时召回不在这里。 */
   readonly history: readonly Message[];
+  /**
+   * 摘要请求复用的系统消息段（与主对话同字节、含缓存断点标记），调用方从本轮
+   * Context 装配结果取出。摘要请求 = systemMessages + 结构化历史 + 尾部压缩指令，
+   * 以此共享主对话的 KV 缓存前缀。
+   */
+  readonly systemMessages: readonly Message[];
+  /** 摘要请求复用的 Tool 定义（根 Turn 冻结集合，同内容同顺序）；模型不得真正调用。 */
+  readonly tools: readonly LlmTool[];
+  /** 摘要请求复用的中立 thinking 配置；缺省表示主请求未开启 thinking。 */
+  readonly thinking?: LlmThinking;
   /** Context 对完整候选请求的最新估算；可以使用最近真实 Usage 加本轮增量校准。 */
   readonly estimatedInputTokens: number;
   /** Provider 已明确报告超限时跳过阈值判断，强制尝试安全压缩。 */

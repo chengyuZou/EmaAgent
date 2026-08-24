@@ -58,13 +58,14 @@ start
        ├─ TurnMessageWriter 流式落库
        └─ 事件翻译 → TurnStreamEvent 通道
   → finishSafely：writer 收口（interrupted + 孤儿 tool_use 合成）→ 交互队列清理
-    → 工具与子 Agent shutdown → ActiveTurn 释放
+    → 工具与子 Agent shutdown → 活跃执行坑位释放（ActiveSessionRegistry，归 session 包）
   → TurnStore 一次终态：completed / failed / aborted
 ```
 
 ## 持久化不变量
 
 - **yield 恢复 = 已保存**：`tool_use_completed` 落库后 AgentLoop 才登记调用；`assistant_message_completed` 落库后才允许 `executor.start()`；`tool_result` 落库后才 `acknowledgeResult()`。
+- 模型选择与实际调用协议在 prepare 解析成功后一次回填：`setModel(turnId, providerId, modelId, protocol)` 是唯一回填点，turns 行冻结三字段后不再从 Provider 配置事后反推。
 - 首个 delta 创建 assistant 消息，后续 delta 用 `updateMessageBlocks` 续写同一消息。
 - 终态非 completed 时未完成 assistant 标 `interrupted`；未等到 tool_result 的 tool_use 由 Turn 合成取消结果补配对（deriveLlmHistory 只重放完整配对）。
 - 先落库，再发事件：SSE 不是持久化触发器。
@@ -94,10 +95,10 @@ src/turn/
 ├─ index.ts                 公共出口（含 turn-terms 表面组合）
 ├─ types.ts                 StartTurn / TurnOutcome / TurnHandle
 ├─ events.ts                TurnEvent / TurnStreamEvent / TurnAgentRunEvent
-├─ errors.ts                TurnOwnership/ActiveTurn/TurnPreparation/TurnBudgetExceeded + failureCodeOf/failureMessageOf
+├─ errors.ts                TurnOwnership/TurnPreparation/TurnBudgetExceeded + failureCodeOf/failureMessageOf
 ├─ turn.ts                  TurnExecutor：唯一公开入口 + 主循环驱动
 ├─ turnStore.ts             Turn 行 CRUD + 唯一终态 + 运行态/删除守卫 + 导航查询
-├─ activeTurnRegistry.ts    同 Session 一个活动 Turn
+│                           （Session 活跃执行坑位 = session 包 ActiveSessionRegistry）
 ├─ eventChannel.ts          TurnEvent 单消费者有界通道
 ├─ interactionQueue.ts      SessionInteractionQueue（Permission/AskUser 共用的 Session FIFO）
 ├─ settings.ts              workspace.instructionFiles（用户多选工作区指令文件，nextTurn 生效）

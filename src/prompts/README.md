@@ -6,8 +6,8 @@ System Prompt 的唯一组装者。架构定案:**一个扁平有序数组装完
 ## 公共接口
 
 ```ts
-getSystemPrompt(input): readonly string[]
-PROMPT_DYNAMIC_BOUNDARY            // 静态/动态分界哨兵(数组元素,Context 切分后剥除)
+getSystemPrompt(input): readonly PromptBlock[]
+PromptBlock            // { name, content, cacheBreakpoint? }：name 只供分类展示，不进模型请求
 GetSystemPromptInput
 PromptEnvironment
 ```
@@ -16,9 +16,13 @@ PromptEnvironment
 
 - **没有槽位注册表、SlotId 联合、order 数字、stability 枚举、版本字段、revision
   哈希、PromptSnapshot 类型、Turn 中途扩展入口**——这些已拆除,不得重建。
-- 边界哨兵之前只放全产品稳定内容(产品环境、执行、安全、工具与沟通规则);之后放随会话/角色/
-  Turn 变化的内容(角色、Profile、数据级内容)。会话级可变内容不得越过哨兵,
+  动态边界哨兵（PROMPT_DYNAMIC_BOUNDARY）也已删除：静态/动态分界由
+  `cacheBreakpoint` 标记在最后一个产品静态块上表达，不再有混入数组的哨兵元素。
+- 断点之前只放全产品稳定内容(产品环境、执行、安全、工具与沟通规则);之后放随会话/角色/
+  Turn 变化的内容(数据级内容、角色、Profile、能力引导)。会话级可变内容不得越过断点,
   避免无意破坏 KV Cache 前缀。
+- `name` 是 Context Usage 分类与前端展示的稳定键，绝不发送给模型；`content` 与数组
+  顺序才是模型可见事实。
 - 组装是纯字符串拼接,每根 Turn 开始时执行一次,本根 Turn 内不变;读盘等昂贵输入
   由调用方缓存并注入,本包不内置 memo。
 - **文案归属**:本包只写产品级文案(`productPrompt.ts`/`executionProfilePrompt.ts`);
@@ -56,7 +60,7 @@ PromptEnvironment
 - `toolNames`:根 Turn 已冻结 ToolPool 的稳定名称集合,只决定动态能力引导是否出现;
   每个 Tool 的参数 Schema 与详细用法仍由 Provider `tools[]` 提供。
 - `environment`:本轮平台、工作区和模型事实,由调用方冻结后注入。
-- `workspaceInstructions` / `skillCatalog` / `mcpInstructions`:可选,由调用方
+- `workspaceInstructions` / `skillCatalog` / `mcpInstructions` / `memorySection`:可选,由调用方
   在根 Turn 装配时注入;变化只影响下一根 Turn。
 
 ## 段序(固定)
@@ -68,14 +72,13 @@ taskExecutionRules          │ 静态前缀(全产品稳定,缓存共享)
 actionSafetyRules           │
 toolSelectionRules          │
 communicationRules          │
-baseToneRules               ┘
-PROMPT_DYNAMIC_BOUNDARY     ← 哨兵:Context 在此切分并落 cacheBreakpoint
-character.prompt            ┐ 角色(切换才变)
-character.presentation      ┘
-executionProfile            chat/work(每根 Turn 可变)
-sessionCapabilityGuidance   当轮 ToolPool 派生的完整跨工具规则
-runtimeEnvironment          平台/工作区/模型
-workspaceInstructions       ┐ 数据级(框架文案声明"非指令")
+baseToneRules               ┘ ← cacheBreakpoint 标在这块
+workspaceInstructions       ┐
+memoryGuidance              │ 数据级(框架文案声明"非指令")
 skillCatalog                │
 mcpInstructions…            ┘
+character                   角色单块(切换才变;角色包内部 section 合并不拆)
+executionProfile            chat/work(每根 Turn 可变)
+sessionCapabilityGuidance   当轮 ToolPool 派生的完整跨工具规则
+runtimeEnvironment          平台/工作区/模型——最末:换模型是最高频变化,只损失这块
 ```

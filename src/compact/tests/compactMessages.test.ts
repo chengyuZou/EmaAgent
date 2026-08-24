@@ -44,6 +44,8 @@ function request(history: readonly Message[], overrides: Partial<CompactRequest>
 
     executionProfile: 'work' as const,
     history,
+    systemMessages: [{ role: 'system', content: '产品系统提示' }],
+    tools: [],
     estimatedInputTokens: estimateMessagesTokens([...history]),
     contextWindow: 4_000,
     maxOutputTokens: 0,
@@ -254,8 +256,53 @@ describe('createCompact', () => {
     });
     expect(JSON.stringify(result.history)).toContain('压缩后的工作摘要');
     expect(complete).toHaveBeenCalledTimes(1);
-    expect(String(complete.mock.calls[0]?.[0]?.messages[0]?.content))
-      .toContain('部分历史因摘要模型输入上限被省略');
+    // 摘要请求 = 系统段 + 结构化历史原文 + 尾部压缩指令（不再扁平化成单条文本）。
+    const sent = complete.mock.calls[0]?.[0]?.messages;
+    expect(sent?.[0]).toMatchObject({ role: 'system', content: '产品系统提示' });
+    expect(String(sent?.[1]?.content)).toContain('huge');
+    expect(String(sent?.at(-1)?.content)).toContain('compact agent');
+  });
+
+  it('摘要请求透传根 Turn 冻结的 tools 与 thinking 配置', async () => {
+    const complete = vi.fn(async (_request: LlmRequest) => completion());
+    const compact = createCompact(llmCompleting(complete), {
+      bufferTokens: 0,
+      defaultReservedOutputTokens: 0,
+      maximumReservedOutputTokens: 0,
+    });
+    const frozenTools = [{ name: 'Read', description: '读取文件', inputSchema: { type: 'object' } }];
+
+    const result = await compact(request(textHistory(), {
+      force: true,
+      tools: frozenTools,
+      thinking: { enabled: true, effort: 'high' },
+    }));
+
+    expect(result.kind).toBe('macro');
+    const sent = complete.mock.calls[0]?.[0];
+    expect(sent?.tools).toEqual(frozenTools);
+    expect(sent?.thinking).toEqual({ enabled: true, effort: 'high' });
+  });
+
+  it('摘要模型判超时按 Token 预算从尾部收缩历史并重试，指令如实标注丢弃数', async () => {
+    const complete = vi.fn()
+      .mockRejectedValueOnce(new Error('prompt is too long for this model'))
+      .mockResolvedValue(completion());
+    const compact = createCompact(llmCompleting(complete), {
+      bufferTokens: 0,
+      defaultReservedOutputTokens: 0,
+      maximumReservedOutputTokens: 0,
+    });
+
+    const result = await compact(request(textHistory(), { force: true }));
+
+    expect(result.kind).toBe('macro');
+    expect(complete).toHaveBeenCalledTimes(2);
+    const firstMessages = complete.mock.calls[0]![0].messages;
+    const secondMessages = complete.mock.calls[1]![0].messages;
+    // 第二次预算缩到 0.8，保留的历史更短；两次都是 系统段+历史+尾部指令 结构。
+    expect(secondMessages.length).toBeLessThan(firstMessages.length);
+    expect(String(secondMessages.at(-1)?.content)).toContain('未纳入');
   });
 
   it('Macro 成功后的近期历史不包含孤立 Tool Result', async () => {
