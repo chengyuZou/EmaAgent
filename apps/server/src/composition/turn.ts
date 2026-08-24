@@ -8,7 +8,11 @@ import {
 import { buildCharacterPrompt, type CharacterStore } from '@ema-agent/characters';
 import { createCompact } from '@ema-agent/compact';
 import { gitSummary } from '@ema-agent/git';
-import { createLlmCall, createLlmCompletion, type ContentPart } from '@ema-agent/llm';
+import {
+  createLlmCall,
+  createLlmCompletion,
+  type LlmTokenUsage,
+} from '@ema-agent/llm';
 import {
   buildMemoryGuidance,
   memorySummaryFile,
@@ -28,11 +32,11 @@ import {
   SessionInteractionQueue,
   TurnExecutor,
   workspaceInstructionFilesSetting,
-  type TurnReminderFacts,
+  type RenderTurnReminderInput,
   type TurnReminderScope,
 } from '@ema-agent/turn';
 import { createUsageRecord, reportUsage, type UsageRecorder } from '@ema-agent/usage';
-import { createVisionCall, type CallVision, type VisionImageMime, type VisionTokenUsage } from '@ema-agent/vision';
+import { createVisionCall, type CallVision, type VisionImageMime } from '@ema-agent/vision';
 import { ensureScratchpadDir, scratchpadTurnDir } from '../platform/paths.js';
 import type { AppEvent } from '../sse/eventHub.js';
 import type { DatabaseComposition } from './database.js';
@@ -103,10 +107,6 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     if (!selected) return Promise.reject(new Error('未配置 vision 模型绑定，无法描述图片'));
     return visionDescriptions.getOrCreate(
       attachment,
-      {
-        providerId: selected.providerId,
-        modelId: selected.modelId,
-      },
       signal,
       async image => {
         const bytes = await fs.promises.readFile(image.imagePath);
@@ -126,20 +126,6 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
       },
     );
   };
-  const describeRawImage = async (
-    image: Extract<ContentPart, { type: 'image_data' }>,
-  ): Promise<string> => {
-    const selected = resolveVision();
-    if (!selected) throw new Error('未配置 vision 模型绑定，无法描述图片');
-    const startedAt = Date.now();
-    const result = await selected.vision({
-      images: [{ kind: 'base64', data: image.data, mimeType: image.mimeType as VisionImageMime }],
-      task: 'caption',
-    });
-    recordVisionUsage(database.usageRecorder, selected.providerId, selected.modelId, startedAt, result.usage);
-    return result.text;
-  };
-
   // Turn 工具面的 vision 闭包（PdfReadTool 扫描页 OCR 等）：无绑定即 undefined（降级纯文本），
   // 模型身份在闭包内冻结，usage 从结果记录。
   const resolveCallVision = (): CallVision | undefined => {
@@ -153,8 +139,8 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     };
   };
 
-  // ── Reminder 事实（每根 Turn 读取一次；读取完成即冻结进持久化 reminder） ──────
-  const readTurnReminderFacts = async (scope: TurnReminderScope): Promise<TurnReminderFacts> => {
+  // ── Reminder 输入（每根 Turn 生产一次；含 currentDate，读取完成即冻结进持久化 reminder） ──
+  const readTurnReminder = async (scope: TurnReminderScope): Promise<RenderTurnReminderInput> => {
     const workspaceRoot = database.session.getSession(scope.sessionId).workspaceRoot ?? '';
     const git = scope.executionProfile === 'work' && workspaceRoot
       ? await gitSummary(workspaceRoot).catch(() => undefined)
@@ -175,7 +161,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
         }).then(result => result.contextText ?? undefined)
         .catch(() => undefined)
       : undefined;
-    // shouldRemind 只检查不消费；提醒随 reminder 落库成功后由 onReminderPersisted 提交 markReminded。
+    // shouldRemind 只检查不消费；提醒随 reminder 落库成功后由 onTaskReminderPersisted 提交 markReminded。
     const pendingTasks = database.tasks.shouldRemind(scope.sessionId)
       ? database.tasks.list(scope.sessionId).filter(
           (task) => task.status === 'pending' || task.status === 'in_progress',
@@ -192,6 +178,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
       ? `本 Turn scratchpad 已有文件：${scratchpadNames.join('、')}`
       : undefined;
     return {
+      currentDate: new Date().toISOString().slice(0, 10),
       ...(git ? { gitSummary: git } : {}),
       ...(memoryWork ? { memoryWork } : {}),
       ...(memoryRelationship ? { memoryRelationship } : {}),
@@ -266,15 +253,14 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     workspaceInstructions: workspaceRoot =>
       readWorkspaceInstructions(workspaceRoot, settings.get(workspaceInstructionFilesSetting)),
     describeImage,
-    describeRawImage,
     scratchpadDirForTurn: (sessionId, turnId) =>
       ensureScratchpadDir(activeDataDir, sessionId, turnId),
     isBypassPermissionsModeAvailable:
       process.env['EMA_BYPASS_PERMISSIONS'] === '1' && process.env.NODE_ENV !== 'production',
-    readTurnReminderFacts,
-    onReminderPersisted: (sessionId, facts) => {
-      // 只有 reminder Message 成功持久化才提交"已提醒"，避免 Turn 准备失败吞掉提醒周期。
-      if (facts.taskReminder) database.tasks.markReminded(sessionId);
+    readTurnReminder,
+    // 只有 reminder Message 成功持久化才提交"已提醒"，避免 Turn 准备失败吞掉提醒周期。
+    onTaskReminderPersisted: sessionId => {
+      database.tasks.markReminded(sessionId);
     },
     memoryGuidance: () => buildMemoryGuidance().catch(() => null),
     usageRecorder: database.usageRecorder,
@@ -309,7 +295,7 @@ function recordVisionUsage(
   providerId: string,
   modelId: string,
   startedAt: number,
-  usage: VisionTokenUsage | undefined,
+  usage: LlmTokenUsage | undefined,
 ): void {
   reportUsage(
     recorder,

@@ -343,9 +343,6 @@ importers:
       '@ema-agent/turn':
         specifier: workspace:*
         version: link:../../src/turn
-      '@ema-agent/turn-terms':
-        specifier: workspace:*
-        version: link:../../src/turn-terms
       '@ema-agent/usage':
         specifier: workspace:*
         version: link:../../src/usage
@@ -616,15 +613,15 @@ importers:
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../llm
+      '@ema-agent/session':
+        specifier: workspace:*
+        version: link:../session
       '@ema-agent/settings':
         specifier: workspace:*
         version: link:../settings
       '@ema-agent/token':
         specifier: workspace:*
         version: link:../token
-      '@ema-agent/turn-terms':
-        specifier: workspace:*
-        version: link:../turn-terms
       zod:
         specifier: ^4
         version: 4.4.3
@@ -662,9 +659,6 @@ importers:
       '@ema-agent/tools':
         specifier: workspace:*
         version: link:../tools
-      '@ema-agent/turn-terms':
-        specifier: workspace:*
-        version: link:../turn-terms
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -898,9 +892,6 @@ importers:
       '@ema-agent/token':
         specifier: workspace:*
         version: link:../token
-      '@ema-agent/turn-terms':
-        specifier: workspace:*
-        version: link:../turn-terms
       zod:
         specifier: ^4
         version: 4.4.3
@@ -966,9 +957,9 @@ importers:
       '@ema-agent/characters':
         specifier: workspace:*
         version: link:../characters
-      '@ema-agent/turn-terms':
+      '@ema-agent/session':
         specifier: workspace:*
-        version: link:../turn-terms
+        version: link:../session
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -1044,9 +1035,6 @@ importers:
       '@ema-agent/tools':
         specifier: workspace:*
         version: link:../tools
-      '@ema-agent/turn-terms':
-        specifier: workspace:*
-        version: link:../turn-terms
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -1424,9 +1412,6 @@ importers:
       '@ema-agent/tools':
         specifier: workspace:*
         version: link:../tools
-      '@ema-agent/turn-terms':
-        specifier: workspace:*
-        version: link:../turn-terms
       '@ema-agent/usage':
         specifier: workspace:*
         version: link:../usage
@@ -1446,22 +1431,6 @@ importers:
       zod:
         specifier: ^4
         version: 4.4.3
-
-  src/turn-terms:
-    dependencies:
-      '@ema-agent/llm':
-        specifier: workspace:*
-        version: link:../llm
-    devDependencies:
-      rimraf:
-        specifier: ^5.0.0
-        version: 5.0.10
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: ^2.0.0
-        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
   src/ui:
     dependencies:
@@ -1581,18 +1550,9 @@ importers:
 
   src/vision:
     dependencies:
-      '@anthropic-ai/sdk':
-        specifier: ^0.39.0
-        version: 0.39.0
-      '@ema-agent/providers':
+      '@ema-agent/llm':
         specifier: workspace:*
-        version: link:../providers
-      '@google/genai':
-        specifier: ^2.7.0
-        version: 2.7.0(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))
-      openai:
-        specifier: ^4.98.0
-        version: 4.104.0(ws@8.20.1)(zod@4.4.3)
+        version: link:../llm
     devDependencies:
       '@types/node':
         specifier: ^20.0.0

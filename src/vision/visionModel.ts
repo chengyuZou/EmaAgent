@@ -1,39 +1,108 @@
-// 创建点冻结连接与模型身份的视觉调用入口，并统一校验中立请求与结果。
+// 把一次视觉任务转换为无 Tool、无历史的 LLM 调用，并把模型文本解析为视觉结果。
+import {
+  createLlmCall,
+  createLlmCompletion,
+  type ContentPart,
+  type LlmCompletion,
+  type UserBlock,
+} from '@ema-agent/llm';
 import { VisionError } from './errors.js';
-import { createAnthropicVisionProtocol } from './protocols/anthropic.js';
-import { createGeminiVisionProtocol } from './protocols/gemini.js';
-import { createOpenAiVisionProtocol } from './protocols/openAi.js';
+import { parseVisionResult } from './parse.js';
+import {
+  buildVisionExtractionPrompt,
+  defaultMaxTokensForVisionTask,
+} from './prompts.js';
 import type {
   CallVision,
   VisionConnection,
-  VisionProtocolRequest,
+  VisionImage,
+  VisionRequest,
   VisionResult,
 } from './types.js';
 
-/** Vision 唯一创建入口；modelId 在此冻结，请求只执行一次，超时和重试由调用方通过 signal 控制。 */
+/** Vision 唯一创建入口；连接与模型身份在创建点冻结，每次调用只执行一次 LLM 请求。 */
 export function createVisionCall(connection: VisionConnection, modelId: string): CallVision {
-  if (!modelId.trim()) throw new VisionError('vision/invalid_request', 'Vision model must not be empty');
-  const protocolAnalyze = createProtocolAnalyze(connection, modelId);
+  if (!modelId.trim()) {
+    throw new VisionError('vision/invalid_request', 'Vision model must not be empty');
+  }
+  const callLlm = createLlmCall(connection, modelId);
+
   return async (request) => {
     validateRequest(request);
-    const result = await protocolAnalyze({ ...request, task: request.task ?? 'auto' });
+    const task = request.task ?? 'auto';
+    const content: UserBlock[] = [
+      {
+        type: 'text',
+        text: buildVisionExtractionPrompt({
+          task,
+          language: request.language,
+          imageCount: request.images.length,
+          instruction: request.instruction,
+        }),
+      },
+      ...request.images.map(image => toLlmImage(image, connection.protocol)),
+    ];
+
+    let completion: LlmCompletion;
+    try {
+      completion = await createLlmCompletion(callLlm({
+        messages: [{ role: 'user', content }],
+        thinking: { enabled: false },
+        maxOutputTokens: request.maxOutputTokens ?? defaultMaxTokensForVisionTask(task),
+        ...(request.temperature === undefined ? {} : { temperature: request.temperature }),
+        signal: request.signal,
+      }));
+    } catch (error) {
+      if (request.signal?.aborted) throw error;
+      if (error instanceof VisionError) throw error;
+      throw new VisionError(
+        'vision/call_failed',
+        error instanceof Error ? error.message : String(error),
+        statusOf(error),
+        error,
+      );
+    }
+
+    const result = resultFromCompletion(completion);
     validateResult(result);
     return result;
   };
 }
 
-function createProtocolAnalyze(
-  connection: VisionConnection,
-  modelId: string,
-): (request: VisionProtocolRequest) => Promise<VisionResult> {
-  switch (connection.protocol) {
-    case 'openai-vision': return createOpenAiVisionProtocol(connection, modelId);
-    case 'anthropic-vision': return createAnthropicVisionProtocol(connection, modelId);
-    case 'gemini-vision': return createGeminiVisionProtocol(connection, modelId);
+function toLlmImage(
+  image: VisionImage,
+  protocol: VisionConnection['protocol'],
+): ContentPart {
+  if (image.kind === 'url') {
+    if (protocol === 'gemini-llm' && /^https?:/i.test(image.url)) {
+      throw new VisionError(
+        'vision/unsupported_input',
+        'gemini-llm only accepts Gemini Files API or gs:// image URLs',
+      );
+    }
+    return { type: 'image_url', url: image.url };
   }
+  return {
+    type: 'image_data',
+    data: image.kind === 'bytes'
+      ? Buffer.from(image.bytes).toString('base64')
+      : cleanBase64(image.data),
+    mimeType: image.mimeType,
+  };
 }
 
-function validateRequest(request: Parameters<CallVision>[0]): void {
+function resultFromCompletion(completion: LlmCompletion): VisionResult {
+  const raw = completion.blocks
+    .filter((block): block is Extract<typeof block, { type: 'text' }> => block.type === 'text')
+    .map(block => block.text)
+    .join('\n');
+  return {
+    ...parseVisionResult(raw),
+    usage: completion.usage,
+  };
+}
+
+function validateRequest(request: VisionRequest): void {
   if (request.images.length === 0) {
     throw new VisionError('vision/invalid_request', 'Vision request must contain at least one image');
   }
@@ -41,7 +110,7 @@ function validateRequest(request: Parameters<CallVision>[0]): void {
     if (image.kind === 'bytes' && image.bytes.byteLength === 0) {
       throw new VisionError('vision/invalid_request', 'Vision image bytes must not be empty');
     }
-    if (image.kind === 'base64' && !stripBase64Prefix(image.data)) {
+    if (image.kind === 'base64' && !cleanBase64(image.data)) {
       throw new VisionError('vision/invalid_request', 'Vision base64 image must not be empty');
     }
     if (image.kind === 'url' && !image.url.trim()) {
@@ -63,19 +132,14 @@ function validateResult(result: VisionResult): void {
   if (!result.text.trim() && result.blocks.length === 0) {
     throw new VisionError('vision/invalid_response', 'Vision provider returned no visible content');
   }
-  if (
-    result.usage
-    && (
-      !Number.isFinite(result.usage.inputTokens)
-      || !Number.isFinite(result.usage.outputTokens)
-      || result.usage.inputTokens < 0
-      || result.usage.outputTokens < 0
-    )
-  ) {
-    throw new VisionError('vision/invalid_response', 'Vision provider returned invalid usage');
-  }
 }
 
-function stripBase64Prefix(data: string): string {
+function cleanBase64(data: string): string {
   return data.replace(/^data:[^,]+,/, '').replace(/\s/g, '');
+}
+
+function statusOf(error: unknown): number | undefined {
+  if (!error || typeof error !== 'object') return undefined;
+  const value = (error as { status?: unknown }).status;
+  return typeof value === 'number' ? value : undefined;
 }

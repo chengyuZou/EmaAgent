@@ -12,9 +12,6 @@ export const PROTOCOLS = [
   'openai-embed',
   'gemini-embed',
   'cohere-rerank',
-  'openai-vision',
-  'anthropic-vision',
-  'gemini-vision',
   'openai-tts',
   'dashscope-tts',
   'gpt-sovits-tts',
@@ -25,7 +22,6 @@ export type Protocol = typeof PROTOCOLS[number];
 export type LlmProtocol = Extract<Protocol, `${string}-llm`>;
 export type EmbedProtocol = Extract<Protocol, `${string}-embed`>;
 export type RerankProtocol = Extract<Protocol, `${string}-rerank`>;
-export type VisionProtocol = Extract<Protocol, `${string}-vision`>;
 export type TtsProtocol = Extract<Protocol, `${string}-tts`>;
 export type SttProtocol = Extract<Protocol, `${string}-stt`>;
 
@@ -33,7 +29,8 @@ export interface ModelCapabilityProtocolMap {
   llm: LlmProtocol;
   embed: EmbedProtocol;
   rerank: RerankProtocol;
-  vision: VisionProtocol;
+  /** Vision 是一次无 Tool 的多模态 LLM 调用，直接复用已经实现的 LLM 协议。 */
+  vision: LlmProtocol;
   tts: TtsProtocol;
   stt: SttProtocol;
 }
@@ -72,9 +69,10 @@ export function isProtocolForCapability<TCapability extends ModelCapability>(
     case 'rerank':
       return protocol === 'cohere-rerank';
     case 'vision':
-      return protocol === 'openai-vision'
-        || protocol === 'anthropic-vision'
-        || protocol === 'gemini-vision';
+      return protocol === 'openai-llm'
+        || protocol === 'openai-responses-llm'
+        || protocol === 'anthropic-llm'
+        || protocol === 'gemini-llm';
     case 'tts':
       return protocol === 'openai-tts'
         || protocol === 'dashscope-tts'

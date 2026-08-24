@@ -535,7 +535,7 @@ function isAbort(error: unknown): boolean {
 /** 页级失败分片的重试判定:5xx/429/网络类可重试,参数或响应形状类重试无意义。 */
 function visionFailureRetryable(error: unknown): boolean {
   if (error instanceof VisionError) {
-    return error.code === 'vision/http_error'
+    return error.code === 'vision/call_failed'
       && (error.status === undefined || error.status === 429 || error.status >= 500);
   }
   return true;

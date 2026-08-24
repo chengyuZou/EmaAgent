@@ -40,7 +40,6 @@
     "@ema-agent/storage": "workspace:*",
     "@ema-agent/tasks": "workspace:*",
     "@ema-agent/tools": "workspace:*",
-    "@ema-agent/turn-terms": "workspace:*",
     "@ema-agent/usage": "workspace:*",
     "@ema-agent/vision": "workspace:*"
   },

@@ -80,8 +80,12 @@ function makeDeps(overrides: {
 
 describe('prepareLlmCall', () => {
   it('未超限时原样装配：请求带工具/输出上限，工作历史不变', async () => {
+    const inherited: Message[][] = [];
     const { deps, appendHistorySummary } = makeDeps();
-    const prepare = createPrepareLlmCall(deps);
+    const prepare = createPrepareLlmCall({
+      ...deps,
+      onWorkingMessagesPrepared: messages => inherited.push([...messages]),
+    });
 
     const result = await prepare({ messages: [...HISTORY, ...CURRENT] });
 
@@ -91,6 +95,8 @@ describe('prepareLlmCall', () => {
     expect(result.messages).toEqual([...HISTORY, ...CURRENT]);
     // system prompt 哨兵被剥除后进入请求消息，静态前缀在前。
     expect(result.request.messages[0]).toMatchObject({ role: 'system' });
+    expect(inherited).toEqual([[...HISTORY, ...CURRENT]]);
+    expect(inherited[0]!.some(message => message.role === 'system')).toBe(false);
     expect(appendHistorySummary).not.toHaveBeenCalled();
   });
 

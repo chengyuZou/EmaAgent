@@ -17,10 +17,19 @@ export interface AttachmentReferenceBlock {
   mimeType: string;
 }
 
+/** 用户显式选中的 Skill；只保存引用，SKILL.md 正文由 Skill Tool 按需读取。 */
+export interface SkillReferenceBlock {
+  type: 'skill_ref';
+  skillKey: string;
+  name: string;
+  callName: string;
+  rootPath: string;
+}
+
 /** ToolResult 信封即持久块; data/durationMs/errorCode 都在信封上, 不再重复投影。 */
 export type ToolResultBlock = ToolResult;
 
-export type UserBlock = ContentPart | ToolResultBlock | AttachmentReferenceBlock;
+export type UserBlock = ContentPart | ToolResultBlock | AttachmentReferenceBlock | SkillReferenceBlock;
 export type MessageBlocks = string | AssistantBlock[] | UserBlock[];
 
 const INVALID_MESSAGE_PLACEHOLDER = '[消息内容无法读取]';
@@ -73,7 +82,10 @@ function isAssistantBlocks(value: unknown): value is AssistantBlock[] {
 
 function isUserBlocks(value: unknown): value is UserBlock[] {
   return Array.isArray(value) && value.every((block) => (
-    isContentPart(block) || isToolResultBlock(block) || isAttachmentReferenceBlock(block)
+    isContentPart(block)
+      || isToolResultBlock(block)
+      || isAttachmentReferenceBlock(block)
+      || isSkillReferenceBlock(block)
   ));
 }
 
@@ -83,6 +95,15 @@ function isAttachmentReferenceBlock(value: unknown): value is AttachmentReferenc
     && typeof value.attachmentId === 'string'
     && typeof value.name === 'string'
     && typeof value.mimeType === 'string';
+}
+
+function isSkillReferenceBlock(value: unknown): value is SkillReferenceBlock {
+  return isRecord(value)
+    && value.type === 'skill_ref'
+    && typeof value.skillKey === 'string'
+    && typeof value.name === 'string'
+    && typeof value.callName === 'string'
+    && typeof value.rootPath === 'string';
 }
 
 function isToolResultBlock(value: unknown): value is ToolResultBlock {

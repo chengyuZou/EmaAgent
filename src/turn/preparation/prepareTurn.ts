@@ -1,5 +1,4 @@
 // 把根 Turn 的输入规范化并冻结：附件、模型、Prompt、Skill、权限桶与工具层，产出不可变 PreparedTurn。
-import path from 'node:path';
 import {
   readAgentSettings,
   type AgentBudget,
@@ -9,7 +8,6 @@ import {
 import {
   AttachmentStore,
   readAttachmentInputSettings,
-  resolveAttachmentReferences,
   type Attachment,
   type DescribeAttachmentImage,
 } from '@ema-agent/attachments';
@@ -20,7 +18,6 @@ import {
 import {
   createLlmCall,
   type CallLlm,
-  type ContentPart,
   type LlmConnection,
   type LlmProtocol,
   type LlmThinking,
@@ -35,9 +32,9 @@ import {
 import { getSystemPrompt, type PromptBlock } from '@ema-agent/prompts';
 import type { ProviderModels, Providers } from '@ema-agent/providers';
 import type {
-  AttachmentReferenceBlock,
   MessageBlocks,
   SessionStore,
+  UserBlock as SessionUserBlock,
 } from '@ema-agent/session';
 import type { SettingsStore } from '@ema-agent/settings';
 import {
@@ -45,33 +42,21 @@ import {
   disabledProjectSourcesSetting,
   disabledSkillKeysSetting,
   freezeSkillPool,
-  MAX_SKILL_BYTES,
-  readSkillFileBounded,
   renderSkillListing,
   type SkillDescriptor,
   type SkillKey,
   type SkillPool,
 } from '@ema-agent/skills';
-import type {
-  ExecutionProfile,
-  RequestDegradationNotice,
-  Turn,
-} from '@ema-agent/turn-terms';
+import type { ExecutionProfile } from '@ema-agent/session';
+import type { RequestDegradationNotice } from '../types.js';
 import { TurnPreparationError } from '../errors.js';
 import type { TurnStreamEvent } from '../events.js';
-import type { StartTurn } from '../types.js';
-import { prepareImagesForModel } from './mediaCompatibility.js';
+import type { StartTurn, TurnInputPart } from '../types.js';
 import {
   prepareTurnTools,
   type TurnToolsAssembly,
   type TurnToolsDeps,
 } from './prepareTurnTools.js';
-
-export interface FrozenSelectedSkill {
-  readonly key: string;
-  readonly callName: string;
-  readonly content: string;
-}
 
 /** 一个根 Turn 的冻结事实；运行期只读取这一份，不再回读 Settings/Registry/Session。 */
 export interface PreparedTurn {
@@ -91,12 +76,9 @@ export interface PreparedTurn {
   /** 开启 thinking 时冻结的中立推理配置（enabled + effort），协议 Adapter 各自映射。 */
   readonly thinking?: LlmThinking;
   readonly systemPrompt: readonly PromptBlock[];
-  /** 持久化用的用户消息块（附件为 attachment_ref，原始二进制写占位）。 */
+  /** 持久化用的用户消息块；附件只保存 attachment_ref。 */
   readonly userMessageBlocks: MessageBlocks;
-  /** 首次模型调用看到的用户内容（附件已解析、原始图片已按能力降级）。 */
-  readonly userMessageParts: readonly ContentPart[];
   readonly skillPool?: SkillPool;
-  readonly selectedSkills: readonly FrozenSelectedSkill[];
   readonly agentSettings: AgentSettings;
   readonly compactSettings: CompactSettings;
   readonly permissionMode: PermissionMode;
@@ -119,17 +101,17 @@ export interface PrepareTurnDeps extends TurnToolsDeps {
   readonly workspaceInstructions?: (workspaceRoot: string) => string | null;
   /** 记忆使用指引（静态模板文本，memory 包 buildMemoryGuidance 产出）；两轨摘要不在这里，进 reminder。 */
   readonly memoryGuidance?: () => Promise<string | null> | string | null;
-  /** 模型不支持图片时的 Vision 描述入口；缺失时原始图片将准备失败而非试探透传。 */
+  /** 模型不支持图片时的 Vision 描述入口。 */
   readonly describeImage?: DescribeAttachmentImage;
-  readonly describeRawImage?: (image: Extract<ContentPart, { type: 'image_data' }>) => Promise<string>;
   readonly scratchpadDirForTurn?: (sessionId: string, turnId: string) => string;
   /** 正式构建 false；只有显式开发入口可为 true。 */
   readonly isBypassPermissionsModeAvailable?: boolean;
 }
 
 export interface PrepareTurnInput {
-  readonly start: StartTurn;
-  readonly turn: Turn;
+  readonly request: StartTurn;
+  /** TurnStore 已创建的根 Turn 身份；Session 身份只取 request.sessionId。 */
+  readonly turnId: string;
   readonly budget: AgentBudget;
   readonly prepareSubagent: PrepareSubagent;
   readonly parentMessages: Message[];
@@ -142,7 +124,7 @@ export async function prepareTurn(
   deps: PrepareTurnDeps,
   input: PrepareTurnInput,
 ): Promise<PreparedTurn> {
-  const { start, turn, signal } = input;
+  const { request, turnId, signal } = input;
 
   // 设置在任何附件写入或媒体降级前读取一次，确保同一根 Turn 不混用新旧上限。
   const agentSettings = readAgentSettings(deps.settings);
@@ -150,12 +132,12 @@ export async function prepareTurn(
   const attachmentSettings = readAttachmentInputSettings(deps.settings);
   const permissionMode = deps.settings.get(permissionModeSetting);
 
-  const session = deps.sessions.getSession(start.sessionId);
+  const session = deps.sessions.getSession(request.sessionId);
   const workspaceRoot = session.workspaceRoot ?? '';
   const projectId = session.projectId;
 
-  const providerId = start.providerId ?? session.providerId;
-  const modelId = start.modelId ?? session.modelId;
+  const providerId = request.modelSelection?.providerId ?? session.providerId;
+  const modelId = request.modelSelection?.modelId ?? session.modelId;
   if (!providerId || !modelId) {
     throw new TurnPreparationError(
       'provider/not_configured',
@@ -174,77 +156,8 @@ export async function prepareTurn(
   const supportsImageInput = modelFacts.inputImage === true;
   const degradations: RequestDegradationNotice[] = [];
 
-  // 附件先登记落库；任何一步失败即准备失败，不进入后续装配。
-  let storedAttachments: readonly Attachment[] = [];
-  try {
-    storedAttachments = start.attachments?.length
-      ? await deps.attachments.addAll(
-          [...start.attachments],
-          turn.id,
-          turn.sessionId,
-          attachmentSettings,
-        )
-      : [];
-  } catch (error) {
-    throw new TurnPreparationError(
-      'turn/attachment_failed',
-      error instanceof Error ? error.message : String(error),
-      { cause: error },
-    );
-  }
-
-  const rawParts: ContentPart[] = [
-    ...(start.userInput?.trim()
-      ? [{ type: 'text' as const, text: start.userInput }]
-      : []),
-    ...(start.contentParts ?? []),
-  ];
-  const userMessageBlocks = buildPersistedUserBlocks(rawParts, storedAttachments);
-
-  const attachmentsById = new Map(storedAttachments.map(a => [a.id, a]));
-  const refBlocks: AttachmentReferenceBlock[] = storedAttachments.map(a => ({
-    type: 'attachment_ref',
-    attachmentId: a.id,
-    name: a.name,
-    mimeType: a.mimeType,
-  }));
-  const resolvedAttachmentParts: ContentPart[] = refBlocks.length
-    ? await resolveAttachmentReferences(refBlocks, attachmentsById, {
-        supportsImageInput,
-        ...(deps.describeImage ? { describeImage: deps.describeImage } : {}),
-        signal,
-      }) as ContentPart[]
-    : [];
-  if (!supportsImageInput && storedAttachments.some(a => a.kind === 'image')) {
-    degradations.push({
-      attempt: 1,
-      reason: '当前 LLM 不支持图片输入，附件图片已转换为文本',
-      removed: ['image'],
-      replacements: ['description'],
-    });
-  }
-
-  // 原始图片（非附件）降级：没有描述入口时明确失败，不试探性透传。
-  let userMessageParts: ContentPart[] = [...resolvedAttachmentParts, ...rawParts];
-  const hasRawImages = userMessageParts.some(
-    part => part.type === 'image_data' || part.type === 'image_url',
-  );
-  if (!supportsImageInput && hasRawImages) {
-    if (!deps.describeRawImage) {
-      throw new TurnPreparationError(
-        'provider/model_capability_unsupported',
-        '当前模型不支持图片输入，且没有可用的 Vision 描述入口',
-      );
-    }
-    const prepared = await prepareImagesForModel(userMessageParts, false, {
-      describeImage: deps.describeRawImage,
-    });
-    userMessageParts = [...prepared.parts];
-    if (prepared.degradation) degradations.push(prepared.degradation);
-  }
-
   // Skill 目录与 Pool 同步冻结；chat 态不建 Pool（Skill 工具不可见）。
-  const skillEntries = start.executionProfile === 'work'
+  const skillEntries = request.executionProfile === 'work'
     ? await deps.skillEntries(workspaceRoot)
     : [];
   const skillPool = skillEntries.length
@@ -256,41 +169,67 @@ export async function prepareTurn(
       })
     : undefined;
 
-  const selectedSkills: FrozenSelectedSkill[] = [];
-  for (const key of start.selectedSkillKeys ?? []) {
-    const descriptor = skillPool?.getByKey(key as SkillKey);
-    if (!descriptor) {
-      throw new TurnPreparationError(
-        'turn/setup_failed',
-        `选择的 Skill 不存在或已被禁用：${key}`,
-      );
-    }
-    const content = await readSkillFileBounded(
-      path.join(descriptor.rootPath, 'SKILL.md'),
-      MAX_SKILL_BYTES,
+  // Skill 引用先于附件登记完成解析，避免无效 Skill 让本 Turn 留下孤立附件记录。
+  const selectedSkills = resolveSelectedSkills(request.input, skillPool);
+
+  const attachmentInputs = request.input
+    .filter((part): part is Extract<TurnInputPart, { type: 'attachment' }> => (
+      part.type === 'attachment'
+    ))
+    .map(part => part.attachment);
+
+  // AttachmentStore 保持输入顺序；后续按同一游标把引用放回原始文本位置。
+  let storedAttachments: readonly Attachment[] = [];
+  try {
+    storedAttachments = attachmentInputs.length
+      ? await deps.attachments.addAll(
+          attachmentInputs,
+          turnId,
+          request.sessionId,
+          attachmentSettings,
+        )
+      : [];
+  } catch (error) {
+    throw new TurnPreparationError(
+      'turn/attachment_failed',
+      error instanceof Error ? error.message : String(error),
+      { cause: error },
     );
-    selectedSkills.push({ key, callName: descriptor.callName, content });
+  }
+  if (!supportsImageInput && storedAttachments.some(a => a.kind === 'image')) {
+    degradations.push({
+      attempt: 1,
+      reason: '当前 LLM 不支持图片输入，附件图片已转换为文本',
+      removed: ['image'],
+      replacements: ['description'],
+    });
   }
 
-  const scratchpadDir = start.executionProfile === 'work'
-    ? deps.scratchpadDirForTurn?.(turn.sessionId, turn.id)
+  const userMessageBlocks = prepareOrderedInput(
+    request.input,
+    storedAttachments,
+    selectedSkills,
+  );
+
+  const scratchpadDir = request.executionProfile === 'work'
+    ? deps.scratchpadDirForTurn?.(request.sessionId, turnId)
     : undefined;
 
   const permissionBuckets = loadPermissionRuleBuckets(
     deps.settings,
-    turn.sessionId,
+    request.sessionId,
     projectId ?? undefined,
   );
 
   const tools = prepareTurnTools(deps, {
-    sessionId: turn.sessionId,
-    turnId: turn.id,
-    executionProfile: start.executionProfile,
-    narrativePolicy: start.narrativePolicy,
+    sessionId: request.sessionId,
+    turnId,
+    executionProfile: request.executionProfile,
+    narrativePolicy: request.narrativePolicy,
     workspaceRoot,
     ...(scratchpadDir ? { scratchpadDir } : {}),
     ...(skillPool ? { skillPool } : {}),
-    kbAssetIds: start.kbAssetIds,
+    ...(request.knowledge ? { knowledge: request.knowledge } : {}),
     budget: input.budget,
     prepareSubagent: input.prepareSubagent,
     parentMessages: input.parentMessages,
@@ -307,7 +246,7 @@ export async function prepareTurn(
 
   const systemPrompt = getSystemPrompt({
     characterPrompt: deps.characterPrompt,
-    executionProfile: start.executionProfile,
+    executionProfile: request.executionProfile,
     toolNames: tools.toolPool.tools.map(tool => tool.name),
     environment: {
       platform: process.platform,
@@ -323,7 +262,7 @@ export async function prepareTurn(
   });
 
   return Object.freeze({
-    executionProfile: start.executionProfile,
+    executionProfile: request.executionProfile,
     workspaceRoot,
     projectId,
     ...(scratchpadDir ? { scratchpadDir } : {}),
@@ -334,58 +273,84 @@ export async function prepareTurn(
     contextWindow: modelFacts.contextWindow,
     maxOutput: modelFacts.maxOutput,
     supportsImageInput,
-    ...(start.thinkingEnabled
-      ? { thinking: { enabled: true as const, effort: agentSettings.thinkingEffort } }
+    ...(request.modelSelection?.thinkingEnabled
+      ? { thinking: { enabled: true as const, effort: request.modelSelection.thinkingEffort } }
       : {}),
     systemPrompt,
     userMessageBlocks,
-    userMessageParts: Object.freeze(userMessageParts),
     ...(skillPool ? { skillPool } : {}),
-    selectedSkills: Object.freeze(selectedSkills),
     agentSettings,
     compactSettings,
     permissionMode,
     tools,
     degradations: Object.freeze(degradations),
-    maxIterations: start.executionProfile === 'chat'
+    maxIterations: request.executionProfile === 'chat'
       ? agentSettings.chatMaxIterations
       : agentSettings.workMaxIterations,
   });
 }
 
-/** 持久化用户消息：文本与透明块原样、附件走 attachment_ref、原始二进制写占位。 */
-function buildPersistedUserBlocks(
-  parts: readonly ContentPart[],
-  attachments: readonly Attachment[],
+/** 把输入数组逐项映射为同序的 Session 块；模型内容统一从该持久形态派生。 */
+function prepareOrderedInput(
+  input: readonly TurnInputPart[],
+  storedAttachments: readonly Attachment[],
+  selectedSkills: ReadonlyMap<string, SkillDescriptor>,
 ): MessageBlocks {
-  const blocks: Array<ContentPart | AttachmentReferenceBlock> = [];
-  for (const part of parts) {
-    if (
-      part.type === 'image_data'
-      || part.type === 'audio_data'
-      || part.type === 'file_data'
-    ) {
-      blocks.push({ type: 'text', text: `[本轮${mediaLabel(part.type)}正文未写入会话数据库]` });
+  const sessionBlocks: SessionUserBlock[] = [];
+  let attachmentIndex = 0;
+
+  for (const part of input) {
+    if (part.type === 'text') {
+      if (part.text.length === 0) continue;
+      sessionBlocks.push({ type: 'text', text: part.text });
       continue;
     }
-    blocks.push(part);
-  }
-  for (const attachment of attachments) {
-    blocks.push({
-      type: 'attachment_ref',
-      attachmentId: attachment.id,
-      name: attachment.name,
-      mimeType: attachment.mimeType,
+    if (part.type === 'attachment') {
+      const attachment = storedAttachments[attachmentIndex++];
+      if (!attachment) {
+        throw new TurnPreparationError('turn/attachment_failed', '附件登记结果缺少对应记录');
+      }
+      sessionBlocks.push({
+        type: 'attachment_ref',
+        attachmentId: attachment.id,
+        name: attachment.name,
+        mimeType: attachment.mimeType,
+      });
+      continue;
+    }
+
+    const descriptor = selectedSkills.get(part.skillKey)!;
+    sessionBlocks.push({
+      type: 'skill_ref',
+      skillKey: descriptor.key,
+      name: descriptor.name,
+      callName: descriptor.callName,
+      rootPath: descriptor.rootPath,
     });
   }
-  if (blocks.length === 1 && blocks[0]?.type === 'text') {
-    return (blocks[0] as { type: 'text'; text: string }).text;
-  }
-  return blocks;
+
+  return sessionBlocks.length === 1
+    && sessionBlocks[0]?.type === 'text'
+    ? sessionBlocks[0].text
+    : sessionBlocks;
 }
 
-function mediaLabel(type: 'image_data' | 'audio_data' | 'file_data'): string {
-  if (type === 'image_data') return '图片';
-  if (type === 'audio_data') return '音频';
-  return '文件';
+/** Skill Chip 提交的是稳定 key；准备期解析成当前 Pool 中已经冻结的描述符。 */
+function resolveSelectedSkills(
+  input: readonly TurnInputPart[],
+  skillPool: SkillPool | undefined,
+): ReadonlyMap<string, SkillDescriptor> {
+  const selected = new Map<string, SkillDescriptor>();
+  for (const part of input) {
+    if (part.type !== 'skill' || selected.has(part.skillKey)) continue;
+    const descriptor = skillPool?.getByKey(part.skillKey as SkillKey);
+    if (!descriptor) {
+      throw new TurnPreparationError(
+        'turn/setup_failed',
+        `选择的 Skill 不存在或已被禁用：${part.skillKey}`,
+      );
+    }
+    selected.set(part.skillKey, descriptor);
+  }
+  return selected;
 }

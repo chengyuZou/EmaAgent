@@ -22,7 +22,7 @@
   "dependencies": {
     "@ema-agent/characters": "workspace:*",
     "@ema-agent/builtin-tools": "workspace:*",
-    "@ema-agent/turn-terms": "workspace:*"
+    "@ema-agent/session": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

@@ -170,4 +170,33 @@ describe('prepareTurnTools', () => {
     const results = executor.takeCompletedResults();
     expect(results[0]).toMatchObject({ isError: true, errorCode: 'tool/cancelled' });
   });
+
+  it('Knowledge 查询冻结所选知识库，Tool 未指定文档时继承本 Turn 范围', async () => {
+    const requests: unknown[] = [];
+    const deps = {
+      ...makeDeps({
+        tools: [],
+        queue: new SessionInteractionQueue(null),
+        settings: fakeSettings(),
+      }),
+      knowledgeSearch: async (request: unknown) => {
+        requests.push(request);
+        return { query: 'q', hits: [] };
+      },
+    } as TurnToolsDeps;
+    const assembly = prepareTurnTools(deps, makeInput({
+      events: [],
+      overrides: {
+        knowledge: { assetIds: ['asset-1'] },
+      },
+    }));
+
+    await assembly.toolContext.knowledgeSearch?.({ query: 'first' });
+    await assembly.toolContext.knowledgeSearch?.({ query: 'second', assetIds: ['asset-2'] });
+
+    expect(requests).toEqual([
+      { query: 'first', assetIds: ['asset-1'] },
+      { query: 'second', assetIds: ['asset-2'] },
+    ]);
+  });
 });

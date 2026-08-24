@@ -1,5 +1,5 @@
 // 定义 Chat 与 Work 历史摘要使用的结构化提示词。
-import type { ExecutionProfile } from '@ema-agent/turn-terms';
+import type { ExecutionProfile } from '@ema-agent/session';
 
 // ── 按模式区分的压缩模板 ──────────────────────────────────────────────────────
 //

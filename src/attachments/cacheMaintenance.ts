@@ -40,7 +40,7 @@ export class AttachmentCacheMaintenance {
       const expired = this.options.repo.listAccessedBefore(cutoff, DELETE_BATCH_SIZE);
       if (expired.length === 0) break;
       freed += sumBytes(expired);
-      deleted += this.options.repo.deleteRows(expired.map(toKey));
+      deleted += this.options.repo.deleteRows(expired.map(row => row.attachment_id));
       if (expired.length < DELETE_BATCH_SIZE) break;
     }
 
@@ -51,7 +51,7 @@ export class AttachmentCacheMaintenance {
       if (oldest.length === 0) break;
       for (const row of oldest) {
         freed += row.byte_size;
-        deleted += this.options.repo.deleteRows([toKey(row)]);
+        deleted += this.options.repo.deleteRows([row.attachment_id]);
         if (this.options.repo.totalBytes() <= maxBytes) break;
       }
     }
@@ -64,16 +64,4 @@ export class AttachmentCacheMaintenance {
 
 function sumBytes(rows: readonly { byte_size: number }[]): number {
   return rows.reduce((sum, row) => sum + row.byte_size, 0);
-}
-
-function toKey(row: {
-  attachment_id: string;
-  provider_id: string;
-  model_id: string;
-}) {
-  return {
-    attachmentId: row.attachment_id,
-    providerId: row.provider_id,
-    modelId: row.model_id,
-  };
 }

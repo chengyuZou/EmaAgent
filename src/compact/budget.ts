@@ -1,7 +1,7 @@
 // 把摘要、必须恢复的运行状态和近期历史收敛到总输入硬预算内。
 
 import type { Message } from '@ema-agent/llm';
-import type { ExecutionProfile } from '@ema-agent/turn-terms';
+import type { ExecutionProfile } from '@ema-agent/session';
 import { estimateMessagesTokens } from '@ema-agent/token';
 
 const TRUNCATED_MARKER = '\n\n[摘要已按当前模型上下文预算截断]';

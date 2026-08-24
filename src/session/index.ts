@@ -24,12 +24,16 @@ export type {
   SearchSessionsInput,
   SessionSearchHit,
   SearchSessionsOutput,
+  ExecutionProfile,
+  NarrativePolicy,
+  TurnStatus,
 } from './types.js';
 
 export type {
   AttachmentReferenceBlock,
   AssistantBlock,
   MessageBlocks,
+  SkillReferenceBlock,
   ToolResultBlock,
   UserBlock,
 } from './message.js';

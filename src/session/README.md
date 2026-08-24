@@ -7,7 +7,7 @@
 - **Session**：标题、workspaceRoot（项目内锁定为项目主文件夹）、projectId、createdAt/updatedAt/lastActivityAt、archivedAt、pinned、fork 溯源双列、executionProfile、narrativePolicy、当前模型（providerId/ModelId）、lastViewedAt。
 - **SessionListItem** = Session + 列表投影三字段（hasActiveTurn / lastTurnStatus / hasUnread）。三字段只由列表/搜索 SQL 的 CTE 算出；单查路径返回裸 Session，不允许伪造投影。
 - **Project**：可编辑名称 + 多源文件夹，恰好一个主文件夹（按 updatedAt 倒序首位即主）。
-- **Message**：sessionId、可空 turnId（null = /compact summary 等 Session 级消息）、role、kind（normal / tool_results / summary）、blocks、interrupted、createdAt。
+- **Message**：sessionId、可空 turnId（null = /compact summary 等 Session 级消息）、role、kind（normal / reminder / tool_results / summary）、blocks、interrupted、createdAt。用户块允许 `attachment_ref` 与 `skill_ref`，只保存稳定引用，不复制附件正文或 SKILL.md。
 
 ## 公共入口
 

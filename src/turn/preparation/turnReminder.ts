@@ -2,10 +2,10 @@
 // 只渲染 Turn 开始时已经取得的事实：本函数不读库、不读文件、不查模型、不看时钟；
 // 何时落库、与用户消息的先后顺序、何时启动 AgentLoop 由 TurnExecutor 控制。
 import type { GitSummary } from '@ema-agent/git';
-import type { FrozenSelectedSkill } from './prepareTurn.js';
 
-/** Turn 开始时由宿主读取一次的事实；空字段不进 reminder。 */
-export interface TurnReminderFacts {
+export interface RenderTurnReminderInput {
+  /** 调用方冻结的日期文本；本包不读取系统时钟。 */
+  readonly currentDate: string;
   /** Work 模式的 Git 初始状态。 */
   readonly gitSummary?: GitSummary;
   /** Work 轨 memory_summary.md 的本轮摘要（产出侧已按预算截断）。 */
@@ -20,14 +20,6 @@ export interface TurnReminderFacts {
   readonly scratchpad?: string;
 }
 
-export interface RenderTurnReminderInput {
-  /** 调用方冻结的日期文本；本包不读取系统时钟。 */
-  readonly currentDate: string;
-  readonly facts: TurnReminderFacts;
-  /** 本 Turn 显式选择的 Skill 正文（Turn 准备阶段冻结）。 */
-  readonly selectedSkills: readonly FrozenSelectedSkill[];
-}
-
 /**
  * 渲染本 Turn 的初始背景。固定段序即缓存前缀序；Reminder 不是实时面板——
  * Tool 改了文件、Task 或 Scratchpad 后不回写本消息，模型从更新更晚的 Tool Result
@@ -35,33 +27,24 @@ export interface RenderTurnReminderInput {
  */
 export function renderTurnReminder(input: RenderTurnReminderInput): string {
   const sections: string[] = [`## 当前日期\n${input.currentDate}`];
-  const { facts } = input;
 
-  const git = renderGitSummary(facts.gitSummary);
+  const git = renderGitSummary(input.gitSummary);
   if (git) sections.push(`## Git 状态（本 Turn 开始时）\n${git}`);
-  if (facts.memoryWork?.trim()) {
-    sections.push(`## Work 记忆摘要\n${facts.memoryWork.trim()}`);
+  if (input.memoryWork?.trim()) {
+    sections.push(`## Work 记忆摘要\n${input.memoryWork.trim()}`);
   }
-  if (facts.memoryRelationship?.trim()) {
-    sections.push(`## Relationship 记忆摘要\n${facts.memoryRelationship.trim()}`);
+  if (input.memoryRelationship?.trim()) {
+    sections.push(`## Relationship 记忆摘要\n${input.memoryRelationship.trim()}`);
   }
-  if (facts.narrativeRecall?.trim()) {
-    sections.push(`## Narrative 检索结果\n${facts.narrativeRecall.trim()}`);
-  }
-
-  // 多 Skill 按用户选择顺序注入；相同 SkillKey 去重。
-  const seenSkills = new Set<string>();
-  for (const skill of input.selectedSkills) {
-    if (seenSkills.has(skill.key)) continue;
-    seenSkills.add(skill.key);
-    sections.push(`## 本 Turn 选用的技能：${skill.callName}\n${skill.content.trim()}`);
+  if (input.narrativeRecall?.trim()) {
+    sections.push(`## Narrative 检索结果\n${input.narrativeRecall.trim()}`);
   }
 
-  if (facts.taskReminder?.trim()) {
-    sections.push(`## 任务提醒\n${facts.taskReminder.trim()}`);
+  if (input.taskReminder?.trim()) {
+    sections.push(`## 任务提醒\n${input.taskReminder.trim()}`);
   }
-  if (facts.scratchpad?.trim()) {
-    sections.push(`## Scratchpad\n${facts.scratchpad.trim()}`);
+  if (input.scratchpad?.trim()) {
+    sections.push(`## Scratchpad\n${input.scratchpad.trim()}`);
   }
 
   return [

@@ -37,10 +37,8 @@ import {
   type ToolUseContext,
 } from '@ema-agent/tools';
 import { StreamingToolExecutor } from '@ema-agent/tools';
-import type {
-  ExecutionProfile,
-  NarrativePolicy,
-} from '@ema-agent/turn-terms';
+import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/session';
+import type { TurnKnowledgeSelection } from '../types.js';
 import type { SessionInteractionQueue } from '../interactionQueue.js';
 import type { TurnStreamEvent } from '../events.js';
 
@@ -81,11 +79,11 @@ export interface PrepareTurnToolsInput {
   readonly workspaceRoot: string;
   readonly scratchpadDir?: string;
   readonly skillPool?: SkillPool;
-  /** 本 Turn 冻结的 KB 文档范围；Tool 显式 assetIds 时才被覆盖。 */
-  readonly kbAssetIds?: readonly string[];
+  /** 本 Turn 在当前激活知识库内冻结的文档范围。 */
+  readonly knowledge?: TurnKnowledgeSelection;
   readonly budget: AgentBudget;
   readonly prepareSubagent: PrepareSubagent;
-  /** fork 子 Agent 继承用的最终请求视图；turn.ts 持有并在每次请求后 splice 更新。 */
+  /** fork 子 Agent 继承用的父工作消息；不含 System Prompt、Tool Schema 或缓存标记。 */
   readonly parentMessages: Message[];
   readonly model: { readonly providerId: string; readonly modelId: string };
   /** 事件出口由 turn.ts 绑定到本 Turn 的事件通道（每 Turn 一个）。 */
@@ -218,8 +216,8 @@ export function prepareTurnTools(
           knowledgeSearch: ((request) => deps.knowledgeSearch!({
             ...request,
             // Tool 显式给出 assetIds 时优先；否则继承本 Turn 冻结的文档范围。
-            ...(request.assetIds === undefined && input.kbAssetIds?.length
-              ? { assetIds: [...input.kbAssetIds] }
+            ...(request.assetIds === undefined && input.knowledge?.assetIds?.length
+              ? { assetIds: [...input.knowledge.assetIds] }
               : {}),
           })) as KnowledgeSearch,
         }

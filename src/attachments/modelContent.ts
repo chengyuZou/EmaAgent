@@ -3,7 +3,7 @@
 
 import { readFile } from 'node:fs/promises';
 import type { UserBlock as LlmUserBlock } from '@ema-agent/llm';
-import type { UserBlock as SessionUserBlock } from '@ema-agent/session';
+import type { AttachmentReferenceBlock } from '@ema-agent/session';
 import type { Attachment, ImageAttachment } from './types.js';
 
 /** Vision 描述生产者由编排层注入；Attachments 不接触 Vision 连接。 */
@@ -25,7 +25,7 @@ export interface ResolveAttachmentOptions {
  * Vision 失败都生成模型可见的失败文本，绝不用 filter 静默丢块。
  */
 export async function resolveAttachmentReferences(
-  blocks: readonly SessionUserBlock[],
+  blocks: readonly (LlmUserBlock | AttachmentReferenceBlock)[],
   attachments: ReadonlyMap<string, Attachment>,
   options: ResolveAttachmentOptions,
 ): Promise<LlmUserBlock[]> {
@@ -81,6 +81,7 @@ async function resolveOne(
       const description = await options.describeImage(attachment, options.signal ?? new AbortController().signal);
       return { type: 'text', text: `[图片附件 ${attachment.name} 的描述：${description}]` };
     } catch {
+      options.signal?.throwIfAborted();
       // Vision 失败落到通用说明文本，不中断整条历史组装。
     }
   }

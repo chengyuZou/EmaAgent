@@ -11,5 +11,4 @@ export type {
   VisionRequest,
   VisionResult,
   VisionTask,
-  VisionTokenUsage,
 } from './types.js';

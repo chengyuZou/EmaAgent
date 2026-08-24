@@ -116,6 +116,18 @@ describe('TurnMessageWriter', () => {
     expect(fake.appends.filter(a => a.role === 'assistant')).toHaveLength(2);
   });
 
+  it('max_tokens 从头重试时把已经落库的半截消息标记为 interrupted', async () => {
+    const fake = fakeSessions();
+    const writer = makeWriter(fake);
+    await writer.apply({ type: 'text_delta', blockIndex: 0, delta: '半截回答' });
+    await writer.apply({
+      type: 'assistant_message_discarded',
+      reason: 'max_tokens_retry',
+    });
+
+    expect(fake.interrupted).toEqual(['m1']);
+  });
+
   it('没有摘要文本的 OpenAI reasoning 状态仍然落库', async () => {
     const fake = fakeSessions();
     const writer = makeWriter(fake);

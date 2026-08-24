@@ -23,11 +23,6 @@ let repo: AttachmentVisionDescriptionsRepo;
 let image: ImageAttachment;
 const temporary: string[] = [];
 
-const identity = {
-  providerId: 'provider-1',
-  modelId: 'vision-1',
-};
-
 beforeEach(async () => {
   dataDir = mkdtempSync(path.join(tmpdir(), 'ema-att-cache-'));
   temporary.push(dataDir);
@@ -63,8 +58,8 @@ describe('VisionDescriptionCache', () => {
     const producer = vi.fn(async () => '一只粉色的猫');
 
     const [first, concurrent] = await Promise.all([
-      cache.getOrCreate(image, identity, new AbortController().signal, producer),
-      cache.getOrCreate(image, identity, new AbortController().signal, producer),
+      cache.getOrCreate(image, new AbortController().signal, producer),
+      cache.getOrCreate(image, new AbortController().signal, producer),
     ]);
     expect(first).toBe('一只粉色的猫');
     expect(concurrent).toBe('一只粉色的猫');
@@ -72,30 +67,29 @@ describe('VisionDescriptionCache', () => {
 
     const restarted = new VisionDescriptionCache(repo);
     const disk = await restarted.getOrCreate(
-      image, identity, new AbortController().signal, producer,
+      image, new AbortController().signal, producer,
     );
     expect(disk).toBe('一只粉色的猫');
     expect(producer).toHaveBeenCalledTimes(1);
   });
 
-  it('模型身份变化后重新生产', async () => {
+  it('后续生产者变化仍复用同一附件的规范描述', async () => {
     const cache = new VisionDescriptionCache(repo);
     const producer = vi.fn(async () => 'v1 描述');
-    await cache.getOrCreate(image, identity, new AbortController().signal, producer);
+    await cache.getOrCreate(image, new AbortController().signal, producer);
 
     const v2 = await cache.getOrCreate(
       image,
-      { ...identity, modelId: 'vision-2' },
       new AbortController().signal,
       async () => 'v2 描述',
     );
-    expect(v2).toBe('v2 描述');
+    expect(v2).toBe('v1 描述');
   });
 
   it('空描述拒绝入缓存', async () => {
     const cache = new VisionDescriptionCache(repo);
     await expect(cache.getOrCreate(
-      image, identity, new AbortController().signal, async () => '   ',
+      image, new AbortController().signal, async () => '   ',
     )).rejects.toThrow('Vision');
     expect(repo.totalBytes()).toBe(0);
   });
@@ -104,7 +98,7 @@ describe('VisionDescriptionCache', () => {
 describe('AttachmentCacheMaintenance', () => {
   it('不空闲不清理；空闲时按 TTL 删除过期描述', async () => {
     const cache = new VisionDescriptionCache(repo);
-    await cache.getOrCreate(image, identity, new AbortController().signal, async () => '描述');
+    await cache.getOrCreate(image, new AbortController().signal, async () => '描述');
 
     let idle = false;
     const maintenance = new AttachmentCacheMaintenance({
@@ -126,19 +120,19 @@ describe('AttachmentCacheMaintenance', () => {
 
   it('超过预算时从最久未访问开始驱逐', async () => {
     const cache = new VisionDescriptionCache(repo);
-    await cache.getOrCreate(image, identity, new AbortController().signal, async () => '旧描述');
-    await cache.getOrCreate(
-      image,
-      { ...identity, modelId: 'vision-2' },
-      new AbortController().signal,
-      async () => '新描述',
-    );
+    await cache.getOrCreate(image, new AbortController().signal, async () => '旧描述');
+    const secondSource = path.join(dataDir, 'second.png');
+    writeFileSync(secondSource, Buffer.from([4, 5, 6]));
+    const store = new AttachmentStore({ repo: new AttachmentRepo(database.sqlite), dataDir });
+    const [second] = await store.addAll([{ sourcePath: secondSource }], turnId, sessionId);
+    if (second?.kind !== 'image') throw new Error('fixture must be an image');
+    await cache.getOrCreate(second, new AbortController().signal, async () => '新描述');
     database.sqlite.prepare(
-      'UPDATE attachment_vision_descriptions SET last_accessed_at = ? WHERE model_id = ?',
-    ).run(Date.now() - 1_000, 'vision-1');
+      'UPDATE attachment_vision_descriptions SET last_accessed_at = ? WHERE attachment_id = ?',
+    ).run(Date.now() - 1_000, image.id);
     database.sqlite.prepare(
-      'UPDATE attachment_vision_descriptions SET last_accessed_at = ? WHERE model_id = ?',
-    ).run(Date.now(), 'vision-2');
+      'UPDATE attachment_vision_descriptions SET last_accessed_at = ? WHERE attachment_id = ?',
+    ).run(Date.now(), second.id);
 
     const total = repo.totalBytes();
     const maintenance = new AttachmentCacheMaintenance({
@@ -150,15 +144,7 @@ describe('AttachmentCacheMaintenance', () => {
     const report = await maintenance.sweepIfIdle();
     expect(report.ran).toBe(true);
     expect(report.deletedDescriptions).toBe(1);
-    expect(repo.find({
-      attachmentId: image.id,
-      providerId: identity.providerId,
-      modelId: 'vision-1',
-    })).toBeUndefined();
-    expect(repo.find({
-      attachmentId: image.id,
-      providerId: identity.providerId,
-      modelId: 'vision-2',
-    })).toBeDefined();
+    expect(repo.find(image.id)).toBeUndefined();
+    expect(repo.find(second.id)).toBeDefined();
   });
 });

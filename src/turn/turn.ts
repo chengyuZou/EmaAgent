@@ -5,22 +5,25 @@ import {
   runAgentLoop,
   type AgentLoopEvent,
 } from '@ema-agent/agent';
+import { resolveAttachmentReferences } from '@ema-agent/attachments';
 import { deriveLlmHistory } from '@ema-agent/context';
 import type { CompactRequest, CompactResult } from '@ema-agent/compact';
 import type {
   CallLlm,
-  ContentPart,
   LlmGenerationSource,
   LlmProtocol,
   Message,
 } from '@ema-agent/llm';
 import { PROTOCOLS } from '@ema-agent/providers';
-import type { SessionStore } from '@ema-agent/session';
-import type { StageEngine } from '@ema-agent/stage';
 import type {
-  Turn,
-  TurnFailureCode,
-} from '@ema-agent/turn-terms';
+  AttachmentReferenceBlock,
+  Message as SessionMessage,
+  MessageBlocks,
+  SessionStore,
+} from '@ema-agent/session';
+import type { StageEngine } from '@ema-agent/stage';
+import type { TurnFailureCode } from './errors.js';
+import type { Turn } from './types.js';
 import { reportUsage, createUsageRecord, type UsageRecorder } from '@ema-agent/usage';
 import {
   TurnEventChannel,
@@ -43,7 +46,7 @@ import {
 } from './preparation/prepareTurn.js';
 import {
   renderTurnReminder,
-  type TurnReminderFacts,
+  RenderTurnReminderInput,
 } from './preparation/turnReminder.js';
 import type { TurnToolsAssembly } from './preparation/prepareTurnTools.js';
 import type { TurnStore } from './turnStore.js';
@@ -86,21 +89,18 @@ export interface TurnExecutorDeps extends PrepareTurnDeps {
     callLlm: CallLlm,
   ) => (request: CompactRequest) => Promise<CompactResult>;
   /**
-   * 每根 Turn 调用一次，读取 reminder 所需的全部启动期事实（git 探测、Memory 摘要、
-   * Narrative always 召回、Task 一次性提醒、Scratchpad 快照）。结果即冻结，
-   * 本 Turn 后续 LLM Call 复用同一份持久化 reminder，不再回读。
+   * 每根 Turn 调用一次，产出 reminder 的完整启动期输入（含 currentDate 等全部字段：
+   * git 探测、Memory 摘要、Narrative always 召回、Task 一次性提醒、Scratchpad 快照）。
+   * 结果即冻结，本 Turn 后续 LLM Call 复用同一份持久化 reminder，不再回读。
    */
-  readonly readTurnReminderFacts: (
+  readonly readTurnReminder: (
     scope: TurnReminderScope,
-  ) => Promise<TurnReminderFacts> | TurnReminderFacts;
+  ) => Promise<RenderTurnReminderInput> | RenderTurnReminderInput;
   /**
-   * reminder Message 成功持久化后回调；宿主在这里提交"已提醒"（如 Task 低频提醒的
-   * markReminded），保证只有提醒确实送达才推进提醒周期，Turn 准备失败不吞掉周期。
+   * Task 低频提醒在 reminder Message 成功持久化后提交"已提醒"；只有提醒确实送达
+   * 才推进提醒周期，Turn 准备失败不吞掉周期。没有第二种提交行为，不做通用回调。
    */
-  readonly onReminderPersisted?: (
-    sessionId: string,
-    facts: TurnReminderFacts,
-  ) => void;
+  readonly onTaskReminderPersisted?: (sessionId: string) => void;
   /** 逐次 LLM 调用用量记录；缺省不记账（观测不阻断主链）。 */
   readonly usageRecorder?: UsageRecorder;
   /**
@@ -255,15 +255,14 @@ export class TurnExecutor {
         providers: this.deps.providers,
         providerModels: this.deps.providerModels,
         createCompact: this.deps.createCompact,
-        compact: request => compactForTurn!(request),
         emit,
         budget,
         parentMessages,
       });
 
       prepared = await prepareTurn(this.deps, {
-        start: input,
-        turn,
+        request: input,
+        turnId,
         budget,
         prepareSubagent,
         parentMessages,
@@ -280,14 +279,11 @@ export class TurnExecutor {
         emit({ type: 'request_degraded', sessionId, turnId, ...degradation });
       }
 
-      const userText = prepared.userMessageParts
-        .filter((part): part is Extract<ContentPart, { type: 'text' }> => part.type === 'text')
-        .map(part => part.text)
-        .join('\n');
+      const userText = explicitUserText(prepared.userMessageBlocks);
 
       // Reminder 先于用户消息落库：同一 Turn 的历史重放顺序即模型看到的顺序。
       // reminder 表示"本 Turn 开始时的事实"，整 Turn 只有这一条，不随 LLM Call 重建。
-      const reminderFacts = await this.deps.readTurnReminderFacts({
+      const reminderInput = await this.deps.readTurnReminder({
         sessionId,
         turnId,
         executionProfile: turn.executionProfile,
@@ -300,15 +296,13 @@ export class TurnExecutor {
         sessionId,
         role: 'user',
         kind: 'reminder',
-        blocks: renderTurnReminder({
-          currentDate: new Date().toISOString().slice(0, 10),
-          facts: reminderFacts,
-          selectedSkills: prepared.selectedSkills,
-        }),
+        blocks: renderTurnReminder(reminderInput),
       });
       // reminder 已持久化成功：宿主在此提交"已提醒"（Task reminder 两阶段提交点）。
       // 放在 appendMessage 之后，保证 Turn 准备失败不会吞掉低频提醒周期。
-      this.deps.onReminderPersisted?.(sessionId, reminderFacts);
+      if (reminderInput.taskReminder?.trim()) {
+        this.deps.onTaskReminderPersisted?.(sessionId);
+      }
 
       this.deps.sessions.appendMessage({
         turnId,
@@ -317,7 +311,7 @@ export class TurnExecutor {
         blocks: prepared.userMessageBlocks,
       });
       // 标题生成：用户消息落库即异步启动，不等 AgentLoop；只有用户消息触发的 Turn 参与。
-      if (input.triggerType === 'userMessage') {
+      if (input.triggerType === 'userMessage' && userText.trim().length > 0) {
         this.deps.startSessionTitleGeneration?.(sessionId, userText);
       }
 
@@ -342,13 +336,35 @@ export class TurnExecutor {
         generationTargetCache.set(turnId, source);
         return source;
       };
-      const historyWithIds = deriveLlmHistory(persisted.slice(0, reminderIndex), resolveGenerationTarget);
-      const reminderReplay = deriveLlmHistory(persisted.slice(reminderIndex, reminderIndex + 1), resolveGenerationTarget)
-        .map(entry => entry.message);
+      const attachmentIds = collectAttachmentIds(persisted);
+      const attachmentsById = this.deps.attachments.getMany(attachmentIds);
+      const supportsImageInput = prepared.supportsImageInput;
+      const describeImage = this.deps.describeImage;
+      const resolveAttachment = async (reference: AttachmentReferenceBlock) => {
+        const [resolved] = await resolveAttachmentReferences(
+          [reference],
+          attachmentsById,
+          {
+            supportsImageInput,
+            ...(describeImage ? { describeImage } : {}),
+            signal,
+          },
+        );
+        return resolved!;
+      };
+      const historyWithIds = await deriveLlmHistory(
+        persisted.slice(0, reminderIndex),
+        resolveGenerationTarget,
+        resolveAttachment,
+      );
+      const currentTurnWithIds = await deriveLlmHistory(
+        persisted.slice(reminderIndex),
+        resolveGenerationTarget,
+        resolveAttachment,
+      );
       const initialMessages: Message[] = [
         ...historyWithIds.map(entry => entry.message),
-        ...reminderReplay,
-        { role: 'user', content: prepared.userMessageParts },
+        ...currentTurnWithIds.map(entry => entry.message),
       ];
 
       const prepareIteration = createPrepareLlmCall({
@@ -365,7 +381,7 @@ export class TurnExecutor {
           baselineMessageIds: historyWithIds.map(entry => entry.sessionMessageId),
         },
         signal,
-        onRequestPrepared: messages => {
+        onWorkingMessagesPrepared: messages => {
           parentMessages.splice(0, parentMessages.length, ...messages);
         },
       });
@@ -592,6 +608,27 @@ export class TurnExecutor {
         return;
     }
   }
+}
+
+/** Narrative 与标题只读取用户显式文本，不混入附件描述或 Skill 指引。 */
+function explicitUserText(blocks: MessageBlocks): string {
+  if (typeof blocks === 'string') return blocks;
+  return blocks
+    .filter((block): block is Extract<typeof block, { type: 'text' }> => block.type === 'text')
+    .map(block => block.text)
+    .join('');
+}
+
+/** 一次批量读取本轮会重放的附件，避免历史中每个引用各做一次 SQL 查询。 */
+function collectAttachmentIds(messages: readonly SessionMessage[]): string[] {
+  const ids = new Set<string>();
+  for (const message of messages) {
+    if (!Array.isArray(message.blocks)) continue;
+    for (const block of message.blocks) {
+      if (block.type === 'attachment_ref') ids.add(block.attachmentId);
+    }
+  }
+  return [...ids];
 }
 
 /** 逐次 LLM 调用记账；零消耗（首个 token 前就中止）不产生记录。观测失败不阻断主链。 */

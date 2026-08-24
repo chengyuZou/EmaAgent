@@ -29,8 +29,8 @@ export interface PrepareLlmCallDeps {
     readonly baselineMessageIds: readonly string[];
   };
   readonly signal: AbortSignal;
-  /** 每次请求装配完成后回调；根 Turn 用它更新 fork 子 Agent 的继承视图。 */
-  readonly onRequestPrepared?: (messages: readonly Message[]) => void;
+  /** 每次准备完成后回调；只暴露 AgentLoop 工作消息，不含 System 与请求级缓存标记。 */
+  readonly onWorkingMessagesPrepared?: (messages: readonly Message[]) => void;
 }
 
 /**
@@ -120,7 +120,7 @@ export function createPrepareLlmCall(deps: PrepareLlmCallDeps): PrepareAgentIter
       assembled = assemble(result.history);
     }
 
-    deps.onRequestPrepared?.(assembled.messages);
+    deps.onWorkingMessagesPrepared?.(nextMessages);
 
     return {
       request: {

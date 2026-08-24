@@ -43,12 +43,14 @@ Turn reminder 表示"本 Turn 开始时的事实"：它在根 Turn 开始时由 
 
 ## Session Message 投影
 
-`deriveLlmHistory()` 是持久化 Session Message 到 LLM Message 的唯一转换入口，返回 `LlmHistoryMessage[]`（`sessionMessageId + message`）：
+`deriveLlmHistory()` 是持久化 Session Message 到 LLM Message 的唯一转换入口。它异步返回 `LlmHistoryMessage[]`（`sessionMessageId + message`），因为附件解析可能读取文件或等待 Vision：
 
 - 丢弃旧 system；
 - thinking 作为协议原生推理状态保留，并为每条 Assistant 历史 attach 所属 Turn 的生成来源 `generatedBy`（providerId + modelId + protocol）；重放/删除由目标协议 Adapter 依据 `generatedBy` 与本次调用目标裁决，本包不判断协议兼容性；
 - 只保留完整配对的 `tool_use/tool_result`；
-- 历史附件引用变成明确占位，真实媒体兼容由 LLM Request Preparer 处理。
+- 中断的 Assistant Message 不进入模型历史；
+- 附件引用交给 Turn 注入的 `ResolveHistoryAttachment` 解析；Context 不读取 AttachmentStore，也不调用 Vision；
+- 历史 Skill 引用变成调用 Skill Tool 的明确指引，SKILL.md 正文不进入 Session Message。
 
 `generatedBy` 只对模型生成的 Assistant 历史有意义；user/tool_result/reminder/summary 不伪造。Adapter 编码厂商 Wire 消息时消费并剥除，绝不序列化进请求。
 
@@ -74,7 +76,7 @@ macro     → 先持久化摘要，再 assembleContext(compactResult.history) �
 - 压缩阈值、摘要和熔断：Compact；
 - Summary SQL 持久化：TurnExecution + Session/Storage；
 - Reminder 的生成与持久化：Turn；
-- 历史媒体兼容：LLM Request Preparer；
+- `attachment_ref` 的图片/文本投影与 Vision 描述缓存：Attachments，由 Turn 注入解析函数；
 - Tool Result 截断、落盘和清理：Tools Results；
 - Provider 协议与 `cache_control`：LLM Adapter；
 - `context_usage_updated` 事件身份与发射：TurnExecution/Turn；

@@ -21,7 +21,7 @@ import type {
   Turn,
   TurnIndexPage,
   TurnWindow,
-} from '@ema-agent/turn-terms';
+} from './types.js';
 import { TurnOwnershipError } from './errors.js';
 
 export interface TurnStoreDeps {

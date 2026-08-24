@@ -71,7 +71,7 @@ export class BackgroundCompletion {
           triggerType: 'backgroundProcessCompleted',
           executionProfile: session.executionProfile,
           narrativePolicy: session.narrativePolicy,
-          userInput: formatCompletionReport(claim.completions),
+          input: [{ type: 'text', text: formatCompletionReport(claim.completions) }],
         });
       } catch (error) {
         // session_busy 等竞态：延迟重试，批次仍由 claim 持有。

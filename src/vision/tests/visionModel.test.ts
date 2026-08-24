@@ -1,52 +1,44 @@
-// 测试 Vision 公共入口冻结协议连接、只执行一次请求并保留协议差异。
+// 测试 Vision 把图片任务交给唯一 LLM 执行链，并保留输入校验、解析、Usage 与取消语义。
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { LlmRequest, LlmStreamEvent } from '@ema-agent/llm';
 import { createVisionCall } from '../visionModel.js';
 
-const sdkMocks = vi.hoisted(() => ({
-  openAiConstructor: vi.fn(),
-  openAiCreate: vi.fn(),
-  anthropicConstructor: vi.fn(),
-  anthropicCreate: vi.fn(),
-  geminiConstructor: vi.fn(),
-  geminiGenerate: vi.fn(),
+const llmMocks = vi.hoisted(() => ({
+  createLlmCall: vi.fn(),
+  requests: [] as LlmRequest[],
 }));
 
-vi.mock('openai', () => ({
-  default: vi.fn().mockImplementation((config: unknown) => {
-    sdkMocks.openAiConstructor(config);
-    return { chat: { completions: { create: sdkMocks.openAiCreate } } };
-  }),
+vi.mock('@ema-agent/llm', async importOriginal => ({
+  ...(await importOriginal<typeof import('@ema-agent/llm')>()),
+  createLlmCall: llmMocks.createLlmCall,
 }));
 
-vi.mock('@anthropic-ai/sdk', () => ({
-  default: vi.fn().mockImplementation((config: unknown) => {
-    sdkMocks.anthropicConstructor(config);
-    return { messages: { create: sdkMocks.anthropicCreate } };
-  }),
-}));
-
-vi.mock('@google/genai', () => ({
-  GoogleGenAI: vi.fn().mockImplementation((config: unknown) => {
-    sdkMocks.geminiConstructor(config);
-    return { models: { generateContent: sdkMocks.geminiGenerate } };
-  }),
-}));
+function stream(events: readonly LlmStreamEvent[]): AsyncIterable<LlmStreamEvent> {
+  return (async function* () { yield* events; })();
+}
 
 describe('createVisionCall', () => {
   beforeEach(() => {
-    for (const mock of Object.values(sdkMocks)) mock.mockReset();
+    llmMocks.requests.length = 0;
+    llmMocks.createLlmCall.mockReset();
+    llmMocks.createLlmCall.mockImplementation(() => (request: LlmRequest) => {
+      llmMocks.requests.push(request);
+      return stream([
+        { type: 'text_delta', blockIndex: 0, delta: '{"text":"cat","blocks":[]}' },
+        { type: 'usage', inputTokens: 12, outputTokens: 4 },
+        { type: 'done', stopReason: 'end_turn' },
+      ]);
+    });
   });
 
-  it('OpenAI 创建时关闭 SDK 重试并返回结构化结果', async () => {
-    sdkMocks.openAiCreate.mockResolvedValueOnce({
-      choices: [{ message: { content: '{"text":"cat","blocks":[]}' } }],
-      usage: { prompt_tokens: 12, completion_tokens: 4 },
-    });
-    const vision = createVisionCall({
-      protocol: 'openai-vision',
+  it('把视觉任务构造成一次无历史、无 Tool 的中立 LLM 请求', async () => {
+    const connection = {
+      providerId: 'p1',
+      protocol: 'openai-llm' as const,
       apiKey: 'key',
       baseUrl: 'https://example.test/v1',
-    }, 'vision-model');
+    };
+    const vision = createVisionCall(connection, 'vision-model');
 
     await expect(vision({
       images: [{ kind: 'base64', data: ' YQ== ', mimeType: 'image/png' }],
@@ -56,45 +48,67 @@ describe('createVisionCall', () => {
       blocks: [{ id: 'block-1', kind: 'text', text: 'cat' }],
       usage: { inputTokens: 12, outputTokens: 4 },
     });
-    expect(sdkMocks.openAiConstructor).toHaveBeenCalledWith({
-      apiKey: 'key',
-      baseURL: 'https://example.test/v1',
-      maxRetries: 0,
+
+    expect(llmMocks.createLlmCall).toHaveBeenCalledWith(connection, 'vision-model');
+    expect(llmMocks.requests).toHaveLength(1);
+    expect(llmMocks.requests[0]).toMatchObject({
+      thinking: { enabled: false },
+      maxOutputTokens: 1024,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text' },
+          { type: 'image_data', data: 'YQ==', mimeType: 'image/png' },
+        ],
+      }],
     });
-    expect(sdkMocks.openAiCreate).toHaveBeenCalledTimes(1);
+    expect(llmMocks.requests[0]?.tools).toBeUndefined();
   });
 
-  it('Anthropic 创建时关闭 SDK 重试', async () => {
-    sdkMocks.anthropicCreate.mockResolvedValueOnce({
-      content: [{ type: 'text', text: 'plain description' }],
-      usage: { input_tokens: 8, output_tokens: 2 },
-    });
-    const vision = createVisionCall({ protocol: 'anthropic-vision', apiKey: 'key' }, 'claude-test');
+  it('Anthropic 与 OpenAI Responses 直接复用对应 LLM protocol', () => {
+    createVisionCall({ providerId: 'p', protocol: 'anthropic-llm' }, 'claude-test');
+    createVisionCall({ providerId: 'p', protocol: 'openai-responses-llm' }, 'gpt-test');
 
-    await expect(vision({
-      images: [{ kind: 'bytes', bytes: new Uint8Array([1]), mimeType: 'image/jpeg' }],
-    })).resolves.toMatchObject({ text: 'plain description' });
-    expect(sdkMocks.anthropicConstructor).toHaveBeenCalledWith({
-      apiKey: 'key',
-      baseURL: undefined,
-      maxRetries: 0,
-    });
+    expect(llmMocks.createLlmCall.mock.calls.map(call => call[0].protocol))
+      .toEqual(['anthropic-llm', 'openai-responses-llm']);
   });
 
-  it('Gemini 对普通 HTTP 图片明确失败，不静默漏图', async () => {
-    const vision = createVisionCall({ protocol: 'gemini-vision', apiKey: 'key' }, 'gemini-test');
+  it('Gemini 对普通 HTTP 图片明确失败，不把不兼容 URL 交给协议层', async () => {
+    const vision = createVisionCall(
+      { providerId: 'p', protocol: 'gemini-llm', apiKey: 'key' },
+      'gemini-test',
+    );
     await expect(vision({
       images: [{ kind: 'url', url: 'https://example.test/image.png' }],
     })).rejects.toMatchObject({ code: 'vision/unsupported_input' });
-    expect(sdkMocks.geminiGenerate).not.toHaveBeenCalled();
+    expect(llmMocks.requests).toHaveLength(0);
   });
 
   it('拒绝空模型、空图片与空载荷', async () => {
-    const vision = createVisionCall({ protocol: 'openai-vision', apiKey: 'key' }, 'model');
+    expect(() => createVisionCall(
+      { providerId: 'p', protocol: 'openai-llm' },
+      ' ',
+    )).toThrow(/model/i);
+    const vision = createVisionCall({ providerId: 'p', protocol: 'openai-llm' }, 'model');
     await expect(vision({ images: [] }))
       .rejects.toMatchObject({ code: 'vision/invalid_request' });
     await expect(vision({
       images: [{ kind: 'bytes', bytes: new Uint8Array(), mimeType: 'image/png' }],
     })).rejects.toMatchObject({ code: 'vision/invalid_request' });
+  });
+
+  it('取消继续向上抛出，不包装成 Vision Provider 失败', async () => {
+    const controller = new AbortController();
+    const abortError = new Error('stop');
+    llmMocks.createLlmCall.mockImplementationOnce(() => () => (async function* () {
+      controller.abort(abortError);
+      throw abortError;
+    })());
+    const vision = createVisionCall({ providerId: 'p', protocol: 'openai-llm' }, 'model');
+
+    await expect(vision({
+      images: [{ kind: 'base64', data: 'YQ==', mimeType: 'image/png' }],
+      signal: controller.signal,
+    })).rejects.toBe(abortError);
   });
 });

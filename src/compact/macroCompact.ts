@@ -12,7 +12,7 @@ import type {
 } from '@ema-agent/llm';
 import { createLlmCompletion } from '@ema-agent/llm';
 import { estimateLlmInputTokens, estimateMessagesTokens } from '@ema-agent/token';
-import type { ExecutionProfile } from '@ema-agent/turn-terms';
+import type { ExecutionProfile } from '@ema-agent/session';
 import { buildCompactPrompt, extractCompactSummary } from './compactPrompt.js';
 import { findRetainedHistoryStart } from './safeCut.js';
 

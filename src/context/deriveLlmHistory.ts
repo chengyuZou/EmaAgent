@@ -8,14 +8,23 @@ import type {
   LlmGenerationSource,
   Message as ModelMessage,
   ToolResultContentPart,
-  UserBlock,
+  UserBlock as LlmUserBlock,
 } from '@ema-agent/llm';
-import type { Message as SessionMessage } from '@ema-agent/session';
+import type {
+  AttachmentReferenceBlock,
+  Message as SessionMessage,
+  SkillReferenceBlock,
+} from '@ema-agent/session';
 
 export interface LlmHistoryMessage {
   readonly sessionMessageId: string;
   readonly message: ModelMessage;
 }
+
+/** Turn 注入附件包的解析结果；Context 不读取 AttachmentStore 或调用 Vision。 */
+export type ResolveHistoryAttachment = (
+  reference: AttachmentReferenceBlock,
+) => Promise<LlmUserBlock>;
 
 /**
  * Session 中的 system 不是模型历史：System Prompt 每次重新生成，把它重放会
@@ -23,10 +32,11 @@ export interface LlmHistoryMessage {
  * 原生推理状态并 attach 所属 Turn 的生成来源。产出数组可能比输入短，
  * 身份映射只允许使用 sessionMessageId，不可用下标对齐输入。
  */
-export function deriveLlmHistory(
+export async function deriveLlmHistory(
   history: readonly SessionMessage[],
   resolveGenerationTarget: (turnId: string) => LlmGenerationSource | undefined,
-): LlmHistoryMessage[] {
+  resolveAttachment: ResolveHistoryAttachment,
+): Promise<LlmHistoryMessage[]> {
   const messages: LlmHistoryMessage[] = [];
   const pairedToolIds = collectPairedToolIds(history);
 
@@ -44,9 +54,11 @@ export function deriveLlmHistory(
         continue;
       }
       if (Array.isArray(message.blocks)) {
-        const content = message.blocks
-          .map((block) => projectUserBlock(block, pairedToolIds))
-          .filter((part): part is UserBlock => part !== undefined);
+        const content: LlmUserBlock[] = [];
+        for (const block of message.blocks) {
+          const projected = await projectUserBlock(block, pairedToolIds, resolveAttachment);
+          if (projected) content.push(projected);
+        }
         if (content.length > 0) {
           messages.push({
             sessionMessageId: message.id,
@@ -57,7 +69,8 @@ export function deriveLlmHistory(
       continue;
     }
 
-    if (Array.isArray(message.blocks)) {
+    // 中断的 Assistant 是流式恢复事实，不是已经完成的模型回复。
+    if (!message.interrupted && Array.isArray(message.blocks)) {
       const content = message.blocks
         .map((block) => projectAssistantBlock(block, pairedToolIds))
         .filter((block): block is AssistantBlock => block !== undefined);
@@ -156,10 +169,11 @@ function projectAssistantBlock(
   return undefined;
 }
 
-function projectUserBlock(
+async function projectUserBlock(
   block: unknown,
   pairedToolIds: ReadonlySet<string>,
-): UserBlock | undefined {
+  resolveAttachment: ResolveHistoryAttachment,
+): Promise<LlmUserBlock | undefined> {
   if (block && typeof block === 'object') {
     const candidate = block as {
       type?: unknown;
@@ -187,17 +201,42 @@ function projectUserBlock(
       };
     }
     if (candidate.type === 'attachment_ref') {
-      const reference = block as { name?: unknown; mimeType?: unknown };
-      if (typeof reference.name !== 'string' || typeof reference.mimeType !== 'string') {
+      const reference = block as Partial<AttachmentReferenceBlock>;
+      if (
+        typeof reference.attachmentId !== 'string'
+        || typeof reference.name !== 'string'
+        || typeof reference.mimeType !== 'string'
+      ) {
+        return undefined;
+      }
+      return resolveAttachment(reference as AttachmentReferenceBlock);
+    }
+    if (candidate.type === 'skill_ref') {
+      const reference = block as Partial<SkillReferenceBlock>;
+      if (
+        typeof reference.name !== 'string'
+        || typeof reference.callName !== 'string'
+        || typeof reference.rootPath !== 'string'
+      ) {
         return undefined;
       }
       return {
         type: 'text',
-        text: `[历史附件：${reference.name}（${reference.mimeType}），正文未重复载入]`,
+        text: renderSkillReferenceForModel(reference as SkillReferenceBlock),
       };
     }
   }
   return projectContentPart(block);
+}
+
+/** 当前 Turn 与历史重放共用同一文案，避免 Skill 引用在两条路径里语义漂移。 */
+export function renderSkillReferenceForModel(reference: SkillReferenceBlock): string {
+  return [
+    `[用户选择的 Skill：${reference.name}]`,
+    `调用名：${reference.callName}`,
+    `资源目录：${reference.rootPath}`,
+    `请先调用 Skill 工具并传入 skill="${reference.callName}" 加载完整指令，再继续处理相关内容。`,
+  ].join('\n');
 }
 
 function projectToolResultPart(block: unknown): ToolResultContentPart | undefined {
@@ -223,6 +262,7 @@ function collectPairedToolIds(history: readonly SessionMessage[]): ReadonlySet<s
       const candidate = block as { type?: unknown; id?: unknown; toolCallId?: unknown };
       if (
         message.role === 'assistant'
+        && !message.interrupted
         && candidate.type === 'tool_use'
         && typeof candidate.id === 'string'
       ) {

@@ -33,10 +33,7 @@ export { ModelBindingsRepo } from './repos/profile/modelBindings.js';
 export { AttachmentRepo }  from './repos/data/attachments.js';
 export type { AttachmentRow, AttachmentInsertRow, AttachmentRowKind } from './repos/data/attachments.js';
 export { AttachmentVisionDescriptionsRepo } from './repos/data/attachmentVisionDescriptions.js';
-export type {
-  AttachmentVisionDescriptionKey,
-  AttachmentVisionDescriptionRow,
-} from './repos/data/attachmentVisionDescriptions.js';
+export type { AttachmentVisionDescriptionRow } from './repos/data/attachmentVisionDescriptions.js';
 export { SessionStatsRepo, DataDirStatsRepo } from './repos/data/storage-stats.js';
 export {
   SessionBackupReader,

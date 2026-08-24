@@ -11,7 +11,6 @@ export type {
 } from './modelContent.js';
 export { VisionDescriptionCache } from './visionDescriptionCache.js';
 export type {
-  VisionDescriptionIdentity,
   VisionDescriptionProducer,
 } from './visionDescriptionCache.js';
 export { AttachmentCacheMaintenance } from './cacheMaintenance.js';

@@ -1,14 +1,7 @@
-import type { VisionProtocol } from '@ema-agent/providers';
-
-export type { VisionProtocol } from '@ema-agent/providers';
+import type { LlmConnection, LlmTokenUsage } from '@ema-agent/llm';
 
 /** Provider 已解析好的 Vision 协议连接。 */
-export interface VisionConnection {
-  readonly protocol: VisionProtocol;
-  /** 本地或受信网关可以不需要凭据。 */
-  readonly apiKey?: string;
-  readonly baseUrl?: string;
-}
+export type VisionConnection = LlmConnection;
 
 /** 单次视觉请求希望模型完成的任务。 */
 export type VisionTask = 'auto' | 'caption' | 'ocr' | 'layout' | 'table';
@@ -56,22 +49,12 @@ export interface VisionRequest {
   readonly signal?: AbortSignal;
 }
 
-/** VisionCall 填好默认任务后交给私有协议实现的形状。 */
-export interface VisionProtocolRequest extends Omit<VisionRequest, 'task'> {
-  readonly task: VisionTask;
-}
-
 /** 创建点冻结连接与模型身份的单次视觉调用。 */
 export type CallVision = (request: VisionRequest) => Promise<VisionResult>;
-
-export interface VisionTokenUsage {
-  readonly inputTokens: number;
-  readonly outputTokens: number;
-}
 
 export interface VisionResult {
   readonly text: string;
   readonly markdown?: string;
   readonly blocks: readonly VisionBlock[];
-  readonly usage?: VisionTokenUsage;
+  readonly usage?: LlmTokenUsage;
 }

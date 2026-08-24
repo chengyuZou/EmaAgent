@@ -1,5 +1,5 @@
 import type { LlmThinking, LlmTool, Message } from '@ema-agent/llm';
-import type { ExecutionProfile } from '@ema-agent/turn-terms';
+import type { ExecutionProfile } from '@ema-agent/session';
 import type { CompactSettings } from './settings.js';
 import type { CompactEvent } from './events.js';
 

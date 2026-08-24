@@ -282,6 +282,7 @@ export async function* runAgentLoop(
     if (stopReason === 'max_tokens' && toolUseByIndex.size === 0) {
       if (!escalatedMaxOutputTokens) {
         // 升级重试：半截输出作废、不注入任何消息，同一任务顶到预算上限直接重来。
+        yield { type: 'assistant_message_discarded', reason: 'max_tokens_retry' };
         escalatedMaxOutputTokens = true;
         continue;
       }

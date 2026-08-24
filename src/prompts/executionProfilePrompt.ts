@@ -1,6 +1,6 @@
 // 定义 Chat 与 Work 两种执行语义，不承担工具授权、Narrative 资格或运行时检索。
 
-import type { ExecutionProfile } from '@ema-agent/turn-terms';
+import type { ExecutionProfile } from '@ema-agent/session';
 
 const CHAT_PROMPT = `# 当前执行方式：Chat
 

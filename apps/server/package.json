@@ -55,7 +55,6 @@
     "@ema-agent/tools": "workspace:*",
     "@ema-agent/tts": "workspace:*",
     "@ema-agent/turn": "workspace:*",
-    "@ema-agent/turn-terms": "workspace:*",
     "@ema-agent/usage": "workspace:*",
     "@ema-agent/vision": "workspace:*",
     "@hono/node-server": "^1.14.3",

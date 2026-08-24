@@ -12,6 +12,18 @@ describe('parseMessageBlocksJson', () => {
     }];
     expect(parseMessageBlocksJson(JSON.stringify(reference), 'user')).toEqual(reference);
   });
+
+  it('保留 Skill 引用的稳定身份、调用名与资源目录', () => {
+    const reference = {
+      type: 'skill_ref',
+      skillKey: 'project:source:pdf',
+      name: 'PDF',
+      callName: 'pdf',
+      rootPath: 'D:/project/.agents/skills/pdf',
+    };
+    expect(parseMessageBlocksJson(JSON.stringify([reference]), 'user')).toEqual([reference]);
+  });
+
   it('保留 Session 需要持久化的工具终态字段', () => {
     const rawBlocks = [0, 1].map((index) => ({
       type: 'tool_result',
@@ -48,5 +60,4 @@ describe('parseMessageBlocksJson', () => {
     expect(parseMessageBlocksJson('{private-json', 'user'))
       .toBe('[消息内容无法读取]');
   });
-
 });

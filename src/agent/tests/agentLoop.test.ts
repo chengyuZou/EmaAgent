@@ -239,6 +239,10 @@ describe('runAgentLoop', () => {
     expect(seenMessages[1]!.some((message) => (
       typeof message.content === 'string' && message.content.includes('继续输出剩余内容')
     ))).toBe(false);
+    expect(events).toContainEqual({
+      type: 'assistant_message_discarded',
+      reason: 'max_tokens_retry',
+    });
     expect(terminalEvent(events)?.finalText).toBe('完整答案');
   });
 

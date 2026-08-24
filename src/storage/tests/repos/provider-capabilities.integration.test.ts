@@ -90,7 +90,7 @@ describe('Provider 能力配置', () => {
       id: 'openai', name: 'OpenAI', authType: 'bearer', enabled: true,
       capabilities: [
         { capability: 'llm', activeProtocol: 'openai-llm', protocols: [{ protocol: 'openai-llm', baseUrl: 'https://api.openai.com/v1' }] },
-        { capability: 'vision', activeProtocol: 'openai-vision', protocols: [{ protocol: 'openai-vision', baseUrl: 'https://api.openai.com/v1' }] },
+        { capability: 'vision', activeProtocol: 'openai-llm', protocols: [{ protocol: 'openai-llm', baseUrl: 'https://api.openai.com/v1' }] },
       ],
       newKeys: [{ id: 'key-vision', capability: 'vision', keyValue: 'sk-vision' }],
     });
@@ -174,7 +174,7 @@ describe('Provider 能力配置', () => {
       id: 'openai', name: 'OpenAI', authType: 'bearer', enabled: true,
       capabilities: [
         { capability: 'llm', activeProtocol: 'openai-llm', protocols: [{ protocol: 'openai-llm', baseUrl: 'https://api.openai.com/v1' }] },
-        { capability: 'vision', activeProtocol: 'openai-vision', protocols: [{ protocol: 'openai-vision', baseUrl: 'https://api.openai.com/v1' }] },
+        { capability: 'vision', activeProtocol: 'openai-llm', protocols: [{ protocol: 'openai-llm', baseUrl: 'https://api.openai.com/v1' }] },
       ],
     });
     const models = new ProviderModelsRepo(database.sqlite);

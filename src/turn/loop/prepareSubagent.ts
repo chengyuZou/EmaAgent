@@ -34,11 +34,9 @@ export interface PrepareSubagentDeps {
   readonly providerModels: ProviderModels;
   /** compact 工厂：覆盖模型时用子模型 callLlm 创建独立闭包（独立失败熔断）。 */
   readonly createCompact: (callLlm: CallLlm) => (request: CompactRequest) => Promise<CompactResult>;
-  /** 根 Turn 的 compact 闭包；未覆盖模型时子 Agent 复用（共享失败熔断）。 */
-  readonly compact: (request: CompactRequest) => Promise<CompactResult>;
   readonly emit: (event: TurnStreamEvent) => void;
   readonly budget: AgentBudget;
-  /** fork 子 Agent 继承的最终请求视图；根 Turn 每次请求装配后 splice 更新。 */
+  /** fork 子 Agent 继承的父工作消息；不含父 System Prompt、Tool Schema 或缓存标记。 */
   readonly parentMessages: Message[];
 }
 
@@ -49,11 +47,9 @@ export function createPrepareSubagent(deps: PrepareSubagentDeps): PrepareSubagen
     const modelId = options.modelId ?? prepared.modelId;
     const overridden = providerId !== prepared.providerId || modelId !== prepared.modelId;
 
-    // 覆盖模型时：解析子模型自己的上下文预算并冻结进 subPrepared，创建子模型的
-    // callLlm 与独立 compact 闭包；thinking 意图继承根（budget 由协议 Adapter 按
-    // effort 映射，不依赖模型事实）。未覆盖时全部复用根事实与共享熔断。
+    // 覆盖模型时解析子模型自己的上下文预算并冻结进 subPrepared；thinking 意图
+    // 继承根，由协议 Adapter 映射。模型调用可以复用，但每个循环的 Compact 状态独立。
     let callLlm = prepared.callLlm;
-    let compact = deps.compact;
     let subPrepared: PreparedTurn = prepared;
     if (overridden) {
       const facts = deps.providerModels.get(providerId, 'llm', modelId);
@@ -62,7 +58,6 @@ export function createPrepareSubagent(deps: PrepareSubagentDeps): PrepareSubagen
       }
       const connection = deps.providers.resolveConnection(providerId, 'llm');
       callLlm = createLlmCall(connection, modelId);
-      compact = deps.createCompact(callLlm);
       subPrepared = Object.freeze({
         ...prepared,
         providerId,
@@ -72,6 +67,8 @@ export function createPrepareSubagent(deps: PrepareSubagentDeps): PrepareSubagen
         maxOutput: facts.maxOutput,
       });
     }
+    // 每个 AgentLoop 都有独立的连续失败状态；CallLlm 可以复用，Compact 闭包不能复用。
+    const compact = deps.createCompact(callLlm);
 
     const disallowed = new Set([
       ...(options.disallowedTools ?? []),

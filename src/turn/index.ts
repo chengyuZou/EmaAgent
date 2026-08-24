@@ -1,6 +1,5 @@
 // 暴露 Turn 请求、生命周期统计、TurnStore 与 Turn 自有事件。
-// 领域词汇来自 @ema-agent/turn-terms（唯一事实源），此处仅表面组合。
-export * from '@ema-agent/turn-terms';
+// 共享词汇 ExecutionProfile/NarrativePolicy/TurnStatus 从 @ema-agent/session 引入。
 export * from './events.js';
 export * from './types.js';
 export { TurnStore } from './turnStore.js';
@@ -24,5 +23,4 @@ export { TurnExecutor, TurnReminderScope } from './turn.js';
 export { renderTurnReminder } from './preparation/turnReminder.js';
 export type {
   RenderTurnReminderInput,
-  TurnReminderFacts,
 } from './preparation/turnReminder.js';

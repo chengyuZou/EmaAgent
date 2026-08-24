@@ -261,14 +261,14 @@ describe('B-074 PDF 三路路由', () => {
     const reader = {
       read: vi.fn(),
       readWithTask: vi.fn(async (): Promise<never> => {
-        throw new VisionError('vision/http_error', 'server boom', 500);
+        throw new VisionError('vision/call_failed', 'server boom', 500);
       }),
     } as unknown as ImageReader;
     const result = await new PdfReader(reader).read(SRC);
 
     expect(result.blocks.every(b => b.source === 'text-layer')).toBe(true);
     expect(result.failures).toHaveLength(1);
-    expect(result.failures[0]!.errorCode).toBe('vision/http_error');
+    expect(result.failures[0]!.errorCode).toBe('vision/call_failed');
     expect(result.failures[0]!.retryable).toBe(true);
   });
 

@@ -1,11 +1,25 @@
 import type { MessageKind, MessageRole } from '@ema-agent/storage';
-import type {
-  ExecutionProfile,
-  NarrativePolicy,
-  TurnStatus,
-} from '@ema-agent/turn-terms';
 import type { MessageBlocks } from './message.js';
 import type { ToolResultBlock } from './message.js';
+
+/**
+ * 一次 Turn 的执行能力范围；输入渠道和连接协议不属于 Profile。
+ * 会话级默认偏好：Turn 启动时复制并冻结为历史事实。
+ */
+export type ExecutionProfile = 'chat' | 'work';
+
+/**
+ * Narrative 只控制剧情检索策略，不改变角色身份或创建第三套 Engine。
+ * 会话级偏好；Turn 保存当次实际值，保证历史可解释。
+ */
+export type NarrativePolicy = 'auto' | 'always' | 'off';
+
+/**
+ * Turn 的持久化生命周期状态：创建即 running，没有持久化的 pending；
+ * 根终态由 TurnExecutor 统一写入。注意：它属于单个 Turn，不是 Session 参数；
+ * Session 只有派生投影 SessionListItem.lastTurnStatus。
+ */
+export type TurnStatus = 'running' | 'completed' | 'failed' | 'aborted';
 
 /** 项目实体：可编辑名称 + 多源文件夹（恰好一个主文件夹）。 */
 export interface Project {

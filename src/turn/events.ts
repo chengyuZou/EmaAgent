@@ -8,13 +8,12 @@ import type {
   PermissionResolvedEvent,
 } from '@ema-agent/permission';
 import type { ToolExecutionEvent } from '@ema-agent/tools';
+import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/session';
+import type { TurnFailureCode } from './errors.js';
 import type {
-  ExecutionProfile,
-  NarrativePolicy,
   RequestDegradationNotice,
-  TurnFailureCode,
   TurnStats,
-} from '@ema-agent/turn-terms';
+} from './types.js';
 
 export type TurnEvent =
   | {

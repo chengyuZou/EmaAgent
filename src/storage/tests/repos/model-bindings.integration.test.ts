@@ -17,7 +17,7 @@ describe('ModelBindingsRepo', () => {
       enabled: true,
       capabilities: [
         { capability: 'llm', activeProtocol: 'openai-llm', protocols: [{ protocol: 'openai-llm', baseUrl: 'https://example.com/v1' }] },
-        { capability: 'vision', activeProtocol: 'openai-vision', protocols: [{ protocol: 'openai-vision', baseUrl: 'https://example.com/v1' }] },
+        { capability: 'vision', activeProtocol: 'openai-llm', protocols: [{ protocol: 'openai-llm', baseUrl: 'https://example.com/v1' }] },
       ],
     });
     models = new ProviderModelsRepo(database.sqlite);

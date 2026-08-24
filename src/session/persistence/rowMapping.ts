@@ -8,7 +8,7 @@ import type {
   SessionRowEnriched,
   SessionSearchRow,
 } from '@ema-agent/storage';
-import type { TurnStatus } from '@ema-agent/turn-terms';
+import type { TurnStatus } from '../types.js';
 import { parseMessageBlocksJson } from '../message.js';
 import type {
   Message,

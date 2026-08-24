@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import type { AgentRunMessagesStore, AgentRunStore } from '@ema-agent/agent';
-import type { AttachmentStore } from '@ema-agent/attachments';
+import type { Attachment, AttachmentStore } from '@ema-agent/attachments';
 import type { CallLlm, LlmStreamEvent } from '@ema-agent/llm';
 import type { ProviderModels, Providers } from '@ema-agent/providers';
 import { Database } from '@ema-agent/storage';
@@ -75,7 +75,10 @@ function makeDeps(options: {
         inputImage: false,
       }),
     } as unknown as ProviderModels,
-    attachments: { addAll: async () => [] } as unknown as AttachmentStore,
+    attachments: {
+      addAll: async () => [],
+      getMany: () => new Map(),
+    } as unknown as AttachmentStore,
     settings: fakeSettingsStore(),
     characterPrompt: () => ['你是测试角色'],
     skillEntries: () => [],
@@ -85,7 +88,7 @@ function makeDeps(options: {
     agentRunStore: {} as unknown as AgentRunStore,
     agentRunMessagesStore: {} as unknown as AgentRunMessagesStore,
     createCompact: () => async request => ({ kind: 'unchanged' as const, history: request.history }),
-    readTurnReminderFacts: () => ({}),
+    readTurnReminder: () => ({ currentDate: '2026-08-25' }),
     characterDirectoryName: () => 'test-character',
     ...(titleStarter ? { startSessionTitleGeneration: titleStarter } : {}),
   };
@@ -97,9 +100,13 @@ function makeStart(sessionId: string): StartTurn {
     triggerType: 'userMessage',
     executionProfile: 'work',
     narrativePolicy: 'off',
-    userInput: '你好',
-    providerId: 'p',
-    modelId: 'm',
+    input: [{ type: 'text', text: '你好' }],
+    modelSelection: {
+      providerId: 'p',
+      modelId: 'm',
+      thinkingEnabled: false,
+      thinkingEffort: 'medium',
+    },
   };
 }
 
@@ -157,7 +164,8 @@ describe('TurnExecutor 集成', () => {
     };
     const deps = {
       ...makeDeps({ db, llm, sessionId: session.id, registry }),
-      readTurnReminderFacts: () => ({
+      readTurnReminder: () => ({
+        currentDate: '2026-08-25',
         memoryWork: '用户在做 EmaAgent',
         taskReminder: '还有 2 个任务待处理',
       }),
@@ -252,6 +260,74 @@ describe('TurnExecutor 集成', () => {
     });
     await second.completion;
     expect(calls).toHaveLength(1);
+    db.close();
+  });
+
+  it('图片附件只存引用；当前 Turn 与后续历史都复用同一 Vision 描述', async () => {
+    const db = new Database({ memory: true, kind: 'data' });
+    db.migrate();
+    const sessions = new SessionStore({ db });
+    const session = sessions.createSession({ workspaceRoot: '/w' });
+    const registry = new ToolRegistry();
+    const requests: unknown[] = [];
+    const llm: CallLlm = request => {
+      requests.push(request.messages);
+      return (async function* () {
+        yield { type: 'text_delta' as const, blockIndex: 0, delta: '收到。' };
+        yield { type: 'done' as const, stopReason: 'end_turn' as const };
+      })();
+    };
+    const image: Attachment = {
+      id: 'att-image',
+      turnId: 'fixture-turn',
+      sessionId: session.id,
+      kind: 'image',
+      name: 'cat.png',
+      mimeType: 'image/png',
+      sourcePath: '/x/cat.png',
+      sourceByteSize: 3,
+      sourceModifiedAt: 1,
+      imagePath: '/managed/cat.png',
+      imageByteSize: 3,
+      createdAt: 1,
+    };
+    const reminderTexts: string[] = [];
+    const deps = {
+      ...makeDeps({ db, llm, sessionId: session.id, registry }),
+      attachments: {
+        addAll: async (inputs: readonly unknown[]) => inputs.length > 0 ? [image] : [],
+        getMany: (ids: readonly string[]) => new Map(
+          ids.includes(image.id) ? [[image.id, image]] : [],
+        ),
+      } as unknown as AttachmentStore,
+      describeImage: async () => '一只戴帽子的猫',
+      readTurnReminder: (scope: { userText: string }) => {
+        reminderTexts.push(scope.userText);
+        return { currentDate: '2026-08-25' };
+      },
+    };
+    const executor = new TurnExecutor(deps);
+
+    const first = executor.start({
+      ...makeStart(session.id),
+      input: [{ type: 'attachment', attachment: { sourcePath: '/x/cat.png' } }],
+    });
+    await first.completion;
+    const firstMessages = sessions.loadMessagesForTurn(first.turnId);
+    expect(firstMessages[1]!.blocks).toEqual([{
+      type: 'attachment_ref',
+      attachmentId: image.id,
+      name: image.name,
+      mimeType: image.mimeType,
+    }]);
+
+    const second = executor.start(makeStart(session.id));
+    await second.completion;
+
+    expect(JSON.stringify(requests[0])).toContain('一只戴帽子的猫');
+    expect(JSON.stringify(requests[1])).toContain('一只戴帽子的猫');
+    expect(JSON.stringify(requests[1])).not.toContain('正文未重复载入');
+    expect(reminderTexts).toEqual(['', '你好']);
     db.close();
   });
 

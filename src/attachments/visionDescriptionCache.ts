@@ -1,5 +1,4 @@
-// Vision 文本描述缓存：内存 + SQLite 两层复用已付费的描述，同键并发只生产一次。
-// 键 = attachmentId + Vision 模型身份；描述指令由 vision 包内置，受管副本不可变，不需要内容哈希。
+// Vision 文本描述缓存：每个受管附件保留一份规范描述，同附件并发只生产一次。
 
 import type {
   AttachmentVisionDescriptionsRepo,
@@ -7,11 +6,6 @@ import type {
 import type { ImageAttachment } from './types.js';
 
 const DEFAULT_MEMORY_ENTRIES = 256;
-
-export interface VisionDescriptionIdentity {
-  readonly providerId: string;
-  readonly modelId: string;
-}
 
 export type VisionDescriptionProducer = (
   attachment: ImageAttachment,
@@ -30,11 +24,10 @@ export class VisionDescriptionCache {
 
   async getOrCreate(
     attachment: ImageAttachment,
-    identity: VisionDescriptionIdentity,
     signal: AbortSignal,
     produce: VisionDescriptionProducer,
   ): Promise<string> {
-    const key = cacheKey(attachment.id, identity);
+    const key = attachment.id;
 
     const memoryHit = this.memory.get(key);
     if (memoryHit !== undefined) {
@@ -47,7 +40,7 @@ export class VisionDescriptionCache {
     const existing = this.inFlight.get(key);
     if (existing) return existing;
 
-    const operation = this.loadOrCreate(key, attachment, identity, signal, produce);
+    const operation = this.loadOrCreate(key, attachment, signal, produce);
     this.inFlight.set(key, operation);
     try {
       return await operation;
@@ -63,19 +56,12 @@ export class VisionDescriptionCache {
   private async loadOrCreate(
     key: string,
     attachment: ImageAttachment,
-    identity: VisionDescriptionIdentity,
     signal: AbortSignal,
     produce: VisionDescriptionProducer,
   ): Promise<string> {
-    const repoKey = {
-      attachmentId: attachment.id,
-      providerId: identity.providerId,
-      modelId: identity.modelId,
-    };
-
-    const persisted = this.repo.find(repoKey);
+    const persisted = this.repo.find(attachment.id);
     if (persisted) {
-      this.repo.touch(repoKey, Date.now());
+      this.repo.touch(attachment.id, Date.now());
       this.putMemory(key, persisted.text);
       return persisted.text;
     }
@@ -85,7 +71,7 @@ export class VisionDescriptionCache {
     signal.throwIfAborted();
     if (!text) throw new Error('Vision 没有返回可缓存的图片描述');
 
-    this.repo.upsert(repoKey, text, Buffer.byteLength(text, 'utf8'), Date.now());
+    this.repo.upsert(attachment.id, text, Buffer.byteLength(text, 'utf8'), Date.now());
     this.putMemory(key, text);
     return text;
   }
@@ -99,12 +85,4 @@ export class VisionDescriptionCache {
       this.memory.delete(oldest);
     }
   }
-}
-
-function cacheKey(attachmentId: string, identity: VisionDescriptionIdentity): string {
-  return [
-    attachmentId,
-    identity.providerId,
-    identity.modelId,
-  ].join('');
 }

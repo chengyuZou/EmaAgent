@@ -3,78 +3,57 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { SessionBusyError, type SessionStore } from '@ema-agent/session';
 import {
-  hasTurnRequestInput,
+  hasTurnInput,
   type TurnExecutor,
+  type TurnInputPart,
 } from '@ema-agent/turn';
 import { REQUEST_VALUE_LIMITS } from '../../platform/requestBudget.js';
 import type { TurnFanout } from '../../sse/turnFanout.js';
 
-const contentPartSchema = z.discriminatedUnion('type', [
+const inputPartSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('text'),
     text: z.string().max(REQUEST_VALUE_LIMITS.maxTurnTextChars),
   }),
   z.object({
-    type: z.literal('image_url'),
-    url: z.string().min(1),
-    name: z.string().optional(),
-    width: z.number().optional(),
-    height: z.number().optional(),
+    type: z.literal('attachment'),
+    attachment: z.object({
+      path: z.string().min(1),
+      name: z.string().min(1).optional(),
+      mimeType: z.string().min(1).optional(),
+      size: z.number().optional(),
+      mtime: z.number().optional(),
+    }),
   }),
-  z.object({
-    type: z.literal('image_data'),
-    data: z.string().min(1),
-    mimeType: z.string().min(1),
-    name: z.string().optional(),
-    width: z.number().optional(),
-    height: z.number().optional(),
-  }),
-  z.object({
-    type: z.literal('audio_data'),
-    data: z.string().min(1),
-    mimeType: z.string().min(1),
-    name: z.string().optional(),
-    durationMs: z.number().optional(),
-  }),
-  z.object({
-    type: z.literal('file_data'),
-    data: z.string().min(1),
-    mimeType: z.string().min(1),
-    filename: z.string().optional(),
-    pageCount: z.number().optional(),
-  }),
-  z.object({
-    type: z.literal('file_url'),
-    url: z.string().min(1),
-    mimeType: z.string().min(1),
-    filename: z.string().optional(),
-    pageCount: z.number().optional(),
-  }),
+  z.object({ type: z.literal('skill'), skillKey: z.string().min(1) }),
 ]);
-
-const attachmentSchema = z.object({
-  path: z.string().min(1),
-  name: z.string().min(1),
-  mimeType: z.string().min(1),
-  size: z.number().optional(),
-  mtime: z.number().optional(),
-});
 
 const startTurnBody = z.object({
   sessionId: z.string().min(1).optional(),
   executionProfile: z.enum(['chat', 'work']),
   narrativePolicy: z.enum(['auto', 'always', 'off']),
-  userInput: z.string().max(REQUEST_VALUE_LIMITS.maxTurnTextChars).optional(),
-  contentParts: z.array(contentPartSchema).max(REQUEST_VALUE_LIMITS.maxTurnContentParts).optional(),
-  attachments: z.array(attachmentSchema).max(REQUEST_VALUE_LIMITS.maxTurnAttachments).optional(),
-  providerId: z.string().min(1).optional(),
-  modelId: z.string().min(1).optional(),
+  input: z.array(inputPartSchema).min(1).max(REQUEST_VALUE_LIMITS.maxTurnContentParts),
+  modelSelection: z.object({
+    providerId: z.string().min(1),
+    modelId: z.string().min(1),
+    thinkingEnabled: z.boolean(),
+    thinkingEffort: z.enum(['low', 'medium', 'high', 'max']),
+  }).optional(),
+  knowledge: z.object({
+    assetIds: z.array(z.string().min(1))
+      .min(1)
+      .max(REQUEST_VALUE_LIMITS.maxTurnKbAssetScopes),
+  }).optional(),
   ttsEnabled: z.boolean().optional(),
-  thinkingEnabled: z.boolean().optional(),
-  kbId: z.string().min(1).optional(),
-  kbAssetIds: z.array(z.string().min(1)).max(REQUEST_VALUE_LIMITS.maxTurnKbAssetScopes).optional(),
-  /** 用户显式选择的 SkillKey 数组（Skill Chip 提交）；不存在或已禁用在准备期拒绝。 */
-  selectedSkillKeys: z.array(z.string().min(1)).max(8).optional(),
+}).superRefine((body, context) => {
+  const attachmentCount = body.input.filter(part => part.type === 'attachment').length;
+  if (attachmentCount > REQUEST_VALUE_LIMITS.maxTurnAttachments) {
+    context.addIssue({ code: 'custom', path: ['input'], message: '附件数量超过单次 Turn 上限' });
+  }
+  const skillCount = body.input.filter(part => part.type === 'skill').length;
+  if (skillCount > 8) {
+    context.addIssue({ code: 'custom', path: ['input'], message: 'Skill 数量超过单次 Turn 上限' });
+  }
 });
 
 export interface StartTurnRouteDeps {
@@ -92,7 +71,20 @@ export function startTurnRoute(deps: StartTurnRouteDeps): Hono {
       return context.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
     }
     const body = parsed.data;
-    if (!hasTurnRequestInput(body)) {
+    const input: TurnInputPart[] = body.input.map(part => {
+      if (part.type !== 'attachment') return part;
+      return {
+        type: 'attachment',
+        attachment: {
+          sourcePath: part.attachment.path,
+          ...(part.attachment.name !== undefined ? { name: part.attachment.name } : {}),
+          ...(part.attachment.mimeType !== undefined ? { mimeType: part.attachment.mimeType } : {}),
+          ...(part.attachment.size !== undefined ? { size: part.attachment.size } : {}),
+          ...(part.attachment.mtime !== undefined ? { mtime: part.attachment.mtime } : {}),
+        },
+      };
+    });
+    if (!hasTurnInput(input)) {
       return context.json({ error: 'empty_input' }, 400);
     }
 
@@ -108,25 +100,9 @@ export function startTurnRoute(deps: StartTurnRouteDeps): Hono {
         triggerType: 'userMessage',
         executionProfile: body.executionProfile,
         narrativePolicy: body.narrativePolicy,
-        ...(body.userInput !== undefined ? { userInput: body.userInput } : {}),
-        ...(body.contentParts ? { contentParts: body.contentParts } : {}),
-        ...(body.attachments
-          ? {
-              attachments: body.attachments.map(attachment => ({
-                sourcePath: attachment.path,
-                name: attachment.name,
-                mimeType: attachment.mimeType,
-                ...(attachment.size !== undefined ? { size: attachment.size } : {}),
-                ...(attachment.mtime !== undefined ? { mtime: attachment.mtime } : {}),
-              })),
-            }
-          : {}),
-        ...(body.providerId ? { providerId: body.providerId } : {}),
-        ...(body.modelId ? { modelId: body.modelId } : {}),
-        ...(body.thinkingEnabled !== undefined ? { thinkingEnabled: body.thinkingEnabled } : {}),
-        ...(body.kbId ? { kbId: body.kbId } : {}),
-        ...(body.kbAssetIds ? { kbAssetIds: body.kbAssetIds } : {}),
-        ...(body.selectedSkillKeys ? { selectedSkillKeys: body.selectedSkillKeys } : {}),
+        input,
+        ...(body.modelSelection ? { modelSelection: body.modelSelection } : {}),
+        ...(body.knowledge ? { knowledge: body.knowledge } : {}),
       });
     } catch (error) {
       if (error instanceof SessionBusyError) {

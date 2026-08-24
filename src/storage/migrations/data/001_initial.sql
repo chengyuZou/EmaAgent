@@ -35,14 +35,11 @@ CREATE TABLE agent_runs (
 );
 
 CREATE TABLE attachment_vision_descriptions (
-  attachment_id       TEXT NOT NULL REFERENCES attachments(id) ON DELETE CASCADE,
-  provider_id  TEXT NOT NULL,
-  model_id            TEXT NOT NULL,
+  attachment_id       TEXT PRIMARY KEY REFERENCES attachments(id) ON DELETE CASCADE,
   text                TEXT NOT NULL,
   byte_size           INTEGER NOT NULL CHECK(byte_size >= 0),
   created_at          INTEGER NOT NULL,
-  last_accessed_at    INTEGER NOT NULL,
-  PRIMARY KEY (attachment_id, provider_id, model_id)
+  last_accessed_at    INTEGER NOT NULL
 );
 
 CREATE TABLE background_processes (

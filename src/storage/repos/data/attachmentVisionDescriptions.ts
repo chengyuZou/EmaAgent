@@ -4,54 +4,40 @@ import type { SqliteDb } from '../../database/database.js';
 
 export interface AttachmentVisionDescriptionRow {
   attachment_id:        string;
-  provider_id:   string;
-  model_id:             string;
   text:                 string;
   byte_size:            number;
   created_at:           number;
   last_accessed_at:     number;
 }
 
-export interface AttachmentVisionDescriptionKey {
-  attachmentId:       string;
-  providerId:   string;
-  modelId:            string;
-}
-
 export class AttachmentVisionDescriptionsRepo {
   constructor(private readonly db: SqliteDb) {}
 
-  find(key: AttachmentVisionDescriptionKey): AttachmentVisionDescriptionRow | undefined {
+  find(attachmentId: string): AttachmentVisionDescriptionRow | undefined {
     return this.db.prepare(`
       SELECT * FROM attachment_vision_descriptions
-       WHERE attachment_id = ? AND provider_id = ? AND model_id = ?
-    `).get(
-      key.attachmentId, key.providerId, key.modelId,
-    ) as AttachmentVisionDescriptionRow | undefined;
+       WHERE attachment_id = ?
+    `).get(attachmentId) as AttachmentVisionDescriptionRow | undefined;
   }
 
-  upsert(key: AttachmentVisionDescriptionKey, text: string, byteSize: number, now: number): void {
+  upsert(attachmentId: string, text: string, byteSize: number, now: number): void {
     this.db.prepare(`
       INSERT INTO attachment_vision_descriptions (
-        attachment_id, provider_id, model_id,
-        text, byte_size, created_at, last_accessed_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(attachment_id, provider_id, model_id)
+        attachment_id, text, byte_size, created_at, last_accessed_at
+      ) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(attachment_id)
       DO UPDATE SET text = excluded.text, byte_size = excluded.byte_size,
                     last_accessed_at = excluded.last_accessed_at
     `).run(
-      key.attachmentId, key.providerId, key.modelId,
-      text, byteSize, now, now,
+      attachmentId, text, byteSize, now, now,
     );
   }
 
-  touch(key: AttachmentVisionDescriptionKey, now: number): void {
+  touch(attachmentId: string, now: number): void {
     this.db.prepare(`
       UPDATE attachment_vision_descriptions SET last_accessed_at = ?
-       WHERE attachment_id = ? AND provider_id = ? AND model_id = ?
-    `).run(
-      now, key.attachmentId, key.providerId, key.modelId,
-    );
+       WHERE attachment_id = ?
+    `).run(now, attachmentId);
   }
 
   /** TTL 清理:最后访问早于 cutoff 的批次。 */
@@ -73,18 +59,16 @@ export class AttachmentVisionDescriptionsRepo {
     `).all(limit) as AttachmentVisionDescriptionRow[];
   }
 
-  deleteRows(rows: readonly AttachmentVisionDescriptionKey[]): number {
-    if (rows.length === 0) return 0;
+  deleteRows(attachmentIds: readonly string[]): number {
+    if (attachmentIds.length === 0) return 0;
     const stmt = this.db.prepare(`
       DELETE FROM attachment_vision_descriptions
-       WHERE attachment_id = ? AND provider_id = ? AND model_id = ?
+       WHERE attachment_id = ?
     `);
     let deleted = 0;
     this.db.transaction(() => {
-      for (const key of rows) {
-        deleted += stmt.run(
-          key.attachmentId, key.providerId, key.modelId,
-        ).changes;
+      for (const attachmentId of attachmentIds) {
+        deleted += stmt.run(attachmentId).changes;
       }
     })();
     return deleted;

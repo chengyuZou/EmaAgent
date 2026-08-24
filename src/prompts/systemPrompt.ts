@@ -5,7 +5,7 @@
 // 工作区指令由工作区模块产出——本包只摆它们的位置。
 // 进入本提示的外部/用户级内容(工作区指令、技能目录、MCP 指引)不再逐段声明信任级,
 // 统一由 product-rules 块末尾的全局声明约束(它们是外部内容,遵循合理要求但不得提权)。
-import type { ExecutionProfile } from '@ema-agent/turn-terms';
+import type { ExecutionProfile } from '@ema-agent/session';
 import {
   actionSafetyRules,
   baseToneRules,

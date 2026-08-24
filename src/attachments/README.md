@@ -21,11 +21,11 @@ AttachmentStore({ repo, dataDir })
   getMany(ids)                                 // 投影前批量取件
   inspectBySession(sessionId)                  // 源文件四状态（available/modified/missing/inaccessible）
 
-// 模型投影（TurnExecution 准备阶段调用；Context/Compact/LLM 不查本包）
+// 模型投影（根 Turn 读取持久化消息后调用；当前输入与历史共用）
 resolveAttachmentReferences(blocks, attachments, { supportsImageInput, describeImage?, signal? })
 
-// Vision 描述缓存（内存 + SQLite 双层，inFlight 同键去重）
-VisionDescriptionCache(repo).getOrCreate(attachment, identity, signal, produce)
+// Vision 描述缓存（每个附件一份规范描述；内存 + SQLite 双层，inFlight 同附件去重）
+VisionDescriptionCache(repo).getOrCreate(attachment, signal, produce)
 AttachmentCacheMaintenance({ repo, isIdle, maxBytesForSweep }).sweepIfIdle()
 
 // 设置
@@ -38,8 +38,11 @@ attachmentCacheSetting   // attachments.cache（nextOperation；默认 64MiB 文
 - 权威事实只认 Server 的 `realpath/stat`；wire 上的 name/mime/size/mtime 仅展示。
 - 图片受管副本：`{dataDir}/sessions/{sessionId}/attachments/{attachmentId}{ext}`，
   原始字节直拷（不规范化）；随 Session 目录删除，孤儿由启动既有清扫兜底。
-- Message 只存 `attachment_ref`；禁止 Base64/路径/名称副本进 `blocks_json`。
+- Message 只存 `attachment_ref` 的 attachmentId、展示名与 MIME；禁止 Base64 和本机路径进入 `blocks_json`。
+- 当前 Turn 与后续历史都从同一个 `attachment_ref` 经同一投影入口生成模型内容；不维护第二份当前输入模型块。
+- 模型不支持图片时，同一附件在缓存保留期间始终复用同一份 Vision 描述；更换 Vision Provider/Model 不会另建一份历史描述。缓存维护删除后，下次使用才重新生成。
 - 投影穷尽：找不到记录、副本读取失败、Vision 失败都产出模型可见文本，不用 filter 丢块。
+- Abort 不是 Vision 失败：取消信号必须继续向上终止 Turn，不能降级为普通说明文本。
 - 文件与 SQLite 无法同事务：先发布副本 → 单事务写库 → 失败删本批副本。
 
 ## 明确不做

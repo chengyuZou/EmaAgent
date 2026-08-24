@@ -38,7 +38,12 @@ function mapOf(...attachments: Attachment[]): ReadonlyMap<string, Attachment> {
   return new Map(attachments.map((a) => [a.id, a]));
 }
 
-const ref = (id: string) => ({ type: 'attachment_ref' as const, attachmentId: id });
+const ref = (id: string) => ({
+  type: 'attachment_ref' as const,
+  attachmentId: id,
+  name: id.startsWith('i') ? 'photo.png' : 'report.pdf',
+  mimeType: id.startsWith('i') ? 'image/png' : 'application/pdf',
+});
 
 describe('resolveAttachmentReferences', () => {
   it('text 与 tool_result 原样透传，file 投影为路径文本', async () => {
@@ -111,5 +116,20 @@ describe('resolveAttachmentReferences', () => {
       type: 'text',
       text: '[图片附件：photo.png（当前模型不支持图片输入）]',
     });
+  });
+
+  it('Vision 期间取消时继续向上抛出，不伪装成普通降级', async () => {
+    const controller = new AbortController();
+    controller.abort(new Error('turn aborted'));
+
+    await expect(resolveAttachmentReferences(
+      [ref('i1')],
+      mapOf(imageAttachment('i1')),
+      {
+        supportsImageInput: false,
+        signal: controller.signal,
+        describeImage: async () => { throw new Error('vision interrupted'); },
+      },
+    )).rejects.toThrow('turn aborted');
   });
 });
