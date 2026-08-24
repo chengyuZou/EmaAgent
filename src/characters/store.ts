@@ -7,7 +7,6 @@ import type { SettingsStore } from '@ema-agent/settings';
 import type { Database, SqliteDb } from '@ema-agent/storage';
 import {
   CharacterRepo,
-  CharacterPromptBlockRepo,
   CharacterLive2dModelRepo,
   CharacterIllustrationRepo,
   CharacterVoiceSampleRepo,
@@ -16,9 +15,6 @@ import type {
   Character,
   CharacterInput,
   CharacterPatch,
-  CharacterPromptBlock,
-  CharacterPromptBlockInput,
-  CharacterPromptBlockPatch,
 } from './types.js';
 import { CharacterRepository } from './repository.js';
 import { EMA_CHARACTER_ID, BUILTIN_CHARACTERS } from './seed/index.js';
@@ -63,10 +59,7 @@ import {
 } from './voice/voiceFiles.js';
 import { CharacterResourcePaths, physicalName, sourceBaseName } from './resources/resourcePaths.js';
 import { removeDirectoryIfPresent, removeFileIfPresent } from './resources/resourceFiles.js';
-import {
-  assertCharacterPromptBlocks,
-  normalizePromptBlock,
-} from './characterPrompt.js';
+import { assertPersonaPrompt } from './characterPrompt.js';
 import {
   inspectAllCharacterHealth,
   inspectCharacterHealth,
@@ -113,7 +106,6 @@ export class CharacterStore {
     this.repository = new CharacterRepository(
       db.sqlite,
       new CharacterRepo(db.sqlite),
-      new CharacterPromptBlockRepo(db.sqlite),
     );
     this.live2dModels = new CharacterLive2dModelRepository(
       new CharacterLive2dModelRepo(db.sqlite),
@@ -136,10 +128,9 @@ export class CharacterStore {
   }
 
   ensureSeed(): void {
-    const settings = this.settings();
     for (const seed of BUILTIN_CHARACTERS) {
       const input = normalizeCharacterInput(seed.card);
-      assertCharacterPromptBlocks(input.promptBlocks, settings.prompt, seed.id);
+      assertPersonaPrompt(input.personaPrompt, seed.id);
       if (!this.repository.findById(seed.id)) {
         this.repository.insert(input, seed.id, seed.id, true);
       }
@@ -216,7 +207,7 @@ export class CharacterStore {
 
   activate(id: string): string {
     const target = this.getRequired(id);
-    assertCharacterPromptBlocks(target.promptBlocks, this.settings().prompt, id);
+    assertPersonaPrompt(target.personaPrompt, id);
     const active = this.repository.findActive();
     const previous = active ? this.withResources(active) : null;
     this.repository.activate(id);
@@ -226,13 +217,17 @@ export class CharacterStore {
 
   create(input: CharacterInput): Character {
     const normalized = normalizeCharacterInput(input);
-    assertCharacterPromptBlocks(normalized.promptBlocks, this.settings().prompt);
+    assertPersonaPrompt(normalized.personaPrompt);
     return this.createWithDirectory(normalized, physicalName(normalized.name));
   }
 
   update(id: string, patch: CharacterPatch): Character {
     const character = this.assertMutableCharacter(id);
-    if (patch.name === undefined && patch.description === undefined) {
+    if (
+      patch.name === undefined
+      && patch.description === undefined
+      && patch.personaPrompt === undefined
+    ) {
       throw new CharacterInputInvalidError('character_patch_empty', id);
     }
     const name = patch.name === undefined ? undefined : patch.name.trim();
@@ -242,7 +237,12 @@ export class CharacterStore {
     const description = patch.description === undefined
       ? undefined
       : patch.description?.trim() || null;
-    this.repository.update(id, name, description);
+    let personaPrompt: string | undefined;
+    if (patch.personaPrompt !== undefined) {
+      assertPersonaPrompt(patch.personaPrompt, id);
+      personaPrompt = patch.personaPrompt.trim();
+    }
+    this.repository.update(id, name, description, personaPrompt);
     return this.get(id) ?? character;
   }
 
@@ -251,11 +251,7 @@ export class CharacterStore {
     const input: CharacterInput = {
       name: `${original.name}(Copy)`,
       description: original.description,
-      promptBlocks: original.promptBlocks.map((block) => ({
-        name: block.name,
-        content: block.content,
-        enabled: block.enabled,
-      })),
+      personaPrompt: original.personaPrompt,
     };
     return this.createWithDirectory(input, physicalName(`${original.directoryName} Copy`));
   }
@@ -266,60 +262,6 @@ export class CharacterStore {
     if (character.isActive) throw new CharacterActiveDeleteError(id);
     await removeDirectoryIfPresent(this.paths.characterDirectory(character.directoryName));
     this.repository.delete(id);
-  }
-
-  addPromptBlock(id: string, input: CharacterPromptBlockInput): CharacterPromptBlock {
-    const character = this.assertMutableCharacter(id);
-    const normalized = normalizePromptBlockInput(input);
-    const projected = [...character.promptBlocks, normalized];
-    assertCharacterPromptBlocks(projected, this.settings().prompt, id);
-    return this.repository.insertBlock(id, normalized);
-  }
-
-  updatePromptBlock(
-    id: string,
-    blockId: string,
-    patch: CharacterPromptBlockPatch,
-  ): CharacterPromptBlock | undefined {
-    const character = this.assertMutableCharacter(id);
-    if (patch.name === undefined && patch.content === undefined && patch.enabled === undefined) {
-      throw new CharacterInputInvalidError('prompt_block_patch_empty', id);
-    }
-    const current = character.promptBlocks.find((block) => block.id === blockId);
-    if (!current) return undefined;
-    const normalized = normalizePromptBlock({
-      name: patch.name ?? current.name,
-      content: patch.content ?? current.content,
-      enabled: patch.enabled ?? current.enabled,
-    });
-    const projected = character.promptBlocks.map((block) => block.id === blockId
-      ? { ...block, ...normalized }
-      : block);
-    assertCharacterPromptBlocks(projected, this.settings().prompt, id);
-    return this.repository.updateBlock(id, blockId, normalized);
-  }
-
-  deletePromptBlock(id: string, blockId: string): boolean {
-    const character = this.assertMutableCharacter(id);
-    if (!character.promptBlocks.some((block) => block.id === blockId)) return false;
-    const projected = character.promptBlocks.filter((block) => block.id !== blockId);
-    assertCharacterPromptBlocks(projected, this.settings().prompt, id);
-    return this.repository.deleteBlock(id, blockId);
-  }
-
-  reorderPromptBlocks(id: string, orderedIds: readonly string[]): boolean {
-    const character = this.assertMutableCharacter(id);
-    if (new Set(orderedIds).size !== orderedIds.length) return false;
-    const byId = new Map(character.promptBlocks.map((block) => [block.id, block]));
-    const projected = orderedIds.map((blockId, sortOrder) => {
-      const block = byId.get(blockId);
-      return block ? { ...block, sortOrder } : null;
-    });
-    if (projected.some((block) => block === null) || projected.length !== character.promptBlocks.length) {
-      return false;
-    }
-    assertCharacterPromptBlocks(projected as CharacterPromptBlock[], this.settings().prompt, id);
-    return this.repository.reorderBlocks(id, orderedIds);
   }
 
   listLive2dModels(id: string): CharacterLive2dModel[] {
@@ -764,25 +706,15 @@ const EMPTY_VOCABULARY: Live2dVocabulary = { emotions: [], motions: [] };
 function normalizeCharacterInput(input: CharacterInput): {
   name: string;
   description: string | null;
-  promptBlocks: Pick<CharacterPromptBlock, 'name' | 'content' | 'enabled'>[];
+  personaPrompt: string;
 } {
   const name = input.name.trim();
   if (!name) throw new CharacterInputInvalidError('character_name_empty');
   return {
     name,
     description: input.description?.trim() || null,
-    promptBlocks: input.promptBlocks.map(normalizePromptBlockInput),
+    personaPrompt: input.personaPrompt.trim(),
   };
-}
-
-function normalizePromptBlockInput(
-  input: CharacterPromptBlockInput,
-): Pick<CharacterPromptBlock, 'name' | 'content' | 'enabled'> {
-  return normalizePromptBlock({
-    name: input.name,
-    content: input.content,
-    enabled: input.enabled ?? true,
-  });
 }
 
 function withResources(

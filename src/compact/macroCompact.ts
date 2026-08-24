@@ -11,7 +11,7 @@ import type {
   Message,
 } from '@ema-agent/llm';
 import { createLlmCompletion } from '@ema-agent/llm';
-import { estimateMessagesTokens } from '@ema-agent/token';
+import { estimateLlmInputTokens, estimateMessagesTokens } from '@ema-agent/token';
 import type { ExecutionProfile } from '@ema-agent/turn-terms';
 import { buildCompactPrompt, extractCompactSummary } from './compactPrompt.js';
 import { findRetainedHistoryStart } from './safeCut.js';
@@ -66,10 +66,21 @@ export async function runMacroCompact(
         : ''),
   });
 
+  // 摘要请求与主请求同口径发送完整 tools（指令已声明工具只是上下文）：tools token
+  // 是固定开销，必须进入同一输入预算，否则小窗口模型会因 tools 漏算而假失败。
+  const toolsTokens = args.tools.length > 0
+    ? estimateLlmInputTokens([], {
+        tools: args.tools.map(tool => ({
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.inputSchema as Record<string, unknown>,
+        })),
+      }).totalTokens
+    : 0;
   const inputBudget = Math.max(1, Math.floor(args.modelContextWindow * INPUT_BUDGET_RATIO));
   const historyBudget = Math.max(
     1,
-    inputBudget - estimateMessagesTokens([...args.systemMessages, instruction(0)]),
+    inputBudget - estimateMessagesTokens([...args.systemMessages, instruction(0)]) - toolsTokens,
   );
 
   let budgetScale = 1;
@@ -87,7 +98,7 @@ export async function runMacroCompact(
     ];
     const remainingOutputTokens = Math.max(
       1,
-      args.modelContextWindow - estimateMessagesTokens(messages),
+      args.modelContextWindow - estimateMessagesTokens(messages) - toolsTokens,
     );
     const desiredOutputTokens = Math.max(
       MIN_COMPACT_OUTPUT_TOKENS,

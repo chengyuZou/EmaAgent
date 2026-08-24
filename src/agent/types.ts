@@ -1,5 +1,6 @@
 import type {
   CallLlm,
+  LlmGenerationSource,
   LlmRequest,
   LlmTokenUsage,
   Message,
@@ -61,4 +62,6 @@ export interface AgentLoopInput {
   readonly budget: AgentBudget;
   readonly signal: AbortSignal;
   readonly maxIterations: number;
+  /** 本次循环全部真实 LLM 调用的生成目标；构造 assistant 时挂到消息上，供下一轮 Adapter 原生状态重放裁决。 */
+  readonly generationSource: LlmGenerationSource;
 }

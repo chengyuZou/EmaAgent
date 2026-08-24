@@ -1,29 +1,21 @@
-// 在一个 SQLite 事务内维护角色定义与 Prompt Block 聚合，并完成数据库行映射。
+// 在一个 SQLite 事务内维护角色定义聚合，并完成数据库行映射。
 
 import { randomUUID } from 'node:crypto';
 import {
   CharacterRepo,
-  CharacterPromptBlockRepo,
   type CharacterRow,
-  type CharacterPromptBlockRow,
   type ProtectedDeleteResult,
   type SqliteDb,
 } from '@ema-agent/storage';
-import type {
-  Character,
-  CharacterInput,
-  CharacterPromptBlock,
-  CharacterPromptBlockInput,
-  CharacterPromptBlockPatch,
-} from './types.js';
+import type { Character, CharacterInput } from './types.js';
 
-function fromRow(row: CharacterRow, blocks: readonly CharacterPromptBlock[]): Character {
+function fromRow(row: CharacterRow): Character {
   return {
     id: row.id,
     name: row.name,
     description: row.description,
     directoryName: row.directory_name,
-    promptBlocks: blocks,
+    personaPrompt: row.persona_prompt,
     emotionVocabulary: [],
     motionVocabulary: [],
     live2dModels: [],
@@ -36,45 +28,24 @@ function fromRow(row: CharacterRow, blocks: readonly CharacterPromptBlock[]): Ch
   };
 }
 
-function fromBlockRow(row: CharacterPromptBlockRow): CharacterPromptBlock {
-  return {
-    id: row.id,
-    characterId: row.character_id,
-    name: row.name,
-    content: row.content,
-    enabled: row.enabled === 1,
-    sortOrder: row.sort_order,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  };
-}
-
 export class CharacterRepository {
   constructor(
     private readonly db: SqliteDb,
     private readonly characters: CharacterRepo,
-    private readonly blocks: CharacterPromptBlockRepo,
   ) {}
 
   findById(id: string): Character | undefined {
     const row = this.characters.findById(id);
-    return row ? fromRow(row, this.listBlocks(id)) : undefined;
+    return row ? fromRow(row) : undefined;
   }
 
   findActive(): Character | undefined {
     const row = this.characters.findActive();
-    return row ? fromRow(row, this.listBlocks(row.id)) : undefined;
+    return row ? fromRow(row) : undefined;
   }
 
   list(): Character[] {
-    const rows = this.characters.list();
-    const grouped = new Map<string, CharacterPromptBlock[]>();
-    for (const block of this.blocks.listForCharacters(rows.map((row) => row.id))) {
-      const values = grouped.get(block.character_id) ?? [];
-      values.push(fromBlockRow(block));
-      grouped.set(block.character_id, values);
-    }
-    return rows.map((row) => fromRow(row, grouped.get(row.id) ?? []));
+    return this.characters.list().map(fromRow);
   }
 
   insert(
@@ -88,26 +59,27 @@ export class CharacterRepository {
       throw new Error(`character directory name already exists: ${directoryName}`);
     }
     const now = Date.now();
-    this.db.transaction(() => {
-      this.characters.insert({
-        id,
-        name: input.name,
-        description: input.description ?? null,
-        directoryName,
-        isActive,
-        isBuiltin,
-        createdAt: now,
-        updatedAt: now,
-      });
-      this.blocks.insertMany(input.promptBlocks.map((block, index) =>
-        toBlockInsert(id, block, index, now),
-      ));
-    })();
+    this.characters.insert({
+      id,
+      name: input.name,
+      description: input.description ?? null,
+      directoryName,
+      personaPrompt: input.personaPrompt,
+      isActive,
+      isBuiltin,
+      createdAt: now,
+      updatedAt: now,
+    });
     return this.findById(id)!;
   }
 
-  update(id: string, name: string | undefined, description: string | null | undefined): void {
-    this.characters.update(id, { name, description, updatedAt: Date.now() });
+  update(
+    id: string,
+    name: string | undefined,
+    description: string | null | undefined,
+    personaPrompt: string | undefined,
+  ): void {
+    this.characters.update(id, { name, description, personaPrompt, updatedAt: Date.now() });
   }
 
   activate(id: string): void {
@@ -117,65 +89,4 @@ export class CharacterRepository {
   delete(id: string): ProtectedDeleteResult {
     return this.characters.delete(id);
   }
-
-  listBlocks(characterId: string): CharacterPromptBlock[] {
-    return this.blocks.listForCharacter(characterId).map(fromBlockRow);
-  }
-
-  insertBlock(characterId: string, input: CharacterPromptBlockInput): CharacterPromptBlock {
-    const now = Date.now();
-    const sortOrder = this.blocks.listForCharacter(characterId).length;
-    const row = toBlockInsert(characterId, input, sortOrder, now);
-    this.blocks.insert(row);
-    return fromBlockRow(this.blocks.findById(characterId, row.id)!);
-  }
-
-  updateBlock(
-    characterId: string,
-    blockId: string,
-    patch: CharacterPromptBlockPatch,
-  ): CharacterPromptBlock | undefined {
-    const row = this.blocks.update(characterId, blockId, {
-      name: patch.name,
-      content: patch.content,
-      enabled: patch.enabled,
-      updatedAt: Date.now(),
-    });
-    return row ? fromBlockRow(row) : undefined;
-  }
-
-  deleteBlock(characterId: string, blockId: string): boolean {
-    return this.blocks.delete(characterId, blockId);
-  }
-
-  reorderBlocks(characterId: string, orderedIds: readonly string[]): boolean {
-    return this.blocks.reorder(characterId, orderedIds, Date.now());
-  }
-}
-
-function toBlockInsert(
-  characterId: string,
-  block: CharacterPromptBlockInput,
-  sortOrder: number,
-  now: number,
-): {
-  id: string;
-  characterId: string;
-  name: string;
-  content: string;
-  enabled: boolean;
-  sortOrder: number;
-  createdAt: number;
-  updatedAt: number;
-} {
-  return {
-    id: randomUUID(),
-    characterId,
-    name: block.name,
-    content: block.content,
-    enabled: block.enabled ?? true,
-    sortOrder,
-    createdAt: now,
-    updatedAt: now,
-  };
 }

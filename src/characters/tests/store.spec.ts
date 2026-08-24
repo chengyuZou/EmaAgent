@@ -7,10 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CharacterStore } from '../store.js';
 import { EMA_CHARACTER_ID } from '../seed/index.js';
-import {
-  CHARACTER_SETTING_DEFINITIONS,
-  characterPromptLimitsGroup,
-} from '../settings.js';
+import { CHARACTER_SETTING_DEFINITIONS } from '../settings.js';
 import {
   CharacterActiveDeleteError,
   CharacterDirectoryConflictError,
@@ -23,7 +20,7 @@ import type { CharacterInput } from '../types.js';
 function minimalInput(overrides: Partial<CharacterInput> = {}): CharacterInput {
   return {
     name: 'Test Character',
-    promptBlocks: [{ name: '基础人设', content: 'You are a test character.' }],
+    personaPrompt: 'You are a test character.',
     ...overrides,
   };
 }
@@ -39,7 +36,7 @@ describe('CharacterStore', () => {
     charactersRoot = mkdtempSync(join(tmpdir(), 'ema-characters-'));
     const settings = new SettingsStore(new SettingsRepo(db.sqlite), {
       definitions: CHARACTER_SETTING_DEFINITIONS,
-      groups: [characterPromptLimitsGroup],
+      groups: [],
     });
     store = new CharacterStore(db, charactersRoot, settings);
     store.ensureSeed();
@@ -53,14 +50,12 @@ describe('CharacterStore', () => {
   // ─── seed & init ──────────────────────────────────────────────────────────
 
   describe('ensureSeed', () => {
-    it('sets the built-in Ema as active on first call, with blocks and resources', () => {
+    it('sets the built-in Ema as active on first call, with persona and resources', () => {
       const current = store.current();
       expect(current.id).toBe(EMA_CHARACTER_ID);
       expect(current.isBuiltin).toBe(true);
       expect(current.isActive).toBe(true);
-      expect(current.promptBlocks).toHaveLength(1);
-      expect(current.promptBlocks[0]?.name).toBe('基础人设');
-      expect(current.promptBlocks[0]?.enabled).toBe(true);
+      expect(current.personaPrompt).toContain('樱羽艾玛');
       expect(current.live2dModels).toHaveLength(1);
       expect(current.live2dModels[0]).toMatchObject({
         directoryName: 'ema',
@@ -82,21 +77,19 @@ describe('CharacterStore', () => {
   // ─── CRUD ─────────────────────────────────────────────────────────────────
 
   describe('create', () => {
-    it('inserts character with initial prompt blocks and derived directory name', () => {
+    it('inserts character with persona prompt and derived directory name', () => {
       const created = store.create(minimalInput());
       expect(created.directoryName).toBe('Test Character');
-      expect(created.promptBlocks).toHaveLength(1);
-      expect(created.promptBlocks[0]?.name).toBe('基础人设');
-      expect(created.promptBlocks[0]?.sortOrder).toBe(0);
+      expect(created.personaPrompt).toBe('You are a test character.');
     });
 
-    it('rejects empty prompt blocks', () => {
-      expect(() => store.create({ name: 'Empty', promptBlocks: [] }))
-        .toThrow('至少需要一个');
+    it('rejects empty persona prompt', () => {
+      expect(() => store.create({ name: 'Empty', personaPrompt: '' }))
+        .toThrow('不能为空');
       expect(() => store.create({
         name: 'Blank',
-        promptBlocks: [{ name: 'x', content: '   ' }],
-      })).toThrow('内容不能为空');
+        personaPrompt: '   ',
+      })).toThrow('不能为空');
     });
 
     it('rejects duplicate directory names', () => {
@@ -114,35 +107,32 @@ describe('CharacterStore', () => {
       expect(updated.directoryName).toBe('Before');
     });
 
-    it('refuses editing built-in character fields and prompt blocks', () => {
+    it('refuses editing built-in character fields and persona prompt', () => {
       expect(() => store.update(EMA_CHARACTER_ID, { name: 'Changed' }))
         .toThrow(CharacterReadOnlyError);
-      expect(() => store.addPromptBlock(EMA_CHARACTER_ID, { name: 'x', content: 'y' }))
+      expect(() => store.update(EMA_CHARACTER_ID, { personaPrompt: 'x' }))
         .toThrow(CharacterReadOnlyError);
     });
   });
 
   describe('duplicate', () => {
-    it('copies blocks with new ids and keeps original untouched', () => {
+    it('copies persona prompt and keeps original untouched', () => {
       const created = store.create(minimalInput());
       const copy = store.duplicate(created.id);
       expect(copy.id).not.toBe(created.id);
       expect(copy.name).toBe(`${created.name}(Copy)`);
-      expect(copy.promptBlocks).toHaveLength(1);
-      expect(copy.promptBlocks[0]?.id).not.toBe(created.promptBlocks[0]?.id);
-      expect(copy.promptBlocks[0]?.content).toBe(created.promptBlocks[0]?.content);
+      expect(copy.personaPrompt).toBe(created.personaPrompt);
     });
   });
 
   describe('delete', () => {
-    it('cascades prompt blocks', async () => {
+    it('deletes the character row', async () => {
       const created = store.create(minimalInput());
-      const blockId = created.promptBlocks[0]!.id;
       await store.deleteManagedCharacter(created.id);
       expect(store.get(created.id)).toBeUndefined();
       expect(db.sqlite.prepare(
-        'SELECT 1 FROM character_prompt_blocks WHERE id = ?',
-      ).get(blockId)).toBeUndefined();
+        'SELECT 1 FROM characters WHERE id = ?',
+      ).get(created.id)).toBeUndefined();
     });
 
     it('refuses builtin characters', async () => {
@@ -171,37 +161,13 @@ describe('CharacterStore', () => {
     });
   });
 
-  // ─── prompt assembly ──────────────────────────────────────────────────────
+  // ─── persona prompt validation ────────────────────────────────────────────
 
-  describe('prompt blocks', () => {
-    it('list orders blocks by sort order', () => {
-      const created = store.create(minimalInput({
-        promptBlocks: [
-          { name: 'second', content: 'B' },
-          { name: 'first', content: 'A' },
-        ],
-      }));
-      expect(created.promptBlocks.map(b => b.content)).toEqual(['B', 'A']);
-    });
-
-    it('supports add, update, reorder and delete through one validation path', () => {
-      const created = store.create(minimalInput());
-      const second = store.addPromptBlock(created.id, { name: '补充', content: 'second' });
-      const first = created.promptBlocks[0]!;
-      expect(store.reorderPromptBlocks(created.id, [second.id, first.id])).toBe(true);
-      expect(store.updatePromptBlock(created.id, second.id, { enabled: false })?.enabled).toBe(false);
-      expect(store.deletePromptBlock(created.id, second.id)).toBe(true);
-      expect(store.get(created.id)?.promptBlocks.map((block) => block.id)).toEqual([first.id]);
-    });
-
-    it('rejects duplicate reorder ids and reserved Live2D tags', () => {
-      const created = store.create(minimalInput());
-      const second = store.addPromptBlock(created.id, { name: '补充', content: 'second' });
-      expect(store.reorderPromptBlocks(created.id, [second.id, second.id])).toBe(false);
-      expect(() => store.addPromptBlock(created.id, {
-        name: 'bad',
-        content: '不要输出 <Emotion>happy</Emotion>',
-      })).toThrow('不能包含');
+  describe('personaPrompt', () => {
+    it('rejects reserved Live2D control tags in persona', () => {
+      expect(() => store.create(minimalInput({
+        personaPrompt: '不要输出 <emotion>happy</emotion>',
+      }))).toThrow('不能包含');
     });
   });
 });

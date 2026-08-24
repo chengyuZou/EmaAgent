@@ -89,6 +89,37 @@ describe('deriveLlmHistory', () => {
     });
   });
 
+  it('reasoning 与 gemini_thought 原生块原样投影并携带生成来源', () => {
+    const result = deriveLlmHistory([
+      message('m1', 'assistant', [
+        { type: 'reasoning', id: 'rsn_1', summaryText: '分析', encryptedContent: 'enc-1' },
+        { type: 'gemini_thought', text: '思考', thoughtSignature: 'ts-1' },
+        { type: 'text', text: '回答' },
+      ]),
+    ], () => ({
+      providerId: 'openai',
+      modelId: 'gpt-5.2',
+      protocol: 'openai-responses-llm',
+    }));
+
+    expect(result).toEqual([{
+      sessionMessageId: 'm1',
+      message: {
+        role: 'assistant',
+        content: [
+          { type: 'reasoning', id: 'rsn_1', summaryText: '分析', encryptedContent: 'enc-1' },
+          { type: 'gemini_thought', text: '思考', thoughtSignature: 'ts-1' },
+          { type: 'text', text: '回答' },
+        ],
+        generatedBy: {
+          providerId: 'openai',
+          modelId: 'gpt-5.2',
+          protocol: 'openai-responses-llm',
+        },
+      },
+    }]);
+  });
+
   it('被完全过滤的消息不占产出下标（身份不可按下标对齐输入）', () => {
     const result = deriveLlmHistory([
       message('m1', 'user', '   '),

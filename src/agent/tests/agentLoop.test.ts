@@ -69,6 +69,7 @@ function baseInput(overrides: Partial<AgentLoopInput>): AgentLoopInput {
     budget: new TestBudget(),
     signal: new AbortController().signal,
     maxIterations: 4,
+    generationSource: { providerId: 'test-provider', modelId: 'test-model', protocol: 'openai-llm' },
     ...overrides,
   };
 }
@@ -283,6 +284,126 @@ describe('runAgentLoop', () => {
 
     expect(terminalEvent(events)?.state.stopReason).toBe('output_recovery_failed');
     expect(terminalEvent(events)?.finalText).toBe('xx');
+  });
+
+  it('Tool Loop 保留 thinking（含原生状态）并挂载生成来源供下一轮重放裁决', async () => {
+    const seenMessages: Message[][] = [];
+    const prepareIteration = vi.fn(async ({ messages }: PrepareAgentIterationInput) => {
+      seenMessages.push([...messages]);
+      return { request: { messages: [...messages] }, messages };
+    });
+    let llmCall = 0;
+    const stream = vi.fn(() => (async function* () {
+      llmCall += 1;
+      if (llmCall === 1) {
+        yield {
+          type: 'thinking_delta' as const,
+          blockIndex: 0,
+          delta: '推理过程',
+        };
+        yield {
+          type: 'thinking_complete' as const,
+          blockIndex: 0,
+          state: { kind: 'anthropic' as const, signature: 'sig-1' },
+        };
+        yield {
+          type: 'tool_use_complete' as const,
+          blockIndex: 1,
+          callId: 'call-1',
+          name: 'Read',
+          args: { path: 'a.ts' },
+        };
+        yield { type: 'done' as const, stopReason: 'tool_use' as const };
+        return;
+      }
+      yield { type: 'text_delta' as const, blockIndex: 0, delta: '完成' };
+      yield { type: 'done' as const, stopReason: 'end_turn' as const };
+    })());
+    const toolResult: ToolResult = {
+      type: 'tool_result',
+      toolCallId: 'call-1',
+      content: 'read result',
+    };
+
+    await collect(baseInput({
+      prepareIteration,
+      callLlm: model(stream),
+      createToolExecutor: () => oneShotExecutor(toolResult),
+      generationSource: {
+        providerId: 'test-provider',
+        modelId: 'claude-test',
+        protocol: 'anthropic-llm',
+      },
+    }));
+
+    const secondIteration = seenMessages[1]!;
+    const assistant = secondIteration.find(message => message.role === 'assistant');
+    expect(assistant).toMatchObject({
+      role: 'assistant',
+      content: [
+        { type: 'thinking', thinking: '推理过程', signature: 'sig-1' },
+        { type: 'tool_use', id: 'call-1', name: 'Read', args: { path: 'a.ts' } },
+      ],
+      generatedBy: {
+        providerId: 'test-provider',
+        modelId: 'claude-test',
+        protocol: 'anthropic-llm',
+      },
+    });
+  });
+
+  it('Tool Loop 保留没有摘要文本的 OpenAI reasoning 状态', async () => {
+    const seenMessages: Message[][] = [];
+    const prepareIteration = vi.fn(async ({ messages }: PrepareAgentIterationInput) => {
+      seenMessages.push([...messages]);
+      return { request: { messages: [...messages] }, messages };
+    });
+    let llmCall = 0;
+    const stream = vi.fn(() => (async function* () {
+      llmCall += 1;
+      if (llmCall === 1) {
+        yield {
+          type: 'thinking_complete' as const,
+          blockIndex: 0,
+          state: { kind: 'openai' as const, id: 'rsn-1', encryptedContent: 'encrypted-1' },
+        };
+        yield {
+          type: 'tool_use_complete' as const,
+          blockIndex: 1,
+          callId: 'call-1',
+          name: 'Read',
+          args: { path: 'a.ts' },
+        };
+        yield { type: 'done' as const, stopReason: 'tool_use' as const };
+        return;
+      }
+      yield { type: 'text_delta' as const, blockIndex: 0, delta: '完成' };
+      yield { type: 'done' as const, stopReason: 'end_turn' as const };
+    })());
+
+    await collect(baseInput({
+      prepareIteration,
+      callLlm: model(stream),
+      createToolExecutor: () => oneShotExecutor({
+        type: 'tool_result',
+        toolCallId: 'call-1',
+        content: 'read result',
+      }),
+      generationSource: {
+        providerId: 'test-provider',
+        modelId: 'gpt-test',
+        protocol: 'openai-responses-llm',
+      },
+    }));
+
+    const assistant = seenMessages[1]!.find(message => message.role === 'assistant');
+    expect(assistant).toMatchObject({
+      role: 'assistant',
+      content: [
+        { type: 'reasoning', id: 'rsn-1', encryptedContent: 'encrypted-1' },
+        { type: 'tool_use', id: 'call-1', name: 'Read', args: { path: 'a.ts' } },
+      ],
+    });
   });
 
   it('连续三轮完全相同的工具批次注入一次空转软引导', async () => {

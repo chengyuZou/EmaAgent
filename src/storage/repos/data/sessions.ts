@@ -365,11 +365,11 @@ export class SessionsRepo {
       this.db.prepare(
         `INSERT INTO turns
            (id, session_id, status, trigger_type,
-            execution_profile, narrative_policy, provider_id, model_id,
+            execution_profile, narrative_policy, provider_id, model_id, protocol,
             iterations, usage_input_tokens, usage_output_tokens,
             created_at, completed_at, error_code, error_message)
          SELECT m.new_id, ?, t.status, t.trigger_type,
-                t.execution_profile, t.narrative_policy, t.provider_id, t.model_id,
+                t.execution_profile, t.narrative_policy, t.provider_id, t.model_id, t.protocol,
                 t.iterations, t.usage_input_tokens, t.usage_output_tokens,
                 t.created_at, t.completed_at, t.error_code, t.error_message
          FROM turns t JOIN _turn_id_map m ON m.old_id = t.id

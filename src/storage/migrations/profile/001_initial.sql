@@ -6,22 +6,12 @@ CREATE TABLE characters (
   name                  TEXT NOT NULL,
   description           TEXT,
   directory_name        TEXT NOT NULL,
+  persona_prompt        TEXT NOT NULL,
   is_active             INTEGER NOT NULL DEFAULT 0,
   is_builtin            INTEGER NOT NULL DEFAULT 0,
   created_at            INTEGER NOT NULL,
   updated_at            INTEGER NOT NULL,
   UNIQUE(directory_name)
-);
-
-CREATE TABLE character_prompt_blocks (
-  id                TEXT PRIMARY KEY,
-  character_id      TEXT NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
-  name              TEXT NOT NULL,
-  content           TEXT NOT NULL,
-  enabled           INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)),
-  sort_order        INTEGER NOT NULL,
-  created_at        INTEGER NOT NULL,
-  updated_at        INTEGER NOT NULL
 );
 
 CREATE TABLE character_live2d_models (
@@ -290,9 +280,6 @@ CREATE TABLE skill_sites (
 CREATE UNIQUE INDEX idx_characters_active
   ON characters(is_active)
   WHERE is_active = 1;
-
-CREATE INDEX idx_character_prompt_blocks_order
-  ON character_prompt_blocks(character_id, sort_order, id);
 
 CREATE INDEX idx_character_live2d_models_order
   ON character_live2d_models(character_id, created_at ASC, id ASC);

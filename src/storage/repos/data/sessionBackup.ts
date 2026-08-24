@@ -191,16 +191,16 @@ export class SessionBackupRestorer {
     const insertTurn = this.db.prepare(`
       INSERT INTO turns (
         id, session_id, status, trigger_type, execution_profile, narrative_policy,
-        provider_id, model_id, character_directory_name,
+        provider_id, model_id, protocol, character_directory_name,
         iterations, usage_input_tokens, usage_output_tokens,
         created_at, completed_at, error_code, error_message
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     for (const row of rows.turns) {
       insertTurn.run(
         row.id, session.id, row.status, row.trigger_type,
         row.execution_profile, row.narrative_policy, row.provider_id, row.model_id,
-        row.character_directory_name, row.iterations, row.usage_input_tokens,
+        row.protocol, row.character_directory_name, row.iterations, row.usage_input_tokens,
         row.usage_output_tokens, row.created_at, row.completed_at,
         row.error_code, row.error_message,
       );

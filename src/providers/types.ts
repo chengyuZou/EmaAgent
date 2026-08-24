@@ -43,6 +43,8 @@ export type ModelCapabilityProtocol<TModelCapability extends ModelCapability> =
 
 /** Provider 解析出的连接可直接传给对应 API 包，不包含请求执行状态。 */
 export interface ProviderConnection<TModelCapability extends ModelCapability> {
+  /** 连接归属的 Provider 身份；Adapter 用它做生成来源三元匹配（providerId+modelId+protocol）。 */
+  providerId: string;
   protocol: ModelCapabilityProtocol<TModelCapability>;
   baseUrl: string;
   apiKey?: string;

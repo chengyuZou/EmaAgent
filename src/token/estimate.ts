@@ -74,6 +74,10 @@ export function estimateLlmInputTokens(
         breakdown.textTokens += estimateTextTokens(block.text);
       } else if (block.type === 'thinking') {
         breakdown.textTokens += estimateTextTokens(block.thinking);
+      } else if (block.type === 'reasoning') {
+        breakdown.textTokens += estimateTextTokens(block.summaryText ?? '');
+      } else if (block.type === 'gemini_thought') {
+        breakdown.textTokens += estimateTextTokens(block.text);
       } else if (block.type === 'tool_use') {
         breakdown.otherTokens += 20 + estimateSerializedValue(block.args);
       } else if (block.type === 'tool_result') {

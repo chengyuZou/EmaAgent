@@ -340,6 +340,7 @@ export function resolveProviderConnection<TCapability extends ModelCapability>(
   }
 
   return {
+    providerId: provider.id,
     protocol: active.protocol as ModelCapabilityProtocol<TCapability>,
     baseUrl: active.baseUrl,
     ...(keyValue ? { apiKey: keyValue } : {}),

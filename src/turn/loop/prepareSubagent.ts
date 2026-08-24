@@ -1,12 +1,12 @@
-// 子 Agent 的 AgentLoopInput 工厂：clean/fork 上下文、收窄 ToolPool、headless 执行器、不落根 Macro。
+// 子 Agent 的 AgentLoopInput 工厂：subagent/fork 上下文、收窄 ToolPool、headless 执行器、不落根 Macro。
 import {
   type AgentBudget,
   type PrepareSubagent,
 } from '@ema-agent/agent';
 import { createLlmCall } from '@ema-agent/llm';
-import type { Message } from '@ema-agent/llm';
+import type { CallLlm, Message } from '@ema-agent/llm';
 import type { CompactRequest, CompactResult } from '@ema-agent/compact';
-import type { Providers } from '@ema-agent/providers';
+import type { ProviderModels, Providers } from '@ema-agent/providers';
 import { BuiltinTools } from '@ema-agent/tools';
 import type { TurnStreamEvent } from '../events.js';
 import type { PreparedTurn } from '../preparation/prepareTurn.js';
@@ -30,6 +30,11 @@ export interface PrepareSubagentDeps {
   /** 根 PreparedTurn 的延迟求值：工厂在准备期创建，子 Agent 只会在主循环中调用它。 */
   readonly prepared: () => PreparedTurn;
   readonly providers: Providers;
+  /** 子 Agent 覆盖模型时解析子模型上下文预算（contextWindow/maxOutput）。 */
+  readonly providerModels: ProviderModels;
+  /** compact 工厂：覆盖模型时用子模型 callLlm 创建独立闭包（独立失败熔断）。 */
+  readonly createCompact: (callLlm: CallLlm) => (request: CompactRequest) => Promise<CompactResult>;
+  /** 根 Turn 的 compact 闭包；未覆盖模型时子 Agent 复用（共享失败熔断）。 */
   readonly compact: (request: CompactRequest) => Promise<CompactResult>;
   readonly emit: (event: TurnStreamEvent) => void;
   readonly budget: AgentBudget;
@@ -42,9 +47,31 @@ export function createPrepareSubagent(deps: PrepareSubagentDeps): PrepareSubagen
     const prepared = deps.prepared();
     const providerId = options.providerId ?? prepared.providerId;
     const modelId = options.modelId ?? prepared.modelId;
-    const callLlm = providerId === prepared.providerId && modelId === prepared.modelId
-      ? prepared.callLlm
-      : createLlmCall(deps.providers.resolveConnection(providerId, 'llm'), modelId);
+    const overridden = providerId !== prepared.providerId || modelId !== prepared.modelId;
+
+    // 覆盖模型时：解析子模型自己的上下文预算并冻结进 subPrepared，创建子模型的
+    // callLlm 与独立 compact 闭包；thinking 意图继承根（budget 由协议 Adapter 按
+    // effort 映射，不依赖模型事实）。未覆盖时全部复用根事实与共享熔断。
+    let callLlm = prepared.callLlm;
+    let compact = deps.compact;
+    let subPrepared: PreparedTurn = prepared;
+    if (overridden) {
+      const facts = deps.providerModels.get(providerId, 'llm', modelId);
+      if (facts.capability !== 'llm') {
+        throw new Error(`子 Agent 覆盖目标不是 LLM 模型：${providerId} / ${modelId}`);
+      }
+      const connection = deps.providers.resolveConnection(providerId, 'llm');
+      callLlm = createLlmCall(connection, modelId);
+      compact = deps.createCompact(callLlm);
+      subPrepared = Object.freeze({
+        ...prepared,
+        providerId,
+        modelId,
+        protocol: connection.protocol,
+        contextWindow: facts.contextWindow,
+        maxOutput: facts.maxOutput,
+      });
+    }
 
     const disallowed = new Set([
       ...(options.disallowedTools ?? []),
@@ -59,15 +86,15 @@ export function createPrepareSubagent(deps: PrepareSubagentDeps): PrepareSubagen
       ? [...deps.parentMessages, { role: 'user', content: prompt }]
       : [{ role: 'user', content: prompt }];
 
-    const subPrepared: PreparedTurn = Object.freeze({
-      ...prepared,
+    subPrepared = Object.freeze({
+      ...subPrepared,
       systemPrompt: Object.freeze([{
         name: 'subagent',
         content: options.systemPrompt
           ?? '你是 Ema 的子 Agent，只完成被委派的具体任务，并把结论返回给父 Agent。',
       }]),
       tools: Object.freeze({
-        ...prepared.tools,
+        ...subPrepared.tools,
         toolPool: subPool,
       }),
     });
@@ -76,7 +103,7 @@ export function createPrepareSubagent(deps: PrepareSubagentDeps): PrepareSubagen
       sessionId: deps.sessionId,
       turnId: deps.turnId,
       prepared: subPrepared,
-      compact: deps.compact,
+      compact,
       emit: deps.emit,
       budget: deps.budget,
       baselineMessageCount: fork ? deps.parentMessages.length : 0,
@@ -96,6 +123,11 @@ export function createPrepareSubagent(deps: PrepareSubagentDeps): PrepareSubagen
       budget: deps.budget,
       signal,
       maxIterations: prepared.maxIterations,
+      generationSource: {
+        providerId: subPrepared.providerId,
+        modelId: subPrepared.modelId,
+        protocol: subPrepared.protocol,
+      },
     };
   };
 }

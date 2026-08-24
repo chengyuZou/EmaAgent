@@ -1,50 +1,8 @@
-// 定义角色 Prompt 与三类资源的用户可调上限，并在每次角色操作前读取当前值。
+// 定义三类资源的用户可调上限，并在每次角色操作前读取当前值。
 
 import type { SettingGroup, SettingsStore } from '@ema-agent/settings';
 import { defineSetting } from '@ema-agent/settings';
 import { z } from 'zod';
-
-export const CHARACTER_PROMPT_LIMITS_GROUP = 'characters.promptLimits';
-
-export const characterPromptMaxBlocksSetting = defineSetting<number>({
-  key: 'characters.prompt.maxBlocks',
-  label: 'Prompt 最大块数',
-  description: '角色 Prompt 的最大块数。',
-  apply: 'immediate',
-  defaultValue: 32,
-  schema: z.number().int().min(1).max(128),
-  group: CHARACTER_PROMPT_LIMITS_GROUP,
-});
-
-export const characterPromptMaxBlockNameCharsSetting = defineSetting<number>({
-  key: 'characters.prompt.maxBlockNameChars',
-  label: 'Prompt 块名长度上限',
-  description: '角色 Prompt 单块名称的最大字符数。',
-  apply: 'immediate',
-  defaultValue: 80,
-  schema: z.number().int().min(1).max(200),
-  group: CHARACTER_PROMPT_LIMITS_GROUP,
-});
-
-export const characterPromptMaxBlockCharsSetting = defineSetting<number>({
-  key: 'characters.prompt.maxBlockChars',
-  label: 'Prompt 单块字符上限',
-  description: '角色 Prompt 单块正文的最大字符数（不能大于总字符）。',
-  apply: 'immediate',
-  defaultValue: 16_000,
-  schema: z.number().int().min(1_000).max(64_000),
-  group: CHARACTER_PROMPT_LIMITS_GROUP,
-});
-
-export const characterPromptMaxTotalCharsSetting = defineSetting<number>({
-  key: 'characters.prompt.maxTotalChars',
-  label: 'Prompt 总字符上限',
-  description: '角色 Prompt 总字符上限。',
-  apply: 'immediate',
-  defaultValue: 64_000,
-  schema: z.number().int().min(1_000).max(256_000),
-  group: CHARACTER_PROMPT_LIMITS_GROUP,
-});
 
 export const characterLive2dMaxRuntimeConfigBytesSetting = defineSetting<number>({
   key: 'characters.live2d.maxRuntimeConfigBytes',
@@ -101,10 +59,6 @@ export const characterVoiceMaxDurationMsSetting = defineSetting<number>({
 });
 
 export const CHARACTER_SETTING_DEFINITIONS = [
-  characterPromptMaxBlocksSetting,
-  characterPromptMaxBlockNameCharsSetting,
-  characterPromptMaxBlockCharsSetting,
-  characterPromptMaxTotalCharsSetting,
   characterLive2dMaxRuntimeConfigBytesSetting,
   characterLive2dMaxZipEntriesSetting,
   characterLive2dMaxZipTotalBytesSetting,
@@ -113,33 +67,7 @@ export const CHARACTER_SETTING_DEFINITIONS = [
   characterVoiceMaxDurationMsSetting,
 ] as const;
 
-export const characterPromptLimitsGroup: SettingGroup = {
-  id: CHARACTER_PROMPT_LIMITS_GROUP,
-  definitions: [
-    characterPromptMaxBlocksSetting,
-    characterPromptMaxBlockNameCharsSetting,
-    characterPromptMaxBlockCharsSetting,
-    characterPromptMaxTotalCharsSetting,
-  ],
-  schema: z.object({
-    'characters.prompt.maxBlocks': z.number(),
-    'characters.prompt.maxBlockNameChars': z.number(),
-    'characters.prompt.maxBlockChars': z.number(),
-    'characters.prompt.maxTotalChars': z.number(),
-  }).refine(
-    values => values['characters.prompt.maxBlockChars']
-      <= values['characters.prompt.maxTotalChars'],
-    { message: '单个 Prompt Block 字符上限不能大于角色 Prompt 总字符上限' },
-  ),
-};
-
 export interface CharacterSettings {
-  readonly prompt: {
-    readonly maxBlocks: number;
-    readonly maxBlockNameChars: number;
-    readonly maxBlockChars: number;
-    readonly maxTotalChars: number;
-  };
   readonly live2d: {
     readonly maxRuntimeConfigBytes: number;
     readonly maxZipEntries: number;
@@ -156,12 +84,6 @@ export interface CharacterSettings {
 
 export function readCharacterSettings(store: SettingsStore): CharacterSettings {
   return {
-    prompt: {
-      maxBlocks: store.get(characterPromptMaxBlocksSetting),
-      maxBlockNameChars: store.get(characterPromptMaxBlockNameCharsSetting),
-      maxBlockChars: store.get(characterPromptMaxBlockCharsSetting),
-      maxTotalChars: store.get(characterPromptMaxTotalCharsSetting),
-    },
     live2d: {
       maxRuntimeConfigBytes: store.get(characterLive2dMaxRuntimeConfigBytesSetting),
       maxZipEntries: store.get(characterLive2dMaxZipEntriesSetting),

@@ -7,10 +7,7 @@ import {
   maxImagesPerTurnSetting,
 } from '@ema-agent/attachments';
 import { COMPACT_SETTINGS, compactGroup } from '@ema-agent/compact';
-import {
-  CHARACTER_SETTING_DEFINITIONS,
-  characterPromptLimitsGroup,
-} from '@ema-agent/characters';
+import { CHARACTER_SETTING_DEFINITIONS } from '@ema-agent/characters';
 import {
   kbAlphaSetting,
   kbDefaultTopKSetting,
@@ -75,7 +72,7 @@ export function openSettings(profileDb: Database): SettingsComposition {
       themeSetting,
       eventDisplaySetting,
     ],
-    groups: [agentLimitsGroup, compactGroup, characterPromptLimitsGroup],
+    groups: [agentLimitsGroup, compactGroup],
   });
   return { settings };
 }

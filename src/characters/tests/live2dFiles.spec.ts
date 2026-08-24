@@ -9,10 +9,7 @@ import { Database, SettingsRepo } from '@ema-agent/storage';
 import { SettingsStore } from '@ema-agent/settings';
 import { CharacterStore } from '../store.js';
 import { importLive2dZip } from '../live2d/live2dFiles.js';
-import {
-  CHARACTER_SETTING_DEFINITIONS,
-  characterPromptLimitsGroup,
-} from '../settings.js';
+import { CHARACTER_SETTING_DEFINITIONS } from '../settings.js';
 
 describe('Live2D ZIP resources', () => {
   let database: Database;
@@ -26,13 +23,13 @@ describe('Live2D ZIP resources', () => {
     root = fs.mkdtempSync(path.join(tmpdir(), 'ema-live2d-'));
     const settings = new SettingsStore(new SettingsRepo(database.sqlite), {
       definitions: CHARACTER_SETTING_DEFINITIONS,
-      groups: [characterPromptLimitsGroup],
+      groups: [],
     });
     store = new CharacterStore(database, path.join(root, 'characters'), settings);
     store.ensureSeed();
     characterId = store.create({
       name: 'Alice',
-      promptBlocks: [{ name: '基础人设', content: 'Alice prompt' }],
+      personaPrompt: 'Alice prompt',
     }).id;
   });
 

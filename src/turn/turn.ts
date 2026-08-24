@@ -253,6 +253,8 @@ export class TurnExecutor {
           return prepared;
         },
         providers: this.deps.providers,
+        providerModels: this.deps.providerModels,
+        createCompact: this.deps.createCompact,
         compact: request => compactForTurn!(request),
         emit,
         budget,
@@ -329,12 +331,16 @@ export class TurnExecutor {
       }
       // 每条 Assistant 历史关联所属 Turn 冻结的调用目标（providerId/modelId/protocol）；
       // 查不到目标就缺省，由目标协议 Adapter 依据 generatedBy 裁决 thinking 重放。
+      // 同一 Turn 的多条 Assistant 共享同一行冻结目标：按 turnId 缓存，避免逐条重复 SQL。
+      const generationTargetCache = new Map<string, LlmGenerationSource | undefined>();
       const resolveGenerationTarget = (turnId: string): LlmGenerationSource | undefined => {
+        if (generationTargetCache.has(turnId)) return generationTargetCache.get(turnId);
         const turn = this.deps.turns.getTurn(turnId);
-        if (!turn?.providerId || !turn.modelId || !turn.protocol) return undefined;
-        return isLlmProtocol(turn.protocol)
+        const source = turn?.providerId && turn.modelId && turn.protocol && isLlmProtocol(turn.protocol)
           ? { providerId: turn.providerId, modelId: turn.modelId, protocol: turn.protocol }
           : undefined;
+        generationTargetCache.set(turnId, source);
+        return source;
       };
       const historyWithIds = deriveLlmHistory(persisted.slice(0, reminderIndex), resolveGenerationTarget);
       const reminderReplay = deriveLlmHistory(persisted.slice(reminderIndex, reminderIndex + 1), resolveGenerationTarget)
@@ -378,6 +384,12 @@ export class TurnExecutor {
         budget,
         signal,
         maxIterations: prepared.maxIterations,
+        // 当前 Turn 全部真实调用的生成目标；agentLoop 构造 assistant 时挂载。
+        generationSource: {
+          providerId: prepared.providerId,
+          modelId: prepared.modelId,
+          protocol: prepared.protocol,
+        },
       })) {
         let downstream = event;
         if (stage && event.type === 'text_delta') {

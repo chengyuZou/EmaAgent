@@ -1,4 +1,4 @@
-import type { LlmStopReason, LlmTokenUsage } from '@ema-agent/llm';
+import type { LlmStopReason, LlmThinkingState, LlmTokenUsage } from '@ema-agent/llm';
 import type { ToolResult } from '@ema-agent/tools';
 import type { SubagentContextMode } from '@ema-agent/tools';
 import type { AgentLoopState } from './agentLoopState.js';
@@ -15,7 +15,8 @@ export type AgentLoopEvent =
   | {
       readonly type: 'thinking_completed';
       readonly blockIndex: number;
-      readonly signature?: string;
+      /** 协议原生推理状态（signature/id/thoughtSignature）；缺失 = 无续接状态。 */
+      readonly state?: LlmThinkingState;
     }
   | {
       readonly type: 'tool_use_partial';

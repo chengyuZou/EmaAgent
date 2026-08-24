@@ -11,21 +11,16 @@ export interface CharacterCollectionRouteDeps {
   >;
 }
 
-const promptBlockInput = z.object({
-  name: z.string().trim().min(1).max(200),
-  content: z.string().max(64_000),
-  enabled: z.boolean().optional(),
-});
-
 const createBody = z.object({
   name: z.string().min(1).max(100),
   description: z.string().max(2_000).nullish(),
-  promptBlocks: z.array(promptBlockInput).max(128),
+  personaPrompt: z.string().max(64_000),
 });
 
 const patchBody = z.object({
   name: z.string().trim().min(1).max(100).optional(),
   description: z.string().max(2_000).nullish(),
+  personaPrompt: z.string().max(64_000).optional(),
 });
 
 export function characterCollectionRoute(deps: CharacterCollectionRouteDeps): Hono {
@@ -50,7 +45,7 @@ export function characterCollectionRoute(deps: CharacterCollectionRouteDeps): Ho
       return context.json(deps.characters.create({
         name: parsed.data.name,
         description: parsed.data.description ?? null,
-        promptBlocks: parsed.data.promptBlocks,
+        personaPrompt: parsed.data.personaPrompt,
       }), 201);
     } catch (error) {
       return characterError(context, error);

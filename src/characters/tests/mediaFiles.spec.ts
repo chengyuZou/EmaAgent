@@ -7,10 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Database, SettingsRepo } from '@ema-agent/storage';
 import { SettingsStore } from '@ema-agent/settings';
 import { CharacterStore } from '../store.js';
-import {
-  CHARACTER_SETTING_DEFINITIONS,
-  characterPromptLimitsGroup,
-} from '../settings.js';
+import { CHARACTER_SETTING_DEFINITIONS } from '../settings.js';
 
 describe('character illustration and voice files', () => {
   let database: Database;
@@ -24,13 +21,13 @@ describe('character illustration and voice files', () => {
     root = fs.mkdtempSync(path.join(tmpdir(), 'ema-character-media-'));
     const settings = new SettingsStore(new SettingsRepo(database.sqlite), {
       definitions: CHARACTER_SETTING_DEFINITIONS,
-      groups: [characterPromptLimitsGroup],
+      groups: [],
     });
     store = new CharacterStore(database, path.join(root, 'characters'), settings);
     store.ensureSeed();
     characterId = store.create({
       name: 'Alice',
-      promptBlocks: [{ name: '基础人设', content: 'Alice prompt' }],
+      personaPrompt: 'Alice prompt',
     }).id;
   });
 

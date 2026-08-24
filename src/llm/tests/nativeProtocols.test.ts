@@ -1,6 +1,7 @@
 // 测试 Anthropic 与 Gemini 原生协议都经公共入口产生显式完成流。
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createLlmCall } from '../languageModel.js';
+import type { LlmStreamEvent } from '../types.js';
 
 const sdkMocks = vi.hoisted(() => ({
   anthropicConstructor: vi.fn(),
@@ -55,7 +56,7 @@ describe('native LLM protocols', () => {
       },
       { type: 'message_stop' },
     ]));
-    const llm = createLlmCall({ protocol: 'anthropic-llm', apiKey: 'key' }, 'claude-test');
+    const llm = createLlmCall({ providerId: 'test', protocol: 'anthropic-llm', apiKey: 'key' }, 'claude-test');
 
     await expect(collectText(llm({
       messages: [{ role: 'user', content: 'hello' }],
@@ -68,6 +69,37 @@ describe('native LLM protocols', () => {
     });
   });
 
+  it('Gemini thought part 产生 thinking_delta 与带 thoughtSignature 的 thinking_complete', async () => {
+    sdkMocks.geminiStream.mockResolvedValueOnce(streamOf([
+      {
+        candidates: [{
+          content: { parts: [
+            { text: '推理过程', thought: true, thoughtSignature: 'ts-1' },
+            { text: '可见回答' },
+          ] },
+          finishReason: 'STOP',
+        }],
+      },
+    ]));
+    const llm = createLlmCall({ providerId: 'test', protocol: 'gemini-llm', apiKey: 'key' }, 'gemini-test');
+
+    const events: LlmStreamEvent[] = [];
+    for await (const event of llm({
+      messages: [{ role: 'user', content: 'hello' }],
+      maxOutputTokens: 128,
+    })) {
+      events.push(event);
+    }
+
+    expect(events.filter(event => event.type === 'thinking_delta')).toHaveLength(1);
+    expect(events.find(event => event.type === 'thinking_complete')).toEqual({
+      type: 'thinking_complete',
+      blockIndex: 0,
+      state: { kind: 'gemini', thoughtSignature: 'ts-1' },
+    });
+    expect(events.find(event => event.type === 'text_delta')?.delta).toBe('可见回答');
+  });
+
   it('Gemini 原生协议保留 Google 流并产生明确终态', async () => {
     sdkMocks.geminiStream.mockResolvedValueOnce(streamOf([{
       candidates: [{
@@ -75,7 +107,7 @@ describe('native LLM protocols', () => {
         finishReason: 'STOP',
       }],
     }]));
-    const llm = createLlmCall({ protocol: 'gemini-llm', apiKey: 'key' }, 'gemini-test');
+    const llm = createLlmCall({ providerId: 'test', protocol: 'gemini-llm', apiKey: 'key' }, 'gemini-test');
 
     await expect(collectText(llm({
       messages: [{ role: 'user', content: 'hello' }],

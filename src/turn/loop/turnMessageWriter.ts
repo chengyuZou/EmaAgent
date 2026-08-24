@@ -1,6 +1,7 @@
 // 事件驱动的流式落库：首个 delta 建 block、tool_use 先落库再执行、tool_result 落库再关账。
 import type { AgentLoopEvent } from '@ema-agent/agent';
-import type { AssistantBlock } from '@ema-agent/llm';
+import type { AssistantBlock, LlmThinkingState } from '@ema-agent/llm';
+import { createAssistantThinkingBlock } from '@ema-agent/llm';
 import type { ToolResult } from '@ema-agent/tools';
 import type {
   AppendMessageInput,
@@ -23,7 +24,7 @@ export class TurnMessageWriter {
   private assistantMessageId: string | undefined;
   private textByIndex = new Map<number, string>();
   private thinkingByIndex = new Map<number, string>();
-  private thinkingSignatures = new Map<number, string>();
+  private thinkingStates = new Map<number, LlmThinkingState>();
   private toolUseByIndex = new Map<number, ToolUseBlock>();
   /** 已落库但尚未等到 tool_result 的调用；Turn 终态时合成取消结果补配对。 */
   private readonly pendingToolUses = new Map<string, ToolUseBlock>();
@@ -57,8 +58,8 @@ export class TurnMessageWriter {
         return;
 
       case 'thinking_completed':
-        if (event.signature !== undefined) {
-          this.thinkingSignatures.set(event.blockIndex, event.signature);
+        if (event.state !== undefined) {
+          this.thinkingStates.set(event.blockIndex, event.state);
         }
         await this.persistAssistant();
         return;
@@ -129,7 +130,7 @@ export class TurnMessageWriter {
     this.assistantMessageId = undefined;
     this.textByIndex = new Map();
     this.thinkingByIndex = new Map();
-    this.thinkingSignatures = new Map();
+    this.thinkingStates = new Map();
     this.toolUseByIndex = new Map();
   }
 
@@ -158,13 +159,16 @@ export class TurnMessageWriter {
     for (const [index, text] of this.textByIndex) {
       if (text.trim()) blocks.set(index, { type: 'text', text });
     }
-    for (const [index, thinking] of this.thinkingByIndex) {
-      const signature = this.thinkingSignatures.get(index);
-      blocks.set(index, {
-        type: 'thinking',
-        thinking,
-        ...(signature !== undefined ? { signature } : {}),
-      });
+    const thinkingIndexes = new Set([
+      ...this.thinkingByIndex.keys(),
+      ...this.thinkingStates.keys(),
+    ]);
+    for (const index of thinkingIndexes) {
+      const block = createAssistantThinkingBlock(
+        this.thinkingByIndex.get(index),
+        this.thinkingStates.get(index),
+      );
+      if (block) blocks.set(index, block);
     }
     for (const [index, toolUse] of this.toolUseByIndex) {
       blocks.set(index, toolUse);

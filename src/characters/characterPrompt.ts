@@ -1,130 +1,38 @@
-// 校验并平铺角色 Prompt Block，最后追加不可由用户编辑的 Live2D 控制协议。
+// 装配角色人设提示词，最后追加不可由用户编辑的 Live2D 控制协议。
 
-import type { Character, CharacterPromptBlock } from './types.js';
+import type { Character } from './types.js';
 import { CharacterPromptInvalidError } from './errors.js';
-import type { CharacterSettings } from './settings.js';
-
-export interface CharacterPromptLimitIssue {
-  readonly characterId: string;
-  readonly blockId?: string;
-  readonly message: string;
-}
 
 /**
- * 装配角色 Prompt：启用 Block 按 sortOrder 平铺，追加不可由用户编辑的 Live2D 控制协议。
- * 字符/数量上限由写入边界（Store 的全部变更入口）守住，装配处不重复数字符；
- * 这里只守身份硬门——拍平后为空就拒，空 Prompt 角色不能启动新 Turn。
+ * 装配角色 Prompt：人设提示词（personaPrompt）在前，追加不可由用户编辑的
+ * Live2D 控制协议。这里只守身份硬门——拼起来为空就拒，空人设角色不能启动新 Turn。
  */
 export function buildCharacterPrompt(character: Character): readonly string[] {
   const sections = [
-    ...character.promptBlocks
-      .filter((block) => block.enabled)
-      .sort((a, b) => a.sortOrder - b.sortOrder)
-      .map((block) => block.content),
+    character.personaPrompt,
     buildLive2dControlPrompt(character),
   ].filter(hasContent);
   if (sections.length === 0) {
-    throw new CharacterPromptInvalidError('角色至少需要一个启用的 Prompt Block', character.id);
+    throw new CharacterPromptInvalidError('角色人设提示词不能为空', character.id);
   }
   return sections;
 }
 
-/** 校验只消费名称/内容/启用；持久行的 id 仅用于错误定位，候选输入没有 id。 */
-export type PromptBlockValidationInput =
-  Pick<CharacterPromptBlock, 'name' | 'content' | 'enabled'> & { readonly id?: string };
-
-/** 空角色 Prompt 会让新 Turn 失去身份，因此在激活与装配边界直接拒绝。 */
-export function assertCharacterPromptBlocks(
-  blocks: readonly PromptBlockValidationInput[],
-  limits: CharacterSettings['prompt'],
+/** 空人设会让新 Turn 失去身份：非空 + 不允许内嵌 Live2D 控制标签（会被误解析）。 */
+export function assertPersonaPrompt(
+  personaPrompt: string,
   characterId?: string,
 ): void {
-  if (blocks.length === 0) {
-    throw new CharacterPromptInvalidError('角色至少需要一个 Prompt Block', characterId);
+  const content = personaPrompt.trim();
+  if (!content) {
+    throw new CharacterPromptInvalidError('角色人设提示词不能为空', characterId);
   }
-  if (blocks.length > limits.maxBlocks) {
+  if (containsLive2dControlTag(content)) {
     throw new CharacterPromptInvalidError(
-      `Prompt Block 数量超过上限 ${limits.maxBlocks}`,
+      '角色人设提示词不能包含 <emotion> 或 <motion> 控制标签',
       characterId,
     );
   }
-
-  let totalChars = 0;
-  let enabledBlocks = 0;
-  for (const block of blocks) {
-    const name = block.name.trim();
-    const content = block.content.trim();
-    if (!name) {
-      throw new CharacterPromptInvalidError('Prompt Block 名称不能为空', characterId, block.id);
-    }
-    if (name.length > limits.maxBlockNameChars) {
-      throw new CharacterPromptInvalidError(
-        `Prompt Block 名称超过 ${limits.maxBlockNameChars} 字符`,
-        characterId,
-        block.id,
-      );
-    }
-    if (!content) {
-      throw new CharacterPromptInvalidError('Prompt Block 内容不能为空', characterId, block.id);
-    }
-    if (content.length > limits.maxBlockChars) {
-      throw new CharacterPromptInvalidError(
-        `单个 Prompt Block 超过 ${limits.maxBlockChars} 字符`,
-        characterId,
-        block.id,
-      );
-    }
-    if (containsLive2dControlTag(content)) {
-      throw new CharacterPromptInvalidError(
-        'Prompt Block 不能包含 <emotion> 或 <motion> 控制标签',
-        characterId,
-        block.id,
-      );
-    }
-    totalChars += content.length;
-    if (block.enabled) enabledBlocks += 1;
-  }
-  if (totalChars > limits.maxTotalChars) {
-    throw new CharacterPromptInvalidError(
-      `角色 Prompt 总字符数超过 ${limits.maxTotalChars}`,
-      characterId,
-    );
-  }
-  if (enabledBlocks === 0) {
-    throw new CharacterPromptInvalidError('角色至少需要一个启用的 Prompt Block', characterId);
-  }
-}
-
-/** Settings 保存更小上限前，用同一套领域规则检查全部现有角色。 */
-export function validateCharacterPromptLimits(
-  limits: CharacterSettings['prompt'],
-  characters: readonly Character[],
-): CharacterPromptLimitIssue[] {
-  const issues: CharacterPromptLimitIssue[] = [];
-  for (const character of characters) {
-    try {
-      assertCharacterPromptBlocks(character.promptBlocks, limits, character.id);
-    } catch (error) {
-      if (!(error instanceof CharacterPromptInvalidError)) throw error;
-      issues.push({
-        characterId: character.id,
-        blockId: error.blockId,
-        message: error.reason,
-      });
-    }
-  }
-  return issues;
-}
-
-/** 写入数据库前统一裁掉首尾空白，避免 UI 与模型看到两套文本。 */
-export function normalizePromptBlock(
-  block: Pick<CharacterPromptBlock, 'name' | 'content' | 'enabled'>,
-): Pick<CharacterPromptBlock, 'name' | 'content' | 'enabled'> {
-  return {
-    name: block.name.trim(),
-    content: block.content.trim(),
-    enabled: block.enabled,
-  };
 }
 
 function containsLive2dControlTag(content: string): boolean {

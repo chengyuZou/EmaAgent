@@ -12,7 +12,6 @@ import { backgroundProcessListRoute } from './backgroundProcesses/list.js';
 import { sessionBackupRoute } from './backup/sessions.js';
 import { characterCollectionRoute } from './characters/collection.js';
 import { characterHealthRoute } from './characters/health.js';
-import { characterPromptBlocksRoute } from './characters/promptBlocks.js';
 import { characterResourcesRoute } from './characters/resources.js';
 import { knowledgeDocumentsRoute } from './knowledge/documents.js';
 import { knowledgeIngestRoute } from './knowledge/ingest.js';
@@ -173,7 +172,6 @@ export function createRoutes(composition: Composition, secret: string): Hono {
   }));
 
   app.route('/api/characters', characterCollectionRoute({ characters: characters.store }));
-  app.route('/api/characters', characterPromptBlocksRoute({ characters: characters.store }));
   app.route('/api/characters', characterResourcesRoute({ characters: characters.store }));
   app.route('/api/characters', characterHealthRoute({ characters: characters.store }));
 

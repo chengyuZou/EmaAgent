@@ -55,6 +55,15 @@ function isAssistantBlocks(value: unknown): value is AssistantBlock[] {
       return typeof block.thinking === 'string'
         && (block.signature === undefined || typeof block.signature === 'string');
     }
+    if (block.type === 'reasoning') {
+      return typeof block.id === 'string'
+        && (block.summaryText === undefined || typeof block.summaryText === 'string')
+        && (block.encryptedContent === undefined || typeof block.encryptedContent === 'string');
+    }
+    if (block.type === 'gemini_thought') {
+      return typeof block.text === 'string'
+        && (block.thoughtSignature === undefined || typeof block.thoughtSignature === 'string');
+    }
     return block.type === 'tool_use'
       && typeof block.id === 'string'
       && typeof block.name === 'string'

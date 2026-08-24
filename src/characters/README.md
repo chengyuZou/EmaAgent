@@ -6,8 +6,7 @@ Character 负责一张角色的人设 Prompt、Live2D、立绘和参考音频。
 
 `CharacterStore` 是唯一业务入口。角色由以下内容组成：
 
-- 可编辑的角色名称与描述；
-- 有序 `CharacterPromptBlock[]`；
+- 可编辑的角色名称、描述与人设提示词 `personaPrompt`；
 - 多个 Live2D、立绘和参考音频资源；
 - 当前激活状态与内置只读标记。
 
@@ -24,22 +23,13 @@ Character 负责一张角色的人设 Prompt、Live2D、立绘和参考音频。
 
 `directoryName/fileName` 在导入时从 ZIP 或源文件名取得，创建后不可修改；同一目标已存在时直接拒绝，不覆盖也不自动追加后缀。
 
-## Prompt Block
+## 人设提示词
 
-角色 Prompt 是按 `sortOrder` 排序后的启用 Block 内容平铺数组。Live2D 控制协议在 Block 之后动态追加，不落入 Block 表，也不能被用户编辑或禁用。
+角色 Prompt 由人设提示词 `personaPrompt` 平铺，Live2D 控制协议在之后动态追加（由词汇表生成），不落入人设字段，也不能被用户编辑。
 
-字符与数量上限由**写入边界**守住：CharacterStore 的全部变更入口（增/改/删/排序）与激活都过同一套校验，前端看到的报错就是这里拒写的回执。装配边界（`buildCharacterPrompt`）不再重复数字符，只守身份硬门——拍平后为空就拒绝启动新 Turn。
+身份硬门由写入边界与装配边界共同守住：`create`/`update`/`activate` 都过 `assertPersonaPrompt()`（非空 + 禁止 `<emotion>`/`<motion>` 控制标签）；装配边界 `buildCharacterPrompt()` 只守空拒——拼起来为空就拒绝启动新 Turn。
 
-CharacterStore 提供：
-
-- `addPromptBlock`
-- `updatePromptBlock`
-- `deletePromptBlock`
-- `reorderPromptBlocks`
-
-所有写入都经过同一套规则：名称和内容 trim、非空、数量与字符上限、至少一个启用 Block。用户 Block 禁止出现 `<emotion>` 和 `<motion>`，包括大小写变体与未闭合标签，避免占用系统控制协议。
-
-限制由 [settings.ts](./settings.ts) 定义并在每次操作时从 `SettingsStore` 读取。四个 Prompt 上限属于 `characters.promptLimits` 设置组，先保证单块上限不大于总上限。设置页面提交更小上限前，应用编排层必须调用 `validateCharacterPromptLimits()` 检查全部现有角色；这条接线不属于 Character 单包。
+人设字段禁止出现 `<emotion>` 和 `<motion>`，包括大小写变体与未闭合标签，避免占用系统控制协议。
 
 ## 资源导入与删除
 

@@ -25,7 +25,6 @@ export { CharacterRepo } from './repos/profile/character.js';
 export { CharacterLive2dModelRepo } from './repos/profile/characterLive2dModel.js';
 export { CharacterIllustrationRepo } from './repos/profile/characterIllustration.js';
 export { CharacterVoiceSampleRepo } from './repos/profile/characterVoiceSample.js';
-export { CharacterPromptBlockRepo } from './repos/profile/characterPromptBlock.js';
 export { SettingsRepo } from './repos/profile/settings.js';
 export { UsageRecordsRepo } from './repos/data/usage-records.js';
 export { ProvidersRepo } from './repos/profile/providers.js';
@@ -97,11 +96,6 @@ export type {
   CharacterVoiceSampleRow,
   CharacterVoiceSampleUpdate,
 } from './repos/profile/characterVoiceSample.js';
-export type {
-  CharacterPromptBlockRow,
-  CharacterPromptBlockInsert,
-  CharacterPromptBlockUpdate,
-} from './repos/profile/characterPromptBlock.js';
 export { SettingSerializationError } from './repos/profile/settings.js';
 export type { SettingRow, SettingReadResult } from './repos/profile/settings.js';
 export type { SettingWrite } from './repos/profile/settings.js';

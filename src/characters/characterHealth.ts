@@ -6,7 +6,7 @@ import type { Character } from './types.js';
 import type { CharacterSettings } from './settings.js';
 import { findLive2dPackageFilesSync } from './live2d/live2dValidator.js';
 import { CharacterResourcePaths } from './resources/resourcePaths.js';
-import { assertCharacterPromptBlocks } from './characterPrompt.js';
+import { assertPersonaPrompt } from './characterPrompt.js';
 
 export type CharacterHealthStatus = 'healthy' | 'degraded' | 'invalid';
 export type CharacterPresentation = 'live2d' | 'illustration' | 'placeholder';
@@ -58,7 +58,7 @@ export async function inspectCharacterHealth(
 ): Promise<CharacterHealth> {
   const issues: CharacterHealthIssue[] = [];
   try {
-    assertCharacterPromptBlocks(character.promptBlocks, settings.prompt, character.id);
+    assertPersonaPrompt(character.personaPrompt, character.id);
   } catch {
     issues.push({
       code: 'prompt_empty',

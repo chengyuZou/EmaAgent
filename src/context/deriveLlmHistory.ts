@@ -96,7 +96,7 @@ function projectAssistantBlock(
   if (candidate.type === 'text' && typeof candidate.text === 'string' && candidate.text.trim()) {
     return { type: 'text', text: candidate.text };
   }
-  // thinking 保留为协议原生推理状态；是否重放由目标协议 Adapter 依据 generatedBy 裁决。
+  // 原生推理状态按协议判别联合透传；是否重放由目标协议 Adapter 依据 generatedBy 裁决。
   if (
     candidate.type === 'thinking'
     && typeof candidate.thinking === 'string'
@@ -107,6 +107,36 @@ function projectAssistantBlock(
       type: 'thinking',
       thinking: candidate.thinking,
       ...(typeof signature === 'string' && signature.length > 0 ? { signature } : {}),
+    };
+  }
+  if (
+    candidate.type === 'reasoning'
+    && typeof candidate.id === 'string'
+    && candidate.id.length > 0
+  ) {
+    const summaryText = (block as { summaryText?: unknown }).summaryText;
+    const encryptedContent = (block as { encryptedContent?: unknown }).encryptedContent;
+    return {
+      type: 'reasoning',
+      id: candidate.id,
+      ...(typeof summaryText === 'string' && summaryText.length > 0 ? { summaryText } : {}),
+      ...(typeof encryptedContent === 'string' && encryptedContent.length > 0
+        ? { encryptedContent }
+        : {}),
+    };
+  }
+  if (
+    candidate.type === 'gemini_thought'
+    && typeof candidate.text === 'string'
+    && candidate.text.trim()
+  ) {
+    const thoughtSignature = (block as { thoughtSignature?: unknown }).thoughtSignature;
+    return {
+      type: 'gemini_thought',
+      text: candidate.text,
+      ...(typeof thoughtSignature === 'string' && thoughtSignature.length > 0
+        ? { thoughtSignature }
+        : {}),
     };
   }
   // 只有完整配对的 tool_use 才能进入下一次请求。

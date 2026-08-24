@@ -10,11 +10,18 @@ export type ContentPart =
   | { type: 'file_data'; data: string; mimeType: string; filename?: string; pageCount?: number }
   | { type: 'file_url'; url: string; mimeType: string; filename?: string; pageCount?: number };
 
-/** Provider 返回并可能在下一次调用中继续使用的助手内容。 */
+/**
+ * Provider 返回并可能在下一次调用中继续使用的助手内容。推理内容按协议判别联合：
+ * thinking（Anthropic signature）、reasoning（OpenAI Responses item id/encrypted）、
+ * gemini_thought（Gemini thoughtSignature）各自携带原生续接状态；Adapter 只重放
+ * 与自身协议匹配的变体，跨协议一律忽略。
+ */
 export type AssistantBlock =
   | { type: 'text'; text: string }
+  | { type: 'tool_use'; id: string; name: string; args: unknown }
   | { type: 'thinking'; thinking: string; signature?: string }
-  | { type: 'tool_use'; id: string; name: string; args: unknown };
+  | { type: 'reasoning'; id: string; summaryText?: string; encryptedContent?: string }
+  | { type: 'gemini_thought'; text: string; thoughtSignature?: string };
 
 /** Tool Result 能回传给模型的媒体范围比普通用户输入更窄。 */
 export type ToolResultContentPart =

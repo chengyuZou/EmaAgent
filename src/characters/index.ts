@@ -19,9 +19,6 @@ export type {
   Character,
   CharacterInput,
   CharacterPatch,
-  CharacterPromptBlock,
-  CharacterPromptBlockInput,
-  CharacterPromptBlockPatch,
 } from './types.js';
 
 export type {
@@ -44,22 +41,13 @@ export type {
   PublishCharacterVoiceSampleInput,
 } from './voice/types.js';
 export {
-  assertCharacterPromptBlocks,
+  assertPersonaPrompt,
   buildCharacterPrompt,
   buildLive2dControlPrompt,
-  normalizePromptBlock,
-  validateCharacterPromptLimits,
 } from './characterPrompt.js';
-export type { CharacterPromptLimitIssue } from './characterPrompt.js';
 export {
   CHARACTER_SETTING_DEFINITIONS,
-  CHARACTER_PROMPT_LIMITS_GROUP,
-  characterPromptLimitsGroup,
   readCharacterSettings,
-  characterPromptMaxBlocksSetting,
-  characterPromptMaxBlockNameCharsSetting,
-  characterPromptMaxBlockCharsSetting,
-  characterPromptMaxTotalCharsSetting,
   characterLive2dMaxRuntimeConfigBytesSetting,
   characterLive2dMaxZipEntriesSetting,
   characterLive2dMaxZipTotalBytesSetting,

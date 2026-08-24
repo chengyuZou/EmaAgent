@@ -1,5 +1,4 @@
 // 把中立请求转换为 OpenAI Responses API，并使用其显式终态归一化流。
-import { randomUUID } from 'node:crypto';
 import OpenAI from 'openai';
 import {
   createLlmProviderResponseError,
@@ -27,12 +26,15 @@ type ResponseInput = OpenAI.Responses.ResponseInput;
 type ResponseInputItem = OpenAI.Responses.ResponseInputItem;
 type ResponseStreamEvent = OpenAI.Responses.ResponseStreamEvent;
 
-/** 只重放本模型生成的 reasoning：OpenAI 的 reasoning 模型私有，无来源/跨协议/跨模型都删除。 */
+/** 只重放同一调用目标生成的 reasoning：reasoning 状态模型私有，无来源/跨协议/跨 Provider/跨模型都删除。 */
 function shouldReplayOpenAiReasoning(
   generatedBy: LlmGenerationSource | undefined,
+  providerId: string,
   modelId: string,
 ): boolean {
-  return generatedBy?.protocol === 'openai-responses-llm' && generatedBy.modelId === modelId;
+  return generatedBy?.protocol === 'openai-responses-llm'
+    && generatedBy.providerId === providerId
+    && generatedBy.modelId === modelId;
 }
 
 export function createOpenAiResponsesProtocol(
@@ -43,15 +45,16 @@ export function createOpenAiResponsesProtocol(
     baseURL: connection.baseUrl,
     maxRetries: 0,
   });
-  return (request) => streamOpenAiResponses(client, modelId, request);
+  return (request) => streamOpenAiResponses(client, connection.providerId, modelId, request);
 }
 
 async function* streamOpenAiResponses(
   client: OpenAI,
+  providerId: string,
   modelId: string,
   request: LlmRequest,
 ): AsyncIterable<LlmStreamEvent> {
-  const { instructions, input } = toResponsesInput(request.messages, modelId);
+  const { instructions, input } = toResponsesInput(request.messages, providerId, modelId);
   const params: OpenAI.Responses.ResponseCreateParamsStreaming = {
     model: modelId,
     input,
@@ -65,10 +68,14 @@ async function* streamOpenAiResponses(
     params.tool_choice = toResponsesToolChoice(request.toolChoice) as
       OpenAI.Responses.ResponseCreateParamsStreaming['tool_choice'];
   }
-  if (request.thinking?.enabled !== false && request.thinking?.effort) {
-    params.reasoning = {
-      effort: request.thinking.effort,
-    } as OpenAI.Responses.ResponseCreateParamsStreaming['reasoning'];
+  if (request.thinking?.enabled !== false) {
+    // 声明加密推理内容，使 reasoning item 可原样回传以续接 KV（stateless/零保留场景）。
+    params.include = ['reasoning.encrypted_content'];
+    if (request.thinking?.effort) {
+      params.reasoning = {
+        effort: request.thinking.effort,
+      } as OpenAI.Responses.ResponseCreateParamsStreaming['reasoning'];
+    }
   }
 
   let stream: AsyncIterable<ResponseStreamEvent>;
@@ -88,18 +95,30 @@ async function* streamOpenAiResponses(
     callId: string;
     blockIndex: number;
   }>();
+  // output_index → 原生 reasoning item 状态（id/encryptedContent），供 thinking_complete 与后续重放。
+  const reasoningItems = new Map<number, {
+    id: string;
+    encryptedContent?: string;
+    blockIndex: number;
+  }>();
 
   try {
     for await (const event of stream) {
       switch (event.type) {
-        case 'response.reasoning_summary_text.delta':
-          reasoningBlockIndex ??= nextBlockIndex++;
-          yield {
-            type: 'thinking_delta',
-            blockIndex: reasoningBlockIndex,
-            delta: event.delta,
-          };
+        case 'response.reasoning_summary_text.delta': {
+          const item = reasoningItems.get(event.output_index);
+          if (item) {
+            yield { type: 'thinking_delta', blockIndex: item.blockIndex, delta: event.delta };
+          } else {
+            reasoningBlockIndex ??= nextBlockIndex++;
+            yield {
+              type: 'thinking_delta',
+              blockIndex: reasoningBlockIndex,
+              delta: event.delta,
+            };
+          }
           break;
+        }
         case 'response.output_text.delta':
           textBlockIndex ??= nextBlockIndex++;
           yield { type: 'text_delta', blockIndex: textBlockIndex, delta: event.delta };
@@ -109,6 +128,15 @@ async function* streamOpenAiResponses(
             toolCalls.set(event.output_index, {
               name: event.item.name,
               callId: event.item.call_id,
+              blockIndex: nextBlockIndex++,
+            });
+          }
+          if (event.item.type === 'reasoning') {
+            reasoningItems.set(event.output_index, {
+              id: event.item.id,
+              ...(event.item.encrypted_content
+                ? { encryptedContent: event.item.encrypted_content }
+                : {}),
               blockIndex: nextBlockIndex++,
             });
           }
@@ -150,6 +178,26 @@ async function* streamOpenAiResponses(
             };
             stopReason = 'tool_use';
             toolCalls.delete(event.output_index);
+          }
+          break;
+        }
+        case 'response.output_item.done': {
+          const item = reasoningItems.get(event.output_index);
+          if (item && event.item.type === 'reasoning') {
+            yield {
+              type: 'thinking_complete',
+              blockIndex: item.blockIndex,
+              state: {
+                kind: 'openai',
+                id: event.item.id,
+                ...(event.item.encrypted_content
+                  ? { encryptedContent: event.item.encrypted_content }
+                  : item.encryptedContent
+                    ? { encryptedContent: item.encryptedContent }
+                    : {}),
+              },
+            };
+            reasoningItems.delete(event.output_index);
           }
           break;
         }
@@ -204,6 +252,7 @@ async function* streamOpenAiResponses(
 
 export function toResponsesInput(
   messages: readonly Message[],
+  providerId: string,
   modelId: string,
 ): { instructions: string | undefined; input: ResponseInput } {
   const input: ResponseInputItem[] = [];
@@ -247,16 +296,22 @@ export function toResponsesInput(
     let text = '';
     const calls: OpenAI.Responses.ResponseFunctionToolCall[] = [];
     const reasoning: ResponseInputItem[] = [];
-    // reasoning 只随生成它的同一个模型重放（reasoning 模型私有）；无来源、跨协议或
-    // 跨模型的历史 thinking 一律删除。V1 重放 summary 结构（encrypted_content 收集留后）。
-    const replayReasoning = shouldReplayOpenAiReasoning(message.generatedBy, modelId);
+    // reasoning 只随生成它的同一个调用目标重放（reasoning 状态模型私有）；无来源、跨协议/
+    // 跨 Provider/跨模型的历史 thinking 一律删除。重放的是 Provider 返回的真实 item
+    // （id + encrypted_content 原样回传），不本地伪造 reasoning。
+    const replayReasoning = shouldReplayOpenAiReasoning(message.generatedBy, providerId, modelId);
     for (const block of message.content as readonly AssistantBlock[]) {
       if (block.type === 'text') text += block.text;
-      if (block.type === 'thinking' && replayReasoning) {
+      if (block.type === 'reasoning' && replayReasoning) {
         reasoning.push({
           type: 'reasoning',
-          id: randomUUID(),
-          summary: [{ type: 'summary_text', text: block.thinking }],
+          id: block.id,
+          ...(block.encryptedContent
+            ? { encrypted_content: block.encryptedContent }
+            : {}),
+          summary: block.summaryText
+            ? [{ type: 'summary_text', text: block.summaryText }]
+            : [],
         } as ResponseInputItem);
       }
       if (block.type === 'tool_use') {

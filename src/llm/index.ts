@@ -1,5 +1,8 @@
-export { createLlmCall } from './languageModel.js';
-export { createLlmCompletion } from './languageModel.js';
+export {
+  createAssistantThinkingBlock,
+  createLlmCall,
+  createLlmCompletion,
+} from './languageModel.js';
 export {
   ContextWindowExceededError,
   llmProviderErrorCode,
@@ -22,6 +25,7 @@ export type {
   LlmStreamEvent,
   LlmThinking,
   LlmThinkingEffort,
+  LlmThinkingState,
   LlmTokenUsage,
   LlmTool,
   LlmToolChoice,

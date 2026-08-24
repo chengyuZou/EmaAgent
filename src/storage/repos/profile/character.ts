@@ -10,6 +10,7 @@ export interface CharacterRow {
   name: string;
   description: string | null;
   directory_name: string;
+  persona_prompt: string;
   is_active: number;
   is_builtin: number;
   created_at: number;
@@ -22,6 +23,8 @@ export interface CharacterInsert {
   description?: string | null;
   /** 创建时确定、此后不可修改的磁盘目录名。 */
   directoryName: string;
+  /** 人设提示词正文；创建必须携带，不允许空人设。 */
+  personaPrompt: string;
   isActive?: boolean;
   isBuiltin?: boolean;
   createdAt: number;
@@ -32,6 +35,7 @@ export interface CharacterInsert {
 export interface CharacterUpdate {
   name?: string;
   description?: string | null;
+  personaPrompt?: string;
   updatedAt?: number;
 }
 
@@ -57,15 +61,16 @@ export class CharacterRepo {
     this.db
       .prepare(
         `INSERT INTO characters
-           (id, name, description, directory_name,
+           (id, name, description, directory_name, persona_prompt,
             is_active, is_builtin, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         c.id,
         c.name,
         c.description ?? null,
         c.directoryName,
+        c.personaPrompt,
         c.isActive ? 1 : 0,
         c.isBuiltin ? 1 : 0,
         c.createdAt,
@@ -130,6 +135,7 @@ export class CharacterRepo {
 
     if (patch.name !== undefined)        { fields.push('name = ?'); values.push(patch.name); }
     if (patch.description !== undefined) { fields.push('description = ?'); values.push(patch.description); }
+    if (patch.personaPrompt !== undefined) { fields.push('persona_prompt = ?'); values.push(patch.personaPrompt); }
     if (fields.length === 0) return;
     fields.push('updated_at = ?');
     values.push(now, id);

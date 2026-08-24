@@ -29,12 +29,15 @@ import type {
 import { createLlmTokenUsage } from '../usage.js';
 
 /** Anthropic 扩展思考的 budget_tokens 下限（协议硬约束，且必须小于 max_tokens）。 */
-/** 只重放本模型生成的 thinking：signature 模型私有，无来源/跨协议/跨模型都删除。 */
+/** 只重放同一调用目标生成的 thinking：signature 模型私有，无来源/跨协议/跨 Provider/跨模型都删除。 */
 function shouldReplayAnthropicThinking(
   generatedBy: LlmGenerationSource | undefined,
+  providerId: string,
   modelId: string,
 ): boolean {
-  return generatedBy?.protocol === 'anthropic-llm' && generatedBy.modelId === modelId;
+  return generatedBy?.protocol === 'anthropic-llm'
+    && generatedBy.providerId === providerId
+    && generatedBy.modelId === modelId;
 }
 
 const MIN_THINKING_BUDGET_TOKENS = 1_024;
@@ -80,18 +83,19 @@ export function createAnthropicProtocol(
     baseURL: connection.baseUrl,
     maxRetries: 0,
   });
-  return (request) => streamAnthropic(client, modelId, request);
+  return (request) => streamAnthropic(client, connection.providerId, modelId, request);
 }
 
 async function* streamAnthropic(
   client: Anthropic,
+  providerId: string,
   modelId: string,
   request: LlmRequest,
 ): AsyncIterable<LlmStreamEvent> {
   if (request.maxOutputTokens === undefined) {
     throw new TypeError('anthropic-llm requires maxOutputTokens');
   }
-  const { system, messages } = toAnthropicMessages(request.messages, modelId);
+  const { system, messages } = toAnthropicMessages(request.messages, providerId, modelId);
   const tools = request.toolChoice === 'none'
     ? undefined
     : request.tools?.map(toAnthropicTool);
@@ -216,7 +220,9 @@ async function* streamAnthropic(
             yield {
               type: 'thinking_complete',
               blockIndex: event.index,
-              ...(signature ? { signature } : {}),
+              ...(signature
+                ? { state: { kind: 'anthropic' as const, signature } }
+                : {}),
             };
             thinkingSignatures.delete(event.index);
           }
@@ -268,6 +274,7 @@ interface AnthropicMessages {
 
 export function toAnthropicMessages(
   messages: readonly Message[],
+  providerId: string,
   modelId: string,
 ): AnthropicMessages {
   const system: Anthropic.TextBlockParam[] = [];
@@ -320,9 +327,9 @@ export function toAnthropicMessages(
     }
 
     const content: Anthropic.ContentBlockParam[] = [];
-    // thinking 只随生成它的同一个模型重放（signature 模型私有）；
-    // 无来源、跨协议或跨模型的历史 thinking 一律删除，text/tool_use 不受影响。
-    const replayThinking = shouldReplayAnthropicThinking(message.generatedBy, modelId);
+    // thinking 只随生成它的同一个调用目标重放（signature 模型私有）；
+    // 无来源、跨协议/跨 Provider/跨模型的历史 thinking 一律删除，text/tool_use 不受影响。
+    const replayThinking = shouldReplayAnthropicThinking(message.generatedBy, providerId, modelId);
     for (const block of message.content as readonly AssistantBlock[]) {
       if (block.type === 'text') content.push({ type: 'text', text: block.text });
       if (block.type === 'thinking' && block.signature && replayThinking) {

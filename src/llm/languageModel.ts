@@ -12,6 +12,7 @@ import type {
   LlmConnection,
   LlmRequest,
   LlmStreamEvent,
+  LlmThinkingState,
   LlmTokenUsage,
 } from './types.js';
 import { advanceLlmUsageSnapshot } from './usage.js';
@@ -42,6 +43,40 @@ function createProtocolStream(
   }
 }
 
+/**
+ * 把流式 thinking 文本与协议原生状态合成可重放的 Assistant Block。
+ * OpenAI reasoning 的摘要文本可缺省，但 item id/encryptedContent 本身仍必须保留；
+ * Anthropic 与 Gemini 没有思考文本时不制造空内容块。
+ */
+export function createAssistantThinkingBlock(
+  thinking: string | undefined,
+  state: LlmThinkingState | undefined,
+): AssistantBlock | undefined {
+  if (state?.kind === 'openai') {
+    return {
+      type: 'reasoning',
+      id: state.id,
+      ...(thinking ? { summaryText: thinking } : {}),
+      ...(state.encryptedContent ? { encryptedContent: state.encryptedContent } : {}),
+    };
+  }
+  if (thinking === undefined) return undefined;
+  if (state?.kind === 'gemini') {
+    return {
+      type: 'gemini_thought',
+      text: thinking,
+      ...(state.thoughtSignature ? { thoughtSignature: state.thoughtSignature } : {}),
+    };
+  }
+  return {
+    type: 'thinking',
+    thinking,
+    ...(state?.kind === 'anthropic' && state.signature
+      ? { signature: state.signature }
+      : {}),
+  };
+}
+
 /** 对一条 stream 的无损收集：块按原始 blockIndex 顺序聚合，usage 取末次快照差，stopReason 来自 done。 */
 export async function createLlmCompletion(
   stream: AsyncIterable<LlmStreamEvent>,
@@ -66,11 +101,11 @@ export async function createLlmCompletion(
       }
       case 'thinking_complete': {
         const current = blocks.get(event.blockIndex);
-        blocks.set(event.blockIndex, {
-          type: 'thinking',
-          thinking: current?.type === 'thinking' ? current.thinking : '',
-          ...(event.signature ? { signature: event.signature } : {}),
-        });
+        const block = createAssistantThinkingBlock(
+          current?.type === 'thinking' ? current.thinking : undefined,
+          event.state,
+        );
+        if (block) blocks.set(event.blockIndex, block);
         break;
       }
       case 'tool_use_delta':

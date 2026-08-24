@@ -9,7 +9,7 @@
 ```text
 Provider / 接线层
   └─ 解析 provider config + model capability
-       └─ createLlmCall({ protocol, apiKey, baseUrl }, modelId)   // 连接与模型在创建点冻结
+       └─ createLlmCall({ providerId, protocol, apiKey, baseUrl }, modelId) // 连接与模型在创建点冻结
             └─ CallLlm(LlmRequest) → AsyncIterable<LlmStreamEvent>
                  └─ createLlmCompletion(stream) → LlmCompletion   // 同一条流的无损收集器，无第二条线路
 ```
@@ -27,6 +27,7 @@ Provider 是协议词汇和连接配置的唯一所有者。LLM 只消费 `LlmPr
 
 ```ts
 const callLlm = createLlmCall({
+  providerId,
   protocol: 'openai-llm',
   apiKey,
   baseUrl,
@@ -45,11 +46,11 @@ for await (const event of callLlm({
 const completion = await createLlmCompletion(callLlm({ messages, signal }));
 ```
 
-`LlmConnection` 只含建立 SDK Client 所需的协议、凭据和地址。`LlmRequest` 只含一次调用变化的模型、消息、Tool 定义、生成参数与取消信号。
+`LlmConnection` 只含调用目标身份以及建立 SDK Client 所需的协议、凭据和地址。`providerId + modelId + protocol` 用于判断历史原生推理状态能否安全重放；`LlmRequest` 只含一次调用变化的消息、Tool 定义、生成参数与取消信号。
 
 以下字段明确不属于本包：
 
-- `providerId/modelsDevId`：Provider 控制面身份；
+- `modelsDevId`：Provider Catalog 身份；
 - `sessionId/turnId/llmCallId`：Turn/Agent 调用身份；
 - `usageContext`：Usage 记录归属；
 - retry/circuit/fallback：上层调用策略；
@@ -76,7 +77,7 @@ const completion = await createLlmCompletion(callLlm({ messages, signal }));
 
 `Message` 是中立模型消息，不是 Session SQL 行，也不含 UI 字段。协议转换前会检查真实的表达限制：例如 Chat Completions 不接受文件块，Anthropic 不接受音频。无法表达时抛出 `LlmProtocolInputError`，禁止静默删除附件或把媒体替换成占位文本。
 
-thinking 历史是唯一有意不跨协议重放的内容。不同 Provider 的签名与往返语义不兼容；Anthropic 只重放带原生 signature 的 thinking，其余协议只保留本次响应流供 UI/审计使用。
+thinking 历史是唯一有意不跨调用目标重放的内容。不同 Provider、模型和协议的原生状态不兼容；只有 `providerId + modelId + protocol` 与当前目标完全一致时，Anthropic 才重放 signature、OpenAI Responses 才重放 reasoning item、Gemini 才重放 thoughtSignature。OpenAI Chat 没有统一的原生续接状态，只保留协议能够表达的普通 Assistant 内容。
 
 Anthropic 的 `cache_control` 是协议专属投影：中立 Message 只携带 `cacheBreakpoint: true`，其他协议忽略该提示。
 
@@ -90,7 +91,7 @@ OpenAI 与 Anthropic SDK 的内建重试在创建 Client 时关闭。LLM 本包�
 
 ```text
 src/llm/
-├─ languageModel.ts      唯一创建入口与 complete 流收集
+├─ languageModel.ts      唯一创建入口、统一 thinking block 合成与 complete 流收集
 ├─ types.ts              请求、连接、Tool 投影和统一流事件
 ├─ message.ts            Provider 中立消息
 ├─ protocolInput.ts      真实协议输入限制，防止静默丢内容

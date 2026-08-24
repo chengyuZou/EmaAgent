@@ -7,7 +7,7 @@ import type {
   LlmRequest,
   Message,
 } from '@ema-agent/llm';
-import { estimateMessagesTokens } from '@ema-agent/token';
+import { estimateLlmInputTokens, estimateMessagesTokens } from '@ema-agent/token';
 import type { CompactEvent } from '../events.js';
 import { createCompact } from '../compactMessages.js';
 import { microCompact } from '../microCompact.js';
@@ -282,6 +282,43 @@ describe('createCompact', () => {
     const sent = complete.mock.calls[0]?.[0];
     expect(sent?.tools).toEqual(frozenTools);
     expect(sent?.thinking).toEqual({ enabled: true, effort: 'high' });
+  });
+
+  it('摘要请求的最大输出额度扣除 Tool Schema 占用', async () => {
+    const complete = vi.fn(async (_request: LlmRequest) => completion());
+    const compact = createCompact(llmCompleting(complete), {
+      bufferTokens: 0,
+      defaultReservedOutputTokens: 0,
+      maximumReservedOutputTokens: 0,
+    });
+    const tools = [{
+      name: 'Read',
+      description: '读取文件并返回内容'.repeat(80),
+      inputSchema: {
+        type: 'object',
+        properties: { path: { type: 'string', description: '绝对文件路径'.repeat(40) } },
+      },
+    }];
+
+    await compact(request(textHistory(), {
+      force: true,
+      contextWindow: 4_000,
+      tools,
+    }));
+
+    const sent = complete.mock.calls[0]![0];
+    const toolTokens = estimateLlmInputTokens([], {
+      tools: tools.map(tool => ({
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.inputSchema,
+      })),
+    }).totalTokens;
+    const availableOutput = Math.max(
+      1,
+      4_000 - estimateMessagesTokens([...sent.messages]) - toolTokens,
+    );
+    expect(sent.maxOutputTokens).toBeLessThanOrEqual(availableOutput);
   });
 
   it('摘要模型判超时按 Token 预算从尾部收缩历史并重试，指令如实标注丢弃数', async () => {

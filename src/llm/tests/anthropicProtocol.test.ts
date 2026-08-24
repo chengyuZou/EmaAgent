@@ -9,7 +9,7 @@ describe('toAnthropicMessages', () => {
       { role: 'system', content: 'character', cacheBreakpoint: true },
       { role: 'user', content: 'history' },
       { role: 'assistant', content: [{ type: 'text', text: 'answer' }], cacheBreakpoint: true },
-    ], 'claude-sonnet');
+    ], 'anthropic', 'claude-sonnet');
 
     expect(converted.system).toEqual([
       { type: 'text', text: 'product', cache_control: { type: 'ephemeral' } },
@@ -35,7 +35,7 @@ describe('toAnthropicMessages', () => {
         ],
         generatedBy: { providerId: 'anthropic', modelId: 'claude-sonnet', protocol: 'anthropic-llm' },
       },
-    ], 'claude-sonnet');
+    ], 'anthropic', 'claude-sonnet');
 
     expect(converted.messages).toEqual([{
       role: 'assistant',
@@ -60,9 +60,36 @@ describe('toAnthropicMessages', () => {
         role: 'assistant',
         content: [{ type: 'thinking', thinking: '无来源思考', signature: 'sig-none' }],
       },
-    ], 'claude-sonnet');
+    ], 'anthropic', 'claude-sonnet');
 
     expect(converted.messages[0]!.content).toEqual([{ type: 'text', text: 'answer' }]);
     expect(converted.messages[1]!.content).toEqual([]);
+  });
+
+  it('同 protocol+model 但不同 Provider 的历史 thinking 被删除（三元匹配）', () => {
+    const converted = toAnthropicMessages([
+      {
+        role: 'assistant',
+        content: [
+          { type: 'thinking', thinking: '网关A思考', signature: 'sig-a' },
+          { type: 'text', text: 'answer' },
+        ],
+        generatedBy: { providerId: 'gateway-a', modelId: 'claude-sonnet', protocol: 'anthropic-llm' },
+      },
+    ], 'anthropic', 'claude-sonnet');
+
+    expect(converted.messages[0]!.content).toEqual([{ type: 'text', text: 'answer' }]);
+  });
+
+  it('无 signature 的 thinking 即使同目标也不重放', () => {
+    const converted = toAnthropicMessages([
+      {
+        role: 'assistant',
+        content: [{ type: 'thinking', thinking: '无签名思考' }],
+        generatedBy: { providerId: 'anthropic', modelId: 'claude-sonnet', protocol: 'anthropic-llm' },
+      },
+    ], 'anthropic', 'claude-sonnet');
+
+    expect(converted.messages[0]!.content).toEqual([]);
   });
 });

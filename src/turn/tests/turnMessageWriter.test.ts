@@ -115,4 +115,22 @@ describe('TurnMessageWriter', () => {
 
     expect(fake.appends.filter(a => a.role === 'assistant')).toHaveLength(2);
   });
+
+  it('没有摘要文本的 OpenAI reasoning 状态仍然落库', async () => {
+    const fake = fakeSessions();
+    const writer = makeWriter(fake);
+
+    await writer.apply({
+      type: 'thinking_completed',
+      blockIndex: 0,
+      state: { kind: 'openai', id: 'rsn-1', encryptedContent: 'encrypted-1' },
+    });
+
+    expect(fake.appends).toHaveLength(1);
+    expect(fake.appends[0]!.blocks).toEqual([{
+      type: 'reasoning',
+      id: 'rsn-1',
+      encryptedContent: 'encrypted-1',
+    }]);
+  });
 });

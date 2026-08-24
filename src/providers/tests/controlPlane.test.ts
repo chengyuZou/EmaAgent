@@ -91,6 +91,7 @@ describe('Provider 控制面', () => {
     });
 
     expect(providers.resolveConnection('my-gateway', 'llm')).toEqual({
+      providerId: 'my-gateway',
       protocol: 'openai-llm',
       baseUrl: 'https://gateway.example/v1',
       apiKey: 'sk-gateway',

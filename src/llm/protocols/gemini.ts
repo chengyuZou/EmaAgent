@@ -23,6 +23,7 @@ import type { ContentPart, ToolResultBlock } from '../message.js';
 import type {
   AssistantBlock,
   LlmConnection,
+  LlmGenerationSource,
   LlmRequest,
   LlmStopReason,
   LlmStreamEvent,
@@ -33,6 +34,17 @@ import type {
   UserBlock,
 } from '../types.js';
 import { createLlmTokenUsage } from '../usage.js';
+
+/** 只重放同一调用目标生成的 thought：thoughtSignature 模型私有，无来源/跨协议/跨 Provider/跨模型都删除。 */
+function shouldReplayGeminiThought(
+  generatedBy: LlmGenerationSource | undefined,
+  providerId: string,
+  modelId: string,
+): boolean {
+  return generatedBy?.protocol === 'gemini-llm'
+    && generatedBy.providerId === providerId
+    && generatedBy.modelId === modelId;
+}
 
 const DEFAULT_THINKING_BUDGET_TOKENS = 8_000;
 /** 中立强度档 → thinkingBudget 的产品取值（非官方对照；Google 只给每模型范围）。 */
@@ -72,15 +84,16 @@ export function createGeminiProtocol(
     apiKey: connection.apiKey ?? '',
     ...(baseUrl ? { httpOptions: { baseUrl } } : {}),
   });
-  return (request) => streamGemini(client, modelId, request);
+  return (request) => streamGemini(client, connection.providerId, modelId, request);
 }
 
 async function* streamGemini(
   client: GoogleGenAI,
+  providerId: string,
   modelId: string,
   request: LlmRequest,
 ): AsyncIterable<LlmStreamEvent> {
-  const { system, contents } = toGeminiContents(request.messages);
+  const { system, contents } = toGeminiContents(request.messages, providerId, modelId);
   const config: GenerateContentConfig = {
     maxOutputTokens: request.maxOutputTokens,
     temperature: request.temperature,
@@ -112,6 +125,8 @@ async function* streamGemini(
   let receivedFinishReason = false;
   let nextBlockIndex = 0;
   let thinkingBlockIndex: number | undefined;
+  let thinkingCompleted = false;
+  const thinkingSignatures = new Map<number, string>();
   let textBlockIndex: number | undefined;
   let lastUsage: Extract<LlmStreamEvent, { type: 'usage' }> | undefined;
 
@@ -120,6 +135,12 @@ async function* streamGemini(
       for (const part of chunk.candidates?.[0]?.content?.parts ?? []) {
         if (part.thought && part.text) {
           thinkingBlockIndex ??= nextBlockIndex++;
+          const thoughtSignature = typeof part.thoughtSignature === 'string'
+            ? part.thoughtSignature
+            : undefined;
+          if (thoughtSignature) {
+            thinkingSignatures.set(thinkingBlockIndex, thoughtSignature);
+          }
           yield {
             type: 'thinking_delta',
             blockIndex: thinkingBlockIndex,
@@ -168,6 +189,18 @@ async function* streamGemini(
   }
 
   throwIfAborted(request.signal);
+  // Gemini 没有 per-block 完成事件：流收口时统一发一次 thinking_complete（带 thoughtSignature）。
+  if (thinkingBlockIndex !== undefined && !thinkingCompleted) {
+    thinkingCompleted = true;
+    const thoughtSignature = thinkingSignatures.get(thinkingBlockIndex);
+    yield {
+      type: 'thinking_complete',
+      blockIndex: thinkingBlockIndex,
+      ...(thoughtSignature
+        ? { state: { kind: 'gemini' as const, thoughtSignature } }
+        : {}),
+    };
+  }
   if (!receivedFinishReason) throw new LlmStreamProtocolError('gemini-llm');
   if (lastUsage) yield lastUsage;
   yield { type: 'done', stopReason };
@@ -175,6 +208,8 @@ async function* streamGemini(
 
 function toGeminiContents(
   messages: readonly Message[],
+  providerId: string,
+  modelId: string,
 ): { system: string | undefined; contents: Content[] } {
   let system: string | undefined;
   const contents: Content[] = [];
@@ -216,6 +251,9 @@ function toGeminiContents(
     }
 
     const parts: Part[] = [];
+    // thought 只随生成它的同一个调用目标重放（thoughtSignature 模型私有）；
+    // 无来源、跨协议/跨 Provider/跨模型的 thought 一律删除，text/tool_use 不受影响。
+    const replayThought = shouldReplayGeminiThought(message.generatedBy, providerId, modelId);
     for (const block of message.content as readonly AssistantBlock[]) {
       if (block.type === 'text') parts.push({ text: block.text });
       if (block.type === 'tool_use') {
@@ -226,7 +264,13 @@ function toGeminiContents(
           },
         });
       }
-      // thinking 只在当前响应中展示，不跨协议重放。
+      if (block.type === 'gemini_thought' && replayThought) {
+        parts.push({
+          text: block.text,
+          thought: true,
+          ...(block.thoughtSignature ? { thoughtSignature: block.thoughtSignature } : {}),
+        } as Part);
+      }
     }
     if (parts.length > 0) contents.push({ role: 'model', parts });
   }

@@ -8,13 +8,9 @@ import { SettingsStore } from '@ema-agent/settings';
 import {
   CharacterStore,
   CHARACTER_SETTING_DEFINITIONS,
-  assertCharacterPromptBlocks,
+  assertPersonaPrompt,
   buildCharacterPrompt,
   buildLive2dControlPrompt,
-  characterPromptLimitsGroup,
-  characterPromptMaxTotalCharsSetting,
-  readCharacterSettings,
-  validateCharacterPromptLimits,
 } from '../index.js';
 
 describe('character prompt assembly', () => {
@@ -29,7 +25,7 @@ describe('character prompt assembly', () => {
     root = mkdtempSync(join(tmpdir(), 'ema-character-prompt-'));
     settings = new SettingsStore(new SettingsRepo(database.sqlite), {
       definitions: CHARACTER_SETTING_DEFINITIONS,
-      groups: [characterPromptLimitsGroup],
+      groups: [],
     });
     store = new CharacterStore(database, root, settings);
     store.ensureSeed();
@@ -40,38 +36,34 @@ describe('character prompt assembly', () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  it('builds a flat array of enabled blocks ordered by sort order', () => {
+  it('builds persona prompt with optional live2d control section', () => {
     const created = store.create({
       name: 'Blocks',
-      promptBlocks: [
-        { name: 'second', content: 'block-two' },
-        { name: 'first', content: 'block-one' },
-        { name: 'off', content: 'disabled-content', enabled: false },
-      ],
+      personaPrompt: 'block-one',
     });
     const sections = buildCharacterPrompt(store.get(created.id)!);
-    expect(sections).toEqual(['block-two', 'block-one']);
+    expect(sections).toEqual(['block-one']);
     expect(sections.every(s => typeof s === 'string')).toBe(true);
   });
 
-  it('rejects a character whose blocks are emptied directly in the database', () => {
+  it('rejects a character whose persona is emptied directly in the database', () => {
     const created = store.create({
       name: 'Broken',
-      promptBlocks: [{ name: 'x', content: 'valid' }],
+      personaPrompt: 'valid',
     });
     database.sqlite.prepare(
-      'UPDATE character_prompt_blocks SET content = ? WHERE character_id = ?',
+      'UPDATE characters SET persona_prompt = ? WHERE id = ?',
     ).run('   ', created.id);
 
     expect(() => buildCharacterPrompt(
       store.get(created.id)!,
-    )).toThrow('至少需要一个启用的 Prompt Block');
+    )).toThrow('人设提示词不能为空');
   });
 
   it('omits the control prompt when no vocabulary is present', () => {
     const created = store.create({
       name: 'NoVocab',
-      promptBlocks: [{ name: 'x', content: 'plain' }],
+      personaPrompt: 'plain',
     });
     const sections = buildCharacterPrompt(store.get(created.id)!);
     expect(sections).toEqual(['plain']);
@@ -93,32 +85,10 @@ describe('character prompt assembly', () => {
     expect(sections.at(-1)).toContain('角色表达控制协议');
   });
 
-  it('拒绝会让单块上限大于总上限的 Settings 更新', () => {
-    expect(() => settings.set(characterPromptMaxTotalCharsSetting, 1_000))
-      .toThrow('设置组');
-  });
-
-  it('用真实角色数据评估更小的 Prompt 上限', () => {
-    const created = store.create({
-      name: 'TooLong',
-      promptBlocks: [{ name: 'base', content: '123456' }],
-    });
-    const issues = validateCharacterPromptLimits({
-      maxBlocks: 32,
-      maxBlockNameChars: 80,
-      maxBlockChars: 5,
-      maxTotalChars: 64_000,
-    }, [created]);
-    expect(issues).toEqual([expect.objectContaining({
-      characterId: created.id,
-      blockId: created.promptBlocks[0]!.id,
-    })]);
-  });
-
   it('普通情绪动作描写可以保存，Live2D 控制标签不能占用', () => {
     expect(() => store.create({
       name: 'NaturalLanguage',
-      promptBlocks: [{ name: '语气', content: '开心时语气轻快，生气时动作克制。' }],
+      personaPrompt: '开心时语气轻快，生气时动作克制。',
     })).not.toThrow();
 
     for (const content of [
@@ -129,42 +99,15 @@ describe('character prompt assembly', () => {
     ]) {
       expect(() => store.create({
         name: `Reserved-${content.length}`,
-        promptBlocks: [{ name: '非法控制标签', content }],
+        personaPrompt: content,
       })).toThrow('不能包含 <emotion> 或 <motion>');
     }
   });
 
-  it('数量、名称、单块和总字符上限由同一领域校验负责', () => {
-    const block = (id: string, name: string, content: string) => ({
-      id,
-      characterId: 'limits',
-      name,
-      content,
-      enabled: true,
-      sortOrder: Number(id),
-      createdAt: 0,
-      updatedAt: 0,
-    });
-    const limits = {
-      maxBlocks: 1,
-      maxBlockNameChars: 4,
-      maxBlockChars: 5,
-      maxTotalChars: 5,
-    };
-
-    expect(() => assertCharacterPromptBlocks([
-      block('0', 'a', '123'),
-      block('1', 'b', '456'),
-    ], limits)).toThrow('数量超过上限');
-    expect(() => assertCharacterPromptBlocks([
-      block('0', '12345', '123'),
-    ], limits)).toThrow('名称超过');
-    expect(() => assertCharacterPromptBlocks([
-      block('0', 'a', '123456'),
-    ], limits)).toThrow('单个 Prompt Block 超过');
-    expect(() => assertCharacterPromptBlocks([
-      block('0', 'a', '123'),
-      block('1', 'b', '456'),
-    ], { ...limits, maxBlocks: 2, maxBlockChars: 5 })).toThrow('总字符数超过');
+  it('assertPersonaPrompt 拒绝空与 Live2D 控制标签', () => {
+    expect(() => assertPersonaPrompt('   ')).toThrow('不能为空');
+    expect(() => assertPersonaPrompt('<emotion>happy</emotion>'))
+      .toThrow('不能包含 <emotion> 或 <motion>');
+    expect(() => assertPersonaPrompt('正常的人设')).not.toThrow();
   });
 });

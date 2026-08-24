@@ -50,7 +50,7 @@ export const turnRecordSchema = z.object({
   narrativePolicy: z.enum(['auto', 'always', 'off']),
   providerId: nullableId,
   modelId: nullableId,
-  // 与 provider_id/model_id 同生命周期；开发期格式不兼容缺失该键的旧 ZIP。
+  // 与 provider_id/model_id 同生命周期：三者同时存在或同时缺省；开发期格式不兼容缺失该键的旧 ZIP。
   protocol: nullableId,
   characterDirectoryName: z.string().nullable(),
   iterations: nonNegativeInteger,
@@ -60,7 +60,11 @@ export const turnRecordSchema = z.object({
   completedAt: integer.nullable(),
   errorCode: z.string().nullable(),
   errorMessage: z.string().nullable(),
-}).strict();
+}).strict().refine(
+  value => (value.providerId === null) === (value.modelId === null)
+    && (value.modelId === null) === (value.protocol === null),
+  { message: 'Turn 模型选择必须同时包含或同时缺省 Provider/Model/Protocol' },
+);
 
 export const messageRecordSchema = z.object({
   id,

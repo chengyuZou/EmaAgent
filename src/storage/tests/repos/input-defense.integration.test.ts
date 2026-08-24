@@ -73,6 +73,7 @@ describe('N-004 Character 更新契约', () => {
         id,
         name: 'Character A',
         directoryName: 'character-a',
+        personaPrompt: '人设',
         isActive: true,
         isBuiltin: true,
         createdAt: 1,
@@ -97,6 +98,7 @@ describe('N-004 Character 更新契约', () => {
         id,
         name: 'Before',
         directoryName: 'before',
+        personaPrompt: '人设',
         createdAt: 1,
         updatedAt: 1,
       });
@@ -114,6 +116,7 @@ describe('N-004 Character 更新契约', () => {
         id: 'a',
         name: 'A',
         directoryName: 'same',
+        personaPrompt: '人设',
         createdAt: 1,
         updatedAt: 1,
       });
@@ -121,6 +124,7 @@ describe('N-004 Character 更新契约', () => {
         id: 'b',
         name: 'B',
         directoryName: 'same',
+        personaPrompt: '人设',
         createdAt: 2,
         updatedAt: 2,
       })).toThrow();

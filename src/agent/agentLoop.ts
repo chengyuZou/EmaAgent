@@ -2,12 +2,15 @@
 
 import type {
   AssistantBlock,
+  LlmGenerationSource,
   LlmStopReason,
+  LlmThinkingState,
   LlmTokenUsage,
   ToolResultBlock,
 } from '@ema-agent/llm';
 import {
   advanceLlmUsageSnapshot,
+  createAssistantThinkingBlock,
   ContextWindowExceededError,
 } from '@ema-agent/llm';
 import type { ToolResult } from '@ema-agent/tools';
@@ -29,7 +32,7 @@ const STUCK_BATCH_STREAK = 3;
 interface IterationResponse {
   readonly textByIndex: ReadonlyMap<number, string>;
   readonly thinkingByIndex: ReadonlyMap<number, string>;
-  readonly thinkingSignatureByIndex: ReadonlyMap<number, string>;
+  readonly thinkingStateByIndex: ReadonlyMap<number, LlmThinkingState>;
   readonly completedThinkingIndexes: ReadonlySet<number>;
   readonly toolUseByIndex: ReadonlyMap<
     number,
@@ -108,7 +111,7 @@ export async function* runAgentLoop(
       const callStartedAt = Date.now();
       const textByIndex = new Map<number, string>();
       const thinkingByIndex = new Map<number, string>();
-      const thinkingSignatureByIndex = new Map<number, string>();
+      const thinkingStateByIndex = new Map<number, LlmThinkingState>();
       const completedThinkingIndexes = new Set<number>();
       const toolUseByIndex = new Map<
         number,
@@ -159,14 +162,14 @@ export async function* runAgentLoop(
               break;
 
             case 'thinking_complete':
-              if (event.signature !== undefined) {
-                thinkingSignatureByIndex.set(event.blockIndex, event.signature);
+              if (event.state !== undefined) {
+                thinkingStateByIndex.set(event.blockIndex, event.state);
               }
               completedThinkingIndexes.add(event.blockIndex);
               yield {
                 type: 'thinking_completed',
                 blockIndex: event.blockIndex,
-                ...(event.signature !== undefined ? { signature: event.signature } : {}),
+                ...(event.state !== undefined ? { state: event.state } : {}),
               };
               break;
 
@@ -218,7 +221,7 @@ export async function* runAgentLoop(
         response = {
           textByIndex,
           thinkingByIndex,
-          thinkingSignatureByIndex,
+          thinkingStateByIndex,
           completedThinkingIndexes,
           toolUseByIndex,
           stopReason,
@@ -252,7 +255,7 @@ export async function* runAgentLoop(
     const {
       textByIndex,
       thinkingByIndex,
-      thinkingSignatureByIndex,
+      thinkingStateByIndex,
       completedThinkingIndexes,
       toolUseByIndex,
       stopReason,
@@ -287,11 +290,15 @@ export async function* runAgentLoop(
         const partialBlocks = buildAssistantBlocks(
           textByIndex,
           thinkingByIndex,
-          thinkingSignatureByIndex,
+          thinkingStateByIndex,
           new Map(),
         );
         if (partialBlocks.length > 0) {
-          messages.push({ role: 'assistant', content: partialBlocks });
+          messages.push({
+            role: 'assistant',
+            content: partialBlocks,
+            generatedBy: input.generationSource,
+          });
         }
         messages.push({ role: 'user', content: CONTINUE_OUTPUT_MESSAGE });
         injectedContinuation = true;
@@ -313,9 +320,10 @@ export async function* runAgentLoop(
         content: buildAssistantBlocks(
           textByIndex,
           thinkingByIndex,
-          thinkingSignatureByIndex,
+          thinkingStateByIndex,
           new Map(),
         ),
+        generatedBy: input.generationSource,
       });
       state = updateAgentLoopState(state, {
         phase: 'completed',
@@ -379,13 +387,19 @@ export async function* runAgentLoop(
       messages.push({ role: 'user', content: STUCK_GUIDE_MESSAGE });
     }
 
+    // 完整 assistant 块（含原生推理状态）随 generatedBy 进入下一次迭代：
+    // Tool Loop 不剥除 thinking，由目标协议 Adapter 按生成来源裁决重放/删除。
     const assistantBlocks = buildAssistantBlocks(
       textByIndex,
       thinkingByIndex,
-      thinkingSignatureByIndex,
+      thinkingStateByIndex,
       toolUseByIndex,
-    ).filter((block) => block.type !== 'thinking');
-    messages.push({ role: 'assistant', content: assistantBlocks });
+    );
+    messages.push({
+      role: 'assistant',
+      content: assistantBlocks,
+      generatedBy: input.generationSource,
+    });
     messages.push({
       role: 'user',
       content: results.map(toModelToolResult),
@@ -410,20 +424,23 @@ function orderedText(textByIndex: ReadonlyMap<number, string>): string {
 function buildAssistantBlocks(
   textByIndex: ReadonlyMap<number, string>,
   thinkingByIndex: ReadonlyMap<number, string>,
-  thinkingSignatureByIndex: ReadonlyMap<number, string>,
+  thinkingStateByIndex: ReadonlyMap<number, LlmThinkingState>,
   toolUseByIndex: ReadonlyMap<number, AssistantBlock & { type: 'tool_use' }>,
 ): AssistantBlock[] {
   const blocks = new Map<number, AssistantBlock>();
   for (const [index, text] of textByIndex) {
     blocks.set(index, { type: 'text', text });
   }
-  for (const [index, thinking] of thinkingByIndex) {
-    const signature = thinkingSignatureByIndex.get(index);
-    blocks.set(index, {
-      type: 'thinking',
-      thinking,
-      ...(signature !== undefined ? { signature } : {}),
-    });
+  const thinkingIndexes = new Set([
+    ...thinkingByIndex.keys(),
+    ...thinkingStateByIndex.keys(),
+  ]);
+  for (const index of thinkingIndexes) {
+    const block = createAssistantThinkingBlock(
+      thinkingByIndex.get(index),
+      thinkingStateByIndex.get(index),
+    );
+    if (block) blocks.set(index, block);
   }
   for (const [index, toolUse] of toolUseByIndex) {
     blocks.set(index, toolUse);
