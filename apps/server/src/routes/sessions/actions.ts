@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import type { ActiveSessionRegistry, SessionStore } from '@ema-agent/session';
 import type { TurnStore } from '@ema-agent/turn';
+import { jsonBody } from '../validate.js';
 
 const patchSessionBody = z.object({
   title: z.string().min(1).max(200).optional(),
@@ -41,115 +42,102 @@ export interface SessionActionsRouteDeps {
   readonly deleteSession: (sessionId: string) => Promise<void>;
 }
 
-export function sessionActionsRoute(deps: SessionActionsRouteDeps): Hono {
-  const app = new Hono();
-
-  app.put('/:sessionId', async context => {
-    const sessionId = context.req.param('sessionId');
-    const parsed = patchSessionBody.safeParse(await context.req.json().catch(() => null));
-    if (!parsed.success) {
-      return context.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
-    }
-    try {
-      deps.session.patchSession(sessionId, parsed.data);
-      if (parsed.data.workspaceRoot !== undefined) {
-        deps.invalidateSessionRunner(sessionId);
+export const sessionActionsRoute = (deps: SessionActionsRouteDeps) =>
+  new Hono()
+    .put('/:sessionId', jsonBody(patchSessionBody), async context => {
+      const sessionId = context.req.param('sessionId');
+      const patch = context.req.valid('json');
+      try {
+        deps.session.patchSession(sessionId, patch);
+        if (patch.workspaceRoot !== undefined) {
+          deps.invalidateSessionRunner(sessionId);
+        }
+        return context.json(deps.session.getSession(sessionId));
+      } catch (error) {
+        if (errorMessageStartsWith(error, 'session_not_found')) {
+          return context.json({ error: 'session_not_found' }, 404);
+        }
+        if (errorMessageStartsWith(error, 'session_workspace_locked_by_project')) {
+          return context.json({ error: 'session_workspace_locked_by_project' }, 409);
+        }
+        throw error;
       }
-      return context.json(deps.session.getSession(sessionId));
-    } catch (error) {
-      if (errorMessageStartsWith(error, 'session_not_found')) {
-        return context.json({ error: 'session_not_found' }, 404);
+    })
+    .post('/:sessionId/fork', async context => {
+      // 空 body 按 {} 接受（fork 到最新）：保留手写解析，不用 jsonBody。
+      const parsed = forkBody.safeParse(await context.req.json().catch(() => ({})));
+      if (!parsed.success) {
+        return context.json({ error: 'invalid_request', details: z.flattenError(parsed.error) }, 400);
       }
-      if (errorMessageStartsWith(error, 'session_workspace_locked_by_project')) {
-        return context.json({ error: 'session_workspace_locked_by_project' }, 409);
+      try {
+        return context.json(
+          deps.session.forkSession(context.req.param('sessionId'), parsed.data.untilTurnId),
+          201,
+        );
+      } catch (error) {
+        if (errorMessageStartsWith(error, 'session_not_found')) {
+          return context.json({ error: 'session_not_found' }, 404);
+        }
+        throw error;
       }
-      throw error;
-    }
-  });
-
-  app.post('/:sessionId/fork', async context => {
-    const parsed = forkBody.safeParse(await context.req.json().catch(() => ({})));
-    if (!parsed.success) {
-      return context.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
-    }
-    try {
-      return context.json(
-        deps.session.forkSession(context.req.param('sessionId'), parsed.data.untilTurnId),
-        201,
-      );
-    } catch (error) {
-      if (errorMessageStartsWith(error, 'session_not_found')) {
-        return context.json({ error: 'session_not_found' }, 404);
+    })
+    // 只服务"编辑最后一条用户消息"；不开放任意历史删除。
+    .post('/:sessionId/turns/:turnId/rewind', context => {
+      try {
+        return context.json(deps.turns.rewindLastTurn(
+          context.req.param('sessionId'),
+          context.req.param('turnId'),
+        ));
+      } catch (error) {
+        if (errorMessageStartsWith(error, 'turn_not_found')) {
+          return context.json({ error: 'turn_not_found' }, 404);
+        }
+        if (
+          errorMessageStartsWith(error, 'turn_not_latest')
+          || errorMessageStartsWith(error, 'turn_running')
+        ) {
+          return context.json({ error: 'turn_not_rewindable' }, 409);
+        }
+        if (error instanceof Error && error.message.includes('FOREIGN KEY constraint failed')) {
+          // 含 Task 的 Turn 受删除保护（RESTRICT），回退必须整体回滚。
+          return context.json({ error: 'turn_has_persistent_task' }, 409);
+        }
+        throw error;
       }
-      throw error;
-    }
-  });
-
-  // 只服务"编辑最后一条用户消息"；不开放任意历史删除。
-  app.post('/:sessionId/turns/:turnId/rewind', context => {
-    try {
-      return context.json(deps.turns.rewindLastTurn(
-        context.req.param('sessionId'),
-        context.req.param('turnId'),
-      ));
-    } catch (error) {
-      if (errorMessageStartsWith(error, 'turn_not_found')) {
-        return context.json({ error: 'turn_not_found' }, 404);
+    })
+    // Session 级停止：停的是"当前活跃执行"，不分 kind——都只向执行发信号。
+    // 终态落库与坑位释放由执行所有者自己完成（Turn 泵收拢工具/子 Agent 后写
+    // aborted，compact 链返回 cancelled 且历史原样）；路由提前写终态会导致
+    // 执行侧二次提交 turn_not_active，并让新 Turn 与旧 Turn 收尾重叠。
+    .post('/:sessionId/abort', context => {
+      const sessionId = context.req.param('sessionId');
+      const active = deps.activeSessions.getActiveExecution(sessionId);
+      if (!active) {
+        return context.json({ error: 'no_active_execution' }, 409);
       }
-      if (
-        errorMessageStartsWith(error, 'turn_not_latest')
-        || errorMessageStartsWith(error, 'turn_running')
-      ) {
-        return context.json({ error: 'turn_not_rewindable' }, 409);
+      deps.activeSessions.abort(sessionId, active.executionId);
+      return context.body(null, 204);
+    })
+    .post('/:sessionId/viewed', context => {
+      try {
+        deps.session.setViewedAt(context.req.param('sessionId'));
+      } catch {
+        // 已删除的 Session 不值得让前端"已读"请求失败。
       }
-      if (error instanceof Error && error.message.includes('FOREIGN KEY constraint failed')) {
-        // 含 Task 的 Turn 受删除保护（RESTRICT），回退必须整体回滚。
-        return context.json({ error: 'turn_has_persistent_task' }, 409);
-      }
-      throw error;
-    }
-  });
-
-  // Session 级停止：停的是"当前活跃执行"，不分 kind——都只向执行发信号。
-  // 终态落库与坑位释放由执行所有者自己完成（Turn 泵收拢工具/子 Agent 后写
-  // aborted，compact 链返回 cancelled 且历史原样）；路由提前写终态会导致
-  // 执行侧二次提交 turn_not_active，并让新 Turn 与旧 Turn 收尾重叠。
-  app.post('/:sessionId/abort', context => {
-    const sessionId = context.req.param('sessionId');
-    const active = deps.activeSessions.getActiveExecution(sessionId);
-    if (!active) {
-      return context.json({ error: 'no_active_execution' }, 409);
-    }
-    deps.activeSessions.abort(sessionId, active.executionId);
-    return context.body(null, 204);
-  });
-
-  app.post('/:sessionId/viewed', context => {
-    try {
-      deps.session.setViewedAt(context.req.param('sessionId'));
-    } catch {
-      // 已删除的 Session 不值得让前端"已读"请求失败。
-    }
-    return context.body(null, 204);
-  });
-
-  app.post('/:sessionId/archive', context => {
-    deps.session.archiveSession(context.req.param('sessionId'));
-    return context.body(null, 204);
-  });
-
-  app.post('/:sessionId/unarchive', context => {
-    deps.session.unarchiveSession(context.req.param('sessionId'));
-    return context.body(null, 204);
-  });
-
-  app.delete('/:sessionId', async context => {
-    await deps.deleteSession(context.req.param('sessionId'));
-    return context.body(null, 204);
-  });
-
-  return app;
-}
+      return context.body(null, 204);
+    })
+    .post('/:sessionId/archive', context => {
+      deps.session.archiveSession(context.req.param('sessionId'));
+      return context.body(null, 204);
+    })
+    .post('/:sessionId/unarchive', context => {
+      deps.session.unarchiveSession(context.req.param('sessionId'));
+      return context.body(null, 204);
+    })
+    .delete('/:sessionId', async context => {
+      await deps.deleteSession(context.req.param('sessionId'));
+      return context.body(null, 204);
+    });
 
 function errorMessageStartsWith(error: unknown, prefix: string): boolean {
   return error instanceof Error && error.message.startsWith(prefix);

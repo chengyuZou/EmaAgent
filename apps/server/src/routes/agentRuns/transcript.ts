@@ -7,16 +7,12 @@ export interface AgentRunTranscriptRouteDeps {
   readonly agentRunMessages: Pick<AgentRunMessagesStore, 'listForRun'>;
 }
 
-export function agentRunTranscriptRoute(deps: AgentRunTranscriptRouteDeps): Hono {
-  const app = new Hono();
-
-  app.get('/:agentRunId/messages', context => {
-    const agentRunId = context.req.param('agentRunId');
-    if (!deps.agentRuns.get(agentRunId)) {
-      return context.json({ error: 'agent_run_not_found' }, 404);
-    }
-    return context.json({ items: deps.agentRunMessages.listForRun(agentRunId) });
-  });
-
-  return app;
-}
+export const agentRunTranscriptRoute = (deps: AgentRunTranscriptRouteDeps) =>
+  new Hono()
+    .get('/:agentRunId/messages', context => {
+      const agentRunId = context.req.param('agentRunId');
+      if (!deps.agentRuns.get(agentRunId)) {
+        return context.json({ error: 'agent_run_not_found' }, 404);
+      }
+      return context.json({ items: deps.agentRunMessages.listForRun(agentRunId) });
+    });

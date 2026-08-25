@@ -4,6 +4,7 @@ import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import * as fsP from 'node:fs/promises';
 import * as nodePath from 'node:path';
+import { queryValidator } from '../validate.js';
 
 const pathQuery = z.object({
   path: z.string().min(1).max(2000),
@@ -33,94 +34,81 @@ interface FileEntry {
   size?: number;
 }
 
-export function filesRoute(): Hono {
-  const app = new Hono();
-
-  app.get('/files/ls', async context => {
-    const parsed = pathQuery.safeParse(context.req.query());
-    if (!parsed.success) {
-      return context.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
-    }
-    const dirPath = parsed.data.path;
-    try {
-      const stat = await fsP.stat(dirPath);
-      if (!stat.isDirectory()) return context.json({ error: 'not_a_directory' }, 400);
-
-      const raw = await fsP.readdir(dirPath, { withFileTypes: true });
-      const entries = await Promise.all(
-        raw.map(async (entry): Promise<FileEntry> => {
-          let size: number | undefined;
-          if (entry.isFile()) {
-            try {
-              size = (await fsP.stat(nodePath.join(dirPath, entry.name))).size;
-            } catch {
-              // 单文件 stat 失败只丢尺寸，不拖垮整列。
-            }
-          }
-          return {
-            name: entry.name,
-            path: nodePath.join(dirPath, entry.name).replace(/\\/g, '/'),
-            type: entry.isDirectory() ? 'dir' : 'file',
-            size,
-          };
-        }),
-      );
-      // 目录在前，组内按名称（大小写不敏感）。
-      entries.sort((left, right) => {
-        if (left.type !== right.type) return left.type === 'dir' ? -1 : 1;
-        return left.name.localeCompare(right.name, undefined, { sensitivity: 'base' });
-      });
-      return context.json({ entries });
-    } catch (error) {
-      return fsError(context, error);
-    }
-  });
-
-  app.get('/files/file', async context => {
-    const parsed = pathQuery.safeParse(context.req.query());
-    if (!parsed.success) {
-      return context.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
-    }
-    const filePath = parsed.data.path;
-    try {
-      const stat = await fsP.stat(filePath);
-      if (stat.isDirectory()) return context.json({ error: 'is_a_directory' }, 400);
-      if (stat.size > MAX_PREVIEW_BYTES) {
-        return context.json({ tooLarge: true, size: stat.size, limit: MAX_PREVIEW_BYTES });
-      }
-
-      const ext = (filePath.split(/[\\/]/).pop() ?? '').split('.').pop()?.toLowerCase() ?? '';
-      const imageMime = IMAGE_EXTS[ext];
-      if (imageMime) {
-        const buffer = await fsP.readFile(filePath);
-        return context.json({
-          content: buffer.toString('base64'),
-          encoding: 'base64' as const,
-          mimeType: imageMime,
-          size: stat.size,
-        });
-      }
-      if (TEXT_EXTS.has(ext)) {
-        const content = await fsP.readFile(filePath, 'utf8');
-        return context.json({ content, encoding: 'text' as const, mimeType: 'text/plain', size: stat.size });
-      }
-      // 未知扩展名按 utf8 试读（大量配置/日志无扩展名）；替换字符占比高则判二进制。
+export const filesRoute = () =>
+  new Hono()
+    .get('/files/ls', queryValidator(pathQuery), async context => {
+      const dirPath = context.req.valid('query').path;
       try {
-        const content = await fsP.readFile(filePath, 'utf8');
-        const sample = content.slice(0, 1000);
-        const badRatio = (sample.match(/�/g)?.length ?? 0) / Math.max(sample.length, 1);
-        if (badRatio > 0.1) throw new Error('likely binary');
-        return context.json({ content, encoding: 'text' as const, mimeType: 'text/plain', size: stat.size });
-      } catch {
-        return context.json({ binary: true, mimeType: 'application/octet-stream', size: stat.size });
-      }
-    } catch (error) {
-      return fsError(context, error);
-    }
-  });
+        const stat = await fsP.stat(dirPath);
+        if (!stat.isDirectory()) return context.json({ error: 'not_a_directory' }, 400);
 
-  return app;
-}
+        const raw = await fsP.readdir(dirPath, { withFileTypes: true });
+        const entries = await Promise.all(
+          raw.map(async (entry): Promise<FileEntry> => {
+            let size: number | undefined;
+            if (entry.isFile()) {
+              try {
+                size = (await fsP.stat(nodePath.join(dirPath, entry.name))).size;
+              } catch {
+                // 单文件 stat 失败只丢尺寸，不拖垮整列。
+              }
+            }
+            return {
+              name: entry.name,
+              path: nodePath.join(dirPath, entry.name).replace(/\\/g, '/'),
+              type: entry.isDirectory() ? 'dir' : 'file',
+              size,
+            };
+          }),
+        );
+        // 目录在前，组内按名称（大小写不敏感）。
+        entries.sort((left, right) => {
+          if (left.type !== right.type) return left.type === 'dir' ? -1 : 1;
+          return left.name.localeCompare(right.name, undefined, { sensitivity: 'base' });
+        });
+        return context.json({ entries });
+      } catch (error) {
+        return fsError(context, error);
+      }
+    })
+    .get('/files/file', queryValidator(pathQuery), async context => {
+      const filePath = context.req.valid('query').path;
+      try {
+        const stat = await fsP.stat(filePath);
+        if (stat.isDirectory()) return context.json({ error: 'is_a_directory' }, 400);
+        if (stat.size > MAX_PREVIEW_BYTES) {
+          return context.json({ tooLarge: true, size: stat.size, limit: MAX_PREVIEW_BYTES });
+        }
+
+        const ext = (filePath.split(/[\\/]/).pop() ?? '').split('.').pop()?.toLowerCase() ?? '';
+        const imageMime = IMAGE_EXTS[ext];
+        if (imageMime) {
+          const buffer = await fsP.readFile(filePath);
+          return context.json({
+            content: buffer.toString('base64'),
+            encoding: 'base64' as const,
+            mimeType: imageMime,
+            size: stat.size,
+          });
+        }
+        if (TEXT_EXTS.has(ext)) {
+          const content = await fsP.readFile(filePath, 'utf8');
+          return context.json({ content, encoding: 'text' as const, mimeType: 'text/plain', size: stat.size });
+        }
+        // 未知扩展名按 utf8 试读（大量配置/日志无扩展名）；替换字符占比高则判二进制。
+        try {
+          const content = await fsP.readFile(filePath, 'utf8');
+          const sample = content.slice(0, 1000);
+          const badRatio = (sample.match(/�/g)?.length ?? 0) / Math.max(sample.length, 1);
+          if (badRatio > 0.1) throw new Error('likely binary');
+          return context.json({ content, encoding: 'text' as const, mimeType: 'text/plain', size: stat.size });
+        } catch {
+          return context.json({ binary: true, mimeType: 'application/octet-stream', size: stat.size });
+        }
+      } catch (error) {
+        return fsError(context, error);
+      }
+    });
 
 function fsError(context: Context, error: unknown): Response {
   const code = (error as NodeJS.ErrnoException).code;

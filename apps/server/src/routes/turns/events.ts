@@ -16,10 +16,9 @@ export interface TurnEventsRouteDeps {
   readonly store: TurnEventStore;
 }
 
-export function turnEventsRoute(deps: TurnEventsRouteDeps): Hono {
-  const app = new Hono();
-
-  app.get('/:turnId/events', context => {
+export const turnEventsRoute = (deps: TurnEventsRouteDeps) =>
+  new Hono()
+    .get('/:turnId/events', context => {
     const turnId = context.req.param('turnId');
     if (!deps.store.has(turnId)) {
       return context.json({ error: 'turn_event_stream_not_found' }, 404);
@@ -108,10 +107,7 @@ export function turnEventsRoute(deps: TurnEventsRouteDeps): Hono {
         },
       },
     );
-  });
-
-  return app;
-}
+    });
 
 function parseLastEventId(value: string | undefined): number | null {
   if (value === undefined) return 0;

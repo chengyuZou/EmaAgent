@@ -7,6 +7,7 @@ import {
   ProviderError,
   type Providers,
 } from '@ema-agent/providers';
+import { jsonBody } from '../validate.js';
 
 const capabilityInputSchema = z.object({
   capability: z.enum(['llm', 'embed', 'rerank', 'vision', 'tts', 'stt']),
@@ -39,54 +40,38 @@ export interface ProviderConfigsRouteDeps {
   readonly providers: Providers;
 }
 
-export function providerConfigsRoute(deps: ProviderConfigsRouteDeps): Hono {
-  const app = new Hono();
-
-  app.get('/', context => context.json(deps.providers.list()));
-
-  app.post('/', async context => {
-    const parsed = createProviderBody.safeParse(await context.req.json().catch(() => null));
-    if (!parsed.success) {
-      return context.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
-    }
-    try {
-      return context.json(deps.providers.create(parsed.data), 201);
-    } catch (error) {
-      return providerError(context, error);
-    }
-  });
-
-  app.get('/:providerId', context => {
-    try {
-      return context.json(deps.providers.get(context.req.param('providerId')));
-    } catch (error) {
-      return providerError(context, error);
-    }
-  });
-
-  app.patch('/:providerId', async context => {
-    const parsed = updateProviderBody.safeParse(await context.req.json().catch(() => null));
-    if (!parsed.success) {
-      return context.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
-    }
-    try {
-      return context.json(deps.providers.update(context.req.param('providerId'), parsed.data));
-    } catch (error) {
-      return providerError(context, error);
-    }
-  });
-
-  app.delete('/:providerId', context => {
-    try {
-      deps.providers.delete(context.req.param('providerId'));
-      return context.body(null, 204);
-    } catch (error) {
-      return providerError(context, error);
-    }
-  });
-
-  return app;
-}
+export const providerConfigsRoute = (deps: ProviderConfigsRouteDeps) =>
+  new Hono()
+    .get('/', context => context.json(deps.providers.list()))
+    .post('/', jsonBody(createProviderBody), async context => {
+      try {
+        return context.json(deps.providers.create(context.req.valid('json')), 201);
+      } catch (error) {
+        return providerError(context, error);
+      }
+    })
+    .get('/:providerId', context => {
+      try {
+        return context.json(deps.providers.get(context.req.param('providerId')));
+      } catch (error) {
+        return providerError(context, error);
+      }
+    })
+    .patch('/:providerId', jsonBody(updateProviderBody), async context => {
+      try {
+        return context.json(deps.providers.update(context.req.param('providerId'), context.req.valid('json')));
+      } catch (error) {
+        return providerError(context, error);
+      }
+    })
+    .delete('/:providerId', context => {
+      try {
+        deps.providers.delete(context.req.param('providerId'));
+        return context.body(null, 204);
+      } catch (error) {
+        return providerError(context, error);
+      }
+    });
 
 /** ProviderError 的稳定 HTTP 映射；非领域错误继续上抛。 */
 export function providerError(context: Context, error: unknown): Response {

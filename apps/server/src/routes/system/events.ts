@@ -8,10 +8,9 @@ export interface SystemEventsRouteDeps {
   readonly hub: Pick<EventHub, 'subscribeApp' | 'appSubscriberCount'>;
 }
 
-export function systemEventsRoute(deps: SystemEventsRouteDeps): Hono {
-  const app = new Hono();
-
-  app.get('/events', context => {
+export const systemEventsRoute = (deps: SystemEventsRouteDeps) =>
+  new Hono()
+    .get('/events', context => {
     let heartbeat: ReturnType<typeof setInterval> | undefined;
     let unsubscribe: (() => void) | undefined;
 
@@ -48,11 +47,7 @@ export function systemEventsRoute(deps: SystemEventsRouteDeps): Hono {
         },
       },
     );
-  });
-
-  app.get('/events/diagnostics', context => {
-    return context.json({ subscribers: deps.hub.appSubscriberCount() });
-  });
-
-  return app;
-}
+    })
+    .get('/events/diagnostics', context => {
+      return context.json({ subscribers: deps.hub.appSubscriberCount() });
+    });

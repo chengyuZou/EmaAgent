@@ -2,6 +2,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { SessionStore } from '@ema-agent/session';
+import { queryValidator } from '../validate.js';
 
 const createSessionBody = z.object({
   title: z.string().min(1).max(200).optional(),
@@ -22,37 +23,25 @@ export interface SessionCollectionRouteDeps {
   >;
 }
 
-export function sessionCollectionRoute(deps: SessionCollectionRouteDeps): Hono {
-  const app = new Hono();
-
-  app.post('/', async context => {
-    const parsed = createSessionBody.safeParse(await context.req.json().catch(() => ({})));
-    if (!parsed.success) {
-      return context.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
-    }
-    return context.json(deps.session.createSession(parsed.data), 201);
-  });
-
-  app.get('/', context => context.json(deps.session.listSessionsGrouped()));
-
-  app.get('/search', context => {
-    const query = searchQuery.safeParse(context.req.query());
-    if (!query.success) {
-      return context.json({ error: 'invalid_request', details: query.error.flatten() }, 400);
-    }
-    return context.json(deps.session.searchSessions({
-      query: query.data.q,
-      limit: query.data.limit,
-    }));
-  });
-
-  app.get('/:sessionId', context => {
-    try {
-      return context.json(deps.session.getSession(context.req.param('sessionId')));
-    } catch {
-      return context.json({ error: 'session_not_found' }, 404);
-    }
-  });
-
-  return app;
-}
+export const sessionCollectionRoute = (deps: SessionCollectionRouteDeps) =>
+  new Hono()
+    .post('/', async context => {
+      // 空 body 按 {} 接受（全 optional schema 创建默认会话）：保留手写解析，不用 jsonBody。
+      const parsed = createSessionBody.safeParse(await context.req.json().catch(() => ({})));
+      if (!parsed.success) {
+        return context.json({ error: 'invalid_request', details: z.flattenError(parsed.error) }, 400);
+      }
+      return context.json(deps.session.createSession(parsed.data), 201);
+    })
+    .get('/', context => context.json(deps.session.listSessionsGrouped()))
+    .get('/search', queryValidator(searchQuery), context => {
+      const { q, limit } = context.req.valid('query');
+      return context.json(deps.session.searchSessions({ query: q, limit }));
+    })
+    .get('/:sessionId', context => {
+      try {
+        return context.json(deps.session.getSession(context.req.param('sessionId')));
+      } catch {
+        return context.json({ error: 'session_not_found' }, 404);
+      }
+    });

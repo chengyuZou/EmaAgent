@@ -8,6 +8,7 @@ import {
   type SkillSiteStore,
   type SkillStore,
 } from '@ema-agent/skills';
+import { jsonBody } from '../validate.js';
 
 export interface SkillSitesRouteDeps {
   readonly skillSites: Pick<
@@ -46,71 +47,51 @@ const installBody = z.object({
   entryId: z.string().min(1),
 });
 
-export function skillSitesRoute(deps: SkillSitesRouteDeps): Hono {
-  const app = new Hono();
-
-  app.get('/sites', context => {
-    return context.json({ items: deps.skillSites.list() });
-  });
-
-  app.post('/sites', async context => {
-    const parsed = siteAddBody.safeParse(await context.req.json().catch(() => null));
-    if (!parsed.success) {
-      return context.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
-    }
-    return context.json(deps.skillSites.create(parsed.data), 201);
-  });
-
-  app.patch('/sites/:id', async context => {
-    const id = context.req.param('id');
-    if (!deps.skillSites.get(id)) return context.json({ error: 'site_not_found' }, 404);
-    const parsed = sitePatchBody.safeParse(await context.req.json().catch(() => null));
-    if (!parsed.success) {
-      return context.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
-    }
-    deps.skillSites.update(id, parsed.data);
-    return context.json(deps.skillSites.get(id));
-  });
-
-  app.delete('/sites/:id', context => {
-    if (!deps.skillSites.remove(context.req.param('id'))) {
-      return context.json({ error: 'site_not_found_or_builtin' }, 404);
-    }
-    return context.json({ ok: true });
-  });
-
-  // 全站刷新：各站成败独立报告，不阻断其他站点。
-  app.post('/sites/refresh', async context => {
-    const reports = await refreshSites({ store: deps.skillSites });
-    return context.json({ items: reports });
-  });
-
-  // 安装以站点缓存索引的条目为准；先刷新再安装由前端按 UI 顺序决定。
-  app.post('/sites/install', async context => {
-    const parsed = installBody.safeParse(await context.req.json().catch(() => null));
-    if (!parsed.success) {
-      return context.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
-    }
-    const site = deps.skillSites.get(parsed.data.siteId);
-    if (!site) return context.json({ error: 'site_not_found' }, 404);
-    const entry = site.index?.skills.find(candidate => candidate.id === parsed.data.entryId);
-    if (!entry) {
-      return context.json({ error: 'entry_not_found', message: '该条目不在站点缓存索引中，请先刷新' }, 404);
-    }
-    try {
-      const descriptor = await installSkillFromSite(
-        { siteId: site.id, entry },
-        { store: deps.skillStore, userRoot: deps.skillUserRoot },
-      );
-      await deps.skills.refreshCore();
-      return context.json(descriptor, 201);
-    } catch (error) {
-      return context.json({ error: 'install_failed', message: errorMessage(error) }, 422);
-    }
-  });
-
-  return app;
-}
+export const skillSitesRoute = (deps: SkillSitesRouteDeps) =>
+  new Hono()
+    .get('/sites', context => {
+      return context.json({ items: deps.skillSites.list() });
+    })
+    .post('/sites', jsonBody(siteAddBody), async context => {
+      return context.json(deps.skillSites.create(context.req.valid('json')), 201);
+    })
+    .patch('/sites/:id', jsonBody(sitePatchBody), async context => {
+      const id = context.req.param('id');
+      if (!deps.skillSites.get(id)) return context.json({ error: 'site_not_found' }, 404);
+      deps.skillSites.update(id, context.req.valid('json'));
+      return context.json(deps.skillSites.get(id));
+    })
+    .delete('/sites/:id', context => {
+      if (!deps.skillSites.remove(context.req.param('id'))) {
+        return context.json({ error: 'site_not_found_or_builtin' }, 404);
+      }
+      return context.json({ ok: true });
+    })
+    // 全站刷新：各站成败独立报告，不阻断其他站点。
+    .post('/sites/refresh', async context => {
+      const reports = await refreshSites({ store: deps.skillSites });
+      return context.json({ items: reports });
+    })
+    // 安装以站点缓存索引的条目为准；先刷新再安装由前端按 UI 顺序决定。
+    .post('/sites/install', jsonBody(installBody), async context => {
+      const { siteId, entryId } = context.req.valid('json');
+      const site = deps.skillSites.get(siteId);
+      if (!site) return context.json({ error: 'site_not_found' }, 404);
+      const entry = site.index?.skills.find(candidate => candidate.id === entryId);
+      if (!entry) {
+        return context.json({ error: 'entry_not_found', message: '该条目不在站点缓存索引中，请先刷新' }, 404);
+      }
+      try {
+        const descriptor = await installSkillFromSite(
+          { siteId: site.id, entry },
+          { store: deps.skillStore, userRoot: deps.skillUserRoot },
+        );
+        await deps.skills.refreshCore();
+        return context.json(descriptor, 201);
+      } catch (error) {
+        return context.json({ error: 'install_failed', message: errorMessage(error) }, 422);
+      }
+    });
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);

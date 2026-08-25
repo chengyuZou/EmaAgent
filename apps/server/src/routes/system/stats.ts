@@ -10,14 +10,9 @@ export interface SystemStatsRouteDeps {
   readonly sessionStats: Pick<SessionStatsRepo, 'getStats'>;
 }
 
-export function systemStatsRoute(deps: SystemStatsRouteDeps): Hono {
-  const app = new Hono();
-
-  app.get('/stats', context => context.json(deps.dataDirStats.getStats()));
-
-  app.get('/stats/sessions/:id', context => {
-    return context.json(deps.sessionStats.getStats(context.req.param('id')));
-  });
-
-  return app;
-}
+export const systemStatsRoute = (deps: SystemStatsRouteDeps) =>
+  new Hono()
+    .get('/stats', context => context.json(deps.dataDirStats.getStats()))
+    .get('/stats/sessions/:id', context => {
+      return context.json(deps.sessionStats.getStats(context.req.param('id')));
+    });

@@ -27,52 +27,49 @@ export interface ProviderHealthRouteDeps {
   readonly providerModels: ProviderModels;
 }
 
-export function providerHealthRoute(deps: ProviderHealthRouteDeps): Hono {
-  const app = new Hono();
-
-  app.post('/:providerId/probe/:capability', async context => {
-    const capability = z.enum(PROBE_CAPABILITIES).safeParse(context.req.param('capability'));
-    if (!capability.success) {
-      return context.json({ error: 'capability_not_probeable', probeable: PROBE_CAPABILITIES }, 400);
-    }
-    const parsed = probeBody.safeParse(await context.req.json().catch(() => ({})));
-    if (!parsed.success) {
-      return context.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
-    }
-
-    const providerId = context.req.param('providerId');
-    const capability_ = capability.data as ModelCapability;
-    const startedAt = Date.now();
-    try {
-      const modelId = parsed.data.modelId ?? firstEnabledModelId(deps, providerId, capability.data);
-      if (!modelId) {
-        return context.json({ error: 'no_enabled_model', message: '先在该能力下启用一个模型再探活' }, 422);
+export const providerHealthRoute = (deps: ProviderHealthRouteDeps) =>
+  new Hono()
+    .post('/:providerId/probe/:capability', async context => {
+      const capability = z.enum(PROBE_CAPABILITIES).safeParse(context.req.param('capability'));
+      if (!capability.success) {
+        return context.json({ error: 'capability_not_probeable', probeable: PROBE_CAPABILITIES }, 400);
       }
-      await runProbe(deps.providers, providerId, capability.data, modelId, AbortSignal.timeout(PROBE_TIMEOUT_MS));
-      deps.providers.recordHealth(providerId, capability_, {
-        capability: capability_,
-        status: 'ok',
-        lastProbedAt: Date.now(),
-        latencyMs: Date.now() - startedAt,
-        lastError: null,
-      });
-      return context.json({ ok: true, latencyMs: Date.now() - startedAt });
-    } catch (error) {
-      if (error instanceof ProviderError) return providerError(context, error);
-      const message = error instanceof Error ? error.message : String(error);
-      deps.providers.recordHealth(providerId, capability_, {
-        capability: capability_,
-        status: 'failed',
-        lastProbedAt: Date.now(),
-        latencyMs: Date.now() - startedAt,
-        lastError: message,
-      });
-      return context.json({ ok: false, error: message }, 502);
-    }
-  });
+      // 空 body 按 {} 接受（缺省用模型目录第一个已启用模型）：保留手写解析，不用 jsonBody。
+      const parsed = probeBody.safeParse(await context.req.json().catch(() => ({})));
+      if (!parsed.success) {
+        return context.json({ error: 'invalid_request', details: z.flattenError(parsed.error) }, 400);
+      }
 
-  return app;
-}
+      const providerId = context.req.param('providerId');
+      const capability_ = capability.data as ModelCapability;
+      const startedAt = Date.now();
+      try {
+        const modelId = parsed.data.modelId ?? firstEnabledModelId(deps, providerId, capability.data);
+        if (!modelId) {
+          return context.json({ error: 'no_enabled_model', message: '先在该能力下启用一个模型再探活' }, 422);
+        }
+        await runProbe(deps.providers, providerId, capability.data, modelId, AbortSignal.timeout(PROBE_TIMEOUT_MS));
+        deps.providers.recordHealth(providerId, capability_, {
+          capability: capability_,
+          status: 'ok',
+          lastProbedAt: Date.now(),
+          latencyMs: Date.now() - startedAt,
+          lastError: null,
+        });
+        return context.json({ ok: true, latencyMs: Date.now() - startedAt });
+      } catch (error) {
+        if (error instanceof ProviderError) return providerError(context, error);
+        const message = error instanceof Error ? error.message : String(error);
+        deps.providers.recordHealth(providerId, capability_, {
+          capability: capability_,
+          status: 'failed',
+          lastProbedAt: Date.now(),
+          latencyMs: Date.now() - startedAt,
+          lastError: message,
+        });
+        return context.json({ ok: false, error: message }, 502);
+      }
+    });
 
 function firstEnabledModelId(
   deps: ProviderHealthRouteDeps,

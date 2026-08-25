@@ -4,6 +4,7 @@ import { z } from 'zod';
 import type { Attachment, AttachmentStore } from '@ema-agent/attachments';
 import type { Message, SessionStore } from '@ema-agent/session';
 import type { TurnStore } from '@ema-agent/turn';
+import { queryValidator } from '../validate.js';
 
 const listMessagesQuery = z.object({
   before: z.coerce.number().int().optional(),
@@ -49,9 +50,7 @@ export interface SessionHistoryRouteDeps {
   readonly attachments: Pick<AttachmentStore, 'listByTurn'>;
 }
 
-export function sessionHistoryRoute(deps: SessionHistoryRouteDeps): Hono {
-  const app = new Hono();
-
+export const sessionHistoryRoute = (deps: SessionHistoryRouteDeps) => {
   const withAttachments = (messages: readonly Message[]) =>
     messages.map(message => {
       if (message.role !== 'user' || !message.turnId) return message;
@@ -60,39 +59,24 @@ export function sessionHistoryRoute(deps: SessionHistoryRouteDeps): Hono {
       return { ...message, attachments: rows.map(toAttachmentWire) };
     });
 
-  app.get('/:sessionId/messages', context => {
-    const query = listMessagesQuery.safeParse(context.req.query());
-    if (!query.success) {
-      return context.json({ error: 'invalid_request', details: query.error.flatten() }, 400);
-    }
-    const sessionId = context.req.param('sessionId');
-    return context.json({
-      messages: withAttachments(deps.session.listMessages(sessionId, query.data)),
-      turns: deps.turns.listTurns(sessionId),
+  return new Hono()
+    .get('/:sessionId/messages', queryValidator(listMessagesQuery), context => {
+      const sessionId = context.req.param('sessionId');
+      return context.json({
+        messages: withAttachments(deps.session.listMessages(sessionId, context.req.valid('query'))),
+        turns: deps.turns.listTurns(sessionId),
+      });
+    })
+    .get('/:sessionId/turn-index', queryValidator(turnIndexQuery), context => {
+      return context.json(deps.turns.listTurnIndex(context.req.param('sessionId'), context.req.valid('query')));
+    })
+    .get('/:sessionId/messages/window', queryValidator(messageWindowQuery), context => {
+      const sessionId = context.req.param('sessionId');
+      const window = deps.turns.listTurnWindow(sessionId, context.req.valid('query'));
+      const turnIds = window.turns.map(turn => turn.id);
+      return context.json({
+        ...window,
+        messages: withAttachments(deps.session.listMessagesForTurns(sessionId, turnIds)),
+      });
     });
-  });
-
-  app.get('/:sessionId/turn-index', context => {
-    const query = turnIndexQuery.safeParse(context.req.query());
-    if (!query.success) {
-      return context.json({ error: 'invalid_request', details: query.error.flatten() }, 400);
-    }
-    return context.json(deps.turns.listTurnIndex(context.req.param('sessionId'), query.data));
-  });
-
-  app.get('/:sessionId/messages/window', context => {
-    const query = messageWindowQuery.safeParse(context.req.query());
-    if (!query.success) {
-      return context.json({ error: 'invalid_request', details: query.error.flatten() }, 400);
-    }
-    const sessionId = context.req.param('sessionId');
-    const window = deps.turns.listTurnWindow(sessionId, query.data);
-    const turnIds = window.turns.map(turn => turn.id);
-    return context.json({
-      ...window,
-      messages: withAttachments(deps.session.listMessagesForTurns(sessionId, turnIds)),
-    });
-  });
-
-  return app;
 }

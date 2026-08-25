@@ -1,5 +1,7 @@
 // HTTP 路由总装：唯一挂载表。文件夹按业务域划分，挂载前缀即 URL；
 // Route 只做 Wire 解析与协议转换，业务入口全部来自 Composition，这里不构造业务对象。
+// 顶层必须整链（.use/.route/.notFound/.onError 同链）：语句式 app.route(...) 会丢类型账本，
+// ReturnType<typeof createRoutes>（AppType）将退化为裸 Hono，Hono RPC 契约直接失效。
 import { Hono } from 'hono';
 import { deleteSession } from '../application/deleteSession.js';
 import type { Composition } from '../composition/index.js';
@@ -52,8 +54,7 @@ import { dataDirsRoute } from './workspaces/dataDirs.js';
 import { filesRoute } from './workspaces/files.js';
 import { projectsRoute } from './workspaces/projects.js';
 
-export function createRoutes(composition: Composition, secret: string): Hono {
-  const app = new Hono();
+export const createRoutes = (composition: Composition, secret: string) => {
   const {
     database, settings, providers, tools, knowledge,
     characters, speech, turn, commands, memory, backup,
@@ -61,153 +62,155 @@ export function createRoutes(composition: Composition, secret: string): Hono {
   } = composition;
 
   // 先认证后预算：未授权请求连体积拒绝响应都不必给。
-  app.use('*', emaAuth(secret));
-  app.use('*', requestBudgetMiddleware());
+  return new Hono()
+    .use('*', emaAuth(secret))
+    .use('*', requestBudgetMiddleware())
 
-  // 探活挂在根路径 /health：宿主在 ready 文件发布前轮询，emaAuth 内豁免认证。
-  app.route('/', systemStatusRoute({
-    activeDataDir: database.activeDataDir,
-    sandboxStatus: tools.sandboxStatus,
-  }));
-  app.route('/api/system', systemEventsRoute({ hub: eventHub }));
-  app.route('/api/system', systemStatsRoute({
-    dataDirStats: database.dataDirStats,
-    sessionStats: database.sessionStats,
-  }));
+    // 探活挂在根路径 /health：宿主在 ready 文件发布前轮询，emaAuth 内豁免认证。
+    .route('/', systemStatusRoute({
+      activeDataDir: database.activeDataDir,
+      sandboxStatus: tools.sandboxStatus,
+    }))
+    .route('/api/system', systemEventsRoute({ hub: eventHub }))
+    .route('/api/system', systemStatsRoute({
+      dataDirStats: database.dataDirStats,
+      sessionStats: database.sessionStats,
+    }))
 
-  app.route('/api/turns', startTurnRoute({
-    executor: turn.turnExecutor,
-    fanout: turnFanout,
-    session: database.session,
-  }));
-  app.route('/api/turns', turnEventsRoute({ hub: eventHub, store: turnEvents }));
-  app.route('/api/turns', turnControlRoute({
-    executor: turn.turnExecutor,
-    turns: database.turns,
-    toolExecutionState: tools.toolExecutionState,
-  }));
-  app.route('/api/turns', turnAudioRoute({
-    audioArchive: speech.audioArchive,
-    turns: database.turns,
-  }));
-  app.route('/api/turns', turnInteractionsRoute({ queue: turn.interactionQueue }));
+    .route('/api/turns', startTurnRoute({
+      executor: turn.turnExecutor,
+      fanout: turnFanout,
+      session: database.session,
+    }))
+    .route('/api/turns', turnEventsRoute({ hub: eventHub, store: turnEvents }))
+    .route('/api/turns', turnControlRoute({
+      executor: turn.turnExecutor,
+      turns: database.turns,
+      toolExecutionState: tools.toolExecutionState,
+    }))
+    .route('/api/turns', turnAudioRoute({
+      audioArchive: speech.audioArchive,
+      turns: database.turns,
+    }))
+    .route('/api/turns', turnInteractionsRoute({ queue: turn.interactionQueue }))
 
-  app.route('/api/sessions', sessionCollectionRoute({ session: database.session }));
-  app.route('/api/sessions', sessionActionsRoute({
-    session: database.session,
-    turns: database.turns,
-    activeSessions: database.activeSessions,
-    invalidateSessionRunner: sessionId => tools.invalidateSessionRunner(sessionId),
-    // 跨域删除用例在 application 层，装配时绑定 composition。
-    deleteSession: sessionId => deleteSession(composition, sessionId),
-  }));
-  app.route('/api/sessions', sessionHistoryRoute({
-    session: database.session,
-    turns: database.turns,
-    attachments: database.attachments,
-  }));
-  app.route('/api/sessions', sessionAttachmentsRoute({
-    attachments: database.attachments,
-    turns: database.turns,
-  }));
-  // backup 是独立业务域（未来还有角色/设置备份）；Session 支路的 URL 仍在 /api/sessions 下。
-  app.route('/api/sessions', sessionBackupRoute({ backup: backup.sessionBackup }));
-  // /compact 是 Session 级确定性命令，不创建 Turn；URL 挂在 /api/sessions 下。
-  app.route('/api/sessions', commandsCompactRoute({
-    compactSession: commands.compactSession,
-  }));
-  app.route('/api/commands', commandsCatalogRoute({
-    listCommandDescriptors: commands.listCommandDescriptors,
-  }));
+    .route('/api/sessions', sessionCollectionRoute({ session: database.session }))
+    .route('/api/sessions', sessionActionsRoute({
+      session: database.session,
+      turns: database.turns,
+      activeSessions: database.activeSessions,
+      invalidateSessionRunner: sessionId => tools.invalidateSessionRunner(sessionId),
+      // 跨域删除用例在 application 层，装配时绑定 composition。
+      deleteSession: sessionId => deleteSession(composition, sessionId),
+    }))
+    .route('/api/sessions', sessionHistoryRoute({
+      session: database.session,
+      turns: database.turns,
+      attachments: database.attachments,
+    }))
+    .route('/api/sessions', sessionAttachmentsRoute({
+      attachments: database.attachments,
+      turns: database.turns,
+    }))
+    // backup 是独立业务域（未来还有角色/设置备份）；Session 支路的 URL 仍在 /api/sessions 下。
+    .route('/api/sessions', sessionBackupRoute({ backup: backup.sessionBackup }))
+    // /compact 是 Session 级确定性命令，不创建 Turn；URL 挂在 /api/sessions 下。
+    .route('/api/sessions', commandsCompactRoute({
+      compactSession: commands.compactSession,
+    }))
+    .route('/api/commands', commandsCatalogRoute({
+      listCommandDescriptors: commands.listCommandDescriptors,
+    }))
 
-  app.route('/api/tasks', tasksRoute(database.tasks));
+    .route('/api/tasks', tasksRoute(database.tasks))
 
-  app.route('/api/agent-runs', agentRunListRoute({ agentRuns: database.agentRuns }));
-  app.route('/api/agent-runs', agentRunTranscriptRoute({
-    agentRuns: database.agentRuns,
-    agentRunMessages: database.agentRunMessages,
-  }));
+    .route('/api/agent-runs', agentRunListRoute({ agentRuns: database.agentRuns }))
+    .route('/api/agent-runs', agentRunTranscriptRoute({
+      agentRuns: database.agentRuns,
+      agentRunMessages: database.agentRunMessages,
+    }))
 
-  app.route('/api/background-processes', backgroundProcessListRoute({
-    backgroundProcesses: tools.backgroundProcesses,
-  }));
-  app.route('/api/background-processes', backgroundProcessControlRoute({
-    backgroundProcesses: tools.backgroundProcesses,
-  }));
+    .route('/api/background-processes', backgroundProcessListRoute({
+      backgroundProcesses: tools.backgroundProcesses,
+    }))
+    .route('/api/background-processes', backgroundProcessControlRoute({
+      backgroundProcesses: tools.backgroundProcesses,
+    }))
 
-  app.route('/api/kb', knowledgeLibsRoute({ kb: knowledge.kb }));
-  app.route('/api/kb', knowledgeIngestRoute({ kb: knowledge.kb }));
-  app.route('/api/kb', knowledgeReembedRoute({ kb: knowledge.kb }));
-  app.route('/api/kb', knowledgeSearchRoute({ kb: knowledge.kb }));
-  app.route('/api/kb', knowledgeDocumentsRoute({ kb: knowledge.kb }));
+    .route('/api/kb', knowledgeLibsRoute({ kb: knowledge.kb }))
+    .route('/api/kb', knowledgeIngestRoute({ kb: knowledge.kb }))
+    .route('/api/kb', knowledgeReembedRoute({ kb: knowledge.kb }))
+    .route('/api/kb', knowledgeSearchRoute({ kb: knowledge.kb }))
+    .route('/api/kb', knowledgeDocumentsRoute({ kb: knowledge.kb }))
 
-  app.route('/api/mcp', mcpServersRoute({ mcp: tools.mcp, mcpSources: tools.mcpSources }));
-  app.route('/api/mcp', mcpRegistryRoute({
-    mcp: tools.mcp,
-    mcpSources: tools.mcpSources,
-    stdioApprovals: tools.stdioApprovals,
-  }));
+    .route('/api/mcp', mcpServersRoute({ mcp: tools.mcp, mcpSources: tools.mcpSources }))
+    .route('/api/mcp', mcpRegistryRoute({
+      mcp: tools.mcp,
+      mcpSources: tools.mcpSources,
+      stdioApprovals: tools.stdioApprovals,
+    }))
 
-  app.route('/api/providers', providerConfigsRoute({ providers: providers.providers }));
-  app.route('/api/providers', providerKeysRoute({ providers: providers.providers }));
-  app.route('/api/providers', providerModelsRoute({
-    providers: providers.providers,
-    providerModels: providers.providerModels,
-    modelBindings: providers.modelBindings,
-    onKbEmbeddingBindingChanged: knowledge.onKbEmbeddingBindingChanged,
-  }));
-  app.route('/api/providers', providerHealthRoute({
-    providers: providers.providers,
-    providerModels: providers.providerModels,
-  }));
-  app.route('/api/providers', providerCapabilitiesRoute({
-    voicePreview: speech.voicePreview,
-    transcribe: speech.transcribe,
-  }));
+    .route('/api/providers', providerConfigsRoute({ providers: providers.providers }))
+    .route('/api/providers', providerKeysRoute({ providers: providers.providers }))
+    .route('/api/providers', providerModelsRoute({
+      providers: providers.providers,
+      providerModels: providers.providerModels,
+      modelBindings: providers.modelBindings,
+      onKbEmbeddingBindingChanged: knowledge.onKbEmbeddingBindingChanged,
+    }))
+    .route('/api/providers', providerHealthRoute({
+      providers: providers.providers,
+      providerModels: providers.providerModels,
+    }))
+    .route('/api/providers', providerCapabilitiesRoute({
+      voicePreview: speech.voicePreview,
+      transcribe: speech.transcribe,
+    }))
 
-  app.route('/api/settings', settingsCatalogRoute({ settings: settings.settings }));
-  app.route('/api/settings', settingsValuesRoute({ settings: settings.settings }));
+    .route('/api/settings', settingsCatalogRoute({ settings: settings.settings }))
+    .route('/api/settings', settingsValuesRoute({ settings: settings.settings }))
 
-  app.route('/api/skills', skillListRoute({
-    skills: tools.skills,
-    skillStore: tools.skillStore,
-    settings: settings.settings,
-    sessions: database.session,
-  }));
-  app.route('/api/skills', skillSitesRoute({
-    skillSites: tools.skillSites,
-    skillStore: tools.skillStore,
-    skills: tools.skills,
-    skillUserRoot: tools.skillUserRoot,
-  }));
+    .route('/api/skills', skillListRoute({
+      skills: tools.skills,
+      skillStore: tools.skillStore,
+      settings: settings.settings,
+      sessions: database.session,
+    }))
+    .route('/api/skills', skillSitesRoute({
+      skillSites: tools.skillSites,
+      skillStore: tools.skillStore,
+      skills: tools.skills,
+      skillUserRoot: tools.skillUserRoot,
+    }))
 
-  app.route('/api/characters', characterCollectionRoute({ characters: characters.store }));
-  app.route('/api/characters', characterResourcesRoute({ characters: characters.store }));
-  app.route('/api/characters', characterHealthRoute({ characters: characters.store }));
+    .route('/api/characters', characterCollectionRoute({ characters: characters.store }))
+    .route('/api/characters', characterResourcesRoute({ characters: characters.store }))
+    .route('/api/characters', characterHealthRoute({ characters: characters.store }))
 
-  app.route('/api/memory', memoryJobsRoute({ jobs: memory.jobs, admin: memory.admin }));
-  app.route('/api/memory', memoryFilesRoute({ memoryRoot: memory.memoryRoot }));
-  app.route('/api/memory', memoryStatsRoute({
-    memoryRoot: memory.memoryRoot,
-    settings: settings.settings,
-  }));
-  app.route('/api/memory', memoryOpsRoute({
-    startConsolidation: memory.startConsolidation,
-    startMaintenance: memory.startMaintenance,
-  }));
+    .route('/api/memory', memoryJobsRoute({ jobs: memory.jobs, admin: memory.admin }))
+    .route('/api/memory', memoryFilesRoute({ memoryRoot: memory.memoryRoot }))
+    .route('/api/memory', memoryStatsRoute({
+      memoryRoot: memory.memoryRoot,
+      settings: settings.settings,
+    }))
+    .route('/api/memory', memoryOpsRoute({
+      startConsolidation: memory.startConsolidation,
+      startMaintenance: memory.startMaintenance,
+    }))
 
-  app.route('/api/workspaces', projectsRoute({ session: database.session }));
-  app.route('/api/workspaces', dataDirsRoute({
-    activeDataDir: database.activeDataDir,
-    dataDb: database.dataDb,
-  }));
-  app.route('/api/workspaces', filesRoute());
+    .route('/api/workspaces', projectsRoute({ session: database.session }))
+    .route('/api/workspaces', dataDirsRoute({
+      activeDataDir: database.activeDataDir,
+      dataDb: database.dataDb,
+    }))
+    .route('/api/workspaces', filesRoute())
 
-  app.notFound(context => context.json({ error: 'not_found' }, 404));
-  app.onError((error, context) => {
-    console.warn('[http] 未捕获错误:', error);
-    return context.json({ error: 'internal_error' }, 500);
-  });
+    .notFound(context => context.json({ error: 'not_found' }, 404))
+    .onError((error, context) => {
+      console.warn('[http] 未捕获错误:', error);
+      return context.json({ error: 'internal_error' }, 500);
+    });
+};
 
-  return app;
-}
+/** 路由定义即契约：desktop 经 `hc<AppType>` 获得路径/请求/响应全类型；纯类型零运行时。 */
+export type AppType = ReturnType<typeof createRoutes>;

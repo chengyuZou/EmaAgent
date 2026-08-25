@@ -12,6 +12,7 @@ import {
   type McpRegistry,
   type McpRegistrySourceStore,
 } from '@ema-agent/mcp';
+import { jsonBody } from '../validate.js';
 
 export interface McpServersRouteDeps {
   readonly mcp: Pick<
@@ -50,184 +51,159 @@ const importBody = z.object({
   json: z.unknown(),
 });
 
-export function mcpServersRoute(deps: McpServersRouteDeps): Hono {
-  const app = new Hono();
-
-  app.get('/servers', context => {
-    const connections = new Map(
-      deps.mcp.getAllConnections().map(connection => [connection.serverName, connection] as const),
-    );
-    return context.json({
-      items: deps.mcp.listRecords().map(record => ({
-        ...record,
-        connection: connections.get(record.name)
-          ?? { serverName: record.name, status: 'disconnected', tools: [] },
-      })),
-    });
-  });
-
-  app.post('/servers', async context => {
-    const parsed = registerBody.safeParse(await context.req.json().catch(() => null));
-    if (!parsed.success) {
-      return context.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
-    }
-    const { name, config, connect = true } = parsed.data;
-    try {
-      const id = deps.mcp.register(name, config, parsed.data.sourceUrl, parsed.data.provenance);
-      if (!connect) {
-        return context.json({
-          id,
-          connection: { serverName: name, status: 'disconnected', tools: [] },
-        }, 201);
-      }
+export const mcpServersRoute = (deps: McpServersRouteDeps) =>
+  new Hono()
+    .get('/servers', context => {
+      const connections = new Map(
+        deps.mcp.getAllConnections().map(connection => [connection.serverName, connection] as const),
+      );
+      return context.json({
+        items: deps.mcp.listRecords().map(record => ({
+          ...record,
+          connection: connections.get(record.name)
+            ?? { serverName: record.name, status: 'disconnected', tools: [] },
+        })),
+      });
+    })
+    .post('/servers', jsonBody(registerBody), async context => {
+      const { name, config, connect = true, sourceUrl, provenance } = context.req.valid('json');
       try {
-        const connection = await deps.mcp.connectConfig(name, config);
-        return context.json({ id, connection }, 201);
-      } catch (error) {
-        // 注册成功但首连失败：如实返回 201 + 错误，记录已落库可稍后再连。
-        return context.json({ id, connectError: errorMessage(error) }, 201);
-      }
-    } catch (error) {
-      const mapped = mcpError(context, error);
-      if (mapped) return mapped;
-      throw error;
-    }
-  });
-
-  // 粘贴导入：mcpServers map / 单 server / 裸 map / 裸 URL 统一进解析器。
-  app.post('/import', async context => {
-    const parsed = importBody.safeParse(await context.req.json().catch(() => null));
-    if (!parsed.success) {
-      return context.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
-    }
-    let payload: unknown = parsed.data.json;
-    if (typeof payload === 'string') {
-      const text = payload.trim();
-      if (text.startsWith('{')) {
-        try {
-          payload = JSON.parse(text);
-        } catch (error) {
-          return context.json({ error: 'invalid_json', message: errorMessage(error) }, 400);
+        const id = deps.mcp.register(name, config, sourceUrl, provenance);
+        if (!connect) {
+          return context.json({
+            id,
+            connection: { serverName: name, status: 'disconnected', tools: [] },
+          }, 201);
         }
-      } else {
-        payload = text;
-      }
-    }
-    let servers;
-    try {
-      servers = parseImportedMcpServers(payload);
-    } catch (error) {
-      return context.json({ error: 'invalid_import', message: errorMessage(error) }, 400);
-    }
-    const results = [];
-    for (const { name, config } of servers) {
-      try {
-        const id = deps.mcp.register(name, config, undefined, { sourceKind: 'import' });
         try {
-          await deps.mcp.connectConfig(name, config);
-          results.push({ name, id, ok: true as const });
+          const connection = await deps.mcp.connectConfig(name, config);
+          return context.json({ id, connection }, 201);
         } catch (error) {
-          results.push({ name, id, ok: true as const, connectError: errorMessage(error) });
+          // 注册成功但首连失败：如实返回 201 + 错误，记录已落库可稍后再连。
+          return context.json({ id, connectError: errorMessage(error) }, 201);
         }
       } catch (error) {
-        results.push({ name, ok: false as const, error: errorMessage(error) });
+        const mapped = mcpError(context, error);
+        if (mapped) return mapped;
+        throw error;
       }
-    }
-    return context.json({ items: results }, 201);
-  });
-
-  app.get('/servers/:name', context => {
-    const record = deps.mcp.findByName(context.req.param('name'));
-    if (!record) return context.json({ error: 'server_not_found' }, 404);
-    const connection = deps.mcp.getConnection(record.name)
-      ?? { serverName: record.name, status: 'disconnected', tools: [] };
-    return context.json({ ...record, connection });
-  });
-
-  app.put('/servers/:name/enable', async context => {
-    try {
-      await deps.mcp.setEnabled(context.req.param('name'), true);
+    })
+    // 粘贴导入：mcpServers map / 单 server / 裸 map / 裸 URL 统一进解析器。
+    .post('/import', jsonBody(importBody), async context => {
+      let payload: unknown = context.req.valid('json').json;
+      if (typeof payload === 'string') {
+        const text = payload.trim();
+        if (text.startsWith('{')) {
+          try {
+            payload = JSON.parse(text);
+          } catch (error) {
+            return context.json({ error: 'invalid_json', message: errorMessage(error) }, 400);
+          }
+        } else {
+          payload = text;
+        }
+      }
+      let servers;
+      try {
+        servers = parseImportedMcpServers(payload);
+      } catch (error) {
+        return context.json({ error: 'invalid_import', message: errorMessage(error) }, 400);
+      }
+      const results = [];
+      for (const { name, config } of servers) {
+        try {
+          const id = deps.mcp.register(name, config, undefined, { sourceKind: 'import' });
+          try {
+            await deps.mcp.connectConfig(name, config);
+            results.push({ name, id, ok: true as const });
+          } catch (error) {
+            results.push({ name, id, ok: true as const, connectError: errorMessage(error) });
+          }
+        } catch (error) {
+          results.push({ name, ok: false as const, error: errorMessage(error) });
+        }
+      }
+      return context.json({ items: results }, 201);
+    })
+    .get('/servers/:name', context => {
+      const record = deps.mcp.findByName(context.req.param('name'));
+      if (!record) return context.json({ error: 'server_not_found' }, 404);
+      const connection = deps.mcp.getConnection(record.name)
+        ?? { serverName: record.name, status: 'disconnected', tools: [] };
+      return context.json({ ...record, connection });
+    })
+    .put('/servers/:name/enable', async context => {
+      try {
+        await deps.mcp.setEnabled(context.req.param('name'), true);
+        return context.json({ ok: true });
+      } catch (error) {
+        const mapped = mcpError(context, error);
+        if (mapped) return mapped;
+        throw error;
+      }
+    })
+    .put('/servers/:name/disable', async context => {
+      try {
+        await deps.mcp.setEnabled(context.req.param('name'), false);
+        return context.json({ ok: true });
+      } catch (error) {
+        const mapped = mcpError(context, error);
+        if (mapped) return mapped;
+        throw error;
+      }
+    })
+    .post('/servers/:name/connect', async context => {
+      try {
+        return context.json({ connection: await deps.mcp.connect(context.req.param('name')) });
+      } catch (error) {
+        const mapped = mcpError(context, error);
+        if (mapped) return mapped;
+        throw error;
+      }
+    })
+    .post('/servers/:name/disconnect', async context => {
+      await deps.mcp.disconnect(context.req.param('name'));
       return context.json({ ok: true });
-    } catch (error) {
-      const mapped = mcpError(context, error);
-      if (mapped) return mapped;
-      throw error;
-    }
-  });
-
-  app.put('/servers/:name/disable', async context => {
-    try {
-      await deps.mcp.setEnabled(context.req.param('name'), false);
+    })
+    .delete('/servers/:name', async context => {
+      await deps.mcp.remove(context.req.param('name'));
       return context.json({ ok: true });
-    } catch (error) {
-      const mapped = mcpError(context, error);
-      if (mapped) return mapped;
-      throw error;
-    }
-  });
-
-  app.post('/servers/:name/connect', async context => {
-    try {
-      return context.json({ connection: await deps.mcp.connect(context.req.param('name')) });
-    } catch (error) {
-      const mapped = mcpError(context, error);
-      if (mapped) return mapped;
-      throw error;
-    }
-  });
-
-  app.post('/servers/:name/disconnect', async context => {
-    await deps.mcp.disconnect(context.req.param('name'));
-    return context.json({ ok: true });
-  });
-
-  app.delete('/servers/:name', async context => {
-    await deps.mcp.remove(context.req.param('name'));
-    return context.json({ ok: true });
-  });
-
-  // registry 安装的更新检查：对照源内最新版本；非 registry 安装如实回答不可查。
-  app.post('/servers/:name/check-update', async context => {
-    const record = deps.mcp.findByName(context.req.param('name'));
-    if (!record) return context.json({ error: 'server_not_found' }, 404);
-    if (record.provenance.sourceKind !== 'registry') {
-      return context.json({ updateAvailable: false, reason: 'not_a_registry_install' });
-    }
-    const source = deps.mcpSources.get(record.provenance.registrySourceId);
-    if (!source) {
-      return context.json({ updateAvailable: false, reason: 'source_deleted' });
-    }
-    const latest = await fetchRegistryEntryLatest(
-      source.registryUrl,
-      record.provenance.registryEntryId,
-      { signal: context.req.raw.signal },
-    );
-    if (!latest) {
-      return context.json({ updateAvailable: false, reason: 'entry_unavailable' });
-    }
-    return context.json({
-      updateAvailable: latest.version !== record.provenance.registryVersion,
-      installedVersion: record.provenance.registryVersion,
-      latestVersion: latest.version,
+    })
+    // registry 安装的更新检查：对照源内最新版本；非 registry 安装如实回答不可查。
+    .post('/servers/:name/check-update', async context => {
+      const record = deps.mcp.findByName(context.req.param('name'));
+      if (!record) return context.json({ error: 'server_not_found' }, 404);
+      if (record.provenance.sourceKind !== 'registry') {
+        return context.json({ updateAvailable: false, reason: 'not_a_registry_install' });
+      }
+      const source = deps.mcpSources.get(record.provenance.registrySourceId);
+      if (!source) {
+        return context.json({ updateAvailable: false, reason: 'source_deleted' });
+      }
+      const latest = await fetchRegistryEntryLatest(
+        source.registryUrl,
+        record.provenance.registryEntryId,
+        { signal: context.req.raw.signal },
+      );
+      if (!latest) {
+        return context.json({ updateAvailable: false, reason: 'entry_unavailable' });
+      }
+      return context.json({
+        updateAvailable: latest.version !== record.provenance.registryVersion,
+        installedVersion: record.provenance.registryVersion,
+        latestVersion: latest.version,
+      });
+    })
+    // 免存探测：连不上是正常结论（ok:false），状态码恒 200。
+    .post('/probe', jsonBody(probeBody), async context => {
+      const { serverName, config } = context.req.valid('json');
+      const result = await deps.mcp.probe(
+        serverName,
+        config,
+        context.req.raw.signal,
+      );
+      return context.json(result);
     });
-  });
-
-  // 免存探测：连不上是正常结论（ok:false），状态码恒 200。
-  app.post('/probe', async context => {
-    const parsed = probeBody.safeParse(await context.req.json().catch(() => null));
-    if (!parsed.success) {
-      return context.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
-    }
-    const result = await deps.mcp.probe(
-      parsed.data.serverName,
-      parsed.data.config,
-      context.req.raw.signal,
-    );
-    return context.json(result);
-  });
-
-  return app;
-}
 
 function mcpError(context: Context, error: unknown): Response | undefined {
   if (error instanceof McpServerNotFoundError) {

@@ -3,6 +3,7 @@ import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import type { KbManager } from '@ema-agent/knowledge';
 import { knowledgeError } from './errors.js';
+import { queryValidator } from '../validate.js';
 
 export interface KnowledgeDocumentsRouteDeps {
   readonly kb: Pick<
@@ -28,8 +29,7 @@ const chunkQuery = z.object({
   kbId: z.string().optional(),
 });
 
-export function knowledgeDocumentsRoute(deps: KnowledgeDocumentsRouteDeps): Hono {
-  const app = new Hono();
+export const knowledgeDocumentsRoute = (deps: KnowledgeDocumentsRouteDeps) => {
   const respond = async (context: Context, run: () => unknown | Promise<unknown>): Promise<Response> => {
     try {
       return context.json(await run());
@@ -40,43 +40,30 @@ export function knowledgeDocumentsRoute(deps: KnowledgeDocumentsRouteDeps): Hono
     }
   };
 
-  app.get('/documents', async context => {
-    const parsed = listQuery.safeParse(context.req.query());
-    if (!parsed.success) {
-      return context.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
-    }
-    const { kbId, ...options } = parsed.data;
-    return respond(context, () => deps.kb.listAssets(kbId, options));
-  });
-
-  app.get('/documents/:id', async context => {
-    const asset = await deps.kb.getAsset(context.req.param('id'), kbIdFrom(context));
-    if (!asset) return context.json({ error: 'asset_not_found' }, 404);
-    return context.json(asset);
-  });
-
-  app.get('/documents/:id/preview', async context => {
-    const preview = await deps.kb.getPreview(context.req.param('id'), kbIdFrom(context));
-    if (!preview) return context.json({ error: 'asset_not_found' }, 404);
-    return context.json(preview);
-  });
-
-  app.get('/documents/:id/chunks', async context => {
-    const parsed = chunkQuery.safeParse(context.req.query());
-    if (!parsed.success) {
-      return context.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
-    }
-    const { kbId, ...options } = parsed.data;
-    return respond(context, () => deps.kb.getChunks(context.req.param('id'), kbId, options));
-  });
-
-  app.delete('/documents/:id', async context => {
-    const deleted = await deps.kb.deleteAsset(context.req.param('id'), kbIdFrom(context));
-    if (!deleted) return context.json({ error: 'asset_not_found' }, 404);
-    return context.json({ ok: true });
-  });
-
-  return app;
+  return new Hono()
+    .get('/documents', queryValidator(listQuery), async context => {
+      const { kbId, ...options } = context.req.valid('query');
+      return respond(context, () => deps.kb.listAssets(kbId, options));
+    })
+    .get('/documents/:id', async context => {
+      const asset = await deps.kb.getAsset(context.req.param('id'), kbIdFrom(context));
+      if (!asset) return context.json({ error: 'asset_not_found' }, 404);
+      return context.json(asset);
+    })
+    .get('/documents/:id/preview', async context => {
+      const preview = await deps.kb.getPreview(context.req.param('id'), kbIdFrom(context));
+      if (!preview) return context.json({ error: 'asset_not_found' }, 404);
+      return context.json(preview);
+    })
+    .get('/documents/:id/chunks', queryValidator(chunkQuery), async context => {
+      const { kbId, ...options } = context.req.valid('query');
+      return respond(context, () => deps.kb.getChunks(context.req.param('id'), kbId, options));
+    })
+    .delete('/documents/:id', async context => {
+      const deleted = await deps.kb.deleteAsset(context.req.param('id'), kbIdFrom(context));
+      if (!deleted) return context.json({ error: 'asset_not_found' }, 404);
+      return context.json({ ok: true });
+    });
 }
 
 /** query 里的可选 kbId（空串按缺省处理）。 */

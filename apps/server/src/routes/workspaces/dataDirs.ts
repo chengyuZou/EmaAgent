@@ -10,6 +10,7 @@ import {
   removeDir,
   setActive,
 } from '../../platform/dataDirRegistry.js';
+import { jsonBody } from '../validate.js';
 
 const addBody = z.object({
   name: z.string().min(1).max(100),
@@ -26,82 +27,69 @@ export interface DataDirsRouteDeps {
   readonly dataDb: Database;
 }
 
-export function dataDirsRoute(deps: DataDirsRouteDeps): Hono {
-  const app = new Hono();
-
-  app.get('/data-dirs', context => {
-    return context.json(loadRegistry());
-  });
-
-  app.post('/data-dirs', async context => {
-    const parsed = addBody.safeParse(await context.req.json().catch(() => null));
-    if (!parsed.success) {
-      return context.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
-    }
-    try {
-      return context.json(addDir(loadRegistry(), parsed.data), 201);
-    } catch (error) {
-      return registryError(context, error);
-    }
-  });
-
-  app.delete('/data-dirs/:name', context => {
-    try {
-      return context.json(removeDir(loadRegistry(), context.req.param('name')));
-    } catch (error) {
-      return registryError(context, error);
-    }
-  });
-
-  // 写入新活动项即完成；当前进程的数据源仍是旧目录，由宿主/前端决定重启流程。
-  app.post('/data-dirs/:name/activate', context => {
-    try {
-      const registry = setActive(loadRegistry(), context.req.param('name'));
-      return context.json({ ...registry, restartRequired: true });
-    } catch (error) {
-      return registryError(context, error);
-    }
-  });
-
-  // 迁移：SQLite 在线 backup 热拷贝 data.db + 文件目录复制，注册并切换后要求重启。
-  app.post('/data-dirs/migrate', async context => {
-    const parsed = migrateBody.safeParse(await context.req.json().catch(() => null));
-    if (!parsed.success) {
-      return context.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
-    }
-    const { name, targetPath } = parsed.data;
-    if (path.resolve(targetPath) === path.resolve(deps.activeDataDir)) {
-      return context.json({ error: 'same_path', message: '目标路径与当前路径相同' }, 400);
-    }
-    try {
-      fs.mkdirSync(targetPath, { recursive: true });
-      await deps.dataDb.sqlite.backup(path.join(targetPath, 'data.db'));
-      for (const subdir of ['sessions', 'audio']) {
-        const source = path.join(deps.activeDataDir, subdir);
-        if (fs.existsSync(source)) {
-          fs.cpSync(source, path.join(targetPath, subdir), { recursive: true });
-        }
+export const dataDirsRoute = (deps: DataDirsRouteDeps) =>
+  new Hono()
+    .get('/data-dirs', context => {
+      return context.json(loadRegistry());
+    })
+    .post('/data-dirs', jsonBody(addBody), async context => {
+      try {
+        return context.json(addDir(loadRegistry(), context.req.valid('json')), 201);
+      } catch (error) {
+        return registryError(context, error);
       }
-      setActive(addDir(loadRegistry(), { name, path: targetPath }), name);
-      return context.json({ ok: true, restartRequired: true, targetPath });
-    } catch (error) {
-      return context.json({
-        error: 'migrate_failed',
-        message: error instanceof Error ? error.message : String(error),
-      }, 500);
-    }
-  });
-
-  return app;
-}
+    })
+    .delete('/data-dirs/:name', context => {
+      try {
+        return context.json(removeDir(loadRegistry(), context.req.param('name')));
+      } catch (error) {
+        return registryError(context, error);
+      }
+    })
+    // 写入新活动项即完成；当前进程的数据源仍是旧目录，由宿主/前端决定重启流程。
+    .post('/data-dirs/:name/activate', context => {
+      try {
+        const registry = setActive(loadRegistry(), context.req.param('name'));
+        return context.json({ ...registry, restartRequired: true });
+      } catch (error) {
+        return registryError(context, error);
+      }
+    })
+    // 迁移：SQLite 在线 backup 热拷贝 data.db + 文件目录复制，注册并切换后要求重启。
+    .post('/data-dirs/migrate', jsonBody(migrateBody), async context => {
+      const { name, targetPath } = context.req.valid('json');
+      if (path.resolve(targetPath) === path.resolve(deps.activeDataDir)) {
+        return context.json({ error: 'same_path', message: '目标路径与当前路径相同' }, 400);
+      }
+      try {
+        fs.mkdirSync(targetPath, { recursive: true });
+        await deps.dataDb.sqlite.backup(path.join(targetPath, 'data.db'));
+        for (const subdir of ['sessions', 'audio']) {
+          const source = path.join(deps.activeDataDir, subdir);
+          if (fs.existsSync(source)) {
+            fs.cpSync(source, path.join(targetPath, subdir), { recursive: true });
+          }
+        }
+        setActive(addDir(loadRegistry(), { name, path: targetPath }), name);
+        return context.json({ ok: true, restartRequired: true, targetPath });
+      } catch (error) {
+        return context.json({
+          error: 'migrate_failed',
+          message: error instanceof Error ? error.message : String(error),
+        }, 500);
+      }
+    });
 
 function registryError(context: Context, error: unknown): Response {
   const message = error instanceof Error ? error.message : String(error);
   if (message.includes('not found')) {
     return context.json({ error: 'data_dir_not_found', message }, 404);
   }
-  if (message.includes('cannot remove')) {
-    return context.json({ error: 'data_dir_conflict', message }, 409);
+  if (message.includes('already exists')) {
+    return context.json({ error: 'data_dir_name_conflict', message }, 409);
   }
-  return context.json({ error: 'invalid_request', message }, 400);
+  if (message.includes('not a directory')) {
+    return context.json({ error: 'invalid_path', message }, 400);
+  }
+  throw error;
 }

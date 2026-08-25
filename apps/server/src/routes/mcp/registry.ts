@@ -10,6 +10,7 @@ import {
   type McpRegistrySourceStore,
 } from '@ema-agent/mcp';
 import type { McpStdioApprovalChannel } from '../../composition/tools.js';
+import { jsonBody } from '../validate.js';
 
 export interface McpRegistryRouteDeps {
   readonly mcp: Pick<McpRegistry, 'register'>;
@@ -42,137 +43,112 @@ const approvalBody = z.object({
   approved: z.boolean(),
 });
 
-export function mcpRegistryRoute(deps: McpRegistryRouteDeps): Hono {
-  const app = new Hono();
-
-  app.get('/registry-sources', context => {
-    return context.json({ items: deps.mcpSources.list() });
-  });
-
-  app.post('/registry-sources', async context => {
-    const parsed = sourceAddBody.safeParse(await context.req.json().catch(() => null));
-    if (!parsed.success) {
-      return context.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
-    }
-    return context.json(deps.mcpSources.add(parsed.data.label, parsed.data.registryUrl), 201);
-  });
-
-  app.patch('/registry-sources/:id', async context => {
-    const id = context.req.param('id');
-    if (!deps.mcpSources.get(id)) return context.json({ error: 'source_not_found' }, 404);
-    const parsed = sourcePatchBody.safeParse(await context.req.json().catch(() => null));
-    if (!parsed.success) {
-      return context.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
-    }
-    deps.mcpSources.update(id, parsed.data);
-    return context.json(deps.mcpSources.get(id));
-  });
-
-  // builtin（官方源）拒删；删除不影响已安装 server（溯源悬空，UI 提示）。
-  app.delete('/registry-sources/:id', context => {
-    if (!deps.mcpSources.remove(context.req.param('id'))) {
-      return context.json({ error: 'source_not_found_or_builtin' }, 404);
-    }
-    return context.json({ ok: true });
-  });
-
-  app.post('/registry-sources/:id/test', async context => {
-    const source = deps.mcpSources.get(context.req.param('id'));
-    if (!source) return context.json({ error: 'source_not_found' }, 404);
-    try {
-      const result = await fetchRegistryEntries(source.registryUrl, {
-        signal: context.req.raw.signal,
-        maxPages: 1,
-      });
-      return context.json({ ok: true, sampleCount: result.entries.length, skipped: result.skipped });
-    } catch (error) {
-      return context.json({ ok: false, error: errorMessage(error) }, 502);
-    }
-  });
-
-  // 聚合全部启用源；单源失败降级为该源 error，不拖垮其他源。
-  app.get('/registry-entries', async context => {
-    const results = await Promise.all(deps.mcpSources.listEnabled().map(async source => {
+export const mcpRegistryRoute = (deps: McpRegistryRouteDeps) =>
+  new Hono()
+    .get('/registry-sources', context => {
+      return context.json({ items: deps.mcpSources.list() });
+    })
+    .post('/registry-sources', jsonBody(sourceAddBody), async context => {
+      const { label, registryUrl } = context.req.valid('json');
+      return context.json(deps.mcpSources.add(label, registryUrl), 201);
+    })
+    .patch('/registry-sources/:id', jsonBody(sourcePatchBody), async context => {
+      const id = context.req.param('id');
+      if (!deps.mcpSources.get(id)) return context.json({ error: 'source_not_found' }, 404);
+      deps.mcpSources.update(id, context.req.valid('json'));
+      return context.json(deps.mcpSources.get(id));
+    })
+    // builtin（官方源）拒删；删除不影响已安装 server（溯源悬空，UI 提示）。
+    .delete('/registry-sources/:id', context => {
+      if (!deps.mcpSources.remove(context.req.param('id'))) {
+        return context.json({ error: 'source_not_found_or_builtin' }, 404);
+      }
+      return context.json({ ok: true });
+    })
+    .post('/registry-sources/:id/test', async context => {
+      const source = deps.mcpSources.get(context.req.param('id'));
+      if (!source) return context.json({ error: 'source_not_found' }, 404);
       try {
         const result = await fetchRegistryEntries(source.registryUrl, {
           signal: context.req.raw.signal,
+          maxPages: 1,
         });
-        return {
-          sourceId: source.id,
-          label: source.label,
-          entries: result.entries.map(resolveRegistryEntry),
-          skipped: result.skipped,
-          truncated: result.truncated,
-          error: null as string | null,
-        };
+        return context.json({ ok: true, sampleCount: result.entries.length, skipped: result.skipped });
       } catch (error) {
-        return {
-          sourceId: source.id,
-          label: source.label,
-          entries: [] as ReturnType<typeof resolveRegistryEntry>[],
-          skipped: 0,
-          truncated: false,
-          error: errorMessage(error) as string | null,
-        };
+        return context.json({ ok: false, error: errorMessage(error) }, 502);
       }
-    }));
-    return context.json({
-      sources: results.map(({ entries, ...rest }) => ({ ...rest, count: entries.length })),
-      items: results.flatMap(result =>
-        result.entries.map(entry => ({ ...entry, registrySourceId: result.sourceId }))),
+    })
+    // 聚合全部启用源；单源失败降级为该源 error，不拖垮其他源。
+    .get('/registry-entries', async context => {
+      const results = await Promise.all(deps.mcpSources.listEnabled().map(async source => {
+        try {
+          const result = await fetchRegistryEntries(source.registryUrl, {
+            signal: context.req.raw.signal,
+          });
+          return {
+            sourceId: source.id,
+            label: source.label,
+            entries: result.entries.map(resolveRegistryEntry),
+            skipped: result.skipped,
+            truncated: result.truncated,
+            error: null as string | null,
+          };
+        } catch (error) {
+          return {
+            sourceId: source.id,
+            label: source.label,
+            entries: [] as ReturnType<typeof resolveRegistryEntry>[],
+            skipped: 0,
+            truncated: false,
+            error: errorMessage(error) as string | null,
+          };
+        }
+      }));
+      return context.json({
+        sources: results.map(({ entries, ...rest }) => ({ ...rest, count: entries.length })),
+        items: results.flatMap(result =>
+          result.entries.map(entry => ({ ...entry, registrySourceId: result.sourceId }))),
+      });
+    })
+    // 安装始终从源现场取该条目最新版本再解析，不用浏览缓存。
+    .post('/registry-install', jsonBody(installBody), async context => {
+      const { sourceId, entryName, name, inputs } = context.req.valid('json');
+      const source = deps.mcpSources.get(sourceId);
+      if (!source) return context.json({ error: 'source_not_found' }, 404);
+
+      let raw;
+      try {
+        raw = await fetchRegistryEntryLatest(source.registryUrl, entryName, {
+          signal: context.req.raw.signal,
+        });
+      } catch (error) {
+        return context.json({ error: 'registry_fetch_failed', message: errorMessage(error) }, 502);
+      }
+      if (!raw) {
+        return context.json({ error: 'entry_not_found', message: `条目 ${entryName} 在该源不存在或版本不可用` }, 404);
+      }
+
+      const entry = resolveRegistryEntry(raw);
+      try {
+        const id = installRegistryEntry({
+          store: deps.mcp,
+          source,
+          entry,
+          ...(name === undefined ? {} : { name }),
+          ...(inputs === undefined ? {} : { inputs }),
+        });
+        return context.json({ id, entry: { name: entry.name, version: entry.version } }, 201);
+      } catch (error) {
+        return context.json({ error: 'install_failed', message: errorMessage(error) }, 422);
+      }
+    })
+    // stdio 拉起批准：管理面动作不进 Session FIFO；未知/已超时 requestId 返回 404。
+    .post('/stdio-approvals/:requestId', jsonBody(approvalBody), async context => {
+      if (!deps.stdioApprovals.answer(context.req.param('requestId'), context.req.valid('json').approved)) {
+        return context.json({ error: 'approval_not_found' }, 404);
+      }
+      return context.json({ ok: true });
     });
-  });
-
-  // 安装始终从源现场取该条目最新版本再解析，不用浏览缓存。
-  app.post('/registry-install', async context => {
-    const parsed = installBody.safeParse(await context.req.json().catch(() => null));
-    if (!parsed.success) {
-      return context.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
-    }
-    const source = deps.mcpSources.get(parsed.data.sourceId);
-    if (!source) return context.json({ error: 'source_not_found' }, 404);
-
-    let raw;
-    try {
-      raw = await fetchRegistryEntryLatest(source.registryUrl, parsed.data.entryName, {
-        signal: context.req.raw.signal,
-      });
-    } catch (error) {
-      return context.json({ error: 'registry_fetch_failed', message: errorMessage(error) }, 502);
-    }
-    if (!raw) {
-      return context.json({ error: 'entry_not_found', message: `条目 ${parsed.data.entryName} 在该源不存在或版本不可用` }, 404);
-    }
-
-    const entry = resolveRegistryEntry(raw);
-    try {
-      const id = installRegistryEntry({
-        store: deps.mcp,
-        source,
-        entry,
-        ...(parsed.data.name === undefined ? {} : { name: parsed.data.name }),
-        ...(parsed.data.inputs === undefined ? {} : { inputs: parsed.data.inputs }),
-      });
-      return context.json({ id, entry: { name: entry.name, version: entry.version } }, 201);
-    } catch (error) {
-      return context.json({ error: 'install_failed', message: errorMessage(error) }, 422);
-    }
-  });
-
-  // stdio 拉起批准：管理面动作不进 Session FIFO；未知/已超时 requestId 返回 404。
-  app.post('/stdio-approvals/:requestId', async context => {
-    const parsed = approvalBody.safeParse(await context.req.json().catch(() => null));
-    if (!parsed.success) {
-      return context.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
-    }
-    if (!deps.stdioApprovals.answer(context.req.param('requestId'), parsed.data.approved)) {
-      return context.json({ error: 'approval_not_found' }, 404);
-    }
-    return context.json({ ok: true });
-  });
-
-  return app;
-}
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);

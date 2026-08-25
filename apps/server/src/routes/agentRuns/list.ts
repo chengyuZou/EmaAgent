@@ -6,20 +6,15 @@ export interface AgentRunListRouteDeps {
   readonly agentRuns: Pick<AgentRunStore, 'listForSession' | 'get'>;
 }
 
-export function agentRunListRoute(deps: AgentRunListRouteDeps): Hono {
-  const app = new Hono();
-
-  app.get('/', context => {
-    const sessionId = context.req.query('sessionId');
-    if (!sessionId) return context.json({ error: 'session_id_required' }, 400);
-    return context.json({ items: deps.agentRuns.listForSession(sessionId) });
-  });
-
-  app.get('/:agentRunId', context => {
-    const run = deps.agentRuns.get(context.req.param('agentRunId'));
-    if (!run) return context.json({ error: 'agent_run_not_found' }, 404);
-    return context.json(run);
-  });
-
-  return app;
-}
+export const agentRunListRoute = (deps: AgentRunListRouteDeps) =>
+  new Hono()
+    .get('/', context => {
+      const sessionId = context.req.query('sessionId');
+      if (!sessionId) return context.json({ error: 'session_id_required' }, 400);
+      return context.json({ items: deps.agentRuns.listForSession(sessionId) });
+    })
+    .get('/:agentRunId', context => {
+      const run = deps.agentRuns.get(context.req.param('agentRunId'));
+      if (!run) return context.json({ error: 'agent_run_not_found' }, 404);
+      return context.json(run);
+    });

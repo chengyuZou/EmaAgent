@@ -2,6 +2,7 @@
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import { BackgroundProcessError, type BackgroundProcess } from '@ema-agent/tools';
+import { queryValidator } from '../validate.js';
 
 export interface BackgroundProcessListRouteDeps {
   readonly backgroundProcesses: Pick<BackgroundProcess, 'list' | 'readOutput'>;
@@ -27,37 +28,24 @@ const outputQuery = z.object({
   waitMs: z.coerce.number().int().min(0).max(30_000).optional(),
 });
 
-export function backgroundProcessListRoute(deps: BackgroundProcessListRouteDeps): Hono {
-  const app = new Hono();
-
-  app.get('/', context => {
-    const parsed = listQuery.safeParse(context.req.query());
-    if (!parsed.success) {
-      return context.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
-    }
-    const { sessionId, ...options } = parsed.data;
-    return context.json({ items: deps.backgroundProcesses.list(sessionId, options) });
-  });
-
-  app.get('/:backgroundProcessId/output', async context => {
-    const parsed = outputQuery.safeParse(context.req.query());
-    if (!parsed.success) {
-      return context.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
-    }
-    const { sessionId, ...options } = parsed.data;
-    try {
-      return context.json(await deps.backgroundProcesses.readOutput(
-        sessionId,
-        context.req.param('backgroundProcessId'),
-        options,
-      ));
-    } catch (error) {
-      return processError(context, error);
-    }
-  });
-
-  return app;
-}
+export const backgroundProcessListRoute = (deps: BackgroundProcessListRouteDeps) =>
+  new Hono()
+    .get('/', queryValidator(listQuery), context => {
+      const { sessionId, ...options } = context.req.valid('query');
+      return context.json({ items: deps.backgroundProcesses.list(sessionId, options) });
+    })
+    .get('/:backgroundProcessId/output', queryValidator(outputQuery), async context => {
+      const { sessionId, ...options } = context.req.valid('query');
+      try {
+        return context.json(await deps.backgroundProcesses.readOutput(
+          sessionId,
+          context.req.param('backgroundProcessId'),
+          options,
+        ));
+      } catch (error) {
+        return processError(context, error);
+      }
+    });
 
 export function processError(context: Context, error: unknown): Response {
   if (error instanceof BackgroundProcessError) {

@@ -9,6 +9,7 @@ import {
 } from '@ema-agent/turn';
 import { REQUEST_VALUE_LIMITS } from '../../platform/requestBudget.js';
 import type { TurnFanout } from '../../sse/turnFanout.js';
+import { jsonBody } from '../validate.js';
 
 const inputPartSchema = z.discriminatedUnion('type', [
   z.object({
@@ -62,15 +63,10 @@ export interface StartTurnRouteDeps {
   readonly session: Pick<SessionStore, 'createSession' | 'sessionExists'>;
 }
 
-export function startTurnRoute(deps: StartTurnRouteDeps): Hono {
-  const app = new Hono();
-
-  app.post('/', async context => {
-    const parsed = startTurnBody.safeParse(await context.req.json().catch(() => null));
-    if (!parsed.success) {
-      return context.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
-    }
-    const body = parsed.data;
+export const startTurnRoute = (deps: StartTurnRouteDeps) =>
+  new Hono()
+    .post('/', jsonBody(startTurnBody), async context => {
+    const body = context.req.valid('json');
     const input: TurnInputPart[] = body.input.map(part => {
       if (part.type !== 'attachment') return part;
       return {
@@ -114,7 +110,4 @@ export function startTurnRoute(deps: StartTurnRouteDeps): Hono {
     // 先挂扇出（登记空重放槽）再返回身份，避免客户端立即订阅时首事件尚未到达。
     deps.fanout.attach(handle, { ttsEnabled: body.ttsEnabled ?? false });
     return context.json({ turnId: handle.turnId, sessionId: handle.sessionId });
-  });
-
-  return app;
-}
+    });

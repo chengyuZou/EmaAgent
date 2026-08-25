@@ -6,6 +6,7 @@ import {
   readMemoryFile,
   searchMemoryFiles,
 } from '@ema-agent/memory';
+import { jsonBody, queryValidator } from '../validate.js';
 
 export interface MemoryFilesRouteDeps {
   readonly memoryRoot: string;
@@ -34,34 +35,16 @@ const searchBody = z.object({
   maxResults: z.number().int().min(1).max(200).optional(),
 });
 
-export function memoryFilesRoute(deps: MemoryFilesRouteDeps): Hono {
-  const app = new Hono();
-
-  app.get('/files', async context => {
-    const parsed = listQuery.safeParse(context.req.query());
-    if (!parsed.success) {
-      return context.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
-    }
-    return context.json(await listMemoryFiles(deps.memoryRoot, parsed.data));
-  });
-
-  app.get('/files/content', async context => {
-    const parsed = readQuery.safeParse(context.req.query());
-    if (!parsed.success) {
-      return context.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
-    }
-    const result = await readMemoryFile(deps.memoryRoot, parsed.data);
-    if (!result) return context.json({ error: 'file_not_found' }, 404);
-    return context.json(result);
-  });
-
-  app.post('/files/search', async context => {
-    const parsed = searchBody.safeParse(await context.req.json().catch(() => null));
-    if (!parsed.success) {
-      return context.json({ error: 'invalid_request', details: parsed.error.flatten() }, 400);
-    }
-    return context.json(await searchMemoryFiles(deps.memoryRoot, parsed.data));
-  });
-
-  return app;
-}
+export const memoryFilesRoute = (deps: MemoryFilesRouteDeps) =>
+  new Hono()
+    .get('/files', queryValidator(listQuery), async context => {
+      return context.json(await listMemoryFiles(deps.memoryRoot, context.req.valid('query')));
+    })
+    .get('/files/content', queryValidator(readQuery), async context => {
+      const result = await readMemoryFile(deps.memoryRoot, context.req.valid('query'));
+      if (!result) return context.json({ error: 'file_not_found' }, 404);
+      return context.json(result);
+    })
+    .post('/files/search', jsonBody(searchBody), async context => {
+      return context.json(await searchMemoryFiles(deps.memoryRoot, context.req.valid('json')));
+    });

@@ -2,10 +2,8 @@
 import { Hono } from 'hono';
 import type { CommandDescriptor } from '@ema-agent/commands';
 
-export function commandsCatalogRoute(deps: {
+export const commandsCatalogRoute = (deps: {
   readonly listCommandDescriptors: () => readonly CommandDescriptor[];
-}): Hono {
-  const app = new Hono();
-  app.get('/', context => context.json({ commands: deps.listCommandDescriptors() }));
-  return app;
-}
+}) =>
+  new Hono()
+    .get('/', context => context.json({ commands: deps.listCommandDescriptors() }));

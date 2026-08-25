@@ -14,11 +14,10 @@ export interface SessionBackupRouteDeps {
   readonly backup: SessionBackup;
 }
 
-export function sessionBackupRoute(deps: SessionBackupRouteDeps): Hono {
-  const app = new Hono();
-
-  // 导出：不存在即 404；writeTo 全程流式，不把 ZIP 放进内存。
-  app.post('/:id/export', async context => {
+export const sessionBackupRoute = (deps: SessionBackupRouteDeps) =>
+  new Hono()
+    // 导出：不存在即 404；writeTo 全程流式，不把 ZIP 放进内存。
+    .post('/:id/export', async context => {
     const sessionExport = deps.backup.exportSession(
       context.req.param('id'),
       context.req.raw.signal,
@@ -54,10 +53,9 @@ export function sessionBackupRoute(deps: SessionBackupRouteDeps): Hono {
         'Cache-Control': 'no-store',
       },
     });
-  });
-
-  // 导入：multipart 的 file 字段是 ZIP 本体；目标已有同 id Session 时 409。
-  app.post('/import', async context => {
+    })
+    // 导入：multipart 的 file 字段是 ZIP 本体；目标已有同 id Session 时 409。
+    .post('/import', async context => {
     const form = await context.req.formData().catch(() => null);
     const file = form?.get('file');
     if (!(file instanceof File) || file.size === 0) {
@@ -90,10 +88,7 @@ export function sessionBackupRoute(deps: SessionBackupRouteDeps): Hono {
       }
       throw error;
     }
-  });
-
-  return app;
-}
+    });
 
 /** 499（客户端取消）不在 Hono 状态码表内；取消时客户端已断开，响应落 500 无人读。 */
 function honoStatus(status: 400 | 404 | 409 | 413 | 499 | 500): 400 | 404 | 409 | 413 | 500 {
