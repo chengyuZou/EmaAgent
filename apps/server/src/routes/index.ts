@@ -13,6 +13,8 @@ import { sessionBackupRoute } from './backup/sessions.js';
 import { characterCollectionRoute } from './characters/collection.js';
 import { characterHealthRoute } from './characters/health.js';
 import { characterResourcesRoute } from './characters/resources.js';
+import { commandsCatalogRoute } from './commands/catalog.js';
+import { commandsCompactRoute } from './commands/compact.js';
 import { knowledgeDocumentsRoute } from './knowledge/documents.js';
 import { knowledgeIngestRoute } from './knowledge/ingest.js';
 import { knowledgeLibsRoute } from './knowledge/libs.js';
@@ -54,7 +56,7 @@ export function createRoutes(composition: Composition, secret: string): Hono {
   const app = new Hono();
   const {
     database, settings, providers, tools, knowledge,
-    characters, speech, turn, memory, backup,
+    characters, speech, turn, commands, memory, backup,
     eventHub, turnEvents, turnFanout,
   } = composition;
 
@@ -94,6 +96,7 @@ export function createRoutes(composition: Composition, secret: string): Hono {
   app.route('/api/sessions', sessionActionsRoute({
     session: database.session,
     turns: database.turns,
+    activeSessions: database.activeSessions,
     invalidateSessionRunner: sessionId => tools.invalidateSessionRunner(sessionId),
     // 跨域删除用例在 application 层，装配时绑定 composition。
     deleteSession: sessionId => deleteSession(composition, sessionId),
@@ -109,6 +112,13 @@ export function createRoutes(composition: Composition, secret: string): Hono {
   }));
   // backup 是独立业务域（未来还有角色/设置备份）；Session 支路的 URL 仍在 /api/sessions 下。
   app.route('/api/sessions', sessionBackupRoute({ backup: backup.sessionBackup }));
+  // /compact 是 Session 级确定性命令，不创建 Turn；URL 挂在 /api/sessions 下。
+  app.route('/api/sessions', commandsCompactRoute({
+    compactSession: commands.compactSession,
+  }));
+  app.route('/api/commands', commandsCatalogRoute({
+    listCommandDescriptors: commands.listCommandDescriptors,
+  }));
 
   app.route('/api/tasks', tasksRoute(database.tasks));
 

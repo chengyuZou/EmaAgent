@@ -34,6 +34,20 @@ export type MessageBlocks = string | AssistantBlock[] | UserBlock[];
 
 const INVALID_MESSAGE_PLACEHOLDER = '[消息内容无法读取]';
 
+/** 一次批量收集消息里全部附件引用 id，避免历史重放时每个引用各做一次 SQL 查询。 */
+export function collectAttachmentReferenceIds(
+  messages: readonly { blocks: MessageBlocks }[],
+): string[] {
+  const ids = new Set<string>();
+  for (const message of messages) {
+    if (!Array.isArray(message.blocks)) continue;
+    for (const block of message.blocks) {
+      if (block.type === 'attachment_ref') ids.add(block.attachmentId);
+    }
+  }
+  return [...ids];
+}
+
 /** 数据库中的未知 JSON 只能在这里转换为 Session MessageBlocks。 */
 export function parseMessageBlocksJson(
   raw: string,

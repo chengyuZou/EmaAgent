@@ -7,6 +7,7 @@ import {
 } from '@ema-agent/context';
 import type { Message } from '@ema-agent/llm';
 import type { SessionStore } from '@ema-agent/session';
+import { recordLlmCallUsage, type UsageRecorder } from '@ema-agent/usage';
 import type { TurnStreamEvent } from '../events.js';
 import type { PreparedTurn } from '../preparation/prepareTurn.js';
 
@@ -17,6 +18,8 @@ export interface PrepareLlmCallDeps {
   readonly compact: (request: CompactRequest) => Promise<CompactResult>;
   readonly emit: (event: TurnStreamEvent) => void;
   readonly budget: AgentBudget;
+  /** 摘要调用记账；缺省不记账（观测不阻断主链）。 */
+  readonly usageRecorder?: UsageRecorder;
   /** 初始工作历史中属于"历史区间"的条数（其后为本 Turn 工作消息）。 */
   readonly baselineMessageCount: number;
   /**
@@ -75,6 +78,8 @@ export function createPrepareLlmCall(deps: PrepareLlmCallDeps): PrepareAgentIter
       systemEnd < 0 ? assembled.messages.length : systemEnd,
     );
 
+    let compactId: string | undefined;
+    let compactDurationMs = 0;
     const result = await deps.compact({
       sessionId: deps.sessionId,
       executionProfile: prepared.executionProfile,
@@ -86,10 +91,14 @@ export function createPrepareLlmCall(deps: PrepareLlmCallDeps): PrepareAgentIter
       estimatedInputTokens: assembled.usage.estimatedInputTokens,
       ...(recoveryReason === 'context_window_exceeded' ? { force: true } : {}),
       contextWindow: prepared.contextWindow,
-      maxOutputTokens,
+      modelMaxOutput: prepared.maxOutput,
       signal: deps.signal,
       // Compact 事件是 Session 域事实；进入本 Turn 事件流时在此补上 Turn 身份。
-      onEvent: event => deps.emit({ ...event, turnId: deps.turnId }),
+      emit: event => {
+        if (event.type === 'compact_started') compactId = event.compactId;
+        if (event.type === 'compact_completed') compactDurationMs = event.durationMs;
+        deps.emit({ ...event, turnId: deps.turnId });
+      },
       settings: prepared.compactSettings,
       // Macro 摘要由 Compact 在保存成功后发 completed；根 Turn 在此落库
       // （/compact Command 复用同一闭包语义，子 Agent 不提供）。
@@ -118,6 +127,22 @@ export function createPrepareLlmCall(deps: PrepareLlmCallDeps): PrepareAgentIter
       baselineCount = result.history.length;
       nextMessages = [...result.history, ...currentTurn];
       assembled = assemble(result.history);
+    }
+    if (result.kind === 'macro') {
+      // 摘要调用的 usage 随完成结果带出；只在成功时入账（abort/失败无 completion），
+      // 与主调用共用同一本账（recordLlmCallUsage）。
+      recordLlmCallUsage(deps.usageRecorder, {
+        providerId: prepared.providerId,
+        modelId: prepared.modelId,
+        startedAt: Date.now() - compactDurationMs,
+        durationMs: compactDurationMs,
+        usage: result.usage,
+        usageContext: {
+          callId: compactId ?? `compact:${deps.turnId}`,
+          sessionId: deps.sessionId,
+          turnId: deps.turnId,
+        },
+      });
     }
 
     deps.onWorkingMessagesPrepared?.(nextMessages);

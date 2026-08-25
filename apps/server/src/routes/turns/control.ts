@@ -1,23 +1,17 @@
-// Turn 运行态控制：根 Turn/单 Tool/单子 Agent 的显式取消 + 执行日志审计查询。
+// Turn 运行态控制：单 Tool/单子 Agent 的显式取消 + 执行日志审计查询。
+// 整体停止不在此——那是 Session 级语义（POST /api/sessions/:id/abort，按坑位 kind 分发）。
 import { Hono } from 'hono';
 import type { ToolExecutionState } from '@ema-agent/tools';
 import type { TurnExecutor, TurnStore } from '@ema-agent/turn';
 
 export interface TurnControlRouteDeps {
-  readonly executor: Pick<TurnExecutor, 'abort' | 'abortAgentRun' | 'abortTool'>;
+  readonly executor: Pick<TurnExecutor, 'abortAgentRun' | 'abortTool'>;
   readonly turns: Pick<TurnStore, 'getTurn'>;
   readonly toolExecutionState: ToolExecutionState;
 }
 
 export function turnControlRoute(deps: TurnControlRouteDeps): Hono {
   const app = new Hono();
-
-  app.post('/:turnId/abort', context => {
-    const turnId = context.req.param('turnId');
-    const turn = deps.turns.getTurn(turnId);
-    if (!turn) return context.json({ error: 'turn_not_found' }, 404);
-    return context.json({ ok: deps.executor.abort(turn.sessionId, turnId) });
-  });
 
   app.delete('/:turnId/tools/:toolCallId', context => {
     const turnId = context.req.param('turnId');

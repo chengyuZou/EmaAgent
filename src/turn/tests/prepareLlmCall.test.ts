@@ -33,11 +33,26 @@ function makePrepared(overrides: Partial<PreparedTurn> = {}): PreparedTurn {
   } as unknown as PreparedTurn;
 }
 
+function macroResult(history: Message[], count: number): CompactResult {
+  return {
+    kind: 'macro' as const,
+    history,
+    beforeTokens: 0,
+    afterTokens: 0,
+    savedTokens: 0,
+    durationMs: 0,
+    usage: { inputTokens: 0, outputTokens: 0 },
+    summarizedMessageCount: count,
+    droppedMessageCount: 0,
+    droppedTokens: 0,
+  };
+}
+
 function macroCompact(history: Message[], summary: string, count: number) {
   return async (request: CompactRequest): Promise<CompactResult> => {
     // 模拟真实 Compact：保存闭包在返回前被调用（保存成功才发 completed）。
     request.saveMacroSummary?.(summary, count);
-    return { kind: 'macro' as const, history, summary, summarizedMessageCount: count };
+    return macroResult(history, count);
   };
 }
 
@@ -127,10 +142,10 @@ describe('prepareLlmCall', () => {
         call += 1;
         if (call === 1) {
           request.saveMacroSummary?.('摘要一', 2);
-          return { kind: 'macro' as const, history: firstHistory, summary: '摘要一', summarizedMessageCount: 2 };
+          return macroResult(firstHistory, 2);
         }
         request.saveMacroSummary?.('摘要二', 1);
-        return { kind: 'macro' as const, history: secondHistory, summary: '摘要二', summarizedMessageCount: 1 };
+        return macroResult(secondHistory, 1);
       },
     });
     const prepare = createPrepareLlmCall(deps);
@@ -150,12 +165,7 @@ describe('prepareLlmCall', () => {
     const macroHistory: Message[] = [{ role: 'user', content: '[子 Agent 摘要]' }];
     const { deps, appendHistorySummary } = makeDeps({
       withPersistence: false,
-      compact: async () => ({
-        kind: 'macro' as const,
-        history: macroHistory,
-        summary: '子 Agent 摘要',
-        summarizedMessageCount: 2,
-      }),
+      compact: async () => macroResult(macroHistory, 2),
     });
     const prepare = createPrepareLlmCall(deps);
 

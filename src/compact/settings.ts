@@ -1,8 +1,7 @@
 // 定义下一根 Turn 使用的自动压缩预算与失败熔断设置。
 // 设置接口与字段统一在此文件:类型、默认、定义、组、聚合读取全部在 settings.ts,
 // types.ts 只保留业务请求/结果类型(CompactRequest 等)。
-// 拆细为一字段一 key;defaultReserved ≤ maximumReserved 是跨字段约束,
-// 故声明 group 'context.compact' 由 SettingsStore 整组 refine。
+// 拆细为一字段一 key;触发线按窗口比例表达(比例制),不随窗口大小漂移。
 
 import type { SettingsStore, SettingGroup } from '@ema-agent/settings';
 import { defineSetting } from '@ema-agent/settings';
@@ -11,14 +10,18 @@ import { z } from 'zod';
 /** 根 Turn 冻结的自动压缩预算、保留窗口与失败熔断设置。 */
 export interface CompactSettings {
   readonly enabled: boolean;
-  readonly bufferTokens: number;
-  readonly defaultReservedOutputTokens: number;
-  readonly maximumReservedOutputTokens: number;
+  /** 触发线余量比例：估算达到窗口的 (1 - bufferRatio) 即压缩；默认 0.15 即 85%。 */
+  readonly bufferRatio: number;
+  /** Macro 摘要调用的输出 token 预算；实际发送按剩余空间裁剪。 */
+  readonly outputTokens: number;
   readonly keepRecentToolResults: number;
   readonly maximumConsecutiveFailures: number;
   /** 近期原文保留比例（相对 contextWindow）；硬预算不足时 Compact 会继续扩大摘要范围。 */
   readonly retainRatio: number;
 }
+
+// manualMinRatio 是手动命令的准入策略（commands 在入口经 compactManualMinRatioSetting
+// 直读），不属于随每次请求传递的压缩算法设置，故不在本快照内。
 
 export const COMPACT_GROUP = 'context.compact';
 
@@ -32,33 +35,23 @@ export const compactEnabledSetting = defineSetting<boolean>({
   group: COMPACT_GROUP,
 });
 
-export const compactBufferTokensSetting = defineSetting<number>({
-  key: 'context.compact.bufferTokens',
-  label: '压缩缓冲 token',
-  description: '压缩前预留的缓冲 token，避免临界值频繁触发压缩。',
+export const compactBufferRatioSetting = defineSetting<number>({
+  key: 'context.compact.bufferRatio',
+  label: '压缩触发缓冲比例',
+  description: '上下文估算达到窗口的 (1 - 比例) 时强制压缩；默认 0.15 即达到 85% 时压缩。',
   apply: 'nextTurn',
-  defaultValue: 13_000,
-  schema: z.number().int().min(1_000).max(64_000),
+  defaultValue: 0.15,
+  schema: z.number().min(0.05).max(0.2),
   group: COMPACT_GROUP,
 });
 
-export const compactDefaultReservedOutputTokensSetting = defineSetting<number>({
-  key: 'context.compact.defaultReservedOutputTokens',
-  label: '默认输出保留预算',
-  description: '压缩后默认保留的输出 token 预算（不能大于最大保留）。',
+export const compactOutputTokensSetting = defineSetting<number>({
+  key: 'context.compact.outputTokens',
+  label: '压缩输出 token 预算',
+  description: '摘要模型一次压缩允许的最大输出 token；实际发送按剩余空间裁剪。',
   apply: 'nextTurn',
   defaultValue: 8_000,
   schema: z.number().int().min(1_000).max(64_000),
-  group: COMPACT_GROUP,
-});
-
-export const compactMaximumReservedOutputTokensSetting = defineSetting<number>({
-  key: 'context.compact.maximumReservedOutputTokens',
-  label: '最大输出保留预算',
-  description: '压缩后最多保留的输出 token 预算。',
-  apply: 'nextTurn',
-  defaultValue: 20_000,
-  schema: z.number().int().min(1_000).max(128_000),
   group: COMPACT_GROUP,
 });
 
@@ -68,7 +61,7 @@ export const compactKeepRecentToolResultsSetting = defineSetting<number>({
   description: '压缩时保留的最近工具结果条数。',
   apply: 'nextTurn',
   defaultValue: 6,
-  schema: z.number().int().min(1).max(32),
+  schema: z.number().int().min(1).max(10),
   group: COMPACT_GROUP,
 });
 
@@ -92,47 +85,47 @@ export const compactRetainRatioSetting = defineSetting<number>({
   group: COMPACT_GROUP,
 });
 
+export const compactManualMinRatioSetting = defineSetting<number>({
+  key: 'context.compact.manualMinRatio',
+  label: '手动压缩下限比例',
+  description: '历史估算低于上下文窗口的该比例时，手动 /compact 没有意义，明确拒绝。',
+  apply: 'nextOperation',
+  defaultValue: 0.15,
+  schema: z.number().min(0.05).max(0.5),
+  group: COMPACT_GROUP,
+});
+
 /** context.compact 组内全部字段定义(供 SettingsStore 注册组)。 */
 export const COMPACT_SETTINGS = [
   compactEnabledSetting,
-  compactBufferTokensSetting,
-  compactDefaultReservedOutputTokensSetting,
-  compactMaximumReservedOutputTokensSetting,
+  compactBufferRatioSetting,
+  compactOutputTokensSetting,
   compactKeepRecentToolResultsSetting,
   compactMaximumConsecutiveFailuresSetting,
   compactRetainRatioSetting,
+  compactManualMinRatioSetting,
 ] as const;
 
-/**
- * context.compact 设置组:跨字段约束 defaultReservedOutputTokens ≤ maximumReservedOutputTokens。
- */
+/** context.compact 设置组。 */
 export const compactGroup: SettingGroup = {
   id: COMPACT_GROUP,
   definitions: COMPACT_SETTINGS,
-  schema: z
-    .object({
-      'context.compact.enabled': z.boolean(),
-      'context.compact.bufferTokens': z.number(),
-      'context.compact.defaultReservedOutputTokens': z.number(),
-      'context.compact.maximumReservedOutputTokens': z.number(),
-      'context.compact.keepRecentToolResults': z.number(),
-      'context.compact.maximumConsecutiveFailures': z.number(),
-      'context.compact.retainRatio': z.number(),
-    })
-    .refine(
-      g =>
-        g['context.compact.defaultReservedOutputTokens'] <=
-        g['context.compact.maximumReservedOutputTokens'],
-      { message: 'defaultReservedOutputTokens 不能大于 maximumReservedOutputTokens' },
-    ),
+  schema: z.object({
+    'context.compact.enabled': z.boolean(),
+    'context.compact.bufferRatio': z.number(),
+    'context.compact.outputTokens': z.number(),
+    'context.compact.keepRecentToolResults': z.number(),
+    'context.compact.maximumConsecutiveFailures': z.number(),
+    'context.compact.retainRatio': z.number(),
+    'context.compact.manualMinRatio': z.number(),
+  }),
 };
 
 /** 整组默认快照(供消费方默认参数与测试),单一事实源是各 setting 的 defaultValue。 */
 export const DEFAULT_COMPACT_SETTINGS: CompactSettings = {
   enabled: compactEnabledSetting.defaultValue,
-  bufferTokens: compactBufferTokensSetting.defaultValue,
-  defaultReservedOutputTokens: compactDefaultReservedOutputTokensSetting.defaultValue,
-  maximumReservedOutputTokens: compactMaximumReservedOutputTokensSetting.defaultValue,
+  bufferRatio: compactBufferRatioSetting.defaultValue,
+  outputTokens: compactOutputTokensSetting.defaultValue,
   keepRecentToolResults: compactKeepRecentToolResultsSetting.defaultValue,
   maximumConsecutiveFailures: compactMaximumConsecutiveFailuresSetting.defaultValue,
   retainRatio: compactRetainRatioSetting.defaultValue,
@@ -142,9 +135,8 @@ export const DEFAULT_COMPACT_SETTINGS: CompactSettings = {
 export function readCompactSettings(store: SettingsStore): CompactSettings {
   return {
     enabled: store.get(compactEnabledSetting),
-    bufferTokens: store.get(compactBufferTokensSetting),
-    defaultReservedOutputTokens: store.get(compactDefaultReservedOutputTokensSetting),
-    maximumReservedOutputTokens: store.get(compactMaximumReservedOutputTokensSetting),
+    bufferRatio: store.get(compactBufferRatioSetting),
+    outputTokens: store.get(compactOutputTokensSetting),
     keepRecentToolResults: store.get(compactKeepRecentToolResultsSetting),
     maximumConsecutiveFailures: store.get(compactMaximumConsecutiveFailuresSetting),
     retainRatio: store.get(compactRetainRatioSetting),

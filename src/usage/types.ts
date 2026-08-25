@@ -5,8 +5,8 @@ export type UsageCapability = ModelCapability;
 export type UsageRecordStatus = 'completed' | 'failed' | 'cancelled';
 
 /** 把一次模型调用关联到业务身份；后台调用可以只提供 callId。 */
-export interface UsageContext<TCallId extends string = string> {
-  callId: TCallId;
+export interface UsageContext {
+  callId: string;
   sessionId?: string;
   turnId?: string;
 }

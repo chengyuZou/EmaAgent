@@ -51,7 +51,7 @@ export function assembleContext(input: AssembleContextInput): PreparedContext {
   return { messages, tools, usage };
 }
 
-interface PromptMessages {
+export interface PromptMessages {
   readonly messages: readonly Message[];
   readonly sections: readonly { readonly name: string; readonly message: Message }[];
 }
@@ -59,8 +59,9 @@ interface PromptMessages {
 /**
  * PromptBlock → system 消息的直接投影：数组顺序即发送顺序；cacheBreakpoint
  * 只来自块自身标记（最后一个产品静态块），不再有哨兵切分。空内容块不进请求。
+ * /compact Command 复用同一投影拼装摘要请求的系统段。
  */
-function buildPromptMessages(systemPrompt: readonly PromptBlock[]): PromptMessages {
+export function buildPromptMessages(systemPrompt: readonly PromptBlock[]): PromptMessages {
   const blocks = systemPrompt.filter(block => block.content.trim().length > 0);
   if (blocks.length === 0) {
     throw new ContextAssemblyError(

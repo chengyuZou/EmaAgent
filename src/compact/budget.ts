@@ -3,8 +3,21 @@
 import type { Message } from '@ema-agent/llm';
 import type { ExecutionProfile } from '@ema-agent/session';
 import { estimateMessagesTokens } from '@ema-agent/token';
+import type { CompactSettings } from './settings.js';
 
 const TRUNCATED_MARKER = '\n\n[摘要已按当前模型上下文预算截断]';
+
+/**
+ * 压缩触发线：估算达到窗口的 (1 - bufferRatio) 即压缩（默认 85%），自动压缩与
+ * force 路径共用它。手动 /compact 的准入下限是另一条独立设置
+ * （compactManualMinRatioSetting，由 commands 入口直读），不要混用。
+ */
+export function compactTokenLimit(
+  contextWindow: number,
+  settings: Readonly<CompactSettings>,
+): number {
+  return Math.max(1, Math.floor(contextWindow * (1 - settings.bufferRatio)));
+}
 
 interface FittedCompactHistory {
   readonly history: Message[];

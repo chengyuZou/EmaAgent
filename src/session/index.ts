@@ -9,7 +9,11 @@ export {
   SessionBusyError,
 } from './errors.js';
 export { ActiveSessionRegistry } from './activeSessionRegistry.js';
-export { parseMessageBlocksJson } from './message.js';
+export type {
+  ActiveSessionExecution,
+  ActiveSessionExecutionKind,
+} from './activeSessionRegistry.js';
+export { parseMessageBlocksJson, collectAttachmentReferenceIds } from './message.js';
 export type {
   Session,
   SessionListItem,

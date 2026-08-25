@@ -1,6 +1,7 @@
 // 测试 Turn 生命周期、单 Session 运行锁、取消信号、删除守卫、导航查询与最后一轮回滚。
 import { describe, expect, it } from 'vitest';
 import { Database, MessagesRepo, SessionsRepo } from '@ema-agent/storage';
+import { ActiveSessionRegistry } from '@ema-agent/session';
 import { TurnStore } from '../turnStore.js';
 
 let seq = 100;
@@ -8,7 +9,7 @@ let seq = 100;
 function makeStore() {
   const db = new Database({ memory: true, kind: 'data' });
   db.migrate();
-  return { store: new TurnStore({ db }), db };
+  return { store: new TurnStore({ db, activeSessions: new ActiveSessionRegistry() }), db };
 }
 
 function insertSession(db: Database, id: string): string {

@@ -1,5 +1,6 @@
 // 统一导出一次 LLM Call 的 Context 装配、Session 投影和 Usage 边界。
-export { assembleContext } from './assembleContext.js';
+export { assembleContext, buildPromptMessages } from './assembleContext.js';
+export type { PromptMessages } from './assembleContext.js';
 export {
   deriveLlmHistory,
   renderSkillReferenceForModel,

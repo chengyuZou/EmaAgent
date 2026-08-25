@@ -20,6 +20,16 @@ export {
   workspaceInstructionFilesSetting,
 } from './settings.js';
 export { TurnExecutor, TurnReminderScope } from './turn.js';
+export { createGenerationTargetResolver } from './turn.js';
+export {
+  buildSessionSystemPrompt,
+  resolveWorkSkillPool,
+} from './preparation/sessionSystemPrompt.js';
+export type {
+  SessionSystemPromptDeps,
+  SessionSystemPromptInput,
+  WorkSkillPoolDeps,
+} from './preparation/sessionSystemPrompt.js';
 export { renderTurnReminder } from './preparation/turnReminder.js';
 export type {
   RenderTurnReminderInput,

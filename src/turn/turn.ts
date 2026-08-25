@@ -11,20 +11,19 @@ import type { CompactRequest, CompactResult } from '@ema-agent/compact';
 import type {
   CallLlm,
   LlmGenerationSource,
-  LlmProtocol,
   Message,
 } from '@ema-agent/llm';
-import { PROTOCOLS } from '@ema-agent/providers';
-import type {
-  AttachmentReferenceBlock,
-  Message as SessionMessage,
-  MessageBlocks,
-  SessionStore,
+import { isLlmProtocol } from '@ema-agent/providers';
+import {
+  collectAttachmentReferenceIds,
+  type AttachmentReferenceBlock,
+  type MessageBlocks,
+  type SessionStore,
 } from '@ema-agent/session';
 import type { StageEngine } from '@ema-agent/stage';
 import type { TurnFailureCode } from './errors.js';
 import type { Turn } from './types.js';
-import { reportUsage, createUsageRecord, type UsageRecorder } from '@ema-agent/usage';
+import { recordLlmCallUsage, type UsageRecorder } from '@ema-agent/usage';
 import {
   TurnEventChannel,
   TurnEventChannelClosedError,
@@ -59,10 +58,6 @@ import type {
 /** 本包常量预算；工具/子 Agent 额度来自 agent 包 settings，时长与输出上限 V1 不做设置项。 */
 const DEFAULT_MAX_DURATION_MS = 30 * 60_000;
 const DEFAULT_MAX_OUTPUT_TOKENS = 200_000;
-
-/** turn.protocol 是存储的普通 string；不在 LlmProtocol 词表内返回 undefined（不伪造）。 */
-const isLlmProtocol = (value: string): value is LlmProtocol =>
-  (PROTOCOLS as readonly string[]).includes(value);
 
 /**
  * Reminder 事实的作用域：git/任务/scratchpad 等工作区与 Session 事实、Narrative 召回
@@ -324,19 +319,9 @@ export class TurnExecutor {
         throw new Error('reminder 消息落库后未能从 Session History 读回');
       }
       // 每条 Assistant 历史关联所属 Turn 冻结的调用目标（providerId/modelId/protocol）；
-      // 查不到目标就缺省，由目标协议 Adapter 依据 generatedBy 裁决 thinking 重放。
-      // 同一 Turn 的多条 Assistant 共享同一行冻结目标：按 turnId 缓存，避免逐条重复 SQL。
-      const generationTargetCache = new Map<string, LlmGenerationSource | undefined>();
-      const resolveGenerationTarget = (turnId: string): LlmGenerationSource | undefined => {
-        if (generationTargetCache.has(turnId)) return generationTargetCache.get(turnId);
-        const turn = this.deps.turns.getTurn(turnId);
-        const source = turn?.providerId && turn.modelId && turn.protocol && isLlmProtocol(turn.protocol)
-          ? { providerId: turn.providerId, modelId: turn.modelId, protocol: turn.protocol }
-          : undefined;
-        generationTargetCache.set(turnId, source);
-        return source;
-      };
-      const attachmentIds = collectAttachmentIds(persisted);
+      // 解析实现与 /compact Command 共用（createGenerationTargetResolver）。
+      const resolveGenerationTarget = createGenerationTargetResolver(this.deps.turns);
+      const attachmentIds = collectAttachmentReferenceIds(persisted);
       const attachmentsById = this.deps.attachments.getMany(attachmentIds);
       const supportsImageInput = prepared.supportsImageInput;
       const describeImage = this.deps.describeImage;
@@ -374,6 +359,7 @@ export class TurnExecutor {
         compact: compactForTurn,
         emit,
         budget,
+        usageRecorder: this.deps.usageRecorder,
         baselineMessageCount: historyWithIds.length,
         // 根 Turn 的 Macro 摘要落 Session：身份数组供 summarizedMessageCount 映射覆盖游标。
         macroPersistence: {
@@ -619,16 +605,25 @@ function explicitUserText(blocks: MessageBlocks): string {
     .join('');
 }
 
-/** 一次批量读取本轮会重放的附件，避免历史中每个引用各做一次 SQL 查询。 */
-function collectAttachmentIds(messages: readonly SessionMessage[]): string[] {
-  const ids = new Set<string>();
-  for (const message of messages) {
-    if (!Array.isArray(message.blocks)) continue;
-    for (const block of message.blocks) {
-      if (block.type === 'attachment_ref') ids.add(block.attachmentId);
-    }
-  }
-  return [...ids];
+/**
+ * Assistant 历史按所属 Turn 冻结的调用目标（providerId/modelId/protocol）挂生成来源：
+ * 查不到目标（Turn 缺失或 protocol 不在词表）返回 undefined，不伪造，由目标协议
+ * Adapter 依据 generatedBy 裁决 thinking 重放。同一 Turn 的多条 Assistant 共享同一行
+ * 冻结目标，按 turnId 缓存避免逐条重复 SQL。根 Turn 泵与 /compact Command 共用。
+ */
+export function createGenerationTargetResolver(
+  turns: Pick<TurnStore, 'getTurn'>,
+): (turnId: string) => LlmGenerationSource | undefined {
+  const cache = new Map<string, LlmGenerationSource | undefined>();
+  return (turnId) => {
+    if (cache.has(turnId)) return cache.get(turnId);
+    const turn = turns.getTurn(turnId);
+    const source = turn?.providerId && turn.modelId && turn.protocol && isLlmProtocol(turn.protocol)
+      ? { providerId: turn.providerId, modelId: turn.modelId, protocol: turn.protocol }
+      : undefined;
+    cache.set(turnId, source);
+    return source;
+  };
 }
 
 /** 逐次 LLM 调用记账；零消耗（首个 token 前就中止）不产生记录。观测失败不阻断主链。 */
@@ -639,29 +634,12 @@ function recordCallUsage(
   turnId: string,
   event: Extract<AgentLoopEvent, { type: 'assistant_message_completed' }>,
 ): void {
-  if (!recorder) return;
-  const { usage } = event;
-  if (
-    usage.inputTokens <= 0
-    && usage.outputTokens <= 0
-    && (usage.cacheReadInputTokens ?? 0) <= 0
-    && (usage.cacheWriteInputTokens ?? 0) <= 0
-  ) return;
-  reportUsage(
-    recorder,
-    createUsageRecord({
-      capability: 'llm',
-      providerId: prepared.providerId,
-      modelId: prepared.modelId,
-      status: 'completed',
-      startedAt: Date.now() - event.durationMs,
-      durationMs: event.durationMs,
-      usageContext: { callId: `${turnId}:${event.iteration}`, sessionId, turnId },
-      inputTokens: usage.inputTokens,
-      outputTokens: usage.outputTokens,
-      cacheReadInputTokens: usage.cacheReadInputTokens ?? null,
-      cacheWriteInputTokens: usage.cacheWriteInputTokens ?? null,
-    }),
-    error => console.warn('[usage] LLM 调用记账失败:', error),
-  );
+  recordLlmCallUsage(recorder, {
+    providerId: prepared.providerId,
+    modelId: prepared.modelId,
+    startedAt: Date.now() - event.durationMs,
+    durationMs: event.durationMs,
+    usage: event.usage,
+    usageContext: { callId: `${turnId}:${event.iteration}`, sessionId, turnId },
+  });
 }

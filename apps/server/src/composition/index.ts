@@ -6,6 +6,7 @@ import { TurnFanout } from '../sse/turnFanout.js';
 import { BackgroundCompletion } from '../application/backgroundCompletion.js';
 import { openBackup, type BackupComposition } from './backup.js';
 import { openCharacters, type CharactersComposition } from './characters.js';
+import { openCommands, type CommandsComposition } from './commands.js';
 import { openDatabases, type DatabaseComposition } from './database.js';
 import { openKnowledge, type KnowledgeComposition } from './knowledge.js';
 import { openMemory, type MemoryComposition } from './memory.js';
@@ -26,6 +27,7 @@ export interface Composition {
   readonly narrative: NarrativeComposition;
   readonly speech: SpeechComposition;
   readonly turn: TurnComposition;
+  readonly commands: CommandsComposition;
   readonly memory: MemoryComposition;
   readonly backup: BackupComposition;
   readonly eventHub: EventHub;
@@ -117,6 +119,14 @@ export function buildComposition(input: { activeDataDir: string }): Composition 
     emitAppEvent: event => eventHub.emitApp(event),
     onTurnCompletedInTransaction: turnId => memory.enqueueTurnExtraction(turnId),
   });
+  const commands = openCommands({
+    database,
+    settings,
+    providers,
+    tools,
+    characters,
+    turn,
+  });
   const backup = openBackup(database.dataDb, input.activeDataDir, providers.providerModels);
   const turnFanout = new TurnFanout({
     store: turnEvents,
@@ -142,6 +152,7 @@ export function buildComposition(input: { activeDataDir: string }): Composition 
     narrative,
     speech,
     turn,
+    commands,
     memory,
     backup,
     eventHub,

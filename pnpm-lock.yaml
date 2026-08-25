@@ -262,6 +262,9 @@ importers:
       '@ema-agent/characters':
         specifier: workspace:*
         version: link:../../src/characters
+      '@ema-agent/commands':
+        specifier: workspace:*
+        version: link:../../src/commands
       '@ema-agent/compact':
         specifier: workspace:*
         version: link:../../src/compact
@@ -595,6 +598,58 @@ importers:
         specifier: ^4
         version: 4.4.3
     devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
+
+  src/commands:
+    dependencies:
+      '@ema-agent/attachments':
+        specifier: workspace:*
+        version: link:../attachments
+      '@ema-agent/compact':
+        specifier: workspace:*
+        version: link:../compact
+      '@ema-agent/context':
+        specifier: workspace:*
+        version: link:../context
+      '@ema-agent/llm':
+        specifier: workspace:*
+        version: link:../llm
+      '@ema-agent/providers':
+        specifier: workspace:*
+        version: link:../providers
+      '@ema-agent/session':
+        specifier: workspace:*
+        version: link:../session
+      '@ema-agent/settings':
+        specifier: workspace:*
+        version: link:../settings
+      '@ema-agent/skills':
+        specifier: workspace:*
+        version: link:../skills
+      '@ema-agent/token':
+        specifier: workspace:*
+        version: link:../token
+      '@ema-agent/turn':
+        specifier: workspace:*
+        version: link:../turn
+      '@ema-agent/usage':
+        specifier: workspace:*
+        version: link:../usage
+    devDependencies:
+      '@ema-agent/storage':
+        specifier: workspace:*
+        version: link:../storage
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.39
@@ -1534,6 +1589,9 @@ importers:
 
   src/usage:
     dependencies:
+      '@ema-agent/llm':
+        specifier: workspace:*
+        version: link:../llm
       '@ema-agent/providers':
         specifier: workspace:*
         version: link:../providers

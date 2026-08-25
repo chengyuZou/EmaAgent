@@ -11,7 +11,7 @@ async function main(): Promise<void> {
   const shutdown = (signal: string): void => {
     if (closing) return;
     closing = true;
-    console.log(`[server] 收到 ${signal}，开始优雅关闭`);
+    console.log(`[server] 收到 ${signal}，即将关闭`);
     void lifecycle.shutdown()
       .catch(error => console.warn('[server] 关闭异常:', error))
       .finally(() => process.exit(0));

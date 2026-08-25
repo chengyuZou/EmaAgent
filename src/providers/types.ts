@@ -25,6 +25,11 @@ export type RerankProtocol = Extract<Protocol, `${string}-rerank`>;
 export type TtsProtocol = Extract<Protocol, `${string}-tts`>;
 export type SttProtocol = Extract<Protocol, `${string}-stt`>;
 
+/** 存储层只存普通 string；词表守卫：不在 LlmProtocol 词表内返回 false（不伪造来源）。 */
+export function isLlmProtocol(value: string): value is LlmProtocol {
+  return (PROTOCOLS as readonly string[]).includes(value) && value.endsWith('-llm');
+}
+
 export interface ModelCapabilityProtocolMap {
   llm: LlmProtocol;
   embed: EmbedProtocol;

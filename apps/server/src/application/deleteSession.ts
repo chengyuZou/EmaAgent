@@ -16,6 +16,9 @@ export async function deleteSession(composition: Composition, sessionId: string)
     if (active) {
       await turn.turnExecutor.abortAndAwait(sessionId, active.id);
     }
+    // 手动 compact 不是 Turn，abortAndAwait 等不到它：等 Session 坑位被
+    // 执行所有者自己释放（compact 链收到信号后取消并清坑），再动数据行。
+    await database.activeSessions.waitUntilIdle(sessionId);
     turn.interactionQueue.cancelForSession(sessionId, 'session deleted');
     clearSessionRules(sessionId);
     await tools.discardSessionToolState(sessionId);

@@ -1,16 +1,12 @@
-// 依次执行阈值判断、微压缩、安全切割、摘要压缩和 Session 级失败熔断。
+// 唯一压缩管线：阈值判断、可选 Micro、调 Macro、Session 级失败熔断与持久化闭包。
+// 切割（窗口截断/近期保留/候选收缩/预算拟合）全部归 macroCompact，本文件不碰。
 
 import { randomUUID } from 'node:crypto';
 import type { CallLlm, Message } from '@ema-agent/llm';
 import { estimateMessagesTokens } from '@ema-agent/token';
-import { fitCompactHistory } from './budget.js';
+import { compactTokenLimit } from './budget.js';
 import { runMacroCompact } from './macroCompact.js';
 import { microCompact } from './microCompact.js';
-import {
-  findRetainedHistoryStart,
-  findSafeCutPoint,
-  findSafeCutPointAtOrAfter,
-} from './safeCut.js';
 import {
   DEFAULT_COMPACT_SETTINGS,
   type CompactSettings,
@@ -19,8 +15,6 @@ import type {
   CompactRequest,
   CompactResult,
 } from './types.js';
-
-const MIN_SUMMARY_BUDGET_TOKENS = 256;
 
 /**
  * 建立一个带 Session 级失败熔断的压缩函数。
@@ -57,10 +51,9 @@ async function compactMessages(args: {
   const startedAt = Date.now();
   const history = [...request.history];
   const unchanged = (): CompactResult => ({ kind: 'unchanged', history });
-  const originalHistoryTokens = estimateMessagesTokens(history);
   const tokensOutsideHistory = Math.max(
     0,
-    request.estimatedInputTokens - originalHistoryTokens,
+    request.estimatedInputTokens - estimateMessagesTokens(history),
   );
   const estimate = (candidate: readonly Message[]): number => Math.max(
     0,
@@ -71,14 +64,7 @@ async function compactMessages(args: {
   if (history.length === 0) return unchanged();
   if (!settings.enabled && !request.force) return unchanged();
 
-  const reservedOutputTokens = Math.min(
-    request.maxOutputTokens ?? settings.defaultReservedOutputTokens,
-    settings.maximumReservedOutputTokens,
-  );
-  const tokenLimit = Math.max(
-    1,
-    request.contextWindow - reservedOutputTokens - settings.bufferTokens,
-  );
+  const tokenLimit = compactTokenLimit(request.contextWindow, settings);
 
   if (!request.force && beforeTokens <= tokenLimit) return unchanged();
   if (
@@ -89,46 +75,28 @@ async function compactMessages(args: {
     return unchanged();
   }
 
-  const micro = microCompact(history, {
-    keepRecent: settings.keepRecentToolResults,
-  });
-  const afterMicroTokens = estimate(micro);
-  if (!request.force && afterMicroTokens <= tokenLimit) {
+  const compactId = randomUUID();
+  // Micro：大 ToolResult 占位替换（请求级开关；手动 /compact 关闭——替换从不落库，
+  // 命令路径只要纯粹的 Macro 摘要）。
+  const working = request.micro === false
+    ? history
+    : microCompact(history, { keepRecent: settings.keepRecentToolResults });
+  // Micro 的节省属于历史内部重算：传给 Macro 的估算 = 不变的历史外成本 + Micro 后历史，
+  // 否则 Macro 会把 Micro 省下的部分误算成历史外成本，直接判成"外部成本超线"。
+  const workingEstimatedInputTokens = tokensOutsideHistory + estimateMessagesTokens(working);
+  if (
+    !request.force
+    && request.micro !== false
+    && estimate(working) <= tokenLimit
+  ) {
     args.consecutiveFailures.delete(request.sessionId);
-    return { kind: 'micro', history: micro };
+    return { kind: 'micro', history: working };
   }
 
-  // 近期尾部按 contextWindow × retainRatio 换算的 Token 预算选择；硬预算放不下时
-  // chooseSafeCut 会继续扩大旧前缀——retainRatio 是期望保留量，硬预算优先于比例。
-  const retainTokens = Math.floor(request.contextWindow * settings.retainRatio);
-  const safeCut = chooseSafeCut({
-    messages: micro,
-    desiredCut: findRetainedHistoryStart(micro, retainTokens),
-    tokensOutsideHistory,
-    tokenLimit,
-  });
-  // 切点为 0 说明近期尾部本身就占满预算（或历史配对损坏），没有可摘要的旧前缀；
-  // 对空历史跑摘要模型只会产生空摘要，如实判失败交给熔断计数。
-  if (safeCut === 0) {
-    const compactId = randomUUID();
-    recordFailure({
-      request,
-      compactId,
-      beforeTokens,
-      detail: '近期原文已占满预算，没有可摘要的旧前缀',
-      startedAt,
-      consecutiveFailures: args.consecutiveFailures,
-    });
-    return unchanged();
-  }
-  const head = micro.slice(0, safeCut);
-  const tail = micro.slice(safeCut);
-  const compactId = randomUUID();
-  request.onEvent?.({
+  request.emit?.({
     type: 'compact_started',
     compactId,
     sessionId: request.sessionId,
-
     beforeTokens,
   });
 
@@ -140,13 +108,16 @@ async function compactMessages(args: {
       systemMessages: request.systemMessages,
       tools: request.tools,
       ...(request.thinking ? { thinking: request.thinking } : {}),
-      toCompact: head,
+      toCompact: working,
+      estimatedInputTokens: workingEstimatedInputTokens,
+      settings,
       modelContextWindow: request.contextWindow,
+      modelMaxOutput: request.modelMaxOutput,
       signal: request.signal,
     });
   } catch (error) {
     if (!isAbort(error, request.signal)) throw error;
-    request.onEvent?.({
+    request.emit?.({
       type: 'compact_cancelled',
       compactId,
       sessionId: request.sessionId,
@@ -165,40 +136,22 @@ async function compactMessages(args: {
       startedAt,
       consecutiveFailures: args.consecutiveFailures,
     });
-    return unchanged();
+    return { kind: 'unchanged', history, failureDetail: macro.detail };
   }
 
-  const fitted = fitCompactHistory({
-    summary: macro.summary,
-    tail,
-    executionProfile: request.executionProfile,
-    tokenLimit,
-    tokensOutsideHistory,
-  });
-  if (!fitted) {
-    recordFailure({
-      request,
-      compactId,
-      beforeTokens,
-      detail: `摘要与近期历史无法放入 ${tokenLimit} Token 的历史预算`,
-      startedAt,
-      consecutiveFailures: args.consecutiveFailures,
-    });
-    return unchanged();
-  }
-
-  // Macro 摘要持久化在完成事件之前：只有保存成功才发 compact_completed，保证
+  // Macro 摘要持久化在完成事件之前：只有保存成功才发后续事件，保证
   // "完成" = 摘要已落库（根 Turn / /compact）或内存替换已应用（子 Agent 不提供闭包）。
+  // 截断事件也在落库之后：保存失败时历史未变，前端不得先看到"历史已经截断"。
   if (request.saveMacroSummary) {
     try {
-      request.saveMacroSummary(fitted.summary, safeCut);
+      request.saveMacroSummary(macro.summary, macro.summarizedMessageCount);
     } catch (error) {
-      request.onEvent?.({
+      request.emit?.({
         type: 'compact_failed',
         compactId,
         sessionId: request.sessionId,
         beforeTokens,
-        afterTokens: fitted.afterTokens,
+        afterTokens: macro.afterTokens,
         error: error instanceof Error ? error.message : String(error),
         durationMs: Date.now() - startedAt,
       });
@@ -206,39 +159,42 @@ async function compactMessages(args: {
     }
   }
 
+  if (macro.droppedMessageCount > 0) {
+    request.emit?.({
+      type: 'compact_history_truncated',
+      compactId,
+      sessionId: request.sessionId,
+      beforeTokens,
+      droppedMessageCount: macro.droppedMessageCount,
+      droppedTokens: macro.droppedTokens,
+    });
+  }
+
+  const durationMs = Date.now() - startedAt;
   args.consecutiveFailures.delete(request.sessionId);
-  request.onEvent?.({
+  request.emit?.({
     type: 'compact_completed',
     compactId,
     sessionId: request.sessionId,
 
     beforeTokens,
-    afterTokens: fitted.afterTokens,
-    savedTokens: Math.max(0, beforeTokens - fitted.afterTokens),
-    durationMs: Date.now() - startedAt,
+    afterTokens: macro.afterTokens,
+    savedTokens: Math.max(0, beforeTokens - macro.afterTokens),
+    durationMs,
   });
   return {
     kind: 'macro',
-    history: fitted.history,
-    summary: fitted.summary,
-    summarizedMessageCount: safeCut,
+    history: macro.history,
+    beforeTokens,
+    afterTokens: macro.afterTokens,
+    savedTokens: Math.max(0, beforeTokens - macro.afterTokens),
+    durationMs,
+    usage: macro.usage,
+    // 计数相对输入历史（含被淘汰偏移），调用方游标映射无需感知偏移。
+    summarizedMessageCount: macro.summarizedMessageCount,
+    droppedMessageCount: macro.droppedMessageCount,
+    droppedTokens: macro.droppedTokens,
   };
-}
-
-function chooseSafeCut(args: {
-  readonly messages: readonly Message[];
-  readonly desiredCut: number;
-  readonly tokensOutsideHistory: number;
-  readonly tokenLimit: number;
-}): number {
-  let cut = findSafeCutPoint(args.messages, args.desiredCut);
-  while (cut < args.messages.length) {
-    const tail = args.messages.slice(cut);
-    const tailTokens = args.tokensOutsideHistory + estimateMessagesTokens([...tail]);
-    if (tailTokens + MIN_SUMMARY_BUDGET_TOKENS < args.tokenLimit) return cut;
-    cut = findSafeCutPointAtOrAfter(args.messages, cut + 1);
-  }
-  return args.messages.length;
 }
 
 function recordFailure(args: {
@@ -253,7 +209,7 @@ function recordFailure(args: {
     args.request.sessionId,
     failureCount(args.consecutiveFailures, args.request.sessionId) + 1,
   );
-  args.request.onEvent?.({
+  args.request.emit?.({
     type: 'compact_failed',
     compactId: args.compactId,
     sessionId: args.request.sessionId,
@@ -278,11 +234,9 @@ function validateRequest(request: CompactRequest): void {
   if (!Number.isFinite(request.contextWindow) || request.contextWindow <= 0) {
     throw new RangeError('contextWindow 必须是正有限数值');
   }
-  if (
-    request.maxOutputTokens !== undefined
-    && (!Number.isFinite(request.maxOutputTokens) || request.maxOutputTokens < 0)
-  ) {
-    throw new RangeError('maxOutputTokens 必须是非负有限数值');
+  // 估算器同一个，全量不可能小于部分；小了就是调用方传错，静默 clamp 会吞掉这个 bug。
+  if (request.estimatedInputTokens < estimateMessagesTokens([...request.history])) {
+    throw new RangeError('estimatedInputTokens 不得小于 history 本身的估算（历史外成本不能为负）');
   }
   if (request.history.some((message) => message.role === 'system')) {
     throw new TypeError('CompactRequest.history 不能包含 System Prompt');

@@ -11,7 +11,7 @@ import {
 } from '@ema-agent/storage';
 import { AgentRunMessagesStore, AgentRunStore } from '@ema-agent/agent';
 import { AttachmentStore } from '@ema-agent/attachments';
-import { SessionStore } from '@ema-agent/session';
+import { ActiveSessionRegistry, SessionStore } from '@ema-agent/session';
 import { TaskStore } from '@ema-agent/tasks';
 import { TurnStore } from '@ema-agent/turn';
 import type { UsageRecorder } from '@ema-agent/usage';
@@ -32,6 +32,8 @@ export interface DatabaseComposition {
 
   readonly session: SessionStore;
   readonly turns: TurnStore;
+  /** Session 级活跃执行坑位：根 Turn 与手动 compact 共享互斥（commands 装配同源注入）。 */
+  readonly activeSessions: ActiveSessionRegistry;
   readonly attachments: AttachmentStore;
   readonly tasks: TaskStore;
   readonly agentRuns: AgentRunStore;
@@ -73,9 +75,11 @@ export function openDatabases(activeDataDir: string): DatabaseComposition {
     // Session 删除提交后清理库外文件（音频、附件、工具结果、scratchpad）。
     onSessionRemoved: sessionId => removeSessionDir(activeDataDir, sessionId),
   });
+  const activeSessions = new ActiveSessionRegistry();
   const turns = new TurnStore({
     db: dataDb,
     onTurnRemoved: (sessionId, turnId) => removeTurnFiles(activeDataDir, sessionId, turnId),
+    activeSessions,
   });
 
   return {
@@ -84,6 +88,7 @@ export function openDatabases(activeDataDir: string): DatabaseComposition {
     activeDataDir,
     session,
     turns,
+    activeSessions,
     attachments: new AttachmentStore({ repo: new AttachmentRepo(dataDb.sqlite), dataDir: activeDataDir }),
     tasks: new TaskStore(new TasksRepo(dataDb.sqlite)),
     agentRuns: new AgentRunStore(new AgentRunsRepo(dataDb.sqlite)),

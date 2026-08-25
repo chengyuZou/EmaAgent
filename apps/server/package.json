@@ -27,6 +27,7 @@
     "@ema-agent/attachments": "workspace:*",
     "@ema-agent/backup": "workspace:*",
     "@ema-agent/characters": "workspace:*",
+    "@ema-agent/commands": "workspace:*",
     "@ema-agent/compact": "workspace:*",
     "@ema-agent/context": "workspace:*",
     "@ema-agent/embed": "workspace:*",

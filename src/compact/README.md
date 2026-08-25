@@ -12,17 +12,17 @@ const result = await compact({
   history,
   estimatedInputTokens,
   contextWindow,
-  maxOutputTokens,
   force,
+  micro,   // 缺省 true；手动 /compact 传 false（只要纯 Macro 摘要）
   signal,
-  onEvent,
+  emit,
   settings,
 });
 ```
 
 `createCompact()` 返回一个函数。闭包只保存每个 Session 的连续失败次数，不保存 Message、Prompt 或 Session 数据，因此无需 `CompactManager`/`CompactService` 类。
 
-请求与事件都不携带 Turn 身份：自动压缩由 Turn 把 `onEvent` 事件补 `turnId` 后投影进 Turn 事件流；手动压缩（`/compact`）由 Command 自己的出口返回结果。
+请求与事件都不携带 Turn 身份：自动压缩由 Turn 把 `emit` 事件补 `turnId` 后投影进 Turn 事件流；手动压缩（`/compact`）由 Command 自己的出口返回结果。
 
 ## 返回值
 
@@ -49,18 +49,21 @@ type CompactResult =
 ## 固定流水线
 
 ```text
-阈值检查
-  → Micro：清理可重取的旧 Tool Result
-  → Retained Start：从尾部按 retainRatio × contextWindow 的 Token 预算选近期起点
-  → Safe Cut：不拆散 tool_use / tool_result，硬预算不足时继续扩大旧前缀
-  → Macro：当前模型生成结构化摘要
-  → Budget：摘要 + 近期历史适配硬预算
+阈值检查（触发线 = 窗口 × (1 - bufferRatio)，默认 85%）
+  → Micro（请求级开关，缺省开；手动 /compact 传 micro:false 关闭——替换不落库，
+    命令路径只要纯 Macro）：清理可重取的旧 Tool Result
+  → Macro（macroCompact 内部全包，切割不离开该文件）：
+      单趟双边界切割：85% 触发线一刀切（窗口截断，丢弃事实随结果返回）
+      + 16%（retainRatio）近期原文保留选取，配对安全一趟调整
+      → 硬预算扩张：保留线右移直到 tail + 摘要最小预算可拟合（单条超大消息也进 Macro）
+      → 候选按摘要模型输入预算收缩，Provider 判超按比例重试（≤3 次）
+      → 摘要 + 保留尾预算拟合（二分裁剪摘要正文）
   → 成功清零 Session 熔断；失败累计熔断
 ```
 
-近期尾部由 `findRetainedHistoryStart(history, retainTokens)` 决定：`retainRatio`（5%～25%，默认 16%）是期望保留量，不是无条件保证——硬预算优先于比例。
+近期保留是期望保留量不是无条件保证——硬预算优先于比例（扩张与拟合兜底）。窗口截断只有随成功的压缩生效才是事实：`compact_history_truncated` 在 Macro 成功后补发，丢弃偏移计入 `summarizedMessageCount`（相对输入历史），调用方游标映射无需感知偏移。
 
-`estimatedInputTokens` 是完整候选请求的估算。Compact 使用同一 `@ema-agent/token` 实现扣除历史外成本，但永远看不到 System Prompt、Tool definitions、Runtime Reminder 或 Current Turn 的正文。
+`estimatedInputTokens` 是调用方在调用时刻对完整候选请求的本地最佳估算，不得小于 history 本身（`validateRequest` 校验；历史外成本不能为负）。Compact 不重新获取 System Prompt、Tool definitions、Runtime Reminder 或 Current Turn——它们由调用方以 `systemMessages`/`tools` 显式传入（摘要请求与主对话共享 KV 前缀就靠这个），历史区间是唯一允许 Compact 改写的内容。
 
 ## 摘要请求形状（KV 前缀共享）
 
@@ -72,7 +75,7 @@ systemMessages（调用方从本轮 Context 装配结果取出，同字节、含
 + 尾部 user 压缩指令（恒定文本；前缀命中区之外）
 ```
 
-摘要模型输入超预算时按 `findRetainedHistoryStart` 从尾部 Token 累计收缩（不做砍半或字符串掐头去尾），被丢弃的最旧部分在指令里如实标注条数；Provider 仍判超时按 ×0.8 缩预算重试至多 3 次。
+摘要模型输入超预算时按后缀 Token 累计从尾部收缩候选（不做砍半或字符串掐头去尾），被淘汰的最旧部分在指令里如实标注条数并计入 `droppedMessageCount/droppedTokens`；Provider 仍判超时按 ×0.8 缩预算重试至多 3 次。
 
 ## Macro 持久化接线
 

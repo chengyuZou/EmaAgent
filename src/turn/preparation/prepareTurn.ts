@@ -29,7 +29,7 @@ import {
   type PermissionMode,
   type PermissionRuleBuckets,
 } from '@ema-agent/permission';
-import { getSystemPrompt, type PromptBlock } from '@ema-agent/prompts';
+import type { PromptBlock } from '@ema-agent/prompts';
 import type { ProviderModels, Providers } from '@ema-agent/providers';
 import type {
   MessageBlocks,
@@ -37,15 +37,10 @@ import type {
   UserBlock as SessionUserBlock,
 } from '@ema-agent/session';
 import type { SettingsStore } from '@ema-agent/settings';
-import {
-  builtinSkillsEnabledSetting,
-  disabledProjectSourcesSetting,
-  disabledSkillKeysSetting,
-  freezeSkillPool,
-  renderSkillListing,
-  type SkillDescriptor,
-  type SkillKey,
-  type SkillPool,
+import type {
+  SkillDescriptor,
+  SkillKey,
+  SkillPool,
 } from '@ema-agent/skills';
 import type { ExecutionProfile } from '@ema-agent/session';
 import type { RequestDegradationNotice } from '../types.js';
@@ -57,6 +52,10 @@ import {
   type TurnToolsAssembly,
   type TurnToolsDeps,
 } from './prepareTurnTools.js';
+import {
+  buildSessionSystemPrompt,
+  resolveWorkSkillPool,
+} from './sessionSystemPrompt.js';
 
 /** 一个根 Turn 的冻结事实；运行期只读取这一份，不再回读 Settings/Registry/Session。 */
 export interface PreparedTurn {
@@ -156,18 +155,12 @@ export async function prepareTurn(
   const supportsImageInput = modelFacts.inputImage === true;
   const degradations: RequestDegradationNotice[] = [];
 
-  // Skill 目录与 Pool 同步冻结；chat 态不建 Pool（Skill 工具不可见）。
-  const skillEntries = request.executionProfile === 'work'
-    ? await deps.skillEntries(workspaceRoot)
-    : [];
-  const skillPool = skillEntries.length
-    ? freezeSkillPool({
-        entries: skillEntries,
-        disabledKeys: deps.settings.get(disabledSkillKeysSetting),
-        disabledProjectSources: deps.settings.get(disabledProjectSourcesSetting).disabledSourceIds,
-        builtinEnabled: deps.settings.get(builtinSkillsEnabledSetting),
-      })
-    : undefined;
+  // Skill 目录与 Pool 同步冻结（与 /compact Command 共用同一装配）；chat 态不建 Pool。
+  const skillPool = await resolveWorkSkillPool(
+    { settings: deps.settings, skillEntries: deps.skillEntries },
+    request.executionProfile,
+    workspaceRoot,
+  );
 
   // Skill 引用先于附件登记完成解析，避免无效 Skill 让本 Turn 留下孤立附件记录。
   const selectedSkills = resolveSelectedSkills(request.input, skillPool);
@@ -244,22 +237,23 @@ export async function prepareTurn(
     signal,
   });
 
-  const systemPrompt = getSystemPrompt({
-    characterPrompt: deps.characterPrompt,
-    executionProfile: request.executionProfile,
-    toolNames: tools.toolPool.tools.map(tool => tool.name),
-    environment: {
-      platform: process.platform,
-      workspaceRoot: workspaceRoot || null,
+  const systemPrompt = await buildSessionSystemPrompt(
+    {
+      characterPrompt: deps.characterPrompt,
+      ...(deps.workspaceInstructions
+        ? { workspaceInstructions: deps.workspaceInstructions }
+        : {}),
+      ...(deps.memoryGuidance ? { memoryGuidance: deps.memoryGuidance } : {}),
+    },
+    {
+      executionProfile: request.executionProfile,
+      workspaceRoot,
       providerId,
       modelId,
+      toolNames: tools.toolPool.tools.map(tool => tool.name),
+      ...(skillPool ? { skillPool } : {}),
     },
-    workspaceInstructions: workspaceRoot ? (deps.workspaceInstructions?.(workspaceRoot) ?? null) : null,
-    memorySection: await deps.memoryGuidance?.() ?? null,
-    skillCatalog: skillPool ? renderSkillListing(skillPool) : null,
-    // MCP server instructions 尚无生产者（MCP 包未存 InitializeResult instructions），到位后恢复。
-    mcpInstructions: null,
-  });
+  );
 
   return Object.freeze({
     executionProfile: request.executionProfile,

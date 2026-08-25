@@ -22,21 +22,22 @@
 
 其余出口：
 
-- `ActiveSessionRegistry`：同 Session 一个活跃执行（当前只有根 Turn；手动 compact 复用同一坑位）。`SessionBusyError` 是业务拒绝（路由 409），`ActiveSessionAlreadyRegisteredError` 是进程内不变量。
+- `ActiveSessionRegistry`：同 Session 一个活跃执行——根 Turn（kind='turn'）与手动 compact（kind='compact'）共享同一坑位，占用者以 kind 区分；`waitUntilIdle` 供 Session 删除等执行所有者收尾退出。`SessionBusyError` 是业务拒绝（路由 409），`ActiveSessionAlreadyRegisteredError` 是进程内不变量。
 - `generateSessionTitle(query, complete)`：让模型生成 7–15 字标题，失败或为空时截断原文前 100 字兜底；返回空串表示没有可用输入。持久化不在此发生，调用方拿返回值走 `SessionStore.updateTitle`。
 - `parseMessageBlocksJson`：blocks_json 的唯一解析点。
+- `collectAttachmentReferenceIds`：一次批量收集消息里全部附件引用 id，供历史重放前批量预取附件。
 - `SessionOwnershipError`：跨 Session 引用的稳定错误。
 
 ## 边界（本包不负责）
 
 - Turn 生命周期、运行态（取消信号/运行锁）、导航查询、rewind、Session 删除守卫 → `@ema-agent/turn` 的 `TurnStore`；
 - Wire DTO 不在本包——server/desktop 的协议类型在接线批按真实消费方重建；
-- 跨包删除编排（Runtime/Permission/Memory 级联）→ server 侧的 SessionLifecycle。
+- 跨包删除编排（Permission/工具态级联、文件清理）→ server 侧的 application/deleteSession。
 
 ## 依赖方向
 
 ```text
-session ──> ids / storage / @ema-agent/turn-terms（零依赖词汇叶，唯一允许导入的 turn 词汇包）
+session ──> storage / llm（类型）/ tools（ToolResult 类型）
 ```
 
 不 import turn 业务实现、agent、context、compact、memory、permission 或应用 Route。

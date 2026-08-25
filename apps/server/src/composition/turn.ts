@@ -52,6 +52,10 @@ export interface TurnComposition {
   readonly turnExecutor: TurnExecutor;
   /** Permission/AskUser 回答路由与 SSE 重连恢复的入口。 */
   readonly interactionQueue: SessionInteractionQueue;
+  /** 模型不支持图片输入时的 Vision 描述链（commands 的手动压缩历史投影同源复用）。 */
+  readonly describeImage: DescribeAttachmentImage;
+  /** 工作区指令读取闭包（commands 装配与下一根 Turn 同字节的 System Prompt 同源复用）。 */
+  readonly workspaceInstructions: (workspaceRoot: string) => string | null;
 }
 
 export interface TurnCompositionDeps {
@@ -228,6 +232,9 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     })();
   };
 
+  const workspaceInstructions = (workspaceRoot: string): string | null =>
+    readWorkspaceInstructions(workspaceRoot, settings.get(workspaceInstructionFilesSetting));
+
   const turnExecutor = new TurnExecutor({
     turns: database.turns,
     sessions: database.session,
@@ -250,8 +257,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     toolResultStore: tools.getSessionToolResultStore,
     toolExecutionState: tools.toolExecutionState,
     createCompact,
-    workspaceInstructions: workspaceRoot =>
-      readWorkspaceInstructions(workspaceRoot, settings.get(workspaceInstructionFilesSetting)),
+    workspaceInstructions,
     describeImage,
     scratchpadDirForTurn: (sessionId, turnId) =>
       ensureScratchpadDir(activeDataDir, sessionId, turnId),
@@ -270,7 +276,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     onTurnCompletedInTransaction: deps.onTurnCompletedInTransaction,
   });
 
-  return { turnExecutor, interactionQueue };
+  return { turnExecutor, interactionQueue, describeImage, workspaceInstructions };
 }
 
 /** 按用户多选的文件名读取工作区指令，顺序即拼接顺序；全部缺失返回 null。 */

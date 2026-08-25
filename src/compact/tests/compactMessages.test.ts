@@ -48,7 +48,6 @@ function request(history: readonly Message[], overrides: Partial<CompactRequest>
     tools: [],
     estimatedInputTokens: estimateMessagesTokens([...history]),
     contextWindow: 4_000,
-    maxOutputTokens: 0,
     ...overrides,
   };
 }
@@ -91,9 +90,7 @@ describe('createCompact', () => {
     const complete = vi.fn(async (_request: LlmRequest) => completion());
     const history: Message[] = [{ role: 'user', content: 'short' }];
     const compact = createCompact(llmCompleting(complete), {
-      bufferTokens: 0,
-      defaultReservedOutputTokens: 0,
-      maximumReservedOutputTokens: 0,
+      bufferRatio: 0,
     });
 
     const result = await compact(request(history, { contextWindow: 100_000 }));
@@ -105,9 +102,7 @@ describe('createCompact', () => {
   it('Micro 足以恢复预算时直接返回清理后的历史', async () => {
     const complete = vi.fn(async () => completion());
     const compact = createCompact(llmCompleting(complete), {
-      bufferTokens: 0,
-      defaultReservedOutputTokens: 0,
-      maximumReservedOutputTokens: 0,
+      bufferRatio: 0,
       keepRecentToolResults: 1,
     });
 
@@ -150,19 +145,21 @@ describe('createCompact', () => {
     const complete = vi.fn(async () => { throw new Error('provider unavailable'); });
     const history = readHistory();
     const compact = createCompact(llmCompleting(complete), {
-      bufferTokens: 0,
-      defaultReservedOutputTokens: 0,
-      maximumReservedOutputTokens: 0,
+      bufferRatio: 0,
       keepRecentToolResults: 1,
     });
 
     const events: CompactEvent[] = [];
     const result = await compact(request(history, {
       force: true,
-      onEvent: (event) => events.push(event),
+      emit: (event) => events.push(event),
     }));
 
-    expect(result).toEqual({ kind: 'unchanged', history });
+    expect(result).toMatchObject({
+      kind: 'unchanged',
+      history,
+      failureDetail: 'provider unavailable',
+    });
     expect(events.at(-1)).toMatchObject({
       type: 'compact_failed',
       error: 'provider unavailable',
@@ -179,16 +176,14 @@ describe('createCompact', () => {
       })
       .mockResolvedValue(completion());
     const compact = createCompact(llmCompleting(complete), {
-      bufferTokens: 0,
-      defaultReservedOutputTokens: 0,
-      maximumReservedOutputTokens: 0,
+      bufferRatio: 0,
       maximumConsecutiveFailures: 1,
     });
 
     await expect(compact(request(textHistory(), {
       force: true,
       signal: controller.signal,
-      onEvent: (event) => events.push(event),
+      emit: (event) => events.push(event),
     }))).rejects.toMatchObject({ name: 'AbortError' });
 
     expect(events.map((event) => event.type)).toEqual([
@@ -206,16 +201,18 @@ describe('createCompact', () => {
       .mockRejectedValueOnce(new Error('provider unavailable'))
       .mockResolvedValue(completion());
     const compact = createCompact(llmCompleting(complete), {
-      bufferTokens: 0,
-      defaultReservedOutputTokens: 0,
-      maximumReservedOutputTokens: 0,
+      bufferRatio: 0,
       maximumConsecutiveFailures: 1,
     });
 
     const history = textHistory();
     expect(await compact(request(history, {
-      onEvent: (event) => events.push(event),
-    }))).toEqual({ kind: 'unchanged', history });
+      emit: (event) => events.push(event),
+    }))).toMatchObject({
+      kind: 'unchanged',
+      history,
+      failureDetail: 'provider unavailable',
+    });
     expect(events.at(-1)?.type).toBe('compact_failed');
     expect(await compact(request(history))).toEqual({ kind: 'unchanged', history });
     expect(complete).toHaveBeenCalledTimes(1);
@@ -223,9 +220,8 @@ describe('createCompact', () => {
       force: true,
       settings: {
         enabled: false,
-        bufferTokens: 0,
-        defaultReservedOutputTokens: 0,
-        maximumReservedOutputTokens: 0,
+        bufferRatio: 0,
+        outputTokens: 8_000,
         keepRecentToolResults: 6,
         maximumConsecutiveFailures: 1,
         retainRatio: 0.16,
@@ -238,9 +234,7 @@ describe('createCompact', () => {
   it('单条超大历史也会进入 Macro，而不是误判为历史不足', async () => {
     const complete = vi.fn(async (_request: LlmRequest) => completion());
     const compact = createCompact(llmCompleting(complete), {
-      bufferTokens: 0,
-      defaultReservedOutputTokens: 0,
-      maximumReservedOutputTokens: 0,
+      bufferRatio: 0,
     });
     const history: Message[] = [{ role: 'user', content: 'huge '.repeat(20_000) }];
 
@@ -251,7 +245,6 @@ describe('createCompact', () => {
 
     expect(result).toMatchObject({
       kind: 'macro',
-      summary: '压缩后的工作摘要',
       summarizedMessageCount: 1,
     });
     expect(JSON.stringify(result.history)).toContain('压缩后的工作摘要');
@@ -266,9 +259,7 @@ describe('createCompact', () => {
   it('摘要请求透传根 Turn 冻结的 tools 与 thinking 配置', async () => {
     const complete = vi.fn(async (_request: LlmRequest) => completion());
     const compact = createCompact(llmCompleting(complete), {
-      bufferTokens: 0,
-      defaultReservedOutputTokens: 0,
-      maximumReservedOutputTokens: 0,
+      bufferRatio: 0,
     });
     const frozenTools = [{ name: 'Read', description: '读取文件', inputSchema: { type: 'object' } }];
 
@@ -287,9 +278,7 @@ describe('createCompact', () => {
   it('摘要请求的最大输出额度扣除 Tool Schema 占用', async () => {
     const complete = vi.fn(async (_request: LlmRequest) => completion());
     const compact = createCompact(llmCompleting(complete), {
-      bufferTokens: 0,
-      defaultReservedOutputTokens: 0,
-      maximumReservedOutputTokens: 0,
+      bufferRatio: 0,
     });
     const tools = [{
       name: 'Read',
@@ -326,9 +315,7 @@ describe('createCompact', () => {
       .mockRejectedValueOnce(new Error('prompt is too long for this model'))
       .mockResolvedValue(completion());
     const compact = createCompact(llmCompleting(complete), {
-      bufferTokens: 0,
-      defaultReservedOutputTokens: 0,
-      maximumReservedOutputTokens: 0,
+      bufferRatio: 0,
     });
 
     const result = await compact(request(textHistory(), { force: true }));
@@ -345,9 +332,7 @@ describe('createCompact', () => {
   it('Macro 成功后的近期历史不包含孤立 Tool Result', async () => {
     const complete = vi.fn(async () => completion());
     const compact = createCompact(llmCompleting(complete), {
-      bufferTokens: 0,
-      defaultReservedOutputTokens: 0,
-      maximumReservedOutputTokens: 0,
+      bufferRatio: 0,
       keepRecentToolResults: 32,
     });
 
@@ -370,9 +355,7 @@ describe('createCompact', () => {
     const complete = vi.fn(async () => completion('summary '.repeat(100)));
     const history = textHistory();
     const compact = createCompact(llmCompleting(complete), {
-      bufferTokens: 0,
-      defaultReservedOutputTokens: 0,
-      maximumReservedOutputTokens: 0,
+      bufferRatio: 0,
     });
 
     const events: CompactEvent[] = [];
@@ -380,29 +363,67 @@ describe('createCompact', () => {
       force: true,
       contextWindow: 4_000,
       estimatedInputTokens: estimateMessagesTokens(history) + 3_990,
-      onEvent: (event) => events.push(event),
+      emit: (event) => events.push(event),
     }));
 
-    expect(result).toEqual({ kind: 'unchanged', history });
+    expect(result).toMatchObject({
+      kind: 'unchanged',
+      history,
+      failureDetail: expect.stringContaining('占满预算'),
+    });
     expect(events.at(-1)).toMatchObject({
       type: 'compact_failed',
-      error: expect.stringContaining('历史预算'),
+      error: expect.stringContaining('占满预算'),
     });
+  });
+
+  it('历史超过当前模型窗口：显式丢弃最旧前缀并发事件，丢弃偏移计入摘要计数', async () => {
+    const complete = vi.fn(async () => completion());
+    const compact = createCompact(llmCompleting(complete), {
+      bufferRatio: 0.15,
+    });
+    const events: CompactEvent[] = [];
+    // window 4000、触发线 3400；textHistory 约 5200 tokens，超出窗口本身（换小窗口模型场景）。
+    const history = textHistory();
+
+    const result = await compact(request(history, {
+      force: true,
+      emit: (event) => events.push(event),
+    }));
+
+    const truncated = events.find((event) => event.type === 'compact_history_truncated');
+    expect(truncated).toBeDefined();
+    if (truncated?.type !== 'compact_history_truncated') throw new Error('应发截断事件');
+    expect(truncated.droppedMessageCount).toBeGreaterThan(0);
+    expect(truncated.droppedTokens).toBeGreaterThan(0);
+    expect(events.map((event) => event.type)).toEqual([
+      'compact_started',
+      'compact_history_truncated',
+      'compact_completed',
+    ]);
+    if (result.kind !== 'macro') throw new Error('应为 macro');
+    // 结果与事件是同一份事实的两条出口（事件供 Turn 事件流，结果供业务调用方）。
+    expect(result.droppedMessageCount).toBe(truncated.droppedMessageCount);
+    expect(result.droppedTokens).toBe(truncated.droppedTokens);
+    // 计数 = 淘汰偏移 + 截断后安全切点，相对原始输入历史；调用方游标映射无需感知偏移。
+    expect(result.summarizedMessageCount).toBe(
+      truncated.droppedMessageCount
+      + (history.length - truncated.droppedMessageCount - (result.history.length - 1)),
+    );
+    expect(result.summarizedMessageCount).toBeLessThanOrEqual(history.length);
   });
 
   it('saveMacroSummary 保存成功后才发 compact_completed', async () => {
     const complete = vi.fn(async () => completion());
     const compact = createCompact(llmCompleting(complete), {
-      bufferTokens: 0,
-      defaultReservedOutputTokens: 0,
-      maximumReservedOutputTokens: 0,
+      bufferRatio: 0,
     });
     const events: CompactEvent[] = [];
     const saved: Array<{ summary: string; count: number }> = [];
 
     const result = await compact(request(textHistory(), {
       force: true,
-      onEvent: (event) => events.push(event),
+      emit: (event) => events.push(event),
       saveMacroSummary: (summary, count) => { saved.push({ summary, count }); },
     }));
 
@@ -415,6 +436,7 @@ describe('createCompact', () => {
     });
     expect(events.map((event) => event.type)).toEqual([
       'compact_started',
+      'compact_history_truncated',
       'compact_completed',
     ]);
   });
@@ -422,18 +444,17 @@ describe('createCompact', () => {
   it('saveMacroSummary 抛错：发 compact_failed、不发 completed、原错误上抛', async () => {
     const complete = vi.fn(async () => completion());
     const compact = createCompact(llmCompleting(complete), {
-      bufferTokens: 0,
-      defaultReservedOutputTokens: 0,
-      maximumReservedOutputTokens: 0,
+      bufferRatio: 0,
     });
     const events: CompactEvent[] = [];
 
     await expect(compact(request(textHistory(), {
       force: true,
-      onEvent: (event) => events.push(event),
+      emit: (event) => events.push(event),
       saveMacroSummary: () => { throw new Error('db down'); },
     }))).rejects.toThrow('db down');
 
+    // 落库失败时历史未变：截断事件不得发出（它只在保存成功后随 completed 前发出）。
     expect(events.map((event) => event.type)).toEqual([
       'compact_started',
       'compact_failed',

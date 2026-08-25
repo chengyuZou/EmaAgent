@@ -9,6 +9,15 @@ interface CompactEventBase {
 export type CompactEvent =
   | ({ readonly type: 'compact_started' } & CompactEventBase)
   | ({
+      readonly type: 'compact_history_truncated';
+      /**
+       * 历史超过触发线（窗口 × (1 - bufferRatio)，默认 85%）时最旧前缀被直接
+       * 淘汰（未进入摘要）的总消息条数与估算 token：含一刀切与候选收缩两段。
+       */
+      readonly droppedMessageCount: number;
+      readonly droppedTokens: number;
+    } & CompactEventBase)
+  | ({
       readonly type: 'compact_cancelled';
       readonly durationMs: number;
     } & CompactEventBase)

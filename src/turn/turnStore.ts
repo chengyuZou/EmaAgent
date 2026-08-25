@@ -28,6 +28,11 @@ export interface TurnStoreDeps {
   db: Database;
   /** 最后一轮重发成功回滚后，清理该 Turn 派生的音频和临时文件。 */
   onTurnRemoved?: (sessionId: string, turnId: string) => void;
+  /**
+   * Session 级活跃执行坑位（手动 compact 与根 Turn 共享互斥）；由装配层构造并
+   * 与 commands 包共享同一实例。TurnStore 只以 kind='turn' 占用。
+   */
+  activeSessions: ActiveSessionRegistry;
 }
 
 /** 管理 Turn 聚合；同一 Session 同一时刻只允许一个根 Turn 运行。 */
@@ -38,17 +43,18 @@ export class TurnStore {
   private readonly db:           Database;
   private readonly onTurnRemoved?: (sessionId: string, turnId: string) => void;
   private readonly deletingSessions = new Set<string>();
-  /** 进程内活动根 Turn 表；运行态只用于快速判断和取消，崩溃恢复以 SQLite 终态为准。 */
-  private readonly registry = new ActiveSessionRegistry();
+  /** 进程内活跃执行表；运行态只用于快速判断和取消，崩溃恢复以 SQLite 终态为准。 */
+  private readonly registry: ActiveSessionRegistry;
   /** 单调时间戳避免同毫秒写入破坏游标边界。 */
   private lastTs = 0;
 
-  constructor({ db, onTurnRemoved }: TurnStoreDeps) {
+  constructor({ db, onTurnRemoved, activeSessions }: TurnStoreDeps) {
     this.sessionsRepo = new SessionsRepo(db.sqlite);
     this.turnsRepo    = new TurnsRepo(db.sqlite);
     this.messagesRepo = new MessagesRepo(db.sqlite);
     this.db           = db;
     this.onTurnRemoved = onTurnRemoved;
+    this.registry     = activeSessions;
   }
 
   /** 返回严格递增的进程内时间戳。 */
@@ -87,7 +93,7 @@ export class TurnStore {
     });
     this.sessionsRepo.touchActivity(input.sessionId, now);
 
-    const signal = this.registry.register(input.sessionId, turnId);
+    const signal = this.registry.register(input.sessionId, turnId, 'turn');
     return { turn: this.requireTurn(turnId), signal };
   }
 
@@ -138,7 +144,7 @@ export class TurnStore {
   /** 触发取消信号并提交 Turn 的 aborted 终态。 */
   abortTurn(sessionId: string, turnId: string): void {
     this.assertTurnOwnership(sessionId, turnId);
-    const activeTurnId = this.registry.getActiveExecutionId(sessionId);
+    const activeTurnId = this.registry.getActiveExecution(sessionId)?.executionId;
     if (activeTurnId !== turnId) {
       throw new Error(`turn_not_active: ${turnId}`);
     }
@@ -178,7 +184,7 @@ export class TurnStore {
   }
 
   getActiveTurn(sessionId: string): Turn | undefined {
-    const turnId = this.registry.getActiveExecutionId(sessionId);
+    const turnId = this.registry.getActiveExecution(sessionId)?.executionId;
     return turnId ? this.getTurn(turnId) : undefined;
   }
 
@@ -205,7 +211,7 @@ export class TurnStore {
       throw new Error(`session_deleting: ${id}`);
     }
     this.deletingSessions.add(id);
-    const activeTurnId = this.registry.getActiveExecutionId(id);
+    const activeTurnId = this.registry.getActiveExecution(id)?.executionId;
     if (activeTurnId) this.registry.abort(id, activeTurnId);
   }
 

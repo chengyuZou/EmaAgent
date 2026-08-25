@@ -6,7 +6,7 @@ import type { Attachment, AttachmentStore } from '@ema-agent/attachments';
 import type { CallLlm, LlmStreamEvent } from '@ema-agent/llm';
 import type { ProviderModels, Providers } from '@ema-agent/providers';
 import { Database } from '@ema-agent/storage';
-import { SessionStore } from '@ema-agent/session';
+import { ActiveSessionRegistry, SessionStore } from '@ema-agent/session';
 import type { SettingsStore } from '@ema-agent/settings';
 import { StageEngine } from '@ema-agent/stage';
 import {
@@ -59,7 +59,7 @@ function makeDeps(options: {
 }): TurnExecutorDeps {
   const { db, llm, sessionId, registry, titleStarter } = options;
   return {
-    turns: new TurnStore({ db }),
+    turns: new TurnStore({ db, activeSessions: new ActiveSessionRegistry() }),
     sessions: new SessionStore({ db }),
     providers: {
       resolveConnection: () => ({ protocol: 'openai-chat', baseUrl: 'http://localhost' }),
