@@ -109,6 +109,8 @@ export {
   MemoryNoteEmptyError,
   MemoryConsolidationError,
   MemoryStorageLimitExceededError,
+  MemoryFileNotEditableError,
+  MemoryFileChangedError,
 } from './errors.js';
 export {
   MEMORY_EXTRACTION_NO_RESULT,
@@ -193,6 +195,7 @@ export {
   searchMemoryFiles,
   readMemoryFile,
   listMemoryFiles,
+  writeMemoryFile,
 } from './common/memoryFiles.js';
 export type {
   ListMemory,
@@ -205,6 +208,8 @@ export type {
   MemorySearchMatchMode,
   MemorySearchRequest,
   MemorySearchResponse,
+  MemoryWriteRequest,
+  MemoryWriteResponse,
   ReadMemory,
   SearchMemory,
 } from './common/memoryFiles.js';

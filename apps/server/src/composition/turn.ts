@@ -314,6 +314,8 @@ function recordVisionUsage(
       durationMs: Date.now() - startedAt,
       inputTokens: usage?.inputTokens ?? null,
       outputTokens: usage?.outputTokens ?? null,
+      cacheReadInputTokens: usage?.cacheReadInputTokens ?? null,
+      cacheWriteInputTokens: usage?.cacheWriteInputTokens ?? null,
     }),
     error => console.warn('[usage] Vision 调用记账失败:', error),
   );

@@ -6,7 +6,7 @@ import type { MemoryJobsRepo } from '@ema-agent/storage';
 import { queryValidator } from '../validate.js';
 
 export interface MemoryJobsRouteDeps {
-  readonly jobs: Pick<MemoryJobsRepo, 'listRecent' | 'listPaths' | 'findById'>;
+  readonly jobs: Pick<MemoryJobsRepo, 'listRecent' | 'listPaths' | 'listBusyPaths' | 'findById'>;
   readonly admin: Pick<JobAdmin, 'retry' | 'cancel'>;
 }
 
@@ -19,6 +19,10 @@ export const memoryJobsRoute = (deps: MemoryJobsRouteDeps) =>
     .get('/jobs', queryValidator(listQuery), context => {
       const { limit } = context.req.valid('query');
       return context.json({ items: deps.jobs.listRecent(limit ?? 100) });
+    })
+    // 编辑锁事实源：running 整合 Job 正在改动的准确路径（前端据此禁用编辑）。
+    .get('/jobs/busy-paths', context => {
+      return context.json({ items: deps.jobs.listBusyPaths() });
     })
     .get('/jobs/:id/paths', context => {
       const job = deps.jobs.findById(context.req.param('id'));

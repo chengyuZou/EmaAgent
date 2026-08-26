@@ -40,6 +40,22 @@ export class MemoryStorageLimitExceededError extends Error {
   }
 }
 
+/** 用户编辑写到了正式记忆白名单之外（extensions/turn_evidence/.git/派生文件）。 */
+export class MemoryFileNotEditableError extends Error {
+  constructor(readonly path: string) {
+    super(`Memory file is not user-editable: ${path}`);
+    this.name = 'MemoryFileNotEditableError';
+  }
+}
+
+/** 读取后文件已被改写（整合 Job 或外部编辑），保存方必须刷新后重试。 */
+export class MemoryFileChangedError extends Error {
+  constructor(readonly path: string) {
+    super(`Memory file changed since read: ${path}`);
+    this.name = 'MemoryFileChangedError';
+  }
+}
+
 /**
  * 单条 Memory Job 入队失败的记录(两条提取 Job 分别独立入队,
  * 失败的那条没有 Job 行,必须靠 errors/事件暴露给用户)。

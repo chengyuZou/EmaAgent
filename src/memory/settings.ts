@@ -9,8 +9,8 @@ export const memoryStorageMaxBytesSetting = defineSetting<number>({
   label: '记忆存储体积上限',
   description: 'Memory 物理存储硬上限（字节）。超过后触发自动清理，仍无法降回警告线则报错交用户处理。',
   apply: 'nextOperation',
-  defaultValue: 256 * 1024 * 1024,
-  schema: z.number().int().min(16 * 1024 * 1024).max(4 * 1024 * 1024 * 1024),
+  defaultValue: 1024 * 1024 * 1024,
+  schema: z.number().int().min(500 * 1024 * 1024).max(5 * 1024 * 1024 * 1024),
 });
 
 export const memoryWorkHistoryRetentionDaysSetting = defineSetting<number>({

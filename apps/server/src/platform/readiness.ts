@@ -6,15 +6,15 @@ const READY_PROTOCOL_VERSION = 1;
 
 /**
  * 写入 ready 文件并返回清理函数。
- * service 字段与 EMA_READY_FILE/EMA_RUNTIME_NONCE 环境变量是与 Tauri 宿主共享的
+ * service 字段与 EMA_READY_FILE/EMA_RUN_NONCE 环境变量是与 Tauri 宿主共享的
  * 跨进程契约；改名必须与 desktop 批同步（见接力板）。
  */
 export function publishReadyFile(port: number): (() => void) | null {
   const readyFile = process.env['EMA_READY_FILE'];
-  const nonce = process.env['EMA_RUNTIME_NONCE'];
+  const nonce = process.env['EMA_RUN_NONCE'];
   if (!readyFile || !nonce) return null;
 
-  const configuredProtocol = Number(process.env['EMA_RUNTIME_PROTOCOL_VERSION'] ?? READY_PROTOCOL_VERSION);
+  const configuredProtocol = Number(process.env['EMA_RUN_PROTOCOL_VERSION'] ?? READY_PROTOCOL_VERSION);
   if (configuredProtocol !== READY_PROTOCOL_VERSION) {
     throw new Error(
       `ready protocol mismatch: host=${configuredProtocol}, server=${READY_PROTOCOL_VERSION}`,

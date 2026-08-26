@@ -188,7 +188,10 @@ export const createRoutes = (composition: Composition, secret: string) => {
     .route('/api/characters', characterHealthRoute({ characters: characters.store }))
 
     .route('/api/memory', memoryJobsRoute({ jobs: memory.jobs, admin: memory.admin }))
-    .route('/api/memory', memoryFilesRoute({ memoryRoot: memory.memoryRoot }))
+    .route('/api/memory', memoryFilesRoute({
+      memoryRoot: memory.memoryRoot,
+      jobs: memory.jobs,
+    }))
     .route('/api/memory', memoryStatsRoute({
       memoryRoot: memory.memoryRoot,
       settings: settings.settings,
