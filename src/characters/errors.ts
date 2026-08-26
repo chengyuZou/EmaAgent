@@ -142,6 +142,7 @@ export type CharacterResourceValidationCode =
   | 'voice_format_unsupported'
   | 'voice_duration_invalid'
   | 'live2d_entry_invalid'
+  | 'live2d_reference_invalid'
   | 'live2d_runtime_config_invalid'
   | 'illustration_format_unsupported';
 

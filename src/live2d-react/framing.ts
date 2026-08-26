@@ -1,55 +1,47 @@
-// 根据模型未缩放边界计算 Live2D 在当前舞台中的绝对缩放与位置。
-import type { Live2DFraming } from './types.js';
+// 根据模型未缩放边界计算 Live2D 在当前舞台中的默认半身构图。
 
-export interface Live2DNaturalBounds {
+export interface Live2DModelBounds {
   x: number;
   y: number;
   width: number;
   height: number;
 }
 
-export interface Live2DViewport {
+export interface Live2DStageSize {
   width: number;
   height: number;
 }
 
-export interface Live2DFramingPlacement {
+export interface Live2DModelPlacement {
   scale: number;
   x: number;
   y: number;
 }
 
-export function calculateLive2DFraming(
-  viewport: Live2DViewport,
-  naturalBounds: Live2DNaturalBounds,
-  framing: Live2DFraming,
-): Live2DFramingPlacement | null {
+export function calculateLive2DPlacement(
+  stage: Live2DStageSize,
+  model: Live2DModelBounds,
+): Live2DModelPlacement | null {
   if (
-    !isPositiveFinite(viewport.width)
-    || !isPositiveFinite(viewport.height)
-    || !isPositiveFinite(naturalBounds.width)
-    || !isPositiveFinite(naturalBounds.height)
-    || !Number.isFinite(naturalBounds.x)
-    || !Number.isFinite(naturalBounds.y)
+    !isPositiveFinite(stage.width)
+    || !isPositiveFinite(stage.height)
+    || !isPositiveFinite(model.width)
+    || !isPositiveFinite(model.height)
+    || !Number.isFinite(model.x)
+    || !Number.isFinite(model.y)
   ) {
     return null;
   }
 
-  const scale = framing === 'halfbody'
-    ? (viewport.width / naturalBounds.width) * 1.55
-    : Math.min(
-      viewport.width / naturalBounds.width,
-      viewport.height / naturalBounds.height,
-    ) * 0.95;
+  const scale = (stage.width / model.width) * 1.55;
+  const scaledWidth = model.width * scale;
+  const scaledHeight = model.height * scale;
 
-  const scaledWidth = naturalBounds.width * scale;
-  const scaledHeight = naturalBounds.height * scale;
-  const x = (viewport.width - scaledWidth) / 2 - naturalBounds.x * scale;
-  const y = framing === 'halfbody'
-    ? -scaledHeight * 0.05 - naturalBounds.y * scale
-    : viewport.height - scaledHeight - 12 - naturalBounds.y * scale;
-
-  return { scale, x, y };
+  return {
+    scale,
+    x: (stage.width - scaledWidth) / 2 - model.x * scale,
+    y: -scaledHeight * 0.05 - model.y * scale,
+  };
 }
 
 function isPositiveFinite(value: number): boolean {

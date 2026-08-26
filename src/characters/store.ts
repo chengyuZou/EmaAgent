@@ -25,7 +25,8 @@ import type {
   ImportCharacterLive2dModelInput,
 } from './live2d/types.js';
 import { CharacterLive2dModelRepository } from './live2d/repository.js';
-import { findLive2dPackageFilesSync } from './live2d/live2dValidator.js';
+import { findLive2dPackageFilesSync, validateLive2dModelReferences } from './live2d/live2dValidator.js';
+import { writeLive2dConfigDraft } from './live2d/live2dConfigDraft.js';
 import { readLive2dVocabulary, type Live2dVocabulary } from './live2d/live2dVocabulary.js';
 import {
   deleteLive2dDirectory,
@@ -322,8 +323,11 @@ export class CharacterStore {
     );
     try {
       const packageFiles = findLive2dPackageFilesSync(destination);
+      await validateLive2dModelReferences(packageFiles.modelPath);
+      const runtimeConfigPath = packageFiles.runtimeConfigPath
+        ?? await writeLive2dConfigDraft(destination, packageFiles.modelPath);
       const vocabulary = readLive2dVocabulary(
-        packageFiles.runtimeConfigPath,
+        runtimeConfigPath,
         settings.live2d.maxRuntimeConfigBytes,
       );
       const resource = this.insertLive2dModel(

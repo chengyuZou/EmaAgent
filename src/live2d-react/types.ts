@@ -1,59 +1,30 @@
-// ── Public types ────────────────────────────────────────────────────────────
+// 定义 Live2D 舞台对宿主公开的资源绑定、命令与就绪信息。
 
-/**
- * How the model should be framed inside the stage.
- *
- *   - 'halfbody':  Head + torso (default for desktop pet). Fit width × 1.55,
- *                  head touches top edge, legs flow off-screen.
- *   - 'fullbody':  Whole model fits. Used for character preview / settings.
- */
-export type Live2DFraming = 'halfbody' | 'fullbody';
-
-/**
- * Errors surfaced via the stage's `onError` callback. The kind is coarse so
- * the consumer can decide between "model file broken" vs "Cubism Core missing"
- * without parsing strings.
- */
-export type Live2DErrorKind =
-  | 'cubism_core_missing'   // window.Live2DCubismCore not present at load time
-  | 'model_load_failed'     // model3.json fetch / parse / texture decode failed
-  | 'pixi_init_failed'      // PIXI Application could not be created (no WebGL?)
-  | 'motion_failed'
-  | 'render_failed'
-  | 'unknown';
-
-export type Live2DErrorPhase =
-  | 'initialization'
-  | 'model_loading'
-  | 'expression_loading'
-  | 'motion'
-  | 'rendering';
-
-export interface Live2DError {
-  kind:    Live2DErrorKind;
-  message: string;
-  cause?:  unknown;
-  phase?: Live2DErrorPhase;
-  recoverable?: boolean;
+/** 指向 `.model3.json` 中真实存在的一个 Motion。 */
+export interface Live2DMotionReference {
+  group: string;
+  /** 省略时由 Cubism MotionManager 在组内选择。 */
+  index?: number;
 }
 
-/**
- * Imperative handle for callers that don't want to drive the model through the
- * Zustand store. Most consumers should use the store; this handle exists for
- * tests + ad-hoc scripts.
- *
- * For multi-expression control, prefer the store directly:
- *   runtime.live2dStore.getState().addExpression("Smile")
- *   runtime.live2dStore.getState().toggleExpression("Blush")
- *   runtime.live2dStore.getState().clearExpressions()
- */
+/** Character 为当前 Live2D 资源明确选定的播放绑定。 */
+export interface Live2DModelBindings {
+  /** 只有这里列出的 Motion 才会被自动待机调度。 */
+  idleMotions?: readonly Live2DMotionReference[];
+  /** `undefined` 使用模型 LipSync group；空数组明确关闭口型。 */
+  lipSyncParameterIds?: readonly string[];
+}
+
+export interface Live2DStageReadyInfo {
+  /** 宿主用它决定是否展示表情操作。 */
+  hasExpressions: boolean;
+}
+
+/** 宿主通过同一句柄驱动当前已就绪的模型实例。 */
 export interface Live2DStageHandle {
-  /** Replace all active expressions with a single one (or null = clear). */
   setExpression(name: string | null): void;
-  /**
-   * Fire-and-forget motion command. It means "request this motion now", not
-   * "wait until the motion has completed".
-   */
+  cycleExpression(): string | null;
   playMotion(group: string, index?: number): void;
-  isReady(): boolean;
+  /** `mouthOpen` 是由 Speech/宿主换算好的 0..1 归一化开口度。 */
+  setLipSync(speaking: boolean, mouthOpen: number): void;
 }

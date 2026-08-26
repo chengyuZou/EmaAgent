@@ -7,10 +7,6 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
-    },
-    "./store": {
-      "import": "./dist/stores/live2d-store.js",
-      "types": "./dist/stores/live2d-store.d.ts"
     }
   },
   "main": "./dist/index.js",
@@ -28,10 +24,8 @@
     "react-dom": "^18.3.0"
   },
   "dependencies": {
-    "pixi-filters":        "^5.3.0",
     "pixi-live2d-display": "0.5.0-beta",
-    "pixi.js":             "^7.4.3",
-    "zustand":             "^5.0.2"
+    "pixi.js":             "^7.4.3"
   },
   "devDependencies": {
     "@types/react":     "^18.3.12",
