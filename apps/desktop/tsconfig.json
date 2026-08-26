@@ -8,7 +8,11 @@
     "moduleResolution": "Bundler",
     "noEmit": true,
     "allowImportingTsExtensions": false,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "paths": {
+      "@ema-agent/server": ["../server/src"],
+      "@ema-agent/server/*": ["../server/src/*"]
+    }
   },
   "include": ["src", "vite.config.ts"]
 }

@@ -1,17 +1,14 @@
-// 保存各 Session 的持久 Task 快照，并合并根 Turn 发来的 Task 事件。
+// 保存各 Session 的持久 Task 快照；修改统一经过根 Turn 的 Task 工具，
+// Turn 终态是会话级快照的唯一刷新节拍（任务没有独立事件流）。
 import { create } from 'zustand';
 
-import type { TaskSnapshot } from '@ema-agent/tasks';
-import { tasksApi } from '../api/tasks.js';
+import { tasksApi, type TaskItem } from '../api/tasks.js';
 
 interface TaskStoreState {
-  tasksBySession: Map<string, Map<string, TaskSnapshot>>;
+  tasksBySession: Map<string, Map<string, TaskItem>>;
   loadingSessions: Set<string>;
   errors: Map<string, string>;
-  eventRevisions: Map<string, number>;
   loadForSession(sessionId: string, force?: boolean): Promise<void>;
-  upsert(task: TaskSnapshot): void;
-  remove(sessionId: string, taskId: string): void;
   evictSession(sessionId: string): void;
 }
 
@@ -19,27 +16,18 @@ export const useTaskStore = create<TaskStoreState>((set, get) => ({
   tasksBySession: new Map(),
   loadingSessions: new Set(),
   errors: new Map(),
-  eventRevisions: new Map(),
 
   async loadForSession(sessionId, force = false) {
     const key = sessionId as string;
     if (get().loadingSessions.has(key)) return;
     if (!force && get().tasksBySession.has(key)) return;
 
-    const requestedAtRevision = get().eventRevisions.get(key) ?? 0;
     set((state) => ({
       loadingSessions: addValue(state.loadingSessions, key),
       errors: withoutKey(state.errors, key),
     }));
     try {
       const result = await tasksApi.list(sessionId);
-      if ((get().eventRevisions.get(key) ?? 0) !== requestedAtRevision) {
-        set((state) => ({
-          loadingSessions: withoutValue(state.loadingSessions, key),
-        }));
-        void get().loadForSession(sessionId, true);
-        return;
-      }
       set((state) => {
         const tasksBySession = new Map(state.tasksBySession);
         tasksBySession.set(
@@ -63,43 +51,12 @@ export const useTaskStore = create<TaskStoreState>((set, get) => ({
     }
   },
 
-  upsert(task) {
-    set((state) => {
-      const sessionKey = task.sessionId as string;
-      const tasksBySession = new Map(state.tasksBySession);
-      const eventRevisions = incrementRevision(state.eventRevisions, sessionKey);
-      const sessionTasks = new Map(tasksBySession.get(sessionKey) ?? []);
-      const current = sessionTasks.get(task.id as string);
-      if (current && current.version >= task.version) {
-        return { eventRevisions };
-      }
-      sessionTasks.set(task.id as string, task);
-      tasksBySession.set(sessionKey, sessionTasks);
-      return { tasksBySession, eventRevisions };
-    });
-  },
-
-  remove(sessionId, taskId) {
-    set((state) => {
-      const sessionKey = sessionId as string;
-      const current = state.tasksBySession.get(sessionKey);
-      const eventRevisions = incrementRevision(state.eventRevisions, sessionKey);
-      if (!current?.has(taskId as string)) return { eventRevisions };
-      const tasksBySession = new Map(state.tasksBySession);
-      const sessionTasks = new Map(current);
-      sessionTasks.delete(taskId as string);
-      tasksBySession.set(sessionKey, sessionTasks);
-      return { tasksBySession, eventRevisions };
-    });
-  },
-
   evictSession(sessionId) {
     const key = sessionId as string;
     set((state) => ({
       tasksBySession: withoutKey(state.tasksBySession, key),
       loadingSessions: withoutValue(state.loadingSessions, key),
       errors: withoutKey(state.errors, key),
-      eventRevisions: withoutKey(state.eventRevisions, key),
     }));
   },
 }));
@@ -117,11 +74,5 @@ function withoutKey<K, V>(source: Map<K, V>, key: K): Map<K, V> {
 function withoutValue<T>(source: Set<T>, value: T): Set<T> {
   const next = new Set(source);
   next.delete(value);
-  return next;
-}
-
-function incrementRevision(source: Map<string, number>, key: string): Map<string, number> {
-  const next = new Map(source);
-  next.set(key, (next.get(key) ?? 0) + 1);
   return next;
 }

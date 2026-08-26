@@ -1,7 +1,7 @@
 // 让用户选择下一 Turn 的 Chat/Work 能力范围与 Narrative 检索策略。
 import type { JSX } from 'react';
 import { Button, DropdownMenu, type MenuItem } from '@ema-agent/ui';
-import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/turn';
+import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/session';
 
 interface ExecutionProfileSelectorProps {
   executionProfile: ExecutionProfile;

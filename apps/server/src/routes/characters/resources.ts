@@ -68,10 +68,11 @@ function serveFile(context: Context, filePath: string): Response {
 }
 
 export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
-  const run = async (
+  // 泛型必须流出：标成 Promise<Response> 会把所有经 run 的 JSON 响应擦成 unknown。
+  const run = async <T extends {}>(
     context: Context,
-    action: () => unknown | Promise<unknown>,
-  ): Promise<Response> => {
+    action: () => T | undefined | Promise<T | undefined>,
+  ) => {
     try {
       const result = await action();
       if (result === undefined) return context.json({ error: 'resource_not_found' }, 404);

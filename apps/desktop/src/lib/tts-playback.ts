@@ -4,7 +4,8 @@ import { create } from 'zustand';
 import { tauriBridge } from './tauri-bridge.js';
 import { showToast } from './toast.js';
 import { turnsApi } from '../api/turns.js';
-import { sidecarClient } from '../api/sidecar-client.js';
+import { serverClient } from '../api/client.js';
+import type { TurnSseEvent } from '@ema-agent/server/sse/eventHub.js';
 import { useConversationStore } from '../stores/conversation-store.js';
 import type { EmaLipSync } from './wlipsync-lipsync.js';
 import { createEmaLipSync } from './wlipsync-lipsync.js';
@@ -386,15 +387,15 @@ function isTtsOwner(sessionId: string): boolean {
  * Only processes events for the current ttsOwner session.
  */
 export function handleTtsChunk(
-  event: Extract<TurnStreamEvent, { type: 'tts_chunk' }>,
+  event: Extract<TurnSseEvent, { type: 'tts_chunk' }>,
 ): void {
   // Evicted chunks (replayed after the audio file was finalized) keep their
   // 重放事件保留游标但不携带音频；实时音频已播放，断线后不重复补播。
   if (!event.audio) return;
-  if (!isTtsOwner(event.sessionId as string)) return;
+  if (!isTtsOwner(event.sessionId)) return;
 
-  const turnId    = event.turnId as string;
-  const sessionId = event.sessionId as string;
+  const turnId    = event.turnId;
+  const sessionId = event.sessionId;
 
   let player: TurnPlayer | null | undefined = activePlayers.get(turnId);
 
@@ -433,10 +434,10 @@ export function handleTtsChunk(
  * mse 模式句界透明(SourceBuffer 连续累积);decode 模式据此解码并排播当前句。
  */
 export function handleTtsSentenceComplete(
-  event: Extract<TurnStreamEvent, { type: 'tts_sentence_complete' }>,
+  event: Extract<TurnSseEvent, { type: 'tts_sentence_complete' }>,
 ): void {
-  if (!isTtsOwner(event.sessionId as string)) return;
-  const turnId = sessionToTurnId.get(event.sessionId as string);
+  if (!isTtsOwner(event.sessionId)) return;
+  const turnId = sessionToTurnId.get(event.sessionId);
   const player = turnId ? activePlayers.get(turnId) : undefined;
   if (player && player.mode === 'decode' && !player.stopped) {
     scheduleSentence(player);
@@ -491,7 +492,7 @@ let replaySource: AudioBufferSourceNode | null = null;
 
 /**
  * Replay the merged audio for a completed turn.
- * Fetches the turn's archived audio from the sidecar and plays it through the
+ * Fetches the turn's archived audio from the server and plays it through the
  * shared AnalyserNode so RMS lip-sync still works. No emotion events are emitted.
  *
  * Stops any currently playing audio (live or replay) before starting.
@@ -507,7 +508,7 @@ export async function replayTurn(turnId: string): Promise<void> {
   // returns 401, which surfaced as "该轮没有可重播的语音" even though the
   // merged file was on disk. Attach the shared secret.
   const url     = await turnsApi.audioUrl(turnId);
-  const headers = await sidecarClient.getAuthHeaders();
+  const headers = await serverClient.getAuthHeaders();
   const res     = await fetch(url, { headers });
   if (!res.ok) throw new Error(`[tts-playback] replay fetch failed: ${res.status}`);
 

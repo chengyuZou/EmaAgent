@@ -70,25 +70,26 @@ export function mcpServerConfigToForm(
   name: string,
   config: McpServerConfig,
 ): McpServerFormState {
-  if (config.type === 'stdio') {
+  // http 变体的 type 是必填字面量,用它做判别;stdio 的 type 在输入侧可缺省。
+  if (config.type === 'http') {
     return {
       name,
-      transport: 'stdio',
-      command: config.command,
-      args: [...(config.args ?? [])],
-      url: '',
-      env: mcpRecordToPairs(config.env),
-      headers: [],
+      transport: 'http',
+      command: '',
+      args: [],
+      url: config.url,
+      env: [],
+      headers: mcpRecordToPairs(config.headers),
     };
   }
 
   return {
     name,
-    transport: 'http',
-    command: '',
-    args: [],
-    url: config.url,
-    env: [],
-    headers: mcpRecordToPairs(config.headers),
+    transport: 'stdio',
+    command: config.command,
+    args: [...(config.args ?? [])],
+    url: '',
+    env: mcpRecordToPairs(config.env),
+    headers: [],
   };
 }

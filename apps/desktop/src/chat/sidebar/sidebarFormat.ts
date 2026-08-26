@@ -1,5 +1,10 @@
-// 侧栏展示用的文本与时间格式化辅助。
-import type { SessionWire } from '../../api/sessions.js';
+// 侧栏展示用的文本与时间格式化辅助，以及侧栏共享的 API 推导类型。
+import type { SessionsGrouped } from '../../api/sessions.js';
+
+/** 侧栏会话行：分组列表的 SessionListItem 投影（含 lastTurnStatus/hasUnread）。 */
+export type SidebarSession = SessionsGrouped['recent'][number];
+/** 服务端五桶分组的项目槽（project + folders + 成员 Session）。 */
+export type SidebarProjectGroup = SessionsGrouped['projects'][number];
 
 export function basename(path: string): string {
   const parts = path.replaceAll('\\', '/').split('/').filter(Boolean);
@@ -22,7 +27,6 @@ export function formatRelativeTime(updatedAt: number): string {
   return `${Math.floor(diff / month)}月前`;
 }
 
-export function projectLabelFor(session: SessionWire): string {
-  return session.groupLabel
-    ?? (session.workspaceRoot ? basename(session.workspaceRoot) : '对话');
+export function projectLabelFor(session: SidebarSession): string {
+  return session.workspaceRoot ? basename(session.workspaceRoot) : '对话';
 }

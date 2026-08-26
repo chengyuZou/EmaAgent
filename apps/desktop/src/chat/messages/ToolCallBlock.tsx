@@ -32,7 +32,7 @@ type ToolStatus = 'running' | 'awaiting_permission' | 'success' | 'failed' | 'de
 function deriveStatus(slice: Extract<AssistantSlice, { type: 'tool_use' }>): ToolStatus {
   if (slice.error?.code === 'permission/denied') return 'denied';
   if (slice.error) return 'failed'; // policy/denied | tool/error | tool/not_found
-  if (slice.permissionPromptId) return 'awaiting_permission';
+  if (slice.permissionPending) return 'awaiting_permission';
   if (slice.result !== undefined) return 'success';
   return 'running';
 }
@@ -57,7 +57,8 @@ function fmtDuration(ms: number): string {
 // ── 主组件 ────────────────────────────────────────────────────────────────────
 
 export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBlockProps): JSX.Element {
-  const [open, setOpen] = useState(false);
+  const toolUI = lookupToolUI(slice.name);
+  const [open, setOpen] = useState(() => toolUI?.defaultExpanded ?? false);
   const [copied, setCopied] = useState(false);
 
   const hasResult   = slice.result !== undefined;
@@ -77,7 +78,6 @@ export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBloc
 
   const resultView = hasResult && slice.result !== null ? renderToolResult(slice.name, slice.result) : null;
   // 专属 UI 优先;返回 null(类型守卫失败/未注册)回落通用平铺。渲染函数必须纯(无 hooks)。
-  const toolUI = lookupToolUI(slice.name);
   const customArgs = toolUI?.ArgsView && argsReady ? toolUI.ArgsView({ args: slice.args }) : null;
   const customResult = toolUI?.ResultView && hasResult && slice.result != null
     ? toolUI.ResultView({ data: slice.result })

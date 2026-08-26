@@ -15,7 +15,7 @@ import {
 } from '@ema-agent/characters';
 
 /** 识别为角色域错误时返回映射响应；未识别的错误原样上抛，由全局错误处理落 500。 */
-export function characterError(context: Context, error: unknown): Response {
+export function characterError(context: Context, error: unknown) {
   if (error instanceof CharacterNotFoundError || error instanceof CharacterResourceNotFoundError) {
     return context.json({ error: 'not_found', message: error.message }, 404);
   }

@@ -18,6 +18,16 @@ export interface SandboxConfig {
 
 export type BackendKind = 'bubblewrap' | 'sandbox-exec' | 'unisolated';
 
+/** 系统接口与设置页展示的沙箱状态；宿主组合事实，不是 Sandbox 执行器自己的类型。 */
+export interface SandboxStatus {
+  readonly kind: BackendKind;
+  readonly isolation: 'os' | 'application-only';
+  readonly shellExecution: 'isolated' | 'disabled' | 'unsafe-override';
+  readonly sandboxNetwork: 'none' | 'full';
+  readonly localMcpStdio: 'isolated' | 'disabled' | 'unsafe-override';
+  readonly warning?: string;
+}
+
 /**
  * 后端真正启动的 Shell 形态:
  * - native: 本机可执行文件, path 是真实文件路径(如 /bin/bash、Git bash.exe);

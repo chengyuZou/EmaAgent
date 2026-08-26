@@ -6,7 +6,7 @@ import {
   KnowledgeNotConfiguredError,
 } from '@ema-agent/knowledge';
 
-export function knowledgeError(context: Context, error: unknown): Response | undefined {
+export function knowledgeError(context: Context, error: unknown) {
   if (error instanceof KnowledgeNotConfiguredError) {
     return context.json({ error: 'kb_not_configured', message: error.message }, 503);
   }

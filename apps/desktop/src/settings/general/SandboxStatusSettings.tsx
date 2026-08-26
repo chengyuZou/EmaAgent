@@ -1,14 +1,14 @@
 // 安全与隔离只读状态:展示当前机器真实启用的沙箱等级,裸 Windows 如实降级提示,不伪装安全。
 import { useEffect, useState, type JSX } from 'react';
 import { Button, Callout, Spinner } from '@ema-agent/ui';
-import { systemApi, type SandboxStatusWire } from '../../api/system.js';
+import { systemApi, type SandboxStatus } from '../../api/system.js';
 
 type LoadState =
   | { kind: 'loading' }
   | { kind: 'error'; message: string }
-  | { kind: 'ready'; status: SandboxStatusWire };
+  | { kind: 'ready'; status: SandboxStatus };
 
-const BACKEND_LABEL: Record<SandboxStatusWire['kind'], string> = {
+const BACKEND_LABEL: Record<SandboxStatus['kind'], string> = {
   'bubblewrap':  'bubblewrap(Linux 系统沙箱)',
   'sandbox-exec': 'sandbox-exec(macOS 系统沙箱)',
   'unisolated':  '应用层(无操作系统沙箱)',
@@ -73,10 +73,10 @@ export function SandboxStatusSettings(): JSX.Element {
       {status && (
         <>
           <div className="ema-glass-weak grid grid-cols-1 gap-x-6 gap-y-3 rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] px-4 py-4 sm:grid-cols-2">
-            <StatusRow label="隔离后端" value={BACKEND_LABEL[status.kind]} />
+            <StatusRow label="隔离后端" value={BACKEND_LABEL[status.kind] ?? status.kind} />
             <StatusRow
               label="命令执行"
-              value={EXECUTION_LABEL[status.shellExecution]}
+              value={EXECUTION_LABEL[status.shellExecution] ?? status.shellExecution}
               tone={status.shellExecution === 'isolated' ? 'ok' : 'bad'}
             />
             <StatusRow
@@ -85,7 +85,7 @@ export function SandboxStatusSettings(): JSX.Element {
             />
             <StatusRow
               label="本地 MCP"
-              value={EXECUTION_LABEL[status.localMcpStdio]}
+              value={EXECUTION_LABEL[status.localMcpStdio] ?? status.localMcpStdio}
               tone={status.localMcpStdio === 'isolated' ? 'ok' : 'bad'}
             />
           </div>

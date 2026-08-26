@@ -20,8 +20,8 @@ function createLocalStorageMock(): Storage {
 
 vi.stubGlobal('localStorage', createLocalStorageMock());
 
-const { useWorkspaceStore, DEFAULT_RIGHT_WIDTH, DEFAULT_BOTTOM_HEIGHT, isRightFullWidth } = await import('./workspaceStore.js');
-const { fileTab, agentRunTab } = await import('./workspaceTypes.js');
+const { useWorkspaceStore, DEFAULT_RIGHT_WIDTH, DEFAULT_BOTTOM_HEIGHT, isRightFullWidth } = await import('../src/stores/workspaceStore.js');
+const { fileTab, agentRunTab } = await import('../src/stores/workspaceTypes.js');
 
 function layoutOf(sessionId: string = S1) {
   return useWorkspaceStore.getState().layouts[sessionId as string];
@@ -222,7 +222,7 @@ describe('资源键归一', () => {
 describe('持久化恢复', () => {
   async function reloadStore() {
     vi.resetModules();
-    return import('./workspaceStore.js');
+    return import('../src/stores/workspaceStore.js');
   }
 
   it('布局与全局尺寸从 localStorage 恢复', async () => {

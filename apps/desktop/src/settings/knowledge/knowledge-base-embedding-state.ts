@@ -1,65 +1,47 @@
-// 判断知识库文档是否属于当前 Embedding 空间，并解析模型目录中的完整身份。
-import type { DocumentAssetWire } from '../../api/knowledge-base.js';
-import type {
-  AvailableBindingModel,
-  EmbeddingSpaceWire,
-} from '../../api/model-bindings.js';
-import type { KbModelRef } from '../../api/settings.js';
+// 判断知识库文档是否落后于当前嵌入绑定:后端维护的 embeddingStale 优先,
+// 再按绑定身份(providerId + modelId + dim)逐项比对。
+import type { DocumentAsset } from '../../api/knowledge.js';
+import type { AvailableModel, BindingRecord } from '../../api/providers.js';
 
+/** 当前 kb-embed 绑定的解析结果;dim 从可用模型清单补全(未启用时缺失)。 */
 export interface ResolvedEmbedSelection {
-  providerConfigId: string;
-  model: string;
+  providerId: string;
+  modelId: string;
   dim?: number;
-  embeddingSpace?: EmbeddingSpaceWire | null;
 }
 
-export function sameKbModelRef(
-  left?: KbModelRef | null,
-  right?: KbModelRef | null,
+export function sameEmbedSelection(
+  left?: ResolvedEmbedSelection | null,
+  right?: ResolvedEmbedSelection | null,
 ): boolean {
   if (!left || !right) return left == null && right == null;
-  return left.providerConfigId === right.providerConfigId
-    && left.model === right.model;
+  return left.providerId === right.providerId && left.modelId === right.modelId;
 }
 
 export function resolveEmbedSelection(
-  models: AvailableBindingModel[],
-  ref?: KbModelRef | null,
+  models: readonly AvailableModel[],
+  binding?: Pick<BindingRecord, 'providerId' | 'modelId'> | null,
 ): ResolvedEmbedSelection | undefined {
-  if (!ref) return undefined;
+  if (!binding) return undefined;
   const model = models.find((candidate) =>
-    candidate.providerConfigId === ref.providerConfigId
-    && candidate.model === ref.model);
-  return model ? {
-    providerConfigId: model.providerConfigId,
-    model: model.model,
-    dim: model.dim,
-    embeddingSpace: model.embeddingSpace,
-  } : {
-    providerConfigId: ref.providerConfigId,
-    model: ref.model,
+    candidate.providerId === binding.providerId
+    && candidate.capability === 'embed'
+    && candidate.modelId === binding.modelId);
+  return {
+    providerId: binding.providerId,
+    modelId: binding.modelId,
+    ...(model && model.capability === 'embed' ? { dim: model.dim } : {}),
   };
 }
 
 export function documentNeedsReembed(
-  document: DocumentAssetWire,
+  document: DocumentAsset,
   current?: ResolvedEmbedSelection,
 ): boolean {
   if (!current) return false;
-  if (document.ebdStale) return true;
-  if (!document.ebdModel) return true;
-
-  const space = current.embeddingSpace;
-  if (space) {
-    if (document.ebdSpaceId) return document.ebdSpaceId !== space.id;
-    return document.ebdProviderId !== space.providerId
-      || document.ebdModel !== space.model
-      || document.ebdDim !== space.dim
-      || document.ebdNormalization !== space.normalization
-      || document.ebdRevision !== space.revision;
-  }
-
-  return document.ebdProviderId !== current.providerConfigId
-    || document.ebdModel !== current.model
-    || (current.dim !== undefined && document.ebdDim !== current.dim);
+  if (document.embeddingStale) return true;
+  if (!document.embeddingModel) return true;
+  return document.embeddingProviderId !== current.providerId
+    || document.embeddingModel !== current.modelId
+    || (current.dim !== undefined && document.embeddingDim !== current.dim);
 }

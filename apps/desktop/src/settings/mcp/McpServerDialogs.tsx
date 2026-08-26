@@ -32,7 +32,7 @@ export function McpImportDialog({
   const [importJson,    setImportJson]    = useState('');
   const [importing,     setImporting]     = useState(false);
   const [importError,   setImportError]   = useState<string | null>(null);
-  const [importResults, setImportResults] = useState<McpImportResult[] | null>(null);
+  const [importResults, setImportResults] = useState<McpImportResult['items'] | null>(null);
 
   function closeImport(): void {
     onOpenChange(false);
@@ -92,10 +92,10 @@ export function McpImportDialog({
                   <span className="text-sm font-semibold text-[var(--ema-text-primary)]">{r.name}</span>
                   <Badge variant={r.ok ? 'success' : 'danger'}>{r.ok ? '成功' : '失败'}</Badge>
                 </div>
-                {r.error && (
+                {!r.ok && (
                   <p className="text-xs text-[var(--ema-danger)] mt-0.5">{r.error}</p>
                 )}
-                {r.connectError && (
+                {r.ok && 'connectError' in r && r.connectError && (
                   <p className="text-xs text-[var(--ema-warning)] mt-0.5">连接警告：{r.connectError}</p>
                 )}
               </div>

@@ -1,8 +1,10 @@
 // 展示并保存主题颜色、圆角、Markdown 字体和明暗模式。
 import { useEffect, useState, type JSX, type ChangeEvent } from 'react';
 import { Button, Input, Select, Slider, type SliderStep } from '@ema-agent/ui';
-import type { ContentFontPreset } from '../../api/settings.js';
 import { useThemeStore, type ThemeMode } from '../../stores/theme-store.js';
+
+/** Markdown 正文字体预设;与 theme-store 持久化值同构(纯 UI 投影)。 */
+type ContentFontPreset = 'system' | 'rounded' | 'reading' | 'custom';
 
 // ── Hue presets ───────────────────────────────────────────────────────────────
 

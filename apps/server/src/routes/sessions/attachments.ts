@@ -1,4 +1,4 @@
-// Session 附件：列出与内容流式读取。路径不进 wire；内容只经服务端回传。
+// Session 附件：列出与内容流式读取。路径不下发；内容只经服务端回传。
 import fs from 'node:fs';
 import { Readable } from 'node:stream';
 import { Hono } from 'hono';

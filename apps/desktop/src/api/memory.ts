@@ -1,125 +1,87 @@
-/**
- * Memory API — read-only stats + node/edge/items listing + overrides + maintenance.
- * Types imported from @ema-agent/memory and @ema-agent/storage where available.
- */
-import { sidecarClient } from './sidecar-client.js';
+// Memory API：/api/memory——后台任务、记忆文件浏览/搜索、存储状态与整合/维护入队。
+// 旧图模型（nodes/items/edges/overrides/health）端点已不存在，无对应 API。
+import type { InferRequestType } from 'hono/client';
+import { rpcClient, readRpcJson, type RpcClient, type RpcJson } from './client.js';
 
-import type {
-  MemoryBackgroundHealth,
-  MemoryStats,
-  MemorySessionOverrides,
-  MaintenanceReport,
-} from '@ema-agent/memory';
-import type { MemoryNodeRow, MemoryItemRow, MemoryEdgeRow } from '@ema-agent/storage';
-
-export type {
-  MemoryBackgroundHealth,
-  MemoryStats,
-  MemorySessionOverrides,
-  MaintenanceReport,
-  MemoryNodeRow,
-  MemoryItemRow,
-  MemoryEdgeRow,
-};
-
-export interface MemoryMaintenanceInput {
-  decayAfterDays?: number;
-  decayAmount?:    number;
-  decayItems?:     boolean;
-  dryRun?:         boolean;
-}
-
-// ── API object ────────────────────────────────────────────────────────────────
+export type MemoryStats = RpcJson<RpcClient['api']['memory']['stats']['$get']>;
+export type MemoryJobList = RpcJson<RpcClient['api']['memory']['jobs']['$get']>;
+export type MemoryJob = MemoryJobList['items'][number];
+export type MemoryJobPaths = RpcJson<RpcClient['api']['memory']['jobs'][':id']['paths']['$get']>;
+export type MemoryFileList = RpcJson<RpcClient['api']['memory']['files']['$get']>;
+export type MemoryFileContent = RpcJson<RpcClient['api']['memory']['files']['content']['$get']>;
+export type MemorySearchInput = InferRequestType<RpcClient['api']['memory']['files']['search']['$post']>['json'];
+export type MemorySearchResult = RpcJson<RpcClient['api']['memory']['files']['search']['$post']>;
+export type MemoryConsolidateInput = InferRequestType<RpcClient['api']['memory']['consolidate']['$post']>['json'];
+export type MemoryMaintenanceInput = InferRequestType<RpcClient['api']['memory']['maintenance']['$post']>['json'];
 
 export const memoryApi = {
-  /** GET /api/memory/stats */
-  async stats(): Promise<MemoryStats> {
-    return sidecarClient.request<MemoryStats>('/api/memory/stats');
+  /** GET /api/memory/stats — 记忆存储状态（字节/限量/水位）。 */
+  stats(): Promise<MemoryStats> {
+    return readRpcJson(rpcClient.api.memory.stats.$get());
   },
 
-  /** GET /api/memory/health — 后台维护健康投影(idle/running/degraded,只读)。 */
-  async health(): Promise<MemoryBackgroundHealth> {
-    return sidecarClient.request<MemoryBackgroundHealth>('/api/memory/health');
+  /** GET /api/memory/jobs?limit= — 最近后台任务。 */
+  listJobs(limit?: number): Promise<MemoryJobList> {
+    return readRpcJson(rpcClient.api.memory.jobs.$get({
+      query: limit !== undefined ? { limit: String(limit) } : {},
+    }));
   },
 
-  /** GET /api/memory/nodes */
-  async listNodes(opts?: {
-    limit?:         number;
-    nodeType?:      string;
-    minImportance?: number;
-    orderBy?:       string;
-    search?:        string;
-  }): Promise<MemoryNodeRow[]> {
-    const params = new URLSearchParams();
-    if (opts?.limit)         params.set('limit', String(opts.limit));
-    if (opts?.nodeType)      params.set('nodeType', opts.nodeType);
-    if (opts?.minImportance !== undefined) params.set('minImportance', String(opts.minImportance));
-    if (opts?.orderBy)       params.set('orderBy', opts.orderBy);
-    if (opts?.search)        params.set('search', opts.search);
-    const qs = params.toString();
-    return sidecarClient.request<MemoryNodeRow[]>(`/api/memory/nodes${qs ? `?${qs}` : ''}`);
+  /** GET /api/memory/jobs/:id/paths — 任务涉及的记忆路径。 */
+  listJobPaths(id: string): Promise<MemoryJobPaths> {
+    return readRpcJson(rpcClient.api.memory.jobs[':id'].paths.$get({ param: { id } }));
   },
 
-  /** GET /api/memory/items */
-  async listItems(opts?: {
-    limit?:         number;
-    kind?:          string;
-    mode?:          string;
-    minImportance?: number;
-    orderBy?:       string;
-    search?:        string;
-  }): Promise<MemoryItemRow[]> {
-    const params = new URLSearchParams();
-    if (opts?.limit)         params.set('limit', String(opts.limit));
-    if (opts?.kind)           params.set('kind', opts.kind);
-    if (opts?.mode)           params.set('mode', opts.mode);
-    if (opts?.minImportance !== undefined) params.set('minImportance', String(opts.minImportance));
-    if (opts?.orderBy)       params.set('orderBy', opts.orderBy);
-    if (opts?.search)        params.set('search', opts.search);
-    const qs = params.toString();
-    return sidecarClient.request<MemoryItemRow[]>(`/api/memory/items${qs ? `?${qs}` : ''}`);
+  retryJob(id: string) {
+    return readRpcJson(rpcClient.api.memory.jobs[':id'].retry.$post({ param: { id } }));
   },
 
-  /** GET /api/memory/edges?nodes=id1,id2,... */
-  async listEdges(nodeIds: string[]): Promise<MemoryEdgeRow[]> {
-    return sidecarClient.request<MemoryEdgeRow[]>(
-      `/api/memory/edges?nodes=${nodeIds.join(',')}`,
-    );
+  cancelJob(id: string) {
+    return readRpcJson(rpcClient.api.memory.jobs[':id'].cancel.$post({ param: { id } }));
   },
 
-  /** GET /api/memory/sessions/:id/overrides */
-  async getSessionOverrides(sessionId: string): Promise<MemorySessionOverrides> {
-    return sidecarClient.request<MemorySessionOverrides>(
-      `/api/memory/sessions/${sessionId}/overrides`,
-    );
+  /** GET /api/memory/files — 记忆目录浏览（path/cursor/maxResults）。 */
+  listFiles(opts?: {
+    path?: string;
+    cursor?: string;
+    maxResults?: number;
+  }): Promise<MemoryFileList> {
+    return readRpcJson(rpcClient.api.memory.files.$get({
+      query: {
+        ...(opts?.path ? { path: opts.path } : {}),
+        ...(opts?.cursor ? { cursor: opts.cursor } : {}),
+        ...(opts?.maxResults !== undefined ? { maxResults: String(opts.maxResults) } : {}),
+      },
+    }));
   },
 
-  /** PUT /api/memory/sessions/:id/overrides */
-  async setSessionOverrides(
-    sessionId: string,
-    overrides: MemorySessionOverrides,
-  ): Promise<MemorySessionOverrides> {
-    return sidecarClient.request<MemorySessionOverrides>(
-      `/api/memory/sessions/${sessionId}/overrides`,
-      { method: 'PUT', json: overrides },
-    );
+  /** GET /api/memory/files/content — 有界文本读取。 */
+  readFile(opts: {
+    path: string;
+    lineOffset?: number;
+    maxLines?: number;
+  }): Promise<MemoryFileContent> {
+    return readRpcJson(rpcClient.api.memory.files.content.$get({
+      query: {
+        path: opts.path,
+        ...(opts.lineOffset !== undefined ? { lineOffset: String(opts.lineOffset) } : {}),
+        ...(opts.maxLines !== undefined ? { maxLines: String(opts.maxLines) } : {}),
+      },
+    }));
   },
 
-  /** DELETE /api/memory/nodes/:id */
-  async deleteNode(id: string): Promise<void> {
-    await sidecarClient.request(`/api/memory/nodes/${id}`, { method: 'DELETE' });
+  /** POST /api/memory/files/search — 全文搜索。 */
+  search(body: MemorySearchInput): Promise<MemorySearchResult> {
+    return readRpcJson(rpcClient.api.memory.files.search.$post({ json: body }));
   },
 
-  /** DELETE /api/memory/items/:id */
-  async deleteItem(id: string): Promise<void> {
-    await sidecarClient.request(`/api/memory/items/${id}`, { method: 'DELETE' });
+  /** POST /api/memory/consolidate — 入队整合 Job（202）。 */
+  consolidate(kind: MemoryConsolidateInput['kind']) {
+    return readRpcJson(rpcClient.api.memory.consolidate.$post({ json: { kind } }));
   },
 
-  /** POST /api/memory/maintenance */
-  async runMaintenance(input: MemoryMaintenanceInput): Promise<MaintenanceReport> {
-    return sidecarClient.request<MaintenanceReport>('/api/memory/maintenance', {
-      method: 'POST',
-      json: input,
-    });
+  /** POST /api/memory/maintenance — 入队维护 Job（202）。 */
+  maintenance(kind: MemoryMaintenanceInput['kind']) {
+    return readRpcJson(rpcClient.api.memory.maintenance.$post({ json: { kind } }));
   },
 };

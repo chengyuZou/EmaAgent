@@ -1,56 +1,57 @@
 /**
- * 在桌宠窗口显示不阻塞其他 Session 的精简 Permission 与 AskConfirm 决策卡。
+ * 在桌宠窗口显示不阻塞其他 Session 的精简 Permission 决策卡。
  *
  * Listens to Tauri IPC events relayed from the chat window:
  *   decision:push    — new prompt → show compact toast card
  *   decision:dismiss — prompt resolved → animate card out
  *
- * Permission + ask_confirm → compact non-blocking toast cards (this layer).
- * ask_text / ask_choice / ask_user → NOT shown in the pet window. The pet
- * window has no viewedSessionId so it cannot render a blocking modal; these
- * prompts are handled in the chat window's DecisionLayer. The sidebar badge
- * there surfaces pending counts per session.
+ * 只有 permission 在桌宠窗口显示非阻塞 Toast；AskUser 是成批问答，桌宠窗口没有
+ * viewedSessionId 无法渲染阻塞式卡片，由聊天窗口的 DecisionLayer 处理。
  *
  * Multiple sessions can have stacked prompts simultaneously. Clicking buttons
  * POSTs directly to the backend; does NOT change the active TTS/Live2D session.
  */
 import { useEffect, useState, type CSSProperties } from 'react';
 import { Button } from '@ema-agent/ui';
-import {
-  tauriBridge,
-  permissionApi,
-  SidecarApiError,
-  turnsApi,
-  type DecisionPrompt,
-} from '@ema-agent/desktop-ui';
+import { tauriBridge } from '../lib/tauri-bridge.js';
+import { ServerApiError } from '../api/client.js';
+import { turnsApi } from '../api/turns.js';
 import type { PermissionResponse } from '@ema-agent/permission';
 
-// ── Toast item types ──────────────────────────────────────────────────────────
+// ── Toast 协议类型 ───────────────────────────────────────────────────────────
 
-type PermissionToast = Extract<DecisionPrompt, { kind: 'permission' }>;
-type AskConfirmToast = Extract<DecisionPrompt, { kind: 'ask_confirm' }>;
-type QuickToast      = PermissionToast | AskConfirmToast;
+/**
+ * decision:push 通道载荷的本地 ViewModel：聊天窗口从 Turn 流 permission_required
+ * 投影后转发，交互锚为 toolCallId（与后端应答通道一致）。
+ */
+interface PermissionToastPayload {
+  kind: 'permission';
+  sessionId: string;
+  turnId: string;
+  toolCallId: string;
+  toolName: string;
+  toolDescription?: string;
+}
 
 // ── Root ─────────────────────────────────────────────────────────────────────
 
 export function PermissionToastLayer(): React.JSX.Element {
-  const [toasts, setToasts] = useState<QuickToast[]>([]);
+  const [toasts, setToasts] = useState<PermissionToastPayload[]>([]);
 
   useEffect(() => {
-    const unlistenPush = tauriBridge.listen<DecisionPrompt>('decision:push', (e) => {
+    const unlistenPush = tauriBridge.listen<PermissionToastPayload>('decision:push', (e) => {
       const p = e.payload;
-      if (p.kind === 'permission' || p.kind === 'ask_confirm') {
-        setToasts((prev) => {
-          if (prev.some((t) => t.promptId === p.promptId)) return prev;
-          return [...prev, p as QuickToast];
-        });
-      }
-      // ask_text / ask_choice / ask_user are handled in the chat window only.
+      if (p.kind !== 'permission') return;
+      // AskUser 只在聊天窗口处理；桌宠窗口不显示阻塞式问答。
+      setToasts((prev) => {
+        if (prev.some((t) => t.toolCallId === p.toolCallId)) return prev;
+        return [...prev, p];
+      });
     });
 
-    const unlistenDismiss = tauriBridge.listen<{ promptId: string }>('decision:dismiss', (e) => {
-      const { promptId } = e.payload;
-      setToasts((prev) => prev.filter((t) => t.promptId !== promptId));
+    const unlistenDismiss = tauriBridge.listen<{ toolCallId: string }>('decision:dismiss', (e) => {
+      const { toolCallId } = e.payload;
+      setToasts((prev) => prev.filter((t) => t.toolCallId !== toolCallId));
     });
 
     return () => {
@@ -61,8 +62,8 @@ export function PermissionToastLayer(): React.JSX.Element {
 
   if (toasts.length === 0) return <></>;
 
-  const removeToast = (promptId: string): void =>
-    setToasts((prev) => prev.filter((t) => t.promptId !== promptId));
+  const removeToast = (toolCallId: string): void =>
+    setToasts((prev) => prev.filter((t) => t.toolCallId !== toolCallId));
 
   return (
     <div
@@ -79,10 +80,8 @@ export function PermissionToastLayer(): React.JSX.Element {
       }}
     >
       {toasts.map((toast) => (
-        <div key={toast.promptId} className="ema-toast-in" style={{ pointerEvents: 'auto' }}>
-          {toast.kind === 'permission'
-            ? <PermissionCard toast={toast} onDismiss={removeToast} />
-            : <AskConfirmCard toast={toast} onDismiss={removeToast} />}
+        <div key={toast.toolCallId} className="ema-toast-in" style={{ pointerEvents: 'auto' }}>
+          <PermissionCard toast={toast} onDismiss={removeToast} />
         </div>
       ))}
     </div>
@@ -95,8 +94,8 @@ function PermissionCard({
   toast,
   onDismiss,
 }: {
-  toast: PermissionToast;
-  onDismiss(promptId: string): void;
+  toast: PermissionToastPayload;
+  onDismiss(toolCallId: string): void;
 }): React.JSX.Element {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>();
@@ -106,11 +105,11 @@ function PermissionCard({
     setSubmitting(true);
     setError(undefined);
     try {
-      await permissionApi.respond(toast.turnId, toast.promptId, response);
-      onDismiss(toast.promptId);
+      await turnsApi.respondPermission(toast.turnId, toast.toolCallId, response);
+      onDismiss(toast.toolCallId);
     } catch (cause: unknown) {
-      if (cause instanceof SidecarApiError && cause.status === 404) {
-        onDismiss(toast.promptId);
+      if (cause instanceof ServerApiError && cause.status === 404) {
+        onDismiss(toast.toolCallId);
         return;
       }
       setError(cause instanceof Error ? cause.message : '提交失败，请重试');
@@ -119,9 +118,7 @@ function PermissionCard({
     }
   };
 
-  const desc = toast.toolDescription
-    ?? toast.gateReason
-    ?? `即将运行 ${toast.toolName}`;
+  const desc = toast.toolDescription ?? `即将运行 ${toast.toolName}`;
 
   return (
     <ToastCard sessionId={toast.sessionId} label="工具请求">
@@ -131,52 +128,6 @@ function PermissionCard({
         <Button variant="danger" size="sm" disabled={submitting} onClick={() => void respond({ action: 'deny' })}>拒绝</Button>
         <Button variant="secondary" size="sm" disabled={submitting} onClick={() => void respond({ action: 'allowSession' })}>此会话</Button>
         <Button variant="primary" size="sm" disabled={submitting} onClick={() => void respond({ action: 'allow' })}>允许</Button>
-      </div>
-      {error && <p style={errorStyle}>{error}</p>}
-    </ToastCard>
-  );
-}
-
-// ── Ask-confirm card ──────────────────────────────────────────────────────────
-
-function AskConfirmCard({
-  toast,
-  onDismiss,
-}: {
-  toast: AskConfirmToast;
-  onDismiss(promptId: string): void;
-}): React.JSX.Element {
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string>();
-
-  const respond = async (confirmed: boolean): Promise<void> => {
-    if (submitting) return;
-    setSubmitting(true);
-    setError(undefined);
-    try {
-      await turnsApi.respondAskUser(toast.turnId, toast.promptId, { confirmed: String(confirmed) });
-      onDismiss(toast.promptId);
-    } catch (cause: unknown) {
-      if (cause instanceof SidecarApiError && cause.status === 404) {
-        onDismiss(toast.promptId);
-        return;
-      }
-      setError(cause instanceof Error ? cause.message : '提交失败，请重试');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const body = toast.humanDescription ?? toast.question;
-  const sub  = toast.humanDescription ? toast.question : undefined;
-
-  return (
-    <ToastCard sessionId={toast.sessionId} label="确认请求">
-      <p style={descStyle}>{body}</p>
-      {sub && <p style={subStyle}>{sub}</p>}
-      <div style={rowStyle}>
-        <Button variant="secondary" size="sm" disabled={submitting} onClick={() => void respond(false)}>否</Button>
-        <Button variant="primary" size="sm" disabled={submitting} onClick={() => void respond(true)}>确认</Button>
       </div>
       {error && <p style={errorStyle}>{error}</p>}
     </ToastCard>
@@ -259,13 +210,6 @@ const descStyle: CSSProperties = {
   WebkitLineClamp:     3,
   WebkitBoxOrient:     'vertical',
   overflow:            'hidden',
-};
-
-const subStyle: CSSProperties = {
-  margin:     0,
-  fontSize:   11,
-  color:      'var(--ema-text-tertiary)',
-  lineHeight: 1.4,
 };
 
 const errorStyle: CSSProperties = {

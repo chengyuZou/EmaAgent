@@ -1,12 +1,16 @@
+/**
+ * VisionModelManager — provider 的 Vision 模型池（与 LLM 同参数集，capability 判别供绑定分流）。
+ */
 import { useState, useEffect, useCallback, type JSX } from 'react';
-import { Button, Callout, ConfirmDialog, Spinner } from '@ema-agent/ui';
-import { providersApi, type AvailableSimpleModelWire } from '../../api/providers.js';
+import { Button, Callout, ConfirmDialog, Input, Spinner } from '@ema-agent/ui';
+import { providersApi, type ProviderModelRecord } from '../../api/providers.js';
 import { showToast } from '../../lib/toast.js';
 import { ModelToggleCard } from './ModelToggleCard.js';
 
+type VisionModel = Extract<ProviderModelRecord, { capability: 'vision' }>;
+
 export function VisionModelManager({ providerId, iconKey }: { providerId: string; iconKey?: string }): JSX.Element {
-  const [models, setModels]   = useState<AvailableSimpleModelWire[]>([]);
-  const [source, setSource]   = useState<'static' | 'catalog'>('static');
+  const [models, setModels]   = useState<VisionModel[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
   const [confirmModel, setConfirmModel] = useState<string | null>(null);
@@ -15,9 +19,8 @@ export function VisionModelManager({ providerId, iconKey }: { providerId: string
     setLoading(true);
     setError(null);
     try {
-      const res = await providersApi.listVisionModels(providerId);
-      setModels(res.models);
-      setSource(res.source);
+      const rows = await providersApi.listModels(providerId);
+      setModels(rows.filter((m): m is VisionModel => m.capability === 'vision'));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -27,27 +30,28 @@ export function VisionModelManager({ providerId, iconKey }: { providerId: string
 
   useEffect(() => { void load(); }, [load]);
 
-  async function enable(model: string): Promise<void> {
+  async function add(modelId: string, contextWindow: number): Promise<void> {
     try {
-      await providersApi.enableVisionModel(providerId, model);
-      setModels((ms) => ms.map((m) => (m.id === model ? { ...m, enabled: true } : m)));
+      await providersApi.saveModel(providerId, {
+        capability: 'vision',
+        modelId,
+        contextWindow,
+      });
+      await load();
     } catch (err) {
-      showToast(`启用失败: ${err instanceof Error ? err.message : String(err)}`, { variant: 'danger' });
+      showToast(`添加失败: ${err instanceof Error ? err.message : String(err)}`, { variant: 'danger' });
     }
   }
 
-  async function confirmDisable(): Promise<void> {
+  async function confirmRemove(): Promise<void> {
     if (!confirmModel) return;
     const model = confirmModel;
     setConfirmModel(null);
     try {
-      const res = await providersApi.disableVisionModel(providerId, model);
-      setModels((ms) => ms.map((m) => (m.id === model ? { ...m, enabled: false } : m)));
-      if (res.cascadedBindings > 0) {
-        showToast(`已禁用，并解除了 ${res.cascadedBindings} 个绑定`, { variant: 'warning' });
-      }
+      await providersApi.deleteModel(providerId, model, 'vision');
+      setModels((ms) => ms.filter((m) => m.modelId !== model));
     } catch (err) {
-      showToast(`禁用失败: ${err instanceof Error ? err.message : String(err)}`, { variant: 'danger' });
+      showToast(`移除失败: ${err instanceof Error ? err.message : String(err)}`, { variant: 'danger' });
     }
   }
 
@@ -57,8 +61,7 @@ export function VisionModelManager({ providerId, iconKey }: { providerId: string
         <div>
           <h3 className="text-base font-semibold text-[var(--ema-text-primary)]">Vision 模型</h3>
           <p className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">
-            启用的模型可在「模型绑定」里分配给 vision 模块。
-            {source === 'static' && '(显示内置推荐)'}
+            池内模型可在「模型绑定」里分配给 vision 模块。
           </p>
         </div>
         <Button variant="ghost" size="sm" onClick={() => void load()} disabled={loading}>
@@ -73,23 +76,74 @@ export function VisionModelManager({ providerId, iconKey }: { providerId: string
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {models.map((m) => (
             <ModelToggleCard
-              key={m.id}
-              id={m.id}
-              enabled={m.enabled}
-              onToggle={() => void (m.enabled ? setConfirmModel(m.id) : enable(m.id))}
+              key={m.modelId}
+              id={m.modelId}
+              badge={`${m.contextWindow >= 1000000 ? `${(m.contextWindow / 1000000).toFixed(0)}M` : `${(m.contextWindow / 1000).toFixed(0)}K`} ctx`}
+              enabled
+              onToggle={() => setConfirmModel(m.modelId)}
               logo={iconKey}
             />
           ))}
         </div>
       )}
 
+      <ManualAddVisionModel
+        onAdd={(model, ctx) => void add(model, ctx)}
+        existing={models.map((m) => m.modelId)}
+      />
+
       <ConfirmDialog
         open={!!confirmModel}
-        message={confirmModel ? `禁用 "${confirmModel}"？使用它的 Vision 绑定也会一并解除。` : ''}
-        confirmText="禁用"
-        onConfirm={() => void confirmDisable()}
+        message={confirmModel ? `从模型池移除 "${confirmModel}"？使用它的 vision 绑定将失效。` : ''}
+        confirmText="移除"
+        onConfirm={() => void confirmRemove()}
         onCancel={() => setConfirmModel(null)}
       />
+    </div>
+  );
+}
+
+function ManualAddVisionModel({ onAdd, existing }: {
+  onAdd(model: string, contextWindow: number): void;
+  existing: string[];
+}): JSX.Element {
+  const [query, setQuery] = useState('');
+  const [ctx, setCtx]     = useState('');
+
+  function add(): void {
+    const model = query.trim();
+    const n = parseInt(ctx, 10);
+    if (!model) return;
+    if (existing.includes(model)) { showToast('该模型已在列表中', { variant: 'warning' }); return; }
+    if (!Number.isFinite(n) || n <= 0) { showToast('请填写上下文窗口(正整数 token 数)', { variant: 'danger' }); return; }
+    onAdd(model, n);
+    setQuery('');
+    setCtx('');
+  }
+
+  return (
+    <div className="mt-1">
+      <p className="text-xs text-[var(--ema-text-tertiary)] mb-1.5">添加 Vision 模型</p>
+      <div className="relative flex gap-2">
+        <div className="relative flex-1">
+          <Input
+            inputSize="sm"
+            className="font-mono"
+            placeholder="模型 ID，如 glm-4v"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
+        <Input
+          type="number"
+          inputSize="sm"
+          className="w-28"
+          placeholder="窗口 token"
+          value={ctx}
+          onChange={(e) => setCtx(e.target.value)}
+        />
+        <Button variant="secondary" size="sm" onClick={add}>添加</Button>
+      </div>
     </div>
   );
 }

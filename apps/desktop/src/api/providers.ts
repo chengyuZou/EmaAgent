@@ -1,349 +1,185 @@
-/**
- * Providers API — CRUD + definitions + health probe.
- * ProviderDefinition imported from @ema-agent/provider.
- */
-import { sidecarClient } from './sidecar-client.js';
-import type {
-  Capability,
-  ProtocolFamily,
-  ProviderCredentialOperation,
-  ProviderDefinition,
-} from '@ema-agent/provider';
+// Providers API：/api/providers——CRUD、Key 管理、模型池与业务绑定（bindings）、探活。
+// TTS 试听（音频字节流）走 requestRaw；STT 转写在 transcribe.ts。
+import type { InferRequestType } from 'hono/client';
+import {
+  rpcClient,
+  readRpcJson,
+  readRpcVoid,
+  serverClient,
+  toServerApiError,
+  type RpcClient,
+  type RpcJson,
+} from './client.js';
 
-export type { ProviderDefinition };
+// ── 类型（全部从路由契约推导） ────────────────────────────────────────────────
 
-export interface ProviderHealthWire {
-  status:       string;
-  latencyMs:    number | null;
-  lastError:    string | null;
-  lastProbedAt: number | null;
-}
+export type ProviderList = RpcJson<RpcClient['api']['providers']['$get']>;
+export type ProviderRecord = ProviderList[number];
+export type ProviderConfigInput = InferRequestType<RpcClient['api']['providers']['$post']>['json'];
+export type ProviderPatchInput = InferRequestType<RpcClient['api']['providers'][':providerId']['$patch']>['json'];
 
-export interface ProviderConfigWire {
-  id:           string;
-  definitionId: string;
-  displayName:  string;
-  hasApiKey:    boolean;
-  enabled:      boolean;
-  capabilities: ProviderCapabilityConfigWire[];
-  health:       ProviderHealthWire | null;
-  definition:   ProviderDefinition | null;
-}
+/** 模型能力枚举：与路由 paramValidator/queryValidator 同源。 */
+export type ModelCapability = InferRequestType<
+  RpcClient['api']['providers']['available'][':capability']['$get']
+>['param']['capability'];
 
-export interface ProviderCapabilityConfigWire {
-  capability: Capability;
-  protocol: ProtocolFamily | null;
-  baseUrl: string | null;
-  embeddingRevision: string | null;
-  enabled: boolean;
-}
+export type AvailableModelsResult = RpcJson<RpcClient['api']['providers']['available'][':capability']['$get']>;
+export type AvailableModel = AvailableModelsResult['models'][number];
+export type ProviderModelsResult = RpcJson<RpcClient['api']['providers'][':providerId']['models']['$get']>;
+export type ProviderModelRecord = ProviderModelsResult[number];
+export type ProviderModelInput = InferRequestType<RpcClient['api']['providers'][':providerId']['models']['$put']>['json'];
 
-export interface ProviderCapabilityConfigInput {
-  capability: Capability;
-  protocol?: ProtocolFamily | null;
-  baseUrl?: string | null;
-  embeddingRevision?: string | null;
-  enabled?: boolean;
-}
+export type BindingsList = RpcJson<RpcClient['api']['providers']['bindings']['$get']>;
+export type BindingModule = InferRequestType<
+  RpcClient['api']['providers']['bindings'][':module']['$put']
+>['param']['module'];
+export type BindingUpsertInput = InferRequestType<RpcClient['api']['providers']['bindings'][':module']['$put']>['json'];
+export type BindingRecord = RpcJson<RpcClient['api']['providers']['bindings'][':module']['$put']>;
 
-export interface ProviderConfigInput {
-  definitionId: string;
-  displayName?: string;
-  apiKey?:      string;
-  enabled?:     boolean;
-  capabilities?: ProviderCapabilityConfigInput[];
-}
+export type ProviderKeyList = RpcJson<RpcClient['api']['providers'][':providerId']['keys']['$get']>;
+export type ProviderKeyRecord = ProviderKeyList[number];
+export type ProviderKeyAddInput = InferRequestType<RpcClient['api']['providers'][':providerId']['keys']['$post']>['json'];
+export type ProviderKeySelectInput = InferRequestType<RpcClient['api']['providers'][':providerId']['keys']['select']['$post']>['json'];
 
-export interface ProviderConfigPatchInput {
-  displayName?:   string;
-  credential?:    ProviderCredentialOperation;
-  enabled?:       boolean;
-  capability?:    ProviderCapabilityConfigInput;
-}
+export type ProbeCapability = InferRequestType<
+  RpcClient['api']['providers'][':providerId']['probe'][':capability']['$post']
+>['param']['capability'];
 
-export interface ProbeResultWire {
-  ok:        boolean;
-  model:     string;
-  latencyMs: number | null;
-  error?:    string;
-}
-
-export interface AvailableModelWire {
-  id:            string;
-  /** From token table / enabled row; null when unknown (user must fill on enable). */
-  contextWindow: number | null;
-  enabled:       boolean;
-}
-
-export interface ModelsListWire {
-  source: 'live' | 'catalog';
-  models: AvailableModelWire[];
-}
-
-export interface AvailableEmbedModelWire {
-  id:      string;
-  dim:     number | null;
-  enabled: boolean;
-}
-
-export interface EmbedModelsListWire {
-  source: 'live' | 'static';
-  models: AvailableEmbedModelWire[];
-}
-
-export interface AvailableRerankModelWire {
-  id:        string;
-  maxChunks: number | null;
-  enabled:   boolean;
-}
-
-export interface RerankModelsListWire {
-  source: 'static';
-  models: AvailableRerankModelWire[];
-}
-
-export interface AvailableSimpleModelWire {
-  id:      string;
-  enabled: boolean;
-}
-
-export interface SimpleModelsListWire {
-  source: 'static' | 'catalog';
-  models: AvailableSimpleModelWire[];
-}
-
-// ── API object ────────────────────────────────────────────────────────────────
+// ── API ──────────────────────────────────────────────────────────────────────
 
 export const providersApi = {
-  /** GET /api/providers/definitions — static registry. */
-  async listDefinitions(): Promise<ProviderDefinition[]> {
-    return sidecarClient.request<ProviderDefinition[]>('/api/providers/definitions');
+  list(): Promise<ProviderList> {
+    return readRpcJson(rpcClient.api.providers.$get());
   },
 
-  /** GET /api/providers — user-configured providers with health. */
-  async list(): Promise<ProviderConfigWire[]> {
-    return sidecarClient.request<ProviderConfigWire[]>('/api/providers');
+  /** 创建（自建与内置种子同构）。 */
+  create(body: ProviderConfigInput) {
+    return readRpcJson(rpcClient.api.providers.$post({ json: body }));
   },
 
-  /** GET /api/providers/:id */
-  async get(id: string): Promise<ProviderConfigWire> {
-    return sidecarClient.request<ProviderConfigWire>(`/api/providers/${id}`);
+  get(providerId: string) {
+    return readRpcJson(rpcClient.api.providers[':providerId'].$get({ param: { providerId } }));
   },
 
-  /** 用户主动操作时才请求明文凭据；响应不得写入全局状态或持久化缓存。 */
-  async revealCredential(id: string): Promise<string> {
-    const result = await sidecarClient.request<{ credential: string }>(
-      `/api/providers/${id}/credential/reveal`,
-      { method: 'POST' },
-    );
-    return result.credential;
+  /** 名称/图标/启停/能力档位。 */
+  patch(providerId: string, patch: ProviderPatchInput) {
+    return readRpcJson(rpcClient.api.providers[':providerId'].$patch({
+      json: patch,
+      param: { providerId },
+    }));
   },
 
-  /** POST /api/providers */
-  async create(input: ProviderConfigInput): Promise<ProviderConfigWire> {
-    return sidecarClient.request<ProviderConfigWire>('/api/providers', {
-      method: 'POST',
-      json: input,
-    });
+  remove(providerId: string): Promise<void> {
+    return readRpcVoid(rpcClient.api.providers[':providerId'].$delete({ param: { providerId } }));
   },
 
-  /** PATCH /api/providers/:id */
-  async patch(id: string, input: ProviderConfigPatchInput): Promise<ProviderConfigWire> {
-    return sidecarClient.request<ProviderConfigWire>(`/api/providers/${id}`, {
-      method: 'PATCH',
-      json: input,
-    });
+  /** 绑定选择器的可用模型池（该能力下全部已启用模型 + Provider 名）。 */
+  listAvailable(capability: ModelCapability): Promise<AvailableModelsResult> {
+    return readRpcJson(rpcClient.api.providers.available[':capability'].$get({
+      param: { capability },
+    }));
   },
 
-  /** DELETE /api/providers/:id */
-  async delete(id: string): Promise<void> {
-    await sidecarClient.request(`/api/providers/${id}`, { method: 'DELETE' });
+  listModels(providerId: string): Promise<ProviderModelsResult> {
+    return readRpcJson(rpcClient.api.providers[':providerId'].models.$get({
+      param: { providerId },
+    }));
   },
 
-  // ── Probe — one endpoint per capability ──────────────────────────────────
-  //
-  // llm/vision/embed/rerank probe a specific model's availability (model is
-  // caller's choice → enabled → catalog/default fallback). tts/stt probe only
-  // provider connectivity (no model). ProbeResultWire.model is '' for tts/stt.
-
-  /** POST /api/providers/:id/probe/llm */
-  async probeLlm(id: string, model?: string): Promise<ProbeResultWire> {
-    return sidecarClient.request<ProbeResultWire>(`/api/providers/${id}/probe/llm`, {
-      method: 'POST',
-      json: { model },
-    });
-  },
-  /** POST /api/providers/:id/probe/vision */
-  async probeVision(id: string, model?: string): Promise<ProbeResultWire> {
-    return sidecarClient.request<ProbeResultWire>(`/api/providers/${id}/probe/vision`, {
-      method: 'POST',
-      json: { model },
-    });
-  },
-  /** POST /api/providers/:id/probe/embed */
-  async probeEmbed(id: string, model?: string): Promise<ProbeResultWire> {
-    return sidecarClient.request<ProbeResultWire>(`/api/providers/${id}/probe/embed`, {
-      method: 'POST',
-      json: { model },
-    });
-  },
-  /** POST /api/providers/:id/probe/rerank */
-  async probeRerank(id: string, model?: string): Promise<ProbeResultWire> {
-    return sidecarClient.request<ProbeResultWire>(`/api/providers/${id}/probe/rerank`, {
-      method: 'POST',
-      json: { model },
-    });
-  },
-  /** POST /api/providers/:id/probe/tts */
-  async probeTts(id: string): Promise<ProbeResultWire> {
-    return sidecarClient.request<ProbeResultWire>(`/api/providers/${id}/probe/tts`, {
-      method: 'POST',
-    });
-  },
-  /** POST /api/providers/:id/probe/stt */
-  async probeStt(id: string): Promise<ProbeResultWire> {
-    return sidecarClient.request<ProbeResultWire>(`/api/providers/${id}/probe/stt`, {
-      method: 'POST',
-    });
+  /** 保存/启用一条模型记录。 */
+  saveModel(providerId: string, body: ProviderModelInput) {
+    return readRpcJson(rpcClient.api.providers[':providerId'].models.$put({
+      json: body,
+      param: { providerId },
+    }));
   },
 
-  /** GET /api/providers/:id/models — available LLM models (live or static) + enabled flags. */
-  async listModels(id: string): Promise<ModelsListWire> {
-    return sidecarClient.request<ModelsListWire>(`/api/providers/${id}/models`);
+  deleteModel(providerId: string, modelId: string, capability: ModelCapability): Promise<void> {
+    return readRpcVoid(rpcClient.api.providers[':providerId'].models[':modelId'].$delete({
+      param: { providerId, modelId },
+      query: { capability },
+    }));
   },
 
-  /** PUT /api/providers/:id/models/:model — enable a model with its context window. */
-  async enableModel(id: string, model: string, contextWindow: number, contextSource?: 'live' | 'table' | 'manual'): Promise<void> {
-    await sidecarClient.request(`/api/providers/${id}/models/${encodeURIComponent(model)}`, {
-      method: 'PUT',
-      json: { contextWindow, contextSource },
-    });
+  // ── 业务绑定（一个业务位一条绑定） ──────────────────────────────────────────
+
+  listBindings(): Promise<BindingsList> {
+    return readRpcJson(rpcClient.api.providers.bindings.$get());
   },
 
-  /** DELETE /api/providers/:id/models/:model — disable; cascades to bindings. */
-  async disableModel(id: string, model: string): Promise<{ ok: boolean; cascadedBindings: number }> {
-    return sidecarClient.request<{ ok: boolean; cascadedBindings: number }>(
-      `/api/providers/${id}/models/${encodeURIComponent(model)}`,
-      { method: 'DELETE' },
-    );
+  /** upsert 一条绑定并返回该模块绑定。 */
+  setBinding(module: BindingModule, body: BindingUpsertInput): Promise<BindingRecord> {
+    return readRpcJson(rpcClient.api.providers.bindings[':module'].$put({
+      json: body,
+      param: { module },
+    }));
   },
+
+  deleteBinding(module: BindingModule): Promise<void> {
+    return readRpcVoid(rpcClient.api.providers.bindings[':module'].$delete({ param: { module } }));
+  },
+
+  // ── Keys ────────────────────────────────────────────────────────────────────
+
+  listKeys(providerId: string, capability: ModelCapability): Promise<ProviderKeyList> {
+    return readRpcJson(rpcClient.api.providers[':providerId'].keys.$get({
+      param: { providerId },
+      query: { capability },
+    }));
+  },
+
+  /** 首次配置某能力时的预填：取全 provider 最近一把 key。 */
+  prefillKey(providerId: string, capability: ModelCapability) {
+    return readRpcJson(rpcClient.api.providers[':providerId'].keys.prefill.$get({
+      param: { providerId },
+      query: { capability },
+    }));
+  },
+
+  addKey(providerId: string, body: ProviderKeyAddInput) {
+    return readRpcJson(rpcClient.api.providers[':providerId'].keys.$post({
+      json: body,
+      param: { providerId },
+    }));
+  },
+
+  selectKey(providerId: string, body: ProviderKeySelectInput): Promise<void> {
+    return readRpcVoid(rpcClient.api.providers[':providerId'].keys.select.$post({
+      json: body,
+      param: { providerId },
+    }));
+  },
+
+  deleteKey(providerId: string, keyId: string, capability: ModelCapability): Promise<void> {
+    return readRpcVoid(rpcClient.api.providers[':providerId'].keys[':keyId'].$delete({
+      param: { providerId, keyId },
+      query: { capability },
+    }));
+  },
+
+  // ── 探活与试听 ──────────────────────────────────────────────────────────────
 
   /**
-   * POST /api/providers/:id/tts-test — real TTS synthesis test.
-   * Returns the synthesized audio as a Blob to play, or throws with the
-   * backend error message (no reference audio / upload failed / etc.).
+   * 探活：200 连通 / 502 失败都是正常结论（UI 都要展示），不走 readRpcJson 的异常归一；
+   * 其余状态码才抛 ServerApiError。缺省 modelId 时也必须显式发 {}。
    */
-  async testTts(id: string, model: string, text?: string): Promise<Blob> {
-    const res = await sidecarClient.requestRaw(`/api/providers/${id}/tts-test`, {
+  async probe(providerId: string, capability: ProbeCapability, body: { modelId?: string } = {}) {
+    const res = await rpcClient.api.providers[':providerId'].probe[':capability'].$post({
+      json: body,
+      param: { providerId, capability },
+    });
+    if (res.status === 200 || res.status === 502) return res.json();
+    throw await toServerApiError(res);
+  },
+
+  /** TTS 试听：音频字节流，走 requestRaw 逃生口。 */
+  ttsPreview(providerId: string, modelId: string, text?: string): Promise<Response> {
+    return serverClient.requestRaw(`/api/providers/${providerId}/tts-preview`, {
       method: 'POST',
-      json: { model, text },
+      json: { modelId, ...(text ? { text } : {}) },
     });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({})) as { message?: string; error?: string };
-      throw new Error(err.message ?? err.error ?? `HTTP ${res.status}`);
-    }
-    return res.blob();
-  },
-
-  // ── Embed model pool ────────────────────────────────────────────────────────
-
-  async listEmbedModels(id: string): Promise<EmbedModelsListWire> {
-    return sidecarClient.request<EmbedModelsListWire>(`/api/providers/${id}/embed-models`);
-  },
-
-  // dim is optional: the server probes the real dimension at enable time and
-  // only uses a supplied dim as a fallback when the probe fails.
-  async enableEmbedModel(id: string, model: string, dim?: number, dimSource?: 'live' | 'table' | 'manual'): Promise<void> {
-    await sidecarClient.request(`/api/providers/${id}/embed-models/${encodeURIComponent(model)}`, {
-      method: 'PUT',
-      json: { dim, dimSource },
-    });
-  },
-
-  async disableEmbedModel(id: string, model: string): Promise<{ ok: boolean; cascadedBindings: number }> {
-    return sidecarClient.request<{ ok: boolean; cascadedBindings: number }>(
-      `/api/providers/${id}/embed-models/${encodeURIComponent(model)}`,
-      { method: 'DELETE' },
-    );
-  },
-
-  // ── Rerank model pool ───────────────────────────────────────────────────────
-
-  async listRerankModels(id: string): Promise<RerankModelsListWire> {
-    return sidecarClient.request<RerankModelsListWire>(`/api/providers/${id}/rerank-models`);
-  },
-
-  async enableRerankModel(id: string, model: string, maxChunks?: number): Promise<void> {
-    await sidecarClient.request(`/api/providers/${id}/rerank-models/${encodeURIComponent(model)}`, {
-      method: 'PUT',
-      json: { maxChunks },
-    });
-  },
-
-  async disableRerankModel(id: string, model: string): Promise<{ ok: boolean; cascadedBindings: number }> {
-    return sidecarClient.request<{ ok: boolean; cascadedBindings: number }>(
-      `/api/providers/${id}/rerank-models/${encodeURIComponent(model)}`,
-      { method: 'DELETE' },
-    );
-  },
-
-  // ── TTS model pool ──────────────────────────────────────────────────────────
-
-  async listTtsModels(id: string): Promise<SimpleModelsListWire> {
-    return sidecarClient.request<SimpleModelsListWire>(`/api/providers/${id}/tts-models`);
-  },
-
-  async enableTtsModel(id: string, model: string): Promise<void> {
-    await sidecarClient.request(`/api/providers/${id}/tts-models/${encodeURIComponent(model)}`, {
-      method: 'PUT',
-      json: {},
-    });
-  },
-
-  async disableTtsModel(id: string, model: string): Promise<{ ok: boolean; cascadedBindings: number }> {
-    return sidecarClient.request<{ ok: boolean; cascadedBindings: number }>(
-      `/api/providers/${id}/tts-models/${encodeURIComponent(model)}`,
-      { method: 'DELETE' },
-    );
-  },
-
-  // ── STT model pool ──────────────────────────────────────────────────────────
-
-  async listSttModels(id: string): Promise<SimpleModelsListWire> {
-    return sidecarClient.request<SimpleModelsListWire>(`/api/providers/${id}/stt-models`);
-  },
-
-  async enableSttModel(id: string, model: string): Promise<void> {
-    await sidecarClient.request(`/api/providers/${id}/stt-models/${encodeURIComponent(model)}`, {
-      method: 'PUT',
-      json: {},
-    });
-  },
-
-  async disableSttModel(id: string, model: string): Promise<{ ok: boolean; cascadedBindings: number }> {
-    return sidecarClient.request<{ ok: boolean; cascadedBindings: number }>(
-      `/api/providers/${id}/stt-models/${encodeURIComponent(model)}`,
-      { method: 'DELETE' },
-    );
-  },
-
-  // ── Vision model pool ───────────────────────────────────────────────────────
-
-  async listVisionModels(id: string): Promise<SimpleModelsListWire> {
-    return sidecarClient.request<SimpleModelsListWire>(`/api/providers/${id}/vision-models`);
-  },
-
-  async enableVisionModel(id: string, model: string): Promise<void> {
-    await sidecarClient.request(`/api/providers/${id}/vision-models/${encodeURIComponent(model)}`, {
-      method: 'PUT',
-      json: {},
-    });
-  },
-
-  async disableVisionModel(id: string, model: string): Promise<{ ok: boolean; cascadedBindings: number }> {
-    return sidecarClient.request<{ ok: boolean; cascadedBindings: number }>(
-      `/api/providers/${id}/vision-models/${encodeURIComponent(model)}`,
-      { method: 'DELETE' },
-    );
   },
 };
+
+/** 探活结果：200 的 `{ ok: true, latencyMs }` 与 502 的 `{ ok: false, error }` 判别联合。 */
+export type ProbeResult = Awaited<ReturnType<typeof providersApi.probe>>;

@@ -1,5 +1,7 @@
 // 计算 TurnRail 的可视索引窗口与悬停刻度邻域强度。
-import type { TurnIndexItemWire } from '@ema-agent/session';
+import type { TurnIndexPage } from '../../api/sessions.js';
+
+type TurnIndexItem = TurnIndexPage['items'][number];
 
 export const TURN_RAIL_ROW_HEIGHT = 8;
 export const TURN_RAIL_MIN_VISIBLE = 12;
@@ -15,10 +17,10 @@ export function turnRailCapacity(height: number): number {
 }
 
 export function visibleTurnIndex(
-  newestFirstItems: readonly TurnIndexItemWire[],
+  newestFirstItems: readonly TurnIndexItem[],
   offset: number,
   capacity: number,
-): TurnIndexItemWire[] {
+): TurnIndexItem[] {
   return newestFirstItems
     .slice(offset, offset + capacity)
     .reverse();

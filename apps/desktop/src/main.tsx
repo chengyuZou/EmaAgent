@@ -2,7 +2,7 @@ import 'virtual:uno.css';
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { TooltipProvider } from '@ema-agent/ui';
-import { ErrorBoundary } from '@ema-agent/desktop-ui';
+import { ErrorBoundary } from './lib/error-boundary.js';
 import { App } from './App.js';
 
 const container = document.getElementById('root');

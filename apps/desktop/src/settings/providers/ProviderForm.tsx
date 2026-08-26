@@ -1,4 +1,4 @@
-/** ProviderForm — AIRI-style provider editor. */
+/** ProviderForm — provider 单能力档位编辑器（协议/Base URL/首把 key/探活 + 模型池）。 */
 import { useState, useEffect, type FormEvent, type JSX } from 'react';
 import {
   Button,
@@ -11,27 +11,14 @@ import {
 import { useSettingsStore } from '../../stores/settings-store.js';
 import {
   providersApi,
-  type ProviderConfigWire,
-  type ProviderCapabilityConfigInput,
-  type ProviderConfigInput,
-  type ProviderConfigPatchInput,
-  type ProviderDefinition,
-  type ProbeResultWire,
+  type ModelCapability,
+  type ProviderRecord,
 } from '../../api/providers.js';
-import {
-  listProviderCapabilities,
-  protocolsForCapability,
-  PROVIDER_CONFIG_LIMITS,
-  requiresCredentials as providerRequiresCredentials,
-  resolveBaseUrl,
-  type Capability,
-  type ProtocolFamily,
-} from '@ema-agent/provider';
+import { PROVIDER_LIMITS, type Protocol } from '@ema-agent/providers';
 import { showToast } from '../../lib/toast.js';
 import {
-  resolveCredentialOperation,
   resolveProviderSubmitState,
-  type ProviderFormSnapshot,
+  type ProviderFormBaseline,
 } from './provider-form-state.js';
 import { LlmModelManager }    from './LlmModelManager.js';
 import { EmbedModelManager }  from './EmbedModelManager.js';
@@ -41,11 +28,9 @@ import { SttModelManager }    from './SttModelManager.js';
 import { VisionModelManager } from './VisionModelManager.js';
 
 export interface ProviderFormProps {
-  definitionId: string;
-  definition?:  ProviderDefinition;
-  capability?:  Capability;
-  instance?:    ProviderConfigWire;
-  onClose():    void;
+  provider:   ProviderRecord;
+  capability: ModelCapability;
+  onClose():  void;
   onDirtyChange?(dirty: boolean): void;
 }
 
@@ -54,10 +39,20 @@ const PROTOCOL_LABELS: Record<string, string> = {
   'openai-responses-llm': 'OpenAI Responses',
   'anthropic-llm':        'Anthropic 兼容',
   'gemini-llm':           'Gemini',
+  'openai-embed':         'OpenAI 兼容',
+  'gemini-embed':         'Gemini',
+  'cohere-rerank':        'Cohere 兼容',
+  'openai-tts':           'OpenAI 兼容',
+  'dashscope-tts':        'DashScope',
+  'gpt-sovits-tts':       'GPT-SoVITS',
+  'openai-stt':           'OpenAI 兼容',
 };
 
+/** 探活只支持有无输入即可验证连通性的能力（tts/stt 的功能验证是试听与转写）。 */
+const PROBEABLE: ReadonlySet<ModelCapability> = new Set(['llm', 'embed', 'rerank']);
+
 export function ProviderForm({
-  definitionId, definition, capability, instance, onClose, onDirtyChange,
+  provider, capability, onClose, onDirtyChange,
 }: ProviderFormProps): JSX.Element {
   const [apiKey,       setApiKey]       = useState('');
   const [showApiKey,   setShowApiKey]   = useState(false);
@@ -66,59 +61,53 @@ export function ProviderForm({
   const [revealingCredential, setRevealingCredential] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
-  const activeCap: Capability | undefined = capability
-    ?? (definition ? listProviderCapabilities(definition)[0] : undefined);
-  const requiresCredentials = definition ? providerRequiresCredentials(definition) : true;
+  const capabilityRow = provider.capabilities.find((c) => c.capability === capability);
+  const requiresCredentials = provider.authType === 'bearer';
 
+  // 明文密钥 30s 后自动遮蔽并清出 state。
   useEffect(() => {
-    if (!instance || !showApiKey || !credentialLoaded || credentialDirty) return;
+    if (!showApiKey || !credentialLoaded || credentialDirty) return;
     const timer = window.setTimeout(() => {
       setShowApiKey(false);
       setCredentialLoaded(false);
       setApiKey('');
     }, 30_000);
     return () => window.clearTimeout(timer);
-  }, [credentialDirty, credentialLoaded, instance, showApiKey]);
+  }, [credentialDirty, credentialLoaded, showApiKey]);
 
-  const protocolChoices: string[] = activeCap
-    && definition
-    ? protocolsForCapability(definition, activeCap)
-    : [];
-  function defaultUrlFor(proto: string): string {
-    if (!definition || !activeCap) return '';
-    return resolveBaseUrl(definition, activeCap, proto as ProtocolFamily) ?? '';
+  const protocolChoices: string[] = capabilityRow?.protocols.map((p) => p.protocol) ?? [];
+  function slotUrl(proto: string): string {
+    return capabilityRow?.protocols.find((p) => p.protocol === proto)?.baseUrl ?? '';
   }
 
-  const activeCapabilityConfig = instance?.capabilities.find(
-    (item) => item.capability === activeCap,
-  );
-  const existingProtocol = activeCapabilityConfig?.protocol ?? protocolChoices[0] ?? '';
-  const initialSnapshot: ProviderFormSnapshot = {
-    baseUrl: activeCapabilityConfig?.baseUrl ?? defaultUrlFor(existingProtocol),
-    protocol: existingProtocol,
+  const initialProtocol = capabilityRow?.activeProtocol ?? protocolChoices[0] ?? '';
+  const initialBaseline: ProviderFormBaseline = {
+    baseUrl: slotUrl(initialProtocol),
+    protocol: initialProtocol,
   };
-  const [snapshot, setSnapshot] = useState<ProviderFormSnapshot>(initialSnapshot);
-  const [selectedProtocol, setSelectedProtocol] = useState(initialSnapshot.protocol);
-  const [baseUrl,       setBaseUrl]       = useState(initialSnapshot.baseUrl);
+  const [baseline, setBaseline] = useState<ProviderFormBaseline>(initialBaseline);
+  const [selectedProtocol, setSelectedProtocol] = useState(initialBaseline.protocol);
+  const [baseUrl,       setBaseUrl]       = useState(initialBaseline.baseUrl);
   const [baseUrlManual, setBaseUrlManual] = useState(false);
 
   function handleProtocolChange(proto: string): void {
     setSelectedProtocol(proto);
-    if (!baseUrlManual) setBaseUrl(defaultUrlFor(proto));
+    if (!baseUrlManual) setBaseUrl(slotUrl(proto));
   }
 
   const [submitting, setSubmitting] = useState(false);
   const [probing,    setProbing]    = useState(false);
+  const health = provider.health.find((h) => h.capability === capability);
   const [probeOk,    setProbeOk]    = useState<boolean | null>(
-    instance?.health?.status === 'ok' ? true : null,
+    health?.status === 'ok' ? true : null,
   );
-  const [probeMsg, setProbeMsg] = useState<string | null>(instance?.health?.lastError ?? null);
+  const [probeMsg, setProbeMsg] = useState<string | null>(health?.lastError ?? null);
 
   const submitState = resolveProviderSubmitState({
     draft: { apiKey, credentialDirty, baseUrl, protocol: selectedProtocol },
-    snapshot,
-    existing: instance !== undefined,
+    baseline,
     requiresCredentials,
+    hasActiveKey: capabilityRow?.activeKeyId !== undefined,
   });
   const dirty = submitState.dirty;
 
@@ -137,57 +126,33 @@ export function ProviderForm({
   }, [dirty]);
 
   async function doSave(): Promise<void> {
-    if (submitting || !submitState.submittable) return;
+    if (submitting || !submitState.submittable || !selectedProtocol) return;
     setSubmitting(true);
     try {
-      if (instance) {
-        if (!activeCap) throw new Error('Provider capability is missing');
-        const input: ProviderConfigPatchInput = {
-          credential: resolveCredentialOperation(apiKey, credentialDirty),
-          capability: {
-            capability: activeCap,
-            protocol: selectedProtocol ? selectedProtocol as ProtocolFamily : null,
-            baseUrl: baseUrl.trim() || null,
-            enabled: true,
-          },
-        };
-        const saved = await providersApi.patch(instance.id, input);
-        const savedCapability = saved.capabilities.find(
-          (item) => item.capability === activeCap,
-        );
-        const savedProtocol = savedCapability?.protocol ?? selectedProtocol;
-        const savedSnapshot: ProviderFormSnapshot = {
-          baseUrl: savedCapability?.baseUrl ?? defaultUrlFor(savedProtocol),
-          protocol: savedProtocol,
-        };
-        setSnapshot(savedSnapshot);
-        setBaseUrl(savedSnapshot.baseUrl);
-        setSelectedProtocol(savedSnapshot.protocol);
-        setBaseUrlManual(false);
-        setApiKey('');
-        setShowApiKey(false);
-        setCredentialDirty(false);
-        setCredentialLoaded(false);
-        showToast('已更新', { variant: 'success' });
-      } else {
-        if (!definition || !activeCap) throw new Error('Provider capability is missing');
-        const capabilities: ProviderCapabilityConfigInput[] = listProviderCapabilities(definition)
-          .map((candidate) => candidate === activeCap
-            ? {
-                capability: candidate,
-                protocol: selectedProtocol ? selectedProtocol as ProtocolFamily : null,
-                baseUrl: baseUrl.trim() || null,
-                enabled: true,
-              }
-            : { capability: candidate, enabled: true });
-        const input: ProviderConfigInput = {
-          definitionId,
-          apiKey:  apiKey.trim() || undefined,
-          capabilities,
-        };
-        await providersApi.create(input);
-        showToast('已创建', { variant: 'success' });
-      }
+      const saved = await providersApi.patch(provider.id, {
+        capability: {
+          capability,
+          protocol: selectedProtocol as Protocol,
+          ...(baseUrl.trim() ? { baseUrl: baseUrl.trim() } : {}),
+          active: true,
+          ...(apiKey.trim() ? { key: apiKey.trim() } : {}),
+        },
+      });
+      const savedCapability = saved.capabilities.find((c) => c.capability === capability);
+      const savedProtocol = savedCapability?.activeProtocol ?? selectedProtocol;
+      const savedBaseline: ProviderFormBaseline = {
+        baseUrl: savedCapability?.protocols.find((p) => p.protocol === savedProtocol)?.baseUrl ?? '',
+        protocol: savedProtocol,
+      };
+      setBaseline(savedBaseline);
+      setBaseUrl(savedBaseline.baseUrl);
+      setSelectedProtocol(savedBaseline.protocol);
+      setBaseUrlManual(false);
+      setApiKey('');
+      setShowApiKey(false);
+      setCredentialDirty(false);
+      setCredentialLoaded(false);
+      showToast('已更新', { variant: 'success' });
       await useSettingsStore.getState().refreshProviders();
     } catch (err: unknown) {
       showToast(`操作失败: ${err instanceof Error ? err.message : 'Unknown'}`, { variant: 'danger' });
@@ -202,40 +167,42 @@ export function ProviderForm({
   }
 
   function handleCancel(): void {
-    if (!instance) {
-      onClose();
-      return;
-    }
     setApiKey('');
     setShowApiKey(false);
     setCredentialDirty(false);
     setCredentialLoaded(false);
-    setSelectedProtocol(snapshot.protocol);
-    setBaseUrl(snapshot.baseUrl);
+    setSelectedProtocol(baseline.protocol);
+    setBaseUrl(baseline.baseUrl);
     setBaseUrlManual(false);
-    setProbeOk(instance.health?.status === 'ok' ? true : null);
-    setProbeMsg(instance.health?.lastError ?? null);
+    setProbeOk(health?.status === 'ok' ? true : null);
+    setProbeMsg(health?.lastError ?? null);
   }
 
   async function handleCredentialVisibility(): Promise<void> {
     if (showApiKey) {
       setShowApiKey(false);
-      if (instance && credentialLoaded && !credentialDirty) {
+      if (credentialLoaded && !credentialDirty) {
         setApiKey('');
         setCredentialLoaded(false);
       }
       return;
     }
 
-    if (!instance || credentialDirty || credentialLoaded) {
+    if (credentialDirty || credentialLoaded) {
       setShowApiKey(true);
       return;
     }
 
     setRevealingCredential(true);
     try {
-      const credential = await providersApi.revealCredential(instance.id);
-      setApiKey(credential);
+      // keyValue 是凭据边界的全文投影;只取当前 active 那把进输入框。
+      const keys = await providersApi.listKeys(provider.id, capability);
+      const active = keys.find((k) => k.id === capabilityRow?.activeKeyId) ?? keys[0];
+      if (!active) {
+        showToast('尚未配置密钥', { variant: 'warning' });
+        return;
+      }
+      setApiKey(active.keyValue);
       setCredentialLoaded(true);
       setShowApiKey(true);
     } catch (err: unknown) {
@@ -248,23 +215,15 @@ export function ProviderForm({
   }
 
   async function handleProbe(): Promise<void> {
-    if (!instance || !activeCap) return;
+    if (!PROBEABLE.has(capability)) return;
     setProbing(true);
     try {
-      // Each capability has its own probe endpoint — the old single endpoint
-      // dispatched by capabilities-array order, so probing OpenAI from the
-      // Embed section hit LLM first. Per-capability dispatch fixes that.
-      const result = await (
-        activeCap === 'llm'    ? providersApi.probeLlm(instance.id)
-      : activeCap === 'vision' ? providersApi.probeVision(instance.id)
-      : activeCap === 'embed'  ? providersApi.probeEmbed(instance.id)
-      : activeCap === 'rerank' ? providersApi.probeRerank(instance.id)
-      : activeCap === 'tts'    ? providersApi.probeTts(instance.id)
-      : activeCap === 'stt'    ? providersApi.probeStt(instance.id)
-      : Promise.resolve<ProbeResultWire>({ ok: false, model: '', latencyMs: null, error: '该能力不支持探测' })
+      const result = await providersApi.probe(
+        provider.id,
+        capability as 'llm' | 'embed' | 'rerank',
       );
       setProbeOk(result.ok);
-      setProbeMsg(result.ok ? null : (result.error ?? '连接失败'));
+      setProbeMsg(result.ok ? null : result.error);
     } catch (err) {
       setProbeOk(false);
       setProbeMsg('探测失败' + (err instanceof Error ? `: ${err.message}` : ''));
@@ -293,13 +252,13 @@ export function ProviderForm({
             <div>
               <div className="text-sm font-medium text-[var(--ema-text-secondary)]">API 密钥</div>
               <div className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">
-                API Key for {definition?.name ?? definitionId}
+                API Key for {provider.name}
               </div>
             </div>
             <div className="relative">
               <Input
                 type={showApiKey ? 'text' : 'password'}
-                placeholder={instance?.hasApiKey ? '已配置；输入新密钥可替换' : 'sk-...'}
+                placeholder={capabilityRow?.activeKeyId !== undefined ? '已配置；输入新密钥可替换' : 'sk-...'}
                 value={apiKey}
                 onChange={(e) => {
                   setApiKey(e.target.value);
@@ -307,7 +266,7 @@ export function ProviderForm({
                   setCredentialLoaded(false);
                 }}
                 autoComplete="off"
-                maxLength={PROVIDER_CONFIG_LIMITS.apiKeyChars}
+                maxLength={PROVIDER_LIMITS.apiKeyChars}
                 className="pr-10"
               />
               <IconButton
@@ -360,9 +319,9 @@ export function ProviderForm({
                   <div className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">自定义服务地址(可选)</div>
                 </div>
                 <Input
-                  placeholder={defaultUrlFor(selectedProtocol) || 'https://...'}
+                  placeholder={slotUrl(selectedProtocol) || 'https://...'}
                   value={baseUrl}
-                  maxLength={PROVIDER_CONFIG_LIMITS.baseUrlChars}
+                  maxLength={PROVIDER_LIMITS.baseUrlChars}
                   onChange={(e) => { setBaseUrl(e.target.value); setBaseUrlManual(true); }}
                 />
               </div>
@@ -371,7 +330,7 @@ export function ProviderForm({
         </section>
 
         {/* ── 验证状态条 ────────────────────────────────────────────────────── */}
-        {instance && probeOk === false && probeMsg && (
+        {probeOk === false && probeMsg && (
           <div className="flex items-center justify-between rounded-lg
                           bg-[var(--ema-danger-muted)] border border-[var(--ema-danger)]
                           px-3 py-2 text-sm text-[var(--ema-danger-text)]">
@@ -379,7 +338,7 @@ export function ProviderForm({
               <span className="i-solar:danger-circle-linear shrink-0" aria-hidden />
               <span>{probeMsg}</span>
             </div>
-            {activeCap && (
+            {PROBEABLE.has(capability) && (
               <Button
                 variant="danger"
                 size="sm"
@@ -393,11 +352,11 @@ export function ProviderForm({
             )}
           </div>
         )}
-        {instance && probeOk !== false && (
+        {probeOk !== false && (
           <Callout variant="info">
             <div className="flex items-center justify-between">
               <span>{probeOk === true ? '配置验证通过' : '配置部分验证'}</span>
-              {activeCap && (
+              {PROBEABLE.has(capability) && (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -412,18 +371,13 @@ export function ProviderForm({
             </div>
           </Callout>
         )}
-        {!instance && (
-          <Callout variant="info">填写配置后，点击“创建服务来源”保存</Callout>
-        )}
 
         {/* 保存栏属于 Provider 配置，固定放在模型池之前，避免与模型管理操作混淆。 */}
         <div className="flex items-center justify-between gap-4 border-t border-[var(--ema-border)] pt-4">
           <span className="text-xs text-[var(--ema-text-tertiary)]">
             {!submitState.valid
               ? '请填写 API Key'
-              : instance
-                ? dirty ? '有未保存的更改' : '配置已保存'
-                : '尚未创建服务来源'}
+              : dirty ? '有未保存的更改' : '配置已保存'}
           </span>
           <div className="flex items-center justify-end gap-2">
             <Button
@@ -433,13 +387,13 @@ export function ProviderForm({
               loading={submitting}
               disabled={submitting || !submitState.submittable}
             >
-              {instance ? '保存更改' : '创建服务来源'}
+              保存更改
             </Button>
             <Button
               type="button"
               variant="ghost"
               size="sm"
-              disabled={submitting || (instance !== undefined && !dirty)}
+              disabled={submitting || !dirty}
               onClick={handleCancel}
             >
               取消
@@ -450,40 +404,40 @@ export function ProviderForm({
       </form>
 
       {/* ── 模型池 ───────────────────────────────────────────────────────────── */}
-      {instance && activeCap === 'llm' && (
+      {capability === 'llm' && (
         <>
           <div className="border-t border-[var(--ema-border)]" />
-          <LlmModelManager providerId={instance.id} iconKey={resolveProviderIconClass(definition?.branding.iconId)} />
+          <LlmModelManager providerId={provider.id} iconKey={resolveProviderIconClass(provider.iconId)} />
         </>
       )}
-      {instance && activeCap === 'embed' && (
+      {capability === 'embed' && (
         <>
           <div className="border-t border-[var(--ema-border)]" />
-          <EmbedModelManager providerId={instance.id} iconKey={resolveProviderIconClass(definition?.branding.iconId)} />
+          <EmbedModelManager providerId={provider.id} iconKey={resolveProviderIconClass(provider.iconId)} />
         </>
       )}
-      {instance && activeCap === 'rerank' && (
+      {capability === 'rerank' && (
         <>
           <div className="border-t border-[var(--ema-border)]" />
-          <RerankModelManager providerId={instance.id} iconKey={resolveProviderIconClass(definition?.branding.iconId)} />
+          <RerankModelManager providerId={provider.id} iconKey={resolveProviderIconClass(provider.iconId)} />
         </>
       )}
-      {instance && activeCap === 'tts' && (
+      {capability === 'tts' && (
         <>
           <div className="border-t border-[var(--ema-border)]" />
-          <TtsModelManager providerId={instance.id} iconKey={resolveProviderIconClass(definition?.branding.iconId)} />
+          <TtsModelManager providerId={provider.id} iconKey={resolveProviderIconClass(provider.iconId)} />
         </>
       )}
-      {instance && activeCap === 'stt' && (
+      {capability === 'stt' && (
         <>
           <div className="border-t border-[var(--ema-border)]" />
-          <SttModelManager providerId={instance.id} iconKey={resolveProviderIconClass(definition?.branding.iconId)} />
+          <SttModelManager providerId={provider.id} iconKey={resolveProviderIconClass(provider.iconId)} />
         </>
       )}
-      {instance && activeCap === 'vision' && (
+      {capability === 'vision' && (
         <>
           <div className="border-t border-[var(--ema-border)]" />
-          <VisionModelManager providerId={instance.id} iconKey={resolveProviderIconClass(definition?.branding.iconId)} />
+          <VisionModelManager providerId={provider.id} iconKey={resolveProviderIconClass(provider.iconId)} />
         </>
       )}
     </div>

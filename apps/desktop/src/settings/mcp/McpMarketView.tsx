@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
-  Badge, Button, Callout, EmptyState, Input, MarketCard, ScrollArea, Spinner
+  Badge, Button, Callout, Dialog, EmptyState, Field, Input, MarketCard, ScrollArea, Spinner
 } from '@ema-agent/ui';
-import { useMcpStore, type McpServerConfig, type McpMarketEntry } from '../../stores/mcp-store.js';
+import { useMcpStore, type McpMarketEntry } from '../../stores/mcp-store.js';
+import { mcpApi } from '../../api/mcp.js';
 import { showToast } from '../../lib/toast.js';
 import { MarketSourceManager } from '../skills/MarketSourceManager.js';
 
@@ -13,6 +14,14 @@ function sanitizeServerName(raw: string): string {
 const TRANSPORT_LABEL: Record<string, string> = {
   stdio: '本地进程', http: 'Streamable HTTP',
 };
+
+function specSummary(entry: McpMarketEntry): string {
+  const spec = entry.spec;
+  if (!spec) return '';
+  return spec.transport === 'stdio'
+    ? `${spec.command} ${spec.args.join(' ')}`.trim()
+    : spec.url;
+}
 
 export function McpMarketView({
   active, installedNames,
@@ -25,6 +34,7 @@ export function McpMarketView({
   const marketError   = useMcpStore((s) => s.marketError);
   const marketSource  = useMcpStore((s) => s.marketSource);
   const [installing, setInstalling] = useState<string | null>(null);
+  const [pendingEntry, setPendingEntry] = useState<McpMarketEntry | null>(null);
   const [page, setPage] = useState(0);
   const attemptedRef = useRef(false);
 
@@ -42,37 +52,33 @@ export function McpMarketView({
     }
   }, [active]);
 
-  async function handleInstall(entry: McpMarketEntry): Promise<void> {
-    if (!entry.transport || !entry.installable || !entry.marketSourceId || !entry.marketSourceType) return;
+  async function install(entry: McpMarketEntry, inputs?: Record<string, string>): Promise<void> {
     const cleanName = sanitizeServerName(entry.title || entry.name);
-    const config: McpServerConfig = entry.transport === 'stdio'
-      ? { type: 'stdio', command: entry.command ?? '', args: entry.args ?? [] }
-      : { type: entry.transport, url: entry.url ?? '' };
     setInstalling(entry.name);
     try {
-      // connect: false — many registry servers need env/keys or a local runtime;
-      // save it disconnected and let the user connect from 「已配置」 afterwards.
-      await useMcpStore.getState().register(
-        cleanName,
-        config,
-        entry.websiteUrl ?? entry.repository,
-        false,
-        {
-          sourceKind: 'market',
-          marketSourceId: entry.marketSourceId,
-          marketSourceType: entry.marketSourceType,
-          packageRegistry: entry.packageRegistry,
-          packageName: entry.packageName,
-          packageVersion: entry.packageVersion,
-          packageIntegrity: entry.packageIntegrity,
-        },
-      );
+      // 安装始终由服务端从源现场取最新版本再解析;stdio 拉起走应用级批准门禁。
+      await mcpApi.installFromRegistry({
+        sourceId: entry.registrySourceId,
+        entryName: entry.name,
+        name: cleanName,
+        ...(inputs ? { inputs } : {}),
+      });
+      await useMcpStore.getState().refresh();
       showToast(`已添加 ${cleanName}，请在「已配置」补全环境后连接`, { variant: 'success' });
     } catch (err) {
       showToast(`添加失败: ${err instanceof Error ? err.message : String(err)}`, { variant: 'danger' });
     } finally {
       setInstalling(null);
     }
+  }
+
+  function handleInstall(entry: McpMarketEntry): void {
+    if (!entry.installable || !entry.spec) return;
+    if ((entry.requiredInputs?.length ?? 0) > 0) {
+      setPendingEntry(entry);
+      return;
+    }
+    void install(entry);
   }
 
   if (marketLoading) {
@@ -111,26 +117,25 @@ export function McpMarketView({
             const installed = installedNames.has(sanitizeServerName(entry.title || entry.name));
             return (
               <MarketCard
-                key={entry.name}
+                key={`${entry.registrySourceId}:${entry.name}`}
                 index={i}
                 decorate="ema-card-decorate--circuit"
                 installed={installed}
                 installing={installing === entry.name}
-                installDisabled={!entry.installable}
+                installDisabled={!entry.installable || !entry.spec}
                 installLabel={entry.installable ? '添加' : '不可安装'}
                 installedLabel="已添加"
-                onInstall={() => void handleInstall(entry)}
+                onInstall={() => handleInstall(entry)}
               >
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-semibold text-[var(--ema-text-primary)] truncate">
                     {entry.title || entry.name}
                   </span>
                   {entry.version && <Badge variant="neutral">v{entry.version}</Badge>}
-                  {entry.transport && (
-                    <Badge variant="neutral">{TRANSPORT_LABEL[entry.transport] ?? entry.transport}</Badge>
+                  {entry.spec && (
+                    <Badge variant="neutral">{TRANSPORT_LABEL[entry.spec.transport] ?? entry.spec.transport}</Badge>
                   )}
-                  {entry.packageVersion && <Badge variant="success">已锁定包版本</Badge>}
-                  {!entry.installable && <Badge variant="warn">版本未锁定</Badge>}
+                  {!entry.installable && <Badge variant="warn">不可安装</Badge>}
                 </div>
                 {entry.description && (
                   <p className="text-xs text-[var(--ema-text-tertiary)] mt-1 line-clamp-2">{entry.description}</p>
@@ -139,9 +144,7 @@ export function McpMarketView({
                   <p className="text-xs text-[var(--ema-warning)] mt-1">{entry.unavailableReason}</p>
                 )}
                 <p className="text-xs text-[var(--ema-text-tertiary)] mt-1 font-mono truncate opacity-60">
-                  {entry.transport === 'stdio'
-                    ? `${entry.command} ${entry.args?.join(' ') ?? ''}`.trim()
-                    : entry.url}
+                  {specSummary(entry)}
                 </p>
               </MarketCard>
             );
@@ -149,8 +152,84 @@ export function McpMarketView({
         </div>
       </ScrollArea>
 
+      <InstallInputsDialog
+        entry={pendingEntry}
+        busy={installing !== null}
+        onCancel={() => setPendingEntry(null)}
+        onConfirm={(inputs) => {
+          const entry = pendingEntry;
+          setPendingEntry(null);
+          if (entry) void install(entry, inputs);
+        }}
+      />
+
       <Pager page={safePage} totalPages={totalPages} onChange={setPage} />
     </div>
+  );
+}
+
+// ── requiredInputs 收集对话框 ──────────────────────────────────────────────────
+
+function InstallInputsDialog({
+  entry, busy, onCancel, onConfirm,
+}: {
+  entry:     McpMarketEntry | null;
+  busy:      boolean;
+  onCancel:  () => void;
+  onConfirm: (inputs: Record<string, string>) => void;
+}): JSX.Element {
+  const [values, setValues] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    setValues({});
+  }, [entry]);
+
+  const required = entry?.requiredInputs ?? [];
+  const allFilled = required.every((input) => (values[input.key] ?? '').trim().length > 0);
+
+  return (
+    <Dialog
+      open={entry !== null}
+      onOpenChange={(open) => { if (!open && !busy) onCancel(); }}
+      title={`配置 ${entry?.title || entry?.name || ''}`}
+      description="该服务器需要以下参数才能连接;密钥值只写入本机凭据边界。"
+      widthClass="max-w-lg"
+    >
+      <div className="flex flex-col gap-3">
+        {required.map((input) => (
+          <Field
+            key={input.key}
+            label={`${input.key}${input.target === 'header' ? '(Header)' : '(环境变量)'}`}
+            required
+            description={input.description}
+          >
+            <Input
+              type={input.isSecret ? 'password' : 'text'}
+              value={values[input.key] ?? ''}
+              onChange={(e) => setValues((prev) => ({ ...prev, [input.key]: e.target.value }))}
+              className="font-mono text-xs"
+              autoFocus={input === required[0]}
+            />
+          </Field>
+        ))}
+      </div>
+      <div className="flex justify-end gap-2 mt-4">
+        <Button variant="ghost" size="sm" disabled={busy} onClick={onCancel}>取消</Button>
+        <Button
+          variant="primary"
+          size="sm"
+          loading={busy}
+          disabled={!allFilled || busy}
+          onClick={() => {
+            const inputs: Record<string, string> = {};
+            for (const input of required) inputs[input.key] = (values[input.key] ?? '').trim();
+            onConfirm(inputs);
+          }}
+        >
+          安装
+        </Button>
+      </div>
+    </Dialog>
   );
 }
 

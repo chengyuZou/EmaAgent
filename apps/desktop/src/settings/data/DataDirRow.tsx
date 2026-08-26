@@ -3,16 +3,17 @@ import { useState, type JSX } from 'react';
 import { Badge, Button, EntityRow, IconButton } from '@ema-agent/ui';
 import { useStorageStore } from '../../stores/storage-store.js';
 import { showToast } from '../../lib/toast.js';
-import type { DataDirItem } from '../../api/storage.js';
-import { fmtBytes } from './storageFormat.js';
+import type { DataDirItem } from '../../api/workspaces.js';
 
 export function DataDirRow({
   dir,
   index,
+  isActive,
   onMigrateOpen,
 }: {
   dir:           DataDirItem;
   index:         number;
+  isActive:      boolean;
   onMigrateOpen(): void;
 }): JSX.Element {
   const [activating, setActivating] = useState(false);
@@ -46,19 +47,19 @@ export function DataDirRow({
   return (
     <EntityRow
       decorate="ema-card-decorate--storage"
-      active={dir.isActive}
+      active={isActive}
       index={index}
       className="group flex flex-col gap-1.5 px-3 py-2.5 transition-colors duration-[var(--ema-duration-base)]"
     >
       <div className="flex items-center gap-2">
         <span
-          className={`text-xs shrink-0 ${dir.isActive ? 'i-solar:check-circle-bold text-[var(--ema-primary)]' : 'i-solar:check-circle-linear text-[var(--ema-text-tertiary)]'}`}
+          className={`text-xs shrink-0 ${isActive ? 'i-solar:check-circle-bold text-[var(--ema-primary)]' : 'i-solar:check-circle-linear text-[var(--ema-text-tertiary)]'}`}
           aria-hidden
         />
         <span className="text-sm font-semibold text-[var(--ema-text-primary)] truncate flex-1">
           {dir.name}
         </span>
-        {dir.isActive && (
+        {isActive && (
           <Badge variant="success" className="ema-scale-in shrink-0">当前</Badge>
         )}
       </div>
@@ -67,13 +68,10 @@ export function DataDirRow({
         {dir.path}
       </p>
 
-      <div className="flex items-center justify-between pl-5">
-        <span className="text-xs text-[var(--ema-text-tertiary)]">
-          db {fmtBytes(dir.dataDbBytes)}
-        </span>
+      <div className="flex items-center justify-end pl-5">
         <div className={`flex items-center gap-1 transition-opacity duration-150
-                          ${dir.isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-          {dir.isActive ? (
+                          ${isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+          {isActive ? (
             <Button
               variant="ghost"
               size="sm"

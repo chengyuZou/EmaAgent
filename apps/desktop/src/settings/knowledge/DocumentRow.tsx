@@ -1,28 +1,26 @@
 // 单个文档行:状态徽标、重嵌/删除动作与展开的分块预览。
 import { useEffect, useState, type JSX } from 'react';
 import { Badge, EntityRow, IconButton } from '@ema-agent/ui';
-import { useKbStore } from '../../stores/kb-store.js';
+import { useKnowledgeStore } from '../../stores/knowledge-store.js';
 import { showToast } from '../../lib/toast.js';
-import { kbApi, type DocumentAssetWire } from '../../api/knowledge-base.js';
+import { knowledgeApi, type DocumentAsset } from '../../api/knowledge.js';
 import { documentNeedsReembed, type ResolvedEmbedSelection } from './knowledge-base-embedding-state.js';
 import { ChunkViewer } from './ChunkViewer.js';
 
 const STATUS_LABEL: Record<string, string> = {
-  indexed:  '已索引',
+  ready:    '已索引',
   indexing: '索引中',
-  pending:  '等待中',
-  error:    '错误',
+  failed:   '错误',
 };
 
 const STATUS_VARIANT: Record<string, 'success' | 'warn' | 'neutral' | 'danger'> = {
-  indexed:  'success',
+  ready:    'success',
   indexing: 'warn',
-  pending:  'neutral',
-  error:    'danger',
+  failed:   'danger',
 };
 
 export function DocumentRow({ doc, currentEmbed, kbId, onDelete, index }: {
-  doc: DocumentAssetWire;
+  doc: DocumentAsset;
   currentEmbed?: ResolvedEmbedSelection;
   kbId: string;
   onDelete(): void;
@@ -40,13 +38,13 @@ export function DocumentRow({ doc, currentEmbed, kbId, onDelete, index }: {
 
   const [reembedding, setReembedding] = useState(false);
 
-  // 使用后端生成的完整空间身份，不能只比较同名模型。
+  // 绑定身份逐字段比对,不能只比较同名模型。
   const needsReembed = documentNeedsReembed(doc, currentEmbed);
 
   async function handleDelete(): Promise<void> {
     setDeleting(true);
     try {
-      await useKbStore.getState().deleteDocument(doc.id);
+      await useKnowledgeStore.getState().deleteDocument(doc.id);
       onDelete();
     } catch {
       showToast('删除失败', { variant: 'danger' });
@@ -63,7 +61,7 @@ export function DocumentRow({ doc, currentEmbed, kbId, onDelete, index }: {
     setReembedding(true);
     try {
       // 202 入队后立即返回; 重建在后台执行, 完成后文档列表由 SSE 驱动刷新。
-      await kbApi.reembedDocument(doc.id, kbId);
+      await knowledgeApi.reembed({ assetIds: [doc.id], kbId });
       showToast('已加入后台重建', { variant: 'success' });
     } catch {
       showToast('重嵌失败（请先在上方选择嵌入模型）', { variant: 'danger' });
@@ -93,9 +91,9 @@ export function DocumentRow({ doc, currentEmbed, kbId, onDelete, index }: {
           <p className="text-sm text-[var(--ema-text-primary)] truncate" title={doc.filePath}>{doc.fileName}</p>
           <p className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">
             {doc.wordCount.toLocaleString()} 词{doc.pageCount ? ` · ${doc.pageCount} 页` : ''}
-            {doc.ebdModel ? (
+            {doc.embeddingModel ? (
               <span className={`ml-2 font-mono ema-fade-in ${needsReembed ? 'text-[var(--ema-danger)]' : 'text-[var(--ema-text-tertiary)]'}`}>
-                {needsReembed && <span className="i-mdi:alert-circle-outline mr-0.5 align-middle" aria-hidden />}{doc.ebdModel}{needsReembed ? '（需重嵌）' : ''}
+                {needsReembed && <span className="i-mdi:alert-circle-outline mr-0.5 align-middle" aria-hidden />}{doc.embeddingModel}{needsReembed ? '（需重嵌）' : ''}
               </span>
             ) : currentEmbed ? (
               <span className="ml-2 ema-fade-in inline-flex items-center gap-0.5 text-[var(--ema-warning-text)]"><span className="i-mdi:alert-circle-outline" aria-hidden />未嵌入</span>
@@ -103,9 +101,6 @@ export function DocumentRow({ doc, currentEmbed, kbId, onDelete, index }: {
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
-          <Badge variant="neutral" className="text-xs">
-            {doc.useCount > 0 ? `被选 ${doc.useCount} 次` : '未使用'}
-          </Badge>
           <Badge variant={STATUS_VARIANT[doc.status] ?? 'neutral'} className="text-xs">
             {STATUS_LABEL[doc.status] ?? doc.status}
           </Badge>

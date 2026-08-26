@@ -47,7 +47,7 @@ export const backgroundProcessListRoute = (deps: BackgroundProcessListRouteDeps)
       }
     });
 
-export function processError(context: Context, error: unknown): Response {
+export function processError(context: Context, error: unknown) {
   if (error instanceof BackgroundProcessError) {
     if (error.code === 'not_found') {
       return context.json({ error: 'process_not_found', message: error.message }, 404);

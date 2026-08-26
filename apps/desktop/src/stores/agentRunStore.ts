@@ -1,16 +1,14 @@
-// 管理各 Session 的 AgentRun 快照、实时进度、取消清理与执行记录。
+// 管理各 Session 的 AgentRun 快照、实时进度与执行记录。
+// AgentRun 记录只读：终态清理由 Session 生命周期负责，前端不提供删除入口。
 import { create } from 'zustand';
 import {
   agentRunsApi,
-  type AgentRunWire,
-  type AgentRunMessageWire,
-  type AgentRunMessageRole,
-  type AgentRunStatus,
-  type AssistantMessageContent,
+  type AgentRunSummary,
+  type AgentRunMessageItem,
 } from '../api/agentRuns.js';
-import { turnsApi } from '../api/turns.js';
 
-export type { AgentRunWire, AgentRunMessageWire, AgentRunStatus };
+export type { AgentRunSummary, AgentRunMessageItem };
+export type AgentRunStatus = AgentRunSummary['status'];
 
 export interface LiveAgentRunInfo {
   startedAtMs: number;
@@ -21,27 +19,40 @@ export interface LiveAgentRunInfo {
   elapsedMs: number;
 }
 
-export interface AgentRunState extends AgentRunWire {
+export interface AgentRunState extends AgentRunSummary {
   /** 只保存当前进程收到的高频进度；持久字段仍以 AgentRun 快照为准。 */
   live?: LiveAgentRunInfo;
 }
 
+/** 实时转写里 assistant/reasoning 文本块的最小形状（用于同块增量合并）。 */
+interface LiveTextContent {
+  text: string;
+}
+
+function asLiveText(content: unknown): LiveTextContent {
+  if (
+    typeof content === 'object' && content !== null
+    && typeof (content as { text?: unknown }).text === 'string'
+  ) {
+    return { text: (content as { text: string }).text };
+  }
+  return { text: '' };
+}
+
 export interface AgentRunStoreState {
   runs: Map<string, AgentRunState>;
-  transcripts: Map<string, AgentRunMessageWire[] | null>;
+  transcripts: Map<string, AgentRunMessageItem[] | null>;
   loadingSessions: Set<string>;
   eventRevisions: Map<string, number>;
   error: string | null;
 
   loadForSession(sessionId: string): Promise<void>;
   upsert(run: Partial<AgentRunState> & { id: string }): void;
-  deleteRun(agentRunId: string, parentTurnId: string | undefined): Promise<void>;
-  clearTerminal(sessionId: string): Promise<void>;
   loadTranscript(agentRunId: string): Promise<void>;
   appendLiveTranscript(
     agentRunId: string,
-    role: AgentRunMessageRole,
-    content: AgentRunMessageWire['content'],
+    role: AgentRunMessageItem['role'],
+    content: AgentRunMessageItem['content'],
   ): void;
   evictSession(sessionId: string): void;
 }
@@ -61,7 +72,7 @@ export const useAgentRunStore = create<AgentRunStoreState>((set, get) => ({
     }));
 
     try {
-      const { runs } = await agentRunsApi.list(sessionId);
+      const { items } = await agentRunsApi.list(sessionId);
       const currentRevision = get().eventRevisions.get(sessionId) ?? 0;
 
       // HTTP 快照发出后若已有实时事件到达，旧响应不能覆盖刚更新的运行态。
@@ -78,11 +89,11 @@ export const useAgentRunStore = create<AgentRunStoreState>((set, get) => ({
         for (const [id, run] of next) {
           if (run.sessionId === sessionId) next.delete(id);
         }
-        for (const run of runs) {
+        for (const run of items) {
           const live = next.get(run.id)?.live;
           next.set(
             run.id,
-            live && run.status === 'running' ? { ...run, live } : run,
+            live && run.status === 'running' ? { ...run, live } : { ...run },
           );
         }
         return {
@@ -128,45 +139,6 @@ export const useAgentRunStore = create<AgentRunStoreState>((set, get) => ({
     });
   },
 
-  async deleteRun(agentRunId, parentTurnId) {
-    const run = get().runs.get(agentRunId);
-    set({ error: null });
-    try {
-      // 先确认运行时已停止，再清理持久记录，避免 UI 消失但子智能体仍在后台执行。
-      if (run?.status === 'running') {
-        if (!parentTurnId) {
-          throw new Error('缺少父 Turn，无法安全取消仍在运行的子智能体');
-        }
-        await turnsApi.abortSubagent(parentTurnId, agentRunId);
-      }
-      await agentRunsApi.delete(agentRunId);
-    } catch (error: unknown) {
-      set({ error: error instanceof Error ? error.message : '删除 AgentRun 失败' });
-      throw error;
-    }
-
-    set((state) => ({
-      runs: withoutKey(state.runs, agentRunId),
-      transcripts: withoutKey(state.transcripts, agentRunId),
-      error: null,
-    }));
-  },
-
-  async clearTerminal(sessionId) {
-    await agentRunsApi.clear(sessionId);
-    set((state) => {
-      const next = new Map(state.runs);
-      const transcripts = new Map(state.transcripts);
-      for (const [id, run] of next) {
-        if (run.sessionId === sessionId && run.status !== 'running') {
-          next.delete(id);
-          transcripts.delete(id);
-        }
-      }
-      return { runs: next, transcripts };
-    });
-  },
-
   async loadTranscript(agentRunId) {
     if (get().transcripts.has(agentRunId)) return;
     set((state) => {
@@ -176,10 +148,10 @@ export const useAgentRunStore = create<AgentRunStoreState>((set, get) => ({
     });
 
     try {
-      const { messages } = await agentRunsApi.listMessages(agentRunId);
+      const { items } = await agentRunsApi.listMessages(agentRunId);
       set((state) => {
         const transcripts = new Map(state.transcripts);
-        transcripts.set(agentRunId, messages);
+        transcripts.set(agentRunId, [...items]);
         return { transcripts };
       });
     } catch {
@@ -197,8 +169,8 @@ export const useAgentRunStore = create<AgentRunStoreState>((set, get) => ({
       if (role === 'assistant' || role === 'reasoning') {
         const last = existing[existing.length - 1];
         if (last?.role === role) {
-          const previousText = (last.content as AssistantMessageContent).text;
-          const nextText = (content as AssistantMessageContent).text;
+          const previousText = asLiveText(last.content).text;
+          const nextText = asLiveText(content).text;
           transcripts.set(agentRunId, [
             ...existing.slice(0, -1),
             { ...last, content: { text: previousText + nextText } },
@@ -207,11 +179,13 @@ export const useAgentRunStore = create<AgentRunStoreState>((set, get) => ({
         }
       }
 
-      const message: AgentRunMessageWire = {
+      const lastSequence = existing[existing.length - 1]?.sequence ?? 0;
+      const message: AgentRunMessageItem = {
         id: `live-${Date.now()}-${Math.random().toString(36).slice(2)}`,
         agentRunId,
         role,
         content,
+        sequence: lastSequence + 1,
         createdAt: Date.now(),
       };
       transcripts.set(agentRunId, [...existing, message]);

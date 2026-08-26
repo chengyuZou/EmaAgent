@@ -10,15 +10,11 @@ import { useEffect, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useDecisionStore, type DecisionPrompt } from '../stores/decision-store.js';
 import { useConversationStore } from '../stores/conversation-store.js';
-import { useSidecarStore } from '../stores/sidecar-store.js';
+import { useServerStore } from '../stores/server-store.js';
 import { useSettingsStore } from '../stores/settings-store.js';
 import { turnsApi } from '../api/turns.js';
-import { permissionApi } from '../api/permission.js';
 import { submitDecision } from './decision-submission.js';
 import { PermissionPrompt } from './PermissionPrompt.js';
-import { AskConfirmPrompt } from './AskConfirmPrompt.js';
-import { AskTextPrompt } from './AskTextPrompt.js';
-import { AskChoicePrompt } from './AskChoicePrompt.js';
 import { AskUserBatchPrompt } from './AskUserBatchPrompt.js';
 
 import type { PermissionResponse } from '@ema-agent/permission';
@@ -66,91 +62,15 @@ function PromptRouter({
     case 'permission':
       return (
         <PermissionPrompt
-          promptId={prompt.promptId}
+          promptId={prompt.toolCallId}
           prompt={prompt}
           submitting={submission.submitting}
           submissionError={submission.error}
-          timeoutMs={timeoutMs}
+          timeoutMs={timeoutMs ?? undefined}
           onRespond={(response: PermissionResponse) => {
             void submission.run(
-              () => permissionApi.respond(prompt.turnId, prompt.promptId, response),
+              () => turnsApi.respondPermission(prompt.turnId, prompt.toolCallId, response),
               () => useDecisionStore.getState().resolve(sessionId),
-            );
-          }}
-        />
-      );
-
-    case 'ask_confirm':
-      return (
-        <AskConfirmPrompt
-          promptId={prompt.promptId}
-          question={prompt.question}
-          humanDescription={prompt.humanDescription}
-          submitting={submission.submitting}
-          submissionError={submission.error}
-          onResolve={(confirmed) => {
-            void submission.run(
-              () => turnsApi.respondAskUser(prompt.turnId, prompt.promptId, { confirmed: String(confirmed) }),
-              () => useDecisionStore.getState().resolve(sessionId),
-            );
-          }}
-          onCancel={() => {
-            void submission.run(
-              () => turnsApi.cancelAskUser(prompt.turnId, prompt.promptId),
-              () => useDecisionStore.getState().cancel(sessionId),
-            );
-          }}
-        />
-      );
-
-    case 'ask_text':
-      return (
-        <AskTextPrompt
-          promptId={prompt.promptId}
-          question={prompt.question}
-          humanDescription={prompt.humanDescription}
-          placeholder={prompt.placeholder}
-          submitting={submission.submitting}
-          submissionError={submission.error}
-          onResolve={(text) => {
-            void submission.run(
-              () => turnsApi.respondAskUser(prompt.turnId, prompt.promptId, { text }),
-              () => useDecisionStore.getState().resolve(sessionId),
-            );
-          }}
-          onCancel={() => {
-            void submission.run(
-              () => turnsApi.cancelAskUser(prompt.turnId, prompt.promptId),
-              () => useDecisionStore.getState().cancel(sessionId),
-            );
-          }}
-        />
-      );
-
-    case 'ask_choice':
-      return (
-        <AskChoicePrompt
-          promptId={prompt.promptId}
-          question={prompt.question}
-          humanDescription={prompt.humanDescription}
-          options={prompt.options}
-          multiSelect={prompt.multiSelect}
-          allowCustom={prompt.allowCustom}
-          submitting={submission.submitting}
-          submissionError={submission.error}
-          onResolve={(answers, customText) => {
-            void submission.run(
-              () => turnsApi.respondAskUser(prompt.turnId, prompt.promptId, {
-                selected: answers.join(','),
-                ...(customText ? { custom: customText } : {}),
-              }),
-              () => useDecisionStore.getState().resolve(sessionId),
-            );
-          }}
-          onCancel={() => {
-            void submission.run(
-              () => turnsApi.cancelAskUser(prompt.turnId, prompt.promptId),
-              () => useDecisionStore.getState().cancel(sessionId),
             );
           }}
         />
@@ -165,13 +85,13 @@ function PromptRouter({
           submissionError={submission.error}
           onResolve={(answers) => {
             void submission.run(
-              () => turnsApi.respondAskUser(prompt.turnId, prompt.promptId, answers),
+              () => turnsApi.respondAskUser(prompt.turnId, prompt.toolCallId, answers),
               () => useDecisionStore.getState().resolve(sessionId),
             );
           }}
           onCancel={() => {
             void submission.run(
-              () => turnsApi.cancelAskUser(prompt.turnId, prompt.promptId),
+              () => turnsApi.cancelAskUser(prompt.turnId, prompt.toolCallId),
               () => useDecisionStore.getState().cancel(sessionId),
             );
           }}
@@ -187,39 +107,30 @@ function PromptRouter({
 
 export function DecisionLayer(): JSX.Element | null {
   const viewedSessionId = useConversationStore((s) => s.viewedSessionId);
-  const sidecarReady = useSidecarStore((s) => s.status.kind === 'ok');
+  const serverReady = useServerStore((s) => s.status.kind === 'ok');
   const current = useDecisionStore(
     useShallow((s) => (viewedSessionId ? s.sessions.get(viewedSessionId)?.[0] ?? null : null)),
   );
 
   useEffect(() => {
-    if (!sidecarReady) return;
-    void Promise.all([permissionApi.pending(), turnsApi.pendingAskUser()])
-      .then(([permissionResult, askUserResult]) => {
-        const pending = [
-          ...permissionResult.prompts.map((prompt) => ({ kind: 'permission' as const, createdAt: prompt.createdAt, prompt })),
-          ...askUserResult.prompts.map((prompt) => ({ kind: 'ask_user' as const, createdAt: prompt.createdAt, prompt })),
-        ].sort((left, right) => left.createdAt - right.createdAt);
-
-        // 两类 Registry 的快照按统一时间线回放，避免窗口重开后改变同一 Session 的 FIFO 顺序。
-        for (const item of pending) {
-          if (item.kind === 'permission') {
-            useDecisionStore.getState().restorePermissions([item.prompt]);
-          } else {
-            useDecisionStore.getState().restoreAskUser([item.prompt]);
-          }
-        }
+    if (!serverReady) return;
+    // Permission 与 AskUser 在同一个交互队列里排队；pending 按统一时间线回放，
+    // 避免窗口重开后改变同一 Session 的 FIFO 顺序。
+    void turnsApi.pendingAskUser()
+      .then((result) => {
+        const pending = [...result.pending].sort((left, right) => left.createdAt - right.createdAt);
+        useDecisionStore.getState().restorePending(pending);
       })
       .catch(() => {
-        // Sidecar 健康轮询下一次进入 ok 时会再次尝试。
+        // 服务器健康轮询下一次进入 ok 时会再次尝试。
       });
-  }, [sidecarReady]);
+  }, [serverReady]);
 
   if (!current || !viewedSessionId) return null;
 
   return (
     <div className="mb-2 w-full ema-slide-up">
-      <PromptRouter key={current.promptId} prompt={current} sessionId={viewedSessionId} />
+      <PromptRouter key={current.toolCallId} prompt={current} sessionId={viewedSessionId} />
     </div>
   );
 }

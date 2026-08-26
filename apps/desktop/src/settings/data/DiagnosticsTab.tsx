@@ -2,9 +2,9 @@
 import { useEffect, type JSX } from 'react';
 import { Badge, Button, Callout, Spinner, StatCard } from '@ema-agent/ui';
 import {
-  serializeDiagnosticsSnapshot,
+  serializeDiagnosticsReport,
   useDiagnosticsStore,
-  type DiagnosticsSnapshot,
+  type DiagnosticsReport,
 } from '../../stores/diagnostics-store.js';
 import { showToast } from '../../lib/toast.js';
 
@@ -22,7 +22,7 @@ function formatBytes(bytes: number): string {
 }
 
 export function DiagnosticsTab(): JSX.Element {
-  const snapshot = useDiagnosticsStore((state) => state.snapshot);
+  const report = useDiagnosticsStore((state) => state.report);
   const status = useDiagnosticsStore((state) => state.status);
   const error = useDiagnosticsStore((state) => state.error);
 
@@ -31,9 +31,9 @@ export function DiagnosticsTab(): JSX.Element {
   }, []);
 
   async function copyReport(): Promise<void> {
-    if (!snapshot) return;
+    if (!report) return;
     try {
-      await navigator.clipboard.writeText(serializeDiagnosticsSnapshot(snapshot));
+      await navigator.clipboard.writeText(serializeDiagnosticsReport(report));
       showToast('诊断信息已复制', { variant: 'success' });
     } catch (copyError) {
       showToast(
@@ -43,7 +43,7 @@ export function DiagnosticsTab(): JSX.Element {
     }
   }
 
-  const loadingWithoutSnapshot = status === 'loading' && !snapshot;
+  const loadingWithoutReport = status === 'loading' && !report;
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 pb-8">
@@ -59,7 +59,7 @@ export function DiagnosticsTab(): JSX.Element {
             variant="secondary"
             size="sm"
             icon="i-solar:copy-bold-duotone"
-            disabled={!snapshot}
+            disabled={!report}
             onClick={() => void copyReport()}
           >
             复制诊断信息
@@ -77,18 +77,18 @@ export function DiagnosticsTab(): JSX.Element {
       </header>
 
       {error && (
-        <Callout variant={snapshot ? 'warn' : 'danger'} title="诊断数据加载失败">
-          {snapshot ? `当前保留上一次快照：${error}` : error}
+        <Callout variant={report ? 'warn' : 'danger'} title="诊断数据加载失败">
+          {report ? `当前保留上一次报告：${error}` : error}
         </Callout>
       )}
 
-      {loadingWithoutSnapshot && (
+      {loadingWithoutReport && (
         <div className="flex items-center justify-center gap-2 py-16 text-sm text-[var(--ema-text-tertiary)]">
           <Spinner size="sm" /> 正在读取诊断信息…
         </div>
       )}
 
-      {!loadingWithoutSnapshot && !snapshot && status === 'error' && (
+      {!loadingWithoutReport && !report && status === 'error' && (
         <div className="flex justify-center py-6">
           <Button
             variant="secondary"
@@ -99,19 +99,19 @@ export function DiagnosticsTab(): JSX.Element {
         </div>
       )}
 
-      {snapshot && (
+      {report && (
         <>
           <div className="grid grid-cols-2 gap-3">
             <StatCard
               label="系统事件订阅"
-              value={snapshot.systemEvents.subscribers}
+              value={report.systemEvents.subscribers}
               sub="当前活跃连接"
               icon="i-solar:translation-2-bold-duotone"
               index={0}
             />
             <StatCard
               label="磁盘"
-              value={snapshot.system.disks.length}
+              value={report.system.disks.length}
               sub="后端当前可见"
               icon="i-solar:diskette-bold-duotone"
               index={1}
@@ -122,11 +122,11 @@ export function DiagnosticsTab(): JSX.Element {
             <div>
               <h2 className="text-base font-semibold text-[var(--ema-text-primary)]">本机存储</h2>
               <p className="mt-1 break-all font-mono text-xs text-[var(--ema-text-tertiary)]">
-                数据目录：{snapshot.system.dataDir}
+                数据目录：{report.system.dataDir}
               </p>
             </div>
             <div className="grid gap-2 md:grid-cols-2">
-              {snapshot.system.disks.map((disk) => {
+              {report.system.disks.map((disk: DiagnosticsReport['system']['disks'][number]) => {
                 const used = Math.max(0, disk.total - disk.free);
                 const usage = disk.total > 0 ? Math.round((used / disk.total) * 100) : 0;
                 return (

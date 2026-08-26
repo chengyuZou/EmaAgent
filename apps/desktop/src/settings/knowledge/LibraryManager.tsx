@@ -3,12 +3,12 @@ import { useEffect, useState, type CSSProperties, type JSX } from 'react';
 import {
   Badge, Button, Callout, Dialog, EmptyState, EntityRow, IconButton, Input, Spinner,
 } from '@ema-agent/ui';
-import { useKbStore, type KbLibraryWire } from '../../stores/kb-store.js';
+import { useKnowledgeStore, type KnowledgeLibrary } from '../../stores/knowledge-store.js';
 import { tauriBridge } from '../../lib/tauri-bridge.js';
 import { showToast } from '../../lib/toast.js';
 
 function LibraryRow({ lib, onActivate, onRename, onDelete }: {
-  lib:        KbLibraryWire;
+  lib:        KnowledgeLibrary;
   onActivate(): void;
   onRename(name: string): void;
   onDelete(): void;
@@ -110,10 +110,10 @@ function CreateLibDialog({ onCreated }: { onCreated(): void }): JSX.Element {
     if (!n) { setError('请输入知识库名称'); return; }
     if (!p) { setError('请选择文件夹'); return; }
     setSaving(true); setError(null);
-    const lib = await useKbStore.getState().createLib(n, p);
+    const lib = await useKnowledgeStore.getState().createLib(n, p);
     setSaving(false);
     if (!lib) {
-      setError(useKbStore.getState().libsError ?? '创建失败');
+      setError(useKnowledgeStore.getState().libsError ?? '创建失败');
       return;
     }
     showToast(`已创建「${lib.name}」`, { variant: 'success' });
@@ -177,11 +177,11 @@ function CreateLibDialog({ onCreated }: { onCreated(): void }): JSX.Element {
 }
 
 export function LibraryManager(): JSX.Element {
-  const libs       = useKbStore((s) => s.libs);
-  const loading    = useKbStore((s) => s.libsLoading);
-  const error      = useKbStore((s) => s.libsError);
+  const libs       = useKnowledgeStore((s) => s.libs);
+  const loading    = useKnowledgeStore((s) => s.libsLoading);
+  const error      = useKnowledgeStore((s) => s.libsError);
 
-  useEffect(() => { void useKbStore.getState().loadLibs(); }, []);
+  useEffect(() => { void useKnowledgeStore.getState().loadLibs(); }, []);
 
   return (
     <section className="flex flex-col gap-3 ema-fade-in">
@@ -192,7 +192,7 @@ export function LibraryManager(): JSX.Element {
             <span className="ml-2 text-xs text-[var(--ema-text-tertiary)]">({libs.length})</span>
           )}
         </h2>
-        <CreateLibDialog onCreated={() => void useKbStore.getState().loadLibs()} />
+        <CreateLibDialog onCreated={() => void useKnowledgeStore.getState().loadLibs()} />
       </div>
 
       {error && <Callout variant="danger" className="text-xs ema-fade-in">{error}</Callout>}
@@ -207,9 +207,9 @@ export function LibraryManager(): JSX.Element {
             <div key={lib.id} className="ema-stagger-in" style={{ '--stagger-i': i } as CSSProperties}>
               <LibraryRow
                 lib={lib}
-                onActivate={() => void useKbStore.getState().activateLib(lib.id).then(() => showToast(`已切换到「${lib.name}」`, { variant: 'success' }))}
-                onRename={(name) => void useKbStore.getState().renameLib(lib.id, name).then(() => showToast('已重命名', { variant: 'success' }))}
-                onDelete={() => void useKbStore.getState().deleteLib(lib.id).then(() => showToast('已移除', { variant: 'success' }))}
+                onActivate={() => void useKnowledgeStore.getState().activateLib(lib.id).then(() => showToast(`已切换到「${lib.name}」`, { variant: 'success' }))}
+                onRename={(name) => void useKnowledgeStore.getState().renameLib(lib.id, name).then(() => showToast('已重命名', { variant: 'success' }))}
+                onDelete={() => void useKnowledgeStore.getState().deleteLib(lib.id).then(() => showToast('已移除', { variant: 'success' }))}
               />
             </div>
           ))}

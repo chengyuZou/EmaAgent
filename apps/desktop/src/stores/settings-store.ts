@@ -1,45 +1,61 @@
 // 管理 Provider、模型绑定与运行时设置，并在保存后同步其他桌面窗口。
+// Provider/绑定走 providersApi；permission 超时与事件展示走 settings 值键
+// （permission.askTimeoutMs / frontend.eventDisplay），不再有专用端点。
 import { create } from 'zustand';
-import { providersApi, type ProviderConfigWire, type ProviderConfigInput, type ProviderDefinition } from '../api/providers.js';
-import { modelBindingsApi, type BindingModule, type ResolvedModelBinding, type BindingUpsertInput } from '../api/model-bindings.js';
-import { settingsApi, type EventDisplayConfig, type EventDisplayResult } from '../api/settings.js';
+import {
+  providersApi,
+  type ProviderRecord,
+  type ProviderConfigInput,
+  type ProviderPatchInput,
+  type BindingModule,
+  type BindingUpsertInput,
+  type BindingsList,
+} from '../api/providers.js';
+import { settingsApi, type EventDisplayTable } from '../api/settings.js';
 import { tauriBridge } from '../lib/tauri-bridge.js';
 
-export type { EventDisplayConfig, EventDisplayResult };
+/** 单个事件类型的展示配置（生效表 = 默认表 + 用户覆盖合并）。 */
+export type EventDisplayConfig = EventDisplayTable[string];
+export type { EventDisplayTable };
+
+const PERMISSION_ASK_TIMEOUT_KEY = 'permission.askTimeoutMs';
+const EVENT_DISPLAY_SETTING_KEY = 'frontend.eventDisplay';
 
 export const RUNTIME_SETTINGS_EVENT = 'settings:runtime-changed';
 
 export interface RuntimeSettingsPayload {
-  permissionTimeoutMs: number;
-  eventDisplay: EventDisplayResult | null;
+  /** 批准卡与问询卡等待超时（毫秒）；null = 一直等待。 */
+  permissionTimeoutMs: number | null;
+  eventDisplay: EventDisplayTable | null;
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface SettingsStoreState {
-  providers:           ProviderConfigWire[];
-  providerDefinitions: ProviderDefinition[];
-  bindings:            Partial<Record<BindingModule, ResolvedModelBinding[]>>;
-  permissionTimeoutMs: number;
+  providers:           ProviderRecord[];
+  /** 一个业务位一条绑定；缺省模块表示跟随系统默认解析。 */
+  bindings:            Partial<Record<BindingModule, BindingsList[number]>>;
+  permissionTimeoutMs: number | null;
   /** Effective event-display config (defaults merged with user overrides). */
-  eventDisplay:        EventDisplayResult | null;
+  eventDisplay:        EventDisplayTable | null;
   loading:             boolean;
   error:               string | null;
 
   loadAll():                                          Promise<void>;
   refreshProviders():                                 Promise<void>;
-  refreshBindings(module: BindingModule):             Promise<void>;
+  refreshBindings():                                  Promise<void>;
 
-  upsertProvider(input: ProviderConfigInput, id?: string): Promise<void>;
+  createProvider(input: ProviderConfigInput):         Promise<void>;
+  patchProvider(id: string, patch: ProviderPatchInput): Promise<void>;
   deleteProvider(id: string):                         Promise<void>;
 
   upsertBinding(module: BindingModule, input: BindingUpsertInput): Promise<void>;
-  deleteBinding(module: BindingModule, providerConfigId: string, model: string): Promise<void>;
+  deleteBinding(module: BindingModule):               Promise<void>;
 
-  putPermissionTimeout(ms: number):                    Promise<void>;
+  putPermissionTimeout(ms: number | null):             Promise<void>;
   refreshRuntimeSettings():                            Promise<void>;
 
-  /** Reload the full event-display config from the sidecar. */
+  /** Reload the full event-display config from the server. */
   refreshEventDisplay():                              Promise<void>;
   /** Persist user overrides for specific event types. Merges with existing overrides. */
   putEventDisplay(overrides: Record<string, EventDisplayConfig>): Promise<void>;
@@ -49,9 +65,8 @@ export interface SettingsStoreState {
 
 export const useSettingsStore = create<SettingsStoreState>((set, get) => ({
   providers:           [],
-  providerDefinitions: [],
   bindings:            {},
-  permissionTimeoutMs: 120_000,
+  permissionTimeoutMs: null,
   eventDisplay:        null,
   loading:             false,
   error:               null,
@@ -59,16 +74,16 @@ export const useSettingsStore = create<SettingsStoreState>((set, get) => ({
   async loadAll() {
     set({ loading: true, error: null });
     try {
-      const [definitions, providers, permResult, eventDisplay] = await Promise.all([
-        providersApi.listDefinitions(),
+      const [providers, bindings, permResult, eventDisplay] = await Promise.all([
         providersApi.list(),
-        settingsApi.getPermissionTimeout().catch(() => ({ timeoutMs: 120_000 })),
+        providersApi.listBindings(),
+        settingsApi.getValue(PERMISSION_ASK_TIMEOUT_KEY).catch(() => null),
         settingsApi.getEventDisplay().catch(() => null),
       ]);
       set({
-        providerDefinitions: definitions,
-        providers,
-        permissionTimeoutMs: permResult.timeoutMs,
+        providers: [...providers],
+        bindings: indexBindings(bindings),
+        permissionTimeoutMs: readTimeoutValue(permResult?.value),
         eventDisplay,
         loading: false,
       });
@@ -83,46 +98,44 @@ export const useSettingsStore = create<SettingsStoreState>((set, get) => ({
   async refreshProviders() {
     try {
       const providers = await providersApi.list();
-      set({ providers });
+      set({ providers: [...providers] });
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to refresh providers' });
     }
   },
 
-  async refreshBindings(module: BindingModule) {
+  async refreshBindings() {
     try {
-      const list = await modelBindingsApi.listByModule(module);
-      set((s) => ({ bindings: { ...s.bindings, [module]: list } }));
+      const bindings = await providersApi.listBindings();
+      set({ bindings: indexBindings(bindings) });
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to refresh bindings' });
     }
   },
 
-  async upsertProvider(input, id) {
+  async createProvider(input) {
     try {
-      if (id) {
-        const { apiKey, definitionId: _definitionId, ...fields } = input;
-        await providersApi.patch(id, {
-          ...fields,
-          credential: apiKey === undefined
-            ? { type: 'keep' }
-            : apiKey.trim()
-              ? { type: 'replace', value: apiKey.trim() }
-              : { type: 'clear' },
-        });
-      } else {
-        await providersApi.create(input);
-      }
+      await providersApi.create(input);
       await get().refreshProviders();
     } catch (err: unknown) {
-      set({ error: err instanceof Error ? err.message : 'Failed to save provider' });
+      set({ error: err instanceof Error ? err.message : 'Failed to create provider' });
+      throw err;
+    }
+  },
+
+  async patchProvider(id, patch) {
+    try {
+      await providersApi.patch(id, patch);
+      await get().refreshProviders();
+    } catch (err: unknown) {
+      set({ error: err instanceof Error ? err.message : 'Failed to update provider' });
       throw err;
     }
   },
 
   async deleteProvider(id) {
     try {
-      await providersApi.delete(id);
+      await providersApi.remove(id);
       await get().refreshProviders();
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to delete provider' });
@@ -132,18 +145,22 @@ export const useSettingsStore = create<SettingsStoreState>((set, get) => ({
 
   async upsertBinding(module, input) {
     try {
-      const list = await modelBindingsApi.upsert(module, input);
-      set((s) => ({ bindings: { ...s.bindings, [module]: list } }));
+      const binding = await providersApi.setBinding(module, input);
+      if (binding) set((s) => ({ bindings: { ...s.bindings, [module]: binding } }));
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to save binding' });
       throw err;
     }
   },
 
-  async deleteBinding(module, providerConfigId, model) {
+  async deleteBinding(module) {
     try {
-      await modelBindingsApi.delete(module, providerConfigId, model);
-      await get().refreshBindings(module);
+      await providersApi.deleteBinding(module);
+      set((s) => {
+        const bindings = { ...s.bindings };
+        delete bindings[module];
+        return { bindings };
+      });
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to delete binding' });
       throw err;
@@ -152,8 +169,8 @@ export const useSettingsStore = create<SettingsStoreState>((set, get) => ({
 
   async putPermissionTimeout(ms) {
     try {
-      const saved = await settingsApi.putPermissionTimeout({ timeoutMs: ms });
-      set({ permissionTimeoutMs: saved.timeoutMs, error: null });
+      await settingsApi.putValue(PERMISSION_ASK_TIMEOUT_KEY, ms);
+      set({ permissionTimeoutMs: ms, error: null });
       broadcastRuntimeSettings(get());
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to save permission timeout' });
@@ -164,11 +181,11 @@ export const useSettingsStore = create<SettingsStoreState>((set, get) => ({
   async refreshRuntimeSettings() {
     try {
       const [permission, eventDisplay] = await Promise.all([
-        settingsApi.getPermissionTimeout(),
+        settingsApi.getValue(PERMISSION_ASK_TIMEOUT_KEY),
         settingsApi.getEventDisplay(),
       ]);
       set({
-        permissionTimeoutMs: permission.timeoutMs,
+        permissionTimeoutMs: readTimeoutValue(permission.value),
         eventDisplay,
         error: null,
       });
@@ -190,10 +207,12 @@ export const useSettingsStore = create<SettingsStoreState>((set, get) => ({
 
   async putEventDisplay(overrides) {
     try {
-      const current = get().eventDisplay;
-      if (!current) throw new Error('事件展示设置尚未加载');
-      const saved = await settingsApi.putEventDisplay(overrides);
-      set({ eventDisplay: saved, error: null });
+      // 合并必须发生在用户覆盖表上：getEventDisplay 返回的是含默认表的生效投影，
+      // 直接回写会把默认值冻结成用户覆盖。
+      const current = await settingsApi.getValue(EVENT_DISPLAY_SETTING_KEY);
+      const base = readOverridesValue(current.value);
+      await settingsApi.putValue(EVENT_DISPLAY_SETTING_KEY, { ...base, ...overrides });
+      await get().refreshEventDisplay();
       broadcastRuntimeSettings(get());
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to save event display config' });
@@ -201,6 +220,23 @@ export const useSettingsStore = create<SettingsStoreState>((set, get) => ({
     }
   },
 }));
+
+function indexBindings(list: BindingsList): Partial<Record<BindingModule, BindingsList[number]>> {
+  const out: Partial<Record<BindingModule, BindingsList[number]>> = {};
+  for (const binding of list) out[binding.module] = binding;
+  return out;
+}
+
+/** 值键解码：number 或 null（一直等待）；其他形状按 null 处理。 */
+function readTimeoutValue(value: unknown): number | null {
+  return typeof value === 'number' ? value : null;
+}
+
+/** 用户覆盖表只接受对象；损坏形状当空表合并。 */
+function readOverridesValue(value: unknown): Record<string, EventDisplayConfig> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return {};
+  return value as Record<string, EventDisplayConfig>;
+}
 
 function broadcastRuntimeSettings(state: SettingsStoreState): void {
   const payload: RuntimeSettingsPayload = {

@@ -32,9 +32,10 @@ export class SettingAutosaver<T extends object> {
 
   async load(): Promise<void> {
     try {
-      const wire = await settingsApi.getValue<T>(this.key);
+      // 服务端值是 JSON;T 由调用方的设置定义保证,此处是唯一解码断言点。
+      const stored = await settingsApi.getValue(this.key);
       if (this.disposed) return;
-      this.callbacks.onCommitted(wire.value);
+      this.callbacks.onCommitted(stored.value as T);
     } catch {
       if (!this.disposed) this.callbacks.onLoadError();
     }
@@ -59,9 +60,9 @@ export class SettingAutosaver<T extends object> {
     this.inFlight = true;
     this.callbacks.onSaveState('saving');
     settingsApi.putValue<T>(this.key, pending)
-      .then((wire) => {
+      .then((stored) => {
         if (this.disposed) return;
-        this.callbacks.onCommitted(wire.value);
+        this.callbacks.onCommitted(stored.value as T);
         if (this.pending === null) {
           this.callbacks.onSaveState('saved');
           if (this.savedMarkTimer) clearTimeout(this.savedMarkTimer);

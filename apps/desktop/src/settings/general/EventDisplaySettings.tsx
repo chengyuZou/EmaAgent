@@ -1,13 +1,17 @@
 // 编辑结构化事件通知的开关、强调色、停留时间和文本截断长度。
+// GET event-display 是默认表+用户覆盖的生效表;草稿编辑的是用户覆盖表(整表替换写回)。
 import { useEffect, useMemo, useState, type JSX } from 'react';
 import { Badge, Button, Callout, Input, Select, Spinner, Switch } from '@ema-agent/ui';
 import { useSettingsStore, type EventDisplayConfig } from '../../stores/settings-store.js';
+import { settingsApi } from '../../api/settings.js';
 import { showToast } from '../../lib/toast.js';
 import {
   EVENT_DISPLAY_GROUPS,
   eventDisplayGroup,
   eventDisplayLabel,
 } from './event-display-catalog.js';
+
+const EVENT_DISPLAY_SETTING_KEY = 'frontend.eventDisplay';
 
 const DURATION_OPTIONS = [
   { value: '1000', label: '1 秒' },
@@ -26,16 +30,32 @@ function configEquals(
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
+/** 原始覆盖表只接受对象;损坏形状当空表编辑。 */
+function readOverrides(value: unknown): Record<string, EventDisplayConfig> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return {};
+  return value as Record<string, EventDisplayConfig>;
+}
+
 export function EventDisplaySettings(): JSX.Element {
   const eventDisplay = useSettingsStore((state) => state.eventDisplay);
   const storeError = useSettingsStore((state) => state.error);
+  const [rawOverrides, setRawOverrides] = useState<Record<string, EventDisplayConfig> | null>(null);
   const [draftOverrides, setDraftOverrides] = useState<Record<string, EventDisplayConfig>>({});
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (eventDisplay) setDraftOverrides(eventDisplay.overrides);
-  }, [eventDisplay]);
+    void (async () => {
+      try {
+        const result = await settingsApi.getValue(EVENT_DISPLAY_SETTING_KEY);
+        const overrides = readOverrides(result.value);
+        setRawOverrides(overrides);
+        setDraftOverrides(overrides);
+      } catch {
+        setRawOverrides(null);
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     if (eventDisplay) return;
@@ -45,19 +65,19 @@ export function EventDisplaySettings(): JSX.Element {
   const filteredTypes = useMemo(() => {
     if (!eventDisplay) return [];
     const query = search.trim().toLowerCase();
-    return Object.keys(eventDisplay.defaults).filter((eventType) => (
+    return Object.keys(eventDisplay).filter((eventType) => (
       !query
       || eventType.toLowerCase().includes(query)
       || eventDisplayLabel(eventType).toLowerCase().includes(query)
     ));
   }, [eventDisplay, search]);
 
-  if (!eventDisplay) {
+  if (!eventDisplay || rawOverrides === null) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-12 text-sm text-[var(--ema-text-tertiary)]">
         {storeError ? (
           <>
-            <Callout variant="danger">事件设置加载失败：{storeError}</Callout>
+            <Callout variant="danger">事件设置加载失败:{storeError}</Callout>
             <Button
               variant="secondary"
               size="sm"
@@ -73,8 +93,8 @@ export function EventDisplaySettings(): JSX.Element {
     );
   }
 
-  const loadedEventDisplay = eventDisplay;
-  const dirty = !configEquals(draftOverrides, loadedEventDisplay.overrides);
+  const effective = eventDisplay;
+  const dirty = !configEquals(draftOverrides, rawOverrides);
   const draftValid = Object.values(draftOverrides).every((config) => (
     /^#[0-9a-fA-F]{6}$/.test(config.color)
     && (config.durationMs === null || (
@@ -89,13 +109,14 @@ export function EventDisplaySettings(): JSX.Element {
     ))
   ));
 
-  function currentConfig(eventType: string): EventDisplayConfig {
-    return draftOverrides[eventType] ?? loadedEventDisplay.defaults[eventType]!;
+  function currentConfig(eventType: string): EventDisplayConfig | undefined {
+    return draftOverrides[eventType] ?? effective[eventType];
   }
 
   function patchConfig(eventType: string, patch: Partial<EventDisplayConfig>): void {
     setDraftOverrides((current) => {
-      const base = current[eventType] ?? loadedEventDisplay.defaults[eventType]!;
+      const base = current[eventType] ?? effective[eventType];
+      if (!base) return current;
       return { ...current, [eventType]: { ...base, ...patch } };
     });
   }
@@ -112,10 +133,13 @@ export function EventDisplaySettings(): JSX.Element {
     if (!draftValid) return;
     setSaving(true);
     try {
-      await useSettingsStore.getState().putEventDisplay(draftOverrides);
+      // 整表替换:store 的 putEventDisplay 是增量合并语义,表达不了"恢复默认"的删除。
+      await settingsApi.putValue(EVENT_DISPLAY_SETTING_KEY, draftOverrides);
+      setRawOverrides(draftOverrides);
+      await useSettingsStore.getState().refreshEventDisplay();
       showToast('事件展示设置已保存', { variant: 'success' });
     } catch (error: unknown) {
-      showToast(error instanceof Error ? `保存失败：${error.message}` : '事件展示设置保存失败', { variant: 'danger' });
+      showToast(error instanceof Error ? `保存失败:${error.message}` : '事件展示设置保存失败', { variant: 'danger' });
     } finally {
       setSaving(false);
     }
@@ -135,7 +159,7 @@ export function EventDisplaySettings(): JSX.Element {
             variant="ghost"
             size="sm"
             disabled={!dirty || saving}
-            onClick={() => setDraftOverrides(loadedEventDisplay.overrides)}
+            onClick={() => setDraftOverrides(rawOverrides)}
           >
             取消
           </Button>
@@ -170,6 +194,7 @@ export function EventDisplaySettings(): JSX.Element {
             </h3>
             {eventTypes.map((eventType) => {
               const config = currentConfig(eventType);
+              if (!config) return null;
               const overridden = eventType in draftOverrides;
               const durationValue = config.durationMs === null ? 'null' : String(config.durationMs);
               const durationOptions = DURATION_OPTIONS.some((option) => option.value === durationValue)

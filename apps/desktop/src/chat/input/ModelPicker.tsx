@@ -7,8 +7,15 @@
  */
 import { useState, useEffect, useMemo, useRef, type JSX } from 'react';
 import { Input, ScrollArea, Badge } from '@ema-agent/ui';
-import type { EnabledModelWire } from '../../api/models.js';
+import type { AvailableModel } from '../../api/providers.js';
 import { findEnabledModel, useModelCatalogStore } from '../../stores/model-catalog-store.js';
+
+/** 目录只加载 llm 能力；可用模型联合中只有 llm/vision 带 contextWindow/reasoning。 */
+type LlmAvailableModel = Extract<AvailableModel, { capability: 'llm' }>;
+
+function isLlmModel(model: AvailableModel): model is LlmAvailableModel {
+  return model.capability === 'llm';
+}
 
 export interface ModelSelection {
   providerId: string;
@@ -54,14 +61,15 @@ export function ModelPicker({ selected, onSelect, onClear }: ModelPickerProps): 
   // Group models by provider, filter by search query
   const grouped = useMemo(() => {
     const q = search.trim().toLowerCase();
+    const llmModels = models.filter(isLlmModel);
     const filtered = q
-      ? models.filter((m) =>
-          m.model.toLowerCase().includes(q) ||
+      ? llmModels.filter((m) =>
+          m.modelId.toLowerCase().includes(q) ||
           m.providerName.toLowerCase().includes(q),
         )
-      : models;
+      : llmModels;
 
-    const map = new Map<string, EnabledModelWire[]>();
+    const map = new Map<string, LlmAvailableModel[]>();
     for (const m of filtered) {
       const list = map.get(m.providerId) ?? [];
       list.push(m);
@@ -79,11 +87,11 @@ export function ModelPicker({ selected, onSelect, onClear }: ModelPickerProps): 
   );
 
   const triggerLabel = selectedModel
-    ? selectedModel.model
+    ? (selectedModel.name ?? selectedModel.modelId)
     : (loading ? '加载中…' : '默认模型');
 
   const triggerTitle = selectedModel
-    ? `${selectedModel.providerName} / ${selectedModel.model}`
+    ? `${selectedModel.providerName} / ${selectedModel.modelId}`
     : '选择模型';
 
   return (
@@ -162,10 +170,10 @@ export function ModelPicker({ selected, onSelect, onClear }: ModelPickerProps): 
                     </div>
                     {providerModels.map((m) => {
                       const isSelected =
-                        selected?.providerId === m.providerId && selected?.model === m.model;
+                        selected?.providerId === m.providerId && selected?.model === m.modelId;
                       return (
                         <button
-                          key={`${m.providerId}:${m.model}`}
+                          key={`${m.providerId}:${m.modelId}`}
                           className={
                             'w-full flex items-center gap-2 text-left px-3 py-1.5 text-xs rounded-lg ' +
                             `transition-colors duration-[var(--ema-duration-base)] ` +
@@ -174,11 +182,11 @@ export function ModelPicker({ selected, onSelect, onClear }: ModelPickerProps): 
                               : 'text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-3)] hover:text-[var(--ema-text-primary)]')
                           }
                           onClick={() => {
-                            onSelect({ providerId: m.providerId, model: m.model, reasoning: m.reasoning });
+                            onSelect({ providerId: m.providerId, model: m.modelId, reasoning: m.reasoning ?? undefined });
                             setOpen(false);
                           }}
                         >
-                          <span className="flex-1 truncate">{m.model}</span>
+                          <span className="flex-1 truncate">{m.name ?? m.modelId}</span>
                           {m.reasoning && (
                             <Badge variant="primary">思考</Badge>
                           )}

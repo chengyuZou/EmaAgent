@@ -3,7 +3,7 @@ import { useSessionStore } from '../stores/session-store.js';
 import { tauriBridge } from '../lib/tauri-bridge.js';
 import { showToast } from '../lib/toast.js';
 import { Button, IconButton, Input } from '@ema-agent/ui';
-import type { SessionWire } from '@ema-agent/session';
+import type { Session } from '../api/sessions.js';
 
 /**
  * Single-workspace-path editor. Replaces the old multi-root WorkspaceEditor.
@@ -15,7 +15,7 @@ import type { SessionWire } from '@ema-agent/session';
 export function WorkspacePicker({
   session, onClose, positionClassName,
 }: {
-  session: SessionWire;
+  session: Session;
   onClose(): void;
   positionClassName: string;
 }): JSX.Element {

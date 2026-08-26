@@ -1,110 +1,94 @@
-// 连接桌面系统事件与 Live2D 舞台，把情绪、动作、语音及暂停状态送入角色实例。
-import { useEffect, useRef, type JSX } from 'react';
+// 把桌面事件中的角色语义映射为当前 Live2D 舞台的原生命令。
+
+import { useCallback, useEffect, useRef, type JSX } from 'react';
 import {
-  defaultLive2DRuntime,
   Live2DStage,
-  type Live2DModelRuntimeConfig,
-  type Live2DError,
-  type Live2DRuntime,
   type Live2DStageHandle,
+  type Live2DStageReadyInfo,
 } from '@ema-agent/live2d-react';
-import { showToast, tauriBridge } from '@ema-agent/desktop-ui';
+import { showToast } from '../lib/toast.js';
+import { tauriBridge } from '../lib/tauri-bridge.js';
+import type { CharacterLive2dRuntimeConfig } from '../characterStageLoader.js';
 
 export interface EmaStageViewProps {
   modelPath: string;
-  runtime?: Live2DRuntime;
-  /** Live2D 的情绪与动作映射运行配置。 */
-  runtimeConfig?: Live2DModelRuntimeConfig;
+  runtimeConfig?: CharacterLive2dRuntimeConfig;
   suspended?: boolean;
   interactive?: boolean;
-  onReady?: () => void;
-  onError?: (error: Live2DError) => void;
+  onHandleChanged?: (handle: Live2DStageHandle | null) => void;
+  onReady?: (info: Live2DStageReadyInfo) => void;
+  onError?: (error: Error) => void;
 }
 
 export function EmaStageView({
   modelPath,
-  runtime = defaultLive2DRuntime,
   runtimeConfig,
   suspended = false,
   interactive = true,
+  onHandleChanged,
   onReady,
   onError,
 }: EmaStageViewProps): JSX.Element {
-  const stageRef = useRef<Live2DStageHandle>(null);
-  const { live2dStore, speechStore } = runtime;
+  const stageRef = useRef<Live2DStageHandle | null>(null);
+  const setStageHandle = useCallback((handle: Live2DStageHandle | null): void => {
+    stageRef.current = handle;
+    onHandleChanged?.(handle);
+  }, [onHandleChanged]);
 
   useEffect(() => {
     if (!interactive) return;
 
-    const isTargetStage = (stageId?: string): boolean => {
-      if (stageId) return stageId === runtime.stageId;
-      return runtime.stageId === defaultLive2DRuntime.stageId;
-    };
-
-    const applySpeechState = (payload: { speaking: boolean; rms: number }): void => {
-      if (!payload.speaking) {
-        speechStore.getState().reset();
-        return;
-      }
-      speechStore.getState().setSpeaking(true);
-      speechStore.getState().setRms(payload.rms);
-    };
-
-    const applyEmotion = (primary: string): void => {
-      const target = runtimeConfig?.emotionMap?.[primary];
-      if (target?.expression) {
-        stageRef.current?.setExpression(target.expression);
-      } else {
-        stageRef.current?.setExpression(null);
-      }
+    const isTargetStage = (stageId?: string): boolean => !stageId || stageId === 'main';
+    const applyEmotion = (name: string): void => {
+      const target = runtimeConfig?.emotionMap?.[name];
+      stageRef.current?.setExpression(target?.expression ?? null);
       if (target?.motion) {
         stageRef.current?.playMotion(target.motion.group, target.motion.index);
       }
     };
-
-    const applyMotion = (motion: string): void => {
-      const target = runtimeConfig?.motionMap?.[motion];
-      if (!target) return;
-      stageRef.current?.playMotion(target.group, target.index);
+    const applyMotion = (name: string): void => {
+      const target = runtimeConfig?.motionMap?.[name];
+      if (target) stageRef.current?.playMotion(target.group, target.index);
     };
 
-    // 接收系统事件流投递的角色情绪变化。
     const unlistenEmotion = tauriBridge.listen<{ primary: string; stageId?: string }>(
       'stage:emotion-changed',
       (event) => {
-        if (!isTargetStage(event.payload.stageId)) return;
-        applyEmotion(event.payload.primary);
+        if (isTargetStage(event.payload.stageId)) applyEmotion(event.payload.primary);
       },
     );
-
-    // 舞台提示可以同时携带动作与表情。
     const unlistenCue = tauriBridge.listen<{
       motion?: string;
       expression?: string;
       stageId?: string;
-    }>(
-      'stage:cue',
-      (event) => {
-        if (!isTargetStage(event.payload.stageId)) return;
-        if (event.payload.expression) {
-          const target = runtimeConfig?.emotionMap?.[event.payload.expression];
-          stageRef.current?.setExpression(target?.expression ?? event.payload.expression);
-        }
-        if (event.payload.motion) {
-          applyMotion(event.payload.motion);
-        }
-      },
-    );
-
-    // TTS 播放可能位于聊天 WebView，需要把 RMS 桥接到主窗口自己的语音状态。
+    }>('stage:cue', (event) => {
+      if (!isTargetStage(event.payload.stageId)) return;
+      if (event.payload.expression) {
+        const target = runtimeConfig?.emotionMap?.[event.payload.expression];
+        stageRef.current?.setExpression(target?.expression ?? event.payload.expression);
+      }
+      if (event.payload.motion) applyMotion(event.payload.motion);
+    });
     const unlistenSpeech = tauriBridge.listen<{
       speaking: boolean;
       rms: number;
       stageId?: string;
-    }>(
-      'stage:speech-state',
+    }>('stage:speech-state', (event) => {
+      if (isTargetStage(event.payload.stageId)) {
+        stageRef.current?.setLipSync(event.payload.speaking, event.payload.rms);
+      }
+    });
+    const unlistenCycle = tauriBridge.listen<{ stageId?: string }>(
+      'stage:cycle-expression',
       (event) => {
-        if (isTargetStage(event.payload.stageId)) applySpeechState(event.payload);
+        if (!isTargetStage(event.payload.stageId)) return;
+        const expression = stageRef.current?.cycleExpression();
+        if (expression) {
+          showToast(`已切换 Live2D 表情：${expression}`, {
+            variant: 'info',
+            duration: 1800,
+          });
+        }
       },
     );
 
@@ -117,42 +101,28 @@ export function EmaStageView({
         rms: number;
         stageId?: string;
       }>) => {
-        if (isTargetStage(event.data.stageId)) applySpeechState(event.data);
+        if (isTargetStage(event.data.stageId)) {
+          stageRef.current?.setLipSync(event.data.speaking, event.data.rms);
+        }
       };
     }
 
-    // FloatingDock 只发出轮换意图，具体状态仍由舞台 Store 原子更新：
-    // 轮换语义由 store 的 cycleExpression 原子完成, 此处只做 stage 过滤。
-    const unlistenCycle = tauriBridge.listen<{ stageId?: string }>(
-      'stage:cycle-expression',
-      (event) => {
-        if (!isTargetStage(event.payload.stageId)) return;
-        const expression = live2dStore.getState().cycleExpression();
-        if (expression) {
-          showToast(`已切换 Live2D 表情：${expression}`, {
-            variant: 'info',
-            duration: 1800,
-          });
-        }
-      },
-    );
-
     return () => {
-      void unlistenEmotion.then((fn) => fn());
-      void unlistenCue.then((fn) => fn());
-      void unlistenSpeech.then((fn) => fn());
-      void unlistenCycle.then((fn) => fn());
+      void unlistenEmotion.then((stop) => stop());
+      void unlistenCue.then((stop) => stop());
+      void unlistenSpeech.then((stop) => stop());
+      void unlistenCycle.then((stop) => stop());
       speechChannel?.close();
     };
-  }, [interactive, live2dStore, runtime, runtimeConfig, speechStore]);
+  }, [interactive, runtimeConfig]);
 
   return (
     <Live2DStage
-      ref={stageRef}
+      ref={setStageHandle}
       modelPath={modelPath}
-      runtime={runtime}
-      runtimeConfig={runtimeConfig ?? undefined}
+      bindings={runtimeConfig}
       suspended={suspended}
+      interactive={interactive}
       onReady={onReady}
       onError={onError}
     />

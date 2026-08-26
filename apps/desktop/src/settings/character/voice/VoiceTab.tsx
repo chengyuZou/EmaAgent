@@ -1,16 +1,15 @@
 /**
- * VoiceTab — manage refAudios: upload, test listen, export, enable, set primary, delete.
+ * VoiceTab — manage voiceSamples: upload (multipart publish) and test listen.
  */
 import { useState, useRef, type CSSProperties, type JSX } from 'react';
 import { Button, Checkbox, EntityRow, FilePicker, Select, Textarea } from '@ema-agent/ui';
-import { useCardStore } from '../../../stores/card-store.js';
-import { cardsApi } from '../../../api/cards.js';
+import { useCharacterStore } from '../../../stores/character-store.js';
+import { charactersApi, type Character } from '../../../api/characters.js';
+import { serverClient } from '../../../api/client.js';
 import { showToast } from '../../../lib/toast.js';
-import { tauriBridge } from '../../../lib/tauri-bridge.js';
-import { describeResourceError } from '../shared/characterResourceErrors.js';
-import { EnabledControl } from '../shared/ResourceControls.js';
+import { PrimaryBadge } from '../shared/ResourceControls.js';
 
-import type { CharacterVoiceReference } from '@ema-agent/characters';
+type VoiceSample = Character['voiceSamples'][number];
 
 const LANG_OPTIONS = [
   { value: 'zh', label: '中文 (zh)' },
@@ -19,12 +18,12 @@ const LANG_OPTIONS = [
 ];
 
 export function VoiceTab({
-  cardId,
-  voiceReferences,
+  characterId,
+  voiceSamples,
   isBuiltin,
 }: {
-  cardId:       string;
-  voiceReferences: readonly CharacterVoiceReference[];
+  characterId:  string;
+  voiceSamples: readonly VoiceSample[];
   isBuiltin:    boolean;
 }): JSX.Element {
   const [showUpload, setShowUpload] = useState(false);
@@ -36,15 +35,14 @@ export function VoiceTab({
     file:       File,
     promptText: string,
     promptLang: string,
-    setPrimary: boolean,
+    isPrimary:  boolean,
   ): Promise<void> {
     setUploading(true);
     try {
-      await useCardStore.getState().uploadVoiceRef(cardId, file, {
-        label: file.name,
+      await useCharacterStore.getState().publishVoice(characterId, file, {
         promptText,
         promptLang,
-        setPrimary,
+        isPrimary,
       });
       showToast('上传成功', { variant: 'success' });
       setShowUpload(false);
@@ -55,44 +53,6 @@ export function VoiceTab({
     }
   }
 
-  async function handleDelete(refId: string): Promise<void> {
-    try {
-      await useCardStore.getState().deleteVoiceRef(cardId, refId);
-      showToast('已删除', { variant: 'success' });
-    } catch (err: unknown) {
-      showToast(`删除失败: ${err instanceof Error ? err.message : 'Unknown'}`, { variant: 'danger' });
-    }
-  }
-
-  async function handleSetPrimary(refId: string): Promise<void> {
-    try {
-      await useCardStore.getState().setPrimaryVoiceRef(cardId, refId);
-      showToast('已设为主用', { variant: 'success' });
-    } catch (err: unknown) {
-      showToast(`设置失败: ${err instanceof Error ? err.message : 'Unknown'}`, { variant: 'danger' });
-    }
-  }
-
-  async function handleExport(ref: CharacterVoiceReference): Promise<void> {
-    const dir = await tauriBridge.pickAuthorizedDirectory();
-    if (!dir) return;
-    try {
-      const destination = await useCardStore.getState().exportVoiceRef(cardId, ref.id, dir.fileHandle);
-      showToast(`已导出: ${destination}`, { variant: 'success' });
-    } catch (err: unknown) {
-      showToast(describeResourceError(err, '导出失败').message, { variant: 'danger' });
-    }
-  }
-
-  async function handleToggleEnabled(ref: CharacterVoiceReference, enabled: boolean): Promise<void> {
-    try {
-      await useCardStore.getState().patchVoiceRef(cardId, ref.id, { enabled });
-      showToast(enabled ? '已启用' : '已停用', { variant: 'success' });
-    } catch (err: unknown) {
-      showToast(describeResourceError(err, '更新失败').message, { variant: 'danger' });
-    }
-  }
-
   async function handlePlay(refId: string): Promise<void> {
     if (playing === refId) {
       audioRef.current?.pause();
@@ -100,20 +60,29 @@ export function VoiceTab({
       return;
     }
     try {
-      const blob = await cardsApi.downloadVoiceRef(cardId, refId);
-      const url  = URL.createObjectURL(blob);
+      // 文件流路由同样要共享密钥,Audio 元素带不了头,先认证 fetch 成 blob。
+      const [url, headers] = await Promise.all([
+        charactersApi.getVoiceFileUrl(characterId, refId),
+        serverClient.getAuthHeaders(),
+      ]);
+      const res = await fetch(url, { headers });
+      if (!res.ok) throw new Error(`voice fetch failed: ${res.status}`);
+      const objectUrl = URL.createObjectURL(await res.blob());
       if (audioRef.current) audioRef.current.pause();
-      const audio = new Audio(url);
+      const audio = new Audio(objectUrl);
       audioRef.current = audio;
+      audio.addEventListener('ended', () => {
+        URL.revokeObjectURL(objectUrl);
+        setPlaying(null);
+      });
       audio.play().catch(() => {});
       setPlaying(refId);
-      audio.addEventListener('ended', () => setPlaying(null));
     } catch {
       showToast('试听失败', { variant: 'danger' });
     }
   }
 
-  const primary = voiceReferences.find((reference) => reference.isPrimary);
+  const primary = voiceSamples.find((reference) => reference.isPrimary);
 
   return (
     <div className="max-w-lg pt-3">
@@ -121,14 +90,14 @@ export function VoiceTab({
       <div className="mb-4">
         <span className="text-xs text-[var(--ema-text-tertiary)]">当前主用：</span>
         {primary ? (
-          <span className="text-sm text-[var(--ema-success-text)] ml-1">{primary.label}</span>
+          <span className="text-sm text-[var(--ema-success-text)] ml-1">{primary.name}</span>
         ) : (
           <span className="text-sm text-[var(--ema-text-tertiary)] ml-1">无</span>
         )}
       </div>
 
       {/* Audio list */}
-      {voiceReferences.length === 0 ? (
+      {voiceSamples.length === 0 ? (
         <p className="text-[var(--ema-text-tertiary)] text-sm mb-4">
           尚无参考音频。上传后可用于 GPT-SoVITS 声音复刻。
         </p>
@@ -136,10 +105,10 @@ export function VoiceTab({
         <div className="flex flex-col gap-2 mb-4">
           {isBuiltin && (
             <p className="text-xs text-[var(--ema-text-tertiary)] mb-1">
-              内置角色音色为只读，不可上传 / 删除 / 改主用。
+              内置角色音色为只读，不可上传。
             </p>
           )}
-          {voiceReferences.map((ref, i) => (
+          {voiceSamples.map((ref, i) => (
             <div key={ref.id} className="ema-stagger-in" style={{ '--stagger-i': i } as CSSProperties}>
             <RefAudioRow
               key={ref.id}
@@ -147,17 +116,13 @@ export function VoiceTab({
               isPrimary={ref.isPrimary}
               isPlaying={playing === ref.id}
               onPlay={() => handlePlay(ref.id)}
-              onToggleEnabled={isBuiltin ? undefined : (enabled) => handleToggleEnabled(ref, enabled)}
-              onExport={() => handleExport(ref)}
-              onSetPrimary={isBuiltin ? undefined : () => handleSetPrimary(ref.id)}
-              onDelete={isBuiltin ? undefined : () => handleDelete(ref.id)}
             />
             </div>
           ))}
         </div>
       )}
 
-      {/* Upload trigger / form — hidden for builtin (read-only) cards */}
+      {/* Upload trigger / form — hidden for builtin (read-only) characters */}
       {!isBuiltin && (
         !showUpload ? (
           <Button
@@ -183,56 +148,28 @@ export function VoiceTab({
 // ── RefAudioRow ───────────────────────────────────────────────────────────────
 
 function RefAudioRow({
-  refAudio, isPrimary, isPlaying, onPlay, onToggleEnabled, onExport, onSetPrimary, onDelete,
+  refAudio, isPrimary, isPlaying, onPlay,
 }: {
-  refAudio:     CharacterVoiceReference;
+  refAudio:     VoiceSample;
   isPrimary:    boolean;
   isPlaying:    boolean;
   onPlay():     void;
-  onToggleEnabled?(enabled: boolean): void;
-  onExport?():  void;
-  onSetPrimary?(): void;
-  onDelete?():   void;
 }): JSX.Element {
   return (
     <EntityRow decorate="ema-card-decorate--mesh" className="p-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className={isPrimary ? 'size-2 rounded-full bg-[var(--ema-success)]' : 'size-2 rounded-full border border-[var(--ema-text-tertiary)]'} aria-hidden />
-          <span className="text-sm font-semibold text-[var(--ema-text-primary)]">{refAudio.label}</span>
+          <span className="text-sm font-semibold text-[var(--ema-text-primary)]">{refAudio.name}</span>
+          <PrimaryBadge isPrimary={isPrimary} />
         </div>
-        <div className="flex items-center gap-1.5">
-          {onToggleEnabled && (
-            <EnabledControl
-              enabled={refAudio.enabled}
-              label={refAudio.label}
-              onChange={onToggleEnabled}
-            />
-          )}
-          <Button
-            variant={isPlaying ? 'primary' : 'ghost'}
-            size="sm"
-            icon={isPlaying ? 'i-mdi:stop' : 'i-mdi:play'}
-            onClick={onPlay}
-          >
-            {isPlaying ? '停止' : '试听'}
-          </Button>
-          {onExport && (
-            <Button variant="ghost" size="sm" icon="i-mdi:export-variant" onClick={onExport}>
-              导出
-            </Button>
-          )}
-          {!isPrimary && onSetPrimary && (
-            <Button variant="secondary" size="sm" onClick={onSetPrimary}>
-              设主用
-            </Button>
-          )}
-          {onDelete && (
-            <Button variant="danger" size="sm" onClick={onDelete}>
-              删除
-            </Button>
-          )}
-        </div>
+        <Button
+          variant={isPlaying ? 'primary' : 'ghost'}
+          size="sm"
+          icon={isPlaying ? 'i-mdi:stop' : 'i-mdi:play'}
+          onClick={onPlay}
+        >
+          {isPlaying ? '停止' : '试听'}
+        </Button>
       </div>
       <p className="text-xs text-[var(--ema-text-tertiary)] mt-1">
         prompt: "{refAudio.promptText}" · lang: {refAudio.promptLang}
@@ -248,18 +185,18 @@ function UploadForm({
   uploading,
   onCancel,
 }: {
-  onUpload:  (file: File, promptText: string, promptLang: string, setPrimary: boolean) => void;
+  onUpload:  (file: File, promptText: string, promptLang: string, isPrimary: boolean) => void;
   uploading: boolean;
   onCancel:  () => void;
 }): JSX.Element {
   const [file,       setFile]       = useState<File | null>(null);
   const [promptText, setPromptText] = useState('');
   const [promptLang, setPromptLang] = useState('zh');
-  const [setPrimary, setSetPrimary] = useState(false);
+  const [isPrimary,  setIsPrimary]  = useState(false);
 
   function handleSubmit(): void {
     if (!file || !promptText.trim()) return;
-    onUpload(file, promptText.trim(), promptLang, setPrimary);
+    onUpload(file, promptText.trim(), promptLang, isPrimary);
   }
 
   return (
@@ -294,8 +231,8 @@ function UploadForm({
         />
 
         <Checkbox
-          checked={setPrimary}
-          onCheckedChange={(v) => setSetPrimary(v === true)}
+          checked={isPrimary}
+          onCheckedChange={(v) => setIsPrimary(v === true)}
           label="设为主用"
           showLabel
         />

@@ -2,7 +2,7 @@
  * Tauri bridge — the single choke-point for all Tauri IPC.
  *
  * Every `@tauri-apps/api/*` import lives HERE. No other file in
- * `@ema-agent/desktop-ui` is allowed to import from `@tauri-apps/api`
+ * `apps/desktop/src` is allowed to import from `@tauri-apps/api`
  * directly. This gives us a plain-browser fallback so Ladle stories
  * and unit tests can render without Tauri.
  */
@@ -25,7 +25,7 @@ export interface TauriBridge {
   /** Whether the Tauri runtime is available. */
   isTauri(): boolean;
 
-  /** Retrieve the shared secret generated at sidecar startup. Returns null in browser mode. */
+  /** Retrieve the shared secret generated at server startup. Returns null in browser mode. */
   getSidecarSecret(): Promise<string | null>;
 
   /** Show / focus a pre-declared sub-window by label (chat / settings). */

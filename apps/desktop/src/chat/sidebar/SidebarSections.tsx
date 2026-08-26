@@ -1,9 +1,8 @@
 // 侧栏区块骨架:命令按钮、可折叠分区头、动画容器与会话/项目分区。
 import { useEffect, useState, type JSX } from 'react';
 import { Button } from '@ema-agent/ui';
-import type { SessionWire } from '../../api/sessions.js';
+import type { SidebarProjectGroup, SidebarSession } from './sidebarFormat.js';
 
-import type { ProjectGroup } from './sidebarGroups.js';
 import { SidebarRow } from './SidebarRow.js';
 
 const sidebarBlockClass = 'flex items-center gap-2.5 h-9 px-2 rounded-md text-sm text-[var(--ema-text-secondary)] hover:text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)] transition-[background-color,color] duration-[var(--ema-duration-fast)] ease-[var(--ema-ease)]';
@@ -60,7 +59,7 @@ export function ProjectListSection({
   label, groups, viewedId, streaming, pendingCounts,
 }: {
   label: string;
-  groups: ProjectGroup[];
+  groups: SidebarProjectGroup[];
   viewedId: string | null;
   streaming: Map<string, unknown>;
   pendingCounts: Record<string, number>;
@@ -82,7 +81,7 @@ export function ProjectListSection({
             <p className="px-2 py-2 text-xs text-[var(--ema-text-tertiary)]">暂无项目</p>
           ) : groups.map((g) => (
             <ProjectNode
-              key={g.label}
+              key={g.project.id}
               group={g}
               viewedId={viewedId}
               streaming={streaming}
@@ -98,7 +97,7 @@ export function ProjectListSection({
 function ProjectNode({
   group, viewedId, streaming, pendingCounts,
 }: {
-  group: ProjectGroup;
+  group: SidebarProjectGroup;
   viewedId: string | null;
   streaming: Map<string, unknown>;
   pendingCounts: Record<string, number>;
@@ -120,7 +119,7 @@ function ProjectNode({
         onClick={() => setCollapsed(!collapsed)}
       >
         <span className={`i-lucide:folder text-base ${hasActive ? 'text-[var(--ema-text-secondary)]' : 'text-[var(--ema-text-tertiary)]'}`} aria-hidden />
-        <span className="flex-1 truncate text-left">{group.label}</span>
+        <span className="flex-1 truncate text-left">{group.project.name}</span>
         <span className={`text-[11px] tabular-nums ${hasActive ? 'text-[var(--ema-text-secondary)]' : 'text-[var(--ema-text-tertiary)]'}`}>{group.sessions.length}</span>
         <span className={`i-lucide:chevron-down text-xs ${hasActive ? 'text-[var(--ema-text-secondary)]' : 'text-[var(--ema-text-tertiary)]'} transition-transform duration-[var(--ema-duration-base)] ${collapsed ? '-rotate-90' : ''}`} aria-hidden />
       </Button>
@@ -146,7 +145,7 @@ export function SidebarSection({
   label, sessions, viewedId, streaming, pendingCounts, collapsed: initCollapsed = false, emptyText,
 }: {
   label: string;
-  sessions: SessionWire[];
+  sessions: SidebarSession[];
   viewedId: string | null;
   streaming: Map<string, unknown>;
   pendingCounts: Record<string, number>;

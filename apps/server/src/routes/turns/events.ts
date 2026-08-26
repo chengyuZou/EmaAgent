@@ -7,7 +7,7 @@ import {
 import type {
   EventHub,
   PublishedTurnEvent,
-  TurnWireEvent,
+  TurnSseEvent,
 } from '../../sse/eventHub.js';
 import type { TurnEventStore } from '../../sse/eventStore.js';
 
@@ -68,7 +68,7 @@ export const turnEventsRoute = (deps: TurnEventsRouteDeps) =>
 
           const writeEvent = (published: PublishedTurnEvent): void => {
             writeEncoded(encodeEvent(published.event, published.cursor));
-            if (isTerminalWireEvent(published.event)) close();
+            if (isTerminalSseEvent(published.event)) close();
           };
 
           unsubscribe = deps.hub.subscribeTurn(turnId, published => {
@@ -116,7 +116,7 @@ function parseLastEventId(value: string | undefined): number | null {
   return Number.isSafeInteger(parsed) ? parsed : null;
 }
 
-function isTerminalWireEvent(event: TurnWireEvent): boolean {
+function isTerminalSseEvent(event: TurnSseEvent): boolean {
   return event.type === 'turn_completed'
     || event.type === 'turn_failed'
     || event.type === 'turn_aborted';

@@ -1,7 +1,8 @@
 import 'virtual:uno.css';
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import { ChatPanel, ErrorBoundary } from '@ema-agent/desktop-ui';
+import { ChatPanel } from '../chat/panels/ChatPanel.js';
+import { ErrorBoundary } from '../lib/error-boundary.js';
 import { TooltipProvider } from '@ema-agent/ui';
 
 // ── Chat sub-window entry ───────────────────────────────────────────────────

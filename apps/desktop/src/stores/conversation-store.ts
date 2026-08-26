@@ -9,9 +9,9 @@ import { startTurnSseLifecycle } from '../lib/turn-sse-lifecycle.js';
 import { sessionsApi } from '../api/sessions.js';
 import {
   turnsApi,
-  type AttachmentInputWire,
+  type TurnCreateInput,
+  type TurnAttachmentInput,
   } from '../api/turns.js';
-import type { KbAssetScope } from '@ema-agent/turn';
 import {
   handleTurnAborted,
   evictSessionPlayers,
@@ -23,7 +23,6 @@ import { useSessionHistoryStore } from '../chat/history/sessionHistoryStore.js';
 import { useTaskStore } from './taskStore.js';
 import {
   dispatchSseEvent,
-  breakerReasons,
   type StreamCallbacks,
   type DeltaSlice,
   type DeltaPayload,
@@ -39,22 +38,16 @@ import {
   type StreamingAssistantMessage,
   } from './conversation-history.js';
 
-import {
-  type ExecutionProfile,
-  type TurnContentPart as MessageContentPart,
-  type NarrativePolicy,
-  type TurnCreatedResponse,
-} from '@ema-agent/turn';
 import type {
+  ExecutionProfile,
+  NarrativePolicy,
+} from '@ema-agent/session';
+import type {
+  TurnCreatedResponse,
+  TurnModelSelection,
   TurnStats,
 } from '@ema-agent/turn';
-import type {
-  MemoryRecallLayer,
-  MemoryRecallLayerReport,
-} from '@ema-agent/memory';
 import type { EmotionState } from '@ema-agent/stage';
-
-export type { AttachmentInputWire };
 
 // ── Re-export types that consumers import from this module ────────────────────
 
@@ -92,14 +85,14 @@ interface SendInput {
   executionProfile: ExecutionProfile;
   narrativePolicy: NarrativePolicy;
   text?:         string;
-  contentParts?: MessageContentPart[];
-  attachments?:  AttachmentInputWire[];
-  providerId?:   string;
-  model?:          string;
+  attachments?:  TurnAttachmentInput[];
+  /** 显式选中的 Skill；以 skill part 随输入保序提交。 */
+  skillKeys?:    string[];
+  /** 本 Turn 的完整模型覆盖；缺省使用 Session 当前选择。 */
+  modelSelection?: TurnModelSelection;
+  /** 本 Turn 在当前激活知识库内的文档范围；缺省整个激活库。 */
+  knowledgeAssetIds?: string[];
   ttsEnabled?:      boolean;
-  thinkingEnabled?: boolean;
-  kbIds?:          string[];
-  kbAssetScopes?:  KbAssetScope[];
 }
 
 interface QueuedSendInput extends SendInput {
@@ -110,7 +103,21 @@ interface QueuedSendInput extends SendInput {
 
 const sseHandles         = new Map<string, { stop(): void }>();
 const sendQueues         = new Map<string, SendQueue<QueuedSendInput>>();
-const pendingTitleSessions = new Set<string>();
+
+/** 组装保序 TurnInputPart：正文在前，附件与 Skill 引用按声明顺序随后。 */
+function buildInputParts(input: SendInput): TurnCreateInput['input'] {
+  const parts: TurnCreateInput['input'] = [];
+  if (input.text && input.text.trim().length > 0) {
+    parts.push({ type: 'text', text: input.text });
+  }
+  for (const attachment of input.attachments ?? []) {
+    parts.push({ type: 'attachment', attachment });
+  }
+  for (const skillKey of input.skillKeys ?? []) {
+    parts.push({ type: 'skill', skillKey });
+  }
+  return parts;
+}
 
 function getOrCreateQueue(sessionId: string): SendQueue<QueuedSendInput> {
   const key   = sessionId as string;
@@ -121,18 +128,14 @@ function getOrCreateQueue(sessionId: string): SendQueue<QueuedSendInput> {
     async handler(input) {
       const { turnId, sessionId: actualSessionId } = await turnsApi.create({
         sessionId:    input.sessionId as string,
-        trigger:      { type: 'userMessage' },
         executionProfile: input.executionProfile,
         narrativePolicy: input.narrativePolicy,
-        userInput:    input.text,
-        contentParts: input.contentParts,
-        attachments:  input.attachments,
-        providerId:   input.providerId,
-        model:          input.model,
-        ttsEnabled:      input.ttsEnabled,
-        thinkingEnabled: input.thinkingEnabled,
-        kbIds:          input.kbIds,
-        kbAssetScopes:  input.kbAssetScopes,
+        input:        buildInputParts(input),
+        ...(input.modelSelection ? { modelSelection: input.modelSelection } : {}),
+        ...(input.knowledgeAssetIds && input.knowledgeAssetIds.length > 0
+          ? { knowledge: { assetIds: input.knowledgeAssetIds } }
+          : {}),
+        ...(input.ttsEnabled !== undefined ? { ttsEnabled: input.ttsEnabled } : {}),
       });
       input.acceptance.accept({ turnId, sessionId: actualSessionId });
 
@@ -192,7 +195,6 @@ export interface ConversationStoreState {
   ttsOwnerSessionId:  string | null;
   emotionStateMap:    Map<string, EmotionState>;
   iterationCountMap:  Map<string, number>;
-  recallEvidenceMap:  Map<string, Partial<Record<MemoryRecallLayer, MemoryRecallLayerReport>>>;
   liveUsageMap:       Map<string, { inputTokens: number; outputTokens: number }>;
   thinkingActiveMap:  Map<string, boolean>;
   messages:           Map<string, ChatHistoryItem[]>;
@@ -233,7 +235,6 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
   ttsOwnerSessionId:   null,
   emotionStateMap:     new Map(),
   iterationCountMap:   new Map(),
-  recallEvidenceMap:   new Map(),
   liveUsageMap:        new Map(),
   thinkingActiveMap:   new Map(),
   messages:            new Map(),
@@ -346,17 +347,6 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
         .catch(() => {});
     }
 
-    // Queue auto-title generation for a session's first completed assistant
-    // turn. Covers both paths: lazy create (no targetId above) and pre-created
-    // sessions (new-session button → createSession + viewSession). The set is
-    // consumed in finalizeStream; checking "no assistant message yet" means a
-    // session that already has replies won't re-trigger.
-    const existingMsgs = get().messages.get(acceptedSessionId as string) ?? [];
-    const hasAssistant = existingMsgs.some((m) => m.role === 'assistant');
-    if (!hasAssistant) {
-      pendingTitleSessions.add(acceptedSessionId as string);
-    }
-
     set((s) => {
       const key = acceptedSessionId as string;
       const msgs = new Map(s.messages);
@@ -370,7 +360,6 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
           createOptimisticUserMessage(
             accepted.turnId,
             input.text ?? '',
-            input.attachments,
           ),
         ]);
       }
@@ -382,9 +371,9 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
   },
 
   stopStreaming(sessionId) {
-    // 只断开 SSE 不会停止后端 LLM 与工具；界面立即收口，同时并行发送中止信号。
-    const turnId = get().streamingMap.get(sessionId as string)?.turnId;
-    if (turnId) void turnsApi.abortTurn(turnId as string).catch(() => {});
+    // 停止是 Session 级操作：只断开 SSE 不会停止后端执行；界面立即收口，
+    // 同时并行发送 Session 级中止信号（Turn 与 compact 共用同一活跃坑位）。
+    void sessionsApi.abort(sessionId).catch(() => {});
     sseHandles.get(sessionId as string)?.stop();
     sseHandles.delete(sessionId as string);
     handleTurnAborted(sessionId as string);
@@ -404,7 +393,6 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
     sseHandles.delete(id as string);
     sendQueues.get(id as string)?.clear();
     sendQueues.delete(id as string);
-    breakerReasons.delete(id as string);
     evictSessionPlayers(id as string);
     useAgentRunStore.getState().evictSession(id as string);
     useSessionAttachmentStore.getState().evictSession(id);
@@ -419,7 +407,6 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
       const drafts    = new Map(s.draftMap);       drafts.delete(id as string);
       const emotions  = new Map(s.emotionStateMap); emotions.delete(id as string);
       const iters     = new Map(s.iterationCountMap); iters.delete(id as string);
-      const recalls   = new Map(s.recallEvidenceMap); recalls.delete(id as string);
       const lastTurnId = s.streamingMap.get(id as string)?.turnId as string | undefined;
       const usageMap   = new Map(s.liveUsageMap);
       const thinking   = new Map(s.thinkingActiveMap);
@@ -428,7 +415,7 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
       return {
         messages: msgs, loadedMessageSessions: loaded,
         streamingMap: streaming, stopReasonMap: stops, draftMap: drafts,
-        emotionStateMap: emotions, iterationCountMap: iters, recallEvidenceMap: recalls,
+        emotionStateMap: emotions, iterationCountMap: iters,
         liveUsageMap: usageMap, thinkingActiveMap: thinking,
       };
     });
@@ -445,8 +432,7 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
       });
       const stops    = new Map(s.stopReasonMap); stops.delete(sessionId as string);
       const iters    = new Map(s.iterationCountMap); iters.delete(sessionId as string);
-      const recalls  = new Map(s.recallEvidenceMap); recalls.delete(sessionId as string);
-      return { streamingMap: streaming, stopReasonMap: stops, iterationCountMap: iters, recallEvidenceMap: recalls };
+      return { streamingMap: streaming, stopReasonMap: stops, iterationCountMap: iters };
     });
   },
 
@@ -494,7 +480,7 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
           ...sm,
           slices: sm.slices.map((sl) =>
             sl.type === 'tool_use' && sl.callId === tr.callId
-              ? { ...sl, result: tr.output ?? null, error: tr.error, durationMs: tr.durationMs, errorCode: tr.error?.code, permissionPromptId: undefined }
+              ? { ...sl, result: tr.output ?? null, error: tr.error, durationMs: tr.durationMs, errorCode: tr.error?.code, permissionPending: undefined }
               : sl,
           ),
         });
@@ -531,14 +517,8 @@ export const useConversationStore = create<ConversationStoreState>((set, get) =>
     useSessionHistoryStore.getState().noteTailUpdate(sessionId);
     useSessionHistoryStore.getState().invalidateTurnIndex(sessionId);
 
-    if (pendingTitleSessions.has(sessionId as string)) {
-      pendingTitleSessions.delete(sessionId as string);
-      void sessionsApi.generateTitle(sessionId)
-        .then(() => useSessionStore.getState().loadSessions())
-        .catch(() => {});
-    } else {
-      void useSessionStore.getState().loadSessions().catch(() => {});
-    }
+    // 标题由服务端在首个 Turn 完成后自动生成并经系统事件广播；这里只刷新列表。
+    void useSessionStore.getState().loadSessions().catch(() => {});
   },
 
   abortStream(sessionId, reason) {

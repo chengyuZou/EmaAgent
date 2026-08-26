@@ -1,178 +1,179 @@
-// 提供 Desktop 使用的 Session、消息历史与附件 HTTP 入口。
-import { sidecarClient } from './sidecar-client.js';
+// Sessions API：/api/sessions 挂载面——集合/动作/历史/附件 + backup 支路（export/import）
+// 与 compact 命令。export 流式下载与 import multipart 走 requestRaw 逃生口，不进 hc 账本。
+import type { InferRequestType } from 'hono/client';
+import {
+  rpcClient,
+  readRpcJson,
+  readRpcVoid,
+  serverClient,
+  type RpcClient,
+  type RpcJson,
+} from './client.js';
 
-import type {
-  SessionAttachmentsResult,
-  SessionWire,
-  MessageWire,
-  TurnWire,
-  SessionMessagesResult,
-  SessionsListResult,
-  SessionsGroupedResult,
-  SessionsSearchResult,
-  SessionSearchItem,
-  ForkResult,
-  SessionMessageWindowWire,
-  TurnIndexPageWire,
-} from '@ema-agent/session';
-import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/turn';
+// ── 类型（全部从路由契约推导） ────────────────────────────────────────────────
 
-export type {
-  SessionWire, MessageWire, TurnWire, SessionMessagesResult,
-  SessionsListResult, SessionsGroupedResult, SessionsSearchResult, SessionSearchItem, ForkResult,
-  SessionMessageWindowWire, TurnIndexPageWire,
-};
+export type SessionCreateInput = InferRequestType<RpcClient['api']['sessions']['$post']>['json'];
+export type Session = RpcJson<RpcClient['api']['sessions']['$post']>;
+export type SessionsGrouped = RpcJson<RpcClient['api']['sessions']['$get']>;
+export type SessionSearchResult = RpcJson<RpcClient['api']['sessions']['search']['$get']>;
+export type SessionPatchInput = InferRequestType<RpcClient['api']['sessions'][':sessionId']['$put']>['json'];
+export type SessionMessagesResult = RpcJson<RpcClient['api']['sessions'][':sessionId']['messages']['$get']>;
+export type TurnIndexPage = RpcJson<RpcClient['api']['sessions'][':sessionId']['turn-index']['$get']>;
+export type SessionMessageWindow = RpcJson<RpcClient['api']['sessions'][':sessionId']['messages']['window']['$get']>;
+export type SessionAttachmentsResult = RpcJson<RpcClient['api']['sessions'][':sessionId']['attachments']['$get']>;
+export type ForkResult = RpcJson<RpcClient['api']['sessions'][':sessionId']['fork']['$post']>;
+export type RewindResult = RpcJson<RpcClient['api']['sessions'][':sessionId']['turns'][':turnId']['rewind']['$post']>;
+export type CompactResult = RpcJson<RpcClient['api']['sessions'][':sessionId']['compact']['$post']>;
+export type SessionImportResult = RpcJson<RpcClient['api']['sessions']['import']['$post']>;
+
+// ── API ──────────────────────────────────────────────────────────────────────
 
 export const sessionsApi = {
-  /** 创建空 Session。 */
-  async create(opts?: { title?: string }): Promise<SessionWire> {
-    return sidecarClient.request<SessionWire>('/api/sessions', {
-      method: 'POST',
-      json: opts ?? {},
-    });
+  /** POST /api/sessions — 创建空 Session（body 全 optional，发 {} 即全默认）。 */
+  create(opts: SessionCreateInput = {}): Promise<Session> {
+    return readRpcJson(rpcClient.api.sessions.$post({ json: opts }));
   },
 
-  /** 使用游标读取 Session 平铺列表。 */
-  async list(opts?: { limit?: number; cursor?: string }): Promise<SessionsListResult> {
-    const params = new URLSearchParams();
-    if (opts?.limit) params.set('limit', String(opts.limit));
-    if (opts?.cursor) params.set('cursor', opts.cursor);
-    const qs = params.toString();
-    return sidecarClient.request<SessionsListResult>(`/api/sessions${qs ? `?${qs}` : ''}`);
+  /** GET /api/sessions — 分组列表（侧栏唯一路径）。 */
+  listGrouped(): Promise<SessionsGrouped> {
+    return readRpcJson(rpcClient.api.sessions.$get());
   },
 
-  /** 读取侧栏使用的分组 Session 列表。 */
-  async listGrouped(): Promise<SessionsGroupedResult> {
-    return sidecarClient.request<SessionsGroupedResult>('/api/sessions/grouped');
+  /** GET /api/sessions/search — 搜索标题与消息正文。 */
+  search(opts: { q: string; limit?: number }): Promise<SessionSearchResult> {
+    return readRpcJson(rpcClient.api.sessions.search.$get({
+      query: {
+        q: opts.q,
+        ...(opts.limit !== undefined ? { limit: String(opts.limit) } : {}),
+      },
+    }));
   },
 
-  /** 搜索标题与消息正文。 */
-  async search(opts: { q: string; limit?: number }): Promise<SessionsSearchResult> {
-    const params = new URLSearchParams();
-    params.set('q', opts.q);
-    if (opts.limit) params.set('limit', String(opts.limit));
-    return sidecarClient.request<SessionsSearchResult>(`/api/sessions/search?${params.toString()}`);
+  /** GET /api/sessions/:sessionId — 单 Session 快照。 */
+  get(id: string): Promise<Session> {
+    return readRpcJson(rpcClient.api.sessions[':sessionId'].$get({ param: { sessionId: id } }));
   },
 
-  /** 局部更新 Session，并返回最新快照。 */
-  async patch(
-    id: string,
-    patch: {
-      title?: string;
-      pinned?: boolean;
-      groupLabel?: string | null;
-      workspaceRoot?: string | null;
-      executionProfile?: ExecutionProfile;
-      narrativePolicy?: NarrativePolicy;
-      /** 用户希望该 Session 下一轮使用的模型；null 表示恢复系统默认选择。 */
-      preferredModel?: {
-        providerConfigId: string;
-        modelId: string;
-      } | null;
-    },
-  ): Promise<SessionWire> {
-    return sidecarClient.request<SessionWire>(`/api/sessions/${id}`, {
-      method: 'PUT',
-      json: patch,
-    });
+  /** PUT /api/sessions/:sessionId — 局部更新并返回最新快照。 */
+  patch(id: string, patch: SessionPatchInput): Promise<Session> {
+    return readRpcJson(
+      rpcClient.api.sessions[':sessionId'].$put({ json: patch, param: { sessionId: id } }),
+    );
   },
 
-  /** 同时读取消息与 Turn，使前端可恢复每轮统计和聚合气泡。 */
-  async listMessages(
+  /** GET /api/sessions/:sessionId/messages — 消息与 Turn 一次取回。 */
+  listMessages(
     id: string,
     opts?: { before?: number; limit?: number },
   ): Promise<SessionMessagesResult> {
-    const params = new URLSearchParams();
-    if (opts?.before) params.set('before', String(opts.before));
-    if (opts?.limit) params.set('limit', String(opts.limit ?? 100));
-    const qs = params.toString();
-    return sidecarClient.request<SessionMessagesResult>(`/api/sessions/${id}/messages${qs ? `?${qs}` : ''}`);
+    return readRpcJson(rpcClient.api.sessions[':sessionId'].messages.$get({
+      param: { sessionId: id },
+      query: {
+        ...(opts?.before !== undefined ? { before: String(opts.before) } : {}),
+        ...(opts?.limit !== undefined ? { limit: String(opts.limit) } : {}),
+      },
+    }));
   },
 
-  /** 读取不含消息正文的轻量 Turn 导航索引。 */
-  async listTurnIndex(
+  /** GET /api/sessions/:sessionId/turn-index — 轻量 Turn 导航索引。 */
+  listTurnIndex(
     id: string,
     opts?: { cursor?: string; limit?: number },
-  ): Promise<TurnIndexPageWire> {
-    const params = new URLSearchParams();
-    if (opts?.cursor) params.set('cursor', opts.cursor);
-    if (opts?.limit) params.set('limit', String(opts.limit));
-    const query = params.toString();
-    return sidecarClient.request<TurnIndexPageWire>(
-      `/api/sessions/${encodeURIComponent(id as string)}/turn-index${query ? `?${query}` : ''}`,
-    );
+  ): Promise<TurnIndexPage> {
+    return readRpcJson(rpcClient.api.sessions[':sessionId']['turn-index'].$get({
+      param: { sessionId: id },
+      query: {
+        ...(opts?.cursor ? { cursor: opts.cursor } : {}),
+        ...(opts?.limit !== undefined ? { limit: String(opts.limit) } : {}),
+      },
+    }));
   },
 
-  /** 按锚点 Turn 读取有界历史窗口，不影响当前 SSE 热尾。 */
-  async listMessageWindow(
+  /** GET /api/sessions/:sessionId/messages/window — 锚点有界历史窗口。 */
+  listMessageWindow(
     id: string,
     opts: { anchorTurnId: string; beforeTurns?: number; afterTurns?: number },
-  ): Promise<SessionMessageWindowWire> {
-    const params = new URLSearchParams();
-    params.set('anchorTurnId', opts.anchorTurnId as string);
-    if (opts.beforeTurns !== undefined) {
-      params.set('beforeTurns', String(opts.beforeTurns));
-    }
-    if (opts.afterTurns !== undefined) {
-      params.set('afterTurns', String(opts.afterTurns));
-    }
-    return sidecarClient.request<SessionMessageWindowWire>(
-      `/api/sessions/${encodeURIComponent(id as string)}/messages/window?${params.toString()}`,
+  ): Promise<SessionMessageWindow> {
+    return readRpcJson(rpcClient.api.sessions[':sessionId'].messages.window.$get({
+      param: { sessionId: id },
+      query: {
+        anchorTurnId: opts.anchorTurnId,
+        ...(opts.beforeTurns !== undefined ? { beforeTurns: String(opts.beforeTurns) } : {}),
+        ...(opts.afterTurns !== undefined ? { afterTurns: String(opts.afterTurns) } : {}),
+      },
+    }));
+  },
+
+  /** GET /api/sessions/:sessionId/attachments — 当前会话的全部附件。 */
+  listAttachments(id: string): Promise<SessionAttachmentsResult> {
+    return readRpcJson(
+      rpcClient.api.sessions[':sessionId'].attachments.$get({ param: { sessionId: id } }),
     );
   },
 
-  /** GET /api/sessions/:id/attachments — 当前会话的全部附件与本地文件状态。 */
-  async listAttachments(id: string): Promise<SessionAttachmentsResult> {
-    return sidecarClient.request<SessionAttachmentsResult>(
-      `/api/sessions/${encodeURIComponent(id as string)}/attachments`,
-    );
-  },
-
-  /** 复制完整 Session，或只复制到指定 Turn（含）为止。 */
-  async fork(id: string, untilTurnId?: string): Promise<ForkResult> {
-    return sidecarClient.request<ForkResult>(`/api/sessions/${id}/fork`, {
-      method: 'POST',
+  /** POST /api/sessions/:sessionId/fork — 复制完整或到指定 Turn（fork 到最新发 {}）。 */
+  fork(id: string, untilTurnId?: string): Promise<ForkResult> {
+    return readRpcJson(rpcClient.api.sessions[':sessionId'].fork.$post({
       json: untilTurnId ? { untilTurnId } : {},
+      param: { sessionId: id },
+    }));
+  },
+
+  /** POST /api/sessions/:sessionId/turns/:turnId/rewind — 回滚最后一轮。 */
+  rewindLastTurn(id: string, turnId: string): Promise<RewindResult> {
+    return readRpcJson(
+      rpcClient.api.sessions[':sessionId'].turns[':turnId'].rewind.$post({
+        param: { sessionId: id, turnId },
+      }),
+    );
+  },
+
+  /** POST /api/sessions/:sessionId/viewed — 标记已读（204）。 */
+  markViewed(id: string): Promise<void> {
+    return readRpcVoid(rpcClient.api.sessions[':sessionId'].viewed.$post({ param: { sessionId: id } }));
+  },
+
+  /** POST /api/sessions/:sessionId/archive（204）。 */
+  archive(id: string): Promise<void> {
+    return readRpcVoid(rpcClient.api.sessions[':sessionId'].archive.$post({ param: { sessionId: id } }));
+  },
+
+  /** POST /api/sessions/:sessionId/unarchive（204）。 */
+  unarchive(id: string): Promise<void> {
+    return readRpcVoid(rpcClient.api.sessions[':sessionId'].unarchive.$post({ param: { sessionId: id } }));
+  },
+
+  /** POST /api/sessions/:sessionId/abort — Session 级停止（204；无活跃执行 409）。 */
+  abort(id: string): Promise<void> {
+    return readRpcVoid(rpcClient.api.sessions[':sessionId'].abort.$post({ param: { sessionId: id } }));
+  },
+
+  /** DELETE /api/sessions/:sessionId（204）。 */
+  delete(id: string): Promise<void> {
+    return readRpcVoid(rpcClient.api.sessions[':sessionId'].$delete({ param: { sessionId: id } }));
+  },
+
+  /** POST /api/sessions/:sessionId/compact — 手动压缩历史（挂起式响应）。 */
+  compact(sessionId: string): Promise<CompactResult> {
+    return readRpcJson(rpcClient.api.sessions[':sessionId'].compact.$post({ param: { sessionId } }));
+  },
+
+  /** POST /api/sessions/:id/export — 流式下载单 Session ZIP（字节流走 requestRaw 逃生口）。 */
+  exportSession(id: string, signal?: AbortSignal): Promise<Response> {
+    return serverClient.requestRaw(`/api/sessions/${id}/export`, {
+      method: 'POST',
+      signal,
     });
   },
 
-  /** 仅回滚最后一轮，供最后一条用户消息重新编辑。 */
-  async rewindLastTurn(id: string, turnId: string): Promise<{ turnId: string }> {
-    return sidecarClient.request<{ turnId: string }>(
-      `/api/sessions/${id}/turns/${turnId}/rewind`,
-      { method: 'POST' },
-    );
+  /** POST /api/sessions/import — multipart 上传 ZIP（file 字段=备份本体）；requestRaw 已归一错误。 */
+  async importSession(file: File): Promise<SessionImportResult> {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await serverClient.requestRaw('/api/sessions/import', {
+      method: 'POST',
+      body: form,
+    });
+    return res.json();
   },
-
-  /** 标记 Session 已查看并清除未读状态。 */
-  async markViewed(id: string): Promise<void> {
-    await sidecarClient.request(`/api/sessions/${id}/viewed`, { method: 'POST' });
-  },
-
-  /** POST /api/sessions/:id/archive */
-  async archive(id: string): Promise<void> {
-    await sidecarClient.request(`/api/sessions/${id}/archive`, { method: 'POST' });
-  },
-
-  /** POST /api/sessions/:id/unarchive */
-  async unarchive(id: string): Promise<void> {
-    await sidecarClient.request(`/api/sessions/${id}/unarchive`, { method: 'POST' });
-  },
-
-  /** DELETE /api/sessions/:id */
-  async delete(id: string): Promise<void> {
-    await sidecarClient.request(`/api/sessions/${id}`, { method: 'DELETE' });
-  },
-
-  /** 使用标题模型生成会话标题，失败时由后端降级处理。 */
-  async generateTitle(id: string): Promise<{ title: string } | null> {
-    try {
-      return await sidecarClient.request<{ title: string }>(`/api/sessions/${id}/title`, {
-        method: 'POST',
-      });
-    } catch {
-      return null;
-    }
-  },
-
 };

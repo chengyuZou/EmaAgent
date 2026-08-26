@@ -1,5 +1,6 @@
 // 管理单个 Turn 的 SSE 重连、游标续传与业务终态。
 
+import type { TurnSseEvent } from '@ema-agent/server/sse/eventHub.js';
 import {
   getSseOutcomeError,
   sseConsumer,
@@ -16,8 +17,8 @@ export interface TurnSseLifecycleOptions {
   maxReconnects?: number;
   idleTimeoutMs?: number;
   reconnectDelayMs?(attempt: number): number;
-  connect?(options: SseStartOptions<TurnStreamEvent>): SseHandle;
-  onEvent(event: TurnStreamEvent, cursor: number): void;
+  connect?(options: SseStartOptions<TurnSseEvent>): SseHandle;
+  onEvent(event: TurnSseEvent, cursor: number): void;
   onPermanentDisconnect(error: Error): void;
 }
 
@@ -26,7 +27,7 @@ export interface TurnSseLifecycleHandle {
   stop(): void;
 }
 
-function isTurnTerminalEvent(event: TurnStreamEvent): boolean {
+function isTurnTerminalEvent(event: TurnSseEvent): boolean {
   return event.type === 'turn_completed'
     || event.type === 'turn_failed'
     || event.type === 'turn_aborted';

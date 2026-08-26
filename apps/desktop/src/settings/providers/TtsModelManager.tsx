@@ -1,13 +1,18 @@
+/**
+ * TtsModelManager — provider 的 TTS 模型池 + 试听（音频字节流经 ttsPreview 取回播放）。
+ */
 import { useState, useEffect, useCallback, type JSX } from 'react';
 import { Button, Callout, ConfirmDialog, IconButton, Input, Spinner } from '@ema-agent/ui';
-import { providersApi, type AvailableSimpleModelWire } from '../../api/providers.js';
+import { providersApi, type ProviderModelRecord } from '../../api/providers.js';
 import { showToast } from '../../lib/toast.js';
 import { ModelToggleCard } from './ModelToggleCard.js';
+
+type TtsModel = Extract<ProviderModelRecord, { capability: 'tts' }>;
 
 const DEFAULT_TEST_TEXT = '你好，我是艾玛，很高兴认识你。';
 
 export function TtsModelManager({ providerId, iconKey }: { providerId: string; iconKey?: string }): JSX.Element {
-  const [models, setModels]     = useState<AvailableSimpleModelWire[]>([]);
+  const [models, setModels]     = useState<TtsModel[]>([]);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState<string | null>(null);
   const [testText, setTestText] = useState(DEFAULT_TEST_TEXT);
@@ -18,8 +23,8 @@ export function TtsModelManager({ providerId, iconKey }: { providerId: string; i
     setLoading(true);
     setError(null);
     try {
-      const res = await providersApi.listTtsModels(providerId);
-      setModels(res.models);
+      const rows = await providersApi.listModels(providerId);
+      setModels(rows.filter((m): m is TtsModel => m.capability === 'tts'));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -29,35 +34,35 @@ export function TtsModelManager({ providerId, iconKey }: { providerId: string; i
 
   useEffect(() => { void load(); }, [load]);
 
-  async function enable(model: string): Promise<void> {
+  async function add(modelId: string): Promise<void> {
     try {
-      await providersApi.enableTtsModel(providerId, model);
-      setModels((ms) => ms.map((m) => (m.id === model ? { ...m, enabled: true } : m)));
+      await providersApi.saveModel(providerId, {
+        capability: 'tts',
+        modelId,
+      });
+      await load();
     } catch (err) {
-      showToast(`启用失败: ${err instanceof Error ? err.message : String(err)}`, { variant: 'danger' });
+      showToast(`添加失败: ${err instanceof Error ? err.message : String(err)}`, { variant: 'danger' });
     }
   }
 
-  async function confirmDisable(): Promise<void> {
+  async function confirmRemove(): Promise<void> {
     if (!confirmModel) return;
     const model = confirmModel;
     setConfirmModel(null);
     try {
-      const res = await providersApi.disableTtsModel(providerId, model);
-      setModels((ms) => ms.map((m) => (m.id === model ? { ...m, enabled: false } : m)));
-      if (res.cascadedBindings > 0) {
-        showToast(`已禁用，并解除了 ${res.cascadedBindings} 个绑定`, { variant: 'warning' });
-      }
+      await providersApi.deleteModel(providerId, model, 'tts');
+      setModels((ms) => ms.filter((m) => m.modelId !== model));
     } catch (err) {
-      showToast(`禁用失败: ${err instanceof Error ? err.message : String(err)}`, { variant: 'danger' });
+      showToast(`移除失败: ${err instanceof Error ? err.message : String(err)}`, { variant: 'danger' });
     }
   }
 
-  async function handleTest(model: string): Promise<void> {
-    setTesting(model);
+  async function handleTest(modelId: string): Promise<void> {
+    setTesting(modelId);
     try {
-      const blob = await providersApi.testTts(providerId, model, testText);
-      const url = URL.createObjectURL(blob);
+      const res = await providersApi.ttsPreview(providerId, modelId, testText);
+      const url = URL.createObjectURL(await res.blob());
       const audio = new Audio(url);
       audio.addEventListener('ended', () => URL.revokeObjectURL(url), { once: true });
       await audio.play();
@@ -85,17 +90,17 @@ export function TtsModelManager({ providerId, iconKey }: { providerId: string; i
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {models.map((m) => (
             <ModelToggleCard
-              key={m.id}
-              id={m.id}
-              enabled={m.enabled}
-              onToggle={() => void (m.enabled ? setConfirmModel(m.id) : enable(m.id))}
+              key={m.modelId}
+              id={m.modelId}
+              enabled
+              onToggle={() => setConfirmModel(m.modelId)}
               logo={iconKey}
-              action={m.enabled ? (
+              action={(
                 <IconButton
                   label="测试声音"
                   iconNode={
                     <span
-                      className={testing === m.id
+                      className={testing === m.modelId
                         ? 'i-mdi:volume-high animate-pulse text-[var(--ema-primary)]'
                         : 'i-mdi:volume-high'}
                       aria-hidden
@@ -105,13 +110,18 @@ export function TtsModelManager({ providerId, iconKey }: { providerId: string; i
                   variant="default"
                   size="sm"
                   type="button"
-                  onClick={() => void handleTest(m.id)}
+                  onClick={() => void handleTest(m.modelId)}
                 />
-              ) : undefined}
+              )}
             />
           ))}
         </div>
       )}
+
+      <ManualAddTtsModel
+        onAdd={(model) => void add(model)}
+        existing={models.map((m) => m.modelId)}
+      />
 
       {/* 测试文本输入 */}
       <div className="flex gap-2 mt-1">
@@ -124,11 +134,44 @@ export function TtsModelManager({ providerId, iconKey }: { providerId: string; i
 
       <ConfirmDialog
         open={!!confirmModel}
-        message={confirmModel ? `禁用 "${confirmModel}"？使用它的 TTS 绑定也会一并解除。` : ''}
-        confirmText="禁用"
-        onConfirm={() => void confirmDisable()}
+        message={confirmModel ? `从模型池移除 "${confirmModel}"？使用它的 TTS 绑定将失效。` : ''}
+        confirmText="移除"
+        onConfirm={() => void confirmRemove()}
         onCancel={() => setConfirmModel(null)}
       />
+    </div>
+  );
+}
+
+function ManualAddTtsModel({ onAdd, existing }: {
+  onAdd(model: string): void;
+  existing: string[];
+}): JSX.Element {
+  const [query, setQuery] = useState('');
+
+  function add(): void {
+    const model = query.trim();
+    if (!model) return;
+    if (existing.includes(model)) { showToast('该模型已在列表中', { variant: 'warning' }); return; }
+    onAdd(model);
+    setQuery('');
+  }
+
+  return (
+    <div className="mt-1">
+      <p className="text-xs text-[var(--ema-text-tertiary)] mb-1.5">添加 TTS 模型</p>
+      <div className="relative flex gap-2">
+        <div className="relative flex-1">
+          <Input
+            inputSize="sm"
+            className="font-mono"
+            placeholder="模型 ID，如 cosyvoice-v1"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
+        <Button variant="secondary" size="sm" onClick={add}>添加</Button>
+      </div>
     </div>
   );
 }

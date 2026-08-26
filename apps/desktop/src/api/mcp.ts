@@ -1,149 +1,123 @@
-/**
- * MCP API — MCP server management.
- */
-import { sidecarClient } from './sidecar-client.js';
-import type {
-  McpServerConfig,
-  McpServerRecord,
-  McpConnection,
-  McpToolInfo,
-  McpProbeResult,
-  McpInstallProvenance,
-} from '@ema-agent/mcp';
+// MCP API：/api/mcp——server 注册/启停/连接/探测/更新检查、粘贴导入、
+// registry 源 CRUD/聚合浏览/现场安装与 stdio 拉起批准。
+import type { InferRequestType } from 'hono/client';
+import { rpcClient, readRpcJson, type RpcClient, type RpcJson } from './client.js';
 
-export type {
-  McpServerConfig,
-  McpServerRecord,
-  McpConnection,
-  McpToolInfo,
-  McpProbeResult,
-  McpInstallProvenance,
-};
+// ── 类型（全部从路由契约推导） ────────────────────────────────────────────────
 
-export interface McpImportResult {
-  name:          string;
-  id?:           string;
-  ok:            boolean;
-  error?:        string;
-  connectError?: string;
-}
+export type McpServerListResult = RpcJson<RpcClient['api']['mcp']['servers']['$get']>;
+export type McpServerItem = McpServerListResult['items'][number];
+export type McpConnection = McpServerItem['connection'];
+export type McpRegisterInput = InferRequestType<RpcClient['api']['mcp']['servers']['$post']>['json'];
+export type McpServerConfig = McpRegisterInput['config'];
+export type McpInstallProvenance = NonNullable<McpRegisterInput['provenance']>;
+export type McpRegisterResult = RpcJson<RpcClient['api']['mcp']['servers']['$post']>;
+export type McpImportResult = RpcJson<RpcClient['api']['mcp']['import']['$post']>;
+export type McpServerDetail = RpcJson<RpcClient['api']['mcp']['servers'][':name']['$get']>;
+export type McpCheckUpdateResult = RpcJson<RpcClient['api']['mcp']['servers'][':name']['check-update']['$post']>;
+export type McpProbeInput = InferRequestType<RpcClient['api']['mcp']['probe']['$post']>['json'];
+export type McpProbeResult = RpcJson<RpcClient['api']['mcp']['probe']['$post']>;
+export type McpRegistrySourceList = RpcJson<RpcClient['api']['mcp']['registry-sources']['$get']>;
+export type McpRegistrySource = McpRegistrySourceList['items'][number];
+export type McpRegistrySourceAddInput = InferRequestType<RpcClient['api']['mcp']['registry-sources']['$post']>['json'];
+export type McpRegistrySourcePatchInput = InferRequestType<RpcClient['api']['mcp']['registry-sources'][':id']['$patch']>['json'];
+export type McpMarketEntryList = RpcJson<RpcClient['api']['mcp']['registry-entries']['$get']>;
+export type McpMarketEntry = McpMarketEntryList['items'][number];
+export type McpRegistryInstallInput = InferRequestType<RpcClient['api']['mcp']['registry-install']['$post']>['json'];
+export type McpRegistryInstallResult = RpcJson<RpcClient['api']['mcp']['registry-install']['$post']>;
 
-export interface McpMarketEntry {
-  name:         string;
-  title?:       string;
-  description?: string;
-  version?:     string;
-  repository?:  string;
-  websiteUrl?:  string;
-  transport:    'stdio' | 'http' | null;
-  url?:         string;
-  command?:     string;
-  args?:        string[];
-  installable:  boolean;
-  unavailableReason?: string;
-  marketSourceId?: string;
-  marketSourceType?: string;
-  packageRegistry?: 'npm' | 'pypi';
-  packageName?: string;
-  packageVersion?: string;
-  packageIntegrity?: string;
-}
-
-export interface MarketSourceMeta {
-  id:      string;
-  label:   string;
-  type:    string;
-  error?:  string;
-  count:   number;
-}
-
-export interface McpMarketResult {
-  sources:  MarketSourceMeta[];
-  servers:  McpMarketEntry[];
-}
+// ── API ──────────────────────────────────────────────────────────────────────
 
 export const mcpApi = {
-  /** GET /api/mcp/servers */
-  async list(): Promise<{ servers: Array<McpServerRecord & { connection: McpConnection }> }> {
-    return sidecarClient.request<{ servers: Array<McpServerRecord & { connection: McpConnection }> }>('/api/mcp/servers');
+  list(): Promise<McpServerListResult> {
+    return readRpcJson(rpcClient.api.mcp.servers.$get());
   },
 
-  /** GET /api/mcp/servers/:name */
-  async get(name: string): Promise<McpServerRecord & { connection: McpConnection }> {
-    return sidecarClient.request<McpServerRecord & { connection: McpConnection }>(`/api/mcp/servers/${name}`);
+  /** 注册（connect=false 只存配置）。 */
+  register(body: McpRegisterInput): Promise<McpRegisterResult> {
+    return readRpcJson(rpcClient.api.mcp.servers.$post({ json: body }));
   },
 
-  /** POST /api/mcp/servers. `connect: false` saves without connecting (market installs). */
-  async register(
-    name: string,
-    config: McpServerConfig,
-    sourceUrl?: string,
-    connect = true,
-    provenance?: McpInstallProvenance,
-  ): Promise<{ id: string; connection: McpConnection }> {
-    return sidecarClient.request<{ id: string; connection: McpConnection }>('/api/mcp/servers', {
-      method: 'POST',
-      json: { name, config, sourceUrl, connect, provenance },
-    });
+  /** 粘贴导入（map/单 server/裸 URL 统一走 `json` 字段）。 */
+  import(jsonText: unknown): Promise<McpImportResult> {
+    return readRpcJson(rpcClient.api.mcp.import.$post({ json: { json: jsonText } }));
   },
 
-  /** PUT /api/mcp/servers/:name/enable */
-  async enable(name: string): Promise<{ ok: boolean }> {
-    return sidecarClient.request<{ ok: boolean }>(`/api/mcp/servers/${name}/enable`, {
-      method: 'PUT',
-    });
+  get(name: string): Promise<McpServerDetail> {
+    return readRpcJson(rpcClient.api.mcp.servers[':name'].$get({ param: { name } }));
   },
 
-  /** PUT /api/mcp/servers/:name/disable */
-  async disable(name: string): Promise<{ ok: boolean }> {
-    return sidecarClient.request<{ ok: boolean }>(`/api/mcp/servers/${name}/disable`, {
-      method: 'PUT',
-    });
+  enable(name: string) {
+    return readRpcJson(rpcClient.api.mcp.servers[':name'].enable.$put({ param: { name } }));
   },
 
-  /** POST /api/mcp/servers/:name/connect */
-  async connect(name: string): Promise<{ connection: McpConnection }> {
-    return sidecarClient.request<{ connection: McpConnection }>(`/api/mcp/servers/${name}/connect`, {
-      method: 'POST',
-    });
+  disable(name: string) {
+    return readRpcJson(rpcClient.api.mcp.servers[':name'].disable.$put({ param: { name } }));
   },
 
-  /** POST /api/mcp/servers/:name/disconnect */
-  async disconnect(name: string): Promise<{ ok: boolean }> {
-    return sidecarClient.request<{ ok: boolean }>(`/api/mcp/servers/${name}/disconnect`, {
-      method: 'POST',
-    });
+  connect(name: string) {
+    return readRpcJson(rpcClient.api.mcp.servers[':name'].connect.$post({ param: { name } }));
   },
 
-  /** DELETE /api/mcp/servers/:name */
-  async remove(name: string): Promise<{ ok: boolean }> {
-    return sidecarClient.request<{ ok: boolean }>(`/api/mcp/servers/${name}`, {
-      method: 'DELETE',
-    });
+  disconnect(name: string) {
+    return readRpcJson(rpcClient.api.mcp.servers[':name'].disconnect.$post({ param: { name } }));
   },
 
-  /** POST /api/mcp/probe */
-  async probe(serverName: string, config: McpServerConfig): Promise<McpProbeResult> {
-    return sidecarClient.request<McpProbeResult>('/api/mcp/probe', {
-      method: 'POST',
-      json: { serverName, config },
-    });
+  remove(name: string) {
+    return readRpcJson(rpcClient.api.mcp.servers[':name'].$delete({ param: { name } }));
   },
 
-  /** GET /api/mcp/market — 聚合所有 enabled 源,并发 fetch 合并。源管理走 /api/market/sources。 */
-  async listMarket(): Promise<McpMarketResult> {
-    return sidecarClient.request<McpMarketResult>('/api/mcp/market');
+  /** registry 安装的更新检查；非 registry 安装如实回答不可查。 */
+  checkUpdate(name: string): Promise<McpCheckUpdateResult> {
+    return readRpcJson(rpcClient.api.mcp.servers[':name']['check-update'].$post({ param: { name } }));
   },
 
-  /**
-   * POST /api/mcp/import — bulk-import servers from a Claude Desktop / mcp.so
-   * JSON config. Accepts the raw object or a JSON string in `{ json }`.
-   * Each entry is registered + best-effort connected; per-entry results returned.
-   */
-  async import(payload: object | string): Promise<{ imported: McpImportResult[] }> {
-    return sidecarClient.request<{ imported: McpImportResult[] }>('/api/mcp/import', {
-      method: 'POST',
-      json:   { json: typeof payload === 'string' ? payload : JSON.stringify(payload) },
-    });
+  /** 免存探测：连不上是正常结论（ok:false），状态码恒 200。 */
+  probe(body: McpProbeInput): Promise<McpProbeResult> {
+    return readRpcJson(rpcClient.api.mcp.probe.$post({ json: body }));
+  },
+
+  // ── Registry 源 ─────────────────────────────────────────────────────────────
+
+  listSources(): Promise<McpRegistrySourceList> {
+    return readRpcJson(rpcClient.api.mcp['registry-sources'].$get());
+  },
+
+  addSource(body: McpRegistrySourceAddInput) {
+    return readRpcJson(rpcClient.api.mcp['registry-sources'].$post({ json: body }));
+  },
+
+  patchSource(id: string, patch: McpRegistrySourcePatchInput) {
+    return readRpcJson(rpcClient.api.mcp['registry-sources'][':id'].$patch({
+      json: patch,
+      param: { id },
+    }));
+  },
+
+  removeSource(id: string) {
+    return readRpcJson(rpcClient.api.mcp['registry-sources'][':id'].$delete({ param: { id } }));
+  },
+
+  /** 单源可达性探测。 */
+  testSource(id: string) {
+    return readRpcJson(rpcClient.api.mcp['registry-sources'][':id'].test.$post({ param: { id } }));
+  },
+
+  /** 聚合全部启用源的目录条目（即时拉取不落库）。 */
+  listEntries(): Promise<McpMarketEntryList> {
+    return readRpcJson(rpcClient.api.mcp['registry-entries'].$get());
+  },
+
+  /** 现场取最新版本安装。 */
+  installFromRegistry(body: McpRegistryInstallInput): Promise<McpRegistryInstallResult> {
+    return readRpcJson(rpcClient.api.mcp['registry-install'].$post({ json: body }));
+  },
+
+  /** stdio 拉起批准。 */
+  answerApproval(requestId: string, approved: boolean) {
+    return readRpcJson(rpcClient.api.mcp['stdio-approvals'][':requestId'].$post({
+      json: { approved },
+      param: { requestId },
+    }));
   },
 };

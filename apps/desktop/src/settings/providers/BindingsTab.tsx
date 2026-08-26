@@ -3,6 +3,7 @@
  *
  * Level 1: 2-column card grid (one card per BindingModule).
  * Level 2: single-select — provider cards (horizontal scroll) → model grid (2-col).
+ * kb-embed / kb-rerank 不在此编辑——它们在「设置 → 知识库」的检索模型里(同一绑定只能有一个编辑面)。
  */
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
@@ -15,41 +16,34 @@ import {
   resolveProviderIconClass,
 } from '@ema-agent/ui';
 import {
-  modelBindingsApi,
+  providersApi,
+  type AvailableModel,
   type BindingModule,
-  type ResolvedModelBinding,
-  type AvailableBindingModel,
-} from '../../api/model-bindings.js';
-import { providersApi, type ProviderDefinition } from '../../api/providers.js';
+  type ModelCapability,
+} from '../../api/providers.js';
 import { useSettingsStore } from '../../stores/settings-store.js';
 import { showToast } from '../../lib/toast.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const MODULE_CAPABILITY: Record<BindingModule, string> = {
-  memory:           'llm',
+const MODULE_CAPABILITY: Record<string, ModelCapability> = {
+  'memory-llm':     'llm',
   title:            'llm',
   'lightrag-llm':   'llm',
   'lightrag-embed': 'embed',
   tts:              'tts',
   stt:              'stt',
   vision:           'vision',
-  // V1 暂不展示 Image Gen，但保留真实能力名，禁止再次伪装成 Vision。
-  imagegen:         'imagegen',
 };
 
-const POOL_CAPABILITIES = new Set(['llm', 'embed', 'rerank', 'tts', 'stt', 'vision']);
-
 const MODULES: Array<{ id: BindingModule; label: string; desc: string }> = [
-  { id: 'memory',        label: 'Memory',       desc: '记忆提取与整合' },
+  { id: 'memory-llm',     label: 'Memory',        desc: '记忆提取与整合' },
   { id: 'title',          label: 'Title',         desc: '会话标题自动生成' },
   { id: 'lightrag-embed', label: 'LightRAG 嵌入', desc: '⚠️ 叙事专用嵌入（bge-m3）。换模型会让 narrative 检索骤减、需重建索引——非必要勿动。知识库的嵌入在「设置 → 知识库」单独选。' },
   { id: 'lightrag-llm',   label: 'LightRAG LLM',  desc: '叙事模式剧情检索 LLM' },
   { id: 'tts',           label: 'TTS',          desc: '语音合成' },
   { id: 'stt',           label: 'STT',          desc: '语音识别' },
   { id: 'vision',        label: 'Vision',       desc: '图像理解' },
-  // V1 暂不开放：Image Gen 的模型池、探测与执行链尚未完成端到端验收。
-  // { id: 'imagegen', label: 'Image Gen', desc: '图像生成' },
 ];
 
 const CAP_LABELS: Record<string, string> = {
@@ -64,8 +58,17 @@ const CAP_ICON: Record<string, string> = {
   tts:      'i-solar:user-speak-rounded-bold-duotone',
   stt:      'i-solar:microphone-3-bold-duotone',
   vision:   'i-solar:eye-bold-duotone',
-  imagegen: 'i-solar:gallery-bold-duotone',
 };
+
+function modelBadge(m: AvailableModel): string {
+  if (m.capability === 'llm' || m.capability === 'vision') {
+    return m.contextWindow >= 1000000
+      ? `${(m.contextWindow / 1000000).toFixed(0)}M`
+      : `${(m.contextWindow / 1000).toFixed(0)}K`;
+  }
+  if (m.capability === 'embed') return `${m.dim}d`;
+  return '';
+}
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
@@ -125,10 +128,8 @@ function ProviderCardRow({
 
 export function BindingsTab(): JSX.Element {
   const [view, setView] = useState<'grid' | 'detail'>('grid');
-  const [activeModule, setActiveModule] = useState<BindingModule>('memory');
-  const [bindings, setBindings] = useState<ResolvedModelBinding[]>([]);
-  const [boundModules, setBoundModules] = useState<Set<BindingModule>>(new Set());
-  const [pool, setPool] = useState<AvailableBindingModel[]>([]);
+  const [activeModule, setActiveModule] = useState<BindingModule>('memory-llm');
+  const [pool, setPool] = useState<AvailableModel[]>([]);
   const [loading, setLoading] = useState(false);
   const [savingKey, setSavingKey] = useState<string | null>(null);
 
@@ -137,23 +138,19 @@ export function BindingsTab(): JSX.Element {
   const [searchQuery, setSearchQuery] = useState('');
 
   const allProviders = useSettingsStore((s) => s.providers);
-  const requiredCap = MODULE_CAPABILITY[activeModule];
-  const hasPool = POOL_CAPABILITIES.has(requiredCap);
+  const allBindings  = useSettingsStore((s) => s.bindings);
+  const requiredCap = MODULE_CAPABILITY[activeModule] ?? 'llm';
 
-  // provider definition iconKey lookup (for logo peek on cards)
-  const [definitions, setDefinitions] = useState<ProviderDefinition[]>([]);
-  useEffect(() => { void providersApi.listDefinitions().then(setDefinitions).catch(() => {}); }, []);
   const iconKeyFor = useCallback((pcId: string): string | undefined => {
-    const p = allProviders.find((x) => x.id === pcId);
-    const def = definitions.find((d) => d.id === p?.definitionId);
-    return def ? resolveProviderIconClass(def.branding.iconId) : undefined;
-  }, [allProviders, definitions]);
+    const record = allProviders.find((x) => x.id === pcId);
+    return record ? resolveProviderIconClass(record.iconId) : undefined;
+  }, [allProviders]);
 
   // provider display-name lookup
   const providerNames = useMemo(() => {
     const m = new Map<string, string>();
-    for (const p of allProviders) m.set(p.id, p.displayName);
-    for (const pm of pool) m.set(pm.providerConfigId, pm.providerName);
+    for (const p of allProviders) m.set(p.id, p.name);
+    for (const pm of pool) m.set(pm.providerId, pm.providerName);
     return m;
   }, [allProviders, pool]);
 
@@ -161,41 +158,23 @@ export function BindingsTab(): JSX.Element {
 
   // Providers that have enabled models in the pool
   const poolProviderIds = useMemo(
-    () => [...new Set(pool.map((m) => m.providerConfigId))],
+    () => [...new Set(pool.map((m) => m.providerId))],
     [pool],
   );
 
-  // Bound-status across all modules — drives the grid card status dots.
-  const refreshBoundModules = useCallback(() => {
-    void modelBindingsApi.list()
-      .then((all) => setBoundModules(new Set(all.map((b) => b.module))))
-      .catch(() => { /* leave as-is */ });
-  }, []);
-
-  useEffect(() => { refreshBoundModules(); }, [refreshBoundModules]);
-
-  // ── Load data ──────────────────────────────────────────────────────────────
+  // ── Load pool for the active module ──────────────────────────────────────────
   useEffect(() => {
     setLoading(true);
-    void modelBindingsApi.listByModule(activeModule)
-      .then(setBindings)
-      .catch(() => setBindings([]))
+    void providersApi.listAvailable(requiredCap)
+      .then((result) => {
+        setPool([...result.models]);
+        const ids = [...new Set(result.models.map((m) => m.providerId))];
+        setSelectedProviderId((prev) => prev && ids.includes(prev) ? prev : (ids[0] ?? null));
+      })
+      .catch(() => setPool([]))
       .finally(() => setLoading(false));
-
-    if (hasPool) {
-      void modelBindingsApi.listAvailable(requiredCap)
-        .then((p) => {
-          setPool(p);
-          const ids = [...new Set(p.map((m) => m.providerConfigId))];
-          setSelectedProviderId((prev) => prev && ids.includes(prev) ? prev : (ids[0] ?? null));
-        })
-        .catch(() => setPool([]));
-    } else {
-      setPool([]);
-      setSelectedProviderId(null);
-    }
     setSearchQuery('');
-  }, [activeModule, requiredCap, hasPool]);
+  }, [activeModule, requiredCap]);
 
   // ── Actions ────────────────────────────────────────────────────────────────
 
@@ -208,50 +187,44 @@ export function BindingsTab(): JSX.Element {
 
   const goGrid = useCallback(() => setView('grid'), []);
 
-  const handleSelect = useCallback(async (pcId: string, model: string) => {
-    const key = `${pcId}|${model}`;
+  const handleSelect = useCallback(async (pcId: string, modelId: string) => {
+    const key = `${pcId}|${modelId}`;
     setSavingKey(key);
     try {
-      const updated = await modelBindingsApi.set(activeModule, {
-        providerConfigId: pcId,
-        model,
+      await useSettingsStore.getState().upsertBinding(activeModule, {
+        providerId: pcId,
+        modelId,
       });
-      setBindings(updated);
-      refreshBoundModules();
       showToast('已绑定', { variant: 'success' });
     } catch (err: unknown) {
       showToast(`绑定失败: ${err instanceof Error ? err.message : 'Unknown'}`, { variant: 'danger' });
     } finally {
       setSavingKey(null);
     }
-  }, [activeModule, refreshBoundModules]);
+  }, [activeModule]);
 
   const handleUnbind = useCallback(async () => {
-    const b = bindings[0];
-    if (!b) return;
     try {
-      await modelBindingsApi.delete(activeModule, b.providerConfigId, b.model);
-      const updated = await modelBindingsApi.listByModule(activeModule);
-      setBindings(updated);
-      refreshBoundModules();
+      await useSettingsStore.getState().deleteBinding(activeModule);
       showToast('已解绑', { variant: 'success' });
     } catch (err: unknown) {
       showToast(`解绑失败: ${err instanceof Error ? err.message : 'Unknown'}`, { variant: 'danger' });
     }
-  }, [activeModule, bindings, refreshBoundModules]);
+  }, [activeModule]);
 
   // ── Filtered models ────────────────────────────────────────────────────────
   const visibleModels = useMemo(() => {
     let list = pool;
-    if (selectedProviderId) list = list.filter((m) => m.providerConfigId === selectedProviderId);
+    if (selectedProviderId) list = list.filter((m) => m.providerId === selectedProviderId);
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
-      list = list.filter((m) => m.model.toLowerCase().includes(q));
+      list = list.filter((m) => m.modelId.toLowerCase().includes(q));
     }
     return list;
   }, [pool, selectedProviderId, searchQuery]);
 
-  const boundKey = bindings[0] ? `${bindings[0].providerConfigId}|${bindings[0].model}` : null;
+  const currentBinding = allBindings[activeModule] ?? null;
+  const boundKey = currentBinding ? `${currentBinding.providerId}|${currentBinding.modelId}` : null;
 
   // ── Grid view ──────────────────────────────────────────────────────────────
   if (view === 'grid') {
@@ -266,8 +239,8 @@ export function BindingsTab(): JSX.Element {
 
         <div className="grid grid-cols-2 gap-3">
           {MODULES.map((m, i) => {
-            const cap = MODULE_CAPABILITY[m.id];
-            const isBound = boundModules.has(m.id);
+            const cap = MODULE_CAPABILITY[m.id] ?? 'llm';
+            const isBound = allBindings[m.id] !== undefined;
             return (
               <CardButton
                 key={m.id}
@@ -301,8 +274,7 @@ export function BindingsTab(): JSX.Element {
 
   // ── Detail view ────────────────────────────────────────────────────────────
   const moduleLabel = MODULES.find((m) => m.id === activeModule)?.label ?? activeModule;
-  const cap = MODULE_CAPABILITY[activeModule];
-  const currentBinding = bindings[0] ?? null;
+  const cap = requiredCap;
 
   return (
     <div className="flex flex-col gap-6 ema-slide-right">
@@ -349,9 +321,9 @@ export function BindingsTab(): JSX.Element {
                 />
                 <div className="flex items-center gap-2 text-sm min-w-0">
                   <span className={`${CAP_ICON[cap] ?? 'i-solar:box-bold-duotone'} text-lg shrink-0 text-[var(--ema-text-tertiary)]`} aria-hidden />
-                  <span className="text-[var(--ema-text-secondary)] truncate">{providerName(currentBinding.providerConfigId)}</span>
+                  <span className="text-[var(--ema-text-secondary)] truncate">{providerName(currentBinding.providerId)}</span>
                   <span className="text-[var(--ema-text-tertiary)] flex-shrink-0">/</span>
-                  <span className="font-mono text-[var(--ema-primary)] truncate">{currentBinding.model}</span>
+                  <span className="font-mono text-[var(--ema-primary)] truncate">{currentBinding.modelId}</span>
                 </div>
                 <Button
                   variant="danger"
@@ -368,9 +340,7 @@ export function BindingsTab(): JSX.Element {
           </section>
 
           {/* ── Pool area ────────────────────────────────────────────────── */}
-          {!hasPool ? (
-            <p className="text-[var(--ema-text-tertiary)] text-sm">此能力暂不支持启用池。</p>
-          ) : pool.length === 0 ? (
+          {pool.length === 0 ? (
             <div className="bg-[var(--ema-surface-1)] border border-[var(--ema-border)] rounded-xl px-4 py-6 text-center">
               <p className="text-[var(--ema-text-tertiary)] text-sm">尚无已启用的 {CAP_LABELS[cap] ?? cap} 模型</p>
               <p className="text-[var(--ema-text-tertiary)] text-xs opacity-70 mt-1">
@@ -416,10 +386,10 @@ export function BindingsTab(): JSX.Element {
                 {/* 2-column model grid */}
                 <div className="grid grid-cols-2 gap-3">
                   {visibleModels.map((m) => {
-                    const key = `${m.providerConfigId}|${m.model}`;
+                    const key = `${m.providerId}|${m.modelId}`;
                     const isBound = boundKey === key;
                     const isSaving = savingKey === key;
-                    const logo = iconKeyFor(m.providerConfigId);
+                    const logo = iconKeyFor(m.providerId);
 
                     return (
                       <CardButton
@@ -428,7 +398,7 @@ export function BindingsTab(): JSX.Element {
                         disabled={isBound || isSaving}
                         padding="sm"
                         className={`group rounded-xl border-2 disabled:cursor-default ema-card-decorate ema-card-decorate--plus`}
-                        onClick={() => handleSelect(m.providerConfigId, m.model)}
+                        onClick={() => void handleSelect(m.providerId, m.modelId)}
                       >
                         <div className="flex items-start gap-2.5">
                           {/* Radio dot */}
@@ -437,11 +407,10 @@ export function BindingsTab(): JSX.Element {
                             <span className={`text-sm truncate ${
                               isBound ? 'text-[var(--ema-primary-text)]' : 'text-[var(--ema-text-primary)]'
                             }`}>
-                              {m.model}
+                              {m.modelId}
                             </span>
                             <span className="text-xs text-[var(--ema-text-tertiary)]">
-                              {m.contextWindow > 0 && (m.contextWindow >= 1000000 ? `${(m.contextWindow / 1000000).toFixed(0)}M` : `${(m.contextWindow / 1000).toFixed(0)}K`)}
-                              {m.dim !== undefined && m.dim > 0 && ` · ${m.dim}d`}
+                              {modelBadge(m)}
                               {isSaving && ' · 保存中…'}
                             </span>
                           </div>

@@ -2,10 +2,12 @@
 import { create } from 'zustand';
 import type {
   BackgroundProcessEvent,
-  BackgroundProcessStatus,
-  BackgroundProcessSummary,
 } from '@ema-agent/tools';
-import { backgroundProcessesApi } from '../api/backgroundProcesses.js';
+import {
+  backgroundProcessesApi,
+  type BackgroundProcessStatus,
+  type BackgroundProcessSummary,
+} from '../api/backgroundProcesses.js';
 
 /** 前端渲染缓冲封顶:与后端单次读取同量级,日志再大也不在前端堆内存。 */
 const MAX_RENDERED_CHARS = 64 * 1024;
@@ -72,10 +74,10 @@ export const useBackgroundProcessStore = create<BackgroundProcessStore>()((set, 
       }),
     }));
     try {
-      const { processes } = await backgroundProcessesApi.list(sessionId, { limit: 100 });
+      const { items } = await backgroundProcessesApi.list(sessionId, { limit: 100 });
       set((state) => ({
         listsBySession: new Map(state.listsBySession).set(sessionId, {
-          processes,
+          processes: items,
           status: 'ready',
         }),
       }));

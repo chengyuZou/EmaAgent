@@ -1,5 +1,5 @@
 // 重嵌任务：显式资产清单入队（整库重建 = 先取 stale 清单再整单传入）与任务查询/重试/取消。
-import { Hono, type Context } from 'hono';
+import { Hono } from 'hono';
 import { z } from 'zod';
 import type { KbManager } from '@ema-agent/knowledge';
 import { knowledgeError } from './errors.js';
@@ -39,10 +39,22 @@ export const knowledgeReembedRoute = (deps: KnowledgeReembedRouteDeps) =>
     })
     // 静态段先于 /reembed-tasks 的参数路径注册不需要——路径不冲突；stale 清单供整库重建取单。
     .get('/reembed/stale-assets', queryValidator(kbIdQuery), async context => {
-      return respond(context, async () => ({ items: await deps.kb.listStaleAssetIds(context.req.valid('query').kbId) }));
+      try {
+        return context.json({ items: await deps.kb.listStaleAssetIds(context.req.valid('query').kbId) });
+      } catch (error) {
+        const mapped = knowledgeError(context, error);
+        if (mapped) return mapped;
+        throw error;
+      }
     })
     .get('/reembed-tasks', queryValidator(kbIdQuery), async context => {
-      return respond(context, async () => ({ items: await deps.kb.listReembedTasks(context.req.valid('query').kbId) }));
+      try {
+        return context.json({ items: await deps.kb.listReembedTasks(context.req.valid('query').kbId) });
+      } catch (error) {
+        const mapped = knowledgeError(context, error);
+        if (mapped) return mapped;
+        throw error;
+      }
     })
     .post('/reembed-tasks/:taskId/retry', queryValidator(kbIdQuery), async context => {
       try {
@@ -60,13 +72,3 @@ export const knowledgeReembedRoute = (deps: KnowledgeReembedRouteDeps) =>
       if (!ok) return context.json({ error: 'not_active_or_not_found' }, 404);
       return context.json({ ok: true });
     });
-
-async function respond(context: Context, run: () => Promise<unknown>): Promise<Response> {
-  try {
-    return context.json(await run());
-  } catch (error) {
-    const mapped = knowledgeError(context, error);
-    if (mapped) return mapped;
-    throw error;
-  }
-}

@@ -1,44 +1,38 @@
+// 记忆概览:存储占用水位卡、进行中与失败的后台任务,以及维护/存储设置入口。
 import { useEffect, type JSX } from 'react';
 import {
-  Badge, Button, Callout, Card, Divider, Spinner, StatCard, Switch
+  Badge, Button, Callout, Card, Divider, Progress, Spinner,
 } from '@ema-agent/ui';
-import { useMemoryStore, type MemorySessionOverrides } from '../../stores/memory-store.js';
-import { useConversationStore } from '../../stores/conversation-store.js';
+import { useMemoryStore } from '../../stores/memory-store.js';
 import { showToast } from '../../lib/toast.js';
-import { MemoryHealthCard } from './MemoryHealthCard.js';
 import { MemoryMaintenanceSettings } from './MemoryMaintenanceSettings.js';
-import { NODE_TYPE_LABEL, NODE_TYPE_VARIANT, ITEM_KIND_LABEL, ITEM_KIND_VARIANT} from './memoryLabels.js';
-import type { MemoryNodeType, MemoryItemKind } from '@ema-agent/storage';
+import { JOB_KIND_LABEL, JOB_STATUS_LABEL, relativeTime } from './memoryLabels.js';
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
+}
+
+const LEVEL_LABEL = {
+  normal:        '正常',
+  warning:       '接近上限',
+  limitExceeded: '已超限',
+} as const;
 
 export function OverviewTab(): JSX.Element {
   const stats        = useMemoryStore((s) => s.stats);
   const statsLoading = useMemoryStore((s) => s.statsLoading);
   const statsError   = useMemoryStore((s) => s.statsError);
-  const activeTasks  = useMemoryStore((s) => s.activeTasks);
-  const failedTasks  = useMemoryStore((s) => s.failedTasks);
-  const viewedId     = useConversationStore((s) => s.viewedSessionId);
-  const health       = useMemoryStore((s) => s.health);
-  const sessionOverrides = useMemoryStore((s) =>
-    viewedId ? s.sessionOverrides.get(viewedId as string) : undefined,
-  );
+  const jobs         = useMemoryStore((s) => s.jobs);
 
   useEffect(() => {
     void useMemoryStore.getState().refreshStats();
-    void useMemoryStore.getState().refreshHealth();
+    void useMemoryStore.getState().refreshJobs();
   }, []);
 
-  useEffect(() => {
-    if (viewedId) void useMemoryStore.getState().getSessionOverrides(viewedId);
-  }, [viewedId]);
-
-  function setOverride(key: keyof MemorySessionOverrides, value: boolean): void {
-    if (!viewedId) return;
-    const current = useMemoryStore.getState().sessionOverrides.get(viewedId as string) ?? {};
-    void useMemoryStore.getState()
-      .setSessionOverrides(viewedId, { ...current, [key]: value })
-      .catch((err: Error) => showToast(`保存失败: ${err.message}`, { variant: 'danger' }));
-  }
+  const activeJobs = (jobs ?? []).filter((j) => j.status === 'pending' || j.status === 'running');
+  const failedJobs = (jobs ?? []).filter((j) => j.status === 'failed');
 
   if (statsLoading && !stats) {
     return <div className="flex justify-center py-16"><Spinner size="md" /></div>;
@@ -52,107 +46,66 @@ export function OverviewTab(): JSX.Element {
         </Callout>
       )}
 
-      {/* Stat cards */}
+      {/* Storage usage */}
       {stats && (
-        <>
-          <div className="grid grid-cols-3 gap-3">
-            <StatCard label="节点" value={stats.nodes.total} sub={`avg 重要度 ${(stats.nodes.avgImportance * 100).toFixed(0)}%`} index={0} size="lg" decorate="ema-card-decorate--starfield" />
-            <StatCard label="条目" value={stats.items.total} sub={`avg 重要度 ${(stats.items.avgImportance * 100).toFixed(0)}%`} index={1} size="lg" decorate="ema-card-decorate--starfield" />
-            <StatCard label="边"   value={stats.edges.total} sub={`avg 引用 ${stats.edges.avgMentionCount.toFixed(1)}`} index={2} size="lg" decorate="ema-card-decorate--starfield" />
+        <Card variant="elevated" padding="sm" className="ema-card-decorate ema-card-decorate--starfield">
+          <div className="flex items-center gap-2 mb-2">
+            <p className="text-xs font-semibold text-[var(--ema-text-tertiary)]">记忆存储</p>
+            <Badge
+              variant={stats.status.level === 'normal' ? 'success' : stats.status.level === 'warning' ? 'warn' : 'danger'}
+              dot={stats.status.level !== 'normal'}
+            >
+              {LEVEL_LABEL[stats.status.level]}
+            </Badge>
           </div>
-
-          {/* By-type breakdown */}
-          <div className="grid grid-cols-2 gap-3">
-            {/* Nodes by type */}
-            <Card variant="elevated" padding="sm" className="active:scale-[0.98] transition-all duration-[var(--ema-duration-base)] ema-card-decorate ema-card-decorate--starfield hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]">
-              <p className="text-xs font-semibold text-[var(--ema-text-tertiary)] mb-2">节点类型分布</p>
-              <div className="flex flex-col gap-1.5">
-                {(Object.entries(stats.nodes.byType) as [MemoryNodeType, number][])
-                  .filter(([, n]) => n > 0)
-                  .sort(([, a], [, b]) => b - a)
-                  .map(([type, count]) => (
-                    <div key={type} className="flex items-center gap-2">
-                      <Badge variant={NODE_TYPE_VARIANT[type]}>{NODE_TYPE_LABEL[type]}</Badge>
-                      <span className="text-xs font-semibold text-[var(--ema-text-secondary)] tabular-nums">{count}</span>
-                    </div>
-                  ))}
-              </div>
-            </Card>
-
-            {/* Items by kind */}
-            <Card variant="elevated" padding="sm" className="active:scale-[0.98] transition-all duration-[var(--ema-duration-base)] ema-card-decorate ema-card-decorate--starfield hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]">
-              <p className="text-xs font-semibold text-[var(--ema-text-tertiary)] mb-2">条目类型分布</p>
-              <div className="flex flex-col gap-1.5">
-                {(Object.entries(stats.items.byKind) as [MemoryItemKind, number][])
-                  .filter(([, n]) => n > 0)
-                  .sort(([, a], [, b]) => b - a)
-                  .map(([kind, count]) => (
-                    <div key={kind} className="flex items-center gap-2">
-                      <Badge variant={ITEM_KIND_VARIANT[kind]}>{ITEM_KIND_LABEL[kind]}</Badge>
-                      <span className="text-xs font-semibold text-[var(--ema-text-secondary)] tabular-nums">{count}</span>
-                    </div>
-                  ))}
-              </div>
-            </Card>
-          </div>
-
-          {/* Index + embedding health */}
-          <Card variant="elevated" padding="sm" className="active:scale-[0.98] transition-all duration-[var(--ema-duration-base)] ema-card-decorate ema-card-decorate--starfield hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]">
-            <p className="text-xs font-semibold text-[var(--ema-text-tertiary)] mb-2">向量索引</p>
-            <div className="flex gap-4 flex-wrap text-xs font-semibold text-[var(--ema-text-tertiary)]">
-              <span>
-                节点索引：
-                {stats.index.nodes
-                  ? <span className="font-semibold text-[var(--ema-text-primary)]"> {stats.index.nodes.size} 条 ({stats.index.nodes.backend})</span>
-                  : <span className="opacity-40 font-semibold"> 未就绪</span>}
-              </span>
-              <span>
-                条目索引：
-                {stats.index.items
-                  ? <span className="font-semibold text-[var(--ema-text-primary)]"> {stats.index.items.size} 条 ({stats.index.items.backend})</span>
-                  : <span className="opacity-40 font-semibold"> 未就绪</span>}
-              </span>
-              {(stats.nodes.staleEmbedCount > 0 || stats.items.staleEmbedCount > 0) && (
-                <span className="inline-flex items-center gap-1 font-semibold text-[var(--ema-warning)]">
-                  <span className="font-semibold i-mdi:alert-outline" aria-hidden />
-                  过期向量：{stats.nodes.staleEmbedCount + stats.items.staleEmbedCount} 条
-                </span>
-              )}
-            </div>
-          </Card>
-        </>
+          <Progress
+            progress={stats.status.maxBytes > 0
+              ? Math.min(100, Math.round((stats.status.usedBytes / stats.status.maxBytes) * 100))
+              : 0}
+            height="h-1.5"
+            barClass={stats.status.level === 'normal' ? 'bg-[var(--ema-primary)]' : 'bg-[var(--ema-danger)]'}
+          />
+          <p className="mt-2 text-xs text-[var(--ema-text-tertiary)]">
+            已用 {formatBytes(stats.status.usedBytes)} / 上限 {formatBytes(stats.status.maxBytes)}
+            ，剩余 {formatBytes(stats.status.remainingBytes)}
+          </p>
+        </Card>
       )}
 
-      {/* Active tasks */}
-      {activeTasks.size > 0 && (
+      {/* Active jobs */}
+      {activeJobs.length > 0 && (
         <Callout variant="warn">
           <span className="font-semibold">后台任务进行中</span>
           <div className="mt-1 flex flex-col gap-0.5">
-            {[...activeTasks.values()].map((t) => (
-              <div key={t.taskId} className="text-xs text-[var(--ema-warning-text)]">
-                {t.kind}{t.sessionId ? ` (${t.sessionId.slice(0, 8)}…)` : ''}
+            {activeJobs.map((job) => (
+              <div key={job.id} className="text-xs text-[var(--ema-warning-text)]">
+                {JOB_KIND_LABEL[job.kind]} · {JOB_STATUS_LABEL[job.status]} · {relativeTime(job.createdAt)}
               </div>
             ))}
           </div>
         </Callout>
       )}
 
-      {failedTasks.size > 0 && (
+      {/* Failed jobs */}
+      {failedJobs.length > 0 && (
         <Callout variant="danger">
           <span className="font-semibold">后台记忆任务失败</span>
           <div className="mt-1 flex flex-col gap-1">
-            {[...failedTasks.values()].map((failure) => (
-              <div key={failure.taskId} className="flex items-center justify-between gap-2 text-xs">
+            {failedJobs.map((job) => (
+              <div key={job.id} className="flex items-center justify-between gap-2 text-xs">
                 <span className="min-w-0 break-words">
-                  {failure.task?.kind ?? failure.taskId}：{failure.error}
+                  {JOB_KIND_LABEL[job.kind]}：{job.error ?? '未知错误'}
                 </span>
                 <Button
                   variant="ghost"
                   size="sm"
                   className="shrink-0"
-                  onClick={() => useMemoryStore.getState().clearTaskFailure(failure.taskId)}
+                  onClick={() => {
+                    void useMemoryStore.getState().retryJob(job.id)
+                      .catch((err: Error) => showToast(`重试失败: ${err.message}`, { variant: 'danger' }));
+                  }}
                 >
-                  知道了
+                  重试
                 </Button>
               </div>
             ))}
@@ -160,67 +113,8 @@ export function OverviewTab(): JSX.Element {
         </Callout>
       )}
 
-      {/* Per-session overrides */}
-      {viewedId && (
-        <>
-          <Divider />
-          <div>
-            <p className="text-sm font-semibold text-[var(--ema-text-primary)] mb-0.5">当前会话记忆开关</p>
-            <p className="text-xs font-semibold text-[var(--ema-text-tertiary)] mb-3">仅影响当前会话，不影响全局配置</p>
-
-            <div className="grid grid-cols-2 gap-x-6 gap-y-3">
-              <div>
-                <p className="text-xs font-semibold text-[var(--ema-text-tertiary)] mb-2 uppercase tracking-wide">召回(读)</p>
-                <div className="flex flex-col gap-2">
-                  <OverrideSwitch label="L0 锚点召回" desc="全局身份图" checked={sessionOverrides?.layer0 ?? true}
-                    onChange={(v) => setOverride('layer0', v)} />
-                  <OverrideSwitch label="L1 关联召回" desc="会话摘要"  checked={sessionOverrides?.layer1 ?? true}
-                    onChange={(v) => setOverride('layer1', v)} />
-                  <OverrideSwitch label="L2 条目召回" desc="情节记录"  checked={sessionOverrides?.layer2 ?? true}
-                    onChange={(v) => setOverride('layer2', v)} />
-                </div>
-              </div>
-
-              <div>
-                <p className="text-xs font-semibold text-[var(--ema-text-tertiary)] mb-2 uppercase tracking-wide">写入(写)</p>
-                <div className="flex flex-col gap-2">
-                  <OverrideSwitch label="提取"   desc="turn 结束后写入待处理片段" checked={sessionOverrides?.extraction    ?? true}
-                    onChange={(v) => setOverride('extraction', v)} />
-                  <OverrideSwitch label="整合"   desc="合并 lazy 更新"            checked={sessionOverrides?.consolidation ?? true}
-                    onChange={(v) => setOverride('consolidation', v)} />
-                </div>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* 后台维护健康(M5) */}
-      {health && (
-        <>
-          <Divider />
-          <MemoryHealthCard health={health} />
-        </>
-      )}
-
       <Divider />
       <MemoryMaintenanceSettings />
-    </div>
-  );
-}
-
-export function OverrideSwitch({
-  label, desc, checked, onChange,
-}: {
-  label: string; desc: string; checked: boolean; onChange(v: boolean): void;
-}): JSX.Element {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <div className="min-w-0">
-        <p className="text-xs font-semibold text-[var(--ema-text-secondary)]">{label}</p>
-        <p className="text-xs font-semibold text-[var(--ema-text-tertiary)] opacity-60">{desc}</p>
-      </div>
-      <Switch checked={checked} label={label} onCheckedChange={onChange} />
     </div>
   );
 }

@@ -4,7 +4,6 @@ import { Button, Callout, Input } from '@ema-agent/ui';
 import { useSettingsStore } from '../../stores/settings-store.js';
 import { showToast } from '../../lib/toast.js';
 import { EventDisplaySettings } from './EventDisplaySettings.js';
-import { PermissionRulesSettings } from './PermissionRulesSettings.js';
 import { SandboxStatusSettings } from './SandboxStatusSettings.js';
 import { AgentLimitsSettings } from './AgentLimitsSettings.js';
 import { CompactionSettings } from './CompactionSettings.js';
@@ -13,22 +12,26 @@ import { VisionLimitsSettings } from './VisionLimitsSettings.js';
 
 export function GeneralTab(): JSX.Element {
   const savedTimeoutMs = useSettingsStore((state) => state.permissionTimeoutMs);
-  const [timeoutSeconds, setTimeoutSeconds] = useState(String(savedTimeoutMs / 1000));
+  // null = 一直等待;输入框用空串表达,不用 0 或魔法数字。
+  const [timeoutSeconds, setTimeoutSeconds] = useState(savedTimeoutMs === null ? '' : String(savedTimeoutMs / 1000));
   const [savingTimeout, setSavingTimeout] = useState(false);
 
   useEffect(() => {
-    setTimeoutSeconds(String(savedTimeoutMs / 1000));
+    setTimeoutSeconds(savedTimeoutMs === null ? '' : String(savedTimeoutMs / 1000));
   }, [savedTimeoutMs]);
 
-  const parsedSeconds = Number(timeoutSeconds);
-  const timeoutValid = Number.isInteger(parsedSeconds) && parsedSeconds >= 5 && parsedSeconds <= 600;
-  const timeoutDirty = timeoutValid && parsedSeconds * 1000 !== savedTimeoutMs;
+  const trimmedSeconds = timeoutSeconds.trim();
+  const parsedSeconds = Number(trimmedSeconds);
+  const timeoutValid = trimmedSeconds === ''
+    || (Number.isInteger(parsedSeconds) && parsedSeconds >= 5 && parsedSeconds <= 600);
+  const nextTimeoutMs = trimmedSeconds === '' ? null : parsedSeconds * 1000;
+  const timeoutDirty = timeoutValid && nextTimeoutMs !== savedTimeoutMs;
 
   async function saveTimeout(): Promise<void> {
     if (!timeoutValid) return;
     setSavingTimeout(true);
     try {
-      await useSettingsStore.getState().putPermissionTimeout(parsedSeconds * 1000);
+      await useSettingsStore.getState().putPermissionTimeout(nextTimeoutMs);
       showToast('权限等待时间已保存', { variant: 'success' });
     } catch (error: unknown) {
       showToast(error instanceof Error ? `保存失败：${error.message}` : '权限等待时间保存失败', { variant: 'danger' });
@@ -55,7 +58,7 @@ export function GeneralTab(): JSX.Element {
         </div>
         <div className="ema-glass-weak flex flex-wrap items-end gap-3 rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] px-4 py-4">
           <label className="flex min-w-56 flex-1 flex-col gap-1.5 text-xs text-[var(--ema-text-tertiary)]">
-            等待时间（秒）
+            等待时间（秒，留空 = 一直等待）
             <Input
               type="number"
               min={5}
@@ -70,7 +73,7 @@ export function GeneralTab(): JSX.Element {
             variant="ghost"
             size="sm"
             disabled={!timeoutDirty || savingTimeout}
-            onClick={() => setTimeoutSeconds(String(savedTimeoutMs / 1000))}
+            onClick={() => setTimeoutSeconds(savedTimeoutMs === null ? '' : String(savedTimeoutMs / 1000))}
           >
             取消
           </Button>
@@ -88,9 +91,6 @@ export function GeneralTab(): JSX.Element {
           <Callout variant="danger">请输入 5 到 600 之间的整数秒数。</Callout>
         )}
       </section>
-
-      <div className="h-px bg-[var(--ema-border)]" />
-      <PermissionRulesSettings />
 
       <div className="h-px bg-[var(--ema-border)]" />
       <SandboxStatusSettings />

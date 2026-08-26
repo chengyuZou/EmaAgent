@@ -3,38 +3,42 @@
  */
 import { create } from 'zustand';
 import {
-  kbApi,
-  type DocumentAssetWire,
-  type KbSearchResultWire,
-  type KbIngestOptions,
-  type KbSearchOptions,
-  type KbLibraryWire,
-} from '../api/knowledge-base.js';
+  knowledgeApi,
+  type DocumentAsset,
+  type KnowledgeSearchResult,
+  type KnowledgeIngestInput,
+  type KnowledgeSearchInput,
+  type KnowledgeLibrary,
+  type IngestTask,
+} from '../api/knowledge.js';
 
-export type { DocumentAssetWire, KbSearchResultWire, KbSearchHitWire, KbLibraryWire } from '../api/knowledge-base.js';
+export type { DocumentAsset, KnowledgeSearchResult, KnowledgeSearchHit, KnowledgeLibrary } from '../api/knowledge.js';
+
+/** ingest 除文件路径外的可选参数（mimeType/kbId）。 */
+export type KnowledgeIngestOptions = Omit<KnowledgeIngestInput, 'filePath'>;
+/** search 除查询词外的可选参数（topK/assetIds）。 */
+export type KnowledgeSearchOptions = Omit<KnowledgeSearchInput, 'query'>;
 
 // ── Ingest job (background processing queue) ────────────────────────────────────
 
 export type IngestStage = 'validate' | 'parse' | 'chunk' | 'embed';
-export type IngestJobStatus = 'pending' | 'running' | 'failed' | 'partial_failed' | 'done';
+export type IngestJobStatus = IngestTask['status'];
 
 export interface IngestJob {
   taskId:   string;
   assetId:  string;
-  kbId:     string;   // which KB this document belongs to
+  /** HTTP 水合的任务行不带 kbId；SSE 事件到达后补齐。 */
+  kbId?:    string;
   fileName: string;
   stage?:   IngestStage;       // absent while pending
   progress: number;            // 0–1
   status:   IngestJobStatus;
   error?:   string;
-  totalItems?: number;
-  completedItems?: number;
-  failedItems?: number;
 }
 
 // ── Reembed task (background index rebuild; one active per KB) ──────────────────
 
-export type ReembedTaskStatus = 'pending' | 'running' | 'failed' | 'partial_failed' | 'cancelled' | 'done';
+export type ReembedTaskStatus = 'pending' | 'running' | 'failed' | 'cancelled' | 'completed';
 
 export interface ReembedTask {
   taskId:   string;
@@ -46,13 +50,12 @@ export interface ReembedTask {
   error?:   string;
   totalItems?: number;
   completedItems?: number;
-  failedItems?: number;
 }
 
 // ── Store interface ───────────────────────────────────────────────────────────
 
 export interface KbStoreState {
-  documents:    DocumentAssetWire[];
+  documents:    DocumentAsset[];
   loading:      boolean;
   error:        string | null;
 
@@ -69,48 +72,46 @@ export interface KbStoreState {
   ingestError:  string | null;
   ingestQueueError: string | null;
 
-  searchResult:  KbSearchResultWire | null;
+  searchResult:  KnowledgeSearchResult | null;
   searchLoading: boolean;
   searchError:   string | null;
 
   // ── KB library registry ─────────────────────────────────────────────────────
-  libs:          KbLibraryWire[];
+  libs:          KnowledgeLibrary[];
   libsLoading:   boolean;
   libsError:     string | null;
 
   loadDocuments(opts?: { cursor?: string; limit?: number; keyword?: string }): Promise<void>;
   loadIngestTasks(): Promise<void>;
-  ingest(filePath: string, opts?: KbIngestOptions): Promise<void>;
+  ingest(filePath: string, opts?: KnowledgeIngestOptions): Promise<void>;
   retryIngest(assetId: string): Promise<void>;
   deleteDocument(id: string): Promise<void>;
-  search(query: string, opts?: KbSearchOptions): Promise<void>;
+  search(query: string, opts?: KnowledgeSearchOptions): Promise<void>;
   clearSearch(): void;
   clearError(): void;
 
   // KB library operations.
   loadLibs(): Promise<void>;
-  createLib(name: string, kbPath: string): Promise<KbLibraryWire | undefined>;
+  createLib(name: string, kbPath: string): Promise<KnowledgeLibrary | undefined>;
   renameLib(id: string, name: string): Promise<void>;
   activateLib(id: string): Promise<void>;
   deleteLib(id: string): Promise<void>;
 
   // Driven by the system SSE (kb_ingest_* events).
-  onIngestProgress(kbId: string, taskId: string | undefined, assetId: string, stage: IngestStage, progress: number): void;
-  onIngestCompleted(kbId: string, assetId: string): void;
-  onIngestPartialFailed(kbId: string, taskId: string | undefined, assetId: string, error: string, counts: { total: number; completed: number; failed: number }): void;
-  onIngestFailed(kbId: string, assetId: string, error: string): void;
+  onIngestProgress(kbId: string, taskId: string, assetId: string, stage: IngestStage, progress: number): void;
+  onIngestCompleted(kbId: string, taskId: string, assetId: string): void;
+  onIngestFailed(kbId: string, taskId: string, assetId: string, error: string): void;
 
   // Driven by the system SSE (kb_reembed_* events).
-  onReembedProgress(kbId: string, taskId: string | undefined, assetId: string, progress: number, counts: { total?: number; completed?: number; failed?: number }): void;
-  onReembedCompleted(kbId: string, taskId: string | undefined, assetId: string, counts: { total: number; completed: number; failed: number }): void;
-  onReembedPartialFailed(kbId: string, taskId: string | undefined, assetId: string, error: string, counts: { total: number; completed: number; failed: number }): void;
-  onReembedCancelled(kbId: string, taskId: string | undefined, assetId: string): void;
-  onReembedFailed(kbId: string, taskId: string | undefined, assetId: string, error: string): void;
+  onReembedProgress(kbId: string, taskId: string, assetId: string, progress: number, counts: { completed: number; total: number }): void;
+  onReembedCompleted(kbId: string, taskId: string, assetId: string): void;
+  onReembedCancelled(kbId: string, taskId: string, assetId: string): void;
+  onReembedFailed(kbId: string, taskId: string, assetId: string, error: string): void;
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────────
 
-export const useKbStore = create<KbStoreState>((set, get) => ({
+export const useKnowledgeStore = create<KbStoreState>((set, get) => ({
   documents:     [],
   loading:       false,
   error:         null,
@@ -134,8 +135,8 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
   async loadDocuments(opts = {}) {
     set({ loading: true, error: null });
     try {
-      const page = await kbApi.listDocuments(opts);
-      set({ documents: page.items, loading: false });
+      const page = await knowledgeApi.listDocuments(opts);
+      set({ documents: [...page.items], loading: false });
     } catch (err: unknown) {
       set({
         error: err instanceof Error ? err.message : '加载文档列表失败',
@@ -147,21 +148,17 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
   async loadIngestTasks() {
     set({ ingestQueueError: null });
     try {
-      const tasks = await kbApi.getIngestTasks(); // no kbId → all KBs
+      const { items } = await knowledgeApi.listIngestTasks();
       const jobs: Record<string, IngestJob> = {};
-      for (const t of tasks) {
+      for (const t of items) {
         jobs[t.assetId] = {
           taskId:   t.id,
           assetId:  t.assetId,
-          kbId:     t.kbId,
           fileName: t.fileName,
           stage:    t.stage as IngestStage | undefined,
           progress: t.progress,
           status:   t.status,
           error:    t.error,
-          totalItems: t.totalItems,
-          completedItems: t.completedItems,
-          failedItems: t.failedItems,
         };
       }
       set({ ingestJobs: jobs, ingestQueueError: null });
@@ -185,7 +182,7 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
     try {
       // Enqueue (POST returns 202 once the task row exists); hydrate the queue so
       // the new pending job shows. Progress/completion arrive via the system SSE.
-      await kbApi.ingest(filePath, opts);
+      await knowledgeApi.ingest({ filePath, ...opts });
       await get().loadIngestTasks();
       set({ ingesting: false });
     } catch (err: unknown) {
@@ -197,20 +194,20 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
   },
 
   async retryIngest(assetId) {
-    const kbId = get().ingestJobs[assetId]?.kbId;
+    const job = get().ingestJobs[assetId];
     // Optimistic: flip to pending immediately; the SSE drives it from there.
     set((s) => {
-      const job = s.ingestJobs[assetId];
-      if (!job) return {};
-      return { ingestJobs: { ...s.ingestJobs, [assetId]: { ...job, status: 'pending', stage: undefined, progress: 0, error: undefined } } };
+      const current = s.ingestJobs[assetId];
+      if (!current) return {};
+      return { ingestJobs: { ...s.ingestJobs, [assetId]: { ...current, status: 'pending', stage: undefined, progress: 0, error: undefined } } };
     });
-    try { await kbApi.retryIngest(get().ingestJobs[assetId]?.taskId ?? assetId, kbId); }
+    try { await knowledgeApi.retryIngest(job?.taskId ?? assetId, job?.kbId); }
     catch { void get().loadIngestTasks(); }  // resync on failure
   },
 
   async deleteDocument(id) {
     try {
-      await kbApi.deleteDocument(id);
+      await knowledgeApi.deleteDocument(id);
       set((s) => ({ documents: s.documents.filter((d) => d.id !== id) }));
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : '删除失败' });
@@ -224,7 +221,7 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
     }
     set({ searchLoading: true, searchError: null });
     try {
-      const searchResult = await kbApi.search(query, opts);
+      const searchResult = await knowledgeApi.search({ query, ...opts });
       set({ searchResult, searchLoading: false });
     } catch (err: unknown) {
       set({
@@ -245,8 +242,8 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
   async loadLibs() {
     set({ libsLoading: true, libsError: null });
     try {
-      const libs = await kbApi.listLibs();
-      set({ libs, libsLoading: false });
+      const { items } = await knowledgeApi.listLibs();
+      set({ libs: [...items], libsLoading: false });
     } catch (err: unknown) {
       set({ libsError: err instanceof Error ? err.message : '加载知识库列表失败', libsLoading: false });
     }
@@ -254,7 +251,7 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
 
   async createLib(name, kbPath) {
     try {
-      const lib = await kbApi.createLib(name, kbPath);
+      const lib = await knowledgeApi.createLib(name, kbPath);
       set((s) => ({ libs: [...s.libs, lib] }));
       return lib;
     } catch (err: unknown) {
@@ -265,7 +262,7 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
 
   async renameLib(id, name) {
     try {
-      await kbApi.renameLib(id, name);
+      await knowledgeApi.renameLib(id, name);
       set((s) => ({ libs: s.libs.map((l) => l.id === id ? { ...l, name } : l) }));
     } catch (err: unknown) {
       set({ libsError: err instanceof Error ? err.message : '重命名失败' });
@@ -274,7 +271,7 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
 
   async activateLib(id) {
     try {
-      await kbApi.activateLib(id);
+      await knowledgeApi.activateLib(id);
       set((s) => ({ libs: s.libs.map((l) => ({ ...l, isActive: l.id === id })) }));
       // Reload documents from the newly-active KB.
       void get().loadDocuments();
@@ -285,7 +282,7 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
 
   async deleteLib(id) {
     try {
-      await kbApi.deleteLib(id);
+      await knowledgeApi.deleteLib(id);
       set((s) => ({ libs: s.libs.filter((l) => l.id !== id) }));
       // Reload documents — the deleted lib may have been active, so the
       // document list needs to reflect the new active lib (or empty).
@@ -300,22 +297,22 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
       const job = s.ingestJobs[assetId];
       if (!job) {
         // First SSE event for this asset — create the job entry (loadIngestTasks may not have run yet).
-        return { ingestJobs: { ...s.ingestJobs, [assetId]: { taskId: taskId ?? assetId, assetId, kbId, fileName: assetId, status: 'running', stage, progress } } };
+        return { ingestJobs: { ...s.ingestJobs, [assetId]: { taskId, assetId, kbId, fileName: assetId, status: 'running', stage, progress } } };
       }
-      return { ingestJobs: { ...s.ingestJobs, [assetId]: { ...job, taskId: taskId ?? job.taskId, kbId, status: 'running', stage, progress } } };
+      return { ingestJobs: { ...s.ingestJobs, [assetId]: { ...job, taskId, kbId, status: 'running', stage, progress } } };
     });
   },
 
-  onIngestCompleted(kbId, assetId) {
+  onIngestCompleted(kbId, taskId, assetId) {
     // Mark done (green, 100%) briefly so the row plays an exit animation, then drop it.
     set((s) => {
       // SSE 可能早于 HTTP 队列水合到达；终态事件本身足以建立最小可信记录。
       const job = s.ingestJobs[assetId] ?? {
-        taskId: assetId,
+        taskId,
         assetId,
         kbId,
         fileName: assetId,
-        status: 'done' as const,
+        status: 'completed' as const,
         progress: 1,
       };
       const completedAssets = new Set(s.ingestCompletedAssets);
@@ -324,7 +321,7 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
       return {
         ingestDoneCount: s.ingestDoneCount + (firstCompletion ? 1 : 0),
         ingestCompletedAssets: completedAssets,
-        ingestJobs: { ...s.ingestJobs, [assetId]: { ...job, kbId, status: 'done', progress: 1 } },
+        ingestJobs: { ...s.ingestJobs, [assetId]: { ...job, taskId, kbId, status: 'completed', progress: 1 } },
       };
     });
     void get().loadDocuments();
@@ -336,67 +333,32 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
     }, 350);
   },
 
-  onIngestPartialFailed(kbId, taskId, assetId, error, counts) {
-    set((s) => {
-      const job = s.ingestJobs[assetId];
-      const base = job ?? {
-        taskId: taskId ?? assetId,
-        assetId,
-        kbId,
-        fileName: assetId,
-        status: 'partial_failed' as const,
-        progress: 1,
-      };
-      return {
-        ingestJobs: {
-          ...s.ingestJobs,
-          [assetId]: {
-            ...base,
-            taskId: taskId ?? base.taskId,
-            kbId,
-            status: 'partial_failed',
-            progress: 1,
-            error,
-            totalItems: counts.total,
-            completedItems: counts.completed,
-            failedItems: counts.failed,
-          },
-        },
-      };
-    });
-    void get().loadDocuments();
-  },
-
-  onIngestFailed(kbId, assetId, error) {
+  onIngestFailed(kbId, taskId, assetId, error) {
     set((s) => {
       const job = s.ingestJobs[assetId];
       if (!job) return {};
-      return { ingestJobs: { ...s.ingestJobs, [assetId]: { ...job, kbId, status: 'failed', error } } };
+      return { ingestJobs: { ...s.ingestJobs, [assetId]: { ...job, taskId, kbId, status: 'failed', error } } };
     });
   },
 
   onReembedProgress(kbId, taskId, assetId, progress, counts) {
-    set((s) => {
-      const job = s.reembedTasks[kbId];
-      return {
-        reembedTasks: {
-          ...s.reembedTasks,
-          [kbId]: {
-            taskId:   taskId ?? job?.taskId ?? "",
-            kbId,
-            assetId,
-            progress,
-            status:   "running",
-            ...(counts.total !== undefined ? { totalItems: counts.total } : {}),
-            ...(counts.completed !== undefined ? { completedItems: counts.completed } : {}),
-            ...(counts.failed !== undefined ? { failedItems: counts.failed } : {}),
-          },
+    set((s) => ({
+      reembedTasks: {
+        ...s.reembedTasks,
+        [kbId]: {
+          taskId,
+          kbId,
+          assetId,
+          progress,
+          status: 'running',
+          totalItems: counts.total,
+          completedItems: counts.completed,
         },
-      };
-    });
+      },
+    }));
   },
 
-  onReembedCompleted(kbId, taskId, assetId, counts) {
+  onReembedCompleted(kbId, taskId, assetId) {
     set((s) => {
       const job = s.reembedTasks[kbId];
       if (!job) return {};
@@ -405,41 +367,10 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
           ...s.reembedTasks,
           [kbId]: {
             ...job,
-            taskId: taskId ?? job.taskId,
+            taskId,
             assetId,
-            status: "done",
+            status: 'completed',
             progress: 1,
-            totalItems: counts.total,
-            completedItems: counts.completed,
-            failedItems: counts.failed,
-          },
-        },
-      };
-    });
-    void get().loadDocuments();
-  },
-
-  onReembedPartialFailed(kbId, taskId, assetId, error, counts) {
-    set((s) => {
-      const job = s.reembedTasks[kbId];
-      const base: ReembedTask = job ?? {
-        taskId: taskId ?? "",
-        kbId,
-        assetId,
-        progress: 1,
-        status: "partial_failed",
-      };
-      return {
-        reembedTasks: {
-          ...s.reembedTasks,
-          [kbId]: {
-            ...base,
-            status: "partial_failed",
-            progress: 1,
-            error,
-            totalItems: counts.total,
-            completedItems: counts.completed,
-            failedItems: counts.failed,
           },
         },
       };
@@ -451,7 +382,7 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
     set((s) => {
       const job = s.reembedTasks[kbId];
       const base: ReembedTask = job ?? {
-        taskId: taskId ?? '',
+        taskId,
         kbId,
         assetId,
         progress: 0,
@@ -462,8 +393,7 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
           ...s.reembedTasks,
           [kbId]: {
             ...base,
-            taskId: taskId ?? base.taskId,
-            assetId,
+            taskId,
             status: 'cancelled',
           },
         },
@@ -475,13 +405,13 @@ export const useKbStore = create<KbStoreState>((set, get) => ({
     set((s) => {
       const job = s.reembedTasks[kbId];
       const base: ReembedTask = job ?? {
-        taskId: taskId ?? "",
+        taskId,
         kbId,
         assetId,
         progress: 0,
-        status: "failed",
+        status: 'failed',
       };
-      return { reembedTasks: { ...s.reembedTasks, [kbId]: { ...base, status: "failed", error } } };
+      return { reembedTasks: { ...s.reembedTasks, [kbId]: { ...base, taskId, status: 'failed', error } } };
     });
   },
 }));
@@ -500,7 +430,7 @@ export interface IngestSummary {
 export function selectIngestSummary(s: KbStoreState): IngestSummary {
   const jobs   = Object.values(s.ingestJobs);
   const active = jobs.filter((j) => j.status === 'pending' || j.status === 'running').length;
-  const failed = jobs.filter((j) => j.status === 'failed' || j.status === 'partial_failed').length;
+  const failed = jobs.filter((j) => j.status === 'failed').length;
   const done   = s.ingestDoneCount;
   const total  = done + active + failed;
 

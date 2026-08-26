@@ -1,28 +1,28 @@
 /**
- * IdentityTab — edit name, description, systemPrompt.
+ * IdentityTab — edit name, description, personaPrompt.
  */
 import { useState, type FormEvent, type JSX } from 'react';
 import { Button, Field, Input, Textarea } from '@ema-agent/ui';
-import { useCardStore } from '../../stores/card-store.js';
-import type { CharacterCard } from '../../api/cards.js';
+import { useCharacterStore } from '../../stores/character-store.js';
+import type { Character } from '../../api/characters.js';
 import { showToast } from '../../lib/toast.js';
 
-export function IdentityTab({ card }: { card: CharacterCard }): JSX.Element {
-  const [name,         setName]         = useState(card.name);
-  const [description,  setDescription]  = useState(card.description ?? '');
-  const [systemPrompt, setSystemPrompt] = useState(card.systemPrompt);
+export function IdentityTab({ character }: { character: Character }): JSX.Element {
+  const [name,         setName]         = useState(character.name);
+  const [description,  setDescription]  = useState(character.description ?? '');
+  const [personaPrompt, setPersonaPrompt] = useState(character.personaPrompt);
   const [saving,       setSaving]       = useState(false);
-  const isBuiltin = card.isBuiltin;
+  const isBuiltin = character.isBuiltin;
 
   async function handleSave(e: FormEvent): Promise<void> {
     e.preventDefault();
     if (isBuiltin) return;
     setSaving(true);
     try {
-      await useCardStore.getState().patch(card.id, {
+      await useCharacterStore.getState().patch(character.id, {
         name,
         description: description || undefined,
-        systemPrompt,
+        personaPrompt,
       });
       showToast('已保存', { variant: 'success' });
     } catch (err: unknown) {
@@ -50,12 +50,12 @@ export function IdentityTab({ card }: { card: CharacterCard }): JSX.Element {
         />
       </Field>
 
-      <Field label="System Prompt">
+      <Field label="人设提示词">
         <Textarea
           minRows={10}
           maxRows={20}
-          value={systemPrompt}
-          onChange={(e) => setSystemPrompt(e.target.value)}
+          value={personaPrompt}
+          onChange={(e) => setPersonaPrompt(e.target.value)}
           disabled={isBuiltin}
           className="font-mono"
         />
@@ -75,9 +75,9 @@ export function IdentityTab({ card }: { card: CharacterCard }): JSX.Element {
             variant="ghost"
             size="sm"
             onClick={() => {
-              setName(card.name);
-              setDescription(card.description ?? '');
-              setSystemPrompt(card.systemPrompt);
+              setName(character.name);
+              setDescription(character.description ?? '');
+              setPersonaPrompt(character.personaPrompt);
             }}
           >
             撤销

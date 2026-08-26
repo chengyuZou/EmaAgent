@@ -1,9 +1,13 @@
 // 解析一条 SSE 响应，并返回唯一且结构化的连接终态。
 
-
 export const SSE_IDLE_TIMEOUT_MS = 45_000;
 
-export interface SseStartOptions<TEvent extends ClientEvent = ClientEvent> {
+/** 消费层对事件的最低结构要求：只保证判别字段存在，业务联合由调用方收窄。 */
+export interface SseEventBase {
+  readonly type: string;
+}
+
+export interface SseStartOptions<TEvent extends SseEventBase = SseEventBase> {
   signal?: AbortSignal;
   lastEventId?: number;
   idleTimeoutMs?: number;
@@ -92,12 +96,12 @@ function parseFrame(frame: string): ParsedFrame | null {
 }
 
 export function createSseConsumer(): {
-  start<TEvent extends ClientEvent = ClientEvent>(
+  start<TEvent extends SseEventBase = SseEventBase>(
     options: SseStartOptions<TEvent>,
   ): SseHandle;
 } {
   return {
-    start<TEvent extends ClientEvent = ClientEvent>(
+    start<TEvent extends SseEventBase = SseEventBase>(
       options: SseStartOptions<TEvent>,
     ) {
       const controller = new AbortController();

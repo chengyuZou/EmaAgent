@@ -6,7 +6,6 @@ import { useConversationStore, type ChatHistoryItem } from '../../stores/convers
 import { useChatHistoryScroll } from './useChatHistoryScroll.js';
 import { UserBubble } from '../messages/UserBubble.js';
 import { AssistantBubble } from '../messages/AssistantBubble.js';
-import { NarrativeStatusBlock } from '@ema-agent/builtin-tools/ui';
 import {
   EMPTY_SESSION_HISTORY,
   useSessionHistoryStore,
@@ -231,19 +230,6 @@ function BubbleRouter({
   canEditUser?: boolean;
   canForkAssistant?: boolean;
 }): JSX.Element {
-  // narrative_context:检索结果独立气泡(NarrativeStatusBlock),不走 UserBubble
-  if (message.kind === 'narrative_context') {
-    const slice = message.slices?.find((s) => s.type === 'narrative_status');
-    if (slice && slice.type === 'narrative_status') {
-      return (
-        <div className="flex justify-start px-1">
-          <div className="max-w-[85%]">
-            <NarrativeStatusBlock data={slice} />
-          </div>
-        </div>
-      );
-    }
-  }
   switch (message.role) {
     case 'user':      return <UserBubble message={message} canEdit={canEditUser} />;
     case 'assistant': return <AssistantBubble message={message} canFork={canForkAssistant} />;

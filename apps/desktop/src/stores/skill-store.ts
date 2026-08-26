@@ -1,50 +1,52 @@
-// 管理已安装 Skill、市场列表及安装、启停、重命名和卸载操作。
+// 管理已安装 Skill 目录（含 enabled 投影）、启停开关与市场站点。
+// 启停唯一写路径是 settings 的 skill.disabledKeys deny-list；安装只走站点缓存索引。
 import { create } from 'zustand';
-import { skillsApi, type SkillValidateResult, type MarketSkillEntry } from '../api/skills.js';
-import type { GithubSkillCoords, SkillRecord } from '@ema-agent/skills';
+import {
+  skillsApi,
+  type SkillListItem,
+  type SkillSiteRecord,
+  type SkillSiteAddInput,
+  type SkillSitePatchInput,
+  type SkillInstallResult,
+} from '../api/skills.js';
+import { settingsApi } from '../api/settings.js';
 
-export type { SkillRecord, SkillValidateResult, MarketSkillEntry };
+export type { SkillListItem, SkillSiteRecord };
+
+const DISABLED_KEYS_SETTING = 'skill.disabledKeys';
 
 // ── Store interface ───────────────────────────────────────────────────────────
 
 export interface SkillStoreState {
-  skills:   Omit<SkillRecord, 'rawMd'>[];
+  skills:   SkillListItem[];
   loading:  boolean;
   error:    string | null;
 
-  marketSkills:  MarketSkillEntry[];
-  marketLoading: boolean;
-  marketError:   string | null;
-  marketSource:  string;
+  sites:       SkillSiteRecord[];
+  sitesLoading: boolean;
+  sitesError:  string | null;
 
   /** Load all installed skills. Idempotent — skips if already loaded. */
   load(): Promise<void>;
   /** Force-reload the skill list. */
   refresh(): Promise<void>;
 
-  /** Install a skill from raw markdown text. Refreshes list on success. */
-  installFromText(content: string): Promise<Omit<SkillRecord, 'rawMd'>>;
-  /** Install a skill from a remote URL. Refreshes list on success. */
-  installFromUrl(
-    url: string,
-    coords?: GithubSkillCoords,
-    sha256?: string,
-  ): Promise<Omit<SkillRecord, 'rawMd'>>;
+  /** 逐技能启停：写 skill.disabledKeys deny-list 后重读目录投影。 */
+  setEnabled(key: string, enabled: boolean): Promise<void>;
 
-  /** Validate skill markdown without installing. Returns validation result. */
-  validate(content: string): Promise<SkillValidateResult>;
+  /** 卸载一个 user Skill（builtin 只读、project 跟随工作区，服务端会拒绝）。 */
+  remove(key: string): Promise<void>;
 
-  /** Enable or disable a skill by name. Updates list optimistically. */
-  setEnabled(name: string, enabled: boolean): Promise<void>;
+  // ── 市场站点 ──────────────────────────────────────────────────────────────
 
-  /** Uninstall a skill by name. Refreshes list on success. */
-  remove(name: string): Promise<void>;
-
-  /** 重命名可写 Skill；成功响应直接替换本地记录，失败时保留原状态。 */
-  rename(name: string, newName: string): Promise<Omit<SkillRecord, 'rawMd'>>;
-
-  /** Fetch installable skills from the market(聚合所有 enabled 源)。Results cached in store. */
-  listMarket(): Promise<void>;
+  loadSites(): Promise<void>;
+  addSite(input: SkillSiteAddInput): Promise<void>;
+  patchSite(id: string, patch: SkillSitePatchInput): Promise<void>;
+  removeSite(id: string): Promise<void>;
+  /** 全站刷新索引；各站成败独立报告。 */
+  refreshSites(): Promise<void>;
+  /** 以站点缓存索引条目安装；成功后重读技能目录。 */
+  installFromSite(siteId: string, entryId: string): Promise<SkillInstallResult>;
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────────
@@ -54,10 +56,9 @@ export const useSkillStore = create<SkillStoreState>((set, get) => ({
   loading: false,
   error:   null,
 
-  marketSkills:  [],
-  marketLoading: false,
-  marketError:   null,
-  marketSource:  '',
+  sites:        [],
+  sitesLoading: false,
+  sitesError:   null,
 
   async load() {
     if (get().skills.length > 0) return;
@@ -67,8 +68,8 @@ export const useSkillStore = create<SkillStoreState>((set, get) => ({
   async refresh() {
     set({ loading: true, error: null });
     try {
-      const { skills } = await skillsApi.list();
-      set({ skills, loading: false });
+      const { items } = await skillsApi.list();
+      set({ skills: [...items], loading: false });
     } catch (err: unknown) {
       set({
         error: err instanceof Error ? err.message : 'Failed to load skills',
@@ -77,89 +78,107 @@ export const useSkillStore = create<SkillStoreState>((set, get) => ({
     }
   },
 
-  async installFromText(content) {
-    try {
-      const { skill } = await skillsApi.installFromText(content);
-      await get().refresh();
-      return skill;
-    } catch (err: unknown) {
-      set({ error: err instanceof Error ? err.message : 'Failed to install skill' });
-      throw err;
-    }
-  },
-
-  async installFromUrl(url, coords, sha256) {
-    try {
-      const { skill } = await skillsApi.installFromUrl(url, coords, sha256);
-      await get().refresh();
-      return skill;
-    } catch (err: unknown) {
-      set({ error: err instanceof Error ? err.message : 'Failed to install skill from URL' });
-      throw err;
-    }
-  },
-
-  async validate(content) {
-    return skillsApi.validate(content);
-  },
-
-  async setEnabled(name, enabled) {
+  async setEnabled(key, enabled) {
     // Optimistic update
     set((s) => ({
-      skills: s.skills.map((sk) => sk.name === name ? { ...sk, enabled } : sk),
+      skills: s.skills.map((sk) => sk.key === key ? { ...sk, enabled } : sk),
     }));
     try {
-      await skillsApi.setEnabled(name, enabled);
+      const { value } = await settingsApi.getValue(DISABLED_KEYS_SETTING);
+      const current = Array.isArray(value)
+        ? value.filter((k): k is string => typeof k === 'string')
+        : [];
+      const next = enabled
+        ? current.filter((k) => k !== key)
+        : [...new Set([...current, key])];
+      await settingsApi.putValue(DISABLED_KEYS_SETTING, next);
     } catch (err: unknown) {
       // Rollback
       set((s) => ({
-        skills: s.skills.map((sk) => sk.name === name ? { ...sk, enabled: !enabled } : sk),
+        skills: s.skills.map((sk) => sk.key === key ? { ...sk, enabled: !enabled } : sk),
         error: err instanceof Error ? err.message : 'Failed to update skill',
       }));
       throw err;
     }
   },
 
-  async remove(name) {
+  async remove(key) {
     try {
-      await skillsApi.remove(name);
-      set((s) => ({ skills: s.skills.filter((sk) => sk.name !== name) }));
+      await skillsApi.remove(key);
+      set((s) => ({ skills: s.skills.filter((sk) => sk.key !== key) }));
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to remove skill' });
       throw err;
     }
   },
 
-  async rename(name, newName) {
+  // ── 市场站点 ──────────────────────────────────────────────────────────────
+
+  async loadSites() {
+    set({ sitesLoading: true, sitesError: null });
     try {
-      const { skill } = await skillsApi.rename(name, newName);
-      set((state) => ({
-        skills: state.skills.map((item) => item.name === name ? skill : item),
-        error: null,
-      }));
-      return skill;
+      const { items } = await skillsApi.listSites();
+      set({ sites: [...items], sitesLoading: false });
     } catch (err: unknown) {
-      set({ error: err instanceof Error ? err.message : 'Failed to rename skill' });
+      set({
+        sitesError: err instanceof Error ? err.message : 'Failed to load skill sites',
+        sitesLoading: false,
+      });
+    }
+  },
+
+  async addSite(input) {
+    try {
+      await skillsApi.addSite(input);
+      await get().loadSites();
+    } catch (err: unknown) {
+      set({ sitesError: err instanceof Error ? err.message : 'Failed to add site' });
       throw err;
     }
   },
 
-  async listMarket() {
-    set({ marketLoading: true, marketError: null });
+  async patchSite(id, patch) {
     try {
-      const res = await skillsApi.listMarket();
-      // marketSource 显示参与源数 + 失败源数(供 UI 顶部展示)
-      const okCount = res.sources.filter((s) => !s.error).length;
-      const errCount = res.sources.filter((s) => s.error).length;
-      const sourceLabel = errCount > 0
-        ? `${okCount} 个源 · ${errCount} 个失败`
-        : `${okCount} 个源`;
-      set({ marketSkills: res.skills, marketSource: sourceLabel, marketLoading: false });
+      await skillsApi.patchSite(id, patch);
+      await get().loadSites();
+    } catch (err: unknown) {
+      set({ sitesError: err instanceof Error ? err.message : 'Failed to update site' });
+      throw err;
+    }
+  },
+
+  async removeSite(id) {
+    try {
+      await skillsApi.removeSite(id);
+      set((s) => ({ sites: s.sites.filter((site) => site.id !== id) }));
+    } catch (err: unknown) {
+      set({ sitesError: err instanceof Error ? err.message : 'Failed to remove site' });
+      throw err;
+    }
+  },
+
+  async refreshSites() {
+    set({ sitesLoading: true, sitesError: null });
+    try {
+      await skillsApi.refreshSites();
+      await get().loadSites();
     } catch (err: unknown) {
       set({
-        marketError:   err instanceof Error ? err.message : 'Failed to load market',
-        marketLoading: false,
+        sitesError: err instanceof Error ? err.message : 'Failed to refresh sites',
+        sitesLoading: false,
       });
+      throw err;
+    }
+  },
+
+  async installFromSite(siteId, entryId) {
+    try {
+      const result = await skillsApi.installFromSite({ siteId, entryId });
+      await get().refresh();
+      return result;
+    } catch (err: unknown) {
+      set({ error: err instanceof Error ? err.message : 'Failed to install skill' });
+      throw err;
     }
   },
 }));

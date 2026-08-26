@@ -1,7 +1,7 @@
 // Turn 事件流的唯一消费点：写重放日志、在线扇出、语音合流、应用级回声。
 import type { TurnHandle, TurnStreamEvent } from '@ema-agent/turn';
 import type { TurnSpeechHandle } from '../composition/speech.js';
-import { EventHub, type TurnWireEvent } from './eventHub.js';
+import { EventHub, type TurnSseEvent } from './eventHub.js';
 import type { TurnEventStore } from './eventStore.js';
 
 export interface TurnFanoutDeps {
@@ -11,7 +11,7 @@ export interface TurnFanoutDeps {
     sessionId: string;
     turnId: string;
     signal: AbortSignal;
-    emit: (event: TurnWireEvent) => void;
+    emit: (event: TurnSseEvent) => void;
   }) => Promise<TurnSpeechHandle | null>;
   /** 重放日志超预算时终止该 Turn（终态事件仍会被写入，客户端可明确结束）。 */
   readonly abortTurn: (sessionId: string, turnId: string) => void;
@@ -78,7 +78,7 @@ export class TurnFanout {
     }
   }
 
-  private push(turnId: string, event: TurnWireEvent): void {
+  private push(turnId: string, event: TurnSseEvent): void {
     const result = this.deps.store.push(turnId, event);
     if (result.status === 'stored') {
       this.deps.hub.publishTurn(turnId, result.published);
@@ -93,7 +93,7 @@ export class TurnFanout {
 
 /** 四类 Turn 生命周期事件会回声到应用通道；其余 Turn 流事件只属于该 Turn 的订阅者。 */
 function isTurnActivity(
-  event: TurnWireEvent,
+  event: TurnSseEvent,
 ): event is Extract<TurnStreamEvent, { type: 'turn_started' | 'turn_completed' | 'turn_failed' | 'turn_aborted' }> {
   return event.type === 'turn_started'
     || event.type === 'turn_completed'

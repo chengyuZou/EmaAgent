@@ -98,7 +98,7 @@ export const projectsRoute = (deps: ProjectsRouteDeps) =>
       return context.json({ ok: true });
     });
 
-function projectError(context: Context, error: unknown): Response {
+function projectError(context: Context, error: unknown) {
   if (error instanceof SessionOwnershipError) {
     return context.json({ error: 'session_ownership_violation', message: error.message }, 403);
   }

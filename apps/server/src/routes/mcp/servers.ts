@@ -205,7 +205,7 @@ export const mcpServersRoute = (deps: McpServersRouteDeps) =>
       return context.json(result);
     });
 
-function mcpError(context: Context, error: unknown): Response | undefined {
+function mcpError(context: Context, error: unknown) {
   if (error instanceof McpServerNotFoundError) {
     return context.json({ error: 'server_not_found', message: error.message }, 404);
   }

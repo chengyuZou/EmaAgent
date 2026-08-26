@@ -1,8 +1,10 @@
 // 管理按 Session 隔离的附件列表、刷新状态与异步响应竞态。
 import { create } from 'zustand';
 
-import type { SessionAttachmentWire } from '@ema-agent/session';
-import { sessionsApi } from '../api/sessions.js';
+import { sessionsApi, type SessionAttachmentsResult } from '../api/sessions.js';
+
+/** 附件面板条目：路径不进传输层，内容经 attachments content 端点读取。 */
+export type SessionAttachmentEntry = SessionAttachmentsResult['attachments'][number];
 
 export type SessionAttachmentLoadState =
   | { status: 'idle'; generation: number; error: null }
@@ -12,7 +14,7 @@ export type SessionAttachmentLoadState =
   | { status: 'error'; generation: number; error: string };
 
 export interface SessionAttachmentStoreState {
-  bySession: Map<string, SessionAttachmentWire[]>;
+  bySession: Map<string, SessionAttachmentEntry[]>;
   loadStateBySession: Map<string, SessionAttachmentLoadState>;
   loadForSession(sessionId: string, force?: boolean): Promise<void>;
   evictSession(sessionId: string): void;

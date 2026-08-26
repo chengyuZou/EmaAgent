@@ -1,5 +1,5 @@
 // 摄入任务：文件入队（staging 在入队时同步执行，失败不产生任务）与任务列表/重试/取消。
-import { Hono, type Context } from 'hono';
+import { Hono } from 'hono';
 import { z } from 'zod';
 import type { KbManager } from '@ema-agent/knowledge';
 import { knowledgeError } from './errors.js';
@@ -41,7 +41,13 @@ export const knowledgeIngestRoute = (deps: KnowledgeIngestRouteDeps) =>
       }
     })
     .get('/ingest-tasks', queryValidator(kbIdQuery), async context => {
-      return respondTasks(context, () => deps.kb.listIngestTasks(context.req.valid('query').kbId));
+      try {
+        return context.json({ items: await deps.kb.listIngestTasks(context.req.valid('query').kbId) });
+      } catch (error) {
+        const mapped = knowledgeError(context, error);
+        if (mapped) return mapped;
+        throw error;
+      }
     })
     .post('/ingest-tasks/:taskId/retry', queryValidator(kbIdQuery), async context => {
       const task = await deps.kb.retryIngest(context.req.param('taskId'), context.req.valid('query').kbId);
@@ -53,16 +59,3 @@ export const knowledgeIngestRoute = (deps: KnowledgeIngestRouteDeps) =>
       if (!ok) return context.json({ error: 'not_active_or_not_found' }, 404);
       return context.json({ ok: true });
     });
-
-async function respondTasks(
-  context: Context,
-  run: () => Promise<unknown>,
-): Promise<Response> {
-  try {
-    return context.json({ items: await run() });
-  } catch (error) {
-    const mapped = knowledgeError(context, error);
-    if (mapped) return mapped;
-    throw error;
-  }
-}

@@ -1,4 +1,4 @@
-// POST /api/turns：解析 Wire 请求、定位或创建 Session、启动 Turn 并挂事件扇出。
+// POST /api/turns：解析传输请求、定位或创建 Session、启动 Turn 并挂事件扇出。
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { SessionBusyError, type SessionStore } from '@ema-agent/session';

@@ -9,7 +9,7 @@ import {
 } from '@ema-agent/ui';
 import { useStorageStore }  from '../../stores/storage-store.js';
 import { useSessionStore }  from '../../stores/session-store.js';
-import { storageApi }       from '../../api/storage.js';
+import { sessionsApi }      from '../../api/sessions.js';
 import { showToast }        from '../../lib/toast.js';
 import { useMountedAnim } from './storageFormat.js';
 import { AddDirDialog, MigrateDialog } from './StorageDirDialogs.js';
@@ -29,10 +29,11 @@ export function StorageTab(): JSX.Element {
   const sessions = useSessionStore((s) => s.sessions);
   const sessionsLoading = useSessionStore((s) => s.loading);
 
-  // Flatten all sessions (pinned + groups + recent + archived)
+  // Flatten all sessions (pinned + project groups + recent + archived)
   const allSessions = [
     ...sessions.pinned,
-    ...sessions.byGroup.flatMap((g) => g.sessions),
+    ...sessions.pinnedProjects.flatMap((g) => g.sessions),
+    ...sessions.projects.flatMap((g) => g.sessions),
     ...sessions.recent,
     ...sessions.archived,
   ].filter((s, i, arr) => arr.findIndex((x) => x.id === s.id) === i);
@@ -61,7 +62,7 @@ export function StorageTab(): JSX.Element {
   async function handleImport(file: File): Promise<void> {
     setImporting(true);
     try {
-      const result = await storageApi.importSession(file);
+      const result = await sessionsApi.importSession(file);
       await useSessionStore.getState().loadSessions();
       if (result.warnings.length > 0) {
         const preview = result.warnings.slice(0, 2).join(';');
@@ -119,6 +120,7 @@ export function StorageTab(): JSX.Element {
                 key={dir.name}
                 dir={dir}
                 index={i}
+                isActive={dir.name === store.activeName}
                 onMigrateOpen={() => setMigrateOpen(true)}
               />
             ))}

@@ -1,159 +1,190 @@
-import { useState, type JSX } from 'react';
+// 记忆维护:手动整合两轨、存储清理与全部清除的触发口,以及最近后台任务列表(重试/取消)。
+import { useEffect, useState, type JSX } from 'react';
 import {
-  Badge, Button, Callout, Divider, Field,
-  Input, ScrollArea, Switch
+  Badge, Button, Callout, ConfirmDialog, Divider, ScrollArea, Spinner,
 } from '@ema-agent/ui';
 import { useMemoryStore } from '../../stores/memory-store.js';
 import { showToast } from '../../lib/toast.js';
-import { NODE_TYPE_LABEL, NODE_TYPE_VARIANT } from './memoryLabels.js';
-
+import {
+  JOB_KIND_LABEL, JOB_STATUS_LABEL, JOB_STATUS_VARIANT, relativeTime,
+} from './memoryLabels.js';
 
 export function MaintenanceTab(): JSX.Element {
-  const maintenanceRunning = useMemoryStore((s) => s.maintenanceRunning);
-  const maintenanceReport  = useMemoryStore((s) => s.maintenanceReport);
-  const maintenanceError   = useMemoryStore((s) => s.maintenanceError);
+  const jobs         = useMemoryStore((s) => s.jobs);
+  const jobsLoading  = useMemoryStore((s) => s.jobsLoading);
+  const jobsError    = useMemoryStore((s) => s.jobsError);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
 
-  const [decayAfterDays, setDecayAfterDays] = useState('30');
-  const [decayAmount,    setDecayAmount]    = useState('10');
-  const [decayItems,     setDecayItems]     = useState(true);
-  const [dryRun,         setDryRun]         = useState(true);
+  useEffect(() => {
+    void useMemoryStore.getState().refreshJobs();
+  }, []);
 
-  async function runMaintenance(): Promise<void> {
+  async function run(kind: 'work_consolidation' | 'relationship_consolidation' | 'clear_memory' | 'storage_cleanup'): Promise<void> {
+    setBusy(kind);
     try {
-      await useMemoryStore.getState().runMaintenance({
-        decayAfterDays: Number(decayAfterDays) || 30,
-        decayAmount:    Number(decayAmount)    || 10,
-        decayItems,
-        dryRun,
-      });
-      showToast(dryRun ? '预演完成，查看下方结果' : '维护完成', { variant: 'success' });
-    } catch {
-      // error shown via maintenanceError
+      const store = useMemoryStore.getState();
+      if (kind === 'work_consolidation' || kind === 'relationship_consolidation') {
+        await store.consolidate(kind);
+      } else {
+        await store.maintenance(kind);
+      }
+      showToast('已加入后台队列', { variant: 'success' });
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? `操作失败：${err.message}` : '操作失败', { variant: 'danger' });
+    } finally {
+      setBusy(null);
     }
   }
 
   return (
     <div className="flex flex-col gap-4">
       <div className="ema-slide-down">
-        <h3 className="text-sm font-semibold text-[var(--ema-text-primary)]">重要度衰减</h3>
+        <h3 className="text-sm font-semibold text-[var(--ema-text-primary)]">手动整合</h3>
         <p className="text-xs font-semibold text-[var(--ema-text-tertiary)] mt-0.5">
-          降低长期未引用记忆的重要度，使其在召回时权重降低。受保护类型(事实/偏好/关系)永远不衰减。
+          立即把未整合的提取结果写入正式记忆文件;冷却期不影响手动触发。
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 ema-slide-up">
-        <Field label="衰减阈值(天)" description="最后引用距今超过此天数才会衰减">
-          <Input
-            type="number"
-            min="1"
-            value={decayAfterDays}
-            onChange={(e) => setDecayAfterDays(e.target.value)}
-          />
-        </Field>
-
-        <Field label="单次衰减量" description="每次执行将重要度减少(0–100)">
-          <Input
-            type="number"
-            min="0"
-            max="100"
-            step="1"
-            value={decayAmount}
-            onChange={(e) => setDecayAmount(e.target.value)}
-          />
-        </Field>
-      </div>
-
-      <div className="flex items-center gap-6">
-        <div className="flex items-center gap-3">
-          <Switch
-            checked={decayItems}
-            label="同时衰减条目"
-            showLabel
-            onCheckedChange={setDecayItems}
-          />
-        </div>
-        <div className="flex items-center gap-3">
-          <Switch
-            checked={dryRun}
-            label="预演模式(不实际修改)"
-            showLabel
-            onCheckedChange={setDryRun}
-          />
-        </div>
-      </div>
-
-      {maintenanceError && (
-        <Callout variant="danger">{maintenanceError}</Callout>
-      )}
-
-      <div>
+      <div className="flex gap-2 ema-slide-up">
         <Button
-          variant={dryRun ? 'secondary' : 'danger'}
+          variant="secondary"
           size="sm"
-          loading={maintenanceRunning}
-          disabled={maintenanceRunning}
-          onClick={() => void runMaintenance()}
+          loading={busy === 'work_consolidation'}
+          disabled={busy !== null}
+          onClick={() => void run('work_consolidation')}
         >
-          {dryRun ? '预演衰减' : '执行衰减'}
+          整合工作轨
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          loading={busy === 'relationship_consolidation'}
+          disabled={busy !== null}
+          onClick={() => void run('relationship_consolidation')}
+        >
+          整合关系轨
         </Button>
       </div>
 
-      {/* Report */}
-      {maintenanceReport && (
-        <>
-          <Divider />
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <p className="text-sm font-semibold text-[var(--ema-text-primary)]">执行结果</p>
-              {maintenanceReport.dryRun && <Badge variant="warn">预演</Badge>}
-              <span className="text-xs font-semibold text-[var(--ema-text-tertiary)]">
-                衰减节点 {maintenanceReport.decayedNodes}，衰减条目 {maintenanceReport.decayedItems}
-              </span>
-            </div>
+      <Divider />
 
-            {maintenanceReport.preview.nodes.length > 0 && (
-              <div className="mb-3">
-                <p className="text-xs font-semibold text-[var(--ema-text-tertiary)] mb-1.5">受影响节点(前 {maintenanceReport.preview.nodes.length} 条)</p>
-                <ScrollArea viewportClassName="max-h-40">
-                  <div className="flex flex-col gap-1 pr-1">
-                    {maintenanceReport.preview.nodes.map((n) => (
-                      <div key={n.id} className="flex items-center gap-2 text-xs">
-                        <Badge variant={NODE_TYPE_VARIANT[n.nodeType]}>{NODE_TYPE_LABEL[n.nodeType]}</Badge>
-                        <span className="flex-1 truncate font-semibold text-[var(--ema-text-secondary)]">{n.label}</span>
-                        <span className="font-semibold text-[var(--ema-text-tertiary)] opacity-60 tabular-nums shrink-0">
-                          {(n.currentImportance * 100).toFixed(0)}% → {(n.newImportance * 100).toFixed(0)}%
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </ScrollArea>
-              </div>
-            )}
+      <div className="ema-slide-down">
+        <h3 className="text-sm font-semibold text-[var(--ema-text-primary)]">存储维护</h3>
+        <p className="text-xs font-semibold text-[var(--ema-text-tertiary)] mt-0.5">
+          按存储上限清理最旧、最冷的记忆文件;清除全部记忆不可恢复。
+        </p>
+      </div>
 
-            {maintenanceReport.preview.items.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold text-[var(--ema-text-tertiary)] mb-1.5">受影响条目(前 {maintenanceReport.preview.items.length} 条)</p>
-                <ScrollArea viewportClassName="max-h-40">
-                  <div className="flex flex-col gap-1 pr-1">
-                    {maintenanceReport.preview.items.map((item) => (
-                      <div key={item.id} className="flex items-center gap-2 text-xs">
-                        <span className="flex-1 truncate font-semibold text-[var(--ema-text-secondary)]">{item.title}</span>
-                        <span className="font-semibold text-[var(--ema-text-tertiary)] opacity-60 tabular-nums shrink-0">
-                          {(item.currentImportance * 100).toFixed(0)}% → {(item.newImportance * 100).toFixed(0)}%
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </ScrollArea>
-              </div>
-            )}
+      <div className="flex gap-2 ema-slide-up">
+        <Button
+          variant="secondary"
+          size="sm"
+          loading={busy === 'storage_cleanup'}
+          disabled={busy !== null}
+          onClick={() => void run('storage_cleanup')}
+        >
+          按上限清理
+        </Button>
+        <Button
+          variant="danger"
+          size="sm"
+          disabled={busy !== null}
+          onClick={() => setConfirmClear(true)}
+        >
+          清除全部记忆
+        </Button>
+      </div>
 
-            {maintenanceReport.preview.nodes.length === 0 && maintenanceReport.preview.items.length === 0 && (
-              <p className="text-xs font-semibold text-[var(--ema-text-tertiary)] opacity-40">此次无需衰减的记忆</p>
-            )}
-          </div>
-        </>
+      {jobsError && <Callout variant="danger">{jobsError}</Callout>}
+
+      <Divider />
+
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-[var(--ema-text-primary)]">最近后台任务</h3>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={jobsLoading}
+          onClick={() => void useMemoryStore.getState().refreshJobs()}
+        >
+          <span className="i-mdi:refresh text-base" aria-hidden />
+        </Button>
+      </div>
+
+      {jobsLoading && !jobs && (
+        <div className="flex justify-center py-6"><Spinner size="sm" /></div>
       )}
+
+      {jobs && jobs.length === 0 && (
+        <p className="text-xs font-semibold text-[var(--ema-text-tertiary)] opacity-60 py-2">
+          暂无后台任务;提取任务会在对话结束后自动入队。
+        </p>
+      )}
+
+      {jobs && jobs.length > 0 && (
+        <ScrollArea viewportClassName="max-h-72">
+          <div className="flex flex-col gap-1.5 pr-1">
+            {jobs.map((job) => (
+              <div
+                key={job.id}
+                className="flex items-center gap-2 rounded-lg border border-[var(--ema-border)] bg-[var(--ema-surface-1)] px-3 py-2 text-xs"
+              >
+                <Badge variant={JOB_STATUS_VARIANT[job.status]} dot={job.status === 'running'}>
+                  {JOB_STATUS_LABEL[job.status]}
+                </Badge>
+                <span className="font-semibold text-[var(--ema-text-secondary)]">
+                  {JOB_KIND_LABEL[job.kind]}
+                </span>
+                <span className="text-[var(--ema-text-tertiary)] opacity-60">
+                  {relativeTime(job.createdAt)}
+                </span>
+                {job.error && (
+                  <span className="flex-1 truncate text-[var(--ema-danger)]" title={job.error}>
+                    {job.error}
+                  </span>
+                )}
+                <span className="flex-1" />
+                {job.status === 'failed' && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      void useMemoryStore.getState().retryJob(job.id)
+                        .catch((err: Error) => showToast(`重试失败: ${err.message}`, { variant: 'danger' }));
+                    }}
+                  >
+                    重试
+                  </Button>
+                )}
+                {(job.status === 'pending' || job.status === 'running') && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      void useMemoryStore.getState().cancelJob(job.id)
+                        .catch((err: Error) => showToast(`取消失败: ${err.message}`, { variant: 'danger' }));
+                    }}
+                  >
+                    取消
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+        </ScrollArea>
+      )}
+
+      <ConfirmDialog
+        open={confirmClear}
+        message="确定清除全部长期记忆？记忆文件将被移除且不可恢复。"
+        confirmText="全部清除"
+        onConfirm={() => {
+          setConfirmClear(false);
+          void run('clear_memory');
+        }}
+        onCancel={() => setConfirmClear(false)}
+      />
     </div>
   );
 }

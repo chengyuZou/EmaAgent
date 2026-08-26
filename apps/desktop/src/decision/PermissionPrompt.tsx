@@ -4,7 +4,7 @@ import { Button, Card, Progress } from '@ema-agent/ui';
 import { DecisionSubmissionFeedback, HumanDescriptionPanel } from './HumanDescriptionPanel.js';
 import { RawCommandPanel } from './RawCommandPanel.js';
 import type {
-  PermissionPrompt as PermissionPromptData,
+  PermissionRequest as PermissionPromptData,
   PermissionResponse,
 } from '@ema-agent/permission';
 
@@ -62,7 +62,7 @@ export function PermissionPrompt({
   return (
     <Card variant="elevated" padding="lg" className="shadow-[var(--ema-shadow-3)] max-w-lg w-full">
       <HumanDescriptionPanel
-        description={prompt.toolDescription ?? prompt.gateReason ?? `即将运行 ${prompt.toolName}`}
+        description={prompt.toolDescription ?? `即将运行 ${prompt.toolName}`}
         toolName={prompt.toolName}
         pending={false}
       />

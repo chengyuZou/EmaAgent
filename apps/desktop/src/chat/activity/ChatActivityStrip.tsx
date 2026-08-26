@@ -1,13 +1,10 @@
-// 在输入框上方以中心轴对称排列 Task 与 Diff，并负责原位展开 TaskList。
-import { useEffect, useMemo, useState, type JSX } from 'react';
+// 在输入框上方镜像当前 Turn 的 TODO，并保留最近 Turn 的文件变更入口。
+import { useEffect, useState, type JSX } from 'react';
 import { Button } from '@ema-agent/ui';
-import type { TaskSnapshot } from '@ema-agent/tasks';
+import { TodoWriteActivitySummary, TodoWriteArgsView } from '@ema-agent/builtin-tools/ui';
+import { BuiltinTools } from '@ema-agent/tools';
 import { useConversationStore } from '../../stores/conversation-store.js';
-import { useTaskStore } from '../../stores/taskStore.js';
 import { useLatestTurnDiffs } from '../review/reviewDiffs.js';
-import { TaskList } from './TaskList.js';
-
-const EMPTY_TASKS = new Map<string, TaskSnapshot>();
 
 /** 清单行只显示文件名; 完整路径进 tooltip。 */
 function baseName(filePath: string): string {
@@ -21,51 +18,48 @@ export function ChatActivityStrip({
   onOpenReview(): void;
 }): JSX.Element | null {
   const sessionId = useConversationStore((state) => state.viewedSessionId);
-  const sessionTasks = useTaskStore((state) => (
-    sessionId
-      ? state.tasksBySession.get(sessionId as string) ?? EMPTY_TASKS
-      : EMPTY_TASKS
+  const streaming = useConversationStore((state) => (
+    sessionId ? state.streamingMap.get(sessionId as string) : undefined
   ));
   const diffs = useLatestTurnDiffs(sessionId as string | null);
-  const [tasksOpen, setTasksOpen] = useState(false);
+  const [todoOpen, setTodoOpen] = useState(false);
   const [diffsOpen, setDiffsOpen] = useState(false);
 
   useEffect(() => {
-    setTasksOpen(false);
+    setTodoOpen(false);
     setDiffsOpen(false);
-    if (sessionId) void useTaskStore.getState().loadForSession(sessionId);
-  }, [sessionId]);
+  }, [sessionId, streaming?.turnId]);
 
-  const tasks = useMemo(
-    () => [...sessionTasks.values()].sort(
-      (left, right) => left.displayNumber - right.displayNumber,
-    ),
-    [sessionTasks],
-  );
-  const hasTasks = tasks.length > 0;
+  let todoArgs: unknown;
+  for (let index = (streaming?.slices.length ?? 0) - 1; index >= 0; index -= 1) {
+    const slice = streaming?.slices[index];
+    if (slice?.type === 'tool_use' && slice.name === BuiltinTools.TodoWrite.name && slice.args !== undefined) {
+      todoArgs = slice.args;
+      break;
+    }
+  }
+
+  const hasTodo = todoArgs !== undefined;
   const hasDiffs = diffs.length > 0;
-  if (!hasTasks && !hasDiffs) return null;
+  if (!hasTodo && !hasDiffs) return null;
 
-  const layout = hasTasks && hasDiffs ? 'both' : hasTasks ? 'task-only' : 'diff-only';
-  const completed = tasks.filter((task) => task.status === 'completed').length;
-  const currentTask = tasks.find((task) => task.status === 'in_progress')
-    ?? tasks.find((task) => task.status === 'pending');
+  const layout = hasTodo && hasDiffs ? 'both' : hasTodo ? 'todo-only' : 'diff-only';
   const additions = diffs.reduce((total, diff) => total + diff.additions, 0);
   const deletions = diffs.reduce((total, diff) => total + diff.deletions, 0);
 
   return (
     <div className="shrink-0 px-4 pt-2">
       <div className="mx-auto max-w-2xl">
-        {hasTasks && (
+        {hasTodo && (
           <div
             className="ema-collapsible mb-1.5"
             style={{
-              gridTemplateRows: tasksOpen ? '1fr' : '0fr',
-              opacity: tasksOpen ? 1 : 0,
+              gridTemplateRows: todoOpen ? '1fr' : '0fr',
+              opacity: todoOpen ? 1 : 0,
             }}
           >
-            <div>
-              <TaskList tasks={tasks} />
+            <div className="rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] p-2 shadow-[var(--ema-shadow-2)]">
+              <TodoWriteArgsView args={todoArgs} />
             </div>
           </div>
         )}
@@ -110,32 +104,17 @@ export function ChatActivityStrip({
 
         <div className="ema-activity-strip-track" data-layout={layout}>
           <div
-            className="ema-activity-strip-slot ema-activity-strip-slot--task"
-            data-visible={hasTasks}
-            aria-hidden={!hasTasks}
+            className="ema-activity-strip-slot ema-activity-strip-slot--todo"
+            data-visible={hasTodo}
+            aria-hidden={!hasTodo}
           >
-            <Button
-              variant="ghost"
-              className="ema-press flex h-8 w-full items-center gap-2 rounded-lg border border-[var(--ema-border)] bg-[var(--ema-surface-1)] px-3 text-xs shadow-[var(--ema-shadow-1)]"
-              onClick={() => setTasksOpen((open) => !open)}
-              disabled={!hasTasks}
-              aria-expanded={tasksOpen}
-            >
-              <span className="i-lucide:list-checks shrink-0 text-sm text-[var(--ema-primary)]" aria-hidden />
-              <span className="shrink-0 text-[var(--ema-text-secondary)]">
-                任务 {completed}/{tasks.length}
-              </span>
-              {currentTask && (
-                <span className="min-w-0 flex-1 truncate text-left text-[var(--ema-text-tertiary)]">
-                  {currentTask.activeForm ?? currentTask.subject}
-                </span>
-              )}
-              <span
-                className="i-lucide:chevron-up ml-auto shrink-0 text-xs text-[var(--ema-text-tertiary)] transition-transform duration-[var(--ema-duration-base)]"
-                style={{ transform: tasksOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}
-                aria-hidden
+            {hasTodo && (
+              <TodoWriteActivitySummary
+                args={todoArgs}
+                open={todoOpen}
+                onToggle={() => setTodoOpen((open) => !open)}
               />
-            </Button>
+            )}
           </div>
 
           <div

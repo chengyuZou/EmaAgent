@@ -2,11 +2,11 @@
 import { readFileSync } from 'node:fs';
 import { Hono } from 'hono';
 import { getDisksInfo } from '@ema-agent/system';
-import type { SandboxStatusWire } from '../../composition/tools.js';
+import type { SandboxStatus } from '@ema-agent/sandbox';
 
 export interface SystemStatusRouteDeps {
   readonly activeDataDir: string;
-  readonly sandboxStatus: SandboxStatusWire;
+  readonly sandboxStatus: SandboxStatus;
 }
 
 /** 包版本在模块加载时读一次；运行期不变。 */

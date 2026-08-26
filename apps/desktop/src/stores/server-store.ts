@@ -1,19 +1,19 @@
 /**
- * Sidecar store — port discovery + health polling.
+ * Server store — port discovery + health polling.
  */
 import { create } from 'zustand';
 import { tauriBridge } from '../lib/tauri-bridge.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type SidecarStatus =
+export type ServerStatus =
   | { kind: 'unknown' }
   | { kind: 'pending' }
   | { kind: 'ok'; port: number; latencyMs: number }
   | { kind: 'error'; reason: string };
 
-export interface SidecarStoreState {
-  status:        SidecarStatus;
+export interface ServerStoreState {
+  status:        ServerStatus;
   lastKnownPort: number | null;
   /** 后台健康检查正在执行；不会把已连接状态降成 pending。 */
   checking: boolean;
@@ -29,7 +29,7 @@ export interface SidecarStoreState {
 const HEALTH_TIMEOUT_MS = 5_000;
 let refreshInFlight: Promise<void> | null = null;
 
-export const useSidecarStore = create<SidecarStoreState>((set, get) => ({
+export const useServerStore = create<ServerStoreState>((set, get) => ({
   status:        { kind: 'unknown' },
   lastKnownPort: null,
   checking: false,
@@ -44,7 +44,7 @@ export const useSidecarStore = create<SidecarStoreState>((set, get) => ({
       set({
         checking: true,
         // pending 只表示首次连接；已建立连接后的复检不卸载任何业务 UI。
-        ...(currentStatus.kind === 'unknown' ? { status: { kind: 'pending' } as SidecarStatus } : {}),
+        ...(currentStatus.kind === 'unknown' ? { status: { kind: 'pending' } as ServerStatus } : {}),
       });
 
       const controller = new AbortController();

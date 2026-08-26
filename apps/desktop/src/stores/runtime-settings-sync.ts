@@ -7,7 +7,7 @@ import {
 } from './settings-store.js';
 import { tauriBridge } from '../lib/tauri-bridge.js';
 
-export function useRuntimeSettingsSync(sidecarReady: boolean): void {
+export function useRuntimeSettingsSync(serverReady: boolean): void {
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     let disposed = false;
@@ -31,7 +31,7 @@ export function useRuntimeSettingsSync(sidecarReady: boolean): void {
   }, []);
 
   useEffect(() => {
-    if (!sidecarReady) return;
+    if (!serverReady) return;
     void useSettingsStore.getState().refreshRuntimeSettings().catch(() => {});
-  }, [sidecarReady]);
+  }, [serverReady]);
 }

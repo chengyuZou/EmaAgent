@@ -1,10 +1,9 @@
 /**
  * AttachmentChip — single file attachment displayed as a chip.
  * Used in both the ChatInput preview (with remove button) and UserBubble history.
+ * 路径与文件句柄不进传输层，chip 只做展示，不提供打开动作。
  */
 import type { JSX } from 'react';
-import { tauriBridge } from '../../lib/tauri-bridge.js';
-import type { AttachmentInputWire } from '../../api/turns.js';
 
 // ── Icon + color by MIME ──────────────────────────────────────────────────────
 
@@ -43,31 +42,31 @@ function fmtSize(bytes: number): string {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
+/** 待发送附件（TurnAttachmentInput+id）与历史附件（传输层的 byteSize 形态）共同的展示投影。 */
 export interface AttachmentChipProps {
-  attachment: AttachmentInputWire;
+  attachment: {
+    name?: string;
+    mimeType?: string;
+    size?: number;
+    byteSize?: number;
+  };
   /** Show ✕ remove button (input preview mode). */
   onRemove?: () => void;
 }
 
 export function AttachmentChip({ attachment, onRemove }: AttachmentChipProps): JSX.Element {
-  const { icon, color } = chipMeta(attachment.mimeType, attachment.name);
-  const sizeStr = fmtSize(attachment.size);
-
-  const handleOpen = (): void => {
-    if (attachment.fileHandle) {
-      void tauriBridge.openAuthorizedFile(attachment.fileHandle).catch(() => {});
-    }
-  };
+  const name = attachment.name ?? '附件';
+  const { icon, color } = chipMeta(attachment.mimeType ?? '', name);
+  const sizeStr = fmtSize(attachment.size ?? attachment.byteSize ?? 0);
 
   return (
     <div
-      className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 cursor-pointer group transition-colors ema-chip-in bg-[var(--ema-surface-2)]"
+      className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 group transition-colors ema-chip-in bg-[var(--ema-surface-2)]"
       style={{
         width:      152,
         border:     '1px solid var(--ema-border)',
       }}
-      onClick={handleOpen}
-      title={attachment.name}
+      title={name}
     >
       {/* File type icon */}
       <span
@@ -81,7 +80,7 @@ export function AttachmentChip({ attachment, onRemove }: AttachmentChipProps): J
         <div
           className="text-[11px] leading-tight truncate font-medium text-[var(--ema-text-primary)]"
         >
-          {attachment.name}
+          {name}
         </div>
         {sizeStr && (
           <div className="text-[10px] leading-none mt-0.5 text-[var(--ema-text-tertiary)]">
@@ -95,7 +94,7 @@ export function AttachmentChip({ attachment, onRemove }: AttachmentChipProps): J
         <button
           className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity -mr-0.5 text-[var(--ema-text-tertiary)] hover:text-[var(--ema-danger)]"
           onClick={(e) => { e.stopPropagation(); onRemove(); }}
-          aria-label={`移除 ${attachment.name}`}
+          aria-label={`移除 ${name}`}
         >
           <span className="i-lucide:x text-sm" aria-hidden />
         </button>

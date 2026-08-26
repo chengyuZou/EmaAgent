@@ -10,7 +10,7 @@
  * Positioned at the top of the transparent window so it floats above Ema.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { tauriBridge } from '@ema-agent/desktop-ui';
+import { tauriBridge } from '../lib/tauri-bridge.js';
 
 const FADE_DELAY_MS = 4000;
 const FADE_OUT_MS   = 600;

@@ -63,15 +63,14 @@ export const sessionActionsRoute = (deps: SessionActionsRouteDeps) =>
         throw error;
       }
     })
-    .post('/:sessionId/fork', async context => {
-      // 空 body 按 {} 接受（fork 到最新）：保留手写解析，不用 jsonBody。
-      const parsed = forkBody.safeParse(await context.req.json().catch(() => ({})));
-      if (!parsed.success) {
-        return context.json({ error: 'invalid_request', details: z.flattenError(parsed.error) }, 400);
-      }
+    // fork 到最新也要显式发 {}：契约一律声明，不吞真空 body。
+    .post('/:sessionId/fork', jsonBody(forkBody), async context => {
       try {
         return context.json(
-          deps.session.forkSession(context.req.param('sessionId'), parsed.data.untilTurnId),
+          deps.session.forkSession(
+            context.req.param('sessionId'),
+            context.req.valid('json').untilTurnId,
+          ),
           201,
         );
       } catch (error) {

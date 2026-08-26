@@ -38,7 +38,7 @@ function baseTabLabel(tab: WorkspaceTab): string {
 function AgentRunTabLabel({ agentRunId }: { agentRunId: string }): JSX.Element {
   const title = useAgentRunStore((s) => {
     const run = s.runs.get(agentRunId);
-    return run?.purpose ?? run?.live?.promptExcerpt ?? null;
+    return run?.description ?? run?.live?.promptExcerpt ?? null;
   });
   return <span className="truncate">{title ?? '子智能体'}</span>;
 }

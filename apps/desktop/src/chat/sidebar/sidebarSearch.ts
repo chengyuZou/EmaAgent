@@ -1,5 +1,8 @@
 // 侧栏会话搜索的本地排序与模糊评分,纯函数无 UI 依赖。
-import type { SessionSearchItem, SessionWire } from '../../api/sessions.js';
+import type { SessionSearchResult } from '../../api/sessions.js';
+import type { SidebarSession } from './sidebarFormat.js';
+
+export type SessionSearchItem = SessionSearchResult['results'][number];
 
 export function rankSearchResults(query: string, results: SessionSearchItem[]): SessionSearchItem[] {
   return [...results].sort((a, b) => {
@@ -72,7 +75,7 @@ function normaliseSearchText(value: string): string {
   return value.toLowerCase().replace(/\s+/g, '');
 }
 
-export function toRecentSearchItem(session: SessionWire): SessionSearchItem {
+export function toRecentSearchItem(session: SidebarSession): SessionSearchItem {
   return {
     session,
     matchKind: 'title',

@@ -4,7 +4,7 @@ import { IconButton, Textarea, type TextareaHandle, Switch } from '@ema-agent/ui
 import { useConversationStore } from '../../stores/conversation-store.js';
 import { useSessionStore } from '../../stores/session-store.js';
 import { useUiStore } from '../../stores/ui-store.js';
-import { useSidecarStore } from '../../stores/sidecar-store.js';
+import { useServerStore } from '../../stores/server-store.js';
 import { ExecutionProfileSelector } from './ExecutionProfileSelector.js';
 import { DecisionLayer } from '../../decision/DecisionLayer.js';
 import { ModelPicker, type ModelSelection } from './ModelPicker.js';
@@ -12,27 +12,23 @@ import { findEnabledModel, useModelCatalogStore } from '../../stores/model-catal
 import { AttachmentChip } from '../messages/AttachmentChip.js';
 import { showToast } from '../../lib/toast.js';
 import { tauriBridge } from '../../lib/tauri-bridge.js';
-import type { AttachmentInputWire } from '../../api/turns.js';
-import { authorizedFileToAttachment } from './attachmentInput.js';
+import { filePathToAttachment, type PendingAttachment } from './attachmentInput.js';
 import { KbButton } from './KbScopePicker.js';
 import { WorkspaceButton } from './WorkspaceButton.js';
 
 export function ChatInput(): JSX.Element {
   const viewedId   = useConversationStore((s) => s.viewedSessionId);
   const ttsEnabled = useUiStore((s) => s.ttsEnabled);
-  const sidecarReady = useSidecarStore((s) => s.status.kind === 'ok');
+  const serverReady = useServerStore((s) => s.status.kind === 'ok');
 
   const initialDraft = useConversationStore.getState().draftMap.get(viewedId as string ?? '') ?? '';
   const [text, setText] = useState(initialDraft);
-  const [pendingAttachments, setPendingAttachments] = useState<AttachmentInputWire[]>([]);
+  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   // Map<kbId, assetId[]> — per-KB doc selection; persists when switching library tabs.
   const [selectedScopes,   setSelectedScopes]   = useState<Map<string, string[]>>(new Map());
   const [thinkingEnabled,  setThinkingEnabled]  = useState(false);
-  // 拖动上传：文件拖入对话框区域时高亮
-  const [isDragOver,       setIsDragOver]       = useState(false);
   const textareaRef     = useRef<TextareaHandle>(null);
-  const inputBoxRef     = useRef<HTMLDivElement>(null); // 拖放命中检测基准
   const prevViewedIdRef = useRef(viewedId);
   const invalidModelCleanupRef = useRef<string | null>(null);
   const TEXTAREA_MAX_H  = 200; // px — beyond this the textarea scrolls
@@ -44,15 +40,18 @@ export function ChatInput(): JSX.Element {
   const modelCatalogStatus = useModelCatalogStore((state) => state.status);
   const selectedModelDefinition = findEnabledModel(
     modelCatalog,
-    viewedSession?.preferredProviderConfigId,
-    viewedSession?.preferredModelId,
+    viewedSession?.providerId,
+    viewedSession?.modelId,
   );
   const selectedModel: ModelSelection | null =
-    viewedSession?.preferredProviderConfigId && viewedSession.preferredModelId
+    viewedSession?.providerId && viewedSession.modelId
       ? {
-          providerId: viewedSession.preferredProviderConfigId,
-          model: viewedSession.preferredModelId,
-          reasoning: selectedModelDefinition?.reasoning,
+          providerId: viewedSession.providerId,
+          model: viewedSession.modelId,
+          // 可用模型是能力联合，reasoning 只在 llm 成员上存在（目录本就只加载 llm）。
+          reasoning: selectedModelDefinition?.capability === 'llm'
+            ? selectedModelDefinition.reasoning ?? undefined
+            : undefined,
         }
       : null;
 
@@ -67,8 +66,8 @@ export function ChatInput(): JSX.Element {
   // 目录成功加载后才清理已失效选择；网络失败不能误删用户的持久化偏好。
   useEffect(() => {
     if (modelCatalogStatus !== 'ready' || !viewedId) return;
-    const providerConfigId = viewedSession?.preferredProviderConfigId;
-    const modelId = viewedSession?.preferredModelId;
+    const providerConfigId = viewedSession?.providerId;
+    const modelId = viewedSession?.modelId;
     if (!providerConfigId || !modelId) {
       invalidModelCleanupRef.current = null;
       return;
@@ -92,8 +91,8 @@ export function ChatInput(): JSX.Element {
     modelCatalogStatus,
     selectedModelDefinition,
     viewedId,
-    viewedSession?.preferredModelId,
-    viewedSession?.preferredProviderConfigId,
+    viewedSession?.modelId,
+    viewedSession?.providerId,
   ]);
 
   // Auto-resize textarea height based on content, capped at TEXTAREA_MAX_H.
@@ -113,7 +112,7 @@ export function ChatInput(): JSX.Element {
   );
   // 附件-only 也可发送（后端 turns.ts refine 同步放行）
   const canSend = (text.trim().length > 0 || pendingAttachments.length > 0)
-    && sidecarReady
+    && serverReady
     && !isStreamingHere
     && !isSubmitting;
 
@@ -122,11 +121,11 @@ export function ChatInput(): JSX.Element {
     if (viewedId) useConversationStore.getState().setDraft(viewedId, value);
   }
 
-  // 多选文件 + 批量拿真实元数据。目录/不可访问文件过滤掉。
+  // 多选文件：原生选框直接返回绝对路径，元数据由 Server realpath/stat 权威化。
   async function pickAttachment(): Promise<void> {
-    const files = await tauriBridge.pickAuthorizedFiles();
-    if (files.length === 0) return;
-    const atts = files.map(authorizedFileToAttachment);
+    const paths = await tauriBridge.openFileDialogMultiple();
+    if (paths.length === 0) return;
+    const atts = paths.map(filePathToAttachment);
     if (atts.length === 0) {
       showToast('所选文件不可用', { variant: 'warning' });
       return;
@@ -137,33 +136,6 @@ export function ChatInput(): JSX.Element {
   function removeAttachment(id: string): void {
     setPendingAttachments((prev) => prev.filter((a) => a.id !== id));
   }
-
-  // 拖动上传：Tauri 原生 onDragDropEvent（webview 级，物理像素）。位置命中对话框区域才收。
-  // 物理像素 → CSS 像素需除以 devicePixelRatio，才能与 getBoundingClientRect 比较。
-  useEffect(() => {
-    let unlisten = () => {};
-    void tauriBridge.onDragDrop((ev) => {
-      const rect = inputBoxRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const inside = ev.position
-        ? (ev.position.x / window.devicePixelRatio >= rect.left &&
-           ev.position.x / window.devicePixelRatio <= rect.right &&
-           ev.position.y / window.devicePixelRatio >= rect.top &&
-           ev.position.y / window.devicePixelRatio <= rect.bottom)
-        : false;
-      if (ev.type === 'enter' || ev.type === 'over') {
-        setIsDragOver(inside);
-      } else if (ev.type === 'drop') {
-        setIsDragOver(false);
-        const files = ev.files ?? [];
-        if (!inside || files.length === 0) return;
-        setPendingAttachments((prev) => [...prev, ...files.map(authorizedFileToAttachment)]);
-      } else if (ev.type === 'leave') {
-        setIsDragOver(false);
-      }
-    }).then((u) => { unlisten = u; });
-    return () => unlisten();
-  }, []);
 
   const send = useCallback(async (): Promise<void> => {
     if (!canSend) return;
@@ -178,21 +150,24 @@ export function ChatInput(): JSX.Element {
         narrativePolicy,
         text: submittedText.trim(),
         attachments: submittedAttachments.length > 0 ? submittedAttachments : undefined,
-        providerId:      selectedModel?.providerId,
-        model:           selectedModel?.model,
+        // 模型身份与推理配置同生同灭；V1 只有布尔思考开关，统一映射到 medium 档。
+        ...(selectedModel
+          ? {
+              modelSelection: {
+                providerId: selectedModel.providerId,
+                modelId: selectedModel.model,
+                thinkingEnabled,
+                thinkingEffort: 'medium' as const,
+              },
+            }
+          : {}),
         ttsEnabled,
-        thinkingEnabled: thinkingEnabled || undefined,
         // KB scope applies to Work only. Selection persists across sends.
         ...(() => {
           if (executionProfile !== 'work' || selectedScopes.size === 0) return {};
-          const scopes = [...selectedScopes.entries()]
-            .filter(([, ids]) => ids.length > 0)
-            .map(([kbId, assetIds]) => ({ kbId, assetIds }));
-          if (scopes.length === 0) return {};
-          return {
-            kbIds:         scopes.map((s) => s.kbId),
-            kbAssetScopes: scopes,
-          };
+          const assetIds = [...selectedScopes.values()].flat();
+          if (assetIds.length === 0) return {};
+          return { knowledgeAssetIds: assetIds };
         })(),
       });
 
@@ -261,25 +236,8 @@ export function ChatInput(): JSX.Element {
 
         {/* ── Unified input box ── */}
         <div
-          ref={inputBoxRef}
           className="relative rounded-2xl transition-shadow bg-[var(--ema-surface-2)]"
-          style={{
-            boxShadow: isDragOver
-              ? 'var(--ema-shadow-dragover)'
-              : undefined,
-          }}
         >
-          {/* 拖放遮罩 — 拖入对话框区域时显示 */}
-          {isDragOver && (
-            <div className="absolute inset-0 z-10 rounded-2xl flex items-center justify-center pointer-events-none ema-fade-in"
-                 style={{ background: 'color-mix(in srgb, var(--ema-primary) 14%, transparent)' }}>
-              <div className="flex items-center gap-2 text-sm font-medium text-[var(--ema-text-primary)]">
-                <span className="i-lucide:download text-xl" aria-hidden />
-                放下以上传文件
-              </div>
-            </div>
-          )}
-
           {/* Attachment strip (top half, shown only when files queued) */}
           {pendingAttachments.length > 0 && (
             <>
@@ -355,7 +313,7 @@ export function ChatInput(): JSX.Element {
               onSelect={(sel) => {
                 if (viewedId) {
                   void useSessionStore.getState().setPreferredModel(viewedId, {
-                    providerConfigId: sel.providerId,
+                    providerId: sel.providerId,
                     modelId: sel.model,
                   }).catch((error: unknown) => {
                     showToast(

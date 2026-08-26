@@ -1,24 +1,24 @@
 // 展示角色卡列表、新建入口与删除确认,并在具名对话框中编辑选中的角色卡。
 import { useState, type JSX } from 'react';
 import { Badge, Button, Callout, Card, ConfirmDialog, Dialog, ScrollArea } from '@ema-agent/ui';
-import { useCardStore } from '../../stores/card-store.js';
-import type { CharacterCard } from '../../api/cards.js';
-import { CharacterCardEditor } from './CharacterCardEditor.js';
-import { CreateCardDialog } from './CreateCardDialog.js';
+import { useCharacterStore } from '../../stores/character-store.js';
+import type { Character } from '../../api/characters.js';
+import { CharacterEditor } from './CharacterEditor.js';
+import { CreateCharacterDialog } from './CreateCharacterDialog.js';
 import { showToast } from '../../lib/toast.js';
 
-export function CardsTab(): JSX.Element {
-  const cards        = useCardStore((s) => s.cards);
-  const activeCardId = useCardStore((s) => s.activeCardId);
+export function CharactersTab(): JSX.Element {
+  const characters        = useCharacterStore((s) => s.characters);
+  const activeCharacterId = useCharacterStore((s) => s.activeCharacterId);
   const [selectedId, setSelectedId]   = useState<string | null>(null);
   const [createOpen, setCreateOpen]   = useState(false);
-  const [pendingDelete, setPendingDelete] = useState<CharacterCard | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Character | null>(null);
 
-  const selected = cards.find((c) => c.id === selectedId);
+  const selected = characters.find((c) => c.id === selectedId);
 
   async function handleActivate(id: string): Promise<void> {
     try {
-      await useCardStore.getState().activate(id);
+      await useCharacterStore.getState().activate(id);
       showToast('已切换角色', { variant: 'success' });
     } catch (err: unknown) {
       showToast(`切换失败: ${err instanceof Error ? err.message : 'Unknown'}`, { variant: 'danger' });
@@ -27,12 +27,12 @@ export function CardsTab(): JSX.Element {
 
   async function confirmDelete(): Promise<void> {
     if (!pendingDelete) return;
-    const card = pendingDelete;
+    const character = pendingDelete;
     setPendingDelete(null);
-    if (selectedId === card.id) setSelectedId(null);
+    if (selectedId === character.id) setSelectedId(null);
     try {
-      await useCardStore.getState().delete(card.id);
-      showToast(`已删除 ${card.name}`, { variant: 'success' });
+      await useCharacterStore.getState().delete(character.id);
+      showToast(`已删除 ${character.name}`, { variant: 'success' });
     } catch (err: unknown) {
       showToast(`删除失败: ${err instanceof Error ? err.message : 'Unknown'}`, { variant: 'danger' });
     }
@@ -51,15 +51,15 @@ export function CardsTab(): JSX.Element {
 
       <ScrollArea className="flex-1" viewportClassName="pb-2">
         <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4 pr-1">
-          {cards.map((card) => (
-            <CardListItem
-              key={card.id}
-              card={card}
-              isActive={card.id === activeCardId}
-              onSelect={() => setSelectedId(card.id)}
-              onDelete={card.isBuiltin || card.id === activeCardId
+          {characters.map((character) => (
+            <CharacterListItem
+              key={character.id}
+              character={character}
+              isActive={character.id === activeCharacterId}
+              onSelect={() => setSelectedId(character.id)}
+              onDelete={character.isBuiltin || character.id === activeCharacterId
                 ? undefined
-                : () => setPendingDelete(card)}
+                : () => setPendingDelete(character)}
             />
           ))}
         </div>
@@ -73,14 +73,14 @@ export function CardsTab(): JSX.Element {
         className="ema-dialog-decorate"
       >
         {selected && (
-          <CharacterCardEditor
-            card={selected}
+          <CharacterEditor
+            character={selected}
             onActivate={() => handleActivate(selected.id)}
           />
         )}
       </Dialog>
 
-      <CreateCardDialog
+      <CreateCharacterDialog
         key={String(createOpen)}
         open={createOpen}
         onOpenChange={setCreateOpen}
@@ -99,12 +99,12 @@ export function CardsTab(): JSX.Element {
   );
 }
 
-// ── Card list item (排版抄 AIRI CardListItem: min-h-120 / p-5 / text-lg / text-sm desc) ──
+// ── Character list item (排版抄 AIRI CardListItem: min-h-120 / p-5 / text-lg / text-sm desc) ──
 
-function CardListItem({
-  card, isActive, onSelect, onDelete,
+function CharacterListItem({
+  character, isActive, onSelect, onDelete,
 }: {
-  card:     CharacterCard;
+  character: Character;
   isActive: boolean;
   onSelect: () => void;
   onDelete?: () => void;
@@ -120,10 +120,10 @@ function CardListItem({
       onClick={onSelect}
     >
       <div className="flex items-start justify-between gap-2">
-        <span className="text-lg font-semibold text-[var(--ema-text-primary)] leading-snug truncate">{card.name}</span>
+        <span className="text-lg font-semibold text-[var(--ema-text-primary)] leading-snug truncate">{character.name}</span>
         <div className="flex items-center gap-1 shrink-0">
           {isActive && <Badge variant="success" dot>当前</Badge>}
-          {card.isBuiltin && <Badge variant="neutral">内置</Badge>}
+          {character.isBuiltin && <Badge variant="neutral">内置</Badge>}
           {onDelete && (
             <Button
               variant="ghost"
@@ -136,12 +136,9 @@ function CardListItem({
           )}
         </div>
       </div>
-      {card.description && (
-        <p className="text-sm text-[var(--ema-text-tertiary)] line-clamp-3 min-h-[40px] flex-1">{card.description}</p>
+      {character.description && (
+        <p className="text-sm text-[var(--ema-text-tertiary)] line-clamp-3 min-h-[40px] flex-1">{character.description}</p>
       )}
-      <div className="flex items-center justify-between text-xs text-[var(--ema-text-tertiary)]">
-        <span>v{card.version}</span>
-      </div>
     </Card>
   );
 }

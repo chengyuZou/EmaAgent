@@ -10,7 +10,7 @@ import {
 } from 'react';
 import { Tooltip, TooltipProvider } from '@ema-agent/ui';
 
-import type { TurnIndexItemWire } from '@ema-agent/session';
+import type { TurnIndexPage } from '../../api/sessions.js';
 import {
   EMPTY_SESSION_HISTORY,
   useSessionHistoryStore,
@@ -20,6 +20,8 @@ import {
   turnRailMarkVisual,
   visibleTurnIndex,
 } from './turnRailModel.js';
+
+type TurnIndexItem = TurnIndexPage['items'][number];
 
 interface TurnRailProps {
   sessionId: string;
@@ -142,7 +144,7 @@ export function TurnRail({ sessionId, onSelectTurn }: TurnRailProps): JSX.Elemen
                 onFocus={() => setHoveredIndex(index)}
                 onBlur={() => setHoveredIndex(null)}
                 onClick={() => void onSelectTurn(item.turnId)}
-                aria-label={`跳转到 ${formatTurnTime(item.startedAt)} 的 Turn`}
+                aria-label={`跳转到 ${formatTurnTime(item.createdAt)} 的 Turn`}
                 aria-current={isCurrent ? 'step' : undefined}
               >
                 <span
@@ -159,11 +161,11 @@ export function TurnRail({ sessionId, onSelectTurn }: TurnRailProps): JSX.Elemen
   );
 }
 
-function TurnRailPreview({ item }: { item: TurnIndexItemWire }): JSX.Element {
+function TurnRailPreview({ item }: { item: TurnIndexItem }): JSX.Element {
   return (
     <div className="w-64 py-1">
       <div className="mb-1 flex items-center gap-2 text-[11px] text-[var(--ema-text-tertiary)]">
-        <span>{formatTurnTime(item.startedAt)}</span>
+        <span>{formatTurnTime(item.createdAt)}</span>
         <span>{item.executionProfile === 'work' ? 'Work' : 'Chat'}</span>
         <span>{formatTurnStatus(item.status)}</span>
       </div>
@@ -183,11 +185,10 @@ function formatTurnTime(timestamp: number): string {
   }).format(timestamp);
 }
 
-function formatTurnStatus(status: TurnIndexItemWire['status']): string {
+function formatTurnStatus(status: TurnIndexItem['status']): string {
   if (status === 'completed') return '已完成';
   if (status === 'running') return '进行中';
   if (status === 'aborted') return '已停止';
-  if (status === 'pending') return '等待中';
   if (status === 'failed') return '失败';
   return status;
 }

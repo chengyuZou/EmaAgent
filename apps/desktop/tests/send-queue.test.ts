@@ -2,7 +2,7 @@
  * send-queue.test.ts — serial execution, clear, error path, event order.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { createSendQueue } from './send-queue.js';
+import { createSendQueue } from '../src/lib/send-queue.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

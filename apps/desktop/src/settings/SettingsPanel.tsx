@@ -10,16 +10,16 @@ import { useState, useEffect, type JSX } from 'react';
 import { Button } from '@ema-agent/ui';
 import { ErrorBoundary } from '../lib/error-boundary.js';
 import { useSettingsStore } from '../stores/settings-store.js';
-import { useCardStore } from '../stores/card-store.js';
+import { useCharacterStore } from '../stores/character-store.js';
 import { useSkillStore } from '../stores/skill-store.js';
 import { useMcpStore } from '../stores/mcp-store.js';
 import { useShallow } from 'zustand/react/shallow';
-import { useKbStore, selectIngestSummary } from '../stores/kb-store.js';
+import { useKnowledgeStore, selectIngestSummary } from '../stores/knowledge-store.js';
 import { useThemeSync } from '../stores/theme-store.js';
 import { mountSystemEvents } from '../lib/system-sse.js';
 import { ProvidersTab } from './providers/ProvidersTab.js';
 import { BindingsTab } from './providers/BindingsTab.js';
-import { CardsTab } from './character/CardsTab.js';
+import { CharactersTab } from './character/CharactersTab.js';
 import { SkillsTab } from './skills/SkillsTab.js';
 import { McpTab } from './mcp/McpTab.js';
 import { MemoryTab } from './memory/MemoryTab.js';
@@ -35,7 +35,7 @@ import { GeneralTab } from './general/GeneralTab.js';
 
 type SectionId =
   | 'providers' | 'bindings'
-  | 'cards'
+  | 'characters'
   | 'skills'    | 'mcp'
   | 'memory'
   | 'knowledge-base'
@@ -64,7 +64,7 @@ const GROUPS: GroupDef[] = [
   {
     id: 'character', label: '角色', icon: 'i-solar:emoji-funny-square-bold-duotone',
     sections: [
-      { id: 'cards', label: '角色卡' },
+      { id: 'characters', label: '角色卡' },
     ],
   },
   {
@@ -112,7 +112,7 @@ function KbNavIndicator(): JSX.Element | null {
   // useShallow: selectIngestSummary returns a fresh object each call; under
   // zustand v5's Object.is equality that triggers a render-during-store-change
   // loop (Maximum update depth exceeded). Shallow-compare the fields instead.
-  const sum = useKbStore(useShallow(selectIngestSummary));
+  const sum = useKnowledgeStore(useShallow(selectIngestSummary));
   if (sum.state === 'idle') return null;
   // key={sum.state} → React remounts on each state change so ema-fade-in replays
   // (running count → done dot → failed dot all animate in, not just the first).
@@ -134,7 +134,7 @@ function SectionContent({ id }: { id: SectionId }): JSX.Element {
   switch (id) {
     case 'providers':      return <ProvidersTab />;
     case 'bindings':       return <BindingsTab />;
-    case 'cards':          return <CardsTab />;
+    case 'characters':     return <CharactersTab />;
     case 'skills':         return <SkillsTab />;
     case 'mcp':            return <McpTab />;
     case 'memory':         return <MemoryTab />;
@@ -166,10 +166,10 @@ export function SettingsPanel(): JSX.Element {
 
   useEffect(() => {
     void useSettingsStore.getState().loadAll();
-    void useCardStore.getState().load();
+    void useCharacterStore.getState().load();
     void useSkillStore.getState().load();
     void useMcpStore.getState().load();
-    void useKbStore.getState().loadIngestTasks();  // hydrate queue → nav indicator
+    void useKnowledgeStore.getState().loadIngestTasks();  // hydrate queue → nav indicator
   }, []);
 
   function toggleGroup(groupId: GroupId): void {

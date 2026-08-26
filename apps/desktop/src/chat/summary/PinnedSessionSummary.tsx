@@ -1,9 +1,9 @@
 // 置顶摘要浮层：工作区事实、运行活动计数与来源概况，点击打开对应工作区标签。
+// git 数据源待后端恢复：/api/git 路由已删除，git 摘要恒为 null，Git 行 JSX 原样保留。
 import { useEffect, useState, type JSX } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 
-import { gitApi, type GitSummary } from '../../api/git.js';
-import type { GitSummaryOk } from '@ema-agent/git-utils';
+import type { GitSummary, GitSummaryOk } from '@ema-agent/git';
 import { useAgentRunStore } from '../../stores/agentRunStore.js';
 import { useBackgroundProcessStore } from '../../stores/backgroundProcessStore.js';
 import { useSessionAttachmentStore } from '../../stores/session-attachment-store.js';
@@ -23,18 +23,9 @@ export function PinnedSessionSummary({ sessionId }: PinnedSessionSummaryProps): 
     s.sessions.byId.get(sessionId as string)?.workspaceRoot ?? null);
 
   // Git 摘要:仅 capability=ok 渲染;非仓库、无 git、查询失败都整行隐藏,不展示降级文案。
-  const [git, setGit] = useState<GitSummary | null>(null);
-  useEffect(() => {
-    if (!workspaceRoot) {
-      setGit(null);
-      return undefined;
-    }
-    let cancelled = false;
-    gitApi.getSummary(sessionId as string)
-      .then((summary) => { if (!cancelled) setGit(summary); })
-      .catch(() => { if (!cancelled) setGit(null); });
-    return () => { cancelled = true; };
-  }, [sessionId, workspaceRoot]);
+  // git 数据源待后端恢复：路由恢复前恒为 null，Git 行保持隐藏；恢复时在此按
+  // sessionId/workspaceRoot 重新拉取 gitApi.getSummary。
+  const [git] = useState<GitSummary | null>(null);
 
   const activity = useAgentRunStore(useShallow((s) => {
     let running = 0;

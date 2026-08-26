@@ -1,13 +1,13 @@
 // 文档导入表单:文件选择与入队,后台处理进度由处理队列与 SSE 呈现。
 import { useState, type JSX } from 'react';
 import { Button, Callout, Input, Spinner } from '@ema-agent/ui';
-import { useKbStore } from '../../stores/kb-store.js';
+import { useKnowledgeStore } from '../../stores/knowledge-store.js';
 import { tauriBridge } from '../../lib/tauri-bridge.js';
 import { showToast } from '../../lib/toast.js';
 
 export function IngestForm({ onDone }: { onDone(): void }): JSX.Element {
-  const ingesting   = useKbStore((s) => s.ingesting);
-  const ingestError = useKbStore((s) => s.ingestError);
+  const ingesting   = useKnowledgeStore((s) => s.ingesting);
+  const ingestError = useKnowledgeStore((s) => s.ingestError);
   const [filePath, setFilePath] = useState('');
 
   async function pickFile(): Promise<void> {
@@ -26,8 +26,8 @@ export function IngestForm({ onDone }: { onDone(): void }): JSX.Element {
       showToast('请选择或输入文件路径', { variant: 'warning' });
       return;
     }
-    await useKbStore.getState().ingest(filePath.trim());
-    if (!useKbStore.getState().ingestError) {
+    await useKnowledgeStore.getState().ingest(filePath.trim());
+    if (!useKnowledgeStore.getState().ingestError) {
       setFilePath('');
       onDone();
       showToast('已加入处理队列', { variant: 'success' });

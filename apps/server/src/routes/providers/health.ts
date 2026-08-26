@@ -6,17 +6,22 @@ import { createEmbedCall } from '@ema-agent/embed';
 import { createLlmCall } from '@ema-agent/llm';
 import {
   ProviderError,
-  type ModelCapability,
   type ProviderModels,
   type Providers,
 } from '@ema-agent/providers';
 import { createRerankCall } from '@ema-agent/rerank';
 import { providerError } from './configs.js';
+import { jsonBody, paramValidator } from '../validate.js';
 
 const PROBE_TIMEOUT_MS = 15_000;
 /** 探活只支持有无输入即可验证连通性的能力。 */
 const PROBE_CAPABILITIES = ['llm', 'embed', 'rerank'] as const;
 type ProbeCapability = typeof PROBE_CAPABILITIES[number];
+
+const probeParams = z.object({
+  providerId: z.string().min(1),
+  capability: z.enum(PROBE_CAPABILITIES),
+});
 
 const probeBody = z.object({
   modelId: z.string().min(1).optional(),
@@ -29,28 +34,19 @@ export interface ProviderHealthRouteDeps {
 
 export const providerHealthRoute = (deps: ProviderHealthRouteDeps) =>
   new Hono()
-    .post('/:providerId/probe/:capability', async context => {
-      const capability = z.enum(PROBE_CAPABILITIES).safeParse(context.req.param('capability'));
-      if (!capability.success) {
-        return context.json({ error: 'capability_not_probeable', probeable: PROBE_CAPABILITIES }, 400);
-      }
-      // 空 body 按 {} 接受（缺省用模型目录第一个已启用模型）：保留手写解析，不用 jsonBody。
-      const parsed = probeBody.safeParse(await context.req.json().catch(() => ({})));
-      if (!parsed.success) {
-        return context.json({ error: 'invalid_request', details: z.flattenError(parsed.error) }, 400);
-      }
-
-      const providerId = context.req.param('providerId');
-      const capability_ = capability.data as ModelCapability;
+    // 缺省用模型目录第一个已启用模型时也必须显式发 {}：契约一律声明，不吞真空 body。
+    .post('/:providerId/probe/:capability', paramValidator(probeParams), jsonBody(probeBody), async context => {
+      const { providerId, capability } = context.req.valid('param');
+      const { modelId: requestedModelId } = context.req.valid('json');
       const startedAt = Date.now();
       try {
-        const modelId = parsed.data.modelId ?? firstEnabledModelId(deps, providerId, capability.data);
+        const modelId = requestedModelId ?? firstEnabledModelId(deps, providerId, capability);
         if (!modelId) {
           return context.json({ error: 'no_enabled_model', message: '先在该能力下启用一个模型再探活' }, 422);
         }
-        await runProbe(deps.providers, providerId, capability.data, modelId, AbortSignal.timeout(PROBE_TIMEOUT_MS));
-        deps.providers.recordHealth(providerId, capability_, {
-          capability: capability_,
+        await runProbe(deps.providers, providerId, capability, modelId, AbortSignal.timeout(PROBE_TIMEOUT_MS));
+        deps.providers.recordHealth(providerId, capability, {
+          capability,
           status: 'ok',
           lastProbedAt: Date.now(),
           latencyMs: Date.now() - startedAt,
@@ -60,8 +56,8 @@ export const providerHealthRoute = (deps: ProviderHealthRouteDeps) =>
       } catch (error) {
         if (error instanceof ProviderError) return providerError(context, error);
         const message = error instanceof Error ? error.message : String(error);
-        deps.providers.recordHealth(providerId, capability_, {
-          capability: capability_,
+        deps.providers.recordHealth(providerId, capability, {
+          capability,
           status: 'failed',
           lastProbedAt: Date.now(),
           latencyMs: Date.now() - startedAt,

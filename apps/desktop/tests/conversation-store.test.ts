@@ -8,13 +8,13 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // tts-playback → live2d-react → pixi-live2d-display requires a browser DOM.
 // Mock it so the store can be imported in a Node test environment.
-vi.mock('../lib/tts-playback.js', () => ({
+vi.mock('../src/lib/tts-playback.js', () => ({
   handleTtsChunk: vi.fn(),
   handleTtsSentenceComplete: vi.fn(),
 }));
 
-import { useConversationStore } from './conversation-store.js';
-import { useSessionStore } from './session-store.js';
+import { useConversationStore } from '../src/stores/conversation-store.js';
+import { useSessionStore } from '../src/stores/session-store.js';
 
 const S1 = 'sess_1';
 const S2 = 'sess_2';

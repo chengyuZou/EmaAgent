@@ -25,7 +25,7 @@ const messageWindowQuery = z.object({
   { message: 'message_window_too_large' },
 );
 
-/** 附件展示投影：路径不进 wire，内容经 /attachments/:id/content 端点读取。 */
+/** 附件展示投影：路径不下发，内容经 /attachments/:id/content 端点读取。 */
 interface AttachmentWire {
   readonly id: string;
   readonly kind: Attachment['kind'];

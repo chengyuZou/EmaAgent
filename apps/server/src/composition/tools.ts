@@ -13,7 +13,7 @@ import {
   CommandRunner,
   detectBackend,
   probeBash,
-  type BackendKind,
+  type SandboxStatus,
 } from '@ema-agent/sandbox';
 import type { SessionStore } from '@ema-agent/session';
 import type { SettingsStore } from '@ema-agent/settings';
@@ -52,16 +52,6 @@ import {
   sqliteFileSet,
 } from '../platform/paths.js';
 import type { McpStdioApprovalRequest } from '../sse/eventHub.js';
-
-/** 系统接口与设置页展示的沙箱状态；宿主组合事实，不是 Sandbox 执行器自己的类型。 */
-export interface SandboxStatusWire {
-  readonly kind: BackendKind;
-  readonly isolation: 'os' | 'application-only';
-  readonly shellExecution: 'isolated' | 'disabled' | 'unsafe-override';
-  readonly sandboxNetwork: 'none' | 'full';
-  readonly localMcpStdio: 'isolated' | 'disabled' | 'unsafe-override';
-  readonly warning?: string;
-}
 
 /** 批准请求线上形状归 sse/eventHub 的 AppEvent 域；这里只负责通道机制。 */
 
@@ -137,7 +127,7 @@ export interface ToolsComposition {
   readonly skillSites: SkillSiteStore;
   readonly skillUserRoot: string;
   readonly stdioApprovals: McpStdioApprovalChannel;
-  readonly sandboxStatus: SandboxStatusWire;
+  readonly sandboxStatus: SandboxStatus;
   /** 按 Session 缓存的命令运行器；workspaceRoot 变化后必须 invalidate。 */
   getCommandRunner(sessionId: string): CommandRunner | undefined;
   invalidateSessionRunner(sessionId: string): void;
@@ -182,7 +172,7 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
       ? '沙箱内 Shell 命令具有完全网络访问（AGEN_UNSAFE_SANDBOX_NETWORK=1）。'
       : undefined,
   ].filter((message): message is string => Boolean(message));
-  const sandboxStatus: SandboxStatusWire = Object.freeze({
+  const sandboxStatus: SandboxStatus = Object.freeze({
     kind: detection.backend,
     isolation: detection.backend === 'unisolated' ? 'application-only' : 'os',
     shellExecution: disableExecuteTools

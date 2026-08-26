@@ -1,5 +1,5 @@
 // Turn 的有界重放日志：SSE 断线重连恢复用；不拥有 Turn 生命周期。
-import type { PublishedTurnEvent, TurnWireEvent } from './eventHub.js';
+import type { PublishedTurnEvent, TurnSseEvent } from './eventHub.js';
 
 const DEFAULT_TURN_BUDGET_BYTES = 8 * 1024 * 1024;
 const DEFAULT_TOTAL_BUDGET_BYTES = 64 * 1024 * 1024;
@@ -51,11 +51,11 @@ export class TurnEventStore {
     return this.store.has(turnId);
   }
 
-  push(turnId: string, event: TurnWireEvent): TurnEventPushResult {
+  push(turnId: string, event: TurnSseEvent): TurnEventPushResult {
     const entry = this.getOrCreate(turnId);
     if (entry.done) return { status: 'closed' };
 
-    const terminal = isTerminalWireEvent(event);
+    const terminal = isTerminalSseEvent(event);
     if (entry.overflowed && !terminal) return { status: 'overflow' };
 
     // 在线订阅者收到原始音频；重放日志从一开始就去掉 base64，避免一句 TTS
@@ -132,13 +132,13 @@ function positiveInteger(value: number | undefined, fallback: number): number {
   return value !== undefined && Number.isSafeInteger(value) && value > 0 ? value : fallback;
 }
 
-function isTerminalWireEvent(event: TurnWireEvent): boolean {
+function isTerminalSseEvent(event: TurnSseEvent): boolean {
   return event.type === 'turn_completed'
     || event.type === 'turn_failed'
     || event.type === 'turn_aborted';
 }
 
-function eventForReplay(event: TurnWireEvent): TurnWireEvent {
+function eventForReplay(event: TurnSseEvent): TurnSseEvent {
   if (event.type !== 'tts_chunk') return event;
   return { ...event, audio: '' };
 }

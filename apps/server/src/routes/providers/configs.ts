@@ -74,7 +74,7 @@ export const providerConfigsRoute = (deps: ProviderConfigsRouteDeps) =>
     });
 
 /** ProviderError 的稳定 HTTP 映射；非领域错误继续上抛。 */
-export function providerError(context: Context, error: unknown): Response {
+export function providerError(context: Context, error: unknown) {
   if (!(error instanceof ProviderError)) throw error;
   switch (error.code) {
     case 'not_found':

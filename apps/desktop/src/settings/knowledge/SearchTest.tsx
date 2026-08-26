@@ -1,30 +1,31 @@
 // 检索测试面板:输入查询查看混合检索的命中结果与得分。
 import { useState, type CSSProperties, type JSX } from 'react';
 import { Button, Callout, IconButton, Input, Spinner } from '@ema-agent/ui';
-import { useKbStore } from '../../stores/kb-store.js';
+import { useKnowledgeStore } from '../../stores/knowledge-store.js';
+import type { KnowledgeSearchHit } from '../../api/knowledge.js';
 
 export function SearchTest(): JSX.Element {
-  const searchResult  = useKbStore((s) => s.searchResult);
-  const searchLoading = useKbStore((s) => s.searchLoading);
-  const searchError   = useKbStore((s) => s.searchError);
+  const searchResult  = useKnowledgeStore((s) => s.searchResult);
+  const searchLoading = useKnowledgeStore((s) => s.searchLoading);
+  const searchError   = useKnowledgeStore((s) => s.searchError);
   const [query, setQuery] = useState('');
 
   async function handleSearch(): Promise<void> {
     if (!query.trim()) return;
-    await useKbStore.getState().search(query);
+    await useKnowledgeStore.getState().search(query);
   }
 
   function handleChange(value: string): void {
     setQuery(value);
     // Clearing the box clears stale results so nothing lingers.
     if (!value.trim() && (searchResult || searchError)) {
-      useKbStore.getState().clearSearch();
+      useKnowledgeStore.getState().clearSearch();
     }
   }
 
   function handleClear(): void {
     setQuery('');
-    useKbStore.getState().clearSearch();
+    useKnowledgeStore.getState().clearSearch();
   }
 
   return (
@@ -72,7 +73,7 @@ export function SearchTest(): JSX.Element {
             <p className="text-sm text-[var(--ema-text-tertiary)] py-3 text-center">未找到相关内容</p>
           ) : (
             <div className="grid grid-cols-2 gap-2">
-              {searchResult.hits.map((hit, i) => (
+              {searchResult.hits.map((hit: KnowledgeSearchHit, i: number) => (
                 <div
                   key={hit.chunkId}
                   className="p-3 rounded-xl bg-[var(--ema-surface-1)] border border-[var(--ema-border)] ema-stagger-in ema-card-decorate ema-card-decorate--starfield"

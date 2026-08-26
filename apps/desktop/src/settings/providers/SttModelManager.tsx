@@ -1,11 +1,16 @@
+/**
+ * SttModelManager — provider 的 STT 模型池。
+ */
 import { useState, useEffect, useCallback, type JSX } from 'react';
-import { Button, Callout, ConfirmDialog, Spinner } from '@ema-agent/ui';
-import { providersApi, type AvailableSimpleModelWire } from '../../api/providers.js';
+import { Button, Callout, ConfirmDialog, Input, Spinner } from '@ema-agent/ui';
+import { providersApi, type ProviderModelRecord } from '../../api/providers.js';
 import { showToast } from '../../lib/toast.js';
 import { ModelToggleCard } from './ModelToggleCard.js';
 
+type SttModel = Extract<ProviderModelRecord, { capability: 'stt' }>;
+
 export function SttModelManager({ providerId, iconKey }: { providerId: string; iconKey?: string }): JSX.Element {
-  const [models, setModels]   = useState<AvailableSimpleModelWire[]>([]);
+  const [models, setModels]   = useState<SttModel[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
   const [confirmModel, setConfirmModel] = useState<string | null>(null);
@@ -14,8 +19,8 @@ export function SttModelManager({ providerId, iconKey }: { providerId: string; i
     setLoading(true);
     setError(null);
     try {
-      const res = await providersApi.listSttModels(providerId);
-      setModels(res.models);
+      const rows = await providersApi.listModels(providerId);
+      setModels(rows.filter((m): m is SttModel => m.capability === 'stt'));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -25,27 +30,27 @@ export function SttModelManager({ providerId, iconKey }: { providerId: string; i
 
   useEffect(() => { void load(); }, [load]);
 
-  async function enable(model: string): Promise<void> {
+  async function add(modelId: string): Promise<void> {
     try {
-      await providersApi.enableSttModel(providerId, model);
-      setModels((ms) => ms.map((m) => (m.id === model ? { ...m, enabled: true } : m)));
+      await providersApi.saveModel(providerId, {
+        capability: 'stt',
+        modelId,
+      });
+      await load();
     } catch (err) {
-      showToast(`启用失败: ${err instanceof Error ? err.message : String(err)}`, { variant: 'danger' });
+      showToast(`添加失败: ${err instanceof Error ? err.message : String(err)}`, { variant: 'danger' });
     }
   }
 
-  async function confirmDisable(): Promise<void> {
+  async function confirmRemove(): Promise<void> {
     if (!confirmModel) return;
     const model = confirmModel;
     setConfirmModel(null);
     try {
-      const res = await providersApi.disableSttModel(providerId, model);
-      setModels((ms) => ms.map((m) => (m.id === model ? { ...m, enabled: false } : m)));
-      if (res.cascadedBindings > 0) {
-        showToast(`已禁用，并解除了 ${res.cascadedBindings} 个绑定`, { variant: 'warning' });
-      }
+      await providersApi.deleteModel(providerId, model, 'stt');
+      setModels((ms) => ms.filter((m) => m.modelId !== model));
     } catch (err) {
-      showToast(`禁用失败: ${err instanceof Error ? err.message : String(err)}`, { variant: 'danger' });
+      showToast(`移除失败: ${err instanceof Error ? err.message : String(err)}`, { variant: 'danger' });
     }
   }
 
@@ -65,23 +70,61 @@ export function SttModelManager({ providerId, iconKey }: { providerId: string; i
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {models.map((m) => (
             <ModelToggleCard
-              key={m.id}
-              id={m.id}
-              enabled={m.enabled}
-              onToggle={() => void (m.enabled ? setConfirmModel(m.id) : enable(m.id))}
+              key={m.modelId}
+              id={m.modelId}
+              enabled
+              onToggle={() => setConfirmModel(m.modelId)}
               logo={iconKey}
             />
           ))}
         </div>
       )}
 
+      <ManualAddSttModel
+        onAdd={(model) => void add(model)}
+        existing={models.map((m) => m.modelId)}
+      />
+
       <ConfirmDialog
         open={!!confirmModel}
-        message={confirmModel ? `禁用 "${confirmModel}"？使用它的 STT 绑定也会一并解除。` : ''}
-        confirmText="禁用"
-        onConfirm={() => void confirmDisable()}
+        message={confirmModel ? `从模型池移除 "${confirmModel}"？使用它的 STT 绑定将失效。` : ''}
+        confirmText="移除"
+        onConfirm={() => void confirmRemove()}
         onCancel={() => setConfirmModel(null)}
       />
+    </div>
+  );
+}
+
+function ManualAddSttModel({ onAdd, existing }: {
+  onAdd(model: string): void;
+  existing: string[];
+}): JSX.Element {
+  const [query, setQuery] = useState('');
+
+  function add(): void {
+    const model = query.trim();
+    if (!model) return;
+    if (existing.includes(model)) { showToast('该模型已在列表中', { variant: 'warning' }); return; }
+    onAdd(model);
+    setQuery('');
+  }
+
+  return (
+    <div className="mt-1">
+      <p className="text-xs text-[var(--ema-text-tertiary)] mb-1.5">添加 STT 模型</p>
+      <div className="relative flex gap-2">
+        <div className="relative flex-1">
+          <Input
+            inputSize="sm"
+            className="font-mono"
+            placeholder="模型 ID，如 whisper-large-v3"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
+        <Button variant="secondary" size="sm" onClick={add}>添加</Button>
+      </div>
     </div>
   );
 }

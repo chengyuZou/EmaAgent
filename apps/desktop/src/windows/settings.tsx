@@ -1,7 +1,8 @@
 import 'virtual:uno.css';
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import { SettingsPanel, ErrorBoundary } from '@ema-agent/desktop-ui';
+import { SettingsPanel } from '../settings/SettingsPanel.js';
+import { ErrorBoundary } from '../lib/error-boundary.js';
 import { TooltipProvider } from '@ema-agent/ui';
 
 // ── Settings sub-window entry ───────────────────────────────────────────────

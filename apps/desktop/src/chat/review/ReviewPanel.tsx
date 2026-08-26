@@ -1,5 +1,7 @@
 // 审阅面板:上一轮/全部会话走工具结果 data 槽(Edit/Write 的 structuredPatch),
 // 未暂存/已暂存走 Git 工作区 diff,提交记录/分支比较走 git-compare;没有真实来源的范围不渲染。
+// git 数据源待后端恢复：/api/git 路由已随 api/git.js 删除，以下 git 状态恒为空，
+// 范围状态机、比较选择与 diff 渲染结构原样保留，恢复时只需重新接回数据拉取。
 import { useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import { Button, DropdownMenu, IconButton, Input } from '@ema-agent/ui';
 import type {
@@ -7,9 +9,8 @@ import type {
   GitDiffFile,
   GitRefsResult,
   GitWorkspaceDiffResult,
-} from '@ema-agent/git-utils';
+} from '@ema-agent/git';
 
-import { gitApi } from '../../api/git.js';
 import { useWorkspaceStore } from '../../stores/workspaceStore.js';
 import { fileTab } from '../../stores/workspaceTypes.js';
 import { useLatestTurnDiffs, useSessionDiffs } from './reviewDiffs.js';
@@ -58,61 +59,23 @@ export function ReviewPanel({ sessionId }: { sessionId: string | null }): JSX.El
   const [compareLoading, setCompareLoading] = useState(false);
 
   useEffect(() => {
-    if (!sessionId) {
-      setWorkspaceDiff(null);
-      setRefs(null);
-      return undefined;
-    }
-    let cancelled = false;
-    setWorkspaceLoading(true);
-    gitApi.getWorkspaceDiff(sessionId)
-      .then((result) => {
-        if (cancelled) return;
-        setWorkspaceDiff(result);
-        // 只读来源 ok 才取分支/提交清单,失败按无来源处理。
-        if (result.capability === 'ok') {
-          gitApi.getRefs(sessionId)
-            .then((refsResult) => { if (!cancelled) setRefs(refsResult); })
-            .catch(() => { if (!cancelled) setRefs(null); });
-        } else {
-          setRefs(null);
-        }
-      })
-      .catch(() => { if (!cancelled) setWorkspaceDiff(null); })
-      .finally(() => { if (!cancelled) setWorkspaceLoading(false); });
-    return () => { cancelled = true; };
+    setWorkspaceDiff(null);
+    setRefs(null);
+    setWorkspaceLoading(false);
   }, [sessionId]);
 
-  // 比较目标变化时拉取 git-compare。
+  // 比较目标变化时重新评估 git-compare（git 数据源待后端恢复，当前恒为空态）。
   useEffect(() => {
-    if (!sessionId || !compareTarget) {
-      setCompare(null);
-      return undefined;
-    }
-    let cancelled = false;
-    setCompareLoading(true);
-    gitApi.getCompare(sessionId, { type: compareTarget.type, ref: compareTarget.ref })
-      .then((result) => { if (!cancelled) setCompare(result); })
-      .catch(() => { if (!cancelled) setCompare(null); })
-      .finally(() => { if (!cancelled) setCompareLoading(false); });
-    return () => { cancelled = true; };
+    setCompare(null);
+    setCompareLoading(false);
   }, [sessionId, compareTarget]);
 
   const refreshWorkspace = (): void => {
-    if (!sessionId) return;
-    if ((scope === 'commit' || scope === 'branch') && compareTarget) {
-      setCompareLoading(true);
-      gitApi.getCompare(sessionId, { type: compareTarget.type, ref: compareTarget.ref })
-        .then(setCompare)
-        .catch(() => setCompare(null))
-        .finally(() => setCompareLoading(false));
-      return;
-    }
-    setWorkspaceLoading(true);
-    gitApi.getWorkspaceDiff(sessionId)
-      .then(setWorkspaceDiff)
-      .catch(() => setWorkspaceDiff(null))
-      .finally(() => setWorkspaceLoading(false));
+    // git 数据源待后端恢复：恢复后在此重新拉取 workspace diff 与 compare。
+    setWorkspaceDiff(null);
+    setCompare(null);
+    setWorkspaceLoading(false);
+    setCompareLoading(false);
   };
 
   const gitAvailable = workspaceDiff?.capability === 'ok';

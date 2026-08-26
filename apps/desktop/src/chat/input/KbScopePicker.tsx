@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState, type JSX } from 'react';
 import {
   Button, Checkbox, IconButton, Popover, ScrollArea, Spinner, Tooltip, TooltipProvider,
 } from '@ema-agent/ui';
-import { kbApi, type DocumentAssetWire, type KbLibraryWire } from '../../api/knowledge-base.js';
+import { knowledgeApi, type DocumentAsset, type KnowledgeLibrary } from '../../api/knowledge.js';
 
 // ── KbButton ──────────────────────────────────────────────────────────────────
 // Work Profile knowledge-base picker: select uploaded documents to scope kb_search.
@@ -82,7 +82,7 @@ function KbDocList({
   selectedIds: string[];
   onScopeChange(ids: string[]): void;
 }): JSX.Element {
-  const [items, setItems]           = useState<DocumentAssetWire[]>([]);
+  const [items, setItems]           = useState<DocumentAsset[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading]       = useState(false);
   const [loaded, setLoaded]         = useState(false);
@@ -90,7 +90,7 @@ function KbDocList({
   const loadPage = useCallback(async (cursor?: string): Promise<void> => {
     setLoading(true);
     try {
-      const page = await kbApi.listDocuments({ cursor, limit: KB_PAGE_SIZE, kbId });
+      const page = await knowledgeApi.listDocuments({ cursor, limit: KB_PAGE_SIZE, kbId });
       setItems((prev) => (cursor === undefined ? page.items : [...prev, ...page.items]));
       setNextCursor(page.nextCursor);
     } finally { setLoading(false); setLoaded(true); }
@@ -128,9 +128,9 @@ function KbDocList({
                   <span className="text-xs truncate flex-1 text-[var(--ema-text-secondary)]" title={doc.fileName}>
                     {doc.fileName}
                   </span>
-                  {doc.status !== 'indexed' && (
+                  {doc.status !== 'ready' && (
                     <span className="text-[10px] shrink-0 text-[var(--ema-text-tertiary)]">
-                      {doc.status === 'error' ? '错误' : '索引中'}
+                      {doc.status === 'failed' ? '错误' : '索引中'}
                     </span>
                   )}
                 </div>
@@ -156,17 +156,17 @@ function KbSelectorBody({
   selectedScopes:  Map<string, string[]>;
   onScopesChange(scopes: Map<string, string[]>): void;
 }): JSX.Element {
-  const [libs, setLibs]             = useState<KbLibraryWire[]>([]);
+  const [libs, setLibs]             = useState<KnowledgeLibrary[]>([]);
   const [libsLoaded, setLibsLoaded] = useState(false);
   const [shownLibId, setShownLibId] = useState<string | null>(null);
 
   useEffect(() => {
-    void kbApi.listLibs().then((list) => {
-      setLibs(list);
+    void knowledgeApi.listLibs().then((list) => {
+      setLibs(list.items);
       setLibsLoaded(true);
-      const active = list.find((l) => l.isActive);
+      const active = list.items.find((l) => l.isActive);
       if (active) setShownLibId(active.id);
-      else if (list[0]) setShownLibId(list[0].id);
+      else if (list.items[0]) setShownLibId(list.items[0].id);
     }).catch(() => { setLibsLoaded(true); });
   }, []);
 

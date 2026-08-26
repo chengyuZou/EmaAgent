@@ -1,17 +1,17 @@
 // 侧栏会话搜索覆盖层:防抖调用搜索接口,本地模糊重排,Enter 直达首条。
 import { useCallback, useEffect, useState, type JSX } from 'react';
 import { Button, Input } from '@ema-agent/ui';
-import { sessionsApi, type SessionWire, type SessionSearchItem } from '../../api/sessions.js';
+import { sessionsApi } from '../../api/sessions.js';
 import { useConversationStore } from '../../stores/conversation-store.js';
 
-import { rankSearchResults, toRecentSearchItem } from './sidebarSearch.js';
-import { formatRelativeTime, projectLabelFor } from './sidebarFormat.js';
+import { rankSearchResults, toRecentSearchItem, type SessionSearchItem } from './sidebarSearch.js';
+import { formatRelativeTime, projectLabelFor, type SidebarSession } from './sidebarFormat.js';
 
 export function SessionSearchOverlay({
   recentSessions,
   onClose,
 }: {
-  recentSessions: SessionWire[];
+  recentSessions: SidebarSession[];
   onClose(): void;
 }): JSX.Element {
   const [query, setQuery] = useState('');

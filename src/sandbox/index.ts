@@ -14,6 +14,7 @@ export type {
   SandboxFilesystemConfig,
   SandboxNetworkConfig,
   SandboxBackend,
+  SandboxStatus,
   ShellSpec,
   WrappedCommand,
   SandboxCommand,

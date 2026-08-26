@@ -110,7 +110,7 @@ export const filesRoute = () =>
       }
     });
 
-function fsError(context: Context, error: unknown): Response {
+function fsError(context: Context, error: unknown) {
   const code = (error as NodeJS.ErrnoException).code;
   if (code === 'ENOENT') return context.json({ error: 'path_not_found' }, 404);
   if (code === 'EACCES') return context.json({ error: 'access_denied' }, 403);

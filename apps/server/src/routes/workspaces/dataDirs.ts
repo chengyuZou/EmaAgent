@@ -80,7 +80,7 @@ export const dataDirsRoute = (deps: DataDirsRouteDeps) =>
       }
     });
 
-function registryError(context: Context, error: unknown): Response {
+function registryError(context: Context, error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   if (message.includes('not found')) {
     return context.json({ error: 'data_dir_not_found', message }, 404);

@@ -1,6 +1,11 @@
-// 附件元数据转换:Rust 已签发 fileHandle,前端只补 UI id 与 MIME 展示信息。
-import type { AuthorizedFile } from '../../lib/tauri-bridge.js';
-import type { AttachmentInputWire } from '../../api/turns.js';
+// 附件元数据转换:原生选框返回的绝对路径补 UI id 与 MIME 展示信息;
+// size/mtime 留空由 Server realpath/stat 权威化(attachments README:传输层字段仅展示)。
+import type { TurnAttachmentInput } from '../../api/turns.js';
+
+/** 输入框待发送附件:传输层载荷 + 仅前端使用的列表 id。 */
+export interface PendingAttachment extends TurnAttachmentInput {
+  readonly id: string;
+}
 
 function mimeFromName(name: string): string {
   const ext = name.split('.').pop()?.toLowerCase() ?? '';
@@ -15,13 +20,12 @@ function mimeFromName(name: string): string {
   return map[ext] ?? 'application/octet-stream';
 }
 
-export function authorizedFileToAttachment(file: AuthorizedFile): AttachmentInputWire {
+export function filePathToAttachment(path: string): PendingAttachment {
+  const name = path.replaceAll('\\', '/').split('/').pop() ?? path;
   return {
     id:        crypto.randomUUID(),
-    name:      file.name,
-    mimeType:  mimeFromName(file.name),
-    size:      file.size,
-    mtime:     file.mtime,
-    fileHandle: file.fileHandle,
+    path,
+    name,
+    mimeType:  mimeFromName(name),
   };
 }

@@ -1,6 +1,7 @@
+// 数据目录注册表与存储统计：目录切换/迁移归 workspaces 域，统计归 system 域。
 import { create } from 'zustand';
-import { storageApi } from '../api/storage.js';
-import type { DataDirItem, StorageStatsWire, SessionDashboardWire } from '../api/storage.js';
+import { dataDirsApi, type DataDirItem } from '../api/workspaces.js';
+import { systemApi, type DataDirStats, type SessionStats } from '../api/system.js';
 
 // ── State shape ───────────────────────────────────────────────────────────────
 
@@ -10,10 +11,10 @@ interface StorageStoreState {
   dirsLoading:  boolean;
   dirsError:    string | null;
 
-  stats:        StorageStatsWire | null;
+  stats:        DataDirStats | null;
   statsLoading: boolean;
 
-  dashBySession: Map<string, SessionDashboardWire>;
+  dashBySession: Map<string, SessionStats>;
   dashLoading:   Set<string>;
   dashErrors:    Map<string, string>;
 
@@ -51,31 +52,31 @@ export const useStorageStore = create<StorageStoreState>((set, get) => ({
   async loadDirs() {
     set({ dirsLoading: true, dirsError: null });
     try {
-      const res = await storageApi.listDirs();
-      set({ dirs: res.dirs, activeName: res.active, dirsLoading: false });
+      const res = await dataDirsApi.listDirs();
+      set({ dirs: [...res.dirs], activeName: res.active, dirsLoading: false });
     } catch (err) {
       set({ dirsLoading: false, dirsError: err instanceof Error ? err.message : '加载失败' });
     }
   },
 
   async addDir(opts) {
-    await storageApi.addDir(opts);
+    await dataDirsApi.addDir(opts);
     await get().loadDirs();
   },
 
   async removeDir(name) {
-    await storageApi.removeDir(name);
+    await dataDirsApi.removeDir(name);
     await get().loadDirs();
   },
 
   async activateDir(name) {
-    const res = await storageApi.activateDir(name);
+    const res = await dataDirsApi.activateDir(name);
     await get().loadDirs();
     return res.restartRequired;
   },
 
   async migrate(opts) {
-    const res = await storageApi.migrate(opts);
+    const res = await dataDirsApi.migrate(opts);
     await get().loadDirs();
     return res.restartRequired;
   },
@@ -85,7 +86,7 @@ export const useStorageStore = create<StorageStoreState>((set, get) => ({
   async loadStats() {
     set({ statsLoading: true });
     try {
-      const s = await storageApi.getStats();
+      const s = await systemApi.getStats();
       set({ stats: s, statsLoading: false });
     } catch {
       set({ statsLoading: false });
@@ -104,7 +105,7 @@ export const useStorageStore = create<StorageStoreState>((set, get) => ({
       dashErrors:  (() => { const m = new Map(s.dashErrors); m.delete(sid); return m; })(),
     }));
     try {
-      const dash = await storageApi.getDashboard(sid);
+      const dash = await systemApi.getSessionStats(sid);
       set((s) => {
         const m = new Map(s.dashBySession); m.set(sid, dash);
         const l = new Set(s.dashLoading);   l.delete(sid);
@@ -130,4 +131,4 @@ export const useStorageStore = create<StorageStoreState>((set, get) => ({
   },
 }));
 
-export type { DataDirItem, StorageStatsWire, SessionDashboardWire };
+export type { DataDirItem, DataDirStats, SessionStats };

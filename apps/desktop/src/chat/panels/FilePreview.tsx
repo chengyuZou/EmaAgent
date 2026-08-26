@@ -14,7 +14,7 @@ import { useEffect, useState, type JSX } from 'react';
 import { IconButton, ScrollArea, Spinner } from '@ema-agent/ui';
 import hljs from 'highlight.js';
 import { Markdown } from '../../markdown/renderer.js';
-import { workspaceApi, type FileContent } from '../../api/workspace.js';
+import { filesApi, type FileContent } from '../../api/workspaces.js';
 
 /** 扩展名 -> highlight.js 语言名(常见映射,未知走自动检测) */
 const LANG_MAP: Record<string, string> = {
@@ -56,7 +56,7 @@ export function FilePreview({ path, onBack }: { path: string; onBack: () => void
     let cancelled = false;
     setLoading(true);
     setError(null);
-    workspaceApi.readFile(path)
+    filesApi.readFile(path)
       .then((c) => { if (!cancelled) setContent(c); })
       .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : String(err)); })
       .finally(() => { if (!cancelled) setLoading(false); });

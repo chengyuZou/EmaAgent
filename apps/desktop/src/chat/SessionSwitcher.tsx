@@ -1,10 +1,10 @@
-// 提供紧凑 Session 切换、新建、归档、分组与工作区操作入口。
+// 提供紧凑 Session 切换、新建、归档与工作区操作入口。
 import { useState, useCallback, type JSX } from 'react';
 import { Button, ConfirmDialog, DropdownMenu, Input, PromptDialog, type MenuItem } from '@ema-agent/ui';
 import { useConversationStore } from '../stores/conversation-store.js';
 import { useSessionStore } from '../stores/session-store.js';
 import { runWithToast } from '../lib/toast.js';
-import type { SessionWire } from '../api/sessions.js';
+import type { SidebarSession } from './sidebar/sidebarFormat.js';
 
 import { WorkspacePicker } from './WorkspacePicker.js';
 
@@ -17,17 +17,16 @@ export function SessionSwitcher(): JSX.Element {
   const activeSession = viewedId ? sessions.byId.get(viewedId as string) : null;
 
   const filter = useCallback(
-    (s: SessionWire) =>
+    (s: SidebarSession) =>
       !search ||
-      s.title.toLowerCase().includes(search.toLowerCase()) ||
-      (s.groupLabel ?? '').toLowerCase().includes(search.toLowerCase()),
+      s.title.toLowerCase().includes(search.toLowerCase()),
     [search],
   );
 
   const filteredPinned   = sessions.pinned.filter(filter);
   const filteredRecent   = sessions.recent.filter(filter);
   const filteredArchived = sessions.archived.filter(filter);
-  const filteredGroups   = sessions.byGroup
+  const filteredGroups   = [...sessions.pinnedProjects, ...sessions.projects]
     .map((g) => ({ ...g, sessions: g.sessions.filter(filter) }))
     .filter((g) => g.sessions.length > 0);
 
@@ -72,7 +71,7 @@ export function SessionSwitcher(): JSX.Element {
                 <Section label="已固定" sessions={filteredPinned} viewedId={viewedId} onClose={() => setOpen(false)} />
               )}
               {filteredGroups.map((g) => (
-                <Section key={g.label} label={g.label} sessions={g.sessions} viewedId={viewedId} onClose={() => setOpen(false)} />
+                <Section key={g.project.id} label={g.project.name} sessions={g.sessions} viewedId={viewedId} onClose={() => setOpen(false)} />
               ))}
               {filteredRecent.length > 0 && (
                 <Section label="最近" sessions={filteredRecent} viewedId={viewedId} onClose={() => setOpen(false)} />
@@ -109,7 +108,7 @@ export function SessionSwitcher(): JSX.Element {
 function Section({
   label, sessions, viewedId, collapsed: initCollapsed = false, onClose,
 }: {
-  label: string; sessions: SessionWire[]; viewedId: string | null;
+  label: string; sessions: SidebarSession[]; viewedId: string | null;
   collapsed?: boolean; onClose(): void;
 }): JSX.Element {
   const [collapsed, setCollapsed] = useState(initCollapsed);
@@ -150,12 +149,11 @@ function Section({
 // ── SessionRow ────────────────────────────────────────────────────────────────
 
 function SessionRow({ session, isActive, onSelect }: {
-  session: SessionWire; isActive: boolean; onSelect(): void;
+  session: SidebarSession; isActive: boolean; onSelect(): void;
 }): JSX.Element {
   const [showWorkspace, setShowWorkspace] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(false);
   const [promptRename, setPromptRename] = useState(false);
-  const [promptGroup,  setPromptGroup]  = useState(false);
 
   const menuItems: MenuItem[] = [
     {
@@ -178,12 +176,6 @@ function SessionRow({ session, isActive, onSelect }: {
         const newId = await useSessionStore.getState().forkSession(session.id);
         void useConversationStore.getState().viewSession(newId);
       })(),
-    },
-    {
-      kind:     'item',
-      label:    '设置分组',
-      icon:     'i-lucide:tag',
-      onSelect: () => setPromptGroup(true),
     },
     {
       kind:     'item',
@@ -224,7 +216,7 @@ function SessionRow({ session, isActive, onSelect }: {
           <span className="i-lucide:pin text-xs shrink-0 text-[var(--ema-primary)]" aria-hidden />
         )}
         <span className="truncate">{session.title || '新对话'}</span>
-        {session.runningTurnCount > 0 && (
+        {session.hasActiveTurn && (
           <span className="w-1.5 h-1.5 rounded-full animate-pulse shrink-0 bg-[var(--ema-primary)]" aria-hidden />
         )}
       </div>
@@ -265,16 +257,6 @@ function SessionRow({ session, isActive, onSelect }: {
         confirmText="重命名"
         onConfirm={(name) => { setPromptRename(false); if (name) void runWithToast(useSessionStore.getState().renameSession(session.id, name), '重命名失败'); }}
         onCancel={() => setPromptRename(false)}
-      />
-
-      <PromptDialog
-        open={promptGroup}
-        title="设置分组"
-        message="输入分组名称(留空取消分组)"
-        initialValue={session.groupLabel ?? ''}
-        confirmText="保存"
-        onConfirm={(label) => { setPromptGroup(false); void runWithToast(useSessionStore.getState().setSessionGroup(session.id, label.trim() || null), '分组失败'); }}
-        onCancel={() => setPromptGroup(false)}
       />
     </div>
   );

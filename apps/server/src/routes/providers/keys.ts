@@ -4,13 +4,16 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import {
   PROVIDER_LIMITS,
-  type ModelCapability,
   type Providers,
 } from '@ema-agent/providers';
 import { providerError } from './configs.js';
-import { jsonBody } from '../validate.js';
+import { jsonBody, queryValidator } from '../validate.js';
 
 const capabilityParam = z.enum(['llm', 'embed', 'rerank', 'vision', 'tts', 'stt']);
+
+const capabilityQuery = z.object({
+  capability: capabilityParam,
+});
 
 const addKeyBody = z.object({
   capability: capabilityParam,
@@ -28,24 +31,18 @@ export interface ProviderKeysRouteDeps {
 
 export const providerKeysRoute = (deps: ProviderKeysRouteDeps) =>
   new Hono()
-    .get('/:providerId/keys', context => {
-      const capability = capabilityParam.safeParse(context.req.query('capability'));
-      if (!capability.success) {
-        return context.json({ error: 'invalid_capability' }, 400);
-      }
+    .get('/:providerId/keys', queryValidator(capabilityQuery), context => {
+      const { capability } = context.req.valid('query');
       try {
-        return context.json(deps.providers.listKeys(context.req.param('providerId'), capability.data));
+        return context.json(deps.providers.listKeys(context.req.param('providerId'), capability));
       } catch (error) {
         return providerError(context, error);
       }
     })
     // 首次配置某能力时的预填：取全 provider 最近一把 key（硅基 LLM 的 key 一键带进 TTS）。
-    .get('/:providerId/keys/prefill', context => {
-      const capability = capabilityParam.safeParse(context.req.query('capability'));
-      if (!capability.success) {
-        return context.json({ error: 'invalid_capability' }, 400);
-      }
-      const value = deps.providers.prefillKey(context.req.param('providerId'), capability.data);
+    .get('/:providerId/keys/prefill', queryValidator(capabilityQuery), context => {
+      const { capability } = context.req.valid('query');
+      const value = deps.providers.prefillKey(context.req.param('providerId'), capability);
       return context.json({ keyValue: value ?? null });
     })
     .post('/:providerId/keys', jsonBody(addKeyBody), async context => {
@@ -68,15 +65,12 @@ export const providerKeysRoute = (deps: ProviderKeysRouteDeps) =>
         return providerError(context, error);
       }
     })
-    .delete('/:providerId/keys/:keyId', context => {
-      const capability = capabilityParam.safeParse(context.req.query('capability'));
-      if (!capability.success) {
-        return context.json({ error: 'invalid_capability' }, 400);
-      }
+    .delete('/:providerId/keys/:keyId', queryValidator(capabilityQuery), context => {
+      const { capability } = context.req.valid('query');
       try {
         deps.providers.deleteKey(
           context.req.param('providerId'),
-          capability.data as ModelCapability,
+          capability,
           context.req.param('keyId'),
         );
         return context.body(null, 204);

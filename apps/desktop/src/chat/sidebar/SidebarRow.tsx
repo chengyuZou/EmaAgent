@@ -1,7 +1,7 @@
-// 侧栏单条会话行:状态点、标题、时间与右键菜单操作,含删除/重命名/分组确认。
+// 侧栏单条会话行:状态点、标题、时间与右键菜单操作,含删除/重命名确认。
 import { useState, type JSX } from 'react';
 import { Button, ConfirmDialog, DropdownMenu, PromptDialog, type MenuItem } from '@ema-agent/ui';
-import type { SessionWire } from '../../api/sessions.js';
+import type { SidebarSession } from './sidebarFormat.js';
 import { useConversationStore } from '../../stores/conversation-store.js';
 import { useSessionStore } from '../../stores/session-store.js';
 import { runWithToast } from '../../lib/toast.js';
@@ -12,7 +12,7 @@ import { formatRelativeTime } from './sidebarFormat.js';
 type StatusDot = { cls: string } | null;
 
 export function getStatusDot(
-  session: SessionWire,
+  session: SidebarSession,
   streaming: Map<string, unknown>,
   pendingCounts: Record<string, number>,
 ): StatusDot {
@@ -26,7 +26,7 @@ export function getStatusDot(
 }
 
 export function SidebarRow({ session, isActive, streaming, pendingCounts, nested = false }: {
-  session:   SessionWire;
+  session:   SidebarSession;
   isActive:  boolean;
   streaming: Map<string, unknown>;
   pendingCounts: Record<string, number>;
@@ -35,7 +35,6 @@ export function SidebarRow({ session, isActive, streaming, pendingCounts, nested
   const [showWorkspace, setShowWorkspace] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(false);
   const [promptRename, setPromptRename] = useState(false);
-  const [promptGroup,  setPromptGroup]  = useState(false);
   const dot = getStatusDot(session, streaming, pendingCounts);
   const isRunning = streaming.has(session.id);
   const timeLabel = formatRelativeTime(session.lastActivityAt);
@@ -61,12 +60,6 @@ export function SidebarRow({ session, isActive, streaming, pendingCounts, nested
         const newId = await useSessionStore.getState().forkSession(session.id);
         void useConversationStore.getState().viewSession(newId);
       })(),
-    },
-    {
-      kind:     'item',
-      label:    '设置分组',
-      icon:     'i-lucide:tag',
-      onSelect: () => setPromptGroup(true),
     },
     {
       kind:     'item',
@@ -184,16 +177,6 @@ export function SidebarRow({ session, isActive, streaming, pendingCounts, nested
         confirmText="重命名"
         onConfirm={(name) => { setPromptRename(false); if (name) void runWithToast(useSessionStore.getState().renameSession(session.id, name), '重命名失败'); }}
         onCancel={() => setPromptRename(false)}
-      />
-
-      <PromptDialog
-        open={promptGroup}
-        title="设置分组"
-        message="输入分组名称(留空取消分组)"
-        initialValue={session.groupLabel ?? ''}
-        confirmText="保存"
-        onConfirm={(label) => { setPromptGroup(false); void runWithToast(useSessionStore.getState().setSessionGroup(session.id, label.trim() || null), '分组失败'); }}
-        onCancel={() => setPromptGroup(false)}
       />
     </div>
   );

@@ -8,12 +8,12 @@ import type { BackgroundProcessEvent } from '@ema-agent/tools';
 import type { TurnEvent, TurnStreamEvent } from '@ema-agent/turn';
 
 /** Turn 事件端点的线上形状：Turn 流 + 语音输出事件（Speech 是 Turn 流的可选消费者）。 */
-export type TurnWireEvent = TurnStreamEvent | SpeechEvent;
+export type TurnSseEvent = TurnStreamEvent | SpeechEvent;
 
 export interface PublishedTurnEvent {
   /** Turn 内从 1 开始的事件游标；客户端提交最后已消费游标，服务端只发送更大值。 */
   readonly cursor: number;
-  readonly event: TurnWireEvent;
+  readonly event: TurnSseEvent;
 }
 
 /** MCP stdio 拉起的批准请求：应用级询问，不进入任何 Session 的交互队列。 */

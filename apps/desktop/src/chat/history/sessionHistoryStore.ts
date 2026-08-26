@@ -1,12 +1,13 @@
 // 管理每个 Session 的热尾/旧历史模式、轻量 Turn 索引和历史窗口缓存。
 import { create } from 'zustand';
 
-import type { TurnIndexItemWire } from '@ema-agent/session';
-import { sessionsApi } from '../../api/sessions.js';
+import { sessionsApi, type TurnIndexPage } from '../../api/sessions.js';
 import {
   assembleHistory,
   type ChatHistoryItem,
 } from '../../stores/conversation-history.js';
+
+type TurnIndexItem = TurnIndexPage['items'][number];
 
 const ARCHIVE_WINDOW_CACHE_LIMIT = 3;
 const TURN_INDEX_PAGE_SIZE = 200;
@@ -20,7 +21,7 @@ export interface ArchiveMessageWindow {
 
 export interface SessionHistoryState {
   mode: 'tail' | 'archive';
-  turnIndexItems: TurnIndexItemWire[];
+  turnIndexItems: TurnIndexItem[];
   turnIndexNextCursor?: string;
   turnIndexLoaded: boolean;
   turnIndexLoading: boolean;

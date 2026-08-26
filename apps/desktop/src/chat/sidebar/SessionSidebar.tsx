@@ -1,4 +1,5 @@
-// 会话侧栏主装配:折叠/宽度拖拽状态与分区数据推导,行、分区与搜索各自成文件。
+// 会话侧栏主装配:折叠/宽度拖拽状态;分区数据直接消费服务端五桶分组
+// （置顶 Session / 置顶项目 / 其余项目 / 最近 / 已归档），行、分区与搜索各自成文件。
 import { useState, useCallback, useMemo, useRef, type JSX } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { Button } from '@ema-agent/ui';
@@ -9,7 +10,7 @@ import { runWithToast } from '../../lib/toast.js';
 import { NewConversationCommand, ProjectListSection, SidebarCommand, SidebarSection } from './SidebarSections.js';
 import { getStatusDot } from './SidebarRow.js';
 import { SessionSearchOverlay } from './SidebarSearchOverlay.js';
-import { buildProjectGroups, uniqueSessions } from './sidebarGroups.js';
+import { uniqueSessions } from './sidebarGroups.js';
 
 export function SessionSidebar(): JSX.Element {
   const [collapsed, setCollapsed]   = useState(false);
@@ -54,19 +55,20 @@ export function SessionSidebar(): JSX.Element {
 
   const allActiveSessions = useMemo(() => uniqueSessions([
     ...sessions.pinned,
-    ...sessions.byGroup.flatMap((g) => g.sessions),
+    ...sessions.pinnedProjects.flatMap((g) => g.sessions),
+    ...sessions.projects.flatMap((g) => g.sessions),
     ...sessions.recent,
   ]), [sessions]);
 
-  const projectGroups = useMemo(() => buildProjectGroups(sessions), [sessions]);
-  const projectSessionIds = useMemo(
-    () => new Set(projectGroups.flatMap((g) => g.sessions.map((s) => s.id))),
-    [projectGroups],
+  // 服务端分桶互斥：pinned 优先于项目成员资格，recent 只含无项目非置顶会话。
+  const projectGroups = useMemo(
+    () => [...sessions.pinnedProjects, ...sessions.projects],
+    [sessions],
   );
   const conversationSessions = useMemo(() => uniqueSessions([
     ...sessions.pinned,
     ...sessions.recent,
-  ]).filter((s) => !projectSessionIds.has(s.id)), [sessions, projectSessionIds]);
+  ]), [sessions]);
 
   return (
     <div className={`relative flex flex-col shrink-0 border-r h-full bg-[var(--ema-bg)] border-[var(--ema-border)] ${resizing ? '' : 'ema-transition-width'}`}

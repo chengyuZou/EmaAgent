@@ -1,10 +1,10 @@
-// 新建角色卡对话框:名称与 System Prompt 必填(后端硬门),状态自包含。
+// 新建角色卡对话框:名称与人设提示词必填(后端硬门),状态自包含。
 import { useState, type JSX } from 'react';
 import { Button, Callout, Dialog, Field, Input, Textarea } from '@ema-agent/ui';
-import { useCardStore } from '../../stores/card-store.js';
+import { useCharacterStore } from '../../stores/character-store.js';
 import { showToast } from '../../lib/toast.js';
 
-export function CreateCardDialog({
+export function CreateCharacterDialog({
   open,
   onOpenChange,
 }: {
@@ -13,23 +13,23 @@ export function CreateCardDialog({
 }): JSX.Element {
   const [name, setName]               = useState('');
   const [description, setDescription] = useState('');
-  const [systemPrompt, setSystemPrompt] = useState('');
+  const [personaPrompt, setPersonaPrompt] = useState('');
   const [busy, setBusy]               = useState(false);
   const [error, setError]             = useState<string | null>(null);
 
   function reset(): void {
-    setName(''); setDescription(''); setSystemPrompt(''); setError(null);
+    setName(''); setDescription(''); setPersonaPrompt(''); setError(null);
   }
 
   async function submit(): Promise<void> {
-    if (!name.trim() || !systemPrompt.trim()) return;
+    if (!name.trim() || !personaPrompt.trim()) return;
     setBusy(true);
     setError(null);
     try {
-      await useCardStore.getState().create({
+      await useCharacterStore.getState().create({
         name: name.trim(),
         description: description.trim() || undefined,
-        systemPrompt,
+        personaPrompt,
       });
       showToast('角色已创建,去编辑器里完善它吧', { variant: 'success' });
       onOpenChange(false);
@@ -46,7 +46,7 @@ export function CreateCardDialog({
       open={open}
       onOpenChange={(next) => { if (!next && !busy) { onOpenChange(false); reset(); } }}
       title="新建角色卡"
-      description="先建卡,再进编辑器配置 Live2D、立绘与参考音频。System Prompt 不能为空。"
+      description="先建卡,再进编辑器配置 Live2D、立绘与参考音频。人设提示词不能为空。"
     >
       {error && <Callout variant="danger" className="mb-3">{error}</Callout>}
       <div className="flex flex-col gap-3">
@@ -67,15 +67,15 @@ export function CreateCardDialog({
             onChange={(e) => setDescription(e.target.value)}
           />
         </Field>
-        <Field label="System Prompt" required>
+        <Field label="人设提示词" required>
           <Textarea
             minRows={8}
             maxRows={16}
             placeholder="角色的身份、性格与说话方式…"
-            value={systemPrompt}
+            value={personaPrompt}
             disabled={busy}
             className="font-mono"
-            onChange={(e) => setSystemPrompt(e.target.value)}
+            onChange={(e) => setPersonaPrompt(e.target.value)}
           />
         </Field>
       </div>
@@ -87,7 +87,7 @@ export function CreateCardDialog({
           variant="primary"
           size="sm"
           loading={busy}
-          disabled={!name.trim() || !systemPrompt.trim() || busy}
+          disabled={!name.trim() || !personaPrompt.trim() || busy}
           onClick={() => void submit()}
         >
           创建

@@ -4,7 +4,7 @@
  */
 import { useState, useEffect, useCallback, type JSX } from 'react';
 import { Button, Callout, EmptyState, Spinner } from '@ema-agent/ui';
-import { useKbStore } from '../../stores/kb-store.js';
+import { useKnowledgeStore } from '../../stores/knowledge-store.js';
 import {
   documentNeedsReembed,
   type ResolvedEmbedSelection,
@@ -18,17 +18,17 @@ import { DocumentRow } from './DocumentRow.js';
 import { SearchTest } from './SearchTest.js';
 
 export function KnowledgeBaseTab(): JSX.Element {
-  const documents = useKbStore((s) => s.documents);
-  const loading   = useKbStore((s) => s.loading);
-  const error     = useKbStore((s) => s.error);
+  const documents = useKnowledgeStore((s) => s.documents);
+  const loading   = useKnowledgeStore((s) => s.loading);
+  const error     = useKnowledgeStore((s) => s.error);
   const [showIngest,       setShowIngest]       = useState(false);
   const [ingestFormMounted, setIngestFormMounted] = useState(false);
   const [embedSelection, setEmbedSelection] = useState<ResolvedEmbedSelection | undefined>();
-  const activeKbId = useKbStore((state) => state.libs.find((lib) => lib.isActive)?.id);
+  const activeKbId = useKnowledgeStore((state) => state.libs.find((lib) => lib.isActive)?.id);
 
   const handleEmbedModelChanged = useCallback((selection: ResolvedEmbedSelection | undefined): void => {
     setEmbedSelection(selection);
-    void useKbStore.getState().loadDocuments();
+    void useKnowledgeStore.getState().loadDocuments();
   }, []);
 
   // Delayed unmount so IngestForm exit animation plays.
@@ -39,7 +39,7 @@ export function KnowledgeBaseTab(): JSX.Element {
   }, [showIngest]);
 
   useEffect(() => {
-    void useKbStore.getState().loadDocuments();
+    void useKnowledgeStore.getState().loadDocuments();
   }, []);
 
   return (
@@ -110,7 +110,7 @@ export function KnowledgeBaseTab(): JSX.Element {
                 index={i}
                 currentEmbed={embedSelection}
                 kbId={activeKbId ?? ''}
-                onDelete={() => void useKbStore.getState().loadDocuments()}
+                onDelete={() => void useKnowledgeStore.getState().loadDocuments()}
               />
             ))}
           </div>

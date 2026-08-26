@@ -85,10 +85,6 @@ export function renderToolArgs(name: string, args: unknown): ToolArgView {
     case 'ask_confirm':
       return { rows: [row('prompt', a.prompt ?? a.message ?? a.question)] };
 
-    case 'TodoWrite':
-    case 'todo_write':
-      return { rows: [row('todos', `${Array.isArray(a.todos) ? a.todos.length : 0} items`)] };
-
     default:
       // mcp__<server>__<tool> / 未知工具 → 平铺顶层字段
       return {

@@ -1,123 +1,77 @@
-// 调用 Skill 的安装、校验、启停、重命名、内容读取与市场查询接口。
-import { sidecarClient } from './sidecar-client.js';
-import type { GithubSkillCoords, SkillRecord } from '@ema-agent/skills';
+// Skills API：/api/skills——技能目录/详情/正文/删除 + 站点 CRUD/刷新/安装。
+import type { InferRequestType } from 'hono/client';
+import { rpcClient, readRpcJson, type RpcClient, type RpcJson } from './client.js';
 
-// File-backed model: records are metadata (no body). Body is read lazily on
-// activation server-side; the UI never receives it.
-export type { SkillRecord };
+export type SkillListResult = RpcJson<RpcClient['api']['skills']['$get']>;
+export type SkillListItem = SkillListResult['items'][number];
+export type SkillDescriptorResult = RpcJson<RpcClient['api']['skills']['descriptor']['$get']>;
+export type SkillContentResult = RpcJson<RpcClient['api']['skills']['content']['$get']>;
+export type SkillSiteList = RpcJson<RpcClient['api']['skills']['sites']['$get']>;
+export type SkillSiteRecord = SkillSiteList['items'][number];
+export type SkillSiteAddInput = InferRequestType<RpcClient['api']['skills']['sites']['$post']>['json'];
+export type SkillSitePatchInput = InferRequestType<RpcClient['api']['skills']['sites'][':id']['$patch']>['json'];
+export type SkillSitesRefreshResult = RpcJson<RpcClient['api']['skills']['sites']['refresh']['$post']>;
+export type SkillInstallInput = InferRequestType<RpcClient['api']['skills']['sites']['install']['$post']>['json'];
+export type SkillInstallResult = RpcJson<RpcClient['api']['skills']['sites']['install']['$post']>;
 
-export interface SkillValidateResult {
-  valid:   boolean;
-  errors:  string[];
-  name?:   string;
-  version?: string;
-}
-
-export interface MarketSkillEntry {
-  name:        string;
-  version:     string;
-  description?: string;
-  /** Raw file URL (GitHub raw / jsDelivr) ready for installFromUrl. */
-  url:         string;
-  /** 发布方按 SKILL.md 与全部资源计算的规范 Bundle SHA-256 revision。 */
-  sha256?:     string;
-  author?:     string;
-  tags?:       string[];
-  sizeBytes?:  number;
-  /** GitHub 源携带坐标,bundle 安装透传(不丢 sibling assets)。 */
-  coords?:     GithubSkillCoords;
-}
-
-export interface MarketSourceMeta {
-  id:      string;
-  label:   string;
-  type:    string;
-  error?:  string;
-  count:   number;
-}
-
-export interface MarketListResult {
-  sources: MarketSourceMeta[];
-  skills:  MarketSkillEntry[];
-}
+/** sessionId 缺省时只见 builtin+user；project 技能按 Session 工作区合成。 */
+const withSessionId = (sessionId: string | undefined) => (sessionId ? { sessionId } : {});
 
 export const skillsApi = {
-  /** GET /api/skills */
-  async list(): Promise<{ skills: SkillRecord[] }> {
-    return sidecarClient.request<{ skills: SkillRecord[] }>('/api/skills');
+  /** GET /api/skills?sessionId= — 全量目录（含 enabled 投影）。 */
+  list(sessionId?: string): Promise<SkillListResult> {
+    return readRpcJson(rpcClient.api.skills.$get({ query: withSessionId(sessionId) }));
   },
 
-  /** GET /api/skills/:name */
-  async get(name: string): Promise<{ skill: SkillRecord }> {
-    return sidecarClient.request<{ skill: SkillRecord }>(`/api/skills/${encodeURIComponent(name)}`);
+  /** GET /api/skills/descriptor?key=&sessionId= — 单条详情（key 含冒号斜杠走 query）。 */
+  get(key: string, sessionId?: string): Promise<SkillDescriptorResult> {
+    return readRpcJson(rpcClient.api.skills.descriptor.$get({
+      query: { key, ...withSessionId(sessionId) },
+    }));
   },
 
-  /** GET /api/skills/:name/content — raw SKILL.md for the in-app viewer. */
-  async getContent(name: string): Promise<{ content: string }> {
-    return sidecarClient.request<{ content: string }>(`/api/skills/${encodeURIComponent(name)}/content`);
+  /** GET /api/skills/content?key=&sessionId= — SKILL.md 正文。 */
+  getContent(key: string, sessionId?: string): Promise<SkillContentResult> {
+    return readRpcJson(rpcClient.api.skills.content.$get({
+      query: { key, ...withSessionId(sessionId) },
+    }));
   },
 
-  /** POST /api/skills — install from text content */
-  async installFromText(content: string): Promise<{ skill: SkillRecord }> {
-    return sidecarClient.request<{ skill: SkillRecord }>('/api/skills', {
-      method: 'POST',
-      json: { source: 'text', content },
-    });
+  /** DELETE /api/skills?key=&sessionId= — 只有 user 技能可删。 */
+  remove(key: string, sessionId?: string) {
+    return readRpcJson(rpcClient.api.skills.$delete({
+      query: { key, ...withSessionId(sessionId) },
+    }));
   },
 
-  /** POST /api/skills — 市场安装同时透传发布方的完整 Bundle 摘要。 */
-  async installFromUrl(
-    url: string,
-    coords?: GithubSkillCoords,
-    sha256?: string,
-  ): Promise<{ skill: SkillRecord }> {
-    return sidecarClient.request<{ skill: SkillRecord }>('/api/skills', {
-      method: 'POST',
-      json: {
-        source: 'url',
-        url,
-        ...(coords ? { coords } : {}),
-        ...(sha256 ? { sha256 } : {}),
-      },
-    });
+  // ── Sites（技能市场站点） ───────────────────────────────────────────────────
+
+  listSites(): Promise<SkillSiteList> {
+    return readRpcJson(rpcClient.api.skills.sites.$get());
   },
 
-  /** POST /api/skills/validate */
-  async validate(content: string): Promise<SkillValidateResult> {
-    return sidecarClient.request<SkillValidateResult>('/api/skills/validate', {
-      method: 'POST',
-      json: { content },
-    });
+  addSite(body: SkillSiteAddInput) {
+    return readRpcJson(rpcClient.api.skills.sites.$post({ json: body }));
   },
 
-  /** PATCH /api/skills/:name */
-  async setEnabled(name: string, enabled: boolean): Promise<{ ok: boolean }> {
-    return sidecarClient.request<{ ok: boolean }>(`/api/skills/${encodeURIComponent(name)}`, {
-      method: 'PATCH',
-      json: { enabled },
-    });
+  patchSite(id: string, patch: SkillSitePatchInput) {
+    return readRpcJson(rpcClient.api.skills.sites[':id'].$patch({
+      json: patch,
+      param: { id },
+    }));
   },
 
-  /** DELETE /api/skills/:name */
-  async remove(name: string): Promise<{ ok: boolean }> {
-    return sidecarClient.request<{ ok: boolean }>(`/api/skills/${encodeURIComponent(name)}`, {
-      method: 'DELETE',
-    });
+  removeSite(id: string) {
+    return readRpcJson(rpcClient.api.skills.sites[':id'].$delete({ param: { id } }));
   },
 
-  /**
-   * GET /api/skills/market — 聚合所有 enabled 源,并发 fetch 合并。
-   * 源管理走 /api/market/sources。
-   */
-  async listMarket(): Promise<MarketListResult> {
-    return sidecarClient.request<MarketListResult>('/api/skills/market');
+  /** POST /api/skills/sites/refresh — 全站刷新（各站成败独立报告）。 */
+  refreshSites(): Promise<SkillSitesRefreshResult> {
+    return readRpcJson(rpcClient.api.skills.sites.refresh.$post());
   },
 
-  /** POST /api/skills/:name/rename */
-  async rename(name: string, newName: string): Promise<{ skill: SkillRecord }> {
-    return sidecarClient.request<{ skill: SkillRecord }>(`/api/skills/${encodeURIComponent(name)}/rename`, {
-      method: 'POST',
-      json:   { newName },
-    });
+  /** POST /api/skills/sites/install — 以站点缓存索引条目安装。 */
+  installFromSite(body: SkillInstallInput): Promise<SkillInstallResult> {
+    return readRpcJson(rpcClient.api.skills.sites.install.$post({ json: body }));
   },
 };

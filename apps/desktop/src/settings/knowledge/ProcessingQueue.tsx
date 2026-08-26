@@ -1,7 +1,7 @@
 // 后台摄入任务队列:按知识库分组展示进度,失败可重试;数据由系统 SSE 驱动。
 import { useEffect, type CSSProperties, type JSX } from 'react';
 import { Button, Callout, EntityRow, Progress, Spinner } from '@ema-agent/ui';
-import { useKbStore, type IngestJob, type IngestStage } from '../../stores/kb-store.js';
+import { useKnowledgeStore, type IngestJob, type IngestStage } from '../../stores/knowledge-store.js';
 
 const STAGE_LABEL: Record<IngestStage, string> = {
   validate: '校验', parse: '解析', chunk: '分块', embed: '嵌入',
@@ -15,27 +15,28 @@ const STAGE_BAR: Record<IngestStage, string> = {
 };
 
 export function ProcessingQueue(): JSX.Element | null {
-  const jobs = useKbStore((s) => s.ingestJobs);
-  const libs = useKbStore((s) => s.libs);
-  const queueError = useKbStore((s) => s.ingestQueueError);
+  const jobs = useKnowledgeStore((s) => s.ingestJobs);
+  const libs = useKnowledgeStore((s) => s.libs);
+  const queueError = useKnowledgeStore((s) => s.ingestQueueError);
 
   useEffect(() => {
-    void useKbStore.getState().loadIngestTasks();  // hydrate from the persistent queue
-    void useKbStore.getState().loadLibs();
+    void useKnowledgeStore.getState().loadIngestTasks();  // hydrate from the persistent queue
+    void useKnowledgeStore.getState().loadLibs();
   }, []);
 
   const list = Object.values(jobs);
   if (list.length === 0 && !queueError) return null;
 
-  // Group by kbId; preserve order of first appearance.
+  // Group by kbId; preserve order of first appearance. HTTP 水合的行可能还没有 kbId。
   const groups = new Map<string, typeof list>();
   for (const job of list) {
-    const g = groups.get(job.kbId) ?? [];
+    const key = job.kbId ?? '';
+    const g = groups.get(key) ?? [];
     g.push(job);
-    groups.set(job.kbId, g);
+    groups.set(key, g);
   }
 
-  const libName = (kbId: string): string => libs.find((l) => l.id === kbId)?.name ?? kbId;
+  const libName = (kbId: string): string => libs.find((l) => l.id === kbId)?.name ?? (kbId || '当前知识库');
 
   return (
     <section className="flex flex-col gap-3 ema-fade-in">
@@ -46,7 +47,7 @@ export function ProcessingQueue(): JSX.Element | null {
         </Callout>
       )}
       {[...groups.entries()].map(([kbId, kbJobs], gi) => {
-        const done  = kbJobs.filter((j) => j.status === 'done').length;
+        const done  = kbJobs.filter((j) => j.status === 'completed').length;
         const total = kbJobs.length;
         return (
           <div key={kbId} className="flex flex-col gap-1.5 ema-stagger-in"
@@ -74,16 +75,16 @@ export function ProcessingQueue(): JSX.Element | null {
 }
 
 function IngestJobRow({ job }: { job: IngestJob }): JSX.Element {
-  const failed  = job.status === 'failed' || job.status === 'partial_failed';
-  const done    = job.status === 'done';
+  const failed  = job.status === 'failed' || job.status === 'cancelled';
+  const done    = job.status === 'completed';
   const pending = job.status === 'pending';
   const pct     = Math.round(job.progress * 100);
   const barClass = failed ? 'bg-[var(--ema-danger)]'
     : done ? 'bg-[var(--ema-success)]'
     : job.stage ? STAGE_BAR[job.stage] : 'bg-[var(--ema-info)]';
 
-  const label = job.status === 'partial_failed'
-    ? '部分处理失败'
+  const label = job.status === 'cancelled'
+    ? '已取消'
     : failed ? '处理失败' : done ? '已完成' : pending ? '排队中' : '正在处理';
   const status = failed ? '错误' : done ? '100%' : pending ? '等待'
     : `${job.stage ? STAGE_LABEL[job.stage] : ''} · ${pct}%`;
@@ -106,7 +107,7 @@ function IngestJobRow({ job }: { job: IngestJob }): JSX.Element {
         </span>
         {failed && (
           <Button size="sm" variant="ghost" className="shrink-0 ema-fade-in"
-                  onClick={() => void useKbStore.getState().retryIngest(job.assetId)}>
+                  onClick={() => void useKnowledgeStore.getState().retryIngest(job.assetId)}>
             重试
           </Button>
         )}

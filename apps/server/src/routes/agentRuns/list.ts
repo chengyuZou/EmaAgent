@@ -1,16 +1,21 @@
 // AgentRun 只读查询：按 Session 列表与单条详情；终态清理归 Session 生命周期，不开写端点。
 import { Hono } from 'hono';
+import { z } from 'zod';
 import type { AgentRunStore } from '@ema-agent/agent';
+import { queryValidator } from '../validate.js';
 
 export interface AgentRunListRouteDeps {
   readonly agentRuns: Pick<AgentRunStore, 'listForSession' | 'get'>;
 }
 
+const listQuery = z.object({
+  sessionId: z.string().min(1),
+});
+
 export const agentRunListRoute = (deps: AgentRunListRouteDeps) =>
   new Hono()
-    .get('/', context => {
-      const sessionId = context.req.query('sessionId');
-      if (!sessionId) return context.json({ error: 'session_id_required' }, 400);
+    .get('/', queryValidator(listQuery), context => {
+      const { sessionId } = context.req.valid('query');
       return context.json({ items: deps.agentRuns.listForSession(sessionId) });
     })
     .get('/:agentRunId', context => {

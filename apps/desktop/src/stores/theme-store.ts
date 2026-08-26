@@ -1,20 +1,20 @@
 // 持久化主题配置，并在所有桌面窗口间同步应用。
+// 主题是 frontend.theme 设置值（frontend.* 由前端表现层拥有，server 托管 KV）。
 import { useEffect } from 'react';
 import { create } from 'zustand';
-import {
-  settingsApi,
-  type ContentFontPreset,
-  type ThemeConfig,
-} from '../api/settings.js';
+import { settingsApi } from '../api/settings.js';
 import { setThemeHue, setThemeRadius } from '@ema-agent/ui/utils';
 import { tauriBridge } from '../lib/tauri-bridge.js';
 
 const THEME_EVENT = 'theme:changed';
 const THEME_ATTR  = 'data-theme';
+const THEME_SETTING_KEY = 'frontend.theme';
 
 export type ThemeMode = 'dark' | 'light';
+export type ContentFontPreset = 'system' | 'rounded' | 'reading' | 'custom';
 
-interface ResolvedThemeConfig {
+/** frontend.theme 设置的持久化形状；字段范围由 server 侧 zod schema 校验。 */
+export interface ThemeSettingsValue {
   hue: number;
   radius: number;
   mode: ThemeMode;
@@ -22,7 +22,7 @@ interface ResolvedThemeConfig {
   contentFontFamily: string;
 }
 
-const DEFAULTS: ResolvedThemeConfig = {
+const DEFAULTS: ThemeSettingsValue = {
   hue: 200,
   radius: 1,
   mode: 'light',
@@ -58,17 +58,29 @@ function applyContentFont(preset: ContentFontPreset, customFamily: string): void
   );
 }
 
-function resolveThemeConfig(config: ThemeConfig): ResolvedThemeConfig {
+/** server 解码已兜底默认值；这里只按字段逐项收窄，坏字段回落默认而不是整份丢弃。 */
+function readThemeValue(value: unknown): ThemeSettingsValue {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return DEFAULTS;
+  const raw = value as Record<string, unknown>;
+  const mode: ThemeMode = raw.mode === 'dark' ? 'dark' : 'light';
+  const preset: ContentFontPreset =
+    raw.contentFontPreset === 'rounded'
+    || raw.contentFontPreset === 'reading'
+    || raw.contentFontPreset === 'custom'
+      ? raw.contentFontPreset
+      : 'system';
   return {
-    hue: config.hue,
-    radius: config.radius,
-    mode: config.mode === 'dark' ? 'dark' : 'light',
-    contentFontPreset: config.contentFontPreset ?? 'system',
-    contentFontFamily: normalizeLocalFontName(config.contentFontFamily ?? ''),
+    hue: typeof raw.hue === 'number' ? raw.hue : DEFAULTS.hue,
+    radius: typeof raw.radius === 'number' ? raw.radius : DEFAULTS.radius,
+    mode,
+    contentFontPreset: preset,
+    contentFontFamily: normalizeLocalFontName(
+      typeof raw.contentFontFamily === 'string' ? raw.contentFontFamily : '',
+    ),
   };
 }
 
-function applyResolvedTheme(config: ResolvedThemeConfig): void {
+function applyResolvedTheme(config: ThemeSettingsValue): void {
   setThemeHue(config.hue);
   setThemeRadius(config.radius);
   applyMode(config.mode);
@@ -119,55 +131,47 @@ export const useThemeStore = create<ThemeStoreState>((set, get) => ({
 
   async init() {
     try {
-      const config = await settingsApi.getTheme();
-      const resolved = resolveThemeConfig(config);
-      setThemeHue(resolved.hue);
-      setThemeRadius(resolved.radius);
-      // 暗色是默认(:root 无 data-theme),亮色设 data-theme="light"。
-      // 之前三元 bug(=== 'light' ? 'light' : 'light')永远 light,暗色不可切。
-      applyMode(resolved.mode);
-      applyContentFont(resolved.contentFontPreset, resolved.contentFontFamily);
+      const { value } = await settingsApi.getValue(THEME_SETTING_KEY);
+      const resolved = readThemeValue(value);
+      applyResolvedTheme(resolved);
       set({ ...resolved, ready: true });
     } catch {
-      setThemeHue(DEFAULTS.hue);
-      setThemeRadius(DEFAULTS.radius);
-      applyMode('light');
-      applyContentFont(DEFAULTS.contentFontPreset, DEFAULTS.contentFontFamily);
+      applyResolvedTheme(DEFAULTS);
       set({ ...DEFAULTS, ready: true });
     }
   },
 
   async setHue(hue) {
-    const previous = snapshotTheme(get());
+    const previous = currentThemeValue(get());
     const next = { ...previous, hue };
     await persistThemeChange(next, previous, value => set(value));
   },
 
   async setRadius(radius) {
-    const previous = snapshotTheme(get());
+    const previous = currentThemeValue(get());
     const next = { ...previous, radius };
     await persistThemeChange(next, previous, value => set(value));
   },
 
   async setMode(mode) {
-    const previous = snapshotTheme(get());
+    const previous = currentThemeValue(get());
     const next = { ...previous, mode };
     await persistThemeChange(next, previous, value => set(value));
   },
 
   async setContentFont(contentFontPreset, customFamily = get().contentFontFamily) {
-    const previous = snapshotTheme(get());
+    const previous = currentThemeValue(get());
     const contentFontFamily = normalizeLocalFontName(customFamily);
     const next = { ...previous, contentFontPreset, contentFontFamily };
     await persistThemeChange(next, previous, value => set(value));
   },
 }));
 
-function emitTheme(config: ThemeConfig): void {
+function emitTheme(config: ThemeSettingsValue): void {
   void tauriBridge.emit(THEME_EVENT, config);
 }
 
-function snapshotTheme(state: ThemeStoreState): ResolvedThemeConfig {
+function currentThemeValue(state: ThemeStoreState): ThemeSettingsValue {
   return {
     hue: state.hue,
     radius: state.radius,
@@ -178,15 +182,16 @@ function snapshotTheme(state: ThemeStoreState): ResolvedThemeConfig {
 }
 
 async function persistThemeChange(
-  next: ResolvedThemeConfig,
-  previous: ResolvedThemeConfig,
-  updateState: (value: ResolvedThemeConfig) => void,
+  next: ThemeSettingsValue,
+  previous: ThemeSettingsValue,
+  updateState: (value: ThemeSettingsValue) => void,
 ): Promise<void> {
   // 当前窗口先预览；只有 SQLite 提交成功后才通知其他窗口。
   applyResolvedTheme(next);
   updateState(next);
   try {
-    const saved = resolveThemeConfig(await settingsApi.putTheme(next));
+    const { value } = await settingsApi.putValue(THEME_SETTING_KEY, next);
+    const saved = readThemeValue(value);
     applyResolvedTheme(saved);
     updateState(saved);
     emitTheme(saved);
@@ -209,12 +214,9 @@ export function useThemeSync(): void {
     let unlisten: (() => void) | undefined;
     let cancelled = false;
 
-    void tauriBridge.listen<ThemeConfig>(THEME_EVENT, (e) => {
-      const resolved = resolveThemeConfig(e.payload);
-      setThemeHue(resolved.hue);
-      setThemeRadius(resolved.radius);
-      applyMode(resolved.mode);
-      applyContentFont(resolved.contentFontPreset, resolved.contentFontFamily);
+    void tauriBridge.listen<ThemeSettingsValue>(THEME_EVENT, (e) => {
+      const resolved = readThemeValue(e.payload);
+      applyResolvedTheme(resolved);
       useThemeStore.setState(resolved);
     }).then((fn) => {
       if (cancelled) { fn(); } else { unlisten = fn; }

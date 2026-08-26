@@ -1,21 +1,19 @@
-// 会话维度面板:左侧会话行,右侧概览/音频/记忆三个子页与 ZIP 导出。
+// 会话维度面板:左侧会话行,右侧统计概览与 ZIP 导出。
 import { useEffect, useState, type CSSProperties, type JSX } from 'react';
 import {
-  Button, CardButton, ScrollArea, Spinner, Tabs,
+  Button, CardButton, ScrollArea, Spinner,
 } from '@ema-agent/ui';
 import { useStorageStore } from '../../stores/storage-store.js';
-import { storageApi } from '../../api/storage.js';
+import { sessionsApi, type Session } from '../../api/sessions.js';
 import { showToast } from '../../lib/toast.js';
 
-import type { SessionWire } from '../../api/sessions.js';
-import type { SessionDashboardWire } from '../../api/storage.js';
-import type { AudioEntryWire, SessionNoteEntryWire } from '@ema-agent/session';
+import type { SessionStats } from '../../api/system.js';
 import { fmtBytes, fmtDateFull, fmtDateShort, fmtDuration, fmtTokens } from './storageFormat.js';
 
 export function SessionRow({
   session, selected, index, onClick,
 }: {
-  session:  SessionWire;
+  session:  Session;
   selected: boolean;
   index:    number;
   onClick(): void;
@@ -47,18 +45,20 @@ export function SessionRow({
   );
 }
 
-// ── Session dashboard sub-tabs ────────────────────────────────────────────────
+// ── Session stats overview ────────────────────────────────────────────────────
 
-function OverviewTab({ d }: { d: SessionDashboardWire }): JSX.Element {
+function OverviewCards({ d }: { d: SessionStats }): JSX.Element {
   const cards: Array<{ label: string; value: string; sub?: string }> = [
     { label: '轮次',     value: String(d.turnCount),
-      sub: `Chat ${d.turnCounts.chat} · Work ${d.turnCounts.work} · Narrative Always ${d.turnCounts.narrativeAlways}` },
+      sub: `Chat ${d.chatTurns} · Work ${d.workTurns} · Narrative Always ${d.narrativeAlwaysTurns}` },
     { label: '消息',     value: String(d.messageCount) },
     { label: 'Token',    value: fmtTokens(d.totalInputTokens + d.totalOutputTokens),
       sub: `↑ ${fmtTokens(d.totalInputTokens)}  ↓ ${fmtTokens(d.totalOutputTokens)}` },
     { label: '音频',     value: String(d.audioTurnCount),
       sub: `${fmtDuration(d.audioTotalDurationMs)} · ${fmtBytes(d.audioTotalBytes)}` },
     { label: '附件',     value: String(d.attachmentCount), sub: fmtBytes(d.attachmentTotalBytes) },
+    { label: '任务',     value: String(d.taskCount),
+      sub: `子智能体 ${d.agentRunCount} · 工具执行 ${d.toolExecutionCount}` },
   ];
   return (
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -78,83 +78,19 @@ function OverviewTab({ d }: { d: SessionDashboardWire }): JSX.Element {
   );
 }
 
-function AudioTab({ entries }: { entries: AudioEntryWire[] }): JSX.Element {
-  if (entries.length === 0) {
-    return (
-      <p className="ema-fade-in text-[var(--ema-text-tertiary)] text-sm py-8 text-center">
-        暂无音频记录
-      </p>
-    );
-  }
-  return (
-    <div className="flex flex-col gap-1.5">
-      {entries.map((e, i) => (
-        <div
-          key={e.turnId}
-          className="ema-stagger-in ema-glass-weak ema-card-decorate ema-card-decorate--storage bg-[var(--ema-surface-1)] rounded-xl border-2 border-solid border-[var(--ema-border)] hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]
-                     px-3 py-2.5 flex items-center gap-3 shadow-[var(--ema-shadow-1)]"
-          style={{ '--stagger-i': i } as CSSProperties}
-        >
-          <span className="i-solar:soundwave-bold-duotone text-base text-[var(--ema-text-tertiary)] shrink-0" aria-hidden />
-          <div className="min-w-0 flex-1">
-            <p className="text-xs text-[var(--ema-text-secondary)] font-mono truncate">{e.turnId.slice(-8)}</p>
-            <p className="text-xs text-[var(--ema-text-tertiary)]">
-              {fmtDuration(e.durationMs)} · {fmtBytes(e.byteSize)} · {e.segmentCount} 段
-            </p>
-          </div>
-          <span className="text-xs text-[var(--ema-text-tertiary)] shrink-0">
-            {e.mimeType.replace('audio/', '')}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function NotesTab({ notes }: { notes: SessionDashboardWire['notes'] }): JSX.Element {
-  if (!notes || notes.entries.length === 0) {
-    return (
-      <p className="ema-fade-in text-[var(--ema-text-tertiary)] text-sm py-8 text-center">
-        暂无 L1 记忆笔记
-      </p>
-    );
-  }
-  return (
-    <div className="flex flex-col gap-2">
-      <p className="ema-slide-down text-xs text-[var(--ema-text-tertiary)] mb-1">
-        {notes.entries.length} 条 · {fmtTokens(notes.tokensAtLastUpdate)} tokens
-      </p>
-      {(notes.entries as SessionNoteEntryWire[]).map((entry, i) => (
-        <div
-          key={i}
-          className="ema-stagger-in ema-glass-weak ema-card-decorate ema-card-decorate--storage bg-[var(--ema-surface-1)] rounded-xl border-2 border-solid border-[var(--ema-border)] hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]
-                     px-3 py-2.5 shadow-[var(--ema-shadow-1)]"
-          style={{ '--stagger-i': i } as CSSProperties}
-        >
-          <p className="text-xs text-[var(--ema-text-tertiary)] mb-1">{entry.timestamp}</p>
-          <p className="text-sm text-[var(--ema-text-primary)] whitespace-pre-wrap selectable">
-            {entry.delta}
-          </p>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 // ── SessionDashboard ──────────────────────────────────────────────────────────
 
-export function SessionDashboard({ session }: { session: SessionWire }): JSX.Element {
-  const [tab,       setTab]       = useState('overview');
+export function SessionDashboard({ session }: { session: Session }): JSX.Element {
   const [exporting, setExporting] = useState(false);
   const sid   = session.id;
   const store = useStorageStore();
 
-  const dashboard = store.dashBySession.get(session.id);
+  const stats = store.dashBySession.get(session.id) as SessionStats | undefined;
   const loading   = store.isDashLoading(sid);
   const error     = store.getDashError(sid);
 
   useEffect(() => {
-    if (!dashboard && !loading) {
+    if (!stats && !loading) {
       void store.loadDashboard(sid);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -163,13 +99,17 @@ export function SessionDashboard({ session }: { session: SessionWire }): JSX.Ele
   async function handleExport(): Promise<void> {
     setExporting(true);
     try {
-      const { blob, filename } = await storageApi.exportSession(sid);
+      const res = await sessionsApi.exportSession(sid);
+      const blob = await res.blob();
+      const disposition = res.headers.get('Content-Disposition');
+      const filename = disposition?.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i)?.[1];
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement('a');
       a.href     = url;
-      // 文件名以后端 Content-Disposition 为准,只有旧后端才回退本地拼接。
+      // 文件名以后端 Content-Disposition 为准,缺失时回退本地拼接。
       a.download = filename
-        ?? `ema-${(session.title || session.id).slice(0, 30)}-${session.id.slice(-6)}.zip`;
+        ? decodeURIComponent(filename)
+        : `ema-${(session.title || session.id).slice(0, 30)}-${session.id.slice(-6)}.zip`;
       a.click();
       URL.revokeObjectURL(url);
       showToast('导出完成', { variant: 'success' });
@@ -179,12 +119,6 @@ export function SessionDashboard({ session }: { session: SessionWire }): JSX.Ele
       setExporting(false);
     }
   }
-
-  const tabs = dashboard ? [
-    { value: 'overview',  label: '概览',                                  icon: 'i-solar:chart-2-bold-duotone',   content: <OverviewTab d={dashboard} /> },
-    { value: 'audio',     label: `音频 (${dashboard.audioTurnCount})`,    icon: 'i-solar:soundwave-bold-duotone', content: <AudioTab entries={dashboard.audioEntries} /> },
-    { value: 'memory',    label: '记忆',                                  icon: 'i-solar:leaf-bold-duotone',      content: <NotesTab notes={dashboard.notes} /> },
-  ] : [];
 
   return (
     <div className="ema-panel-in flex flex-col h-full">
@@ -210,11 +144,11 @@ export function SessionDashboard({ session }: { session: SessionWire }): JSX.Ele
             <span className="i-solar:calendar-add-bold-duotone mr-1" aria-hidden />
             创建于 {fmtDateFull(session.createdAt)} · 活跃于 {fmtDateFull(session.lastActivityAt)}
           </p>
-          {dashboard && (
+          {stats && (
             <p className="ema-slide-up text-xs text-[var(--ema-text-tertiary)]">
-              {dashboard.turnCount} 轮 ·{' '}
-              {fmtTokens(dashboard.totalInputTokens + dashboard.totalOutputTokens)} tokens ·{' '}
-              {dashboard.audioTurnCount} 音频
+              {stats.turnCount} 轮 ·{' '}
+              {fmtTokens(stats.totalInputTokens + stats.totalOutputTokens)} tokens ·{' '}
+              {stats.audioTurnCount} 音频
             </p>
           )}
         </div>
@@ -241,18 +175,13 @@ export function SessionDashboard({ session }: { session: SessionWire }): JSX.Ele
         </div>
       )}
 
-      {/* Tabs + content */}
-      {dashboard && !loading && (
-        <div className="flex flex-col flex-1 min-h-0">
-          <div className="flex-none px-6 pt-3">
-            <Tabs value={tab} onChange={setTab} items={tabs} variant="pill" triggersOnly />
+      {/* Stats */}
+      {stats && !loading && (
+        <ScrollArea className="flex-1 px-6 py-4">
+          <div className="ema-panel-in">
+            <OverviewCards d={stats} />
           </div>
-          <ScrollArea className="flex-1 px-6 py-4">
-            <div key={tab} className="ema-panel-in">
-              {tabs.find((t) => t.value === tab)?.content}
-            </div>
-          </ScrollArea>
-        </div>
+        </ScrollArea>
       )}
     </div>
   );

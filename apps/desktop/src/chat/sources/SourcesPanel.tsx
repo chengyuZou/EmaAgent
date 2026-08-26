@@ -1,91 +1,36 @@
-// Sources 标签内容：展示当前 Session 的持久化附件、磁盘状态，并安全交给操作系统打开。
-import { useEffect, useState, type JSX } from 'react';
+// Sources 标签内容：展示当前 Session 的持久化附件清单。
+// 传输层只携带展示字段（id/turnId/kind/name/mimeType/createdAt），路径与文件状态
+// 按设计不进传输层，因此本面板不提供打开或磁盘状态展示。
+import { useEffect, type JSX } from 'react';
 import { Button, ScrollArea } from '@ema-agent/ui';
 
-import type { SessionAttachmentFileStatus, SessionAttachmentWire } from '@ema-agent/session';
-import { tauriBridge } from '../../lib/tauri-bridge.js';
+import type { SessionAttachmentsResult } from '../../api/sessions.js';
 import { useSessionAttachmentStore } from '../../stores/session-attachment-store.js';
 
-const EMPTY_ATTACHMENTS: SessionAttachmentWire[] = [];
+type SessionAttachmentItem = SessionAttachmentsResult['attachments'][number];
 
-const STATUS_META: Record<SessionAttachmentFileStatus, {
-  label: string;
-  className: string;
-  icon: string;
-}> = {
-  available: {
-    label: '可用',
-    className: 'text-[var(--ema-success)]',
-    icon: 'i-lucide:circle-check',
-  },
-  modified: {
-    label: '原文件已修改',
-    className: 'text-[var(--ema-warning)]',
-    icon: 'i-lucide:triangle-alert',
-  },
-  missing: {
-    label: '原文件已丢失',
-    className: 'text-[var(--ema-danger)]',
-    icon: 'i-lucide:file-x',
-  },
-  inaccessible: {
-    label: '无法访问',
-    className: 'text-[var(--ema-danger)]',
-    icon: 'i-lucide:shield-alert',
-  },
-};
+const EMPTY_ATTACHMENTS: SessionAttachmentItem[] = [];
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1_024) return `${bytes} B`;
-  if (bytes < 1_048_576) return `${(bytes / 1_024).toFixed(1)} KB`;
-  if (bytes < 1_073_741_824) return `${(bytes / 1_048_576).toFixed(1)} MB`;
-  return `${(bytes / 1_073_741_824).toFixed(1)} GB`;
-}
-
-function attachmentIcon(attachment: SessionAttachmentWire): string {
+function attachmentIcon(attachment: SessionAttachmentItem): string {
   if (attachment.mimeType.startsWith('image/')) return 'i-lucide:image';
   if (attachment.mimeType.startsWith('audio/')) return 'i-lucide:audio-lines';
   if (attachment.mimeType === 'application/pdf') return 'i-lucide:file-text';
   return 'i-lucide:paperclip';
 }
 
-function AttachmentRow({ attachment }: { attachment: SessionAttachmentWire }): JSX.Element {
-  const [openError, setOpenError] = useState<string | null>(null);
-  const status = STATUS_META[attachment.fileStatus];
-  const canOpen = Boolean(attachment.fileHandle)
-    && (attachment.fileStatus === 'available' || attachment.fileStatus === 'modified');
-
-  const open = async (): Promise<void> => {
-    if (!canOpen) return;
-    setOpenError(null);
-    try {
-      if (!attachment.fileHandle) throw new Error('该历史附件没有可用的文件授权');
-      await tauriBridge.openAuthorizedFile(attachment.fileHandle);
-    } catch {
-      setOpenError('系统未能打开此文件');
-    }
-  };
-
+function AttachmentRow({ attachment }: { attachment: SessionAttachmentItem }): JSX.Element {
   return (
-    <div className="group px-3 py-2.5 border-b border-[var(--ema-border)] hover:bg-[var(--ema-surface-2)] transition-colors">
+    <div className="px-3 py-2.5 border-b border-[var(--ema-border)] hover:bg-[var(--ema-surface-2)] transition-colors">
       <div className="flex items-start gap-2.5">
         <span
           className={`${attachmentIcon(attachment)} mt-0.5 text-base shrink-0 text-[var(--ema-primary)]`}
           aria-hidden
         />
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="truncate text-xs font-medium text-[var(--ema-text-primary)]" title={attachment.name}>
-              {attachment.name}
-            </span>
-            <span className={`ml-auto inline-flex items-center gap-1 shrink-0 text-[10px] ${status.className}`}>
-              <span className={status.icon} aria-hidden />
-              {status.label}
-            </span>
-          </div>
-          <div className="mt-1 flex items-center gap-2 text-[10px] text-[var(--ema-text-tertiary)]">
-            <span>{formatBytes(attachment.size)}</span>
-            <span>·</span>
+          <span className="block truncate text-xs font-medium text-[var(--ema-text-primary)]" title={attachment.name}>
+            {attachment.name}
+          </span>
+          <div className="mt-1 text-[10px] text-[var(--ema-text-tertiary)]">
             <time dateTime={new Date(attachment.createdAt).toISOString()}>
               {new Date(attachment.createdAt).toLocaleString()}
             </time>
@@ -93,18 +38,7 @@ function AttachmentRow({ attachment }: { attachment: SessionAttachmentWire }): J
           <p className="mt-1 truncate text-[10px] text-[var(--ema-text-tertiary)]">
             已附加到对话
           </p>
-          {openError && <p className="mt-1 text-[10px] text-[var(--ema-danger)]">{openError}</p>}
         </div>
-        <Button
-          variant="ghost"
-          className="size-7 p-0 shrink-0 opacity-70 group-hover:opacity-100"
-          disabled={!canOpen}
-          onClick={() => void open()}
-          title={canOpen ? '使用系统默认程序打开' : status.label}
-          aria-label={`打开 ${attachment.name}`}
-        >
-          <span className="i-lucide:external-link text-sm" aria-hidden />
-        </Button>
       </div>
     </div>
   );

@@ -4,7 +4,7 @@ import { useEffect, type JSX } from 'react';
 import { Popover } from '@ema-agent/ui';
 import { useConversationStore } from '../../stores/conversation-store.js';
 import { useSessionStore } from '../../stores/session-store.js';
-import { useSidecarStore } from '../../stores/sidecar-store.js';
+import { useServerStore } from '../../stores/server-store.js';
 import { useContextUsageStore } from '../../stores/contextUsageStore.js';
 import { findEnabledModel, useModelCatalogStore } from '../../stores/model-catalog-store.js';
 import { useThemeSync } from '../../stores/theme-store.js';
@@ -15,7 +15,6 @@ import { SessionSidebar } from '../sidebar/SessionSidebar.js';
 import { ChatHeader } from '../ChatHeader.js';
 import { ChatHistory } from '../history/ChatHistory.js';
 import { ChatInput } from '../input/ChatInput.js';
-import { ContextPanel } from '../ContextPanel.js';
 import { ChatActivityStrip } from '../activity/ChatActivityStrip.js';
 import { WorkspaceFrame } from '../workspace/WorkspaceFrame.js';
 import { useWorkspaceStore } from '../../stores/workspaceStore.js';
@@ -24,11 +23,11 @@ import { useWorkspaceStore } from '../../stores/workspaceStore.js';
 
 export function ChatPanel(): JSX.Element {
   const viewedSessionId = useConversationStore((s) => s.viewedSessionId);
-  const sidecarStatus   = useSidecarStore((s) => s.status);
-  const hasConnected    = useSidecarStore((s) => s.lastKnownPort !== null);
+  const serverStatus    = useServerStore((s) => s.status);
+  const hasConnected    = useServerStore((s) => s.lastKnownPort !== null);
 
   useThemeSync();
-  useRuntimeSettingsSync(sidecarStatus.kind === 'ok');
+  useRuntimeSettingsSync(serverStatus.kind === 'ok');
 
   // Session metadata for title bar
   const session = useSessionStore((s) =>
@@ -41,7 +40,7 @@ export function ChatPanel(): JSX.Element {
   // 聊天窗只消费主窗广播，不再自行建立全局 SSE 连接。
   useEffect(() => mountSystemEvents({ ownsConnection: false }), []);
   useEffect(() => {
-    const stop = useSidecarStore.getState().startPolling();
+    const stop = useServerStore.getState().startPolling();
     return stop;
   }, []);
   useEffect(() => {
@@ -65,18 +64,18 @@ export function ChatPanel(): JSX.Element {
     openTab(viewedSessionId, { id: 'review', kind: 'review' });
   }
 
-  if (sidecarStatus.kind === 'error' && !hasConnected) {
+  if (serverStatus.kind === 'error' && !hasConnected) {
     return (
       <div className="flex items-center justify-center h-screen ema-fade-in text-[var(--ema-text-tertiary)]">
         <div className="text-center">
-          <div className="text-lg mb-2 inline-flex items-center gap-1.5"><span className="i-lucide:unplug" aria-hidden />Sidecar 离线</div>
-          <div className="text-sm text-[var(--ema-text-tertiary)]">{sidecarStatus.reason}</div>
+          <div className="text-lg mb-2 inline-flex items-center gap-1.5"><span className="i-lucide:unplug" aria-hidden />服务器离线</div>
+          <div className="text-sm text-[var(--ema-text-tertiary)]">{serverStatus.reason}</div>
         </div>
       </div>
     );
   }
 
-  if (!hasConnected && (sidecarStatus.kind === 'pending' || sidecarStatus.kind === 'unknown')) {
+  if (!hasConnected && (serverStatus.kind === 'pending' || serverStatus.kind === 'unknown')) {
     return (
       <div className="flex items-center justify-center h-screen ema-fade-in text-[var(--ema-text-tertiary)]">
         连接中…
@@ -96,15 +95,15 @@ export function ChatPanel(): JSX.Element {
               <ChatHeader
                 sessionId={viewedSessionId}
                 title={session?.title ?? (viewedSessionId ? '加载中…' : '无会话')}
-                isFork={session?.parentSessionId !== null && session?.parentSessionId !== undefined}
+                isFork={session?.forkedFromSessionId !== null && session?.forkedFromSessionId !== undefined}
               />
-              {sidecarStatus.kind === 'error' && (
+              {serverStatus.kind === 'error' && (
                 <div
                   role="status"
                   className="flex items-center gap-2 px-4 py-2 border-b text-xs bg-[var(--ema-danger-muted)] border-[var(--ema-danger)]/30 text-[var(--ema-danger)]"
                 >
                   <span className="i-lucide:unplug shrink-0" aria-hidden />
-                  <span className="truncate">Sidecar 暂时离线：{sidecarStatus.reason}</span>
+                  <span className="truncate">服务器暂时离线：{serverStatus.reason}</span>
                   <span className="ml-auto shrink-0 text-[var(--ema-text-tertiary)]">输入内容会保留</span>
                 </div>
               )}
@@ -116,15 +115,14 @@ export function ChatPanel(): JSX.Element {
           statusBar={
             <div className="flex items-center justify-between px-4 py-1.5 border-t shrink-0 text-[11px] border-[var(--ema-border)] text-[var(--ema-text-tertiary)]">
               <div className="flex items-center gap-2">
-                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${sidecarStatus.kind === 'ok' ? 'bg-[var(--ema-success)]' : 'bg-[var(--ema-danger)]'}`} />
-                <span>Sidecar</span>
-                {sidecarStatus.kind === 'ok' && (
-                  <span className="text-[var(--ema-text-tertiary)]">{sidecarStatus.latencyMs}ms</span>
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${serverStatus.kind === 'ok' ? 'bg-[var(--ema-success)]' : 'bg-[var(--ema-danger)]'}`} />
+                <span>服务器</span>
+                {serverStatus.kind === 'ok' && (
+                  <span className="text-[var(--ema-text-tertiary)]">{serverStatus.latencyMs}ms</span>
                 )}
               </div>
               <div className="flex items-center gap-3">
                 <ContextBall sessionId={viewedSessionId as string | null} />
-                <ContextPanel />
                 {viewedSessionId && (
                   <span className="font-mono opacity-40">{(viewedSessionId as string).slice(0, 8)}</span>
                 )}
@@ -155,11 +153,12 @@ function ContextBall({ sessionId }: { sessionId: string | null }): JSX.Element |
   const models = useModelCatalogStore((state) => state.models);
   const preferredModel = findEnabledModel(
     models,
-    session?.preferredProviderConfigId,
-    session?.preferredModelId,
+    session?.providerId,
+    session?.modelId,
   );
   // 上下文上限来自当前 Session 的模型目录，不再读取跨 Session 的全局 UI 状态。
-  const ctxWindow = preferredModel?.contextWindow ?? FALLBACK_CTX;
+  // 可用模型是能力联合，contextWindow 只在 llm 成员上存在（目录本就只加载 llm）。
+  const ctxWindow = (preferredModel?.capability === 'llm' ? preferredModel.contextWindow : undefined) ?? FALLBACK_CTX;
 
   const streaming = useConversationStore((s) =>
     sessionId ? s.streamingMap.get(sessionId) : undefined,
@@ -181,7 +180,7 @@ function ContextBall({ sessionId }: { sessionId: string | null }): JSX.Element |
   const estimate = estimateEntry?.estimate;
   // 真实未到时用估算撑场;窗口上限同样优先取估算自带的精确值。
   const effectiveWindow = estimate?.contextWindow ?? ctxWindow;
-  const inputTok = realInput ?? estimate?.totalTokens ?? 0;
+  const inputTok = realInput ?? estimate?.estimatedInputTokens ?? 0;
   const isEstimate = realInput === undefined && estimate !== undefined;
 
   if (!inputTok) return null;
@@ -198,8 +197,13 @@ function ContextBall({ sessionId }: { sessionId: string | null }): JSX.Element |
   }
 
   const categoryRows = estimate
-    ? (Object.entries(estimate.categories) as Array<[string, number]>)
-        .map(([key, tokens]) => ({ key, label: CATEGORY_LABELS[key] ?? key, tokens }))
+    ? estimate.categories
+        .map((category) => ({
+          // Prompt section 以标题为展示名，其余 kind 走固定标签。
+          key: category.name ?? category.kind,
+          label: category.name ?? CATEGORY_LABELS[category.kind] ?? category.kind,
+          tokens: category.tokens,
+        }))
         .filter((row) => row.tokens > 0)
         .sort((a, b) => b.tokens - a.tokens)
     : [];
@@ -261,14 +265,12 @@ function ContextBall({ sessionId }: { sessionId: string | null }): JSX.Element |
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
-  systemPrompt: '系统指令',
+  promptSection: '系统指令',
   toolInstructions: '工具说明书',
   toolSchemas: '工具定义',
-  workspaceInstructions: '工作区规则',
-  skills: '技能',
-  memory: '记忆',
-  narrative: '剧情',
   messages: '消息',
+  toolCalls: '工具调用',
+  toolResults: '工具结果',
   attachments: '附件媒体',
   other: '其他',
 };

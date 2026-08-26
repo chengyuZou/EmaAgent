@@ -1,4 +1,6 @@
 // 把 Turn 的结构化 SSE 事件分发给会话状态和各业务 Store。
+// 线上形状 = TurnStreamEvent（turn/agent/tools/permission/compact/narrative/stage
+// 各域组合）+ SpeechEvent（语音合流事件共享同一游标序列）。
 import {
   tauriBridge }             from '../lib/tauri-bridge.js';
 import { presentConfiguredEvent } from '../lib/event-notifications.js';
@@ -9,25 +11,24 @@ import {
   handleTurnAborted,
   } from '../lib/tts-playback.js';
 import { useDecisionStore }        from './decision-store.js';
-import { useAgentRunStore }        from './agentRunStore.js';
+import {
+  useAgentRunStore,
+  type AgentRunMessageItem,
+  type LiveAgentRunInfo,
+} from './agentRunStore.js';
 import { useTaskStore }            from './taskStore.js';
 import { useConversationStore }    from './conversation-store.js';
-import { useContextUsageStore }    from './contextUsageStore.js';
-import {
-  appendTextSlice,
-  appendThinkingSlice,
-  } from './conversation-history.js';
-
-import {
-  type ExecutionProfile,
-  type NarrativePolicy,
-  TurnStats,
-} from '@ema-agent/turn';
 
 import type {
-  MemoryRecallLayer,
-  MemoryRecallLayerReport,
-} from '@ema-agent/memory';
+  ExecutionProfile,
+  NarrativePolicy,
+} from '@ema-agent/session';
+import type {
+  TurnStats,
+} from '@ema-agent/turn';
+import type { TurnSseEvent } from '@ema-agent/server/sse/eventHub.js';
+
+/** Turn SSE 线上事件：Turn 流 + 语音输出事件（server eventHub 唯一事实源）。 */
 
 // ── StreamCallbacks ───────────────────────────────────────────────────────────
 
@@ -51,13 +52,26 @@ export interface StreamCallbacks {
 
 // ── Module-level temp state ───────────────────────────────────────────────────
 
-// Breaker reasons arrive before turn_aborted; we hold them here for lookup.
-export const breakerReasons = new Map<string, string>();
+/** 合并一次 AgentRun 进度事件进 live 投影；持久字段仍以 HTTP 快照为准。 */
+function patchLiveAgentRun(agentRunId: string, patch: Partial<LiveAgentRunInfo>): void {
+  const store = useAgentRunStore.getState();
+  const existing = store.runs.get(agentRunId);
+  const base: LiveAgentRunInfo = existing?.live ?? {
+    startedAtMs: Date.now(), promptExcerpt: '', model: '',
+    iteration: 0, toolCallCount: 0, elapsedMs: 0,
+  };
+  store.upsert({ id: agentRunId, live: { ...base, ...patch } });
+}
+
+/** Turn 终态后持久 Task 快照已过期；Task 没有独立事件，终态是唯一的刷新节拍。 */
+function refreshTasksAfterTerminal(sessionId: string): void {
+  void useTaskStore.getState().loadForSession(sessionId, true).catch(() => {});
+}
 
 // ── Main dispatcher ───────────────────────────────────────────────────────────
 
 export function dispatchSseEvent(
-  event:     TurnStreamEvent,
+  event:     TurnSseEvent,
   sessionId: string,
   cb:        StreamCallbacks,
 ): void {
@@ -103,21 +117,21 @@ export function dispatchSseEvent(
     case 'turn_completed':
       handleTurnCompleted(sessionId as string);
       cb.finalizeStream(sessionId, event.stats);
+      refreshTasksAfterTerminal(sessionId as string);
       void tauriBridge.emit('speech:end', { sessionId });
       break;
 
     case 'turn_failed':
-      breakerReasons.delete(sessionId as string);
       handleTurnAborted(sessionId as string);
       cb.abortStream(sessionId, event.message);
+      refreshTasksAfterTerminal(sessionId as string);
       void tauriBridge.emit('speech:end', { sessionId });
       break;
 
     case 'turn_aborted': {
-      const reason = breakerReasons.get(sessionId as string);
-      breakerReasons.delete(sessionId as string);
       handleTurnAborted(sessionId as string);
-      cb.abortStream(sessionId, reason ?? event.reason);
+      cb.abortStream(sessionId, event.reason);
+      refreshTasksAfterTerminal(sessionId as string);
       void tauriBridge.emit('speech:end', { sessionId });
       break;
     }
@@ -130,14 +144,6 @@ export function dispatchSseEvent(
         m.set(event.turnId as string, { inputTokens: event.inputTokens, outputTokens: event.outputTokens });
         return { liveUsageMap: m };
       });
-      break;
-
-    case 'llm_context_prepared':
-      useContextUsageStore.getState().applyEstimate(
-        sessionId as string,
-        event.llmCallId as string,
-        event.estimate,
-      );
       break;
 
     case 'output_text_delta':
@@ -211,81 +217,23 @@ export function dispatchSseEvent(
     // ── Decision events — push to decision-store + relay to pet window ────
 
     case 'ask_user_required': {
-      const p = {
-        kind: 'ask_user' as const, promptId: event.promptId, sessionId,
-        turnId: event.turnId, questions: event.questions, humanDescription: event.humanDescription,
-      };
+      const { type: _type, ...request } = event;
+      const p = { kind: 'ask_user' as const, ...request };
       useDecisionStore.getState().push(p);
       void tauriBridge.emit('decision:push', p);
       break;
     }
     case 'ask_user_resolved':
-      useDecisionStore.getState().dismiss(event.promptId);
-      void tauriBridge.emit('decision:dismiss', { promptId: event.promptId });
-      break;
-
-    case 'ask_confirm_required': {
-      const p = {
-        kind: 'ask_confirm' as const, promptId: event.promptId, turnId: event.turnId,
-        sessionId, question: event.question, humanDescription: event.humanDescription,
-      };
-      useDecisionStore.getState().push(p);
-      void tauriBridge.emit('decision:push', p);
-      break;
-    }
-    case 'ask_confirm_resolved':
-      useDecisionStore.getState().dismiss(event.promptId);
-      void tauriBridge.emit('decision:dismiss', { promptId: event.promptId });
-      break;
-
-    case 'ask_text_required': {
-      const p = {
-        kind: 'ask_text' as const, promptId: event.promptId, turnId: event.turnId,
-        sessionId, question: event.question,
-        humanDescription: event.humanDescription, placeholder: event.placeholder,
-      };
-      useDecisionStore.getState().push(p);
-      void tauriBridge.emit('decision:push', p);
-      break;
-    }
-    case 'ask_text_resolved':
-      useDecisionStore.getState().dismiss(event.promptId);
-      void tauriBridge.emit('decision:dismiss', { promptId: event.promptId });
-      break;
-
-    case 'ask_choice_required': {
-      const p = {
-        kind: 'ask_choice' as const, promptId: event.promptId, turnId: event.turnId,
-        sessionId, question: event.question,
-        humanDescription: event.humanDescription, options: event.options,
-        multiSelect: event.multiSelect ?? false, allowCustom: event.allowCustom,
-      };
-      useDecisionStore.getState().push(p);
-      void tauriBridge.emit('decision:push', p);
-      break;
-    }
-    case 'ask_choice_resolved':
-      useDecisionStore.getState().dismiss(event.promptId);
-      void tauriBridge.emit('decision:dismiss', { promptId: event.promptId });
+      useDecisionStore.getState().dismiss(event.toolCallId);
+      void tauriBridge.emit('decision:dismiss', { toolCallId: event.toolCallId });
       break;
 
     case 'permission_required': {
-      const p = {
-        kind: 'permission' as const, promptId: event.promptId, sessionId,
-        turnId: event.turnId,
-        toolId: event.toolId,
-        toolName: event.toolName,
-        toolDescription: event.toolDescription,
-        input: event.input,
-        riskLevel: event.riskLevel,
-        accessType: event.accessType,
-        targets: event.targets,
-        gateReason: event.gateReason,
-        toolCallId: event.toolCallId,
-      };
+      const { type: _type, ...request } = event;
+      const p = { kind: 'permission' as const, ...request };
       useDecisionStore.getState().push(p);
       void tauriBridge.emit('decision:push', p);
-      // 使用后端提供的 string 精确关联；同名工具允许在一个 Turn 内并发。
+      // toolCallId 精确关联：同名工具允许在一个 Turn 内并发。
       useConversationStore.setState((s) => {
         const sm = s.streamingMap.get(sessionId as string);
         if (!sm) return {};
@@ -294,7 +242,7 @@ export function dispatchSseEvent(
           if (set) return sl;
           if (sl.type === 'tool_use' && sl.callId === event.toolCallId) {
             set = true;
-            return { ...sl, permissionPromptId: event.promptId };
+            return { ...sl, permissionPending: true };
           }
           return sl;
         });
@@ -306,16 +254,16 @@ export function dispatchSseEvent(
       break;
     }
     case 'permission_resolved':
-      useDecisionStore.getState().dismiss(event.promptId);
-      void tauriBridge.emit('decision:dismiss', { promptId: event.promptId });
-      // allow → 清掉 permissionPromptId 恢复运行中；deny → 不在此标失败，等后端 tool_result(permission/denied) 统一处理
+      useDecisionStore.getState().dismiss(event.toolCallId);
+      void tauriBridge.emit('decision:dismiss', { toolCallId: event.toolCallId });
+      // allow → 清掉 permissionPending 恢复运行中；deny → 不在此标失败，等后端 tool_result(permission/denied) 统一处理
       if (event.decision === 'allow') {
         useConversationStore.setState((s) => {
           const sm = s.streamingMap.get(sessionId as string);
           if (!sm) return {};
           const slices = sm.slices.map((sl) =>
-            sl.type === 'tool_use' && sl.permissionPromptId === event.promptId
-              ? { ...sl, permissionPromptId: undefined }
+            sl.type === 'tool_use' && sl.callId === event.toolCallId
+              ? { ...sl, permissionPending: undefined }
               : sl,
           );
           const streaming = new Map(s.streamingMap);
@@ -333,6 +281,10 @@ export function dispatchSseEvent(
 
     case 'tts_sentence_complete':
       handleTtsSentenceComplete(event);
+      break;
+
+    case 'tts_warning':
+      // 提示条由 presentConfiguredEvent 统一展示；播放链不中断。
       break;
 
     // ── Emotion / stage ────────────────────────────────────────────────────
@@ -355,22 +307,7 @@ export function dispatchSseEvent(
       }
       break;
 
-    // ── 持久 Task ─────────────────────────────────────────────────────────
-
-    case 'task_created':
-    case 'task_updated':
-      useTaskStore.getState().upsert(event.task);
-      break;
-
-    case 'task_deleted':
-      useTaskStore.getState().remove(event.sessionId, event.taskId);
-      break;
-
     // ── Agent events ───────────────────────────────────────────────────────
-
-    case 'agent_breaker_tripped':
-      breakerReasons.set(sessionId as string, `熔断保护：${event.reason}`);
-      break;
 
     case 'agent_iteration':
       useConversationStore.setState((s) => {
@@ -382,95 +319,87 @@ export function dispatchSseEvent(
 
     // ── Subagent lifecycle ─────────────────────────────────────────────────
 
-    case 'subagent_started':
+    case 'agent_run_started':
       useAgentRunStore.getState().upsert({
-        id: event.subagentId,
+        id: event.agentRunId,
         sessionId: event.sessionId as string,
-        parentTurnId: event.parentTurnId as string,
-        kind: event.kind,
-        purpose: event.description ?? event.promptExcerpt,
-        modelId: event.model,
+        parentTurnId: event.turnId as string,
+        contextMode: event.contextMode,
+        ...(event.description !== undefined ? { description: event.description } : {}),
+        ...(event.modelId !== undefined ? { modelId: event.modelId } : {}),
         status: 'running',
         version: 0,
-        createdAt: event.startedAtMs, updatedAt: event.startedAtMs,
+        createdAt: event.startedAt, updatedAt: event.startedAt,
         live: {
-          startedAtMs: event.startedAtMs, promptExcerpt: event.promptExcerpt,
-          model: event.model, iteration: 0, toolCallCount: 0, elapsedMs: 0,
+          startedAtMs: event.startedAt, promptExcerpt: event.description ?? '',
+          model: event.modelId ?? '', iteration: 0, toolCallCount: 0, elapsedMs: 0,
         },
       });
       // 先建立空记录，让详情面板无需等待持久快照即可展示流式内容。
       useAgentRunStore.setState((s) => {
-        if (s.transcripts.has(event.subagentId)) return {};
+        if (s.transcripts.has(event.agentRunId)) return {};
         const trans = new Map(s.transcripts);
-        trans.set(event.subagentId, []);
+        trans.set(event.agentRunId, []);
         return { transcripts: trans };
       });
       break;
 
-    case 'subagent_progress': {
-      const existing = useAgentRunStore.getState().runs.get(event.subagentId);
-      useAgentRunStore.getState().upsert({
-        id: event.subagentId, status: 'running',
-        live: {
-          startedAtMs:   existing?.live?.startedAtMs   ?? Date.now(),
-          promptExcerpt: existing?.live?.promptExcerpt ?? '',
-          model:         existing?.live?.model         ?? '',
-          iteration:     event.iteration,
-          toolCallCount: event.toolCallCount,
-          elapsedMs:     event.elapsedMs,
-        },
-      });
+    case 'agent_run_event': {
+      const runId = event.agentRunId;
+      const inner = event.event;
+      const agentRunStore = useAgentRunStore.getState();
+
+      if (inner.type === 'iteration_started') {
+        patchLiveAgentRun(runId, { iteration: inner.iteration });
+      } else if (inner.type === 'text_delta') {
+        agentRunStore.appendLiveTranscript(runId, 'assistant', { text: inner.delta });
+      } else if (inner.type === 'thinking_delta') {
+        agentRunStore.appendLiveTranscript(runId, 'reasoning', { text: inner.delta });
+      } else if (inner.type === 'tool_use_completed') {
+        // args 由模型产出、经 SSE JSON 到达；转写内容契约即 JSON。
+        agentRunStore.appendLiveTranscript(runId, 'tool_call', {
+          callId: inner.toolCallId, name: inner.toolName,
+          args: inner.args as AgentRunMessageItem['content'],
+        });
+        const current = agentRunStore.runs.get(runId)?.live?.toolCallCount ?? 0;
+        patchLiveAgentRun(runId, { toolCallCount: current + 1 });
+      } else if (inner.type === 'tool_result') {
+        agentRunStore.appendLiveTranscript(runId, 'tool_result', {
+          callId: inner.result.toolCallId,
+          content: inner.result.content,
+          isError: inner.result.isError ?? false,
+          errorCode: inner.result.errorCode,
+          durationMs: inner.result.durationMs,
+        });
+      }
       break;
     }
 
-    case 'subagent_completed':
+    case 'agent_run_completed':
       useAgentRunStore.getState().upsert({
-        id: event.subagentId, status: 'completed', updatedAt: Date.now(),
-        iterations: event.iterationCount,
-        toolCallCount: event.toolCallCount,
-        inputTokens: event.stats.inputTokens, outputTokens: event.stats.outputTokens,
-        outputExcerpt: event.outputExcerpt,
+        id: event.agentRunId, status: 'completed', updatedAt: Date.now(),
+        iterations: event.state.iterations,
+        inputTokens: event.state.usage.inputTokens,
+        outputTokens: event.state.usage.outputTokens,
+        outputExcerpt: event.finalText.slice(0, 500),
         completedAt: Date.now(),
         live: undefined,
       });
       break;
 
-    case 'subagent_failed':
+    case 'agent_run_failed':
       useAgentRunStore.getState().upsert({
-        id: event.subagentId, status: 'failed', error: event.error,
+        id: event.agentRunId, status: 'failed', error: event.error,
         updatedAt: Date.now(), completedAt: Date.now(), live: undefined,
       });
       break;
 
-    case 'subagent_aborted':
+    case 'agent_run_aborted':
       useAgentRunStore.getState().upsert({
-        id: event.subagentId, status: 'cancelled', error: event.reason,
+        id: event.agentRunId, status: 'cancelled', error: event.reason,
         updatedAt: Date.now(), completedAt: Date.now(), live: undefined,
       });
       break;
-
-    case 'subagent_stream': {
-      const { ev: inner, subagentId } = event;
-      const agentRunStore = useAgentRunStore.getState();
-
-      if (inner.type === 'text_delta') {
-        agentRunStore.appendLiveTranscript(subagentId, 'assistant', { text: inner.delta });
-      } else if (inner.type === 'reasoning_delta') {
-        agentRunStore.appendLiveTranscript(subagentId, 'reasoning', { text: inner.delta });
-      } else if (inner.type === 'tool_call') {
-        agentRunStore.appendLiveTranscript(subagentId, 'tool_call', {
-          callId: inner.callId, name: inner.name, args: inner.args,
-          iteration: inner.iteration,
-        });
-      } else if (inner.type === 'tool_result') {
-        agentRunStore.appendLiveTranscript(subagentId, 'tool_result', {
-          callId: inner.callId, name: inner.name, excerpt: inner.excerpt,
-          isError: inner.isError, error: inner.error?.message, durationMs: inner.durationMs,
-        });
-      }
-      // iteration — no transcript entry needed
-      break;
-    }
 
     // ── Narrative ──────────────────────────────────────────────────────────
 
@@ -544,15 +473,15 @@ export function dispatchSseEvent(
       });
       break;
 
-    // ── Memory ─────────────────────────────────────────────────────────────
+    // ── Compact ────────────────────────────────────────────────────────────
 
-    case 'context_compaction_started':
+    case 'compact_started':
+    case 'compact_history_truncated':
+    case 'compact_cancelled':
+    case 'compact_failed':
       break;
 
-    case 'context_compaction_failed':
-      break;
-
-    case 'context_compaction_completed':
+    case 'compact_completed':
       useConversationStore.setState((s) => {
         const msgs    = new Map(s.messages);
         const existing = msgs.get(sessionId as string) ?? [];
@@ -563,18 +492,6 @@ export function dispatchSseEvent(
         };
         msgs.set(sessionId as string, [...existing, notice]);
         return { messages: msgs };
-      });
-      break;
-
-    case 'memory_recall_evidence':
-      useConversationStore.setState((s) => {
-        const prev = s.recallEvidenceMap.get(sessionId as string) ?? {};
-        const next  = new Map(s.recallEvidenceMap);
-        next.set(sessionId as string, {
-          ...prev,
-          [event.layer as MemoryRecallLayer]: event.report as MemoryRecallLayerReport,
-        });
-        return { recallEvidenceMap: next };
       });
       break;
 

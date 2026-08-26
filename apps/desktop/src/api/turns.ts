@@ -1,122 +1,131 @@
-/**
- * Turns API — POST /api/turns, SSE events URL, merged audio URL.
- */
-import { sidecarClient } from './sidecar-client.js';
-import { hasTurnRequestInput } from '@ema-agent/turn/turns';
+// Turns API：/api/turns——启动 Turn、Permission/AskUser 应答、单 Tool/子 Agent 取消、执行审计。
+// SSE（events）与合并音频（audio）走 serverClient 裸流逃生口，不进 hc 类型账本。
+import type { InferRequestType } from 'hono/client';
+import {
+  rpcClient,
+  readRpcJson,
+  serverClient,
+  type RpcClient,
+  type RpcJson,
+} from './client.js';
 
-import type {
-  TurnCreatedResponse,
-  TurnRequest,
-} from '@ema-agent/turn/turns';
-import type { PendingAskUserPrompt, ToolExecutionRecord } from '@ema-agent/tools';
+// ── 类型（全部从路由契约推导） ────────────────────────────────────────────────
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+/** POST /api/turns 的请求体（`input` 为保序判别联合 TurnInputPart[]）。 */
+export type TurnCreateInput = InferRequestType<RpcClient['api']['turns']['$post']>['json'];
+export type TurnCreatedResponse = RpcJson<RpcClient['api']['turns']['$post']>;
 
-/**
- * Mirrors the backend's attachmentInputSchema；fileHandle 是桌面宿主签发的加密能力。
- * Stricter than Turn 的 `TurnAttachment` (size/mtime required here) so the UI
- * can rely on them; still assignable to TurnAttachment[], which is what
- * TurnRequest.attachments expects.
- */
-export interface AttachmentInputWire {
-  id:        string;
-  name:      string;
-  mimeType:  string;
-  size:      number;
-  mtime:     number;
-  fileHandle: string;
-}
+/** 附件输入 part 的 attachment 载荷（composer/历史投喂用）。 */
+export type TurnAttachmentInput =
+  Extract<TurnCreateInput['input'][number], { type: 'attachment' }>['attachment'];
 
-// Re-export the canonical wire types so existing import sites keep working.
-export type { TurnRequest, TurnCreatedResponse } from '@ema-agent/turn/turns';
+/** 窗口重开/SSE 重连后的在飞 Permission/AskUser 恢复清单。 */
+export type PendingInteractions = RpcJson<RpcClient['api']['turns']['interactions']['pending']['$get']>;
 
-// ── API object ────────────────────────────────────────────────────────────────
+/** POST .../permissions/:toolCallId/respond 的 body（判别联合）。 */
+export type PermissionRespondBody = InferRequestType<
+  RpcClient['api']['turns'][':turnId']['permissions'][':toolCallId']['respond']['$post']
+>['json'];
+
+/** 应答/取消交互的归一化成功形状。 */
+export type InteractionAck = RpcJson<
+  RpcClient['api']['turns'][':turnId']['ask-user'][':toolCallId']['respond']['$post']
+>;
+
+export type ToolCancelAck = RpcJson<RpcClient['api']['turns'][':turnId']['tools'][':toolCallId']['$delete']>;
+export type ToolExecutionLog = RpcJson<RpcClient['api']['turns'][':turnId']['tool-executions']['$get']>;
+
+// ── API ──────────────────────────────────────────────────────────────────────
 
 export const turnsApi = {
-  /** GET /api/turns/pending/ask-user — recover prompts after reopening the chat window. */
-  pendingAskUser(): Promise<{ count: number; prompts: PendingAskUserPrompt[] }> {
-    return sidecarClient.request('/api/turns/pending/ask-user');
+  /** POST /api/turns — 启动一个新 Turn（返回 turnId 与可能新建的 sessionId）。 */
+  create(body: TurnCreateInput): Promise<TurnCreatedResponse> {
+    return readRpcJson(rpcClient.api.turns.$post({ json: body }));
   },
 
-  /** POST /api/turns — start a new turn. */
-  async create(req: TurnRequest): Promise<TurnCreatedResponse> {
-    // Local validation
-    if (req.trigger.type !== 'userMessage') throw new Error('unsupported turn trigger');
-    if (!req.executionProfile) throw new Error('executionProfile is required');
-    if (!req.narrativePolicy) throw new Error('narrativePolicy is required');
-    if (!hasTurnRequestInput(req)) {
-      throw new Error('either userInput, contentParts, or attachments is required');
-    }
-    return sidecarClient.request<TurnCreatedResponse>('/api/turns', {
-      method: 'POST',
-      json: req,
-    });
+  /** GET /api/turns/interactions/pending — 恢复队列里的在飞 Permission/AskUser。 */
+  pendingAskUser(): Promise<PendingInteractions> {
+    return readRpcJson(rpcClient.api.turns.interactions.pending.$get());
   },
 
-  /** 打开 Turn 事件流，复用 Sidecar 的动态端口、认证与错误处理。 */
+  /** POST /api/turns/:turnId/permissions/:toolCallId/respond — 回应用户授权决策。 */
+  respondPermission(
+    turnId: string,
+    toolCallId: string,
+    body: PermissionRespondBody,
+  ): Promise<InteractionAck> {
+    return readRpcJson(
+      rpcClient.api.turns[':turnId'].permissions[':toolCallId'].respond.$post({
+        json: body,
+        param: { turnId, toolCallId },
+      }),
+    );
+  },
+
+  /** POST /api/turns/:turnId/permissions/:toolCallId/cancel — 拒绝即取消。 */
+  async cancelPermission(turnId: string, toolCallId: string): Promise<InteractionAck> {
+    return readRpcJson(
+      rpcClient.api.turns[':turnId'].permissions[':toolCallId'].cancel.$post({
+        param: { turnId, toolCallId },
+      }),
+    );
+  },
+
+  /** POST /api/turns/:turnId/ask-user/:toolCallId/respond — 提交问答答案。 */
+  respondAskUser(
+    turnId: string,
+    toolCallId: string,
+    answers: Record<string, string>,
+  ): Promise<InteractionAck> {
+    return readRpcJson(
+      rpcClient.api.turns[':turnId']['ask-user'][':toolCallId'].respond.$post({
+        json: { answers },
+        param: { turnId, toolCallId },
+      }),
+    );
+  },
+
+  /** POST /api/turns/:turnId/ask-user/:toolCallId/cancel — 取消不能伪装成空答案。 */
+  cancelAskUser(turnId: string, toolCallId: string): Promise<InteractionAck> {
+    return readRpcJson(
+      rpcClient.api.turns[':turnId']['ask-user'][':toolCallId'].cancel.$post({
+        param: { turnId, toolCallId },
+      }),
+    );
+  },
+
+  /** DELETE /api/turns/:turnId/tools/:toolCallId — 取消单个在飞工具。 */
+  abortTool(turnId: string, toolCallId: string): Promise<ToolCancelAck> {
+    return readRpcJson(
+      rpcClient.api.turns[':turnId'].tools[':toolCallId'].$delete({ param: { turnId, toolCallId } }),
+    );
+  },
+
+  /** DELETE /api/turns/:turnId/subagents/:agentRunId — 取消单个子 Agent。 */
+  abortSubagent(turnId: string, agentRunId: string): Promise<ToolCancelAck> {
+    return readRpcJson(
+      rpcClient.api.turns[':turnId'].subagents[':agentRunId'].$delete({ param: { turnId, agentRunId } }),
+    );
+  },
+
+  /** GET /api/turns/:turnId/tool-executions — 持久工具执行审计。 */
+  listToolExecutions(turnId: string): Promise<ToolExecutionLog> {
+    return readRpcJson(rpcClient.api.turns[':turnId']['tool-executions'].$get({ param: { turnId } }));
+  },
+
+  /** 打开 Turn 事件流：复用动态端口、认证与错误处理。 */
   openEvents(turnId: string, lastEventId: number, signal: AbortSignal): Promise<Response> {
     const params = new URLSearchParams();
     if (lastEventId > 0) params.set('lastEventId', String(lastEventId));
     const query = params.size > 0 ? `?${params.toString()}` : '';
-    return sidecarClient.requestRaw(`/api/turns/${turnId}/events${query}`, {
+    return serverClient.requestRaw(`/api/turns/${turnId}/events${query}`, {
       signal,
       headers: { Accept: 'text/event-stream' },
     });
   },
 
-  /** Build the merged audio URL for a completed turn. */
-  async audioUrl(turnId: string): Promise<string> {
-    return sidecarClient.streamUrl(`/api/turns/${turnId}/audio`);
-  },
-
-  /** DELETE /api/turns/:turnId/subagents/:subagentId — cancel a running subagent. */
-  abortSubagent(turnId: string, subagentId: string): Promise<{ ok: boolean }> {
-    return sidecarClient.request(
-      `/api/turns/${turnId}/subagents/${subagentId}`,
-      { method: 'DELETE' },
-    );
-  },
-
-  /** DELETE /api/turns/:turnId/tools/:callId — cancel a single in-flight tool. */
-  abortTool(turnId: string, callId: string): Promise<{ ok: boolean }> {
-    return sidecarClient.request(
-      `/api/turns/${turnId}/tools/${callId}`,
-      { method: 'DELETE' },
-    );
-  },
-
-  /** POST /api/turns/:turnId/abort — cancel the whole turn (LLM stream + all tools). */
-  abortTurn(turnId: string): Promise<{ ok: boolean }> {
-    return sidecarClient.request(
-      `/api/turns/${turnId}/abort`,
-      { method: 'POST' },
-    );
-  },
-
-  /** POST /api/turns/:turnId/ask-user/:promptId/respond */
-  respondAskUser(
-    turnId:   string,
-    promptId: string,
-    answers:  Record<string, string>,
-  ): Promise<{ ok: boolean }> {
-    return sidecarClient.request(
-      `/api/turns/${turnId}/ask-user/${promptId}/respond`,
-      { method: 'POST', json: { answers } },
-    );
-  },
-
-  /** POST /api/turns/:turnId/ask-user/:promptId/cancel */
-  cancelAskUser(turnId: string, promptId: string): Promise<{ ok: boolean }> {
-    return sidecarClient.request(
-      `/api/turns/${turnId}/ask-user/${promptId}/cancel`,
-      { method: 'POST' },
-    );
-  },
-
-  /** GET /api/turns/:turnId/tool-executions — 该 Turn 的持久工具执行审计。 */
-  listToolExecutions(turnId: string): Promise<{ executions: ToolExecutionRecord[] }> {
-    return sidecarClient.request<{ executions: ToolExecutionRecord[] }>(
-      `/api/turns/${turnId}/tool-executions`,
-    );
+  /** 构建合并音频的流式 URL。 */
+  audioUrl(turnId: string): Promise<string> {
+    return serverClient.streamUrl(`/api/turns/${turnId}/audio`);
   },
 };

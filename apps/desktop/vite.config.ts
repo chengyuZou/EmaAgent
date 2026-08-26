@@ -18,7 +18,7 @@ export default defineConfig({
       // UnoCSS's built-in preflight doesn't reset button/pre UA defaults.
       // WebView2 gives <button> a system-grey background and <pre> a white one —
       // both bleed through when bg-transparent is used on a dark UI.
-      // Scrollbar styling lives in desktop-ui/styles/base.css (token-driven);
+      // Scrollbar styling lives in styles/base.css (token-driven);
       // kept out of Uno so there is a single source of truth.
       preflights: [
         {
@@ -50,7 +50,7 @@ export default defineConfig({
   // Aliasing to src makes dev read the live source on every reload.
   resolve: {
     alias: {
-      '@ema-agent/desktop-ui': resolve(__dirname, '../desktop-ui/src/index.ts'),
+      '@ema-agent/server':      resolve(__dirname, '../server/src'),
       '@ema-agent/ui':         resolve(__dirname, '../../src/ui'),
       '@ema-agent/live2d-react': resolve(__dirname, '../../src/live2d-react/index.ts'),
     },
@@ -68,7 +68,7 @@ export default defineConfig({
     // 'oxc-parser' excluded so its optional wasm binding (absent on Windows)
     // never enters the pre-bundler. Vite's esbuildOptions type omits
     // `external`, so exclusion is the only supported lever here.
-    exclude: ['@ema-agent/desktop-ui', '@ema-agent/ui', '@ema-agent/live2d-react', 'oxc-parser'],
+    exclude: ['@ema-agent/ui', '@ema-agent/live2d-react', 'oxc-parser'],
     // wlipsync 使用 top-level await,预构建器默认 target(es2020)不支持,与 build.target 对齐。
     esbuildOptions: { target: 'es2022' },
   },

@@ -1,49 +1,43 @@
 /**
- * CharacterCardEditor — card editor with 5 tabs: Identity / Behavior / Live2D / Portraits / Voice.
+ * CharacterEditor — character editor with 4 tabs: Identity / Live2D / Illustrations / Voice.
  */
 import { useState, type JSX } from 'react';
 import { Button, Tabs } from '@ema-agent/ui';
-import type { CharacterCard } from '../../api/cards.js';
+import type { Character } from '../../api/characters.js';
 import { IdentityTab } from './IdentityTab.js';
-import { BehaviorTab } from './BehaviorTab.js';
 import { VoiceTab } from './voice/VoiceTab.js';
 import { Live2DTab } from './live2d/Live2DTab.js';
-import { PortraitsTab } from './portraits/PortraitsTab.js';
+import { IllustrationTab } from './illustration/IllustrationTab.js';
 import { HealthBadge } from './shared/HealthBadge.js';
 
-export interface CharacterCardEditorProps {
-  card:        CharacterCard;
+export interface CharacterEditorProps {
+  character:   Character;
   onActivate(): void;
 }
 
-export function CharacterCardEditor({ card, onActivate }: CharacterCardEditorProps): JSX.Element {
+export function CharacterEditor({ character, onActivate }: CharacterEditorProps): JSX.Element {
   const [activeTab, setActiveTab] = useState('identity');
 
   const tabItems = [
     {
       value:   'identity',
       label:   '身份',
-      content: <IdentityTab card={card} />,
-    },
-    {
-      value:   'behavior',
-      label:   '行为',
-      content: <BehaviorTab card={card} />,
+      content: <IdentityTab character={character} />,
     },
     {
       value:   'live2d',
       label:   'Live2D',
-      content: <Live2DTab card={card} />,
+      content: <Live2DTab character={character} />,
     },
     {
-      value:   'portraits',
+      value:   'illustrations',
       label:   '立绘',
-      content: <PortraitsTab card={card} />,
+      content: <IllustrationTab character={character} />,
     },
     {
       value:   'voice',
       label:   '音色',
-      content: <VoiceTab cardId={card.id} voiceReferences={card.voiceReferences} isBuiltin={card.isBuiltin} />,
+      content: <VoiceTab characterId={character.id} voiceSamples={character.voiceSamples} isBuiltin={character.isBuiltin} />,
     },
   ];
 
@@ -52,18 +46,17 @@ export function CharacterCardEditor({ card, onActivate }: CharacterCardEditorPro
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2 min-w-0">
-          <h2 className="text-lg font-semibold text-[var(--ema-text-primary)] truncate">{card.name}</h2>
-          <HealthBadge cardId={card.id} />
+          <h2 className="text-lg font-semibold text-[var(--ema-text-primary)] truncate">{character.name}</h2>
+          <HealthBadge characterId={character.id} />
         </div>
         <div className="flex items-center gap-2">
-          {card.isActive ? (
+          {character.isActive ? (
             <span className="text-xs text-[var(--ema-success-text)] px-2 py-1 rounded-lg bg-[var(--ema-success-muted)]">
               当前使用
             </span>
           ) : (
             <Button variant="primary" size="sm" onClick={onActivate}>切换至此</Button>
           )}
-          <span className="text-xs text-[var(--ema-text-tertiary)]">v{card.version}</span>
         </div>
       </div>
 

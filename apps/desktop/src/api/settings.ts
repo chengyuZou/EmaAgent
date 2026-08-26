@@ -1,134 +1,50 @@
-/**
- * 读写事件展示、权限超时、主题和知识库模型等通用设置。
- */
-import { sidecarClient } from './sidecar-client.js';
+// Settings API：/api/settings——设置目录（JSON Schema）、键值读写与 eventDisplay 合并投影。
+import type { InferRequestType } from 'hono/client';
+import { rpcClient, readRpcJson, type RpcClient, type RpcJson } from './client.js';
 
-// 与 localHost settings/themeSetting.ts 的 ThemeSettings 同形;桌面外观 wire 由前端本地镜像。
-export type ContentFontPreset = 'system' | 'rounded' | 'reading' | 'custom';
-
-export interface ThemeSettings {
-  hue: number;
-  radius: number;
-  mode: 'light' | 'dark';
-  contentFontPreset: ContentFontPreset;
-  contentFontFamily: string;
-}
-
-// ── Wire-format types ────────────────────────────────────────────────────────
-
-export interface EventDisplayConfig {
-  enabled:        boolean;
-  color:          string;
-  durationMs:     number | null;
-  truncateChars?: number;
-}
-
-export interface EventDisplayResult {
-  defaults:  Record<string, EventDisplayConfig>;
-  overrides: Record<string, EventDisplayConfig>;
-  effective: Record<string, EventDisplayConfig>;
-}
-
-export interface PermissionTimeoutResult {
-  timeoutMs: number;
-}
-
-export type ThemeConfig = ThemeSettings;
-
-/** KB's own embed/rerank model choice (decoupled from LightRAG's lightrag-embed binding). */
-export interface KbModelRef { providerConfigId: string; model: string }
-export interface KbModelsConfig { embed?: KbModelRef | null; rerank?: KbModelRef | null }
-
-/** 与 @ema-agent/settings 的 SettingDescriptor/SettingApplyPolicy 同形；desktop-ui 不依赖 settings 包，本地镜像。 */
-export type SettingApplyPolicyWire = 'immediate' | 'nextOperation' | 'nextTurn' | 'restart';
-
-export interface SettingDescriptorWire {
-  key:   string;
-  kind:  'boolean' | 'number' | 'string' | 'enum' | 'object';
-  apply: SettingApplyPolicyWire;
-}
-
-export interface SettingValueWire<T = unknown> {
-  key:   string;
-  apply: SettingApplyPolicyWire;
-  value: T;
-}
-
-// ── API object ────────────────────────────────────────────────────────────────
+export type SettingsCatalog = RpcJson<RpcClient['api']['settings']['$get']>;
+export type SettingsCatalogItem = SettingsCatalog['items'][number];
+export type SettingsValues = RpcJson<RpcClient['api']['settings']['values']['$get']>;
+export type SettingValueEntry = SettingsValues['items'][number];
+export type SettingValueResult = RpcJson<RpcClient['api']['settings']['values'][':key']['$get']>;
+export type SettingsBatchEntries = InferRequestType<RpcClient['api']['settings']['values']['$put']>['json']['entries'];
+export type EventDisplayTable = RpcJson<RpcClient['api']['settings']['event-display']['$get']>;
 
 export const settingsApi = {
-  /** GET /api/settings/catalog — 全部已注册设置的元信息（key/kind/apply）。 */
-  async getCatalog(): Promise<SettingDescriptorWire[]> {
-    return sidecarClient.request<SettingDescriptorWire[]>('/api/settings/catalog');
+  /** GET /api/settings — 全量设置定义目录（含 JSON Schema，首开设置页一次拉取）。 */
+  getCatalog(): Promise<SettingsCatalog> {
+    return readRpcJson(rpcClient.api.settings.$get());
   },
 
-  /** GET /api/settings/values/:key — 读取单个设置的已持久化值。 */
-  async getValue<T = unknown>(key: string): Promise<SettingValueWire<T>> {
-    return sidecarClient.request<SettingValueWire<T>>(
-      `/api/settings/values/${encodeURIComponent(key)}`,
-    );
+  /** GET /api/settings/values — 全量生效值（覆盖值或默认值）。 */
+  listValues(): Promise<SettingsValues> {
+    return readRpcJson(rpcClient.api.settings.values.$get());
   },
 
-  /** PUT /api/settings/values/:key — 写入经业务 decode 校验后的持久值。 */
-  async putValue<T = unknown>(key: string, value: T): Promise<SettingValueWire<T>> {
-    return sidecarClient.request<SettingValueWire<T>>(
-      `/api/settings/values/${encodeURIComponent(key)}`,
-      { method: 'PUT', json: { value } },
-    );
-  },
-  /** GET /api/settings/event-display */
-  async getEventDisplay(): Promise<EventDisplayResult> {
-    return sidecarClient.request<EventDisplayResult>('/api/settings/event-display');
+  getValue(key: string): Promise<SettingValueResult> {
+    return readRpcJson(rpcClient.api.settings.values[':key'].$get({ param: { key } }));
   },
 
-  /** PUT /api/settings/event-display */
-  async putEventDisplay(
-    payload: Record<string, EventDisplayConfig>,
-  ): Promise<EventDisplayResult> {
-    return sidecarClient.request<EventDisplayResult>('/api/settings/event-display', {
-      method: 'PUT',
-      json: payload,
-    });
+  /** PUT /api/settings/values/:key — body `{ value }`。 */
+  putValue<T>(key: string, value: T): Promise<SettingValueResult> {
+    return readRpcJson(rpcClient.api.settings.values[':key'].$put({
+      json: { value },
+      param: { key },
+    }));
   },
 
-  /** GET /api/settings/permission-timeout */
-  async getPermissionTimeout(): Promise<PermissionTimeoutResult> {
-    return sidecarClient.request<PermissionTimeoutResult>('/api/settings/permission-timeout');
+  /** PUT /api/settings/values — 批量写入（任一键非法整批拒绝）。 */
+  putValues(entries: SettingsBatchEntries) {
+    return readRpcJson(rpcClient.api.settings.values.$put({ json: { entries } }));
   },
 
-  /** PUT /api/settings/permission-timeout */
-  async putPermissionTimeout(
-    payload: { timeoutMs: number },
-  ): Promise<PermissionTimeoutResult> {
-    return sidecarClient.request<PermissionTimeoutResult>('/api/settings/permission-timeout', {
-      method: 'PUT',
-      json: payload,
-    });
+  /** DELETE /api/settings/values/:key — 删即恢复默认。 */
+  deleteValue(key: string) {
+    return readRpcJson(rpcClient.api.settings.values[':key'].$delete({ param: { key } }));
   },
 
-  /** GET /api/settings/theme */
-  async getTheme(): Promise<ThemeConfig> {
-    return sidecarClient.request<ThemeConfig>('/api/settings/theme');
-  },
-
-  /** PUT /api/settings/theme */
-  async putTheme(payload: ThemeConfig): Promise<ThemeConfig> {
-    return sidecarClient.request<ThemeConfig>('/api/settings/theme', {
-      method: 'PUT',
-      json: payload,
-    });
-  },
-
-  /** GET /api/settings/kb-models — KB's embed + rerank model choice. */
-  async getKbModels(): Promise<KbModelsConfig> {
-    return sidecarClient.request<KbModelsConfig>('/api/settings/kb-models');
-  },
-
-  /** PUT /api/settings/kb-models */
-  async putKbModels(payload: KbModelsConfig): Promise<KbModelsConfig> {
-    return sidecarClient.request<KbModelsConfig>('/api/settings/kb-models', {
-      method: 'PUT',
-      json: payload,
-    });
+  /** GET /api/settings/event-display — 事件展示合并投影（默认表 + 用户覆盖，只读）。 */
+  getEventDisplay(): Promise<EventDisplayTable> {
+    return readRpcJson(rpcClient.api.settings['event-display'].$get());
   },
 };

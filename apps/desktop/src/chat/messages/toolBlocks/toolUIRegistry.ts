@@ -21,9 +21,12 @@ import {
   NarrativeSearchResultView,
   PdfReadArgsView,
   PdfReadResultView,
+  TodoWriteArgsView,
 } from '@ema-agent/builtin-tools/ui';
 
 export interface ToolUIEntry {
+  /** 需要直接呈现给用户的历史卡默认展开，例如当前 Turn 的 TODO 清单。 */
+  readonly defaultExpanded?: boolean;
   /** 参数区;缺省回落通用 key-value 平铺。 */
   readonly ArgsView?: (props: { args: unknown }) => JSX.Element | null;
   /** 结果区;消费类型化 data, 类型守卫失败返回 null 回落通用渲染。 */
@@ -44,6 +47,7 @@ const TOOL_UI_REGISTRY: Readonly<Record<string, ToolUIEntry>> = {
     ResultView: NarrativeSearchResultView,
   },
   PdfRead: { ArgsView: PdfReadArgsView, ResultView: PdfReadResultView },
+  TodoWrite: { ArgsView: TodoWriteArgsView, defaultExpanded: true },
 };
 
 export function lookupToolUI(toolName: string): ToolUIEntry | undefined {

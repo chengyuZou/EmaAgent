@@ -8,7 +8,21 @@ import {
   type Providers,
 } from '@ema-agent/providers';
 import { providerError } from './configs.js';
-import { jsonBody } from '../validate.js';
+import { jsonBody, paramValidator, queryValidator } from '../validate.js';
+
+const capabilityEnum = z.enum(['llm', 'embed', 'rerank', 'vision', 'tts', 'stt']);
+
+const availableParams = z.object({
+  capability: capabilityEnum,
+});
+
+const deleteModelQuery = z.object({
+  capability: capabilityEnum,
+});
+
+const bindingParams = z.object({
+  module: z.enum(MODEL_BINDING_MODULES),
+});
 
 const llmParams = {
   contextWindow: z.number().int().positive(),
@@ -55,12 +69,10 @@ export interface ProviderModelsRouteDeps {
 export const providerModelsRoute = (deps: ProviderModelsRouteDeps) =>
   new Hono()
     // 绑定选择器的可用模型清单：一次返回该能力下全部已启用模型及其 Provider 名。
-    .get('/available/:capability', context => {
-      const capability = z.enum(['llm', 'embed', 'rerank', 'vision', 'tts', 'stt'])
-        .safeParse(context.req.param('capability'));
-      if (!capability.success) return context.json({ error: 'invalid_capability' }, 400);
+    .get('/available/:capability', paramValidator(availableParams), context => {
+      const { capability } = context.req.valid('param');
       const providerNames = new Map(deps.providers.list().map(p => [p.id, p.name]));
-      const models = deps.providerModels.listByCapability(capability.data)
+      const models = deps.providerModels.listByCapability(capability)
         .filter(model => providerNames.has(model.providerId))
         .map(model => ({
           ...model,
@@ -85,12 +97,10 @@ export const providerModelsRoute = (deps: ProviderModelsRouteDeps) =>
         return providerError(context, error);
       }
     })
-    .delete('/:providerId/models/:modelId', context => {
-      const capability = context.req.query('capability');
-      const parsed = z.enum(['llm', 'embed', 'rerank', 'vision', 'tts', 'stt']).safeParse(capability);
-      if (!parsed.success) return context.json({ error: 'invalid_capability' }, 400);
+    .delete('/:providerId/models/:modelId', queryValidator(deleteModelQuery), context => {
+      const { capability } = context.req.valid('query');
       try {
-        deps.providerModels.delete(context.req.param('providerId'), parsed.data, context.req.param('modelId'));
+        deps.providerModels.delete(context.req.param('providerId'), capability, context.req.param('modelId'));
         return context.body(null, 204);
       } catch (error) {
         return providerError(context, error);
@@ -98,26 +108,20 @@ export const providerModelsRoute = (deps: ProviderModelsRouteDeps) =>
     })
     // ── 业务绑定（一个业务位一条绑定） ────────────────────────────────────────────
     .get('/bindings', context => context.json(deps.modelBindings.list()))
-    .put('/bindings/:module', jsonBody(bindingBody), async context => {
-      const module = z.enum(MODEL_BINDING_MODULES).safeParse(context.req.param('module'));
-      if (!module.success) {
-        return context.json({ error: 'invalid_module', validModules: MODEL_BINDING_MODULES }, 400);
-      }
+    .put('/bindings/:module', paramValidator(bindingParams), jsonBody(bindingBody), async context => {
+      const { module } = context.req.valid('param');
       try {
-        deps.modelBindings.set({ module: module.data, ...context.req.valid('json') });
-        if (module.data === 'kb-embed' || module.data === 'kb-rerank') {
+        deps.modelBindings.set({ module, ...context.req.valid('json') });
+        if (module === 'kb-embed' || module === 'kb-rerank') {
           deps.onKbEmbeddingBindingChanged?.();
         }
-        return context.json(deps.modelBindings.get(module.data));
+        return context.json(deps.modelBindings.get(module));
       } catch (error) {
         return providerError(context, error);
       }
     })
-    .delete('/bindings/:module', context => {
-      const module = z.enum(MODEL_BINDING_MODULES).safeParse(context.req.param('module'));
-      if (!module.success) {
-        return context.json({ error: 'invalid_module', validModules: MODEL_BINDING_MODULES }, 400);
-      }
-      deps.modelBindings.delete(module.data);
+    .delete('/bindings/:module', paramValidator(bindingParams), context => {
+      const { module } = context.req.valid('param');
+      deps.modelBindings.delete(module);
       return context.body(null, 204);
     });

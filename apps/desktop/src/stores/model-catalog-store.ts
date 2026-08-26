@@ -1,11 +1,11 @@
 // 缓存已启用的 LLM 模型目录，供模型选择器和上下文球共享同一份能力数据。
 import { create } from 'zustand';
-import { modelsApi, type EnabledModelWire } from '../api/models.js';
+import { providersApi, type AvailableModel } from '../api/providers.js';
 
 export type ModelCatalogStatus = 'idle' | 'loading' | 'ready' | 'error';
 
 export interface ModelCatalogStoreState {
-  models: EnabledModelWire[];
+  models: AvailableModel[];
   status: ModelCatalogStatus;
   error: string | null;
   load(force?: boolean): Promise<void>;
@@ -23,9 +23,9 @@ export const useModelCatalogStore = create<ModelCatalogStoreState>((set, get) =>
     if (loadPromise) return loadPromise;
 
     set({ status: 'loading', error: null });
-    loadPromise = modelsApi.listEnabled()
-      .then((models) => {
-        set({ models, status: 'ready', error: null });
+    loadPromise = providersApi.listAvailable('llm')
+      .then(({ models }) => {
+        set({ models: [...models], status: 'ready', error: null });
       })
       .catch((error: unknown) => {
         set({
@@ -41,12 +41,12 @@ export const useModelCatalogStore = create<ModelCatalogStoreState>((set, get) =>
 }));
 
 export function findEnabledModel(
-  models: EnabledModelWire[],
-  providerConfigId: string | null | undefined,
+  models: AvailableModel[],
+  providerId: string | null | undefined,
   modelId: string | null | undefined,
-): EnabledModelWire | undefined {
-  if (!providerConfigId || !modelId) return undefined;
+): AvailableModel | undefined {
+  if (!providerId || !modelId) return undefined;
   return models.find(
-    (model) => model.providerId === providerConfigId && model.model === modelId,
+    (model) => model.providerId === providerId && model.modelId === modelId,
   );
 }

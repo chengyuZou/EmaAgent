@@ -18,10 +18,9 @@ import solarIcons from '@iconify-json/solar/icons.json';
 // packages before they silently produce an empty CSS bundle.
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCANNED_DIRS = [
-  '../desktop-ui/src',
   '../../src/ui',
   '../../src/live2d-react',
-  '../../src/builtinTools',
+  '../../src/builtin-tools',
 ];
 for (const rel of SCANNED_DIRS) {
   if (!existsSync(resolve(__dirname, rel))) {
@@ -77,11 +76,10 @@ const config: UserConfig = {
   content: {
     filesystem: [
       'src/**/*.{ts,tsx}',
-      '../desktop-ui/src/**/*.{ts,tsx}',
       '../../src/ui/**/*.{ts,tsx}',
       '../../src/live2d-react/**/*.{ts,tsx}',
       // Tool 目录里的 UI.tsx(每个复杂 Tool 自带的展示,经 @ema-agent/builtin-tools/ui 出口)
-      '../../src/builtinTools/**/*.{ts,tsx}',
+      '../../src/builtin-tools/**/*.{ts,tsx}',
     ],
   },
 };

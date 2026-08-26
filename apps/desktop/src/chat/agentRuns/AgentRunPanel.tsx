@@ -1,10 +1,36 @@
 // 展示当前 Session 的子智能体：已开启/完成分组列表与标签内详情导航。
-import { useState, useEffect, useCallback, useMemo, useRef, type JSX, type CSSProperties } from 'react';
-import { Badge, Button, IconButton, Spinner, type BadgeVariant } from '@ema-agent/ui';
-import { useAgentRunStore, type AgentRunState, type AgentRunMessageWire } from '../../stores/agentRunStore.js';
+import { useState, useEffect, useMemo, useRef, type JSX, type CSSProperties } from 'react';
+import { Badge, Button, Spinner, type BadgeVariant } from '@ema-agent/ui';
+import { useAgentRunStore, type AgentRunState } from '../../stores/agentRunStore.js';
 import { useConversationStore } from '../../stores/conversation-store.js';
-import type { ToolCallMessageContent, AssistantMessageContent, ReasoningMessageContent, ToolResultMessageContent } from '../../api/agentRuns.js';
-import { showToast } from '../../lib/toast.js';
+import type { AgentRunMessageItem } from '../../api/agentRuns.js';
+
+// content 在传输层是 JSON 联合；以下展示投影与生产者 src/agent/runs/agentRunMessagesStore.ts
+// 的落库字段一一对应。用 type 别名（隐式索引签名）保持与 hono JSONObject 可比，
+// 字段全部 JSON 兼容以便按 role 判别后收窄，面板只消费这些字段。
+type AgentRunTextContent = {
+  readonly blockIndex: number;
+  readonly text: string;
+};
+
+type AgentRunToolCallContent = {
+  readonly blockIndex: number;
+  readonly callId: string;
+  readonly name: string;
+};
+
+type AgentRunToolResultPart = {
+  readonly type: string;
+  readonly text?: string;
+};
+
+type AgentRunToolResultContent = {
+  readonly type: 'tool_result';
+  readonly toolCallId: string;
+  readonly content: string | readonly AgentRunToolResultPart[];
+  readonly isError?: boolean;
+  readonly durationMs?: number;
+};
 
 const TERMINAL_PAGE_SIZE = 10;
 
@@ -18,7 +44,6 @@ export function AgentRunPanel({ className = '', initialDetailId }: AgentRunPanel
   const sessionId      = useConversationStore((s) => s.viewedSessionId);
   const runs           = useAgentRunStore((s) => s.runs);
   const loadForSession = useAgentRunStore((s) => s.loadForSession);
-  const clearTerminal  = useAgentRunStore((s) => s.clearTerminal);
 
   const [detailId, setDetailId] = useState<string | null>(initialDetailId ?? null);
   const [visibleCount, setVisibleCount] = useState(TERMINAL_PAGE_SIZE);
@@ -31,21 +56,11 @@ export function AgentRunPanel({ className = '', initialDetailId }: AgentRunPanel
     const all = sessionId
       ? [...runs.values()].filter((run) => run.sessionId === sessionId as string)
       : [];
-    return all.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+    return all.sort((a, b) => b.createdAt - a.createdAt);
   }, [runs, sessionId]);
 
   const running  = sessionRuns.filter((run) => run.status === 'running');
   const terminal = sessionRuns.filter((run) => run.status !== 'running');
-
-  const handleClear = useCallback(async () => {
-    if (!sessionId) return;
-    try {
-      await clearTerminal(sessionId as string);
-      setDetailId((id) => terminal.some((t) => t.id === id) ? null : id);
-    } catch (error: unknown) {
-      showToast(error instanceof Error ? `清空失败：${error.message}` : '清空失败', { variant: 'danger' });
-    }
-  }, [sessionId, clearTerminal, terminal]);
 
   if (detailId) {
     return (
@@ -71,19 +86,11 @@ export function AgentRunPanel({ className = '', initialDetailId }: AgentRunPanel
         </div>
       )}
 
-      {/* 完成：聚合计数 + 截断分页 */}
+      {/* 完成：聚合计数 + 截断分页；终态清理归 Session 生命周期，面板只读 */}
       {terminal.length > 0 && (
         <>
           <div className="flex items-center mt-2">
             <SectionLabel>{`完成 · ${terminal.length}`}</SectionLabel>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="ml-auto mr-2 text-[11px] text-[var(--ema-text-tertiary)]"
-              onClick={() => void handleClear()}
-            >
-              清空已完结
-            </Button>
           </div>
           <div className="flex flex-col gap-1">
             {terminal.slice(0, visibleCount).map((run, i) => (
@@ -128,11 +135,10 @@ function AgentRunRow({
   onOpen(): void;
   staggerIndex?: number;
 }): JSX.Element {
-  const deleteRun = useAgentRunStore((s) => s.deleteRun);
   const { icon, color } = statusMeta(run.status);
   const isRunning = run.status === 'running';
 
-  const title = run.purpose ?? run.live?.promptExcerpt ?? run.modelId ?? '子智能体';
+  const title = run.description ?? run.live?.promptExcerpt ?? run.modelId ?? '子智能体';
   const summary = run.live
     ? `轮次 ${run.live.iteration} · 工具 ${run.live.toolCallCount} · ${formatElapsed(run.live.elapsedMs)}`
     : run.error
@@ -141,19 +147,7 @@ function AgentRunRow({
         run.iterations != null ? `${run.iterations} 轮次` : null,
         run.toolCallCount != null ? `${run.toolCallCount} 个工具` : null,
       ].filter(Boolean).join(' · ');
-  const at = run.completedAt ?? run.updatedAt ?? run.createdAt;
-
-  const handleDelete = useCallback(async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    try {
-      await deleteRun(run.id, run.parentTurnId);
-    } catch (error: unknown) {
-      showToast(
-        error instanceof Error ? `取消或删除失败：${error.message}` : '取消或删除失败',
-        { variant: 'danger' },
-      );
-    }
-  }, [deleteRun, run.id, run.parentTurnId]);
+  const at = run.completedAt ?? run.updatedAt;
 
   return (
     <div
@@ -177,13 +171,6 @@ function AgentRunRow({
         <span className="shrink-0 mt-0.5 text-[10px] tabular-nums text-[var(--ema-text-tertiary)]">
           {formatRelativeTime(at)}
         </span>
-        <IconButton
-          variant={isRunning ? 'default' : 'danger'}
-          size="sm"
-          icon={isRunning ? 'i-lucide:circle-stop' : 'i-lucide:trash-2'}
-          label={isRunning ? '取消' : '删除'}
-          onClick={(e) => void handleDelete(e)}
-        />
       </div>
     </div>
   );
@@ -212,7 +199,7 @@ function AgentRunDetail({
           <>
             <span className={`text-sm shrink-0 ${icon}`} style={{ color }} aria-hidden />
             <span className="text-xs font-medium truncate text-[var(--ema-text-primary)]">
-              {run.purpose ?? run.live?.promptExcerpt ?? '子智能体'}
+              {run.description ?? run.live?.promptExcerpt ?? '子智能体'}
             </span>
             <Badge variant={STATUS_BADGE_VARIANT[run.status]} dot={run.status === 'running'}>
               {STATUS_LABEL[run.status]}
@@ -350,14 +337,14 @@ function ReasoningBlock({ text }: { text: string }): JSX.Element {
   );
 }
 
-function TranscriptRow({ msg }: { msg: AgentRunMessageWire }): JSX.Element {
+function TranscriptRow({ msg }: { msg: Pick<AgentRunMessageItem, 'role' | 'content'> }): JSX.Element {
   if (msg.role === 'reasoning') {
-    const c = msg.content as ReasoningMessageContent;
+    const c = msg.content as AgentRunTextContent;
     return <ReasoningBlock text={c.text} />;
   }
 
   if (msg.role === 'assistant') {
-    const c = msg.content as AssistantMessageContent;
+    const c = msg.content as AgentRunTextContent;
     return (
       <p className="text-xs py-1 whitespace-pre-wrap break-words selectable text-[var(--ema-text-primary)]">
         {c.text}
@@ -366,36 +353,43 @@ function TranscriptRow({ msg }: { msg: AgentRunMessageWire }): JSX.Element {
   }
 
   if (msg.role === 'tool_call') {
-    const c = msg.content as ToolCallMessageContent;
+    const c = msg.content as AgentRunToolCallContent;
     return (
       <div className="flex items-center gap-1.5 py-0.5">
         <span className="i-lucide:square-code text-sm flex-shrink-0 text-[var(--ema-primary)]" />
         <span className="text-xs font-mono text-[var(--ema-primary)]">{c.name}</span>
-        <span className="text-xs text-[var(--ema-text-tertiary)]">
-          轮次 {c.iteration}
-        </span>
       </div>
     );
   }
 
   if (msg.role === 'tool_result') {
-    const c = msg.content as ToolResultMessageContent;
+    const c = msg.content as AgentRunToolResultContent;
+    const excerpt = toolResultExcerpt(c);
     return (
       <div className="flex items-start gap-1.5 py-0.5">
         <span
           className={`text-sm flex-shrink-0 mt-0.5 ${c.isError ? 'i-lucide:circle-alert' : 'i-lucide:circle-check'} ${c.isError ? 'text-[var(--ema-danger)]' : 'text-[var(--ema-success)]'}`}
         />
         <span className={`text-xs truncate selectable ${c.isError ? 'text-[var(--ema-danger-text)]' : 'text-[var(--ema-text-secondary)]'}`}>
-          {c.excerpt || (c.isError ? c.error ?? '失败' : '完成')}
+          {excerpt || (c.isError ? '失败' : '完成')}
         </span>
-        <span className="ml-auto text-xs flex-shrink-0 text-[var(--ema-text-tertiary)]">
-          {c.durationMs}ms
-        </span>
+        {c.durationMs !== undefined && (
+          <span className="ml-auto text-xs flex-shrink-0 text-[var(--ema-text-tertiary)]">
+            {c.durationMs}ms
+          </span>
+        )}
       </div>
     );
   }
 
   return <></>;
+}
+
+/** 从模型投影内容取一行纯文本摘要；媒体块没有文本时回退空串。 */
+function toolResultExcerpt(result: AgentRunToolResultContent): string {
+  if (typeof result.content === 'string') return result.content;
+  const text = result.content.find((part) => part.type === 'text');
+  return text?.text ?? '';
 }
 
 const STATUS_LABEL: Record<AgentRunState['status'], string> = {

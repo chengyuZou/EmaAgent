@@ -3,17 +3,22 @@
 import type {
   ExecutionProfile,
   NarrativePolicy,
-  TurnStats,
-} from '@ema-agent/turn';
+} from '@ema-agent/session';
+import type { TurnStats } from '@ema-agent/turn';
 import type {
   AssistantBlock,
   MessageBlocks,
-  MessageContentPart,
-  MessageWire,
   ToolResultBlock,
-  TurnWire,
 } from '@ema-agent/session';
-import type { AttachmentInputWire } from '../api/turns.js';
+import type { SessionMessagesResult } from '../api/sessions.js';
+
+/** 历史接口返回的消息（user 消息可能附带 attachments 投影）。 */
+export type SessionHistoryMessage = SessionMessagesResult['messages'][number];
+/** 历史接口返回的 Turn 快照。 */
+export type SessionHistoryTurn = SessionMessagesResult['turns'][number];
+/** 历史附件展示投影：路径不进传输层，内容经 attachments content 端点读取。 */
+export type ChatHistoryAttachment =
+  Extract<SessionHistoryMessage, { attachments: readonly unknown[] }>['attachments'][number];
 
 export interface AssistantSlice {
   type: 'text';             text: string;
@@ -32,8 +37,8 @@ export interface AssistantSliceToolUse {
   durationMs?: number;
   /** 失败原因码：'permission/denied' | 'policy/denied' | 'tool/error'。 */
   errorCode?: string;
-  /** 权限等待中关联的 promptId。permission_resolved 时按此定位 slice。 */
-  permissionPromptId?: string;
+  /** 权限等待中；permission_required/resolved 按 slice.callId ↔ event.toolCallId 匹配。 */
+  permissionPending?: boolean;
 }
 export interface AssistantSliceNarrative {
   type: 'narrative_status'; status: 'running' | 'completed' | 'failed' | 'interrupted';
@@ -68,15 +73,12 @@ export interface ChatHistoryItem {
   stats?:       TurnStats;
   executionProfile?: ExecutionProfile;
   narrativePolicy?: NarrativePolicy;
-  attachments?: AttachmentInputWire[];
-  /** narrative_context 检索块标记(前端渲染成 NarrativeStatusBlock 气泡) */
-  kind?:        'narrative_context';
+  attachments?: ChatHistoryAttachment[];
 }
 
 export function createOptimisticUserMessage(
   turnId: string,
   text: string,
-  attachments: AttachmentInputWire[] | undefined,
   createdAt = Date.now(),
 ): ChatHistoryItem {
   return {
@@ -84,7 +86,6 @@ export function createOptimisticUserMessage(
     content: text,
     createdAt,
     turnId,
-    attachments: attachments?.map((attachment) => ({ ...attachment })),
   };
 }
 
@@ -128,8 +129,8 @@ export function appendThinkingSlice(slices: AnyAssistantSlice[], delta: string):
  * 恢复时按 Turn 合并，才能与流式阶段保持一致；同 Turn 的用户消息不能开启该聚合组。
  */
 export function assembleHistory(
-  messages: MessageWire[],
-  turns: TurnWire[],
+  messages: SessionHistoryMessage[],
+  turns: SessionHistoryTurn[],
   order: 'newestFirst' | 'oldestFirst' = 'newestFirst',
 ): ChatHistoryItem[] {
   const turnById = new Map(turns.map((t) => [t.id, t]));
@@ -147,7 +148,7 @@ export function assembleHistory(
       currentGroup.stats = {
         inputTokens:  turn.usageInputTokens,
         outputTokens: turn.usageOutputTokens,
-        durationMs:   turn.completedAt !== null ? turn.completedAt - turn.startedAt : 0,
+        durationMs:   turn.completedAt !== null ? turn.completedAt - turn.createdAt : 0,
       };
       currentGroup.executionProfile = turn.executionProfile;
       currentGroup.narrativePolicy = turn.narrativePolicy;
@@ -156,7 +157,7 @@ export function assembleHistory(
     currentGroup = null;
   };
 
-  const toItem = (m: MessageWire): ChatHistoryItem => {
+  const toItem = (m: SessionHistoryMessage): ChatHistoryItem => {
     const { content, slices } = blocksToHistoryFields(m.role, m.blocks);
     const item: ChatHistoryItem = {
       role:      m.role as ChatHistoryItem['role'],
@@ -166,41 +167,14 @@ export function assembleHistory(
       messageId: m.id,
       turnId:    m.turnId !== null ? (m.turnId) : undefined,
     };
-    if (m.role === 'user' && m.attachments && m.attachments.length > 0) {
-      item.attachments = m.attachments.map((a) => ({
-        id: a.id, name: a.name, mimeType: a.mimeType,
-        size: a.size ?? 0, mtime: a.mtime ?? 0, fileHandle: a.fileHandle ?? '',
-      }));
+    const attachments = 'attachments' in m ? m.attachments : undefined;
+    if (m.role === 'user' && attachments && attachments.length > 0) {
+      item.attachments = [...attachments];
     }
     return item;
   };
 
   for (const m of chronological) {
-    // narrative_context:检索结果独立成 item(不合并进 assistant group),
-    // 带 narrative_status slice(完整 text,展开用)。重开 session 从 DB 重建不丢。
-    if (m.kind === 'narrative_context') {
-      flush();
-      const b = m.blocks as { timelines?: Array<{ name: string; charCount: number; text: string }> };
-      const timelines = b?.timelines ?? [];
-      out.push({
-        role:      'user',
-        content:   '',
-        kind:      'narrative_context',
-        createdAt: m.createdAt,
-        messageId: m.id,
-        turnId:    m.turnId !== null ? (m.turnId) : undefined,
-        slices:    [{
-          type:              'narrative_status',
-          status:            'completed',
-          timelines:         timelines.map((t) => t.name),
-          completedTimelines: timelines.map((t) => t.name),
-          snippets:          Object.fromEntries(timelines.map((t) => [t.name, t.text])),
-          failedTimelines:   {},
-        }],
-      });
-      continue;
-    }
-
     if (m.kind !== 'normal' && m.kind !== 'summary' && m.kind !== 'tool_results') continue;
 
     if (m.kind === 'tool_results') {
@@ -279,6 +253,12 @@ function blocksToHistoryFields(
     const slices: AnyAssistantSlice[] = ab.map((b) => {
       if (b.type === 'text')     return { type: 'text'     as const, text: b.text };
       if (b.type === 'thinking') return { type: 'thinking' as const, thinking: b.thinking, done: true };
+      if (b.type === 'reasoning') {
+        return { type: 'thinking' as const, thinking: b.summaryText ?? '', done: true };
+      }
+      if (b.type === 'gemini_thought') {
+        return { type: 'thinking' as const, thinking: b.text, done: true };
+      }
       return { type: 'tool_use' as const, callId: b.id, name: b.name, args: b.args };
     });
     const content = ab

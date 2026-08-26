@@ -21,3 +21,9 @@ export const queryValidator = <S extends ZodType>(schema: S) =>
     if (result.success) return;
     return context.json({ error: 'invalid_request', details: z.flattenError(result.error) }, 400);
   });
+
+export const paramValidator = <S extends ZodType>(schema: S) =>
+  zValidator('param', schema, (result, context) => {
+    if (result.success) return;
+    return context.json({ error: 'invalid_request', details: z.flattenError(result.error) }, 400);
+  });

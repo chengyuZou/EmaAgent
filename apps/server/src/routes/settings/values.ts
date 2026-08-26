@@ -78,7 +78,7 @@ export const settingsValuesRoute = (deps: SettingsValuesRouteDeps) =>
     });
 
 /** 单字段与跨字段约束的写错误分开映射；组错误带 groupId 供前端定位同组字段。 */
-function writeError(context: Context, error: unknown, key: string): Response {
+function writeError(context: Context, error: unknown, key: string) {
   if (error instanceof InvalidSettingGroupValueError) {
     return context.json({ error: 'invalid_setting_group', groupId: error.groupId }, 400);
   }

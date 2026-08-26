@@ -1,6 +1,7 @@
 // 管理全应用唯一的系统 SSE 连接，并把事件按顺序广播给各个窗口。
 
-import { sidecarClient } from '../api/sidecar-client.js';
+import { serverClient } from '../api/client.js';
+import type { AppEvent } from '@ema-agent/server/sse/eventHub.js';
 import { dispatchSystemEvent } from './system-event-dispatcher.js';
 import {
   getSseOutcomeError,
@@ -108,14 +109,6 @@ function publishAcrossWindows(event: AppEvent): void {
   // 串行广播，避免 progress/completed 等相邻事件在跨窗口时发生乱序。
   publishChain = publishChain
     .then(() => tauriBridge.emit(SYSTEM_EVENT_CHANNEL, event))
-    .then(async () => {
-      if (event.type === 'character_card_switched') {
-        await tauriBridge.emit('card:switched', {
-          cardId: event.cardId,
-          name: event.name,
-        });
-      }
-    })
     .catch((error: unknown) => {
       console.error('[system-sse] failed to broadcast system event', error);
     });
@@ -124,7 +117,7 @@ function publishAcrossWindows(event: AppEvent): void {
 const controller = createSystemSseController({
   connect(onEvent) {
     return sseConsumer.start({
-      openResponse: (signal) => sidecarClient.requestRaw('/api/system/events', {
+      openResponse: (signal) => serverClient.requestRaw('/api/system/events', {
         signal,
         headers: { Accept: 'text/event-stream' },
       }),

@@ -1,5 +1,5 @@
 // 文档资产查询与删除：分页列表、详情/预览/分块；kbId 缺省为当前活跃库。
-import { Hono, type Context } from 'hono';
+import { Hono } from 'hono';
 import { z } from 'zod';
 import type { KbManager } from '@ema-agent/knowledge';
 import { knowledgeError } from './errors.js';
@@ -29,44 +29,44 @@ const chunkQuery = z.object({
   kbId: z.string().optional(),
 });
 
-export const knowledgeDocumentsRoute = (deps: KnowledgeDocumentsRouteDeps) => {
-  const respond = async (context: Context, run: () => unknown | Promise<unknown>): Promise<Response> => {
-    try {
-      return context.json(await run());
-    } catch (error) {
-      const mapped = knowledgeError(context, error);
-      if (mapped) return mapped;
-      throw error;
-    }
-  };
+const kbQuery = z.object({
+  kbId: z.string().min(1).optional(),
+});
 
-  return new Hono()
+export const knowledgeDocumentsRoute = (deps: KnowledgeDocumentsRouteDeps) =>
+  new Hono()
     .get('/documents', queryValidator(listQuery), async context => {
       const { kbId, ...options } = context.req.valid('query');
-      return respond(context, () => deps.kb.listAssets(kbId, options));
+      try {
+        return context.json(await deps.kb.listAssets(kbId, options));
+      } catch (error) {
+        const mapped = knowledgeError(context, error);
+        if (mapped) return mapped;
+        throw error;
+      }
     })
-    .get('/documents/:id', async context => {
-      const asset = await deps.kb.getAsset(context.req.param('id'), kbIdFrom(context));
+    .get('/documents/:id', queryValidator(kbQuery), async context => {
+      const asset = await deps.kb.getAsset(context.req.param('id'), context.req.valid('query').kbId);
       if (!asset) return context.json({ error: 'asset_not_found' }, 404);
       return context.json(asset);
     })
-    .get('/documents/:id/preview', async context => {
-      const preview = await deps.kb.getPreview(context.req.param('id'), kbIdFrom(context));
+    .get('/documents/:id/preview', queryValidator(kbQuery), async context => {
+      const preview = await deps.kb.getPreview(context.req.param('id'), context.req.valid('query').kbId);
       if (!preview) return context.json({ error: 'asset_not_found' }, 404);
       return context.json(preview);
     })
     .get('/documents/:id/chunks', queryValidator(chunkQuery), async context => {
       const { kbId, ...options } = context.req.valid('query');
-      return respond(context, () => deps.kb.getChunks(context.req.param('id'), kbId, options));
+      try {
+        return context.json(await deps.kb.getChunks(context.req.param('id'), kbId, options));
+      } catch (error) {
+        const mapped = knowledgeError(context, error);
+        if (mapped) return mapped;
+        throw error;
+      }
     })
-    .delete('/documents/:id', async context => {
-      const deleted = await deps.kb.deleteAsset(context.req.param('id'), kbIdFrom(context));
+    .delete('/documents/:id', queryValidator(kbQuery), async context => {
+      const deleted = await deps.kb.deleteAsset(context.req.param('id'), context.req.valid('query').kbId);
       if (!deleted) return context.json({ error: 'asset_not_found' }, 404);
       return context.json({ ok: true });
     });
-}
-
-/** query 里的可选 kbId（空串按缺省处理）。 */
-function kbIdFrom(context: Context): string | undefined {
-  return context.req.query('kbId') || undefined;
-}

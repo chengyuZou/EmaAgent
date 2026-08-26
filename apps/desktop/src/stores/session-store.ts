@@ -1,21 +1,33 @@
 // 管理前端 Session 列表、工作区、模式和下一轮模型偏好。
 import { create } from 'zustand';
-import { sessionsApi, type SessionWire } from '../api/sessions.js';
+import { sessionsApi, type SessionsGrouped } from '../api/sessions.js';
 import { useBackgroundProcessStore } from './backgroundProcessStore.js';
 import { useContextUsageStore } from './contextUsageStore.js';
 import { useConversationStore } from './conversation-store.js';
 import { useDecisionStore } from './decision-store.js';
 
-import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/turn';
+import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/session';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+/** 侧栏列表条目（Session + hasActiveTurn/lastTurnStatus/hasUnread 列表投影）。 */
+export type SessionListEntry = SessionsGrouped['recent'][number];
+/** 项目槽：实体 + 文件夹 + 成员 Session。 */
+export type SessionProjectGroup = SessionsGrouped['projects'][number];
+
+/** Session 下一轮模型偏好；null 恢复默认解析。 */
+export interface SessionModelPreference {
+  providerId: string;
+  modelId: string;
+}
+
 export interface SessionsState {
-  pinned:   SessionWire[];
-  byGroup:  Array<{ label: string; sessions: SessionWire[] }>;
-  recent:   SessionWire[];
-  archived: SessionWire[];
-  byId:     Map<string, SessionWire>;
+  pinned:   SessionListEntry[];
+  pinnedProjects: SessionProjectGroup[];
+  projects: SessionProjectGroup[];
+  recent:   SessionListEntry[];
+  archived: SessionListEntry[];
+  byId:     Map<string, SessionListEntry>;
 }
 
 export interface SessionStoreState {
@@ -27,7 +39,6 @@ export interface SessionStoreState {
   createSession():                                                   Promise<string>;
   renameSession(id: string, title: string):                       Promise<void>;
   pinSession(id: string, pinned: boolean):                        Promise<void>;
-  setSessionGroup(id: string, label: string | null):              Promise<void>;
   setWorkspaceRoot(id: string, path: string | null):              Promise<void>;
   setExecutionSettings(
     id: string,
@@ -39,7 +50,7 @@ export interface SessionStoreState {
   /** 保存用户希望该 Session 下一轮使用的供应商配置和模型。 */
   setPreferredModel(
     id: string,
-    preferredModel: { providerConfigId: string; modelId: string } | null,
+    model: SessionModelPreference | null,
   ): Promise<void>;
   forkSession(id: string, untilTurnId?: string):                   Promise<string>;
   archiveSession(id: string):                                     Promise<void>;
@@ -50,13 +61,14 @@ export interface SessionStoreState {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function emptySessions(): SessionsState {
-  return { pinned: [], byGroup: [], recent: [], archived: [], byId: new Map() };
+  return { pinned: [], pinnedProjects: [], projects: [], recent: [], archived: [], byId: new Map() };
 }
 
 function rebuildById(s: SessionsState): void {
   s.byId = new Map();
   for (const x of s.pinned)   s.byId.set(x.id, x);
-  for (const g of s.byGroup)  for (const x of g.sessions) s.byId.set(x.id, x);
+  for (const g of s.pinnedProjects) for (const x of g.sessions) s.byId.set(x.id, x);
+  for (const g of s.projects)       for (const x of g.sessions) s.byId.set(x.id, x);
   for (const x of s.recent)   s.byId.set(x.id, x);
   for (const x of s.archived) s.byId.set(x.id, x);
 }
@@ -64,16 +76,18 @@ function rebuildById(s: SessionsState): void {
 function replaceSession(
   sessions: SessionsState,
   id: string,
-  replacement: SessionWire,
+  replacement: SessionListEntry,
 ): SessionsState {
-  const replace = (session: SessionWire): SessionWire =>
+  const replace = (session: SessionListEntry): SessionListEntry =>
     session.id === id ? replacement : session;
+  const replaceGroup = (group: SessionProjectGroup): SessionProjectGroup => ({
+    ...group,
+    sessions: group.sessions.map(replace),
+  });
   const next: SessionsState = {
     pinned: sessions.pinned.map(replace),
-    byGroup: sessions.byGroup.map((group) => ({
-      ...group,
-      sessions: group.sessions.map(replace),
-    })),
+    pinnedProjects: sessions.pinnedProjects.map(replaceGroup),
+    projects: sessions.projects.map(replaceGroup),
     recent: sessions.recent.map(replace),
     archived: sessions.archived.map(replace),
     byId: new Map(sessions.byId),
@@ -100,10 +114,11 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
     try {
       const grouped = await sessionsApi.listGrouped();
       const sessions: SessionsState = {
-        pinned:   grouped.pinned,
-        byGroup:  grouped.byGroup,
-        recent:   grouped.recent,
-        archived: grouped.archived,
+        pinned:   [...grouped.pinned],
+        pinnedProjects: [...grouped.pinnedProjects],
+        projects: [...grouped.projects],
+        recent:   [...grouped.recent],
+        archived: [...grouped.archived],
         byId:     new Map(),
       };
       rebuildById(sessions);
@@ -146,16 +161,6 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
     }
   },
 
-  async setSessionGroup(id, label) {
-    try {
-      await sessionsApi.patch(id, { groupLabel: label });
-      await get().loadSessions();
-    } catch (err: unknown) {
-      set({ error: err instanceof Error ? err.message : 'Failed to set group' });
-      throw err;
-    }
-  },
-
   async setWorkspaceRoot(id, path) {
     try {
       await sessionsApi.patch(id, { workspaceRoot: path });
@@ -173,7 +178,7 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
 
     const generation = (executionSettingsGenerations.get(key) ?? 0) + 1;
     executionSettingsGenerations.set(key, generation);
-    const optimistic: SessionWire = {
+    const optimistic: SessionListEntry = {
       ...previous,
       executionProfile: patch.executionProfile ?? previous.executionProfile,
       narrativePolicy: patch.narrativePolicy ?? previous.narrativePolicy,
@@ -227,17 +232,17 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
     return currentWrite;
   },
 
-  async setPreferredModel(id, preferredModel) {
+  async setPreferredModel(id, model) {
     const key = id as string;
     const previous = get().sessions.byId.get(key);
     if (!previous) throw new Error(`Session not loaded: ${key}`);
     const generation = (preferredModelGenerations.get(key) ?? 0) + 1;
     preferredModelGenerations.set(key, generation);
 
-    const optimistic: SessionWire = {
+    const optimistic: SessionListEntry = {
       ...previous,
-      preferredProviderConfigId: preferredModel?.providerConfigId ?? null,
-      preferredModelId: preferredModel?.modelId ?? null,
+      providerId: model?.providerId ?? null,
+      modelId: model?.modelId ?? null,
     };
     set((state) => ({
       sessions: replaceSession(state.sessions, key, optimistic),
@@ -249,7 +254,7 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
     currentWrite = previousWrite
       .catch(() => {})
       .then(async () => {
-        const updated = await sessionsApi.patch(id, { preferredModel });
+        const updated = await sessionsApi.patch(id, { model });
         if (preferredModelGenerations.get(key) !== generation) return;
         set((state) => {
           const current = state.sessions.byId.get(key);
@@ -257,8 +262,8 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
           return {
             sessions: replaceSession(state.sessions, key, {
               ...current,
-              preferredProviderConfigId: updated.preferredProviderConfigId,
-              preferredModelId: updated.preferredModelId,
+              providerId: updated.providerId,
+              modelId: updated.modelId,
             }),
           };
         });
@@ -272,8 +277,8 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
           return {
             sessions: replaceSession(state.sessions, key, {
               ...current,
-              preferredProviderConfigId: previous.preferredProviderConfigId,
-              preferredModelId: previous.preferredModelId,
+              providerId: previous.providerId,
+              modelId: previous.modelId,
             }),
             error: error instanceof Error ? error.message : '保存 Session 模型失败',
           };

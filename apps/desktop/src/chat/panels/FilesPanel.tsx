@@ -1,7 +1,7 @@
 // 按 Session 与工作区根目录隔离文件树与目录请求；文件在工作区 Dock 以标签预览。
 import { useState, useCallback, useEffect, useRef, type JSX, type CSSProperties } from 'react';
 import { ScrollArea } from '@ema-agent/ui';
-import { workspaceApi, type FileEntry } from '../../api/workspace.js';
+import { filesApi, type FileEntry } from '../../api/workspaces.js';
 import { useConversationStore } from '../../stores/conversation-store.js';
 import { useSessionStore } from '../../stores/session-store.js';
 import { useWorkspaceStore } from '../../stores/workspaceStore.js';
@@ -215,7 +215,7 @@ function ScopedFilesPanel({ root }: { root: string }): JSX.Element {
       return next;
     });
     try {
-      const entries = await workspaceApi.ls(dirPath);
+      const { entries } = await filesApi.ls(dirPath);
       if (!requestGate.isCurrent(token)) return;
       setDirNodes((prev) => {
         const next = new Map(prev);

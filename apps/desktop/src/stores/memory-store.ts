@@ -1,144 +1,62 @@
-// 管理通用记忆统计、后台任务结果、维护操作与 Session 级开关。
+// 管理通用记忆的存储状态、后台任务（提取/整合/维护 Job）与记忆文件浏览/搜索。
+// 旧图模型（nodes/items/edges/overrides/health）已随 Memory 双轨重构删除，无对应链路。
 import { create } from 'zustand';
-import { memoryApi, type MemoryStats, type MaintenanceReport, type MemoryMaintenanceInput, type MemorySessionOverrides, type MemoryBackgroundHealth } from '../api/memory.js';
-import type { MemoryTaskKind } from '@ema-agent/storage';
-
-export type { MemorySessionOverrides };
-
-// ── Sub-types ─────────────────────────────────────────────────────────────────
-
-export interface ActiveMemoryTask {
-  taskId:     string;
-  kind:       MemoryTaskKind;
-  sessionId?: string;
-  startedAt:  number;
-}
-
-export interface ExtractionResult {
-  nodes:      number;
-  edges:      number;
-  items:      number;
-  lazyQueued: number;
-  durationMs: number;
-  completedAt: number;
-}
-
-export interface MemoryTaskFailure {
-  taskId: string;
-  error: string;
-  failedAt: number;
-  task?: ActiveMemoryTask;
-}
+import {
+  memoryApi,
+  type MemoryStats,
+  type MemoryJob,
+  type MemoryJobPaths,
+  type MemoryFileList,
+  type MemoryFileContent,
+  type MemorySearchInput,
+  type MemorySearchResult,
+  type MemoryConsolidateInput,
+  type MemoryMaintenanceInput,
+} from '../api/memory.js';
 
 // ── Store interface ───────────────────────────────────────────────────────────
 
 export interface MemoryStoreState {
-  /** Latest stats snapshot from the sidecar. Null until first fetch. */
+  /** 记忆存储状态（字节/限量/水位）；null = 尚未拉取。 */
   stats:        MemoryStats | null;
   statsLoading: boolean;
   statsError:   string | null;
 
-  /**
-   * Currently-running background tasks (taskId → task info).
-   * Used to show a "memory: extracting…" indicator in the UI.
-   */
-  activeTasks: Map<string, ActiveMemoryTask>;
-  failedTasks: Map<string, MemoryTaskFailure>;
+  /** 最近后台任务快照；null = 尚未拉取。Job 状态以 SQL 为事实源，按需刷新。 */
+  jobs:         MemoryJob[] | null;
+  jobsLoading:  boolean;
+  jobsError:    string | null;
 
-  /**
-   * Last successful extraction result per session.
-   * Cleared when the session is evicted.
-   */
-  lastExtractionMap: Map<string, ExtractionResult>;
-
-  /**
-   * Last extraction error per session.
-   */
-  extractionErrorMap: Map<string, string>;
-
-  /**
-   * Result of the last maintenance run (either from HTTP response or SSE).
-   * Null until maintenance is run at least once.
-   */
-  maintenanceReport: MaintenanceReport | null;
-  maintenanceRunning: boolean;
-  maintenanceError: string | null;
-
-  /** 后台维护健康投影(M5);null 表示尚未拉取。 */
-  health: MemoryBackgroundHealth | null;
-
-  // ── Actions ─────────────────────────────────────────────────────────────
-
-  /** Fetch latest stats from the sidecar. No-op if already loading. */
   refreshStats(): Promise<void>;
+  refreshJobs(limit?: number): Promise<void>;
 
-  /** 拉取后台维护健康投影。 */
-  refreshHealth(): Promise<void>;
-  /** SSE 健康事件到达时原位替换。 */
-  onHealthChanged(health: MemoryBackgroundHealth): void;
+  /** 只有 failed 可重试；重试复制一条新 pending，原行保留为失败记录。 */
+  retryJob(id: string): Promise<void>;
+  cancelJob(id: string): Promise<void>;
+  /** 任务涉及的记忆路径（按需读取，不缓存）。 */
+  loadJobPaths(id: string): Promise<MemoryJobPaths>;
 
-  onTaskStarted(taskId: string, kind: MemoryTaskKind, sessionId?: string): void;
-  onTaskCompleted(taskId: string):                                     void;
-  onTaskFailed(taskId: string, error: string):                         void;
-  clearTaskFailure(taskId: string):                                    void;
+  /** 入队整合 Job（202）；状态经 refreshJobs 观察。 */
+  consolidate(kind: MemoryConsolidateInput['kind']): Promise<void>;
+  /** 入队维护 Job（202）；clear_memory/storage_cleanup 会改变存储占用。 */
+  maintenance(kind: MemoryMaintenanceInput['kind']): Promise<void>;
 
-  onExtractionStarted(sessionId: string):                              void;
-  onExtractionCompleted(sessionId: string, result: Omit<ExtractionResult, 'completedAt'>): void;
-  onExtractionFailed(sessionId: string, error: string):                void;
+  // ── 记忆文件浏览/搜索（按需读取，不缓存） ─────────────────────────────────
 
-  /** Called when the vector index was rebuilt — stats are stale, refresh them. */
-  onIndexRebuilt(): void;
-
-  /**
-   * Run a maintenance pass via POST /api/memory/maintenance.
-   * Returns the full MaintenanceReport (including preview rows).
-   * If dryRun=false, also refreshes stats after completion.
-   */
-  runMaintenance(input?: MemoryMaintenanceInput): Promise<MaintenanceReport>;
-
-  /** Called when maintenance_completed arrives on the system bus (dryRun=false → refresh stats). */
-  onMaintenanceCompleted(decayedNodes: number, decayedItems: number, dryRun: boolean): void;
-  /** Called when maintenance_failed arrives on the system bus. */
-  onMaintenanceFailed(error: string): void;
-
-  /**
-   * Hard-delete a memory node. Refreshes stats on success.
-   * Also used by the memory panel's node browser.
-   */
-  deleteNode(id: string): Promise<void>;
-  /** Hard-delete a memory item. Refreshes stats on success. */
-  deleteItem(id: string): Promise<void>;
-
-  /**
-   * Per-session memory overrides cache (keyed by sessionId).
-   * Populated on demand; cleared when a session is evicted.
-   */
-  sessionOverrides: Map<string, MemorySessionOverrides>;
-  /** Fetch and cache overrides for a session. Returns cached value if present. */
-  getSessionOverrides(sessionId: string): Promise<MemorySessionOverrides>;
-  /** Persist overrides for a session (partial — only provided keys are changed). */
-  setSessionOverrides(sessionId: string, overrides: MemorySessionOverrides): Promise<void>;
-  /** Remove a session's overrides from the cache (call when evicting the session). */
-  evictSessionOverrides(sessionId: string): void;
+  listFiles(opts?: { path?: string; cursor?: string; maxResults?: number }): Promise<MemoryFileList>;
+  readFile(opts: { path: string; lineOffset?: number; maxLines?: number }): Promise<MemoryFileContent>;
+  searchFiles(input: MemorySearchInput): Promise<MemorySearchResult>;
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────────
 
 export const useMemoryStore = create<MemoryStoreState>((set, get) => ({
-  stats:              null,
-  statsLoading:       false,
-  statsError:         null,
-  activeTasks:        new Map(),
-  failedTasks:        new Map(),
-  lastExtractionMap:  new Map(),
-  extractionErrorMap: new Map(),
-  maintenanceReport:  null,
-  maintenanceRunning: false,
-  maintenanceError:   null,
-  health:             null,
-  sessionOverrides:   new Map(),
-
-  // ── Stats ──────────────────────────────────────────────────────────────────
+  stats:        null,
+  statsLoading: false,
+  statsError:   null,
+  jobs:         null,
+  jobsLoading:  false,
+  jobsError:    null,
 
   async refreshStats() {
     if (get().statsLoading) return;
@@ -154,164 +72,55 @@ export const useMemoryStore = create<MemoryStoreState>((set, get) => ({
     }
   },
 
-  async refreshHealth() {
+  async refreshJobs(limit) {
+    if (get().jobsLoading) return;
+    set({ jobsLoading: true, jobsError: null });
     try {
-      const health = await memoryApi.health();
-      set({ health });
-    } catch {
-      // 健康投影拉取失败不打扰:保持旧值,下事件或下次打开再试。
+      const { items } = await memoryApi.listJobs(limit);
+      set({ jobs: [...items], jobsLoading: false, jobsError: null });
+    } catch (error: unknown) {
+      set({
+        jobsLoading: false,
+        jobsError: error instanceof Error ? error.message : '加载记忆任务失败',
+      });
     }
   },
 
-  onHealthChanged(health) {
-    set({ health });
+  async retryJob(id) {
+    await memoryApi.retryJob(id);
+    await get().refreshJobs();
   },
 
-  // ── Background task tracking ───────────────────────────────────────────────
-
-  onTaskStarted(taskId, kind, sessionId) {
-    set((s) => {
-      const tasks = new Map(s.activeTasks);
-      tasks.set(taskId, { taskId, kind, sessionId, startedAt: Date.now() });
-      const failures = new Map(s.failedTasks);
-      failures.delete(taskId);
-      return { activeTasks: tasks, failedTasks: failures };
-    });
+  async cancelJob(id) {
+    await memoryApi.cancelJob(id);
+    await get().refreshJobs();
   },
 
-  onTaskCompleted(taskId) {
-    set((s) => {
-      const tasks = new Map(s.activeTasks);
-      tasks.delete(taskId);
-      return { activeTasks: tasks };
-    });
+  loadJobPaths(id) {
+    return memoryApi.listJobPaths(id);
   },
 
-  onTaskFailed(taskId, error) {
-    set((s) => {
-      const tasks = new Map(s.activeTasks);
-      const task = tasks.get(taskId);
-      tasks.delete(taskId);
-      const failures = new Map(s.failedTasks);
-      failures.set(taskId, { taskId, error, failedAt: Date.now(), task });
-      return { activeTasks: tasks, failedTasks: failures };
-    });
+  async consolidate(kind) {
+    await memoryApi.consolidate(kind);
+    await get().refreshJobs();
   },
 
-  clearTaskFailure(taskId) {
-    set((state) => {
-      const failures = new Map(state.failedTasks);
-      failures.delete(taskId);
-      return { failedTasks: failures };
-    });
-  },
-
-  // ── Extraction results ─────────────────────────────────────────────────────
-
-  onExtractionStarted(_sessionId) {
-    // No-op for now — active tasks are already tracked via onTaskStarted.
-    // Reserved for per-session "extracting" badge if needed later.
-  },
-
-  onExtractionCompleted(sessionId, result) {
-    set((s) => {
-      const m = new Map(s.lastExtractionMap);
-      m.set(sessionId, { ...result, completedAt: Date.now() });
-      const errs = new Map(s.extractionErrorMap);
-      errs.delete(sessionId);
-      return { lastExtractionMap: m, extractionErrorMap: errs };
-    });
-    // Stats changed: new nodes/items/edges were written to DB.
+  async maintenance(kind) {
+    await memoryApi.maintenance(kind);
+    await get().refreshJobs();
+    // 维护会清除或回收存储，统计快照已过期。
     void get().refreshStats();
   },
 
-  onExtractionFailed(sessionId, error) {
-    set((s) => {
-      const errs = new Map(s.extractionErrorMap);
-      errs.set(sessionId, error);
-      return { extractionErrorMap: errs };
-    });
+  listFiles(opts) {
+    return memoryApi.listFiles(opts);
   },
 
-  // ── Index ──────────────────────────────────────────────────────────────────
-
-  onIndexRebuilt() {
-    // Index was rebuilt — stats.index is stale.
-    void get().refreshStats();
+  readFile(opts) {
+    return memoryApi.readFile(opts);
   },
 
-  // ── Maintenance ────────────────────────────────────────────────────────────
-
-  async runMaintenance(input) {
-    set({ maintenanceRunning: true, maintenanceError: null });
-    try {
-      const report = await memoryApi.runMaintenance(input ?? {});
-      set({ maintenanceReport: report, maintenanceRunning: false });
-      // Real run mutated DB — stats (decayedNodes counts) are now stale.
-      if (!report.dryRun) void get().refreshStats();
-      return report;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      set({ maintenanceRunning: false, maintenanceError: msg });
-      throw err;
-    }
-  },
-
-  onMaintenanceCompleted(decayedNodes, decayedItems, dryRun) {
-    // SSE variant: no preview rows, but we know the outcome.
-    set((s) => ({
-      maintenanceReport: s.maintenanceReport
-        ? { ...s.maintenanceReport, decayedNodes, decayedItems, dryRun }
-        : { dryRun, decayedNodes, decayedItems, preview: { nodes: [], items: [], decayedAt: Date.now() } },
-      maintenanceError: null,
-    }));
-    if (!dryRun) void get().refreshStats();
-  },
-
-  onMaintenanceFailed(error) {
-    set({ maintenanceError: error });
-  },
-
-  // ── Node / Item delete ─────────────────────────────────────────────────────
-
-  async deleteNode(id) {
-    await memoryApi.deleteNode(id);
-    void get().refreshStats();
-  },
-
-  async deleteItem(id) {
-    await memoryApi.deleteItem(id);
-    void get().refreshStats();
-  },
-
-  // ── Per-session overrides ──────────────────────────────────────────────────
-
-  async getSessionOverrides(sessionId) {
-    const cached = get().sessionOverrides.get(sessionId as string);
-    if (cached) return cached;
-    const overrides = await memoryApi.getSessionOverrides(sessionId);
-    set((s) => {
-      const m = new Map(s.sessionOverrides);
-      m.set(sessionId as string, overrides);
-      return { sessionOverrides: m };
-    });
-    return overrides;
-  },
-
-  async setSessionOverrides(sessionId, overrides) {
-    const updated = await memoryApi.setSessionOverrides(sessionId, overrides);
-    set((s) => {
-      const m = new Map(s.sessionOverrides);
-      m.set(sessionId as string, updated);
-      return { sessionOverrides: m };
-    });
-  },
-
-  evictSessionOverrides(sessionId) {
-    set((s) => {
-      const m = new Map(s.sessionOverrides);
-      m.delete(sessionId as string);
-      return { sessionOverrides: m };
-    });
+  searchFiles(input) {
+    return memoryApi.search(input);
   },
 }));

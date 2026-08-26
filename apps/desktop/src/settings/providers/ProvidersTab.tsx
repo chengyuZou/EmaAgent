@@ -1,7 +1,7 @@
 /**
- * ProvidersTab — AIRI-style provider grid grouped by capability.
+ * ProvidersTab — provider grid grouped by capability（内置种子与自建同表，点击进单项编辑）。
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Button,
   Callout,
@@ -11,14 +11,13 @@ import {
   resolveProviderIconClass,
 } from '@ema-agent/ui';
 import { useSettingsStore } from '../../stores/settings-store.js';
-import { providersApi, type ProviderDefinition, type ProviderConfigWire } from '../../api/providers.js';
-import { providerSupportsCapability, type Capability } from '@ema-agent/provider';
+import type { ProviderRecord, ModelCapability } from '../../api/providers.js';
 import { showToast } from '../../lib/toast.js';
 import { ProviderForm } from './ProviderForm.js';
 
 // ── Capability sections ───────────────────────────────────────────────────────
 
-const SECTIONS = [
+const SECTIONS: ReadonlyArray<{ key: ModelCapability; label: string; icon: string; description: string }> = [
   { key: 'llm',      label: 'LLM',       icon: 'i-solar:chat-square-like-bold-duotone',
     description: '文本生成模型，如 DeepSeek、OpenAI、Ollama' },
   { key: 'embed',    label: 'Embed',     icon: 'i-solar:structure-bold-duotone',
@@ -31,45 +30,46 @@ const SECTIONS = [
     description: '语音识别(语音转文字)' },
   { key: 'vision',   label: 'Vision',    icon: 'i-solar:eye-bold-duotone',
     description: '图像理解模型' },
-  // V1 暂不开放：保留 Provider 与后端预留实现，端到端接通后恢复入口。
-  // { key: 'imagegen', label: 'Image Gen', icon: 'i-solar:gallery-bold-duotone',
-  //   description: '图像生成模型' },
-] as const;
+];
 
 function hostOf(url: string | undefined): string {
   if (!url) return '';
   try { return new URL(url).host; } catch { return url; }
 }
 
+function capabilityOf(record: ProviderRecord, capability: ModelCapability) {
+  return record.capabilities.find((c) => c.capability === capability);
+}
+
+function capabilityHost(record: ProviderRecord, capability: ModelCapability): string {
+  const row = capabilityOf(record, capability);
+  const active = row?.protocols.find((p) => p.protocol === row.activeProtocol);
+  return hostOf((active ?? row?.protocols[0])?.baseUrl);
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function ProvidersTab(): JSX.Element {
   const providers = useSettingsStore((s) => s.providers);
-  const [definitions, setDefinitions] = useState<ProviderDefinition[]>([]);
-  const [selectedDef, setSelectedDef] = useState<string | null>(null);
-  const [selectedCapability, setSelectedCapability] = useState<Capability | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedCapability, setSelectedCapability] = useState<ModelCapability | null>(null);
 
-  useEffect(() => {
-    void providersApi.listDefinitions().then(setDefinitions).catch(() => {});
-  }, []);
+  const selected = providers.find((p) => p.id === selectedId);
 
-  const selectedDefinition = definitions.find((d) => d.id === selectedDef);
-
-  if (selectedDef && selectedDefinition) {
-    const config = providers.find((p) => p.definitionId === selectedDef) ?? null;
+  if (selected && selectedCapability) {
     return (
-      <div key={selectedDef} className="ema-slide-right">
+      <div key={selected.id} className="ema-slide-right">
         <ProviderConfigPanel
-          definition={selectedDefinition}
+          provider={selected}
           capability={selectedCapability}
-          config={config}
-          onBack={() => { setSelectedDef(null); setSelectedCapability(null); }}
+          onBack={() => { setSelectedId(null); setSelectedCapability(null); }}
         />
       </div>
     );
   }
 
-  const anyConfigured = providers.length > 0;
+  const anyConfigured = providers.some((p) =>
+    p.capabilities.some((c) => c.activeProtocol !== undefined));
   let cardIdx = 0;
 
   return (
@@ -82,9 +82,8 @@ export function ProvidersTab(): JSX.Element {
       )}
 
       {SECTIONS.map((section) => {
-        const sectionDefs = definitions.filter((d) =>
-          providerSupportsCapability(d, section.key));
-        if (sectionDefs.length === 0) return null;
+        const sectionProviders = providers.filter((p) => capabilityOf(p, section.key) !== undefined);
+        if (sectionProviders.length === 0) return null;
 
         return (
           <section key={section.key}>
@@ -98,17 +97,17 @@ export function ProvidersTab(): JSX.Element {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {sectionDefs.map((def) => {
-                const instances = providers.filter((p) => p.definitionId === def.id);
+              {sectionProviders.map((record) => {
                 const staggerI = cardIdx++;
+                const row = capabilityOf(record, section.key);
                 return (
                   <MenuStatusItem
-                    key={def.id}
-                    title={def.name}
-                    description={hostOf(def.connection.defaultBaseUrl)}
-                    icon={resolveProviderIconClass(def.branding.iconId)}
-                    configured={instances.length > 0}
-                    onClick={() => { setSelectedDef(def.id); setSelectedCapability(section.key as Capability); }}
+                    key={record.id}
+                    title={record.name}
+                    description={capabilityHost(record, section.key)}
+                    icon={resolveProviderIconClass(record.iconId)}
+                    configured={row?.activeProtocol !== undefined}
+                    onClick={() => { setSelectedId(record.id); setSelectedCapability(section.key); }}
                     style={{ '--stagger-i': staggerI } as React.CSSProperties}
                     className="ema-stagger-in"
                   />
@@ -125,20 +124,16 @@ export function ProvidersTab(): JSX.Element {
 // ── Provider config panel (level 2) ──────────────────────────────────────────
 
 function ProviderConfigPanel({
-  definition, capability, config, onBack,
+  provider, capability, onBack,
 }: {
-  definition: ProviderDefinition;
-  capability: Capability | null;
-  config:     ProviderConfigWire | null;
+  provider:   ProviderRecord;
+  capability: ModelCapability;
   onBack():   void;
 }): JSX.Element {
   const [confirmAction, setConfirmAction] = useState<'delete' | 'discard' | null>(null);
   const [formDirty, setFormDirty] = useState(false);
 
-  function handleDelete(): void {
-    if (!config) return;
-    setConfirmAction('delete');
-  }
+  const health = provider.health.find((h) => h.capability === capability);
 
   function handleBack(): void {
     if (formDirty) {
@@ -149,9 +144,8 @@ function ProviderConfigPanel({
   }
 
   function confirmDelete(): void {
-    if (!config) return;
     setConfirmAction(null);
-    void useSettingsStore.getState().deleteProvider(config.id).then(() => {
+    void useSettingsStore.getState().deleteProvider(provider.id).then(() => {
       showToast('已删除', { variant: 'success' });
       onBack();
     }).catch((err: Error) => {
@@ -170,37 +164,33 @@ function ProviderConfigPanel({
             className="-ml-1.5"
             onClick={handleBack}
           />
-          <span className={`${resolveProviderIconClass(definition.branding.iconId)} text-3xl`} aria-hidden />
-          <h2 className="text-xl font-semibold text-[var(--ema-text-primary)]">{definition.name}</h2>
-          {config && (
+          <span className={`${resolveProviderIconClass(provider.iconId)} text-3xl`} aria-hidden />
+          <h2 className="text-xl font-semibold text-[var(--ema-text-primary)]">{provider.name}</h2>
+          {health && (
             <span className={`size-2 rounded-full ${
-              config.health?.status === 'ok'
+              health.status === 'ok'
                 ? 'bg-[var(--ema-success)]'
                 : 'bg-[var(--ema-danger)]'
             }`} />
           )}
-          {config?.health?.latencyMs != null && (
-            <span className="text-xs text-[var(--ema-text-tertiary)]">{config.health.latencyMs}ms</span>
+          {health?.latencyMs != null && (
+            <span className="text-xs text-[var(--ema-text-tertiary)]">{health.latencyMs}ms</span>
           )}
         </div>
-        {config && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-[var(--ema-text-tertiary)] hover:text-[var(--ema-danger)]"
-            onClick={handleDelete}
-          >
-            删除
-          </Button>
-        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-[var(--ema-text-tertiary)] hover:text-[var(--ema-danger)]"
+          onClick={() => setConfirmAction('delete')}
+        >
+          删除
+        </Button>
       </div>
 
       <ProviderForm
-        key={config?.id ?? 'new'}
-        definitionId={definition.id}
-        definition={definition}
-        capability={capability ?? undefined}
-        instance={config ?? undefined}
+        key={provider.id}
+        provider={provider}
+        capability={capability}
         onClose={handleBack}
         onDirtyChange={setFormDirty}
       />

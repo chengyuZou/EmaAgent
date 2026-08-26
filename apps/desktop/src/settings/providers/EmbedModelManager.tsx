@@ -1,12 +1,16 @@
+/**
+ * EmbedModelManager — provider 的嵌入模型池（dim 必填，是向量空间身份的一部分）。
+ */
 import { useState, useEffect, useCallback, type JSX } from 'react';
 import { Button, Callout, ConfirmDialog, Input, Spinner } from '@ema-agent/ui';
-import { providersApi, type AvailableEmbedModelWire } from '../../api/providers.js';
+import { providersApi, type ProviderModelRecord } from '../../api/providers.js';
 import { showToast } from '../../lib/toast.js';
 import { ModelToggleCard } from './ModelToggleCard.js';
 
+type EmbedModel = Extract<ProviderModelRecord, { capability: 'embed' }>;
+
 export function EmbedModelManager({ providerId, iconKey }: { providerId: string; iconKey?: string }): JSX.Element {
-  const [models, setModels]   = useState<AvailableEmbedModelWire[]>([]);
-  const [source, setSource]   = useState<'live' | 'static'>('static');
+  const [models, setModels]   = useState<EmbedModel[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
   const [confirmModel, setConfirmModel] = useState<string | null>(null);
@@ -15,9 +19,8 @@ export function EmbedModelManager({ providerId, iconKey }: { providerId: string;
     setLoading(true);
     setError(null);
     try {
-      const res = await providersApi.listEmbedModels(providerId);
-      setModels(res.models);
-      setSource(res.source);
+      const rows = await providersApi.listModels(providerId);
+      setModels(rows.filter((m): m is EmbedModel => m.capability === 'embed'));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -27,35 +30,28 @@ export function EmbedModelManager({ providerId, iconKey }: { providerId: string;
 
   useEffect(() => { void load(); }, [load]);
 
-  async function enable(model: string, dim?: number, src?: 'live' | 'table' | 'manual'): Promise<void> {
+  async function add(modelId: string, dim: number): Promise<void> {
     try {
-      await providersApi.enableEmbedModel(providerId, model, dim, src);
+      await providersApi.saveModel(providerId, {
+        capability: 'embed',
+        modelId,
+        dim,
+      });
       await load();
     } catch (err) {
-      showToast(`启用失败: ${err instanceof Error ? err.message : String(err)}`, { variant: 'danger' });
+      showToast(`添加失败: ${err instanceof Error ? err.message : String(err)}`, { variant: 'danger' });
     }
   }
 
-  function handleToggle(m: AvailableEmbedModelWire): void {
-    if (m.enabled) {
-      setConfirmModel(m.id);
-      return;
-    }
-    void enable(m.id);
-  }
-
-  async function confirmDisable(): Promise<void> {
+  async function confirmRemove(): Promise<void> {
     if (!confirmModel) return;
     const model = confirmModel;
     setConfirmModel(null);
     try {
-      const res = await providersApi.disableEmbedModel(providerId, model);
-      setModels((ms) => ms.map((m) => (m.id === model ? { ...m, enabled: false } : m)));
-      if (res.cascadedBindings > 0) {
-        showToast(`已禁用，并解除了 ${res.cascadedBindings} 个绑定`, { variant: 'warning' });
-      }
+      await providersApi.deleteModel(providerId, model, 'embed');
+      setModels((ms) => ms.filter((m) => m.modelId !== model));
     } catch (err) {
-      showToast(`禁用失败: ${err instanceof Error ? err.message : String(err)}`, { variant: 'danger' });
+      showToast(`移除失败: ${err instanceof Error ? err.message : String(err)}`, { variant: 'danger' });
     }
   }
 
@@ -65,8 +61,7 @@ export function EmbedModelManager({ providerId, iconKey }: { providerId: string;
         <div>
           <h3 className="text-base font-semibold text-[var(--ema-text-primary)]">嵌入模型</h3>
           <p className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">
-            启用的模型可在「模型绑定」里分配给 embed 模块。
-            {source === 'static' && '(显示内置推荐)'}
+            池内模型可在「模型绑定」里分配给 embed 模块。
           </p>
         </div>
         <Button variant="ghost" size="sm" onClick={() => void load()} disabled={loading}>
@@ -81,11 +76,11 @@ export function EmbedModelManager({ providerId, iconKey }: { providerId: string;
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {models.map((m) => (
             <ModelToggleCard
-              key={m.id}
-              id={m.id}
-              badge={m.dim != null ? `${m.dim}d` : undefined}
-              enabled={m.enabled}
-              onToggle={() => handleToggle(m)}
+              key={m.modelId}
+              id={m.modelId}
+              badge={`${m.dim}d`}
+              enabled
+              onToggle={() => setConfirmModel(m.modelId)}
               logo={iconKey}
             />
           ))}
@@ -93,15 +88,15 @@ export function EmbedModelManager({ providerId, iconKey }: { providerId: string;
       )}
 
       <ManualAddEmbedModel
-        onAdd={(model, dim) => void enable(model, dim, 'manual')}
-        existing={models.map((m) => m.id)}
+        onAdd={(model, dim) => void add(model, dim)}
+        existing={models.map((m) => m.modelId)}
       />
 
       <ConfirmDialog
         open={!!confirmModel}
-        message={confirmModel ? `禁用 "${confirmModel}"？使用它的嵌入绑定也会一并解除。` : ''}
-        confirmText="禁用"
-        onConfirm={() => void confirmDisable()}
+        message={confirmModel ? `从模型池移除 "${confirmModel}"？使用它的嵌入绑定将失效。` : ''}
+        confirmText="移除"
+        onConfirm={() => void confirmRemove()}
         onCancel={() => setConfirmModel(null)}
       />
     </div>
@@ -109,7 +104,7 @@ export function EmbedModelManager({ providerId, iconKey }: { providerId: string;
 }
 
 function ManualAddEmbedModel({ onAdd, existing }: {
-  onAdd(model: string, dim?: number): void;
+  onAdd(model: string, dim: number): void;
   existing: string[];
 }): JSX.Element {
   const [query, setQuery] = useState('');
@@ -119,11 +114,8 @@ function ManualAddEmbedModel({ onAdd, existing }: {
     const model = query.trim();
     if (!model) return;
     if (existing.includes(model)) { showToast('该模型已在列表中', { variant: 'warning' }); return; }
-    let n: number | undefined;
-    if (dim.trim()) {
-      n = parseInt(dim, 10);
-      if (!Number.isFinite(n) || n <= 0) { showToast('维度需为正整数(留空则自动探测)', { variant: 'danger' }); return; }
-    }
+    const n = parseInt(dim, 10);
+    if (!Number.isFinite(n) || n <= 0) { showToast('维度需为正整数', { variant: 'danger' }); return; }
     onAdd(model, n);
     setQuery('');
     setDim('');
@@ -131,7 +123,7 @@ function ManualAddEmbedModel({ onAdd, existing }: {
 
   return (
     <div className="mt-1">
-      <p className="text-xs text-[var(--ema-text-tertiary)] mb-1.5">手动添加嵌入模型</p>
+      <p className="text-xs text-[var(--ema-text-tertiary)] mb-1.5">添加嵌入模型</p>
       <div className="relative flex gap-2">
         <div className="relative flex-1">
           <Input
@@ -146,7 +138,7 @@ function ManualAddEmbedModel({ onAdd, existing }: {
           inputSize="sm"
           type="number"
           className="w-28"
-          placeholder="维度(可选)"
+          placeholder="维度"
           value={dim}
           onChange={(e) => setDim(e.target.value)}
         />

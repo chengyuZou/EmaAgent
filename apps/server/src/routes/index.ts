@@ -1,5 +1,5 @@
 // HTTP 路由总装：唯一挂载表。文件夹按业务域划分，挂载前缀即 URL；
-// Route 只做 Wire 解析与协议转换，业务入口全部来自 Composition，这里不构造业务对象。
+// Route 只做传输解析与协议转换，业务入口全部来自 Composition，这里不构造业务对象。
 // 顶层必须整链（.use/.route/.notFound/.onError 同链）：语句式 app.route(...) 会丢类型账本，
 // ReturnType<typeof createRoutes>（AppType）将退化为裸 Hono，Hono RPC 契约直接失效。
 import { Hono } from 'hono';

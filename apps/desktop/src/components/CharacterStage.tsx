@@ -9,42 +9,47 @@ import {
 } from 'react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import {
-  createLive2DRuntime,
-  type Live2DRuntime,
+  type Live2DStageHandle,
+  type Live2DStageReadyInfo,
 } from '@ema-agent/live2d-react';
 import type {
   CharacterStageCandidate,
-  CharacterStageSnapshot,
-} from '@ema-agent/desktop-ui';
-import type { CharacterCardId } from '@ema-agent/ids';
+  CharacterStageView,
+} from '../characterStageLoader.js';
+
 import { EmaStageView } from './EmaStageView.js';
 
 const EXIT_DURATION_MS = 300;
 
 interface MountedStage {
   readonly requestId: number;
-  readonly characterId: CharacterCardId;
+  readonly characterId: string;
   readonly candidate: CharacterStageCandidate;
 }
 
 interface PendingPlan {
   requestId: number;
-  snapshot: CharacterStageSnapshot;
+  view: CharacterStageView;
   nextIndex: number;
 }
 
 export interface CharacterStageProps {
-  targetCharacterId: CharacterCardId | null;
-  snapshot: CharacterStageSnapshot | null;
+  targetCharacterId: string | null;
+  view: CharacterStageView | null;
   suspended: boolean;
-  onRuntimeChanged?: (runtime: Live2DRuntime | null) => void;
+  onStageChanged?: (stage: ActiveLive2DStage | null) => void;
+}
+
+export interface ActiveLive2DStage {
+  handle: Live2DStageHandle;
+  hasExpressions: boolean;
 }
 
 export function CharacterStage({
   targetCharacterId,
-  snapshot,
+  view,
   suspended,
-  onRuntimeChanged,
+  onStageChanged,
 }: CharacterStageProps): JSX.Element {
   const requestSequence = useRef(0);
   const activeRef = useRef<MountedStage | null>(null);
@@ -76,19 +81,19 @@ export function CharacterStage({
         exitTimer.current = null;
       }, EXIT_DURATION_MS);
     }
-  }, [clearExitTimer, onRuntimeChanged]);
+  }, [clearExitTimer]);
 
   const loadNextCandidate = useCallback((requestId: number): void => {
     const plan = planRef.current;
     if (!plan || plan.requestId !== requestId) return;
 
-    while (plan.nextIndex < plan.snapshot.candidates.length) {
-      const candidate = plan.snapshot.candidates[plan.nextIndex]!;
+    while (plan.nextIndex < plan.view.candidates.length) {
+      const candidate = plan.view.candidates[plan.nextIndex]!;
       plan.nextIndex += 1;
       const current = activeRef.current;
       if (
         current
-        && current.characterId === plan.snapshot.characterId
+        && current.characterId === plan.view.characterId
         && candidateKey(current.candidate) === candidateKey(candidate)
       ) {
         setPending(null);
@@ -97,7 +102,7 @@ export function CharacterStage({
       }
       setPending({
         requestId,
-        characterId: plan.snapshot.characterId,
+        characterId: plan.view.characterId,
         candidate,
       });
       return;
@@ -106,14 +111,14 @@ export function CharacterStage({
     setPending(null);
     planRef.current = null;
     const current = activeRef.current;
-    if (current?.characterId === plan.snapshot.characterId) {
+    if (current?.characterId === plan.view.characterId) {
       activeRef.current = null;
       clearExitTimer();
       setActive(null);
       setOutgoing(null);
-      onRuntimeChanged?.(null);
+      onStageChanged?.(null);
     }
-  }, [clearExitTimer, onRuntimeChanged]);
+  }, [clearExitTimer, onStageChanged]);
 
   useEffect(() => {
     const current = activeRef.current;
@@ -131,20 +136,20 @@ export function CharacterStage({
     setActive(null);
     setPending(null);
     setOutgoing(null);
-    onRuntimeChanged?.(null);
-  }, [clearExitTimer, onRuntimeChanged, targetCharacterId]);
+    onStageChanged?.(null);
+  }, [clearExitTimer, onStageChanged, targetCharacterId]);
 
   useEffect(() => {
-    if (!snapshot || snapshot.characterId !== targetCharacterId) return;
+    if (!view || view.characterId !== targetCharacterId) return;
     const requestId = ++requestSequence.current;
-    planRef.current = { requestId, snapshot, nextIndex: 0 };
+    planRef.current = { requestId, view, nextIndex: 0 };
     setPending(null);
     loadNextCandidate(requestId);
   }, [
     loadNextCandidate,
-    snapshot,
-    snapshot?.characterId,
-    snapshot?.revision,
+    view,
+    view?.characterId,
+    view?.revision,
     targetCharacterId,
   ]);
 
@@ -188,7 +193,7 @@ export function CharacterStage({
           suspended={suspended}
           state={state}
           interactive={state === 'active'}
-          onRuntimeChanged={state === 'active' ? onRuntimeChanged : undefined}
+          onStageChanged={state === 'active' ? onStageChanged : undefined}
           onReady={state === 'pending' ? () => commitActive(mounted) : () => {}}
           onError={state === 'pending' ? () => failPending(mounted) : () => {}}
         />
@@ -204,7 +209,7 @@ function StageResource({
   interactive,
   onReady,
   onError,
-  onRuntimeChanged,
+  onStageChanged,
 }: {
   mounted: MountedStage;
   suspended: boolean;
@@ -212,39 +217,59 @@ function StageResource({
   interactive: boolean;
   onReady(): void;
   onError(): void;
-  onRuntimeChanged?: (runtime: Live2DRuntime | null) => void;
+  onStageChanged?: (stage: ActiveLive2DStage | null) => void;
 }): JSX.Element {
-  const [runtime] = useState(() => createLive2DRuntime('main'));
+  const handleRef = useRef<Live2DStageHandle | null>(null);
+  const [readyStage, setReadyStage] = useState<ActiveLive2DStage | null>(null);
   const sourcePath = runtimeSource(mounted.candidate.sourcePath);
+
+  const handleChanged = useCallback((handle: Live2DStageHandle | null): void => {
+    handleRef.current = handle;
+    if (!handle) setReadyStage(null);
+  }, []);
+
+  const ready = useCallback((info?: Live2DStageReadyInfo): void => {
+    const handle = handleRef.current;
+    if (handle && info) {
+      setReadyStage({ handle, hasExpressions: info.hasExpressions });
+    }
+    onReady();
+  }, [onReady]);
 
   useEffect(() => {
     if (!interactive) return;
-    onRuntimeChanged?.(runtime);
-    return () => onRuntimeChanged?.(null);
-  }, [interactive, onRuntimeChanged, runtime]);
+    onStageChanged?.(mounted.candidate.kind === 'live2d' ? readyStage : null);
+    return () => onStageChanged?.(null);
+  }, [interactive, mounted.candidate.kind, onStageChanged, readyStage]);
+
+  const transform = {
+    transform: `translate(${mounted.candidate.stageOffsetX * 100}%, ${mounted.candidate.stageOffsetY * 100}%) scale(${mounted.candidate.stageScale})`,
+  };
 
   return (
     <div className="ema-character-stage-resource" data-state={state}>
-      {mounted.candidate.kind === 'live2d' ? (
-        <EmaStageView
-          modelPath={sourcePath}
-          runtime={runtime}
-          runtimeConfig={mounted.candidate.runtimeConfig ?? undefined}
-          suspended={suspended}
-          interactive={interactive}
-          onReady={onReady}
-          onError={onError}
-        />
-      ) : (
-        <img
-          className="ema-character-stage-portrait"
-          src={sourcePath}
-          alt={mounted.candidate.label}
-          draggable={false}
-          onLoad={onReady}
-          onError={onError}
-        />
-      )}
+      <div className="ema-character-stage-resource-content" style={transform}>
+        {mounted.candidate.kind === 'live2d' ? (
+          <EmaStageView
+            modelPath={sourcePath}
+            runtimeConfig={mounted.candidate.runtimeConfig ?? undefined}
+            suspended={suspended}
+            interactive={interactive}
+            onHandleChanged={handleChanged}
+            onReady={ready}
+            onError={onError}
+          />
+        ) : (
+          <img
+            className="ema-character-stage-portrait"
+            src={sourcePath}
+            alt={mounted.candidate.name}
+            draggable={false}
+            onLoad={() => ready()}
+            onError={onError}
+          />
+        )}
+      </div>
     </div>
   );
 }
@@ -262,7 +287,7 @@ function runtimeSource(sourcePath: string): string {
   if (
     /^[A-Za-z]:[\\/]/.test(sourcePath)
     || sourcePath.startsWith('\\\\')
-    || (sourcePath.startsWith('/') && !sourcePath.startsWith('/cards/'))
+    || (sourcePath.startsWith('/') && !sourcePath.startsWith('/api/characters/'))
   ) {
     return convertFileSrc(sourcePath);
   }
