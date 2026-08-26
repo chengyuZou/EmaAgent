@@ -40,6 +40,9 @@ export interface LlmGenerationSource {
   readonly protocol: LlmProtocol;
 }
 
+/** 一次物理 LLM 调用已经确定的终态。 */
+export type LlmCallStatus = 'completed' | 'failed' | 'cancelled';
+
 /** ToolPool 投影给模型协议的函数定义。 */
 export interface LlmTool {
   readonly name: string;

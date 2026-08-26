@@ -176,8 +176,10 @@ async function* streamGemini(
         lastUsage = {
           type: 'usage',
           ...createLlmTokenUsage({
-            inputTokens: chunk.usageMetadata.promptTokenCount ?? 0,
-            outputTokens: chunk.usageMetadata.candidatesTokenCount ?? 0,
+            inputTokens: (chunk.usageMetadata.promptTokenCount ?? 0)
+              + (chunk.usageMetadata.toolUsePromptTokenCount ?? 0),
+            outputTokens: (chunk.usageMetadata.candidatesTokenCount ?? 0)
+              + (chunk.usageMetadata.thoughtsTokenCount ?? 0),
             cacheReadInputTokens: chunk.usageMetadata.cachedContentTokenCount,
           }),
         };

@@ -43,35 +43,31 @@ describe('UsageRecordsRepo', () => {
     expect(repo.forSession('session-a')).toHaveLength(2);
   });
 
-  it('重复上报同一调用不会制造重复账单', () => {
+  it('重复物理调用身份由唯一键暴露为实现错误', () => {
     repo.record(record('call-a', 10));
-    repo.record({ ...record('call-a', 20), outputTokens: 999 });
-    expect(repo.forTurn('turn-a')).toEqual([
-      expect.objectContaining({ id: 'call-a', output_tokens: 20, created_at: 10 }),
-    ]);
+    expect(() => repo.record({ ...record('call-a', 20), outputTokens: 999 }))
+      .toThrow(/UNIQUE constraint failed/);
   });
 
-  it('同一逻辑调用重试成功后可把失败终态提升为完成', () => {
-    repo.record({ ...record('call-retry', 10), status: 'failed', errorCode: 'llm/context_too_large' });
+  it('失败重试是两次物理调用，分别保留各自终态', () => {
+    repo.record({ ...record('call-failed', 10), status: 'failed', errorCode: 'llm/context_too_large' });
     repo.record({ ...record('call-retry', 20), status: 'completed', outputTokens: 30 });
 
     expect(repo.forTurn('turn-a')).toEqual([
+      expect.objectContaining({
+        id: 'call-failed', status: 'failed', error_code: 'llm/context_too_large', created_at: 10,
+      }),
       expect.objectContaining({
         id: 'call-retry', status: 'completed', output_tokens: 30, error_code: null, created_at: 20,
       }),
     ]);
   });
 
-  it('保存取消终态，且迟到完成不得覆盖已经确认的取消', () => {
+  it('保存取消终态', () => {
     repo.record({
       ...record('call-cancelled', 10),
       status: 'cancelled',
       errorCode: 'llm/aborted',
-    });
-    repo.record({
-      ...record('call-cancelled', 20),
-      status: 'completed',
-      outputTokens: 30,
     });
 
     expect(repo.forTurn('turn-a')).toEqual([

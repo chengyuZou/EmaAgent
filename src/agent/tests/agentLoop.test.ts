@@ -122,6 +122,25 @@ describe('runAgentLoop', () => {
       { inputTokens: 10, outputTokens: 0 },
       { inputTokens: 0, outputTokens: 4 },
     ]);
+    const callUsage = result.filter(
+      (event): event is Extract<AgentLoopEvent, { type: 'llm_call_usage_updated' }> =>
+        event.type === 'llm_call_usage_updated',
+    );
+    expect(callUsage).toHaveLength(2);
+    expect(callUsage[0]!.llmCallId).toBe(callUsage[1]!.llmCallId);
+    expect(callUsage[1]!.usage).toEqual({ inputTokens: 10, outputTokens: 4 });
+    expect(result.filter(event => event.type === 'agent_usage_updated').at(-1)).toEqual({
+      type: 'agent_usage_updated',
+      usage: { inputTokens: 10, outputTokens: 4 },
+    });
+    expect(result.find(event => event.type === 'llm_call_finished')).toEqual(
+      expect.objectContaining({
+        type: 'llm_call_finished',
+        llmCallId: callUsage[0]!.llmCallId,
+        status: 'completed',
+        usage: { inputTokens: 10, outputTokens: 4 },
+      }),
+    );
     expect(terminalEvent(result)?.finalText).toBe('ok');
   });
 
@@ -133,8 +152,10 @@ describe('runAgentLoop', () => {
       yield { type: 'done' as const, stopReason: 'end_turn' as const };
     })());
     const recoveryReasons: Array<string | undefined> = [];
+    const callIds: string[] = [];
     const prepareIteration: AgentLoopInput['prepareIteration'] = vi.fn(async (input) => {
       recoveryReasons.push(input.recoveryReason);
+      callIds.push(input.llmCallId);
       return {
         request: { messages: input.messages },
         messages: input.recoveryReason === 'context_window_exceeded'
@@ -146,6 +167,30 @@ describe('runAgentLoop', () => {
     await collect(baseInput({ prepareIteration, callLlm: model(stream) }));
 
     expect(recoveryReasons).toEqual([undefined, 'context_window_exceeded']);
+    expect(callIds[0]).not.toBe(callIds[1]);
+  });
+
+  it('取消前已经收到的 Provider Usage 仍进入调用终态', async () => {
+    const controller = new AbortController();
+    const stream: CallLlm = () => (async function* () {
+      yield { type: 'usage' as const, inputTokens: 12, outputTokens: 3 };
+      controller.abort();
+      throw new Error('cancelled by user');
+    })();
+
+    const events = await collect(baseInput({
+      callLlm: stream,
+      signal: controller.signal,
+    }));
+
+    expect(events.find(event => event.type === 'llm_call_finished')).toEqual(
+      expect.objectContaining({
+        type: 'llm_call_finished',
+        status: 'cancelled',
+        usage: { inputTokens: 12, outputTokens: 3 },
+      }),
+    );
+    expect(terminalEvent(events)?.state.stopReason).toBe('aborted');
   });
 
   it('消费方恢复事件流后才启动工具，并在 ToolResult 落库边界后才 acknowledge', async () => {

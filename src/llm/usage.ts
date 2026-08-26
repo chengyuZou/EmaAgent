@@ -1,118 +1,95 @@
-// 归一化 Provider 用量，并把单次调用的累计快照安全转换为聚合增量。
+// 归一化 Provider 用量，并把同一次物理调用的累计快照转换为聚合增量。
 
-/** 单次逻辑 LLM 调用由 Provider 返回的 Token 指标。 */
+/** Provider 对一次物理 LLM 调用报告的累计 Token；缓存字段是 inputTokens 的子集。 */
 export interface LlmTokenUsage {
-  /** Provider 本次调用的总输入，包含缓存读取和缓存写入部分。 */
-  inputTokens: number;
-  outputTokens: number;
-  /** inputTokens 中由 Provider 缓存命中的子集。 */
-  cacheReadInputTokens?: number;
-  /** inputTokens 中在本次调用写入 Provider 缓存的子集。 */
-  cacheWriteInputTokens?: number;
-  /** Provider 明确定义的缓存命中比例，范围 0..1。 */
-  cacheHitRate?: number;
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+  readonly cacheReadInputTokens?: number;
+  readonly cacheWriteInputTokens?: number;
 }
 
 export interface ProviderUsageInput {
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadInputTokens?: number | null;
-  cacheWriteInputTokens?: number | null;
-  /** Provider 定义的可缓存输入总量；缺省时使用 inputTokens。 */
-  cacheEligibleInputTokens?: number;
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+  readonly cacheReadInputTokens?: number | null;
+  readonly cacheWriteInputTokens?: number | null;
 }
 
-/** 将不同 Provider 的缓存计数归一为统一、可聚合的调用级指标。 */
 export function createLlmTokenUsage(input: ProviderUsageInput): LlmTokenUsage {
-  const inputTokens = nonNegative(input.inputTokens);
-  const outputTokens = nonNegative(input.outputTokens);
-  const hasCacheRead = input.cacheReadInputTokens !== undefined
-    && input.cacheReadInputTokens !== null;
-  const hasCacheWrite = input.cacheWriteInputTokens !== undefined
-    && input.cacheWriteInputTokens !== null;
-  const cacheReadInputTokens = hasCacheRead
-    ? nonNegative(input.cacheReadInputTokens!)
-    : undefined;
-  const cacheWriteInputTokens = hasCacheWrite
-    ? nonNegative(input.cacheWriteInputTokens!)
-    : undefined;
-
-  const result: LlmTokenUsage = {
-    inputTokens,
-    outputTokens,
+  const cacheReadInputTokens = optionalNonNegative(input.cacheReadInputTokens);
+  const cacheWriteInputTokens = optionalNonNegative(input.cacheWriteInputTokens);
+  return {
+    inputTokens: nonNegative(input.inputTokens),
+    outputTokens: nonNegative(input.outputTokens),
     ...(cacheReadInputTokens !== undefined ? { cacheReadInputTokens } : {}),
     ...(cacheWriteInputTokens !== undefined ? { cacheWriteInputTokens } : {}),
   };
-
-  if (cacheReadInputTokens !== undefined) {
-    const eligible = nonNegative(input.cacheEligibleInputTokens ?? inputTokens);
-    result.cacheHitRate = eligible > 0
-      ? Math.min(1, cacheReadInputTokens / eligible)
-      : 0;
-  }
-
-  return result;
 }
 
 /**
- * 接收同一次 LLM 调用的新累计快照，返回单调快照和相对上一快照的增量。
- * Provider 偶发返回较小计数时保持已确认上界，避免实时事件导致负增量或重复扣预算。
+ * Provider Usage 是累计快照。返回本次调用当前已知用量和相对上一快照的新增量；
+ * Provider 偶发回退计数时保留已确认上界，不产生负增量。
  */
-export function advanceLlmUsageSnapshot(
-  previous: LlmTokenUsage,
-  incoming: LlmTokenUsage,
-): { snapshot: LlmTokenUsage; delta: LlmTokenUsage } {
+export function updateLlmCallUsage(
+  current: LlmTokenUsage,
+  reported: LlmTokenUsage,
+): { usage: LlmTokenUsage; delta: LlmTokenUsage } {
   const inputTokens = Math.max(
-    nonNegative(previous.inputTokens),
-    nonNegative(incoming.inputTokens),
+    nonNegative(current.inputTokens),
+    nonNegative(reported.inputTokens),
   );
   const outputTokens = Math.max(
-    nonNegative(previous.outputTokens),
-    nonNegative(incoming.outputTokens),
+    nonNegative(current.outputTokens),
+    nonNegative(reported.outputTokens),
   );
   const cacheReadInputTokens = maxOptional(
-    previous.cacheReadInputTokens,
-    incoming.cacheReadInputTokens,
+    current.cacheReadInputTokens,
+    reported.cacheReadInputTokens,
   );
   const cacheWriteInputTokens = maxOptional(
-    previous.cacheWriteInputTokens,
-    incoming.cacheWriteInputTokens,
+    current.cacheWriteInputTokens,
+    reported.cacheWriteInputTokens,
   );
-  const snapshot: LlmTokenUsage = {
-    inputTokens,
-    outputTokens,
-    ...(cacheReadInputTokens !== undefined ? { cacheReadInputTokens } : {}),
-    ...(cacheWriteInputTokens !== undefined ? { cacheWriteInputTokens } : {}),
-    ...(incoming.cacheHitRate !== undefined
-      ? { cacheHitRate: incoming.cacheHitRate }
-      : previous.cacheHitRate !== undefined
-        ? { cacheHitRate: previous.cacheHitRate }
-        : {}),
-  };
 
   return {
-    snapshot,
+    usage: {
+      inputTokens,
+      outputTokens,
+      ...(cacheReadInputTokens !== undefined ? { cacheReadInputTokens } : {}),
+      ...(cacheWriteInputTokens !== undefined ? { cacheWriteInputTokens } : {}),
+    },
     delta: {
-      inputTokens: inputTokens - nonNegative(previous.inputTokens),
-      outputTokens: outputTokens - nonNegative(previous.outputTokens),
+      inputTokens: inputTokens - nonNegative(current.inputTokens),
+      outputTokens: outputTokens - nonNegative(current.outputTokens),
       ...(cacheReadInputTokens !== undefined
-        ? { cacheReadInputTokens: cacheReadInputTokens - nonNegative(previous.cacheReadInputTokens ?? 0) }
+        ? { cacheReadInputTokens: cacheReadInputTokens - nonNegative(current.cacheReadInputTokens ?? 0) }
         : {}),
       ...(cacheWriteInputTokens !== undefined
-        ? { cacheWriteInputTokens: cacheWriteInputTokens - nonNegative(previous.cacheWriteInputTokens ?? 0) }
+        ? { cacheWriteInputTokens: cacheWriteInputTokens - nonNegative(current.cacheWriteInputTokens ?? 0) }
         : {}),
     },
   };
+}
+
+export function hasLlmTokenUsage(usage: LlmTokenUsage): boolean {
+  return usage.inputTokens > 0
+    || usage.outputTokens > 0
+    || (usage.cacheReadInputTokens ?? 0) > 0
+    || (usage.cacheWriteInputTokens ?? 0) > 0;
 }
 
 function nonNegative(value: number): number {
   return Number.isFinite(value) ? Math.max(0, value) : 0;
 }
 
+function optionalNonNegative(value: number | null | undefined): number | undefined {
+  return value === null || value === undefined ? undefined : nonNegative(value);
+}
+
 function maxOptional(
-  previous: number | undefined,
-  incoming: number | undefined,
+  current: number | undefined,
+  reported: number | undefined,
 ): number | undefined {
-  if (previous === undefined && incoming === undefined) return undefined;
-  return Math.max(nonNegative(previous ?? 0), nonNegative(incoming ?? 0));
+  if (current === undefined && reported === undefined) return undefined;
+  return Math.max(nonNegative(current ?? 0), nonNegative(reported ?? 0));
 }

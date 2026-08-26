@@ -1,6 +1,8 @@
 // 定义一次 Turn 自身的生命周期、模型输出投影与请求降级事件。
 import type { AgentRunEvent } from '@ema-agent/agent';
 import type { CompactEvent } from '@ema-agent/compact';
+import type { ContextUsage } from '@ema-agent/context';
+import type { LlmTokenUsage } from '@ema-agent/llm';
 import type { NarrativeEvent } from '@ema-agent/narrative';
 import type { StageStreamEvent } from '@ema-agent/stage';
 import type {
@@ -24,11 +26,17 @@ export type TurnEvent =
       narrativePolicy: NarrativePolicy;
     }
   | {
-      type: 'usage_update';
-      sessionId: string;
-      turnId: string;
-      inputTokens: number;
-      outputTokens: number;
+      readonly type: 'context_usage_updated';
+      readonly sessionId: string;
+      readonly turnId: string;
+      readonly llmCallId: string;
+      readonly usage: ContextUsage;
+    }
+  | {
+      readonly type: 'agent_usage_updated';
+      readonly sessionId: string;
+      readonly turnId: string;
+      readonly usage: LlmTokenUsage;
     }
   | {
       type: 'turn_completed';

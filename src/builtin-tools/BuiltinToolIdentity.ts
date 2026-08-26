@@ -4,4 +4,5 @@
 export {
   BuiltinTools,
   type BuiltinToolIdentity,
-} from '@ema-agent/tools';
+  type BuiltinToolVariant,
+} from '@ema-agent/tools/identity';

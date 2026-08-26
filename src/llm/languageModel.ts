@@ -15,7 +15,7 @@ import type {
   LlmThinkingState,
   LlmTokenUsage,
 } from './types.js';
-import { advanceLlmUsageSnapshot } from './usage.js';
+import { updateLlmCallUsage } from './usage.js';
 
 /** LLM 唯一创建入口；连接与 modelId 在创建时冻结并复用 SDK Client。 */
 export function createLlmCall(connection: LlmConnection, modelId: string): CallLlm {
@@ -119,7 +119,7 @@ export async function createLlmCompletion(
         });
         break;
       case 'usage':
-        usage = advanceLlmUsageSnapshot(usage, event).snapshot;
+        usage = updateLlmCallUsage(usage, event).usage;
         break;
       case 'done':
         stopReason = event.stopReason;

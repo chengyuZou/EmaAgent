@@ -1,115 +1,111 @@
-// 按结构化来源估算一次最终请求，并把 Provider Usage 覆盖为同一完整投影。
-import type {
-  AssistantBlock,
-  LlmTokenUsage,
-  LlmTool,
-  Message,
-  UserBlock,
-} from '@ema-agent/llm';
+// 估算根请求的业务来源占用，并用 Provider 输入真值校正同一次调用的总量。
+import type { LlmTokenUsage, LlmTool, Message } from '@ema-agent/llm';
 import {
   estimateLlmInputTokens,
   type TokenEstimateAccuracy,
 } from '@ema-agent/token';
+import type { ToolOrigin } from '@ema-agent/tools';
 
-export type ContextUsageCategoryKind =
-  | 'promptSection'
-  | 'toolInstructions'
-  | 'toolSchemas'
-  | 'messages'
-  | 'toolCalls'
-  | 'toolResults'
-  | 'attachments'
-  | 'other';
-
-export interface ContextUsageCategory {
-  readonly kind: ContextUsageCategoryKind;
-  /** Prompt section 使用标题作为展示名；kind 才是稳定业务身份。 */
-  readonly name?: string;
-  readonly tokens: number;
+export interface ContextUsageCategories {
+  readonly systemPromptTokens: number;
+  readonly tools: {
+    readonly totalTokens: number;
+    readonly systemToolTokens: number;
+    readonly mcpToolTokens: number;
+  };
+  readonly skillTokens: number;
+  readonly memoryTokens: number;
+  readonly characterPromptTokens: number;
+  readonly messageTokens: number;
 }
 
 export interface ContextUsageEstimate {
   readonly contextWindow: number;
   readonly estimatedInputTokens: number;
   readonly accuracy: TokenEstimateAccuracy;
-  readonly categories: readonly ContextUsageCategory[];
+  readonly categories: ContextUsageCategories;
 }
 
 export interface ContextUsage {
   readonly contextWindow: number;
   readonly inputTokens: number;
   readonly source: 'estimate' | 'provider';
-  /** Provider 不提供分类事实，因此这里始终保留 Context 的估算分类。 */
-  readonly categories: readonly ContextUsageCategory[];
+  /** Provider 没有业务分类，分类始终来自与该调用配对的本地装配。 */
+  readonly categories: ContextUsageCategories;
   readonly cacheReadInputTokens?: number;
   readonly cacheWriteInputTokens?: number;
 }
 
-interface PromptUsageSection {
+export interface ContextUsagePromptSection {
   readonly name: string;
   readonly message: Message;
 }
 
-interface ContextUsageInput {
+export interface ContextUsageTool {
+  readonly origin: ToolOrigin;
+  readonly definition: LlmTool;
+}
+
+export interface EstimateContextUsageInput {
   readonly contextWindow: number;
-  readonly messages: readonly Message[];
-  readonly tools: readonly LlmTool[];
-  readonly promptSections: readonly PromptUsageSection[];
+  readonly promptSections: readonly ContextUsagePromptSection[];
+  readonly tools: readonly ContextUsageTool[];
   readonly history: readonly Message[];
   readonly currentTurn: readonly Message[];
 }
 
-/** Context 装配过程的内部估算入口；分类总和严格等于完整请求估算。 */
-export function estimateContextUsage(input: ContextUsageInput): ContextUsageEstimate {
-  const categories: ContextUsageCategory[] = [];
+export function estimateContextUsage(
+  input: EstimateContextUsageInput,
+): ContextUsageEstimate {
+  const skillPrompt = input.promptSections.filter(
+    section => section.name === 'skill-catalog',
+  );
+  const memoryPrompt = input.promptSections.filter(
+    section => section.name === 'memory-guidance',
+  );
+  const characterPrompt = input.promptSections.filter(
+    section => section.name === 'character',
+  );
+  const mcpPrompt = input.promptSections.filter(
+    section => section.name === 'mcp-instructions',
+  );
+  const systemPrompt = input.promptSections.filter(section => (
+    section.name !== 'skill-catalog'
+    && section.name !== 'memory-guidance'
+    && section.name !== 'character'
+    && section.name !== 'mcp-instructions'
+  ));
 
-  for (const section of input.promptSections) {
-    categories.push({
-      kind: 'promptSection',
-      name: section.name,
-      tokens: estimateLlmInputTokens([section.message]).totalTokens,
-    });
-  }
+  const systemToolDefinitions = input.tools
+    .filter(tool => tool.origin.kind === 'builtin')
+    .map(tool => tool.definition);
+  const mcpToolDefinitions = input.tools
+    .filter(tool => tool.origin.kind === 'mcp')
+    .map(tool => tool.definition);
 
-  if (input.tools.length > 0) {
-    const instructionTokens = estimateLlmInputTokens([], {
-      tools: input.tools.map((tool) => ({
-        name: tool.name,
-        description: tool.description,
-        parameters: {},
-      })),
-    }).totalTokens;
-    const completeToolTokens = estimateLlmInputTokens([], {
-      tools: input.tools.map((tool) => ({
-        name: tool.name,
-        description: tool.description,
-        parameters: tool.inputSchema as Record<string, unknown>,
-      })),
-    }).totalTokens;
-    pushCategory(categories, 'toolInstructions', instructionTokens);
-    pushCategory(categories, 'toolSchemas', Math.max(0, completeToolTokens - instructionTokens));
-  }
-
-  const messageUsage = classifyMessages([...input.history, ...input.currentTurn]);
-  pushCategory(categories, 'messages', messageUsage.messages);
-  pushCategory(categories, 'toolCalls', messageUsage.toolCalls);
-  pushCategory(categories, 'toolResults', messageUsage.toolResults);
-  pushCategory(categories, 'attachments', messageUsage.attachments);
-
-  const complete = estimateLlmInputTokens(input.messages, {
-    tools: input.tools.map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-      parameters: tool.inputSchema as Record<string, unknown>,
-    })),
-  });
-  const classified = categories.reduce((sum, category) => sum + category.tokens, 0);
-  pushCategory(categories, 'other', Math.max(0, complete.totalTokens - classified));
+  const systemToolTokens = estimateTools(systemToolDefinitions);
+  const mcpToolTokens = estimateTools(mcpToolDefinitions)
+    + estimateMessages(mcpPrompt.map(section => section.message));
+  const categories: ContextUsageCategories = {
+    systemPromptTokens: estimateMessages(systemPrompt.map(section => section.message)),
+    tools: {
+      totalTokens: systemToolTokens + mcpToolTokens,
+      systemToolTokens,
+      mcpToolTokens,
+    },
+    skillTokens: estimateMessages(skillPrompt.map(section => section.message)),
+    memoryTokens: estimateMessages(memoryPrompt.map(section => section.message)),
+    characterPromptTokens: estimateMessages(
+      characterPrompt.map(section => section.message),
+    ),
+    // Reminder 已经是 Session 历史；与其他模型可见消息统一计算，不走旁路分类。
+    messageTokens: estimateMessages([...input.history, ...input.currentTurn]),
+  };
 
   return {
     contextWindow: input.contextWindow,
-    estimatedInputTokens: complete.totalTokens,
-    accuracy: complete.accuracy,
+    estimatedInputTokens: totalCategoryTokens(categories),
+    accuracy: 'heuristic',
     categories,
   };
 }
@@ -141,74 +137,44 @@ export function providerContextUsage(
   };
 }
 
-interface MessageUsage {
-  messages: number;
-  toolCalls: number;
-  toolResults: number;
-  attachments: number;
-}
-
-function classifyMessages(messages: readonly Message[]): MessageUsage {
-  const usage: MessageUsage = {
-    messages: 0,
-    toolCalls: 0,
-    toolResults: 0,
-    attachments: 0,
+/** Provider 锚点之后又进入工作历史的消息，统一归 Messages。 */
+export function appendEstimatedContextMessages(
+  current: ContextUsage,
+  messages: readonly Message[],
+): ContextUsage {
+  const addedTokens = estimateMessages(messages);
+  if (addedTokens === 0) return current;
+  return {
+    ...current,
+    inputTokens: current.inputTokens + addedTokens,
+    source: 'estimate',
+    categories: {
+      ...current.categories,
+      messageTokens: current.categories.messageTokens + addedTokens,
+    },
   };
-
-  for (const message of messages) {
-    const complete = estimateLlmInputTokens([message]);
-    usage.messages += complete.breakdown.messageEnvelopeTokens;
-    if (typeof message.content === 'string') {
-      usage.messages += complete.totalTokens - complete.breakdown.messageEnvelopeTokens;
-      continue;
-    }
-    // assembleContext 已拒绝 history/currentTurn 中的 system message；此处保留
-    // 分支以让独立估算函数在类型层也不把 system 误当成数组消息。
-    if (message.role === 'system') continue;
-
-    for (const block of message.content) {
-      const tokens = estimateBlockTokens(message.role, block);
-      if (block.type === 'tool_use') usage.toolCalls += tokens;
-      else if (block.type === 'tool_result') usage.toolResults += tokens;
-      else if (isAttachment(block)) usage.attachments += tokens;
-      else usage.messages += tokens;
-    }
-  }
-
-  return usage;
 }
 
-function estimateBlockTokens(
-  role: 'user' | 'assistant',
-  block: UserBlock | AssistantBlock,
-): number {
-  const message: Message = role === 'user'
-    ? { role, content: [block as UserBlock] }
-    : { role, content: [block as AssistantBlock] };
-  const estimate = estimateLlmInputTokens([message]);
-  return Math.max(0, estimate.totalTokens - estimate.breakdown.messageEnvelopeTokens);
+function estimateMessages(messages: readonly Message[]): number {
+  return estimateLlmInputTokens(messages).totalTokens;
 }
 
-function isAttachment(block: UserBlock | AssistantBlock): boolean {
-  return block.type === 'image_url'
-    || block.type === 'image_data'
-    || block.type === 'audio_data'
-    || block.type === 'file_data'
-    || block.type === 'file_url';
+function estimateTools(tools: readonly LlmTool[]): number {
+  if (tools.length === 0) return 0;
+  return estimateLlmInputTokens([], {
+    tools: tools.map(tool => ({
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.inputSchema as Record<string, unknown>,
+    })),
+  }).totalTokens;
 }
 
-function pushCategory(
-  categories: ContextUsageCategory[],
-  kind: ContextUsageCategoryKind,
-  tokens: number,
-): void {
-  if (tokens <= 0) return;
-  const existing = categories.find((category) => category.kind === kind && category.name === undefined);
-  if (existing) {
-    const index = categories.indexOf(existing);
-    categories[index] = { ...existing, tokens: existing.tokens + tokens };
-    return;
-  }
-  categories.push({ kind, tokens });
+function totalCategoryTokens(categories: ContextUsageCategories): number {
+  return categories.systemPromptTokens
+    + categories.tools.totalTokens
+    + categories.skillTokens
+    + categories.memoryTokens
+    + categories.characterPromptTokens
+    + categories.messageTokens;
 }

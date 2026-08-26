@@ -1,4 +1,11 @@
-import type { LlmStopReason, LlmThinkingState, LlmTokenUsage } from '@ema-agent/llm';
+import type {
+  LlmGenerationSource,
+  LlmCallStatus,
+  LlmStopReason,
+  LlmThinkingState,
+  LlmTokenUsage,
+  Message,
+} from '@ema-agent/llm';
 import type { ToolResult } from '@ema-agent/tools';
 import type { SubagentContextMode } from '@ema-agent/tools';
 import type { AgentLoopState } from './agentLoopState.js';
@@ -32,14 +39,36 @@ export type AgentLoopEvent =
       readonly toolName: string;
       readonly args: unknown;
     }
-  | { readonly type: 'usage_updated'; readonly usage: LlmTokenUsage }
+  | {
+      readonly type: 'llm_call_usage_updated';
+      readonly llmCallId: string;
+      readonly usage: LlmTokenUsage;
+    }
+  | {
+      readonly type: 'agent_usage_updated';
+      readonly usage: LlmTokenUsage;
+    }
+  | {
+      readonly type: 'llm_call_finished';
+      readonly llmCallId: string;
+      readonly source: LlmGenerationSource;
+      readonly status: LlmCallStatus;
+      readonly usage?: LlmTokenUsage;
+      readonly startedAt: number;
+      readonly durationMs: number;
+      readonly errorCode?: string;
+    }
   | {
       readonly type: 'assistant_message_completed';
       readonly iteration: number;
-      readonly usage: LlmTokenUsage;
+      readonly llmCallId: string;
       readonly stopReason: LlmStopReason;
-      /** 本次 LLM 调用的实际耗时（成功那次尝试的流式时长）。 */
-      readonly durationMs: number;
+    }
+  | {
+      /** AgentLoop 已把这些消息追加进下一次调用会读取的工作历史。 */
+      readonly type: 'model_history_appended';
+      readonly llmCallId: string;
+      readonly messages: readonly Message[];
     }
   | {
       /** 本次 Assistant 已流式落库，但恢复策略决定从头重试，不得进入后续模型历史。 */

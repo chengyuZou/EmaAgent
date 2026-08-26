@@ -36,6 +36,10 @@ export interface SubagentSpawnerOptions {
   readonly agentRunStore: AgentRunStore;
   readonly messagesStore: AgentRunMessagesStore;
   readonly emit: (event: AgentRunEvent) => void;
+  /** 子 Agent 内每次物理 LLM 调用终态的唯一记账出口。 */
+  readonly onLlmCallFinished?: (
+    event: Extract<AgentLoopEvent, { type: 'llm_call_finished' }>,
+  ) => void;
 }
 
 export class SubagentSpawner implements SubagentSpawnerFn {
@@ -164,6 +168,9 @@ export class SubagentSpawner implements SubagentSpawnerFn {
         // 先写消息记录，再恢复 generator，严格守住工具副作用和结果关账边界。
         this.options.messagesStore.record(agentRunId, event);
         this.options.emit({ type: 'agent_run_event', agentRunId, event });
+        if (event.type === 'llm_call_finished') {
+          this.options.onLlmCallFinished?.(event);
+        }
         if (event.type === 'loop_stopped') terminal = event;
       }
 

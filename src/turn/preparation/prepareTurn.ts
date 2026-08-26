@@ -1,6 +1,7 @@
 // 把根 Turn 的输入规范化并冻结：附件、模型、Prompt、Skill、权限桶与工具层，产出不可变 PreparedTurn。
 import {
   readAgentSettings,
+  type AgentLoopEvent,
   type AgentBudget,
   type AgentSettings,
   type PrepareSubagent,
@@ -116,6 +117,9 @@ export interface PrepareTurnInput {
   readonly parentMessages: Message[];
   /** 事件出口由 turn.ts 绑定到本 Turn 的事件通道（每 Turn 一个）。 */
   readonly emit: (event: TurnStreamEvent) => void;
+  readonly onSubagentLlmCallFinished?: (
+    event: Extract<AgentLoopEvent, { type: 'llm_call_finished' }>,
+  ) => void;
   readonly signal: AbortSignal;
 }
 
@@ -228,6 +232,9 @@ export async function prepareTurn(
     parentMessages: input.parentMessages,
     model: { providerId, modelId },
     emit: input.emit,
+    ...(input.onSubagentLlmCallFinished
+      ? { onSubagentLlmCallFinished: input.onSubagentLlmCallFinished }
+      : {}),
     permission: {
       mode: permissionMode,
       buckets: permissionBuckets,

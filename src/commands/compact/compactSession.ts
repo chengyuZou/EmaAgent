@@ -216,6 +216,7 @@ export async function compactSession(
       recordLlmCallUsage(deps.usageRecorder, {
         providerId,
         modelId,
+        status: 'completed',
         startedAt: Date.now() - result.durationMs,
         durationMs: result.durationMs,
         usage: result.usage,

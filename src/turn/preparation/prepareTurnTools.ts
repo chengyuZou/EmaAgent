@@ -1,6 +1,7 @@
 // 为一个根 Turn 冻结工具层：ToolPool、宿主能力上下文、权限判定上下文与两类交互口子。
 import {
   SubagentSpawner,
+  type AgentLoopEvent,
   type AgentBudget,
   type AgentRunMessagesStore,
   type AgentRunStore,
@@ -88,6 +89,10 @@ export interface PrepareTurnToolsInput {
   readonly model: { readonly providerId: string; readonly modelId: string };
   /** 事件出口由 turn.ts 绑定到本 Turn 的事件通道（每 Turn 一个）。 */
   readonly emit: (event: TurnStreamEvent) => void;
+  /** 子 Agent 的物理调用不经过根 AgentLoop，由 Turn 注入同一本账的终态出口。 */
+  readonly onSubagentLlmCallFinished?: (
+    event: Extract<AgentLoopEvent, { type: 'llm_call_finished' }>,
+  ) => void;
   readonly permission: {
     readonly mode: PermissionMode;
     readonly buckets: {
@@ -137,6 +142,9 @@ export function prepareTurnTools(
     messagesStore: deps.agentRunMessagesStore,
     // agent 包事件不携带根身份；进入 Turn 事件流时补上。
     emit: event => input.emit({ ...event, sessionId, turnId }),
+    ...(input.onSubagentLlmCallFinished
+      ? { onLlmCallFinished: input.onSubagentLlmCallFinished }
+      : {}),
   });
 
   const permissionContext: ToolPermissionContext = {

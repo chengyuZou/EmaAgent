@@ -443,7 +443,6 @@ function createAnthropicUsage(
     outputTokens,
     cacheReadInputTokens,
     cacheWriteInputTokens,
-    cacheEligibleInputTokens: inputTokens,
   });
 }
 

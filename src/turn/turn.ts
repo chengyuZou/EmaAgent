@@ -6,7 +6,14 @@ import {
   type AgentLoopEvent,
 } from '@ema-agent/agent';
 import { resolveAttachmentReferences } from '@ema-agent/attachments';
-import { deriveLlmHistory } from '@ema-agent/context';
+import {
+  appendEstimatedContextMessages,
+  deriveLlmHistory,
+  estimatedContextUsage,
+  providerContextUsage,
+  type ContextUsage,
+  type ContextUsageEstimate,
+} from '@ema-agent/context';
 import type { CompactRequest, CompactResult } from '@ema-agent/compact';
 import type {
   CallLlm,
@@ -262,6 +269,14 @@ export class TurnExecutor {
         prepareSubagent,
         parentMessages,
         emit,
+        onSubagentLlmCallFinished: event => {
+          recordAgentLlmCallUsage(
+            this.deps.usageRecorder,
+            sessionId,
+            turnId,
+            event,
+          );
+        },
         signal,
       });
       tools = prepared.tools;
@@ -352,6 +367,26 @@ export class TurnExecutor {
         ...currentTurnWithIds.map(entry => entry.message),
       ];
 
+      const contextEstimates = new Map<string, ContextUsageEstimate>();
+      let currentContextUsage:
+        | { readonly llmCallId: string; readonly usage: ContextUsage }
+        | undefined;
+      const publishEstimatedContext = (
+        llmCallId: string,
+        estimate: ContextUsageEstimate,
+      ): void => {
+        contextEstimates.set(llmCallId, estimate);
+        const usage = estimatedContextUsage(estimate);
+        currentContextUsage = { llmCallId, usage };
+        emit({
+          type: 'context_usage_updated',
+          sessionId,
+          turnId,
+          llmCallId,
+          usage,
+        });
+      };
+
       const prepareIteration = createPrepareLlmCall({
         sessionId,
         turnId,
@@ -367,6 +402,7 @@ export class TurnExecutor {
           baselineMessageIds: historyWithIds.map(entry => entry.sessionMessageId),
         },
         signal,
+        onContextPrepared: publishEstimatedContext,
         onWorkingMessagesPrepared: messages => {
           parentMessages.splice(0, parentMessages.length, ...messages);
         },
@@ -404,8 +440,44 @@ export class TurnExecutor {
         }
         await writer.apply(downstream);
         this.translate(downstream, sessionId, turnId, toolNames, emit);
-        if (downstream.type === 'assistant_message_completed') {
-          recordCallUsage(this.deps.usageRecorder, prepared, sessionId, turnId, downstream);
+        if (downstream.type === 'llm_call_usage_updated') {
+          const estimate = contextEstimates.get(downstream.llmCallId);
+          if (estimate) {
+            const usage = providerContextUsage(estimate, downstream.usage);
+            currentContextUsage = { llmCallId: downstream.llmCallId, usage };
+            emit({
+              type: 'context_usage_updated',
+              sessionId,
+              turnId,
+              llmCallId: downstream.llmCallId,
+              usage,
+            });
+          }
+        }
+        if (downstream.type === 'llm_call_finished') {
+          recordAgentLlmCallUsage(
+            this.deps.usageRecorder,
+            sessionId,
+            turnId,
+            downstream,
+          );
+        }
+        if (downstream.type === 'model_history_appended') {
+          const current = currentContextUsage;
+          if (current?.llmCallId === downstream.llmCallId) {
+            const usage = appendEstimatedContextMessages(
+              current.usage,
+              downstream.messages,
+            );
+            currentContextUsage = { llmCallId: downstream.llmCallId, usage };
+            emit({
+              type: 'context_usage_updated',
+              sessionId,
+              turnId,
+              llmCallId: downstream.llmCallId,
+              usage,
+            });
+          }
         }
         if (downstream.type === 'loop_stopped') stopped = downstream;
       }
@@ -573,8 +645,8 @@ export class TurnExecutor {
         toolNames.set(event.toolCallId, event.toolName);
         emit({ type: 'tool_call_complete', sessionId, blockIndex: event.blockIndex, callId: event.toolCallId, name: event.toolName, args: event.args });
         return;
-      case 'usage_updated':
-        emit({ type: 'usage_update', sessionId, turnId, inputTokens: event.usage.inputTokens, outputTokens: event.usage.outputTokens });
+      case 'agent_usage_updated':
+        emit({ type: 'agent_usage_updated', sessionId, turnId, usage: event.usage });
         return;
       case 'tool_result': {
         const { result } = event;
@@ -590,6 +662,11 @@ export class TurnExecutor {
         });
         return;
       }
+      case 'llm_call_usage_updated':
+      case 'llm_call_finished':
+      case 'assistant_message_completed':
+      case 'model_history_appended':
+        return;
       default:
         return;
     }
@@ -626,20 +703,21 @@ export function createGenerationTargetResolver(
   };
 }
 
-/** 逐次 LLM 调用记账；零消耗（首个 token 前就中止）不产生记录。观测失败不阻断主链。 */
-function recordCallUsage(
+/** 根与子 Agent 共用的一次物理 LLM 调用终态记账。 */
+function recordAgentLlmCallUsage(
   recorder: UsageRecorder | undefined,
-  prepared: PreparedTurn,
   sessionId: string,
   turnId: string,
-  event: Extract<AgentLoopEvent, { type: 'assistant_message_completed' }>,
+  event: Extract<AgentLoopEvent, { type: 'llm_call_finished' }>,
 ): void {
   recordLlmCallUsage(recorder, {
-    providerId: prepared.providerId,
-    modelId: prepared.modelId,
-    startedAt: Date.now() - event.durationMs,
+    providerId: event.source.providerId,
+    modelId: event.source.modelId,
+    status: event.status,
+    startedAt: event.startedAt,
     durationMs: event.durationMs,
-    usage: event.usage,
-    usageContext: { callId: `${turnId}:${event.iteration}`, sessionId, turnId },
+    ...(event.usage ? { usage: event.usage } : {}),
+    ...(event.errorCode ? { errorCode: event.errorCode } : {}),
+    usageContext: { callId: event.llmCallId, sessionId, turnId },
   });
 }

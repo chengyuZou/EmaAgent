@@ -11,11 +11,17 @@ export {
   LlmStreamProtocolError,
   LlmToolArgumentsParseError,
 } from './errors.js';
-export { advanceLlmUsageSnapshot } from './usage.js';
+export {
+  createLlmTokenUsage,
+  hasLlmTokenUsage,
+  updateLlmCallUsage,
+} from './usage.js';
+export type { ProviderUsageInput } from './usage.js';
 export type {
   AssistantBlock,
   CallLlm,
   LlmCompletion,
+  LlmCallStatus,
   LlmConnection,
   ContentPart,
   LlmGenerationSource,

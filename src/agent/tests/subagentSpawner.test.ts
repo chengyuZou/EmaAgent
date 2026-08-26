@@ -61,9 +61,15 @@ describe('SubagentSpawner', () => {
         budget,
         signal: input.signal,
         maxIterations: 2,
+        generationSource: {
+          providerId: 'provider-1',
+          modelId: 'model-1',
+          protocol: 'openai-llm',
+        },
       };
     });
     const events: string[] = [];
+    const onLlmCallFinished = vi.fn();
     const spawner = new SubagentSpawner({
       parentSessionId: 'session-1',
       parentTurnId: 'turn-1',
@@ -77,8 +83,11 @@ describe('SubagentSpawner', () => {
             ? `emit:${event.type}:${event.event.type}`
             : `emit:${event.type}`,
         );
-        events.push(event.type);
+        events.push(
+          event.type === 'agent_run_event' ? event.event.type : event.type,
+        );
       },
+      onLlmCallFinished,
     });
     const agentRunId = 'run-1';
 
@@ -100,11 +109,23 @@ describe('SubagentSpawner', () => {
     );
     expect(events).toEqual([
       'agent_run_started',
-      'agent_run_event',
-      'agent_run_event',
-      'agent_run_event',
-      'agent_run_event',
+      'iteration_started',
+      'text_delta',
+      'llm_call_finished',
+      'assistant_message_completed',
+      'model_history_appended',
+      'loop_stopped',
       'agent_run_completed',
     ]);
+    expect(onLlmCallFinished).toHaveBeenCalledOnce();
+    expect(onLlmCallFinished).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'llm_call_finished',
+      status: 'completed',
+      source: {
+        providerId: 'provider-1',
+        modelId: 'model-1',
+        protocol: 'openai-llm',
+      },
+    }));
   });
 });

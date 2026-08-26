@@ -9,7 +9,7 @@ runAgentLoop(input)
   ├─ prepareIteration({ messages })
   │    └─ 外层返回中立 LlmRequest 与可能被 Compact 改写的工作历史
   ├─ CallLlm(request)                  // 模型身份在装配层创建点冻结
-  ├─ 持续发出 text / thinking / tool_use / usage 事实
+  ├─ 持续发出内容事件、单次调用 Usage 与 AgentLoop 累计 Usage
   ├─ tool_use 完整事件被消费并持久化
   ├─ generator 恢复后才启动 StreamingToolExecutor
   ├─ ToolResult 事件被消费并持久化
@@ -48,6 +48,8 @@ runAgentLoop(input)
 
 SSE 不是数据库写入触发器。Agent 也不透明中转 Tool、Permission、Task 等其他业务事件；这些事件由外层在创建 ToolExecutor 时绑定到各自出口。
 
+每次实际 Provider 请求都有独立 `llmCallId`。`llm_call_usage_updated` 是该调用的累计快照，`llm_call_finished` 是唯一终态；`agent_usage_updated` 是本 AgentLoop 全部物理调用的累计值。上下文恢复与输出重试都是新的物理调用，不复用身份。
+
 ## 子 AgentRun
 
 `SubagentSpawner` 只负责：
@@ -61,7 +63,7 @@ SSE 不是数据库写入触发器。Agent 也不透明中转 Tool、Permission�
 
 `runs/` 下两个存储各司其职：`AgentRunStore` 管一次运行的状态机与终态统计（一次运行一行）；`AgentRunMessagesStore` 管内容消息流水（文本/思考/工具调用/结果，一次运行多行，可回放）。
 
-`PrepareSubagent` 决定 clean context 或 fork context、模型、Prompt、ToolPool 和工具执行环境。**角色注册表（general/explore 等）归 `builtinTools/tools/SubagentTool/agentRoles.ts`**——模型经 SubagentTool 选角色，角色 Prompt 与 disallowedTools 经 `SubagentSpawnOptions` 传给 PrepareSubagent 应用。V1 子 Agent 深度为 1：子 Agent 拿不到 `SubagentSpawnerPort`，不能递归派生。
+`PrepareSubagent` 决定 clean context 或 fork context、模型、Prompt、ToolPool 和工具执行环境。**角色注册表（general/explore 等）归 `builtinTools/tools/SubagentTool/agentRoles.ts`**——模型经 SubagentTool 选角色，角色 Prompt 与 disallowedTools 经 `SubagentSpawnOptions` 传给 PrepareSubagent 应用。V1 子 Agent 深度为 1：子 Agent 没有再次派生子 Agent 的能力。
 
 `AgentRun` 只表示子 Agent；根 Agent 不创建 AgentRun。持久记录继续保存父 `turnId` 外键，这是 AgentRun 自己的归属事实，不会进入 AgentLoop 输入。
 

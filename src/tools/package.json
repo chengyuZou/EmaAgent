@@ -1,49 +1,53 @@
 {
-  "name": "@ema-agent/tools",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "exports": {
-    ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
-    }
-  },
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "files": [
-    "dist"
-  ],
-  "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "dev": "tsc -p tsconfig.json --watch",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run --passWithNoTests",
-    "clean": "rimraf dist"
-  },
-  "dependencies": {
-    "@ema-agent/knowledge": "workspace:*",
-    "@ema-agent/vision": "workspace:*",
-    "@ema-agent/llm": "workspace:*",
-    "@ema-agent/memory": "workspace:*",
-    "@ema-agent/narrative": "workspace:*",
-    "@ema-agent/permission": "workspace:*",
-    "@ema-agent/public-http": "workspace:*",
-    "@ema-agent/sandbox": "workspace:*",
-    "@ema-agent/settings": "workspace:*",
-    "@ema-agent/skills": "workspace:*",
-    "@ema-agent/tasks": "workspace:*",
-    "@ema-agent/token": "workspace:*",
-    "diff": "^9.0.0",
-    "glob": "^11.0.0",
-    "zod": "^4.4.3",
-    "zod-to-json-schema": "^3.23.0"
-  },
-  "devDependencies": {
-    "@ema-agent/storage": "workspace:*",
-    "@types/node": "^20.0.0",
-    "rimraf": "^5.0.0",
-    "typescript": "^5.9.3",
-    "vitest": "^2.0.0"
-  }
+    "name":  "@ema-agent/tools",
+    "version":  "0.1.0",
+    "private":  true,
+    "type":  "module",
+    "exports":  {
+                    ".":  {
+                              "import":  "./dist/index.js",
+                              "types":  "./dist/index.d.ts"
+                          },
+                    "./identity":  {
+                                       "import":  "./dist/Tool/BuiltinToolIdentity.js",
+                                       "types":  "./dist/Tool/BuiltinToolIdentity.d.ts"
+                                   }
+                },
+    "main":  "./dist/index.js",
+    "types":  "./dist/index.d.ts",
+    "files":  [
+                  "dist"
+              ],
+    "scripts":  {
+                    "build":  "tsc -p tsconfig.json",
+                    "dev":  "tsc -p tsconfig.json --watch",
+                    "typecheck":  "tsc -p tsconfig.json --noEmit",
+                    "test":  "vitest run --passWithNoTests",
+                    "clean":  "rimraf dist"
+                },
+    "dependencies":  {
+                         "@ema-agent/knowledge":  "workspace:*",
+                         "@ema-agent/vision":  "workspace:*",
+                         "@ema-agent/llm":  "workspace:*",
+                         "@ema-agent/memory":  "workspace:*",
+                         "@ema-agent/narrative":  "workspace:*",
+                         "@ema-agent/permission":  "workspace:*",
+                         "@ema-agent/public-http":  "workspace:*",
+                         "@ema-agent/sandbox":  "workspace:*",
+                         "@ema-agent/settings":  "workspace:*",
+                         "@ema-agent/skills":  "workspace:*",
+                         "@ema-agent/tasks":  "workspace:*",
+                         "@ema-agent/token":  "workspace:*",
+                         "diff":  "^9.0.0",
+                         "glob":  "^11.0.0",
+                         "zod":  "^4.4.3",
+                         "zod-to-json-schema":  "^3.23.0"
+                     },
+    "devDependencies":  {
+                            "@ema-agent/storage":  "workspace:*",
+                            "@types/node":  "^20.0.0",
+                            "rimraf":  "^5.0.0",
+                            "typescript":  "^5.9.3",
+                            "vitest":  "^2.0.0"
+                        }
 }

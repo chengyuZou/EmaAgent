@@ -102,7 +102,7 @@ describe('prepareLlmCall', () => {
       onWorkingMessagesPrepared: messages => inherited.push([...messages]),
     });
 
-    const result = await prepare({ messages: [...HISTORY, ...CURRENT] });
+    const result = await prepare({ llmCallId: 'call-1', messages: [...HISTORY, ...CURRENT] });
 
     // 模型身份在 CallLlm 创建点冻结，请求不再携带 model 字段。
     expect('model' in result.request).toBe(false);
@@ -122,7 +122,7 @@ describe('prepareLlmCall', () => {
     });
     const prepare = createPrepareLlmCall(deps);
 
-    const result = await prepare({ messages: [...HISTORY, ...CURRENT] });
+    const result = await prepare({ llmCallId: 'call-1', messages: [...HISTORY, ...CURRENT] });
 
     // summarizedMessageCount=2 → 游标映射到基线第 2 条的 Session Message id。
     expect(appendHistorySummary).toHaveBeenCalledWith({
@@ -131,6 +131,26 @@ describe('prepareLlmCall', () => {
       summarizedThroughMessageId: 'sm-old-2',
     });
     expect(result.messages).toEqual([...macroHistory, ...CURRENT]);
+  });
+
+  it('自动 Compact 后只发布真正发送请求的重装配估算', async () => {
+    const macroHistory: Message[] = [{ role: 'user', content: '[摘要] 很短' }];
+    const onContextPrepared = vi.fn();
+    const { deps } = makeDeps({
+      compact: macroCompact(macroHistory, '很短', 2),
+    });
+    const prepare = createPrepareLlmCall({ ...deps, onContextPrepared });
+
+    const result = await prepare({
+      llmCallId: 'call-after-compact',
+      messages: [...HISTORY, ...CURRENT],
+    });
+
+    expect(onContextPrepared).toHaveBeenCalledTimes(1);
+    expect(onContextPrepared).toHaveBeenCalledWith(
+      'call-after-compact',
+      expect.objectContaining({ estimatedInputTokens: expect.any(Number) }),
+    );
   });
 
   it('同 Turn 再次 macro：游标随新基线重定位到上一次持久化的 summary', async () => {
@@ -150,8 +170,8 @@ describe('prepareLlmCall', () => {
     });
     const prepare = createPrepareLlmCall(deps);
 
-    const first = await prepare({ messages: [...HISTORY, ...CURRENT] });
-    await prepare({ messages: first.messages });
+    const first = await prepare({ llmCallId: 'call-1', messages: [...HISTORY, ...CURRENT] });
+    await prepare({ llmCallId: 'call-2', messages: first.messages });
 
     // 第二次 macro 覆盖基线第 1 条 = 第一次落库的 summary 消息本身。
     expect(appendHistorySummary).toHaveBeenNthCalledWith(2, {
@@ -169,7 +189,7 @@ describe('prepareLlmCall', () => {
     });
     const prepare = createPrepareLlmCall(deps);
 
-    const result = await prepare({ messages: [...HISTORY, ...CURRENT] });
+    const result = await prepare({ llmCallId: 'call-1', messages: [...HISTORY, ...CURRENT] });
 
     expect(result.messages).toEqual([...macroHistory, ...CURRENT]);
     expect(appendHistorySummary).not.toHaveBeenCalled();
@@ -182,7 +202,7 @@ describe('prepareLlmCall', () => {
     });
     const prepare = createPrepareLlmCall(deps);
 
-    const result = await prepare({ messages: [...HISTORY, ...CURRENT] });
+    const result = await prepare({ llmCallId: 'call-1', messages: [...HISTORY, ...CURRENT] });
 
     expect(result.messages).toEqual([...microHistory, ...CURRENT]);
     expect(appendHistorySummary).not.toHaveBeenCalled();
@@ -198,7 +218,11 @@ describe('prepareLlmCall', () => {
     });
     const prepare = createPrepareLlmCall(deps);
 
-    await prepare({ messages: [...HISTORY, ...CURRENT], recoveryReason: 'context_window_exceeded' });
+    await prepare({
+      llmCallId: 'call-recovery',
+      messages: [...HISTORY, ...CURRENT],
+      recoveryReason: 'context_window_exceeded',
+    });
 
     expect(seen[0]?.force).toBe(true);
   });
@@ -207,7 +231,7 @@ describe('prepareLlmCall', () => {
     const { deps } = makeDeps({ prepared: makePrepared({ maxOutput: null }) });
     const prepare = createPrepareLlmCall(deps);
 
-    const result = await prepare({ messages: [...HISTORY, ...CURRENT] });
+    const result = await prepare({ llmCallId: 'call-1', messages: [...HISTORY, ...CURRENT] });
 
     expect(result.request.maxOutputTokens).toBe(50_000);
   });

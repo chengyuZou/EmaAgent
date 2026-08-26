@@ -36,11 +36,18 @@ describe('assembleContext', () => {
     // 块标记以外：历史/当前 Turn 边界与全文末尾各有一个装配断点。
     expect(result.messages[2]).toMatchObject({ cacheBreakpoint: true });
     expect(result.messages.at(-1)).toMatchObject({ cacheBreakpoint: true });
-    expect(result.usage.categories.reduce((sum, category) => sum + category.tokens, 0))
-      .toBe(result.usage.estimatedInputTokens);
-    // Prompt 分类名直接来自块名，不再从标题首行推断。
-    expect(result.usage.categories.filter(c => c.kind === 'promptSection').map(c => c.name))
-      .toEqual(['product', 'character']);
+    const categories = result.usage.categories;
+    expect(
+      categories.systemPromptTokens
+      + categories.tools.totalTokens
+      + categories.skillTokens
+      + categories.memoryTokens
+      + categories.characterPromptTokens
+      + categories.messageTokens,
+    ).toBe(result.usage.estimatedInputTokens);
+    expect(categories.systemPromptTokens).toBeGreaterThan(0);
+    expect(categories.characterPromptTokens).toBeGreaterThan(0);
+    expect(categories.messageTokens).toBeGreaterThan(0);
   });
 
   it('清除历史遗留的请求级缓存断点，并在历史/当前 Turn 边界重打', () => {

@@ -3,6 +3,7 @@ import type { AgentBudget, PrepareAgentIteration } from '@ema-agent/agent';
 import type { CompactRequest, CompactResult } from '@ema-agent/compact';
 import {
   assembleContext,
+  type ContextUsageEstimate,
   type PreparedContext,
 } from '@ema-agent/context';
 import type { Message } from '@ema-agent/llm';
@@ -32,6 +33,11 @@ export interface PrepareLlmCallDeps {
     readonly baselineMessageIds: readonly string[];
   };
   readonly signal: AbortSignal;
+  /** 根 Agent 的最终请求装配完成后发布；子 Agent 省略，因此不会更新 Session Context。 */
+  readonly onContextPrepared?: (
+    llmCallId: string,
+    estimate: ContextUsageEstimate,
+  ) => void;
   /** 每次准备完成后回调；只暴露 AgentLoop 工作消息，不含 System 与请求级缓存标记。 */
   readonly onWorkingMessagesPrepared?: (messages: readonly Message[]) => void;
 }
@@ -53,7 +59,7 @@ export function createPrepareLlmCall(deps: PrepareLlmCallDeps): PrepareAgentIter
   }
   let baselineIds: readonly string[] = macroPersistence?.baselineMessageIds ?? [];
 
-  return async ({ messages, recoveryReason }) => {
+  return async ({ llmCallId, messages, recoveryReason }) => {
     const history = messages.slice(0, baselineCount);
     const currentTurn = messages.slice(baselineCount);
 
@@ -134,6 +140,7 @@ export function createPrepareLlmCall(deps: PrepareLlmCallDeps): PrepareAgentIter
       recordLlmCallUsage(deps.usageRecorder, {
         providerId: prepared.providerId,
         modelId: prepared.modelId,
+        status: 'completed',
         startedAt: Date.now() - compactDurationMs,
         durationMs: compactDurationMs,
         usage: result.usage,
@@ -146,6 +153,7 @@ export function createPrepareLlmCall(deps: PrepareLlmCallDeps): PrepareAgentIter
     }
 
     deps.onWorkingMessagesPrepared?.(nextMessages);
+    deps.onContextPrepared?.(llmCallId, assembled.usage);
 
     return {
       request: {

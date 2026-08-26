@@ -71,7 +71,7 @@ const completion = await createLlmCompletion(callLlm({ messages, signal }));
 → done
 ```
 
-承载内容的事件带 `blockIndex`，上层用它恢复 text、thinking 与 tool_use 的交错顺序。`usage` 是 Provider 对当前调用给出的累计快照；`advanceLlmUsageSnapshot()` 负责把重复或倒退快照归一为单调快照和增量。
+承载内容的事件带 `blockIndex`，上层用它恢复 text、thinking 与 tool_use 的交错顺序。`usage` 是 Provider 对当前调用给出的累计快照；`updateLlmCallUsage()` 负责把重复或倒退快照归一为当前已知用量和新增量。
 
 ## 输入与协议边界
 

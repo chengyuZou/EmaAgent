@@ -1,7 +1,7 @@
 // 组装一次 LLM Call 的 Provider 中立输入；是否压缩由调用方在本函数之外决定。
 import type { LlmTool, Message } from '@ema-agent/llm';
 import type { PromptBlock } from '@ema-agent/prompts';
-import type { Tool, ToolPool } from '@ema-agent/tools';
+import type { Tool, ToolOrigin, ToolPool } from '@ema-agent/tools';
 import { toJSONSchema } from 'zod';
 import { ContextAssemblyError } from './errors.js';
 import { estimateContextUsage } from './contextUsage.js';
@@ -21,7 +21,8 @@ export function assembleContext(input: AssembleContextInput): PreparedContext {
   assertNoSystemMessages(currentTurn);
 
   const prompt = buildPromptMessages(input.systemPrompt);
-  const tools = projectToolPool(input.toolPool);
+  const projectedTools = projectToolPool(input.toolPool);
+  const tools = projectedTools.map(tool => tool.definition);
   const composed = [
     ...prompt.messages,
     ...history,
@@ -41,9 +42,8 @@ export function assembleContext(input: AssembleContextInput): PreparedContext {
   const messages = markFinalCacheBreakpoint(composed);
   const usage = estimateContextUsage({
     contextWindow: input.contextWindow,
-    messages,
-    tools,
     promptSections: prompt.sections,
+    tools: projectedTools,
     history,
     currentTurn,
   });
@@ -126,12 +126,20 @@ function assertNoSystemMessages(messages: readonly Message[]): void {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyTool = Tool<any, any, any, any>;
 
-function projectToolPool(toolPool: ToolPool): LlmTool[] {
-  return toolPool.tools.map((tool: AnyTool): LlmTool => ({
-    name: tool.name,
-    description: tool.description,
-    inputSchema: tool.inputJsonSchemaOverride
-      ? { ...tool.inputJsonSchemaOverride }
-      : toJSONSchema(tool.inputSchema) as Record<string, unknown>,
+interface ProjectedTool {
+  readonly origin: ToolOrigin;
+  readonly definition: LlmTool;
+}
+
+function projectToolPool(toolPool: ToolPool): ProjectedTool[] {
+  return toolPool.tools.map((tool: AnyTool): ProjectedTool => ({
+    origin: tool.origin,
+    definition: {
+      name: tool.name,
+      description: tool.description,
+      inputSchema: tool.inputJsonSchemaOverride
+        ? { ...tool.inputJsonSchemaOverride }
+        : toJSONSchema(tool.inputSchema) as Record<string, unknown>,
+    },
   }));
 }

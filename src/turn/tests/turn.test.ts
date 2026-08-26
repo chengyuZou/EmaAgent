@@ -9,12 +9,14 @@ import { Database } from '@ema-agent/storage';
 import { ActiveSessionRegistry, SessionStore } from '@ema-agent/session';
 import type { SettingsStore } from '@ema-agent/settings';
 import { StageEngine } from '@ema-agent/stage';
+import type { UsageRecord } from '@ema-agent/usage';
 import {
   buildTool,
   contextOk,
   ToolRegistry,
 } from '@ema-agent/tools';
 import { SessionInteractionQueue } from '../interactionQueue.js';
+import type { TurnStreamEvent } from '../events.js';
 import { TurnExecutor, type TurnExecutorDeps } from '../turn.js';
 import { TurnStore } from '../turnStore.js';
 import type { StartTurn } from '../types.js';
@@ -119,12 +121,18 @@ describe('TurnExecutor 集成', () => {
     const registry = new ToolRegistry();
     const llm = scriptedLlm([
       [
+        { type: 'usage', inputTokens: 120, outputTokens: 0, cacheReadInputTokens: 80 },
         { type: 'text_delta', blockIndex: 0, delta: '你好，' },
         { type: 'text_delta', blockIndex: 0, delta: '我是 Ema。' },
+        { type: 'usage', inputTokens: 120, outputTokens: 12, cacheReadInputTokens: 80 },
         { type: 'done', stopReason: 'end_turn' },
       ],
     ]);
-    const deps = makeDeps({ db, llm, sessionId: session.id, registry });
+    const records: UsageRecord[] = [];
+    const deps = {
+      ...makeDeps({ db, llm, sessionId: session.id, registry }),
+      usageRecorder: { record: (record: UsageRecord) => records.push(record) },
+    };
     const executor = new TurnExecutor(deps);
 
     const handle = executor.start(makeStart(session.id));
@@ -140,11 +148,30 @@ describe('TurnExecutor 集成', () => {
     ]);
     expect(JSON.stringify(messages[2]!.blocks)).toContain('你好，我是 Ema。');
 
-    const events: string[] = [];
-    for await (const event of handle.events) events.push(event.type);
-    expect(events).toContain('turn_started');
-    expect(events).toContain('output_text_delta');
-    expect(events).toContain('turn_completed');
+    const events: TurnStreamEvent[] = [];
+    for await (const event of handle.events) events.push(event);
+    expect(events.map(event => event.type)).toContain('turn_started');
+    expect(events.map(event => event.type)).toContain('output_text_delta');
+    expect(events.map(event => event.type)).toContain('turn_completed');
+    const contextEvents = events.filter(event => event.type === 'context_usage_updated');
+    expect(contextEvents.map(event => event.usage.source)).toEqual([
+      'estimate',
+      'provider',
+      'provider',
+      'estimate',
+    ]);
+    expect(new Set(contextEvents.map(event => event.llmCallId)).size).toBe(1);
+    expect(contextEvents.at(-1)!.usage.inputTokens).toBeGreaterThan(120);
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      id: contextEvents[0]!.llmCallId,
+      sessionId: session.id,
+      turnId: handle.turnId,
+      status: 'completed',
+      inputTokens: 120,
+      outputTokens: 12,
+      cacheReadInputTokens: 80,
+    });
     db.close();
   });
 

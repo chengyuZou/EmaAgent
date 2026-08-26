@@ -10,13 +10,13 @@ export type {
   ResolveHistoryAttachment,
 } from './deriveLlmHistory.js';
 export {
+  appendEstimatedContextMessages,
   estimatedContextUsage,
   providerContextUsage,
 } from './contextUsage.js';
 export type {
   ContextUsage,
-  ContextUsageCategory,
-  ContextUsageCategoryKind,
+  ContextUsageCategories,
   ContextUsageEstimate,
 } from './contextUsage.js';
 export { ContextAssemblyError } from './errors.js';

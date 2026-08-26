@@ -14,12 +14,12 @@ const prepared = assembleContext({
 });
 ```
 
-`assembleContext()` 是同步纯函数。同一份输入必然得到同一份结果，TurnExecution 可以在 Compact 前后安全地各调用一次。
+`assembleContext()` 是同步纯函数。同一份输入必然得到同一份结果，Turn 可以在 Compact 前后安全地各调用一次。
 
 `PreparedContext` 只有三项：
 
 - `messages`：真正交给 LLM 的中立消息；
-- `tools`：从当前根 Turn 的同一个 `ToolPool` 投影出的 `LlmToolDef[]`；
+- `tools`：从当前根 Turn 的同一个 `ToolPool` 投影出的 `LlmTool[]`；
 - `usage`：这份最终请求的分类 Token 估算。
 
 它不返回 `history` 或 Compact 结果。调用方原本就持有历史，Context 不制造第二份状态。
@@ -35,7 +35,7 @@ Current Turn（首条是本 Turn 持久化 reminder 的回放；最后一条有�
 tools = 当前 ToolPool 的原顺序投影
 ```
 
-Prompt 的动态边界哨兵只用于定位稳定缓存切口，发送前必须移除。Context 不重新排序 ToolPool，也不保存 Prompt revision、Manifest 或 Snapshot。
+PromptBlock 数组顺序就是发送顺序；静态产品块自身标记缓存断点。Context 不重新排序 ToolPool，也不保存额外的提示词版本状态。
 
 ## Reminder 不在本包
 
@@ -52,7 +52,7 @@ Turn reminder 表示"本 Turn 开始时的事实"：它在根 Turn 开始时由 
 - 附件引用交给 Turn 注入的 `ResolveHistoryAttachment` 解析；Context 不读取 AttachmentStore，也不调用 Vision；
 - 历史 Skill 引用变成调用 Skill Tool 的明确指引，SKILL.md 正文不进入 Session Message。
 
-`generatedBy` 只对模型生成的 Assistant 历史有意义；user/tool_result/reminder/summary 不伪造。Adapter 编码厂商 Wire 消息时消费并剥除，绝不序列化进请求。
+`generatedBy` 只对模型生成的 Assistant 历史有意义；user/tool_result/reminder/summary 不伪造。协议实现编码厂商消息时消费并剥除，绝不序列化进请求。
 
 投影会丢消息（空块、未配对 Tool 块），产出比输入短；`sessionMessageId` 只用于 Macro 摘要成功后映射 `summarizedThroughMessageId`，不进入 Compact 或 LLM 请求，也不允许按下标对齐输入。
 
@@ -79,5 +79,5 @@ macro     → 先持久化摘要，再 assembleContext(compactResult.history) �
 - `attachment_ref` 的图片/文本投影与 Vision 描述缓存：Attachments，由 Turn 注入解析函数；
 - Tool Result 截断、落盘和清理：Tools Results；
 - Provider 协议与 `cache_control`：LLM Adapter；
-- `context_usage_updated` 事件身份与发射：TurnExecution/Turn；
-- Turn 累计 Usage：TurnExecution。
+- `context_usage_updated` 事件身份与发射：Turn；
+- Turn 累计 Usage：Turn。

@@ -114,4 +114,36 @@ describe('native LLM protocols', () => {
     }))).resolves.toBe('gemini');
     expect(sdkMocks.geminiConstructor).toHaveBeenCalledWith({ apiKey: 'key' });
   });
+
+  it('Gemini Usage 把工具提示计入输入、思考计入输出', async () => {
+    sdkMocks.geminiStream.mockResolvedValueOnce(streamOf([{
+      candidates: [{
+        content: { parts: [{ text: 'answer' }] },
+        finishReason: 'STOP',
+      }],
+      usageMetadata: {
+        promptTokenCount: 100,
+        toolUsePromptTokenCount: 20,
+        candidatesTokenCount: 30,
+        thoughtsTokenCount: 40,
+        cachedContentTokenCount: 80,
+      },
+    }]));
+    const llm = createLlmCall(
+      { providerId: 'test', protocol: 'gemini-llm', apiKey: 'key' },
+      'gemini-test',
+    );
+
+    const events: LlmStreamEvent[] = [];
+    for await (const event of llm({ messages: [{ role: 'user', content: 'hello' }] })) {
+      events.push(event);
+    }
+
+    expect(events.find(event => event.type === 'usage')).toEqual({
+      type: 'usage',
+      inputTokens: 120,
+      outputTokens: 70,
+      cacheReadInputTokens: 80,
+    });
+  });
 });

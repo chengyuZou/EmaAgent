@@ -28,7 +28,7 @@ export interface UsageRecordInput {
 }
 
 /**
- * 各执行面 Runtime 的唯一记录组装入口:身份从 usageContext 归一
+ * 各模型调用方的唯一记录组装入口:身份从 usageContext 归一
  * (callId 缺省随机、session/turn 可空),token 类字段缺省为 null,
  * createdAt 与调用开始时刻对齐。
  */

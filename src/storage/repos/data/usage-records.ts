@@ -31,23 +31,6 @@ export class UsageRecordsRepo {
         input_tokens, output_tokens, cache_read_input_tokens, cache_write_input_tokens,
         quantity, unit, duration_ms, error_code, created_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
-        session_id = excluded.session_id,
-        turn_id = excluded.turn_id,
-        provider_id = excluded.provider_id,
-        model_id = excluded.model_id,
-        capability = excluded.capability,
-        status = excluded.status,
-        input_tokens = excluded.input_tokens,
-        output_tokens = excluded.output_tokens,
-        cache_read_input_tokens = excluded.cache_read_input_tokens,
-        cache_write_input_tokens = excluded.cache_write_input_tokens,
-        quantity = excluded.quantity,
-        unit = excluded.unit,
-        duration_ms = excluded.duration_ms,
-        error_code = excluded.error_code,
-        created_at = excluded.created_at
-      WHERE usage_records.status = 'failed' AND excluded.status = 'completed'
     `).run(
       record.id, record.sessionId, record.turnId, record.providerId, record.modelId,
       record.capability, record.status, record.inputTokens, record.outputTokens,

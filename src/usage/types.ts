@@ -1,8 +1,9 @@
+import type { LlmCallStatus } from '@ema-agent/llm';
 import type { ModelCapability } from '@ema-agent/providers';
 
 export type UsageCapability = ModelCapability;
 
-export type UsageRecordStatus = 'completed' | 'failed' | 'cancelled';
+export type UsageRecordStatus = LlmCallStatus;
 
 /** 把一次模型调用关联到业务身份；后台调用可以只提供 callId。 */
 export interface UsageContext {
@@ -30,7 +31,7 @@ export interface UsageRecord {
   createdAt: number;
 }
 
-/** AI 业务模块只依赖写入端口，数据库实现由 Core 装配。 */
+/** AI 业务模块只依赖写入接口，数据库实现由应用装配。 */
 export interface UsageRecorder {
   record(record: UsageRecord): void;
 }

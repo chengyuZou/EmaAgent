@@ -10,6 +10,8 @@ import type {
 } from '@ema-agent/tools';
 
 export interface PrepareAgentIterationInput {
+  /** 即将执行的物理 Provider 请求身份；恢复重试与输出重试都使用新 ID。 */
+  readonly llmCallId: string;
   /** 当前工作历史全文；实现可以返回被 Compact 改写的版本，循环整体替换继续使用。 */
   readonly messages: readonly Message[];
   /** Agent 只报告重试原因，是否 Compact 由 Turn 的实现决定。 */

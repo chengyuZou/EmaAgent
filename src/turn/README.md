@@ -34,7 +34,7 @@ interface TurnHandle {
 start
   → TurnStore.startTurn（建行 + 注册活动信号 + 收口同 Session 崩溃残留）
   → prepareTurn（preparation/，一次性冻结）
-  │    ├─ settings 快照（agent/compact/attachment/permission mode）
+  │    ├─ 读取并冻结本 Turn 的 agent/compact/attachment/permission 设置
   │    ├─ Session 事实（workspaceRoot/projectId/模型偏好）
   │    ├─ 模型解析：请求覆盖 > Session 偏好；ProviderModels 事实 + resolveConnection + createLlm
   │    ├─ 附件登记（AttachmentStore.addAll）→ 用户消息只保存 attachment_ref
@@ -85,6 +85,8 @@ start
 ## 事件
 
 `turn/events.ts` 只拥有 Turn 自有生命周期事件；`TurnStreamEvent` 是流组合（TurnEvent | TurnAgentRunEvent | ToolExecutionEvent | permission 两事件 | CompactEvent | NarrativeEvent），各域事件由拥有方定义。AgentRun 事件入流时由工具层补上 sessionId/turnId（agent 包不感知根身份）。
+
+Context 球只消费根 Agent 发出的 `context_usage_updated`：请求装配先发分类估算，同一 `llmCallId` 收到 Provider Usage 后只校正总输入和缓存子集；模型输出或 Tool Result 真正进入后续工作历史时，再追加本地 Messages 估算。`agent_usage_updated` 是根 AgentLoop 的累计消耗，子 Agent 的同名事件保留在对应 `agent_run_event` 内，二者都不更新 Context 球。
 
 Reminder 表示"本 Turn 开始时的事实"：TurnExecutor 每根 Turn 调一次 `readTurnReminder`（`TurnReminderScope`：sessionId/turnId/executionProfile/narrativePolicy/userText/emit）取回完整启动期输入（含 currentDate），`renderTurnReminder` 渲染后经 `appendMessage(kind='reminder')` 持久化，再由 loadHistory 读回放进当前 Turn 工作消息——同一份字节，不随 LLM Call 重建，也不进可压缩区间。Narrative 三态：always 在取输入时查询一次写入 reminder；auto 只装配 NarrativeSearchTool；off 两者皆无。
 

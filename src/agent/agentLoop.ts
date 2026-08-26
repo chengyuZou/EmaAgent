@@ -1,17 +1,21 @@
 // 运行一个 Agent 的 LLM→Tool→Result 循环，并在每个持久化边界前暂停事件流。
 
+import { randomUUID } from 'node:crypto';
 import type {
   AssistantBlock,
   LlmGenerationSource,
   LlmStopReason,
   LlmThinkingState,
   LlmTokenUsage,
+  Message,
   ToolResultBlock,
 } from '@ema-agent/llm';
 import {
-  advanceLlmUsageSnapshot,
   createAssistantThinkingBlock,
   ContextWindowExceededError,
+  hasLlmTokenUsage,
+  llmProviderErrorCode,
+  updateLlmCallUsage,
 } from '@ema-agent/llm';
 import type { ToolResult } from '@ema-agent/tools';
 import {
@@ -39,8 +43,6 @@ interface IterationResponse {
     AssistantBlock & { type: 'tool_use' }
   >;
   readonly stopReason: LlmStopReason;
-  readonly usage: LlmTokenUsage;
-  readonly durationMs: number;
 }
 
 export async function* runAgentLoop(
@@ -98,7 +100,8 @@ export async function* runAgentLoop(
       state,
     };
 
-    let prepared = await input.prepareIteration({ messages });
+    let llmCallId = randomUUID();
+    let prepared = await input.prepareIteration({ llmCallId, messages });
     messages = [...prepared.messages];
 
     const executor = input.createToolExecutor(signalWake);
@@ -203,12 +206,13 @@ export async function* runAgentLoop(
               break;
 
             case 'usage': {
-              const advanced = advanceLlmUsageSnapshot(usage, event);
-              usage = advanced.snapshot;
-              if (hasUsage(advanced.delta)) {
-                input.budget.recordUsage(advanced.delta);
-                state = addAgentUsage(state, advanced.delta);
-                yield { type: 'usage_updated', usage: state.usage };
+              const updated = updateLlmCallUsage(usage, event);
+              usage = updated.usage;
+              if (hasLlmTokenUsage(updated.delta)) {
+                input.budget.recordUsage(updated.delta);
+                state = addAgentUsage(state, updated.delta);
+                yield { type: 'llm_call_usage_updated', llmCallId, usage };
+                yield { type: 'agent_usage_updated', usage: state.usage };
               }
               break;
             }
@@ -218,6 +222,16 @@ export async function* runAgentLoop(
               break;
           }
         }
+        const durationMs = Date.now() - callStartedAt;
+        yield {
+          type: 'llm_call_finished',
+          llmCallId,
+          source: input.generationSource,
+          status: 'completed',
+          ...(hasLlmTokenUsage(usage) ? { usage } : {}),
+          startedAt: callStartedAt,
+          durationMs,
+        };
         response = {
           textByIndex,
           thinkingByIndex,
@@ -225,12 +239,21 @@ export async function* runAgentLoop(
           completedThinkingIndexes,
           toolUseByIndex,
           stopReason,
-          usage,
-          durationMs: Date.now() - callStartedAt,
         };
         break;
       } catch (error) {
-        if (input.signal.aborted) {
+        const cancelled = input.signal.aborted;
+        yield {
+          type: 'llm_call_finished',
+          llmCallId,
+          source: input.generationSource,
+          status: cancelled ? 'cancelled' : 'failed',
+          ...(hasLlmTokenUsage(usage) ? { usage } : {}),
+          startedAt: callStartedAt,
+          durationMs: Date.now() - callStartedAt,
+          ...(!cancelled ? { errorCode: llmProviderErrorCode(error) } : {}),
+        };
+        if (cancelled) {
           state = updateAgentLoopState(state, { phase: 'aborted', stopReason: 'aborted' });
           yield { type: 'loop_stopped', finalText: continuedOutput.join(''), state };
           return;
@@ -241,7 +264,9 @@ export async function* runAgentLoop(
           && !receivedResponseEvent
         ) {
           recoveryAttempted = true;
+          llmCallId = randomUUID();
           prepared = await input.prepareIteration({
+            llmCallId,
             messages,
             recoveryReason: 'context_window_exceeded',
           });
@@ -259,8 +284,6 @@ export async function* runAgentLoop(
       completedThinkingIndexes,
       toolUseByIndex,
       stopReason,
-      usage,
-      durationMs,
     } = response;
     const callText = orderedText(textByIndex);
     for (const blockIndex of thinkingByIndex.keys()) {
@@ -268,12 +291,21 @@ export async function* runAgentLoop(
       yield { type: 'thinking_completed', blockIndex };
     }
 
+    const assistantMessage: Message & { role: 'assistant' } = {
+      role: 'assistant',
+      content: buildAssistantBlocks(
+        textByIndex,
+        thinkingByIndex,
+        thinkingStateByIndex,
+        toolUseByIndex,
+      ),
+      generatedBy: input.generationSource,
+    };
     yield {
       type: 'assistant_message_completed',
       iteration,
-      usage,
+      llmCallId,
       stopReason,
-      durationMs,
     };
 
     // 恢复 generator 说明外层已经保存完整 assistant block；此后才允许工具执行。
@@ -288,20 +320,18 @@ export async function* runAgentLoop(
       }
       continuedOutput.push(callText);
       if (!injectedContinuation) {
-        const partialBlocks = buildAssistantBlocks(
-          textByIndex,
-          thinkingByIndex,
-          thinkingStateByIndex,
-          new Map(),
-        );
-        if (partialBlocks.length > 0) {
-          messages.push({
-            role: 'assistant',
-            content: partialBlocks,
-            generatedBy: input.generationSource,
-          });
+        const appended: Message[] = [];
+        if (assistantMessage.content.length > 0) {
+          messages.push(assistantMessage);
+          appended.push(assistantMessage);
         }
-        messages.push({ role: 'user', content: CONTINUE_OUTPUT_MESSAGE });
+        const continuationMessage: Message = {
+          role: 'user',
+          content: CONTINUE_OUTPUT_MESSAGE,
+        };
+        messages.push(continuationMessage);
+        appended.push(continuationMessage);
+        yield { type: 'model_history_appended', llmCallId, messages: appended };
         injectedContinuation = true;
         continue;
       }
@@ -316,16 +346,12 @@ export async function* runAgentLoop(
 
     if (toolUseByIndex.size === 0) {
       continuedOutput.push(callText);
-      messages.push({
-        role: 'assistant',
-        content: buildAssistantBlocks(
-          textByIndex,
-          thinkingByIndex,
-          thinkingStateByIndex,
-          new Map(),
-        ),
-        generatedBy: input.generationSource,
-      });
+      messages.push(assistantMessage);
+      yield {
+        type: 'model_history_appended',
+        llmCallId,
+        messages: [assistantMessage],
+      };
       state = updateAgentLoopState(state, {
         phase: 'completed',
         stopReason: 'completed',
@@ -385,34 +411,24 @@ export async function* runAgentLoop(
     }
     if (sameBatchStreak >= STUCK_BATCH_STREAK && !stuckGuideInjected) {
       stuckGuideInjected = true;
-      messages.push({ role: 'user', content: STUCK_GUIDE_MESSAGE });
+      const stuckGuide: Message = { role: 'user', content: STUCK_GUIDE_MESSAGE };
+      messages.push(stuckGuide);
+      yield { type: 'model_history_appended', llmCallId, messages: [stuckGuide] };
     }
 
     // 完整 assistant 块（含原生推理状态）随 generatedBy 进入下一次迭代：
     // Tool Loop 不剥除 thinking，由目标协议 Adapter 按生成来源裁决重放/删除。
-    const assistantBlocks = buildAssistantBlocks(
-      textByIndex,
-      thinkingByIndex,
-      thinkingStateByIndex,
-      toolUseByIndex,
-    );
-    messages.push({
-      role: 'assistant',
-      content: assistantBlocks,
-      generatedBy: input.generationSource,
-    });
-    messages.push({
+    const toolResultMessage: Message = {
       role: 'user',
       content: results.map(toModelToolResult),
-    });
+    };
+    messages.push(assistantMessage, toolResultMessage);
+    yield {
+      type: 'model_history_appended',
+      llmCallId,
+      messages: [assistantMessage, toolResultMessage],
+    };
   }
-}
-
-function hasUsage(usage: LlmTokenUsage): boolean {
-  return usage.inputTokens > 0
-    || usage.outputTokens > 0
-    || (usage.cacheReadInputTokens ?? 0) > 0
-    || (usage.cacheWriteInputTokens ?? 0) > 0;
 }
 
 function orderedText(textByIndex: ReadonlyMap<number, string>): string {
