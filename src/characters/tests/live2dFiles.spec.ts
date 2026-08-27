@@ -151,6 +151,86 @@ describe('Live2D ZIP resources', () => {
     });
   });
 
+  it('zip 自带运行配置时只补写缺失键，作者条目与未知字段原样保留', async () => {
+    const sourceZip = writeZip('partial-config.zip', {
+      'model.model3.json': model3Bytes(
+        {
+          Expressions: [
+            { Name: 'Smile', File: 'exp/Smile.exp3.json' },
+            { Name: 'Crying', File: 'exp/Crying.exp3.json' },
+          ],
+          Motions: { Idle: [{ File: 'motions/idle_00.motion3.json' }] },
+        },
+        { Groups: [{ Target: 'Parameter', Name: 'LipSync', Ids: [] }] },
+      ),
+      ...modelFiles(),
+      'exp/Smile.exp3.json': jsonBytes({}),
+      'exp/Crying.exp3.json': jsonBytes({}),
+      'motions/idle_00.motion3.json': jsonBytes({}),
+      'runtime-config.json': jsonBytes({
+        modelId: 'author-model',
+        parameters: { mouthOpenParam: 'ParamMouthOpenY' },
+        lipSyncParameterIds: [],
+        emotionMap: { neutral: {}, sad: { expression: 'Crying' } },
+      }),
+      'model.vtube.json': jsonBytes({
+        Hotkeys: [],
+        ParameterSettings: [{ Input: 'MouthOpen', OutputLive2D: 'ParamMouthOpenY' }],
+      }),
+    });
+
+    const imported = await store.importLive2dModel(characterId, { sourceZipFile: sourceZip });
+    // neutral 是作者明确置空的条目，不进词汇；sad 保留作者映射；happy 由 Smile 补入
+    expect(imported.emotionVocabulary).toEqual(['sad', 'happy']);
+    expect(imported.motionVocabulary).toEqual(['idle']);
+
+    const resourceDirectory = store.resolveLive2dModelDirectory(characterId, imported.id);
+    const supplemented: unknown = JSON.parse(fs.readFileSync(
+      path.join(resourceDirectory, 'runtime-config.json'),
+      'utf8',
+    ));
+    expect(supplemented).toEqual({
+      modelId: 'author-model',
+      parameters: { mouthOpenParam: 'ParamMouthOpenY' },
+      lipSyncParameterIds: [],
+      emotionMap: {
+        neutral: {},
+        sad: { expression: 'Crying' },
+        happy: { expression: 'Smile' },
+      },
+      idleMotions: [{ group: 'Idle', index: 0 }],
+      motionMap: { idle: { group: 'Idle', index: 0 } },
+    });
+  });
+
+  it('作者配置已齐备时导入不改写文件', async () => {
+    const authorConfig = {
+      lipSyncParameterIds: ['ParamMouthOpenY'],
+      idleMotions: [{ group: 'Idle', index: 1 }],
+      emotionMap: { happy: { expression: 'Smile' } },
+      motionMap: { idle: { group: 'Idle', index: 1 } },
+    };
+    const sourceZip = writeZip('complete-config.zip', {
+      'model.model3.json': model3Bytes({
+        Expressions: [{ Name: 'Smile', File: 'exp/Smile.exp3.json' }],
+        Motions: { Idle: [{ File: 'motions/a.motion3.json' }, { File: 'motions/b.motion3.json' }] },
+      }),
+      ...modelFiles(),
+      'exp/Smile.exp3.json': jsonBytes({}),
+      'motions/a.motion3.json': jsonBytes({}),
+      'motions/b.motion3.json': jsonBytes({}),
+      'runtime-config.json': jsonBytes(authorConfig),
+    });
+
+    const imported = await store.importLive2dModel(characterId, { sourceZipFile: sourceZip });
+    expect(imported.emotionVocabulary).toEqual(['happy']);
+    expect(imported.motionVocabulary).toEqual(['idle']);
+    const resourceDirectory = store.resolveLive2dModelDirectory(characterId, imported.id);
+    // 紧凑字节原样保留：未被重新格式化即证明未被改写
+    expect(fs.readFileSync(path.join(resourceDirectory, 'runtime-config.json'), 'utf8'))
+      .toBe(JSON.stringify(authorConfig));
+  });
+
   it('model3 引用文件缺失或逃逸包目录时拒绝导入并清理目标目录', async () => {
     const missingReference = writeZip('missing-ref.zip', {
       'model.model3.json': model3Bytes(),

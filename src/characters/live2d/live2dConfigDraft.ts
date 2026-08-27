@@ -1,10 +1,15 @@
-// zip 未携带 runtime-config.json 时，从 model3.json 与可选 .vtube.json 生成可确认的导入草稿。
+// 从 model3.json 与可选 .vtube.json 补齐模型包里的 runtime-config.json。
 //
 // 缺失该文件从不阻塞导入：模型照常渲染，只是没有情绪/动作语义词汇。
 // 但舞台渲染时只认这个文件——LLM 产出的语义名（sad）要靠它翻译成模型原生
 // 表情/动作（Sad），所以可确定的映射必须落成文件才有持久载体；文件写在
 // Ema 自管的资源目录（ZIP 解压副本，不动用户原始包），随 ZIP 导出，用户可
 // 直接审阅与手改，写后走 vocabulary 的同一条读取校验路径。
+//
+// 补写原则：作者已提供的文件只增不删——已声明的键（含空数组/空对象这种
+// 明确置空）一律不动，emotionMap/motionMap 只追加作者没有的条目，不认识的
+// 字段原样保留；确实补入内容才写回。文件损坏或根不是对象时不补写，交
+// vocabulary 校验按既有路径拒绝。
 //
 // 只写确定性事实：表情/动作名与产品语义表的规范化精确匹配、Idle 组首项、
 // VTube 作者配置的 MouthOpen 参数映射。命不中一律留空，由用户在设置页补全；
@@ -39,12 +44,13 @@ const EMOTION_ALIASES: readonly (readonly [string, readonly string[]])[] = [
 ];
 
 /**
- * 在 model3.json 旁生成 runtime-config.json 草稿并返回路径；没有任何可确定
- * 的条目时不写文件、返回 null。调用方已确认包内存在合法 model3 入口。
+ * 补齐 runtime-config.json 并返回其路径；无既有文件且没有可确定条目时不写
+ * 文件、返回 null。调用方已确认包内存在合法 model3 入口。
  */
 export async function writeLive2dConfigDraft(
   packageDirectory: string,
   modelPath: string,
+  runtimeConfigPath: string | null,
 ): Promise<string | null> {
   const settings: unknown = JSON.parse(await fs.promises.readFile(modelPath, 'utf8'));
   const references = (settings as { FileReferences?: Record<string, unknown> }).FileReferences ?? {};
@@ -99,11 +105,63 @@ export async function writeLive2dConfigDraft(
   if (idleTarget) draft.idleMotions = [idleTarget];
   if (Object.keys(emotionMap).length > 0) draft.emotionMap = emotionMap;
   if (idleTarget) draft.motionMap = { idle: idleTarget };
-  if (Object.keys(draft).length === 0) return null;
 
-  const target = path.join(path.dirname(modelPath), 'runtime-config.json');
-  await fs.promises.writeFile(target, `${JSON.stringify(draft, null, 2)}\n`, 'utf8');
+  // 作者已提供的文件只增不删：读出现有内容，逐键检测冲突，只补人家没有的。
+  const existing = runtimeConfigPath ? await readRuntimeConfigObject(runtimeConfigPath) : null;
+  if (runtimeConfigPath && !existing) return runtimeConfigPath;
+
+  const merged: Record<string, unknown> = { ...existing };
+  let supplemented = false;
+  if (draft.lipSyncParameterIds && merged.lipSyncParameterIds === undefined) {
+    merged.lipSyncParameterIds = draft.lipSyncParameterIds;
+    supplemented = true;
+  }
+  if (draft.idleMotions && merged.idleMotions === undefined) {
+    merged.idleMotions = draft.idleMotions;
+    supplemented = true;
+  }
+  if (draft.emotionMap) {
+    supplemented = mergeMissingEntries(merged, 'emotionMap', draft.emotionMap) || supplemented;
+  }
+  if (draft.motionMap) {
+    supplemented = mergeMissingEntries(merged, 'motionMap', draft.motionMap) || supplemented;
+  }
+  if (!supplemented) return runtimeConfigPath;
+
+  const target = runtimeConfigPath ?? path.join(path.dirname(modelPath), 'runtime-config.json');
+  await fs.promises.writeFile(target, `${JSON.stringify(merged, null, 2)}\n`, 'utf8');
   return target;
+}
+
+/** 条目级补缺：键缺失则整表补入；键已存在且为对象时只追加作者没有的条目。 */
+function mergeMissingEntries(
+  merged: Record<string, unknown>,
+  key: 'emotionMap' | 'motionMap',
+  computed: Record<string, unknown>,
+): boolean {
+  const current = merged[key];
+  if (current === undefined) {
+    merged[key] = computed;
+    return true;
+  }
+  if (!isRecord(current)) return false;
+  let added = false;
+  for (const [name, target] of Object.entries(computed)) {
+    if (!(name in current)) {
+      current[name] = target;
+      added = true;
+    }
+  }
+  return added;
+}
+
+async function readRuntimeConfigObject(runtimeConfigPath: string): Promise<Record<string, unknown> | null> {
+  try {
+    const parsed: unknown = JSON.parse(await fs.promises.readFile(runtimeConfigPath, 'utf8'));
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 function matchEmotion(candidates: readonly string[]): string | null {
@@ -150,7 +208,7 @@ async function readVtubeSettings(packageDirectory: string): Promise<VtubeSetting
       .filter(Boolean);
     return { hotkeys, lipSyncParameterIds };
   } catch {
-    // vtube.json 只是草稿的加分来源，损坏时按无热键处理，不影响导入。
+    // vtube.json 只是草补写的额外参考来源，损坏时按无热键处理，不影响导入。
     return null;
   }
 }

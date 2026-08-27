@@ -324,8 +324,11 @@ export class CharacterStore {
     try {
       const packageFiles = findLive2dPackageFilesSync(destination);
       await validateLive2dModelReferences(packageFiles.modelPath);
-      const runtimeConfigPath = packageFiles.runtimeConfigPath
-        ?? await writeLive2dConfigDraft(destination, packageFiles.modelPath);
+      const runtimeConfigPath = await writeLive2dConfigDraft(
+        destination,
+        packageFiles.modelPath,
+        packageFiles.runtimeConfigPath,
+      );
       const vocabulary = readLive2dVocabulary(
         runtimeConfigPath,
         settings.live2d.maxRuntimeConfigBytes,

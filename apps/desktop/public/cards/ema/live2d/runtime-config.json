@@ -22,6 +22,10 @@
     "minDelayMs": 12000,
     "maxDelayMs": 35000
   },
+  "lipSyncParameterIds": ["ParamMouthOpenY"],
+  "idleMotions": [
+    { "group": "Idle", "index": 0 }
+  ],
   "emotionMap": {
     "neutral": {},
     "happy": {},
