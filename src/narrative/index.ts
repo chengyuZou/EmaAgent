@@ -1,4 +1,4 @@
-// 导出 Narrative Client、错误类型和 Bridge 协议类型。
+// 导出 Narrative Client、错误类型、设置定义和 Bridge 协议类型。
 export { NarrativeClient } from './client.js';
 export {
   NarrativeClientError,
@@ -8,9 +8,10 @@ export {
 export type { NarrativeClientErrorCode, NarrativeClientErrorOptions } from './errors.js';
 
 export type {
-  NarrativeBridgeConfigurePayload,
-  NarrativeBridgeEmbedConfig,
-  NarrativeBridgeLlmConfig,
+  NarrativeBridgeConfigureRequest,
+  NarrativeEmbeddingConnection,
+  NarrativeLlmConnection,
+  NarrativeQueryMode,
   NarrativeRecallRequest,
   NarrativeRecallResponse,
   NarrativeTimelineFailure,
@@ -28,3 +29,7 @@ export type {
   NarrativeSearch,
   PrepareNarrativeRecallInput,
 } from './recall.js';
+export {
+  narrativeBridgeEnabledSetting,
+  narrativeQueryModeSetting,
+} from './settings.js';

@@ -3,6 +3,8 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import {
   MODEL_BINDING_MODULES,
+  ProviderError,
+  type ModelBindingModule,
   type ModelBindings,
   type ProviderModels,
   type Providers,
@@ -110,8 +112,10 @@ export const providerModelsRoute = (deps: ProviderModelsRouteDeps) =>
     .get('/bindings', context => context.json(deps.modelBindings.list()))
     .put('/bindings/:module', paramValidator(bindingParams), jsonBody(bindingBody), async context => {
       const { module } = context.req.valid('param');
+      const body = context.req.valid('json');
       try {
-        deps.modelBindings.set({ module, ...context.req.valid('json') });
+        assertNarrativeBindingProtocol(deps, module, body.providerId);
+        deps.modelBindings.set({ module, ...body });
         if (module === 'kb-embed' || module === 'kb-rerank') {
           deps.onKbEmbeddingBindingChanged?.();
         }
@@ -125,3 +129,28 @@ export const providerModelsRoute = (deps: ProviderModelsRouteDeps) =>
       deps.modelBindings.delete(module);
       return context.body(null, 204);
     });
+
+/**
+ * Narrative Bridge 只实现 openai-llm(chat completions) 与 openai-embed 两个协议族；
+ * 绑定入口在此挡住协议不支持的模型，而不是等 Recall 时由 Bridge 报错。
+ */
+const NARRATIVE_BINDING_PROTOCOLS = {
+  'lightrag-llm': { capability: 'llm', protocol: 'openai-llm' },
+  'lightrag-embed': { capability: 'embed', protocol: 'openai-embed' },
+} as const;
+
+function assertNarrativeBindingProtocol(
+  deps: ProviderModelsRouteDeps,
+  module: ModelBindingModule,
+  providerId: string,
+): void {
+  if (module !== 'lightrag-llm' && module !== 'lightrag-embed') return;
+  const expected = NARRATIVE_BINDING_PROTOCOLS[module];
+  const connection = deps.providers.resolveConnection(providerId, expected.capability);
+  if (connection.protocol !== expected.protocol) {
+    throw new ProviderError(
+      'invalid_configuration',
+      `${module} 只支持 ${expected.protocol} 协议，当前 Provider 该能力为 ${connection.protocol}`,
+    );
+  }
+}

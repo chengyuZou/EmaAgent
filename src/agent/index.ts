@@ -13,6 +13,8 @@ export type {
   AgentRunMessageRole,
   AgentRunStart,
   AgentRunStatus,
+  AgentRunTextContent,
+  AgentRunToolCallContent,
   AgentRunTransitionAction,
   AgentRunTransitionResult,
 } from './runs/types.js';

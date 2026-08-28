@@ -3,6 +3,7 @@
 import path from 'node:path';
 import type { Server } from 'node:http';
 import { serve } from '@hono/node-server';
+import { narrativeBridgeEnabledSetting } from '@ema-agent/narrative';
 import { buildComposition, type Composition } from '../composition/index.js';
 import {
   runFileMaintenance,
@@ -78,8 +79,21 @@ export async function startServer(secret: string): Promise<ServerLifecycle> {
 
     // ── ready 之后的后台驱动 ──────────────────────────────────────────────
     runFileMaintenance(recoveryDeps);
-    void running.narrative.configureNarrativeBridge()
-      .catch(error => console.warn('[narrative] Bridge 配置推送失败:', error));
+    // Bridge 进程开关：关闭时不再推送配置，且把宿主已拉起的 Bridge 令退；
+    // 运行中改为关闭立即生效，重新开启需重启应用（宿主不会重新拉起 Bridge）。
+    if (running.settings.settings.get(narrativeBridgeEnabledSetting)) {
+      void running.narrative.configureNarrativeBridge()
+        .catch(error => console.warn('[narrative] Bridge 配置推送失败:', error));
+    } else {
+      void running.narrative.shutdownNarrativeBridge()
+        .catch(error => console.warn('[narrative] Bridge 关闭失败:', error));
+    }
+    const unsubscribeBridgeSwitch = running.settings.settings.subscribe(event => {
+      if (!event.changedKeys.includes(narrativeBridgeEnabledSetting.key)) return;
+      if (running.settings.settings.get(narrativeBridgeEnabledSetting)) return;
+      void running.narrative.shutdownNarrativeBridge()
+        .catch(error => console.warn('[narrative] Bridge 关闭失败:', error));
+    });
     void running.knowledge.kb.ensureDefault(path.join(activeDataDir, 'kb', 'default'))
       .catch(error => console.warn('[kb] 默认知识库创建失败:', error));
     running.backgroundCompletion.start();
@@ -94,6 +108,7 @@ export async function startServer(secret: string): Promise<ServerLifecycle> {
       port,
       async shutdown() {
         clearInterval(sweepTick);
+        unsubscribeBridgeSwitch();
         unpublishReady?.();
         await new Promise<void>(resolve => {
           httpServer.close(() => resolve());

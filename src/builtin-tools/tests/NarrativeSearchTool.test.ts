@@ -23,7 +23,6 @@ describe('NarrativeSearchTool validateContext', () => {
 
   it('有 Port 时只投影窄 Context', () => {
     const narrativeSearch: NarrativeSearch = async () => ({
-      generationId: 'generation-1',
       timelines: [],
       failures: [],
       contextText: null,
@@ -36,9 +35,8 @@ describe('NarrativeSearchTool validateContext', () => {
 });
 
 describe('NarrativeSearchTool execute', () => {
-  it('把聚焦查询交给宿主并保留分时间线结果', async () => {
+  it('把聚焦查询与检索模式交给宿主并保留分时间线结果', async () => {
     const narrativeSearch = vi.fn(async () => ({
-      generationId: 'generation-1',
       timelines: [{
         name: '1st_Loop',
         charCount: 4,
@@ -49,7 +47,6 @@ describe('NarrativeSearchTool execute', () => {
         timeline: '2nd_Loop',
         code: 'timeline_query_failed' as const,
         message: '检索失败',
-        retryable: true,
       }],
     }));
     const context = { narrativeSearch };
@@ -71,11 +68,26 @@ describe('NarrativeSearchTool execute', () => {
         timeline: '2nd_Loop',
         code: 'timeline_query_failed',
         message: '检索失败',
-        retryable: true,
       }],
     });
     expect(narrativeSearch).toHaveBeenCalledWith(
       '查询角色过去',
+      undefined,
+      expect.any(AbortSignal),
+    );
+  });
+
+  it('模型显式给出的 mode 原样传给宿主', async () => {
+    const narrativeSearch = vi.fn(async () => ({
+      timelines: [],
+      contextText: null,
+      failures: [],
+    }));
+    const input = NarrativeSearchTool.inputSchema.parse({ query: '角色关系', mode: 'global' });
+    await NarrativeSearchTool.execute(input, { narrativeSearch }, invocation());
+    expect(narrativeSearch).toHaveBeenCalledWith(
+      '角色关系',
+      'global',
       expect.any(AbortSignal),
     );
   });
@@ -83,7 +95,6 @@ describe('NarrativeSearchTool execute', () => {
   it('无正文且没有失败时返回 empty', async () => {
     const context = {
       narrativeSearch: async () => ({
-        generationId: 'generation-2',
         timelines: [{ name: '2nd_Loop', charCount: 0, text: '' }],
         contextText: null,
         failures: [],
@@ -97,14 +108,12 @@ describe('NarrativeSearchTool execute', () => {
   it('有正文但存在失败时返回 partial, 全部失败且无正文时返回 unavailable', async () => {
     const context = {
       narrativeSearch: async () => ({
-        generationId: 'generation-3',
         timelines: [{ name: '1st_Loop', charCount: 0, text: '' }],
         contextText: null,
         failures: [{
           timeline: '1st_Loop',
           code: 'timeline_query_failed' as const,
           message: '检索失败',
-          retryable: true,
         }],
       }),
     };
@@ -123,7 +132,6 @@ describe('NarrativeSearchTool 模型投影与摘要', () => {
         timeline: '2nd_Loop',
         code: 'timeline_query_failed',
         message: '检索失败',
-        retryable: true,
       }],
     }));
     expect(content).toContain('## 1st_Loop\n剧情正文');

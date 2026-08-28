@@ -19,7 +19,7 @@ const inputPartSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('attachment'),
     attachment: z.object({
-      path: z.string().min(1),
+      sourcePath: z.string().min(1),
       name: z.string().min(1).optional(),
       mimeType: z.string().min(1).optional(),
       size: z.number().optional(),
@@ -67,19 +67,7 @@ export const startTurnRoute = (deps: StartTurnRouteDeps) =>
   new Hono()
     .post('/', jsonBody(startTurnBody), async context => {
     const body = context.req.valid('json');
-    const input: TurnInputPart[] = body.input.map(part => {
-      if (part.type !== 'attachment') return part;
-      return {
-        type: 'attachment',
-        attachment: {
-          sourcePath: part.attachment.path,
-          ...(part.attachment.name !== undefined ? { name: part.attachment.name } : {}),
-          ...(part.attachment.mimeType !== undefined ? { mimeType: part.attachment.mimeType } : {}),
-          ...(part.attachment.size !== undefined ? { size: part.attachment.size } : {}),
-          ...(part.attachment.mtime !== undefined ? { mtime: part.attachment.mtime } : {}),
-        },
-      };
-    });
+    const input: TurnInputPart[] = body.input;
     if (!hasTurnInput(input)) {
       return context.json({ error: 'empty_input' }, 400);
     }

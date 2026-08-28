@@ -79,7 +79,7 @@ interface ToolPermissionContext {
 | `{ behavior: 'ask', message, decisionReason?, ruleSuggestion? }` | 需要用户确认（**先于 bypass 生效**）。`ruleSuggestion` 是"本 Session 允许"要沉淀的规则（只有 Tool 知道同类输入的边界）；缺省时卡片只给允许一次/拒绝 | 写操作、命中 ask 规则、必须交互 |
 | `{ behavior: 'passthrough', message }` | Tool 没有允许/拒绝的理由，交中央收口 | MCP、无特殊语义的 Tool |
 
-`decisionReason` 窄联合：`rule / mode / subcommandResults(Bash 复合命令逐条) / workingDir / safetyCheck / user / headless / other`。
+`decisionReason` 窄联合：`rule / mode / workingDir / safetyCheck / user / headless / other`。
 
 ## 可用的匹配器（rules/，直接用，不要自己重写）
 
@@ -97,7 +97,7 @@ interface ToolPermissionContext {
 
 | Tool | checkPermissions 内容 |
 |---|---|
-| Bash / PowerShellTool | 用户自研安全分析（AST/命令拆解，**用户本人正在写**）+ `matchShellRule` 内容规则匹配；复合命令逐子命令出 `decisionReason.subcommandResults` |
+| Bash / PowerShellTool | 用户自研安全分析（AST/命令拆解，**用户本人正在写**）+ `matchShellRule` 内容规则匹配 |
 | FileRead / FileEdit / FileWrite | `paths/` 语料 + `matchPathRule`；检查顺序照抄 Claude filesystem.ts：危险路径 → read 专属 deny → read 专属 ask → edit 蕴含 read → 工作区读 allow（default）/ 工作区写（acceptEdits）→ 内部路径 → allow 规则 → 默认 ask |
 | WebFetch | 域名规则匹配（URL host × 规则） |
 | MCP Tool | `passthrough`；自报 annotations 只能升风险（`readOnlyHint` 只进 UI，`destructiveHint` 可升 ask，不可降） |
@@ -131,4 +131,3 @@ src/permission/
 ├─ paths/                      pathSafety/workspaceBoundary/platformPaths/internalPaths（文件 Tool 语料）
 └─ tests/                      六组测试（parser/shell/path/update/loader/central，29 条）
 ```
-

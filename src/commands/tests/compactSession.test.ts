@@ -187,6 +187,7 @@ describe('compactSession', () => {
 
     expect(result.status).toBe('completed');
     if (result.status !== 'completed') return;
+    expect(result.contextWindow).toBe(CONTEXT_WINDOW);
     expect(result.beforeTokens).toBeGreaterThan(8_500);
     expect(result.savedTokens).toBeGreaterThan(0);
     // 历史（约 3 万 token）超过 1 万窗口：截断事件发生且计数进响应。
@@ -238,7 +239,11 @@ describe('compactSession', () => {
       fixture.sessionId,
     );
 
-    expect(result).toMatchObject({ status: 'completed', savedTokens: 6_000 });
+    expect(result).toMatchObject({
+      status: 'completed',
+      contextWindow: CONTEXT_WINDOW,
+      savedTokens: 6_000,
+    });
     expect(captured?.tools).toEqual([]);
     expect(captured?.force).toBe(true);
     expect(captured?.micro).toBe(false);

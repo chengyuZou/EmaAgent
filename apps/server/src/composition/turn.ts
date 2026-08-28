@@ -21,7 +21,6 @@ import {
   relationshipMemoryDir,
   workMemoryDir,
 } from '@ema-agent/memory';
-import { prepareNarrativeRecall } from '@ema-agent/narrative';
 import { permissionAskTimeoutSetting } from '@ema-agent/permission';
 import { DEFAULT_SESSION_TITLE, generateSessionTitle } from '@ema-agent/session';
 import type { SettingsStore } from '@ema-agent/settings';
@@ -156,13 +155,9 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
       readMemorySummary(memorySummaryFile(relationshipMemoryDir()), summaryTokens)
         .catch(() => undefined),
     ]);
-    const narrativeRecall = scope.narrativePolicy === 'always' && scope.userText.trim().length > 0
-      ? await prepareNarrativeRecall(narrative.narrative, {
-          sessionId: scope.sessionId,
-          turnId: scope.turnId,
-          userInput: scope.userText,
-          emit: scope.emit,
-        }).then(result => result.contextText ?? undefined)
+    const narrativeRecall = scope.narrativePolicy === 'always' && scope.narrativeSearch && scope.userText.trim().length > 0
+      ? await scope.narrativeSearch(scope.userText, undefined, scope.signal)
+        .then(result => result.contextText ?? undefined)
         .catch(() => undefined)
       : undefined;
     // shouldRemind 只检查不消费；提醒随 reminder 落库成功后由 onTaskReminderPersisted 提交 markReminded。
@@ -250,7 +245,8 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     agentRunMessagesStore: database.agentRunMessages,
     taskStore: database.tasks,
     knowledgeSearch: knowledge.knowledgeSearch,
-    narrativeClient: narrative.narrative,
+    narrativeClient: narrative.narrative ?? undefined,
+    resolveNarrativeLlm: narrative.resolveNarrativeLlm,
     backgroundProcesses: tools.backgroundProcesses,
     resolveVision: resolveCallVision,
     commandRunner: tools.getCommandRunner,

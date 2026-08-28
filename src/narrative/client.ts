@@ -1,6 +1,6 @@
-// 封装 Core 调用 Python Bridge 的 Narrative 查询与内部语料维护协议。
+// 封装 Core 调用 Python Bridge 的 Narrative 查询与进程管理协议。
 import type {
-  NarrativeBridgeConfigurePayload,
+  NarrativeBridgeConfigureRequest,
   NarrativeRecallRequest,
   NarrativeRecallResponse,
 } from './types.js';
@@ -11,20 +11,20 @@ import {
 } from './errors.js';
 
 export interface NarrativeClientOptions {
-  /** Bridge base URL. Default: http://127.0.0.1:7421 */
-  baseUrl?: string;
+  /** Bridge base URL，由 Rust Host 经 EMA_NARRATIVE_BRIDGE_URL 下发。 */
+  baseUrl: string;
   /** Shared secret sent as X-Ema-Secret header. */
   secret?: string;
   timeoutMs?: number;
 }
 
 export class NarrativeClient {
-  private baseUrl: string;
+  private readonly baseUrl: string;
   private readonly headers: Record<string, string>;
   private readonly timeoutMs: number;
 
-  constructor(opts: NarrativeClientOptions = {}) {
-    this.baseUrl   = (opts.baseUrl ?? 'http://127.0.0.1:7421').replace(/\/$/, '');
+  constructor(opts: NarrativeClientOptions) {
+    this.baseUrl   = opts.baseUrl.replace(/\/$/, '');
     this.timeoutMs = opts.timeoutMs ?? 60_000;
     this.headers   = {
       'Content-Type': 'application/json',
@@ -52,24 +52,31 @@ export class NarrativeClient {
     }
   }
 
-
-  updateBaseUrl(url: string): void {
-    this.baseUrl = url.replace(/\/$/, '');
-  }
-
-
   /**
-   * 注意:bridge 的 /internal/configure 返回 204 No Content(无 body),
-   * 不能走通用 post<T>()(它会 res.json() 解析空 body 抛 SyntaxError,
-   * 把成功的 204 误判为 unreachable 这里单独处理:只看 res.ok。
+   * 送达进程级 Embedding 连接；Bridge 建完时间线实例才返回，可能耗时数秒。
+   * 409 = Bridge 已持有配置（Server 单独重启场景），对调用方等同可用。
    */
-  async configure(payload: NarrativeBridgeConfigurePayload): Promise<boolean> {
+  async configure(payload: NarrativeBridgeConfigureRequest): Promise<boolean> {
     try {
       const res = await fetch(`${this.baseUrl}/internal/configure`, {
         method:  'POST',
         headers: this.headers,
         body:    JSON.stringify(payload),
         signal:  AbortSignal.timeout(this.timeoutMs),
+      });
+      return res.ok || res.status === 409;
+    } catch {
+      return false;
+    }
+  }
+
+  /**  Bridge 退出；Bridge 不在场时返回 false，由调用方按降级处理。 */
+  async shutdown(): Promise<boolean> {
+    try {
+      const res = await fetch(`${this.baseUrl}/internal/shutdown`, {
+        method:  'POST',
+        headers: this.headers,
+        signal:  AbortSignal.timeout(10_000),
       });
       return res.ok;
     } catch {
@@ -102,7 +109,6 @@ export class NarrativeClient {
           `Narrative Bridge request failed (HTTP ${res.status}).`,
           {
             code: 'narrative/http_error',
-            retryable: res.status === 408 || res.status === 429 || res.status >= 500,
             status: res.status,
           },
         );
@@ -112,7 +118,6 @@ export class NarrativeClient {
       } catch (error) {
         throw new NarrativeRequestError('Narrative Bridge returned invalid JSON.', {
           code: 'narrative/invalid_response',
-          retryable: false,
           cause: error,
         });
       }
@@ -122,7 +127,6 @@ export class NarrativeClient {
       if (timeoutSignal.aborted) {
         throw new NarrativeRequestError(`Narrative Bridge request timed out: ${path}`, {
           code: 'narrative/timeout',
-          retryable: true,
           cause: err,
         });
       }

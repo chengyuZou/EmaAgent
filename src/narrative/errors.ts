@@ -8,7 +8,6 @@ export type NarrativeClientErrorCode =
 
 export interface NarrativeClientErrorOptions {
   code: NarrativeClientErrorCode;
-  retryable: boolean;
   status?: number;
   cause?: unknown;
 }
@@ -16,13 +15,11 @@ export interface NarrativeClientErrorOptions {
 export class NarrativeClientError extends Error {
   override readonly name: string = 'NarrativeClientError';
   readonly code: NarrativeClientErrorCode;
-  readonly retryable: boolean;
   readonly status?: number;
 
   constructor(message: string, options: NarrativeClientErrorOptions) {
     super(message, { cause: options.cause });
     this.code = options.code;
-    this.retryable = options.retryable;
     this.status = options.status;
   }
 }
@@ -33,7 +30,6 @@ export class NarrativeUnavailableError extends NarrativeClientError {
   constructor(message: string, options: { status?: number; cause?: unknown } = {}) {
     super(message, {
       code: 'narrative/unavailable',
-      retryable: true,
       ...options,
     });
   }

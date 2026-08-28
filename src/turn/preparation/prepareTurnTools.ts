@@ -10,8 +10,16 @@ import {
 import type { KnowledgeSearch } from '@ema-agent/knowledge';
 import type { CallVision } from '@ema-agent/vision';
 import type { Message } from '@ema-agent/llm';
-import type { NarrativeClient } from '@ema-agent/narrative';
-import { prepareNarrativeRecall } from '@ema-agent/narrative';
+import type {
+  NarrativeClient,
+  NarrativeLlmConnection,
+  NarrativeSearch,
+} from '@ema-agent/narrative';
+import {
+  narrativeBridgeEnabledSetting,
+  narrativeQueryModeSetting,
+  prepareNarrativeRecall,
+} from '@ema-agent/narrative';
 import {
   applyPermissionUpdate,
   type PermissionMode,
@@ -62,8 +70,10 @@ export interface TurnToolsDeps {
   readonly agentRunMessagesStore: AgentRunMessagesStore;
   readonly taskStore?: TaskStore;
   readonly knowledgeSearch?: KnowledgeSearch;
-  /** narrativePolicy = 'auto' 时按本 Turn 身份构建剧情检索入口；'always'/'off' 不装配。 */
+  /** narrativePolicy 非 'off' 时构建本 Turn 召回闭包；与 resolveNarrativeLlm 同时缺失则无 Narrative 能力。 */
   readonly narrativeClient?: NarrativeClient;
+  /** Turn 开始时解析一次当次 Narrative LLM 连接并冻结进闭包；未绑定或协议不支持返回 undefined。 */
+  readonly resolveNarrativeLlm?: () => NarrativeLlmConnection | undefined;
   readonly backgroundProcesses?: BackgroundProcess;
   /** 每 Turn 解析一次 vision 调用闭包；无绑定时返回 undefined（PDF 只读文本层）。 */
   readonly resolveVision?: () => CallVision | undefined;
@@ -110,6 +120,8 @@ export interface TurnToolsAssembly {
   readonly toolContext: ToolUseContext;
   readonly permissionContext: ToolPermissionContext;
   readonly spawner: SubagentSpawner;
+  /** 本 Turn 冻结的召回闭包：auto 时进 Tool Context，always 时供 reminder；off 或无能力为 undefined。 */
+  readonly narrativeSearch?: NarrativeSearch;
   readonly createExecutor: (wake: () => void) => StreamingToolExecutorType;
   /** 子 Agent 执行器：收窄后的独立 ToolPool、关联 agentRunId、无 askPermission（headless）。 */
   readonly createSubagentExecutor: (args: {
@@ -211,6 +223,27 @@ export function prepareTurnTools(
 
   const commandRunner = deps.commandRunner?.(sessionId);
   const vision = deps.resolveVision?.();
+  // 召回闭包在本 Turn 构建一次：LLM 连接、模式覆盖与进程开关全部冻结；
+  // auto 时模型经 Tool 触发，always 时 reminder 触发，二者共用同一实现。
+  const narrativeSearch = ((): NarrativeSearch | undefined => {
+    if (input.narrativePolicy === 'off') return undefined;
+    if (!deps.narrativeClient || !deps.resolveNarrativeLlm) return undefined;
+    if (!deps.settings.get(narrativeBridgeEnabledSetting)) return undefined;
+    const llm = deps.resolveNarrativeLlm();
+    if (!llm) return undefined;
+    const client = deps.narrativeClient;
+    const queryModeOverride = deps.settings.get(narrativeQueryModeSetting);
+    return (query, mode, signal) =>
+      prepareNarrativeRecall(client, {
+        sessionId,
+        turnId,
+        userInput: query,
+        llm,
+        mode: queryModeOverride !== 'auto' ? queryModeOverride : (mode ?? 'hybrid'),
+        signal,
+        emit: event => input.emit(event),
+      });
+  })();
   const toolContext: ToolUseContext = Object.freeze({
     workspaceRoot,
     platform: process.platform,
@@ -230,18 +263,8 @@ export function prepareTurnTools(
           })) as KnowledgeSearch,
         }
       : {}),
-    ...(input.narrativePolicy === 'auto' && deps.narrativeClient
-      ? {
-          // 召回事件携带本 Turn 身份进入事件流；Tool 路径与 reminder 路径共用同一召回实现。
-          narrativeSearch: (query: string, signal: AbortSignal) =>
-            prepareNarrativeRecall(deps.narrativeClient!, {
-              sessionId,
-              turnId,
-              userInput: query,
-              signal,
-              emit: event => input.emit(event),
-            }),
-        }
+    ...(input.narrativePolicy === 'auto' && narrativeSearch
+      ? { narrativeSearch }
       : {}),
     ...(deps.taskStore ? { taskStore: deps.taskStore } : {}),
     subagentSpawner: spawner,
@@ -286,6 +309,7 @@ export function prepareTurnTools(
     toolContext,
     permissionContext,
     spawner,
+    ...(narrativeSearch ? { narrativeSearch } : {}),
     createExecutor,
     createSubagentExecutor: ({ agentRunId, toolPool: subPool, signal, wake }) => {
       const executor = new StreamingToolExecutor({

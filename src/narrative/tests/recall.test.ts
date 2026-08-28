@@ -6,39 +6,44 @@ import { prepareNarrativeRecall } from '../recall.js';
 
 const sessionId = 'session-narrative';
 const turnId = 'turn-narrative';
+const llm = { baseUrl: 'http://llm.test/v1', modelId: 'test-model' };
 
 describe('Narrative 原子召回', () => {
-  it('一次响应保留成功时间线和结构化部分失败', async () => {
+  it('一次响应保留成功时间线和结构化部分失败，并透传冻结连接与模式', async () => {
     const events: NarrativeEvent[] = [];
+    const requests: unknown[] = [];
     const client = {
-      recall: async () => ({
-        generationId: 'generation-1',
-        routes: {
-          '1st_Loop': 'first',
-          '2nd_Loop': 'second',
-          '3rd_Loop': 'third',
-        },
-        results: {
-          '1st_Loop': 'first recalled text',
-          '3rd_Loop': 'third recalled text',
-        },
-        failures: [{
-          timeline: '2nd_Loop',
-          code: 'timeline_query_failed' as const,
-          message: 'timeline failed',
-          retryable: true,
-        }],
-      }),
+      recall: async (request: unknown) => {
+        requests.push(request);
+        return {
+          routes: {
+            '1st_Loop': 'first',
+            '2nd_Loop': 'second',
+            '3rd_Loop': 'third',
+          },
+          results: {
+            '1st_Loop': 'first recalled text',
+            '3rd_Loop': 'third recalled text',
+          },
+          failures: [{
+            timeline: '2nd_Loop',
+            code: 'timeline_query_failed' as const,
+            message: 'timeline failed',
+          }],
+        };
+      },
     } as never;
 
     const result = await prepareNarrativeRecall(client, {
       sessionId,
       turnId,
       userInput: '发生了什么？',
+      llm,
+      mode: 'hybrid',
       emit: (event) => events.push(event),
     });
 
-    expect(result.generationId).toBe('generation-1');
+    expect(requests).toEqual([{ query: '发生了什么？', llm, mode: 'hybrid' }]);
     expect(result.contextText).toContain('first recalled text');
     expect(result.contextText).toContain('third recalled text');
     expect(result.timelines.map((entry) => entry.name))
@@ -49,7 +54,6 @@ describe('Narrative 原子召回', () => {
       'narrative_recall_completed',
     ]);
     expect(events[1]).toMatchObject({
-      generationId: 'generation-1',
       timelineOrder: ['1st_Loop', '2nd_Loop', '3rd_Loop'],
       failures: [{ timeline: '2nd_Loop', code: 'timeline_query_failed' }],
     });
@@ -59,7 +63,6 @@ describe('Narrative 原子召回', () => {
     const events: NarrativeEvent[] = [];
     const client = {
       recall: async () => ({
-        generationId: 'generation-empty',
         routes: {},
         results: {},
         failures: [],
@@ -70,9 +73,10 @@ describe('Narrative 原子召回', () => {
       sessionId,
       turnId,
       userInput: 'query',
+      llm,
+      mode: 'hybrid',
       emit: (event) => events.push(event),
     })).resolves.toEqual({
-      generationId: 'generation-empty',
       timelines: [],
       failures: [],
       contextText: null,
@@ -87,7 +91,6 @@ describe('Narrative 原子召回', () => {
     const events: NarrativeEvent[] = [];
     const error = new NarrativeRequestError('timeout', {
       code: 'narrative/timeout',
-      retryable: true,
     });
     const client = { recall: async () => { throw error; } } as never;
 
@@ -95,6 +98,8 @@ describe('Narrative 原子召回', () => {
       sessionId,
       turnId,
       userInput: 'query',
+      llm,
+      mode: 'hybrid',
       emit: (event) => events.push(event),
     })).rejects.toBe(error);
     expect(events.map((event) => event.type)).toEqual([
@@ -113,6 +118,8 @@ describe('Narrative 原子召回', () => {
       sessionId,
       turnId,
       userInput: 'query',
+      llm,
+      mode: 'hybrid',
       emit: (event) => events.push(event),
     })).rejects.toMatchObject({ name: 'AbortError' });
     expect(events.map((event) => event.type)).toEqual(['narrative_recall_started']);

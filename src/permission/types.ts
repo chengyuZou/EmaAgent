@@ -56,8 +56,6 @@ export type PermissionUpdate =
 export type PermissionDecisionReason =
   | { readonly type: 'rule'; readonly rule: PermissionRule }
   | { readonly type: 'mode'; readonly mode: PermissionMode }
-  /** Bash 复合命令逐个子命令各自的判定；键 = 子命令文本。 */
-  | { readonly type: 'subcommandResults'; readonly reasons: ReadonlyMap<string, PermissionResult> }
   | { readonly type: 'workingDir'; readonly reason: string }
   /** Tool 自检拦截（敏感路径/危险输入）；先于 bypass 生效。 */
   | { readonly type: 'safetyCheck'; readonly reason: string }

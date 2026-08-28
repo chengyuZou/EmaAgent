@@ -1,28 +1,32 @@
-export interface NarrativeBridgeEmbedConfig {
-  /** Narrative Bridge 的 LightRAG 目前只接受 OpenAI 兼容嵌入协议。 */
-  protocol: 'openai-embed';
-  apiKey: string;
+// Server 与 Narrative Bridge 的请求/响应形状；与 bridges/narrative/core/contracts.py 同批维护。
+
+/** LightRAG 检索模式；仅改变检索策略，最终回答永远由根 Agent 生成。 */
+export type NarrativeQueryMode = 'local' | 'global' | 'hybrid' | 'naive' | 'mix';
+
+/** 一次 Recall 携带的 openai-llm 连接；Bridge 不持有任何全局 LLM 状态。 */
+export interface NarrativeLlmConnection {
   baseUrl: string;
-  model: string;
-  dim?: number;
+  apiKey?: string;
+  modelId: string;
 }
 
-export interface NarrativeBridgeLlmConfig {
-  apiKey: string;
+/** 进程级 Embedding 连接：向量空间与既有剧情数据一体，进程内不可更换。 */
+export interface NarrativeEmbeddingConnection {
   baseUrl: string;
-  model: string;
+  apiKey?: string;
+  modelId: string;
+  dim: number;
 }
 
-/** null 表示显式撤销能力，避免 Bridge 继续持有已删除 Provider 的密钥。 */
-export interface NarrativeBridgeConfigurePayload {
-  embed: NarrativeBridgeEmbedConfig | null;
-  llm: NarrativeBridgeLlmConfig | null;
+export interface NarrativeBridgeConfigureRequest {
+  embed: NarrativeEmbeddingConnection;
 }
 
 export interface NarrativeRecallRequest {
   query: string;
+  llm: NarrativeLlmConnection;
   /** LightRAG 检索模式，默认 hybrid。 */
-  mode?: 'local' | 'global' | 'hybrid' | 'naive' | 'mix';
+  mode?: NarrativeQueryMode;
   /** 每条时间线的 LightRAG 召回上限，默认 40。 */
   topK?: number;
 }
@@ -33,12 +37,10 @@ export interface NarrativeTimelineFailure {
   timeline: string;
   code: NarrativeTimelineFailureCode;
   message: string;
-  retryable: boolean;
 }
 
-/** 一个 Bridge 代际内完成路由和全部时间线查询的原子响应。 */
+/** 一次完成路由和全部时间线查询的原子响应。 */
 export interface NarrativeRecallResponse {
-  generationId: string;
   routes: Record<string, string>;
   results: Record<string, string>;
   failures: NarrativeTimelineFailure[];

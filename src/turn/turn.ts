@@ -20,6 +20,7 @@ import type {
   LlmGenerationSource,
   Message,
 } from '@ema-agent/llm';
+import type { NarrativeSearch } from '@ema-agent/narrative';
 import { isLlmProtocol } from '@ema-agent/providers';
 import {
   collectAttachmentReferenceIds,
@@ -76,8 +77,12 @@ export interface TurnReminderScope {
   readonly executionProfile: Turn['executionProfile'];
   /** auto = NarrativeSearchTool 可见；always = Turn 开头查询一次并写入 reminder；off = 两者皆无。 */
   readonly narrativePolicy: Turn['narrativePolicy'];
+  /** 本 Turn 冻结的召回闭包（prepareTurnTools 构建）；always 路径据此查询，off 或无能力为 undefined。 */
+  readonly narrativeSearch?: NarrativeSearch;
   /** 本 Turn 用户文本（附件降级后）；backgroundProcessCompleted 等触发可为空串。 */
   readonly userText: string;
+  /** Turn 级取消信号；reminder 期的召回随 Turn 中止一并取消。 */
+  readonly signal: AbortSignal;
   readonly emit: (event: TurnStreamEvent) => void;
 }
 
@@ -298,7 +303,9 @@ export class TurnExecutor {
         turnId,
         executionProfile: turn.executionProfile,
         narrativePolicy: turn.narrativePolicy,
+        ...(tools.narrativeSearch ? { narrativeSearch: tools.narrativeSearch } : {}),
         userText,
+        signal,
         emit,
       });
       const reminderMessage = this.deps.sessions.appendMessage({

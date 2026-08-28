@@ -5,8 +5,13 @@ import type {
   AgentRunMessageInsert,
   AgentRunMessagesRepo,
 } from '@ema-agent/storage';
+import type { ToolResult } from '@ema-agent/tools';
 import type { AgentLoopEvent } from '../events.js';
-import type { AgentRunMessage } from './types.js';
+import type {
+  AgentRunMessage,
+  AgentRunTextContent,
+  AgentRunToolCallContent,
+} from './types.js';
 
 export class AgentRunMessagesStore {
   constructor(private readonly repo: AgentRunMessagesRepo) {}
@@ -20,15 +25,26 @@ export class AgentRunMessagesStore {
     if (message) this.repo.insert(message);
   }
 
+  /** role↔content 形状由本类 messageFor 单点写入；读回按 role 还原同一联合。 */
   listForRun(agentRunId: string): readonly AgentRunMessage[] {
-    return this.repo.listForRun(agentRunId).map((row) => ({
-      id: row.id,
-      agentRunId: row.agent_run_id,
-      role: row.role,
-      content: JSON.parse(row.content_json) as unknown,
-      sequence: row.sequence,
-      createdAt: row.created_at,
-    }));
+    return this.repo.listForRun(agentRunId).map((row): AgentRunMessage => {
+      const base = {
+        id: row.id,
+        agentRunId: row.agent_run_id,
+        sequence: row.sequence,
+        createdAt: row.created_at,
+      };
+      const content = JSON.parse(row.content_json) as unknown;
+      switch (row.role) {
+        case 'assistant':
+        case 'reasoning':
+          return { ...base, role: row.role, content: content as AgentRunTextContent };
+        case 'tool_call':
+          return { ...base, role: 'tool_call', content: content as AgentRunToolCallContent };
+        case 'tool_result':
+          return { ...base, role: 'tool_result', content: content as ToolResult };
+      }
+    });
   }
 }
 

@@ -2,10 +2,20 @@
 // 状态块同时服务 SSE 流式(desktop 直接传 narrative_status slice 作 data)与持久化结果。
 import { useState, type JSX } from 'react';
 import { Button, Spinner } from '@ema-agent/ui';
+import type { NarrativeQueryMode } from '@ema-agent/narrative';
 import type { NarrativeSearchResult } from './NarrativeSearchTool.js';
 
 /** 展示前显示的前 N 字(超长截断,点"展开全文"看全部)。 */
 const PREVIEW_CHARS = 500;
+
+/** 检索模式的中文标签；Record 穷尽——NarrativeQueryMode 加成员时这里必须同批补。 */
+const NARRATIVE_MODE_LABELS: Record<NarrativeQueryMode, string> = {
+  local: '局部',
+  global: '全局',
+  hybrid: '混合',
+  naive: '向量',
+  mix: '图谱',
+};
 
 /** 状态块视图模型: 与 desktop 的 narrative_status slice 同构, 流式/持久化共用。 */
 export interface NarrativeStatusViewData {
@@ -204,10 +214,19 @@ function asNarrativeSearchResult(data: unknown): NarrativeSearchResult | null {
 
 export function NarrativeSearchArgsView({ args }: { args: unknown }): JSX.Element | null {
   if (!isRecord(args) || typeof args['query'] !== 'string') return null;
+  const mode = typeof args['mode'] === 'string' ? args['mode'] : undefined;
+  const modeLabel = mode && mode in NARRATIVE_MODE_LABELS
+    ? NARRATIVE_MODE_LABELS[mode as NarrativeQueryMode]
+    : mode;
   return (
     <div className="flex items-baseline gap-2 text-[11px] leading-relaxed">
       <span className="shrink-0 text-[var(--ema-text-tertiary)]">query:</span>
       <span className="break-all text-[var(--ema-text-secondary)]">{args['query']}</span>
+      {modeLabel && (
+        <span className="ml-auto shrink-0 rounded-full bg-[var(--ema-info-muted)] px-1.5 py-0.5 text-[10px] text-[var(--ema-info)]">
+          {modeLabel}
+        </span>
+      )}
     </div>
   );
 }

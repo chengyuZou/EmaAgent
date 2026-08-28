@@ -2,7 +2,11 @@
 import type { NarrativeClient } from './client.js';
 import { NarrativeClientError } from './errors.js';
 import type { NarrativeEvent } from './events.js';
-import type { NarrativeTimelineFailure } from './types.js';
+import type {
+  NarrativeLlmConnection,
+  NarrativeQueryMode,
+  NarrativeTimelineFailure,
+} from './types.js';
 
 export interface NarrativeRecallTimeline {
   readonly name: string;
@@ -11,7 +15,6 @@ export interface NarrativeRecallTimeline {
 }
 
 export interface NarrativeRecallResult {
-  readonly generationId: string;
   /** 成功查询的时间线；空文本仍保留，供 UI 区分无结果与未查询。 */
   readonly timelines: readonly NarrativeRecallTimeline[];
   readonly failures: readonly NarrativeTimelineFailure[];
@@ -19,9 +22,13 @@ export interface NarrativeRecallResult {
   readonly contextText: string | null;
 }
 
-/** Narrative Tool 使用的业务入口；宿主负责绑定本次 Turn 的身份与事件。 */
+/**
+ * Narrative Tool 使用的业务入口；宿主在 Turn 开始时冻结 LLM 连接与模式覆盖，
+ * 模型只能携带本次查询与可选的检索模式。
+ */
 export type NarrativeSearch = (
   query: string,
+  mode: NarrativeQueryMode | undefined,
   signal: AbortSignal,
 ) => Promise<NarrativeRecallResult>;
 
@@ -29,6 +36,10 @@ export interface PrepareNarrativeRecallInput {
   readonly sessionId: string;
   readonly turnId: string;
   readonly userInput: string;
+  /** Turn 冻结的当次 LLM 连接，随请求送达 Bridge。 */
+  readonly llm: NarrativeLlmConnection;
+  /** 已按"设置覆盖 > 模型选择 > hybrid"解析出的最终检索模式。 */
+  readonly mode: NarrativeQueryMode;
   readonly signal?: AbortSignal;
   readonly emit?: (event: NarrativeEvent) => void;
 }
@@ -45,7 +56,7 @@ export async function prepareNarrativeRecall(
 
   try {
     const response = await client.recall(
-      { query: input.userInput },
+      { query: input.userInput, llm: input.llm, mode: input.mode },
       input.signal,
     );
     const timelineOrder = Object.keys(response.routes);
@@ -64,7 +75,6 @@ export async function prepareNarrativeRecall(
       type: 'narrative_recall_completed',
       sessionId: input.sessionId,
       turnId: input.turnId,
-      generationId: response.generationId,
       timelineOrder,
       timelines: timelines.map((timeline) => ({
         name: timeline.name,
@@ -75,7 +85,6 @@ export async function prepareNarrativeRecall(
     });
 
     return {
-      generationId: response.generationId,
       timelines,
       failures: response.failures,
       contextText: contextText.length > 0 ? contextText : null,
@@ -83,11 +92,10 @@ export async function prepareNarrativeRecall(
   } catch (error) {
     if (isAbortLike(error, input.signal)) throw error;
     const failure = error instanceof NarrativeClientError
-      ? { code: error.code, message: error.message, retryable: error.retryable }
+      ? { code: error.code, message: error.message }
       : {
           code: 'narrative/unknown' as const,
           message: error instanceof Error ? error.message : String(error),
-          retryable: false,
         };
     input.emit?.({
       type: 'narrative_recall_failed',

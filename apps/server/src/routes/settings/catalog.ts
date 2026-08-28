@@ -23,7 +23,7 @@ export const settingsCatalogRoute = (deps: SettingsCatalogRouteDeps) =>
         description: definition.description,
         apply: definition.apply,
         defaultValue: definition.defaultValue,
-        schema: z.toJSONSchema(definition.schema, { io: 'input' }),
+        schema: toTransportSchema(definition.schema),
       }));
       return context.json({ items });
     })
@@ -31,3 +31,10 @@ export const settingsCatalogRoute = (deps: SettingsCatalogRouteDeps) =>
     .get('/event-display', context => {
       return context.json(resolveEventDisplay(deps.settings.get(eventDisplaySetting)));
     });
+
+/** Zod 4.4 的 ~standard 携带函数且不会进入 JSON；路由类型也必须反映真实传输形状。 */
+function toTransportSchema(schema: z.ZodType) {
+  const { '~standard': standardSchema, ...jsonSchema } = z.toJSONSchema(schema, { io: 'input' });
+  void standardSchema;
+  return jsonSchema;
+}

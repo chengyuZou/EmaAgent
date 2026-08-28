@@ -38,6 +38,8 @@ class SettingsCatalog { register/find/list }    // 重复 key 启动期 fail-fas
 ## 明确不负责
 
 - 不拥有 Provider 配置、角色卡等关系数据(各有明确数据表);凭据只进系统凭据库。
-- 不提供通用设置 UI;设置页是前端手写页,经 server 窄路由读写。
+- 不负责具体 UI。Server 把已注册定义投影为设置目录，Desktop 按目录中的
+  `key/label/description/apply/defaultValue/schema` 渲染通用参数；Provider、角色卡、
+  Memory 文件等关系数据仍使用各自的专属管理页。
 - `frontend.*` 域(主题、事件提示外观)是既有例外:声明托管在 `apps/server/src/settings/`,
   因为它们本质是桌面外观偏好,没有更合适的业务包。新增设置字段不要学这个位置。

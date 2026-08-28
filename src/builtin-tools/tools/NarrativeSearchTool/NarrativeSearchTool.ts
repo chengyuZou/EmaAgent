@@ -18,6 +18,10 @@ const inputSchema = z.object({
     .min(1)
     .max(MAX_QUERY_CHARS)
     .describe('A focused natural-language question about the story, characters, timeline, or world state.'),
+  mode: z
+    .enum(['local', 'global', 'hybrid', 'naive', 'mix'])
+    .optional()
+    .describe('Retrieval strategy: local=entity-level facts, global=relationships/themes, hybrid=both (default), naive=plain vector without keyword extraction, mix=knowledge graph + vector combined. Omit unless the question clearly demands a specific strategy.'),
 }).strict();
 
 type NarrativeSearchInput = z.infer<typeof inputSchema>;
@@ -67,7 +71,7 @@ export const NarrativeSearchTool = buildTool<
     context: NarrativeSearchToolContext,
     invocation: ToolInvocation,
   ): Promise<NarrativeSearchResult> {
-    const recalled = await context.narrativeSearch(input.query, invocation.signal);
+    const recalled = await context.narrativeSearch(input.query, input.mode, invocation.signal);
     const hasContent = recalled.timelines.some(
       (timeline) => timeline.text.trim().length > 0,
     );

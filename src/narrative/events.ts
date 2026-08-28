@@ -22,7 +22,6 @@ export type NarrativeEvent =
       type: 'narrative_recall_completed';
       sessionId: string;
       turnId: string;
-      generationId: string;
       timelineOrder: readonly string[];
       timelines: readonly NarrativeTimelineSummary[];
       failures: readonly NarrativeTimelineFailure[];
@@ -33,5 +32,4 @@ export type NarrativeEvent =
       turnId: string;
       code: NarrativeRecallFailureCode;
       message: string;
-      retryable: boolean;
     };

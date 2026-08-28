@@ -48,7 +48,6 @@ describe('Builtin ToolPool 能力装配', () => {
       subagentSpawner: {} as never,
       knowledgeSearch: async () => [] as never,
       narrativeSearch: async () => ({
-        generationId: 'generation-pool',
         timelines: [],
         contextText: null,
         failures: [],

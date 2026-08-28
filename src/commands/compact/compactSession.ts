@@ -53,6 +53,8 @@ import { CommandsError } from '../errors.js';
 export type CommandCompactResult =
   | {
       readonly status: 'completed';
+      /** 本次实际用于压缩的模型窗口；前端据此更新压缩后的 Context Meter。 */
+      readonly contextWindow: number;
       readonly beforeTokens: number;
       readonly afterTokens: number;
       readonly savedTokens: number;
@@ -225,6 +227,7 @@ export async function compactSession(
       });
       return {
         status: 'completed',
+        contextWindow: providerModel.contextWindow,
         beforeTokens: result.beforeTokens,
         afterTokens: result.afterTokens,
         savedTokens: result.savedTokens,
