@@ -1,53 +1,56 @@
 /**
- * Tauri bridge — the single choke-point for all Tauri IPC.
+ * Tauri 桥接层——所有 Tauri IPC 通信的唯一统一入口。
  *
- * Every `@tauri-apps/api/*` import lives HERE. No other file in
- * `apps/desktop/src` is allowed to import from `@tauri-apps/api`
- * directly. This gives us a plain-browser fallback so Ladle stories
- * and unit tests can render without Tauri.
+ * 所有 `@tauri-apps/api/*` 的导入都集中在这里。
+ * `apps/desktop/src` 中的其他文件都不允许直接导入 `@tauri-apps/api`。
+ * 这样可以为普通浏览器环境提供降级方案，使 Ladle stories
+ * 和单元测试即使没有 Tauri 运行时也能正常渲染。
  */
 
-// ── Public interface ─────────────────────────────────────────────────────────
+// ── 对外接口 ────────────────────────────────────────────────────────────────
 
 export interface TauriBridge {
-  /** Call a Rust command. Returns `null` when Tauri is absent. */
+  /** 调用一个 Rust command；如果当前没有 Tauri 运行时，则返回 `null`。 */
   invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T | null>;
 
-  /** Emit a cross-window event. No-op when Tauri is absent. */
+  /** 发送一个跨窗口事件；如果当前没有 Tauri 运行时，则什么也不做。 */
   emit(eventName: string, payload?: unknown): Promise<void>;
 
   /**
-   * Listen for cross-window events. Returns an unsubscribe function.
-   * Returns a no-op unsubscribe when Tauri is absent.
+   * 监听跨窗口事件，并返回一个取消监听函数。
+   * 如果当前没有 Tauri 运行时，则返回一个什么也不做的取消监听函数。
    */
   listen<T>(eventName: string, handler: (event: { payload: T }) => void): Promise<() => void>;
 
-  /** Whether the Tauri runtime is available. */
+  /** 当前是否存在可用的 Tauri 运行时。 */
   isTauri(): boolean;
 
-  /** Retrieve the shared secret generated at server startup. Returns null in browser mode. */
-  getSidecarSecret(): Promise<string | null>;
+  /** 获取服务端启动时生成的共享密钥；浏览器模式下返回 null。 */
+  getServerSecret(): Promise<string | null>;
 
-  /** Show / focus a pre-declared sub-window by label (chat / settings). */
+  /** 获取本机服务绑定的 loopback（回环地址）端口；浏览器模式下返回 null。 */
+  getServerPort(): Promise<number | null>;
+
+  /** 根据 label 显示或聚焦一个预先声明好的子窗口（例如 chat / settings）。 */
   openWindow(label: string): Promise<void>;
 
-  /** Quit the entire application. */
+  /** 退出整个应用。 */
   quit(): Promise<void>;
 
-  /** Toggle always-on-top for the current window. */
+  /** 设置当前窗口是否始终置顶。 */
   setAlwaysOnTop(value: boolean): Promise<void>;
 
-  /** Toggle mouse passthrough for the current window. */
+  /** 设置当前窗口是否启用鼠标穿透。 */
   setPassthrough(value: boolean): Promise<void>;
 
-  /** Begin native window drag. Must be called from a mousedown handler. */
+  /** 开始原生窗口拖拽；必须在 mousedown 事件处理函数中调用。 */
   startDragging(): Promise<void>;
 
   /**
-   * Global cursor position + current window bounds, all in physical pixels.
-   * Polled by the dynamic-passthrough loop — works even while the window
-   * ignores cursor events (cursorPosition is OS-global, not a window event).
-   * Returns null when Tauri is absent.
+   * 获取全局鼠标位置和当前窗口边界，单位均为物理像素。
+   * 动态鼠标穿透循环会轮询这些信息——即使窗口当前忽略鼠标事件也能工作，
+   * 因为 cursorPosition 获取的是操作系统级全局鼠标位置，而不是窗口事件。
+   * 如果当前没有 Tauri 运行时，则返回 null。
    */
   cursorAndBounds(): Promise<{
     cursor: { x: number; y: number };
@@ -56,9 +59,9 @@ export interface TauriBridge {
   } | null>;
 
   /**
-   * Open a native "Save As" dialog starting at defaultPath.
-   * Returns the chosen absolute path, or null if the user cancelled.
-   * Returns null when Tauri is absent (browser / Ladle dev mode).
+   * 打开原生“另存为”对话框，并从 defaultPath 指定的位置开始。
+   * 返回用户选择的绝对路径；如果用户取消则返回 null。
+   * 如果当前没有 Tauri 运行时（浏览器 / Ladle 开发模式），也返回 null。
    */
   saveFileDialog(opts?: {
     defaultPath?: string;
@@ -66,75 +69,38 @@ export interface TauriBridge {
   }): Promise<string | null>;
 
   /**
-   * Open a native "Open File" (or directory) dialog (single selection).
-   * Returns the absolute path of the selected file/folder, or null if cancelled.
-   * Returns null when Tauri is absent (browser / Ladle dev mode).
+   * 打开原生“打开文件”（或目录）对话框，仅允许单选。
+   * 返回选中文件/目录的绝对路径；如果用户取消则返回 null。
+   * 如果当前没有 Tauri 运行时（浏览器 / Ladle 开发模式），也返回 null。
    */
   openFileDialog(opts?: {
     defaultPath?: string;
     filters?: Array<{ name: string; extensions: string[] }>;
-    /** When true, opens a directory picker instead of a file picker. */
+    /** 为 true 时打开目录选择器，而不是文件选择器。 */
     directory?: boolean;
   }): Promise<string | null>;
 
   /**
-   * Open a native "Open File" dialog with multi-selection enabled.
-   * Returns the absolute paths of all selected files (empty array if cancelled).
-   * Returns [] when Tauri is absent (browser / Ladle dev mode).
+   * 打开支持多选的原生“打开文件”对话框。
+   * 返回所有选中文件的绝对路径；如果用户取消则返回空数组。
+   * 如果当前没有 Tauri 运行时（浏览器 / Ladle 开发模式），也返回 []。
    */
   openFileDialogMultiple(opts?: {
     defaultPath?: string;
     filters?: Array<{ name: string; extensions: string[] }>;
   }): Promise<string[]>;
 
-  /** 由 Rust 原生选框选择附件，并返回不暴露绝对路径的持久能力句柄。 */
-  pickAuthorizedFiles(): Promise<AuthorizedFile[]>;
-
-  /** 由 Rust 原生选框选择目录(Live2D 源目录/资源导出目的地),取消返回 null。 */
-  pickAuthorizedDirectory(): Promise<AuthorizedDirectory | null>;
-
   /**
-   * Subscribe to native OS-level file drag-and-drop events on the current webview.
-   * Tauri 2 disables HTML5 drop events by default (so we can read file *paths*,
-   * not just File contents). Position is in physical pixels — divide by
-   * window.devicePixelRatio to compare with getBoundingClientRect (CSS px).
-   * Returns a no-op unlisten when Tauri is absent.
-   */
-  onDragDrop(handler: (event: {
-    type: 'enter' | 'over' | 'drop' | 'leave';
-    files?: AuthorizedFile[];
-    position?: { x: number; y: number };
-  }) => void): Promise<() => void>;
-
-
-  /**
-   * Open a URL in the system's default browser.
-   * Uses Tauri's plugin:opener when available; falls back to window.open.
+   * 使用系统默认浏览器打开 URL。
+   * 优先使用 Tauri 的 plugin:opener；不可用时退化为 window.open。
    */
   openUrl(url: string): Promise<void>;
-
-  /**
-   * 验证桌面宿主签发的能力句柄后，用系统默认程序打开附件。
-   */
-  openAuthorizedFile(fileHandle: string): Promise<void>;
 
   /** 在系统文件管理器中定位一个本机路径。 */
   revealInFolder(path: string): Promise<void>;
 }
 
-export interface AuthorizedFile {
-  fileHandle: string;
-  name: string;
-  size: number;
-  mtime: number;
-}
-
-export interface AuthorizedDirectory {
-  fileHandle: string;
-  name: string;
-}
-
-// ── Detection ────────────────────────────────────────────────────────────────
+// ── Tauri 环境检测 ─────────────────────────────────────────────────────────
 
 let _detected: boolean | null = null;
 
@@ -151,7 +117,7 @@ function detectTauri(): boolean {
   return _detected;
 }
 
-// ── Lazy imports ─────────────────────────────────────────────────────────────
+// ── 懒加载导入 ──────────────────────────────────────────────────────────────
 
 type TauriCore   = typeof import('@tauri-apps/api/core');
 type TauriEvent  = typeof import('@tauri-apps/api/event');
@@ -220,7 +186,7 @@ async function getWebview(): Promise<TauriWebview | null> {
   }
 }
 
-// ── Implementation ───────────────────────────────────────────────────────────
+// ── 具体实现 ────────────────────────────────────────────────────────────────
 
 export const tauriBridge: TauriBridge = {
   isTauri: detectTauri,
@@ -294,8 +260,12 @@ export const tauriBridge: TauriBridge = {
     };
   },
 
-  async getSidecarSecret(): Promise<string | null> {
-    return tauriBridge.invoke<string>('get_sidecar_secret');
+  async getServerSecret(): Promise<string | null> {
+    return tauriBridge.invoke<string>('get_server_secret');
+  },
+
+  async getServerPort(): Promise<number | null> {
+    return tauriBridge.invoke<number>('get_server_port');
   },
 
   async saveFileDialog(opts = {}): Promise<string | null> {
@@ -317,64 +287,21 @@ export const tauriBridge: TauriBridge = {
     if (!dialog) return [];
     const result = await dialog.open({ multiple: true, ...opts });
     if (Array.isArray(result)) return result as string[];
-    // single-select falls through as a 1-element array; cancel → []
+    // 如果底层意外返回单个结果，则统一包装成单元素数组；取消选择则返回 []
     return result ? [result as string] : [];
   },
 
-  async pickAuthorizedFiles(): Promise<AuthorizedFile[]> {
-    return await tauriBridge.invoke<AuthorizedFile[]>('pick_authorized_files') ?? [];
-  },
-
-  async pickAuthorizedDirectory(): Promise<AuthorizedDirectory | null> {
-    return await tauriBridge.invoke<AuthorizedDirectory | null>('pick_authorized_directory') ?? null;
-  },
-
-  async onDragDrop(handler: (event: {
-    type: 'enter' | 'over' | 'drop' | 'leave';
-    files?: AuthorizedFile[];
-    position?: { x: number; y: number };
-  }) => void): Promise<() => void> {
-    const webview = await getWebview();
-    if (!webview) return () => {};
-    const unlistenDrop = await tauriBridge.listen<{
-      files: AuthorizedFile[];
-      position: { x: number; y: number };
-    }>('ema://authorized-file-drop', (event) => {
-      handler({ type: 'drop', files: event.payload.files, position: event.payload.position });
-    });
-    const unlistenWebview = await webview.getCurrentWebview().onDragDropEvent((event) => {
-      const p = event.payload;
-      if (p.type === 'leave') {
-        handler({ type: 'leave' });
-      } else if (p.type === 'over') {
-        handler({ type: 'over', position: { x: p.position.x, y: p.position.y } });
-      } else if (p.type === 'enter') {
-        handler({ type: 'enter', position: { x: p.position.x, y: p.position.y } });
-      }
-    });
-    return () => {
-      unlistenDrop();
-      unlistenWebview();
-    };
-  },
-
   async openUrl(url: string): Promise<void> {
-    // Tauri 2: plugin:opener|open_url (requires @tauri-apps/plugin-opener in tauri.conf.json).
-    // Falls back to window.open which Tauri webview routes to the system browser.
+    // Tauri 2：调用 plugin:opener|open_url（需要在 tauri.conf.json 中配置 @tauri-apps/plugin-opener）。
+    // 如果插件不可用，则退化为 window.open；Tauri WebView 会将其交给系统浏览器处理。
     const core = await getCore();
     if (core) {
       try {
         await core.invoke('plugin:opener|open_url', { url });
         return;
-      } catch { /* plugin not configured — fall through */ }
+      } catch { /* 插件未配置——继续执行后面的降级逻辑 */ }
     }
     window.open(url, '_blank');
-  },
-
-  async openAuthorizedFile(fileHandle: string): Promise<void> {
-    const core = await getCore();
-    if (!core) return;
-    await core.invoke('open_authorized_file', { fileHandle });
   },
 
   /** 在系统文件管理器中定位路径(后台进程日志目录等);插件缺失时抛错由调用方提示。 */

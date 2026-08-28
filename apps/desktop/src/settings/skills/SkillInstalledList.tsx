@@ -3,7 +3,7 @@ import { useState, type CSSProperties, type JSX } from 'react';
 import {
   Badge, Button, Card, Dialog, EmptyState, ScrollArea, Spinner, Switch, Tooltip,
 } from '@ema-agent/ui';
-import { useSkillStore } from '../../stores/skill-store.js';
+import { useSkillStore } from '../../stores/skill.js';
 import { skillsApi } from '../../api/skills.js';
 import { showToast } from '../../lib/toast.js';
 import { Markdown } from '../../markdown/renderer.js';

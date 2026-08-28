@@ -1,15 +1,22 @@
-// 渲染用户消息，并允许用户只重写当前 Session 的最后一轮。
+// 渲染用户消息与待发送输入：skill_ref 块渲染为 Skill chip，附件走线上投影，正文为 text 块。
 import { useRef, useState, type ChangeEvent, type JSX } from 'react';
 import { Button, IconButton, Textarea } from '@ema-agent/ui';
 
 import { Markdown } from '../../markdown/renderer.js';
 import { sessionsApi } from '../../api/sessions.js';
 import { showToast } from '../../lib/toast.js';
-import type { ChatHistoryItem } from '../../stores/conversation-store.js';
-import { useConversationStore } from '../../stores/conversation-store.js';
-import { useSessionStore } from '../../stores/session-store.js';
-import { AttachmentChip } from './AttachmentChip.js';
+import type { SessionHistoryMessage } from '../../api/sessions.js';
+import type { AttachmentReferenceBlock, SkillReferenceBlock } from '@ema-agent/session';
+import type { PendingInput } from '../state/messages.js';
+import { useMessages } from '../state/messages.js';
+import { useCurrentSession } from '../state/currentSession.js';
+import { useSessionStore } from '../../stores/session.js';
+import { useSkillStore } from '../../stores/skill.js';
+import { sendMessage } from '../state/turnRunner.js';
+import { chipMeta } from './AttachmentChip.js';
 import { formatTurnTime } from '../history/workGroups.js';
+import { messageText } from '../history/turnGroups.js';
+import { sessionAttachmentTab, useDockTabs } from '../frame/dockTabs.js';
 
 function editErrorMessage(error: unknown): string {
   if (!(error instanceof Error)) return '重新发送失败';
@@ -22,23 +29,48 @@ function editErrorMessage(error: unknown): string {
 }
 
 export interface UserBubbleProps {
-  message: ChatHistoryItem;
+  message: SessionHistoryMessage;
   canEdit?: boolean;
 }
 
 export function UserBubble({ message, canEdit = false }: UserBubbleProps): JSX.Element {
-  const attachments = message.attachments ?? [];
+  const content = messageText(message);
+  // 附件卡置顶；正文按输入顺序走：text 段与 skill_ref chip 内联混排（用户放置的位置）。
+  const attachments = Array.isArray(message.blocks)
+    ? message.blocks.filter(
+        (block): block is AttachmentReferenceBlock =>
+          typeof block === 'object'
+          && block !== null
+          && (block as { type?: unknown }).type === 'attachment_ref',
+      )
+    : [];
+  const segments = Array.isArray(message.blocks)
+    ? message.blocks.filter(
+        (block): block is { type: 'text'; text: string } | SkillReferenceBlock =>
+          typeof block === 'object'
+          && block !== null
+          && ['text', 'skill_ref'].includes(String((block as { type?: unknown }).type)),
+      )
+    : [{ type: 'text' as const, text: content }];
   const hasTurnId = !!message.turnId;
-  const viewedId  = useConversationStore((s) => s.viewedSessionId);
+  const viewedId = useCurrentSession((s) => s.viewedSessionId);
 
   const [editing, setEditing] = useState(false);
   const [draft,   setDraft]   = useState('');
   const [sending, setSending] = useState(false);
+  const [copied, setCopied] = useState(false);
   const rewoundRef = useRef(false);
-  const showEdit = canEdit && hasTurnId && !editing && message.content.trim().length > 0;
+  const showEdit = canEdit && hasTurnId && !editing && content.trim().length > 0;
+
+  const copyContent = (): void => {
+    void navigator.clipboard.writeText(content).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1000);
+    });
+  };
 
   const startEdit = (): void => {
-    setDraft(message.content);
+    setDraft(content);
     setEditing(true);
   };
 
@@ -52,27 +84,17 @@ export function UserBubble({ message, canEdit = false }: UserBubbleProps): JSX.E
         rewoundRef.current = true;
       }
       const session = useSessionStore.getState().sessions.byId.get(viewedId as string);
-      await useConversationStore.getState().sendMessage(viewedId, {
-        text,
+      await sendMessage(viewedId, {
+        parts: [{ type: 'text', text }],
         executionProfile: session?.executionProfile ?? 'chat',
         narrativePolicy: session?.narrativePolicy ?? 'auto',
       });
       setEditing(false);
 
       // 新 Turn 已被接受后再刷新，避免回滚成功但重发失败时丢失编辑框。
-      useConversationStore.setState((state) => {
-        const messages = new Map(state.messages);
-        messages.delete(viewedId as string);
-        const loaded = new Set(state.loadedMessageSessions);
-        loaded.delete(viewedId as string);
-        return { messages, loadedMessageSessions: loaded };
-      });
-      await useConversationStore.getState().loadMessages(viewedId);
+      await useMessages.getState().reloadMessages(viewedId);
     } catch (error) {
-      showToast(
-        editErrorMessage(error),
-        { variant: 'danger' },
-      );
+      showToast(editErrorMessage(error), { variant: 'danger' });
     } finally {
       setSending(false);
     }
@@ -81,12 +103,24 @@ export function UserBubble({ message, canEdit = false }: UserBubbleProps): JSX.E
   return (
     <div className="flex ml-12 flex-row-reverse ema-bubble-in">
       <div className="flex flex-col min-w-20 max-w-full items-end">
-        {/* Attachment chips — shown above the message bubble when present */}
         {attachments.length > 0 && (
           <div className="flex flex-wrap justify-end gap-1.5 mb-1.5 max-w-full">
-            {attachments.map((a) => (
-              <AttachmentChip key={a.id} attachment={a} />
-            ))}
+            {attachments.map((ref) => {
+              const { icon, color } = chipMeta(ref.mimeType, ref.name);
+              return (
+                <button
+                  type="button"
+                  key={ref.attachmentId}
+                  className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-[11px] bg-[var(--ema-surface-2)] text-[var(--ema-text-tertiary)] border border-[var(--ema-border)]"
+                  onClick={() => {
+                    if (viewedId) useDockTabs.getState().openTab(viewedId, sessionAttachmentTab(ref.attachmentId));
+                  }}
+                >
+                  <span className={`${icon} text-[10px]`} style={{ color }} aria-hidden />
+                  {ref.name}
+                </button>
+              );
+            })}
           </div>
         )}
 
@@ -117,15 +151,39 @@ export function UserBubble({ message, canEdit = false }: UserBubbleProps): JSX.E
               </Button>
             </div>
           </div>
-        ) : message.content.trim().length > 0 ? (
+        ) : content.trim().length > 0 || segments.some((s) => s.type === 'skill_ref') ? (
           <div className="rounded-2xl rounded-br-md px-5 py-3 border text-sm break-words bg-[var(--ema-surface-2)] border-[var(--ema-border)] text-[var(--ema-text-secondary)]">
-            <Markdown source={message.content} />
+            {segments.map((segment, index) =>
+              segment.type === 'skill_ref' ? (
+                <span
+                  key={`skill-${segment.skillKey}-${index}`}
+                  className="inline-flex items-center gap-1 rounded-lg px-1.5 py-0.5 mx-0.5 align-baseline text-[11px] bg-[var(--ema-info-muted)] text-[var(--ema-info)]"
+                >
+                  <span className="i-lucide:sparkles text-[10px]" aria-hidden />
+                  {segment.name}
+                </span>
+              ) : (
+                <span key={`text-${index}`} className="ema-md-inline">
+                  <Markdown source={segment.text} />
+                </span>
+              ),
+            )}
           </div>
         ) : null}
 
         {/* 只有最新一条用户消息可回滚重发，历史消息不提供破坏性删除。 */}
         <div className="flex items-center justify-end gap-1.5 text-[11px] text-[var(--ema-text-tertiary)]">
           <span className="opacity-50 tabular-nums">{formatTurnTime(message.createdAt)}</span>
+          {content.trim().length > 0 && !editing && (
+            <IconButton
+              variant="default"
+              size="sm"
+              icon={copied ? 'i-lucide:check' : 'i-lucide:copy'}
+              label="复制"
+              className="opacity-30 hover:opacity-80"
+              onClick={copyContent}
+            />
+          )}
           {showEdit && (
             <IconButton
               variant="default"
@@ -136,6 +194,58 @@ export function UserBubble({ message, canEdit = false }: UserBubbleProps): JSX.E
               onClick={startEdit}
             />
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** 已提交但尚未落库的用户输入：与用户气泡同形，Skill 名按 skillKey 从目录查。 */
+export function PendingBubble({ pending }: { pending: PendingInput }): JSX.Element {
+  const skills = useSkillStore((s) => s.skills);
+  const attachmentParts = pending.parts.filter((part) => part.type === 'attachment');
+  const bodyParts = pending.parts.filter((part) => part.type !== 'attachment');
+
+  return (
+    <div className="flex ml-12 flex-row-reverse ema-bubble-in opacity-80">
+      <div className="flex flex-col min-w-20 max-w-full items-end">
+        {attachmentParts.length > 0 && (
+          <div className="flex flex-wrap justify-end gap-1.5 mb-1.5 max-w-full">
+            {attachmentParts.map((part, index) => {
+              const displayName = part.attachment.name ?? part.attachment.sourcePath.split(/[\\/]/).pop() ?? '附件';
+              const { icon, color } = chipMeta(part.attachment.mimeType ?? '', displayName);
+              return (
+                <span
+                  key={`${part.attachment.sourcePath}-${index}`}
+                  className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-[11px] bg-[var(--ema-surface-2)] text-[var(--ema-text-tertiary)] border border-[var(--ema-border)]"
+                >
+                  <span className={`${icon} text-[10px]`} style={{ color }} aria-hidden />
+                  {displayName}
+                </span>
+              );
+            })}
+          </div>
+        )}
+        <div className="rounded-2xl rounded-br-md px-5 py-3 border text-sm break-words bg-[var(--ema-surface-2)] border-[var(--ema-border)] text-[var(--ema-text-secondary)]">
+          {bodyParts.map((part, index) => {
+            if (part.type === 'skill') {
+              const name = skills.find((skill) => skill.key === part.skillKey)?.name ?? part.skillKey;
+              return (
+                <span
+                  key={`skill-${part.skillKey}-${index}`}
+                  className="inline-flex items-center gap-1 rounded-lg px-1.5 py-0.5 mx-0.5 align-baseline text-[11px] bg-[var(--ema-info-muted)] text-[var(--ema-info)]"
+                >
+                  <span className="i-lucide:sparkles text-[10px]" aria-hidden />
+                  {name}
+                </span>
+              );
+            }
+            return (
+              <span key={`text-${index}`} className="ema-md-inline">
+                <Markdown source={part.text} />
+              </span>
+            );
+          })}
         </div>
       </div>
     </div>

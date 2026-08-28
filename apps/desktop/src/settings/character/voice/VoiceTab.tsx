@@ -3,11 +3,11 @@
  */
 import { useState, useRef, type CSSProperties, type JSX } from 'react';
 import { Button, Checkbox, EntityRow, FilePicker, Select, Textarea } from '@ema-agent/ui';
-import { useCharacterStore } from '../../../stores/character-store.js';
+import { useCharacterStore } from '../../../stores/character.js';
 import { charactersApi, type Character } from '../../../api/characters.js';
 import { serverClient } from '../../../api/client.js';
 import { showToast } from '../../../lib/toast.js';
-import { PrimaryBadge } from '../shared/ResourceControls.js';
+import { PrimaryBadge, ResourceActions } from '../shared/ResourceControls.js';
 
 type VoiceSample = Character['voiceSamples'][number];
 
@@ -29,7 +29,17 @@ export function VoiceTab({
   const [showUpload, setShowUpload] = useState(false);
   const [uploading,  setUploading]  = useState(false);
   const [playing,    setPlaying]    = useState<string | null>(null);
+  const [busy,       setBusy]       = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const run = async (action: () => Promise<unknown>): Promise<void> => {
+    setBusy(true);
+    try {
+      await action();
+    } finally {
+      setBusy(false);
+    }
+  };
 
   async function handleUpload(
     file:       File,
@@ -116,6 +126,26 @@ export function VoiceTab({
               isPrimary={ref.isPrimary}
               isPlaying={playing === ref.id}
               onPlay={() => handlePlay(ref.id)}
+              {...(!isBuiltin ? {
+                actions: (
+                  <ResourceActions
+                    isPrimary={ref.isPrimary}
+                    enabled={ref.enabled}
+                    busy={busy}
+                    onSetPrimary={() => run(() =>
+                      useCharacterStore.getState().setPrimaryVoice(characterId, ref.id))}
+                    onToggleEnabled={() => run(() =>
+                      useCharacterStore.getState().patchVoice(characterId, ref.id, { enabled: !ref.enabled }))}
+                    onExport={(directory) => run(async () => {
+                      const exported = await useCharacterStore.getState().exportVoice(characterId, ref.id, directory);
+                      showToast(`已导出到 ${exported}`, { variant: 'success' });
+                    })}
+                    onDelete={() => run(() =>
+                      useCharacterStore.getState().deleteVoice(characterId, ref.id))}
+                    deleteConfirmMessage={`删除参考音频「${ref.name}」后不可恢复。`}
+                  />
+                ),
+              } : {})}
             />
             </div>
           ))}
@@ -148,28 +178,32 @@ export function VoiceTab({
 // ── RefAudioRow ───────────────────────────────────────────────────────────────
 
 function RefAudioRow({
-  refAudio, isPrimary, isPlaying, onPlay,
+  refAudio, isPrimary, isPlaying, onPlay, actions,
 }: {
   refAudio:     VoiceSample;
   isPrimary:    boolean;
   isPlaying:    boolean;
   onPlay():     void;
+  actions?:     JSX.Element;
 }): JSX.Element {
   return (
     <EntityRow decorate="ema-card-decorate--mesh" className="p-3">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-[var(--ema-text-primary)]">{refAudio.name}</span>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-sm font-semibold text-[var(--ema-text-primary)] truncate">{refAudio.name}</span>
           <PrimaryBadge isPrimary={isPrimary} />
         </div>
-        <Button
-          variant={isPlaying ? 'primary' : 'ghost'}
-          size="sm"
-          icon={isPlaying ? 'i-mdi:stop' : 'i-mdi:play'}
-          onClick={onPlay}
-        >
-          {isPlaying ? '停止' : '试听'}
-        </Button>
+        <div className="flex items-center gap-1 shrink-0">
+          <Button
+            variant={isPlaying ? 'primary' : 'ghost'}
+            size="sm"
+            icon={isPlaying ? 'i-mdi:stop' : 'i-mdi:play'}
+            onClick={onPlay}
+          >
+            {isPlaying ? '停止' : '试听'}
+          </Button>
+          {actions}
+        </div>
       </div>
       <p className="text-xs text-[var(--ema-text-tertiary)] mt-1">
         prompt: "{refAudio.promptText}" · lang: {refAudio.promptLang}

@@ -1,7 +1,8 @@
 // 侧栏区块骨架:命令按钮、可折叠分区头、动画容器与会话/项目分区。
 import { useEffect, useState, type JSX } from 'react';
 import { Button } from '@ema-agent/ui';
-import type { SidebarProjectGroup, SidebarSession } from './sidebarFormat.js';
+import type { SessionListItem, SessionProjectGroup } from '../../api/sessions.js';
+import type { TurnStreamState } from '../state/messages.js';
 
 import { SidebarRow } from './SidebarRow.js';
 
@@ -59,9 +60,9 @@ export function ProjectListSection({
   label, groups, viewedId, streaming, pendingCounts,
 }: {
   label: string;
-  groups: SidebarProjectGroup[];
+  groups: SessionProjectGroup[];
   viewedId: string | null;
-  streaming: Map<string, unknown>;
+  streaming: ReadonlyMap<string, TurnStreamState>;
   pendingCounts: Record<string, number>;
 }): JSX.Element {
   const [collapsed, setCollapsed] = useState(false);
@@ -97,9 +98,9 @@ export function ProjectListSection({
 function ProjectNode({
   group, viewedId, streaming, pendingCounts,
 }: {
-  group: SidebarProjectGroup;
+  group: SessionProjectGroup;
   viewedId: string | null;
-  streaming: Map<string, unknown>;
+  streaming: ReadonlyMap<string, TurnStreamState>;
   pendingCounts: Record<string, number>;
 }): JSX.Element {
   const hasActive = group.sessions.some((s) => s.id === (viewedId as string));
@@ -145,9 +146,9 @@ export function SidebarSection({
   label, sessions, viewedId, streaming, pendingCounts, collapsed: initCollapsed = false, emptyText,
 }: {
   label: string;
-  sessions: SidebarSession[];
+  sessions: SessionListItem[];
   viewedId: string | null;
-  streaming: Map<string, unknown>;
+  streaming: ReadonlyMap<string, TurnStreamState>;
   pendingCounts: Record<string, number>;
   collapsed?: boolean;
   emptyText?: string;

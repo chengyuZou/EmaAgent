@@ -1,7 +1,12 @@
-// 提供 MCP 服务器配置、连接测试、导入和市场浏览界面。
+// 键值对行编辑器（MCP env/headers 表单用）：secret 模式遮蔽值显示。
 import { useState } from 'react';
 import { Button, IconButton, Input } from '@ema-agent/ui';
-import { type McpKeyValuePair } from './mcp-form-state.js';
+
+/** 表单里的一条键值对；提交时由对话框转换为 Record。 */
+export interface McpKeyValuePair {
+  key: string;
+  value: string;
+}
 
 export function KeyValueEditor({
   pairs, onChange, keyPlaceholder, valuePlaceholder, secret,

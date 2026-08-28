@@ -1,7 +1,7 @@
 // 把结构化 SSE 事件转换为受用户设置控制的本地通知。
 
 import type { AppEvent, TurnSseEvent } from '@ema-agent/server/sse/eventHub.js';
-import { useSettingsStore, type EventDisplayConfig } from '../stores/settings-store.js';
+import { useSettingsStore, type EventDisplayConfig } from '../stores/settings.js';
 import { showToast, type ToastOptions } from './toast.js';
 
 /** 通知层可见的全部线上事件：Turn 流（含语音输出）+ 应用级广播。 */

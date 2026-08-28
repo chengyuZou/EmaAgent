@@ -2,12 +2,12 @@
 import type { JSX } from 'react';
 import { IconButton } from '@ema-agent/ui';
 
-import { useConversationStore } from '../../stores/conversation-store.js';
-import { useSessionStore } from '../../stores/session-store.js';
+import { useCurrentSession } from '../state/currentSession.js';
+import { useSessionStore } from '../../stores/session.js';
 import { showToast } from '../../lib/toast.js';
 
 export function ForkButton({ turnId }: { turnId: string }): JSX.Element | null {
-  const viewedId = useConversationStore((s) => s.viewedSessionId);
+  const viewedId = useCurrentSession((s) => s.viewedSessionId);
   if (!viewedId) return null;
 
   const handleFork = async (): Promise<void> => {
@@ -15,7 +15,7 @@ export function ForkButton({ turnId }: { turnId: string }): JSX.Element | null {
       const newId = await useSessionStore
         .getState()
         .forkSession(viewedId, turnId);
-      await useConversationStore.getState().viewSession(newId);
+      await useCurrentSession.getState().viewSession(newId);
       showToast('已从该回复创建新会话');
     } catch (error) {
       showToast(error instanceof Error ? error.message : '创建新会话失败', { variant: 'danger' });

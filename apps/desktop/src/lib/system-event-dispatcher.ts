@@ -1,9 +1,10 @@
 // 把跨窗口收到的系统事件写入当前窗口自己的前端 Store。
 
 import type { AppEvent } from '@ema-agent/server/sse/eventHub.js';
-import { useBackgroundProcessStore } from '../stores/backgroundProcessStore.js';
-import { useCharacterStore } from '../stores/character-store.js';
-import { useKnowledgeStore } from '../stores/knowledge-store.js';
+import { useBackgroundProcessStore } from '../stores/backgroundProcess.js';
+import { useCharacterStore } from '../stores/character.js';
+import { useKnowledgeStore } from '../stores/knowledge.js';
+import { useSettingsStore } from '../stores/settings.js';
 
 export function dispatchSystemEvent(event: AppEvent): void {
   switch (event.type) {
@@ -13,48 +14,23 @@ export function dispatchSystemEvent(event: AppEvent): void {
       break;
 
     case 'kb_ingest_progress':
-      useKnowledgeStore.getState().onIngestProgress(
-        event.kbId,
-        event.taskId,
-        event.assetId,
-        event.stage,
-        event.progress,
-      );
-      break;
-
     case 'kb_ingest_completed':
-      useKnowledgeStore.getState().onIngestCompleted(event.kbId, event.taskId, event.assetId);
-      break;
-
     case 'kb_ingest_failed':
-      useKnowledgeStore.getState().onIngestFailed(event.kbId, event.taskId, event.assetId, event.error);
-      break;
-
     case 'kb_reembed_progress':
-      useKnowledgeStore.getState().onReembedProgress(
-        event.kbId,
-        event.taskId,
-        event.assetId,
-        event.progress,
-        { total: event.total, completed: event.completed },
-      );
-      break;
-
     case 'kb_reembed_completed':
-      useKnowledgeStore.getState().onReembedCompleted(event.kbId, event.taskId, event.assetId);
-      break;
-
     case 'kb_reembed_cancelled':
-      useKnowledgeStore.getState().onReembedCancelled(event.kbId, event.taskId, event.assetId);
-      break;
-
     case 'kb_reembed_failed':
-      useKnowledgeStore.getState().onReembedFailed(event.kbId, event.taskId, event.assetId, event.error);
+      useKnowledgeStore.getState().applyKnowledgeEvent(event);
       break;
 
     case 'background_process_changed':
       // 面板只原位更新已加载的行;未加载的 Session 不预取,等打开再拉。
       useBackgroundProcessStore.getState().applyEvent(event);
+      break;
+
+    case 'settings_changed':
+      // 每个 WebView 都有自己的 Store；收到后读取后端生效值，兑现 nextOperation。
+      void useSettingsStore.getState().refreshRuntimeSettings().catch(() => {});
       break;
 
     default:

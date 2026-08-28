@@ -1,17 +1,10 @@
 import { create } from 'zustand';
 import { mcpApi, type McpServerConfig, type McpServerItem, type McpConnection, type McpProbeResult, type McpImportResult, type McpMarketEntry, type McpInstallProvenance } from '../api/mcp.js';
 
-export type { McpServerConfig, McpServerItem, McpConnection, McpProbeResult, McpImportResult, McpMarketEntry };
-
-// ── Composite type used everywhere in the UI ──────────────────────────────────
-
-/** 列表条目即记录 + 实时连接态（服务端已合成，前端不再拼装）。 */
-export type McpServerEntry = McpServerItem;
-
 // ── Store interface ───────────────────────────────────────────────────────────
 
 export interface McpStoreState {
-  servers:  McpServerEntry[];
+  servers:  McpServerItem[];
   loading:  boolean;
   error:    string | null;
 

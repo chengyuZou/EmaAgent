@@ -1,4 +1,4 @@
-/** RawCommandPanel — display toolName + JSON args in monospace, unfolded. */
+// RawCommandPanel — 等宽完整展示工具名与原始参数 JSON。
 export interface RawCommandPanelProps {
   toolName: string;
   args: unknown;

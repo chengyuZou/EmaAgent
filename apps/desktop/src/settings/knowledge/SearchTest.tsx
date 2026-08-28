@@ -1,7 +1,7 @@
 // 检索测试面板:输入查询查看混合检索的命中结果与得分。
 import { useState, type CSSProperties, type JSX } from 'react';
 import { Button, Callout, IconButton, Input, Spinner } from '@ema-agent/ui';
-import { useKnowledgeStore } from '../../stores/knowledge-store.js';
+import { useKnowledgeStore } from '../../stores/knowledge.js';
 import type { KnowledgeSearchHit } from '../../api/knowledge.js';
 
 export function SearchTest(): JSX.Element {
@@ -12,7 +12,7 @@ export function SearchTest(): JSX.Element {
 
   async function handleSearch(): Promise<void> {
     if (!query.trim()) return;
-    await useKnowledgeStore.getState().search(query);
+    await useKnowledgeStore.getState().search({ query });
   }
 
   function handleChange(value: string): void {

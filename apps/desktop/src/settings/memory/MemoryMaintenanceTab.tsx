@@ -3,7 +3,7 @@ import { useEffect, useState, type JSX } from 'react';
 import {
   Badge, Button, Callout, ConfirmDialog, Divider, ScrollArea, Spinner,
 } from '@ema-agent/ui';
-import { useMemoryStore } from '../../stores/memory-store.js';
+import { useMemoryStore } from '../../stores/memory.js';
 import { showToast } from '../../lib/toast.js';
 import {
   JOB_KIND_LABEL, JOB_STATUS_LABEL, JOB_STATUS_VARIANT, relativeTime,

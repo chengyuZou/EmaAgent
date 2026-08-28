@@ -1,13 +1,9 @@
-/**
- * AttachmentChip — single file attachment displayed as a chip.
- * Used in both the ChatInput preview (with remove button) and UserBubble history.
- * 路径与文件句柄不进传输层，chip 只做展示，不提供打开动作。
- */
+// AttachmentChip — 输入框附件预览卡；点击查看、移除与文件类型提示共用这一处。
 import type { JSX } from 'react';
 
-// ── Icon + color by MIME ──────────────────────────────────────────────────────
+// ── 按 MIME/扩展名取图标与颜色 ────────────────────────────────────────────────
 
-function chipMeta(mime: string, name: string): { icon: string; color: string } {
+export function chipMeta(mime: string, name: string): { icon: string; color: string } {
   if (mime.startsWith('image/'))
     return { icon: 'i-mdi:image-outline',          color: 'var(--ema-file-image)' };
 
@@ -42,40 +38,46 @@ function fmtSize(bytes: number): string {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-/** 待发送附件（TurnAttachmentInput+id）与历史附件（传输层的 byteSize 形态）共同的展示投影。 */
+/** 输入框待发送附件的展示输入（TurnAttachmentInput 的展示字段子集）。 */
 export interface AttachmentChipProps {
   attachment: {
     name?: string;
     mimeType?: string;
     size?: number;
-    byteSize?: number;
   };
-  /** Show ✕ remove button (input preview mode). */
+  /** 传入即显示 ✕ 移除按钮。 */
   onRemove?: () => void;
+  onOpen?: () => void;
 }
 
-export function AttachmentChip({ attachment, onRemove }: AttachmentChipProps): JSX.Element {
+export function AttachmentChip({ attachment, onRemove, onOpen }: AttachmentChipProps): JSX.Element {
   const name = attachment.name ?? '附件';
   const { icon, color } = chipMeta(attachment.mimeType ?? '', name);
-  const sizeStr = fmtSize(attachment.size ?? attachment.byteSize ?? 0);
+  const sizeStr = fmtSize(attachment.size ?? 0);
 
   return (
     <div
-      className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 group transition-colors ema-chip-in bg-[var(--ema-surface-2)]"
+      className={`flex items-center gap-1.5 rounded-lg px-2 py-1.5 group transition-colors ema-chip-in bg-[var(--ema-surface-2)] ${onOpen ? 'cursor-pointer hover:bg-[var(--ema-surface-3)]' : ''}`}
       style={{
         width:      152,
         border:     '1px solid var(--ema-border)',
       }}
       title={name}
+      role={onOpen ? 'button' : undefined}
+      tabIndex={onOpen ? 0 : undefined}
+      onClick={onOpen}
+      onKeyDown={onOpen ? (event) => {
+        if (event.key === 'Enter' || event.key === ' ') onOpen();
+      } : undefined}
     >
-      {/* File type icon */}
+      {/* 文件类型图标 */}
       <span
         className={`${icon} text-base shrink-0`}
         style={{ color }}
         aria-hidden
       />
 
-      {/* Name + size */}
+      {/* 文件名 + 大小 */}
       <div className="flex-1 min-w-0">
         <div
           className="text-[11px] leading-tight truncate font-medium text-[var(--ema-text-primary)]"
@@ -89,7 +91,7 @@ export function AttachmentChip({ attachment, onRemove }: AttachmentChipProps): J
         )}
       </div>
 
-      {/* Remove button (input preview only) */}
+      {/* 移除按钮（仅输入预览态显示） */}
       {onRemove && (
         <button
           className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity -mr-0.5 text-[var(--ema-text-tertiary)] hover:text-[var(--ema-danger)]"

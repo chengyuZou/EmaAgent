@@ -4,12 +4,11 @@
  */
 import { useState, useEffect, useCallback, type JSX } from 'react';
 import { Button, Callout, EmptyState, Spinner } from '@ema-agent/ui';
-import { useKnowledgeStore } from '../../stores/knowledge-store.js';
+import { useKnowledgeStore } from '../../stores/knowledge.js';
 import {
   documentNeedsReembed,
   type ResolvedEmbedSelection,
-} from './knowledge-base-embedding-state.js';
-import { KbRetrievalSettings } from './KbRetrievalSettings.js';
+} from './embeddingSelection.js';
 import { LibraryManager } from './LibraryManager.js';
 import { KbModelSettings } from './KbModelSettings.js';
 import { ProcessingQueue } from './ProcessingQueue.js';
@@ -50,9 +49,6 @@ export function KnowledgeBaseTab(): JSX.Element {
 
       {/* ── Retrieval models (embed + rerank) ── */}
       <KbModelSettings onEmbedModelChanged={handleEmbedModelChanged} />
-
-      {/* ── Retrieval tuning (kb.retrieval) ── */}
-      <KbRetrievalSettings />
 
       {/* ── Background processing queue ── */}
       <ProcessingQueue />

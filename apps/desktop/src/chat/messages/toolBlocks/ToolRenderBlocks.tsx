@@ -1,5 +1,5 @@
-// Tool 块的五个渲染件:参数平铺、结果分派、Bash 终端融合、JSON 高亮与 diff 上色。
-import type { JSX } from 'react';
+// Tool 块的五个渲染件:参数平铺、结果分派、Bash 终端卡、JSON 高亮与 diff 上色。
+import { useState, type JSX } from 'react';
 import { renderToolArgs, renderToolResult, stripOuterBraces } from './tool-renderers.js';
 import { JSON_COLORS, tokenizeJson } from './jsonTokenize.js';
 
@@ -46,25 +46,61 @@ export function ToolResultViewBlock({ view }: { view: ReturnType<typeof renderTo
   return <JsonBlock code={stripOuterBraces(view.text)} />;
 }
 
-// ── BashBlock ─────────────────────────────────────────────────────────────────
+// ── BashBlock（终端卡：banner 固定 + 输出独立滚动不换行） ─────────────────────
 
-export function BashBlock({ cmd, output, partialArgs, isPending }: {
-  cmd: string; output: string | null; partialArgs?: string; isPending: boolean;
+export type TerminalStatus = 'running' | 'awaiting_permission' | 'success' | 'failed' | 'denied';
+
+const TERMINAL_PILL: Readonly<Record<TerminalStatus, { label: string; color: string }>> = {
+  running: { label: '运行中', color: 'var(--ema-warning-text)' },
+  awaiting_permission: { label: '等待确认', color: 'var(--ema-info-text)' },
+  success: { label: '成功', color: 'var(--ema-success-text)' },
+  failed: { label: '失败', color: 'var(--ema-danger-text)' },
+  denied: { label: '已拒绝', color: 'var(--ema-danger-text)' },
+};
+
+export function BashBlock({ cmd, output, partialArgs, isPending, status }: {
+  cmd: string;
+  output: string | null;
+  partialArgs?: string;
+  isPending: boolean;
+  status: TerminalStatus;
 }): JSX.Element {
+  const [copied, setCopied] = useState(false);
   const displayCmd = cmd || partialArgs || '';
+  const pill = TERMINAL_PILL[status];
+
+  const copyAll = (): void => {
+    const text = [`$ ${displayCmd}`, ...(output !== null ? ['', output] : [])].join('\n');
+    void navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1000);
+    });
+  };
+
   return (
-    <pre className="font-mono text-[11px] whitespace-pre-wrap break-all leading-relaxed bg-transparent m-0 p-0">
-      {displayCmd && (
-        <span className="text-[var(--ema-syntax-prompt)]">{'$ '}{displayCmd}</span>
+    <div className="ema-terminal-card">
+      <div className="ema-terminal-banner">
+        <span className="ema-terminal-gutter-dot" style={{ background: pill.color }} aria-hidden />
+        <code className="ema-terminal-cmd" title={displayCmd}>$ {displayCmd}</code>
+        <span className="ema-terminal-pill" style={{ color: pill.color }}>{pill.label}</span>
+        <button
+          type="button"
+          className="ema-terminal-copy"
+          aria-label="复制命令与输出"
+          onClick={(e) => { e.stopPropagation(); copyAll(); }}
+        >
+          <span className={copied ? 'i-lucide:check' : 'i-lucide:copy'} aria-hidden />
+        </button>
+      </div>
+      {(output !== null || isPending) && (
+        <div className="ema-terminal-output">
+          <pre>
+            {output}
+            {isPending && <span className="text-[var(--ema-text-tertiary)] animate-pulse"> ▌</span>}
+          </pre>
+        </div>
       )}
-      {isPending && <span className="text-[var(--ema-text-tertiary)] animate-pulse"> ▌</span>}
-      {output !== null && (
-        <>
-          {'\n\n'}
-          <span className="text-[var(--ema-text-secondary)]">{output}</span>
-        </>
-      )}
-    </pre>
+    </div>
   );
 }
 

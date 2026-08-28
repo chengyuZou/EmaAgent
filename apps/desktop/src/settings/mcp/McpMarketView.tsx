@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   Badge, Button, Callout, Dialog, EmptyState, Field, Input, MarketCard, ScrollArea, Spinner
 } from '@ema-agent/ui';
-import { useMcpStore, type McpMarketEntry } from '../../stores/mcp-store.js';
+import { useMcpStore } from '../../stores/mcp.js';
+import type { McpMarketEntry } from '../../api/mcp.js';
 import { mcpApi } from '../../api/mcp.js';
 import { showToast } from '../../lib/toast.js';
 import { MarketSourceManager } from '../skills/MarketSourceManager.js';

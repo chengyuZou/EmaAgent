@@ -4,7 +4,8 @@ import { useEffect, useState, type CSSProperties, type JSX } from 'react';
 import {
   Button, Callout, ConfirmDialog, EmptyState, ScrollArea, Spinner, Tabs,
 } from '@ema-agent/ui';
-import { useMcpStore, type McpServerEntry } from '../../stores/mcp-store.js';
+import { useMcpStore } from '../../stores/mcp.js';
+import type { McpServerItem } from '../../api/mcp.js';
 import { showToast } from '../../lib/toast.js';
 import { McpMarketView } from './McpMarketView.js';
 import { ServerRow } from './McpServerRow.js';
@@ -16,7 +17,7 @@ export function McpTab(): JSX.Element {
   const error   = useMcpStore((s) => s.error);
 
   const [addOpen, setAddOpen] = useState(false);
-  const [editing, setEditing] = useState<McpServerEntry | null>(null);
+  const [editing, setEditing] = useState<McpServerItem | null>(null);
   const [importOpen, setImportOpen] = useState(false);
 
   const [activeTab, setActiveTab] = useState('installed');
@@ -26,12 +27,12 @@ export function McpTab(): JSX.Element {
 
   const installedNames = new Set(servers.map((s) => s.name));
 
-  function handleEdit(sv: McpServerEntry): void {
+  function handleEdit(sv: McpServerItem): void {
     setEditing(sv);
     setAddOpen(true);
   }
 
-  async function handleToggleEnabled(sv: McpServerEntry): Promise<void> {
+  async function handleToggleEnabled(sv: McpServerItem): Promise<void> {
     try {
       if (sv.enabled) {
         await useMcpStore.getState().disable(sv.name);

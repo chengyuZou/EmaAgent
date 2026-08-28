@@ -505,3 +505,6 @@
 .ema-link:focus-visible {
   box-shadow: var(--ema-shadow-focus);
 }
+
+/* 用户气泡内联段：text 段与 skill chip 共享同一行 */
+.ema-md-inline p { display: inline; margin: 0; }

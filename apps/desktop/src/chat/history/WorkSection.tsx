@@ -1,30 +1,32 @@
-// Codex 式工作区:一行"已处理 X · 动词摘要 · N 个错误"折叠整段工作,流式直播当前动作。
+// 工作区折叠段：一行"已处理 X · 动词摘要 · N 个错误"折叠整段工作，流式直播当前动作。
 import { useEffect, useState, type JSX, type ReactNode } from 'react';
-import type { AssistantSlice } from '../../stores/conversation-store.js';
 import {
   formatWorkDuration,
   liveAction,
   liveActionLabel,
   tallySummary,
   tallyTools,
+  isToolRow,
+  type WorkRow,
+  type ToolWorkRow,
 } from './workGroups.js';
 
 export interface WorkSectionProps {
-  slices: readonly AssistantSlice[];
+  rows: readonly WorkRow[];
   streaming: boolean;
-  /** 完成的 turn 的持久耗时;流式期间忽略,用 createdAt 现场计。 */
+  /** 完成的 Turn 的持久耗时；流式期间忽略，用 createdAt 现场计。 */
   durationMs?: number;
   createdAt: number;
   children: ReactNode;
 }
 
 export function WorkSection({
-  slices, streaming, durationMs, createdAt, children,
+  rows, streaming, durationMs, createdAt, children,
 }: WorkSectionProps): JSX.Element {
   const [open, setOpen] = useState(streaming);
   const [elapsedMs, setElapsedMs] = useState(0);
 
-  // 终态默认收起;展开/收起都走 ema-collapsible 双向动画。
+  // 终态默认收起；展开/收起都走 ema-collapsible 双向动画。
   useEffect(() => {
     if (!streaming) setOpen(false);
   }, [streaming]);
@@ -37,9 +39,10 @@ export function WorkSection({
     return () => clearInterval(id);
   }, [streaming, createdAt]);
 
-  const tally = tallyTools(slices);
-  const parts = tallySummary(slices, tally);
-  const action = liveAction(slices, streaming);
+  const toolRows = rows.filter(isToolRow);
+  const tally = tallyTools(toolRows);
+  const parts = tallySummary(toolRows, tally);
+  const action = liveAction(rows, streaming);
 
   return (
     <div className="flex flex-col">

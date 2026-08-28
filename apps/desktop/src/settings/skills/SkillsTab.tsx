@@ -2,7 +2,7 @@
 // 市场视图与已安装列表各自成文件,这里只取数与拼块。
 import { useEffect, useState, type JSX } from 'react';
 import { Callout, ConfirmDialog, Tabs } from '@ema-agent/ui';
-import { useSkillStore } from '../../stores/skill-store.js';
+import { useSkillStore } from '../../stores/skill.js';
 import { showToast } from '../../lib/toast.js';
 import { SkillMarketView } from './SkillMarketView.js';
 import { SkillInstalledList } from './SkillInstalledList.js';

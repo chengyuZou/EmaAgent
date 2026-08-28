@@ -3,23 +3,23 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   CharacterStage,
   type ActiveLive2DStage,
-} from './components/CharacterStage.js';
-import { SpeechBubble }          from './components/SpeechBubble.js';
-import { PermissionToastLayer }  from './components/PermissionToastLayer.js';
-import { FloatingDock }           from './floating-dock/FloatingDock.js';
+} from './stage/CharacterStage.js';
+import { SpeechBubble }          from './stage/SpeechBubble.js';
+import { PermissionToastLayer }  from './stage/PermissionToastLayer.js';
+import { FloatingDock }           from './stage/FloatingDock.js';
 import { mountSystemEvents }      from './lib/system-sse.js';
 import { turnsApi }               from './api/turns.js';
-import { useCharacterStore }     from './stores/character-store.js';
-import { useServerStore }         from './stores/server-store.js';
-import { useRuntimeSettingsSync } from './stores/runtime-settings-sync.js';
-import { useThemeSync }           from './stores/theme-store.js';
-import type { ServerStatus }           from './stores/server-store.js';
+import { useCharacterStore }     from './stores/character.js';
+import { useServerStore }         from './stores/server.js';
+import { useSettingsSync } from './stores/settings-sync.js';
+import { useThemeSync }           from './stores/theme.js';
+import type { ServerStatus }           from './stores/server.js';
 
 import {
   CharacterStageLoader,
   loadCharacterStageView,
   type CharacterStageView,
-} from './characterStageLoader.js';
+} from './stage/characterStageLoader.js';
 import { useWindowSuspension } from './hooks/use-window-suspension.js';
 
 // ── 主窗口 ──────────────────────────────────────────────────────────────────
@@ -66,7 +66,7 @@ export function App(): React.JSX.Element {
     setExpressionAvailable(stage?.hasExpressions ?? false);
   }, []);
 
-  // 应用服务器首次可用及角色切换事件都会刷新 character-store；舞台只订阅稳定角色字段。
+  // 应用服务器首次可用及角色切换事件都会刷新角色 store；舞台只订阅稳定角色字段。
   useEffect(() => {
     if (serverStatus.kind !== 'ok') return;
     void useCharacterStore.getState().load();
@@ -102,7 +102,7 @@ export function App(): React.JSX.Element {
 
   useDevTtsPlaybackFromUrl(activeStage);
   useThemeSync();
-  useRuntimeSettingsSync(serverStatus.kind === 'ok');
+  useSettingsSync(serverStatus.kind === 'ok');
 
   // 主桌宠窗口与应用同生命周期，负责唯一的全局系统事件连接。
   useEffect(() => mountSystemEvents({ ownsConnection: true }), []);

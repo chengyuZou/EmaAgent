@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CharacterStageLoader,
   type CharacterStageView,
-} from '../src/characterStageLoader.js';
+} from '../src/stage/characterStageLoader.js';
 
 interface Deferred<T> {
   promise: Promise<T>;

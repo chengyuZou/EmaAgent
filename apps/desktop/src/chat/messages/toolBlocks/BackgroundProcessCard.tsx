@@ -1,8 +1,8 @@
 // 已转交后台的 Bash 入口卡:块当场终结,卡片只给面板入口,不持续刷新。
 import type { JSX } from 'react';
 
-import { useConversationStore } from '../../../stores/conversation-store.js';
-import { useWorkspaceStore } from '../../../stores/workspaceStore.js';
+import { useCurrentSession } from '../../state/currentSession.js';
+import { useDockTabs } from '../../frame/dockTabs.js';
 
 export function BackgroundProcessCard({
   command, status,
@@ -10,8 +10,8 @@ export function BackgroundProcessCard({
   command: string;
   status: 'queued' | 'running' | string;
 }): JSX.Element {
-  const sessionId = useConversationStore((s) => s.viewedSessionId);
-  const openTab = useWorkspaceStore((s) => s.openTab);
+  const sessionId = useCurrentSession((s) => s.viewedSessionId);
+  const openTab = useDockTabs((s) => s.openTab);
 
   return (
     <div className="flex items-center gap-2 rounded-md border px-2.5 py-1.5 pr-6 text-[11px] bg-[var(--ema-surface-1)] border-[var(--ema-border)]">

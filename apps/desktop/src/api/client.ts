@@ -79,7 +79,7 @@ let portPromise:   Promise<number>      | null = null;
 let secretPromise: Promise<string|null> | null = null;
 
 async function discoverPort(): Promise<number> {
-  const port = await tauriBridge.invoke<number>('get_sidecar_port');
+  const port = await tauriBridge.getServerPort();
   if (typeof port === 'number' && port > 0) return port;
   return DEFAULT_PORT;
 }
@@ -96,7 +96,7 @@ function getPortPromise(): Promise<number> {
 
 function getSecretPromise(): Promise<string | null> {
   if (!secretPromise) {
-    secretPromise = tauriBridge.getSidecarSecret().catch(() => null);
+    secretPromise = tauriBridge.getServerSecret().catch(() => null);
   }
   return secretPromise;
 }
@@ -196,7 +196,7 @@ export async function readRpcVoid(request: Promise<ClientResponse<unknown>>): Pr
 
 // ── RPC client ───────────────────────────────────────────────────────────────
 //
-// hc<AppType> 需要静态 baseUrl；端口是运行时发现（Tauri get_sidecar_port），
+// hc<AppType> 需要静态 baseUrl；端口是运行时发现（Tauri get_server_port），
 // 因此用占位 host 打底，在自定义 fetch 包装里换成真实 origin，并注入共享密钥头。
 const RPC_HOST_PLACEHOLDER = 'http://ema-server';
 

@@ -1,7 +1,7 @@
 // 角色健康徽章:编辑器头部显示降级/不可用状态与 issues 明细,healthy 不添噪。
 import { useEffect, type JSX } from 'react';
 import { Badge, Popover } from '@ema-agent/ui';
-import { useCharacterStore } from '../../../stores/character-store.js';
+import { useCharacterStore } from '../../../stores/character.js';
 
 export function HealthBadge({ characterId }: { characterId: string }): JSX.Element | null {
   const health = useCharacterStore((s) => s.healthMap[characterId as string]);

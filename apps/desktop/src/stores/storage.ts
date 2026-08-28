@@ -130,5 +130,3 @@ export const useStorageStore = create<StorageStoreState>((set, get) => ({
     });
   },
 }));
-
-export type { DataDirItem, DataDirStats, SessionStats };

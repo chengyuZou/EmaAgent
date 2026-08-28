@@ -1,7 +1,7 @@
 // 存储位置的添加与迁移对话框:注册已有目录,或把当前数据完整复制到新路径。
 import { useState, type JSX } from 'react';
 import { Button, Callout, Dialog, IconButton, Input } from '@ema-agent/ui';
-import { useStorageStore } from '../../stores/storage-store.js';
+import { useStorageStore } from '../../stores/storage.js';
 import { tauriBridge } from '../../lib/tauri-bridge.js';
 import { showToast } from '../../lib/toast.js';
 

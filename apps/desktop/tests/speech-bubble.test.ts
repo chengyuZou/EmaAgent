@@ -8,7 +8,7 @@ vi.mock('@ema-agent/desktop-ui', () => ({
   tauriBridge: { listen: vi.fn() },
 }));
 
-import { createFadeController } from '../src/components/SpeechBubble.js';
+import { createFadeController } from '../src/stage/SpeechBubble.js';
 
 const DELAY = 4000;
 const OUT   = 600;

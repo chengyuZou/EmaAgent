@@ -1,10 +1,8 @@
-/**
- * Server store — port discovery + health polling.
- */
+// Server 可用状态：端口发现 + 健康轮询。
 import { create } from 'zustand';
 import { tauriBridge } from '../lib/tauri-bridge.js';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── 类型 ──────────────────────────────────────────────────────────────────────
 
 export type ServerStatus =
   | { kind: 'unknown' }
@@ -51,7 +49,7 @@ export const useServerStore = create<ServerStoreState>((set, get) => ({
       const timeout = globalThis.setTimeout(() => controller.abort(), HEALTH_TIMEOUT_MS);
 
       try {
-        const port = await tauriBridge.invoke<number>('get_sidecar_port');
+        const port = await tauriBridge.getServerPort();
         const effectivePort = (typeof port === 'number' && port > 0) ? port : 3421;
 
         const start = performance.now();
@@ -71,8 +69,8 @@ export const useServerStore = create<ServerStoreState>((set, get) => ({
         });
       } catch (err: unknown) {
         const reason = controller.signal.aborted
-          ? `Health check timed out after ${HEALTH_TIMEOUT_MS}ms`
-          : err instanceof Error ? err.message : 'Unknown error';
+          ? `健康检查超时（${HEALTH_TIMEOUT_MS}ms）`
+          : err instanceof Error ? err.message : '未知错误';
         set({
           status: { kind: 'error', reason },
           checking: false,
@@ -97,13 +95,12 @@ export const useServerStore = create<ServerStoreState>((set, get) => ({
     const tick = () => {
       void get().refresh().then(() => {
         const s = get().status;
-        // Slow down to 30s once healthy
+        // 健康后降到 30s 慢轮询；出错回到 5s 快轮询。
         if (s.kind === 'ok' && fastMode) {
           fastMode = false;
           if (timer) clearInterval(timer);
           timer = setInterval(tick, 30_000);
         }
-        // Speed up on error
         if (s.kind === 'error' && !fastMode) {
           fastMode = true;
           if (timer) clearInterval(timer);
@@ -113,7 +110,7 @@ export const useServerStore = create<ServerStoreState>((set, get) => ({
     };
 
     timer = setInterval(tick, intervalMs);
-    // Run first tick immediately
+    // 立即执行第一轮。
     void get().refresh();
 
     return () => {

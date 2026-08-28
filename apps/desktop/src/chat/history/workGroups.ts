@@ -1,50 +1,116 @@
-// 把 assistant 消息的 slices 归纳成 Codex 式工作区模型:连续工具分组、动词摘要、
-// 当前动作(流式)、失败计数、正文切分与已编辑文件汇总。纯函数,供渲染与测试。
-import type { AssistantSlice } from '../../stores/conversation-store.js';
+// 把气泡内容归纳成工作区展示：连续工具分组、动词摘要、当前动作（流式）、失败计数、
+// 正文切分与已编辑文件汇总。行只引用真实对象（历史块 + 索引配对的结果信封 / 流式项），
+// 不建第二套字段；纯函数，供渲染与测试。
+import type { AssistantBlock, ToolResultBlock } from '@ema-agent/session';
+import type { StreamItem } from '../state/messages.js';
 
-type ToolUseSlice = Extract<AssistantSlice, { type: 'tool_use' }>;
+/** 工作区行：历史路径引用持久块（工具行经 toolResultIndex 配对），流式路径引用瞬态项。 */
+export type WorkRow =
+  | { readonly source: 'history'; readonly block: AssistantBlock; readonly toolResult?: ToolResultBlock }
+  | { readonly source: 'stream'; readonly item: StreamItem };
 
-// ── 分组:连续 tool_use 收为一组 ──────────────────────────────────────────────
+export type ToolWorkRow =
+  | {
+      readonly source: 'history';
+      readonly block: Extract<AssistantBlock, { type: 'tool_use' }>;
+      readonly toolResult?: ToolResultBlock;
+    }
+  | { readonly source: 'stream'; readonly item: Extract<StreamItem, { type: 'tool_use' }> };
 
-export type SliceGroup =
-  | { kind: 'tool_group'; slices: AssistantSlice[] }
-  | { kind: 'single'; slice: AssistantSlice };
+// ── 行读取（本文件是工作区展示的唯一装配点） ─────────────────────────────────
 
-export function groupSlices(slices: readonly AssistantSlice[]): SliceGroup[] {
-  const out: SliceGroup[] = [];
+export function isToolRow(row: WorkRow): row is ToolWorkRow {
+  return row.source === 'history' ? row.block.type === 'tool_use' : row.item.type === 'tool_use';
+}
+
+export function isTextRow(row: WorkRow): boolean {
+  return row.source === 'history' ? row.block.type === 'text' : row.item.type === 'text';
+}
+
+export function toolName(row: ToolWorkRow): string {
+  return row.source === 'history' ? row.block.name : row.item.name;
+}
+
+export function toolArgs(row: ToolWorkRow): unknown {
+  return row.source === 'history' ? row.block.args : row.item.args;
+}
+
+/** 行身份：历史是 tool_use.id，流式是事件的 callId——同一物理调用在后端两个边界的拼写。 */
+export function toolRowId(row: ToolWorkRow): string {
+  return row.source === 'history' ? row.block.id : row.item.callId;
+}
+
+/** 工具的类型化输出（TOutput）：历史来自结果信封的 data，流式来自事件 output。 */
+export function toolOutput(row: ToolWorkRow): unknown {
+  return row.source === 'history' ? row.toolResult?.data : row.item.output;
+}
+
+/** 失败事实：历史看结果信封的 isError/errorCode，流式看事件的 error。 */
+export function toolFailure(row: ToolWorkRow): { code: string; message: string } | null {
+  if (row.source === 'stream') return row.item.error ?? null;
+  const result = row.toolResult;
+  if (!result?.isError) return null;
+  return {
+    code: result.errorCode ?? 'tool/error',
+    message: typeof result.content === 'string' ? result.content : '工具执行失败',
+  };
+}
+
+export function toolDurationMs(row: ToolWorkRow): number | undefined {
+  return row.source === 'history' ? row.toolResult?.durationMs : row.item.durationMs;
+}
+
+export function toolPermissionPending(row: ToolWorkRow): boolean {
+  return row.source === 'stream' && row.item.permissionPending === true;
+}
+
+/** 是否仍在运行（无输出且无失败）；历史缺结果的行是中断残留，不算运行中。 */
+export function toolRunning(row: ToolWorkRow, streaming: boolean): boolean {
+  if (row.source !== 'stream' || !streaming) return false;
+  return row.item.output === undefined && row.item.error === undefined;
+}
+
+// ── 分组：连续 tool_use 收为一组 ─────────────────────────────────────────────
+
+export type WorkRowGroup =
+  | { kind: 'tool_group'; rows: ToolWorkRow[] }
+  | { kind: 'single'; row: WorkRow };
+
+export function groupWorkRows(rows: readonly WorkRow[]): WorkRowGroup[] {
+  const out: WorkRowGroup[] = [];
   let i = 0;
-  while (i < slices.length) {
-    const s = slices[i];
-    if (!s) break;
-    if (s.type === 'tool_use') {
-      const group: AssistantSlice[] = [];
-      while (i < slices.length) {
-        const cur = slices[i];
-        if (!cur || cur.type !== 'tool_use') break;
+  while (i < rows.length) {
+    const row = rows[i];
+    if (!row) break;
+    if (isToolRow(row)) {
+      const group: ToolWorkRow[] = [];
+      while (i < rows.length) {
+        const cur = rows[i];
+        if (!cur || !isToolRow(cur)) break;
         group.push(cur);
         i++;
       }
       const first = group[0];
-      if (group.length === 1 && first) out.push({ kind: 'single', slice: first });
-      else out.push({ kind: 'tool_group', slices: group });
+      if (group.length === 1 && first) out.push({ kind: 'single', row: first });
+      else out.push({ kind: 'tool_group', rows: group });
     } else {
-      out.push({ kind: 'single', slice: s });
+      out.push({ kind: 'single', row });
       i++;
     }
   }
   return out;
 }
 
-// ── 正文切分:末尾连续的 text 组是"宣告",之前的全部是可折叠的工作区 ───────────
+// ── 正文切分：末尾连续的 text 组是"回答"，之前的全部是可折叠的工作区 ──────────
 
-export function splitWorkAnswer(groups: readonly SliceGroup[]): {
-  work: SliceGroup[];
-  answer: SliceGroup[];
+export function splitWorkAnswer(groups: readonly WorkRowGroup[]): {
+  work: WorkRowGroup[];
+  answer: WorkRowGroup[];
 } {
   let answerStart = groups.length;
   for (let i = groups.length - 1; i >= 0; i -= 1) {
     const group = groups[i];
-    if (group?.kind === 'single' && group.slice.type === 'text') {
+    if (group?.kind === 'single' && isTextRow(group.row)) {
       answerStart = i;
     } else {
       break;
@@ -68,30 +134,26 @@ export interface ToolTally {
   errors: number;
 }
 
-export function tallyTools(slices: readonly AssistantSlice[]): ToolTally {
+export function tallyTools(rows: readonly ToolWorkRow[]): ToolTally {
   const tally: ToolTally = { commands: 0, fileEdits: 0, otherTools: 0, errors: 0 };
-  for (const slice of slices) {
-    if (slice.type !== 'tool_use') continue;
-    if (COMMAND_TOOLS.has(slice.name)) tally.commands += 1;
-    else if (FILE_EDIT_TOOLS.has(slice.name)) tally.fileEdits += 1;
+  for (const row of rows) {
+    const name = toolName(row);
+    if (COMMAND_TOOLS.has(name)) tally.commands += 1;
+    else if (FILE_EDIT_TOOLS.has(name)) tally.fileEdits += 1;
     else tally.otherTools += 1;
-    if (slice.error) tally.errors += 1;
+    if (toolFailure(row)) tally.errors += 1;
   }
   return tally;
 }
 
-/** 摘要行:"运行了 N 个命令 · 编辑了 N 个文件 · 运行了 N 个工具";单条给具体对象。 */
-export function tallySummary(
-  slices: readonly AssistantSlice[],
-  tally: ToolTally,
-): string[] {
-  const tools = slices.filter((s): s is ToolUseSlice => s.type === 'tool_use');
+/** 摘要行："运行了 N 个命令 · 编辑了 N 个文件 · 运行了 N 个工具"；单条给具体对象。 */
+export function tallySummary(rows: readonly ToolWorkRow[], tally: ToolTally): string[] {
   const parts: string[] = [];
 
-  const singleEdit = tally.fileEdits === 1 && tools.length === 1 ? tools[0] : null;
-  const singleCommand = tally.commands === 1 && tools.length === 1 ? tools[0] : null;
+  const singleEdit = tally.fileEdits === 1 && rows.length === 1 ? rows[0] : null;
+  const singleCommand = tally.commands === 1 && rows.length === 1 ? rows[0] : null;
   if (singleEdit) {
-    const change = editedFileOf(singleEdit);
+    const change = editedFileOf(toolOutput(singleEdit));
     if (change) {
       parts.push(
         `${change.created ? '已创建' : '已编辑'} ${basename(change.path)} +${change.additions} -${change.deletions}`,
@@ -100,7 +162,7 @@ export function tallySummary(
     }
   }
   if (singleCommand) {
-    const command = bashCommandOf(singleCommand);
+    const command = stringArg(toolArgs(singleCommand), 'command');
     if (command) return [`运行了 ${truncate(command, 60)}`];
   }
 
@@ -110,7 +172,7 @@ export function tallySummary(
   return parts;
 }
 
-// ── 当前动作(流式直播,现在进行时)────────────────────────────────────────────
+// ── 当前动作（流式直播，现在进行时）────────────────────────────────────────────
 
 export type LiveAction =
   | { kind: 'editing'; file: string }
@@ -118,24 +180,22 @@ export type LiveAction =
   | { kind: 'tool'; name: string }
   | { kind: 'waiting' };
 
-/** 流式期间的当前动作:最后一个无结果无错误的 tool_use 即进行中;否则在等模型。 */
-export function liveAction(
-  slices: readonly AssistantSlice[],
-  streaming: boolean,
-): LiveAction | null {
+/** 流式期间的当前动作：最后一个无结果无错误的工具行即进行中；否则在等模型。 */
+export function liveAction(rows: readonly WorkRow[], streaming: boolean): LiveAction | null {
   if (!streaming) return null;
-  for (let i = slices.length - 1; i >= 0; i -= 1) {
-    const slice = slices[i];
-    if (!slice) continue;
-    if (slice.type !== 'tool_use') return { kind: 'waiting' };
-    if (slice.result !== undefined || slice.error) return { kind: 'waiting' };
-    if (FILE_EDIT_TOOLS.has(slice.name)) {
-      return { kind: 'editing', file: basename(stringArg(slice, 'file_path')) };
+  for (let i = rows.length - 1; i >= 0; i -= 1) {
+    const row = rows[i];
+    if (!row) continue;
+    if (!isToolRow(row)) return { kind: 'waiting' };
+    if (!toolRunning(row, streaming)) return { kind: 'waiting' };
+    const name = toolName(row);
+    if (FILE_EDIT_TOOLS.has(name)) {
+      return { kind: 'editing', file: basename(stringArg(toolArgs(row), 'file_path')) };
     }
-    if (slice.name === 'Bash') {
-      return { kind: 'command', command: truncate(stringArg(slice, 'command'), 60) };
+    if (name === 'Bash') {
+      return { kind: 'command', command: truncate(stringArg(toolArgs(row), 'command'), 60) };
     }
-    return { kind: 'tool', name: slice.name };
+    return { kind: 'tool', name };
   }
   return { kind: 'waiting' };
 }
@@ -149,7 +209,7 @@ export function liveActionLabel(action: LiveAction): string {
   }
 }
 
-// ── 已编辑文件汇总(变更卡)────────────────────────────────────────────────────
+// ── 已编辑文件汇总（变更卡）────────────────────────────────────────────────────
 
 export interface EditedFileEntry {
   path: string;
@@ -158,16 +218,16 @@ export interface EditedFileEntry {
   created: boolean;
 }
 
-export function editedFiles(slices: readonly AssistantSlice[]): {
+export function editedFiles(rows: readonly WorkRow[]): {
   files: EditedFileEntry[];
   additions: number;
   deletions: number;
 } {
-  // 同一文件多次编辑只留最后一次(与 Review 的 byCallId 归并同语义)。
+  // 同一文件多次编辑只留最后一次（与 Review 的按调用归并同语义）。
   const byPath = new Map<string, EditedFileEntry>();
-  for (const slice of slices) {
-    if (slice.type !== 'tool_use') continue;
-    const change = editedFileOf(slice);
+  for (const row of rows) {
+    if (!isToolRow(row)) continue;
+    const change = editedFileOf(toolOutput(row));
     if (!change) continue;
     byPath.set(change.path, {
       path: change.path,
@@ -197,25 +257,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** 从 FileEdit/FileWrite 的类型化 data 槽提取编辑事实; 旧 presentation 通道已删。 */
-function editedFileOf(slice: ToolUseSlice): TypedEditedFile | null {
-  const result = slice.result;
-  if (!isRecord(result)) return null;
+/** 从 FileEdit/FileWrite 的类型化输出提取编辑事实。 */
+function editedFileOf(output: unknown): TypedEditedFile | null {
+  if (!isRecord(output)) return null;
 
-  if (result['type'] === 'created' && typeof result['filePath'] === 'string') {
-    const content = typeof result['content'] === 'string' ? result['content'] : '';
+  if (output['type'] === 'created' && typeof output['filePath'] === 'string') {
+    const content = typeof output['content'] === 'string' ? output['content'] : '';
     const lines = content.length === 0 ? 0 : content.split('\n').length;
-    return { path: result['filePath'], additions: lines, deletions: 0, created: true };
+    return { path: output['filePath'], additions: lines, deletions: 0, created: true };
   }
 
-  if (typeof result['filePath'] === 'string' && result['structuredPatch'] !== undefined) {
-    const counts = countPatchLines(result['structuredPatch']);
-    return { path: result['filePath'], additions: counts.additions, deletions: counts.deletions, created: false };
+  if (typeof output['filePath'] === 'string' && output['structuredPatch'] !== undefined) {
+    const counts = countPatchLines(output['structuredPatch']);
+    return { path: output['filePath'], additions: counts.additions, deletions: counts.deletions, created: false };
   }
   return null;
 }
 
-/** structuredPatch 的 lines 以 ' '/'-'/'+' 开头, 逐行计数即增删行数。 */
+/** structuredPatch 的 lines 以 ' '/'-'/'+' 开头，逐行计数即增删行数。 */
 function countPatchLines(hunks: unknown): { additions: number; deletions: number } {
   if (!Array.isArray(hunks)) return { additions: 0, deletions: 0 };
   let additions = 0;
@@ -231,13 +290,7 @@ function countPatchLines(hunks: unknown): { additions: number; deletions: number
   return { additions, deletions };
 }
 
-function bashCommandOf(slice: ToolUseSlice): string | null {
-  const command = stringArg(slice, 'command');
-  return command || null;
-}
-
-function stringArg(slice: ToolUseSlice, key: string): string {
-  const args = slice.args;
+function stringArg(args: unknown, key: string): string {
   if (args === null || typeof args !== 'object' || Array.isArray(args)) return '';
   const value = (args as Record<string, unknown>)[key];
   return typeof value === 'string' ? value : '';
@@ -252,7 +305,7 @@ function truncate(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
-/** 时间戳:当年 M月D日 HH:mm,跨年 YYYY年M月D日。 */
+/** 时间戳：当年 M月D日 HH:mm，跨年 YYYY年M月D日。 */
 export function formatTurnTime(createdAt: number, now = Date.now()): string {
   const date = new Date(createdAt);
   const current = new Date(now);
@@ -263,7 +316,7 @@ export function formatTurnTime(createdAt: number, now = Date.now()): string {
   return `${date.getMonth() + 1}月${date.getDate()}日 ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-/** 时长:秒以下显示秒,否则 Xm Ys;超过一小时带小时。 */
+/** 时长：秒以下显示秒，否则 Xm Ys；超过一小时带小时。 */
 export function formatWorkDuration(durationMs: number): string {
   const totalSeconds = Math.max(0, Math.round(durationMs / 1000));
   if (totalSeconds < 60) return `${totalSeconds}s`;

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useSessionStore } from '../stores/session-store.js';
+import { useSessionStore } from '../stores/session.js';
 import { tauriBridge } from '../lib/tauri-bridge.js';
 import { showToast } from '../lib/toast.js';
 import { Button, IconButton, Input } from '@ema-agent/ui';

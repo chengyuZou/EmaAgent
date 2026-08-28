@@ -1,7 +1,7 @@
 // 输入区工具栏的工作区目录按钮:无会话时提示,有会话弹出共享 WorkspacePicker。
 import { useState, type JSX } from 'react';
 import { IconButton } from '@ema-agent/ui';
-import { useSessionStore } from '../../stores/session-store.js';
+import { useSessionStore } from '../../stores/session.js';
 import { showToast } from '../../lib/toast.js';
 import { WorkspacePicker } from '../WorkspacePicker.js';
 

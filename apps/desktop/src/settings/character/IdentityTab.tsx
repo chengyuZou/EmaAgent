@@ -3,7 +3,7 @@
  */
 import { useState, type FormEvent, type JSX } from 'react';
 import { Button, Field, Input, Textarea } from '@ema-agent/ui';
-import { useCharacterStore } from '../../stores/character-store.js';
+import { useCharacterStore } from '../../stores/character.js';
 import type { Character } from '../../api/characters.js';
 import { showToast } from '../../lib/toast.js';
 

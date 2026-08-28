@@ -4,11 +4,8 @@ import { create } from 'zustand';
 import {
   agentRunsApi,
   type AgentRunSummary,
-  type AgentRunMessageItem,
 } from '../api/agentRuns.js';
-
-export type { AgentRunSummary, AgentRunMessageItem };
-export type AgentRunStatus = AgentRunSummary['status'];
+import type { AgentRunMessage } from '@ema-agent/agent';
 
 export interface LiveAgentRunInfo {
   startedAtMs: number;
@@ -24,24 +21,9 @@ export interface AgentRunState extends AgentRunSummary {
   live?: LiveAgentRunInfo;
 }
 
-/** 实时转写里 assistant/reasoning 文本块的最小形状（用于同块增量合并）。 */
-interface LiveTextContent {
-  text: string;
-}
-
-function asLiveText(content: unknown): LiveTextContent {
-  if (
-    typeof content === 'object' && content !== null
-    && typeof (content as { text?: unknown }).text === 'string'
-  ) {
-    return { text: (content as { text: string }).text };
-  }
-  return { text: '' };
-}
-
 export interface AgentRunStoreState {
   runs: Map<string, AgentRunState>;
-  transcripts: Map<string, AgentRunMessageItem[] | null>;
+  transcripts: Map<string, AgentRunMessage[] | null>;
   loadingSessions: Set<string>;
   eventRevisions: Map<string, number>;
   error: string | null;
@@ -51,8 +33,8 @@ export interface AgentRunStoreState {
   loadTranscript(agentRunId: string): Promise<void>;
   appendLiveTranscript(
     agentRunId: string,
-    role: AgentRunMessageItem['role'],
-    content: AgentRunMessageItem['content'],
+    role: AgentRunMessage['role'],
+    content: AgentRunMessage['content'],
   ): void;
   evictSession(sessionId: string): void;
 }
@@ -166,28 +148,42 @@ export const useAgentRunStore = create<AgentRunStoreState>((set, get) => ({
       const transcripts = new Map(state.transcripts);
       const existing = transcripts.get(agentRunId) ?? [];
 
-      if (role === 'assistant' || role === 'reasoning') {
+      // 同 role 相邻文本块增量合并（流式 delta 逐块到达）；保留块身份 blockIndex。
+      if ((role === 'assistant' || role === 'reasoning') && 'text' in content) {
         const last = existing[existing.length - 1];
-        if (last?.role === role) {
-          const previousText = asLiveText(last.content).text;
-          const nextText = asLiveText(content).text;
-          transcripts.set(agentRunId, [
-            ...existing.slice(0, -1),
-            { ...last, content: { text: previousText + nextText } },
-          ]);
+        if (last?.role === role && 'text' in last.content) {
+          const merged: AgentRunMessage = {
+            ...last,
+            content: { blockIndex: last.content.blockIndex, text: last.content.text + content.text },
+          };
+          transcripts.set(agentRunId, [...existing.slice(0, -1), merged]);
           return { transcripts };
         }
       }
 
       const lastSequence = existing[existing.length - 1]?.sequence ?? 0;
-      const message: AgentRunMessageItem = {
+      const base = {
         id: `live-${Date.now()}-${Math.random().toString(36).slice(2)}`,
         agentRunId,
-        role,
-        content,
         sequence: lastSequence + 1,
         createdAt: Date.now(),
       };
+      let message: AgentRunMessage;
+      switch (role) {
+        case 'assistant':
+        case 'reasoning':
+          if (!('text' in content)) return {};
+          message = { ...base, role, content };
+          break;
+        case 'tool_call':
+          if (!('callId' in content)) return {};
+          message = { ...base, role, content };
+          break;
+        case 'tool_result':
+          if (!('type' in content)) return {};
+          message = { ...base, role, content };
+          break;
+      }
       transcripts.set(agentRunId, [...existing, message]);
       return { transcripts };
     });

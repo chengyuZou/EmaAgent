@@ -3,9 +3,9 @@
 import { useState, type JSX } from 'react';
 
 import { IconButton, Popover } from '@ema-agent/ui';
-import { useAgentRunStore } from '../stores/agentRunStore.js';
-import { isRightFullWidth, useWorkspaceStore } from '../stores/workspaceStore.js';
-import { PinnedSessionSummary } from './summary/PinnedSessionSummary.js';
+import { useAgentRunStore } from '../stores/agentRun.js';
+import { isRightFullWidth, useDockTabs } from './frame/dockTabs.js';
+import { PinnedSessionSummary } from './PinnedSessionSummary.js';
 
 export interface ChatHeaderProps {
   sessionId: string | null;
@@ -16,11 +16,11 @@ export interface ChatHeaderProps {
 export function ChatHeader({ sessionId, title, isFork }: ChatHeaderProps): JSX.Element {
   const [summaryOpen, setSummaryOpen] = useState(false);
 
-  const layout = useWorkspaceStore((s) =>
+  const layout = useDockTabs((s) =>
     sessionId ? s.layouts[sessionId as string] : undefined);
-  const setDockOpen = useWorkspaceStore((s) => s.setDockOpen);
-  const setFullWidth = useWorkspaceStore((s) => s.setFullWidth);
-  const fullWidth = useWorkspaceStore((s) => isRightFullWidth(s, sessionId));
+  const setDockOpen = useDockTabs((s) => s.setDockOpen);
+  const setFullWidth = useDockTabs((s) => s.setFullWidth);
+  const fullWidth = useDockTabs((s) => isRightFullWidth(s, sessionId));
   const rightOpen = layout?.rightOpen ?? false;
   const bottomOpen = layout?.bottomOpen ?? false;
 

@@ -1,7 +1,7 @@
 // 单个存储位置行:激活/移除动作与当前位置标记。
 import { useState, type JSX } from 'react';
 import { Badge, Button, EntityRow, IconButton } from '@ema-agent/ui';
-import { useStorageStore } from '../../stores/storage-store.js';
+import { useStorageStore } from '../../stores/storage.js';
 import { showToast } from '../../lib/toast.js';
 import type { DataDirItem } from '../../api/workspaces.js';
 

@@ -2,7 +2,8 @@ import { useState } from 'react';
 import {
   Badge, Button, Card, Dialog, DropdownMenu, Switch, ToolSpecItem, Tooltip,
 } from '@ema-agent/ui';
-import { useMcpStore, type McpServerEntry } from '../../stores/mcp-store.js';
+import { useMcpStore } from '../../stores/mcp.js';
+import type { McpServerItem } from '../../api/mcp.js';
 import { showToast } from '../../lib/toast.js';
 import type { McpConnectionStatus } from '@ema-agent/mcp';
 
@@ -21,7 +22,7 @@ export function toolParamNames(schema: Record<string, unknown> | undefined): str
 export function ServerRow({
   server, onToggleEnabled, onRemove, onEdit,
 }: {
-  server:           McpServerEntry;
+  server:           McpServerItem;
   onToggleEnabled:  () => void;
   onRemove:         () => void;
   onEdit:           () => void;
@@ -115,7 +116,7 @@ export function ServerRow({
           {/* Inline expanded tool list — quick glance at names + params */}
           {expanded && toolCount > 0 && (
             <div className="mt-2 flex flex-col gap-1.5 ema-slide-up">
-              {tools.map((t: McpServerEntry['connection']['tools'][number]) => {
+              {tools.map((t: McpServerItem['connection']['tools'][number]) => {
                 const params = toolParamNames(t.inputSchema);
                 return (
                   <ToolSpecItem key={t.serverToolName} name={t.serverToolName} params={params} description={t.description} />
@@ -176,7 +177,7 @@ export function ServerRow({
               <p className="text-xs text-[var(--ema-text-tertiary)]">未连接或无工具（连接后才能读取）</p>
             ) : (
               <div className="flex flex-col gap-2">
-                {tools.map((t: McpServerEntry['connection']['tools'][number]) => (
+                {tools.map((t: McpServerItem['connection']['tools'][number]) => (
                   <div key={t.serverToolName} className="rounded-lg p-2.5 bg-[var(--ema-surface-1)] border border-[var(--ema-border)]">
                     <span className="text-xs font-mono font-medium text-[var(--ema-text-primary)]">{t.serverToolName}</span>
                     {t.description && (

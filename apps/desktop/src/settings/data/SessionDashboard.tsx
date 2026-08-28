@@ -3,7 +3,7 @@ import { useEffect, useState, type CSSProperties, type JSX } from 'react';
 import {
   Button, CardButton, ScrollArea, Spinner,
 } from '@ema-agent/ui';
-import { useStorageStore } from '../../stores/storage-store.js';
+import { useStorageStore } from '../../stores/storage.js';
 import { sessionsApi, type Session } from '../../api/sessions.js';
 import { showToast } from '../../lib/toast.js';
 

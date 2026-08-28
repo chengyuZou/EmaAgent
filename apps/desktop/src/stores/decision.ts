@@ -1,91 +1,47 @@
-/**
- * 按 Session 保存 Permission 与 AskUser 等待交互卡片。
- *
- * 每个 Session 拥有独立 FIFO。聊天窗口只渲染当前 Session 的队首，其他
- * Session 在侧栏显示待处理数量；桌宠窗口不挂载阻塞式决策层，只显示非阻塞提示。
- *
- * 两类交互都从 Turn SSE 到达，toolCallId 是全局唯一定位键（一次交互永远由
- * 唯一一次 Tool 调用触发）；提交时后端核对 URL 中的 turnId，拒绝陈旧卡片误答。
- * dismiss(toolCallId) 仍会扫描所有 Session 队列，以便终态事件清理对应卡片。
- */
+// 按 Session 保存 Permission 与 AskUser 等待交互卡片。
+// 队列元素 = 后端交互队列的可恢复快照（PendingInteraction，@ema-agent/turn 拥有），
+// kind 判别沿用后端拼写 'permission' | 'askUser'，前端不再另设联合。
+//
+// 每个 Session 拥有独立 FIFO。聊天窗口只渲染当前 Session 的队首，其他
+// Session 在侧栏显示待处理数量；桌宠窗口不挂载阻塞式决策层，只显示非阻塞提示。
 import { create } from 'zustand';
-import type { PermissionRequest } from '@ema-agent/permission';
-import type { AskUserRequiredEvent } from '@ema-agent/tools';
+import type { PendingInteraction } from '@ema-agent/turn';
 import type { PendingInteractions } from '../api/turns.js';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-/**
- * Permission 卡：业务字段继承后端 PermissionRequest 契约，只补卡片 kind。
- * decisionReason 不进卡片：subcommandResults 变体携带的 ReadonlyMap 无法 JSON 化
- * （SSE 与 pending 恢复都是 JSON 通道），且当前批准卡 UI 不消费判定原因。
- */
-export interface PermissionDecisionPrompt extends Omit<PermissionRequest, 'decisionReason'> {
-  kind: 'permission';
-}
-
-/** AskUser 卡：一次 Tool 调用发起的一组问题；answers 以问题 id 为键一次提交。 */
-export interface AskUserDecisionPrompt {
-  kind: 'ask_user';
-  sessionId: string;
-  turnId: string;
-  toolCallId: string;
-  questions: AskUserRequiredEvent['questions'];
-  humanDescription?: string;
-}
-
-export type DecisionPrompt = PermissionDecisionPrompt | AskUserDecisionPrompt;
-
-type PendingInteractionItem = PendingInteractions['pending'][number];
-
-// ── State ─────────────────────────────────────────────────────────────────────
-
 export interface DecisionStoreState {
-  /** Per-session FIFO queues. Each queue's [0] is that session's "current". */
-  sessions: Map<string, DecisionPrompt[]>;
+  /** 每 Session 独立 FIFO；[0] 是该 Session 的当前卡片。 */
+  sessions: Map<string, PendingInteraction[]>;
 
-  /** Push a prompt onto its session's queue (deduped by toolCallId). */
-  push(prompt: DecisionPrompt): void;
+  /** 入队；按 request.toolCallId 去重（同一交互可能同时走 Turn 流与 pending 恢复通道）。 */
+  push(interaction: PendingInteraction): void;
 
-  /** Resolve the head of `sessionId`'s queue. */
+  /** 队首已回答，出队。 */
   resolve(sessionId: string): void;
 
-  /** Cancel the head of `sessionId`'s queue. */
+  /** 队首被取消，出队。 */
   cancel(sessionId: string): void;
 
-  /** Remove a specific prompt by toolCallId (scans all sessions). Used by
-   *  `*_resolved` SSE events which carry only toolCallId. */
+  /** 终态事件只携带 toolCallId：扫描全部 Session 队列移除对应卡片。 */
   dismiss(toolCallId: string): void;
 
-  /** Drop a session's entire queue (called when the session is deleted). */
+  /** 删除 Session 时清空其整条队列。 */
   clearSession(sessionId: string): void;
 
   /** 窗口重开/SSE 重连时把 Core 仍在等待的 Permission/AskUser 补回各 Session FIFO。 */
-  restorePending(pending: PendingInteractionItem[]): void;
+  restorePending(pending: PendingInteractions['pending']): void;
 
-  /** Clear all queues. */
   clear(): void;
 }
-
-// ── Store ─────────────────────────────────────────────────────────────────────
 
 export const useDecisionStore = create<DecisionStoreState>((set, get) => ({
   sessions: new Map(),
 
-  push(prompt) {
-    const sid = prompt.sessionId;
-    if (!sid) {
-      // SSE always carries sessionId; a missing one means upstream is broken.
-      // Drop rather than pollute a synthetic queue.
-      console.warn('[decision-store] prompt without sessionId, dropped', prompt.toolCallId);
-      return;
-    }
-    const state = get();
-    const existing = state.sessions.get(sid) ?? [];
-    // Dedupe — backend may emit the same toolCallId on both per-turn and system SSE.
-    if (existing.some((p) => p.toolCallId === prompt.toolCallId)) return;
-    const next = new Map(state.sessions);
-    next.set(sid, [...existing, prompt]);
+  push(interaction) {
+    const sid = interaction.request.sessionId;
+    const existing = get().sessions.get(sid) ?? [];
+    if (existing.some((p) => p.request.toolCallId === interaction.request.toolCallId)) return;
+    const next = new Map(get().sessions);
+    next.set(sid, [...existing, interaction]);
     set({ sessions: next });
   },
 
@@ -112,9 +68,9 @@ export const useDecisionStore = create<DecisionStoreState>((set, get) => ({
   dismiss(toolCallId) {
     set((s) => {
       let changed = false;
-      const next = new Map<string, DecisionPrompt[]>();
+      const next = new Map<string, PendingInteraction[]>();
       for (const [sid, q] of s.sessions) {
-        const filtered = q.filter((p) => p.toolCallId !== toolCallId);
+        const filtered = q.filter((p) => p.request.toolCallId !== toolCallId);
         if (filtered.length !== q.length) changed = true;
         if (filtered.length > 0) next.set(sid, filtered);
       }
@@ -133,12 +89,7 @@ export const useDecisionStore = create<DecisionStoreState>((set, get) => ({
 
   restorePending(pending) {
     for (const item of pending) {
-      if (item.kind === 'permission') {
-        get().push({ kind: 'permission', ...item.request });
-      } else {
-        const { type: _type, ...request } = item.request;
-        get().push({ kind: 'ask_user', ...request });
-      }
+      get().push(item);
     }
   },
 

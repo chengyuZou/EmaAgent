@@ -1,7 +1,7 @@
 // Live2D 导入对话框:选择模型目录 ZIP 的本机路径,错误按码翻译显示在框内。
 import { useState, type JSX } from 'react';
 import { Button, Callout, Checkbox, Dialog, Field } from '@ema-agent/ui';
-import { useCharacterStore } from '../../../stores/character-store.js';
+import { useCharacterStore } from '../../../stores/character.js';
 import { showToast } from '../../../lib/toast.js';
 import { tauriBridge } from '../../../lib/tauri-bridge.js';
 import { describeResourceError } from '../shared/characterResourceErrors.js';

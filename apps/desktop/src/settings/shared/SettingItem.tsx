@@ -1,6 +1,8 @@
 // 设置页共用骨架:SettingItem 行(标题 + 大白话副标题 + 控件)、分组卡片、节头与高级项折叠。
 import { useState, type JSX, type ReactNode } from 'react';
-import type { SettingSaveState } from './useObjectSetting.js';
+
+/** 即存反馈状态（纯 UI 状态；useObjectSetting 对象镜像已删除）。 */
+type SettingSaveState = 'idle' | 'saving' | 'saved' | 'failed';
 
 /** 即存反馈:保存中转圈、成功 ✓ 淡入、失败红点;idle 不占位。 */
 export function SaveStateIndicator({ state }: { state: SettingSaveState }): JSX.Element | null {

@@ -1,7 +1,7 @@
 // 新建角色卡对话框:名称与人设提示词必填(后端硬门),状态自包含。
 import { useState, type JSX } from 'react';
 import { Button, Callout, Dialog, Field, Input, Textarea } from '@ema-agent/ui';
-import { useCharacterStore } from '../../stores/character-store.js';
+import { useCharacterStore } from '../../stores/character.js';
 import { showToast } from '../../lib/toast.js';
 
 export function CreateCharacterDialog({

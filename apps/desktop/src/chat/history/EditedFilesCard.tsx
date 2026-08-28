@@ -1,9 +1,9 @@
-// 变更汇总卡:已编辑 N 个文件 + 增删计数 + 分页清单 + 审核入口;无真实撤销能力不渲染。
+// 变更汇总卡：已编辑 N 个文件 + 增删计数 + 分页清单 + 审核入口；无真实撤销能力不渲染。
 import { useState, type JSX } from 'react';
 import { Button } from '@ema-agent/ui';
 
-import { useConversationStore } from '../../stores/conversation-store.js';
-import { useWorkspaceStore } from '../../stores/workspaceStore.js';
+import { useCurrentSession } from '../state/currentSession.js';
+import { useDockTabs } from '../frame/dockTabs.js';
 import type { EditedFileEntry } from './workGroups.js';
 
 const PAGE_SIZE = 5;
@@ -16,8 +16,8 @@ export function EditedFilesCard({
   deletions: number;
 }): JSX.Element {
   const [visible, setVisible] = useState(PAGE_SIZE);
-  const sessionId = useConversationStore((s) => s.viewedSessionId);
-  const openTab = useWorkspaceStore((s) => s.openTab);
+  const sessionId = useCurrentSession((s) => s.viewedSessionId);
+  const openTab = useDockTabs((s) => s.openTab);
 
   return (
     <div className="overflow-hidden rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)]">

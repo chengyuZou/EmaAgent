@@ -3,7 +3,8 @@ import { useEffect, useState, type CSSProperties, type JSX } from 'react';
 import {
   Badge, Button, Callout, Dialog, EmptyState, EntityRow, IconButton, Input, Spinner,
 } from '@ema-agent/ui';
-import { useKnowledgeStore, type KnowledgeLibrary } from '../../stores/knowledge-store.js';
+import { useKnowledgeStore } from '../../stores/knowledge.js';
+import type { KnowledgeLibrary } from '../../api/knowledge.js';
 import { tauriBridge } from '../../lib/tauri-bridge.js';
 import { showToast } from '../../lib/toast.js';
 

@@ -2,7 +2,7 @@
 // GET event-display 是默认表+用户覆盖的生效表;草稿编辑的是用户覆盖表(整表替换写回)。
 import { useEffect, useMemo, useState, type JSX } from 'react';
 import { Badge, Button, Callout, Input, Select, Spinner, Switch } from '@ema-agent/ui';
-import { useSettingsStore, type EventDisplayConfig } from '../../stores/settings-store.js';
+import { useSettingsStore, type EventDisplayConfig } from '../../stores/settings.js';
 import { settingsApi } from '../../api/settings.js';
 import { showToast } from '../../lib/toast.js';
 import {

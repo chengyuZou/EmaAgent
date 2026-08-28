@@ -1,128 +1,86 @@
-/**
- * 管理知识库列表、文档导入、检索与后台重嵌入状态。
- */
+// 知识库数据入口：库注册表、文档资产、摄入/重嵌任务与检索结果。
+// 任务状态全部保存 Route 原生任务行与原始 kb_* 系统事件，不做字段改名或二次聚合。
 import { create } from 'zustand';
 import {
   knowledgeApi,
   type DocumentAsset,
-  type KnowledgeSearchResult,
+  type IngestTaskList,
   type KnowledgeIngestInput,
-  type KnowledgeSearchInput,
   type KnowledgeLibrary,
-  type IngestTask,
+  type KnowledgeSearchInput,
+  type KnowledgeSearchResult,
 } from '../api/knowledge.js';
+import type { AppEvent } from '@ema-agent/server/sse/eventHub.js';
 
-export type { DocumentAsset, KnowledgeSearchResult, KnowledgeSearchHit, KnowledgeLibrary } from '../api/knowledge.js';
+/** Route 原生摄入任务行（HTTP 水合与 SSE 进度更新共用同一形状）。 */
+type IngestTaskRow = IngestTaskList['items'][number];
+/** kb_ingest_* / kb_reembed_* 系统事件（KnowledgeEvent 经 AppEvent 联合原样携带）。 */
+type KnowledgeDomainEvent = Extract<AppEvent, { type: `kb_${string}` }>;
+/** 每 KB 重建卡片消费的最新一条 kb_reembed_* 事件。 */
+type ReembedEvent = Extract<AppEvent, { type: `kb_reembed_${string}` }>;
 
-/** ingest 除文件路径外的可选参数（mimeType/kbId）。 */
-export type KnowledgeIngestOptions = Omit<KnowledgeIngestInput, 'filePath'>;
-/** search 除查询词外的可选参数（topK/assetIds）。 */
-export type KnowledgeSearchOptions = Omit<KnowledgeSearchInput, 'query'>;
-
-// ── Ingest job (background processing queue) ────────────────────────────────────
-
-export type IngestStage = 'validate' | 'parse' | 'chunk' | 'embed';
-export type IngestJobStatus = IngestTask['status'];
-
-export interface IngestJob {
-  taskId:   string;
-  assetId:  string;
-  /** HTTP 水合的任务行不带 kbId；SSE 事件到达后补齐。 */
-  kbId?:    string;
-  fileName: string;
-  stage?:   IngestStage;       // absent while pending
-  progress: number;            // 0–1
-  status:   IngestJobStatus;
-  error?:   string;
-}
-
-// ── Reembed task (background index rebuild; one active per KB) ──────────────────
-
-export type ReembedTaskStatus = 'pending' | 'running' | 'failed' | 'cancelled' | 'completed';
-
-export interface ReembedTask {
-  taskId:   string;
-  kbId:     string;
-  /** '' = 全库扫描的终态事件。 */
-  assetId:  string;
-  progress: number;            // 0–1
-  status:   ReembedTaskStatus;
-  error?:   string;
-  totalItems?: number;
-  completedItems?: number;
-}
-
-// ── Store interface ───────────────────────────────────────────────────────────
-
-export interface KbStoreState {
+export interface KnowledgeStoreState {
   documents:    DocumentAsset[];
   loading:      boolean;
   error:        string | null;
 
-  /** assetId → in-flight ingest job (background processing queue). */
-  ingestJobs:   Record<string, IngestJob>;
-  /** kbId → 重建索引任务(一个 KB 同时只有一场, 新任务覆盖旧记录)。 */
-  reembedTasks: Record<string, ReembedTask>;
-  /** Completed count in the current batch (done jobs are removed from the map,
-   *  so this is the reliable "succeeded" tally for the nav indicator). */
+  /** assetId → Route 原生摄入任务行；进度由 kb_ingest_* SSE 原位更新。 */
+  ingestTasks:  Record<string, IngestTaskRow>;
+  /** 当前批次已成功数（完成行会退出动画后移除，导航指示器靠它计数）。 */
   ingestDoneCount: number;
-  /** 当前批次已经消费的 completed asset，用于抵御 SSE 重放与重复投递。 */
+  /** 已计数的 completed asset，抵御 SSE 重放与重复投递。 */
   ingestCompletedAssets: Set<string>;
   ingesting:    boolean;
   ingestError:  string | null;
   ingestQueueError: string | null;
 
+  /** kbId → 最近一条 kb_reembed_* 原始事件；一个 KB 同时只有一场重建。 */
+  reembedEvents: Record<string, ReembedEvent>;
+
   searchResult:  KnowledgeSearchResult | null;
   searchLoading: boolean;
   searchError:   string | null;
 
-  // ── KB library registry ─────────────────────────────────────────────────────
   libs:          KnowledgeLibrary[];
   libsLoading:   boolean;
   libsError:     string | null;
 
   loadDocuments(opts?: { cursor?: string; limit?: number; keyword?: string }): Promise<void>;
   loadIngestTasks(): Promise<void>;
-  ingest(filePath: string, opts?: KnowledgeIngestOptions): Promise<void>;
+  ingest(input: KnowledgeIngestInput): Promise<void>;
   retryIngest(assetId: string): Promise<void>;
   deleteDocument(id: string): Promise<void>;
-  search(query: string, opts?: KnowledgeSearchOptions): Promise<void>;
+  search(input: KnowledgeSearchInput): Promise<void>;
   clearSearch(): void;
   clearError(): void;
 
-  // KB library operations.
   loadLibs(): Promise<void>;
   createLib(name: string, kbPath: string): Promise<KnowledgeLibrary | undefined>;
   renameLib(id: string, name: string): Promise<void>;
   activateLib(id: string): Promise<void>;
   deleteLib(id: string): Promise<void>;
 
-  // Driven by the system SSE (kb_ingest_* events).
-  onIngestProgress(kbId: string, taskId: string, assetId: string, stage: IngestStage, progress: number): void;
-  onIngestCompleted(kbId: string, taskId: string, assetId: string): void;
-  onIngestFailed(kbId: string, taskId: string, assetId: string, error: string): void;
+  /** 整库重建过期索引：取 stale 清单整单入队；返回提交资产数，0 = 无需重建。 */
+  submitReembedStale(): Promise<number>;
+  cancelReembed(taskId: string): Promise<void>;
 
-  // Driven by the system SSE (kb_reembed_* events).
-  onReembedProgress(kbId: string, taskId: string, assetId: string, progress: number, counts: { completed: number; total: number }): void;
-  onReembedCompleted(kbId: string, taskId: string, assetId: string): void;
-  onReembedCancelled(kbId: string, taskId: string, assetId: string): void;
-  onReembedFailed(kbId: string, taskId: string, assetId: string, error: string): void;
+  /** 系统 SSE 唯一入口：按事件类型原位更新任务行/重建卡片。 */
+  applyKnowledgeEvent(event: KnowledgeDomainEvent): void;
 }
 
-// ── Store ─────────────────────────────────────────────────────────────────────
-
-export const useKnowledgeStore = create<KbStoreState>((set, get) => ({
+export const useKnowledgeStore = create<KnowledgeStoreState>((set, get) => ({
   documents:     [],
   loading:       false,
   error:         null,
 
-  ingestJobs:    {},
-  reembedTasks:  {},
+  ingestTasks:   {},
   ingestDoneCount: 0,
   ingestCompletedAssets: new Set(),
   ingesting:     false,
   ingestError:   null,
   ingestQueueError: null,
+
+  reembedEvents: {},
 
   searchResult:  null,
   searchLoading: false,
@@ -149,40 +107,30 @@ export const useKnowledgeStore = create<KbStoreState>((set, get) => ({
     set({ ingestQueueError: null });
     try {
       const { items } = await knowledgeApi.listIngestTasks();
-      const jobs: Record<string, IngestJob> = {};
-      for (const t of items) {
-        jobs[t.assetId] = {
-          taskId:   t.id,
-          assetId:  t.assetId,
-          fileName: t.fileName,
-          stage:    t.stage as IngestStage | undefined,
-          progress: t.progress,
-          status:   t.status,
-          error:    t.error,
-        };
-      }
-      set({ ingestJobs: jobs, ingestQueueError: null });
+      const tasks: Record<string, IngestTaskRow> = {};
+      for (const row of items) tasks[row.assetId] = row;
+      set({ ingestTasks: tasks, ingestQueueError: null });
     } catch (error: unknown) {
-      // 队列刷新失败时保留旧快照；它可能过期，但不能伪装成“没有后台任务”。
+      // 队列刷新失败时保留旧数据；它可能过期，但不能伪装成“没有后台任务”。
       set({
         ingestQueueError: error instanceof Error ? error.message : '加载知识库任务队列失败',
       });
     }
   },
 
-  async ingest(filePath, opts = {}) {
-    // Starting a fresh batch (no active jobs) → reset the succeeded tally so the
-    // nav indicator counts this batch, not the last one.
-    const active = Object.values(get().ingestJobs).some((j) => j.status === 'pending' || j.status === 'running');
+  async ingest(input) {
+    // 开始新批次（无活跃任务）时重置成功计数，导航指示器只统计本批次。
+    const active = Object.values(get().ingestTasks).some(
+      (t) => t.status === 'pending' || t.status === 'running',
+    );
     set({
       ingesting: true,
       ingestError: null,
       ...(active ? {} : { ingestDoneCount: 0, ingestCompletedAssets: new Set<string>() }),
     });
     try {
-      // Enqueue (POST returns 202 once the task row exists); hydrate the queue so
-      // the new pending job shows. Progress/completion arrive via the system SSE.
-      await knowledgeApi.ingest({ filePath, ...opts });
+      // 入队（202 返回任务行）后水合队列让新 pending 行出现；进度/终态由系统 SSE 驱动。
+      await knowledgeApi.ingest(input);
       await get().loadIngestTasks();
       set({ ingesting: false });
     } catch (err: unknown) {
@@ -194,15 +142,17 @@ export const useKnowledgeStore = create<KbStoreState>((set, get) => ({
   },
 
   async retryIngest(assetId) {
-    const job = get().ingestJobs[assetId];
-    // Optimistic: flip to pending immediately; the SSE drives it from there.
-    set((s) => {
-      const current = s.ingestJobs[assetId];
-      if (!current) return {};
-      return { ingestJobs: { ...s.ingestJobs, [assetId]: { ...current, status: 'pending', stage: undefined, progress: 0, error: undefined } } };
-    });
-    try { await knowledgeApi.retryIngest(job?.taskId ?? assetId, job?.kbId); }
-    catch { void get().loadIngestTasks(); }  // resync on failure
+    const row = get().ingestTasks[assetId];
+    if (!row) return;
+    // 乐观翻回 pending；后续进度由 SSE 驱动，失败则整队重水合。
+    set((s) => ({
+      ingestTasks: {
+        ...s.ingestTasks,
+        [assetId]: { ...row, status: 'pending', stage: undefined, progress: 0, error: undefined },
+      },
+    }));
+    try { await knowledgeApi.retryIngest(row.id); }
+    catch { void get().loadIngestTasks(); }
   },
 
   async deleteDocument(id) {
@@ -214,14 +164,14 @@ export const useKnowledgeStore = create<KbStoreState>((set, get) => ({
     }
   },
 
-  async search(query, opts = {}) {
-    if (!query.trim()) {
+  async search(input) {
+    if (!input.query.trim()) {
       set({ searchResult: null, searchError: null });
       return;
     }
     set({ searchLoading: true, searchError: null });
     try {
-      const searchResult = await knowledgeApi.search({ query, ...opts });
+      const searchResult = await knowledgeApi.search(input);
       set({ searchResult, searchLoading: false });
     } catch (err: unknown) {
       set({
@@ -273,8 +223,9 @@ export const useKnowledgeStore = create<KbStoreState>((set, get) => ({
     try {
       await knowledgeApi.activateLib(id);
       set((s) => ({ libs: s.libs.map((l) => ({ ...l, isActive: l.id === id })) }));
-      // Reload documents from the newly-active KB.
+      // 换库后文档与任务队列都指向新的活跃库。
       void get().loadDocuments();
+      void get().loadIngestTasks();
     } catch (err: unknown) {
       set({ libsError: err instanceof Error ? err.message : '激活失败' });
     }
@@ -284,160 +235,130 @@ export const useKnowledgeStore = create<KbStoreState>((set, get) => ({
     try {
       await knowledgeApi.deleteLib(id);
       set((s) => ({ libs: s.libs.filter((l) => l.id !== id) }));
-      // Reload documents — the deleted lib may have been active, so the
-      // document list needs to reflect the new active lib (or empty).
+      // 被删的可能是活跃库：文档列表与任务队列跟随新的活跃库（或清空）。
       void get().loadDocuments();
+      void get().loadIngestTasks();
     } catch (err: unknown) {
       set({ libsError: err instanceof Error ? err.message : '删除失败' });
     }
   },
 
-  onIngestProgress(kbId, taskId, assetId, stage, progress) {
-    set((s) => {
-      const job = s.ingestJobs[assetId];
-      if (!job) {
-        // First SSE event for this asset — create the job entry (loadIngestTasks may not have run yet).
-        return { ingestJobs: { ...s.ingestJobs, [assetId]: { taskId, assetId, kbId, fileName: assetId, status: 'running', stage, progress } } };
-      }
-      return { ingestJobs: { ...s.ingestJobs, [assetId]: { ...job, taskId, kbId, status: 'running', stage, progress } } };
-    });
-  },
-
-  onIngestCompleted(kbId, taskId, assetId) {
-    // Mark done (green, 100%) briefly so the row plays an exit animation, then drop it.
-    set((s) => {
-      // SSE 可能早于 HTTP 队列水合到达；终态事件本身足以建立最小可信记录。
-      const job = s.ingestJobs[assetId] ?? {
-        taskId,
-        assetId,
-        kbId,
-        fileName: assetId,
-        status: 'completed' as const,
-        progress: 1,
-      };
-      const completedAssets = new Set(s.ingestCompletedAssets);
-      const firstCompletion = !completedAssets.has(assetId);
-      completedAssets.add(assetId);
-      return {
-        ingestDoneCount: s.ingestDoneCount + (firstCompletion ? 1 : 0),
-        ingestCompletedAssets: completedAssets,
-        ingestJobs: { ...s.ingestJobs, [assetId]: { ...job, taskId, kbId, status: 'completed', progress: 1 } },
-      };
-    });
-    void get().loadDocuments();
-    setTimeout(() => {
+  async submitReembedStale() {
+    // V1 不传 kbId：Route 缺省解析当前活跃库。
+    const stale = await knowledgeApi.listStaleAssets();
+    if (stale.items.length === 0) return 0;
+    await knowledgeApi.reembed({ assetIds: [...stale.items] });
+    // 入队成功即清掉同库上一场重建的终态卡片，新进度事件随后覆盖。
+    const activeId = get().libs.find((l) => l.isActive)?.id;
+    if (activeId) {
       set((s) => {
-        const { [assetId]: _gone, ...rest } = s.ingestJobs;
-        return { ingestJobs: rest };
+        const rest = { ...s.reembedEvents };
+        delete rest[activeId];
+        return { reembedEvents: rest };
       });
-    }, 350);
+    }
+    return stale.items.length;
   },
 
-  onIngestFailed(kbId, taskId, assetId, error) {
-    set((s) => {
-      const job = s.ingestJobs[assetId];
-      if (!job) return {};
-      return { ingestJobs: { ...s.ingestJobs, [assetId]: { ...job, taskId, kbId, status: 'failed', error } } };
-    });
+  async cancelReembed(taskId) {
+    await knowledgeApi.cancelReembed(taskId);
   },
 
-  onReembedProgress(kbId, taskId, assetId, progress, counts) {
-    set((s) => ({
-      reembedTasks: {
-        ...s.reembedTasks,
-        [kbId]: {
-          taskId,
-          kbId,
-          assetId,
-          progress,
-          status: 'running',
-          totalItems: counts.total,
-          completedItems: counts.completed,
-        },
-      },
-    }));
-  },
-
-  onReembedCompleted(kbId, taskId, assetId) {
-    set((s) => {
-      const job = s.reembedTasks[kbId];
-      if (!job) return {};
-      return {
-        reembedTasks: {
-          ...s.reembedTasks,
-          [kbId]: {
-            ...job,
-            taskId,
-            assetId,
-            status: 'completed',
-            progress: 1,
+  applyKnowledgeEvent(event) {
+    switch (event.type) {
+      case 'kb_ingest_progress': {
+        const row = get().ingestTasks[event.assetId];
+        if (!row) {
+          // SSE 早于 HTTP 水合到达：任务行在服务端已持久化，直接整队重水合。
+          void get().loadIngestTasks();
+          return;
+        }
+        set((s) => ({
+          ingestTasks: {
+            ...s.ingestTasks,
+            [event.assetId]: { ...row, status: 'running', stage: event.stage, progress: event.progress },
           },
-        },
-      };
-    });
-    void get().loadDocuments();
-  },
+        }));
+        return;
+      }
 
-  onReembedCancelled(kbId, taskId, assetId) {
-    set((s) => {
-      const job = s.reembedTasks[kbId];
-      const base: ReembedTask = job ?? {
-        taskId,
-        kbId,
-        assetId,
-        progress: 0,
-        status: 'cancelled',
-      };
-      return {
-        reembedTasks: {
-          ...s.reembedTasks,
-          [kbId]: {
-            ...base,
-            taskId,
-            status: 'cancelled',
+      case 'kb_ingest_completed': {
+        set((s) => {
+          const completedAssets = new Set(s.ingestCompletedAssets);
+          const firstCompletion = !completedAssets.has(event.assetId);
+          completedAssets.add(event.assetId);
+          const row = s.ingestTasks[event.assetId];
+          return {
+            ingestDoneCount: s.ingestDoneCount + (firstCompletion ? 1 : 0),
+            ingestCompletedAssets: completedAssets,
+            ...(row
+              ? { ingestTasks: { ...s.ingestTasks, [event.assetId]: { ...row, status: 'completed' as const, progress: 1 } } }
+              : {}),
+          };
+        });
+        // 行短暂停留播退出动画后移除；文档列表刷新拿到 ready 状态。
+        setTimeout(() => {
+          set((s) => {
+            const rest = { ...s.ingestTasks };
+            delete rest[event.assetId];
+            return { ingestTasks: rest };
+          });
+        }, 350);
+        void get().loadDocuments();
+        return;
+      }
+
+      case 'kb_ingest_failed': {
+        const row = get().ingestTasks[event.assetId];
+        if (!row) {
+          void get().loadIngestTasks();
+          return;
+        }
+        set((s) => ({
+          ingestTasks: {
+            ...s.ingestTasks,
+            [event.assetId]: { ...row, status: 'failed', error: event.error },
           },
-        },
-      };
-    });
-  },
+        }));
+        return;
+      }
 
-  onReembedFailed(kbId, taskId, assetId, error) {
-    set((s) => {
-      const job = s.reembedTasks[kbId];
-      const base: ReembedTask = job ?? {
-        taskId,
-        kbId,
-        assetId,
-        progress: 0,
-        status: 'failed',
-      };
-      return { reembedTasks: { ...s.reembedTasks, [kbId]: { ...base, taskId, status: 'failed', error } } };
-    });
+      case 'kb_reembed_progress':
+      case 'kb_reembed_cancelled':
+      case 'kb_reembed_failed':
+        set((s) => ({ reembedEvents: { ...s.reembedEvents, [event.kbId]: event } }));
+        return;
+
+      case 'kb_reembed_completed':
+        set((s) => ({ reembedEvents: { ...s.reembedEvents, [event.kbId]: event } }));
+        void get().loadDocuments();
+        return;
+    }
   },
 }));
 
-// ── Selectors ───────────────────────────────────────────────────────────────
+// ── 选择器 ───────────────────────────────────────────────────────────────────
 
 export interface IngestSummary {
   active: number;   // pending + running
   failed: number;
-  done:   number;   // succeeded in this batch
+  done:   number;   // 本批次已成功
   total:  number;
   state:  'idle' | 'running' | 'done' | 'failed';
 }
 
-/** Aggregate ingest-queue status for the settings-nav indicator. */
-export function selectIngestSummary(s: KbStoreState): IngestSummary {
-  const jobs   = Object.values(s.ingestJobs);
-  const active = jobs.filter((j) => j.status === 'pending' || j.status === 'running').length;
-  const failed = jobs.filter((j) => j.status === 'failed').length;
+/** 设置导航指示器的摄入队列聚合。 */
+export function selectIngestSummary(s: KnowledgeStoreState): IngestSummary {
+  const rows   = Object.values(s.ingestTasks);
+  const active = rows.filter((t) => t.status === 'pending' || t.status === 'running').length;
+  const failed = rows.filter((t) => t.status === 'failed').length;
   const done   = s.ingestDoneCount;
   const total  = done + active + failed;
 
   let state: IngestSummary['state'] = 'idle';
   if (active > 0)            state = 'running';
   else if (total === 0)      state = 'idle';
-  else if (done === 0)       state = 'failed';   // nothing succeeded → all failed
-  else                       state = 'done';     // at least one succeeded, none active
+  else if (done === 0)       state = 'failed';   // 无一成功 → 全部失败
+  else                       state = 'done';     // 至少一个成功且无活跃
   return { active, failed, done, total, state };
 }

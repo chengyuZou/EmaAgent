@@ -6,7 +6,7 @@ import { showToast } from './toast.js';
 import { turnsApi } from '../api/turns.js';
 import { serverClient } from '../api/client.js';
 import type { TurnSseEvent } from '@ema-agent/server/sse/eventHub.js';
-import { useConversationStore } from '../stores/conversation-store.js';
+import { useCurrentSession } from '../chat/state/currentSession.js';
 import type { EmaLipSync } from './wlipsync-lipsync.js';
 import { createEmaLipSync } from './wlipsync-lipsync.js';
 
@@ -130,7 +130,8 @@ function startRmsLoop(): void {
         const v = (rmsData[i]! - 128) / 128;
         sum += v * v;
       }
-      rms = Math.sqrt(sum / rmsData.length);
+      // 原始音量包络正常说话只有 0.02~0.3，放大到与 wLipSync 一致的 0..1 开口度域
+      rms = Math.min(1, Math.sqrt(sum / rmsData.length) * 3);
     }
     publishSpeechState({ speaking: true, rms });
     rmsRaf = requestAnimationFrame(loop);
@@ -374,7 +375,7 @@ function onPlaybackEnded(): void {
 // ── Owner check ───────────────────────────────────────────────────────────────
 
 function isTtsOwner(sessionId: string): boolean {
-  return (useConversationStore.getState().ttsOwnerSessionId as string) === sessionId;
+  return (useCurrentSession.getState().ttsOwnerSessionId as string) === sessionId;
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────

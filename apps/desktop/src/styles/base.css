@@ -30,7 +30,7 @@ button, [role="button"], [data-tauri-drag-region], .ema-no-select, .ema-no-selec
   outline: none !important;
 }
 
-/* ── Scrollbar ──────────────────────────────────────────────────────────────*/
+/* ── Scrollbar（跟指针：栏内才画，离开延迟淡出） ────────────────────────────*/
 ::-webkit-scrollbar {
   width:  6px;
   height: 6px;
@@ -40,11 +40,16 @@ button, [role="button"], [data-tauri-drag-region], .ema-no-select, .ema-no-selec
   border-radius: var(--ema-radius-pill);
 }
 ::-webkit-scrollbar-thumb {
-  background:    var(--ema-scrollbar-thumb, rgba(255, 255, 255, 0.15));
+  background:    transparent;
   border-radius: var(--ema-radius-pill);
-  /* hover 放大+换色(抄 AstrBot 滚动条 hover 放大+发光) */
-  transition:    background var(--ema-duration-base) var(--ema-ease),
+  transition:    background var(--ema-duration-base) var(--ema-ease) 1.8s,
                  width     var(--ema-duration-base) var(--ema-ease);
+}
+/* 指针悬在滚动容器（含其任意子元素）上时立即显色；离开后按上面 1.8s 延迟淡出。 */
+*:hover::-webkit-scrollbar-thumb,
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ema-scrollbar-thumb, rgba(255, 255, 255, 0.15));
+  transition-delay: 0s;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--ema-scrollbar-thumb-hover, rgba(255, 255, 255, 0.28));
@@ -52,6 +57,15 @@ button, [role="button"], [data-tauri-drag-region], .ema-no-select, .ema-no-selec
 }
 ::-webkit-scrollbar-corner {
   background: transparent;
+}
+
+/* Firefox 走 scrollbar-color（离散切换，无过渡）。 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+*:hover {
+  scrollbar-color: var(--ema-scrollbar-thumb, rgba(255, 255, 255, 0.15)) transparent;
 }
 
 /* ── Selection ──────────────────────────────────────────────────────────────*/
@@ -64,4 +78,14 @@ button, [role="button"], [data-tauri-drag-region], .ema-no-select, .ema-no-selec
 ::placeholder {
   color:   var(--ema-text-tertiary);
   opacity: 1;
+}
+
+/* ── 动效降级：系统要求减少动态效果时，全局动画/过渡即时化、平滑滚动关闭 ── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

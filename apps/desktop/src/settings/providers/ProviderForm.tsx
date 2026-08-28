@@ -8,7 +8,7 @@ import {
   Select,
   resolveProviderIconClass,
 } from '@ema-agent/ui';
-import { useSettingsStore } from '../../stores/settings-store.js';
+import { useProviderStore } from '../../stores/provider.js';
 import {
   providersApi,
   type ModelCapability,
@@ -16,22 +16,58 @@ import {
 } from '../../api/providers.js';
 import { PROVIDER_LIMITS, type Protocol } from '@ema-agent/providers';
 import { showToast } from '../../lib/toast.js';
-import {
-  resolveProviderSubmitState,
-  type ProviderFormBaseline,
-} from './provider-form-state.js';
-import { LlmModelManager }    from './LlmModelManager.js';
-import { EmbedModelManager }  from './EmbedModelManager.js';
-import { RerankModelManager } from './RerankModelManager.js';
-import { TtsModelManager }    from './TtsModelManager.js';
-import { SttModelManager }    from './SttModelManager.js';
-import { VisionModelManager } from './VisionModelManager.js';
+import { ProviderModelManager } from './ProviderModelManager.js';
 
 export interface ProviderFormProps {
   provider:   ProviderRecord;
   capability: ModelCapability;
   onClose():  void;
   onDirtyChange?(dirty: boolean): void;
+}
+
+// ── 基线比较与提交资格 ────────────────────────────────────────────────────────
+
+interface ProviderFormBaseline {
+  baseUrl: string;
+  protocol: string;
+}
+
+interface ProviderFormDraft extends ProviderFormBaseline {
+  apiKey: string;
+  credentialDirty: boolean;
+}
+
+interface ProviderSubmitState {
+  dirty: boolean;
+  valid: boolean;
+  submittable: boolean;
+}
+
+function isProviderConfigDirty(
+  draft: ProviderFormDraft,
+  baseline: ProviderFormBaseline,
+): boolean {
+  return draft.credentialDirty
+    || draft.baseUrl.trim() !== baseline.baseUrl.trim()
+    || draft.protocol !== baseline.protocol;
+}
+
+/** 密钥语义：非空输入在保存时写入并设为 active；空 = 不动现有 key（清空走 key 管理，不在表单里猜）。 */
+function resolveProviderSubmitState(args: {
+  draft: ProviderFormDraft;
+  baseline: ProviderFormBaseline;
+  requiresCredentials: boolean;
+  hasActiveKey: boolean;
+}): ProviderSubmitState {
+  const dirty = isProviderConfigDirty(args.draft, args.baseline);
+  const hasRequiredCredential = !args.requiresCredentials
+    || args.hasActiveKey
+    || args.draft.apiKey.trim().length > 0;
+  return {
+    dirty,
+    valid: hasRequiredCredential,
+    submittable: hasRequiredCredential && dirty,
+  };
 }
 
 const PROTOCOL_LABELS: Record<string, string> = {
@@ -153,7 +189,7 @@ export function ProviderForm({
       setCredentialDirty(false);
       setCredentialLoaded(false);
       showToast('已更新', { variant: 'success' });
-      await useSettingsStore.getState().refreshProviders();
+      await useProviderStore.getState().refreshProviders();
     } catch (err: unknown) {
       showToast(`操作失败: ${err instanceof Error ? err.message : 'Unknown'}`, { variant: 'danger' });
     } finally {
@@ -404,42 +440,12 @@ export function ProviderForm({
       </form>
 
       {/* ── 模型池 ───────────────────────────────────────────────────────────── */}
-      {capability === 'llm' && (
-        <>
-          <div className="border-t border-[var(--ema-border)]" />
-          <LlmModelManager providerId={provider.id} iconKey={resolveProviderIconClass(provider.iconId)} />
-        </>
-      )}
-      {capability === 'embed' && (
-        <>
-          <div className="border-t border-[var(--ema-border)]" />
-          <EmbedModelManager providerId={provider.id} iconKey={resolveProviderIconClass(provider.iconId)} />
-        </>
-      )}
-      {capability === 'rerank' && (
-        <>
-          <div className="border-t border-[var(--ema-border)]" />
-          <RerankModelManager providerId={provider.id} iconKey={resolveProviderIconClass(provider.iconId)} />
-        </>
-      )}
-      {capability === 'tts' && (
-        <>
-          <div className="border-t border-[var(--ema-border)]" />
-          <TtsModelManager providerId={provider.id} iconKey={resolveProviderIconClass(provider.iconId)} />
-        </>
-      )}
-      {capability === 'stt' && (
-        <>
-          <div className="border-t border-[var(--ema-border)]" />
-          <SttModelManager providerId={provider.id} iconKey={resolveProviderIconClass(provider.iconId)} />
-        </>
-      )}
-      {capability === 'vision' && (
-        <>
-          <div className="border-t border-[var(--ema-border)]" />
-          <VisionModelManager providerId={provider.id} iconKey={resolveProviderIconClass(provider.iconId)} />
-        </>
-      )}
+      <div className="border-t border-[var(--ema-border)]" />
+      <ProviderModelManager
+        providerId={provider.id}
+        capability={capability}
+        iconKey={resolveProviderIconClass(provider.iconId)}
+      />
     </div>
   );
 }

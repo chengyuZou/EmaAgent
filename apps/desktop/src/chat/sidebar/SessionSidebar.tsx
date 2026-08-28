@@ -1,50 +1,58 @@
 // 会话侧栏主装配:折叠/宽度拖拽状态;分区数据直接消费服务端五桶分组
 // （置顶 Session / 置顶项目 / 其余项目 / 最近 / 已归档），行、分区与搜索各自成文件。
-import { useState, useCallback, useMemo, useRef, type JSX } from 'react';
+import { useState, useEffect, useMemo, type JSX } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { Button } from '@ema-agent/ui';
-import { useConversationStore } from '../../stores/conversation-store.js';
-import { useSessionStore } from '../../stores/session-store.js';
-import { useDecisionStore } from '../../stores/decision-store.js';
+import type { SessionListItem } from '../../api/sessions.js';
+import { useCurrentSession } from '../state/currentSession.js';
+import { useMessages } from '../state/messages.js';
+import { useSessionStore } from '../../stores/session.js';
+import { useDecisionStore } from '../../stores/decision.js';
 import { runWithToast } from '../../lib/toast.js';
+import { useDragResize } from '../../hooks/use-drag-resize.js';
 import { NewConversationCommand, ProjectListSection, SidebarCommand, SidebarSection } from './SidebarSections.js';
 import { getStatusDot } from './SidebarRow.js';
 import { SessionSearchOverlay } from './SidebarSearchOverlay.js';
-import { uniqueSessions } from './sidebarGroups.js';
+
+/** 同一会话可同时出现在置顶桶与项目桶；搜索覆盖层的近期清单合并展示前去重保序。 */
+function uniqueSessions(items: readonly SessionListItem[]): SessionListItem[] {
+  const seen = new Set<string>();
+  const out: SessionListItem[] = [];
+  for (const item of items) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    out.push(item);
+  }
+  return out;
+}
 
 export function SessionSidebar(): JSX.Element {
   const [collapsed, setCollapsed]   = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  // 侧栏宽度(可拖拽,右边缘手柄)。默认 256px(w-64),范围 200-480。collapsed 时 w-10 不拖。
+  // 侧栏宽度(可拖拽,右边缘手柄)。默认 256px,范围 200-480。collapsed 时 w-10 不拖。
   const [sidebarWidth, setSidebarWidth] = useState(256);
-  const [resizing, setResizing] = useState(false);
-  const resizeStartX = useRef(0);
-  const resizeStartW = useRef(0);
+  const { resizing, handleProps } = useDragResize({
+    axis: 'x',
+    sign: 1,
+    getSize: () => sidebarWidth,
+    setSize: setSidebarWidth,
+    min: 200,
+    max: 480,
+  });
 
-  const onResizeStart = useCallback((e: React.MouseEvent): void => {
-    e.preventDefault();
-    setResizing(true);
-    resizeStartX.current = e.clientX;
-    resizeStartW.current = sidebarWidth;
-    document.body.classList.add('ema-resizing');
-    const onMove = (ev: MouseEvent): void => {
-      // 手柄在右边缘,向右拖 = 增宽
-      const delta = ev.clientX - resizeStartX.current;
-      setSidebarWidth(Math.max(200, Math.min(480, resizeStartW.current + delta)));
+  // 窄视口自动收成 rail；手动展开不受宽度限制，回到宽视口也不强行复原。
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 1100px)');
+    const onChange = (event: MediaQueryListEvent) => {
+      if (event.matches) setCollapsed(true);
     };
-    const onUp = (): void => {
-      setResizing(false);
-      document.body.classList.remove('ema-resizing');
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  }, [sidebarWidth]);
+    media.addEventListener('change', onChange);
+    return () => media.removeEventListener('change', onChange);
+  }, []);
 
   const sessions  = useSessionStore((s) => s.sessions);
-  const viewedId  = useConversationStore((s) => s.viewedSessionId);
-  const streaming = useConversationStore((s) => s.streamingMap);
+  const viewedId  = useCurrentSession((s) => s.viewedSessionId);
+  const streaming = useMessages((s) => s.streamBySession);
   const pendingCounts = useDecisionStore(
     useShallow((s) => {
       const counts: Record<string, number> = {};
@@ -80,7 +88,7 @@ export function SessionSidebar(): JSX.Element {
         <div
           className="ema-resize-handle"
           style={{ left: 'auto', right: 0 }}
-          onMouseDown={onResizeStart}
+          {...handleProps}
           aria-hidden
         />
       )}
@@ -114,10 +122,10 @@ export function SessionSidebar(): JSX.Element {
             <NewConversationCommand
               onCreate={async () => {
                 const newId = await runWithToast(
-                  useConversationStore.getState().createFreshSession(),
+                  useCurrentSession.getState().createFreshSession(),
                   '新建会话失败',
                 );
-                if (newId) void useConversationStore.getState().viewSession(newId);
+                if (newId) void useCurrentSession.getState().viewSession(newId);
               }}
               onCollapse={() => setCollapsed(true)}
             />

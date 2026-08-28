@@ -7,8 +7,8 @@ import {
 import {
   Callout, Divider, IconButton, Input, ScrollArea, Skeleton,
 } from '@ema-agent/ui';
-import { useStorageStore }  from '../../stores/storage-store.js';
-import { useSessionStore }  from '../../stores/session-store.js';
+import { useStorageStore }  from '../../stores/storage.js';
+import { useSessionStore }  from '../../stores/session.js';
 import { sessionsApi }      from '../../api/sessions.js';
 import { showToast }        from '../../lib/toast.js';
 import { useMountedAnim } from './storageFormat.js';

@@ -1,7 +1,7 @@
 // 文档导入表单:文件选择与入队,后台处理进度由处理队列与 SSE 呈现。
 import { useState, type JSX } from 'react';
 import { Button, Callout, Input, Spinner } from '@ema-agent/ui';
-import { useKnowledgeStore } from '../../stores/knowledge-store.js';
+import { useKnowledgeStore } from '../../stores/knowledge.js';
 import { tauriBridge } from '../../lib/tauri-bridge.js';
 import { showToast } from '../../lib/toast.js';
 
@@ -26,7 +26,7 @@ export function IngestForm({ onDone }: { onDone(): void }): JSX.Element {
       showToast('请选择或输入文件路径', { variant: 'warning' });
       return;
     }
-    await useKnowledgeStore.getState().ingest(filePath.trim());
+    await useKnowledgeStore.getState().ingest({ filePath: filePath.trim() });
     if (!useKnowledgeStore.getState().ingestError) {
       setFilePath('');
       onDone();

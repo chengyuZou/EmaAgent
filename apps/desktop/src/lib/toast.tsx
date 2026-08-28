@@ -129,13 +129,10 @@ export function showToast(message: string, opts?: ToastOptions): ToastHandle {
 }
 
 /**
- * Run an async store action, toasting on failure. Pairs with store methods that
- * re-throw on error (e.g. session-store's delete/rename/pin/archive all
- * `throw err` after setting state.error). Avoids repeating try/catch+toast at
- * every call site.
+ * 包装一个会原样抛错的异步 action，失败时弹 toast（session 的删除/重命名/置顶/归档
+ * 都在置 state.error 后重新 throw）。省掉每个调用点重复的 try/catch+toast。
  *
- * The toast shows `<fallback>: <err.message>` so the user sees both the action
- * that failed and the backend's error detail.
+ * toast 文案为 `<兜底>: <err.message>`，用户同时看到失败的动作与后端的错误细节。
  *
  * @example
  *   void runWithToast(store.deleteSession(id), '删除失败');

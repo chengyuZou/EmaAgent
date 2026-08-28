@@ -15,9 +15,20 @@ import {
 export type SessionCreateInput = InferRequestType<RpcClient['api']['sessions']['$post']>['json'];
 export type Session = RpcJson<RpcClient['api']['sessions']['$post']>;
 export type SessionsGrouped = RpcJson<RpcClient['api']['sessions']['$get']>;
+/** 分组列表的会话条目（含 hasActiveTurn/lastTurnStatus/hasUnread 列表投影）。 */
+export type SessionListItem = SessionsGrouped['recent'][number];
+/** 项目槽：实体 + 文件夹 + 成员 Session。 */
+export type SessionProjectGroup = SessionsGrouped['projects'][number];
 export type SessionSearchResult = RpcJson<RpcClient['api']['sessions']['search']['$get']>;
 export type SessionPatchInput = InferRequestType<RpcClient['api']['sessions'][':sessionId']['$put']>['json'];
 export type SessionMessagesResult = RpcJson<RpcClient['api']['sessions'][':sessionId']['messages']['$get']>;
+/** 历史接口的单条消息（user 消息可能附带 attachments 投影）。 */
+export type SessionHistoryMessage = SessionMessagesResult['messages'][number];
+/** 历史接口返回的 Turn 记录。 */
+export type SessionHistoryTurn = SessionMessagesResult['turns'][number];
+/** 历史附件展示投影：路径不进传输层，内容经 attachments content 端点读取。 */
+export type MessageAttachment =
+  Extract<SessionHistoryMessage, { attachments: readonly unknown[] }>['attachments'][number];
 export type TurnIndexPage = RpcJson<RpcClient['api']['sessions'][':sessionId']['turn-index']['$get']>;
 export type SessionMessageWindow = RpcJson<RpcClient['api']['sessions'][':sessionId']['messages']['window']['$get']>;
 export type SessionAttachmentsResult = RpcJson<RpcClient['api']['sessions'][':sessionId']['attachments']['$get']>;
@@ -108,6 +119,13 @@ export const sessionsApi = {
   listAttachments(id: string): Promise<SessionAttachmentsResult> {
     return readRpcJson(
       rpcClient.api.sessions[':sessionId'].attachments.$get({ param: { sessionId: id } }),
+    );
+  },
+
+  /** 附件内容是字节流，不进入 JSON RPC。 */
+  readAttachment(sessionId: string, attachmentId: string): Promise<Response> {
+    return serverClient.requestRaw(
+      `/api/sessions/${encodeURIComponent(sessionId)}/attachments/${encodeURIComponent(attachmentId)}/content`,
     );
   },
 

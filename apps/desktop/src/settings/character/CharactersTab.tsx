@@ -1,7 +1,7 @@
 // 展示角色卡列表、新建入口与删除确认,并在具名对话框中编辑选中的角色卡。
 import { useState, type JSX } from 'react';
 import { Badge, Button, Callout, Card, ConfirmDialog, Dialog, ScrollArea } from '@ema-agent/ui';
-import { useCharacterStore } from '../../stores/character-store.js';
+import { useCharacterStore } from '../../stores/character.js';
 import type { Character } from '../../api/characters.js';
 import { CharacterEditor } from './CharacterEditor.js';
 import { CreateCharacterDialog } from './CreateCharacterDialog.js';

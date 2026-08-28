@@ -1,33 +1,28 @@
 // 管理前端 Session 列表、工作区、模式和下一轮模型偏好。
 import { create } from 'zustand';
-import { sessionsApi, type SessionsGrouped } from '../api/sessions.js';
-import { useBackgroundProcessStore } from './backgroundProcessStore.js';
-import { useContextUsageStore } from './contextUsageStore.js';
-import { useConversationStore } from './conversation-store.js';
-import { useDecisionStore } from './decision-store.js';
+import {
+  sessionsApi,
+  type SessionListItem,
+  type SessionPatchInput,
+  type SessionProjectGroup,
+  type SessionsGrouped,
+} from '../api/sessions.js';
+import { useBackgroundProcessStore } from './backgroundProcess.js';
+import { useDecisionStore } from './decision.js';
+import { evictChatSession } from '../chat/state/turnRunner.js';
+import { useContextUsage } from '../chat/state/contextUsage.js';
 
 import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/session';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-/** 侧栏列表条目（Session + hasActiveTurn/lastTurnStatus/hasUnread 列表投影）。 */
-export type SessionListEntry = SessionsGrouped['recent'][number];
-/** 项目槽：实体 + 文件夹 + 成员 Session。 */
-export type SessionProjectGroup = SessionsGrouped['projects'][number];
-
-/** Session 下一轮模型偏好；null 恢复默认解析。 */
-export interface SessionModelPreference {
-  providerId: string;
-  modelId: string;
-}
+// ── 类型 ──────────────────────────────────────────────────────────────────────
 
 export interface SessionsState {
-  pinned:   SessionListEntry[];
+  pinned:   SessionListItem[];
   pinnedProjects: SessionProjectGroup[];
   projects: SessionProjectGroup[];
-  recent:   SessionListEntry[];
-  archived: SessionListEntry[];
-  byId:     Map<string, SessionListEntry>;
+  recent:   SessionListItem[];
+  archived: SessionListItem[];
+  byId:     Map<string, SessionListItem>;
 }
 
 export interface SessionStoreState {
@@ -47,10 +42,10 @@ export interface SessionStoreState {
       narrativePolicy?: NarrativePolicy;
     },
   ): Promise<void>;
-  /** 保存用户希望该 Session 下一轮使用的供应商配置和模型。 */
+  /** 保存该 Session 后续 Turn 的模型偏好；null 恢复默认解析。 */
   setPreferredModel(
     id: string,
-    model: SessionModelPreference | null,
+    model: SessionPatchInput['model'],
   ): Promise<void>;
   forkSession(id: string, untilTurnId?: string):                   Promise<string>;
   archiveSession(id: string):                                     Promise<void>;
@@ -58,7 +53,7 @@ export interface SessionStoreState {
   deleteSession(id: string):                                      Promise<void>;
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── 辅助 ───────────────────────────────────────────────────────────────────
 
 function emptySessions(): SessionsState {
   return { pinned: [], pinnedProjects: [], projects: [], recent: [], archived: [], byId: new Map() };
@@ -76,9 +71,9 @@ function rebuildById(s: SessionsState): void {
 function replaceSession(
   sessions: SessionsState,
   id: string,
-  replacement: SessionListEntry,
+  replacement: SessionListItem,
 ): SessionsState {
-  const replace = (session: SessionListEntry): SessionListEntry =>
+  const replace = (session: SessionListItem): SessionListItem =>
     session.id === id ? replacement : session;
   const replaceGroup = (group: SessionProjectGroup): SessionProjectGroup => ({
     ...group,
@@ -124,7 +119,7 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
       rebuildById(sessions);
       set({ sessions, loading: false });
     } catch (err: unknown) {
-      set({ error: err instanceof Error ? err.message : 'Failed to load sessions', loading: false });
+      set({ error: err instanceof Error ? err.message : '加载会话列表失败', loading: false });
     }
   },
 
@@ -135,7 +130,7 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
       return session.id;
     } catch (error: unknown) {
       set({
-        error: error instanceof Error ? error.message : 'Failed to create session',
+        error: error instanceof Error ? error.message : '创建会话失败',
       });
       throw error;
     }
@@ -146,7 +141,7 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
       await sessionsApi.patch(id, { title });
       await get().loadSessions();
     } catch (err: unknown) {
-      set({ error: err instanceof Error ? err.message : 'Failed to rename session' });
+      set({ error: err instanceof Error ? err.message : '重命名会话失败' });
       throw err;
     }
   },
@@ -156,7 +151,7 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
       await sessionsApi.patch(id, { pinned });
       await get().loadSessions();
     } catch (err: unknown) {
-      set({ error: err instanceof Error ? err.message : 'Failed to pin session' });
+      set({ error: err instanceof Error ? err.message : '置顶操作失败' });
       throw err;
     }
   },
@@ -166,7 +161,7 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
       await sessionsApi.patch(id, { workspaceRoot: path });
       await get().loadSessions();
     } catch (err: unknown) {
-      set({ error: err instanceof Error ? err.message : 'Failed to set workspace root' });
+      set({ error: err instanceof Error ? err.message : '设置工作区失败' });
       throw err;
     }
   },
@@ -178,7 +173,7 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
 
     const generation = (executionSettingsGenerations.get(key) ?? 0) + 1;
     executionSettingsGenerations.set(key, generation);
-    const optimistic: SessionListEntry = {
+    const optimistic: SessionListItem = {
       ...previous,
       executionProfile: patch.executionProfile ?? previous.executionProfile,
       narrativePolicy: patch.narrativePolicy ?? previous.narrativePolicy,
@@ -239,7 +234,7 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
     const generation = (preferredModelGenerations.get(key) ?? 0) + 1;
     preferredModelGenerations.set(key, generation);
 
-    const optimistic: SessionListEntry = {
+    const optimistic: SessionListItem = {
       ...previous,
       providerId: model?.providerId ?? null,
       modelId: model?.modelId ?? null,
@@ -300,7 +295,7 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
       await get().loadSessions();
       return result.sessionId;
     } catch (err: unknown) {
-      set({ error: err instanceof Error ? err.message : 'Failed to fork session' });
+      set({ error: err instanceof Error ? err.message : '创建分支会话失败' });
       throw err;
     }
   },
@@ -308,10 +303,10 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
   async archiveSession(id) {
     try {
       await sessionsApi.archive(id);
-      useConversationStore.getState().evictSession(id);
+      evictChatSession(id);
       await get().loadSessions();
     } catch (err: unknown) {
-      set({ error: err instanceof Error ? err.message : 'Failed to archive session' });
+      set({ error: err instanceof Error ? err.message : '归档会话失败' });
       throw err;
     }
   },
@@ -321,7 +316,7 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
       await sessionsApi.unarchive(id);
       await get().loadSessions();
     } catch (err: unknown) {
-      set({ error: err instanceof Error ? err.message : 'Failed to unarchive session' });
+      set({ error: err instanceof Error ? err.message : '取消归档失败' });
       throw err;
     }
   },
@@ -329,18 +324,18 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
   async deleteSession(id) {
     try {
       await sessionsApi.delete(id);
-      useConversationStore.getState().evictSession(id);
+      evictChatSession(id);
       useDecisionStore.getState().clearSession(id);
       // Session 永久删除后,进程面板缓存与跟随循环一并清理,不显示其他 Session 的进程。
       useBackgroundProcessStore.getState().clearSession(id as string);
-      useContextUsageStore.getState().clearSession(id as string);
+      useContextUsage.getState().clearSession(id as string);
       preferredModelWriteChains.delete(id as string);
       preferredModelGenerations.delete(id as string);
       executionSettingsWriteChains.delete(id as string);
       executionSettingsGenerations.delete(id as string);
       await get().loadSessions();
     } catch (err: unknown) {
-      set({ error: err instanceof Error ? err.message : 'Failed to delete session' });
+      set({ error: err instanceof Error ? err.message : '删除会话失败' });
       throw err;
     }
   },

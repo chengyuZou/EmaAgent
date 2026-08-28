@@ -1,212 +1,112 @@
-/**
- * ModelPicker — dropdown for selecting (providerId, model) before sending.
- *
- * Fetches enabled models from GET /api/providers/models on mount.
- * Groups by provider, supports search filtering, pops UPWARD from the
- * bottom toolbar, uses @ema-agent/ui ScrollArea for the model list.
- */
-import { useState, useEffect, useMemo, useRef, type JSX } from 'react';
-import { Input, ScrollArea, Badge } from '@ema-agent/ui';
+// 选择 Provider + LLM，并在同一菜单里冻结本 Turn 的推理强度。
+import { useEffect, useMemo, useState, type JSX } from 'react';
+import { Button, DropdownMenu, type MenuItem } from '@ema-agent/ui';
+import type { TurnModelSelection } from '@ema-agent/turn';
 import type { AvailableModel } from '../../api/providers.js';
-import { findEnabledModel, useModelCatalogStore } from '../../stores/model-catalog-store.js';
+import { findEnabledModel, useProviderStore } from '../../stores/provider.js';
 
-/** 目录只加载 llm 能力；可用模型联合中只有 llm/vision 带 contextWindow/reasoning。 */
-type LlmAvailableModel = Extract<AvailableModel, { capability: 'llm' }>;
+type LlmModel = Extract<AvailableModel, { capability: 'llm' }>;
 
-function isLlmModel(model: AvailableModel): model is LlmAvailableModel {
+const EFFORT_LABELS: Record<TurnModelSelection['thinkingEffort'], string> = {
+  low: '轻度',
+  medium: '中',
+  high: '高',
+  max: '极高',
+};
+
+function isLlm(model: AvailableModel): model is LlmModel {
   return model.capability === 'llm';
 }
 
-export interface ModelSelection {
-  providerId: string;
-  model:      string;
-  reasoning?: boolean;
-}
+export function ModelPicker({ selection, onChange, onClear }: {
+  selection: TurnModelSelection | null;
+  onChange(selection: TurnModelSelection): void;
+  onClear(): void;
+}): JSX.Element {
+  const models = useProviderStore(state => state.models);
+  const status = useProviderStore(state => state.modelsStatus);
+  useEffect(() => { void useProviderStore.getState().loadModels(); }, []);
 
-interface ModelPickerProps {
-  selected:    ModelSelection | null;
-  onSelect(sel: ModelSelection): void;
-  onClear():  void;
-}
-
-/** Format context window for compact display. */
-function fmtCtx(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 10_000)    return `${Math.round(n / 1000)}K`;
-  if (n >= 1_000)     return `${(n / 1000).toFixed(1)}K`;
-  return `${n}`;
-}
-
-export function ModelPicker({ selected, onSelect, onClear }: ModelPickerProps): JSX.Element {
-  const [open, setOpen]       = useState(false);
-  const [search, setSearch]   = useState('');
-  const searchRef             = useRef<HTMLInputElement>(null);
-  const models                = useModelCatalogStore((state) => state.models);
-  const catalogStatus         = useModelCatalogStore((state) => state.status);
-  const catalogError          = useModelCatalogStore((state) => state.error);
-  const loading               = catalogStatus === 'idle' || catalogStatus === 'loading';
-
-  useEffect(() => {
-    void useModelCatalogStore.getState().load();
-  }, []);
-
-  // Focus search input + reset search when dropdown opens
-  useEffect(() => {
-    if (open) {
-      setSearch('');
-      setTimeout(() => searchRef.current?.focus(), 50);
-    }
-  }, [open]);
-
-  // Group models by provider, filter by search query
   const grouped = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const llmModels = models.filter(isLlmModel);
-    const filtered = q
-      ? llmModels.filter((m) =>
-          m.modelId.toLowerCase().includes(q) ||
-          m.providerName.toLowerCase().includes(q),
-        )
-      : llmModels;
-
-    const map = new Map<string, LlmAvailableModel[]>();
-    for (const m of filtered) {
-      const list = map.get(m.providerId) ?? [];
-      list.push(m);
-      map.set(m.providerId, list);
+    const result = new Map<string, LlmModel[]>();
+    for (const model of models.filter(isLlm)) {
+      const group = result.get(model.providerId) ?? [];
+      group.push(model);
+      result.set(model.providerId, group);
     }
-    return [...map.entries()].sort(([, a], [, b]) =>
-      (a[0]?.providerName ?? '').localeCompare(b[0]?.providerName ?? ''),
-    );
-  }, [models, search]);
+    return [...result.values()];
+  }, [models]);
+  const selectedModel = findEnabledModel(models, selection?.providerId, selection?.modelId);
+  const label = selectedModel
+    ? `${selectedModel.providerName} · ${selectedModel.name ?? selectedModel.modelId}`
+    : status === 'loading' || status === 'idle' ? '模型加载中' : '默认模型';
 
-  const selectedModel = findEnabledModel(
-    models,
-    selected?.providerId,
-    selected?.model,
-  );
+  const modelItems: MenuItem[] = grouped.flatMap((group, groupIndex) => [
+    ...(groupIndex > 0 ? [{ kind: 'separator' as const }] : []),
+    {
+      kind: 'item' as const,
+      label: group[0]?.providerName ?? 'Provider',
+      icon: 'i-lucide:server',
+      disabled: true,
+      onSelect: () => {},
+    },
+    ...group.map(model => ({
+      kind: 'item' as const,
+      label: model.name ?? model.modelId,
+      icon: selection?.providerId === model.providerId && selection.modelId === model.modelId
+        ? 'i-lucide:check' : 'i-lucide:box',
+      onSelect: () => onChange({
+        providerId: model.providerId,
+        modelId: model.modelId,
+        thinkingEnabled: model.reasoning === true && (selection?.thinkingEnabled ?? false),
+        thinkingEffort: selection?.thinkingEffort ?? 'medium',
+      }),
+    })),
+  ]);
 
-  const triggerLabel = selectedModel
-    ? (selectedModel.name ?? selectedModel.modelId)
-    : (loading ? '加载中…' : '默认模型');
+  const reasoningAvailable = selection !== null
+    && selectedModel?.capability === 'llm'
+    && selectedModel.reasoning === true;
+  const effortItems: MenuItem[] = [
+    {
+      kind: 'item', label: '无',
+      icon: selection?.thinkingEnabled === false ? 'i-lucide:check' : 'i-lucide:circle',
+      disabled: !reasoningAvailable,
+      onSelect: () => selection && onChange({ ...selection, thinkingEnabled: false }),
+    },
+    ...(['low', 'medium', 'high', 'max'] as const).map(effort => ({
+      kind: 'item' as const,
+      label: EFFORT_LABELS[effort],
+      icon: selection?.thinkingEnabled && selection.thinkingEffort === effort
+        ? 'i-lucide:check' : 'i-lucide:circle',
+      disabled: !reasoningAvailable,
+      onSelect: () => selection && onChange({ ...selection, thinkingEnabled: true, thinkingEffort: effort }),
+    })),
+  ];
 
-  const triggerTitle = selectedModel
-    ? `${selectedModel.providerName} / ${selectedModel.modelId}`
-    : '选择模型';
+  const items: MenuItem[] = [
+    { kind: 'submenu', label: '模型', icon: 'i-lucide:box', items: modelItems },
+    {
+      kind: 'submenu',
+      label: '推理强度',
+      icon: 'i-lucide:brain',
+      items: effortItems,
+    },
+    ...(selection ? [
+      { kind: 'separator' as const },
+      { kind: 'item' as const, label: '恢复默认模型', icon: 'i-lucide:rotate-ccw', onSelect: onClear },
+    ] : []),
+  ];
 
+  const reasoning = !selection?.thinkingEnabled ? '无' : EFFORT_LABELS[selection.thinkingEffort];
   return (
-    <div className="relative">
-      {/* Trigger button */}
-      <button
-        className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs max-w-48
-                   text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)]
-                   hover:bg-[var(--ema-surface-2)]
-                   transition-colors duration-[var(--ema-duration-base)]"
-        onClick={() => setOpen(!open)}
-        title={triggerTitle}
-      >
-        <span className="i-lucide:bot text-[10px]" aria-hidden />
-        <span className="truncate">{triggerLabel}</span>
-        <span className="i-lucide:chevron-up text-[10px] shrink-0" aria-hidden />
-      </button>
-
-      {/* Dropdown — pops UPWARD (bottom-full) since it's in the bottom toolbar */}
-      {open && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-
-          <div
-            className="ema-slide-up absolute bottom-full left-0 mb-1 z-50
-                       w-72 max-h-72 flex flex-col rounded-xl
-                       bg-[var(--ema-surface-4)] border border-[var(--ema-border)]
-                       shadow-[var(--ema-shadow-3)]"
-          >
-            {/* Search + clear */}
-            <div className="flex items-center gap-1 px-3 py-2 border-b border-[var(--ema-border)] shrink-0">
-              <Input
-                ref={searchRef}
-                inputSize="sm"
-                className="flex-1"
-                placeholder="搜索模型…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape') setOpen(false);
-                }}
-              />
-              {selected && (
-                <button
-                  className="shrink-0 text-[10px] px-1 rounded
-                             text-[var(--ema-text-tertiary)] hover:text-[var(--ema-danger)]
-                             transition-colors duration-[var(--ema-duration-base)]"
-                  onClick={() => {
-                    onClear();
-                    setOpen(false);
-                  }}
-                  title="恢复默认模型"
-                >
-                  <span className="i-lucide:x text-[10px]" aria-hidden />
-                </button>
-              )}
-            </div>
-
-            {/* Model list */}
-            <ScrollArea orientation="vertical" className="flex-1" viewportClassName="p-1">
-              {loading ? (
-                <div className="px-3 py-6 text-xs text-[var(--ema-text-tertiary)] text-center">加载中…</div>
-              ) : grouped.length === 0 ? (
-                <div className="px-3 py-6 text-xs text-[var(--ema-text-tertiary)] text-center">
-                  {catalogStatus === 'error'
-                    ? catalogError ?? '模型目录加载失败'
-                    : search ? '无匹配结果' : '暂无已启用的模型'}
-                </div>
-              ) : (
-                grouped.map(([providerId, providerModels]) => (
-                  <div key={providerId}>
-                    {/* Provider group header */}
-                    <div className="px-3 pt-2 pb-0.5 text-[10px] font-medium uppercase tracking-wider select-none
-                                    text-[var(--ema-text-tertiary)]">
-                      {providerModels[0]?.providerName ?? providerId}
-                    </div>
-                    {providerModels.map((m) => {
-                      const isSelected =
-                        selected?.providerId === m.providerId && selected?.model === m.modelId;
-                      return (
-                        <button
-                          key={`${m.providerId}:${m.modelId}`}
-                          className={
-                            'w-full flex items-center gap-2 text-left px-3 py-1.5 text-xs rounded-lg ' +
-                            `transition-colors duration-[var(--ema-duration-base)] ` +
-                            (isSelected
-                              ? 'text-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
-                              : 'text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-3)] hover:text-[var(--ema-text-primary)]')
-                          }
-                          onClick={() => {
-                            onSelect({ providerId: m.providerId, model: m.modelId, reasoning: m.reasoning ?? undefined });
-                            setOpen(false);
-                          }}
-                        >
-                          <span className="flex-1 truncate">{m.name ?? m.modelId}</span>
-                          {m.reasoning && (
-                            <Badge variant="primary">思考</Badge>
-                          )}
-                          <span className="shrink-0 text-[10px] font-mono tabular-nums
-                                           text-[var(--ema-text-tertiary)]">
-                            {fmtCtx(m.contextWindow)}
-                          </span>
-                          {isSelected && (
-                            <span className="i-lucide:check text-[var(--ema-primary)] text-[10px] shrink-0" aria-hidden />
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                ))
-              )}
-            </ScrollArea>
-          </div>
-        </>
-      )}
-    </div>
+    <DropdownMenu side="top" align="end" widthClass="min-w-52" items={items} trigger={(
+      <Button variant="ghost" className="min-w-0 gap-1 rounded-lg px-2 py-1 text-xs text-[var(--ema-text-secondary)]" title={label}>
+        <span className="i-lucide:box text-sm" aria-hidden />
+        <span className="max-w-44 truncate">{label}</span>
+        {selection && <span className="text-[var(--ema-text-tertiary)]">{reasoning}</span>}
+        <span className="i-lucide:chevron-up text-[10px]" aria-hidden />
+      </Button>
+    )} />
   );
 }

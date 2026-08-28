@@ -1,3 +1,5 @@
+// 市场源管理（MCP/Skills 两处复用，只传 kind）："浏览市场"tab 顶部折叠显示源列表。
+// builtin 源不可删只能启停；用户源可删。MCP 源 = registry URL；Skill 源 = 站点索引 URL。
 import { useEffect, useState } from 'react';
 import {
   Badge, Button, Callout, ConfirmDialog, Dialog, Field, IconButton, Input, Spinner, Switch, Tooltip,
@@ -6,58 +8,32 @@ import { mcpApi, type McpRegistrySource } from '../../api/mcp.js';
 import { skillsApi, type SkillSiteRecord } from '../../api/skills.js';
 import { showToast } from '../../lib/toast.js';
 
-// ── MarketSourceManager(共享:MCP/Skills 两边复用,只传 kind)──────────────────
-//
-// 在"浏览市场"tab 顶部折叠显示源列表。builtin 源不可删只能启停;用户源可删。
-// MCP 源 = registry URL;Skill 源 = 站点索引 URL;两者的协议都只有一种,添加表单固定为 名称 + URL。
+/** 源行直接携带原记录；两种协议都只有一种，字段分歧仅在 URL 列名。 */
+type SourceRecord = McpRegistrySource | SkillSiteRecord;
 
-interface SourceView {
-  id: string;
-  label: string;
-  url: string;
-  enabled: boolean;
-  builtin: boolean;
-}
-
-function mcpSourceToView(source: McpRegistrySource): SourceView {
-  return {
-    id: source.id,
-    label: source.label,
-    url: source.registryUrl,
-    enabled: source.enabled,
-    builtin: source.builtin,
-  };
-}
-
-function skillSiteToView(site: SkillSiteRecord): SourceView {
-  return {
-    id: site.id,
-    label: site.label,
-    url: site.indexUrl,
-    enabled: site.enabled,
-    builtin: site.builtin,
-  };
+function sourceUrl(source: SourceRecord): string {
+  return 'registryUrl' in source ? source.registryUrl : source.indexUrl;
 }
 
 // ── 组件 ───────────────────────────────────────────────────────────────────────
 
 export function MarketSourceManager({ kind }: { kind: 'mcp' | 'skill' }): JSX.Element {
-  const [sources, setSources] = useState<SourceView[]>([]);
+  const [sources, setSources] = useState<SourceRecord[]>([]);
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
-  const [pendingRemove, setPendingRemove] = useState<SourceView | null>(null);
+  const [pendingRemove, setPendingRemove] = useState<SourceRecord | null>(null);
 
   async function loadSources(): Promise<void> {
     setLoading(true);
     try {
       if (kind === 'mcp') {
         const { items } = await mcpApi.listSources();
-        setSources(items.map(mcpSourceToView));
+        setSources([...items]);
       } else {
         const { items } = await skillsApi.listSites();
-        setSources(items.map(skillSiteToView));
+        setSources([...items]);
       }
     } catch (err) {
       showToast(`加载源失败: ${err instanceof Error ? err.message : String(err)}`, { variant: 'danger' });
@@ -68,7 +44,7 @@ export function MarketSourceManager({ kind }: { kind: 'mcp' | 'skill' }): JSX.El
 
   useEffect(() => { void loadSources(); }, [kind]);
 
-  async function handleToggle(source: SourceView, enabled: boolean): Promise<void> {
+  async function handleToggle(source: SourceRecord, enabled: boolean): Promise<void> {
     try {
       if (kind === 'mcp') {
         await mcpApi.patchSource(source.id, { enabled });
@@ -99,7 +75,7 @@ export function MarketSourceManager({ kind }: { kind: 'mcp' | 'skill' }): JSX.El
   }
 
   // MCP 有单源连通探测;Skill 只有全站刷新(各站成败独立报告),按行过滤该站结果。
-  async function handleTest(source: SourceView): Promise<void> {
+  async function handleTest(source: SourceRecord): Promise<void> {
     setTestingId(source.id);
     try {
       if (kind === 'mcp') {
@@ -212,7 +188,7 @@ export function MarketSourceManager({ kind }: { kind: 'mcp' | 'skill' }): JSX.El
 function SourceRow({
   source, testing, onToggle, onRemove, onTest, kind,
 }: {
-  source:    SourceView;
+  source:    SourceRecord;
   testing:   boolean;
   onToggle:  (enabled: boolean) => void;
   onRemove:  () => void;
@@ -228,7 +204,7 @@ function SourceRow({
           {!source.enabled && <Badge variant="warn">已禁用</Badge>}
         </div>
         <p className="text-xs text-[var(--ema-text-tertiary)] mt-0.5 font-mono truncate opacity-70">
-          {source.url}
+          {sourceUrl(source)}
         </p>
       </div>
 

@@ -43,8 +43,8 @@ export const turnsApi = {
     return readRpcJson(rpcClient.api.turns.$post({ json: body }));
   },
 
-  /** GET /api/turns/interactions/pending — 恢复队列里的在飞 Permission/AskUser。 */
-  pendingAskUser(): Promise<PendingInteractions> {
+  /** GET /api/turns/interactions/pending — 恢复队列里在飞的 Permission/AskUser。 */
+  pendingInteractions(): Promise<PendingInteractions> {
     return readRpcJson(rpcClient.api.turns.interactions.pending.$get());
   },
 

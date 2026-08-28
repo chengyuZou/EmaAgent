@@ -3,22 +3,108 @@ import { useState, type CSSProperties, type JSX } from 'react';
 import {
   Badge, Button, Callout, Dialog, Divider, Field, Input, Select, Textarea, ToolSpecItem,
 } from '@ema-agent/ui';
-import { useMcpStore, type McpServerEntry, type McpProbeResult, type McpImportResult } from '../../stores/mcp-store.js';
+import { useMcpStore } from '../../stores/mcp.js';
+import type { McpServerItem, McpProbeResult, McpImportResult } from '../../api/mcp.js';
 import { showToast } from '../../lib/toast.js';
 import { McpArgumentEditor } from './McpArgumentEditor.js';
-import { KeyValueEditor } from './KeyValueEditor.js';
+import { KeyValueEditor, type McpKeyValuePair } from './KeyValueEditor.js';
 import { toolParamNames } from './McpServerRow.js';
-import {
-  buildMcpServerConfig,
-  createEmptyMcpFormState,
-  mcpServerConfigToForm,
-  type McpTransportType,
-} from './mcp-form-state.js';
+import type { McpServerConfig } from '../../api/mcp.js';
 
 const TRANSPORT_OPTIONS = [
   { value: 'stdio', label: 'Stdio(本地进程)' },
   { value: 'http',  label: 'Streamable HTTP'  },
 ];
+
+// ── 表单 ↔ 后端配置的无损双向转换（仅本文件消费） ──────────────────────────────
+
+type McpTransportType = 'stdio' | 'http';
+
+interface McpServerFormState {
+  name: string;
+  transport: McpTransportType;
+  command: string;
+  args: string[];
+  url: string;
+  env: McpKeyValuePair[];
+  headers: McpKeyValuePair[];
+}
+
+function createEmptyMcpFormState(): McpServerFormState {
+  return {
+    name: '',
+    transport: 'stdio',
+    command: '',
+    args: [],
+    url: '',
+    env: [],
+    headers: [],
+  };
+}
+
+function mcpPairsToRecord(
+  pairs: McpKeyValuePair[],
+): Record<string, string> | undefined {
+  const result: Record<string, string> = {};
+  for (const { key, value } of pairs) {
+    if (key.trim()) result[key.trim()] = value;
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+function mcpRecordToPairs(
+  record: Record<string, string> | undefined,
+): McpKeyValuePair[] {
+  return record
+    ? Object.entries(record).map(([key, value]) => ({ key, value }))
+    : [];
+}
+
+function buildMcpServerConfig(form: McpServerFormState): McpServerConfig {
+  if (form.transport === 'stdio') {
+    return {
+      type: 'stdio',
+      command: form.command.trim(),
+      // argv 的每个元素都有独立语义，空格、引号、反斜杠与空字符串均原样保留。
+      args: [...form.args],
+      env: mcpPairsToRecord(form.env),
+    };
+  }
+
+  return {
+    type: 'http',
+    url: form.url.trim(),
+    headers: mcpPairsToRecord(form.headers),
+  };
+}
+
+function mcpServerConfigToForm(
+  name: string,
+  config: McpServerConfig,
+): McpServerFormState {
+  // http 变体的 type 是必填字面量,用它做判别;stdio 的 type 在输入侧可缺省。
+  if (config.type === 'http') {
+    return {
+      name,
+      transport: 'http',
+      command: '',
+      args: [],
+      url: config.url,
+      env: [],
+      headers: mcpRecordToPairs(config.headers),
+    };
+  }
+
+  return {
+    name,
+    transport: 'stdio',
+    command: config.command,
+    args: [...(config.args ?? [])],
+    url: '',
+    env: mcpRecordToPairs(config.env),
+    headers: [],
+  };
+}
 
 // ── Import from JSON dialog ───────────────────────────────────────────────────
 
@@ -144,7 +230,7 @@ export function McpServerFormDialog({
 }: {
   open: boolean;
   /** 编辑目标;null 表示新建。父级以 key 区分实例,切换时整体重挂重置表单。 */
-  editing: McpServerEntry | null;
+  editing: McpServerItem | null;
   onOpenChange(open: boolean): void;
 }): JSX.Element {
   const [form, setForm] = useState(() =>

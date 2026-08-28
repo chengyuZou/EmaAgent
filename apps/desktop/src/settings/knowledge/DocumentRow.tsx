@@ -1,10 +1,10 @@
 // 单个文档行:状态徽标、重嵌/删除动作与展开的分块预览。
 import { useEffect, useState, type JSX } from 'react';
 import { Badge, EntityRow, IconButton } from '@ema-agent/ui';
-import { useKnowledgeStore } from '../../stores/knowledge-store.js';
+import { useKnowledgeStore } from '../../stores/knowledge.js';
 import { showToast } from '../../lib/toast.js';
 import { knowledgeApi, type DocumentAsset } from '../../api/knowledge.js';
-import { documentNeedsReembed, type ResolvedEmbedSelection } from './knowledge-base-embedding-state.js';
+import { documentNeedsReembed, type ResolvedEmbedSelection } from './embeddingSelection.js';
 import { ChunkViewer } from './ChunkViewer.js';
 
 const STATUS_LABEL: Record<string, string> = {

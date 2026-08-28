@@ -1,11 +1,10 @@
-// 记忆概览:存储占用水位卡、进行中与失败的后台任务,以及维护/存储设置入口。
+// 记忆概览:展示存储占用水位以及进行中和失败的后台任务。
 import { useEffect, type JSX } from 'react';
 import {
-  Badge, Button, Callout, Card, Divider, Progress, Spinner,
+  Badge, Button, Callout, Card, Progress, Spinner,
 } from '@ema-agent/ui';
-import { useMemoryStore } from '../../stores/memory-store.js';
+import { useMemoryStore } from '../../stores/memory.js';
 import { showToast } from '../../lib/toast.js';
-import { MemoryMaintenanceSettings } from './MemoryMaintenanceSettings.js';
 import { JOB_KIND_LABEL, JOB_STATUS_LABEL, relativeTime } from './memoryLabels.js';
 
 function formatBytes(bytes: number): string {
@@ -112,9 +111,6 @@ export function OverviewTab(): JSX.Element {
           </div>
         </Callout>
       )}
-
-      <Divider />
-      <MemoryMaintenanceSettings />
     </div>
   );
 }

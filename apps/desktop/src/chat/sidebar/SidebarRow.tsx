@@ -1,9 +1,10 @@
 // 侧栏单条会话行:状态点、标题、时间与右键菜单操作,含删除/重命名确认。
 import { useState, type JSX } from 'react';
 import { Button, ConfirmDialog, DropdownMenu, PromptDialog, type MenuItem } from '@ema-agent/ui';
-import type { SidebarSession } from './sidebarFormat.js';
-import { useConversationStore } from '../../stores/conversation-store.js';
-import { useSessionStore } from '../../stores/session-store.js';
+import type { SessionListItem } from '../../api/sessions.js';
+import type { TurnStreamState } from '../state/messages.js';
+import { useCurrentSession } from '../state/currentSession.js';
+import { useSessionStore } from '../../stores/session.js';
 import { runWithToast } from '../../lib/toast.js';
 
 import { WorkspacePicker } from '../WorkspacePicker.js';
@@ -12,8 +13,8 @@ import { formatRelativeTime } from './sidebarFormat.js';
 type StatusDot = { cls: string } | null;
 
 export function getStatusDot(
-  session: SidebarSession,
-  streaming: Map<string, unknown>,
+  session: SessionListItem,
+  streaming: ReadonlyMap<string, TurnStreamState>,
   pendingCounts: Record<string, number>,
 ): StatusDot {
   if (streaming.has(session.id)) return { cls: 'bg-[var(--ema-info)] animate-pulse' };
@@ -26,9 +27,9 @@ export function getStatusDot(
 }
 
 export function SidebarRow({ session, isActive, streaming, pendingCounts, nested = false }: {
-  session:   SidebarSession;
+  session:   SessionListItem;
   isActive:  boolean;
-  streaming: Map<string, unknown>;
+  streaming: ReadonlyMap<string, TurnStreamState>;
   pendingCounts: Record<string, number>;
   nested?:   boolean;
 }): JSX.Element {
@@ -58,7 +59,7 @@ export function SidebarRow({ session, isActive, streaming, pendingCounts, nested
       icon:     'i-lucide:git-fork',
       onSelect: () => void (async () => {
         const newId = await useSessionStore.getState().forkSession(session.id);
-        void useConversationStore.getState().viewSession(newId);
+        void useCurrentSession.getState().viewSession(newId);
       })(),
     },
     {
@@ -97,7 +98,7 @@ export function SidebarRow({ session, isActive, streaming, pendingCounts, nested
           ? 'ema-active-rail bg-[var(--ema-surface-2)] text-[var(--ema-text-primary)] shadow-[var(--ema-shadow-1)]'
           : 'text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-2)] hover:text-[var(--ema-text-primary)]'
       }`}
-      onClick={() => void useConversationStore.getState().viewSession(session.id)}
+      onClick={() => void useCurrentSession.getState().viewSession(session.id)}
     >
       <span className="shrink-0 w-3 flex items-center justify-center">
         {dot ? (

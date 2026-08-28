@@ -1,6 +1,5 @@
 // 侧栏会话搜索的本地排序与模糊评分,纯函数无 UI 依赖。
 import type { SessionSearchResult } from '../../api/sessions.js';
-import type { SidebarSession } from './sidebarFormat.js';
 
 export type SessionSearchItem = SessionSearchResult['results'][number];
 
@@ -73,14 +72,4 @@ function bigrams(value: string): string[] {
 
 function normaliseSearchText(value: string): string {
   return value.toLowerCase().replace(/\s+/g, '');
-}
-
-export function toRecentSearchItem(session: SidebarSession): SessionSearchItem {
-  return {
-    session,
-    matchKind: 'title',
-    snippet: '',
-    messageId: null,
-    messageAt: null,
-  };
 }

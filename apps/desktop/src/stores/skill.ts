@@ -11,8 +11,6 @@ import {
 } from '../api/skills.js';
 import { settingsApi } from '../api/settings.js';
 
-export type { SkillListItem, SkillSiteRecord };
-
 const DISABLED_KEYS_SETTING = 'skill.disabledKeys';
 
 // ── Store interface ───────────────────────────────────────────────────────────
@@ -26,9 +24,9 @@ export interface SkillStoreState {
   sitesLoading: boolean;
   sitesError:  string | null;
 
-  /** Load all installed skills. Idempotent — skips if already loaded. */
+  /** 装载全部已安装技能。幂等——已装载则跳过。 */
   load(): Promise<void>;
-  /** Force-reload the skill list. */
+  /** 强制重读技能目录。 */
   refresh(): Promise<void>;
 
   /** 逐技能启停：写 skill.disabledKeys deny-list 后重读目录投影。 */
@@ -72,14 +70,15 @@ export const useSkillStore = create<SkillStoreState>((set, get) => ({
       set({ skills: [...items], loading: false });
     } catch (err: unknown) {
       set({
-        error: err instanceof Error ? err.message : 'Failed to load skills',
+        error: err instanceof Error ? err.message : '加载技能列表失败',
         loading: false,
       });
     }
   },
 
   async setEnabled(key, enabled) {
-    // Optimistic update
+    // 乐观翻转让开关立即响应；deny-list 落库后重读服务端目录投影收口
+    // （enabled 由 deny 三开关联合判定，单键翻转未必改变结果）。
     set((s) => ({
       skills: s.skills.map((sk) => sk.key === key ? { ...sk, enabled } : sk),
     }));
@@ -92,11 +91,12 @@ export const useSkillStore = create<SkillStoreState>((set, get) => ({
         ? current.filter((k) => k !== key)
         : [...new Set([...current, key])];
       await settingsApi.putValue(DISABLED_KEYS_SETTING, next);
+      await get().refresh();
     } catch (err: unknown) {
-      // Rollback
+      // 失败回滚到翻转前。
       set((s) => ({
         skills: s.skills.map((sk) => sk.key === key ? { ...sk, enabled: !enabled } : sk),
-        error: err instanceof Error ? err.message : 'Failed to update skill',
+        error: err instanceof Error ? err.message : '更新技能开关失败',
       }));
       throw err;
     }
@@ -107,7 +107,7 @@ export const useSkillStore = create<SkillStoreState>((set, get) => ({
       await skillsApi.remove(key);
       set((s) => ({ skills: s.skills.filter((sk) => sk.key !== key) }));
     } catch (err: unknown) {
-      set({ error: err instanceof Error ? err.message : 'Failed to remove skill' });
+      set({ error: err instanceof Error ? err.message : '卸载技能失败' });
       throw err;
     }
   },
@@ -121,7 +121,7 @@ export const useSkillStore = create<SkillStoreState>((set, get) => ({
       set({ sites: [...items], sitesLoading: false });
     } catch (err: unknown) {
       set({
-        sitesError: err instanceof Error ? err.message : 'Failed to load skill sites',
+        sitesError: err instanceof Error ? err.message : '加载站点列表失败',
         sitesLoading: false,
       });
     }
@@ -132,7 +132,7 @@ export const useSkillStore = create<SkillStoreState>((set, get) => ({
       await skillsApi.addSite(input);
       await get().loadSites();
     } catch (err: unknown) {
-      set({ sitesError: err instanceof Error ? err.message : 'Failed to add site' });
+      set({ sitesError: err instanceof Error ? err.message : '添加站点失败' });
       throw err;
     }
   },
@@ -142,7 +142,7 @@ export const useSkillStore = create<SkillStoreState>((set, get) => ({
       await skillsApi.patchSite(id, patch);
       await get().loadSites();
     } catch (err: unknown) {
-      set({ sitesError: err instanceof Error ? err.message : 'Failed to update site' });
+      set({ sitesError: err instanceof Error ? err.message : '更新站点失败' });
       throw err;
     }
   },
@@ -152,7 +152,7 @@ export const useSkillStore = create<SkillStoreState>((set, get) => ({
       await skillsApi.removeSite(id);
       set((s) => ({ sites: s.sites.filter((site) => site.id !== id) }));
     } catch (err: unknown) {
-      set({ sitesError: err instanceof Error ? err.message : 'Failed to remove site' });
+      set({ sitesError: err instanceof Error ? err.message : '移除站点失败' });
       throw err;
     }
   },
@@ -164,7 +164,7 @@ export const useSkillStore = create<SkillStoreState>((set, get) => ({
       await get().loadSites();
     } catch (err: unknown) {
       set({
-        sitesError: err instanceof Error ? err.message : 'Failed to refresh sites',
+        sitesError: err instanceof Error ? err.message : '刷新站点索引失败',
         sitesLoading: false,
       });
       throw err;
@@ -177,7 +177,7 @@ export const useSkillStore = create<SkillStoreState>((set, get) => ({
       await get().refresh();
       return result;
     } catch (err: unknown) {
-      set({ error: err instanceof Error ? err.message : 'Failed to install skill' });
+      set({ error: err instanceof Error ? err.message : '安装技能失败' });
       throw err;
     }
   },

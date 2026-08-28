@@ -20,10 +20,15 @@ export type CharacterHealth = RpcJson<RpcClient['api']['characters'][':id']['hea
 export type CharacterPresentation = RpcJson<RpcClient['api']['characters'][':id']['presentation']['$get']>;
 export type Live2dImportInput = InferRequestType<RpcClient['api']['characters'][':id']['live2d']['import']['$post']>['json'];
 export type Live2dImportResult = RpcJson<RpcClient['api']['characters'][':id']['live2d']['import']['$post']>;
+export type IllustrationImportInput = InferRequestType<RpcClient['api']['characters'][':id']['illustrations']['import']['$post']>['json'];
+export type IllustrationImportResult = RpcJson<RpcClient['api']['characters'][':id']['illustrations']['import']['$post']>;
 export type VoiceImportInput = InferRequestType<RpcClient['api']['characters'][':id']['voice']['import']['$post']>['json'];
 export type VoiceImportResult = RpcJson<RpcClient['api']['characters'][':id']['voice']['import']['$post']>;
 export type VoicePublishResult = RpcJson<RpcClient['api']['characters'][':id']['voice']['publish']['$post']>;
 export type ResourcePatchInput = InferRequestType<RpcClient['api']['characters'][':id']['live2d'][':resourceId']['$patch']>['json'];
+export type Live2dExportResult = RpcJson<RpcClient['api']['characters'][':id']['live2d'][':resourceId']['export']['$post']>;
+export type IllustrationExportResult = RpcJson<RpcClient['api']['characters'][':id']['illustrations'][':resourceId']['export']['$post']>;
+export type VoiceExportResult = RpcJson<RpcClient['api']['characters'][':id']['voice'][':resourceId']['export']['$post']>;
 
 // ── API ──────────────────────────────────────────────────────────────────────
 
@@ -93,11 +98,78 @@ export const charactersApi = {
     }));
   },
 
-  /** Live2D 渲染器取模型目录内文件的流式 URL。 */
+  /** 编辑 Live2D 资源行（名称/舞台几何/启停）。 */
+  patchLive2d(id: string, resourceId: string, patch: ResourcePatchInput) {
+    return readRpcJson(rpcClient.api.characters[':id'].live2d[':resourceId'].$patch({
+      json: patch,
+      param: { id, resourceId },
+    }));
+  },
+
+  /** 导出 Live2D 模型目录 zip 到目标目录。 */
+  exportLive2d(id: string, resourceId: string, destinationDirectory: string): Promise<Live2dExportResult> {
+    return readRpcJson(rpcClient.api.characters[':id'].live2d[':resourceId'].export.$post({
+      json: { destinationDirectory },
+      param: { id, resourceId },
+    }));
+  },
+
+  deleteLive2d(id: string, resourceId: string) {
+    return readRpcJson(rpcClient.api.characters[':id'].live2d[':resourceId'].$delete({
+      param: { id, resourceId },
+    }));
+  },
+
+  /** Live2D 模型目录内文件的 URL 构造器：仅用于认证 fetch（取 blob/JSON），
+      禁止直接塞进 <img>/<audio> 的 src（会 401）。 */
   getLive2dFileUrl(id: string, resourceId: string, subPath: string): Promise<string> {
     return serverClient.streamUrl(
       `/api/characters/${id}/live2d/${resourceId}/files/${encodeURIComponent(subPath)}`,
     );
+  },
+
+  // ── 立绘 ───────────────────────────────────────────────────────────────────
+
+  setIllustrationPrimary(id: string, resourceId: string) {
+    return readRpcJson(
+      rpcClient.api.characters[':id'].illustrations[':resourceId'].primary.$post({
+        param: { id, resourceId },
+      }),
+    );
+  },
+
+  importIllustration(id: string, body: IllustrationImportInput): Promise<IllustrationImportResult> {
+    return readRpcJson(rpcClient.api.characters[':id'].illustrations.import.$post({
+      json: body,
+      param: { id },
+    }));
+  },
+
+  /** 编辑立绘资源行（名称/舞台几何/启停）。 */
+  patchIllustration(id: string, resourceId: string, patch: ResourcePatchInput) {
+    return readRpcJson(rpcClient.api.characters[':id'].illustrations[':resourceId'].$patch({
+      json: patch,
+      param: { id, resourceId },
+    }));
+  },
+
+  exportIllustration(id: string, resourceId: string, destinationDirectory: string): Promise<IllustrationExportResult> {
+    return readRpcJson(rpcClient.api.characters[':id'].illustrations[':resourceId'].export.$post({
+      json: { destinationDirectory },
+      param: { id, resourceId },
+    }));
+  },
+
+  deleteIllustration(id: string, resourceId: string) {
+    return readRpcJson(rpcClient.api.characters[':id'].illustrations[':resourceId'].$delete({
+      param: { id, resourceId },
+    }));
+  },
+
+  /** 立绘图片文件的 URL 构造器：/api 路由要共享密钥头，只能用于认证 fetch（取 blob 转 objectURL），
+      禁止直接塞进 <img>/<audio> 的 src（会 401）。 */
+  getIllustrationFileUrl(id: string, resourceId: string): Promise<string> {
+    return serverClient.streamUrl(`/api/characters/${id}/illustrations/${resourceId}/file`);
   },
 
   // ── 参考音频 ────────────────────────────────────────────────────────────────
@@ -106,6 +178,35 @@ export const charactersApi = {
     return readRpcJson(rpcClient.api.characters[':id'].voice.import.$post({
       json: body,
       param: { id },
+    }));
+  },
+
+  setVoicePrimary(id: string, resourceId: string) {
+    return readRpcJson(
+      rpcClient.api.characters[':id'].voice[':resourceId'].primary.$post({
+        param: { id, resourceId },
+      }),
+    );
+  },
+
+  /** 编辑参考音频资源行（名称/启停；prompt 文本与语种不可改——重录代替修改）。 */
+  patchVoice(id: string, resourceId: string, patch: ResourcePatchInput) {
+    return readRpcJson(rpcClient.api.characters[':id'].voice[':resourceId'].$patch({
+      json: patch,
+      param: { id, resourceId },
+    }));
+  },
+
+  exportVoice(id: string, resourceId: string, destinationDirectory: string): Promise<VoiceExportResult> {
+    return readRpcJson(rpcClient.api.characters[':id'].voice[':resourceId'].export.$post({
+      json: { destinationDirectory },
+      param: { id, resourceId },
+    }));
+  },
+
+  deleteVoice(id: string, resourceId: string) {
+    return readRpcJson(rpcClient.api.characters[':id'].voice[':resourceId'].$delete({
+      param: { id, resourceId },
     }));
   },
 
@@ -127,7 +228,8 @@ export const charactersApi = {
     return res.json();
   },
 
-  /** 参考音频字节流 URL。 */
+  /** 参考音频文件的 URL 构造器：仅用于认证 fetch（取 blob 转 objectURL 播放），
+      禁止直接塞进 <audio> 的 src（会 401）。 */
   getVoiceFileUrl(id: string, resourceId: string): Promise<string> {
     return serverClient.streamUrl(`/api/characters/${id}/voice/${resourceId}/file`);
   },

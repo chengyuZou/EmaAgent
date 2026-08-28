@@ -19,6 +19,7 @@
     "tauri:build:release": "pnpm release:verify:versions && pnpm release:verify && tauri build --config src-tauri/tauri.release.conf.json"
   },
   "dependencies": {
+    "@ema-agent/agent": "workspace:*",
     "@ema-agent/backup": "workspace:*",
     "@ema-agent/builtin-tools": "workspace:*",
     "@ema-agent/characters": "workspace:*",

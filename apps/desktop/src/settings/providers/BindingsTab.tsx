@@ -21,7 +21,7 @@ import {
   type BindingModule,
   type ModelCapability,
 } from '../../api/providers.js';
-import { useSettingsStore } from '../../stores/settings-store.js';
+import { useProviderStore } from '../../stores/provider.js';
 import { showToast } from '../../lib/toast.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -39,7 +39,7 @@ const MODULE_CAPABILITY: Record<string, ModelCapability> = {
 const MODULES: Array<{ id: BindingModule; label: string; desc: string }> = [
   { id: 'memory-llm',     label: 'Memory',        desc: '记忆提取与整合' },
   { id: 'title',          label: 'Title',         desc: '会话标题自动生成' },
-  { id: 'lightrag-embed', label: 'LightRAG 嵌入', desc: '⚠️ 叙事专用嵌入（bge-m3）。换模型会让 narrative 检索骤减、需重建索引——非必要勿动。知识库的嵌入在「设置 → 知识库」单独选。' },
+  { id: 'lightrag-embed', label: 'LightRAG 嵌入', desc: '⚠️ 叙事专用嵌入（Pro/bge-m3），重启应用后生效。中途换模型检索质量大幅下降——非必要勿动。知识库的嵌入在「设置 → 知识库」单独选。' },
   { id: 'lightrag-llm',   label: 'LightRAG LLM',  desc: '叙事模式剧情检索 LLM' },
   { id: 'tts',           label: 'TTS',          desc: '语音合成' },
   { id: 'stt',           label: 'STT',          desc: '语音识别' },
@@ -137,8 +137,8 @@ export function BindingsTab(): JSX.Element {
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const allProviders = useSettingsStore((s) => s.providers);
-  const allBindings  = useSettingsStore((s) => s.bindings);
+  const allProviders = useProviderStore((s) => s.providers);
+  const allBindings  = useProviderStore((s) => s.bindings);
   const requiredCap = MODULE_CAPABILITY[activeModule] ?? 'llm';
 
   const iconKeyFor = useCallback((pcId: string): string | undefined => {
@@ -191,7 +191,7 @@ export function BindingsTab(): JSX.Element {
     const key = `${pcId}|${modelId}`;
     setSavingKey(key);
     try {
-      await useSettingsStore.getState().upsertBinding(activeModule, {
+      await useProviderStore.getState().upsertBinding(activeModule, {
         providerId: pcId,
         modelId,
       });
@@ -205,7 +205,7 @@ export function BindingsTab(): JSX.Element {
 
   const handleUnbind = useCallback(async () => {
     try {
-      await useSettingsStore.getState().deleteBinding(activeModule);
+      await useProviderStore.getState().deleteBinding(activeModule);
       showToast('已解绑', { variant: 'success' });
     } catch (err: unknown) {
       showToast(`解绑失败: ${err instanceof Error ? err.message : 'Unknown'}`, { variant: 'danger' });
@@ -299,8 +299,8 @@ export function BindingsTab(): JSX.Element {
 
       {activeModule === 'lightrag-embed' && (
         <Callout variant="warn" className="text-xs leading-relaxed ema-slide-up">
-          这是 <b>叙事模式（narrative）专用</b>的嵌入模型，默认 <b>bge-m3</b>。知识库用的是另一套（设置 → 知识库 → 模型）。
-          换这里的模型会让已建好的 LightRAG 剧情索引与新查询<b>错配、检索质量骤减</b>，且需要重建 LightRAG 索引——非必要请勿改动。
+          这是 <b>叙事模式（narrative）专用</b>的嵌入模型，请绑定 <b>Pro/bge-m3</b>；知识库用的是另一套（设置 → 知识库 → 模型）。
+          绑定与更换都<b>在重启应用后才生效</b>；中途换模型会让新查询与已建好的剧情向量<b>错配、检索质量大幅下降</b>——非必要请勿改动。
         </Callout>
       )}
 

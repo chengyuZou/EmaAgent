@@ -1,41 +1,47 @@
-// 这个组件负责展示一次工具调用的状态、参数、结果和已经落盘的真实文件 diff。
-/**
- * ToolCallBlock — collapsible tool invocation.
- *
- * Header: arrow · tool-name · primary-target · [status badge · duration] · [abort]
- * Body: 单块 — 参数(平铺 key-value) · 透明横线 · 结果(无 {}) · [error]
- *
- * 状态色：运行中黄/等待权限蓝/成功绿/失败红/已拒绝红（归失败色，文字区分）。
- * 耗时：流式用 startedAt 实时算，完成后用 durationMs（DB 持久化，刷新后保留）。
- */
+// 一次工具调用的统一行：状态、参数、结果与落盘文件 diff。
+// props 只携带真实对象——历史路径是 tool_use 块 + 索引配对的结果信封，流式路径是
+// 瞬态项；专属 UI 经 tool_use.name 查表、以 TOutput（结果信封 data / 事件 output）渲染。
 import { useState, useEffect, useCallback, type JSX } from 'react';
 import { IconButton } from '@ema-agent/ui';
-import type { AssistantSlice } from '../../stores/conversation-store.js';
 import { turnsApi } from '../../api/turns.js';
 import { renderToolResult } from './toolBlocks/tool-renderers.js';
 import { lookupToolUI } from './toolBlocks/toolUIRegistry.js';
 import { BackgroundProcessCard } from './toolBlocks/BackgroundProcessCard.js';
 import { ToolArgsView, ToolResultViewBlock, BashBlock, DiffBlock } from './toolBlocks/ToolRenderBlocks.js';
-import { BASH_TOOLS, getBashCommand, buildBodyText, buildEditDiff, getPrimaryTarget, formatJson, asBashProcessReference, bashCommandOutputText } from './toolBlocks/toolBlockHelpers.js';
+import {
+  BASH_TOOLS,
+  getBashCommand,
+  buildBodyText,
+  buildEditDiff,
+  getPrimaryTarget,
+  formatJson,
+  asBashProcessReference,
+  bashCommandOutputText,
+  toolVariant,
+  VARIANT_ICONS,
+} from './toolBlocks/toolBlockHelpers.js';
+import {
+  toolArgs,
+  toolDurationMs,
+  toolFailure,
+  toolName,
+  toolOutput,
+  toolPermissionPending,
+  toolRowId,
+  toolRunning,
+  type ToolWorkRow,
+} from '../history/workGroups.js';
 
 export interface ToolCallBlockProps {
-  slice:      Extract<AssistantSlice, { type: 'tool_use' }>;
-  streaming?: boolean;
-  /** Turn ID — required to enable per-tool abort button. */
-  turnId?:    string;
+  readonly row: ToolWorkRow;
+  readonly streaming?: boolean;
+  /** Turn ID — 流式期间启用单工具中止按钮。 */
+  readonly turnId?: string;
 }
 
 // ── 状态派生 ──────────────────────────────────────────────────────────────────
 
 type ToolStatus = 'running' | 'awaiting_permission' | 'success' | 'failed' | 'denied';
-
-function deriveStatus(slice: Extract<AssistantSlice, { type: 'tool_use' }>): ToolStatus {
-  if (slice.error?.code === 'permission/denied') return 'denied';
-  if (slice.error) return 'failed'; // policy/denied | tool/error | tool/not_found
-  if (slice.permissionPending) return 'awaiting_permission';
-  if (slice.result !== undefined) return 'success';
-  return 'running';
-}
 
 const STATUS_META: Record<ToolStatus, { color: string; label: string; pulse?: boolean }> = {
   running:             { color: 'var(--ema-warning-text)', label: '运行中', pulse: true },
@@ -56,43 +62,75 @@ function fmtDuration(ms: number): string {
 
 // ── 主组件 ────────────────────────────────────────────────────────────────────
 
-export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBlockProps): JSX.Element {
-  const toolUI = lookupToolUI(slice.name);
+export function ToolCallBlock({ row, streaming = false, turnId }: ToolCallBlockProps): JSX.Element {
+  const name = toolName(row);
+  const args = toolArgs(row);
+  const failure = toolFailure(row);
+  const output = toolOutput(row);
+  const partialArgs = row.source === 'stream' ? row.item.partialArgs : undefined;
+  const startedAt = row.source === 'stream' ? row.item.startedAt : undefined;
+  const durationMs = toolDurationMs(row);
+  const permissionPending = toolPermissionPending(row);
+
+  // 历史行缺结果信封 = Turn 中断的残留，不算运行中。
+  const historyInterrupted = row.source === 'history' && row.toolResult === undefined;
+  const hasResult = output !== undefined;
+  const hasError = failure !== null || historyInterrupted;
+
+  const status: ToolStatus = failure?.code === 'permission/denied'
+    ? 'denied'
+    : hasError
+      ? 'failed'
+      : permissionPending
+        ? 'awaiting_permission'
+        : hasResult || durationMs !== undefined
+          ? 'success'
+          : 'running';
+
+  const toolUI = lookupToolUI(name);
   const [open, setOpen] = useState(() => toolUI?.defaultExpanded ?? false);
   const [copied, setCopied] = useState(false);
 
-  const hasResult   = slice.result !== undefined;
-  const hasError    = !!slice.error;
-  const status      = deriveStatus(slice);
-  const statusMeta  = STATUS_META[status];
-  const isStreaming = streaming && !hasResult && !hasError;
-  const argsReady   = slice.args !== undefined;
-  const isPending   = isStreaming && !argsReady;
+  const statusMeta = STATUS_META[status];
+  const running = toolRunning(row, streaming);
+  const argsReady = args !== undefined;
+  const isPending = running && !argsReady;
 
-  const target = argsReady ? getPrimaryTarget(slice.name, slice.args) : null;
+  const target = argsReady ? getPrimaryTarget(name, args) : null;
+  const variant = toolVariant(name);
+  const errorFirstLine = failure
+    ? (failure.message.split('\n')[0] ?? '')
+    : historyInterrupted
+      ? '已中断'
+      : null;
 
-  const isBash      = BASH_TOOLS.has(slice.name);
-  // 后台进程引用走 data 槽(旧 presentation 通道已删);
-  // 有真实结果的命令用守卫提取终端文本,不再 JSON 直出。
-  const processRef = hasResult && slice.result != null ? asBashProcessReference(slice.result) : null;
+  const isBash = BASH_TOOLS.has(name);
+  // 后台进程引用与终端文本都从类型化输出守卫提取，不再 JSON 直出。
+  const processRef = hasResult && output != null ? asBashProcessReference(output) : null;
 
-  const resultView = hasResult && slice.result !== null ? renderToolResult(slice.name, slice.result) : null;
-  // 专属 UI 优先;返回 null(类型守卫失败/未注册)回落通用平铺。渲染函数必须纯(无 hooks)。
-  const customArgs = toolUI?.ArgsView && argsReady ? toolUI.ArgsView({ args: slice.args }) : null;
-  const customResult = toolUI?.ResultView && hasResult && slice.result != null
-    ? toolUI.ResultView({ data: slice.result })
+  const resultView = hasResult && output !== null ? renderToolResult(name, output) : null;
+  // 专属 UI 优先；返回 null（类型守卫失败/未注册）回落通用平铺。渲染函数必须纯（无 hooks）。
+  const customArgs = toolUI?.ArgsView && argsReady ? toolUI.ArgsView({ args }) : null;
+  const customResult = toolUI?.ResultView && hasResult && output != null
+    ? toolUI.ResultView({ data: output })
     : null;
-  // 专属结果卡(权威 structuredPatch)落地后不再走旧 editDiff 通道;
-  // 运行中尚无 data,仍用 args 推导的 diff 做预览。
+  // 专属结果卡（权威 structuredPatch）落地后不走 args 推导的 diff 预览；运行中尚无输出时仍用预览。
   const editDiff = customResult !== null
     ? null
-    : argsReady ? buildEditDiff(slice.name, slice.args) : null;
-  // bash 结果沿用原终端融合渲染（不进 renderToolResult）;转交后台的引用由卡片表达。
-  const bashResultStr = isBash && hasResult && slice.result !== null && !processRef
-    ? bashCommandOutputText(slice.result) ?? formatJson(slice.result)
+    : argsReady ? buildEditDiff(name, args) : null;
+  const bashResultStr = isBash && hasResult && output !== null && !processRef
+    ? bashCommandOutputText(output) ?? formatJson(output)
     : null;
 
-  const bodyForCopy = buildBodyText(slice, editDiff, isBash ? getBashCommand(slice.args) : null, bashResultStr, argsReady);
+  const bodyForCopy = buildBodyText(
+    name,
+    args,
+    output,
+    editDiff,
+    isBash ? getBashCommand(args) : null,
+    bashResultStr,
+    argsReady,
+  );
 
   const copy = useCallback(() => {
     void navigator.clipboard.writeText(bodyForCopy).then(() => {
@@ -103,26 +141,36 @@ export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBloc
 
   return (
     <div className="flex flex-col gap-0.5 py-0.5">
-      {/* ── Header ── */}
+      {/* ── 统一工具行：leading(variant 图标/终态点) + 名 + 摘要 + 右侧状态 ── */}
       <button
-        className="flex items-center gap-2 text-left w-full group"
+        className={`ema-tool-row group ${status === 'running' ? 'ema-shimmer' : ''}`}
         onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
       >
-        <span className={`text-[10px] w-3 shrink-0 ${open ? 'i-lucide:chevron-down' : 'i-lucide:chevron-right'} text-[var(--ema-text-tertiary)]`} aria-hidden />
-
-        <span className={`font-mono text-xs transition-colors ${
-          hasError   ? 'text-[var(--ema-danger)]' :
-          isPending  ? 'text-[var(--ema-warning)] animate-pulse' :
-                       'text-[var(--ema-text-secondary)] group-hover:text-[var(--ema-text-primary)]'
-        }`}>
-          {slice.name}
+        <span className="ema-tool-row-leading" aria-hidden>
+          {hasError ? (
+            <span className="ema-tool-row-dot" style={{ background: 'var(--ema-danger)' }} />
+          ) : status === 'awaiting_permission' ? (
+            <span className="ema-tool-row-dot" style={{ background: 'var(--ema-info)' }} />
+          ) : (
+            <>
+              <span className={`${VARIANT_ICONS[variant]} ema-tool-row-icon`} />
+              <span className="i-lucide:chevron-down ema-tool-row-chevron" />
+            </>
+          )}
         </span>
 
-        {target && (
-          <span className="text-xs font-mono truncate max-w-[18rem] text-[var(--ema-text-tertiary)]">
-            · {target}
-          </span>
-        )}
+        <span className={`font-mono text-xs shrink-0 transition-colors ${
+          hasError ? 'text-[var(--ema-danger)]' : 'text-[var(--ema-text-secondary)] group-hover:text-[var(--ema-text-primary)]'
+        }`}>
+          {name}
+        </span>
+
+        {errorFirstLine !== null ? (
+          <span className="ema-tool-row-summary text-[var(--ema-danger)]">{errorFirstLine}</span>
+        ) : target ? (
+          <span className="ema-tool-row-summary">{target}</span>
+        ) : null}
 
         {/* 状态徽章 + 耗时（右侧） */}
         <span className="ml-auto flex items-center gap-1.5 text-[10px] shrink-0" style={{ color: statusMeta.color }}>
@@ -132,7 +180,7 @@ export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBloc
             aria-hidden
           />
           {statusMeta.label}
-          <StatusDuration status={status} durationMs={slice.durationMs} startedAt={slice.startedAt} />
+          <StatusDuration status={status} durationMs={durationMs} startedAt={startedAt} />
         </span>
 
         {isPending && turnId && (
@@ -144,7 +192,7 @@ export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBloc
               size="sm"
               onClick={(e) => {
                 e.stopPropagation();
-                void turnsApi.abortTool(turnId, slice.callId);
+                void turnsApi.abortTool(turnId, toolRowId(row));
               }}
             />
           </span>
@@ -157,26 +205,31 @@ export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBloc
         style={{ gridTemplateRows: open ? '1fr' : '0fr', opacity: open ? 1 : 0 }}
       >
         <div className="relative ml-3 pl-3" style={{ borderLeftColor: 'var(--ema-border)', borderLeftWidth: 1 }}>
-          {/* Copy button */}
-          <button
-            className="absolute top-0 right-0 px-1.5 py-0.5 rounded text-[10px] transition-colors text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)]"
-            onClick={(e) => { e.stopPropagation(); copy(); }}
-          >
-            {copied ? <span className="i-lucide:check text-xs" aria-hidden /> : <span className="i-lucide:copy text-xs" aria-hidden />}
-          </button>
-
-          {/* Bash: 融合终端视图（命令 + 输出，不走通用平铺） */}
-          {/* Bash 终端视图(转交后台后不再重复输出,由卡片表达) */}
-          {isBash && !processRef && (
-            <div className="max-h-64 overflow-auto pr-6">
-              <BashBlock cmd={getBashCommand(slice.args) ?? ''} output={bashResultStr} partialArgs={slice.partialArgs} isPending={isPending} />
-            </div>
+          {/* Copy button（bash 终端卡 banner 自带复制，不重复） */}
+          {!isBash && (
+            <button
+              className="absolute top-0 right-0 px-1.5 py-0.5 rounded text-[10px] transition-colors text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)]"
+              onClick={(e) => { e.stopPropagation(); copy(); }}
+            >
+              {copied ? <span className="i-lucide:check text-xs" aria-hidden /> : <span className="i-lucide:copy text-xs" aria-hidden />}
+            </button>
           )}
 
-          {/* 已转交后台的 Bash:块当场终结,卡片只给面板入口,不持续刷新。 */}
+          {/* Bash: 终端卡（转交后台后不再重复输出，由卡片表达） */}
+          {isBash && !processRef && (
+            <BashBlock
+              cmd={getBashCommand(args) ?? ''}
+              output={bashResultStr}
+              partialArgs={partialArgs}
+              isPending={isPending}
+              status={status}
+            />
+          )}
+
+          {/* 已转交后台的 Bash：块当场终结，卡片只给面板入口，不持续刷新。 */}
           {isBash && processRef && (
             <BackgroundProcessCard
-              command={getBashCommand(slice.args) ?? ''}
+              command={getBashCommand(args) ?? ''}
               status={processRef.status}
             />
           )}
@@ -191,21 +244,21 @@ export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBloc
           {/* 通用工具：单块 = 参数 + 透明横线 + 结果 */}
           {!isBash && !editDiff && (
             <>
-              {/* 参数区:专属 UI 优先,否则通用平铺 */}
+              {/* 参数区：专属 UI 优先，否则通用平铺 */}
               {argsReady ? (
-                customArgs ?? <ToolArgsView name={slice.name} args={slice.args} />
-              ) : slice.partialArgs ? (
+                customArgs ?? <ToolArgsView name={name} args={args} />
+              ) : partialArgs ? (
                 <pre className="font-mono text-[11px] text-[var(--ema-text-tertiary)] whitespace-pre-wrap break-all leading-relaxed bg-transparent m-0 p-0 pr-6">
-                  {slice.partialArgs}
+                  {partialArgs}
                 </pre>
               ) : null}
 
               {/* 透明横线（分隔参数与结果，仅当两者都有时） */}
-              {(argsReady || slice.partialArgs) && (customResult !== null || resultView !== null) && (
+              {(argsReady || partialArgs) && (customResult !== null || resultView !== null) && (
                 <div className="my-2 mx-4 border-t border-[var(--ema-border)]" />
               )}
 
-              {/* 结果区:专属 UI 优先,否则通用渲染 */}
+              {/* 结果区：专属 UI 优先，否则通用渲染 */}
               {customResult ?? (
                 resultView !== null && (
                   <div className="max-h-48 overflow-auto pr-6">
@@ -215,10 +268,10 @@ export function ToolCallBlock({ slice, streaming = false, turnId }: ToolCallBloc
               )}
 
               {/* 错误区（denied/failed 状态） */}
-              {hasError && (
+              {failure !== null && (
                 <div className="border-l-2 pl-2 mt-1 border-[var(--ema-danger)]">
                   <pre className="font-mono text-[11px] whitespace-pre-wrap break-all bg-transparent m-0 p-0 text-[var(--ema-danger-text)]">
-                    {status === 'denied' ? '已拒绝' : `[${slice.error!.code}]`} {slice.error!.message}
+                    {status === 'denied' ? '已拒绝' : `[${failure.code}]`} {failure.message}
                   </pre>
                 </div>
               )}

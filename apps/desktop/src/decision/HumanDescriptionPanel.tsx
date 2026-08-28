@@ -1,19 +1,10 @@
-/** HumanDescriptionPanel — display the human-readable description, or loading placeholder. */
+// HumanDescriptionPanel — 展示工具自带的人类可读描述。
 export interface HumanDescriptionPanelProps {
   description: string;
   toolName:    string;
-  pending:     boolean;
 }
 
-export function HumanDescriptionPanel({ description, toolName, pending }: HumanDescriptionPanelProps): JSX.Element {
-  if (pending) {
-    return (
-      <div className="mb-3">
-        <div className="h-6 w-3/4 rounded-lg ema-skeleton-pulse" />
-      </div>
-    );
-  }
-
+export function HumanDescriptionPanel({ description, toolName }: HumanDescriptionPanelProps): JSX.Element {
   return (
     <div className="mb-2">
       {description && (

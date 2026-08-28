@@ -10,7 +10,7 @@ import {
   MenuStatusItem,
   resolveProviderIconClass,
 } from '@ema-agent/ui';
-import { useSettingsStore } from '../../stores/settings-store.js';
+import { useProviderStore } from '../../stores/provider.js';
 import type { ProviderRecord, ModelCapability } from '../../api/providers.js';
 import { showToast } from '../../lib/toast.js';
 import { ProviderForm } from './ProviderForm.js';
@@ -50,7 +50,7 @@ function capabilityHost(record: ProviderRecord, capability: ModelCapability): st
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function ProvidersTab(): JSX.Element {
-  const providers = useSettingsStore((s) => s.providers);
+  const providers = useProviderStore((s) => s.providers);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedCapability, setSelectedCapability] = useState<ModelCapability | null>(null);
 
@@ -145,7 +145,7 @@ function ProviderConfigPanel({
 
   function confirmDelete(): void {
     setConfirmAction(null);
-    void useSettingsStore.getState().deleteProvider(provider.id).then(() => {
+    void useProviderStore.getState().deleteProvider(provider.id).then(() => {
       showToast('已删除', { variant: 'success' });
       onBack();
     }).catch((err: Error) => {

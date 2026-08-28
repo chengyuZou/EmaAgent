@@ -2,27 +2,22 @@
 // 换嵌入绑定后服务端自动把全部 KB 标记过期,可对激活库发起后台重建,进度由 kb_reembed_* SSE 驱动。
 import { useEffect, useState, type CSSProperties, type JSX } from 'react';
 import { Button, Callout, Select, Spinner } from '@ema-agent/ui';
-import { useKnowledgeStore } from '../../stores/knowledge-store.js';
+import { useKnowledgeStore } from '../../stores/knowledge.js';
 import { showToast } from '../../lib/toast.js';
-import { knowledgeApi } from '../../api/knowledge.js';
 import {
   providersApi,
   type AvailableModel,
   type BindingModule,
   type BindingRecord,
+  type BindingUpsertInput,
 } from '../../api/providers.js';
 import {
   resolveEmbedSelection,
   sameEmbedSelection,
   type ResolvedEmbedSelection,
-} from './knowledge-base-embedding-state.js';
+} from './embeddingSelection.js';
 
 const NONE = '__none__';
-
-interface ModelRef {
-  providerId: string;
-  modelId: string;
-}
 
 export function KbModelSettings({ onEmbedModelChanged }: {
   onEmbedModelChanged?: (selection: ResolvedEmbedSelection | undefined) => void;
@@ -31,28 +26,30 @@ export function KbModelSettings({ onEmbedModelChanged }: {
   const activeLib = libs.find((lib) => lib.isActive);
   const [embedModels,  setEmbedModels]  = useState<AvailableModel[]>([]);
   const [rerankModels, setRerankModels] = useState<AvailableModel[]>([]);
-  const [embedRef,  setEmbedRef]  = useState<ModelRef | null>(null);
-  const [rerankRef, setRerankRef] = useState<ModelRef | null>(null);
+  const [embedRef,  setEmbedRef]  = useState<BindingRecord | null>(null);
+  const [rerankRef, setRerankRef] = useState<BindingRecord | null>(null);
   const [saving, setSaving] = useState(false);
   const [rebuilding, setRebuilding] = useState(false);
-  // 后台重建进度:kb_reembed_* SSE 落到 store.reembedTasks(按 kbId),终态到达后下方 useEffect 收口。
-  const rebuildTask = useKnowledgeStore((s) =>
-    activeLib ? s.reembedTasks[activeLib.id] : undefined,
+  /** 本次重建提交的资产数；完成事件本身不带计数，以提交时的 stale 清单长度为准。 */
+  const [submittedCount, setSubmittedCount] = useState(0);
+  // 后台重建进度:kb_reembed_* SSE 落到 store.reembedEvents(按 kbId),终态到达后下方 useEffect 收口。
+  const rebuildEvent = useKnowledgeStore((s) =>
+    activeLib ? s.reembedEvents[activeLib.id] : undefined,
   );
 
   useEffect(() => {
-    if (!rebuilding || !rebuildTask) return;
-    if (rebuildTask.status === 'completed') {
+    if (!rebuilding || !rebuildEvent) return;
+    if (rebuildEvent.type === 'kb_reembed_completed') {
       setRebuilding(false);
-      showToast(`重建完成：${rebuildTask.completedItems ?? 0} 个文档`, { variant: 'success' });
-    } else if (rebuildTask.status === 'cancelled') {
+      showToast(`重建完成：${submittedCount} 个文档`, { variant: 'success' });
+    } else if (rebuildEvent.type === 'kb_reembed_cancelled') {
       setRebuilding(false);
       showToast('已取消重建', { variant: 'warning' });
-    } else if (rebuildTask.status === 'failed') {
+    } else if (rebuildEvent.type === 'kb_reembed_failed') {
       setRebuilding(false);
-      showToast(`重建失败：${rebuildTask.error ?? ''}`, { variant: 'danger' });
+      showToast(`重建失败：${rebuildEvent.error}`, { variant: 'danger' });
     }
-  }, [rebuilding, rebuildTask]);
+  }, [rebuilding, rebuildEvent, submittedCount]);
 
   useEffect(() => {
     void (async () => {
@@ -63,38 +60,36 @@ export function KbModelSettings({ onEmbedModelChanged }: {
       ]);
       const embedItems = emb?.models ?? [];
       const rerankItems = rer?.models ?? [];
-      setEmbedModels(embedItems);
-      setRerankModels(rerankItems);
-      const embedBinding = bindings.find((b) => b.module === 'kb-embed');
-      const rerankBinding = bindings.find((b) => b.module === 'kb-rerank');
-      const embed = embedBinding ? { providerId: embedBinding.providerId, modelId: embedBinding.modelId } : null;
-      const rerank = rerankBinding ? { providerId: rerankBinding.providerId, modelId: rerankBinding.modelId } : null;
+      setEmbedModels([...embedItems]);
+      setRerankModels([...rerankItems]);
+      const embed = bindings.find((b) => b.module === 'kb-embed') ?? null;
+      const rerank = bindings.find((b) => b.module === 'kb-rerank') ?? null;
       setEmbedRef(embed);
       setRerankRef(rerank);
       onEmbedModelChanged?.(resolveEmbedSelection(embedItems, embed));
     })();
   }, [onEmbedModelChanged]);
 
-  const enc = (r?: ModelRef | null): string => (r ? `${r.providerId}|${r.modelId}` : NONE);
-  const dec = (v: string): ModelRef | null => {
+  const enc = (r?: BindingRecord | null): string => (r ? `${r.providerId}|${r.modelId}` : NONE);
+  const dec = (v: string): BindingUpsertInput | null => {
     if (v === NONE) return null;
     const i = v.indexOf('|');
     return i < 0 ? null : { providerId: v.slice(0, i), modelId: v.slice(i + 1) };
   };
 
-  async function save(module: BindingModule, next: ModelRef | null): Promise<void> {
+  async function save(module: BindingModule, next: BindingUpsertInput | null): Promise<void> {
     if (saving) return;
     const prevEmbed = embedRef;
     setSaving(true);
     try {
       let binding: BindingRecord | null = null;
       if (next) {
-        binding = await providersApi.setBinding(module, { providerId: next.providerId, modelId: next.modelId });
+        binding = await providersApi.setBinding(module, next);
       } else {
         await providersApi.deleteBinding(module);
       }
       if (module === 'kb-embed') {
-        setEmbedRef(binding ? { providerId: binding.providerId, modelId: binding.modelId } : null);
+        setEmbedRef(binding);
         const selection = resolveEmbedSelection(embedModels, binding);
         onEmbedModelChanged?.(selection);
         // kb-embed 绑定变更由服务端自动标 stale 全部 KB,前端只提示后续动作。
@@ -109,7 +104,7 @@ export function KbModelSettings({ onEmbedModelChanged }: {
           showToast('已保存', { variant: 'success' });
         }
       } else {
-        setRerankRef(binding ? { providerId: binding.providerId, modelId: binding.modelId } : null);
+        setRerankRef(binding);
         showToast('已保存', { variant: 'success' });
       }
     }
@@ -122,19 +117,19 @@ export function KbModelSettings({ onEmbedModelChanged }: {
     ...models.map((m) => ({ value: `${m.providerId}|${m.modelId}`, label: `${m.providerName} / ${m.modelId}` })),
   ];
 
-  // 整库重建 = 先取 stale 清单再整单入队(202);进度与结果由 kb_reembed_* SSE 驱动,见上方 useEffect。
+  // 整库重建 = 服务端取 stale 清单整单入队(202);进度与结果由 kb_reembed_* SSE 驱动,见上方 useEffect。
   async function rebuildIndex(): Promise<void> {
     if (!embedRef) { showToast('请先选择嵌入模型', { variant: 'warning' }); return; }
     if (!activeLib) { showToast('请先激活一个知识库', { variant: 'warning' }); return; }
     setRebuilding(true);
     try {
-      const stale = await knowledgeApi.listStaleAssets(activeLib.id);
-      if (stale.items.length === 0) {
+      const count = await useKnowledgeStore.getState().submitReembedStale();
+      if (count === 0) {
         setRebuilding(false);
         showToast('没有需要重建的文档', { variant: 'success' });
         return;
       }
-      await knowledgeApi.reembed({ assetIds: [...stale.items], kbId: activeLib.id });
+      setSubmittedCount(count);
     } catch {
       setRebuilding(false);
       showToast('重建任务提交失败', { variant: 'danger' });
@@ -193,10 +188,9 @@ export function KbModelSettings({ onEmbedModelChanged }: {
               variant="secondary"
               size="sm"
               onClick={() => {
-                if (!activeLib) return;
-                const taskId = rebuildTask?.taskId;
+                const taskId = rebuildEvent?.taskId;
                 if (!taskId) return;
-                void knowledgeApi.cancelReembed(taskId, activeLib.id)
+                void useKnowledgeStore.getState().cancelReembed(taskId)
                   .catch(() => showToast('取消失败', { variant: 'danger' }));
               }}
             >

@@ -1,10 +1,15 @@
 // 技能市场视图:站点源管理、按站点缓存索引浏览条目与安装(版本对账以索引为事实源)。
 import { useEffect, useRef, useState, type JSX } from 'react';
 import { Badge, Button, Callout, EmptyState, MarketCard, Spinner } from '@ema-agent/ui';
-import { useSkillStore, type SkillSiteRecord } from '../../stores/skill-store.js';
+import { useSkillStore } from '../../stores/skill.js';
+import type { SkillSiteRecord } from '../../api/skills.js';
 import { showToast } from '../../lib/toast.js';
 import { MarketSourceManager } from './MarketSourceManager.js';
-import { formatBytes } from './skillFormat.js';
+function formatBytes(bytes: number): string {
+  if (!bytes || bytes < 1024) return `${bytes || 0} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
 
 type SiteEntry = NonNullable<SkillSiteRecord['index']>['skills'][number];
 

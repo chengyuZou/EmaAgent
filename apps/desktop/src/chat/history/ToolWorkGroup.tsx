@@ -1,29 +1,24 @@
-// 连续工具调用的合并摘要行:动词计数 + 错误染红,展开为逐条 ToolCallBlock。
+// 连续工具调用的合并摘要行：动词计数 + 错误染红，展开为逐条 ToolCallBlock。
 import { useEffect, useState, type JSX } from 'react';
-import type { AssistantSlice } from '../../stores/conversation-store.js';
 import { ToolCallBlock } from '../messages/ToolCallBlock.js';
-import { tallySummary, tallyTools } from './workGroups.js';
-
-type ToolUseSlice = Extract<AssistantSlice, { type: 'tool_use' }>;
+import { tallySummary, tallyTools, type ToolWorkRow } from './workGroups.js';
 
 export function ToolWorkGroup({
-  slices, streaming, turnId,
+  rows, streaming, turnId,
 }: {
-  slices: readonly AssistantSlice[];
+  rows: readonly ToolWorkRow[];
   streaming: boolean;
   turnId?: string;
 }): JSX.Element {
   const [open, setOpen] = useState(streaming);
 
-  // 流式期间展开直播,终态收起为摘要行。
+  // 流式期间展开直播，终态收起为摘要行。
   useEffect(() => {
     if (!streaming) setOpen(false);
   }, [streaming]);
 
-  // groupSlices 保证组内全是 tool_use;守卫收窄而不是断言。
-  const toolSlices = slices.filter((s): s is ToolUseSlice => s.type === 'tool_use');
-  const tally = tallyTools(toolSlices);
-  const parts = tallySummary(toolSlices, tally);
+  const tally = tallyTools(rows);
+  const parts = tallySummary(rows, tally);
 
   return (
     <div className="flex flex-col">
@@ -48,8 +43,8 @@ export function ToolWorkGroup({
         style={{ gridTemplateRows: open ? '1fr' : '0fr', opacity: open ? 1 : 0 }}
       >
         <div className="flex flex-col gap-0.5 pt-0.5">
-          {toolSlices.map((slice, index) => (
-            <ToolCallBlock key={index} slice={slice} streaming={streaming} turnId={turnId} />
+          {rows.map((row) => (
+            <ToolCallBlock key={row.source === 'history' ? row.block.id : row.item.callId} row={row} streaming={streaming} turnId={turnId} />
           ))}
         </div>
       </div>

@@ -1,16 +1,15 @@
-// Live2D 变体管理:列表、ZIP 导入与设主用;行内不再支持启停/导出/删除。
+// Live2D 变体管理:列表、ZIP 导入与行内操作（设主用/启停/导出/删除）。
 import { useState, type JSX } from 'react';
 import { Badge, Button, EntityRow, EmptyState } from '@ema-agent/ui';
-import { useCharacterStore } from '../../../stores/character-store.js';
+import { useCharacterStore } from '../../../stores/character.js';
 import type { Character } from '../../../api/characters.js';
 import { showToast } from '../../../lib/toast.js';
-import { describeResourceError } from '../shared/characterResourceErrors.js';
-import { PrimaryBadge } from '../shared/ResourceControls.js';
+import { PrimaryBadge, ResourceActions } from '../shared/ResourceControls.js';
 import { Live2DImportDialog } from './Live2DImportDialog.js';
 
 export function Live2DTab({ character }: { character: Character }): JSX.Element {
   const [importOpen, setImportOpen] = useState(false);
-  const [busyId, setBusyId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const isBuiltin = character.isBuiltin;
 
   // 展示顺序与服务端降级链一致:主用优先,其余按创建先后。
@@ -18,17 +17,14 @@ export function Live2DTab({ character }: { character: Character }): JSX.Element 
     Number(b.isPrimary) - Number(a.isPrimary) || a.createdAt - b.createdAt,
   );
 
-  async function handleSetPrimary(resourceId: string): Promise<void> {
-    setBusyId(resourceId);
+  const run = async (action: () => Promise<unknown>): Promise<void> => {
+    setBusy(true);
     try {
-      await useCharacterStore.getState().setPrimaryLive2d(character.id, resourceId);
-      showToast('已设为主用', { variant: 'success' });
-    } catch (err: unknown) {
-      showToast(describeResourceError(err, '设置失败').message, { variant: 'danger' });
+      await action();
     } finally {
-      setBusyId(null);
+      setBusy(false);
     }
-  }
+  };
 
   return (
     <div className="pt-3">
@@ -65,15 +61,23 @@ export function Live2DTab({ character }: { character: Character }): JSX.Element 
                   <PrimaryBadge isPrimary={v.isPrimary} />
                   {!v.enabled && <Badge variant="warn">已停用</Badge>}
                 </div>
-                {!isBuiltin && !v.isPrimary && (
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    loading={busyId === v.id}
-                    onClick={() => void handleSetPrimary(v.id)}
-                  >
-                    设主用
-                  </Button>
+                {!isBuiltin && (
+                  <ResourceActions
+                    isPrimary={v.isPrimary}
+                    enabled={v.enabled}
+                    busy={busy}
+                    onSetPrimary={() => run(() =>
+                      useCharacterStore.getState().setPrimaryLive2d(character.id, v.id))}
+                    onToggleEnabled={() => run(() =>
+                      useCharacterStore.getState().patchLive2d(character.id, v.id, { enabled: !v.enabled }))}
+                    onExport={(directory) => run(async () => {
+                      const exported = await useCharacterStore.getState().exportLive2d(character.id, v.id, directory);
+                      showToast(`已导出到 ${exported}`, { variant: 'success' });
+                    })}
+                    onDelete={() => run(() =>
+                      useCharacterStore.getState().deleteLive2d(character.id, v.id))}
+                    deleteConfirmMessage={`删除 Live2D 模型「${v.name}」后不可恢复。`}
+                  />
                 )}
               </div>
               <p className="text-xs text-[var(--ema-text-tertiary)] mt-1 font-mono truncate">

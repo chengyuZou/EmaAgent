@@ -13,6 +13,11 @@ export type MemorySearchInput = InferRequestType<RpcClient['api']['memory']['fil
 export type MemorySearchResult = RpcJson<RpcClient['api']['memory']['files']['search']['$post']>;
 export type MemoryConsolidateInput = InferRequestType<RpcClient['api']['memory']['consolidate']['$post']>['json'];
 export type MemoryMaintenanceInput = InferRequestType<RpcClient['api']['memory']['maintenance']['$post']>['json'];
+export type MemoryWriteInput = InferRequestType<RpcClient['api']['memory']['files']['content']['$put']>['json'];
+export type MemoryWriteResult = RpcJson<RpcClient['api']['memory']['files']['content']['$put']>;
+export type MemoryNoteCreateInput = InferRequestType<RpcClient['api']['memory']['files']['notes']['$post']>['json'];
+export type MemoryNoteCreateResult = RpcJson<RpcClient['api']['memory']['files']['notes']['$post']>;
+export type MemoryBusyPathList = RpcJson<RpcClient['api']['memory']['jobs']['busy-paths']['$get']>;
 
 export const memoryApi = {
   /** GET /api/memory/stats — 记忆存储状态（字节/限量/水位）。 */
@@ -83,5 +88,20 @@ export const memoryApi = {
   /** POST /api/memory/maintenance — 入队维护 Job（202）。 */
   maintenance(kind: MemoryMaintenanceInput['kind']) {
     return readRpcJson(rpcClient.api.memory.maintenance.$post({ json: { kind } }));
+  },
+
+  /** PUT /api/memory/files/content — 编辑正式记忆（mtime 冲突/整合占用时 409）。 */
+  saveFileContent(body: MemoryWriteInput): Promise<MemoryWriteResult> {
+    return readRpcJson(rpcClient.api.memory.files.content.$put({ json: body }));
+  },
+
+  /** POST /api/memory/files/notes — 记一条便签（下轮整合消化）。 */
+  createNote(body: MemoryNoteCreateInput): Promise<MemoryNoteCreateResult> {
+    return readRpcJson(rpcClient.api.memory.files.notes.$post({ json: body }));
+  },
+
+  /** GET /api/memory/jobs/busy-paths — running 整合 Job 正在改动的路径（编辑锁）。 */
+  listBusyPaths(): Promise<MemoryBusyPathList> {
+    return readRpcJson(rpcClient.api.memory.jobs['busy-paths'].$get());
   },
 };

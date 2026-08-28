@@ -7,7 +7,9 @@ import {
   type CharacterPatchInput,
   type CharacterHealth,
   type Live2dImportInput,
+  type IllustrationImportInput,
   type VoiceImportInput,
+  type ResourcePatchInput,
 } from '../api/characters.js';
 
 // ── 类型 ─────────────────────────────────────────────────────────────────────
@@ -26,11 +28,21 @@ export interface CharacterStoreState {
   create(input: CharacterCreateInput):               Promise<Character>;
   patch(id: string, input: CharacterPatchInput): Promise<void>;
   delete(id: string):                     Promise<void>;
-  setPrimaryLive2d(id: string, resourceId: string): Promise<void>;
 
+  setPrimaryLive2d(id: string, resourceId: string): Promise<void>;
   /** 导入 Live2D 模型目录 zip（sourceZipFile 为本机绝对路径）。 */
   importLive2d(id: string, input: Live2dImportInput): Promise<void>;
+  patchLive2d(id: string, resourceId: string, input: ResourcePatchInput): Promise<void>;
+  exportLive2d(id: string, resourceId: string, destinationDirectory: string): Promise<string>;
+  deleteLive2d(id: string, resourceId: string): Promise<void>;
 
+  setPrimaryIllustration(id: string, resourceId: string): Promise<void>;
+  importIllustration(id: string, input: IllustrationImportInput): Promise<void>;
+  patchIllustration(id: string, resourceId: string, input: ResourcePatchInput): Promise<void>;
+  exportIllustration(id: string, resourceId: string, destinationDirectory: string): Promise<string>;
+  deleteIllustration(id: string, resourceId: string): Promise<void>;
+
+  setPrimaryVoice(id: string, resourceId: string): Promise<void>;
   /** 从本机文件导入参考音频。 */
   importVoice(characterId: string, input: VoiceImportInput): Promise<void>;
   /** 录音/合成直传参考音频（multipart）。 */
@@ -39,11 +51,32 @@ export interface CharacterStoreState {
     promptLang: string;
     isPrimary?: boolean;
   }): Promise<void>;
+  patchVoice(id: string, resourceId: string, input: ResourcePatchInput): Promise<void>;
+  exportVoice(id: string, resourceId: string, destinationDirectory: string): Promise<string>;
+  deleteVoice(id: string, resourceId: string): Promise<void>;
 }
 
 // ── Store ────────────────────────────────────────────────────────────────────
 
-export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
+export const useCharacterStore = create<CharacterStoreState>((set, get) => {
+  /** 资源操作统一节拍：成功 → load + 健康刷新；失败 → error 落 store 并上抛给调用方 toast。 */
+  const mutate = async <T>(
+    characterId: string,
+    errorLabel: string,
+    action: () => Promise<T>,
+  ): Promise<T> => {
+    try {
+      const result = await action();
+      await get().load();
+      void get().refreshHealth(characterId);
+      return result;
+    } catch (err: unknown) {
+      set({ error: err instanceof Error ? err.message : errorLabel });
+      throw err;
+    }
+  };
+
+  return {
   characters:      [],
   activeCharacterId: null,
   loading:       false,
@@ -79,15 +112,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
   },
 
   async activate(id) {
-    try {
-      await charactersApi.activate(id);
-      // 重读以取得唯一可信的 isActive 状态。
-      await get().load();
-      void get().refreshHealth(id);
-    } catch (err: unknown) {
-      set({ error: err instanceof Error ? err.message : 'Failed to activate character' });
-      throw err;
-    }
+    await mutate(id, 'Failed to activate character', () => charactersApi.activate(id));
   },
 
   async create(input) {
@@ -102,15 +127,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
   },
 
   async patch(id, input) {
-    try {
-      await charactersApi.patch(id, input);
-      await get().load();
-      // systemPrompt 是健康硬门,元数据修改后同步刷新。
-      void get().refreshHealth(id);
-    } catch (err: unknown) {
-      set({ error: err instanceof Error ? err.message : 'Failed to update character' });
-      throw err;
-    }
+    await mutate(id, 'Failed to update character', () => charactersApi.patch(id, input));
   },
 
   async delete(id) {
@@ -128,47 +145,84 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => ({
     }
   },
 
+  // ── Live2D ─────────────────────────────────────────────────────────────────
+
   async setPrimaryLive2d(id, resourceId) {
-    try {
-      await charactersApi.setLive2dPrimary(id, resourceId);
-      await get().load();
-      void get().refreshHealth(id);
-    } catch (err: unknown) {
-      set({ error: err instanceof Error ? err.message : 'Failed to switch Live2D' });
-      throw err;
-    }
+    await mutate(id, 'Failed to switch Live2D', () => charactersApi.setLive2dPrimary(id, resourceId));
   },
 
   async importLive2d(id, input) {
-    try {
-      await charactersApi.importLive2d(id, input);
-      await get().load();
-      void get().refreshHealth(id);
-    } catch (err: unknown) {
-      set({ error: err instanceof Error ? err.message : 'Failed to import Live2D' });
-      throw err;
-    }
+    await mutate(id, 'Failed to import Live2D', () => charactersApi.importLive2d(id, input));
+  },
+
+  async patchLive2d(id, resourceId, input) {
+    await mutate(id, 'Failed to update Live2D', () => charactersApi.patchLive2d(id, resourceId, input));
+  },
+
+  async exportLive2d(id, resourceId, destinationDirectory) {
+    const result = await mutate(id, 'Failed to export Live2D', () =>
+      charactersApi.exportLive2d(id, resourceId, destinationDirectory));
+    return result.exported;
+  },
+
+  async deleteLive2d(id, resourceId) {
+    await mutate(id, 'Failed to delete Live2D', () => charactersApi.deleteLive2d(id, resourceId));
+  },
+
+  // ── 立绘 ───────────────────────────────────────────────────────────────────
+
+  async setPrimaryIllustration(id, resourceId) {
+    await mutate(id, 'Failed to switch illustration', () =>
+      charactersApi.setIllustrationPrimary(id, resourceId));
+  },
+
+  async importIllustration(id, input) {
+    await mutate(id, 'Failed to import illustration', () => charactersApi.importIllustration(id, input));
+  },
+
+  async patchIllustration(id, resourceId, input) {
+    await mutate(id, 'Failed to update illustration', () =>
+      charactersApi.patchIllustration(id, resourceId, input));
+  },
+
+  async exportIllustration(id, resourceId, destinationDirectory) {
+    const result = await mutate(id, 'Failed to export illustration', () =>
+      charactersApi.exportIllustration(id, resourceId, destinationDirectory));
+    return result.exported;
+  },
+
+  async deleteIllustration(id, resourceId) {
+    await mutate(id, 'Failed to delete illustration', () =>
+      charactersApi.deleteIllustration(id, resourceId));
+  },
+
+  // ── 参考音频 ────────────────────────────────────────────────────────────────
+
+  async setPrimaryVoice(id, resourceId) {
+    await mutate(id, 'Failed to switch voice ref', () => charactersApi.setVoicePrimary(id, resourceId));
   },
 
   async importVoice(characterId, input) {
-    try {
-      await charactersApi.importVoice(characterId, input);
-      await get().load();
-      void get().refreshHealth(characterId);
-    } catch (err: unknown) {
-      set({ error: err instanceof Error ? err.message : 'Failed to import voice ref' });
-      throw err;
-    }
+    await mutate(characterId, 'Failed to import voice ref', () => charactersApi.importVoice(characterId, input));
   },
 
   async publishVoice(characterId, file, meta) {
-    try {
-      await charactersApi.publishVoice(characterId, file, meta);
-      await get().load();
-      void get().refreshHealth(characterId);
-    } catch (err: unknown) {
-      set({ error: err instanceof Error ? err.message : 'Failed to publish voice ref' });
-      throw err;
-    }
+    await mutate(characterId, 'Failed to publish voice ref', () =>
+      charactersApi.publishVoice(characterId, file, meta));
   },
-}));
+
+  async patchVoice(id, resourceId, input) {
+    await mutate(id, 'Failed to update voice ref', () => charactersApi.patchVoice(id, resourceId, input));
+  },
+
+  async exportVoice(id, resourceId, destinationDirectory) {
+    const result = await mutate(id, 'Failed to export voice ref', () =>
+      charactersApi.exportVoice(id, resourceId, destinationDirectory));
+    return result.exported;
+  },
+
+  async deleteVoice(id, resourceId) {
+    await mutate(id, 'Failed to delete voice ref', () => charactersApi.deleteVoice(id, resourceId));
+  },
+  };
+});

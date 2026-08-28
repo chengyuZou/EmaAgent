@@ -1,28 +1,18 @@
 // 持久化主题配置，并在所有桌面窗口间同步应用。
-// 主题是 frontend.theme 设置值（frontend.* 由前端表现层拥有，server 托管 KV）。
+// 主题是 frontend.theme 设置值：字段范围由 server 侧 zod schema 校验，类型直接引用拥有方。
 import { useEffect } from 'react';
 import { create } from 'zustand';
 import { settingsApi } from '../api/settings.js';
 import { setThemeHue, setThemeRadius } from '@ema-agent/ui/utils';
 import { tauriBridge } from '../lib/tauri-bridge.js';
+import type { ThemeSettings } from '@ema-agent/server/composition/settings/themeSetting.js';
 
 const THEME_EVENT = 'theme:changed';
 const THEME_ATTR  = 'data-theme';
 const THEME_SETTING_KEY = 'frontend.theme';
 
-export type ThemeMode = 'dark' | 'light';
-export type ContentFontPreset = 'system' | 'rounded' | 'reading' | 'custom';
-
-/** frontend.theme 设置的持久化形状；字段范围由 server 侧 zod schema 校验。 */
-export interface ThemeSettingsValue {
-  hue: number;
-  radius: number;
-  mode: ThemeMode;
-  contentFontPreset: ContentFontPreset;
-  contentFontFamily: string;
-}
-
-const DEFAULTS: ThemeSettingsValue = {
+/** 首帧渲染与 server 不可达时的兜底；server 的 values 解码本身已带默认值。 */
+const DEFAULTS: ThemeSettings = {
   hue: 200,
   radius: 1,
   mode: 'light',
@@ -30,7 +20,7 @@ const DEFAULTS: ThemeSettingsValue = {
   contentFontFamily: '',
 };
 
-const CONTENT_FONT_STACKS: Record<Exclude<ContentFontPreset, 'custom'>, string> = {
+const CONTENT_FONT_STACKS: Record<Exclude<ThemeSettings['contentFontPreset'], 'custom'>, string> = {
   system: 'var(--ema-font-content-system)',
   rounded: "'Nunito', 'Avenir Next', 'Segoe UI Variable', 'Microsoft YaHei UI', sans-serif",
   reading: "'LXGW WenKai', 'Kaiti SC', KaiTi, 'Yu Kyokasho', 'Microsoft YaHei', sans-serif",
@@ -41,7 +31,7 @@ export function normalizeLocalFontName(value: string): string {
 }
 
 export function resolveContentFontStack(
-  preset: ContentFontPreset,
+  preset: ThemeSettings['contentFontPreset'],
   customFamily: string,
 ): string {
   if (preset !== 'custom') return CONTENT_FONT_STACKS[preset];
@@ -51,19 +41,19 @@ export function resolveContentFontStack(
     : CONTENT_FONT_STACKS.system;
 }
 
-function applyContentFont(preset: ContentFontPreset, customFamily: string): void {
+function applyContentFont(preset: ThemeSettings['contentFontPreset'], customFamily: string): void {
   document.documentElement.style.setProperty(
     '--ema-font-content',
     resolveContentFontStack(preset, customFamily),
   );
 }
 
-/** server 解码已兜底默认值；这里只按字段逐项收窄，坏字段回落默认而不是整份丢弃。 */
-function readThemeValue(value: unknown): ThemeSettingsValue {
+/** 设置 KV 通道不带类型，这里做入口收窄；坏字段逐项回落默认而不是整份丢弃。 */
+function readThemeValue(value: unknown): ThemeSettings {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return DEFAULTS;
   const raw = value as Record<string, unknown>;
-  const mode: ThemeMode = raw.mode === 'dark' ? 'dark' : 'light';
-  const preset: ContentFontPreset =
+  const mode: ThemeSettings['mode'] = raw.mode === 'dark' ? 'dark' : 'light';
+  const preset: ThemeSettings['contentFontPreset'] =
     raw.contentFontPreset === 'rounded'
     || raw.contentFontPreset === 'reading'
     || raw.contentFontPreset === 'custom'
@@ -80,14 +70,14 @@ function readThemeValue(value: unknown): ThemeSettingsValue {
   };
 }
 
-function applyResolvedTheme(config: ThemeSettingsValue): void {
+function applyResolvedTheme(config: ThemeSettings): void {
   setThemeHue(config.hue);
   setThemeRadius(config.radius);
   applyMode(config.mode);
   applyContentFont(config.contentFontPreset, config.contentFontFamily);
 }
 
-function applyMode(mode: ThemeMode): void {
+function applyMode(mode: ThemeSettings['mode']): void {
   // 切换双向动画:切前给 <html> 加 .ema-theme-transition 触发全局 color 过渡,
   // 过渡完(400ms)移除。只过渡颜色不过渡 transform/layout(见 transitions.css)。
   const html = document.documentElement;
@@ -99,12 +89,12 @@ function applyMode(mode: ThemeMode): void {
     document.documentElement.setAttribute(THEME_ATTR, mode);
   }
 
-  // Sync native title bar (Tauri window)
+  // 同步原生标题栏配色（Tauri 窗口）。
   try {
     import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
       getCurrentWindow().setTheme(mode).catch(() => {});
     }).catch(() => {});
-  } catch { /* not in Tauri */ }
+  } catch { /* 不在 Tauri 环境 */ }
 
   // 过渡完移除 class(过渡时长 base 200ms + buffer 200ms = 400ms)
   window.setTimeout(() => html.classList.remove('ema-theme-transition'), 400);
@@ -113,16 +103,16 @@ function applyMode(mode: ThemeMode): void {
 export interface ThemeStoreState {
   hue:    number;
   radius: number;
-  mode:   ThemeMode;
-  contentFontPreset: ContentFontPreset;
+  mode:   ThemeSettings['mode'];
+  contentFontPreset: ThemeSettings['contentFontPreset'];
   contentFontFamily: string;
   ready:  boolean;
 
   init(): Promise<void>;
   setHue(hue: number): Promise<void>;
   setRadius(radius: number): Promise<void>;
-  setMode(mode: ThemeMode): Promise<void>;
-  setContentFont(preset: ContentFontPreset, customFamily?: string): Promise<void>;
+  setMode(mode: ThemeSettings['mode']): Promise<void>;
+  setContentFont(preset: ThemeSettings['contentFontPreset'], customFamily?: string): Promise<void>;
 }
 
 export const useThemeStore = create<ThemeStoreState>((set, get) => ({
@@ -167,11 +157,11 @@ export const useThemeStore = create<ThemeStoreState>((set, get) => ({
   },
 }));
 
-function emitTheme(config: ThemeSettingsValue): void {
+function emitTheme(config: ThemeSettings): void {
   void tauriBridge.emit(THEME_EVENT, config);
 }
 
-function currentThemeValue(state: ThemeStoreState): ThemeSettingsValue {
+function currentThemeValue(state: ThemeStoreState): ThemeSettings {
   return {
     hue: state.hue,
     radius: state.radius,
@@ -182,9 +172,9 @@ function currentThemeValue(state: ThemeStoreState): ThemeSettingsValue {
 }
 
 async function persistThemeChange(
-  next: ThemeSettingsValue,
-  previous: ThemeSettingsValue,
-  updateState: (value: ThemeSettingsValue) => void,
+  next: ThemeSettings,
+  previous: ThemeSettings,
+  updateState: (value: ThemeSettings) => void,
 ): Promise<void> {
   // 当前窗口先预览；只有 SQLite 提交成功后才通知其他窗口。
   applyResolvedTheme(next);
@@ -202,11 +192,7 @@ async function persistThemeChange(
   }
 }
 
-/**
- * Call this once in the root of each Tauri window.
- * - Fetches and applies the saved theme on mount.
- * - Listens for theme:changed events from other windows (e.g. settings window).
- */
+/** 每个 Tauri 窗口根部调用一次：挂载时取回并应用主题，监听其他窗口的 theme:changed。 */
 export function useThemeSync(): void {
   useEffect(() => {
     void useThemeStore.getState().init();
@@ -214,7 +200,7 @@ export function useThemeSync(): void {
     let unlisten: (() => void) | undefined;
     let cancelled = false;
 
-    void tauriBridge.listen<ThemeSettingsValue>(THEME_EVENT, (e) => {
+    void tauriBridge.listen<ThemeSettings>(THEME_EVENT, (e) => {
       const resolved = readThemeValue(e.payload);
       applyResolvedTheme(resolved);
       useThemeStore.setState(resolved);

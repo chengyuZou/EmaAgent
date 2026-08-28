@@ -13,8 +13,8 @@ import { Tooltip, TooltipProvider } from '@ema-agent/ui';
 import type { TurnIndexPage } from '../../api/sessions.js';
 import {
   EMPTY_SESSION_HISTORY,
-  useSessionHistoryStore,
-} from './sessionHistoryStore.js';
+  useSessionHistory,
+} from './sessionHistory.js';
 import {
   turnRailCapacity,
   turnRailMarkVisual,
@@ -43,12 +43,12 @@ export function TurnRail({ sessionId, onSelectTurn }: TurnRailProps): JSX.Elemen
   const [height, setHeight] = useState(0);
   const [offset, setOffset] = useState(0);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-  const history = useSessionHistoryStore(
+  const history = useSessionHistory(
     (state) => state.bySession.get(sessionId as string) ?? EMPTY_SESSION_HISTORY,
   );
 
   useEffect(() => {
-    void useSessionHistoryStore.getState().loadTurnIndex(sessionId);
+    void useSessionHistory.getState().loadTurnIndex(sessionId);
   }, [sessionId, history.turnIndexLoaded]);
 
   useEffect(() => {
@@ -105,7 +105,7 @@ export function TurnRail({ sessionId, onSelectTurn }: TurnRailProps): JSX.Elemen
         && next + capacity >= history.turnIndexItems.length - WHEEL_STEP
         && history.turnIndexNextCursor
       ) {
-        void useSessionHistoryStore.getState().loadMoreTurnIndex(sessionId);
+        void useSessionHistory.getState().loadMoreTurnIndex(sessionId);
       }
       return next;
     });

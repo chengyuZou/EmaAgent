@@ -12,6 +12,11 @@ import {
   type MemorySearchResult,
   type MemoryConsolidateInput,
   type MemoryMaintenanceInput,
+  type MemoryWriteInput,
+  type MemoryWriteResult,
+  type MemoryNoteCreateInput,
+  type MemoryNoteCreateResult,
+  type MemoryBusyPathList,
 } from '../api/memory.js';
 
 // ── Store interface ───────────────────────────────────────────────────────────
@@ -46,6 +51,13 @@ export interface MemoryStoreState {
   listFiles(opts?: { path?: string; cursor?: string; maxResults?: number }): Promise<MemoryFileList>;
   readFile(opts: { path: string; lineOffset?: number; maxLines?: number }): Promise<MemoryFileContent>;
   searchFiles(input: MemorySearchInput): Promise<MemorySearchResult>;
+
+  /** 保存正式记忆编辑（409=整合占用或已被改写）。 */
+  saveFileContent(body: MemoryWriteInput): Promise<MemoryWriteResult>;
+  /** 记一条便签到对应轨的 extensions/notes/。 */
+  createNote(input: MemoryNoteCreateInput): Promise<MemoryNoteCreateResult>;
+  /** 编辑锁事实源：running 整合 Job 正在改动的路径。 */
+  listBusyPaths(): Promise<MemoryBusyPathList>;
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────────
@@ -122,5 +134,17 @@ export const useMemoryStore = create<MemoryStoreState>((set, get) => ({
 
   searchFiles(input) {
     return memoryApi.search(input);
+  },
+
+  saveFileContent(body) {
+    return memoryApi.saveFileContent(body);
+  },
+
+  createNote(input) {
+    return memoryApi.createNote(input);
+  },
+
+  listBusyPaths() {
+    return memoryApi.listBusyPaths();
   },
 }));

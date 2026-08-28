@@ -1,10 +1,34 @@
-// Tool 块主组件的参数、diff 与展示目标提取辅助,纯函数不含渲染。
-import type { AssistantSlice } from '../../../stores/conversation-store.js';
+// Tool 块主组件的参数、diff 与展示目标提取辅助，纯函数不含渲染。
+import { BuiltinTools, type BuiltinToolVariant } from '@ema-agent/builtin-tools/identity';
 import { createPatch } from 'diff';
 
 // 新会话使用 PascalCase；其余名称只负责渲染升级前保存的历史消息。
 export const BASH_TOOLS = new Set(['Bash', 'PowerShell', 'bash', 'powershell', 'run_command', 'execute_bash', 'shell']);
 const EDIT_TOOLS = new Set(['Edit', 'edit_file', 'str_replace', 'str_replace_editor', 'apply_diff', 'patch']);
+
+// ── 工具 variant：leading 槽的图标分组，身份表单点拥有；MCP/未知工具回落 others ──
+
+const VARIANT_BY_NAME: ReadonlyMap<string, BuiltinToolVariant> = new Map(
+  Object.values(BuiltinTools).map((tool) => [tool.name, tool.variant]),
+);
+
+export type ToolVariant = BuiltinToolVariant | 'others';
+
+export function toolVariant(name: string): ToolVariant {
+  return VARIANT_BY_NAME.get(name) ?? 'others';
+}
+
+export const VARIANT_ICONS: Readonly<Record<ToolVariant, string>> = {
+  read: 'i-lucide:book-open',
+  search: 'i-lucide:search',
+  shell: 'i-lucide:terminal',
+  edit: 'i-lucide:pencil',
+  ask: 'i-lucide:message-circle-question',
+  task: 'i-lucide:list-checks',
+  skill: 'i-lucide:sparkles',
+  agent: 'i-lucide:bot',
+  others: 'i-lucide:sparkles',
+};
 
 export function getBashCommand(args: unknown): string {
   if (!args || typeof args !== 'object') return '';
@@ -13,14 +37,16 @@ export function getBashCommand(args: unknown): string {
 }
 
 export function buildBodyText(
-  slice: Extract<AssistantSlice, { type: 'tool_use' }>,
+  name: string,
+  args: unknown,
+  output: unknown,
   editDiff: string | null,
   bashCmd: string | null,
   bashResultStr: string | null,
   argsReady: boolean,
 ): string {
   // 复制时保留完整 JSON（含 {}）—— 复制粘贴场景需要可解析的结构化数据
-  if (BASH_TOOLS.has(slice.name)) {
+  if (BASH_TOOLS.has(name)) {
     const parts: string[] = [];
     if (bashCmd) parts.push(`$ ${bashCmd}`);
     if (bashResultStr !== null) parts.push('', bashResultStr);
@@ -28,8 +54,8 @@ export function buildBodyText(
   }
   if (editDiff) return editDiff;
   const parts: string[] = [];
-  if (argsReady) parts.push(formatJson(slice.args));
-  if (slice.result !== undefined && slice.result !== null) parts.push(formatJson(slice.result));
+  if (argsReady) parts.push(formatJson(args));
+  if (output !== undefined && output !== null) parts.push(formatJson(output));
   return parts.join('\n\n');
 }
 
