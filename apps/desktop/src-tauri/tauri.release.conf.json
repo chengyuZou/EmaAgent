@@ -2,12 +2,12 @@
   "bundle": {
     "active": true,
     "externalBin": [
-      "binaries/ema-local-host"
+      "binaries/ema-server"
     ],
     "resources": {
-      "resources/local-host-runtime/": "local-host-runtime/",
-      "resources/narrative-bridge-runtime/": "narrative-bridge-runtime/",
-      "resources/narrative-seed/": "narrative-seed/"
+      "resources/server/": "server/",
+      "resources/narrative-bridge/": "narrative-bridge/",
+      "target/release-resources/narrative/witch-trial.zip": "narrative/witch-trial.zip"
     }
   }
 }

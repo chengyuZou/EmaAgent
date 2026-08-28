@@ -46,6 +46,6 @@
     "icon":       ["icons/icon.png"],
     "category":   "Utility",
     "shortDescription": "Ema desktop pet + agent",
-    "longDescription":  "Local-first desktop pet + agent — three modes, character-driven."
+    "longDescription":  "Local-first desktop pet + agent — chat/work profiles, character-driven."
   }
 }

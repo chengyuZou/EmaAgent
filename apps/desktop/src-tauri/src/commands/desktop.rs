@@ -1,8 +1,8 @@
 // 提供窗口显示、交互模式与应用退出相关的 Tauri commands。
 use tauri::Manager;
 
-use crate::desktop::window_lifecycle::{begin_main_focus_settling, show_window};
-use crate::runtime::DesktopRuntimeSupervisor;
+use crate::desktop::windows::{begin_main_focus_settling, show_window};
+use crate::processes::DesktopProcesses;
 
 #[tauri::command]
 pub fn set_always_on_top(window: tauri::Window, value: bool) -> Result<(), String> {
@@ -25,9 +25,9 @@ pub fn set_passthrough(window: tauri::Window, value: bool) -> Result<(), String>
 #[tauri::command]
 pub async fn quit_app(app: tauri::AppHandle) {
     tracing::info!("quit_app requested");
-    let state = app.state::<DesktopRuntimeSupervisor>();
+    let state = app.state::<DesktopProcesses>();
     state.shutdown().await;
-    tracing::info!("runtime shutdown complete; exiting");
+    tracing::info!("supervised services shutdown complete; exiting");
     app.exit(0);
 }
 

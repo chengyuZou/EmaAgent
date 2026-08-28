@@ -25,24 +25,15 @@ regex              = "1"
 tracing            = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rand                = "0.8.5"
-aes-gcm             = "0.10"
-base64              = "0.22"
-hkdf                = "0.12"
-sha2                = "0.10"
+dirs                = "6"
+zip                 = { version = "2", default-features = false, features = ["deflate"] }
 
 # Windows 进程树清理：Job Object + KILL_ON_JOB_CLOSE，Rust 进程退出时 OS 自动 kill
-# 整个 Job 内子进程（sidecar + bridge），不依赖 taskkill /T 进程树完整性（bug 4 修法）。
+# 整个 Job 内子进程（server + bridge），不依赖 taskkill /T 进程树完整性。
 [target.'cfg(windows)'.dependencies]
 win32job = "2"
 # OpenProcess 从 pid 拿进程 handle，assign 到 Job Object（win32job 只暴露 handle 接口）
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Threading"] }
-keyring = { version = "3.6.3", default-features = false, features = ["windows-native"] }
-
-[target.'cfg(target_os = "macos")'.dependencies]
-keyring = { version = "3.6.3", default-features = false, features = ["apple-native"] }
-
-[target.'cfg(target_os = "linux")'.dependencies]
-keyring = { version = "3.6.3", default-features = false, features = ["linux-native-sync-persistent", "crypto-rust"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

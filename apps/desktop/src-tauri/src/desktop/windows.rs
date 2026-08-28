@@ -4,8 +4,6 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 
-use crate::file_access::{install_authorized_drop_handler, FileAccessFacade};
-
 const WINDOW_VISIBILITY_EVENT: &str = "ema://window-visibility";
 // 同一进程内的 WebView2 必须使用一致的浏览器参数，否则后创建的窗口会被环境复用规则拒绝。
 const SHARED_BROWSER_ARGS: &str = "--autoplay-policy=no-user-gesture-required";
@@ -72,12 +70,6 @@ fn create_window(app: &tauri::AppHandle, label: &str) -> Result<WebviewWindow, S
         _ => return Err(format!("unknown window label: {label}")),
     };
 
-    // 聊天窗首次出现时才获得拖拽文件授权；隐藏后复用同一窗口，不重复注册处理器。
-    if label == "chat" {
-        let file_access = app.state::<FileAccessFacade>().inner().clone();
-        install_authorized_drop_handler(&window, file_access);
-    }
-
     Ok(window)
 }
 
@@ -129,7 +121,9 @@ pub fn handle_window_event(window: &tauri::Window, event: &WindowEvent) {
                 .lock()
                 .ok()
                 .and_then(|focused_at| *focused_at)
-                .is_none_or(|focused_at| focused_at.elapsed() >= MAIN_FOCUS_SETTLE_GRACE);
+                .map_or(true, |focused_at| {
+                    focused_at.elapsed() >= MAIN_FOCUS_SETTLE_GRACE
+                });
             if focus_is_stable && matches!(window.is_always_on_top(), Ok(false)) {
                 if let Err(error) = window.minimize() {
                     tracing::warn!(%error, "failed to minimize unpinned main window");
