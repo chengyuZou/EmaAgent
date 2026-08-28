@@ -24,10 +24,10 @@ build = [
 ]
 
 [project.scripts]
-ema-narrative-bridge = "narrativeBridge.main:main"
+ema-narrative-bridge = "core.main:main"
 
 [tool.setuptools.packages.find]
-include = ["narrativeBridge*"]
+include = ["core*"]
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]

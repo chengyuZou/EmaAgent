@@ -1,4 +1,4 @@
-# 在当前操作系统原生冻结 Narrative Bridge，并原子装配为 Tauri Sidecar。
+# 在当前操作系统原生冻结 Narrative Bridge，并原子装配进桌面宿主资源目录。
 from __future__ import annotations
 
 import argparse
@@ -39,7 +39,7 @@ def sha256(path: Path) -> str:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="构建 Ema Narrative Bridge Tauri Sidecar")
+    parser = argparse.ArgumentParser(description="构建 Ema Narrative Bridge 桌面宿主资源")
     parser.add_argument("--target", required=True)
     args = parser.parse_args()
     if sys.version_info[:2] != (3, 11):
@@ -71,7 +71,7 @@ def main() -> None:
             str(dist_root),
             "--workpath",
             str(work_root),
-            str(PROJECT_ROOT / "packaging" / "narrativeBridge.spec"),
+            str(PROJECT_ROOT / "packaging" / "narrative_bridge.spec"),
         ],
         cwd=PROJECT_ROOT,
         env=environment,
@@ -83,10 +83,9 @@ def main() -> None:
     built_root = dist_root / "ema-narrative-bridge"
     built = built_root / output_name
     if not built.is_file() or built.stat().st_size == 0:
-        raise RuntimeError(f"PyInstaller 未生成 Narrative Bridge Sidecar: {built}")
-    subprocess.run([str(built), "--version"], check=True)
+        raise RuntimeError(f"PyInstaller 未生成 Narrative Bridge 可执行文件: {built}")
 
-    destination_root = TAURI_ROOT / "resources" / "narrative-bridge-runtime"
+    destination_root = TAURI_ROOT / "resources" / "narrative-bridge"
     temporary_root = destination_root.with_name(
         f"{destination_root.name}.tmp-{os.getpid()}"
     )
@@ -102,10 +101,10 @@ def main() -> None:
             destination.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
         )
 
+    # 发布校验（verify-release-assets）只消费这四个字段：target 防装错平台产物，
+    # fileName/size/sha256 防构建后资源目录被换或损坏。
     manifest = {
-        "schemaVersion": 1,
         "target": args.target,
-        "pythonVersion": platform.python_version(),
         "fileName": output_name,
         "size": destination.stat().st_size,
         "sha256": sha256(destination),
@@ -126,7 +125,7 @@ def main() -> None:
             backup_root.replace(destination_root)
         raise
     shutil.rmtree(staging_root, ignore_errors=True)
-    print(f"Narrative Bridge sidecar prepared for {args.target}")
+    print(f"Narrative Bridge bundle prepared for {args.target}")
 
 
 if __name__ == "__main__":

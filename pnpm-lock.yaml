@@ -943,6 +943,13 @@ importers:
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
   src/narrative:
+    dependencies:
+      '@ema-agent/settings':
+        specifier: workspace:*
+        version: link:../settings
+      zod:
+        specifier: ^4
+        version: 4.4.3
     devDependencies:
       '@types/node':
         specifier: ^20.0.0

@@ -1,4 +1,4 @@
-# 将 Narrative Bridge 与 LightRAG 的动态资源冻结为单目录 Sidecar。
+# 将 Narrative Bridge 与 LightRAG 的动态资源冻结为单目录可执行包。
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_all
@@ -7,7 +7,7 @@ project_root = Path(SPECPATH).parent
 lightrag_datas, lightrag_binaries, lightrag_hiddenimports = collect_all("lightrag")
 
 analysis = Analysis(
-    [str(project_root / "packaging" / "sidecarEntry.py")],
+    [str(project_root / "packaging" / "entry.py")],
     pathex=[str(project_root)],
     binaries=lightrag_binaries,
     datas=lightrag_datas,
