@@ -1,1 +1,1 @@
-apps/bridge/data/** filter=lfs diff=lfs merge=lfs -text lockable
+bridges/narrative/data/** filter=lfs diff=lfs merge=lfs -text

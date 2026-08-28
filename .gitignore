@@ -47,11 +47,8 @@ ema_narrative_bridge.egg-info
 .venv/
 venv/
 
-# Narrative memory
-apps/bridge/data/narrative/**
-apps/bridge/data/narrative/memory/*/vdb_*.json
-apps/bridge/data/narrative/memory/*/graph_chunk_entity_relation.graphml
-apps/bridge/data/narrative/memory/*/kv_store_*.json
+# 剧情数据本体入库；LightRAG 的 LLM 响应缓存是开发机加速层（旧模型提取回执+关键词缓存），不入库
+bridges/narrative/data/**/kv_store_llm_response_cache.json
 
 src/memory/bench/**
 

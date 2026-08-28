@@ -29,6 +29,9 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@ema-agent/agent':
+        specifier: workspace:*
+        version: link:../../src/agent
       '@ema-agent/backup':
         specifier: workspace:*
         version: link:../../src/backup
@@ -47,12 +50,18 @@ importers:
       '@ema-agent/live2d-react':
         specifier: workspace:*
         version: link:../../src/live2d-react
+      '@ema-agent/llm':
+        specifier: workspace:*
+        version: link:../../src/llm
       '@ema-agent/mcp':
         specifier: workspace:*
         version: link:../../src/mcp
       '@ema-agent/memory':
         specifier: workspace:*
         version: link:../../src/memory
+      '@ema-agent/narrative':
+        specifier: workspace:*
+        version: link:../../src/narrative
       '@ema-agent/permission':
         specifier: workspace:*
         version: link:../../src/permission
