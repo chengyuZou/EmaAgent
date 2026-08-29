@@ -41,7 +41,7 @@ function countLines(patch: readonly ParsedHunks[]): { additions: number; deletio
   return { additions, deletions };
 }
 
-/** 依次试 Edit/Write 守卫;都不是(其他工具/错误结果/旧消息)返回 null。 */
+/** 依次试 Edit/Write 守卫；其他工具或非结构化结果返回 null。 */
 function toSessionDiff(
   callId: string,
   turnId: string | undefined,
@@ -87,10 +87,10 @@ function toSessionDiff(
 
 export function useSessionDiffs(sessionId: string | null): SessionDiff[] {
   const messages = useMessages((state) => (
-    sessionId ? state.messages.get(sessionId as string) ?? EMPTY_MESSAGES : EMPTY_MESSAGES
+    sessionId ? state.messages.get(sessionId) ?? EMPTY_MESSAGES : EMPTY_MESSAGES
   ));
   const stream = useMessages((state) => (
-    sessionId ? state.streamBySession.get(sessionId as string) : undefined
+    sessionId ? state.streamBySession.get(sessionId) : undefined
   ));
 
   return useMemo(() => {

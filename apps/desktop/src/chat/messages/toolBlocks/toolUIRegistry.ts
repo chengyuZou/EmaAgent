@@ -22,7 +22,12 @@ import {
   PdfReadArgsView,
   PdfReadResultView,
   TodoWriteArgsView,
+  WebFetchArgsView,
+  WebFetchResultView,
+  WebSearchArgsView,
+  WebSearchResultView,
 } from '@ema-agent/builtin-tools/ui';
+import { BuiltinTools } from '@ema-agent/tools';
 
 export interface ToolUIEntry {
   /** 需要直接呈现给用户的历史卡默认展开，例如当前 Turn 的 TODO 清单。 */
@@ -34,20 +39,22 @@ export interface ToolUIEntry {
 }
 
 const TOOL_UI_REGISTRY: Readonly<Record<string, ToolUIEntry>> = {
-  Read: { ArgsView: FileReadArgsView, ResultView: FileReadResultView },
-  Edit: { ArgsView: FileEditArgsView, ResultView: FileEditResultView },
-  Write: { ArgsView: FileWriteArgsView, ResultView: FileWriteResultView },
-  Glob: { ArgsView: GlobArgsView, ResultView: GlobResultView },
-  Grep: { ArgsView: GrepArgsView, ResultView: GrepResultView },
-  AskUser: { ResultView: AskUserResultView },
-  Skill: { ArgsView: SkillArgsView, ResultView: SkillResultView },
-  Subagent: { ResultView: SubagentResultView },
-  NarrativeSearch: {
+  [BuiltinTools.FileRead.name]: { ArgsView: FileReadArgsView, ResultView: FileReadResultView },
+  [BuiltinTools.FileEdit.name]: { ArgsView: FileEditArgsView, ResultView: FileEditResultView },
+  [BuiltinTools.FileWrite.name]: { ArgsView: FileWriteArgsView, ResultView: FileWriteResultView },
+  [BuiltinTools.Glob.name]: { ArgsView: GlobArgsView, ResultView: GlobResultView },
+  [BuiltinTools.Grep.name]: { ArgsView: GrepArgsView, ResultView: GrepResultView },
+  [BuiltinTools.WebFetch.name]: { ArgsView: WebFetchArgsView, ResultView: WebFetchResultView },
+  [BuiltinTools.WebSearch.name]: { ArgsView: WebSearchArgsView, ResultView: WebSearchResultView },
+  [BuiltinTools.AskUser.name]: { ResultView: AskUserResultView },
+  [BuiltinTools.Skill.name]: { ArgsView: SkillArgsView, ResultView: SkillResultView },
+  [BuiltinTools.Subagent.name]: { ResultView: SubagentResultView },
+  [BuiltinTools.NarrativeSearch.name]: {
     ArgsView: NarrativeSearchArgsView,
     ResultView: NarrativeSearchResultView,
   },
-  PdfRead: { ArgsView: PdfReadArgsView, ResultView: PdfReadResultView },
-  TodoWrite: { ArgsView: TodoWriteArgsView, defaultExpanded: true },
+  [BuiltinTools.PdfRead.name]: { ArgsView: PdfReadArgsView, ResultView: PdfReadResultView },
+  [BuiltinTools.TodoWrite.name]: { ArgsView: TodoWriteArgsView, defaultExpanded: true },
 };
 
 export function lookupToolUI(toolName: string): ToolUIEntry | undefined {

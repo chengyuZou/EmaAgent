@@ -1,5 +1,4 @@
 // 管理通用记忆的存储状态、后台任务（提取/整合/维护 Job）与记忆文件浏览/搜索。
-// 旧图模型（nodes/items/edges/overrides/health）已随 Memory 双轨重构删除，无对应链路。
 import { create } from 'zustand';
 import {
   memoryApi,
@@ -27,7 +26,7 @@ export interface MemoryStoreState {
   statsLoading: boolean;
   statsError:   string | null;
 
-  /** 最近后台任务快照；null = 尚未拉取。Job 状态以 SQL 为事实源，按需刷新。 */
+  /** 最近后台任务；null = 尚未拉取。Job 状态以 SQL 为事实源，按需刷新。 */
   jobs:         MemoryJob[] | null;
   jobsLoading:  boolean;
   jobsError:    string | null;
@@ -49,7 +48,7 @@ export interface MemoryStoreState {
   // ── 记忆文件浏览/搜索（按需读取，不缓存） ─────────────────────────────────
 
   listFiles(opts?: { path?: string; cursor?: string; maxResults?: number }): Promise<MemoryFileList>;
-  readFile(opts: { path: string; lineOffset?: number; maxLines?: number }): Promise<MemoryFileContent>;
+  readFile(input: Parameters<typeof memoryApi.readFile>[0]): Promise<MemoryFileContent>;
   searchFiles(input: MemorySearchInput): Promise<MemorySearchResult>;
 
   /** 保存正式记忆编辑（409=整合占用或已被改写）。 */
@@ -120,7 +119,7 @@ export const useMemoryStore = create<MemoryStoreState>((set, get) => ({
   async maintenance(kind) {
     await memoryApi.maintenance(kind);
     await get().refreshJobs();
-    // 维护会清除或回收存储，统计快照已过期。
+    // 维护会清除或回收存储，需要重读统计。
     void get().refreshStats();
   },
 
@@ -128,8 +127,8 @@ export const useMemoryStore = create<MemoryStoreState>((set, get) => ({
     return memoryApi.listFiles(opts);
   },
 
-  readFile(opts) {
-    return memoryApi.readFile(opts);
+  readFile(input) {
+    return memoryApi.readFile(input);
   },
 
   searchFiles(input) {

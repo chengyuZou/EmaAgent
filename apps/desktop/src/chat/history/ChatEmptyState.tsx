@@ -1,6 +1,6 @@
 // 会话空态：当前激活角色立绘标 + 标题 + 淡蓝辉光 + 工作区 chip（无工作区为选择触发器）。
 import { useEffect, useState, type JSX } from 'react';
-import { convertFileSrc } from '@tauri-apps/api/core';
+import { tauriBridge } from '../../lib/tauri-bridge.js';
 import { charactersApi } from '../../api/characters.js';
 import { useCharacterStore } from '../../stores/character.js';
 import { useSessionStore } from '../../stores/session.js';
@@ -28,7 +28,7 @@ export function ChatEmptyState({ sessionId }: { sessionId?: string | null }): JS
       .then((presentation) => {
         if (disposed) return;
         setIllustrationUrl(
-          presentation.illustrationFile ? convertFileSrc(presentation.illustrationFile) : null,
+          presentation.illustrationFile ? tauriBridge.convertFileSrc(presentation.illustrationFile) : null,
         );
       })
       .catch(() => { if (!disposed) setIllustrationUrl(null); });

@@ -8,7 +8,6 @@ import { SpeechBubble }          from './stage/SpeechBubble.js';
 import { PermissionToastLayer }  from './stage/PermissionToastLayer.js';
 import { FloatingDock }           from './stage/FloatingDock.js';
 import { mountSystemEvents }      from './lib/system-sse.js';
-import { turnsApi }               from './api/turns.js';
 import { useCharacterStore }     from './stores/character.js';
 import { useServerStore }         from './stores/server.js';
 import { useSettingsSync } from './stores/settings-sync.js';
@@ -39,21 +38,8 @@ export function App(): React.JSX.Element {
   const stageSuspended = useWindowSuspension();
   const serverStatus = useServerStore((s) => s.status);
   const activeCharacterId = useCharacterStore((s) => s.activeCharacterId);
-  const activePresentationRevision = useCharacterStore((s) => {
-    const character = s.characters.find((item) => item.id === s.activeCharacterId);
-    if (!character) return '';
-    return [
-      character.updatedAt,
-      ...[...character.live2dModels, ...character.illustrations]
-        .map((resource) => [
-          resource.id,
-          resource.updatedAt,
-          Number(resource.isPrimary),
-          Number(resource.enabled),
-        ].join(':'))
-        .sort(),
-    ].join('|');
-  });
+  const activeCharacter = useCharacterStore((s) =>
+    s.characters.find((item) => item.id === s.activeCharacterId));
   const activeStage = useRef<ActiveLive2DStage | null>(null);
   const [expressionAvailable, setExpressionAvailable] = useState(false);
   const [dockVisible,  setDockVisible]  = useState(false);
@@ -72,7 +58,7 @@ export function App(): React.JSX.Element {
     void useCharacterStore.getState().load();
   }, [serverStatus.kind]);
 
-  // 同角色刷新保留旧快照到新候选就绪；跨角色先撤下旧角色，避免视觉与 Prompt 身份错位。
+  // 同角色刷新保留旧画面到新候选就绪；跨角色先撤下旧角色，避免视觉与 Prompt 身份错位。
   // 过期请求由 loader 的代际守卫单点失效。
   useEffect(() => {
     stageLoader.invalidate();
@@ -96,9 +82,8 @@ export function App(): React.JSX.Element {
     return () => {
       stageLoader.invalidate();
     };
-  }, [activeCharacterId, activePresentationRevision, stageLoader]);
+  }, [activeCharacterId, activeCharacter, stageLoader]);
 
-  useDevTtsPlaybackFromUrl(activeStage);
   useThemeSync();
   useSettingsSync(serverStatus.kind === 'ok');
 
@@ -159,39 +144,6 @@ export function App(): React.JSX.Element {
       <PermissionToastLayer />
     </>
   );
-}
-
-function useDevTtsPlaybackFromUrl(stage: React.RefObject<ActiveLive2DStage | null>): void {
-  useEffect(() => {
-    if (!import.meta.env.DEV) return;
-
-    const turnId = new URLSearchParams(window.location.search).get('ttsTestTurnId');
-    if (!turnId) return;
-
-    let disposed = false;
-    const play = async (): Promise<void> => {
-      if (disposed) return;
-      window.removeEventListener('pointerdown', play);
-      try {
-        const url = await turnsApi.audioUrl(turnId);
-        const response = await fetch(url);
-        if (!response.ok) {
-          throw new Error(`audio fetch failed: ${response.status} ${response.statusText}`);
-        }
-        await testTtsPlayback(await response.arrayBuffer(), stage.current);
-      } catch (err) {
-        console.error('[live2d-test] failed to play turn audio', err);
-      }
-    };
-
-    console.info('[live2d-test] click the stage to play turn audio', turnId);
-    window.addEventListener('pointerdown', play, { once: true });
-
-    return () => {
-      disposed = true;
-      window.removeEventListener('pointerdown', play);
-    };
-  }, []);
 }
 
 // ── 粉白呼吸光边框 ──────────────────────────────────────────────────────────
@@ -272,52 +224,3 @@ const badgeTooltipStyle: React.CSSProperties = {
 
 // ── 开发测试入口：让音频经过 Live2D 口型管线 ─────────────────────────────────
 
-let _testAudioCtx: AudioContext | null = null;
-let _testAnalyser: AnalyserNode | null = null;
-
-async function testTtsPlayback(
-  arrayBuffer: ArrayBuffer,
-  stage: ActiveLive2DStage | null,
-): Promise<void> {
-  if (!_testAudioCtx) {
-    _testAudioCtx = new AudioContext();
-    _testAnalyser = _testAudioCtx.createAnalyser();
-    _testAnalyser.fftSize = 256;
-    _testAnalyser.smoothingTimeConstant = 0.4;
-    _testAnalyser.connect(_testAudioCtx.destination);
-  }
-  const ctx = _testAudioCtx!;
-  const analyser = _testAnalyser!;
-
-  let raf = 0;
-  const rmsData = new Uint8Array(analyser.frequencyBinCount) as unknown as Uint8Array<ArrayBuffer>;
-  const loop = (): void => {
-    analyser.getByteTimeDomainData(rmsData);
-    let sum = 0;
-    for (let i = 0; i < rmsData.length; i++) {
-      const v = (rmsData[i]! - 128) / 128;
-      sum += v * v;
-    }
-    stage?.handle.setLipSync(true, Math.sqrt(sum / rmsData.length));
-    raf = requestAnimationFrame(loop);
-  };
-
-  stage?.handle.setLipSync(true, 0);
-  loop();
-
-  try {
-    const audioBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0) as ArrayBuffer);
-    const source = ctx.createBufferSource();
-    source.buffer = audioBuffer;
-    source.connect(analyser);
-    source.connect(ctx.destination);
-    await new Promise<void>((r) => { source.onended = () => r(); source.start(); });
-  } finally {
-    cancelAnimationFrame(raf);
-    stage?.handle.setLipSync(false, 0);
-  }
-}
-
-if (import.meta.env.DEV) {
-  (window as any).__testTtsPlayback = testTtsPlayback;
-}

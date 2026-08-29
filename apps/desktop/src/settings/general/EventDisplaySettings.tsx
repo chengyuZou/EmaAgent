@@ -59,7 +59,7 @@ export function EventDisplaySettings(): JSX.Element {
 
   useEffect(() => {
     if (eventDisplay) return;
-    void useSettingsStore.getState().refreshRuntimeSettings().catch(() => {});
+    void useSettingsStore.getState().refreshDesktopSettings().catch(() => {});
   }, [eventDisplay]);
 
   const filteredTypes = useMemo(() => {
@@ -81,7 +81,7 @@ export function EventDisplaySettings(): JSX.Element {
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => void useSettingsStore.getState().refreshRuntimeSettings().catch(() => {})}
+              onClick={() => void useSettingsStore.getState().refreshDesktopSettings().catch(() => {})}
             >
               重试
             </Button>

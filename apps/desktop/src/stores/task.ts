@@ -1,5 +1,5 @@
-// 保存各 Session 的持久 Task 快照；修改统一经过根 Turn 的 Task 工具，
-// Turn 终态是会话级快照的唯一刷新节拍（任务没有独立事件流）。
+// 保存各 Session 的持久 Task；修改统一经过根 Turn 的 Task 工具，
+// Turn 终态是会话级任务的唯一刷新节拍（任务没有独立事件流）。
 import { create } from 'zustand';
 
 import { tasksApi, type TaskItem } from '../api/tasks.js';
@@ -18,7 +18,7 @@ export const useTaskStore = create<TaskStoreState>((set, get) => ({
   errors: new Map(),
 
   async loadForSession(sessionId, force = false) {
-    const key = sessionId as string;
+    const key = sessionId;
     if (get().loadingSessions.has(key)) return;
     if (!force && get().tasksBySession.has(key)) return;
 
@@ -32,7 +32,7 @@ export const useTaskStore = create<TaskStoreState>((set, get) => ({
         const tasksBySession = new Map(state.tasksBySession);
         tasksBySession.set(
           key,
-          new Map(result.tasks.map((task) => [task.id as string, task])),
+          new Map(result.tasks.map((task) => [task.id, task])),
         );
         return {
           tasksBySession,
@@ -52,7 +52,7 @@ export const useTaskStore = create<TaskStoreState>((set, get) => ({
   },
 
   evictSession(sessionId) {
-    const key = sessionId as string;
+    const key = sessionId;
     set((state) => ({
       tasksBySession: withoutKey(state.tasksBySession, key),
       loadingSessions: withoutValue(state.loadingSessions, key),

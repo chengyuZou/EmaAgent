@@ -191,7 +191,7 @@ function DirSubtree({
 export function FilesPanel(): JSX.Element {
   const sessionId  = useCurrentSession((s) => s.viewedSessionId);
   const session    = useSessionStore((s) =>
-    sessionId ? s.sessions.byId.get(sessionId as string) : undefined,
+    sessionId ? s.sessions.byId.get(sessionId) : undefined,
   );
 
   const root: string | null = session?.workspaceRoot ?? null;
@@ -210,7 +210,7 @@ export function FilesPanel(): JSX.Element {
     );
   }
 
-  const scopeKey = workspaceBrowserScopeKey(sessionId as string, root);
+  const scopeKey = workspaceBrowserScopeKey(sessionId, root);
   return <ScopedFilesPanel key={scopeKey} root={root} />;
 }
 

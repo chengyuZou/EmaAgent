@@ -323,7 +323,7 @@ export const useDockTabs = create<DockState>((set) => ({
 
   openTab(sessionId, tab, opts) {
     set((state) => {
-      const key = sessionId as string;
+      const key = sessionId;
       const layout = state.layouts[key] ?? emptyLayout();
       const currentDock = dockOf(layout, tab.id);
       const targetDock = opts?.dock ?? currentDock ?? 'right';
@@ -340,7 +340,7 @@ export const useDockTabs = create<DockState>((set) => ({
 
   closeTab(sessionId, tabId) {
     set((state) => {
-      const key = sessionId as string;
+      const key = sessionId;
       const layout = state.layouts[key];
       if (!layout || !dockOf(layout, tabId)) return state;
       return { layouts: { ...state.layouts, [key]: removeTabFromLayout(layout, tabId) } };
@@ -349,7 +349,7 @@ export const useDockTabs = create<DockState>((set) => ({
 
   activateTab(sessionId, tabId) {
     set((state) => {
-      const key = sessionId as string;
+      const key = sessionId;
       const layout = state.layouts[key];
       if (!layout) return state;
       const dock = dockOf(layout, tabId);
@@ -360,7 +360,7 @@ export const useDockTabs = create<DockState>((set) => ({
 
   moveTab(sessionId, tabId, to) {
     set((state) => {
-      const key = sessionId as string;
+      const key = sessionId;
       const layout = state.layouts[key];
       if (!layout) return state;
       const next = activateInLayout(moveTabInLayout(layout, tabId, to), tabId, to);
@@ -370,7 +370,7 @@ export const useDockTabs = create<DockState>((set) => ({
 
   setDockOpen(sessionId, dock, open) {
     set((state) => {
-      const key = sessionId as string;
+      const key = sessionId;
       const layout = state.layouts[key] ?? emptyLayout();
       const next = dock === 'right'
         ? { ...layout, rightOpen: open }
@@ -393,13 +393,13 @@ export const useDockTabs = create<DockState>((set) => ({
 
   setFullWidth(sessionId, fullWidth) {
     set((state) => ({
-      fullWidthBySession: { ...state.fullWidthBySession, [sessionId as string]: fullWidth },
+      fullWidthBySession: { ...state.fullWidthBySession, [sessionId]: fullWidth },
     }));
   },
 
   updateBrowserTab(sessionId, browserId, patch) {
     set((state) => {
-      const key = sessionId as string;
+      const key = sessionId;
       const layout = state.layouts[key];
       const tabId = `browser:${browserId}`;
       const tab = layout?.tabsById[tabId];
@@ -450,8 +450,8 @@ export function isRightFullWidth(
   sessionId: string | null,
 ): boolean {
   if (!sessionId) return false;
-  const layout = state.layouts[sessionId as string];
-  return state.fullWidthBySession[sessionId as string] === true
+  const layout = state.layouts[sessionId];
+  return state.fullWidthBySession[sessionId] === true
     && layout?.rightOpen === true
     && layout.rightTabOrder.length > 0;
 }

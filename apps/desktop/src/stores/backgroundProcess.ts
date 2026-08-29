@@ -40,7 +40,7 @@ interface BackgroundProcessStore {
   clearSession(sessionId: string): void;
 }
 
-/** 跟随尾部的长轮询循环不进 zustand 状态,避免 timer 句柄进快照。 */
+/** 跟随尾部的长轮询循环不进 zustand 状态，避免把 timer 句柄放进可观察状态。 */
 const followTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 function cancelFollow(processId: string): void {
@@ -93,18 +93,18 @@ export const useBackgroundProcessStore = create<BackgroundProcessStore>()((set, 
   },
 
   applyEvent(event) {
-    const sessionId = event.sessionId as string;
+    const sessionId = event.sessionId;
     const list = get().listsBySession.get(sessionId);
     if (!list) return; // 面板未加载该 Session 时不预取,等打开再拉。
-    const processId = event.backgroundProcessId as string;
-    const existing = list.processes.find((p) => (p.id as string) === processId);
+    const processId = event.backgroundProcessId;
+    const existing = list.processes.find((p) => p.id === processId);
     if (!existing) {
       // 新进程没有完整 summary,直接重拉列表。
       void get().loadForSession(sessionId);
       return;
     }
     const updated = list.processes.map((p) =>
-      (p.id as string) === processId
+      p.id === processId
         ? {
           ...p,
           status: event.status,
@@ -203,12 +203,12 @@ export const useBackgroundProcessStore = create<BackgroundProcessStore>()((set, 
 
   clearSession(sessionId) {
     const list = get().listsBySession.get(sessionId);
-    for (const p of list?.processes ?? []) cancelFollow(p.id as string);
+    for (const p of list?.processes ?? []) cancelFollow(p.id);
     set((state) => {
       const lists = new Map(state.listsBySession);
       lists.delete(sessionId);
       const outputs = new Map(state.outputsById);
-      for (const p of list?.processes ?? []) outputs.delete(p.id as string);
+      for (const p of list?.processes ?? []) outputs.delete(p.id);
       return { listsBySession: lists, outputsById: outputs };
     });
   },

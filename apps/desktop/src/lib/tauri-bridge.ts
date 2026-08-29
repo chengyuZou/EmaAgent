@@ -6,6 +6,7 @@
  * 这样可以为普通浏览器环境提供降级方案，使 Ladle stories
  * 和单元测试即使没有 Tauri 运行时也能正常渲染。
  */
+import { convertFileSrc as tauriConvertFileSrc } from '@tauri-apps/api/core';
 
 // ── 对外接口 ────────────────────────────────────────────────────────────────
 
@@ -24,6 +25,18 @@ export interface TauriBridge {
 
   /** 当前是否存在可用的 Tauri 运行时。 */
   isTauri(): boolean;
+
+  /** 把本机文件路径转成 WebView 可加载的 asset URL；浏览器模式原样返回。 */
+  convertFileSrc(filePath: string): string;
+
+  /** 同步原生标题栏配色；浏览器模式下什么也不做。 */
+  setWindowTheme(mode: 'light' | 'dark'): Promise<void>;
+
+  /** 当前窗口是否可见；浏览器模式下返回 null。 */
+  isWindowVisible(): Promise<boolean | null>;
+
+  /** 监听宿主窗口显隐，返回取消监听函数；浏览器模式下返回空操作。 */
+  listenWindowVisibility(handler: (visible: boolean) => void): Promise<() => void>;
 
   /** 获取服务端启动时生成的共享密钥；浏览器模式下返回 null。 */
   getServerSecret(): Promise<string | null>;
@@ -237,6 +250,29 @@ async function getWindow(): Promise<TauriWindow | null> {
 
 export const tauriBridge: TauriBridge = {
   isTauri: detectTauri,
+
+  convertFileSrc(filePath: string): string {
+    return detectTauri() ? tauriConvertFileSrc(filePath) : filePath;
+  },
+
+  async setWindowTheme(mode: 'light' | 'dark'): Promise<void> {
+    const winMod = await getWindow();
+    if (!winMod) return;
+    await winMod.getCurrentWindow().setTheme(mode).catch(() => {});
+  },
+
+  async isWindowVisible(): Promise<boolean | null> {
+    const winMod = await getWindow();
+    if (!winMod) return null;
+    return winMod.getCurrentWindow().isVisible().catch(() => null);
+  },
+
+  async listenWindowVisibility(handler: (visible: boolean) => void): Promise<() => void> {
+    return tauriBridge.listen<{ visible: boolean }>(
+      'ema://window-visibility',
+      ({ payload }) => handler(payload.visible),
+    );
+  },
 
   async invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T | null> {
     const core = await getCore();

@@ -107,7 +107,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => {
   async refreshHealth(id) {
     try {
       const health = await charactersApi.health(id);
-      set((s) => ({ healthMap: { ...s.healthMap, [id as string]: health } }));
+      set((s) => ({ healthMap: { ...s.healthMap, [id]: health } }));
     } catch {
       // 保留旧投影,下一次资源操作或编辑器挂载会再试。
     }
@@ -137,7 +137,7 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => {
       await charactersApi.remove(id);
       set((s) => {
         const healthMap = { ...s.healthMap };
-        delete healthMap[id as string];
+        delete healthMap[id];
         return { healthMap };
       });
       await get().load();

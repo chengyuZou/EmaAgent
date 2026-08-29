@@ -18,7 +18,7 @@ const TRANSPORT_OPTIONS = [
 
 // ── 表单 ↔ 后端配置的无损双向转换（仅本文件消费） ──────────────────────────────
 
-type McpTransportType = 'stdio' | 'http';
+type McpTransportType = NonNullable<McpServerConfig['type']>;
 
 interface McpServerFormState {
   name: string;

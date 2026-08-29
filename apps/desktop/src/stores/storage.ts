@@ -1,6 +1,11 @@
 // 数据目录注册表与存储统计：目录切换/迁移归 workspaces 域，统计归 system 域。
 import { create } from 'zustand';
-import { dataDirsApi, type DataDirItem } from '../api/workspaces.js';
+import {
+  dataDirsApi,
+  type DataDirAddInput,
+  type DataDirItem,
+  type DataDirMigrateInput,
+} from '../api/workspaces.js';
 import { systemApi, type DataDirStats, type SessionStats } from '../api/system.js';
 
 // ── State shape ───────────────────────────────────────────────────────────────
@@ -19,10 +24,10 @@ interface StorageStoreState {
   dashErrors:    Map<string, string>;
 
   loadDirs(): Promise<void>;
-  addDir(opts: { name: string; path: string }): Promise<void>;
+  addDir(input: DataDirAddInput): Promise<void>;
   removeDir(name: string): Promise<void>;
   activateDir(name: string): Promise<boolean>;
-  migrate(opts: { name: string; targetPath: string }): Promise<boolean>;
+  migrate(input: DataDirMigrateInput): Promise<boolean>;
 
   loadStats(): Promise<void>;
 
@@ -59,8 +64,8 @@ export const useStorageStore = create<StorageStoreState>((set, get) => ({
     }
   },
 
-  async addDir(opts) {
-    await dataDirsApi.addDir(opts);
+  async addDir(input) {
+    await dataDirsApi.addDir(input);
     await get().loadDirs();
   },
 
@@ -75,8 +80,8 @@ export const useStorageStore = create<StorageStoreState>((set, get) => ({
     return res.restartRequired;
   },
 
-  async migrate(opts) {
-    const res = await dataDirsApi.migrate(opts);
+  async migrate(input) {
+    const res = await dataDirsApi.migrate(input);
     await get().loadDirs();
     return res.restartRequired;
   },

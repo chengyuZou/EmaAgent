@@ -226,13 +226,14 @@ export function ChatInput(): JSX.Element {
     const submitted = parts;
     setSubmitting(true);
     try {
-      await sendMessage(viewedId, {
-        parts: submitted,
+      await sendMessage({
+        ...(viewedId ? { sessionId: viewedId } : {}),
+        input: [...submitted],
         executionProfile,
         narrativePolicy,
         ...(modelSelection ? { modelSelection } : {}),
         ...(executionProfile === 'work' && selectedAssetIds.length > 0
-          ? { knowledgeAssetIds: [...selectedAssetIds] } : {}),
+          ? { knowledge: { assetIds: [...selectedAssetIds] } } : {}),
         ttsEnabled,
       });
       setPartsState(current => {

@@ -7,7 +7,7 @@ import {
   useState,
   type JSX,
 } from 'react';
-import { convertFileSrc } from '@tauri-apps/api/core';
+import { tauriBridge } from '../lib/tauri-bridge.js';
 import {
   type Live2DStageHandle,
   type Live2DStageReadyInfo,
@@ -288,7 +288,7 @@ function runtimeSource(sourcePath: string): string {
     || sourcePath.startsWith('\\\\')
     || (sourcePath.startsWith('/') && !sourcePath.startsWith('/api/characters/'))
   ) {
-    return convertFileSrc(sourcePath);
+    return tauriBridge.convertFileSrc(sourcePath);
   }
   return sourcePath;
 }

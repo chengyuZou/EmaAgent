@@ -1,5 +1,5 @@
 // Characters API：/api/characters——角色 CRUD/激活/复制、Live2D/立绘/参考音频资源管理与
-// 健康/呈现快照。资源文件流与 voice/publish multipart 走 requestRaw/streamUrl 逃生口。
+// 健康/舞台呈现。资源文件流与 voice/publish multipart 走 requestRaw/streamUrl 逃生口。
 import type { InferRequestType } from 'hono/client';
 import {
   rpcClient,
@@ -67,7 +67,7 @@ export const charactersApi = {
     return readRpcJson(rpcClient.api.characters[':id'].$delete({ param: { id } }));
   },
 
-  /** 全部角色健康快照。 */
+  /** 全部角色健康报告。 */
   healthAll(): Promise<CharacterHealthList> {
     return readRpcJson(rpcClient.api.characters.health.$get());
   },
@@ -76,7 +76,7 @@ export const charactersApi = {
     return readRpcJson(rpcClient.api.characters[':id'].health.$get({ param: { id } }));
   },
 
-  /** 舞台呈现快照（展示候选顺序由后端冻结，前端不自行扫描）。 */
+  /** 舞台呈现结果（展示候选顺序由后端决定，前端不自行扫描）。 */
   getPresentation(id: string): Promise<CharacterPresentation> {
     return readRpcJson(rpcClient.api.characters[':id'].presentation.$get({ param: { id } }));
   },

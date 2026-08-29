@@ -1,4 +1,6 @@
 // 这里把各类工具的参数和结果转换成前端可以直接展示的行或文本。
+import { BuiltinTools } from '@ema-agent/tools';
+
 /**
  * tool-renderers — per-tool 参数/结果展示格式化注册表。
  *
@@ -32,58 +34,37 @@ export function renderToolArgs(name: string, args: unknown): ToolArgView {
   const row = (key: string, value: unknown, mono = false): ToolArgRow => ({ key, value: str(value), mono });
 
   switch (name) {
-    case 'Read':
-    case 'Write':
-    case 'Edit':
-      return { rows: [row('path', a.path ?? a.file_path ?? a.filepath, true)] };
+    case BuiltinTools.FileRead.name:
+    case BuiltinTools.FileWrite.name:
+    case BuiltinTools.FileEdit.name:
+      return { rows: [row('path', a.file_path, true)] };
 
-    case 'Glob':
-      return { rows: [row('pattern', a.pattern ?? a.glob, true)] };
+    case BuiltinTools.Glob.name:
+      return { rows: [row('pattern', a.pattern, true)] };
 
-    case 'Grep':
+    case BuiltinTools.Grep.name:
       return {
         rows: [
-          row('pattern', a.pattern ?? a.query, true),
+          row('pattern', a.pattern, true),
           ...(a.path != null ? [row('path', a.path, true)] : []),
         ],
       };
 
-    case 'Bash':
-    case 'PowerShell':
-    // 本分支后续的小写/旧名称只用于展示升级前已经持久化的历史会话。
-    case 'bash':
-    case 'powershell':
-    case 'run_command':
-    case 'shell':
-      return { rows: [row('command', a.command ?? a.cmd, true)] };
+    case BuiltinTools.Bash.name:
+    case BuiltinTools.PowerShell.name:
+      return { rows: [row('command', a.command, true)] };
 
-    case 'WebSearch':
-    case 'search':
+    case BuiltinTools.WebSearch.name:
       return { rows: [row('query', a.query)] };
 
-    case 'WebFetch':
-    case 'fetch':
-    case 'url_fetch':
+    case BuiltinTools.WebFetch.name:
       return { rows: [row('url', a.url, true)] };
 
-    case 'KnowledgeBaseSearch':
-    case 'kb_search':
-      return {
-        rows: [
-          row('query', a.query),
-          ...(Array.isArray(a.kbIds) && a.kbIds.length > 0 ? [row('kb', (a.kbIds as string[]).join(', '))] : []),
-        ],
-      };
+    case BuiltinTools.KnowledgeBaseSearch.name:
+      return { rows: [row('query', a.query)] };
 
-    case 'AskUser':
-    case 'AskText':
-    case 'AskChoice':
-    case 'AskConfirm':
-    case 'ask_user':
-    case 'ask_text':
-    case 'ask_choice':
-    case 'ask_confirm':
-      return { rows: [row('prompt', a.prompt ?? a.message ?? a.question)] };
+    case BuiltinTools.AskUser.name:
+      return { rows: [row('questions', a.questions)] };
 
     default:
       // mcp__<server>__<tool> / 未知工具 → 平铺顶层字段

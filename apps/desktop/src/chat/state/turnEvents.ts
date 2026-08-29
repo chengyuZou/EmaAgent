@@ -123,6 +123,10 @@ export function dispatchTurnEvent(event: TurnSseEvent, sessionId: string): void 
       messages.completeToolCall(sessionId, event.callId, event.name, event.args);
       break;
 
+    case 'tool_progress':
+      // 当前前端没有通用进度形状；各内置 Tool 的进度 UI 需由其 UI 出口提供后再接入。
+      break;
+
     case 'tool_result':
       messages.setToolResult(sessionId, event.callId, {
         ...(event.output !== undefined ? { output: event.output } : {}),
@@ -134,7 +138,7 @@ export function dispatchTurnEvent(event: TurnSseEvent, sessionId: string): void 
     // ── 决策事件：decision store 入队 + 中继给桌宠窗 ──────────────────────────
 
     case 'ask_user_required': {
-      // createdAt 仅补齐快照形状；实时条目的 FIFO 顺序即到达顺序，前端不再读取该值。
+      // createdAt 是 PendingInteraction 持久实体的必填时间；实时顺序仍以到达顺序为准。
       useDecisionStore.getState().push({ kind: 'askUser', createdAt: Date.now(), request: event });
       void tauriBridge.emit('decision:push', event);
       break;
@@ -149,7 +153,7 @@ export function dispatchTurnEvent(event: TurnSseEvent, sessionId: string): void 
       useDecisionStore.getState().push({
         kind: 'permission',
         toolCallId: event.toolCallId,
-        // createdAt 仅补齐快照形状；实时条目的 FIFO 顺序即到达顺序，前端不再读取该值。
+        // createdAt 是 PendingInteraction 持久实体的必填时间；实时顺序仍以到达顺序为准。
         createdAt: Date.now(),
         request,
       });
@@ -204,8 +208,8 @@ export function dispatchTurnEvent(event: TurnSseEvent, sessionId: string): void 
     case 'agent_run_started':
       useAgentRunStore.getState().upsert({
         id: event.agentRunId,
-        sessionId: event.sessionId as string,
-        parentTurnId: event.turnId as string,
+        sessionId: event.sessionId,
+        parentTurnId: event.turnId,
         contextMode: event.contextMode,
         ...(event.description !== undefined ? { description: event.description } : {}),
         ...(event.modelId !== undefined ? { modelId: event.modelId } : {}),
@@ -335,6 +339,6 @@ export function dispatchTurnEvent(event: TurnSseEvent, sessionId: string): void 
       break;
 
     default:
-      break;
+      event satisfies never;
   }
 }

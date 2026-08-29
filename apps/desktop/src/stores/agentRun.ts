@@ -1,4 +1,4 @@
-// 管理各 Session 的 AgentRun 快照、实时进度与执行记录。
+// 管理各 Session 的 AgentRun 持久记录、实时进度与执行内容。
 // AgentRun 记录只读：终态清理由 Session 生命周期负责，前端不提供删除入口。
 import { create } from 'zustand';
 import {
@@ -17,7 +17,7 @@ export interface LiveAgentRunInfo {
 }
 
 export interface AgentRunState extends AgentRunSummary {
-  /** 只保存当前进程收到的高频进度；持久字段仍以 AgentRun 快照为准。 */
+  /** 只保存当前进程收到的高频进度；持久字段仍以 AgentRun Route 记录为准。 */
   live?: LiveAgentRunInfo;
 }
 
@@ -57,7 +57,7 @@ export const useAgentRunStore = create<AgentRunStoreState>((set, get) => ({
       const { items } = await agentRunsApi.list(sessionId);
       const currentRevision = get().eventRevisions.get(sessionId) ?? 0;
 
-      // HTTP 快照发出后若已有实时事件到达，旧响应不能覆盖刚更新的运行态。
+      // HTTP 请求发出后若已有实时事件到达，较早的响应不能覆盖刚更新的运行态。
       if (currentRevision !== revisionAtStart) {
         set((state) => ({
           loadingSessions: withoutValue(state.loadingSessions, sessionId),
@@ -97,7 +97,7 @@ export const useAgentRunStore = create<AgentRunStoreState>((set, get) => ({
       const existing = next.get(partial.id);
       const sessionId = partial.sessionId ?? existing?.sessionId;
 
-      // 持久快照有版本时拒绝回退；SSE 高频进度没有版本，仍可合并 live 字段。
+      // 持久记录有版本时拒绝回退；SSE 高频进度没有版本，仍可合并 live 字段。
       if (
         partial.version !== undefined
         && existing?.version !== undefined

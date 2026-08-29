@@ -28,7 +28,7 @@ export function ChatWindow(): JSX.Element {
 
   // Session metadata for title bar
   const session = useSessionStore((s) =>
-    viewedSessionId ? s.sessions.byId.get(viewedSessionId as string) : undefined,
+    viewedSessionId ? s.sessions.byId.get(viewedSessionId) : undefined,
   );
 
   // 窗口 Dock："改动"入口把 review 开成标签。
@@ -120,7 +120,7 @@ export function ChatWindow(): JSX.Element {
               </div>
               <div className="flex items-center gap-3">
                 {viewedSessionId && (
-                  <span className="font-mono opacity-40">{(viewedSessionId as string).slice(0, 8)}</span>
+                  <span className="font-mono opacity-40">{viewedSessionId.slice(0, 8)}</span>
                 )}
               </div>
             </div>

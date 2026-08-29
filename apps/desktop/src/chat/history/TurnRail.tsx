@@ -44,7 +44,7 @@ export function TurnRail({ sessionId, onSelectTurn }: TurnRailProps): JSX.Elemen
   const [offset, setOffset] = useState(0);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const history = useSessionHistory(
-    (state) => state.bySession.get(sessionId as string) ?? EMPTY_SESSION_HISTORY,
+    (state) => state.bySession.get(sessionId) ?? EMPTY_SESSION_HISTORY,
   );
 
   useEffect(() => {
@@ -74,7 +74,7 @@ export function TurnRail({ sessionId, onSelectTurn }: TurnRailProps): JSX.Elemen
   }, [sessionId]);
 
   useEffect(() => {
-    const currentTurnId = history.currentTurnId as string | undefined;
+    const currentTurnId = history.currentTurnId;
     if (!currentTurnId || centeredTurnRef.current === currentTurnId) return;
     const currentIndex = history.turnIndexItems.findIndex(
       (item) => item.turnId === history.currentTurnId,

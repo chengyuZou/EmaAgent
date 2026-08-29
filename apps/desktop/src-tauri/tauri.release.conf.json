@@ -7,7 +7,8 @@
     "resources": {
       "resources/server/": "server/",
       "resources/narrative-bridge/": "narrative-bridge/",
-      "target/release-resources/narrative/witch-trial.zip": "narrative/witch-trial.zip"
+      "resources/characters/": "characters/",
+      "../../bridges/narrative/data/witch-trial/": "narrative/witch-trial/"
     }
   }
 }

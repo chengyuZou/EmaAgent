@@ -30,7 +30,7 @@ export function ChatFrame({
   sessionId, header, history, activity, input, statusBar,
 }: ChatFrameProps): JSX.Element {
   const layout = useDockTabs((s) =>
-    sessionId ? s.layouts[sessionId as string] : undefined);
+    sessionId ? s.layouts[sessionId] : undefined);
   const fullWidth = useDockTabs((s) => isRightFullWidth(s, sessionId));
   const setFullWidth = useDockTabs((s) => s.setFullWidth);
 
@@ -160,7 +160,7 @@ function DockTabContent({
 }): JSX.Element {
   switch (tab.kind) {
     case 'review':
-      return <ReviewPanel sessionId={sessionId as string | null} />;
+      return <ReviewPanel sessionId={sessionId} />;
     case 'files':
       return <FilesPanel />;
     case 'file':
@@ -181,7 +181,7 @@ function DockTabContent({
     case 'tasks':
       return <SessionTasksPanel sessionId={sessionId} />;
     case 'backgroundProcesses':
-      return <BackgroundProcessesPanel sessionId={sessionId as string | null} />;
+      return <BackgroundProcessesPanel sessionId={sessionId} />;
     case 'agentRuns':
       return <AgentRunPanel sessionId={sessionId} className="p-2" />;
     case 'agentRun':

@@ -167,7 +167,7 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
   },
 
   async setExecutionSettings(id, patch) {
-    const key = id as string;
+    const key = id;
     const previous = get().sessions.byId.get(key);
     if (!previous) throw new Error(`Session not loaded: ${key}`);
 
@@ -228,7 +228,7 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
   },
 
   async setPreferredModel(id, model) {
-    const key = id as string;
+    const key = id;
     const previous = get().sessions.byId.get(key);
     if (!previous) throw new Error(`Session not loaded: ${key}`);
     const generation = (preferredModelGenerations.get(key) ?? 0) + 1;
@@ -327,12 +327,12 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
       evictChatSession(id);
       useDecisionStore.getState().clearSession(id);
       // Session 永久删除后,进程面板缓存与跟随循环一并清理,不显示其他 Session 的进程。
-      useBackgroundProcessStore.getState().clearSession(id as string);
-      useContextUsage.getState().clearSession(id as string);
-      preferredModelWriteChains.delete(id as string);
-      preferredModelGenerations.delete(id as string);
-      executionSettingsWriteChains.delete(id as string);
-      executionSettingsGenerations.delete(id as string);
+      useBackgroundProcessStore.getState().clearSession(id);
+      useContextUsage.getState().clearSession(id);
+      preferredModelWriteChains.delete(id);
+      preferredModelGenerations.delete(id);
+      executionSettingsWriteChains.delete(id);
+      executionSettingsGenerations.delete(id);
       await get().loadSessions();
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : '删除会话失败' });

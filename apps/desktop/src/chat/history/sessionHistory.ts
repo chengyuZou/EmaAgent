@@ -1,10 +1,10 @@
 // 管理每个 Session 的热尾/旧历史模式、轻量 Turn 索引和历史窗口缓存。
 import { create } from 'zustand';
 
-import { sessionsApi, type TurnIndexPage } from '../../api/sessions.js';
-import type {
-  SessionHistoryMessage,
-  SessionHistoryTurn,
+import {
+  sessionsApi,
+  type SessionMessageWindow,
+  type TurnIndexPage,
 } from '../../api/sessions.js';
 
 type TurnIndexItem = TurnIndexPage['items'][number];
@@ -14,10 +14,7 @@ const TURN_INDEX_PAGE_SIZE = 200;
 
 export interface ArchiveMessageWindow {
   anchorTurnId: string;
-  messages: SessionHistoryMessage[];
-  turns: SessionHistoryTurn[];
-  hasOlder: boolean;
-  hasNewer: boolean;
+  result: SessionMessageWindow;
 }
 
 export interface SessionHistoryState {
@@ -60,7 +57,7 @@ export const useSessionHistory = create<SessionHistoryStore>((set, get) => ({
   bySession: new Map(),
 
   async loadTurnIndex(sessionId, reset = false) {
-    const key = sessionId as string;
+    const key = sessionId;
     const current = get().bySession.get(key) ?? EMPTY_SESSION_HISTORY;
     if (current.turnIndexLoading || (current.turnIndexLoaded && !reset)) return;
 
@@ -92,7 +89,7 @@ export const useSessionHistory = create<SessionHistoryStore>((set, get) => ({
   },
 
   async loadMoreTurnIndex(sessionId) {
-    const key = sessionId as string;
+    const key = sessionId;
     const current = get().bySession.get(key) ?? EMPTY_SESSION_HISTORY;
     if (current.turnIndexLoading || !current.turnIndexNextCursor) return;
 
@@ -125,7 +122,7 @@ export const useSessionHistory = create<SessionHistoryStore>((set, get) => ({
   },
 
   async openArchive(sessionId, anchorTurnId) {
-    const key = sessionId as string;
+    const key = sessionId;
     const current = get().bySession.get(key) ?? EMPTY_SESSION_HISTORY;
     const cached = current.archiveWindows.find(
       (window) => window.anchorTurnId === anchorTurnId,
@@ -151,10 +148,7 @@ export const useSessionHistory = create<SessionHistoryStore>((set, get) => ({
       });
       const window: ArchiveMessageWindow = {
         anchorTurnId,
-        messages: result.messages,
-        turns: result.turns,
-        hasOlder: result.hasOlder,
-        hasNewer: result.hasNewer,
+        result,
       };
       const latest = get().bySession.get(key) ?? EMPTY_SESSION_HISTORY;
       updateSession(set, key, {
@@ -181,7 +175,7 @@ export const useSessionHistory = create<SessionHistoryStore>((set, get) => ({
   },
 
   showTail(sessionId) {
-    const key = sessionId as string;
+    const key = sessionId;
     const current = get().bySession.get(key) ?? EMPTY_SESSION_HISTORY;
     updateSession(set, key, {
       ...current,
@@ -192,14 +186,14 @@ export const useSessionHistory = create<SessionHistoryStore>((set, get) => ({
   },
 
   setCurrentTurn(sessionId, turnId) {
-    const key = sessionId as string;
+    const key = sessionId;
     const current = get().bySession.get(key) ?? EMPTY_SESSION_HISTORY;
     if (current.currentTurnId === turnId) return;
     updateSession(set, key, { ...current, currentTurnId: turnId });
   },
 
   noteTailUpdate(sessionId) {
-    const key = sessionId as string;
+    const key = sessionId;
     const current = get().bySession.get(key) ?? EMPTY_SESSION_HISTORY;
     updateSession(set, key, {
       ...current,
@@ -210,7 +204,7 @@ export const useSessionHistory = create<SessionHistoryStore>((set, get) => ({
   },
 
   invalidateTurnIndex(sessionId) {
-    const key = sessionId as string;
+    const key = sessionId;
     const current = get().bySession.get(key) ?? EMPTY_SESSION_HISTORY;
     updateSession(set, key, { ...current, turnIndexLoaded: false });
   },
@@ -218,7 +212,7 @@ export const useSessionHistory = create<SessionHistoryStore>((set, get) => ({
   evictSession(sessionId) {
     set((state) => {
       const bySession = new Map(state.bySession);
-      bySession.delete(sessionId as string);
+      bySession.delete(sessionId);
       return { bySession };
     });
   },

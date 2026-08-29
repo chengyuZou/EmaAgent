@@ -2,7 +2,7 @@
 // 消息从 RPC 到组件不变形：分组持有原始消息引用，不合成伪 Message、不改字段名、
 // 不融合 tool_use 与 tool_result。
 
-import type { ToolResultBlock } from '@ema-agent/session';
+import type { ToolResultBlock, UserBlock } from '@ema-agent/session';
 import type {
   SessionHistoryMessage,
   SessionHistoryTurn,
@@ -82,11 +82,7 @@ export function messageText(message: SessionHistoryMessage): string {
   if (!Array.isArray(blocks)) return '';
   return blocks
     .filter(
-      (block): block is { type: 'text'; text: string } =>
-        typeof block === 'object'
-        && block !== null
-        && (block as { type?: unknown }).type === 'text'
-        && typeof (block as { text?: unknown }).text === 'string',
+      (block): block is Extract<UserBlock, { type: 'text' }> => block.type === 'text',
     )
     .map((block) => block.text)
     .join('');

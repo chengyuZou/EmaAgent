@@ -2,6 +2,8 @@
 // 正文切分与已编辑文件汇总。行只引用真实对象（历史块 + 索引配对的结果信封 / 流式项），
 // 不建第二套字段；纯函数，供渲染与测试。
 import type { AssistantBlock, ToolResultBlock } from '@ema-agent/session';
+import { BuiltinTools } from '@ema-agent/tools';
+import { asFileEditResult, asFileWriteResult } from '@ema-agent/builtin-tools/ui';
 import type { StreamItem } from '../state/messages.js';
 
 /** 工作区行：历史路径引用持久块（工具行经 toolResultIndex 配对），流式路径引用瞬态项。 */
@@ -124,8 +126,17 @@ export function splitWorkAnswer(groups: readonly WorkRowGroup[]): {
 
 // ── 动词归类与摘要 ────────────────────────────────────────────────────────────
 
-const COMMAND_TOOLS = new Set(['Bash', 'ProcessList', 'ProcessOutput', 'ProcessStop']);
-const FILE_EDIT_TOOLS = new Set(['Edit', 'Write', 'ScratchpadWrite']);
+const COMMAND_TOOLS = new Set<string>([
+  BuiltinTools.Bash.name,
+  BuiltinTools.PowerShell.name,
+  BuiltinTools.ProcessList.name,
+  BuiltinTools.ProcessOutput.name,
+  BuiltinTools.ProcessStop.name,
+]);
+const FILE_EDIT_TOOLS = new Set<string>([
+  BuiltinTools.FileEdit.name,
+  BuiltinTools.FileWrite.name,
+]);
 
 export interface ToolTally {
   commands: number;
@@ -192,7 +203,7 @@ export function liveAction(rows: readonly WorkRow[], streaming: boolean): LiveAc
     if (FILE_EDIT_TOOLS.has(name)) {
       return { kind: 'editing', file: basename(stringArg(toolArgs(row), 'file_path')) };
     }
-    if (name === 'Bash') {
+    if (name === BuiltinTools.Bash.name || name === BuiltinTools.PowerShell.name) {
       return { kind: 'command', command: truncate(stringArg(toolArgs(row), 'command'), 60) };
     }
     return { kind: 'tool', name };
@@ -253,36 +264,32 @@ interface TypedEditedFile {
   created: boolean;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 /** 从 FileEdit/FileWrite 的类型化输出提取编辑事实。 */
 function editedFileOf(output: unknown): TypedEditedFile | null {
-  if (!isRecord(output)) return null;
-
-  if (output['type'] === 'created' && typeof output['filePath'] === 'string') {
-    const content = typeof output['content'] === 'string' ? output['content'] : '';
-    const lines = content.length === 0 ? 0 : content.split('\n').length;
-    return { path: output['filePath'], additions: lines, deletions: 0, created: true };
+  const write = asFileWriteResult(output);
+  if (write) {
+    if (write.type === 'created') {
+      const lines = write.content.length === 0 ? 0 : write.content.split('\n').length;
+      return { path: write.filePath, additions: lines, deletions: 0, created: true };
+    }
+    const counts = countPatchLines(write.structuredPatch);
+    return { path: write.filePath, additions: counts.additions, deletions: counts.deletions, created: false };
   }
 
-  if (typeof output['filePath'] === 'string' && output['structuredPatch'] !== undefined) {
-    const counts = countPatchLines(output['structuredPatch']);
-    return { path: output['filePath'], additions: counts.additions, deletions: counts.deletions, created: false };
+  const edit = asFileEditResult(output);
+  if (edit) {
+    const counts = countPatchLines(edit.structuredPatch);
+    return { path: edit.filePath, additions: counts.additions, deletions: counts.deletions, created: false };
   }
   return null;
 }
 
 /** structuredPatch 的 lines 以 ' '/'-'/'+' 开头，逐行计数即增删行数。 */
-function countPatchLines(hunks: unknown): { additions: number; deletions: number } {
-  if (!Array.isArray(hunks)) return { additions: 0, deletions: 0 };
+function countPatchLines(hunks: readonly { readonly lines: readonly string[] }[]): { additions: number; deletions: number } {
   let additions = 0;
   let deletions = 0;
   for (const hunk of hunks) {
-    if (!isRecord(hunk) || !Array.isArray(hunk['lines'])) continue;
-    for (const line of hunk['lines']) {
-      if (typeof line !== 'string') continue;
+    for (const line of hunk.lines) {
       if (line.startsWith('+')) additions++;
       else if (line.startsWith('-')) deletions++;
     }

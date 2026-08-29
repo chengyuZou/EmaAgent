@@ -34,7 +34,7 @@ export interface McpStoreState {
    * `connect: false` saves it disconnected (market installs needing env first).
    * Returns the connection status from the registration attempt.
    */
-  register(name: string, config: McpServerConfig, sourceUrl?: string, connect?: boolean, provenance?: McpInstallProvenance): Promise<McpConnection>;
+  register(name: string, config: McpServerConfig, sourceUrl?: string, connect?: boolean, provenance?: McpInstallProvenance): Promise<void>;
 
   /** Enable a server (persists to DB + attempts reconnect). */
   enable(name: string): Promise<void>;
@@ -97,7 +97,7 @@ export const useMcpStore = create<McpStoreState>((set, get) => ({
 
   async register(name, config, sourceUrl, connect = true, provenance) {
     try {
-      const result = await mcpApi.register({
+      await mcpApi.register({
         name,
         config,
         connect,
@@ -105,9 +105,7 @@ export const useMcpStore = create<McpStoreState>((set, get) => ({
         ...(provenance !== undefined ? { provenance } : {}),
       });
       await get().refresh();
-      // 注册成功但首连失败：记录已落库，按未连接如实返回（UI 可稍后再连）。
-      if ('connection' in result) return result.connection;
-      return { serverName: name, status: 'disconnected', tools: [] };
+      // 注册结果以重读后的 Server 记录为准，不在前端伪造连接状态。
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to register MCP server' });
       throw err;

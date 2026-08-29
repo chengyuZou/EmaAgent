@@ -23,18 +23,9 @@ import {
 } from '../../api/providers.js';
 import { useProviderStore } from '../../stores/provider.js';
 import { showToast } from '../../lib/toast.js';
+import { MODEL_BINDING_CAPABILITIES } from '@ema-agent/providers';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-
-const MODULE_CAPABILITY: Record<string, ModelCapability> = {
-  'memory-llm':     'llm',
-  title:            'llm',
-  'lightrag-llm':   'llm',
-  'lightrag-embed': 'embed',
-  tts:              'tts',
-  stt:              'stt',
-  vision:           'vision',
-};
 
 const MODULES: Array<{ id: BindingModule; label: string; desc: string }> = [
   { id: 'memory-llm',     label: 'Memory',        desc: '记忆提取与整合' },
@@ -139,7 +130,7 @@ export function BindingsTab(): JSX.Element {
 
   const allProviders = useProviderStore((s) => s.providers);
   const allBindings  = useProviderStore((s) => s.bindings);
-  const requiredCap = MODULE_CAPABILITY[activeModule] ?? 'llm';
+  const requiredCap = MODEL_BINDING_CAPABILITIES[activeModule];
 
   const iconKeyFor = useCallback((pcId: string): string | undefined => {
     const record = allProviders.find((x) => x.id === pcId);
@@ -239,7 +230,7 @@ export function BindingsTab(): JSX.Element {
 
         <div className="grid grid-cols-2 gap-3">
           {MODULES.map((m, i) => {
-            const cap = MODULE_CAPABILITY[m.id] ?? 'llm';
+            const cap = MODEL_BINDING_CAPABILITIES[m.id];
             const isBound = allBindings[m.id] !== undefined;
             return (
               <CardButton

@@ -1,5 +1,5 @@
 // 按 Session 保存 Permission 与 AskUser 等待交互卡片。
-// 队列元素 = 后端交互队列的可恢复快照（PendingInteraction，@ema-agent/turn 拥有），
+// 队列元素 = 后端交互队列的可恢复记录（PendingInteraction，@ema-agent/turn 拥有），
 // kind 判别沿用后端拼写 'permission' | 'askUser'，前端不再另设联合。
 //
 // 每个 Session 拥有独立 FIFO。聊天窗口只渲染当前 Session 的队首，其他

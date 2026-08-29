@@ -90,11 +90,7 @@ function applyMode(mode: ThemeSettings['mode']): void {
   }
 
   // 同步原生标题栏配色（Tauri 窗口）。
-  try {
-    import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
-      getCurrentWindow().setTheme(mode).catch(() => {});
-    }).catch(() => {});
-  } catch { /* 不在 Tauri 环境 */ }
+  void tauriBridge.setWindowTheme(mode);
 
   // 过渡完移除 class(过渡时长 base 200ms + buffer 200ms = 400ms)
   window.setTimeout(() => html.classList.remove('ema-theme-transition'), 400);

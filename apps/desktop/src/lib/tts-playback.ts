@@ -367,7 +367,7 @@ function onPlaybackEnded(): void {
 // ── Owner check ───────────────────────────────────────────────────────────────
 
 function isTtsOwner(sessionId: string): boolean {
-  return (useCurrentSession.getState().ttsOwnerSessionId as string) === sessionId;
+  return useCurrentSession.getState().ttsOwnerSessionId === sessionId;
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -545,35 +545,8 @@ export function stopPlayback(): void {
   setPlaying(null);
 }
 
-/**
- * Release all players for a session. Call from conversation-store.evictSession.
- */
+/** Session 从前端缓存移除时释放对应播放器。 */
 export function evictSessionPlayers(sessionId: string): void {
   stopTtsPlayback(sessionId);
 }
 
-// ── Test harness ──────────────────────────────────────────────────────────────
-
-export async function testTtsPlayback(arrayBuffer: ArrayBuffer): Promise<void> {
-  const { ctx, analyser } = ensureAudioCtx();
-  if (ctx.state === 'suspended') await ctx.resume().catch((err: Error) => { console.error('[tts-playback] AudioContext.resume() failed:', err.name, err.message); });
-
-  const audioBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0) as ArrayBuffer);
-  const source = ctx.createBufferSource();
-  source.buffer = audioBuffer;
-  source.connect(analyser);
-  connectLipSyncSource(source);
-
-  startRmsLoop();
-
-  await new Promise<void>((resolve) => {
-    source.onended = () => resolve();
-    source.start();
-  });
-
-  stopRmsLoop();
-}
-
-if (typeof window !== 'undefined') {
-  (window as unknown as Record<string, unknown>).__testTtsPlayback = testTtsPlayback;
-}

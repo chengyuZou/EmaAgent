@@ -80,6 +80,7 @@ export * from './background/index.js';
 export {
   BuiltinTools,
   type BuiltinToolIdentity,
+  type BuiltinToolVariant,
 } from './Tool/BuiltinToolIdentity.js';
 export {
   ASK_USER_TOOL_ID,

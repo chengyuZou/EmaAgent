@@ -15,7 +15,6 @@ import { SettingCatalogPage, SettingSearchResults } from './catalog/SettingCatal
 import { buildSettingDomains, searchSettingItems } from './catalog/settingCatalog.js';
 import { useSettingCatalog } from './catalog/useSettingCatalog.js';
 import { CharactersTab } from './character/CharactersTab.js';
-import { DiagnosticsTab } from './data/DiagnosticsTab.js';
 import { StorageTab } from './data/StorageTab.js';
 import { AppearanceTab } from './general/AppearanceTab.js';
 import { GeneralTab } from './general/GeneralTab.js';
@@ -42,7 +41,6 @@ const MANAGEMENT_PAGES: readonly ManagementPage[] = [
   { id: 'memory-files', label: 'Memory 文件', icon: 'i-lucide:library' },
   { id: 'knowledge-base', label: '知识库', icon: 'i-lucide:database' },
   { id: 'storage', label: '存储位置', icon: 'i-lucide:hard-drive', fullHeight: true },
-  { id: 'diagnostics', label: '系统诊断', icon: 'i-lucide:activity' },
   { id: 'notifications', label: '通知与环境', icon: 'i-lucide:bell' },
   { id: 'appearance', label: '外观', icon: 'i-lucide:palette' },
 ];
@@ -68,7 +66,7 @@ export function SettingsPanel(): JSX.Element {
   useEffect(() => mountSystemEvents({ ownsConnection: false }), []);
   useEffect(() => {
     void useProviderStore.getState().loadAll();
-    void useSettingsStore.getState().refreshRuntimeSettings().catch(() => {});
+    void useSettingsStore.getState().refreshDesktopSettings().catch(() => {});
     void useCharacterStore.getState().load();
     void useSkillStore.getState().load();
     void useMcpStore.getState().load();
@@ -207,7 +205,6 @@ function ManagementContent({ id }: { id: string }): JSX.Element {
     case 'memory-files': return <MemoryTab />;
     case 'knowledge-base': return <KnowledgeBaseTab />;
     case 'storage': return <StorageTab />;
-    case 'diagnostics': return <DiagnosticsTab />;
     case 'notifications': return <GeneralTab />;
     case 'appearance': return <AppearanceTab />;
     default: return <Callout variant="info">没有找到该设置页面。</Callout>;

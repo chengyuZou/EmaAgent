@@ -19,6 +19,7 @@ import {
   bashCommandOutputText,
   toolVariant,
   VARIANT_ICONS,
+  type ToolDisplayStatus,
 } from './toolBlocks/toolBlockHelpers.js';
 import {
   toolArgs,
@@ -41,9 +42,7 @@ export interface ToolCallBlockProps {
 
 // ── 状态派生 ──────────────────────────────────────────────────────────────────
 
-type ToolStatus = 'running' | 'awaiting_permission' | 'success' | 'failed' | 'denied';
-
-const STATUS_META: Record<ToolStatus, { color: string; label: string; pulse?: boolean }> = {
+const STATUS_META: Record<ToolDisplayStatus, { color: string; label: string; pulse?: boolean }> = {
   running:             { color: 'var(--ema-warning-text)', label: '运行中', pulse: true },
   awaiting_permission: { color: 'var(--ema-info-text)',    label: '等待确认', pulse: true },
   success:             { color: 'var(--ema-success-text)', label: '成功' },
@@ -77,7 +76,7 @@ export function ToolCallBlock({ row, streaming = false, turnId }: ToolCallBlockP
   const hasResult = output !== undefined;
   const hasError = failure !== null || historyInterrupted;
 
-  const status: ToolStatus = failure?.code === 'permission/denied'
+  const status: ToolDisplayStatus = failure?.code === 'permission/denied'
     ? 'denied'
     : hasError
       ? 'failed'
@@ -289,7 +288,7 @@ export function ToolCallBlock({ row, streaming = false, turnId }: ToolCallBlockP
 function StatusDuration({
   status, durationMs, startedAt,
 }: {
-  status: ToolStatus;
+  status: ToolDisplayStatus;
   durationMs?: number;
   startedAt?: number;
 }): JSX.Element | null {

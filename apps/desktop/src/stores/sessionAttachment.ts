@@ -35,7 +35,7 @@ export const useSessionAttachmentStore = create<SessionAttachmentStoreState>((se
   loadStateBySession: new Map(),
 
   loadForSession(sessionId, force = false) {
-    const key = sessionId as string;
+    const key = sessionId;
     const current = get();
     const previous = current.loadStateBySession.get(key);
     if (!force && previous?.status === 'ready') return Promise.resolve();
@@ -95,7 +95,7 @@ export const useSessionAttachmentStore = create<SessionAttachmentStoreState>((se
   },
 
   evictSession(sessionId) {
-    const key = sessionId as string;
+    const key = sessionId;
     inFlightLoads.delete(key);
     set((state) => {
       const bySession = new Map(state.bySession);

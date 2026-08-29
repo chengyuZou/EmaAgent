@@ -25,7 +25,7 @@ export function Dock({
   sessionId, dock, contentRef, fullWidth = false, onExpandFullWidth, onLauncherChange,
 }: DockProps): JSX.Element {
   const layout = useDockTabs((s) =>
-    sessionId ? s.layouts[sessionId as string] : undefined);
+    sessionId ? s.layouts[sessionId] : undefined);
   const rightWidth = useDockTabs((s) => s.rightWidth);
   const bottomHeight = useDockTabs((s) => s.bottomHeight);
   const setRightWidth = useDockTabs((s) => s.setRightWidth);

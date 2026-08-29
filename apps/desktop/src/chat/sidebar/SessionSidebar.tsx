@@ -56,7 +56,7 @@ export function SessionSidebar(): JSX.Element {
   const pendingCounts = useDecisionStore(
     useShallow((s) => {
       const counts: Record<string, number> = {};
-      for (const [sid, q] of s.sessions) counts[sid as string] = q.length;
+      for (const [sid, q] of s.sessions) counts[sid] = q.length;
       return counts;
     }),
   );

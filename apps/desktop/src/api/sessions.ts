@@ -26,9 +26,6 @@ export type SessionMessagesResult = RpcJson<RpcClient['api']['sessions'][':sessi
 export type SessionHistoryMessage = SessionMessagesResult['messages'][number];
 /** 历史接口返回的 Turn 记录。 */
 export type SessionHistoryTurn = SessionMessagesResult['turns'][number];
-/** 历史附件展示投影：路径不进传输层，内容经 attachments content 端点读取。 */
-export type MessageAttachment =
-  Extract<SessionHistoryMessage, { attachments: readonly unknown[] }>['attachments'][number];
 export type TurnIndexPage = RpcJson<RpcClient['api']['sessions'][':sessionId']['turn-index']['$get']>;
 export type SessionMessageWindow = RpcJson<RpcClient['api']['sessions'][':sessionId']['messages']['window']['$get']>;
 export type SessionAttachmentsResult = RpcJson<RpcClient['api']['sessions'][':sessionId']['attachments']['$get']>;
@@ -60,12 +57,12 @@ export const sessionsApi = {
     }));
   },
 
-  /** GET /api/sessions/:sessionId — 单 Session 快照。 */
+  /** GET /api/sessions/:sessionId — 单 Session 当前记录。 */
   get(id: string): Promise<Session> {
     return readRpcJson(rpcClient.api.sessions[':sessionId'].$get({ param: { sessionId: id } }));
   },
 
-  /** PUT /api/sessions/:sessionId — 局部更新并返回最新快照。 */
+  /** PUT /api/sessions/:sessionId — 局部更新并返回最新记录。 */
   patch(id: string, patch: SessionPatchInput): Promise<Session> {
     return readRpcJson(
       rpcClient.api.sessions[':sessionId'].$put({ json: patch, param: { sessionId: id } }),

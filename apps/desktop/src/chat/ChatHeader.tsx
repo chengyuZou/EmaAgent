@@ -17,7 +17,7 @@ export function ChatHeader({ sessionId, title, isFork }: ChatHeaderProps): JSX.E
   const [summaryOpen, setSummaryOpen] = useState(false);
 
   const layout = useDockTabs((s) =>
-    sessionId ? s.layouts[sessionId as string] : undefined);
+    sessionId ? s.layouts[sessionId] : undefined);
   const setDockOpen = useDockTabs((s) => s.setDockOpen);
   const setFullWidth = useDockTabs((s) => s.setFullWidth);
   const fullWidth = useDockTabs((s) => isRightFullWidth(s, sessionId));
@@ -28,7 +28,7 @@ export function ChatHeader({ sessionId, title, isFork }: ChatHeaderProps): JSX.E
   const runningAgentRunCount = useAgentRunStore((s) => {
     if (!sessionId) return 0;
     return [...s.runs.values()].filter(
-      (run) => run.sessionId === (sessionId as string) && run.status === 'running',
+      (run) => run.sessionId === sessionId && run.status === 'running',
     ).length;
   });
 

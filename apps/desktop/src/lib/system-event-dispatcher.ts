@@ -36,7 +36,7 @@ export function dispatchSystemEvent(event: AppEvent): void {
 
     case 'settings_changed':
       // 每个 WebView 都有自己的 Store；收到后读取后端生效值，兑现 nextOperation。
-      void useSettingsStore.getState().refreshRuntimeSettings().catch(() => {});
+      void useSettingsStore.getState().refreshDesktopSettings().catch(() => {});
       break;
 
     default:

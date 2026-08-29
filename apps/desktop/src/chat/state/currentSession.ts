@@ -52,7 +52,7 @@ export const useCurrentSession = create<CurrentSessionState>((set, get) => ({
   async createFreshSession() {
     const viewedId = get().viewedSessionId;
     if (viewedId) {
-      const viewed = useSessionStore.getState().sessions.byId.get(viewedId as string);
+      const viewed = useSessionStore.getState().sessions.byId.get(viewedId);
       // 空会话（从未产生 turn）直接复用，连点"新建会话"不再产生一串空会话。
       if (viewed && viewed.lastTurnStatus === null) return viewedId;
     }
@@ -73,19 +73,19 @@ export const useCurrentSession = create<CurrentSessionState>((set, get) => ({
   },
 
   claimStageOwner(sessionId) {
-    if ((get().ttsOwnerSessionId as string) === (sessionId as string)) return;
+    if (get().ttsOwnerSessionId === sessionId) return;
     set({ ttsOwnerSessionId: sessionId });
-    const saved = get().emotionStateMap.get(sessionId as string);
+    const saved = get().emotionStateMap.get(sessionId);
     if (saved) void tauriBridge.emit('stage:emotion-changed', { emotion: saved });
   },
 
   setEmotion(sessionId, emotion) {
     set((s) => {
       const emotionStateMap = new Map(s.emotionStateMap);
-      emotionStateMap.set(sessionId as string, emotion);
+      emotionStateMap.set(sessionId, emotion);
       return { emotionStateMap };
     });
-    if ((get().ttsOwnerSessionId as string) === (sessionId as string)) {
+    if (get().ttsOwnerSessionId === sessionId) {
       void tauriBridge.emit('stage:emotion-changed', { emotion });
     }
   },
@@ -97,11 +97,11 @@ export const useCurrentSession = create<CurrentSessionState>((set, get) => ({
   evictSession(id) {
     set((s) => {
       const draftMap = new Map(s.draftMap);
-      draftMap.delete(id as string);
+      draftMap.delete(id);
       const emotionStateMap = new Map(s.emotionStateMap);
-      emotionStateMap.delete(id as string);
+      emotionStateMap.delete(id);
       const ttsOwnerSessionId =
-        (s.ttsOwnerSessionId as string) === (id as string) ? null : s.ttsOwnerSessionId;
+        s.ttsOwnerSessionId === id ? null : s.ttsOwnerSessionId;
       return { draftMap, emotionStateMap, ttsOwnerSessionId };
     });
   },

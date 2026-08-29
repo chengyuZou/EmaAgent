@@ -44,6 +44,9 @@ export type ProviderKeySelectInput = InferRequestType<RpcClient['api']['provider
 export type ProbeCapability = InferRequestType<
   RpcClient['api']['providers'][':providerId']['probe'][':capability']['$post']
 >['param']['capability'];
+export type ProviderProbeInput = InferRequestType<
+  RpcClient['api']['providers'][':providerId']['probe'][':capability']['$post']
+>['json'];
 
 // ── API ──────────────────────────────────────────────────────────────────────
 
@@ -163,7 +166,7 @@ export const providersApi = {
    * 探活：200 连通 / 502 失败都是正常结论（UI 都要展示），不走 readRpcJson 的异常归一；
    * 其余状态码才抛 ServerApiError。缺省 modelId 时也必须显式发 {}。
    */
-  async probe(providerId: string, capability: ProbeCapability, body: { modelId?: string } = {}) {
+  async probe(providerId: string, capability: ProbeCapability, body: ProviderProbeInput = {}) {
     const res = await rpcClient.api.providers[':providerId'].probe[':capability'].$post({
       json: body,
       param: { providerId, capability },

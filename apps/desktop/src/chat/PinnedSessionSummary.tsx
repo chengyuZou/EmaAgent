@@ -21,7 +21,7 @@ export function PinnedSessionSummary({ sessionId }: PinnedSessionSummaryProps): 
   const openTab = useDockTabs((s) => s.openTab);
 
   const workspaceRoot = useSessionStore((s) =>
-    s.sessions.byId.get(sessionId as string)?.workspaceRoot ?? null);
+    s.sessions.byId.get(sessionId)?.workspaceRoot ?? null);
 
   const [git, setGit] = useState<SessionGitSummary | null>(null);
   useEffect(() => {
@@ -42,7 +42,7 @@ export function PinnedSessionSummary({ sessionId }: PinnedSessionSummaryProps): 
     let running = 0;
     let ended = 0;
     for (const run of s.runs.values()) {
-      if (run.sessionId !== (sessionId as string)) continue;
+      if (run.sessionId !== sessionId) continue;
       if (run.status === 'running') running += 1;
       else ended += 1;
     }
@@ -69,7 +69,7 @@ export function PinnedSessionSummary({ sessionId }: PinnedSessionSummaryProps): 
   }));
 
   const attachments = useSessionAttachmentStore((s) =>
-    s.bySession.get(sessionId as string));
+    s.bySession.get(sessionId));
   const loadAttachments = useSessionAttachmentStore((s) => s.loadForSession);
   useEffect(() => {
     void loadAttachments(sessionId);
@@ -78,12 +78,12 @@ export function PinnedSessionSummary({ sessionId }: PinnedSessionSummaryProps): 
   // 后台进程计数:面板同源 store,点击打开 backgroundProcesses 标签。
   const loadProcesses = useBackgroundProcessStore((s) => s.loadForSession);
   useEffect(() => {
-    void loadProcesses(sessionId as string);
+    void loadProcesses(sessionId);
   }, [sessionId, loadProcesses]);
   const processes = useBackgroundProcessStore(useShallow((s) => {
     let running = 0;
     let ended = 0;
-    for (const p of s.listsBySession.get(sessionId as string)?.processes ?? []) {
+    for (const p of s.listsBySession.get(sessionId)?.processes ?? []) {
       if (p.status === 'running' || p.status === 'queued') running += 1;
       else ended += 1;
     }

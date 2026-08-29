@@ -2,6 +2,7 @@
 import { useState, type JSX } from 'react';
 import { renderToolArgs, renderToolResult, stripOuterBraces } from './tool-renderers.js';
 import { JSON_COLORS, tokenizeJson } from './jsonTokenize.js';
+import type { ToolDisplayStatus } from './toolBlockHelpers.js';
 
 export function ToolArgsView({ name, args }: { name: string; args: unknown }): JSX.Element {
   const { rows } = renderToolArgs(name, args);
@@ -48,9 +49,7 @@ export function ToolResultViewBlock({ view }: { view: ReturnType<typeof renderTo
 
 // ── BashBlock（终端卡：banner 固定 + 输出独立滚动不换行） ─────────────────────
 
-export type TerminalStatus = 'running' | 'awaiting_permission' | 'success' | 'failed' | 'denied';
-
-const TERMINAL_PILL: Readonly<Record<TerminalStatus, { label: string; color: string }>> = {
+const TERMINAL_PILL: Readonly<Record<ToolDisplayStatus, { label: string; color: string }>> = {
   running: { label: '运行中', color: 'var(--ema-warning-text)' },
   awaiting_permission: { label: '等待确认', color: 'var(--ema-info-text)' },
   success: { label: '成功', color: 'var(--ema-success-text)' },
@@ -63,7 +62,7 @@ export function BashBlock({ cmd, output, partialArgs, isPending, status }: {
   output: string | null;
   partialArgs?: string;
   isPending: boolean;
-  status: TerminalStatus;
+  status: ToolDisplayStatus;
 }): JSX.Element {
   const [copied, setCopied] = useState(false);
   const displayCmd = cmd || partialArgs || '';

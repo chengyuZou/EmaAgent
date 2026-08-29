@@ -103,7 +103,7 @@ function ProjectNode({
   streaming: ReadonlyMap<string, TurnStreamState>;
   pendingCounts: Record<string, number>;
 }): JSX.Element {
-  const hasActive = group.sessions.some((s) => s.id === (viewedId as string));
+  const hasActive = group.sessions.some((s) => s.id === viewedId);
   const [collapsed, setCollapsed] = useState(!hasActive);
 
   useEffect(() => {
@@ -130,7 +130,7 @@ function ProjectNode({
             <SidebarRow
               key={s.id}
               session={s}
-              isActive={s.id === (viewedId as string)}
+              isActive={s.id === viewedId}
               streaming={streaming}
               pendingCounts={pendingCounts}
               nested
@@ -172,7 +172,7 @@ export function SidebarSection({
             <SidebarRow
               key={s.id}
               session={s}
-              isActive={s.id === (viewedId as string)}
+              isActive={s.id === viewedId}
               streaming={streaming}
               pendingCounts={pendingCounts}
             />

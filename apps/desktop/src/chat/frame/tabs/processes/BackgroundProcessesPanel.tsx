@@ -65,7 +65,7 @@ export function BackgroundProcessesPanel({
   const live = processes.filter((p) => isLive(p.status));
   const terminal = processes.filter((p) => !isLive(p.status));
   const detailProcess = detailId
-    ? processes.find((p) => (p.id as string) === detailId)
+    ? processes.find((p) => p.id === detailId)
     : undefined;
 
   // 列表重拉后进程消失(Session 删除/重启恢复),回列表不展示假详情。
@@ -111,7 +111,7 @@ export function BackgroundProcessesPanel({
         <>
           <SectionLabel>进行中</SectionLabel>
           {live.map((p) => (
-            <ProcessRow key={p.id as string} process={p} onOpen={() => setDetailId(p.id as string)} />
+            <ProcessRow key={p.id} process={p} onOpen={() => setDetailId(p.id)} />
           ))}
         </>
       )}
@@ -119,7 +119,7 @@ export function BackgroundProcessesPanel({
         <>
           <SectionLabel>{`已结束 · ${terminal.length}`}</SectionLabel>
           {terminal.map((p) => (
-            <ProcessRow key={p.id as string} process={p} onOpen={() => setDetailId(p.id as string)} />
+            <ProcessRow key={p.id} process={p} onOpen={() => setDetailId(p.id)} />
           ))}
         </>
       )}
@@ -176,11 +176,12 @@ function ProcessDetail({
   const readOutput = useBackgroundProcessStore((s) => s.readOutput);
   const setFollowTail = useBackgroundProcessStore((s) => s.setFollowTail);
   const stop = useBackgroundProcessStore((s) => s.stop);
-  const output = useBackgroundProcessStore((s) => s.outputsById.get(process.id as string));
+  const output = useBackgroundProcessStore((s) => s.outputsById.get(process.id));
   const scrollToTurn = useCurrentSession((s) => s.scrollToTurn);
   const [stopping, setStopping] = useState(false);
 
-  const processId = process.id as string;
+  const processId = process.id;
+  const originTurnId = process.originTurnId;
   const live = isLive(process.status);
 
   useEffect(() => {
@@ -235,10 +236,10 @@ function ProcessDetail({
           输出 {formatBytes(process.stdoutBytes + process.stderrBytes)}
           {process.outputTruncated ? '(已截断)' : ''}
         </span>
-        {process.originTurnId && (
+        {originTurnId && (
           <button
             className="text-[var(--ema-primary)] hover:text-[var(--ema-primary-hover)] transition-colors"
-            onClick={() => scrollToTurn(process.originTurnId as string)}
+            onClick={() => scrollToTurn(originTurnId)}
             title="滚动到启动该进程的对话轮次"
           >
             来源轮次

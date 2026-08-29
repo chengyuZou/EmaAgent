@@ -6,7 +6,11 @@ import { Markdown } from '../../markdown/renderer.js';
 import { sessionsApi } from '../../api/sessions.js';
 import { showToast } from '../../lib/toast.js';
 import type { SessionHistoryMessage } from '../../api/sessions.js';
-import type { AttachmentReferenceBlock, SkillReferenceBlock } from '@ema-agent/session';
+import type {
+  AttachmentReferenceBlock,
+  SkillReferenceBlock,
+  UserBlock,
+} from '@ema-agent/session';
 import type { PendingInput } from '../state/messages.js';
 import { useMessages } from '../state/messages.js';
 import { useCurrentSession } from '../state/currentSession.js';
@@ -39,17 +43,13 @@ export function UserBubble({ message, canEdit = false }: UserBubbleProps): JSX.E
   const attachments = Array.isArray(message.blocks)
     ? message.blocks.filter(
         (block): block is AttachmentReferenceBlock =>
-          typeof block === 'object'
-          && block !== null
-          && (block as { type?: unknown }).type === 'attachment_ref',
+          block.type === 'attachment_ref',
       )
     : [];
   const segments = Array.isArray(message.blocks)
     ? message.blocks.filter(
-        (block): block is { type: 'text'; text: string } | SkillReferenceBlock =>
-          typeof block === 'object'
-          && block !== null
-          && ['text', 'skill_ref'].includes(String((block as { type?: unknown }).type)),
+        (block): block is Extract<UserBlock, { type: 'text' }> | SkillReferenceBlock =>
+          block.type === 'text' || block.type === 'skill_ref',
       )
     : [{ type: 'text' as const, text: content }];
   const hasTurnId = !!message.turnId;
@@ -83,9 +83,10 @@ export function UserBubble({ message, canEdit = false }: UserBubbleProps): JSX.E
         await sessionsApi.rewindLastTurn(viewedId, message.turnId);
         rewoundRef.current = true;
       }
-      const session = useSessionStore.getState().sessions.byId.get(viewedId as string);
-      await sendMessage(viewedId, {
-        parts: [{ type: 'text', text }],
+      const session = useSessionStore.getState().sessions.byId.get(viewedId);
+      await sendMessage({
+        sessionId: viewedId,
+        input: [{ type: 'text', text }],
         executionProfile: session?.executionProfile ?? 'chat',
         narrativePolicy: session?.narrativePolicy ?? 'auto',
       });

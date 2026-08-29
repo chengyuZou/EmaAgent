@@ -22,12 +22,12 @@ export function AgentRunPanel({ sessionId, className = '', initialDetailId }: Ag
   const [visibleCount, setVisibleCount] = useState(TERMINAL_PAGE_SIZE);
 
   useEffect(() => {
-    if (sessionId) void loadForSession(sessionId as string);
+    if (sessionId) void loadForSession(sessionId);
   }, [sessionId, loadForSession]);
 
   const sessionRuns = useMemo(() => {
     const all = sessionId
-      ? [...runs.values()].filter((run) => run.sessionId === sessionId as string)
+      ? [...runs.values()].filter((run) => run.sessionId === sessionId)
       : [];
     return all.sort((a, b) => b.createdAt - a.createdAt);
   }, [runs, sessionId]);

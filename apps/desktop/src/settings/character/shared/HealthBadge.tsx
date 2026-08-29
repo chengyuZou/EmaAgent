@@ -4,7 +4,7 @@ import { Badge, Popover } from '@ema-agent/ui';
 import { useCharacterStore } from '../../../stores/character.js';
 
 export function HealthBadge({ characterId }: { characterId: string }): JSX.Element | null {
-  const health = useCharacterStore((s) => s.healthMap[characterId as string]);
+  const health = useCharacterStore((s) => s.healthMap[characterId]);
 
   useEffect(() => {
     void useCharacterStore.getState().refreshHealth(characterId);

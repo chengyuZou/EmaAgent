@@ -169,18 +169,8 @@ function acquireSubscriber(): () => void {
   };
 }
 
-/** 兼容旧调用：启动当前 WebView 中的 system SSE owner。 */
-export async function startSystemSse(): Promise<void> {
-  controller.start();
-}
-
-/** 兼容旧调用：永久关闭当前 WebView 中的 owner 和待重连任务。 */
-export function stopSystemSse(): void {
-  controller.stop();
-}
-
 /**
- * 挂载一个窗口的系统事件运行时，返回同步 disposer 供 React effect 使用。
+ * 挂载一个窗口的系统事件连接，返回同步 disposer 供 React effect 使用。
  * Tauri 中只有主窗持有连接；普通浏览器页面会自行连接，便于独立开发。
  */
 export function mountSystemEvents(options: SystemEventWindowOptions): () => void {

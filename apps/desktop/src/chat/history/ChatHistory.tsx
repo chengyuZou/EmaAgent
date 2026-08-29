@@ -29,24 +29,24 @@ export function ChatHistory(): JSX.Element {
 
   const viewedId = useCurrentSession((s) => s.viewedSessionId);
   const messages = useMessages((s) =>
-    viewedId ? (s.messages.get(viewedId as string) ?? EMPTY_MESSAGES) : EMPTY_MESSAGES,
+    viewedId ? (s.messages.get(viewedId) ?? EMPTY_MESSAGES) : EMPTY_MESSAGES,
   );
   const turns = useMessages((s) =>
-    viewedId ? s.turns.get(viewedId as string) : undefined,
+    viewedId ? s.turns.get(viewedId) : undefined,
   );
   const stream = useMessages((s) =>
-    viewedId ? s.streamBySession.get(viewedId as string) ?? null : null,
+    viewedId ? s.streamBySession.get(viewedId) ?? null : null,
   );
   const pending = useMessages((s) =>
-    viewedId ? s.pendingInputBySession.get(viewedId as string) ?? null : null,
+    viewedId ? s.pendingInputBySession.get(viewedId) ?? null : null,
   );
   const stopReason = useMessages((s) =>
-    viewedId ? s.stopReasonBySession.get(viewedId as string) ?? null : null,
+    viewedId ? s.stopReasonBySession.get(viewedId) ?? null : null,
   );
   const loadedSessions = useMessages((s) => s.loadedSessions);
   const sessionHistory = useSessionHistory((state) =>
     viewedId
-      ? state.bySession.get(viewedId as string) ?? EMPTY_SESSION_HISTORY
+      ? state.bySession.get(viewedId) ?? EMPTY_SESSION_HISTORY
       : EMPTY_SESSION_HISTORY,
   );
   const archiveWindow = useMemo(
@@ -57,10 +57,10 @@ export function ChatHistory(): JSX.Element {
   );
 
   const displayedMessages = sessionHistory.mode === 'archive' && archiveWindow
-    ? archiveWindow.messages
+    ? archiveWindow.result.messages
     : messages;
   const displayedTurns = sessionHistory.mode === 'archive' && archiveWindow
-    ? archiveWindow.turns
+    ? archiveWindow.result.turns
     : turns ?? [];
   const displayedStream = sessionHistory.mode === 'tail' ? stream : null;
   const displayedPending = sessionHistory.mode === 'tail' ? pending : null;
@@ -75,7 +75,7 @@ export function ChatHistory(): JSX.Element {
   );
 
   useEffect(() => {
-    if (!viewedId || loadedSessions.has(viewedId as string)) return;
+    if (!viewedId || loadedSessions.has(viewedId)) return;
     void useMessages.getState().loadMessages(viewedId);
   }, [viewedId, loadedSessions]);
 
@@ -136,7 +136,7 @@ export function ChatHistory(): JSX.Element {
       return;
     }
     await useSessionHistory.getState().openArchive(viewedId, turnId);
-    const latest = useSessionHistory.getState().bySession.get(viewedId as string);
+    const latest = useSessionHistory.getState().bySession.get(viewedId);
     if (latest?.mode === 'archive' && latest.activeArchiveTurnId === turnId) {
       requestAnimationFrame(() => {
         useCurrentSession.getState().scrollToTurn(turnId);

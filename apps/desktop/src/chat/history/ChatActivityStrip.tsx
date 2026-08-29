@@ -20,9 +20,9 @@ export function ChatActivityStrip({
 }): JSX.Element | null {
   const sessionId = useCurrentSession((state) => state.viewedSessionId);
   const stream = useMessages((state) => (
-    sessionId ? state.streamBySession.get(sessionId as string) : undefined
+    sessionId ? state.streamBySession.get(sessionId) : undefined
   ));
-  const diffs = useLatestTurnDiffs(sessionId as string | null);
+  const diffs = useLatestTurnDiffs(sessionId);
   const [todoOpen, setTodoOpen] = useState(false);
   const [diffsOpen, setDiffsOpen] = useState(false);
 
