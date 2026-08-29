@@ -70,7 +70,7 @@ const EVENT_LABELS: Record<string, string> = {
   subagent_aborted: '子 Agent 中止',
   subagent_stream: '子 Agent 详情流',
   emotion_changed: '角色情绪变化',
-  stage_cue: '角色舞台动作',
+  motion_changed: '角色舞台动作',
   character_card_switched: '角色切换',
   character_presentation_changed: '角色外观切换',
   background_process_changed: '后台进程状态变化',
@@ -90,6 +90,6 @@ export function eventDisplayGroup(eventType: string): EventDisplayGroupId {
   if (eventType.startsWith('memory_')) return 'memory';
   if (eventType.startsWith('kb_')) return 'knowledge';
   if (eventType.startsWith('agent_') || eventType.startsWith('subagent_')) return 'agent';
-  if (eventType.startsWith('emotion_') || eventType.startsWith('stage_') || eventType.startsWith('character_') || eventType.startsWith('tts_')) return 'character';
+  if (eventType.startsWith('emotion_') || eventType.startsWith('motion_') || eventType.startsWith('character_') || eventType.startsWith('tts_')) return 'character';
   return 'system';
 }

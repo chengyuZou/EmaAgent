@@ -275,35 +275,6 @@ describe('Live2D ZIP resources', () => {
     expect(store.listLive2dModels(characterId)).toEqual([]);
   });
 
-  it('超过 ZIP 条目数上限时拒绝并清理目标目录', async () => {
-    const sourceZip = writeZip('too-many-entries.zip', {
-      'model.model3.json': model3Bytes(),
-      'texture.png': new Uint8Array([1]),
-    });
-    const destinationRoot = path.join(root, 'limited-live2d');
-
-    await expect(importLive2dZip(sourceZip, destinationRoot, {
-      maxRuntimeConfigBytes: 1024,
-      maxZipEntries: 1,
-      maxZipTotalBytes: 1024,
-    })).rejects.toThrow('zip_entry_count_exceeded');
-    expect(fs.existsSync(path.join(destinationRoot, 'too-many-entries'))).toBe(false);
-  });
-
-  it('超过 ZIP 展开字节上限时拒绝并清理目标目录', async () => {
-    const sourceZip = writeZip('too-large-expanded.zip', {
-      'model.model3.json': model3Bytes(),
-    });
-    const destinationRoot = path.join(root, 'limited-live2d');
-
-    await expect(importLive2dZip(sourceZip, destinationRoot, {
-      maxRuntimeConfigBytes: 1024,
-      maxZipEntries: 10,
-      maxZipTotalBytes: 1,
-    })).rejects.toThrow('zip_expanded_size_exceeded');
-    expect(fs.existsSync(path.join(destinationRoot, 'too-large-expanded'))).toBe(false);
-  });
-
   it('同名 ZIP 不覆盖已有资源也不新增 SQL 记录', async () => {
     const sourceZip = writeZip('collision.zip', {
       'model.model3.json': model3Bytes(),

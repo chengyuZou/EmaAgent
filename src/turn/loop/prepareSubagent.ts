@@ -102,7 +102,6 @@ export function createPrepareSubagent(deps: PrepareSubagentDeps): PrepareSubagen
       prepared: subPrepared,
       compact,
       emit: deps.emit,
-      budget: deps.budget,
       baselineMessageCount: fork ? deps.parentMessages.length : 0,
       signal,
     });

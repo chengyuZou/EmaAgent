@@ -219,7 +219,6 @@ describe('createCompact', () => {
     const forced = await compact(request(textHistory(), {
       force: true,
       settings: {
-        enabled: false,
         bufferRatio: 0,
         outputTokens: 8_000,
         keepRecentToolResults: 6,

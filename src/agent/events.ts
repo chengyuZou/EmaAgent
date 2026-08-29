@@ -70,11 +70,6 @@ export type AgentLoopEvent =
       readonly llmCallId: string;
       readonly messages: readonly Message[];
     }
-  | {
-      /** 本次 Assistant 已流式落库，但恢复策略决定从头重试，不得进入后续模型历史。 */
-      readonly type: 'assistant_message_discarded';
-      readonly reason: 'max_tokens_retry';
-    }
   | { readonly type: 'tool_result'; readonly result: ToolResult }
   | { readonly type: 'phase_changed'; readonly state: AgentLoopState }
   | {

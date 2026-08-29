@@ -8,11 +8,11 @@ import {
 } from '@ema-agent/live2d-react';
 import { showToast } from '../lib/toast.js';
 import { tauriBridge } from '../lib/tauri-bridge.js';
-import type { CharacterLive2dRuntimeConfig } from './characterStageLoader.js';
+import type { StageLive2dRuntimeConfig } from './characterStageLoader.js';
 
 export interface EmaStageViewProps {
   modelPath: string;
-  runtimeConfig?: CharacterLive2dRuntimeConfig;
+  runtimeConfig?: StageLive2dRuntimeConfig;
   suspended?: boolean;
   interactive?: boolean;
   onHandleChanged?: (handle: Live2DStageHandle | null) => void;
@@ -42,33 +42,23 @@ export function EmaStageView({
     const applyEmotion = (name: string): void => {
       const target = runtimeConfig?.emotionMap?.[name];
       stageRef.current?.setExpression(target?.expression ?? null);
-      if (target?.motion) {
-        stageRef.current?.playMotion(target.motion.group, target.motion.index);
-      }
     };
     const applyMotion = (name: string): void => {
       const target = runtimeConfig?.motionMap?.[name];
       if (target) stageRef.current?.playMotion(target.group, target.index);
     };
 
-    const unlistenEmotion = tauriBridge.listen<{ primary: string; stageId?: string }>(
+    const unlistenEmotion = tauriBridge.listen<{ emotion: string; stageId?: string }>(
       'stage:emotion-changed',
       (event) => {
-        if (isTargetStage(event.payload.stageId)) applyEmotion(event.payload.primary);
+        if (isTargetStage(event.payload.stageId)) applyEmotion(event.payload.emotion);
       },
     );
     const unlistenCue = tauriBridge.listen<{
-      motion?: string;
-      expression?: string;
+      motion: string;
       stageId?: string;
-    }>('stage:cue', (event) => {
-      if (!isTargetStage(event.payload.stageId)) return;
-      if (event.payload.expression) {
-        // cue 携带的是 emotionMap 语义名；miss 等于幻觉名，不执行
-        const target = runtimeConfig?.emotionMap?.[event.payload.expression];
-        if (target) stageRef.current?.setExpression(target.expression ?? null);
-      }
-      if (event.payload.motion) applyMotion(event.payload.motion);
+    }>('stage:motion-changed', (event) => {
+      if (isTargetStage(event.payload.stageId)) applyMotion(event.payload.motion);
     });
     const unlistenSpeech = tauriBridge.listen<{
       speaking: boolean;
@@ -93,27 +83,11 @@ export function EmaStageView({
       },
     );
 
-    const speechChannel = typeof BroadcastChannel === 'undefined'
-      ? null
-      : new BroadcastChannel('ema-stage-speech');
-    if (speechChannel) {
-      speechChannel.onmessage = (event: MessageEvent<{
-        speaking: boolean;
-        rms: number;
-        stageId?: string;
-      }>) => {
-        if (isTargetStage(event.data.stageId)) {
-          stageRef.current?.setLipSync(event.data.speaking, event.data.rms);
-        }
-      };
-    }
-
     return () => {
       void unlistenEmotion.then((stop) => stop());
       void unlistenCue.then((stop) => stop());
       void unlistenSpeech.then((stop) => stop());
       void unlistenCycle.then((stop) => stop());
-      speechChannel?.close();
     };
   }, [interactive, runtimeConfig]);
 

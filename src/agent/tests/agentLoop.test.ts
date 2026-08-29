@@ -1,7 +1,7 @@
-// 验证 AgentLoop 的调用准备、输出恢复（升级/续写）、空转软引导与工具持久化握手。
+// 验证 AgentLoop 的调用准备、输出续写恢复、空转软引导与工具持久化握手。
 
 import { describe, expect, it, vi } from 'vitest';
-import type { CallLlm, LlmRequest, LlmTokenUsage, Message } from '@ema-agent/llm';
+import type { CallLlm, LlmRequest, Message } from '@ema-agent/llm';
 import { ContextWindowExceededError } from '@ema-agent/llm';
 import type { StreamingToolExecutor, ToolResult } from '@ema-agent/tools';
 import { runAgentLoop } from '../agentLoop.js';
@@ -9,13 +9,6 @@ import type { AgentLoopEvent } from '../events.js';
 import type { AgentBudget, AgentLoopInput, PrepareAgentIterationInput } from '../types.js';
 
 class TestBudget implements AgentBudget {
-  readonly recorded: LlmTokenUsage[] = [];
-  toolCalls = 0;
-
-  assertWithinLimits(): void {}
-  remainingOutputTokens(): number { return 64; }
-  recordUsage(usage: LlmTokenUsage): void { this.recorded.push(usage); }
-  reserveToolCall(): void { this.toolCalls += 1; }
   enterSubagent(): () => void { return () => undefined; }
 }
 
@@ -94,7 +87,7 @@ function terminalEvent(events: readonly AgentLoopEvent[]) {
 }
 
 describe('runAgentLoop', () => {
-  it('每次迭代都经 prepareIteration，并按预算裁剪输出上限与累计 Usage 差值', async () => {
+  it('每次迭代都经 prepareIteration，请求透传其输出上限并累计 Usage 差值', async () => {
     const budget = new TestBudget();
     const stream = vi.fn((_request: LlmRequest) => (async function* () {
       yield { type: 'usage' as const, inputTokens: 10, outputTokens: 0 };
@@ -117,11 +110,7 @@ describe('runAgentLoop', () => {
     }));
 
     expect(prepareIteration).toHaveBeenCalledTimes(1);
-    expect(stream).toHaveBeenCalledWith(expect.objectContaining({ maxOutputTokens: 64 }));
-    expect(budget.recorded).toEqual([
-      { inputTokens: 10, outputTokens: 0 },
-      { inputTokens: 0, outputTokens: 4 },
-    ]);
+    expect(stream).toHaveBeenCalledWith(expect.objectContaining({ maxOutputTokens: 100 }));
     const callUsage = result.filter(
       (event): event is Extract<AgentLoopEvent, { type: 'llm_call_usage_updated' }> =>
         event.type === 'llm_call_usage_updated',
@@ -252,46 +241,7 @@ describe('runAgentLoop', () => {
     expect(terminalEvent(collected)?.finalText).toBe('finished');
   });
 
-  it('max_tokens 首次触发升级重试：顶到预算上限、不注入续写、半截作废', async () => {
-    const seen: LlmRequest[] = [];
-    const seenMessages: Message[][] = [];
-    const prepareIteration = vi.fn(async ({ messages }: PrepareAgentIterationInput) => {
-      seenMessages.push([...messages]);
-      return {
-        request: { messages: [...messages], maxOutputTokens: 8 },
-        messages,
-      };
-    });
-    let llmCall = 0;
-    const stream = vi.fn((request: LlmRequest) => {
-      seen.push(request);
-      return (async function* () {
-        llmCall += 1;
-        if (llmCall === 1) {
-          yield { type: 'text_delta' as const, blockIndex: 0, delta: '前半' };
-          yield { type: 'done' as const, stopReason: 'max_tokens' as const };
-          return;
-        }
-        yield { type: 'text_delta' as const, blockIndex: 0, delta: '完整答案' };
-        yield { type: 'done' as const, stopReason: 'end_turn' as const };
-      })();
-    });
-
-    const events = await collect(baseInput({ prepareIteration, callLlm: model(stream) }));
-
-    expect(seen[0]!.maxOutputTokens).toBe(8);
-    expect(seen[1]!.maxOutputTokens).toBe(64);
-    expect(seenMessages[1]!.some((message) => (
-      typeof message.content === 'string' && message.content.includes('继续输出剩余内容')
-    ))).toBe(false);
-    expect(events).toContainEqual({
-      type: 'assistant_message_discarded',
-      reason: 'max_tokens_retry',
-    });
-    expect(terminalEvent(events)?.finalText).toBe('完整答案');
-  });
-
-  it('升级后仍截断则注入续写提示并拼接 finalText', async () => {
+  it('max_tokens 截断后注入续写提示并拼接 finalText', async () => {
     const seenMessages: Message[][] = [];
     const prepareIteration = vi.fn(async ({ messages }: PrepareAgentIterationInput) => {
       seenMessages.push([...messages]);
@@ -301,12 +251,7 @@ describe('runAgentLoop', () => {
     const stream = vi.fn(() => (async function* () {
       llmCall += 1;
       if (llmCall === 1) {
-        yield { type: 'text_delta' as const, blockIndex: 0, delta: '作废' };
-        yield { type: 'done' as const, stopReason: 'max_tokens' as const };
-        return;
-      }
-      if (llmCall === 2) {
-        yield { type: 'text_delta' as const, blockIndex: 0, delta: '新前半' };
+        yield { type: 'text_delta' as const, blockIndex: 0, delta: '前半' };
         yield { type: 'done' as const, stopReason: 'max_tokens' as const };
         return;
       }
@@ -316,14 +261,14 @@ describe('runAgentLoop', () => {
 
     const events = await collect(baseInput({ prepareIteration, callLlm: model(stream) }));
 
-    const thirdIteration = seenMessages[2]!;
-    expect(thirdIteration.some((message) => (
+    const secondIteration = seenMessages[1]!;
+    expect(secondIteration.some((message) => (
       typeof message.content === 'string' && message.content.includes('继续输出剩余内容')
     ))).toBe(true);
-    expect(terminalEvent(events)?.finalText).toBe('新前半尾');
+    expect(terminalEvent(events)?.finalText).toBe('前半尾');
   });
 
-  it('升级与续写都失败判 output_recovery_failed 并保留已拼接文本', async () => {
+  it('续写后仍截断判 output_recovery_failed 并保留已拼接文本', async () => {
     const stream = vi.fn(() => (async function* () {
       yield { type: 'text_delta' as const, blockIndex: 0, delta: 'x' };
       yield { type: 'done' as const, stopReason: 'max_tokens' as const };

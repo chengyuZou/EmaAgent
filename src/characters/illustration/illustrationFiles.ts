@@ -2,7 +2,6 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import type { CharacterSettings } from '../settings.js';
 import { CharacterResourceValidationError } from '../errors.js';
 import { sourceBaseName, sourceFileName } from '../resources/resourcePaths.js';
 import {
@@ -20,12 +19,11 @@ export interface ImportedIllustrationFile {
 export async function importIllustrationFile(
   sourceFile: string,
   destinationDirectory: string,
-  limits: CharacterSettings['illustration'],
 ): Promise<ImportedIllustrationFile> {
   const fileName = sourceFileName(sourceFile);
   const destination = path.join(destinationDirectory, fileName);
   await assertImageFile(sourceFile);
-  const byteSize = await copyResourceFile(sourceFile, destination, limits.maxBytes);
+  const byteSize = await copyResourceFile(sourceFile, destination);
   return { fileName, displayName: sourceBaseName(sourceFile), byteSize };
 }
 

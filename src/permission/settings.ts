@@ -14,7 +14,7 @@ export const permissionModeSetting = defineSetting({
 });
 
 export const DEFAULT_PERMISSION_ASK_TIMEOUT_MS: null = null;
-export const MIN_PERMISSION_ASK_TIMEOUT_MS = 5_000;
+export const MIN_PERMISSION_ASK_TIMEOUT_MS = 200_000;
 export const MAX_PERMISSION_ASK_TIMEOUT_MS = 600_000;
 
 const RULE_FORMAT_HINT = '格式："Tool" 或 "Tool(content)"，如 Bash(npm test:*)、Read(./src/**)';
@@ -32,11 +32,11 @@ export const permissionRulesUserAllowSetting = defineSetting({
 export const permissionRulesUserDenySetting = defineSetting({
   key: 'permission.rules.user.deny',
   label: '全局拒绝规则',
-  description: '全局 deny 规则：命中即拒绝（优先级最高，bypass 也救不了）。格式："Tool" 或 "Tool(content)"。',
+  description: '全局 deny 规则：命中即拒绝（优先级最高）。格式："Tool" 或 "Tool(content)"。',
   apply: 'nextTurn',
   defaultValue: [] as string[],
   schema: z.array(z.string())
-    .describe(`全局 deny 规则：命中即拒绝（优先级最高，bypass 也救不了）。${RULE_FORMAT_HINT}`),
+    .describe(`全局 deny 规则：命中即拒绝（优先级最高）。${RULE_FORMAT_HINT}`),
 });
 
 export const permissionRulesUserAskSetting = defineSetting({

@@ -79,10 +79,6 @@ function makeInput(options: {
     narrativePolicy: 'off' as const,
     workspaceRoot: '/w',
     budget: {
-      assertWithinLimits: () => undefined,
-      remainingOutputTokens: () => 1_000,
-      recordUsage: () => undefined,
-      reserveToolCall: () => undefined,
       enterSubagent: () => () => undefined,
     },
     prepareSubagent: async () => { throw new Error('不应派生子 Agent'); },

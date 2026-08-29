@@ -184,12 +184,12 @@ export function dispatchTurnEvent(event: TurnSseEvent, sessionId: string): void 
     // ── 情绪 / 舞台 ───────────────────────────────────────────────────────
 
     case 'emotion_changed':
-      currentSession.setEmotion(sessionId, event.state);
+      currentSession.setEmotion(sessionId, event.emotion);
       break;
 
-    case 'stage_cue':
+    case 'motion_changed':
       if (sessionId === currentSession.ttsOwnerSessionId) {
-        void tauriBridge.emit('stage:cue', event.cue);
+        void tauriBridge.emit('stage:motion-changed', { motion: event.motion });
       }
       break;
 

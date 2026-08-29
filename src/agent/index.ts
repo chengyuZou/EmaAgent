@@ -43,8 +43,6 @@ export {
   agentLimitsGroup,
   chatMaxIterationsSetting,
   maxConcurrentSubagentsSetting,
-  maxSubagentsSetting,
-  maxToolCallsSetting,
   readAgentSettings,
   thinkingEffortSetting,
   workMaxIterationsSetting,

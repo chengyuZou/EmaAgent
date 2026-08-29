@@ -53,6 +53,9 @@ export function Live2DTab({ character }: { character: Character }): JSX.Element 
               内置角色模型为只读,不可导入 / 改主用。
             </p>
           )}
+          <p className="text-xs text-[var(--ema-text-tertiary)] mb-1">
+            手改模型目录里的 runtime-config.json 后,点该行的"重读配置"生效。
+          </p>
           {models.map((v) => (
             <EntityRow key={v.id} decorate="ema-card-decorate--mesh" className="p-3">
               <div className="flex items-center justify-between gap-2">
@@ -62,22 +65,36 @@ export function Live2DTab({ character }: { character: Character }): JSX.Element 
                   {!v.enabled && <Badge variant="warn">已停用</Badge>}
                 </div>
                 {!isBuiltin && (
-                  <ResourceActions
-                    isPrimary={v.isPrimary}
-                    enabled={v.enabled}
-                    busy={busy}
-                    onSetPrimary={() => run(() =>
-                      useCharacterStore.getState().setPrimaryLive2d(character.id, v.id))}
-                    onToggleEnabled={() => run(() =>
-                      useCharacterStore.getState().patchLive2d(character.id, v.id, { enabled: !v.enabled }))}
-                    onExport={(directory) => run(async () => {
-                      const exported = await useCharacterStore.getState().exportLive2d(character.id, v.id, directory);
-                      showToast(`已导出到 ${exported}`, { variant: 'success' });
-                    })}
-                    onDelete={() => run(() =>
-                      useCharacterStore.getState().deleteLive2d(character.id, v.id))}
-                    deleteConfirmMessage={`删除 Live2D 模型「${v.name}」后不可恢复。`}
-                  />
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon="i-mdi:refresh"
+                      disabled={busy}
+                      onClick={() => run(async () => {
+                        await useCharacterStore.getState().reloadLive2dConfig(character.id, v.id);
+                        showToast('已重新读取 runtime-config.json', { variant: 'success' });
+                      })}
+                    >
+                      重读配置
+                    </Button>
+                    <ResourceActions
+                      isPrimary={v.isPrimary}
+                      enabled={v.enabled}
+                      busy={busy}
+                      onSetPrimary={() => run(() =>
+                        useCharacterStore.getState().setPrimaryLive2d(character.id, v.id))}
+                      onToggleEnabled={() => run(() =>
+                        useCharacterStore.getState().patchLive2d(character.id, v.id, { enabled: !v.enabled }))}
+                      onExport={(directory) => run(async () => {
+                        const exported = await useCharacterStore.getState().exportLive2d(character.id, v.id, directory);
+                        showToast(`已导出到 ${exported}`, { variant: 'success' });
+                      })}
+                      onDelete={() => run(() =>
+                        useCharacterStore.getState().deleteLive2d(character.id, v.id))}
+                      deleteConfirmMessage={`删除 Live2D 模型「${v.name}」后不可恢复。`}
+                    />
+                  </div>
                 )}
               </div>
               <p className="text-xs text-[var(--ema-text-tertiary)] mt-1 font-mono truncate">

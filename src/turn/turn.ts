@@ -63,10 +63,6 @@ import type {
   TurnOutcome,
 } from './types.js';
 
-/** 本包常量预算；工具/子 Agent 额度来自 agent 包 settings，时长与输出上限 V1 不做设置项。 */
-const DEFAULT_MAX_DURATION_MS = 30 * 60_000;
-const DEFAULT_MAX_OUTPUT_TOKENS = 200_000;
-
 /**
  * Reminder 事实的作用域：git/任务/scratchpad 等工作区与 Session 事实、Narrative 召回
  * 所需的用户输入、以及召回事件的 Turn 事件流出口，全部按 Turn 绑定。
@@ -112,7 +108,7 @@ export interface TurnExecutorDeps extends PrepareTurnDeps {
   readonly usageRecorder?: UsageRecorder;
   /**
    * 角色舞台：text delta 在落库与发射前经它剥离表现标签（cleaned 是唯一持久化与
-   * 发射形态），emotion_changed/stage_cue 随流发出。缺省时 delta 原样透传。
+   * 发射形态），emotion_changed/motion_changed 随流发出。缺省时 delta 原样透传。
    */
   readonly stage?: StageEngine;
   /**
@@ -240,13 +236,9 @@ export class TurnExecutor {
         narrativePolicy: turn.narrativePolicy,
       });
 
-      // 预算的额度来自 agent 包 settings（settings 直读 µs 级；prepareTurn 内部也会冻结同一份）。
+      // 并发坑位额度来自 agent 包 settings（settings 直读 µs 级；prepareTurn 内部也会冻结同一份）。
       const agentSettings = readAgentSettings(this.deps.settings);
       const budget = new TurnBudget({
-        maxDurationMs: DEFAULT_MAX_DURATION_MS,
-        maxOutputTokens: DEFAULT_MAX_OUTPUT_TOKENS,
-        maxToolCalls: agentSettings.maxToolCalls,
-        maxSubagents: agentSettings.maxSubagents,
         maxConcurrentSubagents: agentSettings.maxConcurrentSubagents,
       });
       // compact 闭包按 Turn 创建一次（内部含失败熔断计数）；prepared 就绪前延迟求值。
@@ -400,7 +392,6 @@ export class TurnExecutor {
         prepared,
         compact: compactForTurn,
         emit,
-        budget,
         usageRecorder: this.deps.usageRecorder,
         baselineMessageCount: historyWithIds.length,
         // 根 Turn 的 Macro 摘要落 Session：身份数组供 summarizedMessageCount 映射覆盖游标。
@@ -491,7 +482,7 @@ export class TurnExecutor {
 
       // 扫描器未闭合尾部按正文释放：与 cleaned 同待遇（落库 + 发射），不吞模型输出。
       if (stage) {
-        const { cleaned } = stage.flush(turnId, sessionId);
+        const { cleaned } = stage.flush(sessionId);
         if (cleaned.length > 0) {
           const flushed: AgentLoopEvent = {
             type: 'text_delta',

@@ -1,6 +1,6 @@
 // Chat 工作区框架：MainRow(聊天列 + RightDock) + BottomDock、跨 Dock 保状态的标签池，
 // 以及 RightDock 全宽展开模式下的 ChatInput 浮动条。
-import { useState, type JSX, type ReactNode } from 'react';
+import { useCallback, useState, type JSX, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
 import { Button } from '@ema-agent/ui';
@@ -8,11 +8,14 @@ import { isRightFullWidth, useDockTabs, type DockTab } from './dockTabs.js';
 import { Dock } from './Dock.js';
 import { ReviewPanel } from './tabs/review/ReviewPanel.js';
 import { FilesPanel } from './tabs/files/FilesPanel.js';
-import { SourcesPanel } from './tabs/sources/SourcesPanel.js';
+import { SessionAttachmentsPanel } from './tabs/attachments/SessionAttachmentsPanel.js';
+import { SessionTasksPanel } from './tabs/tasks/SessionTasksPanel.js';
 import { AgentRunPanel } from './tabs/agentRuns/AgentRunPanel.js';
 import { BackgroundProcessesPanel } from './tabs/processes/BackgroundProcessesPanel.js';
 import { FilePreview } from './tabs/files/FilePreview.js';
 import { SessionAttachmentPreview } from './tabs/files/SessionAttachmentPreview.js';
+import { TerminalPanel } from './tabs/terminal/TerminalPanel.js';
+import { BrowserPanel } from './tabs/browser/BrowserPanel.js';
 
 export interface ChatFrameProps {
   sessionId: string | null;
@@ -41,6 +44,13 @@ export function ChatFrame({
 
   // ChatInput 浮动条的展开/合上是当次状态，不写布局记忆。
   const [floatExpanded, setFloatExpanded] = useState(false);
+  const [launcherOpen, setLauncherOpen] = useState({ right: false, bottom: false });
+  const onRightLauncherChange = useCallback((open: boolean) => {
+    setLauncherOpen((state) => state.right === open ? state : { ...state, right: open });
+  }, []);
+  const onBottomLauncherChange = useCallback((open: boolean) => {
+    setLauncherOpen((state) => state.bottom === open ? state : { ...state, bottom: open });
+  }, []);
 
   const pool = layout
     ? Object.values(layout.tabsById).map((tab) => {
@@ -50,9 +60,9 @@ export function ChatFrame({
         if (!dock) return null;
         const target = dock === 'right' ? rightEl : bottomEl;
         if (!target) return null;
-        const active = dock === 'right'
-          ? layout.activeRightTabId === tab.id
-          : layout.activeBottomTabId === tab.id;
+        const active = !launcherOpen[dock] && (dock === 'right'
+          ? layout.rightOpen && layout.activeRightTabId === tab.id
+          : layout.bottomOpen && layout.activeBottomTabId === tab.id);
         // 全部标签常驻各自 Dock，激活项显示、其余 hidden；
         // 跨 Dock 移动只换 portal 目标，组件实例不重建，内部状态保留。
         return createPortal(
@@ -60,6 +70,7 @@ export function ChatFrame({
             <DockTabContent
               tab={tab}
               sessionId={sessionId}
+              visible={active}
               onOpenFiles={sessionId ? () => useDockTabs.getState().openTab(sessionId, { id: 'files', kind: 'files' }) : undefined}
             />
           </div>,
@@ -95,9 +106,15 @@ export function ChatFrame({
           {...(sessionId && !fullWidth && (layout?.rightTabOrder.length ?? 0) > 0
             ? { onExpandFullWidth: () => setFullWidth(sessionId, true) }
             : {})}
+          onLauncherChange={onRightLauncherChange}
         />
       </div>
-      <Dock sessionId={sessionId} dock="bottom" contentRef={setBottomEl} />
+      <Dock
+        sessionId={sessionId}
+        dock="bottom"
+        contentRef={setBottomEl}
+        onLauncherChange={onBottomLauncherChange}
+      />
       {pool}
       {historyPortal}
       {inputPortal}
@@ -134,10 +151,11 @@ export function ChatFrame({
 // 新能力获得真实运行时后在此登记；没有真实内容源的类型渲染明确说明，不伪造。
 
 function DockTabContent({
-  tab, sessionId, onOpenFiles,
+  tab, sessionId, visible, onOpenFiles,
 }: {
   tab: DockTab;
   sessionId: string | null;
+  visible: boolean;
   onOpenFiles?: () => void;
 }): JSX.Element {
   switch (tab.kind) {
@@ -158,30 +176,21 @@ function DockTabContent({
       return sessionId
         ? <SessionAttachmentPreview sessionId={sessionId} attachmentId={tab.attachmentId} />
         : <div className="p-3 text-xs text-[var(--ema-text-tertiary)]">请先选择会话</div>;
-    case 'sources':
-      return <SourcesPanel sessionId={sessionId as string | null} />;
+    case 'attachments':
+      return <SessionAttachmentsPanel sessionId={sessionId} />;
+    case 'tasks':
+      return <SessionTasksPanel sessionId={sessionId} />;
     case 'backgroundProcesses':
       return <BackgroundProcessesPanel sessionId={sessionId as string | null} />;
     case 'agentRuns':
-      return <AgentRunPanel className="p-2" />;
+      return <AgentRunPanel sessionId={sessionId} className="p-2" />;
     case 'agentRun':
-      return <AgentRunPanel className="p-2" initialDetailId={tab.agentRunId} />;
+      return <AgentRunPanel sessionId={sessionId} className="p-2" initialDetailId={tab.agentRunId} />;
     case 'terminal':
+      return <TerminalPanel terminalId={tab.terminalId} />;
     case 'browser':
-      // terminal/browser 标签 V1 不提供入口：类型与标签壳保留不删,仅防御历史持久层
-      // 残留或手工构造的标签,如实告知未实现,不渲染假能力。
-      return <DeferredCapabilityNotice kind={tab.kind} />;
+      return sessionId
+        ? <BrowserPanel sessionId={sessionId} browserId={tab.browserId} initialUrl={tab.url} visible={visible} />
+        : <div className="p-3 text-xs text-[var(--ema-text-tertiary)]">请先选择会话</div>;
   }
-}
-
-function DeferredCapabilityNotice({ kind }: { kind: 'terminal' | 'browser' }): JSX.Element {
-  const label = kind === 'terminal' ? '终端' : '浏览器';
-  const icon = kind === 'terminal' ? 'i-lucide:terminal' : 'i-lucide:globe';
-  return (
-    <div className="flex-1 flex flex-col items-center justify-center gap-2 text-xs text-[var(--ema-text-tertiary)]">
-      <span className={`${icon} text-2xl opacity-40`} aria-hidden />
-      <span>{label}功能暂未实现</span>
-      <span className="opacity-70">将在 V1 正式版提供,内测版不开放</span>
-    </div>
-  );
 }

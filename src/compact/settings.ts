@@ -9,7 +9,6 @@ import { z } from 'zod';
 
 /** 根 Turn 冻结的自动压缩预算、保留窗口与失败熔断设置。 */
 export interface CompactSettings {
-  readonly enabled: boolean;
   /** 触发线余量比例：估算达到窗口的 (1 - bufferRatio) 即压缩；默认 0.15 即 85%。 */
   readonly bufferRatio: number;
   /** Macro 摘要调用的输出 token 预算；实际发送按剩余空间裁剪。 */
@@ -24,16 +23,6 @@ export interface CompactSettings {
 // 直读），不属于随每次请求传递的压缩算法设置，故不在本快照内。
 
 export const COMPACT_GROUP = 'context.compact';
-
-export const compactEnabledSetting = defineSetting<boolean>({
-  key: 'context.compact.enabled',
-  label: '自动压缩',
-  description: '自动压缩开关：达到预算时自动压缩上下文。',
-  apply: 'nextTurn',
-  defaultValue: true,
-  schema: z.boolean(),
-  group: COMPACT_GROUP,
-});
 
 export const compactBufferRatioSetting = defineSetting<number>({
   key: 'context.compact.bufferRatio',
@@ -78,7 +67,7 @@ export const compactMaximumConsecutiveFailuresSetting = defineSetting<number>({
 export const compactRetainRatioSetting = defineSetting<number>({
   key: 'context.compact.retainRatio',
   label: '近期原文保留比例',
-  description: '压缩时按上下文窗口比例保留近期原文尾部；硬预算放不下时会继续扩大摘要范围。',
+  description: '压缩时按上下文窗口比例保留近期原文尾部Token数；硬预算放不下时会继续扩大摘要范围。',
   apply: 'nextTurn',
   defaultValue: 0.16,
   schema: z.number().min(0.05).max(0.25),
@@ -97,7 +86,6 @@ export const compactManualMinRatioSetting = defineSetting<number>({
 
 /** context.compact 组内全部字段定义(供 SettingsStore 注册组)。 */
 export const COMPACT_SETTINGS = [
-  compactEnabledSetting,
   compactBufferRatioSetting,
   compactOutputTokensSetting,
   compactKeepRecentToolResultsSetting,
@@ -123,7 +111,6 @@ export const compactGroup: SettingGroup = {
 
 /** 整组默认快照(供消费方默认参数与测试),单一事实源是各 setting 的 defaultValue。 */
 export const DEFAULT_COMPACT_SETTINGS: CompactSettings = {
-  enabled: compactEnabledSetting.defaultValue,
   bufferRatio: compactBufferRatioSetting.defaultValue,
   outputTokens: compactOutputTokensSetting.defaultValue,
   keepRecentToolResults: compactKeepRecentToolResultsSetting.defaultValue,
@@ -134,7 +121,6 @@ export const DEFAULT_COMPACT_SETTINGS: CompactSettings = {
 /** 聚合读取整块压缩预算快照(坏值/缺失自动回落默认)。 */
 export function readCompactSettings(store: SettingsStore): CompactSettings {
   return {
-    enabled: store.get(compactEnabledSetting),
     bufferRatio: store.get(compactBufferRatioSetting),
     outputTokens: store.get(compactOutputTokensSetting),
     keepRecentToolResults: store.get(compactKeepRecentToolResultsSetting),

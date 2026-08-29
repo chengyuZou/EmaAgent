@@ -2,6 +2,7 @@
 import type { JSX } from 'react';
 import { EventDisplaySettings } from './EventDisplaySettings.js';
 import { SandboxStatusSettings } from './SandboxStatusSettings.js';
+import { TerminalShellSettings } from './TerminalShellSettings.js';
 
 export function GeneralTab(): JSX.Element {
   return (
@@ -14,6 +15,9 @@ export function GeneralTab(): JSX.Element {
       </header>
 
       <SandboxStatusSettings />
+
+      <div className="h-px bg-[var(--ema-border)]" />
+      <TerminalShellSettings />
 
       <div className="h-px bg-[var(--ema-border)]" />
       <EventDisplaySettings />

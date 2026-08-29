@@ -13,13 +13,16 @@ export interface ValidatedVoiceSample {
 
 export async function validateVoiceSampleFile(
   filePath: string,
-  limits: CharacterSettings['voice'],
+  settings: CharacterSettings,
 ): Promise<ValidatedVoiceSample> {
   const stat = await fs.promises.lstat(filePath);
   if (!stat.isFile() || stat.isSymbolicLink()) {
     throw new CharacterResourceValidationError('source_file_required');
   }
-  if (stat.size <= 0 || stat.size > limits.maxBytes) {
+  if (stat.size <= 0) {
+    throw new CharacterResourceValidationError('invalid_resource_values');
+  }
+  if (stat.size > settings.characterVoiceMaxBytes) {
     throw new CharacterResourceValidationError('resource_too_large');
   }
   const head = await readRange(filePath, 0, Math.min(stat.size, 1024 * 1024));
@@ -27,7 +30,7 @@ export async function validateVoiceSampleFile(
   if (
     !Number.isFinite(detected.durationMs)
     || detected.durationMs <= 0
-    || detected.durationMs > limits.maxDurationMs
+    || detected.durationMs > settings.characterVoiceMaxDurationMs
   ) {
     throw new CharacterResourceValidationError('voice_duration_invalid');
   }

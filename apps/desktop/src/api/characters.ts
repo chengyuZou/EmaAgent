@@ -106,6 +106,15 @@ export const charactersApi = {
     }));
   },
 
+  /** 用户手改 runtime-config.json 后显式重读：词汇写回 SQL 并刷新舞台。 */
+  reloadLive2dConfig(id: string, resourceId: string) {
+    return readRpcJson(
+      rpcClient.api.characters[':id'].live2d[':resourceId']['reload-config'].$post({
+        param: { id, resourceId },
+      }),
+    );
+  },
+
   /** 导出 Live2D 模型目录 zip 到目标目录。 */
   exportLive2d(id: string, resourceId: string, destinationDirectory: string): Promise<Live2dExportResult> {
     return readRpcJson(rpcClient.api.characters[':id'].live2d[':resourceId'].export.$post({

@@ -1,5 +1,5 @@
 // 实现 agent PrepareAgentIteration 的根 Turn 装配：assemble → 超限则 compact → 落摘要 → 再 assemble。
-import type { AgentBudget, PrepareAgentIteration } from '@ema-agent/agent';
+import type { PrepareAgentIteration } from '@ema-agent/agent';
 import type { CompactRequest, CompactResult } from '@ema-agent/compact';
 import {
   assembleContext,
@@ -18,7 +18,6 @@ export interface PrepareLlmCallDeps {
   readonly prepared: PreparedTurn;
   readonly compact: (request: CompactRequest) => Promise<CompactResult>;
   readonly emit: (event: TurnStreamEvent) => void;
-  readonly budget: AgentBudget;
   /** 摘要调用记账；缺省不记账（观测不阻断主链）。 */
   readonly usageRecorder?: UsageRecorder;
   /** 初始工作历史中属于"历史区间"的条数（其后为本 Turn 工作消息）。 */
@@ -62,10 +61,6 @@ export function createPrepareLlmCall(deps: PrepareLlmCallDeps): PrepareAgentIter
   return async ({ llmCallId, messages, recoveryReason }) => {
     const history = messages.slice(0, baselineCount);
     const currentTurn = messages.slice(baselineCount);
-
-    const maxOutputTokens = prepared.maxOutput !== null
-      ? Math.min(deps.budget.remainingOutputTokens(), prepared.maxOutput)
-      : deps.budget.remainingOutputTokens();
 
     const assemble = (historyPart: readonly Message[]): PreparedContext =>
       assembleContext({
@@ -160,7 +155,8 @@ export function createPrepareLlmCall(deps: PrepareLlmCallDeps): PrepareAgentIter
         messages: assembled.messages,
         tools: assembled.tools,
         ...(prepared.thinking ? { thinking: prepared.thinking } : {}),
-        maxOutputTokens,
+        // 输出上限直接取模型行 maxOutput；模型行未填时不设上限。
+        ...(prepared.maxOutput !== null ? { maxOutputTokens: prepared.maxOutput } : {}),
         signal: deps.signal,
       },
       messages: nextMessages,

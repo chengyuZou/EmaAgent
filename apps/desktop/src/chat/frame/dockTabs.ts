@@ -15,13 +15,14 @@ export type DockTab =
   | { id: `file:${string}`; kind: 'file'; path: string }
   | { id: `draftAttachment:${string}`; kind: 'draftAttachment'; attachment: DraftAttachment }
   | { id: `attachment:${string}`; kind: 'attachment'; attachmentId: string }
-  // terminal/browser 标签类型 V1 不提供入口，内容区渲染占位说明，不渲染假能力。
+  // 终端只保存当前进程身份；浏览器额外保存最后 URL，重启后重新创建页面。
   | { id: `terminal:${string}`; kind: 'terminal'; terminalId: string }
-  | { id: `browser:${string}`; kind: 'browser'; browserId: string }
+  | { id: `browser:${string}`; kind: 'browser'; browserId: string; url: string; title?: string }
   // 'agentRuns' 是全 Session 子智能体列表面板；'agentRun:<id>' 是单次执行的深链标签。
   | { id: 'agentRuns'; kind: 'agentRuns' }
   | { id: `agentRun:${string}`; kind: 'agentRun'; agentRunId: string }
-  | { id: 'sources'; kind: 'sources' }
+  | { id: 'attachments'; kind: 'attachments' }
+  | { id: 'tasks'; kind: 'tasks' }
   // 当前 Session 后台进程面板;列表内部导航到单次进程详情。
   | { id: 'backgroundProcesses'; kind: 'backgroundProcesses' };
 
@@ -62,6 +63,14 @@ export function agentRunTab(agentRunId: string): DockTab {
   return { id: `agentRun:${agentRunId}`, kind: 'agentRun', agentRunId };
 }
 
+export function terminalTab(terminalId: string): DockTab {
+  return { id: `terminal:${terminalId}`, kind: 'terminal', terminalId };
+}
+
+export function browserTab(browserId: string, url: string): DockTab {
+  return { id: `browser:${browserId}`, kind: 'browser', browserId, url };
+}
+
 // ── 常量与持久化 ─────────────────────────────────────────────────────────────
 
 export const DEFAULT_RIGHT_WIDTH = 320;
@@ -69,7 +78,7 @@ export const DEFAULT_BOTTOM_HEIGHT = 240;
 export const MIN_RIGHT_WIDTH = 240;
 export const MIN_BOTTOM_HEIGHT = 160;
 
-const STORAGE_KEY = 'ema-workspace-layout-v1';
+const STORAGE_KEY = 'ema-workspace-layout';
 
 interface PersistedLayouts {
   layouts: Record<string, DockLayout>;
@@ -110,7 +119,41 @@ function loadPersisted(): PersistedLayouts {
   }
 }
 
-/** 逐条校验持久化布局，丢弃结构损坏的 Session 条目。 */
+function persistedTab(value: unknown): DockTab | null {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+  const tab = value as Partial<DockTab>;
+  if (typeof tab.id !== 'string' || typeof tab.kind !== 'string') return null;
+  switch (tab.kind) {
+    case 'review':
+    case 'files':
+    case 'attachments':
+    case 'tasks':
+    case 'agentRuns':
+    case 'backgroundProcesses':
+      return tab.id === tab.kind ? tab as DockTab : null;
+    case 'file':
+      return tab.id.startsWith('file:') && typeof (tab as { path?: unknown }).path === 'string'
+        ? tab as DockTab : null;
+    case 'attachment':
+      return tab.id.startsWith('attachment:')
+        && typeof (tab as { attachmentId?: unknown }).attachmentId === 'string'
+        ? tab as DockTab : null;
+    case 'agentRun':
+      return tab.id.startsWith('agentRun:')
+        && typeof (tab as { agentRunId?: unknown }).agentRunId === 'string'
+        ? tab as DockTab : null;
+    case 'browser':
+      return tab.id.startsWith('browser:')
+        && typeof (tab as { browserId?: unknown }).browserId === 'string'
+        && typeof (tab as { url?: unknown }).url === 'string'
+        ? tab as DockTab : null;
+    default:
+      // 草稿附件与终端只属于当前进程。
+      return null;
+  }
+}
+
+/** 只恢复具有跨重启语义的标签；旧结构和临时对象直接丢弃。 */
 function sanitizeLayouts(input: unknown): Record<string, DockLayout> {
   if (input === null || typeof input !== 'object' || Array.isArray(input)) return {};
   const out: Record<string, DockLayout> = {};
@@ -118,8 +161,12 @@ function sanitizeLayouts(input: unknown): Record<string, DockLayout> {
     if (value === null || typeof value !== 'object') continue;
     const v = value as Partial<DockLayout>;
     if (!Array.isArray(v.rightTabOrder) || !Array.isArray(v.bottomTabOrder)) continue;
-    if (v.tabsById === null || typeof v.tabsById !== 'object') continue;
-    const tabsById = v.tabsById as Record<string, DockTab>;
+    if (v.tabsById === null || typeof v.tabsById !== 'object' || Array.isArray(v.tabsById)) continue;
+    const tabsById: Record<string, DockTab> = {};
+    for (const value of Object.values(v.tabsById)) {
+      const tab = persistedTab(value);
+      if (tab) tabsById[tab.id] = tab;
+    }
     const rightTabOrder = v.rightTabOrder.filter((id): id is string => typeof id === 'string' && id in tabsById);
     const bottomTabOrder = v.bottomTabOrder.filter((id): id is string => typeof id === 'string' && id in tabsById);
     out[key] = {
@@ -264,6 +311,10 @@ interface DockState {
   setBottomHeight(height: number): void;
   /** 进入/退出 RightDock 全宽展开；false 也用于折叠后清理。 */
   setFullWidth(sessionId: string, fullWidth: boolean): void;
+  /** 保存浏览器最后地址与标题，使标签和重启恢复都读取同一份事实。 */
+  updateBrowserTab(sessionId: string, browserId: string, patch: { url?: string; title?: string }): void;
+  /** Session 永久删除后移除其布局。 */
+  removeSessionLayout(sessionId: string): void;
 }
 
 export const useDockTabs = create<DockState>((set) => ({
@@ -345,6 +396,37 @@ export const useDockTabs = create<DockState>((set) => ({
       fullWidthBySession: { ...state.fullWidthBySession, [sessionId as string]: fullWidth },
     }));
   },
+
+  updateBrowserTab(sessionId, browserId, patch) {
+    set((state) => {
+      const key = sessionId as string;
+      const layout = state.layouts[key];
+      const tabId = `browser:${browserId}`;
+      const tab = layout?.tabsById[tabId];
+      if (!layout || tab?.kind !== 'browser') return state;
+      const nextTab: DockTab = {
+        ...tab,
+        ...(patch.url !== undefined ? { url: patch.url } : {}),
+        ...(patch.title !== undefined ? { title: patch.title } : {}),
+      };
+      return {
+        layouts: {
+          ...state.layouts,
+          [key]: { ...layout, tabsById: { ...layout.tabsById, [tabId]: nextTab } },
+        },
+      };
+    });
+  },
+
+  removeSessionLayout(sessionId) {
+    set((state) => {
+      const layouts = { ...state.layouts };
+      const fullWidthBySession = { ...state.fullWidthBySession };
+      delete layouts[sessionId];
+      delete fullWidthBySession[sessionId];
+      return { layouts, fullWidthBySession };
+    });
+  },
 }));
 
 // 每次变更直接落盘：布局操作是低频用户动作，无需节流。
@@ -353,7 +435,7 @@ useDockTabs.subscribe((state) => {
   if (!storage) return;
   try {
     storage.setItem(STORAGE_KEY, JSON.stringify({
-      layouts: state.layouts,
+      layouts: sanitizeLayouts(state.layouts),
       rightWidth: state.rightWidth,
       bottomHeight: state.bottomHeight,
     } satisfies PersistedLayouts));

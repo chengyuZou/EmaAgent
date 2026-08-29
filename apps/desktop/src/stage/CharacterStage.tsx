@@ -149,7 +149,6 @@ export function CharacterStage({
     loadNextCandidate,
     view,
     view?.characterId,
-    view?.revision,
     targetCharacterId,
   ]);
 

@@ -1,6 +1,5 @@
 // 测试 prepareLlmCall 的基线切分、compact 改写链与 Macro 摘要游标落库。
 import { describe, expect, it, vi } from 'vitest';
-import type { AgentBudget } from '@ema-agent/agent';
 import type { CompactRequest, CompactResult } from '@ema-agent/compact';
 import type { Message } from '@ema-agent/llm';
 import type { Message as SessionMessage, SessionStore } from '@ema-agent/session';
@@ -56,16 +55,6 @@ function macroCompact(history: Message[], summary: string, count: number) {
   };
 }
 
-function makeBudget(remaining = 50_000): AgentBudget {
-  return {
-    assertWithinLimits: () => undefined,
-    remainingOutputTokens: () => remaining,
-    recordUsage: () => undefined,
-    reserveToolCall: () => undefined,
-    enterSubagent: () => () => undefined,
-  };
-}
-
 function makeDeps(overrides: {
   compact?: (request: CompactRequest) => Promise<CompactResult>;
   prepared?: PreparedTurn;
@@ -78,7 +67,6 @@ function makeDeps(overrides: {
     prepared: overrides.prepared ?? makePrepared(),
     compact: overrides.compact ?? (async request => ({ kind: 'unchanged' as const, history: request.history })),
     emit: vi.fn(),
-    budget: makeBudget(),
     baselineMessageCount: HISTORY.length,
     ...(overrides.withPersistence === false
       ? {}
@@ -227,12 +215,12 @@ describe('prepareLlmCall', () => {
     expect(seen[0]?.force).toBe(true);
   });
 
-  it('输出上限取预算与模型上限的较小者', async () => {
+  it('模型行未填 maxOutput 时请求不设输出上限', async () => {
     const { deps } = makeDeps({ prepared: makePrepared({ maxOutput: null }) });
     const prepare = createPrepareLlmCall(deps);
 
     const result = await prepare({ llmCallId: 'call-1', messages: [...HISTORY, ...CURRENT] });
 
-    expect(result.request.maxOutputTokens).toBe(50_000);
+    expect(result.request.maxOutputTokens).toBeUndefined();
   });
 });

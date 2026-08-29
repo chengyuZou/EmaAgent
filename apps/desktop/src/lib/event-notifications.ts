@@ -79,9 +79,9 @@ export function describeEventNotification(event: NotifiableEvent): EventNotifica
         variant: event.severity === 'error' ? 'danger' : 'warning',
       };
     case 'emotion_changed':
-      return { message: `角色情绪切换为 ${event.state.primary}`, variant: 'info' };
-    case 'stage_cue':
-      return { message: `角色舞台动作：${event.cue.motion ?? event.cue.expression ?? '已更新'}`, variant: 'info' };
+      return { message: `角色情绪切换为 ${event.emotion}`, variant: 'info' };
+    case 'motion_changed':
+      return { message: `角色舞台动作：${event.motion}`, variant: 'info' };
     case 'character_switched':
       return { message: `已切换角色：${event.name}`, variant: 'success' };
     case 'agent_run_started':

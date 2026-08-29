@@ -115,6 +115,10 @@ export class AttachmentStore {
     return this.deps.repo.listByTurn(turnId).map((row) => rowToAttachment(row));
   }
 
+  listBySession(sessionId: string): readonly Attachment[] {
+    return this.deps.repo.listBySession(sessionId).map((row) => rowToAttachment(row));
+  }
+
   getMany(ids: readonly string[]): ReadonlyMap<string, Attachment> {
     const map = new Map<string, Attachment>();
     for (const row of this.deps.repo.findByIds(ids)) {

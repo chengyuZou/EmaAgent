@@ -17,8 +17,8 @@ export const gitReadTimeoutMsSetting = defineSetting<number>({
   label: 'Git 只读超时（毫秒）',
   description: '只读 git 查询超时（毫秒）；超时即报错。',
   apply: 'nextOperation',
-  defaultValue: 5_000,
-  schema: z.number().int().min(1_000).max(120_000),
+  defaultValue: 100_000,
+  schema: z.number().int().min(100_000).max(200_000),
 });
 
 export const gitWriteTimeoutMsSetting = defineSetting<number>({
@@ -27,7 +27,7 @@ export const gitWriteTimeoutMsSetting = defineSetting<number>({
   description: 'git 写操作（init/add/commit/apply）超时（毫秒），给大目录 add -A 留足时间。',
   apply: 'nextOperation',
   defaultValue: 30_000,
-  schema: z.number().int().min(5_000).max(600_000),
+  schema: z.number().int().min(30_000).max(600_000),
 });
 
 export const gitMaxOutputBytesSetting = defineSetting<number>({
@@ -35,8 +35,8 @@ export const gitMaxOutputBytesSetting = defineSetting<number>({
   label: 'Git 输出字节上限',
   description: 'git 命令输出字节上限。',
   apply: 'nextOperation',
-  defaultValue: 4 * 1024 * 1024,
-  schema: z.number().int().min(64 * 1024).max(64 * 1024 * 1024),
+  defaultValue: 16 * 1024 * 1024,
+  schema: z.number().int().min(16 * 1024 * 1024).max(64 * 1024 * 1024),
 });
 
 export const gitDiffContextLinesSetting = defineSetting<number>({
@@ -80,8 +80,8 @@ export const gitDiffMaxUntrackedFilesSetting = defineSetting<number>({
   label: '未跟踪文件 diff 数上限',
   description: '参与 diff 的未跟踪文件数上限。',
   apply: 'nextOperation',
-  defaultValue: 50,
-  schema: z.number().int().min(1).max(1_000),
+  defaultValue: 500,
+  schema: z.number().int().min(500).max(1_000),
 });
 
 export const gitDiffUntrackedConcurrencySetting = defineSetting<number>({

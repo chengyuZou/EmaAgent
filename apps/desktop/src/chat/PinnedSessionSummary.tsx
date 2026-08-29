@@ -1,16 +1,17 @@
-// 置顶摘要浮层：工作区事实、运行活动计数与来源概况，点击打开对应工作区标签。
-// git 数据源待后端恢复：/api/git 路由已删除，git 摘要恒为 null，Git 行 JSX 原样保留。
+// 置顶摘要浮层：当前 Session 的环境、附件、任务和活动索引。
 import { useEffect, useState, type JSX } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 
-import type { GitSummary, GitSummaryOk } from '@ema-agent/git';
+import { sessionGitApi, type SessionGitSummary } from '../api/git.js';
 import { useAgentRunStore } from '../stores/agentRun.js';
 import { useBackgroundProcessStore } from '../stores/backgroundProcess.js';
 import { useSessionAttachmentStore } from '../stores/sessionAttachment.js';
 import { useSessionStore } from '../stores/session.js';
-import { useDockTabs } from './frame/dockTabs.js';
+import { useTaskStore } from '../stores/task.js';
+import { sessionAttachmentTab, useDockTabs } from './frame/dockTabs.js';
+import { openReview } from './frame/tabs/review/reviewNavigation.js';
 
-const SOURCES_PREVIEW_COUNT = 3;
+const ATTACHMENT_PREVIEW_COUNT = 3;
 
 export interface PinnedSessionSummaryProps {
   sessionId: string;
@@ -22,20 +23,49 @@ export function PinnedSessionSummary({ sessionId }: PinnedSessionSummaryProps): 
   const workspaceRoot = useSessionStore((s) =>
     s.sessions.byId.get(sessionId as string)?.workspaceRoot ?? null);
 
-  // Git 摘要:仅 capability=ok 渲染;非仓库、无 git、查询失败都整行隐藏,不展示降级文案。
-  // git 数据源待后端恢复：路由恢复前恒为 null，Git 行保持隐藏；恢复时在此按
-  // sessionId/workspaceRoot 重新拉取 gitApi.getSummary。
-  const [git] = useState<GitSummary | null>(null);
+  const [git, setGit] = useState<SessionGitSummary | null>(null);
+  useEffect(() => {
+    if (!workspaceRoot) {
+      setGit(null);
+      return;
+    }
+    let current = true;
+    void sessionGitApi.summary(sessionId).then((summary) => {
+      if (current) setGit(summary);
+    }).catch(() => {
+      if (current) setGit(null);
+    });
+    return () => { current = false; };
+  }, [sessionId, workspaceRoot]);
 
   const activity = useAgentRunStore(useShallow((s) => {
     let running = 0;
-    let terminal = 0;
+    let ended = 0;
     for (const run of s.runs.values()) {
       if (run.sessionId !== (sessionId as string)) continue;
       if (run.status === 'running') running += 1;
-      else terminal += 1;
+      else ended += 1;
     }
-    return { running, terminal, total: running + terminal };
+    return { running, ended, total: running + ended };
+  }));
+  const loadAgentRuns = useAgentRunStore((s) => s.loadForSession);
+  useEffect(() => {
+    void loadAgentRuns(sessionId);
+  }, [sessionId, loadAgentRuns]);
+
+  const loadTasks = useTaskStore((s) => s.loadForSession);
+  useEffect(() => {
+    void loadTasks(sessionId).catch(() => {});
+  }, [sessionId, loadTasks]);
+  const taskActivity = useTaskStore(useShallow((s) => {
+    const tasks = s.tasksBySession.get(sessionId);
+    let active = 0;
+    let completed = 0;
+    for (const task of tasks?.values() ?? []) {
+      if (task.status === 'pending' || task.status === 'in_progress') active += 1;
+      else completed += 1;
+    }
+    return { active, completed, total: active + completed };
   }));
 
   const attachments = useSessionAttachmentStore((s) =>
@@ -52,53 +82,54 @@ export function PinnedSessionSummary({ sessionId }: PinnedSessionSummaryProps): 
   }, [sessionId, loadProcesses]);
   const processes = useBackgroundProcessStore(useShallow((s) => {
     let running = 0;
-    let terminal = 0;
+    let ended = 0;
     for (const p of s.listsBySession.get(sessionId as string)?.processes ?? []) {
       if (p.status === 'running' || p.status === 'queued') running += 1;
-      else terminal += 1;
+      else ended += 1;
     }
-    return { running, terminal, total: running + terminal };
+    return { running, ended, total: running + ended };
   }));
 
   return (
     <div className="flex flex-col gap-3 p-3 text-xs">
-      {/* 环境信息：本地行恒在;Git 行只在真实仓库摘要(ok)时出现,点击打开 review 标签。 */}
-      <section>
-        <SectionTitle label="环境信息" />
-        <div className="flex items-center gap-2 px-1 py-0.5 text-[var(--ema-text-secondary)]">
-          <span className="i-lucide:monitor text-sm shrink-0 text-[var(--ema-text-tertiary)]" aria-hidden />
-          <span className="shrink-0">本地</span>
-          {workspaceRoot && (
-            <span className="truncate text-[var(--ema-text-tertiary)]" title={workspaceRoot}>
-              {workspaceRoot}
-            </span>
-          )}
-        </div>
-        {git?.capability === 'ok' && (
-          <>
-            <SummaryRow
-              icon="i-lucide:git-branch"
-              label={git.branch ?? (git.headShortSha ? `detached @ ${git.headShortSha}` : '空仓库')}
-              onClick={() => openTab(sessionId, { id: 'review', kind: 'review' })}
-            >
+      {workspaceRoot && (
+        <section>
+          <SectionTitle label="环境信息" />
+          {git?.capability === 'ok' && (
+            <SummaryRow icon="i-lucide:file-diff" label="变更" onClick={() => openReview(sessionId, { kind: 'workspace' })}>
               <GitChangeCounts git={git} />
             </SummaryRow>
-            {git.originUrl && (
-              <div className="flex items-center gap-2 px-1 py-0.5 text-[var(--ema-text-secondary)]">
-                <span className="i-lucide:cloud text-sm shrink-0 text-[var(--ema-text-tertiary)]" aria-hidden />
-                <span className="shrink-0">远端</span>
-                <span className="truncate text-[var(--ema-text-tertiary)]" title={git.originUrl}>
-                  {git.originUrl}
-                </span>
-              </div>
-            )}
-          </>
-        )}
-      </section>
+          )}
+          <SummaryRow icon="i-lucide:monitor" label="本地" onClick={() => openTab(sessionId, { id: 'files', kind: 'files' })}>
+            <span className="truncate text-[var(--ema-text-tertiary)]" title={workspaceRoot}>{workspaceRoot}</span>
+          </SummaryRow>
+          {git?.capability === 'ok' && (
+            <div className="flex items-center gap-2 px-1 py-0.5 text-[var(--ema-text-secondary)]">
+              <span className="i-lucide:git-branch shrink-0 text-sm text-[var(--ema-text-tertiary)]" aria-hidden />
+              <span className="truncate">{git.branch ?? (git.headShortSha ? `detached @ ${git.headShortSha}` : '空仓库')}</span>
+            </div>
+          )}
+        </section>
+      )}
 
-      {/* 运行活动：子智能体与后台进程,计数同源各自 store,点击打开对应标签。 */}
+      {/* Session 活动只做轻量索引，详情进入对应 Dock 标签。 */}
       <section>
-        <SectionTitle label="运行活动" />
+        <SectionTitle label="Session 活动" />
+        <SummaryRow
+          icon="i-lucide:list-checks"
+          label="任务"
+          disabled={taskActivity.total === 0}
+          onClick={() => openTab(sessionId, { id: 'tasks', kind: 'tasks' })}
+        >
+          {taskActivity.total === 0 ? (
+            <span className="text-[var(--ema-text-tertiary)]">无记录</span>
+          ) : (
+            <>
+              {taskActivity.active > 0 && <span className="text-[var(--ema-primary)]">● {taskActivity.active} 进行中</span>}
+              {taskActivity.completed > 0 && <span className="text-[var(--ema-text-tertiary)]">○ {taskActivity.completed} 已结束</span>}
+            </>
+          )}
+        </SummaryRow>
         <SummaryRow
           icon="i-solar:cpu-bold-duotone"
           label="子智能体"
@@ -112,8 +143,8 @@ export function PinnedSessionSummary({ sessionId }: PinnedSessionSummaryProps): 
               {activity.running > 0 && (
                 <span className="text-[var(--ema-primary)]">● {activity.running} 运行中</span>
               )}
-              {activity.terminal > 0 && (
-                <span className="text-[var(--ema-text-tertiary)]">○ {activity.terminal} 已完成</span>
+              {activity.ended > 0 && (
+                <span className="text-[var(--ema-text-tertiary)]">○ {activity.ended} 已结束</span>
               )}
             </>
           )}
@@ -131,17 +162,17 @@ export function PinnedSessionSummary({ sessionId }: PinnedSessionSummaryProps): 
               {processes.running > 0 && (
                 <span className="text-[var(--ema-primary)]">● {processes.running} 运行中</span>
               )}
-              {processes.terminal > 0 && (
-                <span className="text-[var(--ema-text-tertiary)]">○ {processes.terminal} 已结束</span>
+              {processes.ended > 0 && (
+                <span className="text-[var(--ema-text-tertiary)]">○ {processes.ended} 已结束</span>
               )}
             </>
           )}
         </SummaryRow>
       </section>
 
-      {/* 来源：当前 Session 的附件，截断后由"查看全部"打开 sources 标签。 */}
+      {/* 附件预览可直接打开，完整列表进入附件标签。 */}
       <section>
-        <SectionTitle label="来源" />
+        <SectionTitle label="附件" />
         {attachments === undefined ? (
           <div className="px-1 py-0.5 text-[var(--ema-text-tertiary)]">加载中…</div>
         ) : attachments.length === 0 ? (
@@ -149,23 +180,24 @@ export function PinnedSessionSummary({ sessionId }: PinnedSessionSummaryProps): 
         ) : (
           <>
             <div className="flex flex-col gap-0.5">
-              {attachments.slice(0, SOURCES_PREVIEW_COUNT).map((a) => (
-                <div
+              {attachments.slice(0, ATTACHMENT_PREVIEW_COUNT).map((a) => (
+                <button
                   key={a.id}
-                  className="flex items-center gap-2 px-1 py-0.5 text-[var(--ema-text-secondary)]"
+                  className="flex w-full items-center gap-2 rounded-md px-1 py-0.5 text-left text-[var(--ema-text-secondary)] transition-colors hover:bg-[var(--ema-surface-2)]"
                   title={a.name}
+                  onClick={() => openTab(sessionId, sessionAttachmentTab(a.id))}
                 >
                   <span className={`${attachmentIcon(a.mimeType)} text-sm shrink-0 text-[var(--ema-text-tertiary)]`} aria-hidden />
                   <span className="truncate">{a.name}</span>
-                </div>
+                </button>
               ))}
             </div>
             <button
               className="flex items-center gap-1.5 px-1 pt-1 text-[var(--ema-primary)] hover:text-[var(--ema-primary-hover)] transition-colors"
-              onClick={() => openTab(sessionId, { id: 'sources', kind: 'sources' })}
+              onClick={() => openTab(sessionId, { id: 'attachments', kind: 'attachments' })}
             >
               <span className="i-lucide:link text-xs" aria-hidden />
-              查看全部{attachments.length > SOURCES_PREVIEW_COUNT ? `（${attachments.length}）` : ''}
+              查看全部{attachments.length > ATTACHMENT_PREVIEW_COUNT ? `（${attachments.length}）` : ''}
             </button>
           </>
         )}
@@ -209,7 +241,7 @@ function SummaryRow({
 }
 
 /** Git 行的变更计数:合并未暂存与已暂存,全零时如实显示"无变更"。 */
-function GitChangeCounts({ git }: { git: GitSummaryOk }): JSX.Element {
+function GitChangeCounts({ git }: { git: Extract<SessionGitSummary, { capability: 'ok' }> }): JSX.Element {
   const files = git.unstaged.filesChanged + git.staged.filesChanged;
   const insertions = git.unstaged.insertions + git.staged.insertions;
   const deletions = git.unstaged.deletions + git.staged.deletions;

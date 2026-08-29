@@ -33,11 +33,11 @@ export const maxFilesPerTurnSetting = defineSetting<number>({
 export const maxImageBytesSetting = defineSetting<number>({
   key: 'attachments.input.maxImageBytes',
   label: '单张图片体积上限',
-  description: '单张图片字节上限（产品硬上限 5 MiB，设置只能在硬上限以内调小）。',
+  description: '单张图片字节上限（产品硬上限 10 MiB，设置只能在硬上限以内调小）。',
   apply: 'nextTurn',
-  defaultValue: 5 * 1024 * 1024,
-  // 产品硬上限：单图 5 MiB；设置只允许在硬上限以内调小。
-  schema: z.number().int().min(1024 * 1024).max(5 * 1024 * 1024),
+  defaultValue: 10 * 1024 * 1024,
+  // 产品硬上限：单图 10 MiB；设置只允许在硬上限以内调小。
+  schema: z.number().int().min(1024 * 1024).max(10 * 1024 * 1024),
 });
 
 export const DEFAULT_ATTACHMENT_INPUT_SETTINGS: AttachmentInputSettings = {

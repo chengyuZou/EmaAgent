@@ -1,6 +1,7 @@
 // 角色三类资源（Live2D/立绘/参考音频）的管理与文件服务。
 import fs from 'node:fs';
 import path from 'node:path';
+import { Readable } from 'node:stream';
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import type { CharacterStore } from '@ema-agent/characters';
@@ -12,6 +13,7 @@ export interface CharacterResourcesRouteDeps {
     CharacterStore,
     | 'setPrimaryLive2dModel' | 'updateLive2dModel' | 'importLive2dModel' | 'exportLive2dModel'
     | 'deleteLive2dModel' | 'resolveLive2dModelDirectory' | 'resolveLive2dModelFile'
+    | 'reloadLive2dVocabulary'
     | 'setPrimaryIllustration' | 'updateIllustration' | 'importIllustration' | 'exportIllustration'
     | 'deleteIllustration' | 'resolveIllustrationFile'
     | 'setPrimaryVoiceSample' | 'updateVoiceSample' | 'importVoiceSample' | 'publishVoiceSample'
@@ -55,14 +57,15 @@ const MIME_BY_EXT: Record<string, string> = {
 };
 
 /** 角色资源文件流式返回；路径一律由 CharacterStore 解析，前端不传路径。 */
-function serveFile(context: Context, filePath: string): Response {
-  if (!fs.existsSync(filePath)) {
+async function serveFile(context: Context, filePath: string): Promise<Response> {
+  const stat = await fs.promises.stat(filePath).catch(() => null);
+  if (!stat?.isFile()) {
     return context.json({ error: 'resource_file_missing' }, 404);
   }
-  const stat = fs.statSync(filePath);
   const ext = path.extname(filePath).toLowerCase();
   const mime = MIME_BY_EXT[ext] ?? 'application/octet-stream';
-  return new Response(fs.readFileSync(filePath), {
+  const body = Readable.toWeb(fs.createReadStream(filePath)) as ReadableStream;
+  return new Response(body, {
     headers: { 'Content-Type': mime, 'Content-Length': String(stat.size), 'Cache-Control': 'no-store' },
   });
 }
@@ -96,6 +99,15 @@ export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
       run(context, async () => {
         const deleted = await deps.characters.deleteLive2dModel(context.req.param('id'), context.req.param('resourceId'));
         return deleted ? { ok: true as const } : undefined;
+      }))
+    // 用户手改 runtime-config.json 后的显式重读：词汇写回 SQL 并广播演出变化。
+    .post('/:id/live2d/:resourceId/reload-config', context =>
+      run(context, () => {
+        const reloaded = deps.characters.reloadLive2dVocabulary(
+          context.req.param('id'),
+          context.req.param('resourceId'),
+        );
+        return reloaded ? { ok: true as const } : undefined;
       }))
     // Live2D 渲染器按相对路径取模型目录内文件；越界一律 404。
     .get('/:id/live2d/:resourceId/files/*', context => {

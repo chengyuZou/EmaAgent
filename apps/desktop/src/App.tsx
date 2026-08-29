@@ -73,6 +73,7 @@ export function App(): React.JSX.Element {
   }, [serverStatus.kind]);
 
   // 同角色刷新保留旧快照到新候选就绪；跨角色先撤下旧角色，避免视觉与 Prompt 身份错位。
+  // 过期请求由 loader 的代际守卫单点失效。
   useEffect(() => {
     stageLoader.invalidate();
 
@@ -81,21 +82,18 @@ export function App(): React.JSX.Element {
       return;
     }
 
-    let disposed = false;
     setStageView((current) => (
       current?.characterId === activeCharacterId ? current : null
     ));
     void stageLoader.load(activeCharacterId)
       .then((view) => {
-        if (!disposed && view) setStageView(view);
+        if (view) setStageView(view);
       })
       .catch((error: unknown) => {
-        if (disposed) return;
         console.error('[stage] failed to load active character', activeCharacterId, error);
       });
 
     return () => {
-      disposed = true;
       stageLoader.invalidate();
     };
   }, [activeCharacterId, activePresentationRevision, stageLoader]);

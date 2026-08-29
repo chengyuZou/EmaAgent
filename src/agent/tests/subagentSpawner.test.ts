@@ -9,10 +9,6 @@ import type { AgentRunStore } from '../runs/agentRunStore.js';
 import type { AgentRunMessagesStore } from '../runs/agentRunMessagesStore.js';
 
 const budget: AgentBudget = {
-  assertWithinLimits: () => undefined,
-  remainingOutputTokens: () => 64,
-  recordUsage: () => undefined,
-  reserveToolCall: () => undefined,
   enterSubagent: () => () => undefined,
 };
 

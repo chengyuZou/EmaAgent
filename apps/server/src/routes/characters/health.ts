@@ -8,6 +8,7 @@ export interface CharacterHealthRouteDeps {
     CharacterStore,
     | 'inspectHealth' | 'inspectAllHealth'
     | 'resolveLive2dModelFile' | 'resolveIllustrationFile' | 'resolveVoiceSampleFile'
+    | 'resolveLive2dRuntimeConfig'
   >;
 }
 
@@ -23,7 +24,7 @@ export const characterHealthRoute = (deps: CharacterHealthRouteDeps) =>
         return characterError(context, error);
       }
     })
-    // 主窗口消费的原子快照：降级链结果 + 当前选中资源的服务端解析路径。
+    // 主窗口消费的原子快照：降级链结果 + 当前选中资源的服务端解析路径与运行配置。
     // 同角色切换保留旧画面、跨角色先占位的展示策略由前端按快照内容执行。
     .get('/:id/presentation', async context => {
       try {
@@ -33,6 +34,9 @@ export const characterHealthRoute = (deps: CharacterHealthRouteDeps) =>
           ...health,
           live2dModelFile: health.selectedLive2dModelId
             ? deps.characters.resolveLive2dModelFile(id, health.selectedLive2dModelId)
+            : null,
+          live2dRuntimeConfig: health.selectedLive2dModelId
+            ? deps.characters.resolveLive2dRuntimeConfig(id, health.selectedLive2dModelId)
             : null,
           illustrationFile: health.selectedIllustrationId
             ? deps.characters.resolveIllustrationFile(id, health.selectedIllustrationId)

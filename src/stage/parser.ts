@@ -51,16 +51,6 @@ export class StreamingCharacterTagScanner {
     this.tail = '';
     return { cleaned, tags: [] };
   }
-
-  reset(): void {
-    this.tail = '';
-  }
-}
-
-/** 非流式场景只移除语法完整的角色表现标签。 */
-export function stripCharacterTags(text: string): string {
-  COMPLETE_TAG_RE.lastIndex = 0;
-  return text.replace(COMPLETE_TAG_RE, '');
 }
 
 function findPartialTagStart(text: string): number {

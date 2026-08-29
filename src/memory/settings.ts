@@ -19,7 +19,7 @@ export const memoryWorkHistoryRetentionDaysSetting = defineSetting<number>({
   description: 'Work 轨历史文件按最后修改时间保留的墙钟天数；超过该天数的 history 文件成为自动清理候选。',
   apply: 'nextOperation',
   defaultValue: 90,
-  schema: z.number().int().min(1).max(3_650),
+  schema: z.number().int().min(30).max(3_650),
   group: 'memory.lifecycle',
 });
 
@@ -29,7 +29,7 @@ export const memoryRelationshipHistoryActiveDaysSetting = defineSetting<number>(
   description: '每个角色保留的历史活跃日数量；只保留最近 N 个有历史记录的日期，用户离线不推进衰减。',
   apply: 'nextOperation',
   defaultValue: 180,
-  schema: z.number().int().min(1).max(3_650),
+  schema: z.number().int().min(30).max(3_650),
   group: 'memory.lifecycle',
 });
 
@@ -39,7 +39,7 @@ export const memorySummaryTokensSetting = defineSetting<number>({
   description: '每轨记忆摘要注入 system prompt 的 token 预算；摘要按此上限截断。',
   apply: 'nextTurn',
   defaultValue: 2_500,
-  schema: z.number().int().min(100).max(20_000),
+  schema: z.number().int().min(1000).max(20_000),
   group: 'memory.budgets',
 });
 
@@ -58,8 +58,8 @@ export const memoryTopicFileBytesSetting = defineSetting<number>({
   label: '主题文件体积上限',
   description: 'Work 轨主题文件（topics/*.md）的字节上限预算。',
   apply: 'nextOperation',
-  defaultValue: 256 * 1024,
-  schema: z.number().int().min(16 * 1024).max(16 * 1024 * 1024),
+  defaultValue: 16 * 1024 * 1024,
+  schema: z.number().int().min(1024 * 1024).max(64 * 1024 * 1024),
   group: 'memory.budgets',
 });
 
@@ -68,8 +68,8 @@ export const memoryHistoryFileBytesSetting = defineSetting<number>({
   label: '历史文件体积上限',
   description: '历史/演进文件（history/*.md）的字节上限预算。',
   apply: 'nextOperation',
-  defaultValue: 256 * 1024,
-  schema: z.number().int().min(16 * 1024).max(16 * 1024 * 1024),
+  defaultValue: 16 * 1024 * 1024,
+  schema: z.number().int().min(1024 * 1024).max(64 * 1024 * 1024),
   group: 'memory.budgets',
 });
 
@@ -78,8 +78,8 @@ export const memoryTurnEvidenceFileBytesSetting = defineSetting<number>({
   label: '单条证据文件体积上限',
   description: '单个 Turn 证据文件（turn_evidence/*.md）的字节上限预算。',
   apply: 'nextOperation',
-  defaultValue: 64 * 1024,
-  schema: z.number().int().min(4 * 1024).max(4 * 1024 * 1024),
+  defaultValue: 16 * 1024 * 1024,
+  schema: z.number().int().min(1024 * 1024).max(64 * 1024 * 1024),
   group: 'memory.budgets',
 });
 
@@ -89,7 +89,7 @@ export const memoryTurnEvidenceFilesSetting = defineSetting<number>({
   description: '保留的 Turn 证据文件数量上限；只保留最新 N 个。',
   apply: 'nextOperation',
   defaultValue: 200,
-  schema: z.number().int().min(10).max(2_000),
+  schema: z.number().int().min(100).max(2_000),
   group: 'memory.budgets',
 });
 
@@ -99,7 +99,7 @@ export const memoryConsolidationItemsSetting = defineSetting<number>({
   description: '单次整合消费的未整合提取结果条数上限。',
   apply: 'nextOperation',
   defaultValue: 256,
-  schema: z.number().int().min(1).max(4_096),
+  schema: z.number().int().min(100).max(1024),
   group: 'memory.budgets',
 });
 
@@ -108,8 +108,8 @@ export const memoryConsolidationInputBytesSetting = defineSetting<number>({
   label: '单次整合输入体积预算',
   description: '单次整合 LLM 输入的字节预算；超限部分截断并标注。',
   apply: 'nextOperation',
-  defaultValue: 2 * 1024 * 1024,
-  schema: z.number().int().min(256 * 1024).max(64 * 1024 * 1024),
+  defaultValue: 16 * 1024 * 1024,
+  schema: z.number().int().min(1024 * 1024).max(64 * 1024 * 1024),
   group: 'memory.budgets',
 });
 
@@ -118,8 +118,8 @@ export const memoryGitDiffBytesSetting = defineSetting<number>({
   label: '工作区 diff 体积预算',
   description: '整合前工作区 diff 渲染的字节预算。',
   apply: 'nextOperation',
-  defaultValue: 4 * 1024 * 1024,
-  schema: z.number().int().min(64 * 1024).max(64 * 1024 * 1024),
+  defaultValue: 16 * 1024 * 1024,
+  schema: z.number().int().min(1024 * 1024).max(64 * 1024 * 1024),
   group: 'memory.budgets',
 });
 
@@ -143,7 +143,7 @@ export const memoryHeartbeatSecondsSetting = defineSetting<number>({
   description: '整合/维护 Job 的心跳间隔秒；失去所有权即中止。',
   apply: 'nextOperation',
   defaultValue: 30,
-  schema: z.number().int().min(5).max(600),
+  schema: z.number().int().min(30).max(600),
   group: 'memory.jobs',
 });
 

@@ -27,7 +27,8 @@ import type {
 import { CharacterLive2dModelRepository } from './live2d/repository.js';
 import { findLive2dPackageFilesSync, validateLive2dModelReferences } from './live2d/live2dValidator.js';
 import { writeLive2dConfigDraft } from './live2d/live2dConfigDraft.js';
-import { readLive2dVocabulary, type Live2dVocabulary } from './live2d/live2dVocabulary.js';
+import { readLive2dRuntimeConfig, readLive2dVocabulary, type Live2dVocabulary } from './live2d/live2dVocabulary.js';
+import type { Live2dRuntimeConfig } from './live2d/types.js';
 import {
   deleteLive2dDirectory,
   exportLive2dZip,
@@ -311,11 +312,9 @@ export class CharacterStore {
     input: ImportCharacterLive2dModelInput,
   ): Promise<CharacterLive2dModel> {
     const character = this.assertMutableCharacter(id);
-    const settings = this.settings();
     const files = await importLive2dZip(
       input.sourceZipFile,
       this.paths.live2dRoot(character.directoryName),
-      settings.live2d,
     );
     const destination = this.paths.live2dModelDirectory(
       character.directoryName,
@@ -329,10 +328,7 @@ export class CharacterStore {
         packageFiles.modelPath,
         packageFiles.runtimeConfigPath,
       );
-      const vocabulary = readLive2dVocabulary(
-        runtimeConfigPath,
-        settings.live2d.maxRuntimeConfigBytes,
-      );
+      const vocabulary = readLive2dVocabulary(runtimeConfigPath);
       const resource = this.insertLive2dModel(
         id,
         {
@@ -359,7 +355,6 @@ export class CharacterStore {
       this.paths.live2dModelDirectory(character.directoryName, resource.directoryName),
       destinationDirectory,
       resource.name,
-      this.settings().live2d,
     );
   }
 
@@ -404,7 +399,6 @@ export class CharacterStore {
     const files = await importIllustrationFile(
       input.sourceFile,
       this.paths.illustrationRoot(character.directoryName),
-      this.settings().illustration,
     );
     const destination = this.paths.illustrationFile(character.directoryName, files.fileName);
     try {
@@ -475,9 +469,9 @@ export class CharacterStore {
     const displayName = sourceBaseName(fileName);
     const destination = this.paths.voiceFile(character.directoryName, fileName);
     const settings = this.settings();
-    await publishVoiceFile(destination, input.bytes, settings.voice);
+    await publishVoiceFile(destination, input.bytes, settings);
     try {
-      const validated = await validateVoiceSampleFile(destination, settings.voice);
+      const validated = await validateVoiceSampleFile(destination, settings);
       return this.voiceSamples.insert(id, {
         id: randomUUID(),
         name: displayName,
@@ -498,11 +492,11 @@ export class CharacterStore {
   async importVoiceSample(id: string, input: ImportCharacterVoiceSampleInput): Promise<CharacterVoiceSample> {
     const character = this.assertMutableCharacter(id);
     const settings = this.settings();
-    const validated = await validateVoiceSampleFile(input.sourceFile, settings.voice);
+    const validated = await validateVoiceSampleFile(input.sourceFile, settings);
     const files = await importVoiceFile(
       input.sourceFile,
       this.paths.voiceRoot(character.directoryName),
-      settings.voice,
+      settings,
     );
     const destination = this.paths.voiceFile(character.directoryName, files.fileName);
     try {
@@ -542,11 +536,11 @@ export class CharacterStore {
   }
 
   inspectHealth(id: string): Promise<CharacterHealth> {
-    return inspectCharacterHealth(this.getRequired(id), this.paths, this.settings());
+    return inspectCharacterHealth(this.getRequired(id), this.paths);
   }
 
   inspectAllHealth(): Promise<CharacterHealthReport> {
-    return inspectAllCharacterHealth(this.list(), this.paths, this.settings());
+    return inspectAllCharacterHealth(this.list(), this.paths);
   }
 
   resolveLive2dModelDirectory(id: string, resourceId: string): string {
@@ -661,10 +655,35 @@ export class CharacterStore {
       throw new CharacterResourceMissingError('live2d_model', directory);
     }
     const { runtimeConfigPath } = findLive2dPackageFilesSync(directory);
-    return readLive2dVocabulary(
-      runtimeConfigPath,
-      this.settings().live2d.maxRuntimeConfigBytes,
+    return readLive2dVocabulary(runtimeConfigPath);
+  }
+
+  /** 主窗口演出消费：现读该资源的 runtime-config.json 完整映射；缺失或损坏按无映射降级。 */
+  resolveLive2dRuntimeConfig(id: string, resourceId: string): Live2dRuntimeConfig | null {
+    const character = this.getRequired(id);
+    const resource = character.live2dModels.find((r) => r.id === resourceId);
+    if (!resource) return null;
+    const directory = this.paths.live2dModelDirectory(
+      character.directoryName,
+      resource.directoryName,
     );
+    try {
+      const { runtimeConfigPath } = findLive2dPackageFilesSync(directory);
+      return runtimeConfigPath ? readLive2dRuntimeConfig(runtimeConfigPath) : null;
+    } catch (error) {
+      console.warn(`[character] runtime-config 读取失败，按无映射降级: ${resourceId}`, error);
+      return null;
+    }
+  }
+
+  /** 重新读取该资源的 runtime-config.json 并把词汇写回 SQL；配置非法时抛错（用户显式触发）。 */
+  reloadLive2dVocabulary(id: string, resourceId: string): boolean {
+    const character = this.getRequired(id);
+    const resource = character.live2dModels.find((r) => r.id === resourceId);
+    if (!resource) return false;
+    this.writeVocabulary(id, resourceId, this.readVocabulary(character, resource));
+    this.emitPresentationChanged(id);
+    return true;
   }
 
   private writeVocabulary(

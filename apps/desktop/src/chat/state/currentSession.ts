@@ -1,6 +1,5 @@
 // 聊天窗当前会话的窗口级状态：查看目标、草稿、桌宠语音/情绪归属与滚动定位。
 import { create } from 'zustand';
-import type { EmotionState } from '@ema-agent/stage';
 import { sessionsApi } from '../../api/sessions.js';
 import { tauriBridge } from '../../lib/tauri-bridge.js';
 import { useMessages } from './messages.js';
@@ -11,7 +10,8 @@ interface CurrentSessionState {
   readonly viewedSessionId: string | null;
   /** 桌宠当前为哪个 Session 发声/演出；情绪变化只中继给 owner。 */
   readonly ttsOwnerSessionId: string | null;
-  readonly emotionStateMap: ReadonlyMap<string, EmotionState>;
+  /** 各 Session 记忆的当前情绪语义名，用于重新认领舞台时补发。 */
+  readonly emotionStateMap: ReadonlyMap<string, string>;
   readonly draftMap: ReadonlyMap<string, readonly TurnInputPart[]>;
   readonly scrollToTurnId: string | null;
 
@@ -22,7 +22,9 @@ interface CurrentSessionState {
   setDraft(sessionId: string, parts: readonly TurnInputPart[]): void;
   /** Turn 开始时把桌宠语音/演出归属切到该 Session，并补发其记忆情绪。 */
   claimStageOwner(sessionId: string): void;
-  setEmotion(sessionId: string, state: EmotionState): void;
+  setEmotion(sessionId: string, emotion: string): void;
+  /** 角色切换后清空全部记忆情绪：旧角色的语义名在新角色映射下无意义。 */
+  clearEmotions(): void;
   evictSession(id: string): void;
 }
 
@@ -74,18 +76,22 @@ export const useCurrentSession = create<CurrentSessionState>((set, get) => ({
     if ((get().ttsOwnerSessionId as string) === (sessionId as string)) return;
     set({ ttsOwnerSessionId: sessionId });
     const saved = get().emotionStateMap.get(sessionId as string);
-    if (saved) void tauriBridge.emit('stage:emotion-changed', saved);
+    if (saved) void tauriBridge.emit('stage:emotion-changed', { emotion: saved });
   },
 
-  setEmotion(sessionId, state) {
+  setEmotion(sessionId, emotion) {
     set((s) => {
       const emotionStateMap = new Map(s.emotionStateMap);
-      emotionStateMap.set(sessionId as string, state);
+      emotionStateMap.set(sessionId as string, emotion);
       return { emotionStateMap };
     });
     if ((get().ttsOwnerSessionId as string) === (sessionId as string)) {
-      void tauriBridge.emit('stage:emotion-changed', state);
+      void tauriBridge.emit('stage:emotion-changed', { emotion });
     }
+  },
+
+  clearEmotions() {
+    set({ emotionStateMap: new Map() });
   },
 
   evictSession(id) {

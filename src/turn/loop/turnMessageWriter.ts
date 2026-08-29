@@ -82,12 +82,6 @@ export class TurnMessageWriter {
         await this.persistAssistant();
         return;
 
-      case 'assistant_message_discarded':
-        if (this.assistantMessageId) {
-          this.sessions.markMessageInterrupted(this.assistantMessageId);
-        }
-        return;
-
       case 'tool_result':
         this.pendingToolUses.delete(event.result.toolCallId);
         await this.append({

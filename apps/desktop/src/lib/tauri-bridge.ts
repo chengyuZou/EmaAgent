@@ -98,7 +98,66 @@ export interface TauriBridge {
 
   /** 在系统文件管理器中定位一个本机路径。 */
   revealInFolder(path: string): Promise<void>;
+
+  /** 创建一个由 Rust 持有的交互终端，输出经专用 Channel 返回。 */
+  listTerminalShells(): Promise<readonly DetectedTerminalShell[]>;
+  openTerminal(input: OpenTerminalInput): Promise<void>;
+  writeTerminal(terminalId: string, data: string): Promise<void>;
+  resizeTerminal(terminalId: string, columns: number, rows: number): Promise<void>;
+  closeTerminal(terminalId: string): Promise<void>;
+  closeSessionTerminals(sessionId: string): Promise<void>;
+
+  openBrowser(browserId: string, url: string, bounds: BrowserBounds): Promise<void>;
+  navigateBrowser(browserId: string, url: string): Promise<void>;
+  browserBack(browserId: string): Promise<void>;
+  browserForward(browserId: string): Promise<void>;
+  reloadBrowser(browserId: string): Promise<void>;
+  setBrowserBounds(browserId: string, bounds: BrowserBounds): Promise<void>;
+  setBrowserVisible(browserId: string, visible: boolean): Promise<void>;
+  closeBrowser(browserId: string): Promise<void>;
+  listenBrowserEvents(handler: (event: BrowserEvent) => void): Promise<() => void>;
 }
+
+export type TerminalEvent =
+  | { readonly type: 'output'; readonly data: readonly number[] }
+  | { readonly type: 'exit'; readonly exitCode: number | null };
+
+export interface OpenTerminalInput {
+  readonly terminalId: string;
+  readonly sessionId: string;
+  readonly cwd?: string;
+  readonly shellExecutable?: string;
+  readonly columns: number;
+  readonly rows: number;
+  readonly onEvent: (event: TerminalEvent) => void;
+}
+
+export type TerminalShellKind =
+  | 'powerShell'
+  | 'commandPrompt'
+  | 'bash'
+  | 'zsh'
+  | 'fish'
+  | 'wsl'
+  | 'sh';
+
+export interface DetectedTerminalShell {
+  readonly label: string;
+  readonly kind: TerminalShellKind;
+  readonly executablePath: string;
+}
+
+export interface BrowserBounds {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+export type BrowserEvent =
+  | { readonly type: 'loading'; readonly browserId: string; readonly loading: boolean }
+  | { readonly type: 'locationChanged'; readonly browserId: string; readonly url: string }
+  | { readonly type: 'titleChanged'; readonly browserId: string; readonly title: string };
 
 // ── Tauri 环境检测 ─────────────────────────────────────────────────────────
 
@@ -123,13 +182,12 @@ type TauriCore   = typeof import('@tauri-apps/api/core');
 type TauriEvent  = typeof import('@tauri-apps/api/event');
 type TauriDialog = typeof import('@tauri-apps/plugin-dialog');
 type TauriWindow = typeof import('@tauri-apps/api/window');
-type TauriWebview = typeof import('@tauri-apps/api/webview');
 
 let _core:   TauriCore   | null = null;
 let _event:  TauriEvent  | null = null;
 let _dialog: TauriDialog | null = null;
 let _window: TauriWindow | null = null;
-let _webview: TauriWebview | null = null;
+const terminalChannels = new Map<string, object>();
 
 async function getCore(): Promise<TauriCore | null> {
   if (!detectTauri()) return null;
@@ -170,17 +228,6 @@ async function getWindow(): Promise<TauriWindow | null> {
   try {
     _window = await import('@tauri-apps/api/window');
     return _window;
-  } catch {
-    return null;
-  }
-}
-
-async function getWebview(): Promise<TauriWebview | null> {
-  if (!detectTauri()) return null;
-  if (_webview) return _webview;
-  try {
-    _webview = await import('@tauri-apps/api/webview');
-    return _webview;
   } catch {
     return null;
   }
@@ -309,5 +356,110 @@ export const tauriBridge: TauriBridge = {
     const core = await getCore();
     if (!core) throw new Error('当前环境不支持文件管理器定位');
     await core.invoke('plugin:opener|reveal_item_in_dir', { paths: [path] });
+  },
+
+  async openTerminal(input: OpenTerminalInput): Promise<void> {
+    const core = await getCore();
+    if (!core) throw new Error('当前环境不支持交互终端');
+    const channel = new core.Channel<TerminalEvent>((event) => {
+      input.onEvent(event);
+      if (event.type === 'exit') terminalChannels.delete(input.terminalId);
+    });
+    terminalChannels.set(input.terminalId, channel);
+    try {
+      await core.invoke('open_terminal', {
+        terminalId: input.terminalId,
+        sessionId: input.sessionId,
+        ...(input.cwd ? { cwd: input.cwd } : {}),
+        ...(input.shellExecutable ? { shellExecutable: input.shellExecutable } : {}),
+        columns: input.columns,
+        rows: input.rows,
+        onEvent: channel,
+      });
+    } catch (error) {
+      terminalChannels.delete(input.terminalId);
+      throw error;
+    }
+  },
+
+  async listTerminalShells(): Promise<readonly DetectedTerminalShell[]> {
+    return (await tauriBridge.invoke<DetectedTerminalShell[]>('list_terminal_shells')) ?? [];
+  },
+
+  async writeTerminal(terminalId: string, data: string): Promise<void> {
+    const core = await getCore();
+    if (!core) return;
+    await core.invoke('write_terminal', { terminalId, data });
+  },
+
+  async resizeTerminal(terminalId: string, columns: number, rows: number): Promise<void> {
+    const core = await getCore();
+    if (!core) return;
+    await core.invoke('resize_terminal', { terminalId, columns, rows });
+  },
+
+  async closeTerminal(terminalId: string): Promise<void> {
+    terminalChannels.delete(terminalId);
+    const core = await getCore();
+    if (!core) return;
+    await core.invoke('close_terminal', { terminalId });
+  },
+
+  async closeSessionTerminals(sessionId: string): Promise<void> {
+    const core = await getCore();
+    if (!core) return;
+    await core.invoke('close_session_terminals', { sessionId });
+  },
+
+  async openBrowser(browserId: string, url: string, bounds: BrowserBounds): Promise<void> {
+    const core = await getCore();
+    if (!core) throw new Error('当前环境不支持内置浏览器');
+    await core.invoke('open_browser', { browserId, url, bounds });
+  },
+
+  async navigateBrowser(browserId: string, url: string): Promise<void> {
+    const core = await getCore();
+    if (!core) return;
+    await core.invoke('navigate_browser', { browserId, url });
+  },
+
+  async browserBack(browserId: string): Promise<void> {
+    const core = await getCore();
+    if (!core) return;
+    await core.invoke('browser_back', { browserId });
+  },
+
+  async browserForward(browserId: string): Promise<void> {
+    const core = await getCore();
+    if (!core) return;
+    await core.invoke('browser_forward', { browserId });
+  },
+
+  async reloadBrowser(browserId: string): Promise<void> {
+    const core = await getCore();
+    if (!core) return;
+    await core.invoke('reload_browser', { browserId });
+  },
+
+  async setBrowserBounds(browserId: string, bounds: BrowserBounds): Promise<void> {
+    const core = await getCore();
+    if (!core) return;
+    await core.invoke('set_browser_bounds', { browserId, bounds });
+  },
+
+  async setBrowserVisible(browserId: string, visible: boolean): Promise<void> {
+    const core = await getCore();
+    if (!core) return;
+    await core.invoke('set_browser_visible', { browserId, visible });
+  },
+
+  async closeBrowser(browserId: string): Promise<void> {
+    const core = await getCore();
+    if (!core) return;
+    await core.invoke('close_browser', { browserId });
+  },
+
+  async listenBrowserEvents(handler: (event: BrowserEvent) => void): Promise<() => void> {
+    return tauriBridge.listen<BrowserEvent>('browser:event', ({ payload }) => handler(payload));
   },
 };

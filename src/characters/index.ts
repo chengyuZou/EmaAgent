@@ -26,6 +26,9 @@ export type {
   CharacterLive2dModelInput,
   CharacterLive2dModelPatch,
   ImportCharacterLive2dModelInput,
+  Live2dExpression,
+  Live2dMotion,
+  Live2dRuntimeConfig,
 } from './live2d/types.js';
 export type {
   CharacterIllustration,
@@ -48,10 +51,6 @@ export {
 export {
   CHARACTER_SETTING_DEFINITIONS,
   readCharacterSettings,
-  characterLive2dMaxRuntimeConfigBytesSetting,
-  characterLive2dMaxZipEntriesSetting,
-  characterLive2dMaxZipTotalBytesSetting,
-  characterIllustrationMaxBytesSetting,
   characterVoiceMaxBytesSetting,
   characterVoiceMaxDurationMsSetting,
 } from './settings.js';
@@ -88,6 +87,5 @@ export type {
   CharacterHealthIssueSeverity,
   CharacterHealthStatus,
   CharacterPresentation,
-  CharacterPresentationCandidate,
 } from './characterHealth.js';
 export { inspectAllCharacterHealth, inspectCharacterHealth } from './characterHealth.js';

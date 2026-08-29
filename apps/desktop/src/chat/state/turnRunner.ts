@@ -12,6 +12,9 @@ import { useSessionAttachmentStore } from '../../stores/sessionAttachment.js';
 import { useSessionStore } from '../../stores/session.js';
 import { useTaskStore } from '../../stores/task.js';
 import { useSessionHistory } from '../history/sessionHistory.js';
+import { useDockTabs } from '../frame/dockTabs.js';
+import { closeSessionTerminals } from '../frame/tabs/terminal/terminalSessions.js';
+import { tauriBridge } from '../../lib/tauri-bridge.js';
 import { useCurrentSession } from './currentSession.js';
 import { useMessages } from './messages.js';
 import { dispatchTurnEvent } from './turnEvents.js';
@@ -163,6 +166,13 @@ export function stopStreaming(sessionId: string): void {
 
 /** 会话删除时的聊天域资源回收编排。 */
 export function evictChatSession(sessionId: string): void {
+  void closeSessionTerminals(sessionId).catch(() => {});
+  const layout = useDockTabs.getState().layouts[sessionId];
+  if (layout) {
+    for (const tab of Object.values(layout.tabsById)) {
+      if (tab.kind === 'browser') void tauriBridge.closeBrowser(tab.browserId).catch(() => {});
+    }
+  }
   sseHandles.get(sessionId)?.stop();
   sseHandles.delete(sessionId);
   sendQueues.get(sessionId)?.clear();
@@ -174,4 +184,5 @@ export function evictChatSession(sessionId: string): void {
   useTaskStore.getState().evictSession(sessionId);
   useMessages.getState().evictSession(sessionId);
   useCurrentSession.getState().evictSession(sessionId);
+  useDockTabs.getState().removeSessionLayout(sessionId);
 }

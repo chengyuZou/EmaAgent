@@ -37,6 +37,7 @@ import { sessionActionsRoute } from './sessions/actions.js';
 import { sessionAttachmentsRoute } from './sessions/attachments.js';
 import { sessionCollectionRoute } from './sessions/collection.js';
 import { sessionHistoryRoute } from './sessions/history.js';
+import { sessionGitRoute } from './sessions/git.js';
 import { settingsCatalogRoute } from './settings/catalog.js';
 import { settingsValuesRoute } from './settings/values.js';
 import { skillListRoute } from './skills/list.js';
@@ -108,9 +109,9 @@ export const createRoutes = (composition: Composition, secret: string) => {
       turns: database.turns,
       attachments: database.attachments,
     }))
+    .route('/api/sessions', sessionGitRoute(database.session))
     .route('/api/sessions', sessionAttachmentsRoute({
       attachments: database.attachments,
-      turns: database.turns,
     }))
     // backup 是独立业务域（未来还有角色/设置备份）；Session 支路的 URL 仍在 /api/sessions 下。
     .route('/api/sessions', sessionBackupRoute({ backup: backup.sessionBackup }))

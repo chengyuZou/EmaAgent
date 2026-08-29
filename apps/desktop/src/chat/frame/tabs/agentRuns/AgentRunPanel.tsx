@@ -2,20 +2,19 @@
 import { useState, useEffect, useMemo, useRef, type JSX, type CSSProperties } from 'react';
 import { Badge, Button, Spinner, type BadgeVariant } from '@ema-agent/ui';
 import { useAgentRunStore, type AgentRunState } from '../../../../stores/agentRun.js';
-import { useCurrentSession } from '../../../state/currentSession.js';
 import type { AgentRunMessage } from '@ema-agent/agent';
 import type { ToolResult } from '@ema-agent/tools';
 
 const TERMINAL_PAGE_SIZE = 10;
 
 export interface AgentRunPanelProps {
+  sessionId: string | null;
   className?: string;
   /** 深链标签（agentRun:<id>）初始打开的执行详情；列表标签不传。 */
   initialDetailId?: string;
 }
 
-export function AgentRunPanel({ className = '', initialDetailId }: AgentRunPanelProps): JSX.Element {
-  const sessionId      = useCurrentSession((s) => s.viewedSessionId);
+export function AgentRunPanel({ sessionId, className = '', initialDetailId }: AgentRunPanelProps): JSX.Element {
   const runs           = useAgentRunStore((s) => s.runs);
   const loadForSession = useAgentRunStore((s) => s.loadForSession);
 

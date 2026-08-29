@@ -18,19 +18,19 @@ export interface ImportedVoiceFile {
 export async function importVoiceFile(
   sourceFile: string,
   destinationDirectory: string,
-  limits: CharacterSettings['voice'],
+  settings: CharacterSettings,
 ): Promise<ImportedVoiceFile> {
   const fileName = sourceFileName(sourceFile);
-  await copyResourceFile(sourceFile, path.join(destinationDirectory, fileName), limits.maxBytes);
+  await copyResourceFile(sourceFile, path.join(destinationDirectory, fileName), settings.characterVoiceMaxBytes);
   return { fileName, displayName: sourceBaseName(sourceFile) };
 }
 
 export async function publishVoiceFile(
   destination: string,
   bytes: Uint8Array,
-  limits: CharacterSettings['voice'],
+  settings: CharacterSettings,
 ): Promise<void> {
-  await writeResourceFile(destination, bytes, limits.maxBytes);
+  await writeResourceFile(destination, bytes, settings.characterVoiceMaxBytes);
 }
 
 export { exportResourceFile as exportVoiceFile };

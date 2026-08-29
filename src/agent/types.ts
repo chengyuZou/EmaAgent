@@ -2,7 +2,6 @@ import type {
   CallLlm,
   LlmGenerationSource,
   LlmRequest,
-  LlmTokenUsage,
   Message,
 } from '@ema-agent/llm';
 import type {
@@ -37,10 +36,6 @@ export type PrepareAgentIteration = (
 
 /** 根 Turn 与其全部子 Agent 共用同一个实现，Agent 只消费额度，不拥有规则。 */
 export interface AgentBudget {
-  assertWithinLimits(): void;
-  remainingOutputTokens(): number;
-  recordUsage(usage: LlmTokenUsage): void;
-  reserveToolCall(): void;
   enterSubagent(): () => void;
 }
 

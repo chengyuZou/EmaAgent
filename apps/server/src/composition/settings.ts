@@ -57,6 +57,7 @@ import {
 } from '@ema-agent/tools';
 import { workspaceInstructionFilesSetting } from '@ema-agent/turn';
 import { eventDisplaySetting } from './settings/eventDisplaySetting.js';
+import { terminalShellExecutableSetting } from './settings/terminalSetting.js';
 import { themeSetting } from './settings/themeSetting.js';
 
 export interface SettingsComposition {
@@ -109,6 +110,7 @@ export function openSettings(profileDb: Database): SettingsComposition {
       gitBaselineMaxChangesForUnifiedSetting,
       themeSetting,
       eventDisplaySetting,
+      terminalShellExecutableSetting,
     ],
     groups: [
       agentLimitsGroup,

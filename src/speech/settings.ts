@@ -15,7 +15,7 @@ export const speechSegmentMaxFilesSetting = defineSetting<number>({
   description: '逐句音频片段库的最大文件数量。',
   apply: 'nextOperation',
   defaultValue: 20_000,
-  schema: z.number().int().min(100).max(100_000),
+  schema: z.number().int().min(20_000).max(100_000),
 });
 
 export const speechSegmentMaxBytesSetting = defineSetting<number>({

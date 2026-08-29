@@ -5,7 +5,6 @@ export {
   COMPACT_SETTINGS,
   DEFAULT_COMPACT_SETTINGS,
   compactBufferRatioSetting,
-  compactEnabledSetting,
   compactGroup,
   compactKeepRecentToolResultsSetting,
   compactManualMinRatioSetting,

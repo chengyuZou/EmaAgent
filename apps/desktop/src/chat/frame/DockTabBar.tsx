@@ -6,6 +6,8 @@ import { useAgentRunStore } from '../../stores/agentRun.js';
 import { useSessionAttachmentStore } from '../../stores/sessionAttachment.js';
 import { useDockTabs } from './dockTabs.js';
 import type { DockSide, DockTab } from './dockTabs.js';
+import { closeTerminalSession } from './tabs/terminal/terminalSessions.js';
+import { tauriBridge } from '../../lib/tauri-bridge.js';
 
 export function workspaceTabIcon(tab: DockTab): string {
   switch (tab.kind) {
@@ -14,7 +16,8 @@ export function workspaceTabIcon(tab: DockTab): string {
     case 'file':      return 'i-mdi:file-outline';
     case 'draftAttachment': return 'i-lucide:paperclip';
     case 'attachment': return 'i-lucide:paperclip';
-    case 'sources':   return 'i-lucide:paperclip';
+    case 'attachments': return 'i-lucide:paperclip';
+    case 'tasks':     return 'i-lucide:list-checks';
     case 'agentRuns':
     case 'agentRun':  return 'i-solar:cpu-bold-duotone';
     case 'terminal':  return 'i-lucide:terminal';
@@ -30,11 +33,12 @@ function baseTabLabel(tab: DockTab): string {
     case 'file':      return tab.path.split('/').pop() ?? tab.path;
     case 'draftAttachment': return tab.attachment.name ?? tab.attachment.sourcePath.split(/[\\/]/).pop() ?? '附件';
     case 'attachment': return '附件';
-    case 'sources':   return '来源';
+    case 'attachments': return '附件';
+    case 'tasks':     return '任务';
     case 'agentRuns': return '子智能体';
     case 'agentRun':  return '子智能体';
     case 'terminal':  return '终端';
-    case 'browser':   return '浏览器';
+    case 'browser':   return tab.title?.trim() || tab.url;
     case 'backgroundProcesses': return '后台进程';
   }
 }
@@ -72,6 +76,11 @@ export function DockTabBar({
   const activateTab  = useDockTabs((s) => s.activateTab);
   const moveTab      = useDockTabs((s) => s.moveTab);
   const moveTarget: DockSide = dock === 'right' ? 'bottom' : 'right';
+  const close = (tab: DockTab): void => {
+    if (tab.kind === 'terminal') void closeTerminalSession(tab.terminalId).catch(() => {});
+    if (tab.kind === 'browser') void tauriBridge.closeBrowser(tab.browserId).catch(() => {});
+    closeTab(sessionId, tab.id);
+  };
 
   return (
     <div className="flex items-center gap-0.5 px-1.5 py-1 shrink-0 overflow-x-auto border-b border-[var(--ema-border)]">
@@ -120,7 +129,7 @@ export function DockTabBar({
                   label: '关闭',
                   icon: 'i-lucide:x',
                   danger: true,
-                  onSelect: () => closeTab(sessionId, tab.id),
+                  onSelect: () => close(tab),
                 },
               ]}
             />
@@ -131,7 +140,7 @@ export function DockTabBar({
               className="opacity-0 group-hover:opacity-100"
               onClick={(e) => {
                 e.stopPropagation();
-                closeTab(sessionId, tab.id);
+                close(tab);
               }}
             />
           </div>

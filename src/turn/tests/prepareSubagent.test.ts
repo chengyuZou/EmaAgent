@@ -12,10 +12,6 @@ const callLlm: CallLlm = async function* () {
 };
 
 const budget: AgentBudget = {
-  assertWithinLimits: () => undefined,
-  remainingOutputTokens: () => 1_000,
-  recordUsage: () => undefined,
-  reserveToolCall: () => undefined,
   enterSubagent: () => () => undefined,
 };
 

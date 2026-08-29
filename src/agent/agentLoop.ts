@@ -52,9 +52,7 @@ export async function* runAgentLoop(
   let messages = [...input.messages];
   // 最近一次工具批之后累计的输出文本；max_tokens 续写时靠它把几段拼回完整答案。
   const continuedOutput: string[] = [];
-  // max_tokens 恢复两步走：先升级重试（顶到预算上限、半截作废重来），
-  // 再注入续写提示接着写；两步都失败才判 output_recovery_failed。
-  let escalatedMaxOutputTokens = false;
+  // max_tokens 截断后注入续写提示接着写；只允许续一次，再撞判 output_recovery_failed。
   let injectedContinuation = false;
   // 同一批工具（工具名+参数完全相同）连续调用记轮数；连续 3 轮视为空转，
   // 注入一次提醒让模型换方法，防止原地烧 Token。不硬停，硬兜底靠 maxIterations。
@@ -71,7 +69,6 @@ export async function* runAgentLoop(
   };
 
   while (true) {
-    input.budget.assertWithinLimits();
     if (input.signal.aborted) {
       state = updateAgentLoopState(state, { phase: 'aborted', stopReason: 'aborted' });
       yield { type: 'loop_stopped', finalText: continuedOutput.join(''), state };
@@ -124,21 +121,14 @@ export async function* runAgentLoop(
       let usage: LlmTokenUsage = { inputTokens: 0, outputTokens: 0 };
       let receivedResponseEvent = false;
 
-      const remainingOutputTokens = input.budget.remainingOutputTokens();
-      // 升级重试时放开 prepare 的默认上限，直接顶到预算允许的最大值。
-      const preparedMax = escalatedMaxOutputTokens
-        ? remainingOutputTokens
-        : (prepared.request.maxOutputTokens ?? remainingOutputTokens);
       const request = {
         ...prepared.request,
-        maxOutputTokens: Math.min(preparedMax, remainingOutputTokens),
         signal: input.signal,
       };
 
       try {
         for await (const event of input.callLlm(request)) {
           receivedResponseEvent = true;
-          input.budget.assertWithinLimits();
           switch (event.type) {
             case 'text_delta':
               textByIndex.set(
@@ -187,7 +177,6 @@ export async function* runAgentLoop(
               break;
 
             case 'tool_use_complete':
-              input.budget.reserveToolCall();
               toolUseByIndex.set(event.blockIndex, {
                 type: 'tool_use',
                 id: event.callId,
@@ -209,7 +198,6 @@ export async function* runAgentLoop(
               const updated = updateLlmCallUsage(usage, event);
               usage = updated.usage;
               if (hasLlmTokenUsage(updated.delta)) {
-                input.budget.recordUsage(updated.delta);
                 state = addAgentUsage(state, updated.delta);
                 yield { type: 'llm_call_usage_updated', llmCallId, usage };
                 yield { type: 'agent_usage_updated', usage: state.usage };
@@ -312,12 +300,7 @@ export async function* runAgentLoop(
     if (toolUseByIndex.size > 0) executor.start();
 
     if (stopReason === 'max_tokens' && toolUseByIndex.size === 0) {
-      if (!escalatedMaxOutputTokens) {
-        // 升级重试：半截输出作废、不注入任何消息，同一任务顶到预算上限直接重来。
-        yield { type: 'assistant_message_discarded', reason: 'max_tokens_retry' };
-        escalatedMaxOutputTokens = true;
-        continue;
-      }
+      // 输出被模型上限截断：注入续写提示接着写；只允许续一次，再撞判恢复失败。
       continuedOutput.push(callText);
       if (!injectedContinuation) {
         const appended: Message[] = [];
@@ -360,7 +343,6 @@ export async function* runAgentLoop(
       return;
     }
 
-    escalatedMaxOutputTokens = false;
     injectedContinuation = false;
     continuedOutput.length = 0;
     state = updateAgentLoopState(state, { phase: 'acting' });

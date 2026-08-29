@@ -1,29 +1,26 @@
 // 解析模型流中的角色表现标签，并维护各 Session 独立的舞台状态。
-import type { EmotionState, StageStreamEvent } from './events.js';
+import type { StageStreamEvent } from './events.js';
 import { StreamingCharacterTagScanner } from './parser.js';
 import type { ParsedCharacterTag } from './types.js';
-import {
-  makeInitialState,
-  transitionEmotion,
-  toPublicState,
-  type EmotionStateInternal,
-} from './state-machine.js';
+
+/** 未触发任何情绪标签时 Session 的默认情绪。 */
+export const DEFAULT_EMOTION = 'neutral';
 
 interface SessionStageState {
-  state:               EmotionStateInternal;
-  scanner:             StreamingCharacterTagScanner;
+  emotion: string;
+  scanner: StreamingCharacterTagScanner;
 }
 
 export interface StageEngineOptions {
   /** 当前角色允许使用的情绪名称（对应 <emotion> 标签与持续状态）。 */
   emotions: readonly string[];
-  /** 当前角色允许使用的动作名称（对应 <motion> 标签与一次性 stage_cue）。 */
+  /** 当前角色允许使用的动作名称（对应 <motion> 标签的一次性播放请求）。 */
   motions: readonly string[];
 }
 
 /**
  * StageEngine 把模型输出里的角色表现协议变成舞台指令：情绪标签驱动跨 Turn
- * 持续状态，动作标签产生一次性舞台提示，两类标签都从用户可见正文剥离。
+ * 持续状态，动作标签产生一次性播放请求，两类标签都从用户可见正文剥离。
  *
  * 进程内所有 Session 共用一个实例，内部状态按 sessionId 隔离。
  * 未知名称（模型编造的词汇）不发事件，只清洗正文——舞台永远只收到
@@ -39,12 +36,6 @@ export class StageEngine {
     this.motions = opts.motions;
   }
 
-  /** 返回 Session 的当前情绪状态；尚未建立状态时返回 null。 */
-  current(sessionId: string): EmotionState | null {
-    const s = this.sessions.get(sessionId);
-    return s ? toPublicState(s.state) : null;
-  }
-
   /** 当前激活角色改变后，替换允许使用的情绪与动作词汇。 */
   updateVocabulary(emotions: readonly string[], motions: readonly string[]): void {
     this.emotions = emotions;
@@ -55,8 +46,8 @@ export class StageEngine {
   beginTurn(sessionId: string): void {
     const existing = this.sessions.get(sessionId);
     this.sessions.set(sessionId, {
-      state:               existing?.state ?? makeInitialState(),
-      scanner:             new StreamingCharacterTagScanner(),
+      emotion: existing?.emotion ?? DEFAULT_EMOTION,
+      scanner: new StreamingCharacterTagScanner(),
     });
   }
 
@@ -72,7 +63,7 @@ export class StageEngine {
 
   /**
    * 处理一段流式增量，返回去除表现标签后的正文与需要发出的舞台事件
-   *（`emotion_changed` / `stage_cue`）。
+   *（`emotion_changed` / `motion_changed`）。
    */
   processChunk(
     delta:     string,
@@ -87,15 +78,11 @@ export class StageEngine {
   }
 
   /** 流结束时释放未闭合的缓冲尾部；flush 不产生新的表现事件。 */
-  flush(
-    turnId:    string,
-    sessionId: string,
-  ): { cleaned: string; events: StageStreamEvent[] } {
+  flush(sessionId: string): { cleaned: string; events: StageStreamEvent[] } {
     const s = this.sessions.get(sessionId);
     if (!s) return { cleaned: '', events: [] };
 
     const { cleaned } = s.scanner.flush();
-    void turnId;
     return { cleaned, events: [] };
   }
 
@@ -110,26 +97,25 @@ export class StageEngine {
     for (const tag of tags) {
       switch (tag.kind) {
         case 'emotion': {
-          const next = transitionEmotion(s.state, tag.value, this.emotions);
-          if (next !== null) {
-            s.state = next;
-            events.push({
-              type: 'emotion_changed',
-              sessionId,
-              turnId,
-              state: toPublicState(next),
-            });
-          }
+          // 未知词汇（模型编造）与重复情绪都不发事件，只清洗正文。
+          if (!this.emotions.includes(tag.value) || s.emotion === tag.value) break;
+          s.emotion = tag.value;
+          events.push({
+            type: 'emotion_changed',
+            sessionId,
+            turnId,
+            emotion: tag.value,
+          });
           break;
         }
         case 'motion': {
-          // 动作不进入状态机，但同样只放行当前角色声明过的名称。
+          // 动作不进入状态，但同样只放行当前角色声明过的名称。
           if (!this.motions.includes(tag.value)) break;
           events.push({
-            type: 'stage_cue',
+            type: 'motion_changed',
             sessionId,
             turnId,
-            cue: { motion: tag.value, priority: 1 },
+            motion: tag.value,
           });
           break;
         }

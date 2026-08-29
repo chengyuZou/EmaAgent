@@ -33,6 +33,8 @@ export interface CharacterStoreState {
   /** 导入 Live2D 模型目录 zip（sourceZipFile 为本机绝对路径）。 */
   importLive2d(id: string, input: Live2dImportInput): Promise<void>;
   patchLive2d(id: string, resourceId: string, input: ResourcePatchInput): Promise<void>;
+  /** 用户手改 runtime-config.json 后重读：词汇写回并刷新舞台。 */
+  reloadLive2dConfig(id: string, resourceId: string): Promise<void>;
   exportLive2d(id: string, resourceId: string, destinationDirectory: string): Promise<string>;
   deleteLive2d(id: string, resourceId: string): Promise<void>;
 
@@ -157,6 +159,10 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => {
 
   async patchLive2d(id, resourceId, input) {
     await mutate(id, 'Failed to update Live2D', () => charactersApi.patchLive2d(id, resourceId, input));
+  },
+
+  async reloadLive2dConfig(id, resourceId) {
+    await mutate(id, 'Failed to reload Live2D config', () => charactersApi.reloadLive2dConfig(id, resourceId));
   },
 
   async exportLive2d(id, resourceId, destinationDirectory) {

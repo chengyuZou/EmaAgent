@@ -133,6 +133,7 @@ export type CharacterResourceValidationCode =
   | 'destination_directory_required'
   | 'resource_type_unsupported'
   | 'resource_too_large'
+  | 'invalid_resource_values'
   | 'zip_entry_count_exceeded'
   | 'zip_expanded_size_exceeded'
   | 'zip_entry_path_invalid'

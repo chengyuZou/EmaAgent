@@ -72,6 +72,7 @@ const SECTION_LABELS: Readonly<Record<string, string>> = {
 /** 这些值由专属界面编辑，通用参数页不重复提供第二个写入口。 */
 const SPECIALIZED_SETTING_KEYS = new Set([
   'frontend.eventDisplay',
+  'frontend.terminal.shellExecutable',
   'frontend.theme',
 ]);
 

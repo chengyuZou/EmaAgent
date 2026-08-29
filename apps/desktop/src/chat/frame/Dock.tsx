@@ -1,5 +1,5 @@
 // 右侧/底部共用的工作区 Dock：标签条、内容容器、拖拽手柄与居中启动器。
-import { useState, type JSX } from 'react';
+import { useEffect, useState, type JSX } from 'react';
 
 import { useDockTabs } from './dockTabs.js';
 import { useDragResize } from '../../hooks/use-drag-resize.js';
@@ -17,10 +17,12 @@ export interface DockProps {
   fullWidth?: boolean;
   /** 放大按钮回调；仅 Dock 展开且有内容时传入（按钮才渲染）。 */
   onExpandFullWidth?: () => void;
+  /** 原生网页视图不能被 React 浮层覆盖，启动器打开时通知标签池先隐藏页面。 */
+  onLauncherChange?: (open: boolean) => void;
 }
 
 export function Dock({
-  sessionId, dock, contentRef, fullWidth = false, onExpandFullWidth,
+  sessionId, dock, contentRef, fullWidth = false, onExpandFullWidth, onLauncherChange,
 }: DockProps): JSX.Element {
   const layout = useDockTabs((s) =>
     sessionId ? s.layouts[sessionId as string] : undefined);
@@ -35,6 +37,14 @@ export function Dock({
   const tabs = order.map((id) => layout?.tabsById[id]).filter((t) => t !== undefined);
 
   const [launcherOverlay, setLauncherOverlay] = useState(false);
+  const setLauncher = (value: boolean): void => {
+    setLauncherOverlay(value);
+    onLauncherChange?.(value);
+  };
+  useEffect(() => {
+    setLauncherOverlay(false);
+    onLauncherChange?.(false);
+  }, [sessionId, onLauncherChange]);
 
   // 右 Dock：手柄在左边缘，向左拖增宽；底部 Dock：手柄在上边缘，向上拖增高。
   const horizontal = dock === 'right';
@@ -73,7 +83,7 @@ export function Dock({
           dock={dock}
           tabs={tabs}
           {...(activeTabId !== undefined ? { activeTabId } : {})}
-          onAdd={() => setLauncherOverlay(true)}
+          onAdd={() => setLauncher(true)}
           {...(onExpandFullWidth !== undefined ? { onExpandFullWidth } : {})}
         />
       )}
@@ -88,7 +98,7 @@ export function Dock({
         <DockLauncher
           sessionId={sessionId}
           dock={dock}
-          onClose={() => setLauncherOverlay(false)}
+          onClose={() => setLauncher(false)}
         />
       )}
     </div>

@@ -8,11 +8,14 @@ import { displayFileName } from './resourcePaths.js';
 export async function copyResourceFile(
   source: string,
   destination: string,
-  maxBytes: number,
+  maxBytes?: number,
 ): Promise<number> {
   const stat = await fs.promises.stat(source).catch(() => null);
   if (!stat?.isFile()) throw new CharacterResourceValidationError('source_file_required');
-  if (stat.size <= 0 || stat.size > maxBytes) {
+  if (stat.size <= 0) {
+    throw new CharacterResourceValidationError('invalid_resource_values');
+  }
+  if (maxBytes !== undefined && stat.size > maxBytes) {
     throw new CharacterResourceValidationError('resource_too_large');
   }
   await fs.promises.mkdir(path.dirname(destination), { recursive: true });
@@ -33,7 +36,7 @@ export async function writeResourceFile(
   maxBytes: number,
 ): Promise<void> {
   if (bytes.byteLength === 0 || bytes.byteLength > maxBytes) {
-    throw new CharacterResourceValidationError('resource_too_large');
+    throw new CharacterResourceValidationError('invalid_resource_values');
   }
   await fs.promises.mkdir(path.dirname(destination), { recursive: true });
   await fs.promises.writeFile(destination, bytes, { flag: 'wx' });

@@ -84,14 +84,7 @@ function connectLipSyncSource(source: AudioNode): void {
 
 // ── Speech state broadcasting ─────────────────────────────────────────────────
 
-let speechChannel: BroadcastChannel | null = null;
 let lastPublishAt = 0;
-
-function getSpeechChannel(): BroadcastChannel | null {
-  if (typeof BroadcastChannel === 'undefined') return null;
-  if (!speechChannel) speechChannel = new BroadcastChannel('ema-stage-speech');
-  return speechChannel;
-}
 
 function publishSpeechState(
   state: { speaking: boolean; rms: number },
@@ -100,7 +93,6 @@ function publishSpeechState(
   const now = performance.now();
   if (!force && now - lastPublishAt < 33) return;
   lastPublishAt = now;
-  getSpeechChannel()?.postMessage(state);
   void tauriBridge.emit('stage:speech-state', state);
 }
 

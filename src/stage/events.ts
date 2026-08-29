@@ -1,17 +1,6 @@
-// 定义角色情绪状态与舞台提示进入统一事件流时使用的协议。
-export interface StageCue {
-  motion?: string;
-  expression?: string;
-  priority: number;
-}
-
-export interface EmotionState {
-  primary: string;
-  // 预留：次要情绪（主+次情绪混合、衰减与转换矩阵），当前无写入方，后续版本接线
-  secondary?: string;
-  intensity: number;
-}
-
+// 定义模型输出中的角色表现标签进入统一事件流时的协议。
+// 情绪是跨 Turn 的持续状态；动作是一次性播放请求。一个情绪映射至多一个
+// Expression/Motion，替换式播放，不做多表情叠加。
 export type StageStreamEvent =
-  | { type: 'stage_cue'; sessionId: string; turnId: string; cue: StageCue }
-  | { type: 'emotion_changed'; sessionId: string; turnId: string; state: EmotionState };
+  | { type: 'emotion_changed'; sessionId: string; turnId: string; emotion: string }
+  | { type: 'motion_changed'; sessionId: string; turnId: string; motion: string };

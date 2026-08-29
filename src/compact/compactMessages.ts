@@ -62,7 +62,6 @@ async function compactMessages(args: {
   const beforeTokens = request.estimatedInputTokens;
 
   if (history.length === 0) return unchanged();
-  if (!settings.enabled && !request.force) return unchanged();
 
   const tokenLimit = compactTokenLimit(request.contextWindow, settings);
 

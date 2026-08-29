@@ -17,7 +17,6 @@ export interface ImportedLive2dFiles {
 export async function importLive2dZip(
   sourceZipFile: string,
   destinationRoot: string,
-  limits: CharacterSettings['live2d'],
 ): Promise<ImportedLive2dFiles> {
   const source = await fs.promises.stat(sourceZipFile).catch(() => null);
   if (!source?.isFile() || path.extname(sourceZipFile).toLowerCase() !== '.zip') {
@@ -31,7 +30,7 @@ export async function importLive2dZip(
   await fs.promises.mkdir(destinationRoot, { recursive: true });
 
   try {
-    const byteSize = await extractZip(sourceZipFile, destination, limits);
+    const byteSize = await extractZip(sourceZipFile, destination);
     return { directoryName, displayName: directoryName, byteSize };
   } catch (error) {
     await removeDirectoryIfPresent(destination);
@@ -43,7 +42,6 @@ export async function exportLive2dZip(
   sourceDirectory: string,
   destinationDirectory: string,
   displayName: string,
-  limits: CharacterSettings['live2d'],
 ): Promise<string> {
   const destination = await fs.promises.stat(destinationDirectory).catch(() => null);
   if (!destination?.isDirectory()) {
@@ -62,9 +60,7 @@ export async function exportLive2dZip(
 
   try {
     const files = await listFiles(sourceDirectory);
-    if (files.length > limits.maxZipEntries) {
-      throw new CharacterResourceValidationError('zip_entry_count_exceeded');
-    }
+
     let expandedBytes = 0;
     const zip = new Zip((error, chunk) => {
       if (error) throw error;
@@ -73,9 +69,6 @@ export async function exportLive2dZip(
     for (const file of files) {
       const stat = await fs.promises.stat(file);
       expandedBytes += stat.size;
-      if (expandedBytes > limits.maxZipTotalBytes) {
-        throw new CharacterResourceValidationError('zip_expanded_size_exceeded');
-      }
       const entry = new ZipDeflate(
         path.relative(sourceDirectory, file).split(path.sep).join('/'),
         { level: 6 },
@@ -102,25 +95,13 @@ export { removeDirectoryIfPresent as deleteLive2dDirectory };
 async function extractZip(
   sourceZipFile: string,
   destination: string,
-  limits: CharacterSettings['live2d'],
 ): Promise<number> {
   await fs.promises.mkdir(destination, { recursive: false });
   const openFiles = new Set<number>();
-  let entryCount = 0;
   let expandedBytes = 0;
   try {
     const unzip = new Unzip((file) => {
       const entryPath = normalizeEntryPath(file.name);
-      entryCount += 1;
-      if (entryCount > limits.maxZipEntries) {
-        throw new CharacterResourceValidationError('zip_entry_count_exceeded');
-      }
-      if (
-        file.originalSize !== undefined
-        && file.originalSize > limits.maxZipTotalBytes
-      ) {
-        throw new CharacterResourceValidationError('zip_expanded_size_exceeded');
-      }
       const isDirectory = entryPath.endsWith('/');
       const target = path.join(destination, ...entryPath.split('/').filter(Boolean));
       if (isDirectory) fs.mkdirSync(target, { recursive: true });
@@ -130,9 +111,6 @@ async function extractZip(
       file.ondata = (error, chunk, final) => {
         if (error) throw new CharacterResourceValidationError('zip_invalid');
         expandedBytes += chunk.byteLength;
-        if (expandedBytes > limits.maxZipTotalBytes) {
-          throw new CharacterResourceValidationError('zip_expanded_size_exceeded');
-        }
         if (descriptor !== null && chunk.byteLength > 0) fs.writeSync(descriptor, chunk);
         if (final && descriptor !== null) {
           fs.closeSync(descriptor);

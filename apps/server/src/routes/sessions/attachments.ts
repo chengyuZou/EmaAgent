@@ -3,20 +3,17 @@ import fs from 'node:fs';
 import { Readable } from 'node:stream';
 import { Hono } from 'hono';
 import type { AttachmentStore } from '@ema-agent/attachments';
-import type { TurnStore } from '@ema-agent/turn';
 
 export interface SessionAttachmentsRouteDeps {
   readonly attachments: AttachmentStore;
-  readonly turns: Pick<TurnStore, 'listTurns'>;
 }
 
 export const sessionAttachmentsRoute = (deps: SessionAttachmentsRouteDeps) =>
   new Hono()
-    // 附件面板：按 Turn 聚合该 Session 的全部附件（AttachmentStore 的查询单位是 Turn）。
+    // 附件面板直接按 Session 查询，不用 Turn 数量限制截断历史附件。
     .get('/:sessionId/attachments', context => {
       const sessionId = context.req.param('sessionId');
-      const attachments = deps.turns.listTurns(sessionId, 500)
-        .flatMap(turn => deps.attachments.listByTurn(turn.id))
+      const attachments = deps.attachments.listBySession(sessionId)
         .map(attachment => ({
           id: attachment.id,
           turnId: attachment.turnId,

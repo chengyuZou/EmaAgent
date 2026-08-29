@@ -1,4 +1,4 @@
-// 测试 StageEngine 的标签清洗、情绪状态机与动作词汇校验。
+// 测试 StageEngine 的标签清洗、情绪持续状态与动作词汇校验。
 import { describe, expect, it } from 'vitest';
 import { StageEngine } from '../engine.js';
 
@@ -7,30 +7,31 @@ function makeEngine() {
 }
 
 describe('StageEngine', () => {
-  it('已知情绪转移状态并发事件；未知情绪只清洗正文', () => {
+  it('已知情绪转移状态并发事件；未知情绪与重复情绪只清洗正文', () => {
     const engine = makeEngine();
     engine.beginTurn('s1');
     const first = engine.processChunk('我<emotion>happy</emotion>开心', 't1', 's1');
     expect(first.cleaned).toBe('我开心');
-    expect(first.events).toEqual([expect.objectContaining({
-      type: 'emotion_changed',
-      state: expect.objectContaining({ primary: 'happy' }),
-    })]);
+    expect(first.events).toEqual([
+      { type: 'emotion_changed', sessionId: 's1', turnId: 't1', emotion: 'happy' },
+    ]);
 
-    const second = engine.processChunk('<emotion>jealous</emotion>', 't1', 's1');
-    expect(second.cleaned).toBe('');
-    expect(second.events).toEqual([]);
-    expect(engine.current('s1')?.primary).toBe('happy');
+    const unknown = engine.processChunk('<emotion>jealous</emotion>', 't1', 's1');
+    expect(unknown.cleaned).toBe('');
+    expect(unknown.events).toEqual([]);
+
+    // 重复当前情绪不发事件：状态机记住的仍是 happy。
+    const repeated = engine.processChunk('<emotion>happy</emotion>', 't1', 's1');
+    expect(repeated.events).toEqual([]);
   });
 
-  it('已知动作发 stage_cue；模型编造的动作名不发事件只清洗', () => {
+  it('已知动作发 motion_changed；模型编造的动作名不发事件只清洗', () => {
     const engine = makeEngine();
     engine.beginTurn('s1');
     const known = engine.processChunk('<motion>wave</motion>你好', 't1', 's1');
-    expect(known.events).toEqual([expect.objectContaining({
-      type: 'stage_cue',
-      cue: expect.objectContaining({ motion: 'wave' }),
-    })]);
+    expect(known.events).toEqual([
+      { type: 'motion_changed', sessionId: 's1', turnId: 't1', motion: 'wave' },
+    ]);
     expect(known.cleaned).toBe('你好');
 
     const unknown = engine.processChunk('<motion>fly_away</motion>文本', 't1', 's1');
@@ -43,7 +44,7 @@ describe('StageEngine', () => {
     engine.beginTurn('s1');
     engine.updateVocabulary(['calm'], ['nod']);
     const result = engine.processChunk('<emotion>happy</emotion><motion>nod</motion>', 't1', 's1');
-    expect(result.events.map(e => e.type)).toEqual(['stage_cue']);
+    expect(result.events.map(e => e.type)).toEqual(['motion_changed']);
   });
 
   it('跨 delta 拆开的标签也能识别', () => {

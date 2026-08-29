@@ -8,8 +8,12 @@ use tauri::{Manager, RunEvent};
 use tracing_subscriber::EnvFilter;
 
 use commands::{
-    get_server_port, get_server_secret, open_window, quit_app, set_always_on_top, set_passthrough,
+    browser_back, browser_forward, close_browser, close_session_terminals, close_terminal,
+    get_server_port, get_server_secret, list_terminal_shells, navigate_browser, open_browser,
+    open_terminal, open_window, quit_app, reload_browser, resize_terminal, set_always_on_top,
+    set_browser_bounds, set_browser_visible, set_passthrough, write_terminal,
 };
+use desktop::terminal::TerminalSessions;
 use desktop::windows::{handle_window_event, show_main_window};
 use processes::DesktopProcesses;
 
@@ -27,6 +31,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(processes)
+        .manage(TerminalSessions::new())
         .invoke_handler(tauri::generate_handler![
             get_server_secret,
             get_server_port,
@@ -34,6 +39,20 @@ pub fn run() {
             set_passthrough,
             quit_app,
             open_window,
+            open_terminal,
+            list_terminal_shells,
+            write_terminal,
+            resize_terminal,
+            close_terminal,
+            close_session_terminals,
+            open_browser,
+            navigate_browser,
+            browser_back,
+            browser_forward,
+            reload_browser,
+            set_browser_bounds,
+            set_browser_visible,
+            close_browser,
         ])
         .setup(move |app| {
             let app_handle = app.handle().clone();

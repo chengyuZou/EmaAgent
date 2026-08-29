@@ -3,7 +3,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Character } from './types.js';
-import type { CharacterSettings } from './settings.js';
 import { findLive2dPackageFilesSync } from './live2d/live2dValidator.js';
 import { CharacterResourcePaths } from './resources/resourcePaths.js';
 import { assertPersonaPrompt } from './characterPrompt.js';
@@ -28,10 +27,6 @@ export interface CharacterHealthIssue {
   readonly message: string;
 }
 
-export type CharacterPresentationCandidate =
-  | { readonly kind: 'live2d'; readonly resourceId: string }
-  | { readonly kind: 'illustration'; readonly resourceId: string };
-
 export interface CharacterHealth {
   readonly characterId: Character['id'];
   readonly status: CharacterHealthStatus;
@@ -41,7 +36,6 @@ export interface CharacterHealth {
   readonly selectedIllustrationId: string | null;
   /** null = 当前无可用参考音频（声音克隆能力禁用）。 */
   readonly selectedVoiceSampleId: string | null;
-  readonly presentationCandidates: readonly CharacterPresentationCandidate[];
   readonly issues: readonly CharacterHealthIssue[];
 }
 
@@ -54,7 +48,6 @@ export interface CharacterHealthReport {
 export async function inspectCharacterHealth(
   character: Character,
   paths: CharacterResourcePaths,
-  settings: CharacterSettings,
 ): Promise<CharacterHealth> {
   const issues: CharacterHealthIssue[] = [];
   try {
@@ -95,15 +88,6 @@ export async function inspectCharacterHealth(
       pushMissing(issues, resource.id, file);
       return false;
     }
-    if (stat.size > settings.illustration.maxBytes) {
-      issues.push({
-        code: 'illustration_too_large',
-        severity: 'warning',
-        resourceId: resource.id,
-        message: `角色立绘超过 ${settings.illustration.maxBytes} 字节限制。`,
-      });
-      return false;
-    }
     return true;
   });
 
@@ -135,16 +119,6 @@ export async function inspectCharacterHealth(
   }
 
   const executionAvailable = !issues.some((issue) => issue.severity === 'error');
-  const presentationCandidates: CharacterPresentationCandidate[] = [
-    ...live2dModelCandidates.map((resource) => ({
-      kind: 'live2d' as const,
-      resourceId: resource.id,
-    })),
-    ...illustrationCandidates.map((resource) => ({
-      kind: 'illustration' as const,
-      resourceId: resource.id,
-    })),
-  ];
   return {
     characterId: character.id,
     status: !executionAvailable ? 'invalid' : issues.length > 0 ? 'degraded' : 'healthy',
@@ -155,7 +129,6 @@ export async function inspectCharacterHealth(
     selectedLive2dModelId: live2dModelCandidates[0]?.id ?? null,
     selectedIllustrationId: illustrationCandidates[0]?.id ?? null,
     selectedVoiceSampleId: voiceSample?.id ?? null,
-    presentationCandidates,
     issues,
   };
 }
@@ -167,10 +140,9 @@ export async function inspectCharacterHealth(
 export async function inspectAllCharacterHealth(
   characters: readonly Character[],
   paths: CharacterResourcePaths,
-  settings: CharacterSettings,
 ): Promise<CharacterHealthReport> {
   const health = await Promise.all(
-    characters.map((character) => inspectCharacterHealth(character, paths, settings)),
+    characters.map((character) => inspectCharacterHealth(character, paths)),
   );
   return {
     characters: health,

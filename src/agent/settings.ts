@@ -11,8 +11,6 @@ import { z } from 'zod';
 export interface AgentSettings {
   chatMaxIterations: number;
   workMaxIterations: number;
-  maxToolCalls: number;
-  maxSubagents: number;
   maxConcurrentSubagents: number;
   /** 开启 thinking 的 Turn 使用的中立强度档（协议各自映射，nextTurn 生效）。 */
   thinkingEffort: LlmThinkingEffort;
@@ -26,7 +24,7 @@ export const chatMaxIterationsSetting = defineSetting<number>({
   description: 'Chat 模式单 Turn 最大迭代次数。',
   apply: 'nextTurn',
   defaultValue: 20,
-  schema: z.number().int().min(1).max(30),
+  schema: z.number().int().min(10).max(30),
   group: AGENT_LIMITS_GROUP,
 });
 
@@ -36,27 +34,7 @@ export const workMaxIterationsSetting = defineSetting<number>({
   description: 'Work 模式单 Turn 最大迭代次数。',
   apply: 'nextTurn',
   defaultValue: 50,
-  schema: z.number().int().min(1).max(100),
-  group: AGENT_LIMITS_GROUP,
-});
-
-export const maxToolCallsSetting = defineSetting<number>({
-  key: 'agent.limits.maxToolCalls',
-  label: '单轮工具调用上限',
-  description: '单 Turn 最大工具调用次数。',
-  apply: 'nextTurn',
-  defaultValue: 512,
-  schema: z.number().int().min(1).max(512),
-  group: AGENT_LIMITS_GROUP,
-});
-
-export const maxSubagentsSetting = defineSetting<number>({
-  key: 'agent.limits.maxSubagents',
-  label: '单轮子代理上限',
-  description: '单 Turn 最大子代理数。',
-  apply: 'nextTurn',
-  defaultValue: 16,
-  schema: z.number().int().min(1).max(32),
+  schema: z.number().int().min(30).max(100),
   group: AGENT_LIMITS_GROUP,
 });
 
@@ -90,8 +68,6 @@ export const thinkingEffortSetting = defineSetting<LlmThinkingEffort>({
 export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   chatMaxIterations: chatMaxIterationsSetting.defaultValue,
   workMaxIterations: workMaxIterationsSetting.defaultValue,
-  maxToolCalls: maxToolCallsSetting.defaultValue,
-  maxSubagents: maxSubagentsSetting.defaultValue,
   maxConcurrentSubagents: maxConcurrentSubagentsSetting.defaultValue,
   thinkingEffort: thinkingEffortSetting.defaultValue,
 };
@@ -100,8 +76,6 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
 export const AGENT_LIMITS_SETTINGS = [
   chatMaxIterationsSetting,
   workMaxIterationsSetting,
-  maxToolCallsSetting,
-  maxSubagentsSetting,
   maxConcurrentSubagentsSetting,
 ] as const;
 
@@ -117,7 +91,6 @@ export const agentLimitsGroup: SettingGroup = {
     .object({
       'agent.limits.chatMaxIterations': z.number(),
       'agent.limits.workMaxIterations': z.number(),
-      'agent.limits.maxToolCalls': z.number(),
       'agent.limits.maxSubagents': z.number(),
       'agent.limits.maxConcurrentSubagents': z.number(),
     })
@@ -136,8 +109,6 @@ export function readAgentSettings(store: SettingsStore): AgentSettings {
   return {
     chatMaxIterations: store.get(chatMaxIterationsSetting),
     workMaxIterations: store.get(workMaxIterationsSetting),
-    maxToolCalls: store.get(maxToolCallsSetting),
-    maxSubagents: store.get(maxSubagentsSetting),
     maxConcurrentSubagents: store.get(maxConcurrentSubagentsSetting),
     thinkingEffort: store.get(thinkingEffortSetting),
   };

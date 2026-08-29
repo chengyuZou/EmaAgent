@@ -249,7 +249,7 @@ describe('TurnExecutor 集成', () => {
     const types: string[] = [];
     for await (const event of handle.events) types.push(event.type);
     expect(types).toContain('emotion_changed');
-    expect(types).toContain('stage_cue');
+    expect(types).toContain('motion_changed');
     // angry 不在当前角色词汇表：只清洗，不发事件。
     expect(types.filter(t => t === 'emotion_changed')).toHaveLength(1);
     db.close();
