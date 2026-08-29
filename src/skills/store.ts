@@ -1,17 +1,16 @@
 // SkillStore:user 域技能的持久化与对账。目录是事实源,SQL 只是索引/溯源。
 // 不含启用状态(Settings deny-list);builtin/project 域不写 SQL(project 原位只读)。
 import { createHash } from 'node:crypto';
-import { mkdir, readdir, rename, rm, stat } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { SkillRow, SkillsRepo } from '@ema-agent/storage';
 import { SkillNotFoundError } from './errors.js';
-import { parseSkillMd, readSkillFileBounded } from './parser.js';
+import { parseSkillMd } from './parser.js';
 import { listSkillDirectories, resolveChildDirectory, resolveSkillFile, skillSlug } from './paths.js';
 import {
-  MAX_SKILL_BUNDLE_FILES,
   type SkillDescriptor,
   type SkillInstallProvenance,
-  type SkillManifest,
+  type ParsedSkillMd,
 } from './types.js';
 
 /** staging 目录前缀;扫描跳过、启动清扫。 */
@@ -59,7 +58,7 @@ export function createSkillStore(deps: SkillStoreDeps): SkillStore {
     for (const dir of await listSkillDirectories(userRoot)) {
       try {
         const skillFile = await resolveSkillFile(dir);
-        const manifest = parseSkillMd(await readSkillFileBounded(skillFile));
+        const parsed = parseSkillMd(await readFile(skillFile, 'utf8'));
         const info = await stat(skillFile);
         const id = stableIdForDir(dir);
         seen.add(id);
@@ -67,11 +66,11 @@ export function createSkillStore(deps: SkillStoreDeps): SkillStore {
         const existing = rowsById.get(id);
         const row: SkillRow = {
           id,
-          name: manifest.name,
+          name: parsed.name,
           // 站点安装的版本以站点索引为准(更新对账事实源),不从 frontmatter 回写。
-          version: existing?.site_id ? existing.version : manifest.version,
-          description: manifest.description,
-          arg_hint: manifest.argumentHint ?? null,
+          version: existing?.site_id ? existing.version : parsed.version,
+          description: parsed.description,
+          arg_hint: parsed.argumentHint ?? null,
           dir_path: dir,
           source: 'user',
           // 溯源字段只从既有行继承;对账不产生溯源。
@@ -84,7 +83,7 @@ export function createSkillStore(deps: SkillStoreDeps): SkillStore {
           installed_at: existing?.installed_at ?? Date.now(),
         };
         repo.upsertById(row);
-        entries.push(toDescriptor(row, manifest));
+        entries.push(toDescriptor(row, parsed));
       } catch (error) {
         skipped.push({ dir, reason: error instanceof Error ? error.message : String(error) });
       }
@@ -102,25 +101,25 @@ export function createSkillStore(deps: SkillStoreDeps): SkillStore {
     provenance: SkillInstallProvenance,
   ): Promise<SkillDescriptor> {
     const skillFile = await resolveSkillFile(stagingDir);
-    const manifest = parseSkillMd(await readSkillFileBounded(skillFile));
+    const parsed = parseSkillMd(await readFile(skillFile, 'utf8'));
     const info = await stat(skillFile);
 
     const installKey = provenance.kind === 'site'
       ? `${SITE_DIR_PREFIX}${provenance.siteId}_${provenance.siteEntryId}`
-      : skillSlug(manifest.name);
+      : skillSlug(parsed.name);
     const id = provenance.kind === 'site' ? installKey : stableIdForDir(join(userRoot, installKey));
     const target = join(userRoot, installKey);
 
-    // 更新即替换:先删旧目录再 rename;rename 同卷原子,读盘只读到旧或新。
+    // 更新即替换:先删旧目录再 rename;rm 与 rename 之间目标短暂不存在,对账当缺失处理,下次刷新自愈。
     await rm(target, { recursive: true, force: true });
     await rename(stagingDir, target);
 
     const row: SkillRow = {
       id,
-      name: manifest.name,
-      version: provenance.kind === 'site' ? provenance.version : manifest.version,
-      description: manifest.description,
-      arg_hint: manifest.argumentHint ?? null,
+      name: parsed.name,
+      version: provenance.kind === 'site' ? provenance.version : parsed.version,
+      description: parsed.description,
+      arg_hint: parsed.argumentHint ?? null,
       dir_path: target,
       source: 'user',
       source_url: provenance.kind === 'site' ? provenance.bundleUrl : null,
@@ -132,7 +131,7 @@ export function createSkillStore(deps: SkillStoreDeps): SkillStore {
       installed_at: Date.now(),
     };
     repo.upsertById(row);
-    return toDescriptor(row, manifest);
+    return toDescriptor(row, parsed);
   }
 
   async function deleteUserSkill(key: string): Promise<void> {
@@ -173,20 +172,15 @@ function stableIdForDir(dir: string): string {
   return createHash('sha256').update(dir).digest('hex').slice(0, 16);
 }
 
-/** 递归测量目录总字节;文件数超上限视为损坏(对账跳过)。 */
+/** 递归测量目录总字节,供索引行展示。 */
 async function measureSkillDirectory(dir: string): Promise<number> {
   let total = 0;
-  let count = 0;
   async function walk(current: string): Promise<void> {
     for (const entry of await readdir(current, { withFileTypes: true })) {
       const full = join(current, entry.name);
       if (entry.isDirectory()) {
         await walk(full);
       } else if (entry.isFile()) {
-        count += 1;
-        if (count > MAX_SKILL_BUNDLE_FILES) {
-          throw new Error(`技能目录文件数超过上限(${MAX_SKILL_BUNDLE_FILES}): ${dir}`);
-        }
         total += (await stat(full)).size;
       }
     }
@@ -195,7 +189,7 @@ async function measureSkillDirectory(dir: string): Promise<number> {
   return total;
 }
 
-function toDescriptor(row: SkillRow, manifest: SkillManifest): SkillDescriptor {
+function toDescriptor(row: SkillRow, parsed: ParsedSkillMd): SkillDescriptor {
   return {
     key: `user:${row.id}`,
     name: row.name,
@@ -203,8 +197,8 @@ function toDescriptor(row: SkillRow, manifest: SkillManifest): SkillDescriptor {
     version: row.version,
     description: row.description,
     argumentHint: row.arg_hint ?? undefined,
-    whenToUse: manifest.whenToUse,
-    allowedToolPatterns: manifest.allowedTools,
+    whenToUse: parsed.whenToUse,
+    allowedToolPatterns: parsed.allowedTools,
     rootPath: row.dir_path,
     scope: 'user',
     provenance: row.site_id

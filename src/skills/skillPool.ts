@@ -1,8 +1,7 @@
 // SkillPool:根 Turn 冻结的技能集合(镜像 ToolPool)。
-// 冻结 = 取 Registry 当前全量 → 过滤三个 deny → 排序 → callName 别名 → 现算 revision。
+// 冻结 = 取 Registry 当前全量 → 过滤三个 deny → 排序 → callName 别名。
 // Pool 是本 Turn Prompt 目录与 SkillCall 查找的唯一事实源;Turn 内的安装/禁用变化
 // 只影响下一根 Turn。
-import { createHash } from 'node:crypto';
 import {
   SKILL_LISTING_BUDGET_BYTES,
   SKILL_LISTING_ENTRY_MAX_CHARS,
@@ -35,7 +34,7 @@ export function isSkillEnabled(entry: SkillDescriptor, input: SkillEnablement): 
   return true;
 }
 
-/** 根 Turn 冻结:deny 过滤 + 确定性排序 + callName 别名 + revision。 */
+/** 根 Turn 冻结:deny 过滤 + 确定性排序 + callName 别名。 */
 export function freezeSkillPool(input: SkillPoolFreezeInput): SkillPool {
   const visible = input.entries.filter((entry) => isSkillEnabled(entry, input));
 
@@ -64,27 +63,10 @@ export function freezeSkillPool(input: SkillPoolFreezeInput): SkillPool {
   }
 
   return Object.freeze({
-    revision: computeRevision(entries),
     entries: Object.freeze(entries) as readonly SkillDescriptor[],
     getByKey: (key: SkillKey) => byKey.get(key),
     getByCallName: (name: string) => byCallName.get(name),
   });
-}
-
-/** revision = 有序 (key, version, description, whenToUse) 的稳定哈希;输入不变则字节不变。 */
-function computeRevision(entries: readonly SkillDescriptor[]): string {
-  const hash = createHash('sha256');
-  for (const entry of entries) {
-    hash.update(entry.key);
-    hash.update(' ');
-    hash.update(entry.version);
-    hash.update(' ');
-    hash.update(entry.description);
-    hash.update(' ');
-    hash.update(entry.whenToUse ?? '');
-    hash.update('\n');
-  }
-  return hash.digest('hex').slice(0, 16);
 }
 
 /** project key 的来源 id:project:<sourceId>:<workspaceRelPath>。 */

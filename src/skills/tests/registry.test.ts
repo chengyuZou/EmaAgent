@@ -41,10 +41,9 @@ function makeWorkspace(skillName: string): string {
 
 describe('SkillRegistry', () => {
   it('refreshCore 装载 builtin+user；list 按工作区附带 project', async () => {
-    const bundled = makeDir();
-    mkdirSync(join(bundled, 'code-review'), { recursive: true });
-    writeFileSync(join(bundled, 'code-review', 'SKILL.md'), SKILL_MD('code-review'));
     const builtinRoot = makeDir();
+    mkdirSync(join(builtinRoot, 'code-review'), { recursive: true });
+    writeFileSync(join(builtinRoot, 'code-review', 'SKILL.md'), SKILL_MD('code-review'));
     const userRoot = makeDir();
     mkdirSync(join(userRoot, 'my-skill'), { recursive: true });
     writeFileSync(join(userRoot, 'my-skill', 'SKILL.md'), SKILL_MD('my-skill'));
@@ -54,7 +53,6 @@ describe('SkillRegistry', () => {
     const registry = createSkillRegistry({
       userRoot,
       builtinRoot,
-      bundledSkillsSource: bundled,
       store,
     });
 
@@ -74,7 +72,6 @@ describe('SkillRegistry', () => {
     const registry = createSkillRegistry({
       userRoot,
       builtinRoot: makeDir(),
-      bundledSkillsSource: makeDir(),
       store: createSkillStore({ repo: makeRepo(), userRoot }),
     });
     await registry.refreshCore();
@@ -97,7 +94,6 @@ describe('SkillRegistry', () => {
     const registry = createSkillRegistry({
       userRoot,
       builtinRoot: makeDir(),
-      bundledSkillsSource: makeDir(),
       store: createSkillStore({ repo: makeRepo(), userRoot }),
     });
 
@@ -113,7 +109,6 @@ describe('SkillRegistry', () => {
     const registry = createSkillRegistry({
       userRoot,
       builtinRoot: makeDir(),
-      bundledSkillsSource: makeDir(),
       store: createSkillStore({ repo: makeRepo(), userRoot }),
     });
 

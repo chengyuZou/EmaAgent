@@ -20,7 +20,7 @@ function deferred<T>(): Deferred<T> {
 describe('CharacterStageLoader', () => {
   it('原子提交后端已经冻结顺序的完整候选视图', async () => {
     const loader = new CharacterStageLoader({
-      load: async (characterId) => stageView(characterId, '/cards/ema/model3.json'),
+      load: async (characterId) => stageView(characterId, '/models/ema.model3.json'),
     });
 
     await expect(loader.load('char-plain')).resolves.toMatchObject({

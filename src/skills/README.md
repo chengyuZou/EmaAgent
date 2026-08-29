@@ -7,18 +7,18 @@
 
 ```ts
 // 类型
-SkillKey / SkillScope / SkillDescriptor / SkillInstallProvenance / SkillPool / SkillManifest
+SkillKey / SkillScope / SkillDescriptor / SkillInstallProvenance / SkillPool / ParsedSkillMd
 
 // 三个 deny 设置(Settings 注册用)
 disabledSkillKeysSetting / disabledProjectSourcesSetting / builtinSkillsEnabledSetting
 
-// 解析与有界读取
-parseSkillMd / validateSkillMd / readSkillFileBounded
+// 解析
+parseSkillMd
 
 // 注册表与冻结池
 createSkillRegistry(deps)      // 活注册表:refreshCore 装载 builtin+user(启动/安装/卸载后);
                                // list(workspaceRoot) 现扫 project——多工作区互不覆盖
-freezeSkillPool(input)         // 根 Turn 冻结:过滤 deny + 排序 + callName + revision
+freezeSkillPool(input)         // 根 Turn 冻结:过滤 deny + 排序 + callName
 renderSkillListing(pool)       // Prompt 常驻目录(8KB 单遍截断)
 
 // user 域持久化(目录是事实源,SQL 是索引/溯源)
@@ -37,7 +37,7 @@ downloadBundle / extractBundle / installSkillFromSite
 ## 其他包不得复用/穿透的
 
 - **`paths.ts`、installer 内部、`sources/*` 的内部函数**不是公共件;跨包只准走上面的出口。
-- **桌面前端不得 import 本包类型**(`GithubSkillCoords`/`SkillRecord` 这类历史 import 已随旧市场 UI 删除波次清除);前端要的是 wire 镜像,技能信息经 server Route 下发。
+- **桌面前端不得 import 本包类型**;技能信息经 server Route 下发。
 - 启用状态**不在**本包任何 SQL 行里——SkillsRepo/SkillSitesRepo 都不提供 enabled 语义;禁用只经 Settings deny-list,接线方不得给 store 加 setEnabled 一类方法。
 
 ## 不变量
@@ -45,12 +45,12 @@ downloadBundle / extractBundle / installSkillFromSite
 - Registry 活、Pool 冻：刷新只更新 Registry;安装/禁用/工作区变化只影响下一根 Turn。
 - 目录是事实源：SQL 丢失可由 reconcile 重建;站点溯源(site_id/sha256/version)在对账中保留。
 - 写盘只两条路：reconcile 对账与 finalizeInstall 的同卷 rename;staging 必须在 userRoot 内。
-- zip/路径防线(paths.ts + extract.ts)是安全地板,不是可选件;所有读盘点过 `readSkillFileBounded`。
+- 路径防线(paths.ts + extract.ts)是安全地板;内置技能目录(<profileDir>/resources/skills)由宿主在启动时铺好,本包只读直扫,不物化、不感知打包。
 
 ## 失败语义
 
 - 单个技能目录损坏 → 对账跳过并记 reason,不拖垮整轮;
-- builtin 物化失败 → warning 降级为空内置集,不阻塞启动;
+- builtin 源缺失/扫描失败 → warning 降级为空内置集,不阻塞启动;
 - 站点拉取失败 → fetch_status='failed' + 旧缓存保留;索引解析失败 = index:null。
 
 ## 接线契约(归接线批,本包不接线)

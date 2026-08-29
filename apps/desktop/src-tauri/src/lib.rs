@@ -74,8 +74,9 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app_handle, event| {
             if let RunEvent::Exit = event {
-                // 最后防线负责回收异常退出路径遗留的整棵子进程树。
+                // 最后防线负责回收异常退出路径遗留的整棵子进程树与全部 PTY 终端。
                 let state = app_handle.state::<DesktopProcesses>();
+                app_handle.state::<TerminalSessions>().close_all();
                 tauri::async_runtime::block_on(async {
                     state.shutdown().await;
                 });

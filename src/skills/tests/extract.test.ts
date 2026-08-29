@@ -1,9 +1,8 @@
-// zip 解压防线测试:路径穿越、条目/体积限额、顶层目录剥离、SKILL.md 必需。
+// zip 解压校验测试:路径穿越、魔数、顶层目录剥离、SKILL.md 必需。
 // 用 fflate zipSync 构造真实 zip 字节,不起网络、不落盘。
 import { describe, expect, it } from 'vitest';
 import { zipSync } from 'fflate';
 import { extractBundle } from '../installer/extract.js';
-import { MAX_SKILL_BUNDLE_FILES } from '../types.js';
 
 const SKILL_MD = `---\nname: demo\nversion: 1.0.0\ndescription: demo skill\n---\n# Demo\n`;
 
@@ -46,12 +45,6 @@ describe('extractBundle — 防线', () => {
 
   it('拒绝缺少 SKILL.md 的包', () => {
     expect(() => extractBundle(makeZip({ 'readme.md': 'hi' }))).toThrow(/SKILL\.md/);
-  });
-
-  it('条目数超过上限被拒', () => {
-    const files: Record<string, string> = { 'SKILL.md': SKILL_MD };
-    for (let i = 0; i < MAX_SKILL_BUNDLE_FILES; i++) files[`f${i}.txt`] = 'x';
-    expect(() => extractBundle(makeZip(files))).toThrow(/文件数/);
   });
 
   it('顶层目录剥离后仍含路径穿越时拒绝', () => {

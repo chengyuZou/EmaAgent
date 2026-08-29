@@ -45,7 +45,6 @@ import {
 import {
   backgroundProcessOutputDirFor,
   builtinSkillsDir,
-  bundledSkillsDir,
   dataDbPathFor,
   profileDir,
   profileDbPath,
@@ -261,7 +260,6 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
   const skills = createSkillRegistry({
     userRoot: skillUserRoot,
     builtinRoot: builtinSkillsDir(),
-    bundledSkillsSource: bundledSkillsDir(),
     store: skillStore,
   });
   // builtin+user 启动时装载一次；project 技能按工作区在 list() 时现扫。

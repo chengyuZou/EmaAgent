@@ -1,9 +1,9 @@
 // sources/project:工作区生态目录扫描(原位只读,不复制、不进 SQL)。
-// 扫描边界(架构 v4 §8):每生态根深 ≤ 4、每根 ≤ 2000 个技能目录、跳过 dotfiles、
-// gitignore 目录不进(node_modules 等防依赖包投毒)、symlink 不跟随、realpath 去重。
-import { readdir, realpath } from 'node:fs/promises';
+// 扫描边界:每生态根深 ≤ 4、每根 ≤ 2000 个技能目录、跳过 dotfiles、
+// symlink 不跟随、realpath 去重;过滤由 Settings 三个 deny 开关承担。
+import { readFile, readdir, realpath } from 'node:fs/promises';
 import { join } from 'node:path';
-import { parseSkillMd, readSkillFileBounded } from '../parser.js';
+import { parseSkillMd } from '../parser.js';
 import type { SkillDescriptor } from '../types.js';
 
 /** 生态声明表:sourceId 即 project key 的来源段(project:<sourceId>:<relPath>)。 */
@@ -21,47 +21,44 @@ export const PROJECT_ECOSYSTEMS: readonly ProjectEcosystem[] = [
   { sourceId: 'gemini',  relativeDir: '.gemini/skills' },
 ];
 
-export interface ProjectScanOptions {
-  /** gitignore 判定:返回 true 表示该工作区相对路径被忽略,不得扫描。 */
-  readonly isIgnored?: (workspaceRelPath: string) => boolean;
-}
-
 const MAX_DEPTH = 4;
 const MAX_SKILL_DIRS = 2_000;
 
 export async function scanProjectSkills(
   workspaceRoot: string,
-  options: ProjectScanOptions = {},
 ): Promise<SkillDescriptor[]> {
   const descriptors: SkillDescriptor[] = [];
   const seenRealDirs = new Set<string>();
   let visited = 0;
+  // workspaceRoot 先 canonicalize:realpath 返回真实大小写,否则 Windows 上
+  // 传入路径与 realpath 大小写不一致时前缀比较失败,绝对路径会漏进 SkillKey。
+  const canonicalRoot = toPosix(await realpath(workspaceRoot));
 
   for (const ecosystem of PROJECT_ECOSYSTEMS) {
     if (visited >= MAX_SKILL_DIRS) break;
     const ecoRoot = join(workspaceRoot, ecosystem.relativeDir);
-    const skillFiles = await collectSkillFiles(ecoRoot, ecosystem.relativeDir, options);
+    const skillFiles = await collectSkillFiles(ecoRoot, ecosystem.relativeDir);
     for (const skillFile of skillFiles) {
       if (visited >= MAX_SKILL_DIRS) break;
       const dir = skillFile.slice(0, skillFile.length - '/SKILL.md'.length);
       try {
-        const canonical = await realpath(dir);
+        const canonical = toPosix(await realpath(dir));
         if (seenRealDirs.has(canonical)) continue;
         seenRealDirs.add(canonical);
 
-        const manifest = parseSkillMd(await readSkillFileBounded(skillFile));
-        const relPath = toPosix(canonical.startsWith(workspaceRoot)
-          ? canonical.slice(workspaceRoot.length).replace(/^[/\\]+/, '')
-          : dir);
+        const parsed = parseSkillMd(await readFile(skillFile, 'utf8'));
+        const relPath = canonical.startsWith(canonicalRoot)
+          ? canonical.slice(canonicalRoot.length).replace(/^\/+/, '')
+          : canonical;
         descriptors.push({
           key: `project:${ecosystem.sourceId}:${relPath}`,
-          name: manifest.name,
-          callName: manifest.name,
-          version: manifest.version,
-          description: manifest.description,
-          ...(manifest.argumentHint !== undefined ? { argumentHint: manifest.argumentHint } : {}),
-          ...(manifest.whenToUse !== undefined ? { whenToUse: manifest.whenToUse } : {}),
-          allowedToolPatterns: manifest.allowedTools,
+          name: parsed.name,
+          callName: parsed.name,
+          version: parsed.version,
+          description: parsed.description,
+          ...(parsed.argumentHint !== undefined ? { argumentHint: parsed.argumentHint } : {}),
+          ...(parsed.whenToUse !== undefined ? { whenToUse: parsed.whenToUse } : {}),
+          allowedToolPatterns: parsed.allowedTools,
           rootPath: dir,
           scope: 'project',
         });
@@ -74,11 +71,10 @@ export async function scanProjectSkills(
   return descriptors;
 }
 
-/** 在生态根下找 SKILL.md;dotfiles 与 isIgnored 命中不进,symlink 不跟随。 */
+/** 在生态根下找 SKILL.md;dotfiles 不进,symlink 不跟随。 */
 async function collectSkillFiles(
   ecoRoot: string,
   ecoRelDir: string,
-  options: ProjectScanOptions,
 ): Promise<string[]> {
   const found: string[] = [];
 
@@ -94,7 +90,6 @@ async function collectSkillFiles(
       if (found.length >= MAX_SKILL_DIRS) return;
       if (child.name.startsWith('.')) continue;
       const childRel = `${relDir}/${child.name}`;
-      if (options.isIgnored?.(childRel)) continue;
       if (child.isSymbolicLink()) continue;
       if (child.isDirectory()) {
         await walk(join(dir, child.name), childRel, depth + 1);

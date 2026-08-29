@@ -14,8 +14,6 @@ export interface SiteRefreshReport {
   readonly error?: string;
 }
 
-// refreshSites 属 SKILL-1(依赖 siteStore/siteClient 完成),骨架保留在文件尾。
-
 export interface SkillUpdateCandidate {
   /** skills 表稳定 id(也是 user key 的后缀)。 */
   readonly skillId: string;

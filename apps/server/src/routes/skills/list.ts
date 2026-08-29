@@ -1,4 +1,5 @@
 // 技能目录与正文：全量列表（含 enabled 投影）、单条详情、SKILL.md 正文与 user 技能删除。
+import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import { z } from 'zod';
@@ -9,7 +10,6 @@ import {
   disabledSkillKeysSetting,
   isSkillEnabled,
   parseSkillKey,
-  readSkillFileBounded,
   type SkillDescriptor,
   type SkillEnablement,
   type SkillRegistry,
@@ -62,7 +62,7 @@ export const skillListRoute = (deps: SkillListRouteDeps) => {
       if (!key) return context.json({ error: 'invalid_skill_key' }, 400);
       const entry = await deps.skills.getByKey(key, workspaceOf(sessionId));
       if (!entry) return context.json({ error: 'skill_not_found' }, 404);
-      const content = await readSkillFileBounded(join(entry.rootPath, 'SKILL.md'));
+      const content = await readFile(join(entry.rootPath, 'SKILL.md'), 'utf8');
       return context.json({ key: entry.key, content });
     })
     // 只有 user 技能可删：builtin 只读，project 跟随工作区文件。

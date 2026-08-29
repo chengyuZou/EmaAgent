@@ -37,9 +37,9 @@ pub fn open(
 ) -> Result<(), String> {
     let parsed = parse_url(&url)?;
     let label = browser_label(&browser_id);
-    if let Some(webview) = window.app_handle().get_webview(&label) {
+    if let Some(_webview) = window.app_handle().get_webview(&label) {
+        // 显隐由前端 set_browser_visible 单点同步，open 不碰。
         set_bounds(&window, &browser_id, bounds)?;
-        webview.show().map_err(|error| error.to_string())?;
         return Ok(());
     }
 
@@ -81,13 +81,16 @@ pub fn open(
             );
         });
 
-    window
+    let webview = window
         .add_child(
             builder,
             LogicalPosition::new(bounds.x, bounds.y),
             LogicalSize::new(bounds.width.max(1.0), bounds.height.max(1.0)),
         )
         .map_err(|error| error.to_string())?;
+    // 子 WebView 创建即默认可见；显隐由前端 set_browser_visible 单点同步，
+    // 先隐藏避免非激活标签被恢复时在窗口上闪现一帧。
+    webview.hide().map_err(|error| error.to_string())?;
     Ok(())
 }
 

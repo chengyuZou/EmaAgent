@@ -2,6 +2,7 @@
 // 按 allowed-tools 收窄能力(只收窄),返回完整指令与资源根。
 // 激活态不持久化——模型忘了技能内容就再调一次(目录常驻),这是 V1 拍板的简化。
 import { join } from 'node:path';
+import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
 import {
   buildTool,
@@ -10,7 +11,6 @@ import {
   type ToolUseContext,
 } from '@ema-agent/tools';
 import {
-  readSkillFileBounded,
   type SkillPool,
 } from '@ema-agent/skills';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
@@ -74,7 +74,7 @@ export const SkillTool = buildTool<SkillInput, SkillToolResult, SkillToolContext
       throw new Error(`Unknown skill: ${callName}. Available: ${available}`);
     }
 
-    const raw = await readSkillFileBounded(join(entry.rootPath, 'SKILL.md'));
+    const raw = await readFile(join(entry.rootPath, 'SKILL.md'), 'utf8');
     const instructions = renderArguments(extractBody(raw), input.args);
 
     return {

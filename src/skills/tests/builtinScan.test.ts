@@ -1,5 +1,5 @@
-// builtin 物化与扫描测试:指纹对账(匹配跳过/不匹配重写)、损坏降级、descriptor 形状。
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+// builtin 直扫测试:扫描出 descriptor、损坏跳过、源缺失降级空数组。
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -18,58 +18,43 @@ afterEach(() => {
   while (dirs.length > 0) rmSync(dirs.pop()!, { recursive: true, force: true });
 });
 
-function sourceWithSkill(name: string): string {
-  const source = makeDir();
-  mkdirSync(join(source, name), { recursive: true });
-  writeFileSync(join(source, name, 'SKILL.md'), SKILL_MD(name));
-  return source;
+function rootWithSkill(name: string): string {
+  const root = makeDir();
+  mkdirSync(join(root, name), { recursive: true });
+  writeFileSync(join(root, name, 'SKILL.md'), SKILL_MD(name));
+  return root;
 }
 
-describe('scanBuiltinSkills — 物化对账', () => {
-  it('首轮物化并扫描出 builtin 描述符;次轮指纹匹配跳过物化', async () => {
-    const source = sourceWithSkill('code-review');
-    const target = makeDir();
+describe('scanBuiltinSkills', () => {
+  it('直扫内置目录产出 builtin 描述符;源内容变化下次扫描直接生效', async () => {
+    const root = rootWithSkill('code-review');
 
-    const first = await scanBuiltinSkills({ bundledSource: source, materializedRoot: target });
+    const first = await scanBuiltinSkills({ builtinRoot: root });
     expect(first).toHaveLength(1);
     expect(first[0]).toMatchObject({
       key: 'builtin:code-review',
       name: 'code-review',
       scope: 'builtin',
+      rootPath: join(root, 'code-review'),
     });
-    // marker 已写。
-    const marker = JSON.parse(
-      readFileSync(join(target, '.ema-skill-marker.json'), 'utf8'),
-    ) as { fingerprint: string };
-    expect(marker.fingerprint.length).toBeGreaterThan(0);
 
-    // 在物化目录里做个手工改动;指纹匹配时次轮不得重写(改动保留)。
-    writeFileSync(join(target, 'code-review', 'manual.txt'), 'keep');
-    const second = await scanBuiltinSkills({ bundledSource: source, materializedRoot: target });
-    expect(second).toHaveLength(1);
-    // 文件仍在说明没有重写。
-    expect(readFileSync(join(target, 'code-review', 'manual.txt'), 'utf8')).toBe('keep');
+    // 源里再加一个技能,下次扫描直接看到(无物化层)。
+    mkdirSync(join(root, 'tdd'), { recursive: true });
+    writeFileSync(join(root, 'tdd', 'SKILL.md'), SKILL_MD('tdd'));
+    const second = await scanBuiltinSkills({ builtinRoot: root });
+    expect(second.map((d) => d.key).sort()).toEqual(['builtin:code-review', 'builtin:tdd']);
   });
 
-  it('源内容变化后指纹不匹配 → 整目录重写', async () => {
-    const source = sourceWithSkill('code-review');
-    const target = makeDir();
+  it('损坏技能跳过,不影响其他技能', async () => {
+    const root = rootWithSkill('good');
+    mkdirSync(join(root, 'broken'), { recursive: true }); // 无 SKILL.md
 
-    await scanBuiltinSkills({ bundledSource: source, materializedRoot: target });
-    // 源里再加一个技能 → 指纹变化 → 重写。
-    mkdirSync(join(source, 'tdd'), { recursive: true });
-    writeFileSync(join(source, 'tdd', 'SKILL.md'), SKILL_MD('tdd'));
-
-    const result = await scanBuiltinSkills({ bundledSource: source, materializedRoot: target });
-    expect(result.map((d) => d.key).sort()).toEqual(['builtin:code-review', 'builtin:tdd']);
+    const result = await scanBuiltinSkills({ builtinRoot: root });
+    expect(result.map((d) => d.key)).toEqual(['builtin:good']);
   });
 
   it('源不存在 → 降级空数组,不抛', async () => {
-    const target = makeDir();
-    const result = await scanBuiltinSkills({
-      bundledSource: join(target, 'missing-source'),
-      materializedRoot: target,
-    });
+    const result = await scanBuiltinSkills({ builtinRoot: join(makeDir(), 'missing') });
     expect(result).toEqual([]);
   });
 });

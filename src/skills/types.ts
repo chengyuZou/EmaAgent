@@ -1,15 +1,8 @@
 // Skill 领域语言:作用域、稳定身份、描述符、溯源,以及根 Turn 冻结的 SkillPool 形状。
-// 冻结规则见 EmaSkillArchitecture.md v4;本文件不含激活态、Marketplace 等已删除概念。
 import { z } from 'zod';
 
-// ── 安全硬上限(原 limits.ts 并入) ─────────────────────────────────────────────
+// ── Prompt 目录预算 ───────────────────────────────────────────────────────────
 
-/** 单个 SKILL.md 的体积上限(有界读取)。 */
-export const MAX_SKILL_BYTES = 512 * 1024;
-/** 技能目录总字节上限(有界复制)。 */
-export const MAX_SKILL_BUNDLE_BYTES = 8 * 1024 * 1024;
-/** 技能目录文件数上限。 */
-export const MAX_SKILL_BUNDLE_FILES = 80;
 /** Prompt 常驻目录的总预算(单遍截断,超出省略并计数提示)。 */
 export const SKILL_LISTING_BUDGET_BYTES = 8 * 1024;
 /** 目录中单条描述的字符上限。 */
@@ -69,8 +62,6 @@ export type SkillInstallProvenance =
 
 /** 根 Turn 冻结的技能快照(镜像 ToolPool);不承载激活状态。 */
 export interface SkillPool {
-  /** 有序 entries 的稳定哈希,进 Prompt Cache 诊断。 */
-  readonly revision: string;
   /** 按 (scopeRank, callName) 排序。 */
   readonly entries: readonly SkillDescriptor[];
   getByKey(key: SkillKey): SkillDescriptor | undefined;
@@ -101,7 +92,7 @@ export const SkillFrontmatterSchema = z.object({
 export type SkillFrontmatter = z.infer<typeof SkillFrontmatterSchema>;
 
 /** 解析后的 SKILL.md 全文(含 body)。body 是不可信运行时上下文,不是 System Prompt。 */
-export interface SkillManifest {
+export interface ParsedSkillMd {
   name:         string;
   version:      string;
   description:  string;

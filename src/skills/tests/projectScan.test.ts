@@ -1,4 +1,4 @@
-// project 扫描测试:生态目录发现、dotfiles/gitignore/symlink 边界、深度与数量上限、key 形状。
+// project 扫描测试:生态目录发现、dotfiles/symlink 边界、深度与数量上限、key 形状。
 import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -38,14 +38,12 @@ describe('scanProjectSkills', () => {
     expect(result.every((d) => d.scope === 'project')).toBe(true);
   });
 
-  it('dotfiles 目录与 gitignore 命中不扫描', async () => {
+  it('dotfiles 目录不扫描', async () => {
     const ws = makeWorkspace();
     plantSkill(ws, '.agents/skills', 'visible', 'visible');
     plantSkill(ws, '.agents/skills', '.hidden/hidden-skill', 'hidden-skill');
-    plantSkill(ws, '.agents/skills', 'node_modules/poisoned', 'poisoned');
 
-    const isIgnored = (rel: string) => rel.includes('node_modules');
-    const result = await scanProjectSkills(ws, { isIgnored });
+    const result = await scanProjectSkills(ws);
     expect(result.map((d) => d.name)).toEqual(['visible']);
   });
 

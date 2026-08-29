@@ -1,5 +1,5 @@
-// Skill 域的用户设置:逐技能禁用与两个来源级开关,统一 deny 语义(架构 v4 §3.1)。
-// 一字段一 key;原 decode 的过滤/去重/上限由 zod 的 regex/max/transform 承担。
+// Skill 域的用户设置:逐技能禁用与两个来源级开关,统一 deny 语义。
+// 一字段一 key;过滤/去重/上限由 zod 的 regex/max/transform 承担。
 import { defineSetting } from '@ema-agent/settings';
 import { z } from 'zod';
 import { SKILL_KEY_PATTERN } from './types.js';

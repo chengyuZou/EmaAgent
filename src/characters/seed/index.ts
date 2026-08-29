@@ -44,10 +44,10 @@ export const BUILTIN_CHARACTERS: readonly BuiltinCharacterSeed[] = [
 ];
 
 /**
- * 开发期 sourceRoot 指向 `apps/desktop/public/cards`；正式包只替换这个来源。
- * 逐角色按种子清单安装：live2d 源目录整体复制到每个声明的模型目录（V1 内置角色
- * 只有一个模型；多模型出现时源目录按 directoryName 分层，本函数同步演进），
- * 立绘与参考音频按 fileName 逐个复制。目标已存在即跳过，幂等。
+ * 开发期 sourceRoot 指向 `apps/desktop/src-tauri/resources/characters`；正式包只替换这个来源。
+ * 逐角色按种子清单安装：每个模型的包目录按 directoryName 从 source 同名位置复制
+ * （source/live2d/<directoryName> → target/live2d/<directoryName>），立绘与参考音频按
+ * fileName 逐个复制。目标已存在即跳过，幂等。
  * 复制完成后，Character 运行时不再读取 sourceRoot。
  */
 export function installBuiltinCharacterResources(
@@ -60,7 +60,7 @@ export function installBuiltinCharacterResources(
     const characterTarget = path.join(charactersRoot, seed.id);
 
     for (const model of seed.live2dModels) {
-      const source = path.join(characterSource, 'live2d');
+      const source = path.join(characterSource, 'live2d', model.directoryName);
       const target = path.join(characterTarget, 'live2d', model.directoryName);
       if (fs.existsSync(source) && !fs.existsSync(target)) {
         fs.mkdirSync(path.dirname(target), { recursive: true });

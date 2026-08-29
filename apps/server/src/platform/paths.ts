@@ -5,7 +5,7 @@ import os   from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// 开发期从仓库 public 目录找随包种子；正式包由环境变量传入资源目录。
+// 开发期从 Desktop 宿主的发布资源目录找随包种子；正式包由环境变量传入资源目录。
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..', '..', '..', '..');
 
@@ -45,18 +45,12 @@ export function charactersDir(): string {
 /** 随包角色种子来源；只在安装阶段读取，不是运行时资源根。 */
 export function bundledCharactersDir(): string {
   return process.env['EMA_BUNDLED_CHARACTERS_DIR']
-    ?? path.join(REPO_ROOT, 'apps', 'desktop', 'public', 'cards');
+    ?? path.join(REPO_ROOT, 'apps', 'desktop', 'src-tauri', 'resources', 'characters');
 }
 
-/** 内置 Skill 的物化目标：`<profileDir>/resources/skills`，内容以随包源为准，可整目录重建。 */
+/** 内置技能目录：`<profileDir>/resources/skills`，由宿主（Tauri release 资源）在启动时铺好；skills 域不感知打包。 */
 export function builtinSkillsDir(): string {
   return path.join(profileDir(), 'resources', 'skills');
-}
-
-/** 内置 Skill 随包只读源（权威事实源）；开发期回退到仓库内 resources/skills。 */
-export function bundledSkillsDir(): string {
-  return process.env['EMA_BUNDLED_SKILLS_DIR']
-    ?? path.join(REPO_ROOT, 'resources', 'skills');
 }
 
 /** 创建 profile 侧不属于 profile.db 本身的目录。 */

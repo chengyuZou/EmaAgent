@@ -1,5 +1,5 @@
 // Skill 路径安全:slug 归一化、Bundle 相对路径校验、root 内普通目录/文件约束。
-// 由 path-policy 与 root-boundary 合并而来;全部为纯函数,供 store/扫描/安装共用。
+// 全部为纯函数,供 store/扫描/安装共用。
 import { lstat, mkdir, readdir, realpath } from 'node:fs/promises';
 import { posix, win32, resolve, dirname } from 'node:path';
 import { SkillPathError } from './errors.js';

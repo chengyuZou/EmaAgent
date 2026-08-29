@@ -177,7 +177,23 @@ impl TerminalSessions {
 
     fn finish(&self, terminal_id: &str) -> Option<u32> {
         let mut session = self.sessions.lock().unwrap().remove(terminal_id)?;
-        session.child.wait().ok().map(|status| status.exit_code())
+        // 走到这里说明 Channel 已断开（WebView 刷新/崩溃），终端没有观众：
+        // 先尝试收割，仍在运行则直接终止，不让 shell 成为孤儿。
+        match session.child.try_wait() {
+            Ok(Some(status)) => Some(status.exit_code()),
+            _ => {
+                let _ = session.child.kill();
+                session.child.wait().ok().map(|status| status.exit_code())
+            }
+        }
+    }
+
+    /// 应用退出时回收全部 PTY 会话；Desktop 的进程树只管 Server/Narrative。
+    pub fn close_all(&self) {
+        let sessions = std::mem::take(&mut *self.sessions.lock().unwrap());
+        for (_, mut session) in sessions {
+            let _ = session.child.kill();
+        }
     }
 }
 

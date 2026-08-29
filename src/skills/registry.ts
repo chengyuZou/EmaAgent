@@ -7,19 +7,15 @@
 //   自己工作区的 project 技能，互不覆盖；"安装/工作区变化影响下一根 Turn"由此天然成立。
 import type { SkillStore } from './store.js';
 import { scanBuiltinSkills } from './sources/builtin.js';
-import { scanProjectSkills, type ProjectScanOptions } from './sources/project.js';
+import { scanProjectSkills } from './sources/project.js';
 import type { SkillDescriptor, SkillKey } from './types.js';
 
 export interface SkillRegistryDeps {
   /** user 技能根(<profileDir>/skills)。 */
   readonly userRoot: string;
-  /** 内置技能物化目录(<profileDir>/resources/skills)。 */
+  /** 内置技能目录(<profileDir>/resources/skills,由宿主在启动时铺好,只读)。 */
   readonly builtinRoot: string;
-  /** 内置技能随包源目录(发布资源)。 */
-  readonly bundledSkillsSource: string;
   readonly store: SkillStore;
-  /** project 扫描的 gitignore 判定来源。 */
-  readonly projectScan?: ProjectScanOptions;
 }
 
 export interface SkillRegistry {
@@ -35,7 +31,7 @@ export interface SkillRegistry {
 }
 
 /**
- * core 刷新流程:builtin 物化对账 + user 对账 → 合成 core 全量。
+ * core 刷新流程:builtin 直扫 + user 对账 → 合成 core 全量。
  * 任一来源失败只降级该来源(空数组 + warning),不拖垮整轮刷新。
  */
 export function createSkillRegistry(deps: SkillRegistryDeps): SkillRegistry {
@@ -46,8 +42,7 @@ export function createSkillRegistry(deps: SkillRegistryDeps): SkillRegistry {
   async function scanCore(): Promise<void> {
     const [builtin, user] = await Promise.all([
       scanBuiltinSkills({
-        bundledSource: deps.bundledSkillsSource,
-        materializedRoot: deps.builtinRoot,
+        builtinRoot: deps.builtinRoot,
       }).catch(() => [] as SkillDescriptor[]),
       deps.store.reconcileUserRoot()
         .then((result) => result.entries)
@@ -58,7 +53,7 @@ export function createSkillRegistry(deps: SkillRegistryDeps): SkillRegistry {
 
   async function scanWorkspace(workspaceRoot: string): Promise<readonly SkillDescriptor[]> {
     try {
-      return await scanProjectSkills(workspaceRoot, deps.projectScan ?? {});
+      return await scanProjectSkills(workspaceRoot);
     } catch {
       return [];
     }

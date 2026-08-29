@@ -183,7 +183,6 @@ describe('prepareTurn', () => {
 
     const work = await prepareTurn(deps, makeRuntime(makeStart()));
     expect(work.skillPool?.getByKey('user:demo' as never)).toBeDefined();
-    expect(work.skillPool?.revision).toBeTruthy();
   });
 
   it('选择不存在或被禁用的 Skill 直接准备失败；合法 Skill 只冻结引用', async () => {
