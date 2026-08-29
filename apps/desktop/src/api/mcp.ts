@@ -21,8 +21,8 @@ export type McpRegistrySourceList = RpcJson<RpcClient['api']['mcp']['registry-so
 export type McpRegistrySource = McpRegistrySourceList['items'][number];
 export type McpRegistrySourceAddInput = InferRequestType<RpcClient['api']['mcp']['registry-sources']['$post']>['json'];
 export type McpRegistrySourcePatchInput = InferRequestType<RpcClient['api']['mcp']['registry-sources'][':id']['$patch']>['json'];
-export type McpMarketEntryList = RpcJson<RpcClient['api']['mcp']['registry-entries']['$get']>;
-export type McpMarketEntry = McpMarketEntryList['items'][number];
+export type McpRegistryEntryList = RpcJson<RpcClient['api']['mcp']['registry-entries']['$get']>;
+export type McpRegistryEntry = McpRegistryEntryList['items'][number];
 export type McpRegistryInstallInput = InferRequestType<RpcClient['api']['mcp']['registry-install']['$post']>['json'];
 export type McpRegistryInstallResult = RpcJson<RpcClient['api']['mcp']['registry-install']['$post']>;
 
@@ -104,7 +104,7 @@ export const mcpApi = {
   },
 
   /** 聚合全部启用源的目录条目（即时拉取不落库）。 */
-  listEntries(): Promise<McpMarketEntryList> {
+  listEntries(): Promise<McpRegistryEntryList> {
     return readRpcJson(rpcClient.api.mcp['registry-entries'].$get());
   },
 

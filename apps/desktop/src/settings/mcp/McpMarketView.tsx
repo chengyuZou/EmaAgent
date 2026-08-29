@@ -1,12 +1,13 @@
+// MCP 市场视图:展示 Registry 聚合结果,收集安装参数并按安装溯源判断状态.
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   Badge, Button, Callout, Dialog, EmptyState, Field, Input, MarketCard, ScrollArea, Spinner
 } from '@ema-agent/ui';
 import { useMcpStore } from '../../stores/mcp.js';
-import type { McpMarketEntry } from '../../api/mcp.js';
+import type { McpRegistryEntry } from '../../api/mcp.js';
 import { mcpApi } from '../../api/mcp.js';
 import { showToast } from '../../lib/toast.js';
-import { MarketSourceManager } from '../skills/MarketSourceManager.js';
+import { McpRegistrySourceManager } from './McpRegistrySourceManager.js';
 
 function sanitizeServerName(raw: string): string {
   return raw.replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 100) || 'mcp-server';
@@ -16,7 +17,7 @@ const TRANSPORT_LABEL: Record<string, string> = {
   stdio: '本地进程', http: 'Streamable HTTP',
 };
 
-function specSummary(entry: McpMarketEntry): string {
+function specSummary(entry: McpRegistryEntry): string {
   const spec = entry.spec;
   if (!spec) return '';
   return spec.transport === 'stdio'
@@ -25,37 +26,37 @@ function specSummary(entry: McpMarketEntry): string {
 }
 
 export function McpMarketView({
-  active, installedNames,
+  active, installedRegistryEntries,
 }: {
-  active:         boolean;
-  installedNames: Set<string>;
+  active: boolean;
+  installedRegistryEntries: ReadonlySet<string>;
 }): JSX.Element {
-  const marketServers = useMcpStore((s) => s.marketServers);
-  const marketLoading = useMcpStore((s) => s.marketLoading);
-  const marketError   = useMcpStore((s) => s.marketError);
-  const marketSource  = useMcpStore((s) => s.marketSource);
+  const registryEntries = useMcpStore((state) => state.registryEntries);
+  const registryReports = useMcpStore((state) => state.registryReports);
+  const registryLoading = useMcpStore((state) => state.registryLoading);
+  const registryError = useMcpStore((state) => state.registryError);
   const [installing, setInstalling] = useState<string | null>(null);
-  const [pendingEntry, setPendingEntry] = useState<McpMarketEntry | null>(null);
+  const [pendingEntry, setPendingEntry] = useState<McpRegistryEntry | null>(null);
   const [page, setPage] = useState(0);
   const attemptedRef = useRef(false);
 
   const PAGE_SIZE   = 6;
-  const totalPages  = Math.max(1, Math.ceil(marketServers.length / PAGE_SIZE));
+  const totalPages  = Math.max(1, Math.ceil(registryEntries.length / PAGE_SIZE));
   const safePage    = Math.min(page, totalPages - 1);
-  const pageServers = marketServers.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
+  const pageEntries = registryEntries.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
 
-  // Fetch once when the tab first becomes active. A ref guard prevents the
-  // retry-on-error loop (effect re-firing as loading flips false → fetch again).
+  // 页签首次打开时读取一次;后续来源变更由来源管理器显式触发重载.
   useEffect(() => {
     if (active && !attemptedRef.current) {
       attemptedRef.current = true;
-      void useMcpStore.getState().listMarket();
+      void useMcpStore.getState().loadRegistryEntries();
     }
   }, [active]);
 
-  async function install(entry: McpMarketEntry, inputs?: Record<string, string>): Promise<void> {
+  async function install(entry: McpRegistryEntry, inputs?: Record<string, string>): Promise<void> {
     const cleanName = sanitizeServerName(entry.title || entry.name);
-    setInstalling(entry.name);
+    const key = `${entry.registrySourceId}:${entry.name}`;
+    setInstalling(key);
     try {
       // 安装始终由服务端从源现场取最新版本再解析;stdio 拉起走应用级批准门禁。
       await mcpApi.installFromRegistry({
@@ -65,7 +66,7 @@ export function McpMarketView({
         ...(inputs ? { inputs } : {}),
       });
       await useMcpStore.getState().refresh();
-      showToast(`已添加 ${cleanName}，请在「已配置」补全环境后连接`, { variant: 'success' });
+      showToast(`已添加 ${cleanName},请在 "已配置" 补全环境后连接`, { variant: 'success' });
     } catch (err) {
       showToast(`添加失败: ${err instanceof Error ? err.message : String(err)}`, { variant: 'danger' });
     } finally {
@@ -73,7 +74,7 @@ export function McpMarketView({
     }
   }
 
-  function handleInstall(entry: McpMarketEntry): void {
+  function handleInstall(entry: McpRegistryEntry): void {
     if (!entry.installable || !entry.spec) return;
     if ((entry.requiredInputs?.length ?? 0) > 0) {
       setPendingEntry(entry);
@@ -82,76 +83,87 @@ export function McpMarketView({
     void install(entry);
   }
 
-  if (marketLoading) {
-    return <div className="flex justify-center py-12"><Spinner size="md" /></div>;
-  }
-
-  if (marketError) {
-    return (
-      <div className="flex flex-col gap-3">
-        <Callout variant="danger">{marketError}</Callout>
-        <Button variant="secondary" size="sm" className="self-start"
-          onClick={() => void useMcpStore.getState().listMarket()}>
-          重试
-        </Button>
-      </div>
-    );
-  }
-
-  if (marketServers.length === 0) {
-    return (
-      <EmptyState icon="i-mdi:store-outline" title="市场暂无可用服务器" className="py-16" />
-    );
-  }
+  const failedSources = registryReports.filter((source) => source.error !== null).length;
+  const availableSources = registryReports.length - failedSources;
 
   return (
     <div className="flex flex-col min-h-0 flex-1 gap-3">
-      <MarketSourceManager kind="mcp" />
-      {marketSource && (
+      <McpRegistrySourceManager
+        onSourcesChanged={() => useMcpStore.getState().loadRegistryEntries()}
+      />
+
+      {registryReports.length > 0 && (
         <p className="text-xs text-[var(--ema-text-tertiary)] mb-1 font-mono truncate shrink-0">
-          来源：{marketSource} · 共 {marketServers.length} 个
+          来源：{availableSources} 个可用{failedSources > 0 ? ` · ${failedSources} 个失败` : ''} · 共 {registryEntries.length} 个条目
         </p>
       )}
-      <ScrollArea className="flex-1" viewportClassName="pb-2">
-        <div className="flex flex-col gap-2 pr-2">
-          {pageServers.map((entry, i) => {
-            const installed = installedNames.has(sanitizeServerName(entry.title || entry.name));
-            return (
-              <MarketCard
-                key={`${entry.registrySourceId}:${entry.name}`}
-                index={i}
-                decorate="ema-card-decorate--circuit"
-                installed={installed}
-                installing={installing === entry.name}
-                installDisabled={!entry.installable || !entry.spec}
-                installLabel={entry.installable ? '添加' : '不可安装'}
-                installedLabel="已添加"
-                onInstall={() => handleInstall(entry)}
-              >
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm font-semibold text-[var(--ema-text-primary)] truncate">
-                    {entry.title || entry.name}
-                  </span>
-                  {entry.version && <Badge variant="neutral">v{entry.version}</Badge>}
-                  {entry.spec && (
-                    <Badge variant="neutral">{TRANSPORT_LABEL[entry.spec.transport] ?? entry.spec.transport}</Badge>
-                  )}
-                  {!entry.installable && <Badge variant="warn">不可安装</Badge>}
-                </div>
-                {entry.description && (
-                  <p className="text-xs text-[var(--ema-text-tertiary)] mt-1 line-clamp-2">{entry.description}</p>
-                )}
-                {entry.unavailableReason && (
-                  <p className="text-xs text-[var(--ema-warning)] mt-1">{entry.unavailableReason}</p>
-                )}
-                <p className="text-xs text-[var(--ema-text-tertiary)] mt-1 font-mono truncate opacity-60">
-                  {specSummary(entry)}
-                </p>
-              </MarketCard>
-            );
-          })}
+
+      {registryError && (
+        <div className="flex flex-col gap-2">
+          <Callout variant="danger">{registryError}</Callout>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="self-start"
+            onClick={() => void useMcpStore.getState().loadRegistryEntries()}
+          >
+            重试读取 Registry
+          </Button>
         </div>
-      </ScrollArea>
+      )}
+
+      {registryLoading && registryEntries.length === 0 ? (
+        <div className="flex justify-center py-12"><Spinner size="md" /></div>
+      ) : registryEntries.length === 0 ? (
+        <EmptyState
+          icon="i-mdi:store-outline"
+          title="Registry 暂无可用服务器"
+          hint="添加或启用 Registry 来源后重新读取"
+          className="py-16"
+        />
+      ) : (
+        <ScrollArea className="flex-1" viewportClassName="pb-2">
+          <div className="flex flex-col gap-2 pr-2">
+            {pageEntries.map((entry, i) => {
+              const entryKey = `${entry.registrySourceId}:${entry.name}`;
+              const installed = installedRegistryEntries.has(entryKey);
+              return (
+                <MarketCard
+                  key={entryKey}
+                  index={i}
+                  decorate="ema-card-decorate--circuit"
+                  installed={installed}
+                  installing={installing === entryKey}
+                  installDisabled={!entry.installable || !entry.spec}
+                  installLabel={entry.installable ? '添加' : '不可安装'}
+                  installedLabel="已添加"
+                  onInstall={() => handleInstall(entry)}
+                >
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-semibold text-[var(--ema-text-primary)] truncate">
+                      {entry.title || entry.name}
+                    </span>
+                    {entry.version && <Badge variant="neutral">v{entry.version}</Badge>}
+                    {entry.spec && (
+                      <Badge variant="neutral">{TRANSPORT_LABEL[entry.spec.transport] ?? entry.spec.transport}</Badge>
+                    )}
+                    {!entry.installable && <Badge variant="warn">不可安装</Badge>}
+                  </div>
+                  {entry.description && (
+                    <p className="text-xs text-[var(--ema-text-tertiary)] mt-1 line-clamp-2">{entry.description}</p>
+                  )}
+                  {entry.unavailableReason && (
+                    <p className="text-xs text-[var(--ema-warning)] mt-1">{entry.unavailableReason}</p>
+                  )}
+                  <p className="text-xs text-[var(--ema-text-tertiary)] mt-1 font-mono truncate opacity-60">
+                    {specSummary(entry)}
+                  </p>
+                </MarketCard>
+              );
+            })}
+          </div>
+        </ScrollArea>
+      )}
 
       <InstallInputsDialog
         entry={pendingEntry}
@@ -174,7 +186,7 @@ export function McpMarketView({
 function InstallInputsDialog({
   entry, busy, onCancel, onConfirm,
 }: {
-  entry:     McpMarketEntry | null;
+  entry:     McpRegistryEntry | null;
   busy:      boolean;
   onCancel:  () => void;
   onConfirm: (inputs: Record<string, string>) => void;

@@ -25,7 +25,11 @@ export function McpTab(): JSX.Element {
 
   useEffect(() => { void useMcpStore.getState().load(); }, []);
 
-  const installedNames = new Set(servers.map((s) => s.name));
+  const installedRegistryEntries = new Set(
+    servers.flatMap((server) => server.provenance.sourceKind === 'registry'
+      ? [`${server.provenance.registrySourceId}:${server.provenance.registryEntryId}`]
+      : []),
+  );
 
   function handleEdit(sv: McpServerItem): void {
     setEditing(sv);
@@ -118,7 +122,12 @@ export function McpTab(): JSX.Element {
           {
             value: 'market',
             label: '浏览市场',
-            content: <McpMarketView active={activeTab === 'market'} installedNames={installedNames} />,
+            content: (
+              <McpMarketView
+                active={activeTab === 'market'}
+                installedRegistryEntries={installedRegistryEntries}
+              />
+            ),
           },
         ]}
       />

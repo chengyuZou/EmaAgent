@@ -1,5 +1,16 @@
+// 管理 MCP Server 连接状态与 Registry 条目读取,不混入 Skill 站点语义.
 import { create } from 'zustand';
-import { mcpApi, type McpServerConfig, type McpServerItem, type McpConnection, type McpProbeResult, type McpImportResult, type McpMarketEntry, type McpInstallProvenance } from '../api/mcp.js';
+import {
+  mcpApi,
+  type McpConnection,
+  type McpImportResult,
+  type McpInstallProvenance,
+  type McpRegistryEntry,
+  type McpRegistryEntryList,
+  type McpProbeResult,
+  type McpServerConfig,
+  type McpServerItem,
+} from '../api/mcp.js';
 
 // ── Store interface ───────────────────────────────────────────────────────────
 
@@ -8,10 +19,10 @@ export interface McpStoreState {
   loading:  boolean;
   error:    string | null;
 
-  marketServers: McpMarketEntry[];
-  marketLoading: boolean;
-  marketError:   string | null;
-  marketSource:  string;
+  registryEntries: McpRegistryEntry[];
+  registryReports: McpRegistryEntryList['sources'];
+  registryLoading: boolean;
+  registryError:   string | null;
 
   /** Load all registered MCP servers + their connection status. */
   load(): Promise<void>;
@@ -50,8 +61,8 @@ export interface McpStoreState {
    */
   importFromJson(payload: object | string): Promise<McpImportResult['items']>;
 
-  /** Fetch the browsable MCP server marketplace (official registry). */
-  listMarket(): Promise<void>;
+  /** 聚合读取所有已启用 MCP Registry 来源的可安装条目. */
+  loadRegistryEntries(): Promise<void>;
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────────
@@ -61,10 +72,10 @@ export const useMcpStore = create<McpStoreState>((set, get) => ({
   loading: false,
   error:   null,
 
-  marketServers: [],
-  marketLoading: false,
-  marketError:   null,
-  marketSource:  '',
+  registryEntries: [],
+  registryReports: [],
+  registryLoading: false,
+  registryError:   null,
 
   async load() {
     if (get().servers.length > 0) return;
@@ -180,20 +191,19 @@ export const useMcpStore = create<McpStoreState>((set, get) => ({
     }
   },
 
-  async listMarket() {
-    set({ marketLoading: true, marketError: null });
+  async loadRegistryEntries() {
+    set({ registryLoading: true, registryError: null });
     try {
       const res = await mcpApi.listEntries();
-      const okCount = res.sources.filter((s) => !s.error).length;
-      const errCount = res.sources.filter((s) => s.error).length;
-      const sourceLabel = errCount > 0
-        ? `${okCount} 个源 · ${errCount} 个失败`
-        : `${okCount} 个源`;
-      set({ marketServers: [...res.items], marketSource: sourceLabel, marketLoading: false });
+      set({
+        registryEntries: [...res.items],
+        registryReports: [...res.sources],
+        registryLoading: false,
+      });
     } catch (err: unknown) {
       set({
-        marketError:   err instanceof Error ? err.message : 'Failed to load MCP market',
-        marketLoading: false,
+        registryError: err instanceof Error ? err.message : '加载 MCP Registry 失败',
+        registryLoading: false,
       });
     }
   },

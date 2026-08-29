@@ -8,6 +8,7 @@ import {
   type SkillSiteAddInput,
   type SkillSitePatchInput,
   type SkillInstallResult,
+  type SkillSitesRefreshResult,
 } from '../api/skills.js';
 import { settingsApi } from '../api/settings.js';
 
@@ -42,7 +43,7 @@ export interface SkillStoreState {
   patchSite(id: string, patch: SkillSitePatchInput): Promise<void>;
   removeSite(id: string): Promise<void>;
   /** 全站刷新索引；各站成败独立报告。 */
-  refreshSites(): Promise<void>;
+  refreshSites(): Promise<SkillSitesRefreshResult>;
   /** 以站点缓存索引条目安装；成功后重读技能目录。 */
   installFromSite(siteId: string, entryId: string): Promise<SkillInstallResult>;
 }
@@ -160,8 +161,9 @@ export const useSkillStore = create<SkillStoreState>((set, get) => ({
   async refreshSites() {
     set({ sitesLoading: true, sitesError: null });
     try {
-      await skillsApi.refreshSites();
+      const result = await skillsApi.refreshSites();
       await get().loadSites();
+      return result;
     } catch (err: unknown) {
       set({
         sitesError: err instanceof Error ? err.message : '刷新站点索引失败',
