@@ -42,7 +42,7 @@ import {
   webFetchTitle,
   webSearchTitle,
 } from '@ema-agent/builtin-tools/ui';
-import { BuiltinTools } from '@ema-agent/tools';
+import { BuiltinTools } from '@ema-agent/tools/identity';
 import type { ToolDisplayStatus } from './toolBlockHelpers.js';
 
 /** CallView 接管整个展开区时的入参；data 是类型化 TOutput，progress 是原始进度事件序列。 */

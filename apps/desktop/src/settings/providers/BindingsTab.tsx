@@ -23,7 +23,7 @@ import {
 } from '../../api/providers.js';
 import { useProviderStore } from '../../stores/provider.js';
 import { showToast } from '../../lib/toast.js';
-import { MODEL_BINDING_CAPABILITIES } from '@ema-agent/providers';
+import { MODEL_BINDING_CAPABILITIES } from '@ema-agent/providers/modelBindings';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -224,7 +224,7 @@ export function BindingsTab(): JSX.Element {
         <div>
           <h2 className="text-base font-semibold text-[var(--ema-text-primary)]">模型绑定</h2>
           <p className="text-[var(--ema-text-tertiary)] text-xs mt-1">
-            为每个模块选择要使用的模型。先在"服务来源"启用模型，再在此绑定。
+            为每个模块选择要使用的模型。Provider 配好密钥后，池内模型即可绑定。
           </p>
         </div>
 
@@ -333,9 +333,9 @@ export function BindingsTab(): JSX.Element {
           {/* ── Pool area ────────────────────────────────────────────────── */}
           {pool.length === 0 ? (
             <div className="bg-[var(--ema-surface-1)] border border-[var(--ema-border)] rounded-xl px-4 py-6 text-center">
-              <p className="text-[var(--ema-text-tertiary)] text-sm">尚无已启用的 {CAP_LABELS[cap] ?? cap} 模型</p>
+              <p className="text-[var(--ema-text-tertiary)] text-sm">暂无可用的 {CAP_LABELS[cap] ?? cap} 模型</p>
               <p className="text-[var(--ema-text-tertiary)] text-xs opacity-70 mt-1">
-                请先到"服务来源"打开对应能力的 provider，启用要用的模型。
+                请先到「服务来源」为 Provider 配置密钥；保存后池内模型会出现在这里。
               </p>
             </div>
           ) : (

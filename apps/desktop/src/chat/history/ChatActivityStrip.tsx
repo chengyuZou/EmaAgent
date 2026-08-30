@@ -2,7 +2,7 @@
 import { useEffect, useState, type JSX } from 'react';
 import { Button } from '@ema-agent/ui';
 import { TodoWriteActivitySummary, TodoWriteArgsView } from '@ema-agent/builtin-tools/ui';
-import { BuiltinTools } from '@ema-agent/tools';
+import { BuiltinTools } from '@ema-agent/tools/identity';
 import { useCurrentSession } from '../state/currentSession.js';
 import { useMessages } from '../state/messages.js';
 import { useLatestTurnDiffs } from '../frame/tabs/review/reviewDiffs.js';

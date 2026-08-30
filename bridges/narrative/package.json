@@ -4,7 +4,6 @@
   "private": true,
   "scripts": {
     "dev": "uv run ema-narrative-bridge",
-    "test": "uv run pytest",
-    "build": "uv run --group build python packaging/build.py"
+    "test": "uv run pytest"
   }
 }

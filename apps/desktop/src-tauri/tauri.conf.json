@@ -30,12 +30,16 @@
     "security": {
       "csp": {
         "default-src": "'self'",
-        "connect-src": "'self' ipc: http://ipc.localhost http://127.0.0.1:*",
+        "connect-src": "'self' ipc: http://ipc.localhost asset: http://asset.localhost http://127.0.0.1:*",
         "font-src": "'self' data:",
         "img-src": "'self' asset: http://asset.localhost blob: data:",
         "media-src": "'self' blob: data: http://127.0.0.1:*",
         "script-src": "'self'",
         "style-src": "'self' 'unsafe-inline'"
+      },
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["$HOME/.ema-agent/characters/**"]
       },
       "capabilities": ["main-window", "chat-window", "settings-window"]
     }

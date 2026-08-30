@@ -7,6 +7,14 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./types": {
+      "import": "./dist/types.js",
+      "types": "./dist/types.d.ts"
+    },
+    "./modelBindings": {
+      "import": "./dist/modelBindings.js",
+      "types": "./dist/modelBindings.d.ts"
     }
   },
   "main": "./dist/index.js",

@@ -1,6 +1,6 @@
-// Provider 模型池管理：行存在 = 已启用；保存/删除行走 providersApi。
+// Provider 模型池管理：池内行 = 该 Provider 已知可用模型；种子建议不可删，手动添加的行角标给删除。
 // 六种能力共用一条主链，按 capability 穷尽渲染差异（徽章、添加表单数字字段、TTS 试听）。
-import { useState, useEffect, useCallback, type JSX } from 'react';
+import { useState, useEffect, useCallback, type JSX, type ReactNode } from 'react';
 import { Button, Callout, ConfirmDialog, IconButton, Input, Spinner } from '@ema-agent/ui';
 import {
   providersApi,
@@ -9,7 +9,54 @@ import {
   type ProviderModelRecord,
 } from '../../api/providers.js';
 import { showToast } from '../../lib/toast.js';
-import { ModelToggleCard } from './ModelToggleCard.js';
+import { useProviderStore } from '../../stores/provider.js';
+
+/** 模型卡：纯展示池内一行；角标 action 放 TTS 试听与删除。视觉与 Provider 卡（MenuStatusItem）同套光扫与点纹。 */
+function ModelCard({ id, badge, logo, action }: {
+  id:       string;
+  /** 短参数行，如 "128K ctx" 或 "1024d"。 */
+  badge?:   string;
+  /** Provider 品牌图标类名，右缘淡显。 */
+  logo?:    string;
+  action?:  ReactNode;
+}): JSX.Element {
+  return (
+    <div
+      title={id}
+      className={`group relative text-left rounded-lg border-2 border-solid px-2.5 py-2 min-w-0
+                  overflow-hidden isolate
+                  border-[var(--ema-border)] bg-[var(--ema-surface-1)] ema-glass-weak
+                  transition-all duration-[var(--ema-duration-base)]
+                  hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]
+                  before:content-empty before:absolute before:inset-0 before:z-0
+                  before:w-1/4 before:h-full before:opacity-0
+                  before:transition-all before:duration-250 before:ease-in-out
+                  before:[mask-image:linear-gradient(120deg,white_30%,transparent_50%)]
+                  hover:before:opacity-100 hover:before:w-[85%]
+                  hover:before:bg-gradient-to-r hover:before:from-[var(--ema-primary)]/20 hover:before:via-[var(--ema-primary)]/10 hover:before:to-transparent
+                  after:content-empty after:absolute after:inset-0 after:z-0 after:w-full after:h-full
+                  after:[background-image:radial-gradient(circle_at_25%_25%,color-mix(in_srgb,var(--ema-violet)_32%,transparent),transparent_45%),radial-gradient(circle_at_75%_75%,color-mix(in_srgb,var(--ema-info)_28%,transparent),transparent_50%),radial-gradient(circle,color-mix(in_srgb,var(--ema-text-tertiary)_30%,transparent)_1px,transparent_1.5px)]
+                  after:[background-size:100%_100%,100%_100%,10px_10px]
+                  after:[mask-image:linear-gradient(165deg,white_30%,transparent_50%)]
+                  after:transition-all after:duration-250
+                  after:opacity-100 hover:after:[background-size:102%_102%]`}
+    >
+      {logo && (
+        <span
+          className={`absolute right-1 top-1/2 z-1 -translate-y-1/2 size-6 opacity-40 group-hover:opacity-70 group-hover:scale-110 transition-all duration-[var(--ema-duration-base)] ${logo}`}
+          aria-hidden
+        />
+      )}
+      <div className="relative z-1">
+        <p className="text-[13px] font-mono font-semibold text-[var(--ema-text-primary)] group-hover:text-[var(--ema-primary-text)] truncate pr-7 leading-tight">{id}</p>
+        <div className="flex items-center justify-between gap-1 mt-0.5">
+          {badge ? <p className="text-[11px] font-medium text-[var(--ema-text-tertiary)]">{badge}</p> : <span />}
+          {action ?? null}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const DEFAULT_TEST_TEXT = '你好，我是艾玛，很高兴认识你。';
 
@@ -137,9 +184,15 @@ export function ProviderModelManager({ providerId, capability, iconKey }: {
     try {
       await providersApi.saveModel(providerId, input);
       await load();
+      refreshAvailableForLlm();
     } catch (err) {
       showToast(`添加失败: ${err instanceof Error ? err.message : String(err)}`, { variant: 'danger' });
     }
+  }
+
+  /** 池变化后聊天模型目录同步重取；store 只持有 llm 能力的目录，其余能力不浪费请求。 */
+  function refreshAvailableForLlm(): void {
+    if (capability === 'llm') void useProviderStore.getState().loadModels(true);
   }
 
   async function confirmRemove(): Promise<void> {
@@ -149,6 +202,7 @@ export function ProviderModelManager({ providerId, capability, iconKey }: {
     try {
       await providersApi.deleteModel(providerId, model, capability);
       setModels((ms) => ms.filter((m) => m.modelId !== model));
+      refreshAvailableForLlm();
     } catch (err) {
       showToast(`移除失败: ${err instanceof Error ? err.message : String(err)}`, { variant: 'danger' });
     }
@@ -211,38 +265,50 @@ export function ProviderModelManager({ providerId, capability, iconKey }: {
             <p className="text-xs text-[var(--ema-text-tertiary)] py-2">该供应商暂无重排序模型。</p>
           )}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {filtered.map((m) => (
-              <ModelToggleCard
-                key={m.modelId}
-                id={m.modelId}
-                badge={badgeOf(m)}
-                enabled
-                onToggle={() => setConfirmModel(m.modelId)}
-                logo={iconKey}
-                {...(capability === 'tts'
-                  ? {
-                    action: (
-                      <IconButton
-                        label="测试声音"
-                        iconNode={
-                          <span
-                            className={testing === m.modelId
-                              ? 'i-mdi:volume-high animate-pulse text-[var(--ema-primary)]'
-                              : 'i-mdi:volume-high'}
-                            aria-hidden
-                          />
-                        }
-                        disabled={testing !== null}
-                        variant="default"
-                        size="sm"
-                        type="button"
-                        onClick={() => void handleTest(m.modelId)}
-                      />
-                    ),
-                  }
-                  : {})}
-              />
-            ))}
+            {filtered.map((m) => {
+              const showTest = capability === 'tts';
+              const showDelete = m.source === 'user';
+              return (
+                <ModelCard
+                  key={m.modelId}
+                  id={m.modelId}
+                  badge={badgeOf(m)}
+                  logo={iconKey}
+                  action={(showTest || showDelete) ? (
+                    <span className="flex items-center gap-0.5">
+                      {showTest && (
+                        <IconButton
+                          label="测试声音"
+                          iconNode={
+                            <span
+                              className={testing === m.modelId
+                                ? 'i-mdi:volume-high animate-pulse text-[var(--ema-primary)]'
+                                : 'i-mdi:volume-high'}
+                              aria-hidden
+                            />
+                          }
+                          disabled={testing !== null}
+                          variant="default"
+                          size="sm"
+                          type="button"
+                          onClick={() => void handleTest(m.modelId)}
+                        />
+                      )}
+                      {showDelete && (
+                        <IconButton
+                          label="移除模型"
+                          icon="i-lucide:trash-2"
+                          variant="default"
+                          size="sm"
+                          type="button"
+                          onClick={() => setConfirmModel(m.modelId)}
+                        />
+                      )}
+                    </span>
+                  ) : undefined}
+                />
+              );
+            })}
           </div>
         </>
       )}

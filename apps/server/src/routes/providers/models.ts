@@ -2,6 +2,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import {
+  MODEL_BINDING_CAPABILITIES,
   MODEL_BINDING_MODULES,
   ProviderError,
   type ModelBindingModule,
@@ -18,7 +19,8 @@ const availableParams = z.object({
   capability: capabilityEnum,
 });
 
-const deleteModelQuery = z.object({
+/** modelId 跨能力不唯一，按行寻址的端点都要带 capability 判别。 */
+const modelQuery = z.object({
   capability: capabilityEnum,
 });
 
@@ -70,15 +72,23 @@ export interface ProviderModelsRouteDeps {
 
 export const providerModelsRoute = (deps: ProviderModelsRouteDeps) =>
   new Hono()
-    // 绑定选择器的可用模型清单：一次返回该能力下全部已启用模型及其 Provider 名。
+    // 绑定选择器的可用模型清单：连接可解析（协议档在位、bearer 有 key）的 Provider 池才进来。
     .get('/available/:capability', paramValidator(availableParams), context => {
       const { capability } = context.req.valid('param');
-      const providerNames = new Map(deps.providers.list().map(p => [p.id, p.name]));
+      const usableNames = new Map<string, string>();
+      for (const provider of deps.providers.list()) {
+        try {
+          deps.providers.resolveConnection(provider.id, capability);
+          usableNames.set(provider.id, provider.name);
+        } catch (error) {
+          if (!(error instanceof ProviderError)) throw error;
+        }
+      }
       const models = deps.providerModels.listByCapability(capability)
-        .filter(model => providerNames.has(model.providerId))
+        .filter(model => usableNames.has(model.providerId))
         .map(model => ({
           ...model,
-          providerName: providerNames.get(model.providerId)!,
+          providerName: usableNames.get(model.providerId)!,
         }));
       return context.json({ models });
     })
@@ -99,7 +109,7 @@ export const providerModelsRoute = (deps: ProviderModelsRouteDeps) =>
         return providerError(context, error);
       }
     })
-    .delete('/:providerId/models/:modelId', queryValidator(deleteModelQuery), context => {
+    .delete('/:providerId/models/:modelId', queryValidator(modelQuery), context => {
       const { capability } = context.req.valid('query');
       try {
         deps.providerModels.delete(context.req.param('providerId'), capability, context.req.param('modelId'));
@@ -114,7 +124,7 @@ export const providerModelsRoute = (deps: ProviderModelsRouteDeps) =>
       const { module } = context.req.valid('param');
       const body = context.req.valid('json');
       try {
-        assertNarrativeBindingProtocol(deps, module, body.providerId);
+        assertBindingConnection(deps, module, body.providerId);
         deps.modelBindings.set({ module, ...body });
         if (module === 'kb-embed' || module === 'kb-rerank') {
           deps.onKbEmbeddingBindingChanged?.();
@@ -131,26 +141,28 @@ export const providerModelsRoute = (deps: ProviderModelsRouteDeps) =>
     });
 
 /**
- * Narrative Bridge 只实现 openai-llm(chat completions) 与 openai-embed 两个协议族；
- * 绑定入口在此挡住协议不支持的模型，而不是等 Recall 时由 Bridge 报错。
+ * 绑定门槛：模块能力的连接必须可解析（协议档在位、bearer 有 key）——
+ * 不让"绑定成功、执行时才炸"。Narrative Bridge 只实现 openai-llm/openai-embed
+ * 两个协议族，它的两个模块额外锁定协议。
  */
 const NARRATIVE_BINDING_PROTOCOLS = {
-  'lightrag-llm': { capability: 'llm', protocol: 'openai-llm' },
-  'lightrag-embed': { capability: 'embed', protocol: 'openai-embed' },
+  'lightrag-llm': 'openai-llm',
+  'lightrag-embed': 'openai-embed',
 } as const;
 
-function assertNarrativeBindingProtocol(
+function assertBindingConnection(
   deps: ProviderModelsRouteDeps,
   module: ModelBindingModule,
   providerId: string,
 ): void {
-  if (module !== 'lightrag-llm' && module !== 'lightrag-embed') return;
-  const expected = NARRATIVE_BINDING_PROTOCOLS[module];
-  const connection = deps.providers.resolveConnection(providerId, expected.capability);
-  if (connection.protocol !== expected.protocol) {
+  const connection = deps.providers.resolveConnection(providerId, MODEL_BINDING_CAPABILITIES[module]);
+  const expected = module === 'lightrag-llm' || module === 'lightrag-embed'
+    ? NARRATIVE_BINDING_PROTOCOLS[module]
+    : undefined;
+  if (expected && connection.protocol !== expected) {
     throw new ProviderError(
       'invalid_configuration',
-      `${module} 只支持 ${expected.protocol} 协议，当前 Provider 该能力为 ${connection.protocol}`,
+      `${module} 只支持 ${expected} 协议，当前 Provider 该能力为 ${connection.protocol}`,
     );
   }
 }

@@ -1,5 +1,3 @@
-// 把 Provider 控制面对象映射到 profile.db：行、能力、协议、key 与按能力健康。
-// V1 key 明文入库；恢复加密时在本文件读写两点接回即可。
 import type {
   ModelCapability,
   Protocol,
@@ -7,7 +5,6 @@ import type {
   ProviderCapability,
   ProviderHealth,
   ProviderInput,
-  ProviderKey,
   ProviderStore,
 } from '@ema-agent/providers';
 import type { SqliteDb } from '../../database/database.js';
@@ -17,14 +14,13 @@ interface ProviderRow {
   name: string;
   icon_id: string | null;
   auth_type: 'none' | 'bearer';
-  enabled: number;
+  key_value: string | null;
 }
 
 interface CapabilityRow {
   provider_id: string;
   capability: ModelCapability;
   active_protocol: Protocol | null;
-  active_key_id: string | null;
   models_dev_id: string | null;
 }
 
@@ -33,14 +29,6 @@ interface ProtocolRow {
   capability: ModelCapability;
   protocol: Protocol;
   base_url: string;
-}
-
-interface KeyRow {
-  id: string;
-  provider_id: string;
-  capability: ModelCapability;
-  key_value: string;
-  created_at: number;
 }
 
 interface HealthRow {
@@ -62,7 +50,7 @@ export class ProvidersRepo implements ProviderStore {
 
   list(): Provider[] {
     const rows = this.db.prepare(
-      `SELECT id, name, icon_id, auth_type, enabled
+      `SELECT id, name, icon_id, auth_type, key_value
        FROM providers ORDER BY created_at ASC, id ASC`,
     ).all() as ProviderRow[];
     return rows.map((row) => this.toProvider(row));
@@ -73,32 +61,31 @@ export class ProvidersRepo implements ProviderStore {
     this.db.transaction(() => {
       this.db.prepare(
         `INSERT INTO providers
-           (id, name, icon_id, auth_type, enabled, created_at, updated_at)
+           (id, name, icon_id, auth_type, key_value, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            name = excluded.name,
            icon_id = excluded.icon_id,
            auth_type = excluded.auth_type,
-           enabled = excluded.enabled,
+           key_value = excluded.key_value,
            updated_at = excluded.updated_at`,
       ).run(
         input.id,
         input.name,
         input.iconId ?? null,
         input.authType,
-        input.enabled ? 1 : 0,
+        input.keyValue ?? null,
         now,
         now,
       );
 
       const upsertCapability = this.db.prepare(
         `INSERT INTO provider_capabilities
-           (provider_id, capability, active_protocol, active_key_id, models_dev_id,
+           (provider_id, capability, active_protocol, models_dev_id,
             created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
+         VALUES (?, ?, ?, ?, ?, ?)
          ON CONFLICT(provider_id, capability) DO UPDATE SET
            active_protocol = excluded.active_protocol,
-           active_key_id = excluded.active_key_id,
            models_dev_id = excluded.models_dev_id,
            updated_at = excluded.updated_at`,
       );
@@ -112,7 +99,6 @@ export class ProvidersRepo implements ProviderStore {
           input.id,
           capability.capability,
           capability.activeProtocol ?? null,
-          capability.activeKeyId ?? null,
           capability.modelsDevId ?? null,
           now,
           now,
@@ -130,81 +116,17 @@ export class ProvidersRepo implements ProviderStore {
       const retained = new Set(input.capabilities.map((entry) => entry.capability));
       for (const existing of this.listCapabilityRows(input.id)) {
         if (retained.has(existing.capability)) continue;
-        // 能力行删除经 FK 级联清理协议与模型事实；该能力的 key 一并清除。
-        this.db.prepare(
-          `DELETE FROM provider_keys WHERE provider_id = ? AND capability = ?`,
-        ).run(input.id, existing.capability);
+        // 能力行删除经 FK 级联清理协议与模型事实。
         this.db.prepare(
           `DELETE FROM provider_capabilities
            WHERE provider_id = ? AND capability = ?`,
         ).run(input.id, existing.capability);
-      }
-
-      const insertKey = this.db.prepare(
-        `INSERT INTO provider_keys (id, provider_id, capability, key_value, created_at)
-         VALUES (?, ?, ?, ?, ?)`,
-      );
-      for (const newKey of input.newKeys ?? []) {
-        insertKey.run(newKey.id, input.id, newKey.capability, newKey.keyValue, now);
       }
     })();
   }
 
   delete(id: string): void {
     this.db.prepare('DELETE FROM providers WHERE id = ?').run(id);
-  }
-
-  listKeys(providerId: string, capability: ModelCapability): ProviderKey[] {
-    const rows = this.db.prepare(
-      `SELECT id, provider_id, capability, key_value, created_at
-       FROM provider_keys
-       WHERE provider_id = ? AND capability = ?
-       ORDER BY created_at DESC, id DESC`,
-    ).all(providerId, capability) as KeyRow[];
-    return rows.map((row) => ({
-      id: row.id,
-      providerId: row.provider_id,
-      capability: row.capability,
-      keyValue: row.key_value,
-      createdAt: row.created_at,
-    }));
-  }
-
-  addKey(entry: {
-    id: string;
-    providerId: string;
-    capability: ModelCapability;
-    keyValue: string;
-    createdAt: number;
-  }): void {
-    this.db.transaction(() => {
-      this.db.prepare(
-        `INSERT INTO provider_keys (id, provider_id, capability, key_value, created_at)
-         VALUES (?, ?, ?, ?, ?)`,
-      ).run(entry.id, entry.providerId, entry.capability, entry.keyValue, entry.createdAt);
-      this.setActiveKey(entry.providerId, entry.capability, entry.id);
-    })();
-  }
-
-  setActiveKey(providerId: string, capability: ModelCapability, keyId: string): void {
-    this.db.prepare(
-      `UPDATE provider_capabilities
-       SET active_key_id = ?, updated_at = ?
-       WHERE provider_id = ? AND capability = ?`,
-    ).run(keyId, Date.now(), providerId, capability);
-  }
-
-  deleteKey(keyId: string): void {
-    this.db.prepare('DELETE FROM provider_keys WHERE id = ?').run(keyId);
-  }
-
-  latestKeyValue(providerId: string): string | undefined {
-    const row = this.db.prepare(
-      `SELECT key_value FROM provider_keys
-       WHERE provider_id = ?
-       ORDER BY created_at DESC, id DESC LIMIT 1`,
-    ).get(providerId) as { key_value: string } | undefined;
-    return row?.key_value;
   }
 
   recordHealth(providerId: string, capability: ModelCapability, health: ProviderHealth): void {
@@ -229,14 +151,14 @@ export class ProvidersRepo implements ProviderStore {
 
   private getRow(id: string): ProviderRow | undefined {
     return this.db.prepare(
-      `SELECT id, name, icon_id, auth_type, enabled
+      `SELECT id, name, icon_id, auth_type, key_value
        FROM providers WHERE id = ?`,
     ).get(id) as ProviderRow | undefined;
   }
 
   private listCapabilityRows(providerId: string): CapabilityRow[] {
     return this.db.prepare(
-      `SELECT provider_id, capability, active_protocol, active_key_id, models_dev_id
+      `SELECT provider_id, capability, active_protocol, models_dev_id
        FROM provider_capabilities
        WHERE provider_id = ?
        ORDER BY capability ASC`,
@@ -266,7 +188,6 @@ export class ProvidersRepo implements ProviderStore {
       .map((entry) => ({
         capability: entry.capability,
         ...(entry.active_protocol === null ? {} : { activeProtocol: entry.active_protocol }),
-        ...(entry.active_key_id === null ? {} : { activeKeyId: entry.active_key_id }),
         ...(entry.models_dev_id === null ? {} : { modelsDevId: entry.models_dev_id }),
         protocols: protocols
           .filter((protocol) => protocol.capability === entry.capability)
@@ -284,7 +205,7 @@ export class ProvidersRepo implements ProviderStore {
       name: row.name,
       ...(row.icon_id === null ? {} : { iconId: row.icon_id }),
       authType: row.auth_type,
-      enabled: row.enabled === 1,
+      ...(row.key_value === null ? {} : { keyValue: row.key_value }),
       capabilities,
       health,
     };

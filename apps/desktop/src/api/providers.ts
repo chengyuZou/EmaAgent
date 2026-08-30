@@ -36,11 +36,6 @@ export type BindingModule = InferRequestType<
 export type BindingUpsertInput = InferRequestType<RpcClient['api']['providers']['bindings'][':module']['$put']>['json'];
 export type BindingRecord = RpcJson<RpcClient['api']['providers']['bindings'][':module']['$put']>;
 
-export type ProviderKeyList = RpcJson<RpcClient['api']['providers'][':providerId']['keys']['$get']>;
-export type ProviderKeyRecord = ProviderKeyList[number];
-export type ProviderKeyAddInput = InferRequestType<RpcClient['api']['providers'][':providerId']['keys']['$post']>['json'];
-export type ProviderKeySelectInput = InferRequestType<RpcClient['api']['providers'][':providerId']['keys']['select']['$post']>['json'];
-
 export type ProbeCapability = InferRequestType<
   RpcClient['api']['providers'][':providerId']['probe'][':capability']['$post']
 >['param']['capability'];
@@ -120,44 +115,6 @@ export const providersApi = {
 
   deleteBinding(module: BindingModule): Promise<void> {
     return readRpcVoid(rpcClient.api.providers.bindings[':module'].$delete({ param: { module } }));
-  },
-
-  // ── Keys ────────────────────────────────────────────────────────────────────
-
-  listKeys(providerId: string, capability: ModelCapability): Promise<ProviderKeyList> {
-    return readRpcJson(rpcClient.api.providers[':providerId'].keys.$get({
-      param: { providerId },
-      query: { capability },
-    }));
-  },
-
-  /** 首次配置某能力时的预填：取全 provider 最近一把 key。 */
-  prefillKey(providerId: string, capability: ModelCapability) {
-    return readRpcJson(rpcClient.api.providers[':providerId'].keys.prefill.$get({
-      param: { providerId },
-      query: { capability },
-    }));
-  },
-
-  addKey(providerId: string, body: ProviderKeyAddInput) {
-    return readRpcJson(rpcClient.api.providers[':providerId'].keys.$post({
-      json: body,
-      param: { providerId },
-    }));
-  },
-
-  selectKey(providerId: string, body: ProviderKeySelectInput): Promise<void> {
-    return readRpcVoid(rpcClient.api.providers[':providerId'].keys.select.$post({
-      json: body,
-      param: { providerId },
-    }));
-  },
-
-  deleteKey(providerId: string, keyId: string, capability: ModelCapability): Promise<void> {
-    return readRpcVoid(rpcClient.api.providers[':providerId'].keys[':keyId'].$delete({
-      param: { providerId, keyId },
-      query: { capability },
-    }));
   },
 
   // ── 探活与试听 ──────────────────────────────────────────────────────────────

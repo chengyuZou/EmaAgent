@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState, type JSX } from 'react';
 import { Button, DropdownMenu, type MenuItem } from '@ema-agent/ui';
 import type { TurnModelSelection } from '@ema-agent/turn';
 import type { AvailableModel } from '../../api/providers.js';
-import { findEnabledModel, useProviderStore } from '../../stores/provider.js';
+import { findAvailableModel, useProviderStore } from '../../stores/provider.js';
 
 type LlmModel = Extract<AvailableModel, { capability: 'llm' }>;
 
@@ -36,7 +36,7 @@ export function ModelPicker({ selection, onChange, onClear }: {
     }
     return [...result.values()];
   }, [models]);
-  const selectedModel = findEnabledModel(models, selection?.providerId, selection?.modelId);
+  const selectedModel = findAvailableModel(models, selection?.providerId, selection?.modelId);
   const label = selectedModel
     ? `${selectedModel.providerName} · ${selectedModel.name ?? selectedModel.modelId}`
     : status === 'loading' || status === 'idle' ? '模型加载中' : '默认模型';

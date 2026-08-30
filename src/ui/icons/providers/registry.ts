@@ -1,44 +1,39 @@
 // 将稳定的 Provider 图标身份映射到 UI 图标库，业务定义无需感知 UnoCSS 或具体图标实现。
-import type { ProviderIconClasses, ProviderIconVariant } from './types.js';
 
-const FALLBACK_PROVIDER_ICON: ProviderIconClasses = {
-  default: 'i-solar:box-bold-duotone',
-  color: 'i-solar:box-bold-duotone',
-};
+const FALLBACK_PROVIDER_ICON = 'i-solar:box-bold-duotone';
 
-const PROVIDER_ICONS: Readonly<Record<string, ProviderIconClasses>> = Object.freeze({
-  anthropic: providerIcon('claude'),
-  dashscope: providerIcon('alibabacloud'),
-  deepseek: providerIcon('deepseek'),
-  fireworks: providerIcon('fireworks'),
-  gemini: providerIcon('gemini'),
-  'gpt-sovits': providerIcon('huggingface'),
-  groq: providerIcon('groq'),
-  jina: providerIcon('jina'),
-  lmstudio: providerIcon('lmstudio'),
-  mistral: providerIcon('mistral'),
-  moonshot: providerIcon('moonshot'),
-  ollama: providerIcon('ollama'),
-  openai: providerIcon('openai'),
-  openrouter: providerIcon('openrouter'),
-  perplexity: providerIcon('perplexity'),
-  siliconflow: providerIcon('siliconcloud'),
-  together: providerIcon('together'),
-  xai: providerIcon('xai'),
-  zhipu: providerIcon('zhipu'),
+const PROVIDER_ICONS: Readonly<Record<string, string>> = Object.freeze({
+  anthropic: 'i-lobe-icons:claude',
+  dashscope: 'i-lobe-icons:alibabacloud',
+  deepseek: 'i-lobe-icons:deepseek',
+  fireworks: 'i-lobe-icons:fireworks',
+  gemini: 'i-lobe-icons:gemini',
+  'gpt-sovits': 'i-lobe-icons:huggingface',
+  groq: 'i-lobe-icons:groq',
+  jina: 'i-lobe-icons:jina',
+  lmstudio: 'i-lobe-icons:lmstudio',
+  mistral: 'i-lobe-icons:mistral',
+  moonshot: 'i-lobe-icons:moonshot',
+  ollama: 'i-lobe-icons:ollama',
+  openai: 'i-lobe-icons:openai',
+  openrouter: 'i-lobe-icons:openrouter',
+  perplexity: 'i-lobe-icons:perplexity',
+  siliconflow: 'i-lobe-icons:siliconcloud',
+  together: 'i-lobe-icons:together',
+  xai: 'i-lobe-icons:xai',
+  zhipu: 'i-lobe-icons:zhipu',
 });
 
-function providerIcon(lobeId: string): ProviderIconClasses {
-  return {
-    default: `i-lobe-icons:${lobeId}`,
-    color: `i-lobe-icons:${lobeId}-color`,
-  };
+export function resolveProviderIconClass(iconId: string | undefined): string {
+  if (!iconId) return FALLBACK_PROVIDER_ICON;
+  return PROVIDER_ICONS[iconId] ?? FALLBACK_PROVIDER_ICON;
 }
 
-export function resolveProviderIconClass(
-  iconId: string | undefined,
-  variant: ProviderIconVariant = 'default',
-): string {
-  if (!iconId) return FALLBACK_PROVIDER_ICON[variant];
-  return (PROVIDER_ICONS[iconId] ?? FALLBACK_PROVIDER_ICON)[variant];
-}
+/**
+ * 注册表涉及的全部图标类名。iconKey 是运行时字符串（来自 Server API），静态扫描
+ * 看不到，UnoCSS safelist 必须从这里同源推导，不得在消费方另抄一份。
+ */
+export const PROVIDER_ICON_CLASS_SAFELIST: readonly string[] = Object.freeze([
+  FALLBACK_PROVIDER_ICON,
+  ...Object.values(PROVIDER_ICONS),
+]);

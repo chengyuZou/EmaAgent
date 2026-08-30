@@ -48,11 +48,14 @@ export default defineConfig({
   // when dist content changes - so a rebuilt ui/dist was silently served stale
   // from .vite/deps (the same trap that bit live2d-react's registerTicker fix).
   // Aliasing to src makes dev read the live source on every reload.
+  // builtin-tools 同理：Tool 的 UI.tsx 是活跃开发面，dist 重建不会触发 dev 更新。
+  // 注意不要再 alias 其他后端包：它们只应被 type-only 导入（构建期擦除），
+  // alias 到源码反而会把 Node 实现静默打进浏览器图。
   resolve: {
     alias: {
-      '@ema-agent/server':      resolve(__dirname, '../server/src'),
-      '@ema-agent/ui':         resolve(__dirname, '../../src/ui'),
-      '@ema-agent/live2d-react': resolve(__dirname, '../../src/live2d-react/index.ts'),
+      '@ema-agent/ui':              resolve(__dirname, '../../src/ui'),
+      '@ema-agent/builtin-tools/ui': resolve(__dirname, '../../src/builtin-tools/ui.ts'),
+      '@ema-agent/live2d-react':    resolve(__dirname, '../../src/live2d-react/index.ts'),
     },
   },
 
@@ -84,7 +87,9 @@ export default defineConfig({
   },
   // Build output (used by Tauri prod bundle later).
   build: {
-    target:       ['es2022', 'chrome105', 'safari13'],
+    // wlipsync 的 WASM 包使用 top-level await：safari13 不支持而拖垮整个 target 交集；
+    // 真实运行面是 WebView2（Chromium 常绿）与现代 WKWebView，safari15 已覆盖。
+    target:       ['es2022', 'chrome105', 'safari15'],
     minify:       'esbuild',
     sourcemap:    true,
     outDir:       'dist',

@@ -34,15 +34,15 @@ export interface ProviderHealthRouteDeps {
 
 export const providerHealthRoute = (deps: ProviderHealthRouteDeps) =>
   new Hono()
-    // 缺省用模型目录第一个已启用模型时也必须显式发 {}：契约一律声明，不吞真空 body。
+    // 缺省用池内第一个模型时也必须显式发 {}：契约一律声明，不吞真空 body。
     .post('/:providerId/probe/:capability', paramValidator(probeParams), jsonBody(probeBody), async context => {
       const { providerId, capability } = context.req.valid('param');
       const { modelId: requestedModelId } = context.req.valid('json');
       const startedAt = Date.now();
       try {
-        const modelId = requestedModelId ?? firstEnabledModelId(deps, providerId, capability);
+        const modelId = requestedModelId ?? firstPoolModelId(deps, providerId, capability);
         if (!modelId) {
-          return context.json({ error: 'no_enabled_model', message: '先在该能力下启用一个模型再探活' }, 422);
+          return context.json({ error: 'no_model', message: '先在该能力下添加一个模型再探活' }, 422);
         }
         await runProbe(deps.providers, providerId, capability, modelId, AbortSignal.timeout(PROBE_TIMEOUT_MS));
         deps.providers.recordHealth(providerId, capability, {
@@ -67,7 +67,7 @@ export const providerHealthRoute = (deps: ProviderHealthRouteDeps) =>
       }
     });
 
-function firstEnabledModelId(
+function firstPoolModelId(
   deps: ProviderHealthRouteDeps,
   providerId: string,
   capability: ProbeCapability,

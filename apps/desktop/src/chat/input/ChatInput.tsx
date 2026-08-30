@@ -9,7 +9,7 @@ import {
   type KeyboardEvent,
 } from 'react';
 import { DropdownMenu, IconButton, PromptDialog, Textarea, type MenuItem, type TextareaHandle } from '@ema-agent/ui';
-import { hasTurnInput, type TurnInputPart, type TurnModelSelection } from '@ema-agent/turn';
+import { hasTurnInput, type TurnInputPart, type TurnModelSelection } from '@ema-agent/turn/types';
 import { DecisionLayer } from '../../decision/DecisionLayer.js';
 import { sessionsApi } from '../../api/sessions.js';
 import { ServerApiError } from '../../api/client.js';
@@ -20,7 +20,7 @@ import { useServerStore } from '../../stores/server.js';
 import { useSessionStore } from '../../stores/session.js';
 import { useSkillStore } from '../../stores/skill.js';
 import { useUiStore } from '../../stores/ui.js';
-import { findEnabledModel, useProviderStore } from '../../stores/provider.js';
+import { findAvailableModel, useProviderStore } from '../../stores/provider.js';
 import { useCurrentSession } from '../state/currentSession.js';
 import { useMessages } from '../state/messages.js';
 import { sendMessage, stopStreaming } from '../state/turnRunner.js';
@@ -94,7 +94,7 @@ export function ChatInput(): JSX.Element {
   const text = draftText(parts);
   const executionProfile = viewedSession?.executionProfile ?? 'chat';
   const narrativePolicy = viewedSession?.narrativePolicy ?? 'auto';
-  const selectedModel = findEnabledModel(models, viewedSession?.providerId, viewedSession?.modelId);
+  const selectedModel = findAvailableModel(models, viewedSession?.providerId, viewedSession?.modelId);
   const selectedModelSupportsThinking = selectedModel?.capability === 'llm'
     && selectedModel.reasoning === true;
   const modelSelection: TurnModelSelection | null = viewedSession?.providerId && viewedSession.modelId

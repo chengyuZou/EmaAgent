@@ -2,7 +2,7 @@
 // 正文切分与已编辑文件汇总。行只引用真实对象（历史块 + 索引配对的结果信封 / 流式项），
 // 不建第二套字段；纯函数，供渲染与测试。
 import type { AssistantBlock, ToolResultBlock } from '@ema-agent/session';
-import { BuiltinTools } from '@ema-agent/tools';
+import { BuiltinTools } from '@ema-agent/tools/identity';
 import { asFileEditResult, asFileWriteResult } from '@ema-agent/builtin-tools/ui';
 import { lookupToolUI } from '../messages/toolBlocks/toolUIRegistry.js';
 import type { StreamItem } from '../state/messages.js';

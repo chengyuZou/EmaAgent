@@ -1,4 +1,4 @@
-// 测试自建 Provider 创建、按能力隔离的 key 解析连接和模型绑定只依赖已启用模型事实。
+// 测试自建 Provider 创建、一把 key 解析连接、update 的 key 语义与模型池来源事实。
 import { describe, expect, it } from 'vitest';
 import {
   ModelBindings,
@@ -7,14 +7,12 @@ import {
   type ModelBinding,
   type Provider,
   type ProviderInput,
-  type ProviderKey,
   type ProviderModel,
   type ProviderStore,
 } from '../index.js';
 
 class MemoryProviderStore implements ProviderStore {
   readonly providers = new Map<string, Provider>();
-  readonly keys = new Map<string, ProviderKey>();
 
   get(id: string) { return this.providers.get(id); }
   list() { return [...this.providers.values()]; }
@@ -24,56 +22,53 @@ class MemoryProviderStore implements ProviderStore {
       name: input.name,
       ...(input.iconId !== undefined ? { iconId: input.iconId } : {}),
       authType: input.authType,
-      enabled: input.enabled,
+      ...(input.keyValue !== undefined ? { keyValue: input.keyValue } : {}),
       capabilities: input.capabilities,
       health: this.providers.get(input.id)?.health ?? [],
     });
-    for (const newKey of input.newKeys ?? []) {
-      this.keys.set(newKey.id, {
-        id: newKey.id,
-        providerId: input.id,
-        capability: newKey.capability,
-        keyValue: newKey.keyValue,
-        createdAt: Date.now(),
-      });
-    }
   }
   delete(id: string) { this.providers.delete(id); }
-  listKeys(providerId: string, capability: ProviderKey['capability']) {
-    return [...this.keys.values()]
-      .filter((key) => key.providerId === providerId && key.capability === capability)
-      .sort((a, b) => b.createdAt - a.createdAt);
-  }
-  addKey(entry: { id: string; providerId: string; capability: ProviderKey['capability']; keyValue: string; createdAt: number }) {
-    this.keys.set(entry.id, { ...entry });
-    this.setActiveKey(entry.providerId, entry.capability, entry.id);
-  }
-  setActiveKey(providerId: string, capability: ProviderKey['capability'], keyId: string) {
-    const provider = this.providers.get(providerId);
-    if (!provider) return;
-    const target = provider.capabilities.find((entry) => entry.capability === capability);
-    if (target) (target as { activeKeyId?: string }).activeKeyId = keyId;
-  }
-  deleteKey(keyId: string) { this.keys.delete(keyId); }
-  latestKeyValue(providerId: string) {
-    return [...this.keys.values()]
-      .filter((key) => key.providerId === providerId)
-      .sort((a, b) => b.createdAt - a.createdAt)[0]?.keyValue;
-  }
   recordHealth() {}
 }
 
 function createProviders(store: MemoryProviderStore, bindings: ModelBinding[] = []) {
-  let seq = 0;
   return new Providers(
     store,
     { listByProvider: (id) => bindings.filter((item) => item.providerId === id) },
-    () => `key-${++seq}`,
   );
 }
 
+/** 模型池 + 绑定的内存接线。 */
+function createModelStack(store: MemoryProviderStore) {
+  const modelRows = new Map<string, ProviderModel>();
+  const modelStore = {
+    get: (providerId: string, capability: ProviderModel['capability'], modelId: string) =>
+      modelRows.get(`${providerId}/${capability}/${modelId}`),
+    listByProvider: () => [], listByCapability: () => [],
+    save: (model: ProviderModel) => modelRows.set(`${model.providerId}/${model.capability}/${model.modelId}`, model),
+    delete: (providerId: string, capability: ProviderModel['capability'], modelId: string) => {
+      modelRows.delete(`${providerId}/${capability}/${modelId}`);
+    },
+  };
+  const bindingRows = new Map<string, ModelBinding>();
+  const bindingStore = {
+    get: (module: ModelBinding['module']) => bindingRows.get(module),
+    list: () => [...bindingRows.values()],
+    listByProvider: (id: string) => [...bindingRows.values()].filter((row) => row.providerId === id),
+    set: (binding: ModelBinding) => bindingRows.set(binding.module, binding),
+    delete: (module: ModelBinding['module']) => { bindingRows.delete(module); },
+  };
+  return {
+    models: new ProviderModels(store, modelStore),
+    bindings: new ModelBindings(modelStore, bindingStore),
+    plant: (model: ProviderModel) => {
+      modelRows.set(`${model.providerId}/${model.capability}/${model.modelId}`, model);
+    },
+  };
+}
+
 describe('Provider 控制面', () => {
-  it('自建 Provider 创建后按能力解析连接，key 来自该能力 active key', () => {
+  it('自建 Provider 创建后按能力解析连接，key 来自 Provider 的一把 key', () => {
     const store = new MemoryProviderStore();
     const providers = createProviders(store);
 
@@ -81,12 +76,11 @@ describe('Provider 控制面', () => {
       id: 'my-gateway',
       name: 'My Gateway',
       authType: 'bearer',
-      enabled: true,
+      key: 'sk-gateway',
       capabilities: [{
         capability: 'llm',
         protocol: 'openai-llm',
         baseUrl: 'https://gateway.example/v1',
-        key: 'sk-gateway',
       }],
     });
 
@@ -105,7 +99,6 @@ describe('Provider 控制面', () => {
       id: 'my-gateway',
       name: 'My Gateway',
       authType: 'bearer' as const,
-      enabled: true,
       capabilities: [{
         capability: 'llm' as const,
         protocol: 'openai-llm' as const,
@@ -116,24 +109,33 @@ describe('Provider 控制面', () => {
     expect(() => providers.create(input)).toThrow(/已存在/);
   });
 
-  it('TTS 加 key 不影响 LLM 的 active 指针；能力间 key 完全隔离', () => {
+  it('一个 Provider 一把 key：全能力共享；update 未提供 key 不动，null 清空', () => {
     const store = new MemoryProviderStore();
     const providers = createProviders(store);
     providers.create({
       id: 'siliconflow-copy',
       name: 'SiliconFlow Copy',
       authType: 'bearer',
-      enabled: true,
+      key: 'sk-main',
       capabilities: [
-        { capability: 'llm', protocol: 'openai-llm', baseUrl: 'https://api.siliconflow.cn/v1', key: 'sk-llm-a' },
-        { capability: 'tts', protocol: 'openai-tts', baseUrl: 'https://api.siliconflow.cn/v1', key: 'sk-tts-a' },
+        { capability: 'llm', protocol: 'openai-llm', baseUrl: 'https://api.siliconflow.cn/v1' },
+        { capability: 'tts', protocol: 'openai-tts', baseUrl: 'https://api.siliconflow.cn/v1' },
       ],
     });
 
-    providers.addKey('siliconflow-copy', 'tts', 'sk-tts-b');
+    expect(providers.resolveConnection('siliconflow-copy', 'llm').apiKey).toBe('sk-main');
+    expect(providers.resolveConnection('siliconflow-copy', 'tts').apiKey).toBe('sk-main');
+    expect(providers.get('siliconflow-copy').keyValue).toBe('sk-main');
 
-    expect(providers.resolveConnection('siliconflow-copy', 'tts').apiKey).toBe('sk-tts-b');
-    expect(providers.resolveConnection('siliconflow-copy', 'llm').apiKey).toBe('sk-llm-a');
+    providers.update('siliconflow-copy', { name: 'Renamed' });
+    expect(providers.get('siliconflow-copy').keyValue).toBe('sk-main');
+
+    providers.update('siliconflow-copy', { key: 'sk-next' });
+    expect(providers.resolveConnection('siliconflow-copy', 'llm').apiKey).toBe('sk-next');
+
+    providers.update('siliconflow-copy', { key: null });
+    expect(providers.get('siliconflow-copy').keyValue).toBeUndefined();
+    expect(() => providers.resolveConnection('siliconflow-copy', 'llm')).toThrow(/API Key/);
   });
 
   it('空白创建必须显式填写协议与 baseUrl，不允许任何默认猜测', () => {
@@ -144,14 +146,12 @@ describe('Provider 控制面', () => {
       id: 'broken',
       name: 'Broken',
       authType: 'bearer',
-      enabled: true,
       capabilities: [{ capability: 'llm', protocol: 'openai-llm' }],
     })).toThrow(/baseUrl/);
     expect(() => providers.create({
       id: 'broken-2',
       name: 'Broken',
       authType: 'bearer',
-      enabled: true,
       capabilities: [{ capability: 'llm', baseUrl: 'https://example.com' }],
     })).toThrow(/协议/);
   });
@@ -163,37 +163,46 @@ describe('Provider 控制面', () => {
       id: 'custom-main',
       name: 'Custom',
       authType: 'none',
-      enabled: true,
       capabilities: [{ capability: 'llm', protocol: 'openai-llm', baseUrl: 'http://localhost/v1' }],
     });
 
-    const modelRows = new Map<string, ProviderModel>();
-    const modelStore = {
-      get: (providerId: string, capability: ProviderModel['capability'], modelId: string) =>
-        modelRows.get(`${providerId}/${capability}/${modelId}`),
-      listByProvider: () => [], listByCapability: () => [],
-      save: (model: ProviderModel) => modelRows.set(`${model.providerId}/${model.capability}/${model.modelId}`, model),
-      delete: () => {},
-    };
-    const models = new ProviderModels(store, modelStore);
+    const { models, bindings } = createModelStack(store);
     models.save({
       providerId: 'custom-main', capability: 'llm', modelId: 'model-a',
       contextWindow: 32_000, maxOutput: null, toolCall: null,
       reasoning: null, temperature: null, inputImage: null,
     });
 
-    const rows = new Map<string, ModelBinding>();
-    const bindings = new ModelBindings(modelStore, {
-      get: (module) => rows.get(module),
-      list: () => [...rows.values()],
-      listByProvider: (id) => [...rows.values()].filter((row) => row.providerId === id),
-      set: (binding) => rows.set(binding.module, binding),
-      delete: (module) => { rows.delete(module); },
-    });
-
     expect(bindings.set({ module: 'memory-llm', providerId: 'custom-main', modelId: 'model-a' }))
       .toMatchObject({ capability: 'llm' });
     expect(() => bindings.set({ module: 'vision', providerId: 'custom-main', modelId: 'model-a' }))
       .toThrow(/vision/);
+  });
+
+  it('来源语义：手动新增为 user，编辑种子保留 seed；seed 不可删、user 可删', () => {
+    const store = new MemoryProviderStore();
+    const providers = createProviders(store);
+    providers.create({
+      id: 'custom-main',
+      name: 'Custom',
+      authType: 'none',
+      capabilities: [{ capability: 'llm', protocol: 'openai-llm', baseUrl: 'http://localhost/v1' }],
+    });
+    const { models, plant } = createModelStack(store);
+    const input = {
+      providerId: 'custom-main', capability: 'llm' as const, modelId: 'model-a',
+      contextWindow: 32_000, maxOutput: null, toolCall: null,
+      reasoning: null, temperature: null, inputImage: null,
+    };
+
+    expect(models.save(input).source).toBe('user');
+
+    plant({ ...input, modelId: 'seed-a', source: 'seed' });
+    models.save({ ...input, modelId: 'seed-a', contextWindow: 64_000 });
+    expect(models.get('custom-main', 'llm', 'seed-a').source).toBe('seed');
+
+    expect(() => models.delete('custom-main', 'llm', 'seed-a')).toThrow(/不能删除/);
+    models.delete('custom-main', 'llm', 'model-a');
+    expect(() => models.get('custom-main', 'llm', 'model-a')).toThrow(/不存在/);
   });
 });

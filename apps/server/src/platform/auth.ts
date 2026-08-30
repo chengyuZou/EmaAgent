@@ -1,9 +1,32 @@
-// Loopback 认证：Tauri 注入的共享密钥校验，密钥不足时拒绝启动。
+// 管理 Desktop WebView 访问本机 Server 的跨域与共享密钥边界。
 import { createHash, timingSafeEqual } from 'node:crypto';
 import type { Context, Next } from 'hono';
+import { cors } from 'hono/cors';
 
 const EMA_SECRET_HEADER = 'x-ema-secret';
 const MIN_SECRET_LENGTH = 32;
+
+/**
+ * 放行开发页面与 Tauri WebView 对本机 Server 的跨域请求。
+ * 必须挂在 emaAuth 之前，否则携带 X-Ema-Secret 的请求会在 OPTIONS 预检阶段被误判为未授权。
+ */
+export function localWebviewCors() {
+  return cors({
+    origin: (origin) => {
+      if (!origin) return origin;
+      try {
+        const { hostname } = new URL(origin);
+        if (hostname === '127.0.0.1' || hostname === 'localhost' || hostname === 'tauri.localhost') {
+          return origin;
+        }
+      } catch {
+        return null;
+      }
+      return null;
+    },
+    allowHeaders: ['Content-Type', 'X-Ema-Secret'],
+  });
+}
 
 export class MissingSharedSecretError extends Error {
   constructor(message = 'EMA_SHARED_SECRET 未配置或长度不足，server 拒绝以无认证模式启动') {

@@ -72,7 +72,7 @@ export class ModelBindings {
     if (!model) {
       throw new ProviderError(
         'model_not_found',
-        `${input.module} 只能绑定已启用的 ${capability} 模型`,
+        `${input.module} 只能绑定池内的 ${capability} 模型`,
       );
     }
     const binding = { ...input, capability };

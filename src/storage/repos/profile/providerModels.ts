@@ -7,6 +7,7 @@ interface ProviderModelRow {
   capability: ModelCapability;
   model_id: string;
   name: string | null;
+  source: 'seed' | 'user';
   context_window: number | null;
   max_output: number | null;
   tool_call: number | null;
@@ -58,12 +59,13 @@ export class ProviderModelsRepo implements ProviderModelStore {
     const fields = toColumns(model);
     this.db.prepare(
       `INSERT INTO provider_models
-         (provider_id, capability, model_id, name, context_window, max_output,
+         (provider_id, capability, model_id, name, source, context_window, max_output,
           tool_call, reasoning, temperature, input_image, embedding_dim,
           rerank_max_chunks, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(provider_id, capability, model_id) DO UPDATE SET
          name = excluded.name,
+         source = excluded.source,
          context_window = excluded.context_window,
          max_output = excluded.max_output,
          tool_call = excluded.tool_call,
@@ -78,6 +80,7 @@ export class ProviderModelsRepo implements ProviderModelStore {
       model.capability,
       model.modelId,
       model.name ?? null,
+      model.source,
       fields.contextWindow,
       fields.maxOutput,
       fields.toolCall,
@@ -105,6 +108,7 @@ function fromRow(row: ProviderModelRow): ProviderModel {
     capability: row.capability,
     modelId: row.model_id,
     ...(row.name === null ? {} : { name: row.name }),
+    source: row.source,
   };
   switch (row.capability) {
     case 'llm':

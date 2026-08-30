@@ -1,5 +1,5 @@
-// Provider 控制面：管理 providers 行与按能力隔离的 key，
-// 并把能力配置解析为六个 API 包可直接消费的连接。
+// Provider 控制面：管理 providers 行与能力档位，
+// 并把能力配置解析为六个 API 包可直接消费的连接。一个 Provider 一把 key（bearer 才有）。
 import { ProviderError } from './errors.js';
 import type { ModelBindingStore } from './modelBindings.js';
 import type {
@@ -20,8 +20,6 @@ export interface ProviderCapability {
   capability: ModelCapability;
   /** 当前使用的协议；undefined = 该能力停用（已配协议保留）。 */
   activeProtocol?: Protocol;
-  /** 当前使用哪把 key；undefined = 未配 key。 */
-  activeKeyId?: string;
   /** 该能力的 models.dev 源 id；undefined = 不用 models.dev 预填模型参数。 */
   modelsDevId?: string;
   /** 该能力已配置的协议；同一能力可配多档（如 DeepSeek LLM 的 openai/anthropic 双协议）。 */
@@ -43,18 +41,10 @@ export interface Provider {
   /** UI 图标注册表 key；undefined = 前端不渲染图标。 */
   iconId?: string;
   authType: 'none' | 'bearer';
-  enabled: boolean;
+  /** 全文 key；掩码展示（取头尾拼接）是前端渲染规则，后端不参与。 */
+  keyValue?: string;
   capabilities: readonly ProviderCapability[];
   health: readonly ProviderHealth[];
-}
-
-/** key 列表投影，keyValue 为全文；掩码展示（取头尾拼接）是前端渲染规则，后端不参与。 */
-export interface ProviderKey {
-  id: string;
-  providerId: string;
-  capability: ModelCapability;
-  keyValue: string;
-  createdAt: number;
 }
 
 export interface ProviderCapabilityInput {
@@ -65,8 +55,6 @@ export interface ProviderCapabilityInput {
   /** true = 设为该能力当前协议；false = 停用该能力（已配协议保留）；缺省 = 未启用时激活这条协议。 */
   active?: boolean;
   modelsDevId?: string;
-  /** 本次创建/激活该能力时一并写入的首把 key；写入后置为 active。 */
-  key?: string;
 }
 
 export interface CreateProvider {
@@ -75,7 +63,8 @@ export interface CreateProvider {
   name: string;
   iconId?: string;
   authType: 'none' | 'bearer';
-  enabled: boolean;
+  /** 一把 key；bearer 未提供时先建行，配置动作补。 */
+  key?: string;
   capabilities: readonly ProviderCapabilityInput[];
 }
 
@@ -83,15 +72,9 @@ export interface UpdateProvider {
   name?: string;
   /** null = 清空图标。 */
   iconId?: string | null;
-  enabled?: boolean;
+  /** null = 清空 key；undefined = 不动现有 key。 */
+  key?: string | null;
   capability?: ProviderCapabilityInput;
-}
-
-/** 随保存一并写入的新 key；写入后对应能力的 active_key_id 指向它。 */
-export interface ProviderNewKey {
-  id: string;
-  capability: ModelCapability;
-  keyValue: string;
 }
 
 export interface ProviderInput {
@@ -99,9 +82,8 @@ export interface ProviderInput {
   name: string;
   iconId?: string;
   authType: 'none' | 'bearer';
-  enabled: boolean;
+  keyValue?: string;
   capabilities: readonly ProviderCapability[];
-  newKeys?: readonly ProviderNewKey[];
 }
 
 export interface ProviderStore {
@@ -109,19 +91,6 @@ export interface ProviderStore {
   list(): Provider[];
   save(input: ProviderInput): void;
   delete(id: string): void;
-  listKeys(providerId: string, capability: ModelCapability): ProviderKey[];
-  /** 插入 key 并把该能力的 active_key_id 拨到它（同一事务）。 */
-  addKey(entry: {
-    id: string;
-    providerId: string;
-    capability: ModelCapability;
-    keyValue: string;
-    createdAt: number;
-  }): void;
-  setActiveKey(providerId: string, capability: ModelCapability, keyId: string): void;
-  deleteKey(keyId: string): void;
-  /** 全 provider 最近一把 key 的值；某能力首次配置时的预填补全来源。 */
-  latestKeyValue(providerId: string): string | undefined;
   recordHealth(providerId: string, capability: ModelCapability, health: ProviderHealth): void;
 }
 
@@ -129,7 +98,6 @@ export class Providers {
   constructor(
     private readonly store: ProviderStore,
     private readonly bindings: Pick<ModelBindingStore, 'listByProvider'>,
-    private readonly createId: () => string,
   ) {}
 
   list(): Provider[] {
@@ -146,17 +114,13 @@ export class Providers {
     if (this.store.get(input.id)) {
       throw new ProviderError('already_exists', `Provider id 已存在：${input.id}`);
     }
-    const capabilities = normalizeCapabilities(input.capabilities);
-    const newKeys = collectNewKeys(input.capabilities, capabilities, this.createId);
-
     this.store.save({
       id: input.id,
       name: normalizeName(input.name),
       iconId: input.iconId,
       authType: input.authType,
-      enabled: input.enabled,
-      capabilities,
-      newKeys,
+      ...(input.key !== undefined ? { keyValue: normalizeKeyValue(input.key) } : {}),
+      capabilities: normalizeCapabilities(input.capabilities),
     });
     return this.requireProvider(input.id);
   }
@@ -190,19 +154,10 @@ export class Providers {
         {
           capability: requested.capability,
           ...(activeProtocol !== undefined ? { activeProtocol } : {}),
-          ...(current?.activeKeyId !== undefined ? { activeKeyId: current.activeKeyId } : {}),
           modelsDevId: requested.modelsDevId ?? current?.modelsDevId,
           protocols,
         },
       ];
-    }
-
-    const newKeys = input.capability?.key !== undefined
-      ? [{ id: this.createId(), capability: input.capability.capability, keyValue: normalizeKeyValue(input.capability.key) }]
-      : [];
-    if (newKeys.length > 0) {
-      const target = capabilities.find((entry) => entry.capability === input.capability!.capability)!;
-      target.activeKeyId = newKeys[0]!.id;
     }
 
     this.store.save({
@@ -210,9 +165,9 @@ export class Providers {
       name: input.name === undefined ? existing.name : normalizeName(input.name),
       iconId: input.iconId === undefined ? existing.iconId : (input.iconId ?? undefined),
       authType: existing.authType,
-      enabled: input.enabled ?? existing.enabled,
+      keyValue: input.key === undefined ? existing.keyValue
+        : input.key === null ? undefined : normalizeKeyValue(input.key),
       capabilities,
-      newKeys,
     });
     return this.requireProvider(id);
   }
@@ -230,51 +185,6 @@ export class Providers {
     this.store.delete(id);
   }
 
-  listKeys(providerId: string, capability: ModelCapability): ProviderKey[] {
-    this.requireProvider(providerId);
-    return this.store.listKeys(providerId, capability);
-  }
-
-  addKey(providerId: string, capability: ModelCapability, keyValue: string): ProviderKey {
-    const provider = this.requireProvider(providerId);
-    if (!provider.capabilities.some((entry) => entry.capability === capability)) {
-      throw invalid(`Provider 未配置 ${capability} 能力，无法写入 key`);
-    }
-    const id = this.createId();
-    this.store.addKey({
-      id,
-      providerId,
-      capability,
-      keyValue: normalizeKeyValue(keyValue),
-      createdAt: Date.now(),
-    });
-    return this.store.listKeys(providerId, capability).find((key) => key.id === id)!;
-  }
-
-  selectKey(providerId: string, capability: ModelCapability, keyId: string): void {
-    this.requireProvider(providerId);
-    if (!this.store.listKeys(providerId, capability).some((key) => key.id === keyId)) {
-      throw notFound('Provider key 不存在');
-    }
-    this.store.setActiveKey(providerId, capability, keyId);
-  }
-
-  deleteKey(providerId: string, capability: ModelCapability, keyId: string): void {
-    const provider = this.requireProvider(providerId);
-    const current = provider.capabilities.find((entry) => entry.capability === capability);
-    if (current?.activeKeyId === keyId) {
-      throw invalid('该 key 正在使用，请先切换到其他 key');
-    }
-    this.store.deleteKey(keyId);
-  }
-
-  /** 某能力首次配置时的 key 预填：全 provider 最近一把 key 的值；已有 key 则不预填。 */
-  prefillKey(providerId: string, capability: ModelCapability): string | undefined {
-    this.requireProvider(providerId);
-    if (this.store.listKeys(providerId, capability).length > 0) return undefined;
-    return this.store.latestKeyValue(providerId);
-  }
-
   recordHealth(providerId: string, capability: ModelCapability, health: ProviderHealth): void {
     this.requireProvider(providerId);
     this.store.recordHealth(providerId, capability, health);
@@ -285,14 +195,7 @@ export class Providers {
     capability: TCapability,
   ): ProviderConnection<TCapability> {
     const provider = this.requireProvider(providerId);
-    const configured = provider.capabilities.find(
-      (entry) => entry.capability === capability,
-    );
-    const keyValue = configured?.activeKeyId !== undefined
-      ? (this.store.listKeys(providerId, capability)
-          .find((key) => key.id === configured.activeKeyId)?.keyValue ?? null)
-      : null;
-    return resolveProviderConnection(provider, keyValue, capability);
+    return resolveProviderConnection(provider, provider.keyValue ?? null, capability);
   }
 
   private requireProvider(id: string): Provider {
@@ -320,9 +223,6 @@ export function resolveProviderConnection<TCapability extends ModelCapability>(
   keyValue: string | null,
   capability: TCapability,
 ): ProviderConnection<TCapability> {
-  if (!provider.enabled) {
-    throw new ProviderError('capability_disabled', 'Provider 已停用');
-  }
   const configured = provider.capabilities.find(
     (entry) => entry.capability === capability,
   );
@@ -376,25 +276,6 @@ export function normalizeCapabilities(
       protocols,
     };
   });
-}
-
-function collectNewKeys(
-  requested: readonly ProviderCapabilityInput[],
-  capabilities: readonly ProviderCapability[],
-  createId: () => string,
-): ProviderNewKey[] {
-  const newKeys: ProviderNewKey[] = [];
-  for (const entry of requested) {
-    if (entry.key === undefined) continue;
-    const newKey = {
-      id: createId(),
-      capability: entry.capability,
-      keyValue: normalizeKeyValue(entry.key),
-    };
-    newKeys.push(newKey);
-    capabilities.find((item) => item.capability === entry.capability)!.activeKeyId = newKey.id;
-  }
-  return newKeys;
 }
 
 function normalizeCapabilityProtocol(entry: ProviderCapabilityInput): ProviderProtocol {

@@ -1,6 +1,3 @@
-/**
- * ProvidersTab — provider grid grouped by capability（内置种子与自建同表，点击进单项编辑）。
- */
 import React, { useState } from 'react';
 import {
   Button,

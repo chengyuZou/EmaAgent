@@ -12,27 +12,27 @@ import { jsonBody } from '../validate.js';
 const capabilityInputSchema = z.object({
   capability: z.enum(['llm', 'embed', 'rerank', 'vision', 'tts', 'stt']),
   protocol: z.enum(PROTOCOLS).optional(),
-  baseUrl: z.string().min(1).max(PROVIDER_LIMITS.apiKeyChars).optional(),
+  baseUrl: z.string().min(1).max(PROVIDER_LIMITS.baseUrlChars).optional(),
   /** true = 设为当前协议；false = 停用该能力（已配协议保留）。 */
   active: z.boolean().optional(),
   modelsDevId: z.string().optional(),
-  /** 本次创建/激活时一并写入的首把 key。 */
-  key: z.string().min(1).max(PROVIDER_LIMITS.apiKeyChars).optional(),
 });
 
 const createProviderBody = z.object({
   id: z.string().min(1).max(PROVIDER_LIMITS.idChars),
-  name: z.string().min(1).max(200),
+  name: z.string().min(1).max(PROVIDER_LIMITS.nameChars),
   iconId: z.string().optional(),
   authType: z.enum(['none', 'bearer']),
-  enabled: z.boolean(),
+  /** one key per provider；bearer 未提供时先建行。 */
+  key: z.string().min(1).max(PROVIDER_LIMITS.apiKeyChars).optional(),
   capabilities: z.array(capabilityInputSchema).default([]),
 });
 
 const updateProviderBody = z.object({
-  name: z.string().min(1).max(200).optional(),
+  name: z.string().min(1).max(PROVIDER_LIMITS.nameChars).optional(),
   iconId: z.string().nullable().optional(),
-  enabled: z.boolean().optional(),
+  /** null = 清空 key；缺省 = 不动现有 key。 */
+  key: z.string().min(1).max(PROVIDER_LIMITS.apiKeyChars).nullable().optional(),
   capability: capabilityInputSchema.optional(),
 });
 

@@ -14,7 +14,6 @@ describe('ModelBindingsRepo', () => {
       id: 'siliconflow',
       name: 'Provider',
       authType: 'bearer',
-      enabled: true,
       capabilities: [
         { capability: 'llm', activeProtocol: 'openai-llm', protocols: [{ protocol: 'openai-llm', baseUrl: 'https://example.com/v1' }] },
         { capability: 'vision', activeProtocol: 'openai-llm', protocols: [{ protocol: 'openai-llm', baseUrl: 'https://example.com/v1' }] },
@@ -22,12 +21,12 @@ describe('ModelBindingsRepo', () => {
     });
     models = new ProviderModelsRepo(database.sqlite);
     models.save({
-      providerId: 'siliconflow', capability: 'llm', modelId: 'old-model',
+      providerId: 'siliconflow', capability: 'llm', modelId: 'old-model', source: 'user',
       contextWindow: 32_000, maxOutput: null, toolCall: null,
       reasoning: null, temperature: null, inputImage: null,
     });
     models.save({
-      providerId: 'siliconflow', capability: 'llm', modelId: 'new-model',
+      providerId: 'siliconflow', capability: 'llm', modelId: 'new-model', source: 'user',
       contextWindow: 64_000, maxOutput: null, toolCall: true,
       reasoning: null, temperature: null, inputImage: null,
     });

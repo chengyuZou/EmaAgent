@@ -111,19 +111,10 @@ CREATE TABLE providers (
   -- UI 图标注册表 key；NULL = 不显示图标（自建 provider 可以没有品牌图标）
   icon_id    TEXT,
   auth_type  TEXT NOT NULL CHECK(auth_type IN ('none','bearer')),
-  enabled    INTEGER NOT NULL DEFAULT 1,
+  -- 一个 Provider 一把 key（V1 明文入库）；NULL = 未配置
+  key_value  TEXT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
-);
-
--- 不同能力的 key 可能不同，provider_keys 表按能力拆开。
-CREATE TABLE provider_keys (
-  id          TEXT PRIMARY KEY,
-  provider_id TEXT NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
-  capability  TEXT NOT NULL CHECK(capability IN ('llm','embed','rerank','vision','tts','stt')),
-  -- V1 明文入库；恢复加密时 repo 读写两点接回
-  key_value   TEXT NOT NULL,
-  created_at  INTEGER NOT NULL
 );
 
 CREATE TABLE provider_capabilities (
@@ -131,8 +122,6 @@ CREATE TABLE provider_capabilities (
   capability      TEXT NOT NULL CHECK(capability IN ('llm','embed','rerank','vision','tts','stt')),
   -- 当前使用的协议；NULL = 该能力停用（已配协议保留在 protocols 表）
   active_protocol TEXT,
-  -- 当前使用哪把 key；换 key = 拨这个指针，历史 key 行保留
-  active_key_id   TEXT REFERENCES provider_keys(id),
   -- 该能力的 models.dev 源 id（加模型时的参数预填来源）
   models_dev_id   TEXT,
   created_at      INTEGER NOT NULL,
@@ -170,6 +159,8 @@ CREATE TABLE provider_models (
   model_id           TEXT    NOT NULL,
   -- 用户可改的显示名；NULL = 前端回退显示 model_id
   name               TEXT,
+  -- seed = 内置建议（不可删除，演进由迁移负责）；user = 手动添加（可删）
+  source             TEXT    NOT NULL DEFAULT 'user' CHECK(source IN ('seed','user')),
   context_window     INTEGER,
   max_output         INTEGER,
   tool_call          INTEGER CHECK(tool_call IS NULL OR tool_call IN (0,1)),

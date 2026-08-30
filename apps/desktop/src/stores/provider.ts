@@ -1,4 +1,4 @@
-// Provider 事实族单一入口：Provider 配置、业务位模型绑定与已启用 LLM 模型目录。
+// Provider 事实族单一入口：Provider 配置、业务位模型绑定与可用 LLM 模型目录。
 // 三者同源（providersApi），聊天模型选择器与设置页共享同一份数据。
 import { create } from 'zustand';
 import {
@@ -18,7 +18,7 @@ export interface ProviderStoreState {
   providers:           ProviderRecord[];
   /** 一个业务位一条绑定；缺省模块表示跟随系统默认解析。 */
   bindings:            Partial<Record<BindingModule, BindingsList[number]>>;
-  /** 已启用的 LLM 可用模型目录；状态机独立，不阻塞 Provider/绑定装载。 */
+  /** 可用的 LLM 模型目录（连接可解析的 Provider 池）；状态机独立，不阻塞 Provider/绑定装载。 */
   models:              AvailableModel[];
   modelsStatus:        ModelCatalogStatus;
   loading:             boolean;
@@ -169,8 +169,8 @@ function indexBindings(list: BindingsList): Partial<Record<BindingModule, Bindin
   return out;
 }
 
-/** 按 providerId + modelId 在可用目录里精确查找已启用模型。 */
-export function findEnabledModel(
+/** 按 providerId + modelId 在可用目录里精确查找模型。 */
+export function findAvailableModel(
   models: AvailableModel[],
   providerId: string | null | undefined,
   modelId: string | null | undefined,

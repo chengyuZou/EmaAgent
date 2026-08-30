@@ -17,6 +17,7 @@ import {
 } from '../shared/SettingItem.js';
 
 const SETTING_KEY = 'frontend.terminal.shellExecutable';
+const AUTO_SHELL_VALUE = '__ema_auto_shell__';
 const SHELL_KIND_LABELS: Readonly<Record<TerminalShellKind, string>> = {
   powerShell: 'PowerShell',
   commandPrompt: 'Command Prompt',
@@ -67,7 +68,7 @@ export function TerminalShellSettings(): JSX.Element {
       detectedOptions.push({ value: selected, label: `不可用 — ${selected}` });
     }
     return [
-      { value: '', label: shells[0] ? `自动选择（${shells[0].label}）` : '自动选择' },
+      { value: AUTO_SHELL_VALUE, label: shells[0] ? `自动选择（${shells[0].label}）` : '自动选择' },
       ...detectedOptions,
     ];
   }, [selected, shells]);
@@ -107,10 +108,10 @@ export function TerminalShellSettings(): JSX.Element {
           >
             <Select
               className="w-72"
-              value={selected}
+              value={selected || AUTO_SHELL_VALUE}
               disabled={loadState === 'loading' || saveState === 'saving'}
               options={options}
-              onChange={(value) => void save(value)}
+              onChange={(value) => void save(value === AUTO_SHELL_VALUE ? '' : value)}
             />
           </SettingItem>
         </SettingsCard>

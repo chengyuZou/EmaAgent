@@ -1,5 +1,4 @@
 // Provider 一族：控制面三类（Providers/ProviderModels/ModelBindings）+ models.dev 目录。
-import crypto from 'node:crypto';
 import {
   ModelBindingsRepo,
   ProviderModelsRepo,
@@ -32,7 +31,7 @@ export function openProviders(profileDb: Database): ProvidersComposition {
   const bindingsRepo = new ModelBindingsRepo(profileDb.sqlite);
 
   return {
-    providers: new Providers(providersRepo, bindingsRepo, () => crypto.randomUUID()),
+    providers: new Providers(providersRepo, bindingsRepo),
     providerModels: new ProviderModels(providersRepo, modelsRepo),
     modelBindings: new ModelBindings(modelsRepo, bindingsRepo),
     modelCatalog: getModelsDevCatalog(),

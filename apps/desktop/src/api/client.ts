@@ -54,9 +54,12 @@ export class ServerApiError extends Error {
       if (!code && typeof parsed.error === 'string' && /^[a-z0-9_/-]+$/i.test(parsed.error)) {
         code = parsed.error;
       }
-      message = typeof parsed.error === 'string'
-        ? parsed.error
-        : message;
+      // 展示文案优先取后端人话 message，机器码只作兜底。
+      message = typeof parsed.message === 'string' && parsed.message.length > 0
+        ? parsed.message
+        : typeof parsed.error === 'string'
+          ? parsed.error
+          : message;
     } catch {
       message = body.length > 200
         ? `${body.slice(0, 200)}…`

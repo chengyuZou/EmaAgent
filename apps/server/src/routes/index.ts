@@ -5,7 +5,7 @@
 import { Hono } from 'hono';
 import { deleteSession } from '../application/deleteSession.js';
 import type { Composition } from '../composition/index.js';
-import { emaAuth } from '../platform/auth.js';
+import { emaAuth, localWebviewCors } from '../platform/auth.js';
 import { requestBudgetMiddleware } from '../platform/requestBudget.js';
 import { agentRunListRoute } from './agentRuns/list.js';
 import { agentRunTranscriptRoute } from './agentRuns/transcript.js';
@@ -31,7 +31,6 @@ import { memoryStatsRoute } from './memory/stats.js';
 import { providerCapabilitiesRoute } from './providers/capabilities.js';
 import { providerConfigsRoute } from './providers/configs.js';
 import { providerHealthRoute } from './providers/health.js';
-import { providerKeysRoute } from './providers/keys.js';
 import { providerModelsRoute } from './providers/models.js';
 import { sessionActionsRoute } from './sessions/actions.js';
 import { sessionAttachmentsRoute } from './sessions/attachments.js';
@@ -62,8 +61,9 @@ export const createRoutes = (composition: Composition, secret: string) => {
     eventHub, turnEvents, turnFanout,
   } = composition;
 
-  // 先认证后预算：未授权请求连体积拒绝响应都不必给。
+  // CORS 必须先处理不携带业务密钥的 OPTIONS 预检，真正请求再进入认证和预算。
   return new Hono()
+    .use('*', localWebviewCors())
     .use('*', emaAuth(secret))
     .use('*', requestBudgetMiddleware())
 
@@ -151,14 +151,14 @@ export const createRoutes = (composition: Composition, secret: string) => {
       stdioApprovals: tools.stdioApprovals,
     }))
 
-    .route('/api/providers', providerConfigsRoute({ providers: providers.providers }))
-    .route('/api/providers', providerKeysRoute({ providers: providers.providers }))
+    // 静态 /bindings、/available 路由必须先于 configs 的 /:providerId，避免被当作 Provider id。
     .route('/api/providers', providerModelsRoute({
       providers: providers.providers,
       providerModels: providers.providerModels,
       modelBindings: providers.modelBindings,
       onKbEmbeddingBindingChanged: knowledge.onKbEmbeddingBindingChanged,
     }))
+    .route('/api/providers', providerConfigsRoute({ providers: providers.providers }))
     .route('/api/providers', providerHealthRoute({
       providers: providers.providers,
       providerModels: providers.providerModels,

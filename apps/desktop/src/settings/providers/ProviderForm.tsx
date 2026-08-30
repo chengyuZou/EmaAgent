@@ -14,7 +14,7 @@ import {
   type ModelCapability,
   type ProviderRecord,
 } from '../../api/providers.js';
-import { PROVIDER_LIMITS, type Protocol } from '@ema-agent/providers';
+import { PROVIDER_LIMITS, type Protocol } from '@ema-agent/providers/types';
 import { showToast } from '../../lib/toast.js';
 import { ProviderModelManager } from './ProviderModelManager.js';
 
@@ -52,7 +52,7 @@ function isProviderConfigDirty(
     || draft.protocol !== baseline.protocol;
 }
 
-/** 密钥语义：非空输入在保存时写入并设为 active；空 = 不动现有 key（清空走 key 管理，不在表单里猜）。 */
+/** 密钥语义：非空输入在保存时替换 Provider 的 key；空 = 不动现有 key。 */
 function resolveProviderSubmitState(args: {
   draft: ProviderFormDraft;
   baseline: ProviderFormBaseline;
@@ -94,7 +94,6 @@ export function ProviderForm({
   const [showApiKey,   setShowApiKey]   = useState(false);
   const [credentialDirty, setCredentialDirty] = useState(false);
   const [credentialLoaded, setCredentialLoaded] = useState(false);
-  const [revealingCredential, setRevealingCredential] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const capabilityRow = provider.capabilities.find((c) => c.capability === capability);
@@ -143,7 +142,7 @@ export function ProviderForm({
     draft: { apiKey, credentialDirty, baseUrl, protocol: selectedProtocol },
     baseline,
     requiresCredentials,
-    hasActiveKey: capabilityRow?.activeKeyId !== undefined,
+    hasActiveKey: provider.keyValue !== undefined,
   });
   const dirty = submitState.dirty;
 
@@ -166,12 +165,12 @@ export function ProviderForm({
     setSubmitting(true);
     try {
       const saved = await providersApi.patch(provider.id, {
+        ...(apiKey.trim() ? { key: apiKey.trim() } : {}),
         capability: {
           capability,
           protocol: selectedProtocol as Protocol,
           ...(baseUrl.trim() ? { baseUrl: baseUrl.trim() } : {}),
           active: true,
-          ...(apiKey.trim() ? { key: apiKey.trim() } : {}),
         },
       });
       const savedCapability = saved.capabilities.find((c) => c.capability === capability);
@@ -214,7 +213,7 @@ export function ProviderForm({
     setProbeMsg(health?.lastError ?? null);
   }
 
-  async function handleCredentialVisibility(): Promise<void> {
+  function handleCredentialVisibility(): void {
     if (showApiKey) {
       setShowApiKey(false);
       if (credentialLoaded && !credentialDirty) {
@@ -229,25 +228,14 @@ export function ProviderForm({
       return;
     }
 
-    setRevealingCredential(true);
-    try {
-      // keyValue 是凭据边界的全文投影;只取当前 active 那把进输入框。
-      const keys = await providersApi.listKeys(provider.id, capability);
-      const active = keys.find((k) => k.id === capabilityRow?.activeKeyId) ?? keys[0];
-      if (!active) {
-        showToast('尚未配置密钥', { variant: 'warning' });
-        return;
-      }
-      setApiKey(active.keyValue);
-      setCredentialLoaded(true);
-      setShowApiKey(true);
-    } catch (err: unknown) {
-      showToast(`读取密钥失败: ${err instanceof Error ? err.message : 'Unknown'}`, {
-        variant: 'danger',
-      });
-    } finally {
-      setRevealingCredential(false);
+    // keyValue 是凭据边界的全文投影；一个 Provider 只有一把，直接读。
+    if (!provider.keyValue) {
+      showToast('尚未配置密钥', { variant: 'warning' });
+      return;
     }
+    setApiKey(provider.keyValue);
+    setCredentialLoaded(true);
+    setShowApiKey(true);
   }
 
   async function handleProbe(): Promise<void> {
@@ -294,7 +282,7 @@ export function ProviderForm({
             <div className="relative">
               <Input
                 type={showApiKey ? 'text' : 'password'}
-                placeholder={capabilityRow?.activeKeyId !== undefined ? '已配置；输入新密钥可替换' : 'sk-...'}
+                placeholder={provider.keyValue !== undefined ? '已配置；输入新密钥可替换' : 'sk-...'}
                 value={apiKey}
                 onChange={(e) => {
                   setApiKey(e.target.value);
@@ -310,10 +298,9 @@ export function ProviderForm({
                 icon={showApiKey ? 'i-solar:eye-closed-linear' : 'i-solar:eye-linear'}
                 size="sm"
                 type="button"
-                disabled={revealingCredential}
                 tabIndex={-1}
                 className="absolute right-1.5 top-1/2 -translate-y-1/2"
-                onClick={() => { void handleCredentialVisibility(); }}
+                onClick={handleCredentialVisibility}
               />
             </div>
           </div>}
