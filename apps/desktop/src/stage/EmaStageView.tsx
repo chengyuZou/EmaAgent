@@ -48,31 +48,22 @@ export function EmaStageView({
       if (target) stageRef.current?.playMotion(target.group, target.index);
     };
 
-    const unlistenEmotion = tauriBridge.listen<{ emotion: string; stageId?: string }>(
-      'stage:emotion-changed',
-      (event) => {
-        if (isTargetStage(event.payload.stageId)) applyEmotion(event.payload.emotion);
+    const unlistenEmotion = tauriBridge.listenStageEmotion(
+      (emotion, stageId) => {
+        if (isTargetStage(stageId)) applyEmotion(emotion);
       },
     );
-    const unlistenCue = tauriBridge.listen<{
-      motion: string;
-      stageId?: string;
-    }>('stage:motion-changed', (event) => {
-      if (isTargetStage(event.payload.stageId)) applyMotion(event.payload.motion);
+    const unlistenCue = tauriBridge.listenStageMotion((motion, stageId) => {
+      if (isTargetStage(stageId)) applyMotion(motion);
     });
-    const unlistenSpeech = tauriBridge.listen<{
-      speaking: boolean;
-      rms: number;
-      stageId?: string;
-    }>('stage:speech-state', (event) => {
-      if (isTargetStage(event.payload.stageId)) {
-        stageRef.current?.setLipSync(event.payload.speaking, event.payload.rms);
+    const unlistenSpeech = tauriBridge.listenStageSpeech((speaking, rms, stageId) => {
+      if (isTargetStage(stageId)) {
+        stageRef.current?.setLipSync(speaking, rms);
       }
     });
-    const unlistenCycle = tauriBridge.listen<{ stageId?: string }>(
-      'stage:cycle-expression',
-      (event) => {
-        if (!isTargetStage(event.payload.stageId)) return;
+    const unlistenCycle = tauriBridge.listenStageExpressionCycle(
+      (stageId) => {
+        if (!isTargetStage(stageId)) return;
         const expression = stageRef.current?.cycleExpression();
         if (expression) {
           showToast(`已切换 Live2D 表情：${expression}`, {

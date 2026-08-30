@@ -1,4 +1,4 @@
-// 一次工具调用的统一行：状态、参数、结果与落盘文件 diff。
+// 一次工具调用的统一行：状态、参数、进度、结果与复制。
 // props 只携带真实对象——历史路径是 tool_use 块 + 索引配对的结果信封，流式路径是
 // 瞬态项；专属 UI 经 tool_use.name 查表、以 TOutput（结果信封 data / 事件 output）渲染。
 import { useState, useEffect, useCallback, type JSX } from 'react';
@@ -6,21 +6,15 @@ import { IconButton } from '@ema-agent/ui';
 import { turnsApi } from '../../api/turns.js';
 import { renderToolResult } from './toolBlocks/tool-renderers.js';
 import { lookupToolUI } from './toolBlocks/toolUIRegistry.js';
-import { BackgroundProcessCard } from './toolBlocks/BackgroundProcessCard.js';
-import { ToolArgsView, ToolResultViewBlock, BashBlock, DiffBlock } from './toolBlocks/ToolRenderBlocks.js';
+import { ToolArgsView, ToolResultViewBlock } from './toolBlocks/ToolRenderBlocks.js';
 import {
-  BASH_TOOLS,
-  getBashCommand,
-  buildBodyText,
-  buildEditDiff,
-  getPrimaryTarget,
-  formatJson,
-  asBashProcessReference,
-  bashCommandOutputText,
+  defaultCopyText,
   toolVariant,
   VARIANT_ICONS,
   type ToolDisplayStatus,
 } from './toolBlocks/toolBlockHelpers.js';
+import { useCurrentSession } from '../state/currentSession.js';
+import { useDockTabs } from '../frame/dockTabs.js';
 import {
   toolArgs,
   toolDurationMs,
@@ -68,6 +62,7 @@ export function ToolCallBlock({ row, streaming = false, turnId }: ToolCallBlockP
   const output = toolOutput(row);
   const partialArgs = row.source === 'stream' ? row.item.partialArgs : undefined;
   const startedAt = row.source === 'stream' ? row.item.startedAt : undefined;
+  const progress = row.source === 'stream' ? row.item.progress : undefined;
   const durationMs = toolDurationMs(row);
   const permissionPending = toolPermissionPending(row);
 
@@ -95,7 +90,8 @@ export function ToolCallBlock({ row, streaming = false, turnId }: ToolCallBlockP
   const argsReady = args !== undefined;
   const isPending = running && !argsReady;
 
-  const target = argsReady ? getPrimaryTarget(name, args) : null;
+  // 行头摘要由 Tool 自己的 title 钩子提供；没有注册的工具只显示工具名。
+  const target = argsReady ? toolUI?.title?.(args) ?? null : null;
   const variant = toolVariant(name);
   const errorFirstLine = failure
     ? (failure.message.split('\n')[0] ?? '')
@@ -103,33 +99,22 @@ export function ToolCallBlock({ row, streaming = false, turnId }: ToolCallBlockP
       ? '已中断'
       : null;
 
-  const isBash = BASH_TOOLS.has(name);
-  // 后台进程引用与终端文本都从类型化输出守卫提取，不再 JSON 直出。
-  const processRef = hasResult && output != null ? asBashProcessReference(output) : null;
-
-  const resultView = hasResult && output !== null ? renderToolResult(name, output) : null;
-  // 专属 UI 优先；返回 null（类型守卫失败/未注册）回落通用平铺。渲染函数必须纯（无 hooks）。
+  // CallView 是组合卡（内部允许有状态子组件），按组件方式渲染；
+  // ArgsView/ResultView/ProgressView 是叶子渲染器：无 hooks 纯函数，返回 null = 守卫失败回落通用渲染。
   const customArgs = toolUI?.ArgsView && argsReady ? toolUI.ArgsView({ args }) : null;
   const customResult = toolUI?.ResultView && hasResult && output != null
     ? toolUI.ResultView({ data: output })
     : null;
-  // 专属结果卡（权威 structuredPatch）落地后不走 args 推导的 diff 预览；运行中尚无输出时仍用预览。
-  const editDiff = customResult !== null
-    ? null
-    : argsReady ? buildEditDiff(name, args) : null;
-  const bashResultStr = isBash && hasResult && output !== null && !processRef
-    ? bashCommandOutputText(output) ?? formatJson(output)
+  const progressView = running && progress && progress.length > 0 && toolUI?.ProgressView
+    ? toolUI.ProgressView({ progress })
     : null;
+  const CallView = toolUI?.CallView;
+  const resultView = hasResult && output !== null ? renderToolResult(output) : null;
 
-  const bodyForCopy = buildBodyText(
-    name,
-    args,
-    output,
-    editDiff,
-    isBash ? getBashCommand(args) : null,
-    bashResultStr,
-    argsReady,
-  );
+  const viewedSessionId = useCurrentSession((s) => s.viewedSessionId);
+  const openTab = useDockTabs((s) => s.openTab);
+
+  const bodyForCopy = toolUI?.copyText?.(args, output) ?? defaultCopyText(args, output, argsReady);
 
   const copy = useCallback(() => {
     void navigator.clipboard.writeText(bodyForCopy).then(() => {
@@ -204,60 +189,48 @@ export function ToolCallBlock({ row, streaming = false, turnId }: ToolCallBlockP
         style={{ gridTemplateRows: open ? '1fr' : '0fr', opacity: open ? 1 : 0 }}
       >
         <div className="relative ml-3 pl-3" style={{ borderLeftColor: 'var(--ema-border)', borderLeftWidth: 1 }}>
-          {/* Copy button（bash 终端卡 banner 自带复制，不重复） */}
-          {!isBash && (
-            <button
-              className="absolute top-0 right-0 px-1.5 py-0.5 rounded text-[10px] transition-colors text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)]"
-              onClick={(e) => { e.stopPropagation(); copy(); }}
-            >
-              {copied ? <span className="i-lucide:check text-xs" aria-hidden /> : <span className="i-lucide:copy text-xs" aria-hidden />}
-            </button>
-          )}
-
-          {/* Bash: 终端卡（转交后台后不再重复输出，由卡片表达） */}
-          {isBash && !processRef && (
-            <BashBlock
-              cmd={getBashCommand(args) ?? ''}
-              output={bashResultStr}
-              partialArgs={partialArgs}
-              isPending={isPending}
+          {CallView ? (
+            <CallView
+              args={args}
+              {...(partialArgs !== undefined ? { partialArgs } : {})}
+              {...(hasResult ? { data: output } : {})}
+              {...(progress !== undefined ? { progress } : {})}
               status={status}
+              running={running}
+              openBackgroundProcesses={() => {
+                if (viewedSessionId) {
+                  openTab(viewedSessionId, { id: 'backgroundProcesses', kind: 'backgroundProcesses' });
+                }
+              }}
             />
-          )}
-
-          {/* 已转交后台的 Bash：块当场终结，卡片只给面板入口，不持续刷新。 */}
-          {isBash && processRef && (
-            <BackgroundProcessCard
-              command={getBashCommand(args) ?? ''}
-              status={processRef.status}
-            />
-          )}
-
-          {/* Edit diff */}
-          {!isBash && editDiff && (
-            <div className="max-h-64 overflow-auto pr-6">
-              <DiffBlock code={editDiff} />
-            </div>
-          )}
-
-          {/* 通用工具：单块 = 参数 + 透明横线 + 结果 */}
-          {!isBash && !editDiff && (
+          ) : (
             <>
+              {/* Copy button（CallView 接管的卡片自带复制，不重复） */}
+              <button
+                className="absolute top-0 right-0 px-1.5 py-0.5 rounded text-[10px] transition-colors text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)]"
+                onClick={(e) => { e.stopPropagation(); copy(); }}
+              >
+                {copied ? <span className="i-lucide:check text-xs" aria-hidden /> : <span className="i-lucide:copy text-xs" aria-hidden />}
+              </button>
+
               {/* 参数区：专属 UI 优先，否则通用平铺 */}
               {argsReady ? (
-                customArgs ?? <ToolArgsView name={name} args={args} />
+                customArgs ?? <ToolArgsView args={args} />
               ) : partialArgs ? (
                 <pre className="font-mono text-[11px] text-[var(--ema-text-tertiary)] whitespace-pre-wrap break-all leading-relaxed bg-transparent m-0 p-0 pr-6">
                   {partialArgs}
                 </pre>
               ) : null}
 
+              {/* 进度区：只渲染 Tool 注册的 ProgressView，没有就不建立假进度 */}
+              {progressView}
+
               {/* 透明横线（分隔参数与结果，仅当两者都有时） */}
               {(argsReady || partialArgs) && (customResult !== null || resultView !== null) && (
                 <div className="my-2 mx-4 border-t border-[var(--ema-border)]" />
               )}
 
-              {/* 结果区：专属 UI 优先，否则通用渲染 */}
+              {/* 结果区：专属 UI 优先，守卫失败（null）或通用渲染 */}
               {customResult ?? (
                 resultView !== null && (
                   <div className="max-h-48 overflow-auto pr-6">

@@ -1,4 +1,4 @@
-import type { CharacterLive2dModel } from './live2d/types.js';
+import type { CharacterLive2dModel, Live2dRuntimeConfig } from './live2d/types.js';
 import type { CharacterIllustration } from './illustration/types.js';
 import type { CharacterVoiceSample } from './voice/types.js';
 
@@ -37,4 +37,39 @@ export interface CharacterPatch {
   name?: string;
   description?: string | null;
   personaPrompt?: string;
+}
+
+// ── 主窗口舞台视图 ────────────────────────────────────────────────────────────
+
+/** 舞台候选的公共渲染字段；file 是服务端解析后的绝对路径，updatedAt 供前端做候选去重。 */
+interface CharacterStageEntryBase {
+  readonly resourceId: string;
+  readonly name: string;
+  readonly file: string;
+  readonly stageScale: number;
+  readonly stageOffsetX: number;
+  readonly stageOffsetY: number;
+  readonly updatedAt: number;
+}
+
+export interface CharacterLive2dStageEntry extends CharacterStageEntryBase {
+  readonly kind: 'live2d';
+  readonly runtimeConfig: Live2dRuntimeConfig | null;
+}
+
+export interface CharacterIllustrationStageEntry extends CharacterStageEntryBase {
+  readonly kind: 'illustration';
+}
+
+export type CharacterStageEntry =
+  | CharacterLive2dStageEntry
+  | CharacterIllustrationStageEntry;
+
+/**
+ * 主窗口一次渲染所需的完整视图。candidates 按降级链排序（Live2D → 立绘），
+ * 空数组即占位；消费方不需要第二次请求或自行拼接资源字段。
+ */
+export interface CharacterStagePresentation {
+  readonly characterId: string;
+  readonly candidates: readonly CharacterStageEntry[];
 }

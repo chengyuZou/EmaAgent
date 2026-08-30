@@ -1,15 +1,6 @@
-// 这里把各类工具的参数和结果转换成前端可以直接展示的行或文本。
-import { BuiltinTools } from '@ema-agent/tools';
-
-/**
- * tool-renderers — per-tool 参数/结果展示格式化注册表。
- *
- * 纯展示层，纯函数，可 mock。把"每个工具的字段语义"从 ToolCallBlock 的渲染逻辑里剥离：
- * ToolCallBlock 管容器/动画/高亮，这里管“Read 的参数该显示哪些字段”。
- *
- * 核心目标：去掉 JSON.stringify 的 `{}` 包裹，参数/结果改成 key-value 平铺。
- * 新增工具展示 → 往 switch 加一个 case，不碰 ToolCallBlock。
- */
+// 通用回退渲染：未注册专属 UI 的工具（MCP/未知）把参数平铺为 key-value 行、
+// 结果按形状分派为文本/平铺/JSON。不识别任何具体工具的字段语义。
+// 纯展示层，纯函数，可 mock。
 
 // ── 参数视图 ──────────────────────────────────────────────────────────────────
 
@@ -24,56 +15,17 @@ export interface ToolArgView {
   rows: ToolArgRow[];
 }
 
-/**
- * 按工具名把 args 格式化成平铺行。已知工具只显示语义字段；
- * 未知工具（含 mcp__<server>__<tool>）平铺所有顶层字段作兜底。
- */
-export function renderToolArgs(name: string, args: unknown): ToolArgView {
+/** MCP/未知工具的兜底：平铺所有顶层字段，不理解字段含义。 */
+export function renderToolArgs(args: unknown): ToolArgView {
   const a = (args ?? {}) as Record<string, unknown>;
   const str = (v: unknown): string => (typeof v === 'string' ? v : v == null ? '' : JSON.stringify(v));
   const row = (key: string, value: unknown, mono = false): ToolArgRow => ({ key, value: str(value), mono });
 
-  switch (name) {
-    case BuiltinTools.FileRead.name:
-    case BuiltinTools.FileWrite.name:
-    case BuiltinTools.FileEdit.name:
-      return { rows: [row('path', a.file_path, true)] };
-
-    case BuiltinTools.Glob.name:
-      return { rows: [row('pattern', a.pattern, true)] };
-
-    case BuiltinTools.Grep.name:
-      return {
-        rows: [
-          row('pattern', a.pattern, true),
-          ...(a.path != null ? [row('path', a.path, true)] : []),
-        ],
-      };
-
-    case BuiltinTools.Bash.name:
-    case BuiltinTools.PowerShell.name:
-      return { rows: [row('command', a.command, true)] };
-
-    case BuiltinTools.WebSearch.name:
-      return { rows: [row('query', a.query)] };
-
-    case BuiltinTools.WebFetch.name:
-      return { rows: [row('url', a.url, true)] };
-
-    case BuiltinTools.KnowledgeBaseSearch.name:
-      return { rows: [row('query', a.query)] };
-
-    case BuiltinTools.AskUser.name:
-      return { rows: [row('questions', a.questions)] };
-
-    default:
-      // mcp__<server>__<tool> / 未知工具 → 平铺顶层字段
-      return {
-        rows: Object.entries(a)
-          .filter(([, v]) => v != null)
-          .map(([k, v]) => row(k, v, typeof v !== 'string')),
-      };
-  }
+  return {
+    rows: Object.entries(a)
+      .filter(([, v]) => v != null)
+      .map(([k, v]) => row(k, v, typeof v !== 'string')),
+  };
 }
 
 // ── 结果视图 ──────────────────────────────────────────────────────────────────
@@ -86,7 +38,7 @@ export type ToolResultView =
 /**
  * 按结果类型分派展示：字符串 → text；扁平对象 → rows 平铺；深嵌套/数组 → raw（调用方剥外层 {}）。
  */
-export function renderToolResult(_name: string, result: unknown): ToolResultView {
+export function renderToolResult(result: unknown): ToolResultView {
   if (result == null) return { kind: 'text', text: '' };
 
   if (typeof result === 'string') {

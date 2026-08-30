@@ -1,4 +1,4 @@
-// 验证 AgentRun 的父 Turn 归属、CAS 终态和异常退出恢复。
+// 验证 AgentRun 的父 Turn 归属、终态迁移守卫和异常退出恢复。
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AgentRunsRepo } from '../../repos/data/agent-runs.js';
@@ -34,40 +34,35 @@ describe('AgentRun 持久化状态机', () => {
 
   afterEach(() => database.close());
 
-  it('合法完成会记录执行统计并递增 version', () => {
+  it('合法完成会记录执行统计', () => {
     const completed = repo.complete(
       agentRunId,
-      0,
       {
         iterations: 3,
         toolCallCount: 2,
         inputTokens: 10,
         outputTokens: 20,
-        outputExcerpt: 'done',
       },
       4,
     );
 
     expect(completed).toMatchObject({
       status: 'completed',
-      version: 1,
       iterations: 3,
       tool_call_count: 2,
       input_tokens: 10,
       output_tokens: 20,
-      output_excerpt: 'done',
+      completed_at: 4,
     });
   });
 
   it('取消获胜后迟到 Worker 不能覆盖终态', () => {
-    expect(repo.cancel(agentRunId, 0, 'user_abort', 4)).toMatchObject({
+    expect(repo.cancel(agentRunId, 'user_abort', 4)).toMatchObject({
       status: 'cancelled',
-      version: 1,
     });
 
     expect(repo.complete(
       agentRunId,
-      0,
       {
         iterations: 1,
         toolCallCount: 0,
@@ -79,7 +74,6 @@ describe('AgentRun 持久化状态机', () => {
     expect(repo.findById(agentRunId)).toMatchObject({
       status: 'cancelled',
       error: 'user_abort',
-      version: 1,
     });
   });
 
@@ -88,7 +82,6 @@ describe('AgentRun 持久化状态机', () => {
       expect.objectContaining({
         id: agentRunId,
         status: 'failed',
-        version: 1,
       }),
     ]);
   });

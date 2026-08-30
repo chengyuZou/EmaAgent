@@ -2,11 +2,9 @@
  * UI store — cross-window UI state (theme / dock / TTS toggle / sub-window sync).
  */
 import { create } from 'zustand';
-import { tauriBridge } from '../lib/tauri-bridge.js';
+import { tauriBridge, type SubWindowName } from '../lib/tauri-bridge.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-
-export type SubWindowName = 'chat' | 'settings';
 
 export interface UiStoreState {
   openSubWindows:        Set<SubWindowName>;
@@ -47,31 +45,29 @@ export const useUiStore = create<UiStoreState>((set, get) => ({
     const next = new Set(get().openSubWindows);
     next.add(name);
     set({ openSubWindows: next });
-    await tauriBridge.emit('ui:window-opened', { name });
+    await tauriBridge.publishSubWindowOpened(name);
   },
 
   async notifySubWindowClosed(name) {
     const next = new Set(get().openSubWindows);
     next.delete(name);
     set({ openSubWindows: next });
-    await tauriBridge.emit('ui:window-closed', { name });
+    await tauriBridge.publishSubWindowClosed(name);
   },
 
   async startSubWindowSync() {
-    const unlistenOpen = await tauriBridge.listen<{ name: SubWindowName }>(
-      'ui:window-opened',
-      (event) => {
+    const unlistenOpen = await tauriBridge.listenSubWindowOpened(
+      (name) => {
         const next = new Set(get().openSubWindows);
-        next.add(event.payload.name);
+        next.add(name);
         set({ openSubWindows: next });
       },
     );
 
-    const unlistenClose = await tauriBridge.listen<{ name: SubWindowName }>(
-      'ui:window-closed',
-      (event) => {
+    const unlistenClose = await tauriBridge.listenSubWindowClosed(
+      (name) => {
         const next = new Set(get().openSubWindows);
-        next.delete(event.payload.name);
+        next.delete(name);
         set({ openSubWindows: next });
       },
     );

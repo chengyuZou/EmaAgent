@@ -13,6 +13,7 @@ export interface AgentRunMessageRow {
   id: string;
   agent_run_id: string;
   role: AgentRunMessageRole;
+  block_index: number | null;
   content_json: string;
   sequence: number;
   created_at: number;
@@ -21,6 +22,15 @@ export interface AgentRunMessageRow {
 export interface AgentRunMessageInsert {
   agentRunId: string;
   role: AgentRunMessageRole;
+  content: unknown;
+  createdAt: number;
+}
+
+/** 块级 upsert：同一 (run, role, blockIndex) 只保留一行，内容随流式增长被整体重写。 */
+export interface AgentRunBlockUpsert {
+  agentRunId: string;
+  role: 'assistant' | 'reasoning' | 'tool_call';
+  blockIndex: number;
   content: unknown;
   createdAt: number;
 }
@@ -78,6 +88,32 @@ export class AgentRunMessagesRepo {
       randomUUID(),
       message.agentRunId,
       message.role,
+      contentJson,
+      message.createdAt,
+      message.agentRunId,
+    );
+  }
+
+  /**
+   * 块级 upsert：首次到达建行并取得 sequence，之后同一块的流式增长只重写 content_json。
+   * tool_result 不走这里——它一次调用一行、block_index 为 NULL。
+   */
+  upsertBlock(message: AgentRunBlockUpsert): void {
+    const contentJson = serializeContent(message);
+    this.db.prepare(
+      `INSERT INTO agent_run_messages (
+         id, agent_run_id, role, block_index, content_json, sequence, created_at
+       )
+       SELECT ?, ?, ?, ?, ?, COALESCE(MAX(sequence), 0) + 1, ?
+       FROM agent_run_messages
+       WHERE agent_run_id = ?
+       ON CONFLICT(agent_run_id, role, block_index)
+       DO UPDATE SET content_json = excluded.content_json`,
+    ).run(
+      randomUUID(),
+      message.agentRunId,
+      message.role,
+      message.blockIndex,
       contentJson,
       message.createdAt,
       message.agentRunId,

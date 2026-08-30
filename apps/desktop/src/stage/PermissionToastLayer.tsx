@@ -26,8 +26,7 @@ export function PermissionToastLayer(): React.JSX.Element {
   const [toasts, setToasts] = useState<PermissionRequiredEvent[]>([]);
 
   useEffect(() => {
-    const unlistenPush = tauriBridge.listen<DecisionPushEvent>('decision:push', (e) => {
-      const p = e.payload;
+    const unlistenPush = tauriBridge.listenDecisionRequired((p: DecisionPushEvent) => {
       // AskUser 只在聊天窗口处理；桌宠窗口不显示阻塞式问答。
       if (p.type !== 'permission_required') return;
       setToasts((prev) => {
@@ -36,8 +35,7 @@ export function PermissionToastLayer(): React.JSX.Element {
       });
     });
 
-    const unlistenDismiss = tauriBridge.listen<{ toolCallId: string }>('decision:dismiss', (e) => {
-      const { toolCallId } = e.payload;
+    const unlistenDismiss = tauriBridge.listenDecisionDismissed((toolCallId) => {
       setToasts((prev) => prev.filter((t) => t.toolCallId !== toolCallId));
     });
 

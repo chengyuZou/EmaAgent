@@ -37,6 +37,7 @@ describe('SubagentSpawner', () => {
     } as unknown as AgentRunStore;
     const messagesStore = {
       record: vi.fn((_id, event) => { order.push(`transcript:${event.type}`); }),
+      discard: vi.fn(),
     } as unknown as AgentRunMessagesStore;
     let releasePreparation!: () => void;
     const preparationGate = new Promise<void>((resolve) => { releasePreparation = resolve; });

@@ -93,14 +93,10 @@ execFileSync(
 
 const files = listRegularFiles(stagingApp);
 const manifest = {
-  schemaVersion: 1,
   target,
   nodeVersion: process.versions.node,
-  nodeModulesAbi: process.versions.modules,
-  napiVersion: process.versions.napi,
   entry: 'app/dist/main.js',
   entrySha256: sha256File(entryPath),
-  fileCount: files.length,
 };
 writeFileSync(
   path.join(stagingRoot, 'release-manifest.json'),

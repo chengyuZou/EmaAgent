@@ -10,6 +10,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/** 行头摘要：抓取 URL。 */
+export function webFetchTitle(args: unknown): string | null {
+  return isRecord(args) && typeof args['url'] === 'string' ? args['url'] : null;
+}
+
 function asWebFetchResult(data: unknown): WebFetchResult | null {
   if (!isRecord(data) || typeof data['url'] !== 'string' || typeof data['content'] !== 'string') {
     return null;

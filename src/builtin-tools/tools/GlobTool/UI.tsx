@@ -10,6 +10,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/** 行头摘要：匹配模式。 */
+export function globTitle(args: unknown): string | null {
+  return isRecord(args) && typeof args['pattern'] === 'string' ? args['pattern'] : null;
+}
+
 function asGlobResult(data: unknown): GlobResult | null {
   if (!isRecord(data) || !Array.isArray(data['files'])) return null;
   if (!data['files'].every((f) => typeof f === 'string')) return null;

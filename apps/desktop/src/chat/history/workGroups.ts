@@ -4,6 +4,7 @@
 import type { AssistantBlock, ToolResultBlock } from '@ema-agent/session';
 import { BuiltinTools } from '@ema-agent/tools';
 import { asFileEditResult, asFileWriteResult } from '@ema-agent/builtin-tools/ui';
+import { lookupToolUI } from '../messages/toolBlocks/toolUIRegistry.js';
 import type { StreamItem } from '../state/messages.js';
 
 /** 工作区行：历史路径引用持久块（工具行经 toolResultIndex 配对），流式路径引用瞬态项。 */
@@ -173,8 +174,9 @@ export function tallySummary(rows: readonly ToolWorkRow[], tally: ToolTally): st
     }
   }
   if (singleCommand) {
-    const command = stringArg(toolArgs(singleCommand), 'command');
-    if (command) return [`运行了 ${truncate(command, 60)}`];
+    // 行头摘要是各 Tool 自己注册的 title（命令首行）；没有注册时退回计数文案。
+    const title = lookupToolUI(toolName(singleCommand))?.title?.(toolArgs(singleCommand));
+    if (title) return [`运行了 ${truncate(title, 60)}`];
   }
 
   if (tally.commands > 0) parts.push(`运行了 ${tally.commands} 个命令`);
@@ -200,11 +202,13 @@ export function liveAction(rows: readonly WorkRow[], streaming: boolean): LiveAc
     if (!isToolRow(row)) return { kind: 'waiting' };
     if (!toolRunning(row, streaming)) return { kind: 'waiting' };
     const name = toolName(row);
+    // 主目标来自 Tool 自己注册的 title 钩子，前端不猜字段。
+    const title = lookupToolUI(name)?.title?.(toolArgs(row)) ?? '';
     if (FILE_EDIT_TOOLS.has(name)) {
-      return { kind: 'editing', file: basename(stringArg(toolArgs(row), 'file_path')) };
+      return { kind: 'editing', file: basename(title) };
     }
     if (name === BuiltinTools.Bash.name || name === BuiltinTools.PowerShell.name) {
-      return { kind: 'command', command: truncate(stringArg(toolArgs(row), 'command'), 60) };
+      return { kind: 'command', command: truncate(title, 60) };
     }
     return { kind: 'tool', name };
   }
@@ -295,12 +299,6 @@ function countPatchLines(hunks: readonly { readonly lines: readonly string[] }[]
     }
   }
   return { additions, deletions };
-}
-
-function stringArg(args: unknown, key: string): string {
-  if (args === null || typeof args !== 'object' || Array.isArray(args)) return '';
-  const value = (args as Record<string, unknown>)[key];
-  return typeof value === 'string' ? value : '';
 }
 
 function basename(path: string): string {

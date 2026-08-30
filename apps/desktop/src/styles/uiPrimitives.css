@@ -1,0 +1,111 @@
+/* 共享 UI 原语依赖的玻璃、遮罩、Radix 动画、Tabs 和卡片装饰。 */
+
+.ema-glass-weak { backdrop-filter: var(--ema-glass-weak); }
+.ema-glass-base { backdrop-filter: var(--ema-glass-base); }
+.ema-glass-strong { backdrop-filter: var(--ema-glass-strong); }
+
+.ema-anim-scale[data-state="open"] { animation: ema-scale-in var(--ema-duration-base) var(--ema-ease) both; }
+.ema-anim-scale[data-state="closed"] { animation: ema-scale-out var(--ema-duration-base) var(--ema-ease) both; }
+.ema-anim-dialog[data-state="open"] { animation: ema-dialog-in var(--ema-duration-base) var(--ema-ease) both; }
+.ema-anim-dialog[data-state="closed"] { animation: ema-dialog-out var(--ema-duration-fast) var(--ema-ease) both; }
+.ema-anim-fade[data-state="open"],
+.ema-anim-fade[data-state="delayed-open"] { animation: ema-fade-in var(--ema-duration-base) var(--ema-ease) both; }
+.ema-anim-fade[data-state="closed"] { animation: ema-fade-out var(--ema-duration-fast) var(--ema-ease) both; }
+.ema-anim-toast[data-state="open"] { animation: ema-toast-in var(--ema-duration-slow) var(--ema-ease) both; }
+.ema-anim-toast[data-state="closed"],
+.ema-anim-toast[data-swipe="end"] { animation: ema-slide-out-right var(--ema-duration-base) var(--ema-ease) both; }
+.ema-anim-tab[data-state="active"] { animation: ema-fade-in var(--ema-duration-base) var(--ema-ease) both; }
+
+.ema-mask {
+  position: fixed;
+  inset: 0;
+  background: var(--ema-mask);
+  backdrop-filter: blur(2px);
+  z-index: 200;
+  animation: ema-fade-in var(--ema-duration-base) var(--ema-ease);
+}
+
+/* 横向 Tabs 的 trigger 必须等宽，滑块才能按索引准确定位。 */
+.ema-tab-slider { position: relative; }
+.ema-tab-slider--underline::before {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: calc(var(--tab-active-index, 0) * (100% / var(--tab-count, 1)));
+  width: calc(100% / var(--tab-count, 1));
+  height: 2px;
+  background: var(--ema-primary);
+  transition: left var(--ema-duration-base) var(--ema-ease);
+  z-index: 1;
+}
+.ema-tab-slider--pill::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  left: calc(var(--tab-active-index, 0) * (100% / var(--tab-count, 1)));
+  width: calc(100% / var(--tab-count, 1));
+  background: var(--ema-primary-muted);
+  border-radius: var(--ema-radius-pill);
+  transition: left var(--ema-duration-base) var(--ema-ease);
+  z-index: 0;
+}
+
+.ema-card-decorate {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.ema-card-decorate::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  width: 25%;
+  opacity: 0;
+  transition: width 280ms var(--ema-ease), opacity 280ms var(--ema-ease);
+  -webkit-mask-image: linear-gradient(120deg, white 30%, transparent 50%);
+  mask-image: linear-gradient(120deg, white 30%, transparent 50%);
+  background: linear-gradient(to right,
+    color-mix(in srgb, var(--ema-primary) 28%, transparent),
+    color-mix(in srgb, var(--ema-primary) 14%, transparent),
+    transparent);
+  pointer-events: none;
+}
+.ema-card-decorate:hover::before {
+  width: 60%;
+  opacity: 0.5;
+}
+.ema-card-decorate::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image:
+    radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--ema-primary) 25%, transparent), transparent 60%),
+    radial-gradient(circle, color-mix(in srgb, var(--ema-text-tertiary) 30%, transparent) 1px, transparent 1.5px);
+  background-size: 100% 100%, 10px 10px;
+  -webkit-mask-image: linear-gradient(165deg, white 30%, transparent 50%);
+  mask-image: linear-gradient(165deg, white 30%, transparent 50%);
+  opacity: 1;
+  pointer-events: none;
+  transition: background-size 280ms var(--ema-ease), opacity 280ms var(--ema-ease);
+}
+.ema-card-decorate:hover::after { background-size: 108% 108%; }
+
+.ema-dialog-decorate::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image:
+    radial-gradient(circle at 67% 83%, color-mix(in srgb, var(--ema-text-tertiary) 14%, transparent) 0 1%, transparent 1%),
+    radial-gradient(circle at 24% 80%, color-mix(in srgb, var(--ema-text-tertiary) 14%, transparent) 0 27%, transparent 27%),
+    radial-gradient(circle at 23% 5%, color-mix(in srgb, var(--ema-text-tertiary) 14%, transparent) 0 26%, transparent 26%),
+    radial-gradient(circle at 21% 11%, color-mix(in srgb, var(--ema-text-tertiary) 14%, transparent) 0 35%, transparent 35%),
+    linear-gradient(90deg, color-mix(in srgb, var(--ema-primary) 50%, transparent), color-mix(in srgb, var(--ema-violet) 50%, transparent));
+  background-size: 100% 100%;
+  -webkit-mask-image: linear-gradient(165deg, white 30%, transparent 50%);
+  mask-image: linear-gradient(165deg, white 30%, transparent 50%);
+  opacity: 1;
+  pointer-events: none;
+}

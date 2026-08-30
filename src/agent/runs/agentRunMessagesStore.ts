@@ -1,8 +1,8 @@
-// 按序记录一次子 Agent 运行的内容消息（文本/思考/工具调用/结果），供按运行回放。
-// 一次运行 N 行；运行状态机与终态统计归 agentRunStore.ts。
+// 按块保存一次子 Agent 运行的内容（文本/思考/工具调用/结果），供按运行回放。
+// 与根 Turn 同一模型：delta 按 (role, blockIndex) 累积并 upsert 同一行，
+// tool_result 一次调用一行；运行状态机与终态统计归 agentRunStore.ts。
 
 import type {
-  AgentRunMessageInsert,
   AgentRunMessagesRepo,
 } from '@ema-agent/storage';
 import type { ToolResult } from '@ema-agent/tools';
@@ -13,19 +13,99 @@ import type {
   AgentRunToolCallContent,
 } from './types.js';
 
+/** 单次运行的流式缓冲：文本/思考按块累积全量，tool_call 累积 argsDelta。 */
+interface RunBuffer {
+  readonly textByBlock: Map<string, string>;
+}
+
 export class AgentRunMessagesStore {
+  private readonly buffers = new Map<string, RunBuffer>();
+
   constructor(private readonly repo: AgentRunMessagesRepo) {}
 
   /**
-   * 在 AgentLoop generator 恢复前同步落库。这样 tool_use 与 tool_result 的
-   * 持久化顺序会自然早于工具启动和结果关账，进程中断时也保留最后一个已见事实。
+   * 在 AgentLoop generator 恢复前同步落库：块内容随 delta upsert 同一行，
+   * tool_result 落库即关账。进程中断时最后一个已 upsert 的块前缀仍在库中。
    */
   record(agentRunId: string, event: AgentLoopEvent): void {
-    const message = messageFor(agentRunId, event);
-    if (message) this.repo.insert(message);
+    const createdAt = Date.now();
+    switch (event.type) {
+      case 'text_delta': {
+        const text = this.accumulate(agentRunId, 'assistant', event.blockIndex, event.delta);
+        this.repo.upsertBlock({
+          agentRunId,
+          role: 'assistant',
+          blockIndex: event.blockIndex,
+          content: { blockIndex: event.blockIndex, text } satisfies AgentRunTextContent,
+          createdAt,
+        });
+        return;
+      }
+      case 'thinking_delta': {
+        const text = this.accumulate(agentRunId, 'reasoning', event.blockIndex, event.delta);
+        this.repo.upsertBlock({
+          agentRunId,
+          role: 'reasoning',
+          blockIndex: event.blockIndex,
+          content: { blockIndex: event.blockIndex, text } satisfies AgentRunTextContent,
+          createdAt,
+        });
+        return;
+      }
+      case 'tool_use_partial': {
+        const argsDelta = this.accumulate(agentRunId, 'tool_call', event.blockIndex, event.argsDelta);
+        this.repo.upsertBlock({
+          agentRunId,
+          role: 'tool_call',
+          blockIndex: event.blockIndex,
+          content: {
+            blockIndex: event.blockIndex,
+            callId: event.toolCallId,
+            name: event.toolName,
+            argsDelta,
+            partial: true,
+          } satisfies AgentRunToolCallContent,
+          createdAt,
+        });
+        return;
+      }
+      case 'tool_use_completed':
+        // 与 partial 同一行：最终 args 整体覆盖累积的 argsDelta。
+        this.repo.upsertBlock({
+          agentRunId,
+          role: 'tool_call',
+          blockIndex: event.blockIndex,
+          content: {
+            blockIndex: event.blockIndex,
+            callId: event.toolCallId,
+            name: event.toolName,
+            args: event.args,
+          } satisfies AgentRunToolCallContent,
+          createdAt,
+        });
+        return;
+      case 'tool_result':
+        this.repo.insert({
+          agentRunId,
+          role: 'tool_result',
+          content: event.result,
+          createdAt,
+        });
+        return;
+      case 'loop_stopped':
+        this.buffers.delete(agentRunId);
+        return;
+      default:
+        return;
+    }
   }
 
-  /** role↔content 形状由本类 messageFor 单点写入；读回按 role 还原同一联合。 */
+  /** 运行非正常终止（无 loop_stopped）时丢弃内存缓冲；已 upsert 的行不受影响。 */
+  discard(agentRunId: string): void {
+    this.buffers.delete(agentRunId);
+  }
+
+  /** role↔content 形状由本类 record 单点写入；读回按 role 还原同一联合。 */
   listForRun(agentRunId: string): readonly AgentRunMessage[] {
     return this.repo.listForRun(agentRunId).map((row): AgentRunMessage => {
       const base = {
@@ -46,61 +126,21 @@ export class AgentRunMessagesStore {
       }
     });
   }
-}
 
-function messageFor(
-  agentRunId: string,
-  event: AgentLoopEvent,
-): AgentRunMessageInsert | undefined {
-  const createdAt = Date.now();
-  switch (event.type) {
-    case 'text_delta':
-      return {
-        agentRunId,
-        role: 'assistant',
-        content: { blockIndex: event.blockIndex, text: event.delta },
-        createdAt,
-      };
-    case 'thinking_delta':
-      return {
-        agentRunId,
-        role: 'reasoning',
-        content: { blockIndex: event.blockIndex, text: event.delta },
-        createdAt,
-      };
-    case 'tool_use_completed':
-      return {
-        agentRunId,
-        role: 'tool_call',
-        content: {
-          blockIndex: event.blockIndex,
-          callId: event.toolCallId,
-          name: event.toolName,
-          args: event.args,
-        },
-        createdAt,
-      };
-    case 'tool_use_partial':
-      return {
-        agentRunId,
-        role: 'tool_call',
-        content: {
-          blockIndex: event.blockIndex,
-          callId: event.toolCallId,
-          name: event.toolName,
-          argsDelta: event.argsDelta,
-          partial: true,
-        },
-        createdAt,
-      };
-    case 'tool_result':
-      return {
-        agentRunId,
-        role: 'tool_result',
-        content: event.result,
-        createdAt,
-      };
-    default:
-      return undefined;
+  private accumulate(
+    agentRunId: string,
+    role: 'assistant' | 'reasoning' | 'tool_call',
+    blockIndex: number,
+    delta: string,
+  ): string {
+    let buffer = this.buffers.get(agentRunId);
+    if (!buffer) {
+      buffer = { textByBlock: new Map() };
+      this.buffers.set(agentRunId, buffer);
+    }
+    const key = `${role}:${blockIndex}`;
+    const next = (buffer.textByBlock.get(key) ?? '') + delta;
+    buffer.textByBlock.set(key, next);
+    return next;
   }
 }

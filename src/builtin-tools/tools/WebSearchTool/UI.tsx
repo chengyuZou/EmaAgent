@@ -1,8 +1,9 @@
-// WebSearchTool 的桌面展示: 参数行(query + 域名过滤)与结果摘要(条数)。
+// WebSearchTool 的桌面展示: 参数行(query + 域名过滤)、结果摘要(条数)与两态进度。
 // 只消费本 Tool 的类型化 data; 类型守卫失败返回 null, 由前端回落通用渲染。
 import type { JSX } from 'react';
 import { Badge } from '@ema-agent/ui';
 import type { WebSearchResult } from './WebSearchTool.js';
+import type { SearchProgress } from './adapters/types.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -20,6 +21,39 @@ function asWebSearchResult(data: unknown): WebSearchResult | null {
     return null;
   }
   return data as unknown as WebSearchResult;
+}
+
+function asSearchProgress(progress: unknown): SearchProgress | null {
+  if (!isRecord(progress)) return null;
+  if (progress['type'] === 'query_update' && typeof progress['query'] === 'string') {
+    return progress as unknown as SearchProgress;
+  }
+  if (
+    progress['type'] === 'search_results_received'
+    && typeof progress['query'] === 'string'
+    && typeof progress['resultCount'] === 'number'
+  ) {
+    return progress as unknown as SearchProgress;
+  }
+  return null;
+}
+
+/** 行头摘要：查询词。 */
+export function webSearchTitle(args: unknown): string | null {
+  return isRecord(args) && typeof args['query'] === 'string' ? args['query'] : null;
+}
+
+/** 进度行：取最近一条有效进度事件，展示当前阶段。 */
+export function WebSearchProgressView({ progress }: { progress: readonly unknown[] }): JSX.Element | null {
+  const latest = [...progress].reverse().map(asSearchProgress).find((entry) => entry !== null);
+  if (!latest) return null;
+  return (
+    <span className="text-[11px] text-[var(--ema-text-tertiary)]">
+      {latest.type === 'query_update'
+        ? `正在搜索“${latest.query}”…`
+        : `已收到 ${latest.resultCount} 条结果，正在整理…`}
+    </span>
+  );
 }
 
 function stringList(value: unknown): string[] {
@@ -75,7 +109,7 @@ export function WebSearchResultView({ data }: { data: unknown }): JSX.Element | 
               target="_blank"
               rel="noopener noreferrer"
               title={entry.url}
-              className="ema-link max-w-[65%] shrink-0 truncate"
+              className="max-w-[65%] shrink-0 truncate text-[var(--ema-primary)] transition-colors hover:text-[var(--ema-primary-hover)] hover:underline"
             >
               {entry.title || entry.url}
             </a>

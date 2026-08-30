@@ -47,7 +47,7 @@ const CONTENT_FONT_OPTIONS: Array<{ value: ContentFontPreset; label: string }> =
 // ── Hue spectrum slider ───────────────────────────────────────────────────────
 //
 // Native <input type="range"> with a gradient track showing the full hue wheel.
-// Styled via styles/components.css (.ema-hue-range + webkit/moz pseudo-elements).
+// 色谱轨道与原生滑块伪元素由 styles/settingsDecorations.css 提供。
 
 function HueSlider({ value, onChange }: { value: number; onChange: (h: number) => void }): JSX.Element {
   return (

@@ -18,7 +18,6 @@ function fromRow(row: AgentRunRow): AgentRun {
     parentTurnId: row.parent_turn_id,
     contextMode: row.context_mode,
     status: row.status as AgentRunStatus,
-    version: row.version,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     ...(row.parent_agent_run_id !== null
@@ -34,7 +33,6 @@ function fromRow(row: AgentRunRow): AgentRun {
     ...(row.tool_call_count !== null ? { toolCallCount: row.tool_call_count } : {}),
     ...(row.input_tokens !== null ? { inputTokens: row.input_tokens } : {}),
     ...(row.output_tokens !== null ? { outputTokens: row.output_tokens } : {}),
-    ...(row.output_excerpt !== null ? { outputExcerpt: row.output_excerpt } : {}),
     ...(row.completed_at !== null ? { completedAt: row.completed_at } : {}),
   };
 }
@@ -76,12 +74,11 @@ export class AgentRunStore {
     return this.finishTransition(
       'complete',
       agentRunId,
-      this.repo.complete(agentRunId, current.row.version, {
+      this.repo.complete(agentRunId, {
         iterations: completion.iterations,
         toolCallCount: completion.toolCallCount,
         inputTokens: completion.inputTokens,
         outputTokens: completion.outputTokens,
-        outputExcerpt: completion.outputExcerpt,
       }, Date.now()),
     );
   }
@@ -96,7 +93,7 @@ export class AgentRunStore {
     return this.finishTransition(
       'fail',
       agentRunId,
-      this.repo.fail(agentRunId, current.row.version, reason, Date.now()),
+      this.repo.fail(agentRunId, reason, Date.now()),
     );
   }
 
@@ -110,7 +107,7 @@ export class AgentRunStore {
     return this.finishTransition(
       'cancel',
       agentRunId,
-      this.repo.cancel(agentRunId, current.row.version, reason, Date.now()),
+      this.repo.cancel(agentRunId, reason, Date.now()),
     );
   }
 

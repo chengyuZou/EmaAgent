@@ -7,129 +7,22 @@
  * 和单元测试即使没有 Tauri 运行时也能正常渲染。
  */
 import { convertFileSrc as tauriConvertFileSrc } from '@tauri-apps/api/core';
+import type { PermissionRequiredEvent } from '@ema-agent/permission';
+import type { AskUserRequiredEvent } from '@ema-agent/tools';
+import type { AppEvent } from '@ema-agent/server/sse/eventHub.js';
+import type { ThemeSettings } from '@ema-agent/server/composition/settings/themeSetting.js';
+import type { EventDisplayTable } from '../api/settings.js';
 
-// ── 对外接口 ────────────────────────────────────────────────────────────────
+// ── 对外类型 ────────────────────────────────────────────────────────────────
 
-export interface TauriBridge {
-  /** 调用一个 Rust command；如果当前没有 Tauri 运行时，则返回 `null`。 */
-  invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T | null>;
+export type SubWindowName = 'chat' | 'settings';
 
-  /** 发送一个跨窗口事件；如果当前没有 Tauri 运行时，则什么也不做。 */
-  emit(eventName: string, payload?: unknown): Promise<void>;
-
-  /**
-   * 监听跨窗口事件，并返回一个取消监听函数。
-   * 如果当前没有 Tauri 运行时，则返回一个什么也不做的取消监听函数。
-   */
-  listen<T>(eventName: string, handler: (event: { payload: T }) => void): Promise<() => void>;
-
-  /** 当前是否存在可用的 Tauri 运行时。 */
-  isTauri(): boolean;
-
-  /** 把本机文件路径转成 WebView 可加载的 asset URL；浏览器模式原样返回。 */
-  convertFileSrc(filePath: string): string;
-
-  /** 同步原生标题栏配色；浏览器模式下什么也不做。 */
-  setWindowTheme(mode: 'light' | 'dark'): Promise<void>;
-
-  /** 当前窗口是否可见；浏览器模式下返回 null。 */
-  isWindowVisible(): Promise<boolean | null>;
-
-  /** 监听宿主窗口显隐，返回取消监听函数；浏览器模式下返回空操作。 */
-  listenWindowVisibility(handler: (visible: boolean) => void): Promise<() => void>;
-
-  /** 获取服务端启动时生成的共享密钥；浏览器模式下返回 null。 */
-  getServerSecret(): Promise<string | null>;
-
-  /** 获取本机服务绑定的 loopback（回环地址）端口；浏览器模式下返回 null。 */
-  getServerPort(): Promise<number | null>;
-
-  /** 根据 label 显示或聚焦一个预先声明好的子窗口（例如 chat / settings）。 */
-  openWindow(label: string): Promise<void>;
-
-  /** 退出整个应用。 */
-  quit(): Promise<void>;
-
-  /** 设置当前窗口是否始终置顶。 */
-  setAlwaysOnTop(value: boolean): Promise<void>;
-
-  /** 设置当前窗口是否启用鼠标穿透。 */
-  setPassthrough(value: boolean): Promise<void>;
-
-  /** 开始原生窗口拖拽；必须在 mousedown 事件处理函数中调用。 */
-  startDragging(): Promise<void>;
-
-  /**
-   * 获取全局鼠标位置和当前窗口边界，单位均为物理像素。
-   * 动态鼠标穿透循环会轮询这些信息——即使窗口当前忽略鼠标事件也能工作，
-   * 因为 cursorPosition 获取的是操作系统级全局鼠标位置，而不是窗口事件。
-   * 如果当前没有 Tauri 运行时，则返回 null。
-   */
-  cursorAndBounds(): Promise<{
-    cursor: { x: number; y: number };
-    win:    { x: number; y: number; width: number; height: number };
-    scale:  number;
-  } | null>;
-
-  /**
-   * 打开原生“另存为”对话框，并从 defaultPath 指定的位置开始。
-   * 返回用户选择的绝对路径；如果用户取消则返回 null。
-   * 如果当前没有 Tauri 运行时（浏览器 / Ladle 开发模式），也返回 null。
-   */
-  saveFileDialog(opts?: {
-    defaultPath?: string;
-    filters?: Array<{ name: string; extensions: string[] }>;
-  }): Promise<string | null>;
-
-  /**
-   * 打开原生“打开文件”（或目录）对话框，仅允许单选。
-   * 返回选中文件/目录的绝对路径；如果用户取消则返回 null。
-   * 如果当前没有 Tauri 运行时（浏览器 / Ladle 开发模式），也返回 null。
-   */
-  openFileDialog(opts?: {
-    defaultPath?: string;
-    filters?: Array<{ name: string; extensions: string[] }>;
-    /** 为 true 时打开目录选择器，而不是文件选择器。 */
-    directory?: boolean;
-  }): Promise<string | null>;
-
-  /**
-   * 打开支持多选的原生“打开文件”对话框。
-   * 返回所有选中文件的绝对路径；如果用户取消则返回空数组。
-   * 如果当前没有 Tauri 运行时（浏览器 / Ladle 开发模式），也返回 []。
-   */
-  openFileDialogMultiple(opts?: {
-    defaultPath?: string;
-    filters?: Array<{ name: string; extensions: string[] }>;
-  }): Promise<string[]>;
-
-  /**
-   * 使用系统默认浏览器打开 URL。
-   * 优先使用 Tauri 的 plugin:opener；不可用时退化为 window.open。
-   */
-  openUrl(url: string): Promise<void>;
-
-  /** 在系统文件管理器中定位一个本机路径。 */
-  revealInFolder(path: string): Promise<void>;
-
-  /** 创建一个由 Rust 持有的交互终端，输出经专用 Channel 返回。 */
-  listTerminalShells(): Promise<readonly DetectedTerminalShell[]>;
-  openTerminal(input: OpenTerminalInput): Promise<void>;
-  writeTerminal(terminalId: string, data: string): Promise<void>;
-  resizeTerminal(terminalId: string, columns: number, rows: number): Promise<void>;
-  closeTerminal(terminalId: string): Promise<void>;
-  closeSessionTerminals(sessionId: string): Promise<void>;
-
-  openBrowser(browserId: string, url: string, bounds: BrowserBounds): Promise<void>;
-  navigateBrowser(browserId: string, url: string): Promise<void>;
-  browserBack(browserId: string): Promise<void>;
-  browserForward(browserId: string): Promise<void>;
-  reloadBrowser(browserId: string): Promise<void>;
-  setBrowserBounds(browserId: string, bounds: BrowserBounds): Promise<void>;
-  setBrowserVisible(browserId: string, visible: boolean): Promise<void>;
-  closeBrowser(browserId: string): Promise<void>;
-  listenBrowserEvents(handler: (event: BrowserEvent) => void): Promise<() => void>;
+export interface DesktopSettingsPayload {
+  readonly permissionTimeoutMs: number | null;
+  readonly eventDisplay: EventDisplayTable | null;
 }
+
+type DecisionRequiredEvent = PermissionRequiredEvent | AskUserRequiredEvent;
 
 export type TerminalEvent =
   | { readonly type: 'output'; readonly data: readonly number[] }
@@ -202,6 +95,23 @@ let _dialog: TauriDialog | null = null;
 let _window: TauriWindow | null = null;
 const terminalChannels = new Map<string, object>();
 
+const WINDOW_VISIBILITY_EVENT = 'ema://window-visibility';
+const SYSTEM_EVENT = 'ema://system-event';
+const SUB_WINDOW_OPENED_EVENT = 'ui:window-opened';
+const SUB_WINDOW_CLOSED_EVENT = 'ui:window-closed';
+const THEME_CHANGED_EVENT = 'theme:changed';
+const DESKTOP_SETTINGS_CHANGED_EVENT = 'settings:desktop-changed';
+const SPEECH_STARTED_EVENT = 'speech:start';
+const SPEECH_DELTA_EVENT = 'speech:delta';
+const SPEECH_ENDED_EVENT = 'speech:end';
+const DECISION_REQUIRED_EVENT = 'decision:push';
+const DECISION_DISMISSED_EVENT = 'decision:dismiss';
+const STAGE_EMOTION_EVENT = 'stage:emotion-changed';
+const STAGE_MOTION_EVENT = 'stage:motion-changed';
+const STAGE_SPEECH_EVENT = 'stage:speech-state';
+const STAGE_CYCLE_EXPRESSION_EVENT = 'stage:cycle-expression';
+const BROWSER_EVENT = 'browser:event';
+
 async function getCore(): Promise<TauriCore | null> {
   if (!detectTauri()) return null;
   if (_core) return _core;
@@ -246,9 +156,31 @@ async function getWindow(): Promise<TauriWindow | null> {
   }
 }
 
+async function invokeTauri<T>(command: string, args?: Record<string, unknown>): Promise<T | null> {
+  const core = await getCore();
+  if (!core) return null;
+  return core.invoke<T>(command, args);
+}
+
+async function emitTauri(eventName: string, payload?: unknown): Promise<void> {
+  const event = await getEvent();
+  if (!event) return;
+  await event.emit(eventName, payload);
+}
+
+async function listenTauri<T>(
+  eventName: string,
+  handler: (payload: T) => void,
+): Promise<() => void> {
+  const event = await getEvent();
+  if (!event) return () => {};
+  const unlisten = await event.listen<T>(eventName, ({ payload }) => handler(payload));
+  return () => unlisten();
+}
+
 // ── 具体实现 ────────────────────────────────────────────────────────────────
 
-export const tauriBridge: TauriBridge = {
+export const tauriBridge = {
   isTauri: detectTauri,
 
   convertFileSrc(filePath: string): string {
@@ -268,38 +200,157 @@ export const tauriBridge: TauriBridge = {
   },
 
   async listenWindowVisibility(handler: (visible: boolean) => void): Promise<() => void> {
-    return tauriBridge.listen<{ visible: boolean }>(
-      'ema://window-visibility',
-      ({ payload }) => handler(payload.visible),
+    return listenTauri<{ visible: boolean }>(WINDOW_VISIBILITY_EVENT, ({ visible }) => handler(visible));
+  },
+
+  async publishSystemEvent(event: AppEvent): Promise<void> {
+    await emitTauri(SYSTEM_EVENT, event);
+  },
+
+  async listenSystemEvents(handler: (event: AppEvent) => void): Promise<() => void> {
+    return listenTauri(SYSTEM_EVENT, handler);
+  },
+
+  async publishSubWindowOpened(name: SubWindowName): Promise<void> {
+    await emitTauri(SUB_WINDOW_OPENED_EVENT, { name });
+  },
+
+  async publishSubWindowClosed(name: SubWindowName): Promise<void> {
+    await emitTauri(SUB_WINDOW_CLOSED_EVENT, { name });
+  },
+
+  async listenSubWindowOpened(handler: (name: SubWindowName) => void): Promise<() => void> {
+    return listenTauri<{ name: SubWindowName }>(SUB_WINDOW_OPENED_EVENT, ({ name }) => handler(name));
+  },
+
+  async listenSubWindowClosed(handler: (name: SubWindowName) => void): Promise<() => void> {
+    return listenTauri<{ name: SubWindowName }>(SUB_WINDOW_CLOSED_EVENT, ({ name }) => handler(name));
+  },
+
+  async publishThemeChanged(theme: ThemeSettings): Promise<void> {
+    await emitTauri(THEME_CHANGED_EVENT, theme);
+  },
+
+  async listenThemeChanged(handler: (theme: ThemeSettings) => void): Promise<() => void> {
+    return listenTauri(THEME_CHANGED_EVENT, handler);
+  },
+
+  async publishDesktopSettingsChanged(settings: DesktopSettingsPayload): Promise<void> {
+    await emitTauri(DESKTOP_SETTINGS_CHANGED_EVENT, settings);
+  },
+
+  async listenDesktopSettingsChanged(
+    handler: (settings: DesktopSettingsPayload) => void,
+  ): Promise<() => void> {
+    return listenTauri(DESKTOP_SETTINGS_CHANGED_EVENT, handler);
+  },
+
+  async publishSpeechStarted(sessionId: string): Promise<void> {
+    await emitTauri(SPEECH_STARTED_EVENT, { sessionId });
+  },
+
+  async publishSpeechDelta(sessionId: string, text: string): Promise<void> {
+    await emitTauri(SPEECH_DELTA_EVENT, { sessionId, text });
+  },
+
+  async publishSpeechEnded(sessionId: string): Promise<void> {
+    await emitTauri(SPEECH_ENDED_EVENT, { sessionId });
+  },
+
+  async listenSpeechStarted(handler: (sessionId: string) => void): Promise<() => void> {
+    return listenTauri<{ sessionId: string }>(SPEECH_STARTED_EVENT, ({ sessionId }) => handler(sessionId));
+  },
+
+  async listenSpeechDelta(
+    handler: (sessionId: string, text: string) => void,
+  ): Promise<() => void> {
+    return listenTauri<{ sessionId: string; text: string }>(
+      SPEECH_DELTA_EVENT,
+      ({ sessionId, text }) => handler(sessionId, text),
     );
   },
 
-  async invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T | null> {
-    const core = await getCore();
-    if (!core) return null;
-    return core.invoke<T>(cmd, args);
+  async listenSpeechEnded(handler: (sessionId: string) => void): Promise<() => void> {
+    return listenTauri<{ sessionId: string }>(SPEECH_ENDED_EVENT, ({ sessionId }) => handler(sessionId));
   },
 
-  async emit(eventName: string, payload?: unknown): Promise<void> {
-    const event = await getEvent();
-    if (!event) return;
-    await event.emit(eventName, payload);
+  async publishDecisionRequired(event: DecisionRequiredEvent): Promise<void> {
+    await emitTauri(DECISION_REQUIRED_EVENT, event);
   },
 
-  async listen<T>(
-    eventName: string,
-    handler: (event: { payload: T }) => void,
+  async publishDecisionDismissed(toolCallId: string): Promise<void> {
+    await emitTauri(DECISION_DISMISSED_EVENT, { toolCallId });
+  },
+
+  async listenDecisionRequired(
+    handler: (event: DecisionRequiredEvent) => void,
   ): Promise<() => void> {
-    const event = await getEvent();
-    if (!event) return () => {};
-    const unlisten = await event.listen<T>(eventName, handler);
-    return () => unlisten();
+    return listenTauri(DECISION_REQUIRED_EVENT, handler);
   },
 
-  async openWindow(label: string): Promise<void> {
-    const core = await getCore();
-    if (!core) return;
-    await core.invoke('open_window', { label });
+  async listenDecisionDismissed(handler: (toolCallId: string) => void): Promise<() => void> {
+    return listenTauri<{ toolCallId: string }>(
+      DECISION_DISMISSED_EVENT,
+      ({ toolCallId }) => handler(toolCallId),
+    );
+  },
+
+  async publishStageEmotion(emotion: string, stageId?: string): Promise<void> {
+    await emitTauri(STAGE_EMOTION_EVENT, { emotion, ...(stageId ? { stageId } : {}) });
+  },
+
+  async publishStageMotion(motion: string, stageId?: string): Promise<void> {
+    await emitTauri(STAGE_MOTION_EVENT, { motion, ...(stageId ? { stageId } : {}) });
+  },
+
+  async publishStageSpeech(speaking: boolean, rms: number, stageId?: string): Promise<void> {
+    await emitTauri(STAGE_SPEECH_EVENT, { speaking, rms, ...(stageId ? { stageId } : {}) });
+  },
+
+  async requestStageExpressionCycle(stageId?: string): Promise<void> {
+    await emitTauri(STAGE_CYCLE_EXPRESSION_EVENT, stageId ? { stageId } : undefined);
+  },
+
+  async listenStageEmotion(
+    handler: (emotion: string, stageId?: string) => void,
+  ): Promise<() => void> {
+    return listenTauri<{ emotion: string; stageId?: string }>(
+      STAGE_EMOTION_EVENT,
+      ({ emotion, stageId }) => handler(emotion, stageId),
+    );
+  },
+
+  async listenStageMotion(
+    handler: (motion: string, stageId?: string) => void,
+  ): Promise<() => void> {
+    return listenTauri<{ motion: string; stageId?: string }>(
+      STAGE_MOTION_EVENT,
+      ({ motion, stageId }) => handler(motion, stageId),
+    );
+  },
+
+  async listenStageSpeech(
+    handler: (speaking: boolean, rms: number, stageId?: string) => void,
+  ): Promise<() => void> {
+    return listenTauri<{ speaking: boolean; rms: number; stageId?: string }>(
+      STAGE_SPEECH_EVENT,
+      ({ speaking, rms, stageId }) => handler(speaking, rms, stageId),
+    );
+  },
+
+  async listenStageExpressionCycle(handler: (stageId?: string) => void): Promise<() => void> {
+    return listenTauri<{ stageId?: string }>(
+      STAGE_CYCLE_EXPRESSION_EVENT,
+      ({ stageId }) => handler(stageId),
+    );
+  },
+
+  async openChatWindow(): Promise<void> {
+    await invokeTauri('open_window', { label: 'chat' });
+  },
+
+  async openSettingsWindow(): Promise<void> {
+    await invokeTauri('open_window', { label: 'settings' });
   },
 
   async quit(): Promise<void> {
@@ -344,11 +395,11 @@ export const tauriBridge: TauriBridge = {
   },
 
   async getServerSecret(): Promise<string | null> {
-    return tauriBridge.invoke<string>('get_server_secret');
+    return invokeTauri<string>('get_server_secret');
   },
 
   async getServerPort(): Promise<number | null> {
-    return tauriBridge.invoke<number>('get_server_port');
+    return invokeTauri<number>('get_server_port');
   },
 
   async saveFileDialog(opts = {}): Promise<string | null> {
@@ -419,7 +470,7 @@ export const tauriBridge: TauriBridge = {
   },
 
   async listTerminalShells(): Promise<readonly DetectedTerminalShell[]> {
-    return (await tauriBridge.invoke<DetectedTerminalShell[]>('list_terminal_shells')) ?? [];
+    return (await invokeTauri<DetectedTerminalShell[]>('list_terminal_shells')) ?? [];
   },
 
   async writeTerminal(terminalId: string, data: string): Promise<void> {
@@ -496,6 +547,6 @@ export const tauriBridge: TauriBridge = {
   },
 
   async listenBrowserEvents(handler: (event: BrowserEvent) => void): Promise<() => void> {
-    return tauriBridge.listen<BrowserEvent>('browser:event', ({ payload }) => handler(payload));
+    return listenTauri(BROWSER_EVENT, handler);
   },
 };

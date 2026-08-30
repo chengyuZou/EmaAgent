@@ -10,6 +10,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/** 行头摘要：pattern，限定目录时带 path。 */
+export function grepTitle(args: unknown): string | null {
+  if (!isRecord(args) || typeof args['pattern'] !== 'string') return null;
+  const path = typeof args['path'] === 'string' ? args['path'] : '';
+  return path ? `${args['pattern']} in ${path}` : args['pattern'];
+}
+
 function asGrepResult(data: unknown): GrepResult | null {
   if (!isRecord(data)) return null;
   switch (data['type']) {

@@ -10,7 +10,6 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "release:prepare:server": "node scripts/prepare-server.mjs",
-    "release:prepare:narrative": "node scripts/prepare-narrative-seed.mjs",
     "release:inject:cubism": "node scripts/inject-cubism-core.mjs",
     "release:verify": "node scripts/verify-release-assets.mjs",
     "release:verify:versions": "node scripts/verify-release-versions.mjs",

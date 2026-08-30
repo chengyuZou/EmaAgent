@@ -27,9 +27,8 @@ export function ChatEmptyState({ sessionId }: { sessionId?: string | null }): JS
     void charactersApi.getPresentation(activeCharacterId)
       .then((presentation) => {
         if (disposed) return;
-        setIllustrationUrl(
-          presentation.illustrationFile ? tauriBridge.convertFileSrc(presentation.illustrationFile) : null,
-        );
+        const illustration = presentation.candidates.find((c) => c.kind === 'illustration');
+        setIllustrationUrl(illustration ? tauriBridge.convertFileSrc(illustration.file) : null);
       })
       .catch(() => { if (!disposed) setIllustrationUrl(null); });
     return () => { disposed = true; };

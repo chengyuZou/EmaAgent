@@ -1,5 +1,6 @@
 // 工具一族：沙箱策略、ToolRegistry、内置/MCP/Skill 注册表、后台进程、执行状态与结果存储。
 import os from 'node:os';
+import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { registerBuiltinTools } from '@ema-agent/builtin-tools';
@@ -45,12 +46,20 @@ import {
 import {
   backgroundProcessOutputDirFor,
   builtinSkillsDir,
+  bundledSkillsSource,
   dataDbPathFor,
   profileDir,
   profileDbPath,
   sqliteFileSet,
 } from '../platform/paths.js';
 import type { McpStdioApprovalRequest } from '../sse/eventHub.js';
+
+/** 内置技能铺设：目标目录不存在才整目录复制；已存在即不动（内置内容由宿主升级时整批替换）。 */
+function installBuiltinSkills(sourceRoot: string, targetRoot: string): void {
+  if (!fs.existsSync(sourceRoot) || fs.existsSync(targetRoot)) return;
+  fs.mkdirSync(path.dirname(targetRoot), { recursive: true });
+  fs.cpSync(sourceRoot, targetRoot, { recursive: true });
+}
 
 /** 批准请求线上形状归 sse/eventHub 的 AppEvent 域；这里只负责通道机制。 */
 
@@ -252,6 +261,8 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
   mcpSources.ensureOfficialSeed();
 
   // ── Skill：目录是事实源，SQL 只是索引与溯源 ─────────────────────────────────
+  // 内置技能由宿主打包资源提供；开发期从仓库种子目录铺到 profile，目标已存在即不动。
+  installBuiltinSkills(bundledSkillsSource(), builtinSkillsDir());
   const skillUserRoot = path.join(profileDir(), 'skills');
   const skillStore = createSkillStore({
     repo: new SkillsRepo(profileDb.sqlite),

@@ -10,10 +10,7 @@ import {
   handleTurnAborted,
 } from '../../lib/tts-playback.js';
 import { useDecisionStore } from '../../stores/decision.js';
-import {
-  useAgentRunStore,
-  type LiveAgentRunInfo,
-} from '../../stores/agentRun.js';
+import { useAgentRunStore } from '../../stores/agentRun.js';
 import { useTaskStore } from '../../stores/task.js';
 import { useContextUsage } from './contextUsage.js';
 import { useTurnUsage } from './turnUsage.js';
@@ -23,17 +20,6 @@ import { useCurrentSession } from './currentSession.js';
 import type { TurnSseEvent } from '@ema-agent/server/sse/eventHub.js';
 
 // ── 模块级助手 ────────────────────────────────────────────────────────────────
-
-/** 合并一次 AgentRun 进度事件进 live 投影；持久字段仍以 HTTP 响应为准。 */
-function patchLiveAgentRun(agentRunId: string, patch: Partial<LiveAgentRunInfo>): void {
-  const store = useAgentRunStore.getState();
-  const existing = store.runs.get(agentRunId);
-  const base: LiveAgentRunInfo = existing?.live ?? {
-    startedAtMs: Date.now(), promptExcerpt: '', model: '',
-    iteration: 0, toolCallCount: 0, elapsedMs: 0,
-  };
-  store.upsert({ id: agentRunId, live: { ...base, ...patch } });
-}
 
 /** Turn 终态后持久 Task 已过期；Task 没有独立事件，终态是唯一的刷新节拍。 */
 function refreshTasksAfterTerminal(sessionId: string): void {
@@ -59,7 +45,7 @@ export function dispatchTurnEvent(event: TurnSseEvent, sessionId: string): void 
         event.narrativePolicy,
       );
       currentSession.claimStageOwner(sessionId);
-      void tauriBridge.emit('speech:start', { sessionId });
+      void tauriBridge.publishSpeechStarted(sessionId);
       break;
     }
 
@@ -68,7 +54,7 @@ export function dispatchTurnEvent(event: TurnSseEvent, sessionId: string): void 
       useTurnUsage.getState().clearTurn(event.turnId);
       messages.settleStream(sessionId);
       refreshTasksAfterTerminal(sessionId);
-      void tauriBridge.emit('speech:end', { sessionId });
+      void tauriBridge.publishSpeechEnded(sessionId);
       break;
 
     case 'turn_failed':
@@ -76,7 +62,7 @@ export function dispatchTurnEvent(event: TurnSseEvent, sessionId: string): void 
       useTurnUsage.getState().clearTurn(event.turnId);
       messages.abortStream(sessionId, event.message);
       refreshTasksAfterTerminal(sessionId);
-      void tauriBridge.emit('speech:end', { sessionId });
+      void tauriBridge.publishSpeechEnded(sessionId);
       break;
 
     case 'turn_aborted':
@@ -84,7 +70,7 @@ export function dispatchTurnEvent(event: TurnSseEvent, sessionId: string): void 
       useTurnUsage.getState().clearTurn(event.turnId);
       messages.abortStream(sessionId, event.reason);
       refreshTasksAfterTerminal(sessionId);
-      void tauriBridge.emit('speech:end', { sessionId });
+      void tauriBridge.publishSpeechEnded(sessionId);
       break;
 
     // ── Usage ─────────────────────────────────────────────────────────────
@@ -102,7 +88,7 @@ export function dispatchTurnEvent(event: TurnSseEvent, sessionId: string): void 
 
     case 'output_text_delta':
       messages.appendTextDelta(sessionId, event.delta);
-      void tauriBridge.emit('speech:delta', { sessionId, text: event.delta });
+      void tauriBridge.publishSpeechDelta(sessionId, event.delta);
       break;
 
     case 'reasoning_delta':
@@ -124,7 +110,8 @@ export function dispatchTurnEvent(event: TurnSseEvent, sessionId: string): void 
       break;
 
     case 'tool_progress':
-      // 当前前端没有通用进度形状；各内置 Tool 的进度 UI 需由其 UI 出口提供后再接入。
+      // 原始进度事件按 callId 追加进流式项；展示形状由该 Tool 注册的 ProgressView 决定。
+      messages.appendToolProgress(sessionId, event.callId, event.progress);
       break;
 
     case 'tool_result':
@@ -140,12 +127,12 @@ export function dispatchTurnEvent(event: TurnSseEvent, sessionId: string): void 
     case 'ask_user_required': {
       // createdAt 是 PendingInteraction 持久实体的必填时间；实时顺序仍以到达顺序为准。
       useDecisionStore.getState().push({ kind: 'askUser', createdAt: Date.now(), request: event });
-      void tauriBridge.emit('decision:push', event);
+      void tauriBridge.publishDecisionRequired(event);
       break;
     }
     case 'ask_user_resolved':
       useDecisionStore.getState().dismiss(event.toolCallId);
-      void tauriBridge.emit('decision:dismiss', { toolCallId: event.toolCallId });
+      void tauriBridge.publishDecisionDismissed(event.toolCallId);
       break;
 
     case 'permission_required': {
@@ -157,14 +144,14 @@ export function dispatchTurnEvent(event: TurnSseEvent, sessionId: string): void 
         createdAt: Date.now(),
         request,
       });
-      void tauriBridge.emit('decision:push', event);
+      void tauriBridge.publishDecisionRequired(event);
       // toolCallId 精确关联：同名工具允许在一个 Turn 内并发。
       messages.setToolPermissionPending(sessionId, event.toolCallId, true);
       break;
     }
     case 'permission_resolved':
       useDecisionStore.getState().dismiss(event.toolCallId);
-      void tauriBridge.emit('decision:dismiss', { toolCallId: event.toolCallId });
+      void tauriBridge.publishDecisionDismissed(event.toolCallId);
       // allow → 清等待标记恢复运行中；deny → 等后端 tool_result(permission/denied) 统一收口
       if (event.decision === 'allow') {
         messages.setToolPermissionPending(sessionId, event.toolCallId, false);
@@ -193,7 +180,7 @@ export function dispatchTurnEvent(event: TurnSseEvent, sessionId: string): void 
 
     case 'motion_changed':
       if (sessionId === currentSession.ttsOwnerSessionId) {
-        void tauriBridge.emit('stage:motion-changed', { motion: event.motion });
+        void tauriBridge.publishStageMotion(event.motion);
       }
       break;
 
@@ -206,27 +193,14 @@ export function dispatchTurnEvent(event: TurnSseEvent, sessionId: string): void 
     // ── 子 Agent 生命周期 ─────────────────────────────────────────────────
 
     case 'agent_run_started':
-      useAgentRunStore.getState().upsert({
+      useAgentRunStore.getState().startLive({
         id: event.agentRunId,
         sessionId: event.sessionId,
-        parentTurnId: event.turnId,
-        contextMode: event.contextMode,
+        startedAtMs: event.startedAt,
         ...(event.description !== undefined ? { description: event.description } : {}),
         ...(event.modelId !== undefined ? { modelId: event.modelId } : {}),
-        status: 'running',
-        version: 0,
-        createdAt: event.startedAt, updatedAt: event.startedAt,
-        live: {
-          startedAtMs: event.startedAt, promptExcerpt: event.description ?? '',
-          model: event.modelId ?? '', iteration: 0, toolCallCount: 0, elapsedMs: 0,
-        },
-      });
-      // 先建立空记录，让详情面板无需等待持久结果即可展示流式内容。
-      useAgentRunStore.setState((s) => {
-        if (s.transcripts.has(event.agentRunId)) return {};
-        const transcripts = new Map(s.transcripts);
-        transcripts.set(event.agentRunId, []);
-        return { transcripts };
+        iteration: 0,
+        toolCallCount: 0,
       });
       break;
 
@@ -239,51 +213,33 @@ export function dispatchTurnEvent(event: TurnSseEvent, sessionId: string): void 
         // 子 Agent 的累计值按 agentRunId 替换，不叠加；只进 Turn 消耗展示，不进 Context 球。
         useTurnUsage.getState().setSubagentUsage(event.turnId, runId, inner.usage);
       } else if (inner.type === 'iteration_started') {
-        patchLiveAgentRun(runId, { iteration: inner.iteration });
+        agentRunStore.patchLive(runId, { iteration: inner.iteration });
       } else if (inner.type === 'text_delta') {
-        agentRunStore.appendLiveTranscript(runId, 'assistant', { blockIndex: inner.blockIndex, text: inner.delta });
+        agentRunStore.appendLiveTranscript(runId, { role: 'assistant', blockIndex: inner.blockIndex, text: inner.delta });
       } else if (inner.type === 'thinking_delta') {
-        agentRunStore.appendLiveTranscript(runId, 'reasoning', { blockIndex: inner.blockIndex, text: inner.delta });
+        agentRunStore.appendLiveTranscript(runId, { role: 'reasoning', blockIndex: inner.blockIndex, text: inner.delta });
       } else if (inner.type === 'tool_use_completed') {
-        agentRunStore.appendLiveTranscript(runId, 'tool_call', {
+        agentRunStore.appendLiveTranscript(runId, {
+          role: 'tool_call',
           blockIndex: inner.blockIndex,
           callId: inner.toolCallId,
           name: inner.toolName,
           args: inner.args,
         });
-        const current = agentRunStore.runs.get(runId)?.live?.toolCallCount ?? 0;
-        patchLiveAgentRun(runId, { toolCallCount: current + 1 });
+        const current = agentRunStore.live.get(runId)?.toolCallCount ?? 0;
+        agentRunStore.patchLive(runId, { toolCallCount: current + 1 });
       } else if (inner.type === 'tool_result') {
-        // content 即统一 ToolResult 信封，原样透传不拆字段。
-        agentRunStore.appendLiveTranscript(runId, 'tool_result', inner.result);
+        // result 即统一 ToolResult 信封，原样透传不拆字段。
+        agentRunStore.appendLiveTranscript(runId, { role: 'tool_result', result: inner.result });
       }
       break;
     }
 
     case 'agent_run_completed':
-      useAgentRunStore.getState().upsert({
-        id: event.agentRunId, status: 'completed', updatedAt: Date.now(),
-        iterations: event.state.iterations,
-        inputTokens: event.state.usage.inputTokens,
-        outputTokens: event.state.usage.outputTokens,
-        outputExcerpt: event.finalText.slice(0, 500),
-        completedAt: Date.now(),
-        live: undefined,
-      });
-      break;
-
     case 'agent_run_failed':
-      useAgentRunStore.getState().upsert({
-        id: event.agentRunId, status: 'failed', error: event.error,
-        updatedAt: Date.now(), completedAt: Date.now(), live: undefined,
-      });
-      break;
-
     case 'agent_run_aborted':
-      useAgentRunStore.getState().upsert({
-        id: event.agentRunId, status: 'cancelled', error: event.reason,
-        updatedAt: Date.now(), completedAt: Date.now(), live: undefined,
-      });
+      // 终态统计与错误都在持久记录里；丢弃实时缓冲并重读 Route。
+      useAgentRunStore.getState().finishLive(event.agentRunId);
       break;
 
     // ── Narrative ─────────────────────────────────────────────────────────

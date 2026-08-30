@@ -21,8 +21,6 @@ export interface AgentRunRow {
   tool_call_count:     number | null;
   input_tokens:        number | null;
   output_tokens:       number | null;
-  output_excerpt:      string | null;
-  version:             number;
   created_at:          number;
   updated_at:          number;
   completed_at:        number | null;
@@ -45,7 +43,6 @@ export interface AgentRunCompletion {
   toolCallCount: number;
   inputTokens: number;
   outputTokens: number;
-  outputExcerpt?: string;
 }
 
 export class AgentRunsRepo {
@@ -72,9 +69,10 @@ export class AgentRunsRepo {
     ) as AgentRunRow | undefined;
   }
 
+  // 终态迁移的唯一守卫是 status='running'：better-sqlite3 同步单写者，
+  // findById 到 UPDATE 之间不存在交错。
   complete(
     id: string,
-    expectedVersion: number,
     completion: AgentRunCompletion,
     at: number,
   ): AgentRunRow | undefined {
@@ -86,41 +84,35 @@ export class AgentRunsRepo {
               tool_call_count = ?,
               input_tokens = ?,
               output_tokens = ?,
-              output_excerpt = ?,
               completed_at = ?,
-              version = version + 1,
               updated_at = ?
-        WHERE id = ? AND status = 'running' AND version = ?
+        WHERE id = ? AND status = 'running'
         RETURNING *`,
     ).get(
       completion.iterations,
       completion.toolCallCount,
       completion.inputTokens,
       completion.outputTokens,
-      completion.outputExcerpt ?? null,
       at,
       at,
       id,
-      expectedVersion,
     ) as AgentRunRow | undefined;
   }
 
   fail(
     id: string,
-    expectedVersion: number,
     error: string,
     at: number,
   ): AgentRunRow | undefined {
-    return this.finish(id, expectedVersion, 'failed', error, at);
+    return this.finish(id, 'failed', error, at);
   }
 
   cancel(
     id: string,
-    expectedVersion: number,
     reason: string,
     at: number,
   ): AgentRunRow | undefined {
-    return this.finish(id, expectedVersion, 'cancelled', reason, at);
+    return this.finish(id, 'cancelled', reason, at);
   }
 
   delete(id: string): void {
@@ -163,7 +155,6 @@ export class AgentRunsRepo {
           SET status = 'failed',
               error = 'Process terminated unexpectedly',
               completed_at = ?,
-              version = version + 1,
               updated_at = ?
         WHERE status = 'running'
         RETURNING *`,
@@ -172,7 +163,6 @@ export class AgentRunsRepo {
 
   private finish(
     id: string,
-    expectedVersion: number,
     status: 'failed' | 'cancelled',
     error: string,
     at: number,
@@ -182,10 +172,9 @@ export class AgentRunsRepo {
           SET status = ?,
               error = ?,
               completed_at = ?,
-              version = version + 1,
               updated_at = ?
-        WHERE id = ? AND status = 'running' AND version = ?
+        WHERE id = ? AND status = 'running'
         RETURNING *`,
-    ).get(status, error, at, at, id, expectedVersion) as AgentRunRow | undefined;
+    ).get(status, error, at, at, id) as AgentRunRow | undefined;
   }
 }

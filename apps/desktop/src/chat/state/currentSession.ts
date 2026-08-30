@@ -76,7 +76,7 @@ export const useCurrentSession = create<CurrentSessionState>((set, get) => ({
     if (get().ttsOwnerSessionId === sessionId) return;
     set({ ttsOwnerSessionId: sessionId });
     const saved = get().emotionStateMap.get(sessionId);
-    if (saved) void tauriBridge.emit('stage:emotion-changed', { emotion: saved });
+    if (saved) void tauriBridge.publishStageEmotion(saved);
   },
 
   setEmotion(sessionId, emotion) {
@@ -86,7 +86,7 @@ export const useCurrentSession = create<CurrentSessionState>((set, get) => ({
       return { emotionStateMap };
     });
     if (get().ttsOwnerSessionId === sessionId) {
-      void tauriBridge.emit('stage:emotion-changed', { emotion });
+      void tauriBridge.publishStageEmotion(emotion);
     }
   },
 

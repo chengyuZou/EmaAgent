@@ -79,32 +79,29 @@ export function SpeechBubble(): React.JSX.Element | null {
   );
 
   useEffect(() => {
-    const unlistenStart = tauriBridge.listen<{ sessionId: string }>(
-      'speech:start',
-      (e) => {
+    const unlistenStart = tauriBridge.listenSpeechStarted(
+      (sessionId) => {
         fade.clear();
-        activeSession.current = e.payload.sessionId;
+        activeSession.current = sessionId;
         setText('');
         setFading(false);
         setVisible(true);
       },
     );
 
-    const unlistenDelta = tauriBridge.listen<{ sessionId: string; text: string }>(
-      'speech:delta',
-      (e) => {
-        if (e.payload.sessionId !== activeSession.current) return;
+    const unlistenDelta = tauriBridge.listenSpeechDelta(
+      (sessionId, text) => {
+        if (sessionId !== activeSession.current) return;
         fade.clear();
-        setText((prev) => prev + e.payload.text);
+        setText((prev) => prev + text);
         setFading(false);
         setVisible(true);
       },
     );
 
-    const unlistenEnd = tauriBridge.listen<{ sessionId: string }>(
-      'speech:end',
-      (e) => {
-        if (e.payload.sessionId !== activeSession.current) return;
+    const unlistenEnd = tauriBridge.listenSpeechEnded(
+      (sessionId) => {
+        if (sessionId !== activeSession.current) return;
         fade.scheduleFade();
       },
     );

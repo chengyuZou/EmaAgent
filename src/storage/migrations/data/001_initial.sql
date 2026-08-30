@@ -5,10 +5,14 @@ CREATE TABLE agent_run_messages (
   id           TEXT    PRIMARY KEY,
   agent_run_id TEXT    NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE,
   role         TEXT    NOT NULL CHECK (role IN ('assistant', 'tool_call', 'tool_result', 'reasoning')),
+  -- 块身份：文本/思考/工具调用按 (agent_run_id, role, block_index) upsert；
+  -- tool_result 一次调用一行，block_index 恒为 NULL（SQLite 唯一键不约束 NULL）。
+  block_index  INTEGER,
   content_json TEXT    NOT NULL,
   sequence     INTEGER NOT NULL,
   created_at   INTEGER NOT NULL,
-  UNIQUE (agent_run_id, sequence)
+  UNIQUE (agent_run_id, sequence),
+  UNIQUE (agent_run_id, role, block_index)
 );
 
 CREATE TABLE agent_runs (
@@ -27,8 +31,6 @@ CREATE TABLE agent_runs (
   tool_call_count     INTEGER,
   input_tokens        INTEGER,
   output_tokens       INTEGER,
-  output_excerpt      TEXT,
-  version             INTEGER NOT NULL DEFAULT 0,
   created_at          INTEGER NOT NULL,
   updated_at          INTEGER NOT NULL,
   completed_at        INTEGER

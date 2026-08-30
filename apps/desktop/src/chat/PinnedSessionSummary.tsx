@@ -39,13 +39,17 @@ export function PinnedSessionSummary({ sessionId }: PinnedSessionSummaryProps): 
   }, [sessionId, workspaceRoot]);
 
   const activity = useAgentRunStore(useShallow((s) => {
-    let running = 0;
     let ended = 0;
+    const runningIds = new Set<string>();
     for (const run of s.runs.values()) {
       if (run.sessionId !== sessionId) continue;
-      if (run.status === 'running') running += 1;
+      if (run.status === 'running') runningIds.add(run.id);
       else ended += 1;
     }
+    for (const [id, entry] of s.live) {
+      if (entry.sessionId === sessionId) runningIds.add(id);
+    }
+    const running = runningIds.size;
     return { running, ended, total: running + ended };
   }));
   const loadAgentRuns = useAgentRunStore((s) => s.loadForSession);

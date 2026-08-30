@@ -29,6 +29,8 @@ export type StreamItem =
       readonly partialArgs?: string;
       readonly startedAt: number;
       readonly permissionPending?: boolean;
+      /** 原始 tool_progress 事件序列（有界尾部）；形状由各 Tool 的 TProgress 定义。 */
+      readonly progress?: readonly unknown[];
       readonly output?: unknown;
       readonly error?: ToolError;
       readonly durationMs?: number;
@@ -77,6 +79,7 @@ interface MessagesState {
   appendThinkingDelta(sessionId: string, delta: string): void;
   upsertPartialToolCall(sessionId: string, callId: string, name: string, argsDelta: string): void;
   completeToolCall(sessionId: string, callId: string, name: string, args: unknown): void;
+  appendToolProgress(sessionId: string, callId: string, progress: unknown): void;
   setToolResult(
     sessionId: string,
     callId: string,
@@ -131,6 +134,9 @@ function appendStreamThinking(items: readonly StreamItem[], delta: string): Stre
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────────
+
+/** 单个工具调用保留的进度事件上限；超出丢弃最旧的。 */
+const MAX_TOOL_PROGRESS_EVENTS = 200;
 
 export const useMessages = create<MessagesState>((set, get) => ({
   messages: new Map(),
@@ -284,6 +290,18 @@ export const useMessages = create<MessagesState>((set, get) => ({
     }));
   },
 
+  appendToolProgress(sessionId, callId, progress) {
+    set((s) => patchStream(s, sessionId, (stream) => ({
+      ...stream,
+      items: stream.items.map((item) =>
+        item.type === 'tool_use' && item.callId === callId
+          // 实时尾巴是展示缓冲：只保留最近若干条，长命令输出不会无限占内存。
+          ? { ...item, progress: [...(item.progress ?? []), progress].slice(-MAX_TOOL_PROGRESS_EVENTS) }
+          : item,
+      ),
+    })));
+  },
+
   setToolResult(sessionId, callId, result) {
     set((s) => patchStream(s, sessionId, (stream) => ({
       ...stream,
@@ -295,6 +313,7 @@ export const useMessages = create<MessagesState>((set, get) => ({
               error: result.error,
               durationMs: result.durationMs,
               permissionPending: undefined,
+              progress: undefined,
             }
           : item,
       ),

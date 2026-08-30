@@ -12,8 +12,6 @@ import type { AgentLoopInput, AgentBudget } from './types.js';
 import { AgentRunStore } from './runs/agentRunStore.js';
 import { AgentRunMessagesStore } from './runs/agentRunMessagesStore.js';
 
-const OUTPUT_EXCERPT_MAX = 200;
-
 export interface PrepareSubagentInput {
   readonly agentRunId: string;
   readonly prompt: string;
@@ -181,21 +179,17 @@ export class SubagentSpawner implements SubagentSpawnerFn {
       }
       if (!terminal) throw new Error('AgentLoop 未产生终止事件');
 
-      const durationMs = Date.now() - startedAt;
       const completion = this.options.agentRunStore.complete(agentRunId, {
         iterations: terminal.state.iterations,
         toolCallCount,
         inputTokens: terminal.state.usage.inputTokens,
         outputTokens: terminal.state.usage.outputTokens,
-        outputExcerpt: terminal.finalText.slice(0, OUTPUT_EXCERPT_MAX),
       });
       assertTransitionCompleted(agentRunId, completion, 'complete');
       this.options.emit({
         type: 'agent_run_completed',
         agentRunId,
         finalText: terminal.finalText,
-        state: terminal.state,
-        durationMs,
       });
       return {
         agentRunId,
@@ -206,7 +200,6 @@ export class SubagentSpawner implements SubagentSpawnerFn {
         },
       };
     } catch (error) {
-      const durationMs = Date.now() - startedAt;
       const message = error instanceof Error ? error.message : String(error);
       if (controller.signal.aborted) {
         const reason = parentSignal.aborted
@@ -218,7 +211,6 @@ export class SubagentSpawner implements SubagentSpawnerFn {
           type: 'agent_run_aborted',
           agentRunId,
           reason,
-          durationMs,
         });
       } else {
         const failure = this.options.agentRunStore.fail(agentRunId, message);
@@ -227,12 +219,12 @@ export class SubagentSpawner implements SubagentSpawnerFn {
           type: 'agent_run_failed',
           agentRunId,
           error: message,
-          durationMs,
         });
       }
       throw error;
     } finally {
       parentSignal.removeEventListener('abort', abortFromParent);
+      this.options.messagesStore.discard(agentRunId);
       releaseBudget();
     }
   }

@@ -72,22 +72,21 @@ describe('CharacterStageLoader', () => {
 
 function stageView(
   characterId: string,
-  sourcePath: string,
+  file: string,
 ): CharacterStageView {
   return {
     characterId,
-    revision: '1',
     candidates: [
       {
         kind: 'live2d',
         resourceId: 'live2d-main',
         name: 'Main',
-        resourceRevision: '1',
-        sourcePath,
+        file,
         runtimeConfig: null,
         stageScale: 1,
         stageOffsetX: 0,
         stageOffsetY: 0,
+        updatedAt: 1,
       },
     ],
   };

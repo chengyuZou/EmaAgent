@@ -239,28 +239,28 @@ export class SessionBackupRestorer {
       INSERT INTO agent_runs (
         id, session_id, parent_turn_id, parent_agent_run_id,
         context_mode, description, provider_id, model_id, status, error,
-        iterations, tool_call_count, input_tokens, output_tokens, output_excerpt,
-        version, created_at, updated_at, completed_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        iterations, tool_call_count, input_tokens, output_tokens,
+        created_at, updated_at, completed_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     for (const row of orderAgentRuns(rows.agentRuns)) {
       insertAgentRun.run(
         row.id, session.id, row.parent_turn_id, row.parent_agent_run_id,
         row.context_mode, row.description, row.provider_id, row.model_id,
         row.status, row.error, row.iterations, row.tool_call_count,
-        row.input_tokens, row.output_tokens, row.output_excerpt,
-        row.version, row.created_at, row.updated_at, row.completed_at,
+        row.input_tokens, row.output_tokens,
+        row.created_at, row.updated_at, row.completed_at,
       );
     }
 
     const insertAgentRunMessage = this.db.prepare(`
       INSERT INTO agent_run_messages (
-        id, agent_run_id, role, content_json, sequence, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?)
+        id, agent_run_id, role, block_index, content_json, sequence, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
     for (const row of rows.agentRunMessages) {
       insertAgentRunMessage.run(
-        row.id, row.agent_run_id, row.role, row.content_json, row.sequence, row.created_at,
+        row.id, row.agent_run_id, row.role, row.block_index, row.content_json, row.sequence, row.created_at,
       );
     }
 

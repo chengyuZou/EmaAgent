@@ -96,18 +96,14 @@ export type AgentRunEvent =
       readonly type: 'agent_run_completed';
       readonly agentRunId: string;
       readonly finalText: string;
-      readonly state: AgentLoopState;
-      readonly durationMs: number;
     }
   | {
       readonly type: 'agent_run_failed';
       readonly agentRunId: string;
       readonly error: string;
-      readonly durationMs: number;
     }
   | {
       readonly type: 'agent_run_aborted';
       readonly agentRunId: string;
       readonly reason: string;
-      readonly durationMs: number;
     };

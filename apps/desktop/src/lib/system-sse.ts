@@ -13,7 +13,6 @@ import { tauriBridge } from './tauri-bridge.js';
 import { showToast } from './toast.js';
 import { presentConfiguredEvent } from './event-notifications.js';
 
-const SYSTEM_EVENT_CHANNEL = 'ema://system-event';
 const EOF_RECONNECT_DELAY_MS = 3_000;
 const ERROR_RECONNECT_DELAY_MS = 5_000;
 
@@ -108,7 +107,7 @@ function publishAcrossWindows(event: AppEvent): void {
 
   // 串行广播，避免 progress/completed 等相邻事件在跨窗口时发生乱序。
   publishChain = publishChain
-    .then(() => tauriBridge.emit(SYSTEM_EVENT_CHANNEL, event))
+    .then(() => tauriBridge.publishSystemEvent(event))
     .catch((error: unknown) => {
       console.error('[system-sse] failed to broadcast system event', error);
     });
@@ -148,7 +147,7 @@ function acquireSubscriber(): () => void {
   if (subscriberLeases === 1 && tauriBridge.isTauri()) {
     subscriberGeneration += 1;
     const expectedGeneration = subscriberGeneration;
-    unlistenPromise = tauriBridge.listen<AppEvent>(SYSTEM_EVENT_CHANNEL, ({ payload }) => {
+    unlistenPromise = tauriBridge.listenSystemEvents((payload) => {
       if (subscriberGeneration === expectedGeneration && subscriberLeases > 0) {
         dispatchSystemEvent(payload);
       }

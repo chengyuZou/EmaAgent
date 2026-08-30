@@ -93,7 +93,7 @@ function publishSpeechState(
   const now = performance.now();
   if (!force && now - lastPublishAt < 33) return;
   lastPublishAt = now;
-  void tauriBridge.emit('stage:speech-state', state);
+  void tauriBridge.publishStageSpeech(state.speaking, state.rms);
 }
 
 // ── RMS loop ──────────────────────────────────────────────────────────────────

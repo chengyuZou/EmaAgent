@@ -10,6 +10,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/** 行头摘要：读取路径。 */
+export function fileReadTitle(args: unknown): string | null {
+  return isRecord(args) && typeof args['file_path'] === 'string' ? args['file_path'] : null;
+}
+
 function asFileReadResult(data: unknown): FileReadResult | null {
   if (!isRecord(data) || typeof data['filePath'] !== 'string') return null;
   switch (data['type']) {

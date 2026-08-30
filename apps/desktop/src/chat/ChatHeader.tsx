@@ -25,11 +25,17 @@ export function ChatHeader({ sessionId, title, isFork }: ChatHeaderProps): JSX.E
   const bottomOpen = layout?.bottomOpen ?? false;
 
   // 子智能体运行计数：摘要按钮的角标，详情在浮层内。
+  // 实时缓冲覆盖刚启动、持久记录尚未重读回来的间隙。
   const runningAgentRunCount = useAgentRunStore((s) => {
     if (!sessionId) return 0;
-    return [...s.runs.values()].filter(
-      (run) => run.sessionId === sessionId && run.status === 'running',
-    ).length;
+    const ids = new Set<string>();
+    for (const run of s.runs.values()) {
+      if (run.sessionId === sessionId && run.status === 'running') ids.add(run.id);
+    }
+    for (const [id, entry] of s.live) {
+      if (entry.sessionId === sessionId) ids.add(id);
+    }
+    return ids.size;
   });
 
   return (

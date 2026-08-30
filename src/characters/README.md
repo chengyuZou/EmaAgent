@@ -61,6 +61,8 @@ Prompt 无效是 error；Live2D、立绘或参考音频缺失是 warning。健�
 
 `inspectAllHealth()` 用于启动检查：除了逐个角色的健康结果，还会把角色根目录和三类资源目录第一层中“磁盘存在但 SQL 没有引用”的路径列为 `orphanedPaths`。它不猜测重命名关系，不自动删除或重绑定。
 
+`inspectStagePresentation()` 是主窗口舞台的唯一读取入口：一次调用返回 `CharacterStagePresentation`（`characterId` + 按降级链排序的 `candidates`）。每个候选携带资源身份、名称、解析后的绝对路径、舞台几何（stageScale/stageOffset）、`updatedAt`（供前端候选去重）和 Live2D 运行配置；空数组即占位。消费方不得第二次请求或自行拼接资源字段。
+
 ## 生命周期边界
 
 - 新 Turn 在编排层冻结当时的 Character 与 Prompt 数组；运行中的 Turn 不随角色切换改变。

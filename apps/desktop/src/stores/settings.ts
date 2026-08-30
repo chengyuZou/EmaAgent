@@ -2,21 +2,13 @@
 // 两个值键（permission.askTimeoutMs / frontend.eventDisplay）走 settings 值 API，不再有专用端点。
 import { create } from 'zustand';
 import { settingsApi, type EventDisplayTable } from '../api/settings.js';
-import { tauriBridge } from '../lib/tauri-bridge.js';
+import { tauriBridge, type DesktopSettingsPayload } from '../lib/tauri-bridge.js';
 
 /** 单个事件类型的展示配置（生效表 = 默认表 + 用户覆盖合并）。 */
 export type EventDisplayConfig = EventDisplayTable[string];
 
 const PERMISSION_ASK_TIMEOUT_KEY = 'permission.askTimeoutMs';
 const EVENT_DISPLAY_SETTING_KEY = 'frontend.eventDisplay';
-
-export const DESKTOP_SETTINGS_EVENT = 'settings:desktop-changed';
-
-export interface DesktopSettingsPayload {
-  /** 批准卡与问询卡等待超时（毫秒）；null = 一直等待。 */
-  permissionTimeoutMs: number | null;
-  eventDisplay: EventDisplayTable | null;
-}
 
 export interface SettingsStoreState {
   permissionTimeoutMs: number | null;
@@ -108,7 +100,7 @@ function broadcastDesktopSettings(state: SettingsStoreState): void {
     permissionTimeoutMs: state.permissionTimeoutMs,
     eventDisplay: state.eventDisplay,
   };
-  void tauriBridge.emit(DESKTOP_SETTINGS_EVENT, payload).catch((error: unknown) => {
+  void tauriBridge.publishDesktopSettingsChanged(payload).catch((error: unknown) => {
     console.warn('[settings] 广播桌面设置失败', error);
   });
 }

@@ -11,6 +11,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/** 行头摘要：写入路径。 */
+export function fileWriteTitle(args: unknown): string | null {
+  return isRecord(args) && typeof args['file_path'] === 'string' ? args['file_path'] : null;
+}
+
 /** 类型守卫: 失败结果与旧消息不满足形状时返回 null, 前端回落通用渲染。 */
 export function asFileWriteResult(data: unknown): FileWriteResult | null {
   if (!isRecord(data)) return null;

@@ -15,6 +15,8 @@ import type {
   Character,
   CharacterInput,
   CharacterPatch,
+  CharacterStageEntry,
+  CharacterStagePresentation,
 } from './types.js';
 import { CharacterRepository } from './repository.js';
 import { EMA_CHARACTER_ID, BUILTIN_CHARACTERS } from './seed/index.js';
@@ -537,6 +539,48 @@ export class CharacterStore {
 
   inspectHealth(id: string): Promise<CharacterHealth> {
     return inspectCharacterHealth(this.getRequired(id), this.paths);
+  }
+
+  /**
+   * 主窗口舞台的原子读取：健康门定下降级链选择后，同一次调用内解析
+   * 文件路径与运行配置，消费方不再第二次请求或拼接资源字段。
+   */
+  async inspectStagePresentation(id: string): Promise<CharacterStagePresentation> {
+    const health = await this.inspectHealth(id);
+    const character = this.getRequired(id);
+
+    const candidates: CharacterStageEntry[] = [];
+    const live2d = character.live2dModels.find((r) => r.id === health.selectedLive2dModelId);
+    if (live2d) {
+      candidates.push({
+        kind: 'live2d',
+        resourceId: live2d.id,
+        name: live2d.name,
+        file: this.resolveLive2dModelFile(id, live2d.id),
+        stageScale: live2d.stageScale,
+        stageOffsetX: live2d.stageOffsetX,
+        stageOffsetY: live2d.stageOffsetY,
+        updatedAt: live2d.updatedAt,
+        runtimeConfig: this.resolveLive2dRuntimeConfig(id, live2d.id),
+      });
+    }
+    const illustration = character.illustrations.find(
+      (r) => r.id === health.selectedIllustrationId,
+    );
+    if (illustration) {
+      candidates.push({
+        kind: 'illustration',
+        resourceId: illustration.id,
+        name: illustration.name,
+        file: this.resolveIllustrationFile(id, illustration.id),
+        stageScale: illustration.stageScale,
+        stageOffsetX: illustration.stageOffsetX,
+        stageOffsetY: illustration.stageOffsetY,
+        updatedAt: illustration.updatedAt,
+      });
+    }
+
+    return { characterId: character.id, candidates };
   }
 
   inspectAllHealth(): Promise<CharacterHealthReport> {

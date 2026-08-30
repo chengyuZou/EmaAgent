@@ -34,6 +34,17 @@ export function asFileEditResult(data: unknown): FileEditResult | null {
   return null;
 }
 
+/** 行头摘要：编辑目标路径。 */
+export function fileEditTitle(args: unknown): string | null {
+  return isRecord(args) && typeof args['file_path'] === 'string' ? args['file_path'] : null;
+}
+
+/** 复制文本：权威结构化 diff 的 unified 文本；结果未落地时由前端回落默认复制。 */
+export function fileEditCopyText(args: unknown, data: unknown): string | null {
+  const result = asFileEditResult(data);
+  return result ? patchToUnifiedText(result.structuredPatch) : null;
+}
+
 // ── 参数视图: 只给路径; old/new 的正文由结果区 diff 表达,不重复展示 ────────────
 
 export function FileEditArgsView({ args }: { args: unknown }): JSX.Element | null {

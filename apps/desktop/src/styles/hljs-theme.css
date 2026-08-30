@@ -57,3 +57,17 @@
 /* 强调/加粗 */
 .hljs-emphasis { font-style: italic; }
 .hljs-strong { font-weight: bold; }
+/* Markdown、文件预览与终端工具行共用正文和代码字体。 */
+.hljs,
+.markdown-content pre,
+.markdown-content code,
+.ema-font-mono {
+  font-family: var(--ema-font-mono) !important;
+  font-weight: 400;
+  line-height: 1.7;
+  font-feature-settings: 'liga' 1, 'calt' 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.markdown-content { font-family: var(--ema-font-content); }

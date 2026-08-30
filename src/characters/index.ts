@@ -19,6 +19,10 @@ export type {
   Character,
   CharacterInput,
   CharacterPatch,
+  CharacterIllustrationStageEntry,
+  CharacterLive2dStageEntry,
+  CharacterStageEntry,
+  CharacterStagePresentation,
 } from './types.js';
 
 export type {

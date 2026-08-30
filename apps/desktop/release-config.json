@@ -1,17 +1,9 @@
 {
-  "schemaVersion": 1,
   "nodeVersion": "22.14.0",
-  "pythonVersion": "3.11",
   "cubismCore": {
     "fileName": "live2dcubismcore.min.js",
     "allowedSha256": [
       "913e10e881aa7abec8e65bbb8c2540db3fe9acf987c7537befa521f8a7f51009"
-    ]
-  },
-  "narrativeSeed": {
-    "contentVersion": "witch-trial-v1",
-    "excludedFileNames": [
-      "kv_store_llm_response_cache.json"
     ]
   }
 }

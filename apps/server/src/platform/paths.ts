@@ -53,6 +53,12 @@ export function builtinSkillsDir(): string {
   return path.join(profileDir(), 'resources', 'skills');
 }
 
+/** 内置技能种子来源；只在启动铺设阶段读取，正式包由环境变量传入。 */
+export function bundledSkillsSource(): string {
+  return process.env['EMA_BUNDLED_SKILLS_DIR']
+    ?? path.join(REPO_ROOT, 'apps', 'desktop', 'src-tauri', 'resources', 'skills');
+}
+
 /** 创建 profile 侧不属于 profile.db 本身的目录。 */
 export function ensureProfileLayout(): void {
   fs.mkdirSync(charactersDir(), { recursive: true });

@@ -7,7 +7,6 @@ import { setThemeHue, setThemeRadius } from '@ema-agent/ui/utils';
 import { tauriBridge } from '../lib/tauri-bridge.js';
 import type { ThemeSettings } from '@ema-agent/server/composition/settings/themeSetting.js';
 
-const THEME_EVENT = 'theme:changed';
 const THEME_ATTR  = 'data-theme';
 const THEME_SETTING_KEY = 'frontend.theme';
 
@@ -154,7 +153,7 @@ export const useThemeStore = create<ThemeStoreState>((set, get) => ({
 }));
 
 function emitTheme(config: ThemeSettings): void {
-  void tauriBridge.emit(THEME_EVENT, config);
+  void tauriBridge.publishThemeChanged(config);
 }
 
 function currentThemeValue(state: ThemeStoreState): ThemeSettings {
@@ -196,8 +195,8 @@ export function useThemeSync(): void {
     let unlisten: (() => void) | undefined;
     let cancelled = false;
 
-    void tauriBridge.listen<ThemeSettings>(THEME_EVENT, (e) => {
-      const resolved = readThemeValue(e.payload);
+    void tauriBridge.listenThemeChanged((theme) => {
+      const resolved = readThemeValue(theme);
       applyResolvedTheme(resolved);
       useThemeStore.setState(resolved);
     }).then((fn) => {

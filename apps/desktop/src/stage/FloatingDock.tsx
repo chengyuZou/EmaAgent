@@ -30,9 +30,9 @@ export function FloatingDock({ visible, expressionAvailable }: FloatingDockProps
   // ── Flyout buttons (3 per row) ──────────────────────────────────────────
   const flyoutButtons = [
     { id: 'chat',     icon: 'i-mdi:chat-outline', label: '聊天',
-      onClick: () => runDockAction('打开聊天窗口', () => tauriBridge.openWindow('chat')) },
+      onClick: () => runDockAction('打开聊天窗口', () => tauriBridge.openChatWindow()) },
     { id: 'settings', icon: 'i-mdi:cog-outline',  label: '设置',
-      onClick: () => runDockAction('打开设置窗口', () => tauriBridge.openWindow('settings')) },
+      onClick: () => runDockAction('打开设置窗口', () => tauriBridge.openSettingsWindow()) },
     {
       id: 'pin',
       icon: pinned ? 'i-mdi:pin' : 'i-mdi:pin-off-outline',
@@ -106,7 +106,7 @@ export function FloatingDock({ visible, expressionAvailable }: FloatingDockProps
           icon="i-mdi:emoticon-happy-outline"
           disabled={!expressionAvailable}
           className="rounded-full shadow-[var(--ema-shadow-1)] backdrop-blur"
-          onClick={() => runDockAction('切换表情', () => tauriBridge.emit('stage:cycle-expression'))}
+          onClick={() => runDockAction('切换表情', () => tauriBridge.requestStageExpressionCycle())}
         />
       </Tooltip>
 

@@ -1,4 +1,4 @@
-// 严格验证当前目标平台的 Server 制品、Narrative Bridge 二进制、Narrative seed 与 Cubism 发布制品。
+// 严格验证当前目标平台的 Server 制品、Narrative Bridge 二进制、Narrative 剧情数据与 Cubism 发布制品。
 import { execFileSync } from 'node:child_process';
 import { existsSync, statSync } from 'node:fs';
 import path from 'node:path';
@@ -7,7 +7,6 @@ import { fileURLToPath } from 'node:url';
 
 import {
   executableSuffix,
-  listRegularFiles,
   parseTargetArgument,
   readJson,
   requireRegularFile,
@@ -16,6 +15,7 @@ import {
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const desktopRoot = path.resolve(scriptDirectory, '..');
+const workspaceRoot = path.resolve(desktopRoot, '..', '..');
 const tauriRoot = path.join(desktopRoot, 'src-tauri');
 const config = readJson(path.join(desktopRoot, 'release-config.json'));
 const target = parseTargetArgument();
@@ -71,33 +71,13 @@ if (!config.cubismCore.allowedSha256.includes(cubismHash)) {
   throw new Error(`Cubism Core SHA-256 未被批准: ${cubismHash}`);
 }
 
-const narrativeRoot = path.join(tauriRoot, 'resources', 'narrative-seed');
-const narrativeManifestPath = path.join(narrativeRoot, 'release-manifest.json');
-requireRegularFile(narrativeManifestPath, 'Narrative seed manifest');
-const narrativeManifest = readJson(narrativeManifestPath);
-if (
-  narrativeManifest.schemaVersion !== 1
-  || narrativeManifest.contentVersion !== config.narrativeSeed.contentVersion
-) {
-  throw new Error('Narrative seed manifest 版本不匹配');
-}
-for (const [relativePath, expected] of Object.entries(narrativeManifest.files)) {
-  const filePath = path.join(narrativeRoot, ...relativePath.split('/'));
-  requireRegularFile(filePath, `Narrative seed ${relativePath}`);
-  if (statSync(filePath).size !== expected.size || sha256File(filePath) !== expected.sha256) {
-    throw new Error(`Narrative seed 文件摘要不匹配: ${relativePath}`);
+// Narrative 剧情数据从 bridges/narrative/data 直收进安装包：验证源目录三时间线齐备。
+const narrativeSource = path.join(workspaceRoot, 'bridges', 'narrative', 'data', 'witch-trial');
+for (const timeline of ['1st_Loop', '2nd_Loop', '3rd_Loop']) {
+  const timelineDir = path.join(narrativeSource, timeline);
+  if (!existsSync(timelineDir) || !statSync(timelineDir).isDirectory()) {
+    throw new Error(`Narrative 剧情数据缺少时间线目录: ${timeline}`);
   }
-}
-const narrativeFiles = listRegularFiles(narrativeRoot);
-for (const excludedName of config.narrativeSeed.excludedFileNames) {
-  if (narrativeFiles.some((relativePath) => path.posix.basename(relativePath) === excludedName)) {
-    throw new Error(`Narrative seed 混入可再生缓存: ${excludedName}`);
-  }
-}
-if (!existsSync(path.join(narrativeRoot, '1st_Loop'))
-  || !existsSync(path.join(narrativeRoot, '2nd_Loop'))
-  || !existsSync(path.join(narrativeRoot, '3rd_Loop'))) {
-  throw new Error('Narrative seed 缺少必需时间线');
 }
 
 const smokeScript = path.join(scriptDirectory, 'smoke-services.mjs');
@@ -123,7 +103,7 @@ execFileSync(
     '--executable',
     narrativeBridgeBinary,
     '--narrative',
-    narrativeRoot,
+    narrativeSource,
   ],
   { stdio: 'inherit' },
 );

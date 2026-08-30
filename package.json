@@ -5,7 +5,8 @@
   "description": "EmaAgent V1 — local-first anime companion + desktop agent",
   "scripts": {
     "build": "turbo run build",
-    "dev": "turbo run dev",
+    "dev": "turbo run dev --filter=@ema-agent/desktop",
+    "dev:reset": "node scripts/dev-reset.mjs",
     "test": "turbo run test",
     "test:watch": "turbo run test:watch",
     "lint": "turbo run lint",

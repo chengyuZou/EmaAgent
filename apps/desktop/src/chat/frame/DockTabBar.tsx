@@ -45,10 +45,9 @@ function baseTabLabel(tab: DockTab): string {
 
 /** agentRun 标签优先显示执行目的，拿不到时回退通用名。 */
 function AgentRunTabLabel({ agentRunId }: { agentRunId: string }): JSX.Element {
-  const title = useAgentRunStore((s) => {
-    const run = s.runs.get(agentRunId);
-    return run?.description ?? run?.live?.promptExcerpt ?? null;
-  });
+  const title = useAgentRunStore((s) =>
+    s.runs.get(agentRunId)?.description ?? s.live.get(agentRunId)?.description ?? null,
+  );
   return <span className="truncate">{title ?? '子智能体'}</span>;
 }
 

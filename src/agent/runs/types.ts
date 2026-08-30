@@ -22,8 +22,6 @@ export interface AgentRun {
   readonly toolCallCount?: number;
   readonly inputTokens?: number;
   readonly outputTokens?: number;
-  readonly outputExcerpt?: string;
-  readonly version: number;
   readonly createdAt: number;
   readonly updatedAt: number;
   readonly completedAt?: number;
@@ -45,7 +43,6 @@ export interface AgentRunCompletion {
   toolCallCount: number;
   inputTokens: number;
   outputTokens: number;
-  outputExcerpt?: string;
 }
 
 export type AgentRunTransitionAction = 'complete' | 'fail' | 'cancel';

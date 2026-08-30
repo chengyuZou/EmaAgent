@@ -1,0 +1,102 @@
+/* 设置页色相控件及各业务卡片的背景纹理。 */
+
+.ema-hue-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 12px;
+  border-radius: 9999px;
+  outline: none;
+  cursor: pointer;
+  background: linear-gradient(to right,
+    oklch(65% 0.18 0), oklch(65% 0.18 60), oklch(65% 0.18 120),
+    oklch(65% 0.18 180), oklch(65% 0.18 240), oklch(65% 0.18 300), oklch(65% 0.18 360));
+}
+.ema-hue-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--ema-surface-4);
+  border: 2px solid var(--ema-border-strong);
+  box-shadow: var(--ema-shadow-2);
+  cursor: pointer;
+  transition: transform var(--ema-duration-fast) var(--ema-ease);
+}
+.ema-hue-range::-webkit-slider-thumb:hover { transform: scale(1.15); }
+.ema-hue-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--ema-surface-4);
+  border: 2px solid var(--ema-border-strong);
+  box-shadow: var(--ema-shadow-2);
+  cursor: pointer;
+}
+.ema-hue-range::-moz-range-track {
+  height: 12px;
+  border-radius: 9999px;
+  background: linear-gradient(to right,
+    oklch(65% 0.18 0), oklch(65% 0.18 60), oklch(65% 0.18 120),
+    oklch(65% 0.18 180), oklch(65% 0.18 240), oklch(65% 0.18 300), oklch(65% 0.18 360));
+}
+
+/* 展开的知识库行需要让主题底色透过纹理。 */
+.ema-card-decorate.ema-row-active::after { opacity: 0.4; }
+
+.ema-card-decorate--plus::after {
+  background-image:
+    radial-gradient(circle at 75% 26%, color-mix(in srgb, var(--ema-info) 30%, transparent) 0 50%, transparent 50%),
+    radial-gradient(circle at 25% 74%, color-mix(in srgb, var(--ema-violet) 30%, transparent) 0 50%, transparent 50%),
+    linear-gradient(90deg, color-mix(in srgb, var(--ema-info) 50%, transparent), color-mix(in srgb, var(--ema-violet) 50%, transparent));
+  background-size: 100% 100%;
+}
+
+.ema-card-decorate--mesh::after {
+  background-image:
+    radial-gradient(circle at 67% 83%, color-mix(in srgb, var(--ema-text-tertiary) 14%, transparent) 0 1%, transparent 1%),
+    radial-gradient(circle at 24% 80%, color-mix(in srgb, var(--ema-text-tertiary) 14%, transparent) 0 27%, transparent 27%),
+    radial-gradient(circle at 23% 5%, color-mix(in srgb, var(--ema-text-tertiary) 14%, transparent) 0 26%, transparent 26%),
+    radial-gradient(circle at 21% 11%, color-mix(in srgb, var(--ema-text-tertiary) 14%, transparent) 0 35%, transparent 35%),
+    linear-gradient(90deg, color-mix(in srgb, var(--ema-primary) 50%, transparent), color-mix(in srgb, var(--ema-violet) 50%, transparent));
+  background-size: 100% 100%;
+}
+
+.ema-card-decorate--diamond::after {
+  background-image:
+    linear-gradient(45deg, color-mix(in srgb, var(--ema-info) 35%, transparent) 0 25%, transparent 25% 75%, color-mix(in srgb, var(--ema-primary) 35%, transparent) 75%),
+    linear-gradient(135deg, color-mix(in srgb, var(--ema-primary) 35%, transparent) 0 30%, transparent 30% 70%, color-mix(in srgb, var(--ema-info) 35%, transparent) 70%),
+    linear-gradient(90deg, color-mix(in srgb, var(--ema-info) 50%, transparent), color-mix(in srgb, var(--ema-primary) 50%, transparent));
+  background-size: 100% 100%;
+}
+
+.ema-card-decorate--circuit::after {
+  background-image:
+    radial-gradient(circle at 85% 1%, color-mix(in srgb, var(--ema-text-tertiary) 14%, transparent) 0 96%, transparent 96%),
+    radial-gradient(circle at 14% 15%, color-mix(in srgb, var(--ema-text-tertiary) 14%, transparent) 0 1%, transparent 1%),
+    radial-gradient(circle at 60% 90%, color-mix(in srgb, var(--ema-text-tertiary) 14%, transparent) 0 20%, transparent 20%),
+    radial-gradient(circle at 79% 7%, color-mix(in srgb, var(--ema-text-tertiary) 14%, transparent) 0 78%, transparent 78%),
+    linear-gradient(135deg, color-mix(in srgb, var(--ema-info) 50%, transparent), color-mix(in srgb, var(--ema-violet) 50%, transparent));
+  background-size: 100% 100%;
+}
+
+.ema-card-decorate--starfield::after {
+  background-image:
+    radial-gradient(circle at 29% 55%, color-mix(in srgb, var(--ema-violet) 30%, transparent) 0 4%, transparent 4%),
+    radial-gradient(circle at 85% 89%, color-mix(in srgb, var(--ema-info) 30%, transparent) 0 51%, transparent 51%),
+    radial-gradient(circle at 6% 90%, color-mix(in srgb, var(--ema-violet) 30%, transparent) 0 53%, transparent 53%),
+    linear-gradient(45deg, color-mix(in srgb, var(--ema-violet) 50%, transparent), color-mix(in srgb, var(--ema-info) 50%, transparent));
+  background-size: 100% 100%;
+}
+
+.ema-card-decorate--storage::after {
+  background-image:
+    radial-gradient(circle at top right,
+      color-mix(in srgb, var(--ema-primary) 100%, var(--ema-info)) 0 20%,
+      color-mix(in srgb, var(--ema-primary) 75%, var(--ema-info)) 20% 40%,
+      color-mix(in srgb, var(--ema-primary) 50%, var(--ema-info)) 40% 60%,
+      color-mix(in srgb, var(--ema-primary) 25%, var(--ema-info)) 60% 80%,
+      var(--ema-info) 80% 100%);
+  background-size: 100% 100%;
+  opacity: 0.5;
+}

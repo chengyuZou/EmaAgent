@@ -1,11 +1,26 @@
 // 展示当前 Session 的子智能体：已开启/完成分组列表与标签内详情导航。
+// 持久记录来自 Route；在途运行叠加 SSE 实时缓冲，终态后只剩持久记录。
 import { useState, useEffect, useMemo, useRef, type JSX, type CSSProperties } from 'react';
 import { Badge, Button, Spinner, type BadgeVariant } from '@ema-agent/ui';
-import { useAgentRunStore, type AgentRunState } from '../../../../stores/agentRun.js';
+import {
+  useAgentRunStore,
+  type LiveAgentRun,
+  type LiveTranscriptEntry,
+} from '../../../../stores/agentRun.js';
+import type { AgentRunSummary } from '../../../../api/agentRuns.js';
 import type { AgentRunMessage } from '@ema-agent/agent';
 import type { ToolResult } from '@ema-agent/tools';
 
 const TERMINAL_PAGE_SIZE = 10;
+
+type AgentRunStatusValue = AgentRunSummary['status'];
+
+/** 列表行：持久记录与实时缓冲可同时存在（在途运行刚落库后两者都有）。 */
+interface AgentRunRowData {
+  readonly id: string;
+  readonly record?: AgentRunSummary;
+  readonly live?: LiveAgentRun;
+}
 
 export interface AgentRunPanelProps {
   sessionId: string | null;
@@ -16,6 +31,7 @@ export interface AgentRunPanelProps {
 
 export function AgentRunPanel({ sessionId, className = '', initialDetailId }: AgentRunPanelProps): JSX.Element {
   const runs           = useAgentRunStore((s) => s.runs);
+  const live           = useAgentRunStore((s) => s.live);
   const loadForSession = useAgentRunStore((s) => s.loadForSession);
 
   const [detailId, setDetailId] = useState<string | null>(initialDetailId ?? null);
@@ -25,15 +41,23 @@ export function AgentRunPanel({ sessionId, className = '', initialDetailId }: Ag
     if (sessionId) void loadForSession(sessionId);
   }, [sessionId, loadForSession]);
 
-  const sessionRuns = useMemo(() => {
-    const all = sessionId
-      ? [...runs.values()].filter((run) => run.sessionId === sessionId)
-      : [];
-    return all.sort((a, b) => b.createdAt - a.createdAt);
-  }, [runs, sessionId]);
+  const sessionRows = useMemo(() => {
+    const byId = new Map<string, AgentRunRowData>();
+    if (sessionId) {
+      for (const run of runs.values()) {
+        if (run.sessionId === sessionId) byId.set(run.id, { id: run.id, record: run });
+      }
+      for (const [id, entry] of live) {
+        if (entry.sessionId === sessionId) byId.set(id, { ...byId.get(id), id, live: entry });
+      }
+    }
+    return [...byId.values()].sort(
+      (a, b) => rowTime(b) - rowTime(a),
+    );
+  }, [runs, live, sessionId]);
 
-  const running  = sessionRuns.filter((run) => run.status === 'running');
-  const terminal = sessionRuns.filter((run) => run.status !== 'running');
+  const running  = sessionRows.filter((row) => rowStatus(row) === 'running');
+  const terminal = sessionRows.filter((row) => rowStatus(row) !== 'running');
 
   if (detailId) {
     return (
@@ -53,8 +77,8 @@ export function AgentRunPanel({ sessionId, className = '', initialDetailId }: Ag
         <p className="px-3 py-1.5 text-xs text-[var(--ema-text-tertiary)]">没有已开启的子代理</p>
       ) : (
         <div className="flex flex-col gap-1">
-          {running.map((run, i) => (
-            <AgentRunRow key={run.id} run={run} staggerIndex={i} onOpen={() => setDetailId(run.id)} />
+          {running.map((row, i) => (
+            <AgentRunRow key={row.id} row={row} staggerIndex={i} onOpen={() => setDetailId(row.id)} />
           ))}
         </div>
       )}
@@ -66,12 +90,12 @@ export function AgentRunPanel({ sessionId, className = '', initialDetailId }: Ag
             <SectionLabel>{`完成 · ${terminal.length}`}</SectionLabel>
           </div>
           <div className="flex flex-col gap-1">
-            {terminal.slice(0, visibleCount).map((run, i) => (
+            {terminal.slice(0, visibleCount).map((row, i) => (
               <AgentRunRow
-                key={run.id}
-                run={run}
+                key={row.id}
+                row={row}
                 staggerIndex={running.length + i}
-                onOpen={() => setDetailId(run.id)}
+                onOpen={() => setDetailId(row.id)}
               />
             ))}
           </div>
@@ -91,6 +115,14 @@ export function AgentRunPanel({ sessionId, className = '', initialDetailId }: Ag
   );
 }
 
+function rowStatus(row: AgentRunRowData): AgentRunStatusValue {
+  return row.live ? 'running' : row.record?.status ?? 'running';
+}
+
+function rowTime(row: AgentRunRowData): number {
+  return row.record?.createdAt ?? row.live?.startedAtMs ?? 0;
+}
+
 function SectionLabel({ children }: { children: string }): JSX.Element {
   return (
     <div className="px-2 pt-0.5 pb-0.5 text-xs font-medium tracking-wider uppercase text-[var(--ema-text-tertiary)]">
@@ -102,25 +134,27 @@ function SectionLabel({ children }: { children: string }): JSX.Element {
 // ── 列表行 ────────────────────────────────────────────────────────────────────
 
 function AgentRunRow({
-  run, onOpen, staggerIndex = 0,
+  row, onOpen, staggerIndex = 0,
 }: {
-  run: AgentRunState;
+  row: AgentRunRowData;
   onOpen(): void;
   staggerIndex?: number;
 }): JSX.Element {
-  const { icon, color } = statusMeta(run.status);
-  const isRunning = run.status === 'running';
+  const status = rowStatus(row);
+  const { icon, color } = statusMeta(status);
 
-  const title = run.description ?? run.live?.promptExcerpt ?? run.modelId ?? '子智能体';
-  const summary = run.live
-    ? `轮次 ${run.live.iteration} · 工具 ${run.live.toolCallCount} · ${formatElapsed(run.live.elapsedMs)}`
-    : run.error
-      ?? run.outputExcerpt
-      ?? [
-        run.iterations != null ? `${run.iterations} 轮次` : null,
-        run.toolCallCount != null ? `${run.toolCallCount} 个工具` : null,
-      ].filter(Boolean).join(' · ');
-  const at = run.completedAt ?? run.updatedAt;
+  const title = row.record?.description ?? row.live?.description
+    ?? row.record?.modelId ?? row.live?.modelId ?? '子智能体';
+  const summary = row.live
+    ? `轮次 ${row.live.iteration} · 工具 ${row.live.toolCallCount}`
+    : row.record
+      ? (row.record.error
+          ?? [
+            row.record.iterations != null ? `${row.record.iterations} 轮次` : null,
+            row.record.toolCallCount != null ? `${row.record.toolCallCount} 个工具` : null,
+          ].filter(Boolean).join(' · '))
+      : '';
+  const at = row.record?.completedAt ?? row.record?.updatedAt ?? row.live?.startedAtMs;
 
   return (
     <div
@@ -128,7 +162,7 @@ function AgentRunRow({
       style={{ '--stagger-i': staggerIndex } as CSSProperties}
       onClick={onOpen}
     >
-      {isRunning && <div className="ema-running-bar" />}
+      {status === 'running' && <div className="ema-running-bar" />}
       <div className="flex items-start gap-2 px-2.5 py-2 flex-1 min-w-0">
         <span className={`mt-0.5 text-base shrink-0 ${icon}`} style={{ color }} aria-hidden />
         <div className="flex-1 min-w-0">
@@ -141,9 +175,11 @@ function AgentRunRow({
             </p>
           )}
         </div>
-        <span className="shrink-0 mt-0.5 text-[10px] tabular-nums text-[var(--ema-text-tertiary)]">
-          {formatRelativeTime(at)}
-        </span>
+        {at !== undefined && (
+          <span className="shrink-0 mt-0.5 text-[10px] tabular-nums text-[var(--ema-text-tertiary)]">
+            {formatRelativeTime(at)}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -158,8 +194,11 @@ function AgentRunDetail({
   className?: string;
   onBack(): void;
 }): JSX.Element {
-  const run = useAgentRunStore((s) => s.runs.get(agentRunId));
-  const { icon, color } = statusMeta(run?.status ?? 'cancelled');
+  const record = useAgentRunStore((s) => s.runs.get(agentRunId));
+  const live   = useAgentRunStore((s) => s.live.get(agentRunId));
+  const status: AgentRunStatusValue = live ? 'running' : record?.status ?? 'cancelled';
+  const { icon, color } = statusMeta(status);
+  const exists = record !== undefined || live !== undefined;
 
   return (
     <div className={`flex flex-col min-h-0 h-full ${className}`}>
@@ -168,47 +207,46 @@ function AgentRunDetail({
         <Button variant="ghost" size="sm" className="px-1.5 text-[var(--ema-text-tertiary)]" onClick={onBack}>
           <span className="i-lucide:arrow-left text-sm" aria-hidden />
         </Button>
-        {run && (
+        {exists && (
           <>
             <span className={`text-sm shrink-0 ${icon}`} style={{ color }} aria-hidden />
             <span className="text-xs font-medium truncate text-[var(--ema-text-primary)]">
-              {run.description ?? run.live?.promptExcerpt ?? '子智能体'}
+              {record?.description ?? live?.description ?? '子智能体'}
             </span>
-            <Badge variant={STATUS_BADGE_VARIANT[run.status]} dot={run.status === 'running'}>
-              {STATUS_LABEL[run.status]}
+            <Badge variant={STATUS_BADGE_VARIANT[status]} dot={status === 'running'}>
+              {STATUS_LABEL[status]}
             </Badge>
           </>
         )}
       </div>
 
-      {run === undefined ? (
+      {!exists ? (
         <div className="flex-1 flex items-center justify-center text-xs text-[var(--ema-text-tertiary)]">
           该执行记录不存在或已被清理
         </div>
       ) : (
         <>
-          {/* 事实行：模型、轮次、工具、tokens、耗时——全部来自持久记录 */}
+          {/* 事实行：模型、轮次、工具、tokens、耗时——持久记录与实时缓冲各自如实呈现 */}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 px-3 py-1.5 shrink-0 text-[11px] text-[var(--ema-text-tertiary)] border-b border-[var(--ema-border)]">
-            <span>{run.live?.model ?? run.modelId ?? 'subagent'}</span>
-            {run.live && (
+            <span>{live?.modelId ?? record?.modelId ?? 'subagent'}</span>
+            {live && (
               <>
-                <span>轮次 {run.live.iteration}</span>
-                <span>工具 {run.live.toolCallCount}</span>
-                <span>{formatElapsed(run.live.elapsedMs)}</span>
+                <span>轮次 {live.iteration}</span>
+                <span>工具 {live.toolCallCount}</span>
               </>
             )}
-            {!run.live && run.iterations != null && <span>{run.iterations} 轮次</span>}
-            {!run.live && run.toolCallCount != null && <span>{run.toolCallCount} 个工具</span>}
-            {run.inputTokens != null && (
-              <span>{((run.inputTokens + (run.outputTokens ?? 0)) / 1000).toFixed(1)}k tokens</span>
+            {!live && record?.iterations != null && <span>{record.iterations} 轮次</span>}
+            {!live && record?.toolCallCount != null && <span>{record.toolCallCount} 个工具</span>}
+            {record?.inputTokens != null && (
+              <span>{((record.inputTokens + (record.outputTokens ?? 0)) / 1000).toFixed(1)}k tokens</span>
             )}
-            {run.completedAt != null && (
-              <span>{formatElapsed(run.completedAt - run.createdAt)}</span>
+            {record?.completedAt != null && (
+              <span>{formatElapsed(record.completedAt - record.createdAt)}</span>
             )}
           </div>
-          {run.error && (
+          {record?.error && (
             <p className="px-3 py-1.5 shrink-0 text-xs truncate text-[var(--ema-danger-text)] border-b border-[var(--ema-border)]">
-              {run.error}
+              {record.error}
             </p>
           )}
 
@@ -224,11 +262,32 @@ function AgentRunDetail({
 
 function AgentRunTranscript({ agentRunId }: { agentRunId: string }): JSX.Element {
   const loadTranscript = useAgentRunStore((s) => s.loadTranscript);
+  const liveEntries    = useAgentRunStore((s) => s.liveTranscripts.get(agentRunId));
   const messages       = useAgentRunStore((s) => s.transcripts.get(agentRunId));
 
   useEffect(() => {
-    void loadTranscript(agentRunId);
-  }, [agentRunId, loadTranscript]);
+    // 在途运行渲染实时缓冲；缓冲不存在时才需要持久回放。
+    if (liveEntries === undefined && messages === undefined) void loadTranscript(agentRunId);
+  }, [agentRunId, liveEntries, messages, loadTranscript]);
+
+  if (liveEntries !== undefined) {
+    if (liveEntries.length === 0) {
+      return (
+        <div className="py-3 px-3 text-xs text-center text-[var(--ema-text-tertiary)]">
+          等待执行输出…
+        </div>
+      );
+    }
+    return (
+      <div className="flex flex-col gap-0.5 px-3 py-2">
+        {liveEntries.map((entry, index) => (
+          <div key={`${entry.role}-${index}`} className="ema-timeline-row">
+            <TranscriptRow entry={entry} />
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   if (messages === null || messages === undefined) {
     return (
@@ -250,7 +309,7 @@ function AgentRunTranscript({ agentRunId }: { agentRunId: string }): JSX.Element
     <div className="flex flex-col gap-0.5 px-3 py-2">
       {messages.map((msg) => (
         <div key={msg.id} className="ema-timeline-row">
-          <TranscriptRow msg={msg} />
+          <TranscriptRow entry={msg} />
         </div>
       ))}
     </div>
@@ -310,28 +369,31 @@ function ReasoningBlock({ text }: { text: string }): JSX.Element {
   );
 }
 
-function TranscriptRow({ msg }: { msg: AgentRunMessage }): JSX.Element | null {
-  switch (msg.role) {
+/** 两种真实来源同一渲染：实时缓冲条目（平铺字段）或持久 AgentRunMessage（content 嵌套）。 */
+function TranscriptRow({ entry }: { entry: LiveTranscriptEntry | AgentRunMessage }): JSX.Element | null {
+  switch (entry.role) {
     case 'reasoning':
-      return <ReasoningBlock text={msg.content.text} />;
+      return <ReasoningBlock text={'content' in entry ? entry.content.text : entry.text} />;
 
     case 'assistant':
       return (
         <p className="text-xs py-1 whitespace-pre-wrap break-words selectable text-[var(--ema-text-primary)]">
-          {msg.content.text}
+          {'content' in entry ? entry.content.text : entry.text}
         </p>
       );
 
-    case 'tool_call':
+    case 'tool_call': {
+      const name = 'content' in entry ? entry.content.name : entry.name;
       return (
         <div className="flex items-center gap-1.5 py-0.5">
           <span className="i-lucide:square-code text-sm flex-shrink-0 text-[var(--ema-primary)]" />
-          <span className="text-xs font-mono text-[var(--ema-primary)]">{msg.content.name}</span>
+          <span className="text-xs font-mono text-[var(--ema-primary)]">{name}</span>
         </div>
       );
+    }
 
     case 'tool_result': {
-      const result = msg.content;
+      const result: ToolResult = 'content' in entry ? entry.content : entry.result;
       const excerpt = toolResultExcerpt(result.content);
       return (
         <div className="flex items-start gap-1.5 py-0.5">
@@ -362,14 +424,14 @@ function toolResultExcerpt(content: ToolResult['content']): string {
   return text && 'text' in text ? text.text : '';
 }
 
-const STATUS_LABEL: Record<AgentRunState['status'], string> = {
+const STATUS_LABEL: Record<AgentRunStatusValue, string> = {
   running:      '运行中',
   completed:    '已完成',
   failed:       '失败',
   cancelled:    '已取消',
 };
 
-const STATUS_BADGE_VARIANT: Record<AgentRunState['status'], BadgeVariant> = {
+const STATUS_BADGE_VARIANT: Record<AgentRunStatusValue, BadgeVariant> = {
   running:      'primary',
   completed:    'success',
   failed:       'danger',
@@ -378,7 +440,7 @@ const STATUS_BADGE_VARIANT: Record<AgentRunState['status'], BadgeVariant> = {
 
 type StatusMeta = { icon: string; color: string };
 
-function statusMeta(status: AgentRunState['status']): StatusMeta {
+function statusMeta(status: AgentRunStatusValue): StatusMeta {
   switch (status) {
     case 'running':      return { icon: 'i-lucide:loader-circle animate-spin', color: 'var(--ema-primary)' };
     case 'completed':    return { icon: 'i-lucide:circle-check', color: 'var(--ema-success)' };

@@ -220,7 +220,7 @@ function StageResource({
 }): JSX.Element {
   const handleRef = useRef<Live2DStageHandle | null>(null);
   const [readyStage, setReadyStage] = useState<ActiveLive2DStage | null>(null);
-  const sourcePath = runtimeSource(mounted.candidate.sourcePath);
+  const sourcePath = runtimeSource(mounted.candidate.file);
 
   const handleChanged = useCallback((handle: Live2DStageHandle | null): void => {
     handleRef.current = handle;
@@ -277,8 +277,8 @@ function candidateKey(candidate: CharacterStageCandidate): string {
   return [
     candidate.kind,
     candidate.resourceId,
-    candidate.resourceRevision,
-    candidate.sourcePath,
+    String(candidate.updatedAt),
+    candidate.file,
   ].join(':');
 }
 

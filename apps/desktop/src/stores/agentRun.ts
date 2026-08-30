@@ -1,4 +1,4 @@
-// 管理各 Session 的 AgentRun 持久记录、实时进度与执行内容。
+// AgentRun 持久记录只由 Route 响应写入；agent_run_* SSE 事件只写实时缓冲，终态即弃。
 // AgentRun 记录只读：终态清理由 Session 生命周期负责，前端不提供删除入口。
 import { create } from 'zustand';
 import {
@@ -6,48 +6,58 @@ import {
   type AgentRunSummary,
 } from '../api/agentRuns.js';
 import type { AgentRunMessage } from '@ema-agent/agent';
+import type { ToolResult } from '@ema-agent/tools';
 
-export interface LiveAgentRunInfo {
-  startedAtMs: number;
-  promptExcerpt: string;
-  model: string;
-  iteration: number;
-  toolCallCount: number;
-  elapsedMs: number;
+/** 在途运行的实时缓冲：只保存 agent_run_* 事件已经给出的字段。 */
+export interface LiveAgentRun {
+  readonly sessionId: string;
+  readonly startedAtMs: number;
+  readonly description?: string;
+  readonly modelId?: string;
+  readonly iteration: number;
+  readonly toolCallCount: number;
 }
 
-export interface AgentRunState extends AgentRunSummary {
-  /** 只保存当前进程收到的高频进度；持久字段仍以 AgentRun Route 记录为准。 */
-  live?: LiveAgentRunInfo;
-}
+/** 在途 transcript 条目：纯展示缓冲；持久回放由 transcript Route 提供。 */
+export type LiveTranscriptEntry =
+  | { readonly role: 'assistant' | 'reasoning'; readonly blockIndex: number; readonly text: string }
+  | { readonly role: 'tool_call'; readonly blockIndex: number; readonly callId: string; readonly name: string; readonly args: unknown }
+  | { readonly role: 'tool_result'; readonly result: ToolResult };
 
 export interface AgentRunStoreState {
-  runs: Map<string, AgentRunState>;
+  /** 持久记录，唯一写入方是 Route 响应。 */
+  runs: Map<string, AgentRunSummary>;
+  /** 在途运行的实时进度，唯一写入方是 agent_run_* 事件。 */
+  live: Map<string, LiveAgentRun>;
+  /** 持久 transcript 回放；null = 加载中。 */
   transcripts: Map<string, AgentRunMessage[] | null>;
+  /** 在途 transcript 流式缓冲，随 agent_run_started 建立、终态清除。 */
+  liveTranscripts: Map<string, LiveTranscriptEntry[]>;
   loadingSessions: Set<string>;
-  eventRevisions: Map<string, number>;
   error: string | null;
 
   loadForSession(sessionId: string): Promise<void>;
-  upsert(run: Partial<AgentRunState> & { id: string }): void;
+  /** 终态事件后重读单条持久记录；返回是否成功（失败由调用方决定兜底）。 */
+  refreshRun(agentRunId: string): Promise<boolean>;
+  /** agent_run_started：建立实时缓冲并重读刚落库的记录行。 */
+  startLive(run: LiveAgentRun & { readonly id: string }): void;
+  patchLive(agentRunId: string, patch: Partial<Pick<LiveAgentRun, 'iteration' | 'toolCallCount'>>): void;
+  appendLiveTranscript(agentRunId: string, entry: LiveTranscriptEntry): void;
+  /** 终态：丢弃实时缓冲、让 transcript 缓存失效，并重读持久记录。 */
+  finishLive(agentRunId: string): void;
   loadTranscript(agentRunId: string): Promise<void>;
-  appendLiveTranscript(
-    agentRunId: string,
-    role: AgentRunMessage['role'],
-    content: AgentRunMessage['content'],
-  ): void;
   evictSession(sessionId: string): void;
 }
 
 export const useAgentRunStore = create<AgentRunStoreState>((set, get) => ({
   runs: new Map(),
+  live: new Map(),
   transcripts: new Map(),
+  liveTranscripts: new Map(),
   loadingSessions: new Set(),
-  eventRevisions: new Map(),
   error: null,
 
   async loadForSession(sessionId) {
-    const revisionAtStart = get().eventRevisions.get(sessionId) ?? 0;
     set((state) => ({
       loadingSessions: addValue(state.loadingSessions, sessionId),
       error: null,
@@ -55,28 +65,20 @@ export const useAgentRunStore = create<AgentRunStoreState>((set, get) => ({
 
     try {
       const { items } = await agentRunsApi.list(sessionId);
-      const currentRevision = get().eventRevisions.get(sessionId) ?? 0;
-
-      // HTTP 请求发出后若已有实时事件到达，较早的响应不能覆盖刚更新的运行态。
-      if (currentRevision !== revisionAtStart) {
-        set((state) => ({
-          loadingSessions: withoutValue(state.loadingSessions, sessionId),
-        }));
-        await get().loadForSession(sessionId);
-        return;
-      }
-
       set((state) => {
+        const incomingIds = new Set(items.map((item) => item.id));
         const next = new Map(state.runs);
         for (const [id, run] of next) {
-          if (run.sessionId === sessionId) next.delete(id);
+          // 只删快照里确实不存在的行；快照携带的行走下方逐行新旧守卫，
+          // 有实时缓冲的行必然比任何列表快照新，不能被快照的缺失删除。
+          if (run.sessionId === sessionId && !incomingIds.has(id) && !state.live.has(id)) {
+            next.delete(id);
+          }
         }
         for (const run of items) {
-          const live = next.get(run.id)?.live;
-          next.set(
-            run.id,
-            live && run.status === 'running' ? { ...run, live } : { ...run },
-          );
+          // 快照行比现有记录旧（完成态已先由 refreshRun 落地）时丢弃，防终态倒退。
+          const existing = next.get(run.id);
+          if (!existing || run.updatedAt >= existing.updatedAt) next.set(run.id, run);
         }
         return {
           runs: next,
@@ -91,33 +93,92 @@ export const useAgentRunStore = create<AgentRunStoreState>((set, get) => ({
     }
   },
 
-  upsert(partial) {
-    set((state) => {
-      const next = new Map(state.runs);
-      const existing = next.get(partial.id);
-      const sessionId = partial.sessionId ?? existing?.sessionId;
+  async refreshRun(agentRunId) {
+    try {
+      const run = await agentRunsApi.get(agentRunId);
+      set((state) => {
+        const existing = state.runs.get(run.id);
+        if (existing && run.updatedAt < existing.updatedAt) return {};
+        const next = new Map(state.runs);
+        next.set(run.id, run);
+        return { runs: next };
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  },
 
-      // 持久记录有版本时拒绝回退；SSE 高频进度没有版本，仍可合并 live 字段。
-      if (
-        partial.version !== undefined
-        && existing?.version !== undefined
-        && partial.version <= existing.version
-      ) {
-        return sessionId
-          ? { eventRevisions: incrementRevision(state.eventRevisions, sessionId) }
-          : {};
+  startLive(run) {
+    set((state) => {
+      const live = new Map(state.live);
+      live.set(run.id, {
+        sessionId: run.sessionId,
+        startedAtMs: run.startedAtMs,
+        ...(run.description !== undefined ? { description: run.description } : {}),
+        ...(run.modelId !== undefined ? { modelId: run.modelId } : {}),
+        iteration: run.iteration,
+        toolCallCount: run.toolCallCount,
+      });
+      const liveTranscripts = new Map(state.liveTranscripts);
+      liveTranscripts.set(run.id, []);
+      return { live, liveTranscripts };
+    });
+    // 记录行先于事件落库，这里直接能读到真实的 running 行。
+    void get().refreshRun(run.id);
+  },
+
+  patchLive(agentRunId, patch) {
+    set((state) => {
+      const existing = state.live.get(agentRunId);
+      if (!existing) return {};
+      const live = new Map(state.live);
+      live.set(agentRunId, { ...existing, ...patch });
+      return { live };
+    });
+  },
+
+  appendLiveTranscript(agentRunId, entry) {
+    set((state) => {
+      const existing = state.liveTranscripts.get(agentRunId);
+      if (!existing) return {};
+
+      // 同一块的流式 delta 连续到达，按 blockIndex 合并。
+      if (entry.role === 'assistant' || entry.role === 'reasoning') {
+        const last = existing[existing.length - 1];
+        if (last && last.role === entry.role && 'text' in last && last.blockIndex === entry.blockIndex) {
+          const merged: LiveTranscriptEntry = {
+            role: entry.role,
+            blockIndex: entry.blockIndex,
+            text: last.text + entry.text,
+          };
+          const liveTranscripts = new Map(state.liveTranscripts);
+          liveTranscripts.set(agentRunId, [...existing.slice(0, -1), merged]);
+          return { liveTranscripts };
+        }
       }
 
-      next.set(
-        partial.id,
-        { ...(existing ?? {} as AgentRunState), ...partial } as AgentRunState,
-      );
-      return {
-        runs: next,
-        ...(sessionId
-          ? { eventRevisions: incrementRevision(state.eventRevisions, sessionId) }
-          : {}),
-      };
+      const liveTranscripts = new Map(state.liveTranscripts);
+      liveTranscripts.set(agentRunId, [...existing, entry]);
+      return { liveTranscripts };
+    });
+  },
+
+  finishLive(agentRunId) {
+    const sessionId = get().live.get(agentRunId)?.sessionId
+      ?? get().runs.get(agentRunId)?.sessionId;
+    set((state) => {
+      const live = new Map(state.live);
+      live.delete(agentRunId);
+      const liveTranscripts = new Map(state.liveTranscripts);
+      liveTranscripts.delete(agentRunId);
+      const transcripts = new Map(state.transcripts);
+      transcripts.delete(agentRunId);
+      return { live, liveTranscripts, transcripts };
+    });
+    // 单条刷新失败时整刷兜底，不让记录永远停在 running。
+    void get().refreshRun(agentRunId).then((ok) => {
+      if (!ok && sessionId) void get().loadForSession(sessionId);
     });
   },
 
@@ -143,67 +204,31 @@ export const useAgentRunStore = create<AgentRunStoreState>((set, get) => ({
     }
   },
 
-  appendLiveTranscript(agentRunId, role, content) {
-    set((state) => {
-      const transcripts = new Map(state.transcripts);
-      const existing = transcripts.get(agentRunId) ?? [];
-
-      // 同 role 相邻文本块增量合并（流式 delta 逐块到达）；保留块身份 blockIndex。
-      if ((role === 'assistant' || role === 'reasoning') && 'text' in content) {
-        const last = existing[existing.length - 1];
-        if (last?.role === role && 'text' in last.content) {
-          const merged: AgentRunMessage = {
-            ...last,
-            content: { blockIndex: last.content.blockIndex, text: last.content.text + content.text },
-          };
-          transcripts.set(agentRunId, [...existing.slice(0, -1), merged]);
-          return { transcripts };
-        }
-      }
-
-      const lastSequence = existing[existing.length - 1]?.sequence ?? 0;
-      const base = {
-        id: `live-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        agentRunId,
-        sequence: lastSequence + 1,
-        createdAt: Date.now(),
-      };
-      let message: AgentRunMessage;
-      switch (role) {
-        case 'assistant':
-        case 'reasoning':
-          if (!('text' in content)) return {};
-          message = { ...base, role, content };
-          break;
-        case 'tool_call':
-          if (!('callId' in content)) return {};
-          message = { ...base, role, content };
-          break;
-        case 'tool_result':
-          if (!('type' in content)) return {};
-          message = { ...base, role, content };
-          break;
-      }
-      transcripts.set(agentRunId, [...existing, message]);
-      return { transcripts };
-    });
-  },
-
   evictSession(sessionId) {
     set((state) => {
       const runs = new Map(state.runs);
+      const live = new Map(state.live);
       const transcripts = new Map(state.transcripts);
+      const liveTranscripts = new Map(state.liveTranscripts);
       for (const [id, run] of runs) {
         if (run.sessionId === sessionId) {
           runs.delete(id);
           transcripts.delete(id);
+          liveTranscripts.delete(id);
+        }
+      }
+      for (const [id, entry] of live) {
+        if (entry.sessionId === sessionId) {
+          live.delete(id);
+          liveTranscripts.delete(id);
         }
       }
       return {
         runs,
+        live,
         transcripts,
+        liveTranscripts,
         loadingSessions: withoutValue(state.loadingSessions, sessionId),
-        eventRevisions: withoutKey(state.eventRevisions, sessionId),
       };
     });
   },
@@ -224,14 +249,5 @@ function withoutValue<T>(values: Set<T>, value: T): Set<T> {
 function withoutKey<K, V>(values: Map<K, V>, key: K): Map<K, V> {
   const next = new Map(values);
   next.delete(key);
-  return next;
-}
-
-function incrementRevision(
-  revisions: Map<string, number>,
-  sessionId: string,
-): Map<string, number> {
-  const next = new Map(revisions);
-  next.set(sessionId, (next.get(sessionId) ?? 0) + 1);
   return next;
 }
