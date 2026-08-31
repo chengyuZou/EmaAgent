@@ -1,11 +1,6 @@
 // 验证搜索适配层: 后端选择、共享过滤/归一/去重、Bing HTML 解析与错误映射, 不发起网络请求。
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import {
-  PublicHttpLimitError,
-  PublicHttpStatusError,
-  PublicHttpTimeoutError,
-} from '@ema-agent/public-http';
-import {
   extractBingResults,
   resolveBingUrl,
 } from '../tools/WebSearchTool/adapters/bing.js';
@@ -16,6 +11,7 @@ import {
   resolveSearchProvider,
   RESULT_LIMIT,
 } from '../tools/WebSearchTool/adapters/index.js';
+import { SearchHttpStatusError } from '../tools/WebSearchTool/adapters/types.js';
 
 const ENV_KEYS = ['BRAVE_SEARCH_API_KEY', 'BRAVE_API_KEY'] as const;
 const originalEnv = new Map<string, string | undefined>();
@@ -176,7 +172,7 @@ describe('formatProviderError', () => {
   it('Brave 401/403 提示检查 API key', () => {
     const error = formatProviderError(
       'brave',
-      new PublicHttpStatusError(401, 'Unauthorized', 'https://api.search.brave.com/'),
+      new SearchHttpStatusError(401),
     );
     expect(error.message).toContain('Brave 搜索失败(401)');
     expect(error.message).toContain('API key');
@@ -185,7 +181,7 @@ describe('formatProviderError', () => {
   it('Bing 401 不提示 API key(无 key 后端)', () => {
     const error = formatProviderError(
       'bing',
-      new PublicHttpStatusError(401, 'Unauthorized', 'https://www.bing.com/'),
+      new SearchHttpStatusError(401),
     );
     expect(error.message).toBe('Bing 搜索失败(401)');
   });
@@ -193,20 +189,22 @@ describe('formatProviderError', () => {
   it('429 提示限流', () => {
     const error = formatProviderError(
       'bing',
-      new PublicHttpStatusError(429, 'Too Many Requests', 'https://www.bing.com/'),
+      new SearchHttpStatusError(429),
     );
     expect(error.message).toContain('Bing 搜索失败(429)');
     expect(error.message).toContain('限流');
   });
 
   it('超时给出明确提示', () => {
-    expect(formatProviderError('bing', new PublicHttpTimeoutError(30_000)).message)
+    const timeout = new Error('The operation timed out');
+    timeout.name = 'TimeoutError';
+    expect(formatProviderError('bing', timeout).message)
       .toContain('Bing 搜索超时');
   });
 
-  it('体积/重定向限制透出原始原因', () => {
-    expect(formatProviderError('bing', new PublicHttpLimitError('重定向次数超过 0 次')).message)
-      .toBe('Bing 搜索失败: 重定向次数超过 0 次');
+  it('体积限制透出原始原因', () => {
+    expect(formatProviderError('bing', new Error('搜索响应体超过 2097152 字节上限')).message)
+      .toBe('Bing 搜索失败: 搜索响应体超过 2097152 字节上限');
   });
 
   it('普通错误带上后端名', () => {

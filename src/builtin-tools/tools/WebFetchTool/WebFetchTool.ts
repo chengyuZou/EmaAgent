@@ -1,7 +1,6 @@
 // 在网络安全与响应大小边界内获取公开网页内容, 转换结果按 URL 缓存。
 import { z } from 'zod';
 import { findContentRule } from '@ema-agent/permission';
-import { isObviouslyUnsafePublicUrl } from '@ema-agent/public-http';
 import { buildTool, contextOk, type ToolInvocation } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { fetchPublicPage } from './httpClient.js';
@@ -70,14 +69,19 @@ export const WebFetchTool = buildTool<WebFetchInput, WebFetchResult, undefined>(
   getToolUseSummary: (input) => input.url,
 
   validateInput(input) {
-    return isObviouslyUnsafePublicUrl(input.url)
-      ? {
-          valid: false,
-          code: 'web_fetch/unsafe_url',
-          message: 'URL 指向本机、私网或不受支持的协议，不能发送公网请求。',
-          retryable: false,
-        }
-      : { valid: true };
+    // 只校验 URL 是合法 http/https；其余交给权限规则。
+    try {
+      const url = new URL(input.url);
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('bad protocol');
+      return { valid: true };
+    } catch {
+      return {
+        valid: false,
+        code: 'web_fetch/invalid_url',
+        message: 'URL 必须是合法的 http/https 地址。',
+        retryable: false,
+      };
+    }
   },
 
   // 域名内容规则(用户显式 deny/ask/allow 优先) → 预批准域名 → passthrough(中央收口)。
@@ -122,7 +126,7 @@ export const WebFetchTool = buildTool<WebFetchInput, WebFetchResult, undefined>(
     return { behavior: 'passthrough', message: '获取网页需要用户确认' };
   },
 
-  // 本工具不消费宿主能力: 网络边界由 public-http 提供, 无需窄 Context。
+  // 本工具不消费宿主能力: 无需窄 Context。
   validateContext() {
     return contextOk(undefined);
   },

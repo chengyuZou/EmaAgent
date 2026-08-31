@@ -23,7 +23,6 @@
   },
   "dependencies": {
     "@ema-agent/llm": "workspace:*",
-    "@ema-agent/public-http": "workspace:*",
     "@ema-agent/storage": "workspace:*",
     "@ema-agent/tools": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.29.0",

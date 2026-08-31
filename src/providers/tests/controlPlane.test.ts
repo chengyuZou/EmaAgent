@@ -1,7 +1,8 @@
-// 测试自建 Provider 创建、一把 key 解析连接、update 的 key 语义与模型池来源事实。
+// 测试自建 Provider 创建（按能力分区、id 缺省生成）、一把 key 解析连接、update 的能力 delta 与目录落行。
 import { describe, expect, it } from 'vitest';
 import {
   ModelBindings,
+  ModelsDevCatalog,
   ProviderModels,
   Providers,
   type ModelBinding,
@@ -38,6 +39,24 @@ function createProviders(store: MemoryProviderStore, bindings: ModelBinding[] = 
   );
 }
 
+/** 测试目录：acme-pro 参数齐全；acme-nolimit 缺 contextWindow（不可落行）。 */
+function createTestCatalog(): ModelsDevCatalog {
+  const catalog = new ModelsDevCatalog();
+  catalog.loadFromJson({
+    acme: {
+      models: {
+        'acme-pro': {
+          id: 'acme-pro', name: 'Acme Pro', reasoning: true, tool_call: true,
+          modalities: { input: ['text'], output: ['text'] },
+          limit: { context: 128_000, output: 8_000 },
+        },
+        'acme-nolimit': { id: 'acme-nolimit' },
+      },
+    },
+  });
+  return catalog;
+}
+
 /** 模型池 + 绑定的内存接线。 */
 function createModelStack(store: MemoryProviderStore) {
   const modelRows = new Map<string, ProviderModel>();
@@ -46,6 +65,10 @@ function createModelStack(store: MemoryProviderStore) {
       modelRows.get(`${providerId}/${capability}/${modelId}`),
     listByProvider: () => [], listByCapability: () => [],
     save: (model: ProviderModel) => modelRows.set(`${model.providerId}/${model.capability}/${model.modelId}`, model),
+    setEnabled: (providerId: string, capability: ProviderModel['capability'], modelId: string, enabled: boolean) => {
+      const row = modelRows.get(`${providerId}/${capability}/${modelId}`);
+      if (row) modelRows.set(`${providerId}/${capability}/${modelId}`, { ...row, enabled });
+    },
     delete: (providerId: string, capability: ProviderModel['capability'], modelId: string) => {
       modelRows.delete(`${providerId}/${capability}/${modelId}`);
     },
@@ -59,11 +82,9 @@ function createModelStack(store: MemoryProviderStore) {
     delete: (module: ModelBinding['module']) => { bindingRows.delete(module); },
   };
   return {
-    models: new ProviderModels(store, modelStore),
+    models: new ProviderModels(store, modelStore, createTestCatalog(), bindingStore),
     bindings: new ModelBindings(modelStore, bindingStore),
-    plant: (model: ProviderModel) => {
-      modelRows.set(`${model.providerId}/${model.capability}/${model.modelId}`, model);
-    },
+    modelRows,
   };
 }
 
@@ -77,11 +98,11 @@ describe('Provider 控制面', () => {
       name: 'My Gateway',
       authType: 'bearer',
       key: 'sk-gateway',
-      capabilities: [{
+      capability: {
         capability: 'llm',
         protocol: 'openai-llm',
         baseUrl: 'https://gateway.example/v1',
-      }],
+      },
     });
 
     expect(providers.resolveConnection('my-gateway', 'llm')).toEqual({
@@ -99,14 +120,40 @@ describe('Provider 控制面', () => {
       id: 'my-gateway',
       name: 'My Gateway',
       authType: 'bearer' as const,
-      capabilities: [{
+      capability: {
         capability: 'llm' as const,
         protocol: 'openai-llm' as const,
         baseUrl: 'https://gateway.example/v1',
-      }],
+      },
     };
     providers.create(input);
     expect(() => providers.create(input)).toThrow(/已存在/);
+  });
+
+  it('id 是语义 slug：用户显式给定；非法/空值创建被拒', () => {
+    const store = new MemoryProviderStore();
+    const providers = createProviders(store);
+
+    const created = providers.create({
+      id: 'company-gateway',
+      name: 'Company Gateway',
+      authType: 'none',
+      capability: { capability: 'llm', protocol: 'openai-llm', baseUrl: 'http://localhost:8000/v1' },
+    });
+
+    expect(created.id).toBe('company-gateway');
+    expect(created.capabilities).toEqual([{
+      capability: 'llm',
+      activeProtocol: 'openai-llm',
+      protocols: [{ protocol: 'openai-llm', baseUrl: 'http://localhost:8000/v1' }],
+    }]);
+
+    expect(() => providers.create({
+      id: 'bad id!',
+      name: 'Bad',
+      authType: 'none',
+      capability: { capability: 'llm', protocol: 'openai-llm', baseUrl: 'http://localhost/v1' },
+    })).toThrow(/id/);
   });
 
   it('一个 Provider 一把 key：全能力共享；update 未提供 key 不动，null 清空', () => {
@@ -117,10 +164,15 @@ describe('Provider 控制面', () => {
       name: 'SiliconFlow Copy',
       authType: 'bearer',
       key: 'sk-main',
-      capabilities: [
-        { capability: 'llm', protocol: 'openai-llm', baseUrl: 'https://api.siliconflow.cn/v1' },
-        { capability: 'tts', protocol: 'openai-tts', baseUrl: 'https://api.siliconflow.cn/v1' },
-      ],
+      capability: {
+        capability: 'llm',
+        protocol: 'openai-llm',
+        baseUrl: 'https://api.siliconflow.cn/v1',
+      },
+    });
+    // 第二个能力走 update 追加（后端保留路径；不接 UI）
+    providers.update('siliconflow-copy', {
+      capability: { capability: 'tts', protocol: 'openai-tts', baseUrl: 'https://api.siliconflow.cn/v1' },
     });
 
     expect(providers.resolveConnection('siliconflow-copy', 'llm').apiKey).toBe('sk-main');
@@ -146,24 +198,24 @@ describe('Provider 控制面', () => {
       id: 'broken',
       name: 'Broken',
       authType: 'bearer',
-      capabilities: [{ capability: 'llm', protocol: 'openai-llm' }],
+      capability: { capability: 'llm', protocol: 'openai-llm' },
     })).toThrow(/baseUrl/);
     expect(() => providers.create({
       id: 'broken-2',
       name: 'Broken',
       authType: 'bearer',
-      capabilities: [{ capability: 'llm', baseUrl: 'https://example.com' }],
+      capability: { capability: 'llm', baseUrl: 'https://example.com' },
     })).toThrow(/协议/);
   });
 
-  it('模型绑定从统一模型事实中确认能力', () => {
+  it('模型绑定只接受已启用模型', () => {
     const store = new MemoryProviderStore();
     const providers = createProviders(store);
     providers.create({
       id: 'custom-main',
       name: 'Custom',
       authType: 'none',
-      capabilities: [{ capability: 'llm', protocol: 'openai-llm', baseUrl: 'http://localhost/v1' }],
+      capability: { capability: 'llm', protocol: 'openai-llm', baseUrl: 'http://localhost/v1' },
     });
 
     const { models, bindings } = createModelStack(store);
@@ -177,32 +229,146 @@ describe('Provider 控制面', () => {
       .toMatchObject({ capability: 'llm' });
     expect(() => bindings.set({ module: 'vision', providerId: 'custom-main', modelId: 'model-a' }))
       .toThrow(/vision/);
+
+    // 先解绑，再停用，之后新绑定被拒绝（只绑已启用）
+    bindings.delete('memory-llm');
+    models.setEnabled('custom-main', 'llm', 'model-a', false);
+    expect(() => bindings.set({ module: 'title', providerId: 'custom-main', modelId: 'model-a' }))
+      .toThrow(/已启用/);
   });
 
-  it('来源语义：手动新增为 user，编辑种子保留 seed；seed 不可删、user 可删', () => {
+  it('手填：新增 user 行默认启用；dev 行禁修改', () => {
     const store = new MemoryProviderStore();
     const providers = createProviders(store);
     providers.create({
       id: 'custom-main',
       name: 'Custom',
       authType: 'none',
-      capabilities: [{ capability: 'llm', protocol: 'openai-llm', baseUrl: 'http://localhost/v1' }],
+      capability: { capability: 'llm', protocol: 'openai-llm', baseUrl: 'http://localhost/v1' },
     });
-    const { models, plant } = createModelStack(store);
-    const input = {
-      providerId: 'custom-main', capability: 'llm' as const, modelId: 'model-a',
+    providers.update('custom-main', { capability: { capability: 'llm', modelsDevId: 'acme' } });
+    const { models } = createModelStack(store);
+
+    const manual = models.save({
+      providerId: 'custom-main', capability: 'llm', modelId: 'self-hosted',
       contextWindow: 32_000, maxOutput: null, toolCall: null,
       reasoning: null, temperature: null, inputImage: null,
-    };
+    });
+    expect(manual).toMatchObject({ source: 'user', enabled: true });
 
-    expect(models.save(input).source).toBe('user');
+    models.syncDevModels('custom-main', 'llm');
+    expect(() => models.save({
+      providerId: 'custom-main', capability: 'llm', modelId: 'acme-pro',
+      contextWindow: 32_000, maxOutput: null, toolCall: null,
+      reasoning: null, temperature: null, inputImage: null,
+    })).toThrow(/目录/);
+  });
 
-    plant({ ...input, modelId: 'seed-a', source: 'seed' });
-    models.save({ ...input, modelId: 'seed-a', contextWindow: 64_000 });
-    expect(models.get('custom-main', 'llm', 'seed-a').source).toBe('seed');
+  it('目录同步：新 spec 默认禁用；已有 dev 行参数对齐（enabled 不动）；手写行不动', () => {
+    const store = new MemoryProviderStore();
+    const providers = createProviders(store);
+    providers.create({
+      id: 'custom-main',
+      name: 'Custom',
+      authType: 'none',
+      capability: { capability: 'llm', protocol: 'openai-llm', baseUrl: 'http://localhost/v1' },
+    });
+    providers.update('custom-main', { capability: { capability: 'llm', modelsDevId: 'acme' } });
+    const { models } = createModelStack(store);
 
-    expect(() => models.delete('custom-main', 'llm', 'seed-a')).toThrow(/不能删除/);
+    models.save({
+      providerId: 'custom-main', capability: 'llm', modelId: 'acme-pro',
+      contextWindow: 1_000, maxOutput: null, toolCall: null,
+      reasoning: null, temperature: null, inputImage: null,
+    });
+
+    const synced = models.syncDevModels('custom-main', 'llm');
+    // 手写行（source='user'）不被目录覆盖
+    expect(models.get('custom-main', 'llm', 'acme-pro')).toMatchObject({
+      source: 'user', enabled: true, contextWindow: 1_000,
+    });
+    expect(synced.every((m) => m.modelId !== 'acme-nolimit')).toBe(true);
+
+    // 删掉手写行再同步：落为 dev 行且默认禁用
+    models.delete('custom-main', 'llm', 'acme-pro');
+    models.syncDevModels('custom-main', 'llm');
+    const devRow = models.get('custom-main', 'llm', 'acme-pro');
+    expect(devRow).toMatchObject({
+      name: 'Acme Pro', source: 'dev', enabled: false,
+      contextWindow: 128_000, maxOutput: 8_000, reasoning: true, toolCall: true,
+    });
+
+    // 启用后再同步：enabled 保留，参数以目录为准
+    models.setEnabled('custom-main', 'llm', 'acme-pro', true);
+    models.syncDevModels('custom-main', 'llm');
+    expect(models.get('custom-main', 'llm', 'acme-pro')).toMatchObject({ enabled: true, contextWindow: 128_000 });
+  });
+
+  it('删除协议档：删激活档自动切剩余第一档；删到最后一档被拒', () => {
+    const store = new MemoryProviderStore();
+    const providers = createProviders(store);
+    providers.create({
+      id: 'deepseek-copy',
+      name: 'DeepSeek Copy',
+      authType: 'bearer',
+      capability: {
+        capability: 'llm', protocol: 'openai-llm', baseUrl: 'https://api.deepseek.com',
+      },
+    });
+    providers.update('deepseek-copy', {
+      capability: {
+        capability: 'llm', protocol: 'anthropic-llm', baseUrl: 'https://api.deepseek.com/anthropic',
+      },
+    });
+
+    // 双档时删除激活档 openai-llm → 自动切到 anthropic-llm
+    providers.update('deepseek-copy', {
+      capability: { capability: 'llm', removedProtocols: ['openai-llm'] },
+    });
+    const capability = providers.get('deepseek-copy').capabilities[0]!;
+    expect(capability.activeProtocol).toBe('anthropic-llm');
+    expect(capability.protocols).toEqual([
+      { protocol: 'anthropic-llm', baseUrl: 'https://api.deepseek.com/anthropic' },
+    ]);
+
+    // 只剩一档时不许删
+    expect(() => providers.update('deepseek-copy', {
+      capability: { capability: 'llm', removedProtocols: ['anthropic-llm'] },
+    })).toThrow(/至少/);
+  });
+
+  it('守卫：停用/删除被绑定模型都抛 model_in_use 并带 conflicts', () => {    const store = new MemoryProviderStore();
+    const providers = createProviders(store);
+    providers.create({
+      id: 'custom-main',
+      name: 'Custom',
+      authType: 'none',
+      capability: { capability: 'llm', protocol: 'openai-llm', baseUrl: 'http://localhost/v1' },
+    });
+    const { models, bindings } = createModelStack(store);
+    models.save({
+      providerId: 'custom-main', capability: 'llm', modelId: 'model-a',
+      contextWindow: 32_000, maxOutput: null, toolCall: null,
+      reasoning: null, temperature: null, inputImage: null,
+    });
+    bindings.set({ module: 'memory-llm', providerId: 'custom-main', modelId: 'model-a' });
+
+    const disableError = captureError(() => models.setEnabled('custom-main', 'llm', 'model-a', false));
+    expect(disableError).toMatchObject({
+      code: 'model_in_use',
+      conflicts: [{ module: 'memory-llm', modelId: 'model-a', capability: 'llm' }],
+    });
+    const deleteError = captureError(() => models.delete('custom-main', 'llm', 'model-a'));
+    expect(deleteError).toMatchObject({ code: 'model_in_use' });
+
+    bindings.delete('memory-llm');
+    models.setEnabled('custom-main', 'llm', 'model-a', false);
     models.delete('custom-main', 'llm', 'model-a');
     expect(() => models.get('custom-main', 'llm', 'model-a')).toThrow(/不存在/);
   });
 });
+
+function captureError(fn: () => unknown): unknown {
+  try { fn(); } catch (error) { return error; }
+  throw new Error('expected to throw');
+}

@@ -1,5 +1,4 @@
 // 官方 MCP Registry(cursor 分页)的读取客户端,只认 v0 协议。
-import { fetchPublicResource } from '@ema-agent/public-http';
 import {
   RawRegistryServerSchema,
   type RawRegistryServer,
@@ -11,20 +10,24 @@ const PAGE_LIMIT = 100;
 const PAGE_MAX_BYTES = 4 * 1024 * 1024;
 const FETCH_TIMEOUT_MS = 10_000;
 
-/** 可注入的 JSON 拉取器,测试替换;默认走 public-http 公网防线。 */
+/** 可注入的 JSON 拉取器,测试替换。 */
 export type RegistryJsonFetcher = (url: string, signal?: AbortSignal) => Promise<unknown>;
 
 const defaultFetcher: RegistryJsonFetcher = async (url, signal) => {
-  const response = await fetchPublicResource(url, {
-    timeoutMs: FETCH_TIMEOUT_MS,
-    maxBytes: PAGE_MAX_BYTES,
-    signal,
+  const response = await fetch(url, {
+    signal: signal
+      ? AbortSignal.any([signal, AbortSignal.timeout(FETCH_TIMEOUT_MS)])
+      : AbortSignal.timeout(FETCH_TIMEOUT_MS),
     headers: { Accept: 'application/json' },
   });
   if (response.status !== 200) {
     throw new Error(`MCP Registry 请求失败(HTTP ${response.status}): ${url}`);
   }
-  return JSON.parse(response.body.toString('utf8')) as unknown;
+  const body = await response.arrayBuffer();
+  if (body.byteLength > PAGE_MAX_BYTES) {
+    throw new Error(`MCP Registry 响应体超过 ${PAGE_MAX_BYTES} 字节上限: ${url}`);
+  }
+  return JSON.parse(Buffer.from(body).toString('utf8')) as unknown;
 };
 
 export interface RegistryListResult {

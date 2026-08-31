@@ -36,7 +36,6 @@
     "@ema-agent/memory": "workspace:*",
     "@ema-agent/narrative": "workspace:*",
     "@ema-agent/permission": "workspace:*",
-    "@ema-agent/public-http": "workspace:*",
     "@ema-agent/sandbox": "workspace:*",
     "@ema-agent/session": "workspace:*",
     "@ema-agent/skills": "workspace:*",

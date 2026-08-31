@@ -1,5 +1,4 @@
 // 这里把公共 HTTP 响应收紧为 WebFetchTool 可以返回的文本网页, 并缓存转换结果。
-import { fetchPublicResource, PublicHttpPolicyError } from '@ema-agent/public-http';
 import { WebPageCache } from './cache.js';
 import { htmlToMarkdown } from './htmlToMarkdown.js';
 
@@ -40,28 +39,31 @@ export async function fetchPublicPage(
     };
   }
 
-  const response = await fetchPublicResource(upgradeToHttps(rawUrl), {
-    signal,
-    timeoutMs: FETCH_TIMEOUT_MS,
-    maxBytes: MAX_RESPONSE_BYTES,
-    maxRedirects: 5,
+  const response = await fetch(upgradeToHttps(rawUrl), {
+    signal: AbortSignal.any([signal, AbortSignal.timeout(FETCH_TIMEOUT_MS)]),
     headers: {
       Accept: 'text/markdown, text/html, text/plain, application/json, application/xml',
     },
+    redirect: 'follow',
   });
-  const contentType = String(response.headers['content-type'] ?? 'application/octet-stream');
-  if (!isTextContent(contentType)) {
-    throw new PublicHttpPolicyError(`不支持读取二进制内容: ${contentType}`);
+  const rawBody = await response.arrayBuffer();
+  if (rawBody.byteLength > MAX_RESPONSE_BYTES) {
+    throw new Error(`响应体超过 ${MAX_RESPONSE_BYTES} 字节上限`);
   }
+  const contentType = (response.headers.get('content-type') ?? 'application/octet-stream').toLowerCase();
+  if (!isTextContent(contentType)) {
+    throw new Error(`不支持读取二进制内容: ${contentType}`);
+  }
+  const body = Buffer.from(rawBody);
   const content = options.raw
-    ? response.body.toString('utf8')
-    : await htmlToMarkdown(response.body.toString('utf8'));
+    ? body.toString('utf8')
+    : await htmlToMarkdown(body.toString('utf8'));
 
   const entry = {
-    finalUrl: response.finalUrl,
+    finalUrl: response.url,
     content,
     contentType,
-    bytes: response.body.byteLength,
+    bytes: body.byteLength,
     code: response.status,
     codeText: response.statusText,
   };

@@ -1,9 +1,8 @@
-// 技能包下载:public-http + sha256 校验。只产出字节,不解压不落盘。
+// 技能包下载:原生 fetch + sha256 校验。只产出字节,不解压不落盘。
 import { createHash } from 'node:crypto';
-import { fetchPublicResource } from '@ema-agent/public-http';
 
 const DOWNLOAD_TIMEOUT_MS = 30_000;
-/** public-http 传输层必填的响应体上限;给足余量,不做业务限量。 */
+/** 响应体上限;给足余量,不做业务限量。 */
 const DOWNLOAD_MAX_BYTES = 64 * 1024 * 1024;
 
 export interface BundleDownloadInput {
@@ -14,14 +13,16 @@ export interface BundleDownloadInput {
 }
 
 export async function downloadBundle(input: BundleDownloadInput): Promise<Uint8Array> {
-  const response = await fetchPublicResource(input.bundleUrl, {
-    timeoutMs: DOWNLOAD_TIMEOUT_MS,
-    maxBytes: DOWNLOAD_MAX_BYTES,
+  const response = await fetch(input.bundleUrl, {
+    signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
   });
   if (response.status !== 200) {
     throw new Error(`技能包下载失败(HTTP ${response.status}): ${input.bundleUrl}`);
   }
-  const bytes = new Uint8Array(response.body);
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (bytes.byteLength > DOWNLOAD_MAX_BYTES) {
+    throw new Error(`技能包体积超过 ${DOWNLOAD_MAX_BYTES} 字节上限`);
+  }
   if (input.sizeBytes !== undefined && bytes.byteLength !== input.sizeBytes) {
     throw new Error(
       `技能包体积与索引声明不符(${bytes.byteLength} != ${input.sizeBytes}),索引可能被篡改`,

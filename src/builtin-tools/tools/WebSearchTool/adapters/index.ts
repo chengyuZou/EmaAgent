@@ -1,12 +1,8 @@
 // 按已配置凭据选择搜索后端, 并统一做域名过滤、URL 归一、去重与错误映射。
 // 未来配置源换成 Settings + Credential 时, 只改本文件的 resolveSearchProvider。
-import {
-  PublicHttpLimitError,
-  PublicHttpStatusError,
-  PublicHttpTimeoutError,
-} from '@ema-agent/public-http';
 import { bingSearch } from './bing.js';
 import { braveSearch } from './brave.js';
+import { SearchHttpStatusError } from './types.js';
 import type { SearchOptions, SearchProgress, SearchResult } from './types.js';
 
 export type { SearchOptions, SearchProgress, SearchResult } from './types.js';
@@ -76,13 +72,13 @@ const PROVIDER_LABELS: Readonly<Record<SearchProvider, string>> = {
   bing: 'Bing',
 };
 
-/** 把 public-http 与后端错误翻译成模型/用户可操作的提示。 */
+/** 把后端错误翻译成模型/用户可操作的提示。 */
 export function formatProviderError(
   provider: SearchProvider,
   error: unknown,
 ): Error {
   const label = PROVIDER_LABELS[provider];
-  if (error instanceof PublicHttpStatusError) {
+  if (error instanceof SearchHttpStatusError) {
     const keyHint = provider === 'brave' && (error.status === 401 || error.status === 403)
       ? '，请检查 API key'
       : error.status === 429
@@ -90,12 +86,8 @@ export function formatProviderError(
         : '';
     return new Error(`${label} 搜索失败(${error.status})${keyHint}`);
   }
-  if (error instanceof PublicHttpTimeoutError) {
+  if (error instanceof Error && error.name === 'TimeoutError') {
     return new Error(`${label} 搜索超时`);
-  }
-  if (error instanceof PublicHttpLimitError) {
-    // 限制原因(体积/重定向次数)已带在错误消息里, 原样透出, 避免误导。
-    return new Error(`${label} 搜索失败: ${error.message}`);
   }
   const message = error instanceof Error ? error.message : String(error);
   return new Error(`${label} 搜索失败: ${message}`);

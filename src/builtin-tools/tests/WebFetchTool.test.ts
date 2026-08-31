@@ -28,15 +28,13 @@ describe('WebFetchTool schema', () => {
 
 describe('WebFetchTool validateInput', () => {
   it.each([
-    'http://localhost/admin',
-    'http://127.0.0.1/x',
-    'http://10.1.2.3/',
-    'http://169.254.169.254/latest/meta-data/',
     'file:///etc/passwd',
-  ])('拒绝不安全 URL: %s', (url) => {
+    'not-a-url',
+    'ftp://example.com/x',
+  ])('拒绝非 http/https 或非法 URL: %s', (url) => {
     const result = WebFetchTool.validateInput!({ url });
     expect(result.valid).toBe(false);
-    if (!result.valid) expect(result.code).toBe('web_fetch/unsafe_url');
+    if (!result.valid) expect(result.code).toBe('web_fetch/invalid_url');
   });
 
   it('接受公开 URL', () => {

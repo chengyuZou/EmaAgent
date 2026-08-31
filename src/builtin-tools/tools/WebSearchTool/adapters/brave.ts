@@ -1,6 +1,6 @@
 // Brave 搜索 API 后端: 只取回原始结果, 过滤/归一/去重交给适配层统一处理。
 import { z } from 'zod';
-import { fetchPublicResource } from '@ema-agent/public-http';
+import { SearchHttpStatusError } from './types.js';
 import type { SearchOptions, SearchResult, WebSearchAdapter } from './types.js';
 
 const SEARCH_TIMEOUT_MS = 20_000;
@@ -28,16 +28,19 @@ export const braveSearch: WebSearchAdapter = async (
   }
   const url =
     `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=20`;
-  // 主机写死 + additionalAllowedHeaders 声明: API key 只流向 Brave, 不会被重定向带走。
-  const res = await fetchPublicResource(url, {
-    signal: options.signal,
-    timeoutMs: SEARCH_TIMEOUT_MS,
-    maxBytes: API_RESPONSE_LIMIT,
-    maxRedirects: 0,
+  const res = await fetch(url, {
+    signal: AbortSignal.any([options.signal, AbortSignal.timeout(SEARCH_TIMEOUT_MS)]),
+    redirect: 'manual',
     headers: { Accept: 'application/json', 'X-Subscription-Token': apiKey },
-    additionalAllowedHeaders: ['x-subscription-token'],
   });
-  const data = braveResponseSchema.parse(parseJsonBody(res.body));
+  if (res.status !== 200) {
+    throw new SearchHttpStatusError(res.status);
+  }
+  const body = await res.arrayBuffer();
+  if (body.byteLength > API_RESPONSE_LIMIT) {
+    throw new Error(`搜索响应体超过 ${API_RESPONSE_LIMIT} 字节上限`);
+  }
+  const data = braveResponseSchema.parse(parseJsonBody(Buffer.from(body)));
   return (data.web?.results ?? []).map((r) => ({
     title: r.title,
     url: r.url,

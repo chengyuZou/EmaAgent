@@ -22,7 +22,6 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@ema-agent/public-http": "workspace:*",
     "@ema-agent/settings": "workspace:*",
     "@ema-agent/storage": "workspace:*",
     "fflate": "^0.8.2",

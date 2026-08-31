@@ -1,7 +1,7 @@
 // Bing HTML 兜底后端: 零 key 可用, 解析协议对照 Claude bingAdapter。
-// 浏览器指纹头避免反爬返回 JS 渲染页; UA 属敏感头, 按 public-http 策略强制禁重定向。
-import { fetchPublicResource } from '@ema-agent/public-http';
+// 浏览器指纹头避免反爬返回 JS 渲染页; 禁重定向防止指纹头泄露到跳转目标。
 import { decodeHtmlEntities } from './html.js';
+import { SearchHttpStatusError } from './types.js';
 import type { SearchOptions, SearchResult, WebSearchAdapter } from './types.js';
 
 const SEARCH_TIMEOUT_MS = 30_000;
@@ -30,27 +30,19 @@ export const bingSearch: WebSearchAdapter = async (
   options: SearchOptions,
 ): Promise<SearchResult[]> => {
   const url = `https://www.bing.com/search?q=${encodeURIComponent(query)}&setmkt=en-US`;
-  const res = await fetchPublicResource(url, {
-    signal: options.signal,
-    timeoutMs: SEARCH_TIMEOUT_MS,
-    maxBytes: HTML_RESPONSE_LIMIT,
-    maxRedirects: 0,
+  const res = await fetch(url, {
+    signal: AbortSignal.any([options.signal, AbortSignal.timeout(SEARCH_TIMEOUT_MS)]),
+    redirect: 'manual',
     headers: BROWSER_HEADERS,
-    additionalAllowedHeaders: [
-      'user-agent',
-      'cache-control',
-      'pragma',
-      'sec-ch-ua',
-      'sec-ch-ua-mobile',
-      'sec-ch-ua-platform',
-      'sec-fetch-dest',
-      'sec-fetch-mode',
-      'sec-fetch-site',
-      'sec-fetch-user',
-      'upgrade-insecure-requests',
-    ],
   });
-  return extractBingResults(res.body.toString('utf8'));
+  if (res.status !== 200) {
+    throw new SearchHttpStatusError(res.status);
+  }
+  const body = await res.arrayBuffer();
+  if (body.byteLength > HTML_RESPONSE_LIMIT) {
+    throw new Error(`搜索响应体超过 ${HTML_RESPONSE_LIMIT} 字节上限`);
+  }
+  return extractBingResults(Buffer.from(body).toString('utf8'));
 };
 
 /** Bing 有机结果在 <li class="b_algo"> 块内; 独立导出供 fixture 测试锁定解析。 */

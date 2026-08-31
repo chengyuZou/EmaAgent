@@ -1,5 +1,13 @@
 // WebSearch 适配层共享契约: 统一结果、选项、进度事件与后端实现签名。
 
+/** 搜索后端的 HTTP 状态错误(供 formatProviderError 翻译成可操作提示)。 */
+export class SearchHttpStatusError extends Error {
+  constructor(readonly status: number) {
+    super(`HTTP ${status}`);
+    this.name = 'SearchHttpStatusError';
+  }
+}
+
 export interface SearchResult {
   readonly title: string;
   readonly url: string;
