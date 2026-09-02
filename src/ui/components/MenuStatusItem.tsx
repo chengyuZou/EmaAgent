@@ -31,18 +31,18 @@ export function MenuStatusItem(props: MenuStatusItemProps): React.JSX.Element {
     <button
       type="button"
       className={cn(
-        'group relative w-full flex flex-col overflow-hidden box-border text-left cursor-pointer',
+        'group relative w-full h-full flex flex-col overflow-hidden box-border text-left cursor-pointer',
         'rounded-xl bg-[var(--ema-surface-1)] ema-glass-weak border-2 border-solid border-[var(--ema-border)]',
-        'hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]',
+        'hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-2)]',
         'active:scale-[0.98]',
         'transition-all duration-[var(--ema-duration-base)] ease-in-out',
         // Light sweep on hover (::before)
         'before:content-empty before:absolute before:inset-0 before:z-0',
         'before:w-1/4 before:h-full before:opacity-0',
-        'before:transition-all before:duration-250 before:ease-in-out',
-        'before:[mask-image:linear-gradient(120deg,white_30%,transparent_50%)]',
+        'before:transition-all before:duration-[400ms] before:ease-in-out',
+        'before:[mask-image:linear-gradient(120deg,white_50%,transparent_75%)]',
         'hover:before:opacity-100 hover:before:w-[85%]',
-        'hover:before:bg-gradient-to-r hover:before:from-[var(--ema-primary)]/20 hover:before:via-[var(--ema-primary)]/10 hover:before:to-transparent',
+        'hover:before:bg-gradient-to-r hover:before:from-[var(--ema-primary)]/30 hover:before:via-[var(--ema-primary)]/15 hover:before:to-transparent',
         // Dotted texture (::after)
         'after:content-empty after:absolute after:inset-0 after:z-0 after:w-full after:h-full',
         'after:[background-image:radial-gradient(circle_at_30%_30%,color-mix(in_srgb,var(--ema-primary)_30%,transparent),transparent_45%),radial-gradient(circle_at_70%_70%,color-mix(in_srgb,var(--ema-violet)_28%,transparent),transparent_50%),radial-gradient(circle,color-mix(in_srgb,var(--ema-text-tertiary)_30%,transparent)_1px,transparent_1.5px)]',
@@ -54,8 +54,8 @@ export function MenuStatusItem(props: MenuStatusItemProps): React.JSX.Element {
       )}
       {...rest}
     >
-      {/* Text (padded like a card) */}
-      <div className="relative z-1 flex-1 min-w-0 p-5 pb-3">
+      {/* Text (padded like a card; 左侧留白给状态点) */}
+      <div className="relative z-1 flex-1 min-w-0 p-5 pb-3 pl-9">
         <div className="text-lg font-semibold text-[var(--ema-text-primary)] group-hover:text-[var(--ema-primary-text)] transition-all duration-[var(--ema-duration-base)] ease-in-out truncate">
           {title}
         </div>
@@ -78,8 +78,8 @@ export function MenuStatusItem(props: MenuStatusItemProps): React.JSX.Element {
         />
       )}
 
-      {/* Status strip */}
-      <div className="relative z-1 p-2">
+      {/* Status dot — 左上角 */}
+      <div className="absolute left-2 top-2 z-1">
         {configured
           ? <div className="size-4 rounded-full bg-[var(--ema-success)] shadow-lg" />
           : <div className="size-4 rounded-full bg-[var(--ema-surface-2)] border-2 border-solid border-[var(--ema-border-strong)]" />}

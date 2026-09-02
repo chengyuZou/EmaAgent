@@ -1,5 +1,6 @@
 // 语音一族：TTS 绑定解析、角色声音准备、Turn 级语音输出、试听与 Session 音频归档。
 import path from 'node:path';
+import { readFile } from 'node:fs/promises';
 import type { Character, CharacterStore } from '@ema-agent/characters';
 import {
   ProviderError,
@@ -52,6 +53,12 @@ export interface SpeechComposition {
   readonly transcribe: (
     request: Omit<TranscriptionRequest, 'model'>,
   ) => Promise<TranscriptionResult | undefined>;
+  /** STT 试听（设置页）：用当前角色主参考音频到指定 Provider 模型转写，返回转写文本与参考文本。 */
+  readonly sttPreview: (
+    providerId: string,
+    modelId: string,
+    signal?: AbortSignal,
+  ) => Promise<{ text: string; referenceText: string }>;
   /**
    * 为一个根 Turn 启动语音输出；无 TTS 绑定、角色无参考音频或 Provider 不可用
    * 都返回 null（语音是可选输出增强，不改变 Turn 终态）。
@@ -216,5 +223,25 @@ export function openSpeech(
     return result;
   };
 
-  return { audioArchive, voiceCache, usageRecorder, voicePreview, transcribe, startTurnSpeech };
+  /** STT 试听：当前角色主参考音频 → 指定 Provider 模型转写；无参考音频抛 no_reference_audio。 */
+  const sttPreview: SpeechComposition['sttPreview'] = async (providerId, modelId, signal) => {
+    const connection = providers.resolveConnection(providerId, 'stt');
+    const character = characters.current();
+    const sample = character.voiceSamples.find(value => value.enabled && value.isPrimary)
+      ?? character.voiceSamples.find(value => value.enabled);
+    if (!sample) {
+      throw new ProviderError('invalid_configuration', '当前角色未配置参考音频，请先在角色卡添加');
+    }
+    const audioPath = characters.resolveVoiceSampleFile(character.id, sample.id);
+    const audio = await readFile(audioPath);
+    const callStt = createSttCall(connection, modelId);
+    const result = await callStt({
+      audio: new Uint8Array(audio),
+      mimeType: sample.mimeType,
+      ...(signal ? { signal } : {}),
+    });
+    return { text: result.text, referenceText: sample.promptText };
+  };
+
+  return { audioArchive, voiceCache, usageRecorder, voicePreview, transcribe, sttPreview, startTurnSpeech };
 }

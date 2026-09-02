@@ -16,6 +16,11 @@ html, body {
   box-sizing: border-box;
 }
 
+/* Edge/WebView2 对 password 输入框自带的 reveal 按钮一律隐藏——密钥显示切换由我们的眼睛按钮统一负责。 */
+input[type='password']::-ms-reveal {
+  display: none;
+}
+
 /* 内容默认可选(chat/settings 文本要能复制)。UI chrome 用 .ema-no-select opt-out */
 button, [role="button"], [data-tauri-drag-region], .ema-no-select, .ema-no-select * {
   user-select: none;

@@ -1,15 +1,11 @@
--- Provider 种子：19 个内置供应商的能力、协议档与离线建议模型。
+-- Provider 种子：19 个内置供应商的能力与协议档。
 -- 全部 INSERT OR IGNORE；providers 无启停列，能力可用性 = active_protocol + key。
 -- created_at 1..19 即设置页卡片顺序（providers 列表按 created_at ASC 排序）。
--- 演进规则（写进施工单）：后续新增 provider/协议/建议模型只追加新迁移；
--- 协议与模型演进必须 WHERE EXISTS 对应 providers / provider_capabilities 行，
+-- 演进规则（写进施工单）：后续新增 provider/协议只追加新迁移；
+-- 协议演进必须 WHERE EXISTS 对应 providers / provider_capabilities 行，
 -- 尊重用户删除；永不 UPDATE/DELETE 用户行。
--- embed dim 按公开规格填写；待核：jina-embeddings-v2-base-zh(768)、
--- zhipu embedding-3(2048)、togethercomputer/m2-bert-80M-8k-retrieval(768)、
--- ollama vision 上下文窗口 llava(4096)/llava-llama3(8192)/moondream(2048)。
--- vision 静态清单只保留 models.dev 未收录的（ollama 本地）；
--- openai/siliconflow 等 modelsDevId 已收录的 vision 建议一律不种子，避免双份事实。
--- lmstudio embed 的 'auto' 是占位符不是真模型，不种子（live 拉取覆盖）。
+-- 模型不种子：llm/vision 候选来自 models.dev 内存目录，其余能力手填；
+-- provider_models 行 = 用户动过的模型（手填或目录选中落行）。
 
 INSERT OR IGNORE INTO providers (id, name, icon_id, auth_type, created_at, updated_at) VALUES
   ('openai',      'OpenAI',               'openai',      'bearer',  1,  1),
@@ -130,40 +126,3 @@ INSERT OR IGNORE INTO provider_protocols
   ('jina',        'rerank', 'cohere-rerank',        'https://api.jina.ai/v1',                   17, 17),
   ('dashscope',   'tts',    'dashscope-tts',        'https://dashscope.aliyuncs.com',           18, 18),
   ('gpt-sovits',  'tts',    'gpt-sovits-tts',       'http://127.0.0.1:9880',                    19, 19);
-
-INSERT OR IGNORE INTO provider_models
-  (provider_id, capability, model_id, name, source, context_window, max_output, tool_call, reasoning,
-   temperature, input_image, embedding_dim, rerank_max_chunks, created_at, updated_at) VALUES
-  ('openai',      'embed',  'text-embedding-3-small', 'Text Embedding 3 Small', 'seed', NULL, NULL, NULL, NULL, NULL, NULL, 1536, NULL, 0, 0),
-  ('openai',      'embed',  'text-embedding-3-large', 'Text Embedding 3 Large', 'seed', NULL, NULL, NULL, NULL, NULL, NULL, 3072, NULL, 0, 0),
-  ('openai',      'tts',    'gpt-4o-mini-tts',        'GPT-4o Mini TTS', 'seed', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0),
-  ('openai',      'tts',    'tts-1',                  'TTS-1', 'seed', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0),
-  ('openai',      'tts',    'tts-1-hd',               'TTS-1 HD', 'seed', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0),
-  ('openai',      'stt',    'whisper-1',              'Whisper v1', 'seed', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0),
-  ('openai',      'stt',    'gpt-4o-transcribe',      'GPT-4o Transcribe', 'seed', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0),
-  ('openai',      'stt',    'gpt-4o-mini-transcribe', 'GPT-4o Mini Transcribe', 'seed', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0),
-  ('zhipu',       'embed',  'embedding-3',            'Embedding 3', 'seed', NULL, NULL, NULL, NULL, NULL, NULL, 2048, NULL, 0, 0),
-  ('together',    'embed',  'togethercomputer/m2-bert-80M-8k-retrieval', 'M2-BERT 80M 8K Retrieval', 'seed', NULL, NULL, NULL, NULL, NULL, NULL, 768, NULL, 0, 0),
-  ('ollama',      'embed',  'nomic-embed-text',       'Nomic Embed Text', 'seed',  NULL, NULL, NULL, NULL, NULL, NULL, 768,  NULL, 0, 0),
-  ('ollama',      'embed',  'mxbai-embed-large',      'MxBai Embed Large', 'seed',  NULL, NULL, NULL, NULL, NULL, NULL, 1024, NULL, 0, 0),
-  ('ollama',      'vision', 'llava',                  'LLaVA', 'seed', 4096, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0),
-  ('ollama',      'vision', 'llava-llama3',           'LLaVA Llama 3', 'seed', 8192, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0),
-  ('ollama',      'vision', 'moondream',              'Moondream', 'seed', 2048, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0),
-  ('siliconflow', 'embed',  'Pro/BAAI/bge-m3',        'BGE-M3 (Pro)', 'seed', NULL, NULL, NULL, NULL, NULL, NULL, 1024, NULL, 0, 0),
-  ('siliconflow', 'embed',  'BAAI/bge-large-zh-v1.5', 'BGE Large 中文 v1.5', 'seed', NULL, NULL, NULL, NULL, NULL, NULL, 1024, NULL, 0, 0),
-  ('siliconflow', 'rerank', 'BAAI/bge-reranker-v2-m3', 'BGE Reranker v2 M3', 'seed', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0),
-  ('siliconflow', 'tts',    'FunAudioLLM/CosyVoice2-0.5B', 'CosyVoice2 0.5B', 'seed', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0),
-  ('siliconflow', 'tts',    'fnlp/MOSS-TTSD-v0.5',    'MOSS TTSD v0.5', 'seed', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0),
-  ('siliconflow', 'stt',    'FunAudioLLM/SenseVoiceSmall', 'SenseVoice Small', 'seed', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0),
-  ('jina',        'embed',  'jina-embeddings-v3',     'Jina Embeddings v3', 'seed', NULL, NULL, NULL, NULL, NULL, NULL, 1024, NULL, 0, 0),
-  ('jina',        'embed',  'jina-embeddings-v2-base-zh', 'Jina Embeddings v2 中文 Base', 'seed', NULL, NULL, NULL, NULL, NULL, NULL, 768, NULL, 0, 0),
-  ('jina',        'rerank', 'jina-reranker-v2-base-multilingual', 'Jina Reranker v2 多语言 Base', 'seed', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0),
-  ('dashscope',   'tts',    'cosyvoice-v3-flash',     'CosyVoice v3 Flash', 'seed', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0),
-  ('dashscope',   'tts',    'cosyvoice-v3-plus',      'CosyVoice v3 Plus', 'seed', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0),
-  ('dashscope',   'tts',    'cosyvoice-v3.5-flash',   'CosyVoice v3.5 Flash', 'seed', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0),
-  ('dashscope',   'tts',    'cosyvoice-v3.5-plus',    'CosyVoice v3.5 Plus', 'seed', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0),
-  ('dashscope',   'tts',    'cosyvoice-v2',           'CosyVoice v2', 'seed', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0),
-  ('dashscope',   'tts',    'qwen3-tts-flash-realtime', 'Qwen3 TTS Flash Realtime', 'seed', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0),
-  ('dashscope',   'tts',    'qwen3-tts-instruct-flash-realtime', 'Qwen3 TTS Instruct Flash Realtime', 'seed', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0),
-  ('dashscope',   'tts',    'qwen-tts-realtime',      'Qwen TTS Realtime', 'seed', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0),
-  ('gpt-sovits',  'tts',    'default',                '默认模型', 'seed', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0);

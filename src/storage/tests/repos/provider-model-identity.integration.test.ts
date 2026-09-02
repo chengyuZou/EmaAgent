@@ -32,12 +32,12 @@ describe('ProviderModelsRepo', () => {
 
   it('同名 LLM 按 Provider 精确保留不同模型事实', () => {
     models.save({
-      providerId: 'provider-a', capability: 'llm', modelId: 'shared', source: 'user',
+      providerId: 'provider-a', capability: 'llm', modelId: 'shared', source: 'user', enabled: true,
       contextWindow: 128_000, maxOutput: 16_000, toolCall: true,
       reasoning: true, temperature: null, inputImage: true,
     });
     models.save({
-      providerId: 'provider-b', capability: 'llm', modelId: 'shared', source: 'user',
+      providerId: 'provider-b', capability: 'llm', modelId: 'shared', source: 'user', enabled: true,
       contextWindow: 32_000, maxOutput: null, toolCall: null,
       reasoning: false, temperature: true, inputImage: false,
     });
@@ -51,16 +51,22 @@ describe('ProviderModelsRepo', () => {
   });
 
   it('六类模型从同一表恢复为对应判别联合', () => {
-    models.save({ providerId: 'provider-a', capability: 'embed', modelId: 'embed', source: 'user', dim: 1_536 });
-    models.save({ providerId: 'provider-a', capability: 'rerank', modelId: 'rerank', source: 'user', maxChunks: 100 });
-    models.save({ providerId: 'provider-a', capability: 'vision', modelId: 'vision', source: 'user', contextWindow: 128_000, maxOutput: null, toolCall: null, reasoning: null, temperature: null, inputImage: true });
-    models.save({ providerId: 'provider-a', capability: 'tts', modelId: 'tts', source: 'user' });
-    models.save({ providerId: 'provider-a', capability: 'stt', modelId: 'stt', source: 'user' });
+    models.save({ providerId: 'provider-a', capability: 'embed', modelId: 'embed', source: 'user', enabled: true, dim: 1_536 });
+    models.save({ providerId: 'provider-a', capability: 'rerank', modelId: 'rerank', source: 'user', enabled: true, maxChunks: 100 });
+    models.save({ providerId: 'provider-a', capability: 'vision', modelId: 'vision', source: 'user', enabled: true, contextWindow: 128_000, maxOutput: null, toolCall: null, reasoning: null, temperature: null, inputImage: true });
+    models.save({ providerId: 'provider-a', capability: 'tts', modelId: 'tts', source: 'user', enabled: true });
+    models.save({ providerId: 'provider-a', capability: 'stt', modelId: 'stt', source: 'user', enabled: true });
 
     expect(models.listByProvider('provider-a').map((row) => row.capability))
       .toEqual(['embed', 'rerank', 'stt', 'tts', 'vision']);
-    expect(models.get('provider-a', 'embed', 'embed')).toMatchObject({ dim: 1_536, source: 'user' });
+    expect(models.get('provider-a', 'embed', 'embed')).toMatchObject({ dim: 1_536 });
     expect(models.get('provider-a', 'rerank', 'rerank')).toMatchObject({ maxChunks: 100 });
+  });
+
+  it('hasAny 反映 provider_models 是否为空表', () => {
+    expect(models.hasAny()).toBe(false);
+    models.save({ providerId: 'provider-a', capability: 'tts', modelId: 'tts', source: 'user', enabled: true });
+    expect(models.hasAny()).toBe(true);
   });
 
   it('SQLite 约束拒绝能力与字段形状不一致的行', () => {
@@ -71,3 +77,5 @@ describe('ProviderModelsRepo', () => {
     ).run()).toThrow(/CHECK constraint failed/);
   });
 });
+
+

@@ -156,16 +156,23 @@ export const createRoutes = (composition: Composition, secret: string) => {
       providers: providers.providers,
       providerModels: providers.providerModels,
       modelBindings: providers.modelBindings,
+      refreshCatalog: providers.refreshCatalog,
       onKbEmbeddingBindingChanged: knowledge.onKbEmbeddingBindingChanged,
     }))
-    .route('/api/providers', providerConfigsRoute({ providers: providers.providers }))
+    .route('/api/providers', providerConfigsRoute({
+      providers: providers.providers,
+      providerModels: providers.providerModels,
+      refreshCatalog: providers.refreshCatalog,
+    }))
     .route('/api/providers', providerHealthRoute({
       providers: providers.providers,
       providerModels: providers.providerModels,
+      modelCatalog: providers.modelCatalog,
     }))
     .route('/api/providers', providerCapabilitiesRoute({
       voicePreview: speech.voicePreview,
       transcribe: speech.transcribe,
+      sttPreview: speech.sttPreview,
     }))
 
     .route('/api/settings', settingsCatalogRoute({ settings: settings.settings }))

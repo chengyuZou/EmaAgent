@@ -18,7 +18,6 @@
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { fetchPublicResource } from '@ema-agent/public-http';
 
 export const MODELS_DEV_API_URL = 'https://models.dev/api.json';
 
@@ -160,12 +159,18 @@ export function getModelsDevCatalog(): ModelsDevCatalog {
 
 /** 拉取 models.dev 最新目录；内容有变化才覆写快照并重载内存。返回是否有更新。 */
 export async function refreshModelsDevCatalog(signal?: AbortSignal): Promise<boolean> {
-  const response = await fetchPublicResource(MODELS_DEV_API_URL, {
-    maxBytes: 8 * 1024 * 1024,
-    timeoutMs: 30_000,
-    ...(signal ? { signal } : {}),
+  const response = await fetch(MODELS_DEV_API_URL, {
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000),
+    headers: { Accept: 'application/json' },
   });
-  const text = response.body.toString('utf8');
+  if (!response.ok) {
+    throw new Error(`models.dev 目录拉取失败(HTTP ${response.status})`);
+  }
+  const body = await response.arrayBuffer();
+  if (body.byteLength > 8 * 1024 * 1024) {
+    throw new Error('models.dev 目录响应体超过 8MB 上限');
+  }
+  const text = Buffer.from(body).toString('utf8');
   let previous = '';
   try {
     previous = readFileSync(SNAPSHOT_PATH, 'utf8');

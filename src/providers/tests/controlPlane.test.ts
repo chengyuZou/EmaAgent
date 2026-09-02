@@ -64,6 +64,7 @@ function createModelStack(store: MemoryProviderStore) {
     get: (providerId: string, capability: ProviderModel['capability'], modelId: string) =>
       modelRows.get(`${providerId}/${capability}/${modelId}`),
     listByProvider: () => [], listByCapability: () => [],
+    hasAny: () => modelRows.size > 0,
     save: (model: ProviderModel) => modelRows.set(`${model.providerId}/${model.capability}/${model.modelId}`, model),
     setEnabled: (providerId: string, capability: ProviderModel['capability'], modelId: string, enabled: boolean) => {
       const row = modelRows.get(`${providerId}/${capability}/${modelId}`);
@@ -113,21 +114,47 @@ describe('Provider 控制面', () => {
     });
   });
 
-  it('重复 id 创建被拒绝，内置种子 id 同样占用', () => {
+  it('重复 id 判定按 (id, capability)：同能力拒绝，无此能力则追加能力档', () => {
     const store = new MemoryProviderStore();
     const providers = createProviders(store);
-    const input = {
+    providers.create({
       id: 'my-gateway',
       name: 'My Gateway',
-      authType: 'bearer' as const,
+      authType: 'bearer',
+      key: 'sk-gateway',
       capability: {
-        capability: 'llm' as const,
-        protocol: 'openai-llm' as const,
+        capability: 'llm',
+        protocol: 'openai-llm',
         baseUrl: 'https://gateway.example/v1',
       },
-    };
-    providers.create(input);
-    expect(() => providers.create(input)).toThrow(/已存在/);
+    });
+
+    // 同 id 同能力 → already_exists
+    expect(() => providers.create({
+      id: 'my-gateway',
+      name: 'My Gateway',
+      authType: 'bearer',
+      capability: {
+        capability: 'llm',
+        protocol: 'openai-llm',
+        baseUrl: 'https://gateway.example/v1',
+      },
+    })).toThrow(/已存在/);
+
+    // 同 id 不同能力 → 追加能力档（key 共享）
+    providers.create({
+      id: 'my-gateway',
+      name: 'My Gateway',
+      authType: 'bearer',
+      capability: {
+        capability: 'vision',
+        protocol: 'openai-llm',
+        baseUrl: 'https://gateway.example/v1',
+      },
+    });
+    const provider = providers.get('my-gateway');
+    expect(provider.capabilities.map((c) => c.capability).sort()).toEqual(['llm', 'vision']);
+    expect(providers.resolveConnection('my-gateway', 'vision').apiKey).toBe('sk-gateway');
   });
 
   it('id 是语义 slug：用户显式给定；非法/空值创建被拒', () => {

@@ -1,5 +1,6 @@
 // 组装桌宠主窗口、Live2D 舞台、权限提示与桌面交互入口。
 import { useCallback, useEffect, useRef, useState } from 'react';
+import './styles/index.css';
 import {
   CharacterStage,
   type ActiveLive2DStage,

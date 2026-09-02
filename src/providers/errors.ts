@@ -9,6 +9,7 @@ export type ProviderErrorCode =
   | 'credential_missing'
   | 'provider_in_use'
   | 'provider_capability_in_use'
+  | 'model_in_use'
   | 'model_not_found';
 
 export interface ProviderBindingConflict {

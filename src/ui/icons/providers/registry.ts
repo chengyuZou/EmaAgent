@@ -2,7 +2,10 @@
 
 const FALLBACK_PROVIDER_ICON = 'i-solar:box-bold-duotone';
 
-const PROVIDER_ICONS: Readonly<Record<string, string>> = Object.freeze({
+/** 手写图标类名的合法形态（uno icon class，如 i-lobe-icons:qwen）；emoji/任意文本天然不匹配。 */
+export const PROVIDER_ICON_ID_PATTERN = /^i-[a-z0-9-]+:[a-z0-9-]+$/i;
+
+export const PROVIDER_ICONS: Readonly<Record<string, string>> = Object.freeze({
   anthropic: 'i-lobe-icons:claude',
   dashscope: 'i-lobe-icons:alibabacloud',
   deepseek: 'i-lobe-icons:deepseek',
@@ -26,7 +29,10 @@ const PROVIDER_ICONS: Readonly<Record<string, string>> = Object.freeze({
 
 export function resolveProviderIconClass(iconId: string | undefined): string {
   if (!iconId) return FALLBACK_PROVIDER_ICON;
-  return PROVIDER_ICONS[iconId] ?? FALLBACK_PROVIDER_ICON;
+  const registered = PROVIDER_ICONS[iconId];
+  if (registered) return registered;
+  // 注册表外允许手写 uno 图标类名（如 i-lobe-icons:qwen）；其余形态回退默认。
+  return PROVIDER_ICON_ID_PATTERN.test(iconId) ? iconId : FALLBACK_PROVIDER_ICON;
 }
 
 /**

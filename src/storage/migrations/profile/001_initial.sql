@@ -157,10 +157,12 @@ CREATE TABLE provider_models (
   provider_id        TEXT    NOT NULL,
   capability         TEXT    NOT NULL CHECK(capability IN ('llm','embed','rerank','vision','tts','stt')),
   model_id           TEXT    NOT NULL,
-  -- 用户可改的显示名；NULL = 前端回退显示 model_id
+  -- 显示名快照（目录落行时自带）；NULL = 前端回退显示 model_id
   name               TEXT,
-  -- seed = 内置建议（不可删除，演进由迁移负责）；user = 手动添加（可删）
-  source             TEXT    NOT NULL DEFAULT 'user' CHECK(source IN ('seed','user')),
+  -- 'user' = 手写（可编辑/启停/删除）；'dev' = models.dev 同步（禁修改，可启停/删除）
+  source             TEXT    NOT NULL DEFAULT 'user' CHECK(source IN ('user','dev')),
+  -- 启停开关：1 = 启用（绑定/available/探活准入）；新增 dev 行默认 0
+  enabled            INTEGER NOT NULL DEFAULT 0 CHECK(enabled IN (0,1)),
   context_window     INTEGER,
   max_output         INTEGER,
   tool_call          INTEGER CHECK(tool_call IS NULL OR tool_call IN (0,1)),
@@ -194,7 +196,7 @@ CREATE TABLE provider_models (
   CHECK(rerank_max_chunks IS NULL OR rerank_max_chunks > 0)
 );
 
--- 模型绑定:每个业务模块只绑定一个已启用模型。
+-- 模型绑定:每个业务模块只绑定一个已启用模型；绑定与选中入口断言连接可解析。
 -- module 枚举与 providers/modelBindings.ts 的 MODEL_BINDING_MODULES 保持一致;
 -- 命名统一为 <域>-<能力>(memory-llm/kb-embed/...);memory 只消费 llm(双轨重构后),
 -- kb 的 embed/rerank 原来在 settings JSON,已迁出到本表。

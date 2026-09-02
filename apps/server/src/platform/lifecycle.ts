@@ -79,6 +79,9 @@ export async function startServer(secret: string): Promise<ServerLifecycle> {
 
     // ── ready 之后的后台驱动 ──────────────────────────────────────────────
     runFileMaintenance(recoveryDeps);
+    // models.dev 快照是 gitignored 拉取产物：启动后台刷一次，失败只告警（目录只影响 llm/vision 候选展示）。
+    void running.providers.refreshCatalog()
+      .catch(error => console.warn('[providers] models.dev 目录刷新失败:', error));
     // Bridge 进程开关：关闭时不再推送配置，且把宿主已拉起的 Bridge 令退；
     // 运行中改为关闭立即生效，重新开启需重启应用（宿主不会重新拉起 Bridge）。
     if (running.settings.settings.get(narrativeBridgeEnabledSetting)) {

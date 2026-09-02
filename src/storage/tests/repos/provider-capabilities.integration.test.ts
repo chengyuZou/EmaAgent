@@ -14,7 +14,7 @@ describe('Provider 能力配置', () => {
 
   afterEach(() => database.close());
 
-  it('002 种子：19 个内置 provider 含协议档与离线建议模型（source=seed）', () => {
+  it('002 种子：19 个内置 provider 只含协议档（模型不种子）', () => {
     expect(providers.list()).toHaveLength(19);
     expect(providers.get('deepseek')).toMatchObject({
       name: 'DeepSeek', authType: 'bearer',
@@ -29,13 +29,6 @@ describe('Provider 能力配置', () => {
       }],
     });
     expect(providers.get('ollama')?.authType).toBe('none');
-
-    const models = new ProviderModelsRepo(database.sqlite);
-    expect(models.get('openai', 'embed', 'text-embedding-3-small'))
-      .toMatchObject({ dim: 1_536, source: 'seed' });
-    // vision 与 LLM 同参数集：上下文窗口必填
-    expect(models.get('ollama', 'vision', 'llava'))
-      .toMatchObject({ contextWindow: 4_096, source: 'seed' });
   });
 
   it('自建 Provider 保留每项能力的明确连接与图标缺省', () => {
@@ -106,6 +99,7 @@ describe('Provider 能力配置', () => {
         capability: 'llm',
         activeProtocol: 'openai-responses-llm',
         protocols: [{ protocol: 'openai-responses-llm', baseUrl: 'https://api.openai.com/v1' }],
+        modelCount: 0,
       },
     ]);
   });
@@ -161,12 +155,12 @@ describe('Provider 能力配置', () => {
     });
     const models = new ProviderModelsRepo(database.sqlite);
     models.save({
-      providerId: 'openai', capability: 'llm', modelId: 'gpt-test', source: 'user',
+      providerId: 'openai', capability: 'llm', modelId: 'gpt-test', source: 'user', enabled: true,
       contextWindow: 32_000, maxOutput: null, toolCall: null,
       reasoning: null, temperature: null, inputImage: null,
     });
     models.save({
-      providerId: 'openai', capability: 'vision', modelId: 'vision-test', source: 'user',
+      providerId: 'openai', capability: 'vision', modelId: 'vision-test', source: 'user', enabled: true,
       contextWindow: 128_000, maxOutput: null, toolCall: null,
       reasoning: null, temperature: null, inputImage: null,
     });
@@ -181,4 +175,31 @@ describe('Provider 能力配置', () => {
     expect(models.get('openai', 'llm', 'gpt-test')).toBeDefined();
     expect(models.get('openai', 'vision', 'vision-test')).toBeUndefined();
   });
+
+  it('modelCount 随 Provider 读出按能力聚合', () => {
+    providers.save({
+      id: 'openai', name: 'OpenAI', authType: 'bearer',
+      capabilities: [
+        { capability: 'llm', activeProtocol: 'openai-llm', protocols: [{ protocol: 'openai-llm', baseUrl: 'https://api.openai.com/v1' }] },
+        { capability: 'vision', activeProtocol: 'openai-llm', protocols: [{ protocol: 'openai-llm', baseUrl: 'https://api.openai.com/v1' }] },
+      ],
+    });
+    const models = new ProviderModelsRepo(database.sqlite);
+    models.save({
+      providerId: 'openai', capability: 'llm', modelId: 'gpt-a', source: 'user', enabled: true,
+      contextWindow: 32_000, maxOutput: null, toolCall: null,
+      reasoning: null, temperature: null, inputImage: null,
+    });
+    models.save({
+      providerId: 'openai', capability: 'llm', modelId: 'gpt-b', source: 'user', enabled: false,
+      contextWindow: 32_000, maxOutput: null, toolCall: null,
+      reasoning: null, temperature: null, inputImage: null,
+    });
+
+    const provider = providers.get('openai');
+    expect(provider?.capabilities.find((c) => c.capability === 'llm')?.modelCount).toBe(2);
+    expect(provider?.capabilities.find((c) => c.capability === 'vision')?.modelCount).toBe(0);
+  });
 });
+
+

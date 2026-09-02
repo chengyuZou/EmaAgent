@@ -57,22 +57,19 @@ function modelBadge(m: AvailableModel): string {
       ? `${(m.contextWindow / 1000000).toFixed(0)}M`
       : `${(m.contextWindow / 1000).toFixed(0)}K`;
   }
-  if (m.capability === 'embed') return `${m.dim}d`;
+  if (m.capability === 'embed') return `${m.dim}dim`;
   return '';
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-/** Horizontal-scroll provider card row (AIRI RadioCardSimple style). */
 function ProviderCardRow({
   providerIds,
-  providerName,
   providerIcon,
   selectedId,
   onSelect,
 }: {
   providerIds: string[];
-  providerName: (id: string) => string;
   providerIcon?: (id: string) => string | undefined;
   selectedId: string | null;
   onSelect: (id: string) => void;
@@ -96,7 +93,7 @@ function ProviderCardRow({
               <span className={`text-sm font-medium truncate ${
                 isSel ? 'text-[var(--ema-primary-text)]' : 'text-[var(--ema-text-secondary)]'
               }`}>
-                {providerName(pcId)}
+                {pcId}
               </span>
             </div>
             <p className="text-xs text-[var(--ema-text-tertiary)] truncate">
@@ -119,7 +116,8 @@ function ProviderCardRow({
 
 export function BindingsTab(): JSX.Element {
   const [view, setView] = useState<'grid' | 'detail'>('grid');
-  const [activeModule, setActiveModule] = useState<BindingModule>('memory-llm');
+  // 未进入 detail 前没有选中模块（grid 视图不读它），不挂假值。
+  const [activeModule, setActiveModule] = useState<BindingModule | null>(null);
   const [pool, setPool] = useState<AvailableModel[]>([]);
   const [loading, setLoading] = useState(false);
   const [savingKey, setSavingKey] = useState<string | null>(null);
@@ -130,24 +128,14 @@ export function BindingsTab(): JSX.Element {
 
   const allProviders = useProviderStore((s) => s.providers);
   const allBindings  = useProviderStore((s) => s.bindings);
-  const requiredCap = MODEL_BINDING_CAPABILITIES[activeModule];
+  const requiredCap = activeModule ? MODEL_BINDING_CAPABILITIES[activeModule] : null;
 
   const iconKeyFor = useCallback((pcId: string): string | undefined => {
     const record = allProviders.find((x) => x.id === pcId);
     return record ? resolveProviderIconClass(record.iconId) : undefined;
   }, [allProviders]);
 
-  // provider display-name lookup
-  const providerNames = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const p of allProviders) m.set(p.id, p.name);
-    for (const pm of pool) m.set(pm.providerId, pm.providerName);
-    return m;
-  }, [allProviders, pool]);
-
-  const providerName = useCallback((pcId: string) => providerNames.get(pcId) ?? pcId, [providerNames]);
-
-  // Providers that have enabled models in the pool
+  // Providers that have models in the pool
   const poolProviderIds = useMemo(
     () => [...new Set(pool.map((m) => m.providerId))],
     [pool],
@@ -155,6 +143,7 @@ export function BindingsTab(): JSX.Element {
 
   // ── Load pool for the active module ──────────────────────────────────────────
   useEffect(() => {
+    if (!activeModule || !requiredCap) return;
     setLoading(true);
     void providersApi.listAvailable(requiredCap)
       .then((result) => {
@@ -179,6 +168,7 @@ export function BindingsTab(): JSX.Element {
   const goGrid = useCallback(() => setView('grid'), []);
 
   const handleSelect = useCallback(async (pcId: string, modelId: string) => {
+    if (!activeModule) return;
     const key = `${pcId}|${modelId}`;
     setSavingKey(key);
     try {
@@ -195,6 +185,7 @@ export function BindingsTab(): JSX.Element {
   }, [activeModule]);
 
   const handleUnbind = useCallback(async () => {
+    if (!activeModule) return;
     try {
       await useProviderStore.getState().deleteBinding(activeModule);
       showToast('已解绑', { variant: 'success' });
@@ -214,7 +205,7 @@ export function BindingsTab(): JSX.Element {
     return list;
   }, [pool, selectedProviderId, searchQuery]);
 
-  const currentBinding = allBindings[activeModule] ?? null;
+  const currentBinding = activeModule ? (allBindings[activeModule] ?? null) : null;
   const boundKey = currentBinding ? `${currentBinding.providerId}|${currentBinding.modelId}` : null;
 
   // ── Grid view ──────────────────────────────────────────────────────────────
@@ -264,6 +255,8 @@ export function BindingsTab(): JSX.Element {
   }
 
   // ── Detail view ────────────────────────────────────────────────────────────
+  // detail 只能由 goDetail 进入（必然带模块），空值只是类型上的不可能分支。
+  if (!activeModule || !requiredCap) return <></>;
   const moduleLabel = MODULES.find((m) => m.id === activeModule)?.label ?? activeModule;
   const cap = requiredCap;
 
@@ -290,8 +283,9 @@ export function BindingsTab(): JSX.Element {
 
       {activeModule === 'lightrag-embed' && (
         <Callout variant="warn" className="text-xs leading-relaxed ema-slide-up">
-          这是 <b>叙事模式（narrative）专用</b>的嵌入模型，请绑定 <b>Pro/bge-m3</b>；知识库用的是另一套（设置 → 知识库 → 模型）。
+          这是 <b>叙事模式(narrative)专用</b>的嵌入模型，请绑定 <b>Pro/bge-m3</b>；知识库用的是另一套（设置 → 知识库 → 模型）。
           绑定与更换都<b>在重启应用后才生效</b>；中途换模型会让新查询与已建好的剧情向量<b>错配、检索质量大幅下降</b>——非必要请勿改动。
+          且 <b>叙事模式(narrative)</b> 仅适用于魔法少女的魔女审判的角色, 启用其他角色请勿使用
         </Callout>
       )}
 
@@ -312,7 +306,7 @@ export function BindingsTab(): JSX.Element {
                 />
                 <div className="flex items-center gap-2 text-sm min-w-0">
                   <span className={`${CAP_ICON[cap] ?? 'i-solar:box-bold-duotone'} text-lg shrink-0 text-[var(--ema-text-tertiary)]`} aria-hidden />
-                  <span className="text-[var(--ema-text-secondary)] truncate">{providerName(currentBinding.providerId)}</span>
+                  <span className="text-[var(--ema-text-secondary)] truncate">{currentBinding.providerId}</span>
                   <span className="text-[var(--ema-text-tertiary)] flex-shrink-0">/</span>
                   <span className="font-mono text-[var(--ema-primary)] truncate">{currentBinding.modelId}</span>
                 </div>
@@ -345,7 +339,6 @@ export function BindingsTab(): JSX.Element {
                 <h3 className="text-sm text-[var(--ema-text-tertiary)]">服务来源</h3>
                 <ProviderCardRow
                   providerIds={poolProviderIds}
-                  providerName={providerName}
                   providerIcon={iconKeyFor}
                   selectedId={selectedProviderId}
                   onSelect={setSelectedProviderId}

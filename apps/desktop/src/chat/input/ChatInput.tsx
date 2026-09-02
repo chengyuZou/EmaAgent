@@ -13,14 +13,13 @@ import { hasTurnInput, type TurnInputPart, type TurnModelSelection } from '@ema-
 import { DecisionLayer } from '../../decision/DecisionLayer.js';
 import { sessionsApi } from '../../api/sessions.js';
 import { ServerApiError } from '../../api/client.js';
-import { transcribeApi } from '../../api/transcribe.js';
+import { findAvailableModel, providersApi, type AvailableModel } from '../../api/providers.js';
 import { showToast } from '../../lib/toast.js';
 import { tauriBridge } from '../../lib/tauri-bridge.js';
 import { useServerStore } from '../../stores/server.js';
 import { useSessionStore } from '../../stores/session.js';
 import { useSkillStore } from '../../stores/skill.js';
 import { useUiStore } from '../../stores/ui.js';
-import { findAvailableModel, useProviderStore } from '../../stores/provider.js';
 import { useCurrentSession } from '../state/currentSession.js';
 import { useMessages } from '../state/messages.js';
 import { sendMessage, stopStreaming } from '../state/turnRunner.js';
@@ -73,7 +72,7 @@ export function ChatInput(): JSX.Element {
   const hasOtherStream = useMessages(state => state.streamBySession.size > (stream ? 1 : 0));
   const serverReady = useServerStore(state => state.status.kind === 'ok');
   const ttsEnabled = useUiStore(state => state.ttsEnabled);
-  const models = useProviderStore(state => state.models);
+  const [llmModels, setLlmModels] = useState<AvailableModel[]>([]);
   const skills = useSkillStore(state => state.skills);
 
   const [parts, setPartsState] = useState<readonly TurnInputPart[]>(savedDraft ?? []);
@@ -94,7 +93,7 @@ export function ChatInput(): JSX.Element {
   const text = draftText(parts);
   const executionProfile = viewedSession?.executionProfile ?? 'chat';
   const narrativePolicy = viewedSession?.narrativePolicy ?? 'auto';
-  const selectedModel = findAvailableModel(models, viewedSession?.providerId, viewedSession?.modelId);
+  const selectedModel = findAvailableModel(llmModels, viewedSession?.providerId, viewedSession?.modelId);
   const selectedModelSupportsThinking = selectedModel?.capability === 'llm'
     && selectedModel.reasoning === true;
   const modelSelection: TurnModelSelection | null = viewedSession?.providerId && viewedSession.modelId
@@ -123,6 +122,12 @@ export function ChatInput(): JSX.Element {
     setThinkingEnabled(false);
     setThinkingEffort('medium');
   }, [viewedId]);
+
+  useEffect(() => {
+    providersApi.listAvailable('llm')
+      .then(({ models }) => setLlmModels([...models]))
+      .catch(() => { /* 目录拉取失败时按无模型处理 */ });
+  }, []);
 
   useEffect(() => {
     const element = textareaRef.current?.el();
@@ -259,7 +264,7 @@ export function ChatInput(): JSX.Element {
         setRecording(false);
         mediaStream.getTracks().forEach(track => track.stop());
         const audio = new Blob(chunks, { type: recorder.mimeType });
-        void transcribeApi.transcribe({ audio, mime: recorder.mimeType }).then(result => {
+        void providersApi.transcribe({ audio, mime: recorder.mimeType }).then(result => {
           const transcript = result.text.trim();
           if (!transcript) return;
           const currentParts = partsRef.current;

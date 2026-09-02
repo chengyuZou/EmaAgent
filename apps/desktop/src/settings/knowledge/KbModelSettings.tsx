@@ -114,7 +114,7 @@ export function KbModelSettings({ onEmbedModelChanged }: {
 
   const opts = (models: AvailableModel[], withNone: boolean) => [
     ...(withNone ? [{ value: NONE, label: '（不使用）' }] : []),
-    ...models.map((m) => ({ value: `${m.providerId}|${m.modelId}`, label: `${m.providerName} / ${m.modelId}` })),
+    ...models.map((m) => ({ value: `${m.providerId}|${m.modelId}`, label: `${m.providerId} / ${m.modelId}` })),
   ];
 
   // 整库重建 = 服务端取 stale 清单整单入队(202);进度与结果由 kb_reembed_* SSE 驱动,见上方 useEffect。

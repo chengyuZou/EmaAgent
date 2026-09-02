@@ -1,4 +1,4 @@
-// 模型池与业务绑定：provider_models 启停、绑定选择器的可用模型清单、model_bindings 读写。
+// 模型池与业务绑定：provider_models 行读写、启停开关、目录同步、绑定选择器的可用清单、model_bindings 读写。
 import { Hono } from 'hono';
 import { z } from 'zod';
 import {
@@ -24,6 +24,10 @@ const modelQuery = z.object({
   capability: capabilityEnum,
 });
 
+const refreshQuery = z.object({
+  capability: z.enum(['llm', 'vision']),
+});
+
 const bindingParams = z.object({
   module: z.enum(MODEL_BINDING_MODULES),
 });
@@ -37,24 +41,22 @@ const llmParams = {
   inputImage: z.boolean().nullable().default(null),
 };
 
-/** 能力判别联合：参数形状按能力分流，llm/vision 同参数集。 */
+/** 能力判别联合：参数形状按能力分流，llm/vision 同参数集；name 不经 API 修改。 */
 const providerModelBody = z.discriminatedUnion('capability', [
-  z.object({ capability: z.literal('llm'), modelId: z.string().min(1), name: z.string().optional(), ...llmParams }),
-  z.object({ capability: z.literal('vision'), modelId: z.string().min(1), name: z.string().optional(), ...llmParams }),
+  z.object({ capability: z.literal('llm'), modelId: z.string().min(1), ...llmParams }),
+  z.object({ capability: z.literal('vision'), modelId: z.string().min(1), ...llmParams }),
   z.object({
     capability: z.literal('embed'),
     modelId: z.string().min(1),
-    name: z.string().optional(),
     dim: z.number().int().positive(),
   }),
   z.object({
     capability: z.literal('rerank'),
     modelId: z.string().min(1),
-    name: z.string().optional(),
     maxChunks: z.number().int().positive().nullable().default(null),
   }),
-  z.object({ capability: z.literal('tts'), modelId: z.string().min(1), name: z.string().optional() }),
-  z.object({ capability: z.literal('stt'), modelId: z.string().min(1), name: z.string().optional() }),
+  z.object({ capability: z.literal('tts'), modelId: z.string().min(1) }),
+  z.object({ capability: z.literal('stt'), modelId: z.string().min(1) }),
 ]);
 
 const bindingBody = z.object({
@@ -62,39 +64,55 @@ const bindingBody = z.object({
   modelId: z.string().min(1),
 });
 
+const toggleModelBody = z.object({
+  enabled: z.boolean(),
+});
+
 export interface ProviderModelsRouteDeps {
   readonly providers: Providers;
   readonly providerModels: ProviderModels;
   readonly modelBindings: ModelBindings;
+  /** models.dev 目录网络刷新；同步到 SQL 由 syncDevModels 负责。 */
+  readonly refreshCatalog: (signal?: AbortSignal) => Promise<boolean>;
   /** kb-embed/kb-rerank 绑定变更后使全部 KB 嵌入失效（引导重嵌）；由装配层从 knowledge 族接线。 */
   readonly onKbEmbeddingBindingChanged?: () => void;
 }
 
 export const providerModelsRoute = (deps: ProviderModelsRouteDeps) =>
   new Hono()
-    // 绑定选择器的可用模型清单：连接可解析（协议档在位、bearer 有 key）的 Provider 池才进来。
+    // 绑定选择器的可用清单：连接可解析（协议档在位、bearer 有 key）且已启用的 Provider 池行。
     .get('/available/:capability', paramValidator(availableParams), context => {
       const { capability } = context.req.valid('param');
-      const usableNames = new Map<string, string>();
+      const usable = new Set<string>();
       for (const provider of deps.providers.list()) {
         try {
           deps.providers.resolveConnection(provider.id, capability);
-          usableNames.set(provider.id, provider.name);
+          usable.add(provider.id);
         } catch (error) {
           if (!(error instanceof ProviderError)) throw error;
         }
       }
       const models = deps.providerModels.listByCapability(capability)
-        .filter(model => usableNames.has(model.providerId))
-        .map(model => ({
-          ...model,
-          providerName: usableNames.get(model.providerId)!,
-        }));
+        .filter(model => model.enabled && usable.has(model.providerId));
       return context.json({ models });
     })
+    // 首次使用判定：provider_models 是否已有任何模型行（静态路径先于 /:providerId 注册）。
+    .get('/models/has-any', context => context.json({ hasAny: deps.providerModels.hasAny() }))
     .get('/:providerId/models', context => {
       try {
         return context.json(deps.providerModels.listByProvider(context.req.param('providerId')));
+      } catch (error) {
+        return providerError(context, error);
+      }
+    })
+    // 刷新：网络拉一次 models.dev 目录，再把该能力的目录模型同步进 SQL（新增默认禁用）。
+    .post('/:providerId/models/refresh', queryValidator(refreshQuery), async context => {
+      const { capability } = context.req.valid('query');
+      try {
+        await deps.refreshCatalog()
+          .catch(error => console.warn('[providers] models.dev 目录刷新失败:', error));
+        const models = deps.providerModels.syncDevModels(context.req.param('providerId'), capability);
+        return context.json({ models });
       } catch (error) {
         return providerError(context, error);
       }
@@ -105,6 +123,20 @@ export const providerModelsRoute = (deps: ProviderModelsRouteDeps) =>
           providerId: context.req.param('providerId'),
           ...context.req.valid('json'),
         }));
+      } catch (error) {
+        return providerError(context, error);
+      }
+    })
+    .patch('/:providerId/models/:modelId', queryValidator(modelQuery), jsonBody(toggleModelBody), context => {
+      const { capability } = context.req.valid('query');
+      const { enabled } = context.req.valid('json');
+      try {
+        return context.json(deps.providerModels.setEnabled(
+          context.req.param('providerId'),
+          capability,
+          context.req.param('modelId'),
+          enabled,
+        ));
       } catch (error) {
         return providerError(context, error);
       }

@@ -1,5 +1,5 @@
-// Providers API：/api/providers——CRUD、Key 管理、模型池与业务绑定（bindings）、探活。
-// TTS 试听（音频字节流）走 requestRaw；STT 转写在 transcribe.ts。
+// Providers API：/api/providers——CRUD、模型池与业务绑定（bindings）、探活、能力执行。
+// TTS 试听（音频字节流）与 STT 转写（multipart）都走 requestRaw 逃生口。
 import type { InferRequestType } from 'hono/client';
 import {
   rpcClient,
@@ -43,6 +43,8 @@ export type ProviderProbeInput = InferRequestType<
   RpcClient['api']['providers'][':providerId']['probe'][':capability']['$post']
 >['json'];
 
+export type TranscribeResult = RpcJson<RpcClient['api']['providers']['transcribe']['$post']>;
+
 // ── API ──────────────────────────────────────────────────────────────────────
 
 export const providersApi = {
@@ -59,7 +61,7 @@ export const providersApi = {
     return readRpcJson(rpcClient.api.providers[':providerId'].$get({ param: { providerId } }));
   },
 
-  /** 名称/图标/启停/能力档位。 */
+  /** 名称/图标/key/能力档位。 */
   patch(providerId: string, patch: ProviderPatchInput) {
     return readRpcJson(rpcClient.api.providers[':providerId'].$patch({
       json: patch,
@@ -71,7 +73,7 @@ export const providersApi = {
     return readRpcVoid(rpcClient.api.providers[':providerId'].$delete({ param: { providerId } }));
   },
 
-  /** 绑定选择器的可用模型池（该能力下全部已启用模型 + Provider 名）。 */
+  /** 绑定选择器的可用模型池（连接可解析 Provider 的已启用 SQL 行）。 */
   listAvailable(capability: ModelCapability): Promise<AvailableModelsResult> {
     return readRpcJson(rpcClient.api.providers.available[':capability'].$get({
       param: { capability },
@@ -81,6 +83,19 @@ export const providersApi = {
   listModels(providerId: string): Promise<ProviderModelsResult> {
     return readRpcJson(rpcClient.api.providers[':providerId'].models.$get({
       param: { providerId },
+    }));
+  },
+
+  /** 首次使用判定：provider_models 是否已有任何模型行。 */
+  hasAnyModels() {
+    return readRpcJson(rpcClient.api.providers.models['has-any'].$get());
+  },
+
+  /** 刷新 models.dev 目录并同步该能力的模型到 SQL（新增默认禁用）。 */
+  refreshModels(providerId: string, capability: 'llm' | 'vision') {
+    return readRpcJson(rpcClient.api.providers[':providerId'].models.refresh.$post({
+      param: { providerId },
+      query: { capability },
     }));
   },
 
@@ -94,8 +109,17 @@ export const providersApi = {
 
   deleteModel(providerId: string, modelId: string, capability: ModelCapability): Promise<void> {
     return readRpcVoid(rpcClient.api.providers[':providerId'].models[':modelId'].$delete({
-      param: { providerId, modelId },
+      param: { providerId, modelId: encodeURIComponent(modelId) },
       query: { capability },
+    }));
+  },
+
+  /** 启停模型池中的一行；停用被绑定模型时 Route 以 409 model_in_use 拒绝（带 conflicts）。 */
+  setModelEnabled(providerId: string, modelId: string, capability: ModelCapability, enabled: boolean) {
+    return readRpcJson(rpcClient.api.providers[':providerId'].models[':modelId'].$patch({
+      param: { providerId, modelId: encodeURIComponent(modelId) },
+      query: { capability },
+      json: { enabled },
     }));
   },
 
@@ -139,7 +163,58 @@ export const providersApi = {
       json: { modelId, ...(text ? { text } : {}) },
     });
   },
+
+  /** STT 试听：用当前角色主参考音频到该 Provider 模型转写，返回转写文本与参考文本。 */
+  sttPreview(providerId: string, modelId: string) {
+    return readRpcJson(rpcClient.api.providers[':providerId']['stt-preview'].$post({
+      param: { providerId },
+      json: { modelId },
+    }));
+  },
+
+  /** 音频字节转写为文本分段；STT 未绑定时服务端如实 503。 */
+  async transcribe(input: {
+    audio: Blob;
+    mime: string;
+    language?: string;
+  }): Promise<TranscribeResult> {
+    const form = new FormData();
+    form.append('file', new File([input.audio], 'input', { type: input.mime || 'application/octet-stream' }));
+    if (input.language) form.append('language', input.language);
+    const res = await serverClient.requestRaw('/api/providers/transcribe', {
+      method: 'POST',
+      body: form,
+    });
+    return res.json();
+  },
 };
 
 /** 探活结果：200 的 `{ ok: true, latencyMs }` 与 502 的 `{ ok: false, error }` 判别联合。 */
 export type ProbeResult = Awaited<ReturnType<typeof providersApi.probe>>;
+
+/** 协议展示名映射（配置页/创建页共用）。 */
+export const PROTOCOL_LABELS: Record<string, string> = {
+  'openai-llm':           'OpenAI 兼容',
+  'openai-responses-llm': 'OpenAI Responses',
+  'anthropic-llm':        'Anthropic 兼容',
+  'gemini-llm':           'Gemini',
+  'openai-embed':         'OpenAI 兼容',
+  'gemini-embed':         'Gemini',
+  'cohere-rerank':        'Cohere 兼容',
+  'openai-tts':           'OpenAI 兼容',
+  'dashscope-tts':        'DashScope',
+  'gpt-sovits-tts':       'GPT-SoVITS',
+  'openai-stt':           'OpenAI 兼容',
+};
+
+/** 按 providerId + modelId 在可用目录里精确查找模型。 */
+export function findAvailableModel(
+  models: AvailableModel[],
+  providerId: string | null | undefined,
+  modelId: string | null | undefined,
+): AvailableModel | undefined {
+  if (!providerId || !modelId) return undefined;
+  return models.find(
+    (model) => model.providerId === providerId && model.modelId === modelId,
+  );
+}

@@ -16,7 +16,7 @@
 
 - 双源合并意味着每张卡片、每个详情页都要回答"这个字段来自代码还是来自行"。字段所有权一旦有两个候选来源，就一定会长出合并规则、优先级规则和它们的 bug。
 - 代码预设的真正好处是"模板演进零成本"（加协议档发版即生效）。但这个好处可以用**迁移纪律**换到：演进只追加 `INSERT OR IGNORE` 迁移，且协议/模型演进带 `WHERE EXISTS` 父行——既尊重用户删除，又永不 UPDATE/DELETE 用户行。成本是每次演进多一个小迁移文件，换来的是**单一事实源**。
-- 种子方案还有一个预设方案给不了的简化：**内置 19 个的配置动作是 update 不是 create**。种子行已在库里，点卡片就是编辑（填 key、启用），不存在"创建模式/编辑模式"双态；`create()` 只服务自建 provider。
+- 种子方案还有一个预设方案给不了的简化：**内置 19 个的配置动作是 update 不是 create**。种子行已在库里，点卡片就是编辑（填 key、启用），不存在"创建模式/编辑模式"双态；`create()` 只服务自建 provider，且创建动作按能力分区发起（LLM 区的 + 只建 llm 能力）——没有全局多能力创建入口；id 是用户显式给定的语义 slug（主键，创建后不可改）。
 
 **删除语义**：种子靠 `user_version` 保证只跑一次（不是每次启动重放），删了不会复活。唯一复活路径是迁移链再压缩（re-squash），属发布级操作，届时需附带处理（墓碑或公告）。
 
@@ -27,15 +27,16 @@
 划界标准：**运行期要读、用户可能改**的事实进 SQL；**只读展示、无用户态**的建议不进 SQL。
 
 - 进 SQL：协议档与 URL（用户改代理地址）、key、池内模型行、健康、绑定。
-- 不进 SQL：协议词汇（14 个写死协议，`isProtocolForCapability` 把关）、live 拉取能力（从协议族推导：`openai-*` 天然支持 GET /models，`protocolSupportsLiveListing`）、models.dev 参数目录。
-- **models.dev 目录 = 本地快照 + fetch 刷新**：`catalog/models-dev.json` 是 api.json 的本地缓存（gitignored，拉取产物不入库）；`getModelsDevCatalog()` 惰性读盘一次（缺失/损坏返回空目录，不阻塞主链路），`refreshModelsDevCatalog()` 经 public-http 拉取、内容有变才覆写快照并重载内存。
-- 离线建议模型（embed/tts/stt/rerank 等 models.dev 不覆盖的能力）**直接种子进 `provider_models`（`source='seed'`，用户不可删除，演进与下架由迁移负责）**。表里没有"启用"概念：有行 = 该 Provider 已知可用模型；能不能用由唯一门槛决定——连接可解析（协议档在位 + bearer 有 Key），`/available` 与绑定入口都断言它。不为建议单建表，也不留代码常量文件。
+- 不进 SQL：协议词汇（14 个写死协议，`isProtocolForCapability` 把关）、models.dev 参数目录。
+- **models.dev 目录 = 本地快照 + fetch 刷新**：`catalog/models-dev.json` 是 api.json 的本地缓存（gitignored，拉取产物不入库）；`getModelsDevCatalog()` 惰性读盘一次（缺失/损坏返回空目录，不阻塞主链路），`refreshModelsDevCatalog()` 原生 fetch 拉取、内容有变才覆写快照并重载内存。
+- **模型不种子**：`provider_models` 行 = 启用集合的载体，全部从 SQL 读取；llm/vision 由 models.dev 目录同步落库（新增默认禁用 `enabled=0`、`source='dev'`），embed/rerank/tts/stt 只能手写（`source='user'`）。目录只是内部拉取来源（快照缓存 + 拉取函数），不公开端点也不直接进表。
 
-### 3. 模型身份与参数：modelId + name，Dev 预填、SQL 为事实
+### 3. 模型池：手写与目录同步同表，启停开关是唯一准入
 
-- 模型实体 = `modelId`（精确身份，对齐 turns/sessions 的 model_id 词汇）+ `name`（用户可改的显示名，空则前端回退显示 modelId）。
-- **允许修改单个模型**：`ProviderModels.save()` 是 upsert，同主键再保存即更新 name 与全部参数；删除已有。
-- **models.dev 与 SQL 的冲突规则**：Dev 优先只发生在**未成行的候选预填**（加模型时 Dev 参数先填，Dev 没有的字段由 SQL 行补）；**一旦成行（含种子）以 SQL 为事实**——用户改过的参数不被快照更新覆盖。冲突面设计上已经很小：Dev 收录的 vision/llm 不种子，种子只进 Dev 不覆盖的能力。
+- 行 = 模型池事实。`source='user'` 手写行允许编辑/启停/删除；`source='dev'` 目录同步行禁修改参数、允许启停/删除，刷新时除 `enabled` 外参数以目录为准。
+- `enabled=1` 是绑定、`/available` 与探活的唯一准入；停用/删除仍被业务模块绑定的模型抛 `model_in_use`（带 conflicts，前端弹窗引导解绑）。
+- 手写与目录同 id：手写行不被目录覆盖（用户事实优先）；dev 行在则手写禁改（参数由目录维护）。
+- **允许修改单个模型的参数**：`ProviderModels.save()` 是 upsert（仅 user 行），同主键再保存即更新参数。
 
 ### 3. 一个 Provider 一把 key（bearer 才有）
 
@@ -70,11 +71,11 @@ providers                id PK · name · icon_id NULL · auth_type('none'|'bear
    ├─ provider_protocols (provider_id, capability, protocol) PK · base_url
    │                     同能力可配多档（DeepSeek 双协议），切 active 不丢另一档地址
    ├─ provider_health    (provider_id, capability) PK · status · last_probed_at · latency_ms · last_error
-   ├─ provider_models    (provider_id, capability, model_id) PK · name NULL · source('seed'|'user') · 能力参数列
-   │                     name = 用户可改显示名（空则回退 model_id）
-   │                     种子建议 seed（不可删）+ 手动添加 user；FK 级联到能力行
+   ├─ provider_models    (provider_id, capability, model_id) PK · name NULL · source('user'|'dev') · enabled · 能力参数列
+   │                     name = 目录同步自带的显示名快照（空则回退 model_id）
+   │                     user 手写（可编辑）+ dev 目录同步（禁修改、参数以目录为准、enabled 不动）；FK 级联到能力行
    └─ model_bindings     module PK（memory/title/lightrag-embed/lightrag-llm/tts/stt/vision）
-                         → (provider_id, capability, model_id)，只能绑池内模型，且绑定入口断言连接可解析
+                         → (provider_id, capability, model_id)，只能绑已启用模型，且绑定入口断言连接可解析
 ```
 
 种子与演进：`001_initial.sql` = schema 基线；`002_provider_seeds.sql` = 19 个内置 provider 全量内容；`003+` = 演进（只增不删、INSERT OR IGNORE、WHERE EXISTS 父行）。
@@ -92,13 +93,14 @@ resolveConnection(providerId, capability)                class Providers 薄编�
   → ProviderConnection { protocol, baseUrl, apiKey? }  → 六个执行包 Adapter 直接消费
 ```
 
-### 模型发现（加模型表单候选，server 端点归接线批）
+### 模型发现（llm/vision 目录同步 → SQL 单一来源）
 
 ```text
-models.dev 本地快照（getModelsDevCatalog()，按 models_dev_id 查，带参数与 name 预填）
-  → 查不到：live fetch（GET {baseUrl}/models，openai-* 协议族，带当前能力的 key）
-  → 手填兜底；provider_models 已有内容（含种子）天然在清单里
-冲突规则：未成行候选以 models.dev 参数预填为主；已成行以 SQL 为事实（用户可改单行）。
+启动后台 refreshCatalog（快照缺失/损坏为空目录，不阻塞主链路）
+  → Provider 配置保存成功 or 池页点刷新：再拉一次目录 + syncDevModels 落 SQL
+      新增行 enabled=0 / source='dev'；已有 dev 行参数以目录为准（enabled 不动）
+  → 池页从 SQL 读全量（目录区与手填区同表），启停即拨 enabled 开关
+embed/rerank/tts/stt：无目录覆盖，只能手写（source='user'）。
 ```
 
 ### 类型与主动词
@@ -116,16 +118,18 @@ interface Provider {
 
 class Providers {
   list / get                            // 一个对象含能力与内嵌健康
-  create(input)                         // 只服务自建；id 查重（种子 id 同样占用）
-  update(id, input)                     // 内置配置走这里；capability 单能力 delta
+  create(input)                         // 只服务自建；按能力分区创建单能力 Provider；id 显式语义 slug（主键）
+  update(id, input)                     // 内置配置走这里；capability 单能力 delta（含 removedProtocols 删档：激活档被删自动切剩余第一档，删到最后一档拒绝）
   delete(id)                            // 先查 model_bindings 冲突（provider_in_use）
   recordHealth(providerId, capability, health)
   resolveConnection(providerId, capability)
 }
 
 class ProviderModels {
-  save(input)                           // upsert；新增行 source='user'，已有行保留来源
-  delete(providerId, capability, modelId)  // seed 行拒绝（invalid_configuration）
+  save(input)                           // 手写 upsert（user 行）；dev 行禁修改
+  setEnabled(providerId, capability, modelId, enabled)   // 停用被绑定模型 → model_in_use（带 conflicts）
+  delete(providerId, capability, modelId)                // 被绑定 → model_in_use
+  syncDevModels(providerId, 'llm'|'vision')              // 目录同步落 SQL（新增默认禁用）
 }
 
 resolveProviderConnection(provider, keyValue, capability)   // 纯函数，实体不带方法
@@ -137,7 +141,7 @@ resolveProviderConnection(provider, keyValue, capability)   // 纯函数，实�
 
 ```text
 src/providers/
-├─ types.ts           能力/协议词汇、ProviderConnection、isProtocolForCapability、protocolSupportsLiveListing
+├─ types.ts           能力/协议词汇、ProviderConnection、isProtocolForCapability
 ├─ providers.ts       Provider/ProviderCapability/ProviderStore 端口
 │                     + class Providers + resolveProviderConnection 纯函数
 ├─ models.ts          ProviderModel 家族（llm/vision 同参数集）+ ProviderModels

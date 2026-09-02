@@ -182,8 +182,18 @@ export class ProvidersRepo implements ProviderStore {
     ).all(providerId) as HealthRow[];
   }
 
+  /** 该 provider 各能力的模型行数（一次 group by；none 类型的"已配置"判定数据源）。 */
+  private modelCounts(providerId: string): Map<ModelCapability, number> {
+    const rows = this.db.prepare(
+      `SELECT capability, COUNT(*) AS count FROM provider_models
+       WHERE provider_id = ? GROUP BY capability`,
+    ).all(providerId) as Array<{ capability: ModelCapability; count: number }>;
+    return new Map(rows.map((row) => [row.capability, row.count]));
+  }
+
   private toProvider(row: ProviderRow): Provider {
     const protocols = this.listProtocolRows(row.id);
+    const counts = this.modelCounts(row.id);
     const capabilities: ProviderCapability[] = this.listCapabilityRows(row.id)
       .map((entry) => ({
         capability: entry.capability,
@@ -192,6 +202,7 @@ export class ProvidersRepo implements ProviderStore {
         protocols: protocols
           .filter((protocol) => protocol.capability === entry.capability)
           .map((protocol) => ({ protocol: protocol.protocol, baseUrl: protocol.base_url })),
+        modelCount: counts.get(entry.capability) ?? 0,
       }));
     const health: ProviderHealth[] = this.listHealthRows(row.id).map((entry) => ({
       capability: entry.capability,

@@ -84,8 +84,3 @@ export function isProtocolForCapability<TCapability extends ModelCapability>(
       return protocol === 'openai-stt';
   }
 }
-
-/** OpenAI 兼容端点天然支持 GET /models 实时拉取模型清单；其余协议族只能 models.dev 或手填。 */
-export function protocolSupportsLiveListing(protocol: Protocol): boolean {
-  return protocol.startsWith('openai-');
-}

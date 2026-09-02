@@ -7,7 +7,8 @@ interface ProviderModelRow {
   capability: ModelCapability;
   model_id: string;
   name: string | null;
-  source: 'seed' | 'user';
+  source: 'user' | 'dev';
+  enabled: number;
   context_window: number | null;
   max_output: number | null;
   tool_call: number | null;
@@ -54,15 +55,19 @@ export class ProviderModelsRepo implements ProviderModelStore {
     return rows.map(fromRow);
   }
 
+  hasAny(): boolean {
+    return this.db.prepare(`SELECT 1 AS x FROM provider_models LIMIT 1`).get() !== undefined;
+  }
+
   save(model: ProviderModel): void {
     const now = Date.now();
     const fields = toColumns(model);
     this.db.prepare(
       `INSERT INTO provider_models
-         (provider_id, capability, model_id, name, source, context_window, max_output,
+         (provider_id, capability, model_id, name, source, enabled, context_window, max_output,
           tool_call, reasoning, temperature, input_image, embedding_dim,
           rerank_max_chunks, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(provider_id, capability, model_id) DO UPDATE SET
          name = excluded.name,
          source = excluded.source,
@@ -81,6 +86,7 @@ export class ProviderModelsRepo implements ProviderModelStore {
       model.modelId,
       model.name ?? null,
       model.source,
+      model.enabled ? 1 : 0,
       fields.contextWindow,
       fields.maxOutput,
       fields.toolCall,
@@ -92,6 +98,13 @@ export class ProviderModelsRepo implements ProviderModelStore {
       now,
       now,
     );
+  }
+
+  setEnabled(providerId: string, capability: ModelCapability, modelId: string, enabled: boolean): void {
+    this.db.prepare(
+      `UPDATE provider_models SET enabled = ?, updated_at = ?
+       WHERE provider_id = ? AND capability = ? AND model_id = ?`,
+    ).run(enabled ? 1 : 0, Date.now(), providerId, capability, modelId);
   }
 
   delete(providerId: string, capability: ModelCapability, modelId: string): void {
@@ -109,6 +122,7 @@ function fromRow(row: ProviderModelRow): ProviderModel {
     modelId: row.model_id,
     ...(row.name === null ? {} : { name: row.name }),
     source: row.source,
+    enabled: row.enabled === 1,
   };
   switch (row.capability) {
     case 'llm':

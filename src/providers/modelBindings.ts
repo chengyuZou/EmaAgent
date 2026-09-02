@@ -22,12 +22,12 @@ export const MODEL_BINDING_CAPABILITIES: Readonly<Record<ModelBindingModule, Mod
     'memory-llm': 'llm',
     'kb-embed': 'embed',
     'kb-rerank': 'rerank',
-    title: 'llm',
+    'title': 'llm',
     'lightrag-llm': 'llm',
     'lightrag-embed': 'embed',
-    tts: 'tts',
-    stt: 'stt',
-    vision: 'vision',
+    'tts': 'tts',
+    'stt': 'stt',
+    'vision': 'vision',
   });
 
 export interface ModelBindingInput {
@@ -69,10 +69,10 @@ export class ModelBindings {
   set(input: ModelBindingInput): ModelBinding {
     const capability = MODEL_BINDING_CAPABILITIES[input.module];
     const model = this.models.get(input.providerId, capability, input.modelId);
-    if (!model) {
+    if (!model?.enabled) {
       throw new ProviderError(
         'model_not_found',
-        `${input.module} 只能绑定池内的 ${capability} 模型`,
+        `${input.module} 只能绑定已启用的 ${capability} 模型`,
       );
     }
     const binding = { ...input, capability };

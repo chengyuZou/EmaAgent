@@ -38,11 +38,14 @@ export class ServerApiError extends Error {
   /** 领域错误的细分原因(如 CharacterResourceValidationError 的 reason)。 */
   reason?: string;
   details?: unknown;
+  /** 409 冲突类错误的具体冲突列表(如 model_in_use 的 ProviderBindingConflict[])。 */
+  conflicts?: unknown[];
 
   constructor(status: number, body: string) {
     let code: string | undefined;
     let reason: string | undefined;
     let details: unknown;
+    let conflicts: unknown[] | undefined;
     let message = `Server HTTP ${status}`;
 
     try {
@@ -50,6 +53,7 @@ export class ServerApiError extends Error {
       code = typeof parsed.code === 'string' ? parsed.code : undefined;
       reason = typeof parsed.reason === 'string' ? parsed.reason : undefined;
       details = parsed.details;
+      conflicts = Array.isArray(parsed.conflicts) ? parsed.conflicts : undefined;
       // Ema 路由约定 error 字段即机器错误码(如 character_not_found),用它兜底 code。
       if (!code && typeof parsed.error === 'string' && /^[a-z0-9_/-]+$/i.test(parsed.error)) {
         code = parsed.error;
@@ -72,6 +76,7 @@ export class ServerApiError extends Error {
     this.code = code;
     this.reason = reason;
     this.details = details;
+    this.conflicts = conflicts;
   }
 }
 
@@ -104,6 +109,12 @@ function getSecretPromise(): Promise<string | null> {
   return secretPromise;
 }
 
+/** server 重启换端口后清掉端口缓存，下次请求重新发现（tsx watch 每次重启都换端口）。 */
+async function refreshPortDiscovery(): Promise<void> {
+  portPromise = null;
+  await getPortPromise();
+}
+
 // ── Implementation ───────────────────────────────────────────────────────────
 
 async function buildUrl(path: string, params?: Record<string, string | number | undefined>): Promise<string> {
@@ -130,10 +141,17 @@ async function doRequestRaw(
   try {
     res = await fetch(url, requestInit);
   } catch (err: unknown) {
-    const error = new Error(`Server unreachable: ${url}`);
-    (error as Error & { cause?: unknown; code?: string }).cause = err;
-    (error as Error & { cause?: unknown; code?: string }).code = 'server_unreachable';
-    throw error;
+    // server 重启换端口后旧端口连接失败：重新发现端口重试一次，再不行才报不可达。
+    try {
+      await refreshPortDiscovery();
+      const retryUrl = await buildUrl(path);
+      res = await fetch(retryUrl, requestInit);
+    } catch (retryErr: unknown) {
+      const error = new Error(`Server unreachable: ${url}`);
+      (error as Error & { cause?: unknown; code?: string }).cause = retryErr;
+      (error as Error & { cause?: unknown; code?: string }).code = 'server_unreachable';
+      throw error;
+    }
   }
 
   if (!res.ok) {
@@ -205,21 +223,30 @@ const RPC_HOST_PLACEHOLDER = 'http://ema-server';
 
 export const rpcClient = hc<AppType>(RPC_HOST_PLACEHOLDER, {
   fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
-    const [base, secret] = await Promise.all([
-      getPortPromise().then(port => `http://127.0.0.1:${port}`),
-      getSecretPromise(),
-    ]);
-    const source = input instanceof Request
-      ? input.url
-      : input instanceof URL
-        ? input.toString()
-        : input;
-    const url = source.replace(RPC_HOST_PLACEHOLDER, base);
+    const doFetch = async (): Promise<Response> => {
+      const [base, secret] = await Promise.all([
+        getPortPromise().then(port => `http://127.0.0.1:${port}`),
+        getSecretPromise(),
+      ]);
+      const source = input instanceof Request
+        ? input.url
+        : input instanceof URL
+          ? input.toString()
+          : input;
+      const url = source.replace(RPC_HOST_PLACEHOLDER, base);
 
-    const headers = new Headers(init?.headers);
-    if (secret) headers.set('X-Ema-Secret', secret);
+      const headers = new Headers(init?.headers);
+      if (secret) headers.set('X-Ema-Secret', secret);
 
-    return fetch(url, { ...init, headers });
+      return fetch(url, { ...init, headers });
+    };
+    try {
+      return await doFetch();
+    } catch {
+      // server 重启换端口后旧端口连接失败：重新发现端口重试一次。
+      await refreshPortDiscovery();
+      return doFetch();
+    }
   },
 });
 

@@ -2,8 +2,7 @@
 import { useEffect, useMemo, useState, type JSX } from 'react';
 import { Button, DropdownMenu, type MenuItem } from '@ema-agent/ui';
 import type { TurnModelSelection } from '@ema-agent/turn';
-import type { AvailableModel } from '../../api/providers.js';
-import { findAvailableModel, useProviderStore } from '../../stores/provider.js';
+import { providersApi, findAvailableModel, type AvailableModel } from '../../api/providers.js';
 
 type LlmModel = Extract<AvailableModel, { capability: 'llm' }>;
 
@@ -23,9 +22,14 @@ export function ModelPicker({ selection, onChange, onClear }: {
   onChange(selection: TurnModelSelection): void;
   onClear(): void;
 }): JSX.Element {
-  const models = useProviderStore(state => state.models);
-  const status = useProviderStore(state => state.modelsStatus);
-  useEffect(() => { void useProviderStore.getState().loadModels(); }, []);
+  // 可用目录直接用 API 拉（本地回环）；不进 Store，避免跨窗口漂移与人肉失效点。
+  const [models, setModels] = useState<AvailableModel[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    providersApi.listAvailable('llm')
+      .then(({ models }) => { setModels([...models]); setLoaded(true); })
+      .catch(() => setLoaded(true));
+  }, []);
 
   const grouped = useMemo(() => {
     const result = new Map<string, LlmModel[]>();
@@ -38,14 +42,14 @@ export function ModelPicker({ selection, onChange, onClear }: {
   }, [models]);
   const selectedModel = findAvailableModel(models, selection?.providerId, selection?.modelId);
   const label = selectedModel
-    ? `${selectedModel.providerName} · ${selectedModel.name ?? selectedModel.modelId}`
-    : status === 'loading' || status === 'idle' ? '模型加载中' : '默认模型';
+    ? `${selectedModel.providerId} · ${selectedModel.name ?? selectedModel.modelId}`
+    : !loaded ? '模型加载中' : '默认模型';
 
   const modelItems: MenuItem[] = grouped.flatMap((group, groupIndex) => [
     ...(groupIndex > 0 ? [{ kind: 'separator' as const }] : []),
     {
       kind: 'item' as const,
-      label: group[0]?.providerName ?? 'Provider',
+      label: group[0]?.providerId ?? 'Provider',
       icon: 'i-lucide:server',
       disabled: true,
       onSelect: () => {},

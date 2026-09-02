@@ -20,7 +20,7 @@ export interface ProvidersComposition {
   readonly modelBindings: ModelBindings;
   /** models.dev 本地快照目录（缺失/损坏时为空目录，不阻塞主链路）。 */
   readonly modelCatalog: ModelsDevCatalog;
-  /** 后台刷新 models.dev 快照；网络失败由 public-http 防线收口，调用方 fire-and-forget。 */
+  /** 后台刷新 models.dev 快照；网络失败只告警，调用方 fire-and-forget。 */
   refreshCatalog(signal?: AbortSignal): Promise<boolean>;
 }
 
@@ -32,7 +32,7 @@ export function openProviders(profileDb: Database): ProvidersComposition {
 
   return {
     providers: new Providers(providersRepo, bindingsRepo),
-    providerModels: new ProviderModels(providersRepo, modelsRepo),
+    providerModels: new ProviderModels(providersRepo, modelsRepo, getModelsDevCatalog(), bindingsRepo),
     modelBindings: new ModelBindings(modelsRepo, bindingsRepo),
     modelCatalog: getModelsDevCatalog(),
     refreshCatalog: signal => refreshModelsDevCatalog(signal),

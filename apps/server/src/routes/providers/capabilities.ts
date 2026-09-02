@@ -18,12 +18,22 @@ const ttsPreviewBody = z.object({
   text: z.string().max(REQUEST_VALUE_LIMITS.maxTtsTestTextChars).optional(),
 });
 
+const sttPreviewBody = z.object({
+  modelId: z.string().min(1),
+});
+
 export interface ProviderCapabilitiesRouteDeps {
   readonly voicePreview: SpeechVoicePreview;
   /** STT 转写（装配层解析绑定并记账）；未绑定返回 undefined。 */
   readonly transcribe: (
     request: Omit<TranscriptionRequest, 'model'>,
   ) => Promise<TranscriptionResult | undefined>;
+  /** STT 试听：用当前角色主参考音频到指定 Provider 模型转写。 */
+  readonly sttPreview: (
+    providerId: string,
+    modelId: string,
+    signal?: AbortSignal,
+  ) => Promise<{ text: string; referenceText: string }>;
 }
 
 export const providerCapabilitiesRoute = (deps: ProviderCapabilitiesRouteDeps) =>
@@ -73,5 +83,20 @@ export const providerCapabilitiesRoute = (deps: ProviderCapabilitiesRouteDeps) =
         if (!(error instanceof SpeechVoicePreviewError)) throw error;
         const status = error.code === 'synthesis_failed' ? 502 : 400;
         return context.json({ error: error.code, message: error.message }, status);
+      }
+    })
+    // STT 试听：当前角色主参考音频到指定 Provider 模型转写，返回转写文本与参考文本对照。
+    .post('/:providerId/stt-preview', jsonBody(sttPreviewBody), async context => {
+      try {
+        const result = await deps.sttPreview(
+          context.req.param('providerId'),
+          context.req.valid('json').modelId,
+          context.req.raw.signal,
+        );
+        return context.json(result);
+      } catch (error) {
+        if (error instanceof ProviderError) return providerError(context, error);
+        const message = error instanceof Error ? error.message : String(error);
+        return context.json({ error: 'stt_preview_failed', message }, 502);
       }
     });

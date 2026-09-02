@@ -1,5 +1,3 @@
-// Provider 控制面：管理 providers 行与能力档位，
-// 并把能力配置解析为六个 API 包可直接消费的连接。一个 Provider 一把 key（bearer 才有）。
 import { ProviderError } from './errors.js';
 import type { ModelBindingStore } from './modelBindings.js';
 import type {
@@ -24,6 +22,8 @@ export interface ProviderCapability {
   modelsDevId?: string;
   /** 该能力已配置的协议；同一能力可配多档（如 DeepSeek LLM 的 openai/anthropic 双协议）。 */
   protocols: readonly ProviderProtocol[];
+  /** 读出时注入：该能力的模型行数（none 类型的"已配置"判定用它；写入输入不含）。 */
+  modelCount?: number;
 }
 
 export interface ProviderHealth {
@@ -55,17 +55,20 @@ export interface ProviderCapabilityInput {
   /** true = 设为该能力当前协议；false = 停用该能力（已配协议保留）；缺省 = 未启用时激活这条协议。 */
   active?: boolean;
   modelsDevId?: string;
+  /** 本次要从该能力移除的协议档；剩最后一档时拒绝（不能把能力删成无协议）。 */
+  removedProtocols?: readonly Protocol[];
 }
 
 export interface CreateProvider {
-  /** 用户选定；创建后不可改，且不能与已有行（含内置种子）重复。 */
+  /** 用户显式给定的语义 slug（如 deepseek / company-gateway）；创建后不可改，不能与已有行（含内置种子）重复。 */
   id: string;
   name: string;
   iconId?: string;
   authType: 'none' | 'bearer';
   /** 一把 key；bearer 未提供时先建行，配置动作补。 */
   key?: string;
-  capabilities: readonly ProviderCapabilityInput[];
+  /** 创建动作按能力分区发起：一次创建只带一个能力。 */
+  capability: ProviderCapabilityInput;
 }
 
 export interface UpdateProvider {
@@ -108,19 +111,35 @@ export class Providers {
     return this.requireProvider(id);
   }
 
-  /** 只服务自建 provider；内置 19 个是种子行，配置动作走 update。 */
+  /** 只服务自建 provider；内置 19 个是种子行，配置动作走 update。按能力分区创建：单档协议即激活。
+   *  判重按 (id, capability)：id 存在但无此能力 → 追加能力档（同 key 共享）；id+能力都有 → already_exists。 */
   create(input: CreateProvider): Provider {
     assertValidId(input.id);
-    if (this.store.get(input.id)) {
-      throw new ProviderError('already_exists', `Provider id 已存在：${input.id}`);
+    const existing = this.store.get(input.id);
+    if (existing) {
+      if (existing.capabilities.some((c) => c.capability === input.capability.capability)) {
+        throw new ProviderError(
+          'already_exists',
+          `Provider ${input.id} 的 ${input.capability.capability} 能力已存在`,
+        );
+      }
+      return this.update(input.id, {
+        capability: input.capability,
+        ...(input.key !== undefined ? { key: input.key } : {}),
+      });
     }
+    const protocol = normalizeCapabilityProtocol(input.capability);
     this.store.save({
       id: input.id,
       name: normalizeName(input.name),
       iconId: input.iconId,
       authType: input.authType,
       ...(input.key !== undefined ? { keyValue: normalizeKeyValue(input.key) } : {}),
-      capabilities: normalizeCapabilities(input.capabilities),
+      capabilities: [{
+        capability: input.capability.capability,
+        activeProtocol: protocol.protocol,
+        protocols: [protocol],
+      }],
     });
     return this.requireProvider(input.id);
   }
@@ -143,6 +162,20 @@ export class Providers {
         protocols.push(incoming);
         if (requested.active === true || activeProtocol === undefined) {
           activeProtocol = incoming.protocol;
+        }
+      }
+      if (requested.removedProtocols !== undefined && requested.removedProtocols.length > 0) {
+        for (const removed of requested.removedProtocols) {
+          const index = protocols.findIndex((entry) => entry.protocol === removed);
+          if (index >= 0) protocols.splice(index, 1);
+        }
+        if (protocols.length === 0) {
+          throw invalid(`${requested.capability} 至少要保留一档协议`);
+        }
+        // 激活档被删时自动切到剩余第一档，不留悬空指针。
+        if (activeProtocol !== undefined
+          && !protocols.some((entry) => entry.protocol === activeProtocol)) {
+          activeProtocol = protocols[0]!.protocol;
         }
       }
       if (requested.active === false) {
@@ -247,38 +280,7 @@ export function resolveProviderConnection<TCapability extends ModelCapability>(
   };
 }
 
-export function normalizeCapabilities(
-  requested: readonly ProviderCapabilityInput[],
-): ProviderCapability[] {
-  if (requested.length === 0) {
-    throw invalid('至少需要配置一项 Provider 能力');
-  }
-
-  const byCapability = new Map<ModelCapability, ProviderCapabilityInput[]>();
-  for (const entry of requested) {
-    const entries = byCapability.get(entry.capability) ?? [];
-    if (entry.protocol !== undefined
-      && entries.some((item) => item.protocol === entry.protocol)) {
-      throw invalid(`能力 ${entry.capability} 的协议 ${entry.protocol} 重复`);
-    }
-    entries.push(entry);
-    byCapability.set(entry.capability, entries);
-  }
-
-  return [...byCapability.entries()].map(([capability, entries]) => {
-    const protocols = entries.map((entry) => normalizeCapabilityProtocol(entry));
-    const activeIndex = entries.findIndex((entry) => entry.active === true);
-    const active = protocols[activeIndex >= 0 ? activeIndex : 0]!;
-    return {
-      capability,
-      activeProtocol: active.protocol,
-      modelsDevId: entries[0]?.modelsDevId,
-      protocols,
-    };
-  });
-}
-
-function normalizeCapabilityProtocol(entry: ProviderCapabilityInput): ProviderProtocol {
+export function normalizeCapabilityProtocol(entry: ProviderCapabilityInput): ProviderProtocol {
   if (entry.protocol === undefined || !isProtocolForCapability(entry.capability, entry.protocol)) {
     throw invalid(`${entry.capability} 缺少有效协议`);
   }

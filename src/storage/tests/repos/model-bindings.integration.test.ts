@@ -21,12 +21,12 @@ describe('ModelBindingsRepo', () => {
     });
     models = new ProviderModelsRepo(database.sqlite);
     models.save({
-      providerId: 'siliconflow', capability: 'llm', modelId: 'old-model', source: 'user',
+      providerId: 'siliconflow', capability: 'llm', modelId: 'old-model', source: 'user', enabled: true,
       contextWindow: 32_000, maxOutput: null, toolCall: null,
       reasoning: null, temperature: null, inputImage: null,
     });
     models.save({
-      providerId: 'siliconflow', capability: 'llm', modelId: 'new-model', source: 'user',
+      providerId: 'siliconflow', capability: 'llm', modelId: 'new-model', source: 'user', enabled: true,
       contextWindow: 64_000, maxOutput: null, toolCall: true,
       reasoning: null, temperature: null, inputImage: null,
     });
@@ -45,7 +45,7 @@ describe('ModelBindingsRepo', () => {
 
   it('模块与能力不匹配时由 Schema 拒绝', () => {
     expect(() => bindings.set({
-      module: 'vision', capability: 'llm', providerId: 'siliconflow', modelId: 'old-model',
+      module: 'vision', capability: 'llm', providerId: 'siliconflow', modelId: 'old-model', source: 'user', enabled: true,
     })).toThrow(/CHECK constraint failed/);
   });
 
@@ -55,3 +55,5 @@ describe('ModelBindingsRepo', () => {
     expect(bindings.get('memory-llm')).toBeUndefined();
   });
 });
+
+
