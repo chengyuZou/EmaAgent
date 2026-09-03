@@ -9,7 +9,6 @@ import {
 } from '@ema-agent/providers';
 import {
   FsAudioArchive,
-  readSpeechSegmentLibraryLimits,
   SpeechCoordinator,
   SpeechSegmentLibrary,
   SpeechVoiceCache,
@@ -23,7 +22,6 @@ import {
   SpeechSegmentsRepo,
   type Database,
 } from '@ema-agent/storage';
-import type { SettingsStore } from '@ema-agent/settings';
 import { createSttCall, type TranscriptionRequest, type TranscriptionResult } from '@ema-agent/stt';
 import {
   createTtsCall,
@@ -78,7 +76,6 @@ export function openSpeech(
   providers: Providers,
   modelBindings: ModelBindings,
   characters: CharacterStore,
-  settings: SettingsStore,
 ): SpeechComposition {
   const audioArchive = new FsAudioArchive(path.join(activeDataDir, 'sessions'));
   const voiceCache = new SpeechVoiceCache();
@@ -87,7 +84,7 @@ export function openSpeech(
     new SpeechSegmentsRepo(dataDb.sqlite),
     audioArchive,
   );
-  segmentLibrary.enforceLimits(readSpeechSegmentLibraryLimits(settings));
+  segmentLibrary.enforceLimits();
 
   /** 候选顺序：enabled + isPrimary 优先，其次任一 enabled。 */
   const resolveCharacterVoice = (character: Character): TtsVoiceReference | null => {
@@ -194,7 +191,7 @@ export function openSpeech(
             createdAt: Date.now(),
           });
         }
-        segmentLibrary.enforceLimits(readSpeechSegmentLibraryLimits(settings));
+        segmentLibrary.enforceLimits();
       },
       abort: () => coordinator.abort(),
     };

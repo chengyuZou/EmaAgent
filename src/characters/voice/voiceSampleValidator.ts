@@ -2,7 +2,10 @@
 
 import fs from 'node:fs';
 import { CharacterResourceValidationError } from '../errors.js';
-import type { CharacterSettings } from '../settings.js';
+import {
+  MAX_CHARACTER_VOICE_BYTES,
+  MAX_CHARACTER_VOICE_DURATION_MS,
+} from './limits.js';
 
 export interface ValidatedVoiceSample {
   readonly mimeType: 'audio/wav' | 'audio/mpeg' | 'audio/flac' | 'audio/ogg' | 'audio/mp4';
@@ -13,7 +16,6 @@ export interface ValidatedVoiceSample {
 
 export async function validateVoiceSampleFile(
   filePath: string,
-  settings: CharacterSettings,
 ): Promise<ValidatedVoiceSample> {
   const stat = await fs.promises.lstat(filePath);
   if (!stat.isFile() || stat.isSymbolicLink()) {
@@ -22,7 +24,7 @@ export async function validateVoiceSampleFile(
   if (stat.size <= 0) {
     throw new CharacterResourceValidationError('invalid_resource_values');
   }
-  if (stat.size > settings.characterVoiceMaxBytes) {
+  if (stat.size > MAX_CHARACTER_VOICE_BYTES) {
     throw new CharacterResourceValidationError('resource_too_large');
   }
   const head = await readRange(filePath, 0, Math.min(stat.size, 1024 * 1024));
@@ -30,7 +32,7 @@ export async function validateVoiceSampleFile(
   if (
     !Number.isFinite(detected.durationMs)
     || detected.durationMs <= 0
-    || detected.durationMs > settings.characterVoiceMaxDurationMs
+    || detected.durationMs > MAX_CHARACTER_VOICE_DURATION_MS
   ) {
     throw new CharacterResourceValidationError('voice_duration_invalid');
   }

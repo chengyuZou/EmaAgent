@@ -8,9 +8,10 @@ import type { AttachmentInsertRow, AttachmentRepo, AttachmentRow } from '@ema-ag
 import { AttachmentLimitError, AttachmentPreparationError } from './errors.js';
 import type { TurnAttachmentInput } from './protocol.js';
 import {
-  DEFAULT_ATTACHMENT_INPUT_SETTINGS,
-  type AttachmentInputSettings,
-} from './settings.js';
+  MAX_FILES_PER_TURN,
+  MAX_IMAGE_BYTES,
+  MAX_IMAGES_PER_TURN,
+} from './limits.js';
 import type {
   Attachment,
   AttachmentSourceStatus,
@@ -44,7 +45,6 @@ export class AttachmentStore {
     inputs: readonly TurnAttachmentInput[],
     turnId: string,
     sessionId: string,
-    limits: Readonly<AttachmentInputSettings> = DEFAULT_ATTACHMENT_INPUT_SETTINGS,
   ): Promise<readonly Attachment[]> {
     if (inputs.length === 0) return [];
 
@@ -55,20 +55,20 @@ export class AttachmentStore {
 
     const images = prepared.filter((item) => item.kind === 'image');
     const files = prepared.filter((item) => item.kind === 'file');
-    if (images.length > limits.maxImagesPerTurn) {
+    if (images.length > MAX_IMAGES_PER_TURN) {
       throw new AttachmentLimitError(
-        `本轮最多上传 ${limits.maxImagesPerTurn} 张图片，实际收到 ${images.length} 张`,
+        `本轮最多上传 ${MAX_IMAGES_PER_TURN} 张图片, 实际收到 ${images.length} 张`,
       );
     }
-    if (files.length > limits.maxFilesPerTurn) {
+    if (files.length > MAX_FILES_PER_TURN) {
       throw new AttachmentLimitError(
-        `本轮最多上传 ${limits.maxFilesPerTurn} 个文件，实际收到 ${files.length} 个`,
+        `本轮最多上传 ${MAX_FILES_PER_TURN} 个文件, 实际收到 ${files.length} 个`,
       );
     }
-    const oversized = images.find((item) => item.byteSize > limits.maxImageBytes);
+    const oversized = images.find((item) => item.byteSize > MAX_IMAGE_BYTES);
     if (oversized) {
       throw new AttachmentLimitError(
-        `图片 ${oversized.name} 超过单文件上限 ${formatMiB(limits.maxImageBytes)} MiB`,
+        `图片 ${oversized.name} 超过单文件上限 ${formatMiB(MAX_IMAGE_BYTES)} MiB`,
       );
     }
 

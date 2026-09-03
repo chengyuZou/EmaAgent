@@ -11,12 +11,6 @@ export type { SentenceChunk } from './sentenceSplitter.js';
 export { SpeechCoordinator } from './speechCoordinator.js';
 export type { CompletedSpeechSegment, SpeechCoordinatorArgs } from './speechCoordinator.js';
 export { SpeechSegmentLibrary } from './segmentLibrary.js';
-export {
-  readSpeechSegmentLibraryLimits,
-  speechSegmentMaxBytesSetting,
-  speechSegmentMaxFilesSetting,
-} from './settings.js';
-export type { SpeechSegmentLibraryLimits } from './settings.js';
 export { filterSentenceForTts, TextFilterStream } from './textFilter.js';
 export { SpeechVoiceCache } from './voiceHandleCache.js';
 export type {

@@ -6,6 +6,7 @@ import { useSkillStore } from '../../stores/skill.js';
 import { showToast } from '../../lib/toast.js';
 import { SkillMarketView } from './SkillMarketView.js';
 import { SkillInstalledList } from './SkillInstalledList.js';
+import { SkillSettings } from './SkillSettings.js';
 
 export function SkillsTab(): JSX.Element {
   const skills      = useSkillStore((s) => s.skills);
@@ -38,6 +39,11 @@ export function SkillsTab(): JSX.Element {
       value:   'market',
       label:   '浏览市场',
       content: <SkillMarketView active={activeTab === 'market'} />,
+    },
+    {
+      value: 'settings',
+      label: '设置',
+      content: <SkillSettings />,
     },
   ];
 

@@ -8,7 +8,6 @@ import {
 } from '@ema-agent/agent';
 import {
   AttachmentStore,
-  readAttachmentInputSettings,
   type Attachment,
   type DescribeAttachmentImage,
 } from '@ema-agent/attachments';
@@ -132,7 +131,6 @@ export async function prepareTurn(
   // 设置在任何附件写入或媒体降级前读取一次，确保同一根 Turn 不混用新旧上限。
   const agentSettings = readAgentSettings(deps.settings);
   const compactSettings = readCompactSettings(deps.settings);
-  const attachmentSettings = readAttachmentInputSettings(deps.settings);
   const permissionMode = deps.settings.get(permissionModeSetting);
 
   const session = deps.sessions.getSession(request.sessionId);
@@ -183,7 +181,6 @@ export async function prepareTurn(
           attachmentInputs,
           turnId,
           request.sessionId,
-          attachmentSettings,
         )
       : [];
   } catch (error) {

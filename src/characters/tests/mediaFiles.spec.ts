@@ -4,10 +4,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { Database, SettingsRepo } from '@ema-agent/storage';
-import { SettingsStore } from '@ema-agent/settings';
+import { Database } from '@ema-agent/storage';
 import { CharacterStore } from '../store.js';
-import { CHARACTER_SETTING_DEFINITIONS } from '../settings.js';
 
 describe('character illustration and voice files', () => {
   let database: Database;
@@ -19,11 +17,7 @@ describe('character illustration and voice files', () => {
     database = new Database({ memory: true, kind: 'profile' });
     database.migrate();
     root = fs.mkdtempSync(path.join(tmpdir(), 'ema-character-media-'));
-    const settings = new SettingsStore(new SettingsRepo(database.sqlite), {
-      definitions: CHARACTER_SETTING_DEFINITIONS,
-      groups: [],
-    });
-    store = new CharacterStore(database, path.join(root, 'characters'), settings);
+    store = new CharacterStore(database, path.join(root, 'characters'));
     store.ensureSeed();
     characterId = store.create({
       name: 'Alice',

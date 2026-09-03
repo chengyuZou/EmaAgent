@@ -3,7 +3,10 @@
 import type { SpeechSegmentsRepo } from '@ema-agent/storage';
 import type { AudioArchive } from './audioArchive.js';
 import type { CompletedSpeechSegment } from './speechCoordinator.js';
-import type { SpeechSegmentLibraryLimits } from './settings.js';
+import {
+  SPEECH_SEGMENT_MAX_BYTES,
+  SPEECH_SEGMENT_MAX_FILES,
+} from './limits.js';
 
 const CLEANUP_BATCH_SIZE = 128;
 
@@ -32,12 +35,12 @@ export class SpeechSegmentLibrary {
    * 必须在本 Turn 合并结束后执行；生成途中删除当前 Turn 的旧片段会让最终音频缺句。
    * 文件先删、SQL 行后删。进程若恰好中断，最多留下一个指向缺失文件的行，下次清理继续淘汰。
    */
-  enforceLimits(limits: SpeechSegmentLibraryLimits): void {
+  enforceLimits(): void {
     const usage = this.segments.usage();
     let fileCount = usage.fileCount;
     let totalBytes = usage.totalBytes;
 
-    while (fileCount > limits.maxFiles || totalBytes > limits.maxBytes) {
+    while (fileCount > SPEECH_SEGMENT_MAX_FILES || totalBytes > SPEECH_SEGMENT_MAX_BYTES) {
       const oldest = this.segments.listOldest(CLEANUP_BATCH_SIZE);
       if (oldest.length === 0) return;
 
@@ -53,7 +56,7 @@ export class SpeechSegmentLibrary {
         fileCount -= 1;
         totalBytes -= segment.byte_size;
         removedInBatch += 1;
-        if (fileCount <= limits.maxFiles && totalBytes <= limits.maxBytes) return;
+        if (fileCount <= SPEECH_SEGMENT_MAX_FILES && totalBytes <= SPEECH_SEGMENT_MAX_BYTES) return;
       }
 
       // 一整批文件都无法删除时停止，避免同步清理死循环；下次完成 TTS 后会再尝试。

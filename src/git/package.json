@@ -19,10 +19,7 @@
     "test": "vitest run --passWithNoTests",
     "clean": "rimraf dist"
   },
-  "dependencies": {
-    "@ema-agent/settings": "workspace:*",
-    "zod": "^4"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@types/node": "^20.0.0",
     "rimraf": "^5.0.0",

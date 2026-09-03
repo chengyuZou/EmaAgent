@@ -1,12 +1,12 @@
 // 类型化设置的唯一入口:先 SQLite 落库、再发变更事件;读取每次过 zod safeParse,
 // 坏值回落业务默认并每键告警一次。不持有内存缓存——KV 读是微秒级,
 // 缓存只会引入"内存与库不一致"的心理负担,事件枢纽(revision/订阅)才是真实状态。
-// schema 驱动:校验、类型推导、UI 描述全部来自 SettingDefinition.schema;
+// schema 驱动校验和类型推导;
 // 有跨字段约束的 key 用 SettingGroup 声明,set/setMany 时整组 refine。
 // 同时承担字段目录职能(原 SettingsCatalog 已并入):构造时注册各业务包的
-// defineSetting,listDefinitions/findDefinition 供设置界面查询。
+// listDefinitions/findDefinition 供 API 按已注册 key 读写值.
 // 字段定义(schema/defaultValue/apply)永远在代码,不进 SQL——settings 表
-// 只存"用户改了什么";UI 的默认值/选项/说明从本目录的 schema 读取。
+// 只存"用户改了什么";展示方式归前端业务组件.
 import type { SettingsRepo } from '@ema-agent/storage';
 import {
   InvalidSettingGroupValueError,
@@ -16,12 +16,7 @@ import type {
   SettingsChangedEvent,
   SettingsChangedListener,
 } from './events.js';
-import {
-  describeSetting,
-  type SettingDefinition,
-  type SettingDescriptor,
-  type SettingGroup,
-} from './types.js';
+import type { SettingDefinition, SettingGroup } from './types.js';
 
 /** Store 只需要 KV 窄口;SQL 与事务归 src/storage。 */
 export type SettingsRepository = Pick<
@@ -67,10 +62,9 @@ export class SettingsStore {
     );
   }
 
-  /** 设置目录(供 UI):带 schema 的只读描述,按 key 排序。 */
-  listDefinitions(): SettingDescriptor[] {
+  /** 返回已注册定义,供值 API 枚举和按 key 查找. */
+  listDefinitions(): SettingDefinition<unknown>[] {
     return [...this.definitions.values()]
-      .map(describeSetting)
       .sort((left, right) => left.key.localeCompare(right.key));
   }
 

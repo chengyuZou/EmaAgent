@@ -5,11 +5,9 @@ import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { unzipSync, zipSync } from 'fflate';
-import { Database, SettingsRepo } from '@ema-agent/storage';
-import { SettingsStore } from '@ema-agent/settings';
+import { Database } from '@ema-agent/storage';
 import { CharacterStore } from '../store.js';
 import { importLive2dZip } from '../live2d/live2dFiles.js';
-import { CHARACTER_SETTING_DEFINITIONS } from '../settings.js';
 
 describe('Live2D ZIP resources', () => {
   let database: Database;
@@ -21,11 +19,7 @@ describe('Live2D ZIP resources', () => {
     database = new Database({ memory: true, kind: 'profile' });
     database.migrate();
     root = fs.mkdtempSync(path.join(tmpdir(), 'ema-live2d-'));
-    const settings = new SettingsStore(new SettingsRepo(database.sqlite), {
-      definitions: CHARACTER_SETTING_DEFINITIONS,
-      groups: [],
-    });
-    store = new CharacterStore(database, path.join(root, 'characters'), settings);
+    store = new CharacterStore(database, path.join(root, 'characters'));
     store.ensureSeed();
     characterId = store.create({
       name: 'Alice',

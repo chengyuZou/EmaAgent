@@ -1,13 +1,11 @@
 // 测试角色与三类表现资源的种子、聚合、主项切换、复制与物理名称边界。
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { Database, SettingsRepo } from '@ema-agent/storage';
-import { SettingsStore } from '@ema-agent/settings';
+import { Database } from '@ema-agent/storage';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CharacterStore } from '../store.js';
 import { EMA_CHARACTER_ID } from '../seed/index.js';
-import { CHARACTER_SETTING_DEFINITIONS } from '../settings.js';
 import {
   CharacterActiveDeleteError,
   CharacterDirectoryConflictError,
@@ -34,11 +32,7 @@ describe('CharacterStore', () => {
     db = new Database({ memory: true, kind: 'profile' });
     db.migrate();
     charactersRoot = mkdtempSync(join(tmpdir(), 'ema-characters-'));
-    const settings = new SettingsStore(new SettingsRepo(db.sqlite), {
-      definitions: CHARACTER_SETTING_DEFINITIONS,
-      groups: [],
-    });
-    store = new CharacterStore(db, charactersRoot, settings);
+    store = new CharacterStore(db, charactersRoot);
     store.ensureSeed();
   });
 

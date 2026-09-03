@@ -3,11 +3,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Database, SettingsRepo } from '@ema-agent/storage';
-import { SettingsStore } from '@ema-agent/settings';
+import { Database } from '@ema-agent/storage';
 import {
   CharacterStore,
-  CHARACTER_SETTING_DEFINITIONS,
   assertPersonaPrompt,
   buildCharacterPrompt,
   buildLive2dControlPrompt,
@@ -17,17 +15,12 @@ describe('character prompt assembly', () => {
   let database: Database;
   let root: string;
   let store: CharacterStore;
-  let settings: SettingsStore;
 
   beforeEach(() => {
     database = new Database({ memory: true, kind: 'profile' });
     database.migrate();
     root = mkdtempSync(join(tmpdir(), 'ema-character-prompt-'));
-    settings = new SettingsStore(new SettingsRepo(database.sqlite), {
-      definitions: CHARACTER_SETTING_DEFINITIONS,
-      groups: [],
-    });
-    store = new CharacterStore(database, root, settings);
+    store = new CharacterStore(database, root);
     store.ensureSeed();
   });
 

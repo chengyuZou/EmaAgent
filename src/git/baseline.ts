@@ -5,7 +5,12 @@
 import { GitError } from './errors.js';
 import { runGit } from './gitProcess.js';
 import { diffUntrackedFile } from './diff.js';
-import { DEFAULT_GIT_SETTINGS, type GitSettings } from './settings.js';
+import {
+  GIT_BASELINE_MAX_CHANGES_FOR_UNIFIED,
+  GIT_BASELINE_MAX_DIFF_BYTES,
+  GIT_DIFF_UNTRACKED_CONCURRENCY,
+  GIT_WRITE_TIMEOUT_MS,
+} from './limits.js';
 
 const BASELINE_COMMIT_MESSAGE = 'EmaAgent memory baseline';
 /**
@@ -56,12 +61,9 @@ export async function hasUsableBaseline(root: string): Promise<boolean> {
 }
 
 /** 确保 root 有可用的单 commit 基线;已有可用 .git 保留,缺失/损坏则重建。 */
-export async function ensureBaseline(
-  root: string,
-  settings: GitSettings = DEFAULT_GIT_SETTINGS,
-): Promise<void> {
+export async function ensureBaseline(root: string): Promise<void> {
   if (await hasUsableBaseline(root)) return;
-  await resetBaseline(root, settings);
+  await resetBaseline(root);
 }
 
 /**
@@ -69,24 +71,20 @@ export async function ensureBaseline(
  * 首次:init + add + commit;之后:add + commit --amend 折叠历史为单 commit。
  * 与 codex reset 语义一致,但不删 .git、不积累提交历史。
  */
-export async function resetBaseline(
-  root: string,
-  settings: GitSettings = DEFAULT_GIT_SETTINGS,
-): Promise<void> {
-  const writeTimeout = settings.writeTimeoutMs;
+export async function resetBaseline(root: string): Promise<void> {
   if (!(await hasUsableBaseline(root))) {
-    await runGit(root, ['init', '-q'], { extraConfig: BASELINE_GIT_CONFIG, timeoutMs: writeTimeout });
-    await runGit(root, ['add', '-A'], { extraConfig: BASELINE_GIT_CONFIG, timeoutMs: writeTimeout });
+    await runGit(root, ['init', '-q'], { extraConfig: BASELINE_GIT_CONFIG, timeoutMs: GIT_WRITE_TIMEOUT_MS });
+    await runGit(root, ['add', '-A'], { extraConfig: BASELINE_GIT_CONFIG, timeoutMs: GIT_WRITE_TIMEOUT_MS });
     await runGit(root, ['commit', '-q', '-m', BASELINE_COMMIT_MESSAGE, '--no-gpg-sign'], {
       extraConfig: BASELINE_GIT_CONFIG,
-      timeoutMs: writeTimeout,
+      timeoutMs: GIT_WRITE_TIMEOUT_MS,
     });
     return;
   }
-  await runGit(root, ['add', '-A'], { extraConfig: BASELINE_GIT_CONFIG, timeoutMs: writeTimeout });
+  await runGit(root, ['add', '-A'], { extraConfig: BASELINE_GIT_CONFIG, timeoutMs: GIT_WRITE_TIMEOUT_MS });
   await runGit(root, ['commit', '-q', '--amend', '--no-edit', '--allow-empty', '--no-gpg-sign'], {
     extraConfig: BASELINE_GIT_CONFIG,
-    timeoutMs: writeTimeout,
+    timeoutMs: GIT_WRITE_TIMEOUT_MS,
   });
 }
 
@@ -94,19 +92,15 @@ export async function resetBaseline(
  * 释放单提交基线因反复 amend 留下的旧对象。
  * 只供拥有整个内部仓库的业务调用；普通用户仓库不能使用这个操作。
  */
-export async function compactBaselineStorage(
-  root: string,
-  settings: GitSettings = DEFAULT_GIT_SETTINGS,
-): Promise<void> {
+export async function compactBaselineStorage(root: string): Promise<void> {
   if (!(await hasUsableBaseline(root))) return;
-  const writeTimeout = settings.writeTimeoutMs;
   await runGit(root, ['reflog', 'expire', '--expire=now', '--all'], {
     extraConfig: BASELINE_GIT_CONFIG,
-    timeoutMs: writeTimeout,
+    timeoutMs: GIT_WRITE_TIMEOUT_MS,
   });
   await runGit(root, ['gc', '--prune=now', '--quiet'], {
     extraConfig: BASELINE_GIT_CONFIG,
-    timeoutMs: writeTimeout,
+    timeoutMs: GIT_WRITE_TIMEOUT_MS,
   });
 }
 
@@ -118,9 +112,8 @@ export async function compactBaselineStorage(
 export async function diffSinceBaseline(
   root: string,
   options: BaselineOptions = {},
-  settings: GitSettings = DEFAULT_GIT_SETTINGS,
 ): Promise<BaselineDiff> {
-  const maxDiffBytes = options.maxDiffBytes ?? settings.baselineMaxDiffBytes;
+  const maxDiffBytes = options.maxDiffBytes ?? GIT_BASELINE_MAX_DIFF_BYTES;
 
   const status = await runGit(
     root,
@@ -130,7 +123,7 @@ export async function diffSinceBaseline(
   const { changes, untracked } = parsePorcelain(status.stdout);
 
   // 快探:变化文件过多时不渲染 unified diff(claude fetchGitDiff 同款),避免拖慢整合。
-  if (changes.length > settings.baselineMaxChangesForUnified) {
+  if (changes.length > GIT_BASELINE_MAX_CHANGES_FOR_UNIFIED) {
     return { changes, unifiedDiff: '', truncated: false, unifiedSkipped: true };
   }
 
@@ -152,11 +145,11 @@ export async function diffSinceBaseline(
 
   // untracked 新增:复用 diff.ts 的成熟实现(内部已处理 NUL 设备与 8MB buffer),批并发 + 失败容错。
   // overrides 传空数组:filter driver 只存在于用户仓库的 .gitattributes,memory-workspace 是受控内部目录,不需要 filterDriverOverrides 防护。
-  for (let i = 0; i < untracked.length; i += settings.untrackedDiffConcurrency) {
-    const batch = untracked.slice(i, i + settings.untrackedDiffConcurrency);
+  for (let i = 0; i < untracked.length; i += GIT_DIFF_UNTRACKED_CONCURRENCY) {
+    const batch = untracked.slice(i, i + GIT_DIFF_UNTRACKED_CONCURRENCY);
     const patches = await Promise.all(
       batch.map((file) =>
-        diffUntrackedFile(root, [], file, settings).catch((error: unknown) => {
+        diffUntrackedFile(root, [], file).catch((error: unknown) => {
           // 伪 diff 期间文件被删等竞态:忽略该文件,不中断整体 diff
           if (error instanceof GitError) return null;
           throw error;

@@ -2,6 +2,10 @@
 use tauri::Manager;
 
 use crate::desktop::windows::{begin_main_focus_settling, show_window};
+use crate::desktop::settings::{
+    read_start_narrative_on_launch,
+    write_start_narrative_on_launch,
+};
 use crate::processes::DesktopProcesses;
 
 #[tauri::command]
@@ -43,4 +47,14 @@ pub async fn open_window(app: tauri::AppHandle, label: String) -> Result<(), Str
     })?;
     tracing::info!(%label, "open_window completed");
     Ok(())
+}
+
+#[tauri::command]
+pub fn get_start_narrative_on_launch() -> Result<bool, String> {
+    read_start_narrative_on_launch()
+}
+
+#[tauri::command]
+pub fn set_start_narrative_on_launch(value: bool) -> Result<(), String> {
+    write_start_narrative_on_launch(value)
 }

@@ -29,12 +29,7 @@ export type {
 } from './types.js';
 export {
   DEFAULT_ATTACHMENT_CACHE_SETTINGS,
-  DEFAULT_ATTACHMENT_INPUT_SETTINGS,
   attachmentCacheMaxBytesSetting,
-  maxFilesPerTurnSetting,
-  maxImageBytesSetting,
-  maxImagesPerTurnSetting,
   readAttachmentCacheSettings,
-  readAttachmentInputSettings,
 } from './settings.js';
-export type { AttachmentCacheSettings, AttachmentInputSettings } from './settings.js';
+export type { AttachmentCacheSettings } from './settings.js';

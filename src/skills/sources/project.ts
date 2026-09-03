@@ -6,19 +6,19 @@ import { join } from 'node:path';
 import { parseSkillMd } from '../parser.js';
 import type { SkillDescriptor } from '../types.js';
 
-/** 生态声明表:sourceId 即 project key 的来源段(project:<sourceId>:<relPath>)。 */
+/** 生态声明表:sourceId 即 project key 的来源段(project:<sourceId>:<relPath>). */
 export interface ProjectEcosystem {
   readonly sourceId: string;
-  /** 工作区下的相对目录,如 '.agents/skills'。 */
+  /** 工作区下的相对目录, 如 '.agents/skills'. */
   readonly relativeDir: string;
 }
 
 export const PROJECT_ECOSYSTEMS: readonly ProjectEcosystem[] = [
-  { sourceId: 'agents',  relativeDir: '.agents/skills' },
-  { sourceId: 'claude',  relativeDir: '.claude/skills' },
-  { sourceId: 'codex',   relativeDir: '.codex/skills' },
-  { sourceId: 'cursor',  relativeDir: '.cursor/skills' },
-  { sourceId: 'gemini',  relativeDir: '.gemini/skills' },
+  { sourceId: 'agents', relativeDir: '.agents/skills' },
+  { sourceId: 'claude', relativeDir: '.claude/skills' },
+  { sourceId: 'codex', relativeDir: '.codex/skills' },
+  { sourceId: 'cursor', relativeDir: '.cursor/skills' },
+  { sourceId: 'gemini', relativeDir: '.gemini/skills' },
 ];
 
 const MAX_DEPTH = 4;

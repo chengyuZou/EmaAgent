@@ -52,13 +52,6 @@ export {
   buildCharacterPrompt,
   buildLive2dControlPrompt,
 } from './characterPrompt.js';
-export {
-  CHARACTER_SETTING_DEFINITIONS,
-  readCharacterSettings,
-  characterVoiceMaxBytesSetting,
-  characterVoiceMaxDurationMsSetting,
-} from './settings.js';
-export type { CharacterSettings } from './settings.js';
 export type {
   CharacterSwitchedEvent,
   CharacterEvent,

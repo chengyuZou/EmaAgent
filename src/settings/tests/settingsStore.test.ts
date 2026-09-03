@@ -11,29 +11,23 @@ import {
 } from '../index.js';
 import type { SettingGroup } from '../types.js';
 
-const countSetting = defineSetting<number>({
+const countSetting = defineSetting({
   key: 'test.count',
-  label: '测试计数',
-  description: '测试计数设置。',
   apply: 'immediate',
   defaultValue: 3,
   schema: z.number().int().min(0),
 });
 
 // 组内跨字段约束示例:maxConcurrentSubagents ≤ maxSubagents
-const maxSubagentsSetting = defineSetting<number>({
+const maxSubagentsSetting = defineSetting({
   key: 'agent.limits.maxSubagents',
-  label: '最大子代理数',
-  description: '测试：最大子代理数。',
   apply: 'nextTurn',
   defaultValue: 16,
   schema: z.number().int().min(1).max(32),
   group: 'agent.limits',
 });
-const maxConcurrentSubagentsSetting = defineSetting<number>({
+const maxConcurrentSubagentsSetting = defineSetting({
   key: 'agent.limits.maxConcurrentSubagents',
-  label: '最大并发子代理数',
-  description: '测试：最大并发子代理数。',
   apply: 'nextTurn',
   defaultValue: 4,
   schema: z.number().int().min(1).max(8),
@@ -157,7 +151,7 @@ describe('SettingsStore', () => {
     expect(store.get(maxSubagentsSetting)).toBe(16);
   });
 
-  it('目录职能:构造时注册定义,listDefinitions 带 schema 且按 key 排序,findDefinition 可查', () => {
+  it('目录职能: 构造时注册定义,listDefinitions 按 key 排序,findDefinition 可查', () => {
     const store = makeStore({
       definitions: [countSetting, maxSubagentsSetting],
       groups: [agentLimitsGroup],
@@ -169,7 +163,6 @@ describe('SettingsStore', () => {
       'test.count',
     ]);
     expect(list[0]!.schema).toBe(maxSubagentsSetting.schema);
-    expect(list[0]!.label).toBe('最大子代理数');
     expect(list[0]!.defaultValue).toBe(16);
     expect(list[0]!.group).toBe('agent.limits');
 
@@ -182,4 +175,3 @@ describe('SettingsStore', () => {
     expect(() => store.register(countSetting)).toThrow('Duplicate setting key');
   });
 });
-

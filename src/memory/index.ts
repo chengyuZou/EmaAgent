@@ -58,11 +58,7 @@ export type {
   MemoryStorageLimit,
   MemoryStorageStatus,
 } from './capacity/storageLimit.js';
-export {
-  DEFAULT_MEMORY_BUDGETS,
-  readMemoryBudgets,
-} from './capacity/budgets.js';
-export type { MemoryBudgets } from './capacity/budgets.js';
+export { MEMORY_SUMMARY_TOKENS } from './capacity/limits.js';
 export { cleanupMemoryStorage } from './capacity/automaticCleanup.js';
 export {
   listExpiredWorkHistoryFiles,
@@ -74,21 +70,11 @@ export {
 } from './relationship/lifecycle.js';
 export {
   MEMORY_SETTINGS,
-  memoryBudgetsGroup,
   memoryJobsGroup,
   memoryLifecycleGroup,
   memoryStorageMaxBytesSetting,
   memoryWorkHistoryRetentionDaysSetting,
   memoryRelationshipHistoryActiveDaysSetting,
-  memorySummaryTokensSetting,
-  memoryCoreFileBytesSetting,
-  memoryTopicFileBytesSetting,
-  memoryHistoryFileBytesSetting,
-  memoryTurnEvidenceFileBytesSetting,
-  memoryTurnEvidenceFilesSetting,
-  memoryConsolidationItemsSetting,
-  memoryConsolidationInputBytesSetting,
-  memoryGitDiffBytesSetting,
   memoryExtractionConcurrencySetting,
   memoryHeartbeatSecondsSetting,
   memoryConsolidationCooldownHoursSetting,

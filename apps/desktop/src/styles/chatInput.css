@@ -1,5 +1,5 @@
 /* ChatInput 胶囊输入卡与 dock 顶部 36px 渐变淡出遮罩。
-   token 全部走语义层（--ema-border/--ema-surface-*/--ema-bg），亮暗主题零覆写。 */
+   token 全部走语义层(--ema-border/--ema-surface-N/--ema-bg), 亮暗主题零覆写. */
 
 .ema-composer-card {
   border-radius: 22px;

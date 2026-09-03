@@ -19,8 +19,6 @@ export interface NarrativeComposition {
    * Bridge 不在场、绑定未配置或协议不支持都降级为不推送，不阻断主链路。
    */
   configureNarrativeBridge(): Promise<void>;
-  /** 令 Bridge 优雅退出（narrative.bridgeEnabled 关闭时）；Bridge 不在场为 no-op。 */
-  shutdownNarrativeBridge(): Promise<void>;
   /** Turn 开始时冻结的当次 Narrative LLM 连接；未绑定或协议不支持时返回 undefined。 */
   resolveNarrativeLlm(): NarrativeLlmConnection | undefined;
 }
@@ -68,12 +66,6 @@ export function openNarrative(
     }
   };
 
-  const shutdownNarrativeBridge = async (): Promise<void> => {
-    if (!narrative) return;
-    const ok = await narrative.shutdown();
-    if (!ok) console.warn('[narrative-bridge] 关闭请求未生效（Bridge 可能已退出）');
-  };
-
   const resolveNarrativeLlm = (): NarrativeLlmConnection | undefined => {
     const binding = modelBindings.get('lightrag-llm');
     if (!binding) return undefined;
@@ -95,5 +87,5 @@ export function openNarrative(
     }
   };
 
-  return { narrative, configureNarrativeBridge, shutdownNarrativeBridge, resolveNarrativeLlm };
+  return { narrative, configureNarrativeBridge, resolveNarrativeLlm };
 }

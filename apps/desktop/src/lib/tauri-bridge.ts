@@ -353,6 +353,14 @@ export const tauriBridge = {
     await invokeTauri('open_window', { label: 'settings' });
   },
 
+  async getStartNarrativeOnLaunch(): Promise<boolean> {
+    return (await invokeTauri<boolean>('get_start_narrative_on_launch')) ?? true;
+  },
+
+  async setStartNarrativeOnLaunch(value: boolean): Promise<void> {
+    await invokeTauri('set_start_narrative_on_launch', { value });
+  },
+
   async quit(): Promise<void> {
     const core = await getCore();
     if (!core) return;

@@ -15,6 +15,7 @@ import { ProcessingQueue } from './ProcessingQueue.js';
 import { IngestForm } from './IngestForm.js';
 import { DocumentRow } from './DocumentRow.js';
 import { SearchTest } from './SearchTest.js';
+import { KnowledgeSettings } from './KnowledgeSettings.js';
 
 export function KnowledgeBaseTab(): JSX.Element {
   const documents = useKnowledgeStore((s) => s.documents);
@@ -49,6 +50,8 @@ export function KnowledgeBaseTab(): JSX.Element {
 
       {/* ── Retrieval models (embed + rerank) ── */}
       <KbModelSettings onEmbedModelChanged={handleEmbedModelChanged} />
+
+      <KnowledgeSettings />
 
       {/* ── Background processing queue ── */}
       <ProcessingQueue />

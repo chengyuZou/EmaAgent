@@ -93,15 +93,13 @@ describe('AttachmentStore.addAll', () => {
   it('图片数量、单图字节、文件数量超限时整批拒绝且不写库', async () => {
     const small = writeSource('a.png', Buffer.alloc(4));
     await expect(store.addAll(
-      [{ sourcePath: small }, { sourcePath: small }],
+      Array.from({ length: 11 }, () => ({ sourcePath: small })),
       turnId, sessionId,
-      { maxImagesPerTurn: 1, maxFilesPerTurn: 10, maxImageBytes: 1024 },
     )).rejects.toThrow(AttachmentLimitError);
 
     await expect(store.addAll(
-      [{ sourcePath: writeSource('big.png', Buffer.alloc(2048)) }],
+      [{ sourcePath: writeSource('big.png', Buffer.alloc(10 * 1024 * 1024 + 1)) }],
       turnId, sessionId,
-      { maxImagesPerTurn: 10, maxFilesPerTurn: 10, maxImageBytes: 1024 },
     )).rejects.toThrow(AttachmentLimitError);
 
     expect(store.listByTurn(turnId)).toHaveLength(0);

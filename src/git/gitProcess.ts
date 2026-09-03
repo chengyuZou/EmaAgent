@@ -2,7 +2,7 @@
 // 安全约束与 codex git-utils 一致:只读查询绝不能触发仓库配置的 hook,也不抢 .git/index.lock。
 import { execFile } from 'node:child_process';
 import { GitError } from './errors.js';
-import { DEFAULT_GIT_SETTINGS } from './settings.js';
+import { GIT_MAX_OUTPUT_BYTES, GIT_READ_TIMEOUT_MS } from './limits.js';
 
 /** 让内部查询绕过仓库 hooksPath;Windows 空设备为 NUL,其余为 /dev/null。 */
 const DISABLED_HOOKS_PATH = process.platform === 'win32' ? 'NUL' : '/dev/null';
@@ -40,8 +40,8 @@ export function runGit(
       ],
       {
         cwd,
-        timeout: options.timeoutMs ?? DEFAULT_GIT_SETTINGS.readTimeoutMs,
-        maxBuffer: options.maxOutputBytes ?? DEFAULT_GIT_SETTINGS.maxOutputBytes,
+        timeout: options.timeoutMs ?? GIT_READ_TIMEOUT_MS,
+        maxBuffer: options.maxOutputBytes ?? GIT_MAX_OUTPUT_BYTES,
         windowsHide: true,
         env: {
           ...process.env,
@@ -62,7 +62,7 @@ export function runGit(
           return;
         }
         if (err.killed) {
-          reject(new GitError('git/timeout', `git ${args.join(' ')}: timed out after ${options.timeoutMs ?? DEFAULT_GIT_SETTINGS.readTimeoutMs}ms`));
+          reject(new GitError('git/timeout', `git ${args.join(' ')}: timed out after ${options.timeoutMs ?? GIT_READ_TIMEOUT_MS}ms`));
           return;
         }
         if (typeof err.code === 'number' && options.allowedExitCodes?.includes(err.code)) {

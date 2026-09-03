@@ -29,7 +29,4 @@ export type {
   NarrativeSearch,
   PrepareNarrativeRecallInput,
 } from './recall.js';
-export {
-  narrativeBridgeEnabledSetting,
-  narrativeQueryModeSetting,
-} from './settings.js';
+export { narrativeQueryModeSetting } from './settings.js';

@@ -10,6 +10,7 @@ import {
   disabledSkillKeysSetting,
   isSkillEnabled,
   parseSkillKey,
+  PROJECT_ECOSYSTEMS,
   type SkillDescriptor,
   type SkillEnablement,
   type SkillRegistry,
@@ -43,6 +44,7 @@ export const skillListRoute = (deps: SkillListRouteDeps) => {
   };
 
   return new Hono()
+    .get('/sources', context => context.json({ items: PROJECT_ECOSYSTEMS }))
     .get('/', queryValidator(listQuery), async context => {
       const enablement = readEnablement(deps.settings);
       const entries = await deps.skills.list(workspaceOf(context.req.valid('query').sessionId));

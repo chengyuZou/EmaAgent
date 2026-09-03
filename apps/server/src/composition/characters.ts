@@ -4,7 +4,6 @@ import {
   installBuiltinCharacterResources,
 } from '@ema-agent/characters';
 import { StageEngine } from '@ema-agent/stage';
-import type { SettingsStore } from '@ema-agent/settings';
 import type { Database } from '@ema-agent/storage';
 import { bundledCharactersDir, charactersDir } from '../platform/paths.js';
 
@@ -17,10 +16,9 @@ export interface CharactersComposition {
 /** 角色是 Prompt、Live2D、舞台表现与 TTS 的全局基础，种子不变量失败时禁止发布 ready。 */
 export function openCharacters(
   profileDb: Database,
-  settings: SettingsStore,
 ): CharactersComposition {
   installBuiltinCharacterResources(bundledCharactersDir(), charactersDir());
-  const store = new CharacterStore(profileDb, charactersDir(), settings);
+  const store = new CharacterStore(profileDb, charactersDir());
   store.ensureSeed();
   const current = store.current();
   const stage = new StageEngine({

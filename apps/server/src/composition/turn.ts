@@ -16,7 +16,7 @@ import {
 import {
   buildMemoryGuidance,
   memorySummaryFile,
-  readMemoryBudgets,
+  MEMORY_SUMMARY_TOKENS,
   readMemorySummary,
   relationshipMemoryDir,
   workMemoryDir,
@@ -24,13 +24,13 @@ import {
 import { permissionAskTimeoutSetting } from '@ema-agent/permission';
 import { DEFAULT_SESSION_TITLE, generateSessionTitle } from '@ema-agent/session';
 import type { SettingsStore } from '@ema-agent/settings';
+import { workspaceInstructionFilesSetting } from '@ema-agent/skills';
 import type { StageEngine } from '@ema-agent/stage';
 import { AttachmentVisionDescriptionsRepo } from '@ema-agent/storage';
 import { formatTaskContextReminder } from '@ema-agent/tasks';
 import {
   SessionInteractionQueue,
   TurnExecutor,
-  workspaceInstructionFilesSetting,
   type RenderTurnReminderInput,
   type TurnReminderScope,
 } from '@ema-agent/turn';
@@ -148,7 +148,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     const git = scope.executionProfile === 'work' && workspaceRoot
       ? await gitSummary(workspaceRoot).catch(() => undefined)
       : undefined;
-    const summaryTokens = readMemoryBudgets(settings).summaryTokens;
+    const summaryTokens = MEMORY_SUMMARY_TOKENS;
     const [memoryWork, memoryRelationship] = await Promise.all([
       readMemorySummary(memorySummaryFile(workMemoryDir()), summaryTokens)
         .catch(() => undefined),

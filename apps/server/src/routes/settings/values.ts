@@ -33,13 +33,14 @@ export const settingsValuesRoute = (deps: SettingsValuesRouteDeps) =>
       const items = deps.settings.listDefinitions().map(definition => ({
         key: definition.key,
         value: deps.settings.get(definition),
+        apply: definition.apply,
       }));
       return context.json({ items });
     })
     .get('/values/:key', context => {
       const definition = deps.settings.findDefinition(context.req.param('key'));
       if (!definition) return context.json({ error: 'unknown_setting_key' }, 404);
-      return context.json({ key: definition.key, value: deps.settings.get(definition) });
+      return context.json({ key: definition.key, value: deps.settings.get(definition), apply: definition.apply });
     })
     .put('/values/:key', jsonBody(putBody), async context => {
       const definition = deps.settings.findDefinition(context.req.param('key'));
@@ -47,7 +48,7 @@ export const settingsValuesRoute = (deps: SettingsValuesRouteDeps) =>
       const { value } = context.req.valid('json');
       try {
         const saved = deps.settings.set(definition, value);
-        return context.json({ key: definition.key, value: saved });
+        return context.json({ key: definition.key, value: saved, apply: definition.apply });
       } catch (error) {
         return writeError(context, error, definition.key);
       }

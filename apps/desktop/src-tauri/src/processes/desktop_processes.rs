@@ -14,6 +14,7 @@ use super::launch::{resolve_narrative_launch, resolve_server_launch, ChildLaunch
 use super::platform::NativeProcessTree;
 use super::ready::wait_for_ready;
 use crate::narrative_data::prepare_narrative_data;
+use crate::desktop::settings::read_start_narrative_on_launch;
 
 const READY_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -74,7 +75,16 @@ impl DesktopProcesses {
         *self.0.run_dir.lock().await = Some(run_dir.clone());
 
         let secret = generate_shared_secret();
-        let narrative_url = self.try_start_narrative(&app, &run_dir, &secret).await;
+        let start_narrative = read_start_narrative_on_launch().unwrap_or_else(|error| {
+            tracing::warn!(%error, "read desktop settings failed; Narrative remains enabled");
+            true
+        });
+        let narrative_url = if start_narrative {
+            self.try_start_narrative(&app, &run_dir, &secret).await
+        } else {
+            tracing::info!("Narrative Bridge disabled for this launch");
+            None
+        };
 
         if self.0.stopping.load(Ordering::Acquire) {
             self.stop_children().await;

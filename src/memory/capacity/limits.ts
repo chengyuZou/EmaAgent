@@ -1,0 +1,11 @@
+// 定义 Memory 文件, 注入和整合流程共同使用的固定预算.
+
+export const MEMORY_SUMMARY_TOKENS = 2_500;
+export const MEMORY_CORE_FILE_BYTES = 128 * 1024;
+export const MEMORY_TOPIC_FILE_BYTES = 16 * 1024 * 1024;
+export const MEMORY_HISTORY_FILE_BYTES = 16 * 1024 * 1024;
+export const MEMORY_TURN_EVIDENCE_FILE_BYTES = 16 * 1024 * 1024;
+export const MEMORY_TURN_EVIDENCE_FILES = 200;
+export const MEMORY_CONSOLIDATION_ITEMS = 256;
+export const MEMORY_CONSOLIDATION_INPUT_BYTES = 16 * 1024 * 1024;
+export const MEMORY_GIT_DIFF_BYTES = 16 * 1024 * 1024;

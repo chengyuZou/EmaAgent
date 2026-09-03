@@ -11,8 +11,10 @@ import {
   DEFAULT_MEMORY_STORAGE_LIMIT,
   evaluateMemoryStorage,
 } from '../capacity/storageLimit.js';
-import { DEFAULT_MEMORY_BUDGETS } from '../capacity/budgets.js';
-import { memoryBudgetsGroup } from '../settings.js';
+import {
+  MEMORY_CONSOLIDATION_INPUT_BYTES,
+  MEMORY_TURN_EVIDENCE_FILE_BYTES,
+} from '../capacity/limits.js';
 import {
   listExpiredRelationshipHistoryFiles,
 } from '../relationship/lifecycle.js';
@@ -73,20 +75,9 @@ describe('Memory capacity', () => {
     expect(DEFAULT_MEMORY_STORAGE_LIMIT.warningAtBytes).toBe(
       Math.floor(DEFAULT_MEMORY_STORAGE_LIMIT.maxBytes * 0.8),
     );
-    expect(DEFAULT_MEMORY_BUDGETS.turnEvidenceFileBytes).toBeLessThanOrEqual(
-      DEFAULT_MEMORY_BUDGETS.consolidationInputBytes,
+    expect(MEMORY_TURN_EVIDENCE_FILE_BYTES).toBeLessThanOrEqual(
+      MEMORY_CONSOLIDATION_INPUT_BYTES,
     );
-
-    const invalid = Object.fromEntries(
-      memoryBudgetsGroup.definitions.map((definition) => [
-        definition.key,
-        definition.defaultValue,
-      ]),
-    );
-    invalid['memory.budgets.turnEvidenceFileBytes'] = 2 * 1024 * 1024;
-    invalid['memory.budgets.consolidationInputBytes'] = 1024 * 1024;
-
-    expect(memoryBudgetsGroup.schema.safeParse(invalid).success).toBe(false);
   });
 
   it('expires only Work history whose last user edit is beyond the retention window', async () => {

@@ -6,11 +6,12 @@ import { SKILL_KEY_PATTERN } from './types.js';
 
 const SOURCE_ID = /^[a-z][a-z0-9-]*$/;
 
+/** 作为工作区指令注入 Context 的候选文件,顺序也是最终拼接顺序. */
+export const WORKSPACE_INSTRUCTION_FILE_CANDIDATES = ['CLAUDE.md', 'AGENTS.md'] as const;
+
 /** 唯一逐技能禁用:SkillKey deny-list,builtin/user/project 三作用域统一。 */
-export const disabledSkillKeysSetting = defineSetting<string[]>({
+export const disabledSkillKeysSetting = defineSetting({
   key: 'skill.disabledKeys',
-  label: '逐技能禁用列表',
-  description: '逐技能禁用：SkillKey deny-list，builtin/user/project 三作用域统一。',
   apply: 'nextTurn',
   defaultValue: [],
   schema: z
@@ -20,10 +21,8 @@ export const disabledSkillKeysSetting = defineSetting<string[]>({
 });
 
 /** project 生态来源级禁用:空数组 = 全部启用;新出现的生态来源默认启用。 */
-export const disabledProjectSourcesSetting = defineSetting<{ disabledSourceIds: string[] }>({
+export const disabledProjectSourcesSetting = defineSetting({
   key: 'skill.disabledProjectSources',
-  label: '项目技能来源禁用',
-  description: 'project 生态来源级禁用：空数组 = 全部启用；新出现的生态来源默认启用。',
   apply: 'nextTurn',
   defaultValue: { disabledSourceIds: [] },
   schema: z
@@ -36,11 +35,17 @@ export const disabledProjectSourcesSetting = defineSetting<{ disabledSourceIds: 
 });
 
 /** 内置来源总开关(Codex bundled.enabled 同款),默认开。 */
-export const builtinSkillsEnabledSetting = defineSetting<boolean>({
+export const builtinSkillsEnabledSetting = defineSetting({
   key: 'skill.builtinEnabled',
-  label: '内置技能总开关',
-  description: '内置来源总开关（Codex bundled.enabled 同款），默认开。',
   apply: 'nextTurn',
   defaultValue: true,
   schema: z.boolean(),
+});
+
+/** 与 Skills 一同进入 Context 的工作区指令文件,由参数设置页面提供多选. */
+export const workspaceInstructionFilesSetting = defineSetting({
+  key: 'workspace.instructionFiles',
+  apply: 'nextTurn',
+  defaultValue: ['CLAUDE.md', 'AGENTS.md'],
+  schema: z.array(z.enum(WORKSPACE_INSTRUCTION_FILE_CANDIDATES)).max(20),
 });

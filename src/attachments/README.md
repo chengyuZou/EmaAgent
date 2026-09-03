@@ -16,7 +16,7 @@
 ```ts
 // 登记与查询
 AttachmentStore({ repo, dataDir })
-  addAll(inputs, turnId, sessionId, limits?)   // 分类+限额+复制落盘+单事务；整批成功或整体失败
+  addAll(inputs, turnId, sessionId)            // 分类+包内常量限额+复制落盘+单事务
   listByTurn(turnId)
   getMany(ids)                                 // 投影前批量取件
   inspectBySession(sessionId)                  // 源文件四状态（available/modified/missing/inaccessible）
@@ -28,9 +28,13 @@ resolveAttachmentReferences(blocks, attachments, { supportsImageInput, describeI
 VisionDescriptionCache(repo).getOrCreate(attachment, signal, produce)
 AttachmentCacheMaintenance({ repo, isIdle, maxBytesForSweep }).sweepIfIdle()
 
-// 设置
-attachmentInputSetting   // attachments.input（nextTurn；硬上限 10 图/5MiB）
-attachmentCacheSetting   // attachments.cache（nextOperation；默认 64MiB 文本预算）
+// 包内限制:消费方按需直接导入具名常量
+MAX_IMAGES_PER_TURN
+MAX_FILES_PER_TURN
+MAX_IMAGE_BYTES
+
+// 用户设置
+attachmentCacheMaxBytesSetting
 ```
 
 ## 不变量

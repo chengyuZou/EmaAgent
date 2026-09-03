@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useState, type JSX } from 'react';
 import { Badge, Button, Callout, Input, Select, Spinner, Switch } from '@ema-agent/ui';
 import { useSettingsStore, type EventDisplayConfig } from '../../stores/settings.js';
-import { settingsApi } from '../../api/settings.js';
+import { settingsApi, type SettingApply } from '../../api/settings.js';
 import { showToast } from '../../lib/toast.js';
+import { SettingApplyBadge } from '../shared/SettingItem.js';
 import {
   EVENT_DISPLAY_GROUPS,
   eventDisplayGroup,
@@ -41,6 +42,7 @@ export function EventDisplaySettings(): JSX.Element {
   const storeError = useSettingsStore((state) => state.error);
   const [rawOverrides, setRawOverrides] = useState<Record<string, EventDisplayConfig> | null>(null);
   const [draftOverrides, setDraftOverrides] = useState<Record<string, EventDisplayConfig>>({});
+  const [apply, setApply] = useState<SettingApply | null>(null);
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -51,6 +53,7 @@ export function EventDisplaySettings(): JSX.Element {
         const overrides = readOverrides(result.value);
         setRawOverrides(overrides);
         setDraftOverrides(overrides);
+        setApply(result.apply);
       } catch {
         setRawOverrides(null);
       }
@@ -149,7 +152,10 @@ export function EventDisplaySettings(): JSX.Element {
     <section className="flex flex-col gap-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold text-[var(--ema-text-primary)]">事件通知</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-base font-semibold text-[var(--ema-text-primary)]">事件通知</h2>
+            {apply && <SettingApplyBadge apply={apply} />}
+          </div>
           <p className="mt-1 text-xs text-[var(--ema-text-tertiary)]">
             控制工具、记忆、知识库和系统事件是否显示为本地通知。
           </p>

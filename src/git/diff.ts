@@ -5,7 +5,15 @@ import path from 'node:path';
 import { GitError, mapGitError } from './errors.js';
 import { runGit } from './gitProcess.js';
 import { findRepoRoot } from './repoDetection.js';
-import { DEFAULT_GIT_SETTINGS, type GitSettings } from './settings.js';
+import {
+  GIT_DIFF_CONTEXT_LINES,
+  GIT_DIFF_MAX_FILE_CHARS,
+  GIT_DIFF_MAX_FILES_PER_SCOPE,
+  GIT_DIFF_MAX_TOTAL_CHARS,
+  GIT_DIFF_MAX_UNTRACKED_FILES,
+  GIT_DIFF_PROCESS_OUTPUT_BYTES,
+  GIT_DIFF_UNTRACKED_CONCURRENCY,
+} from './limits.js';
 import type {
   GitCompareResult,
   GitDiffFile,
@@ -28,7 +36,6 @@ const DIFF_SAFETY_FLAGS = [
 
 export async function gitWorkspaceDiff(
   workspaceRoot: string,
-  settings: GitSettings = DEFAULT_GIT_SETTINGS,
 ): Promise<GitWorkspaceDiffResult> {
   const repoRoot = await findRepoRoot(workspaceRoot);
   if (!repoRoot) return { capability: 'not-a-repo' };
@@ -36,8 +43,8 @@ export async function gitWorkspaceDiff(
   try {
     const overrides = await filterDriverOverrides(repoRoot);
     const [staged, unstaged] = await Promise.all([
-      queryScopeDiff(repoRoot, overrides, 'staged', settings),
-      queryScopeDiff(repoRoot, overrides, 'unstaged', settings),
+      queryScopeDiff(repoRoot, overrides, 'staged'),
+      queryScopeDiff(repoRoot, overrides, 'unstaged'),
     ]);
     return { capability: 'ok', repoRoot, staged, unstaged };
   } catch (error) {
@@ -52,30 +59,29 @@ async function queryScopeDiff(
   repoRoot: string,
   overrides: readonly string[],
   scope: 'staged' | 'unstaged',
-  settings: GitSettings,
 ): Promise<GitScopeDiff> {
   const diffArgs = [
     ...overrides,
     'diff',
-    `-U${settings.diffContextLines}`,
+    `-U${GIT_DIFF_CONTEXT_LINES}`,
     ...DIFF_SAFETY_FLAGS,
     ...(scope === 'staged' ? ['--cached'] : []),
   ];
-  const collected = await collectTrackedDiff(repoRoot, diffArgs, settings);
+  const collected = await collectTrackedDiff(repoRoot, diffArgs);
   const files: GitDiffFile[] = [...collected.files];
   let omittedFiles = collected.omittedFiles;
   let totalChars = collected.totalChars;
 
   // 未跟踪文件只属于未暂存维度:ls-files 列清单,逐文件 --no-index 伪 diff。
   if (scope === 'unstaged') {
-    const untracked = await listUntrackedFiles(repoRoot, overrides, settings);
-    const selected = untracked.slice(0, settings.maxUntrackedFiles);
+    const untracked = await listUntrackedFiles(repoRoot, overrides);
+    const selected = untracked.slice(0, GIT_DIFF_MAX_UNTRACKED_FILES);
     omittedFiles += Math.max(0, untracked.length - selected.length);
-    for (let i = 0; i < selected.length; i += settings.untrackedDiffConcurrency) {
-      const batch = selected.slice(i, i + settings.untrackedDiffConcurrency);
+    for (let i = 0; i < selected.length; i += GIT_DIFF_UNTRACKED_CONCURRENCY) {
+      const batch = selected.slice(i, i + GIT_DIFF_UNTRACKED_CONCURRENCY);
       // 单个文件(超大/权限)失败只计入 omitted,不拖垮整个工作区 diff。
       const patches = await Promise.all(batch.map((file) =>
-        diffUntrackedFile(repoRoot, overrides, file, settings).catch((error: unknown) => {
+        diffUntrackedFile(repoRoot, overrides, file).catch((error: unknown) => {
           if (error instanceof GitError) return null;
           throw error;
         })));
@@ -84,13 +90,13 @@ async function queryScopeDiff(
           omittedFiles += 1;
           continue;
         }
-        if (files.length >= settings.maxFilesPerScope || totalChars >= settings.maxTotalDiffChars) {
+        if (files.length >= GIT_DIFF_MAX_FILES_PER_SCOPE || totalChars >= GIT_DIFF_MAX_TOTAL_CHARS) {
           omittedFiles += 1;
           continue;
         }
         const parsed = parseGitDiffSections(patch)[0];
         if (!parsed) continue;
-        files.push(toDiffFile(repoRoot, parsed, 'added', settings));
+        files.push(toDiffFile(repoRoot, parsed, 'added'));
         totalChars += files[files.length - 1]?.unifiedDiff.length ?? 0;
       }
     }
@@ -115,7 +121,6 @@ export type GitCompareTarget =
 export async function gitCompareDiff(
   workspaceRoot: string,
   target: GitCompareTarget,
-  settings: GitSettings = DEFAULT_GIT_SETTINGS,
 ): Promise<GitCompareResult> {
   const repoRoot = await findRepoRoot(workspaceRoot);
   if (!repoRoot) return { capability: 'not-a-repo' };
@@ -123,16 +128,16 @@ export async function gitCompareDiff(
   try {
     const overrides = await filterDriverOverrides(repoRoot);
     const diffArgs = target.kind === 'commit'
-      ? [...overrides, 'show', '--format=', `-U${settings.diffContextLines}`, ...DIFF_SAFETY_FLAGS, target.sha]
+      ? [...overrides, 'show', '--format=', `-U${GIT_DIFF_CONTEXT_LINES}`, ...DIFF_SAFETY_FLAGS, target.sha]
       : [
         ...overrides,
         'diff',
-        `-U${settings.diffContextLines}`,
+        `-U${GIT_DIFF_CONTEXT_LINES}`,
         ...DIFF_SAFETY_FLAGS,
         // 分支可能已前进,比较分叉点而不是分支尖端,语义是"我们这条线改了什么"。
         (await runGit(repoRoot, ['merge-base', 'HEAD', target.branch])).stdout.trim(),
       ];
-    const collected = await collectTrackedDiff(repoRoot, diffArgs, settings);
+    const collected = await collectTrackedDiff(repoRoot, diffArgs);
     return {
       capability: 'ok',
       repoRoot,
@@ -155,20 +160,19 @@ export async function gitCompareDiff(
 async function collectTrackedDiff(
   repoRoot: string,
   diffArgs: readonly string[],
-  settings: GitSettings,
 ): Promise<{ files: GitDiffFile[]; omittedFiles: number; totalChars: number }> {
   const { stdout } = await runGit(repoRoot, diffArgs, {
-    maxOutputBytes: settings.diffProcessOutputBytes,
+    maxOutputBytes: GIT_DIFF_PROCESS_OUTPUT_BYTES,
   });
   const files: GitDiffFile[] = [];
   let omittedFiles = 0;
   let totalChars = 0;
   for (const section of parseGitDiffSections(stdout)) {
-    if (files.length >= settings.maxFilesPerScope || totalChars >= settings.maxTotalDiffChars) {
+    if (files.length >= GIT_DIFF_MAX_FILES_PER_SCOPE || totalChars >= GIT_DIFF_MAX_TOTAL_CHARS) {
       omittedFiles += 1;
       continue;
     }
-    files.push(toDiffFile(repoRoot, section, 'modified', settings));
+    files.push(toDiffFile(repoRoot, section, 'modified'));
     totalChars += files[files.length - 1]?.unifiedDiff.length ?? 0;
   }
   return { files, omittedFiles, totalChars };
@@ -193,7 +197,6 @@ async function filterDriverOverrides(repoRoot: string): Promise<readonly string[
 export async function listUntrackedFiles(
   repoRoot: string,
   overrides: readonly string[],
-  settings: GitSettings = DEFAULT_GIT_SETTINGS,
 ): Promise<string[]> {
   const { stdout } = await runGit(repoRoot, [
     ...overrides, 'ls-files', '--others', '--exclude-standard',
@@ -205,14 +208,13 @@ export async function diffUntrackedFile(
   repoRoot: string,
   overrides: readonly string[],
   file: string,
-  settings: GitSettings = DEFAULT_GIT_SETTINGS,
 ): Promise<string> {
   const { stdout } = await runGit(repoRoot, [
     ...overrides,
-    'diff', '--no-index', '--no-color', `-U${settings.diffContextLines}`,
+    'diff', '--no-index', '--no-color', `-U${GIT_DIFF_CONTEXT_LINES}`,
     '--no-textconv', '--no-ext-diff',
     '--', NULL_DEVICE, file,
-  ], { allowedExitCodes: [1], maxOutputBytes: settings.diffProcessOutputBytes });
+  ], { allowedExitCodes: [1], maxOutputBytes: GIT_DIFF_PROCESS_OUTPUT_BYTES });
   return stdout;
 }
 
@@ -289,9 +291,8 @@ function toDiffFile(
   repoRoot: string,
   section: GitDiffSection,
   fallbackStatus: GitFileStatus,
-  settings: GitSettings,
 ): GitDiffFile {
-  const truncated = section.patch.length > settings.maxFileDiffChars;
+  const truncated = section.patch.length > GIT_DIFF_MAX_FILE_CHARS;
   return {
     path: section.path,
     absolutePath: path.join(repoRoot, section.path),
@@ -301,7 +302,7 @@ function toDiffFile(
     additions: section.additions,
     deletions: section.deletions,
     unifiedDiff: truncated
-      ? `${section.patch.slice(0, settings.maxFileDiffChars)}\n@@ diff 已截断 @@\n`
+      ? `${section.patch.slice(0, GIT_DIFF_MAX_FILE_CHARS)}\n@@ diff 已截断 @@\n`
       : section.patch,
     truncated,
   };

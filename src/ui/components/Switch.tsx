@@ -25,20 +25,23 @@ export function Switch(props: SwitchProps): React.JSX.Element {
       disabled={disabled}
       aria-label={label}
       className={cn(
-        'relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-pill border border-transparent',
-        'transition-ema focus-ring',
-        'data-[state=unchecked]:bg-[var(--ema-surface-3)]',
-        'data-[state=checked]:bg-[var(--ema-primary)]',
+        'relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-pill border shadow-inner',
+        'transition-ema focus-ring hover:shadow-[var(--ema-shadow-soft)]',
+        'data-[state=unchecked]:border-[var(--ema-border-hover)] data-[state=unchecked]:bg-[var(--ema-surface-3)]',
+        'data-[state=unchecked]:hover:border-[var(--ema-text-tertiary)]',
+        'data-[state=checked]:border-[var(--ema-primary)] data-[state=checked]:bg-[var(--ema-primary)]',
+        'data-[state=checked]:hover:border-[var(--ema-primary-hover)] data-[state=checked]:hover:bg-[var(--ema-primary-hover)]',
         'disabled:cursor-not-allowed disabled:opacity-50',
         className,
       )}
     >
       <RadixSwitch.Thumb
         className={cn(
-          'block h-4 w-4 rounded-full bg-white shadow-md',
-          'transition-transform duration-150 will-change-transform',
+          'block h-5 w-5 rounded-full border border-black/5 bg-white shadow-md',
+          'transition-all duration-[var(--ema-duration-base)] will-change-transform',
           'data-[state=unchecked]:translate-x-0.5',
-          'data-[state=checked]:translate-x-[18px]',
+          'data-[state=checked]:translate-x-[22px]',
+          'data-[state=checked]:shadow-[0_2px_8px_rgba(0,0,0,0.24)]',
         )}
       />
     </RadixSwitch.Root>

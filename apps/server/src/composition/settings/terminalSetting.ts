@@ -2,10 +2,8 @@
 import { z } from 'zod';
 import { defineSetting } from '@ema-agent/settings';
 
-export const terminalShellExecutableSetting = defineSetting<string>({
+export const terminalShellExecutableSetting = defineSetting({
   key: 'frontend.terminal.shellExecutable',
-  label: '集成终端 Shell',
-  description: '选择以后新建的集成终端使用哪个本机 Shell；已经打开的终端不会改变。',
   apply: 'immediate',
   defaultValue: '',
   schema: z.string(),

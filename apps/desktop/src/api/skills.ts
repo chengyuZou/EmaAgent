@@ -13,11 +13,16 @@ export type SkillSitePatchInput = InferRequestType<RpcClient['api']['skills']['s
 export type SkillSitesRefreshResult = RpcJson<RpcClient['api']['skills']['sites']['refresh']['$post']>;
 export type SkillInstallInput = InferRequestType<RpcClient['api']['skills']['sites']['install']['$post']>['json'];
 export type SkillInstallResult = RpcJson<RpcClient['api']['skills']['sites']['install']['$post']>;
+export type SkillProjectSourceList = RpcJson<RpcClient['api']['skills']['sources']['$get']>;
 
 /** sessionId 缺省时只见 builtin+user；project 技能按 Session 工作区合成。 */
 const withSessionId = (sessionId: string | undefined) => (sessionId ? { sessionId } : {});
 
 export const skillsApi = {
+  listProjectSources(): Promise<SkillProjectSourceList> {
+    return readRpcJson(rpcClient.api.skills.sources.$get());
+  },
+
   /** GET /api/skills?sessionId= — 全量目录（含 enabled 投影）。 */
   list(sessionId?: string): Promise<SkillListResult> {
     return readRpcJson(rpcClient.api.skills.$get({ query: withSessionId(sessionId) }));

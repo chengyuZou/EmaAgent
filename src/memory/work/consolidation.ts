@@ -8,10 +8,7 @@ import {
   listMarkdownFiles,
   runConsolidationLlm,
 } from '../consolidation/consolidation.js';
-import {
-  DEFAULT_MEMORY_BUDGETS,
-  type MemoryBudgets,
-} from '../capacity/budgets.js';
+import { MEMORY_CONSOLIDATION_INPUT_BYTES } from '../capacity/limits.js';
 import { loadTemplate } from '../templates/loader.js';
 import type { ConsolidateMemory } from '../jobs/runConsolidationJobs.js';
 
@@ -54,8 +51,6 @@ export function createWorkTargetPathCheck(
 export interface WorkConsolidationDeps {
   /** 应用层的 LLM 调用闭包（两段消息 → 输出纯文本）。 */
   readonly complete: CompleteExtraction;
-  /** 整合预算覆盖（可选）；缺省用内置默认。 */
-  readonly budgets?: MemoryBudgets;
   /** 整合 system 模板覆盖（可选）；缺省用内置 md。 */
   readonly templates?: {
     readonly consolidationSystem?: string;
@@ -75,9 +70,7 @@ export function createWorkConsolidate(
       isAllowedTargetPath: createWorkTargetPathCheck(memoryDirectory),
       diffFile,
       unintegrated,
-      maxInputBytes:
-        deps.budgets?.consolidationInputBytes
-        ?? DEFAULT_MEMORY_BUDGETS.consolidationInputBytes,
+      maxInputBytes: MEMORY_CONSOLIDATION_INPUT_BYTES,
       systemTemplate,
       inputTemplate: CONSOLIDATION_INPUT_INSTRUCTION,
       complete: deps.complete,

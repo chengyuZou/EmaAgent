@@ -24,60 +24,48 @@ export interface CompactSettings {
 
 export const COMPACT_GROUP = 'context.compact';
 
-export const compactBufferRatioSetting = defineSetting<number>({
+export const compactBufferRatioSetting = defineSetting({
   key: 'context.compact.bufferRatio',
-  label: '压缩触发缓冲比例',
-  description: '上下文估算达到窗口的 (1 - 比例) 时强制压缩；默认 0.15 即达到 85% 时压缩。',
   apply: 'nextTurn',
   defaultValue: 0.15,
   schema: z.number().min(0.05).max(0.2),
   group: COMPACT_GROUP,
 });
 
-export const compactOutputTokensSetting = defineSetting<number>({
+export const compactOutputTokensSetting = defineSetting({
   key: 'context.compact.outputTokens',
-  label: '压缩输出 token 预算',
-  description: '摘要模型一次压缩允许的最大输出 token；实际发送按剩余空间裁剪。',
   apply: 'nextTurn',
   defaultValue: 8_000,
   schema: z.number().int().min(1_000).max(64_000),
   group: COMPACT_GROUP,
 });
 
-export const compactKeepRecentToolResultsSetting = defineSetting<number>({
+export const compactKeepRecentToolResultsSetting = defineSetting({
   key: 'context.compact.keepRecentToolResults',
-  label: '保留最近工具结果数',
-  description: '压缩时保留的最近工具结果条数。',
   apply: 'nextTurn',
   defaultValue: 6,
   schema: z.number().int().min(1).max(10),
   group: COMPACT_GROUP,
 });
 
-export const compactMaximumConsecutiveFailuresSetting = defineSetting<number>({
+export const compactMaximumConsecutiveFailuresSetting = defineSetting({
   key: 'context.compact.maximumConsecutiveFailures',
-  label: '连续失败熔断次数',
-  description: '连续压缩失败的最大次数；超过后熔断暂停自动压缩。',
   apply: 'nextTurn',
   defaultValue: 3,
-  schema: z.number().int().min(1).max(10),
+  schema: z.number().int().min(1).max(5),
   group: COMPACT_GROUP,
 });
 
-export const compactRetainRatioSetting = defineSetting<number>({
+export const compactRetainRatioSetting = defineSetting({
   key: 'context.compact.retainRatio',
-  label: '近期原文保留比例',
-  description: '压缩时按上下文窗口比例保留近期原文尾部Token数；硬预算放不下时会继续扩大摘要范围。',
   apply: 'nextTurn',
   defaultValue: 0.16,
   schema: z.number().min(0.05).max(0.25),
   group: COMPACT_GROUP,
 });
 
-export const compactManualMinRatioSetting = defineSetting<number>({
+export const compactManualMinRatioSetting = defineSetting({
   key: 'context.compact.manualMinRatio',
-  label: '手动压缩下限比例',
-  description: '历史估算低于上下文窗口的该比例时，手动 /compact 没有意义，明确拒绝。',
   apply: 'nextOperation',
   defaultValue: 0.15,
   schema: z.number().min(0.05).max(0.5),
@@ -99,7 +87,6 @@ export const compactGroup: SettingGroup = {
   id: COMPACT_GROUP,
   definitions: COMPACT_SETTINGS,
   schema: z.object({
-    'context.compact.enabled': z.boolean(),
     'context.compact.bufferRatio': z.number(),
     'context.compact.outputTokens': z.number(),
     'context.compact.keepRecentToolResults': z.number(),

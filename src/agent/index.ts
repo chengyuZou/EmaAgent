@@ -37,14 +37,11 @@ export type {
   ToolExecutorFactory,
 } from './types.js';
 export {
-  AGENT_LIMITS_GROUP,
   AGENT_LIMITS_SETTINGS,
   DEFAULT_AGENT_SETTINGS,
-  agentLimitsGroup,
   chatMaxIterationsSetting,
   maxConcurrentSubagentsSetting,
   readAgentSettings,
-  thinkingEffortSetting,
   workMaxIterationsSetting,
 } from './settings.js';
 export type { AgentSettings } from './settings.js';

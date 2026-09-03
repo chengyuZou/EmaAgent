@@ -1,0 +1,14 @@
+// 定义 Git 查询, diff, 基线和写操作共同使用的固定业务限制.
+
+export const GIT_READ_TIMEOUT_MS = 100_000;
+export const GIT_WRITE_TIMEOUT_MS = 30_000;
+export const GIT_MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
+export const GIT_DIFF_CONTEXT_LINES = 20;
+export const GIT_DIFF_MAX_FILE_CHARS = 200_000;
+export const GIT_DIFF_MAX_TOTAL_CHARS = 2_000_000;
+export const GIT_DIFF_MAX_FILES_PER_SCOPE = 200;
+export const GIT_DIFF_MAX_UNTRACKED_FILES = 500;
+export const GIT_DIFF_UNTRACKED_CONCURRENCY = 8;
+export const GIT_DIFF_PROCESS_OUTPUT_BYTES = 8 * 1024 * 1024;
+export const GIT_BASELINE_MAX_DIFF_BYTES = 4 * 1024 * 1024;
+export const GIT_BASELINE_MAX_CHANGES_FOR_UNIFIED = 200;

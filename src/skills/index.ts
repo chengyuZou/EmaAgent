@@ -19,6 +19,8 @@ export {
   disabledSkillKeysSetting,
   disabledProjectSourcesSetting,
   builtinSkillsEnabledSetting,
+  WORKSPACE_INSTRUCTION_FILE_CANDIDATES,
+  workspaceInstructionFilesSetting,
 } from './settings.js';
 export { parseSkillMd } from './parser.js';
 export { freezeSkillPool, isSkillEnabled, renderSkillListing } from './skillPool.js';

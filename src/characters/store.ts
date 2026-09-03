@@ -3,7 +3,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import type { SettingsStore } from '@ema-agent/settings';
 import type { Database, SqliteDb } from '@ema-agent/storage';
 import {
   CharacterRepo,
@@ -70,7 +69,6 @@ import {
   type CharacterHealth,
   type CharacterHealthReport,
 } from './characterHealth.js';
-import { readCharacterSettings, type CharacterSettings } from './settings.js';
 import {
   CharacterActiveDeleteError,
   CharacterDirectoryConflictError,
@@ -103,7 +101,6 @@ export class CharacterStore {
   constructor(
     db: Database,
     charactersRoot: string,
-    private readonly settingsStore: SettingsStore,
   ) {
     fs.mkdirSync(charactersRoot, { recursive: true });
     this.sqlite = db.sqlite;
@@ -470,10 +467,9 @@ export class CharacterStore {
     const fileName = physicalName(path.basename(input.fileName));
     const displayName = sourceBaseName(fileName);
     const destination = this.paths.voiceFile(character.directoryName, fileName);
-    const settings = this.settings();
-    await publishVoiceFile(destination, input.bytes, settings);
+    await publishVoiceFile(destination, input.bytes);
     try {
-      const validated = await validateVoiceSampleFile(destination, settings);
+      const validated = await validateVoiceSampleFile(destination);
       return this.voiceSamples.insert(id, {
         id: randomUUID(),
         name: displayName,
@@ -493,12 +489,10 @@ export class CharacterStore {
 
   async importVoiceSample(id: string, input: ImportCharacterVoiceSampleInput): Promise<CharacterVoiceSample> {
     const character = this.assertMutableCharacter(id);
-    const settings = this.settings();
-    const validated = await validateVoiceSampleFile(input.sourceFile, settings);
+    const validated = await validateVoiceSampleFile(input.sourceFile);
     const files = await importVoiceFile(
       input.sourceFile,
       this.paths.voiceRoot(character.directoryName),
-      settings,
     );
     const destination = this.paths.voiceFile(character.directoryName, files.fileName);
     try {
@@ -748,10 +742,6 @@ export class CharacterStore {
       vocabulary.emotions,
       vocabulary.motions,
     );
-  }
-
-  private settings(): CharacterSettings {
-    return readCharacterSettings(this.settingsStore);
   }
 
   private emitSwitched(next: Character, previous: Character | null): void {

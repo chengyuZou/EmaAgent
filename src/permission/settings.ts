@@ -5,91 +5,67 @@ import { z } from 'zod';
 
 export const permissionModeSetting = defineSetting({
   key: 'permission.mode',
-  label: '权限模式',
-  description: '工具执行的权限模式：default=按规则或询问；acceptEdits=额外允许工作区文件写入；bypassPermissions=仅开发入口可开启。',
   apply: 'nextTurn',
   defaultValue: 'default' as const,
-  schema: z.enum(['default', 'acceptEdits', 'bypassPermissions'])
-    .describe('工具执行的权限模式：default=按规则或询问；acceptEdits=额外允许工作区文件写入；bypassPermissions=仅开发入口可开启。'),
+  schema: z.enum(['default', 'acceptEdits', 'bypassPermissions']),
 });
 
 export const DEFAULT_PERMISSION_ASK_TIMEOUT_MS: null = null;
 export const MIN_PERMISSION_ASK_TIMEOUT_MS = 200_000;
 export const MAX_PERMISSION_ASK_TIMEOUT_MS = 600_000;
 
-const RULE_FORMAT_HINT = '格式："Tool" 或 "Tool(content)"，如 Bash(npm test:*)、Read(./src/**)';
-
 export const permissionRulesUserAllowSetting = defineSetting({
   key: 'permission.rules.user.allow',
-  label: '全局允许规则',
-  description: '全局 allow 规则：命中即自动允许。格式："Tool" 或 "Tool(content)"，如 Bash(npm test:*)。',
   apply: 'nextTurn',
   defaultValue: [] as string[],
-  schema: z.array(z.string())
-    .describe(`全局 allow 规则：命中即自动允许。${RULE_FORMAT_HINT}`),
+  schema: z.array(z.string()),
 });
 
 export const permissionRulesUserDenySetting = defineSetting({
   key: 'permission.rules.user.deny',
-  label: '全局拒绝规则',
-  description: '全局 deny 规则：命中即拒绝（优先级最高）。格式："Tool" 或 "Tool(content)"。',
   apply: 'nextTurn',
   defaultValue: [] as string[],
-  schema: z.array(z.string())
-    .describe(`全局 deny 规则：命中即拒绝（优先级最高）。${RULE_FORMAT_HINT}`),
+  schema: z.array(z.string()),
 });
 
 export const permissionRulesUserAskSetting = defineSetting({
   key: 'permission.rules.user.ask',
-  label: '全局询问规则',
-  description: '全局 ask 规则：命中即弹批准卡（先于 bypass 生效）。格式："Tool" 或 "Tool(content)"。',
   apply: 'nextTurn',
   defaultValue: [] as string[],
-  schema: z.array(z.string())
-    .describe(`全局 ask 规则：命中即弹批准卡（先于 bypass 生效）。${RULE_FORMAT_HINT}`),
+  schema: z.array(z.string()),
 });
 
-const projectRuleRecord = (behavior: string) =>
-  z.record(z.string(), z.array(z.string()))
-    .describe(`按项目的 ${behavior} 规则：键为项目 id，值为该项目的规则列表。${RULE_FORMAT_HINT}`);
+const projectRuleRecord = z.record(z.string(), z.array(z.string()));
 
 export const permissionRulesProjectAllowSetting = defineSetting({
   key: 'permission.rules.project.allow',
-  label: '项目允许规则',
-  description: '按项目的 allow 规则：键为项目 id，值为该项目的规则列表（格式同全局规则）。',
   apply: 'nextTurn',
   defaultValue: {} as Record<string, string[]>,
-  schema: projectRuleRecord('allow'),
+  schema: projectRuleRecord,
 });
 
 export const permissionRulesProjectDenySetting = defineSetting({
   key: 'permission.rules.project.deny',
-  label: '项目拒绝规则',
-  description: '按项目的 deny 规则：键为项目 id，值为该项目的规则列表（格式同全局规则）。',
   apply: 'nextTurn',
   defaultValue: {} as Record<string, string[]>,
-  schema: projectRuleRecord('deny'),
+  schema: projectRuleRecord,
 });
 
 export const permissionRulesProjectAskSetting = defineSetting({
   key: 'permission.rules.project.ask',
-  label: '项目询问规则',
-  description: '按项目的 ask 规则：键为项目 id，值为该项目的规则列表（格式同全局规则）。',
   apply: 'nextTurn',
   defaultValue: {} as Record<string, string[]>,
-  schema: projectRuleRecord('ask'),
+  schema: projectRuleRecord,
 });
 
-export const permissionAskTimeoutSetting = defineSetting<number | null>({
+export const permissionAskTimeoutSetting = defineSetting({
   key: 'permission.askTimeoutMs',
-  label: '批准等待超时',
-  description: '批准卡与问询卡的等待超时（毫秒）；null = 一直等待。',
   apply: 'nextOperation',
   defaultValue: DEFAULT_PERMISSION_ASK_TIMEOUT_MS,
   schema: z.union([
     z.null(),
     z.number().int().min(MIN_PERMISSION_ASK_TIMEOUT_MS).max(MAX_PERMISSION_ASK_TIMEOUT_MS),
-  ]).describe('批准卡与问询卡的等待超时（毫秒）；null = 一直等待。'),
+  ]),
 });
 
 /** permission 包全部设置定义（供 SettingsStore 注册）。 */

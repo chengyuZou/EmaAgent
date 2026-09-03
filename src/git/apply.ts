@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { GitError } from './errors.js';
 import { runGit } from './gitProcess.js';
-import { DEFAULT_GIT_SETTINGS, type GitSettings } from './settings.js';
+import { GIT_WRITE_TIMEOUT_MS } from './limits.js';
 
 export interface ApplyRequest {
   readonly cwd: string;
@@ -31,10 +31,7 @@ export interface ApplyResult {
  * 失败(冲突/不适用)不抛异常,以 exitCode=1 + conflictedPaths 返回;
  * 只有 git 本身不可用/超时等环境错误才抛 GitError。
  */
-export async function applyPatch(
-  request: ApplyRequest,
-  settings: GitSettings = DEFAULT_GIT_SETTINGS,
-): Promise<ApplyResult> {
+export async function applyPatch(request: ApplyRequest): Promise<ApplyResult> {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ema-git-apply-'));
   const patchFile = path.join(tmpDir, 'patch.diff');
   await fs.writeFile(patchFile, request.diff, 'utf8');
@@ -46,7 +43,7 @@ export async function applyPatch(
     args.push(patchFile);
 
     try {
-      const { stdout, stderr } = await runGit(request.cwd, args, { timeoutMs: settings.writeTimeoutMs });
+      const { stdout, stderr } = await runGit(request.cwd, args, { timeoutMs: GIT_WRITE_TIMEOUT_MS });
       return {
         exitCode: 0,
         appliedPaths: extractPathsFromDiff(request.diff),

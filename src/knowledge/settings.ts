@@ -19,37 +19,29 @@ export interface KnowledgeRetrievalSettings {
   resultMaxChars: number;
 }
 
-export const kbDefaultTopKSetting = defineSetting<number>({
+export const kbDefaultTopKSetting = defineSetting({
   key: 'kb.retrieval.defaultTopK',
-  label: '默认命中条数',
-  description: '检索未显式指定 topK 时的默认命中条数。',
   apply: 'nextOperation',
   defaultValue: 5,
   schema: z.number().int().min(1).max(20),
 });
 
-export const kbAlphaSetting = defineSetting<number>({
+export const kbAlphaSetting = defineSetting({
   key: 'kb.retrieval.alpha',
-  label: '向量路混合权重',
-  description: 'RRF 融合中稠密（向量）路权重；1-alpha 为稀疏（BM25）路权重。',
   apply: 'nextOperation',
   defaultValue: 0.5,
   schema: z.number().min(0).max(1),
 });
 
-export const kbRerankBlendWeightSetting = defineSetting<number>({
+export const kbRerankBlendWeightSetting = defineSetting({
   key: 'kb.retrieval.rerankBlendWeight',
-  label: '重排序混合权重',
-  description: '混合排序中 rerank 分的权重；1-权重为 RRF 分权重。',
   apply: 'nextOperation',
   defaultValue: 0.6,
   schema: z.number().min(0).max(1),
 });
 
-export const kbResultMaxCharsSetting = defineSetting<number>({
+export const kbResultMaxCharsSetting = defineSetting({
   key: 'kb.retrieval.resultMaxChars',
-  label: '检索结果字符预算',
-  description: '模型工具检索结果的正文总字符预算；HTTP 面板不受此限。',
   apply: 'nextOperation',
   defaultValue: 12_000,
   schema: z.number().int().min(1_000).max(50_000),

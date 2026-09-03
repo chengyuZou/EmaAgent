@@ -16,7 +16,6 @@ import type {
   NarrativeSearch,
 } from '@ema-agent/narrative';
 import {
-  narrativeBridgeEnabledSetting,
   narrativeQueryModeSetting,
   prepareNarrativeRecall,
 } from '@ema-agent/narrative';
@@ -223,12 +222,11 @@ export function prepareTurnTools(
 
   const commandRunner = deps.commandRunner?.(sessionId);
   const vision = deps.resolveVision?.();
-  // 召回闭包在本 Turn 构建一次：LLM 连接、模式覆盖与进程开关全部冻结；
+  // 召回闭包在本 Turn 构建一次: LLM 连接与模式覆盖全部冻结;
   // auto 时模型经 Tool 触发，always 时 reminder 触发，二者共用同一实现。
   const narrativeSearch = ((): NarrativeSearch | undefined => {
     if (input.narrativePolicy === 'off') return undefined;
     if (!deps.narrativeClient || !deps.resolveNarrativeLlm) return undefined;
-    if (!deps.settings.get(narrativeBridgeEnabledSetting)) return undefined;
     const llm = deps.resolveNarrativeLlm();
     if (!llm) return undefined;
     const client = deps.narrativeClient;

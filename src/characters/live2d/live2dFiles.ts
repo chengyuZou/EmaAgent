@@ -4,7 +4,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Unzip, UnzipInflate, Zip, ZipDeflate } from 'fflate';
 import { CharacterResourceValidationError } from '../errors.js';
-import type { CharacterSettings } from '../settings.js';
 import { physicalName, sourceBaseName } from '../resources/resourcePaths.js';
 import { removeDirectoryIfPresent, removeFileIfPresent } from '../resources/resourceFiles.js';
 

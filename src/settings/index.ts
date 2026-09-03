@@ -7,7 +7,7 @@ export {
   InvalidSettingGroupValueError,
   InvalidSettingValueError,
 } from './errors.js';
-export { defineSetting, describeSetting } from './types.js';
+export { defineSetting } from './types.js';
 export type {
   SettingsChangedEvent,
   SettingsChangedListener,
@@ -15,6 +15,5 @@ export type {
 export type {
   SettingApplyPolicy,
   SettingDefinition,
-  SettingDescriptor,
   SettingGroup,
 } from './types.js';

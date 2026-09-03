@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState, type JSX } from 'react';
 import { Callout, Select } from '@ema-agent/ui';
 
-import { settingsApi } from '../../api/settings.js';
+import { settingsApi, type SettingApply } from '../../api/settings.js';
 import {
   tauriBridge,
   type DetectedTerminalShell,
@@ -34,6 +34,7 @@ type SaveState = 'idle' | 'saving' | 'saved' | 'failed';
 export function TerminalShellSettings(): JSX.Element {
   const [shells, setShells] = useState<readonly DetectedTerminalShell[]>([]);
   const [selected, setSelected] = useState('');
+  const [apply, setApply] = useState<SettingApply | null>(null);
   const [loadState, setLoadState] = useState<LoadState>('loading');
   const [saveState, setSaveState] = useState<SaveState>('idle');
 
@@ -46,6 +47,7 @@ export function TerminalShellSettings(): JSX.Element {
       if (!active) return;
       setShells(detected);
       setSelected(typeof setting.value === 'string' ? setting.value : '');
+      setApply(setting.apply);
       setLoadState('ready');
     }).catch((cause: unknown) => {
       if (!active) return;
@@ -100,6 +102,7 @@ export function TerminalShellSettings(): JSX.Element {
         <SettingsCard>
           <SettingItem
             title="Shell"
+            apply={apply ?? undefined}
             hint={selectedShell
               ? `${SHELL_KIND_LABELS[selectedShell.kind]} · ${selectedShell.executablePath}`
               : selected

@@ -19,24 +19,6 @@ export type {
   GitFileStatus,
 } from './types.js';
 
-// ── 设置:defineSetting 声明 + 快照 + 聚合读取(消费方 readGitSettings(store) 注入) ──
-export {
-  DEFAULT_GIT_SETTINGS,
-  readGitSettings,
-  gitReadTimeoutMsSetting,
-  gitWriteTimeoutMsSetting,
-  gitMaxOutputBytesSetting,
-  gitDiffContextLinesSetting,
-  gitDiffMaxFileCharsSetting,
-  gitDiffMaxTotalCharsSetting,
-  gitDiffMaxFilesPerScopeSetting,
-  gitDiffMaxUntrackedFilesSetting,
-  gitDiffUntrackedConcurrencySetting,
-  gitDiffProcessOutputBytesSetting,
-  gitBaselineMaxDiffBytesSetting,
-  gitBaselineMaxChangesForUnifiedSetting,
-} from './settings.js';
-export type { GitSettings } from './settings.js';
 
 // ── 基线机制:内部目录的可重置 diff(单 commit 基线,对照 codex git-utils baseline.rs) ──
 export {

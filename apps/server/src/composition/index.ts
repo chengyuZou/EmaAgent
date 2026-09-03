@@ -61,7 +61,7 @@ export function buildComposition(input: { activeDataDir: string }): Composition 
     settings.settings,
     database.usageRecorder,
   );
-  const characters = openCharacters(database.profileDb, settings.settings);
+  const characters = openCharacters(database.profileDb);
   const narrative = openNarrative(providers.providers, providers.providerModels, providers.modelBindings);
   const speech = openSpeech(
     database.dataDb,
@@ -70,7 +70,6 @@ export function buildComposition(input: { activeDataDir: string }): Composition 
     providers.providers,
     providers.modelBindings,
     characters.store,
-    settings.settings,
   );
 
   // ── 跨族胶合（只允许在这里出现） ────────────────────────────────────────────

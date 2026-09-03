@@ -14,7 +14,10 @@ import {
 import { applyConsolidationEdits } from '../consolidation/consolidation.js';
 import type { ConsolidationPlan } from '../consolidation/consolidation.js';
 import { workMemoryDir, relationshipMemoryDir } from '../common/paths.js';
-import { DEFAULT_MEMORY_BUDGETS } from '../capacity/budgets.js';
+import {
+  MEMORY_CONSOLIDATION_ITEMS,
+  MEMORY_GIT_DIFF_BYTES,
+} from '../capacity/limits.js';
 import { DEFAULT_MEMORY_JOBS_SETTINGS } from '../settings.js';
 import type { JobAdmin } from './jobAdmin.js';
 
@@ -37,8 +40,6 @@ export interface RunConsolidationJobDeps {
   /** 当前存在、整合期间不能由用户同时编辑的文件。 */
   readonly listTargetPaths: (memoryDirectory: string) => readonly string[];
   readonly consolidate: ConsolidateMemory;
-  readonly consolidationLimit?: number;
-  readonly diffMaxBytes?: number;
   readonly heartbeatSeconds?: number;
   /** 整合冷却小时数(0 = 关闭);缺省 memory.jobs.consolidationCooldownHours。 */
   readonly cooldownHours?: number;
@@ -94,18 +95,14 @@ export async function runConsolidationJobs(
     if (controller.signal.aborted) return stoppedOutcome(deps.jobs, job.id);
 
     const memoryDirectory = (deps.memoryDirectoryFor ?? defaultMemoryDirectoryFor)(kind);
-    const consolidationLimit =
-      deps.consolidationLimit ?? DEFAULT_MEMORY_BUDGETS.consolidationItems;
-    const diffMaxBytes = deps.diffMaxBytes ?? DEFAULT_MEMORY_BUDGETS.gitDiffBytes;
-
     await prepareMemoryGitWorkspace(memoryDirectory);
     if (controller.signal.aborted) return stoppedOutcome(deps.jobs, job.id);
 
     const unintegrated = deps.jobs.listUnintegratedExtractionResults(
       extractionKindFor(kind),
-      consolidationLimit,
+      MEMORY_CONSOLIDATION_ITEMS,
     );
-    const diff = await readMemoryGitDiff(memoryDirectory, diffMaxBytes);
+    const diff = await readMemoryGitDiff(memoryDirectory, MEMORY_GIT_DIFF_BYTES);
     if (unintegrated.length === 0 && diff.changes.length === 0) {
       return deps.jobs.complete(job.id, Date.now())
         ? { claimed: true, outcome: 'noChanges' }
@@ -122,7 +119,11 @@ export async function runConsolidationJobs(
     )) {
       return stoppedOutcome(deps.jobs, job.id);
     }
-    const diffFile = await writeMemoryGitDiff(memoryDirectory, diff, diffMaxBytes);
+    const diffFile = await writeMemoryGitDiff(
+      memoryDirectory,
+      diff,
+      MEMORY_GIT_DIFF_BYTES,
+    );
     const plan = await deps.consolidate({
       memoryDirectory,
       diffFile,

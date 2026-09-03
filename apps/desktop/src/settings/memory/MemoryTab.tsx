@@ -3,10 +3,11 @@ import { Tabs } from '@ema-agent/ui';
 import { OverviewTab } from './MemoryOverviewTab.js';
 import { MaintenanceTab } from './MemoryMaintenanceTab.js';
 import { MemoryFilesTab } from './MemoryFilesTab.js';
+import { MemorySettings } from './MemorySettings.js';
 
 // ── Main export ───────────────────────────────────────────────────────────────
 
-type MemorySection = 'overview' | 'files' | 'maintenance';
+type MemorySection = 'overview' | 'files' | 'maintenance' | 'settings';
 
 export function MemoryTab(): JSX.Element {
   const [section, setSection] = useState<MemorySection>('overview');
@@ -15,6 +16,7 @@ export function MemoryTab(): JSX.Element {
     { value: 'overview',     label: '概览',   icon: 'i-mdi:chart-box-outline',   content: <OverviewTab />     },
     { value: 'files',        label: '文件',   icon: 'i-mdi:file-document-outline', content: <MemoryFilesTab /> },
     { value: 'maintenance',  label: '维护',   icon: 'i-mdi:wrench-outline',       content: <MaintenanceTab />  },
+    { value: 'settings',     label: '参数设置', icon: 'i-mdi:tune-variant',         content: <MemorySettings />   },
   ];
 
   return (

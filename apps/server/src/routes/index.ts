@@ -37,7 +37,7 @@ import { sessionAttachmentsRoute } from './sessions/attachments.js';
 import { sessionCollectionRoute } from './sessions/collection.js';
 import { sessionHistoryRoute } from './sessions/history.js';
 import { sessionGitRoute } from './sessions/git.js';
-import { settingsCatalogRoute } from './settings/catalog.js';
+import { settingsEventDisplayRoute } from './settings/eventDisplay.js';
 import { settingsValuesRoute } from './settings/values.js';
 import { skillListRoute } from './skills/list.js';
 import { skillSitesRoute } from './skills/sites.js';
@@ -175,7 +175,7 @@ export const createRoutes = (composition: Composition, secret: string) => {
       sttPreview: speech.sttPreview,
     }))
 
-    .route('/api/settings', settingsCatalogRoute({ settings: settings.settings }))
+    .route('/api/settings', settingsEventDisplayRoute({ settings: settings.settings }))
     .route('/api/settings', settingsValuesRoute({ settings: settings.settings }))
 
     .route('/api/skills', skillListRoute({
