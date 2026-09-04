@@ -5,7 +5,7 @@ import { knowledgeApi, type DocumentChunksResult } from '../../api/knowledge.js'
 
 type ChunkSummary = DocumentChunksResult['items'][number];
 
-export function ChunkViewer({ assetId, closing }: { assetId: string; closing?: boolean }): JSX.Element {
+export function ChunkViewer({ kbId, assetId, closing }: { kbId: string; assetId: string; closing?: boolean }): JSX.Element {
   const [items, setItems]           = useState<ChunkSummary[]>([]);
   const [nextCursor, setNextCursor] = useState<number | null>(null);
   const [loading, setLoading]       = useState(false);
@@ -14,14 +14,14 @@ export function ChunkViewer({ assetId, closing }: { assetId: string; closing?: b
   const load = useCallback(async (cursor?: number): Promise<void> => {
     setLoading(true);
     try {
-      const page = await knowledgeApi.listChunks(assetId, { cursor, limit: 20 });
+      const page = await knowledgeApi.listChunks(kbId, assetId, { cursor, limit: 20 });
       setItems((prev) => (cursor === undefined ? page.items : [...prev, ...page.items]));
       setNextCursor(page.nextCursor);
     } finally {
       setLoading(false);
       setLoaded(true);
     }
-  }, [assetId]);
+  }, [kbId, assetId]);
 
   useEffect(() => {
     void load(undefined);

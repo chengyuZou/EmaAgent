@@ -57,6 +57,25 @@ export class KbReembedTasksRepo {
     ).run(Date.now(), id).changes === 1;
   }
 
+  /** 在途任务计数(库卡"N 个任务在跑")。 */
+  countActive(): number {
+    return this.db.prepare(
+      `SELECT COUNT(*) FROM kb_reembed_tasks WHERE status IN ('pending', 'running')`,
+    ).pluck().get() as number;
+  }
+
+  /** 删除终态任务行;在途任务由队列层拒绝(先取消再删)。 */
+  delete(id: string): boolean {
+    return this.db.prepare(
+      `DELETE FROM kb_reembed_tasks WHERE id = ? AND status IN ('completed', 'failed', 'cancelled')`,
+    ).run(id).changes === 1;
+  }
+
+  /** 文档删除时级联清掉它的全部任务行。 */
+  deleteByAssetId(assetId: string): number {
+    return this.db.prepare('DELETE FROM kb_reembed_tasks WHERE asset_id = ?').run(assetId).changes;
+  }
+
   markRunningInterrupted(at = Date.now()): number {
     return this.db.prepare(
       `UPDATE kb_reembed_tasks SET status = 'failed', error = '上次运行被应用退出中断', updated_at = ?

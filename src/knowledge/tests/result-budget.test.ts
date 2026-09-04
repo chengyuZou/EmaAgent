@@ -27,40 +27,35 @@ function hit(id: string, text: string, score: number): KbSearchHit {
 describe('applyResultBudget', () => {
   it('未提供预算时原样返回', () => {
     const hits = [hit('a', 'x'.repeat(100), 0.9), hit('b', 'y'.repeat(100), 0.8)];
-    expect(applyResultBudget(hits, undefined)).toEqual(hits);
-    expect(applyResultBudget(hits, 0)).toEqual(hits);
+    expect(applyResultBudget(hits, undefined)).toEqual({ hits, truncated: false });
+    expect(applyResultBudget(hits, 0)).toEqual({ hits, truncated: false });
   });
 
-  it('预算充足时全部保留全文', () => {
+  it('预算充足时全部保留全文且不截断', () => {
     const hits = [hit('a', 'x'.repeat(100), 0.9), hit('b', 'y'.repeat(100), 0.8)];
     const out = applyResultBudget(hits, 200);
-    expect(out.map(h => h.citationOnly)).toEqual([undefined, undefined]);
-    expect(out[0]!.text).toHaveLength(100);
+    expect(out.truncated).toBe(false);
+    expect(out.hits[0]!.text).toHaveLength(100);
   });
 
-  it('第一个放不下的命中起全部降级为引用卡', () => {
+  it('第一个放不下的命中起停止返回并标记截断', () => {
     const hits = [
       hit('a', 'x'.repeat(100), 0.9),
       hit('b', 'y'.repeat(100), 0.8),
       hit('c', 'z'.repeat(100), 0.7),
     ];
     const out = applyResultBudget(hits, 150);
-    expect(out).toHaveLength(3);
-    expect(out[0]!.citationOnly).toBeUndefined();
-    expect(out[0]!.text).toHaveLength(100);
-    // b 与 c 降级：text 只剩命中块预览，并显式标记
-    expect(out[1]!.citationOnly).toBe(true);
-    expect(out[1]!.text.length).toBeLessThanOrEqual(200);
-    expect(out[2]!.citationOnly).toBe(true);
-    // 出处保留，模型知道内容在哪
-    expect(out[2]!.source.fileName).toBe('c.txt');
+    // a 完整保留; b 起不再返回——不产出正文残缺的结果对象。
+    expect(out.hits).toHaveLength(1);
+    expect(out.hits[0]!.text).toHaveLength(100);
+    expect(out.truncated).toBe(true);
   });
 
-  it('已经是 citation-only 的命中不重复降级', () => {
-    const original = hit('a', 'preview', 0.5);
-    original.citationOnly = true;
-    const out = applyResultBudget([original], 1);
-    expect(out[0]).toBe(original);
+  it('预算恰好耗尽且无剩余命中时不标记截断', () => {
+    const hits = [hit('a', 'x'.repeat(100), 0.9)];
+    const out = applyResultBudget(hits, 100);
+    expect(out.hits).toHaveLength(1);
+    expect(out.truncated).toBe(false);
   });
 });
 

@@ -17,7 +17,6 @@ import { validateFile } from './validate.js';
 import {
   KnowledgeDocumentProcessingError,
   KnowledgeEmbeddingSpaceMismatchError,
-  KnowledgeInvalidRequestError,
 } from '../errors.js';
 
 const EMBED_BATCH_SIZE = 32;
@@ -39,12 +38,9 @@ export async function ingest(
 ): Promise<IngestResult> {
   const assetId = options.assetId ?? randomUUID();
   const existing = deps.store.getAsset(assetId);
-  if (existing && existing.status !== 'ready') {
-    // failed / 崩溃遗留的 indexing 都是非终态残留：
-    // 重试复用已落盘的原文件，但从数据库重新建立一份完整文档事实。
+  if (existing) {
+    // 既有资产一律接管重建:failed/崩溃残留是重试, ready 是同路径再导入(更新语义)。
     deps.store.deleteAsset(assetId);
-  } else if (existing) {
-    throw new KnowledgeInvalidRequestError(`Knowledge asset already exists: ${assetId}`);
   }
 
   const bytes = new Uint8Array(await readFile(filePath));
@@ -58,33 +54,19 @@ export async function ingest(
     throw new KnowledgeDocumentProcessingError(`Knowledge document validation failed: ${validation.error}`);
   }
 
-  const duplicate = validation.hash
-    ? deps.store.findAssetByHash(validation.hash)
-    : undefined;
-  if (duplicate?.status === 'ready') {
-    return duplicateResult(duplicate, deps.store);
-  }
-
   const fileName = filePath.split(/[\\/]/).pop() ?? filePath;
   const asset: DocumentAsset = {
     id: assetId,
+    sourcePath: options.sourcePath,
     filePath: options.stagedRelativePath ?? filePath,
     fileName,
     mimeType,
     wordCount: 0,
-    contentHash: validation.hash,
     status: 'indexing',
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
-  try {
-    deps.store.addAsset(asset);
-  } catch (error) {
-    // 并发下同内容已被另一任务先入库（content_hash 唯一约束）：退回既有资产，本任务不产生新文档。
-    const winner = validation.hash ? deps.store.findAssetByHash(validation.hash) : undefined;
-    if (winner?.status === 'ready') return duplicateResult(winner, deps.store);
-    throw error;
-  }
+  deps.store.addAsset(asset);
 
   try {
     report(deps, assetId, 'parse', 0.2);
@@ -204,18 +186,4 @@ function useSemanticChunking(mimeType: string, hasEmbedding: boolean): boolean {
 
 function report(deps: IngestDeps, assetId: string, stage: IngestStage, progress: number): void {
   deps.onProgress?.(assetId, stage, progress);
-}
-
-function duplicateResult(asset: DocumentAsset, store: KnowledgeStore): IngestResult {
-  const preview = store.getPreview(asset.id) ?? {
-    assetId: asset.id,
-    text: '',
-    wordCount: asset.wordCount,
-    pageCount: asset.pageCount,
-  };
-  return {
-    asset,
-    chunks: store.getChunks(asset.id).length,
-    preview,
-  };
 }

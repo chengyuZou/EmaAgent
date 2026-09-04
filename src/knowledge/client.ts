@@ -62,14 +62,6 @@ export class KnowledgeClient {
       vision: this.deps.resolveVision(),
       onProgress,
     });
-    // 内容重复时返回的是既有资产：本任务预生成的 assetId 及其 staged 副本都要清掉。
-    if (
-      this.deps.kbRoot
-      && options.assetId !== undefined
-      && result.asset.id !== options.assetId
-    ) {
-      await removeStagedAssetFiles(this.deps.kbRoot, options.assetId).catch(() => {});
-    }
     const stored = this.deps.store.getAsset(result.asset.id);
     if (stored?.embeddingSpaceId && stored.embeddingDim) {
       await this.addAssetToIndex(stored.id, stored.embeddingSpaceId, stored.embeddingDim);
@@ -84,7 +76,7 @@ export class KnowledgeClient {
   }
 
   /** 全量重建 fan-out 前的预检：一次短文本 embed 验证 key/模型/维度，失败则一行任务都不建。
-   *  重嵌入永远用当前绑定（kb-embed）模型。 */
+   *  重嵌入永远用当前库配置的 Embedding 模型。 */
   async probeEmbeddingSpace(signal?: AbortSignal): Promise<EmbeddingSpace> {
     const embed = this.deps.resolveEmbed();
     if (!embed) {
@@ -102,7 +94,7 @@ export class KnowledgeClient {
   }
 
   /** 重建单个资产的向量并冻结新空间；内存索引空间一致时增量挂载，否则留给检索侧惰性重建。
-   *  重嵌入永远用当前绑定（kb-embed）模型。 */
+   *  重嵌入永远用当前库配置的 Embedding 模型。 */
   async reembedAsset(
     assetId: string,
     signal: AbortSignal,
@@ -163,31 +155,38 @@ export class KnowledgeClient {
 
     const callRerank = this.deps.resolveRerank();
     if (callRerank && ranked.length > 0) {
+      // 取消归一为调用方的原因;真实调用失败如实报错,不静默退回未重排结果。
+      // 全部候选都送重排拿分:topK=候选数,不付钱给不参赛的文档。
       try {
-        const response = await callRerank({
+        ranked = blendRerank(ranked, (await callRerank({
           query,
           documents: ranked.map((item) => this.deps.store.getChunk(item.id)?.text ?? ''),
-          topK,
+          topK: ranked.length,
           signal: options.signal,
-        });
-        ranked = blendRerank(ranked, response.results, options.rerankBlendWeight ?? RERANK_BLEND_WEIGHT, topK);
+        })).results, options.rerankBlendWeight ?? RERANK_BLEND_WEIGHT, topK);
       } catch (error) {
-        // 取消不是 rerank 故障，必须向上传播，不能伪装成降级结果。
         if (options.signal?.aborted) throw options.signal.reason ?? error;
-        ranked = ranked.slice(0, topK);
+        throw error;
       }
     } else {
       ranked = ranked.slice(0, topK);
     }
 
+    const budgeted = applyResultBudget(this.buildHits(ranked), options.maxResultChars);
     return {
       query,
-      hits: applyResultBudget(this.buildHits(ranked), options.maxResultChars),
+      hits: budgeted.hits,
+      ...(budgeted.truncated ? { truncated: true } : {}),
     };
   }
 
   getAsset(id: string): DocumentAsset | undefined {
     return this.deps.store.getAsset(id);
+  }
+
+  /** 文档身份查询:同一原始路径再导入时找到既有资产。 */
+  getAssetBySourcePath(sourcePath: string): DocumentAsset | undefined {
+    return this.deps.store.findAssetBySourcePath(sourcePath);
   }
 
   getChunks(assetId: string): DocumentChunk[] {
@@ -239,7 +238,8 @@ export class KnowledgeClient {
     signal: AbortSignal | undefined,
   ): Promise<Array<{ id: string; score: number }>> {
     const embed = this.deps.resolveEmbed();
-    if (!embed) return [];
+    // Embedding 是硬门槛:未配置或配置不可解析都如实报错,不降级为纯 BM25。
+    if (!embed) throw new KnowledgeNotConfiguredError('当前知识库未配置 Embedding 模型');
     try {
       const response = await embed({ texts: [query], signal });
       const vector = response.embeddings[0];
@@ -258,9 +258,9 @@ export class KnowledgeClient {
         .slice(0, topK * 3)
         .map((hit) => ({ id: hit.id, score: hit.score }));
     } catch (error) {
-      // 取消不是嵌入故障，向上传播；其余失败才降级为仅 BM25。
+      // 取消不是嵌入故障，向上传播；真实调用失败同样向上传播,不伪装成空结果。
       if (signal?.aborted) throw signal.reason ?? error;
-      return [];
+      throw error;
     }
   }
 

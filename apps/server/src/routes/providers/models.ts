@@ -74,8 +74,6 @@ export interface ProviderModelsRouteDeps {
   readonly modelBindings: ModelBindings;
   /** models.dev 目录网络刷新；同步到 SQL 由 syncDevModels 负责。 */
   readonly refreshCatalog: (signal?: AbortSignal) => Promise<boolean>;
-  /** kb-embed/kb-rerank 绑定变更后使全部 KB 嵌入失效（引导重嵌）；由装配层从 knowledge 族接线。 */
-  readonly onKbEmbeddingBindingChanged?: () => void;
 }
 
 export const providerModelsRoute = (deps: ProviderModelsRouteDeps) =>
@@ -158,9 +156,6 @@ export const providerModelsRoute = (deps: ProviderModelsRouteDeps) =>
       try {
         assertBindingConnection(deps, module, body.providerId);
         deps.modelBindings.set({ module, ...body });
-        if (module === 'kb-embed' || module === 'kb-rerank') {
-          deps.onKbEmbeddingBindingChanged?.();
-        }
         return context.json(deps.modelBindings.get(module));
       } catch (error) {
         return providerError(context, error);

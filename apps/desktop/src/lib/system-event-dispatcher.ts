@@ -6,6 +6,10 @@ import { useCharacterStore } from '../stores/character.js';
 import { useCurrentSession } from '../chat/state/currentSession.js';
 import { useKnowledgeStore } from '../stores/knowledge.js';
 import { useSettingsStore } from '../stores/settings.js';
+import { useSkillStore } from '../stores/skill.js';
+import { useMcpStore } from '../stores/mcp.js';
+
+export const MCP_MARKET_CHANGED_EVENT = 'ema:mcp-market-changed';
 
 export function dispatchSystemEvent(event: AppEvent): void {
   switch (event.type) {
@@ -37,6 +41,23 @@ export function dispatchSystemEvent(event: AppEvent): void {
     case 'settings_changed':
       // 每个 WebView 都有自己的 Store；收到后读取后端生效值，兑现 nextOperation。
       void useSettingsStore.getState().refreshDesktopSettings().catch(() => {});
+      break;
+
+    case 'skills_changed':
+      // 只自刷新已装载过的窗口；没打开过技能业务的窗口不预取。
+      if (useSkillStore.getState().loaded) {
+        void useSkillStore.getState().refresh().catch(() => {});
+      }
+      break;
+
+    case 'mcp_connection_changed':
+      if (useMcpStore.getState().servers.length > 0) {
+        void useMcpStore.getState().refresh().catch(() => {});
+      }
+      break;
+
+    case 'mcp_market_changed':
+      window.dispatchEvent(new CustomEvent(MCP_MARKET_CHANGED_EVENT, { detail: event.source }));
       break;
 
     default:

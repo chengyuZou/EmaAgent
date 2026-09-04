@@ -31,7 +31,7 @@ function removeDb(file) {
 // 设置/角色/Provider 库。
 removeDb(path.join(profileRoot, 'profile.db'));
 
-// registry.json 登记的全部数据目录：清业务库与 Session 文件树；注册表本身保留。
+// registry.json 登记的全部数据目录：清业务库、Session 文件树与知识库目录（每库独立 kb.db + files/）。
 const registryFile = path.join(profileRoot, 'registry.json');
 if (fs.existsSync(registryFile)) {
   try {
@@ -40,6 +40,7 @@ if (fs.existsSync(registryFile)) {
       if (typeof dir?.path !== 'string') continue;
       removeDb(path.join(dir.path, 'data.db'));
       remove(path.join(dir.path, 'sessions'));
+      remove(path.join(dir.path, 'kb'));
     }
   } catch {
     console.warn('registry.json 解析失败，跳过数据目录清理');

@@ -74,7 +74,7 @@ The active knowledge base and any document scope selected by the user are suppli
       return `知识库中没有找到与“${output.query}”相关的内容。`;
     }
 
-    return output.hits
+    const body = output.hits
       .map((hit, index) => {
         const location = [
           hit.source.fileName,
@@ -83,13 +83,15 @@ The active knowledge base and any document scope selected by the user are suppli
             ? undefined
             : hit.source.sectionPath.join(' > '),
         ].filter((part): part is string => part !== undefined);
-        const content = hit.citationOnly
-          ? hit.source.chunkPreview
-          : hit.markdown?.trim() || hit.text.trim();
-        const citationNote = hit.citationOnly ? '（仅返回引用预览）' : '';
+        const content = hit.markdown?.trim() || hit.text.trim();
 
-        return `## 结果 ${index + 1}：${location.join(' · ')}${citationNote}\n${content}`;
+        return `## 结果 ${index + 1}：${location.join(' · ')}\n${content}`;
       })
       .join('\n\n');
+
+    // 预算截断如实告知:还有命中未返回,缩小范围重查可获取。
+    return output.truncated
+      ? `${body}\n\n（结果受长度预算截断；还有更多命中未返回，缩小检索词范围再查可以拿到。）`
+      : body;
   },
 });

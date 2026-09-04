@@ -42,6 +42,11 @@ class BlendStore {
     return this.ftsHits;
   }
 
+  /** 混合排序测试不走向量:嵌入清单恒空,内存索引为空,dense 路无命中。 */
+  getAllEmbeddings(): Array<{ id: string; assetId: string; embedding: Buffer }> {
+    return [];
+  }
+
   getChunk(id: string): DocumentChunk | undefined {
     return this.chunks.get(id);
   }
@@ -63,10 +68,19 @@ function failingReranker(): CallRerank {
   };
 }
 
+/** Embedding 硬门槛下检索必须有可用 embed;该桩提供空 dense 路(内存索引为空)。 */
+function stubEmbed(): CallEmbed {
+  return async () => ({
+    embeddings: [[1, 0]],
+    dim: 2,
+    space: { id: 'blend-space', providerId: 'test', model: 'test', dim: 2 },
+  });
+}
+
 function makeDeps(store: BlendStore, callRerank?: CallRerank): KnowledgeClientDeps {
   return {
     store: store as unknown as KnowledgeStore,
-    resolveEmbed: () => undefined,
+    resolveEmbed: () => stubEmbed(),
     resolveRerank: () => callRerank,
     resolveVision: () => undefined,
   };
@@ -126,13 +140,11 @@ describe('KB 检索混合排序', () => {
     expect(result.hits.map((h) => h.chunkId)).toEqual(['chunk-a', 'chunk-b']);
   });
 
-  it('rerank 调用失败时回退 RRF 顺序', async () => {
+  it('rerank 调用失败如实向上传播,不退回未重排结果', async () => {
     const store = prepare();
     const client = new KnowledgeClient(makeDeps(store, failingReranker()));
 
-    const result = await client.search('query', { topK: 2 });
-
-    expect(result.hits.map((h) => h.chunkId)).toEqual(['chunk-a', 'chunk-b']);
+    await expect(client.search('query', { topK: 2 })).rejects.toThrow('rerank down');
   });
 
   it('未配置 rerank 时直接按 RRF 顺序截断', async () => {
@@ -142,6 +154,24 @@ describe('KB 检索混合排序', () => {
     const result = await client.search('query', { topK: 2 });
 
     expect(result.hits.map((h) => h.chunkId)).toEqual(['chunk-a', 'chunk-b']);
+  });
+
+  it('全部候选都送重排拿分,不付钱给不参赛的文档', async () => {
+    const store = prepare();
+    let seenTopK: number | undefined;
+    let seenDocCount = 0;
+    const spyReranker: CallRerank = async (request) => {
+      seenTopK = request.topK;
+      seenDocCount = request.documents.length;
+      return { results: request.documents.map((_, index) => ({ index, score: 0.5 })) };
+    };
+    const client = new KnowledgeClient(makeDeps(store, spyReranker));
+
+    await client.search('query', { topK: 2 });
+
+    // RRF 候选 topK*2=4 条全部送进去;重排拿分范围=候选全集。
+    expect(seenDocCount).toBe(3);
+    expect(seenTopK).toBe(3);
   });
 
   it('rerank 期间的取消向上传播，不伪装成降级结果', async () => {

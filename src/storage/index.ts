@@ -60,12 +60,11 @@ export type {
 } from './repos/data/speechOutputs.js';
 export { McpServersRepo }  from './repos/profile/mcp-servers.js';
 export type { McpServerRow } from './repos/profile/mcp-servers.js';
-export { McpRegistrySourcesRepo } from './repos/profile/mcp-registry-sources.js';
-export type { McpRegistrySourceRow, McpRegistrySourceInsert } from './repos/profile/mcp-registry-sources.js';
+export { McpMarketEntriesRepo } from './repos/profile/mcp-market.js';
+export type { McpMarketEntryRow, McpMarketFetchStateRow } from './repos/profile/mcp-market.js';
 export { SkillsRepo }      from './repos/profile/skills.js';
 export type { SkillRow }   from './repos/profile/skills.js';
-export { SkillSitesRepo }  from './repos/profile/skill-sites.js';
-export type { SkillSiteRow, SkillSiteInsert } from './repos/profile/skill-sites.js';
+export { SkillEnablementRepo } from './repos/profile/skillEnablement.js';
 export type { DatabaseOptions, SqliteDb } from './database/database.js';
 export type { SessionRow, SessionRowEnriched, SessionSearchRow, SessionInsert, ExecutionProfileRow, NarrativePolicyRow } from './repos/data/sessions.js';
 export type { TurnStatusRow, TurnTriggerTypeRow } from './repos/data/turns.js';
@@ -166,7 +165,7 @@ export type {
   KbReembedStatus,
 } from './repos/kb/kb-reembed-tasks.js';
 export { KbRegistryRepo }      from './repos/profile/kb-registry.js';
-export type { KbRecord }       from './repos/profile/kb-registry.js';
+export type { KbRecord, KbModelRef } from './repos/profile/kb-registry.js';
 export type { DocumentAssetRow, DocumentAssetInsert, AssetPage } from './repos/kb/document-asset.js';
 export type { DocumentChunkRow, DocumentChunkInsert, ChunkSearchHit, ChunkSummary, ChunkPage }  from './repos/kb/document-chunk.js';
 export type {

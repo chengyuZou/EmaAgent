@@ -10,6 +10,7 @@ export interface CallEmbedResult extends EmbeddingResult {
   readonly space: EmbeddingSpace;
 }
 
+// TODO: 有实现了没删干净
 /** 单次 embed 调用；每次调用（含重试的每次成功尝试）在装配层各记一条 usage。 */
 export type CallEmbed = (request: EmbeddingRequest) => Promise<CallEmbedResult>;
 
@@ -29,13 +30,13 @@ export interface KbSearchHit {
   markdown?: string;
   score: number;
   source: DocumentSourceRef;
-  /** 预算耗尽后降级为引用卡：text 只有命中块预览，正文未展开。 */
-  citationOnly?: boolean;
 }
 
 export interface KbSearchResult {
   query: string;
   hits: KbSearchHit[];
+  /** 字符预算只装下了部分命中: true = 后面还有, 模型应缩小 Query 重查。 */
+  truncated?: boolean;
 }
 
 /** Knowledge 检索的一次完整请求；宿主在转交给 Tool 前冻结文档范围。 */
@@ -91,6 +92,8 @@ export interface DocumentPage {
 export type DocumentIndexStatus = 'indexing' | 'ready' | 'failed';
 export interface DocumentAsset {
   id:          string;
+  /** 用户导入时的原始绝对路径;文档身份,同路径再导入=覆盖重建并沿用原 id。 */
+  sourcePath:  string;
   filePath:    string;
   fileName:    string;
   mimeType:    string;
@@ -98,7 +101,6 @@ export interface DocumentAsset {
   wordCount:   number;
   pageCount?:  number;
   status:      DocumentIndexStatus;
-  contentHash?: string;
   createdAt:   number;
   updatedAt:   number;
   embeddingProviderId?: string;
@@ -150,6 +152,8 @@ export interface DocumentPreview {
 export interface IngestOptions {
   /** 预生成的资产 id（让调用方能在 ingest 完成前先返回它，并关联后台进度事件）；缺省生成新 uuid。 */
   assetId?: string;
+  /** 用户原始选择路径;写入 asset.sourcePath 作为文档身份。 */
+  sourcePath: string;
   /** staging 后 asset.filePath 写入的 KB 相对路径；缺省时回退为读取路径。 */
   stagedRelativePath?: string;
   /** 覆盖自动探测的 MIME 类型。 */

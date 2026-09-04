@@ -52,11 +52,13 @@ export function buildComposition(input: { activeDataDir: string }): Composition 
     session: database.session,
     settings: settings.settings,
     emitBackgroundEvent: event => eventHub.emitApp(event),
-    emitStdioApproval: request => eventHub.emitApp({ type: 'mcp_stdio_launch_required', request }),
+    emitMcpConnection: connection => eventHub.emitApp({ type: 'mcp_connection_changed', connection }),
+    emitMcpMarket: source => eventHub.emitApp({ type: 'mcp_market_changed', source }),
   });
   const knowledge = openKnowledge(
     database.profileDb,
     providers.providers,
+    providers.providerModels,
     providers.modelBindings,
     settings.settings,
     database.usageRecorder,

@@ -1,5 +1,5 @@
 // Knowledge Base 的检索参数设置(模型选择已迁出到 model_bindings)。
-// Embed/Rerank 模型选择(kb-embed/kb-rerank)由装配层从 model_bindings 读取并
+// Embed/Rerank 模型是当前激活库注册行上的属性,由装配层从库行读取并
 // 解析成 Call 闭包注入,不再存 settings;这里只留标量检索参数。
 // 设置接口与字段统一在此文件,拆细为一字段一 key。
 

@@ -5,8 +5,17 @@ export interface KbRecordRow {
   name:       string;
   path:       string;
   is_active:  number;
+  embed_provider_id:  string | null;
+  embed_model_id:     string | null;
+  rerank_provider_id: string | null;
+  rerank_model_id:    string | null;
   created_at: number;
   updated_at: number;
+}
+
+export interface KbModelRef {
+  providerId: string;
+  modelId:    string;
 }
 
 export interface KbRecord {
@@ -14,6 +23,10 @@ export interface KbRecord {
   name:      string;
   path:      string;
   isActive:  boolean;
+  /** Embedding 是库的属性(向量空间由它建立); null = 未配置, 该库数据操作禁用。 */
+  embed:     KbModelRef | null;
+  /** null = 检索时跳过重排。 */
+  rerank:    KbModelRef | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -24,6 +37,12 @@ function rowToKb(r: KbRecordRow): KbRecord {
     name:      r.name,
     path:      r.path,
     isActive:  r.is_active === 1,
+    embed:  r.embed_provider_id !== null && r.embed_model_id !== null
+      ? { providerId: r.embed_provider_id, modelId: r.embed_model_id }
+      : null,
+    rerank: r.rerank_provider_id !== null && r.rerank_model_id !== null
+      ? { providerId: r.rerank_provider_id, modelId: r.rerank_model_id }
+      : null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -94,6 +113,22 @@ export class KbRegistryRepo {
 
   rename(id: string, name: string): void {
     this.db.prepare('UPDATE knowledge_bases SET name = ?, updated_at = ? WHERE id = ?').run(name, Date.now(), id);
+  }
+
+  /** 写入该库 Embedding 模型引用; null 清除。成对完整性由表级 CHECK 兜底。 */
+  setEmbed(id: string, ref: KbModelRef | null): void {
+    this.db.prepare(
+      `UPDATE knowledge_bases SET embed_provider_id = ?, embed_model_id = ?, updated_at = ?
+        WHERE id = ?`,
+    ).run(ref?.providerId ?? null, ref?.modelId ?? null, Date.now(), id);
+  }
+
+  /** 写入该库 Rerank 模型引用; null = 检索时跳过重排。 */
+  setRerank(id: string, ref: KbModelRef | null): void {
+    this.db.prepare(
+      `UPDATE knowledge_bases SET rerank_provider_id = ?, rerank_model_id = ?, updated_at = ?
+        WHERE id = ?`,
+    ).run(ref?.providerId ?? null, ref?.modelId ?? null, Date.now(), id);
   }
 
   delete(id: string): void {

@@ -70,40 +70,47 @@ CREATE TABLE knowledge_bases (
   name       TEXT    NOT NULL,
   path       TEXT    NOT NULL,          -- 绝对文件夹:{path}/kb.db + {path}/files/
   is_active  INTEGER NOT NULL DEFAULT 0,
+  -- Embedding/Rerank 是库的属性(向量空间由它建立),不是全局绑定;成对出现,半配置无意义。
+  embed_provider_id  TEXT,
+  embed_model_id     TEXT,
+  rerank_provider_id TEXT,
+  rerank_model_id    TEXT,
   created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL
+  updated_at INTEGER NOT NULL,
+  CHECK ((embed_provider_id IS NULL) = (embed_model_id IS NULL)),
+  CHECK ((rerank_provider_id IS NULL) = (rerank_model_id IS NULL))
 );
 
 CREATE TABLE mcp_servers (
   id           TEXT PRIMARY KEY,
   name         TEXT NOT NULL UNIQUE,
-  source_url   TEXT,
   config_json  TEXT NOT NULL,
   enabled      INTEGER NOT NULL DEFAULT 1,
   tools_cache  TEXT,
-  cached_at    INTEGER NOT NULL DEFAULT 0,
   installed_at INTEGER NOT NULL,
-  -- 安装溯源:registry 形态的 registry_source_id 允许悬空(源删除后保留记录,
-  -- UI 显示"来源已删除"),故不加外键;启动规格锁定在 config_json 本体。
   install_source TEXT NOT NULL DEFAULT 'manual'
-    CHECK (install_source IN ('manual', 'import', 'registry')),
-  registry_source_id TEXT,
-  registry_entry_id  TEXT,
-  registry_version   TEXT
+    CHECK (install_source IN ('manual', 'import', 'official')),
+  market_entry_id TEXT
 );
 
--- MCP Registry 目录源:官方 Registry 是 builtin=1 的种子记录,用户可加同协议镜像。
--- 浏览与更新检查都是即时拉取,目录不落库,故无 fetch 状态/etag 列。
-CREATE TABLE mcp_registry_sources (
-  id           TEXT PRIMARY KEY,
-  label        TEXT NOT NULL,
-  registry_url TEXT NOT NULL,
-  enabled      INTEGER NOT NULL DEFAULT 1,
-  builtin      INTEGER NOT NULL DEFAULT 0,
-  sort_order   INTEGER NOT NULL DEFAULT 0,
-  created_at   INTEGER NOT NULL,
-  updated_at   INTEGER NOT NULL
+CREATE TABLE mcp_market_entries (
+  source         TEXT NOT NULL,
+  external_id    TEXT NOT NULL,
+  name           TEXT NOT NULL,
+  description    TEXT NOT NULL DEFAULT '',
+  repository_url TEXT,
+  detail_url     TEXT NOT NULL,
+  PRIMARY KEY(source, external_id)
 );
+
+-- 非空 cursor 表示该来源只有部分缓存;NULL 表示已经消费完上游分页。
+CREATE TABLE mcp_market_fetch_state (
+  source      TEXT PRIMARY KEY,
+  next_cursor TEXT
+);
+
+CREATE INDEX idx_mcp_market_entries_page
+  ON mcp_market_entries(source, name COLLATE NOCASE, external_id);
 
 CREATE TABLE providers (
   id         TEXT PRIMARY KEY,
@@ -198,12 +205,11 @@ CREATE TABLE provider_models (
 
 -- 模型绑定:每个业务模块只绑定一个已启用模型；绑定与选中入口断言连接可解析。
 -- module 枚举与 providers/modelBindings.ts 的 MODEL_BINDING_MODULES 保持一致;
--- 命名统一为 <域>-<能力>(memory-llm/kb-embed/...);memory 只消费 llm(双轨重构后),
--- kb 的 embed/rerank 原来在 settings JSON,已迁出到本表。
+-- 命名统一为 <域>-<能力>(memory-llm/lightrag-embed/...);memory 只消费 llm(双轨重构后)。
+-- kb 的 embed/rerank 不在此表:它们是 knowledge_bases 注册行上的库级属性。
 CREATE TABLE model_bindings (
   module      TEXT PRIMARY KEY CHECK(module IN (
                 'memory-llm',
-                'kb-embed', 'kb-rerank',
                 'title',
                 'lightrag-embed', 'lightrag-llm',
                 'tts', 'stt', 'vision'
@@ -213,8 +219,7 @@ CREATE TABLE model_bindings (
   model_id    TEXT NOT NULL,
   CHECK(
     (module IN ('memory-llm','title','lightrag-llm') AND capability = 'llm')
-    OR (module IN ('kb-embed','lightrag-embed') AND capability = 'embed')
-    OR (module = 'kb-rerank' AND capability = 'rerank')
+    OR (module = 'lightrag-embed' AND capability = 'embed')
     OR (module = 'tts' AND capability = 'tts')
     OR (module = 'stt' AND capability = 'stt')
     OR (module = 'vision' AND capability = 'vision')
@@ -230,44 +235,23 @@ CREATE TABLE settings (
   updated_at INTEGER NOT NULL
 );
 
--- skills: 目录是事实源,本表只是索引/溯源/对账。
--- 无 enabled 列:启用状态统一由 Settings skill.disabledKeys 决定(deny-list)。
--- id 稳定:手动放置 = 归一化路径哈希;站点安装 = site_<siteId>_<entryId>。
+-- skills: 目录是事实源,本表只是索引;SKILL.md 绝对路径是身份。
+-- 市场安装溯源是目录里的 .market-meta.json,不进 SQL。
 CREATE TABLE skills (
-  id            TEXT PRIMARY KEY,
+  path          TEXT PRIMARY KEY,
   name          TEXT NOT NULL,
   version       TEXT NOT NULL DEFAULT '1.0.0',
   description   TEXT NOT NULL DEFAULT '',
-  arg_hint      TEXT,
   dir_path      TEXT NOT NULL,
-  source        TEXT NOT NULL DEFAULT 'user',
-  source_url    TEXT,
-  sha256        TEXT,
-  site_id       TEXT,
-  site_entry_id TEXT,
   size_bytes    INTEGER NOT NULL DEFAULT 0,
-  content_mtime INTEGER NOT NULL DEFAULT 0,
   installed_at  INTEGER NOT NULL
 );
 
--- skill_sites: 市场面站点实体 + 索引缓存。站点的 enabled 是实体状态,与技能启用无关。
-CREATE TABLE skill_sites (
-  id             TEXT PRIMARY KEY,
-  label          TEXT NOT NULL,
-  index_url      TEXT NOT NULL,
-  enabled        INTEGER NOT NULL DEFAULT 1,
-  builtin        INTEGER NOT NULL DEFAULT 0,
-  sort_order     INTEGER NOT NULL DEFAULT 0,
-  auto_update    INTEGER NOT NULL DEFAULT 0,
-  created_at     INTEGER NOT NULL,
-  index_json     TEXT,
-  schema_version INTEGER,
-  last_fetch_at  INTEGER,
-  fetch_status   TEXT NOT NULL DEFAULT 'never',
-  last_error     TEXT,
-  etag           TEXT,
-  last_modified  TEXT,
-  updated_at     INTEGER NOT NULL
+-- skill_enablement: builtin/user 逐技能启停;无行 = 默认启用。
+-- project 技能不进表(跟随工作区),其来源级开关在 Settings skill.disabledProjectSources。
+CREATE TABLE skill_enablement (
+  skill_path TEXT PRIMARY KEY,
+  enabled   INTEGER NOT NULL
 );
 
 CREATE UNIQUE INDEX idx_characters_active

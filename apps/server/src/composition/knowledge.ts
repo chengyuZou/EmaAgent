@@ -1,4 +1,6 @@
-// 知识库一族：KbManager（注册表/激活/摄入/检索）与其绑定模型调用的惰性解析。
+// 知识库一族：KbManager（注册表/激活/摄入/检索）与其库级模型调用的惰性解析。
+// Embed/Rerank 模型是各库注册行上的属性;resolveEmbedFor/RerankFor 按引用解析,
+// 未配置或能力被禁用即 undefined（该库检索降级，不阻塞主链路）。
 // 模型身份在闭包创建时冻结；usage 在闭包内"调接口得结果 → 从结果记录"，
 // knowledge 业务包不感知 providerId/modelId，也不感知用量。
 import { createEmbedCall, createEmbeddingSpace } from '@ema-agent/embed';
@@ -10,13 +12,13 @@ import {
 } from '@ema-agent/knowledge';
 import {
   ProviderError,
-  type ModelBinding,
   type ModelBindings,
+  type ProviderModels,
   type Providers,
 } from '@ema-agent/providers';
 import { createRerankCall, type CallRerank } from '@ema-agent/rerank';
 import type { SettingsStore } from '@ema-agent/settings';
-import { KbRegistryRepo, type Database } from '@ema-agent/storage';
+import { KbRegistryRepo, type Database, type KbModelRef } from '@ema-agent/storage';
 import { createUsageRecord, reportUsage, type UsageRecorder } from '@ema-agent/usage';
 import { createVisionCall, type CallVision } from '@ema-agent/vision';
 
@@ -24,40 +26,32 @@ export interface KnowledgeComposition {
   readonly kb: KbManager;
   /** 模型工具路径的检索入口（KnowledgeSearch）；HTTP 面板直接用 KbManager。 */
   readonly knowledgeSearch: KnowledgeSearch;
-  /**
-   * kb-embed/kb-rerank 绑定变更后调用：探出新绑定空间并把全库其余空间嵌入标 stale。
-   * fire-and-forget——绑定保存的 HTTP 请求不等失效扫描完成。
-   */
-  readonly onKbEmbeddingBindingChanged: () => void;
 }
 
-/**
- * 绑定变更（kb-embed/kb-rerank/vision）在模型绑定路由生效；每次真实操作才解析闭包，
- * 未绑定或能力被禁用即 undefined（KB 检索降级，不阻塞主链路）。
- */
 export function openKnowledge(
   profileDb: Database,
   providers: Providers,
+  providerModels: ProviderModels,
   modelBindings: ModelBindings,
   settings: SettingsStore,
   usageRecorder: UsageRecorder,
 ): KnowledgeComposition {
-  const resolveEmbed = (): CallEmbed | undefined => {
-    const binding = modelBindings.get('kb-embed');
-    if (!binding) return undefined;
+  const registry = new KbRegistryRepo(profileDb.sqlite);
+
+  const resolveEmbedFor = (ref: KbModelRef): CallEmbed | undefined => {
     try {
-      const callEmbed = createEmbedCall(providers.resolveConnection(binding.providerId, 'embed'), binding.modelId);
+      const callEmbed = createEmbedCall(providers.resolveConnection(ref.providerId, 'embed'), ref.modelId);
       return async (request) => {
         const startedAt = Date.now();
         const result = await callEmbed(request);
-        reportModelUsage(usageRecorder, 'embed', binding, startedAt, {
+        reportModelUsage(usageRecorder, 'embed', ref, startedAt, {
           inputTokens: result.usage?.inputTokens ?? null,
         });
         return {
           ...result,
           space: createEmbeddingSpace({
-            providerId: binding.providerId,
-            model: binding.modelId,
+            providerId: ref.providerId,
+            model: ref.modelId,
             dim: result.dim,
           }),
         };
@@ -67,15 +61,13 @@ export function openKnowledge(
       throw err;
     }
   };
-  const resolveRerank = (): CallRerank | undefined => {
-    const binding = modelBindings.get('kb-rerank');
-    if (!binding) return undefined;
+  const resolveRerankFor = (ref: KbModelRef): CallRerank | undefined => {
     try {
-      const callRerank = createRerankCall(providers.resolveConnection(binding.providerId, 'rerank'), binding.modelId);
+      const callRerank = createRerankCall(providers.resolveConnection(ref.providerId, 'rerank'), ref.modelId);
       return async (request) => {
         const startedAt = Date.now();
         const result = await callRerank(request);
-        reportModelUsage(usageRecorder, 'rerank', binding, startedAt, {
+        reportModelUsage(usageRecorder, 'rerank', ref, startedAt, {
           inputTokens: result.usage?.totalTokens ?? null,
         });
         return result;
@@ -106,21 +98,23 @@ export function openKnowledge(
   };
 
   const kb = new KbManager({
-    registry: new KbRegistryRepo(profileDb.sqlite),
-    resolveEmbed,
-    resolveRerank,
+    registry,
+    resolveEmbedFor,
+    resolveRerankFor,
     resolveVision,
+    // 库级 stale 探空:用模型行上的 dim 算空间 id,不发网络请求;行缺失时由 PATCH 校验拦下,这里兜底跳过。
+    resolveEmbeddingSpaceId: (ref) => {
+      const model = providerModels.get(ref.providerId, 'embed', ref.modelId);
+      if (!model || model.capability !== 'embed') return undefined;
+      return createEmbeddingSpace({ providerId: ref.providerId, model: ref.modelId, dim: model.dim }).id;
+    },
     // 用户设置只在一次真实检索开始时读取；排队或执行中的操作继续使用已取得的值。
     resolveRetrievalSettings: () => readKnowledgeRetrievalSettings(settings),
   });
 
   return {
     kb,
-    knowledgeSearch: request => kb.search(request),
-    onKbEmbeddingBindingChanged: () => {
-      void kb.invalidateEmbeddingsForNewBinding()
-        .catch(error => console.warn('[kb] 嵌入绑定变更后的失效扫描失败:', error));
-    },
+    knowledgeSearch: request => kb.searchActive(request),
   };
 }
 
@@ -128,14 +122,14 @@ export function openKnowledge(
 function reportModelUsage(
   recorder: UsageRecorder,
   capability: 'embed' | 'rerank' | 'vision',
-  binding: ModelBinding,
+  ref: KbModelRef,
   startedAt: number,
   tokens: { inputTokens: number | null; outputTokens?: number | null },
 ): void {
   reportUsage(recorder, createUsageRecord({
     capability,
-    providerId: binding.providerId,
-    modelId: binding.modelId,
+    providerId: ref.providerId,
+    modelId: ref.modelId,
     status: 'completed',
     startedAt,
     durationMs: Date.now() - startedAt,

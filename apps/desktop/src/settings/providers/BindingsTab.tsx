@@ -3,7 +3,7 @@
  *
  * Level 1: 2-column card grid (one card per BindingModule).
  * Level 2: single-select — provider cards (horizontal scroll) → model grid (2-col).
- * kb-embed / kb-rerank 不在此编辑——它们在「设置 → 知识库」的检索模型里(同一绑定只能有一个编辑面)。
+ * KB 的嵌入/重排不在此编辑:它们是每个知识库自己的属性,在库详情页配置。
  */
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
@@ -30,7 +30,7 @@ import { MODEL_BINDING_CAPABILITIES } from '@ema-agent/providers/modelBindings';
 const MODULES: Array<{ id: BindingModule; label: string; desc: string }> = [
   { id: 'memory-llm',     label: 'Memory',        desc: '记忆提取与整合' },
   { id: 'title',          label: 'Title',         desc: '会话标题自动生成' },
-  { id: 'lightrag-embed', label: 'LightRAG 嵌入', desc: '⚠️ 叙事专用嵌入（Pro/bge-m3），重启应用后生效。中途换模型检索质量大幅下降——非必要勿动。知识库的嵌入在「设置 → 知识库」单独选。' },
+  { id: 'lightrag-embed', label: 'LightRAG 嵌入', desc: '⚠️ 叙事专用嵌入（Pro/bge-m3），重启应用后生效。中途换模型检索质量大幅下降——非必要勿动。知识库的嵌入在各库详情页单独配置。' },
   { id: 'lightrag-llm',   label: 'LightRAG LLM',  desc: '叙事模式剧情检索 LLM' },
   { id: 'tts',           label: 'TTS',          desc: '语音合成' },
   { id: 'stt',           label: 'STT',          desc: '语音识别' },
@@ -283,7 +283,7 @@ export function BindingsTab(): JSX.Element {
 
       {activeModule === 'lightrag-embed' && (
         <Callout variant="warn" className="text-xs leading-relaxed ema-slide-up">
-          这是 <b>叙事模式(narrative)专用</b>的嵌入模型，请绑定 <b>Pro/bge-m3</b>；知识库用的是另一套（设置 → 知识库 → 模型）。
+          这是 <b>叙事模式(narrative)专用</b>的嵌入模型，请绑定 <b>Pro/bge-m3</b>；知识库用的是另一套（各知识库详情页内配置）。
           绑定与更换都<b>在重启应用后才生效</b>；中途换模型会让新查询与已建好的剧情向量<b>错配、检索质量大幅下降</b>——非必要请勿改动。
           且 <b>叙事模式(narrative)</b> 仅适用于魔法少女的魔女审判的角色, 启用其他角色请勿使用
         </Callout>

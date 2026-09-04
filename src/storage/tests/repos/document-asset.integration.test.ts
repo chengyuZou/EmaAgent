@@ -88,14 +88,14 @@ describe('B-060 DocumentAsset 复合游标', () => {
     ]);
   });
 
-  it('content_hash 唯一约束拒绝同内容双份入库', () => {
+  it('source_path 唯一约束拒绝同路径双份入库', () => {
     repo.insert({
-      id: 'asset-a', filePath: 'files/a.txt', fileName: 'a.txt', mimeType: 'text/plain',
-      wordCount: 1, status: 'ready', contentHash: 'hash-x', createdAt: 1, updatedAt: 1,
+      id: 'asset-a', sourcePath: 'D:/Docs/a.txt', filePath: 'files/a.txt', fileName: 'a.txt', mimeType: 'text/plain',
+      wordCount: 1, status: 'ready', createdAt: 1, updatedAt: 1,
     });
     expect(() => repo.insert({
-      id: 'asset-b', filePath: 'files/b.txt', fileName: 'b.txt', mimeType: 'text/plain',
-      wordCount: 1, status: 'ready', contentHash: 'hash-x', createdAt: 1, updatedAt: 1,
+      id: 'asset-b', sourcePath: 'D:/Docs/a.txt', filePath: 'files/b.txt', fileName: 'b.txt', mimeType: 'text/plain',
+      wordCount: 1, status: 'ready', createdAt: 1, updatedAt: 1,
     })).toThrow(/UNIQUE/);
   });
 });
@@ -108,6 +108,7 @@ function insertAsset(
 ): void {
   repo.insert({
     id,
+    sourcePath: `D:/Docs/${fileName}`,
     filePath: `files/${fileName}`,
     fileName,
     mimeType: 'text/plain',

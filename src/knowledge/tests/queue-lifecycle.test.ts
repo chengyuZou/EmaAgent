@@ -19,11 +19,11 @@ describe('IngestQueue 重试防连点', () => {
     const database = new Database({ memory: true, kind: 'kb' });
     database.migrate();
     const tasks = new KbIngestTasksRepo(database.sqlite);
-    tasks.insert({ id: 't1-failed', assetId: 'asset-1', filePath: '/f', fileName: 'f' });
+    tasks.insert({ id: 't1-failed', assetId: 'asset-1', sourcePath: '/f', filePath: '/f', fileName: 'f' });
     tasks.startNext();
     tasks.fail('t1-failed', 'boom');
     // 同资产更新的 pending 任务（连点/外部重入产生）
-    tasks.insert({ id: 't2-pending', assetId: 'asset-1', filePath: '/f', fileName: 'f' });
+    tasks.insert({ id: 't2-pending', assetId: 'asset-1', sourcePath: '/f', filePath: '/f', fileName: 'f' });
 
     const queue = new IngestQueue({
       kbId: 'kb-1',

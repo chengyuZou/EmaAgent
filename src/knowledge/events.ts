@@ -23,6 +23,12 @@ export type KnowledgeEvent =
       readonly error: string;
     }
   | {
+      readonly type: 'kb_ingest_cancelled';
+      readonly kbId: string;
+      readonly taskId: string;
+      readonly assetId: string;
+    }
+  | {
       readonly type: 'kb_reembed_progress';
       readonly kbId: string;
       readonly taskId: string;

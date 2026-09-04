@@ -13,7 +13,7 @@ export function AddDashedCard({ label, onClick, compact }: {
       onClick={onClick}
       className={`flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed
                  border-[var(--ema-border)] bg-[var(--ema-surface-1)] cursor-pointer
-                 text-[var(--ema-text-tertiary)] outline-none w-full
+                 text-[var(--ema-text-tertiary)] outline-none w-full h-full
                  transition-all duration-[var(--ema-duration-base)]
                  hover:border-[var(--ema-primary)]/50 hover:bg-[var(--ema-surface-2)]
                  hover:text-[var(--ema-primary)] active:scale-[0.98]

@@ -17,6 +17,7 @@ describe('B-072 embedding fallback 流式 Top-K', () => {
     for (const assetId of ['asset-a', 'asset-b']) {
       assets.insert({
         id: assetId,
+        sourcePath: `D:/Docs/${assetId}.txt`,
         filePath: `files/${assetId}.txt`,
         fileName: `${assetId}.txt`,
         mimeType: 'text/plain',

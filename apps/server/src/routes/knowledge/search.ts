@@ -1,4 +1,4 @@
-// 知识库检索：当前活跃库的混合检索；assetIds 由前端按用户选择冻结传入（缺省全库）。
+// 知识库检索：目标库的混合检索；assetIds 由前端按用户选择冻结传入（缺省全库）。
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { KbManager } from '@ema-agent/knowledge';
@@ -17,10 +17,10 @@ const searchBody = z.object({
 
 export const knowledgeSearchRoute = (deps: KnowledgeSearchRouteDeps) =>
   new Hono()
-    .post('/search', jsonBody(searchBody), async context => {
+    .post('/:id/search', jsonBody(searchBody), async context => {
       const { query, topK, assetIds } = context.req.valid('json');
       try {
-        return context.json(await deps.kb.search({
+        return context.json(await deps.kb.search(context.req.param('id'), {
           query,
           ...(topK === undefined ? {} : { topK }),
           ...(assetIds === undefined ? {} : { assetIds }),

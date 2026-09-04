@@ -113,13 +113,13 @@ describe('indexing 残留接管', () => {
     const store = new InMemoryIngestStore();
     store.asset = {
       id: 'asset-crash',
+      sourcePath: filePath,
       filePath: 'files/asset-crash/doc.txt',
       fileName: 'doc.txt',
       mimeType: 'text/plain',
       title: undefined,
       wordCount: 0,
       pageCount: undefined,
-      contentHash: 'old-hash',
       status: 'indexing',
       createdAt: 1,
       updatedAt: 1,
@@ -127,7 +127,7 @@ describe('indexing 残留接管', () => {
 
     const result = await ingest(
       filePath,
-      { assetId: 'asset-crash' },
+      { assetId: 'asset-crash', sourcePath: filePath },
       { store: store as unknown as KnowledgeStore },
     );
 
@@ -149,7 +149,7 @@ describe('导入取消', () => {
 
     await expect(ingest(
       filePath,
-      { assetId: 'asset-x', signal: controller.signal },
+      { assetId: 'asset-x', sourcePath: filePath, signal: controller.signal },
       { store: store as unknown as KnowledgeStore },
     )).rejects.toThrow('user cancelled');
     expect(store.asset).toBeUndefined();
@@ -171,40 +171,10 @@ describe('导入取消', () => {
 
     await expect(ingest(
       filePath,
-      { assetId: 'asset-x', signal: controller.signal },
+      { assetId: 'asset-x', sourcePath: filePath, signal: controller.signal },
       { store: store as unknown as KnowledgeStore },
     )).rejects.toThrow('user cancelled');
     expect(store.asset?.status).toBe('failed');
-  });
-});
-
-describe('重复内容回退', () => {
-  it('并发下同内容已入库时返回既有资产，不产生新文档', async () => {
-    const dir = await makeTmpDir();
-    const filePath = path.join(dir, 'doc.txt');
-    await fsp.writeFile(filePath, '重复内容', 'utf8');
-
-    const existing: DocumentAsset = {
-      id: 'asset-existing', filePath: 'files/asset-existing/doc.txt', fileName: 'doc.txt',
-      mimeType: 'text/plain', wordCount: 2, status: 'ready',
-      createdAt: 1, updatedAt: 1,
-    };
-    const store = new InMemoryIngestStore();
-    // 第一次哈希检查（放行）→ addAsset 撞唯一约束 → 第二次哈希检查返回 ready 资产。
-    let hashLookups = 0;
-    store.findAssetByHash = () => (++hashLookups > 1 ? existing : undefined);
-    store.addAsset = () => {
-      throw new Error('UNIQUE constraint failed: document_assets.content_hash');
-    };
-
-    const result = await ingest(
-      filePath,
-      { assetId: 'asset-new' },
-      { store: store as unknown as KnowledgeStore },
-    );
-
-    expect(result.asset.id).toBe('asset-existing');
-    expect(store.asset).toBeUndefined();
   });
 });
 
@@ -240,10 +210,6 @@ class InMemoryIngestStore {
 
   getAsset(id: string): DocumentAsset | undefined {
     return this.asset?.id === id ? this.asset : undefined;
-  }
-
-  findAssetByHash(): DocumentAsset | undefined {
-    return undefined;
   }
 
   getPreview(): DocumentPreview | undefined {

@@ -43,6 +43,7 @@ export class IngestQueue {
     const task = this.deps.tasks.insert({
       id: randomUUID(),
       assetId: input.assetId,
+      sourcePath: input.filePath,
       filePath: staged.absolutePath,
       fileName: input.fileName,
       ...(input.mimeType === undefined ? {} : { mimeType: input.mimeType }),
@@ -60,6 +61,7 @@ export class IngestQueue {
     const task = this.deps.tasks.insert({
       id: randomUUID(),
       assetId: previous.assetId,
+      sourcePath: previous.sourcePath,
       filePath: previous.filePath,
       fileName: previous.fileName,
       ...(previous.mimeType === undefined ? {} : { mimeType: previous.mimeType }),
@@ -74,8 +76,15 @@ export class IngestQueue {
   }
 
   cancel(taskId: string): boolean {
-    if (!this.deps.tasks.cancel(taskId)) return false;
+    const task = this.deps.tasks.get(taskId);
+    if (!task || !this.deps.tasks.cancel(taskId)) return false;
     this.controllers.get(taskId)?.abort(new Error('Knowledge 导入已取消'));
+    this.deps.emit({
+      type: 'kb_ingest_cancelled',
+      kbId: this.deps.kbId,
+      taskId,
+      assetId: task.assetId,
+    });
     return true;
   }
 
@@ -128,6 +137,7 @@ export class IngestQueue {
         task.filePath,
         {
           assetId: task.assetId,
+          sourcePath: task.sourcePath,
           stagedRelativePath: stagedRelativePathFor(task.assetId, path.basename(task.filePath)),
           ...(task.mimeType === undefined ? {} : { mimeType: task.mimeType }),
           signal: controller.signal,

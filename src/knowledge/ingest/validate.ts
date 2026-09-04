@@ -1,5 +1,3 @@
-import { createHash } from 'node:crypto';
-
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
 
 const ALLOWED_MIME = new Set([
@@ -13,7 +11,6 @@ const ALLOWED_MIME = new Set([
 export interface ValidationResult {
   ok:     boolean;
   error?: string;
-  hash?:  string;
 }
 
 export function validateFile(bytes: Uint8Array, mimeType: string): ValidationResult {
@@ -23,6 +20,5 @@ export function validateFile(bytes: Uint8Array, mimeType: string): ValidationRes
   if (!ALLOWED_MIME.has(mimeType)) {
     return { ok: false, error: `Unsupported MIME type: ${mimeType}` };
   }
-  const hash = createHash('sha256').update(bytes).digest('hex');
-  return { ok: true, hash };
+  return { ok: true };
 }

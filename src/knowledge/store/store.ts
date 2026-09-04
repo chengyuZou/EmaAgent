@@ -39,8 +39,9 @@ export class KnowledgeStore {
     return [...new Set(this.assets.findExistingIds(assetIds))];
   }
 
-  findAssetByHash(hash: string): DocumentAsset | undefined {
-    return this.assets.findByHash(hash) as DocumentAsset | undefined;
+  /** 文档身份查询:同一原始路径再导入时找到既有资产。 */
+  findAssetBySourcePath(sourcePath: string): DocumentAsset | undefined {
+    return this.assets.findBySourcePath(sourcePath) as DocumentAsset | undefined;
   }
 
   updateStatus(id: string, status: DocumentIndexStatus): void {

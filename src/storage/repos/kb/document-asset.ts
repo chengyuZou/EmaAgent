@@ -5,6 +5,7 @@ import { createSqliteIdBatches } from '../../database/sqlite-id-batches.js';
 
 export interface DocumentAssetRow {
   id:                string;
+  source_path:       string;
   file_path:         string;
   file_name:         string;
   mime_type:         string;
@@ -12,7 +13,6 @@ export interface DocumentAssetRow {
   word_count:        number;
   page_count:        number | null;
   status:            string;
-  content_hash:      string | null;
   created_at:        number;
   updated_at:        number;
   embedding_provider_id: string | null;
@@ -24,6 +24,7 @@ export interface DocumentAssetRow {
 
 export interface DocumentAssetInsert {
   id:           string;
+  sourcePath:   string;
   filePath:     string;
   fileName:     string;
   mimeType:     string;
@@ -31,7 +32,6 @@ export interface DocumentAssetInsert {
   wordCount:    number;
   pageCount?:   number;
   status:       string;
-  contentHash?: string;
   createdAt:    number;
   updatedAt:    number;
 }
@@ -58,6 +58,7 @@ export class DocumentAssetCursorError extends Error {
 function rowToAsset(row: DocumentAssetRow) {
   return {
     id:              row.id,
+    sourcePath:      row.source_path,
     filePath:        row.file_path,
     fileName:        row.file_name,
     mimeType:        row.mime_type,
@@ -65,7 +66,6 @@ function rowToAsset(row: DocumentAssetRow) {
     wordCount:       row.word_count,
     pageCount:       row.page_count ?? undefined,
     status:          row.status as 'indexing' | 'ready' | 'failed',
-    contentHash:     row.content_hash ?? undefined,
     createdAt:       row.created_at,
     updatedAt:       row.updated_at,
     embeddingProviderId: row.embedding_provider_id ?? undefined,
@@ -82,17 +82,18 @@ export class DocumentAssetRepo {
   insert(a: DocumentAssetInsert): void {
     this.db
       .prepare(`INSERT INTO document_assets
-        (id, file_path, file_name, mime_type, title, word_count, page_count, status, content_hash, created_at, updated_at)
+        (id, source_path, file_path, file_name, mime_type, title, word_count, page_count, status, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(a.id, a.filePath, a.fileName, a.mimeType,
+      .run(a.id, a.sourcePath, a.filePath, a.fileName, a.mimeType,
         a.title ?? null, a.wordCount, a.pageCount ?? null, a.status,
-        a.contentHash ?? null, a.createdAt, a.updatedAt);
+        a.createdAt, a.updatedAt);
   }
 
-  findByHash(contentHash: string): ReturnType<typeof rowToAsset> | undefined {
+  /** 文档身份查询:同一原始路径再导入时找到既有资产。 */
+  findBySourcePath(sourcePath: string): ReturnType<typeof rowToAsset> | undefined {
     const row = this.db
-      .prepare('SELECT * FROM document_assets WHERE content_hash = ? LIMIT 1')
-      .get(contentHash) as DocumentAssetRow | undefined;
+      .prepare('SELECT * FROM document_assets WHERE source_path = ? LIMIT 1')
+      .get(sourcePath) as DocumentAssetRow | undefined;
     return row ? rowToAsset(row) : undefined;
   }
 
@@ -200,6 +201,17 @@ export class DocumentAssetRepo {
       .prepare('SELECT * FROM document_assets WHERE embedding_stale = 1 ORDER BY created_at')
       .all() as DocumentAssetRow[];
     return rows.map(rowToAsset);
+  }
+
+  /** 文档计数概览(库卡/覆盖率徽标): 总数 / 就绪数 / 待重建数。 */
+  countByIndexState(): { total: number; ready: number; stale: number } {
+    const row = this.db.prepare(
+      `SELECT COUNT(*) AS total,
+              COALESCE(SUM(status = 'ready'), 0)  AS ready,
+              COALESCE(SUM(embedding_stale = 1), 0) AS stale
+         FROM document_assets`,
+    ).get() as { total: number; ready: number; stale: number };
+    return row;
   }
 
   delete(id: string): void {

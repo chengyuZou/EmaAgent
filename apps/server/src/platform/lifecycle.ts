@@ -83,7 +83,8 @@ export async function startServer(secret: string): Promise<ServerLifecycle> {
       .catch(error => console.warn('[providers] models.dev 目录刷新失败:', error));
     void running.narrative.configureNarrativeBridge()
       .catch(error => console.warn('[narrative] Bridge 配置推送失败:', error));
-    void running.knowledge.kb.ensureDefault(path.join(activeDataDir, 'kb', 'default'))
+    // 默认库落在 <数据目录>/kb/<随机 id>:参数是父目录,库目录由 KbManager 自建。
+    void running.knowledge.kb.ensureDefault(path.join(activeDataDir, 'kb'))
       .catch(error => console.warn('[kb] 默认知识库创建失败:', error));
     running.backgroundCompletion.start();
     const sweepTick = setInterval(

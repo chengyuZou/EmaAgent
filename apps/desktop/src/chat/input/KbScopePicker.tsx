@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState, type JSX } from 'react';
 import { Button, Checkbox, Popover, ScrollArea, Spinner } from '@ema-agent/ui';
 import { knowledgeApi, type DocumentAsset } from '../../api/knowledge.js';
+import { useKnowledgeStore } from '../../stores/knowledge.js';
 
 const PAGE_SIZE = 40;
 
@@ -14,14 +15,17 @@ export function KbButton({ visible, selectedIds, onChange }: {
   const [items, setItems] = useState<DocumentAsset[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // 选择器只覆盖激活库(Agent 检索目标);无激活库时不加载。
+  const activeKbId = useKnowledgeStore((s) => s.libs.find((lib) => lib.isActive)?.id);
   const load = useCallback(async (cursor?: string) => {
+    if (!activeKbId) return;
     setLoading(true);
     try {
-      const page = await knowledgeApi.listDocuments({ cursor, limit: PAGE_SIZE });
+      const page = await knowledgeApi.listDocuments(activeKbId, { cursor, limit: PAGE_SIZE });
       setItems(previous => cursor ? [...previous, ...page.items] : page.items);
       setNextCursor(page.nextCursor);
     } finally { setLoading(false); }
-  }, []);
+  }, [activeKbId]);
   useEffect(() => { if (open && items.length === 0) void load(); }, [open, items.length, load]);
   if (!visible) return null;
   const selected = new Set(selectedIds);

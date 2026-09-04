@@ -5,13 +5,14 @@ import type { SqliteDb } from '../../database/database.js';
 export type KbIngestStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 
 interface KbIngestTaskRow {
-  id: string; asset_id: string; file_path: string; file_name: string;
+  id: string; asset_id: string; source_path: string; file_path: string; file_name: string;
   mime_type: string | null; status: KbIngestStatus; stage: string | null;
   progress: number; error: string | null; created_at: number; updated_at: number;
 }
 
 export interface KbIngestTask {
-  readonly id: string; readonly assetId: string; readonly filePath: string;
+  readonly id: string; readonly assetId: string; readonly sourcePath: string;
+  readonly filePath: string;
   readonly fileName: string; readonly mimeType?: string; readonly status: KbIngestStatus;
   readonly stage?: string; readonly progress: number; readonly error?: string;
   readonly createdAt: number; readonly updatedAt: number;
@@ -20,13 +21,13 @@ export interface KbIngestTask {
 export class KbIngestTasksRepo {
   constructor(private readonly db: SqliteDb) {}
 
-  insert(task: { id: string; assetId: string; filePath: string; fileName: string; mimeType?: string }): KbIngestTask {
+  insert(task: { id: string; assetId: string; sourcePath: string; filePath: string; fileName: string; mimeType?: string }): KbIngestTask {
     const now = Date.now();
     this.db.prepare(
       `INSERT INTO kb_ingest_tasks
-       (id, asset_id, file_path, file_name, mime_type, status, progress, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, 'pending', 0, ?, ?)`,
-    ).run(task.id, task.assetId, task.filePath, task.fileName, task.mimeType ?? null, now, now);
+       (id, asset_id, source_path, file_path, file_name, mime_type, status, progress, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?)`,
+    ).run(task.id, task.assetId, task.sourcePath, task.filePath, task.fileName, task.mimeType ?? null, now, now);
     return this.get(task.id)!;
   }
 
@@ -56,6 +57,25 @@ export class KbIngestTasksRepo {
       `UPDATE kb_ingest_tasks SET status = 'cancelled', error = NULL, updated_at = ?
         WHERE id = ? AND status IN ('pending', 'running')`,
     ).run(Date.now(), id).changes === 1;
+  }
+
+  /** 在途任务计数(库卡"N 个任务在跑")。 */
+  countActive(): number {
+    return this.db.prepare(
+      `SELECT COUNT(*) FROM kb_ingest_tasks WHERE status IN ('pending', 'running')`,
+    ).pluck().get() as number;
+  }
+
+  /** 删除终态任务行;在途任务由队列层拒绝(先取消再删)。 */
+  delete(id: string): boolean {
+    return this.db.prepare(
+      `DELETE FROM kb_ingest_tasks WHERE id = ? AND status IN ('completed', 'failed', 'cancelled')`,
+    ).run(id).changes === 1;
+  }
+
+  /** 文档删除时级联清掉它的全部任务行。 */
+  deleteByAssetId(assetId: string): number {
+    return this.db.prepare('DELETE FROM kb_ingest_tasks WHERE asset_id = ?').run(assetId).changes;
   }
 
   markRunningInterrupted(at = Date.now()): number {
@@ -92,7 +112,8 @@ export class KbIngestTasksRepo {
 
 function rowToTask(row: KbIngestTaskRow): KbIngestTask {
   return {
-    id: row.id, assetId: row.asset_id, filePath: row.file_path, fileName: row.file_name,
+    id: row.id, assetId: row.asset_id, sourcePath: row.source_path,
+    filePath: row.file_path, fileName: row.file_name,
     ...(row.mime_type === null ? {} : { mimeType: row.mime_type }), status: row.status,
     ...(row.stage === null ? {} : { stage: row.stage }), progress: row.progress,
     ...(row.error === null ? {} : { error: row.error }), createdAt: row.created_at, updatedAt: row.updated_at,

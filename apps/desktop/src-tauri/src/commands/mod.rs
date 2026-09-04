@@ -9,7 +9,7 @@ pub use browser::{
     set_browser_bounds, set_browser_visible,
 };
 pub use desktop::{
-    get_start_narrative_on_launch, open_window, quit_app, set_always_on_top,
+    get_start_narrative_on_launch, open_path, open_window, quit_app, set_always_on_top,
     set_passthrough, set_start_narrative_on_launch,
 };
 pub use server::{get_server_port, get_server_secret};

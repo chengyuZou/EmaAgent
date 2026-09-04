@@ -58,3 +58,15 @@ pub fn get_start_narrative_on_launch() -> Result<bool, String> {
 pub fn set_start_narrative_on_launch(value: bool) -> Result<(), String> {
     write_start_narrative_on_launch(value)
 }
+
+#[tauri::command]
+pub fn open_path(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    // 用宿主侧 opener 打开路径本身(KB 库目录等);自研 command 不经 WebView ACL。
+    use tauri_plugin_opener::OpenerExt;
+    app.opener()
+        .open_path(&path, None::<&str>)
+        .map_err(|error| {
+            tracing::warn!(%path, %error, "open_path failed");
+            error.to_string()
+        })
+}
