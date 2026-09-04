@@ -19,9 +19,7 @@ import {
 } from '@ema-agent/memory';
 import { SettingsStore } from '@ema-agent/settings';
 import {
-  builtinSkillsEnabledSetting,
   disabledProjectSourcesSetting,
-  disabledSkillKeysSetting,
   workspaceInstructionFilesSetting,
 } from '@ema-agent/skills';
 import { SettingsRepo, type Database } from '@ema-agent/storage';
@@ -49,9 +47,7 @@ export const SETTINGS_DEFINITIONS = [
   kbRerankBlendWeightSetting,
   kbResultMaxCharsSetting,
   narrativeQueryModeSetting,
-  builtinSkillsEnabledSetting,
   disabledProjectSourcesSetting,
-  disabledSkillKeysSetting,
   disabledToolsSetting,
   maxConcurrentBackgroundSetting,
   maxRuntimeHoursBackgroundSetting,

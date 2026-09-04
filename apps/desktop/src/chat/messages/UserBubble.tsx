@@ -1,4 +1,5 @@
-// 渲染用户消息与待发送输入：skill_ref 块渲染为 Skill chip，附件走线上投影，正文为 text 块。
+// 渲染用户消息与待发送输入：skill_reference 块渲染为 Skill chip（展示稳定 key），
+// 附件走线上投影，正文为 text 块。
 import { useRef, useState, type ChangeEvent, type JSX } from 'react';
 import { Button, IconButton, Textarea } from '@ema-agent/ui';
 
@@ -15,7 +16,6 @@ import type { PendingInput } from '../state/messages.js';
 import { useMessages } from '../state/messages.js';
 import { useCurrentSession } from '../state/currentSession.js';
 import { useSessionStore } from '../../stores/session.js';
-import { useSkillStore } from '../../stores/skill.js';
 import { sendMessage } from '../state/turnRunner.js';
 import { chipMeta } from './AttachmentChip.js';
 import { formatTurnTime } from '../history/workGroups.js';
@@ -39,7 +39,7 @@ export interface UserBubbleProps {
 
 export function UserBubble({ message, canEdit = false }: UserBubbleProps): JSX.Element {
   const content = messageText(message);
-  // 附件卡置顶；正文按输入顺序走：text 段与 skill_ref chip 内联混排（用户放置的位置）。
+  // 附件卡置顶；正文按输入顺序走：text 段与 skill_reference chip 内联混排（用户放置的位置）。
   const attachments = Array.isArray(message.blocks)
     ? message.blocks.filter(
         (block): block is AttachmentReferenceBlock =>
@@ -49,7 +49,7 @@ export function UserBubble({ message, canEdit = false }: UserBubbleProps): JSX.E
   const segments = Array.isArray(message.blocks)
     ? message.blocks.filter(
         (block): block is Extract<UserBlock, { type: 'text' }> | SkillReferenceBlock =>
-          block.type === 'text' || block.type === 'skill_ref',
+          block.type === 'text' || block.type === 'skill_reference',
       )
     : [{ type: 'text' as const, text: content }];
   const hasTurnId = !!message.turnId;
@@ -152,12 +152,12 @@ export function UserBubble({ message, canEdit = false }: UserBubbleProps): JSX.E
               </Button>
             </div>
           </div>
-        ) : content.trim().length > 0 || segments.some((s) => s.type === 'skill_ref') ? (
+        ) : content.trim().length > 0 || segments.some((s) => s.type === 'skill_reference') ? (
           <div className="rounded-2xl rounded-br-md px-5 py-3 border text-sm break-words bg-[var(--ema-surface-2)] border-[var(--ema-border)] text-[var(--ema-text-secondary)]">
             {segments.map((segment, index) =>
-              segment.type === 'skill_ref' ? (
+              segment.type === 'skill_reference' ? (
                 <span
-                  key={`skill-${segment.skillKey}-${index}`}
+                  key={`skill-${segment.path}-${index}`}
                   className="inline-flex items-center gap-1 rounded-lg px-1.5 py-0.5 mx-0.5 align-baseline text-[11px] bg-[var(--ema-info-muted)] text-[var(--ema-info)]"
                 >
                   <span className="i-lucide:sparkles text-[10px]" aria-hidden />
@@ -201,9 +201,8 @@ export function UserBubble({ message, canEdit = false }: UserBubbleProps): JSX.E
   );
 }
 
-/** 已提交但尚未落库的用户输入：与用户气泡同形，Skill 名按 skillKey 从目录查。 */
+/** 已提交但尚未落库的用户输入：与用户气泡同形，Skill chip 直接展示稳定 key。 */
 export function PendingBubble({ pending }: { pending: PendingInput }): JSX.Element {
-  const skills = useSkillStore((s) => s.skills);
   const attachmentParts = pending.parts.filter((part) => part.type === 'attachment');
   const bodyParts = pending.parts.filter((part) => part.type !== 'attachment');
 
@@ -229,15 +228,14 @@ export function PendingBubble({ pending }: { pending: PendingInput }): JSX.Eleme
         )}
         <div className="rounded-2xl rounded-br-md px-5 py-3 border text-sm break-words bg-[var(--ema-surface-2)] border-[var(--ema-border)] text-[var(--ema-text-secondary)]">
           {bodyParts.map((part, index) => {
-            if (part.type === 'skill') {
-              const name = skills.find((skill) => skill.key === part.skillKey)?.name ?? part.skillKey;
+            if (part.type === 'skill_reference') {
               return (
                 <span
-                  key={`skill-${part.skillKey}-${index}`}
+                  key={`skill-${part.path}-${index}`}
                   className="inline-flex items-center gap-1 rounded-lg px-1.5 py-0.5 mx-0.5 align-baseline text-[11px] bg-[var(--ema-info-muted)] text-[var(--ema-info)]"
                 >
                   <span className="i-lucide:sparkles text-[10px]" aria-hidden />
-                  {name}
+                  {part.name}
                 </span>
               );
             }

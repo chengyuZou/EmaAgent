@@ -25,16 +25,17 @@ function plantSkill(workspace: string, ecoRelDir: string, skillDir: string, name
 }
 
 describe('scanProjectSkills', () => {
-  it('发现生态目录里的技能并给出 project:<sourceId>:<relPath> 键', async () => {
+  it('发现生态目录里的技能并给出绝对 SKILL.md path 与来源', async () => {
     const ws = makeWorkspace();
     plantSkill(ws, '.agents/skills', 'code-review', 'code-review');
     plantSkill(ws, '.claude/skills', 'tdd', 'tdd');
 
     const result = await scanProjectSkills(ws);
-    expect(result.map((d) => d.key).sort()).toEqual([
-      'project:agents:.agents/skills/code-review',
-      'project:claude:.claude/skills/tdd',
-    ]);
+    expect(result.map(d => d.path).sort()).toEqual([
+      join(ws, '.agents/skills', 'code-review', 'SKILL.md'),
+      join(ws, '.claude/skills', 'tdd', 'SKILL.md'),
+    ].sort());
+    expect(result.map(d => d.projectSourceId).sort()).toEqual(['agents', 'claude']);
     expect(result.every((d) => d.scope === 'project')).toBe(true);
   });
 

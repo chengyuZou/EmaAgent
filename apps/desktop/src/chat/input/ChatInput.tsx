@@ -18,7 +18,6 @@ import { showToast } from '../../lib/toast.js';
 import { tauriBridge } from '../../lib/tauri-bridge.js';
 import { useServerStore } from '../../stores/server.js';
 import { useSessionStore } from '../../stores/session.js';
-import { useSkillStore } from '../../stores/skill.js';
 import { useUiStore } from '../../stores/ui.js';
 import { useCurrentSession } from '../state/currentSession.js';
 import { useMessages } from '../state/messages.js';
@@ -73,7 +72,6 @@ export function ChatInput(): JSX.Element {
   const serverReady = useServerStore(state => state.status.kind === 'ok');
   const ttsEnabled = useUiStore(state => state.ttsEnabled);
   const [llmModels, setLlmModels] = useState<AvailableModel[]>([]);
-  const skills = useSkillStore(state => state.skills);
 
   const [parts, setPartsState] = useState<readonly TurnInputPart[]>(savedDraft ?? []);
   const [selectedAssetIds, setSelectedAssetIds] = useState<readonly string[]>([]);
@@ -213,8 +211,12 @@ export function ChatInput(): JSX.Element {
     const withoutToken = text.slice(0, token.start) + text.slice(token.end);
     let next = replaceDraftText(parts, withoutToken);
     if (selection.kind === 'skill') {
-      if (!next.some(part => part.type === 'skill' && part.skillKey === selection.skill.key)) {
-        next = insertDraftReference(next, token.start, { type: 'skill', skillKey: selection.skill.key });
+      if (!next.some(part => part.type === 'skill_reference' && part.path === selection.skill.path)) {
+        next = insertDraftReference(next, token.start, {
+          type: 'skill_reference',
+          name: selection.skill.name,
+          path: selection.skill.path,
+        });
       }
       setParts(next);
     } else {
@@ -322,13 +324,15 @@ export function ChatInput(): JSX.Element {
                 if (part.type === 'attachment') return (
                   <AttachmentChip key={`${part.attachment.sourcePath}:${index}`} attachment={part.attachment} onOpen={() => openDraftAttachment(part)} onRemove={() => setParts(removeDraftPart(parts, index))} />
                 );
-                const name = skills.find(skill => skill.key === part.skillKey)?.name ?? part.skillKey;
-                return (
-                  <span key={`${part.skillKey}:${index}`} className="inline-flex items-center gap-1 rounded-md border border-[var(--ema-border)] bg-[var(--ema-info-muted)] px-2 py-1 text-[11px] text-[var(--ema-info)]">
-                    <span className="i-lucide:box text-xs" aria-hidden />{name}
-                    <button type="button" className="i-lucide:x opacity-60 hover:opacity-100" aria-label={`移除技能 ${name}`} onClick={() => setParts(removeDraftPart(parts, index))} />
-                  </span>
-                );
+                if (part.type === 'skill_reference') {
+                  return (
+                    <span key={`${part.path}:${index}`} className="inline-flex items-center gap-1 rounded-md border border-[var(--ema-border)] bg-[var(--ema-info-muted)] px-2 py-1 text-[11px] text-[var(--ema-info)]">
+                      <span className="i-lucide:box text-xs" aria-hidden />{part.name}
+                      <button type="button" className="i-lucide:x opacity-60 hover:opacity-100" aria-label={`移除技能 ${part.name}`} onClick={() => setParts(removeDraftPart(parts, index))} />
+                    </span>
+                  );
+                }
+                return null;
               })}
             </div>
           )}

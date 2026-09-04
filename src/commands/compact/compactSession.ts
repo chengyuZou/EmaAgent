@@ -78,6 +78,8 @@ export interface CommandCompactDeps {
   readonly characterPrompt: () => readonly string[];
   /** 与根 Turn 同一 Skill 目录来源；chat 态不调用。 */
   readonly skillEntries: (workspaceRoot: string) => Promise<readonly SkillDescriptor[]>;
+  /** skill_enablement 表的当前禁用路径列表（与根 Turn 同一来源）。 */
+  readonly disabledSkillPaths: () => readonly string[];
   readonly workspaceInstructions?: (workspaceRoot: string) => string | null;
   readonly memoryGuidance?: () => Promise<string | null> | string | null;
   /** 模型不支持图片输入时的 Vision 描述入口（与根 Turn 同一条降级链）。 */
@@ -267,7 +269,7 @@ async function buildCompactSystemMessages(
 ): Promise<readonly Message[]> {
   const workspaceRoot = session.workspaceRoot ?? '';
   const skillPool = await resolveWorkSkillPool(
-    { settings: deps.settings, skillEntries: deps.skillEntries },
+    { settings: deps.settings, skillEntries: deps.skillEntries, disabledSkillPaths: deps.disabledSkillPaths },
     session.executionProfile,
     workspaceRoot,
   );

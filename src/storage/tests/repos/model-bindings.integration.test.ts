@@ -49,6 +49,17 @@ describe('ModelBindingsRepo', () => {
     })).toThrow(/CHECK constraint failed/);
   });
 
+  it('kb-embed/kb-rerank 已迁出为库级属性, Schema 拒绝这两个模块', () => {
+    expect(() => database.sqlite.prepare(
+      `INSERT INTO model_bindings (module, capability, provider_id, model_id)
+       VALUES ('kb-embed', 'embed', 'siliconflow', 'old-model')`,
+    ).run()).toThrow(/CHECK constraint failed/);
+    expect(() => database.sqlite.prepare(
+      `INSERT INTO model_bindings (module, capability, provider_id, model_id)
+       VALUES ('kb-rerank', 'rerank', 'siliconflow', 'old-model')`,
+    ).run()).toThrow(/CHECK constraint failed/);
+  });
+
   it('删除模型时级联删除对应绑定', () => {
     bindings.set({ module: 'memory-llm', capability: 'llm', providerId: 'siliconflow', modelId: 'old-model' });
     models.delete('siliconflow', 'llm', 'old-model');

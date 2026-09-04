@@ -32,17 +32,19 @@ describe('scanBuiltinSkills', () => {
     const first = await scanBuiltinSkills({ builtinRoot: root });
     expect(first).toHaveLength(1);
     expect(first[0]).toMatchObject({
-      key: 'builtin:code-review',
       name: 'code-review',
       scope: 'builtin',
-      rootPath: join(root, 'code-review'),
+      path: join(root, 'code-review', 'SKILL.md'),
     });
 
     // 源里再加一个技能,下次扫描直接看到(无物化层)。
     mkdirSync(join(root, 'tdd'), { recursive: true });
     writeFileSync(join(root, 'tdd', 'SKILL.md'), SKILL_MD('tdd'));
     const second = await scanBuiltinSkills({ builtinRoot: root });
-    expect(second.map((d) => d.key).sort()).toEqual(['builtin:code-review', 'builtin:tdd']);
+    expect(second.map(d => d.path).sort()).toEqual([
+      join(root, 'code-review', 'SKILL.md'),
+      join(root, 'tdd', 'SKILL.md'),
+    ].sort());
   });
 
   it('损坏技能跳过,不影响其他技能', async () => {
@@ -50,7 +52,7 @@ describe('scanBuiltinSkills', () => {
     mkdirSync(join(root, 'broken'), { recursive: true }); // 无 SKILL.md
 
     const result = await scanBuiltinSkills({ builtinRoot: root });
-    expect(result.map((d) => d.key)).toEqual(['builtin:good']);
+    expect(result.map(d => d.path)).toEqual([join(root, 'good', 'SKILL.md')]);
   });
 
   it('源不存在 → 降级空数组,不抛', async () => {

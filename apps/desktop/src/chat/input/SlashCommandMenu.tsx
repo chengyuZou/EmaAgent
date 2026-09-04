@@ -105,7 +105,7 @@ export function SlashCommandMenu({
       .filter((skill) => skill.enabled)
       .filter((skill) => matchesSlashQuery(skill.name, filter))
       .map((skill) => ({
-        key: `skill:${skill.key}`,
+        key: `skill:${skill.path}`,
         selection: { kind: 'skill', skill },
         section: '技能',
         icon: 'i-lucide:sparkles',

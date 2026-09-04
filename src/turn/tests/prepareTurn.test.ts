@@ -88,6 +88,7 @@ function makeDeps(overrides: Partial<PrepareTurnDeps> = {}): PrepareTurnDeps {
     } as unknown as SettingsStore,
     characterPrompt: () => ['你是角色'],
     skillEntries: () => [],
+    disabledSkillPaths: () => [],
     registry: new ToolRegistry(),
     interactionQueue: new SessionInteractionQueue(null),
     agentRunStore: {} as unknown as AgentRunStore,
@@ -167,13 +168,11 @@ describe('prepareTurn', () => {
 
   it('chat Profile 不建 SkillPool，work Profile 冻结 Pool 且 deny 生效', async () => {
     const descriptor: SkillDescriptor = {
-      key: 'user:demo' as SkillDescriptor['key'],
       name: 'demo',
-      callName: 'demo',
+      path: '/skills/demo/SKILL.md',
       version: '1.0.0',
       description: 'd',
-      allowedToolPatterns: [],
-      rootPath: '/skills/demo',
+      suggestedTools: [],
       scope: 'user',
     };
     const deps = makeDeps({ skillEntries: () => [descriptor] });
@@ -182,18 +181,16 @@ describe('prepareTurn', () => {
     expect(chat.skillPool).toBeUndefined();
 
     const work = await prepareTurn(deps, makeRuntime(makeStart()));
-    expect(work.skillPool?.getByKey('user:demo' as never)).toBeDefined();
+    expect(work.skillPool?.getByPath('/skills/demo/SKILL.md')).toBeDefined();
   });
 
   it('选择不存在或被禁用的 Skill 直接准备失败；合法 Skill 只冻结引用', async () => {
     const descriptor: SkillDescriptor = {
-      key: 'user:demo' as SkillDescriptor['key'],
       name: 'demo',
-      callName: 'demo',
+      path: '/skills/demo/SKILL.md',
       version: '1.0.0',
       description: 'd',
-      allowedToolPatterns: [],
-      rootPath: '/skills/demo',
+      suggestedTools: [],
       scope: 'user',
     };
     let attachmentWrites = 0;
@@ -210,7 +207,7 @@ describe('prepareTurn', () => {
     await expect(prepareTurn(deps, makeRuntime(makeStart({
       input: [
         { type: 'attachment', attachment: { sourcePath: '/x.txt' } },
-        { type: 'skill', skillKey: 'user:ghost' },
+        { type: 'skill_reference', name: 'ghost', path: '/skills/ghost/SKILL.md' },
       ],
     }))))
       .rejects.toThrow(/不存在或已被禁用/);
@@ -219,18 +216,16 @@ describe('prepareTurn', () => {
     const prepared = await prepareTurn(deps, makeRuntime(makeStart({
       input: [
         { type: 'text', text: '请使用 ' },
-        { type: 'skill', skillKey: 'user:demo' },
+        { type: 'skill_reference', name: 'demo', path: '/skills/demo/SKILL.md' },
         { type: 'text', text: ' 处理它' },
       ],
     })));
     expect(prepared.userMessageBlocks).toEqual([
       { type: 'text', text: '请使用 ' },
       {
-        type: 'skill_ref',
-        skillKey: 'user:demo',
+        type: 'skill_reference',
         name: 'demo',
-        callName: 'demo',
-        rootPath: '/skills/demo',
+        path: '/skills/demo/SKILL.md',
       },
       { type: 'text', text: ' 处理它' },
     ]);

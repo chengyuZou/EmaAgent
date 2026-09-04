@@ -1,4 +1,4 @@
-// SkillTool 的桌面展示:参数行(技能名+args)与结果卡(元信息 + 指令预览)。
+// SkillTool 的桌面展示:技能名与绝对路径参数行,以及元信息和指令预览结果卡。
 // 指令全文在 data 槽的 TOutput 里;预览有界,全文可滚动查看。
 import type { JSX } from 'react';
 import { Badge } from '@ema-agent/ui';
@@ -10,7 +10,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export function asSkillToolResult(data: unknown): SkillToolResult | null {
   if (!isRecord(data)) return null;
-  if (typeof data['callName'] !== 'string' || typeof data['instructions'] !== 'string') return null;
+  if (typeof data['name'] !== 'string' || typeof data['path'] !== 'string' || typeof data['instructions'] !== 'string') return null;
   return data as unknown as SkillToolResult;
 }
 
@@ -18,12 +18,10 @@ export function asSkillToolResult(data: unknown): SkillToolResult | null {
 const INSTRUCTIONS_PREVIEW_LINES = 6;
 
 export function SkillArgsView({ args }: { args: unknown }): JSX.Element | null {
-  if (!isRecord(args) || typeof args['skill'] !== 'string') return null;
-  const extra = typeof args['args'] === 'string' && args['args'].trim() ? args['args'] : null;
+  if (!isRecord(args) || typeof args['name'] !== 'string' || typeof args['path'] !== 'string') return null;
   return (
     <span className="font-mono text-xs text-[var(--ema-text-secondary)]">
-      {args['skill']}
-      {extra && <span className="text-[var(--ema-text-tertiary)]"> {extra}</span>}
+      {args['name']} · {args['path']}
     </span>
   );
 }
@@ -40,8 +38,8 @@ export function SkillResultView({ data }: { data: unknown }): JSX.Element | null
     <div className="flex flex-col gap-1 pr-6">
       <span className="flex items-center gap-2 text-[11px] text-[var(--ema-text-tertiary)]">
         <span>已加载技能 {result.name} · v{result.version}</span>
-        {result.allowedToolPatterns.length > 0 && (
-          <Badge variant="primary">{result.allowedToolPatterns.length} 个工具限制</Badge>
+        {result.suggestedTools.length > 0 && (
+          <Badge variant="primary">作者建议 {result.suggestedTools.length} 个工具</Badge>
         )}
       </span>
       <div className="max-h-40 overflow-auto rounded-md border border-[var(--ema-border)] px-2 py-1 text-[11px] leading-relaxed">

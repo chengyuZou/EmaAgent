@@ -211,13 +211,9 @@ async function projectUserBlock(
       }
       return resolveAttachment(reference as AttachmentReferenceBlock);
     }
-    if (candidate.type === 'skill_ref') {
+    if (candidate.type === 'skill_reference') {
       const reference = block as Partial<SkillReferenceBlock>;
-      if (
-        typeof reference.name !== 'string'
-        || typeof reference.callName !== 'string'
-        || typeof reference.rootPath !== 'string'
-      ) {
+      if (typeof reference.name !== 'string' || typeof reference.path !== 'string') {
         return undefined;
       }
       return {
@@ -229,13 +225,15 @@ async function projectUserBlock(
   return projectContentPart(block);
 }
 
-/** 当前 Turn 与历史重放共用同一文案，避免 Skill 引用在两条路径里语义漂移。 */
+/**
+ * 当前 Turn 与历史重放共用同一文案：只陈述"用户当时选择过"这个事实。
+ * 当前可用性由本 Turn 冻结的 Skill Pool 判定——技能已删/已禁用时,
+ * Skill 工具会返回明确的不可用错误,这里不预先承诺它仍可调用。
+ */
 export function renderSkillReferenceForModel(reference: SkillReferenceBlock): string {
   return [
-    `[用户选择的 Skill：${reference.name}]`,
-    `调用名：${reference.callName}`,
-    `资源目录：${reference.rootPath}`,
-    `请先调用 Skill 工具并传入 skill="${reference.callName}" 加载完整指令，再继续处理相关内容。`,
+    `[用户选择的 Skill: ${reference.name} (${reference.path})]`,
+    '这是用户的选择记录。若该技能当前可用,可调用 Skill 工具加载它的完整指令;若已被删除或禁用,Skill 工具会返回不可用,忽略即可。',
   ].join('\n');
 }
 

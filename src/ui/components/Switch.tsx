@@ -25,7 +25,7 @@ export function Switch(props: SwitchProps): React.JSX.Element {
       disabled={disabled}
       aria-label={label}
       className={cn(
-        'relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-pill border shadow-inner',
+        'relative inline-flex h-7 w-12.5 shrink-0 cursor-pointer items-center rounded-pill border shadow-inner',
         'transition-ema focus-ring hover:shadow-[var(--ema-shadow-soft)]',
         'data-[state=unchecked]:border-[var(--ema-border-hover)] data-[state=unchecked]:bg-[var(--ema-surface-3)]',
         'data-[state=unchecked]:hover:border-[var(--ema-text-tertiary)]',
@@ -37,10 +37,9 @@ export function Switch(props: SwitchProps): React.JSX.Element {
     >
       <RadixSwitch.Thumb
         className={cn(
-          'block h-5 w-5 rounded-full border border-black/5 bg-white shadow-md',
-          'transition-all duration-[var(--ema-duration-base)] will-change-transform',
-          'data-[state=unchecked]:translate-x-0.5',
-          'data-[state=checked]:translate-x-[22px]',
+          'block h-6 w-6 rounded-full border border-black/5 bg-white shadow-md',
+          'translate-x-0.5 data-[state=checked]:translate-x-full',
+          'transition-transform duration-250 ease-in-out will-change-transform',
           'data-[state=checked]:shadow-[0_2px_8px_rgba(0,0,0,0.24)]',
         )}
       />

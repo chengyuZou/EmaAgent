@@ -135,8 +135,9 @@ export type TurnInputPart =
       readonly attachment: TurnAttachmentInput;
     }
   | {
-      readonly type: 'skill';
-      readonly skillKey: string;
+      readonly type: 'skill_reference';
+      readonly name: string;
+      readonly path: string;
     };
 
 /** 本 Turn 对 Session 默认模型的完整覆盖；模型身份与推理配置必须同生同灭。 */

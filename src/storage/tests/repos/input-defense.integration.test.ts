@@ -234,6 +234,7 @@ describe('AgentRunMessage 序列化防御', () => {
 function insertAsset(database: Database, id: string): void {
   new DocumentAssetRepo(database.sqlite).insert({
     id,
+    sourcePath: `D:/Docs/${id}.txt`,
     filePath: `files/${id}.txt`,
     fileName: `${id}.txt`,
     mimeType: 'text/plain',

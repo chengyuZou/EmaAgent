@@ -1,4 +1,3 @@
-// Skill 领域语言:作用域、稳定身份、描述符、溯源,以及根 Turn 冻结的 SkillPool 形状。
 import { z } from 'zod';
 
 // ── Prompt 目录预算 ───────────────────────────────────────────────────────────
@@ -7,65 +6,46 @@ import { z } from 'zod';
 export const SKILL_LISTING_BUDGET_BYTES = 8 * 1024;
 /** 目录中单条描述的字符上限。 */
 export const SKILL_LISTING_ENTRY_MAX_CHARS = 250;
-
-// ── 作用域与稳定身份 ───────────────────────────────────────────────────────────
-
-export type SkillScope = 'builtin' | 'user' | 'project';
+/** 详情文件清单的条目上限(防失控目录撑爆响应)。 */
+export const SKILL_FILES_MAX = 200;
+/** 详情文件预览的体积上限(超出截断并标记)。 */
+export const SKILL_FILE_PREVIEW_MAX_BYTES = 300 * 1024;
 
 /**
- * 跨进程稳定身份:
- *   builtin:<slug>                              随应用发布
- *   user:<pathHash>                             手动放置(改名=新技能)
- *   user:site_<siteId>_<entryId>                站点安装
- *   project:<sourceId>:<workspaceRelPath>       工作区生态原位
+ * 技能作用域:
+ *   builtin: 随应用发布的技能,不随用户/工作区变动。
+ *   user:    通过市场下载的技能
+ *   project: 工作区生态原位的技能,随工作区变动。
  */
-export type SkillKey = `${SkillScope}:${string}`;
-
-/** SkillKey 格式校验（settings schema 与 wire 边界共用同一事实源）。 */
-export const SKILL_KEY_PATTERN = /^(builtin|user|project):.+$/;
-
-/** wire/输入边界的 SkillKey 窄化；不合法返回 null。 */
-export function parseSkillKey(raw: string): SkillKey | null {
-  return SKILL_KEY_PATTERN.test(raw) ? (raw as SkillKey) : null;
-}
+export type SkillScope = 'builtin' | 'user' | 'project';
 
 // ── 描述符(注册表与 Pool 的统一条目) ─────────────────────────────────────────
 
 export interface SkillDescriptor {
-  key: SkillKey;
   /** 展示名。 */
   name: string;
-  /** 模型可调用名;冲突时按确定性规则生成别名。 */
-  callName: string;
+  /** SKILL.md 的绝对路径,同时是技能身份。 */
+  path: string;
   version: string;
   description: string;
   whenToUse?: string;
-  argumentHint?: string;
-  /** 只收窄,绝不授权。 */
-  allowedToolPatterns: string[];
-  rootPath: string;
+  /**
+   * 技能作者在 frontmatter `allowed-tools` 声明的建议工具,只供模型阅读。
+   * 不是权限规则,不过滤任何工具;真实现规范语义(预授权)是 permission 体系的事。
+   */
+  suggestedTools: string[];
   scope: SkillScope;
-  provenance?: SkillInstallProvenance;
+  /** project 技能所属生态,供来源级启停使用。 */
+  projectSourceId?: string;
+  /** 目录总字节(user 域对账时测量);展示用,不进 Prompt。 */
+  sizeBytes?: number;
 }
-
-export type SkillInstallProvenance =
-  | { kind: 'localDirectory' }
-  | {
-      kind: 'site';
-      siteId: string;
-      siteEntryId: string;
-      /** 站点索引版本,更新对账的唯一事实源(frontmatter version 只展示)。 */
-      version: string;
-      bundleUrl: string;
-      bundleSha256: string;
-    };
 
 /** 根 Turn 冻结的技能快照(镜像 ToolPool);不承载激活状态。 */
 export interface SkillPool {
-  /** 按 (scopeRank, callName) 排序。 */
+  /** 按 (scopeRank, name, path) 排序。 */
   readonly entries: readonly SkillDescriptor[];
-  getByKey(key: SkillKey): SkillDescriptor | undefined;
-  getByCallName(name: string): SkillDescriptor | undefined;
+  getByPath(path: string): SkillDescriptor | undefined;
 }
 
 // ── SKILL.md frontmatter ──────────────────────────────────────────────────────
@@ -81,9 +61,7 @@ export const SkillFrontmatterSchema = z.object({
   name:        SkillNameSchema,
   version:     z.string().default('1.0.0'),
   description: z.string().default(''),
-  /** 在目录中展示,让模型知道 arguments 传什么。 */
-  'argument-hint': z.string().optional(),
-  /** 激活时收窄 Agent 能力的工具名称或稳定工具 ID glob;只收窄不授权。 */
+  /** 生态契约(agentskills.io):作者声明的建议工具;只投影给模型阅读,不做权限执行。 */
   'allowed-tools': z.array(z.string().trim().min(1).max(256)).max(64).optional(),
   /** 模型决定相关性的关键文案。 */
   'when-to-use': z.string().optional(),
@@ -93,11 +71,10 @@ export type SkillFrontmatter = z.infer<typeof SkillFrontmatterSchema>;
 
 /** 解析后的 SKILL.md 全文(含 body)。body 是不可信运行时上下文,不是 System Prompt。 */
 export interface ParsedSkillMd {
-  name:         string;
-  version:      string;
-  description:  string;
-  argumentHint?: string;
-  whenToUse?:   string;
-  allowedTools: string[];
-  body:         string;
+  name:          string;
+  version:       string;
+  description:   string;
+  whenToUse?:    string;
+  suggestedTools: string[];
+  body:          string;
 }

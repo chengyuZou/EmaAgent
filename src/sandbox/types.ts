@@ -24,7 +24,6 @@ export interface SandboxStatus {
   readonly isolation: 'os' | 'application-only';
   readonly shellExecution: 'isolated' | 'disabled' | 'unsafe-override';
   readonly sandboxNetwork: 'none' | 'full';
-  readonly localMcpStdio: 'isolated' | 'disabled' | 'unsafe-override';
   readonly warning?: string;
 }
 
@@ -101,5 +100,4 @@ export interface CommandProcessHandle {
   readonly completion: Promise<CommandRunResult>;
   stop(): void;
 }
-
 

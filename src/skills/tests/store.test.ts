@@ -1,11 +1,11 @@
 // SkillStore 全链路测试:对账(新增/变更/消失/损坏跳过)、安装落位、删除守卫、孤儿清扫。
-// 真实临时目录 + 内存 SkillsRepo 存根,不碰 SQLite。
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, renameSync, existsSync, readFileSync, readdirSync } from 'node:fs';
+// 真实临时目录 + 内存存根 repo,不碰 SQLite。
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, renameSync, existsSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { SkillRow, SkillsRepo } from '@ema-agent/storage';
-import { createSkillStore, STAGING_PREFIX, type SkillStore } from '../store.js';
+import type { SkillEnablementRepo, SkillRow, SkillsRepo } from '@ema-agent/storage';
+import { createSkillStore, STAGING_PREFIX } from '../sources/user.js';
 
 const SKILL_MD = (name: string, version = '1.0.0') =>
   `---\nname: ${name}\nversion: ${version}\ndescription: ${name} desc\n---\n# ${name}\n`;
@@ -31,41 +31,55 @@ function writeSkill(root: string, dirName: string, name: string, version = '1.0.
 function makeRepo() {
   const rows = new Map<string, SkillRow>();
   const repo: SkillsRepo = {
-    upsertById: (row) => { rows.set(row.id, { ...row }); },
-    findById: (id) => rows.get(id) ?? null,
+    upsert: row => { rows.set(row.path, { ...row }); },
+    findByPath: path => rows.get(path) ?? null,
     listAll: () => [...rows.values()],
-    listBySite: (siteId) => [...rows.values()].filter((r) => r.site_id === siteId),
-    deleteById: (id) => { rows.delete(id); },
-  } as SkillsRepo;
+    deleteByPath: path => { rows.delete(path); },
+  } as unknown as SkillsRepo;
   return { repo, rows };
 }
 
+/** 内存 SkillEnablementRepo:启停行存 Map。 */
+function makeEnablement() {
+  const states = new Map<string, boolean>();
+  const enablement = {
+    listDisabledPaths: () => [...states.entries()].filter(([, enabled]) => !enabled).map(([path]) => path),
+    setEnabled: (path: string, enabled: boolean) => { states.set(path, enabled); },
+    deleteByPath: (path: string) => { states.delete(path); },
+  } as SkillEnablementRepo;
+  return { enablement, states };
+}
+
 describe('reconcileUserRoot', () => {
-  it('新增目录入索引;消失目录删索引;损坏目录跳过不拖垮整轮', async () => {
+  it('新增目录入索引;消失目录删索引并连带清启停行;损坏目录跳过不拖垮整轮', async () => {
     const root = makeRoot();
     writeSkill(root, 'alpha', 'alpha');
     writeSkill(root, 'beta', 'beta');
     mkdirSync(join(root, 'broken'));  // 无 SKILL.md
     const { repo, rows } = makeRepo();
-    const store = createSkillStore({ repo, userRoot: root });
+    const { enablement, states } = makeEnablement();
+    const store = createSkillStore({ repo, enablement, userRoot: root });
 
     const first = await store.reconcileUserRoot();
     expect(first.entries.map((e) => e.name).sort()).toEqual(['alpha', 'beta']);
     expect(first.skipped).toHaveLength(1);
     expect(rows.size).toBe(2);
 
-    // beta 删除后应对账删除索引。
+    // beta 被禁用后目录消失:索引与启停行同清。
+    const betaPath = first.entries.find(e => e.name === 'beta')!.path;
+    enablement.setEnabled(betaPath, false);
     rmSync(join(root, 'beta'), { recursive: true, force: true });
     const second = await store.reconcileUserRoot();
     expect(second.entries.map((e) => e.name)).toEqual(['alpha']);
     expect(rows.size).toBe(1);
+    expect(states.size).toBe(0);
   });
 
   it('手动放置目录改名 = 新技能(新 id),旧行被对账删除', async () => {
     const root = makeRoot();
     const dir = writeSkill(root, 'gamma', 'gamma');
     const { repo, rows } = makeRepo();
-    const store = createSkillStore({ repo, userRoot: root });
+    const store = createSkillStore({ repo, enablement: makeEnablement().enablement, userRoot: root });
 
     await store.reconcileUserRoot();
     const oldIds = [...rows.keys()];
@@ -76,52 +90,42 @@ describe('reconcileUserRoot', () => {
     expect(rows.size).toBe(1);
   });
 
-  it('站点安装目录(site_ 前缀)的溯源在对账后保留', async () => {
+  it('再次对账保留 installed_at(对账不应重置安装时间)', async () => {
     const root = makeRoot();
-    writeSkill(root, 'site_shop_pdf-qa', 'PDFQA', '1.2.0');
+    writeSkill(root, 'alpha', 'alpha');
     const { repo, rows } = makeRepo();
-    const store = createSkillStore({ repo, userRoot: root });
+    const store = createSkillStore({ repo, enablement: makeEnablement().enablement, userRoot: root });
 
     await store.reconcileUserRoot();
-    const row = rows.get('site_shop_pdf-qa')!;
-    expect(row.site_id).toBeNull();  // 首轮对账无溯源
-
-    // 模拟安装时写入的溯源,再对账不得回退。
-    rows.set(row.id, { ...row, site_id: 'shop', site_entry_id: 'pdf-qa', sha256: 'abc', source_url: 'https://x/y.zip', version: '9.9.9' });
-    const result = await store.reconcileUserRoot();
-    const kept = rows.get('site_shop_pdf-qa')!;
-    expect(kept.site_id).toBe('shop');
-    expect(kept.version).toBe('9.9.9');  // 站点索引版本不被 frontmatter 回写
-    expect(result.entries[0]!.provenance).toMatchObject({ kind: 'site', siteId: 'shop' });
+    const firstAt = [...rows.values()][0]!.installed_at;
+    await store.reconcileUserRoot();
+    expect([...rows.values()][0]!.installed_at).toBe(firstAt);
   });
 });
 
 describe('finalizeInstall / deleteUserSkill / sweepOrphanStaging', () => {
-  it('staging 原子落位并写溯源;删除后目录与索引同清', async () => {
+  it('staging 原子落位并写索引;删除后目录、索引与启停行同清', async () => {
     const root = makeRoot();
     const { repo, rows } = makeRepo();
-    const store = createSkillStore({ repo, userRoot: root });
+    const { enablement, states } = makeEnablement();
+    const store = createSkillStore({ repo, enablement, userRoot: root });
 
     const staging = join(root, `${STAGING_PREFIX}test-1`);
     writeSkill(root, `${STAGING_PREFIX}test-1`, 'PDFQA', '1.2.0');
 
-    const descriptor = await store.finalizeInstall(staging, {
-      kind: 'site',
-      siteId: 'shop',
-      siteEntryId: 'pdf-qa',
-      version: '1.2.0',
-      bundleUrl: 'https://x/pdf-qa.zip',
-      bundleSha256: 'deadbeef',
-    });
+    const descriptor = await store.finalizeInstall(staging, 'pdf-qa');
 
-    expect(descriptor.key).toBe('user:site_shop_pdf-qa');
-    expect(existsSync(join(root, 'site_shop_pdf-qa', 'SKILL.md'))).toBe(true);
+    expect(descriptor.path).toBe(join(root, 'pdf-qa', 'SKILL.md'));
+    expect(existsSync(join(root, 'pdf-qa', 'SKILL.md'))).toBe(true);
     expect(existsSync(staging)).toBe(false);
-    expect(rows.get('site_shop_pdf-qa')).toMatchObject({ site_id: 'shop', sha256: 'deadbeef' });
+    expect(rows.size).toBe(1);
 
-    await store.deleteUserSkill(descriptor.key);
-    expect(existsSync(join(root, 'site_shop_pdf-qa'))).toBe(false);
+    // 禁用后删除:启停行不得残留(同名技能再放回不应幽灵复活为禁用)。
+    enablement.setEnabled(descriptor.path, false);
+    await store.deleteUserSkill(descriptor.path);
+    expect(existsSync(join(root, 'pdf-qa'))).toBe(false);
     expect(rows.size).toBe(0);
+    expect(states.size).toBe(0);
   });
 
   it('孤儿 staging 目录被清扫,正常目录不受影响', async () => {
@@ -129,7 +133,7 @@ describe('finalizeInstall / deleteUserSkill / sweepOrphanStaging', () => {
     writeSkill(root, 'alpha', 'alpha');
     mkdirSync(join(root, `${STAGING_PREFIX}orphan`));
     const { repo } = makeRepo();
-    const store = createSkillStore({ repo, userRoot: root });
+    const store = createSkillStore({ repo, enablement: makeEnablement().enablement, userRoot: root });
 
     await store.sweepOrphanStaging();
     const remaining = readdirSync(root);

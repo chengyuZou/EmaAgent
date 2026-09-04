@@ -5,9 +5,7 @@ import { getSystemPrompt, type PromptBlock } from '@ema-agent/prompts';
 import type { ExecutionProfile } from '@ema-agent/session';
 import type { SettingsStore } from '@ema-agent/settings';
 import {
-  builtinSkillsEnabledSetting,
   disabledProjectSourcesSetting,
-  disabledSkillKeysSetting,
   freezeSkillPool,
   renderSkillListing,
   type SkillDescriptor,
@@ -18,6 +16,8 @@ export interface WorkSkillPoolDeps {
   readonly settings: SettingsStore;
   /** SkillRegistry 当前全量条目（含工作区的 project 技能）；chat 态不调用。 */
   readonly skillEntries: (workspaceRoot: string) => Promise<readonly SkillDescriptor[]>;
+  /** skill_enablement 表的当前禁用路径列表（builtin/user 逐技能启停）。 */
+  readonly disabledSkillPaths: () => readonly string[];
 }
 
 /** Skill 目录与 Pool 同步冻结；chat 态不建 Pool（Skill 工具不可见）。 */
@@ -32,9 +32,8 @@ export async function resolveWorkSkillPool(
   if (skillEntries.length === 0) return undefined;
   return freezeSkillPool({
     entries: skillEntries,
-    disabledKeys: deps.settings.get(disabledSkillKeysSetting),
+    disabledPaths: deps.disabledSkillPaths(),
     disabledProjectSources: deps.settings.get(disabledProjectSourcesSetting).disabledSourceIds,
-    builtinEnabled: deps.settings.get(builtinSkillsEnabledSetting),
   });
 }
 

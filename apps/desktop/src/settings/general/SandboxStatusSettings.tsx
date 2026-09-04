@@ -36,8 +36,7 @@ export function SandboxStatusSettings(): JSX.Element {
   useEffect(load, []);
 
   const status = state.kind === 'ready' ? state.status : null;
-  const unsafe = status !== null
-    && (status.shellExecution === 'unsafe-override' || status.localMcpStdio === 'unsafe-override');
+  const unsafe = status?.shellExecution === 'unsafe-override';
   const appOnly = status !== null && status.isolation === 'application-only';
 
   return (
@@ -82,11 +81,6 @@ export function SandboxStatusSettings(): JSX.Element {
             <StatusRow
               label="沙箱网络"
               value={status.sandboxNetwork === 'none' ? '无网络' : '完全网络'}
-            />
-            <StatusRow
-              label="本地 MCP"
-              value={EXECUTION_LABEL[status.localMcpStdio] ?? status.localMcpStdio}
-              tone={status.localMcpStdio === 'isolated' ? 'ok' : 'bad'}
             />
           </div>
           {status.warning && (

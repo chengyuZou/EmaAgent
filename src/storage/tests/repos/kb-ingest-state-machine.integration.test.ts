@@ -19,7 +19,7 @@ describe('KbIngestTasksRepo', () => {
   }
 
   function insert(repo: KbIngestTasksRepo, id: string, assetId = `asset-${id}`): void {
-    repo.insert({ id, assetId, filePath: `/files/${assetId}/doc.txt`, fileName: 'doc.txt' });
+    repo.insert({ id, assetId, sourcePath: `D:/Docs/${assetId}.txt`, filePath: `/files/${assetId}/doc.txt`, fileName: 'doc.txt' });
   }
 
   it('insert/get/list 与 findLatestByAssetId', () => {

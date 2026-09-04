@@ -26,7 +26,7 @@ const inputPartSchema = z.discriminatedUnion('type', [
       mtime: z.number().optional(),
     }),
   }),
-  z.object({ type: z.literal('skill'), skillKey: z.string().min(1) }),
+  z.object({ type: z.literal('skill_reference'), name: z.string().min(1), path: z.string().min(1) }),
 ]);
 
 const startTurnBody = z.object({
@@ -51,7 +51,7 @@ const startTurnBody = z.object({
   if (attachmentCount > REQUEST_VALUE_LIMITS.maxTurnAttachments) {
     context.addIssue({ code: 'custom', path: ['input'], message: '附件数量超过单次 Turn 上限' });
   }
-  const skillCount = body.input.filter(part => part.type === 'skill').length;
+  const skillCount = body.input.filter(part => part.type === 'skill_reference').length;
   if (skillCount > 8) {
     context.addIssue({ code: 'custom', path: ['input'], message: 'Skill 数量超过单次 Turn 上限' });
   }

@@ -1,5 +1,4 @@
-// sources/builtin:内置技能扫描。
-// 随包资源即事实源(release 打包带走),启动直接扫描;源缺失或损坏降级为空内置集,不阻塞启动。
+// 并发扫描宿主铺设的 builtin 技能目录并生成绝对路径描述符。
 import { readFile } from 'node:fs/promises';
 import { parseSkillMd } from '../parser.js';
 import { listSkillDirectories, resolveSkillFile } from '../paths.js';
@@ -12,29 +11,25 @@ export interface BuiltinScanDeps {
 
 export async function scanBuiltinSkills(deps: BuiltinScanDeps): Promise<SkillDescriptor[]> {
   try {
-    const descriptors: SkillDescriptor[] = [];
-    for (const dir of await listSkillDirectories(deps.builtinRoot)) {
+    const descriptors = await Promise.all((await listSkillDirectories(deps.builtinRoot)).map(async dir => {
       try {
         const skillFile = await resolveSkillFile(dir);
         const parsed = parseSkillMd(await readFile(skillFile, 'utf8'));
-        const slug = dir.replace(/[\\/]+$/, '').split(/[\\/]/).pop()!;
-        descriptors.push({
-          key: `builtin:${slug}`,
+        return {
           name: parsed.name,
-          callName: parsed.name,
+          path: skillFile,
           version: parsed.version,
           description: parsed.description,
-          ...(parsed.argumentHint !== undefined ? { argumentHint: parsed.argumentHint } : {}),
           ...(parsed.whenToUse !== undefined ? { whenToUse: parsed.whenToUse } : {}),
-          allowedToolPatterns: parsed.allowedTools,
-          rootPath: dir,
-          scope: 'builtin',
-        });
+          suggestedTools: parsed.suggestedTools,
+          scope: 'builtin' as const,
+        };
       } catch (error) {
         console.warn(`[skills] 内置技能损坏跳过: ${dir}`, error);
+        return null;
       }
-    }
-    return descriptors;
+    }));
+    return descriptors.flatMap(entry => entry ? [entry as SkillDescriptor] : []);
   } catch (error) {
     console.warn('[skills] builtin 扫描失败,降级为无内置技能:', error);
     return [];

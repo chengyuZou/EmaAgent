@@ -11,12 +11,12 @@ Skills are reusable instruction packages (a SKILL.md) that tell you how to perfo
 
 ## Parameters
 
-- **skill**: the skill's call name exactly as shown in the listing.
-- **args**: optional free-text arguments. The skill body renders them via $ARGUMENTS.
+- **name**: the skill name exactly as shown in the listing.
+- **path**: the absolute SKILL.md path exactly as shown in the listing. The path is the skill identity.
 
 ## What you get back
 
-The full skill instructions plus its resource root path. Follow the instructions for the rest of this turn. Files referenced by the skill (scripts, references, templates) live under the returned rootPath — read them with the file tools when the instructions say so.
+The full skill instructions plus its path. Follow the instructions for the rest of this turn. Relative resources live beside SKILL.md.
 
 ## Capability narrowing
 

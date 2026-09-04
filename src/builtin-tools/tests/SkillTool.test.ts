@@ -1,5 +1,4 @@
-// SkillTool 收口测试:池门控、描述符查找、全文有界读取、$ARGUMENTS 渲染、
-// 未命中带可用清单、前导斜杠兼容。
+// SkillTool 收口测试:池门控、绝对路径查找、全文读取与未命中清单。
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -30,28 +29,25 @@ function plantSkill(name: string, body: string): string {
     join(dir, name, 'SKILL.md'),
     `---\nname: ${name}\nversion: 2.1.0\ndescription: ${name} 说明书\nwhen-to-use: 做 ${name} 时\n---\n${body}`,
   );
-  return join(dir, name);
+  return join(dir, name, 'SKILL.md');
 }
 
 function poolOf(entries: SkillDescriptor[]) {
   return freezeSkillPool({
     entries,
-    disabledKeys: [],
+    disabledPaths: [],
     disabledProjectSources: [],
-    builtinEnabled: true,
   });
 }
 
-function makeEntry(name: string, rootPath: string): SkillDescriptor {
+function makeEntry(name: string, path: string): SkillDescriptor {
   return {
-    key: `user:${name}`,
     name,
-    callName: name,
+    path,
     version: '2.1.0',
     description: `${name} 说明书`,
     whenToUse: `做 ${name} 时`,
-    allowedToolPatterns: [],
-    rootPath,
+    suggestedTools: [],
     scope: 'user',
   };
 }
@@ -68,60 +64,53 @@ describe('SkillTool', () => {
     if (!projection.valid) throw new Error('投影应成功');
 
     const result = await SkillTool.execute(
-      { skill: 'code-review', args: undefined },
+      { name: 'code-review', path: root },
       projection.context,
       makeInvocation(),
     );
 
     expect(result).toMatchObject({
-      callName: 'code-review',
+      name: 'code-review',
       version: '2.1.0',
-      rootPath: root,
+      path: root,
       instructions: '按清单逐条评审。',
     });
     expect(result.instructions).not.toContain('---');
   });
 
-  it('$ARGUMENTS 全量替换;无占位符时追加到末尾', async () => {
-    const withPlaceholder = plantSkill('review-x', '评审 $ARGUMENTS 这部分。');
-    const without = plantSkill('review-y', '自由评审。');
+  it('同名技能按绝对路径精确读取', async () => {
+    const first = plantSkill('review', '第一份。');
+    const second = plantSkill('review', '第二份。');
     const pool = poolOf([
-      makeEntry('review-x', withPlaceholder),
-      makeEntry('review-y', without),
+      makeEntry('review', first),
+      makeEntry('review', second),
     ]);
     const projection = SkillTool.validateContext({ skillPool: pool } as never);
     if (!projection.valid) throw new Error('投影应成功');
 
-    const replaced = await SkillTool.execute(
-      { skill: 'review-x', args: '登录模块' },
+    const result = await SkillTool.execute(
+      { name: 'review', path: second },
       projection.context,
       makeInvocation(),
     );
-    expect(replaced.instructions).toBe('评审 登录模块 这部分。');
-
-    const appended = await SkillTool.execute(
-      { skill: 'review-y', args: '只看 src/' },
-      projection.context,
-      makeInvocation(),
-    );
-    expect(appended.instructions).toBe('自由评审。\n\n只看 src/');
+    expect(result.instructions).toBe('第二份。');
   });
 
-  it('前导斜杠兼容;未命中报可用清单', async () => {
+  it('未命中报可用清单', async () => {
     const root = plantSkill('tdd', '先写测试。');
     const pool = poolOf([makeEntry('tdd', root)]);
     const projection = SkillTool.validateContext({ skillPool: pool } as never);
     if (!projection.valid) throw new Error('投影应成功');
 
     const ok = await SkillTool.execute(
-      { skill: '/tdd', args: undefined },
+      { name: 'tdd', path: root },
       projection.context,
       makeInvocation(),
     );
     expect(ok.name).toBe('tdd');
 
     await expect(
-      SkillTool.execute({ skill: 'nope', args: undefined }, projection.context, makeInvocation()),
-    ).rejects.toThrow(/Unknown skill: nope.*tdd/);
+      SkillTool.execute({ name: 'nope', path: '/missing/SKILL.md' }, projection.context, makeInvocation()),
+    ).rejects.toThrow(/Unknown skill path:.*tdd/);
   });
 });

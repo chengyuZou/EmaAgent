@@ -17,13 +17,13 @@ export interface AttachmentReferenceBlock {
   mimeType: string;
 }
 
-/** 用户显式选中的 Skill；只保存引用，SKILL.md 正文由 Skill Tool 按需读取。 */
+/**
+ * 用户显式选中的 Skill;绝对 SKILL.md path 是身份,name 用于历史展示。
+ */
 export interface SkillReferenceBlock {
-  type: 'skill_ref';
-  skillKey: string;
+  type: 'skill_reference';
   name: string;
-  callName: string;
-  rootPath: string;
+  path: string;
 }
 
 /** ToolResult 信封即持久块; data/durationMs/errorCode 都在信封上, 不再重复投影。 */
@@ -113,11 +113,9 @@ function isAttachmentReferenceBlock(value: unknown): value is AttachmentReferenc
 
 function isSkillReferenceBlock(value: unknown): value is SkillReferenceBlock {
   return isRecord(value)
-    && value.type === 'skill_ref'
-    && typeof value.skillKey === 'string'
+    && value.type === 'skill_reference'
     && typeof value.name === 'string'
-    && typeof value.callName === 'string'
-    && typeof value.rootPath === 'string';
+    && typeof value.path === 'string';
 }
 
 function isToolResultBlock(value: unknown): value is ToolResultBlock {

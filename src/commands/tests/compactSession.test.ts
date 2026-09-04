@@ -93,6 +93,7 @@ function makeFixture(options: {
     settings: fakeSettingsStore(options.settingsOverrides),
     characterPrompt: () => ['你是测试角色'],
     skillEntries: async () => [],
+    disabledSkillPaths: () => [],
     createCompact,
     createLlmCall: () => options.callLlm ?? summaryLlm(),
     usageRecorder,

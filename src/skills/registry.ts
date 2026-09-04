@@ -3,12 +3,11 @@
 //
 // 装载模型：
 // - builtin + user 与工作区无关，合并为 core；启动时、安装/卸载后由 refreshCore() 重扫；
-// - project 技能跟随工作区，在每次 list(workspaceRoot) 时现扫——多工作区 Session 各自看到
-//   自己工作区的 project 技能，互不覆盖；"安装/工作区变化影响下一根 Turn"由此天然成立。
-import type { SkillStore } from './store.js';
+// - project 技能按工作区首次读取并缓存,显式 refreshWorkspace() 时重扫。
+import type { SkillStore } from './sources/user.js';
 import { scanBuiltinSkills } from './sources/builtin.js';
 import { scanProjectSkills } from './sources/project.js';
-import type { SkillDescriptor, SkillKey } from './types.js';
+import type { SkillDescriptor } from './types.js';
 
 export interface SkillRegistryDeps {
   /** user 技能根(<profileDir>/skills)。 */
@@ -21,13 +20,15 @@ export interface SkillRegistryDeps {
 export interface SkillRegistry {
   /** builtin+user 重扫；串行接棒,并发调用不交错。启动、安装、卸载后调用。 */
   refreshCore(): Promise<void>;
+  /** 重扫一个工作区的 project 技能并替换该工作区缓存。 */
+  refreshWorkspace(workspaceRoot: string): Promise<void>;
   /**
    * 当前全量(含禁用项);禁用过滤是 Pool 冻结时的事。
-   * 传入 workspaceRoot 时附带该工作区的 project 技能（现扫现算）。
+   * 传入 workspaceRoot 时附带该工作区缓存的 project 技能;首次读取会扫描。
    * 调用会等待进行中的首次 core 装载，避免启动竞态下读到空目录。
    */
   list(workspaceRoot?: string): Promise<readonly SkillDescriptor[]>;
-  getByKey(key: SkillKey, workspaceRoot?: string): Promise<SkillDescriptor | undefined>;
+  getByPath(path: string, workspaceRoot?: string): Promise<SkillDescriptor | undefined>;
 }
 
 /**
@@ -36,6 +37,9 @@ export interface SkillRegistry {
  */
 export function createSkillRegistry(deps: SkillRegistryDeps): SkillRegistry {
   let core: readonly SkillDescriptor[] = [];
+  const coreByPath = new Map<string, SkillDescriptor>();
+  const projectByWorkspace = new Map<string, readonly SkillDescriptor[]>();
+  const projectByPath = new Map<string, SkillDescriptor>();
   let coreReady: Promise<void> | undefined;
   let tail: Promise<void> = Promise.resolve();
 
@@ -49,6 +53,8 @@ export function createSkillRegistry(deps: SkillRegistryDeps): SkillRegistry {
         .catch(() => [] as SkillDescriptor[]),
     ]);
     core = [...builtin, ...user];
+    coreByPath.clear();
+    for (const entry of core) coreByPath.set(entry.path, entry);
   }
 
   async function scanWorkspace(workspaceRoot: string): Promise<readonly SkillDescriptor[]> {
@@ -62,8 +68,20 @@ export function createSkillRegistry(deps: SkillRegistryDeps): SkillRegistry {
   async function list(workspaceRoot?: string): Promise<readonly SkillDescriptor[]> {
     // 首次装载尚未完成时等待它，而不是把空目录交给调用方；首装失败降级为当前 core。
     if (coreReady) await coreReady.catch(() => undefined);
-    const project = workspaceRoot ? await scanWorkspace(workspaceRoot) : [];
+    let project: readonly SkillDescriptor[] = [];
+    if (workspaceRoot) {
+      if (!projectByWorkspace.has(workspaceRoot)) await refreshWorkspace(workspaceRoot);
+      project = projectByWorkspace.get(workspaceRoot) ?? [];
+    }
     return [...core, ...project];
+  }
+
+  async function refreshWorkspace(workspaceRoot: string): Promise<void> {
+    const previous = projectByWorkspace.get(workspaceRoot) ?? [];
+    for (const entry of previous) projectByPath.delete(entry.path);
+    const entries = await scanWorkspace(workspaceRoot);
+    projectByWorkspace.set(workspaceRoot, entries);
+    for (const entry of entries) projectByPath.set(entry.path, entry);
   }
 
   return {
@@ -73,8 +91,15 @@ export function createSkillRegistry(deps: SkillRegistryDeps): SkillRegistry {
       coreReady ??= run;
       return run;
     },
+    refreshWorkspace,
     list,
-    getByKey: async (key: SkillKey, workspaceRoot?: string) =>
-      (await list(workspaceRoot)).find((entry) => entry.key === key),
+    async getByPath(path: string, workspaceRoot?: string) {
+      if (coreReady) await coreReady.catch(() => undefined);
+      const cached = coreByPath.get(path) ?? projectByPath.get(path);
+      if (cached) return cached;
+      if (!workspaceRoot) return undefined;
+      await refreshWorkspace(workspaceRoot);
+      return projectByPath.get(path);
+    },
   };
 }

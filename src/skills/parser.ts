@@ -1,11 +1,10 @@
-// SKILL.md 的解析:frontmatter 校验、正文提取。
+// 解析 SKILL.md frontmatter 与正文,只产出 Skills 域真实消费的字段。
 import matter from 'gray-matter';
 import {
   SkillFrontmatterSchema,
   type ParsedSkillMd,
 } from './types.js';
 
-/** 把 SKILL.md 字符串解析成 ParsedSkillMd;frontmatter 缺失或无效时抛描述性错误。 */
 export function parseSkillMd(rawMd: string): ParsedSkillMd {
   const { data, content } = matter(rawMd);
 
@@ -22,9 +21,9 @@ export function parseSkillMd(rawMd: string): ParsedSkillMd {
     name:         fm.name,
     version:      fm.version,
     description:  fm.description,
-    argumentHint: fm['argument-hint'],
     whenToUse:    fm['when-to-use'],
-    allowedTools: fm['allowed-tools'] ?? [],
+    // allowed-tools 在 EmaAgent 这里作为建议工具使用 不做Tool过滤
+    suggestedTools: fm['allowed-tools'] ?? [],
     body:         content.trim(),
   };
 }

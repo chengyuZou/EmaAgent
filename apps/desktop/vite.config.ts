@@ -52,11 +52,12 @@ export default defineConfig({
   // 注意不要再 alias 其他后端包：它们只应被 type-only 导入（构建期擦除），
   // alias 到源码反而会把 Node 实现静默打进浏览器图。
   resolve: {
-    alias: {
-      '@ema-agent/ui':              resolve(__dirname, '../../src/ui'),
-      '@ema-agent/builtin-tools/ui': resolve(__dirname, '../../src/builtin-tools/ui.ts'),
-      '@ema-agent/live2d-react':    resolve(__dirname, '../../src/live2d-react/index.ts'),
-    },
+    alias: [
+      { find: /^@ema-agent\/ui$/, replacement: resolve(__dirname, '../../src/ui/index.ts') },
+      { find: /^@ema-agent\/ui\/utils$/, replacement: resolve(__dirname, '../../src/ui/utils/index.ts') },
+      { find: '@ema-agent/builtin-tools/ui', replacement: resolve(__dirname, '../../src/builtin-tools/ui.ts') },
+      { find: '@ema-agent/live2d-react', replacement: resolve(__dirname, '../../src/live2d-react/index.ts') },
+    ],
   },
 
   // Exclude workspace packages from Vite's esbuild pre-bundler so they pass

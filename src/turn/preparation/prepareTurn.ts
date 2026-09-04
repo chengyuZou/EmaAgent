@@ -39,7 +39,6 @@ import type {
 import type { SettingsStore } from '@ema-agent/settings';
 import type {
   SkillDescriptor,
-  SkillKey,
   SkillPool,
 } from '@ema-agent/skills';
 import type { ExecutionProfile } from '@ema-agent/session';
@@ -94,6 +93,8 @@ export interface PrepareTurnDeps extends TurnToolsDeps {
   readonly characterPrompt: () => readonly string[];
   /** SkillRegistry 当前全量条目（含本 Turn 工作区的 project 技能）；冻结在 Pool 之前读取一次。 */
   readonly skillEntries: (workspaceRoot: string) => Promise<readonly SkillDescriptor[]>;
+  /** skill_enablement 表的当前禁用路径列表（builtin/user 逐技能启停）。 */
+  readonly disabledSkillPaths: () => readonly string[];
   /** 默认 llm 包的 createLlmCall；测试注入脚本化调用。 */
   readonly createLlmCall?: (connection: LlmConnection, modelId: string) => CallLlm;
   /** 工作区指令（EMA.md/CLAUDE.md）按本 Turn 的工作区读取；无工作区时不会调用。 */
@@ -159,7 +160,7 @@ export async function prepareTurn(
 
   // Skill 目录与 Pool 同步冻结（与 /compact Command 共用同一装配）；chat 态不建 Pool。
   const skillPool = await resolveWorkSkillPool(
-    { settings: deps.settings, skillEntries: deps.skillEntries },
+    { settings: deps.settings, skillEntries: deps.skillEntries, disabledSkillPaths: deps.disabledSkillPaths },
     request.executionProfile,
     workspaceRoot,
   );
@@ -317,13 +318,11 @@ function prepareOrderedInput(
       continue;
     }
 
-    const descriptor = selectedSkills.get(part.skillKey)!;
+    const descriptor = selectedSkills.get(part.path)!;
     sessionBlocks.push({
-      type: 'skill_ref',
-      skillKey: descriptor.key,
+      type: 'skill_reference',
       name: descriptor.name,
-      callName: descriptor.callName,
-      rootPath: descriptor.rootPath,
+      path: descriptor.path,
     });
   }
 
@@ -333,22 +332,22 @@ function prepareOrderedInput(
     : sessionBlocks;
 }
 
-/** Skill Chip 提交的是稳定 key；准备期解析成当前 Pool 中已经冻结的描述符。 */
+/** Skill Chip 提交绝对 SKILL.md path;准备期解析成当前 Pool 中已经冻结的描述符。 */
 function resolveSelectedSkills(
   input: readonly TurnInputPart[],
   skillPool: SkillPool | undefined,
 ): ReadonlyMap<string, SkillDescriptor> {
   const selected = new Map<string, SkillDescriptor>();
   for (const part of input) {
-    if (part.type !== 'skill' || selected.has(part.skillKey)) continue;
-    const descriptor = skillPool?.getByKey(part.skillKey as SkillKey);
+    if (part.type !== 'skill_reference' || selected.has(part.path)) continue;
+    const descriptor = skillPool?.getByPath(part.path);
     if (!descriptor) {
       throw new TurnPreparationError(
         'turn/setup_failed',
-        `选择的 Skill 不存在或已被禁用：${part.skillKey}`,
+        `选择的 Skill 不存在或已被禁用：${part.path}`,
       );
     }
-    selected.set(part.skillKey, descriptor);
+    selected.set(part.path, descriptor);
   }
   return selected;
 }

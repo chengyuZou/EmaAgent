@@ -135,14 +135,12 @@ describe('deriveLlmHistory', () => {
     }]);
   });
 
-  it('Skill 引用只投影调用指引，不把 SKILL.md 正文写进历史', async () => {
+  it('Skill 引用只投影选择记录，不把 SKILL.md 正文写进历史', async () => {
     const result = await deriveLlmHistory([
       message('m1', 'user', [{
-        type: 'skill_ref',
-        skillKey: 'user:pdf',
-        name: 'PDF',
-        callName: 'pdf',
-        rootPath: 'D:/skills/pdf',
+        type: 'skill_reference',
+        name: 'pdf',
+        path: 'D:\\skills\\pdf\\SKILL.md',
       }]),
     ], noTarget, noAttachment);
 
@@ -153,10 +151,8 @@ describe('deriveLlmHistory', () => {
         content: [{
           type: 'text',
           text: [
-            '[用户选择的 Skill：PDF]',
-            '调用名：pdf',
-            '资源目录：D:/skills/pdf',
-            '请先调用 Skill 工具并传入 skill="pdf" 加载完整指令，再继续处理相关内容。',
+            '[用户选择的 Skill: pdf (D:\\skills\\pdf\\SKILL.md)]',
+            '这是用户的选择记录。若该技能当前可用,可调用 Skill 工具加载它的完整指令;若已被删除或禁用,Skill 工具会返回不可用,忽略即可。',
           ].join('\n'),
         }],
       },

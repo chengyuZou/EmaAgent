@@ -41,6 +41,7 @@ export function openCommands(deps: {
     settings: settings.settings,
     characterPrompt: () => buildCharacterPrompt(characters.store.current()),
     skillEntries: (workspaceRoot: string) => tools.skills.list(workspaceRoot || undefined),
+    disabledSkillPaths: () => tools.skillEnablement.listDisabledPaths(),
     workspaceInstructions: turn.workspaceInstructions,
     memoryGuidance: () => buildMemoryGuidance().catch(() => null),
     describeImage: turn.describeImage,

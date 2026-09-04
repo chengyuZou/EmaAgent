@@ -11,14 +11,14 @@ import {
 describe('composerDraft', () => {
   it('按光标位置插入引用并保留文字顺序', () => {
     let parts: readonly TurnInputPart[] = [{ type: 'text', text: '请分析报告' }];
-    parts = insertDraftReference(parts, 3, { type: 'skill', skillKey: 'code-review' });
+    parts = insertDraftReference(parts, 3, { type: 'skill_reference', name: 'code-review', path: 'D:/skills/code-review/SKILL.md' });
     parts = insertDraftReference(parts, 5, {
       type: 'attachment',
       attachment: { sourcePath: 'D:/report.pdf', name: 'report.pdf' },
     });
     expect(parts).toEqual([
       { type: 'text', text: '请分析' },
-      { type: 'skill', skillKey: 'code-review' },
+      { type: 'skill_reference', name: 'code-review', path: 'D:/skills/code-review/SKILL.md' },
       { type: 'text', text: '报告' },
       { type: 'attachment', attachment: { sourcePath: 'D:/report.pdf', name: 'report.pdf' } },
     ]);
@@ -28,12 +28,12 @@ describe('composerDraft', () => {
   it('编辑引用前后的文字时保持引用锚点', () => {
     const parts: readonly TurnInputPart[] = [
       { type: 'text', text: '请分析' },
-      { type: 'skill', skillKey: 'review' },
+      { type: 'skill_reference', name: 'review', path: 'D:/skills/review/SKILL.md' },
       { type: 'text', text: '报告' },
     ];
     expect(replaceDraftText(parts, '请详细分析报告')).toEqual([
       { type: 'text', text: '请详细分析' },
-      { type: 'skill', skillKey: 'review' },
+      { type: 'skill_reference', name: 'review', path: 'D:/skills/review/SKILL.md' },
       { type: 'text', text: '报告' },
     ]);
   });
@@ -41,7 +41,7 @@ describe('composerDraft', () => {
   it('删除引用不删除相邻文字', () => {
     const parts: readonly TurnInputPart[] = [
       { type: 'text', text: '前' },
-      { type: 'skill', skillKey: 'review' },
+      { type: 'skill_reference', name: 'review', path: 'D:/skills/review/SKILL.md' },
       { type: 'text', text: '后' },
     ];
     expect(removeDraftPart(parts, 1)).toEqual([

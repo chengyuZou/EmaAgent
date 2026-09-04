@@ -3,11 +3,9 @@ import { useEffect, useState, type JSX } from 'react';
 import { Callout, Spinner } from '@ema-agent/ui';
 import { skillsApi, type SkillProjectSourceList } from '../../api/skills.js';
 import { MultiSelectSetting } from '../parameters/controls/MultiSelectSetting.js';
-import { SwitchSetting } from '../parameters/controls/SwitchSetting.js';
 import { useSettingValues } from '../parameters/useSettingValues.js';
 import { SettingsCard, SettingsSection } from '../shared/SettingItem.js';
 
-const BUILTIN_KEY = 'skill.builtinEnabled';
 const PROJECT_SOURCES_KEY = 'skill.disabledProjectSources';
 
 export function SkillSettings(): JSX.Element {
@@ -24,21 +22,12 @@ export function SkillSettings(): JSX.Element {
   if (sourceError) return <Callout variant="danger">工作区技能来源读取失败: {sourceError}</Callout>;
   if (!sources) throw new Error('工作区技能来源没有返回');
 
-  const builtinEnabled = readBoolean(settings.values, BUILTIN_KEY);
   const disabledSourceIds = readDisabledSources(settings.values, PROJECT_SOURCES_KEY);
   const enabledSourceIds = sources.map(source => source.sourceId).filter(id => !disabledSourceIds.includes(id));
 
   return (
-    <SettingsSection icon="i-lucide:blocks" title="技能来源" description="控制内置技能和工作区生态目录">
+    <SettingsSection icon="i-lucide:blocks" title="技能来源" description="控制各会话工作区里的项目技能生态目录;内置与用户技能的逐技能开关在已安装列表">
       <SettingsCard>
-        <SwitchSetting
-          title="内置技能"
-          hint="关闭后不再把 Ema 自带的 Skills 提供给下一根 Turn."
-          apply={settings.apply(BUILTIN_KEY)}
-          value={builtinEnabled}
-          onSave={value => settings.save(BUILTIN_KEY, value)}
-          onReset={() => settings.reset(BUILTIN_KEY)}
-        />
         <MultiSelectSetting
           title="工作区技能来源"
           hint="扫描所选生态在当前工作区里的 Skills 目录."
@@ -53,12 +42,6 @@ export function SkillSettings(): JSX.Element {
       </SettingsCard>
     </SettingsSection>
   );
-}
-
-function readBoolean(values: ReadonlyMap<string, unknown>, key: string): boolean {
-  const value = values.get(key);
-  if (typeof value !== 'boolean') throw new Error(`设置 ${key} 没有返回 boolean`);
-  return value;
 }
 
 function readDisabledSources(values: ReadonlyMap<string, unknown>, key: string): string[] {
