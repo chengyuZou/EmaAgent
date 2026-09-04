@@ -14,7 +14,6 @@ const CONNECT_TIMEOUT_MS = 30_000;
 //
 // 不设命令白名单/元字符检查:SDK spawn 走 shell:false,元字符不被解释;
 // python -c / node -e 这类"猜测式拦截"会在用户批准后误伤合法配置(假阳性工厂)。
-// 真正的安全边界是 McpRegistry 的 stdioGate(用户批准完整启动意图)。
 
 // eslint-disable-next-line no-control-regex
 const CONTROL_CHAR_RE = /[\x00-\x1f]/;

@@ -37,8 +37,23 @@ describe('MCP 持久化', () => {
       repository_url: null, detail_url: 'https://example.com/a',
     }]);
     repo.replaceSource('official', []);
-    expect(repo.hasEntries('official')).toBe(false);
+    expect(repo.fetchState('official')).toEqual({ source: 'official', next_cursor: null });
     expect(repo.listPage('official', '', 0, 40)).toEqual({ rows: [], total: 0 });
+  });
+
+  it('逐页追加市场缓存并保存下一页 cursor', () => {
+    const repo = new McpMarketEntriesRepo(database.sqlite);
+    repo.appendPage('official', [{
+      source: 'official', external_id: 'a', name: 'A', description: '',
+      repository_url: null, detail_url: 'https://example.com/a',
+    }], 'page-2');
+    repo.appendPage('official', [{
+      source: 'official', external_id: 'b', name: 'B', description: '',
+      repository_url: null, detail_url: 'https://example.com/b',
+    }], null);
+
+    expect(repo.fetchState('official')).toEqual({ source: 'official', next_cursor: null });
+    expect(repo.listPage('official', '', 0, 40).total).toBe(2);
   });
 
   it('按名称和说明搜索并分页', () => {

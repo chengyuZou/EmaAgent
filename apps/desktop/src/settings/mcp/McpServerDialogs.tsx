@@ -28,6 +28,9 @@ interface McpServerFormState {
   url: string;
   env: McpKeyValuePair[];
   headers: McpKeyValuePair[];
+  envPassthrough: string;
+  cwd: string;
+  toolTimeoutSec: string;
 }
 
 function createEmptyMcpFormState(): McpServerFormState {
@@ -39,6 +42,9 @@ function createEmptyMcpFormState(): McpServerFormState {
     url: '',
     env: [],
     headers: [],
+    envPassthrough: '',
+    cwd: '',
+    toolTimeoutSec: '',
   };
 }
 
@@ -68,6 +74,9 @@ function buildMcpServerConfig(form: McpServerFormState): McpServerConfig {
       // argv 的每个元素都有独立语义，空格、引号、反斜杠与空字符串均原样保留。
       args: [...form.args],
       env: mcpPairsToRecord(form.env),
+      ...(form.envPassthrough.trim() ? { envPassthrough: form.envPassthrough.split(',').map(value => value.trim()).filter(Boolean) } : {}),
+      ...(form.cwd.trim() ? { cwd: form.cwd.trim() } : {}),
+      ...(form.toolTimeoutSec ? { toolTimeoutSec: Number(form.toolTimeoutSec) } : {}),
     };
   }
 
@@ -75,6 +84,7 @@ function buildMcpServerConfig(form: McpServerFormState): McpServerConfig {
     type: 'http',
     url: form.url.trim(),
     headers: mcpPairsToRecord(form.headers),
+    ...(form.toolTimeoutSec ? { toolTimeoutSec: Number(form.toolTimeoutSec) } : {}),
   };
 }
 
@@ -92,6 +102,9 @@ function mcpServerConfigToForm(
       url: config.url,
       env: [],
       headers: mcpRecordToPairs(config.headers),
+      envPassthrough: '',
+      cwd: '',
+      toolTimeoutSec: config.toolTimeoutSec?.toString() ?? '',
     };
   }
 
@@ -103,6 +116,9 @@ function mcpServerConfigToForm(
     url: '',
     env: mcpRecordToPairs(config.env),
     headers: [],
+    envPassthrough: config.envPassthrough?.join(', ') ?? '',
+    cwd: config.cwd ?? '',
+    toolTimeoutSec: config.toolTimeoutSec?.toString() ?? '',
   };
 }
 
@@ -181,9 +197,6 @@ export function McpImportDialog({
                 {!r.ok && (
                   <p className="text-xs text-[var(--ema-danger)] mt-0.5">{r.error}</p>
                 )}
-                {r.ok && 'connectError' in r && r.connectError && (
-                  <p className="text-xs text-[var(--ema-warning)] mt-0.5">连接警告：{r.connectError}</p>
-                )}
               </div>
             </div>
           ))}
@@ -240,8 +253,11 @@ export function McpServerFormDialog({
   const [adding,    setAdding]    = useState(false);
   const [addError,  setAddError]  = useState<string | null>(null);
 
-  const formValid = form.name.trim() &&
-    (form.transport === 'stdio' ? form.command.trim() : form.url.trim());
+  const timeout = Number(form.toolTimeoutSec);
+  const timeoutValid = !form.toolTimeoutSec || (Number.isInteger(timeout) && timeout >= 5 && timeout <= 600);
+  const formValid = Boolean(form.name.trim()
+    && (form.transport === 'stdio' ? form.command.trim() : form.url.trim())
+    && timeoutValid);
 
   function closeAdd(): void {
     onOpenChange(false);
@@ -272,7 +288,7 @@ export function McpServerFormDialog({
     try {
       // register() upserts by name; editing re-registers + connects so the new
       // env/headers (API keys, Bearer token) take effect immediately.
-      await useMcpStore.getState().register(form.name.trim(), buildMcpServerConfig(form), undefined, true);
+      await useMcpStore.getState().save(form.name.trim(), buildMcpServerConfig(form), editing?.provenance);
       showToast(editing ? `已更新 ${form.name}` : `已注册 ${form.name}`, { variant: 'success' });
       closeAdd();
     } catch (err) {
@@ -335,6 +351,12 @@ export function McpServerFormDialog({
                 secret
               />
             </Field>
+            <Field label="透传环境变量" description="从 Ema Server 进程按名称读取, 逗号分隔">
+              <Input value={form.envPassthrough} onChange={(e) => setForm({ ...form, envPassthrough: e.target.value })} placeholder="GITHUB_TOKEN, PATH" />
+            </Field>
+            <Field label="工作目录">
+              <Input value={form.cwd} onChange={(e) => setForm({ ...form, cwd: e.target.value })} placeholder="D:\\workspace" />
+            </Field>
           </>
         ) : (
           <>
@@ -356,6 +378,10 @@ export function McpServerFormDialog({
             </Field>
           </>
         )}
+
+        <Field label="Tool 调用超时" description="可选, 单位为秒, 范围 5 - 600">
+          <Input type="number" value={form.toolTimeoutSec} onChange={(e) => setForm({ ...form, toolTimeoutSec: e.target.value })} placeholder="120" />
+        </Field>
 
         {probeResult && (
           <Callout variant={probeResult.ok ? 'success' : 'danger'}>

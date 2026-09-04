@@ -47,12 +47,9 @@ describe('MCP 配置导入', () => {
     })).toThrow(/conflicts with "command"/);
   });
 
-  it('裸 URL 粘贴直接归为单条 http server', () => {
-    expect(parseImportedMcpServers('  https://mcp.example.com/abc/mcp  ', 'my-remote'))
-      .toEqual([{
-        name: 'my-remote',
-        config: { type: 'http', url: 'https://mcp.example.com/abc/mcp' },
-      }]);
+  it('导入只接受 JSON 对象,裸 URL 走添加服务器入口', () => {
+    expect(() => parseImportedMcpServers('https://mcp.example.com/abc/mcp'))
+      .toThrow(/expected a JSON object/);
   });
 
   it('无判别键时按 URL /sse 结尾识别旧 SSE,显式 http 不猜协议', () => {

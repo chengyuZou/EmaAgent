@@ -22,13 +22,8 @@ export interface ImportedServer {
 }
 
 export function parseImportedMcpServers(input: unknown, fallbackName = 'mcp-server'): ImportedServer[] {
-  // 裸 URL 粘贴(ModelScope Remote 页签复制出来的形态)直接归为单条 http server。
   if (typeof input === 'string') {
-    const url = input.trim();
-    if (/^https?:\/\//.test(url)) {
-      return [{ name: fallbackName, config: McpServerConfigSchema.parse({ type: 'http', url }) }];
-    }
-    throw new Error('Invalid MCP config: expected a JSON object or an http(s) URL.');
+    throw new Error('Invalid MCP config: expected a JSON object.');
   }
 
   const root = coerceObject(input);
@@ -88,7 +83,11 @@ function normalizeOne(raw: unknown, name: string): McpServerConfig {
       command: o['command'],
       args:    Array.isArray(o['args']) ? o['args'] : [],
       ...(isStringRecord(o['env']) ? { env: o['env'] } : {}),
+      ...(Array.isArray(o['envPassthrough']) && o['envPassthrough'].every(value => typeof value === 'string')
+        ? { envPassthrough: o['envPassthrough'] }
+        : {}),
       ...(typeof o['cwd'] === 'string' ? { cwd: o['cwd'] } : {}),
+      ...(typeof o['toolTimeoutSec'] === 'number' ? { toolTimeoutSec: o['toolTimeoutSec'] } : {}),
     };
   } else if (typeof o['url'] === 'string') {
     const url = o['url'];
@@ -102,6 +101,7 @@ function normalizeOne(raw: unknown, name: string): McpServerConfig {
       type: 'http',
       url,
       ...(isStringRecord(o['headers']) ? { headers: o['headers'] } : {}),
+      ...(typeof o['toolTimeoutSec'] === 'number' ? { toolTimeoutSec: o['toolTimeoutSec'] } : {}),
     };
   } else {
     throw new Error(`Invalid MCP server "${name}": needs a "command" (stdio) or Streamable HTTP "url".`);

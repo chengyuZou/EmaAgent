@@ -415,6 +415,9 @@ importers:
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage
+      sharp:
+        specifier: ^0.33.5
+        version: 0.33.5
       zod:
         specifier: ^4
         version: 4.4.3
@@ -547,9 +550,6 @@ importers:
 
   src/characters:
     dependencies:
-      '@ema-agent/settings':
-        specifier: workspace:*
-        version: link:../settings
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage
@@ -713,13 +713,6 @@ importers:
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
   src/git:
-    dependencies:
-      '@ema-agent/settings':
-        specifier: workspace:*
-        version: link:../settings
-      zod:
-        specifier: ^4
-        version: 4.4.3
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -1121,9 +1114,6 @@ importers:
 
   src/speech:
     dependencies:
-      '@ema-agent/settings':
-        specifier: workspace:*
-        version: link:../settings
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage
@@ -1133,9 +1123,6 @@ importers:
       '@ema-agent/usage':
         specifier: workspace:*
         version: link:../usage
-      zod:
-        specifier: ^4
-        version: 4.4.3
     devDependencies:
       '@types/node':
         specifier: ^20.0.0

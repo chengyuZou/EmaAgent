@@ -2,6 +2,7 @@
 import type { CharacterEvent } from '@ema-agent/characters';
 import type { KnowledgeEvent } from '@ema-agent/knowledge';
 import type { MemoryEvent } from '@ema-agent/memory';
+import type { McpConnection, McpMarketSource } from '@ema-agent/mcp';
 import type { SpeechEvent } from '@ema-agent/speech';
 import type { SystemWarningEvent } from '@ema-agent/system';
 import type { BackgroundProcessEvent } from '@ema-agent/tools';
@@ -14,19 +15,6 @@ export interface PublishedTurnEvent {
   /** Turn 内从 1 开始的事件游标；客户端提交最后已消费游标，服务端只发送更大值。 */
   readonly cursor: number;
   readonly event: TurnSseEvent;
-}
-
-/** MCP stdio 拉起的批准请求：应用级询问，不进入任何 Session 的交互队列。 */
-export interface McpStdioApprovalRequest {
-  readonly requestId: string;
-  readonly operation: 'connect' | 'probe';
-  readonly serverName: string;
-  readonly command: string;
-  readonly args: readonly string[];
-  readonly cwd?: string;
-  /** 环境变量只展示键名；值可能含密钥，绝不进事件。 */
-  readonly environmentKeys: readonly string[];
-  readonly createdAt: number;
 }
 
 /** Turn 生命周期的应用级回声（侧栏等跨 Session 视图消费）；事件本体与 Turn 流内一致。 */
@@ -45,7 +33,9 @@ export type AppEvent =
   | SystemWarningEvent
   | { readonly type: 'session_title_updated'; readonly sessionId: string; readonly title: string }
   | { readonly type: 'settings_changed'; readonly changedKeys: readonly string[]; readonly revision: number }
-  | { readonly type: 'mcp_stdio_launch_required'; readonly request: McpStdioApprovalRequest };
+  | { readonly type: 'skills_changed' }
+  | { readonly type: 'mcp_connection_changed'; readonly connection: McpConnection }
+  | { readonly type: 'mcp_market_changed'; readonly source: McpMarketSource };
 
 export class EventHub {
   private readonly turnSubscribers = new Map<string, Set<(published: PublishedTurnEvent) => void>>();

@@ -2,13 +2,16 @@
 import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
-import crypto from 'node:crypto';
 import { registerBuiltinTools } from '@ema-agent/builtin-tools';
 import {
+  McpMarketService,
+  McpMarketStore,
+  McpLocalCommandEnvironment,
+  OfficialRegistryAdapter,
   McpRegistry,
-  McpRegistrySourceStore,
   McpServerStore,
-  type McpStdioLaunchIntent,
+  type McpConnection,
+  type McpMarketSource,
 } from '@ema-agent/mcp';
 import {
   CommandRunner,
@@ -19,17 +22,20 @@ import {
 import type { SessionStore } from '@ema-agent/session';
 import type { SettingsStore } from '@ema-agent/settings';
 import {
+  createMarketInstaller,
+  createMarketService,
   createSkillRegistry,
   createSkillStore,
-  SkillSiteStore,
+  type MarketInstaller,
+  type MarketService,
   type SkillRegistry,
   type SkillStore,
 } from '@ema-agent/skills';
 import {
-  McpRegistrySourcesRepo,
+  McpMarketEntriesRepo,
   McpServersRepo,
+  SkillEnablementRepo,
   SkillsRepo,
-  SkillSitesRepo,
   ToolExecutionsRepo,
   BackgroundProcessesRepo,
   type Database,
@@ -52,63 +58,12 @@ import {
   profileDbPath,
   sqliteFileSet,
 } from '../platform/paths.js';
-import type { McpStdioApprovalRequest } from '../sse/eventHub.js';
 
 /** 内置技能铺设：目标目录不存在才整目录复制；已存在即不动（内置内容由宿主升级时整批替换）。 */
 function installBuiltinSkills(sourceRoot: string, targetRoot: string): void {
   if (!fs.existsSync(sourceRoot) || fs.existsSync(targetRoot)) return;
   fs.mkdirSync(path.dirname(targetRoot), { recursive: true });
   fs.cpSync(sourceRoot, targetRoot, { recursive: true });
-}
-
-/** 批准请求线上形状归 sse/eventHub 的 AppEvent 域；这里只负责通道机制。 */
-
-const STDIO_APPROVAL_TIMEOUT_MS = 60_000;
-
-/**
- * 非 Turn 的用户批准通道（CLAUDE.md §9：stdio 拉起必须过门禁，批准完整启动意图）。
- * ask 挂起直到路由回答或超时拒绝；与 Turn 内的 SessionInteractionQueue 不同域——
- * MCP 启动是应用级管理动作，不进 Session FIFO。
- */
-export class McpStdioApprovalChannel {
-  private readonly pending = new Map<string, {
-    resolve: (approved: boolean) => void;
-    timer: ReturnType<typeof setTimeout>;
-  }>();
-
-  constructor(private readonly emitRequest: (request: McpStdioApprovalRequest) => void) {}
-
-  ask(intent: McpStdioLaunchIntent): Promise<boolean> {
-    const requestId = crypto.randomUUID();
-    const request: McpStdioApprovalRequest = {
-      requestId,
-      operation: intent.operation,
-      serverName: intent.serverName,
-      command: intent.command,
-      args: [...intent.args],
-      ...(intent.cwd ? { cwd: intent.cwd } : {}),
-      environmentKeys: Object.keys(intent.environment ?? {}).sort(),
-      createdAt: Date.now(),
-    };
-    return new Promise<boolean>(resolve => {
-      const timer = setTimeout(() => {
-        this.pending.delete(requestId);
-        resolve(false);
-      }, STDIO_APPROVAL_TIMEOUT_MS);
-      this.pending.set(requestId, { resolve, timer });
-      this.emitRequest(request);
-    });
-  }
-
-  /** 路由回答；未知或已超时的 requestId 返回 false。 */
-  answer(requestId: string, approved: boolean): boolean {
-    const entry = this.pending.get(requestId);
-    if (!entry) return false;
-    clearTimeout(entry.timer);
-    this.pending.delete(requestId);
-    entry.resolve(approved);
-    return true;
-  }
 }
 
 export interface ToolsDeps {
@@ -118,7 +73,8 @@ export interface ToolsDeps {
   readonly session: SessionStore;
   readonly settings: SettingsStore;
   readonly emitBackgroundEvent: (event: BackgroundProcessEvent) => void;
-  readonly emitStdioApproval: (request: McpStdioApprovalRequest) => void;
+  readonly emitMcpConnection: (connection: McpConnection) => void;
+  readonly emitMcpMarket: (source: McpMarketSource) => void;
 }
 
 export interface ToolsComposition {
@@ -128,13 +84,16 @@ export interface ToolsComposition {
   readonly toolResultCleaner: ToolResultCleaner;
   readonly mcp: McpRegistry;
   readonly mcpServers: McpServerStore;
-  readonly mcpSources: McpRegistrySourceStore;
+  readonly mcpMarket: McpMarketService;
+  readonly mcpEnvironment: McpLocalCommandEnvironment;
   readonly skills: SkillRegistry;
   readonly skillStore: SkillStore;
-  /** 技能市场站点注册表与安装落位根目录（staging 与 rename 同卷的约束来源）。 */
-  readonly skillSites: SkillSiteStore;
+  /** builtin/user 逐技能启停事实（skill_enablement 表）。 */
+  readonly skillEnablement: SkillEnablementRepo;
+  /** 技能市场聚合服务与安装器（SkillHub/ClawHub 真实 Adapter）。 */
+  readonly skillMarket: MarketService;
+  readonly skillMarketInstaller: MarketInstaller;
   readonly skillUserRoot: string;
-  readonly stdioApprovals: McpStdioApprovalChannel;
   readonly sandboxStatus: SandboxStatus;
   /** 按 Session 缓存的命令运行器；workspaceRoot 变化后必须 invalidate。 */
   getCommandRunner(sessionId: string): CommandRunner | undefined;
@@ -149,13 +108,12 @@ export interface ToolsComposition {
 }
 
 /** 不安全开关只服务本地开发；正式构建发现任一开关直接拒绝启动。 */
-function readUnsafeOverrides(env: NodeJS.ProcessEnv): { shell: boolean; localMcpStdio: boolean; network: boolean } {
+function readUnsafeOverrides(env: NodeJS.ProcessEnv): { shell: boolean; network: boolean } {
   const overrides = {
     shell: env.AGEN_UNSAFE_SHELL === '1',
-    localMcpStdio: env.AGEN_UNSAFE_MCP_STDIO === '1',
     network: env.AGEN_UNSAFE_SANDBOX_NETWORK === '1',
   };
-  if (env.NODE_ENV === 'production' && (overrides.shell || overrides.localMcpStdio || overrides.network)) {
+  if (env.NODE_ENV === 'production' && (overrides.shell || overrides.network)) {
     throw new Error('正式构建禁止使用 AGEN_UNSAFE_* 沙箱绕过开关');
   }
   return overrides;
@@ -173,9 +131,6 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
     detection.backend === 'unisolated' && overrides.shell
       ? 'Shell 正在以无 OS 隔离运行（AGEN_UNSAFE_SHELL=1）。'
       : undefined,
-    overrides.localMcpStdio
-      ? '本地 stdio MCP 进程正在以无 OS 隔离运行（AGEN_UNSAFE_MCP_STDIO=1）。'
-      : undefined,
     overrides.network
       ? '沙箱内 Shell 命令具有完全网络访问（AGEN_UNSAFE_SANDBOX_NETWORK=1）。'
       : undefined,
@@ -188,7 +143,6 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
       : detection.backend === 'unisolated'
         ? 'unsafe-override'
         : 'isolated',
-    localMcpStdio: overrides.localMcpStdio ? 'unsafe-override' : 'disabled',
     sandboxNetwork: overrides.network ? 'full' : 'none',
     ...(warnings.length > 0 ? { warning: warnings.join(' ') } : {}),
   });
@@ -247,25 +201,31 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
     return store;
   };
 
-  // ── MCP：缓存预填（不拉起进程）+ stdio 批准通道 ─────────────────────────────
+  // ── MCP：缓存预填后并发连接启用项；市场缓存独立于已安装 Server。 ─────────────
   const mcpServers = new McpServerStore(new McpServersRepo(profileDb.sqlite));
-  const stdioApprovals = new McpStdioApprovalChannel(deps.emitStdioApproval);
   const mcp = new McpRegistry(
     mcpServers,
     registry,
-    intent => stdioApprovals.ask(intent),
-    overrides.localMcpStdio,
+    connection => deps.emitMcpConnection(connection),
   );
   mcp.primeFromCache();
-  const mcpSources = new McpRegistrySourceStore(new McpRegistrySourcesRepo(profileDb.sqlite));
-  mcpSources.ensureOfficialSeed();
+  mcp.connectEnabledInBackground();
+  const mcpMarket = new McpMarketService(
+    new McpMarketStore(new McpMarketEntriesRepo(profileDb.sqlite)),
+    [new OfficialRegistryAdapter()],
+    mcp,
+    source => deps.emitMcpMarket(source),
+  );
+  const mcpEnvironment = new McpLocalCommandEnvironment();
 
   // ── Skill：目录是事实源，SQL 只是索引与溯源 ─────────────────────────────────
   // 内置技能由宿主打包资源提供；开发期从仓库种子目录铺到 profile，目标已存在即不动。
   installBuiltinSkills(bundledSkillsSource(), builtinSkillsDir());
   const skillUserRoot = path.join(profileDir(), 'skills');
+  const skillEnablement = new SkillEnablementRepo(profileDb.sqlite);
   const skillStore = createSkillStore({
     repo: new SkillsRepo(profileDb.sqlite),
+    enablement: skillEnablement,
     userRoot: skillUserRoot,
   });
   const skills = createSkillRegistry({
@@ -274,11 +234,19 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
     store: skillStore,
   });
   // builtin+user 启动时装载一次；project 技能按工作区在 list() 时现扫。
+  // 装载前先清掉安装中途死掉留下的孤儿 staging 目录。
   // 首根 Turn 的 list() 会等待这次装载，无需在此阻塞装配。
-  void skills.refreshCore().catch(error => {
-    console.warn('[skills] 启动装载失败（Skill 目录本轮为空）:', error);
+  void skillStore.sweepOrphanStaging()
+    .then(() => skills.refreshCore())
+    .catch(error => {
+      console.warn('[skills] 启动装载失败（Skill 目录本轮为空）:', error);
+    });
+  const skillMarket = createMarketService({ userRoot: skillUserRoot });
+  const skillMarketInstaller = createMarketInstaller({
+    store: skillStore,
+    userRoot: skillUserRoot,
+    market: skillMarket,
   });
-  const skillSites = new SkillSiteStore(new SkillSitesRepo(profileDb.sqlite));
 
   return {
     registry,
@@ -287,12 +255,14 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
     toolResultCleaner: new ToolResultCleaner(sessionsDir),
     mcp,
     mcpServers,
-    mcpSources,
+    mcpMarket,
+    mcpEnvironment,
     skills,
     skillStore,
-    skillSites,
+    skillEnablement,
+    skillMarket,
+    skillMarketInstaller,
     skillUserRoot,
-    stdioApprovals,
     sandboxStatus,
     getCommandRunner,
     invalidateSessionRunner: sessionId => { runners.delete(sessionId); },

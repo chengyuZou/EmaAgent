@@ -28,7 +28,8 @@ export function ServerRow({
   onEdit:           () => void;
 }): JSX.Element {
   const st = STATUS_BADGE[server.connection.status as McpConnectionStatus] ?? STATUS_BADGE.disconnected;
-  const tools = server.connection.tools;
+  const live = server.connection.status === 'connected';
+  const tools = live ? server.connection.tools : (server.cachedTools ?? []);
   const toolCount = tools.length;
   const [expanded, setExpanded]     = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -60,7 +61,7 @@ export function ServerRow({
           label: '重新连接',
           icon: 'i-mdi:lan-connect',
           onSelect: () => void useMcpStore.getState().connect(server.name)
-            .then(() => showToast(`${server.name} 已连接`, { variant: 'success' }))
+            .then(() => showToast(`${server.name} 正在连接`, { variant: 'success' }))
             .catch((err: Error) => showToast(`连接失败: ${err.message}`, { variant: 'danger' })),
         },
     { kind: 'separator' as const },
@@ -109,7 +110,7 @@ export function ServerRow({
 
           {server.connection.status === 'failed' && (
             <p className="text-xs text-[var(--ema-danger)] mt-1 line-clamp-1">
-              连接错误
+              {server.connection.error ?? '连接失败'}
             </p>
           )}
 
@@ -164,7 +165,7 @@ export function ServerRow({
             <p className="text-xs font-medium text-[var(--ema-text-secondary)] mb-1">连接配置</p>
             <pre className="text-xs font-mono whitespace-pre-wrap break-words rounded-lg p-2.5
                             bg-[var(--ema-surface-0)] text-[var(--ema-text-secondary)] border border-[var(--ema-border)] selectable">
-              {JSON.stringify(server.config, null, 2)}
+              {configSummary(server.config)}
             </pre>
           </div>
 
@@ -174,7 +175,7 @@ export function ServerRow({
               工具 ({toolCount})
             </p>
             {toolCount === 0 ? (
-              <p className="text-xs text-[var(--ema-text-tertiary)]">未连接或无工具（连接后才能读取）</p>
+              <p className="text-xs text-[var(--ema-text-tertiary)]">尚未发现工具</p>
             ) : (
               <div className="flex flex-col gap-2">
                 {tools.map((t: McpServerItem['connection']['tools'][number]) => (
@@ -196,4 +197,24 @@ export function ServerRow({
       </Dialog>
     </Card>
   );
+}
+
+function configSummary(config: McpServerItem['config']): string {
+  if (config.type === 'http') {
+    return [
+      `transport: Streamable HTTP`,
+      `url: ${config.url}`,
+      `headers: ${Object.keys(config.headers ?? {}).join(', ') || '无'}`,
+      `tool timeout: ${config.toolTimeoutSec ?? 120}s`,
+    ].join('\n');
+  }
+  return [
+    'transport: stdio',
+    `command: ${config.command}`,
+    `args: ${config.args.join(' ')}`,
+    `cwd: ${config.cwd ?? '默认'}`,
+    `environment: ${Object.keys(config.env ?? {}).join(', ') || '无'}`,
+    `passthrough: ${config.envPassthrough?.join(', ') || '无'}`,
+    `tool timeout: ${config.toolTimeoutSec ?? 120}s`,
+  ].join('\n');
 }

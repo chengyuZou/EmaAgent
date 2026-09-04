@@ -1,4 +1,4 @@
-// MCP 存储入口负责服务器配置与工具缓存的持久化转换和运行时校验。
+// MCP 存储入口负责服务器配置与工具缓存的持久化转换和读取校验。
 import { Buffer }                from 'node:buffer';
 import { randomUUID }            from 'node:crypto';
 import type { McpServersRepo, McpServerRow } from '@ema-agent/storage';
@@ -29,7 +29,6 @@ export class McpServerStore {
   register(
     name: string,
     config: McpServerConfig,
-    sourceUrl?: string,
     provenance: McpInstallProvenance = { sourceKind: 'manual' },
   ): string {
     const trustedProvenance = McpInstallProvenanceSchema.parse(provenance);
@@ -40,7 +39,6 @@ export class McpServerStore {
     if (existing) {
       this.repo.update(existing.id, {
         configJson,
-        sourceUrl:  sourceUrl ?? null,
         ...provenancePatch(trustedProvenance),
       });
       return existing.id;
@@ -48,14 +46,12 @@ export class McpServerStore {
     this.repo.insert({
       id,
       name,
-      source_url:   sourceUrl ?? null,
       install_source: trustedProvenance.sourceKind,
-      registry_source_id: trustedProvenance.sourceKind === 'registry' ? trustedProvenance.registrySourceId : null,
-      registry_entry_id:  trustedProvenance.sourceKind === 'registry' ? trustedProvenance.registryEntryId  : null,
-      registry_version:   trustedProvenance.sourceKind === 'registry' ? trustedProvenance.registryVersion  : null,
+      market_entry_id: trustedProvenance.sourceKind === 'official'
+        ? trustedProvenance.marketEntryId
+        : null,
       config_json:  configJson,
       tools_cache:  null,
-      cached_at:    0,
       enabled:      1,
       installed_at: Date.now(),
     });
@@ -67,7 +63,7 @@ export class McpServerStore {
     const row = this.repo.findByName(name);
     if (!row) return;
     assertMcpToolSchemaLimits(name, tools);
-    this.repo.update(row.id, { toolsCache: JSON.stringify(tools), cachedAt: Date.now() });
+    this.repo.update(row.id, { toolsCache: JSON.stringify(tools) });
   }
 
   setEnabled(name: string, enabled: boolean): void {
@@ -118,30 +114,18 @@ export class McpServerStore {
         cachedTools = undefined;
       }
     }
-    const parsedProvenance = McpInstallProvenanceSchema.safeParse(
-      row.install_source === 'registry'
-        && row.registry_source_id && row.registry_entry_id && row.registry_version
-        ? {
-            sourceKind: 'registry',
-            registrySourceId: row.registry_source_id,
-            registryEntryId:  row.registry_entry_id,
-            registryVersion:  row.registry_version,
-          }
-        : { sourceKind: row.install_source === 'import' ? 'import' : 'manual' },
+    const parsedProvenance = McpInstallProvenanceSchema.parse(
+      row.install_source === 'official' && row.market_entry_id
+        ? { sourceKind: row.install_source, marketEntryId: row.market_entry_id }
+        : { sourceKind: row.install_source },
     );
     return {
       id:          row.id,
       name:        row.name,
-      sourceUrl:   row.source_url ?? undefined,
-      // 损坏或旧版不完整 provenance 降级为 manual,绝不虚报"registry 版本已锁定"。
-      provenance: parsedProvenance.success
-        ? parsedProvenance.data
-        : { sourceKind: 'manual' },
+      provenance: parsedProvenance,
       config:      McpServerConfigSchema.parse(rawConfig),
       cachedTools,
-      cachedAt:    row.cached_at,
       enabled:     row.enabled === 1,
-      installedAt: row.installed_at,
     };
   }
 }
@@ -149,8 +133,8 @@ export class McpServerStore {
 function provenancePatch(provenance: McpInstallProvenance) {
   return {
     installSource: provenance.sourceKind,
-    registrySourceId: provenance.sourceKind === 'registry' ? provenance.registrySourceId : null,
-    registryEntryId:  provenance.sourceKind === 'registry' ? provenance.registryEntryId  : null,
-    registryVersion:  provenance.sourceKind === 'registry' ? provenance.registryVersion  : null,
+    marketEntryId: provenance.sourceKind === 'official'
+      ? provenance.marketEntryId
+      : null,
   };
 }

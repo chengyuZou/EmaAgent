@@ -27,7 +27,7 @@ export const McpStdioConfigSchema = z.object({
 
 export const McpHttpConfigSchema = z.object({
   type:    z.literal('http'),
-  url:     z.string().url(),
+  url:     z.url(),
   headers: z.record(z.string(), z.string()).optional(),
   toolTimeoutSec: TOOL_TIMEOUT_SCHEMA,
 });
@@ -43,51 +43,31 @@ export type McpServerConfig = z.infer<typeof McpServerConfigSchema>;
 
 // ── 安装溯源 ─────────────────────────────────────────────────────────────────
 //
-// 只回答"这条 server 记录当初从哪来",供更新检查、来源展示与审计;
-// 不参与运行身份。registry 形态的启动规格锁定在 config_json 本体
-// (args 即 pkg@version),不再另存 package_registry/name/version 冗余列。
+// 只回答"这条 server 记录当初从哪来". Official 的 marketEntryId
+// 供市场页判断条目是否已经添加,不参与连接身份。
 
 export const McpInstallProvenanceSchema = z.discriminatedUnion('sourceKind', [
   z.object({ sourceKind: z.literal('manual') }),
   z.object({ sourceKind: z.literal('import') }),
   z.object({
-    sourceKind:       z.literal('registry'),
-    /** mcp_registry_sources 表 id;源被删则悬空,UI 显示"来源已删除"。 */
-    registrySourceId: z.string().min(1).max(200),
-    /** Registry 条目的 name,如 "ac.inference.sh/mcp"。 */
-    registryEntryId:  z.string().min(1).max(300),
-    /** 安装时锁定的精确版本。 */
-    registryVersion:  z.string().min(1).max(128),
+    sourceKind: z.literal('official'),
+    marketEntryId: z.string().min(1).max(500),
   }),
 ]);
 
 export type McpInstallProvenance = z.infer<typeof McpInstallProvenanceSchema>;
-
-/** 一次 stdio 子进程启动的完整、不可变授权意图。 */
-export interface McpStdioLaunchIntent {
-  readonly operation: 'connect' | 'probe';
-  readonly serverName: string;
-  readonly command: string;
-  readonly args: readonly string[];
-  readonly cwd?: string;
-  /** 仅供授权适配器做脱敏展示;执行仍使用同一份冻结配置中的真实值。 */
-  readonly environment?: Readonly<Record<string, string>>;
-}
 
 // ── 持久化服务器记录 ───────────────────────────────────────────────────────────
 
 export interface McpServerRecord {
   id:          string;
   name:        string;           // 用户可见别名
-  sourceUrl?:  string;           // 来源页面 URL(如 mcp.so 详情页,仅 UI 回链)
   provenance:  McpInstallProvenance;
   config:      McpServerConfig;  // 解析后的传输配置(明文 domain 形式)
   /** 最近一次成功 listTools 的工具 - 启动时不连接即可 priming 注册表,
    *  并在服务器离线时展示工具。 */
   cachedTools?: McpToolInfo[];
-  cachedAt:    number;           // 毫秒;0 = 从未缓存
   enabled:     boolean;
-  installedAt: number;
 }
 
 // ── 连接状态机 ──────────────────────────────────────────────────────────────────
@@ -122,7 +102,6 @@ export interface McpConnection {
   status:     McpConnectionStatus;
   tools:      McpToolInfo[];
   error?:     string;
-  connectedAt?: number;
 }
 
 export interface McpProbeResult {

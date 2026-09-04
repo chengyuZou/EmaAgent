@@ -1,4 +1,4 @@
-// 这里提供 MCP Registry 使用的超时、取消、并发和连接状态基础辅助函数。
+// 这里提供 MCP 连接使用的超时、取消和状态辅助函数。
 
 import type { OpenedConnection } from './connection.js';
 import type { McpConnection, McpToolInfo } from './types.js';
@@ -12,38 +12,17 @@ export function connectionInfo(
   status: McpConnection['status'],
   tools: readonly McpToolInfo[],
   error?: string,
-  connectedAt?: number,
 ): McpConnection {
   return {
     serverName,
     status,
     tools: [...tools],
     ...(error ? { error } : {}),
-    ...(connectedAt !== undefined ? { connectedAt } : {}),
   };
 }
 
 export function copyConnection(info: McpConnection): McpConnection {
   return { ...info, tools: [...info.tools] };
-}
-
-export async function runWithConcurrency<T>(
-  items: readonly T[],
-  concurrency: number,
-  worker: (item: T) => Promise<void>,
-): Promise<void> {
-  let nextIndex = 0;
-  const workers = Array.from(
-    { length: Math.min(concurrency, items.length) },
-    async () => {
-      while (nextIndex < items.length) {
-        const item = items[nextIndex];
-        nextIndex += 1;
-        if (item !== undefined) await worker(item);
-      }
-    },
-  );
-  await Promise.all(workers);
 }
 
 export async function withTimeout<T>(

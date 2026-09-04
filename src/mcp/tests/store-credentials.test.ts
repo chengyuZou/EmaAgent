@@ -80,26 +80,17 @@ describe('McpServerStore 凭据边界', () => {
     });
   });
 
-  it('registry provenance 三列往返;损坏 provenance 降级 manual', () => {
+  it('固定市场 provenance 往返', () => {
     const repo = memoryRepo();
     const store = new McpServerStore(repo as never);
 
-    store.register('marked', { type: 'http', url: 'https://a.example/mcp' }, undefined, {
-      sourceKind: 'registry',
-      registrySourceId: 'official',
-      registryEntryId: 'io.example/x',
-      registryVersion: '1.0.0',
+    store.register('marked', { type: 'http', url: 'https://a.example/mcp' }, {
+      sourceKind: 'official',
+      marketEntryId: 'io.example/x',
     });
     expect(store.findByName('marked')!.provenance).toEqual({
-      sourceKind: 'registry',
-      registrySourceId: 'official',
-      registryEntryId: 'io.example/x',
-      registryVersion: '1.0.0',
+      sourceKind: 'official',
+      marketEntryId: 'io.example/x',
     });
-
-    // 三列缺一视为损坏,降级 manual
-    const row = repo.findByName('marked')!;
-    row.registry_version = null;
-    expect(store.findByName('marked')!.provenance).toEqual({ sourceKind: 'manual' });
   });
 });
