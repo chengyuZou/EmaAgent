@@ -2,7 +2,8 @@
 import type { SqliteDb } from '../../database/database.js';
 import type { AgentRunMessageRow } from './agent-run-messages.js';
 import type { AgentRunRow } from './agent-runs.js';
-import type { AttachmentRow } from './attachments.js';
+import type { AttachmentImageRow } from './attachmentImages.js';
+import type { AttachmentPastedTextRow } from './attachmentPastedTexts.js';
 import type { BackgroundProcessRow } from './backgroundProcesses.js';
 import type { MessageRow } from './messages.js';
 import type { SessionRow } from './sessions.js';
@@ -44,7 +45,8 @@ export interface SessionBackupRows {
   readonly agentRunMessages: Iterable<AgentRunMessageRow>;
   readonly toolExecutions: Iterable<SessionBackupToolExecutionRow>;
   readonly backgroundProcesses: Iterable<BackgroundProcessRow>;
-  readonly attachments: Iterable<AttachmentRow>;
+  readonly attachmentImages: Iterable<AttachmentImageRow>;
+  readonly attachmentPastedTexts: Iterable<AttachmentPastedTextRow>;
   readonly speechOutputs: Iterable<SpeechOutputRow>;
   readonly speechSegments: Iterable<SpeechSegmentRow>;
   readonly usageRecords: Iterable<UsageRecordRow>;
@@ -114,8 +116,12 @@ export class SessionBackupReader {
           WHERE session_id = ?
           ORDER BY created_at ASC, id ASC
         `, sessionId),
-        attachments: this.iterate<AttachmentRow>(
-          'SELECT * FROM attachments WHERE session_id = ? ORDER BY created_at ASC, id ASC',
+        attachmentImages: this.iterate<AttachmentImageRow>(
+          'SELECT * FROM attachment_images WHERE session_id = ? ORDER BY created_at ASC, path ASC',
+          sessionId,
+        ),
+        attachmentPastedTexts: this.iterate<AttachmentPastedTextRow>(
+          'SELECT * FROM attachment_pasted_texts WHERE session_id = ? ORDER BY created_at ASC, path ASC',
           sessionId,
         ),
         speechOutputs: this.iterate<SpeechOutputRow>(`
@@ -297,18 +303,23 @@ export class SessionBackupRestorer {
       );
     }
 
-    const insertAttachment = this.db.prepare(`
-      INSERT INTO attachments (
-        id, turn_id, session_id, kind, name, mime,
-        source_path, byte_size, source_modified_at,
-        image_path, image_byte_size, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    const insertAttachmentImage = this.db.prepare(`
+      INSERT INTO attachment_images (path, session_id, name, byte_size, created_at)
+      VALUES (?, ?, ?, ?, ?)
     `);
-    for (const row of rows.attachments) {
-      insertAttachment.run(
-        row.id, row.turn_id, session.id, row.kind, row.name, row.mime,
-        row.source_path, row.byte_size, row.source_modified_at,
-        row.image_path, row.image_byte_size, row.created_at,
+    for (const row of rows.attachmentImages) {
+      insertAttachmentImage.run(
+        row.path, session.id, row.name, row.byte_size, row.created_at,
+      );
+    }
+
+    const insertAttachmentPastedText = this.db.prepare(`
+      INSERT INTO attachment_pasted_texts (path, session_id, byte_size, created_at)
+      VALUES (?, ?, ?, ?)
+    `);
+    for (const row of rows.attachmentPastedTexts) {
+      insertAttachmentPastedText.run(
+        row.path, session.id, row.byte_size, row.created_at,
       );
     }
 

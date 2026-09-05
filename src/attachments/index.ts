@@ -1,32 +1,23 @@
-// Attachments 包统一出口：只导出真实公共入口，内部实现不穿透。
-
 export { AttachmentStore } from './attachmentStore.js';
-export type { AttachmentStoreDeps } from './attachmentStore.js';
-export {
-  resolveAttachmentReferences,
-} from './modelContent.js';
-export type {
-  DescribeAttachmentImage,
-  ResolveAttachmentOptions,
-} from './modelContent.js';
-export { VisionDescriptionCache } from './visionDescriptionCache.js';
+export type { AttachmentStoreDeps, AttachmentSweepReport } from './attachmentStore.js';
+export { ImageStore } from './imageStore.js';
+export type { SavedImage } from './imageStore.js';
+export { PastedTextStore } from './pasteStore.js';
+export type { SavedPastedText } from './pasteStore.js';
+export { VisionDescriptionCache } from './visionCache.js';
 export type {
   VisionDescriptionProducer,
-} from './visionDescriptionCache.js';
-export { AttachmentCacheMaintenance } from './cacheMaintenance.js';
-export type {
-  AttachmentCacheMaintenanceOptions,
-  AttachmentCacheMaintenanceReport,
-} from './cacheMaintenance.js';
-export { AttachmentLimitError, AttachmentPreparationError } from './errors.js';
-export type { TurnAttachmentInput } from './protocol.js';
-export type {
-  Attachment,
-  AttachmentSourceStatus,
-  FileAttachment,
-  ImageAttachment,
-  InspectedAttachment,
-} from './types.js';
+  VisionDescriptionCacheSweepOptions,
+  VisionDescriptionCacheSweepReport,
+} from './visionCache.js';
+export { isLlmImagePath, mimeForPath } from './types.js';
+export type { StoreSweepReport } from './types.js';
+export {
+  IMAGE_NORMALIZE_MAX_BYTES,
+  IMAGE_NORMALIZE_MAX_DIMENSION,
+  PASTE_TEXT_MIN_CHARS,
+} from './limits.js';
+export { AttachmentPreparationError } from './errors.js';
 export {
   DEFAULT_ATTACHMENT_CACHE_SETTINGS,
   attachmentCacheMaxBytesSetting,

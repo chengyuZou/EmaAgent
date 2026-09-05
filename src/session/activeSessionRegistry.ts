@@ -94,6 +94,13 @@ export class ActiveSessionRegistry {
     return this.executions.size;
   }
 
+  /** 切换全局角色前停止全部根 Turn 与手动 Compact，并等待各执行所有者完成收尾。 */
+  async abortAll(): Promise<void> {
+    const active = [...this.executions.entries()];
+    for (const [, execution] of active) execution.abortController.abort();
+    await Promise.all(active.map(([sessionId]) => this.waitUntilIdle(sessionId)));
+  }
+
   /**
    * 订阅活跃执行数量，并立即收到当前快照。唯一的订阅方是 Server 后台
    * 维护调度；notifyListeners/notifyListener 是它的扇出与单播辅助。

@@ -451,20 +451,8 @@ export class SessionsRepo {
          ORDER BY source.created_at ASC, source.id ASC`,
       ).run(newId);
 
-      // 5. 复制 attachments--新 id,turn_id 重映射,session_id = 新。
-      //    不复制的话,fork 中用户消息的 attachment 角标会消失
-      //    (attachmentStore.listByTurn(newTurnId) 会是空的)。
-      this.db.prepare(
-        `INSERT INTO attachments
-           (id, turn_id, session_id, kind, name, mime, source_path, byte_size, source_modified_at,
-            image_path, image_byte_size, created_at)
-         SELECT lower(hex(randomblob(16))), m.new_id, ?, ta.kind, ta.name, ta.mime,
-                ta.source_path, ta.byte_size, ta.source_modified_at,
-                ta.image_path, ta.image_byte_size, ta.created_at
-         FROM attachments ta
-         JOIN _turn_id_map m ON m.old_id = ta.turn_id`,
-      ).run(newId);
-
+      // 附件账本不复制:消息块里的 path 是全局主键,fork 的消息引用源 Session
+      // 的同一批受管文件;源 Session 删除后这些 path 失效,投影自会降级。
       this.db.prepare('DROP TABLE _message_id_map').run();
       this.db.prepare('DROP TABLE _turn_id_map').run();
     })();

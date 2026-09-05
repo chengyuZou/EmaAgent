@@ -5,8 +5,6 @@ import type { ModelCapability } from './types.js';
 
 export const MODEL_BINDING_MODULES = [
   'memory-llm',
-  'kb-embed',
-  'kb-rerank',
   'title',
   'lightrag-embed',
   'lightrag-llm',
@@ -20,8 +18,6 @@ export type ModelBindingModule = typeof MODEL_BINDING_MODULES[number];
 export const MODEL_BINDING_CAPABILITIES: Readonly<Record<ModelBindingModule, ModelCapability>> =
   Object.freeze({
     'memory-llm': 'llm',
-    'kb-embed': 'embed',
-    'kb-rerank': 'rerank',
     'title': 'llm',
     'lightrag-llm': 'llm',
     'lightrag-embed': 'embed',

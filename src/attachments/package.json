@@ -22,10 +22,10 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@ema-agent/llm": "workspace:*",
     "@ema-agent/session": "workspace:*",
     "@ema-agent/settings": "workspace:*",
     "@ema-agent/storage": "workspace:*",
+    "sharp": "^0.33.5",
     "zod": "^4"
   },
   "devDependencies": {

@@ -36,14 +36,6 @@ CREATE TABLE agent_runs (
   completed_at        INTEGER
 );
 
-CREATE TABLE attachment_vision_descriptions (
-  attachment_id       TEXT PRIMARY KEY REFERENCES attachments(id) ON DELETE CASCADE,
-  text                TEXT NOT NULL,
-  byte_size           INTEGER NOT NULL CHECK(byte_size >= 0),
-  created_at          INTEGER NOT NULL,
-  last_accessed_at    INTEGER NOT NULL
-);
-
 CREATE TABLE background_processes (
   id                    TEXT PRIMARY KEY,
   session_id            TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
@@ -238,22 +230,34 @@ CREATE TABLE tool_executions (
   updated_at     INTEGER NOT NULL
 , agent_run_id TEXT REFERENCES agent_runs(id) ON DELETE SET NULL);
 
-CREATE TABLE attachments (
-  id                 TEXT PRIMARY KEY,
-  turn_id            TEXT NOT NULL REFERENCES turns(id)    ON DELETE CASCADE,
-  session_id         TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  kind               TEXT NOT NULL CHECK(kind IN ('file', 'image')),
-  name               TEXT NOT NULL,
-  mime               TEXT NOT NULL,
-  -- 用户原文件(canonical 绝对路径)及其登记时元数据;文件被移动/删除后用于状态检查。
-  source_path        TEXT NOT NULL,
-  byte_size          INTEGER NOT NULL CHECK(byte_size >= 0),
-  source_modified_at INTEGER NOT NULL,
-  -- 仅 image:Ema 持有的原始字节受管副本(sessions/<sid>/attachments/ 下)。
-  image_path         TEXT,
-  image_byte_size    INTEGER CHECK(image_byte_size >= 0),
-  created_at         INTEGER NOT NULL,
-  CHECK ((kind = 'image') = (image_path IS NOT NULL))
+-- 附件账本:只有 Ema 落盘的东西入库(图片受管副本、粘贴文本 txt)。
+-- 拖入的用户文件不入库,消息块只记它的原路径。
+-- turn_id NULL = 粘贴时已落盘入账但还没被任何已发 Turn 消费;发送时盖章。
+CREATE TABLE attachment_images (
+  path       TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  turn_id    TEXT          REFERENCES turns(id)    ON DELETE CASCADE,
+  -- 用户原文件名;消息块只存 path,basename 是 uuid,展示名只能靠这里。
+  name       TEXT NOT NULL,
+  byte_size  INTEGER NOT NULL CHECK(byte_size >= 0),
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE attachment_pasted_texts (
+  path       TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  turn_id    TEXT          REFERENCES turns(id)    ON DELETE CASCADE,
+  byte_size  INTEGER NOT NULL CHECK(byte_size >= 0),
+  created_at INTEGER NOT NULL
+);
+
+-- Vision 描述缓存:path 即图片受管副本路径,可再生,按 LRU 与容量预算清扫。
+CREATE TABLE attachment_vision_descriptions_caches (
+  path             TEXT PRIMARY KEY REFERENCES attachment_images(path) ON DELETE CASCADE,
+  text             TEXT NOT NULL,
+  byte_size        INTEGER NOT NULL CHECK(byte_size >= 0),
+  created_at       INTEGER NOT NULL,
+  last_accessed_at INTEGER NOT NULL
 );
 
 -- Speech 包拥有的 TTS 输出：整轮合并音频与逐句分段。
@@ -340,8 +344,8 @@ CREATE INDEX idx_agent_runs_session
 CREATE INDEX idx_agent_runs_status
   ON agent_runs(status, created_at ASC, id ASC);
 
-CREATE INDEX idx_attachment_vision_descriptions_lru
-  ON attachment_vision_descriptions(last_accessed_at ASC, attachment_id ASC);
+CREATE INDEX idx_attachment_vision_descriptions_caches_lru
+  ON attachment_vision_descriptions_caches(last_accessed_at ASC, path ASC);
 
 CREATE INDEX idx_speech_outputs_session ON speech_outputs(session_id, created_at DESC);
 
@@ -426,9 +430,18 @@ CREATE INDEX idx_tool_executions_recovery
 CREATE INDEX idx_tool_executions_turn
   ON tool_executions(turn_id, created_at, call_id);
 
-CREATE INDEX idx_attachments_session ON attachments(session_id, created_at DESC);
+CREATE INDEX idx_attachment_images_session
+  ON attachment_images(session_id, created_at DESC);
 
-CREATE INDEX idx_attachments_turn    ON attachments(turn_id);
+-- 孤儿清扫:贴了没发的残留按 Session 维度一条查询。
+CREATE INDEX idx_attachment_images_unsent
+  ON attachment_images(session_id, created_at) WHERE turn_id IS NULL;
+
+CREATE INDEX idx_attachment_pasted_texts_session
+  ON attachment_pasted_texts(session_id, created_at DESC);
+
+CREATE INDEX idx_attachment_pasted_texts_unsent
+  ON attachment_pasted_texts(session_id, created_at) WHERE turn_id IS NULL;
 
 CREATE INDEX idx_turns_running_by_session
   ON turns(session_id)
@@ -542,28 +555,53 @@ BEGIN
   ) THEN RAISE(ABORT, 'ownership_violation: agent_runs.parent_agent_run_id') END;
 END;
 
-CREATE TRIGGER trg_attachments_owner_insert
-BEFORE INSERT ON attachments
-WHEN NOT EXISTS (
+CREATE TRIGGER trg_attachment_images_owner_insert
+BEFORE INSERT ON attachment_images
+WHEN NEW.turn_id IS NOT NULL AND NOT EXISTS (
   SELECT 1 FROM turns t
    WHERE t.id = NEW.turn_id AND t.session_id = NEW.session_id
 )
 BEGIN
-  SELECT RAISE(ABORT, 'ownership_violation: attachments.turn_id');
+  SELECT RAISE(ABORT, 'ownership_violation: attachment_images.turn_id');
 END;
 
-CREATE TRIGGER trg_attachments_owner_update
-BEFORE UPDATE OF session_id, turn_id ON attachments
+CREATE TRIGGER trg_attachment_images_owner_update
+BEFORE UPDATE OF session_id, turn_id ON attachment_images
 BEGIN
   SELECT CASE
     WHEN NEW.session_id <> OLD.session_id
-    THEN RAISE(ABORT, 'ownership_violation: attachments.session_id is immutable')
+    THEN RAISE(ABORT, 'ownership_violation: attachment_images.session_id is immutable')
   END;
   SELECT CASE
-    WHEN NOT EXISTS (
+    WHEN NEW.turn_id IS NOT NULL AND NOT EXISTS (
       SELECT 1 FROM turns t
        WHERE t.id = NEW.turn_id AND t.session_id = NEW.session_id
-    ) THEN RAISE(ABORT, 'ownership_violation: attachments.turn_id')
+    ) THEN RAISE(ABORT, 'ownership_violation: attachment_images.turn_id')
+  END;
+END;
+
+CREATE TRIGGER trg_attachment_pasted_texts_owner_insert
+BEFORE INSERT ON attachment_pasted_texts
+WHEN NEW.turn_id IS NOT NULL AND NOT EXISTS (
+  SELECT 1 FROM turns t
+   WHERE t.id = NEW.turn_id AND t.session_id = NEW.session_id
+)
+BEGIN
+  SELECT RAISE(ABORT, 'ownership_violation: attachment_pasted_texts.turn_id');
+END;
+
+CREATE TRIGGER trg_attachment_pasted_texts_owner_update
+BEFORE UPDATE OF session_id, turn_id ON attachment_pasted_texts
+BEGIN
+  SELECT CASE
+    WHEN NEW.session_id <> OLD.session_id
+    THEN RAISE(ABORT, 'ownership_violation: attachment_pasted_texts.session_id is immutable')
+  END;
+  SELECT CASE
+    WHEN NEW.turn_id IS NOT NULL AND NOT EXISTS (
+      SELECT 1 FROM turns t
+       WHERE t.id = NEW.turn_id AND t.session_id = NEW.session_id
+    ) THEN RAISE(ABORT, 'ownership_violation: attachment_pasted_texts.turn_id')
   END;
 END;
 

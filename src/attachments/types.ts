@@ -1,48 +1,45 @@
-// Attachments 领域语言：file/image 判别联合、源文件状态、Message 稳定引用。
-
-interface AttachmentBase {
-  readonly id: string;
-  readonly turnId: string;
-  readonly sessionId: string;
-  /** basename(realpath)，由 Server 产生。 */
-  readonly name: string;
-  readonly createdAt: number;
+/** 单侧清扫结果:删了几个文件、释放了多少字节。 */
+export interface StoreSweepReport {
+  readonly deletedFiles: number;
+  readonly freedBytes: number;
 }
 
-/** 普通文件：只记录用户原文件路径，由 FileRead 等工具按需读取。 */
-export interface FileAttachment extends AttachmentBase {
-  readonly kind: 'file';
-  readonly mimeType: string;
-  /** 用户原文件的 canonical 绝对路径。 */
-  readonly sourcePath: string;
-  readonly byteSize: number;
-  /** 登记时的原文件最后修改时间，Unix 毫秒。 */
-  readonly sourceModifiedAt: number;
-}
+/** LLM 图片输入只担保这四类;bmp/avif/svg 等其余图片格式按普通 file 处理。 */
+const LLM_IMAGE_MIMES: ReadonlySet<string> = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+]);
 
-/** 图片：登记时把原始字节复制进 Session 受管目录，历史重放不依赖原文件存活。 */
-export interface ImageAttachment extends AttachmentBase {
-  readonly kind: 'image';
-  readonly sourcePath: string;
-  readonly sourceByteSize: number;
-  readonly sourceModifiedAt: number;
-  /** Ema 持有的不可变原始字节副本：sessions/<sessionId>/attachments/ 下。 */
-  readonly imagePath: string;
-  readonly imageByteSize: number;
-  /** 原始图片 MIME（image/png、image/jpeg 等），由 Server 识别。 */
-  readonly mimeType: string;
-}
-
-export type Attachment = FileAttachment | ImageAttachment;
-
-// ── 源文件状态（读取时计算，不落库） ─────────────────────────────────────────
-
-export type AttachmentSourceStatus =
-  | 'available'
-  | 'modified'
-  | 'missing'
-  | 'inaccessible';
-
-export type InspectedAttachment = Attachment & {
-  readonly sourceStatus: AttachmentSourceStatus;
+const EXTENSION_MIME: Record<string, string> = {
+  '.png':  'image/png',
+  '.jpg':  'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif':  'image/gif',
+  '.webp': 'image/webp',
+  '.bmp':  'image/bmp',
+  '.avif': 'image/avif',
+  '.svg':  'image/svg+xml',
+  '.pdf':  'application/pdf',
+  '.md':   'text/markdown',
+  '.txt':  'text/plain',
+  '.log':  'text/plain',
+  '.csv':  'text/csv',
+  '.json': 'application/json',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  '.zip':  'application/zip',
 };
+
+export function mimeForPath(filePath: string): string {
+  const dot = filePath.lastIndexOf('.');
+  if (dot < 0) return 'application/octet-stream';
+  return EXTENSION_MIME[filePath.slice(dot).toLowerCase()] ?? 'application/octet-stream';
+}
+
+/** 该路径按扩展名是否属于 LLM 可图片输入的四类格式。 */
+export function isLlmImagePath(filePath: string): boolean {
+  return LLM_IMAGE_MIMES.has(mimeForPath(filePath));
+}

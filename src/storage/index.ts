@@ -30,10 +30,12 @@ export { UsageRecordsRepo } from './repos/data/usage-records.js';
 export { ProvidersRepo } from './repos/profile/providers.js';
 export { ProviderModelsRepo } from './repos/profile/providerModels.js';
 export { ModelBindingsRepo } from './repos/profile/modelBindings.js';
-export { AttachmentRepo }  from './repos/data/attachments.js';
-export type { AttachmentRow, AttachmentInsertRow, AttachmentRowKind } from './repos/data/attachments.js';
-export { AttachmentVisionDescriptionsRepo } from './repos/data/attachmentVisionDescriptions.js';
-export type { AttachmentVisionDescriptionRow } from './repos/data/attachmentVisionDescriptions.js';
+export { AttachmentImagesRepo } from './repos/data/attachmentImages.js';
+export type { AttachmentImageRow, AttachmentImageInsertRow } from './repos/data/attachmentImages.js';
+export { AttachmentPastedTextsRepo } from './repos/data/attachmentPastedTexts.js';
+export type { AttachmentPastedTextRow, AttachmentPastedTextInsertRow } from './repos/data/attachmentPastedTexts.js';
+export { AttachmentVisionDescriptionCachesRepo } from './repos/data/attachmentVisionDescriptionCaches.js';
+export type { AttachmentVisionDescriptionCacheRow } from './repos/data/attachmentVisionDescriptionCaches.js';
 export { SessionStatsRepo, DataDirStatsRepo } from './repos/data/storage-stats.js';
 export {
   SessionBackupReader,
@@ -70,12 +72,10 @@ export type { SessionRow, SessionRowEnriched, SessionSearchRow, SessionInsert, E
 export type { TurnStatusRow, TurnTriggerTypeRow } from './repos/data/turns.js';
 export type { TurnRow, TurnInsert, TurnCompletion } from './repos/data/turns.js';
 export type { MessageRow, MessageInsert, MessageRole, MessageKind } from './repos/data/messages.js';
-export { CharacterUpdateContractError } from './repos/profile/character.js';
 export type {
   CharacterRow,
   CharacterInsert,
-  CharacterUpdate,
-  ProtectedDeleteResult
+  CharacterUpdate
 } from './repos/profile/character.js';
 export type {
   CharacterLive2dModelInsert,

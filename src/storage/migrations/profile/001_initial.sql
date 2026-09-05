@@ -2,67 +2,60 @@
 -- 由压缩前完整迁移链生成最终 Schema 后规范化导出。
 -- 后续结构变更从 002_*.sql 开始追加。
 CREATE TABLE characters (
-  id                    TEXT PRIMARY KEY,
-  name                  TEXT NOT NULL,
+  name                  TEXT PRIMARY KEY,
+  display_name          TEXT,
   description           TEXT,
-  directory_name        TEXT NOT NULL,
   persona_prompt        TEXT NOT NULL,
+  stage_kind            TEXT NOT NULL DEFAULT 'blank'
+                          CHECK(stage_kind IN ('live2d','illustration','blank')),
   is_active             INTEGER NOT NULL DEFAULT 0,
-  is_builtin            INTEGER NOT NULL DEFAULT 0,
+  last_activated_at     INTEGER,
   created_at            INTEGER NOT NULL,
-  updated_at            INTEGER NOT NULL,
-  UNIQUE(directory_name)
+  updated_at            INTEGER NOT NULL
 );
 
 CREATE TABLE character_live2d_models (
-  id                  TEXT PRIMARY KEY,
-  character_id        TEXT NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
   name                TEXT NOT NULL,
-  directory_name      TEXT NOT NULL,
-  emotion_vocab_json  TEXT NOT NULL DEFAULT '[]',
-  motion_vocab_json   TEXT NOT NULL DEFAULT '[]',
+  character_name      TEXT NOT NULL REFERENCES characters(name) ON DELETE CASCADE,
+  display_name        TEXT NOT NULL,
   stage_scale         REAL NOT NULL DEFAULT 1 CHECK(stage_scale BETWEEN 0.1 AND 5),
   stage_offset_x      REAL NOT NULL DEFAULT 0 CHECK(stage_offset_x BETWEEN -1 AND 1),
   stage_offset_y      REAL NOT NULL DEFAULT 0 CHECK(stage_offset_y BETWEEN -1 AND 1),
   is_primary          INTEGER NOT NULL DEFAULT 0 CHECK(is_primary IN (0,1)),
-  enabled             INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)),
   byte_size           INTEGER CHECK(byte_size IS NULL OR byte_size >= 0),
   created_at          INTEGER NOT NULL,
   updated_at          INTEGER NOT NULL,
-  UNIQUE(character_id, directory_name)
+  PRIMARY KEY(character_name, name)
 );
 
 CREATE TABLE character_illustrations (
-  id                TEXT PRIMARY KEY,
-  character_id      TEXT NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
   name              TEXT NOT NULL,
-  file_name         TEXT NOT NULL,
+  character_name    TEXT NOT NULL REFERENCES characters(name) ON DELETE CASCADE,
+  display_name      TEXT NOT NULL,
+  expression        TEXT,
   stage_scale       REAL NOT NULL DEFAULT 1 CHECK(stage_scale BETWEEN 0.1 AND 5),
   stage_offset_x    REAL NOT NULL DEFAULT 0 CHECK(stage_offset_x BETWEEN -1 AND 1),
   stage_offset_y    REAL NOT NULL DEFAULT 0 CHECK(stage_offset_y BETWEEN -1 AND 1),
   is_primary        INTEGER NOT NULL DEFAULT 0 CHECK(is_primary IN (0,1)),
-  enabled           INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)),
   byte_size         INTEGER NOT NULL CHECK(byte_size >= 0),
   created_at        INTEGER NOT NULL,
   updated_at        INTEGER NOT NULL,
-  UNIQUE(character_id, file_name)
+  PRIMARY KEY(character_name, name)
 );
 
 CREATE TABLE character_voice_samples (
-  id                TEXT PRIMARY KEY,
-  character_id      TEXT NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
   name              TEXT NOT NULL,
-  file_name         TEXT NOT NULL,
+  character_name    TEXT NOT NULL REFERENCES characters(name) ON DELETE CASCADE,
+  display_name      TEXT NOT NULL,
   prompt_text       TEXT NOT NULL,
   prompt_lang       TEXT NOT NULL,
   is_primary        INTEGER NOT NULL DEFAULT 0 CHECK(is_primary IN (0,1)),
-  enabled           INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)),
   mime_type         TEXT NOT NULL,
   byte_size         INTEGER CHECK(byte_size IS NULL OR byte_size >= 0),
   duration_ms       INTEGER CHECK(duration_ms IS NULL OR duration_ms >= 0),
   created_at        INTEGER NOT NULL,
   updated_at        INTEGER NOT NULL,
-  UNIQUE(character_id, file_name)
+  PRIMARY KEY(character_name, name)
 );
 
 CREATE TABLE knowledge_bases (
@@ -259,24 +252,24 @@ CREATE UNIQUE INDEX idx_characters_active
   WHERE is_active = 1;
 
 CREATE INDEX idx_character_live2d_models_order
-  ON character_live2d_models(character_id, created_at ASC, id ASC);
+  ON character_live2d_models(character_name, created_at ASC, name ASC);
 
 CREATE UNIQUE INDEX idx_character_live2d_models_primary
-  ON character_live2d_models(character_id)
+  ON character_live2d_models(character_name)
   WHERE is_primary = 1;
 
 CREATE INDEX idx_character_illustrations_order
-  ON character_illustrations(character_id, created_at ASC, id ASC);
+  ON character_illustrations(character_name, created_at ASC, name ASC);
 
 CREATE UNIQUE INDEX idx_character_illustrations_primary
-  ON character_illustrations(character_id)
+  ON character_illustrations(character_name)
   WHERE is_primary = 1;
 
 CREATE INDEX idx_character_voice_samples_order
-  ON character_voice_samples(character_id, created_at ASC, id ASC);
+  ON character_voice_samples(character_name, created_at ASC, name ASC);
 
 CREATE UNIQUE INDEX idx_character_voice_samples_primary
-  ON character_voice_samples(character_id)
+  ON character_voice_samples(character_name)
   WHERE is_primary = 1;
 
 CREATE UNIQUE INDEX idx_kb_active ON knowledge_bases(is_active) WHERE is_active = 1;
