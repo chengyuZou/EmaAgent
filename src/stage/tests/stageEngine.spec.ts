@@ -7,7 +7,7 @@ function makeEngine() {
 }
 
 describe('StageEngine', () => {
-  it('已知情绪转移状态并发事件；未知情绪与重复情绪只清洗正文', () => {
+  it('每个已知情绪标签都发事件，未知情绪只清洗正文', () => {
     const engine = makeEngine();
     engine.beginTurn('s1');
     const first = engine.processChunk('我<emotion>happy</emotion>开心', 't1', 's1');
@@ -20,9 +20,10 @@ describe('StageEngine', () => {
     expect(unknown.cleaned).toBe('');
     expect(unknown.events).toEqual([]);
 
-    // 重复当前情绪不发事件：状态机记住的仍是 happy。
     const repeated = engine.processChunk('<emotion>happy</emotion>', 't1', 's1');
-    expect(repeated.events).toEqual([]);
+    expect(repeated.events).toEqual([
+      { type: 'emotion_changed', sessionId: 's1', turnId: 't1', emotion: 'happy' },
+    ]);
   });
 
   it('已知动作发 motion_changed；模型编造的动作名不发事件只清洗', () => {

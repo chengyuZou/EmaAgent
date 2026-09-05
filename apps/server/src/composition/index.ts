@@ -1,5 +1,6 @@
 // 唯一装配点：全部业务对象在此一次成型，族间依赖经 Composition 字段单向传递。
 // routes/application/platform 只消费 Composition，不构造业务对象。
+import { characterStageVocabulary } from '@ema-agent/characters';
 import { EventHub } from '../sse/eventHub.js';
 import { TurnEventStore } from '../sse/eventStore.js';
 import { TurnFanout } from '../sse/turnFanout.js';
@@ -77,25 +78,26 @@ export function buildComposition(input: { activeDataDir: string }): Composition 
   // ── 跨族胶合（只允许在这里出现） ────────────────────────────────────────────
   // 换角色：舞台词汇（情绪+动作）跟随 + 各 Session 舞台状态整体重置 + 应用事件广播。
   // 旧角色的情绪语义名在新角色映射下无意义，不重置会把旧情绪补发给新角色。
-  characters.store.onSwitched(next => {
+  characters.store.onSwitched((next, presentation) => {
+    const vocabulary = characterStageVocabulary(presentation);
     characters.stage.updateVocabulary(
-      [...next.emotionVocabulary],
-      [...next.motionVocabulary],
+      vocabulary.emotions,
+      vocabulary.motions,
     );
     characters.stage.reset();
-    eventHub.emitApp({ type: 'character_switched', characterId: next.id, name: next.name });
+    eventHub.emitApp({ type: 'character_switched', characterName: next.name, displayName: next.displayName });
   });
-  characters.store.onPresentationChanged(character => {
-    // 当前激活角色的资源配置被重读时 SQL 词汇可能已变化，舞台词汇同步跟随。
-    if (character.id === characters.store.current().id) {
+  characters.store.onPresentationChanged((character, presentation) => {
+    if (character.name === characters.store.current().name) {
+      const vocabulary = characterStageVocabulary(presentation);
       characters.stage.updateVocabulary(
-        [...character.emotionVocabulary],
-        [...character.motionVocabulary],
+        vocabulary.emotions,
+        vocabulary.motions,
       );
     }
     eventHub.emitApp({
       type: 'character_presentation_changed',
-      characterId: character.id,
+      characterName: character.name,
     });
   });
   // 设置变更：前端设置页以外的视图据此刷新。

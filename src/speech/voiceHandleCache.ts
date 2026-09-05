@@ -17,7 +17,7 @@ export interface SpeechVoiceCacheOptions {
 export interface PrepareSpeechVoiceRequest {
   readonly reference: TtsVoiceReference;
   readonly ttsVoiceRegistrar: TtsVoiceRegistrar;
-  readonly characterId: string;
+  readonly characterName: string;
   readonly providerId: string;
   /** 缓存键组成：同一 Provider 换模型必须重新注册（云端注册绑定目标模型）。 */
   readonly modelId: string;
@@ -34,8 +34,8 @@ export class SpeechVoiceCache {
     this.now = options.now ?? Date.now;
   }
 
-  get(characterId: string, providerId: string, modelId: string): TtsProviderVoice | null {
-    const key = voiceKey(characterId, providerId, modelId);
+  get(characterName: string, providerId: string, modelId: string): TtsProviderVoice | null {
+    const key = voiceKey(characterName, providerId, modelId);
     const voice = this.entries.get(key);
     if (!voice) return null;
     if (voice.expiresAt !== undefined && voice.expiresAt <= this.now()) {
@@ -46,7 +46,7 @@ export class SpeechVoiceCache {
   }
 
   set(
-    characterId: string,
+    characterName: string,
     providerId: string,
     modelId: string,
     voice: TtsProviderVoice,
@@ -59,17 +59,17 @@ export class SpeechVoiceCache {
           lifetime: 'ephemeral' as const,
           expiresAt: voice.expiresAt ?? this.now() + this.ephemeralTtlMs,
         };
-    this.entries.set(voiceKey(characterId, providerId, modelId), normalized);
+    this.entries.set(voiceKey(characterName, providerId, modelId), normalized);
     return { ...normalized };
   }
 
   /** 本地声音直接使用；云端声音按角色、Provider 和模型短期复用。 */
   async prepare(request: PrepareSpeechVoiceRequest): Promise<TtsVoice> {
-    const cached = this.get(request.characterId, request.providerId, request.modelId);
+    const cached = this.get(request.characterName, request.providerId, request.modelId);
     if (cached) return cached;
     const voice = await request.ttsVoiceRegistrar(request.reference, request.signal);
     return voice.kind === 'provider'
-      ? this.set(request.characterId, request.providerId, request.modelId, voice)
+      ? this.set(request.characterName, request.providerId, request.modelId, voice)
       : voice;
   }
 
@@ -78,6 +78,6 @@ export class SpeechVoiceCache {
   }
 }
 
-function voiceKey(characterId: string, providerId: string, modelId: string): string {
-  return `${characterId} ${providerId} ${modelId}`;
+function voiceKey(characterName: string, providerId: string, modelId: string): string {
+  return `${characterName} ${providerId} ${modelId}`;
 }

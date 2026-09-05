@@ -3,23 +3,37 @@ import { describe, expect, it } from 'vitest';
 import { parseMessageBlocksJson } from '../message.js';
 
 describe('parseMessageBlocksJson', () => {
-  it('接受不含附件正文的稳定引用', () => {
-    const reference = [{
-      type: 'attachment_ref',
-      attachmentId: 'attachment-1',
-      name: 'map.png',
-      mimeType: 'image/png',
-    }];
-    expect(parseMessageBlocksJson(JSON.stringify(reference), 'user')).toEqual(reference);
+  it('接受三类附件块: 纯路径引用 + 图片可选原名 + 粘贴文本预览', () => {
+    const blocks = [
+      {
+        type: 'image_reference',
+        path: 'D:/data/sessions/s1/attachments/images/a.png',
+        name: '报告截图.png',
+      },
+      {
+        type: 'pasted_text_reference',
+        path: 'D:/data/sessions/s1/attachments/pasted/b.txt',
+        preview: '前五百字符的定格预览',
+      },
+      { type: 'file_reference',        path: 'D:/docs/map.pdf' },
+    ];
+    expect(parseMessageBlocksJson(JSON.stringify(blocks), 'user')).toEqual(blocks);
   });
 
-  it('保留 Skill 引用的稳定身份、调用名与资源目录', () => {
+  it('拒绝缺 path 的附件块与缺 preview 的粘贴块', () => {
+    expect(parseMessageBlocksJson(
+      JSON.stringify([{ type: 'image_reference' }]), 'user',
+    )).toBe('[消息内容无法读取]');
+    expect(parseMessageBlocksJson(
+      JSON.stringify([{ type: 'pasted_text_reference', path: 'D:/x.txt' }]), 'user',
+    )).toBe('[消息内容无法读取]');
+  });
+
+  it('保留 Skill 引用的稳定身份', () => {
     const reference = {
-      type: 'skill_ref',
-      skillKey: 'project:source:pdf',
-      name: 'PDF',
-      callName: 'pdf',
-      rootPath: 'D:/project/.agents/skills/pdf',
+      type: 'skill_reference',
+      name: 'pdf',
+      path: 'D:\\workspace\\.agents\\skills\\pdf\\SKILL.md',
     };
     expect(parseMessageBlocksJson(JSON.stringify([reference]), 'user')).toEqual([reference]);
   });

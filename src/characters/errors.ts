@@ -3,10 +3,9 @@ export class CharacterPromptInvalidError extends Error {
 
   constructor(
     readonly reason: string,
-    readonly characterId?: string,
-    readonly blockId?: string,
+    readonly characterName?: string,
   ) {
-    super(characterId ? `${reason}: ${characterId}` : reason);
+    super(characterName ? `${reason}: ${characterName}` : reason);
     this.name = 'CharacterPromptInvalidError';
   }
 }
@@ -14,35 +13,17 @@ export class CharacterPromptInvalidError extends Error {
 export class CharacterNotFoundError extends Error {
   readonly code = 'character_not_found';
 
-  constructor(readonly characterId: string) {
-    super(`character not found: ${characterId}`);
+  constructor(readonly characterName: string) {
+    super(`character not found: ${characterName}`);
     this.name = 'CharacterNotFoundError';
-  }
-}
-
-export class CharacterReadOnlyError extends Error {
-  readonly code = 'character_read_only';
-
-  constructor(readonly characterId: string) {
-    super(`builtin character is read-only: ${characterId}`);
-    this.name = 'CharacterReadOnlyError';
-  }
-}
-
-export class CharacterActiveDeleteError extends Error {
-  readonly code = 'character_active_delete_forbidden';
-
-  constructor(readonly characterId: string) {
-    super(`active character cannot be deleted: ${characterId}`);
-    this.name = 'CharacterActiveDeleteError';
   }
 }
 
 export class CharacterDirectoryConflictError extends Error {
   readonly code = 'character_directory_conflict';
 
-  constructor(readonly directoryName: string) {
-    super(`character directory already exists: ${directoryName}`);
+  constructor(readonly characterName: string) {
+    super(`character name already exists: ${characterName}`);
     this.name = 'CharacterDirectoryConflictError';
   }
 }
@@ -50,18 +31,20 @@ export class CharacterDirectoryConflictError extends Error {
 export type CharacterInputInvalidReason =
   | 'character_patch_empty'
   | 'character_name_empty'
-  | 'prompt_block_patch_empty'
   | 'resource_patch_empty'
   | 'resource_name_empty'
   | 'resource_stage_scale_invalid'
-  | 'resource_stage_offset_invalid';
+  | 'resource_stage_offset_invalid'
+  | 'illustration_expression_invalid'
+  | 'illustration_expression_pool_full'
+  | 'voice_prompt_required';
 
 export class CharacterInputInvalidError extends Error {
   readonly code = 'character_input_invalid';
 
   constructor(
     readonly reason: CharacterInputInvalidReason,
-    readonly characterId?: string,
+    readonly characterName?: string,
   ) {
     super(characterInputInvalidMessage(reason));
     this.name = 'CharacterInputInvalidError';
@@ -75,41 +58,24 @@ export class CharacterResourceNotFoundError extends Error {
 
   constructor(
     readonly resourceKind: CharacterResourceKind,
-    readonly resourceId: string,
+    readonly resourceName: string,
   ) {
-    super(`${resourceKind} resource not found: ${resourceId}`);
+    super(`${resourceKind} resource not found: ${resourceName}`);
     this.name = 'CharacterResourceNotFoundError';
   }
 }
 
-export class CharacterResourceMissingError extends Error {
-  readonly code = 'character_resource_missing';
-
-  constructor(
-    readonly resourceKind: CharacterResourceKind,
-    readonly resourcePath: string,
-  ) {
-    super(`${resourceKind} resource is missing: ${resourcePath}`);
-    this.name = 'CharacterResourceMissingError';
-  }
-}
-
 export type CharacterStateInvalidReason =
-  | 'active_character_missing'
-  | 'builtin_resource_id_missing';
+  | 'active_character_missing';
 
 export class CharacterStateInvalidError extends Error {
   readonly code = 'character_state_invalid';
 
   constructor(
     readonly reason: CharacterStateInvalidReason,
-    readonly characterId?: string,
-    readonly resourceKind?: CharacterResourceKind,
+    readonly characterName?: string,
   ) {
-    const message = reason === 'active_character_missing'
-      ? 'no active character - call ensureSeed() at startup'
-      : `builtin ${resourceKind ?? 'unknown'} resource requires id: ${characterId ?? 'unknown'}`;
-    super(message);
+    super('no active character - call ensureSeed() at startup');
     this.name = 'CharacterStateInvalidError';
   }
 }
@@ -129,13 +95,10 @@ export class CharacterResourcePathError extends Error {
 export type CharacterResourceValidationCode =
   | 'source_file_required'
   | 'source_directory_required'
-  | 'source_zip_required'
   | 'destination_directory_required'
   | 'resource_type_unsupported'
   | 'resource_too_large'
   | 'invalid_resource_values'
-  | 'zip_entry_count_exceeded'
-  | 'zip_expanded_size_exceeded'
   | 'zip_entry_path_invalid'
   | 'zip_invalid'
   | 'resource_name_conflict'
@@ -145,6 +108,7 @@ export type CharacterResourceValidationCode =
   | 'live2d_entry_invalid'
   | 'live2d_reference_invalid'
   | 'live2d_runtime_config_invalid'
+  | 'live2d_mapping_target_invalid'
   | 'illustration_format_unsupported';
 
 export class CharacterResourceValidationError extends Error {
@@ -160,10 +124,12 @@ function characterInputInvalidMessage(reason: CharacterInputInvalidReason): stri
   switch (reason) {
     case 'character_patch_empty': return 'character patch is empty';
     case 'character_name_empty': return 'character name is empty';
-    case 'prompt_block_patch_empty': return 'Prompt Block patch is empty';
     case 'resource_patch_empty': return 'character resource patch is empty';
     case 'resource_name_empty': return 'character resource name is empty';
     case 'resource_stage_scale_invalid': return 'character resource stage scale is invalid';
     case 'resource_stage_offset_invalid': return 'character resource stage offset is invalid';
+    case 'illustration_expression_invalid': return 'illustration expression is invalid';
+    case 'illustration_expression_pool_full': return 'illustration expression pool is full';
+    case 'voice_prompt_required': return 'voice prompt text and language are required';
   }
 }

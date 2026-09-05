@@ -37,14 +37,17 @@ export function openCommands(deps: {
     activeSessions: database.activeSessions,
     providers: providers.providers,
     providerModels: providers.providerModels,
-    attachments: database.attachments,
     settings: settings.settings,
-    characterPrompt: () => buildCharacterPrompt(characters.store.current()),
+    characterPrompt: () => {
+      const character = characters.store.current();
+      return buildCharacterPrompt(character, characters.store.inspectStagePresentation(character.name));
+    },
     skillEntries: (workspaceRoot: string) => tools.skills.list(workspaceRoot || undefined),
     disabledSkillPaths: () => tools.skillEnablement.listDisabledPaths(),
     workspaceInstructions: turn.workspaceInstructions,
     memoryGuidance: () => buildMemoryGuidance().catch(() => null),
     describeImage: turn.describeImage,
+    visionCache: turn.visionCache,
     createCompact,
     createLlmCall,
     usageRecorder: database.usageRecorder,

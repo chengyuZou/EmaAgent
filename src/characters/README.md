@@ -1,73 +1,74 @@
 # Character
 
-Character 负责一张角色的人设 Prompt、Live2D、立绘和参考音频。它不负责 Turn 冻结、Prompt 总装配、Live2D 逐帧渲染、TTS 调用或前端表单。
+Character 管理全局当前角色、Persona、角色舞台选择和三类本地角色资源。它不管理 Turn、普通后台进程、Memory 内容或 Narrative 进程；跨域停止顺序由 Server 应用层编排。
 
-## 领域对象
+## 身份
 
-`CharacterStore` 是唯一业务入口。角色由以下内容组成：
-
-- 可编辑的角色名称、描述与人设提示词 `personaPrompt`；
-- 多个 Live2D、立绘和参考音频资源；
-- 当前激活状态与内置只读标记。
-
-角色及资源的随机 `id` 只用于 SQLite 关联，不进入磁盘路径。显示 `name` 可以修改，也不会移动资源。
-
-## 磁盘结构
-
-```text
-~/.ema-agent/characters/<character.directoryName>/
-├─ live2d/<live2dModel.directoryName>/
-├─ illustration/<illustration.fileName>
-└─ voice/<voiceSample.fileName>
+```ts
+interface Character {
+  name: string;
+  displayName: string | null;
+  description: string | null;
+  personaPrompt: string;
+  stageKind: 'live2d' | 'illustration' | 'blank';
+  isActive: boolean;
+  lastActivatedAt: number | null;
+}
 ```
 
-`directoryName/fileName` 在导入时从 ZIP 或源文件名取得，创建后不可修改；同一目标已存在时直接拒绝，不覆盖也不自动追加后缀。
+`name` 是用户创建时给定且创建后不可修改的稳定身份，同时是 SQL 主键、角色目录名和未来 Relationship Memory 目录身份。`displayName` 只负责显示，可以修改；为空时 UI 显示 `name`。
 
-## 人设提示词
+全局只能有一个当前角色。新角色默认 `stageKind='blank'` 且不自动激活。最后一个角色不能删除；删除当前角色后激活最近使用的其他角色。艾玛只是种子角色，没有只读或删除保护。
 
-角色 Prompt 由人设提示词 `personaPrompt` 平铺，Live2D 控制协议在之后动态追加（由词汇表生成），不落入人设字段，也不能被用户编辑。
-
-身份硬门由写入边界与装配边界共同守住：`create`/`update`/`activate` 都过 `assertPersonaPrompt()`（非空 + 禁止 `<emotion>`/`<motion>` 控制标签）；装配边界 `buildCharacterPrompt()` 只守空拒——拼起来为空就拒绝启动新 Turn。
-
-人设字段禁止出现 `<emotion>` 和 `<motion>`，包括大小写变体与未闭合标签，避免占用系统控制协议。
-
-## 资源导入与删除
-
-Live2D 只接受 ZIP：
-
-1. 从 ZIP 文件名派生稳定目录名；
-2. 解压到最终目录，限制条目数、展开总字节和路径穿越；
-3. 要求恰好一个 `*.model3.json`，且其 `FileReferences` 声明的 moc3、纹理、physics、表情与动作文件全部真实存在于包内（相对 model3.json 解析，拒绝逃逸）；引用缺失即拒绝，不等运行期加载失败；
-4. `runtime-config.json` 可缺失，缺失代表没有情绪/动作词汇；存在但损坏则拒绝。无论缺失还是已存在，都会从 model3.json 的表情/动作清单与可选 `.vtube.json` 热键计算可确定条目并补齐：缺失时整份生成；已存在时只增不删——作者已声明的键（含明确置空）不动、两张映射表只追加缺失条目、不认识的字段原样保留，且确有补入才写回；一条都确定不了则不写文件，行为与无配置导入一致；
-5. 文件成功后插入 SQLite；SQL 失败只删除本次新建目录。
-
-Live2D 导出会把当前展开目录打包成 `<显示名>.zip`。
-
-立绘和参考音频保留用户原文件字节。立绘只检查大小与常见图片文件头，不归一化、不裁剪；参考音频检查格式、大小和时长。
-
-删除顺序统一为“先文件、后 SQLite”。文件已经被用户手工删除时仍允许删除数据库记录；其他文件系统错误则保留记录并返回错误。
-
-## 主用项与降级
-
-每类资源最多一个启用的主用项。主用项被停用或删除后，存储层提升最早创建的启用资源。Live2D 主用切换会先读取新资源的可选运行配置，读取成功后才在同一 SQLite 事务中切换主用项并写入派生词汇，避免界面已经切换但模型仍拿旧词汇。
-
-`inspectHealth()` 输出单个角色的实际可用顺序：
+## 资源
 
 ```text
-有效 Live2D → 有效立绘 → 占位
+~/.ema-agent/characters/<characterName>/
+├─ live2d/<live2dName>/
+├─ illustration/<illustrationName>
+└─ voice/<voiceName>
 ```
 
-Prompt 无效是 error；Live2D、立绘或参考音频缺失是 warning。健康检查不做哈希、版本兼容、深度修复或自动重绑定。
+- `live2dName` 是导入 ZIP 去扩展名后的名称，或导入文件夹名称。
+- `illustrationName` 是完整图片文件名。
+- `voiceName` 是完整音频文件名。
+- 每份资源另有可编辑 `displayName`，修改它不移动文件。
+- 三类资源均无 `enabled`。每类至多一份 `isPrimary`；删除主要资源不自动提升其他资源。
+- Live2D 支持 ZIP 或文件夹导入。
+- Voice 只支持本地文件路径导入，参考文本和语言导入后不可修改；最大 512 MiB、最长 1 分钟。
+- Illustration 可带一个 `expression`。同一表情最多 10 张，表情池由查询结果派生，不另存 JSON。
 
-`inspectAllHealth()` 用于启动检查：除了逐个角色的健康结果，还会把角色根目录和三类资源目录第一层中“磁盘存在但 SQL 没有引用”的路径列为 `orphanedPaths`。它不猜测重命名关系，不自动删除或重绑定。
+## 舞台
 
-`inspectStagePresentation()` 是主窗口舞台的唯一读取入口：一次调用返回 `CharacterStagePresentation`（`characterId` + 按降级链排序的 `candidates`）。每个候选携带资源身份、名称、解析后的绝对路径、舞台几何（stageScale/stageOffset）、`updatedAt`（供前端候选去重）和 Live2D 运行配置；空数组即占位。消费方不得第二次请求或自行拼接资源字段。
+`inspectStagePresentation(characterName)` 只返回用户明确选择的一种结果：
 
-## 生命周期边界
+- `blank`：角色生效，但舞台不显示资源。
+- `live2d`：返回主要 Live2D。
+- `illustration`：返回默认立绘及按 `expression` 分组的候选池。
+- `unavailable`：已选择的类型缺主要资源、文件丢失或资源损坏。
 
-- 新 Turn 在编排层冻结当时的 Character 与 Prompt 数组；运行中的 Turn 不随角色切换改变。
-- Character 是全局激活对象。任意根 Turn 运行期间，应用层必须拒绝切换角色；前端在收到该 Turn 的 completed、failed 或 aborted 终态后再允许用户切换。CharacterStore 不监听 Turn，也不保存待切换意图。
-- Turn 持久化冻结的 `character.directoryName`，不是可编辑的显示 `name`。该字段在 Turn/Memory 中分别命名为 `characterDirectoryName` 与 `character_directory_name`。
-- `onSwitched` 和 `onPresentationChanged` 只发布领域变化；订阅者自行重新装配舞台、TTS 或 Prompt。
-- 内置资源开发期由 `installBuiltinCharacterResources()` 从 `apps/desktop/src-tauri/resources/characters` 复制；正式包只替换来源，运行时始终读取 Home 目录。
-- 整张 Character 的归档导入导出暂不实现。当前 ZIP 仅用于单个 Live2D 资源。
+不存在 Live2D → 立绘 → 空白降级链。损坏时由前端显示错误并让舞台为空白。应用只有主窗口的一份舞台 Canvas。
+
+Stage 对每个合法 `<emotion>` 都发出 `emotion_changed`，即使前后值相同。立绘消费者收到事件后从对应表情池随机选择；池内多于一张时排除当前图片，再用普通交叉淡入淡出换图。立绘没有呼吸动画。
+
+Character 和 Live2D 资源行都不保存情绪或动作词汇。Live2D 词汇只取当前 Presentation 中 `runtime-config.json` 的 `emotionMap`、`motionMap` 键；立绘情绪词只取 Presentation 的 `expression` 分组。Turn Prompt、StageEngine 和主窗口都消费 CharacterStore 产出的 Presentation，不各自维护词汇副本。
+
+用户手改 `runtime-config.json` 后调用 `reloadLive2dConfiguration`。该操作校验并返回当前完整配置，再广播舞台变化；不写 SQL 词汇列。
+
+## Server 协调
+
+激活另一个角色或删除当前角色时：
+
+1. 若存在根 Turn、手动 Compact 或普通后台进程，未带确认的请求返回 `409 character_work_running`。
+2. 用户确认后，请求带 `terminateRunningWork: true`。
+3. Server 并行中止全部根 Turn/Compact 和普通后台进程，并等待退出。
+4. Memory 提取、整合和维护 Job 不停止。
+5. 再激活目标角色，或删除当前角色并激活最近使用的剩余角色。
+
+当前角色有根 Turn 或手动 Compact 运行时，Persona、`stageKind`、主资源和资源内容修改返回同一冲突；非当前角色可以编辑。普通后台进程只阻止全局切换/删除，不阻止资源编辑。
+
+## HTTP 名称
+
+角色路径参数统一叫 `characterName`，资源路径参数分别叫 `live2dName`、`illustrationName`、`voiceName`。调用方必须对这些路径段使用 `encodeURIComponent`。
+
+公开 Character API 不提供 Duplicate，不提供 Voice multipart publish，也不提供资源 `enabled`。未来若实现 Duplicate，必须先明确资源和外部关系的完整复制语义。

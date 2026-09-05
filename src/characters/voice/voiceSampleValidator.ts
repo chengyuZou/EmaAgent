@@ -1,5 +1,3 @@
-// 校验参考音频真实文件头、时长和大小，不信任扩展名或客户端 MIME。
-
 import fs from 'node:fs';
 import { CharacterResourceValidationError } from '../errors.js';
 import {
@@ -9,7 +7,6 @@ import {
 
 export interface ValidatedVoiceSample {
   readonly mimeType: 'audio/wav' | 'audio/mpeg' | 'audio/flac' | 'audio/ogg' | 'audio/mp4';
-  readonly extension: 'wav' | 'mp3' | 'flac' | 'ogg' | 'm4a';
   readonly byteSize: number;
   readonly durationMs: number;
 }
@@ -51,28 +48,24 @@ function detectAudio(
     && head.subarray(8, 12).toString('ascii') === 'WAVE') {
     return {
       mimeType: 'audio/wav',
-      extension: 'wav',
       durationMs: wavDuration(head),
     };
   }
   if (head.subarray(0, 4).toString('ascii') === 'fLaC') {
     return {
       mimeType: 'audio/flac',
-      extension: 'flac',
       durationMs: flacDuration(head),
     };
   }
   if (head.subarray(0, 4).toString('ascii') === 'OggS') {
     return {
       mimeType: 'audio/ogg',
-      extension: 'ogg',
       durationMs: oggDuration(head, filePath, byteSize),
     };
   }
   if (head.subarray(4, 8).toString('ascii') === 'ftyp') {
     return {
       mimeType: 'audio/mp4',
-      extension: 'm4a',
       durationMs: mp4Duration(head),
     };
   }
@@ -80,7 +73,6 @@ function detectAudio(
   if (frameOffset >= 0) {
     return {
       mimeType: 'audio/mpeg',
-      extension: 'mp3',
       durationMs: mp3Duration(head, frameOffset, byteSize),
     };
   }

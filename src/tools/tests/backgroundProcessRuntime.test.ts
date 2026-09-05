@@ -320,6 +320,25 @@ describe('BackgroundProcess', () => {
     expect(fixture.runtime.hasLiveProcesses()).toBe(false);
   });
 
+  it('关闭新进程入口期间拒绝后来请求，窗口结束后恢复', async () => {
+    const fixture = tracked();
+    let release!: () => void;
+    const closed = fixture.runtime.runWithProcessStartsClosed(
+      () => new Promise<void>(resolve => { release = resolve; }),
+    );
+
+    await expect(fixture.runtime.runCommand(makeRequest(fixture))).rejects.toMatchObject({
+      code: 'starts_closed',
+    });
+    release();
+    await closed;
+
+    const pending = fixture.runtime.runCommand(makeRequest(fixture));
+    await tick();
+    fixture.runner.processes[0]!.finishWith(okResult());
+    await expect(pending).resolves.toMatchObject({ kind: 'commandResult' });
+  });
+
   it('recoverInterrupted 把 queued 与 running 全部收为 interrupted 并发事件', async () => {
     const fixture = tracked({ maxConcurrent: 1 });
     await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true }));

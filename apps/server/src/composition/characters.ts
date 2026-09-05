@@ -1,6 +1,7 @@
 // 角色一族：安装内置资源并构造 CharacterStore 与 StageEngine。
 import {
   CharacterStore,
+  characterStageVocabulary,
   installBuiltinCharacterResources,
 } from '@ema-agent/characters';
 import { StageEngine } from '@ema-agent/stage';
@@ -21,9 +22,10 @@ export function openCharacters(
   const store = new CharacterStore(profileDb, charactersDir());
   store.ensureSeed();
   const current = store.current();
+  const vocabulary = characterStageVocabulary(store.inspectStagePresentation(current.name));
   const stage = new StageEngine({
-    emotions: [...current.emotionVocabulary],
-    motions: [...current.motionVocabulary],
+    emotions: vocabulary.emotions,
+    motions: vocabulary.motions,
   });
   return { store, stage };
 }

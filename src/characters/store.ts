@@ -1,9 +1,7 @@
-// 维护角色、Prompt Block 与三类资源的一致生命周期，是 Character 包的唯一业务入口。
-
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import path from 'node:path';
-import { randomUUID } from 'node:crypto';
-import type { Database, SqliteDb } from '@ema-agent/storage';
+import type { CharacterDeleteResult, Database } from '@ema-agent/storage';
 import {
   CharacterRepo,
   CharacterLive2dModelRepo,
@@ -14,26 +12,29 @@ import type {
   Character,
   CharacterInput,
   CharacterPatch,
-  CharacterStageEntry,
   CharacterStagePresentation,
+  CharacterIllustrationStageEntry,
 } from './types.js';
 import { CharacterRepository } from './repository.js';
-import { EMA_CHARACTER_ID, BUILTIN_CHARACTERS } from './seed/index.js';
+import { EMA_CHARACTER_NAME, BUILTIN_CHARACTERS } from './seed/index.js';
 import type {
   CharacterLive2dModel,
   CharacterLive2dModelInput,
   CharacterLive2dModelPatch,
   ImportCharacterLive2dModelInput,
+  Live2dConfiguration,
+  Live2dMappings,
 } from './live2d/types.js';
 import { CharacterLive2dModelRepository } from './live2d/repository.js';
-import { findLive2dPackageFilesSync, validateLive2dModelReferences } from './live2d/live2dValidator.js';
-import { writeLive2dConfigDraft } from './live2d/live2dConfigDraft.js';
-import { readLive2dRuntimeConfig, readLive2dVocabulary, type Live2dVocabulary } from './live2d/live2dVocabulary.js';
-import type { Live2dRuntimeConfig } from './live2d/types.js';
+import { extractLive2dRuntimeConfig } from './live2d/live2dRuntimeConfigExtraction.js';
+import { supplementLive2dRuntimeConfig } from './live2d/live2dRuntimeConfigSupplement.js';
+import { readLive2dRuntimeConfig, writeLive2dMappings } from './live2d/live2dRuntimeConfig.js';
 import {
   deleteLive2dDirectory,
   exportLive2dZip,
-  importLive2dZip,
+  findLive2dFiles,
+  findLive2dFilesSync,
+  importLive2dFiles,
 } from './live2d/live2dFiles.js';
 import type {
   CharacterIllustration,
@@ -41,55 +42,45 @@ import type {
   ImportCharacterIllustrationInput,
 } from './illustration/types.js';
 import { CharacterIllustrationRepository } from './illustration/repository.js';
+import { ILLUSTRATION_EXPRESSION_POOL_MAX } from './illustration/limits.js';
 import {
-  deleteIllustrationFile,
   exportIllustrationFile,
   importIllustrationFile,
+  inspectIllustrationFileSync,
 } from './illustration/illustrationFiles.js';
 import type {
   CharacterVoiceSample,
   CharacterVoiceSamplePatch,
   ImportCharacterVoiceSampleInput,
-  PublishCharacterVoiceSampleInput,
 } from './voice/types.js';
 import { CharacterVoiceSampleRepository } from './voice/repository.js';
 import { validateVoiceSampleFile } from './voice/voiceSampleValidator.js';
 import {
-  deleteVoiceFile,
   exportVoiceFile,
   importVoiceFile,
-  publishVoiceFile,
 } from './voice/voiceFiles.js';
-import { CharacterResourcePaths, physicalName, sourceBaseName } from './resources/resourcePaths.js';
+import { CharacterResourcePaths, physicalName } from './resources/resourcePaths.js';
 import { removeDirectoryIfPresent, removeFileIfPresent } from './resources/resourceFiles.js';
 import { assertPersonaPrompt } from './characterPrompt.js';
 import {
-  inspectAllCharacterHealth,
-  inspectCharacterHealth,
-  type CharacterHealth,
-  type CharacterHealthReport,
-} from './characterHealth.js';
-import {
-  CharacterActiveDeleteError,
   CharacterDirectoryConflictError,
   CharacterInputInvalidError,
   CharacterNotFoundError,
-  CharacterReadOnlyError,
-  CharacterResourceMissingError,
   CharacterResourceNotFoundError,
+  CharacterResourceValidationError,
   CharacterStateInvalidError,
-  type CharacterResourceKind,
 } from './errors.js';
 
 export type CharacterSwitchedListener = (
   next: Character,
-  previous: Character | null,
+  presentation: CharacterStagePresentation,
+) => void;
+export type CharacterPresentationChangedListener = (
+  character: Character,
+  presentation: CharacterStagePresentation,
 ) => void;
 
-export type CharacterPresentationChangedListener = (character: Character) => void;
-
 export class CharacterStore {
-  private readonly sqlite: SqliteDb;
   private readonly repository: CharacterRepository;
   private readonly live2dModels: CharacterLive2dModelRepository;
   private readonly illustrations: CharacterIllustrationRepository;
@@ -97,25 +88,18 @@ export class CharacterStore {
   private readonly paths: CharacterResourcePaths;
   private readonly switchedListeners = new Set<CharacterSwitchedListener>();
   private readonly presentationChangedListeners = new Set<CharacterPresentationChangedListener>();
+  // Promise 尾链只按稳定角色名分组，避免同一角色的文件操作与 SQL 提交互相覆盖。
+  private readonly mutationTails = new Map<string, Promise<void>>();
 
-  constructor(
-    db: Database,
-    charactersRoot: string,
-  ) {
+  constructor(db: Database, charactersRoot: string) {
     fs.mkdirSync(charactersRoot, { recursive: true });
-    this.sqlite = db.sqlite;
-    this.repository = new CharacterRepository(
-      db.sqlite,
-      new CharacterRepo(db.sqlite),
-    );
-    this.live2dModels = new CharacterLive2dModelRepository(
-      new CharacterLive2dModelRepo(db.sqlite),
-    );
-    this.illustrations = new CharacterIllustrationRepository(
-      new CharacterIllustrationRepo(db.sqlite),
-    );
+    this.repository = new CharacterRepository(new CharacterRepo(db.sqlite));
+    this.live2dModels = new CharacterLive2dModelRepository(new CharacterLive2dModelRepo(db.sqlite));
+    this.illustrations = new CharacterIllustrationRepository(new CharacterIllustrationRepo(db.sqlite));
     this.voiceSamples = new CharacterVoiceSampleRepository(new CharacterVoiceSampleRepo(db.sqlite));
     this.paths = new CharacterResourcePaths(charactersRoot);
+    // `.staging` 只存尚未提交的操作；Server 重启后没有任何任务能继续使用其中内容。
+    fs.rmSync(this.paths.stagingRoot(), { recursive: true, force: true });
   }
 
   onSwitched(handler: CharacterSwitchedListener): () => void {
@@ -131,53 +115,30 @@ export class CharacterStore {
   ensureSeed(): void {
     for (const seed of BUILTIN_CHARACTERS) {
       const input = normalizeCharacterInput(seed.card);
-      assertPersonaPrompt(input.personaPrompt, seed.id);
-      if (!this.repository.findById(seed.id)) {
-        this.repository.insert(input, seed.id, seed.id, true);
+      assertPersonaPrompt(input.personaPrompt, input.name);
+      if (!this.repository.findByName(input.name)) {
+        this.repository.insert(input, seed.stageKind);
       }
-
-      const live2dModelIds = new Set(this.live2dModels.list(seed.id).map((item) => item.id));
-      for (const input of seed.live2dModels) {
-        if (!input.id) {
-          throw new CharacterStateInvalidError(
-            'builtin_resource_id_missing',
-            seed.id,
-            'live2d_model',
-          );
+      for (const model of seed.live2dModels) {
+        if (!this.live2dModels.list(input.name).some(item => item.name === model.name)) {
+          this.live2dModels.insert(input.name, model);
         }
-        if (!live2dModelIds.has(input.id)) this.live2dModels.insert(seed.id, input);
       }
-      this.refreshPrimaryLive2dVocabulary(seed.id);
-
-      const illustrationIds = new Set(this.illustrations.list(seed.id).map((item) => item.id));
-      for (const input of seed.illustrations) {
-        if (!input.id) {
-          throw new CharacterStateInvalidError(
-            'builtin_resource_id_missing',
-            seed.id,
-            'illustration',
-          );
+      for (const illustration of seed.illustrations) {
+        if (!this.illustrations.list(input.name).some(item => item.name === illustration.name)) {
+          this.illustrations.insert(input.name, illustration);
         }
-        if (!illustrationIds.has(input.id)) this.illustrations.insert(seed.id, input);
       }
-
-      const voiceSampleIds = new Set(this.voiceSamples.list(seed.id).map((item) => item.id));
-      for (const input of seed.voiceSamples) {
-        if (!input.id) {
-          throw new CharacterStateInvalidError(
-            'builtin_resource_id_missing',
-            seed.id,
-            'voice_sample',
-          );
+      for (const sample of seed.voiceSamples) {
+        if (!this.voiceSamples.list(input.name).some(item => item.name === sample.name)) {
+          this.voiceSamples.insert(input.name, sample);
         }
-        if (!voiceSampleIds.has(input.id)) this.voiceSamples.insert(seed.id, input);
       }
     }
-
     if (!this.repository.findActive()) {
-      this.repository.activate(EMA_CHARACTER_ID);
-      const active = this.get(EMA_CHARACTER_ID);
-      if (active) this.emitSwitched(active, null);
+      this.repository.activate(EMA_CHARACTER_NAME);
+      const active = this.get(EMA_CHARACTER_NAME);
+      if (active) this.emitSwitched(active);
     }
   }
 
@@ -186,592 +147,607 @@ export class CharacterStore {
     if (!character) throw new CharacterStateInvalidError('active_character_missing');
     return this.withResources(character);
   }
-
   list(): Character[] {
     const characters = this.repository.list();
-    const ids = characters.map((character) => character.id);
-    const live2dModelsByCharacter = this.live2dModels.listForCharacters(ids);
-    const illustrationsByCharacter = this.illustrations.listForCharacters(ids);
-    const voiceSamplesByCharacter = this.voiceSamples.listForCharacters(ids);
-    return characters.map((character) => withResources(
+    const names = characters.map(character => character.name);
+    const live2d = this.live2dModels.listForCharacters(names);
+    const illustrations = this.illustrations.listForCharacters(names);
+    const voices = this.voiceSamples.listForCharacters(names);
+    return characters.map(character => withResources(
       character,
-      live2dModelsByCharacter.get(character.id) ?? [],
-      illustrationsByCharacter.get(character.id) ?? [],
-      voiceSamplesByCharacter.get(character.id) ?? [],
+      live2d.get(character.name) ?? [],
+      illustrations.get(character.name) ?? [],
+      voices.get(character.name) ?? [],
     ));
   }
-
-  get(id: string): Character | undefined {
-    const character = this.repository.findById(id);
+  get(name: string): Character | undefined {
+    const character = this.repository.findByName(name);
     return character ? this.withResources(character) : undefined;
-  }
-
-  activate(id: string): string {
-    const target = this.getRequired(id);
-    assertPersonaPrompt(target.personaPrompt, id);
-    const active = this.repository.findActive();
-    const previous = active ? this.withResources(active) : null;
-    this.repository.activate(id);
-    if (!previous || previous.id !== target.id) this.emitSwitched(target, previous);
-    return id;
   }
 
   create(input: CharacterInput): Character {
     const normalized = normalizeCharacterInput(input);
-    assertPersonaPrompt(normalized.personaPrompt);
-    return this.createWithDirectory(normalized, physicalName(normalized.name));
-  }
-
-  update(id: string, patch: CharacterPatch): Character {
-    const character = this.assertMutableCharacter(id);
-    if (
-      patch.name === undefined
-      && patch.description === undefined
-      && patch.personaPrompt === undefined
-    ) {
-      throw new CharacterInputInvalidError('character_patch_empty', id);
+    assertPersonaPrompt(normalized.personaPrompt, normalized.name);
+    if (normalized.name.toLowerCase() === '.staging') {
+      throw new CharacterDirectoryConflictError(normalized.name);
     }
-    const name = patch.name === undefined ? undefined : patch.name.trim();
-    if (name !== undefined && !name) {
-      throw new CharacterInputInvalidError('character_name_empty', id);
+    const directory = this.paths.characterDirectory(normalized.name);
+    if (fs.existsSync(directory) || this.repository.findByName(normalized.name)) {
+      throw new CharacterDirectoryConflictError(normalized.name);
     }
-    const description = patch.description === undefined
-      ? undefined
-      : patch.description?.trim() || null;
-    let personaPrompt: string | undefined;
-    if (patch.personaPrompt !== undefined) {
-      assertPersonaPrompt(patch.personaPrompt, id);
-      personaPrompt = patch.personaPrompt.trim();
-    }
-    this.repository.update(id, name, description, personaPrompt);
-    return this.get(id) ?? character;
-  }
-
-  duplicate(id: string): Character {
-    const original = this.getRequired(id);
-    const input: CharacterInput = {
-      name: `${original.name}(Copy)`,
-      description: original.description,
-      personaPrompt: original.personaPrompt,
-    };
-    return this.createWithDirectory(input, physicalName(`${original.directoryName} Copy`));
-  }
-
-  async deleteManagedCharacter(id: string): Promise<void> {
-    const character = this.getRequired(id);
-    if (character.isBuiltin) throw new CharacterReadOnlyError(id);
-    if (character.isActive) throw new CharacterActiveDeleteError(id);
-    await removeDirectoryIfPresent(this.paths.characterDirectory(character.directoryName));
-    this.repository.delete(id);
-  }
-
-  listLive2dModels(id: string): CharacterLive2dModel[] {
-    return this.live2dModels.list(id);
-  }
-
-  setPrimaryLive2dModel(id: string, resourceId: string): boolean {
-    const character = this.getRequired(id);
-    const target = character.live2dModels.find((resource) => resource.id === resourceId);
-    if (!target?.enabled) return false;
-    const vocabulary = this.readVocabulary(character, target);
-    const changed = this.sqlite.transaction(() => {
-      const selected = this.live2dModels.setPrimary(id, resourceId);
-      if (selected) this.writeVocabulary(id, resourceId, vocabulary);
-      return selected;
-    })();
-    if (changed) this.emitPresentationChanged(id);
-    return changed;
-  }
-
-  updateLive2dModel(
-    id: string,
-    resourceId: string,
-    patch: CharacterLive2dModelPatch,
-  ): CharacterLive2dModel | undefined {
-    const character = this.assertMutableCharacter(id);
-    const normalized = normalizeResourcePatch(patch);
-    const current = character.live2dModels.find((resource) => resource.id === resourceId);
-    if (!current) return undefined;
-    const projected = character.live2dModels.map((resource) => resource.id === resourceId
-      ? { ...resource, ...normalized }
-      : resource);
-    const nextPrimary = selectPrimaryLive2dModel(projected);
-    const vocabulary = nextPrimary ? this.readVocabulary(character, nextPrimary) : EMPTY_VOCABULARY;
-    const updated = this.sqlite.transaction(() => {
-      const value = this.live2dModels.update(id, resourceId, normalized);
-      if (value && nextPrimary) this.writeVocabulary(id, nextPrimary.id, vocabulary);
-      return value;
-    })();
-    if (updated) this.emitPresentationChanged(id);
-    return updated;
-  }
-
-  async importLive2dModel(
-    id: string,
-    input: ImportCharacterLive2dModelInput,
-  ): Promise<CharacterLive2dModel> {
-    const character = this.assertMutableCharacter(id);
-    const files = await importLive2dZip(
-      input.sourceZipFile,
-      this.paths.live2dRoot(character.directoryName),
-    );
-    const destination = this.paths.live2dModelDirectory(
-      character.directoryName,
-      files.directoryName,
-    );
-    try {
-      const packageFiles = findLive2dPackageFilesSync(destination);
-      await validateLive2dModelReferences(packageFiles.modelPath);
-      const runtimeConfigPath = await writeLive2dConfigDraft(
-        destination,
-        packageFiles.modelPath,
-        packageFiles.runtimeConfigPath,
-      );
-      const vocabulary = readLive2dVocabulary(runtimeConfigPath);
-      const resource = this.insertLive2dModel(
-        id,
-        {
-          id: randomUUID(),
-          name: files.displayName,
-          directoryName: files.directoryName,
-          isPrimary: input.isPrimary ?? character.live2dModels.length === 0,
-          byteSize: files.byteSize,
-        },
-        vocabulary,
-      );
-      this.emitPresentationChanged(id);
-      return resource;
-    } catch (error) {
-      await deleteLive2dDirectory(destination);
-      throw error;
-    }
-  }
-
-  async exportLive2dModel(id: string, resourceId: string, destinationDirectory: string): Promise<string> {
-    const character = this.getRequired(id);
-    const resource = requiredResource(character.live2dModels, resourceId, 'live2d_model');
-    return exportLive2dZip(
-      this.paths.live2dModelDirectory(character.directoryName, resource.directoryName),
-      destinationDirectory,
-      resource.name,
-    );
-  }
-
-  async deleteLive2dModel(id: string, resourceId: string): Promise<CharacterLive2dModel | undefined> {
-    const character = this.assertMutableCharacter(id);
-    const current = character.live2dModels.find((resource) => resource.id === resourceId);
-    if (!current) return undefined;
-    await deleteLive2dDirectory(
-      this.paths.live2dModelDirectory(character.directoryName, current.directoryName),
-    );
-    const deleted = this.deleteLive2dModelRecord(character, current);
-    if (deleted) this.emitPresentationChanged(id);
-    return deleted;
-  }
-
-  listIllustrations(id: string): CharacterIllustration[] {
-    return this.illustrations.list(id);
-  }
-
-  setPrimaryIllustration(id: string, resourceId: string): boolean {
-    const changed = this.illustrations.setPrimary(id, resourceId);
-    if (changed) this.emitPresentationChanged(id);
-    return changed;
-  }
-
-  updateIllustration(
-    id: string,
-    resourceId: string,
-    patch: CharacterIllustrationPatch,
-  ): CharacterIllustration | undefined {
-    this.assertMutableCharacter(id);
-    const resource = this.illustrations.update(id, resourceId, normalizeResourcePatch(patch));
-    if (resource) this.emitPresentationChanged(id);
-    return resource;
-  }
-
-  async importIllustration(
-    id: string,
-    input: ImportCharacterIllustrationInput,
-  ): Promise<CharacterIllustration> {
-    const character = this.assertMutableCharacter(id);
-    const files = await importIllustrationFile(
-      input.sourceFile,
-      this.paths.illustrationRoot(character.directoryName),
-    );
-    const destination = this.paths.illustrationFile(character.directoryName, files.fileName);
-    try {
-      const resource = this.illustrations.insert(id, {
-        id: randomUUID(),
-        name: files.displayName,
-        fileName: files.fileName,
-        isPrimary: input.isPrimary ?? character.illustrations.length === 0,
-        byteSize: files.byteSize,
-      });
-      this.emitPresentationChanged(id);
-      return resource;
-    } catch (error) {
-      await removeFileIfPresent(destination);
-      throw error;
-    }
-  }
-
-  async exportIllustration(
-    id: string,
-    resourceId: string,
-    destinationDirectory: string,
-  ): Promise<string> {
-    const character = this.getRequired(id);
-    const resource = requiredResource(character.illustrations, resourceId, 'illustration');
-    return exportIllustrationFile(
-      this.paths.illustrationFile(character.directoryName, resource.fileName),
-      destinationDirectory,
-      resource.name,
-    );
-  }
-
-  async deleteIllustration(
-    id: string,
-    resourceId: string,
-  ): Promise<CharacterIllustration | undefined> {
-    const character = this.assertMutableCharacter(id);
-    const current = character.illustrations.find((resource) => resource.id === resourceId);
-    if (!current) return undefined;
-    await deleteIllustrationFile(
-      this.paths.illustrationFile(character.directoryName, current.fileName),
-    );
-    const deleted = this.illustrations.delete(id, resourceId);
-    if (deleted) this.emitPresentationChanged(id);
-    return deleted;
-  }
-
-  listVoiceSamples(id: string): CharacterVoiceSample[] {
-    return this.voiceSamples.list(id);
-  }
-
-  setPrimaryVoiceSample(id: string, resourceId: string): boolean {
-    return this.voiceSamples.setPrimary(id, resourceId);
-  }
-
-  updateVoiceSample(
-    id: string,
-    resourceId: string,
-    patch: CharacterVoiceSamplePatch,
-  ): CharacterVoiceSample | undefined {
-    this.assertMutableCharacter(id);
-    return this.voiceSamples.update(id, resourceId, normalizeResourcePatch(patch));
-  }
-
-  async publishVoiceSample(id: string, input: PublishCharacterVoiceSampleInput): Promise<CharacterVoiceSample> {
-    const character = this.assertMutableCharacter(id);
-    const fileName = physicalName(path.basename(input.fileName));
-    const displayName = sourceBaseName(fileName);
-    const destination = this.paths.voiceFile(character.directoryName, fileName);
-    await publishVoiceFile(destination, input.bytes);
-    try {
-      const validated = await validateVoiceSampleFile(destination);
-      return this.voiceSamples.insert(id, {
-        id: randomUUID(),
-        name: displayName,
-        fileName,
-        promptText: input.promptText.trim(),
-        promptLang: input.promptLang.trim(),
-        isPrimary: input.isPrimary ?? character.voiceSamples.length === 0,
-        mimeType: validated.mimeType,
-        byteSize: validated.byteSize,
-        durationMs: validated.durationMs,
-      });
-    } catch (error) {
-      await removeFileIfPresent(destination);
-      throw error;
-    }
-  }
-
-  async importVoiceSample(id: string, input: ImportCharacterVoiceSampleInput): Promise<CharacterVoiceSample> {
-    const character = this.assertMutableCharacter(id);
-    const validated = await validateVoiceSampleFile(input.sourceFile);
-    const files = await importVoiceFile(
-      input.sourceFile,
-      this.paths.voiceRoot(character.directoryName),
-    );
-    const destination = this.paths.voiceFile(character.directoryName, files.fileName);
-    try {
-      return this.voiceSamples.insert(id, {
-        id: randomUUID(),
-        name: files.displayName,
-        fileName: files.fileName,
-        promptText: input.promptText.trim(),
-        promptLang: input.promptLang.trim(),
-        isPrimary: input.isPrimary ?? character.voiceSamples.length === 0,
-        mimeType: validated.mimeType,
-        byteSize: validated.byteSize,
-        durationMs: validated.durationMs,
-      });
-    } catch (error) {
-      await removeFileIfPresent(destination);
-      throw error;
-    }
-  }
-
-  async exportVoiceSample(id: string, resourceId: string, destinationDirectory: string): Promise<string> {
-    const character = this.getRequired(id);
-    const resource = requiredResource(character.voiceSamples, resourceId, 'voice_sample');
-    return exportVoiceFile(
-      this.paths.voiceFile(character.directoryName, resource.fileName),
-      destinationDirectory,
-      resource.name,
-    );
-  }
-
-  async deleteVoiceSample(id: string, resourceId: string): Promise<CharacterVoiceSample | undefined> {
-    const character = this.assertMutableCharacter(id);
-    const current = character.voiceSamples.find((resource) => resource.id === resourceId);
-    if (!current) return undefined;
-    await deleteVoiceFile(this.paths.voiceFile(character.directoryName, current.fileName));
-    return this.voiceSamples.delete(id, resourceId);
-  }
-
-  inspectHealth(id: string): Promise<CharacterHealth> {
-    return inspectCharacterHealth(this.getRequired(id), this.paths);
-  }
-
-  /**
-   * 主窗口舞台的原子读取：健康门定下降级链选择后，同一次调用内解析
-   * 文件路径与运行配置，消费方不再第二次请求或拼接资源字段。
-   */
-  async inspectStagePresentation(id: string): Promise<CharacterStagePresentation> {
-    const health = await this.inspectHealth(id);
-    const character = this.getRequired(id);
-
-    const candidates: CharacterStageEntry[] = [];
-    const live2d = character.live2dModels.find((r) => r.id === health.selectedLive2dModelId);
-    if (live2d) {
-      candidates.push({
-        kind: 'live2d',
-        resourceId: live2d.id,
-        name: live2d.name,
-        file: this.resolveLive2dModelFile(id, live2d.id),
-        stageScale: live2d.stageScale,
-        stageOffsetX: live2d.stageOffsetX,
-        stageOffsetY: live2d.stageOffsetY,
-        updatedAt: live2d.updatedAt,
-        runtimeConfig: this.resolveLive2dRuntimeConfig(id, live2d.id),
-      });
-    }
-    const illustration = character.illustrations.find(
-      (r) => r.id === health.selectedIllustrationId,
-    );
-    if (illustration) {
-      candidates.push({
-        kind: 'illustration',
-        resourceId: illustration.id,
-        name: illustration.name,
-        file: this.resolveIllustrationFile(id, illustration.id),
-        stageScale: illustration.stageScale,
-        stageOffsetX: illustration.stageOffsetX,
-        stageOffsetY: illustration.stageOffsetY,
-        updatedAt: illustration.updatedAt,
-      });
-    }
-
-    return { characterId: character.id, candidates };
-  }
-
-  inspectAllHealth(): Promise<CharacterHealthReport> {
-    return inspectAllCharacterHealth(this.list(), this.paths);
-  }
-
-  resolveLive2dModelDirectory(id: string, resourceId: string): string {
-    const character = this.getRequired(id);
-    const resource = requiredResource(character.live2dModels, resourceId, 'live2d_model');
-    return this.paths.live2dModelDirectory(character.directoryName, resource.directoryName);
-  }
-
-  /**
-   * 返回渲染器真正加载的 model3.json。模型入口发现规则属于 Character，
-   * Server 和前端不能再次遍历 Live2D 目录并各自决定入口。
-   */
-  resolveLive2dModelFile(id: string, resourceId: string): string {
-    return findLive2dPackageFilesSync(
-      this.resolveLive2dModelDirectory(id, resourceId),
-    ).modelPath;
-  }
-
-  resolveIllustrationFile(id: string, resourceId: string): string {
-    const character = this.getRequired(id);
-    const resource = requiredResource(character.illustrations, resourceId, 'illustration');
-    return this.paths.illustrationFile(character.directoryName, resource.fileName);
-  }
-
-  resolveVoiceSampleFile(id: string, resourceId: string): string {
-    const character = this.getRequired(id);
-    const resource = requiredResource(character.voiceSamples, resourceId, 'voice_sample');
-    return this.paths.voiceFile(character.directoryName, resource.fileName);
-  }
-
-  private createWithDirectory(input: CharacterInput, directoryName: string): Character {
-    const directory = this.paths.characterDirectory(directoryName);
-    if (fs.existsSync(directory)) throw new CharacterDirectoryConflictError(directoryName);
+    // 先占住稳定目录名；SQL 创建失败时撤销目录，不能留下无法再次创建的幽灵角色。
     fs.mkdirSync(directory, { recursive: false });
     try {
-      return this.withResources(this.repository.insert(input, directoryName));
+      return this.withResources(this.repository.insert(normalized));
     } catch (error) {
       fs.rmSync(directory, { recursive: true, force: true });
       throw error;
     }
   }
 
-  private getRequired(id: string): Character {
-    const character = this.get(id);
-    if (!character) throw new CharacterNotFoundError(id);
+  update(name: string, patch: CharacterPatch): Promise<Character> {
+    return this.mutate(name, () => {
+      const current = this.getRequired(name);
+      if (Object.values(patch).every(value => value === undefined)) {
+        throw new CharacterInputInvalidError('character_patch_empty', name);
+      }
+      const normalized: CharacterPatch = {
+        ...(patch.displayName !== undefined ? { displayName: patch.displayName?.trim() || null } : {}),
+        ...(patch.description !== undefined ? { description: patch.description?.trim() || null } : {}),
+        ...(patch.personaPrompt !== undefined ? { personaPrompt: patch.personaPrompt.trim() } : {}),
+        ...(patch.stageKind !== undefined ? { stageKind: patch.stageKind } : {}),
+      };
+      if (normalized.personaPrompt !== undefined) {
+        assertPersonaPrompt(normalized.personaPrompt, name);
+      }
+      this.repository.update(name, normalized);
+      const updated = this.get(name) ?? current;
+      if (patch.stageKind !== undefined) this.emitPresentationChanged(name);
+      return updated;
+    });
+  }
+
+  activate(name: string): string {
+    const target = this.getRequired(name);
+    assertPersonaPrompt(target.personaPrompt, name);
+    const previous = this.repository.findActive();
+    if (!this.repository.activate(name)) {
+      throw new CharacterNotFoundError(name);
+    }
+    const next = this.getRequired(name);
+    if (!previous || previous.name !== name) {
+      this.emitSwitched(next);
+    }
+    return name;
+  }
+
+  deleteCharacter(name: string, replacementName?: string): Promise<CharacterDeleteResult> {
+    return this.mutate(name, async () => {
+      this.getRequiredCharacterOnly(name);
+      const operationDirectory = this.createStagingOperation();
+      const characterDirectory = this.paths.characterDirectory(name);
+      // 目录先移入本次操作的暂存区，SQL 拒绝删除或抛错时再原位恢复。
+      // 当前角色的替代激活与角色删除由 Repository 在同一事务中完成。
+      const staged = await this.stageExistingPath(characterDirectory, operationDirectory);
+      try {
+        const result = this.repository.delete(name, replacementName);
+        if (result !== 'deleted') {
+          if (staged) await fs.promises.rename(staged, characterDirectory);
+          return result;
+        }
+        if (replacementName) {
+          this.emitSwitched(this.getRequired(replacementName));
+        }
+        return result;
+      } catch (error) {
+        if (staged && !fs.existsSync(characterDirectory)) {
+          await fs.promises.rename(staged, characterDirectory);
+        }
+        throw error;
+      } finally {
+        await removeDirectoryIfPresent(operationDirectory);
+      }
+    });
+  }
+
+  setPrimaryLive2dModel(characterName: string, live2dName: string): Promise<boolean> {
+    return this.mutate(characterName, () => {
+      this.getRequiredCharacterOnly(characterName);
+      if (!this.live2dModels.find(characterName, live2dName)) {
+        throw new CharacterResourceNotFoundError('live2d_model', live2dName);
+      }
+      const changed = this.live2dModels.setPrimary(characterName, live2dName);
+      if (changed) this.resourceChanged(characterName);
+      return changed;
+    });
+  }
+
+  updateLive2dModel(characterName: string, live2dName: string, patch: CharacterLive2dModelPatch): Promise<CharacterLive2dModel | undefined> {
+    return this.mutate(characterName, () => {
+      this.getRequiredCharacterOnly(characterName);
+      normalizeResourcePatch(patch);
+      const resource = this.live2dModels.update(characterName, live2dName, patch);
+      if (resource) this.resourceChanged(characterName);
+      return resource;
+    });
+  }
+  async importLive2dModel(characterName: string, input: ImportCharacterLive2dModelInput): Promise<CharacterLive2dModel> {
+    return this.mutate(characterName, async () => {
+      this.getRequiredCharacterOnly(characterName);
+      // 导入先在角色目录之外完成解压、引用校验与配置补充；全部通过后才改名提交。
+      const operationDirectory = this.createStagingOperation();
+      const stagedDirectory = path.join(operationDirectory, 'resource');
+      let destination: string | undefined;
+      try {
+        const files = await importLive2dFiles(input.source, stagedDirectory);
+        destination = this.paths.live2dModelDirectory(characterName, files.name);
+        if (fs.existsSync(destination) || this.live2dModels.find(characterName, files.name)) {
+          throw new CharacterResourceValidationError('resource_name_conflict');
+        }
+        const live2dFiles = await findLive2dFiles(stagedDirectory);
+        const extraction = await extractLive2dRuntimeConfig(stagedDirectory, live2dFiles.modelPath);
+        await supplementLive2dRuntimeConfig(
+          live2dFiles.modelPath,
+          live2dFiles.runtimeConfigPath,
+          extraction,
+        );
+        await fs.promises.mkdir(this.paths.live2dRoot(characterName), { recursive: true });
+        await fs.promises.rename(stagedDirectory, destination);
+        try {
+          const resource = this.live2dModels.insert(characterName, {
+            name: files.name,
+            displayName: files.displayName,
+            isPrimary: input.isPrimary,
+            byteSize: files.byteSize,
+          });
+          this.resourceChanged(characterName);
+          return resource;
+        } catch (error) {
+          await deleteLive2dDirectory(destination);
+          throw error;
+        }
+      } finally {
+        await removeDirectoryIfPresent(operationDirectory);
+      }
+    });
+  }
+  async exportLive2dModel(characterName: string, live2dName: string, destination: string): Promise<string> {
+    this.getRequiredCharacterOnly(characterName);
+    const resource = this.live2dModels.find(characterName, live2dName);
+    if (!resource) throw new CharacterResourceNotFoundError('live2d_model', live2dName);
+    return exportLive2dZip(
+      this.paths.live2dModelDirectory(characterName, live2dName),
+      destination,
+      resource.displayName,
+    );
+  }
+  async deleteLive2dModel(characterName: string, live2dName: string): Promise<CharacterLive2dModel | undefined> {
+    return this.mutate(characterName, async () => {
+      this.getRequiredCharacterOnly(characterName);
+      const current = this.live2dModels.find(characterName, live2dName);
+      if (!current) return undefined;
+      const operationDirectory = this.createStagingOperation();
+      const source = this.paths.live2dModelDirectory(characterName, live2dName);
+      const staged = await this.stageExistingPath(source, operationDirectory);
+      try {
+        const deleted = this.live2dModels.delete(characterName, live2dName);
+        if (!deleted && staged) await fs.promises.rename(staged, source);
+        if (deleted) this.resourceChanged(characterName);
+        return deleted;
+      } catch (error) {
+        if (staged && !fs.existsSync(source)) await fs.promises.rename(staged, source);
+        throw error;
+      } finally {
+        await removeDirectoryIfPresent(operationDirectory);
+      }
+    });
+  }
+
+  setPrimaryIllustration(characterName: string, illustrationName: string): Promise<boolean> {
+    return this.mutate(characterName, () => {
+      this.getRequiredCharacterOnly(characterName);
+      if (!this.illustrations.find(characterName, illustrationName)) {
+        throw new CharacterResourceNotFoundError('illustration', illustrationName);
+      }
+      const changed = this.illustrations.setPrimary(characterName, illustrationName);
+      if (changed) this.resourceChanged(characterName);
+      return changed;
+    });
+  }
+
+  updateIllustration(characterName: string, illustrationName: string, patch: CharacterIllustrationPatch): Promise<CharacterIllustration | undefined> {
+    return this.mutate(characterName, () => {
+      this.getRequiredCharacterOnly(characterName);
+      normalizeResourcePatch(patch);
+      normalizeExpression(patch.expression);
+      this.assertExpressionCapacity(characterName, patch.expression, illustrationName);
+      const resource = this.illustrations.update(characterName, illustrationName, patch);
+      if (resource) this.resourceChanged(characterName);
+      return resource;
+    });
+  }
+  async importIllustration(characterName: string, input: ImportCharacterIllustrationInput): Promise<CharacterIllustration> {
+    return this.mutate(characterName, async () => {
+      this.getRequiredCharacterOnly(characterName);
+      normalizeExpression(input.expression);
+      this.assertExpressionCapacity(characterName, input.expression);
+      const operationDirectory = this.createStagingOperation();
+      const stagedFile = path.join(operationDirectory, 'resource');
+      let destination: string | undefined;
+      try {
+        const files = await importIllustrationFile(input.sourceFile, stagedFile);
+        destination = this.paths.illustrationFile(characterName, files.name);
+        if (fs.existsSync(destination) || this.illustrations.find(characterName, files.name)) {
+          throw new CharacterResourceValidationError('resource_name_conflict');
+        }
+        await fs.promises.mkdir(this.paths.illustrationRoot(characterName), { recursive: true });
+        await fs.promises.rename(stagedFile, destination);
+        try {
+          const resource = this.illustrations.insert(characterName, {
+            name: files.name,
+            displayName: files.displayName,
+            expression: input.expression ?? null,
+            isPrimary: input.isPrimary,
+            byteSize: files.byteSize,
+          });
+          this.resourceChanged(characterName);
+          return resource;
+        } catch (error) {
+          await removeFileIfPresent(destination);
+          throw error;
+        }
+      } finally {
+        await removeDirectoryIfPresent(operationDirectory);
+      }
+    });
+  }
+  async exportIllustration(characterName: string, illustrationName: string, destination: string): Promise<string> {
+    this.getRequiredCharacterOnly(characterName);
+    const resource = this.illustrations.find(characterName, illustrationName);
+    if (!resource) throw new CharacterResourceNotFoundError('illustration', illustrationName);
+    return exportIllustrationFile(
+      this.paths.illustrationFile(characterName, illustrationName),
+      destination,
+      resource.displayName,
+    );
+  }
+  async deleteIllustration(characterName: string, illustrationName: string): Promise<CharacterIllustration | undefined> {
+    return this.mutate(characterName, async () => {
+      this.getRequiredCharacterOnly(characterName);
+      const current = this.illustrations.find(characterName, illustrationName);
+      if (!current) return undefined;
+      const operationDirectory = this.createStagingOperation();
+      const source = this.paths.illustrationFile(characterName, illustrationName);
+      const staged = await this.stageExistingPath(source, operationDirectory);
+      try {
+        const deleted = this.illustrations.delete(characterName, illustrationName);
+        if (!deleted && staged) await fs.promises.rename(staged, source);
+        if (deleted) this.resourceChanged(characterName);
+        return deleted;
+      } catch (error) {
+        if (staged && !fs.existsSync(source)) await fs.promises.rename(staged, source);
+        throw error;
+      } finally {
+        await removeDirectoryIfPresent(operationDirectory);
+      }
+    });
+  }
+
+  setPrimaryVoiceSample(characterName: string, voiceName: string): Promise<boolean> {
+    return this.mutate(characterName, () => {
+      this.getRequiredCharacterOnly(characterName);
+      if (!this.voiceSamples.find(characterName, voiceName)) {
+        throw new CharacterResourceNotFoundError('voice_sample', voiceName);
+      }
+      const changed = this.voiceSamples.setPrimary(characterName, voiceName);
+      if (changed) this.resourceChanged(characterName);
+      return changed;
+    });
+  }
+
+  updateVoiceSample(characterName: string, voiceName: string, patch: CharacterVoiceSamplePatch): Promise<CharacterVoiceSample | undefined> {
+    return this.mutate(characterName, () => {
+      this.getRequiredCharacterOnly(characterName);
+      normalizeResourcePatch(patch);
+      const resource = this.voiceSamples.update(characterName, voiceName, patch);
+      if (resource) this.resourceChanged(characterName);
+      return resource;
+    });
+  }
+  async importVoiceSample(characterName: string, input: ImportCharacterVoiceSampleInput): Promise<CharacterVoiceSample> {
+    return this.mutate(characterName, async () => {
+      this.getRequiredCharacterOnly(characterName);
+      const promptText = input.promptText.trim();
+      const promptLang = input.promptLang.trim();
+      if (!promptText || !promptLang) {
+        throw new CharacterInputInvalidError('voice_prompt_required', characterName);
+      }
+      const validated = await validateVoiceSampleFile(input.sourceFile);
+      const operationDirectory = this.createStagingOperation();
+      const stagedFile = path.join(operationDirectory, 'resource');
+      let destination: string | undefined;
+      try {
+        const files = await importVoiceFile(input.sourceFile, stagedFile);
+        destination = this.paths.voiceFile(characterName, files.name);
+        if (fs.existsSync(destination) || this.voiceSamples.find(characterName, files.name)) {
+          throw new CharacterResourceValidationError('resource_name_conflict');
+        }
+        await fs.promises.mkdir(this.paths.voiceRoot(characterName), { recursive: true });
+        await fs.promises.rename(stagedFile, destination);
+        try {
+          const resource = this.voiceSamples.insert(characterName, {
+            name: files.name,
+            displayName: files.displayName,
+            promptText,
+            promptLang,
+            isPrimary: input.isPrimary,
+            mimeType: validated.mimeType,
+            byteSize: validated.byteSize,
+            durationMs: validated.durationMs,
+          });
+          this.resourceChanged(characterName);
+          return resource;
+        } catch (error) {
+          await removeFileIfPresent(destination);
+          throw error;
+        }
+      } finally {
+        await removeDirectoryIfPresent(operationDirectory);
+      }
+    });
+  }
+  async exportVoiceSample(characterName: string, voiceName: string, destination: string): Promise<string> {
+    this.getRequiredCharacterOnly(characterName);
+    const resource = this.voiceSamples.find(characterName, voiceName);
+    if (!resource) throw new CharacterResourceNotFoundError('voice_sample', voiceName);
+    return exportVoiceFile(
+      this.paths.voiceFile(characterName, voiceName),
+      destination,
+      resource.displayName,
+    );
+  }
+  async deleteVoiceSample(characterName: string, voiceName: string): Promise<CharacterVoiceSample | undefined> {
+    return this.mutate(characterName, async () => {
+      this.getRequiredCharacterOnly(characterName);
+      const current = this.voiceSamples.find(characterName, voiceName);
+      if (!current) return undefined;
+      const operationDirectory = this.createStagingOperation();
+      const source = this.paths.voiceFile(characterName, voiceName);
+      const staged = await this.stageExistingPath(source, operationDirectory);
+      try {
+        const deleted = this.voiceSamples.delete(characterName, voiceName);
+        if (!deleted && staged) await fs.promises.rename(staged, source);
+        if (deleted) this.resourceChanged(characterName);
+        return deleted;
+      } catch (error) {
+        if (staged && !fs.existsSync(source)) await fs.promises.rename(staged, source);
+        throw error;
+      } finally {
+        await removeDirectoryIfPresent(operationDirectory);
+      }
+    });
+  }
+
+  resolveCharacterDirectory(characterName: string): string {
+    this.getRequiredCharacterOnly(characterName);
+    return this.paths.characterDirectory(characterName);
+  }
+
+  inspectStagePresentation(characterName: string): CharacterStagePresentation {
+    // Prompt、StageEngine 初始化和角色事件仍是同步消费方，因此这里只读取已提交资源，
+    // 不触发导入、修复或异步补全，也不缓存另一份可能过期的舞台事实。
+    const character = this.repository.findByName(characterName);
+    if (!character) throw new CharacterNotFoundError(characterName);
+    if (character.stageKind === 'blank') {
+      return { status: 'blank', characterName };
+    }
+    if (character.stageKind === 'live2d') {
+      const resource = this.live2dModels.findPrimary(characterName);
+      if (!resource) {
+        return { status: 'unavailable', characterName, stageKind: 'live2d', reason: 'primary_resource_missing' };
+      }
+      try {
+        const directory = this.paths.live2dModelDirectory(characterName, resource.name);
+        const files = findLive2dFilesSync(directory);
+        return {
+          status: 'live2d',
+          characterName,
+          resource: {
+            kind: 'live2d',
+            name: resource.name,
+            displayName: resource.displayName,
+            file: files.modelPath,
+            stageScale: resource.stageScale,
+            stageOffsetX: resource.stageOffsetX,
+            stageOffsetY: resource.stageOffsetY,
+            runtimeConfig: files.runtimeConfigPath ? readLive2dRuntimeConfig(files.runtimeConfigPath) : null,
+          },
+        };
+      } catch {
+        return {
+          status: 'unavailable',
+          characterName,
+          stageKind: 'live2d',
+          reason: fs.existsSync(this.paths.live2dModelDirectory(characterName, resource.name)) ? 'resource_invalid' : 'resource_file_missing',
+        };
+      }
+    }
+    const resource = this.illustrations.findPrimary(characterName);
+    if (!resource) {
+      return { status: 'unavailable', characterName, stageKind: 'illustration', reason: 'primary_resource_missing' };
+    }
+    const file = this.paths.illustrationFile(characterName, resource.name);
+    const primaryFileState = inspectIllustrationFileSync(file);
+    if (primaryFileState !== 'valid') {
+      return {
+        status: 'unavailable',
+        characterName,
+        stageKind: 'illustration',
+        reason: primaryFileState === 'missing' ? 'resource_file_missing' : 'resource_invalid',
+      };
+    }
+    const expressions: Record<string, CharacterIllustrationStageEntry[]> = {};
+    for (const item of this.illustrations.list(characterName)) {
+      if (!item.expression) continue;
+      const itemFile = this.paths.illustrationFile(characterName, item.name);
+      if (inspectIllustrationFileSync(itemFile) !== 'valid') continue;
+      (expressions[item.expression] ??= []).push(illustrationStageEntry(item, itemFile));
+    }
+    return { status: 'illustration', characterName, resource: illustrationStageEntry(resource, file), expressions };
+  }
+
+  resolveLive2dModelDirectory(characterName: string, live2dName: string): string {
+    this.getRequiredCharacterOnly(characterName);
+    if (!this.live2dModels.find(characterName, live2dName)) {
+      throw new CharacterResourceNotFoundError('live2d_model', live2dName);
+    }
+    return this.paths.live2dModelDirectory(characterName, live2dName);
+  }
+
+  resolveIllustrationFile(characterName: string, illustrationName: string): string {
+    this.getRequiredCharacterOnly(characterName);
+    if (!this.illustrations.find(characterName, illustrationName)) {
+      throw new CharacterResourceNotFoundError('illustration', illustrationName);
+    }
+    return this.paths.illustrationFile(characterName, illustrationName);
+  }
+
+  resolveVoiceSampleFile(characterName: string, voiceName: string): string {
+    this.getRequiredCharacterOnly(characterName);
+    if (!this.voiceSamples.find(characterName, voiceName)) {
+      throw new CharacterResourceNotFoundError('voice_sample', voiceName);
+    }
+    return this.paths.voiceFile(characterName, voiceName);
+  }
+
+  async reloadLive2dConfiguration(characterName: string, live2dName: string): Promise<Live2dConfiguration> {
+    return this.mutate(characterName, async () => {
+      const configuration = await this.readLive2dConfiguration(characterName, live2dName);
+      this.resourceChanged(characterName);
+      return configuration;
+    });
+  }
+  async readLive2dConfiguration(characterName: string, live2dName: string): Promise<Live2dConfiguration> {
+    this.getRequiredCharacterOnly(characterName);
+    if (!this.live2dModels.find(characterName, live2dName)) {
+      throw new CharacterResourceNotFoundError('live2d_model', live2dName);
+    }
+    const directory = this.paths.live2dModelDirectory(characterName, live2dName);
+    const files = await findLive2dFiles(directory);
+    const extraction = await extractLive2dRuntimeConfig(directory, files.modelPath);
+    return {
+      runtimeConfig: readLive2dRuntimeConfig(files.runtimeConfigPath),
+      expressions: extraction.expressions.map(expression => expression.name),
+      motions: extraction.motions,
+    };
+  }
+  async saveLive2dMappings(characterName: string, live2dName: string, mappings: Live2dMappings): Promise<Live2dConfiguration> {
+    return this.mutate(characterName, async () => {
+      this.getRequiredCharacterOnly(characterName);
+      if (!this.live2dModels.find(characterName, live2dName)) {
+        throw new CharacterResourceNotFoundError('live2d_model', live2dName);
+      }
+      const directory = this.paths.live2dModelDirectory(characterName, live2dName);
+      const files = await findLive2dFiles(directory);
+      const extraction = await extractLive2dRuntimeConfig(directory, files.modelPath);
+      const written = await writeLive2dMappings(
+        files.modelPath,
+        files.runtimeConfigPath,
+        mappings,
+        extraction.expressions.map(expression => expression.name),
+        extraction.motions,
+      );
+      this.resourceChanged(characterName);
+      return {
+        runtimeConfig: written.config,
+        expressions: extraction.expressions.map(expression => expression.name),
+        motions: extraction.motions,
+      };
+    });
+  }
+
+  private getRequired(name: string): Character {
+    const character = this.get(name);
+    if (!character) throw new CharacterNotFoundError(name);
     return character;
   }
 
-  private assertMutableCharacter(id: string): Character {
-    const character = this.getRequired(id);
-    if (character.isBuiltin) throw new CharacterReadOnlyError(id);
+  private getRequiredCharacterOnly(name: string): Character {
+    // 只需确认身份时不加载三类资源，避免一次资源操作先额外查询完整角色聚合。
+    const character = this.repository.findByName(name);
+    if (!character) throw new CharacterNotFoundError(name);
     return character;
   }
 
   private withResources(character: Character): Character {
     return withResources(
       character,
-      this.live2dModels.list(character.id),
-      this.illustrations.list(character.id),
-      this.voiceSamples.list(character.id),
+      this.live2dModels.list(character.name),
+      this.illustrations.list(character.name),
+      this.voiceSamples.list(character.name),
     );
   }
-
-  private insertLive2dModel(
-    id: string,
-    input: CharacterLive2dModelInput & { id: string },
-    vocabulary: Live2dVocabulary,
-  ): CharacterLive2dModel {
-    const character = this.getRequired(id);
-    const becomesPrimary = input.enabled !== false
-      && (input.isPrimary === true || !selectPrimaryLive2dModel(character.live2dModels));
-    return this.sqlite.transaction(() => {
-      const inserted = this.live2dModels.insert(id, { ...input, isPrimary: becomesPrimary });
-      if (becomesPrimary) this.writeVocabulary(id, inserted.id, vocabulary);
-      return this.live2dModels.list(id).find((resource) => resource.id === inserted.id)!;
-    })();
-  }
-
-  private deleteLive2dModelRecord(
-    character: Character,
-    current: CharacterLive2dModel,
-  ): CharacterLive2dModel | undefined {
-    const nextPrimary = current.isPrimary
-      ? selectPrimaryLive2dModel(character.live2dModels.filter((resource) => resource.id !== current.id))
-      : null;
-    const vocabulary = nextPrimary ? this.readVocabulary(character, nextPrimary) : EMPTY_VOCABULARY;
-    return this.sqlite.transaction(() => {
-      const deleted = this.live2dModels.delete(character.id, current.id);
-      if (deleted && nextPrimary) this.writeVocabulary(character.id, nextPrimary.id, vocabulary);
-      return deleted;
-    })();
-  }
-
-  private refreshPrimaryLive2dVocabulary(id: string): void {
-    const character = this.getRequired(id);
-    const primary = selectPrimaryLive2dModel(character.live2dModels);
-    if (!primary) return;
-    this.writeVocabulary(id, primary.id, this.readVocabulary(character, primary));
-  }
-
-  private readVocabulary(
-    character: Character,
-    resource: Pick<CharacterLive2dModel, 'directoryName'>,
-  ): Live2dVocabulary {
-    const directory = this.paths.live2dModelDirectory(
-      character.directoryName,
-      resource.directoryName,
-    );
-    if (!fs.existsSync(directory)) {
-      // 内置种子的正式资源由发布装配复制；开发期资源尚未安装时允许空词汇。
-      if (character.isBuiltin) return EMPTY_VOCABULARY;
-      throw new CharacterResourceMissingError('live2d_model', directory);
-    }
-    const { runtimeConfigPath } = findLive2dPackageFilesSync(directory);
-    return readLive2dVocabulary(runtimeConfigPath);
-  }
-
-  /** 主窗口演出消费：现读该资源的 runtime-config.json 完整映射；缺失或损坏按无映射降级。 */
-  resolveLive2dRuntimeConfig(id: string, resourceId: string): Live2dRuntimeConfig | null {
-    const character = this.getRequired(id);
-    const resource = character.live2dModels.find((r) => r.id === resourceId);
-    if (!resource) return null;
-    const directory = this.paths.live2dModelDirectory(
-      character.directoryName,
-      resource.directoryName,
-    );
-    try {
-      const { runtimeConfigPath } = findLive2dPackageFilesSync(directory);
-      return runtimeConfigPath ? readLive2dRuntimeConfig(runtimeConfigPath) : null;
-    } catch (error) {
-      console.warn(`[character] runtime-config 读取失败，按无映射降级: ${resourceId}`, error);
-      return null;
+  private assertExpressionCapacity(characterName: string, expression: string | null | undefined, excludingName?: string): void {
+    if (!expression) return;
+    // 编辑已有立绘时排除自身，否则把不改变 expression 的保存误判为超额。
+    const count = this.illustrations.list(characterName)
+      .filter(resource => resource.name !== excludingName && resource.expression === expression).length;
+    if (count >= ILLUSTRATION_EXPRESSION_POOL_MAX) {
+      throw new CharacterInputInvalidError('illustration_expression_pool_full', characterName);
     }
   }
 
-  /** 重新读取该资源的 runtime-config.json 并把词汇写回 SQL；配置非法时抛错（用户显式触发）。 */
-  reloadLive2dVocabulary(id: string, resourceId: string): boolean {
-    const character = this.getRequired(id);
-    const resource = character.live2dModels.find((r) => r.id === resourceId);
-    if (!resource) return false;
-    this.writeVocabulary(id, resourceId, this.readVocabulary(character, resource));
-    this.emitPresentationChanged(id);
-    return true;
+  /** 同一角色的文件与 SQL 修改串行；不同角色仍可并发导入和编辑。 */
+  private mutate<T>(characterName: string, action: () => T | Promise<T>): Promise<T> {
+    const previous = this.mutationTails.get(characterName) ?? Promise.resolve();
+    const result = previous.then(action);
+    const tail = result.then(() => undefined, () => undefined);
+    this.mutationTails.set(characterName, tail);
+    void tail.then(() => {
+      if (this.mutationTails.get(characterName) === tail) {
+        this.mutationTails.delete(characterName);
+      }
+    });
+    return result;
   }
 
-  private writeVocabulary(
-    id: string,
-    live2dModelId: string,
-    vocabulary: Live2dVocabulary,
-  ): void {
-    const current = this.live2dModels.list(id).find(
-      (resource) => resource.id === live2dModelId,
-    );
-    if (!current || (
-      sameWords(current.emotionVocabulary, vocabulary.emotions)
-      && sameWords(current.motionVocabulary, vocabulary.motions)
-    )) return;
-    this.live2dModels.updateVocabularies(
-      id,
-      live2dModelId,
-      vocabulary.emotions,
-      vocabulary.motions,
-    );
+  private createStagingOperation(): string {
+    const directory = this.paths.stagingOperationDirectory(crypto.randomUUID());
+    fs.mkdirSync(directory, { recursive: true });
+    return directory;
   }
 
-  private emitSwitched(next: Character, previous: Character | null): void {
-    for (const listener of this.switchedListeners) {
-      try { listener(next, previous); }
-      catch (error) { console.error('[character] switched listener threw:', error); }
-    }
+  private async stageExistingPath(source: string, operationDirectory: string): Promise<string | null> {
+    if (!await fs.promises.stat(source).catch(() => null)) return null;
+    // 每次操作拥有独立 UUID 目录，因此固定使用 `deleted` 不会与其他角色操作冲突。
+    const staged = path.join(operationDirectory, 'deleted');
+    await fs.promises.rename(source, staged);
+    return staged;
   }
 
-  private emitPresentationChanged(id: string): void {
-    const character = this.get(id);
+  private resourceChanged(characterName: string): void {
+    // 资源表自身的时间不足以刷新角色卡；同时推进角色更新时间并广播新的舞台事实。
+    this.repository.touch(characterName);
+    this.emitPresentationChanged(characterName);
+  }
+  private emitSwitched(next: Character): void {
+    const presentation = this.inspectStagePresentation(next.name);
+    for (const listener of this.switchedListeners) listener(next, presentation);
+  }
+  private emitPresentationChanged(characterName: string): void {
+    const character = this.get(characterName);
     if (!character) return;
-    for (const listener of this.presentationChangedListeners) {
-      try { listener(character); }
-      catch (error) { console.error('[character] presentation listener threw:', error); }
-    }
+    const presentation = this.inspectStagePresentation(characterName);
+    for (const listener of this.presentationChangedListeners) listener(character, presentation);
   }
 }
 
-const EMPTY_VOCABULARY: Live2dVocabulary = { emotions: [], motions: [] };
-
-function normalizeCharacterInput(input: CharacterInput): {
-  name: string;
-  description: string | null;
-  personaPrompt: string;
-} {
-  const name = input.name.trim();
+function normalizeCharacterInput(input: CharacterInput): CharacterInput {
+  const name = physicalName(input.name.trim().normalize('NFC'));
   if (!name) throw new CharacterInputInvalidError('character_name_empty');
   return {
     name,
+    displayName: input.displayName?.trim() || null,
     description: input.description?.trim() || null,
     personaPrompt: input.personaPrompt.trim(),
   };
@@ -783,57 +759,45 @@ function withResources(
   illustrations: readonly CharacterIllustration[],
   voiceSamples: readonly CharacterVoiceSample[],
 ): Character {
-  const primary = selectPrimaryLive2dModel(live2dModels);
-  return {
-    ...character,
-    live2dModels,
-    illustrations,
-    voiceSamples,
-    emotionVocabulary: primary?.emotionVocabulary ?? [],
-    motionVocabulary: primary?.motionVocabulary ?? [],
-  };
+  return { ...character, live2dModels, illustrations, voiceSamples };
 }
 
-function selectPrimaryLive2dModel(resources: readonly CharacterLive2dModel[]): CharacterLive2dModel | undefined {
-  const enabled = resources.filter((resource) => resource.enabled);
-  return enabled.find((resource) => resource.isPrimary)
-    ?? enabled.sort((left, right) => left.createdAt - right.createdAt || left.id.localeCompare(right.id))[0];
-}
-
-function normalizeResourcePatch<T extends {
-  name?: string;
+function normalizeResourcePatch(patch: {
+  displayName?: string;
   stageScale?: number;
   stageOffsetX?: number;
   stageOffsetY?: number;
-  enabled?: boolean;
-}>(patch: T): T {
-  if (Object.values(patch).every((value) => value === undefined)) {
+}): void {
+  if (Object.values(patch).every(value => value === undefined)) {
     throw new CharacterInputInvalidError('resource_patch_empty');
   }
-  if (patch.name !== undefined && !patch.name.trim()) {
+  if (patch.displayName !== undefined && !patch.displayName.trim()) {
     throw new CharacterInputInvalidError('resource_name_empty');
   }
-  if (patch.stageScale !== undefined && (
-    !Number.isFinite(patch.stageScale) || patch.stageScale < 0.1 || patch.stageScale > 5
-  )) throw new CharacterInputInvalidError('resource_stage_scale_invalid');
-  for (const offset of [patch.stageOffsetX, patch.stageOffsetY]) {
-    if (offset !== undefined && (!Number.isFinite(offset) || offset < -1 || offset > 1)) {
+  if (patch.stageScale !== undefined && (!Number.isFinite(patch.stageScale) || patch.stageScale < 0.1 || patch.stageScale > 5)) {
+    throw new CharacterInputInvalidError('resource_stage_scale_invalid');
+  }
+  for (const value of [patch.stageOffsetX, patch.stageOffsetY]) {
+    if (value !== undefined && (!Number.isFinite(value) || value < -1 || value > 1)) {
       throw new CharacterInputInvalidError('resource_stage_offset_invalid');
     }
   }
-  return patch.name === undefined ? patch : { ...patch, name: patch.name.trim() };
 }
 
-function requiredResource<T extends { id: string }>(
-  resources: readonly T[],
-  id: string,
-  kind: CharacterResourceKind,
-): T {
-  const resource = resources.find((item) => item.id === id);
-  if (!resource) throw new CharacterResourceNotFoundError(kind, id);
-  return resource;
+function normalizeExpression(expression: string | null | undefined): void {
+  if (expression !== undefined && expression !== null && !/^[a-z][a-z0-9_]*$/u.test(expression)) {
+    throw new CharacterInputInvalidError('illustration_expression_invalid');
+  }
 }
 
-function sameWords(left: readonly string[], right: readonly string[]): boolean {
-  return left.length === right.length && left.every((value, index) => value === right[index]);
+function illustrationStageEntry(resource: CharacterIllustration, file: string): CharacterIllustrationStageEntry {
+  return {
+    kind: 'illustration',
+    name: resource.name,
+    displayName: resource.displayName,
+    file,
+    stageScale: resource.stageScale,
+    stageOffsetX: resource.stageOffsetX,
+    stageOffsetY: resource.stageOffsetY,
+  };
 }

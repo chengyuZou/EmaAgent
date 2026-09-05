@@ -4,14 +4,15 @@ import type { CharacterInput } from '../types.js';
 import type { CharacterLive2dModelInput } from '../live2d/types.js';
 import type { CharacterVoiceSampleInput } from '../voice/types.js';
 
-export const EMA_CHARACTER_ID = 'ema' as const;
+export const EMA_CHARACTER_NAME = '樱羽艾玛' as const;
 
 /**
  * 内置 Ema 卡--樱羽艾玛(Sakuraba Ema)，《魔法少女的魔女审判》。
  * 完整人设原样放入 personaPrompt，不在结构迁移时顺手改写角色文案。
  */
 export const EMA_CHARACTER_INPUT: CharacterInput = {
-  name: '樱羽艾玛',
+  name: EMA_CHARACTER_NAME,
+  displayName: '艾玛',
   description: '来自《魔法少女的魔女审判》的囚犯少女，编号658。温柔善良、害怕孤独，但内心坚韧。现在是你的 AI 桌宠兼助手。',
 
   personaPrompt: `# 角色：樱羽艾玛(桜羽エマ / Sakuraba Ema)
@@ -74,16 +75,14 @@ determined: 「一定有办法的！」「我不会放弃！」
 };
 
 export const EMA_LIVE2D_MODELS: readonly CharacterLive2dModelInput[] = [{
-  id: 'ema-live2d-default',
-  name: '默认',
-  directoryName: 'ema',
+  name: 'ema',
+  displayName: '默认',
   isPrimary: true,
 }];
 
 export const EMA_VOICE_SAMPLES: readonly CharacterVoiceSampleInput[] = [{
-  id: 'ema-voice-default',
-  name: '默认',
-  fileName: 'ra_ema001.mp3',
+  name: 'ra_ema001.mp3',
+  displayName: '默认',
   promptText: '我就是担心这种伤风败俗的东西如果被身心尚幼的小朋友们看到会造成不好的影响，所以我想提前为小朋友们做好预防措施。',
   promptLang: 'zh',
   isPrimary: true,

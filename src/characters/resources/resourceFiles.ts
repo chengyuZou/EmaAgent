@@ -30,18 +30,6 @@ export async function copyResourceFile(
   return stat.size;
 }
 
-export async function writeResourceFile(
-  destination: string,
-  bytes: Uint8Array,
-  maxBytes: number,
-): Promise<void> {
-  if (bytes.byteLength === 0 || bytes.byteLength > maxBytes) {
-    throw new CharacterResourceValidationError('invalid_resource_values');
-  }
-  await fs.promises.mkdir(path.dirname(destination), { recursive: true });
-  await fs.promises.writeFile(destination, bytes, { flag: 'wx' });
-}
-
 export async function exportResourceFile(
   source: string,
   destinationDirectory: string,

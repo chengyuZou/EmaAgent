@@ -43,4 +43,40 @@ describe('ActiveSessionRegistry', () => {
     registry.clear('s1', 'exec-1');
     await pending;
   });
+
+  it('abortAll 并发通知全部 Turn 与 Compact，并等待执行所有者清理', async () => {
+    const registry = new ActiveSessionRegistry();
+    const turnSignal = registry.register('s1', 'turn-1', 'turn');
+    const compactSignal = registry.register('s2', 'compact-1', 'compact');
+    turnSignal.addEventListener('abort', () => registry.clear('s1', 'turn-1'));
+    compactSignal.addEventListener('abort', () => registry.clear('s2', 'compact-1'));
+
+    await registry.abortAll();
+
+    expect(turnSignal.aborted).toBe(true);
+    expect(compactSignal.aborted).toBe(true);
+    expect(registry.activeSessionCount()).toBe(0);
+  });
+
+  it('关闭窗口同步拒绝新注册，并把并发关闭操作串行执行', async () => {
+    const registry = new ActiveSessionRegistry();
+    const order: string[] = [];
+    let releaseFirst!: () => void;
+    const first = registry.runWithRegistrationsClosed(async () => {
+      order.push('first-start');
+      await new Promise<void>(resolve => { releaseFirst = resolve; });
+      order.push('first-end');
+    });
+    const second = registry.runWithRegistrationsClosed(() => {
+      order.push('second');
+    });
+
+    expect(() => registry.register('s1', 'turn-1', 'turn')).toThrow('session_busy');
+    await Promise.resolve();
+    expect(order).toEqual(['first-start']);
+    releaseFirst();
+    await Promise.all([first, second]);
+    expect(order).toEqual(['first-start', 'first-end', 'second']);
+    expect(registry.register('s1', 'turn-2', 'turn').aborted).toBe(false);
+  });
 });

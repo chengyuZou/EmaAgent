@@ -1,7 +1,6 @@
 // 按源文件名保存立绘原图，只检查文件大小与常见图片文件头，不改写图片内容。
 
 import fs from 'node:fs';
-import path from 'node:path';
 import { CharacterResourceValidationError } from '../errors.js';
 import { sourceBaseName, sourceFileName } from '../resources/resourcePaths.js';
 import {
@@ -11,24 +10,40 @@ import {
 } from '../resources/resourceFiles.js';
 
 export interface ImportedIllustrationFile {
-  readonly fileName: string;
+  readonly name: string;
   readonly displayName: string;
   readonly byteSize: number;
 }
 
 export async function importIllustrationFile(
   sourceFile: string,
-  destinationDirectory: string,
+  destination: string,
 ): Promise<ImportedIllustrationFile> {
   const fileName = sourceFileName(sourceFile);
-  const destination = path.join(destinationDirectory, fileName);
   await assertImageFile(sourceFile);
   const byteSize = await copyResourceFile(sourceFile, destination);
-  return { fileName, displayName: sourceBaseName(sourceFile), byteSize };
+  return { name: fileName, displayName: sourceBaseName(sourceFile), byteSize };
 }
 
 export { exportResourceFile as exportIllustrationFile };
 export { removeFileIfPresent as deleteIllustrationFile };
+
+export function inspectIllustrationFileSync(filePath: string): 'valid' | 'missing' | 'invalid' {
+  let descriptor: number;
+  try {
+    descriptor = fs.openSync(filePath, 'r');
+  } catch {
+    return 'missing';
+  }
+  try {
+    const head = Buffer.alloc(16);
+    const bytesRead = fs.readSync(descriptor, head, 0, head.length, 0);
+    const value = head.subarray(0, bytesRead);
+    return isPng(value) || isJpeg(value) || isGif(value) || isWebp(value) ? 'valid' : 'invalid';
+  } finally {
+    fs.closeSync(descriptor);
+  }
+}
 
 async function assertImageFile(filePath: string): Promise<void> {
   const handle = await fs.promises.open(filePath, 'r').catch(() => null);

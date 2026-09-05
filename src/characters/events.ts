@@ -2,13 +2,13 @@
 
 export interface CharacterSwitchedEvent {
   type: 'character_switched';
-  characterId: string;
-  name: string;
+  characterName: string;
+  displayName: string | null;
 }
 
 export interface CharacterPresentationChangedEvent {
   type: 'character_presentation_changed';
-  characterId: string;
+  characterName: string;
 }
 
 export type CharacterEvent =

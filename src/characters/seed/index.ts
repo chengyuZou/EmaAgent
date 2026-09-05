@@ -8,22 +8,22 @@ import type { CharacterLive2dModelInput } from '../live2d/types.js';
 import type { CharacterIllustrationInput } from '../illustration/types.js';
 import type { CharacterVoiceSampleInput } from '../voice/types.js';
 import {
-  EMA_CHARACTER_ID,
+  EMA_CHARACTER_NAME,
   EMA_CHARACTER_INPUT,
   EMA_LIVE2D_MODELS,
   EMA_VOICE_SAMPLES,
 } from './ema-seed.js';
 
 export {
-  EMA_CHARACTER_ID,
+  EMA_CHARACTER_NAME,
   EMA_CHARACTER_INPUT,
   EMA_LIVE2D_MODELS,
   EMA_VOICE_SAMPLES,
 };
 
 export interface BuiltinCharacterSeed {
-  id: string;
   card: CharacterInput;
+  stageKind: 'live2d' | 'illustration' | 'blank';
   live2dModels: readonly CharacterLive2dModelInput[];
   illustrations: readonly CharacterIllustrationInput[];
   voiceSamples: readonly CharacterVoiceSampleInput[];
@@ -35,8 +35,8 @@ export interface BuiltinCharacterSeed {
  */
 export const BUILTIN_CHARACTERS: readonly BuiltinCharacterSeed[] = [
   {
-    id: EMA_CHARACTER_ID,
     card: EMA_CHARACTER_INPUT,
+    stageKind: 'live2d',
     live2dModels: EMA_LIVE2D_MODELS,
     illustrations: [],
     voiceSamples: EMA_VOICE_SAMPLES,
@@ -55,13 +55,13 @@ export function installBuiltinCharacterResources(
   charactersRoot: string,
 ): void {
   for (const seed of BUILTIN_CHARACTERS) {
-    const characterSource = path.join(sourceRoot, seed.id);
+    const characterSource = path.join(sourceRoot, 'ema');
     if (!fs.existsSync(characterSource)) continue;
-    const characterTarget = path.join(charactersRoot, seed.id);
+    const characterTarget = path.join(charactersRoot, seed.card.name);
 
     for (const model of seed.live2dModels) {
-      const source = path.join(characterSource, 'live2d', model.directoryName);
-      const target = path.join(characterTarget, 'live2d', model.directoryName);
+      const source = path.join(characterSource, 'live2d', model.name);
+      const target = path.join(characterTarget, 'live2d', model.name);
       if (fs.existsSync(source) && !fs.existsSync(target)) {
         fs.mkdirSync(path.dirname(target), { recursive: true });
         fs.cpSync(source, target, { recursive: true });
@@ -69,14 +69,14 @@ export function installBuiltinCharacterResources(
     }
     for (const illustration of seed.illustrations) {
       copyFileOnce(
-        path.join(characterSource, 'illustration', illustration.fileName),
-        path.join(characterTarget, 'illustration', illustration.fileName),
+        path.join(characterSource, 'illustration', illustration.name),
+        path.join(characterTarget, 'illustration', illustration.name),
       );
     }
     for (const sample of seed.voiceSamples) {
       copyFileOnce(
-        path.join(characterSource, 'voice', sample.fileName),
-        path.join(characterTarget, 'voice', sample.fileName),
+        path.join(characterSource, 'voice', sample.name),
+        path.join(characterTarget, 'voice', sample.name),
       );
     }
   }

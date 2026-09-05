@@ -12,7 +12,7 @@ const REFERENCE: TtsVoiceReference = {
 
 const REQUEST = {
   reference: REFERENCE,
-  characterId: 'character-1',
+  characterName: 'character-1',
   providerId: 'provider-1',
   modelId: 'model-1',
 } as const;

@@ -2,8 +2,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {
+  mimeForPath,
   VisionDescriptionCache,
-  type DescribeAttachmentImage,
+  type VisionDescriptionProducer,
 } from '@ema-agent/attachments';
 import { buildCharacterPrompt, type CharacterStore } from '@ema-agent/characters';
 import { createCompact } from '@ema-agent/compact';
@@ -26,7 +27,7 @@ import { DEFAULT_SESSION_TITLE, generateSessionTitle } from '@ema-agent/session'
 import type { SettingsStore } from '@ema-agent/settings';
 import { workspaceInstructionFilesSetting } from '@ema-agent/skills';
 import type { StageEngine } from '@ema-agent/stage';
-import { AttachmentVisionDescriptionsRepo } from '@ema-agent/storage';
+import { AttachmentVisionDescriptionCachesRepo } from '@ema-agent/storage';
 import { formatTaskContextReminder } from '@ema-agent/tasks';
 import {
   SessionInteractionQueue,
@@ -52,7 +53,9 @@ export interface TurnComposition {
   /** Permission/AskUser 回答路由与 SSE 重连恢复的入口。 */
   readonly interactionQueue: SessionInteractionQueue;
   /** 模型不支持图片输入时的 Vision 描述链（commands 的手动压缩历史投影同源复用）。 */
-  readonly describeImage: DescribeAttachmentImage;
+  readonly describeImage: VisionDescriptionProducer;
+  /** Vision 描述缓存(path 键);context 投影直接消费, 生产只在 describeImage 注入时发生。 */
+  readonly visionCache: VisionDescriptionCache;
   /** 工作区指令读取闭包（commands 装配与下一根 Turn 同字节的 System Prompt 同源复用）。 */
   readonly workspaceInstructions: (workspaceRoot: string) => string | null;
 }
@@ -89,7 +92,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
 
   // ── Vision 降级（模型不支持图片输入时的描述链） ──────────────────────────────
   const visionDescriptions = new VisionDescriptionCache(
-    new AttachmentVisionDescriptionsRepo(database.dataDb.sqlite),
+    new AttachmentVisionDescriptionCachesRepo(database.dataDb.sqlite),
   );
   const resolveVision = () => {
     const binding = providers.modelBindings.get('vision');
@@ -105,29 +108,24 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
       return undefined;
     }
   };
-  const describeImage: DescribeAttachmentImage = (attachment, signal) => {
+  // Vision 生产者:读字节+调 vision+记账;缓存查/写由 context 投影侧的 getOrCreate 负责。
+  const describeImage: VisionDescriptionProducer = async (imagePath, signal) => {
     const selected = resolveVision();
-    if (!selected) return Promise.reject(new Error('未配置 vision 模型绑定，无法描述图片'));
-    return visionDescriptions.getOrCreate(
-      attachment,
+    if (!selected) throw new Error('未配置 vision 模型绑定，无法描述图片');
+    const bytes = await fs.promises.readFile(imagePath);
+    const startedAt = Date.now();
+    // 描述指令用 vision 包内置的 caption 任务文本，不在装配层另写一份。
+    const result = await selected.vision({
+      images: [{
+        kind: 'bytes',
+        bytes: new Uint8Array(bytes),
+        mimeType: mimeForPath(imagePath) as VisionImageMime,
+      }],
+      task: 'caption',
       signal,
-      async image => {
-        const bytes = await fs.promises.readFile(image.imagePath);
-        const startedAt = Date.now();
-        // 描述指令用 vision 包内置的 caption 任务文本，不在装配层另写一份。
-        const result = await selected.vision({
-          images: [{
-            kind: 'bytes',
-            bytes: new Uint8Array(bytes),
-            mimeType: image.mimeType as VisionImageMime,
-          }],
-          task: 'caption',
-          signal,
-        });
-        recordVisionUsage(database.usageRecorder, selected.providerId, selected.modelId, startedAt, result.usage);
-        return result.text;
-      },
-    );
+    });
+    recordVisionUsage(database.usageRecorder, selected.providerId, selected.modelId, startedAt, result.usage);
+    return result.text;
   };
   // Turn 工具面的 vision 闭包（PdfReadTool 扫描页 OCR 等）：无绑定即 undefined（降级纯文本），
   // 模型身份在闭包内冻结，usage 从结果记录。
@@ -237,7 +235,10 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     providerModels: providers.providerModels,
     settings,
     attachments: database.attachments,
-    characterPrompt: () => buildCharacterPrompt(characters.current()),
+    characterPrompt: () => {
+      const character = characters.current();
+      return buildCharacterPrompt(character, characters.inspectStagePresentation(character.name));
+    },
     skillEntries: (workspaceRoot: string) => tools.skills.list(workspaceRoot || undefined),
     disabledSkillPaths: () => tools.skillEnablement.listDisabledPaths(),
     registry: tools.registry,
@@ -256,6 +257,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     createCompact,
     workspaceInstructions,
     describeImage,
+    visionCache: visionDescriptions,
     scratchpadDirForTurn: (sessionId, turnId) =>
       ensureScratchpadDir(activeDataDir, sessionId, turnId),
     isBypassPermissionsModeAvailable:
@@ -269,11 +271,11 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     usageRecorder: database.usageRecorder,
     stage,
     startSessionTitleGeneration,
-    characterDirectoryName: () => characters.current().directoryName,
+    characterDirectoryName: () => characters.current().name,
     onTurnCompletedInTransaction: deps.onTurnCompletedInTransaction,
   });
 
-  return { turnExecutor, interactionQueue, describeImage, workspaceInstructions };
+  return { turnExecutor, interactionQueue, describeImage, visionCache: visionDescriptions, workspaceInstructions };
 }
 
 /** 按用户多选的文件名读取工作区指令，顺序即拼接顺序；全部缺失返回 null。 */

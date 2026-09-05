@@ -1,159 +1,148 @@
 import type { SqliteDb } from '../../database/database.js';
 
-export type ProtectedDeleteResult =
-  | 'deleted'
-  | 'not_found'
-  | 'builtin_protected';
-
 export interface CharacterRow {
-  id: string;
   name: string;
+  display_name: string | null;
   description: string | null;
-  directory_name: string;
   persona_prompt: string;
+  stage_kind: 'live2d' | 'illustration' | 'blank';
   is_active: number;
-  is_builtin: number;
+  last_activated_at: number | null;
   created_at: number;
   updated_at: number;
 }
 
 export interface CharacterInsert {
-  id: string;
   name: string;
+  displayName?: string | null;
   description?: string | null;
-  /** 创建时确定、此后不可修改的磁盘目录名。 */
-  directoryName: string;
-  /** 人设提示词正文；创建必须携带，不允许空人设。 */
   personaPrompt: string;
+  stageKind?: CharacterRow['stage_kind'];
   isActive?: boolean;
-  isBuiltin?: boolean;
+  lastActivatedAt?: number | null;
   createdAt: number;
   updatedAt: number;
 }
 
-/** 普通编辑允许修改的字段；激活状态、内置标记和目录名由专用流程管理。 */
 export interface CharacterUpdate {
-  name?: string;
+  displayName?: string | null;
   description?: string | null;
   personaPrompt?: string;
+  stageKind?: CharacterRow['stage_kind'];
   updatedAt?: number;
 }
 
-export class CharacterUpdateContractError extends Error {
-  readonly code = 'storage/character-reserved-field';
-
-  constructor(readonly field: 'isActive' | 'isBuiltin' | 'directoryName') {
-    super(
-      field === 'isActive'
-        ? 'Character active state must be changed through activate()'
-        : field === 'isBuiltin'
-          ? 'Character builtin state is immutable after insertion'
-          : 'Character directory name is immutable after creation',
-    );
-    this.name = 'CharacterUpdateContractError';
-  }
-}
+export type CharacterDeleteResult =
+  | 'deleted'
+  | 'not_found'
+  | 'last_character'
+  | 'replacement_not_found';
 
 export class CharacterRepo {
   constructor(private readonly db: SqliteDb) {}
 
-  insert(c: CharacterInsert): void {
-    this.db
-      .prepare(
-        `INSERT INTO characters
-           (id, name, description, directory_name, persona_prompt,
-            is_active, is_builtin, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      .run(
-        c.id,
-        c.name,
-        c.description ?? null,
-        c.directoryName,
-        c.personaPrompt,
-        c.isActive ? 1 : 0,
-        c.isBuiltin ? 1 : 0,
-        c.createdAt,
-        c.updatedAt,
-      );
+  insert(character: CharacterInsert): void {
+    this.db.prepare(
+      `INSERT INTO characters (
+         name, display_name, description, persona_prompt, stage_kind,
+         is_active, last_activated_at, created_at, updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      character.name,
+      character.displayName ?? null,
+      character.description ?? null,
+      character.personaPrompt,
+      character.stageKind ?? 'blank',
+      character.isActive ? 1 : 0,
+      character.lastActivatedAt ?? null,
+      character.createdAt,
+      character.updatedAt,
+    );
   }
 
-  findById(id: string): CharacterRow | undefined {
-    return this.db
-      .prepare('SELECT * FROM characters WHERE id = ?')
-      .get(id) as CharacterRow | undefined;
-  }
-
-  /** 物理名冲突检查：directory_name 全局唯一。 */
-  findByDirectoryName(directoryName: string): CharacterRow | undefined {
-    return this.db
-      .prepare('SELECT * FROM characters WHERE directory_name = ?')
-      .get(directoryName) as CharacterRow | undefined;
+  findByName(name: string): CharacterRow | undefined {
+    return this.db.prepare('SELECT * FROM characters WHERE name = ?').get(name) as CharacterRow | undefined;
   }
 
   findActive(): CharacterRow | undefined {
-    return this.db
-      .prepare('SELECT * FROM characters WHERE is_active = 1 LIMIT 1')
-      .get() as CharacterRow | undefined;
+    return this.db.prepare('SELECT * FROM characters WHERE is_active = 1 LIMIT 1').get() as CharacterRow | undefined;
   }
 
   list(): CharacterRow[] {
-    return this.db
-      .prepare('SELECT * FROM characters ORDER BY is_builtin DESC, name ASC')
-      .all() as CharacterRow[];
+    return this.db.prepare(
+      'SELECT * FROM characters ORDER BY is_active DESC, last_activated_at DESC, created_at ASC',
+    ).all() as CharacterRow[];
   }
 
-  activate(id: string, updatedAt: number): boolean {
-    return this.db.transaction(() => {
-      const target = this.db
-        .prepare('SELECT is_active FROM characters WHERE id = ?')
-        .get(id) as { is_active: number } | undefined;
+  count(): number {
+    return (this.db.prepare('SELECT COUNT(*) AS count FROM characters').get() as { count: number }).count;
+  }
 
-      // 必须先确认目标存在，避免错误 ID 清空当前角色。
+  activate(name: string, activatedAt: number): boolean {
+    return this.db.transaction(() => {
+      const target = this.findByName(name);
       if (!target) return false;
       if (target.is_active === 1) return true;
-
       this.db.prepare('UPDATE characters SET is_active = 0 WHERE is_active = 1').run();
-      this.db
-        .prepare('UPDATE characters SET is_active = 1, updated_at = ? WHERE id = ?')
-        .run(updatedAt, id);
+      this.db.prepare(
+        'UPDATE characters SET is_active = 1, last_activated_at = ?, updated_at = ? WHERE name = ?',
+      ).run(activatedAt, activatedAt, name);
       return true;
     })();
   }
 
-  update(id: string, patch: CharacterUpdate): void {
-    const untrustedPatch = patch as CharacterUpdate & Record<string, unknown>;
-    for (const field of ['isActive', 'isBuiltin', 'directoryName'] as const) {
-      if (Object.prototype.hasOwnProperty.call(untrustedPatch, field)) {
-        throw new CharacterUpdateContractError(field);
-      }
-    }
-
-    const now = patch.updatedAt ?? Date.now();
+  update(name: string, patch: CharacterUpdate): void {
     const fields: string[] = [];
     const values: unknown[] = [];
-
-    if (patch.name !== undefined)        { fields.push('name = ?'); values.push(patch.name); }
-    if (patch.description !== undefined) { fields.push('description = ?'); values.push(patch.description); }
-    if (patch.personaPrompt !== undefined) { fields.push('persona_prompt = ?'); values.push(patch.personaPrompt); }
-    if (fields.length === 0) return;
+    if (patch.displayName !== undefined) {
+      fields.push('display_name = ?');
+      values.push(patch.displayName);
+    }
+    if (patch.description !== undefined) {
+      fields.push('description = ?');
+      values.push(patch.description);
+    }
+    if (patch.personaPrompt !== undefined) {
+      fields.push('persona_prompt = ?');
+      values.push(patch.personaPrompt);
+    }
+    if (patch.stageKind !== undefined) {
+      fields.push('stage_kind = ?');
+      values.push(patch.stageKind);
+    }
+    if (fields.length === 0) {
+      return;
+    }
     fields.push('updated_at = ?');
-    values.push(now, id);
-
-    this.db.prepare(`UPDATE characters SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+    values.push(patch.updatedAt ?? Date.now(), name);
+    this.db.prepare(`UPDATE characters SET ${fields.join(', ')} WHERE name = ?`).run(...values);
   }
 
-  delete(id: string): ProtectedDeleteResult {
-    return this.db.transaction(() => {
-      const deleted = this.db
-        .prepare('DELETE FROM characters WHERE id = ? AND is_builtin = 0')
-        .run(id);
-      if (deleted.changes === 1) return 'deleted';
+  touch(name: string, updatedAt: number): void {
+    this.db.prepare('UPDATE characters SET updated_at = ? WHERE name = ?').run(updatedAt, name);
+  }
 
-      const existing = this.db
-        .prepare('SELECT 1 FROM characters WHERE id = ?')
-        .get(id);
-      return existing ? 'builtin_protected' : 'not_found';
+  delete(name: string, replacementName?: string): CharacterDeleteResult {
+    return this.db.transaction(() => {
+      const target = this.findByName(name);
+      if (!target) return 'not_found';
+
+      const count = (this.db.prepare('SELECT COUNT(*) AS count FROM characters').get() as { count: number }).count;
+      if (count === 1) return 'last_character';
+
+      if (target.is_active === 1) {
+        if (!replacementName || replacementName === name || !this.findByName(replacementName)) {
+          return 'replacement_not_found';
+        }
+        const now = Date.now();
+        this.db.prepare('UPDATE characters SET is_active = 0 WHERE name = ?').run(name);
+        this.db.prepare(
+          'UPDATE characters SET is_active = 1, last_activated_at = ?, updated_at = ? WHERE name = ?',
+        ).run(now, now, replacementName);
+      }
+
+      this.db.prepare('DELETE FROM characters WHERE name = ?').run(name);
+      return 'deleted';
     })();
   }
 }

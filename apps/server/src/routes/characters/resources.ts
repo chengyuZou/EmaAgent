@@ -12,31 +12,43 @@ export interface CharacterResourcesRouteDeps {
   readonly characters: Pick<
     CharacterStore,
     | 'setPrimaryLive2dModel' | 'updateLive2dModel' | 'importLive2dModel' | 'exportLive2dModel'
-    | 'deleteLive2dModel' | 'resolveLive2dModelDirectory' | 'resolveLive2dModelFile'
-    | 'reloadLive2dVocabulary'
+    | 'deleteLive2dModel' | 'resolveLive2dModelDirectory'
+    | 'reloadLive2dConfiguration'
+    | 'readLive2dConfiguration' | 'saveLive2dMappings'
     | 'setPrimaryIllustration' | 'updateIllustration' | 'importIllustration' | 'exportIllustration'
     | 'deleteIllustration' | 'resolveIllustrationFile'
-    | 'setPrimaryVoiceSample' | 'updateVoiceSample' | 'importVoiceSample' | 'publishVoiceSample'
+    | 'setPrimaryVoiceSample' | 'updateVoiceSample' | 'importVoiceSample'
     | 'exportVoiceSample' | 'deleteVoiceSample' | 'resolveVoiceSampleFile'
+    | 'resolveCharacterDirectory'
   >;
+  readonly mutateCharacter: <T>(characterName: string, action: () => T | Promise<T>) => Promise<T>;
 }
 
 const resourcePatch = z.object({
-  name: z.string().trim().min(1).max(200).optional(),
+  displayName: z.string().trim().min(1).max(200).optional(),
   stageScale: z.number().min(0.1).max(5).optional(),
   stageOffsetX: z.number().min(-1).max(1).optional(),
   stageOffsetY: z.number().min(-1).max(1).optional(),
-  enabled: z.boolean().optional(),
 });
 
+const illustrationPatch = resourcePatch.extend({
+  expression: z.string().regex(/^[a-z][a-z0-9_]*$/u).nullable().optional(),
+});
+
+const voicePatch = z.object({ displayName: z.string().trim().min(1).max(200) });
+
 const importLive2dBody = z.object({
-  sourceZipFile: z.string().min(1),
+  source: z.string().min(1),
   isPrimary: z.boolean().optional(),
 });
 
 const importFileBody = z.object({
   sourceFile: z.string().min(1),
   isPrimary: z.boolean().optional(),
+});
+
+const importIllustrationBody = importFileBody.extend({
+  expression: z.string().regex(/^[a-z][a-z0-9_]*$/u).nullable().optional(),
 });
 
 const importVoiceBody = importFileBody.extend({
@@ -46,6 +58,15 @@ const importVoiceBody = importFileBody.extend({
 
 const exportBody = z.object({
   destinationDirectory: z.string().min(1),
+});
+
+const vocabularyName = /^[a-z][a-z0-9_]*$/u;
+const live2dMappingsBody = z.object({
+  emotionMap: z.record(z.string().regex(vocabularyName), z.object({ expression: z.string().min(1) })),
+  motionMap: z.record(z.string().regex(vocabularyName), z.object({
+    group: z.string().min(1),
+    index: z.number().int().min(0),
+  })),
 });
 
 const MIME_BY_EXT: Record<string, string> = {
@@ -85,35 +106,54 @@ export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
     }
   };
 
+  const mutate = async <T extends {}>(context: Context, characterName: string, action: () => T | undefined | Promise<T | undefined>) => {
+    return run(context, () => deps.mutateCharacter(characterName, action));
+  };
+
   return new Hono()
+    .get('/:characterName/location', context =>
+      run(context, () => ({ path: deps.characters.resolveCharacterDirectory(context.req.param('characterName')) })))
     // ── Live2D ─────────────────────────────────────────────────────────────────
-    .post('/:id/live2d/:resourceId/primary', context =>
-      run(context, () => ({ ok: deps.characters.setPrimaryLive2dModel(context.req.param('id'), context.req.param('resourceId')) })))
-    .patch('/:id/live2d/:resourceId', jsonBody(resourcePatch), async context =>
-      run(context, () => deps.characters.updateLive2dModel(context.req.param('id'), context.req.param('resourceId'), context.req.valid('json'))))
-    .post('/:id/live2d/import', jsonBody(importLive2dBody), async context =>
-      run(context, async () => deps.characters.importLive2dModel(context.req.param('id'), context.req.valid('json'))))
-    .post('/:id/live2d/:resourceId/export', jsonBody(exportBody), async context =>
-      run(context, async () => ({ exported: await deps.characters.exportLive2dModel(context.req.param('id'), context.req.param('resourceId'), context.req.valid('json').destinationDirectory) })))
-    .delete('/:id/live2d/:resourceId', context =>
-      run(context, async () => {
-        const deleted = await deps.characters.deleteLive2dModel(context.req.param('id'), context.req.param('resourceId'));
+    .post('/:characterName/live2d/:live2dName/primary', context =>
+      mutate(context, context.req.param('characterName'), async () => ({ ok: await deps.characters.setPrimaryLive2dModel(context.req.param('characterName'), context.req.param('live2dName')) })))
+    .patch('/:characterName/live2d/:live2dName', jsonBody(resourcePatch), context =>
+      mutate(context, context.req.param('characterName'), () => deps.characters.updateLive2dModel(context.req.param('characterName'), context.req.param('live2dName'), context.req.valid('json'))))
+    .post('/:characterName/live2d/import', jsonBody(importLive2dBody), context =>
+      mutate(context, context.req.param('characterName'), () => deps.characters.importLive2dModel(context.req.param('characterName'), context.req.valid('json'))))
+    .post('/:characterName/live2d/:live2dName/export', jsonBody(exportBody), context =>
+      run(context, async () => ({ exported: await deps.characters.exportLive2dModel(context.req.param('characterName'), context.req.param('live2dName'), context.req.valid('json').destinationDirectory) })))
+    .delete('/:characterName/live2d/:live2dName', context =>
+      mutate(context, context.req.param('characterName'), async () => {
+        const deleted = await deps.characters.deleteLive2dModel(context.req.param('characterName'), context.req.param('live2dName'));
         return deleted ? { ok: true as const } : undefined;
       }))
-    // 用户手改 runtime-config.json 后的显式重读：词汇写回 SQL 并广播演出变化。
-    .post('/:id/live2d/:resourceId/reload-config', context =>
-      run(context, () => {
-        const reloaded = deps.characters.reloadLive2dVocabulary(
-          context.req.param('id'),
-          context.req.param('resourceId'),
-        );
-        return reloaded ? { ok: true as const } : undefined;
-      }))
+    // 用户手改 runtime-config.json 后显式校验并广播演出变化。
+    .post('/:characterName/live2d/:live2dName/reload-config', context =>
+      mutate(context, context.req.param('characterName'), () => deps.characters.reloadLive2dConfiguration(
+        context.req.param('characterName'),
+        context.req.param('live2dName'),
+      )))
+    .get('/:characterName/live2d/:live2dName/configuration', context =>
+      run(context, () => deps.characters.readLive2dConfiguration(
+        context.req.param('characterName'),
+        context.req.param('live2dName'),
+      )))
+    .get('/:characterName/live2d/:live2dName/location', context =>
+      run(context, () => ({ path: deps.characters.resolveLive2dModelDirectory(
+        context.req.param('characterName'),
+        context.req.param('live2dName'),
+      ) })))
+    .put('/:characterName/live2d/:live2dName/configuration', jsonBody(live2dMappingsBody), context =>
+      mutate(context, context.req.param('characterName'), () => deps.characters.saveLive2dMappings(
+        context.req.param('characterName'),
+        context.req.param('live2dName'),
+        context.req.valid('json'),
+      )))
     // Live2D 渲染器按相对路径取模型目录内文件；越界一律 404。
-    .get('/:id/live2d/:resourceId/files/*', context => {
+    .get('/:characterName/live2d/:live2dName/files/*', context => {
       let directory: string;
       try {
-        directory = deps.characters.resolveLive2dModelDirectory(context.req.param('id'), context.req.param('resourceId'));
+        directory = deps.characters.resolveLive2dModelDirectory(context.req.param('characterName'), context.req.param('live2dName'));
       } catch (error) {
         return characterError(context, error);
       }
@@ -126,62 +166,55 @@ export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
       return serveFile(context, resolved);
     })
     // ── 立绘 ───────────────────────────────────────────────────────────────────
-    .post('/:id/illustrations/:resourceId/primary', context =>
-      run(context, () => ({ ok: deps.characters.setPrimaryIllustration(context.req.param('id'), context.req.param('resourceId')) })))
-    .patch('/:id/illustrations/:resourceId', jsonBody(resourcePatch), async context =>
-      run(context, () => deps.characters.updateIllustration(context.req.param('id'), context.req.param('resourceId'), context.req.valid('json'))))
-    .post('/:id/illustrations/import', jsonBody(importFileBody), async context =>
-      run(context, async () => deps.characters.importIllustration(context.req.param('id'), context.req.valid('json'))))
-    .post('/:id/illustrations/:resourceId/export', jsonBody(exportBody), async context =>
-      run(context, async () => ({ exported: await deps.characters.exportIllustration(context.req.param('id'), context.req.param('resourceId'), context.req.valid('json').destinationDirectory) })))
-    .delete('/:id/illustrations/:resourceId', context =>
-      run(context, async () => {
-        const deleted = await deps.characters.deleteIllustration(context.req.param('id'), context.req.param('resourceId'));
+    .post('/:characterName/illustrations/:illustrationName/primary', context =>
+      mutate(context, context.req.param('characterName'), async () => ({ ok: await deps.characters.setPrimaryIllustration(context.req.param('characterName'), context.req.param('illustrationName')) })))
+    .patch('/:characterName/illustrations/:illustrationName', jsonBody(illustrationPatch), context =>
+      mutate(context, context.req.param('characterName'), () => deps.characters.updateIllustration(context.req.param('characterName'), context.req.param('illustrationName'), context.req.valid('json'))))
+    .post('/:characterName/illustrations/import', jsonBody(importIllustrationBody), context =>
+      mutate(context, context.req.param('characterName'), () => deps.characters.importIllustration(context.req.param('characterName'), context.req.valid('json'))))
+    .post('/:characterName/illustrations/:illustrationName/export', jsonBody(exportBody), context =>
+      run(context, async () => ({ exported: await deps.characters.exportIllustration(context.req.param('characterName'), context.req.param('illustrationName'), context.req.valid('json').destinationDirectory) })))
+    .delete('/:characterName/illustrations/:illustrationName', context =>
+      mutate(context, context.req.param('characterName'), async () => {
+        const deleted = await deps.characters.deleteIllustration(context.req.param('characterName'), context.req.param('illustrationName'));
         return deleted ? { ok: true as const } : undefined;
       }))
-    .get('/:id/illustrations/:resourceId/file', context => {
+    .get('/:characterName/illustrations/:illustrationName/file', context => {
       try {
-        return serveFile(context, deps.characters.resolveIllustrationFile(context.req.param('id'), context.req.param('resourceId')));
+        return serveFile(context, deps.characters.resolveIllustrationFile(context.req.param('characterName'), context.req.param('illustrationName')));
       } catch (error) {
         return characterError(context, error);
       }
     })
+    .get('/:characterName/illustrations/:illustrationName/location', context =>
+      run(context, () => ({ path: deps.characters.resolveIllustrationFile(
+        context.req.param('characterName'),
+        context.req.param('illustrationName'),
+      ) })))
     // ── 参考音频 ───────────────────────────────────────────────────────────────
-    .post('/:id/voice/:resourceId/primary', context =>
-      run(context, () => ({ ok: deps.characters.setPrimaryVoiceSample(context.req.param('id'), context.req.param('resourceId')) })))
-    .patch('/:id/voice/:resourceId', jsonBody(resourcePatch), async context =>
-      run(context, () => deps.characters.updateVoiceSample(context.req.param('id'), context.req.param('resourceId'), context.req.valid('json'))))
-    .post('/:id/voice/import', jsonBody(importVoiceBody), async context =>
-      run(context, async () => deps.characters.importVoiceSample(context.req.param('id'), context.req.valid('json'))))
-    // 录音/合成直传：multipart file 为音频字节，文本字段随表单。
-    .post('/:id/voice/publish', async context => {
-      const form = await context.req.formData().catch(() => null);
-      const file = form?.get('file');
-      const promptText = form?.get('promptText');
-      const promptLang = form?.get('promptLang');
-      if (!(file instanceof File) || file.size === 0 || typeof promptText !== 'string' || !promptText.trim()) {
-        return context.json({ error: 'invalid_request' }, 400);
-      }
-      return run(context, async () => deps.characters.publishVoiceSample(context.req.param('id'), {
-        bytes: new Uint8Array(await file.arrayBuffer()),
-        fileName: file.name || 'voice.wav',
-        promptText,
-        promptLang: typeof promptLang === 'string' && promptLang.trim() ? promptLang : 'zh',
-        ...((form?.get('isPrimary') === 'true') ? { isPrimary: true } : {}),
-      }));
-    })
-    .post('/:id/voice/:resourceId/export', jsonBody(exportBody), async context =>
-      run(context, async () => ({ exported: await deps.characters.exportVoiceSample(context.req.param('id'), context.req.param('resourceId'), context.req.valid('json').destinationDirectory) })))
-    .delete('/:id/voice/:resourceId', context =>
-      run(context, async () => {
-        const deleted = await deps.characters.deleteVoiceSample(context.req.param('id'), context.req.param('resourceId'));
+    .post('/:characterName/voice/:voiceName/primary', context =>
+      mutate(context, context.req.param('characterName'), async () => ({ ok: await deps.characters.setPrimaryVoiceSample(context.req.param('characterName'), context.req.param('voiceName')) })))
+    .patch('/:characterName/voice/:voiceName', jsonBody(voicePatch), context =>
+      mutate(context, context.req.param('characterName'), () => deps.characters.updateVoiceSample(context.req.param('characterName'), context.req.param('voiceName'), context.req.valid('json'))))
+    .post('/:characterName/voice/import', jsonBody(importVoiceBody), context =>
+      mutate(context, context.req.param('characterName'), () => deps.characters.importVoiceSample(context.req.param('characterName'), context.req.valid('json'))))
+    .post('/:characterName/voice/:voiceName/export', jsonBody(exportBody), context =>
+      run(context, async () => ({ exported: await deps.characters.exportVoiceSample(context.req.param('characterName'), context.req.param('voiceName'), context.req.valid('json').destinationDirectory) })))
+    .delete('/:characterName/voice/:voiceName', context =>
+      mutate(context, context.req.param('characterName'), async () => {
+        const deleted = await deps.characters.deleteVoiceSample(context.req.param('characterName'), context.req.param('voiceName'));
         return deleted ? { ok: true as const } : undefined;
       }))
-    .get('/:id/voice/:resourceId/file', context => {
+    .get('/:characterName/voice/:voiceName/file', context => {
       try {
-        return serveFile(context, deps.characters.resolveVoiceSampleFile(context.req.param('id'), context.req.param('resourceId')));
+        return serveFile(context, deps.characters.resolveVoiceSampleFile(context.req.param('characterName'), context.req.param('voiceName')));
       } catch (error) {
         return characterError(context, error);
       }
-    });
+    })
+    .get('/:characterName/voice/:voiceName/location', context =>
+      run(context, () => ({ path: deps.characters.resolveVoiceSampleFile(
+        context.req.param('characterName'),
+        context.req.param('voiceName'),
+      ) })));
 };

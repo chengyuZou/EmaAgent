@@ -6,7 +6,7 @@ export type {
   CharacterPresentationChangedListener,
 } from './store.js';
 export {
-  EMA_CHARACTER_ID,
+  EMA_CHARACTER_NAME,
   EMA_CHARACTER_INPUT,
   EMA_LIVE2D_MODELS,
   EMA_VOICE_SAMPLES,
@@ -19,9 +19,9 @@ export type {
   Character,
   CharacterInput,
   CharacterPatch,
+  CharacterStageKind,
   CharacterIllustrationStageEntry,
   CharacterLive2dStageEntry,
-  CharacterStageEntry,
   CharacterStagePresentation,
 } from './types.js';
 
@@ -33,6 +33,9 @@ export type {
   Live2dExpression,
   Live2dMotion,
   Live2dRuntimeConfig,
+  Live2dConfiguration,
+  Live2dMappings,
+  Live2dNativeMotion,
 } from './live2d/types.js';
 export type {
   CharacterIllustration,
@@ -40,17 +43,18 @@ export type {
   CharacterIllustrationPatch,
   ImportCharacterIllustrationInput,
 } from './illustration/types.js';
+export { ILLUSTRATION_EXPRESSION_POOL_MAX } from './illustration/limits.js';
 export type {
   CharacterVoiceSample,
   CharacterVoiceSampleInput,
   CharacterVoiceSamplePatch,
   ImportCharacterVoiceSampleInput,
-  PublishCharacterVoiceSampleInput,
 } from './voice/types.js';
 export {
   assertPersonaPrompt,
   buildCharacterPrompt,
-  buildLive2dControlPrompt,
+  buildStageControlPrompt,
+  characterStageVocabulary,
 } from './characterPrompt.js';
 export type {
   CharacterSwitchedEvent,
@@ -58,13 +62,10 @@ export type {
   CharacterPresentationChangedEvent,
 } from './events.js';
 export {
-  CharacterActiveDeleteError,
   CharacterDirectoryConflictError,
   CharacterInputInvalidError,
   CharacterNotFoundError,
   CharacterPromptInvalidError,
-  CharacterReadOnlyError,
-  CharacterResourceMissingError,
   CharacterResourceNotFoundError,
   CharacterResourcePathError,
   CharacterResourceValidationError,
@@ -76,13 +77,3 @@ export type {
   CharacterResourceValidationCode,
   CharacterStateInvalidReason,
 } from './errors.js';
-export type {
-  CharacterHealth,
-  CharacterHealthReport,
-  CharacterHealthIssue,
-  CharacterHealthIssueCode,
-  CharacterHealthIssueSeverity,
-  CharacterHealthStatus,
-  CharacterPresentation,
-} from './characterHealth.js';
-export { inspectAllCharacterHealth, inspectCharacterHealth } from './characterHealth.js';

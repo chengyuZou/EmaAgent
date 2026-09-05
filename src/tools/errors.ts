@@ -86,6 +86,7 @@ export class ToolResultStoreError extends RangeError {
 
 export type BackgroundProcessErrorCode =
   | 'shutting_down'
+  | 'starts_closed'
   | 'stopped_before_start'
   | 'state_changed_before_stop'
   | 'not_attached'

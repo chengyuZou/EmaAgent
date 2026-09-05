@@ -317,8 +317,11 @@ describe('TurnExecutor 集成', () => {
         attach: async (_s: string, _t: string, blocks: readonly unknown[]) => blocks,
       } as unknown as AttachmentStore,
       visionCache: {
-        getOrCreate: (_path: string, _signal: AbortSignal, produce: (p: string) => Promise<string>) =>
-          produce(_path),
+        getOrCreate: (
+          _path: string,
+          _signal: AbortSignal,
+          produce: (p: string, s: AbortSignal) => Promise<string>,
+        ) => produce(_path, _signal),
       },
       describeImage,
       readTurnReminder: (scope: { userText: string }) => {

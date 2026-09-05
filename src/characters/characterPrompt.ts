@@ -1,19 +1,22 @@
-// 装配角色人设提示词，最后追加不可由用户编辑的 Live2D 控制协议。
+// 装配角色人设提示词，并根据本 Turn 的舞台呈现追加表达控制协议。
 
-import type { Character } from './types.js';
+import type { Character, CharacterStagePresentation } from './types.js';
 import { CharacterPromptInvalidError } from './errors.js';
 
 /**
  * 装配角色 Prompt：人设提示词（personaPrompt）在前，追加不可由用户编辑的
- * Live2D 控制协议。这里只守身份硬门——拼起来为空就拒，空人设角色不能启动新 Turn。
+ * 舞台表达控制协议。这里只守身份硬门——拼起来为空就拒，空人设角色不能启动新 Turn。
  */
-export function buildCharacterPrompt(character: Character): readonly string[] {
+export function buildCharacterPrompt(
+  character: Character,
+  presentation: CharacterStagePresentation,
+): readonly string[] {
   const sections = [
     character.personaPrompt,
-    buildLive2dControlPrompt(character),
+    buildStageControlPrompt(presentation),
   ].filter(hasContent);
   if (sections.length === 0) {
-    throw new CharacterPromptInvalidError('角色人设提示词不能为空', character.id);
+    throw new CharacterPromptInvalidError('角色人设提示词不能为空', character.name);
   }
   return sections;
 }
@@ -21,31 +24,30 @@ export function buildCharacterPrompt(character: Character): readonly string[] {
 /** 空人设会让新 Turn 失去身份：非空 + 不允许内嵌 Live2D 控制标签（会被误解析）。 */
 export function assertPersonaPrompt(
   personaPrompt: string,
-  characterId?: string,
+  characterName?: string,
 ): void {
   const content = personaPrompt.trim();
   if (!content) {
-    throw new CharacterPromptInvalidError('角色人设提示词不能为空', characterId);
+    throw new CharacterPromptInvalidError('角色人设提示词不能为空', characterName);
   }
-  if (containsLive2dControlTag(content)) {
+  if (containsStageControlTag(content)) {
     throw new CharacterPromptInvalidError(
       '角色人设提示词不能包含 <emotion> 或 <motion> 控制标签',
-      characterId,
+      characterName,
     );
   }
 }
 
-function containsLive2dControlTag(content: string): boolean {
+function containsStageControlTag(content: string): boolean {
   return /<\s*\/?\s*(?:emotion|motion)(?:\s|>|\/|$)/iu.test(content);
 }
 
 /**
- * Live2D 控制协议：只消费当前主用 Live2D 已提取的 emotion/motion 词汇。
+ * 舞台控制协议：Live2D 读取 runtime-config.json 的映射键，立绘读取 expression 分组。
  * 它不是 Prompt Block，不落表、不可排序禁用编辑、不计入字符限制。
  */
-export function buildLive2dControlPrompt(character: Character): string {
-  const emotions = character.emotionVocabulary;
-  const motions = character.motionVocabulary;
+export function buildStageControlPrompt(presentation: CharacterStagePresentation): string {
+  const { emotions, motions } = characterStageVocabulary(presentation);
   if (emotions.length === 0 && motions.length === 0) {
     return '';
   }
@@ -71,7 +73,22 @@ export function buildLive2dControlPrompt(character: Character): string {
 
 ${sections.join('\n\n')}
 
-只使用上面列出的名称。不要连续重复相同状态，也不要输出无法确认存在的名称。`;
+只使用上面列出的名称。需要更换角色表现时输出标签，同一情绪也可以再次输出以切换另一张立绘。不要输出无法确认存在的名称。`;
+}
+
+export function characterStageVocabulary(
+  presentation: CharacterStagePresentation,
+): { readonly emotions: readonly string[]; readonly motions: readonly string[] } {
+  if (presentation.status === 'live2d') {
+    return {
+      emotions: Object.keys(presentation.resource.runtimeConfig?.emotionMap ?? {}),
+      motions: Object.keys(presentation.resource.runtimeConfig?.motionMap ?? {}),
+    };
+  }
+  if (presentation.status === 'illustration') {
+    return { emotions: Object.keys(presentation.expressions), motions: [] };
+  }
+  return { emotions: [], motions: [] };
 }
 
 function formatVocabulary(values: readonly string[]): string {

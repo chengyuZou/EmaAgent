@@ -86,15 +86,14 @@ export function openSpeech(
   );
   segmentLibrary.enforceLimits();
 
-  /** 候选顺序：enabled + isPrimary 优先，其次任一 enabled。 */
+  /** 参考音频只有显式主资源才参与 TTS；没有主资源即关闭当前角色语音。 */
   const resolveCharacterVoice = (character: Character): TtsVoiceReference | null => {
-    const reference = character.voiceSamples.find(value => value.enabled && value.isPrimary)
-      ?? character.voiceSamples.find(value => value.enabled);
+    const reference = character.voiceSamples.find(value => value.isPrimary);
     if (!reference) return null;
     try {
       return {
         kind: 'reference',
-        audioPath: characters.resolveVoiceSampleFile(character.id, reference.id),
+        audioPath: characters.resolveVoiceSampleFile(character.name, reference.name),
         promptText: reference.promptText,
         promptLanguage: reference.promptLang,
       };
@@ -123,7 +122,7 @@ export function openSpeech(
       current: () => {
         const character = characters.current();
         const voice = resolveCharacterVoice(character);
-        return voice ? { characterId: character.id, voice } : null;
+        return voice ? { characterName: character.name, voice } : null;
       },
     },
     voiceCache,
@@ -152,7 +151,7 @@ export function openSpeech(
     const voice = await voiceCache.prepare({
       reference,
       ttsVoiceRegistrar,
-      characterId: character.id,
+      characterName: character.name,
       providerId: binding.providerId,
       modelId: binding.modelId,
       signal: setup.signal,
@@ -224,12 +223,11 @@ export function openSpeech(
   const sttPreview: SpeechComposition['sttPreview'] = async (providerId, modelId, signal) => {
     const connection = providers.resolveConnection(providerId, 'stt');
     const character = characters.current();
-    const sample = character.voiceSamples.find(value => value.enabled && value.isPrimary)
-      ?? character.voiceSamples.find(value => value.enabled);
+    const sample = character.voiceSamples.find(value => value.isPrimary);
     if (!sample) {
       throw new ProviderError('invalid_configuration', '当前角色未配置参考音频，请先在角色卡添加');
     }
-    const audioPath = characters.resolveVoiceSampleFile(character.id, sample.id);
+    const audioPath = characters.resolveVoiceSampleFile(character.name, sample.name);
     const audio = await readFile(audioPath);
     const callStt = createSttCall(connection, modelId);
     const result = await callStt({

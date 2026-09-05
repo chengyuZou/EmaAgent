@@ -1,17 +1,13 @@
-// 持久化角色参考音频及其提示文本和主音频选择。
-
 import type { SqliteDb } from '../../database/database.js';
 import { createSqliteIdBatches } from '../../database/sqlite-id-batches.js';
 
 export interface CharacterVoiceSampleRow {
-  id: string;
-  character_id: string;
   name: string;
-  file_name: string;
+  character_name: string;
+  display_name: string;
   prompt_text: string;
   prompt_lang: string;
   is_primary: number;
-  enabled: number;
   mime_type: string;
   byte_size: number | null;
   duration_ms: number | null;
@@ -20,15 +16,12 @@ export interface CharacterVoiceSampleRow {
 }
 
 export interface CharacterVoiceSampleInsert {
-  id: string;
-  characterId: string;
   name: string;
-  /** 创建时确定、此后不可修改的磁盘文件名。 */
-  fileName: string;
+  characterName: string;
+  displayName: string;
   promptText: string;
   promptLang: string;
   isPrimary?: boolean;
-  enabled?: boolean;
   mimeType: string;
   byteSize?: number | null;
   durationMs?: number | null;
@@ -37,33 +30,25 @@ export interface CharacterVoiceSampleInsert {
 }
 
 export interface CharacterVoiceSampleUpdate {
-  name?: string;
-  enabled?: boolean;
+  displayName?: string;
 }
 
 export class CharacterVoiceSampleRepo {
   constructor(private readonly db: SqliteDb) {}
-
   insert(input: CharacterVoiceSampleInsert): void {
     this.db.transaction(() => {
-      if (input.isPrimary) {
-        this.clearPrimary(input.characterId);
-      }
+      if (input.isPrimary) this.clearPrimary(input.characterName, input.updatedAt);
       this.db.prepare(
-        `INSERT INTO character_voice_samples (
-           id, character_id, name, file_name, prompt_text,
-           prompt_lang, is_primary, enabled, mime_type,
-           byte_size, duration_ms, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO character_voice_samples
+         (name, character_name, display_name, prompt_text, prompt_lang, is_primary, mime_type,
+          byte_size, duration_ms, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(
-        input.id,
-        input.characterId,
         input.name,
-        input.fileName,
+        input.characterName,
+        input.displayName,
         input.promptText,
         input.promptLang,
         input.isPrimary ? 1 : 0,
-        input.enabled === false ? 0 : 1,
         input.mimeType,
         input.byteSize ?? null,
         input.durationMs ?? null,
@@ -73,141 +58,65 @@ export class CharacterVoiceSampleRepo {
     })();
   }
 
-  findById(
-    characterId: string,
-    id: string,
-  ): CharacterVoiceSampleRow | undefined {
+  find(characterName: string, name: string): CharacterVoiceSampleRow | undefined {
     return this.db.prepare(
-      `SELECT * FROM character_voice_samples
-       WHERE character_id = ? AND id = ?`,
-    ).get(characterId, id) as CharacterVoiceSampleRow | undefined;
+      'SELECT * FROM character_voice_samples WHERE character_name = ? AND name = ?',
+    ).get(characterName, name) as CharacterVoiceSampleRow | undefined;
   }
 
-  listForCharacter(characterId: string): CharacterVoiceSampleRow[] {
+  findPrimary(characterName: string): CharacterVoiceSampleRow | undefined {
     return this.db.prepare(
-      `SELECT * FROM character_voice_samples
-       WHERE character_id = ?
-       ORDER BY created_at ASC, id ASC`,
-    ).all(characterId) as CharacterVoiceSampleRow[];
+      'SELECT * FROM character_voice_samples WHERE character_name = ? AND is_primary = 1',
+    ).get(characterName) as CharacterVoiceSampleRow | undefined;
   }
 
-  /** 批量取多张角色的资源,替代逐角色 listForCharacter 的 N+1 查询。 */
-  listForCharacters(characterIds: readonly string[]): CharacterVoiceSampleRow[] {
+  listForCharacter(characterName: string): CharacterVoiceSampleRow[] {
+    return this.db.prepare(
+      'SELECT * FROM character_voice_samples WHERE character_name = ? ORDER BY created_at, name',
+    ).all(characterName) as CharacterVoiceSampleRow[];
+  }
+  listForCharacters(characterNames: readonly string[]): CharacterVoiceSampleRow[] {
     const rows: CharacterVoiceSampleRow[] = [];
-    for (const batch of createSqliteIdBatches(this.db, characterIds)) {
-      rows.push(...this.db.prepare(
-        `SELECT * FROM character_voice_samples
-         WHERE character_id IN (${batch.map(() => '?').join(', ')})
-         ORDER BY character_id ASC, created_at ASC, id ASC`,
-      ).all(...batch) as CharacterVoiceSampleRow[]);
+    for (const batch of createSqliteIdBatches(this.db, characterNames)) {
+      rows.push(
+        ...this.db.prepare(
+          `SELECT * FROM character_voice_samples WHERE character_name IN (${batch.map(() => '?').join(', ')}) ORDER BY character_name, created_at, name`,
+        ).all(...batch) as CharacterVoiceSampleRow[],
+      );
     }
     return rows;
   }
 
-  setPrimary(
-    characterId: string,
-    id: string,
-    updatedAt: number,
-  ): boolean {
+  setPrimary(characterName: string, name: string, updatedAt: number): boolean {
     return this.db.transaction(() => {
-      const target = this.db.prepare(
-        `SELECT 1 FROM character_voice_samples
-         WHERE character_id = ? AND id = ? AND enabled = 1`,
-      ).get(characterId, id);
-      if (!target) return false;
-
-      this.clearPrimary(characterId);
+      if (!this.find(characterName, name)) return false;
+      this.clearPrimary(characterName, updatedAt);
       this.db.prepare(
-        `UPDATE character_voice_samples
-         SET is_primary = 1, updated_at = ?
-         WHERE character_id = ? AND id = ?`,
-      ).run(updatedAt, characterId, id);
+        'UPDATE character_voice_samples SET is_primary = 1, updated_at = ? WHERE character_name = ? AND name = ?',
+      ).run(updatedAt, characterName, name);
       return true;
     })();
   }
-
-  update(
-    characterId: string,
-    id: string,
-    patch: CharacterVoiceSampleUpdate,
-    updatedAt: number,
-  ): CharacterVoiceSampleRow | undefined {
-    return this.db.transaction(() => {
-      const current = this.findById(characterId, id);
-      if (!current) return undefined;
-
-      const name = patch.name ?? current.name;
-      const enabled = patch.enabled ?? current.enabled === 1;
-      const changed = name !== current.name
-        || enabled !== (current.enabled === 1);
-      if (!changed) return current;
-      const revisionAt = Math.max(updatedAt, current.updated_at + 1);
-
+  update(characterName: string, name: string, patch: CharacterVoiceSampleUpdate, updatedAt: number): CharacterVoiceSampleRow | undefined {
+    if (patch.displayName !== undefined) {
       this.db.prepare(
-        `UPDATE character_voice_samples
-         SET name = ?, enabled = ?,
-             is_primary = CASE WHEN ? = 1 THEN is_primary ELSE 0 END,
-             updated_at = ?
-         WHERE character_id = ? AND id = ?`,
-      ).run(
-        name,
-        enabled ? 1 : 0,
-        enabled ? 1 : 0,
-        revisionAt,
-        characterId,
-        id,
-      );
-      this.ensurePrimary(characterId, revisionAt);
-      return this.findById(characterId, id);
-    })();
+        'UPDATE character_voice_samples SET display_name = ?, updated_at = ? WHERE character_name = ? AND name = ?',
+      ).run(patch.displayName, updatedAt, characterName, name);
+    }
+    return this.find(characterName, name);
   }
 
-  delete(
-    characterId: string,
-    id: string,
-    updatedAt: number,
-  ): CharacterVoiceSampleRow | undefined {
-    return this.db.transaction(() => {
-      const row = this.findById(characterId, id);
-      if (!row) return undefined;
-
-      this.db.prepare(
-        `DELETE FROM character_voice_samples
-         WHERE character_id = ? AND id = ?`,
-      ).run(characterId, id);
-      if (row.is_primary === 1) {
-        this.promoteFirstEnabled(characterId, updatedAt);
-      }
-      return row;
-    })();
+  delete(characterName: string, name: string): CharacterVoiceSampleRow | undefined {
+    const row = this.find(characterName, name);
+    if (row) {
+      this.db.prepare('DELETE FROM character_voice_samples WHERE character_name = ? AND name = ?').run(characterName, name);
+    }
+    return row;
   }
 
-  private clearPrimary(characterId: string): void {
+  private clearPrimary(characterName: string, updatedAt: number): void {
     this.db.prepare(
-      `UPDATE character_voice_samples
-       SET is_primary = 0
-       WHERE character_id = ? AND is_primary = 1`,
-    ).run(characterId);
-  }
-
-  private promoteFirstEnabled(characterId: string, updatedAt: number): void {
-    this.db.prepare(
-      `UPDATE character_voice_samples
-       SET is_primary = 1, updated_at = ?
-       WHERE id = (
-         SELECT id FROM character_voice_samples
-         WHERE character_id = ? AND enabled = 1
-         ORDER BY created_at ASC, id ASC
-         LIMIT 1
-       )`,
-    ).run(updatedAt, characterId);
-  }
-
-  private ensurePrimary(characterId: string, updatedAt: number): void {
-    const primary = this.db.prepare(
-      `SELECT 1 FROM character_voice_samples
-       WHERE character_id = ? AND enabled = 1 AND is_primary = 1`,
-    ).get(characterId);
-    if (!primary) this.promoteFirstEnabled(characterId, updatedAt);
+      'UPDATE character_voice_samples SET is_primary = 0, updated_at = ? WHERE character_name = ? AND is_primary = 1',
+    ).run(updatedAt, characterName);
   }
 }

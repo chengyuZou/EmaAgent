@@ -3,7 +3,7 @@
 // 拒绝误取消正在运行的根 Turn。归 session 包：它守的是 Session 级执行互斥，
 // 不是 Turn 的内部状态。
 
-import { ActiveSessionAlreadyRegisteredError } from './errors.js';
+import { ActiveSessionAlreadyRegisteredError, SessionBusyError } from './errors.js';
 
 export type ActiveSessionExecutionKind = 'turn' | 'compact';
 
@@ -25,12 +25,17 @@ export class ActiveSessionRegistry {
    * 订阅让最后一个执行结束时后台立刻被唤醒，而不是轮询空转。
    */
   private readonly listeners = new Set<(activeCount: number) => void>();
+  private registrationClosures = 0;
+  private registrationClosureTail: Promise<void> = Promise.resolve();
 
   register(
     sessionId: string,
     executionId: string,
     kind: ActiveSessionExecutionKind,
   ): AbortSignal {
+    if (this.registrationClosures > 0) {
+      throw new SessionBusyError(sessionId);
+    }
     if (this.executions.has(sessionId)) {
       throw new ActiveSessionAlreadyRegisteredError(sessionId);
     }
@@ -99,6 +104,19 @@ export class ActiveSessionRegistry {
     const active = [...this.executions.entries()];
     for (const [, execution] of active) execution.abortController.abort();
     await Promise.all(active.map(([sessionId]) => this.waitUntilIdle(sessionId)));
+  }
+
+  /**
+   * 角色切换、删除和当前角色修改在这个窗口内完成检查与提交。调用本方法会同步
+   * 关闭新 Turn/Compact 注册；并发调用按进入顺序串行，最后一个调用结束后再开放。
+   */
+  runWithRegistrationsClosed<T>(action: () => T | Promise<T>): Promise<T> {
+    this.registrationClosures += 1;
+    const result = this.registrationClosureTail.then(action);
+    this.registrationClosureTail = result.then(() => undefined, () => undefined);
+    return result.finally(() => {
+      this.registrationClosures -= 1;
+    });
   }
 
   /**

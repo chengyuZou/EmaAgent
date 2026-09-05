@@ -2,8 +2,17 @@
 // Route 只做传输解析与协议转换，业务入口全部来自 Composition，这里不构造业务对象。
 // 顶层必须整链（.use/.route/.notFound/.onError 同链）：语句式 app.route(...) 会丢类型账本，
 // ReturnType<typeof createRoutes>（AppType）将退化为裸 Hono，Hono RPC 契约直接失效。
+import {
+  ATTACHMENT_RESIDUE_MAX_AGE_MS,
+  readAttachmentCacheSettings,
+} from '@ema-agent/attachments';
 import { Hono } from 'hono';
 import { deleteSession } from '../application/deleteSession.js';
+import {
+  activateCharacter,
+  deleteCharacter,
+  mutateCharacter,
+} from '../application/changeCharacter.js';
 import type { Composition } from '../composition/index.js';
 import { emaAuth, localWebviewCors } from '../platform/auth.js';
 import { requestBudgetMiddleware } from '../platform/requestBudget.js';
@@ -13,7 +22,7 @@ import { backgroundProcessControlRoute } from './backgroundProcesses/control.js'
 import { backgroundProcessListRoute } from './backgroundProcesses/list.js';
 import { sessionBackupRoute } from './backup/sessions.js';
 import { characterCollectionRoute } from './characters/collection.js';
-import { characterHealthRoute } from './characters/health.js';
+import { characterPresentationRoute } from './characters/presentation.js';
 import { characterResourcesRoute } from './characters/resources.js';
 import { commandsCatalogRoute } from './commands/catalog.js';
 import { commandsCompactRoute } from './commands/compact.js';
@@ -22,7 +31,8 @@ import { knowledgeIngestRoute } from './knowledge/ingest.js';
 import { knowledgeLibsRoute } from './knowledge/libs.js';
 import { knowledgeReembedRoute } from './knowledge/reembed.js';
 import { knowledgeSearchRoute } from './knowledge/search.js';
-import { mcpRegistryRoute } from './mcp/registry.js';
+import { mcpMarketRoute } from './mcp/market.js';
+import { mcpEnvironmentRoute } from './mcp/environment.js';
 import { mcpServersRoute } from './mcp/servers.js';
 import { memoryFilesRoute } from './memory/files.js';
 import { memoryJobsRoute } from './memory/jobs.js';
@@ -40,7 +50,7 @@ import { sessionGitRoute } from './sessions/git.js';
 import { settingsEventDisplayRoute } from './settings/eventDisplay.js';
 import { settingsValuesRoute } from './settings/values.js';
 import { skillListRoute } from './skills/list.js';
-import { skillSitesRoute } from './skills/sites.js';
+import { skillMarketRoute } from './skills/market.js';
 import { systemEventsRoute } from './system/events.js';
 import { systemStatsRoute } from './system/stats.js';
 import { systemStatusRoute } from './system/status.js';
@@ -60,6 +70,11 @@ export const createRoutes = (composition: Composition, secret: string) => {
     characters, speech, turn, commands, memory, backup,
     eventHub, turnEvents, turnFanout,
   } = composition;
+  const characterChangeDeps = {
+    characters: characters.store,
+    activeSessions: database.activeSessions,
+    backgroundProcesses: tools.backgroundProcesses,
+  };
 
   // CORS 必须先处理不携带业务密钥的 OPTIONS 预检，真正请求再进入认证和预算。
   return new Hono()
@@ -107,11 +122,25 @@ export const createRoutes = (composition: Composition, secret: string) => {
     .route('/api/sessions', sessionHistoryRoute({
       session: database.session,
       turns: database.turns,
-      attachments: database.attachments,
+      onSessionOpened: sessionId => {
+        // 附件残留清扫(贴了没发/无行残渣)与 vision 描述缓存驱逐,fire-and-forget。
+        void database.attachments
+          .sweep(sessionId, ATTACHMENT_RESIDUE_MAX_AGE_MS)
+          .catch(error => console.warn('[attachments] 残留清扫失败:', error));
+        void turn.visionCache.sweepIfIdle({
+          isIdle: () => database.activeSessions.activeSessionCount() === 0,
+          maxBytesForSweep: () => readAttachmentCacheSettings(settings.settings).maxBytes,
+        }).catch(error => console.warn('[attachments] vision 缓存清扫失败:', error));
+      },
     }))
     .route('/api/sessions', sessionGitRoute(database.session))
     .route('/api/sessions', sessionAttachmentsRoute({
-      attachments: database.attachments,
+      sessions: database.session,
+      attachmentImages: database.attachmentImages,
+      attachmentPastedTexts: database.attachmentPastedTexts,
+      imageStore: database.imageStore,
+      pasteStore: database.pasteStore,
+      activeDataDir: database.activeDataDir,
     }))
     // backup 是独立业务域（未来还有角色/设置备份）；Session 支路的 URL 仍在 /api/sessions 下。
     .route('/api/sessions', sessionBackupRoute({ backup: backup.sessionBackup }))
@@ -138,18 +167,17 @@ export const createRoutes = (composition: Composition, secret: string) => {
       backgroundProcesses: tools.backgroundProcesses,
     }))
 
-    .route('/api/kb', knowledgeLibsRoute({ kb: knowledge.kb }))
+    .route('/api/kb', knowledgeLibsRoute({ kb: knowledge.kb, providerModels: providers.providerModels }))
     .route('/api/kb', knowledgeIngestRoute({ kb: knowledge.kb }))
     .route('/api/kb', knowledgeReembedRoute({ kb: knowledge.kb }))
     .route('/api/kb', knowledgeSearchRoute({ kb: knowledge.kb }))
     .route('/api/kb', knowledgeDocumentsRoute({ kb: knowledge.kb }))
 
-    .route('/api/mcp', mcpServersRoute({ mcp: tools.mcp, mcpSources: tools.mcpSources }))
-    .route('/api/mcp', mcpRegistryRoute({
-      mcp: tools.mcp,
-      mcpSources: tools.mcpSources,
-      stdioApprovals: tools.stdioApprovals,
+    .route('/api/mcp', mcpServersRoute({ mcp: tools.mcp }))
+    .route('/api/mcp', mcpEnvironmentRoute({
+      environment: tools.mcpEnvironment,
     }))
+    .route('/api/mcp', mcpMarketRoute({ market: tools.mcpMarket }))
 
     // 静态 /bindings、/available 路由必须先于 configs 的 /:providerId，避免被当作 Provider id。
     .route('/api/providers', providerModelsRoute({
@@ -157,7 +185,6 @@ export const createRoutes = (composition: Composition, secret: string) => {
       providerModels: providers.providerModels,
       modelBindings: providers.modelBindings,
       refreshCatalog: providers.refreshCatalog,
-      onKbEmbeddingBindingChanged: knowledge.onKbEmbeddingBindingChanged,
     }))
     .route('/api/providers', providerConfigsRoute({
       providers: providers.providers,
@@ -181,19 +208,29 @@ export const createRoutes = (composition: Composition, secret: string) => {
     .route('/api/skills', skillListRoute({
       skills: tools.skills,
       skillStore: tools.skillStore,
+      skillEnablement: tools.skillEnablement,
       settings: settings.settings,
       sessions: database.session,
+      emitApp: event => eventHub.emitApp(event),
     }))
-    .route('/api/skills', skillSitesRoute({
-      skillSites: tools.skillSites,
-      skillStore: tools.skillStore,
+    .route('/api/skills', skillMarketRoute({
+      market: tools.skillMarket,
+      installer: tools.skillMarketInstaller,
       skills: tools.skills,
-      skillUserRoot: tools.skillUserRoot,
+      emitApp: event => eventHub.emitApp(event),
     }))
 
-    .route('/api/characters', characterCollectionRoute({ characters: characters.store }))
-    .route('/api/characters', characterResourcesRoute({ characters: characters.store }))
-    .route('/api/characters', characterHealthRoute({ characters: characters.store }))
+    .route('/api/characters', characterCollectionRoute({
+      characters: characters.store,
+      activateCharacter: (characterName, terminateRunningWork) => activateCharacter(characterChangeDeps, characterName, terminateRunningWork),
+      deleteCharacter: (characterName, terminateRunningWork) => deleteCharacter(characterChangeDeps, characterName, terminateRunningWork),
+      mutateCharacter: (characterName, action) => mutateCharacter(characterChangeDeps, characterName, action),
+    }))
+    .route('/api/characters', characterResourcesRoute({
+      characters: characters.store,
+      mutateCharacter: (characterName, action) => mutateCharacter(characterChangeDeps, characterName, action),
+    }))
+    .route('/api/characters', characterPresentationRoute({ characters: characters.store }))
 
     .route('/api/memory', memoryJobsRoute({ jobs: memory.jobs, admin: memory.admin }))
     .route('/api/memory', memoryFilesRoute({

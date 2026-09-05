@@ -20,7 +20,7 @@ export class SpeechVoicePreviewError extends Error {
 }
 
 export interface SpeechVoicePreviewSource {
-  current(): { readonly characterId: string; readonly voice: TtsVoiceReference } | null;
+  current(): { readonly characterName: string; readonly voice: TtsVoiceReference } | null;
 }
 
 /** 试听所需的 TTS 入口对：Provider 连接与模型由装配层按请求即时冻结。 */
@@ -63,7 +63,7 @@ export class SpeechVoicePreview {
       const voice = await this.voiceCache.prepare({
         reference: current.voice,
         ttsVoiceRegistrar: tts.ttsVoiceRegistrar,
-        characterId: current.characterId,
+        characterName: current.characterName,
         providerId,
         modelId,
         ...(signal === undefined ? {} : { signal }),

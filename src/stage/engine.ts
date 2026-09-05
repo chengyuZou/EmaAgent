@@ -97,8 +97,7 @@ export class StageEngine {
     for (const tag of tags) {
       switch (tag.kind) {
         case 'emotion': {
-          // 未知词汇（模型编造）与重复情绪都不发事件，只清洗正文。
-          if (!this.emotions.includes(tag.value) || s.emotion === tag.value) break;
+          if (!this.emotions.includes(tag.value)) break;
           s.emotion = tag.value;
           events.push({
             type: 'emotion_changed',

@@ -75,7 +75,8 @@ export type { MessageRow, MessageInsert, MessageRole, MessageKind } from './repo
 export type {
   CharacterRow,
   CharacterInsert,
-  CharacterUpdate
+  CharacterUpdate,
+  CharacterDeleteResult,
 } from './repos/profile/character.js';
 export type {
   CharacterLive2dModelInsert,

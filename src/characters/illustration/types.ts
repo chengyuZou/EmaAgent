@@ -1,50 +1,48 @@
-// 单张角色立绘
+/**
+ * 单张角色立绘
+ * @param name 立绘的唯一标识符 落盘时作为文件名使用且不允许修改
+ * @param characterName 立绘所属的角色标识符 对应为 Character.name
+ * @param displayName 立绘的显示名称(或者为外号)
+ * @param expression 立绘的表情名称 可为 null 表示无表情
+ * @param stageScale 立绘在舞台上的缩放比例
+ * @param stageOffsetX 立绘在舞台上的水平偏移量比例
+ * @param stageOffsetY 立绘在舞台上的垂直偏移量比例
+ */
 export interface CharacterIllustration {
-  id: string;
-  characterId: string;
   name: string;
-  /** 创建时确定、此后不可修改的磁盘文件名。 */
-  fileName: string;
-  /** 主窗口中的缩放倍率；1 表示原图默认显示大小，有效范围为 0.1～5。 */
+  characterName: string;
+  displayName: string;
+  expression: string | null;
   stageScale: number;
-  /** 相对舞台中心的水平偏移；-1 为最左侧，0 为居中，1 为最右侧。 */
   stageOffsetX: number;
-  /** 相对舞台中心的垂直偏移；-1 为最上方，0 为居中，1 为最下方。 */
   stageOffsetY: number;
   isPrimary: boolean;
-  enabled: boolean;
   byteSize: number;
   createdAt: number;
   updatedAt: number;
 }
 
 export interface CharacterIllustrationInput {
-  id?: string;
   name: string;
-  fileName: string;
-  /** 主窗口中的缩放倍率；不传时使用 1。 */
+  displayName: string;
+  expression?: string | null;
   stageScale?: number;
-  /** 相对舞台中心的水平偏移；有效范围为 -1～1。 */
   stageOffsetX?: number;
-  /** 相对舞台中心的垂直偏移；有效范围为 -1～1。 */
   stageOffsetY?: number;
   isPrimary?: boolean;
-  enabled?: boolean;
   byteSize: number;
 }
 
 export interface CharacterIllustrationPatch {
-  name?: string;
-  /** 主窗口中的缩放倍率；有效范围为 0.1～5。 */
+  displayName?: string;
+  expression?: string | null;
   stageScale?: number;
-  /** 相对舞台中心的水平偏移；有效范围为 -1～1。 */
   stageOffsetX?: number;
-  /** 相对舞台中心的垂直偏移；有效范围为 -1～1。 */
   stageOffsetY?: number;
-  enabled?: boolean;
 }
 
 export interface ImportCharacterIllustrationInput {
   sourceFile: string;
+  expression?: string | null;
   isPrimary?: boolean;
 }

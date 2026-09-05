@@ -10,56 +10,80 @@ export class CharacterResourcePaths {
     return this.root;
   }
 
-  characterDirectory(characterDirectoryName: string): string {
-    return path.join(this.root, physicalName(characterDirectoryName));
+  stagingRoot(): string {
+    return path.join(this.root, '.staging');
   }
 
-  live2dRoot(characterDirectoryName: string): string {
-    return path.join(this.characterDirectory(characterDirectoryName), 'live2d');
+  stagingOperationDirectory(operationId: string): string {
+    return path.join(this.stagingRoot(), physicalName(operationId));
   }
 
-  live2dModelDirectory(characterDirectoryName: string, modelDirectoryName: string): string {
+  characterDirectory(characterName: string): string {
+    return path.join(this.root, physicalName(characterName));
+  }
+
+  live2dRoot(characterName: string): string {
+    return path.join(this.characterDirectory(characterName), 'live2d');
+  }
+
+  live2dModelDirectory(characterName: string, live2dName: string): string {
     return path.join(
-      this.live2dRoot(characterDirectoryName),
-      physicalName(modelDirectoryName),
+      this.live2dRoot(characterName),
+      physicalName(live2dName),
     );
   }
 
-  illustrationRoot(characterDirectoryName: string): string {
-    return path.join(this.characterDirectory(characterDirectoryName), 'illustration');
+  illustrationRoot(characterName: string): string {
+    return path.join(this.characterDirectory(characterName), 'illustration');
   }
 
-  illustrationFile(characterDirectoryName: string, fileName: string): string {
+  illustrationFile(characterName: string, illustrationName: string): string {
     return path.join(
-      this.illustrationRoot(characterDirectoryName),
-      physicalName(fileName),
+      this.illustrationRoot(characterName),
+      physicalName(illustrationName),
     );
   }
 
-  voiceRoot(characterDirectoryName: string): string {
-    return path.join(this.characterDirectory(characterDirectoryName), 'voice');
+  voiceRoot(characterName: string): string {
+    return path.join(this.characterDirectory(characterName), 'voice');
   }
 
-  voiceFile(characterDirectoryName: string, fileName: string): string {
+  voiceFile(characterName: string, voiceName: string): string {
     return path.join(
-      this.voiceRoot(characterDirectoryName),
-      physicalName(fileName),
+      this.voiceRoot(characterName),
+      physicalName(voiceName),
     );
   }
 }
 
-/** 物理名是一层目录或一个文件名，不允许携带路径。 */
+/**
+ * 物理名是一层目录或一个文件名 不允许携带路径
+ * 将会进行以下检查
+ * - 不能是空字符串
+ * - 不能超过 100 个字符
+ * - 不能是 . 或 ..
+ * - 不能以 . 或 空格结尾
+ * - 不能包含 \ / : * ? " < > | 或 ASCII 控制字符
+ * - 不能是 Windows 保留设备名 CON PRN AUX NUL COM1-COM9 LPT1-LPT9
+ * - 会进行 NFC Unicode 正规化
+ */
 export function physicalName(value: string): string {
+  const normalized = value.normalize('NFC');
+  const stem = normalized.split('.')[0] ?? normalized;
   if (
-    !value
-    || value === '.'
-    || value === '..'
-    || path.basename(value) !== value
-    || /[\\/:*?"<>|\u0000-\u001f]/u.test(value)
+    !normalized
+    || normalized.length > 100
+    || normalized === '.'
+    || normalized === '..'
+    || normalized.endsWith('.')
+    || normalized.endsWith(' ')
+    || path.basename(normalized) !== normalized
+    || /[\\/:*?"<>|\u0000-\u001f]/u.test(normalized)
+    || /^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/iu.test(stem)
   ) {
     throw new CharacterResourcePathError(value, 'physical_name_invalid');
   }
-  return value;
+  return normalized;
 }
 
 export function sourceFileName(sourcePath: string): string {

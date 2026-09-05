@@ -82,6 +82,7 @@ implements BackgroundProcessCompletionSource {
   private readonly queued = new Map<string, QueuedProcess>();
   private readonly changeWaiters = new Map<string, Set<() => void>>();
   private shuttingDown = false;
+  private processStartClosures = 0;
   private completionListener?: (sessionId: string) => void;
 
   constructor(private readonly deps: BackgroundProcessDeps) {
@@ -157,6 +158,9 @@ implements BackgroundProcessCompletionSource {
   async runCommand(request: BackgroundCommandRequest): Promise<BackgroundCommandResult> {
     if (this.shuttingDown) {
       throw new BackgroundProcessError('shutting_down', 'Background process runtime is shutting down');
+    }
+    if (this.processStartClosures > 0) {
+      throw new BackgroundProcessError('starts_closed', 'Background process starts are temporarily closed');
     }
     const id = crypto.randomUUID();
     const writer = this.output.create(request.sessionId, id);
@@ -432,6 +436,16 @@ implements BackgroundProcessCompletionSource {
       ...[...this.active.entries()].map(([id, active]) => ({ id, sessionId: active.request.sessionId })),
     ];
     await Promise.all(processes.map(process => this.stop(process.sessionId, process.id)));
+  }
+
+  /** 角色全局变更期间先关闭新进程入口，再停止当前快照，避免停止过程中补进新任务。 */
+  async runWithProcessStartsClosed<T>(action: () => T | Promise<T>): Promise<T> {
+    this.processStartClosures += 1;
+    try {
+      return await action();
+    } finally {
+      this.processStartClosures -= 1;
+    }
   }
 
   async shutdown(): Promise<void> {
