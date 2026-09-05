@@ -6,7 +6,7 @@ export interface AttachmentImageRow {
   path:       string;
   session_id: string;
   turn_id:    string | null;
-  name:       string;
+  name:       string | null;
   byte_size:  number;
   created_at: number;
 }

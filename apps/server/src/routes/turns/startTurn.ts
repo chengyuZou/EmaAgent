@@ -11,6 +11,23 @@ import { REQUEST_VALUE_LIMITS } from '../../platform/requestBudget.js';
 import type { TurnFanout } from '../../sse/turnFanout.js';
 import { jsonBody } from '../validate.js';
 
+const attachmentBlockSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('image_reference'),
+    path: z.string().min(1),
+    name: z.string().min(1).optional(),
+  }),
+  z.object({
+    type: z.literal('pasted_text_reference'),
+    path: z.string().min(1),
+    preview: z.string(),
+  }),
+  z.object({
+    type: z.literal('file_reference'),
+    path: z.string().min(1),
+  }),
+]);
+
 const inputPartSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('text'),
@@ -18,13 +35,7 @@ const inputPartSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     type: z.literal('attachment'),
-    attachment: z.object({
-      sourcePath: z.string().min(1),
-      name: z.string().min(1).optional(),
-      mimeType: z.string().min(1).optional(),
-      size: z.number().optional(),
-      mtime: z.number().optional(),
-    }),
+    block: attachmentBlockSchema,
   }),
   z.object({ type: z.literal('skill_reference'), name: z.string().min(1), path: z.string().min(1) }),
 ]);

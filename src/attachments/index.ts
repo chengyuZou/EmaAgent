@@ -13,6 +13,7 @@ export type {
 export { isLlmImagePath, mimeForPath } from './types.js';
 export type { StoreSweepReport } from './types.js';
 export {
+  ATTACHMENT_RESIDUE_MAX_AGE_MS,
   IMAGE_NORMALIZE_MAX_BYTES,
   IMAGE_NORMALIZE_MAX_DIMENSION,
   PASTE_TEXT_MIN_CHARS,

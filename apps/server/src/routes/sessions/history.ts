@@ -1,8 +1,8 @@
 // Session 历史读取：消息分页、Turn 索引与锚点窗口（窗口拆半：turns 归 TurnStore，消息归 SessionStore）。
+// 附件信息已经在消息块里(path/name/preview),不再按 Turn 拼接账本行。
 import { Hono } from 'hono';
 import { z } from 'zod';
-import type { Attachment, AttachmentStore } from '@ema-agent/attachments';
-import type { Message, SessionStore } from '@ema-agent/session';
+import type { SessionStore } from '@ema-agent/session';
 import type { TurnStore } from '@ema-agent/turn';
 import { queryValidator } from '../validate.js';
 
@@ -25,45 +25,20 @@ const messageWindowQuery = z.object({
   { message: 'message_window_too_large' },
 );
 
-/** 附件展示投影：路径不下发，内容经 /attachments/:id/content 端点读取。 */
-interface AttachmentWire {
-  readonly id: string;
-  readonly kind: Attachment['kind'];
-  readonly name: string;
-  readonly mimeType: string;
-  readonly byteSize: number;
-}
-
-function toAttachmentWire(attachment: Attachment): AttachmentWire {
-  return {
-    id: attachment.id,
-    kind: attachment.kind,
-    name: attachment.name,
-    mimeType: attachment.mimeType,
-    byteSize: attachment.kind === 'image' ? attachment.imageByteSize : attachment.byteSize,
-  };
-}
-
 export interface SessionHistoryRouteDeps {
   readonly session: Pick<SessionStore, 'listMessages' | 'listMessagesForTurns'>;
   readonly turns: Pick<TurnStore, 'listTurns' | 'listTurnIndex' | 'listTurnWindow'>;
-  readonly attachments: Pick<AttachmentStore, 'listByTurn'>;
+  /** Session 被打开(拉历史)时触发一次 fire-and-forget 的附件残留清扫。 */
+  readonly onSessionOpened?: (sessionId: string) => void;
 }
 
-export const sessionHistoryRoute = (deps: SessionHistoryRouteDeps) => {
-  const withAttachments = (messages: readonly Message[]) =>
-    messages.map(message => {
-      if (message.role !== 'user' || !message.turnId) return message;
-      const rows = deps.attachments.listByTurn(message.turnId);
-      if (rows.length === 0) return message;
-      return { ...message, attachments: rows.map(toAttachmentWire) };
-    });
-
-  return new Hono()
+export const sessionHistoryRoute = (deps: SessionHistoryRouteDeps) =>
+  new Hono()
     .get('/:sessionId/messages', queryValidator(listMessagesQuery), context => {
       const sessionId = context.req.param('sessionId');
+      deps.onSessionOpened?.(sessionId);
       return context.json({
-        messages: withAttachments(deps.session.listMessages(sessionId, context.req.valid('query'))),
+        messages: deps.session.listMessages(sessionId, context.req.valid('query')),
         turns: deps.turns.listTurns(sessionId),
       });
     })
@@ -76,7 +51,6 @@ export const sessionHistoryRoute = (deps: SessionHistoryRouteDeps) => {
       const turnIds = window.turns.map(turn => turn.id);
       return context.json({
         ...window,
-        messages: withAttachments(deps.session.listMessagesForTurns(sessionId, turnIds)),
+        messages: deps.session.listMessagesForTurns(sessionId, turnIds),
       });
     });
-}

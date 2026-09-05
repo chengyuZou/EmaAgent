@@ -7,12 +7,14 @@ import { mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { AttachmentPastedTextsRepo } from '@ema-agent/storage';
 import { AttachmentPreparationError } from './errors.js';
-import { PASTE_TEXT_MIN_CHARS } from './limits.js';
+import { PASTE_TEXT_MIN_CHARS, PASTE_TEXT_PREVIEW_CHARS } from './limits.js';
 import type { StoreSweepReport } from './types.js';
 
 export interface SavedPastedText {
   readonly path: string;
   readonly byteSize: number;
+  /** 落盘时定格的前若干字符;发送时随块进消息,组装期零 IO。 */
+  readonly preview: string;
 }
 
 export class PastedTextStore {
@@ -45,7 +47,11 @@ export class PastedTextStore {
       byte_size: bytes,
       created_at: Date.now(),
     });
-    return { path: target, byteSize: bytes };
+    return {
+      path: target,
+      byteSize: bytes,
+      preview: content.slice(0, PASTE_TEXT_PREVIEW_CHARS),
+    };
   }
 
   /** 发送盖章:返回没盖上的 path(未入账或不属于该 Session)。 */

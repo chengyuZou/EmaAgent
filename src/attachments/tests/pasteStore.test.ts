@@ -44,6 +44,9 @@ describe('PastedTextStore.savePastedText', () => {
     expect(saved.path).toContain(path.join('attachments', 'pasted'));
     expect(await readFile(saved.path, 'utf8')).toBe(content);
     expect(saved.byteSize).toBe(Buffer.byteLength(content, 'utf8'));
+    // 预览是落盘时定格的前若干字符, 供块携带, 组装期零 IO
+    expect(saved.preview).toBe(content.slice(0, 500));
+    expect(saved.preview.length).toBe(500);
 
     const row = repo.listBySession(sessionId)[0];
     expect(row).toMatchObject({ path: saved.path, byte_size: saved.byteSize });

@@ -10,9 +10,11 @@ const DEFAULT_TTL_MS = 30 * 24 * 60 * 60 * 1_000;
 const DEFAULT_MIN_INTERVAL_MS = 6 * 60 * 60 * 1_000;
 const DELETE_BATCH_SIZE = 128;
 
-/** 生产者由调用方注入:拿图片 path 读字节调 Vision 模型, 返回描述正文。 */
+/** 生产者由调用方注入:拿图片 path 读字节调 Vision 模型, 返回描述正文;
+ *  signal 透传给底层视觉调用, Turn 取消可中断生产。 */
 export type VisionDescriptionProducer = (
   imagePath: string,
+  signal: AbortSignal,
 ) => Promise<string>;
 
 export class VisionDescriptionCache {
@@ -113,7 +115,7 @@ export class VisionDescriptionCache {
     }
 
     signal.throwIfAborted();
-    const text = (await produce(imagePath)).trim();
+    const text = (await produce(imagePath, signal)).trim();
     signal.throwIfAborted();
     if (!text) throw new Error('Vision 没有返回可缓存的图片描述');
 

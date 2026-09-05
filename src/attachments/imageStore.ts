@@ -27,11 +27,12 @@ export class ImageStore {
     private readonly dataDir: string,
   ) {}
 
-  /** 字节来源由调用方读出(剪贴板直接给字节, 拖入文件由端点读盘), 域层只见字节。 */
+  /** 字节来源由调用方读出(剪贴板直接给字节, 拖入文件由端点读盘), 域层只见字节。
+   *  originalName 只在拖入场景存在;剪贴板图片没有原生名, 账本 name 存 NULL。 */
   async saveImage(
     sessionId: string,
     bytes: Buffer,
-    originalName: string,
+    originalName?: string,
   ): Promise<SavedImage> {
     const normalized = await this.normalize(bytes, originalName);
     const id = randomUUID();
@@ -42,12 +43,12 @@ export class ImageStore {
       await writeFile(target, normalized.bytes);
     } catch (error) {
       await rm(target, { force: true }).catch(() => {});
-      throw new AttachmentPreparationError(`图片受管副本写入失败: ${originalName}`, error);
+      throw new AttachmentPreparationError(`图片受管副本写入失败: ${originalName ?? '剪贴板图片'}`, error);
     }
     this.repo.insertMany([{
       path: target,
       session_id: sessionId,
-      name: originalName,
+      name: originalName ?? null,
       byte_size: normalized.bytes.length,
       created_at: Date.now(),
     }]);
@@ -105,18 +106,18 @@ export class ImageStore {
   /** 不超阈值的图原样保留; 超的先缩边长, 仍超字节再 JPEG 重编码。 */
   private async normalize(
     bytes: Buffer,
-    originalName: string,
+    originalName?: string,
   ): Promise<{ bytes: Buffer; extension: string }> {
     let metadata;
     try {
       metadata = await sharp(bytes).metadata();
     } catch (error) {
-      throw new AttachmentPreparationError(`图片无法解码: ${originalName}`, error);
+      throw new AttachmentPreparationError(`图片无法解码: ${originalName ?? '剪贴板图片'}`, error);
     }
     const format = metadata.format ?? '';
     if (!SUPPORTED_FORMATS.has(format)) {
       throw new AttachmentPreparationError(
-        `不支持的图片格式 ${format || '未知'}: ${originalName}`,
+        `不支持的图片格式 ${format || '未知'}: ${originalName ?? '剪贴板图片'}`,
       );
     }
     const width = metadata.width ?? 0;

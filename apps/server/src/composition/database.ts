@@ -2,7 +2,8 @@
 import {
   AgentRunMessagesRepo,
   AgentRunsRepo,
-  AttachmentRepo,
+  AttachmentImagesRepo,
+  AttachmentPastedTextsRepo,
   Database,
   DataDirStatsRepo,
   SessionStatsRepo,
@@ -10,7 +11,7 @@ import {
   UsageRecordsRepo,
 } from '@ema-agent/storage';
 import { AgentRunMessagesStore, AgentRunStore } from '@ema-agent/agent';
-import { AttachmentStore } from '@ema-agent/attachments';
+import { AttachmentStore, ImageStore, PastedTextStore } from '@ema-agent/attachments';
 import { ActiveSessionRegistry, SessionStore } from '@ema-agent/session';
 import { TaskStore } from '@ema-agent/tasks';
 import { TurnStore } from '@ema-agent/turn';
@@ -35,6 +36,12 @@ export interface DatabaseComposition {
   /** Session 级活跃执行坑位：根 Turn 与手动 compact 共享互斥（commands 装配同源注入）。 */
   readonly activeSessions: ActiveSessionRegistry;
   readonly attachments: AttachmentStore;
+  /** 粘贴端点直接调用;attachmentStore 内部共享同一实例。 */
+  readonly imageStore: ImageStore;
+  readonly pasteStore: PastedTextStore;
+  /** 附件页路由直接查询的两本账。 */
+  readonly attachmentImages: AttachmentImagesRepo;
+  readonly attachmentPastedTexts: AttachmentPastedTextsRepo;
   readonly tasks: TaskStore;
   readonly agentRuns: AgentRunStore;
   readonly agentRunMessages: AgentRunMessagesStore;
@@ -82,6 +89,11 @@ export function openDatabases(activeDataDir: string): DatabaseComposition {
     activeSessions,
   });
 
+  const attachmentImages = new AttachmentImagesRepo(dataDb.sqlite);
+  const attachmentPastedTexts = new AttachmentPastedTextsRepo(dataDb.sqlite);
+  const imageStore = new ImageStore(attachmentImages, activeDataDir);
+  const pasteStore = new PastedTextStore(attachmentPastedTexts, activeDataDir);
+
   return {
     profileDb,
     dataDb,
@@ -89,7 +101,11 @@ export function openDatabases(activeDataDir: string): DatabaseComposition {
     session,
     turns,
     activeSessions,
-    attachments: new AttachmentStore({ repo: new AttachmentRepo(dataDb.sqlite), dataDir: activeDataDir }),
+    attachments: new AttachmentStore({ imageStore, pasteStore }),
+    imageStore,
+    pasteStore,
+    attachmentImages,
+    attachmentPastedTexts,
     tasks: new TaskStore(new TasksRepo(dataDb.sqlite)),
     agentRuns: new AgentRunStore(new AgentRunsRepo(dataDb.sqlite)),
     agentRunMessages: new AgentRunMessagesStore(new AgentRunMessagesRepo(dataDb.sqlite)),
