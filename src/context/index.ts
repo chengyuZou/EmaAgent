@@ -2,13 +2,12 @@
 export { assembleContext, buildPromptMessages } from './assembleContext.js';
 export type { PromptMessages } from './assembleContext.js';
 export {
-  deriveLlmHistory,
+  buildHistoryMessages,
   renderSkillReferenceForModel,
-} from './deriveLlmHistory.js';
-export type {
-  LlmHistoryMessage,
-  ResolveHistoryAttachment,
-} from './deriveLlmHistory.js';
+} from './buildHistoryMessages.js';
+export type { HistoryMessage } from './buildHistoryMessages.js';
+export { buildAttachmentMessages } from './buildAttachmentMessages.js';
+export type { BuildAttachmentMessagesOptions } from './buildAttachmentMessages.js';
 export {
   appendEstimatedContextMessages,
   estimatedContextUsage,

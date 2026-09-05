@@ -1,30 +1,29 @@
-// Session Message → LLM 历史的唯一转换入口：把持久化消息投影为 Provider 中立历史，
-// 只保留完整配对的 Tool 配对；thinking 作为协议原生推理状态保留并携带生成来源
-// （generatedBy），重放/删除由目标协议 Adapter 裁决。每条产出携带来源 Session
-// Message id，供 Macro 摘要成功后映射 summarizedThroughMessageId（不进入 Compact 或 LLM 请求）。
+// Session Message → 模型历史的唯一转换入口:把持久化消息构建为 Provider 中立消息,
+// 只保留完整配对的 Tool 配对;thinking 作为协议原生推理状态保留并携带生成来源
+// (generatedBy),重放/删除由目标协议 Adapter 裁决。每条产出携带来源 Session
+// Message id,供 Macro 摘要成功后映射 summarizedThroughMessageId(不进入 Compact 或 LLM 请求)。
 import type {
   AssistantBlock,
   ContentPart,
   LlmGenerationSource,
   Message as ModelMessage,
   ToolResultContentPart,
-  UserBlock as LlmUserBlock,
+  UserBlock,
 } from '@ema-agent/llm';
 import type {
-  AttachmentReferenceBlock,
+  AttachmentBlock,
   Message as SessionMessage,
   SkillReferenceBlock,
 } from '@ema-agent/session';
+import {
+  buildAttachmentMessages,
+  type BuildAttachmentMessagesOptions,
+} from './buildAttachmentMessages.js';
 
-export interface LlmHistoryMessage {
+export interface HistoryMessage {
   readonly sessionMessageId: string;
   readonly message: ModelMessage;
 }
-
-/** Turn 注入附件包的解析结果；Context 不读取 AttachmentStore 或调用 Vision。 */
-export type ResolveHistoryAttachment = (
-  reference: AttachmentReferenceBlock,
-) => Promise<LlmUserBlock>;
 
 /**
  * Session 中的 system 不是模型历史：System Prompt 每次重新生成，把它重放会
@@ -32,12 +31,12 @@ export type ResolveHistoryAttachment = (
  * 原生推理状态并 attach 所属 Turn 的生成来源。产出数组可能比输入短，
  * 身份映射只允许使用 sessionMessageId，不可用下标对齐输入。
  */
-export async function deriveLlmHistory(
+export async function buildHistoryMessages(
   history: readonly SessionMessage[],
   resolveGenerationTarget: (turnId: string) => LlmGenerationSource | undefined,
-  resolveAttachment: ResolveHistoryAttachment,
-): Promise<LlmHistoryMessage[]> {
-  const messages: LlmHistoryMessage[] = [];
+  attachmentOptions: BuildAttachmentMessagesOptions,
+): Promise<HistoryMessage[]> {
+  const messages: HistoryMessage[] = [];
   const pairedToolIds = collectPairedToolIds(history);
 
   for (const message of history) {
@@ -54,10 +53,10 @@ export async function deriveLlmHistory(
         continue;
       }
       if (Array.isArray(message.blocks)) {
-        const content: LlmUserBlock[] = [];
+        const content: UserBlock[] = [];
         for (const block of message.blocks) {
-          const projected = await projectUserBlock(block, pairedToolIds, resolveAttachment);
-          if (projected) content.push(projected);
+          const projected = await buildUserBlocks(block, pairedToolIds, attachmentOptions);
+          if (projected) content.push(...projected);
         }
         if (content.length > 0) {
           messages.push({
@@ -72,7 +71,7 @@ export async function deriveLlmHistory(
     // 中断的 Assistant 是流式恢复事实，不是已经完成的模型回复。
     if (!message.interrupted && Array.isArray(message.blocks)) {
       const content = message.blocks
-        .map((block) => projectAssistantBlock(block, pairedToolIds))
+        .map((block) => buildAssistantBlock(block, pairedToolIds))
         .filter((block): block is AssistantBlock => block !== undefined);
       if (content.length > 0) {
         const generatedBy = message.turnId
@@ -93,7 +92,7 @@ export async function deriveLlmHistory(
   return messages;
 }
 
-function projectAssistantBlock(
+function buildAssistantBlock(
   block: unknown,
   pairedToolIds: ReadonlySet<string>,
 ): AssistantBlock | undefined {
@@ -169,11 +168,11 @@ function projectAssistantBlock(
   return undefined;
 }
 
-async function projectUserBlock(
+async function buildUserBlocks(
   block: unknown,
   pairedToolIds: ReadonlySet<string>,
-  resolveAttachment: ResolveHistoryAttachment,
-): Promise<LlmUserBlock | undefined> {
+  attachmentOptions: BuildAttachmentMessagesOptions,
+): Promise<UserBlock[] | undefined> {
   if (block && typeof block === 'object') {
     const candidate = block as {
       type?: unknown;
@@ -189,40 +188,38 @@ async function projectUserBlock(
         ? candidate.content
         : Array.isArray(candidate.content)
           ? candidate.content
-              .map(projectToolResultPart)
+              .map(buildToolResultContentPart)
               .filter((part): part is ToolResultContentPart => part !== undefined)
           : undefined;
       if (content === undefined) return undefined;
-      return {
+      return [{
         type: 'tool_result',
         toolCallId: candidate.toolCallId,
         content,
         ...(typeof candidate.isError === 'boolean' ? { isError: candidate.isError } : {}),
-      };
+      }];
     }
-    if (candidate.type === 'attachment_ref') {
-      const reference = block as Partial<AttachmentReferenceBlock>;
-      if (
-        typeof reference.attachmentId !== 'string'
-        || typeof reference.name !== 'string'
-        || typeof reference.mimeType !== 'string'
-      ) {
-        return undefined;
-      }
-      return resolveAttachment(reference as AttachmentReferenceBlock);
+    if (
+      candidate.type === 'image_reference'
+      || candidate.type === 'pasted_text_reference'
+      || candidate.type === 'file_reference'
+    ) {
+      // 块的字段合法性在入库校验(message.parseMessageBlocksJson)已保证。
+      return buildAttachmentMessages(block as AttachmentBlock, attachmentOptions);
     }
     if (candidate.type === 'skill_reference') {
       const reference = block as Partial<SkillReferenceBlock>;
       if (typeof reference.name !== 'string' || typeof reference.path !== 'string') {
         return undefined;
       }
-      return {
+      return [{
         type: 'text',
         text: renderSkillReferenceForModel(reference as SkillReferenceBlock),
-      };
+      }];
     }
   }
-  return projectContentPart(block);
+  const part = buildContentPart(block);
+  return part === undefined ? undefined : [part];
 }
 
 /**
@@ -237,8 +234,8 @@ export function renderSkillReferenceForModel(reference: SkillReferenceBlock): st
   ].join('\n');
 }
 
-function projectToolResultPart(block: unknown): ToolResultContentPart | undefined {
-  const projected = projectContentPart(block);
+function buildToolResultContentPart(block: unknown): ToolResultContentPart | undefined {
+  const projected = buildContentPart(block);
   if (!projected) return undefined;
   return projected.type === 'text'
     || projected.type === 'image_data'
@@ -294,7 +291,7 @@ function recordOccurrence(
   });
 }
 
-function projectContentPart(block: unknown): ContentPart | undefined {
+function buildContentPart(block: unknown): ContentPart | undefined {
   if (!block || typeof block !== 'object') return undefined;
   const part = block as Record<string, unknown>;
 

@@ -89,7 +89,6 @@ function makeFixture(options: {
         inputImage: false,
       }),
     } as unknown as ProviderModels,
-    attachments: { getMany: () => new Map() } as unknown as CommandCompactDeps['attachments'],
     settings: fakeSettingsStore(options.settingsOverrides),
     characterPrompt: () => ['你是测试角色'],
     skillEntries: async () => [],

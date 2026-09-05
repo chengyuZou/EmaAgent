@@ -1,7 +1,7 @@
 // 测试 prepareTurn 的模型解析顺序、有序附件、Skill 引用与 Profile 分流。
 import { describe, expect, it } from 'vitest';
 import type { AgentRunMessagesStore, AgentRunStore } from '@ema-agent/agent';
-import type { AttachmentStore, Attachment } from '@ema-agent/attachments';
+import type { AttachmentStore } from '@ema-agent/attachments';
 import type { ProviderModels, Providers } from '@ema-agent/providers';
 import type { SessionStore } from '@ema-agent/session';
 import type { SettingsStore } from '@ema-agent/settings';
@@ -72,14 +72,7 @@ function makeDeps(overrides: Partial<PrepareTurnDeps> = {}): PrepareTurnDeps {
       }),
     } as unknown as ProviderModels,
     attachments: {
-      addAll: async (inputs: Array<{ sourcePath: string; name?: string }>) =>
-        inputs.map((input, index) => ({
-          id: `att-${index}`,
-          kind: 'file',
-          name: input.name ?? 'f.txt',
-          mimeType: 'text/plain',
-          sourcePath: input.sourcePath,
-        })),
+      attach: async (_sessionId: string, _turnId: string, blocks: readonly unknown[]) => blocks,
     } as unknown as AttachmentStore,
     settings: {
       get: (def: { key: string; defaultValue: unknown }) =>
@@ -197,7 +190,7 @@ describe('prepareTurn', () => {
     const deps = makeDeps({
       skillEntries: () => [descriptor],
       attachments: {
-        addAll: async () => {
+        attach: async () => {
           attachmentWrites += 1;
           return [];
         },
@@ -206,7 +199,7 @@ describe('prepareTurn', () => {
 
     await expect(prepareTurn(deps, makeRuntime(makeStart({
       input: [
-        { type: 'attachment', attachment: { sourcePath: '/x.txt' } },
+        { type: 'attachment', block: { type: 'file_reference', path: '/x.txt' } },
         { type: 'skill_reference', name: 'ghost', path: '/skills/ghost/SKILL.md' },
       ],
     }))))
@@ -234,40 +227,34 @@ describe('prepareTurn', () => {
   it('附件登记失败映射为 turn/attachment_failed', async () => {
     const deps = makeDeps({
       attachments: {
-        addAll: async () => { throw new Error('超过单文件上限'); },
+        attach: async () => { throw new Error('附件账本缺少记录'); },
       } as unknown as AttachmentStore,
     });
     await expect(prepareTurn(deps, makeRuntime(makeStart({
-      input: [{ type: 'attachment', attachment: { sourcePath: '/x.png' } }],
+      input: [{ type: 'attachment', block: { type: 'image_reference', path: '/x.png' } }],
     })))).rejects.toThrow(TurnPreparationError);
   });
 
   it('模型不支持图片且存在图片附件时记录降级通知', async () => {
-    const image: Attachment = {
-      id: 'att-1',
-      kind: 'image',
+    const imageBlock = {
+      type: 'image_reference' as const,
+      path: '/managed/a.png',
       name: 'a.png',
-      mimeType: 'image/png',
-      imagePath: '/nonexistent.png',
-      sourcePath: '/x/a.png',
-    } as Attachment;
+    };
     const deps = makeDeps({
       providerModels: {
         get: () => ({ capability: 'llm', contextWindow: 128_000, inputImage: false }),
       } as unknown as ProviderModels,
-      attachments: { addAll: async () => [image] } as unknown as AttachmentStore,
+      attachments: {
+        attach: async (_s: string, _t: string, blocks: readonly unknown[]) => blocks,
+      } as unknown as AttachmentStore,
       describeImage: async () => '一只猫',
     });
     const prepared = await prepareTurn(deps, makeRuntime(makeStart({
-      input: [{ type: 'attachment', attachment: { sourcePath: '/x/a.png' } }],
+      input: [{ type: 'attachment', block: imageBlock }],
     })));
     expect(prepared.degradations).toHaveLength(1);
     expect(prepared.degradations[0]).toMatchObject({ removed: ['image'] });
-    expect(prepared.userMessageBlocks).toEqual([{
-      type: 'attachment_ref',
-      attachmentId: 'att-1',
-      name: 'a.png',
-      mimeType: 'image/png',
-    }]);
+    expect(prepared.userMessageBlocks).toEqual([imageBlock]);
   });
 });

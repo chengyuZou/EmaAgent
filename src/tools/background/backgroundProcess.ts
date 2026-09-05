@@ -421,6 +421,19 @@ implements BackgroundProcessCompletionSource {
     await Promise.allSettled(completions);
   }
 
+  hasLiveProcesses(): boolean {
+    return this.queued.size > 0 || this.active.size > 0;
+  }
+
+  /** 角色切换或删除经用户确认后，停止全部普通后台进程；不影响 Memory 自己的 Job 队列。 */
+  async stopAll(): Promise<void> {
+    const processes = [
+      ...[...this.queued.entries()].map(([id, queued]) => ({ id, sessionId: queued.request.sessionId })),
+      ...[...this.active.entries()].map(([id, active]) => ({ id, sessionId: active.request.sessionId })),
+    ];
+    await Promise.all(processes.map(process => this.stop(process.sessionId, process.id)));
+  }
+
   async shutdown(): Promise<void> {
     this.shuttingDown = true;
     this.completionListener = undefined;

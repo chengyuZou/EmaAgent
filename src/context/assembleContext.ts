@@ -88,7 +88,8 @@ function markFinalCacheBreakpoint(messages: readonly Message[]): Message[] {
   const result = [...messages];
   for (let index = result.length - 1; index >= 0; index -= 1) {
     const message = result[index];
-    if (!message || messageContentLength(message) === 0) continue;
+    // 空消息(空串或零块)不打断点
+    if (!message || message.content.length === 0) continue;
     if (!message.cacheBreakpoint) result[index] = { ...message, cacheBreakpoint: true };
     break;
   }
@@ -108,10 +109,6 @@ function stripCacheBreakpoints(messages: readonly Message[]): Message[] {
       ...(message.generatedBy ? { generatedBy: message.generatedBy } : {}),
     };
   });
-}
-
-function messageContentLength(message: Message): number {
-  return typeof message.content === 'string' ? message.content.length : message.content.length;
 }
 
 function assertNoSystemMessages(messages: readonly Message[]): void {

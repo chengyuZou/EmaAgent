@@ -308,8 +308,8 @@ export class SessionStore {
 
   /**
    * 创建独立 Session 副本；`untilTurnId` 为空时完整复制，否则复制到该 Turn（含）。
-   * 新 Session 重新生成 Turn、Message 与 Attachment ID，不继承 Task、
-   * AgentRun 或正在运行的外部副作用。
+   * 新 Session 重新生成 Turn 与 Message ID；附件块按原 path 引用源 Session 的
+   * 受管文件。不继承 Task、AgentRun 或正在运行的外部副作用。
    */
   forkSession(
     srcId:        string,

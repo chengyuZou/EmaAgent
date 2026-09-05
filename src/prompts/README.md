@@ -54,7 +54,7 @@ PromptEnvironment
 ## 输入注入契约(接线方)
 
 - `characterPrompt`:角色包公共口,每根 Turn 现取当下全局唯一激活角色
-  (`() => buildCharacterPrompt(card.current())`)。角色 Store 在启动时保证 Seed
+  (`() => buildCharacterPrompt(character, presentation)`)。角色 Store 在启动时保证 Seed
   和唯一激活角色,因此该接口不接受 `null`;角色 Prompt 无效时应在 Character 边界失败,
   不能静默退化成没有身份的 Agent。角色可任意时刻更换,换角色只影响下一根 Turn。
 - `toolNames`:根 Turn 已冻结 ToolPool 的稳定名称集合,只决定动态能力引导是否出现;

@@ -237,8 +237,8 @@ CREATE TABLE attachment_images (
   path       TEXT PRIMARY KEY,
   session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   turn_id    TEXT          REFERENCES turns(id)    ON DELETE CASCADE,
-  -- 用户原文件名;消息块只存 path,basename 是 uuid,展示名只能靠这里。
-  name       TEXT NOT NULL,
+  -- 拖入图片的原文件名,供 UI 展示;剪贴板图片没有原生名存 NULL。
+  name       TEXT,
   byte_size  INTEGER NOT NULL CHECK(byte_size >= 0),
   created_at INTEGER NOT NULL
 );

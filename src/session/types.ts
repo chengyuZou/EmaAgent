@@ -1,6 +1,6 @@
 import type { MessageKind, MessageRole } from '@ema-agent/storage';
 import type { MessageBlocks } from './message.js';
-import type { ToolResultBlock } from './message.js';
+import type { ToolResult } from '@ema-agent/tools';
 
 /**
  * 一次 Turn 的执行能力范围；输入渠道和连接协议不属于 Profile。
@@ -105,7 +105,7 @@ export interface Message {
 export interface PersistedToolInteraction {
   name: string;
   args: unknown;
-  result?: ToolResultBlock;
+  result?: ToolResult;
 }
 
 // SessionStore 的输入输出契约。

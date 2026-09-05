@@ -48,7 +48,7 @@ describe('SessionsRepo integration', () => {
     expect(repo.search('可删除搜索正文', 10)).toHaveLength(0);
   });
 
-  it('fork 截断复制并写入 forked_from 双列，消息与附件归属重映射', () => {
+  it('fork 截断复制并写入 forked_from 双列，消息归属重映射', () => {
     insertSession({ id: 'source' });
     insertTurn({ id: 'turn-1', sessionId: 'source', status: 'completed', createdAt: 100, completedAt: 110 });
     insertTurn({ id: 'turn-2', sessionId: 'source', status: 'completed', createdAt: 200, completedAt: 210 });
@@ -56,7 +56,6 @@ describe('SessionsRepo integration', () => {
     insertMessage({ id: 'message-1', sessionId: 'source', turnId: 'turn-1', text: 'one', createdAt: 105 });
     insertMessage({ id: 'message-2', sessionId: 'source', turnId: 'turn-2', text: 'two', createdAt: 205 });
     insertMessage({ id: 'message-3', sessionId: 'source', turnId: 'turn-3', text: 'three', createdAt: 305 });
-    insertAttachment('attachment-2', 'turn-2', 'source');
 
     expect(repo.forkInto(asSessionId('source'), asSessionId('fork'), 'Fork', 1_000, asTurnId('turn-2'))).toBe(2);
 
@@ -75,12 +74,6 @@ describe('SessionsRepo integration', () => {
       .all('fork') as Array<{ turn_id: string | null }>;
     expect(copiedMessages).toHaveLength(2);
     expect(copiedMessages.every((message) => turns.some((turn) => turn.id === message.turn_id))).toBe(true);
-
-    const copiedAttachment = database.db
-      .prepare('SELECT session_id, turn_id FROM attachments WHERE session_id = ?')
-      .get('fork') as { session_id: string; turn_id: string };
-    expect(copiedAttachment.session_id).toBe('fork');
-    expect(turns.some((turn) => turn.id === copiedAttachment.turn_id)).toBe(true);
   });
 
   it('完整 fork 时 forked_from_turn_id 为 null', () => {
@@ -202,14 +195,6 @@ describe('SessionsRepo integration', () => {
       fixture.createdAt,
       fixture.through ?? null,
     );
-  }
-
-  function insertAttachment(id: string, turnId: string, sessionId: string): void {
-    database.db.prepare(`
-      INSERT INTO attachments
-        (id, turn_id, session_id, kind, name, mime, source_path, byte_size, source_modified_at, created_at)
-      VALUES (?, ?, ?, 'file', 'fixture.txt', 'text/plain', 'fixture.txt', 7, 1, 1)
-    `).run(id, turnId, sessionId);
   }
 });
 

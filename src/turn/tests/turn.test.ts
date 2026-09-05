@@ -1,8 +1,8 @@
 // 集成测试：TurnExecutor 全链——文本轮完成、工具轮的持久化顺序与终态。
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type { AgentRunMessagesStore, AgentRunStore } from '@ema-agent/agent';
-import type { Attachment, AttachmentStore } from '@ema-agent/attachments';
+import type { AttachmentStore } from '@ema-agent/attachments';
 import type { CallLlm, LlmStreamEvent } from '@ema-agent/llm';
 import type { ProviderModels, Providers } from '@ema-agent/providers';
 import { Database } from '@ema-agent/storage';
@@ -304,30 +304,23 @@ describe('TurnExecutor 集成', () => {
         yield { type: 'done' as const, stopReason: 'end_turn' as const };
       })();
     };
-    const image: Attachment = {
-      id: 'att-image',
-      turnId: 'fixture-turn',
-      sessionId: session.id,
-      kind: 'image',
+    const imageBlock = {
+      type: 'image_reference' as const,
+      path: '/managed/cat.png',
       name: 'cat.png',
-      mimeType: 'image/png',
-      sourcePath: '/x/cat.png',
-      sourceByteSize: 3,
-      sourceModifiedAt: 1,
-      imagePath: '/managed/cat.png',
-      imageByteSize: 3,
-      createdAt: 1,
     };
     const reminderTexts: string[] = [];
+    const describeImage = vi.fn(async () => '一只戴帽子的猫');
     const deps = {
       ...makeDeps({ db, llm, sessionId: session.id, registry }),
       attachments: {
-        addAll: async (inputs: readonly unknown[]) => inputs.length > 0 ? [image] : [],
-        getMany: (ids: readonly string[]) => new Map(
-          ids.includes(image.id) ? [[image.id, image]] : [],
-        ),
+        attach: async (_s: string, _t: string, blocks: readonly unknown[]) => blocks,
       } as unknown as AttachmentStore,
-      describeImage: async () => '一只戴帽子的猫',
+      visionCache: {
+        getOrCreate: (_path: string, _signal: AbortSignal, produce: (p: string) => Promise<string>) =>
+          produce(_path),
+      },
+      describeImage,
       readTurnReminder: (scope: { userText: string }) => {
         reminderTexts.push(scope.userText);
         return { currentDate: '2026-08-25' };
@@ -337,16 +330,11 @@ describe('TurnExecutor 集成', () => {
 
     const first = executor.start({
       ...makeStart(session.id),
-      input: [{ type: 'attachment', attachment: { sourcePath: '/x/cat.png' } }],
+      input: [{ type: 'attachment', block: imageBlock }],
     });
     await first.completion;
     const firstMessages = sessions.loadMessagesForTurn(first.turnId);
-    expect(firstMessages[1]!.blocks).toEqual([{
-      type: 'attachment_ref',
-      attachmentId: image.id,
-      name: image.name,
-      mimeType: image.mimeType,
-    }]);
+    expect(firstMessages[1]!.blocks).toEqual([imageBlock]);
 
     const second = executor.start(makeStart(session.id));
     await second.completion;

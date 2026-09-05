@@ -8,8 +8,8 @@ import {
 } from '@ema-agent/agent';
 import {
   AttachmentStore,
-  type Attachment,
-  type DescribeAttachmentImage,
+  type VisionDescriptionCache,
+  type VisionDescriptionProducer,
 } from '@ema-agent/attachments';
 import {
   readCompactSettings,
@@ -32,9 +32,10 @@ import {
 import type { PromptBlock } from '@ema-agent/prompts';
 import type { ProviderModels, Providers } from '@ema-agent/providers';
 import type {
+  AttachmentBlock,
   MessageBlocks,
   SessionStore,
-  UserBlock as SessionUserBlock,
+  SessionUserBlock,
 } from '@ema-agent/session';
 import type { SettingsStore } from '@ema-agent/settings';
 import type {
@@ -102,7 +103,9 @@ export interface PrepareTurnDeps extends TurnToolsDeps {
   /** 记忆使用指引（静态模板文本，memory 包 buildMemoryGuidance 产出）；两轨摘要不在这里，进 reminder。 */
   readonly memoryGuidance?: () => Promise<string | null> | string | null;
   /** 模型不支持图片时的 Vision 描述入口。 */
-  readonly describeImage?: DescribeAttachmentImage;
+  readonly describeImage?: VisionDescriptionProducer;
+  /** Vision 描述缓存(path 键);与 describeImage 同时注入才会现做生产。 */
+  readonly visionCache?: VisionDescriptionCache;
   readonly scratchpadDirForTurn?: (sessionId: string, turnId: string) => string;
   /** 正式构建 false；只有显式开发入口可为 true。 */
   readonly isBypassPermissionsModeAvailable?: boolean;
@@ -168,21 +171,18 @@ export async function prepareTurn(
   // Skill 引用先于附件登记完成解析，避免无效 Skill 让本 Turn 留下孤立附件记录。
   const selectedSkills = resolveSelectedSkills(request.input, skillPool);
 
-  const attachmentInputs = request.input
+  const attachmentBlocks = request.input
     .filter((part): part is Extract<TurnInputPart, { type: 'attachment' }> => (
       part.type === 'attachment'
     ))
-    .map(part => part.attachment);
+    .map(part => part.block);
 
-  // AttachmentStore 保持输入顺序；后续按同一游标把引用放回原始文本位置。
-  let storedAttachments: readonly Attachment[] = [];
+  // attach 保持输入顺序(file 块 realpath 权威化, image/pasted 盖章);
+  // 后续按同一游标把校验后的块放回原始文本位置。
+  let attachedBlocks: readonly AttachmentBlock[] = [];
   try {
-    storedAttachments = attachmentInputs.length
-      ? await deps.attachments.addAll(
-          attachmentInputs,
-          turnId,
-          request.sessionId,
-        )
+    attachedBlocks = attachmentBlocks.length
+      ? await deps.attachments.attach(request.sessionId, turnId, attachmentBlocks)
       : [];
   } catch (error) {
     throw new TurnPreparationError(
@@ -191,7 +191,7 @@ export async function prepareTurn(
       { cause: error },
     );
   }
-  if (!supportsImageInput && storedAttachments.some(a => a.kind === 'image')) {
+  if (!supportsImageInput && attachmentBlocks.some(b => b.type === 'image_reference')) {
     degradations.push({
       attempt: 1,
       reason: '当前 LLM 不支持图片输入，附件图片已转换为文本',
@@ -202,7 +202,7 @@ export async function prepareTurn(
 
   const userMessageBlocks = prepareOrderedInput(
     request.input,
-    storedAttachments,
+    attachedBlocks,
     selectedSkills,
   );
 
@@ -292,7 +292,7 @@ export async function prepareTurn(
 /** 把输入数组逐项映射为同序的 Session 块；模型内容统一从该持久形态派生。 */
 function prepareOrderedInput(
   input: readonly TurnInputPart[],
-  storedAttachments: readonly Attachment[],
+  attachedBlocks: readonly AttachmentBlock[],
   selectedSkills: ReadonlyMap<string, SkillDescriptor>,
 ): MessageBlocks {
   const sessionBlocks: SessionUserBlock[] = [];
@@ -305,16 +305,11 @@ function prepareOrderedInput(
       continue;
     }
     if (part.type === 'attachment') {
-      const attachment = storedAttachments[attachmentIndex++];
-      if (!attachment) {
-        throw new TurnPreparationError('turn/attachment_failed', '附件登记结果缺少对应记录');
+      const block = attachedBlocks[attachmentIndex++];
+      if (!block) {
+        throw new TurnPreparationError('turn/attachment_failed', '附件校验结果缺少对应块');
       }
-      sessionBlocks.push({
-        type: 'attachment_ref',
-        attachmentId: attachment.id,
-        name: attachment.name,
-        mimeType: attachment.mimeType,
-      });
+      sessionBlocks.push(block);
       continue;
     }
 

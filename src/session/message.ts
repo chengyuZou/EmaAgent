@@ -1,21 +1,39 @@
 // 定义 Session 持久化消息结构，并在数据库 JSON 进入业务层时完成校验。
 import type {
-  AssistantBlock as LlmAssistantBlock,
+  AssistantBlock,
   ContentPart,
   ToolResultContentPart,
 } from '@ema-agent/llm';
 import type { MessageRole } from '@ema-agent/storage';
 import type { ToolResult } from '@ema-agent/tools';
 
-export type AssistantBlock = LlmAssistantBlock;
-
-/** 附件正文不进入 Message JSON；这里只保存可回查 attachments 的稳定引用。 */
-export interface AttachmentReferenceBlock {
-  type: 'attachment_ref';
-  attachmentId: string;
-  name: string;
-  mimeType: string;
+/**
+ * 附件块只保存落盘事实的绝对路径:图片=受管规范化副本,粘贴文本=落盘 txt,
+ * 其他文件=用户原路径。path 是模型与文件之间的唯一桥。
+ */
+export interface ImageReferenceBlock {
+  type: 'image_reference';
+  path: string;
+  /** 拖入图片的原文件名;剪贴板图片没有原生名,缺省。 */
+  name?: string;
 }
+
+export interface PastedTextReferenceBlock {
+  type: 'pasted_text_reference';
+  path: string;
+  /** 粘贴落盘时定格的前若干字符,让模型不盲读;组装零 IO。 */
+  preview: string;
+}
+
+export interface FileReferenceBlock {
+  type: 'file_reference';
+  path: string;
+}
+
+export type AttachmentBlock =
+  | ImageReferenceBlock
+  | PastedTextReferenceBlock
+  | FileReferenceBlock;
 
 /**
  * 用户显式选中的 Skill;绝对 SKILL.md path 是身份,name 用于历史展示。
@@ -26,27 +44,15 @@ export interface SkillReferenceBlock {
   path: string;
 }
 
-/** ToolResult 信封即持久块; data/durationMs/errorCode 都在信封上, 不再重复投影。 */
-export type ToolResultBlock = ToolResult;
-
-export type UserBlock = ContentPart | ToolResultBlock | AttachmentReferenceBlock | SkillReferenceBlock;
-export type MessageBlocks = string | AssistantBlock[] | UserBlock[];
+/**
+ * 落盘的用户消息块:线上格式(llm UserBlock)的超集,多附件与 Skill 两种
+ * 引用块——它们必须先经投影才能下发模型。ToolResult 信封即持久块,
+ * data/durationMs/errorCode 都在信封上,不再重复投影。
+ */
+export type SessionUserBlock = ContentPart | ToolResult | AttachmentBlock | SkillReferenceBlock;
+export type MessageBlocks = string | AssistantBlock[] | SessionUserBlock[];
 
 const INVALID_MESSAGE_PLACEHOLDER = '[消息内容无法读取]';
-
-/** 一次批量收集消息里全部附件引用 id，避免历史重放时每个引用各做一次 SQL 查询。 */
-export function collectAttachmentReferenceIds(
-  messages: readonly { blocks: MessageBlocks }[],
-): string[] {
-  const ids = new Set<string>();
-  for (const message of messages) {
-    if (!Array.isArray(message.blocks)) continue;
-    for (const block of message.blocks) {
-      if (block.type === 'attachment_ref') ids.add(block.attachmentId);
-    }
-  }
-  return [...ids];
-}
 
 /** 数据库中的未知 JSON 只能在这里转换为 Session MessageBlocks。 */
 export function parseMessageBlocksJson(
@@ -67,7 +73,7 @@ export function parseMessageBlocksJson(
     return isAssistantBlocks(value) ? value : INVALID_MESSAGE_PLACEHOLDER;
   }
   if (typeof value === 'string') return value;
-  return isUserBlocks(value) ? value : INVALID_MESSAGE_PLACEHOLDER;
+  return isSessionUserBlocks(value) ? value : INVALID_MESSAGE_PLACEHOLDER;
 }
 
 function isAssistantBlocks(value: unknown): value is AssistantBlock[] {
@@ -94,21 +100,24 @@ function isAssistantBlocks(value: unknown): value is AssistantBlock[] {
   });
 }
 
-function isUserBlocks(value: unknown): value is UserBlock[] {
+function isSessionUserBlocks(value: unknown): value is SessionUserBlock[] {
   return Array.isArray(value) && value.every((block) => (
     isContentPart(block)
       || isToolResultBlock(block)
-      || isAttachmentReferenceBlock(block)
+      || isAttachmentBlock(block)
       || isSkillReferenceBlock(block)
   ));
 }
 
-function isAttachmentReferenceBlock(value: unknown): value is AttachmentReferenceBlock {
-  return isRecord(value)
-    && value.type === 'attachment_ref'
-    && typeof value.attachmentId === 'string'
-    && typeof value.name === 'string'
-    && typeof value.mimeType === 'string';
+function isAttachmentBlock(value: unknown): value is AttachmentBlock {
+  if (!isRecord(value) || typeof value.path !== 'string') return false;
+  if (value.type === 'image_reference') {
+    return value.name === undefined || typeof value.name === 'string';
+  }
+  if (value.type === 'pasted_text_reference') {
+    return typeof value.preview === 'string';
+  }
+  return value.type === 'file_reference';
 }
 
 function isSkillReferenceBlock(value: unknown): value is SkillReferenceBlock {
@@ -118,7 +127,7 @@ function isSkillReferenceBlock(value: unknown): value is SkillReferenceBlock {
     && typeof value.path === 'string';
 }
 
-function isToolResultBlock(value: unknown): value is ToolResultBlock {
+function isToolResultBlock(value: unknown): value is ToolResult {
   if (!isRecord(value) || value.type !== 'tool_result' || typeof value.toolCallId !== 'string') {
     return false;
   }

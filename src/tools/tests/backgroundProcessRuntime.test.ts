@@ -308,6 +308,18 @@ describe('BackgroundProcess', () => {
     expect(fixture.runner.processes.map(p => p.stopped)).toEqual([true, true]);
   });
 
+  it('stopAll 并发停止全部普通后台进程', async () => {
+    const fixture = tracked({ maxConcurrent: 2 });
+    await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true }));
+    await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true, command: 'b' }));
+
+    expect(fixture.runtime.hasLiveProcesses()).toBe(true);
+    await fixture.runtime.stopAll();
+
+    expect(fixture.runner.processes.map(process => process.stopped)).toEqual([true, true]);
+    expect(fixture.runtime.hasLiveProcesses()).toBe(false);
+  });
+
   it('recoverInterrupted 把 queued 与 running 全部收为 interrupted 并发事件', async () => {
     const fixture = tracked({ maxConcurrent: 1 });
     await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true }));

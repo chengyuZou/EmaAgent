@@ -1,13 +1,16 @@
-// 验证 deriveLlmHistory 的投影规则（丢系统/未配对 Tool 块）、thinking 保留与生成来源携带。
+// 验证 buildHistoryMessages 的构建规则(丢系统/未配对 Tool 块)、thinking 保留与生成来源携带。
 import { describe, expect, it } from 'vitest';
 import type { Message as SessionMessage } from '@ema-agent/session';
-import { deriveLlmHistory } from '../deriveLlmHistory.js';
+import { buildHistoryMessages } from '../buildHistoryMessages.js';
+import type { BuildAttachmentMessagesOptions } from '../buildAttachmentMessages.js';
 
 const sessionId = 'session-1';
 const turnId = 'turn-1';
 const noTarget = (): undefined => undefined;
-const noAttachment = async (): Promise<never> => {
-  throw new Error('本用例不应解析附件');
+// 纯文本/工具用例不触及附件块;给一个永真 options 即可
+const noAttachment: BuildAttachmentMessagesOptions = {
+  supportsImageInput: true,
+  signal: new AbortController().signal,
 };
 
 function message(
@@ -28,9 +31,9 @@ function message(
   };
 }
 
-describe('deriveLlmHistory', () => {
+describe('buildHistoryMessages', () => {
   it('跳过旧系统消息；保留 thinking 并携带所属 Turn 的生成来源', async () => {
-    const result = await deriveLlmHistory([
+    const result = await buildHistoryMessages([
       message('m1', 'system', '旧系统'),
       message('m2', 'assistant', [
         { type: 'thinking', thinking: '内部思考', signature: 'sig-1' },
@@ -60,7 +63,7 @@ describe('deriveLlmHistory', () => {
   });
 
   it('无 turnId 或 resolver 无目标时缺省不带 generatedBy', async () => {
-    const result = await deriveLlmHistory([
+    const result = await buildHistoryMessages([
       { ...message('m1', 'assistant', [{ type: 'text', text: '无 turnId' }]), turnId: null },
       message('m2', 'assistant', [{ type: 'text', text: '有 turnId 但无目标' }]),
     ], noTarget, noAttachment);
@@ -70,7 +73,7 @@ describe('deriveLlmHistory', () => {
   });
 
   it('user/tool_result 消息不伪造生成来源', async () => {
-    const result = await deriveLlmHistory([
+    const result = await buildHistoryMessages([
       message('m1', 'assistant', [
         { type: 'tool_use', id: 'paired', name: 'Read', args: { path: 'a.ts' } },
       ]),
@@ -93,7 +96,7 @@ describe('deriveLlmHistory', () => {
   });
 
   it('reasoning 与 gemini_thought 原生块原样投影并携带生成来源', async () => {
-    const result = await deriveLlmHistory([
+    const result = await buildHistoryMessages([
       message('m1', 'assistant', [
         { type: 'reasoning', id: 'rsn_1', summaryText: '分析', encryptedContent: 'enc-1' },
         { type: 'gemini_thought', text: '思考', thoughtSignature: 'ts-1' },
@@ -124,7 +127,7 @@ describe('deriveLlmHistory', () => {
   });
 
   it('被完全过滤的消息不占产出下标（身份不可按下标对齐输入）', async () => {
-    const result = await deriveLlmHistory([
+    const result = await buildHistoryMessages([
       message('m1', 'user', '   '),
       message('m2', 'user', '有效输入'),
     ], noTarget, noAttachment);
@@ -136,7 +139,7 @@ describe('deriveLlmHistory', () => {
   });
 
   it('Skill 引用只投影选择记录，不把 SKILL.md 正文写进历史', async () => {
-    const result = await deriveLlmHistory([
+    const result = await buildHistoryMessages([
       message('m1', 'user', [{
         type: 'skill_reference',
         name: 'pdf',
@@ -159,22 +162,17 @@ describe('deriveLlmHistory', () => {
     }]);
   });
 
-  it('附件引用由 Turn 注入的解析函数投影，当前输入与历史不使用占位符', async () => {
-    const result = await deriveLlmHistory([
+  it('附件块直接由同包 buildAttachmentMessages 投影(文件块 = 路径文本)', async () => {
+    const result = await buildHistoryMessages([
       message('m1', 'user', [{
-        type: 'attachment_ref',
-        attachmentId: 'att-1',
-        name: 'cat.png',
-        mimeType: 'image/png',
+        type: 'file_reference',
+        path: 'D:/docs/map.pdf',
       }]),
-    ], noTarget, async reference => ({
-      type: 'text',
-      text: `稳定描述:${reference.attachmentId}`,
-    }));
+    ], noTarget, noAttachment);
 
     expect(result[0]!.message).toEqual({
       role: 'user',
-      content: [{ type: 'text', text: '稳定描述:att-1' }],
+      content: [{ type: 'text', text: '[附件: map.pdf, 路径: D:/docs/map.pdf]' }],
     });
   });
 
@@ -183,7 +181,7 @@ describe('deriveLlmHistory', () => {
       ...message('m1', 'assistant', [{ type: 'text', text: '半截回答' }]),
       interrupted: true,
     };
-    const result = await deriveLlmHistory([
+    const result = await buildHistoryMessages([
       interrupted,
       message('m2', 'user', '继续'),
     ], noTarget, noAttachment);
@@ -195,7 +193,7 @@ describe('deriveLlmHistory', () => {
   });
 
   it('只保留完整配对的 tool_use 和 tool_result', async () => {
-    const result = await deriveLlmHistory([
+    const result = await buildHistoryMessages([
       message('m1', 'assistant', [
         { type: 'tool_use', id: 'paired', name: 'Read', args: { path: 'a.ts' } },
         { type: 'tool_use', id: 'orphan', name: 'Read', args: { path: 'b.ts' } },
@@ -232,7 +230,7 @@ describe('deriveLlmHistory', () => {
       }]),
       interrupted: true,
     };
-    const result = await deriveLlmHistory([
+    const result = await buildHistoryMessages([
       interrupted,
       message('m2', 'user', [{
         type: 'tool_result',
@@ -250,7 +248,7 @@ describe('deriveLlmHistory', () => {
   });
 
   it('拒绝结果先于调用或重复使用同一个 toolCallId 的伪配对', async () => {
-    const result = await deriveLlmHistory([
+    const result = await buildHistoryMessages([
       message('m1', 'user', [{
         type: 'tool_result',
         toolCallId: 'out-of-order',

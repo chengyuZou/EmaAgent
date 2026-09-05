@@ -403,9 +403,6 @@ importers:
 
   src/attachments:
     dependencies:
-      '@ema-agent/llm':
-        specifier: workspace:*
-        version: link:../llm
       '@ema-agent/session':
         specifier: workspace:*
         version: link:../session
@@ -658,6 +655,9 @@ importers:
 
   src/context:
     dependencies:
+      '@ema-agent/attachments':
+        specifier: workspace:*
+        version: link:../attachments
       '@ema-agent/git':
         specifier: workspace:*
         version: link:../git

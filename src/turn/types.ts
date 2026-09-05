@@ -5,7 +5,7 @@ import type {
   NarrativePolicy,
   TurnStatus,
 } from '@ema-agent/session';
-import type { TurnAttachmentInput } from '@ema-agent/attachments';
+import type { AttachmentBlock } from '@ema-agent/session';
 import type { TurnFailureCode } from './errors.js';
 import type { TurnStreamEvent } from './events.js';
 
@@ -132,7 +132,7 @@ export type TurnInputPart =
     }
   | {
       readonly type: 'attachment';
-      readonly attachment: TurnAttachmentInput;
+      readonly block: AttachmentBlock;
     }
   | {
       readonly type: 'skill_reference';

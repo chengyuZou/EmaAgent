@@ -13,7 +13,7 @@ export type {
   ActiveSessionExecution,
   ActiveSessionExecutionKind,
 } from './activeSessionRegistry.js';
-export { parseMessageBlocksJson, collectAttachmentReferenceIds } from './message.js';
+export { parseMessageBlocksJson } from './message.js';
 export type {
   Session,
   SessionListItem,
@@ -34,11 +34,12 @@ export type {
 } from './types.js';
 
 export type {
-  AttachmentReferenceBlock,
-  AssistantBlock,
+  AttachmentBlock,
+  FileReferenceBlock,
+  ImageReferenceBlock,
   MessageBlocks,
+  PastedTextReferenceBlock,
+  SessionUserBlock,
   SkillReferenceBlock,
-  ToolResultBlock,
-  UserBlock,
 } from './message.js';
 export type { MessageKind, MessageRole } from '@ema-agent/storage';

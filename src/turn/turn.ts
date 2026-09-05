@@ -5,10 +5,10 @@ import {
   runAgentLoop,
   type AgentLoopEvent,
 } from '@ema-agent/agent';
-import { resolveAttachmentReferences } from '@ema-agent/attachments';
+import type { VisionDescriptionCache } from '@ema-agent/attachments';
 import {
   appendEstimatedContextMessages,
-  deriveLlmHistory,
+  buildHistoryMessages,
   estimatedContextUsage,
   providerContextUsage,
   type ContextUsage,
@@ -23,8 +23,6 @@ import type {
 import type { NarrativeSearch } from '@ema-agent/narrative';
 import { isLlmProtocol } from '@ema-agent/providers';
 import {
-  collectAttachmentReferenceIds,
-  type AttachmentReferenceBlock,
   type MessageBlocks,
   type SessionStore,
 } from '@ema-agent/session';
@@ -335,31 +333,22 @@ export class TurnExecutor {
       // 每条 Assistant 历史关联所属 Turn 冻结的调用目标（providerId/modelId/protocol）；
       // 解析实现与 /compact Command 共用（createGenerationTargetResolver）。
       const resolveGenerationTarget = createGenerationTargetResolver(this.deps.turns);
-      const attachmentIds = collectAttachmentReferenceIds(persisted);
-      const attachmentsById = this.deps.attachments.getMany(attachmentIds);
-      const supportsImageInput = prepared.supportsImageInput;
-      const describeImage = this.deps.describeImage;
-      const resolveAttachment = async (reference: AttachmentReferenceBlock) => {
-        const [resolved] = await resolveAttachmentReferences(
-          [reference],
-          attachmentsById,
-          {
-            supportsImageInput,
-            ...(describeImage ? { describeImage } : {}),
-            signal,
-          },
-        );
-        return resolved!;
+      // 附件投影:图片字节在入库时已规范化,这里只按能力分流(直发/描述/标记)。
+      const attachmentOptions = {
+        supportsImageInput: prepared.supportsImageInput,
+        ...(this.deps.visionCache ? { visionCache: this.deps.visionCache } : {}),
+        ...(this.deps.describeImage ? { describeImage: this.deps.describeImage } : {}),
+        signal,
       };
-      const historyWithIds = await deriveLlmHistory(
+      const historyWithIds = await buildHistoryMessages(
         persisted.slice(0, reminderIndex),
         resolveGenerationTarget,
-        resolveAttachment,
+        attachmentOptions,
       );
-      const currentTurnWithIds = await deriveLlmHistory(
+      const currentTurnWithIds = await buildHistoryMessages(
         persisted.slice(reminderIndex),
         resolveGenerationTarget,
-        resolveAttachment,
+        attachmentOptions,
       );
       const initialMessages: Message[] = [
         ...historyWithIds.map(entry => entry.message),

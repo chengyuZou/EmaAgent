@@ -4,7 +4,6 @@ import {
   AgentRunMessagesRepo,
   AgentRunsRepo,
   CharacterRepo,
-  CharacterUpdateContractError,
   Database,
   DocumentAssetRepo,
   DocumentPreviewRepo,
@@ -65,70 +64,48 @@ describe('N-003 Settings JSON 防御', () => {
 });
 
 describe('N-004 Character 更新契约', () => {
-  it('拒绝通过普通 update 修改激活状态、内置标记和目录名', () => {
+  it('name 是主键且 update 只能修改角色业务字段', () => {
     withDatabase('profile', (database) => {
       const repo = new CharacterRepo(database.sqlite);
-      const id = 'character-a';
       repo.insert({
-        id,
-        name: 'Character A',
-        directoryName: 'character-a',
+        name: 'character-a',
+        displayName: 'Character A',
         personaPrompt: '人设',
         isActive: true,
-        isBuiltin: true,
         createdAt: 1,
         updatedAt: 1,
       });
 
-      expect(() => repo.update(id, { isActive: false } as never))
-        .toThrow(CharacterUpdateContractError);
-      expect(() => repo.update(id, { isBuiltin: false } as never))
-        .toThrow(CharacterUpdateContractError);
-      expect(() => repo.update(id, { directoryName: 'renamed' } as never))
-        .toThrow(CharacterUpdateContractError);
-      expect(repo.findById(id)).toMatchObject({ is_active: 1, is_builtin: 1 });
-    });
-  });
+      repo.update('character-a', { displayName: 'After', stageKind: 'blank', updatedAt: 2 });
 
-  it('普通业务字段仍可更新', () => {
-    withDatabase('profile', (database) => {
-      const repo = new CharacterRepo(database.sqlite);
-      const id = 'character-a';
-      repo.insert({
-        id,
-        name: 'Before',
-        directoryName: 'before',
-        personaPrompt: '人设',
-        createdAt: 1,
-        updatedAt: 1,
+      expect(repo.findByName('character-a')).toMatchObject({
+        name: 'character-a',
+        display_name: 'After',
+        stage_kind: 'blank',
+        is_active: 1,
+        updated_at: 2,
       });
-
-      repo.update(id, { name: 'After', updatedAt: 2 });
-
-      expect(repo.findById(id)).toMatchObject({ name: 'After', updated_at: 2 });
     });
   });
 
-  it('目录名唯一约束拒绝重复物理名称', () => {
+  it('name 主键拒绝重复角色身份', () => {
     withDatabase('profile', (database) => {
       const repo = new CharacterRepo(database.sqlite);
       repo.insert({
-        id: 'a',
-        name: 'A',
-        directoryName: 'same',
+        name: 'same',
+        displayName: 'A',
         personaPrompt: '人设',
         createdAt: 1,
         updatedAt: 1,
       });
       expect(() => repo.insert({
-        id: 'b',
-        name: 'B',
-        directoryName: 'same',
+        name: 'same',
+        displayName: 'B',
         personaPrompt: '人设',
         createdAt: 2,
         updatedAt: 2,
       })).toThrow();
-      expect(repo.findByDirectoryName('same')?.id).toBe('a');
+      expect(repo.findByName('same')?.display_name).toBe('A');
     });
   });
 });

@@ -1,5 +1,5 @@
 // 手动 /compact：与根 Turn 同坑互斥的确定性历史改写，不创建 Turn。
-// 链：坑位(kind='compact') → 读历史 → deriveLlmHistory 投影 → 触发线下限闸 →
+// 链：坑位(kind='compact') → 读历史 → buildHistoryMessages 投影 → 触发线下限闸 →
 // 与下一根 Turn 同事实的 systemMessages → compact(force=true) →
 // 游标映射 appendHistorySummary（唯一提交点；abort/失败即历史原样）。
 // 命令路径的压缩终态一定是 macro：低于触发线在调用前拒绝，macro 失败按错误上抛，
@@ -9,11 +9,7 @@
 // narrative 事件归因），在 Turn 外伪造身份被禁止，因此历史边界缓存断点在手动路径
 // 架构性不可达；能共享的是静态产品段与动态尾到 execution-profile 为止的前缀。
 import { randomUUID } from 'node:crypto';
-import {
-  resolveAttachmentReferences,
-  type AttachmentStore,
-  type DescribeAttachmentImage,
-} from '@ema-agent/attachments';
+import type { VisionDescriptionCache, VisionDescriptionProducer } from '@ema-agent/attachments';
 import {
   compactManualMinRatioSetting,
   readCompactSettings,
@@ -21,18 +17,16 @@ import {
   type CompactResult,
 } from '@ema-agent/compact';
 import {
+  buildHistoryMessages,
   buildPromptMessages,
-  deriveLlmHistory,
-  type ResolveHistoryAttachment,
 } from '@ema-agent/context';
-import type {
-  CallLlm,
-  LlmConnection,
-  Message,
+import {
+  type CallLlm,
+  type LlmConnection,
+  type Message,
 } from '@ema-agent/llm';
 import type { ProviderModels, Providers } from '@ema-agent/providers';
 import {
-  collectAttachmentReferenceIds,
   SessionBusyError,
   type ActiveSessionRegistry,
   type Session,
@@ -72,9 +66,8 @@ export interface CommandCompactDeps {
   readonly activeSessions: ActiveSessionRegistry;
   readonly providers: Providers;
   readonly providerModels: ProviderModels;
-  readonly attachments: Pick<AttachmentStore, 'getMany'>;
   readonly settings: SettingsStore;
-  /** 与根 Turn 同一角色 Prompt 来源（buildCharacterPrompt(characters.current())）。 */
+  /** 与根 Turn 共用 CharacterStore 的当前角色与舞台 Presentation。 */
   readonly characterPrompt: () => readonly string[];
   /** 与根 Turn 同一 Skill 目录来源；chat 态不调用。 */
   readonly skillEntries: (workspaceRoot: string) => Promise<readonly SkillDescriptor[]>;
@@ -83,7 +76,9 @@ export interface CommandCompactDeps {
   readonly workspaceInstructions?: (workspaceRoot: string) => string | null;
   readonly memoryGuidance?: () => Promise<string | null> | string | null;
   /** 模型不支持图片输入时的 Vision 描述入口（与根 Turn 同一条降级链）。 */
-  readonly describeImage?: DescribeAttachmentImage;
+  readonly describeImage?: VisionDescriptionProducer;
+  /** Vision 描述缓存(path 键,与根 Turn 同一实例);与 describeImage 同时注入才会现做生产。 */
+  readonly visionCache?: VisionDescriptionCache;
   readonly createCompact: (
     callLlm: CallLlm,
   ) => (request: CompactRequest) => Promise<CompactResult>;
@@ -127,24 +122,15 @@ export async function compactSession(
     }
 
     const supportsImageInput = providerModel.inputImage === true;
-    const attachmentsById = deps.attachments.getMany(collectAttachmentReferenceIds(persisted));
-    const describeImage = deps.describeImage;
-    const resolveAttachment: ResolveHistoryAttachment = async (reference) => {
-      const [resolved] = await resolveAttachmentReferences(
-        [reference],
-        attachmentsById,
-        {
-          supportsImageInput,
-          ...(describeImage ? { describeImage } : {}),
-          signal,
-        },
-      );
-      return resolved!;
-    };
-    const historyWithIds = await deriveLlmHistory(
+    const historyWithIds = await buildHistoryMessages(
       persisted,
       createGenerationTargetResolver(deps.turns),
-      resolveAttachment,
+      {
+        supportsImageInput,
+        ...(deps.visionCache ? { visionCache: deps.visionCache } : {}),
+        ...(deps.describeImage ? { describeImage: deps.describeImage } : {}),
+        signal,
+      },
     );
     if (historyWithIds.length === 0) {
       throw new CommandsError('nothing_to_compact', '当前会话还没有可压缩的历史');
