@@ -43,7 +43,6 @@ export const BuiltinTools = Object.freeze({
   MemorySearch: Object.freeze({ id: 'builtin.memory.search', name: 'MemorySearch', variant: 'search' }),
   MemoryRead:   Object.freeze({ id: 'builtin.memory.read',   name: 'MemoryRead', variant: 'read' }),
   MemoryList:   Object.freeze({ id: 'builtin.memory.list',   name: 'MemoryList', variant: 'search' }),
-  MemoryNote:   Object.freeze({ id: 'builtin.memory.note',   name: 'MemoryNote', variant: 'edit' }),
   Skill: Object.freeze({ id: 'builtin.skill', name: 'Skill', variant: 'skill' }),
   ScratchpadWrite:  Object.freeze({ id: 'builtin.scratchpad.write',  name: 'ScratchpadWrite', variant: 'edit' }),
   ScratchpadRead:   Object.freeze({ id: 'builtin.scratchpad.read',   name: 'ScratchpadRead', variant: 'read' }),

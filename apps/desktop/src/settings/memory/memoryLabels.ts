@@ -10,8 +10,8 @@ export const JOB_KIND_LABEL: Record<JobKind, string> = {
   relationship_extraction:   '关系提取',
   work_consolidation:        '工作整合',
   relationship_consolidation:'关系整合',
-  clear_memory:              '清除记忆',
-  storage_cleanup:           '存储清理',
+  work_maintenance:          '工作记忆维护',
+  relationship_maintenance:  '关系记忆维护',
 };
 
 export const JOB_STATUS_LABEL: Record<JobStatus, string> = {
@@ -19,7 +19,6 @@ export const JOB_STATUS_LABEL: Record<JobStatus, string> = {
   running:   '运行中',
   completed: '已完成',
   failed:    '失败',
-  cancelled: '已取消',
 };
 
 export const JOB_STATUS_VARIANT: Record<JobStatus, BadgeVariant> = {
@@ -27,7 +26,6 @@ export const JOB_STATUS_VARIANT: Record<JobStatus, BadgeVariant> = {
   running:   'primary',
   completed: 'success',
   failed:    'danger',
-  cancelled: 'warn',
 };
 
 export function relativeTime(ms: number): string {

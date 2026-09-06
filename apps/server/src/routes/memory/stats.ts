@@ -1,25 +1,20 @@
-// 记忆存储占用统计：实测字节、上限与分级（normal/warning/limitExceeded）。
+import { promises as fs } from 'node:fs';
 import { Hono } from 'hono';
 import {
-  evaluateMemoryStorage,
+  evaluateMemoryCapacity,
   measureMemoryStorageBytes,
-  readMemoryStorageLimit,
 } from '@ema-agent/memory';
-import type { SettingsStore } from '@ema-agent/settings';
 
 export interface MemoryStatsRouteDeps {
   readonly memoryRoot: string;
-  readonly settings: Pick<SettingsStore, 'get'>;
 }
 
 export const memoryStatsRoute = (deps: MemoryStatsRouteDeps) =>
-  new Hono()
-    .get('/stats', async context => {
-      const limit = readMemoryStorageLimit(deps.settings as SettingsStore);
-      const usedBytes = await measureMemoryStorageBytes(deps.memoryRoot);
-      return context.json({
-        usedBytes,
-        limit,
-        status: evaluateMemoryStorage(usedBytes, limit),
-      });
+  new Hono().get('/stats', async context => {
+    await fs.mkdir(deps.memoryRoot, { recursive: true });
+    const usedBytes = await measureMemoryStorageBytes(deps.memoryRoot);
+    return context.json({
+      ...evaluateMemoryCapacity(usedBytes),
+      rootPath: deps.memoryRoot,
     });
+  });

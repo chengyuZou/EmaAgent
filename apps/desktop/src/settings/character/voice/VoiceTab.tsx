@@ -1,12 +1,13 @@
 /**
- * VoiceTab — manage voiceSamples: upload (multipart publish) and test listen.
+ * VoiceTab — manage voiceSamples imported from local files and test listen.
  */
 import { useState, useRef, type CSSProperties, type JSX } from 'react';
-import { Button, Checkbox, EntityRow, FilePicker, Select, Textarea } from '@ema-agent/ui';
+import { Button, Checkbox, EntityRow, Select, Textarea } from '@ema-agent/ui';
 import { useCharacterStore } from '../../../stores/character.js';
 import { charactersApi, type Character } from '../../../api/characters.js';
 import { serverClient } from '../../../api/client.js';
 import { showToast } from '../../../lib/toast.js';
+import { tauriBridge } from '../../../lib/tauri-bridge.js';
 import { PrimaryBadge, ResourceActions } from '../shared/ResourceControls.js';
 
 type VoiceSample = Character['voiceSamples'][number];
@@ -42,22 +43,23 @@ export function VoiceTab({
   };
 
   async function handleUpload(
-    file:       File,
+    sourceFile: string,
     promptText: string,
     promptLang: string,
     isPrimary:  boolean,
   ): Promise<void> {
     setUploading(true);
     try {
-      await useCharacterStore.getState().publishVoice(characterId, file, {
+      await useCharacterStore.getState().importVoice(characterId, {
+        sourceFile,
         promptText,
         promptLang,
         isPrimary,
       });
-      showToast('上传成功', { variant: 'success' });
+      showToast('导入成功', { variant: 'success' });
       setShowUpload(false);
     } catch (err: unknown) {
-      showToast(`上传失败: ${err instanceof Error ? err.message : 'Unknown'}`, { variant: 'danger' });
+      showToast(`导入失败: ${err instanceof Error ? err.message : 'Unknown'}`, { variant: 'danger' });
     } finally {
       setUploading(false);
     }
@@ -161,7 +163,7 @@ export function VoiceTab({
             icon="i-mdi:plus"
             onClick={() => setShowUpload(true)}
           >
-            上传参考音频
+            导入参考音频
           </Button>
         ) : (
           <UploadForm
@@ -219,36 +221,33 @@ function UploadForm({
   uploading,
   onCancel,
 }: {
-  onUpload:  (file: File, promptText: string, promptLang: string, isPrimary: boolean) => void;
+  onUpload:  (sourceFile: string, promptText: string, promptLang: string, isPrimary: boolean) => void;
   uploading: boolean;
   onCancel:  () => void;
 }): JSX.Element {
-  const [file,       setFile]       = useState<File | null>(null);
+  const [sourceFile, setSourceFile] = useState<string | null>(null);
   const [promptText, setPromptText] = useState('');
   const [promptLang, setPromptLang] = useState('zh');
   const [isPrimary,  setIsPrimary]  = useState(false);
 
   function handleSubmit(): void {
-    if (!file || !promptText.trim()) return;
-    onUpload(file, promptText.trim(), promptLang, isPrimary);
+    if (!sourceFile || !promptText.trim()) return;
+    onUpload(sourceFile, promptText.trim(), promptLang, isPrimary);
   }
 
   return (
     <div className="bg-[var(--ema-surface-1)] ema-glass-weak border border-[var(--ema-border)] rounded-xl p-4 ema-card-decorate ema-card-decorate--mesh">
-      <h3 className="text-sm font-semibold text-[var(--ema-text-primary)] mb-3">上传参考音频</h3>
+      <h3 className="text-sm font-semibold text-[var(--ema-text-primary)] mb-3">导入参考音频</h3>
       <div className="flex flex-col gap-3">
-        {/* File picker — no component equivalent */}
-        <FilePicker
-          accept=".wav,.mp3,.flac,.ogg,.m4a"
-          onSelect={(files) => setFile(files[0] ?? null)}
+        <Button
+          size="sm"
+          icon="i-mdi:file-upload-outline text-sm"
+          onClick={async () => setSourceFile(await tauriBridge.openFileDialog({
+            filters: [{ name: '音频', extensions: ['wav', 'mp3', 'flac', 'ogg', 'm4a'] }],
+          }))}
         >
-          <Button
-            size="sm"
-            icon="i-mdi:file-upload-outline text-sm"
-          >
-            {file ? file.name : '选择文件'}
-          </Button>
-        </FilePicker>
+          {sourceFile ?? '选择文件'}
+        </Button>
 
         <Textarea
           minRows={2}
@@ -277,10 +276,10 @@ function UploadForm({
           variant="primary"
           size="sm"
           loading={uploading}
-          disabled={!file || !promptText.trim()}
+          disabled={!sourceFile || !promptText.trim()}
           onClick={handleSubmit}
         >
-          上传
+          导入
         </Button>
         <Button variant="ghost" size="sm" onClick={onCancel}>
           取消

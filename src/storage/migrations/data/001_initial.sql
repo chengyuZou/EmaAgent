@@ -71,17 +71,16 @@ CREATE TABLE memory_jobs (
                  'relationship_extraction',
                  'work_consolidation',
                  'relationship_consolidation',
-                 'clear_memory',
-                 'storage_cleanup'
+                 'work_maintenance',
+                 'relationship_maintenance'
                )),
   status       TEXT NOT NULL CHECK(status IN (
-                 'pending', 'running', 'completed', 'failed', 'cancelled'
+                 'pending', 'running', 'completed', 'failed'
                )),
   turn_id      TEXT REFERENCES turns(id) ON DELETE CASCADE,
   error        TEXT,
   created_at   INTEGER NOT NULL,
   started_at   INTEGER,
-  heartbeat_at INTEGER,
   finished_at  INTEGER,
   CHECK (
     (kind IN ('work_extraction', 'relationship_extraction') AND turn_id IS NOT NULL)
@@ -90,19 +89,21 @@ CREATE TABLE memory_jobs (
   )
 );
 
-CREATE TABLE memory_extraction_results (
-  job_id        TEXT PRIMARY KEY REFERENCES memory_jobs(id) ON DELETE CASCADE,
+CREATE TABLE memory_work_extractions (
+  turn_id       TEXT PRIMARY KEY REFERENCES turns(id) ON DELETE CASCADE,
+  job_id        TEXT NOT NULL UNIQUE REFERENCES memory_jobs(id) ON DELETE CASCADE,
+  session_id    TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   content       TEXT NOT NULL,
   integrated_at INTEGER
 );
 
-CREATE TABLE memory_job_paths (
-  job_id        TEXT NOT NULL REFERENCES memory_jobs(id) ON DELETE CASCADE,
-  relative_path TEXT NOT NULL,
-  operation     TEXT NOT NULL CHECK(operation IN (
-                  'write_file', 'delete_file', 'delete_tree'
-                )),
-  PRIMARY KEY(job_id, relative_path)
+CREATE TABLE memory_relationship_extractions (
+  turn_id        TEXT PRIMARY KEY REFERENCES turns(id) ON DELETE CASCADE,
+  job_id         TEXT NOT NULL UNIQUE REFERENCES memory_jobs(id) ON DELETE CASCADE,
+  session_id     TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  character_name TEXT NOT NULL,
+  content        TEXT NOT NULL,
+  integrated_at  INTEGER
 );
 
 CREATE TABLE message_search_documents (
@@ -373,16 +374,23 @@ CREATE INDEX idx_memory_jobs_turn
   ON memory_jobs(turn_id)
   WHERE turn_id IS NOT NULL;
 
-CREATE UNIQUE INDEX idx_memory_jobs_active_extraction
+CREATE UNIQUE INDEX idx_memory_jobs_turn_extraction
   ON memory_jobs(turn_id, kind)
   WHERE turn_id IS NOT NULL
-    AND status IN ('pending', 'running', 'completed');
+    AND kind IN ('work_extraction', 'relationship_extraction');
 
-CREATE INDEX idx_memory_extraction_results_unintegrated
-  ON memory_extraction_results(integrated_at, job_id);
+CREATE UNIQUE INDEX idx_memory_jobs_active_file_job
+  ON memory_jobs(kind)
+  WHERE kind IN (
+    'work_consolidation', 'relationship_consolidation',
+    'work_maintenance', 'relationship_maintenance'
+  ) AND status IN ('pending', 'running');
 
-CREATE INDEX idx_memory_job_paths_path
-  ON memory_job_paths(relative_path, job_id);
+CREATE INDEX idx_memory_work_extractions_unintegrated
+  ON memory_work_extractions(integrated_at, job_id);
+
+CREATE INDEX idx_memory_relationship_extractions_unintegrated
+  ON memory_relationship_extractions(integrated_at, job_id);
 
 CREATE INDEX idx_message_search_documents_session
   ON message_search_documents(session_id, created_at DESC, message_id DESC);

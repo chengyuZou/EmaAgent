@@ -5,7 +5,6 @@ import {
   type Character,
   type CharacterCreateInput,
   type CharacterPatchInput,
-  type CharacterHealth,
   type Live2dImportInput,
   type IllustrationImportInput,
   type VoiceImportInput,
@@ -19,11 +18,7 @@ export interface CharacterStoreState {
   activeCharacterId: string | null;
   loading:       boolean;
   error:         string | null;
-  /** 每角色健康投影;资源操作后显式刷新,不靠 character.updatedAt 碰运气。 */
-  healthMap:     Record<string, CharacterHealth>;
-
   load():                                          Promise<void>;
-  refreshHealth(id: string):              Promise<void>;
   activate(id: string):                   Promise<void>;
   create(input: CharacterCreateInput):               Promise<Character>;
   patch(id: string, input: CharacterPatchInput): Promise<void>;
@@ -47,12 +42,6 @@ export interface CharacterStoreState {
   setPrimaryVoice(id: string, resourceId: string): Promise<void>;
   /** 从本机文件导入参考音频。 */
   importVoice(characterId: string, input: VoiceImportInput): Promise<void>;
-  /** 录音/合成直传参考音频（multipart）。 */
-  publishVoice(characterId: string, file: File, meta: {
-    promptText: string;
-    promptLang: string;
-    isPrimary?: boolean;
-  }): Promise<void>;
   patchVoice(id: string, resourceId: string, input: ResourcePatchInput): Promise<void>;
   exportVoice(id: string, resourceId: string, destinationDirectory: string): Promise<string>;
   deleteVoice(id: string, resourceId: string): Promise<void>;
@@ -61,7 +50,7 @@ export interface CharacterStoreState {
 // ── Store ────────────────────────────────────────────────────────────────────
 
 export const useCharacterStore = create<CharacterStoreState>((set, get) => {
-  /** 资源操作统一节拍：成功 → load + 健康刷新；失败 → error 落 store 并上抛给调用方 toast。 */
+  /** 资源操作统一节拍：成功后重新读取角色，失败时保留错误给页面展示。 */
   const mutate = async <T>(
     characterId: string,
     errorLabel: string,
@@ -70,7 +59,6 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => {
     try {
       const result = await action();
       await get().load();
-      void get().refreshHealth(characterId);
       return result;
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : errorLabel });
@@ -83,7 +71,6 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => {
   activeCharacterId: null,
   loading:       false,
   error:         null,
-  healthMap:     {},
 
   async load() {
     set({ loading: true, error: null });
@@ -100,16 +87,6 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => {
         error: err instanceof Error ? err.message : 'Failed to load characters',
         loading: false,
       });
-    }
-  },
-
-  // 静默失败保旧值:健康只是展示投影,网络抖动不能清掉用户正在看的状态。
-  async refreshHealth(id) {
-    try {
-      const health = await charactersApi.health(id);
-      set((s) => ({ healthMap: { ...s.healthMap, [id]: health } }));
-    } catch {
-      // 保留旧投影,下一次资源操作或编辑器挂载会再试。
     }
   },
 
@@ -135,11 +112,6 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => {
   async delete(id) {
     try {
       await charactersApi.remove(id);
-      set((s) => {
-        const healthMap = { ...s.healthMap };
-        delete healthMap[id];
-        return { healthMap };
-      });
       await get().load();
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : 'Failed to delete character' });
@@ -210,11 +182,6 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => {
 
   async importVoice(characterId, input) {
     await mutate(characterId, 'Failed to import voice ref', () => charactersApi.importVoice(characterId, input));
-  },
-
-  async publishVoice(characterId, file, meta) {
-    await mutate(characterId, 'Failed to publish voice ref', () =>
-      charactersApi.publishVoice(characterId, file, meta));
   },
 
   async patchVoice(id, resourceId, input) {

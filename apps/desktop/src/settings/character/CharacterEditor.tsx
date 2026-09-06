@@ -8,7 +8,6 @@ import { IdentityTab } from './IdentityTab.js';
 import { VoiceTab } from './voice/VoiceTab.js';
 import { Live2DTab } from './live2d/Live2DTab.js';
 import { IllustrationTab } from './illustration/IllustrationTab.js';
-import { HealthBadge } from './shared/HealthBadge.js';
 
 export interface CharacterEditorProps {
   character:   Character;
@@ -47,7 +46,6 @@ export function CharacterEditor({ character, onActivate }: CharacterEditorProps)
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2 min-w-0">
           <h2 className="text-lg font-semibold text-[var(--ema-text-primary)] truncate">{character.name}</h2>
-          <HealthBadge characterId={character.id} />
         </div>
         <div className="flex items-center gap-2">
           {character.isActive ? (

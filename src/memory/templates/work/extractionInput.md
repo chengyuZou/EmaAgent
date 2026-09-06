@@ -1,16 +1,9 @@
-One Turn of the conversation, as JSON messages (in order). Message types:
+下面是一个已完成 Turn 的 JSON 输入：
 
-- user_message: user text
-- assistant_message: assistant text
-- user_decision: a direct user answer collected during the turn (prompt / answer)
-- tool_call: assistant tool invocation (toolCallId / toolName / input is the JSON of the arguments)
-- tool_result: tool result (toolCallId matches a tool_call; isError marks failure)
-- workspaceRoot: workspace root for this turn (absent when there is no workspace)
+- `messages` 是按真实发生顺序排列的标准消息。
+- 只包含用户文本与助手文本；Tool Call、Tool Result、System、reasoning、附件和 AskUser 不会进入这里。
+- 这份输入与 Relationship 提取器收到的对话副本相同，但你只判断 Work Memory。
 
-Apply the output format and judgment rules from the system instructions:
-extract reusable work facts into the task-first markdown structure, or return
-exactly NO_MEMORY when nothing is worth saving. Do not output the raw messages
-themselves or a transcript recap.
+按照 system 里的最低信号门槛，提取稳定的工作偏好和协作习惯。不要复述原始消息，不要总结任务过程。没有值得记录的内容时返回 `{}`。
 
-Turn messages follow:
-
+Turn JSON：

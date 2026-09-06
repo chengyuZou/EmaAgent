@@ -26,10 +26,8 @@
   "dependencies": {
     "@ema-agent/git": "workspace:*",
     "@ema-agent/llm": "workspace:*",
-    "@ema-agent/settings": "workspace:*",
     "@ema-agent/storage": "workspace:*",
-    "@ema-agent/token": "workspace:*",
-    "zod": "^4"
+    "@ema-agent/token": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

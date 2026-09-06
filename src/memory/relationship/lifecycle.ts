@@ -40,15 +40,6 @@ export async function listExpiredRelationshipHistoryFiles(
     .map((file) => file.relativePath);
 }
 
-/** 返回全部可识别日期的 Relationship history，供硬上限兜底清理。 */
-export async function listRelationshipHistoryFilesOldestFirst(
-  memoryRoot: string,
-): Promise<readonly string[]> {
-  return [...await listRelationshipHistory(memoryRoot)]
-    .sort(compareHistory)
-    .map((file) => file.relativePath);
-}
-
 async function listRelationshipHistory(
   memoryRoot: string,
 ): Promise<readonly RelationshipHistoryFile[]> {

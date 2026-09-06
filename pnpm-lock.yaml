@@ -56,9 +56,6 @@ importers:
       '@ema-agent/mcp':
         specifier: workspace:*
         version: link:../../src/mcp
-      '@ema-agent/memory':
-        specifier: workspace:*
-        version: link:../../src/memory
       '@ema-agent/narrative':
         specifier: workspace:*
         version: link:../../src/narrative
@@ -890,18 +887,12 @@ importers:
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../llm
-      '@ema-agent/settings':
-        specifier: workspace:*
-        version: link:../settings
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage
       '@ema-agent/token':
         specifier: workspace:*
         version: link:../token
-      zod:
-        specifier: ^4
-        version: 4.4.3
     devDependencies:
       '@types/node':
         specifier: ^20.0.0

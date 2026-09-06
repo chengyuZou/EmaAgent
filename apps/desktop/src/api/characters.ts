@@ -1,5 +1,4 @@
-// Characters API：/api/characters——角色 CRUD/激活/复制、Live2D/立绘/参考音频资源管理与
-// 健康/舞台呈现。资源文件流与 voice/publish multipart 走 requestRaw/streamUrl 逃生口。
+// Characters API：/api/characters——角色 CRUD/激活、Live2D/立绘/参考音频资源管理与舞台呈现。
 import type { InferRequestType } from 'hono/client';
 import {
   rpcClient,
@@ -15,8 +14,6 @@ export type CharacterList = RpcJson<RpcClient['api']['characters']['$get']>;
 export type Character = CharacterList['items'][number];
 export type CharacterCreateInput = InferRequestType<RpcClient['api']['characters']['$post']>['json'];
 export type CharacterPatchInput = InferRequestType<RpcClient['api']['characters'][':id']['$patch']>['json'];
-export type CharacterHealthList = RpcJson<RpcClient['api']['characters']['health']['$get']>;
-export type CharacterHealth = RpcJson<RpcClient['api']['characters'][':id']['health']['$get']>;
 export type CharacterPresentation = RpcJson<RpcClient['api']['characters'][':id']['presentation']['$get']>;
 export type Live2dImportInput = InferRequestType<RpcClient['api']['characters'][':id']['live2d']['import']['$post']>['json'];
 export type Live2dImportResult = RpcJson<RpcClient['api']['characters'][':id']['live2d']['import']['$post']>;
@@ -24,7 +21,6 @@ export type IllustrationImportInput = InferRequestType<RpcClient['api']['charact
 export type IllustrationImportResult = RpcJson<RpcClient['api']['characters'][':id']['illustrations']['import']['$post']>;
 export type VoiceImportInput = InferRequestType<RpcClient['api']['characters'][':id']['voice']['import']['$post']>['json'];
 export type VoiceImportResult = RpcJson<RpcClient['api']['characters'][':id']['voice']['import']['$post']>;
-export type VoicePublishResult = RpcJson<RpcClient['api']['characters'][':id']['voice']['publish']['$post']>;
 export type ResourcePatchInput = InferRequestType<RpcClient['api']['characters'][':id']['live2d'][':resourceId']['$patch']>['json'];
 export type Live2dExportResult = RpcJson<RpcClient['api']['characters'][':id']['live2d'][':resourceId']['export']['$post']>;
 export type IllustrationExportResult = RpcJson<RpcClient['api']['characters'][':id']['illustrations'][':resourceId']['export']['$post']>;
@@ -67,15 +63,6 @@ export const charactersApi = {
     return readRpcJson(rpcClient.api.characters[':id'].$delete({ param: { id } }));
   },
 
-  /** 全部角色健康报告。 */
-  healthAll(): Promise<CharacterHealthList> {
-    return readRpcJson(rpcClient.api.characters.health.$get());
-  },
-
-  health(id: string): Promise<CharacterHealth> {
-    return readRpcJson(rpcClient.api.characters[':id'].health.$get({ param: { id } }));
-  },
-
   /** 舞台呈现结果（展示候选顺序由后端决定，前端不自行扫描）。 */
   getPresentation(id: string): Promise<CharacterPresentation> {
     return readRpcJson(rpcClient.api.characters[':id'].presentation.$get({ param: { id } }));
@@ -106,7 +93,7 @@ export const charactersApi = {
     }));
   },
 
-  /** 用户手改 runtime-config.json 后显式重读：词汇写回 SQL 并刷新舞台。 */
+  /** 用户手改 runtime-config.json 后显式校验并刷新舞台。 */
   reloadLive2dConfig(id: string, resourceId: string) {
     return readRpcJson(
       rpcClient.api.characters[':id'].live2d[':resourceId']['reload-config'].$post({
@@ -217,24 +204,6 @@ export const charactersApi = {
     return readRpcJson(rpcClient.api.characters[':id'].voice[':resourceId'].$delete({
       param: { id, resourceId },
     }));
-  },
-
-  /** 录音/合成直传参考音频：multipart（file=音频字节，文本字段随表单）。 */
-  async publishVoice(
-    id: string,
-    file: File,
-    meta: { promptText: string; promptLang: string; isPrimary?: boolean },
-  ): Promise<VoicePublishResult> {
-    const form = new FormData();
-    form.append('file', file);
-    form.append('promptText', meta.promptText);
-    form.append('promptLang', meta.promptLang);
-    if (meta.isPrimary) form.append('isPrimary', 'true');
-    const res = await serverClient.requestRaw(`/api/characters/${id}/voice/publish`, {
-      method: 'POST',
-      body: form,
-    });
-    return res.json();
   },
 
   /** 参考音频文件的 URL 构造器：仅用于认证 fetch（取 blob 转 objectURL 播放），

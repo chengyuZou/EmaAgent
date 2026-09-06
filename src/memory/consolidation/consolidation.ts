@@ -1,79 +1,61 @@
-// 把一批提取结果、用户编辑和正式记忆交给 LLM，产出可执行的文件改动。
-
-import { existsSync, readdirSync, promises as fs } from 'node:fs';
+import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { MemoryExtractionResult } from '@ema-agent/storage';
-import {
-  runTurnExtraction,
-  type CompleteExtraction,
-} from '../common/extraction.js';
+import type { CompleteMemoryLlm } from '../common/extraction.js';
 import { MemoryConsolidationError } from '../errors.js';
 
-/** 整合输入前的固定指令（system 模板自包含输出协议，这里只引导拼接）。 */
 export const CONSOLIDATION_INPUT_INSTRUCTION =
-  '以下是本次整合输入（未整合结果 / 工作区差异 / 现有正式记忆文件）。'
-  + '按 system 指令处理，只输出 JSON 数组；没有需要改动的文件时输出 []。';
+  '以下是本批未整合提取结果、盘上差异和正式记忆。按 system 指令只输出 JSON 数组；没有文件改动时输出 []。';
 
-/** LLM 返回的单个文件改动（path 相对记忆根，posix 风格）。 */
-export interface ConsolidationEdit {
-  readonly path: string;
-  readonly operation: 'write' | 'delete';
-  readonly content?: string;
+export type ConsolidationEdit =
+  | { readonly path: string; readonly operation: 'write'; readonly content: string }
+  | { readonly path: string; readonly operation: 'delete' };
+
+export interface ConsolidationSource {
+  readonly turnId: string;
+  readonly content: string;
+  readonly characterName?: string;
 }
 
 export interface RunConsolidationLlmInput {
   readonly memoryDirectory: string;
-  /** 当前存在的正式记忆和便签，用于构造整合输入。 */
   readonly currentPaths: readonly string[];
-  /** 该轨允许写入或删除的路径规则；正式结构可新建，便签只能处理已有文件。 */
   readonly isAllowedTargetPath: (relativePath: string) => boolean;
-  /** 工作区差异文件（notes/用户编辑），由 runConsolidationJobs 生成。 */
   readonly diffFile: string;
-  /** 未整合提取结果（按 created_at 稳定排序）。 */
-  readonly unintegrated: readonly MemoryExtractionResult[];
-  /** 输入预算上限（consolidationInputBytes）。 */
+  readonly unintegrated: readonly ConsolidationSource[];
   readonly maxInputBytes: number;
   readonly systemTemplate: string;
   readonly inputTemplate: string;
-  readonly complete: CompleteExtraction;
+  readonly complete: CompleteMemoryLlm;
   readonly signal?: AbortSignal;
 }
 
-export interface ConsolidationPlan {
+export interface MemoryConsolidationResult {
   readonly edits: readonly ConsolidationEdit[];
-  /** 真正完整进入本轮 LLM 输入的提取结果；只有这些结果可以标记为已整合。 */
-  readonly extractionJobIds: readonly string[];
+  /** 程序实际装入本次 LLM 输入的结果；只有这些 Turn 才能在 SQL 标记为已整合。 */
+  readonly consumedTurnIds: readonly string[];
 }
 
-/** 一次整合 LLM 调用，返回文件改动和本轮实际消费的提取结果。 */
 export async function runConsolidationLlm(
   input: RunConsolidationLlmInput,
-): Promise<ConsolidationPlan> {
+): Promise<MemoryConsolidationResult> {
   const rendered = await buildConsolidationInput(input);
-  const raw = await runTurnExtraction(
-    input.systemTemplate,
-    input.inputTemplate,
-    rendered.text,
-    input.complete,
-    input.signal,
-  );
+  const raw = await input.complete([
+    { role: 'system', content: input.systemTemplate.trim() },
+    { role: 'user', content: `${input.inputTemplate.trim()}\n\n${rendered.text}` },
+  ], input.signal);
   return {
-    edits: raw === undefined
-      ? []
-      : parseConsolidationEdits(raw, input.isAllowedTargetPath),
-    extractionJobIds: rendered.extractionJobIds,
+    edits: parseConsolidationEdits(raw, input.isAllowedTargetPath),
+    consumedTurnIds: rendered.consumedTurnIds,
   };
 }
 
-/** 把 LLM 输出解析为校验后的改动列表（含 path 白名单 / operation 校验）。 */
 export function parseConsolidationEdits(
   raw: string,
   isAllowedTargetPath: (relativePath: string) => boolean,
 ): ConsolidationEdit[] {
-  const jsonText = extractJsonArrayText(raw);
   let value: unknown;
   try {
-    value = JSON.parse(jsonText);
+    value = JSON.parse(stripJsonFence(raw));
   } catch {
     throw new MemoryConsolidationError('整合输出不是合法 JSON 数组');
   }
@@ -84,8 +66,7 @@ export function parseConsolidationEdits(
     if (!isRecord(item)) {
       throw new MemoryConsolidationError(`整合输出第 ${index} 项不是对象`);
     }
-    const operation = item.operation;
-    if (operation !== 'write' && operation !== 'delete') {
+    if (item.operation !== 'write' && item.operation !== 'delete') {
       throw new MemoryConsolidationError(`整合输出第 ${index} 项 operation 非法`);
     }
     if (typeof item.path !== 'string' || item.path.trim() === '') {
@@ -95,17 +76,22 @@ export function parseConsolidationEdits(
     if (!isAllowedTargetPath(normalized)) {
       throw new MemoryConsolidationError(`整合输出路径不在白名单: ${item.path}`);
     }
-    if (operation === 'write') {
+    if (item.operation === 'write') {
       if (typeof item.content !== 'string') {
         throw new MemoryConsolidationError(`整合输出第 ${index} 项 write 缺少 content`);
       }
-      return { path: normalized, operation, content: item.content };
+      if (!hasOnlyKeys(item, ['path', 'operation', 'content'])) {
+        throw new MemoryConsolidationError(`整合输出第 ${index} 项包含多余字段`);
+      }
+      return { path: normalized, operation: 'write', content: item.content };
     }
-    return { path: normalized, operation };
+    if (!hasOnlyKeys(item, ['path', 'operation'])) {
+      throw new MemoryConsolidationError(`整合输出第 ${index} 项包含多余字段`);
+    }
+    return { path: normalized, operation: 'delete' };
   });
 }
 
-/** 应用校验后的改动（utf8 写/删，锁在 memoryDirectory 内）。 */
 export async function applyConsolidationEdits(
   memoryDirectory: string,
   edits: readonly ConsolidationEdit[],
@@ -122,160 +108,128 @@ export async function applyConsolidationEdits(
       await fs.rm(full, { force: true });
     } else {
       await fs.mkdir(path.dirname(full), { recursive: true });
-      await fs.writeFile(full, edit.content ?? '', 'utf8');
+      await fs.writeFile(full, edit.content, 'utf8');
     }
   }
 }
 
-// ── 输入打包 ──────────────────────────────────────────────────────────────────
-
 interface RenderedFile {
-  readonly rel: string;
+  readonly path: string;
   readonly content: string;
-}
-
-interface ConsolidationInput {
-  readonly files: readonly RenderedFile[];
-  readonly diff: string;
-  readonly results: readonly {
-    readonly jobId: string;
-    readonly content: string;
-  }[];
 }
 
 interface RenderedConsolidationInput {
   readonly text: string;
-  readonly extractionJobIds: readonly string[];
+  readonly consumedTurnIds: readonly string[];
 }
 
 async function buildConsolidationInput(
   input: RunConsolidationLlmInput,
 ): Promise<RenderedConsolidationInput> {
   const files: RenderedFile[] = [];
-  for (const rel of input.currentPaths) {
-    const full = path.join(input.memoryDirectory, rel);
+  for (const relativePath of input.currentPaths) {
     try {
-      const content = await fs.readFile(full, 'utf8');
-      files.push({ rel, content });
-    } catch (error: unknown) {
+      files.push({
+        path: relativePath,
+        content: await fs.readFile(path.join(input.memoryDirectory, relativePath), 'utf8'),
+      });
+    } catch (error) {
       if (!isMissing(error)) throw error;
     }
   }
-  let diff: string;
+  let diff = '(无差异)';
   try {
     diff = await fs.readFile(input.diffFile, 'utf8');
-  } catch (error: unknown) {
+  } catch (error) {
     if (!isMissing(error)) throw error;
-    diff = '(无差异)';
   }
-  const results = input.unintegrated.map((result) => ({
-    jobId: result.jobId,
-    content: `### Job ${result.jobId} · turn ${result.turnId}\n\n${result.content}`,
-  }));
-  return renderConsolidationInput({ files, diff, results }, input.maxInputBytes);
-}
 
-function renderConsolidationInput(
-  input: ConsolidationInput,
-  maxBytes: number,
-): RenderedConsolidationInput {
   let text = '';
-  const extractionJobIds: string[] = [];
-
-  for (let index = 0; index < input.results.length; index += 1) {
-    const result = input.results[index]!;
-    const heading = extractionJobIds.length === 0
-      ? '## 未整合提取结果（按时间序，待合入正式记忆）\n\n'
+  const consumedTurnIds: string[] = [];
+  for (const result of input.unintegrated) {
+    const body = result.characterName
+      ? `# ${result.characterName}\n\n${result.content}`
+      : result.content;
+    const heading = consumedTurnIds.length === 0
+      ? '## 未整合提取结果\n\n'
       : '\n\n';
-    const candidate = `${text}${heading}${result.content}`;
-    if (byteLength(candidate) > maxBytes) {
-      if (extractionJobIds.length === 0) {
+    const candidate = `${text}${heading}${body}`;
+    if (byteLength(candidate) > input.maxInputBytes) {
+      if (consumedTurnIds.length === 0) {
         throw new MemoryConsolidationError('单条提取结果超过整合输入预算');
       }
       break;
     }
     text = candidate;
-    extractionJobIds.push(result.jobId);
+    consumedTurnIds.push(result.turnId);
   }
 
-  text = appendTruncatedSection(
-    text,
-    `## 工作区差异（notes / 用户编辑；只读，不要照抄）\n\n${input.diff}`,
-    maxBytes,
-  );
-  if (input.files.length > 0) {
+  text = appendTruncatedSection(text, `## 盘上差异\n\n${diff}`, input.maxInputBytes);
+  if (files.length > 0) {
     text = appendTruncatedSection(
       text,
-      '## 现有正式记忆文件（路径相对记忆根）\n\n'
-        + input.files
-          .map((file) => `### ${file.rel}\n\n${file.content}`)
-          .join('\n\n'),
-      maxBytes,
+      '## 现有正式记忆文件\n\n'
+        + files.map(file => `### ${file.path}\n\n${file.content}`).join('\n\n'),
+      input.maxInputBytes,
     );
   }
-  return { text, extractionJobIds };
+  return { text, consumedTurnIds };
 }
 
-function appendTruncatedSection(
-  current: string,
-  section: string,
-  maxBytes: number,
-): string {
+function appendTruncatedSection(current: string, section: string, maxBytes: number): string {
   const separator = current.length === 0 ? '' : '\n\n';
   const remaining = maxBytes - byteLength(current) - byteLength(separator);
   if (remaining <= 0) return current;
   if (byteLength(section) <= remaining) return `${current}${separator}${section}`;
-
-  const marker = '\n\n[本节因整合输入预算而截断]';
+  const marker = '\n\n[本节因输入预算而截断]';
   const contentBytes = remaining - byteLength(marker);
-  if (contentBytes <= 0) return current;
-  return `${current}${separator}${truncateUtf8(section, contentBytes)}${marker}`;
+  return contentBytes > 0
+    ? `${current}${separator}${truncateUtf8(section, contentBytes)}${marker}`
+    : current;
 }
 
-// ── 白名单枚举工具（work/relationship 轨共用） ───────────────────────────────
-
-/** 列出 subdir 下所有 .md 的相对路径（posix；不存在返回空数组）。 */
-export function listMarkdownFiles(root: string, subdir: string): string[] {
-  const dir = path.join(root, subdir);
-  if (!existsSync(dir)) return [];
-  return readdirSync(dir)
-    .filter((entry) => entry.endsWith('.md'))
-    .map((entry) => toPosixPath(path.relative(root, path.join(dir, entry))));
+export async function listMarkdownFiles(root: string, subdir: string): Promise<string[]> {
+  const directory = path.join(root, subdir);
+  try {
+    return (await fs.readdir(directory, { withFileTypes: true }))
+      .filter(entry => entry.isFile() && entry.name.endsWith('.md'))
+      .map(entry => toPosixPath(path.relative(root, path.join(directory, entry.name))));
+  } catch (error) {
+    if (isMissing(error)) return [];
+    throw error;
+  }
 }
 
 export function toPosixPath(value: string): string {
   return value.replace(/\\/g, '/');
 }
 
-// ── 工具 ──────────────────────────────────────────────────────────────────────
-
-function extractJsonArrayText(raw: string): string {
-  const start = raw.indexOf('[');
-  const end = raw.lastIndexOf(']');
-  if (start === -1 || end === -1 || end < start) {
-    throw new MemoryConsolidationError('整合输出中找不到 JSON 数组');
-  }
-  return raw.slice(start, end + 1);
+function stripJsonFence(raw: string): string {
+  const trimmed = raw.trim();
+  return trimmed.startsWith('```')
+    ? trimmed.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
+    : trimmed;
 }
 
-/** 白名单比对用：./ 前缀去掉、反斜杠归一为 /、去尾部斜杠与空白。 */
 function normalizeRelativePath(value: string): string {
-  return value
-    .trim()
-    .replace(/^\.\/+/, '')
-    .replace(/\\/g, '/')
-    .replace(/\/+$/, '');
+  return value.trim().replace(/^\.\/+/, '').replace(/\\/g, '/').replace(/\/+$/, '');
 }
 
 function isInside(root: string, candidate: string): boolean {
   const relative = path.relative(root, candidate);
-  return (
-    relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative)
-  );
+  return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function hasOnlyKeys(
+  value: Record<string, unknown>,
+  allowed: readonly string[],
+): boolean {
+  return Object.keys(value).every(key => allowed.includes(key))
+    && Object.keys(value).length === allowed.length;
 }
 
 function byteLength(text: string): number {
@@ -284,12 +238,8 @@ function byteLength(text: string): number {
 
 function truncateUtf8(text: string, maxBytes: number): string {
   if (byteLength(text) <= maxBytes) return text;
-  let result = Buffer.from(text, 'utf8')
-    .subarray(0, maxBytes)
-    .toString('utf8');
-  while (result.endsWith('\uFFFD')) {
-    result = result.slice(0, -1);
-  }
+  let result = Buffer.from(text, 'utf8').subarray(0, maxBytes).toString('utf8');
+  while (result.endsWith('\uFFFD')) result = result.slice(0, -1);
   return result;
 }
 

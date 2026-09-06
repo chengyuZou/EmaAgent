@@ -1,16 +1,10 @@
-One Turn of the conversation, as JSON messages (in order). Message types:
+下面是一个已完成 Turn 的 JSON 输入：
 
-- user_message: user text
-- assistant_message: assistant text
-- user_decision: a direct user answer collected during the turn (prompt / answer)
-- characterDirectoryName: the current character's directory name (memory ownership)
+- `characterName` 是本次 Relationship Memory 的角色归属。
+- `messages` 是按真实发生顺序排列的用户文本与该角色的助手文本。
+- Tool Call、Tool Result、System、reasoning、附件和 AskUser 不会进入这里。
+- 这份输入与 Work 提取器收到的对话副本相同，但你只判断 Relationship Memory。
 
-Only dialogue text and explicit user decisions are present. Other tool activity is filtered out.
+按照 system 里的最低信号门槛提取关系信号。不要复述原始消息，不要总结任务过程，不要改变 `characterName`。没有值得记录的内容时返回 `{}`。
 
-Apply the output format and judgment rules from the system instructions:
-extract durable, user-side relationship signals into the markdown structure, or
-return exactly NO_MEMORY when nothing is worth saving. Do not output the raw
-messages themselves or a transcript recap.
-
-Turn messages follow:
-
+Turn JSON：

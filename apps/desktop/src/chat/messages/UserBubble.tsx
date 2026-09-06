@@ -32,6 +32,16 @@ function editErrorMessage(error: unknown): string {
   return error.message;
 }
 
+/** 历史附件 chip 的展示事实:名称取 path 的 basename,图标按扩展名粗判。 */
+function attachmentChipDisplay(filePath: string): { name: string; icon: string; color: string } {
+  const name = filePath.split(/[\\/]/).pop() ?? filePath;
+  const ext = name.split('.').pop()?.toLowerCase() ?? '';
+  const mime = ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(ext)
+    ? `image/${ext === 'jpg' ? 'jpeg' : ext}`
+    : ext === 'pdf' ? 'application/pdf' : '';
+  return { name, ...chipMeta(mime, name) };
+}
+
 export interface UserBubbleProps {
   message: SessionHistoryMessage;
   canEdit?: boolean;
@@ -43,7 +53,7 @@ export function UserBubble({ message, canEdit = false }: UserBubbleProps): JSX.E
   const attachments = Array.isArray(message.blocks)
     ? message.blocks.filter(
         (block): block is AttachmentReferenceBlock =>
-          block.type === 'attachment_ref',
+          block.type === 'attachment_reference',
       )
     : [];
   const segments = Array.isArray(message.blocks)
@@ -107,7 +117,7 @@ export function UserBubble({ message, canEdit = false }: UserBubbleProps): JSX.E
         {attachments.length > 0 && (
           <div className="flex flex-wrap justify-end gap-1.5 mb-1.5 max-w-full">
             {attachments.map((ref) => {
-              const { icon, color } = chipMeta(ref.mimeType, ref.name);
+              const chip = attachmentChipDisplay(ref.path);
               return (
                 <button
                   type="button"
@@ -117,8 +127,8 @@ export function UserBubble({ message, canEdit = false }: UserBubbleProps): JSX.E
                     if (viewedId) useDockTabs.getState().openTab(viewedId, sessionAttachmentTab(ref.attachmentId));
                   }}
                 >
-                  <span className={`${icon} text-[10px]`} style={{ color }} aria-hidden />
-                  {ref.name}
+                  <span className={`${chip.icon} text-[10px]`} style={{ color: chip.color }} aria-hidden />
+                  {chip.name}
                 </button>
               );
             })}

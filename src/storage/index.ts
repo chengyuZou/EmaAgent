@@ -97,18 +97,18 @@ export { SettingSerializationError } from './repos/profile/settings.js';
 export type { SettingRow, SettingReadResult } from './repos/profile/settings.js';
 export type { SettingWrite } from './repos/profile/settings.js';
 export type { UsageRecordRow } from './repos/data/usage-records.js';
-export { MemoryJobsRepo } from './repos/data/memory-jobs.js';
+export { MemoryRepo } from './repos/data/memory.js';
 export type {
-  MemoryExtractionResult,
+  MemoryConsolidationJobKind,
   MemoryExtractionJobKind,
+  MemoryExtractionReadiness,
   MemoryJob,
   MemoryJobKind,
-  MemoryJobPath,
-  MemoryJobPathOperation,
   MemoryJobStatus,
-  NewMemoryJob,
-  NewMemoryJobPath,
-} from './repos/data/memory-jobs.js';
+  MemoryMaintenanceJobKind,
+  RelationshipMemoryExtraction,
+  WorkMemoryExtraction,
+} from './repos/data/memory.js';
 // ── AgentRun 存储 ─────────────────────────────────────────────────────────────
 export { AgentRunsRepo } from './repos/data/agent-runs.js';
 export {

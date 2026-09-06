@@ -36,7 +36,6 @@ import { mcpEnvironmentRoute } from './mcp/environment.js';
 import { mcpServersRoute } from './mcp/servers.js';
 import { memoryFilesRoute } from './memory/files.js';
 import { memoryJobsRoute } from './memory/jobs.js';
-import { memoryOpsRoute } from './memory/ops.js';
 import { memoryStatsRoute } from './memory/stats.js';
 import { providerCapabilitiesRoute } from './providers/capabilities.js';
 import { providerConfigsRoute } from './providers/configs.js';
@@ -232,18 +231,10 @@ export const createRoutes = (composition: Composition, secret: string) => {
     }))
     .route('/api/characters', characterPresentationRoute({ characters: characters.store }))
 
-    .route('/api/memory', memoryJobsRoute({ jobs: memory.jobs, admin: memory.admin }))
-    .route('/api/memory', memoryFilesRoute({
-      memoryRoot: memory.memoryRoot,
-      jobs: memory.jobs,
-    }))
+    .route('/api/memory', memoryJobsRoute({ jobs: memory.jobs }))
+    .route('/api/memory', memoryFilesRoute({ memoryRoot: memory.memoryRoot }))
     .route('/api/memory', memoryStatsRoute({
       memoryRoot: memory.memoryRoot,
-      settings: settings.settings,
-    }))
-    .route('/api/memory', memoryOpsRoute({
-      startConsolidation: memory.startConsolidation,
-      startMaintenance: memory.startMaintenance,
     }))
 
     .route('/api/workspaces', projectsRoute({ session: database.session }))

@@ -1,116 +1,125 @@
-// 记忆概览:展示存储占用水位以及进行中和失败的后台任务。
-import { useEffect, type JSX } from 'react';
-import {
-  Badge, Button, Callout, Card, Progress, Spinner,
-} from '@ema-agent/ui';
-import { useMemoryStore } from '../../stores/memory.js';
-import { showToast } from '../../lib/toast.js';
-import { JOB_KIND_LABEL, JOB_STATUS_LABEL, relativeTime } from './memoryLabels.js';
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
-}
+import { useEffect, useState, type JSX } from 'react';
+import { Badge, Button, Callout, Card, Progress, Spinner } from '@ema-agent/ui';
+import { memoryApi, type MemoryStats } from '../../api/memory.js';
+import { tauriBridge } from '../../lib/tauri-bridge.js';
 
 const LEVEL_LABEL = {
-  normal:        '正常',
-  warning:       '接近上限',
+  normal: '正常',
+  warning: '接近上限',
   limitExceeded: '已超限',
 } as const;
 
-export function OverviewTab(): JSX.Element {
-  const stats        = useMemoryStore((s) => s.stats);
-  const statsLoading = useMemoryStore((s) => s.statsLoading);
-  const statsError   = useMemoryStore((s) => s.statsError);
-  const jobs         = useMemoryStore((s) => s.jobs);
+export function MemoryOverviewTab(): JSX.Element {
+  const [stats, setStats] = useState<MemoryStats | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    void useMemoryStore.getState().refreshStats();
-    void useMemoryStore.getState().refreshJobs();
+    void memoryApi.stats()
+      .then(value => {
+        setStats(value);
+        setError(null);
+      })
+      .catch(reason => setError(errorMessage(reason, '读取 Memory 容量失败')));
   }, []);
 
-  const activeJobs = (jobs ?? []).filter((j) => j.status === 'pending' || j.status === 'running');
-  const failedJobs = (jobs ?? []).filter((j) => j.status === 'failed');
-
-  if (statsLoading && !stats) {
+  if (!stats && !error) {
     return <div className="flex justify-center py-16"><Spinner size="md" /></div>;
   }
 
-  return (
-    <div className="flex flex-col gap-5">
-      {statsError && (
-        <Callout variant="danger">
-          记忆统计刷新失败：{statsError}
-        </Callout>
-      )}
+  const progress = stats
+    ? Math.min(100, Math.round((stats.usedBytes / stats.maxBytes) * 100))
+    : 0;
 
-      {/* Storage usage */}
+  return (
+    <div className="flex flex-col gap-4">
+      {error && <Callout variant="danger">{error}</Callout>}
       {stats && (
-        <Card variant="elevated" padding="sm" className="ema-card-decorate ema-card-decorate--starfield">
-          <div className="flex items-center gap-2 mb-2">
-            <p className="text-xs font-semibold text-[var(--ema-text-tertiary)]">记忆存储</p>
+        <Card
+          variant="glass"
+          padding="md"
+          className="ema-card-decorate ema-card-decorate--starfield ema-stagger-in transition-all hover:border-[var(--ema-primary)] hover:shadow-[var(--ema-shadow-2)]"
+        >
+          <div className="mb-3 flex items-center gap-2">
+            <span className="i-lucide:database text-xl text-[var(--ema-primary)]" aria-hidden />
+            <h3 className="text-sm font-semibold text-[var(--ema-text-primary)]">本地 Memory 存储</h3>
             <Badge
-              variant={stats.status.level === 'normal' ? 'success' : stats.status.level === 'warning' ? 'warn' : 'danger'}
-              dot={stats.status.level !== 'normal'}
+              className="ml-auto"
+              variant={stats.level === 'normal' ? 'success' : stats.level === 'warning' ? 'warn' : 'danger'}
+              dot
             >
-              {LEVEL_LABEL[stats.status.level]}
+              {LEVEL_LABEL[stats.level]}
             </Badge>
           </div>
           <Progress
-            progress={stats.status.maxBytes > 0
-              ? Math.min(100, Math.round((stats.status.usedBytes / stats.status.maxBytes) * 100))
-              : 0}
-            height="h-1.5"
-            barClass={stats.status.level === 'normal' ? 'bg-[var(--ema-primary)]' : 'bg-[var(--ema-danger)]'}
+            progress={progress}
+            height="h-2"
+            barClass={stats.level === 'normal'
+              ? 'bg-[var(--ema-primary)]'
+              : stats.level === 'warning'
+                ? 'bg-[var(--ema-warning)]'
+                : 'bg-[var(--ema-danger)]'}
           />
-          <p className="mt-2 text-xs text-[var(--ema-text-tertiary)]">
-            已用 {formatBytes(stats.status.usedBytes)} / 上限 {formatBytes(stats.status.maxBytes)}
-            ，剩余 {formatBytes(stats.status.remainingBytes)}
-          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-[var(--ema-text-tertiary)]">
+            <span>已用 {formatBytes(stats.usedBytes)} / {formatBytes(stats.maxBytes)}</span>
+            <span>剩余 {formatBytes(stats.remainingBytes)}</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              icon="i-lucide:folder-open"
+              className="ml-auto"
+              onClick={() => void tauriBridge.openPath(stats.rootPath)
+                .catch(reason => setError(errorMessage(reason, '打开 Memory 文件夹失败')))}
+            >
+              打开文件夹
+            </Button>
+          </div>
         </Card>
       )}
 
-      {/* Active jobs */}
-      {activeJobs.length > 0 && (
-        <Callout variant="warn">
-          <span className="font-semibold">后台任务进行中</span>
-          <div className="mt-1 flex flex-col gap-0.5">
-            {activeJobs.map((job) => (
-              <div key={job.id} className="text-xs text-[var(--ema-warning-text)]">
-                {JOB_KIND_LABEL[job.kind]} · {JOB_STATUS_LABEL[job.status]} · {relativeTime(job.createdAt)}
-              </div>
-            ))}
-          </div>
-        </Callout>
-      )}
-
-      {/* Failed jobs */}
-      {failedJobs.length > 0 && (
-        <Callout variant="danger">
-          <span className="font-semibold">后台记忆任务失败</span>
-          <div className="mt-1 flex flex-col gap-1">
-            {failedJobs.map((job) => (
-              <div key={job.id} className="flex items-center justify-between gap-2 text-xs">
-                <span className="min-w-0 break-words">
-                  {JOB_KIND_LABEL[job.kind]}：{job.error ?? '未知错误'}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="shrink-0"
-                  onClick={() => {
-                    void useMemoryStore.getState().retryJob(job.id)
-                      .catch((err: Error) => showToast(`重试失败: ${err.message}`, { variant: 'danger' }));
-                  }}
-                >
-                  重试
-                </Button>
-              </div>
-            ))}
-          </div>
-        </Callout>
-      )}
+      <div className="grid gap-4 md:grid-cols-2">
+        <TrackCard
+          icon="i-lucide:briefcase-business"
+          title="Work"
+          description="全局共享的工作偏好、习惯、协作方式与长期约束。"
+          detail="不记录代码、工具输出和每日工作日志。"
+        />
+        <TrackCard
+          icon="i-lucide:heart-handshake"
+          title="Relationship"
+          description="共享关系信息，以及按角色名称分开的角色关系记忆。"
+          detail="只有带角色归属的 Turn 才会自动提取。"
+        />
+      </div>
     </div>
   );
+}
+
+function TrackCard(props: {
+  icon: string;
+  title: string;
+  description: string;
+  detail: string;
+}): JSX.Element {
+  return (
+    <Card
+      variant="glass"
+      padding="md"
+      className="ema-card-decorate ema-card-decorate--plus ema-stagger-in transition-all hover:-translate-y-0.5 hover:border-[var(--ema-primary)] hover:shadow-[var(--ema-shadow-2)]"
+    >
+      <span className={`${props.icon} text-2xl text-[var(--ema-primary)]`} aria-hidden />
+      <h3 className="mt-2 text-sm font-semibold text-[var(--ema-text-primary)]">{props.title}</h3>
+      <p className="mt-1 text-xs text-[var(--ema-text-secondary)]">{props.description}</p>
+      <p className="mt-2 text-[11px] text-[var(--ema-text-tertiary)]">{props.detail}</p>
+    </Card>
+  );
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KiB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MiB`;
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GiB`;
+}
+
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
 }

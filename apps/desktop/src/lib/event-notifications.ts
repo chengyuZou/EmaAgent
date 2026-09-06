@@ -49,8 +49,6 @@ export function describeEventNotification(event: NotifiableEvent): EventNotifica
       return { message: `上下文压缩完成，节省 ${event.savedTokens.toLocaleString()} tokens`, variant: 'success' };
     case 'compact_failed':
       return { message: `上下文压缩失败：${event.error}`, variant: 'danger' };
-    case 'memory_enqueue_failed':
-      return { message: `记忆后台任务入队失败：${event.error}`, variant: 'warning' };
     case 'kb_ingest_completed':
       return { message: '知识库文档处理完成', variant: 'success' };
     case 'kb_ingest_failed':

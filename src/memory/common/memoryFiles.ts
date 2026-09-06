@@ -4,7 +4,6 @@ import { promises as fs } from 'node:fs';
 import type { Dirent } from 'node:fs';
 import path from 'node:path';
 import { estimateTextTokens } from '@ema-agent/token';
-import { MemoryFileChangedError, MemoryFileNotEditableError } from '../errors.js';
 
 export const DEFAULT_SEARCH_MAX_RESULTS = 200;
 export const MAX_SEARCH_RESULTS = 200;
@@ -103,8 +102,6 @@ export interface MemoryReadResponse {
   readonly startLineNumber: number;
   readonly content: string;
   readonly truncated: boolean;
-  /** 文件最后修改时间（ms）；编辑保存时回传做冲突校验。 */
-  readonly mtimeMs: number;
 }
 
 // ── 窄能力类型（宿主注入已绑定 memoryRoot 后供 ToolUseContext 引用） ──────────
@@ -290,8 +287,6 @@ export async function readMemoryFile(
   const full = path.join(memoryRoot, request.path);
   const content = await readFileSafe(full, request.signal);
   if (content === undefined) return undefined;
-  const stat = await fs.stat(full);
-
   const lines = content.split('\n');
   const lineOffset = Math.max(1, request.lineOffset ?? 1);
   const startIndex = Math.min(lineOffset - 1, lines.length);
@@ -308,7 +303,6 @@ export async function readMemoryFile(
     startLineNumber: startIndex + 1,
     content: text,
     truncated: includedLines < available.length,
-    mtimeMs: stat.mtimeMs,
   };
 }
 
@@ -362,7 +356,7 @@ export async function listMemoryFiles(
 
 /**
  * 枚举 memory 根下允许模型读取的文件（相对路径，posix）。
- * 排除：隐藏项、.git、turn_evidence、extensions/notes、memory_summary.md。
+ * 排除隐藏项、Git 工作文件与注入用的 memory_summary.md。
  * scopePath 可选：限定在某轨/某子目录下。
  */
 async function listReadableFiles(memoryRoot: string, scopePath?: string): Promise<string[]> {
@@ -421,60 +415,7 @@ function isExcludedRelative(rel: string): boolean {
     || rel === 'memory_workspace_diff.md'
     || rel.endsWith('/memory_workspace_diff.md')
   ) return true;
-  const segments = rel.split('/');
-  return segments.includes('turn_evidence')
-    || segments.includes('extensions');
-}
-
-// ── write（用户编辑正式记忆） ─────────────────────────────────────────────────
-
-export interface MemoryWriteRequest {
-  readonly path: string;
-  readonly content: string;
-  /** 读取时拿到的 mtimeMs；与盘上不一致即 MemoryFileChangedError（防双向盲盖）。 */
-  readonly baseMtimeMs?: number;
-}
-
-export interface MemoryWriteResponse {
-  readonly path: string;
-  readonly mtimeMs: number;
-}
-
-/**
- * 用户编辑正式记忆文件：白名单与可读范围同族但排除派生摘要（memory_summary.md
- * 由整合生成，编辑无意义）；不存在则创建（父目录一并建）。
- * 整合占用锁不在此判定——那归持有 memory_job_paths 的路由层。
- */
-export async function writeMemoryFile(
-  memoryRoot: string,
-  request: MemoryWriteRequest,
-): Promise<MemoryWriteResponse> {
-  const rel = toPosix(request.path.replace(/^\.\/+/, ''));
-  if (
-    isHiddenRelative(rel)
-    || isExcludedRelative(rel)
-    || !rel.endsWith('.md')
-  ) {
-    throw new MemoryFileNotEditableError(rel);
-  }
-  const full = path.resolve(memoryRoot, rel);
-  if (!isInside(memoryRoot, full)) throw new MemoryFileNotEditableError(rel);
-
-  const before = await fs.stat(full).catch((error: unknown) => {
-    if (isMissing(error)) return undefined;
-    throw error;
-  });
-  if (before !== undefined) {
-    if (!before.isFile()) throw new MemoryFileNotEditableError(rel);
-    if (request.baseMtimeMs !== undefined && before.mtimeMs !== request.baseMtimeMs) {
-      throw new MemoryFileChangedError(rel);
-    }
-  }
-
-  await fs.mkdir(path.dirname(full), { recursive: true });
-  await fs.writeFile(full, request.content, 'utf8');
-  const after = await fs.stat(full);
-  return { path: rel, mtimeMs: after.mtimeMs };
+  return false;
 }
 
 // ── 工具 ──────────────────────────────────────────────────────────────────────

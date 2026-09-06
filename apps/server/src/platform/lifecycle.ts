@@ -78,6 +78,7 @@ export async function startServer(secret: string): Promise<ServerLifecycle> {
 
     // ── ready 之后的后台驱动 ──────────────────────────────────────────────
     runFileMaintenance(recoveryDeps);
+    running.memory.start();
     // models.dev 快照是 gitignored 拉取产物：启动后台刷一次，失败只告警（目录只影响 llm/vision 候选展示）。
     void running.providers.refreshCatalog()
       .catch(error => console.warn('[providers] models.dev 目录刷新失败:', error));

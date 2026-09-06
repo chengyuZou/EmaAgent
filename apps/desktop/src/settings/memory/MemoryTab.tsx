@@ -1,38 +1,49 @@
 import { useState, type JSX } from 'react';
 import { Tabs } from '@ema-agent/ui';
-import { OverviewTab } from './MemoryOverviewTab.js';
-import { MaintenanceTab } from './MemoryMaintenanceTab.js';
 import { MemoryFilesTab } from './MemoryFilesTab.js';
-import { MemorySettings } from './MemorySettings.js';
+import { MemoryJobsTab } from './MemoryJobsTab.js';
+import { MemoryOverviewTab } from './MemoryOverviewTab.js';
 
-// ── Main export ───────────────────────────────────────────────────────────────
-
-type MemorySection = 'overview' | 'files' | 'maintenance' | 'settings';
+type MemorySection = 'overview' | 'files' | 'jobs';
 
 export function MemoryTab(): JSX.Element {
   const [section, setSection] = useState<MemorySection>('overview');
-
   const tabItems = [
-    { value: 'overview',     label: '概览',   icon: 'i-mdi:chart-box-outline',   content: <OverviewTab />     },
-    { value: 'files',        label: '文件',   icon: 'i-mdi:file-document-outline', content: <MemoryFilesTab /> },
-    { value: 'maintenance',  label: '维护',   icon: 'i-mdi:wrench-outline',       content: <MaintenanceTab />  },
-    { value: 'settings',     label: '参数设置', icon: 'i-mdi:tune-variant',         content: <MemorySettings />   },
+    {
+      value: 'overview',
+      label: '概览',
+      icon: 'i-lucide:chart-no-axes-column-increasing',
+      content: <MemoryOverviewTab />,
+    },
+    {
+      value: 'files',
+      label: '文件',
+      icon: 'i-lucide:files',
+      content: <MemoryFilesTab />,
+    },
+    {
+      value: 'jobs',
+      label: '后台任务',
+      icon: 'i-lucide:history',
+      content: <MemoryJobsTab />,
+    },
   ];
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex min-h-0 flex-col gap-4">
       <div className="shrink-0">
-        <h2 className="text-base font-semibold text-[var(--ema-text-primary)]">记忆系统</h2>
-        <p className="text-xs font-semibold text-[var(--ema-text-tertiary)] mt-0.5">查看记忆存储占用与后台任务,手动触发整合与清理</p>
+        <h2 className="text-base font-semibold text-[var(--ema-text-primary)]">Memory</h2>
+        <p className="mt-0.5 text-xs text-[var(--ema-text-tertiary)]">
+          查看自动生成的工作记忆、角色关系记忆和后台任务。
+        </p>
       </div>
-
       <Tabs
         value={section}
-        onChange={(v) => setSection(v as MemorySection)}
+        onChange={value => setSection(value as MemorySection)}
         items={tabItems}
         variant="pill"
         orientation="horizontal"
-        className="flex-1 min-h-0"
+        className="min-h-0 flex-1"
       />
     </div>
   );

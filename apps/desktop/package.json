@@ -27,7 +27,6 @@
     "@ema-agent/live2d-react": "workspace:*",
     "@ema-agent/llm": "workspace:*",
     "@ema-agent/mcp": "workspace:*",
-    "@ema-agent/memory": "workspace:*",
     "@ema-agent/narrative": "workspace:*",
     "@ema-agent/permission": "workspace:*",
     "@ema-agent/providers": "workspace:*",

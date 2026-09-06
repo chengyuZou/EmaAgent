@@ -12,11 +12,6 @@ import {
 } from '@ema-agent/knowledge';
 import { narrativeQueryModeSetting } from '@ema-agent/narrative';
 import { PERMISSION_SETTINGS } from '@ema-agent/permission';
-import {
-  MEMORY_SETTINGS,
-  memoryJobsGroup,
-  memoryLifecycleGroup,
-} from '@ema-agent/memory';
 import { SettingsStore } from '@ema-agent/settings';
 import {
   disabledProjectSourcesSetting,
@@ -39,7 +34,6 @@ export interface SettingsComposition {
 export const SETTINGS_DEFINITIONS = [
   ...AGENT_LIMITS_SETTINGS,
   ...COMPACT_SETTINGS,
-  ...MEMORY_SETTINGS,
   ...PERMISSION_SETTINGS,
   attachmentCacheMaxBytesSetting,
   kbAlphaSetting,
@@ -66,8 +60,6 @@ export function openSettings(profileDb: Database): SettingsComposition {
     definitions: SETTINGS_DEFINITIONS,
     groups: [
       compactGroup,
-      memoryLifecycleGroup,
-      memoryJobsGroup,
     ],
   });
   return { settings };

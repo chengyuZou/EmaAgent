@@ -16,16 +16,12 @@ describe('Memory 文件读搜', () => {
   beforeEach(async () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), 'ema-memory-files-'));
     await fs.mkdir(path.join(root, 'work', 'topics'), { recursive: true });
-    await fs.mkdir(path.join(root, 'work', 'turn_evidence'), { recursive: true });
-    await fs.mkdir(path.join(root, 'work', 'extensions', 'notes'), { recursive: true });
     await fs.writeFile(
       path.join(root, 'work', 'topics', 'typescript.md'),
       'Use D:\\Github\\EmaAgent\nsecond line\nthird line',
       'utf8',
     );
     await fs.writeFile(path.join(root, 'work', 'memory_summary.md'), 'internal', 'utf8');
-    await fs.writeFile(path.join(root, 'work', 'turn_evidence', 'turn.md'), 'internal', 'utf8');
-    await fs.writeFile(path.join(root, 'work', 'extensions', 'notes', 'note.md'), 'internal', 'utf8');
   });
 
   afterEach(async () => {
@@ -43,7 +39,7 @@ describe('Memory 文件读搜', () => {
     expect(result.matches[0]?.path).toBe('work/topics/typescript.md');
   });
 
-  it('根目录可列举，但派生证据、便签和摘要不对模型暴露', async () => {
+  it('根目录可列举，但注入摘要不对模型暴露', async () => {
     await expect(listMemoryFiles(root)).resolves.toMatchObject({
       entries: [{ path: 'work', entryType: 'directory' }],
     });

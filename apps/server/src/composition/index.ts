@@ -111,13 +111,11 @@ export function buildComposition(input: { activeDataDir: string }): Composition 
   // Turn completed 终态事务内的提取入队闭包由它提供。
   const memory = openMemory({
     dataDb: database.dataDb,
-    settings: settings.settings,
     providers: providers.providers,
     modelBindings: providers.modelBindings,
     session: database.session,
     turns: database.turns,
     usageRecorder: database.usageRecorder,
-    emitApp: event => eventHub.emitApp(event),
   });
   const turn = openTurns({
     database,
