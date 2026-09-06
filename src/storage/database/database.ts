@@ -5,8 +5,8 @@ import { extractMessageSearchText, tokenizeMessageSearchText } from '../search/m
 export type SqliteDb = BetterSqlite3.Database;
 
 export type DatabaseOptions =
-  | { path: string; kind: DatabaseKind; memory?: false }
-  | { memory: true;  kind: DatabaseKind; path?: never };
+  | { path: string; kind: DatabaseKind; memory?: false; readonly?: boolean }
+  | { memory: true;  kind: DatabaseKind; path?: never; readonly?: never };
 
 export class DatabaseCapabilityError extends Error {
   readonly code = 'storage/capability-unavailable';
@@ -46,7 +46,7 @@ export class Database {
   constructor(opts: DatabaseOptions) {
     const sqlite = opts.memory
       ? new BetterSqlite3(':memory:')
-      : new BetterSqlite3(opts.path);
+      : new BetterSqlite3(opts.path, { readonly: opts.readonly === true });
 
     try {
       // WAL:写先入 -wal 日志,读不阻塞写。foreign_keys:SQLite 默认关,需显式开。

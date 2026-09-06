@@ -8,6 +8,10 @@ import {
 } from '../api/workspaces.js';
 import { systemApi, type DataDirStats, type SessionStats } from '../api/system.js';
 
+type DirSessionsResult = Awaited<ReturnType<typeof dataDirsApi.dirSessions>>;
+export type DirSessionItem = DirSessionsResult['sessions'][number];
+export type RemoveDirResult = Awaited<ReturnType<typeof dataDirsApi.removeDir>>;
+
 // ── State shape ───────────────────────────────────────────────────────────────
 
 interface StorageStoreState {
@@ -23,11 +27,18 @@ interface StorageStoreState {
   dashLoading:   Set<string>;
   dashErrors:    Map<string, string>;
 
+  /** L1/L2 共用的按库统计与 session 列表(只读浏览, 任意已注册库)。 */
+  statsByDir:    Map<string, DataDirStats>;
+  sessionsByDir: Map<string, DirSessionItem[]>;
+  dirBrowseLoading: Set<string>;
+
   loadDirs(): Promise<void>;
   addDir(input: DataDirAddInput): Promise<void>;
-  removeDir(name: string): Promise<void>;
+  removeDir(name: string, wipe?: boolean): Promise<RemoveDirResult>;
   activateDir(name: string): Promise<boolean>;
   migrate(input: DataDirMigrateInput): Promise<boolean>;
+  loadDirStats(name: string, force?: boolean): Promise<void>;
+  loadDirSessions(name: string, force?: boolean): Promise<void>;
 
   loadStats(): Promise<void>;
 
@@ -52,6 +63,10 @@ export const useStorageStore = create<StorageStoreState>((set, get) => ({
   dashLoading:   new Set(),
   dashErrors:    new Map(),
 
+  statsByDir:    new Map(),
+  sessionsByDir: new Map(),
+  dirBrowseLoading: new Set(),
+
   // ── DataDir management ───────────────────────────────────────────────────
 
   async loadDirs() {
@@ -69,9 +84,44 @@ export const useStorageStore = create<StorageStoreState>((set, get) => ({
     await get().loadDirs();
   },
 
-  async removeDir(name) {
-    await dataDirsApi.removeDir(name);
+  async removeDir(name, wipe = false) {
+    const result = await dataDirsApi.removeDir(name, wipe);
+    set((s) => {
+      const st = new Map(s.statsByDir);    st.delete(name);
+      const se = new Map(s.sessionsByDir); se.delete(name);
+      return { statsByDir: st, sessionsByDir: se };
+    });
     await get().loadDirs();
+    return result;
+  },
+
+  async loadDirStats(name, force = false) {
+    if (!force && get().statsByDir.has(name)) return;
+    try {
+      const stats = await dataDirsApi.dirStats(name);
+      set((s) => {
+        const m = new Map(s.statsByDir); m.set(name, stats as DataDirStats);
+        return { statsByDir: m };
+      });
+    } catch { /* 单库统计失败不阻断其他卡片 */ }
+  },
+
+  async loadDirSessions(name, force = false) {
+    if (!force && get().sessionsByDir.has(name)) return;
+    set((s) => ({ dirBrowseLoading: new Set([...s.dirBrowseLoading, name]) }));
+    try {
+      const res = await dataDirsApi.dirSessions(name);
+      set((s) => {
+        const m = new Map(s.sessionsByDir); m.set(name, [...res.sessions]);
+        const l = new Set(s.dirBrowseLoading); l.delete(name);
+        return { sessionsByDir: m, dirBrowseLoading: l };
+      });
+    } catch {
+      set((s) => {
+        const l = new Set(s.dirBrowseLoading); l.delete(name);
+        return { dirBrowseLoading: l };
+      });
+    }
   },
 
   async activateDir(name) {

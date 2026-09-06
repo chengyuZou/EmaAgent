@@ -2,8 +2,6 @@
 import { Zip, ZipDeflate } from 'fflate';
 import type { BackupOutput } from '../types.js';
 
-const MAX_ZIP_ENTRIES = 60_000;
-
 export interface ZipEntry {
   readonly path: string;
   chunks(): AsyncIterable<Uint8Array>;
@@ -33,7 +31,6 @@ export async function writeStreamingZip(
     for await (const entry of entries) {
       throwIfCancelled(signal);
       count += 1;
-      if (count > MAX_ZIP_ENTRIES) throw new Error('ZIP 条目数超过格式上限');
       const file = new ZipDeflate(entry.path, { level: 6 });
       zip.add(file);
       for await (const chunk of entry.chunks()) {

@@ -59,6 +59,7 @@ export const sessionAttachmentsRoute = (deps: SessionAttachmentsRouteDeps) =>
       return context.json({ attachments });
     })
     // 内容按 path 读:chip 点开预览与附件页查看共用。边界=必须在该 Session 受管目录内。
+    // ?thumb=1 时图片走 256px JPEG 缩略图(消息流封面不拉原图)。
     .get('/:sessionId/attachments/content', async context => {
       const sessionId = context.req.param('sessionId');
       const missing = ensureSession(deps, context, sessionId);
@@ -66,6 +67,16 @@ export const sessionAttachmentsRoute = (deps: SessionAttachmentsRouteDeps) =>
       const target = context.req.query('path');
       if (!target || !isInsideManagedDir(deps.activeDataDir, sessionId, target)) {
         return context.json({ error: 'attachment_not_found' }, 404);
+      }
+      if (context.req.query('thumb') === '1' && mimeForPath(target).startsWith('image/')) {
+        try {
+          const thumb = await deps.imageStore.readThumbnail(target);
+          return new Response(new Uint8Array(thumb), {
+            headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, max-age=3600' },
+          });
+        } catch {
+          return context.json({ error: 'attachment_file_gone' }, 404);
+        }
       }
       let stat;
       try {

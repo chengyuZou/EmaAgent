@@ -60,6 +60,14 @@ export class ImageStore {
     return this.repo.claimForTurn(sessionId, turnId, paths);
   }
 
+  /** 消息流/附件页封面用的小图:长边 ≤ maxDim 的 JPEG,原图不动。 */
+  async readThumbnail(imagePath: string, maxDim = 256): Promise<Buffer> {
+    return sharp(imagePath)
+      .resize({ width: maxDim, height: maxDim, fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: 80 })
+      .toBuffer();
+  }
+
   /**
    * 扫自己目录的残留, 只针对这一个 Session:
    * 账本侧 turn_id IS NULL 且超龄(贴了没发)删文件销账(Vision 描述级联消失);

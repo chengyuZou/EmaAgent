@@ -1,4 +1,13 @@
 // 校验 Session 记录、发布文件并调用 Storage 单事务恢复数据库行。
+//
+// 导入三步, 崩溃语义逐级干净:
+//   1. 解包到 staging(extractSessionArchive)
+//   2. 附件文件写进 sessions/<sid>/attachments/...(uuid 名不变, publishSessionFiles)
+//      —— 此时崩了:SQL 还没碰, 启动对账删掉这个无行目录
+//   3. 单个 SQL 事务:session/turns/messages(块内路径已重写) + 两本账行
+//      —— 此时崩了:事务自动回滚一行不留, 只剩文件夹, 启动对账再扫掉
+// 必须先文件后 SQL:反过来的话事务已提交而文件写挂, 留下"有行没文件"
+// 的半成品, 失败清理就得额外级联删行, 而不是永远只删文件夹一个动作。
 import fs from 'node:fs';
 import type { SessionBackupReader, SessionBackupRestorer } from '@ema-agent/storage';
 import { SessionImportError } from '../errors.js';
@@ -6,7 +15,8 @@ import { SESSION_MANIFEST_PATH } from '../records/sessionFormat.js';
 import {
   agentRunMessageRecordSchema,
   agentRunRecordSchema,
-  attachmentRecordSchema,
+  attachmentImageRecordSchema,
+  attachmentPastedTextRecordSchema,
   backgroundProcessRecordSchema,
   messageRecordSchema,
   sessionBackupManifestSchema,
@@ -21,7 +31,8 @@ import {
 import {
   restoreAgentRunMessageRecord,
   restoreAgentRunRecord,
-  restoreAttachmentRecord,
+  restoreAttachmentImageRecord,
+  restoreAttachmentPastedTextRecord,
   restoreBackgroundProcessRecord,
   restoreMessageRecord,
   restoreSessionRecord,
@@ -60,8 +71,8 @@ export async function importSessionArchive(
     }
     const [
       turns, messages, tasks, agentRuns, agentRunMessages,
-      toolExecutions, backgroundProcesses, attachments, speechOutputs,
-      speechSegments, usageRecords,
+      toolExecutions, backgroundProcesses, attachmentImages, attachmentPastedTexts,
+      speechOutputs, speechSegments, usageRecords,
     ] = await Promise.all([
       readJsonlRecords(archive, 'turns', turnRecordSchema),
       readJsonlRecords(archive, 'messages', messageRecordSchema),
@@ -70,7 +81,8 @@ export async function importSessionArchive(
       readJsonlRecords(archive, 'agentRunMessages', agentRunMessageRecordSchema),
       readJsonlRecords(archive, 'toolExecutions', toolExecutionRecordSchema),
       readJsonlRecords(archive, 'backgroundProcesses', backgroundProcessRecordSchema),
-      readJsonlRecords(archive, 'attachments', attachmentRecordSchema),
+      readJsonlRecords(archive, 'attachmentImages', attachmentImageRecordSchema),
+      readJsonlRecords(archive, 'attachmentPastedTexts', attachmentPastedTextRecordSchema),
       readJsonlRecords(archive, 'speechOutputs', speechOutputRecordSchema),
       readJsonlRecords(archive, 'speechSegments', speechSegmentRecordSchema),
       readJsonlRecords(archive, 'usageRecords', usageRecordSchema),
@@ -78,7 +90,7 @@ export async function importSessionArchive(
     throwIfCancelled(signal);
     assertSessionOwnership(manifest.sessionId, {
       turns, messages, tasks, agentRuns, toolExecutions,
-      backgroundProcesses, attachments, speechOutputs, speechSegments,
+      backgroundProcesses, speechOutputs, speechSegments,
       usageRecords,
     });
     assertSummaryCursors(messages);
@@ -96,21 +108,28 @@ export async function importSessionArchive(
       warnings.push('原 Session 的模型在当前安装中不可用，已清除模型选择');
     }
 
+    // 2. 附件文件落位(先文件, 让 SQL 事务成为最后一步)
     const files = publishSessionFiles(
       activeDataDir,
       manifest.sessionId,
       archive,
-      attachments,
+      attachmentImages,
+      attachmentPastedTexts,
       speechOutputs,
       speechSegments,
       backgroundProcesses,
       signal,
     );
     try {
+      // 3. 单个事务写全部行。块内附件路径按 旧path→新path 重写;
+      // uuid 全局唯一, 字符串替换无歧义;file_reference 的用户原路径不动。
       restorer.restoreSession({
         session: restoredSession,
         turns: turns.map(row => restoreTurnRecord(row, importedAt)),
-        messages: messages.map(restoreMessageRecord),
+        messages: messages.map(record => restoreMessageRecord({
+          ...record,
+          blocksJson: rewriteAttachmentPaths(record.blocksJson, files.attachments),
+        })),
         tasks: tasks.map(restoreTaskRecord),
         agentRuns: agentRuns.map(row => restoreAgentRunRecord(row, importedAt)),
         agentRunMessages: agentRunMessages.map(restoreAgentRunMessageRecord),
@@ -122,9 +141,17 @@ export async function importSessionArchive(
           archiveOutputBytes(archive, row.outputDirectoryPath, 'stderr.log'),
           importedAt,
         )),
-        attachments: attachments.flatMap(row => {
-          const filePath = files.attachments.get(row.id);
-          return filePath ? [restoreAttachmentRecord(row, filePath)] : [];
+        attachmentImages: attachmentImages.flatMap(row => {
+          const newPath = files.attachments.get(row.path);
+          return newPath
+            ? [restoreAttachmentImageRecord(row, newPath, manifest.sessionId)]
+            : [];
+        }),
+        attachmentPastedTexts: attachmentPastedTexts.flatMap(row => {
+          const newPath = files.attachments.get(row.path);
+          return newPath
+            ? [restoreAttachmentPastedTextRecord(row, newPath, manifest.sessionId)]
+            : [];
         }),
         speechOutputs: speechOutputs.flatMap(row => {
           const filePath = files.speechOutputs.get(row.turnId);
@@ -149,6 +176,23 @@ export async function importSessionArchive(
   } finally {
     archive.dispose();
   }
+}
+
+function rewriteAttachmentPaths(
+  blocksJson: string,
+  pathMap: ReadonlyMap<string, string>,
+): string {
+  let rewritten = blocksJson;
+  for (const [oldPath, newPath] of pathMap) {
+    if (oldPath === newPath) continue;
+    // blocks_json 是 JSON 文本:Windows 反斜杠在里面以转义形态(\\)出现,
+    // 直接按原始字符串替换会漏。统一按 JSON 转义形态重写(POSIX 下两形态相同)。
+    const escapedOld = JSON.stringify(oldPath).slice(1, -1);
+    const escapedNew = JSON.stringify(newPath).slice(1, -1);
+    if (!rewritten.includes(escapedOld)) continue;
+    rewritten = rewritten.split(escapedOld).join(escapedNew);
+  }
+  return rewritten;
 }
 
 function readManifest(filePath: string) {

@@ -7,7 +7,8 @@ import type { OmittedSessionFile, SessionBackupManifest } from '../records/sessi
 import {
   toAgentRunMessageRecord,
   toAgentRunRecord,
-  toAttachmentRecord,
+  toAttachmentImageRecord,
+  toAttachmentPastedTextRecord,
   toBackgroundProcessRecord,
   toMessageRecord,
   toSessionRecord,
@@ -128,16 +129,27 @@ function writeRecords(
     return toBackgroundProcessRecord(row, archiveRoot);
   }, signal);
 
-  writeJsonl(directory, 'attachments', rows.attachments, row => {
-    const extension = path.extname(row.kind === 'image' ? row.image_path ?? row.source_path : row.source_path);
-    const archivePath = `files/attachments/${safeName(row.id)}${safeExtension(extension)}`;
+  writeJsonl(directory, 'attachmentImages', rows.attachmentImages, row => {
+    // 归档文件名直接复用 uuid 原文件名(全局唯一,导入时按它落回新目录)。
+    const archivePath = `files/attachments/${safeName(path.basename(row.path))}`;
     pending.push({
       kind: 'attachment',
-      id: row.id,
-      sourcePath: row.kind === 'image' ? row.image_path ?? row.source_path : row.source_path,
+      id: row.path,
+      sourcePath: row.path,
       archivePath,
     });
-    return toAttachmentRecord(row, archivePath);
+    return toAttachmentImageRecord(row, archivePath);
+  }, signal);
+
+  writeJsonl(directory, 'attachmentPastedTexts', rows.attachmentPastedTexts, row => {
+    const archivePath = `files/attachments/${safeName(path.basename(row.path))}`;
+    pending.push({
+      kind: 'attachment',
+      id: row.path,
+      sourcePath: row.path,
+      archivePath,
+    });
+    return toAttachmentPastedTextRecord(row, archivePath);
   }, signal);
 
   writeJsonl(directory, 'speechOutputs', rows.speechOutputs, row => {

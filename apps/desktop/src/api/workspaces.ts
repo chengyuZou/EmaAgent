@@ -84,8 +84,37 @@ export const dataDirsApi = {
     return readRpcJson(rpcClient.api.workspaces['data-dirs'].$post({ json: body }));
   },
 
-  removeDir(name: string) {
-    return readRpcJson(rpcClient.api.workspaces['data-dirs'][':name'].$delete({ param: { name } }));
+  /** wipe=false 只摘注册;wipe=true 白名单全删。活动库有动静返回 409 dir_busy。 */
+  removeDir(name: string, wipe = false) {
+    return readRpcJson(rpcClient.api.workspaces['data-dirs'][':name'].$delete({
+      param: { name },
+      query: wipe ? { wipe: '1' } : {},
+    }));
+  },
+
+  /** 任意已注册库的只读统计(L1 库卡与 L2 顶部共用)。 */
+  dirStats(name: string) {
+    return readRpcJson(rpcClient.api.workspaces['data-dirs'][':name'].stats.$get({
+      param: { name },
+    }));
+  },
+
+  /** 任意已注册库的 session 列表(只读)。 */
+  dirSessions(name: string) {
+    return readRpcJson(rpcClient.api.workspaces['data-dirs'][':name'].sessions.$get({
+      param: { name },
+    }));
+  },
+
+  /** 任意已注册库某 session 的 raw 消息行(blocks_json 不 parse,keyset 分页)。 */
+  dirSessionMessages(name: string, sessionId: string, opts: { before?: number; limit?: number } = {}) {
+    return readRpcJson(rpcClient.api.workspaces['data-dirs'][':name'].sessions[':sessionId'].messages.$get({
+      param: { name, sessionId },
+      query: {
+        ...(opts.before !== undefined ? { before: String(opts.before) } : {}),
+        ...(opts.limit !== undefined ? { limit: String(opts.limit) } : {}),
+      },
+    }));
   },
 
   /** 写入新活动项即完成；当前进程仍连旧目录，必须重启生效。 */

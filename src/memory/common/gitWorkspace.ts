@@ -11,6 +11,7 @@ import {
 } from '@ema-agent/git';
 
 const MEMORY_DIFF_FILE_NAME = 'memory_workspace_diff.md';
+const GIT_INDEX_LOCK_FILE = path.join('.git', 'index.lock');
 
 export function memoryGitDiffFile(memoryDirectory: string): string {
   return path.join(memoryDirectory, MEMORY_DIFF_FILE_NAME);
@@ -21,6 +22,8 @@ export async function prepareMemoryGitWorkspace(
 ): Promise<void> {
   await fs.mkdir(memoryDirectory, { recursive: true });
   await removeMemoryGitDiff(memoryDirectory);
+  // 同轨文件任务已经互斥；这里的 lock 只能来自上次进程中断，需在下一次 Git 写入前清掉。
+  await fs.rm(path.join(memoryDirectory, GIT_INDEX_LOCK_FILE), { force: true });
   await ensureBaseline(memoryDirectory);
 }
 

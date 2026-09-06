@@ -9,7 +9,8 @@ export type SessionRecordName =
   | 'agentRunMessages'
   | 'toolExecutions'
   | 'backgroundProcesses'
-  | 'attachments'
+  | 'attachmentImages'
+  | 'attachmentPastedTexts'
   | 'speechOutputs'
   | 'speechSegments'
   | 'usageRecords';
@@ -39,7 +40,8 @@ export const SESSION_RECORD_FILES: readonly SessionRecordFile[] = Object.freeze(
   jsonl('agentRunMessages'),
   jsonl('toolExecutions'),
   jsonl('backgroundProcesses'),
-  jsonl('attachments'),
+  jsonl('attachmentImages'),
+  jsonl('attachmentPastedTexts'),
   jsonl('speechOutputs'),
   jsonl('speechSegments'),
   jsonl('usageRecords'),

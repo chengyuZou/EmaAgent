@@ -1,10 +1,13 @@
 // 验证 Memory Git 变更文件的状态表达和字节裁剪.
 
 import { Buffer } from 'node:buffer';
+import { mkdtemp, mkdir, stat, writeFile } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   memoryGitDiffFile,
+  prepareMemoryGitWorkspace,
   renderMemoryGitDiff,
 } from '../common/gitWorkspace.js';
 
@@ -53,5 +56,18 @@ describe('Memory Git workspace diff', () => {
     expect(memoryGitDiffFile(path.join('memory', 'work'))).toBe(
       path.join('memory', 'work', 'memory_workspace_diff.md'),
     );
+  });
+
+  it('removes an interrupted Git index lock before preparing the baseline', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'ema-memory-git-'));
+    const gitDirectory = path.join(root, '.git');
+    const lockFile = path.join(gitDirectory, 'index.lock');
+    await writeFile(path.join(root, 'MEMORY.md'), '# Memory\n');
+    await mkdir(gitDirectory);
+    await writeFile(lockFile, 'interrupted');
+
+    await prepareMemoryGitWorkspace(root);
+
+    await expect(stat(lockFile)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 });

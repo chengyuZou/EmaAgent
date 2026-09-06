@@ -19,6 +19,8 @@ export async function* readJsonl<T>(
   for await (const rawChunk of fs.createReadStream(filePath)) {
     const chunk = rawChunk as Buffer;
     pendingBytes += chunk.byteLength;
+    // 10 是换行符的字节值(`\n`):pending 已超限而本块仍无换行,说明单行超长,提前止损,
+    // 不等缓冲区继续长大(无换行的恶意文件会把 pending 撑爆)。
     if (pendingBytes > MAX_LINE_BYTES && !chunk.includes(10)) {
       throw new Error(`JSONL 单行超过 ${MAX_LINE_BYTES} 字节`);
     }

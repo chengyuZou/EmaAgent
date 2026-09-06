@@ -7,9 +7,9 @@ import { SessionImportError } from '../errors.js';
 import { isSessionArchivePath } from '../records/sessionFormat.js';
 import { normalizeArchivePath, resolveInside } from './pathPolicy.js';
 
-const MAX_ARCHIVE_ENTRIES = 60_000;
+// 单人本地导入的真防线只有一条:总展开体积(防 zip 炸弹撑爆磁盘/内存)。
+// 条目数/压缩比等分项纵深不建——包是用户自己导出的,威胁模型里没有攻击者。
 const MAX_EXPANDED_BYTES = 8 * 1024 * 1024 * 1024;
-const MAX_COMPRESSION_RATIO = 500;
 
 export interface ExtractedEntry {
   readonly path: string;
@@ -54,7 +54,6 @@ export async function extractSessionArchive(
   const openFiles = new Set<number>();
   let archiveBytes = 0;
   let expandedBytes = 0;
-  let entryCount = 0;
 
   try {
     const unzip = new Unzip(file => {
@@ -67,19 +66,6 @@ export async function extractSessionArchive(
         throw new SessionImportError('invalid_format', `ZIP 存在同名路径: ${entryPath}`);
       }
       portablePaths.add(portable);
-      entryCount += 1;
-      if (entryCount > MAX_ARCHIVE_ENTRIES) {
-        throw new SessionImportError('archive_bomb', 'ZIP 条目数量异常');
-      }
-      if (
-        file.size !== undefined
-        && file.originalSize !== undefined
-        && file.originalSize > 0
-        && file.originalSize / Math.max(file.size, 1) > MAX_COMPRESSION_RATIO
-      ) {
-        throw new SessionImportError('archive_bomb', `ZIP 条目压缩比异常: ${entryPath}`);
-      }
-
       const destination = resolveInside(directory, entryPath);
       fs.mkdirSync(path.dirname(destination), { recursive: true });
       let descriptor: number | null = fs.openSync(destination, 'wx');
@@ -114,9 +100,6 @@ export async function extractSessionArchive(
     if (openFiles.size > 0) throw new SessionImportError('invalid_zip', 'ZIP 存在未完成条目');
     if (source.declaredBytes !== null && source.declaredBytes !== archiveBytes) {
       throw new SessionImportError('invalid_zip', 'ZIP 实际字节数与声明不一致');
-    }
-    if (expandedBytes > 0 && expandedBytes / Math.max(archiveBytes, 1) > MAX_COMPRESSION_RATIO) {
-      throw new SessionImportError('archive_bomb', 'ZIP 总压缩比异常');
     }
     return new ExtractedSessionArchive(directory, entries);
   } catch (error) {

@@ -110,6 +110,10 @@ export function addDir(reg: Registry, input: AddDirInput): Registry {
   return next;
 }
 
+/**
+ * 摘除注册项。最后一个不可删;删除活动项时 active 自动切到剩余第一个
+ * (调用方负责在此之前关闭数据库连接并提示重启)。
+ */
 export function removeDir(reg: Registry, name: string): Registry {
   if (reg.dirs.length <= 1) {
     throw new Error('registry: cannot remove the only registered dir');
@@ -117,15 +121,55 @@ export function removeDir(reg: Registry, name: string): Registry {
   if (!reg.dirs.some(d => d.name === name)) {
     throw new Error(`registry: name "${name}" not found`);
   }
-  if (reg.active === name) {
-    throw new Error(`registry: cannot remove the active dir "${name}"; switch first`);
-  }
+  const dirs = reg.dirs.filter(d => d.name !== name);
   const next: Registry = {
-    active: reg.active,
-    dirs:   reg.dirs.filter(d => d.name !== name),
+    active: reg.active === name ? dirs[0]!.name : reg.active,
+    dirs,
   };
   saveRegistry(next);
   return next;
+}
+
+/**
+ * "全部删除"的磁盘侧:只按白名单删 Ema 自己的东西,目录里任何白名单外的
+ * 文件/文件夹一个不碰(KB 独立、artifacts 是老垃圾,均不在列)。目录删成空壳
+ * 才连目录一起删;有外来遗留就如实报告,绝不对目录整体 rm -rf。
+ */
+const OWNED_DATA_DIR_ENTRIES: readonly string[] = [
+  'data.db',
+  'data.db-wal',
+  'data.db-shm',
+  'data.db-journal',
+  'sessions',
+  'audio',
+  '.trash',
+];
+
+export interface DataDirWipeResult {
+  readonly removedEntries: string[];
+  /** 白名单外未动的目录项(外来文件或 KB/artifacts 等不归本业务的目录)。 */
+  readonly leftovers: string[];
+  /** 目录本身是否已删(无遗留才删得掉)。 */
+  readonly dirRemoved: boolean;
+}
+
+export function wipeDataDirContents(dirPath: string): DataDirWipeResult {
+  const removedEntries: string[] = [];
+  for (const entry of OWNED_DATA_DIR_ENTRIES) {
+    const target = path.join(dirPath, entry);
+    if (!fs.existsSync(target)) continue;
+    fs.rmSync(target, { recursive: true, force: true });
+    removedEntries.push(entry);
+  }
+  const leftovers = fs.existsSync(dirPath)
+    ? fs.readdirSync(dirPath)
+    : [];
+  let dirRemoved = false;
+  if (leftovers.length === 0 && fs.existsSync(dirPath)) {
+    fs.rmdirSync(dirPath);
+    dirRemoved = true;
+  }
+  return { removedEntries, leftovers, dirRemoved };
 }
 
 export function setActive(reg: Registry, name: string): Registry {

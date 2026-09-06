@@ -159,6 +159,28 @@ export function removeLegacyArtifactDirectories(dataDir: string): number {
   return removed;
 }
 
+/**
+ * 启动对账:删除有目录无 Session 行的尸体(导入在文件落位后、事务提交前
+ * 崩溃留下的半截目录;SQL 事务天然回滚不会留行,所以只剩这一种形态)。
+ * 点开头的是导入 staging 目录,不碰;启动时无导入在进行,不会误删活人。
+ */
+export function removeOrphanSessionDirectories(
+  dataDir: string,
+  hasSession: (sessionId: string) => boolean,
+): number {
+  const sessionsRoot = path.join(dataDir, 'sessions');
+  if (!fs.existsSync(sessionsRoot)) return 0;
+
+  let removed = 0;
+  for (const entry of fs.readdirSync(sessionsRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+    if (hasSession(entry.name)) continue;
+    fs.rmSync(path.join(sessionsRoot, entry.name), { recursive: true, force: true });
+    removed += 1;
+  }
+  return removed;
+}
+
 // ── Turn 级 scratchpad ────────────────────────────────────────────────────────
 
 export function scratchpadTurnDir(dataDir: string, sessionId: string, turnId: string): string {

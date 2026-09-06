@@ -180,15 +180,21 @@ export const backgroundProcessRecordSchema = z.object({
   modelNotifiedAt: integer.nullable(),
 }).strict();
 
-export const attachmentRecordSchema = z.object({
-  id,
-  turnId: id,
-  sessionId: id,
-  kind: z.enum(['file', 'image']),
-  name: z.string(),
-  mime: z.string(),
+// 附件账本的归档记录。path 即身份(全局唯一):uuid 文件名不变,跨机器导入时
+// 由导入方重写数据根前缀生成新 path。vision 描述缓存不进包(可再生)。
+export const attachmentImageRecordSchema = z.object({
+  path: id,
+  turnId: nullableId,
+  name: z.string().nullable(),
   byteSize: nonNegativeInteger,
-  sourceModifiedAt: integer,
+  createdAt: integer,
+  filePath: z.string(),
+}).strict();
+
+export const attachmentPastedTextRecordSchema = z.object({
+  path: id,
+  turnId: nullableId,
+  byteSize: nonNegativeInteger,
   createdAt: integer,
   filePath: z.string(),
 }).strict();
@@ -246,7 +252,8 @@ export type AgentRunRecord = z.infer<typeof agentRunRecordSchema>;
 export type AgentRunMessageRecord = z.infer<typeof agentRunMessageRecordSchema>;
 export type ToolExecutionRecord = z.infer<typeof toolExecutionRecordSchema>;
 export type BackgroundProcessRecord = z.infer<typeof backgroundProcessRecordSchema>;
-export type AttachmentRecord = z.infer<typeof attachmentRecordSchema>;
+export type AttachmentImageRecord = z.infer<typeof attachmentImageRecordSchema>;
+export type AttachmentPastedTextRecord = z.infer<typeof attachmentPastedTextRecordSchema>;
 export type SpeechOutputRecord = z.infer<typeof speechOutputRecordSchema>;
 export type SpeechSegmentRecord = z.infer<typeof speechSegmentRecordSchema>;
 export type UsageRecord = z.infer<typeof usageRecordSchema>;

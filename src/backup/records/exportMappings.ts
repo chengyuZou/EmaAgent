@@ -2,7 +2,8 @@
 import type {
   AgentRunMessageRow,
   AgentRunRow,
-  AttachmentRow,
+  AttachmentImageRow,
+  AttachmentPastedTextRow,
   BackgroundProcessRow,
   MessageRow,
   SessionBackupTaskRow,
@@ -16,7 +17,8 @@ import type {
 import type {
   AgentRunMessageRecord,
   AgentRunRecord,
-  AttachmentRecord,
+  AttachmentImageRecord,
+  AttachmentPastedTextRecord,
   BackgroundProcessRecord,
   MessageRecord,
   SessionRecord,
@@ -169,15 +171,25 @@ export const toBackgroundProcessRecord = (
   modelNotifiedAt: row.model_notified_at,
 });
 
-export const toAttachmentRecord = (row: AttachmentRow, filePath: string): AttachmentRecord => ({
-  id: row.id,
+export const toAttachmentImageRecord = (
+  row: AttachmentImageRow,
+  filePath: string,
+): AttachmentImageRecord => ({
+  path: row.path,
   turnId: row.turn_id,
-  sessionId: row.session_id,
-  kind: row.kind,
   name: row.name,
-  mime: row.mime,
   byteSize: row.byte_size,
-  sourceModifiedAt: row.source_modified_at,
+  createdAt: row.created_at,
+  filePath,
+});
+
+export const toAttachmentPastedTextRecord = (
+  row: AttachmentPastedTextRow,
+  filePath: string,
+): AttachmentPastedTextRecord => ({
+  path: row.path,
+  turnId: row.turn_id,
+  byteSize: row.byte_size,
   createdAt: row.created_at,
   filePath,
 });

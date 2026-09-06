@@ -304,22 +304,22 @@ export class SessionBackupRestorer {
     }
 
     const insertAttachmentImage = this.db.prepare(`
-      INSERT INTO attachment_images (path, session_id, name, byte_size, created_at)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO attachment_images (path, session_id, turn_id, name, byte_size, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
     `);
     for (const row of rows.attachmentImages) {
       insertAttachmentImage.run(
-        row.path, session.id, row.name, row.byte_size, row.created_at,
+        row.path, session.id, row.turn_id, row.name, row.byte_size, row.created_at,
       );
     }
 
     const insertAttachmentPastedText = this.db.prepare(`
-      INSERT INTO attachment_pasted_texts (path, session_id, byte_size, created_at)
-      VALUES (?, ?, ?, ?)
+      INSERT INTO attachment_pasted_texts (path, session_id, turn_id, byte_size, created_at)
+      VALUES (?, ?, ?, ?, ?)
     `);
     for (const row of rows.attachmentPastedTexts) {
       insertAttachmentPastedText.run(
-        row.path, session.id, row.byte_size, row.created_at,
+        row.path, session.id, row.turn_id, row.byte_size, row.created_at,
       );
     }
 

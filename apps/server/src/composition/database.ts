@@ -19,6 +19,7 @@ import type { UsageRecorder } from '@ema-agent/usage';
 import {
   dataDbPathFor,
   profileDbPath,
+  removeOrphanSessionDirectories,
   removeSessionDir,
   removeTurnFiles,
 } from '../platform/paths.js';
@@ -82,6 +83,11 @@ export function openDatabases(activeDataDir: string): DatabaseComposition {
     // Session 删除提交后清理库外文件（音频、附件、工具结果、scratchpad）。
     onSessionRemoved: sessionId => removeSessionDir(activeDataDir, sessionId),
   });
+  // 启动对账:清掉导入崩溃留下的"有目录无行"尸体目录。
+  const orphanDirs = removeOrphanSessionDirectories(activeDataDir, id => session.sessionExists(id));
+  if (orphanDirs > 0) {
+    console.warn(`[attachments] 清理 ${orphanDirs} 个无 Session 行的残留目录`);
+  }
   const activeSessions = new ActiveSessionRegistry();
   const turns = new TurnStore({
     db: dataDb,

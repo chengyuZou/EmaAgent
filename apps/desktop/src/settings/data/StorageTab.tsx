@@ -1,221 +1,193 @@
-// 存储位置设置主装配:左列存储位置与会话列表,右窗格总体统计或会话面板。
-// 子部件各自成文件,这里只取数与拼块。
+// 存储域主装配:L1 存储库卡 → L2 库内会话与统计 → L3 Session 原生消息流。
+// 删除走 DeleteDirDialog 双档;添加/迁移沿用既有对话框。
 import {
-  useState, useEffect, useRef,
+  useEffect, useRef, useState,
   type JSX,
 } from 'react';
 import {
-  Callout, Divider, IconButton, Input, ScrollArea, Skeleton,
+  Badge, Callout, IconButton, Skeleton, Spinner,
 } from '@ema-agent/ui';
-import { useStorageStore }  from '../../stores/storage.js';
-import { useSessionStore }  from '../../stores/session.js';
-import { sessionsApi }      from '../../api/sessions.js';
-import { showToast }        from '../../lib/toast.js';
-import { useMountedAnim } from './storageFormat.js';
+import { useStorageStore } from '../../stores/storage.js';
+import { sessionsApi } from '../../api/sessions.js';
+import { showToast } from '../../lib/toast.js';
 import { AddDirDialog, MigrateDialog } from './StorageDirDialogs.js';
-import { DataDirRow } from './DataDirRow.js';
-import { EmptyRight } from './StorageStatsPanel.js';
-import { SessionDashboard, SessionRow } from './SessionDashboard.js';
+import { DeleteDirDialog } from './DeleteDirDialog.js';
+import { DirDashboard } from './DirDashboard.js';
+import { SessionMessagesView } from './SessionMessagesView.js';
+import type { DataDirItem } from '../../api/workspaces.js';
+
+export type StorageView =
+  | { level: 'libraries' }
+  | { level: 'dir'; dirName: string }
+  | { level: 'session'; dirName: string; sessionId: string; sessionTitle: string };
 
 export function StorageTab(): JSX.Element {
-  const [search,      setSearch]      = useState('');
-  const [selectedId,  setSelectedId]  = useState<string | null>(null);
-  const [addOpen,     setAddOpen]     = useState(false);
+  const [view, setView] = useState<StorageView>({ level: 'libraries' });
+  const [addOpen, setAddOpen] = useState(false);
   const [migrateOpen, setMigrateOpen] = useState(false);
-  const [importing,   setImporting]   = useState(false);
-  const importRef = useRef<HTMLInputElement>(null);
-
-  const store  = useStorageStore();
-  const sessions = useSessionStore((s) => s.sessions);
-  const sessionsLoading = useSessionStore((s) => s.loading);
-
-  // Flatten all sessions (pinned + project groups + recent + archived)
-  const allSessions = [
-    ...sessions.pinned,
-    ...sessions.pinnedProjects.flatMap((g) => g.sessions),
-    ...sessions.projects.flatMap((g) => g.sessions),
-    ...sessions.recent,
-    ...sessions.archived,
-  ].filter((s, i, arr) => arr.findIndex((x) => x.id === s.id) === i);
-
-  const filtered = search.trim()
-    ? allSessions.filter((s) =>
-        (s.title || '未命名会话').toLowerCase().includes(search.trim().toLowerCase()),
-      )
-    : allSessions;
-
-  const selectedSession = selectedId
-    ? allSessions.find((s) => s.id === selectedId) ?? null
-    : null;
-
-  // Mounted state for right-pane panels (drives exit animations)
-  const showDetail = !!selectedSession;
-  const detailMounted = useMountedAnim(showDetail);
-  const emptyMounted  = useMountedAnim(!showDetail);
+  const [deleting, setDeleting] = useState<DataDirItem | null>(null);
+  const store = useStorageStore();
 
   useEffect(() => {
     void store.loadDirs();
-    void store.loadStats();
-    void useSessionStore.getState().loadSessions();
   }, []);
 
-  async function handleImport(file: File): Promise<void> {
-    setImporting(true);
+  // L1 卡片的统计:每个已注册库各拉一次(活动库与只读非活动库同通道)。
+  useEffect(() => {
+    for (const dir of store.dirs) void store.loadDirStats(dir.name);
+  }, [store.dirs.length]);
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      {view.level === 'libraries' && (
+        <LibrariesView
+          onOpen={dirName => setView({ level: 'dir', dirName })}
+          onAdd={() => setAddOpen(true)}
+          onMigrate={() => setMigrateOpen(true)}
+          onDelete={dir => setDeleting(dir)}
+        />
+      )}
+
+      {view.level === 'dir' && (
+        <DirDashboard
+          dirName={view.dirName}
+          onBack={() => setView({ level: 'libraries' })}
+          onOpenSession={(sessionId, sessionTitle) =>
+            setView({ level: 'session', dirName: view.dirName, sessionId, sessionTitle })}
+        />
+      )}
+
+      {view.level === 'session' && (
+        <SessionMessagesView
+          dirName={view.dirName}
+          sessionId={view.sessionId}
+          sessionTitle={view.sessionTitle}
+          onBack={() => setView({ level: 'dir', dirName: view.dirName })}
+        />
+      )}
+
+      <AddDirDialog open={addOpen} onOpenChange={setAddOpen} onAdded={() => void store.loadDirs()} />
+      <MigrateDialog open={migrateOpen} onOpenChange={setMigrateOpen} />
+      <DeleteDirDialog
+        dir={deleting}
+        open={deleting !== null}
+        onOpenChange={open => { if (!open) setDeleting(null); }}
+      />
+    </div>
+  );
+}
+
+// ── L1:存储库大卡 ────────────────────────────────────────────────────────────
+
+function LibrariesView({
+  onOpen, onAdd, onMigrate, onDelete,
+}: {
+  onOpen(dirName: string): void;
+  onAdd(): void;
+  onMigrate(): void;
+  onDelete(dir: DataDirItem): void;
+}): JSX.Element {
+  const store = useStorageStore();
+  const [activating, setActivating] = useState<string | null>(null);
+
+  async function handleActivate(name: string): Promise<void> {
+    setActivating(name);
     try {
-      const result = await sessionsApi.importSession(file);
-      await useSessionStore.getState().loadSessions();
-      if (result.warnings.length > 0) {
-        const preview = result.warnings.slice(0, 2).join(';');
-        showToast(
-          `会话已导入,但有 ${result.warnings.length} 项内容缺失: ${preview}${result.warnings.length > 2 ? ' 等' : ''}`,
-          { variant: 'warning' },
-        );
-      } else {
-        showToast('会话导入成功', { variant: 'success' });
-      }
+      const restart = await store.activateDir(name);
+      if (restart) showToast('已切换,请重启应用生效', { variant: 'success' });
     } catch (err) {
-      showToast(err instanceof Error ? `导入失败：${err.message}` : '导入失败', { variant: 'danger' });
+      showToast(err instanceof Error ? err.message : '切换失败', { variant: 'danger' });
     } finally {
-      setImporting(false);
+      setActivating(null);
     }
   }
 
+  if (store.dirsLoading && store.dirs.length === 0) {
+    return <div className="flex h-48 items-center justify-center"><Spinner size="md" /></div>;
+  }
+  if (store.dirsError) {
+    return <Callout variant="danger" className="m-6">{store.dirsError}</Callout>;
+  }
+
   return (
-    <div className="flex h-full">
-
-      {/* ── Left column ─────────────────────────────────────────── */}
-      <div className="flex flex-col w-64 flex-none border-r border-[var(--ema-border)]">
-
-        {/* DataDir section */}
-        <div className="flex-none px-3 pt-4 pb-2">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-[var(--ema-text-tertiary)]">
-              存储位置
-            </span>
-            <IconButton
-              icon="i-solar:add-circle-bold-duotone"
-              label="添加存储位置"
-              size="sm"
-              onClick={() => setAddOpen(true)}
-            />
-          </div>
-
-          {store.dirsLoading && store.dirs.length === 0 && (
-            <div className="ema-slide-down flex flex-col gap-1.5">
-              {[0, 1].map((i) => (
-                <Skeleton key={i} className="h-20 rounded-xl" />
-              ))}
+    <div className="flex-1 overflow-y-auto p-6">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        {store.dirs.map((dir, i) => {
+          const isActive = dir.name === store.activeName;
+          const stats = store.statsByDir.get(dir.name);
+          return (
+            <div
+              key={dir.name}
+              className="ema-stagger-in group relative flex flex-col gap-2 rounded-2xl border border-[var(--ema-border)]
+                bg-[var(--ema-surface-2)] p-5 cursor-pointer transition-all duration-[var(--ema-duration-base)]
+                hover:bg-[var(--ema-surface-3)] hover:border-[var(--ema-border-strong)] hover:-translate-y-0.5 hover:shadow-[var(--ema-shadow-soft)]"
+              style={{ '--stagger-i': i } as React.CSSProperties}
+              onClick={() => onOpen(dir.name)}
+            >
+              <div className="flex items-center gap-2 pr-8">
+                <span className="i-solar:database-bold-duotone text-lg text-[var(--ema-primary)]" aria-hidden />
+                <span className="text-base font-semibold text-[var(--ema-text-primary)] truncate">{dir.name}</span>
+                {isActive && <Badge variant="primary">活动</Badge>}
+              </div>
+              <p className="text-xs text-[var(--ema-text-tertiary)] font-mono truncate">{dir.path}</p>
+              <div className="flex items-center gap-4 mt-1 text-sm text-[var(--ema-text-secondary)]">
+                {stats ? (
+                  <>
+                    <span>{stats.sessionCount} 会话</span>
+                    <span>{stats.messageCount} 消息</span>
+                    <span>{stats.attachmentCount} 附件</span>
+                  </>
+                ) : (
+                  <Skeleton className="h-4 w-32" />
+                )}
+              </div>
+              <div className="flex items-center gap-2 mt-2" onClick={e => e.stopPropagation()}>
+                {!isActive && (
+                  <button
+                    className="text-xs px-2.5 py-1 rounded-lg border border-[var(--ema-border)]
+                      text-[var(--ema-text-secondary)] hover:text-[var(--ema-text-primary)]
+                      hover:border-[var(--ema-primary)] transition-colors"
+                    disabled={activating === dir.name}
+                    onClick={() => void handleActivate(dir.name)}
+                  >
+                    {activating === dir.name ? '切换中…' : '设为活动'}
+                  </button>
+                )}
+                {isActive && (
+                  <button
+                    className="text-xs px-2.5 py-1 rounded-lg border border-[var(--ema-border)]
+                      text-[var(--ema-text-secondary)] hover:text-[var(--ema-text-primary)]
+                      hover:border-[var(--ema-border-strong)] transition-colors"
+                    onClick={onMigrate}
+                  >
+                    迁移
+                  </button>
+                )}
+              </div>
+              <div className="absolute top-3 right-3" onClick={e => e.stopPropagation()}>
+                <IconButton
+                  icon="i-solar:trash-bin-trash-bold-duotone"
+                  label={`删除存储库 ${dir.name}`}
+                  size="sm"
+                  onClick={() => onDelete(dir)}
+                />
+              </div>
             </div>
-          )}
+          );
+        })}
 
-          {store.dirsError && (
-            <Callout variant="danger" className="ema-slide-down text-xs">
-              {store.dirsError}
-            </Callout>
-          )}
-
-          <div className="flex flex-col gap-1.5">
-            {store.dirs.map((dir, i) => (
-              <DataDirRow
-                key={dir.name}
-                dir={dir}
-                index={i}
-                isActive={dir.name === store.activeName}
-                onMigrateOpen={() => setMigrateOpen(true)}
-              />
-            ))}
-          </div>
-        </div>
-
-        <Divider className="mx-3" />
-
-        {/* Session list section */}
-        <div className="flex items-center justify-between px-3 py-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-[var(--ema-text-tertiary)]">
-            历史会话
-          </span>
-          <>
-            <IconButton
-              icon="i-solar:upload-minimalistic-bold-duotone"
-              label="导入会话"
-              size="sm"
-              loading={importing}
-              onClick={() => importRef.current?.click()}
-            />
-            <input
-              ref={importRef}
-              type="file"
-              accept=".zip"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void handleImport(f);
-                e.target.value = '';
-              }}
-            />
-          </>
-        </div>
-
-        <div className="px-3 pb-2">
-          <Input
-            inputSize="sm"
-            placeholder="搜索会话..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full"
-          />
-        </div>
-
-        <ScrollArea className="flex-1 px-2 pb-2">
-          {sessionsLoading && allSessions.length === 0 && (
-            <div className="ema-slide-down flex flex-col gap-1 p-1">
-              {[0, 1, 2, 3].map((i) => (
-                <Skeleton key={i} className="h-12 rounded-xl" />
-              ))}
-            </div>
-          )}
-          {!sessionsLoading && filtered.length === 0 && (
-            <p className="ema-fade-in text-xs text-[var(--ema-text-tertiary)] text-center py-6">
-              {search ? '没有匹配的会话' : '暂无会话'}
-            </p>
-          )}
-          <div className="flex flex-col gap-2">
-            {filtered.map((s, i) => (
-              <SessionRow
-                key={s.id}
-                session={s}
-                selected={s.id === selectedId}
-                index={i}
-                onClick={() => setSelectedId((prev) => (prev === s.id ? null : s.id))}
-              />
-            ))}
-          </div>
-        </ScrollArea>
+        <button
+          className="ema-stagger-in flex flex-col items-center justify-center gap-2 rounded-2xl
+            border border-dashed border-[var(--ema-border-strong)] p-5 min-h-32
+            text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)]
+            hover:border-[var(--ema-primary)] transition-colors"
+          style={{ '--stagger-i': store.dirs.length } as React.CSSProperties}
+          onClick={onAdd}
+        >
+          <span className="i-solar:add-circle-bold-duotone text-2xl" aria-hidden />
+          <span className="text-sm">添加存储位置</span>
+        </button>
       </div>
-
-      {/* ── Right pane ──────────────────────────────────────────── */}
-      <div className="relative flex-1 min-w-0 overflow-hidden">
-
-        {emptyMounted && (
-          <div className={`absolute inset-0 ${showDetail ? 'ema-fade-out pointer-events-none' : 'ema-slide-in-right'}`}>
-            <EmptyRight stats={store.stats} statsLoading={store.statsLoading} />
-          </div>
-        )}
-
-        {detailMounted && selectedSession && (
-          <div className={`absolute inset-0 ${showDetail ? 'ema-panel-in' : 'ema-fade-out pointer-events-none'}`}>
-            <SessionDashboard key={selectedSession.id} session={selectedSession} />
-          </div>
-        )}
-      </div>
-
-      {/* ── Dialogs ─────────────────────────────────────────────── */}
-      <AddDirDialog
-        open={addOpen}
-        onOpenChange={setAddOpen}
-        onAdded={() => void store.loadStats()}
-      />
-      <MigrateDialog open={migrateOpen} onOpenChange={setMigrateOpen} />
     </div>
   );
 }

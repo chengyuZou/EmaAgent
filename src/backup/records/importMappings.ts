@@ -2,7 +2,8 @@
 import type {
   AgentRunMessageRow,
   AgentRunRow,
-  AttachmentRow,
+  AttachmentImageRow,
+  AttachmentPastedTextRow,
   BackgroundProcessRow,
   MessageRow,
   SessionBackupRestoreRows,
@@ -17,7 +18,8 @@ import type {
 import type {
   AgentRunMessageRecord,
   AgentRunRecord,
-  AttachmentRecord,
+  AttachmentImageRecord,
+  AttachmentPastedTextRecord,
   BackgroundProcessRecord,
   MessageRecord,
   SessionRecord,
@@ -203,21 +205,28 @@ export function restoreBackgroundProcessRecord(
   };
 }
 
-export const restoreAttachmentRecord = (
-  record: AttachmentRecord,
-  filePath: string,
-): AttachmentRow => ({
-  id: record.id,
+export const restoreAttachmentImageRecord = (
+  record: AttachmentImageRecord,
+  newPath: string,
+  sessionId: string,
+): AttachmentImageRow => ({
+  path: newPath,
+  session_id: sessionId,
   turn_id: record.turnId,
-  session_id: record.sessionId,
-  kind: record.kind,
   name: record.name,
-  mime: record.mime,
-  source_path: filePath,
   byte_size: record.byteSize,
-  source_modified_at: record.sourceModifiedAt,
-  image_path: record.kind === 'image' ? filePath : null,
-  image_byte_size: record.kind === 'image' ? record.byteSize : null,
+  created_at: record.createdAt,
+});
+
+export const restoreAttachmentPastedTextRecord = (
+  record: AttachmentPastedTextRecord,
+  newPath: string,
+  sessionId: string,
+): AttachmentPastedTextRow => ({
+  path: newPath,
+  session_id: sessionId,
+  turn_id: record.turnId,
+  byte_size: record.byteSize,
   created_at: record.createdAt,
 });
 

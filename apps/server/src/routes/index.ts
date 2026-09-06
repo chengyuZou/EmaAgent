@@ -241,6 +241,8 @@ export const createRoutes = (composition: Composition, secret: string) => {
     .route('/api/workspaces', dataDirsRoute({
       activeDataDir: database.activeDataDir,
       dataDb: database.dataDb,
+      activeSessions: database.activeSessions,
+      closeDatabases: () => database.close(),
     }))
     .route('/api/workspaces', filesRoute())
 

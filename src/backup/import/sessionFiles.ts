@@ -3,7 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { SessionImportError } from '../errors.js';
 import type {
-  AttachmentRecord,
+  AttachmentImageRecord,
+  AttachmentPastedTextRecord,
   BackgroundProcessRecord,
   SpeechOutputRecord,
   SpeechSegmentRecord,
@@ -11,6 +12,7 @@ import type {
 import type { ExtractedSessionArchive } from './archive.js';
 
 export interface RestoredSessionFiles {
+  /** 旧绝对路径 → 新受管路径;消息块内路径重写的事实源。 */
   readonly attachments: ReadonlyMap<string, string>;
   readonly speechOutputs: ReadonlyMap<string, string>;
   readonly speechSegments: ReadonlyMap<string, string>;
@@ -23,7 +25,8 @@ export function publishSessionFiles(
   activeDataDir: string,
   sessionId: string,
   archive: ExtractedSessionArchive,
-  attachments: readonly AttachmentRecord[],
+  attachmentImages: readonly AttachmentImageRecord[],
+  attachmentPastedTexts: readonly AttachmentPastedTextRecord[],
   speechOutputs: readonly SpeechOutputRecord[],
   speechSegments: readonly SpeechSegmentRecord[],
   backgroundProcesses: readonly BackgroundProcessRecord[],
@@ -37,19 +40,30 @@ export function publishSessionFiles(
   fs.mkdirSync(sessionsRoot, { recursive: true });
   const temporaryRoot = fs.mkdtempSync(path.join(sessionsRoot, '.session-import-'));
   const attachmentPaths = new Map<string, string>();
+  const publishAttachment = (
+    record: AttachmentImageRecord | AttachmentPastedTextRecord,
+    subdir: 'images' | 'pasted',
+  ): void => {
+    const source = archive.get(record.filePath);
+    if (!source) return;
+    // 落盘文件名沿用 uuid 原名(全局唯一);跨机器时只有数据根前缀变化。
+    const destination = path.join(temporaryRoot, 'attachments', subdir, path.basename(record.path));
+    copy(source.filePath, destination, record.byteSize);
+    attachmentPaths.set(record.path, toFinal(finalRoot, temporaryRoot, destination));
+  };
   const speechOutputPaths = new Map<string, string>();
   const speechSegmentPaths = new Map<string, string>();
   const backgroundDirectories = new Map<string, string>();
   let published = false;
 
   try {
-    for (const record of attachments) {
+    for (const record of attachmentImages) {
       throwIfCancelled(signal);
-      const source = archive.get(record.filePath);
-      if (!source) continue;
-      const destination = path.join(temporaryRoot, 'attachments', fileName(record.id, record.filePath));
-      copy(source.filePath, destination, record.byteSize);
-      attachmentPaths.set(record.id, toFinal(finalRoot, temporaryRoot, destination));
+      publishAttachment(record, 'images');
+    }
+    for (const record of attachmentPastedTexts) {
+      throwIfCancelled(signal);
+      publishAttachment(record, 'pasted');
     }
     for (const record of speechOutputs) {
       throwIfCancelled(signal);
