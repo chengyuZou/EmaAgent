@@ -21,12 +21,11 @@ interface TurnEventEntry {
 
 export type TurnEventPushResult =
   | { status: 'stored'; published: PublishedTurnEvent }
-  | { status: 'overflow' }
+  | { status: 'live_only'; published: PublishedTurnEvent }
   | { status: 'closed' };
 
 /**
- * 活跃 Turn 超过内存预算时拒绝继续写入（调用方负责终止该 Turn）；终态事件仍保留，
- * 让已经收到前缀的客户端可以明确结束，而不是永久等待。
+ * 超过重放预算后停止缓存后续非终态事件，但在线流继续，Turn 生命周期不归缓存所有。
  */
 export class TurnEventStore {
   private readonly store = new Map<string, TurnEventEntry>();
@@ -56,21 +55,18 @@ export class TurnEventStore {
     if (entry.done) return { status: 'closed' };
 
     const terminal = isTerminalSseEvent(event);
-    if (entry.overflowed && !terminal) return { status: 'overflow' };
+    const published: PublishedTurnEvent = { cursor: entry.nextCursor++, event };
+    if (entry.overflowed && !terminal) return { status: 'live_only', published };
 
-    // 在线订阅者收到原始音频；重放日志从一开始就去掉 base64，避免一句 TTS
-    // 同时占据归档缓冲、SSE 重放和浏览器三份内存。
-    const replayEvent = eventForReplay(event);
-    const bytes = Buffer.byteLength(JSON.stringify(replayEvent), 'utf8');
+    const bytes = Buffer.byteLength(JSON.stringify(event), 'utf8');
     if (!terminal && (
       entry.bytes + bytes > this.maxBytesPerTurn ||
       this.totalBytes + bytes > this.maxBytesTotal
     )) {
       entry.overflowed = true;
-      return { status: 'overflow' };
+      return { status: 'live_only', published };
     }
 
-    const published: PublishedTurnEvent = { cursor: entry.nextCursor++, event: replayEvent };
     entry.events.push({ ...published, bytes });
     entry.bytes += bytes;
     this.totalBytes += bytes;
@@ -136,9 +132,4 @@ function isTerminalSseEvent(event: TurnSseEvent): boolean {
   return event.type === 'turn_completed'
     || event.type === 'turn_failed'
     || event.type === 'turn_aborted';
-}
-
-function eventForReplay(event: TurnSseEvent): TurnSseEvent {
-  if (event.type !== 'tts_chunk') return event;
-  return { ...event, audio: '' };
 }

@@ -1,4 +1,6 @@
-// Characters API：/api/characters——角色 CRUD/激活、Live2D/立绘/参考音频资源管理与舞台呈现。
+// Characters API：/api/characters——角色 CRUD/激活、Live2D/插图/参考音频资源管理与舞台呈现。
+// 全部身份为稳定 name:characterName 是角色身份,live2dName/illustrationName/voiceName
+// 只是路径段名,资源对象的稳定字段统一叫 name。不存在 id/resourceId/enabled/Duplicate。
 import type { InferRequestType } from 'hono/client';
 import {
   rpcClient,
@@ -13,18 +15,16 @@ import {
 export type CharacterList = RpcJson<RpcClient['api']['characters']['$get']>;
 export type Character = CharacterList['items'][number];
 export type CharacterCreateInput = InferRequestType<RpcClient['api']['characters']['$post']>['json'];
-export type CharacterPatchInput = InferRequestType<RpcClient['api']['characters'][':id']['$patch']>['json'];
-export type CharacterPresentation = RpcJson<RpcClient['api']['characters'][':id']['presentation']['$get']>;
-export type Live2dImportInput = InferRequestType<RpcClient['api']['characters'][':id']['live2d']['import']['$post']>['json'];
-export type Live2dImportResult = RpcJson<RpcClient['api']['characters'][':id']['live2d']['import']['$post']>;
-export type IllustrationImportInput = InferRequestType<RpcClient['api']['characters'][':id']['illustrations']['import']['$post']>['json'];
-export type IllustrationImportResult = RpcJson<RpcClient['api']['characters'][':id']['illustrations']['import']['$post']>;
-export type VoiceImportInput = InferRequestType<RpcClient['api']['characters'][':id']['voice']['import']['$post']>['json'];
-export type VoiceImportResult = RpcJson<RpcClient['api']['characters'][':id']['voice']['import']['$post']>;
-export type ResourcePatchInput = InferRequestType<RpcClient['api']['characters'][':id']['live2d'][':resourceId']['$patch']>['json'];
-export type Live2dExportResult = RpcJson<RpcClient['api']['characters'][':id']['live2d'][':resourceId']['export']['$post']>;
-export type IllustrationExportResult = RpcJson<RpcClient['api']['characters'][':id']['illustrations'][':resourceId']['export']['$post']>;
-export type VoiceExportResult = RpcJson<RpcClient['api']['characters'][':id']['voice'][':resourceId']['export']['$post']>;
+export type CharacterPatchInput = InferRequestType<RpcClient['api']['characters'][':characterName']['$patch']>['json'];
+export type CharacterPresentation = RpcJson<RpcClient['api']['characters'][':characterName']['presentation']['$get']>;
+export type Live2dConfiguration = RpcJson<RpcClient['api']['characters'][':characterName']['live2d'][':live2dName']['configuration']['$get']>;
+export type Live2dMappingsInput = InferRequestType<RpcClient['api']['characters'][':characterName']['live2d'][':live2dName']['configuration']['$put']>['json'];
+export type Live2dImportInput = InferRequestType<RpcClient['api']['characters'][':characterName']['live2d']['import']['$post']>['json'];
+export type IllustrationImportInput = InferRequestType<RpcClient['api']['characters'][':characterName']['illustrations']['import']['$post']>['json'];
+export type VoiceImportInput = InferRequestType<RpcClient['api']['characters'][':characterName']['voice']['import']['$post']>['json'];
+export type ResourcePatchInput = InferRequestType<RpcClient['api']['characters'][':characterName']['live2d'][':live2dName']['$patch']>['json'];
+export type IllustrationPatchInput = InferRequestType<RpcClient['api']['characters'][':characterName']['illustrations'][':illustrationName']['$patch']>['json'];
+export type VoicePatchInput = InferRequestType<RpcClient['api']['characters'][':characterName']['voice'][':voiceName']['$patch']>['json'];
 
 // ── API ──────────────────────────────────────────────────────────────────────
 
@@ -33,182 +33,240 @@ export const charactersApi = {
     return readRpcJson(rpcClient.api.characters.$get());
   },
 
-  /** 当前激活角色。 */
   current(): Promise<Character> {
     return readRpcJson(rpcClient.api.characters.current.$get());
   },
 
-  get(id: string): Promise<Character> {
-    return readRpcJson(rpcClient.api.characters[':id'].$get({ param: { id } }));
+  get(name: string): Promise<Character> {
+    return readRpcJson(rpcClient.api.characters[':characterName'].$get({
+      param: { characterName: name },
+    }));
   },
 
-  create(body: CharacterCreateInput) {
-    return readRpcJson(rpcClient.api.characters.$post({ json: body }));
+  create(input: CharacterCreateInput): Promise<Character> {
+    return readRpcJson(rpcClient.api.characters.$post({ json: input }));
   },
 
-  patch(id: string, patch: CharacterPatchInput): Promise<Character> {
-    return readRpcJson(rpcClient.api.characters[':id'].$patch({ json: patch, param: { id } }));
+  patch(name: string, input: CharacterPatchInput): Promise<Character> {
+    return readRpcJson(rpcClient.api.characters[':characterName'].$patch({
+      param: { characterName: name },
+      json: input,
+    }));
   },
 
-  activate(id: string) {
-    return readRpcJson(rpcClient.api.characters[':id'].activate.$post({ param: { id } }));
+  /** 切换当前角色;存在运行中工作返回 409 character_work_running,确认后带 terminateRunningWork 重试。 */
+  async activate(name: string, terminateRunningWork = false): Promise<void> {
+    await readRpcJson(rpcClient.api.characters[':characterName'].activate.$post({
+      param: { characterName: name },
+      json: { terminateRunningWork },
+    }));
   },
 
-  duplicate(id: string) {
-    return readRpcJson(rpcClient.api.characters[':id'].duplicate.$post({ param: { id } }));
+  /** 永久删除角色;与 activate 同一确认语义。删除当前角色后自动激活最近使用的其他角色。 */
+  async remove(name: string, terminateRunningWork = false): Promise<void> {
+    await readRpcJson(rpcClient.api.characters[':characterName'].$delete({
+      param: { characterName: name },
+      json: { terminateRunningWork },
+    }));
   },
 
-  /** 删除非活动角色（连同资源目录走 .trash）；活动角色服务端拒绝。 */
-  remove(id: string) {
-    return readRpcJson(rpcClient.api.characters[':id'].$delete({ param: { id } }));
+  presentation(name: string): Promise<CharacterPresentation> {
+    return readRpcJson(rpcClient.api.characters[':characterName'].presentation.$get({
+      param: { characterName: name },
+    }));
   },
 
-  /** 舞台呈现结果（展示候选顺序由后端决定，前端不自行扫描）。 */
-  getPresentation(id: string): Promise<CharacterPresentation> {
-    return readRpcJson(rpcClient.api.characters[':id'].presentation.$get({ param: { id } }));
+  location(name: string): Promise<{ path: string }> {
+    return readRpcJson(rpcClient.api.characters[':characterName'].location.$get({
+      param: { characterName: name },
+    }));
   },
 
   // ── Live2D ─────────────────────────────────────────────────────────────────
 
-  setLive2dPrimary(id: string, resourceId: string) {
+  importLive2d(characterName: string, input: Live2dImportInput) {
+    return readRpcJson(rpcClient.api.characters[':characterName'].live2d.import.$post({
+      param: { characterName },
+      json: input,
+    }));
+  },
+
+  patchLive2d(characterName: string, live2dName: string, input: ResourcePatchInput) {
+    return readRpcJson(rpcClient.api.characters[':characterName'].live2d[':live2dName'].$patch({
+      param: { characterName, live2dName },
+      json: input,
+    }));
+  },
+
+  setPrimaryLive2d(characterName: string, live2dName: string) {
     return readRpcJson(
-      rpcClient.api.characters[':id'].live2d[':resourceId'].primary.$post({
-        param: { id, resourceId },
+      rpcClient.api.characters[':characterName'].live2d[':live2dName'].primary.$post({
+        param: { characterName, live2dName },
       }),
     );
   },
 
-  importLive2d(id: string, body: Live2dImportInput): Promise<Live2dImportResult> {
-    return readRpcJson(rpcClient.api.characters[':id'].live2d.import.$post({
-      json: body,
-      param: { id },
-    }));
-  },
-
-  /** 编辑 Live2D 资源行（名称/舞台几何/启停）。 */
-  patchLive2d(id: string, resourceId: string, patch: ResourcePatchInput) {
-    return readRpcJson(rpcClient.api.characters[':id'].live2d[':resourceId'].$patch({
-      json: patch,
-      param: { id, resourceId },
-    }));
-  },
-
-  /** 用户手改 runtime-config.json 后显式校验并刷新舞台。 */
-  reloadLive2dConfig(id: string, resourceId: string) {
-    return readRpcJson(
-      rpcClient.api.characters[':id'].live2d[':resourceId']['reload-config'].$post({
-        param: { id, resourceId },
-      }),
-    );
-  },
-
-  /** 导出 Live2D 模型目录 zip 到目标目录。 */
-  exportLive2d(id: string, resourceId: string, destinationDirectory: string): Promise<Live2dExportResult> {
-    return readRpcJson(rpcClient.api.characters[':id'].live2d[':resourceId'].export.$post({
+  exportLive2d(characterName: string, live2dName: string, destinationDirectory: string) {
+    return readRpcJson(rpcClient.api.characters[':characterName'].live2d[':live2dName'].export.$post({
+      param: { characterName, live2dName },
       json: { destinationDirectory },
-      param: { id, resourceId },
     }));
   },
 
-  deleteLive2d(id: string, resourceId: string) {
-    return readRpcJson(rpcClient.api.characters[':id'].live2d[':resourceId'].$delete({
-      param: { id, resourceId },
+  deleteLive2d(characterName: string, live2dName: string) {
+    return readRpcJson(rpcClient.api.characters[':characterName'].live2d[':live2dName'].$delete({
+      param: { characterName, live2dName },
     }));
   },
 
-  /** Live2D 模型目录内文件的 URL 构造器：仅用于认证 fetch（取 blob/JSON），
-      禁止直接塞进 <img>/<audio> 的 src（会 401）。 */
-  getLive2dFileUrl(id: string, resourceId: string, subPath: string): Promise<string> {
-    return serverClient.streamUrl(
-      `/api/characters/${id}/live2d/${resourceId}/files/${encodeURIComponent(subPath)}`,
-    );
-  },
-
-  // ── 立绘 ───────────────────────────────────────────────────────────────────
-
-  setIllustrationPrimary(id: string, resourceId: string) {
+  live2dConfiguration(characterName: string, live2dName: string): Promise<Live2dConfiguration> {
     return readRpcJson(
-      rpcClient.api.characters[':id'].illustrations[':resourceId'].primary.$post({
-        param: { id, resourceId },
+      rpcClient.api.characters[':characterName'].live2d[':live2dName'].configuration.$get({
+        param: { characterName, live2dName },
       }),
     );
   },
 
-  importIllustration(id: string, body: IllustrationImportInput): Promise<IllustrationImportResult> {
-    return readRpcJson(rpcClient.api.characters[':id'].illustrations.import.$post({
-      json: body,
-      param: { id },
-    }));
-  },
-
-  /** 编辑立绘资源行（名称/舞台几何/启停）。 */
-  patchIllustration(id: string, resourceId: string, patch: ResourcePatchInput) {
-    return readRpcJson(rpcClient.api.characters[':id'].illustrations[':resourceId'].$patch({
-      json: patch,
-      param: { id, resourceId },
-    }));
-  },
-
-  exportIllustration(id: string, resourceId: string, destinationDirectory: string): Promise<IllustrationExportResult> {
-    return readRpcJson(rpcClient.api.characters[':id'].illustrations[':resourceId'].export.$post({
-      json: { destinationDirectory },
-      param: { id, resourceId },
-    }));
-  },
-
-  deleteIllustration(id: string, resourceId: string) {
-    return readRpcJson(rpcClient.api.characters[':id'].illustrations[':resourceId'].$delete({
-      param: { id, resourceId },
-    }));
-  },
-
-  /** 立绘图片文件的 URL 构造器：/api 路由要共享密钥头，只能用于认证 fetch（取 blob 转 objectURL），
-      禁止直接塞进 <img>/<audio> 的 src（会 401）。 */
-  getIllustrationFileUrl(id: string, resourceId: string): Promise<string> {
-    return serverClient.streamUrl(`/api/characters/${id}/illustrations/${resourceId}/file`);
-  },
-
-  // ── 参考音频 ────────────────────────────────────────────────────────────────
-
-  importVoice(id: string, body: VoiceImportInput): Promise<VoiceImportResult> {
-    return readRpcJson(rpcClient.api.characters[':id'].voice.import.$post({
-      json: body,
-      param: { id },
-    }));
-  },
-
-  setVoicePrimary(id: string, resourceId: string) {
+  saveLive2dMappings(characterName: string, live2dName: string, input: Live2dMappingsInput) {
     return readRpcJson(
-      rpcClient.api.characters[':id'].voice[':resourceId'].primary.$post({
-        param: { id, resourceId },
+      rpcClient.api.characters[':characterName'].live2d[':live2dName'].configuration.$put({
+        param: { characterName, live2dName },
+        json: input,
       }),
     );
   },
 
-  /** 编辑参考音频资源行（名称/启停；prompt 文本与语种不可改——重录代替修改）。 */
-  patchVoice(id: string, resourceId: string, patch: ResourcePatchInput) {
-    return readRpcJson(rpcClient.api.characters[':id'].voice[':resourceId'].$patch({
-      json: patch,
-      param: { id, resourceId },
+  reloadLive2dConfig(characterName: string, live2dName: string) {
+    return readRpcJson(
+      rpcClient.api.characters[':characterName'].live2d[':live2dName']['reload-config'].$post({
+        param: { characterName, live2dName },
+      }),
+    );
+  },
+
+  live2dLocation(characterName: string, live2dName: string): Promise<{ path: string }> {
+    return readRpcJson(
+      rpcClient.api.characters[':characterName'].live2d[':live2dName'].location.$get({
+        param: { characterName, live2dName },
+      }),
+    );
+  },
+
+  /** 模型目录内文件是原始字节流,不进入 JSON RPC;供舞台/预览按相对路径取。 */
+  live2dFileUrl(characterName: string, live2dName: string, relativePath: string): string {
+    return `/api/characters/${encodeURIComponent(characterName)}/live2d/${encodeURIComponent(live2dName)}/files/${relativePath.split('/').map(encodeURIComponent).join('/')}`;
+  },
+
+  // ── 插图 ───────────────────────────────────────────────────────────────────
+
+  importIllustration(characterName: string, input: IllustrationImportInput) {
+    return readRpcJson(rpcClient.api.characters[':characterName'].illustrations.import.$post({
+      param: { characterName },
+      json: input,
     }));
   },
 
-  exportVoice(id: string, resourceId: string, destinationDirectory: string): Promise<VoiceExportResult> {
-    return readRpcJson(rpcClient.api.characters[':id'].voice[':resourceId'].export.$post({
+  patchIllustration(characterName: string, illustrationName: string, input: IllustrationPatchInput) {
+    return readRpcJson(
+      rpcClient.api.characters[':characterName'].illustrations[':illustrationName'].$patch({
+        param: { characterName, illustrationName },
+        json: input,
+      }),
+    );
+  },
+
+  setPrimaryIllustration(characterName: string, illustrationName: string) {
+    return readRpcJson(
+      rpcClient.api.characters[':characterName'].illustrations[':illustrationName'].primary.$post({
+        param: { characterName, illustrationName },
+      }),
+    );
+  },
+
+  exportIllustration(characterName: string, illustrationName: string, destinationDirectory: string) {
+    return readRpcJson(
+      rpcClient.api.characters[':characterName'].illustrations[':illustrationName'].export.$post({
+        param: { characterName, illustrationName },
+        json: { destinationDirectory },
+      }),
+    );
+  },
+
+  deleteIllustration(characterName: string, illustrationName: string) {
+    return readRpcJson(rpcClient.api.characters[':characterName'].illustrations[':illustrationName'].$delete({
+      param: { characterName, illustrationName },
+    }));
+  },
+
+  /** 单张插图原始文件是字节流,不进入 JSON RPC;设置页预览原图直接用它。 */
+  illustrationFileUrl(characterName: string, illustrationName: string): string {
+    return `/api/characters/${encodeURIComponent(characterName)}/illustrations/${encodeURIComponent(illustrationName)}/file`;
+  },
+
+  illustrationLocation(characterName: string, illustrationName: string): Promise<{ path: string }> {
+    return readRpcJson(
+      rpcClient.api.characters[':characterName'].illustrations[':illustrationName'].location.$get({
+        param: { characterName, illustrationName },
+      }),
+    );
+  },
+
+  // ── 参考音频 ───────────────────────────────────────────────────────────────
+
+  importVoice(characterName: string, input: VoiceImportInput) {
+    return readRpcJson(rpcClient.api.characters[':characterName'].voice.import.$post({
+      param: { characterName },
+      json: input,
+    }));
+  },
+
+  patchVoice(characterName: string, voiceName: string, input: VoicePatchInput) {
+    return readRpcJson(rpcClient.api.characters[':characterName'].voice[':voiceName'].$patch({
+      param: { characterName, voiceName },
+      json: input,
+    }));
+  },
+
+  setPrimaryVoice(characterName: string, voiceName: string) {
+    return readRpcJson(
+      rpcClient.api.characters[':characterName'].voice[':voiceName'].primary.$post({
+        param: { characterName, voiceName },
+      }),
+    );
+  },
+
+  exportVoice(characterName: string, voiceName: string, destinationDirectory: string) {
+    return readRpcJson(rpcClient.api.characters[':characterName'].voice[':voiceName'].export.$post({
+      param: { characterName, voiceName },
       json: { destinationDirectory },
-      param: { id, resourceId },
     }));
   },
 
-  deleteVoice(id: string, resourceId: string) {
-    return readRpcJson(rpcClient.api.characters[':id'].voice[':resourceId'].$delete({
-      param: { id, resourceId },
+  deleteVoice(characterName: string, voiceName: string) {
+    return readRpcJson(rpcClient.api.characters[':characterName'].voice[':voiceName'].$delete({
+      param: { characterName, voiceName },
     }));
   },
 
-  /** 参考音频文件的 URL 构造器：仅用于认证 fetch（取 blob 转 objectURL 播放），
-      禁止直接塞进 <audio> 的 src（会 401）。 */
-  getVoiceFileUrl(id: string, resourceId: string): Promise<string> {
-    return serverClient.streamUrl(`/api/characters/${id}/voice/${resourceId}/file`);
+  /** 参考音频文件是字节流,不进入 JSON RPC;设置页播放直接用它。 */
+  voiceFileUrl(characterName: string, voiceName: string): string {
+    return `/api/characters/${encodeURIComponent(characterName)}/voice/${encodeURIComponent(voiceName)}/file`;
   },
+
+  voiceLocation(characterName: string, voiceName: string): Promise<{ path: string }> {
+    return readRpcJson(
+      rpcClient.api.characters[':characterName'].voice[':voiceName'].location.$get({
+        param: { characterName, voiceName },
+      }),
+    );
+  },
+
+  /** 打开角色或资源所在文件夹(Tauri 具名命令,不走 HTTP)。 */
+  async openInFolder(absolutePath: string): Promise<void> {
+    const { tauriBridge } = await import('../lib/tauri-bridge.js');
+    await tauriBridge.openPath(absolutePath);
+  },
+
+  /** 供调用方拿到 server 原始响应的逃生口(暂时只服务非 JSON 文件下载)。 */
+  requestRaw: serverClient.requestRaw.bind(serverClient),
 };

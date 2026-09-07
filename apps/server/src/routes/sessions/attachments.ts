@@ -36,8 +36,9 @@ export const sessionAttachmentsRoute = (deps: SessionAttachmentsRouteDeps) =>
   new Hono()
     .get('/:sessionId/attachments', context => {
       const sessionId = context.req.param('sessionId');
-      const missing = ensureSession(deps, context, sessionId);
-      if (missing) return missing;
+      if (sessionMissing(deps, sessionId)) {
+        return context.json({ error: 'session_not_found' }, 404);
+      }
       const images = deps.attachmentImages.listBySession(sessionId)
         .map(row => ({
           kind: 'image' as const,
@@ -62,8 +63,9 @@ export const sessionAttachmentsRoute = (deps: SessionAttachmentsRouteDeps) =>
     // ?thumb=1 时图片走 256px JPEG 缩略图(消息流封面不拉原图)。
     .get('/:sessionId/attachments/content', async context => {
       const sessionId = context.req.param('sessionId');
-      const missing = ensureSession(deps, context, sessionId);
-      if (missing) return missing;
+      if (sessionMissing(deps, sessionId)) {
+        return context.json({ error: 'session_not_found' }, 404);
+      }
       const target = context.req.query('path');
       if (!target || !isInsideManagedDir(deps.activeDataDir, sessionId, target)) {
         return context.json({ error: 'attachment_not_found' }, 404);
@@ -100,8 +102,9 @@ export const sessionAttachmentsRoute = (deps: SessionAttachmentsRouteDeps) =>
     // 粘贴大段文本:粘贴那一刻落 txt 入账,输入框立刻出 chip。
     .post('/:sessionId/attachments/pasted', jsonBody(pastedTextBody), async context => {
       const sessionId = context.req.param('sessionId');
-      const missing = ensureSession(deps, context, sessionId);
-      if (missing) return missing;
+      if (sessionMissing(deps, sessionId)) {
+        return context.json({ error: 'session_not_found' }, 404);
+      }
       const saved = await deps.pasteStore.savePastedText(
         sessionId,
         context.req.valid('json').content,
@@ -111,8 +114,9 @@ export const sessionAttachmentsRoute = (deps: SessionAttachmentsRouteDeps) =>
     // 粘贴/拖入图片:剪贴板给字节,拖入给路径由 server 读盘;落盘即规范化入账。
     .post('/:sessionId/attachments/images', jsonBody(imageBody), async context => {
       const sessionId = context.req.param('sessionId');
-      const missing = ensureSession(deps, context, sessionId);
-      if (missing) return missing;
+      if (sessionMissing(deps, sessionId)) {
+        return context.json({ error: 'session_not_found' }, 404);
+      }
       const body = context.req.valid('json');
       try {
         const bytes = 'dataBase64' in body
@@ -128,16 +132,12 @@ export const sessionAttachmentsRoute = (deps: SessionAttachmentsRouteDeps) =>
       }
     });
 
-function ensureSession(
-  deps: SessionAttachmentsRouteDeps,
-  context: { json: (body: unknown, status?: number) => Response },
-  sessionId: string,
-): Response | undefined {
+function sessionMissing(deps: SessionAttachmentsRouteDeps, sessionId: string): boolean {
   try {
     deps.sessions.getSession(sessionId);
-    return undefined;
+    return false;
   } catch {
-    return context.json({ error: 'session_not_found' }, 404);
+    return true;
   }
 }
 

@@ -29,6 +29,8 @@ export type SessionHistoryTurn = SessionMessagesResult['turns'][number];
 export type TurnIndexPage = RpcJson<RpcClient['api']['sessions'][':sessionId']['turn-index']['$get']>;
 export type SessionMessageWindow = RpcJson<RpcClient['api']['sessions'][':sessionId']['messages']['window']['$get']>;
 export type SessionAttachmentsResult = RpcJson<RpcClient['api']['sessions'][':sessionId']['attachments']['$get']>;
+export type SessionPastedTextResult = RpcJson<RpcClient['api']['sessions'][':sessionId']['attachments']['pasted']['$post']>;
+export type SessionImageUploadResult = RpcJson<RpcClient['api']['sessions'][':sessionId']['attachments']['images']['$post']>;
 export type ForkResult = RpcJson<RpcClient['api']['sessions'][':sessionId']['fork']['$post']>;
 export type RewindResult = RpcJson<RpcClient['api']['sessions'][':sessionId']['turns'][':turnId']['rewind']['$post']>;
 export type CompactResult = RpcJson<RpcClient['api']['sessions'][':sessionId']['compact']['$post']>;
@@ -112,17 +114,36 @@ export const sessionsApi = {
     }));
   },
 
-  /** GET /api/sessions/:sessionId/attachments — 当前会话的全部附件。 */
+  /** GET /api/sessions/:sessionId/attachments — 当前会话的全部附件(两本账合并)。 */
   listAttachments(id: string): Promise<SessionAttachmentsResult> {
     return readRpcJson(
       rpcClient.api.sessions[':sessionId'].attachments.$get({ param: { sessionId: id } }),
     );
   },
 
-  /** 附件内容是字节流，不进入 JSON RPC。 */
-  readAttachment(sessionId: string, attachmentId: string): Promise<Response> {
+  /** 粘贴大段文本:粘贴那一刻落盘入账,返回 chip 所需的 path/preview。 */
+  createPastedText(id: string, content: string): Promise<SessionPastedTextResult> {
+    return readRpcJson(rpcClient.api.sessions[':sessionId'].attachments.pasted.$post({
+      param: { sessionId: id },
+      json: { content },
+    }));
+  },
+
+  /** 粘贴/拖入图片:剪贴板给 dataBase64,拖入文件给 sourcePath;name 是拖入时的原文件名。 */
+  uploadImage(
+    id: string,
+    input: { dataBase64: string; name?: string } | { sourcePath: string; name?: string },
+  ): Promise<SessionImageUploadResult> {
+    return readRpcJson(rpcClient.api.sessions[':sessionId'].attachments.images.$post({
+      param: { sessionId: id },
+      json: input,
+    }));
+  },
+
+  /** 附件内容是字节流，不进入 JSON RPC。按受管 path 读,thumb=1 取 256px 缩略图。 */
+  readAttachmentContent(sessionId: string, attachmentPath: string, thumb = false): Promise<Response> {
     return serverClient.requestRaw(
-      `/api/sessions/${encodeURIComponent(sessionId)}/attachments/${encodeURIComponent(attachmentId)}/content`,
+      `/api/sessions/${encodeURIComponent(sessionId)}/attachments/content?path=${encodeURIComponent(attachmentPath)}${thumb ? '&thumb=1' : ''}`,
     );
   },
 

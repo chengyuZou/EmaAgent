@@ -142,7 +142,6 @@ export function buildComposition(input: { activeDataDir: string }): Composition 
     store: turnEvents,
     hub: eventHub,
     startTurnSpeech: speech.startTurnSpeech,
-    abortTurn: (sessionId, turnId) => turn.turnExecutor.abort(sessionId, turnId),
   });
   const backgroundCompletion = new BackgroundCompletion({
     source: tools.backgroundProcesses,

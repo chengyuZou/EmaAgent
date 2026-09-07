@@ -47,4 +47,12 @@ describe('Desktop WebView access', () => {
     expect(response.status).toBe(200);
     expect(await response.text()).toBe('connected');
   });
+
+  it('accepts the loopback WebSocket handshake secret from its query string', async () => {
+    const response = await createApp().request(`/api/system/events?secret=${SECRET}`, {
+      headers: { Upgrade: 'websocket' },
+    });
+
+    expect(response.status).toBe(200);
+  });
 });

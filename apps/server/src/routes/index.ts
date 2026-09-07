@@ -59,6 +59,7 @@ import { turnControlRoute } from './turns/control.js';
 import { turnEventsRoute } from './turns/events.js';
 import { turnInteractionsRoute } from './turns/interactions.js';
 import { startTurnRoute } from './turns/startTurn.js';
+import { turnSpeechRoute } from './turns/speech.js';
 import { dataDirsRoute } from './workspaces/dataDirs.js';
 import { filesRoute } from './workspaces/files.js';
 import { projectsRoute } from './workspaces/projects.js';
@@ -98,6 +99,7 @@ export const createRoutes = (composition: Composition, secret: string) => {
       session: database.session,
     }))
     .route('/api/turns', turnEventsRoute({ hub: eventHub, store: turnEvents }))
+    .route('/api/turns', turnSpeechRoute({ speech }))
     .route('/api/turns', turnControlRoute({
       executor: turn.turnExecutor,
       turns: database.turns,

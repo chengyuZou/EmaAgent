@@ -11,17 +11,12 @@ export interface TurnFanoutDeps {
     sessionId: string;
     turnId: string;
     signal: AbortSignal;
-    emit: (event: TurnSseEvent) => void;
   }) => Promise<TurnSpeechHandle | null>;
-  /** 重放日志超预算时终止该 Turn（终态事件仍会被写入，客户端可明确结束）。 */
-  readonly abortTurn: (sessionId: string, turnId: string) => void;
 }
 
 /**
  * TurnHandle.events 是单消费者通道——只有一个 fanout 泵允许读取。
- * 语音事件（tts_chunk 等）由 Speech 异步产生，经同一个 push 进入与 Turn 事件
- * 共享的游标序列；终态到达时先等语音收口（completed）或丢弃（aborted/failed），
- * 再让终态事件过闸，保证客户端看到 turn_completed 时合并音频已就绪。
+ * Speech 只旁听文本增量；声音注册、合成和播放都不能阻塞 Turn SSE。
  */
 export class TurnFanout {
   constructor(private readonly deps: TurnFanoutDeps) {}
@@ -36,7 +31,6 @@ export class TurnFanout {
           sessionId,
           turnId,
           signal: speechAbort.signal,
-          emit: event => this.push(turnId, event),
         }).catch(error => {
           // 语音是可选增强：启动失败降级为静默无音频，不影响 Turn。
           console.warn('[speech] 启动失败，本 Turn 无语音输出:', error);
@@ -53,19 +47,22 @@ export class TurnFanout {
     speechAbort: AbortController,
   ): Promise<void> {
     const { sessionId, turnId } = handle;
-    const speech = await speechPromise;
+    let completed = false;
     try {
       for await (const event of handle.events) {
         if (event.type === 'output_text_delta') {
-          speech?.acceptTextDelta(event.delta);
+          void speechPromise.then(speech => speech?.acceptTextDelta(event.delta));
         }
         if (event.type === 'turn_completed') {
-          // 先让语音收口（剩余分句合成 + 合并音频落盘），终态再过闸。
-          await speech?.finish();
+          completed = true;
+          void speechPromise.then(speech => speech?.finish()).catch(error => {
+            console.warn(`[speech] Turn ${turnId} 收口失败:`, error);
+          });
         }
         this.push(turnId, event);
         if (event.type === 'turn_failed' || event.type === 'turn_aborted') {
-          await speech?.abort();
+          speechAbort.abort('turn ended without completion');
+          void speechPromise.then(speech => speech?.abort());
         }
         if (isTurnActivity(event)) {
           this.deps.hub.emitApp(event);
@@ -74,7 +71,7 @@ export class TurnFanout {
     } catch (error) {
       console.warn(`[fanout] Turn ${turnId} 事件泵异常:`, error);
     } finally {
-      speechAbort.abort();
+      if (!completed) speechAbort.abort('turn event stream ended');
     }
   }
 
@@ -84,9 +81,8 @@ export class TurnFanout {
       this.deps.hub.publishTurn(turnId, result.published);
       return;
     }
-    if (result.status === 'overflow') {
-      console.warn(`[fanout] Turn ${turnId} 重放日志超预算，终止该 Turn`);
-      this.deps.abortTurn(event.sessionId, turnId);
+    if (result.status === 'live_only') {
+      this.deps.hub.publishTurn(turnId, result.published);
     }
   }
 }

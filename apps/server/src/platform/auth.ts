@@ -59,7 +59,10 @@ export function emaAuth(secret: string) {
     // 健康检查不包含用户数据，保留给 Tauri 启动探测使用。
     if (c.req.path === '/health') return next();
 
-    const provided = c.req.header(EMA_SECRET_HEADER);
+    const provided = c.req.header(EMA_SECRET_HEADER)
+      ?? (c.req.header('upgrade')?.toLowerCase() === 'websocket'
+        ? c.req.query('secret')
+        : undefined);
     if (!timingSafeEqual(digestSecret(provided), expectedDigest)) {
       c.header('Cache-Control', 'no-store');
       return c.json({ error: 'unauthorized' }, 401);

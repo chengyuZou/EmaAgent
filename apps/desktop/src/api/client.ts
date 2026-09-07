@@ -28,6 +28,9 @@ export interface ServerClient {
   /** Build a full SSE URL with optional lastEventId query param. */
   streamUrl(path: string, params?: { lastEventId?: number }): Promise<string>;
 
+  /** 构建浏览器 WebSocket URL；浏览器不能设置认证 header，因此密钥只放在 loopback 握手查询串。 */
+  webSocketUrl(path: string): Promise<string>;
+
   /** Returns headers required for authenticated requests (X-Ema-Secret). */
   getAuthHeaders(): Promise<Record<string, string>>;
 }
@@ -272,6 +275,14 @@ export const serverClient: ServerClient = {
 
   async streamUrl(path: string, params?: { lastEventId?: number }): Promise<string> {
     return buildUrl(path, params as Record<string, string | number | undefined>);
+  },
+
+  async webSocketUrl(path: string): Promise<string> {
+    const [httpUrl, secret] = await Promise.all([buildUrl(path), getSecretPromise()]);
+    const url = new URL(httpUrl);
+    url.protocol = 'ws:';
+    if (secret) url.searchParams.set('secret', secret);
+    return url.toString();
   },
 
   async getAuthHeaders(): Promise<Record<string, string>> {

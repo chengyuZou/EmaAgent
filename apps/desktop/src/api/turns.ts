@@ -15,9 +15,9 @@ import {
 export type TurnCreateInput = InferRequestType<RpcClient['api']['turns']['$post']>['json'];
 export type TurnCreatedResponse = RpcJson<RpcClient['api']['turns']['$post']>;
 
-/** 附件输入 part 的 attachment 载荷（composer/历史投喂用）。 */
-export type TurnAttachmentInput =
-  Extract<TurnCreateInput['input'][number], { type: 'attachment' }>['attachment'];
+/** 附件输入 part 的块载荷(composer 草稿与发送共用同一形状)。 */
+export type TurnAttachmentBlock =
+  Extract<TurnCreateInput['input'][number], { type: 'attachment' }>['block'];
 
 /** 窗口重开/SSE 重连后的在飞 Permission/AskUser 恢复清单。 */
 export type PendingInteractions = RpcJson<RpcClient['api']['turns']['interactions']['pending']['$get']>;
@@ -124,8 +124,8 @@ export const turnsApi = {
     });
   },
 
-  /** 构建合并音频的流式 URL。 */
-  audioUrl(turnId: string): Promise<string> {
-    return serverClient.streamUrl(`/api/turns/${turnId}/audio`);
+  /** 读取已完成 Turn 的最终合并音频。 */
+  readAudio(turnId: string): Promise<Response> {
+    return serverClient.requestRaw(`/api/turns/${turnId}/audio`);
   },
 };

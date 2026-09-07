@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@ema-agent/agent": "workspace:*",
+    "@ema-agent/attachments": "workspace:*",
     "@ema-agent/backup": "workspace:*",
     "@ema-agent/builtin-tools": "workspace:*",
     "@ema-agent/characters": "workspace:*",

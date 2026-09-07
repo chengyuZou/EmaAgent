@@ -10,16 +10,15 @@ import {
 import {
   FsAudioArchive,
   SpeechCoordinator,
-  SpeechSegmentLibrary,
   SpeechVoiceCache,
   SpeechVoicePreview,
   type AudioArchive,
-  type SpeechEvent,
+  type SpeechControlEvent,
+  type SpeechStreamEvent,
   type SpeechVoicePreviewTts,
 } from '@ema-agent/speech';
 import {
   SpeechOutputsRepo,
-  SpeechSegmentsRepo,
   type Database,
 } from '@ema-agent/storage';
 import { createSttCall, type TranscriptionRequest, type TranscriptionResult } from '@ema-agent/stt';
@@ -36,6 +35,12 @@ export interface TurnSpeechHandle {
   acceptTextDelta(delta: string): void;
   finish(): Promise<void>;
   abort(): Promise<void>;
+}
+
+export interface SpeechSocketClient {
+  sendControl(event: SpeechControlEvent): void;
+  sendAudio(bytes: Uint8Array): void;
+  close(): void;
 }
 
 export interface SpeechComposition {
@@ -65,8 +70,11 @@ export interface SpeechComposition {
     sessionId: string;
     turnId: string;
     signal: AbortSignal;
-    emit: (event: SpeechEvent) => void;
   }): Promise<TurnSpeechHandle | null>;
+  attachSpeechSocket(turnId: string, client: SpeechSocketClient): boolean;
+  /** 返回 true 表示客户端请求取消当前语音。 */
+  handleSpeechSocketMessage(turnId: string, message: string): boolean;
+  detachSpeechSocket(turnId: string, client: SpeechSocketClient): void;
 }
 
 export function openSpeech(
@@ -80,11 +88,7 @@ export function openSpeech(
   const audioArchive = new FsAudioArchive(path.join(activeDataDir, 'sessions'));
   const voiceCache = new SpeechVoiceCache();
   const speechOutputs = new SpeechOutputsRepo(dataDb.sqlite);
-  const segmentLibrary = new SpeechSegmentLibrary(
-    new SpeechSegmentsRepo(dataDb.sqlite),
-    audioArchive,
-  );
-  segmentLibrary.enforceLimits();
+  const channels = new Map<string, TurnSpeechChannel>();
 
   /** 参考音频只有显式主资源才参与 TTS；没有主资源即关闭当前角色语音。 */
   const resolveCharacterVoice = (character: Character): TtsVoiceReference | null => {
@@ -93,6 +97,9 @@ export function openSpeech(
     try {
       return {
         kind: 'reference',
+        resourceName: reference.name,
+        resourceUpdatedAt: reference.updatedAt,
+        registrationName: `${character.name}-${path.parse(reference.name).name}`,
         audioPath: characters.resolveVoiceSampleFile(character.name, reference.name),
         promptText: reference.promptText,
         promptLanguage: reference.promptLang,
@@ -126,6 +133,7 @@ export function openSpeech(
       },
     },
     voiceCache,
+    usageRecorder,
   );
 
   const startTurnSpeech: SpeechComposition['startTurnSpeech'] = async setup => {
@@ -148,14 +156,34 @@ export function openSpeech(
       throw err;
     }
 
-    const voice = await voiceCache.prepare({
-      reference,
-      ttsVoiceRegistrar,
-      characterName: character.name,
-      providerId: binding.providerId,
-      modelId: binding.modelId,
-      signal: setup.signal,
-    });
+    const channel = new TurnSpeechChannel();
+    channels.set(setup.turnId, channel);
+    const speechAbort = new AbortController();
+    const signal = AbortSignal.any([setup.signal, speechAbort.signal]);
+    channel.onCancel = () => speechAbort.abort('speech socket disconnected');
+
+    let voice;
+    try {
+      voice = await voiceCache.prepare({
+        reference,
+        ttsVoiceRegistrar,
+        characterName: character.name,
+        providerId: binding.providerId,
+        modelId: binding.modelId,
+        signal,
+      });
+    } catch (error) {
+      channels.delete(setup.turnId);
+      channel.cancel();
+      throw error;
+    }
+    try {
+      await channel.waitForClient(signal);
+    } catch (error) {
+      channels.delete(setup.turnId);
+      channel.cancel();
+      throw error;
+    }
 
     const coordinator = new SpeechCoordinator({
       sessionId: setup.sessionId,
@@ -164,14 +192,13 @@ export function openSpeech(
       modelId: binding.modelId,
       voice,
       callTts,
-      emit: setup.emit,
+      emit: event => channel.emit(event),
       archive: audioArchive,
-      format: 'mp3',
-      signal: setup.signal,
+      waitForPlaybackSlot: () => channel.waitForPlaybackSlot(),
+      signal,
       usageRecorder,
-      onSegmentCompleted: segment => segmentLibrary.record(segment),
-      onTurnSegmentsDiscarded: turnId => segmentLibrary.discardTurn(turnId),
     });
+    channel.onCancel = () => { void coordinator.abort(); };
 
     return {
       acceptTextDelta: delta => coordinator.acceptTextDelta(delta),
@@ -190,9 +217,14 @@ export function openSpeech(
             createdAt: Date.now(),
           });
         }
-        segmentLibrary.enforceLimits();
+        channels.delete(setup.turnId);
+        channel.close();
       },
-      abort: () => coordinator.abort(),
+      abort: async () => {
+        await coordinator.abort();
+        channels.delete(setup.turnId);
+        channel.close();
+      },
     };
   };
 
@@ -238,5 +270,137 @@ export function openSpeech(
     return { text: result.text, referenceText: sample.promptText };
   };
 
-  return { audioArchive, voiceCache, usageRecorder, voicePreview, transcribe, sttPreview, startTurnSpeech };
+  return {
+    audioArchive,
+    voiceCache,
+    usageRecorder,
+    voicePreview,
+    transcribe,
+    sttPreview,
+    startTurnSpeech,
+    attachSpeechSocket(turnId, client) {
+      const channel = channels.get(turnId);
+      if (!channel) return false;
+      channel.attach(client);
+      return true;
+    },
+    detachSpeechSocket(turnId, client) {
+      channels.get(turnId)?.detach(client);
+    },
+    handleSpeechSocketMessage(turnId, message) {
+      const parsed = parseSpeechClientMessage(message);
+      if (parsed?.type === 'sentence_played') {
+        channels.get(turnId)?.sentencePlayed(parsed.sentenceId);
+        return false;
+      }
+      return parsed?.type === 'cancel';
+    },
+  };
+}
+
+/** 每个 Turn 一条实时语音连接，同时用已完成句子的确认数量限制生成领先量。 */
+class TurnSpeechChannel {
+  private client: SpeechSocketClient | null = null;
+  private connected: (() => void) | null = null;
+  private readonly completedSentenceIds: string[] = [];
+  private playbackSlot: (() => void) | null = null;
+  onCancel: () => void = () => {};
+
+  attach(client: SpeechSocketClient): void {
+    this.client?.close();
+    this.client = client;
+    this.connected?.();
+    this.connected = null;
+  }
+
+  detach(client: SpeechSocketClient): void {
+    if (this.client !== client) return;
+    this.client = null;
+    this.releasePlaybackSlot();
+    this.onCancel();
+  }
+
+  emit(event: SpeechStreamEvent): void {
+    if (!this.client) return;
+    if (event.type === 'sentence_completed') {
+      this.completedSentenceIds.push(event.sentenceId);
+    }
+    this.send(event);
+  }
+
+  waitForPlaybackSlot(): Promise<void> {
+    if (this.completedSentenceIds.length < 3) return Promise.resolve();
+    return new Promise(resolve => { this.playbackSlot = resolve; });
+  }
+
+  sentencePlayed(sentenceId: string): void {
+    if (this.completedSentenceIds[0] !== sentenceId) return;
+    this.completedSentenceIds.shift();
+    if (this.completedSentenceIds.length < 3 && this.playbackSlot) {
+      const resolve = this.playbackSlot;
+      this.playbackSlot = null;
+      resolve();
+    }
+  }
+
+  waitForClient(signal: AbortSignal): Promise<void> {
+    if (this.client) return Promise.resolve();
+    if (signal.aborted) return Promise.reject(signal.reason ?? new Error('Speech cancelled'));
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (error?: unknown): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        signal.removeEventListener('abort', abort);
+        this.connected = null;
+        if (error) reject(error);
+        else resolve();
+      };
+      const timeout = setTimeout(() => finish(new Error('Speech WebSocket connection timed out')), 10_000);
+      const abort = (): void => finish(signal.reason ?? new Error('Speech cancelled'));
+      this.connected = () => finish();
+      signal.addEventListener('abort', abort, { once: true });
+    });
+  }
+
+  cancel(): void {
+    this.onCancel();
+    this.close();
+  }
+
+  close(): void {
+    this.client?.close();
+    this.client = null;
+    this.releasePlaybackSlot();
+  }
+
+  private send(event: SpeechStreamEvent): void {
+    if (!this.client) return;
+    if (event.type === 'audio_chunk') this.client.sendAudio(event.bytes);
+    else this.client.sendControl(event);
+  }
+
+  private releasePlaybackSlot(): void {
+    if (!this.playbackSlot) return;
+    const resolve = this.playbackSlot;
+    this.playbackSlot = null;
+    resolve();
+  }
+}
+
+function parseSpeechClientMessage(message: string):
+  | { type: 'sentence_played'; sentenceId: string }
+  | { type: 'cancel' }
+  | null {
+  try {
+    const value = JSON.parse(message) as { type?: unknown; sentenceId?: unknown };
+    if (value.type === 'cancel') return { type: 'cancel' };
+    if (value.type === 'sentence_played' && typeof value.sentenceId === 'string') {
+      return { type: 'sentence_played', sentenceId: value.sentenceId };
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }

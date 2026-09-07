@@ -201,7 +201,7 @@ export const PROTOCOL_LABELS: Record<string, string> = {
   'openai-embed':         'OpenAI 兼容',
   'gemini-embed':         'Gemini',
   'cohere-rerank':        'Cohere 兼容',
-  'openai-tts':           'OpenAI 兼容',
+  'siliconflow-tts':      'SiliconFlow',
   'dashscope-tts':        'DashScope',
   'gpt-sovits-tts':       'GPT-SoVITS',
   'openai-stt':           'OpenAI 兼容',
