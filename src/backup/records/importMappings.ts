@@ -11,7 +11,6 @@ import type {
   SessionBackupToolExecutionRow,
   SessionRow,
   SpeechOutputRow,
-  SpeechSegmentRow,
   TurnRow,
   UsageRecordRow,
 } from '@ema-agent/storage';
@@ -24,7 +23,6 @@ import type {
   MessageRecord,
   SessionRecord,
   SpeechOutputRecord,
-  SpeechSegmentRecord,
   TaskRecord,
   ToolExecutionRecord,
   TurnRecord,
@@ -241,22 +239,6 @@ export const restoreSpeechOutputRecord = (
   byte_size: record.byteSize,
   duration_ms: record.durationMs,
   segment_count: record.segmentCount,
-  created_at: record.createdAt,
-});
-
-export const restoreSpeechSegmentRecord = (
-  record: SpeechSegmentRecord,
-  filePath: string,
-): SpeechSegmentRow => ({
-  id: record.id,
-  turn_id: record.turnId,
-  session_id: record.sessionId,
-  sentence_index: record.sentenceIndex,
-  storage_path: filePath,
-  mime_type: record.mimeType,
-  byte_size: record.byteSize,
-  duration_ms: record.durationMs,
-  text: record.text,
   created_at: record.createdAt,
 });
 

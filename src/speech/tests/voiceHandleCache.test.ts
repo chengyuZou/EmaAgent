@@ -1,10 +1,13 @@
-// 测试 SpeechVoiceCache.prepare 的 get-or-register 语义：直通、复用、过期与键隔离。
+// 测试 SpeechVoiceCache.prepare 的 get-or-register 语义：本地直通、云端复用与资源版本隔离。
 import { describe, expect, it } from 'vitest';
 import type { TtsProviderVoice, TtsVoiceReference } from '@ema-agent/tts';
 import { SpeechVoiceCache } from '../voiceHandleCache.js';
 
 const REFERENCE: TtsVoiceReference = {
   kind: 'reference',
+  resourceName: 'main.wav',
+  resourceUpdatedAt: 1,
+  registrationName: 'character-1-main',
   audioPath: 'voice/refs/main.wav',
   promptText: '参考文本',
   promptLanguage: 'zh',
@@ -41,12 +44,20 @@ describe('SpeechVoiceCache.prepare', () => {
     });
     expect(voice).toEqual(REFERENCE);
     expect(calls).toBe(1);
-    expect(cache.get('character-1', 'provider-1', 'model-1')).toBeNull();
+    const second = await cache.prepare({
+      ...REQUEST,
+      ttsVoiceRegistrar: async reference => {
+        calls += 1;
+        return reference;
+      },
+    });
+    expect(second).toEqual(REFERENCE);
+    expect(calls).toBe(2);
   });
 
   it('云端声音命中缓存后不再重复注册', async () => {
     const cache = new SpeechVoiceCache();
-    const source = registrarReturning({ kind: 'provider', id: 'voice-1', lifetime: 'ephemeral' });
+    const source = registrarReturning({ kind: 'provider', id: 'voice-1' });
     const registrar = source.registrar;
 
     const first = await cache.prepare({ ...REQUEST, ttsVoiceRegistrar: registrar });
@@ -57,21 +68,23 @@ describe('SpeechVoiceCache.prepare', () => {
     expect(source.calls()).toBe(1);
   });
 
-  it('过期声音重新注册', async () => {
-    let now = 1_000;
-    const cache = new SpeechVoiceCache({ ephemeralTtlMs: 100, now: () => now });
-    const source = registrarReturning({ kind: 'provider', id: 'voice-1', lifetime: 'ephemeral' });
+  it('参考资源版本变化后重新注册', async () => {
+    const cache = new SpeechVoiceCache();
+    const source = registrarReturning({ kind: 'provider', id: 'voice-1' });
 
     await cache.prepare({ ...REQUEST, ttsVoiceRegistrar: source.registrar });
-    now += 200;
-    await cache.prepare({ ...REQUEST, ttsVoiceRegistrar: source.registrar });
+    await cache.prepare({
+      ...REQUEST,
+      reference: { ...REFERENCE, resourceUpdatedAt: 2 },
+      ttsVoiceRegistrar: source.registrar,
+    });
 
     expect(source.calls()).toBe(2);
   });
 
   it('换模型使用独立缓存键，必须重新注册', async () => {
     const cache = new SpeechVoiceCache();
-    const source = registrarReturning({ kind: 'provider', id: 'voice-1', lifetime: 'ephemeral' });
+    const source = registrarReturning({ kind: 'provider', id: 'voice-1' });
 
     await cache.prepare({ ...REQUEST, ttsVoiceRegistrar: source.registrar });
     await cache.prepare({ ...REQUEST, modelId: 'model-2', ttsVoiceRegistrar: source.registrar });

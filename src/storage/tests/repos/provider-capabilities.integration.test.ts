@@ -39,7 +39,7 @@ describe('Provider 能力配置', () => {
       capabilities: [
         { capability: 'llm', activeProtocol: 'openai-responses-llm', protocols: [{ protocol: 'openai-responses-llm', baseUrl: 'https://llm.example/v1' }] },
         { capability: 'embed', activeProtocol: 'openai-embed', protocols: [{ protocol: 'openai-embed', baseUrl: 'https://embed.example/v1' }] },
-        { capability: 'tts', protocols: [{ protocol: 'openai-tts', baseUrl: 'https://tts.example/v1' }] },
+        { capability: 'tts', protocols: [{ protocol: 'siliconflow-tts', baseUrl: 'https://tts.example/v1' }] },
       ],
     });
 
@@ -50,7 +50,7 @@ describe('Provider 能力配置', () => {
         { capability: 'embed', activeProtocol: 'openai-embed' },
         { capability: 'llm', activeProtocol: 'openai-responses-llm' },
         // tts 无激活协议 = 停用，但地址保留
-        { capability: 'tts', protocols: [{ protocol: 'openai-tts', baseUrl: 'https://tts.example/v1' }] },
+        { capability: 'tts', protocols: [{ protocol: 'siliconflow-tts', baseUrl: 'https://tts.example/v1' }] },
       ],
     });
     expect(providers.get('custom-main')?.iconId).toBeUndefined();
@@ -109,7 +109,7 @@ describe('Provider 能力配置', () => {
       id: 'siliconflow', name: 'SiliconFlow', authType: 'bearer', keyValue: 'sk-main',
       capabilities: [
         { capability: 'llm', activeProtocol: 'openai-llm', protocols: [{ protocol: 'openai-llm', baseUrl: 'https://api.siliconflow.cn/v1' }] },
-        { capability: 'tts', activeProtocol: 'openai-tts', protocols: [{ protocol: 'openai-tts', baseUrl: 'https://api.siliconflow.cn/v1' }] },
+        { capability: 'tts', activeProtocol: 'siliconflow-tts', protocols: [{ protocol: 'siliconflow-tts', baseUrl: 'https://api.siliconflow.cn/v1' }] },
       ],
     });
 
@@ -201,5 +201,4 @@ describe('Provider 能力配置', () => {
     expect(provider?.capabilities.find((c) => c.capability === 'vision')?.modelCount).toBe(0);
   });
 });
-
 

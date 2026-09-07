@@ -12,7 +12,6 @@ export type SessionRecordName =
   | 'attachmentImages'
   | 'attachmentPastedTexts'
   | 'speechOutputs'
-  | 'speechSegments'
   | 'usageRecords';
 
 export interface SessionRecordFile {
@@ -43,7 +42,6 @@ export const SESSION_RECORD_FILES: readonly SessionRecordFile[] = Object.freeze(
   jsonl('attachmentImages'),
   jsonl('attachmentPastedTexts'),
   jsonl('speechOutputs'),
-  jsonl('speechSegments'),
   jsonl('usageRecords'),
 ]);
 
@@ -54,7 +52,6 @@ export const SESSION_RECORD_PATHS: ReadonlySet<string> = new Set(
 export const SESSION_FILE_ROOTS: ReadonlySet<string> = new Set([
   'attachments',
   'speechOutputs',
-  'speechSegments',
   'backgroundProcesses',
 ]);
 

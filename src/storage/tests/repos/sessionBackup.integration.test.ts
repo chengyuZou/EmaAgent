@@ -5,7 +5,6 @@ import {
   SessionBackupReader,
   SessionBackupRestorer,
   SessionsRepo,
-  SpeechSegmentsRepo,
   TurnsRepo,
 } from '../../index.js';
 import { createTestDatabase, type TestDatabase } from '../helpers/create-test-database.js';
@@ -40,26 +39,12 @@ describe('SessionBackupReader', () => {
         createdAt: index,
       });
     }
-    new SpeechSegmentsRepo(database.db).record({
-      id: 'segment-1',
-      turnId: 'turn-00',
-      sessionId: 'session-backup',
-      sentenceIndex: 0,
-      storagePath: 'segments/segment-1.mp3',
-      mimeType: 'audio/mpeg',
-      byteSize: 3,
-      durationMs: null,
-      text: 'hello',
-      createdAt: 2,
-    });
-
     const result = new SessionBackupReader(database.db).readSession(
       'session-backup',
       rows => ({
         sessionId: rows.session.id,
         turnIds: [...rows.turns].map(turn => turn.id),
         emptyMessages: [...rows.messages],
-        segmentIds: [...rows.speechSegments].map(segment => segment.id),
       }),
     );
 
@@ -68,7 +53,6 @@ describe('SessionBackupReader', () => {
       Array.from({ length: 12 }, (_, index) => `turn-${String(index).padStart(2, '0')}`),
     );
     expect(result?.emptyMessages).toEqual([]);
-    expect(result?.segmentIds).toEqual(['segment-1']);
   });
 
   it('不存在的 Session 不构造空备份', () => {
@@ -119,7 +103,6 @@ describe('SessionBackupReader', () => {
         attachmentImages: [...rows.attachmentImages],
         attachmentPastedTexts: [...rows.attachmentPastedTexts],
         speechOutputs: [...rows.speechOutputs],
-        speechSegments: [...rows.speechSegments],
         usageRecords: [...rows.usageRecords],
       }),
     );

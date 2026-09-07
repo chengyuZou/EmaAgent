@@ -1,83 +1,45 @@
-// 协调单个 Turn 的文本清理、切句、顺序合成、事件发射和音频归档。
-import type { CallTts, TtsAudioFormat, TtsVoice } from '@ema-agent/tts';
+import type { CallTts, TtsVoice } from '@ema-agent/tts';
 import { createUsageRecord, reportUsage } from '@ema-agent/usage';
 import type { UsageRecord, UsageRecorder } from '@ema-agent/usage';
-
 import type { AudioArchive, FinalizedAudio, SegmentWriter } from './audioArchive.js';
-import { audioChunkEvent, makeSentenceId } from './eventProjection.js';
-import type { SpeechEvent } from './events.js';
+import type { SpeechStreamEvent } from './events.js';
 import { SentenceSplitter } from './sentenceSplitter.js';
 import { filterSentenceForTts, TextFilterStream } from './textFilter.js';
 
-const DEFAULT_MAX_BYTES_PER_SENTENCE = 16 * 1024 * 1024;
-const DEFAULT_MAX_BYTES_PER_TURN = 64 * 1024 * 1024;
-const DEFAULT_SENTENCE_TIMEOUT_MS = 120_000;
-
-export interface CompletedSpeechSegment {
-  readonly id: string;
-  readonly sessionId: string;
-  readonly turnId: string;
-  readonly sentenceIndex: number;
-  readonly storagePath: string;
-  readonly mimeType: string;
-  readonly byteSize: number;
-  /** 当前 TTS 协议不返回音频时长，未知时明确存 null。 */
-  readonly durationMs: number | null;
-  readonly text: string;
-  readonly createdAt: number;
-}
+const MAX_BYTES_PER_SENTENCE = 16 * 1024 * 1024;
+const SENTENCE_TIMEOUT_MS = 120_000;
 
 export interface SpeechCoordinatorArgs {
   readonly sessionId: string;
   readonly turnId: string;
   readonly providerId: string;
-  /** 仅为每句 Usage 记录保留模型身份；合成调用本身已在创建点冻结模型。 */
   readonly modelId: string;
   readonly voice: TtsVoice;
   readonly callTts: CallTts;
-  readonly emit: (event: SpeechEvent) => void;
-  readonly archive?: AudioArchive;
-  readonly format?: TtsAudioFormat;
+  readonly emit: (event: SpeechStreamEvent) => void;
+  readonly archive: AudioArchive;
+  /** Desktop 最多允许三句已生成未播完；达到上限时下一句在这里等待。 */
+  readonly waitForPlaybackSlot?: () => Promise<void>;
   readonly signal?: AbortSignal;
   readonly usageRecorder?: UsageRecorder;
   readonly onUsageRecordError?: (error: unknown, record: UsageRecord) => void;
-  readonly onSegmentCompleted?: (segment: CompletedSpeechSegment) => void;
-  readonly onTurnSegmentsDiscarded?: (turnId: string) => void;
-  readonly sentenceTimeoutMs?: number;
-  readonly maxBytesPerSentence?: number;
-  readonly maxBytesPerTurn?: number;
 }
 
-type SpeechCoordinatorState =
-  | 'accepting'
-  | 'finishing'
-  | 'completed'
-  | 'aborting'
-  | 'aborted'
-  | 'failed';
+type SpeechCoordinatorState = 'accepting' | 'finishing' | 'completed' | 'aborting' | 'aborted';
 
+/** 一轮语音按句串行合成，因此二进制帧天然属于最近的 sentence_started，不需要重复携带身份。 */
 export class SpeechCoordinator {
   private readonly textFilter = new TextFilterStream();
   private readonly splitter = new SentenceSplitter();
   private readonly abortController = new AbortController();
-  private readonly format: TtsAudioFormat;
-  private readonly sentenceTimeoutMs: number;
-  private readonly maxBytesPerSentence: number;
-  private readonly maxBytesPerTurn: number;
   private readonly disposeExternalAbort?: () => void;
   private chain = Promise.resolve();
   private state: SpeechCoordinatorState = 'accepting';
   private finishPromise?: Promise<{ audio: FinalizedAudio | null }>;
   private abortPromise?: Promise<void>;
-  private turnBytes = 0;
-  private effectiveExtension: string | null = null;
   private finalizedAudio: FinalizedAudio | null = null;
 
   constructor(private readonly args: SpeechCoordinatorArgs) {
-    this.format = args.format ?? 'mp3';
-    this.sentenceTimeoutMs = positiveLimit(args.sentenceTimeoutMs, DEFAULT_SENTENCE_TIMEOUT_MS);
-    this.maxBytesPerSentence = positiveLimit(args.maxBytesPerSentence, DEFAULT_MAX_BYTES_PER_SENTENCE);
-    this.maxBytesPerTurn = positiveLimit(args.maxBytesPerTurn, DEFAULT_MAX_BYTES_PER_TURN);
     if (args.signal) {
       const abort = (): void => { void this.abort(); };
       if (args.signal.aborted) abort();
@@ -106,7 +68,7 @@ export class SpeechCoordinator {
     if (this.abortPromise) return this.abortPromise;
     if (this.state === 'aborted' || this.state === 'completed') return Promise.resolve();
     this.state = 'aborting';
-    this.abortController.abort('speech aborted');
+    this.abortController.abort('speech cancelled');
     this.disposeExternalAbort?.();
     this.abortPromise = this.abortInternal();
     return this.abortPromise;
@@ -123,137 +85,86 @@ export class SpeechCoordinator {
     await this.chain;
     if (this.state !== 'finishing') return { audio: null };
 
-    if (this.args.archive) {
-      try {
-        this.finalizedAudio = await this.args.archive.finalizeTurn(
-          this.args.sessionId,
-          this.args.turnId,
-          this.effectiveExtension ?? this.format,
-        );
-      } catch (error) {
-        this.finalizedAudio = null;
-        this.args.emit(warningEvent(
-          this.args.sessionId,
-          this.args.turnId,
-          'tts/audio_archive_failed',
-          error,
-        ));
-      }
+    try {
+      this.finalizedAudio = await this.args.archive.finalizeTurn(this.args.sessionId, this.args.turnId);
+    } catch (error) {
+      console.warn(`[speech] Turn ${this.args.turnId} 最终音频合并失败:`, error);
+      this.finalizedAudio = null;
     }
     this.state = 'completed';
+    this.args.emit({ type: 'speech_completed', audioAvailable: this.finalizedAudio !== null });
     return { audio: this.finalizedAudio };
   }
 
   private async abortInternal(): Promise<void> {
     await this.chain.catch(() => undefined);
-    this.args.archive?.discardTurn(this.args.sessionId, this.args.turnId);
-    this.args.onTurnSegmentsDiscarded?.(this.args.turnId);
+    this.args.archive.discardTurn(this.args.sessionId, this.args.turnId);
     this.state = 'aborted';
+    this.args.emit({ type: 'speech_cancelled' });
   }
 
   private enqueue(index: number, text: string): void {
-    this.chain = this.chain.then(() => this.synthesizeSentence(index, text)).catch((error: unknown) => {
-      if (this.state === 'aborting' || this.state === 'aborted') return;
-      this.state = 'failed';
-      this.abortController.abort('speech failed');
-      this.args.archive?.discardTurn(this.args.sessionId, this.args.turnId);
-      this.args.onTurnSegmentsDiscarded?.(this.args.turnId);
-      this.args.emit(warningEvent(this.args.sessionId, this.args.turnId, 'tts/coordinator', error));
-    });
+    this.chain = this.chain.then(() => this.synthesizeSentence(index, text));
   }
 
   private async synthesizeSentence(index: number, sourceText: string): Promise<void> {
     const text = filterSentenceForTts(sourceText);
-    // Markdown 或表情清理后没有可朗读文本，就没有发生 TTS 调用，也不能伪造完成事件或 Usage。
-    if (!text) return;
-    const sentenceId = makeSentenceId(this.args.turnId, index);
+    if (!text || (this.state !== 'accepting' && this.state !== 'finishing')) return;
+
+    const sentenceId = `${this.args.turnId}-${index}`;
     const startedAt = Date.now();
-    const timeoutSignal = AbortSignal.timeout(this.sentenceTimeoutMs);
+    const timeoutSignal = AbortSignal.timeout(SENTENCE_TIMEOUT_MS);
     const signal = AbortSignal.any([this.abortController.signal, timeoutSignal]);
     let sentenceBytes = 0;
     let writer: SegmentWriter | undefined;
+    let started = false;
     let errorCode: string | null = null;
 
     try {
       for await (const event of this.args.callTts({
         text,
         voice: this.args.voice,
-        format: this.format,
+        format: 'mp3',
         signal,
       })) {
         if (this.state !== 'accepting' && this.state !== 'finishing') break;
         if (event.type !== 'audio_chunk') continue;
         sentenceBytes += event.bytes.byteLength;
-        this.turnBytes += event.bytes.byteLength;
-        if (sentenceBytes > this.maxBytesPerSentence) {
-          throw new Error(`TTS sentence exceeded ${this.maxBytesPerSentence} bytes`);
+        if (sentenceBytes > MAX_BYTES_PER_SENTENCE) {
+          throw new Error(`TTS sentence exceeded ${MAX_BYTES_PER_SENTENCE} bytes`);
         }
-        if (this.turnBytes > this.maxBytesPerTurn) {
-          throw new Error(`TTS turn exceeded ${this.maxBytesPerTurn} bytes`);
+        if (!writer) writer = this.args.archive.openSegment(this.args.sessionId, this.args.turnId, index);
+        if (!started) {
+          started = true;
+          this.args.emit({ type: 'sentence_started', sentenceId, mime: 'audio/mpeg' });
         }
-        if (!writer && this.args.archive) {
-          const extension = mimeToExtension(event.mime) ?? this.format;
-          this.effectiveExtension ??= extension;
-          writer = this.args.archive.openSegment(
-            this.args.sessionId,
-            this.args.turnId,
-            index,
-            extension,
-          );
-        }
-        writer?.write(event.bytes);
-        this.args.emit(audioChunkEvent(
-          this.args.sessionId,
-          this.args.turnId,
-          index,
-          event.bytes,
-          event.mime,
-        ));
+        writer.write(event.bytes);
+        this.args.emit({ type: 'audio_chunk', bytes: event.bytes });
       }
-      if (writer) {
-        const completed = writer.close();
-        this.args.onSegmentCompleted?.({
-          id: sentenceId,
-          sessionId: this.args.sessionId,
-          turnId: this.args.turnId,
-          sentenceIndex: index,
-          storagePath: completed.path,
-          mimeType: completed.mime,
-          byteSize: completed.byteSize,
-          durationMs: null,
-          text,
-          createdAt: Date.now(),
-        });
-      }
+      if (!started || !writer) throw new Error('TTS synthesis produced no audio');
+      writer.close();
+      this.args.emit({ type: 'sentence_completed', sentenceId });
+      await this.args.waitForPlaybackSlot?.();
     } catch (error) {
       writer?.discard();
-      if (timeoutSignal.aborted && !this.abortController.signal.aborted) {
-        errorCode = 'tts/timeout';
-      } else {
-        errorCode = errorCodeOf(error);
-      }
-      if (!this.abortController.signal.aborted) {
-        this.args.emit(warningEvent(this.args.sessionId, this.args.turnId, errorCode, error));
-      }
+      errorCode = this.abortController.signal.aborted
+        ? 'tts/cancelled'
+        : timeoutSignal.aborted
+          ? 'tts/timeout'
+          : errorCodeOf(error);
+      if (this.abortController.signal.aborted) return;
+      this.args.emit({
+        type: 'sentence_failed',
+        sentenceId,
+        code: errorCode,
+        message: error instanceof Error ? error.message : String(error),
+      });
     } finally {
       this.recordUsage(sentenceId, text.length, startedAt, errorCode);
-      if (this.state === 'accepting' || this.state === 'finishing') {
-        this.args.emit({
-          type: 'tts_sentence_complete',
-          sessionId: this.args.sessionId,
-          turnId: this.args.turnId,
-          sentenceId,
-        });
-      }
     }
   }
 
-  private recordUsage(
-    callId: string,
-    characterCount: number,
-    startedAt: number,
-    errorCode: string | null,
-  ): void {
+  private recordUsage(callId: string, characterCount: number, startedAt: number, errorCode: string | null): void {
     if (!this.args.usageRecorder) return;
     const record = createUsageRecord({
       capability: 'tts',
@@ -262,11 +173,7 @@ export class SpeechCoordinator {
       status: errorCode === null ? 'completed' : 'failed',
       startedAt,
       durationMs: Date.now() - startedAt,
-      usageContext: {
-        callId,
-        sessionId: this.args.sessionId,
-        turnId: this.args.turnId,
-      },
+      usageContext: { callId, sessionId: this.args.sessionId, turnId: this.args.turnId },
       quantity: characterCount,
       unit: 'character',
       errorCode,
@@ -275,38 +182,7 @@ export class SpeechCoordinator {
   }
 }
 
-function warningEvent(
-  sessionId: string,
-  turnId: string,
-  code: string,
-  error: unknown,
-): SpeechEvent {
-  return {
-    type: 'tts_warning',
-    sessionId,
-    turnId,
-    code,
-    severity: code.startsWith('tts/invalid_') || code === 'tts/credentials' ? 'error' : 'warn',
-    message: error instanceof Error ? error.message : String(error),
-  };
-}
-
 function errorCodeOf(error: unknown): string {
   const code = (error as { code?: unknown }).code;
   return typeof code === 'string' && code.startsWith('tts/') ? code : 'tts/synthesis_failed';
-}
-
-function positiveLimit(value: number | undefined, fallback: number): number {
-  const limit = value ?? fallback;
-  if (!Number.isSafeInteger(limit) || limit <= 0) throw new TypeError('Speech limits must be positive integers');
-  return limit;
-}
-
-function mimeToExtension(mime: string): string | null {
-  if (mime.startsWith('audio/mpeg')) return 'mp3';
-  if (mime.startsWith('audio/wav')) return 'wav';
-  if (mime.startsWith('audio/ogg') || mime.startsWith('audio/opus')) return 'ogg';
-  if (mime.startsWith('audio/aac')) return 'aac';
-  if (mime.startsWith('audio/L16') || mime.startsWith('audio/pcm')) return 'pcm';
-  return null;
 }

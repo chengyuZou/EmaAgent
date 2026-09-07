@@ -20,7 +20,7 @@ describe('ProviderModelsRepo', () => {
           { capability: 'embed', activeProtocol: 'openai-embed', protocols: [{ protocol: 'openai-embed', baseUrl: 'https://example.com/v1' }] },
           { capability: 'rerank', activeProtocol: 'cohere-rerank', protocols: [{ protocol: 'cohere-rerank', baseUrl: 'https://example.com/v1' }] },
           { capability: 'vision', activeProtocol: 'openai-llm', protocols: [{ protocol: 'openai-llm', baseUrl: 'https://example.com/v1' }] },
-          { capability: 'tts', activeProtocol: 'openai-tts', protocols: [{ protocol: 'openai-tts', baseUrl: 'https://example.com/v1' }] },
+          { capability: 'tts', activeProtocol: 'siliconflow-tts', protocols: [{ protocol: 'siliconflow-tts', baseUrl: 'https://example.com/v1' }] },
           { capability: 'stt', activeProtocol: 'openai-stt', protocols: [{ protocol: 'openai-stt', baseUrl: 'https://example.com/v1' }] },
         ],
       });
@@ -77,5 +77,4 @@ describe('ProviderModelsRepo', () => {
     ).run()).toThrow(/CHECK constraint failed/);
   });
 });
-
 

@@ -13,9 +13,9 @@ describe('sessionFormat', () => {
     expect(sessionRecordFile('messages').path).toBe('records/messages.jsonl');
   });
 
-  it('只接受已登记记录和四类 Session 文件', () => {
+  it('只接受已登记记录和三类 Session 文件', () => {
     expect(isSessionArchivePath('manifest.json')).toBe(true);
-    expect(isSessionArchivePath('files/speechSegments/segment.mp3')).toBe(true);
+    expect(isSessionArchivePath('files/attachments/u1.png')).toBe(true);
     expect(isSessionArchivePath('records/legacy.jsonl')).toBe(false);
     expect(isSessionArchivePath('files/unknown/file')).toBe(false);
   });

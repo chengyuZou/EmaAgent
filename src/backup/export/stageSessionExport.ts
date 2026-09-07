@@ -13,7 +13,6 @@ import {
   toMessageRecord,
   toSessionRecord,
   toSpeechOutputRecord,
-  toSpeechSegmentRecord,
   toTaskRecord,
   toToolExecutionRecord,
   toTurnRecord,
@@ -158,11 +157,6 @@ function writeRecords(
     return toSpeechOutputRecord(row, archivePath);
   }, signal);
 
-  writeJsonl(directory, 'speechSegments', rows.speechSegments, row => {
-    const archivePath = `files/speechSegments/${safeName(row.id)}${safeExtension(path.extname(row.storage_path))}`;
-    pending.push({ kind: 'speechSegment', id: row.id, sourcePath: row.storage_path, archivePath });
-    return toSpeechSegmentRecord(row, archivePath);
-  }, signal);
   writeJsonl(directory, 'usageRecords', rows.usageRecords, toUsageRecord, signal);
 }
 

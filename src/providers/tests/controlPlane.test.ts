@@ -199,7 +199,7 @@ describe('Provider 控制面', () => {
     });
     // 第二个能力走 update 追加（后端保留路径；不接 UI）
     providers.update('siliconflow-copy', {
-      capability: { capability: 'tts', protocol: 'openai-tts', baseUrl: 'https://api.siliconflow.cn/v1' },
+      capability: { capability: 'tts', protocol: 'siliconflow-tts', baseUrl: 'https://api.siliconflow.cn/v1' },
     });
 
     expect(providers.resolveConnection('siliconflow-copy', 'llm').apiKey).toBe('sk-main');

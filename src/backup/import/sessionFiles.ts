@@ -7,7 +7,6 @@ import type {
   AttachmentPastedTextRecord,
   BackgroundProcessRecord,
   SpeechOutputRecord,
-  SpeechSegmentRecord,
 } from '../records/sessionRecords.js';
 import type { ExtractedSessionArchive } from './archive.js';
 
@@ -15,7 +14,6 @@ export interface RestoredSessionFiles {
   /** 旧绝对路径 → 新受管路径;消息块内路径重写的事实源。 */
   readonly attachments: ReadonlyMap<string, string>;
   readonly speechOutputs: ReadonlyMap<string, string>;
-  readonly speechSegments: ReadonlyMap<string, string>;
   readonly backgroundDirectories: ReadonlyMap<string, string>;
   commit(): void;
   rollback(): void;
@@ -28,7 +26,6 @@ export function publishSessionFiles(
   attachmentImages: readonly AttachmentImageRecord[],
   attachmentPastedTexts: readonly AttachmentPastedTextRecord[],
   speechOutputs: readonly SpeechOutputRecord[],
-  speechSegments: readonly SpeechSegmentRecord[],
   backgroundProcesses: readonly BackgroundProcessRecord[],
   signal?: AbortSignal,
 ): RestoredSessionFiles {
@@ -52,7 +49,6 @@ export function publishSessionFiles(
     attachmentPaths.set(record.path, toFinal(finalRoot, temporaryRoot, destination));
   };
   const speechOutputPaths = new Map<string, string>();
-  const speechSegmentPaths = new Map<string, string>();
   const backgroundDirectories = new Map<string, string>();
   let published = false;
 
@@ -72,20 +68,6 @@ export function publishSessionFiles(
       const destination = path.join(temporaryRoot, 'audio', 'merged', fileName(record.turnId, record.filePath));
       copy(source.filePath, destination, record.byteSize);
       speechOutputPaths.set(record.turnId, toFinal(finalRoot, temporaryRoot, destination));
-    }
-    for (const record of speechSegments) {
-      throwIfCancelled(signal);
-      const source = archive.get(record.filePath);
-      if (!source) continue;
-      const destination = path.join(
-        temporaryRoot,
-        'audio',
-        'segments',
-        record.turnId,
-        fileName(String(record.sentenceIndex), record.filePath),
-      );
-      copy(source.filePath, destination, record.byteSize);
-      speechSegmentPaths.set(record.id, toFinal(finalRoot, temporaryRoot, destination));
     }
     for (const record of backgroundProcesses) {
       throwIfCancelled(signal);
@@ -114,7 +96,6 @@ export function publishSessionFiles(
   return {
     attachments: attachmentPaths,
     speechOutputs: speechOutputPaths,
-    speechSegments: speechSegmentPaths,
     backgroundDirectories,
     commit(): void { published = false; },
     rollback(): void {

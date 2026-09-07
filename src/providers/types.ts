@@ -10,7 +10,7 @@ export const PROTOCOLS = [
   'openai-embed',
   'gemini-embed',
   'cohere-rerank',
-  'openai-tts',
+  'siliconflow-tts',
   'dashscope-tts',
   'gpt-sovits-tts',
   'openai-stt',
@@ -77,7 +77,7 @@ export function isProtocolForCapability<TCapability extends ModelCapability>(
         || protocol === 'anthropic-llm'
         || protocol === 'gemini-llm';
     case 'tts':
-      return protocol === 'openai-tts'
+      return protocol === 'siliconflow-tts'
         || protocol === 'dashscope-tts'
         || protocol === 'gpt-sovits-tts';
     case 'stt':

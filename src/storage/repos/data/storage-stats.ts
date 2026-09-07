@@ -17,8 +17,6 @@ export interface DataDirStats {
   visionDescriptionBytes: number;
   audioCount: number;
   audioDurationMs: number;
-  speechSegmentCount: number;
-  speechSegmentBytes: number;
 }
 
 export interface SessionStats {
@@ -36,8 +34,6 @@ export interface SessionStats {
   audioTurnCount: number;
   audioTotalBytes: number;
   audioTotalDurationMs: number;
-  speechSegmentCount: number;
-  speechSegmentBytes: number;
   attachmentCount: number;
   attachmentTotalBytes: number;
 }
@@ -64,7 +60,6 @@ export class DataDirStatsRepo {
       SELECT COUNT(*) AS c, COALESCE(SUM(duration_ms), 0) AS d
         FROM speech_outputs
     `).get() as { c: number; d: number };
-    const speechSegments = countBytes('speech_segments');
 
     return {
       sessionCount: count('sessions'),
@@ -80,8 +75,6 @@ export class DataDirStatsRepo {
       visionDescriptionBytes: vision.b,
       audioCount: speechOutputs.c,
       audioDurationMs: speechOutputs.d,
-      speechSegmentCount: speechSegments.c,
-      speechSegmentBytes: speechSegments.b,
     };
   }
 }
@@ -122,7 +115,6 @@ export class SessionStatsRepo {
              COALESCE(SUM(duration_ms), 0) AS d
         FROM speech_outputs WHERE session_id = ?
     `).get(sessionId) as { c: number; b: number; d: number };
-    const speechSegments = countBytes('speech_segments');
     const images = countBytes('attachment_images');
     const pasted = countBytes('attachment_pasted_texts');
 
@@ -141,8 +133,6 @@ export class SessionStatsRepo {
       audioTurnCount: speechOutputs.c,
       audioTotalBytes: speechOutputs.b,
       audioTotalDurationMs: speechOutputs.d,
-      speechSegmentCount: speechSegments.c,
-      speechSegmentBytes: speechSegments.b,
       attachmentCount: images.c + pasted.c,
       attachmentTotalBytes: images.b + pasted.b,
     };

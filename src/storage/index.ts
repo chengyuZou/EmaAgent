@@ -42,7 +42,7 @@ export {
   SessionBackupRestorer,
   SessionBackupRestoreError,
 } from './repos/data/sessionBackup.js';
-export { SpeechOutputsRepo, SpeechSegmentsRepo } from './repos/data/speechOutputs.js';
+export { SpeechOutputsRepo } from './repos/data/speechOutputs.js';
 export type {
   SessionStats,
   DataDirStats,
@@ -56,9 +56,6 @@ export type {
 export type {
   SpeechOutputInsert,
   SpeechOutputRow,
-  SpeechSegmentInsert,
-  SpeechSegmentRow,
-  SpeechSegmentUsage,
 } from './repos/data/speechOutputs.js';
 export { McpServersRepo }  from './repos/profile/mcp-servers.js';
 export type { McpServerRow } from './repos/profile/mcp-servers.js';

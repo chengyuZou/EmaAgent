@@ -1,24 +1,11 @@
-// 定义逐句语音进入 Turn 事件流时使用的产品事件。
-export type SpeechEvent =
-  | {
-      readonly type: 'tts_chunk';
-      readonly sessionId: string;
-      readonly turnId: string;
-      readonly audio: string;
-      readonly sentenceId: string;
-      readonly mime: string;
-    }
-  | {
-      readonly type: 'tts_sentence_complete';
-      readonly sessionId: string;
-      readonly turnId: string;
-      readonly sentenceId: string;
-    }
-  | {
-      readonly type: 'tts_warning';
-      readonly sessionId: string;
-      readonly turnId: string;
-      readonly code: string;
-      readonly severity: 'warn' | 'error';
-      readonly message: string;
-    };
+export type SpeechControlEvent =
+  | { readonly type: 'sentence_started'; readonly sentenceId: string; readonly mime: string }
+  | { readonly type: 'sentence_completed'; readonly sentenceId: string }
+  | { readonly type: 'sentence_failed'; readonly sentenceId: string; readonly code: string; readonly message: string }
+  | { readonly type: 'speech_completed'; readonly audioAvailable: boolean }
+  | { readonly type: 'speech_cancelled' };
+
+/** 音频块只走 WebSocket 二进制帧；其余事件序列化成 JSON 控制帧。 */
+export type SpeechStreamEvent =
+  | SpeechControlEvent
+  | { readonly type: 'audio_chunk'; readonly bytes: Uint8Array };

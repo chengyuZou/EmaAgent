@@ -273,20 +273,6 @@ CREATE TABLE speech_outputs (
   created_at    INTEGER NOT NULL
 );
 
-CREATE TABLE speech_segments (
-  id             TEXT PRIMARY KEY,
-  turn_id        TEXT NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
-  session_id     TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  sentence_index INTEGER NOT NULL,
-  storage_path   TEXT NOT NULL,
-  mime_type      TEXT NOT NULL,
-  byte_size      INTEGER NOT NULL,
-  duration_ms    INTEGER,
-  text           TEXT NOT NULL,
-  created_at     INTEGER NOT NULL,
-  UNIQUE(turn_id, sentence_index)
-);
-
 -- Turn 排序、分页、时长与 fork 截断一律使用 created_at（创建即启动，无独立 pending 态）。
 CREATE TABLE turns (
   id                   TEXT PRIMARY KEY,
@@ -349,10 +335,6 @@ CREATE INDEX idx_attachment_vision_descriptions_caches_lru
   ON attachment_vision_descriptions_caches(last_accessed_at ASC, path ASC);
 
 CREATE INDEX idx_speech_outputs_session ON speech_outputs(session_id, created_at DESC);
-
-CREATE INDEX idx_speech_seg_session ON speech_segments(session_id, created_at DESC);
-
-CREATE INDEX idx_speech_seg_turn    ON speech_segments(turn_id, sentence_index);
 
 CREATE INDEX idx_background_processes_completion
   ON background_processes(session_id, model_notified_at, completion_claimed_at, completed_at, id);
@@ -635,31 +617,6 @@ BEGIN
       SELECT 1 FROM turns t
        WHERE t.id = NEW.turn_id AND t.session_id = NEW.session_id
     ) THEN RAISE(ABORT, 'ownership_violation: speech_outputs.turn_id')
-  END;
-END;
-
-CREATE TRIGGER trg_speech_segments_owner_insert
-BEFORE INSERT ON speech_segments
-WHEN NOT EXISTS (
-  SELECT 1 FROM turns t
-   WHERE t.id = NEW.turn_id AND t.session_id = NEW.session_id
-)
-BEGIN
-  SELECT RAISE(ABORT, 'ownership_violation: speech_segments.turn_id');
-END;
-
-CREATE TRIGGER trg_speech_segments_owner_update
-BEFORE UPDATE OF session_id, turn_id ON speech_segments
-BEGIN
-  SELECT CASE
-    WHEN NEW.session_id <> OLD.session_id
-    THEN RAISE(ABORT, 'ownership_violation: speech_segments.session_id is immutable')
-  END;
-  SELECT CASE
-    WHEN NOT EXISTS (
-      SELECT 1 FROM turns t
-       WHERE t.id = NEW.turn_id AND t.session_id = NEW.session_id
-    ) THEN RAISE(ABORT, 'ownership_violation: speech_segments.turn_id')
   END;
 END;
 

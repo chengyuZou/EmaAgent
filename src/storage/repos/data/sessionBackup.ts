@@ -7,7 +7,7 @@ import type { AttachmentPastedTextRow } from './attachmentPastedTexts.js';
 import type { BackgroundProcessRow } from './backgroundProcesses.js';
 import type { MessageRow } from './messages.js';
 import type { SessionRow } from './sessions.js';
-import type { SpeechOutputRow, SpeechSegmentRow } from './speechOutputs.js';
+import type { SpeechOutputRow } from './speechOutputs.js';
 import type { TaskRow } from './tasks.js';
 import type { TurnRow } from './turns.js';
 import type { UsageRecordRow } from './usage-records.js';
@@ -48,7 +48,6 @@ export interface SessionBackupRows {
   readonly attachmentImages: Iterable<AttachmentImageRow>;
   readonly attachmentPastedTexts: Iterable<AttachmentPastedTextRow>;
   readonly speechOutputs: Iterable<SpeechOutputRow>;
-  readonly speechSegments: Iterable<SpeechSegmentRow>;
   readonly usageRecords: Iterable<UsageRecordRow>;
 }
 
@@ -128,11 +127,6 @@ export class SessionBackupReader {
           SELECT * FROM speech_outputs
           WHERE session_id = ?
           ORDER BY created_at ASC, turn_id ASC
-        `, sessionId),
-        speechSegments: this.iterate<SpeechSegmentRow>(`
-          SELECT * FROM speech_segments
-          WHERE session_id = ?
-          ORDER BY created_at ASC, id ASC
         `, sessionId),
         usageRecords: this.iterate<UsageRecordRow>(`
           SELECT * FROM usage_records
@@ -333,19 +327,6 @@ export class SessionBackupRestorer {
       insertSpeechOutput.run(
         row.turn_id, session.id, row.storage_path, row.mime_type,
         row.byte_size, row.duration_ms, row.segment_count, row.created_at,
-      );
-    }
-
-    const insertSpeechSegment = this.db.prepare(`
-      INSERT INTO speech_segments (
-        id, turn_id, session_id, sentence_index, storage_path,
-        mime_type, byte_size, duration_ms, text, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    for (const row of rows.speechSegments) {
-      insertSpeechSegment.run(
-        row.id, row.turn_id, session.id, row.sentence_index, row.storage_path,
-        row.mime_type, row.byte_size, row.duration_ms, row.text, row.created_at,
       );
     }
 

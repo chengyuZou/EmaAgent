@@ -22,7 +22,6 @@ import {
   sessionBackupManifestSchema,
   sessionRecordSchema,
   speechOutputRecordSchema,
-  speechSegmentRecordSchema,
   taskRecordSchema,
   toolExecutionRecordSchema,
   turnRecordSchema,
@@ -37,7 +36,6 @@ import {
   restoreMessageRecord,
   restoreSessionRecord,
   restoreSpeechOutputRecord,
-  restoreSpeechSegmentRecord,
   restoreTaskRecord,
   restoreToolExecutionRecord,
   restoreTurnRecord,
@@ -72,7 +70,7 @@ export async function importSessionArchive(
     const [
       turns, messages, tasks, agentRuns, agentRunMessages,
       toolExecutions, backgroundProcesses, attachmentImages, attachmentPastedTexts,
-      speechOutputs, speechSegments, usageRecords,
+      speechOutputs, usageRecords,
     ] = await Promise.all([
       readJsonlRecords(archive, 'turns', turnRecordSchema),
       readJsonlRecords(archive, 'messages', messageRecordSchema),
@@ -84,13 +82,12 @@ export async function importSessionArchive(
       readJsonlRecords(archive, 'attachmentImages', attachmentImageRecordSchema),
       readJsonlRecords(archive, 'attachmentPastedTexts', attachmentPastedTextRecordSchema),
       readJsonlRecords(archive, 'speechOutputs', speechOutputRecordSchema),
-      readJsonlRecords(archive, 'speechSegments', speechSegmentRecordSchema),
       readJsonlRecords(archive, 'usageRecords', usageRecordSchema),
     ]);
     throwIfCancelled(signal);
     assertSessionOwnership(manifest.sessionId, {
       turns, messages, tasks, agentRuns, toolExecutions,
-      backgroundProcesses, speechOutputs, speechSegments,
+      backgroundProcesses, speechOutputs,
       usageRecords,
     });
     assertSummaryCursors(messages);
@@ -116,7 +113,6 @@ export async function importSessionArchive(
       attachmentImages,
       attachmentPastedTexts,
       speechOutputs,
-      speechSegments,
       backgroundProcesses,
       signal,
     );
@@ -156,10 +152,6 @@ export async function importSessionArchive(
         speechOutputs: speechOutputs.flatMap(row => {
           const filePath = files.speechOutputs.get(row.turnId);
           return filePath ? [restoreSpeechOutputRecord(row, filePath)] : [];
-        }),
-        speechSegments: speechSegments.flatMap(row => {
-          const filePath = files.speechSegments.get(row.id);
-          return filePath ? [restoreSpeechSegmentRecord(row, filePath)] : [];
         }),
         usageRecords: usageRecords.map(restoreUsageRecord),
       });

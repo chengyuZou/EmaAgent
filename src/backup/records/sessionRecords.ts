@@ -7,7 +7,7 @@ const integer = z.number().int();
 const nonNegativeInteger = integer.nonnegative();
 
 export const omittedSessionFileSchema = z.object({
-  kind: z.enum(['attachment', 'speechOutput', 'speechSegment', 'backgroundProcessOutput']),
+  kind: z.enum(['attachment', 'speechOutput', 'backgroundProcessOutput']),
   id,
   reason: z.enum(['missing', 'unreadable']),
 }).strict();
@@ -210,19 +210,6 @@ export const speechOutputRecordSchema = z.object({
   filePath: z.string(),
 }).strict();
 
-export const speechSegmentRecordSchema = z.object({
-  id,
-  turnId: id,
-  sessionId: id,
-  sentenceIndex: nonNegativeInteger,
-  mimeType: z.string(),
-  byteSize: nonNegativeInteger,
-  durationMs: nonNegativeInteger.nullable(),
-  text: z.string(),
-  createdAt: integer,
-  filePath: z.string(),
-}).strict();
-
 export const usageRecordSchema = z.object({
   id,
   sessionId: id,
@@ -255,5 +242,4 @@ export type BackgroundProcessRecord = z.infer<typeof backgroundProcessRecordSche
 export type AttachmentImageRecord = z.infer<typeof attachmentImageRecordSchema>;
 export type AttachmentPastedTextRecord = z.infer<typeof attachmentPastedTextRecordSchema>;
 export type SpeechOutputRecord = z.infer<typeof speechOutputRecordSchema>;
-export type SpeechSegmentRecord = z.infer<typeof speechSegmentRecordSchema>;
 export type UsageRecord = z.infer<typeof usageRecordSchema>;

@@ -1,5 +1,6 @@
 // 使用当前角色参考声音沿正式协议入口生成一段有界试听音频。
 import type { CallTts, TtsVoiceReference, TtsVoiceRegistrar } from '@ema-agent/tts';
+import { createUsageRecord, reportUsage, type UsageRecorder } from '@ema-agent/usage';
 import { SpeechVoiceCache } from './voiceHandleCache.js';
 
 export type SpeechVoicePreviewErrorCode =
@@ -42,6 +43,7 @@ export class SpeechVoicePreview {
     ) => SpeechVoicePreviewTts | undefined,
     private readonly voices: SpeechVoicePreviewSource,
     private readonly voiceCache: SpeechVoiceCache,
+    private readonly usageRecorder: UsageRecorder,
   ) {}
 
   async synthesize(
@@ -50,6 +52,8 @@ export class SpeechVoicePreview {
     text: string,
     signal?: AbortSignal,
   ): Promise<SpeechVoicePreviewResult> {
+    const startedAt = Date.now();
+    let errorCode: string | null = null;
     const tts = this.resolveTts(providerId, modelId);
     if (!tts) {
       throw new SpeechVoicePreviewError('client_unavailable', 'TTS Provider 运行时不可用');
@@ -86,12 +90,25 @@ export class SpeechVoicePreview {
       }
       return { bytes: concatChunks(chunks), mime };
     } catch (error) {
+      errorCode = error instanceof SpeechVoicePreviewError ? error.code : 'tts/preview_failed';
       if (error instanceof SpeechVoicePreviewError) throw error;
       throw new SpeechVoicePreviewError(
         'synthesis_failed',
         error instanceof Error ? error.message : String(error),
         error,
       );
+    } finally {
+      reportUsage(this.usageRecorder, createUsageRecord({
+        capability: 'tts',
+        providerId,
+        modelId,
+        status: errorCode === null ? 'completed' : 'failed',
+        startedAt,
+        durationMs: Date.now() - startedAt,
+        quantity: text.length,
+        unit: 'character',
+        errorCode,
+      }), error => console.warn('[usage] TTS 试听记账失败:', error));
     }
   }
 }
