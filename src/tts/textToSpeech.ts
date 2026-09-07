@@ -2,7 +2,7 @@
 import { TtsError } from './errors.js';
 import { createDashscopeTtsProtocol } from './protocols/dashscope/index.js';
 import { createGptSoVitsTtsProtocol } from './protocols/gptSoVits.js';
-import { createOpenAiTtsProtocol } from './protocols/openAi.js';
+import { createSiliconFlowTtsProtocol } from './protocols/siliconFlow.js';
 import type {
   CallTts,
   TtsConnection,
@@ -36,7 +36,7 @@ export function createTtsCall(connection: TtsConnection, modelId: string): CallT
 
 function createProtocol(connection: TtsConnection, modelId: string): TtsProtocolImplementation {
   switch (connection.protocol) {
-    case 'openai-tts': return createOpenAiTtsProtocol(connection, modelId);
+    case 'siliconflow-tts': return createSiliconFlowTtsProtocol(connection, modelId);
     case 'gpt-sovits-tts': return createGptSoVitsTtsProtocol(connection, modelId);
     case 'dashscope-tts': return createDashscopeTtsProtocol(connection, modelId);
   }

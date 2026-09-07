@@ -13,7 +13,7 @@ TtsConnection + modelId
 ## 定死的边界
 
 - `createTtsVoiceRegistrar()` / `createTtsCall()` 是仅有的创建入口，连接与模型在创建点冻结；不维护 Provider Map 或配置热更新。
-- `TtsVoiceRegistrar` 隐藏协议差异：GPT-SoVITS 返回本地参考音频，OpenAI 兼容和 DashScope 上传注册并返回 Provider 声音标识。
+- `TtsVoiceRegistrar` 隐藏协议差异：GPT-SoVITS 返回本地参考音频，SiliconFlow 和 DashScope 上传注册并返回 Provider 声音标识。
 - `CallTts` 只执行一次协议调用；不切句、不重试、不设超时、不记录 Usage、不归档。
 - `voice` 是 registrar 的异步产出，创建点同步执行时它还不存在，因此随 `TtsRequest` 传入；请求只有 `text/voice/format/sampleRate/speed/signal`，没有 `model/sessionId/turnId/providerId`。
 - DashScope 的模型族（CosyVoice / Qwen TTS）在创建点判定，不支持的模型装配期即抛 `tts/unsupported_model`。
@@ -23,7 +23,7 @@ TtsConnection + modelId
 
 ```text
 protocols/
-|- openAi.ts                 OpenAI 兼容 HTTP 音频流和声音上传
+|- siliconFlow.ts            SiliconFlow HTTP 音频流和声音上传
 |- gptSoVits.ts              本地 GPT-SoVITS HTTP 音频流（载荷无模型字段）
 `- dashscope/
    |- index.ts               创建点按模型选择 DashScope 二级协议
@@ -37,4 +37,4 @@ DashScope 是一个 Provider 协议族，但其 CosyVoice 与 Qwen TTS 的线协
 
 ## 不属于本包
 
-角色选择、TTS binding、声音短期缓存、Markdown 清理、流式切句、逐句顺序、Turn 级字节上限、SSE 事件和音频归档统一属于 `@ema-agent/speech`。
+角色选择、TTS binding、声音进程内缓存、Markdown 清理、流式切句、逐句顺序、单句超时与字节边界、Speech 事件和音频归档统一属于 `@ema-agent/speech`。Server 到 Desktop 的实时传输走独立 Speech WebSocket，不属于 Provider 协议包。

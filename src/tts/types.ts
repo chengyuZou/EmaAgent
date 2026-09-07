@@ -15,6 +15,11 @@ export type TtsAudioFormat = 'mp3' | 'pcm' | 'wav' | 'opus';
 /** 角色包提供的本地参考音频；TTS 只读取它，不拥有角色语义。 */
 export interface TtsVoiceReference {
   readonly kind: 'reference';
+  /** 角色资源的完整文件名；与更新时间共同标识当前参考音频版本。 */
+  readonly resourceName: string;
+  readonly resourceUpdatedAt: number;
+  /** 云端注册名称；由拥有角色语义的装配层生成，不从文件路径反推。 */
+  readonly registrationName: string;
   readonly audioPath: string;
   readonly promptText: string;
   readonly promptLanguage: string;
@@ -24,9 +29,6 @@ export interface TtsVoiceReference {
 export interface TtsProviderVoice {
   readonly kind: 'provider';
   readonly id: string;
-  /** 未明确保证长期有效的声音标识只能进入进程内缓存。 */
-  readonly lifetime: 'ephemeral' | 'durable';
-  readonly expiresAt?: number;
 }
 
 export type TtsVoice = TtsVoiceReference | TtsProviderVoice;

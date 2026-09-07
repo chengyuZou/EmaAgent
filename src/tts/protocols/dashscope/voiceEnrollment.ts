@@ -7,6 +7,8 @@ import type { TtsProviderVoice, TtsVoiceReference } from '../../types.js';
 import { safeReadText } from '../../utils.js';
 
 const MAX_REFERENCE_AUDIO_BYTES = 25 * 1024 * 1024;
+// DashScope 的 prefix/preferred_name 只接受短 ASCII；角色语义保留在本地缓存身份中。
+const DASHSCOPE_VOICE_PREFIX = 'emaagent';
 
 export async function enrollDashscopeVoice(
   httpBaseUrl: string,
@@ -38,7 +40,7 @@ export async function enrollDashscopeVoice(
         input: {
           action: 'create_voice',
           target_model: model,
-          prefix: 'ema',
+          prefix: DASHSCOPE_VOICE_PREFIX,
           url: dataUri,
         },
       }
@@ -47,7 +49,7 @@ export async function enrollDashscopeVoice(
         input: {
           action: 'create',
           target_model: model,
-          preferred_name: 'ema',
+          preferred_name: DASHSCOPE_VOICE_PREFIX,
           audio: { data: dataUri },
         },
       };
@@ -79,5 +81,5 @@ export async function enrollDashscopeVoice(
   if (!voiceId) {
     throw new TtsError('tts/invalid_response', 'DashScope voice enrollment response is missing voice id');
   }
-  return { kind: 'provider', id: voiceId, lifetime: 'ephemeral' };
+  return { kind: 'provider', id: voiceId };
 }

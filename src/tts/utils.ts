@@ -1,6 +1,6 @@
 // 提供多个 TTS 协议实现共用的 MIME、字节拼接和安全响应读取函数。
 
-/** 音频格式（mp3/pcm/wav/opus）-> MIME 类型。openai-tts / dashscope-tts 共用。 */
+/** 音频格式（mp3/pcm/wav/opus）-> MIME 类型。SiliconFlow / DashScope TTS 共用。 */
 export function mimeForFormat(format: string): string {
   switch (format) {
     case 'mp3':  return 'audio/mpeg';

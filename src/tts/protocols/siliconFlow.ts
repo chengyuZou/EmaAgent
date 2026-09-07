@@ -1,6 +1,5 @@
-// 执行 OpenAI 兼容的 /audio/speech，并按需上传参考音频注册声音。
+// 执行 SiliconFlow 的参考音频注册与流式语音合成协议。
 import { readFile, stat } from 'node:fs/promises';
-import { basename } from 'node:path';
 
 import { TtsError, ttsErrorFromHttp, ttsErrorFromNetwork } from '../errors.js';
 import type {
@@ -8,19 +7,17 @@ import type {
   TtsProtocolImplementation,
   TtsRequest,
   TtsStreamEvent,
-  TtsVoice,
-  TtsVoiceReference,
 } from '../types.js';
 import { concatBytes, mimeForFormat, mimeFromExt, safeReadText } from '../utils.js';
 
 const CHUNK_BYTES = 8 * 1024;
 const MAX_REFERENCE_AUDIO_BYTES = 25 * 1024 * 1024;
 
-export function createOpenAiTtsProtocol(
+export function createSiliconFlowTtsProtocol(
   connection: TtsConnection,
   modelId: string,
 ): TtsProtocolImplementation {
-  const baseUrl = (connection.baseUrl ?? 'https://api.openai.com/v1').replace(/\/$/, '');
+  const baseUrl = (connection.baseUrl ?? 'https://api.siliconflow.cn/v1').replace(/\/$/, '');
   const authorization = `Bearer ${connection.apiKey ?? ''}`;
 
   return {
@@ -35,14 +32,16 @@ export function createOpenAiTtsProtocol(
         );
       }
       const bytes = await readFile(reference.audioPath);
-      const fileName = basename(reference.audioPath);
-      const extension = fileName.split('.').pop()?.toLowerCase() ?? '';
+      const extension = reference.resourceName.split('.').pop()?.toLowerCase() ?? '';
       const form = new FormData();
-      form.set('file', new Blob([new Uint8Array(bytes)], { type: mimeFromExt(extension) }), fileName);
+      form.set(
+        'file',
+        new Blob([new Uint8Array(bytes)], { type: mimeFromExt(extension) }),
+        reference.resourceName,
+      );
       form.set('model', modelId);
-      form.set('customName', `ema-${fileName.replace(/\.[^.]+$/, '')}`);
+      form.set('customName', reference.registrationName);
       form.set('text', reference.promptText);
-      form.set('language', reference.promptLanguage || 'zh');
 
       let response: Response;
       try {
@@ -60,24 +59,24 @@ export function createOpenAiTtsProtocol(
       }
       const payload = await response.json() as { uri?: string };
       if (!payload.uri) {
-        throw new TtsError('tts/invalid_response', 'TTS voice upload response is missing uri');
+        throw new TtsError('tts/invalid_response', 'SiliconFlow voice upload response is missing uri');
       }
-      return { kind: 'provider', id: payload.uri, lifetime: 'ephemeral' };
+      return { kind: 'provider', id: payload.uri };
     },
     synthesize(request) {
-      return synthesizeOpenAi(baseUrl, authorization, modelId, request);
+      return synthesizeSiliconFlow(baseUrl, authorization, modelId, request);
     },
   };
 }
 
-async function* synthesizeOpenAi(
+async function* synthesizeSiliconFlow(
   baseUrl: string,
   authorization: string,
   modelId: string,
   request: TtsRequest,
 ): AsyncGenerator<TtsStreamEvent> {
   if (request.voice.kind !== 'provider') {
-    throw new TtsError('tts/unsupported_voice', 'OpenAI TTS requires a prepared provider voice');
+    throw new TtsError('tts/unsupported_voice', 'SiliconFlow TTS requires a registered provider voice');
   }
 
   let response: Response;
@@ -90,6 +89,7 @@ async function* synthesizeOpenAi(
         voice: request.voice.id,
         input: request.text,
         response_format: request.format ?? 'mp3',
+        stream: true,
         ...(request.speed === undefined ? {} : { speed: request.speed }),
       }),
       signal: request.signal,

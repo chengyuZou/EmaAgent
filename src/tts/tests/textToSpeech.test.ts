@@ -1,5 +1,8 @@
 // 测试 tts 包两个创建入口的冻结校验、请求校验与 HTTP 协议的合成流对账。
 import http from 'node:http';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { TtsError } from '../errors.js';
 import { createTtsCall, createTtsVoiceRegistrar } from '../textToSpeech.js';
@@ -7,12 +10,15 @@ import type { TtsStreamEvent, TtsVoice, TtsVoiceReference } from '../types.js';
 
 const REFERENCE: TtsVoiceReference = {
   kind: 'reference',
+  resourceName: 'main.wav',
+  resourceUpdatedAt: 1,
+  registrationName: '樱羽艾玛-main',
   audioPath: 'voice/refs/main.wav',
   promptText: '参考文本',
   promptLanguage: 'zh',
 };
 
-const PROVIDER_VOICE: TtsVoice = { kind: 'provider', id: 'voice-1', lifetime: 'ephemeral' };
+const PROVIDER_VOICE: TtsVoice = { kind: 'provider', id: 'voice-1' };
 
 interface CapturedRequest {
   readonly body: string;
@@ -50,7 +56,7 @@ async function collect(stream: AsyncIterable<TtsStreamEvent>): Promise<TtsStream
 
 describe('创建点冻结校验', () => {
   it('空 modelId 在两个创建点都直接抛 TypeError', () => {
-    const connection = { protocol: 'openai-tts', apiKey: 'k' } as const;
+    const connection = { protocol: 'siliconflow-tts', apiKey: 'k' } as const;
     expect(() => createTtsCall(connection, '  ')).toThrow(TypeError);
     expect(() => createTtsVoiceRegistrar(connection, '')).toThrow(TypeError);
   });
@@ -97,18 +103,47 @@ describe('音色注册', () => {
     await expect(registrar(REFERENCE)).resolves.toEqual(REFERENCE);
   });
 
-  it('OpenAI 注册在参考音频不可读时抛 reference_audio_missing（不发起网络请求）', async () => {
+  it('SiliconFlow 注册在参考音频不可读时抛 reference_audio_missing（不发起网络请求）', async () => {
     const registrar = createTtsVoiceRegistrar(
-      { protocol: 'openai-tts', apiKey: 'k', baseUrl: 'http://127.0.0.1:1' },
+      { protocol: 'siliconflow-tts', apiKey: 'k', baseUrl: 'http://127.0.0.1:1' },
       'tts-model',
     );
     await expect(registrar({ ...REFERENCE, audioPath: 'D:/ema-definitely-missing/ref.wav' }))
       .rejects.toMatchObject({ code: 'tts/reference_audio_missing' });
   });
+
+  it('SiliconFlow 使用装配层给出的注册名称且不发送 language', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'ema-tts-'));
+    const audioPath = join(directory, 'main.wav');
+    await writeFile(audioPath, Buffer.from([1, 2, 3]));
+    try {
+      await withServer(
+        (_body, response) => {
+          response.writeHead(200, { 'content-type': 'application/json' });
+          response.end(JSON.stringify({ uri: 'speech:樱羽艾玛-main:test' }));
+        },
+        async (baseUrl, captured) => {
+          const registrar = createTtsVoiceRegistrar(
+            { protocol: 'siliconflow-tts', apiKey: 'k', baseUrl },
+            'IndexTeam/IndexTTS-2',
+          );
+          await expect(registrar({ ...REFERENCE, audioPath })).resolves.toEqual({
+            kind: 'provider',
+            id: 'speech:樱羽艾玛-main:test',
+          });
+          expect(captured[0]?.body).toContain('name="customName"');
+          expect(captured[0]?.body).toContain(REFERENCE.registrationName);
+          expect(captured[0]?.body).not.toContain('name="language"');
+        },
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('合成流', () => {
-  it('OpenAI 载荷使用创建点冻结的模型，音频块与 done 字节对账一致', async () => {
+  it('SiliconFlow 载荷使用冻结模型和注册声音，并请求流式响应', async () => {
     await withServer(
       (_body, response) => {
         response.writeHead(200, { 'content-type': 'audio/mpeg' });
@@ -116,7 +151,7 @@ describe('合成流', () => {
         response.end(Buffer.alloc(100, 2));
       },
       async (baseUrl, captured) => {
-        const callTts = createTtsCall({ protocol: 'openai-tts', apiKey: 'k', baseUrl }, 'tts-model-x');
+        const callTts = createTtsCall({ protocol: 'siliconflow-tts', apiKey: 'k', baseUrl }, 'tts-model-x');
         const events = await collect(callTts({ text: '你好呀', voice: PROVIDER_VOICE }));
 
         const payload = JSON.parse(captured[0]?.body ?? '{}') as Record<string, unknown>;
@@ -124,6 +159,7 @@ describe('合成流', () => {
         expect(payload.input).toBe('你好呀');
         expect(payload.voice).toBe('voice-1');
         expect(payload.response_format).toBe('mp3');
+        expect(payload.stream).toBe(true);
 
         const totalBytes = 10 * 1024 + 100;
         const chunks = events.filter(event => event.type === 'audio_chunk');
@@ -168,7 +204,7 @@ describe('合成流', () => {
         response.end('bad key');
       },
       async (baseUrl) => {
-        const callTts = createTtsCall({ protocol: 'openai-tts', apiKey: 'bad', baseUrl }, 'tts-model-x');
+        const callTts = createTtsCall({ protocol: 'siliconflow-tts', apiKey: 'bad', baseUrl }, 'tts-model-x');
         await expect(collect(callTts({ text: '你好', voice: PROVIDER_VOICE })))
           .rejects.toMatchObject({ code: 'tts/credentials' });
       },
