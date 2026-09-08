@@ -17,8 +17,6 @@ import { ensureDataDirLayout } from './paths.js';
 import { publishReadyFile } from './readiness.js';
 import { HTTP_SERVER_TIMEOUTS } from './requestBudget.js';
 
-const TURN_EVENT_SWEEP_MS = 60_000;
-
 export interface ServerLifecycle {
   readonly composition: Composition;
   /** 实际监听端口（宿主经 ready 文件读取）。 */
@@ -29,7 +27,7 @@ export interface ServerLifecycle {
 /**
  * 唯一启动序列。失败即抛：入口负责打印并非零退出。
  * 启动恢复是 ready 前置（不能把旧 running 状态留给新进程）；ready 之后的后台驱动
- * （文件维护、Narrative 推送、默认 KB、后台进程续跑、事件店逐出）全部可降级。
+ * （文件维护、Narrative 推送、默认 KB、后台进程续跑）全部可降级。
  */
 export async function startServer(secret: string): Promise<ServerLifecycle> {
   const activeDataDir = activeDirEntry(loadRegistry()).path;
@@ -61,8 +59,8 @@ export async function startServer(secret: string): Promise<ServerLifecycle> {
     runRequiredRecovery(recoveryDeps);
 
     const app = createRoutes(running, secret);
-    const speechWebSocketServer = new WebSocketServer({ noServer: true });
-    webSocketServer = speechWebSocketServer;
+    const channelWebSocketServer = new WebSocketServer({ noServer: true });
+    webSocketServer = channelWebSocketServer;
     // 端口由 OS 分配（loopback ephemeral），实际端口经 ready 文件报告宿主；
     // 没有任何需要用户或宿主配置的端口项。未传自定义 createServer 时 serve
     // 恒为 http1 Server（headersTimeout/requestTimeout 只在 http1 上存在）。
@@ -71,7 +69,7 @@ export async function startServer(secret: string): Promise<ServerLifecycle> {
       port: 0,
       // loopback 是全部信任边界；绝不绑外部接口。
       hostname: '127.0.0.1',
-      websocket: { server: speechWebSocketServer },
+      websocket: { server: channelWebSocketServer },
     }) as Server;
     server = httpServer;
     httpServer.headersTimeout = HTTP_SERVER_TIMEOUTS.headersMs;
@@ -93,20 +91,13 @@ export async function startServer(secret: string): Promise<ServerLifecycle> {
     void running.knowledge.kb.ensureDefault(path.join(activeDataDir, 'kb'))
       .catch(error => console.warn('[kb] 默认知识库创建失败:', error));
     running.backgroundCompletion.start();
-    const sweepTick = setInterval(
-      () => running.turnEvents.evictExpired(),
-      TURN_EVENT_SWEEP_MS,
-    );
-    sweepTick.unref();
-
     return {
       composition: running,
       port,
       async shutdown() {
-        clearInterval(sweepTick);
         unpublishReady?.();
-        for (const socket of speechWebSocketServer.clients) socket.terminate();
-        speechWebSocketServer.close();
+        for (const socket of channelWebSocketServer.clients) socket.terminate();
+        channelWebSocketServer.close();
         await new Promise<void>(resolve => {
           httpServer.close(() => resolve());
           // SSE 是长连接，close() 不会自然结束；本地桌面进程直接断开。

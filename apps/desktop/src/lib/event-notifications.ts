@@ -1,11 +1,12 @@
-// 把结构化 SSE 事件转换为受用户设置控制的本地通知。
+// 把结构化实时事件转换为受用户设置控制的本地通知。
 
-import type { AppEvent, TurnSseEvent } from '@ema-agent/server/sse/eventHub.js';
+import type { AppEvent } from '@ema-agent/server/application/appEvents.js';
+import type { TurnStreamEvent } from '@ema-agent/turn';
 import { useSettingsStore, type EventDisplayConfig } from '../stores/settings.js';
 import { showToast, type ToastOptions } from './toast.js';
 
-/** 通知层可见的全部线上事件：Turn 流（含语音输出）+ 应用级广播。 */
-export type NotifiableEvent = TurnSseEvent | AppEvent;
+/** 通知层可见的全部线上事件：Turn 流 + 应用级广播。 */
+export type NotifiableEvent = TurnStreamEvent | AppEvent;
 
 export interface EventNotification {
   message: string;
@@ -71,17 +72,12 @@ export function describeEventNotification(event: NotifiableEvent): EventNotifica
         return { message: '后台进程超出最大运行时间，已被终止', variant: 'warning' };
       }
       return null;
-    case 'tts_warning':
-      return {
-        message: `语音合成${event.severity === 'error' ? '失败' : '警告'}：${event.message}`,
-        variant: event.severity === 'error' ? 'danger' : 'warning',
-      };
     case 'emotion_changed':
       return { message: `角色情绪切换为 ${event.emotion}`, variant: 'info' };
     case 'motion_changed':
       return { message: `角色舞台动作：${event.motion}`, variant: 'info' };
     case 'character_switched':
-      return { message: `已切换角色：${event.name}`, variant: 'success' };
+      return { message: `已切换角色：${event.displayName ?? event.characterName}`, variant: 'success' };
     case 'agent_run_started':
       return { message: `子 Agent 已开始${event.description ? `：${event.description}` : ''}`, variant: 'info' };
     case 'agent_run_completed':

@@ -6,7 +6,6 @@
 // Session 在侧栏显示待处理数量；桌宠窗口不挂载阻塞式决策层，只显示非阻塞提示。
 import { create } from 'zustand';
 import type { PendingInteraction } from '@ema-agent/turn';
-import type { PendingInteractions } from '../api/turns.js';
 
 export interface DecisionStoreState {
   /** 每 Session 独立 FIFO；[0] 是该 Session 的当前卡片。 */
@@ -27,8 +26,8 @@ export interface DecisionStoreState {
   /** 删除 Session 时清空其整条队列。 */
   clearSession(sessionId: string): void;
 
-  /** 窗口重开/SSE 重连时把 Core 仍在等待的 Permission/AskUser 补回各 Session FIFO。 */
-  restorePending(pending: PendingInteractions['pending']): void;
+  /** WebSocket 建连时把 Core 仍在等待的 Permission/AskUser 补回对应 Session FIFO。 */
+  restorePending(pending: readonly PendingInteraction[]): void;
 
   clear(): void;
 }

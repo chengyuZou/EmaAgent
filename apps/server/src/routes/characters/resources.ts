@@ -20,6 +20,7 @@ export interface CharacterResourcesRouteDeps {
     | 'setPrimaryVoiceSample' | 'updateVoiceSample' | 'importVoiceSample'
     | 'exportVoiceSample' | 'deleteVoiceSample' | 'resolveVoiceSampleFile'
     | 'resolveCharacterDirectory'
+    | 'resolveLive2dPreviewFile' | 'saveLive2dPreview'
   >;
   readonly mutateCharacter: <T>(characterName: string, action: () => T | Promise<T>) => Promise<T>;
 }
@@ -40,6 +41,11 @@ const voicePatch = z.object({ displayName: z.string().trim().min(1).max(200) });
 const importLive2dBody = z.object({
   source: z.string().min(1),
   isPrimary: z.boolean().optional(),
+});
+
+const previewBody = z.object({
+  // 离屏渲出的封面 PNG(base64);预览图很小,4M 字符上限只是基础边界。
+  dataBase64: z.string().min(1).max(4_000_000),
 });
 
 const importFileBody = z.object({
@@ -164,6 +170,30 @@ export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
         return context.json({ error: 'resource_not_found' }, 404);
       }
       return serveFile(context, resolved);
+    })
+    // Live2D 静态封面:PUT 收离屏渲染的 PNG,GET 读字节;与模型目录分离(不污染用户模型包)。
+    .put('/:characterName/live2d/:live2dName/preview', jsonBody(previewBody), async context => {
+      const png = Buffer.from(context.req.valid('json').dataBase64, 'base64');
+      return context.json(await deps.mutateCharacter(context.req.param('characterName'), async () => {
+        await deps.characters.saveLive2dPreview(
+          context.req.param('characterName'),
+          context.req.param('live2dName'),
+          png,
+        );
+        return { ok: true as const };
+      }));
+    })
+    .get('/:characterName/live2d/:live2dName/preview', context => {
+      let filePath: string;
+      try {
+        filePath = deps.characters.resolveLive2dPreviewFile(
+          context.req.param('characterName'),
+          context.req.param('live2dName'),
+        );
+      } catch (error) {
+        return characterError(context, error);
+      }
+      return serveFile(context, filePath);
     })
     // ── 立绘 ───────────────────────────────────────────────────────────────────
     .post('/:characterName/illustrations/:illustrationName/primary', context =>

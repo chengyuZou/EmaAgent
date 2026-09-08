@@ -6,7 +6,7 @@ import type {
   BackgroundProcessCompletionSource,
 } from '@ema-agent/tools';
 import type { TurnExecutor, TurnStore } from '@ema-agent/turn';
-import type { TurnFanout } from '../sse/turnFanout.js';
+import type { TurnFanout } from './turnFanout.js';
 
 const BUSY_RETRY_MS = 5_000;
 

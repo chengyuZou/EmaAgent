@@ -1,7 +1,7 @@
 // 管理全应用唯一的系统 SSE 连接，并把事件按顺序广播给各个窗口。
 
 import { serverClient } from '../api/client.js';
-import type { AppEvent } from '@ema-agent/server/sse/eventHub.js';
+import type { AppEvent } from '@ema-agent/server/application/appEvents.js';
 import { dispatchSystemEvent } from './system-event-dispatcher.js';
 import {
   getSseOutcomeError,

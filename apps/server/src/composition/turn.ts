@@ -38,7 +38,7 @@ import {
 import { createUsageRecord, reportUsage, type UsageRecorder } from '@ema-agent/usage';
 import { createVisionCall, type CallVision, type VisionImageMime } from '@ema-agent/vision';
 import { ensureScratchpadDir, scratchpadTurnDir } from '../platform/paths.js';
-import type { AppEvent } from '../sse/eventHub.js';
+import type { AppEvent } from '../application/appEvents.js';
 import type { DatabaseComposition } from './database.js';
 import type { KnowledgeComposition } from './knowledge.js';
 import type { NarrativeComposition } from './narrative.js';
@@ -70,7 +70,7 @@ export interface TurnCompositionDeps {
   readonly characters: CharacterStore;
   /** 角色舞台：Turn 泵内剥离表现标签；实例由 characters 一族持有（词汇随角色切换）。 */
   readonly stage: StageEngine;
-  /** 应用事件出口（eventHub）。 */
+  /** 应用事件出口。 */
   readonly emitAppEvent: (event: AppEvent) => void;
   /** completed 终态事务内的提取入队（Memory 一族）；事务提交后由它自己安排 drain。 */
   readonly onTurnCompletedInTransaction: (turnId: string) => void;

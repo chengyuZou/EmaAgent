@@ -1,6 +1,6 @@
 // 把跨窗口收到的系统事件写入当前窗口自己的前端 Store。
 
-import type { AppEvent } from '@ema-agent/server/sse/eventHub.js';
+import type { AppEvent } from '@ema-agent/server/application/appEvents.js';
 import { useBackgroundProcessStore } from '../stores/backgroundProcess.js';
 import { useCharacterStore } from '../stores/character.js';
 import { useCurrentSession } from '../chat/state/currentSession.js';

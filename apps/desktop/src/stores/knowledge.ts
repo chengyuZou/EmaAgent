@@ -13,7 +13,7 @@ import {
   type KnowledgeSearchResult,
   type ReembedTaskList,
 } from '../api/knowledge.js';
-import type { AppEvent } from '@ema-agent/server/sse/eventHub.js';
+import type { AppEvent } from '@ema-agent/server/application/appEvents.js';
 
 /** Route 原生摄入任务行（HTTP 水合与 SSE 进度更新共用同一形状）。 */
 type IngestTaskRow = IngestTaskList['items'][number];

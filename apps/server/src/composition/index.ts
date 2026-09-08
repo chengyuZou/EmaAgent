@@ -1,9 +1,9 @@
 // 唯一装配点：全部业务对象在此一次成型，族间依赖经 Composition 字段单向传递。
 // routes/application/platform 只消费 Composition，不构造业务对象。
 import { characterStageVocabulary } from '@ema-agent/characters';
-import { EventHub } from '../sse/eventHub.js';
-import { TurnEventStore } from '../sse/eventStore.js';
-import { TurnFanout } from '../sse/turnFanout.js';
+import { AppEvents } from '../application/appEvents.js';
+import { AgentSocketConnections } from '../routes/ws/agent.js';
+import { TurnFanout } from '../application/turnFanout.js';
 import { BackgroundCompletion } from '../application/backgroundCompletion.js';
 import { openBackup, type BackupComposition } from './backup.js';
 import { openCharacters, type CharactersComposition } from './characters.js';
@@ -31,8 +31,8 @@ export interface Composition {
   readonly commands: CommandsComposition;
   readonly memory: MemoryComposition;
   readonly backup: BackupComposition;
-  readonly eventHub: EventHub;
-  readonly turnEvents: TurnEventStore;
+  readonly agentConnections: AgentSocketConnections;
+  readonly appEvents: AppEvents;
   readonly turnFanout: TurnFanout;
   /** 后台进程完成 → 空闲后续跑 Turn 的驱动；start() 由 lifecycle 在 ready 后调用。 */
   readonly backgroundCompletion: BackgroundCompletion;
@@ -44,17 +44,17 @@ export function buildComposition(input: { activeDataDir: string }): Composition 
   const database = openDatabases(input.activeDataDir);
   const settings = openSettings(database.profileDb);
   const providers = openProviders(database.profileDb);
-  const eventHub = new EventHub();
-  const turnEvents = new TurnEventStore();
+  const agentConnections = new AgentSocketConnections();
+  const appEvents = new AppEvents();
   const tools = openTools({
     profileDb: database.profileDb,
     dataDb: database.dataDb,
     activeDataDir: input.activeDataDir,
     session: database.session,
     settings: settings.settings,
-    emitBackgroundEvent: event => eventHub.emitApp(event),
-    emitMcpConnection: connection => eventHub.emitApp({ type: 'mcp_connection_changed', connection }),
-    emitMcpMarket: source => eventHub.emitApp({ type: 'mcp_market_changed', source }),
+    emitBackgroundEvent: event => appEvents.emit(event),
+    emitMcpConnection: connection => appEvents.emit({ type: 'mcp_connection_changed', connection }),
+    emitMcpMarket: source => appEvents.emit({ type: 'mcp_market_changed', source }),
   });
   const knowledge = openKnowledge(
     database.profileDb,
@@ -85,7 +85,7 @@ export function buildComposition(input: { activeDataDir: string }): Composition 
       vocabulary.motions,
     );
     characters.stage.reset();
-    eventHub.emitApp({ type: 'character_switched', characterName: next.name, displayName: next.displayName });
+    appEvents.emit({ type: 'character_switched', characterName: next.name, displayName: next.displayName });
   });
   characters.store.onPresentationChanged((character, presentation) => {
     if (character.name === characters.store.current().name) {
@@ -95,17 +95,17 @@ export function buildComposition(input: { activeDataDir: string }): Composition 
         vocabulary.motions,
       );
     }
-    eventHub.emitApp({
+    appEvents.emit({
       type: 'character_presentation_changed',
       characterName: character.name,
     });
   });
   // 设置变更：前端设置页以外的视图据此刷新。
-  settings.settings.subscribe(({ changedKeys, revision }) => {
-    eventHub.emitApp({ type: 'settings_changed', changedKeys, revision });
+  settings.settings.subscribe(({ changedKeys }) => {
+    appEvents.emit({ type: 'settings_changed', changedKeys });
   });
   // KB 域事件进应用通道。
-  knowledge.kb.events.on(event => eventHub.emitApp(event));
+  knowledge.kb.events.on(event => appEvents.emit(event));
 
   // Memory 只依赖 database 层的 TurnStore/SessionStore，必须先于 openTurns 创建：
   // Turn completed 终态事务内的提取入队闭包由它提供。
@@ -126,7 +126,7 @@ export function buildComposition(input: { activeDataDir: string }): Composition 
     narrative,
     characters: characters.store,
     stage: characters.stage,
-    emitAppEvent: event => eventHub.emitApp(event),
+    emitAppEvent: event => appEvents.emit(event),
     onTurnCompletedInTransaction: turnId => memory.enqueueTurnExtraction(turnId),
   });
   const commands = openCommands({
@@ -139,8 +139,10 @@ export function buildComposition(input: { activeDataDir: string }): Composition 
   });
   const backup = openBackup(database.dataDb, input.activeDataDir, providers.providerModels);
   const turnFanout = new TurnFanout({
-    store: turnEvents,
-    hub: eventHub,
+    publishTurnEvent: (sessionId, turnId, event) => {
+      agentConnections.publish(sessionId, { type: 'turn_event', turnId, event });
+    },
+    emitAppEvent: event => appEvents.emit(event),
     startTurnSpeech: speech.startTurnSpeech,
   });
   const backgroundCompletion = new BackgroundCompletion({
@@ -164,8 +166,8 @@ export function buildComposition(input: { activeDataDir: string }): Composition 
     commands,
     memory,
     backup,
-    eventHub,
-    turnEvents,
+    agentConnections,
+    appEvents,
     turnFanout,
     backgroundCompletion,
     close() {

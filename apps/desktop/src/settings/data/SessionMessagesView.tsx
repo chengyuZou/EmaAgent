@@ -24,6 +24,11 @@ interface AttachmentBlockLite {
   preview?: string;
 }
 
+interface RawMessageCursor {
+  createdAt: number;
+  id: string;
+}
+
 const PAGE_SIZE = 50;
 
 export function SessionMessagesView({
@@ -39,36 +44,35 @@ export function SessionMessagesView({
   const [messages, setMessages] = useState<RawMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [exhausted, setExhausted] = useState(false);
+  const [olderCursor, setOlderCursor] = useState<RawMessageCursor>();
 
-  const load = useCallback(async (before?: number) => {
+  const load = useCallback(async (before?: RawMessageCursor) => {
     const result = await dataDirsApi.dirSessionMessages(dirName, sessionId, {
-      ...(before !== undefined ? { before } : {}),
+      ...(before ? { before } : {}),
       limit: PAGE_SIZE,
     });
-    return result.messages as unknown as RawMessage[];
+    return result as unknown as { messages: RawMessage[]; nextCursor?: RawMessageCursor };
   }, [dirName, sessionId]);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    void load().then(rows => {
+    void load().then(result => {
       if (cancelled) return;
-      setMessages(rows);
-      setExhausted(rows.length < PAGE_SIZE);
+      setMessages(result.messages);
+      setOlderCursor(result.nextCursor);
       setLoading(false);
     });
     return () => { cancelled = true; };
   }, [load]);
 
   async function loadMore(): Promise<void> {
-    const oldest = messages[messages.length - 1];
-    if (!oldest) return;
+    if (!olderCursor) return;
     setLoadingMore(true);
     try {
-      const rows = await load(oldest.created_at);
-      setMessages(prev => [...prev, ...rows]);
-      setExhausted(rows.length < PAGE_SIZE);
+      const result = await load(olderCursor);
+      setMessages(prev => [...prev, ...result.messages]);
+      setOlderCursor(result.nextCursor);
     } finally {
       setLoadingMore(false);
     }
@@ -97,7 +101,7 @@ export function SessionMessagesView({
             <MessageRow key={message.id} message={message} sessionId={sessionId} isActive={isActive} />
           ))}
         </div>
-        {!loading && !exhausted && (
+        {!loading && olderCursor && (
           <div className="flex justify-center py-4">
             <Button variant="ghost" size="sm" loading={loadingMore} onClick={() => void loadMore()}>
               加载更早的消息

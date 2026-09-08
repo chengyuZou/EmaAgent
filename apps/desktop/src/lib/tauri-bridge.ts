@@ -9,7 +9,7 @@
 import { convertFileSrc as tauriConvertFileSrc } from '@tauri-apps/api/core';
 import type { PermissionRequiredEvent } from '@ema-agent/permission';
 import type { AskUserRequiredEvent } from '@ema-agent/tools';
-import type { AppEvent } from '@ema-agent/server/sse/eventHub.js';
+import type { AppEvent } from '@ema-agent/server/application/appEvents.js';
 import type { ThemeSettings } from '@ema-agent/server/composition/settings/themeSetting.js';
 import type { EventDisplayTable } from '../api/settings.js';
 

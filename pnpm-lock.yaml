@@ -104,6 +104,9 @@ importers:
       '@ema-agent/ui':
         specifier: workspace:*
         version: link:../../src/ui
+      '@lemonneko/crop-empty-pixels':
+        specifier: ^0.1.1
+        version: 0.1.1
       '@tauri-apps/api':
         specifier: ^2.4.0
         version: 2.11.0
@@ -140,6 +143,12 @@ importers:
       nanoid:
         specifier: ^5.0.0
         version: 5.1.11
+      pixi-live2d-display:
+        specifier: 0.5.0-beta
+        version: 0.5.0-beta(pixi.js@7.4.3)
+      pixi.js:
+        specifier: ^7.4.3
+        version: 7.4.3
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -2394,6 +2403,9 @@ packages:
     peerDependencies:
       react: '>=18.0.0'
       react-dom: '>=18.0.0'
+
+  '@lemonneko/crop-empty-pixels@0.1.1':
+    resolution: {integrity: sha512-4Mp6gBN3XbXw5OXyN0rF5bhWWISmrU4DRCGUWDnyWWFCERE2SZwvv2w4hoPhg804BcI0wXLPk5lHf/v15AFXSA==}
 
   '@mapbox/node-pre-gyp@1.0.11':
     resolution: {integrity: sha512-Yhlar6v9WQgUp/He7BdgzOz8lqMQ8sU+jkCq7Wx8Myc5YFJLbEe7lgui/V7G1qB1DJykHSGwreceSaD60Y0PUQ==}
@@ -7573,6 +7585,8 @@ snapshots:
       - tsx
       - typescript
       - yaml
+
+  '@lemonneko/crop-empty-pixels@0.1.1': {}
 
   '@mapbox/node-pre-gyp@1.0.11':
     dependencies:

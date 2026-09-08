@@ -25,7 +25,8 @@ import { characterCollectionRoute } from './characters/collection.js';
 import { characterPresentationRoute } from './characters/presentation.js';
 import { characterResourcesRoute } from './characters/resources.js';
 import { commandsCatalogRoute } from './commands/catalog.js';
-import { commandsCompactRoute } from './commands/compact.js';
+import { agentWebSocketRoute } from './ws/agent.js';
+import { speechWebSocketRoute } from './ws/speech.js';
 import { knowledgeDocumentsRoute } from './knowledge/documents.js';
 import { knowledgeIngestRoute } from './knowledge/ingest.js';
 import { knowledgeLibsRoute } from './knowledge/libs.js';
@@ -50,16 +51,12 @@ import { settingsEventDisplayRoute } from './settings/eventDisplay.js';
 import { settingsValuesRoute } from './settings/values.js';
 import { skillListRoute } from './skills/list.js';
 import { skillMarketRoute } from './skills/market.js';
-import { systemEventsRoute } from './system/events.js';
 import { systemStatsRoute } from './system/stats.js';
 import { systemStatusRoute } from './system/status.js';
+import { systemEventsRoute } from './system/events.js';
 import { tasksRoute } from './tasks.js';
 import { turnAudioRoute } from './turns/audio.js';
 import { turnControlRoute } from './turns/control.js';
-import { turnEventsRoute } from './turns/events.js';
-import { turnInteractionsRoute } from './turns/interactions.js';
-import { startTurnRoute } from './turns/startTurn.js';
-import { turnSpeechRoute } from './turns/speech.js';
 import { dataDirsRoute } from './workspaces/dataDirs.js';
 import { filesRoute } from './workspaces/files.js';
 import { projectsRoute } from './workspaces/projects.js';
@@ -68,7 +65,7 @@ export const createRoutes = (composition: Composition, secret: string) => {
   const {
     database, settings, providers, tools, knowledge,
     characters, speech, turn, commands, memory, backup,
-    eventHub, turnEvents, turnFanout,
+    agentConnections, appEvents, turnFanout,
   } = composition;
   const characterChangeDeps = {
     characters: characters.store,
@@ -87,21 +84,23 @@ export const createRoutes = (composition: Composition, secret: string) => {
       activeDataDir: database.activeDataDir,
       sandboxStatus: tools.sandboxStatus,
     }))
-    .route('/api/system', systemEventsRoute({ hub: eventHub }))
+    .route('/api/system', systemEventsRoute(appEvents))
     .route('/api/system', systemStatsRoute({
       dataDirStats: database.dataDirStats,
       sessionStats: database.sessionStats,
     }))
 
-    .route('/api/turns', startTurnRoute({
+    .route('/api/ws/agent', agentWebSocketRoute({
+      connections: agentConnections,
       executor: turn.turnExecutor,
       fanout: turnFanout,
-      session: database.session,
+      sessions: database.session,
+      activeSessions: database.activeSessions,
+      interactions: turn.interactionQueue,
+      compactSession: commands.compactSession,
     }))
-    .route('/api/turns', turnEventsRoute({ hub: eventHub, store: turnEvents }))
-    .route('/api/turns', turnSpeechRoute({ speech }))
+    .route('/api/ws/speech', speechWebSocketRoute(speech))
     .route('/api/turns', turnControlRoute({
-      executor: turn.turnExecutor,
       turns: database.turns,
       toolExecutionState: tools.toolExecutionState,
     }))
@@ -109,13 +108,11 @@ export const createRoutes = (composition: Composition, secret: string) => {
       audioArchive: speech.audioArchive,
       turns: database.turns,
     }))
-    .route('/api/turns', turnInteractionsRoute({ queue: turn.interactionQueue }))
 
     .route('/api/sessions', sessionCollectionRoute({ session: database.session }))
     .route('/api/sessions', sessionActionsRoute({
       session: database.session,
       turns: database.turns,
-      activeSessions: database.activeSessions,
       invalidateSessionRunner: sessionId => tools.invalidateSessionRunner(sessionId),
       // 跨域删除用例在 application 层，装配时绑定 composition。
       deleteSession: sessionId => deleteSession(composition, sessionId),
@@ -145,10 +142,6 @@ export const createRoutes = (composition: Composition, secret: string) => {
     }))
     // backup 是独立业务域（未来还有角色/设置备份）；Session 支路的 URL 仍在 /api/sessions 下。
     .route('/api/sessions', sessionBackupRoute({ backup: backup.sessionBackup }))
-    // /compact 是 Session 级确定性命令，不创建 Turn；URL 挂在 /api/sessions 下。
-    .route('/api/sessions', commandsCompactRoute({
-      compactSession: commands.compactSession,
-    }))
     .route('/api/commands', commandsCatalogRoute({
       listCommandDescriptors: commands.listCommandDescriptors,
     }))
@@ -212,13 +205,13 @@ export const createRoutes = (composition: Composition, secret: string) => {
       skillEnablement: tools.skillEnablement,
       settings: settings.settings,
       sessions: database.session,
-      emitApp: event => eventHub.emitApp(event),
+      emitApp: event => appEvents.emit(event),
     }))
     .route('/api/skills', skillMarketRoute({
       market: tools.skillMarket,
       installer: tools.skillMarketInstaller,
       skills: tools.skills,
-      emitApp: event => eventHub.emitApp(event),
+      emitApp: event => appEvents.emit(event),
     }))
 
     .route('/api/characters', characterCollectionRoute({
