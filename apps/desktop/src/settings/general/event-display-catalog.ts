@@ -43,7 +43,6 @@ const EVENT_LABELS: Record<string, string> = {
   character_switched: '角色切换',
   background_process_changed: '后台进程状态变化',
   system_warning: '系统告警',
-  tts_warning: '语音合成警告',
 };
 
 export function eventDisplayLabel(eventType: string): string {
@@ -55,6 +54,6 @@ export function eventDisplayGroup(eventType: string): EventDisplayGroupId {
   if (eventType.startsWith('compact_')) return 'context';
   if (eventType.startsWith('kb_')) return 'knowledge';
   if (eventType.startsWith('agent_')) return 'agent';
-  if (eventType.startsWith('character_') || eventType.startsWith('tts_')) return 'character';
+  if (eventType.startsWith('character_')) return 'character';
   return 'system';
 }

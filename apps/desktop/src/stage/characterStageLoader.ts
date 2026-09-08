@@ -18,7 +18,7 @@ export type CharacterStageView = CharacterPresentation;
 // ── 视图读取 ──────────────────────────────────────────────────────────────────
 
 export function loadCharacterStageView(characterId: string): Promise<CharacterStageView> {
-  return charactersApi.getPresentation(characterId);
+  return charactersApi.presentation(characterId);
 }
 
 // ── 载入守卫 ──────────────────────────────────────────────────────────────────

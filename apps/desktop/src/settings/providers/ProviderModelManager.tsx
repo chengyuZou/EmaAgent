@@ -441,13 +441,14 @@ export function ProviderModelManager({ providerId, capability, iconKey, reloadKe
     void (async () => {
       try {
         const character = await charactersApi.current();
-        const sample = character.voiceSamples.find((v) => v.enabled && v.isPrimary)
-          ?? character.voiceSamples.find((v) => v.enabled);
+        // 新合同:音频资源没有 enabled;STT 试听取主要参考音频,没有就取第一条。
+        const sample = character.voiceSamples.find((v) => v.isPrimary)
+          ?? character.voiceSamples[0];
         setSttReference(sample
           ? {
-              characterId: character.id,
+              characterId: character.name,
               characterName: character.name,
-              sampleId: sample.id,
+              sampleId: sample.name,
               sampleName: sample.name,
               promptText: sample.promptText,
             }

@@ -152,6 +152,20 @@ export const charactersApi = {
     );
   },
 
+  /** Live2D 静态封面:导入/补票时前端离屏渲一帧的 PNG 上传;读取走同源 URL。 */
+  async uploadLive2dPreview(characterName: string, live2dName: string, dataBase64: string): Promise<void> {
+    await readRpcJson(
+      rpcClient.api.characters[':characterName'].live2d[':live2dName'].preview.$put({
+        param: { characterName, live2dName },
+        json: { dataBase64 },
+      }),
+    );
+  },
+
+  live2dPreviewUrl(characterName: string, live2dName: string): string {
+    return `/api/characters/${encodeURIComponent(characterName)}/live2d/${encodeURIComponent(live2dName)}/preview`;
+  },
+
   /** 模型目录内文件是原始字节流,不进入 JSON RPC;供舞台/预览按相对路径取。 */
   live2dFileUrl(characterName: string, live2dName: string, relativePath: string): string {
     return `/api/characters/${encodeURIComponent(characterName)}/live2d/${encodeURIComponent(live2dName)}/files/${relativePath.split('/').map(encodeURIComponent).join('/')}`;

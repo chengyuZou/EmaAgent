@@ -1,144 +1,17 @@
-// 展示角色卡列表、新建入口与删除确认,并在具名对话框中编辑选中的角色卡。
+// 角色卡一级入口:L1 网格 ⇄ L2 详情的本页内导航。
 import { useState, type JSX } from 'react';
-import { Badge, Button, Callout, Card, ConfirmDialog, Dialog, ScrollArea } from '@ema-agent/ui';
-import { useCharacterStore } from '../../stores/character.js';
-import type { Character } from '../../api/characters.js';
-import { CharacterEditor } from './CharacterEditor.js';
-import { CreateCharacterDialog } from './CreateCharacterDialog.js';
-import { showToast } from '../../lib/toast.js';
+import { CharacterGridPage } from './CharacterGridPage.js';
+import { CharacterDetailPage } from './CharacterDetailPage.js';
 
 export function CharactersTab(): JSX.Element {
-  const characters        = useCharacterStore((s) => s.characters);
-  const activeCharacterId = useCharacterStore((s) => s.activeCharacterId);
-  const [selectedId, setSelectedId]   = useState<string | null>(null);
-  const [createOpen, setCreateOpen]   = useState(false);
-  const [pendingDelete, setPendingDelete] = useState<Character | null>(null);
-
-  const selected = characters.find((c) => c.id === selectedId);
-
-  async function handleActivate(id: string): Promise<void> {
-    try {
-      await useCharacterStore.getState().activate(id);
-      showToast('已切换角色', { variant: 'success' });
-    } catch (err: unknown) {
-      showToast(`切换失败: ${err instanceof Error ? err.message : 'Unknown'}`, { variant: 'danger' });
-    }
-  }
-
-  async function confirmDelete(): Promise<void> {
-    if (!pendingDelete) return;
-    const character = pendingDelete;
-    setPendingDelete(null);
-    if (selectedId === character.id) setSelectedId(null);
-    try {
-      await useCharacterStore.getState().delete(character.id);
-      showToast(`已删除 ${character.name}`, { variant: 'success' });
-    } catch (err: unknown) {
-      showToast(`删除失败: ${err instanceof Error ? err.message : 'Unknown'}`, { variant: 'danger' });
-    }
-  }
-
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-start justify-between gap-3 shrink-0">
-        <Callout variant="warn" className="flex-1">
-          多角色管理为内测新开放能力,可能不稳定:切换或删除前请确认当前对话已保存,遇到问题欢迎反馈。
-        </Callout>
-        <Button variant="primary" size="sm" icon="i-mdi:plus" onClick={() => setCreateOpen(true)}>
-          新建角色
-        </Button>
-      </div>
-
-      <ScrollArea className="flex-1" viewportClassName="pb-2">
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4 pr-1">
-          {characters.map((character) => (
-            <CharacterListItem
-              key={character.id}
-              character={character}
-              isActive={character.id === activeCharacterId}
-              onSelect={() => setSelectedId(character.id)}
-              onDelete={character.isBuiltin || character.id === activeCharacterId
-                ? undefined
-                : () => setPendingDelete(character)}
-            />
-          ))}
-        </div>
-      </ScrollArea>
-
-      <Dialog
-        open={!!selected}
-        onOpenChange={(o) => { if (!o) setSelectedId(null); }}
-        ariaLabel="角色卡编辑器"
-        widthClass="max-w-[80vw]"
-        className="ema-dialog-decorate"
-      >
-        {selected && (
-          <CharacterEditor
-            character={selected}
-            onActivate={() => handleActivate(selected.id)}
-          />
-        )}
-      </Dialog>
-
-      <CreateCharacterDialog
-        key={String(createOpen)}
-        open={createOpen}
-        onOpenChange={setCreateOpen}
+  const [selectedName, setSelectedName] = useState<string | null>(null);
+  if (selectedName) {
+    return (
+      <CharacterDetailPage
+        name={selectedName}
+        onBack={() => setSelectedName(null)}
       />
-
-      <ConfirmDialog
-        open={!!pendingDelete}
-        message={pendingDelete
-          ? `确定删除角色"${pendingDelete.name}"?其 Live2D、立绘与参考音频将一并移入回收区,此操作不可直接撤销。`
-          : ''}
-        confirmText="删除"
-        onConfirm={() => void confirmDelete()}
-        onCancel={() => setPendingDelete(null)}
-      />
-    </div>
-  );
-}
-
-// ── Character list item (排版抄 AIRI CardListItem: min-h-120 / p-5 / text-lg / text-sm desc) ──
-
-function CharacterListItem({
-  character, isActive, onSelect, onDelete,
-}: {
-  character: Character;
-  isActive: boolean;
-  onSelect: () => void;
-  onDelete?: () => void;
-}): JSX.Element {
-  return (
-    <Card
-      variant="elevated"
-      className={`cursor-pointer p-5 min-h-[120px] flex flex-col gap-3 transition-all duration-[var(--ema-duration-base)] active:scale-[0.98] ${
-        isActive
-          ? 'border-2 border-solid border-[var(--ema-primary)] bg-[var(--ema-primary-muted)] ema-card-decorate ema-card-decorate--mesh'
-          : 'border-2 border-solid border-[var(--ema-border)] hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)] ema-card-decorate ema-card-decorate--mesh'
-      }`}
-      onClick={onSelect}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <span className="text-lg font-semibold text-[var(--ema-text-primary)] leading-snug truncate">{character.name}</span>
-        <div className="flex items-center gap-1 shrink-0">
-          {isActive && <Badge variant="success" dot>当前</Badge>}
-          {character.isBuiltin && <Badge variant="neutral">内置</Badge>}
-          {onDelete && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-[var(--ema-text-tertiary)] hover:text-[var(--ema-danger)] px-1.5"
-              onClick={(e) => { e.stopPropagation(); onDelete(); }}
-            >
-              <span className="i-mdi:delete-outline text-base" aria-hidden />
-            </Button>
-          )}
-        </div>
-      </div>
-      {character.description && (
-        <p className="text-sm text-[var(--ema-text-tertiary)] line-clamp-3 min-h-[40px] flex-1">{character.description}</p>
-      )}
-    </Card>
-  );
+    );
+  }
+  return <CharacterGridPage onOpen={setSelectedName} />;
 }

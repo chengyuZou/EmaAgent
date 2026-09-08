@@ -4,7 +4,7 @@ import { Button, Callout, EntityRow, IconButton, Progress, Spinner } from '@ema-
 import { useKnowledgeStore } from '../../stores/knowledge.js';
 import { showToast } from '../../lib/toast.js';
 import type { IngestTaskList, ReembedTaskList } from '../../api/knowledge.js';
-import type { AppEvent } from '@ema-agent/server/sse/eventHub.js';
+import type { AppEvent } from '@ema-agent/server/application/appEvents.js';
 
 type IngestTaskRow = IngestTaskList['items'][number];
 type ReembedTaskRow = ReembedTaskList['items'][number];

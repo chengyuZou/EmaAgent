@@ -47,7 +47,6 @@ export function StatsPanel({ stats, statsLoading }: {
       <StatCard index={4} icon="i-solar:magic-stick-3-bold-duotone"   label="子智能体执行" value={String(stats.agentRunCount)} />
       <StatCard index={5} icon="i-solar:paperclip-bold-duotone"       label="附件"     value={String(stats.attachmentCount)} />
       <StatCard index={6} icon="i-solar:soundwave-bold-duotone"       label="音频轮次" value={String(stats.audioCount)}    sub={fmtDuration(stats.audioDurationMs)} />
-      <StatCard index={7} icon="i-solar:microphone-bold-duotone"      label="语音分段" value={String(stats.speechSegmentCount)} sub={fmtBytes(stats.speechSegmentBytes)} />
     </div>
   );
 }
