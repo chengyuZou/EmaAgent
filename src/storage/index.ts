@@ -18,9 +18,13 @@ export type {
   TurnIdPageCursor,
   TurnIndexRow,
   TurnPage,
-  TurnWindow,
 } from './repos/data/turns.js';
 export { MessagesRepo } from './repos/data/messages.js';
+export type {
+  MessagePageCursor,
+  MessageRowPage,
+  MessageRowWindow,
+} from './repos/data/messages.js';
 export { CharacterRepo } from './repos/profile/character.js';
 export { CharacterLive2dModelRepo } from './repos/profile/characterLive2dModel.js';
 export { CharacterIllustrationRepo } from './repos/profile/characterIllustration.js';

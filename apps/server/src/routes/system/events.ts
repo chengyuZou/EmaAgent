@@ -1,53 +1,39 @@
-// 应用事件 SSE：跨 Turn 的全局事实与询问（KB/角色/后台进程/设置/stdio 批准等）。
-// 无重放——应用事件是提示性的，错过即过；快照类状态走各域查询端点。
+// 应用事件 SSE：只发送跨 Turn 的提示事件，查询型状态由各业务 Route 返回。
 import { Hono } from 'hono';
-import type { EventHub } from '../../sse/eventHub.js';
-import { encodeEvent, encodePing } from '../../sse/writer.js';
+import type { AppEvents } from '../../application/appEvents.js';
 
-export interface SystemEventsRouteDeps {
-  readonly hub: Pick<EventHub, 'subscribeApp' | 'appSubscriberCount'>;
-}
-
-export const systemEventsRoute = (deps: SystemEventsRouteDeps) =>
-  new Hono()
-    .get('/events', context => {
+export const systemEventsRoute = (events: AppEvents) =>
+  new Hono().get('/events', () => {
     let heartbeat: ReturnType<typeof setInterval> | undefined;
     let unsubscribe: (() => void) | undefined;
-
-    return new Response(
-      new ReadableStream<Uint8Array>({
-        start(controller) {
-          const encoder = new TextEncoder();
-          unsubscribe = deps.hub.subscribeApp(event => {
-            try {
-              controller.enqueue(encoder.encode(encodeEvent(event)));
-            } catch {
-              // 客户端已走；cancel() 统一清理。
-            }
-          });
-          heartbeat = setInterval(() => {
-            try {
-              controller.enqueue(encoder.encode(encodePing()));
-            } catch {
-              // 同上。
-            }
-          }, 15_000);
-        },
-        cancel() {
-          unsubscribe?.();
-          if (heartbeat) clearInterval(heartbeat);
-        },
-      }),
-      {
-        headers: {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          Connection: 'keep-alive',
-          'X-Accel-Buffering': 'no',
-        },
+    return new Response(new ReadableStream<Uint8Array>({
+      start(controller) {
+        const encoder = new TextEncoder();
+        unsubscribe = events.subscribe(event => {
+          try {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+          } catch {
+            // 连接关闭后由 cancel 清理订阅。
+          }
+        });
+        heartbeat = setInterval(() => {
+          try {
+            controller.enqueue(encoder.encode('event: heartbeat\ndata: {}\n\n'));
+          } catch {
+            // 连接关闭后由 cancel 清理定时器。
+          }
+        }, 15_000);
       },
-    );
-    })
-    .get('/events/diagnostics', context => {
-      return context.json({ subscribers: deps.hub.appSubscriberCount() });
+      cancel() {
+        unsubscribe?.();
+        if (heartbeat) clearInterval(heartbeat);
+      },
+    }), {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      },
     });
+  });

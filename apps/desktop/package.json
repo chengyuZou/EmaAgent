@@ -18,6 +18,9 @@
     "tauri:build:release": "pnpm release:verify:versions && pnpm release:verify && tauri build --config src-tauri/tauri.release.conf.json"
   },
   "dependencies": {
+    "@lemonneko/crop-empty-pixels": "^0.1.1",
+    "pixi.js": "^7.4.3",
+    "pixi-live2d-display": "0.5.0-beta",
     "@ema-agent/agent": "workspace:*",
     "@ema-agent/attachments": "workspace:*",
     "@ema-agent/backup": "workspace:*",

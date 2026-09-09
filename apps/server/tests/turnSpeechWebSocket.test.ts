@@ -5,7 +5,7 @@ import { Hono } from 'hono';
 import { afterEach, describe, expect, it } from 'vitest';
 import { WebSocketServer } from 'ws';
 import { emaAuth } from '../src/platform/auth.js';
-import { turnSpeechRoute } from '../src/routes/turns/speech.js';
+import { speechWebSocketRoute } from '../src/routes/ws/speech.js';
 
 const SECRET = 's'.repeat(32);
 let server: Server | null = null;
@@ -28,8 +28,7 @@ describe('Turn Speech WebSocket', () => {
       receiveClientMessage = resolve;
     });
     app.use('*', emaAuth(SECRET));
-    app.route('/api/turns', turnSpeechRoute({
-      speech: {
+    app.route('/api/ws/speech', speechWebSocketRoute({
         attachSpeechSocket(_turnId, client) {
           client.sendControl({ type: 'sentence_started', sentenceId: 'turn-0', mime: 'audio/mpeg' });
           client.sendAudio(new Uint8Array([1, 2, 3]));
@@ -40,8 +39,7 @@ describe('Turn Speech WebSocket', () => {
           return false;
         },
         detachSpeechSocket() {},
-      },
-    }));
+      }));
 
     webSocketServer = new WebSocketServer({ noServer: true });
     server = serve({
@@ -54,7 +52,7 @@ describe('Turn Speech WebSocket', () => {
     const address = server.address();
     if (!address || typeof address === 'string') throw new Error('test server did not bind a TCP port');
 
-    const socket = new WebSocket(`ws://127.0.0.1:${address.port}/api/turns/turn/speech?secret=${SECRET}`);
+    const socket = new WebSocket(`ws://127.0.0.1:${address.port}/api/ws/speech/turn?secret=${SECRET}`);
     socket.binaryType = 'arraybuffer';
     const received: unknown[] = [];
     await new Promise<void>((resolve, reject) => {

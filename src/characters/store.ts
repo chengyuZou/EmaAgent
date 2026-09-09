@@ -271,7 +271,8 @@ export class CharacterStore {
       return resource;
     });
   }
-  async importLive2dModel(characterName: string, input: ImportCharacterLive2dModelInput): Promise<CharacterLive2dModel> {
+  // 返回里附带入库模型的入口相对路径(entryPath),供前端导入后离屏渲封面。
+  async importLive2dModel(characterName: string, input: ImportCharacterLive2dModelInput): Promise<CharacterLive2dModel & { entryPath: string }> {
     return this.mutate(characterName, async () => {
       this.getRequiredCharacterOnly(characterName);
       // 导入先在角色目录之外完成解压、引用校验与配置补充；全部通过后才改名提交。
@@ -301,7 +302,10 @@ export class CharacterStore {
             byteSize: files.byteSize,
           });
           this.resourceChanged(characterName);
-          return resource;
+          return {
+            ...resource,
+            entryPath: path.relative(destination, live2dFiles.modelPath).split(path.sep).join('/'),
+          };
         } catch (error) {
           await deleteLive2dDirectory(destination);
           throw error;
@@ -604,6 +608,22 @@ export class CharacterStore {
     return this.paths.live2dModelDirectory(characterName, live2dName);
   }
 
+  /** Live2D 静态封面(导入时离屏渲染生成):同存在性校验,落点归 .previews 小区。 */
+  resolveLive2dPreviewFile(characterName: string, live2dName: string): string {
+    this.getRequiredCharacterOnly(characterName);
+    if (!this.live2dModels.find(characterName, live2dName)) {
+      throw new CharacterResourceNotFoundError('live2d_model', live2dName);
+    }
+    return this.paths.live2dPreviewFile(characterName, live2dName);
+  }
+
+  /** 写入 Live2D 静态封面(前端导入/补票时离屏渲一帧的 PNG)。 */
+  async saveLive2dPreview(characterName: string, live2dName: string, png: Buffer): Promise<void> {
+    const target = this.resolveLive2dPreviewFile(characterName, live2dName);
+    await fs.promises.mkdir(path.dirname(target), { recursive: true });
+    await fs.promises.writeFile(target, png);
+  }
+
   resolveIllustrationFile(characterName: string, illustrationName: string): string {
     this.getRequiredCharacterOnly(characterName);
     if (!this.illustrations.find(characterName, illustrationName)) {
@@ -627,7 +647,7 @@ export class CharacterStore {
       return configuration;
     });
   }
-  async readLive2dConfiguration(characterName: string, live2dName: string): Promise<Live2dConfiguration> {
+  async readLive2dConfiguration(characterName: string, live2dName: string): Promise<Live2dConfiguration & { entryPath: string }> {
     this.getRequiredCharacterOnly(characterName);
     if (!this.live2dModels.find(characterName, live2dName)) {
       throw new CharacterResourceNotFoundError('live2d_model', live2dName);
@@ -639,6 +659,8 @@ export class CharacterStore {
       runtimeConfig: readLive2dRuntimeConfig(files.runtimeConfigPath),
       expressions: extraction.expressions.map(expression => expression.name),
       motions: extraction.motions,
+      // 入口相对路径:前端补渲封面与舞台同源 URL 都靠它。
+      entryPath: path.relative(directory, files.modelPath).split(path.sep).join('/'),
     };
   }
   async saveLive2dMappings(characterName: string, live2dName: string, mappings: Live2dMappings): Promise<Live2dConfiguration> {

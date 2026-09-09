@@ -20,7 +20,7 @@ import {
 import type { SkillEnablementRepo } from '@ema-agent/storage';
 import type { SettingsStore } from '@ema-agent/settings';
 import { jsonBody, queryValidator } from '../validate.js';
-import type { AppEvent } from '../../sse/eventHub.js';
+import type { AppEvent } from '../../application/appEvents.js';
 
 export interface SkillListRouteDeps {
   readonly skills: Pick<SkillRegistry, 'list' | 'getByPath' | 'refreshCore' | 'refreshWorkspace'>;

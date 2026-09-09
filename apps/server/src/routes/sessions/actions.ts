@@ -1,7 +1,7 @@
-// Session 动作：偏好修改、fork、末轮回退、已读、归档、永久删除与 Session 级停止。
+// Session 动作：偏好修改、fork、末轮回退、已读、归档与永久删除。
 import { Hono } from 'hono';
 import { z } from 'zod';
-import type { ActiveSessionRegistry, SessionStore } from '@ema-agent/session';
+import type { SessionStore } from '@ema-agent/session';
 import type { TurnStore } from '@ema-agent/turn';
 import { jsonBody } from '../validate.js';
 
@@ -35,7 +35,6 @@ export interface SessionActionsRouteDeps {
   >;
   readonly turns: Pick<TurnStore, 'rewindLastTurn'>;
   /** Session 级停止只向当前执行发信号；终态与坑位释放归执行所有者自己收尾。 */
-  readonly activeSessions: ActiveSessionRegistry;
   /** 工作区变更必须淘汰绑定旧工作区的命令运行器。 */
   readonly invalidateSessionRunner: (sessionId: string) => void;
   /** 跨域删除用例（application/deleteSession）由装配层绑定 composition 后传入。 */
@@ -103,19 +102,6 @@ export const sessionActionsRoute = (deps: SessionActionsRouteDeps) =>
         }
         throw error;
       }
-    })
-    // Session 级停止：停的是"当前活跃执行"，不分 kind——都只向执行发信号。
-    // 终态落库与坑位释放由执行所有者自己完成（Turn 泵收拢工具/子 Agent 后写
-    // aborted，compact 链返回 cancelled 且历史原样）；路由提前写终态会导致
-    // 执行侧二次提交 turn_not_active，并让新 Turn 与旧 Turn 收尾重叠。
-    .post('/:sessionId/abort', context => {
-      const sessionId = context.req.param('sessionId');
-      const active = deps.activeSessions.getActiveExecution(sessionId);
-      if (!active) {
-        return context.json({ error: 'no_active_execution' }, 409);
-      }
-      deps.activeSessions.abort(sessionId, active.executionId);
-      return context.body(null, 204);
     })
     .post('/:sessionId/viewed', context => {
       try {

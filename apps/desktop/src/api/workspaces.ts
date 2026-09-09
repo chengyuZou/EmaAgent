@@ -107,11 +107,18 @@ export const dataDirsApi = {
   },
 
   /** 任意已注册库某 session 的 raw 消息行(blocks_json 不 parse,keyset 分页)。 */
-  dirSessionMessages(name: string, sessionId: string, opts: { before?: number; limit?: number } = {}) {
+  dirSessionMessages(
+    name: string,
+    sessionId: string,
+    opts: { before?: { createdAt: number; id: string }; limit?: number } = {},
+  ) {
     return readRpcJson(rpcClient.api.workspaces['data-dirs'][':name'].sessions[':sessionId'].messages.$get({
       param: { name, sessionId },
       query: {
-        ...(opts.before !== undefined ? { before: String(opts.before) } : {}),
+        ...(opts.before ? {
+          beforeCreatedAt: String(opts.before.createdAt),
+          beforeId: opts.before.id,
+        } : {}),
         ...(opts.limit !== undefined ? { limit: String(opts.limit) } : {}),
       },
     }));

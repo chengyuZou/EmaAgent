@@ -16,11 +16,9 @@ import { ActiveSessionRegistry, SessionBusyError } from '@ema-agent/session';
 import type {
   CompleteTurnInput,
   ListTurnIndexInput,
-  ListTurnWindowInput,
   StartTurnInput,
   Turn,
   TurnIndexPage,
-  TurnWindow,
 } from './types.js';
 import { TurnOwnershipError } from './errors.js';
 
@@ -228,10 +226,6 @@ export class TurnStore {
 
   // ── 导航查询 ────────────────────────────────────────────────────────────────
 
-  listTurns(sessionId: string, limit = 50): Turn[] {
-    return this.turnsRepo.listForSession(sessionId, limit).map(toTurn);
-  }
-
   /** 为长 Session 提供不含消息正文的轻量 Turn 导航索引。 */
   listTurnIndex(
     sessionId: string,
@@ -250,6 +244,7 @@ export class TurnStore {
     return {
       items: page.rows.map((row) => ({
         turnId: row.id,
+        anchorMessageId: row.anchor_message_id,
         createdAt: row.created_at,
         completedAt: row.completed_at,
         status: row.status,
@@ -258,47 +253,6 @@ export class TurnStore {
         preview: formatTurnPreview(row.preview),
       })),
       nextCursor: page.nextCursor ? encodeTurnIndexCursor(page.nextCursor) : undefined,
-    };
-  }
-
-  /**
-   * 按锚点 Turn 读取前后有界窗口（旧到新）。消息正文由 SessionStore
-   * 按窗口内 turnIds 另取，拼装层（Server 路由）合成完整窗口。
-   */
-  listTurnWindow(sessionId: string, input: ListTurnWindowInput): TurnWindow {
-    this.requireSessionRow(sessionId);
-    this.assertTurnOwnership(sessionId, input.anchorTurnId);
-    const beforeTurns = normaliseIntegerLimit(
-      input.beforeTurns,
-      TURN_WINDOW_DEFAULT_BEFORE,
-      TURN_WINDOW_MAX_SIDE,
-      'turn_window_before',
-      true,
-    );
-    const afterTurns = normaliseIntegerLimit(
-      input.afterTurns,
-      TURN_WINDOW_DEFAULT_AFTER,
-      TURN_WINDOW_MAX_SIDE,
-      'turn_window_after',
-      true,
-    );
-    if (beforeTurns + afterTurns > TURN_WINDOW_MAX_TOTAL) {
-      throw new Error('turn_window_too_large');
-    }
-
-    const window = this.turnsRepo.listWindowAround(
-      sessionId,
-      input.anchorTurnId,
-      beforeTurns,
-      afterTurns,
-    );
-    if (!window) throw new Error(`turn_not_found: ${input.anchorTurnId}`);
-
-    return {
-      anchorTurnId: input.anchorTurnId,
-      turns: window.rows.map(toTurn),
-      hasOlder: window.hasOlder,
-      hasNewer: window.hasNewer,
     };
   }
 
@@ -397,10 +351,6 @@ function toTurn(row: TurnRow): Turn {
 const TURN_INDEX_DEFAULT_LIMIT = 200;
 const TURN_INDEX_MAX_LIMIT = 500;
 const TURN_INDEX_PREVIEW_LENGTH = 180;
-const TURN_WINDOW_DEFAULT_BEFORE = 8;
-const TURN_WINDOW_DEFAULT_AFTER = 12;
-const TURN_WINDOW_MAX_SIDE = 25;
-const TURN_WINDOW_MAX_TOTAL = 40;
 
 function normaliseIntegerLimit(
   value: number | undefined,

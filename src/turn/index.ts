@@ -6,11 +6,11 @@ export { TurnStore } from './turnStore.js';
 export type { TurnStoreDeps } from './turnStore.js';
 export {
   TurnEventChannel,
-  TurnEventChannelClosedError,
 } from './eventChannel.js';
 export {
   TurnOwnershipError,
   TurnPreparationError,
+  TurnEventChannelClosedError,
 } from './errors.js';
 export type { TurnFailureCode, TurnFailurePhase } from './errors.js';
 export { SessionInteractionQueue } from './interactionQueue.js';

@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import {
   sessionsApi,
   type SessionListItem,
+  type SessionCreateInput,
   type SessionPatchInput,
   type SessionProjectGroup,
   type SessionsGrouped,
@@ -31,7 +32,7 @@ export interface SessionStoreState {
   error:        string | null;
 
   loadSessions():                                                    Promise<void>;
-  createSession():                                                   Promise<string>;
+  createSession(input?: SessionCreateInput):                         Promise<string>;
   renameSession(id: string, title: string):                       Promise<void>;
   pinSession(id: string, pinned: boolean):                        Promise<void>;
   setWorkspaceRoot(id: string, path: string | null):              Promise<void>;
@@ -123,9 +124,9 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
     }
   },
 
-  async createSession() {
+  async createSession(input = {}) {
     try {
-      const session = await sessionsApi.create();
+      const session = await sessionsApi.create(input);
       await get().loadSessions();
       return session.id;
     } catch (error: unknown) {

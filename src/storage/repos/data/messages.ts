@@ -2,7 +2,6 @@
 import type { SqliteDb } from '../../database/database.js';
 
 export type MessageRole = 'system' | 'user' | 'assistant';
-const MESSAGE_TURN_READ_LIMIT = 50;
 
 /** messages.kind 的数据库稳定枚举。 */
 export type MessageKind =
@@ -39,6 +38,22 @@ export interface MessageInsert {
   summarizedThroughMessageId?: string;
 }
 
+export interface MessagePageCursor {
+  createdAt: number;
+  id: string;
+}
+
+export interface MessageRowPage {
+  rows: MessageRow[];
+  nextCursor: MessagePageCursor | null;
+}
+
+export interface MessageRowWindow {
+  rows: MessageRow[];
+  hasOlder: boolean;
+  hasNewer: boolean;
+}
+
 export class MessagesRepo {
   constructor(private readonly db: SqliteDb) {}
 
@@ -67,34 +82,10 @@ export class MessagesRepo {
     return this.db.prepare('SELECT * FROM messages WHERE id = ?').get(id) as MessageRow | undefined;
   }
 
-  listForSession(sessionId: string, limit = 500): MessageRow[] {
-    return this.db
-      .prepare(
-        'SELECT * FROM messages WHERE session_id = ? ORDER BY created_at DESC, id DESC LIMIT ?',
-      )
-      .all(sessionId, limit) as MessageRow[];
-  }
-
   listForTurn(turnId: string): MessageRow[] {
     return this.db
       .prepare('SELECT * FROM messages WHERE turn_id = ? ORDER BY created_at ASC, id ASC')
       .all(turnId) as MessageRow[];
-  }
-
-  /** 读取一组已限定 Turn 的消息，供历史窗口按时间正序展示。 */
-  listForTurns(sessionId: string, turnIds: readonly string[]): MessageRow[] {
-    if (turnIds.length === 0) return [];
-    if (turnIds.length > MESSAGE_TURN_READ_LIMIT) {
-      throw new RangeError(`message_turn_read_limit: ${turnIds.length}`);
-    }
-    const placeholders = turnIds.map(() => '?').join(', ');
-    return this.db
-      .prepare(
-        `SELECT * FROM messages
-         WHERE session_id = ? AND turn_id IN (${placeholders})
-         ORDER BY created_at ASC, id ASC`,
-      )
-      .all(sessionId, ...turnIds) as MessageRow[];
   }
 
   markInterrupted(id: string): void {
@@ -112,16 +103,85 @@ export class MessagesRepo {
     this.db.prepare('DELETE FROM messages WHERE turn_id = ?').run(turnId);
   }
 
-  /** Cursor 分页：created_at < before 的行，按最新优先。 */
-  listBefore(sessionId: string, before: number, limit: number): MessageRow[] {
-    return this.db
-      .prepare(
-        `SELECT * FROM messages
-         WHERE session_id = ? AND created_at < ?
-         ORDER BY created_at DESC, id DESC
-         LIMIT ?`,
-      )
-      .all(sessionId, before, limit) as MessageRow[];
+  /** 按稳定复合游标读取一页，Repo 内部保持最新优先。 */
+  listPage(
+    sessionId: string,
+    cursor: MessagePageCursor | undefined,
+    limit: number,
+  ): MessageRowPage {
+    const rows = cursor
+      ? this.db.prepare(`
+          SELECT * FROM messages
+          WHERE session_id = ?
+            AND (created_at < ? OR (created_at = ? AND id < ?))
+          ORDER BY created_at DESC, id DESC
+          LIMIT ?
+        `).all(sessionId, cursor.createdAt, cursor.createdAt, cursor.id, limit + 1)
+      : this.db.prepare(`
+          SELECT * FROM messages
+          WHERE session_id = ?
+          ORDER BY created_at DESC, id DESC
+          LIMIT ?
+        `).all(sessionId, limit + 1);
+    const typedRows = rows as MessageRow[];
+    const pageRows = typedRows.slice(0, limit);
+    const last = pageRows.at(-1);
+    return {
+      rows: pageRows,
+      nextCursor: typedRows.length > limit && last
+        ? { createdAt: last.created_at, id: last.id }
+        : null,
+    };
+  }
+
+  /** 围绕一条 Message 读取旧到新的有界窗口，额外一行只用于判断两侧缺口。 */
+  listWindowAround(
+    sessionId: string,
+    anchorMessageId: string,
+    beforeLimit: number,
+    afterLimit: number,
+  ): MessageRowWindow | undefined {
+    const anchor = this.db
+      .prepare('SELECT * FROM messages WHERE id = ? AND session_id = ?')
+      .get(anchorMessageId, sessionId) as MessageRow | undefined;
+    if (!anchor) return undefined;
+
+    const olderRows = this.db.prepare(`
+      SELECT * FROM messages
+      WHERE session_id = ?
+        AND (created_at < ? OR (created_at = ? AND id < ?))
+      ORDER BY created_at DESC, id DESC
+      LIMIT ?
+    `).all(
+      sessionId,
+      anchor.created_at,
+      anchor.created_at,
+      anchor.id,
+      beforeLimit + 1,
+    ) as MessageRow[];
+    const newerRows = this.db.prepare(`
+      SELECT * FROM messages
+      WHERE session_id = ?
+        AND (created_at > ? OR (created_at = ? AND id > ?))
+      ORDER BY created_at ASC, id ASC
+      LIMIT ?
+    `).all(
+      sessionId,
+      anchor.created_at,
+      anchor.created_at,
+      anchor.id,
+      afterLimit + 1,
+    ) as MessageRow[];
+
+    return {
+      rows: [
+        ...olderRows.slice(0, beforeLimit).reverse(),
+        anchor,
+        ...newerRows.slice(0, afterLimit),
+      ],
+      hasOlder: olderRows.length > beforeLimit,
+      hasNewer: newerRows.length > afterLimit,
+    };
   }
 
   countForSession(sessionId: string): number {

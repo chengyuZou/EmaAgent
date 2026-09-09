@@ -21,27 +21,25 @@ export type SessionListItem = SessionsGrouped['recent'][number];
 export type SessionProjectGroup = SessionsGrouped['projects'][number];
 export type SessionSearchResult = RpcJson<RpcClient['api']['sessions']['search']['$get']>;
 export type SessionPatchInput = InferRequestType<RpcClient['api']['sessions'][':sessionId']['$put']>['json'];
-export type SessionMessagesResult = RpcJson<RpcClient['api']['sessions'][':sessionId']['messages']['$get']>;
+export type SessionMessagePage = RpcJson<RpcClient['api']['sessions'][':sessionId']['messages']['$get']>;
 /** 历史接口的单条消息（user 消息可能附带 attachments 投影）。 */
-export type SessionHistoryMessage = SessionMessagesResult['messages'][number];
-/** 历史接口返回的 Turn 记录。 */
-export type SessionHistoryTurn = SessionMessagesResult['turns'][number];
+export type SessionHistoryMessage = SessionMessagePage['messages'][number];
 export type TurnIndexPage = RpcJson<RpcClient['api']['sessions'][':sessionId']['turn-index']['$get']>;
-export type SessionMessageWindow = RpcJson<RpcClient['api']['sessions'][':sessionId']['messages']['window']['$get']>;
+export type SessionMessageWindow = RpcJson<RpcClient['api']['sessions'][':sessionId']['messages']['around']['$get']>;
+export type SessionTurnMessages = RpcJson<RpcClient['api']['sessions'][':sessionId']['turns'][':turnId']['messages']['$get']>;
 export type SessionAttachmentsResult = RpcJson<RpcClient['api']['sessions'][':sessionId']['attachments']['$get']>;
 export type SessionPastedTextResult = RpcJson<RpcClient['api']['sessions'][':sessionId']['attachments']['pasted']['$post']>;
 export type SessionImageUploadResult = RpcJson<RpcClient['api']['sessions'][':sessionId']['attachments']['images']['$post']>;
 export type ForkResult = RpcJson<RpcClient['api']['sessions'][':sessionId']['fork']['$post']>;
 export type RewindResult = RpcJson<RpcClient['api']['sessions'][':sessionId']['turns'][':turnId']['rewind']['$post']>;
-export type CompactResult = RpcJson<RpcClient['api']['sessions'][':sessionId']['compact']['$post']>;
 export type SessionImportResult = RpcJson<RpcClient['api']['sessions']['import']['$post']>;
 
 // ── API ──────────────────────────────────────────────────────────────────────
 
 export const sessionsApi = {
   /** POST /api/sessions — 创建空 Session（body 全 optional，发 {} 即全默认）。 */
-  create(opts: SessionCreateInput = {}): Promise<Session> {
-    return readRpcJson(rpcClient.api.sessions.$post({ json: opts }));
+  create(input: SessionCreateInput = {}): Promise<Session> {
+    return readRpcJson(rpcClient.api.sessions.$post({ json: input }));
   },
 
   /** GET /api/sessions — 分组列表（侧栏唯一路径）。 */
@@ -71,15 +69,15 @@ export const sessionsApi = {
     );
   },
 
-  /** GET /api/sessions/:sessionId/messages — 消息与 Turn 一次取回。 */
+  /** GET /api/sessions/:sessionId/messages — Message 正文游标页。 */
   listMessages(
     id: string,
-    opts?: { before?: number; limit?: number },
-  ): Promise<SessionMessagesResult> {
+    opts?: { before?: string; limit?: number },
+  ): Promise<SessionMessagePage> {
     return readRpcJson(rpcClient.api.sessions[':sessionId'].messages.$get({
       param: { sessionId: id },
       query: {
-        ...(opts?.before !== undefined ? { before: String(opts.before) } : {}),
+        ...(opts?.before ? { before: opts.before } : {}),
         ...(opts?.limit !== undefined ? { limit: String(opts.limit) } : {}),
       },
     }));
@@ -99,18 +97,25 @@ export const sessionsApi = {
     }));
   },
 
-  /** GET /api/sessions/:sessionId/messages/window — 锚点有界历史窗口。 */
-  listMessageWindow(
+  /** GET /api/sessions/:sessionId/messages/around — Message 锚点有界历史窗口。 */
+  listMessagesAround(
     id: string,
-    opts: { anchorTurnId: string; beforeTurns?: number; afterTurns?: number },
+    opts: { anchorMessageId: string; before?: number; after?: number },
   ): Promise<SessionMessageWindow> {
-    return readRpcJson(rpcClient.api.sessions[':sessionId'].messages.window.$get({
+    return readRpcJson(rpcClient.api.sessions[':sessionId'].messages.around.$get({
       param: { sessionId: id },
       query: {
-        anchorTurnId: opts.anchorTurnId,
-        ...(opts.beforeTurns !== undefined ? { beforeTurns: String(opts.beforeTurns) } : {}),
-        ...(opts.afterTurns !== undefined ? { afterTurns: String(opts.afterTurns) } : {}),
+        anchorMessageId: opts.anchorMessageId,
+        ...(opts.before !== undefined ? { before: String(opts.before) } : {}),
+        ...(opts.after !== undefined ? { after: String(opts.after) } : {}),
       },
+    }));
+  },
+
+  /** GET /api/sessions/:sessionId/turns/:turnId/messages — Turn 终态持久收口。 */
+  listTurnMessages(sessionId: string, turnId: string): Promise<SessionTurnMessages> {
+    return readRpcJson(rpcClient.api.sessions[':sessionId'].turns[':turnId'].messages.$get({
+      param: { sessionId, turnId },
     }));
   },
 
@@ -179,19 +184,9 @@ export const sessionsApi = {
     return readRpcVoid(rpcClient.api.sessions[':sessionId'].unarchive.$post({ param: { sessionId: id } }));
   },
 
-  /** POST /api/sessions/:sessionId/abort — Session 级停止（204；无活跃执行 409）。 */
-  abort(id: string): Promise<void> {
-    return readRpcVoid(rpcClient.api.sessions[':sessionId'].abort.$post({ param: { sessionId: id } }));
-  },
-
   /** DELETE /api/sessions/:sessionId（204）。 */
   delete(id: string): Promise<void> {
     return readRpcVoid(rpcClient.api.sessions[':sessionId'].$delete({ param: { sessionId: id } }));
-  },
-
-  /** POST /api/sessions/:sessionId/compact — 手动压缩历史（挂起式响应）。 */
-  compact(sessionId: string): Promise<CompactResult> {
-    return readRpcJson(rpcClient.api.sessions[':sessionId'].compact.$post({ param: { sessionId } }));
   },
 
   /** POST /api/sessions/:id/export — 流式下载单 Session ZIP（字节流走 requestRaw 逃生口）。 */

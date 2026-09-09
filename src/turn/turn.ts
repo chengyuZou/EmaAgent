@@ -27,17 +27,15 @@ import {
   type SessionStore,
 } from '@ema-agent/session';
 import type { StageEngine } from '@ema-agent/stage';
-import type { TurnFailureCode } from './errors.js';
 import type { Turn } from './types.js';
 import { recordLlmCallUsage, type UsageRecorder } from '@ema-agent/usage';
-import {
-  TurnEventChannel,
-  TurnEventChannelClosedError,
-} from './eventChannel.js';
+import { TurnEventChannel } from './eventChannel.js';
 import {
   failureCodeOf,
   failureMessageOf,
   TurnBudgetExceededError,
+  TurnEventChannelClosedError,
+  type TurnFailureCode,
 } from './errors.js';
 import type { TurnStreamEvent } from './events.js';
 import { createPrepareLlmCall } from './loop/prepareLlmCall.js';
@@ -217,7 +215,11 @@ export class TurnExecutor {
     const { sessionId } = turn;
     const turnId = turn.id;
     const emit = (event: TurnStreamEvent): void => {
-      void channel.push(event).catch(() => undefined);
+      try {
+        channel.push(event);
+      } catch (error) {
+        if (!(error instanceof TurnEventChannelClosedError)) throw error;
+      }
     };
 
     const writer = new TurnMessageWriter(sessionId, turnId, this.deps.sessions);

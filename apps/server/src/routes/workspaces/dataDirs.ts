@@ -34,9 +34,13 @@ const migrateBody = z.object({
 });
 
 const rawMessagesQuery = z.object({
-  before: z.coerce.number().int().optional(),
+  beforeCreatedAt: z.coerce.number().int().optional(),
+  beforeId: z.string().min(1).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
-});
+}).refine(
+  input => (input.beforeCreatedAt === undefined) === (input.beforeId === undefined),
+  { message: 'raw_message_cursor_incomplete' },
+);
 
 const wipeQuery = z.object({
   wipe: z.enum(['1']).optional(),
@@ -163,12 +167,19 @@ export const dataDirsRoute = (deps: DataDirsRouteDeps) => {
       if (!entry) return context.json({ error: 'dir_not_found' }, 404);
       const sessionId = context.req.param('sessionId');
       const repo = new MessagesRepo(dbForDir(entry.path, isActive).sqlite);
-      const { before, limit } = context.req.valid('query');
+      const { beforeCreatedAt, beforeId, limit } = context.req.valid('query');
       // raw 行原样下发(blocks_json 不 parse),keyset 分页。
-      const messages = before === undefined
-        ? repo.listForSession(sessionId, limit)
-        : repo.listBefore(sessionId, before, limit);
-      return context.json({ messages });
+      const page = repo.listPage(
+        sessionId,
+        beforeCreatedAt === undefined || beforeId === undefined
+          ? undefined
+          : { createdAt: beforeCreatedAt, id: beforeId },
+        limit,
+      );
+      return context.json({
+        messages: page.rows,
+        ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
+      });
     });
 };
 

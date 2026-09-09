@@ -92,7 +92,7 @@ export function toSearchHit(
     snippet: row.match_kind === 'title'
       ? row.title
       : blocksJsonToSearchText(row.snippet_json),
-    messageId: row.message_id,
+    anchorMessageId: row.message_id,
     messageAt: row.message_created_at,
   };
 }

@@ -213,6 +213,7 @@ describe('TurnStore — 导航查询', () => {
     });
 
     expect(first.items).toHaveLength(2);
+    expect(first.items.every(item => item.anchorMessageId.length > 0)).toBe(true);
     expect(first.nextCursor).toBeTypeOf('string');
     expect(second.items).toHaveLength(1);
     expect(second.nextCursor).toBeUndefined();
@@ -220,38 +221,6 @@ describe('TurnStore — 导航查询', () => {
     expect(second.items[0]!.preview.endsWith('…')).toBe(true);
   });
 
-  it('围绕锚点读取前后 Turn 窗口', () => {
-    const { store, db } = makeStore();
-    const sessionId = insertSession(db, 's1');
-    const turns: string[] = [];
-    for (let index = 0; index < 5; index++) {
-      const { turn } = startTurn(store, sessionId);
-      turns.push(turn.id);
-      store.completeTurn(turn.id);
-      store.clearRunning(sessionId, turn.id);
-    }
-
-    const window = store.listTurnWindow(sessionId, {
-      anchorTurnId: turns[2]!,
-      beforeTurns: 1,
-      afterTurns: 1,
-    });
-
-    expect(window.turns.map((turn) => turn.id)).toEqual(turns.slice(1, 4));
-    expect(window.hasOlder).toBe(true);
-    expect(window.hasNewer).toBe(true);
-  });
-
-  it('窗口拒绝其他 Session 的锚点 Turn', () => {
-    const { store, db } = makeStore();
-    const owner = insertSession(db, 'owner');
-    const other = insertSession(db, 'other');
-    const { turn } = startTurn(store, owner);
-
-    expect(() => store.listTurnWindow(other, {
-      anchorTurnId: turn.id,
-    })).toThrow('turn_ownership_violation');
-  });
 });
 
 describe('TurnStore — 回滚', () => {
@@ -270,7 +239,8 @@ describe('TurnStore — 回滚', () => {
     expect(() => store.rewindLastTurn(sessionId, t1.id)).toThrow(/turn_not_latest/);
     store.rewindLastTurn(sessionId, t2.id);
 
-    expect(store.listTurns(sessionId).map((turn) => turn.id)).toEqual([t1.id]);
+    expect(store.getTurn(t1.id)?.sessionId).toBe(sessionId);
+    expect(store.getTurn(t2.id)).toBeUndefined();
     expect(new MessagesRepo(db.sqlite).listForTurn(t2.id)).toHaveLength(0);
   });
 

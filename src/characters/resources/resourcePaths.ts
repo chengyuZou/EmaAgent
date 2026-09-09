@@ -18,6 +18,16 @@ export class CharacterResourcePaths {
     return path.join(this.stagingRoot(), physicalName(operationId));
   }
 
+  // Live2D 卡面/角色卡的静态封面:导入时前端离屏渲一帧生成,住角色目录的
+  // .previews 小区,不进模型目录(不污染用户模型包,导出重导互不影响)。
+  previewRoot(characterName: string): string {
+    return path.join(this.characterDirectory(characterName), '.previews');
+  }
+
+  live2dPreviewFile(characterName: string, live2dName: string): string {
+    return path.join(this.previewRoot(characterName), `${physicalName(live2dName)}.png`);
+  }
+
   characterDirectory(characterName: string): string {
     return path.join(this.root, physicalName(characterName));
   }

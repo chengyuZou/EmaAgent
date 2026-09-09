@@ -112,7 +112,11 @@ export interface PersistedToolInteraction {
 
 export interface CreateSessionInput {
   title?: string;
-  workspaceRoot?: string | null;
+  workspaceRoot?: string;
+  /** 项目新对话直接创建为项目成员，工作区由项目主文件夹决定。 */
+  projectId?: string;
+  executionProfile?: ExecutionProfile;
+  narrativePolicy?: NarrativePolicy;
 }
 
 /** 用户可在 Session 存续期间修改的偏好；undefined 表示保持原值。 */
@@ -138,9 +142,26 @@ export interface AppendMessageInput {
 }
 
 export interface ListMessagesInput {
-  /** 加载早于该时间戳的消息，供 UI 热历史分页。 */
-  before?: number;
+  /** 上一页返回的不透明游标，只能原样回传。 */
+  before?: string;
   limit?: number;
+}
+
+export interface MessagePage {
+  messages: Message[];
+  olderCursor?: string;
+}
+
+export interface ListMessagesAroundInput {
+  anchorMessageId: string;
+  before?: number;
+  after?: number;
+}
+
+export interface MessageWindow {
+  messages: Message[];
+  hasOlder: boolean;
+  hasNewer: boolean;
 }
 
 export interface SearchSessionsInput {
@@ -152,7 +173,7 @@ export interface SessionSearchHit {
   session: SessionListItem;
   matchKind: 'title' | 'message';
   snippet: string;
-  messageId: string | null;
+  anchorMessageId: string | null;
   messageAt: number | null;
 }
 

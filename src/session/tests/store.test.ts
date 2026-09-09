@@ -44,6 +44,26 @@ describe('SessionStore — session', () => {
     expect(s.workspaceRoot).toBe('/tmp');
   });
 
+  it('创建 Project Session 时在同一次操作中写入项目与主工作区', () => {
+    const { store } = makeStore();
+    const project = store.createProject('Demo', 'D:/main');
+
+    const session = store.createSession({
+      projectId: project.id,
+      executionProfile: 'work',
+      narrativePolicy: 'off',
+    });
+
+    expect(session).toMatchObject({
+      projectId: project.id,
+      workspaceRoot: 'D:/main',
+      executionProfile: 'work',
+      narrativePolicy: 'off',
+    });
+    expect(() => store.createSession({ projectId: project.id, workspaceRoot: 'D:/other' }))
+      .toThrow('session_project_workspace_conflict');
+  });
+
   it('getSession throws for unknown id', () => {
     const { store } = makeStore();
     expect(() => store.getSession('bad-id')).toThrow('session_not_found');
@@ -313,19 +333,7 @@ describe('SessionStore — message', () => {
     })).toThrow(/summary_through_message_not_in_session/);
   });
 
-  it('listMessagesForTurns 按时间正序返回指定 Turn 集合的消息', () => {
-    const { store, db } = makeStore();
-    const s = store.createSession();
-    const t1 = insertTurnFixture(db, s.id);
-    const t2 = insertTurnFixture(db, s.id);
-    store.appendMessage({ sessionId: s.id, turnId: t1, role: 'user', blocks: 'one' });
-    store.appendMessage({ sessionId: s.id, turnId: t2, role: 'user', blocks: 'two' });
-
-    expect(store.listMessagesForTurns(s.id, [t1, t2]).map((message) => message.blocks))
-      .toEqual(['one', 'two']);
-  });
-
-  it('listMessages (cursor) returns newest-first on first page', () => {
+  it('listMessages 返回旧到新的 Message 页', () => {
     const { store, db } = makeStore();
     const s = store.createSession();
     const turnId = insertTurnFixture(db, s.id);
@@ -334,24 +342,46 @@ describe('SessionStore — message', () => {
     store.appendMessage({ sessionId: s.id, turnId, role: 'assistant', blocks: [{ type: 'text', text: 'newest' }] });
 
     const page = store.listMessages(s.id);
-    expect(page[0]!.blocks).toEqual([{ type: 'text', text: 'newest' }]);
+    expect(page.messages.map(message => message.blocks)).toEqual([
+      'old',
+      [{ type: 'text', text: 'newest' }],
+    ]);
+    expect(page.olderCursor).toBeUndefined();
   });
 
-  it('listMessages (cursor) loads older messages with before param', () => {
+  it('listMessages 使用不透明复合游标覆盖同毫秒消息', () => {
     const { store, db } = makeStore();
     const s = store.createSession();
     const turnId = insertTurnFixture(db, s.id);
 
-    store.appendMessage({ sessionId: s.id, turnId, role: 'user', blocks: 'old' });
-    store.appendMessage({ sessionId: s.id, turnId, role: 'assistant', blocks: [{ type: 'text', text: 'new' }] });
+    for (const value of ['one', 'two', 'three']) {
+      store.appendMessage({ sessionId: s.id, turnId, role: 'user', blocks: value });
+    }
 
-    // Ask for messages before 'new' — should only return 'old'
-    const newer = store.listMessages(s.id);
-    const cursor = newer[0]!.createdAt; // 'new' is at index 0 (newest-first)
-    const older = store.listMessages(s.id, { before: cursor });
+    const newer = store.listMessages(s.id, { limit: 2 });
+    const older = store.listMessages(s.id, { before: newer.olderCursor, limit: 2 });
 
-    expect(older).toHaveLength(1);
-    expect(older[0]!.blocks).toBe('old');
+    expect(newer.messages.map(message => message.blocks)).toEqual(['two', 'three']);
+    expect(older.messages.map(message => message.blocks)).toEqual(['one']);
+    expect(older.olderCursor).toBeUndefined();
+  });
+
+  it('listMessagesAround 围绕 Message 返回旧到新的窗口', () => {
+    const { store, db } = makeStore();
+    const s = store.createSession();
+    const turnId = insertTurnFixture(db, s.id);
+    const ids = ['one', 'two', 'three', 'four', 'five'].map(blocks => (
+      store.appendMessage({ sessionId: s.id, turnId, role: 'user', blocks }).id
+    ));
+
+    const window = store.listMessagesAround(s.id, {
+      anchorMessageId: ids[2]!,
+      before: 1,
+      after: 1,
+    });
+
+    expect(window.messages.map(message => message.blocks)).toEqual(['two', 'three', 'four']);
+    expect(window).toMatchObject({ hasOlder: true, hasNewer: true });
   });
 
   it('markMessageInterrupted sets interrupted flag', () => {
@@ -378,7 +408,7 @@ describe('SessionStore — message', () => {
       role: 'user',
       blocks: 'must fail',
     })).toThrow('session_ownership_violation');
-    expect(store.listMessages(foreign.id)).toHaveLength(0);
+    expect(store.listMessages(foreign.id).messages).toHaveLength(0);
   });
 });
 

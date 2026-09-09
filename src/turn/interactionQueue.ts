@@ -67,7 +67,7 @@ interface SessionFifo {
  *   - 不同 Session 互相独立，可并行等待用户。
  *   - 响应按 toolCallId 查址（全局唯一）：一次交互永远由唯一一次 Tool 调用触发，
  *     Permission 锚 = 触发审批的调用，AskUser 锚 = 发起问询的调用。
- *   - listPending(sessionId?) 供 SSE 重连恢复指定 Session 的队列快照。
+ *   - listPending(sessionId?) 供 Agent WebSocket 重连后恢复指定 Session 的队列投影。
  */
 export class SessionInteractionQueue {
   private readonly sessions = new Map<string, SessionFifo>();

@@ -6,6 +6,7 @@ import {
   ProjectsRepo,
   SessionsRepo,
   TurnsRepo,
+  type MessagePageCursor,
   type SessionRowEnriched,
 } from '@ema-agent/storage';
 import { SessionOwnershipError } from './errors.js';
@@ -28,6 +29,9 @@ import type {
   PatchSessionInput,
   AppendMessageInput,
   ListMessagesInput,
+  ListMessagesAroundInput,
+  MessagePage,
+  MessageWindow,
   PersistedToolInteraction,
   SearchSessionsInput,
   SearchSessionsOutput,
@@ -80,14 +84,31 @@ export class SessionStore {
     const id  = crypto.randomUUID();
     const now = this.nextTs();
     const title = (input.title?.trim() || DEFAULT_SESSION_TITLE);
-    this.sessionsRepo.insert({
-      id,
-      title,
-      workspaceRoot:    input.workspaceRoot,
-      createdAt:        now,
-      updatedAt:        now,
-      lastActivityAt:   now,
-    });
+    if (input.projectId !== undefined && input.workspaceRoot !== undefined) {
+      throw new Error('session_project_workspace_conflict');
+    }
+
+    this.db.sqlite.transaction(() => {
+      let workspaceRoot = input.workspaceRoot;
+      if (input.projectId !== undefined) {
+        if (!this.projectsRepo.findById(input.projectId)) {
+          throw new Error(`project_not_found: ${input.projectId}`);
+        }
+        workspaceRoot = this.projectsRepo.primaryFolderPath(input.projectId);
+        if (!workspaceRoot) throw new Error(`project_has_no_folder: ${input.projectId}`);
+      }
+      this.sessionsRepo.insert({
+        id,
+        title,
+        workspaceRoot,
+        projectId: input.projectId,
+        executionProfile: input.executionProfile,
+        narrativePolicy: input.narrativePolicy,
+        createdAt: now,
+        updatedAt: now,
+        lastActivityAt: now,
+      });
+    })();
     return this.requireSession(id);
   }
 
@@ -420,12 +441,6 @@ export class SessionStore {
     return this.messagesRepo.listForTurn(turnId).map(toMessage);
   }
 
-  /** 按 Turn 集合读取消息（时间正序），供 Turn 窗口在拼装层合成完整视图。 */
-  listMessagesForTurns(sessionId: string, turnIds: readonly string[]): Message[] {
-    this.requireSession(sessionId);
-    return this.messagesRepo.listForTurns(sessionId, turnIds).map(toMessage);
-  }
-
   /** 启动恢复按 Tool Call ID 找回模型原始调用与已经落库的结果。 */
   findToolInteraction(
     turnId: string,
@@ -460,14 +475,43 @@ export class SessionStore {
     return interaction;
   }
 
-  /** 兼容现有聊天页的时间游标读取，结果保持最新优先。 */
-  listMessages(sessionId: string, input: ListMessagesInput = {}): Message[] {
-    const limit = input.limit ?? 50;
+  /** UI 正文分页：返回旧到新的一页，游标只允许原样回传。 */
+  listMessages(sessionId: string, input: ListMessagesInput = {}): MessagePage {
+    const limit = messageReadLimit(input.limit, MESSAGE_PAGE_DEFAULT_LIMIT, 'message_page_limit');
     this.requireSession(sessionId);
-    if (input.before === undefined) {
-      return this.messagesRepo.listForSession(sessionId, limit).map(toMessage);
-    }
-    return this.messagesRepo.listBefore(sessionId, input.before, limit).map(toMessage);
+    const page = this.messagesRepo.listPage(
+      sessionId,
+      input.before ? decodeMessageCursor(input.before) : undefined,
+      limit,
+    );
+    return {
+      messages: [...page.rows].reverse().map(toMessage),
+      ...(page.nextCursor ? { olderCursor: encodeMessageCursor(page.nextCursor) } : {}),
+    };
+  }
+
+  /** UI 跳转：按 Message 身份读取锚点两侧，不把 History 重新按 Turn 分页。 */
+  listMessagesAround(
+    sessionId: string,
+    input: ListMessagesAroundInput,
+  ): MessageWindow {
+    this.requireSession(sessionId);
+    this.assertMessageOwnership(sessionId, input.anchorMessageId);
+    const before = messageReadLimit(input.before, MESSAGE_WINDOW_DEFAULT_BEFORE, 'message_window_before', true);
+    const after = messageReadLimit(input.after, MESSAGE_WINDOW_DEFAULT_AFTER, 'message_window_after', true);
+    if (before + after > MESSAGE_WINDOW_MAX_TOTAL) throw new Error('message_window_too_large');
+    const window = this.messagesRepo.listWindowAround(
+      sessionId,
+      input.anchorMessageId,
+      before,
+      after,
+    );
+    if (!window) throw new Error(`message_not_found: ${input.anchorMessageId}`);
+    return {
+      messages: window.rows.map(toMessage),
+      hasOlder: window.hasOlder,
+      hasNewer: window.hasNewer,
+    };
   }
 
   /** 校验 message 属于指定 session；不向调用方暴露仓储。 */
@@ -496,3 +540,45 @@ export class SessionStore {
 }
 
 const DEFAULT_HISTORY_LIMIT = 500;
+const MESSAGE_PAGE_DEFAULT_LIMIT = 50;
+const MESSAGE_PAGE_MAX_LIMIT = 200;
+const MESSAGE_WINDOW_DEFAULT_BEFORE = 20;
+const MESSAGE_WINDOW_DEFAULT_AFTER = 30;
+const MESSAGE_WINDOW_MAX_TOTAL = 100;
+
+function messageReadLimit(
+  value: number | undefined,
+  defaultValue: number,
+  errorCode: string,
+  allowZero = false,
+): number {
+  const resolved = value ?? defaultValue;
+  if (!Number.isSafeInteger(resolved) || resolved < (allowZero ? 0 : 1) || resolved > MESSAGE_PAGE_MAX_LIMIT) {
+    throw new RangeError(errorCode);
+  }
+  return resolved;
+}
+
+function encodeMessageCursor(cursor: MessagePageCursor): string {
+  return Buffer.from(JSON.stringify(cursor), 'utf8').toString('base64url');
+}
+
+function decodeMessageCursor(value: string): MessagePageCursor {
+  try {
+    const parsed = JSON.parse(Buffer.from(value, 'base64url').toString('utf8')) as unknown;
+    if (
+      typeof parsed === 'object'
+      && parsed !== null
+      && 'createdAt' in parsed
+      && Number.isSafeInteger(parsed.createdAt)
+      && 'id' in parsed
+      && typeof parsed.id === 'string'
+      && parsed.id.length > 0
+    ) {
+      return { createdAt: parsed.createdAt as number, id: parsed.id };
+    }
+  } catch {
+    // 外部游标不是本服务生成的值。
+  }
+  throw new Error('invalid_message_cursor');
+}

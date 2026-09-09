@@ -1,5 +1,4 @@
-// Session 历史读取：消息分页、Turn 索引与锚点窗口（窗口拆半：turns 归 TurnStore，消息归 SessionStore）。
-// 附件信息已经在消息块里(path/name/preview),不再按 Turn 拼接账本行。
+// Session 历史读取：Message 正文分页、Message 锚点窗口、Turn 导航索引与终态收口。
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { SessionStore } from '@ema-agent/session';
@@ -7,8 +6,8 @@ import type { TurnStore } from '@ema-agent/turn';
 import { queryValidator } from '../validate.js';
 
 const listMessagesQuery = z.object({
-  before: z.coerce.number().int().optional(),
-  limit: z.coerce.number().int().min(1).max(200).default(100),
+  before: z.string().min(1).max(512).optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
 });
 
 const turnIndexQuery = z.object({
@@ -16,41 +15,51 @@ const turnIndexQuery = z.object({
   limit: z.coerce.number().int().min(1).max(500).default(200),
 });
 
-const messageWindowQuery = z.object({
-  anchorTurnId: z.string().min(1),
-  beforeTurns: z.coerce.number().int().min(0).max(25).default(8),
-  afterTurns: z.coerce.number().int().min(0).max(25).default(12),
+const messagesAroundQuery = z.object({
+  anchorMessageId: z.string().min(1),
+  before: z.coerce.number().int().min(0).max(100).default(20),
+  after: z.coerce.number().int().min(0).max(100).default(30),
 }).refine(
-  value => value.beforeTurns + value.afterTurns <= 40,
+  value => value.before + value.after <= 100,
   { message: 'message_window_too_large' },
 );
 
 export interface SessionHistoryRouteDeps {
-  readonly session: Pick<SessionStore, 'listMessages' | 'listMessagesForTurns'>;
-  readonly turns: Pick<TurnStore, 'listTurns' | 'listTurnIndex' | 'listTurnWindow'>;
+  readonly session: Pick<SessionStore, 'listMessages' | 'listMessagesAround' | 'loadMessagesForTurn'>;
+  readonly turns: Pick<TurnStore, 'getTurn' | 'listTurnIndex'>;
   /** Session 被打开(拉历史)时触发一次 fire-and-forget 的附件残留清扫。 */
   readonly onSessionOpened?: (sessionId: string) => void;
 }
 
 export const sessionHistoryRoute = (deps: SessionHistoryRouteDeps) =>
   new Hono()
+    .get('/:sessionId/messages/around', queryValidator(messagesAroundQuery), context => {
+      try {
+        return context.json(deps.session.listMessagesAround(
+          context.req.param('sessionId'),
+          context.req.valid('query'),
+        ));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (message.includes('message_not_found') || message.includes('session_ownership_violation')) {
+          return context.json({ error: 'message_not_found' }, 404);
+        }
+        throw error;
+      }
+    })
     .get('/:sessionId/messages', queryValidator(listMessagesQuery), context => {
       const sessionId = context.req.param('sessionId');
       deps.onSessionOpened?.(sessionId);
-      return context.json({
-        messages: deps.session.listMessages(sessionId, context.req.valid('query')),
-        turns: deps.turns.listTurns(sessionId),
-      });
+      return context.json(deps.session.listMessages(sessionId, context.req.valid('query')));
     })
     .get('/:sessionId/turn-index', queryValidator(turnIndexQuery), context => {
       return context.json(deps.turns.listTurnIndex(context.req.param('sessionId'), context.req.valid('query')));
     })
-    .get('/:sessionId/messages/window', queryValidator(messageWindowQuery), context => {
+    .get('/:sessionId/turns/:turnId/messages', context => {
       const sessionId = context.req.param('sessionId');
-      const window = deps.turns.listTurnWindow(sessionId, context.req.valid('query'));
-      const turnIds = window.turns.map(turn => turn.id);
-      return context.json({
-        ...window,
-        messages: deps.session.listMessagesForTurns(sessionId, turnIds),
-      });
+      const turn = deps.turns.getTurn(context.req.param('turnId'));
+      if (!turn || turn.sessionId !== sessionId) {
+        return context.json({ error: 'turn_not_found' }, 404);
+      }
+      return context.json({ messages: deps.session.loadMessagesForTurn(turn.id) });
     });

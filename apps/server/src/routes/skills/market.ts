@@ -10,7 +10,7 @@ import {
   type SkillRegistry,
 } from '@ema-agent/skills';
 import { jsonBody, queryValidator } from '../validate.js';
-import type { AppEvent } from '../../sse/eventHub.js';
+import type { AppEvent } from '../../application/appEvents.js';
 
 export interface SkillMarketRouteDeps {
   readonly market: MarketService;

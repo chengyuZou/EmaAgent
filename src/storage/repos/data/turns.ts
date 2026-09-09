@@ -62,6 +62,7 @@ export interface TurnIdPage {
 
 export interface TurnIndexRow {
   id: string;
+  anchor_message_id: string;
   trigger_type: TurnTriggerTypeRow;
   execution_profile: ExecutionProfileRow;
   status: TurnStatusRow;
@@ -77,12 +78,6 @@ export interface TurnIndexRow {
 export interface TurnPage {
   rows: TurnIndexRow[];
   nextCursor: TurnIdPageCursor | null;
-}
-
-export interface TurnWindow {
-  rows: TurnRow[];
-  hasOlder: boolean;
-  hasNewer: boolean;
 }
 
 export class TurnsRepo {
@@ -188,7 +183,8 @@ export class TurnsRepo {
     const pageSize = Math.min(Math.max(limit, 1), 2_000);
     const rows = cursor
       ? this.db.prepare(`
-          SELECT t.id, t.trigger_type, t.execution_profile, t.status,
+          SELECT t.id, anchor.id AS anchor_message_id,
+                 t.trigger_type, t.execution_profile, t.status,
                  COALESCE((
                    SELECT substr(ema_message_search_text(m.blocks_json), 1, 512)
                    FROM messages m
@@ -198,13 +194,19 @@ export class TurnsRepo {
                  t.provider_id, t.model_id, t.protocol,
                  t.created_at, t.completed_at
           FROM turns t
+          JOIN messages anchor ON anchor.id = (
+            SELECT m.id FROM messages m
+            WHERE m.turn_id = t.id AND m.kind = 'normal'
+            ORDER BY m.created_at ASC, m.id ASC LIMIT 1
+          )
           WHERE t.session_id = ?
             AND (t.created_at < ? OR (t.created_at = ? AND t.id < ?))
           ORDER BY t.created_at DESC, t.id DESC
           LIMIT ?
         `).all(sessionId, cursor.createdAt, cursor.createdAt, cursor.id, pageSize + 1)
       : this.db.prepare(`
-          SELECT t.id, t.trigger_type, t.execution_profile, t.status,
+          SELECT t.id, anchor.id AS anchor_message_id,
+                 t.trigger_type, t.execution_profile, t.status,
                  COALESCE((
                    SELECT substr(ema_message_search_text(m.blocks_json), 1, 512)
                    FROM messages m
@@ -214,6 +216,11 @@ export class TurnsRepo {
                  t.provider_id, t.model_id, t.protocol,
                  t.created_at, t.completed_at
           FROM turns t
+          JOIN messages anchor ON anchor.id = (
+            SELECT m.id FROM messages m
+            WHERE m.turn_id = t.id AND m.kind = 'normal'
+            ORDER BY m.created_at ASC, m.id ASC LIMIT 1
+          )
           WHERE t.session_id = ?
           ORDER BY t.created_at DESC, t.id DESC
           LIMIT ?
@@ -258,60 +265,6 @@ export class TurnsRepo {
       nextCursor: typedRows.length > pageSize && last
         ? { createdAt: last.created_at, id: last.id }
         : null,
-    };
-  }
-
-  /**
-   * 读取锚点 Turn 附近的有界窗口，返回顺序为旧到新。
-   * 额外读取一行仅用于判断两侧是否还有数据。
-   */
-  listWindowAround(
-    sessionId: string,
-    anchorTurnId: string,
-    beforeLimit: number,
-    afterLimit: number,
-  ): TurnWindow | undefined {
-    const anchor = this.db
-      .prepare('SELECT * FROM turns WHERE id = ? AND session_id = ?')
-      .get(anchorTurnId, sessionId) as TurnRow | undefined;
-    if (!anchor) return undefined;
-
-    const olderRows = this.db.prepare(`
-      SELECT * FROM turns
-      WHERE session_id = ?
-        AND (created_at < ? OR (created_at = ? AND id < ?))
-      ORDER BY created_at DESC, id DESC
-      LIMIT ?
-    `).all(
-      sessionId,
-      anchor.created_at,
-      anchor.created_at,
-      anchor.id,
-      beforeLimit + 1,
-    ) as TurnRow[];
-
-    const newerRows = this.db.prepare(`
-      SELECT * FROM turns
-      WHERE session_id = ?
-        AND (created_at > ? OR (created_at = ? AND id > ?))
-      ORDER BY created_at ASC, id ASC
-      LIMIT ?
-    `).all(
-      sessionId,
-      anchor.created_at,
-      anchor.created_at,
-      anchor.id,
-      afterLimit + 1,
-    ) as TurnRow[];
-
-    return {
-      rows: [
-        ...olderRows.slice(0, beforeLimit).reverse(),
-        anchor,
-        ...newerRows.slice(0, afterLimit),
-      ],
-      hasOlder: olderRows.length > beforeLimit,
-      hasNewer: newerRows.length > afterLimit,
     };
   }
 

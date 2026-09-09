@@ -70,6 +70,8 @@ export interface ListTurnIndexInput {
 
 export interface TurnIndexItem {
   turnId: string;
+  /** 本 Turn 第一条可展示 Message，供 History 导航直接定位正文。 */
+  anchorMessageId: string;
   createdAt: number;
   completedAt: number | null;
   status: TurnStatus;
@@ -82,22 +84,6 @@ export interface TurnIndexItem {
 export interface TurnIndexPage {
   items: TurnIndexItem[];
   nextCursor?: string;
-}
-
-export interface ListTurnWindowInput {
-  anchorTurnId: string;
-  /** 锚点之前需要读取的较旧 Turn 数量。 */
-  beforeTurns?: number;
-  /** 锚点之后需要读取的较新 Turn 数量。 */
-  afterTurns?: number;
-}
-
-/** 锚点窗口只含 Turn；消息正文由 session 侧按 turnIds 另取后由拼装层合成。 */
-export interface TurnWindow {
-  anchorTurnId: string;
-  turns: Turn[];
-  hasOlder: boolean;
-  hasNewer: boolean;
 }
 
 // ── 本轮统计（被 turn_completed SSE 事件引用） ────────────────────────────────

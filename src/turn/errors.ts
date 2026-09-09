@@ -53,6 +53,13 @@ export class TurnBudgetExceededError extends Error {
   }
 }
 
+export class TurnEventChannelClosedError extends Error {
+  constructor() {
+    super('turn event consumer is closed');
+    this.name = 'TurnEventChannelClosedError';
+  }
+}
+
 // ── 失败终态的错误码映射 ─────────────────────────────────────────────────────
 
 const PROVIDER_FAILURE_CODES: ReadonlySet<string> = new Set([
