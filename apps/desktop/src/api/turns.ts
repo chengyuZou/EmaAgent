@@ -1,5 +1,5 @@
 // Turns API：只保留持久执行审计与最终合并音频；运行态命令走 api/websocket。
-import type { StartTurnPayload } from '@ema-agent/server/routes/ws/agent.js';
+import type { EnqueueInputPayload } from '@ema-agent/server/routes/ws/agent.js';
 import {
   rpcClient,
   readRpcJson,
@@ -10,7 +10,10 @@ import {
 
 // ── 类型（全部从路由契约推导） ────────────────────────────────────────────────
 
-export type TurnCreateInput = StartTurnPayload & { readonly sessionId?: string };
+export type TurnCreateInput = EnqueueInputPayload & {
+  readonly sessionId?: string;
+  readonly projectId?: string;
+};
 
 /** 附件输入 part 的块载荷(composer 草稿与发送共用同一形状)。 */
 export type TurnAttachmentBlock =

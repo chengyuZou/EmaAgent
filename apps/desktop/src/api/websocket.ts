@@ -1,7 +1,7 @@
 import type {
   AgentClientMessage,
   AgentServerMessage,
-  StartTurnPayload,
+  EnqueueInputPayload,
 } from '@ema-agent/server/routes/ws/agent.js';
 import type { SpeechControlEvent } from '@ema-agent/server/routes/ws/speech.js';
 import type { PermissionResponse } from '@ema-agent/permission';
@@ -59,10 +59,22 @@ export class AgentWebSockets {
     };
   }
 
-  startTurn(sessionId: string, payload: StartTurnPayload): Promise<string> {
-    return this.command<{ readonly turnId: string }>(sessionId, commandId => ({
-      type: 'start_turn', commandId, payload,
-    })).then(result => result.turnId);
+  enqueueInput(sessionId: string, payload: EnqueueInputPayload): Promise<void> {
+    return this.command<void>(sessionId, commandId => ({
+      type: 'enqueue_input', commandId, payload,
+    }));
+  }
+
+  removeQueuedInput(sessionId: string, id: string): Promise<void> {
+    return this.command<void>(sessionId, commandId => ({
+      type: 'remove_queued_input', commandId, id,
+    }));
+  }
+
+  guideQueuedInput(sessionId: string, id: string): Promise<void> {
+    return this.command<void>(sessionId, commandId => ({
+      type: 'guide_queued_input', commandId, id,
+    }));
   }
 
   startCompaction(sessionId: string) {
@@ -114,6 +126,12 @@ export class AgentWebSockets {
   cancelTool(sessionId: string, turnId: string, toolCallId: string): Promise<void> {
     return this.command<void>(sessionId, commandId => ({
       type: 'cancel_tool', commandId, turnId, toolCallId,
+    }));
+  }
+
+  cancelAgentRun(sessionId: string, agentRunId: string): Promise<void> {
+    return this.command<void>(sessionId, commandId => ({
+      type: 'cancel_agent_run', commandId, agentRunId,
     }));
   }
 
@@ -195,9 +213,6 @@ export class AgentWebSockets {
     if (message.type === 'pong') {
       if (connection.pongTimer) clearTimeout(connection.pongTimer);
       connection.pongTimer = null;
-    } else if (message.type === 'turn_accepted') {
-      connection.commands.get(message.commandId)?.resolve({ turnId: message.turnId });
-      connection.commands.delete(message.commandId);
     } else if (message.type === 'compaction_completed') {
       connection.commands.get(message.commandId)?.resolve(message.result);
       connection.commands.delete(message.commandId);
@@ -259,7 +274,8 @@ export class AgentWebSockets {
     connection.pongTimer = null;
   }
 
-  // 断线后不自动重放命令：start_turn 可能已被 Server 接收，盲目重发会创建重复 Turn。
+  // 连接打开后又断开时，命令可能已经被 Server 接收。此时只报告结果未知，
+  // 不能自动重放 enqueue_input，否则同一条用户输入可能进入队列两次。
   private rejectCommands(connection: AgentConnection, code: string, message: string): void {
     const error = new AgentWebSocketCommandError(code, message);
     for (const pending of connection.commands.values()) pending.reject(error);

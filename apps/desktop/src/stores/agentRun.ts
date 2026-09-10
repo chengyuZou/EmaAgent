@@ -1,4 +1,4 @@
-// AgentRun 持久记录只由 Route 响应写入；agent_run_* SSE 事件只写实时缓冲，终态即弃。
+// AgentRun 持久记录只由 Route 响应写入；agent_run_* WebSocket 事件只写实时缓冲，终态即弃。
 // AgentRun 记录只读：终态清理由 Session 生命周期负责，前端不提供删除入口。
 import { create } from 'zustand';
 import {

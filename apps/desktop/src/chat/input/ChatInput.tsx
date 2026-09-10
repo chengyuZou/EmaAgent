@@ -1,132 +1,181 @@
-// 聊天输入主装配：有序输入段、命令/Skill、模型与 Session 下一轮设置。
+// 组装 Session 草稿、排队输入与输入区选择; 只有点击发送才创建 Session 并落盘附件.
 import {
-  useCallback,
   useEffect,
   useRef,
   useState,
   type ChangeEvent,
+  type ClipboardEvent as ReactClipboardEvent,
   type JSX,
   type KeyboardEvent,
 } from 'react';
-import { DropdownMenu, IconButton, PromptDialog, Textarea, type MenuItem, type TextareaHandle } from '@ema-agent/ui';
-import { hasTurnInput, type TurnInputPart, type TurnModelSelection } from '@ema-agent/turn/types';
-import { DecisionLayer } from '../../decision/DecisionLayer.js';
+import {
+  DropdownMenu,
+  IconButton,
+  PromptDialog,
+  Textarea,
+  type MenuItem,
+  type TextareaHandle,
+} from '@ema-agent/ui';
+import type { TurnInputPart, TurnModelSelection } from '@ema-agent/turn';
+import { PASTE_TEXT_MIN_CHARS } from '@ema-agent/attachments/limits';
 import { sessionsApi } from '../../api/sessions.js';
 import { ServerApiError } from '../../api/client.js';
 import { findAvailableModel, providersApi, type AvailableModel } from '../../api/providers.js';
 import { showToast } from '../../lib/toast.js';
 import { tauriBridge } from '../../lib/tauri-bridge.js';
+import { useAgentStore } from '../../stores/agent.js';
 import { useServerStore } from '../../stores/server.js';
 import { useSessionStore } from '../../stores/session.js';
 import { useUiStore } from '../../stores/ui.js';
-import { useCurrentSession } from '../state/currentSession.js';
-import { useMessages } from '../state/messages.js';
-import { sendMessage, stopStreaming } from '../state/turnRunner.js';
-import { draftAttachmentTab, useDockTabs } from '../frame/dockTabs.js';
-import { AttachmentChip } from '../messages/AttachmentChip.js';
-import { useContextUsage } from '../state/contextUsage.js';
-import { ContextMeter } from './ContextMeter.js';
-import { ExecutionProfileSelector } from './ExecutionProfileSelector.js';
-import { KbButton } from './KbScopePicker.js';
-import { ModelPicker } from './ModelPicker.js';
-import { NarrativePolicySelector } from './NarrativePolicySelector.js';
-import { SlashCommandMenu, type SlashMenuHandle, type SlashSelection } from './SlashCommandMenu.js';
-import { activeSlashToken } from './slashMenu.js';
+import { PendingInteractionView } from '../interactions/PendingInteractionView.js';
+import { useChatWorkspace } from '../state/chatWorkspace.js';
+import { useLiveTurns } from '../state/liveTurns.js';
+import { ContextMeter, ExecutionProfileSelector, KbButton, ModelPicker, NarrativePolicySelector } from './InputSelectors.js';
 import {
-  draftText,
-  insertDraftReference,
-  removeDraftPart,
-  replaceDraftText,
-} from './composerDraft.js';
+  activeSlashToken,
+  SlashCommandMenu,
+  type SlashMenuHandle,
+  type SlashSelection,
+} from './AddInputMenu.js';
+import { draftText, emptyChatDraft, hasDraftContent, insertDraftReference, removeDraftPart, replaceDraftText, type ChatDraft, type ChatDraftPart } from './InputReferences.js';
 
 const COMPACT_ERRORS: Record<string, string> = {
-  session_busy: '当前会话正忙，请稍后再试',
-  compact_below_threshold: '历史还短，不需要压缩',
+  session_busy: '当前会话正忙, 请稍后再试',
+  compact_below_threshold: '历史还短, 不需要压缩',
   nothing_to_compact: '没有可压缩的内容',
   provider_not_configured: '未配置可用模型',
-  compact_failed: '压缩失败，请重试',
+  compact_failed: '压缩失败, 请重试',
 };
 
-function attachmentFromPath(sourcePath: string): Extract<TurnInputPart, { type: 'attachment' }> {
-  const name = sourcePath.split(/[\\/]/).pop() ?? sourcePath;
-  const extension = name.split('.').pop()?.toLowerCase();
-  const mimeType = extension === 'png' ? 'image/png'
-    : extension === 'jpg' || extension === 'jpeg' ? 'image/jpeg'
-    : extension === 'webp' ? 'image/webp'
-    : extension === 'gif' ? 'image/gif'
-    : extension === 'pdf' ? 'application/pdf'
-    : extension === 'txt' || extension === 'md' ? 'text/plain'
-    : undefined;
-  return {
-    type: 'attachment',
-    attachment: { sourcePath, name, ...(mimeType ? { mimeType } : {}) },
-  };
+function isLlmImagePath(filePath: string): boolean {
+  return ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(filePath.split('.').pop()?.toLowerCase() ?? '');
+}
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('剪贴板图片读取失败'));
+    reader.onload = () => {
+      const dataUrl = String(reader.result);
+      resolve(dataUrl.slice(dataUrl.indexOf(',') + 1));
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function finalizeDraft(sessionId: string, parts: readonly ChatDraftPart[]): Promise<TurnInputPart[]> {
+  const output: TurnInputPart[] = [];
+  // 文件和长粘贴在草稿阶段只存在前端. 此处按用户原始顺序落盘, 成功后再入 Session 队列.
+  for (const part of parts) {
+    if (part.type === 'text' || part.type === 'skill_reference') {
+      output.push(part);
+      continue;
+    }
+    if (part.type === 'file') {
+      output.push({
+        type: 'attachment',
+        block: { type: 'file_reference', path: part.path },
+      });
+      continue;
+    }
+    if (part.type === 'pasted_text') {
+      const saved = await sessionsApi.createPastedText(sessionId, part.content);
+      output.push({
+        type: 'attachment',
+        block: {
+          type: 'pasted_text_reference',
+          path: saved.path,
+          preview: saved.preview,
+        },
+      });
+      continue;
+    }
+    const name = part.name ?? part.sourcePath?.split(/[\\/]/).pop();
+    const saved = part.file
+      ? await sessionsApi.uploadImage(sessionId, {
+          dataBase64: await fileToBase64(part.file),
+          ...(name ? { name } : {}),
+        })
+      : await sessionsApi.uploadImage(sessionId, {
+          sourcePath: part.sourcePath!,
+          ...(name ? { name } : {}),
+        });
+    output.push({
+      type: 'attachment',
+      block: {
+        type: 'image_reference',
+        path: saved.path,
+        ...(name ? { name } : {}),
+      },
+    });
+  }
+  return output;
+}
+
+function queuedInputText(input: readonly TurnInputPart[]): string {
+  const text = input
+    .filter((part): part is Extract<TurnInputPart, { type: 'text' }> => (
+      part.type === 'text'
+    ))
+    .map((part) => part.text)
+    .join('')
+    .trim();
+  const references = input.filter((part) => part.type !== 'text').length;
+  return text || `${references} 个附件或技能`;
 }
 
 export function ChatInput(): JSX.Element {
-  const viewedId = useCurrentSession(state => state.viewedSessionId);
-  const savedDraft = useCurrentSession(state => viewedId ? state.draftMap.get(viewedId) : undefined);
+  const viewedId = useChatWorkspace(state => state.viewedSessionId);
+  const newProjectId = useChatWorkspace(state => state.newSessionProjectId);
+  const storedDraft = useChatWorkspace(state => viewedId ? state.draftMap.get(viewedId) : state.newSessionDraft);
   const viewedSession = useSessionStore(state => viewedId ? state.sessions.byId.get(viewedId) : undefined);
-  const stream = useMessages(state => viewedId ? state.streamBySession.get(viewedId) : undefined);
-  const hasOtherStream = useMessages(state => state.streamBySession.size > (stream ? 1 : 0));
+  const agentSession = useAgentStore(state => viewedId ? state.sessions.get(viewedId) : undefined);
   const serverReady = useServerStore(state => state.status.kind === 'ok');
   const ttsEnabled = useUiStore(state => state.ttsEnabled);
-  const [llmModels, setLlmModels] = useState<AvailableModel[]>([]);
-
-  const [parts, setPartsState] = useState<readonly TurnInputPart[]>(savedDraft ?? []);
-  const [selectedAssetIds, setSelectedAssetIds] = useState<readonly string[]>([]);
-  const [thinkingEffort, setThinkingEffort] = useState<TurnModelSelection['thinkingEffort']>('medium');
-  const [thinkingEnabled, setThinkingEnabled] = useState(false);
-  const [slashFilter, setSlashFilter] = useState<string | null>(null);
+  const [models, setModels] = useState<AvailableModel[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [compacting, setCompacting] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [slashFilter, setSlashFilter] = useState<string | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
-  const partsRef = useRef<readonly TurnInputPart[]>(parts);
   const textareaRef = useRef<TextareaHandle>(null);
   const slashMenuRef = useRef<SlashMenuHandle | null>(null);
-  const previousSessionRef = useRef<string | null>(viewedId);
 
-  const text = draftText(parts);
-  const executionProfile = viewedSession?.executionProfile ?? 'chat';
-  const narrativePolicy = viewedSession?.narrativePolicy ?? 'auto';
-  const selectedModel = findAvailableModel(llmModels, viewedSession?.providerId, viewedSession?.modelId);
-  const selectedModelSupportsThinking = selectedModel?.capability === 'llm'
-    && selectedModel.reasoning === true;
-  const modelSelection: TurnModelSelection | null = viewedSession?.providerId && viewedSession.modelId
-    ? {
-        providerId: viewedSession.providerId,
-        modelId: viewedSession.modelId,
-        thinkingEnabled: selectedModelSupportsThinking && thinkingEnabled,
-        thinkingEffort,
-      }
-    : null;
+  const draft: ChatDraft = storedDraft ?? {
+    ...emptyChatDraft(),
+    executionProfile: viewedSession?.executionProfile ?? 'chat',
+    narrativePolicy: viewedSession?.narrativePolicy ?? 'auto',
+    ...(viewedSession?.providerId && viewedSession.modelId
+      ? {
+          modelSelection: {
+            providerId: viewedSession.providerId,
+            modelId: viewedSession.modelId,
+            thinkingEnabled: false,
+            thinkingEffort: 'medium' as const,
+          },
+        }
+      : {}),
+  };
+  const text = draftText(draft.parts);
+  const hasInput = hasDraftContent(draft.parts);
+  const executing = agentSession?.execution != null;
+  const selectedModel = findAvailableModel(models, draft.modelSelection?.providerId, draft.modelSelection?.modelId);
+  const modelSelection: TurnModelSelection | undefined = draft.modelSelection ? {
+    ...draft.modelSelection,
+    thinkingEnabled: selectedModel?.capability === 'llm' && selectedModel.reasoning === true && draft.modelSelection.thinkingEnabled,
+  } : undefined;
 
-  const setParts = useCallback((next: readonly TurnInputPart[]) => {
-    partsRef.current = next;
-    setPartsState(next);
-    if (viewedId) useCurrentSession.getState().setDraft(viewedId, next);
-  }, [viewedId]);
-
-  useEffect(() => {
-    if (previousSessionRef.current === viewedId) return;
-    previousSessionRef.current = viewedId;
-    const next = viewedId ? useCurrentSession.getState().draftMap.get(viewedId) ?? [] : [];
-    partsRef.current = next;
-    setPartsState(next);
-    setSelectedAssetIds([]);
-    setSlashFilter(null);
-    setThinkingEnabled(false);
-    setThinkingEffort('medium');
-  }, [viewedId]);
+  function updateDraft(patch: Partial<ChatDraft>): void {
+    useChatWorkspace.getState().setDraft({ ...draft, ...patch });
+  }
 
   useEffect(() => {
-    providersApi.listAvailable('llm')
-      .then(({ models }) => setLlmModels([...models]))
-      .catch(() => { /* 目录拉取失败时按无模型处理 */ });
+    providersApi.listAvailable('llm').then(({ models: items }) => setModels([...items])).catch(() => {});
   }, []);
-
+  useEffect(() => {
+    if (viewedId && serverReady) useAgentStore.getState().connectSession(viewedId);
+  }, [serverReady, viewedId]);
   useEffect(() => {
     const element = textareaRef.current?.el();
     if (!element) return;
@@ -137,10 +186,8 @@ export function ChatInput(): JSX.Element {
   function caret(): number {
     return textareaRef.current?.el()?.selectionStart ?? text.length;
   }
-
   function updateText(nextText: string, nextCaret?: number): void {
-    const next = replaceDraftText(parts, nextText);
-    setParts(next);
+    updateDraft({ parts: replaceDraftText(draft.parts, nextText) });
     const position = nextCaret ?? nextText.length;
     queueMicrotask(() => textareaRef.current?.el()?.setSelectionRange(position, position));
     setSlashFilter(activeSlashToken(nextText, position)?.query ?? null);
@@ -148,58 +195,87 @@ export function ChatInput(): JSX.Element {
 
   async function pickAttachments(): Promise<void> {
     const paths = await tauriBridge.openFileDialogMultiple();
-    if (paths.length === 0) return;
-    let next = parts;
-    let offset = caret();
-    for (const path of paths) {
-      next = insertDraftReference(next, offset, attachmentFromPath(path));
+    let next = draft.parts;
+    for (const sourcePath of paths) {
+      next = insertDraftReference(
+        next,
+        caret(),
+        isLlmImagePath(sourcePath)
+          ? { type: 'image', sourcePath, name: sourcePath.split(/[\\/]/).pop() }
+          : { type: 'file', path: sourcePath },
+      );
     }
-    setParts(next);
+    updateDraft({ parts: next });
   }
 
-  function openDraftAttachment(part: Extract<TurnInputPart, { type: 'attachment' }>): void {
-    if (!viewedId) return;
-    useDockTabs.getState().openTab(viewedId, draftAttachmentTab(part.attachment));
+  function handlePaste(event: ReactClipboardEvent<HTMLTextAreaElement>): void {
+    const image = [...(event.clipboardData?.files ?? [])].find(file => file.type.startsWith('image/'));
+    if (image) {
+      event.preventDefault();
+      updateDraft({
+        parts: insertDraftReference(draft.parts, caret(), {
+          type: 'image',
+          file: image,
+          name: image.name || undefined,
+        }),
+      });
+      return;
+    }
+    const pasted = event.clipboardData?.getData('text/plain') ?? '';
+    if (pasted.length >= PASTE_TEXT_MIN_CHARS) {
+      event.preventDefault();
+      updateDraft({
+        parts: insertDraftReference(draft.parts, caret(), {
+          type: 'pasted_text',
+          content: pasted,
+          preview: `${pasted.slice(0, 120)}${pasted.length > 120 ? '…' : ''}`,
+        }),
+      });
+    }
   }
 
   async function runCompact(): Promise<void> {
     if (!viewedId || compacting) return;
     setCompacting(true);
     try {
-      const result = await sessionsApi.compact(viewedId);
-      if (result.status === 'cancelled') showToast('压缩已取消', { variant: 'info' });
-      else {
-        useContextUsage.getState().applyManualCompact(
-          viewedId,
-          result.afterTokens,
-          result.contextWindow,
-        );
+      const result = await useAgentStore.getState().startCompaction(viewedId);
+      if (result.status === 'cancelled') {
+        showToast('压缩已取消', { variant: 'info' });
+      } else {
+        useLiveTurns.getState().applyManualCompact(viewedId, result.afterTokens, result.contextWindow);
         showToast(`已压缩 ${result.beforeTokens} → ${result.afterTokens} tokens`, { variant: 'success' });
       }
-      await useMessages.getState().reloadMessages(viewedId);
     } catch (error) {
       const code = error instanceof ServerApiError ? error.code : undefined;
-      showToast(code && COMPACT_ERRORS[code]
-        ? COMPACT_ERRORS[code]
-        : error instanceof Error ? error.message : '压缩失败', { variant: 'danger' });
-    } finally { setCompacting(false); }
+      showToast(
+        code && COMPACT_ERRORS[code]
+          ? COMPACT_ERRORS[code]
+          : error instanceof Error
+            ? error.message
+            : '压缩失败',
+        { variant: 'danger' },
+      );
+    } finally {
+      setCompacting(false);
+    }
   }
 
   async function runCommand(name: string): Promise<void> {
     const sessions = useSessionStore.getState();
     if (name === 'compact') return runCompact();
     if (name === 'new') {
-      const id = await useCurrentSession.getState().createFreshSession();
-      if (id) await useCurrentSession.getState().viewSession(id);
+      useChatWorkspace.getState().openNewSession();
       return;
     }
     if (!viewedId) return;
     if (name === 'fork') {
-      const id = await sessions.forkSession(viewedId);
-      await useCurrentSession.getState().viewSession(id);
+      await useChatWorkspace.getState().viewSession(await sessions.forkSession(viewedId));
       return;
     }
-    if (name === 'rename') { setRenameOpen(true); return; }
+    if (name === 'rename') {
+      setRenameOpen(true);
+      return;
+    }
     if (name === 'pin') return sessions.pinSession(viewedId, !(viewedSession?.pinned ?? false));
     if (name === 'archive') return sessions.archiveSession(viewedId);
     showToast(`未知命令: /${name}`, { variant: 'warning' });
@@ -208,81 +284,116 @@ export function ChatInput(): JSX.Element {
   function selectSlash(selection: SlashSelection): void {
     const token = activeSlashToken(text, caret());
     if (!token) return;
-    const withoutToken = text.slice(0, token.start) + text.slice(token.end);
-    let next = replaceDraftText(parts, withoutToken);
-    if (selection.kind === 'skill') {
-      if (!next.some(part => part.type === 'skill_reference' && part.path === selection.skill.path)) {
-        next = insertDraftReference(next, token.start, {
-          type: 'skill_reference',
-          name: selection.skill.name,
-          path: selection.skill.path,
-        });
-      }
-      setParts(next);
-    } else {
-      setParts(next);
-      void runCommand(selection.command.name).catch(error => showToast(
-        error instanceof Error ? error.message : '命令执行失败', { variant: 'danger' },
-      ));
+    let next = replaceDraftText(draft.parts, text.slice(0, token.start) + text.slice(token.end));
+    if (
+      selection.kind === 'skill'
+      && !next.some((part) => (
+        part.type === 'skill_reference' && part.path === selection.skill.path
+      ))
+    ) {
+      next = insertDraftReference(next, token.start, {
+        type: 'skill_reference',
+        name: selection.skill.name,
+        path: selection.skill.path,
+      });
     }
+    updateDraft({ parts: next });
     setSlashFilter(null);
+    if (selection.kind === 'command') {
+      void runCommand(selection.command.name).catch((error) => {
+        showToast(
+          error instanceof Error ? error.message : '命令执行失败',
+          { variant: 'danger' },
+        );
+      });
+    }
   }
 
-  const send = useCallback(async () => {
-    if (!hasTurnInput(parts) || !serverReady || stream || submitting || compacting) return;
-    const submitted = parts;
+  async function send(): Promise<void> {
+    if (!hasInput || !serverReady || submitting || compacting) return;
+    const submitted = draft;
     setSubmitting(true);
+    let sessionId = viewedId;
     try {
-      await sendMessage({
-        ...(viewedId ? { sessionId: viewedId } : {}),
-        input: [...submitted],
-        executionProfile,
-        narrativePolicy,
+      if (!sessionId) {
+        sessionId = await useSessionStore.getState().createSession({
+          ...(newProjectId ? { projectId: newProjectId } : {}),
+          executionProfile: submitted.executionProfile,
+          narrativePolicy: submitted.narrativePolicy,
+        });
+        useChatWorkspace.getState().promoteNewSession(sessionId);
+      }
+      useAgentStore.getState().connectSession(sessionId);
+      const input = await finalizeDraft(sessionId, submitted.parts);
+      await useAgentStore.getState().enqueueInput(sessionId, {
+        input,
+        executionProfile: submitted.executionProfile,
+        narrativePolicy: submitted.narrativePolicy,
         ...(modelSelection ? { modelSelection } : {}),
-        ...(executionProfile === 'work' && selectedAssetIds.length > 0
-          ? { knowledge: { assetIds: [...selectedAssetIds] } } : {}),
+        ...(submitted.executionProfile === 'work' && submitted.selectedAssetIds.length > 0
+          ? { knowledge: { assetIds: [...submitted.selectedAssetIds] } }
+          : {}),
         ttsEnabled,
       });
-      setPartsState(current => {
-        if (current !== submitted) return current;
-        if (viewedId) useCurrentSession.getState().setDraft(viewedId, []);
-        partsRef.current = [];
-        return [];
-      });
+      const current = useChatWorkspace.getState().draftMap.get(sessionId);
+      if (current === submitted || (!viewedId && current?.parts === submitted.parts)) {
+        useChatWorkspace.getState().setDraft({ ...submitted, parts: [] });
+      }
       setSlashFilter(null);
     } catch (error) {
       showToast(error instanceof Error ? `发送失败: ${error.message}` : '发送失败', { variant: 'danger' });
-    } finally { setSubmitting(false); }
-  }, [parts, serverReady, stream, submitting, compacting, viewedId, executionProfile, narrativePolicy, modelSelection, selectedAssetIds, ttsEnabled]);
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   async function toggleRecording(): Promise<void> {
-    if (recording) { recorderRef.current?.stop(); return; }
+    if (recording) {
+      recorderRef.current?.stop();
+      return;
+    }
     try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(mediaStream);
+      const media = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(media);
+      const recordingSessionId = viewedId;
       const chunks: Blob[] = [];
-      recorder.ondataavailable = event => { if (event.data.size > 0) chunks.push(event.data); };
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) chunks.push(event.data);
+      };
       recorder.onstop = () => {
         setRecording(false);
-        mediaStream.getTracks().forEach(track => track.stop());
+        media.getTracks().forEach((track) => track.stop());
         const audio = new Blob(chunks, { type: recorder.mimeType });
-        void providersApi.transcribe({ audio, mime: recorder.mimeType }).then(result => {
-          const transcript = result.text.trim();
-          if (!transcript) return;
-          const currentParts = partsRef.current;
-          const currentText = draftText(currentParts);
-          const position = caret();
-          const nextText = currentText.slice(0, position) + transcript + currentText.slice(position);
-          const next = replaceDraftText(currentParts, nextText);
-          setParts(next);
-          queueMicrotask(() => textareaRef.current?.el()?.setSelectionRange(position + transcript.length, position + transcript.length));
-        }).catch(error => showToast(error instanceof Error ? error.message : '语音转写失败', { variant: 'danger' }));
+        void providersApi.transcribe({ audio, mime: recorder.mimeType })
+          .then((result) => {
+            // 转写是异步的. 回来时必须追加到该 Session 的最新草稿, 不能用开始录音时闭包里的旧内容覆盖用户后续输入.
+            const workspace = useChatWorkspace.getState();
+            const latest = recordingSessionId
+              ? workspace.draftMap.get(recordingSessionId) ?? emptyChatDraft()
+              : workspace.newSessionDraft;
+            workspace.setDraftFor(recordingSessionId, {
+              ...latest,
+              parts: replaceDraftText(
+                latest.parts,
+                `${draftText(latest.parts)}${result.text.trim()}`,
+              ),
+            });
+          })
+          .catch((error) => {
+            showToast(
+              error instanceof Error ? error.message : '语音转写失败',
+              { variant: 'danger' },
+            );
+          });
       };
       recorderRef.current = recorder;
       recorder.start();
       setRecording(true);
     } catch (error) {
-      showToast(error instanceof Error ? error.message : '无法使用麦克风', { variant: 'danger' });
+      showToast(
+        error instanceof Error ? error.message : '无法使用麦克风',
+        { variant: 'danger' },
+      );
     }
   }
 
@@ -295,18 +406,32 @@ export function ChatInput(): JSX.Element {
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>): void {
     if (event.nativeEvent.isComposing || event.keyCode === 229) return;
-    if (slashFilter !== null && ['ArrowUp', 'ArrowDown', 'Enter'].includes(event.key)) {
-      if (slashMenuRef.current?.handleKey(event.key as 'ArrowUp' | 'ArrowDown' | 'Enter')) {
-        event.preventDefault();
-        return;
-      }
+    const slashHandled = slashFilter !== null
+      && ['ArrowUp', 'ArrowDown', 'Enter'].includes(event.key)
+      && slashMenuRef.current?.handleKey(
+        event.key as 'ArrowUp' | 'ArrowDown' | 'Enter',
+      );
+    if (slashHandled) {
+      event.preventDefault();
+      return;
     }
-    if (event.key === 'Escape' && slashFilter !== null) { setSlashFilter(null); return; }
-    if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void send(); }
+    if (event.key === 'Escape' && slashFilter !== null) {
+      setSlashFilter(null);
+      return;
+    }
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      void send();
+    }
   }
 
   const plusItems: MenuItem[] = [
-    { kind: 'item', label: '添加文件或图片', icon: 'i-lucide:paperclip', onSelect: () => void pickAttachments() },
+    {
+      kind: 'item',
+      label: '添加文件或图片',
+      icon: 'i-lucide:paperclip',
+      onSelect: () => void pickAttachments(),
+    },
     { kind: 'item', label: '选择技能', icon: 'i-lucide:box', onSelect: focusSlash },
     { kind: 'item', label: '运行命令', icon: 'i-lucide:terminal', onSelect: focusSlash },
   ];
@@ -314,26 +439,78 @@ export function ChatInput(): JSX.Element {
   return (
     <div className="ema-composer-dock shrink-0 px-4 pb-3 pt-6">
       <div className="mx-auto max-w-3xl">
-        <DecisionLayer />
+        <PendingInteractionView />
+        {agentSession && agentSession.queuedInputs.length > 0 && (
+          <div className="mb-2 flex flex-col gap-1.5">
+            {agentSession.queuedInputs.map((item) => (
+              <div
+                key={item.id}
+                className="flex items-center gap-2 rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-2)] px-3 py-2 text-xs"
+              >
+                <span className="i-lucide:clock-3 text-[var(--ema-text-tertiary)]" aria-hidden />
+                <span className="min-w-0 flex-1 truncate text-[var(--ema-text-secondary)]">
+                  {queuedInputText(item.input)}
+                </span>
+                {item.delivery === 'after_turn' && executing && (
+                  <button
+                    className="text-[var(--ema-primary)] hover:underline"
+                    onClick={() => void useAgentStore.getState().guideQueuedInput(viewedId!, item.id)}
+                  >
+                    立即引导
+                  </button>
+                )}
+                <IconButton
+                  size="sm"
+                  icon="i-lucide:x"
+                  label="删除排队输入"
+                  onClick={() => void useAgentStore.getState().removeQueuedInput(viewedId!, item.id)}
+                />
+              </div>
+            ))}
+          </div>
+        )}
         <div className="ema-composer-card relative transition-shadow">
-          <SlashCommandMenu query={slashFilter} sessionId={viewedId} handleRef={slashMenuRef} onSelect={selectSlash} onClose={() => setSlashFilter(null)} />
-          {parts.some(part => part.type !== 'text') && (
-            <div className="flex flex-wrap gap-1.5 px-3 pt-3 pb-2">
-              {parts.map((part, index) => {
-                if (part.type === 'text') return null;
-                if (part.type === 'attachment') return (
-                  <AttachmentChip key={`${part.attachment.sourcePath}:${index}`} attachment={part.attachment} onOpen={() => openDraftAttachment(part)} onRemove={() => setParts(removeDraftPart(parts, index))} />
-                );
-                if (part.type === 'skill_reference') {
-                  return (
-                    <span key={`${part.path}:${index}`} className="inline-flex items-center gap-1 rounded-md border border-[var(--ema-border)] bg-[var(--ema-info-muted)] px-2 py-1 text-[11px] text-[var(--ema-info)]">
-                      <span className="i-lucide:box text-xs" aria-hidden />{part.name}
-                      <button type="button" className="i-lucide:x opacity-60 hover:opacity-100" aria-label={`移除技能 ${part.name}`} onClick={() => setParts(removeDraftPart(parts, index))} />
-                    </span>
-                  );
-                }
-                return null;
-              })}
+          <SlashCommandMenu
+            query={slashFilter}
+            sessionId={viewedId}
+            handleRef={slashMenuRef}
+            onSelect={selectSlash}
+            onClose={() => setSlashFilter(null)}
+          />
+          {draft.parts.some(part => part.type !== 'text') && (
+            <div className="flex flex-wrap gap-1.5 px-3 pb-2 pt-3">
+              {draft.parts.map((part, index) => part.type === 'text' ? null : (
+                <span
+                  key={index}
+                  className="inline-flex max-w-52 items-center gap-1 rounded-md border border-[var(--ema-border)] bg-[var(--ema-info-muted)] px-2 py-1 text-[11px] text-[var(--ema-info)]"
+                >
+                  <span
+                    className={part.type === 'skill_reference'
+                      ? 'i-lucide:box'
+                      : part.type === 'image'
+                        ? 'i-lucide:image'
+                        : 'i-lucide:paperclip'}
+                    aria-hidden
+                  />
+                  <span className="truncate">
+                    {part.type === 'skill_reference'
+                      ? part.name
+                      : part.type === 'file'
+                        ? part.path.split(/[\\/]/).pop()
+                        : part.type === 'pasted_text'
+                          ? part.preview
+                          : part.name ?? '图片'}
+                  </span>
+                  <button
+                    type="button"
+                    className="i-lucide:x opacity-60 hover:opacity-100"
+                    aria-label="移除"
+                    onClick={() => updateDraft({
+                      parts: removeDraftPart(draft.parts, index),
+                    })}
+                  />
+                </span>
+              ))}
             </div>
           )}
           <Textarea
@@ -342,52 +519,135 @@ export function ChatInput(): JSX.Element {
             autoGrow={false}
             rows={1}
             value={text}
-            placeholder="随心输入，/ 打开命令与技能…"
+            placeholder="随心输入, / 打开命令与技能…"
             className="min-h-[64px] w-full resize-none overflow-y-auto rounded-[22px] bg-transparent px-4 py-3 text-sm text-[var(--ema-text-secondary)] focus:outline-none"
             style={{ maxHeight: 200 }}
-            onChange={(event: ChangeEvent<HTMLTextAreaElement>) => {
-              const position = event.target.selectionStart;
-              updateText(event.target.value, position);
-            }}
+            onChange={(event: ChangeEvent<HTMLTextAreaElement>) => (
+              updateText(event.target.value, event.target.selectionStart)
+            )}
             onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
             disabled={compacting}
           />
           <div className="flex min-w-0 items-center gap-1 border-t border-[var(--ema-border)] px-2 py-1.5">
-            <DropdownMenu side="top" align="start" widthClass="min-w-48" items={plusItems} trigger={(
-              <IconButton size="sm" variant="default" icon="i-lucide:plus" label="添加内容" />
-            )} />
-            <KbButton visible={executionProfile === 'work'} selectedIds={selectedAssetIds} onChange={setSelectedAssetIds} />
-            <IconButton size="sm" variant={ttsEnabled ? 'primary' : 'default'} icon={ttsEnabled ? 'i-lucide:volume-2' : 'i-lucide:volume-x'} label="切换 TTS" toggled={ttsEnabled} onClick={() => useUiStore.getState().setTtsEnabled(!ttsEnabled)} />
-            <NarrativePolicySelector value={narrativePolicy} onChange={policy => {
-              if (viewedId) void useSessionStore.getState().setExecutionSettings(viewedId, { narrativePolicy: policy }).catch(error => showToast(error instanceof Error ? error.message : '保存剧情策略失败', { variant: 'danger' }));
-            }} />
+            <DropdownMenu
+              side="top"
+              align="start"
+              widthClass="min-w-48"
+              items={plusItems}
+              trigger={(
+                <IconButton
+                  size="sm"
+                  variant="default"
+                  icon="i-lucide:plus"
+                  label="添加内容"
+                  className="rounded-full"
+                />
+              )}
+            />
+            <KbButton
+              visible={draft.executionProfile === 'work'}
+              selectedIds={draft.selectedAssetIds}
+              onChange={(selectedAssetIds) => updateDraft({ selectedAssetIds })}
+            />
+            <IconButton
+              size="sm"
+              variant={ttsEnabled ? 'primary' : 'default'}
+              icon={ttsEnabled ? 'i-lucide:volume-2' : 'i-lucide:volume-x'}
+              label="切换 TTS"
+              toggled={ttsEnabled}
+              onClick={() => useUiStore.getState().setTtsEnabled(!ttsEnabled)}
+            />
+            <NarrativePolicySelector
+              value={draft.narrativePolicy}
+              onChange={(narrativePolicy) => {
+                updateDraft({ narrativePolicy });
+                if (viewedId) {
+                  void useSessionStore.getState().setExecutionSettings(
+                    viewedId,
+                    { narrativePolicy },
+                  );
+                }
+              }}
+            />
             <span className="min-w-2 flex-1" />
             <ContextMeter sessionId={viewedId} />
-            <ExecutionProfileSelector value={executionProfile} onChange={profile => {
-              if (viewedId) void useSessionStore.getState().setExecutionSettings(viewedId, { executionProfile: profile }).catch(error => showToast(error instanceof Error ? error.message : '保存模式失败', { variant: 'danger' }));
-            }} />
-            <ModelPicker selection={modelSelection} onChange={selection => {
-              setThinkingEnabled(selection.thinkingEnabled);
-              setThinkingEffort(selection.thinkingEffort);
-              if (viewedId) void useSessionStore.getState().setPreferredModel(viewedId, { providerId: selection.providerId, modelId: selection.modelId }).catch(error => showToast(error instanceof Error ? error.message : '保存模型失败', { variant: 'danger' }));
-            }} onClear={() => {
-              setThinkingEnabled(false);
-              if (viewedId) void useSessionStore.getState().setPreferredModel(viewedId, null).catch(error => showToast(error instanceof Error ? error.message : '恢复默认模型失败', { variant: 'danger' }));
-            }} />
-            <IconButton size="sm" variant={recording ? 'danger' : 'default'} icon={recording ? 'i-lucide:square' : 'i-lucide:mic'} label={recording ? '停止录音' : '语音输入'} onClick={() => void toggleRecording()} />
-            {stream ? (
-              <IconButton size="sm" variant="danger" icon="i-lucide:square" label="停止生成" onClick={() => { if (viewedId) stopStreaming(viewedId); }} />
+            <ExecutionProfileSelector
+              value={draft.executionProfile}
+              onChange={(executionProfile) => {
+                updateDraft({ executionProfile });
+                if (viewedId) {
+                  void useSessionStore.getState().setExecutionSettings(
+                    viewedId,
+                    { executionProfile },
+                  );
+                }
+              }}
+            />
+            <ModelPicker
+              selection={modelSelection ?? null}
+              onChange={(selection) => {
+                updateDraft({ modelSelection: selection });
+                if (viewedId) {
+                  void useSessionStore.getState().setPreferredModel(viewedId, {
+                    providerId: selection.providerId,
+                    modelId: selection.modelId,
+                  });
+                }
+              }}
+              onClear={() => {
+                updateDraft({ modelSelection: undefined });
+                if (viewedId) {
+                  void useSessionStore.getState().setPreferredModel(viewedId, null);
+                }
+              }}
+            />
+            <IconButton
+              size="sm"
+              variant={recording ? 'danger' : 'default'}
+              icon={recording ? 'i-lucide:square' : 'i-lucide:mic'}
+              label={recording ? '停止录音' : '语音输入'}
+              onClick={() => void toggleRecording()}
+            />
+            {executing && !hasInput ? (
+              <IconButton
+                size="sm"
+                variant="danger"
+                icon="i-lucide:square"
+                label="停止生成"
+                onClick={() => {
+                  if (viewedId) void useAgentStore.getState().cancelExecution(viewedId);
+                }}
+              />
             ) : (
-              <IconButton size="sm" variant="primary" icon="i-lucide:arrow-up" label="发送" disabled={!hasTurnInput(parts) || !serverReady || submitting || compacting} onClick={() => void send()} />
+              <IconButton
+                size="sm"
+                variant="primary"
+                icon="i-lucide:arrow-up"
+                label={executing ? '加入队列' : '发送'}
+                disabled={!hasInput || !serverReady || submitting || compacting}
+                onClick={() => void send()}
+              />
             )}
           </div>
         </div>
-        {hasOtherStream && <p className="mt-1 text-right text-[11px] text-[var(--ema-text-tertiary)]">其他会话正在生成</p>}
       </div>
-      {renameOpen && viewedSession && <PromptDialog open title="重命名聊天" message="为当前聊天输入新标题。" initialValue={viewedSession.title ?? ''} placeholder="聊天标题" onConfirm={value => {
-        setRenameOpen(false);
-        if (viewedId && value.trim()) void useSessionStore.getState().renameSession(viewedId, value.trim());
-      }} onCancel={() => setRenameOpen(false)} />}
+      {renameOpen && viewedSession && (
+        <PromptDialog
+          open
+          title="重命名聊天"
+          message="为当前聊天输入新标题."
+          initialValue={viewedSession.title ?? ''}
+          placeholder="聊天标题"
+          onConfirm={(value) => {
+            setRenameOpen(false);
+            if (viewedId && value.trim()) {
+              void useSessionStore.getState().renameSession(viewedId, value.trim());
+            }
+          }}
+          onCancel={() => setRenameOpen(false)}
+        />
+      )}
     </div>
   );
 }

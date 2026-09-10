@@ -78,14 +78,6 @@ export function describeEventNotification(event: NotifiableEvent): EventNotifica
       return { message: `角色舞台动作：${event.motion}`, variant: 'info' };
     case 'character_switched':
       return { message: `已切换角色：${event.displayName ?? event.characterName}`, variant: 'success' };
-    case 'agent_run_started':
-      return { message: `子 Agent 已开始${event.description ? `：${event.description}` : ''}`, variant: 'info' };
-    case 'agent_run_completed':
-      return { message: `子 Agent 已完成：${event.finalText}`, variant: 'success' };
-    case 'agent_run_failed':
-      return { message: `子 Agent 执行失败：${event.error}`, variant: 'danger' };
-    case 'agent_run_aborted':
-      return { message: `子 Agent 已中止：${event.reason}`, variant: 'warning' };
     case 'agent_iteration':
       return { message: `Agent 正在执行第 ${event.n} 轮`, variant: 'info' };
     case 'system_warning':

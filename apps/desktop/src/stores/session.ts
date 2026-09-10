@@ -9,9 +9,13 @@ import {
   type SessionsGrouped,
 } from '../api/sessions.js';
 import { useBackgroundProcessStore } from './backgroundProcess.js';
-import { useDecisionStore } from './decision.js';
-import { evictChatSession } from '../chat/state/turnRunner.js';
-import { useContextUsage } from '../chat/state/contextUsage.js';
+import { useAgentStore } from './agent.js';
+import {
+  useChatWorkspace,
+  useSessionSidePanel,
+} from '../chat/state/chatWorkspace.js';
+import { useHistoryStore } from '../chat/state/history.js';
+import { useLiveTurns } from '../chat/state/liveTurns.js';
 
 import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/session';
 
@@ -304,7 +308,10 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
   async archiveSession(id) {
     try {
       await sessionsApi.archive(id);
-      evictChatSession(id);
+      useAgentStore.getState().disconnectSession(id);
+      useHistoryStore.getState().evictSession(id);
+      useLiveTurns.getState().evictSession(id);
+      useChatWorkspace.getState().evictSession(id);
       await get().loadSessions();
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : '归档会话失败' });
@@ -325,11 +332,13 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
   async deleteSession(id) {
     try {
       await sessionsApi.delete(id);
-      evictChatSession(id);
-      useDecisionStore.getState().clearSession(id);
+      useAgentStore.getState().disconnectSession(id);
+      useHistoryStore.getState().evictSession(id);
+      useLiveTurns.getState().evictSession(id);
+      useChatWorkspace.getState().evictSession(id);
+      useSessionSidePanel.getState().removeSessionLayout(id);
       // Session 永久删除后,进程面板缓存与跟随循环一并清理,不显示其他 Session 的进程。
       useBackgroundProcessStore.getState().clearSession(id);
-      useContextUsage.getState().clearSession(id);
       preferredModelWriteChains.delete(id);
       preferredModelGenerations.delete(id);
       executionSettingsWriteChains.delete(id);

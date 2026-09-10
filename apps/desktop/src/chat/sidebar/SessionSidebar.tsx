@@ -1,18 +1,15 @@
 // 会话侧栏主装配:折叠/宽度拖拽状态;分区数据直接消费服务端五桶分组
 // （置顶 Session / 置顶项目 / 其余项目 / 最近 / 已归档），行、分区与搜索各自成文件。
 import { useState, useEffect, useMemo, type JSX } from 'react';
-import { useShallow } from 'zustand/react/shallow';
 import { Button } from '@ema-agent/ui';
 import type { SessionListItem } from '../../api/sessions.js';
-import { useCurrentSession } from '../state/currentSession.js';
-import { useMessages } from '../state/messages.js';
+import { useChatWorkspace } from '../state/chatWorkspace.js';
 import { useSessionStore } from '../../stores/session.js';
-import { useDecisionStore } from '../../stores/decision.js';
-import { runWithToast } from '../../lib/toast.js';
+import { useAgentStore } from '../../stores/agent.js';
 import { useDragResize } from '../../hooks/use-drag-resize.js';
-import { NewConversationCommand, ProjectListSection, SidebarCommand, SidebarSection } from './SidebarSections.js';
-import { getStatusDot } from './SidebarRow.js';
-import { SessionSearchOverlay } from './SidebarSearchOverlay.js';
+import { getStatusDot } from './SessionRow.js';
+import { ProjectGroups } from './ProjectGroup.js';
+import { SessionList, SessionSearch } from './SessionList.js';
 
 /** 同一会话可同时出现在置顶桶与项目桶；搜索覆盖层的近期清单合并展示前去重保序。 */
 function uniqueSessions(items: readonly SessionListItem[]): SessionListItem[] {
@@ -51,15 +48,8 @@ export function SessionSidebar(): JSX.Element {
   }, []);
 
   const sessions  = useSessionStore((s) => s.sessions);
-  const viewedId  = useCurrentSession((s) => s.viewedSessionId);
-  const streaming = useMessages((s) => s.streamBySession);
-  const pendingCounts = useDecisionStore(
-    useShallow((s) => {
-      const counts: Record<string, number> = {};
-      for (const [sid, q] of s.sessions) counts[sid] = q.length;
-      return counts;
-    }),
-  );
+  const viewedId  = useChatWorkspace((s) => s.viewedSessionId);
+  const agentSessions = useAgentStore((s) => s.sessions);
 
   const allActiveSessions = useMemo(() => uniqueSessions([
     ...sessions.pinned,
@@ -78,11 +68,26 @@ export function SessionSidebar(): JSX.Element {
     ...sessions.recent,
   ]), [sessions]);
 
+  useEffect(() => {
+    const desired = new Set<string>();
+    for (const session of allActiveSessions) {
+      if (!session.hasActiveTurn && !agentSessions.get(session.id)?.execution && session.id !== viewedId) continue;
+      desired.add(session.id);
+      useAgentStore.getState().connectSession(session.id);
+    }
+    // Chat 只维持当前页和仍在执行的 Session. 切走的空闲 Session 不应永久占一条 WebSocket.
+    for (const sessionId of agentSessions.keys()) {
+      if (!desired.has(sessionId)) useAgentStore.getState().disconnectSession(sessionId);
+    }
+  }, [agentSessions, allActiveSessions, viewedId]);
+
   return (
-    <div className={`relative flex flex-col shrink-0 border-r h-full bg-[var(--ema-bg)] border-[var(--ema-border)] ${resizing ? '' : 'ema-transition-width'}`}
-         style={{
-           width: collapsed ? 40 : sidebarWidth,
-         }}>
+    <div
+      className={`relative flex h-full shrink-0 flex-col border-r bg-[var(--ema-bg)] border-[var(--ema-border)] ${
+        resizing ? '' : 'ema-transition-width'
+      }`}
+      style={{ width: collapsed ? 40 : sidebarWidth }}
+    >
       {/* 拖拽手柄(右边缘)。展开态才显示,collapsed 不拖 */}
       {!collapsed && (
         <div
@@ -96,7 +101,7 @@ export function SessionSidebar(): JSX.Element {
         <div className="flex flex-col items-center py-2 gap-2">
           <Button
             variant="ghost"
-            className="w-7 h-7 flex items-center justify-center rounded-md transition-colors border bg-[var(--ema-surface-3)] border-[var(--ema-border)] text-[var(--ema-text-primary)] hover:bg-[var(--ema-primary-muted)] hover:border-[var(--ema-primary)]/40 font-normal"
+            className="flex h-7 w-7 items-center justify-center rounded-md border border-[var(--ema-border)] bg-[var(--ema-surface-3)] font-normal text-[var(--ema-text-primary)] transition-colors hover:border-[var(--ema-primary)]/40 hover:bg-[var(--ema-primary-muted)]"
             onClick={() => setCollapsed(false)}
             title="展开侧边栏"
           >
@@ -104,7 +109,7 @@ export function SessionSidebar(): JSX.Element {
           </Button>
           <div className="flex flex-col items-center gap-1.5 mt-1">
             {sessions.recent.slice(0, 8).map((s) => {
-              const dot = getStatusDot(s, streaming, pendingCounts);
+              const dot = getStatusDot(s, agentSessions);
               if (!dot) return null;
               return (
                 <span
@@ -119,46 +124,53 @@ export function SessionSidebar(): JSX.Element {
       ) : (
         <>
           <div className="px-1.5 py-2 border-b border-[var(--ema-border)]">
-            <NewConversationCommand
-              onCreate={async () => {
-                const newId = await runWithToast(
-                  useCurrentSession.getState().createFreshSession(),
-                  '新建会话失败',
-                );
-                if (newId) void useCurrentSession.getState().viewSession(newId);
-              }}
-              onCollapse={() => setCollapsed(true)}
-            />
-            <SidebarCommand
-              icon="i-lucide:search"
-              label="搜索"
+            <div className="flex h-9 w-full items-center gap-2.5 rounded-md pr-1 text-sm text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-2)]">
+              <Button
+                variant="ghost"
+                className="flex min-w-0 flex-1 items-center gap-2.5 px-2 text-left font-normal"
+                onClick={() => useChatWorkspace.getState().openNewSession()}
+              >
+                <span className="i-lucide:square-pen text-base text-[var(--ema-text-tertiary)]" aria-hidden />
+                <span className="truncate">新对话</span>
+              </Button>
+              <Button
+                variant="ghost"
+                className="flex size-6 shrink-0 items-center justify-center rounded border border-[var(--ema-border)] bg-[var(--ema-surface-3)] p-0"
+                onClick={() => setCollapsed(true)}
+                title="折叠侧边栏"
+              >
+                <span className="i-lucide:panel-left text-[15px]" aria-hidden />
+              </Button>
+            </div>
+            <Button
+              variant="ghost"
+              className="flex h-9 w-full items-center gap-2.5 rounded-md px-2 text-sm font-normal text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-2)]"
               onClick={() => setSearchOpen(true)}
-            />
+            >
+              <span className="i-lucide:search text-base text-[var(--ema-text-tertiary)]" aria-hidden />
+              <span>搜索</span>
+            </Button>
           </div>
 
           <div className="flex-1 overflow-y-auto py-1.5">
-            <ProjectListSection
-              label="项目"
+            <ProjectGroups
               groups={projectGroups}
               viewedId={viewedId}
-              streaming={streaming}
-              pendingCounts={pendingCounts}
+              agentSessions={agentSessions}
             />
-            <SidebarSection
+            <SessionList
               label="对话"
               sessions={conversationSessions}
               viewedId={viewedId}
-              streaming={streaming}
-              pendingCounts={pendingCounts}
+              agentSessions={agentSessions}
               emptyText="暂无独立对话"
             />
-            <SidebarSection
+            <SessionList
               label="归档"
               sessions={sessions.archived}
               viewedId={viewedId}
-              streaming={streaming}
-              pendingCounts={pendingCounts}
-              collapsed
+              agentSessions={agentSessions}
+              initiallyCollapsed
               emptyText="暂无归档"
             />
           </div>
@@ -166,7 +178,7 @@ export function SessionSidebar(): JSX.Element {
       )}
 
       {searchOpen && (
-        <SessionSearchOverlay
+        <SessionSearch
           recentSessions={allActiveSessions}
           onClose={() => setSearchOpen(false)}
         />
