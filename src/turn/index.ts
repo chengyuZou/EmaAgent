@@ -15,6 +15,14 @@ export {
 export type { TurnFailureCode, TurnFailurePhase } from './errors.js';
 export { SessionInteractionQueue } from './interactionQueue.js';
 export type { PendingInteraction } from './interactionQueue.js';
+export { SessionContinuationQueue } from './sessionContinuationQueue.js';
+export type {
+  ClaimedSessionContinuation,
+  EnqueueSessionInput,
+  QueuedSessionInput,
+  SessionContinuationEvent,
+  SessionTurnSelection,
+} from './sessionContinuationQueue.js';
 export { TurnExecutor, TurnReminderScope } from './turn.js';
 export { createGenerationTargetResolver } from './turn.js';
 export {

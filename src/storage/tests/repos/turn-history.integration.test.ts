@@ -126,7 +126,7 @@ describe('Turn 历史读取', () => {
     turns.insert({
       id: 'turn-b',
       sessionId,
-      triggerType: 'backgroundProcessCompleted',
+      triggerType: 'sessionContinuation',
       executionProfile: 'chat',
       narrativePolicy: 'off',
       createdAt: 3,

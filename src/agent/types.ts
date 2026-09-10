@@ -24,20 +24,15 @@ export interface PreparedAgentIteration {
 }
 
 /**
- * 每次模型调用前的准备闭包。为什么不是把 systemPrompt/ToolPool/Compact 等原料
- * 交给 Agent 自己编排：装配（assembleContext → 超预算则 Compact → Macro 摘要
- * 落库 → 再装配）涉及持久化与 Context 知识，全归 Turn；Agent 拿到原料自己编排
- * 就必须导入 Context/Compact/持久化，正是边界禁止的方向。根 Turn 与子 Agent
- * 的装配差异也靠这个闭包各自实现、互不感知。
+ * 每次模型调用前的准备闭包。
+ * 为什么不是把 systemPrompt/ToolPool/Compact 等原料交给 Agent 自己编排：
+ * 装配(assembleContext → 超预算则 Compact → Macro 摘要落库 → 再装配)涉及持久化与 Context 知识 全归 Turn
+ * Agent 拿到原料自己编排就必须导入 Context/Compact/持久化 正是边界禁止的方向 
+ * 根 Turn 与子 Agent的装配差异也靠这个闭包各自实现 互不感知
  */
 export type PrepareAgentIteration = (
   input: PrepareAgentIterationInput,
 ) => Promise<PreparedAgentIteration>;
-
-/** 根 Turn 与其全部子 Agent 共用同一个实现，Agent 只消费额度，不拥有规则。 */
-export interface AgentBudget {
-  enterSubagent(): () => void;
-}
 
 /**
  * 每次 LlmCall 创建一个全新执行器。创建时机是 Turn 绑定工具进度、Permission
@@ -56,7 +51,8 @@ export interface AgentLoopInput {
   readonly prepareIteration: PrepareAgentIteration;
   readonly callLlm: CallLlm;
   readonly createToolExecutor: ToolExecutorFactory;
-  readonly budget: AgentBudget;
+  /** 工具结果已经完整关账后, 领取可进入下一轮的 Session 输入. */
+  readonly takeNextIterationMessages?: () => Promise<readonly Message[]>;
   readonly signal: AbortSignal;
   readonly maxIterations: number;
   /** 本次循环全部真实 LLM 调用的生成目标；构造 assistant 时挂到消息上，供下一轮 Adapter 原生状态重放裁决。 */

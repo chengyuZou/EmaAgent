@@ -1,7 +1,6 @@
 // 根 Turn 的唯一公开执行入口：创建、驱动、唯一终态与取消。
 import * as fs from 'node:fs';
 import {
-  readAgentSettings,
   runAgentLoop,
   type AgentLoopEvent,
 } from '@ema-agent/agent';
@@ -24,6 +23,7 @@ import type { NarrativeSearch } from '@ema-agent/narrative';
 import { isLlmProtocol } from '@ema-agent/providers';
 import {
   type MessageBlocks,
+  type Message as SessionMessage,
   type SessionStore,
 } from '@ema-agent/session';
 import type { StageEngine } from '@ema-agent/stage';
@@ -33,17 +33,16 @@ import { TurnEventChannel } from './eventChannel.js';
 import {
   failureCodeOf,
   failureMessageOf,
-  TurnBudgetExceededError,
   TurnEventChannelClosedError,
   type TurnFailureCode,
 } from './errors.js';
 import type { TurnStreamEvent } from './events.js';
 import { createPrepareLlmCall } from './loop/prepareLlmCall.js';
 import { createPrepareSubagent } from './loop/prepareSubagent.js';
-import { TurnBudget } from './loop/turnBudget.js';
 import { TurnMessageWriter } from './loop/turnMessageWriter.js';
 import {
   prepareTurn,
+  prepareTurnInputParts,
   type PreparedTurn,
   type PrepareTurnDeps,
 } from './preparation/prepareTurn.js';
@@ -53,6 +52,7 @@ import {
 } from './preparation/turnReminder.js';
 import type { TurnToolsAssembly } from './preparation/prepareTurnTools.js';
 import type { TurnStore } from './turnStore.js';
+import type { SessionContinuationQueue } from './sessionContinuationQueue.js';
 import type {
   StartTurn,
   TurnHandle,
@@ -71,7 +71,7 @@ export interface TurnReminderScope {
   readonly narrativePolicy: Turn['narrativePolicy'];
   /** 本 Turn 冻结的召回闭包（prepareTurnTools 构建）；always 路径据此查询，off 或无能力为 undefined。 */
   readonly narrativeSearch?: NarrativeSearch;
-  /** 本 Turn 用户文本（附件降级后）；backgroundProcessCompleted 等触发可为空串。 */
+  /** 本 Turn 用户文本. 纯后台续接触发时可以为空串. */
   readonly userText: string;
   /** Turn 级取消信号；reminder 期的召回随 Turn 中止一并取消。 */
   readonly signal: AbortSignal;
@@ -122,6 +122,8 @@ export interface TurnExecutorDeps extends PrepareTurnDeps {
    * 同步调用：只许入队类写入，禁止在此启动异步工作。Memory 零 import——由装配层注入。
    */
   readonly onTurnCompletedInTransaction?: (turnId: string) => void;
+  /** 用户排队输入和后台终态的唯一 Session 级续接所有者. */
+  readonly continuations: SessionContinuationQueue;
 }
 
 /**
@@ -236,11 +238,6 @@ export class TurnExecutor {
         narrativePolicy: turn.narrativePolicy,
       });
 
-      // 并发坑位额度来自 agent 包 settings（settings 直读 µs 级；prepareTurn 内部也会冻结同一份）。
-      const agentSettings = readAgentSettings(this.deps.settings);
-      const budget = new TurnBudget({
-        maxConcurrentSubagents: agentSettings.maxConcurrentSubagents,
-      });
       // compact 闭包按 Turn 创建一次（内部含失败熔断计数）；prepared 就绪前延迟求值。
       let compactForTurn: ((request: CompactRequest) => Promise<CompactResult>) | undefined;
       const parentMessages: Message[] = [];
@@ -255,14 +252,12 @@ export class TurnExecutor {
         providerModels: this.deps.providerModels,
         createCompact: this.deps.createCompact,
         emit,
-        budget,
         parentMessages,
       });
 
       prepared = await prepareTurn(this.deps, {
         request: input,
         turnId,
-        budget,
         prepareSubagent,
         parentMessages,
         emit,
@@ -313,12 +308,27 @@ export class TurnExecutor {
         this.deps.onTaskReminderPersisted?.(sessionId);
       }
 
-      this.deps.sessions.appendMessage({
-        turnId,
-        sessionId,
-        role: 'user',
-        blocks: prepared.userMessageBlocks,
-      });
+      // 后台终态使用内部 Message kind, 避免 History 把它伪装成用户手写内容.
+      // 此处只写 id 与终态, 完整结果仍由模型通过对应查询工具读取.
+      if (input.completionNoticeText) {
+        this.deps.sessions.appendMessage({
+          turnId,
+          sessionId,
+          role: 'user',
+          kind: 'continuation',
+          blocks: input.completionNoticeText,
+        });
+      }
+      if (prepared.userMessageBlocks.length > 0) {
+        this.deps.sessions.appendMessage({
+          turnId,
+          sessionId,
+          role: 'user',
+          blocks: prepared.userMessageBlocks,
+        });
+      }
+      // 队列项和后台结果只有在对应 Message 全部落库后才确认交付.
+      this.deps.continuations.acknowledge(turnId);
       // 标题生成：用户消息落库即异步启动，不等 AgentLoop；只有用户消息触发的 Turn 参与。
       if (input.triggerType === 'userMessage' && userText.trim().length > 0) {
         this.deps.startSessionTitleGeneration?.(sessionId, userText);
@@ -342,6 +352,7 @@ export class TurnExecutor {
         ...(this.deps.describeImage ? { describeImage: this.deps.describeImage } : {}),
         signal,
       };
+      const turnSkillPool = prepared.skillPool;
       const historyWithIds = await buildHistoryMessages(
         persisted.slice(0, reminderIndex),
         resolveGenerationTarget,
@@ -408,7 +419,47 @@ export class TurnExecutor {
         prepareIteration,
         callLlm: prepared.callLlm,
         createToolExecutor: tools.createExecutor,
-        budget,
+        takeNextIterationMessages: async () => {
+          const claim = this.deps.continuations.claimNextIteration(sessionId, turnId);
+          if (!claim) return [];
+          try {
+            const appended: SessionMessage[] = [];
+            if (claim.completionNoticeText) {
+              appended.push(this.deps.sessions.appendMessage({
+                turnId,
+                sessionId,
+                role: 'user',
+                kind: 'continuation',
+                blocks: claim.completionNoticeText,
+              }));
+            }
+            for (const queued of claim.userInputs) {
+              const blocks = await prepareTurnInputParts(
+                this.deps.attachments,
+                sessionId,
+                turnId,
+                queued.input,
+                turnSkillPool,
+              );
+              appended.push(this.deps.sessions.appendMessage({
+                turnId,
+                sessionId,
+                role: 'user',
+                blocks,
+              }));
+            }
+            const projected = await buildHistoryMessages(
+              appended,
+              resolveGenerationTarget,
+              attachmentOptions,
+            );
+            this.deps.continuations.acknowledge(turnId);
+            return projected.map(entry => entry.message);
+          } catch (error) {
+            this.deps.continuations.release(turnId);
+            throw error;
+          }
+        },
         signal,
         maxIterations: prepared.maxIterations,
         // 当前 Turn 全部真实调用的生成目标；agentLoop 构造 assistant 时挂载。
@@ -529,6 +580,8 @@ export class TurnExecutor {
       const outcome = this.failTurn(turn, code, `AgentLoop 终止：${stopped.state.stopReason}`, emit);
       await this.finishSafely(channel, writer, terminal, tools, turnId, () => resolveCompletion(outcome));
     } catch (error) {
+      // 准备或持久化失败时, 尚未确认的队列项必须回到可领取状态.
+      this.deps.continuations.release(turnId);
       if (signal.aborted || error instanceof TurnEventChannelClosedError) {
         terminal = 'aborted';
         this.deps.turns.abortTurn(sessionId, turnId);
@@ -550,12 +603,20 @@ export class TurnExecutor {
       this.runningTools.delete(turnId);
       this.runningCompletions.delete(turnId);
       this.deps.turns.clearRunning(sessionId, turnId);
+      // 下一根排队 Turn 只能在 active 标记清除后启动. completion Promise 在此前已兑现,
+      // 因而不能由它负责唤醒, 否则队列会把本 Session 误判为仍在执行.
+      if (terminal === 'completed') this.deps.continuations.turnCompleted(sessionId);
       if (prepared?.scratchpadDir) {
-        try {
-          fs.rmSync(prepared.scratchpadDir, { recursive: true, force: true });
-        } catch {
-          // 临时目录清理失败不能覆盖已经确定的 Turn 终态。
-        }
+        const scratchpadDir = prepared.scratchpadDir;
+        // 后台 AgentRun 继续使用父 Turn 的 scratchpad. 清理动作跟随最后一个
+        // 派生运行结束, 但不反向占住已经完成的根 Turn.
+        void this.deps.agentRuns.waitForTurnAgentRuns(turnId).then(() => {
+          try {
+            fs.rmSync(scratchpadDir, { recursive: true, force: true });
+          } catch {
+            // 临时目录清理失败不能覆盖已经确定的 Turn 终态.
+          }
+        });
       }
     }
   }

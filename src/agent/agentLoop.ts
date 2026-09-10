@@ -294,6 +294,7 @@ export async function* runAgentLoop(
       iteration,
       llmCallId,
       stopReason,
+      content: assistantMessage.content,
     };
 
     // 恢复 generator 说明外层已经保存完整 assistant block；此后才允许工具执行。
@@ -410,6 +411,18 @@ export async function* runAgentLoop(
       llmCallId,
       messages: [assistantMessage, toolResultMessage],
     };
+
+    // 外部输入只能在 Assistant 和整批 ToolResult 已经成为完整历史后插入.
+    // 这样用户立即引导或后台完成不会切开 tool_use/tool_result 配对.
+    const nextIterationMessages = await input.takeNextIterationMessages?.() ?? [];
+    if (nextIterationMessages.length > 0) {
+      messages.push(...nextIterationMessages);
+      yield {
+        type: 'model_history_appended',
+        llmCallId,
+        messages: nextIterationMessages,
+      };
+    }
   }
 }
 

@@ -10,6 +10,7 @@
 class TurnExecutor {
   start(input: StartTurn): TurnHandle;
   abort(sessionId: string, turnId: string): boolean;
+  abortAndAwait(sessionId: string, turnId: string): Promise<void>;
   abortTool(turnId: string, toolCallId: string): boolean;
   abortAgentRun(turnId: string, agentRunId: string): boolean;
 }
@@ -26,7 +27,7 @@ interface TurnHandle {
 - `start()` 同步创建并立刻返回句柄：TurnStore 建行（创建即 running、同 Session 唯一活动、`session_busy` 快速失败）→ 事件通道 → 异步泵送准备与主循环。
 - `StartTurn.input` 是唯一有序输入：`text / attachment / skill` 按数组位置持久化、投影给模型并用于历史展示。模型覆盖收进 `modelSelection`；`knowledge.assetIds` 只约束当前激活知识库内的文档范围。Command/Skill 解析在调用方完成，Turn 不解析 `/` 语法，也不接受 prepare 回调。
 - `TurnOutcome` 只有 completed/failed/aborted 三态，与终态事件同一份数据。
-- 运行中追加输入（steer）V1 不做，不预留空接口。
+- 用户追加输入由 `SessionContinuationQueue` 接收。普通输入等当前 Turn 完整结束后合批启动下一根 Turn；标为立即引导的输入只允许在完整 ToolResult 批次之后进入当前 Turn 的下一次迭代。
 
 ## 主链
 
@@ -47,6 +48,7 @@ start
   │    Narrative always 一次召回、Task take 一次性提醒、scratchpad 快照）→ renderTurnReminder
   │    → 落 kind='reminder' 消息（先于用户消息）
   ├─ 写 initial user Message（text / attachment_ref / skill_ref 保持输入顺序）
+  ├─ 若由后台完成通知触发，先写只含执行 id 与终态的 kind='continuation' Message
   ├─ loadHistory 按 reminder 行切分：之前 = 可压缩历史区间；reminder + 当前用户消息
   │    = 当前 Turn 区间；两段统一经 deriveLlmHistory 投影附件与 Skill 引用
   └─ runAgentLoop（唯一一个根循环）
@@ -60,6 +62,7 @@ start
   → finishSafely：writer 收口（interrupted + 孤儿 tool_use 合成）→ 交互队列清理
     → 工具与子 Agent shutdown → 活跃执行坑位释放（ActiveSessionRegistry，归 session 包）
   → TurnStore 一次终态：completed / failed / aborted
+  → clearRunning 后通知 SessionContinuationQueue，决定是否启动下一根排队 Turn
 ```
 
 ## 持久化不变量
@@ -80,11 +83,11 @@ start
 ## 子 Agent
 
 - `loop/prepareSubagent.ts`：clean 上下文或 fork 继承；`parentMessages` 只保存父 Agent 当前工作消息，不含根 System Prompt、Tool Schema 或缓存标记。ToolPool 只从父 Pool 收窄（disallowedTools + 内建拒绝：Subagent/SubagentAwait/Task 四件/AskUser）；每个子 Agent 拥有独立 Compact 状态且没有 `macroPersistence`，不碰根 Session 的 Macro 边界。
-- `loop/turnBudget.ts` 的 `TurnBudget` 是根与全部子 Agent 共用的 AgentBudget 实现（时长/输出/工具/子 Agent 额度）。
+- 子 Agent 的运行、2 分钟自动转后台和按 id 读取由 `AgentRunExecutor` 持有。后台完成只向 Session 队列交付轻量通知，完整输出不复制进根 Turn。
 
 ## 事件
 
-`turn/events.ts` 只拥有 Turn 自有生命周期事件；`TurnStreamEvent` 是流组合（TurnEvent | TurnAgentRunEvent | ToolExecutionEvent | permission 两事件 | CompactEvent | NarrativeEvent），各域事件由拥有方定义。AgentRun 事件入流时由工具层补上 sessionId/turnId（agent 包不感知根身份）。
+`turn/events.ts` 只拥有根 Turn 的生命周期及其 Tool/Permission/Compact/Narrative 事件. 后台 AgentRun 可能活过父 Turn, 因此由 Server 按 Session 直接发往 Agent WebSocket, 不再塞进 `TurnStreamEvent`.
 
 Context 球只消费根 Agent 发出的 `context_usage_updated`：请求装配先发分类估算，同一 `llmCallId` 收到 Provider Usage 后只校正总输入和缓存子集；模型输出或 Tool Result 真正进入后续工作历史时，再追加本地 Messages 估算。`agent_usage_updated` 是根 AgentLoop 的累计消耗，子 Agent 的同名事件保留在对应 `agent_run_event` 内，二者都不更新 Context 球。
 
@@ -97,12 +100,13 @@ src/turn/
 ├─ index.ts                 公共出口（含本包类型与事件）
 ├─ types.ts                 StartTurn / TurnOutcome / TurnHandle
 ├─ events.ts                TurnEvent / TurnStreamEvent / TurnAgentRunEvent
-├─ errors.ts                TurnOwnership/TurnPreparation/TurnBudgetExceeded + failureCodeOf/failureMessageOf
+├─ errors.ts                TurnOwnership/TurnPreparation + failureCodeOf/failureMessageOf
 ├─ turn.ts                  TurnExecutor：唯一公开入口 + 主循环驱动
 ├─ turnStore.ts             Turn 行 CRUD + 唯一终态 + 运行态/删除守卫 + 导航查询
 │                           （Session 活跃执行坑位 = session 包 ActiveSessionRegistry）
 ├─ eventChannel.ts          TurnEvent 单消费者有界通道
 ├─ interactionQueue.ts      SessionInteractionQueue（Permission/AskUser 共用的 Session FIFO）
+├─ sessionContinuationQueue.ts 用户追加输入、立即引导和后台完成通知的 Session 队列
 ├─ settings.ts              workspace.instructionFiles（用户多选工作区指令文件，nextTurn 生效）
 ├─ preparation/             Turn 启动一次性冻结
 │  ├─ prepareTurn.ts        StartTurn 请求 + 已创建 turnId 的一次性冻结编排
@@ -111,8 +115,7 @@ src/turn/
 ├─ loop/                    运行期内部件
 │  ├─ prepareLlmCall.ts     PrepareAgentIteration 实现（assemble→compact→再 assemble）
 │  ├─ turnMessageWriter.ts  事件驱动流式落库
-│  ├─ prepareSubagent.ts    子 Agent AgentLoopInput 工厂
-│  └─ turnBudget.ts         AgentBudget 本包实现
+│  └─ prepareSubagent.ts    子 Agent AgentLoopInput 工厂
 └─ tests/
 ```
 

@@ -1,5 +1,5 @@
 // 启动恢复：崩溃残留的终态收口（ready 前置）、孤儿文件清理（可降级）与权限项目规则对账。
-import type { AgentRunStore } from '@ema-agent/agent';
+import type { AgentRunMessagesStore, AgentRunStore } from '@ema-agent/agent';
 import { cleanupInterruptedFileWriteTemps } from '@ema-agent/builtin-tools';
 import { reconcileProjectRules } from '@ema-agent/permission';
 import type { SessionStore } from '@ema-agent/session';
@@ -25,6 +25,7 @@ export interface StartupRecoveryDeps {
   readonly session: SessionStore;
   readonly turns: TurnStore;
   readonly agentRuns: AgentRunStore;
+  readonly agentRunMessages: AgentRunMessagesStore;
   readonly toolExecutionState: ToolExecutionState;
   readonly backgroundProcesses: BackgroundProcess;
   readonly settings: SettingsStore;
@@ -68,7 +69,11 @@ function recoverToolExecutions(deps: StartupRecoveryDeps): void {
     outcomeUnknown: boolean;
   }> = [];
   for (const execution of interrupted) {
-    const interaction = deps.session.findToolInteraction(execution.turnId, execution.callId);
+    // 根工具从 Session History 找调用, 子 Agent 工具从独立 AgentRun 转录找.
+    // 两条链都先写 Message 再关执行状态, 所以恢复时可能已经存在 ToolResult.
+    const interaction = execution.agentRunId
+      ? deps.agentRunMessages.findToolInteraction(execution.agentRunId, execution.callId)
+      : deps.session.findToolInteraction(execution.turnId, execution.callId);
     if (!interaction) {
       throw new Error(`tool_call_message_missing: ${execution.callId}`);
     }
@@ -82,13 +87,17 @@ function recoverToolExecutions(deps: StartupRecoveryDeps): void {
       errorCode: execution.status === 'running' ? 'tool/outcome_unknown' : 'tool/cancelled',
     };
     if (!interaction.result) {
-      deps.session.appendMessage({
-        sessionId: execution.sessionId,
-        turnId: execution.turnId,
-        role: 'user',
-        kind: 'tool_results',
-        blocks: [result],
-      });
+      if (execution.agentRunId) {
+        deps.agentRunMessages.appendToolResult(execution.agentRunId, result);
+      } else {
+        deps.session.appendMessage({
+          sessionId: execution.sessionId,
+          turnId: execution.turnId,
+          role: 'user',
+          kind: 'tool_results',
+          blocks: [result],
+        });
+      }
     }
     deps.toolExecutionState.completeFromMessage(execution.callId, result);
     fileWriteCalls.push({

@@ -1,6 +1,6 @@
-// Subagent 工具测试同步、后台、自动转交、取消与等待结果语义。
+// 测试 Subagent 工具的同步等待、显式后台、2 分钟自动转交、取消与按 id 读取.
 import { describe, expect, it, vi } from 'vitest';
-import type { ToolInvocation } from '@ema-agent/tools';
+import type { SubagentControl, ToolInvocation } from '@ema-agent/tools';
 import { SubagentTool } from '../tools/SubagentTool/SubagentTool.js';
 import { SubagentAwaitTool } from '../tools/SubagentTool/SubagentAwaitTool.js';
 
@@ -12,6 +12,17 @@ function makeInvocation(signal?: AbortSignal): ToolInvocation {
     turnId: '00000000-0000-4000-8000-0000000000a2',
     toolCallId: 'call-sub-1',
     signal: signal ?? new AbortController().signal,
+  };
+}
+
+function makeSubagents(overrides: Partial<SubagentControl> = {}): SubagentControl {
+  return {
+    start: vi.fn(() => AGENT_RUN_ID),
+    waitForInitialResult: vi.fn(async () => null),
+    moveToBackground: vi.fn(),
+    awaitResult: vi.fn(async () => null),
+    cancel: vi.fn(() => true),
+    ...overrides,
   };
 }
 
@@ -27,10 +38,8 @@ const INPUT = {
 
 describe('SubagentTool — 三形态', () => {
   it('runInBackground=true: 立即返回引用, 不等待', async () => {
-    const spawnBackground = vi.fn();
-    const projection = SubagentTool.validateContext({
-      subagentSpawner: { spawn: vi.fn(), spawnBackground },
-    } as never);
+    const subagents = makeSubagents();
+    const projection = SubagentTool.validateContext({ subagents } as never);
     if (!projection.valid) throw new Error('投影应成功');
 
     const result = await SubagentTool.execute(
@@ -41,83 +50,78 @@ describe('SubagentTool — 三形态', () => {
 
     expect(result.kind).toBe('background');
     expect(result.via).toBe('requested');
-    expect(spawnBackground).toHaveBeenCalledWith(
+    expect(subagents.start).toHaveBeenCalledWith(
       '检查文件边界',
       expect.objectContaining({ contextMode: 'subagent' }),
+      true,
       expect.any(AbortSignal),
     );
   });
 
-  it('同步路径在 30s 内完成: 返回 completed 结果', async () => {
-    const spawnBackground = vi.fn();
-    const awaitBackground = vi.fn(async () => ({
-      agentRunId: AGENT_RUN_ID,
-      output: 'done',
-      usage: { inputTokens: 1, outputTokens: 2 },
-    }));
-    const projection = SubagentTool.validateContext({
-      subagentSpawner: { spawn: vi.fn(), spawnBackground, awaitBackground },
-    } as never);
+  it('同步路径在 2 分钟内完成: 返回 completed 结果', async () => {
+    const subagents = makeSubagents({
+      waitForInitialResult: vi.fn(async () => ({
+        agentRunId: AGENT_RUN_ID,
+        output: 'done',
+        usage: { inputTokens: 1, outputTokens: 2 },
+      })),
+    });
+    const projection = SubagentTool.validateContext({ subagents } as never);
     if (!projection.valid) throw new Error('投影应成功');
 
     const result = await SubagentTool.execute(INPUT, projection.context, makeInvocation());
 
     expect(result).toMatchObject({ kind: 'completed', output: 'done' });
+    expect(subagents.start).toHaveBeenCalledWith(
+      '检查文件边界', expect.any(Object), false, expect.any(AbortSignal),
+    );
   });
 
-  it('同步等待超限自动转后台(via=auto), 不阻塞到天荒地老', async () => {
+  it('同步等待超限自动转后台(via=auto), 不重新启动执行', async () => {
     vi.useFakeTimers();
     try {
-      const spawnBackground = vi.fn();
-      // awaitBackground 永不结算,模拟长跑。
-      const awaitBackground = vi.fn(() => new Promise(() => {}));
-      const projection = SubagentTool.validateContext({
-        subagentSpawner: { spawn: vi.fn(), spawnBackground, awaitBackground },
-      } as never);
+      const subagents = makeSubagents({
+        waitForInitialResult: vi.fn(() => new Promise(() => {})),
+      });
+      const projection = SubagentTool.validateContext({ subagents } as never);
       if (!projection.valid) throw new Error('投影应成功');
 
       const pending = SubagentTool.execute(INPUT, projection.context, makeInvocation());
-      await vi.advanceTimersByTimeAsync(30_100);
+      await vi.advanceTimersByTimeAsync(120_100);
       const result = await pending;
 
       expect(result.kind).toBe('background');
       expect(result.via).toBe('auto');
+      expect(subagents.start).toHaveBeenCalledTimes(1);
+      expect(subagents.moveToBackground).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it('同步等待被中止: 取消子 Agent 后抛出, 不留孤儿', async () => {
+  it('同步等待被中止: 取消同一个 AgentRun 后抛出', async () => {
     const controller = new AbortController();
-    const abortSubagent = vi.fn();
-    const awaitBackground = vi.fn(() => new Promise(() => {}));
-    const projection = SubagentTool.validateContext({
-      subagentSpawner: {
-        spawn: vi.fn(),
-        spawnBackground: vi.fn(),
-        awaitBackground,
-        abortSubagent,
-      },
-    } as never);
+    const subagents = makeSubagents({
+      waitForInitialResult: vi.fn(() => new Promise(() => {})),
+    });
+    const projection = SubagentTool.validateContext({ subagents } as never);
     if (!projection.valid) throw new Error('投影应成功');
 
     const pending = SubagentTool.execute(INPUT, projection.context, makeInvocation(controller.signal));
     controller.abort(new Error('用户中止'));
 
     await expect(pending).rejects.toThrow('用户中止');
-    expect(abortSubagent).toHaveBeenCalledTimes(1);
+    expect(subagents.cancel).toHaveBeenCalledTimes(1);
   });
 
-  it('子 Agent 环境(无 spawner)投影失败: 深度限制 1', () => {
+  it('子 Agent 环境(无控制入口)投影失败: 深度限制 1', () => {
     expect(SubagentTool.validateContext({} as never).valid).toBe(false);
   });
 });
 
 describe('SubagentTool — 模型身份成对校验', () => {
-  it('只给 modelId 不给 providerId 直接拒绝（同名模型可存在于多个 provider）', async () => {
-    const projection = SubagentTool.validateContext({
-      subagentSpawner: { spawn: vi.fn(), spawnBackground: vi.fn() },
-    } as never);
+  it('只给 modelId 不给 providerId 直接拒绝', async () => {
+    const projection = SubagentTool.validateContext({ subagents: makeSubagents() } as never);
     if (!projection.valid) throw new Error('投影应成功');
 
     await expect(SubagentTool.execute(
@@ -127,11 +131,9 @@ describe('SubagentTool — 模型身份成对校验', () => {
     )).rejects.toThrow(/providerId/);
   });
 
-  it('modelId+providerId 成对传递进 spawn options', async () => {
-    const spawnBackground = vi.fn();
-    const projection = SubagentTool.validateContext({
-      subagentSpawner: { spawn: vi.fn(), spawnBackground },
-    } as never);
+  it('modelId+providerId 成对传递进执行入口', async () => {
+    const subagents = makeSubagents();
+    const projection = SubagentTool.validateContext({ subagents } as never);
     if (!projection.valid) throw new Error('投影应成功');
 
     await SubagentTool.execute(
@@ -140,25 +142,27 @@ describe('SubagentTool — 模型身份成对校验', () => {
       makeInvocation(),
     );
 
-    expect(spawnBackground).toHaveBeenCalledWith(
+    expect(subagents.start).toHaveBeenCalledWith(
       '检查文件边界',
       expect.objectContaining({ providerId: 'deepseek', modelId: 'deepseek-chat' }),
+      true,
       expect.any(AbortSignal),
     );
   });
 });
 
 describe('SubagentAwait', () => {
-  it('Await 返回输出; 未知 id 返回 output:null 并如实投影', async () => {
-    const awaitBackground = vi.fn(async () => null);
-    const projection = SubagentAwaitTool.validateContext({
-      subagentSpawner: { spawn: vi.fn(), awaitBackground },
-    } as never);
+  it('Await 返回输出; 未知或仍被其他等待方持有时返回 output:null', async () => {
+    const subagents = makeSubagents();
+    const projection = SubagentAwaitTool.validateContext({ subagents } as never);
     if (!projection.valid) throw new Error('投影应成功');
 
-    const result = await SubagentAwaitTool.execute({ agentRunId: AGENT_RUN_ID }, projection.context);
+    const result = await SubagentAwaitTool.execute(
+      { agentRunId: AGENT_RUN_ID }, projection.context, makeInvocation(),
+    );
 
     expect(result).toEqual({ output: null });
+    expect(subagents.awaitResult).toHaveBeenCalledWith(AGENT_RUN_ID, expect.any(AbortSignal));
     expect(SubagentAwaitTool.mapResultToModelContent!(result)).toContain('No result available');
   });
 });

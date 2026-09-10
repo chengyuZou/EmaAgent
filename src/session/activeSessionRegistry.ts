@@ -84,7 +84,7 @@ export class ActiveSessionRegistry {
   /**
    * 等待指定 Session 的坑位释放；唯一消费者是 Session 删除编排——它向坑内执行
    * （Turn 或手动 compact）发过停止信号后，必须等执行所有者自己收尾退出，
-   * 否则删除会与在飞的摘要落库/持久化竞争。
+   * 否则删除会与在执行的摘要落库/持久化竞争。
    */
   waitUntilIdle(sessionId: string): Promise<void> {
     if (!this.executions.has(sessionId)) return Promise.resolve();

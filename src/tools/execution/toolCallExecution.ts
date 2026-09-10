@@ -81,7 +81,6 @@ export class ToolCallExecution {
   readonly name: string;
   readonly isConcurrencySafe: boolean;
   readonly requiresUserInteraction: boolean;
-  readonly maxResultBytes?: number;
 
   private readonly startedAt = Date.now();
   private readonly abortController = new AbortController();
@@ -116,7 +115,6 @@ export class ToolCallExecution {
       this.input = input;
       this.isConcurrencySafe = tool.isConcurrencySafe(input);
       this.requiresUserInteraction = tool.requiresUserInteraction(input);
-      this.maxResultBytes = tool.maxResultBytes;
     } catch (error) {
       this.preflightFailure = classifyInputFailure(call.name, error);
       this.isConcurrencySafe = true;
@@ -412,7 +410,7 @@ export class ToolCallExecution {
     this.result = {
       type: 'tool_result',
       toolCallId: this.id,
-      content: this.normalizeResult(tool, output),
+      content: await this.normalizeResult(tool, output),
       data: output,
       isError: false,
       durationMs: this.durationMs(),
@@ -455,18 +453,17 @@ export class ToolCallExecution {
    * 文本走统一单项预算(超限外置);多模态 parts 不做文本外置,
    * 由 Tool 业务层自限尺寸(结果层没有语义能安全裁切它们)。
    */
-  private normalizeResult(tool: AnyTool, output: unknown): string | ToolResultContentPart[] {
+  private async normalizeResult(
+    tool: AnyTool,
+    output: unknown,
+  ): Promise<string | ToolResultContentPart[]> {
     const modelContent = tool.mapResultToModelContent?.(output) ?? serializeToolOutput(output);
     if (typeof modelContent !== 'string') return modelContent;
-    const normalized = this.environment.toolResultStore?.normalize(
-      this.id,
+    return this.environment.toolResultStore?.normalize(
       this.name,
       modelContent,
       tool.maxResultBytes,
-    );
-    return !normalized || normalized.kind === 'unchanged'
-      ? modelContent
-      : normalized.blockContent;
+    ) ?? modelContent;
   }
 
   private errorResult(code: string, message: string): ToolResult {

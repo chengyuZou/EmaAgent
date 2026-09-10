@@ -17,9 +17,6 @@ export type { BackgroundProcessEvent } from './events.js';
 export type {
   BackgroundCommandRequest,
   BackgroundCommandResult,
-  BackgroundProcessCompletion,
-  BackgroundProcessCompletionClaim,
-  BackgroundProcessCompletionSource,
   BackgroundProcessListOptions,
   BackgroundProcessNotifiableStatus,
   BackgroundProcessOutput,

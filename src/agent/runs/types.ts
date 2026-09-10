@@ -1,11 +1,8 @@
+import type { AssistantBlock } from '@ema-agent/llm';
 import type { SubagentContextMode, ToolResult } from '@ema-agent/tools';
 
 export type AgentRunStatus = 'running' | 'completed' | 'failed' | 'cancelled';
-export type AgentRunMessageRole =
-  | 'assistant'
-  | 'tool_call'
-  | 'tool_result'
-  | 'reasoning';
+export type AgentRunMessageRole = 'assistant' | 'tool_result';
 
 export interface AgentRun {
   readonly id: string;
@@ -22,6 +19,7 @@ export interface AgentRun {
   readonly toolCallCount?: number;
   readonly inputTokens?: number;
   readonly outputTokens?: number;
+  readonly finalText?: string;
   readonly createdAt: number;
   readonly updatedAt: number;
   readonly completedAt?: number;
@@ -43,6 +41,7 @@ export interface AgentRunCompletion {
   toolCallCount: number;
   inputTokens: number;
   outputTokens: number;
+  finalText: string;
 }
 
 export type AgentRunTransitionAction = 'complete' | 'fail' | 'cancel';
@@ -56,41 +55,16 @@ export type AgentRunTransitionResult =
       current?: AgentRun;
     };
 
-/** assistant/reasoning 的增量文本块（回放时按 blockIndex 合并展示由消费方决定）。 */
-export interface AgentRunTextContent {
-  readonly blockIndex: number;
-  readonly text: string;
-}
-
-/** tool_call 消息：partial 是流式到达中的占位；完成形携带最终 args。 */
-export type AgentRunToolCallContent =
-  | { readonly blockIndex: number; readonly callId: string; readonly name: string; readonly args: unknown }
-  | {
-      readonly blockIndex: number;
-      readonly callId: string;
-      readonly name: string;
-      readonly argsDelta: string;
-      readonly partial: true;
-    };
-
 /**
- * 一次运行的内容消息：role 与 content 形状一一绑定，写入侧见 agentRunMessagesStore。
- * tool_result 的 content 即统一 ToolResult 信封（模型可见 content + 类型化 data）。
+ * 子 Agent 转录按完整模型消息保存. AssistantBlock 自带原始块顺序和 tool_use,
+ * tool_result 则沿用统一 ToolResult 信封, 因而不需要另造块级身份.
  */
 export type AgentRunMessage =
   | {
       readonly id: string;
       readonly agentRunId: string;
-      readonly role: 'assistant' | 'reasoning';
-      readonly content: AgentRunTextContent;
-      readonly sequence: number;
-      readonly createdAt: number;
-    }
-  | {
-      readonly id: string;
-      readonly agentRunId: string;
-      readonly role: 'tool_call';
-      readonly content: AgentRunToolCallContent;
+      readonly role: 'assistant';
+      readonly content: readonly AssistantBlock[];
       readonly sequence: number;
       readonly createdAt: number;
     }
@@ -102,3 +76,10 @@ export type AgentRunMessage =
       readonly sequence: number;
       readonly createdAt: number;
     };
+
+/** 启动恢复从 AgentRun 转录找回的原始调用与已有结果. */
+export interface AgentRunToolInteraction {
+  readonly name: string;
+  readonly args: unknown;
+  result?: ToolResult;
+}

@@ -94,8 +94,6 @@ export interface BackgroundProcessOutputOptions {
   waitMs?: number;
 }
 
-
-
 export interface BackgroundProcessOutputLocation {
   absoluteDirectory: string;
   relativeDirectory: string;
@@ -110,28 +108,3 @@ export type BackgroundProcessOutputPathFactory = (
 export type BackgroundProcessOutputLocationResolver = (
   relativeDirectory: string,
 ) => BackgroundProcessOutputLocation;
-
-export interface BackgroundProcessCompletion {
-  processId: string;
-  originTurnId?: string;
-  status: BackgroundProcessNotifiableStatus;
-  exitCode?: number;
-  command: string;
-  outputPreview: string;
-}
-
-export interface BackgroundProcessCompletionClaim {
-  continuationTurnId: string;
-  completions: BackgroundProcessCompletion[];
-}
-
-/** Server 用它把进程自然终态转换为内部 Turn；模型工具看不到领取能力。 */
-export interface BackgroundProcessCompletionSource {
-  setCompletionListener(listener?: (sessionId: string) => void): void;
-  pendingCompletionSessions(): string[];
-  claimCompletionBatch(
-    sessionId: string,
-    continuationTurnId: string,
-  ): BackgroundProcessCompletionClaim | undefined;
-  markCompletionDelivered(continuationTurnId: string): number;
-}

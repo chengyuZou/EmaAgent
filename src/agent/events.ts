@@ -4,6 +4,7 @@ import type {
   LlmStopReason,
   LlmThinkingState,
   LlmTokenUsage,
+  AssistantBlock,
   Message,
 } from '@ema-agent/llm';
 import type { ToolResult } from '@ema-agent/tools';
@@ -63,6 +64,8 @@ export type AgentLoopEvent =
       readonly iteration: number;
       readonly llmCallId: string;
       readonly stopReason: LlmStopReason;
+      /** Provider 本轮闭合后的完整消息块. 持久化方以此为边界, 不自行拼接流式 delta. */
+      readonly content: readonly AssistantBlock[];
     }
   | {
       /** AgentLoop 已把这些消息追加进下一次调用会读取的工作历史。 */

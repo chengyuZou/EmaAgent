@@ -1,10 +1,10 @@
 // 唯一装配点：全部业务对象在此一次成型，族间依赖经 Composition 字段单向传递。
 // routes/application/platform 只消费 Composition，不构造业务对象。
 import { characterStageVocabulary } from '@ema-agent/characters';
+import type { BackgroundProcessNotifiableStatus } from '@ema-agent/tools';
 import { AppEvents } from '../application/appEvents.js';
 import { AgentSocketConnections } from '../routes/ws/agent.js';
 import { TurnFanout } from '../application/turnFanout.js';
-import { BackgroundCompletion } from '../application/backgroundCompletion.js';
 import { openBackup, type BackupComposition } from './backup.js';
 import { openCharacters, type CharactersComposition } from './characters.js';
 import { openCommands, type CommandsComposition } from './commands.js';
@@ -34,18 +34,26 @@ export interface Composition {
   readonly agentConnections: AgentSocketConnections;
   readonly appEvents: AppEvents;
   readonly turnFanout: TurnFanout;
-  /** 后台进程完成 → 空闲后续跑 Turn 的驱动；start() 由 lifecycle 在 ready 后调用。 */
-  readonly backgroundCompletion: BackgroundCompletion;
-  /** 进程关闭序列的最后一步；后台工作停驻由 platform/lifecycle 先行完成。 */
-  close(): void;
+  /** 先停执行对象和后台工作, 最后关闭数据库. */
+  close(): Promise<void>;
 }
 
-export function buildComposition(input: { activeDataDir: string }): Composition {
+export function buildComposition(input: {
+  activeDataDir: string;
+  initializeBuiltinCharacters: boolean;
+}): Composition {
   const database = openDatabases(input.activeDataDir);
   const settings = openSettings(database.profileDb);
   const providers = openProviders(database.profileDb);
   const agentConnections = new AgentSocketConnections();
   const appEvents = new AppEvents();
+  // Tools 在 Composition 返回前没有调用入口, 因此装配期间不可能产生真实完成通知.
+  // 先放空出口打断构造顺序, openTurns 完成后再接到唯一 Session 队列.
+  let notifyBackgroundCompletion = (
+    _sessionId: string,
+    _backgroundProcessId: string,
+    _status: BackgroundProcessNotifiableStatus,
+  ): void => undefined;
   const tools = openTools({
     profileDb: database.profileDb,
     dataDb: database.dataDb,
@@ -53,6 +61,9 @@ export function buildComposition(input: { activeDataDir: string }): Composition 
     session: database.session,
     settings: settings.settings,
     emitBackgroundEvent: event => appEvents.emit(event),
+    onBackgroundCompletion: (sessionId, backgroundProcessId, status) => {
+      notifyBackgroundCompletion(sessionId, backgroundProcessId, status);
+    },
     emitMcpConnection: connection => appEvents.emit({ type: 'mcp_connection_changed', connection }),
     emitMcpMarket: source => appEvents.emit({ type: 'mcp_market_changed', source }),
   });
@@ -64,7 +75,7 @@ export function buildComposition(input: { activeDataDir: string }): Composition 
     settings.settings,
     database.usageRecorder,
   );
-  const characters = openCharacters(database.profileDb);
+  const characters = openCharacters(database.profileDb, input.initializeBuiltinCharacters);
   const narrative = openNarrative(providers.providers, providers.providerModels, providers.modelBindings);
   const speech = openSpeech(
     database.dataDb,
@@ -117,6 +128,13 @@ export function buildComposition(input: { activeDataDir: string }): Composition 
     turns: database.turns,
     usageRecorder: database.usageRecorder,
   });
+  const turnFanout = new TurnFanout({
+    publishTurnEvent: (sessionId, turnId, event) => {
+      agentConnections.publish(sessionId, { type: 'turn_event', turnId, event });
+    },
+    emitAppEvent: event => appEvents.emit(event),
+    startTurnSpeech: speech.startTurnSpeech,
+  });
   const turn = openTurns({
     database,
     settings: settings.settings,
@@ -128,7 +146,15 @@ export function buildComposition(input: { activeDataDir: string }): Composition 
     stage: characters.stage,
     emitAppEvent: event => appEvents.emit(event),
     onTurnCompletedInTransaction: turnId => memory.enqueueTurnExtraction(turnId),
+    publishAgentRun: (sessionId, event) => {
+      agentConnections.publish(sessionId, { type: 'agent_run_event', event });
+    },
+    publishQueuedInput: (sessionId, event) => agentConnections.publish(sessionId, event),
+    fanout: turnFanout,
   });
+  notifyBackgroundCompletion = (sessionId, backgroundProcessId, status) => {
+    turn.continuations.backgroundProcessCompleted(sessionId, backgroundProcessId, status);
+  };
   const commands = openCommands({
     database,
     settings,
@@ -138,21 +164,6 @@ export function buildComposition(input: { activeDataDir: string }): Composition 
     turn,
   });
   const backup = openBackup(database.dataDb, input.activeDataDir, providers.providerModels);
-  const turnFanout = new TurnFanout({
-    publishTurnEvent: (sessionId, turnId, event) => {
-      agentConnections.publish(sessionId, { type: 'turn_event', turnId, event });
-    },
-    emitAppEvent: event => appEvents.emit(event),
-    startTurnSpeech: speech.startTurnSpeech,
-  });
-  const backgroundCompletion = new BackgroundCompletion({
-    source: tools.backgroundProcesses,
-    session: database.session,
-    turns: database.turns,
-    executor: turn.turnExecutor,
-    fanout: turnFanout,
-  });
-
   return {
     database,
     settings,
@@ -169,9 +180,13 @@ export function buildComposition(input: { activeDataDir: string }): Composition 
     agentConnections,
     appEvents,
     turnFanout,
-    backgroundCompletion,
-    close() {
-      // 先停 Memory 后台工作，再关库；在途 Job 终态遗留由启动恢复收口。
+    async close() {
+      // 先封住自动续接, 再中止并等待根 Turn/手动压缩释放 Session 坑位.
+      // 否则数据库关闭后, 在执行 Turn 的 finally 仍可能继续落终态或启动下一根 Turn.
+      turn.continuations.shutdown();
+      await database.activeSessions.abortAll();
+      await turn.agentRuns.shutdown('Application is shutting down');
+      await tools.backgroundProcesses.shutdown();
       memory.shutdown();
       database.close();
     },

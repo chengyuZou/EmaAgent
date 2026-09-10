@@ -1,9 +1,9 @@
-export { SubagentSpawner } from './subagentSpawner.js';
+export { AgentRunExecutor } from './agentRunExecutor.js';
 export type {
   PrepareSubagent,
   PrepareSubagentInput,
-  SubagentSpawnerOptions,
-} from './subagentSpawner.js';
+  StartAgentRun,
+} from './agentRunExecutor.js';
 export { AgentRunStore } from './runs/agentRunStore.js';
 export { AgentRunMessagesStore } from './runs/agentRunMessagesStore.js';
 export type {
@@ -11,10 +11,9 @@ export type {
   AgentRunCompletion,
   AgentRunMessage,
   AgentRunMessageRole,
+  AgentRunToolInteraction,
   AgentRunStart,
   AgentRunStatus,
-  AgentRunTextContent,
-  AgentRunToolCallContent,
   AgentRunTransitionAction,
   AgentRunTransitionResult,
 } from './runs/types.js';
@@ -29,7 +28,6 @@ export type {
   AgentLoopStopReason,
 } from './agentLoopState.js';
 export type {
-  AgentBudget,
   AgentLoopInput,
   PreparedAgentIteration,
   PrepareAgentIteration,

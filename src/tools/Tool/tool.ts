@@ -74,6 +74,7 @@ export interface Tool<TInput, TOutput, TContext, TProgress = never> {
 
   /** 只描述副作用，供静态调度选择只读并行或有副作用串行。 */
   readonly isReadOnly: (input: TInput) => boolean;
+  /** 是否支持并发安全 */
   readonly isConcurrencySafe: (input: TInput) => boolean;
   /** AskUser 等工具会暂停当前 Turn；普通权限审批不属于工具交互。 */
   readonly requiresUserInteraction: (input: TInput) => boolean;

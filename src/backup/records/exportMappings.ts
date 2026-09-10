@@ -110,6 +110,7 @@ export const toAgentRunRecord = (row: AgentRunRow): AgentRunRecord => ({
   toolCallCount: row.tool_call_count,
   inputTokens: row.input_tokens,
   outputTokens: row.output_tokens,
+  finalText: row.final_text,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
   completedAt: row.completed_at,
@@ -119,7 +120,6 @@ export const toAgentRunMessageRecord = (row: AgentRunMessageRow): AgentRunMessag
   id: row.id,
   agentRunId: row.agent_run_id,
   role: row.role,
-  blockIndex: row.block_index,
   contentJson: row.content_json,
   sequence: row.sequence,
   createdAt: row.created_at,
@@ -164,9 +164,6 @@ export const toBackgroundProcessRecord = (
   stderrBytes: row.stderr_bytes,
   outputTruncated: row.output_truncated === 1,
   outputDirectoryPath,
-  completionClaimedAt: row.completion_claimed_at,
-  continuationTurnId: row.continuation_turn_id,
-  modelNotifiedAt: row.model_notified_at,
 });
 
 export const toAttachmentImageRecord = (

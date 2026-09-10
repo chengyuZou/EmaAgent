@@ -48,6 +48,7 @@ import {
   ToolResultStore,
   readBackgroundProcessSettings,
   type BackgroundProcessEvent,
+  type BackgroundProcessNotifiableStatus,
 } from '@ema-agent/tools';
 import {
   backgroundProcessOutputDirFor,
@@ -73,6 +74,11 @@ export interface ToolsDeps {
   readonly session: SessionStore;
   readonly settings: SettingsStore;
   readonly emitBackgroundEvent: (event: BackgroundProcessEvent) => void;
+  readonly onBackgroundCompletion: (
+    sessionId: string,
+    backgroundProcessId: string,
+    status: BackgroundProcessNotifiableStatus,
+  ) => void;
   readonly emitMcpConnection: (connection: McpConnection) => void;
   readonly emitMcpMarket: (source: McpMarketSource) => void;
 }
@@ -188,6 +194,9 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
     }),
     settings: () => readBackgroundProcessSettings(settings),
     emit: event => deps.emitBackgroundEvent(event),
+    onCompletion: (sessionId, backgroundProcessId, status) => {
+      deps.onBackgroundCompletion(sessionId, backgroundProcessId, status);
+    },
   });
   const toolExecutionState = new ToolExecutionState(new ToolExecutionsRepo(dataDb.sqlite));
 

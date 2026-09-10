@@ -4,15 +4,11 @@
 CREATE TABLE agent_run_messages (
   id           TEXT    PRIMARY KEY,
   agent_run_id TEXT    NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE,
-  role         TEXT    NOT NULL CHECK (role IN ('assistant', 'tool_call', 'tool_result', 'reasoning')),
-  -- 块身份：文本/思考/工具调用按 (agent_run_id, role, block_index) upsert；
-  -- tool_result 一次调用一行，block_index 恒为 NULL（SQLite 唯一键不约束 NULL）。
-  block_index  INTEGER,
+  role         TEXT    NOT NULL CHECK (role IN ('assistant', 'tool_result')),
   content_json TEXT    NOT NULL,
   sequence     INTEGER NOT NULL,
   created_at   INTEGER NOT NULL,
-  UNIQUE (agent_run_id, sequence),
-  UNIQUE (agent_run_id, role, block_index)
+  UNIQUE (agent_run_id, sequence)
 );
 
 CREATE TABLE agent_runs (
@@ -31,6 +27,7 @@ CREATE TABLE agent_runs (
   tool_call_count     INTEGER,
   input_tokens        INTEGER,
   output_tokens       INTEGER,
+  final_text          TEXT,
   created_at          INTEGER NOT NULL,
   updated_at          INTEGER NOT NULL,
   completed_at        INTEGER
@@ -58,10 +55,7 @@ CREATE TABLE background_processes (
   stdout_bytes          INTEGER NOT NULL DEFAULT 0 CHECK(stdout_bytes >= 0),
   stderr_bytes          INTEGER NOT NULL DEFAULT 0 CHECK(stderr_bytes >= 0),
   output_truncated      INTEGER NOT NULL DEFAULT 0 CHECK(output_truncated IN (0, 1)),
-  output_relative_path  TEXT NOT NULL,
-  completion_claimed_at INTEGER,
-  continuation_turn_id  TEXT,
-  model_notified_at     INTEGER
+  output_relative_path  TEXT NOT NULL
 );
 
 CREATE TABLE memory_jobs (
@@ -127,7 +121,7 @@ CREATE TABLE messages (
   turn_id     TEXT REFERENCES turns(id) ON DELETE SET NULL,
   role        TEXT NOT NULL CHECK(role IN ('system','user','assistant')),
   kind        TEXT NOT NULL DEFAULT 'normal'
-              CHECK(kind IN ('normal','tool_results','summary','reminder')),
+              CHECK(kind IN ('normal','tool_results','summary','reminder','continuation')),
   blocks_json TEXT NOT NULL,
   interrupted INTEGER NOT NULL DEFAULT 0,
   created_at  INTEGER NOT NULL,
@@ -279,7 +273,7 @@ CREATE TABLE turns (
   session_id           TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   status               TEXT NOT NULL CHECK(status IN ('running','completed','failed','aborted')),
   trigger_type         TEXT NOT NULL DEFAULT 'userMessage'
-                       CHECK(trigger_type IN ('userMessage','backgroundProcessCompleted')),
+                       CHECK(trigger_type IN ('userMessage','sessionContinuation')),
   execution_profile    TEXT NOT NULL DEFAULT 'chat'
                        CHECK(execution_profile IN ('chat','work')),
   narrative_policy     TEXT NOT NULL DEFAULT 'auto'
@@ -335,13 +329,6 @@ CREATE INDEX idx_attachment_vision_descriptions_caches_lru
   ON attachment_vision_descriptions_caches(last_accessed_at ASC, path ASC);
 
 CREATE INDEX idx_speech_outputs_session ON speech_outputs(session_id, created_at DESC);
-
-CREATE INDEX idx_background_processes_completion
-  ON background_processes(session_id, model_notified_at, completion_claimed_at, completed_at, id);
-
-CREATE INDEX idx_background_processes_continuation
-  ON background_processes(continuation_turn_id, id)
-  WHERE continuation_turn_id IS NOT NULL;
 
 CREATE INDEX idx_background_processes_recovery
   ON background_processes(status, created_at, id);

@@ -1,5 +1,6 @@
 // Agent WebSocket Route：按 Session 接收实时命令，并把 Turn 事件送往所有观察该 Session 的窗口。
 import { CommandsError, type CommandCompactResult } from '@ema-agent/commands';
+import type { AgentRunEvent, AgentRunExecutor } from '@ema-agent/agent';
 import {
   SessionBusyError,
   type ActiveSessionExecution,
@@ -9,6 +10,8 @@ import {
 import {
   hasTurnInput,
   type PendingInteraction,
+  type SessionContinuationEvent,
+  type SessionContinuationQueue,
   type SessionInteractionQueue,
   type TurnExecutor,
   type TurnStreamEvent,
@@ -17,7 +20,6 @@ import { upgradeWebSocket } from '@hono/node-server';
 import { Hono } from 'hono';
 import type { WSContext } from 'hono/ws';
 import { z } from 'zod';
-import type { TurnFanout } from '../../application/turnFanout.js';
 import { REQUEST_VALUE_LIMITS } from '../../platform/requestBudget.js';
 
 const attachmentBlockSchema = z.discriminatedUnion('type', [
@@ -32,7 +34,7 @@ const inputPartSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('skill_reference'), name: z.string().min(1), path: z.string().min(1) }),
 ]);
 
-const startTurnPayloadSchema = z.object({
+const enqueueInputPayloadSchema = z.object({
   executionProfile: z.enum(['chat', 'work']),
   narrativePolicy: z.enum(['auto', 'always', 'off']),
   input: z.array(inputPartSchema).min(1).max(REQUEST_VALUE_LIMITS.maxTurnContentParts),
@@ -57,7 +59,9 @@ const startTurnPayloadSchema = z.object({
 
 const commandIdSchema = z.string().min(1);
 export const agentClientMessageSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('start_turn'), commandId: commandIdSchema, payload: startTurnPayloadSchema }),
+  z.object({ type: z.literal('enqueue_input'), commandId: commandIdSchema, payload: enqueueInputPayloadSchema }),
+  z.object({ type: z.literal('remove_queued_input'), commandId: commandIdSchema, id: z.string().uuid() }),
+  z.object({ type: z.literal('guide_queued_input'), commandId: commandIdSchema, id: z.string().uuid() }),
   z.object({ type: z.literal('start_compaction'), commandId: commandIdSchema }),
   z.object({
     type: z.literal('respond_permission'),
@@ -77,18 +81,20 @@ export const agentClientMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('cancel_ask_user'), commandId: commandIdSchema, turnId: z.string().min(1), toolCallId: z.string().min(1) }),
   z.object({ type: z.literal('cancel_execution'), commandId: commandIdSchema, executionId: z.string().min(1) }),
   z.object({ type: z.literal('cancel_tool'), commandId: commandIdSchema, turnId: z.string().min(1), toolCallId: z.string().min(1) }),
+  z.object({ type: z.literal('cancel_agent_run'), commandId: commandIdSchema, agentRunId: z.string().uuid() }),
   z.object({ type: z.literal('ping') }),
 ]);
 
 export type AgentClientMessage = z.infer<typeof agentClientMessageSchema>;
-export type StartTurnPayload = z.infer<typeof startTurnPayloadSchema>;
+export type EnqueueInputPayload = z.infer<typeof enqueueInputPayloadSchema>;
 
 export type AgentServerMessage =
   | { readonly type: 'connected'; readonly sessionId: string }
   | { readonly type: 'session_state'; readonly execution: ActiveSessionExecution | null }
   | { readonly type: 'pending_interactions'; readonly pending: readonly PendingInteraction[] }
-  | { readonly type: 'turn_accepted'; readonly commandId: string; readonly turnId: string }
+  | SessionContinuationEvent
   | { readonly type: 'turn_event'; readonly turnId: string; readonly event: TurnStreamEvent }
+  | { readonly type: 'agent_run_event'; readonly event: AgentRunEvent }
   | { readonly type: 'compaction_completed'; readonly commandId: string; readonly result: CommandCompactResult }
   | { readonly type: 'command_succeeded'; readonly commandId: string }
   | { readonly type: 'command_rejected'; readonly commandId: string; readonly code: string; readonly message: string }
@@ -133,7 +139,8 @@ export class AgentSocketConnections {
 export interface AgentWebSocketRouteDeps {
   readonly connections: AgentSocketConnections;
   readonly executor: TurnExecutor;
-  readonly fanout: TurnFanout;
+  readonly agentRuns: AgentRunExecutor;
+  readonly continuations: SessionContinuationQueue;
   readonly sessions: Pick<SessionStore, 'sessionExists'>;
   readonly activeSessions: ActiveSessionRegistry;
   readonly interactions: SessionInteractionQueue;
@@ -155,6 +162,7 @@ export const agentWebSocketRoute = (deps: AgentWebSocketRouteDeps) =>
         client.send({ type: 'connected', sessionId });
         client.send({ type: 'session_state', execution: deps.activeSessions.getActiveExecution(sessionId) ?? null });
         client.send({ type: 'pending_interactions', pending: deps.interactions.listPending(sessionId) });
+        client.send({ type: 'queued_inputs', items: deps.continuations.list(sessionId) });
         // TODO: 真实使用若证明断线期间的增量不可接受，再设计按 Turn 游标的有界重放和缺口通知。
       },
       async onMessage(event, socket) {
@@ -187,26 +195,28 @@ async function handleClientMessage(
   }
   try {
     switch (message.type) {
-      case 'start_turn': {
+      case 'enqueue_input': {
         if (!hasTurnInput(message.payload.input)) throw new AgentCommandError('empty_input', 'Turn 输入为空');
-        const handle = deps.executor.start({
+        deps.continuations.enqueue({
           sessionId,
-          triggerType: 'userMessage',
-          executionProfile: message.payload.executionProfile,
-          narrativePolicy: message.payload.narrativePolicy,
           input: message.payload.input,
-          ...(message.payload.modelSelection ? { modelSelection: message.payload.modelSelection } : {}),
-          ...(message.payload.knowledge ? { knowledge: message.payload.knowledge } : {}),
+          selection: {
+            executionProfile: message.payload.executionProfile,
+            narrativePolicy: message.payload.narrativePolicy,
+            ...(message.payload.modelSelection ? { modelSelection: message.payload.modelSelection } : {}),
+            ...(message.payload.knowledge ? { knowledge: message.payload.knowledge } : {}),
+            ttsEnabled: message.payload.ttsEnabled ?? false,
+          },
         });
-        socket.send({ type: 'turn_accepted', commandId: message.commandId, turnId: handle.turnId });
-        publishExecutionState(deps, sessionId);
-        deps.fanout.attach(handle, { ttsEnabled: message.payload.ttsEnabled ?? false });
-        void handle.completion.then(
-          () => publishExecutionState(deps, sessionId),
-          () => publishExecutionState(deps, sessionId),
-        );
+        socket.send({ type: 'command_succeeded', commandId: message.commandId });
         return;
       }
+      case 'remove_queued_input':
+        sendCommandResult(socket, message.commandId, deps.continuations.remove(sessionId, message.id));
+        return;
+      case 'guide_queued_input':
+        sendCommandResult(socket, message.commandId, deps.continuations.guide(sessionId, message.id));
+        return;
       case 'start_compaction': {
         const running = deps.compactSession(sessionId);
         publishExecutionState(deps, sessionId);
@@ -234,6 +244,9 @@ async function handleClientMessage(
         return;
       case 'cancel_tool':
         sendCommandResult(socket, message.commandId, deps.executor.abortTool(message.turnId, message.toolCallId));
+        return;
+      case 'cancel_agent_run':
+        sendCommandResult(socket, message.commandId, deps.agentRuns.cancel(message.agentRunId, sessionId));
         return;
     }
   } catch (error) {

@@ -1,4 +1,4 @@
-// 统一管理 Bash 的 15 秒结果转交、后台公平队列、日志与终态。
+// 统一管理命令的 30 秒结果转交、后台队列、日志与终态.
 
 import crypto from 'node:crypto';
 import type {
@@ -26,29 +26,27 @@ import type {
   BackgroundProcessOutputLocationResolver,
   BackgroundProcessOutputOptions,
   BackgroundProcessOutputPathFactory,
-  BackgroundProcessCompletion,
-  BackgroundProcessCompletionClaim,
-  BackgroundProcessCompletionSource,
+  BackgroundProcessNotifiableStatus,
   BackgroundProcessStatus,
   BackgroundProcessSummary,
 } from './types.js';
 import type { BackgroundProcessSettings } from './settings.js';
 
-const IMMEDIATE_RESULT_WAIT_MS = 15_000;
-/** 交互命令的独立小池:最多 15s 即完成或转交,与后台长任务互不饿死。 */
+const IMMEDIATE_RESULT_WAIT_MS = 30_000;
+/** 交互命令转交后台后仍占原坑位, 直到真实进程终态才释放. */
 const INTERACTIVE_MAX_CONCURRENT = 4;
 
 interface ActiveProcess {
   request: BackgroundCommandRequest;
   writer: BackgroundProcessOutputWriter;
   handle: CommandProcessHandle;
-  /** 交互快速路径不落 DB;15s 转交或队列启动后才为 true。 */
+  /** 交互快速路径不落 DB; 30s 转交或队列启动后才为 true. */
   persisted: boolean;
   version?: number;
   startedAt: number;
   detachWaitAbort?: () => void;
   terminalIntent?: 'stopped' | 'interrupted';
-  /** 归还本进程占用的调度坑位;15s 转交后台后置为空操作(不再计入任何池)。 */
+  /** 归还本进程占用的调度坑位. 自动转后台不会提前释放. */
   releaseSlot: () => void;
 }
 
@@ -67,14 +65,19 @@ export interface BackgroundProcessDeps {
   resolveOutputLocation: BackgroundProcessOutputLocationResolver;
   settings: () => Readonly<BackgroundProcessSettings>;
   emit?: (event: BackgroundProcessEvent) => void;
-  /** 交互等待上限,默认 15s;仅测试用更短值。 */
+  /** 终态先完成 SQL 与日志写入, 然后只把执行身份和状态送往 Session 队列. */
+  onCompletion?: (
+    sessionId: string,
+    backgroundProcessId: string,
+    status: BackgroundProcessNotifiableStatus,
+  ) => void;
+  /** 交互等待上限, 默认 30s; 仅测试用更短值. */
   immediateResultWaitMs?: number;
 }
 
-export class BackgroundProcess
-implements BackgroundProcessCompletionSource {
+export class BackgroundProcess {
   private readonly output: BackgroundProcessOutputStore;
-  /** 交互命令(15s 内完成或转交)的独立坑位池。 */
+  /** 交互命令(30s 内完成或转交)的独立坑位池. */
   private readonly interactiveScheduler: BackgroundProcessScheduler;
   /** 持久后台任务的坑位池,上限来自用户设置。 */
   private readonly backgroundScheduler: BackgroundProcessScheduler;
@@ -83,7 +86,6 @@ implements BackgroundProcessCompletionSource {
   private readonly changeWaiters = new Map<string, Set<() => void>>();
   private shuttingDown = false;
   private processStartClosures = 0;
-  private completionListener?: (sessionId: string) => void;
 
   constructor(private readonly deps: BackgroundProcessDeps) {
     this.output = new BackgroundProcessOutputStore(deps.outputPath);
@@ -102,57 +104,10 @@ implements BackgroundProcessCompletionSource {
     });
   }
 
-  setCompletionListener(listener?: (sessionId: string) => void): void {
-    this.completionListener = listener;
-    if (!listener) return;
-    for (const sessionId of this.pendingCompletionSessions()) {
-      listener(sessionId);
-    }
-  }
-
-  pendingCompletionSessions(): string[] {
-    return this.deps.store.listSessionsWithPendingCompletions();
-  }
-
-  claimCompletionBatch(
-    sessionId: string,
-    continuationTurnId: string,
-  ): BackgroundProcessCompletionClaim | undefined {
-    const records = this.deps.store.claimCompletionBatch(
-      sessionId,
-      continuationTurnId,
-      Date.now(),
-    );
-    const claimedTurnId = records[0]?.continuationTurnId;
-    if (!claimedTurnId) return undefined;
-    return {
-      continuationTurnId: claimedTurnId,
-      completions: records.map((record) => {
-        const output = this.output.read(
-          this.locationFor(record),
-          { stdoutOffset: 0, stderrOffset: 0 },
-          false,
-        );
-        return {
-          processId: record.id,
-          ...(record.originTurnId ? { originTurnId: record.originTurnId } : {}),
-          status: record.status as BackgroundProcessCompletion['status'],
-          ...(record.exitCode !== undefined ? { exitCode: record.exitCode } : {}),
-          command: record.command,
-          outputPreview: formatCompletionOutput(output.stdout, output.stderr),
-        };
-      }),
-    };
-  }
-
-  markCompletionDelivered(continuationTurnId: string): number {
-    return this.deps.store.markCompletionDelivered(continuationTurnId, Date.now());
-  }
-
   /**
    * 执行一条命令。两条路径:
    * runInBackground=true → 直接落库排队,立即返回 processReference;
-   * 否则先占交互坑位 spawn,15 秒内完成则返回普通结果,超时则把结果所有权
+   * 否则先占交互坑位 spawn, 30 秒内完成则返回普通结果, 超时则把结果所有权
    * 转交后台(detach 取消信号、交还坑位),后续终态由完成通知链接管。
    */
   async runCommand(request: BackgroundCommandRequest): Promise<BackgroundCommandResult> {
@@ -289,11 +244,10 @@ implements BackgroundProcessCompletionSource {
     }
 
     // 结果所有权已转交后台:从此不再响应原 Turn 的取消信号。
-    // 同时交还交互坑位;转交出去的进程不再计入任何调度池。
+    // 这里只解除父 Turn 的等待和取消绑定. 真实进程仍占原 interactive 坑位,
+    // 否则每过 30 秒就能有一批长进程逃离全部并发统计.
     active.detachWaitAbort?.();
     active.detachWaitAbort = undefined;
-    active.releaseSlot();
-    active.releaseSlot = () => undefined;
     const record = this.deps.store.insert({
       id,
       sessionId: request.sessionId,
@@ -450,7 +404,6 @@ implements BackgroundProcessCompletionSource {
 
   async shutdown(): Promise<void> {
     this.shuttingDown = true;
-    this.completionListener = undefined;
     for (const [id, queued] of this.queued) {
       const record = this.deps.store.findById(id);
       this.backgroundScheduler.cancel(id, new BackgroundProcessError('app_shutting_down', 'Application is shutting down'));
@@ -515,7 +468,7 @@ implements BackgroundProcessCompletionSource {
           });
           if (failed) {
             this.emitRow(failed);
-            this.completionListener?.(failed.sessionId);
+            this.deps.onCompletion?.(failed.sessionId, failed.id, 'failed');
           }
           this.notifyChanged(id);
         }
@@ -625,7 +578,7 @@ implements BackgroundProcessCompletionSource {
     if (record) {
       this.emitRow(record);
       if (isNotifiable(record.status)) {
-        this.completionListener?.(record.sessionId);
+        this.deps.onCompletion?.(record.sessionId, record.id, record.status);
       }
     }
     this.notifyChanged(id);
@@ -745,17 +698,8 @@ function isLive(status: BackgroundProcessStatus): boolean {
   return status === 'queued' || status === 'running';
 }
 
-function isNotifiable(status: BackgroundProcessStatus): boolean {
+function isNotifiable(status: BackgroundProcessStatus): status is BackgroundProcessNotifiableStatus {
   return status === 'completed' || status === 'failed' || status === 'timedOut';
-}
-
-function formatCompletionOutput(stdout: string, stderr: string): string {
-  const sections = [
-    stdout.trim() ? `stdout:\n${stdout.trim()}` : '',
-    stderr.trim() ? `stderr:\n${stderr.trim()}` : '',
-  ].filter(Boolean);
-  const joined = sections.join('\n\n') || '(no output)';
-  return joined.length <= 8_000 ? joined : `${joined.slice(0, 8_000)}\n…`;
 }
 
 function delay<T>(ms: number, value: T): Promise<T> {

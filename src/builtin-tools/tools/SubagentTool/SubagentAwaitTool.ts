@@ -4,13 +4,13 @@ import {
   buildTool,
   contextFail,
   contextOk,
-  type SubagentSpawnerFn,
+  type SubagentControl,
 } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 
 /** 窄 Context：启动器自带等待端口;身份与取消走 ToolInvocation。 */
 interface SubagentAwaitContext {
-  spawner: SubagentSpawnerFn;
+  subagents: SubagentControl;
 }
 
 const inputSchema = z.object({
@@ -33,7 +33,8 @@ export const SubagentAwaitTool = buildTool<
   description: `Wait for a background sub-agent to finish and return its final output.
 Use it when you need the result before you can continue the current turn.
 If you do not need the result yet, continue with other work — you will be notified when it completes; do not poll.
-Returns output:null if the agentRunId is unknown or already collected.`,
+Terminal results remain readable by id, including after an application restart.
+Returns output:null only when the agentRunId is unknown or the run is still active elsewhere.`,
 
   inputSchema,
   isReadOnly:        () => false,
@@ -43,21 +44,21 @@ Returns output:null if the agentRunId is unknown or already collected.`,
   checkPermissions: async () => ({ behavior: 'allow' }),
 
   validateContext(ctx) {
-    if (!ctx.subagentSpawner) {
+    if (!ctx.subagents) {
       return contextFail('子 Agent 启动器未装配（子 Agent 无此能力）。');
     }
-    return contextOk({ spawner: ctx.subagentSpawner });
+    return contextOk({ subagents: ctx.subagents });
   },
 
-  async execute(input, context: SubagentAwaitContext) {
-    const result = await context.spawner.awaitBackground(input.agentRunId);
+  async execute(input, context: SubagentAwaitContext, invocation) {
+    const result = await context.subagents.awaitResult(input.agentRunId, invocation.signal);
     if (!result) return { output: null };
     return { output: result.output, usage: result.usage };
   },
 
   mapResultToModelContent(output) {
     if (output.output === null) {
-      return 'No result available — the agentRunId is unknown or the result was already collected.';
+      return 'No result available — the agentRunId is unknown or the run is still active elsewhere.';
     }
     return output.output;
   },

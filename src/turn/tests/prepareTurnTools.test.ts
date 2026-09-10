@@ -78,9 +78,6 @@ function makeInput(options: {
     executionProfile: 'work' as const,
     narrativePolicy: 'off' as const,
     workspaceRoot: '/w',
-    budget: {
-      enterSubagent: () => () => undefined,
-    },
     prepareSubagent: async () => { throw new Error('不应派生子 Agent'); },
     parentMessages: [],
     model: { providerId: 'p', modelId: 'm' },

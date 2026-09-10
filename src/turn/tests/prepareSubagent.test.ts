@@ -1,6 +1,5 @@
 // 测试子 Agent 只继承父工作消息，并为每个 AgentLoop 创建独立 Compact 状态。
 import { describe, expect, it, vi } from 'vitest';
-import type { AgentBudget } from '@ema-agent/agent';
 import type { CallLlm } from '@ema-agent/llm';
 import type { ProviderModels, Providers } from '@ema-agent/providers';
 import { ToolPool } from '@ema-agent/tools';
@@ -9,10 +8,6 @@ import type { PreparedTurn } from '../preparation/prepareTurn.js';
 
 const callLlm: CallLlm = async function* () {
   yield { type: 'done', stopReason: 'end_turn' };
-};
-
-const budget: AgentBudget = {
-  enterSubagent: () => () => undefined,
 };
 
 function preparedTurn(): PreparedTurn {
@@ -50,7 +45,6 @@ describe('createPrepareSubagent', () => {
       providerModels: {} as ProviderModels,
       createCompact: createCompact as never,
       emit: () => undefined,
-      budget,
       parentMessages,
     });
 

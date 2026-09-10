@@ -1,8 +1,5 @@
 // 子 Agent 的 AgentLoopInput 工厂：subagent/fork 上下文、收窄 ToolPool、headless 执行器、不落根 Macro。
-import {
-  type AgentBudget,
-  type PrepareSubagent,
-} from '@ema-agent/agent';
+import type { PrepareSubagent } from '@ema-agent/agent';
 import { createLlmCall } from '@ema-agent/llm';
 import type { CallLlm, Message } from '@ema-agent/llm';
 import type { CompactRequest, CompactResult } from '@ema-agent/compact';
@@ -35,7 +32,6 @@ export interface PrepareSubagentDeps {
   /** compact 工厂：覆盖模型时用子模型 callLlm 创建独立闭包（独立失败熔断）。 */
   readonly createCompact: (callLlm: CallLlm) => (request: CompactRequest) => Promise<CompactResult>;
   readonly emit: (event: TurnStreamEvent) => void;
-  readonly budget: AgentBudget;
   /** fork 子 Agent 继承的父工作消息；不含父 System Prompt、Tool Schema 或缓存标记。 */
   readonly parentMessages: Message[];
 }
@@ -88,7 +84,7 @@ export function createPrepareSubagent(deps: PrepareSubagentDeps): PrepareSubagen
       systemPrompt: Object.freeze([{
         name: 'subagent',
         content: options.systemPrompt
-          ?? '你是 Ema 的子 Agent，只完成被委派的具体任务，并把结论返回给父 Agent。',
+          ?? '你是 EmaAgent 的子 Agent，只完成被委派的具体任务，并把结论返回给父 Agent。',
       }]),
       tools: Object.freeze({
         ...subPrepared.tools,
@@ -116,7 +112,6 @@ export function createPrepareSubagent(deps: PrepareSubagentDeps): PrepareSubagen
         signal,
         wake,
       }),
-      budget: deps.budget,
       signal,
       maxIterations: prepared.maxIterations,
       generationSource: {

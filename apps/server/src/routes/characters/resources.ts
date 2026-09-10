@@ -12,7 +12,7 @@ export interface CharacterResourcesRouteDeps {
   readonly characters: Pick<
     CharacterStore,
     | 'setPrimaryLive2dModel' | 'updateLive2dModel' | 'importLive2dModel' | 'exportLive2dModel'
-    | 'deleteLive2dModel' | 'resolveLive2dModelDirectory'
+    | 'deleteLive2dModel' | 'resolveLive2dModelDirectory' | 'streamLive2dArchive'
     | 'reloadLive2dConfiguration'
     | 'readLive2dConfiguration' | 'saveLive2dMappings'
     | 'setPrimaryIllustration' | 'updateIllustration' | 'importIllustration' | 'exportIllustration'
@@ -78,9 +78,7 @@ const live2dMappingsBody = z.object({
 const MIME_BY_EXT: Record<string, string> = {
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp',
   '.gif': 'image/gif', '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4',
-  '.ogg': 'audio/ogg', '.flac': 'audio/flac', '.json': 'application/json',
-  '.model3.json': 'application/json', '.moc3': 'application/octet-stream',
-  '.zip': 'application/zip',
+  '.ogg': 'audio/ogg', '.flac': 'audio/flac',
 };
 
 /** 角色资源文件流式返回；路径一律由 CharacterStore 解析，前端不传路径。 */
@@ -149,28 +147,28 @@ export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
         context.req.param('characterName'),
         context.req.param('live2dName'),
       ) })))
+    .get('/:characterName/live2d/:live2dName/archive', context => {
+      try {
+        const archive = deps.characters.streamLive2dArchive(
+          context.req.param('characterName'),
+          context.req.param('live2dName'),
+        );
+        return new Response(Readable.toWeb(archive) as ReadableStream, {
+          headers: {
+            'Content-Type': 'application/zip',
+            'Cache-Control': 'no-store',
+          },
+        });
+      } catch (error) {
+        return characterError(context, error);
+      }
+    })
     .put('/:characterName/live2d/:live2dName/configuration', jsonBody(live2dMappingsBody), context =>
       mutate(context, context.req.param('characterName'), () => deps.characters.saveLive2dMappings(
         context.req.param('characterName'),
         context.req.param('live2dName'),
         context.req.valid('json'),
       )))
-    // Live2D 渲染器按相对路径取模型目录内文件；越界一律 404。
-    .get('/:characterName/live2d/:live2dName/files/*', context => {
-      let directory: string;
-      try {
-        directory = deps.characters.resolveLive2dModelDirectory(context.req.param('characterName'), context.req.param('live2dName'));
-      } catch (error) {
-        return characterError(context, error);
-      }
-      const relative = context.req.path.split('/files/')[1] ?? '';
-      const resolved = path.resolve(directory, ...relative.split('/'));
-      const rel = path.relative(path.resolve(directory), resolved);
-      if (rel.startsWith('..') || path.isAbsolute(rel) || relative.includes('\0')) {
-        return context.json({ error: 'resource_not_found' }, 404);
-      }
-      return serveFile(context, resolved);
-    })
     // Live2D 静态封面:PUT 收离屏渲染的 PNG,GET 读字节;与模型目录分离(不污染用户模型包)。
     .put('/:characterName/live2d/:live2dName/preview', jsonBody(previewBody), async context => {
       const png = Buffer.from(context.req.valid('json').dataBase64, 'base64');

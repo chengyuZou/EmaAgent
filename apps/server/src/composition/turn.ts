@@ -30,9 +30,16 @@ import type { StageEngine } from '@ema-agent/stage';
 import { AttachmentVisionDescriptionCachesRepo } from '@ema-agent/storage';
 import { formatTaskContextReminder } from '@ema-agent/tasks';
 import {
+  AgentRunExecutor,
+  maxConcurrentSubagentsSetting,
+  type AgentRunEvent,
+} from '@ema-agent/agent';
+import {
   SessionInteractionQueue,
+  SessionContinuationQueue,
   TurnExecutor,
   type RenderTurnReminderInput,
+  type SessionContinuationEvent,
   type TurnReminderScope,
 } from '@ema-agent/turn';
 import { createUsageRecord, reportUsage, type UsageRecorder } from '@ema-agent/usage';
@@ -44,12 +51,15 @@ import type { KnowledgeComposition } from './knowledge.js';
 import type { NarrativeComposition } from './narrative.js';
 import type { ProvidersComposition } from './providers.js';
 import type { ToolsComposition } from './tools.js';
+import type { TurnFanout } from '../application/turnFanout.js';
 
 /** 单个指令文件超过 32KB 截断；工作区指令是上下文数据，不是系统权限。 */
 const WORKSPACE_INSTRUCTION_MAX_CHARS = 32 * 1024;
 
 export interface TurnComposition {
   readonly turnExecutor: TurnExecutor;
+  readonly agentRuns: AgentRunExecutor;
+  readonly continuations: SessionContinuationQueue;
   /** Permission/AskUser 回答路由与 SSE 重连恢复的入口。 */
   readonly interactionQueue: SessionInteractionQueue;
   /** 模型不支持图片输入时的 Vision 描述链（commands 的手动压缩历史投影同源复用）。 */
@@ -74,6 +84,9 @@ export interface TurnCompositionDeps {
   readonly emitAppEvent: (event: AppEvent) => void;
   /** completed 终态事务内的提取入队（Memory 一族）；事务提交后由它自己安排 drain。 */
   readonly onTurnCompletedInTransaction: (turnId: string) => void;
+  readonly publishAgentRun: (sessionId: string, event: AgentRunEvent) => void;
+  readonly publishQueuedInput: (sessionId: string, event: SessionContinuationEvent) => void;
+  readonly fanout: TurnFanout;
 }
 
 export function openTurns(deps: TurnCompositionDeps): TurnComposition {
@@ -83,6 +96,27 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
   const interactionQueue = new SessionInteractionQueue(
     settings.get(permissionAskTimeoutSetting),
   );
+  let turnExecutor!: TurnExecutor;
+  let continuations!: SessionContinuationQueue;
+  const agentRuns = new AgentRunExecutor({
+    store: database.agentRuns,
+    messages: database.agentRunMessages,
+    maxConcurrent: () => settings.get(maxConcurrentSubagentsSetting),
+    publish: deps.publishAgentRun,
+    onBackgroundCompleted: (sessionId, agentRunId, status) => {
+      continuations.agentRunCompleted(sessionId, agentRunId, status);
+    },
+    onTerminalResultRead: (sessionId, agentRunId) => {
+      continuations.agentRunResultRead(sessionId, agentRunId);
+    },
+  });
+  continuations = new SessionContinuationQueue({
+    sessions: database.session,
+    turns: database.turns,
+    startTurn: input => turnExecutor.start(input),
+    attachTurn: (handle, ttsEnabled) => deps.fanout.attach(handle, { ttsEnabled }),
+    publish: (sessionId, event) => deps.publishQueuedInput(sessionId, event),
+  });
   // 超时设置即改即生效（只影响此后新建的条目，在飞条目保留原超时）。
   settings.subscribe(({ changedKeys }) => {
     if (changedKeys.includes(permissionAskTimeoutSetting.key)) {
@@ -228,7 +262,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
   const workspaceInstructions = (workspaceRoot: string): string | null =>
     readWorkspaceInstructions(workspaceRoot, settings.get(workspaceInstructionFilesSetting));
 
-  const turnExecutor = new TurnExecutor({
+  turnExecutor = new TurnExecutor({
     turns: database.turns,
     sessions: database.session,
     providers: providers.providers,
@@ -243,8 +277,8 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     disabledSkillPaths: () => tools.skillEnablement.listDisabledPaths(),
     registry: tools.registry,
     interactionQueue,
-    agentRunStore: database.agentRuns,
-    agentRunMessagesStore: database.agentRunMessages,
+    agentRuns,
+    continuations,
     taskStore: database.tasks,
     knowledgeSearch: knowledge.knowledgeSearch,
     narrativeClient: narrative.narrative ?? undefined,
@@ -275,7 +309,15 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     onTurnCompletedInTransaction: deps.onTurnCompletedInTransaction,
   });
 
-  return { turnExecutor, interactionQueue, describeImage, visionCache: visionDescriptions, workspaceInstructions };
+  return {
+    turnExecutor,
+    agentRuns,
+    continuations,
+    interactionQueue,
+    describeImage,
+    visionCache: visionDescriptions,
+    workspaceInstructions,
+  };
 }
 
 /** 按用户多选的文件名读取工作区指令，顺序即拼接顺序；全部缺失返回 null。 */

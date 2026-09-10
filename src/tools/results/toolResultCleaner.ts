@@ -1,18 +1,16 @@
-// 后台按 TTL、单 Session 配额和全局配额回收已经外置的工具结果文件。
-import * as fs from 'node:fs';
+// 后台按 TTL、单 Session 配额和全局配额回收已经外置落盘的工具结果文件。
+import { readdir, rm, stat } from 'node:fs/promises';
 import * as path from 'node:path';
 
-export interface ToolResultCleanerSettings {
-  ttlDays: number;
-  perSessionMaxBytes: number;
-  globalMaxBytes: number;
-}
+const RESULT_TTL_MS = 7 * 24 * 60 * 60 * 1_000;
+const PER_SESSION_MAX_BYTES = 50 * 1024 * 1024;
+const GLOBAL_MAX_BYTES = 500 * 1024 * 1024;
+const FILE_IO_CONCURRENCY = 8;
 
-export const DEFAULT_CLEANER_SETTINGS: ToolResultCleanerSettings = {
-  ttlDays: 7,
-  perSessionMaxBytes: 50 * 1024 * 1024,
-  globalMaxBytes: 500 * 1024 * 1024,
-};
+interface ToolResultCleanup {
+  deleted: number;
+  freedBytes: number;
+}
 
 interface FileEntry {
   fullPath: string;
@@ -21,137 +19,154 @@ interface FileEntry {
 }
 
 export class ToolResultCleaner {
-  private readonly sessionRoots: readonly string[];
-
-  constructor(
-    sessionsDirs: string | readonly string[],
-    private readonly setting: ToolResultCleanerSettings = DEFAULT_CLEANER_SETTINGS,
-  ) {
-    this.sessionRoots = typeof sessionsDirs === 'string' ? [sessionsDirs] : [...sessionsDirs];
-  }
+  constructor(private readonly sessionsDir: string) {}
 
   /**
-   * 执行三步清理：
-   * 1. 删除超过 TTL 的非活跃 Session 工具结果文件；
-   * 2. 删除超过单 Session 配额的最旧工具结果文件；
-   * 3. 删除超过全局配额的最旧工具结果文件 避免一个session中巨额工具结果占满全局配额。
+   * 先按结果文件自己的修改时间清 TTL, 再依次约束单 Session 与全局体积.
+   * 扫描和删除都限制为 8 路文件 I/O, 避免大量历史 Session 在低配机器上形成 I/O 峰值.
    */
-  sweep(): { deleted: number; freedBytes: number } {
+  async sweep(): Promise<ToolResultCleanup> {
     let deleted = 0;
     let freedBytes = 0;
     const allFiles: FileEntry[] = [];
-    const now = Date.now();
-    const ttlMs = this.setting.ttlDays * 24 * 60 * 60 * 1000;
+    const expiresBefore = Date.now() - RESULT_TTL_MS;
 
-    for (const directory of this.listSessionToolResultDirs()) {
-      const files = this.listFiles(directory);
-      const sessionDir = path.dirname(directory);
-      let sessionActive = false;
-      try {
-        // 活跃度为近似判断
-        sessionActive = now - fs.statSync(sessionDir).mtimeMs < ttlMs;
-      } catch {
-        // Session 目录已删除时按非活跃处理，后续文件操作保持容错。
-      }
+    for (const directory of await this.listSessionToolResultDirs()) {
+      const files = await this.listFiles(directory);
+      const expired = files.filter(file => file.mtimeMs < expiresBefore);
+      const ttlCleanup = await this.removeFiles(expired);
+      deleted += ttlCleanup.deleted;
+      freedBytes += ttlCleanup.freedBytes;
 
-      const survivors: FileEntry[] = [];
-      for (const file of files) {
-        if (!sessionActive && now - file.mtimeMs > ttlMs) {
-          if (this.remove(file.fullPath)) {
-            deleted += 1;
-            freedBytes += file.size;
-          }
-        } else {
-          survivors.push(file);
-        }
-      }
-
-      const sessionQuota = this.enforceQuota(survivors, this.setting.perSessionMaxBytes);
-      deleted += sessionQuota.deleted;
-      freedBytes += sessionQuota.freedBytes;
-      allFiles.push(...sessionQuota.remaining);
+      // 删除失败的过期文件仍然占磁盘, 必须继续进入配额计算.
+      const survivors = files.filter(file => !ttlCleanup.removedPaths.has(file.fullPath));
+      const sessionCleanup = await this.enforceQuota(survivors, PER_SESSION_MAX_BYTES);
+      deleted += sessionCleanup.deleted;
+      freedBytes += sessionCleanup.freedBytes;
+      allFiles.push(...sessionCleanup.remaining);
     }
 
-    const globalQuota = this.enforceQuota(allFiles, this.setting.globalMaxBytes);
+    const globalCleanup = await this.enforceQuota(allFiles, GLOBAL_MAX_BYTES);
     return {
-      deleted: deleted + globalQuota.deleted,
-      freedBytes: freedBytes + globalQuota.freedBytes,
+      deleted: deleted + globalCleanup.deleted,
+      freedBytes: freedBytes + globalCleanup.freedBytes,
     };
   }
 
-  private enforceQuota(files: FileEntry[], maxBytes: number): {
-    deleted: number;
-    freedBytes: number;
-    remaining: FileEntry[];
-  } {
+  private async enforceQuota(
+    files: readonly FileEntry[],
+    maxBytes: number,
+  ): Promise<ToolResultCleanup & { remaining: FileEntry[] }> {
     let totalBytes = files.reduce((sum, file) => sum + file.size, 0);
     if (totalBytes <= maxBytes) {
-      return { deleted: 0, freedBytes: 0, remaining: files };
+      return { deleted: 0, freedBytes: 0, remaining: [...files] };
     }
 
-    // 最旧的先驱逐；同 mtime 按路径保证两次运行结果一致。
-    const sorted = [...files].sort(
+    const oldestFirst = [...files].sort(
       (left, right) => left.mtimeMs - right.mtimeMs || left.fullPath.localeCompare(right.fullPath),
     );
-    const remaining: FileEntry[] = [];
+    const removedPaths = new Set<string>();
     let deleted = 0;
     let freedBytes = 0;
-    for (const file of sorted) {
-      if (totalBytes > maxBytes && this.remove(file.fullPath)) {
-        deleted += 1;
-        freedBytes += file.size;
-        totalBytes -= file.size;
-      } else {
-        remaining.push(file);
+    let cursor = 0;
+
+    while (totalBytes > maxBytes && cursor < oldestFirst.length) {
+      const batch: FileEntry[] = [];
+      let projectedBytes = totalBytes;
+      while (
+        projectedBytes > maxBytes
+        && cursor < oldestFirst.length
+        && batch.length < FILE_IO_CONCURRENCY
+      ) {
+        const file = oldestFirst[cursor];
+        cursor += 1;
+        if (!file) break;
+        batch.push(file);
+        projectedBytes -= file.size;
       }
+
+      const cleanup = await this.removeFiles(batch);
+      deleted += cleanup.deleted;
+      freedBytes += cleanup.freedBytes;
+      totalBytes -= cleanup.freedBytes;
+      for (const fullPath of cleanup.removedPaths) removedPaths.add(fullPath);
     }
-    return { deleted, freedBytes, remaining };
+
+    return {
+      deleted,
+      freedBytes,
+      remaining: files.filter(file => !removedPaths.has(file.fullPath)),
+    };
   }
 
-  private listSessionToolResultDirs(): string[] {
-    const directories: string[] = [];
-    for (const root of this.sessionRoots) {
-      let entries: fs.Dirent[];
-      try {
-        entries = fs.readdirSync(root, { withFileTypes: true });
-      } catch {
-        continue;
-      }
-      directories.push(...entries
+  private async listSessionToolResultDirs(): Promise<string[]> {
+    try {
+      const entries = await readdir(this.sessionsDir, { withFileTypes: true });
+      return entries
         .filter(entry => entry.isDirectory())
-        .map(entry => path.join(root, entry.name, 'tool-results'))
-        .filter(directory => fs.existsSync(directory)));
+        .map(entry => path.join(this.sessionsDir, entry.name, 'tool-results'));
+    } catch {
+      return [];
     }
-    return directories;
   }
 
-  private listFiles(directory: string): FileEntry[] {
+  private async listFiles(directory: string): Promise<FileEntry[]> {
     let names: string[];
     try {
-      names = fs.readdirSync(directory);
+      names = await readdir(directory);
     } catch {
       return [];
     }
 
     const files: FileEntry[] = [];
-    for (const name of names) {
-      const fullPath = path.join(directory, name);
-      try {
-        const stat = fs.statSync(fullPath);
-        if (stat.isFile()) files.push({ fullPath, size: stat.size, mtimeMs: stat.mtimeMs });
-      } catch {
-        // Cleaner 与工具执行并发时文件可能已经消失。
+    for (let offset = 0; offset < names.length; offset += FILE_IO_CONCURRENCY) {
+      const batch = names.slice(offset, offset + FILE_IO_CONCURRENCY);
+      const entries = await Promise.all(batch.map(async (name): Promise<FileEntry | undefined> => {
+        const fullPath = path.join(directory, name);
+        try {
+          const fileStat = await stat(fullPath);
+          return fileStat.isFile()
+            ? { fullPath, size: fileStat.size, mtimeMs: fileStat.mtimeMs }
+            : undefined;
+        } catch {
+          // 清理与 Session 删除或 Tool 写入并发时, 文件可能已经消失.
+          return undefined;
+        }
+      }));
+      for (const entry of entries) {
+        if (entry) files.push(entry);
       }
     }
     return files;
   }
 
-  private remove(fullPath: string): boolean {
-    try {
-      fs.rmSync(fullPath, { force: true });
-      return true;
-    } catch {
-      return false;
+  private async removeFiles(files: readonly FileEntry[]): Promise<
+    ToolResultCleanup & { removedPaths: ReadonlySet<string> }
+  > {
+    const removedPaths = new Set<string>();
+    let deleted = 0;
+    let freedBytes = 0;
+
+    for (let offset = 0; offset < files.length; offset += FILE_IO_CONCURRENCY) {
+      const batch = files.slice(offset, offset + FILE_IO_CONCURRENCY);
+      const outcomes = await Promise.all(batch.map(async (file) => {
+        try {
+          await rm(file.fullPath, { force: true });
+          return true;
+        } catch {
+          return false;
+        }
+      }));
+      outcomes.forEach((removed, index) => {
+        if (!removed) return;
+        const file = batch[index];
+        if (!file) return;
+        removedPaths.add(file.fullPath);
+        deleted += 1;
+        freedBytes += file.size;
+      });
     }
+
+    return { deleted, freedBytes, removedPaths };
   }
 }

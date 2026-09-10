@@ -27,7 +27,6 @@ export interface SubagentSpawnOptions {
   /** 任务短描述（3–5 词），展示在 dashboard 与日志；映射自 SubagentTool 的 description 入参。 */
   description?: string;
   contextMode?: SubagentContextMode;
-  agentRunId?: string;
   /** AgentRole 目录钉死的角色身份 Prompt（非模型入参）；由 PrepareSubagent 装配进子 Agent 上下文。 */
   systemPrompt?: string;
   /** AgentRole 目录钉死的工具收窄（模型可见名）；PrepareSubagent 只从父 ToolPool 继续收窄，绝不扩权。 */
@@ -44,22 +43,30 @@ export interface SubagentRunResult {
 }
 
 /**
- * Subagent Tool 消费的子 Agent 启动能力；实现归 agent 包 SubagentSpawner（implements 直赋，无适配层）。
+ * Subagent 工具只取得绑定当前 Session/Turn 的控制面；进程级执行对象不泄露给工具。
  * 接口站在 tools 包是依赖方向唯一允许的落点：agent → tools（ToolResult/执行器类型）已存在，
- * 反向即环；builtinTools 不依赖 agent。三方法全部必填：子 Agent 的 ToolPool 不含 SubagentTool，
- * 不存在"宿主没有后台通路"的形态——同步等待由 spawnBackground + awaitBackground 限时合成。
+ * 反向即环; builtinTools 不依赖 agent. 子 Agent 的 ToolPool 不含 SubagentTool,
+ * 因此这些方法都是根 Turn 注入的必填能力, 不存在半套后台通路.
  */
-export interface SubagentSpawnerFn {
-  /** 后台启动并立即返回 agentRunId。 */
-  spawnBackground(
+export interface SubagentControl {
+  /** 启动当前 Turn 派生的子 Agent；后台形态从创建时就脱离父 Turn 取消。 */
+  start(
     prompt: string,
-    options: SubagentSpawnOptions,
+    options: SubagentSpawnOptions & { readonly agentRunId: string },
+    runInBackground: boolean,
     signal: AbortSignal,
   ): string;
-  /** 等待后台运行结果；未知 id 返回 null。 */
-  awaitBackground(agentRunId: string): Promise<SubagentRunResult | null>;
+  /** 默认 Subagent Tool 等待自己刚启动的运行。 */
+  waitForInitialResult(agentRunId: string, signal: AbortSignal): Promise<SubagentRunResult | null>;
+  /** 超过前台等待期限后，把同一执行转交 Session 续接. 状态不允许转交时抛错. */
+  moveToBackground(agentRunId: string): void;
+  /**
+   * 某一次 SubagentAwait Tool 调用独占等待当前 Session 的后台结果。
+   * 单等待者属于 Tool 调用, 不属于 Session. 取消只终止这次等待, 不取消 AgentRun.
+   */
+  awaitResult(agentRunId: string, signal: AbortSignal): Promise<SubagentRunResult | null>;
   /** 取消运行中的子 Agent；未知 id 返回 false。 */
-  abortSubagent(agentRunId: string): boolean;
+  cancel(agentRunId: string): boolean;
 }
 
 /**
@@ -114,7 +121,7 @@ export interface ToolUseContext {
   /** Task 工具族的持久存储。 */
   readonly taskStore?: TaskStore;
   /** Subagent 工具的子 Agent 启动器。 */
-  readonly subagentSpawner?: SubagentSpawnerFn;
+  readonly subagents?: SubagentControl;
   /** Skill 工具的本根 Turn 冻结技能池;缺省(子 Agent、chat 态)时 Skill 工具不可见。 */
   readonly skillPool?: SkillPool;
   /** Scratchpad 工具的 Turn 级临时存储位置。 */

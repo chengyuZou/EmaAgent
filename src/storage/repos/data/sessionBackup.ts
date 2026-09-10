@@ -255,12 +255,12 @@ export class SessionBackupRestorer {
 
     const insertAgentRunMessage = this.db.prepare(`
       INSERT INTO agent_run_messages (
-        id, agent_run_id, role, block_index, content_json, sequence, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        id, agent_run_id, role, content_json, sequence, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?)
     `);
     for (const row of rows.agentRunMessages) {
       insertAgentRunMessage.run(
-        row.id, row.agent_run_id, row.role, row.block_index, row.content_json, row.sequence, row.created_at,
+        row.id, row.agent_run_id, row.role, row.content_json, row.sequence, row.created_at,
       );
     }
 
@@ -283,8 +283,8 @@ export class SessionBackupRestorer {
         id, session_id, origin_turn_id, tool_call_id, command, description, cwd,
         status, timeout_ms, version, created_at, started_at, completed_at, exit_code,
         termination_reason, stdout_bytes, stderr_bytes, output_truncated,
-        output_relative_path, completion_claimed_at, continuation_turn_id, model_notified_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        output_relative_path
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     for (const row of rows.backgroundProcesses) {
       insertBackgroundProcess.run(
@@ -292,8 +292,7 @@ export class SessionBackupRestorer {
         row.command, row.description, row.cwd, row.status, row.timeout_ms,
         row.version, row.created_at, row.started_at, row.completed_at,
         row.exit_code, row.termination_reason, row.stdout_bytes, row.stderr_bytes,
-        row.output_truncated, row.output_relative_path, row.completion_claimed_at,
-        row.continuation_turn_id, row.model_notified_at,
+        row.output_truncated, row.output_relative_path,
       );
     }
 

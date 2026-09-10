@@ -1,6 +1,6 @@
 # Agent
 
-`src/agent` 只实现一个 Agent 的 `LLM → Tool → Result` 循环，以及父 Agent 派生的子 AgentRun。根 Turn、Session 历史、Context、Compact、权限装配和 ToolPool 发现都不属于本包；循环只产 `AgentLoopEvent`，持久化由事件消费方（Turn / Spawner）在 yield 恢复点完成。
+`src/agent` 只实现一个 Agent 的 `LLM → Tool → Result` 循环，以及父 Agent 派生的子 AgentRun。根 Turn、Session 历史、Context、Compact、权限装配和 ToolPool 发现都不属于本包；循环只产 `AgentLoopEvent`，持久化由事件消费方（Turn / AgentRunExecutor）在 yield 恢复点完成。
 
 ## 唯一循环
 
@@ -25,7 +25,7 @@ runAgentLoop(input)
 2. **max_tokens 三段**：先升级重试（顶到预算上限、半截作废、不注入任何消息）→ 再注入续写提示拼接输出 → 都失败判 `output_recovery_failed`；
 3. **工具后续跑**：模型调用工具就进入下一 iteration，这是唯一"正常"继续。
 
-另有空转软引导：连续 3 轮完全相同的工具批次（工具名+参数一致）在迭代边界注入一次提醒消息让模型换方法，不硬停、不新增恢复分支；硬兜底归 `maxIterations` 与 `AgentBudget`。
+另有空转软引导：连续 3 轮完全相同的工具批次（工具名+参数一致）在迭代边界注入一次提醒消息让模型换方法，不硬停、不新增恢复分支；硬兜底归 `maxIterations`。
 
 ## AgentLoop 的真实输入
 
@@ -33,10 +33,10 @@ runAgentLoop(input)
 
 - `AgentLoopInput.messages`：单一工作历史（持久基线 + 本轮种子消息），循环在其上追加；`prepareIteration` 每次返回的版本可能已被 Compact 改写，循环整体替换继续使用；
 - `PrepareAgentIteration` 闭包：为下一次迭代准备 `LlmRequest`。装配（assembleContext → Compact → Macro 落库 → 再装配）涉及持久化与 Context 知识，全归外层实现；ToolPool 也由实现闭包冻结捕获，故输入里没有显式 tools 字段——工具定义经返回的 `LlmRequest.tools` 到达 Provider；
-- `AgentBudget`：根 Turn 与全部子 Agent 共用的额度消费接口，实现归 Turn；
 - `ToolExecutorFactory`：每次 LlmCall 创建全新执行器。创建时机是外层绑定工具进度、Permission 与 AskUser 事件出口的唯一位置，故必须是工厂；`wake` 是执行器→循环的唤醒针，没有它循环只能轮询。
+- `takeNextIterationMessages`：只有一整批 ToolResult 已经写成完整历史后才调用。Turn 用它领取立即引导输入和本进程后台完成通知，绝不切开 tool_use/tool_result 配对。
 
-`runAgentLoop()` 不接收 `sessionId/turnId/providerId/modelId`，也不导入 Context、Compact、Permission、Sandbox 或 BuiltinTools。失败不是循环相位：Provider/执行错误以异常逃出 generator，终态由 Turn 的 `failTurn` 或 Spawner 的 `agent_run_failed` 承担。
+`runAgentLoop()` 不接收 `sessionId/turnId/providerId/modelId`, 也不导入 Context、Compact、Permission、Sandbox 或 BuiltinTools. 失败不是循环相位: Provider/执行错误以异常逃出 generator, 终态由根 Turn 或进程级 `AgentRunExecutor` 收口.
 
 ## 事件与持久化边界
 
@@ -52,20 +52,21 @@ SSE 不是数据库写入触发器。Agent 也不透明中转 Tool、Permission�
 
 ## 子 AgentRun
 
-`SubagentSpawner` 只负责：
+`AgentRunExecutor` 只负责：
 
 - 创建 AgentRun 行并写唯一终态（CAS 状态机，幂等终态，崩溃恢复收口 running）；
 - 建立父取消信号到子 Agent 的取消树；
-- 消费共享 `AgentBudget.enterSubagent()`；
-- 管理后台等待与取消（`spawnBackground`/`awaitBackground`/`abortSubagent`）；
+- 管理全进程并发上限、前台等待、后台转交与取消；
 - 调用外层注入的 `PrepareSubagent`，随后运行同一个 `runAgentLoop()`；
-- 在恢复子 Agent generator 前，把每个内容事实写入 `AgentRunMessagesStore`。
+- 在恢复子 Agent generator 前, 把完整 Assistant 消息或 ToolResult 写入 `AgentRunMessagesStore`.
 
-`runs/` 下两个存储各司其职：`AgentRunStore` 管一次运行的状态机与终态统计（一次运行一行）；`AgentRunMessagesStore` 管内容消息流水（文本/思考/工具调用/结果，一次运行多行，可回放）。
+`runs/` 下两个存储各司其职: `AgentRunStore` 管一次运行的状态机与终态统计(一次运行一行); `AgentRunMessagesStore` 管完整 Assistant 消息与 ToolResult 流水. Assistant 行内部保留 `AssistantBlock[]` 的原始块顺序, 不以每轮都会重新计数的 `blockIndex` 充当跨轮身份.
 
 `PrepareSubagent` 决定 clean context 或 fork context、模型、Prompt、ToolPool 和工具执行环境。**角色注册表（general/explore 等）归 `builtinTools/tools/SubagentTool/agentRoles.ts`**——模型经 SubagentTool 选角色，角色 Prompt 与 disallowedTools 经 `SubagentSpawnOptions` 传给 PrepareSubagent 应用。V1 子 Agent 深度为 1：子 Agent 没有再次派生子 Agent 的能力。
 
 `AgentRun` 只表示子 Agent；根 Agent 不创建 AgentRun。持久记录继续保存父 `turnId` 外键，这是 AgentRun 自己的归属事实，不会进入 AgentLoop 输入。
+
+前台等待超过 2 分钟只改变结果所有者和父 Turn 取消关系，同一条执行不会重启。自然终态先写 `agent_runs.final_text`，再向 Session 队列发送 `agentRunId + status`；完整结果可由 `SubagentAwait` 按 id 重复读取。应用启动只把遗留 `running` 收口为失败，不扫描终态并启动新 Turn。
 
 ## 文件结构
 
@@ -76,7 +77,7 @@ src/agent/
 ├─ types.ts
 ├─ events.ts
 ├─ settings.ts
-├─ subagentSpawner.ts
+├─ agentRunExecutor.ts
 ├─ runs/
 │  ├─ types.ts
 │  ├─ agentRunStore.ts

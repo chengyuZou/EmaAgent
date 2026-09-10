@@ -10,10 +10,9 @@ import type { TurnFailureCode } from './errors.js';
 import type { TurnStreamEvent } from './events.js';
 
 /**
- * 公开 Turn 触发源。`backgroundProcessCompleted` 由 Server 内部创建，
- * HTTP 客户端不能伪造。
+ * userMessage 来自用户队列, sessionContinuation 只承载后台终态.
  */
-export type TurnTriggerType = 'userMessage' | 'backgroundProcessCompleted';
+export type TurnTriggerType = 'userMessage' | 'sessionContinuation';
 
 // ── Turn 领域对象（事实源；持久化行见 storage TurnRow，边界显式映射） ──────────
 
@@ -44,7 +43,7 @@ export interface Turn {
 }
 
 export interface StartTurnInput {
-  /** 内部恢复流程可预留稳定身份；公开请求始终由 Store 生成。 */
+  /** Session 续接预先分配身份, 普通请求由 Store 生成. */
   readonly turnId?: string;
   readonly sessionId: string;
   readonly triggerType: TurnTriggerType;
@@ -161,6 +160,8 @@ export interface StartTurn {
   readonly executionProfile: ExecutionProfile;
   readonly narrativePolicy: NarrativePolicy;
   readonly input: readonly TurnInputPart[];
+  /** 已完成后台工作的轻量通知. 完整结果由模型按其中的执行 id 主动读取. */
+  readonly completionNoticeText?: string;
   /** 省略时使用 Session 当前模型选择。 */
   readonly modelSelection?: TurnModelSelection;
   readonly knowledge?: TurnKnowledgeSelection;

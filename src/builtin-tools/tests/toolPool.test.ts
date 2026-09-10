@@ -45,7 +45,7 @@ describe('Builtin ToolPool 能力装配', () => {
       readFileState: new Map(),
       taskStore: {} as never,
       askUser: async () => ({ answers: {} }),
-      subagentSpawner: {} as never,
+      subagents: {} as never,
       knowledgeSearch: async () => [] as never,
       narrativeSearch: async () => ({
         timelines: [],

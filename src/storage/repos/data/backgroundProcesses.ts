@@ -1,4 +1,4 @@
-// 持久化后台 Shell 状态、完成通知领取和断电后的 interrupted 收口。
+// 持久化后台 Shell 状态, 并在应用重启时把遗留运行态收口为 interrupted.
 
 import type { SqliteDb } from '../../database/database.js';
 
@@ -32,9 +32,6 @@ export interface BackgroundProcessRow {
   stderr_bytes: number;
   output_truncated: 0 | 1;
   output_relative_path: string;
-  completion_claimed_at: number | null;
-  continuation_turn_id: string | null;
-  model_notified_at: number | null;
 }
 
 /** 提供给 Tools 端口的领域形状,不泄露 SQL 列名与 null。 */
@@ -58,9 +55,6 @@ interface StoredBackgroundProcess {
   stderrBytes: number;
   outputTruncated: boolean;
   outputRelativePath: string;
-  completionClaimedAt?: number;
-  continuationTurnId?: string;
-  modelNotifiedAt?: number;
 }
 
 export interface BackgroundProcessInsert {
@@ -213,79 +207,6 @@ export class BackgroundProcessesRepo {
     return rows.map(fromSqlRow);
   }
 
-  /**
-   * 为同一 Session 的自然终态预留一个新 TurnId。continuation_turn_id 是软预留：
-   * Turn 行尚未创建时不能建立 FK，但身份仍由业务层用 BackgroundProcessId 幂等校验。
-   */
-  claimCompletionBatch(
-    sessionId: string,
-    continuationTurnId: string,
-    at: number,
-    limit = 20,
-  ): StoredBackgroundProcess[] {
-    const claim = this.db.transaction(() => {
-      const existing = this.db.prepare(
-        `SELECT * FROM background_processes
-          WHERE session_id = ?
-            AND continuation_turn_id IS NOT NULL
-            AND model_notified_at IS NULL
-          ORDER BY completed_at ASC, id ASC
-          LIMIT ?`,
-      ).all(sessionId, limit) as BackgroundProcessRow[];
-      if (existing.length > 0) return existing;
-
-      const candidates = this.db.prepare(
-        `SELECT id FROM background_processes
-          WHERE session_id = ?
-            AND status IN ('completed','failed','timedOut')
-            AND continuation_turn_id IS NULL
-            AND model_notified_at IS NULL
-          ORDER BY completed_at ASC, id ASC
-          LIMIT ?`,
-      ).all(sessionId, limit) as Array<{ id: string }>;
-      if (candidates.length === 0) return [];
-
-      const placeholders = candidates.map(() => '?').join(', ');
-      this.db.prepare(
-        `UPDATE background_processes
-            SET completion_claimed_at = ?,
-                continuation_turn_id = ?,
-                version = version + 1
-          WHERE id IN (${placeholders})
-            AND continuation_turn_id IS NULL`,
-      ).run(at, continuationTurnId, ...candidates.map(row => row.id));
-
-      return this.db.prepare(
-        `SELECT * FROM background_processes
-          WHERE continuation_turn_id = ?
-          ORDER BY completed_at ASC, id ASC`,
-      ).all(continuationTurnId) as BackgroundProcessRow[];
-    });
-    return claim().map(fromSqlRow);
-  }
-
-  markCompletionDelivered(continuationTurnId: string, at: number): number {
-    return this.db.prepare(
-      `UPDATE background_processes
-          SET model_notified_at = ?,
-              version = version + 1
-        WHERE continuation_turn_id = ?
-          AND model_notified_at IS NULL`,
-    ).run(at, continuationTurnId).changes;
-  }
-
-  listSessionsWithPendingCompletions(limit = 100): string[] {
-    const rows = this.db.prepare(
-      `SELECT session_id, MIN(completed_at) AS first_completed_at
-         FROM background_processes
-        WHERE status IN ('completed','failed','timedOut')
-          AND model_notified_at IS NULL
-        GROUP BY session_id
-        ORDER BY first_completed_at ASC, session_id ASC
-        LIMIT ?`,
-    ).all(Math.min(Math.max(limit, 1), 500)) as Array<{ session_id: string }>;
-    return rows.map(row => row.session_id);
-  }
 }
 
 function fromSqlRow(row: BackgroundProcessRow): StoredBackgroundProcess {
@@ -311,14 +232,5 @@ function fromSqlRow(row: BackgroundProcessRow): StoredBackgroundProcess {
     stderrBytes: row.stderr_bytes,
     outputTruncated: row.output_truncated === 1,
     outputRelativePath: row.output_relative_path,
-    ...(row.completion_claimed_at !== null
-      ? { completionClaimedAt: row.completion_claimed_at }
-      : {}),
-    ...(row.continuation_turn_id
-      ? { continuationTurnId: row.continuation_turn_id }
-      : {}),
-    ...(row.model_notified_at !== null
-      ? { modelNotifiedAt: row.model_notified_at }
-      : {}),
   };
 }

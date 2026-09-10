@@ -8,7 +8,8 @@ export type MessageKind =
   | 'normal'
   | 'tool_results'
   | 'summary'
-  | 'reminder';
+  | 'reminder'
+  | 'continuation';
 
 export interface MessageRow {
   id:          string;

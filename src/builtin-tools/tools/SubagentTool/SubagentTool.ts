@@ -1,5 +1,5 @@
 // 启动子 Agent: 默认同步等待完成, runInBackground 立即返回引用;
-// 同步等待超限时自动转交后台(与 Bash 15s 转交同思想)。
+// 同步等待超限时自动转交后台(与命令工具 30s 转交同思想).
 // 模型说明书见 prompt.ts。
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
@@ -8,7 +8,7 @@ import {
   contextFail,
   contextOk,
   SubagentSpawnOptions,
-  type SubagentSpawnerFn,
+  type SubagentControl,
   type ToolInvocation,
 } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
@@ -17,14 +17,14 @@ import { AGENT_ROLES, DEFAULT_AGENT_ROLE, getAgentRole } from './agentRoles.js';
 
 /** Subagent 工具的窄 Context：子 Agent 启动器;取消与身份走 ToolInvocation。 */
 interface SubagentToolContext {
-  spawner: SubagentSpawnerFn;
+  subagents: SubagentControl;
 }
 
 /**
  * 同步等待的转交阈值: 超过即把 AgentRun 转交后台并返回引用。
- * 比 Bash 的 15s 宽——子 Agent 的迭代粒度是 LLM 调用,不是进程输出。
+ * 比命令工具的 30s 宽, 因为子 Agent 的迭代粒度是 LLM 调用, 不是进程输出.
  */
-const AUTO_BACKGROUND_WAIT_MS = 30_000;
+const AUTO_BACKGROUND_WAIT_MS = 120_000;
 
 // ── 输入 schema ──────────────────────────────────────────────────────────────
 
@@ -152,10 +152,10 @@ export const SubagentTool = buildTool<SubagentInput, SubagentResult, SubagentToo
   checkPermissions: async () => ({ behavior: 'passthrough', message: '启动子 Agent 需要用户确认' }),
 
   validateContext(ctx) {
-    if (!ctx.subagentSpawner) {
+    if (!ctx.subagents) {
       return contextFail('子 Agent 不能再启动子 Agent（深度限制: 1）。');
     }
-    return contextOk({ spawner: ctx.subagentSpawner });
+    return contextOk({ subagents: ctx.subagents });
   },
 
   async execute(
@@ -163,9 +163,8 @@ export const SubagentTool = buildTool<SubagentInput, SubagentResult, SubagentToo
     context: SubagentToolContext,
     invocation: ToolInvocation,
   ): Promise<SubagentResult> {
-    // 预分配 ID,以便 spawner 在阻塞前 emit subagent_started。
-    // 所有 dashboard 事件(started/progress/stream/completed/failed/aborted)由
-    // spawner emit - 它有 model/timing/usage 信息,工具没有。
+    // Tool 先分配稳定 ID, AgentRunExecutor 才能用同一个身份记录执行、转录和事件.
+    // Tool 本身只决定同步等待还是转交后台, 不复制运行状态.
     const agentRunId = randomUUID();
     const role = getAgentRole(input.role ?? DEFAULT_AGENT_ROLE);
     if (!role) {
@@ -183,7 +182,7 @@ export const SubagentTool = buildTool<SubagentInput, SubagentResult, SubagentToo
           'A modelId alone is ambiguous — the same model id can exist on multiple providers.',
       );
     }
-    const options: SubagentSpawnOptions = {
+    const options: SubagentSpawnOptions & { readonly agentRunId: string } = {
       providerId,
       modelId,
       description: input.description,
@@ -194,23 +193,24 @@ export const SubagentTool = buildTool<SubagentInput, SubagentResult, SubagentToo
     };
 
     if (input.runInBackground) {
-      context.spawner.spawnBackground(input.prompt, options, invocation.signal);
+      context.subagents.start(input.prompt, options, true, invocation.signal);
       return { kind: 'background', agentRunId, via: 'requested' };
     }
 
     // 同步路径: 后台拉起 + 限时等待，超时自动转交后台。
-    context.spawner.spawnBackground(input.prompt, options, invocation.signal);
+    context.subagents.start(input.prompt, options, false, invocation.signal);
     const outcome = await raceWithAbort(
-      context.spawner.awaitBackground(agentRunId),
+      context.subagents.waitForInitialResult(agentRunId, invocation.signal),
       AUTO_BACKGROUND_WAIT_MS,
       invocation.signal,
     );
     if (outcome.kind === 'timeout') {
+      context.subagents.moveToBackground(agentRunId);
       return { kind: 'background', agentRunId, via: 'auto' };
     }
     if (outcome.kind === 'aborted') {
       // 同步等待被取消: 取消子 Agent 再抛,不留孤儿运行。
-      context.spawner.abortSubagent(agentRunId);
+      context.subagents.cancel(agentRunId);
       throw outcome.reason instanceof Error ? outcome.reason : new Error(String(outcome.reason));
     }
     if (!outcome.result) {
@@ -222,7 +222,7 @@ export const SubagentTool = buildTool<SubagentInput, SubagentResult, SubagentToo
   mapResultToModelContent(output) {
     if (output.kind === 'background') {
       const via = output.via === 'auto'
-        ? 'transferred to background after 30s'
+        ? 'transferred to background after 120s'
         : 'started in the background';
       return `Sub-agent ${output.agentRunId} is ${via}. `
         + 'You will be notified when it completes — do not poll or sleep. '

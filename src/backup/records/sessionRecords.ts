@@ -45,7 +45,7 @@ export const turnRecordSchema = z.object({
   id,
   sessionId: id,
   status: z.enum(['running', 'completed', 'failed', 'aborted']),
-  triggerType: z.enum(['userMessage', 'backgroundProcessCompleted']),
+  triggerType: z.enum(['userMessage', 'sessionContinuation']),
   executionProfile: z.enum(['chat', 'work']),
   narrativePolicy: z.enum(['auto', 'always', 'off']),
   providerId: nullableId,
@@ -71,7 +71,7 @@ export const messageRecordSchema = z.object({
   sessionId: id,
   turnId: nullableId,
   role: z.enum(['system', 'user', 'assistant']),
-  kind: z.enum(['normal', 'tool_results', 'summary', 'reminder']),
+  kind: z.enum(['normal', 'tool_results', 'summary', 'reminder', 'continuation']),
   blocksJson: z.string(),
   interrupted: z.boolean(),
   createdAt: integer,
@@ -123,6 +123,7 @@ export const agentRunRecordSchema = z.object({
   toolCallCount: nonNegativeInteger.nullable(),
   inputTokens: nonNegativeInteger.nullable(),
   outputTokens: nonNegativeInteger.nullable(),
+  finalText: z.string().nullable(),
   createdAt: integer,
   updatedAt: integer,
   completedAt: integer.nullable(),
@@ -131,8 +132,7 @@ export const agentRunRecordSchema = z.object({
 export const agentRunMessageRecordSchema = z.object({
   id,
   agentRunId: id,
-  role: z.enum(['assistant', 'tool_call', 'tool_result', 'reasoning']),
-  blockIndex: nonNegativeInteger.nullable(),
+  role: z.enum(['assistant', 'tool_result']),
   contentJson: z.string(),
   sequence: nonNegativeInteger,
   createdAt: integer,
@@ -175,9 +175,6 @@ export const backgroundProcessRecordSchema = z.object({
   stderrBytes: nonNegativeInteger,
   outputTruncated: z.boolean(),
   outputDirectoryPath: z.string(),
-  completionClaimedAt: integer.nullable(),
-  continuationTurnId: nullableId,
-  modelNotifiedAt: integer.nullable(),
 }).strict();
 
 // 附件账本的归档记录。path 即身份(全局唯一):uuid 文件名不变,跨机器导入时

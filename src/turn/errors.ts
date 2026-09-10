@@ -43,16 +43,6 @@ export class TurnPreparationError extends Error {
   }
 }
 
-/** 根 Agent 或子 Agent 申请额度时预算已耗尽；turn.ts 映射为 turn/budget_exceeded 失败终态。 */
-export class TurnBudgetExceededError extends Error {
-  readonly code = 'turn/budget_exceeded' as const;
-
-  constructor(message: string) {
-    super(message);
-    this.name = 'TurnBudgetExceededError';
-  }
-}
-
 export class TurnEventChannelClosedError extends Error {
   constructor() {
     super('turn event consumer is closed');
@@ -71,10 +61,9 @@ const PROVIDER_FAILURE_CODES: ReadonlySet<string> = new Set([
   'provider/not_configured',
 ]);
 
-/** 任意异常 → Turn 失败终态错误码：准备错误用自身 code，预算错误固定码，llm 码查表，其余归执行失败。 */
+/** 任意异常映射为 Turn 失败终态错误码. */
 export function failureCodeOf(error: unknown): TurnFailureCode {
   if (error instanceof TurnPreparationError) return error.code;
-  if (error instanceof TurnBudgetExceededError) return 'turn/budget_exceeded';
   const code: string = llmProviderErrorCode(error);
   // llm 错误码并集比 TurnFailureCode 宽；不在 Turn 失败词表的归为执行失败。
   return PROVIDER_FAILURE_CODES.has(code) ? code as TurnFailureCode : 'turn/execution_failed';

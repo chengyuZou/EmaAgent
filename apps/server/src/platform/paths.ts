@@ -5,7 +5,6 @@ import os   from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// 开发期从 Desktop 宿主的发布资源目录找随包种子；正式包由环境变量传入资源目录。
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..', '..', '..', '..');
 
@@ -40,12 +39,6 @@ export function lockfilePath(): string {
 /** 所有角色的唯一资源根：`<profileDir>/characters/<characterName>/{live2d,illustration,voice}/`。 */
 export function charactersDir(): string {
   return path.join(profileDir(), 'characters');
-}
-
-/** 随包角色种子来源；只在安装阶段读取，不是运行时资源根。 */
-export function bundledCharactersDir(): string {
-  return process.env['EMA_BUNDLED_CHARACTERS_DIR']
-    ?? path.join(REPO_ROOT, 'apps', 'desktop', 'src-tauri', 'resources', 'characters');
 }
 
 /** 内置技能目录：`<profileDir>/resources/skills`，由宿主（Tauri release 资源）在启动时铺好；skills 域不感知打包。 */

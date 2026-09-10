@@ -13,8 +13,8 @@
 - `ToolRegistry`（进程级可变库存）、`ToolPool`（根 Turn 冻结快照）;
 - 单调用管线 `ToolCallExecution` 与流式协调器 `StreamingToolExecutor`;
 - `ToolExecutionState` 副作用边界状态机（prepared/authorized/running → 终态）;
-- Results 层：`ToolResult` 信封、单项/聚合预算、外置落盘与回收；
-- 后台进程：`BackgroundProcessRuntime`（15s 转交、双坑位池、日志、终态、完成通知）。
+- Results 层：`ToolResult` 信封、单项预算、异步外置落盘与回收；
+- 后台进程：`BackgroundProcess`（30s 转交、双坑位池、日志、终态、轻量完成通知）。
 
 **本包不拥有（禁止反向依赖）：**
 
@@ -33,7 +33,7 @@ src/tools/
 │  ├─ tool.ts                     Tool 接口、ToolOrigin、校验结果类型
 │  ├─ buildTool.ts                工厂:fail-closed 默认值、maxResultBytes 校验、冻结
 │  ├─ toolInvocation.ts           单次调用身份(session/turn/agentRun/toolCall/signal)
-│  └─ toolUseContext.ts           宿主能力全集 + Subagent/AskUser/Scratchpad 等 Port
+│  └─ toolUseContext.ts           宿主能力全集 + Subagent/AskUser/Scratchpad 等入口
 ├─ assembly/                      装配层
 │  ├─ toolRegistry.ts             进程库存;MCP 整批原子注册、来源冲突即错误
 │  ├─ assembleToolPool.ts         validateContext 过滤 + Builtin 前缀/MCP 后缀稳定排序
@@ -44,10 +44,10 @@ src/tools/
 │  └─ toolExecutionState.ts       副作用边界状态机 + 持久化窄端口
 ├─ results/                       结果层
 │  ├─ toolResult.ts               唯一结果信封(toolCallId/content/isError/durationMs/errorCode)
-│  ├─ toolResultStore.ts          空输出占位、单项预算外置、聚合预算、稳定预览
-│  └─ toolResultCleaner.ts        TTL + 单 Session + 全局配额回收
+│  ├─ toolResultStore.ts          空输出占位、单项预算异步外置、稳定预览
+│  └─ toolResultCleaner.ts        8 路异步扫描, TTL + 单 Session + 全局配额回收
 ├─ background/                    后台进程
-│  ├─ backgroundProcessRuntime.ts 15s 转交、双坑位池、列表/读取/停止
+│  ├─ backgroundProcess.ts        30s 转交、双坑位池、列表/读取/停止
 │  ├─ backgroundProcessScheduler.ts 公平轮转坑位
 │  ├─ backgroundProcessStore.ts   后台进程持久化窄端口 + camelCase 记录
 │  ├─ outputStore.ts              stdout/stderr 有界落盘与双游标读取
@@ -65,14 +65,14 @@ src/tools/
 - `Tool`、`buildTool`、`contextOk/contextFail`、`DEFAULT_MAX_RESULT_BYTES`;
 - 每个 Tool 的 `execute()` 只返回类型化 `TOutput`;`mapResultToModelContent(TOutput)` 把同一结果投影为 Provider 中立的模型内容（缺省按"string 原样、其余 JSON 化"，复杂工具必须自定义）；信封 `data` 槽携带 TOutput 本体供 UI/审计/持久化；
 - `ToolUseContext`、`ToolInvocation`、`ToolInputValidationResult`、`ToolContextValidation`;
-- 宿主 Port 类型：`SubagentSpawnerPort`、`AskUserPort`、`ScratchpadPort`、`CommandRunnerPort`(sandbox 转出口径）。
+- 宿主能力：`SubagentControl`、`AskUser`、`Scratchpad`、`CommandRunner`.
 
 **装配层消费**(Server wiring):
 
 - `ToolRegistry`(Builtin 启动注册、MCP 热更新）、`assembleToolPool`、`ToolPool`;
 - `StreamingToolExecutor` + `StreamingToolExecutorOptions` —— **执行的唯一公开入口；`ToolCallExecution` 不导出，任何包不得绕过协调器直接单发**;
 - `ToolExecutionState` + `ToolExecutionStateStore`（Storage 适配端口）——SQL 实现在 storage,Core 注入;执行链、审计路由与启动恢复都直接消费 `ToolExecutionState` 类;
-- `BackgroundProcessRuntime` + `BackgroundProcessStore`（端口）+ `BackgroundProcessPort`(Bash/Process 工具消费的窄口）+ `BackgroundProcessCompletionSource`(Server 完成通知）;
+- `BackgroundProcess` + `BackgroundProcessStore`. Bash/Process 工具调用同一实例;自然终态只向 Server 回调 `sessionId + backgroundProcessId + status`, 完整输出仍由 `ProcessOutput` 读取.
 - `ToolResultStore`、`ToolResultCleaner`、`backgroundProcessSetting`。
 
 **Agent/Turn 消费**:
@@ -89,10 +89,11 @@ src/tools/
 4. **running 是副作用边界。** `ToolExecutionState.start()` 落库成功后才能 `execute()`;running 后断电/取消按 `outcome_unknown` 关账，不伪装干净 cancelled。
 5. **Message 先落，状态后关。** `acknowledgeResult`（写 Message）先于 `commitResult`（推进状态机）——先持久化后关账。
 6. **终态 FIFO。** 完成可乱序，`tool_result` 终态必须按模型 blockIndex 顺序发射；进度事件实时但有界。
-7. **后台双坑位池。** 交互命令独立小池（15s 内完成或转交），后台长任务吃 `maxConcurrent`;15s 转交时 detach 取消信号并交还交互坑位，转交后进程不再计入任何池。
+7. **后台双坑位池.** 交互命令独立小池(30s 内完成或转交), 后台长任务使用 `maxConcurrent`; 30s 转交只解除父 Turn 的等待与取消绑定, 活进程继续占原坑位直到终态.
 8. **取消与降级诚实。** 无批准界面 deny、无 workspace 相对路径 fail-closed、超大结果先外置再给稳定预览（落盘失败当前原样放行，改有界错误待拍板）、后台 interrupted 墓碑不自动重跑。
 9. **结果只有一份事实。** Tool 作者不同时返回 `data + modelContent`；模型内容必须由 `mapResultToModelContent(TOutput)` 在执行期投影一次并持久化（重放不重算）。缺省投影为 JSON/Text；复杂结果必须自定义映射，过滤内部字段并保留多模态语义；多模态 parts 不做文本外置，由 Tool 业务层自限尺寸。
 10. **MCP 只有一个结果 Adapter。** 动态 MCP Tool 共用标准 `content` 转换；`structuredContent` 稳定 JSON 化，`isError` 进入失败路径，`_meta` 不进模型，图片/资源/二进制按各自协议语义处理。
+
 
 ## 失败语义速查
 

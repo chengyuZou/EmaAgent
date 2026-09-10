@@ -125,6 +125,7 @@ export function restoreAgentRunRecord(record: AgentRunRecord, importedAt: number
     tool_call_count: record.toolCallCount,
     input_tokens: record.inputTokens,
     output_tokens: record.outputTokens,
+    final_text: record.finalText,
     created_at: record.createdAt,
     updated_at: unfinished ? Math.max(record.updatedAt, importedAt) : record.updatedAt,
     completed_at: unfinished ? record.completedAt ?? importedAt : record.completedAt,
@@ -137,7 +138,6 @@ export const restoreAgentRunMessageRecord = (
   id: record.id,
   agent_run_id: record.agentRunId,
   role: record.role,
-  block_index: record.blockIndex,
   content_json: record.contentJson,
   sequence: record.sequence,
   created_at: record.createdAt,
@@ -197,9 +197,6 @@ export function restoreBackgroundProcessRecord(
       || stdoutBytes !== record.stdoutBytes
       || stderrBytes !== record.stderrBytes ? 1 : 0,
     output_relative_path: outputRelativePath,
-    completion_claimed_at: unfinished ? null : record.completionClaimedAt,
-    continuation_turn_id: unfinished ? null : record.continuationTurnId,
-    model_notified_at: unfinished ? null : record.modelNotifiedAt,
   };
 }
 

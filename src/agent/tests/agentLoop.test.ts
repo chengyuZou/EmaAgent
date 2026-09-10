@@ -6,11 +6,7 @@ import { ContextWindowExceededError } from '@ema-agent/llm';
 import type { StreamingToolExecutor, ToolResult } from '@ema-agent/tools';
 import { runAgentLoop } from '../agentLoop.js';
 import type { AgentLoopEvent } from '../events.js';
-import type { AgentBudget, AgentLoopInput, PrepareAgentIterationInput } from '../types.js';
-
-class TestBudget implements AgentBudget {
-  enterSubagent(): () => void { return () => undefined; }
-}
+import type { AgentLoopInput, PrepareAgentIterationInput } from '../types.js';
 
 function model(
   stream: CallLlm,
@@ -59,7 +55,6 @@ function baseInput(overrides: Partial<AgentLoopInput>): AgentLoopInput {
       yield { type: 'done' as const, stopReason: 'end_turn' as const };
     })()),
     createToolExecutor: () => idleExecutor(),
-    budget: new TestBudget(),
     signal: new AbortController().signal,
     maxIterations: 4,
     generationSource: { providerId: 'test-provider', modelId: 'test-model', protocol: 'openai-llm' },
@@ -88,7 +83,6 @@ function terminalEvent(events: readonly AgentLoopEvent[]) {
 
 describe('runAgentLoop', () => {
   it('每次迭代都经 prepareIteration，请求透传其输出上限并累计 Usage 差值', async () => {
-    const budget = new TestBudget();
     const stream = vi.fn((_request: LlmRequest) => (async function* () {
       yield { type: 'usage' as const, inputTokens: 10, outputTokens: 0 };
       yield { type: 'usage' as const, inputTokens: 10, outputTokens: 4 };
@@ -104,7 +98,6 @@ describe('runAgentLoop', () => {
     }));
 
     const result = await collect(baseInput({
-      budget,
       prepareIteration,
       callLlm: model(stream),
     }));

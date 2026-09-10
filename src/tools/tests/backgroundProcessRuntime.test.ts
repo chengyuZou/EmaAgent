@@ -1,4 +1,4 @@
-// 测试后台进程运行时的 15s 转交、取消竞态、停止终态、池分离与断电恢复。
+// 测试后台进程的 30s 转交、取消竞态、停止终态、池分离与断电恢复.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -119,7 +119,7 @@ function createFixture(options?: {
   ).run(TOOL_CALL_ID, SESSION_ID, TURN_ID);
 
   const events: BackgroundProcessEvent[] = [];
-  const notified: SessionId[] = [];
+  const notified: string[] = [];
   const runner = new FakeRunner();
   const repo = new BackgroundProcessesRepo(db.sqlite);
   const runtime = new BackgroundProcess({
@@ -140,12 +140,13 @@ function createFixture(options?: {
       maxRuntimeHours: 24,
     }),
     emit: event => events.push(event),
+    onCompletion: (sessionId, processId, status) => {
+      notified.push(`${sessionId}:${processId}:${status}`);
+    },
     ...(options?.immediateResultWaitMs !== undefined
       ? { immediateResultWaitMs: options.immediateResultWaitMs }
       : {}),
   });
-  runtime.setCompletionListener(sessionId => notified.push(sessionId));
-
   return { runtime, runner, events, notified, repo, dataDir, db };
 }
 
@@ -196,7 +197,7 @@ function tracked(options?: Parameters<typeof createFixture>[0]): Fixture {
 // ── 测试 ─────────────────────────────────────────────────────────────────────
 
 describe('BackgroundProcess', () => {
-  it('15 秒内完成:返回普通结果,不留 DB 行,日志目录已清理', async () => {
+  it('30 秒内完成:返回普通结果,不留 DB 行,日志目录已清理', async () => {
     const fixture = tracked();
     const pending = fixture.runtime.runCommand(makeRequest(fixture));
     await tick();
@@ -229,7 +230,9 @@ describe('BackgroundProcess', () => {
     await new Promise(resolve => setTimeout(resolve, 150));
     const terminal = fixture.repo.findById(result.backgroundProcessId);
     expect(terminal?.status).toBe('completed');
-    expect(fixture.notified).toEqual([SESSION_ID]);
+    expect(fixture.notified).toEqual([
+      `${SESSION_ID}:${result.backgroundProcessId}:completed`,
+    ]);
 
     const stdout = fs.readFileSync(
       path.join(logDirFor(fixture, result.backgroundProcessId), 'stdout.log'),

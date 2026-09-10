@@ -1,5 +1,5 @@
-// 进程生命周期：数据目录决议 → 锁 → Composition → 启动恢复 → 监听 → ready 文件 → 后台驱动；
-// 以及对应的优雅关闭。只编排顺序，不实现业务，业务对象全部来自 Composition。
+// 进程生命周期: 数据目录决议 → 锁 → Composition → 启动恢复 → 监听 → ready 文件 → 后台驱动.
+// 以及对应的优雅关闭. 这里只编排顺序, 业务对象全部来自 Composition.
 import path from 'node:path';
 import type { Server } from 'node:http';
 import { serve } from '@hono/node-server';
@@ -26,8 +26,8 @@ export interface ServerLifecycle {
 
 /**
  * 唯一启动序列。失败即抛：入口负责打印并非零退出。
- * 启动恢复是 ready 前置（不能把旧 running 状态留给新进程）；ready 之后的后台驱动
- * （文件维护、Narrative 推送、默认 KB、后台进程续跑）全部可降级。
+ * 启动恢复是 ready 前置(不能把旧 running 状态留给新进程); ready 之后的文件维护、
+ * Narrative 推送、默认 KB 等后台驱动允许降级. 启动不会续跑旧 Turn 或后台工作.
  */
 export async function startServer(secret: string): Promise<ServerLifecycle> {
   const activeDataDir = activeDirEntry(loadRegistry()).path;
@@ -44,7 +44,10 @@ export async function startServer(secret: string): Promise<ServerLifecycle> {
   let server: Server | undefined;
   let webSocketServer: WebSocketServer | undefined;
   try {
-    const running = buildComposition({ activeDataDir });
+    const running = buildComposition({
+      activeDataDir,
+      initializeBuiltinCharacters: process.env['EMA_INITIALIZE_BUILTIN_CHARACTERS'] === '1',
+    });
     composition = running;
     const recoveryDeps: StartupRecoveryDeps = {
       activeDataDir,
@@ -52,6 +55,7 @@ export async function startServer(secret: string): Promise<ServerLifecycle> {
       session: running.database.session,
       turns: running.database.turns,
       agentRuns: running.database.agentRuns,
+      agentRunMessages: running.database.agentRunMessages,
       toolExecutionState: running.tools.toolExecutionState,
       backgroundProcesses: running.tools.backgroundProcesses,
       settings: running.settings.settings,
@@ -81,8 +85,17 @@ export async function startServer(secret: string): Promise<ServerLifecycle> {
 
     // ── ready 之后的后台驱动 ──────────────────────────────────────────────
     runFileMaintenance(recoveryDeps);
+    void running.tools.toolResultCleaner.sweep()
+      .then(({ deleted, freedBytes }) => {
+        if (deleted > 0) {
+          console.warn(
+            `[tools] 清理 ${deleted} 个外置 Tool Result, 释放 ${(freedBytes / 1024 / 1024).toFixed(1)} MiB`,
+          );
+        }
+      })
+      .catch(error => console.warn('[tools] 外置 Tool Result 清理跳过:', error));
     running.memory.start();
-    // models.dev 快照是 gitignored 拉取产物：启动后台刷一次，失败只告警（目录只影响 llm/vision 候选展示）。
+    // models.dev 缓存是 gitignored 拉取产物: 启动后台刷一次, 失败只影响模型候选展示.
     void running.providers.refreshCatalog()
       .catch(error => console.warn('[providers] models.dev 目录刷新失败:', error));
     void running.narrative.configureNarrativeBridge()
@@ -90,7 +103,6 @@ export async function startServer(secret: string): Promise<ServerLifecycle> {
     // 默认库落在 <数据目录>/kb/<随机 id>:参数是父目录,库目录由 KbManager 自建。
     void running.knowledge.kb.ensureDefault(path.join(activeDataDir, 'kb'))
       .catch(error => console.warn('[kb] 默认知识库创建失败:', error));
-    running.backgroundCompletion.start();
     return {
       composition: running,
       port,
@@ -103,7 +115,7 @@ export async function startServer(secret: string): Promise<ServerLifecycle> {
           // SSE 是长连接，close() 不会自然结束；本地桌面进程直接断开。
           httpServer.closeAllConnections();
         });
-        running.close();
+        await running.close();
         lock.release();
       },
     };
@@ -111,7 +123,7 @@ export async function startServer(secret: string): Promise<ServerLifecycle> {
     for (const socket of webSocketServer?.clients ?? []) socket.terminate();
     webSocketServer?.close();
     server?.close();
-    composition?.close();
+    await composition?.close();
     lock.release();
     throw error;
   }

@@ -105,9 +105,6 @@ function makeRuntime(start: StartTurn) {
   return {
     request: start,
     turnId: TURN.id,
-    budget: {
-      enterSubagent: () => () => undefined,
-    },
     prepareSubagent: async () => { throw new Error('不应派生子 Agent'); },
     parentMessages: [],
     emit: () => undefined,

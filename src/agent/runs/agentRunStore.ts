@@ -1,5 +1,5 @@
 // 管理一次子 Agent 运行的状态机与终态统计（一次运行一行）。
-// 内容消息流水（文本/思考/工具调用/结果）归 agentRunMessagesStore.ts。
+// 完整 Assistant 消息与 ToolResult 流水归 agentRunMessagesStore.ts.
 
 import type { AgentRunRow, AgentRunsRepo } from '@ema-agent/storage';
 import type {
@@ -33,6 +33,7 @@ function fromRow(row: AgentRunRow): AgentRun {
     ...(row.tool_call_count !== null ? { toolCallCount: row.tool_call_count } : {}),
     ...(row.input_tokens !== null ? { inputTokens: row.input_tokens } : {}),
     ...(row.output_tokens !== null ? { outputTokens: row.output_tokens } : {}),
+    ...(row.final_text !== null ? { finalText: row.final_text } : {}),
     ...(row.completed_at !== null ? { completedAt: row.completed_at } : {}),
   };
 }
@@ -79,6 +80,7 @@ export class AgentRunStore {
         toolCallCount: completion.toolCallCount,
         inputTokens: completion.inputTokens,
         outputTokens: completion.outputTokens,
+        finalText: completion.finalText,
       }, Date.now()),
     );
   }

@@ -45,7 +45,7 @@ export type {
   SubagentContextMode,
   SubagentRunResult,
   SubagentSpawnOptions,
-  SubagentSpawnerFn,
+  SubagentControl,
 } from '@ema-agent/tools';
 export { contextOk, contextFail } from '@ema-agent/tools';
 

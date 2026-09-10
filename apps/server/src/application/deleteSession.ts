@@ -16,10 +16,13 @@ export async function deleteSession(composition: Composition, sessionId: string)
     if (active) {
       await turn.turnExecutor.abortAndAwait(sessionId, active.id);
     }
+    // 后台 AgentRun 不属于活动根 Turn, 删除 Session 前必须单独停止并等其落终态.
+    await turn.agentRuns.abortForSession(sessionId);
     // 手动 compact 不是 Turn，abortAndAwait 等不到它：等 Session 坑位被
     // 执行所有者自己释放（compact 链收到信号后取消并清坑），再动数据行。
     await database.activeSessions.waitUntilIdle(sessionId);
     turn.interactionQueue.cancelForSession(sessionId, 'session deleted');
+    turn.continuations.discardSession(sessionId);
     clearSessionRules(sessionId);
     await tools.discardSessionToolState(sessionId);
     // 数据行由外键级联；Session 目录文件由 SessionStore.onSessionRemoved 钩子清理。

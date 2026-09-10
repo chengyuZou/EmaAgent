@@ -1,7 +1,7 @@
 // 集成测试：TurnExecutor 全链——文本轮完成、工具轮的持久化顺序与终态。
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import type { AgentRunMessagesStore, AgentRunStore } from '@ema-agent/agent';
+import type { AgentRunExecutor } from '@ema-agent/agent';
 import type { AttachmentStore } from '@ema-agent/attachments';
 import type { CallLlm, LlmStreamEvent } from '@ema-agent/llm';
 import type { ProviderModels, Providers } from '@ema-agent/providers';
@@ -87,8 +87,16 @@ function makeDeps(options: {
     createLlmCall: () => llm,
     registry,
     interactionQueue: new SessionInteractionQueue(null),
-    agentRunStore: {} as unknown as AgentRunStore,
-    agentRunMessagesStore: {} as unknown as AgentRunMessagesStore,
+    agentRuns: {
+      abortForegroundForTurn: async () => undefined,
+      waitForTurnAgentRuns: async () => undefined,
+    } as unknown as AgentRunExecutor,
+    continuations: {
+      acknowledge: () => undefined,
+      claimNextIteration: () => undefined,
+      release: () => undefined,
+      turnCompleted: () => undefined,
+    } as never,
     createCompact: () => async request => ({ kind: 'unchanged' as const, history: request.history }),
     readTurnReminder: () => ({ currentDate: '2026-08-25' }),
     characterDirectoryName: () => 'test-character',
@@ -283,7 +291,7 @@ describe('TurnExecutor 集成', () => {
 
     const second = executor.start({
       ...makeStart(session.id),
-      triggerType: 'backgroundProcessCompleted',
+      triggerType: 'sessionContinuation',
     });
     await second.completion;
     expect(calls).toHaveLength(1);

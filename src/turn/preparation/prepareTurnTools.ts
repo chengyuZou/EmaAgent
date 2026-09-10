@@ -1,11 +1,8 @@
 // 为一个根 Turn 冻结工具层：ToolPool、宿主能力上下文、权限判定上下文与两类交互口子。
-import {
-  SubagentSpawner,
-  type AgentLoopEvent,
-  type AgentBudget,
-  type AgentRunMessagesStore,
-  type AgentRunStore,
-  type PrepareSubagent,
+import type {
+  AgentRunExecutor,
+  AgentLoopEvent,
+  PrepareSubagent,
 } from '@ema-agent/agent';
 import type { KnowledgeSearch } from '@ema-agent/knowledge';
 import type { CallVision } from '@ema-agent/vision';
@@ -65,8 +62,7 @@ export interface TurnToolsDeps {
   readonly registry: ToolRegistry;
   readonly interactionQueue: SessionInteractionQueue;
   readonly settings: SettingsStore;
-  readonly agentRunStore: AgentRunStore;
-  readonly agentRunMessagesStore: AgentRunMessagesStore;
+  readonly agentRuns: AgentRunExecutor;
   readonly taskStore?: TaskStore;
   readonly knowledgeSearch?: KnowledgeSearch;
   /** narrativePolicy 非 'off' 时构建本 Turn 召回闭包；与 resolveNarrativeLlm 同时缺失则无 Narrative 能力。 */
@@ -91,7 +87,6 @@ export interface PrepareTurnToolsInput {
   readonly skillPool?: SkillPool;
   /** 本 Turn 在当前激活知识库内冻结的文档范围。 */
   readonly knowledge?: TurnKnowledgeSelection;
-  readonly budget: AgentBudget;
   readonly prepareSubagent: PrepareSubagent;
   /** fork 子 Agent 继承用的父工作消息；不含 System Prompt、Tool Schema 或缓存标记。 */
   readonly parentMessages: Message[];
@@ -118,7 +113,6 @@ export interface TurnToolsAssembly {
   readonly toolPool: ToolPool;
   readonly toolContext: ToolUseContext;
   readonly permissionContext: ToolPermissionContext;
-  readonly spawner: SubagentSpawner;
   /** 本 Turn 冻结的召回闭包：auto 时进 Tool Context，always 时供 reminder；off 或无能力为 undefined。 */
   readonly narrativeSearch?: NarrativeSearch;
   readonly createExecutor: (wake: () => void) => StreamingToolExecutorType;
@@ -141,22 +135,6 @@ export function prepareTurnTools(
 ): TurnToolsAssembly {
   const { sessionId, turnId, workspaceRoot, scratchpadDir } = input;
   const readFileState: ReadFileState = new Map();
-
-  const spawner = new SubagentSpawner({
-    parentSessionId: sessionId,
-    parentTurnId: turnId,
-    providerId: input.model.providerId,
-    defaultModelId: input.model.modelId,
-    budget: input.budget,
-    prepareSubagent: input.prepareSubagent,
-    agentRunStore: deps.agentRunStore,
-    messagesStore: deps.agentRunMessagesStore,
-    // agent 包事件不携带根身份；进入 Turn 事件流时补上。
-    emit: event => input.emit({ ...event, sessionId, turnId }),
-    ...(input.onSubagentLlmCallFinished
-      ? { onLlmCallFinished: input.onSubagentLlmCallFinished }
-      : {}),
-  });
 
   const permissionContext: ToolPermissionContext = {
     mode: input.permission.mode,
@@ -265,7 +243,30 @@ export function prepareTurnTools(
       ? { narrativeSearch }
       : {}),
     ...(deps.taskStore ? { taskStore: deps.taskStore } : {}),
-    subagentSpawner: spawner,
+    subagents: {
+      start: (prompt, options, runInBackground, signal) => deps.agentRuns.start({
+        sessionId,
+        parentTurnId: turnId,
+        prompt,
+        options: {
+          ...options,
+          providerId: options.providerId ?? input.model.providerId,
+          modelId: options.modelId ?? input.model.modelId,
+          agentRunId: options.agentRunId,
+        },
+        prepareSubagent: input.prepareSubagent,
+        parentSignal: signal,
+        runInBackground,
+        ...(input.onSubagentLlmCallFinished
+          ? { onLlmCallFinished: input.onSubagentLlmCallFinished }
+          : {}),
+      }),
+      waitForInitialResult: (agentRunId, signal) =>
+        deps.agentRuns.waitForInitialResult(agentRunId, sessionId, signal),
+      moveToBackground: agentRunId => deps.agentRuns.moveToBackground(agentRunId, sessionId),
+      awaitResult: (agentRunId, signal) => deps.agentRuns.awaitResult(agentRunId, sessionId, signal),
+      cancel: agentRunId => deps.agentRuns.cancel(agentRunId, sessionId),
+    },
     ...(input.skillPool ? { skillPool: input.skillPool } : {}),
     ...(scratchpadDir
       ? { scratchpad: { dir: scratchpadDir, author: 'main' } }
@@ -306,7 +307,6 @@ export function prepareTurnTools(
     toolPool,
     toolContext,
     permissionContext,
-    spawner,
     ...(narrativeSearch ? { narrativeSearch } : {}),
     createExecutor,
     createSubagentExecutor: ({ agentRunId, toolPool: subPool, signal, wake }) => {
@@ -329,12 +329,12 @@ export function prepareTurnTools(
       return executor;
     },
     abortTool: toolCallId => currentExecutor?.abortTool(toolCallId) ?? false,
-    abortAgentRun: agentRunId => spawner.abortSubagent(agentRunId),
+    abortAgentRun: agentRunId => deps.agentRuns.cancel(agentRunId, sessionId),
     shutdown: async reason => {
       if (stopped) return;
       stopped = true;
       await currentExecutor?.shutdown(reason);
-      await spawner.shutdown(reason);
+      await deps.agentRuns.abortForegroundForTurn(turnId);
     },
   };
 }

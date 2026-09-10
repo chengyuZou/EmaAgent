@@ -21,7 +21,7 @@ export type {
   SubagentContextMode,
   SubagentRunResult,
   SubagentSpawnOptions,
-  SubagentSpawnerFn,
+  SubagentControl,
   ToolUseContext,
 } from './Tool/toolUseContext.js';
 export type {
@@ -56,11 +56,7 @@ export {
 } from './errors.js';
 export type { BackgroundProcessErrorCode } from './errors.js';
 export {
-  DEFAULT_AGGREGATE_RESULT_BYTES,
-  DEFAULT_RESULT_PREVIEW_BYTES,
   ToolResultStore,
-  generatePreview,
-  DEFAULT_CLEANER_SETTINGS,
   ToolResultCleaner,
 } from './results/index.js';
 export { ToolExecutionState } from './execution/toolExecutionState.js';
@@ -70,12 +66,6 @@ export type {
   ToolExecutionRecord,
   ToolExecutionStatus,
 } from './execution/toolExecutionState.js';
-export type {
-  AggregateResultCandidate,
-  AggregateResultContents,
-  NormalizeResult,
-  ToolResultCleanerSettings,
-} from './results/index.js';
 export * from './background/index.js';
 export {
   BuiltinTools,

@@ -152,24 +152,6 @@ export class StreamingToolExecutor {
     ));
   }
 
-  /** 按模型 block 顺序返回结果，应在 allDone() 后调用。 */
-  getResults(): ToolResult[] {
-    const sorted = [...this.tracked]
-      .filter(track => track.result !== undefined)
-      .sort((left, right) => left.blockIndex - right.blockIndex);
-    const store = this.options.toolResultStore;
-    if (!store) return sorted.map(track => track.result!);
-
-    const contents = this.enforceAggregateBudget(sorted, store);
-    return sorted.map((track) => {
-      const result = track.result!;
-      const content = contents.get(track.execution.id);
-      return content === undefined || content === result.content
-        ? result
-        : { ...result, content };
-    });
-  }
-
   /** 只交付从队首开始连续完成的结果；调用方持久化后必须 acknowledgeResult。 */
   takeCompletedResults(): ToolResult[] {
     const delivered: ToolResult[] = [];
@@ -238,24 +220,5 @@ export class StreamingToolExecutor {
         this.options.pushEv(track.terminalEvent);
       }
     }
-  }
-
-  private enforceAggregateBudget(
-    tracks: readonly TrackedTool[],
-    store: ToolResultStore,
-  ): ReadonlyMap<string, string> {
-    return store.enforceAggregateBudget(
-      tracks.flatMap(track => {
-        const result = track.result;
-        const maxResultBytes = track.execution.maxResultBytes;
-        if (!result || typeof result.content !== 'string' || maxResultBytes === undefined) return [];
-        return [{
-          callId: track.execution.id,
-          toolName: track.execution.name,
-          content: result.content,
-          maxResultBytes,
-        }];
-      }),
-    );
   }
 }

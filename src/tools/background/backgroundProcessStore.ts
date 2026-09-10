@@ -23,9 +23,6 @@ export interface BackgroundProcessRecord {
   outputTruncated: boolean;
   /** 日志目录的相对路径(相对数据目录),是日志位置的唯一事实源。 */
   outputRelativePath: string;
-  completionClaimedAt?: number;
-  continuationTurnId?: string;
-  modelNotifiedAt?: number;
 }
 
 export interface BackgroundProcessInsertRecord {
@@ -57,8 +54,8 @@ export interface BackgroundProcessTerminalRecord {
 }
 
 /**
- * Runtime 只通过这些原子操作读写持久状态;调度、通知与恢复语义留在 Tools。
- * SQL 实现是 Storage 的 BackgroundProcessesRepo,由 Core 装配注入。
+ * 后台执行只通过这些原子操作读写持久状态;调度与恢复语义留在 Tools.
+ * SQL 实现是 Storage 的 BackgroundProcessesRepo, 由 Server 装配注入.
  */
 export interface BackgroundProcessStore {
   insert(value: BackgroundProcessInsertRecord): BackgroundProcessRecord;
@@ -78,11 +75,4 @@ export interface BackgroundProcessStore {
     terminal: BackgroundProcessTerminalRecord,
   ): BackgroundProcessRecord | undefined;
   recoverInterrupted(at: number): BackgroundProcessRecord[];
-  claimCompletionBatch(
-    sessionId: string,
-    continuationTurnId: string,
-    at: number,
-  ): BackgroundProcessRecord[];
-  markCompletionDelivered(continuationTurnId: string, at: number): number;
-  listSessionsWithPendingCompletions(): string[];
 }

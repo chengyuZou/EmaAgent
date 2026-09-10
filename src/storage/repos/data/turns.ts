@@ -6,7 +6,7 @@ import type { ExecutionProfileRow, NarrativePolicyRow } from './sessions.js';
 /** turns.status 的 SQL CHECK 原样。 */
 export type TurnStatusRow = 'running' | 'completed' | 'failed' | 'aborted';
 /** turns.trigger_type 的 SQL CHECK 原样。 */
-export type TurnTriggerTypeRow = 'userMessage' | 'backgroundProcessCompleted';
+export type TurnTriggerTypeRow = 'userMessage' | 'sessionContinuation';
 
 export interface TurnRow {
   id: string;

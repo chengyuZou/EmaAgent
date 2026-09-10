@@ -21,6 +21,7 @@ export interface AgentRunRow {
   tool_call_count:     number | null;
   input_tokens:        number | null;
   output_tokens:       number | null;
+  final_text:          string | null;
   created_at:          number;
   updated_at:          number;
   completed_at:        number | null;
@@ -43,6 +44,7 @@ export interface AgentRunCompletion {
   toolCallCount: number;
   inputTokens: number;
   outputTokens: number;
+  finalText: string;
 }
 
 export class AgentRunsRepo {
@@ -84,6 +86,7 @@ export class AgentRunsRepo {
               tool_call_count = ?,
               input_tokens = ?,
               output_tokens = ?,
+              final_text = ?,
               completed_at = ?,
               updated_at = ?
         WHERE id = ? AND status = 'running'
@@ -93,6 +96,7 @@ export class AgentRunsRepo {
       completion.toolCallCount,
       completion.inputTokens,
       completion.outputTokens,
+      completion.finalText,
       at,
       at,
       id,

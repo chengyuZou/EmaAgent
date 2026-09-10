@@ -2,7 +2,6 @@
 import {
   readAgentSettings,
   type AgentLoopEvent,
-  type AgentBudget,
   type AgentSettings,
   type PrepareSubagent,
 } from '@ema-agent/agent';
@@ -115,7 +114,6 @@ export interface PrepareTurnInput {
   readonly request: StartTurn;
   /** TurnStore 已创建的根 Turn 身份；Session 身份只取 request.sessionId。 */
   readonly turnId: string;
-  readonly budget: AgentBudget;
   readonly prepareSubagent: PrepareSubagent;
   readonly parentMessages: Message[];
   /** 事件出口由 turn.ts 绑定到本 Turn 的事件通道（每 Turn 一个）。 */
@@ -168,29 +166,9 @@ export async function prepareTurn(
     workspaceRoot,
   );
 
-  // Skill 引用先于附件登记完成解析，避免无效 Skill 让本 Turn 留下孤立附件记录。
-  const selectedSkills = resolveSelectedSkills(request.input, skillPool);
-
   const attachmentBlocks = request.input
-    .filter((part): part is Extract<TurnInputPart, { type: 'attachment' }> => (
-      part.type === 'attachment'
-    ))
+    .filter((part): part is Extract<TurnInputPart, { type: 'attachment' }> => part.type === 'attachment')
     .map(part => part.block);
-
-  // attach 保持输入顺序(file 块 realpath 权威化, image/pasted 盖章);
-  // 后续按同一游标把校验后的块放回原始文本位置。
-  let attachedBlocks: readonly AttachmentBlock[] = [];
-  try {
-    attachedBlocks = attachmentBlocks.length
-      ? await deps.attachments.attach(request.sessionId, turnId, attachmentBlocks)
-      : [];
-  } catch (error) {
-    throw new TurnPreparationError(
-      'turn/attachment_failed',
-      error instanceof Error ? error.message : String(error),
-      { cause: error },
-    );
-  }
   if (!supportsImageInput && attachmentBlocks.some(b => b.type === 'image_reference')) {
     degradations.push({
       attempt: 1,
@@ -200,10 +178,12 @@ export async function prepareTurn(
     });
   }
 
-  const userMessageBlocks = prepareOrderedInput(
+  const userMessageBlocks = await prepareTurnInputParts(
+    deps.attachments,
+    request.sessionId,
+    turnId,
     request.input,
-    attachedBlocks,
-    selectedSkills,
+    skillPool,
   );
 
   const scratchpadDir = request.executionProfile === 'work'
@@ -225,7 +205,6 @@ export async function prepareTurn(
     ...(scratchpadDir ? { scratchpadDir } : {}),
     ...(skillPool ? { skillPool } : {}),
     ...(request.knowledge ? { knowledge: request.knowledge } : {}),
-    budget: input.budget,
     prepareSubagent: input.prepareSubagent,
     parentMessages: input.parentMessages,
     model: { providerId, modelId },
@@ -290,6 +269,36 @@ export async function prepareTurn(
 }
 
 /** 把输入数组逐项映射为同序的 Session 块；模型内容统一从该持久形态派生。 */
+/**
+ * 初始输入和运行中立即引导共用这一条解析链. Skill 必须先确认存在,
+ * 然后附件才登记到 Turn, 避免无效 Skill 留下孤立附件记录.
+ */
+export async function prepareTurnInputParts(
+  attachments: AttachmentStore,
+  sessionId: string,
+  turnId: string,
+  input: readonly TurnInputPart[],
+  skillPool: SkillPool | undefined,
+): Promise<MessageBlocks> {
+  const selectedSkills = resolveSelectedSkills(input, skillPool);
+  const attachmentBlocks = input
+    .filter((part): part is Extract<TurnInputPart, { type: 'attachment' }> => part.type === 'attachment')
+    .map(part => part.block);
+  let attachedBlocks: readonly AttachmentBlock[] = [];
+  try {
+    attachedBlocks = attachmentBlocks.length > 0
+      ? await attachments.attach(sessionId, turnId, attachmentBlocks)
+      : [];
+  } catch (error) {
+    throw new TurnPreparationError(
+      'turn/attachment_failed',
+      error instanceof Error ? error.message : String(error),
+      { cause: error },
+    );
+  }
+  return prepareOrderedInput(input, attachedBlocks, selectedSkills);
+}
+
 function prepareOrderedInput(
   input: readonly TurnInputPart[],
   attachedBlocks: readonly AttachmentBlock[],
