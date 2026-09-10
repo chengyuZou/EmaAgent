@@ -49,9 +49,13 @@ interface Character {
 
 不存在 Live2D → 立绘 → 空白降级链。损坏时由前端显示错误并让舞台为空白。应用只有主窗口的一份舞台 Canvas。
 
+Presentation 不返回宿主绝对路径。Live2D 模型由 Server 将已展开目录流式包装成一个受认证的 ZIP 响应,Desktop 再把完整目录树交给 Zip/File Loader；立绘通过受认证的单文件接口读取。设置页封面和主舞台共用同一条 Live2D ZIP 加载链。
+
 Stage 对每个合法 `<emotion>` 都发出 `emotion_changed`，即使前后值相同。立绘消费者收到事件后从对应表情池随机选择；池内多于一张时排除当前图片，再用普通交叉淡入淡出换图。立绘没有呼吸动画。
 
 Character 和 Live2D 资源行都不保存情绪或动作词汇。Live2D 词汇只取当前 Presentation 中 `runtime-config.json` 的 `emotionMap`、`motionMap` 键；立绘情绪词只取 Presentation 的 `expression` 分组。Turn Prompt、StageEngine 和主窗口都消费 CharacterStore 产出的 Presentation，不各自维护词汇副本。
+
+内置角色只在 Desktop Host 发现 `~/.ema-agent/profile.db` 尚未创建时初始化。Host 先把随包的同名角色目录复制到 `~/.ema-agent/characters`，再让 Server 调用 `initializeBuiltinCharacters()` 写入对应数据库行。后续启动不补种，用户删除内置角色后不会自动恢复。
 
 用户手改 `runtime-config.json` 后调用 `reloadLive2dConfiguration`。该操作校验并返回当前完整配置，再广播舞台变化；不写 SQL 词汇列。
 

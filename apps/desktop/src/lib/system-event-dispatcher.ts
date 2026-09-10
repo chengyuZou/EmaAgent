@@ -3,7 +3,7 @@
 import type { AppEvent } from '@ema-agent/server/application/appEvents.js';
 import { useBackgroundProcessStore } from '../stores/backgroundProcess.js';
 import { useCharacterStore } from '../stores/character.js';
-import { useCurrentSession } from '../chat/state/currentSession.js';
+import { useLiveTurns } from '../chat/state/liveTurns.js';
 import { useKnowledgeStore } from '../stores/knowledge.js';
 import { useSettingsStore } from '../stores/settings.js';
 import { useSkillStore } from '../stores/skill.js';
@@ -15,7 +15,7 @@ export function dispatchSystemEvent(event: AppEvent): void {
   switch (event.type) {
     case 'character_switched':
       // 旧角色的情绪语义名在新角色映射下无意义：清记忆，避免补发给新角色。
-      useCurrentSession.getState().clearEmotions();
+      useLiveTurns.getState().clearEmotions();
       void useCharacterStore.getState().load();
       break;
 

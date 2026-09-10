@@ -1,5 +1,6 @@
 // 组装桌宠主窗口、Live2D 舞台、权限提示与桌面交互入口。
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { CharacterStagePresentation } from '@ema-agent/characters';
 import './styles/index.css';
 import {
   CharacterStage,
@@ -14,12 +15,7 @@ import { useServerStore }         from './stores/server.js';
 import { useSettingsSync } from './stores/settings-sync.js';
 import { useThemeSync }           from './stores/theme.js';
 import type { ServerStatus }           from './stores/server.js';
-
-import {
-  CharacterStageLoader,
-  loadCharacterStageView,
-  type CharacterStageView,
-} from './stage/characterStageLoader.js';
+import { charactersApi } from './api/characters.js';
 import { useWindowSuspension } from './hooks/use-window-suspension.js';
 
 // ── 主窗口 ──────────────────────────────────────────────────────────────────
@@ -38,16 +34,14 @@ const DOCK_FADE_GRACE_MS = 600;
 export function App(): React.JSX.Element {
   const stageSuspended = useWindowSuspension();
   const serverStatus = useServerStore((s) => s.status);
-  const activeCharacterId = useCharacterStore((s) => s.activeCharacterId);
+  const activeCharacterName = useCharacterStore((s) => s.activeName);
   const activeCharacter = useCharacterStore((s) =>
-    s.characters.find((item) => item.id === s.activeCharacterId));
+    s.characters.find((item) => item.name === s.activeName));
   const activeStage = useRef<ActiveLive2DStage | null>(null);
   const [expressionAvailable, setExpressionAvailable] = useState(false);
   const [dockVisible,  setDockVisible]  = useState(false);
-  const [stageView, setStageView] = useState<CharacterStageView | null>(null);
-  const [stageLoader] = useState(() => new CharacterStageLoader({
-    load: loadCharacterStageView,
-  }));
+  const [stagePresentation, setStagePresentation] = useState<CharacterStagePresentation | null>(null);
+  const stageRequestSequence = useRef(0);
   const handleStageChanged = useCallback((stage: ActiveLive2DStage | null): void => {
     activeStage.current = stage;
     setExpressionAvailable(stage?.hasExpressions ?? false);
@@ -59,31 +53,35 @@ export function App(): React.JSX.Element {
     void useCharacterStore.getState().load();
   }, [serverStatus.kind]);
 
-  // 同角色刷新保留旧画面到新候选就绪；跨角色先撤下旧角色，避免视觉与 Prompt 身份错位。
-  // 过期请求由 loader 的代际守卫单点失效。
+  // Character 事件会替换 activeCharacter 对象. 序号让较早的 HTTP 响应不能覆盖后来选择,
+  // 不额外建立一层只包住一次请求的 Loader 类.
   useEffect(() => {
-    stageLoader.invalidate();
+    const requestSequence = ++stageRequestSequence.current;
 
-    if (!activeCharacterId) {
-      setStageView(null);
+    if (!activeCharacterName) {
+      setStagePresentation(null);
       return;
     }
 
-    setStageView((current) => (
-      current?.characterId === activeCharacterId ? current : null
+    setStagePresentation((current) => (
+      current?.characterName === activeCharacterName ? current : null
     ));
-    void stageLoader.load(activeCharacterId)
-      .then((view) => {
-        if (view) setStageView(view);
+    void charactersApi.presentation(activeCharacterName)
+      .then((presentation) => {
+        if (requestSequence === stageRequestSequence.current) {
+          setStagePresentation(presentation);
+        }
       })
       .catch((error: unknown) => {
-        console.error('[stage] failed to load active character', activeCharacterId, error);
+        if (requestSequence === stageRequestSequence.current) {
+          console.error('[stage] 角色呈现读取失败', activeCharacterName, error);
+        }
       });
 
     return () => {
-      stageLoader.invalidate();
+      stageRequestSequence.current += 1;
     };
-  }, [activeCharacterId, activeCharacter, stageLoader]);
+  }, [activeCharacterName, activeCharacter]);
 
   useThemeSync();
   useSettingsSync(serverStatus.kind === 'ok');
@@ -126,8 +124,8 @@ export function App(): React.JSX.Element {
       <GlowBorder />
 
       <CharacterStage
-        targetCharacterId={activeCharacterId}
-        view={stageView}
+        targetCharacterName={activeCharacterName}
+        presentation={stagePresentation}
         suspended={stageSuspended}
         onStageChanged={handleStageChanged}
       />
@@ -224,4 +222,3 @@ const badgeTooltipStyle: React.CSSProperties = {
 };
 
 // ── 开发测试入口：让音频经过 Live2D 口型管线 ─────────────────────────────────
-

@@ -4,9 +4,7 @@ import { serverClient } from '../api/client.js';
 
 export async function fetchServerObjectUrl(apiPath: string): Promise<string | null> {
   try {
-    const headers = await serverClient.getAuthHeaders();
-    const response = await fetch(apiPath, { headers });
-    if (!response.ok) return null;
+    const response = await serverClient.requestRaw(apiPath);
     return URL.createObjectURL(await response.blob());
   } catch {
     return null;

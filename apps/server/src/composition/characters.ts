@@ -1,12 +1,8 @@
-// 角色一族：安装内置资源并构造 CharacterStore 与 StageEngine。
-import {
-  CharacterStore,
-  characterStageVocabulary,
-  installBuiltinCharacterResources,
-} from '@ema-agent/characters';
+// 角色一族：构造 CharacterStore 与 StageEngine，并在首次 Profile 启动时写入内置角色行。
+import { CharacterStore, characterStageVocabulary } from '@ema-agent/characters';
 import { StageEngine } from '@ema-agent/stage';
 import type { Database } from '@ema-agent/storage';
-import { bundledCharactersDir, charactersDir } from '../platform/paths.js';
+import { charactersDir } from '../platform/paths.js';
 
 export interface CharactersComposition {
   readonly store: CharacterStore;
@@ -17,10 +13,12 @@ export interface CharactersComposition {
 /** 角色是 Prompt、Live2D、舞台表现与 TTS 的全局基础，种子不变量失败时禁止发布 ready。 */
 export function openCharacters(
   profileDb: Database,
+  initializeBuiltinCharacters: boolean,
 ): CharactersComposition {
-  installBuiltinCharacterResources(bundledCharactersDir(), charactersDir());
   const store = new CharacterStore(profileDb, charactersDir());
-  store.ensureSeed();
+  if (initializeBuiltinCharacters) {
+    store.initializeBuiltinCharacters();
+  }
   const current = store.current();
   const vocabulary = characterStageVocabulary(store.inspectStagePresentation(current.name));
   const stage = new StageEngine({

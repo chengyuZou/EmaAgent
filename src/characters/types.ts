@@ -44,7 +44,6 @@ export interface CharacterPatch {
 interface CharacterStageEntryBase {
   readonly name: string;
   readonly displayName: string;
-  readonly file: string;
   readonly stageScale: number;
   readonly stageOffsetX: number;
   readonly stageOffsetY: number;

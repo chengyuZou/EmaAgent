@@ -1,4 +1,4 @@
-// 加载一个 Cubism 4 模型，并通过窄句柄执行表情、动作和口型命令。
+// 在一个稳定的 Pixi Canvas 中加载 Character 模型包,并执行表情、动作和口型命令。
 
 import {
   forwardRef,
@@ -6,6 +6,7 @@ import {
   useImperativeHandle,
   useRef,
   type JSX,
+  type MutableRefObject,
 } from 'react';
 import * as PIXI from 'pixi.js';
 import {
@@ -13,32 +14,32 @@ import {
   Live2DModel,
   MotionPriority,
 } from 'pixi-live2d-display/cubism4';
+import type { Live2dMotion, Live2dRuntimeConfig } from '@ema-agent/characters';
 import {
   calculateLive2DPlacement,
   type Live2DModelBounds,
 } from './framing.js';
 import { startLive2DIdleGaze } from './idleGaze.js';
 import { startLive2DIdleMotionSchedule } from './idleMotion.js';
+import { loadLive2DArchive } from './live2dArchive.js';
 import { attachLive2DLipSync, type Live2DLipSync } from './lipSync.js';
 import {
   resolveLive2DModelBindings,
   type ResolvedLive2DModelBindings,
 } from './modelBindings.js';
 import type {
-  Live2DModelBindings,
-  Live2DMotionReference,
   Live2DStageHandle,
   Live2DStageReadyInfo,
 } from './types.js';
 
 type Cubism4Model = Live2DModel<Cubism4InternalModel>;
 
-/** 鼠标静止超过该时长后，视线输入从鼠标切换为待机游移。 */
+/** 鼠标静止超过该时长后,视线输入从鼠标切换为待机游移。 */
 const POINTER_IDLE_GAZE_MS = 8_000;
 
 export interface Live2DStageProps {
-  modelPath: string;
-  bindings?: Live2DModelBindings;
+  modelArchive: Blob;
+  runtimeConfig?: Live2dRuntimeConfig;
   suspended?: boolean;
   interactive?: boolean;
   onReady?: (info: Live2DStageReadyInfo) => void;
@@ -48,8 +49,8 @@ export interface Live2DStageProps {
 
 export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
   function Live2DStage({
-    modelPath,
-    bindings,
+    modelArchive,
+    runtimeConfig,
     suspended = false,
     interactive = true,
     onReady,
@@ -59,18 +60,20 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
     const hostRef = useRef<HTMLDivElement | null>(null);
     const appRef = useRef<PIXI.Application | null>(null);
     const modelRef = useRef<Cubism4Model | null>(null);
+    const modelCleanupRef = useRef<(() => void) | null>(null);
+    const loadGenerationRef = useRef(0);
     const resolvedBindingsRef = useRef<ResolvedLive2DModelBindings | null>(null);
     const lipSyncRef = useRef<Live2DLipSync | null>(null);
     const expressionsRef = useRef<readonly string[]>([]);
     const expressionIndexRef = useRef(-1);
-    const bindingsRef = useRef(bindings);
+    const runtimeConfigRef = useRef(runtimeConfig);
     const suspendedRef = useRef(suspended);
     const interactiveRef = useRef(interactive);
     const speakingRef = useRef(false);
     const lastPointerActivityAtRef = useRef(0);
     const callbacksRef = useRef({ onReady, onError });
 
-    bindingsRef.current = bindings;
+    runtimeConfigRef.current = runtimeConfig;
     suspendedRef.current = suspended;
     interactiveRef.current = interactive;
     callbacksRef.current = { onReady, onError };
@@ -87,7 +90,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
 
         const index = expressionsRef.current.indexOf(name);
         if (index < 0) {
-          console.warn('[live2d] 未知表情名，已忽略', name);
+          console.warn('[live2d] 未知表情名,已忽略', name);
           return;
         }
         expressionIndexRef.current = index;
@@ -122,36 +125,18 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
       },
     }), []);
 
-    useEffect(() => {
-      const app = appRef.current;
-      if (!app) return;
-      if (suspended) app.ticker.stop();
-      else app.ticker.start();
-    }, [suspended]);
-
-    useEffect(() => {
-      const model = modelRef.current;
-      if (!model) return;
-      resolvedBindingsRef.current = resolveLive2DModelBindings(
-        model.internalModel,
-        bindings,
-      );
-    }, [bindings]);
-
+    // Pixi Application 与组件同生命周期. 模型切换只替换舞台内容,不会反复销毁 Canvas.
     useEffect(() => {
       const host = hostRef.current;
       if (!host) return;
       if (typeof window.Live2DCubismCore === 'undefined') {
         callbacksRef.current.onError?.(
-          new Error('未加载 Live2D Cubism Core，无法创建模型。'),
+          new Error('未加载 Live2D Cubism Core,无法创建模型。'),
         );
         return;
       }
 
-      let cancelled = false;
-      const cleanups: Array<() => void> = [];
       let app: PIXI.Application;
-
       try {
         app = new PIXI.Application({
           resizeTo: host,
@@ -167,112 +152,77 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
       host.appendChild(app.view as HTMLCanvasElement);
       if (suspendedRef.current) app.ticker.stop();
 
-      void Live2DModel.from(modelPath, {
+      return () => {
+        loadGenerationRef.current += 1;
+        modelCleanupRef.current?.();
+        modelCleanupRef.current = null;
+        appRef.current = null;
+        app.destroy(true, { children: true, texture: true, baseTexture: true });
+      };
+    }, []);
+
+    useEffect(() => {
+      const app = appRef.current;
+      if (!app) return;
+      if (suspended) app.ticker.stop();
+      else app.ticker.start();
+    }, [suspended]);
+
+    useEffect(() => {
+      const model = modelRef.current;
+      if (!model) return;
+      resolvedBindingsRef.current = resolveLive2DModelBindings(
+        model.internalModel,
+        runtimeConfig,
+      );
+    }, [runtimeConfig]);
+
+    useEffect(() => {
+      const app = appRef.current;
+      if (!app) return;
+      const generation = ++loadGenerationRef.current;
+
+      void loadLive2DArchive(modelArchive, {
         ticker: app.ticker,
         autoInteract: false,
         autoUpdate: true,
-        // 原生 MotionManager 会无间隔循环 Idle；Ema 只调度 Character 明确选定的待机 Motion。
+        // 原生 MotionManager 会无间隔循环 Idle;Ema 只调度 Character 选中的待机 Motion.
         idleMotionGroup: '__ema_idle_disabled__',
-      }).then((loadedModel) => {
-        const model = loadedModel as Cubism4Model;
-        if (cancelled) {
+      }).then((model) => {
+        if (generation !== loadGenerationRef.current || appRef.current !== app) {
           model.destroy({ children: true });
           return;
         }
 
-        modelRef.current = model;
-        app.stage.addChild(model);
-        const initialBindings = resolveLive2DModelBindings(
-          model.internalModel,
-          bindingsRef.current,
-        );
-        resolvedBindingsRef.current = initialBindings;
-
-        lipSyncRef.current = attachLive2DLipSync(
-          model.internalModel,
-          () => resolvedBindingsRef.current?.lipSyncParameters ?? [],
-        );
-        cleanups.push(() => {
-          lipSyncRef.current?.dispose();
-          lipSyncRef.current = null;
+        // ZIP 可在旧模型仍显示时完成解析;只有新模型可用后才原子替换舞台内容.
+        modelCleanupRef.current?.();
+        modelCleanupRef.current = mountModel(app, model, {
+          runtimeConfigRef,
+          interactiveRef,
+          suspendedRef,
+          speakingRef,
+          lastPointerActivityAtRef,
+          modelRef,
+          resolvedBindingsRef,
+          lipSyncRef,
+          expressionsRef,
+          expressionIndexRef,
         });
-
-        lastPointerActivityAtRef.current = performance.now();
-        const focusController = model.internalModel.focusController;
-        cleanups.push(startLive2DIdleGaze(
-          (x, y) => focusController.focus(x, y),
-          () => interactiveRef.current
-            && !suspendedRef.current
-            && performance.now() - lastPointerActivityAtRef.current > POINTER_IDLE_GAZE_MS,
-        ));
-
-        const bounds = model.getLocalBounds();
-        const modelBounds: Live2DModelBounds = {
-          x: bounds.x,
-          y: bounds.y,
-          width: bounds.width,
-          height: bounds.height,
-        };
-        const fit = (): void => applyFraming(app, model, modelBounds);
-        fit();
-        window.addEventListener('resize', fit);
-        cleanups.push(() => window.removeEventListener('resize', fit));
-
-        const followPointer = (event: MouseEvent): void => {
-          if (!interactiveRef.current) return;
-          lastPointerActivityAtRef.current = performance.now();
-          const rect = (app.view as HTMLCanvasElement).getBoundingClientRect();
-          if (rect.width <= 0 || rect.height <= 0) return;
-          const inside = event.clientX >= rect.left
-            && event.clientX <= rect.right
-            && event.clientY >= rect.top
-            && event.clientY <= rect.bottom;
-          const x = inside
-            ? ((event.clientX - rect.left) / rect.width) * app.screen.width
-            : app.screen.width / 2;
-          const y = inside
-            ? ((event.clientY - rect.top) / rect.height) * app.screen.height
-            : app.screen.height / 2;
-          model.focus(x, y);
-        };
-        window.addEventListener('mousemove', followPointer);
-        cleanups.push(() => window.removeEventListener('mousemove', followPointer));
-
-        expressionsRef.current = extractExpressionNames(model.internalModel);
-        expressionIndexRef.current = -1;
-
-        const playIdle = (motion: Live2DMotionReference): void => {
-          void model.motion(motion.group, motion.index, MotionPriority.IDLE).catch((error: unknown) => {
-            console.warn('[live2d] 待机动作执行失败', motion.group, motion.index, error);
-          });
-        };
-        const firstIdle = initialBindings.idleMotions[0];
-        if (firstIdle) playIdle(firstIdle);
-        cleanups.push(startLive2DIdleMotionSchedule(
-          playIdle,
-          () => resolvedBindingsRef.current?.idleMotions ?? [],
-          () => !suspendedRef.current && !speakingRef.current,
-        ));
-
         callbacksRef.current.onReady?.({
           hasExpressions: expressionsRef.current.length > 0,
         });
       }).catch((cause: unknown) => {
-        if (!cancelled) callbacksRef.current.onError?.(asError(cause));
+        if (generation === loadGenerationRef.current) {
+          callbacksRef.current.onError?.(asError(cause));
+        }
       });
 
       return () => {
-        cancelled = true;
-        for (const cleanup of cleanups.splice(0).reverse()) cleanup();
-        expressionsRef.current = [];
-        expressionIndexRef.current = -1;
-        speakingRef.current = false;
-        resolvedBindingsRef.current = null;
-        modelRef.current = null;
-        appRef.current = null;
-        app.destroy(true, { children: true, texture: true, baseTexture: true });
+        if (generation === loadGenerationRef.current) {
+          loadGenerationRef.current += 1;
+        }
       };
-    }, [modelPath]);
+    }, [modelArchive]);
 
     return (
       <div
@@ -284,9 +234,111 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
   },
 );
 
+interface MountedModelRefs {
+  readonly runtimeConfigRef: MutableRefObject<Live2dRuntimeConfig | undefined>;
+  readonly interactiveRef: MutableRefObject<boolean>;
+  readonly suspendedRef: MutableRefObject<boolean>;
+  readonly speakingRef: MutableRefObject<boolean>;
+  readonly lastPointerActivityAtRef: MutableRefObject<number>;
+  readonly modelRef: MutableRefObject<Cubism4Model | null>;
+  readonly resolvedBindingsRef: MutableRefObject<ResolvedLive2DModelBindings | null>;
+  readonly lipSyncRef: MutableRefObject<Live2DLipSync | null>;
+  readonly expressionsRef: MutableRefObject<readonly string[]>;
+  readonly expressionIndexRef: MutableRefObject<number>;
+}
+
+function mountModel(
+  app: PIXI.Application,
+  model: Cubism4Model,
+  refs: MountedModelRefs,
+): () => void {
+  const cleanups: Array<() => void> = [];
+  refs.modelRef.current = model;
+  app.stage.addChild(model);
+
+  const initialBindings = resolveLive2DModelBindings(
+    model.internalModel,
+    refs.runtimeConfigRef.current,
+  );
+  refs.resolvedBindingsRef.current = initialBindings;
+  refs.lipSyncRef.current = attachLive2DLipSync(
+    model.internalModel,
+    () => refs.resolvedBindingsRef.current?.lipSyncParameters ?? [],
+  );
+
+  refs.lastPointerActivityAtRef.current = performance.now();
+  const focusController = model.internalModel.focusController;
+  cleanups.push(startLive2DIdleGaze(
+    (x, y) => focusController.focus(x, y),
+    () => refs.interactiveRef.current
+      && !refs.suspendedRef.current
+      && performance.now() - refs.lastPointerActivityAtRef.current > POINTER_IDLE_GAZE_MS,
+  ));
+
+  const bounds = model.getLocalBounds();
+  const modelBounds: Live2DModelBounds = {
+    x: bounds.x,
+    y: bounds.y,
+    width: bounds.width,
+    height: bounds.height,
+  };
+  const fit = (): void => applyFraming(app, model, modelBounds);
+  fit();
+  window.addEventListener('resize', fit);
+  cleanups.push(() => window.removeEventListener('resize', fit));
+
+  const followPointer = (event: MouseEvent): void => {
+    if (!refs.interactiveRef.current) return;
+    refs.lastPointerActivityAtRef.current = performance.now();
+    const rect = (app.view as HTMLCanvasElement).getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const inside = event.clientX >= rect.left
+      && event.clientX <= rect.right
+      && event.clientY >= rect.top
+      && event.clientY <= rect.bottom;
+    const x = inside
+      ? ((event.clientX - rect.left) / rect.width) * app.screen.width
+      : app.screen.width / 2;
+    const y = inside
+      ? ((event.clientY - rect.top) / rect.height) * app.screen.height
+      : app.screen.height / 2;
+    model.focus(x, y);
+  };
+  window.addEventListener('mousemove', followPointer);
+  cleanups.push(() => window.removeEventListener('mousemove', followPointer));
+
+  refs.expressionsRef.current = extractExpressionNames(model.internalModel);
+  refs.expressionIndexRef.current = -1;
+  const playIdle = (motion: Live2dMotion): void => {
+    void model.motion(motion.group, motion.index, MotionPriority.IDLE).catch((error: unknown) => {
+      console.warn('[live2d] 待机动作执行失败', motion.group, motion.index, error);
+    });
+  };
+  const firstIdle = initialBindings.idleMotions[0];
+  if (firstIdle) playIdle(firstIdle);
+  cleanups.push(startLive2DIdleMotionSchedule(
+    playIdle,
+    () => refs.resolvedBindingsRef.current?.idleMotions ?? [],
+    () => !refs.suspendedRef.current && !refs.speakingRef.current,
+  ));
+
+  return () => {
+    for (const cleanup of cleanups.reverse()) cleanup();
+    refs.lipSyncRef.current?.dispose();
+    refs.lipSyncRef.current = null;
+    refs.expressionsRef.current = [];
+    refs.expressionIndexRef.current = -1;
+    refs.speakingRef.current = false;
+    refs.resolvedBindingsRef.current = null;
+    refs.modelRef.current = null;
+    app.stage.removeChild(model);
+    model.destroy({ children: true });
+  };
+}
+
 function extractExpressionNames(internalModel: Cubism4InternalModel): string[] {
   return (internalModel.settings.expressions ?? [])
-    .map((expression) => expression.Name.trim())
+    .map(expression => expression.Name.trim())
     .filter(Boolean);
 }
 

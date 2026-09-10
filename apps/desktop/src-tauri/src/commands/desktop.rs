@@ -1,11 +1,8 @@
 // 提供窗口显示、交互模式与应用退出相关的 Tauri commands。
 use tauri::Manager;
 
+use crate::desktop::settings::{read_start_narrative_on_launch, write_start_narrative_on_launch};
 use crate::desktop::windows::{begin_main_focus_settling, show_window};
-use crate::desktop::settings::{
-    read_start_narrative_on_launch,
-    write_start_narrative_on_launch,
-};
 use crate::processes::DesktopProcesses;
 
 #[tauri::command]

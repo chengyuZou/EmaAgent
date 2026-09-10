@@ -29,8 +29,10 @@ export interface CharacterStoreState {
   remove(name: string, terminateRunningWork?: boolean): Promise<void>;
 
   setPrimaryLive2d(characterName: string, live2dName: string): Promise<void>;
-  /** 返回入库模型与入口相对路径(entryPath),供导入后离屏渲封面。 */
-  importLive2d(characterName: string, input: Live2dImportInput): Promise<{ name: string; entryPath?: string }>;
+  importLive2d(
+    characterName: string,
+    input: Live2dImportInput,
+  ): Promise<Character['live2dModels'][number]>;
   patchLive2d(characterName: string, live2dName: string, input: ResourcePatchInput): Promise<void>;
   reloadLive2dConfig(characterName: string, live2dName: string): Promise<void>;
   deleteLive2d(characterName: string, live2dName: string): Promise<void>;

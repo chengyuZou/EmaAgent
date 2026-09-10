@@ -1,4 +1,4 @@
-// 把桌面事件中的角色语义映射为当前 Live2D 舞台的原生命令。
+// 把桌面事件中的角色语义映射为当前 Live2D 模型的原生命令。
 
 import { useCallback, useEffect, useRef, type JSX } from 'react';
 import {
@@ -6,13 +6,13 @@ import {
   type Live2DStageHandle,
   type Live2DStageReadyInfo,
 } from '@ema-agent/live2d-react';
+import type { Live2dRuntimeConfig } from '@ema-agent/characters';
 import { showToast } from '../lib/toast.js';
 import { tauriBridge } from '../lib/tauri-bridge.js';
-import type { StageLive2dRuntimeConfig } from './characterStageLoader.js';
 
 export interface EmaStageViewProps {
-  modelPath: string;
-  runtimeConfig?: StageLive2dRuntimeConfig;
+  modelArchive: Blob;
+  runtimeConfig?: Live2dRuntimeConfig;
   suspended?: boolean;
   interactive?: boolean;
   onHandleChanged?: (handle: Live2DStageHandle | null) => void;
@@ -21,7 +21,7 @@ export interface EmaStageViewProps {
 }
 
 export function EmaStageView({
-  modelPath,
+  modelArchive,
   runtimeConfig,
   suspended = false,
   interactive = true,
@@ -38,55 +38,40 @@ export function EmaStageView({
   useEffect(() => {
     if (!interactive) return;
 
-    const isTargetStage = (stageId?: string): boolean => !stageId || stageId === 'main';
-    const applyEmotion = (name: string): void => {
-      const target = runtimeConfig?.emotionMap?.[name];
+    const unlistenEmotion = tauriBridge.listenStageEmotion((emotion) => {
+      const target = runtimeConfig?.emotionMap?.[emotion];
       stageRef.current?.setExpression(target?.expression ?? null);
-    };
-    const applyMotion = (name: string): void => {
-      const target = runtimeConfig?.motionMap?.[name];
-      if (target) stageRef.current?.playMotion(target.group, target.index);
-    };
-
-    const unlistenEmotion = tauriBridge.listenStageEmotion(
-      (emotion, stageId) => {
-        if (isTargetStage(stageId)) applyEmotion(emotion);
-      },
-    );
-    const unlistenCue = tauriBridge.listenStageMotion((motion, stageId) => {
-      if (isTargetStage(stageId)) applyMotion(motion);
     });
-    const unlistenSpeech = tauriBridge.listenStageSpeech((speaking, rms, stageId) => {
-      if (isTargetStage(stageId)) {
-        stageRef.current?.setLipSync(speaking, rms);
+    const unlistenMotion = tauriBridge.listenStageMotion((motion) => {
+      const target = runtimeConfig?.motionMap?.[motion];
+      if (target) stageRef.current?.playMotion(target.group, target.index);
+    });
+    const unlistenSpeech = tauriBridge.listenStageSpeech((speaking, rms) => {
+      stageRef.current?.setLipSync(speaking, rms);
+    });
+    const unlistenCycle = tauriBridge.listenStageExpressionCycle(() => {
+      const expression = stageRef.current?.cycleExpression();
+      if (expression) {
+        showToast(`已切换 Live2D 表情：${expression}`, {
+          variant: 'info',
+          duration: 1800,
+        });
       }
     });
-    const unlistenCycle = tauriBridge.listenStageExpressionCycle(
-      (stageId) => {
-        if (!isTargetStage(stageId)) return;
-        const expression = stageRef.current?.cycleExpression();
-        if (expression) {
-          showToast(`已切换 Live2D 表情：${expression}`, {
-            variant: 'info',
-            duration: 1800,
-          });
-        }
-      },
-    );
 
     return () => {
-      void unlistenEmotion.then((stop) => stop());
-      void unlistenCue.then((stop) => stop());
-      void unlistenSpeech.then((stop) => stop());
-      void unlistenCycle.then((stop) => stop());
+      void unlistenEmotion.then(stop => stop());
+      void unlistenMotion.then(stop => stop());
+      void unlistenSpeech.then(stop => stop());
+      void unlistenCycle.then(stop => stop());
     };
   }, [interactive, runtimeConfig]);
 
   return (
     <Live2DStage
       ref={setStageHandle}
-      modelPath={modelPath}
-      bindings={runtimeConfig}
+      modelArchive={modelArchive}
+      runtimeConfig={runtimeConfig}
       suspended={suspended}
       interactive={interactive}
       onReady={onReady}

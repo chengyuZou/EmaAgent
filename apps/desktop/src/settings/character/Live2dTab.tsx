@@ -195,7 +195,7 @@ function ModelConfig({ character, model }: {
   model: Live2dModel;
 }): JSX.Element {
   const store = useCharacterStore();
-  const [configuration, setConfiguration] = useState<(Live2dConfiguration & { entryPath: string }) | null>(null);
+  const [configuration, setConfiguration] = useState<Live2dConfiguration | null>(null);
   const [scale, setScale] = useState(model.stageScale);
   const [offsetX, setOffsetX] = useState(model.stageOffsetX);
   const [offsetY, setOffsetY] = useState(model.stageOffsetY);
@@ -225,20 +225,21 @@ function ModelConfig({ character, model }: {
     void loadConfiguration();
   }, [loadConfiguration]);
 
-  // 缺封面补票:拿到 entryPath 后离屏渲一帧存上
-  // 预览源走 convertFileSrc(asset 协议):模型目录在 characters/** 白名单内,
-  // HTTP files 路由要鉴权头而 pixi 加载器加不了头,所以不走它。
+  // 缺封面时读取同一个模型 ZIP 离屏渲一帧. 舞台与设置页共用加载链,
+  // 不再让预览代码依赖宿主绝对路径或 Tauri asset protocol.
   useEffect(() => {
-    if (!configuration?.entryPath) return;
+    if (!configuration) return;
     void (async () => {
       const previewUrl = await fetchServerObjectUrl(
         charactersApi.live2dPreviewUrl(character.name, model.name),
       );
-      if (previewUrl) return;
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+        return;
+      }
       try {
-        const { path: modelDir } = await charactersApi.live2dLocation(character.name, model.name);
-        const entryUrl = tauriBridge.convertFileSrc(`${modelDir.replace(/[\/]+$/, '')}/${configuration.entryPath}`);
-        const base64 = await renderLive2dPreview(entryUrl);
+        const archive = await charactersApi.live2dArchive(character.name, model.name);
+        const base64 = await renderLive2dPreview(archive);
         await charactersApi.uploadLive2dPreview(character.name, model.name, base64);
       } catch { /* 补票失败就保留占位,下次再来 */ }
     })();
@@ -455,17 +456,14 @@ function ImportMenu({ character }: { character: Character }): JSX.Element {
     try {
       const result = await store.importLive2d(character.name, { source });
       showToast(`已导入 ${result.name}`, { variant: 'success' });
-      // 导入成功即离屏渲封面:asset URL 渲一帧 → 存 characterName/.previews/
-      if (result.entryPath) {
-        void (async () => {
-          try {
-            const { path: modelDir } = await charactersApi.live2dLocation(character.name, result.name);
-            const entryUrl = tauriBridge.convertFileSrc(`${modelDir.replace(/[\/]+$/, '')}/${result.entryPath}`);
-            const base64 = await renderLive2dPreview(entryUrl);
-            await charactersApi.uploadLive2dPreview(character.name, result.name, base64);
-          } catch { /* 封面失败不挡导入 */ }
-        })();
-      }
+      // 封面失败不挡导入;下次进入配置页时还会补票.
+      void (async () => {
+        try {
+          const archive = await charactersApi.live2dArchive(character.name, result.name);
+          const base64 = await renderLive2dPreview(archive);
+          await charactersApi.uploadLive2dPreview(character.name, result.name, base64);
+        } catch { /* 下次进入配置页时重试 */ }
+      })();
     } catch (error) {
       if (error instanceof ServerApiError && error.code === 'character_work_running') {
         showToast('当前角色有正在执行的任务,请先停止或等其结束后再导入', { variant: 'warning' });

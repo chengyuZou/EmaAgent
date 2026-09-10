@@ -6,7 +6,6 @@
  * 这样可以为普通浏览器环境提供降级方案，使 Ladle stories
  * 和单元测试即使没有 Tauri 运行时也能正常渲染。
  */
-import { convertFileSrc as tauriConvertFileSrc } from '@tauri-apps/api/core';
 import type { PermissionRequiredEvent } from '@ema-agent/permission';
 import type { AskUserRequiredEvent } from '@ema-agent/tools';
 import type { AppEvent } from '@ema-agent/server/application/appEvents.js';
@@ -183,10 +182,6 @@ async function listenTauri<T>(
 export const tauriBridge = {
   isTauri: detectTauri,
 
-  convertFileSrc(filePath: string): string {
-    return detectTauri() ? tauriConvertFileSrc(filePath) : filePath;
-  },
-
   async setWindowTheme(mode: 'light' | 'dark'): Promise<void> {
     const winMod = await getWindow();
     if (!winMod) return;
@@ -295,53 +290,53 @@ export const tauriBridge = {
     );
   },
 
-  async publishStageEmotion(emotion: string, stageId?: string): Promise<void> {
-    await emitTauri(STAGE_EMOTION_EVENT, { emotion, ...(stageId ? { stageId } : {}) });
+  async publishStageEmotion(emotion: string): Promise<void> {
+    await emitTauri(STAGE_EMOTION_EVENT, { emotion });
   },
 
-  async publishStageMotion(motion: string, stageId?: string): Promise<void> {
-    await emitTauri(STAGE_MOTION_EVENT, { motion, ...(stageId ? { stageId } : {}) });
+  async publishStageMotion(motion: string): Promise<void> {
+    await emitTauri(STAGE_MOTION_EVENT, { motion });
   },
 
-  async publishStageSpeech(speaking: boolean, rms: number, stageId?: string): Promise<void> {
-    await emitTauri(STAGE_SPEECH_EVENT, { speaking, rms, ...(stageId ? { stageId } : {}) });
+  async publishStageSpeech(speaking: boolean, rms: number): Promise<void> {
+    await emitTauri(STAGE_SPEECH_EVENT, { speaking, rms });
   },
 
-  async requestStageExpressionCycle(stageId?: string): Promise<void> {
-    await emitTauri(STAGE_CYCLE_EXPRESSION_EVENT, stageId ? { stageId } : undefined);
+  async requestStageExpressionCycle(): Promise<void> {
+    await emitTauri(STAGE_CYCLE_EXPRESSION_EVENT);
   },
 
   async listenStageEmotion(
-    handler: (emotion: string, stageId?: string) => void,
+    handler: (emotion: string) => void,
   ): Promise<() => void> {
-    return listenTauri<{ emotion: string; stageId?: string }>(
+    return listenTauri<{ emotion: string }>(
       STAGE_EMOTION_EVENT,
-      ({ emotion, stageId }) => handler(emotion, stageId),
+      ({ emotion }) => handler(emotion),
     );
   },
 
   async listenStageMotion(
-    handler: (motion: string, stageId?: string) => void,
+    handler: (motion: string) => void,
   ): Promise<() => void> {
-    return listenTauri<{ motion: string; stageId?: string }>(
+    return listenTauri<{ motion: string }>(
       STAGE_MOTION_EVENT,
-      ({ motion, stageId }) => handler(motion, stageId),
+      ({ motion }) => handler(motion),
     );
   },
 
   async listenStageSpeech(
-    handler: (speaking: boolean, rms: number, stageId?: string) => void,
+    handler: (speaking: boolean, rms: number) => void,
   ): Promise<() => void> {
-    return listenTauri<{ speaking: boolean; rms: number; stageId?: string }>(
+    return listenTauri<{ speaking: boolean; rms: number }>(
       STAGE_SPEECH_EVENT,
-      ({ speaking, rms, stageId }) => handler(speaking, rms, stageId),
+      ({ speaking, rms }) => handler(speaking, rms),
     );
   },
 
-  async listenStageExpressionCycle(handler: (stageId?: string) => void): Promise<() => void> {
-    return listenTauri<{ stageId?: string }>(
+  async listenStageExpressionCycle(handler: () => void): Promise<() => void> {
+    return listenTauri<void>(
       STAGE_CYCLE_EXPRESSION_EVENT,
-      ({ stageId }) => handler(stageId),
+      handler,
     );
   },
 

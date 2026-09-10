@@ -11,7 +11,6 @@ export {
   EMA_LIVE2D_MODELS,
   EMA_VOICE_SAMPLES,
   BUILTIN_CHARACTERS,
-  installBuiltinCharacterResources,
 } from './seed/index.js';
 export type { BuiltinCharacterSeed } from './seed/index.js';
 

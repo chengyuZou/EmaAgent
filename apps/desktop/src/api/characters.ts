@@ -9,6 +9,7 @@ import {
   type RpcClient,
   type RpcJson,
 } from './client.js';
+import { tauriBridge } from '../lib/tauri-bridge.js';
 
 // ── 类型（全部从路由契约推导） ────────────────────────────────────────────────
 
@@ -166,9 +167,12 @@ export const charactersApi = {
     return `/api/characters/${encodeURIComponent(characterName)}/live2d/${encodeURIComponent(live2dName)}/preview`;
   },
 
-  /** 模型目录内文件是原始字节流,不进入 JSON RPC;供舞台/预览按相对路径取。 */
-  live2dFileUrl(characterName: string, live2dName: string, relativePath: string): string {
-    return `/api/characters/${encodeURIComponent(characterName)}/live2d/${encodeURIComponent(live2dName)}/files/${relativePath.split('/').map(encodeURIComponent).join('/')}`;
+  /** 模型目录以一个受认证的 ZIP 读取,包内相对引用由 Live2D 渲染器解析。 */
+  async live2dArchive(characterName: string, live2dName: string): Promise<Blob> {
+    const response = await serverClient.requestRaw(
+      `/api/characters/${encodeURIComponent(characterName)}/live2d/${encodeURIComponent(live2dName)}/archive`,
+    );
+    return response.blob();
   },
 
   // ── 插图 ───────────────────────────────────────────────────────────────────
@@ -277,10 +281,9 @@ export const charactersApi = {
 
   /** 打开角色或资源所在文件夹(Tauri 具名命令,不走 HTTP)。 */
   async openInFolder(absolutePath: string): Promise<void> {
-    const { tauriBridge } = await import('../lib/tauri-bridge.js');
     await tauriBridge.openPath(absolutePath);
   },
 
-  /** 供调用方拿到 server 原始响应的逃生口(暂时只服务非 JSON 文件下载)。 */
+  /** 供调用方拿到 server 原始响应的入口。 */
   requestRaw: serverClient.requestRaw.bind(serverClient),
 };

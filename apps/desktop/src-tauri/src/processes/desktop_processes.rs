@@ -13,7 +13,7 @@ use super::child::{spawn_narrative, spawn_server};
 use super::launch::{resolve_narrative_launch, resolve_server_launch, ChildLaunch};
 use super::platform::NativeProcessTree;
 use super::ready::wait_for_ready;
-use crate::narrative_data::prepare_narrative_data;
+use crate::bundled_data::{prepare_builtin_characters, prepare_narrative_data};
 use crate::desktop::settings::read_start_narrative_on_launch;
 
 const READY_TIMEOUT: Duration = Duration::from_secs(30);
@@ -74,6 +74,11 @@ impl DesktopProcesses {
         }
         *self.0.run_dir.lock().await = Some(run_dir.clone());
 
+        let initialize_builtin_characters = match prepare_builtin_characters(&app).await {
+            Ok(value) => value,
+            Err(error) => return self.fail_server_start(error).await,
+        };
+
         let secret = generate_shared_secret();
         let start_narrative = read_start_narrative_on_launch().unwrap_or_else(|error| {
             tracing::warn!(%error, "read desktop settings failed; Narrative remains enabled");
@@ -102,6 +107,7 @@ impl DesktopProcesses {
             &server_ready,
             &secret,
             narrative_url.as_deref(),
+            initialize_builtin_characters,
             &self.0.process_tree,
         )
         .await

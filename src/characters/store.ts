@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import path from 'node:path';
+import type { Readable } from 'node:stream';
 import type { CharacterDeleteResult, Database } from '@ema-agent/storage';
 import {
   CharacterRepo,
@@ -31,6 +32,7 @@ import { supplementLive2dRuntimeConfig } from './live2d/live2dRuntimeConfigSuppl
 import { readLive2dRuntimeConfig, writeLive2dMappings } from './live2d/live2dRuntimeConfig.js';
 import {
   deleteLive2dDirectory,
+  createLive2dArchiveStream,
   exportLive2dZip,
   findLive2dFiles,
   findLive2dFilesSync,
@@ -112,7 +114,8 @@ export class CharacterStore {
     return () => this.presentationChangedListeners.delete(handler);
   }
 
-  ensureSeed(): void {
+  /** 只在 Desktop Host 判定 `profile.db` 尚未创建时调用。 */
+  initializeBuiltinCharacters(): void {
     for (const seed of BUILTIN_CHARACTERS) {
       const input = normalizeCharacterInput(seed.card);
       assertPersonaPrompt(input.personaPrompt, input.name);
@@ -271,8 +274,7 @@ export class CharacterStore {
       return resource;
     });
   }
-  // 返回里附带入库模型的入口相对路径(entryPath),供前端导入后离屏渲封面。
-  async importLive2dModel(characterName: string, input: ImportCharacterLive2dModelInput): Promise<CharacterLive2dModel & { entryPath: string }> {
+  async importLive2dModel(characterName: string, input: ImportCharacterLive2dModelInput): Promise<CharacterLive2dModel> {
     return this.mutate(characterName, async () => {
       this.getRequiredCharacterOnly(characterName);
       // 导入先在角色目录之外完成解压、引用校验与配置补充；全部通过后才改名提交。
@@ -302,10 +304,7 @@ export class CharacterStore {
             byteSize: files.byteSize,
           });
           this.resourceChanged(characterName);
-          return {
-            ...resource,
-            entryPath: path.relative(destination, live2dFiles.modelPath).split(path.sep).join('/'),
-          };
+          return resource;
         } catch (error) {
           await deleteLive2dDirectory(destination);
           throw error;
@@ -560,7 +559,6 @@ export class CharacterStore {
             kind: 'live2d',
             name: resource.name,
             displayName: resource.displayName,
-            file: files.modelPath,
             stageScale: resource.stageScale,
             stageOffsetX: resource.stageOffsetX,
             stageOffsetY: resource.stageOffsetY,
@@ -595,9 +593,9 @@ export class CharacterStore {
       if (!item.expression) continue;
       const itemFile = this.paths.illustrationFile(characterName, item.name);
       if (inspectIllustrationFileSync(itemFile) !== 'valid') continue;
-      (expressions[item.expression] ??= []).push(illustrationStageEntry(item, itemFile));
+      (expressions[item.expression] ??= []).push(illustrationStageEntry(item));
     }
-    return { status: 'illustration', characterName, resource: illustrationStageEntry(resource, file), expressions };
+    return { status: 'illustration', characterName, resource: illustrationStageEntry(resource), expressions };
   }
 
   resolveLive2dModelDirectory(characterName: string, live2dName: string): string {
@@ -606,6 +604,11 @@ export class CharacterStore {
       throw new CharacterResourceNotFoundError('live2d_model', live2dName);
     }
     return this.paths.live2dModelDirectory(characterName, live2dName);
+  }
+
+  streamLive2dArchive(characterName: string, live2dName: string): Readable {
+    const directory = this.resolveLive2dModelDirectory(characterName, live2dName);
+    return createLive2dArchiveStream(directory);
   }
 
   /** Live2D 静态封面(导入时离屏渲染生成):同存在性校验,落点归 .previews 小区。 */
@@ -647,7 +650,7 @@ export class CharacterStore {
       return configuration;
     });
   }
-  async readLive2dConfiguration(characterName: string, live2dName: string): Promise<Live2dConfiguration & { entryPath: string }> {
+  async readLive2dConfiguration(characterName: string, live2dName: string): Promise<Live2dConfiguration> {
     this.getRequiredCharacterOnly(characterName);
     if (!this.live2dModels.find(characterName, live2dName)) {
       throw new CharacterResourceNotFoundError('live2d_model', live2dName);
@@ -659,8 +662,6 @@ export class CharacterStore {
       runtimeConfig: readLive2dRuntimeConfig(files.runtimeConfigPath),
       expressions: extraction.expressions.map(expression => expression.name),
       motions: extraction.motions,
-      // 入口相对路径:前端补渲封面与舞台同源 URL 都靠它。
-      entryPath: path.relative(directory, files.modelPath).split(path.sep).join('/'),
     };
   }
   async saveLive2dMappings(characterName: string, live2dName: string, mappings: Live2dMappings): Promise<Live2dConfiguration> {
@@ -812,12 +813,11 @@ function normalizeExpression(expression: string | null | undefined): void {
   }
 }
 
-function illustrationStageEntry(resource: CharacterIllustration, file: string): CharacterIllustrationStageEntry {
+function illustrationStageEntry(resource: CharacterIllustration): CharacterIllustrationStageEntry {
   return {
     kind: 'illustration',
     name: resource.name,
     displayName: resource.displayName,
-    file,
     stageScale: resource.stageScale,
     stageOffsetX: resource.stageOffsetX,
     stageOffsetY: resource.stageOffsetY,

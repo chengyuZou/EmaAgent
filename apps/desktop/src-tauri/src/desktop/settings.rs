@@ -34,8 +34,12 @@ pub(crate) fn read_start_narrative_on_launch() -> Result<bool, String> {
 pub(crate) fn write_start_narrative_on_launch(value: bool) -> Result<(), String> {
     let path = settings_file()?;
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("create desktop settings directory {}: {error}", parent.display()))?;
+        fs::create_dir_all(parent).map_err(|error| {
+            format!(
+                "create desktop settings directory {}: {error}",
+                parent.display()
+            )
+        })?;
     }
     let content = serde_json::to_string_pretty(&DesktopSettings {
         start_narrative_on_launch: value,

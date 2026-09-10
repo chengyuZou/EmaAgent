@@ -1,11 +1,11 @@
 // Live2D 卡面/角色封面的静态图:导入成功或缺图补票时,把模型装进一次性离屏
 // Pixi Application,渲一帧、裁透明边、补成 3:4,渲完即毁。不持有第二份活 Canvas。
 import * as PIXI from 'pixi.js';
-import { Live2DModel } from 'pixi-live2d-display/cubism4';
+import { loadLive2DArchive } from '@ema-agent/live2d-react';
 import cropEmptyPixels from '@lemonneko/crop-empty-pixels';
 
-/** 用模型的同源 files URL 离屏渲一帧,返回 3:4 的 PNG base64(不带 dataURL 前缀)。 */
-export async function renderLive2dPreview(modelEntryUrl: string): Promise<string> {
+/** 用模型 ZIP 离屏渲一帧,返回 3:4 的 PNG base64(不带 dataURL 前缀)。 */
+export async function renderLive2dPreview(modelArchive: Blob): Promise<string> {
   const width = 480;
   const height = 640;
   const canvas = document.createElement('canvas');
@@ -31,7 +31,7 @@ export async function renderLive2dPreview(modelEntryUrl: string): Promise<string
   });
 
   try {
-    const model = await Live2DModel.from(modelEntryUrl, {
+    const model = await loadLive2DArchive(modelArchive, {
       ticker: app.ticker,
       autoInteract: false,
       autoUpdate: false,

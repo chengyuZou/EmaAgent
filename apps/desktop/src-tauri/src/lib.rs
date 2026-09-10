@@ -1,7 +1,7 @@
 // 组装 Tauri 插件、桌面能力、共享状态和应用生命周期。
+mod bundled_data;
 mod commands;
 mod desktop;
-mod narrative_data;
 mod processes;
 
 use tauri::{Manager, RunEvent};
@@ -10,10 +10,9 @@ use tracing_subscriber::EnvFilter;
 use commands::{
     browser_back, browser_forward, close_browser, close_session_terminals, close_terminal,
     get_server_port, get_server_secret, get_start_narrative_on_launch, list_terminal_shells,
-    navigate_browser, open_browser,
-    open_path, open_terminal, open_window, quit_app, reload_browser, resize_terminal, set_always_on_top,
-    set_browser_bounds, set_browser_visible, set_passthrough, set_start_narrative_on_launch,
-    write_terminal,
+    navigate_browser, open_browser, open_path, open_terminal, open_window, quit_app,
+    reload_browser, resize_terminal, set_always_on_top, set_browser_bounds, set_browser_visible,
+    set_passthrough, set_start_narrative_on_launch, write_terminal,
 };
 use desktop::terminal::TerminalSessions;
 use desktop::windows::{handle_window_event, show_main_window};

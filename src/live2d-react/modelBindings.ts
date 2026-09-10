@@ -1,10 +1,7 @@
 // 把 Character 给出的 ID 和 Motion 引用绑定到当前 Cubism 模型的真实对象。
 
 import type { Cubism4InternalModel } from 'pixi-live2d-display/cubism4';
-import type {
-  Live2DModelBindings,
-  Live2DMotionReference,
-} from './types.js';
+import type { Live2dMotion, Live2dRuntimeConfig } from '@ema-agent/characters';
 
 export interface ResolvedLive2DLipSyncParameter {
   index: number;
@@ -13,7 +10,7 @@ export interface ResolvedLive2DLipSyncParameter {
 }
 
 export interface ResolvedLive2DModelBindings {
-  idleMotions: readonly Live2DMotionReference[];
+  idleMotions: readonly Live2dMotion[];
   lipSyncParameters: readonly ResolvedLive2DLipSyncParameter[];
 }
 
@@ -23,12 +20,12 @@ export interface ResolvedLive2DModelBindings {
  */
 export function resolveLive2DModelBindings(
   internalModel: Cubism4InternalModel,
-  bindings?: Live2DModelBindings,
+  runtimeConfig?: Live2dRuntimeConfig,
 ): ResolvedLive2DModelBindings {
   const coreModel = internalModel.coreModel;
   const parameters = coreModel.getModel().parameters;
   const parameterIds = new Set(parameters.ids);
-  const requestedLipSyncIds = bindings?.lipSyncParameterIds
+  const requestedLipSyncIds = runtimeConfig?.lipSyncParameterIds
     ?? internalModel.settings.getLipSyncParameters()
     ?? [];
 
@@ -47,7 +44,7 @@ export function resolveLive2DModelBindings(
   return {
     idleMotions: resolveMotionReferences(
       internalModel.motionManager.definitions,
-      bindings?.idleMotions ?? [],
+      runtimeConfig?.idleMotions ?? [],
     ),
     lipSyncParameters,
   };
@@ -55,10 +52,10 @@ export function resolveLive2DModelBindings(
 
 function resolveMotionReferences(
   definitions: Readonly<Partial<Record<string, readonly unknown[]>>>,
-  references: readonly Live2DMotionReference[],
-): Live2DMotionReference[] {
+  references: readonly Live2dMotion[],
+): Live2dMotion[] {
   const seen = new Set<string>();
-  const resolved: Live2DMotionReference[] = [];
+  const resolved: Live2dMotion[] = [];
 
   for (const reference of references) {
     const group = reference.group.trim();

@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { unzipSync } from 'fflate';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Database } from '@ema-agent/storage';
 import { characterStageVocabulary } from '../characterPrompt.js';
@@ -18,7 +19,7 @@ describe('CharacterStore', () => {
     database.migrate();
     root = fs.mkdtempSync(path.join(os.tmpdir(), 'ema-character-'));
     store = new CharacterStore(database, path.join(root, 'characters'));
-    store.ensureSeed();
+    store.initializeBuiltinCharacters();
   });
 
   afterEach(() => {
@@ -111,6 +112,15 @@ describe('CharacterStore', () => {
     const imported = await store.importLive2dModel('模型角色', { source, isPrimary: true });
 
     expect(imported.name).toBe('alice-model');
+    const archiveChunks: Buffer[] = [];
+    for await (const chunk of store.streamLive2dArchive('模型角色', 'alice-model')) {
+      archiveChunks.push(Buffer.from(chunk));
+    }
+    expect(Object.keys(unzipSync(Buffer.concat(archiveChunks)))).toEqual(expect.arrayContaining([
+      'alice.model3.json',
+      'alice.moc3',
+      'textures/texture.png',
+    ]));
     expect(store.resolveLive2dModelDirectory('模型角色', 'alice-model')).toBe(
       path.join(root, 'characters', '模型角色', 'live2d', 'alice-model'),
     );

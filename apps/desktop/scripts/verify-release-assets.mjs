@@ -71,6 +71,17 @@ if (!config.cubismCore.allowedSha256.includes(cubismHash)) {
   throw new Error(`Cubism Core SHA-256 未被批准: ${cubismHash}`);
 }
 
+// Rust 按角色最终目录名整树复制。这里直接验证发布包来源，避免打包前又退回 ASCII 别名目录。
+const characterSource = path.join(tauriRoot, 'resources', 'characters', '樱羽艾玛');
+requireRegularFile(
+  path.join(characterSource, 'live2d', 'ema', 'ema.model3.json'),
+  '艾玛 Live2D 入口',
+);
+requireRegularFile(
+  path.join(characterSource, 'voice', 'ra_ema001.mp3'),
+  '艾玛参考音频',
+);
+
 // Narrative 剧情数据从 bridges/narrative/data 直收进安装包：验证源目录三时间线齐备。
 const narrativeSource = path.join(workspaceRoot, 'bridges', 'narrative', 'data', 'witch-trial');
 for (const timeline of ['1st_Loop', '2nd_Loop', '3rd_Loop']) {

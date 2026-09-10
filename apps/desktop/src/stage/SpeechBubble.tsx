@@ -7,7 +7,7 @@
  *   speech:end    — turn finished; start fade-out timer
  *
  * Only tracks the most recently started session (mirrors ttsOwnerSessionId).
- * Positioned at the top of the transparent window so it floats above Ema.
+ * 固定在角色舞台预留区域内,气泡与角色画面不再重叠。
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { tauriBridge } from '../lib/tauri-bridge.js';
@@ -140,7 +140,7 @@ export function SpeechBubble(): React.JSX.Element | null {
           padding:        '10px 14px',
           boxShadow:      'var(--ema-shadow-2), 0 0 16px color-mix(in srgb, var(--ema-pet-glow-bright) 12%, transparent)',
           backdropFilter: 'var(--ema-glass-base)',
-          maxHeight:      210,
+          maxHeight:      112,
           overflow:       'hidden',
         }}
       >
@@ -152,7 +152,7 @@ export function SpeechBubble(): React.JSX.Element | null {
             color:               'var(--ema-text-primary)',
             wordBreak:           'break-word',
             display:             '-webkit-box',
-            WebkitLineClamp:     9,
+            WebkitLineClamp:     5,
             WebkitBoxOrient:     'vertical',
             overflow:            'hidden',
             whiteSpace:          'pre-wrap',

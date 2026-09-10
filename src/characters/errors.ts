@@ -75,7 +75,7 @@ export class CharacterStateInvalidError extends Error {
     readonly reason: CharacterStateInvalidReason,
     readonly characterName?: string,
   ) {
-    super('no active character - call ensureSeed() at startup');
+    super('no active character');
     this.name = 'CharacterStateInvalidError';
   }
 }

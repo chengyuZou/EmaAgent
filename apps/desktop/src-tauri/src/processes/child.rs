@@ -27,11 +27,15 @@ pub async fn spawn_server(
     ready_file: &Path,
     secret: &str,
     narrative_url: Option<&str>,
+    initialize_builtin_characters: bool,
     process_tree: &NativeProcessTree,
 ) -> Result<Child, String> {
     let mut command = base_command(launch, ready_file, secret);
     if let Some(url) = narrative_url {
         command.env("EMA_NARRATIVE_BRIDGE_URL", url);
+    }
+    if initialize_builtin_characters {
+        command.env("EMA_INITIALIZE_BUILTIN_CHARACTERS", "1");
     }
     spawn(command, "server", process_tree).await
 }

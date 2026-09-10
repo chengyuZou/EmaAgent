@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { readdir } from 'node:fs/promises';
+import { PassThrough, type Readable } from 'node:stream';
 import { Unzip, UnzipInflate, Zip, ZipDeflate } from 'fflate';
 import { CharacterResourceValidationError } from '../errors.js';
 import { physicalName, sourceBaseName } from '../resources/resourcePaths.js';
@@ -150,6 +151,68 @@ export async function exportLive2dZip(
     if (error instanceof CharacterResourceValidationError) throw error;
     throw new CharacterResourceValidationError('zip_invalid');
   }
+}
+
+/**
+ * 把已提交的模型目录打成 HTTP 响应使用的 ZIP 流. 浏览器只拿到一个受认证的包,
+ * 包内 `.model3.json` 的相对引用交给渲染层解析, 不再暴露宿主绝对路径.
+ */
+export function createLive2dArchiveStream(sourceDirectory: string): Readable {
+  const output = new PassThrough();
+
+  void writeLive2dArchive(sourceDirectory, output).catch((error: unknown) => {
+    output.destroy(error instanceof Error ? error : new Error(String(error)));
+  });
+
+  return output;
+}
+
+async function writeLive2dArchive(
+  sourceDirectory: string,
+  output: PassThrough,
+): Promise<void> {
+  const files = await listLive2dFiles(sourceDirectory);
+  let finishArchive!: () => void;
+  let failArchive!: (error: unknown) => void;
+  let waitForDrain: Promise<void> | null = null;
+  const archiveFinished = new Promise<void>((resolve, reject) => {
+    finishArchive = resolve;
+    failArchive = reject;
+  });
+  const zip = new Zip((error, chunk, final) => {
+    if (error) {
+      failArchive(error);
+      return;
+    }
+    if (chunk.byteLength > 0 && !output.write(chunk) && !waitForDrain) {
+      waitForDrain = new Promise<void>(resolve => {
+        output.once('drain', () => {
+          waitForDrain = null;
+          resolve();
+        });
+      });
+    }
+    if (final) finishArchive();
+  });
+
+  for (const file of files) {
+    const entry = new ZipDeflate(
+      path.relative(sourceDirectory, file).split(path.sep).join('/'),
+      { level: 6 },
+    );
+    zip.add(entry);
+    for await (const chunk of fs.createReadStream(file)) {
+      entry.push(chunk);
+      if (waitForDrain) await waitForDrain;
+    }
+    entry.push(new Uint8Array(), true);
+    if (waitForDrain) await waitForDrain;
+  }
+
+  zip.end();
+  await archiveFinished;
+  if (waitForDrain) await waitForDrain;
+  output.end();
 }
 
 export { removeDirectoryIfPresent as deleteLive2dDirectory };

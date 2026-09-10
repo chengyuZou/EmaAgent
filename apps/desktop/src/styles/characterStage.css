@@ -1,19 +1,20 @@
-/* 主窗口角色舞台使用双层过渡，保证新资源就绪前旧画面不会消失。 */
+/* 角色舞台固定在气泡下方,文字再长也不会盖住角色面部。 */
 
-.ema-character-stage,
 .ema-character-stage-resource,
 .ema-character-stage-placeholder {
-  position: fixed;
+  position: absolute;
   inset: 0;
 }
 
 .ema-character-stage {
+  position: fixed;
+  inset: 142px 0 0;
   z-index: 2;
   pointer-events: none;
 }
 
 .ema-character-stage-resource {
-  opacity: 0;
+  opacity: 1;
   transition: opacity var(--ema-duration-slow) var(--ema-ease);
 }
 
@@ -22,18 +23,22 @@
   pointer-events: auto;
 }
 
-.ema-character-stage-resource[data-state='outgoing'] {
-  opacity: 0;
-}
-
-.ema-character-stage-resource[data-state='pending'] {
-  visibility: hidden;
-}
-
 .ema-character-stage-resource-content {
   position: absolute;
   inset: 0;
   transform-origin: center bottom;
+}
+
+.ema-character-stage-illustration-layer {
+  position: absolute;
+  inset: 0;
+  transform-origin: center bottom;
+  opacity: 1;
+  transition: opacity 300ms var(--ema-ease);
+}
+
+.ema-character-stage-illustration-layer[data-state='outgoing'] {
+  opacity: 0;
 }
 
 .ema-character-stage-portrait {
@@ -43,7 +48,6 @@
   object-position: center bottom;
   user-select: none;
   -webkit-user-drag: none;
-  animation: ema-character-portrait-breathe 4.8s var(--ema-ease) infinite;
 }
 
 .ema-character-stage-placeholder {
@@ -66,22 +70,11 @@
   box-shadow: 0 0 42px color-mix(in srgb, var(--ema-primary) 14%, transparent);
 }
 
-@keyframes ema-character-portrait-breathe {
-  0%,
-  100% {
-    transform: translateY(0) scale(1);
-  }
-  50% {
-    transform: translateY(-2px) scale(1.003);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .ema-character-stage-resource {
     transition-duration: 0ms;
   }
 
-  .ema-character-stage-portrait,
   .ema-character-stage-placeholder {
     animation: none;
   }

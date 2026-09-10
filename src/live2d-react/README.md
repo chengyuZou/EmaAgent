@@ -1,17 +1,12 @@
 # @ema-agent/live2d-react
 
-`live2d-react` 只负责把一个 Cubism 4 模型加载到 PIXI 舞台，并执行模型原生表情、动作、视线和口型。
+`live2d-react` 只负责把 Character 的 Cubism 4 模型 ZIP 加载到 PIXI 舞台,并执行模型原生表情、动作、视线和口型。
 
 角色选择、资源降级、emotion/motion 语义、音频播放和跨窗口事件均由宿主负责。本包不读 Character Store，不保存数据，不解压资源，不猜作者的 Parameter 语义。
 
 ## 公共契约
 
 ```ts
-interface Live2DModelBindings {
-  idleMotions?: readonly { group: string; index?: number }[];
-  lipSyncParameterIds?: readonly string[];
-}
-
 interface Live2DStageHandle {
   setExpression(name: string | null): void;
   cycleExpression(): string | null;
@@ -23,22 +18,25 @@ interface Live2DStageHandle {
 ```tsx
 <Live2DStage
   ref={stageRef}
-  modelPath={modelPath}
-  bindings={bindings}
+  modelArchive={archiveBlob}
+  runtimeConfig={characterLive2dRuntimeConfig}
   suspended={windowHidden}
   onReady={({ hasExpressions }) => {}}
   onError={handleLoadFailure}
 />
 ```
 
-`mouthOpen` 是宿主已换算的 `0..1` 开口度；本包不理解 RMS 或某个 TTS 协议。`lipSyncParameterIds === undefined` 时使用 `.model3.json` 的 `LipSync` group，显式空数组则关闭口型。
+`Live2dRuntimeConfig` 与 `Live2dMotion` 直接来自 `@ema-agent/characters`,本包不复制一份 bindings 协议。`mouthOpen` 是宿主已换算的 `0..1` 开口度；本包不理解 RMS 或某个 TTS 协议。`lipSyncParameterIds === undefined` 时使用 `.model3.json` 的 `LipSync` group，显式空数组则关闭口型。
 
 待机动作只从 `idleMotions` 选择，不自动把整个 `Idle` group 当成待机。真实模型可能把流泪、特殊剧情等 Motion 也放进该组。
 
 ## 播放流水线
 
 ```text
-.model3.json
+Character ZIP Blob
+  -> JSZip 保留包内目录关系
+  -> pixi-live2d-display ZipLoader/FileLoader 建立 blob URL
+  -> .model3.json
   -> pixi-live2d-display/cubism4 加载 moc3/纹理/physics/motion/expression
   -> Live2DModel 加入 PIXI stage
   -> PIXI.Application.ticker 驱动 Cubism 单一帧循环
@@ -56,6 +54,7 @@ interface Live2DStageHandle {
 ## 文件责职
 
 - `Live2DStage.tsx`：React/PIXI/Cubism 生命周期和公开句柄。
+- `live2dArchive.ts`：把完整 ZIP 目录树接入 pixi-live2d-display 的 Zip/File Loader。
 - `modelBindings.ts`：把资源绑定投影到当前模型真实存在的 Parameter 与 Motion。
 - `lipSync.ts`：说话期间在唯一帧更新点平滑写入口型，说完经 hold 交还控制权。
 - `idleMotion.ts`：延迟调度 Character 明确允许的待机 Motion。

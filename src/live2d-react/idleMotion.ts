@@ -1,13 +1,13 @@
 // 从 Character 明确允许的 Motion 中定时选择待机动作。
 
-import type { Live2DMotionReference } from './types.js';
+import type { Live2dMotion } from '@ema-agent/characters';
 
 const MIN_IDLE_DELAY_MS = 12_000;
 const MAX_IDLE_DELAY_MS = 35_000;
 
 export function startLive2DIdleMotionSchedule(
-  play: (motion: Live2DMotionReference) => void,
-  readMotions: () => readonly Live2DMotionReference[],
+  play: (motion: Live2dMotion) => void,
+  readMotions: () => readonly Live2dMotion[],
   canPlay: () => boolean,
 ): () => void {
   let timer: ReturnType<typeof setTimeout> | null = null;
