@@ -1,14 +1,7 @@
 // 把 Desktop 终端的打开、输入、改尺寸和关闭操作交给 PTY 会话表。
 use tauri::{ipc::Channel, State};
 
-use crate::desktop::terminal::{
-    detect_terminal_shells, DetectedTerminalShell, TerminalEvent, TerminalSessions,
-};
-
-#[tauri::command]
-pub fn list_terminal_shells() -> Vec<DetectedTerminalShell> {
-    detect_terminal_shells()
-}
+use crate::desktop::terminal::{TerminalEvent, TerminalSessions, TerminalShellSpec};
 
 #[tauri::command]
 pub fn open_terminal(
@@ -16,7 +9,7 @@ pub fn open_terminal(
     terminal_id: String,
     session_id: String,
     cwd: Option<String>,
-    shell_executable: Option<String>,
+    shell: Option<TerminalShellSpec>,
     columns: u16,
     rows: u16,
     on_event: Channel<TerminalEvent>,
@@ -25,7 +18,7 @@ pub fn open_terminal(
         terminal_id,
         session_id,
         cwd,
-        shell_executable,
+        shell,
         columns,
         rows,
         on_event,

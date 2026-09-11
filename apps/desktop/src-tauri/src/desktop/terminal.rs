@@ -3,13 +3,12 @@ use std::{
     collections::HashMap,
     io::{Read, Write},
     path::{Path, PathBuf},
-    process::Command,
     sync::{Arc, Mutex},
     thread,
 };
 
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
 
 #[derive(Clone)]
@@ -24,11 +23,12 @@ struct TerminalSession {
     child: Box<dyn Child + Send + Sync>,
 }
 
-#[derive(Clone, Copy, Serialize)]
-#[serde(rename_all = "camelCase")]
+// kind 是 Node 探测给出的全小写 key,经 IPC 传入;Rust 只用它决定启动参数(如 PowerShell 补 -NoLogo)。
+#[derive(Clone, Copy, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum TerminalShellKind {
     PowerShell,
-    CommandPrompt,
+    Cmd,
     Bash,
     Zsh,
     Fish,
@@ -36,12 +36,11 @@ pub enum TerminalShellKind {
     Sh,
 }
 
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DetectedTerminalShell {
-    pub label: String,
+// Shell 探测在 Node;Rust 只收"启动什么(path)+怎么启动(kind)"。
+#[derive(Clone, Deserialize)]
+pub struct TerminalShellSpec {
     pub kind: TerminalShellKind,
-    pub executable_path: String,
+    pub path: String,
 }
 
 #[derive(Clone, Serialize)]
@@ -67,7 +66,7 @@ impl TerminalSessions {
         terminal_id: String,
         session_id: String,
         cwd: Option<String>,
-        shell_executable: Option<String>,
+        shell: Option<TerminalShellSpec>,
         columns: u16,
         rows: u16,
         on_event: Channel<TerminalEvent>,
@@ -85,7 +84,7 @@ impl TerminalSessions {
                 pixel_height: 0,
             })
             .map_err(|error| error.to_string())?;
-        let mut command = shell_command(shell_executable)?;
+        let mut command = shell_command(shell)?;
         command.cwd(working_dir);
         #[cfg(not(windows))]
         command.env("TERM", "xterm-256color");
@@ -197,19 +196,6 @@ impl TerminalSessions {
     }
 }
 
-pub fn detect_terminal_shells() -> Vec<DetectedTerminalShell> {
-    let mut paths = discover_shell_paths();
-    paths.sort_by_key(|path| shell_priority(shell_kind(path)));
-    paths
-        .into_iter()
-        .map(|path| DetectedTerminalShell {
-            label: shell_label(&path),
-            kind: shell_kind(&path),
-            executable_path: path.to_string_lossy().into_owned(),
-        })
-        .collect()
-}
-
 fn read_output(
     sessions: TerminalSessions,
     terminal_id: String,
@@ -249,141 +235,24 @@ fn resolve_working_dir(cwd: Option<String>) -> Result<PathBuf, String> {
     Ok(path)
 }
 
-fn shell_command(shell_executable: Option<String>) -> Result<CommandBuilder, String> {
-    let path = match shell_executable.filter(|value| !value.trim().is_empty()) {
-        Some(value) => {
-            let path = PathBuf::from(value);
+fn shell_command(shell: Option<TerminalShellSpec>) -> Result<CommandBuilder, String> {
+    let spec = shell.filter(|spec| !spec.path.trim().is_empty());
+    let (path, kind) = match spec {
+        Some(spec) => {
+            let path = PathBuf::from(&spec.path);
             if !path.is_file() {
                 return Err(format!("选择的 Shell 不存在: {}", path.display()));
             }
-            path
+            (path, Some(spec.kind))
         }
-        None => default_shell_path(),
+        // 仅在 Node 探测结果为空时走到这:平台默认 shell(cmd.exe 或 /bin/sh)无需补参数。
+        None => (platform_shell_fallback(), None),
     };
-    let kind = shell_kind(&path);
     let mut command = CommandBuilder::new(path);
-    if matches!(kind, TerminalShellKind::PowerShell) {
+    if matches!(kind, Some(TerminalShellKind::PowerShell)) {
         command.arg("-NoLogo");
     }
     Ok(command)
-}
-
-fn default_shell_path() -> PathBuf {
-    detect_terminal_shells()
-        .into_iter()
-        .next()
-        .map(|shell| PathBuf::from(shell.executable_path))
-        .unwrap_or_else(platform_shell_fallback)
-}
-
-#[cfg(windows)]
-fn discover_shell_paths() -> Vec<PathBuf> {
-    let mut paths = Vec::new();
-    for name in [
-        "pwsh.exe",
-        "powershell.exe",
-        "cmd.exe",
-        "bash.exe",
-        "wsl.exe",
-    ] {
-        if let Ok(output) = Command::new("where.exe").arg(name).output() {
-            if output.status.success() {
-                paths.extend(
-                    String::from_utf8_lossy(&output.stdout)
-                        .lines()
-                        .map(str::trim)
-                        .filter(|line| !line.is_empty())
-                        .map(PathBuf::from),
-                );
-            }
-        }
-    }
-    if let Ok(comspec) = std::env::var("COMSPEC") {
-        paths.push(PathBuf::from(comspec));
-    }
-    distinct_existing_paths(paths)
-}
-
-#[cfg(not(windows))]
-fn discover_shell_paths() -> Vec<PathBuf> {
-    let mut paths = Vec::new();
-    if let Ok(shell) = std::env::var("SHELL") {
-        paths.push(PathBuf::from(shell));
-    }
-    for name in ["bash", "zsh", "fish", "sh"] {
-        if let Ok(output) = Command::new("which").arg("-a").arg(name).output() {
-            if output.status.success() {
-                paths.extend(
-                    String::from_utf8_lossy(&output.stdout)
-                        .lines()
-                        .map(str::trim)
-                        .filter(|line| !line.is_empty())
-                        .map(PathBuf::from),
-                );
-            }
-        }
-    }
-    distinct_existing_paths(paths)
-}
-
-fn distinct_existing_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
-    let mut seen = std::collections::HashSet::new();
-    paths
-        .into_iter()
-        .filter(|path| path.is_file())
-        .filter(|path| {
-            let key = path.to_string_lossy().to_ascii_lowercase();
-            seen.insert(key)
-        })
-        .collect()
-}
-
-fn shell_kind(path: &Path) -> TerminalShellKind {
-    let name = path
-        .file_name()
-        .and_then(|value| value.to_str())
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    match name.as_str() {
-        "pwsh" | "pwsh.exe" | "powershell" | "powershell.exe" => TerminalShellKind::PowerShell,
-        "cmd" | "cmd.exe" => TerminalShellKind::CommandPrompt,
-        "bash" | "bash.exe" => TerminalShellKind::Bash,
-        "zsh" => TerminalShellKind::Zsh,
-        "fish" => TerminalShellKind::Fish,
-        "wsl" | "wsl.exe" => TerminalShellKind::Wsl,
-        _ => TerminalShellKind::Sh,
-    }
-}
-
-fn shell_label(path: &Path) -> String {
-    let lower_path = path.to_string_lossy().to_ascii_lowercase();
-    match shell_kind(path) {
-        TerminalShellKind::PowerShell
-            if lower_path.ends_with("pwsh.exe") || lower_path.ends_with("/pwsh") =>
-        {
-            "PowerShell 7".into()
-        }
-        TerminalShellKind::PowerShell => "Windows PowerShell".into(),
-        TerminalShellKind::CommandPrompt => "Command Prompt".into(),
-        TerminalShellKind::Bash if lower_path.contains("git") => "Git Bash".into(),
-        TerminalShellKind::Bash => "Bash".into(),
-        TerminalShellKind::Zsh => "Zsh".into(),
-        TerminalShellKind::Fish => "Fish".into(),
-        TerminalShellKind::Wsl => "WSL".into(),
-        TerminalShellKind::Sh => "Shell".into(),
-    }
-}
-
-fn shell_priority(kind: TerminalShellKind) -> u8 {
-    match kind {
-        TerminalShellKind::PowerShell => 0,
-        TerminalShellKind::Bash => 1,
-        TerminalShellKind::Zsh => 2,
-        TerminalShellKind::Fish => 3,
-        TerminalShellKind::Wsl => 4,
-        TerminalShellKind::CommandPrompt => 5,
-        TerminalShellKind::Sh => 6,
-    }
 }
 
 #[cfg(windows)]

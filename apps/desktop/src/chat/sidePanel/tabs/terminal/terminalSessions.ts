@@ -5,6 +5,7 @@ import { Terminal } from '@xterm/xterm';
 
 import { tauriBridge, type TerminalEvent } from '../../../../lib/tauri-bridge.js';
 import { settingsApi } from '../../../../api/settings.js';
+import { systemApi } from '../../../../api/system.js';
 
 type TerminalStatus = 'running' | 'exited';
 
@@ -30,10 +31,14 @@ export interface StartTerminalInput {
 
 export async function startTerminal(input: StartTerminalInput): Promise<void> {
   if (entries.has(input.terminalId)) return;
+  // 偏好存 kind:解不出(未设/该 kind 已消失)回退探测首条,与设置页"自动选择"同义;
+  // 探测全空则不传 shell,由 Rust 落平台默认 shell。
   const shellSetting = await settingsApi.getValue('frontend.terminal.shellExecutable');
-  const shellExecutable = typeof shellSetting.value === 'string' && shellSetting.value.trim()
-    ? shellSetting.value
-    : undefined;
+  const preferredKind = typeof shellSetting.value === 'string' ? shellSetting.value.trim() : '';
+  const { shells } = await systemApi.findTerminalShells();
+  const shell = (preferredKind
+    ? shells.find(candidate => candidate.kind === preferredKind)
+    : undefined) ?? shells[0];
   const terminal = new Terminal({
     cursorBlink: true,
     convertEol: false,
@@ -69,7 +74,7 @@ export async function startTerminal(input: StartTerminalInput): Promise<void> {
       terminalId: input.terminalId,
       sessionId: input.sessionId,
       ...(input.cwd ? { cwd: input.cwd } : {}),
-      ...(shellExecutable ? { shellExecutable } : {}),
+      ...(shell ? { shell: { kind: shell.kind, path: shell.path } } : {}),
       columns: entry.columns,
       rows: entry.rows,
       onEvent: (event) => acceptTerminalEvent(input.terminalId, event),

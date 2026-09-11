@@ -25,12 +25,15 @@ interface CaptureResult {
   readonly stdout: string;
 }
 
+export type { CaptureResult };
+
 /**
  * 带超时地执行一条探测命令并收集 stdout。
  * 超时/启动失败/被杀都按 { status: null } 返回, 不抛出——
  * 探测链的每一步都允许失败, 失败含义是"走下一级回退"。
+ * 同包 terminalShells 复用它做 where/which 全量扫描, 故导出。
  */
-function runCapture(executable: string, args: readonly string[], timeoutMs: number): Promise<CaptureResult> {
+export function runCapture(executable: string, args: readonly string[], timeoutMs: number): Promise<CaptureResult> {
   return new Promise((resolve) => {
     const child = spawn(executable, [...args], { windowsHide: true });
     let stdout = '';

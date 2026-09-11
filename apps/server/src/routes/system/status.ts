@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { Hono } from 'hono';
 import { getDisksInfo } from '@ema-agent/system';
-import type { SandboxStatus } from '@ema-agent/sandbox';
+import { detectTerminalShells, type SandboxStatus } from '@ema-agent/sandbox';
 
 export interface SystemStatusRouteDeps {
   readonly activeDataDir: string;
@@ -27,4 +27,8 @@ export const systemStatusRoute = (deps: SystemStatusRouteDeps) =>
       return context.json({ disks: getDisksInfo(), dataDir: deps.activeDataDir });
     })
     // 当前机器真正启用的隔离等级（裸 Windows 无 OS 沙箱时如实降级）。
-    .get('/sandbox', context => context.json(deps.sandboxStatus));
+    .get('/sandbox', context => context.json(deps.sandboxStatus))
+    // 集成终端可选 Shell 探测（检测统一在 Node；Rust 只按 path 起 PTY）。
+    .get('/api/system/find-terminal-shells', async context => {
+      return context.json({ shells: await detectTerminalShells() });
+    });

@@ -14,6 +14,6 @@ pub use desktop::{
 };
 pub use server::{get_server_port, get_server_secret};
 pub use terminal::{
-    close_session_terminals, close_terminal, list_terminal_shells, open_terminal, resize_terminal,
+    close_session_terminals, close_terminal, open_terminal, resize_terminal,
     write_terminal,
 };

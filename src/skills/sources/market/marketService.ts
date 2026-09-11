@@ -98,12 +98,15 @@ async function dirExists(dirPath: string): Promise<boolean> {
 // ── 跨源去重:SkillHub 镜像条目并入 ClawHub 原始条目 ──────────────────────────
 
 function dedupeSkills(items: MarketSkill[]): MarketSkill[] {
+  const uniqueItems = Array.from(
+    new Map(items.map(item => [item.id, item] as const)).values(),
+  );
   const byClawhubSlug = new Map<string, MarketSkill>();
-  for (const item of items) {
+  for (const item of uniqueItems) {
     if (item.source === 'clawhub') byClawhubSlug.set(item.slug, item);
   }
   const result: MarketSkill[] = [];
-  for (const item of items) {
+  for (const item of uniqueItems) {
     if (item.source === 'skillhub' && item.upstream?.slug) {
       const original = byClawhubSlug.get(item.upstream.slug);
       if (original) {
