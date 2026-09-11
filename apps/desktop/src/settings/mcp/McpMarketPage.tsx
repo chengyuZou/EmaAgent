@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Badge, Button, Callout, Dialog, EmptyState, Field, Input, MarketCard, Spinner } from '@ema-agent/ui';
+import { Badge, Button, Callout, Dialog, EmptyState, Field, Input, MarketCard, SearchField, Spinner } from '@ema-agent/ui';
 import { mcpApi, type McpMarketDetail, type McpMarketEntry } from '../../api/mcp.js';
 import { MCP_MARKET_CHANGED_EVENT } from '../../lib/system-event-dispatcher.js';
 import { showToast } from '../../lib/toast.js';
@@ -143,22 +143,21 @@ export function McpMarketPage(): JSX.Element {
           <span className="i-mdi:refresh" aria-hidden />刷新
         </Button>
       </div>
-      <div className="flex gap-2">
-        <Input
-          value={search}
-          onChange={event => setSearch(event.target.value)}
-          onKeyDown={event => { if (event.key === 'Enter') searchMarket(); }}
-          placeholder="搜索 MCP 名称或说明"
-        />
-        <Button size="sm" variant="secondary" onClick={searchMarket}>搜索</Button>
-      </div>
+      <SearchField
+        value={search}
+        onChange={setSearch}
+        onSubmit={searchMarket}
+        loading={loading}
+        placeholder="搜索 MCP 名称或说明"
+        aria-label="搜索 MCP 服务"
+      />
       {!complete && <Callout variant="info">
         {syncing ? `市场正在后台同步, 当前已缓存 ${total} 条. 搜索结果可能不完整.` : `市场缓存尚未完整, 当前可查看 ${total} 条.`}
       </Callout>}
       {error && <Callout variant="danger">{error}</Callout>}
       {loading && entries.length === 0 ? <div className="flex justify-center py-12"><Spinner size="md" /></div>
         : entries.length === 0 ? <EmptyState icon="i-mdi:store-outline" title="暂无市场条目" hint="可以更换关键词或刷新 Official MCP Registry." />
-        : <div className="grid grid-cols-1 gap-2 overflow-auto pr-2 xl:grid-cols-2">
+        : <div className="grid min-h-0 grid-cols-1 gap-2 overflow-y-auto overflow-x-hidden pr-2 [scrollbar-gutter:stable] xl:grid-cols-2">
           {entries.map((entry, index) => {
             const key = entry.externalId;
             return <MarketCard

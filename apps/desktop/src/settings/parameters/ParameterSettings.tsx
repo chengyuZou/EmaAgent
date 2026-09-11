@@ -3,12 +3,13 @@ import { Button } from '@ema-agent/ui';
 import { AgentParameters } from './agent/AgentParameters.js';
 import { AttachmentParameters } from './attachments/AttachmentParameters.js';
 import { ContextParameters } from './context/ContextParameters.js';
+import { EventDisplayParameters } from './event-display/EventDisplayParameters.js';
 import { NarrativeParameters } from './narrative/NarrativeParameters.js';
 import { PermissionSettings } from './permission/PermissionSettings.js';
 import { ToolsSettings } from './tools/ToolsSettings.js';
 import { WorkspaceParameters } from './workspace/WorkspaceParameters.js';
 
-type ParameterDomain = 'attachments' | 'agent' | 'context' | 'narrative' | 'permission' | 'tools' | 'workspace';
+type ParameterDomain = 'attachments' | 'agent' | 'context' | 'event-display' | 'narrative' | 'permission' | 'tools' | 'workspace';
 
 const DOMAINS: readonly {
   id: ParameterDomain;
@@ -19,6 +20,7 @@ const DOMAINS: readonly {
   { id: 'attachments', title: '附件', description: 'Vision 描述缓存容量.', icon: 'i-lucide:paperclip' },
   { id: 'agent', title: 'Agent', description: 'Chat, Work 和子代理执行限制.', icon: 'i-lucide:bot' },
   { id: 'context', title: '上下文', description: '自动压缩和手动压缩策略.', icon: 'i-lucide:gauge' },
+  { id: 'event-display', title: '事件通知', description: '桌面事件提示条的开关、强调色与停留时间.', icon: 'i-lucide:bell' },
   { id: 'narrative', title: 'Narrative', description: '剧情检索模式与下次启动行为.', icon: 'i-lucide:book-open' },
   { id: 'permission', title: '权限规则', description: 'Tool 执行模式与规则.', icon: 'i-lucide:shield-check' },
   { id: 'tools', title: 'Tools', description: '内置工具与后台进程参数.', icon: 'i-lucide:wrench' },
@@ -68,6 +70,7 @@ function ParameterDomainPage({ domain }: { domain: ParameterDomain }): JSX.Eleme
     case 'attachments': return <AttachmentParameters />;
     case 'agent': return <AgentParameters />;
     case 'context': return <ContextParameters />;
+    case 'event-display': return <EventDisplayParameters />;
     case 'narrative': return <NarrativeParameters />;
     case 'permission': return <PermissionSettings />;
     case 'tools': return <ToolsSettings />;

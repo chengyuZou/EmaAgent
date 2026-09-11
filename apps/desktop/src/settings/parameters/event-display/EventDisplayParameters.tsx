@@ -2,10 +2,10 @@
 // GET event-display 是默认表+用户覆盖的生效表;草稿编辑的是用户覆盖表(整表替换写回)。
 import { useEffect, useMemo, useState, type JSX } from 'react';
 import { Badge, Button, Callout, Input, Select, Spinner, Switch } from '@ema-agent/ui';
-import { useSettingsStore, type EventDisplayConfig } from '../../stores/settings.js';
-import { settingsApi, type SettingApply } from '../../api/settings.js';
-import { showToast } from '../../lib/toast.js';
-import { SettingApplyBadge } from '../shared/SettingItem.js';
+import { useSettingsStore, type EventDisplayConfig } from '../../../stores/settings.js';
+import { settingsApi, type SettingApply } from '../../../api/settings.js';
+import { showToast } from '../../../lib/toast.js';
+import { SettingApplyBadge } from '../../shared/SettingItem.js';
 import {
   EVENT_DISPLAY_GROUPS,
   eventDisplayGroup,
@@ -37,7 +37,7 @@ function readOverrides(value: unknown): Record<string, EventDisplayConfig> {
   return value as Record<string, EventDisplayConfig>;
 }
 
-export function EventDisplaySettings(): JSX.Element {
+export function EventDisplayParameters(): JSX.Element {
   const eventDisplay = useSettingsStore((state) => state.eventDisplay);
   const storeError = useSettingsStore((state) => state.error);
   const [rawOverrides, setRawOverrides] = useState<Record<string, EventDisplayConfig> | null>(null);

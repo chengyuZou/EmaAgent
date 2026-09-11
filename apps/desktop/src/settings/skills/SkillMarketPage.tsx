@@ -2,7 +2,7 @@
 // 详情(文档/文件)、并发安装(按卡片各自转圈)与卸载。页面自持状态,不走全局 Store。
 import { useCallback, useEffect, useRef, useState, type JSX } from 'react';
 import {
-  Badge, Button, Callout, Dialog, EmptyState, Input, MarketCard, ScrollArea, Select, Spinner,
+  Badge, Button, Callout, Dialog, EmptyState, Input, MarketCard, ScrollArea, SearchField, Select, Spinner,
 } from '@ema-agent/ui';
 import {
   skillsApi,
@@ -200,35 +200,36 @@ export function SkillMarketPage(): JSX.Element {
         技能来自社区第三方市场,本应用不对内容做安全审计。安装前请在详情里查看 SKILL.md 与配套文件。
       </Callout>
 
-      {/* 筛选行 */}
-      <div className="flex items-center gap-2 shrink-0">
-        <div className="flex-1">
-          <Input
-            placeholder="按名称、关键词搜索技能…"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') setKeyword(q.trim()); }}
+      {/* 筛选区:两个选择器一行, 搜索杆独占一行, 同一容器内上下排 */}
+      <div className="flex shrink-0 flex-col gap-2">
+        <div className="flex items-center gap-2">
+          <Select
+            value={source}
+            onChange={(v) => setSource(v as SourceFilter)}
+            options={[
+              { value: 'all', label: '全部来源' },
+              { value: 'skillhub', label: 'SkillHub' },
+              { value: 'clawhub', label: 'ClawHub' },
+            ]}
+          />
+          <Select
+            value={installed}
+            onChange={(v) => setInstalled(v as InstalledFilter)}
+            options={[
+              { value: 'all', label: '全部技能' },
+              { value: 'installed', label: '已安装' },
+              { value: 'installable', label: '未安装' },
+            ]}
           />
         </div>
-        <Select
-          value={source}
-          onChange={(v) => setSource(v as SourceFilter)}
-          options={[
-            { value: 'all', label: '全部来源' },
-            { value: 'skillhub', label: 'SkillHub' },
-            { value: 'clawhub', label: 'ClawHub' },
-          ]}
+        <SearchField
+          value={q}
+          onChange={setQ}
+          onSubmit={() => setKeyword(q.trim())}
+          loading={loading}
+          placeholder="按名称、关键词搜索技能…"
+          aria-label="搜索技能"
         />
-        <Select
-          value={installed}
-          onChange={(v) => setInstalled(v as InstalledFilter)}
-          options={[
-            { value: 'all', label: '全部技能' },
-            { value: 'installed', label: '已安装' },
-            { value: 'installable', label: '未安装' },
-          ]}
-        />
-        <Button variant="secondary" size="sm" onClick={() => setKeyword(q.trim())}>搜索</Button>
       </div>
 
       {/* 卡片网格 */}
