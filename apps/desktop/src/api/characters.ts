@@ -153,7 +153,7 @@ export const charactersApi = {
     );
   },
 
-  /** Live2D 静态封面:导入/补票时前端离屏渲一帧的 PNG 上传;读取走同源 URL。 */
+  /** Live2D 静态封面:导入或用户重试时前端离屏渲一帧的 PNG 上传;读取走同源 URL。 */
   async uploadLive2dPreview(characterName: string, live2dName: string, dataBase64: string): Promise<void> {
     await readRpcJson(
       rpcClient.api.characters[':characterName'].live2d[':live2dName'].preview.$put({

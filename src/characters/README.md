@@ -51,6 +51,8 @@ interface Character {
 
 Presentation 不返回宿主绝对路径。Live2D 模型由 Server 将已展开目录流式包装成一个受认证的 ZIP 响应,Desktop 再把完整目录树交给 Zip/File Loader；立绘通过受认证的单文件接口读取。设置页封面和主舞台共用同一条 Live2D ZIP 加载链。
 
+Live2D 静态封面保存在角色目录的 `.previews/<live2dName>.png`,不写回用户模型目录,也不进入模型导出 ZIP。Desktop 导入模型后先用同一份 ZIP 离屏渲染并上传封面,再刷新资源列表；生成失败时保留已经导入的模型,由资源卡显示明确的手动重试入口。进入配置页不会静默生成封面。删除模型时必须同时删除对应封面。
+
 Stage 对每个合法 `<emotion>` 都发出 `emotion_changed`，即使前后值相同。立绘消费者收到事件后从对应表情池随机选择；池内多于一张时排除当前图片，再用普通交叉淡入淡出换图。立绘没有呼吸动画。
 
 Character 和 Live2D 资源行都不保存情绪或动作词汇。Live2D 词汇只取当前 Presentation 中 `runtime-config.json` 的 `emotionMap`、`motionMap` 键；立绘情绪词只取 Presentation 的 `expression` 分组。Turn Prompt、StageEngine 和主窗口都消费 CharacterStore 产出的 Presentation，不各自维护词汇副本。

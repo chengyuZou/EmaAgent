@@ -16,10 +16,15 @@ import { useCharacterStore } from '../../stores/character.js';
 import { tauriBridge } from '../../lib/tauri-bridge.js';
 import { renderLive2dPreview } from '../../lib/live2dPreview.js';
 import { ServerImage } from '../../lib/ServerImage.js';
-import { fetchServerObjectUrl } from '../../lib/serverFileUrl.js';
 import { showToast } from '../../lib/toast.js';
 
 type Live2dModel = Character['live2dModels'][number];
+
+async function generateLive2dPreview(characterName: string, live2dName: string): Promise<void> {
+  const archive = await charactersApi.live2dArchive(characterName, live2dName);
+  const base64 = await renderLive2dPreview(archive);
+  await charactersApi.uploadLive2dPreview(characterName, live2dName, base64);
+}
 
 export function Live2dTab({ character }: { character: Character }): JSX.Element {
   const models = character.live2dModels;
@@ -78,8 +83,49 @@ function ModelCard({
   onSelect(): void;
 }): JSX.Element {
   const store = useCharacterStore();
+  const [missing, setMissing] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [generationFailed, setGenerationFailed] = useState(false);
+  const [imageKey, setImageKey] = useState(0);
+
+  async function renderPreview(): Promise<void> {
+    setGenerating(true);
+    setGenerationFailed(false);
+    try {
+      await generateLive2dPreview(character.name, model.name);
+      setMissing(false);
+      setImageKey(value => value + 1);
+      showToast('封面已生成', { variant: 'success' });
+    } catch (error) {
+      setGenerationFailed(true);
+      showToast(error instanceof Error ? error.message : '封面生成失败', { variant: 'danger' });
+    } finally {
+      setGenerating(false);
+    }
+  }
 
   const menuItems: MenuItem[] = [
+    {
+      kind: 'item',
+      label: model.isPrimary ? '主要模型' : '设为主要模型',
+      icon: 'i-solar:star-bold-duotone',
+      disabled: model.isPrimary,
+      onSelect: () => {
+        void store.setPrimaryLive2d(character.name, model.name)
+          .catch(error => showToast(error instanceof Error ? error.message : '设置失败', { variant: 'danger' }));
+      },
+    },
+    { kind: 'separator' },
+    {
+      kind: 'item',
+      label: '重新渲染封面',
+      icon: generating ? 'i-solar:refresh-bold animate-spin' : 'i-solar:refresh-bold',
+      disabled: generating,
+      onSelect: () => {
+        void renderPreview();
+      },
+    },
+    { kind: 'separator' },
     {
       kind: 'item',
       label: '打开文件夹',
@@ -130,20 +176,13 @@ function ModelCard({
       style={{ '--stagger-i': index } as React.CSSProperties}
       onClick={onSelect}
     >
-      <div className="absolute left-2 top-2 z-10" onClick={event => event.stopPropagation()}>
-        <button
-          type="button"
-          className={`h-4 w-4 rounded-full border-2 transition-all
+      <div className="absolute left-2 top-2 z-10">
+        <span
+          className={`block h-4 w-4 rounded-full border-2
             ${model.isPrimary
               ? 'border-[var(--ema-success)] bg-[var(--ema-success)]'
-              : 'border-[var(--ema-text-tertiary)] hover:border-[var(--ema-text-secondary)]'}`}
-          title={model.isPrimary ? '主要模型' : '设为主要模型'}
-          onClick={() => {
-            if (!model.isPrimary) {
-              void store.setPrimaryLive2d(character.name, model.name)
-                .catch(error => showToast(error instanceof Error ? error.message : '设置失败', { variant: 'danger' }));
-            }
-          }}
+              : 'border-[var(--ema-text-tertiary)] bg-transparent'}`}
+          title={model.isPrimary ? '主要模型' : '非主要模型'}
         />
       </div>
       <div className="absolute right-2 top-2 z-10" onClick={event => event.stopPropagation()}>
@@ -159,32 +198,38 @@ function ModelCard({
           )}
         />
       </div>
-      <ModelCover character={character} model={model} />
+      {missing ? (
+        <div className="flex aspect-[3/4] w-full flex-col items-center justify-center gap-2 bg-[var(--ema-surface-3)] px-3 text-center">
+          <span className="text-xs text-[var(--ema-text-tertiary)]">
+            {generationFailed ? '封面生成失败' : '暂无封面'}
+          </span>
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={generating}
+            onClick={(event) => {
+              event.stopPropagation();
+              void renderPreview();
+            }}
+          >
+            {generating ? '正在生成' : '生成封面'}
+          </Button>
+        </div>
+      ) : (
+        <ServerImage
+          key={imageKey}
+          path={charactersApi.live2dPreviewUrl(character.name, model.name)}
+          alt={model.name}
+          className="aspect-[3/4] w-full object-cover"
+          onMissing={() => setMissing(true)}
+        />
+      )}
       <div className="px-3 py-2">
         <p className="truncate text-xs font-semibold text-[var(--ema-text-primary)]">{model.name}</p>
         <p className="truncate text-[11px] text-[var(--ema-text-tertiary)]">{model.displayName}</p>
         <p className="mt-1 text-[10px] text-[var(--ema-text-tertiary)]">{formatBytes(model.byteSize)}</p>
       </div>
     </div>
-  );
-}
-
-function ModelCover({ character, model }: { character: Character; model: Live2dModel }): JSX.Element {
-  const [missing, setMissing] = useState(false);
-  if (missing) {
-    return (
-      <div className="flex aspect-[3/4] w-full items-center justify-center bg-[var(--ema-surface-3)]">
-        <span className="text-xs text-[var(--ema-text-tertiary)]">{model.name}</span>
-      </div>
-    );
-  }
-  return (
-    <ServerImage
-      path={charactersApi.live2dPreviewUrl(character.name, model.name)}
-      alt={model.name}
-      className="aspect-[3/4] w-full object-cover"
-      onMissing={() => setMissing(true)}
-    />
   );
 }
 
@@ -224,26 +269,6 @@ function ModelConfig({ character, model }: {
   useEffect(() => {
     void loadConfiguration();
   }, [loadConfiguration]);
-
-  // 缺封面时读取同一个模型 ZIP 离屏渲一帧. 舞台与设置页共用加载链,
-  // 不再让预览代码依赖宿主绝对路径或 Tauri asset protocol.
-  useEffect(() => {
-    if (!configuration) return;
-    void (async () => {
-      const previewUrl = await fetchServerObjectUrl(
-        charactersApi.live2dPreviewUrl(character.name, model.name),
-      );
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-        return;
-      }
-      try {
-        const archive = await charactersApi.live2dArchive(character.name, model.name);
-        const base64 = await renderLive2dPreview(archive);
-        await charactersApi.uploadLive2dPreview(character.name, model.name, base64);
-      } catch { /* 补票失败就保留占位,下次再来 */ }
-    })();
-  }, [configuration, character.name, model.name]);
 
   const stageDirty = scale !== model.stageScale
     || offsetX !== model.stageOffsetX
@@ -449,21 +474,28 @@ function SliderRow({ label, min, max, step, value, onChange }: {
 
 function ImportMenu({ character }: { character: Character }): JSX.Element {
   const store = useCharacterStore();
-  const [importing, setImporting] = useState(false);
+  const [importing, setImporting] = useState<'model' | 'preview' | null>(null);
 
   async function runImport(source: string): Promise<void> {
-    setImporting(true);
+    setImporting('model');
     try {
-      const result = await store.importLive2d(character.name, { source });
-      showToast(`已导入 ${result.name}`, { variant: 'success' });
-      // 封面失败不挡导入;下次进入配置页时还会补票.
-      void (async () => {
-        try {
-          const archive = await charactersApi.live2dArchive(character.name, result.name);
-          const base64 = await renderLive2dPreview(archive);
-          await charactersApi.uploadLive2dPreview(character.name, result.name, base64);
-        } catch { /* 下次进入配置页时重试 */ }
-      })();
+      const result = await charactersApi.importLive2d(character.name, { source });
+      setImporting('preview');
+      let previewError: string | null = null;
+      try {
+        await generateLive2dPreview(character.name, result.name);
+      } catch (error) {
+        previewError = error instanceof Error ? error.message : '未知错误';
+      }
+      await store.load();
+      if (previewError) {
+        showToast(
+          `${result.name} 已导入,但封面生成失败: ${previewError}`,
+          { variant: 'warning' },
+        );
+      } else {
+        showToast(`已导入 ${result.name}`, { variant: 'success' });
+      }
     } catch (error) {
       if (error instanceof ServerApiError && error.code === 'character_work_running') {
         showToast('当前角色有正在执行的任务,请先停止或等其结束后再导入', { variant: 'warning' });
@@ -471,7 +503,7 @@ function ImportMenu({ character }: { character: Character }): JSX.Element {
       }
       showToast(error instanceof Error ? error.message : '导入失败', { variant: 'danger' });
     } finally {
-      setImporting(false);
+      setImporting(null);
     }
   }
 
@@ -506,8 +538,8 @@ function ImportMenu({ character }: { character: Character }): JSX.Element {
       align="end"
       items={items}
       trigger={(
-        <Button variant="primary" size="sm" icon="i-mdi:plus" loading={importing}>
-          导入
+        <Button variant="primary" size="sm" icon="i-mdi:plus" loading={importing !== null}>
+          {importing === 'preview' ? '正在生成封面' : '导入'}
         </Button>
       )}
     />

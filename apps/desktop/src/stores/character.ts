@@ -8,7 +8,6 @@ import {
   type CharacterPatchInput,
   type IllustrationImportInput,
   type IllustrationPatchInput,
-  type Live2dImportInput,
   type ResourcePatchInput,
   type VoiceImportInput,
   type VoicePatchInput,
@@ -29,10 +28,6 @@ export interface CharacterStoreState {
   remove(name: string, terminateRunningWork?: boolean): Promise<void>;
 
   setPrimaryLive2d(characterName: string, live2dName: string): Promise<void>;
-  importLive2d(
-    characterName: string,
-    input: Live2dImportInput,
-  ): Promise<Character['live2dModels'][number]>;
   patchLive2d(characterName: string, live2dName: string, input: ResourcePatchInput): Promise<void>;
   reloadLive2dConfig(characterName: string, live2dName: string): Promise<void>;
   deleteLive2d(characterName: string, live2dName: string): Promise<void>;
@@ -109,10 +104,6 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => {
 
     async setPrimaryLive2d(characterName, live2dName) {
       await mutate('设置主要模型失败', () => charactersApi.setPrimaryLive2d(characterName, live2dName));
-    },
-
-    async importLive2d(characterName, input) {
-      return mutate('导入 Live2D 失败', () => charactersApi.importLive2d(characterName, input));
     },
 
     async patchLive2d(characterName, live2dName, input) {

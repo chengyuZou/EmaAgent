@@ -146,6 +146,12 @@ describe('CharacterStore', () => {
       emotions: ['happy'],
       motions: ['wave'],
     });
+
+    await store.saveLive2dPreview('模型角色', 'alice-model', pngBytes());
+    const preview = path.join(root, 'characters', '模型角色', '.previews', 'alice-model.png');
+    expect(fs.existsSync(preview)).toBe(true);
+    await store.deleteLive2dModel('模型角色', 'alice-model');
+    expect(fs.existsSync(preview)).toBe(false);
   });
 
   it('同一角色的同名导入串行，失败请求不会删除先成功的资源', async () => {

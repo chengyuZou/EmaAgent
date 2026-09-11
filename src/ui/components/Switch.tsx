@@ -1,4 +1,5 @@
 import * as RadixSwitch from '@radix-ui/react-switch';
+import { forwardRef } from 'react';
 import { cn } from '../utils/cn.js';
 
 // ── Switch ──────────────────────────────────────────────────────────────────
@@ -14,11 +15,12 @@ export interface SwitchProps {
   className?:      string;
 }
 
-export function Switch(props: SwitchProps): React.JSX.Element {
+export const Switch = forwardRef<HTMLButtonElement, SwitchProps>(function Switch(props, ref): React.JSX.Element {
   const { checked, defaultChecked, onCheckedChange, disabled, label, showLabel, className } = props;
 
   const switchEl = (
     <RadixSwitch.Root
+      ref={ref}
       checked={checked}
       defaultChecked={defaultChecked}
       onCheckedChange={onCheckedChange}
@@ -55,4 +57,4 @@ export function Switch(props: SwitchProps): React.JSX.Element {
     );
   }
   return switchEl;
-}
+});

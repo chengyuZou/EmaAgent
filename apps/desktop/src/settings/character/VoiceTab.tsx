@@ -141,6 +141,17 @@ function VoiceRow({ character, sample, index }: {
   const menuItems: MenuItem[] = [
     {
       kind: 'item',
+      label: sample.isPrimary ? '主要参考音频' : '设为主要参考音频',
+      icon: 'i-solar:star-bold-duotone',
+      disabled: sample.isPrimary,
+      onSelect: () => {
+        void store.setPrimaryVoice(character.name, sample.name)
+          .catch(error => showToast(error instanceof Error ? error.message : '设置失败', { variant: 'danger' }));
+      },
+    },
+    { kind: 'separator' },
+    {
+      kind: 'item',
       label: '打开文件夹',
       icon: 'i-solar:folder-open-bold-duotone',
       onSelect: () => {
@@ -209,19 +220,12 @@ function VoiceRow({ character, sample, index }: {
         bg-[var(--ema-surface-2)] px-3 py-2.5"
       style={{ '--stagger-i': index } as React.CSSProperties}
     >
-      <button
-        type="button"
-        className={`h-4 w-4 shrink-0 rounded-full border-2 transition-all
+      <span
+        className={`h-4 w-4 shrink-0 rounded-full border-2
           ${sample.isPrimary
             ? 'border-[var(--ema-success)] bg-[var(--ema-success)]'
-            : 'border-[var(--ema-text-tertiary)] hover:border-[var(--ema-text-secondary)]'}`}
-        title={sample.isPrimary ? '主要参考音频' : '设为主要参考音频'}
-        onClick={() => {
-          if (!sample.isPrimary) {
-            void store.setPrimaryVoice(character.name, sample.name)
-              .catch(error => showToast(error instanceof Error ? error.message : '设置失败', { variant: 'danger' }));
-          }
-        }}
+            : 'border-[var(--ema-text-tertiary)] bg-transparent'}`}
+        title={sample.isPrimary ? '主要参考音频' : '非主要参考音频'}
       />
       <span className="i-solar:music-note-bold-duotone text-lg text-[var(--ema-primary)]" aria-hidden />
 

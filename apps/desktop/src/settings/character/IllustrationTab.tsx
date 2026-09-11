@@ -100,6 +100,17 @@ function IllustrationCard({
   const menuItems: MenuItem[] = [
     {
       kind: 'item',
+      label: item.isPrimary ? '主要插图' : '设为主要插图',
+      icon: 'i-solar:star-bold-duotone',
+      disabled: item.isPrimary,
+      onSelect: () => {
+        void store.setPrimaryIllustration(character.name, item.name)
+          .catch(error => showToast(error instanceof Error ? error.message : '设置失败', { variant: 'danger' }));
+      },
+    },
+    { kind: 'separator' },
+    {
+      kind: 'item',
       label: '打开文件夹',
       icon: 'i-solar:folder-open-bold-duotone',
       onSelect: () => {
@@ -146,20 +157,13 @@ function IllustrationCard({
       style={{ '--stagger-i': index } as React.CSSProperties}
       onClick={onSelect}
     >
-      <div className="absolute left-2 top-2 z-10" onClick={event => event.stopPropagation()}>
-        <button
-          type="button"
-          className={`h-4 w-4 rounded-full border-2 transition-all
+      <div className="absolute left-2 top-2 z-10">
+        <span
+          className={`block h-4 w-4 rounded-full border-2
             ${item.isPrimary
               ? 'border-[var(--ema-success)] bg-[var(--ema-success)]'
-              : 'border-[var(--ema-text-tertiary)] hover:border-[var(--ema-text-secondary)]'}`}
-          title={item.isPrimary ? '主要插图' : '设为主要插图'}
-          onClick={() => {
-            if (!item.isPrimary) {
-              void store.setPrimaryIllustration(character.name, item.name)
-                .catch(error => showToast(error instanceof Error ? error.message : '设置失败', { variant: 'danger' }));
-            }
-          }}
+              : 'border-[var(--ema-text-tertiary)] bg-transparent'}`}
+          title={item.isPrimary ? '主要插图' : '非主要插图'}
         />
       </div>
       <div className="absolute right-2 top-2 z-10" onClick={event => event.stopPropagation()}>

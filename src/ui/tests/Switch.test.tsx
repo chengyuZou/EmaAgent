@@ -1,8 +1,9 @@
 // 测试 Switch 点击后同步更新语义状态，并把滑块移动到轨道右侧。
-import { act } from 'react';
+import { act, createRef } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Switch } from '../components/Switch.js';
+import { Tooltip, TooltipProvider } from '../components/Tooltip.js';
 
 let container: HTMLDivElement;
 let root: Root;
@@ -35,5 +36,24 @@ describe('Switch', () => {
     expect(control.dataset.state).toBe('checked');
     expect(thumb.dataset.state).toBe('checked');
     expect(thumb.className).toContain('data-[state=checked]:translate-x-full');
+  });
+
+  it('forwards the tooltip trigger ref to its button', () => {
+    const ref = createRef<HTMLButtonElement>();
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    act(() => {
+      root.render(
+        <TooltipProvider>
+          <Tooltip content="启用技能">
+            <Switch ref={ref} defaultChecked={false} label="测试技能" />
+          </Tooltip>
+        </TooltipProvider>,
+      );
+    });
+
+    expect(ref.current).toBe(container.querySelector('[role="switch"]'));
+    expect(consoleError.mock.calls.flat().join('\n')).not.toContain('Function components cannot be given refs');
+    consoleError.mockRestore();
   });
 });

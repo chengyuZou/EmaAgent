@@ -184,7 +184,8 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
 
       void loadLive2DArchive(modelArchive, {
         ticker: app.ticker,
-        autoInteract: false,
+        autoHitTest: false,
+        autoFocus: false,
         autoUpdate: true,
         // 原生 MotionManager 会无间隔循环 Idle;Ema 只调度 Character 选中的待机 Motion.
         idleMotionGroup: '__ema_idle_disabled__',

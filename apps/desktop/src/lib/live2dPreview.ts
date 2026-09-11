@@ -1,4 +1,4 @@
-// Live2D 卡面/角色封面的静态图:导入成功或缺图补票时,把模型装进一次性离屏
+// Live2D 卡面/角色封面的静态图:导入流程或用户手动重试时,把模型装进一次性离屏
 // Pixi Application,渲一帧、裁透明边、补成 3:4,渲完即毁。不持有第二份活 Canvas。
 import * as PIXI from 'pixi.js';
 import { loadLive2DArchive } from '@ema-agent/live2d-react';
@@ -16,24 +16,26 @@ export async function renderLive2dPreview(modelArchive: Blob): Promise<string> {
   canvas.style.pointerEvents = 'none';
   document.body.appendChild(canvas);
 
-  // 手工建一个 canvas 元素挂进 DOM
-  // 它在页面上"存在但不可见"
-  const app = new PIXI.Application({
-    view: canvas,
-    width,
-    height,
-    // 背景全透明
-    backgroundAlpha: 0,
-    // 不开渲染循环
-    autoStart: false,
-    // 默认渲完 WebGL 缓冲区就清
-    preserveDrawingBuffer: true,
-  });
-
+  let app: PIXI.Application | null = null;
+  let model: Awaited<ReturnType<typeof loadLive2DArchive>> | null = null;
   try {
-    const model = await loadLive2DArchive(modelArchive, {
+    // 手工建一个 canvas 元素挂进 DOM
+    // 它在页面上"存在但不可见"
+    app = new PIXI.Application({
+      view: canvas,
+      width,
+      height,
+      // 背景全透明
+      backgroundAlpha: 0,
+      // 不开渲染循环
+      autoStart: false,
+      // 默认渲完 WebGL 缓冲区就清
+      preserveDrawingBuffer: true,
+    });
+    model = await loadLive2DArchive(modelArchive, {
       ticker: app.ticker,
-      autoInteract: false,
+      autoHitTest: false,
+      autoFocus: false,
       autoUpdate: false,
       idleMotionGroup: '__ema_idle_disabled__',
     });
@@ -47,9 +49,9 @@ export async function renderLive2dPreview(modelArchive: Blob): Promise<string> {
       height / 2 - (bounds.y + bounds.height / 2) * scale,
     );
     app.stage.addChild(model);
-    // 等待纹理/内部模型就绪 然后手动渲一帧
-    await new Promise(resolve => setTimeout(resolve, 500));
-    // autoStart 关了 需要手动渲染一帧
+    // autoUpdate 关闭后等待不会推进模型。必须先注入一帧时间,让 Cubism Pose 初始化
+    // 互斥部件的透明度;否则带备用手臂/服装的模型会把所有部件一起画进封面。
+    model.update(1000 / 60);
     app.renderer.render(app.stage);
 
     const dataUrl = app.renderer.view.toDataURL?.('image/png')
@@ -57,7 +59,13 @@ export async function renderLive2dPreview(modelArchive: Blob): Promise<string> {
     const cropped = await cropToAspect(dataUrl, width, height);
     return cropped.slice(cropped.indexOf(',') + 1);
   } finally {
-    app.destroy(true, { children: true, texture: true });
+    if (app && model) {
+      app.stage.removeChild(model);
+      // Pixi 会先销毁 Application ticker,再销毁 stage 子节点;Live2D 模型销毁时还要
+      // 从 ticker 解绑。顺序倒置会让 Ticker.remove() 读取已清空的链表头并抛出 .next 错误。
+      model.destroy({ children: true, texture: true, baseTexture: true });
+    }
+    app?.destroy(true);
     canvas.remove();
   }
 }

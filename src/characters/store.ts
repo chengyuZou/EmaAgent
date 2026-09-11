@@ -332,13 +332,21 @@ export class CharacterStore {
       const operationDirectory = this.createStagingOperation();
       const source = this.paths.live2dModelDirectory(characterName, live2dName);
       const staged = await this.stageExistingPath(source, operationDirectory);
+      const previewSource = this.paths.live2dPreviewFile(characterName, live2dName);
+      const previewExists = await fs.promises.stat(previewSource).catch(() => null);
+      const stagedPreview = previewExists ? path.join(operationDirectory, 'preview.png') : null;
+      if (stagedPreview) await fs.promises.rename(previewSource, stagedPreview);
       try {
         const deleted = this.live2dModels.delete(characterName, live2dName);
-        if (!deleted && staged) await fs.promises.rename(staged, source);
+        if (!deleted) {
+          if (staged) await fs.promises.rename(staged, source);
+          if (stagedPreview) await fs.promises.rename(stagedPreview, previewSource);
+        }
         if (deleted) this.resourceChanged(characterName);
         return deleted;
       } catch (error) {
         if (staged && !fs.existsSync(source)) await fs.promises.rename(staged, source);
+        if (stagedPreview && !fs.existsSync(previewSource)) await fs.promises.rename(stagedPreview, previewSource);
         throw error;
       } finally {
         await removeDirectoryIfPresent(operationDirectory);
