@@ -24,7 +24,7 @@ export function MarketCard({ decorate, index, installed, installing, installDisa
   return (
     <div
       className={cn(
-        'ema-stagger-in ema-glass-weak ema-card-decorate bg-[var(--ema-surface-1)] rounded-xl border-2 border-solid border-[var(--ema-border)]',
+        'ema-stagger-in-flat ema-glass-weak ema-card-decorate bg-[var(--ema-surface-1)] rounded-xl border-2 border-solid border-[var(--ema-border)]',
         'hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)] px-4 py-3',
         decorate,
         className,

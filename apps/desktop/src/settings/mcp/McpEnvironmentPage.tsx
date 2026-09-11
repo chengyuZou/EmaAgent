@@ -62,10 +62,7 @@ export function McpEnvironmentPage(): JSX.Element {
                 {installed ? <>
                   <p className="mt-2 break-all text-xs text-[var(--ema-text-secondary)]">{inspection.selectedPath}</p>
                   {inspection.version && <p className="mt-1 text-xs text-[var(--ema-text-tertiary)]">版本: {inspection.version}</p>}
-                  {inspection.candidatePaths.length > 1 && <details className="mt-2 text-xs text-[var(--ema-text-tertiary)]">
-                    <summary className="cursor-pointer">其他候选路径 ({inspection.candidatePaths.length - 1})</summary>
-                    <div className="mt-1 space-y-1 pl-3">{inspection.candidatePaths.slice(1).map(candidate => <p key={candidate} className="break-all">{candidate}</p>)}</div>
-                  </details>}
+                  {inspection.candidatePaths.length > 1 && <CandidatePaths paths={inspection.candidatePaths} />}
                 </> : <p className="mt-2 text-xs text-[var(--ema-text-tertiary)]">
                   未在当前 Server PATH 中发现 {inspection.command}.
                 </p>}
@@ -81,4 +78,37 @@ export function McpEnvironmentPage(): JSX.Element {
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** 次要候选路径折叠:与 AdvancedSettings 同款 chevron 旋转 + ema-collapsible 展开动画,不加框。 */
+function CandidatePaths({ paths }: { paths: readonly string[] }): JSX.Element {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mt-1">
+      <button
+        type="button"
+        onClick={() => setOpen(value => !value)}
+        className="flex items-center gap-1.5 py-0.5 text-xs transition-colors text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)]"
+      >
+        <span
+          className="i-lucide:chevron-down text-xs transition-transform duration-[var(--ema-duration-base)]"
+          style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}
+          aria-hidden
+        />
+        其他候选路径 ({paths.length - 1})
+      </button>
+      <div
+        className="ema-collapsible"
+        style={{ gridTemplateRows: open ? '1fr' : '0fr', opacity: open ? 1 : 0 }}
+      >
+        <div>
+          <div className="space-y-1 pl-4 pt-1">
+            {paths.slice(1).map(candidate => (
+              <p key={candidate} className="break-all font-mono text-[11px] text-[var(--ema-text-tertiary)]">{candidate}</p>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }

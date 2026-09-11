@@ -8,6 +8,8 @@ export type { BashProbeResult } from './bashProbe.js';
 export { detectTerminalShells } from './terminalShells.js';
 export type { TerminalShellInfo, TerminalShellKind } from './terminalShells.js';
 
+export { sandboxNetworkSetting } from './settings.js';
+
 export { detectBackend } from './detectBackend.js';
 export type { DetectResult, BackendKind }  from './detectBackend.js';
 

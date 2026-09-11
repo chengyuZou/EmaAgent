@@ -23,6 +23,7 @@ import {
   maxConcurrentBackgroundSetting,
   maxRuntimeHoursBackgroundSetting,
 } from '@ema-agent/tools';
+import { sandboxNetworkSetting } from '@ema-agent/sandbox';
 import { eventDisplaySetting } from './settings/eventDisplaySetting.js';
 import { terminalShellExecutableSetting } from './settings/terminalSetting.js';
 import { themeSetting } from './settings/themeSetting.js';
@@ -49,6 +50,7 @@ export const SETTINGS_DEFINITIONS = [
   themeSetting,
   eventDisplaySetting,
   terminalShellExecutableSetting,
+  sandboxNetworkSetting,
 ] as const;
 
 /**

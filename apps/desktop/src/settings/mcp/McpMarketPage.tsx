@@ -136,7 +136,7 @@ export function McpMarketPage(): JSX.Element {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3">
+    <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-3">
         <Badge variant="neutral">Official MCP Registry</Badge>
         <Button size="sm" variant="ghost" loading={refreshing} disabled={syncing} onClick={() => void refresh()}>
@@ -155,56 +155,97 @@ export function McpMarketPage(): JSX.Element {
         {syncing ? `市场正在后台同步, 当前已缓存 ${total} 条. 搜索结果可能不完整.` : `市场缓存尚未完整, 当前可查看 ${total} 条.`}
       </Callout>}
       {error && <Callout variant="danger">{error}</Callout>}
-      {loading && entries.length === 0 ? <div className="flex justify-center py-12"><Spinner size="md" /></div>
-        : entries.length === 0 ? <EmptyState icon="i-mdi:store-outline" title="暂无市场条目" hint="可以更换关键词或刷新 Official MCP Registry." />
-        : <div className="grid min-h-0 grid-cols-1 gap-2 overflow-y-auto overflow-x-hidden pr-2 [scrollbar-gutter:stable] xl:grid-cols-2">
-          {entries.map((entry, index) => {
-            const key = entry.externalId;
-            return <MarketCard
-              key={key}
-              index={index}
-              decorate="ema-card-decorate--circuit"
-              installed={installed.has(entry.externalId)}
-              installing={installing.has(key)}
-              installedLabel="已添加"
-              installLabel="添加"
-              onInstall={() => void inspect(entry)}
+      {loading && entries.length === 0
+        ? <div className="flex justify-center py-12"><Spinner size="md" /></div>
+        : entries.length === 0
+          ? <EmptyState icon="i-mdi:store-outline" title="暂无市场条目" hint="可以更换关键词或刷新 Official MCP Registry." />
+          : (
+            <div className="grid grid-cols-1 gap-2 xl:grid-cols-2">
+              {entries.map((entry, index) => {
+                const key = entry.externalId;
+                return (
+                  <MarketCard
+                    key={key}
+                    index={index}
+                    decorate="ema-card-decorate--circuit"
+                    installed={installed.has(entry.externalId)}
+                    installing={installing.has(key)}
+                    installedLabel="已添加"
+                    installLabel="添加"
+                    onInstall={() => void inspect(entry)}
+                  >
+                    <div className="flex items-center gap-2">
+                      <strong className="truncate text-sm">{entry.name}</strong>
+                      <Badge variant="neutral">Official</Badge>
+                    </div>
+                    <p className="mt-1 line-clamp-2 text-xs text-[var(--ema-text-tertiary)]">{entry.description || '暂无说明'}</p>
+                    <div className="mt-2 flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => void tauriBridge.openUrl(entry.detailUrl)}
+                      >
+                        详情
+                      </Button>
+                      {entry.repositoryUrl && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => void tauriBridge.openUrl(entry.repositoryUrl!)}
+                        >
+                          源码
+                        </Button>
+                      )}
+                    </div>
+                  </MarketCard>
+                );
+              })}
+            </div>
+          )}
+      {!loading && total > 0 && (
+        <div className="flex items-center justify-between gap-3 text-xs text-[var(--ema-text-tertiary)]">
+          <span>{complete ? `共 ${total} 条` : `已缓存 ${total} 条`}</span>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={page <= 1}
+              onClick={() => setPage(current => current - 1)}
             >
-              <div className="flex items-center gap-2">
-                <strong className="truncate text-sm">{entry.name}</strong>
-                <Badge variant="neutral">Official</Badge>
-              </div>
-              <p className="mt-1 line-clamp-2 text-xs text-[var(--ema-text-tertiary)]">{entry.description || '暂无说明'}</p>
-              <div className="mt-2 flex gap-2">
-                <Button size="sm" variant="ghost" onClick={() => void tauriBridge.openUrl(entry.detailUrl)}>详情</Button>
-                {entry.repositoryUrl && <Button size="sm" variant="ghost" onClick={() => void tauriBridge.openUrl(entry.repositoryUrl!)}>源码</Button>}
-              </div>
-            </MarketCard>;
-          })}
-        </div>}
-      {!loading && total > 0 && <div className="flex items-center justify-between gap-3 text-xs text-[var(--ema-text-tertiary)]">
-        <span>{complete ? `共 ${total} 条` : `已缓存 ${total} 条`}</span>
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="ghost" disabled={page <= 1} onClick={() => setPage(current => current - 1)}>上一页</Button>
-          <span>第</span>
-          <Input
-            className="w-16 text-center"
-            value={pageInput}
-            inputMode="numeric"
-            onChange={event => setPageInput(event.target.value)}
-            onBlur={jumpToPage}
-            onKeyDown={event => { if (event.key === 'Enter') jumpToPage(); }}
-            aria-label="页码"
-          />
-          <span>{complete ? `/ ${totalPages} 页` : `/ 当前可用 ${totalPages} 页`}</span>
-          <Button size="sm" variant="ghost" disabled={page >= totalPages} onClick={() => setPage(current => current + 1)}>下一页</Button>
+              上一页
+            </Button>
+            <span>第</span>
+            <Input
+              className="w-16 text-center"
+              value={pageInput}
+              inputMode="numeric"
+              onChange={event => setPageInput(event.target.value)}
+              onBlur={jumpToPage}
+              onKeyDown={event => { if (event.key === 'Enter') jumpToPage(); }}
+              aria-label="页码"
+            />
+            <span>{complete ? `/ ${totalPages} 页` : `/ 当前可用 ${totalPages} 页`}</span>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={page >= totalPages}
+              onClick={() => setPage(current => current + 1)}
+            >
+              下一页
+            </Button>
+          </div>
         </div>
-      </div>}
-      <InstallDialog detail={pending} busy={pending && !('error' in pending) ? installing.has(pending.externalId) : false} onCancel={() => setPending(null)} onInstall={inputs => {
-        const detail = pending;
-        setPending(null);
-        if (detail) void install(detail, inputs);
-      }} />
+      )}
+      <InstallDialog
+        detail={pending}
+        busy={pending && !('error' in pending) ? installing.has(pending.externalId) : false}
+        onCancel={() => setPending(null)}
+        onInstall={inputs => {
+          const detail = pending;
+          setPending(null);
+          if (detail) void install(detail, inputs);
+        }}
+      />
     </div>
   );
 }
@@ -217,12 +258,35 @@ function InstallDialog({ detail, busy, onCancel, onInstall }: {
 }): JSX.Element {
   const [values, setValues] = useState<Record<string, string>>({});
   const required = detail && !('error' in detail) ? detail.requiredInputs : [];
-  return <Dialog open={detail !== null} onOpenChange={open => { if (!open && !busy) onCancel(); }} title={`配置 ${detail && !('error' in detail) ? detail.name : ''}`}>
-    <div className="flex flex-col gap-3">{required.map(input => <Field key={input.key} label={input.key} required description={input.description}>
-      <Input type={input.secret ? 'password' : 'text'} value={values[input.key] ?? ''} onChange={event => setValues(current => ({ ...current, [input.key]: event.target.value }))} />
-    </Field>)}</div>
-    <div className="mt-4 flex justify-end gap-2"><Button variant="ghost" onClick={onCancel}>取消</Button><Button variant="primary" disabled={required.some(input => !values[input.key]?.trim())} onClick={() => onInstall(values)}>安装</Button></div>
-  </Dialog>;
+  return (
+    <Dialog
+      open={detail !== null}
+      onOpenChange={open => { if (!open && !busy) onCancel(); }}
+      title={`配置 ${detail && !('error' in detail) ? detail.name : ''}`}
+    >
+      <div className="flex flex-col gap-3">
+        {required.map(input => (
+          <Field key={input.key} label={input.key} required description={input.description}>
+            <Input
+              type={input.secret ? 'password' : 'text'}
+              value={values[input.key] ?? ''}
+              onChange={event => setValues(current => ({ ...current, [input.key]: event.target.value }))}
+            />
+          </Field>
+        ))}
+      </div>
+      <div className="mt-4 flex justify-end gap-2">
+        <Button variant="ghost" onClick={onCancel}>取消</Button>
+        <Button
+          variant="primary"
+          disabled={required.some(input => !values[input.key]?.trim())}
+          onClick={() => onInstall(values)}
+        >
+          安装
+        </Button>
+      </div>
+    </Dialog>
+  );
 }
 
 function serverName(value: string): string {

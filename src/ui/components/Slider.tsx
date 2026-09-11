@@ -15,6 +15,7 @@ export interface SliderStep<T = number> {
 export interface SliderProps<T = number> {
   value:         T;
   onChange:      (value: T) => void;
+  onCommit?:     (value: T) => void;
   steps:         SliderStep<T>[];
   disabled?:     boolean;
   /** Hide the labels row. Default false. */
@@ -23,7 +24,7 @@ export interface SliderProps<T = number> {
 }
 
 export function Slider<T extends string | number>(props: SliderProps<T>): React.JSX.Element {
-  const { value, onChange, steps, disabled, hideLabels, className } = props;
+  const { value, onChange, onCommit, steps, disabled, hideLabels, className } = props;
 
   const validSteps = steps.filter((item) => (
     typeof item.value !== 'number' || Number.isFinite(item.value)
@@ -52,6 +53,12 @@ export function Slider<T extends string | number>(props: SliderProps<T>): React.
           const index = Math.round(rawIndex);
           const next = validSteps[index];
           if (next) onChange(next.value);
+        }}
+        onValueCommit={(v) => {
+          const rawIndex = v[0];
+          if (rawIndex === undefined || !Number.isFinite(rawIndex)) return;
+          const next = validSteps[Math.round(rawIndex)];
+          if (next) onCommit?.(next.value);
         }}
         min={0}
         max={max}
@@ -85,7 +92,11 @@ export function Slider<T extends string | number>(props: SliderProps<T>): React.
                 'cursor-pointer transition-ema',
                 i === currentIndex ? 'text-[var(--ema-primary-text)] font-medium' : 'hover:text-[var(--ema-text-primary)]',
               )}
-              onClick={() => !disabled && onChange(s.value)}
+              onClick={() => {
+                if (disabled) return;
+                onChange(s.value);
+                onCommit?.(s.value);
+              }}
             >
               {s.label}
             </span>

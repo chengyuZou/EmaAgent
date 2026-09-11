@@ -2,7 +2,7 @@
 // 视觉与市场卡同语言;真扫刷新在页头。
 import { useMemo, useState, type JSX } from 'react';
 import {
-  Badge, Button, Callout, Dialog, EmptyState, IconButton, Input, Spinner, Switch, Tooltip,
+  Badge, Button, Callout, Dialog, EmptyState, SearchField, IconButton, Input, Spinner, Switch, Tooltip,
 } from '@ema-agent/ui';
 import { useSkillStore } from '../../stores/skill.js';
 import { skillsApi, type SkillListItem } from '../../api/skills.js';
@@ -91,10 +91,13 @@ export function SkillInstalledPage(): JSX.Element {
       {error && <Callout variant="danger" className="shrink-0">{error}</Callout>}
 
       <div className="shrink-0">
-        <Input
-          placeholder="搜索已安装技能…"
+        <SearchField
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onChange={setQ}
+          onSubmit={() => setQ(q.trim())}
+          loading={loading}
+          placeholder="搜索已安装技能…"
+          aria-label="搜索技能"
         />
       </div>
 

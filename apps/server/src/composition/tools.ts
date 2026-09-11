@@ -17,6 +17,7 @@ import {
   CommandRunner,
   detectBackend,
   probeBash,
+  sandboxNetworkSetting,
   type SandboxStatus,
 } from '@ema-agent/sandbox';
 import type { SessionStore } from '@ema-agent/session';
@@ -100,7 +101,8 @@ export interface ToolsComposition {
   readonly skillMarket: MarketService;
   readonly skillMarketInstaller: MarketInstaller;
   readonly skillUserRoot: string;
-  readonly sandboxStatus: SandboxStatus;
+  /** 沙箱状态实时读:网络档位是设置键,运行期可改,冻结快照会陈旧。 */
+  getSandboxStatus(): SandboxStatus;
   /** 按 Session 缓存的命令运行器；workspaceRoot 变化后必须 invalidate。 */
   getCommandRunner(sessionId: string): CommandRunner | undefined;
   invalidateSessionRunner(sessionId: string): void;
@@ -114,12 +116,11 @@ export interface ToolsComposition {
 }
 
 /** 不安全开关只服务本地开发；正式构建发现任一开关直接拒绝启动。 */
-function readUnsafeOverrides(env: NodeJS.ProcessEnv): { shell: boolean; network: boolean } {
+function readUnsafeOverrides(env: NodeJS.ProcessEnv): { shell: boolean } {
   const overrides = {
     shell: env.AGEN_UNSAFE_SHELL === '1',
-    network: env.AGEN_UNSAFE_SANDBOX_NETWORK === '1',
   };
-  if (env.NODE_ENV === 'production' && (overrides.shell || overrides.network)) {
+  if (env.NODE_ENV === 'production' && overrides.shell) {
     throw new Error('正式构建禁止使用 AGEN_UNSAFE_* 沙箱绕过开关');
   }
   return overrides;
@@ -132,26 +133,29 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
   const detection = detectBackend();
   const overrides = readUnsafeOverrides(process.env);
   const disableExecuteTools = detection.backend === 'unisolated' && !overrides.shell;
-  const warnings = [
-    detection.degradeReason,
-    detection.backend === 'unisolated' && overrides.shell
-      ? 'Shell 正在以无 OS 隔离运行（AGEN_UNSAFE_SHELL=1）。'
-      : undefined,
-    overrides.network
-      ? '沙箱内 Shell 命令具有完全网络访问（AGEN_UNSAFE_SANDBOX_NETWORK=1）。'
-      : undefined,
-  ].filter((message): message is string => Boolean(message));
-  const sandboxStatus: SandboxStatus = Object.freeze({
-    kind: detection.backend,
-    isolation: detection.backend === 'unisolated' ? 'application-only' : 'os',
-    shellExecution: disableExecuteTools
-      ? 'disabled'
-      : detection.backend === 'unisolated'
-        ? 'unsafe-override'
-        : 'isolated',
-    sandboxNetwork: overrides.network ? 'full' : 'none',
-    ...(warnings.length > 0 ? { warning: warnings.join(' ') } : {}),
-  });
+  const getSandboxStatus = (): SandboxStatus => {
+    const network = settings.get(sandboxNetworkSetting);
+    const warnings = [
+      detection.degradeReason,
+      detection.backend === 'unisolated' && overrides.shell
+        ? 'Shell 正在以无 OS 隔离运行（AGEN_UNSAFE_SHELL=1）。'
+        : undefined,
+      network === 'full'
+        ? '沙箱内 Shell 命令具有完全网络访问（设置 → 安全 → 沙箱网络）。'
+        : undefined,
+    ].filter((message): message is string => Boolean(message));
+    return Object.freeze({
+      kind: detection.backend,
+      isolation: detection.backend === 'unisolated' ? 'application-only' : 'os',
+      shellExecution: disableExecuteTools
+        ? 'disabled'
+        : detection.backend === 'unisolated'
+          ? 'unsafe-override'
+          : 'isolated',
+      sandboxNetwork: network,
+      ...(warnings.length > 0 ? { warning: warnings.join(' ') } : {}),
+    });
+  };
   // 启动预热 bash 探测：首个 Shell 命令到达时同步 peek 直接命中。
   void probeBash();
 
@@ -161,6 +165,10 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
     ...sqliteFileSet(dataDbPathFor(activeDataDir)),
   ]);
   const runners = new Map<string, CommandRunner>();
+  // 沙箱网络档位是设置键:写入后已缓存的 runner 仍持旧档,全量失效让下条命令重建。
+  settings.subscribe((event) => {
+    if (event.changedKeys.includes(sandboxNetworkSetting.key)) runners.clear();
+  });
   const getCommandRunner = (sessionId: string): CommandRunner | undefined => {
     const cached = runners.get(sessionId);
     if (cached) return cached;
@@ -173,7 +181,7 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
       workspaceRoot,
       writablePaths: [workspaceRoot, ...temporaryWritePaths],
       forbiddenPaths,
-      networkAccess: overrides.network ? 'full' : 'none',
+      networkAccess: settings.get(sandboxNetworkSetting),
     });
     runners.set(sessionId, runner);
     return runner;
@@ -272,7 +280,7 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
     skillMarket,
     skillMarketInstaller,
     skillUserRoot,
-    sandboxStatus,
+    getSandboxStatus,
     getCommandRunner,
     invalidateSessionRunner: sessionId => { runners.delete(sessionId); },
     getSessionToolResultStore,

@@ -57,21 +57,21 @@ export function selectBackendForPlatform(platform: SandboxPlatform):
       // 原生 Linux 或 WSL2 都支持 Linux namespace，可直接调 bwrap。
       return {
         kind: 'bwrap-direct',
-        degradeReason: 'bwrap not found; install bubblewrap (e.g. apt install bubblewrap) for OS-level sandboxing',
+        degradeReason: '未找到 bwrap;安装 bubblewrap可获得系统级沙箱。',
       };
 
     case 'wsl1':
       // WSL1 没有 Linux namespace，bwrap 无法运行，只能降级。
       return {
         kind: 'unisolated',
-        degradeReason: 'WSL1 does not support Linux namespaces required by bubblewrap; upgrade to WSL2 for OS-level sandboxing',
+        degradeReason: 'WSL1 不支持 bubblewrap 所需的 Linux namespace;升级到 WSL2 可获得系统级沙箱。',
       };
 
     case 'windows':
       // Windows 本身没有 bwrap，需探测 WSL2 + bwrap 组合，交给 detectWindowsBackend。
       return {
         kind: 'bwrap-via-wsl',
-        degradeReason: 'WSL found but bubblewrap not installed; run `wsl -- apt install bubblewrap` for OS-level sandboxing',
+        degradeReason: '检测到 WSL,但未安装 bubblewrap;',
       };
   }
 }
@@ -158,7 +158,7 @@ function detectWindowsBackend(wslBwrapMissingReason: string): DetectResult {
   if (notFound) {
     return {
       backend: 'unisolated',
-      degradeReason: 'WSL not found; install WSL2 (wsl --install) and bubblewrap for OS-level sandboxing',
+      degradeReason: '未找到 WSL;安装 WSL2(wsl --install)与 bubblewrap 可获得系统级沙箱。',
     };
   }
 
