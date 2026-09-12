@@ -24,8 +24,6 @@ import {
 } from '@ema-agent/llm';
 import {
   loadPermissionRuleBuckets,
-  permissionModeSetting,
-  type PermissionMode,
   type PermissionRuleBuckets,
 } from '@ema-agent/permission';
 import type { PromptBlock } from '@ema-agent/prompts';
@@ -79,7 +77,6 @@ export interface PreparedTurn {
   readonly skillPool?: SkillPool;
   readonly agentSettings: AgentSettings;
   readonly compactSettings: CompactSettings;
-  readonly permissionMode: PermissionMode;
   readonly tools: TurnToolsAssembly;
   readonly degradations: readonly RequestDegradationNotice[];
   readonly maxIterations: number;
@@ -106,8 +103,6 @@ export interface PrepareTurnDeps extends TurnToolsDeps {
   /** Vision 描述缓存(path 键);与 describeImage 同时注入才会现做生产。 */
   readonly visionCache?: VisionDescriptionCache;
   readonly scratchpadDirForTurn?: (sessionId: string, turnId: string) => string;
-  /** 正式构建 false；只有显式开发入口可为 true。 */
-  readonly isBypassPermissionsModeAvailable?: boolean;
 }
 
 export interface PrepareTurnInput {
@@ -133,9 +128,8 @@ export async function prepareTurn(
   // 设置在任何附件写入或媒体降级前读取一次，确保同一根 Turn 不混用新旧上限。
   const agentSettings = readAgentSettings(deps.settings);
   const compactSettings = readCompactSettings(deps.settings);
-  const permissionMode = deps.settings.get(permissionModeSetting);
-
   const session = deps.sessions.getSession(request.sessionId);
+  const permissionMode = session.permissionMode;
   const workspaceRoot = session.workspaceRoot ?? '';
   const projectId = session.projectId;
 
@@ -215,8 +209,6 @@ export async function prepareTurn(
     permission: {
       mode: permissionMode,
       buckets: permissionBuckets,
-      isBypassPermissionsModeAvailable:
-        deps.isBypassPermissionsModeAvailable ?? false,
     },
     signal,
   });
@@ -259,7 +251,6 @@ export async function prepareTurn(
     ...(skillPool ? { skillPool } : {}),
     agentSettings,
     compactSettings,
-    permissionMode,
     tools,
     degradations: Object.freeze(degradations),
     maxIterations: request.executionProfile === 'chat'

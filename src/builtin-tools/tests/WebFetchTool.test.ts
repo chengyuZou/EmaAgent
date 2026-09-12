@@ -49,7 +49,6 @@ function makePermissionContext(): ToolPermissionContext {
     alwaysAllowRules: {},
     alwaysDenyRules: {},
     alwaysAskRules: {},
-    isBypassPermissionsModeAvailable: false,
     sessionId: 's1',
     toolCallId: 'c1',
   };

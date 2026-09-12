@@ -49,6 +49,7 @@ export function restoreSessionRecord(record: SessionRecord): SessionRow {
     model_id: record.modelId,
     execution_profile: record.executionProfile,
     narrative_policy: record.narrativePolicy,
+    permission_mode: record.permissionMode,
   };
 }
 

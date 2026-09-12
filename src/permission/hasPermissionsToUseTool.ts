@@ -84,15 +84,8 @@ async function hasPermissionsToUseToolInner(
     return toolResult;
   }
 
-  // 4. bypassPermissions（正式构建禁用；显式 deny 与 Tool ask 已在前面拦截，不是裸奔）
+  // 4. bypassPermissions；显式 deny 与 Tool ask 已在前面拦截。
   if (permissionContext.mode === 'bypassPermissions') {
-    if (!permissionContext.isBypassPermissionsModeAvailable) {
-      return {
-        behavior: 'deny',
-        message: '当前构建不允许 bypassPermissions',
-        decisionReason: { type: 'mode', mode: 'bypassPermissions' },
-      };
-    }
     return {
       behavior: 'allow',
       decisionReason: { type: 'mode', mode: 'bypassPermissions' },

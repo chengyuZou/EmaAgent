@@ -22,7 +22,6 @@ const PERMISSION_CONTEXT: ToolPermissionContext = {
   alwaysAllowRules: {},
   alwaysDenyRules: {},
   alwaysAskRules: {},
-  isBypassPermissionsModeAvailable: false,
 };
 
 type AnyTestTool = Tool<{ value: number }, unknown, Record<string, never>, never>;

@@ -10,6 +10,7 @@ const createSessionBody = z.object({
   projectId: z.string().min(1).max(200).optional(),
   executionProfile: z.enum(['chat', 'work']).optional(),
   narrativePolicy: z.enum(['auto', 'always', 'off']).optional(),
+  permissionMode: z.enum(['default', 'acceptEdits', 'bypassPermissions']).optional(),
 }).refine(
   input => input.projectId === undefined || input.workspaceRoot === undefined,
   { message: 'session_project_workspace_conflict' },

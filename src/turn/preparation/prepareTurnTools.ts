@@ -104,7 +104,6 @@ export interface PrepareTurnToolsInput {
       readonly alwaysDenyRules: ToolPermissionContext['alwaysDenyRules'];
       readonly alwaysAskRules: ToolPermissionContext['alwaysAskRules'];
     };
-    readonly isBypassPermissionsModeAvailable: boolean;
   };
   readonly signal: AbortSignal;
 }
@@ -141,7 +140,6 @@ export function prepareTurnTools(
     alwaysAllowRules: input.permission.buckets.alwaysAllowRules,
     alwaysDenyRules: input.permission.buckets.alwaysDenyRules,
     alwaysAskRules: input.permission.buckets.alwaysAskRules,
-    isBypassPermissionsModeAvailable: input.permission.isBypassPermissionsModeAvailable,
     ...(workspaceRoot ? { workspaceRoot } : {}),
   };
 

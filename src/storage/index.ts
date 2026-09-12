@@ -69,7 +69,15 @@ export { SkillsRepo }      from './repos/profile/skills.js';
 export type { SkillRow }   from './repos/profile/skills.js';
 export { SkillEnablementRepo } from './repos/profile/skillEnablement.js';
 export type { DatabaseOptions, SqliteDb } from './database/database.js';
-export type { SessionRow, SessionRowEnriched, SessionSearchRow, SessionInsert, ExecutionProfileRow, NarrativePolicyRow } from './repos/data/sessions.js';
+export type {
+  SessionRow,
+  SessionRowEnriched,
+  SessionSearchRow,
+  SessionInsert,
+  ExecutionProfileRow,
+  NarrativePolicyRow,
+  PermissionModeRow,
+} from './repos/data/sessions.js';
 export type { TurnStatusRow, TurnTriggerTypeRow } from './repos/data/turns.js';
 export type { TurnRow, TurnInsert, TurnCompletion } from './repos/data/turns.js';
 export type { MessageRow, MessageInsert, MessageRole, MessageKind } from './repos/data/messages.js';

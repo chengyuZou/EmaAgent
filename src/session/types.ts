@@ -1,6 +1,7 @@
 import type { MessageKind, MessageRole } from '@ema-agent/storage';
 import type { MessageBlocks } from './message.js';
 import type { ToolResult } from '@ema-agent/tools';
+import type { PermissionMode } from '@ema-agent/permission';
 
 /**
  * 一次 Turn 的执行能力范围；输入渠道和连接协议不属于 Profile。
@@ -65,6 +66,7 @@ export interface Session {
   forkedFromTurnId: string | null;
   executionProfile: ExecutionProfile;
   narrativePolicy: NarrativePolicy;
+  permissionMode: PermissionMode;
   /** 用户希望该 Session 使用的供应商配置；null 表示使用系统默认选择。 */
   providerId: string | null;
   /** 用户希望该 Session 使用的模型；null 表示使用系统默认选择。 */
@@ -117,6 +119,7 @@ export interface CreateSessionInput {
   projectId?: string;
   executionProfile?: ExecutionProfile;
   narrativePolicy?: NarrativePolicy;
+  permissionMode?: PermissionMode;
 }
 
 /** 用户可在 Session 存续期间修改的偏好；undefined 表示保持原值。 */
@@ -126,6 +129,7 @@ export interface PatchSessionInput {
   workspaceRoot?: string | null;
   executionProfile?: ExecutionProfile;
   narrativePolicy?: NarrativePolicy;
+  permissionMode?: PermissionMode;
   model?: {
     providerId: string;
     modelId: string;

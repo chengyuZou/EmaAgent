@@ -146,7 +146,9 @@ CREATE TABLE sessions (
   execution_profile    TEXT NOT NULL DEFAULT 'chat'
                        CHECK(execution_profile IN ('chat', 'work')),
   narrative_policy     TEXT NOT NULL DEFAULT 'auto'
-                       CHECK(narrative_policy IN ('auto', 'always', 'off'))
+                       CHECK(narrative_policy IN ('auto', 'always', 'off')),
+  permission_mode      TEXT NOT NULL DEFAULT 'default'
+                       CHECK(permission_mode IN ('default', 'acceptEdits', 'bypassPermissions'))
 );
 
 CREATE TABLE task_context_state (

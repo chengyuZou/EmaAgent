@@ -23,7 +23,7 @@ flowchart TD
     D2 -->|否| D3["3. tool.checkPermissions（Tool 自我解释）"]
     D3 -->|deny| Z
     D3 -->|ask| ASK
-    D3 -->|"allow / passthrough"| D4{"4. bypassPermissions 且构建可用？"}
+    D3 -->|"allow / passthrough"| D4{"4. Session 模式是 bypassPermissions？"}
     D4 -->|是| ALLOW[allow → tool.execute 同一份 input]
     D4 -->|否| D5{"5. 整体 allow 规则命中？"}
     D5 -->|是| ALLOW
@@ -61,7 +61,6 @@ interface ToolPermissionContext {
   alwaysAllowRules: ToolPermissionRulesBySource;  // 原始规则字符串桶
   alwaysDenyRules: ToolPermissionRulesBySource;
   alwaysAskRules: ToolPermissionRulesBySource;
-  isBypassPermissionsModeAvailable: boolean;
   workspaceRoot?: string;
 }
 // ToolPermissionRulesBySource = Partial<Record<'userSettings'|'projectSettings'|'session', readonly string[]>>
@@ -110,7 +109,8 @@ acceptEdits 模式语义归文件 Tool（"工作区内写入放行"）；default
 
 - **settings KV 六个 key**：`permission.rules.user.{allow,deny,ask}`（`string[]`）、`permission.rules.project.{allow,deny,ask}`（`Record<projectId, string[]>`）；`apply: 'nextTurn'`（settings 源次 Turn 冻结生效）。
 - **session 规则**：`rules/update.ts` 的内存 per-session 表（本 Turn 即效，不落盘）。
-- `applyPermissionUpdate(store, update, {sessionId, projectId?})`：addRules/removeRules/setMode 的唯一写入点。
+- **Session 模式**：`sessions.permission_mode`，创建默认 `default`，Session 偏好修改后由下一根 Turn 读取并冻结；Fork 与备份保留该值。
+- `applyPermissionUpdate(store, update, {sessionId, projectId?})`：addRules/removeRules 的唯一写入点。
 - 项目删除 → `purgeProjectRules(store, projectId)`；开机 → `reconcileProjectRules(store, existingProjectIds)`（崩溃收敛，装配层注入项目列表）。
 - `loadPermissionRuleBuckets(store, sessionId, projectId?)`：Turn 准备时装配三桶（settings 源冻结 + session 并入 allow 桶）。
 
@@ -126,7 +126,7 @@ src/permission/
 │  ├─ pathRuleMatching.ts      路径 gitignore 匹配（POSIX 盘符归一）
 │  ├─ loader.ts                settings 读出装配桶 + reconcileProjectRules
 │  └─ update.ts                PermissionUpdate 应用 + session 内存表 + purgeProjectRules
-├─ settings.ts                 7 个 settings key（mode/rules×6/askTimeoutMs，全带 describe）
+├─ settings.ts                 7 个 settings key（rules×6/askTimeoutMs）
 ├─ events.ts                   permission_required/resolved（PermissionRequest + toolCallId）
 ├─ paths/                      pathSafety/workspaceBoundary/platformPaths/internalPaths（文件 Tool 语料）
 └─ tests/                      六组测试（parser/shell/path/update/loader/central，29 条）

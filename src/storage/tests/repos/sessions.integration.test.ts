@@ -16,6 +16,17 @@ describe('SessionsRepo integration', () => {
     database.close();
   });
 
+  it('Session 权限模式默认 default，修改与 Fork 均保留所选模式', () => {
+    repo.insert({ id: 'source', title: 'Source', createdAt: 1, updatedAt: 1 });
+    expect(repo.findById('source')?.permission_mode).toBe('default');
+
+    repo.patch('source', { permissionMode: 'bypassPermissions' }, 2);
+    expect(repo.findById('source')?.permission_mode).toBe('bypassPermissions');
+
+    repo.forkInto('source', 'fork', 'Fork', 3);
+    expect(repo.findById('fork')?.permission_mode).toBe('bypassPermissions');
+  });
+
   it('listEnrichedAll 返回带投影的扁平行（分桶归业务层）', () => {
     insertSession({ id: 'a', workspaceRoot: 'D:/work/a', lastActivityAt: 30 });
     insertSession({ id: 'b', pinned: true, lastActivityAt: 50 });

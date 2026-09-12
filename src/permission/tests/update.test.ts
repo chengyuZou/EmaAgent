@@ -1,4 +1,4 @@
-// 测试 PermissionUpdate 应用：session 内存表、settings KV 读写、项目清理与 mode 写入。
+// 测试 PermissionUpdate 应用：session 内存表、settings KV 读写与项目清理。
 import { describe, expect, it } from 'vitest';
 import { SettingsStore, type SettingsRepository } from '@ema-agent/settings';
 import {
@@ -8,7 +8,6 @@ import {
   purgeProjectRules,
 } from '../rules/update.js';
 import {
-  permissionModeSetting,
   permissionRulesProjectAllowSetting,
   permissionRulesUserAllowSetting,
 } from '../settings.js';
@@ -86,14 +85,6 @@ describe('applyPermissionUpdate', () => {
     purgeProjectRules(store, 'proj-a');
     expect(store.get(permissionRulesProjectAllowSetting)).toEqual({});
     purgeProjectRules(store, 'nonexistent');
-  });
-
-  it('setMode 写 permission.mode 设置', () => {
-    const { store } = makeStore();
-    applyPermissionUpdate(store, {
-      type: 'setMode', mode: 'acceptEdits',
-    }, { sessionId: 's1' });
-    expect(store.get(permissionModeSetting)).toBe('acceptEdits');
   });
 
   it('roundtrip 规范化：等价写法（Bash / Bash() / Bash(*)）只存一条，删除不失配', () => {

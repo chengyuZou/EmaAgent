@@ -84,7 +84,6 @@ describe('Builtin ToolPool 能力装配', () => {
       alwaysAllowRules: {},
       alwaysDenyRules: {},
       alwaysAskRules: {},
-      isBypassPermissionsModeAvailable: false,
     };
     await expect(
       registered!.checkPermissions({}, {} as never, permissionContext),

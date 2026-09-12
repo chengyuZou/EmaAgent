@@ -61,7 +61,6 @@ export {
   MIN_PERMISSION_ASK_TIMEOUT_MS,
   PERMISSION_SETTINGS,
   permissionAskTimeoutSetting,
-  permissionModeSetting,
   permissionRulesProjectAllowSetting,
   permissionRulesProjectAskSetting,
   permissionRulesProjectDenySetting,

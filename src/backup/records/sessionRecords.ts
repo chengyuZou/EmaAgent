@@ -36,6 +36,7 @@ export const sessionRecordSchema = z.object({
   modelId: nullableId,
   executionProfile: z.enum(['chat', 'work']),
   narrativePolicy: z.enum(['auto', 'always', 'off']),
+  permissionMode: z.enum(['default', 'acceptEdits', 'bypassPermissions']),
 }).strict().refine(
   value => (value.providerId === null) === (value.modelId === null),
   { message: 'Session 模型选择必须同时包含 Provider 和 Model' },

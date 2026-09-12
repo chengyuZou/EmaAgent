@@ -85,7 +85,6 @@ function makeInput(options: {
     permission: {
       mode: 'default' as const,
       buckets: { alwaysAllowRules: {}, alwaysDenyRules: {}, alwaysAskRules: {} },
-      isBypassPermissionsModeAvailable: false,
     },
     signal: new AbortController().signal,
     ...(options.overrides ?? {}),

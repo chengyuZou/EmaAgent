@@ -2,7 +2,6 @@
 
 // ── 模式与行为 ────────────────────────────────────────────────────────────────
 
-/** bypassPermissions 仅显式开发入口可开启；正式装配必须禁用。 */
 export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions';
 
 export type PermissionBehavior = 'allow' | 'deny' | 'ask';
@@ -31,7 +30,7 @@ export type PermissionUpdateDestination = PermissionRuleSource;
 
 /**
  * 用户选择沉淀为配置更新："本 Session 允许" = addRules(session)；写设置 = addRules(user/project)。
- * mode 只有 settings KV 一个家，setMode 无 destination。
+ * 模式由 Session 保存；这里仅处理 Tool 规则。
  */
 export type PermissionUpdate =
   | {
@@ -45,10 +44,6 @@ export type PermissionUpdate =
       readonly destination: PermissionUpdateDestination;
       readonly rules: readonly PermissionRuleValue[];
       readonly behavior: PermissionBehavior;
-    }
-  | {
-      readonly type: 'setMode';
-      readonly mode: PermissionMode;
     };
 
 // ── 决策 ─────────────────────────────────────────────────────────────────────
@@ -125,8 +120,6 @@ export interface ToolPermissionContext {
   readonly alwaysAllowRules: ToolPermissionRulesBySource;
   readonly alwaysDenyRules: ToolPermissionRulesBySource;
   readonly alwaysAskRules: ToolPermissionRulesBySource;
-  /** 正式构建 false；只有显式开发入口可为 true。 */
-  readonly isBypassPermissionsModeAvailable: boolean;
   readonly workspaceRoot?: string;
 }
 

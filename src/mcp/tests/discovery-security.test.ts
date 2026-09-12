@@ -15,7 +15,6 @@ const PERMISSION_CONTEXT: ToolPermissionContext = {
   alwaysAllowRules: {},
   alwaysDenyRules: {},
   alwaysAskRules: {},
-  isBypassPermissionsModeAvailable: false,
 };
 
 describe('MCP 工具发现安全边界', () => {

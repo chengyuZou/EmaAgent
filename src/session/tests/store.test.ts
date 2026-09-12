@@ -34,6 +34,7 @@ describe('SessionStore — session', () => {
     expect(s.id).toBeTypeOf('string');
     expect(s.title).toBe('新对话');
     expect(s.archivedAt).toBeNull();
+    expect(s.permissionMode).toBe('default');
   });
 
   it('creates a session with custom input', () => {
@@ -42,6 +43,18 @@ describe('SessionStore — session', () => {
 
     expect(s.title).toBe('My Chat');
     expect(s.workspaceRoot).toBe('/tmp');
+  });
+
+  it('Session 权限模式创建后可修改，Fork 继承当前选择', () => {
+    const { store } = makeStore();
+    const session = store.createSession({ permissionMode: 'acceptEdits' });
+    expect(session.permissionMode).toBe('acceptEdits');
+
+    store.patchSession(session.id, { permissionMode: 'bypassPermissions' });
+    expect(store.getSession(session.id).permissionMode).toBe('bypassPermissions');
+
+    const fork = store.forkSession(session.id);
+    expect(store.getSession(fork.sessionId).permissionMode).toBe('bypassPermissions');
   });
 
   it('创建 Project Session 时在同一次操作中写入项目与主工作区', () => {

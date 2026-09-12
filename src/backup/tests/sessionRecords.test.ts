@@ -22,6 +22,7 @@ const currentSession = {
   modelId: null,
   executionProfile: 'work',
   narrativePolicy: 'auto',
+  permissionMode: 'default',
 } as const;
 
 describe('session records', () => {

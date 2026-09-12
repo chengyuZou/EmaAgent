@@ -1067,6 +1067,9 @@ importers:
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../llm
+      '@ema-agent/permission':
+        specifier: workspace:*
+        version: link:../permission
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage

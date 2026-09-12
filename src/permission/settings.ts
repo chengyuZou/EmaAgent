@@ -1,14 +1,7 @@
-// Permission 的用户设置：三档规则（全局/按项目）+ 执行模式 + 批准等待超时。
+// Permission 的用户设置：三档规则（全局/按项目）+ 批准等待超时。
 // session 源规则是纯内存（rules/update.ts），不是设置。
 import { defineSetting } from '@ema-agent/settings';
 import { z } from 'zod';
-
-export const permissionModeSetting = defineSetting({
-  key: 'permission.mode',
-  apply: 'nextTurn',
-  defaultValue: 'default' as const,
-  schema: z.enum(['default', 'acceptEdits', 'bypassPermissions']),
-});
 
 export const DEFAULT_PERMISSION_ASK_TIMEOUT_MS: null = null;
 export const MIN_PERMISSION_ASK_TIMEOUT_MS = 200_000;
@@ -70,7 +63,6 @@ export const permissionAskTimeoutSetting = defineSetting({
 
 /** permission 包全部设置定义（供 SettingsStore 注册）。 */
 export const PERMISSION_SETTINGS = [
-  permissionModeSetting,
   permissionRulesUserAllowSetting,
   permissionRulesUserDenySetting,
   permissionRulesUserAskSetting,

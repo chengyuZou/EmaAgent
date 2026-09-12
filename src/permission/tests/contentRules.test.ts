@@ -12,7 +12,6 @@ function makeContext(overrides: Partial<ToolPermissionContext> = {}): ToolPermis
     alwaysAllowRules: {},
     alwaysDenyRules: {},
     alwaysAskRules: {},
-    isBypassPermissionsModeAvailable: false,
     ...overrides,
   };
 }

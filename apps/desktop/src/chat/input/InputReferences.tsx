@@ -1,5 +1,6 @@
 // 保存输入框的有序引用草稿, 并在真正发送时把未落盘附件转换为 Turn 输入.
 import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/session';
+import type { PermissionMode } from '@ema-agent/permission';
 import type { TurnInputPart, TurnModelSelection } from '@ema-agent/turn';
 
 export type ChatDraftPart =
@@ -13,11 +14,18 @@ export interface ChatDraft {
   readonly selectedAssetIds: readonly string[];
   readonly executionProfile: ExecutionProfile;
   readonly narrativePolicy: NarrativePolicy;
+  readonly permissionMode: PermissionMode;
   readonly modelSelection?: TurnModelSelection;
 }
 
 export function emptyChatDraft(): ChatDraft {
-  return { parts: [], selectedAssetIds: [], executionProfile: 'chat', narrativePolicy: 'auto' };
+  return {
+    parts: [],
+    selectedAssetIds: [],
+    executionProfile: 'chat',
+    narrativePolicy: 'auto',
+    permissionMode: 'default',
+  };
 }
 
 type ReferencePart = Exclude<ChatDraftPart, { readonly type: 'text' }>;

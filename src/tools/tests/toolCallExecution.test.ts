@@ -29,7 +29,6 @@ const PERMISSION_CONTEXT: ToolPermissionContext = {
   alwaysAllowRules: {},
   alwaysDenyRules: {},
   alwaysAskRules: {},
-  isBypassPermissionsModeAvailable: false,
 };
 
 /** 内存版原子存储:与 SQL 实现同语义(version CAS + from 集合)。 */

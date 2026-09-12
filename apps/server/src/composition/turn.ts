@@ -294,8 +294,6 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     visionCache: visionDescriptions,
     scratchpadDirForTurn: (sessionId, turnId) =>
       ensureScratchpadDir(activeDataDir, sessionId, turnId),
-    isBypassPermissionsModeAvailable:
-      process.env['EMA_BYPASS_PERMISSIONS'] === '1' && process.env.NODE_ENV !== 'production',
     readTurnReminder,
     // 只有 reminder Message 成功持久化才提交"已提醒"，避免 Turn 准备失败吞掉提醒周期。
     onTaskReminderPersisted: sessionId => {

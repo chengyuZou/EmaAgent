@@ -104,6 +104,7 @@ export class SessionStore {
         projectId: input.projectId,
         executionProfile: input.executionProfile,
         narrativePolicy: input.narrativePolicy,
+        permissionMode: input.permissionMode,
         createdAt: now,
         updatedAt: now,
         lastActivityAt: now,
@@ -221,6 +222,7 @@ export class SessionStore {
     }
     if (patch.executionProfile !== undefined) cleaned.executionProfile = patch.executionProfile;
     if (patch.narrativePolicy !== undefined) cleaned.narrativePolicy = patch.narrativePolicy;
+    if (patch.permissionMode !== undefined) cleaned.permissionMode = patch.permissionMode;
     if (patch.model !== undefined) {
       cleaned.model = patch.model;
     }

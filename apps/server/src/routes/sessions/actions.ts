@@ -12,6 +12,7 @@ const patchSessionBody = z.object({
   workspaceRoot: z.string().min(1).max(500).nullable().optional(),
   executionProfile: z.enum(['chat', 'work']).optional(),
   narrativePolicy: z.enum(['auto', 'always', 'off']).optional(),
+  permissionMode: z.enum(['default', 'acceptEdits', 'bypassPermissions']).optional(),
   /** 该 Session 后续 Turn 的模型偏好；null 恢复默认解析。 */
   model: z.object({
     providerId: z.string().min(1),

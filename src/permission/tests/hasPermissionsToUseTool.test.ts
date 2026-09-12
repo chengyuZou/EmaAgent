@@ -15,7 +15,6 @@ function makeContext(overrides: Partial<ToolPermissionContext> = {}): ToolPermis
     alwaysAllowRules: {},
     alwaysDenyRules: {},
     alwaysAskRules: {},
-    isBypassPermissionsModeAvailable: false,
     ...overrides,
   };
 }
@@ -46,7 +45,6 @@ describe('hasPermissionsToUseTool', () => {
   it('Tool deny / ask 先于 bypassPermissions', async () => {
     const context = makeContext({
       mode: 'bypassPermissions',
-      isBypassPermissionsModeAvailable: true,
     });
     const denying = await hasPermissionsToUseTool(
       makeTool({ behavior: 'deny', message: 'no' }), {}, {}, context, { interactive: true },
@@ -58,20 +56,14 @@ describe('hasPermissionsToUseTool', () => {
     expect(asking.behavior).toBe('ask');
   });
 
-  it('bypass 可用时放行；正式构建禁用时拒绝', async () => {
+  it('bypass 对 passthrough Tool 放行', async () => {
     const available = await hasPermissionsToUseTool(
       makeTool(PASS), {}, {},
-      makeContext({ mode: 'bypassPermissions', isBypassPermissionsModeAvailable: true }),
+      makeContext({ mode: 'bypassPermissions' }),
       { interactive: true },
     );
     expect(available).toMatchObject({ behavior: 'allow', decisionReason: { type: 'mode', mode: 'bypassPermissions' } });
 
-    const disabled = await hasPermissionsToUseTool(
-      makeTool(PASS), {}, {},
-      makeContext({ mode: 'bypassPermissions', isBypassPermissionsModeAvailable: false }),
-      { interactive: true },
-    );
-    expect(disabled.behavior).toBe('deny');
   });
 
   it('整体 allow 规则先于 Tool 自我放行；session 源最先命中', async () => {

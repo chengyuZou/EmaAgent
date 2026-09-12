@@ -45,6 +45,7 @@ export const toSessionRecord = (row: SessionRow): SessionRecord => ({
   modelId: row.model_id,
   executionProfile: row.execution_profile,
   narrativePolicy: row.narrative_policy,
+  permissionMode: row.permission_mode,
 });
 
 export const toTurnRecord = (row: TurnRow): TurnRecord => ({

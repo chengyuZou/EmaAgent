@@ -9,6 +9,7 @@ import { escapeLikePattern } from '../../search/like-utils.js';
 export type ExecutionProfileRow = 'chat' | 'work';
 /** sessions/turns 行上的剧情策略枚举（SQL CHECK 原样）。 */
 export type NarrativePolicyRow = 'auto' | 'always' | 'off';
+export type PermissionModeRow = 'default' | 'acceptEdits' | 'bypassPermissions';
 
 export interface SessionRow {
   id: string;
@@ -28,6 +29,7 @@ export interface SessionRow {
   forked_from_turn_id:    string | null;
   execution_profile: ExecutionProfileRow;
   narrative_policy: NarrativePolicyRow;
+  permission_mode: PermissionModeRow;
   /** 该 Session 当前使用的供应商配置；null 表示使用系统默认选择。 */
   provider_id: string | null;
   /** 该 Session 当前使用的模型；null 表示使用系统默认选择。 */
@@ -59,6 +61,7 @@ export interface SessionInsert {
   forkedFromTurnId?: string | null;
   executionProfile?: ExecutionProfileRow;
   narrativePolicy?: NarrativePolicyRow;
+  permissionMode?: PermissionModeRow;
   model?: {
     providerId: string;
     modelId: string;
@@ -77,10 +80,10 @@ export class SessionsRepo {
         `INSERT INTO sessions
            (id, title, workspace_root, project_id,
             forked_from_session_id, forked_from_turn_id,
-            execution_profile, narrative_policy,
+            execution_profile, narrative_policy, permission_mode,
             provider_id, model_id,
             created_at, updated_at, last_activity_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(s.id, s.title,
         s.workspaceRoot ?? null,
@@ -89,6 +92,7 @@ export class SessionsRepo {
         s.forkedFromTurnId ?? null,
         s.executionProfile ?? 'chat',
         s.narrativePolicy ?? 'auto',
+        s.permissionMode ?? 'default',
         s.model?.providerId ?? null,
         s.model?.modelId ?? null,
         s.createdAt, s.updatedAt,
@@ -318,14 +322,14 @@ export class SessionsRepo {
         `INSERT INTO sessions
            (id, title, workspace_root, project_id,
             forked_from_session_id, forked_from_turn_id,
-            execution_profile, narrative_policy,
+            execution_profile, narrative_policy, permission_mode,
             provider_id, model_id,
             created_at, updated_at, last_activity_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(newId, title, src.workspace_root,
         src.project_id,
         srcId, untilTurnId ?? null,
-        src.execution_profile, src.narrative_policy,
+        src.execution_profile, src.narrative_policy, src.permission_mode,
         src.provider_id, src.model_id,
         createdAt, createdAt, createdAt);
 
@@ -483,6 +487,7 @@ export class SessionsRepo {
       workspaceRoot?:  string | null;
       executionProfile?: ExecutionProfileRow;
       narrativePolicy?: NarrativePolicyRow;
+      permissionMode?: PermissionModeRow;
       model?: {
         providerId: string;
         modelId: string;
@@ -513,6 +518,10 @@ export class SessionsRepo {
     if (patch.narrativePolicy !== undefined) {
       setClauses.push('narrative_policy = ?');
       values.push(patch.narrativePolicy);
+    }
+    if (patch.permissionMode !== undefined) {
+      setClauses.push('permission_mode = ?');
+      values.push(patch.permissionMode);
     }
     if (patch.model !== undefined) {
       setClauses.push('provider_id = ?', 'model_id = ?');

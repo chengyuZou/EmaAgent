@@ -18,6 +18,7 @@ import { useHistoryStore } from '../chat/state/history.js';
 import { useLiveTurns } from '../chat/state/liveTurns.js';
 
 import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/session';
+import type { PermissionMode } from '@ema-agent/permission';
 
 // ── 类型 ──────────────────────────────────────────────────────────────────────
 
@@ -45,6 +46,7 @@ export interface SessionStoreState {
     patch: {
       executionProfile?: ExecutionProfile;
       narrativePolicy?: NarrativePolicy;
+      permissionMode?: PermissionMode;
     },
   ): Promise<void>;
   /** 保存该 Session 后续 Turn 的模型偏好；null 恢复默认解析。 */
@@ -96,11 +98,10 @@ function replaceSession(
   return next;
 }
 
-// 同一 Session 的偏好写入必须按用户点击顺序落库，旧响应也不能覆盖新选择。
+// 同一 Session 的偏好写入按点击顺序落库，不能让较早的请求最后覆盖较新的选择。
 const preferredModelWriteChains = new Map<string, Promise<void>>();
 const preferredModelGenerations = new Map<string, number>();
 const executionSettingsWriteChains = new Map<string, Promise<void>>();
-const executionSettingsGenerations = new Map<string, number>();
 
 // ── Store ─────────────────────────────────────────────────────────────────────
 
@@ -172,63 +173,65 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
   },
 
   async setExecutionSettings(id, patch) {
-    const key = id;
-    const previous = get().sessions.byId.get(key);
-    if (!previous) throw new Error(`Session not loaded: ${key}`);
+    if (!get().sessions.byId.has(id)) throw new Error(`Session not loaded: ${id}`);
 
-    const generation = (executionSettingsGenerations.get(key) ?? 0) + 1;
-    executionSettingsGenerations.set(key, generation);
-    const optimistic: SessionListItem = {
-      ...previous,
-      executionProfile: patch.executionProfile ?? previous.executionProfile,
-      narrativePolicy: patch.narrativePolicy ?? previous.narrativePolicy,
-    };
-    set((state) => ({
-      sessions: replaceSession(state.sessions, key, optimistic),
-      error: null,
-    }));
-
-    const previousWrite = executionSettingsWriteChains.get(key) ?? Promise.resolve();
+    const previousWrite = executionSettingsWriteChains.get(id) ?? Promise.resolve();
     let currentWrite!: Promise<void>;
     currentWrite = previousWrite
       .catch(() => {})
       .then(async () => {
-        const updated = await sessionsApi.patch(id, patch);
-        if (executionSettingsGenerations.get(key) !== generation) return;
-        set((state) => {
-          const current = state.sessions.byId.get(key);
-          if (!current) return {};
-          return {
-            sessions: replaceSession(state.sessions, key, {
-              ...current,
-              executionProfile: updated.executionProfile,
-              narrativePolicy: updated.narrativePolicy,
-            }),
-          };
-        });
-      })
-      .catch((error: unknown) => {
-        if (executionSettingsGenerations.get(key) !== generation) return;
-        set((state) => {
-          const current = state.sessions.byId.get(key);
-          if (!current) return {};
-          return {
-            sessions: replaceSession(state.sessions, key, {
-              ...current,
-              executionProfile: previous.executionProfile,
-              narrativePolicy: previous.narrativePolicy,
-            }),
-            error: error instanceof Error ? error.message : '保存执行设置失败',
-          };
-        });
-        throw error;
+        const current = get().sessions.byId.get(id);
+        if (!current) throw new Error(`Session not loaded: ${id}`);
+        if (
+          (patch.executionProfile === undefined || patch.executionProfile === current.executionProfile)
+          && (patch.narrativePolicy === undefined || patch.narrativePolicy === current.narrativePolicy)
+          && (patch.permissionMode === undefined || patch.permissionMode === current.permissionMode)
+        ) return;
+
+        try {
+          const updated = await sessionsApi.patch(id, patch);
+          set((state) => {
+            const session = state.sessions.byId.get(id);
+            if (!session) return {};
+            return {
+              sessions: replaceSession(state.sessions, id, {
+                ...session,
+                executionProfile: updated.executionProfile,
+                narrativePolicy: updated.narrativePolicy,
+                permissionMode: updated.permissionMode,
+              }),
+              error: null,
+            };
+          });
+        } catch (error) {
+          let failure = error;
+          try {
+            const saved = await sessionsApi.get(id);
+            set((state) => {
+              const session = state.sessions.byId.get(id);
+              if (!session) return {};
+              return {
+                sessions: replaceSession(state.sessions, id, {
+                  ...session,
+                  executionProfile: saved.executionProfile,
+                  narrativePolicy: saved.narrativePolicy,
+                  permissionMode: saved.permissionMode,
+                }),
+              };
+            });
+          } catch {
+            failure = new Error('保存结果未确认，连接恢复后请重新打开会话核对设置');
+          }
+          set({ error: failure instanceof Error ? failure.message : '保存执行设置失败' });
+          throw failure;
+        }
       })
       .finally(() => {
-        if (executionSettingsWriteChains.get(key) === currentWrite) {
-          executionSettingsWriteChains.delete(key);
+        if (executionSettingsWriteChains.get(id) === currentWrite) {
+          executionSettingsWriteChains.delete(id);
         }
       });
-    executionSettingsWriteChains.set(key, currentWrite);
+    executionSettingsWriteChains.set(id, currentWrite);
     return currentWrite;
   },
 
@@ -342,7 +345,6 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
       preferredModelWriteChains.delete(id);
       preferredModelGenerations.delete(id);
       executionSettingsWriteChains.delete(id);
-      executionSettingsGenerations.delete(id);
       await get().loadSessions();
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : '删除会话失败' });

@@ -11,7 +11,6 @@ import {
   permissionRuleValueToString,
 } from './permissionRuleParser.js';
 import {
-  permissionModeSetting,
   permissionRulesProjectAllowSetting,
   permissionRulesProjectAskSetting,
   permissionRulesProjectDenySetting,
@@ -68,10 +67,6 @@ export function applyPermissionUpdate(
         return;
       }
       writeRules(store, update.destination, update.behavior, ruleStrings, 'remove', context.projectId);
-      return;
-    }
-    case 'setMode': {
-      store.set(permissionModeSetting, update.mode);
       return;
     }
   }

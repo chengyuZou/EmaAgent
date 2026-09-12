@@ -17,6 +17,7 @@ import {
   type TextareaHandle,
 } from '@ema-agent/ui';
 import type { TurnInputPart, TurnModelSelection } from '@ema-agent/turn';
+import type { NarrativePolicy } from '@ema-agent/session';
 import { PASTE_TEXT_MIN_CHARS } from '@ema-agent/attachments/limits';
 import { sessionsApi } from '../../api/sessions.js';
 import { ServerApiError } from '../../api/client.js';
@@ -30,7 +31,7 @@ import { useUiStore } from '../../stores/ui.js';
 import { PendingInteractionView } from '../interactions/PendingInteractionView.js';
 import { useChatWorkspace } from '../state/chatWorkspace.js';
 import { useLiveTurns } from '../state/liveTurns.js';
-import { ContextMeter, ExecutionProfileSelector, KbButton, ModelPicker, NarrativePolicySelector } from './InputSelectors.js';
+import { ContextMeter, ExecutionProfileSelector, KbButton, ModelPicker, PermissionModeSelector } from './InputSelectors.js';
 import {
   activeSlashToken,
   SlashCommandMenu,
@@ -142,10 +143,11 @@ export function ChatInput(): JSX.Element {
   const textareaRef = useRef<TextareaHandle>(null);
   const slashMenuRef = useRef<SlashMenuHandle | null>(null);
 
-  const draft: ChatDraft = storedDraft ?? {
+  const savedDraft: ChatDraft = storedDraft ?? {
     ...emptyChatDraft(),
     executionProfile: viewedSession?.executionProfile ?? 'chat',
     narrativePolicy: viewedSession?.narrativePolicy ?? 'auto',
+    permissionMode: viewedSession?.permissionMode ?? 'default',
     ...(viewedSession?.providerId && viewedSession.modelId
       ? {
           modelSelection: {
@@ -157,6 +159,14 @@ export function ChatInput(): JSX.Element {
         }
       : {}),
   };
+  const draft: ChatDraft = viewedSession
+    ? {
+        ...savedDraft,
+        executionProfile: viewedSession.executionProfile,
+        narrativePolicy: viewedSession.narrativePolicy,
+        permissionMode: viewedSession.permissionMode,
+      }
+    : savedDraft;
   const text = draftText(draft.parts);
   const hasInput = hasDraftContent(draft.parts);
   const executing = agentSession?.execution != null;
@@ -168,6 +178,13 @@ export function ChatInput(): JSX.Element {
 
   function updateDraft(patch: Partial<ChatDraft>): void {
     useChatWorkspace.getState().setDraft({ ...draft, ...patch });
+  }
+
+  function showExecutionSettingError(error: unknown): void {
+    showToast(
+      error instanceof Error ? `保存会话设置失败: ${error.message}` : '保存会话设置失败',
+      { variant: 'danger' },
+    );
   }
 
   useEffect(() => {
@@ -320,8 +337,13 @@ export function ChatInput(): JSX.Element {
           ...(newProjectId ? { projectId: newProjectId } : {}),
           executionProfile: submitted.executionProfile,
           narrativePolicy: submitted.narrativePolicy,
+          permissionMode: submitted.permissionMode,
         });
         useChatWorkspace.getState().promoteNewSession(sessionId);
+      } else {
+        await useSessionStore.getState().setExecutionSettings(sessionId, {
+          permissionMode: submitted.permissionMode,
+        });
       }
       useAgentStore.getState().connectSession(sessionId);
       const input = await finalizeDraft(sessionId, submitted.parts);
@@ -397,13 +419,6 @@ export function ChatInput(): JSX.Element {
     }
   }
 
-  function focusSlash(): void {
-    const position = caret();
-    const prefix = position === 0 || /\s/.test(text[position - 1] ?? '') ? '/' : ' /';
-    updateText(text.slice(0, position) + prefix + text.slice(position), position + prefix.length);
-    textareaRef.current?.el()?.focus();
-  }
-
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>): void {
     if (event.nativeEvent.isComposing || event.keyCode === 229) return;
     const slashHandled = slashFilter !== null
@@ -425,6 +440,11 @@ export function ChatInput(): JSX.Element {
     }
   }
 
+  const narrativeLabels: Record<NarrativePolicy, string> = {
+    auto: '自动',
+    always: '始终',
+    off: '关闭',
+  };
   const plusItems: MenuItem[] = [
     {
       kind: 'item',
@@ -432,8 +452,25 @@ export function ChatInput(): JSX.Element {
       icon: 'i-lucide:paperclip',
       onSelect: () => void pickAttachments(),
     },
-    { kind: 'item', label: '选择技能', icon: 'i-lucide:box', onSelect: focusSlash },
-    { kind: 'item', label: '运行命令', icon: 'i-lucide:terminal', onSelect: focusSlash },
+    {
+      kind: 'submenu',
+      label: 'Narrative选择',
+      icon: 'i-lucide:book-open',
+      items: (['auto', 'always', 'off'] as const).map(narrativePolicy => ({
+        kind: 'item',
+        label: narrativeLabels[narrativePolicy],
+        icon: draft.narrativePolicy === narrativePolicy ? 'i-lucide:check' : 'i-lucide:circle',
+        onSelect: () => {
+          if (viewedId) {
+            void useSessionStore.getState()
+              .setExecutionSettings(viewedId, { narrativePolicy })
+              .catch(showExecutionSettingError);
+          } else {
+            updateDraft({ narrativePolicy });
+          }
+        },
+      })),
+    },
   ];
 
   return (
@@ -558,15 +595,15 @@ export function ChatInput(): JSX.Element {
               toggled={ttsEnabled}
               onClick={() => useUiStore.getState().setTtsEnabled(!ttsEnabled)}
             />
-            <NarrativePolicySelector
-              value={draft.narrativePolicy}
-              onChange={(narrativePolicy) => {
-                updateDraft({ narrativePolicy });
+            <PermissionModeSelector
+              value={draft.permissionMode}
+              onChange={(permissionMode) => {
                 if (viewedId) {
-                  void useSessionStore.getState().setExecutionSettings(
-                    viewedId,
-                    { narrativePolicy },
-                  );
+                  void useSessionStore.getState()
+                    .setExecutionSettings(viewedId, { permissionMode })
+                    .catch(showExecutionSettingError);
+                } else {
+                  updateDraft({ permissionMode });
                 }
               }}
             />
@@ -575,12 +612,12 @@ export function ChatInput(): JSX.Element {
             <ExecutionProfileSelector
               value={draft.executionProfile}
               onChange={(executionProfile) => {
-                updateDraft({ executionProfile });
                 if (viewedId) {
-                  void useSessionStore.getState().setExecutionSettings(
-                    viewedId,
-                    { executionProfile },
-                  );
+                  void useSessionStore.getState()
+                    .setExecutionSettings(viewedId, { executionProfile })
+                    .catch(showExecutionSettingError);
+                } else {
+                  updateDraft({ executionProfile });
                 }
               }}
             />

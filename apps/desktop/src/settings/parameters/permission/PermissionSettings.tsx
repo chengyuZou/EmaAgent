@@ -1,12 +1,11 @@
-// 显式编辑权限模式, 全局规则, 按项目规则和交互等待时间.
-import { useEffect, useMemo, useState, type JSX } from 'react';
+// 编辑全局与已有项目的权限规则, 以及交互等待时间.
+import { useEffect, useState, type JSX } from 'react';
 import { Button, Callout, Input, Select, Spinner, Textarea } from '@ema-agent/ui';
+import { sessionsApi, type SessionProjectGroup } from '../../../api/sessions.js';
 import type { SettingApply } from '../../../api/settings.js';
 import { SettingsCard, SettingsSection, SettingItem } from '../../shared/SettingItem.js';
-import { SelectSetting } from '../controls/SelectSetting.js';
 import { useSettingValues } from '../useSettingValues.js';
 
-const MODE_KEY = 'permission.mode';
 const TIMEOUT_KEY = 'permission.askTimeoutMs';
 const USER_RULE_KEYS = {
   allow: 'permission.rules.user.allow',
@@ -33,21 +32,8 @@ export function PermissionSettings(): JSX.Element {
         <p className="mt-1 text-sm text-[var(--ema-text-tertiary)]">控制 Tool 在执行前是直接允许, 直接拒绝还是询问.</p>
       </header>
 
-      <SettingsSection icon="i-lucide:shield-check" title="执行模式" description="下一根 Turn 冻结本次权限行为">
+      <SettingsSection icon="i-lucide:shield-check" title="用户确认" description="Tool 需要询问时的等待时间">
         <SettingsCard>
-          <SelectSetting
-            title="权限模式"
-            hint="默认模式按规则判断. 自动接受编辑只放行工作区写入. 绕过权限只用于明确的本地开发场景."
-            apply={settings.apply(MODE_KEY)}
-            value={readString(settings.values, MODE_KEY)}
-            options={[
-              { value: 'default', label: '默认' },
-              { value: 'acceptEdits', label: '自动接受编辑' },
-              { value: 'bypassPermissions', label: '绕过权限' },
-            ]}
-            onSave={value => settings.save(MODE_KEY, value)}
-            onReset={() => settings.reset(MODE_KEY)}
-          />
           <PermissionTimeout apply={settings.apply(TIMEOUT_KEY)} value={readNullableNumber(settings.values, TIMEOUT_KEY)} onSave={value => settings.save(TIMEOUT_KEY, value)} onReset={() => settings.reset(TIMEOUT_KEY)} />
         </SettingsCard>
       </SettingsSection>
@@ -107,12 +93,19 @@ function ProjectRules(props: { values: ReadonlyMap<string, unknown>; apply(key: 
     deny: readRuleRecord(props.values, PROJECT_RULE_KEYS.deny),
     ask: readRuleRecord(props.values, PROJECT_RULE_KEYS.ask),
   };
-  const projectIds = useMemo(() => [...new Set(Object.values(records).flatMap(record => Object.keys(record)))].sort(), [props.values]);
-  const [selected, setSelected] = useState(projectIds[0] ?? '');
-  const [newId, setNewId] = useState('');
+  const [projects, setProjects] = useState<SessionProjectGroup[]>([]);
+  const [selected, setSelected] = useState('');
+  const [loadError, setLoadError] = useState<string | null>(null);
   useEffect(() => {
-    if (!selected && projectIds[0]) setSelected(projectIds[0]);
-  }, [projectIds.join('|'), selected]);
+    void sessionsApi.listGrouped()
+      .then(grouped => setProjects([...grouped.pinnedProjects, ...grouped.projects]))
+      .catch(error => setLoadError(error instanceof Error ? error.message : '项目列表读取失败'));
+  }, []);
+  useEffect(() => {
+    if (!projects.some(group => group.project.id === selected)) {
+      setSelected(projects[0]?.project.id ?? '');
+    }
+  }, [projects, selected]);
 
   const saveRules = async (behavior: RuleBehavior, rules: string[]): Promise<void> => {
     if (!selected) return;
@@ -126,11 +119,18 @@ function ProjectRules(props: { values: ReadonlyMap<string, unknown>; apply(key: 
   return (
     <SettingsSection icon="i-lucide:folder-key" title="项目规则" description="只覆盖指定项目, 规则格式与全局规则相同">
       <SettingsCard>
-        <SettingItem title="项目 ID" hint="选择已有规则的项目, 或输入一个项目 ID 开始配置.">
-          {projectIds.length > 0 && <Select className="w-48" value={selected} options={projectIds.map(id => ({ value: id, label: id }))} onChange={setSelected} />}
-          <Input className="w-48" inputSize="sm" value={newId} placeholder="项目 ID" onChange={event => setNewId(event.target.value)} />
-          <Button size="sm" variant="ghost" disabled={!newId.trim()} onClick={() => { setSelected(newId.trim()); setNewId(''); }}>编辑</Button>
-        </SettingItem>
+        {loadError && <Callout variant="danger">{loadError}</Callout>}
+        {!loadError && projects.length === 0 && <p className="px-4 py-3 text-sm text-[var(--ema-text-tertiary)]">暂无项目</p>}
+        {projects.length > 0 && (
+          <SettingItem title="项目" hint="仅选择 Session 中已有的项目.">
+            <Select
+              className="w-64"
+              value={selected}
+              options={projects.map(group => ({ value: group.project.id, label: group.project.name }))}
+              onChange={setSelected}
+            />
+          </SettingItem>
+        )}
         {selected && (['deny', 'ask', 'allow'] as const).map(behavior => (
           <RuleListEditor key={`${selected}:${behavior}`} behavior={behavior} apply={props.apply(PROJECT_RULE_KEYS[behavior])} value={records[behavior][selected] ?? []} onSave={value => saveRules(behavior, value)} />
         ))}
@@ -141,12 +141,6 @@ function ProjectRules(props: { values: ReadonlyMap<string, unknown>; apply(key: 
 
 function parseRules(value: string): string[] {
   return [...new Set(value.split(/\r?\n/).map(line => line.trim()).filter(Boolean))];
-}
-
-function readString(values: ReadonlyMap<string, unknown>, key: string): string {
-  const value = values.get(key);
-  if (typeof value !== 'string') throw new Error(`设置 ${key} 没有返回字符串`);
-  return value;
 }
 
 function readNullableNumber(values: ReadonlyMap<string, unknown>, key: string): number | null {

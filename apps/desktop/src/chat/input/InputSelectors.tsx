@@ -16,7 +16,8 @@ import {
   type MenuItem,
 } from '@ema-agent/ui';
 import type { ContextUsage, ContextUsageCategories } from '@ema-agent/context';
-import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/session';
+import type { ExecutionProfile } from '@ema-agent/session';
+import type { PermissionMode } from '@ema-agent/permission';
 import type { TurnModelSelection } from '@ema-agent/turn';
 import { knowledgeApi, type DocumentAsset } from '../../api/knowledge.js';
 import {
@@ -48,10 +49,10 @@ const EXECUTION_PROFILE_ICONS: Record<ExecutionProfile, string> = {
   work: 'i-lucide:briefcase-business',
 };
 
-const NARRATIVE_POLICY_LABELS: Record<NarrativePolicy, string> = {
-  auto: '剧情自动',
-  always: '剧情始终',
-  off: '剧情关闭',
+const PERMISSION_MODE_LABELS: Record<PermissionMode, string> = {
+  default: '默认权限',
+  acceptEdits: '自动接受编辑',
+  bypassPermissions: '绕过权限',
 };
 
 export function ExecutionProfileSelector({
@@ -93,18 +94,18 @@ export function ExecutionProfileSelector({
   );
 }
 
-export function NarrativePolicySelector({
+export function PermissionModeSelector({
   value,
   onChange,
 }: {
-  value: NarrativePolicy;
-  onChange(value: NarrativePolicy): void;
+  value: PermissionMode;
+  onChange(value: PermissionMode): void;
 }): JSX.Element {
-  const items: MenuItem[] = (['auto', 'always', 'off'] as const).map((policy) => ({
+  const items: MenuItem[] = (['default', 'acceptEdits', 'bypassPermissions'] as const).map((mode) => ({
     kind: 'item',
-    label: NARRATIVE_POLICY_LABELS[policy],
-    icon: value === policy ? 'i-lucide:check' : 'i-lucide:circle',
-    onSelect: () => onChange(policy),
+    label: PERMISSION_MODE_LABELS[mode],
+    icon: value === mode ? 'i-lucide:check' : 'i-lucide:circle',
+    onSelect: () => onChange(mode),
   }));
 
   return (
@@ -117,13 +118,13 @@ export function NarrativePolicySelector({
         <Button
           variant="ghost"
           className={`gap-1 rounded-lg px-2 py-1 text-xs ${
-            value === 'always'
+            value === 'bypassPermissions'
               ? 'text-[var(--ema-warning)]'
               : 'text-[var(--ema-text-secondary)]'
           }`}
         >
-          <span className="i-lucide:book-open text-sm" aria-hidden />
-          {NARRATIVE_POLICY_LABELS[value]}
+          <span className="i-lucide:shield-check text-sm" aria-hidden />
+          {PERMISSION_MODE_LABELS[value]}
           <span className="i-lucide:chevron-up text-[10px]" aria-hidden />
         </Button>
       )}

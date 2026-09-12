@@ -34,6 +34,7 @@ describe('Session collection and History routes', () => {
         projectId: project.id,
         executionProfile: 'work',
         narrativePolicy: 'off',
+        permissionMode: 'acceptEdits',
       }),
     });
 
@@ -43,6 +44,7 @@ describe('Session collection and History routes', () => {
       workspaceRoot: 'D:/demo',
       executionProfile: 'work',
       narrativePolicy: 'off',
+      permissionMode: 'acceptEdits',
     });
   });
 
