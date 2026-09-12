@@ -36,10 +36,6 @@ button, [role="button"], [data-tauri-drag-region], .ema-no-select, .ema-no-selec
   -webkit-user-select: text !important;
 }
 
-:focus-visible {
-  outline: none !important;
-}
-
 /* ── Scrollbar（跟指针：栏内才画，离开延迟淡出） ────────────────────────────*/
 ::-webkit-scrollbar {
   width:  6px;

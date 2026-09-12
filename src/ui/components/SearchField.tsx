@@ -35,7 +35,7 @@ export const SearchField = forwardRef<HTMLInputElement, SearchFieldProps>(
           'shadow-[var(--ema-control-shadow)]',
           'transition-[background-color,border-color,box-shadow] duration-[var(--ema-duration-fast)]',
           'hover:bg-[var(--ema-control-bg-hover)] hover:border-[var(--ema-control-border-hover)]',
-          'focus-within:bg-[var(--ema-control-bg-focus)] focus-within:border-[var(--ema-control-border-focus)] focus-within:shadow-[var(--ema-shadow-focus)]',
+          'focus-within:bg-[var(--ema-control-bg-focus)] focus-within:border-[var(--ema-control-border-focus)] focus-within:shadow-[var(--ema-control-shadow-focus)]',
           disabled && 'opacity-60',
           className,
         )}

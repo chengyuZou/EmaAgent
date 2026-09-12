@@ -60,9 +60,9 @@ export function Select(props: SelectProps): React.JSX.Element {
           'bg-[var(--ema-control-bg)] shadow-[var(--ema-control-shadow)]',
           'hover:bg-[var(--ema-control-bg-hover)] data-[state=open]:bg-[var(--ema-control-bg-focus)]',
           'border-[var(--ema-control-border)] hover:border-[var(--ema-control-border-hover)]',
-          'data-[state=open]:border-[var(--ema-control-border-focus)]',
+          'data-[state=open]:border-[var(--ema-control-border-focus)] data-[state=open]:shadow-[var(--ema-control-shadow-focus)]',
           'disabled:cursor-not-allowed disabled:opacity-50',
-          'focus-ring transition-ema',
+          'focus-visible:border-[var(--ema-control-border-focus)] focus-visible:shadow-[var(--ema-control-shadow-focus)] transition-ema',
           className,
         )}
       >

@@ -185,9 +185,9 @@ export const Textarea = forwardRef<TextareaHandle, TextareaProps>(
         className={cn(
           'relative rounded-xl border bg-[var(--ema-control-bg)] shadow-[var(--ema-control-shadow)] transition-ema',
           'hover:bg-[var(--ema-control-bg-hover)] focus-within:bg-[var(--ema-control-bg-focus)]',
-          'focus-within:shadow-[0_0_0_2px_var(--ema-primary),var(--ema-shadow-focus)]',
+          'focus-within:border-[var(--ema-control-border-focus)] focus-within:shadow-[var(--ema-control-shadow-focus)]',
           error
-            ? 'border-[var(--ema-danger)] focus-within:ring-[var(--ema-danger)]/40 focus-within:border-[var(--ema-danger)]'
+            ? 'border-[var(--ema-danger)] focus-within:shadow-[var(--ema-shadow-danger)]'
             : 'border-[var(--ema-control-border)] hover:border-[var(--ema-control-border-hover)]',
         )}
       >

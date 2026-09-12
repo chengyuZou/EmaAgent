@@ -29,7 +29,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           'w-full rounded-xl border font-mono text-[var(--ema-text-primary)] placeholder:text-[var(--ema-text-tertiary)]',
           'bg-[var(--ema-control-bg)] shadow-[var(--ema-control-shadow)]',
           'hover:bg-[var(--ema-control-bg-hover)] focus-visible:bg-[var(--ema-control-bg-focus)]',
-          'transition-ema focus-ring',
+          'transition-ema',
           'disabled:cursor-not-allowed disabled:opacity-50',
           SIZE_CLASSES[inputSize],
           // Strip the native number-spinner arrows (↕) — they look out of place
@@ -37,8 +37,8 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           type === 'number' &&
             '[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none',
           error
-            ? 'border-[var(--ema-danger)] focus-visible:ring-[var(--ema-danger)]/40'
-            : 'border-[var(--ema-control-border)] hover:border-[var(--ema-control-border-hover)] focus-visible:border-[var(--ema-control-border-focus)]',
+            ? 'border-[var(--ema-danger)] focus-visible:shadow-[var(--ema-shadow-danger)]'
+            : 'border-[var(--ema-control-border)] hover:border-[var(--ema-control-border-hover)] focus-visible:border-[var(--ema-control-border-focus)] focus-visible:shadow-[var(--ema-control-shadow-focus)]',
           className,
         )}
         {...rest}
