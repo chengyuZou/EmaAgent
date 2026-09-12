@@ -9,10 +9,10 @@ use tracing_subscriber::EnvFilter;
 
 use commands::{
     browser_back, browser_forward, close_browser, close_session_terminals, close_terminal,
-    get_server_port, get_server_secret, get_start_narrative_on_launch,
-    navigate_browser, open_browser, open_path, open_terminal, open_window, quit_app,
-    reload_browser, resize_terminal, set_always_on_top, set_browser_bounds, set_browser_visible,
-    set_passthrough, set_start_narrative_on_launch, write_terminal,
+    get_server_port, get_server_secret, get_start_narrative_on_launch, navigate_browser,
+    open_browser, open_path, open_terminal, open_window, quit_app, reload_browser, resize_terminal,
+    set_always_on_top, set_browser_bounds, set_browser_visible, set_passthrough,
+    set_start_narrative_on_launch, write_terminal,
 };
 use desktop::terminal::TerminalSessions;
 use desktop::windows::{handle_window_event, show_main_window};

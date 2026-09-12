@@ -14,15 +14,7 @@ pub fn open_terminal(
     rows: u16,
     on_event: Channel<TerminalEvent>,
 ) -> Result<(), String> {
-    terminals.open(
-        terminal_id,
-        session_id,
-        cwd,
-        shell,
-        columns,
-        rows,
-        on_event,
-    )
+    terminals.open(terminal_id, session_id, cwd, shell, columns, rows, on_event)
 }
 
 #[tauri::command]

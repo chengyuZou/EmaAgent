@@ -2,7 +2,9 @@
 use serde::Serialize;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
-use tauri::{Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
+use tauri::{
+    Emitter, EventTarget, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent,
+};
 
 const WINDOW_VISIBILITY_EVENT: &str = "ema://window-visibility";
 // 同一进程内的 WebView2 必须使用一致的浏览器参数，否则后创建的窗口会被环境复用规则拒绝。
@@ -32,7 +34,7 @@ fn create_window(app: &tauri::AppHandle, label: &str) -> Result<WebviewWindow, S
             .inner_size(400.0, 720.0)
             .center()
             .visible(false)
-            .resizable(true)
+            .resizable(false)
             .decorations(false)
             .transparent(true)
             .always_on_top(true)
@@ -99,21 +101,37 @@ pub fn begin_main_focus_settling() {
 }
 
 pub fn handle_window_event(window: &tauri::Window, event: &WindowEvent) {
+    // Tauri 的 emit 会广播到所有窗口;可见性必须按 label 定向,否则关闭子窗口会暂停 main 舞台。
     match event {
         WindowEvent::CloseRequested { api, .. } => {
             api.prevent_close();
             let _ = window.hide();
-            let _ = window.emit(
+            let _ = window.emit_to(
+                EventTarget::window(window.label()),
                 WINDOW_VISIBILITY_EVENT,
                 WindowVisibilityPayload { visible: false },
             );
         }
         WindowEvent::Focused(true) if window.label() == "main" => {
             begin_main_focus_settling();
-            let _ = window.emit(
+            let _ = window.emit_to(
+                EventTarget::window(window.label()),
                 WINDOW_VISIBILITY_EVENT,
                 WindowVisibilityPayload { visible: true },
             );
+        }
+        WindowEvent::Resized(_) if window.label() == "main" => {
+            // 任务栏最小化先改变原生窗口尺寸,随后 WebView 停止投递动画帧;恢复时顺序相反。
+            // 必须在这个边沿广播真实最小化状态,否则前端一直保持 visible=true,ticker 没有重启机会。
+            if let Ok(minimized) = window.is_minimized() {
+                let _ = window.emit_to(
+                    EventTarget::window(window.label()),
+                    WINDOW_VISIBILITY_EVENT,
+                    WindowVisibilityPayload {
+                        visible: !minimized,
+                    },
+                );
+            }
         }
         // Windows 从任务栏恢复窗口时可能紧跟一次瞬时失焦；稳定窗口内不执行自动最小化。
         WindowEvent::Focused(false) if window.label() == "main" => {
@@ -128,7 +146,8 @@ pub fn handle_window_event(window: &tauri::Window, event: &WindowEvent) {
                 if let Err(error) = window.minimize() {
                     tracing::warn!(%error, "failed to minimize unpinned main window");
                 } else {
-                    let _ = window.emit(
+                    let _ = window.emit_to(
+                        EventTarget::window(window.label()),
                         WINDOW_VISIBILITY_EVENT,
                         WindowVisibilityPayload { visible: false },
                     );
@@ -140,5 +159,9 @@ pub fn handle_window_event(window: &tauri::Window, event: &WindowEvent) {
 }
 
 fn emit_visibility(window: &tauri::WebviewWindow, visible: bool) {
-    let _ = window.emit(WINDOW_VISIBILITY_EVENT, WindowVisibilityPayload { visible });
+    let _ = window.emit_to(
+        EventTarget::window(window.label()),
+        WINDOW_VISIBILITY_EVENT,
+        WindowVisibilityPayload { visible },
+    );
 }
