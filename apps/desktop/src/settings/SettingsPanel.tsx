@@ -13,7 +13,7 @@ import { useThemeSync } from '../stores/theme.js';
 import { CharactersTab } from './character/CharactersTab.js';
 import { StorageTab } from './data/StorageTab.js';
 import { AppearanceTab } from './general/AppearanceTab.js';
-import { GeneralTab } from './general/GeneralTab.js';
+import { SecurityTab } from './security/SecurityTab.js';
 import { KnowledgeBaseTab } from './knowledge/KnowledgeBaseTab.js';
 import { McpMarketPage } from './mcp/McpMarketPage.js';
 import { McpEnvironmentPage } from './mcp/McpEnvironmentPage.js';
@@ -35,7 +35,7 @@ type SettingsPageId =
   | 'memory-files'
   | 'knowledge-base'
   | 'storage'
-  | 'notifications'
+  | 'security'
   | 'parameters'
   | 'appearance';
 
@@ -82,7 +82,7 @@ const SETTINGS_PAGES: readonly SettingsPage[] = [
   { id: 'memory-files', label: 'Memory 文件', icon: 'i-lucide:library' },
   { id: 'knowledge-base', label: '知识库', icon: 'i-lucide:database' },
   { id: 'storage', label: '存储位置', icon: 'i-lucide:hard-drive', fullHeight: true },
-  { id: 'notifications', label: '通知与环境', icon: 'i-lucide:bell' },
+  { id: 'security', label: '安全', icon: 'i-lucide:shield-check' },
   { id: 'parameters', label: '参数设置', icon: 'i-lucide:sliders-horizontal' },
   { id: 'appearance', label: '外观', icon: 'i-lucide:palette' },
 ];
@@ -244,7 +244,7 @@ function SettingsContent({ id }: { id: ActiveNav }): JSX.Element {
     case 'memory-files': return <MemoryTab />;
     case 'knowledge-base': return <KnowledgeBaseTab />;
     case 'storage': return <StorageTab />;
-    case 'notifications': return <GeneralTab />;
+    case 'security': return <SecurityTab />;
     case 'parameters': return <ParameterSettings />;
     case 'appearance': return <AppearanceTab />;
     default: return <Callout variant="info">没有找到该设置页面.</Callout>;

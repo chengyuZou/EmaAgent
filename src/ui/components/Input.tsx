@@ -26,7 +26,9 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         type={type}
         aria-invalid={error || undefined}
         className={cn(
-          'w-full rounded-md border bg-[var(--ema-surface-2)] font-mono text-[var(--ema-text-primary)] placeholder:text-[var(--ema-text-tertiary)]',
+          'w-full rounded-xl border font-mono text-[var(--ema-text-primary)] placeholder:text-[var(--ema-text-tertiary)]',
+          'bg-[var(--ema-control-bg)] shadow-[var(--ema-control-shadow)]',
+          'hover:bg-[var(--ema-control-bg-hover)] focus-visible:bg-[var(--ema-control-bg-focus)]',
           'transition-ema focus-ring',
           'disabled:cursor-not-allowed disabled:opacity-50',
           SIZE_CLASSES[inputSize],
@@ -36,7 +38,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             '[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none',
           error
             ? 'border-[var(--ema-danger)] focus-visible:ring-[var(--ema-danger)]/40'
-            : 'border-[var(--ema-border)] hover:border-[var(--ema-border-hover)] focus-visible:border-[var(--ema-primary)]',
+            : 'border-[var(--ema-control-border)] hover:border-[var(--ema-control-border-hover)] focus-visible:border-[var(--ema-control-border-focus)]',
           className,
         )}
         {...rest}

@@ -10,6 +10,8 @@ import {
 
 const JOB_REFRESH_INTERVAL_MS = 5_000;
 
+type JobTrack = 'work' | 'relationship';
+
 export function MemoryJobsTab(): JSX.Element {
   const [jobs, setJobs] = useState<readonly MemoryJob[] | null>(null);
   const [history, setHistory] = useState<readonly MemoryJob[] | null>(null);
@@ -19,6 +21,7 @@ export function MemoryJobsTab(): JSX.Element {
 
   const refresh = useCallback(async (): Promise<void> => {
     setLoading(true);
+
     try {
       const result = await memoryApi.listJobs();
       setJobs(result.items);
@@ -32,7 +35,12 @@ export function MemoryJobsTab(): JSX.Element {
 
   useEffect(() => {
     void refresh();
-    const timer = setInterval(() => void refresh(), JOB_REFRESH_INTERVAL_MS);
+
+    const timer = setInterval(
+      () => void refresh(),
+      JOB_REFRESH_INTERVAL_MS,
+    );
+
     return () => clearInterval(timer);
   }, [refresh]);
 
@@ -41,7 +49,9 @@ export function MemoryJobsTab(): JSX.Element {
       setShowHistory(false);
       return;
     }
+
     setShowHistory(true);
+
     try {
       const result = await memoryApi.listJobHistory();
       setHistory(result.items);
@@ -52,18 +62,24 @@ export function MemoryJobsTab(): JSX.Element {
     }
   }
 
-  const active = (jobs ?? []).filter(job => job.status === 'pending' || job.status === 'running');
+  const active = (jobs ?? []).filter(
+    job => job.status === 'pending' || job.status === 'running',
+  );
+
   const failed = (jobs ?? []).filter(job => job.status === 'failed');
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex min-h-0 flex-col gap-4">
       <div className="flex items-center gap-2">
         <div>
-          <h3 className="text-sm font-semibold text-[var(--ema-text-primary)]">自动任务</h3>
+          <h3 className="text-sm font-semibold text-[var(--ema-text-primary)]">
+            自动任务
+          </h3>
           <p className="mt-0.5 text-xs text-[var(--ema-text-tertiary)]">
             提取、整合与维护由后端按固定时机自动运行。
           </p>
         </div>
+
         <Button
           variant="ghost"
           size="sm"
@@ -74,46 +90,78 @@ export function MemoryJobsTab(): JSX.Element {
         >
           刷新
         </Button>
-        <Button variant="secondary" size="sm" onClick={() => void toggleHistory()}>
+
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => void toggleHistory()}
+        >
           {showHistory ? '收起历史记录' : '查看历史记录'}
         </Button>
       </div>
 
       {error && <Callout variant="danger">{error}</Callout>}
-      {!jobs && loading && <div className="flex justify-center py-12"><Spinner size="md" /></div>}
+
+      {!jobs && loading && (
+        <div className="flex justify-center py-12">
+          <Spinner size="md" />
+        </div>
+      )}
 
       {failed.length > 0 && (
         <Callout variant="danger">
           <p className="font-semibold">有 {failed.length} 个任务需要注意</p>
           <div className="mt-2 flex flex-col gap-2">
-            {failed.map(job => <JobRow key={job.id} job={job} />)}
+            {failed.map(job => (
+              <JobRow key={job.id} job={job} />
+            ))}
           </div>
         </Callout>
       )}
 
       <section>
-        <h4 className="mb-2 text-xs font-semibold text-[var(--ema-text-secondary)]">正在处理</h4>
+        <h4 className="mb-2 text-xs font-semibold text-[var(--ema-text-secondary)]">
+          正在处理
+        </h4>
+
         {active.length === 0 ? (
-          <Card variant="glass" padding="md" className="ema-card-decorate ema-card-decorate--circuit">
-            <p className="text-center text-xs text-[var(--ema-text-tertiary)]">当前没有排队或运行中的任务。</p>
+          <Card
+            variant="glass"
+            padding="md"
+            className="ema-card-decorate ema-card-decorate--circuit"
+          >
+            <p className="text-center text-xs text-[var(--ema-text-tertiary)]">
+              当前没有排队或运行中的任务。
+            </p>
           </Card>
         ) : (
           <div className="flex flex-col gap-2">
-            {active.map(job => <JobRow key={job.id} job={job} />)}
+            {active.map(job => (
+              <JobRow key={job.id} job={job} />
+            ))}
           </div>
         )}
       </section>
 
       {showHistory && (
         <section className="ema-slide-down">
-          <h4 className="mb-2 text-xs font-semibold text-[var(--ema-text-secondary)]">最近 100 条终态记录</h4>
+          <h4 className="mb-2 text-xs font-semibold text-[var(--ema-text-secondary)]">
+            最近 100 条终态记录
+          </h4>
+
           {history === null ? (
-            <div className="flex justify-center py-8"><Spinner size="sm" /></div>
+            <div className="flex justify-center py-8">
+              <Spinner size="sm" />
+            </div>
           ) : history.length === 0 ? (
-            <p className="text-xs text-[var(--ema-text-tertiary)]">还没有已完成或失败的任务。</p>
+            <p className="text-xs text-[var(--ema-text-tertiary)]">
+              还没有已完成或失败的任务。
+            </p>
           ) : (
             <div className="flex max-h-96 flex-col gap-2 overflow-y-auto pr-1">
-              {history.map(job => <JobRow key={job.id} job={job} />)}
+              {history.map(job => (
+                <JobRow key={job.id} job={job} />
+              ))}
             </div>
           )}
         </section>
@@ -123,22 +171,76 @@ export function MemoryJobsTab(): JSX.Element {
 }
 
 function JobRow({ job }: { job: MemoryJob }): JSX.Element {
+  const track = resolveJobTrack(job);
+
   return (
     <Card
       variant="glass"
       padding="sm"
-      className="ema-card-decorate ema-card-decorate--circuit ema-stagger-in transition-all hover:border-[var(--ema-primary)] hover:shadow-[var(--ema-shadow-soft)]"
+      className="ema-card-decorate ema-card-decorate--circuit ema-stagger-in"
     >
-      <div className="flex items-center gap-2 text-xs">
-        <Badge variant={JOB_STATUS_VARIANT[job.status]} dot={job.status === 'running'}>
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        {track && <TrackBadge track={track} />}
+
+        <Badge
+          variant={JOB_STATUS_VARIANT[job.status]}
+          dot={job.status === 'running'}
+        >
           {JOB_STATUS_LABEL[job.status]}
         </Badge>
-        <span className="font-semibold text-[var(--ema-text-secondary)]">{JOB_KIND_LABEL[job.kind]}</span>
-        <span className="text-[var(--ema-text-tertiary)]">{relativeTime(job.finishedAt ?? job.startedAt ?? job.createdAt)}</span>
+
+        <span className="font-semibold text-[var(--ema-text-secondary)]">
+          {JOB_KIND_LABEL[job.kind]}
+        </span>
+
+        <span className="ml-auto text-[var(--ema-text-tertiary)]">
+          {relativeTime(job.finishedAt ?? job.startedAt ?? job.createdAt)}
+        </span>
       </div>
-      {job.error && <p className="mt-2 break-words text-xs text-[var(--ema-danger-text)]">{job.error}</p>}
+
+      {job.error && (
+        <p className="mt-2 break-words text-xs text-[var(--ema-danger-text)]">
+          {job.error}
+        </p>
+      )}
     </Card>
   );
+}
+
+function TrackBadge({ track }: { track: JobTrack }): JSX.Element {
+  if (track === 'work') {
+    return (
+      <span className="inline-flex h-5 items-center rounded-md border border-sky-200/70 bg-sky-50/70 px-2 text-[10px] font-semibold uppercase tracking-wide text-sky-700">
+        Work
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex h-5 items-center rounded-md border border-violet-200/70 bg-violet-50/70 px-2 text-[10px] font-semibold uppercase tracking-wide text-violet-700">
+      Relationship
+    </span>
+  );
+}
+
+/**
+ * 优先读取后端未来可能直接返回的 track 字段。
+ * 当前若 MemoryJob 没有 track，则从 kind 名称兜底推断。
+ * 这样前端不用为了展示 Work / Relationship 改现有 Job API。
+ */
+function resolveJobTrack(job: MemoryJob): JobTrack | null {
+  const possibleTrack = (job as MemoryJob & { track?: unknown }).track;
+
+  if (possibleTrack === 'work' || possibleTrack === 'relationship') {
+    return possibleTrack;
+  }
+
+  const kind = String(job.kind).toLowerCase();
+
+  if (kind.includes('relationship')) return 'relationship';
+  if (kind.includes('work')) return 'work';
+
+  return null;
 }
 
 function errorMessage(error: unknown, fallback: string): string {

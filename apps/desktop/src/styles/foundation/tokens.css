@@ -126,12 +126,22 @@
   --ema-turn-rail-active: var(--ema-primary);
   --ema-turn-rail-current: var(--ema-primary-hover);
 
-  /* ── Border(暗色:浅描边,加浓 0.12 抄 AIRI 暗底 border 要更明显)── */
+  /* ── Border(暗色:浅描边,加浓 0.12 暗底 border 要更明显)── */
   --ema-border:         rgba(255, 255, 255, 0.12);
   --ema-border-hover:   rgba(255, 255, 255, 0.14);
   --ema-border-focus:   var(--ema-primary);
   --ema-border-strong:  rgba(255, 255, 255, 0.18);
   --ema-border-error:   var(--ema-danger);
+
+  /* 控件皮肤(Input/Select/Textarea/SearchField 统一):引用语义层,亮暗主题自动跟随。
+     "厚"靠微阴影垫底+大圆角,不靠加粗边框;圆角走组件类 rounded-xl(随形状系统缩放)。 */
+  --ema-control-bg:            var(--ema-surface-2);
+  --ema-control-bg-hover:      var(--ema-surface-3);
+  --ema-control-bg-focus:      var(--ema-surface-1);
+  --ema-control-border:        var(--ema-border);
+  --ema-control-border-hover:  var(--ema-border-hover);
+  --ema-control-border-focus:  var(--ema-border-focus);
+  --ema-control-shadow:        var(--ema-shadow-1);
 
   /* ── Glow(发光环,ChatInput 已删但留 token)── */
   --ema-glow:        rgba(180, 160, 200, 0.15);

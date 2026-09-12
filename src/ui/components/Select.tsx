@@ -56,9 +56,11 @@ export function Select(props: SelectProps): React.JSX.Element {
         {...accessibilityProps}
         className={cn(
           'inline-flex items-center justify-between gap-2 w-full font-mono',
-          'h-9 px-3 text-sm rounded-md border bg-[var(--ema-surface-2)] text-[var(--ema-text-primary)]',
-          'border-[var(--ema-border)] hover:border-[var(--ema-border-hover)]',
-          'data-[state=open]:border-[var(--ema-primary)]',
+          'h-9 px-3 text-sm rounded-xl border text-[var(--ema-text-primary)]',
+          'bg-[var(--ema-control-bg)] shadow-[var(--ema-control-shadow)]',
+          'hover:bg-[var(--ema-control-bg-hover)] data-[state=open]:bg-[var(--ema-control-bg-focus)]',
+          'border-[var(--ema-control-border)] hover:border-[var(--ema-control-border-hover)]',
+          'data-[state=open]:border-[var(--ema-control-border-focus)]',
           'disabled:cursor-not-allowed disabled:opacity-50',
           'focus-ring transition-ema',
           className,

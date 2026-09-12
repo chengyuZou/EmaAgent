@@ -1,7 +1,7 @@
 // 角色信息:name 只读,展示名/描述/舞台显示草稿制,Persona Prompt 随输入增高。
 // [设为当前][打开文件夹][删除角色] 放右上;当前角色有工作在跑时后端 409,前端拒绝。
 import { useEffect, useState, type JSX } from 'react';
-import { Button, Input, Select } from '@ema-agent/ui';
+import { Button, Input, Select, Textarea } from '@ema-agent/ui';
 import { ServerApiError } from '../../api/client.js';
 import {
   charactersApi,
@@ -86,7 +86,7 @@ export function CharacterInfoTab({ character }: { character: Character }): JSX.E
 
   return (
     <div className="h-full overflow-y-auto p-5">
-      <div className="mx-auto flex max-w-2xl flex-col gap-5">
+      <div className="mx-auto flex max-w-5xl flex-col gap-5">
         <div className="flex items-center gap-3">
           <span className="text-base font-semibold text-[var(--ema-text-primary)]">
             {isActive ? '●' : '○'} {character.name}
@@ -104,24 +104,24 @@ export function CharacterInfoTab({ character }: { character: Character }): JSX.E
         </div>
 
         <div className="rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-2)] p-4">
-          <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-1 gap-x-6 gap-y-3 lg:grid-cols-2">
             <div className="flex items-center gap-3">
-              <span className="w-24 shrink-0 text-xs text-[var(--ema-text-tertiary)]">name</span>
+              <span className="w-20 shrink-0 text-xs text-[var(--ema-text-tertiary)]">name</span>
               <span className="text-sm text-[var(--ema-text-primary)]">
                 {character.name}
                 <span className="ml-2 text-[11px] text-[var(--ema-text-tertiary)]">永久身份,不可修改</span>
               </span>
             </div>
             <div className="flex items-center gap-3">
-              <span className="w-24 shrink-0 text-xs text-[var(--ema-text-tertiary)]">展示名(可空)</span>
+              <span className="w-20 shrink-0 text-xs text-[var(--ema-text-tertiary)]">展示名(可空)</span>
               <Input value={displayName} onChange={e => setDisplayName(e.target.value)} className="flex-1" />
             </div>
             <div className="flex items-center gap-3">
-              <span className="w-24 shrink-0 text-xs text-[var(--ema-text-tertiary)]">描述</span>
+              <span className="w-20 shrink-0 text-xs text-[var(--ema-text-tertiary)]">描述</span>
               <Input value={description} onChange={e => setDescription(e.target.value)} className="flex-1" />
             </div>
             <div className="flex items-center gap-3">
-              <span className="w-24 shrink-0 text-xs text-[var(--ema-text-tertiary)]">舞台显示</span>
+              <span className="w-20 shrink-0 text-xs text-[var(--ema-text-tertiary)]">舞台显示</span>
               <Select
                 className="flex-1"
                 value={stageKind}
@@ -137,13 +137,16 @@ export function CharacterInfoTab({ character }: { character: Character }): JSX.E
         </div>
 
         <div className="rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-2)] p-4">
-          <p className="mb-2 text-xs font-semibold text-[var(--ema-text-secondary)]">Persona Prompt</p>
-          <textarea
-            className="max-h-72 min-h-32 w-full resize-none overflow-y-auto rounded-lg border
-              border-[var(--ema-border)] bg-[var(--ema-surface-1)] px-3 py-2 text-sm leading-relaxed
-              text-[var(--ema-text-primary)] focus:border-[var(--ema-primary)] focus:outline-none"
+          <p className="mb-1 text-xs font-semibold text-[var(--ema-text-secondary)]">Persona Prompt</p>
+          <p className="mb-2 text-[11px] text-[var(--ema-text-tertiary)]">
+            告诉 AI 她是怎样的人;每次对话开场注入人格设定。
+          </p>
+          <Textarea
             value={personaPrompt}
             onChange={e => setPersonaPrompt(e.target.value)}
+            minRows={7}
+            maxRows={18}
+            className="font-mono leading-relaxed"
           />
         </div>
 

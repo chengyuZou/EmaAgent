@@ -16,6 +16,11 @@ html, body {
   box-sizing: border-box;
 }
 
+/* 表单控件字体跟随文档:浏览器对 textarea 等默认等宽且无中文字形,会掉衬线怪样。 */
+input, textarea, select, button {
+  font-family: inherit;
+}
+
 /* Edge/WebView2 对 password 输入框自带的 reveal 按钮一律隐藏——密钥显示切换由我们的眼睛按钮统一负责。 */
 input[type='password']::-ms-reveal {
   display: none;

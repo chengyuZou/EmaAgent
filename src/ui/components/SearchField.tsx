@@ -31,10 +31,11 @@ export const SearchField = forwardRef<HTMLInputElement, SearchFieldProps>(
         aria-label={props['aria-label']}
         className={cn(
           'group flex h-11 w-full items-center gap-2 rounded-xl border border-solid',
-          'border-[var(--ema-border)] bg-[var(--ema-surface-1)] pl-3 pr-1.5',
-          'transition-[border-color,box-shadow] duration-[var(--ema-duration-fast)]',
-          'hover:border-[var(--ema-border-hover)]',
-          'focus-within:border-[var(--ema-primary)] focus-within:shadow-[var(--ema-shadow-focus)]',
+          'border-[var(--ema-control-border)] bg-[var(--ema-control-bg)] pl-3 pr-1.5',
+          'shadow-[var(--ema-control-shadow)]',
+          'transition-[background-color,border-color,box-shadow] duration-[var(--ema-duration-fast)]',
+          'hover:bg-[var(--ema-control-bg-hover)] hover:border-[var(--ema-control-border-hover)]',
+          'focus-within:bg-[var(--ema-control-bg-focus)] focus-within:border-[var(--ema-control-border-focus)] focus-within:shadow-[var(--ema-shadow-focus)]',
           disabled && 'opacity-60',
           className,
         )}

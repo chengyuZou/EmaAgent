@@ -5,7 +5,7 @@ import {
   type JSX,
 } from 'react';
 import {
-  Badge, Callout, IconButton, Skeleton, Spinner,
+  Badge, Button, Callout, Skeleton, Spinner,
 } from '@ema-agent/ui';
 import { useStorageStore } from '../../stores/storage.js';
 import { sessionsApi } from '../../api/sessions.js';
@@ -124,7 +124,7 @@ function LibrariesView({
               style={{ '--stagger-i': i } as React.CSSProperties}
               onClick={() => onOpen(dir.name)}
             >
-              <div className="flex items-center gap-2 pr-8">
+              <div className="flex items-center gap-2 pr-20">
                 <span className="i-solar:database-bold-duotone text-lg text-[var(--ema-primary)]" aria-hidden />
                 <span className="text-base font-semibold text-[var(--ema-text-primary)] truncate">{dir.name}</span>
                 {isActive && <Badge variant="primary">活动</Badge>}
@@ -165,12 +165,14 @@ function LibrariesView({
                 )}
               </div>
               <div className="absolute top-3 right-3" onClick={e => e.stopPropagation()}>
-                <IconButton
-                  icon="i-solar:trash-bin-trash-bold-duotone"
-                  label={`删除存储库 ${dir.name}`}
+                <Button
+                  variant="danger"
                   size="sm"
                   onClick={() => onDelete(dir)}
-                />
+                  aria-label={`删除存储库 ${dir.name}`}
+                >
+                  <span className="i-solar:trash-bin-trash-bold-duotone" aria-hidden />删除
+                </Button>
               </div>
             </div>
           );

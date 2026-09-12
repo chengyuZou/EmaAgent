@@ -183,11 +183,12 @@ export const Textarea = forwardRef<TextareaHandle, TextareaProps>(
       <div
         ref={containerRef}
         className={cn(
-          'relative rounded-md border bg-[var(--ema-surface-2)] transition-ema',
-          'focus-within:border-[var(--ema-primary)] focus-within:ring-2 focus-within:ring-[var(--ema-primary)]/40',
+          'relative rounded-xl border bg-[var(--ema-control-bg)] shadow-[var(--ema-control-shadow)] transition-ema',
+          'hover:bg-[var(--ema-control-bg-hover)] focus-within:bg-[var(--ema-control-bg-focus)]',
+          'focus-within:shadow-[0_0_0_2px_var(--ema-primary),var(--ema-shadow-focus)]',
           error
             ? 'border-[var(--ema-danger)] focus-within:ring-[var(--ema-danger)]/40 focus-within:border-[var(--ema-danger)]'
-            : 'border-[var(--ema-border)] hover:border-[var(--ema-border-hover)]',
+            : 'border-[var(--ema-control-border)] hover:border-[var(--ema-control-border-hover)]',
         )}
       >
         {textareaEl}
