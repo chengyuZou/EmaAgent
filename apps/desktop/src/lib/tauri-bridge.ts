@@ -31,25 +31,11 @@ export interface OpenTerminalInput {
   readonly terminalId: string;
   readonly sessionId: string;
   readonly cwd?: string;
-  readonly shellExecutable?: string;
+  // kind 决定启动参数(如 PowerShell 补 -NoLogo),path 是唯一启动落点。
+  readonly shell?: { readonly kind: string; readonly path: string };
   readonly columns: number;
   readonly rows: number;
   readonly onEvent: (event: TerminalEvent) => void;
-}
-
-export type TerminalShellKind =
-  | 'powerShell'
-  | 'commandPrompt'
-  | 'bash'
-  | 'zsh'
-  | 'fish'
-  | 'wsl'
-  | 'sh';
-
-export interface DetectedTerminalShell {
-  readonly label: string;
-  readonly kind: TerminalShellKind;
-  readonly executablePath: string;
 }
 
 export interface BrowserBounds {
@@ -63,6 +49,16 @@ export type BrowserEvent =
   | { readonly type: 'loading'; readonly browserId: string; readonly loading: boolean }
   | { readonly type: 'locationChanged'; readonly browserId: string; readonly url: string }
   | { readonly type: 'titleChanged'; readonly browserId: string; readonly title: string };
+
+export type Live2dPreviewCommand =
+  | { readonly type: 'expression'; readonly expression: string }
+  | { readonly type: 'motion'; readonly group: string; readonly index: number }
+  | {
+      readonly type: 'placement';
+      readonly stageScale: number;
+      readonly stageOffsetX: number;
+      readonly stageOffsetY: number;
+    };
 
 // ── Tauri 环境检测 ─────────────────────────────────────────────────────────
 
@@ -108,7 +104,7 @@ const DECISION_DISMISSED_EVENT = 'decision:dismiss';
 const STAGE_EMOTION_EVENT = 'stage:emotion-changed';
 const STAGE_MOTION_EVENT = 'stage:motion-changed';
 const STAGE_SPEECH_EVENT = 'stage:speech-state';
-const STAGE_CYCLE_EXPRESSION_EVENT = 'stage:cycle-expression';
+const STAGE_LIVE2D_PREVIEW_EVENT = 'stage:live2d-preview';
 const BROWSER_EVENT = 'browser:event';
 
 async function getCore(): Promise<TauriCore | null> {
@@ -195,7 +191,12 @@ export const tauriBridge = {
   },
 
   async listenWindowVisibility(handler: (visible: boolean) => void): Promise<() => void> {
-    return listenTauri<{ visible: boolean }>(WINDOW_VISIBILITY_EVENT, ({ visible }) => handler(visible));
+    const winMod = await getWindow();
+    if (!winMod) return () => {};
+    return winMod.getCurrentWindow().listen<{ visible: boolean }>(
+      WINDOW_VISIBILITY_EVENT,
+      ({ payload }) => handler(payload.visible),
+    );
   },
 
   async publishSystemEvent(event: AppEvent): Promise<void> {
@@ -302,8 +303,8 @@ export const tauriBridge = {
     await emitTauri(STAGE_SPEECH_EVENT, { speaking, rms });
   },
 
-  async requestStageExpressionCycle(): Promise<void> {
-    await emitTauri(STAGE_CYCLE_EXPRESSION_EVENT);
+  async publishLive2dPreview(command: Live2dPreviewCommand): Promise<void> {
+    await emitTauri(STAGE_LIVE2D_PREVIEW_EVENT, command);
   },
 
   async listenStageEmotion(
@@ -333,11 +334,8 @@ export const tauriBridge = {
     );
   },
 
-  async listenStageExpressionCycle(handler: () => void): Promise<() => void> {
-    return listenTauri<void>(
-      STAGE_CYCLE_EXPRESSION_EVENT,
-      handler,
-    );
+  async listenLive2dPreview(handler: (command: Live2dPreviewCommand) => void): Promise<() => void> {
+    return listenTauri<Live2dPreviewCommand>(STAGE_LIVE2D_PREVIEW_EVENT, handler);
   },
 
   async openChatWindow(): Promise<void> {
@@ -468,7 +466,7 @@ export const tauriBridge = {
         terminalId: input.terminalId,
         sessionId: input.sessionId,
         ...(input.cwd ? { cwd: input.cwd } : {}),
-        ...(input.shellExecutable ? { shellExecutable: input.shellExecutable } : {}),
+        ...(input.shell ? { shell: input.shell } : {}),
         columns: input.columns,
         rows: input.rows,
         onEvent: channel,
@@ -477,10 +475,6 @@ export const tauriBridge = {
       terminalChannels.delete(input.terminalId);
       throw error;
     }
-  },
-
-  async listTerminalShells(): Promise<readonly DetectedTerminalShell[]> {
-    return (await invokeTauri<DetectedTerminalShell[]>('list_terminal_shells')) ?? [];
   },
 
   async writeTerminal(terminalId: string, data: string): Promise<void> {

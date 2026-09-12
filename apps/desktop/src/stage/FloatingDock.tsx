@@ -1,6 +1,6 @@
 // 提供桌宠主窗口的聊天、设置、置顶、表情、拖动与退出入口。
 import { useState, type CSSProperties } from 'react';
-import { IconButton, Tooltip } from '@ema-agent/ui';
+import { IconButton, Popover, ScrollArea, Tooltip } from '@ema-agent/ui';
 import { useUiStore } from '../stores/ui.js';
 import { tauriBridge } from '../lib/tauri-bridge.js';
 import { showToast } from '../lib/toast.js';
@@ -8,9 +8,18 @@ import { showToast } from '../lib/toast.js';
 export interface FloatingDockProps {
   visible: boolean;
   expressionAvailable: boolean;
+  expressions: readonly string[];
+  selectedExpression: string | null;
+  onSelectExpression(expression: string | null): void;
 }
 
-export function FloatingDock({ visible, expressionAvailable }: FloatingDockProps): JSX.Element {
+export function FloatingDock({
+  visible,
+  expressionAvailable,
+  expressions,
+  selectedExpression,
+  onSelectExpression,
+}: FloatingDockProps): JSX.Element {
   const dockVisible = useUiStore((s) => s.dockVisible);
 
   const [pinned,     setPinned]     = useState(true);
@@ -99,16 +108,39 @@ export function FloatingDock({ visible, expressionAvailable }: FloatingDockProps
       </div>
 
       {/* ── Expression ── */}
-      <Tooltip content={expressionAvailable ? '切换表情' : '当前舞台没有可切换的 Live2D 表情'} side="left">
-        <IconButton
-          size="lg"
-          label="切换表情"
-          icon="i-mdi:emoticon-happy-outline"
-          disabled={!expressionAvailable}
-          className="rounded-full shadow-[var(--ema-shadow-1)] backdrop-blur"
-          onClick={() => runDockAction('切换表情', () => tauriBridge.requestStageExpressionCycle())}
-        />
-      </Tooltip>
+      <Popover
+        side="left"
+        align="end"
+        widthClass="w-56"
+        trigger={(
+          <IconButton
+            size="lg"
+            label="切换表情"
+            icon="i-mdi:emoticon-happy-outline"
+            disabled={!expressionAvailable}
+            toggled={selectedExpression !== null}
+            className="rounded-full shadow-[var(--ema-shadow-1)] backdrop-blur"
+          />
+        )}
+      >
+        <ScrollArea className="max-h-72">
+          <div className="flex flex-col gap-1">
+            <ExpressionChoice
+              label="默认表情"
+              selected={selectedExpression === null}
+              onClick={() => onSelectExpression(null)}
+            />
+            {expressions.map(expression => (
+              <ExpressionChoice
+                key={expression}
+                label={expression}
+                selected={selectedExpression === expression}
+                onClick={() => onSelectExpression(expression)}
+              />
+            ))}
+          </div>
+        </ScrollArea>
+      </Popover>
 
       {/* ── Drag handle ── */}
       <Tooltip content="按住拖动" side="left">
@@ -121,5 +153,29 @@ export function FloatingDock({ visible, expressionAvailable }: FloatingDockProps
         />
       </Tooltip>
     </div>
+  );
+}
+
+interface ExpressionChoiceProps {
+  label: string;
+  selected: boolean;
+  onClick(): void;
+}
+
+function ExpressionChoice({
+  label,
+  selected,
+  onClick,
+}: ExpressionChoiceProps): JSX.Element {
+  return (
+    <button
+      type="button"
+      className={`rounded-md px-2 py-1.5 text-left text-xs transition-colors ${selected
+        ? 'bg-[var(--ema-primary-soft)] text-[var(--ema-primary)]'
+        : 'text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-2)]'}`}
+      onClick={onClick}
+    >
+      {label}
+    </button>
   );
 }

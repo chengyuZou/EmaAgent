@@ -40,7 +40,6 @@ export interface CharacterLive2dModelPatch {
 
 export interface ImportCharacterLive2dModelInput {
   source: string;
-  isPrimary?: boolean;
 }
 
 /** 语义情绪名到模型原生 Expression 的映射。 */
@@ -51,8 +50,7 @@ export interface Live2dExpression {
 /** 指向 `.model3.json` 中真实存在的一个 Motion。 */
 export interface Live2dMotion {
   group: string;
-  /** 省略时由渲染层在组内选择。 */
-  index?: number;
+  index: number;
 }
 
 /**
@@ -73,12 +71,20 @@ export interface Live2dRuntimeConfig {
 export interface Live2dNativeMotion {
   readonly group: string;
   readonly index: number;
+  readonly file: string;
+}
+
+export interface Live2dNativeExpression {
+  readonly expression: string;
+  readonly file: string;
 }
 
 export interface Live2dConfiguration {
   readonly runtimeConfig: Live2dRuntimeConfig;
-  readonly expressions: readonly string[];
+  readonly expressions: readonly Live2dNativeExpression[];
   readonly motions: readonly Live2dNativeMotion[];
+  readonly unregisteredExpressionFiles: readonly string[];
+  readonly unregisteredMotionFiles: readonly string[];
 }
 
 export interface Live2dMappings {

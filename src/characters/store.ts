@@ -27,8 +27,7 @@ import type {
   Live2dMappings,
 } from './live2d/types.js';
 import { CharacterLive2dModelRepository } from './live2d/repository.js';
-import { extractLive2dRuntimeConfig } from './live2d/live2dRuntimeConfigExtraction.js';
-import { supplementLive2dRuntimeConfig } from './live2d/live2dRuntimeConfigSupplement.js';
+import { readLive2dModelResources } from './live2d/live2dModelResources.js';
 import { readLive2dRuntimeConfig, writeLive2dMappings } from './live2d/live2dRuntimeConfig.js';
 import {
   deleteLive2dDirectory,
@@ -37,6 +36,7 @@ import {
   findLive2dFiles,
   findLive2dFilesSync,
   importLive2dFiles,
+  live2dDirectoryByteSizeSync,
 } from './live2d/live2dFiles.js';
 import type {
   CharacterIllustration,
@@ -102,6 +102,7 @@ export class CharacterStore {
     this.paths = new CharacterResourcePaths(charactersRoot);
     // `.staging` 只存尚未提交的操作；Server 重启后没有任何任务能继续使用其中内容。
     fs.rmSync(this.paths.stagingRoot(), { recursive: true, force: true });
+    this.backfillLive2dByteSizes();
   }
 
   onSwitched(handler: CharacterSwitchedListener): () => void {
@@ -124,7 +125,12 @@ export class CharacterStore {
       }
       for (const model of seed.live2dModels) {
         if (!this.live2dModels.list(input.name).some(item => item.name === model.name)) {
-          this.live2dModels.insert(input.name, model);
+          const directory = this.paths.live2dModelDirectory(input.name, model.name);
+          const stat = fs.statSync(directory, { throwIfNoEntry: false });
+          this.live2dModels.insert(input.name, {
+            ...model,
+            byteSize: stat?.isDirectory() ? live2dDirectoryByteSizeSync(directory) : null,
+          });
         }
       }
       for (const illustration of seed.illustrations) {
@@ -142,6 +148,19 @@ export class CharacterStore {
       this.repository.activate(EMA_CHARACTER_NAME);
       const active = this.get(EMA_CHARACTER_NAME);
       if (active) this.emitSwitched(active);
+    }
+  }
+
+  private backfillLive2dByteSizes(): void {
+    for (const character of this.repository.list()) {
+      for (const model of this.live2dModels.list(character.name)) {
+        if (model.byteSize !== null) continue;
+        const directory = this.paths.live2dModelDirectory(character.name, model.name);
+        const stat = fs.statSync(directory, { throwIfNoEntry: false });
+        if (stat?.isDirectory()) {
+          this.live2dModels.updateByteSize(character.name, model.name, live2dDirectoryByteSizeSync(directory));
+        }
+      }
     }
   }
 
@@ -277,7 +296,7 @@ export class CharacterStore {
   async importLive2dModel(characterName: string, input: ImportCharacterLive2dModelInput): Promise<CharacterLive2dModel> {
     return this.mutate(characterName, async () => {
       this.getRequiredCharacterOnly(characterName);
-      // 导入先在角色目录之外完成解压、引用校验与配置补充；全部通过后才改名提交。
+      // 导入先在角色目录之外完成解压、模型引用和运行配置校验；全部通过后才改名提交。
       const operationDirectory = this.createStagingOperation();
       const stagedDirectory = path.join(operationDirectory, 'resource');
       let destination: string | undefined;
@@ -288,19 +307,15 @@ export class CharacterStore {
           throw new CharacterResourceValidationError('resource_name_conflict');
         }
         const live2dFiles = await findLive2dFiles(stagedDirectory);
-        const extraction = await extractLive2dRuntimeConfig(stagedDirectory, live2dFiles.modelPath);
-        await supplementLive2dRuntimeConfig(
-          live2dFiles.modelPath,
-          live2dFiles.runtimeConfigPath,
-          extraction,
-        );
+        await readLive2dModelResources(live2dFiles.modelPath);
+        readLive2dRuntimeConfig(live2dFiles.runtimeConfigPath);
         await fs.promises.mkdir(this.paths.live2dRoot(characterName), { recursive: true });
         await fs.promises.rename(stagedDirectory, destination);
         try {
           const resource = this.live2dModels.insert(characterName, {
             name: files.name,
             displayName: files.displayName,
-            isPrimary: input.isPrimary,
+            isPrimary: false,
             byteSize: files.byteSize,
           });
           this.resourceChanged(characterName);
@@ -398,7 +413,7 @@ export class CharacterStore {
             name: files.name,
             displayName: files.displayName,
             expression: input.expression ?? null,
-            isPrimary: input.isPrimary,
+            isPrimary: false,
             byteSize: files.byteSize,
           });
           this.resourceChanged(characterName);
@@ -491,7 +506,7 @@ export class CharacterStore {
             displayName: files.displayName,
             promptText,
             promptLang,
-            isPrimary: input.isPrimary,
+            isPrimary: false,
             mimeType: validated.mimeType,
             byteSize: validated.byteSize,
             durationMs: validated.durationMs,
@@ -665,11 +680,16 @@ export class CharacterStore {
     }
     const directory = this.paths.live2dModelDirectory(characterName, live2dName);
     const files = await findLive2dFiles(directory);
-    const extraction = await extractLive2dRuntimeConfig(directory, files.modelPath);
+    const resources = await readLive2dModelResources(files.modelPath);
     return {
       runtimeConfig: readLive2dRuntimeConfig(files.runtimeConfigPath),
-      expressions: extraction.expressions.map(expression => expression.name),
-      motions: extraction.motions,
+      expressions: resources.expressions.map(expression => ({
+        expression: expression.name,
+        file: expression.file,
+      })),
+      motions: resources.motions,
+      unregisteredExpressionFiles: resources.unregisteredExpressionFiles,
+      unregisteredMotionFiles: resources.unregisteredMotionFiles,
     };
   }
   async saveLive2dMappings(characterName: string, live2dName: string, mappings: Live2dMappings): Promise<Live2dConfiguration> {
@@ -680,19 +700,24 @@ export class CharacterStore {
       }
       const directory = this.paths.live2dModelDirectory(characterName, live2dName);
       const files = await findLive2dFiles(directory);
-      const extraction = await extractLive2dRuntimeConfig(directory, files.modelPath);
+      const resources = await readLive2dModelResources(files.modelPath);
       const written = await writeLive2dMappings(
         files.modelPath,
         files.runtimeConfigPath,
         mappings,
-        extraction.expressions.map(expression => expression.name),
-        extraction.motions,
+        resources.expressions.map(expression => expression.name),
+        resources.motions,
       );
       this.resourceChanged(characterName);
       return {
         runtimeConfig: written.config,
-        expressions: extraction.expressions.map(expression => expression.name),
-        motions: extraction.motions,
+        expressions: resources.expressions.map(expression => ({
+          expression: expression.name,
+          file: expression.file,
+        })),
+        motions: resources.motions,
+        unregisteredExpressionFiles: resources.unregisteredExpressionFiles,
+        unregisteredMotionFiles: resources.unregisteredMotionFiles,
       };
     });
   }

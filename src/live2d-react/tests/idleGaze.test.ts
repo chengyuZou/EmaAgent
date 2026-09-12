@@ -15,13 +15,13 @@ describe('startLive2DIdleGaze', () => {
     const setFocus = vi.fn();
     const stop = startLive2DIdleGaze(setFocus, () => true);
 
-    vi.advanceTimersByTime(4_250); // 0.5 随机 → 2500 + 1750
+    vi.advanceTimersByTime(2_750); // 0.5 随机 → 1000 + 1750
     expect(setFocus).toHaveBeenCalledOnce();
     const [x, y] = setFocus.mock.calls[0]!;
-    expect(x).toBeGreaterThanOrEqual(-0.6);
-    expect(x).toBeLessThanOrEqual(0.6);
-    expect(y).toBeGreaterThanOrEqual(-0.35);
-    expect(y).toBeLessThanOrEqual(0.45);
+    expect(x).toBeGreaterThanOrEqual(-0.9);
+    expect(x).toBeLessThanOrEqual(0.9);
+    expect(y).toBeGreaterThanOrEqual(-0.5);
+    expect(y).toBeLessThanOrEqual(0.6);
     stop();
   });
 
@@ -32,11 +32,11 @@ describe('startLive2DIdleGaze', () => {
     let idle = false;
     const stop = startLive2DIdleGaze(setFocus, () => idle);
 
-    vi.advanceTimersByTime(2_500);
+    vi.advanceTimersByTime(1_000);
     expect(setFocus).not.toHaveBeenCalled();
 
     idle = true;
-    vi.advanceTimersByTime(2_500);
+    vi.advanceTimersByTime(1_000);
     expect(setFocus).toHaveBeenCalledOnce();
     stop();
   });

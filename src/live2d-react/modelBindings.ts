@@ -61,20 +61,16 @@ function resolveMotionReferences(
     const group = reference.group.trim();
     const motions = definitions[group];
     if (!group || !motions?.length) continue;
-    if (reference.index !== undefined
-      && (!Number.isInteger(reference.index)
-        || reference.index < 0
-        || reference.index >= motions.length)) {
+    if (!Number.isInteger(reference.index)
+      || reference.index < 0
+      || reference.index >= motions.length) {
       continue;
     }
 
-    const key = `${group}:${reference.index ?? '*'}`;
+    const key = `${group}:${reference.index}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    resolved.push({
-      group,
-      ...(reference.index === undefined ? {} : { index: reference.index }),
-    });
+    resolved.push({ group, index: reference.index });
   }
 
   return resolved;

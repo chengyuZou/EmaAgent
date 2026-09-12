@@ -129,6 +129,12 @@ export class CharacterLive2dModelRepo {
     return this.find(characterName, name);
   }
 
+  updateByteSize(characterName: string, name: string, byteSize: number): void {
+    this.db.prepare(
+      'UPDATE character_live2d_models SET byte_size = ? WHERE character_name = ? AND name = ?',
+    ).run(byteSize, characterName, name);
+  }
+
   delete(characterName: string, name: string): CharacterLive2dModelRow | undefined {
     const row = this.find(characterName, name);
     if (row) {

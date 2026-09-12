@@ -2,7 +2,7 @@
 // ●○切换、悬停删除、新建卡收尾。当前角色有工作在跑时拒绝切换/删除(先停再来)。
 import { useEffect, useMemo, useState, type JSX } from 'react';
 import {
-  Button, Callout, Dialog, IconButton, Input, ScrollArea, Skeleton,
+  Button, Callout, Dialog, IconButton, Input, ScrollArea, SearchField, Skeleton,
 } from '@ema-agent/ui';
 import { ServerApiError } from '../../api/client.js';
 import {
@@ -77,12 +77,12 @@ export function CharacterGridPage({ onOpen }: { onOpen(name: string): void }): J
           <h2 className="text-base font-semibold text-[var(--ema-text-primary)]">角色卡</h2>
           <p className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">管理角色身份及其舞台资源</p>
         </div>
-        <Input
-          inputSize="sm"
-          placeholder="搜索角色..."
+        <SearchField
           value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="w-56"
+          onChange={setSearch}
+          placeholder="搜索角色..."
+          aria-label="搜索角色"
+          className="h-9 w-64"
         />
       </div>
 

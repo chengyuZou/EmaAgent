@@ -9,6 +9,7 @@ import {
   charactersApi,
   type Character,
 } from '../../api/characters.js';
+import { ServerApiError } from '../../api/client.js';
 import { useCharacterStore } from '../../stores/character.js';
 import { tauriBridge } from '../../lib/tauri-bridge.js';
 import { ServerImage } from '../../lib/ServerImage.js';
@@ -115,7 +116,7 @@ function IllustrationCard({
       icon: 'i-solar:folder-open-bold-duotone',
       onSelect: () => {
         void charactersApi.illustrationLocation(character.name, item.name)
-          .then(({ path }) => charactersApi.openInFolder(path))
+          .then(({ path }) => charactersApi.revealFile(path))
           .catch(() => showToast('打开文件夹失败', { variant: 'danger' }));
       },
     },
@@ -143,7 +144,13 @@ function IllustrationCard({
       onSelect: () => {
         void store.deleteIllustration(character.name, item.name)
           .then(() => showToast('已删除插图', { variant: 'success' }))
-          .catch(error => showToast(error instanceof Error ? error.message : '删除失败', { variant: 'danger' }));
+          .catch((error) => {
+            if (error instanceof ServerApiError && error.code === 'character_work_running') {
+              showToast('Session 活跃期间不能删除角色资源', { variant: 'warning' });
+              return;
+            }
+            showToast(error instanceof Error ? error.message : '删除失败', { variant: 'danger' });
+          });
       },
     },
   ];

@@ -1,22 +1,24 @@
 // 组装桌宠主窗口、Live2D 舞台、权限提示与桌面交互入口。
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CharacterStagePresentation } from '@ema-agent/characters';
+import { Tooltip } from '@ema-agent/ui';
 import './styles/index.css';
 import {
   CharacterStage,
   type ActiveLive2DStage,
 } from './stage/CharacterStage.js';
-import { SpeechBubble }          from './stage/SpeechBubble.js';
-import { PermissionToastLayer }  from './stage/PermissionToastLayer.js';
-import { FloatingDock }           from './stage/FloatingDock.js';
-import { mountSystemEvents }      from './lib/system-sse.js';
-import { useCharacterStore }     from './stores/character.js';
-import { useServerStore }         from './stores/server.js';
+import { SpeechBubble } from './stage/SpeechBubble.js';
+import { PermissionToastLayer } from './stage/PermissionToastLayer.js';
+import { FloatingDock } from './stage/FloatingDock.js';
+import { mountSystemEvents } from './lib/system-sse.js';
+import { useCharacterStore } from './stores/character.js';
+import { useServerStore } from './stores/server.js';
 import { useSettingsSync } from './stores/settings-sync.js';
-import { useThemeSync }           from './stores/theme.js';
-import type { ServerStatus }           from './stores/server.js';
+import { useThemeSync } from './stores/theme.js';
+import type { ServerStatus } from './stores/server.js';
 import { charactersApi } from './api/characters.js';
 import { useWindowSuspension } from './hooks/use-window-suspension.js';
+import { tauriBridge } from './lib/tauri-bridge.js';
 
 // ── 主窗口 ──────────────────────────────────────────────────────────────────
 //
@@ -39,12 +41,16 @@ export function App(): React.JSX.Element {
     s.characters.find((item) => item.name === s.activeName));
   const activeStage = useRef<ActiveLive2DStage | null>(null);
   const [expressionAvailable, setExpressionAvailable] = useState(false);
-  const [dockVisible,  setDockVisible]  = useState(false);
+  const [expressions, setExpressions] = useState<readonly string[]>([]);
+  const [selectedExpression, setSelectedExpression] = useState<string | null>(null);
+  const [dockVisible, setDockVisible] = useState(false);
   const [stagePresentation, setStagePresentation] = useState<CharacterStagePresentation | null>(null);
   const stageRequestSequence = useRef(0);
   const handleStageChanged = useCallback((stage: ActiveLive2DStage | null): void => {
     activeStage.current = stage;
     setExpressionAvailable(stage?.hasExpressions ?? false);
+    setExpressions(stage?.expressions ?? []);
+    setSelectedExpression(null);
   }, []);
 
   // 应用服务器首次可用及角色切换事件都会刷新角色 store；舞台只订阅稳定角色字段。
@@ -89,6 +95,27 @@ export function App(): React.JSX.Element {
   // 主桌宠窗口与应用同生命周期，负责唯一的全局系统事件连接。
   useEffect(() => mountSystemEvents({ ownsConnection: true }), []);
 
+  useEffect(() => {
+    const unlistenPreview = tauriBridge.listenLive2dPreview((command) => {
+      if (!activeStage.current) return;
+      if (command.type === 'expression') {
+        activeStage.current.handle.setExpression(command.expression);
+        setSelectedExpression(command.expression);
+      } else if (command.type === 'motion') {
+        activeStage.current.handle.playMotion(command.group, command.index);
+      } else {
+        activeStage.current.handle.setPlacement(
+          command.stageScale,
+          command.stageOffsetX,
+          command.stageOffsetY,
+        );
+      }
+    });
+    return () => {
+      void unlistenPreview.then(stop => stop());
+    };
+  }, []);
+
   // 主窗口持有应用服务器健康轮询。
   useEffect(() => {
     const stop = useServerStore.getState().startPolling();
@@ -128,6 +155,7 @@ export function App(): React.JSX.Element {
         presentation={stagePresentation}
         suspended={stageSuspended}
         onStageChanged={handleStageChanged}
+        onExpressionChanged={setSelectedExpression}
       />
 
       <SpeechBubble />
@@ -135,6 +163,12 @@ export function App(): React.JSX.Element {
       <FloatingDock
         visible={dockVisible}
         expressionAvailable={expressionAvailable}
+        expressions={expressions}
+        selectedExpression={selectedExpression}
+        onSelectExpression={(expression) => {
+          activeStage.current?.handle.setExpression(expression);
+          setSelectedExpression(expression);
+        }}
       />
 
       <ServerBadge status={serverStatus} />
@@ -163,62 +197,23 @@ const dragLayerStyle: React.CSSProperties = {
 // ── 应用服务器状态点 ─────────────────────────────────────────────────────────
 
 function ServerBadge({ status }: { status: ServerStatus }): React.JSX.Element {
-  const [hover, setHover] = useState(false);
-
-  const dotColor = status.kind === 'ok'      ? 'var(--ema-success)'
-                 : status.kind === 'pending' ? 'var(--ema-warning)'
-                 : status.kind === 'error'   ? 'var(--ema-danger)'
-                 :                              'var(--ema-text-tertiary)';
-
   const detail = status.kind === 'ok'      ? `服务器 @ port ${status.port}`
                : status.kind === 'pending' ? '等待服务器启动 …'
                : status.kind === 'error'   ? `服务器错误：${status.reason}`
                :                              '服务器状态未知';
 
   return (
-    <div
-      style={badgeStyle}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      data-tauri-drag-region={false}
-    >
-      <span style={{ ...dotStyle, background: dotColor }} />
-      {hover && <span style={badgeTooltipStyle}>{detail}</span>}
-    </div>
+    <Tooltip content={detail} side="right" sideOffset={8}>
+      <button
+        type="button"
+        className="ema-server-status"
+        data-status={status.kind}
+        aria-label={detail}
+      >
+        <span className="ema-server-status-dot" />
+      </button>
+    </Tooltip>
   );
 }
-
-const badgeStyle: React.CSSProperties = {
-  position:       'fixed',
-  top:            12,
-  left:           12,
-  width:          16,
-  height:         16,
-  display:        'flex',
-  alignItems:     'center',
-  justifyContent: 'center',
-  cursor:         'help',
-  zIndex:         100,
-};
-
-const dotStyle: React.CSSProperties = {
-  width:          10,
-  height:         10,
-  borderRadius:   '50%',
-  boxShadow:      '0 0 6px rgba(0,0,0,0.4)',
-};
-
-const badgeTooltipStyle: React.CSSProperties = {
-  position:       'absolute',
-  top:            22,
-  left:           0,
-  whiteSpace:     'nowrap',
-  fontSize:       12,
-  padding:        '4px 8px',
-  background:     'var(--ema-surface-0)',
-  border:         '1px solid var(--ema-glow)',
-  borderRadius:   6,
-  pointerEvents:  'none',
-};
 
 // ── 开发测试入口：让音频经过 Live2D 口型管线 ─────────────────────────────────

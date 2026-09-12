@@ -33,7 +33,7 @@ interface Character {
 - `illustrationName` 是完整图片文件名。
 - `voiceName` 是完整音频文件名。
 - 每份资源另有可编辑 `displayName`，修改它不移动文件。
-- 三类资源均无 `enabled`。每类至多一份 `isPrimary`；删除主要资源不自动提升其他资源。
+- 三类资源均无 `enabled`。每类至多一份 `isPrimary`；删除主要参考音频时自动提升排序后的下一条，Live2D 与插图不自动提升。
 - Live2D 支持 ZIP 或文件夹导入。
 - Voice 只支持本地文件路径导入，参考文本和语言导入后不可修改；最大 512 MiB、最长 1 分钟。
 - Illustration 可带一个 `expression`。同一表情最多 10 张，表情池由查询结果派生，不另存 JSON。
@@ -63,15 +63,14 @@ Character 和 Live2D 资源行都不保存情绪或动作词汇。Live2D 词汇�
 
 ## Server 协调
 
-激活另一个角色或删除当前角色时：
+角色编辑的 Session 门禁由 Server 在 `ActiveSessionRegistry.runWithRegistrationsClosed()` 闭包内完成，避免检查结束后又注册新 Session。存在根 Turn 或手动 Compact 时，下列操作直接返回 `409 character_work_running`，不提供强制终止参数：
 
-1. 若存在根 Turn、手动 Compact 或普通后台进程，未带确认的请求返回 `409 character_work_running`。
-2. 用户确认后，请求带 `terminateRunningWork: true`。
-3. Server 并行中止全部根 Turn/Compact 和普通后台进程，并等待退出。
-4. Memory 提取、整合和维护 Job 不停止。
-5. 再激活目标角色，或删除当前角色并激活最近使用的剩余角色。
+- 激活其他角色；
+- 修改 `stageKind`；
+- 切换主要 Live2D 或主要参考音频；
+- 删除角色或任意角色资源。
 
-当前角色有根 Turn 或手动 Compact 运行时，Persona、`stageKind`、主资源和资源内容修改返回同一冲突；非当前角色可以编辑。普通后台进程只阻止全局切换/删除，不阻止资源编辑。
+`displayName`、描述、Persona Prompt、Live2D 调试与语义映射、主要立绘切换和资源导入不经过门禁。导入不会顺便设为主要资源。普通后台进程不参与这项门禁。删除主要参考音频时，存储事务自动把排序后的下一条设为主要音频；没有剩余音频时保持为空。
 
 ## HTTP 名称
 

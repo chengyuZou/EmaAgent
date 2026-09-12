@@ -70,8 +70,9 @@ describe('CharacterStore', () => {
     const secondSource = path.join(root, 'happy-b.png');
     fs.writeFileSync(firstSource, pngBytes());
     fs.writeFileSync(secondSource, pngBytes());
-    const first = await store.importIllustration('插图角色', { sourceFile: firstSource, expression: 'happy', isPrimary: true });
+    const first = await store.importIllustration('插图角色', { sourceFile: firstSource, expression: 'happy' });
     const second = await store.importIllustration('插图角色', { sourceFile: secondSource, expression: 'happy' });
+    await store.setPrimaryIllustration('插图角色', first.name);
 
     expect(first.name).toBe('happy-a.png');
     expect(second.name).toBe('happy-b.png');
@@ -106,10 +107,21 @@ describe('CharacterStore', () => {
     fs.writeFileSync(path.join(source, 'alice.moc3'), Buffer.from([1]));
     fs.writeFileSync(path.join(source, 'textures', 'texture.png'), pngBytes());
     fs.writeFileSync(path.join(source, 'smile.exp3.json'), '{}');
+    fs.writeFileSync(path.join(source, 'orphan.exp3.json'), '{}');
     fs.writeFileSync(path.join(source, 'wave.motion3.json'), '{}');
-    fs.writeFileSync(path.join(source, 'runtime-config.json'), JSON.stringify({ authorField: 'preserved' }));
+    fs.writeFileSync(path.join(source, 'orphan.motion3.json'), '{}');
+    const authorConfig = {
+      authorField: 'preserved',
+      emotionMap: {
+        neutral: {},
+        determined: { expression: 'Smile' },
+      },
+      motionMap: { disabled: {} },
+    };
+    fs.writeFileSync(path.join(source, 'runtime-config.json'), JSON.stringify(authorConfig));
 
-    const imported = await store.importLive2dModel('模型角色', { source, isPrimary: true });
+    const imported = await store.importLive2dModel('模型角色', { source });
+    await store.setPrimaryLive2dModel('模型角色', imported.name);
 
     expect(imported.name).toBe('alice-model');
     const archiveChunks: Buffer[] = [];
@@ -125,26 +137,52 @@ describe('CharacterStore', () => {
       path.join(root, 'characters', '模型角色', 'live2d', 'alice-model'),
     );
     await expect(store.readLive2dConfiguration('模型角色', 'alice-model')).resolves.toMatchObject({
-      expressions: ['Smile'],
-      motions: [{ group: 'Wave', index: 0 }],
+      expressions: [{ expression: 'Smile', file: 'smile.exp3.json' }],
+      motions: [{ group: 'Wave', index: 0, file: 'wave.motion3.json' }],
+      unregisteredExpressionFiles: ['orphan.exp3.json'],
+      unregisteredMotionFiles: ['orphan.motion3.json'],
     });
+    const runtimeConfigPath = path.join(
+      root,
+      'characters',
+      '模型角色',
+      'live2d',
+      'alice-model',
+      'runtime-config.json',
+    );
+    expect(JSON.parse(fs.readFileSync(runtimeConfigPath, 'utf8'))).toEqual(authorConfig);
 
     const saved = await store.saveLive2dMappings('模型角色', 'alice-model', {
-      emotionMap: { happy: { expression: 'Smile' } },
-      motionMap: { wave: { group: 'Wave', index: 0 } },
+      emotionMap: {
+        determined: { expression: 'Smile' },
+        happy: { expression: 'Smile' },
+      },
+      motionMap: { happy: { group: 'Wave', index: 0 }, wave: { group: 'Wave', index: 0 } },
     });
     expect(saved.runtimeConfig).toMatchObject({
-      emotionMap: { happy: { expression: 'Smile' } },
-      motionMap: { wave: { group: 'Wave', index: 0 } },
+      emotionMap: {
+        determined: { expression: 'Smile' },
+        happy: { expression: 'Smile' },
+      },
+      motionMap: { happy: { group: 'Wave', index: 0 }, wave: { group: 'Wave', index: 0 } },
     });
-    expect(JSON.parse(fs.readFileSync(
-      path.join(root, 'characters', '模型角色', 'live2d', 'alice-model', 'runtime-config.json'),
-      'utf8',
-    ))).toMatchObject({ authorField: 'preserved' });
+    expect(JSON.parse(fs.readFileSync(runtimeConfigPath, 'utf8'))).toEqual({
+      authorField: 'preserved',
+      emotionMap: {
+        neutral: {},
+        determined: { expression: 'Smile' },
+        happy: { expression: 'Smile' },
+      },
+      motionMap: {
+        disabled: {},
+        happy: { group: 'Wave', index: 0 },
+        wave: { group: 'Wave', index: 0 },
+      },
+    });
     await store.update('模型角色', { stageKind: 'live2d' });
     expect(characterStageVocabulary(store.inspectStagePresentation('模型角色'))).toEqual({
-      emotions: ['happy'],
-      motions: ['wave'],
+      emotions: ['determined', 'happy'],
+      motions: ['happy', 'wave'],
     });
 
     await store.saveLive2dPreview('模型角色', 'alice-model', pngBytes());
@@ -179,6 +217,17 @@ describe('CharacterStore', () => {
     new CharacterStore(database, charactersRoot);
 
     expect(fs.existsSync(path.join(charactersRoot, '.staging'))).toBe(false);
+  });
+
+  it('启动时为缺少容量的内置 Live2D 数据回填模型目录总字节数', () => {
+    const directory = path.join(root, 'characters', EMA_CHARACTER_NAME, 'live2d', 'ema');
+    fs.mkdirSync(path.join(directory, 'textures'), { recursive: true });
+    fs.writeFileSync(path.join(directory, 'ema.model3.json'), '1234');
+    fs.writeFileSync(path.join(directory, 'textures', 'texture.png'), '123456');
+
+    const reopened = new CharacterStore(database, path.join(root, 'characters'));
+
+    expect(reopened.get(EMA_CHARACTER_NAME)?.live2dModels[0]?.byteSize).toBe(10);
   });
 });
 

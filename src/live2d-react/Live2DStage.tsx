@@ -14,13 +14,13 @@ import {
   Live2DModel,
   MotionPriority,
 } from 'pixi-live2d-display/cubism4';
-import type { Live2dMotion, Live2dRuntimeConfig } from '@ema-agent/characters';
+import type { Live2dRuntimeConfig } from '@ema-agent/characters';
 import {
   calculateLive2DPlacement,
   type Live2DModelBounds,
 } from './framing.js';
 import { startLive2DIdleGaze } from './idleGaze.js';
-import { startLive2DIdleMotionSchedule } from './idleMotion.js';
+import { startLive2DIdleMotionPlayback } from './idleMotion.js';
 import { loadLive2DArchive } from './live2dArchive.js';
 import { attachLive2DLipSync, type Live2DLipSync } from './lipSync.js';
 import {
@@ -35,11 +35,14 @@ import type {
 type Cubism4Model = Live2DModel<Cubism4InternalModel>;
 
 /** 鼠标静止超过该时长后,视线输入从鼠标切换为待机游移。 */
-const POINTER_IDLE_GAZE_MS = 8_000;
+const POINTER_IDLE_GAZE_MS = 1_000;
 
 export interface Live2DStageProps {
   modelArchive: Blob;
   runtimeConfig?: Live2dRuntimeConfig;
+  stageScale?: number;
+  stageOffsetX?: number;
+  stageOffsetY?: number;
   suspended?: boolean;
   interactive?: boolean;
   onReady?: (info: Live2DStageReadyInfo) => void;
@@ -51,6 +54,9 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
   function Live2DStage({
     modelArchive,
     runtimeConfig,
+    stageScale = 1,
+    stageOffsetX = 0,
+    stageOffsetY = 0,
     suspended = false,
     interactive = true,
     onReady,
@@ -65,7 +71,13 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
     const resolvedBindingsRef = useRef<ResolvedLive2DModelBindings | null>(null);
     const lipSyncRef = useRef<Live2DLipSync | null>(null);
     const expressionsRef = useRef<readonly string[]>([]);
-    const expressionIndexRef = useRef(-1);
+    const stageScaleRef = useRef(stageScale);
+    const stageOffsetXRef = useRef(stageOffsetX);
+    const stageOffsetYRef = useRef(stageOffsetY);
+    const applyFramingRef = useRef<() => void>(() => {});
+    const idleMotionPlaybackRef = useRef<ReturnType<
+      typeof startLive2DIdleMotionPlayback
+    > | null>(null);
     const runtimeConfigRef = useRef(runtimeConfig);
     const suspendedRef = useRef(suspended);
     const interactiveRef = useRef(interactive);
@@ -84,7 +96,6 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
         if (!model) return;
         if (name === null) {
           model.internalModel.motionManager.expressionManager?.resetExpression();
-          expressionIndexRef.current = -1;
           return;
         }
 
@@ -93,35 +104,27 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
           console.warn('[live2d] 未知表情名,已忽略', name);
           return;
         }
-        expressionIndexRef.current = index;
         void model.expression(name).catch((error: unknown) => {
           console.warn('[live2d] 表情执行失败', name, error);
         });
       },
-      cycleExpression() {
-        const model = modelRef.current;
-        const expressions = expressionsRef.current;
-        if (!model || expressions.length === 0) return null;
-
-        expressionIndexRef.current = (expressionIndexRef.current + 1) % expressions.length;
-        const name = expressions[expressionIndexRef.current] ?? null;
-        if (name) {
-          void model.expression(name).catch((error: unknown) => {
-            console.warn('[live2d] 表情轮换失败', name, error);
-          });
-        }
-        return name;
+      setPlacement(nextScale, nextOffsetX, nextOffsetY) {
+        stageScaleRef.current = nextScale;
+        stageOffsetXRef.current = nextOffsetX;
+        stageOffsetYRef.current = nextOffsetY;
+        applyFramingRef.current();
       },
       playMotion(group, index) {
         const model = modelRef.current;
         if (!model) return;
-        void model.motion(group, index).catch((error: unknown) => {
+        void model.motion(group, index, MotionPriority.FORCE).catch((error: unknown) => {
           console.warn('[live2d] 动作执行失败', group, index, error);
         });
       },
       setLipSync(nextSpeaking, mouthOpen) {
         speakingRef.current = nextSpeaking;
         lipSyncRef.current?.set(nextSpeaking, mouthOpen);
+        if (!nextSpeaking) idleMotionPlaybackRef.current?.resume();
       },
     }), []);
 
@@ -165,8 +168,19 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
       const app = appRef.current;
       if (!app) return;
       if (suspended) app.ticker.stop();
-      else app.ticker.start();
+      else {
+        // WebView 恢复可见后的首个动画帧可能要等输入事件;先画一帧再重启 ticker。
+        app.render();
+        app.ticker.start();
+      }
     }, [suspended]);
+
+    useEffect(() => {
+      stageScaleRef.current = stageScale;
+      stageOffsetXRef.current = stageOffsetX;
+      stageOffsetYRef.current = stageOffsetY;
+      applyFramingRef.current();
+    }, [stageOffsetX, stageOffsetY, stageScale]);
 
     useEffect(() => {
       const model = modelRef.current;
@@ -175,6 +189,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
         model.internalModel,
         runtimeConfig,
       );
+      idleMotionPlaybackRef.current?.resume();
     }, [runtimeConfig]);
 
     useEffect(() => {
@@ -187,7 +202,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
         autoHitTest: false,
         autoFocus: false,
         autoUpdate: true,
-        // 原生 MotionManager 会无间隔循环 Idle;Ema 只调度 Character 选中的待机 Motion.
+        // 原生 MotionManager 会轮播整个 Idle group;这里只播放 Character 明确登记的待机 Motion.
         idleMotionGroup: '__ema_idle_disabled__',
       }).then((model) => {
         if (generation !== loadGenerationRef.current || appRef.current !== app) {
@@ -207,10 +222,15 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
           resolvedBindingsRef,
           lipSyncRef,
           expressionsRef,
-          expressionIndexRef,
+          stageScaleRef,
+          stageOffsetXRef,
+          stageOffsetYRef,
+          applyFramingRef,
+          idleMotionPlaybackRef,
         });
         callbacksRef.current.onReady?.({
           hasExpressions: expressionsRef.current.length > 0,
+          expressions: expressionsRef.current,
         });
       }).catch((cause: unknown) => {
         if (generation === loadGenerationRef.current) {
@@ -245,7 +265,13 @@ interface MountedModelRefs {
   readonly resolvedBindingsRef: MutableRefObject<ResolvedLive2DModelBindings | null>;
   readonly lipSyncRef: MutableRefObject<Live2DLipSync | null>;
   readonly expressionsRef: MutableRefObject<readonly string[]>;
-  readonly expressionIndexRef: MutableRefObject<number>;
+  readonly stageScaleRef: MutableRefObject<number>;
+  readonly stageOffsetXRef: MutableRefObject<number>;
+  readonly stageOffsetYRef: MutableRefObject<number>;
+  readonly applyFramingRef: MutableRefObject<() => void>;
+  readonly idleMotionPlaybackRef: MutableRefObject<ReturnType<
+    typeof startLive2DIdleMotionPlayback
+  > | null>;
 }
 
 function mountModel(
@@ -283,10 +309,19 @@ function mountModel(
     width: bounds.width,
     height: bounds.height,
   };
-  const fit = (): void => applyFraming(app, model, modelBounds);
+  const fit = (): void => applyFraming(
+    app,
+    model,
+    modelBounds,
+    refs.stageScaleRef.current,
+    refs.stageOffsetXRef.current,
+    refs.stageOffsetYRef.current,
+  );
+  refs.applyFramingRef.current = fit;
   fit();
-  window.addEventListener('resize', fit);
-  cleanups.push(() => window.removeEventListener('resize', fit));
+  // Pixi 的 resizeTo 在窗口 resize 之后才更新 renderer;构图必须等 renderer 的尺寸落定。
+  app.renderer.on('resize', fit);
+  cleanups.push(() => app.renderer.off('resize', fit));
 
   const followPointer = (event: MouseEvent): void => {
     if (!refs.interactiveRef.current) return;
@@ -309,26 +344,30 @@ function mountModel(
   cleanups.push(() => window.removeEventListener('mousemove', followPointer));
 
   refs.expressionsRef.current = extractExpressionNames(model.internalModel);
-  refs.expressionIndexRef.current = -1;
-  const playIdle = (motion: Live2dMotion): void => {
-    void model.motion(motion.group, motion.index, MotionPriority.IDLE).catch((error: unknown) => {
-      console.warn('[live2d] 待机动作执行失败', motion.group, motion.index, error);
-    });
-  };
-  const firstIdle = initialBindings.idleMotions[0];
-  if (firstIdle) playIdle(firstIdle);
-  cleanups.push(startLive2DIdleMotionSchedule(
-    playIdle,
+  const idleMotionPlayback = startLive2DIdleMotionPlayback(
+    model.internalModel.motionManager,
+    motion => model.motion(
+      motion.group,
+      motion.index,
+      MotionPriority.IDLE,
+    ),
     () => refs.resolvedBindingsRef.current?.idleMotions ?? [],
     () => !refs.suspendedRef.current && !refs.speakingRef.current,
-  ));
+  );
+  refs.idleMotionPlaybackRef.current = idleMotionPlayback;
+  cleanups.push(() => {
+    idleMotionPlayback.dispose();
+    if (refs.idleMotionPlaybackRef.current === idleMotionPlayback) {
+      refs.idleMotionPlaybackRef.current = null;
+    }
+  });
 
   return () => {
+    refs.applyFramingRef.current = () => {};
     for (const cleanup of cleanups.reverse()) cleanup();
     refs.lipSyncRef.current?.dispose();
     refs.lipSyncRef.current = null;
     refs.expressionsRef.current = [];
-    refs.expressionIndexRef.current = -1;
     refs.speakingRef.current = false;
     refs.resolvedBindingsRef.current = null;
     refs.modelRef.current = null;
@@ -347,11 +386,14 @@ function applyFraming(
   app: PIXI.Application,
   model: Cubism4Model,
   bounds: Live2DModelBounds,
+  stageScale: number,
+  stageOffsetX: number,
+  stageOffsetY: number,
 ): void {
   const placement = calculateLive2DPlacement({
     width: app.screen.width,
     height: app.screen.height,
-  }, bounds);
+  }, bounds, stageScale, stageOffsetX, stageOffsetY);
   if (!placement) return;
   model.scale.set(placement.scale);
   model.x = placement.x;

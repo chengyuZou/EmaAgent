@@ -11,7 +11,7 @@ import { deleteSession } from '../application/deleteSession.js';
 import {
   activateCharacter,
   deleteCharacter,
-  mutateCharacter,
+  runWhenSessionsIdle,
 } from '../application/changeCharacter.js';
 import type { Composition } from '../composition/index.js';
 import { emaAuth, localWebviewCors } from '../platform/auth.js';
@@ -70,7 +70,6 @@ export const createRoutes = (composition: Composition, secret: string) => {
   const characterChangeDeps = {
     characters: characters.store,
     activeSessions: database.activeSessions,
-    backgroundProcesses: tools.backgroundProcesses,
   };
 
   // CORS 必须先处理不携带业务密钥的 OPTIONS 预检，真正请求再进入认证和预算。
@@ -82,7 +81,7 @@ export const createRoutes = (composition: Composition, secret: string) => {
     // 探活挂在根路径 /health：宿主在 ready 文件发布前轮询，emaAuth 内豁免认证。
     .route('/', systemStatusRoute({
       activeDataDir: database.activeDataDir,
-      sandboxStatus: tools.sandboxStatus,
+      getSandboxStatus: tools.getSandboxStatus,
     }))
     .route('/api/system', systemEventsRoute(appEvents))
     .route('/api/system', systemStatsRoute({
@@ -218,13 +217,13 @@ export const createRoutes = (composition: Composition, secret: string) => {
 
     .route('/api/characters', characterCollectionRoute({
       characters: characters.store,
-      activateCharacter: (characterName, terminateRunningWork) => activateCharacter(characterChangeDeps, characterName, terminateRunningWork),
-      deleteCharacter: (characterName, terminateRunningWork) => deleteCharacter(characterChangeDeps, characterName, terminateRunningWork),
-      mutateCharacter: (characterName, action) => mutateCharacter(characterChangeDeps, characterName, action),
+      activateCharacter: characterName => activateCharacter(characterChangeDeps, characterName),
+      deleteCharacter: characterName => deleteCharacter(characterChangeDeps, characterName),
+      runWhenSessionsIdle: action => runWhenSessionsIdle(characterChangeDeps, action),
     }))
     .route('/api/characters', characterResourcesRoute({
       characters: characters.store,
-      mutateCharacter: (characterName, action) => mutateCharacter(characterChangeDeps, characterName, action),
+      runWhenSessionsIdle: action => runWhenSessionsIdle(characterChangeDeps, action),
     }))
     .route('/api/characters', characterPresentationRoute({ characters: characters.store }))
 

@@ -58,6 +58,10 @@ export class CharacterLive2dModelRepository {
     return row ? fromRow(row) : undefined;
   }
 
+  updateByteSize(characterName: string, name: string, byteSize: number): void {
+    this.repo.updateByteSize(characterName, name, byteSize);
+  }
+
   delete(characterName: string, name: string): CharacterLive2dModel | undefined {
     const row = this.repo.delete(characterName, name);
     return row ? fromRow(row) : undefined;

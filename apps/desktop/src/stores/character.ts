@@ -21,11 +21,11 @@ export interface CharacterStoreState {
   error:             string | null;
 
   load(): Promise<void>;
-  /** 切换当前角色;409 character_work_running 原样上抛,由 UI 走确认流后带 terminateRunningWork 重试。 */
-  activate(name: string, terminateRunningWork?: boolean): Promise<void>;
+  /** 切换当前角色;活跃 Session 期间的 409 原样上抛。 */
+  activate(name: string): Promise<void>;
   create(input: CharacterCreateInput): Promise<Character>;
   patch(name: string, input: CharacterPatchInput): Promise<void>;
-  remove(name: string, terminateRunningWork?: boolean): Promise<void>;
+  remove(name: string): Promise<void>;
 
   setPrimaryLive2d(characterName: string, live2dName: string): Promise<void>;
   patchLive2d(characterName: string, live2dName: string, input: ResourcePatchInput): Promise<void>;
@@ -82,8 +82,8 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => {
       }
     },
 
-    async activate(name, terminateRunningWork = false) {
-      await mutate('切换角色失败', () => charactersApi.activate(name, terminateRunningWork));
+    async activate(name) {
+      await mutate('切换角色失败', () => charactersApi.activate(name));
     },
 
     async create(input) {
@@ -96,8 +96,8 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => {
       await mutate('保存角色失败', () => charactersApi.patch(name, input));
     },
 
-    async remove(name, terminateRunningWork = false) {
-      await mutate('删除角色失败', () => charactersApi.remove(name, terminateRunningWork));
+    async remove(name) {
+      await mutate('删除角色失败', () => charactersApi.remove(name));
     },
 
     // ── Live2D ────────────────────────────────────────────────────────────

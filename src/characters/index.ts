@@ -34,6 +34,7 @@ export type {
   Live2dRuntimeConfig,
   Live2dConfiguration,
   Live2dMappings,
+  Live2dNativeExpression,
   Live2dNativeMotion,
 } from './live2d/types.js';
 export type {

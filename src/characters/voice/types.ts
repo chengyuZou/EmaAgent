@@ -38,5 +38,4 @@ export interface ImportCharacterVoiceSampleInput {
   sourceFile: string;
   promptText: string;
   promptLang: string;
-  isPrimary?: boolean;
 }

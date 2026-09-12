@@ -55,19 +55,16 @@ export const charactersApi = {
     }));
   },
 
-  /** 切换当前角色;存在运行中工作返回 409 character_work_running,确认后带 terminateRunningWork 重试。 */
-  async activate(name: string, terminateRunningWork = false): Promise<void> {
+  async activate(name: string): Promise<void> {
     await readRpcJson(rpcClient.api.characters[':characterName'].activate.$post({
       param: { characterName: name },
-      json: { terminateRunningWork },
     }));
   },
 
-  /** 永久删除角色;与 activate 同一确认语义。删除当前角色后自动激活最近使用的其他角色。 */
-  async remove(name: string, terminateRunningWork = false): Promise<void> {
+  /** 永久删除角色;删除当前角色后自动激活最近使用的其他角色。 */
+  async remove(name: string): Promise<void> {
     await readRpcJson(rpcClient.api.characters[':characterName'].$delete({
       param: { characterName: name },
-      json: { terminateRunningWork },
     }));
   },
 
@@ -279,9 +276,12 @@ export const charactersApi = {
     );
   },
 
-  /** 打开角色或资源所在文件夹(Tauri 具名命令,不走 HTTP)。 */
-  async openInFolder(absolutePath: string): Promise<void> {
+  async openDirectory(absolutePath: string): Promise<void> {
     await tauriBridge.openPath(absolutePath);
+  },
+
+  async revealFile(absolutePath: string): Promise<void> {
+    await tauriBridge.revealInFolder(absolutePath);
   },
 
   /** 供调用方拿到 server 原始响应的入口。 */

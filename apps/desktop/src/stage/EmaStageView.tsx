@@ -7,15 +7,18 @@ import {
   type Live2DStageReadyInfo,
 } from '@ema-agent/live2d-react';
 import type { Live2dRuntimeConfig } from '@ema-agent/characters';
-import { showToast } from '../lib/toast.js';
 import { tauriBridge } from '../lib/tauri-bridge.js';
 
 export interface EmaStageViewProps {
   modelArchive: Blob;
   runtimeConfig?: Live2dRuntimeConfig;
+  stageScale?: number;
+  stageOffsetX?: number;
+  stageOffsetY?: number;
   suspended?: boolean;
   interactive?: boolean;
   onHandleChanged?: (handle: Live2DStageHandle | null) => void;
+  onExpressionChanged?: (expression: string | null) => void;
   onReady?: (info: Live2DStageReadyInfo) => void;
   onError?: (error: Error) => void;
 }
@@ -23,9 +26,13 @@ export interface EmaStageViewProps {
 export function EmaStageView({
   modelArchive,
   runtimeConfig,
+  stageScale,
+  stageOffsetX,
+  stageOffsetY,
   suspended = false,
   interactive = true,
   onHandleChanged,
+  onExpressionChanged,
   onReady,
   onError,
 }: EmaStageViewProps): JSX.Element {
@@ -40,7 +47,9 @@ export function EmaStageView({
 
     const unlistenEmotion = tauriBridge.listenStageEmotion((emotion) => {
       const target = runtimeConfig?.emotionMap?.[emotion];
-      stageRef.current?.setExpression(target?.expression ?? null);
+      const expression = target?.expression ?? null;
+      stageRef.current?.setExpression(expression);
+      onExpressionChanged?.(expression);
     });
     const unlistenMotion = tauriBridge.listenStageMotion((motion) => {
       const target = runtimeConfig?.motionMap?.[motion];
@@ -49,29 +58,22 @@ export function EmaStageView({
     const unlistenSpeech = tauriBridge.listenStageSpeech((speaking, rms) => {
       stageRef.current?.setLipSync(speaking, rms);
     });
-    const unlistenCycle = tauriBridge.listenStageExpressionCycle(() => {
-      const expression = stageRef.current?.cycleExpression();
-      if (expression) {
-        showToast(`已切换 Live2D 表情：${expression}`, {
-          variant: 'info',
-          duration: 1800,
-        });
-      }
-    });
 
     return () => {
       void unlistenEmotion.then(stop => stop());
       void unlistenMotion.then(stop => stop());
       void unlistenSpeech.then(stop => stop());
-      void unlistenCycle.then(stop => stop());
     };
-  }, [interactive, runtimeConfig]);
+  }, [interactive, onExpressionChanged, runtimeConfig]);
 
   return (
     <Live2DStage
       ref={setStageHandle}
       modelArchive={modelArchive}
       runtimeConfig={runtimeConfig}
+      stageScale={stageScale}
+      stageOffsetX={stageOffsetX}
+      stageOffsetY={stageOffsetY}
       suspended={suspended}
       interactive={interactive}
       onReady={onReady}

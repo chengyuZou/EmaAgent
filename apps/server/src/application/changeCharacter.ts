@@ -1,13 +1,12 @@
-// 全局角色变更编排：确认后停止前台执行与普通后台进程，再切换或永久删除角色。
+// 角色切换、删除与会改变正式演出对象的设置写入，在无活跃 Session 时才能提交。
 import { CharacterNotFoundError, type CharacterStore } from '@ema-agent/characters';
 import type { ActiveSessionRegistry } from '@ema-agent/session';
-import type { BackgroundProcess } from '@ema-agent/tools';
 
 export class CharacterWorkRunningError extends Error {
   readonly code = 'character_work_running';
 
   constructor() {
-    super('running turns, compactions, or background processes must be stopped first');
+    super('an active Turn or Compact must finish before changing the character presentation');
     this.name = 'CharacterWorkRunningError';
   }
 }
@@ -23,69 +22,52 @@ export class CharacterLastDeleteError extends Error {
 
 export interface CharacterChangeDeps {
   readonly characters: Pick<CharacterStore, 'current' | 'list' | 'activate' | 'deleteCharacter'>;
-  readonly activeSessions: Pick<ActiveSessionRegistry, 'activeSessionCount' | 'abortAll' | 'runWithRegistrationsClosed'>;
-  readonly backgroundProcesses: Pick<BackgroundProcess, 'hasLiveProcesses' | 'stopAll' | 'runWithProcessStartsClosed'>;
+  readonly activeSessions: Pick<ActiveSessionRegistry, 'activeSessionCount' | 'runWithRegistrationsClosed'>;
 }
 
-export function characterWorkIsRunning(deps: CharacterChangeDeps): boolean {
-  return deps.activeSessions.activeSessionCount() > 0 || deps.backgroundProcesses.hasLiveProcesses();
-}
-
-export async function activateCharacter(
+export function runWhenSessionsIdle<T>(
   deps: CharacterChangeDeps,
-  characterName: string,
-  terminateRunningWork: boolean,
-): Promise<void> {
-  await deps.activeSessions.runWithRegistrationsClosed(() =>
-    deps.backgroundProcesses.runWithProcessStartsClosed(async () => {
-      if (deps.characters.current().name === characterName) return;
-      await stopRunningWork(deps, terminateRunningWork);
-      deps.characters.activate(characterName);
-    }));
-}
-
-export async function deleteCharacter(
-  deps: CharacterChangeDeps,
-  characterName: string,
-  terminateRunningWork: boolean,
-): Promise<void> {
-  await deps.activeSessions.runWithRegistrationsClosed(() =>
-    deps.backgroundProcesses.runWithProcessStartsClosed(async () => {
-      const characters = deps.characters.list();
-      const target = characters.find(character => character.name === characterName);
-      if (!target) throw new CharacterNotFoundError(characterName);
-      const replacement = target.isActive
-        ? characters.find(character => character.name !== characterName)
-        : undefined;
-      if (target.isActive) await stopRunningWork(deps, terminateRunningWork);
-
-      const result = await deps.characters.deleteCharacter(characterName, replacement?.name);
-      if (result === 'not_found') throw new CharacterNotFoundError(characterName);
-      if (result === 'last_character') throw new CharacterLastDeleteError(characterName);
-      if (result === 'replacement_not_found') {
-        throw new Error('replacement character disappeared during deletion');
-      }
-    }));
-}
-
-export function mutateCharacter<T>(
-  deps: CharacterChangeDeps,
-  characterName: string,
   action: () => T | Promise<T>,
 ): Promise<T> {
+  // 检查和写入必须处于同一个注册关闭期，避免两者之间启动新 Turn 或 Compact。
   return deps.activeSessions.runWithRegistrationsClosed(() => {
-    if (deps.characters.current().name === characterName && deps.activeSessions.activeSessionCount() > 0) {
+    if (deps.activeSessions.activeSessionCount() > 0) {
       throw new CharacterWorkRunningError();
     }
     return action();
   });
 }
 
-async function stopRunningWork(deps: CharacterChangeDeps, confirmed: boolean): Promise<void> {
-  if (!characterWorkIsRunning(deps)) return;
-  if (!confirmed) throw new CharacterWorkRunningError();
-  await Promise.all([
-    deps.activeSessions.abortAll(),
-    deps.backgroundProcesses.stopAll(),
-  ]);
+export async function activateCharacter(
+  deps: CharacterChangeDeps,
+  characterName: string,
+): Promise<void> {
+  await deps.activeSessions.runWithRegistrationsClosed(() => {
+    if (deps.characters.current().name === characterName) return;
+    if (deps.activeSessions.activeSessionCount() > 0) {
+      throw new CharacterWorkRunningError();
+    }
+    deps.characters.activate(characterName);
+  });
+}
+
+export async function deleteCharacter(
+  deps: CharacterChangeDeps,
+  characterName: string,
+): Promise<void> {
+  await runWhenSessionsIdle(deps, async () => {
+    const characters = deps.characters.list();
+    const target = characters.find(character => character.name === characterName);
+    if (!target) throw new CharacterNotFoundError(characterName);
+
+    const replacement = target.isActive
+      ? characters.find(character => character.name !== characterName)
+      : undefined;
+    const result = await deps.characters.deleteCharacter(characterName, replacement?.name);
+    if (result === 'not_found') throw new CharacterNotFoundError(characterName);
+    if (result === 'last_character') throw new CharacterLastDeleteError(characterName);
+    if (result === 'replacement_not_found') {
+      throw new Error('replacement character disappeared during deletion');
+    }
+  });
 }

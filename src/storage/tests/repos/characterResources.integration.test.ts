@@ -33,6 +33,8 @@ describe('Character resource persistence', () => {
       voices.insert({ name: 'a.wav', characterName: '角色', displayName: 'A', promptText: 'A', promptLang: 'zh', isPrimary: true, mimeType: 'audio/wav', createdAt: 3, updatedAt: 3 });
       voices.insert({ name: 'b.wav', characterName: '角色', displayName: 'B', promptText: 'B', promptLang: 'zh', isPrimary: true, mimeType: 'audio/wav', createdAt: 7, updatedAt: 7 });
       expect(voices.find('角色', 'a.wav')).toMatchObject({ is_primary: 0, updated_at: 7 });
+      voices.delete('角色', 'b.wav');
+      expect(voices.find('角色', 'a.wav')).toMatchObject({ is_primary: 1 });
 
       const live2dColumns = database.sqlite.prepare('PRAGMA table_info(character_live2d_models)').all() as { name: string }[];
       expect(live2dColumns.map(column => column.name)).not.toContain('emotion_vocab_json');

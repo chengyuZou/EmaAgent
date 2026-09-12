@@ -107,11 +107,23 @@ export class CharacterVoiceSampleRepo {
   }
 
   delete(characterName: string, name: string): CharacterVoiceSampleRow | undefined {
-    const row = this.find(characterName, name);
-    if (row) {
-      this.db.prepare('DELETE FROM character_voice_samples WHERE character_name = ? AND name = ?').run(characterName, name);
-    }
-    return row;
+    return this.db.transaction(() => {
+      const row = this.find(characterName, name);
+      if (!row) return undefined;
+
+      this.db.prepare(
+        'DELETE FROM character_voice_samples WHERE character_name = ? AND name = ?',
+      ).run(characterName, name);
+      if (row.is_primary === 1) {
+        const replacement = this.listForCharacter(characterName)[0];
+        if (replacement) {
+          this.db.prepare(
+            'UPDATE character_voice_samples SET is_primary = 1, updated_at = ? WHERE character_name = ? AND name = ?',
+          ).run(Date.now(), characterName, replacement.name);
+        }
+      }
+      return row;
+    })();
   }
 
   private clearPrimary(characterName: string, updatedAt: number): void {

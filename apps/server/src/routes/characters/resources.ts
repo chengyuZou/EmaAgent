@@ -37,7 +37,7 @@ export interface CharacterResourcesRouteDeps {
     | 'resolveLive2dPreviewFile'
     | 'saveLive2dPreview'
   >;
-  readonly mutateCharacter: <T>(characterName: string, action: () => T | Promise<T>) => Promise<T>;
+  readonly runWhenSessionsIdle: <T>(action: () => T | Promise<T>) => Promise<T>;
 }
 
 const resourcePatch = z.object({
@@ -55,8 +55,7 @@ const voicePatch = z.object({ displayName: z.string().trim().min(1).max(200) });
 
 const importLive2dBody = z.object({
   source: z.string().min(1),
-  isPrimary: z.boolean().optional(),
-});
+}).strict();
 
 const previewBody = z.object({
   // 离屏渲出的封面 PNG(base64);预览图很小,4M 字符上限只是基础边界。
@@ -65,8 +64,7 @@ const previewBody = z.object({
 
 const importFileBody = z.object({
   sourceFile: z.string().min(1),
-  isPrimary: z.boolean().optional(),
-});
+}).strict();
 
 const importIllustrationBody = importFileBody.extend({
   expression: z.string().regex(/^[a-z][a-z0-9_]*$/u).nullable().optional(),
@@ -132,12 +130,11 @@ export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
     }
   };
 
-  const mutate = async <T extends {}>(
+  const whenSessionsIdle = async <T extends {}>(
     context: Context,
-    characterName: string,
     action: () => T | undefined | Promise<T | undefined>,
   ) => {
-    return run(context, () => deps.mutateCharacter(characterName, action));
+    return run(context, () => deps.runWhenSessionsIdle(action));
   };
 
   return new Hono()
@@ -147,20 +144,20 @@ export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
       })))
     // ── Live2D ─────────────────────────────────────────────────────────────────
     .post('/:characterName/live2d/:live2dName/primary', context =>
-      mutate(context, context.req.param('characterName'), async () => ({
+      whenSessionsIdle(context, async () => ({
         ok: await deps.characters.setPrimaryLive2dModel(
           context.req.param('characterName'),
           context.req.param('live2dName'),
         ),
       })))
     .patch('/:characterName/live2d/:live2dName', jsonBody(resourcePatch), context =>
-      mutate(context, context.req.param('characterName'), () => deps.characters.updateLive2dModel(
+      run(context, () => deps.characters.updateLive2dModel(
         context.req.param('characterName'),
         context.req.param('live2dName'),
         context.req.valid('json'),
       )))
     .post('/:characterName/live2d/import', jsonBody(importLive2dBody), context =>
-      mutate(context, context.req.param('characterName'), () => deps.characters.importLive2dModel(
+      run(context, () => deps.characters.importLive2dModel(
         context.req.param('characterName'),
         context.req.valid('json'),
       )))
@@ -173,7 +170,7 @@ export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
         ),
       })))
     .delete('/:characterName/live2d/:live2dName', context =>
-      mutate(context, context.req.param('characterName'), async () => {
+      whenSessionsIdle(context, async () => {
         const deleted = await deps.characters.deleteLive2dModel(
           context.req.param('characterName'),
           context.req.param('live2dName'),
@@ -182,7 +179,7 @@ export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
       }))
     // 用户手改 runtime-config.json 后显式校验并广播演出变化。
     .post('/:characterName/live2d/:live2dName/reload-config', context =>
-      mutate(context, context.req.param('characterName'), () => deps.characters.reloadLive2dConfiguration(
+      run(context, () => deps.characters.reloadLive2dConfiguration(
         context.req.param('characterName'),
         context.req.param('live2dName'),
       )))
@@ -213,22 +210,22 @@ export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
       }
     })
     .put('/:characterName/live2d/:live2dName/configuration', jsonBody(live2dMappingsBody), context =>
-      mutate(context, context.req.param('characterName'), () => deps.characters.saveLive2dMappings(
+      run(context, () => deps.characters.saveLive2dMappings(
         context.req.param('characterName'),
         context.req.param('live2dName'),
         context.req.valid('json'),
       )))
     // Live2D 静态封面:PUT 收离屏渲染的 PNG,GET 读字节;与模型目录分离(不污染用户模型包)。
-    .put('/:characterName/live2d/:live2dName/preview', jsonBody(previewBody), async context => {
+    .put('/:characterName/live2d/:live2dName/preview', jsonBody(previewBody), context => {
       const png = Buffer.from(context.req.valid('json').dataBase64, 'base64');
-      return context.json(await deps.mutateCharacter(context.req.param('characterName'), async () => {
+      return run(context, async () => {
         await deps.characters.saveLive2dPreview(
           context.req.param('characterName'),
           context.req.param('live2dName'),
           png,
         );
         return { ok: true as const };
-      }));
+      });
     })
     .get('/:characterName/live2d/:live2dName/preview', context => {
       let filePath: string;
@@ -244,20 +241,20 @@ export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
     })
     // ── 立绘 ───────────────────────────────────────────────────────────────────
     .post('/:characterName/illustrations/:illustrationName/primary', context =>
-      mutate(context, context.req.param('characterName'), async () => ({
+      run(context, async () => ({
         ok: await deps.characters.setPrimaryIllustration(
           context.req.param('characterName'),
           context.req.param('illustrationName'),
         ),
       })))
     .patch('/:characterName/illustrations/:illustrationName', jsonBody(illustrationPatch), context =>
-      mutate(context, context.req.param('characterName'), () => deps.characters.updateIllustration(
+      run(context, () => deps.characters.updateIllustration(
         context.req.param('characterName'),
         context.req.param('illustrationName'),
         context.req.valid('json'),
       )))
     .post('/:characterName/illustrations/import', jsonBody(importIllustrationBody), context =>
-      mutate(context, context.req.param('characterName'), () => deps.characters.importIllustration(
+      run(context, () => deps.characters.importIllustration(
         context.req.param('characterName'),
         context.req.valid('json'),
       )))
@@ -270,7 +267,7 @@ export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
         ),
       })))
     .delete('/:characterName/illustrations/:illustrationName', context =>
-      mutate(context, context.req.param('characterName'), async () => {
+      whenSessionsIdle(context, async () => {
         const deleted = await deps.characters.deleteIllustration(
           context.req.param('characterName'),
           context.req.param('illustrationName'),
@@ -296,20 +293,20 @@ export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
       })))
     // ── 参考音频 ───────────────────────────────────────────────────────────────
     .post('/:characterName/voice/:voiceName/primary', context =>
-      mutate(context, context.req.param('characterName'), async () => ({
+      whenSessionsIdle(context, async () => ({
         ok: await deps.characters.setPrimaryVoiceSample(
           context.req.param('characterName'),
           context.req.param('voiceName'),
         ),
       })))
     .patch('/:characterName/voice/:voiceName', jsonBody(voicePatch), context =>
-      mutate(context, context.req.param('characterName'), () => deps.characters.updateVoiceSample(
+      run(context, () => deps.characters.updateVoiceSample(
         context.req.param('characterName'),
         context.req.param('voiceName'),
         context.req.valid('json'),
       )))
     .post('/:characterName/voice/import', jsonBody(importVoiceBody), context =>
-      mutate(context, context.req.param('characterName'), () => deps.characters.importVoiceSample(
+      run(context, () => deps.characters.importVoiceSample(
         context.req.param('characterName'),
         context.req.valid('json'),
       )))
@@ -322,7 +319,7 @@ export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
         ),
       })))
     .delete('/:characterName/voice/:voiceName', context =>
-      mutate(context, context.req.param('characterName'), async () => {
+      whenSessionsIdle(context, async () => {
         const deleted = await deps.characters.deleteVoiceSample(
           context.req.param('characterName'),
           context.req.param('voiceName'),

@@ -46,8 +46,8 @@ describe('resolveLive2DModelBindings', () => {
           { group: 'Idle', index: 1 },
           { group: 'Idle', index: 1 },
           { group: 'Idle', index: 2 },
-          { group: 'Missing' },
-          { group: 'Wave' },
+          { group: 'Missing', index: 0 },
+          { group: 'Wave', index: 0 },
         ],
       },
     );
@@ -55,7 +55,7 @@ describe('resolveLive2DModelBindings', () => {
     expect(resolved.lipSyncParameters).toEqual([]);
     expect(resolved.idleMotions).toEqual([
       { group: 'Idle', index: 1 },
-      { group: 'Wave' },
+      { group: 'Wave', index: 0 },
     ]);
   });
 });

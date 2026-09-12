@@ -31,6 +31,23 @@ describe('calculateLive2DPlacement', () => {
     expect(visibleLeft).toBeCloseTo((800 - visibleWidth) / 2);
   });
 
+  it('缩放和位移在 Pixi 模型坐标中改变完整模型构图', () => {
+    const placement = calculateLive2DPlacement(
+      { width: 800, height: 1_000 },
+      MODEL_BOUNDS,
+      0.5,
+      0.25,
+      -0.5,
+    );
+    expect(placement).not.toBeNull();
+
+    const visibleLeft = placement!.x + MODEL_BOUNDS.x * placement!.scale;
+    const visibleTop = placement!.y + MODEL_BOUNDS.y * placement!.scale;
+    expect(placement!.scale).toBeCloseTo(0.775);
+    expect(visibleLeft).toBeCloseTo(290);
+    expect(visibleTop).toBeCloseTo(-562);
+  });
+
   it('舞台或模型边界无效时不产生 Infinity', () => {
     expect(calculateLive2DPlacement({ width: 0, height: 900 }, MODEL_BOUNDS)).toBeNull();
     expect(calculateLive2DPlacement(

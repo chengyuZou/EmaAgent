@@ -7,9 +7,9 @@ import { jsonBody } from '../validate.js';
 
 export interface CharacterCollectionRouteDeps {
   readonly characters: Pick<CharacterStore, 'list' | 'current' | 'get' | 'create' | 'update'>;
-  readonly activateCharacter: (characterName: string, terminateRunningWork: boolean) => Promise<void>;
-  readonly deleteCharacter: (characterName: string, terminateRunningWork: boolean) => Promise<void>;
-  readonly mutateCharacter: <T>(characterName: string, action: () => T | Promise<T>) => Promise<T>;
+  readonly activateCharacter: (characterName: string) => Promise<void>;
+  readonly deleteCharacter: (characterName: string) => Promise<void>;
+  readonly runWhenSessionsIdle: <T>(action: () => T | Promise<T>) => Promise<T>;
 }
 
 const createBody = z.object({
@@ -25,8 +25,6 @@ const patchBody = z.object({
   personaPrompt: z.string().max(64_000).optional(),
   stageKind: z.enum(['live2d', 'illustration', 'blank']).optional(),
 });
-
-const runningWorkBody = z.object({ terminateRunningWork: z.boolean().optional() });
 
 export const characterCollectionRoute = (deps: CharacterCollectionRouteDeps) =>
   new Hono()
@@ -46,26 +44,27 @@ export const characterCollectionRoute = (deps: CharacterCollectionRouteDeps) =>
     .patch('/:characterName', jsonBody(patchBody), async context => {
       const characterName = context.req.param('characterName');
       try {
-        const character = await deps.mutateCharacter(
-          characterName,
-          () => deps.characters.update(characterName, context.req.valid('json')),
-        );
+        const patch = context.req.valid('json');
+        const update = () => deps.characters.update(characterName, patch);
+        const character = patch.stageKind === undefined
+          ? await update()
+          : await deps.runWhenSessionsIdle(update);
         return context.json(character);
       } catch (error) {
         return characterError(context, error);
       }
     })
-    .post('/:characterName/activate', jsonBody(runningWorkBody), async context => {
+    .post('/:characterName/activate', async context => {
       try {
-        await deps.activateCharacter(context.req.param('characterName'), context.req.valid('json').terminateRunningWork ?? false);
+        await deps.activateCharacter(context.req.param('characterName'));
         return context.json({ ok: true });
       } catch (error) {
         return characterError(context, error);
       }
     })
-    .delete('/:characterName', jsonBody(runningWorkBody), async context => {
+    .delete('/:characterName', async context => {
       try {
-        await deps.deleteCharacter(context.req.param('characterName'), context.req.valid('json').terminateRunningWork ?? false);
+        await deps.deleteCharacter(context.req.param('characterName'));
         return context.json({ ok: true });
       } catch (error) {
         return characterError(context, error);

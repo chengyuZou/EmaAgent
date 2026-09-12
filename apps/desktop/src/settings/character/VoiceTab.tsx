@@ -146,7 +146,13 @@ function VoiceRow({ character, sample, index }: {
       disabled: sample.isPrimary,
       onSelect: () => {
         void store.setPrimaryVoice(character.name, sample.name)
-          .catch(error => showToast(error instanceof Error ? error.message : '设置失败', { variant: 'danger' }));
+          .catch((error) => {
+            if (error instanceof ServerApiError && error.code === 'character_work_running') {
+              showToast('Session 活跃期间不能切换主要参考音频', { variant: 'warning' });
+              return;
+            }
+            showToast(error instanceof Error ? error.message : '设置失败', { variant: 'danger' });
+          });
       },
     },
     { kind: 'separator' },
@@ -156,7 +162,7 @@ function VoiceRow({ character, sample, index }: {
       icon: 'i-solar:folder-open-bold-duotone',
       onSelect: () => {
         void charactersApi.voiceLocation(character.name, sample.name)
-          .then(({ path }) => charactersApi.openInFolder(path))
+          .then(({ path }) => charactersApi.revealFile(path))
           .catch(() => showToast('打开文件夹失败', { variant: 'danger' }));
       },
     },
@@ -187,7 +193,7 @@ function VoiceRow({ character, sample, index }: {
 
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  /** 删除规则:本页正在试听这条就不许删(弹窗拦);删的是主音频则自动把下一条设为主。 */
+  /** 本页正在试听的文件不能同时删除。 */
   function handleDelete(): void {
     if (isThisPlaying) {
       showToast('这条正在试听中,停止后才能删除', { variant: 'warning' });
@@ -201,15 +207,11 @@ function VoiceRow({ character, sample, index }: {
     try {
       await store.deleteVoice(character.name, sample.name);
       showToast('已删除参考音频', { variant: 'success' });
-      if (sample.isPrimary) {
-        const next = useCharacterStore.getState().characters
-          .find(c => c.name === character.name)?.voiceSamples
-          .find(v => v.name !== sample.name);
-        if (next) {
-          await store.setPrimaryVoice(character.name, next.name);
-        }
-      }
     } catch (error) {
+      if (error instanceof ServerApiError && error.code === 'character_work_running') {
+        showToast('Session 活跃期间不能删除角色资源', { variant: 'warning' });
+        return;
+      }
       showToast(error instanceof Error ? error.message : '删除失败', { variant: 'danger' });
     }
   }
@@ -278,7 +280,7 @@ function VoiceRow({ character, sample, index }: {
         onOpenChange={setConfirmDelete}
         title={`删除参考音频「${sample.displayName}」`}
         description={sample.isPrimary
-          ? '这是当前的主要参考音频,删除后将自动把下一条设为主要。'
+          ? '这是当前的主要参考音频,删除后将自动选择下一条。'
           : '永久删除这条参考音频文件。'}
         widthClass="max-w-md"
       >

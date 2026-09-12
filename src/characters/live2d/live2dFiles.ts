@@ -293,6 +293,10 @@ export async function listLive2dFiles(root: string): Promise<string[]> {
   return files.sort();
 }
 
+export function live2dDirectoryByteSizeSync(root: string): number {
+  return listFilesSync(root).reduce((total, file) => total + fs.statSync(file).size, 0);
+}
+
 async function listFiles(root: string): Promise<string[]> {
   const entries = await readdir(root, {
     recursive: true,

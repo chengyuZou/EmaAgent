@@ -1,22 +1,19 @@
-// Live2D Tab(3+4 同页,参 Airi 桌面版):上资源列表,下选中项配置,点列表自动切换。
-// 右上[导入]下拉=ZIP包/文件夹;语义词这批只读不可增删改(仅允许换原生目标+保存);
-// [测试]置灰挂联调批(试播要走主窗口唯一 Canvas)。
-import { useCallback, useEffect, useMemo, useState, type JSX } from 'react';
+// 展示角色的 Live2D 模型卡片，并承接导入、封面和资源级操作。
+import { useState, type JSX } from 'react';
 import {
-  Badge, Button, DropdownMenu, IconButton, ScrollArea, Select, Slider, Spinner,
+  Button,
+  DropdownMenu,
+  ScrollArea,
   type MenuItem,
 } from '@ema-agent/ui';
 import { ServerApiError } from '../../api/client.js';
-import {
-  charactersApi,
-  type Character,
-  type Live2dConfiguration,
-} from '../../api/characters.js';
-import { useCharacterStore } from '../../stores/character.js';
-import { tauriBridge } from '../../lib/tauri-bridge.js';
+import { charactersApi, type Character } from '../../api/characters.js';
 import { renderLive2dPreview } from '../../lib/live2dPreview.js';
 import { ServerImage } from '../../lib/ServerImage.js';
+import { tauriBridge } from '../../lib/tauri-bridge.js';
 import { showToast } from '../../lib/toast.js';
+import { useCharacterStore } from '../../stores/character.js';
+import { Live2dModelConfiguration } from './Live2dModelConfiguration.js';
 
 type Live2dModel = Character['live2dModels'][number];
 
@@ -28,14 +25,11 @@ async function generateLive2dPreview(characterName: string, live2dName: string):
 
 export function Live2dTab({ character }: { character: Character }): JSX.Element {
   const models = character.live2dModels;
-  const [selectedName, setSelectedName] = useState<string | null>(null);
-  const selected = models.find(m => m.name === selectedName)
-    ?? models.find(m => m.isPrimary)
-    ?? models[0];
+  const primaryModel = models.find(model => model.isPrimary);
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <div className="flex items-center justify-between px-5 pt-4 pb-3 shrink-0">
+      <div className="flex shrink-0 items-center justify-between px-5 pt-4 pb-3">
         <h3 className="text-sm font-semibold text-[var(--ema-text-primary)]">Live2D</h3>
         <ImportMenu character={character} />
       </div>
@@ -53,17 +47,20 @@ export function Live2dTab({ character }: { character: Character }): JSX.Element 
                 character={character}
                 model={model}
                 index={index}
-                selected={selected?.name === model.name}
-                onSelect={() => setSelectedName(model.name)}
               />
             ))}
           </div>
-          {selected && (
-            <ModelConfig
-              key={`${character.name}/${selected.name}`}
+          {character.isActive && primaryModel && (
+            <Live2dModelConfiguration
+              key={`${character.name}/${primaryModel.name}`}
               character={character}
-              model={selected}
+              model={primaryModel}
             />
+          )}
+          {!character.isActive && primaryModel && (
+            <p className="py-4 text-center text-xs text-[var(--ema-text-tertiary)]">
+              只有当前角色的主要 Live2D 可以调试表情和动作
+            </p>
           )}
         </div>
       </ScrollArea>
@@ -71,16 +68,14 @@ export function Live2dTab({ character }: { character: Character }): JSX.Element 
   );
 }
 
-// ── 资源卡 ────────────────────────────────────────────────────────────────────
-
 function ModelCard({
-  character, model, index, selected, onSelect,
+  character,
+  model,
+  index,
 }: {
   character: Character;
   model: Live2dModel;
   index: number;
-  selected: boolean;
-  onSelect(): void;
 }): JSX.Element {
   const store = useCharacterStore();
   const [missing, setMissing] = useState(false);
@@ -112,7 +107,13 @@ function ModelCard({
       disabled: model.isPrimary,
       onSelect: () => {
         void store.setPrimaryLive2d(character.name, model.name)
-          .catch(error => showToast(error instanceof Error ? error.message : '设置失败', { variant: 'danger' }));
+          .catch((error) => {
+            if (error instanceof ServerApiError && error.code === 'character_work_running') {
+              showToast('Session 活跃期间不能切换主要 Live2D', { variant: 'warning' });
+              return;
+            }
+            showToast(error instanceof Error ? error.message : '设置失败', { variant: 'danger' });
+          });
       },
     },
     { kind: 'separator' },
@@ -132,7 +133,7 @@ function ModelCard({
       icon: 'i-solar:folder-open-bold-duotone',
       onSelect: () => {
         void charactersApi.live2dLocation(character.name, model.name)
-          .then(({ path }) => charactersApi.openInFolder(path))
+          .then(({ path }) => charactersApi.openDirectory(path))
           .catch(() => showToast('打开文件夹失败', { variant: 'danger' }));
       },
     },
@@ -141,16 +142,7 @@ function ModelCard({
       label: '导出',
       icon: 'i-solar:download-minimalistic-bold-duotone',
       onSelect: () => {
-        void (async () => {
-          const destination = await tauriBridge.openFileDialog({ directory: true });
-          if (!destination) return;
-          try {
-            await charactersApi.exportLive2d(character.name, model.name, destination);
-            showToast('已导出', { variant: 'success' });
-          } catch (error) {
-            showToast(error instanceof Error ? error.message : '导出失败', { variant: 'danger' });
-          }
-        })();
+        void exportLive2d(character.name, model.name);
       },
     },
     {
@@ -160,21 +152,26 @@ function ModelCard({
       onSelect: () => {
         void store.deleteLive2d(character.name, model.name)
           .then(() => showToast('已删除模型', { variant: 'success' }))
-          .catch(error => showToast(error instanceof Error ? error.message : '删除失败', { variant: 'danger' }));
+          .catch((error) => {
+            if (error instanceof ServerApiError && error.code === 'character_work_running') {
+              showToast('Session 活跃期间不能删除角色资源', { variant: 'warning' });
+              return;
+            }
+            showToast(error instanceof Error ? error.message : '删除失败', { variant: 'danger' });
+          });
       },
     },
   ];
 
   return (
     <div
-      className={`ema-stagger-in group relative cursor-pointer overflow-hidden rounded-xl border
+      className={`ema-stagger-in group relative overflow-hidden rounded-xl border
         transition-all duration-[var(--ema-duration-base)] hover:-translate-y-0.5
         hover:shadow-[var(--ema-shadow-soft)]
-        ${selected
+        ${model.isPrimary
           ? 'border-[var(--ema-primary)] shadow-[var(--ema-shadow-1)]'
           : 'border-[var(--ema-border)] bg-[var(--ema-surface-2)]'}`}
       style={{ '--stagger-i': index } as React.CSSProperties}
-      onClick={onSelect}
     >
       <div className="absolute left-2 top-2 z-10">
         <span
@@ -191,10 +188,13 @@ function ModelCard({
           align="end"
           items={menuItems}
           trigger={(
-            <span className={`inline-flex h-6 w-6 items-center justify-center rounded-md text-sm
-              text-[var(--ema-text-tertiary)] transition-opacity opacity-0 group-hover:opacity-100`}>
+            <button
+              type="button"
+              aria-label="更多操作"
+              className="inline-flex h-6 w-6 cursor-pointer select-none items-center justify-center rounded-md text-sm text-[var(--ema-text-tertiary)] opacity-0 transition-opacity group-hover:opacity-100"
+            >
               ⋯
-            </span>
+            </button>
           )}
         />
       </div>
@@ -227,250 +227,24 @@ function ModelCard({
       <div className="px-3 py-2">
         <p className="truncate text-xs font-semibold text-[var(--ema-text-primary)]">{model.name}</p>
         <p className="truncate text-[11px] text-[var(--ema-text-tertiary)]">{model.displayName}</p>
-        <p className="mt-1 text-[10px] text-[var(--ema-text-tertiary)]">{formatBytes(model.byteSize)}</p>
+        <p className="mt-1 text-[10px] text-[var(--ema-text-tertiary)]">
+          {formatBytes(model.byteSize)}
+        </p>
       </div>
     </div>
   );
 }
 
-// ── 单模型配置区(选中项的下面板) ───────────────────────────────────────────────
-
-function ModelConfig({ character, model }: {
-  character: Character;
-  model: Live2dModel;
-}): JSX.Element {
-  const store = useCharacterStore();
-  const [configuration, setConfiguration] = useState<Live2dConfiguration | null>(null);
-  const [scale, setScale] = useState(model.stageScale);
-  const [offsetX, setOffsetX] = useState(model.stageOffsetX);
-  const [offsetY, setOffsetY] = useState(model.stageOffsetY);
-  const [savingStage, setSavingStage] = useState(false);
-
-  // 映射草稿:语义词集合只读,只允许改原生目标
-  const [emotionMap, setEmotionMap] = useState<Record<string, { expression: string }>>({});
-  const [motionMap, setMotionMap] = useState<Record<string, { group: string; index: number }>>({});
-  const [savingMappings, setSavingMappings] = useState(false);
-  const [reloading, setReloading] = useState(false);
-
-  const loadConfiguration = useCallback(async () => {
-    try {
-      const conf = await charactersApi.live2dConfiguration(character.name, model.name);
-      setConfiguration(conf);
-      setEmotionMap({ ...(conf.runtimeConfig.emotionMap ?? {}) });
-      setMotionMap(Object.fromEntries(
-        Object.entries(conf.runtimeConfig.motionMap ?? {})
-          .map(([word, target]) => [word, { group: target.group, index: target.index ?? 0 }]),
-      ));
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : '配置读取失败', { variant: 'danger' });
-    }
-  }, [character.name, model.name]);
-
-  useEffect(() => {
-    void loadConfiguration();
-  }, [loadConfiguration]);
-
-  const stageDirty = scale !== model.stageScale
-    || offsetX !== model.stageOffsetX
-    || offsetY !== model.stageOffsetY;
-
-  const expressionOptions = useMemo(
-    () => (configuration?.expressions ?? []).map(name => ({ value: name, label: name })),
-    [configuration],
-  );
-  const motionOptions = useMemo(
-    () => (configuration?.motions ?? []).map(m => ({
-      value: `${m.group}/${m.index}`,
-      label: `${m.group} / ${m.index}`,
-    })),
-    [configuration],
-  );
-
-  async function saveStage(): Promise<void> {
-    setSavingStage(true);
-    try {
-      await store.patchLive2d(character.name, model.name, {
-        stageScale: scale,
-        stageOffsetX: offsetX,
-        stageOffsetY: offsetY,
-      });
-      showToast('舞台位置已保存', { variant: 'success' });
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : '保存失败', { variant: 'danger' });
-    } finally {
-      setSavingStage(false);
-    }
+async function exportLive2d(characterName: string, live2dName: string): Promise<void> {
+  const destination = await tauriBridge.openFileDialog({ directory: true });
+  if (!destination) return;
+  try {
+    await charactersApi.exportLive2d(characterName, live2dName, destination);
+    showToast('已导出', { variant: 'success' });
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : '导出失败', { variant: 'danger' });
   }
-
-  async function saveMappings(): Promise<void> {
-    setSavingMappings(true);
-    try {
-      await charactersApi.saveLive2dMappings(character.name, model.name, {
-        emotionMap,
-        motionMap,
-      });
-      showToast('映射已保存,下一次演出即刻生效', { variant: 'success' });
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : '保存映射失败', { variant: 'danger' });
-    } finally {
-      setSavingMappings(false);
-    }
-  }
-
-  async function reloadConfig(): Promise<void> {
-    setReloading(true);
-    try {
-      await charactersApi.reloadLive2dConfig(character.name, model.name);
-      await loadConfiguration();
-      showToast('已重新加载配置', { variant: 'success' });
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : '重新加载失败', { variant: 'danger' });
-    } finally {
-      setReloading(false);
-    }
-  }
-
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-2">
-        <span className="text-sm font-semibold text-[var(--ema-text-primary)]">{model.name}</span>
-        <span className="text-xs text-[var(--ema-text-tertiary)]">/ {model.displayName}</span>
-        {model.isPrimary && <Badge variant="primary">主要模型 ●</Badge>}
-      </div>
-
-      <div className="rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-2)] p-4">
-        <p className="mb-3 text-xs font-semibold text-[var(--ema-text-secondary)]">舞台位置</p>
-        <div className="flex flex-col gap-3">
-          <SliderRow label="缩放" min={0.1} max={5} step={0.05} value={scale} onChange={setScale} />
-          <SliderRow label="X 偏移" min={-1} max={1} step={0.01} value={offsetX} onChange={setOffsetX} />
-          <SliderRow label="Y 偏移" min={-1} max={1} step={0.01} value={offsetY} onChange={setOffsetY} />
-        </div>
-        <div className="mt-3 flex justify-end gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              setScale(1); setOffsetX(0); setOffsetY(0);
-            }}
-          >
-            恢复初始值
-          </Button>
-          <Button variant="primary" size="sm" loading={savingStage} disabled={!stageDirty} onClick={() => void saveStage()}>
-            应用
-          </Button>
-        </div>
-      </div>
-
-      {!configuration && (
-        <div className="flex justify-center py-8"><Spinner size="md" /></div>
-      )}
-      {configuration && (
-        <>
-          <MappingSection
-            title="表情映射"
-            hint="语义词 → 该模型真实原生表情"
-            words={emotionMap}
-            options={expressionOptions}
-            resolve={value => value.expression}
-            onChange={(word, target) => setEmotionMap(prev => ({ ...prev, [word]: { expression: target } }))}
-          />
-          <MappingSection
-            title="动作映射"
-            hint="语义词 → 实际检测到的 motion group/index"
-            words={motionMap}
-            options={motionOptions}
-            resolve={value => `${value.group}/${value.index ?? 0}`}
-            onChange={(word, target) => {
-              const [group, index] = target.split('/');
-              setMotionMap(prev => ({ ...prev, [word]: { group: group!, index: Number(index) } }));
-            }}
-          />
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" size="sm" loading={reloading} onClick={() => void reloadConfig()}>
-              重新加载配置
-            </Button>
-            <Button variant="primary" size="sm" loading={savingMappings} onClick={() => void saveMappings()}>
-              保存映射
-            </Button>
-          </div>
-        </>
-      )}
-    </div>
-  );
 }
-
-function MappingSection<T>({
-  title, hint, words, options, resolve, onChange,
-}: {
-  title: string;
-  hint: string;
-  words: Record<string, T>;
-  options: Array<{ value: string; label: string }>;
-  resolve(value: T): string;
-  onChange(word: string, target: string): void;
-}): JSX.Element {
-  const entries = Object.entries(words) as Array<[string, T]>;
-  return (
-    <div className="rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-2)] p-4">
-      <p className="mb-1 text-xs font-semibold text-[var(--ema-text-secondary)]">{title}</p>
-      <p className="mb-3 text-[11px] text-[var(--ema-text-tertiary)]">{hint}</p>
-      {entries.length === 0 && (
-        <p className="py-3 text-center text-[11px] text-[var(--ema-text-tertiary)]">暂无映射</p>
-      )}
-      {entries.map(([word, value]) => (
-        <div key={word} className="grid grid-cols-[120px_1fr_auto] items-center gap-3 border-b border-[var(--ema-border)] py-1.5 last:border-none">
-          <span className="font-mono text-xs text-[var(--ema-info)]">{word}</span>
-          <Select
-            value={resolve(value)}
-            options={options}
-            onChange={target => onChange(word, target)}
-          />
-          <span
-            className="cursor-not-allowed text-[11px] text-[var(--ema-text-tertiary)]"
-            title="试播要走主窗口唯一 Canvas,联调批开放"
-          >
-            测试
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function SliderRow({ label, min, max, step, value, onChange }: {
-  label: string;
-  min: number;
-  max: number;
-  step: number;
-  value: number;
-  onChange(value: number): void;
-}): JSX.Element {
-  // UI 包的 Slider 是离散 steps 制;按 min/max/step 现场生成。
-  const steps = useMemo(() => {
-    const result: Array<{ value: number; label: string }> = [];
-    for (let v = min; v <= max + 1e-9; v += step) {
-      result.push({ value: Number(v.toFixed(4)), label: '' });
-    }
-    return result;
-  }, [min, max, step]);
-  return (
-    <div className="flex items-center gap-3">
-      <span className="w-16 shrink-0 text-xs text-[var(--ema-text-tertiary)]">{label}</span>
-      <Slider<number>
-        className="flex-1"
-        steps={steps}
-        value={value}
-        onChange={onChange}
-        hideLabels
-      />
-      <span className="w-12 text-right font-mono text-[11px] text-[var(--ema-text-tertiary)]">
-        {value.toFixed(2)}
-      </span>
-    </div>
-  );
-}
-
-// ── 导入(ZIP 包 / 文件夹) ────────────────────────────────────────────────────
 
 function ImportMenu({ character }: { character: Character }): JSX.Element {
   const store = useCharacterStore();
@@ -489,10 +263,7 @@ function ImportMenu({ character }: { character: Character }): JSX.Element {
       }
       await store.load();
       if (previewError) {
-        showToast(
-          `${result.name} 已导入,但封面生成失败: ${previewError}`,
-          { variant: 'warning' },
-        );
+        showToast(`${result.name} 已导入,但封面生成失败: ${previewError}`, { variant: 'warning' });
       } else {
         showToast(`已导入 ${result.name}`, { variant: 'success' });
       }
@@ -513,10 +284,7 @@ function ImportMenu({ character }: { character: Character }): JSX.Element {
       label: '导入 ZIP 包',
       icon: 'i-lucide:package',
       onSelect: () => {
-        void (async () => {
-          const source = await tauriBridge.openFileDialog({ filters: [{ name: 'Live2D ZIP', extensions: ['zip'] }] });
-          if (source) await runImport(source);
-        })();
+        void selectLive2dArchive(runImport);
       },
     },
     {
@@ -524,10 +292,7 @@ function ImportMenu({ character }: { character: Character }): JSX.Element {
       label: '导入文件夹',
       icon: 'i-solar:folder-open-bold-duotone',
       onSelect: () => {
-        void (async () => {
-          const source = await tauriBridge.openFileDialog({ directory: true });
-          if (source) await runImport(source);
-        })();
+        void selectLive2dDirectory(runImport);
       },
     },
   ];
@@ -544,6 +309,18 @@ function ImportMenu({ character }: { character: Character }): JSX.Element {
       )}
     />
   );
+}
+
+async function selectLive2dArchive(importModel: (source: string) => Promise<void>): Promise<void> {
+  const source = await tauriBridge.openFileDialog({
+    filters: [{ name: 'Live2D ZIP', extensions: ['zip'] }],
+  });
+  if (source) await importModel(source);
+}
+
+async function selectLive2dDirectory(importModel: (source: string) => Promise<void>): Promise<void> {
+  const source = await tauriBridge.openFileDialog({ directory: true });
+  if (source) await importModel(source);
 }
 
 function formatBytes(bytes: number | null): string {

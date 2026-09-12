@@ -3,7 +3,11 @@
 import { useEffect, useState, type JSX } from 'react';
 import { Button, Input, Select } from '@ema-agent/ui';
 import { ServerApiError } from '../../api/client.js';
-import { charactersApi, type Character } from '../../api/characters.js';
+import {
+  charactersApi,
+  type Character,
+  type CharacterPatchInput,
+} from '../../api/characters.js';
 import { useCharacterStore } from '../../stores/character.js';
 import { showToast } from '../../lib/toast.js';
 
@@ -31,16 +35,25 @@ export function CharacterInfoTab({ character }: { character: Character }): JSX.E
   async function handleSave(): Promise<void> {
     setSaving(true);
     try {
-      await useCharacterStore.getState().patch(character.name, {
-        displayName: displayName.trim() || null,
-        description: description.trim() || null,
-        personaPrompt,
-        stageKind,
-      });
+      const textPatch: CharacterPatchInput = {
+        ...(displayName !== (character.displayName ?? '')
+          ? { displayName: displayName.trim() || null }
+          : {}),
+        ...(description !== (character.description ?? '')
+          ? { description: description.trim() || null }
+          : {}),
+        ...(personaPrompt !== character.personaPrompt ? { personaPrompt } : {}),
+      };
+      if (Object.keys(textPatch).length > 0) {
+        await useCharacterStore.getState().patch(character.name, textPatch);
+      }
+      if (stageKind !== character.stageKind) {
+        await useCharacterStore.getState().patch(character.name, { stageKind });
+      }
       showToast('已保存', { variant: 'success' });
     } catch (error) {
       if (error instanceof ServerApiError && error.code === 'character_work_running') {
-        showToast('当前角色有正在执行的任务,请先停止或等其结束后再修改', { variant: 'warning' });
+        showToast('Session 活跃期间不能修改舞台显示', { variant: 'warning' });
         return;
       }
       showToast(error instanceof Error ? `保存失败:${error.message}` : '保存失败', { variant: 'danger' });
@@ -65,7 +78,7 @@ export function CharacterInfoTab({ character }: { character: Character }): JSX.E
   async function handleOpenFolder(): Promise<void> {
     try {
       const { path } = await charactersApi.location(character.name);
-      await charactersApi.openInFolder(path);
+      await charactersApi.openDirectory(path);
     } catch (error) {
       showToast(error instanceof Error ? error.message : '打开文件夹失败', { variant: 'danger' });
     }

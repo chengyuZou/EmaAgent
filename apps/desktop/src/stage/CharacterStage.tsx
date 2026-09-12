@@ -28,16 +28,18 @@ export interface CharacterStageProps {
   presentation: CharacterStagePresentation | null;
   suspended: boolean;
   onStageChanged?: (stage: ActiveLive2DStage | null) => void;
+  onExpressionChanged?: (expression: string | null) => void;
 }
 
 export interface ActiveLive2DStage {
   handle: Live2DStageHandle;
   hasExpressions: boolean;
+  expressions: readonly string[];
 }
 
-interface LoadedLive2d {
+interface LoadedLive2dArchive {
   readonly characterName: string;
-  readonly resource: CharacterLive2dStageEntry;
+  readonly live2dName: string;
   readonly archive: Blob;
 }
 
@@ -46,39 +48,47 @@ export function CharacterStage({
   presentation,
   suspended,
   onStageChanged,
+  onExpressionChanged,
 }: CharacterStageProps): JSX.Element {
-  const [loadedLive2d, setLoadedLive2d] = useState<LoadedLive2d | null>(null);
+  const [loadedLive2dArchive, setLoadedLive2dArchive] = useState<LoadedLive2dArchive | null>(null);
   const showsLive2d = presentation?.status === 'live2d'
     && presentation.characterName === targetCharacterName;
+  const live2dCharacterName = showsLive2d ? presentation.characterName : null;
+  const live2dName = showsLive2d ? presentation.resource.name : null;
 
   useEffect(() => {
-    if (!showsLive2d) {
-      setLoadedLive2d(null);
+    if (!live2dCharacterName || !live2dName) {
+      setLoadedLive2dArchive(null);
       onStageChanged?.(null);
       return;
     }
 
     let cancelled = false;
-    const { characterName, resource } = presentation;
-    setLoadedLive2d(current => (
-      current?.characterName === characterName ? current : null
+    setLoadedLive2dArchive(current => (
+      current?.characterName === live2dCharacterName && current.live2dName === live2dName
+        ? current
+        : null
     ));
-    void charactersApi.live2dArchive(characterName, resource.name)
+    void charactersApi.live2dArchive(live2dCharacterName, live2dName)
       .then((archive) => {
         if (!cancelled) {
-          setLoadedLive2d({ characterName, resource, archive });
+          setLoadedLive2dArchive({
+            characterName: live2dCharacterName,
+            live2dName,
+            archive,
+          });
         }
       })
       .catch((error: unknown) => {
         if (!cancelled) {
-          console.error('[stage] Live2D 模型包读取失败', characterName, resource.name, error);
+          console.error('[stage] Live2D 模型包读取失败', live2dCharacterName, live2dName, error);
         }
       });
 
     return () => {
       cancelled = true;
     };
-  }, [onStageChanged, presentation, showsLive2d]);
+  }, [live2dCharacterName, live2dName, onStageChanged]);
 
   const ready = useCallback((
     handle: Live2DStageHandle,
@@ -87,10 +97,13 @@ export function CharacterStage({
     onStageChanged?.({
       handle,
       hasExpressions: info.hasExpressions,
+      expressions: info.expressions,
     });
   }, [onStageChanged]);
 
-  const live2dMatchesTarget = loadedLive2d?.characterName === targetCharacterName;
+  const live2dMatchesTarget = showsLive2d
+    && loadedLive2dArchive?.characterName === presentation.characterName
+    && loadedLive2dArchive.live2dName === presentation.resource.name;
   const illustration = presentation?.status === 'illustration'
     && presentation.characterName === targetCharacterName
     ? presentation
@@ -104,13 +117,15 @@ export function CharacterStage({
         </div>
       )}
 
-      {live2dMatchesTarget && loadedLive2d && (
+      {live2dMatchesTarget && loadedLive2dArchive && (
         <Live2dResource
-          loaded={loadedLive2d}
+          archive={loadedLive2dArchive.archive}
+          resource={presentation.resource}
           suspended={suspended}
           onReady={ready}
+          onExpressionChanged={onExpressionChanged}
           onError={(error) => {
-            console.error('[stage] Live2D 模型加载失败', loadedLive2d.resource.name, error);
+            console.error('[stage] Live2D 模型加载失败', presentation.resource.name, error);
             onStageChanged?.(null);
           }}
         />
@@ -127,38 +142,40 @@ export function CharacterStage({
 }
 
 function Live2dResource({
-  loaded,
+  archive,
+  resource,
   suspended,
   onReady,
+  onExpressionChanged,
   onError,
 }: {
-  loaded: LoadedLive2d;
+  archive: Blob;
+  resource: CharacterLive2dStageEntry;
   suspended: boolean;
   onReady(handle: Live2DStageHandle, info: Live2DStageReadyInfo): void;
+  onExpressionChanged?: (expression: string | null) => void;
   onError(error: Error): void;
 }): JSX.Element {
   const handleRef = useRef<Live2DStageHandle | null>(null);
-  const resource = loaded.resource;
 
   return (
     <div className="ema-character-stage-resource" data-state="active">
-      <div
-        className="ema-character-stage-resource-content"
-        style={resourceTransform(resource)}
-      >
-        <EmaStageView
-          modelArchive={loaded.archive}
-          runtimeConfig={resource.runtimeConfig ?? undefined}
-          suspended={suspended}
-          onHandleChanged={(handle) => {
-            handleRef.current = handle;
-          }}
-          onReady={(info) => {
-            if (handleRef.current) onReady(handleRef.current, info);
-          }}
-          onError={onError}
-        />
-      </div>
+      <EmaStageView
+        modelArchive={archive}
+        runtimeConfig={resource.runtimeConfig ?? undefined}
+        stageScale={resource.stageScale}
+        stageOffsetX={resource.stageOffsetX}
+        stageOffsetY={resource.stageOffsetY}
+        suspended={suspended}
+        onExpressionChanged={onExpressionChanged}
+        onHandleChanged={(handle) => {
+          handleRef.current = handle;
+        }}
+        onReady={(info) => {
+          if (handleRef.current) onReady(handleRef.current, info);
+        }}
+        onError={onError}
+      />
     </div>
   );
 }
@@ -255,7 +272,7 @@ function IllustrationLayer({
     <div
       className="ema-character-stage-illustration-layer"
       data-state={state}
-      style={resourceTransform(loaded.resource)}
+      style={illustrationTransform(loaded.resource)}
     >
       <img
         src={loaded.url}
@@ -300,9 +317,7 @@ function loadImage(url: string): Promise<void> {
   });
 }
 
-function resourceTransform(
-  resource: CharacterLive2dStageEntry | CharacterIllustrationStageEntry,
-): React.CSSProperties {
+function illustrationTransform(resource: CharacterIllustrationStageEntry): React.CSSProperties {
   return {
     transform: `translate(${resource.stageOffsetX * 100}%, ${resource.stageOffsetY * 100}%) scale(${resource.stageScale})`,
   };

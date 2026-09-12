@@ -44,5 +44,4 @@ export interface CharacterIllustrationPatch {
 export interface ImportCharacterIllustrationInput {
   sourceFile: string;
   expression?: string | null;
-  isPrimary?: boolean;
 }
