@@ -1,0 +1,69 @@
+/* 工具行统一 chrome：24px 单行、leading 16px 槽（variant 图标 ↔ chevron hover 渐变、
+   终态点替换）、摘要截断、运行中整行扫光（复用 .ema-shimmer）。 */
+
+.ema-tool-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  height: 24px;
+  text-align: left;
+  position: relative;
+  border-radius: 6px;
+}
+
+.ema-tool-row-leading {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ema-tool-row-icon,
+.ema-tool-row-chevron {
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  color: var(--ema-text-tertiary);
+  transition: opacity 100ms ease;
+}
+
+.ema-tool-row-icon { opacity: 1; }
+.ema-tool-row-chevron { opacity: 0; }
+
+.ema-tool-row:hover .ema-tool-row-icon { opacity: 0; }
+.ema-tool-row:hover .ema-tool-row-chevron { opacity: 1; }
+
+/* 展开态保持 chevron（比 hover 更优先） */
+.ema-tool-row[aria-expanded="true"] .ema-tool-row-icon { opacity: 0; }
+.ema-tool-row[aria-expanded="true"] .ema-tool-row-chevron { opacity: 1; }
+
+.ema-tool-row-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+}
+
+.ema-tool-row-summary {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-family: var(--ema-font-mono, monospace);
+  color: var(--ema-text-tertiary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ema-tool-row-icon,
+  .ema-tool-row-chevron {
+    transition: none;
+  }
+}

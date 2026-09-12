@@ -1,0 +1,40 @@
+/* AgentRun 面板的运行状态和执行步骤时间线。 */
+
+.ema-running-bar::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: var(--ema-radius-pill);
+  background: var(--ema-primary);
+  animation: ema-pulse-bar 1.6s ease-in-out infinite;
+}
+
+.ema-timeline-row {
+  position: relative;
+  padding-left: 14px;
+}
+.ema-timeline-row::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--ema-text-tertiary);
+  opacity: 0.5;
+}
+.ema-timeline-row::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 14px;
+  bottom: -4px;
+  width: 1px;
+  background: var(--ema-text-tertiary);
+  opacity: 0.25;
+}
+.ema-timeline-row:last-child::after { display: none; }

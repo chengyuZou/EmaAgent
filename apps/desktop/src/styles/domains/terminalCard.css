@@ -1,0 +1,80 @@
+/* 终端卡（Bash/PowerShell 工具调用展示）：banner 固定（gutter 状态点 + 命令 + 状态 pill
+   + 复制），输出区独立滚动、white-space: pre 不换行。 */
+
+.ema-terminal-card {
+  border-radius: 12px;
+  border: 1px solid var(--ema-border);
+  background: var(--ema-surface-1);
+  overflow: hidden;
+}
+
+.ema-terminal-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--ema-border);
+  background: var(--ema-surface-2);
+}
+
+.ema-terminal-gutter-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  flex: none;
+}
+
+.ema-terminal-cmd {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--ema-font-mono, monospace);
+  font-size: 11px;
+  color: var(--ema-syntax-prompt);
+}
+
+.ema-terminal-pill {
+  flex: none;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 9999px;
+  border: 1px solid currentcolor;
+  opacity: 0.9;
+}
+
+.ema-terminal-copy {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  font-size: 12px;
+  color: var(--ema-text-tertiary);
+  transition: color 100ms ease, background 100ms ease;
+}
+
+.ema-terminal-copy:hover {
+  color: var(--ema-text-primary);
+  background: var(--ema-surface-3);
+}
+
+.ema-terminal-output {
+  max-height: 16rem;
+  overflow: auto;
+  padding: 8px 10px;
+}
+
+.ema-terminal-output pre {
+  white-space: pre;
+  font-family: var(--ema-font-mono, monospace);
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--ema-text-secondary);
+  margin: 0;
+  background: transparent;
+  overflow-wrap: normal;
+}

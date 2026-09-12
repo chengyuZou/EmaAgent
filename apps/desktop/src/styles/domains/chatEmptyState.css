@@ -1,0 +1,75 @@
+/* 会话空态：淡蓝椭圆辉光随内容居中，角色立绘标 + 标题 + 工作区 chip。 */
+
+.ema-empty-state {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  overflow: hidden;
+}
+
+.ema-empty-state-glow {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 420px;
+  height: 300px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: var(--ema-primary);
+  opacity: 0.08;
+  filter: blur(72px);
+  pointer-events: none;
+}
+
+.ema-empty-state-avatar {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  border-radius: 9999px;
+  object-fit: cover;
+  border: 1px solid var(--ema-border);
+  box-shadow: 0 4px 20px rgb(0 0 0 / 0.12);
+}
+
+.ema-empty-state-avatar-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36px;
+  color: var(--ema-text-tertiary);
+  background: var(--ema-surface-2);
+}
+
+.ema-empty-state-title {
+  position: relative;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ema-text-primary);
+}
+
+.ema-empty-state-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  font-size: 12px;
+  color: var(--ema-text-secondary);
+  background: var(--ema-surface-2);
+  border: 1px solid var(--ema-border);
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.ema-empty-state-chip:hover {
+  background: var(--ema-surface-3);
+}
+
+.ema-empty-state-chip-empty {
+  border-style: dashed;
+  color: var(--ema-text-tertiary);
+}

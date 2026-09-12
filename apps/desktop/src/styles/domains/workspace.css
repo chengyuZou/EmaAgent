@@ -1,0 +1,39 @@
+/* 会话侧栏、设置导航和工作区 Dock 共用的选择与拖拽反馈。 */
+
+.ema-resize-handle {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 4px;
+  cursor: col-resize;
+  z-index: 10;
+  transition: background var(--ema-duration-fast) var(--ema-ease);
+  background: transparent;
+}
+.ema-resize-handle:hover { background: var(--ema-primary); }
+
+.ema-resize-handle-h {
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  height: 4px;
+  cursor: row-resize;
+  z-index: 10;
+  transition: background var(--ema-duration-fast) var(--ema-ease);
+  background: transparent;
+}
+.ema-resize-handle-h:hover { background: var(--ema-primary); }
+
+.ema-active-rail { position: relative; }
+.ema-active-rail::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: var(--ema-radius-pill);
+  background: var(--ema-primary);
+  opacity: 0.7;
+  pointer-events: none;
+}

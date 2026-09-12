@@ -1,0 +1,38 @@
+/* Radix 组件的 data-state 入场/退场适配,与 Tabs 滑块定位。
+   横向 Tabs 的 trigger 必须等宽,滑块才能按索引准确定位。 */
+
+.ema-anim-scale[data-state="open"] { animation: ema-scale-in var(--ema-duration-base) var(--ema-ease) both; }
+.ema-anim-scale[data-state="closed"] { animation: ema-scale-out var(--ema-duration-base) var(--ema-ease) both; }
+.ema-anim-dialog[data-state="open"] { animation: ema-dialog-in var(--ema-duration-base) var(--ema-ease) both; }
+.ema-anim-dialog[data-state="closed"] { animation: ema-dialog-out var(--ema-duration-fast) var(--ema-ease) both; }
+.ema-anim-fade[data-state="open"],
+.ema-anim-fade[data-state="delayed-open"] { animation: ema-fade-in var(--ema-duration-base) var(--ema-ease) both; }
+.ema-anim-fade[data-state="closed"] { animation: ema-fade-out var(--ema-duration-fast) var(--ema-ease) both; }
+.ema-anim-toast[data-state="open"] { animation: ema-toast-in var(--ema-duration-slow) var(--ema-ease) both; }
+.ema-anim-toast[data-state="closed"],
+.ema-anim-toast[data-swipe="end"] { animation: ema-slide-out-right var(--ema-duration-base) var(--ema-ease) both; }
+.ema-anim-tab[data-state="active"] { animation: ema-fade-in var(--ema-duration-base) var(--ema-ease) both; }
+
+.ema-tab-slider { position: relative; }
+.ema-tab-slider--underline::before {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: calc(var(--tab-active-index, 0) * (100% / var(--tab-count, 1)));
+  width: calc(100% / var(--tab-count, 1));
+  height: 2px;
+  background: var(--ema-primary);
+  transition: left var(--ema-duration-base) var(--ema-ease);
+  z-index: 1;
+}
+.ema-tab-slider--pill::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  left: calc(var(--tab-active-index, 0) * (100% / var(--tab-count, 1)));
+  width: calc(100% / var(--tab-count, 1));
+  background: var(--ema-primary-muted);
+  border-radius: var(--ema-radius-pill);
+  transition: left var(--ema-duration-base) var(--ema-ease);
+  z-index: 0;
+}

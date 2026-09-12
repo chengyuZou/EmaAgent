@@ -1,0 +1,68 @@
+/* 桌宠主窗口边缘的呼吸光，不参与鼠标命中。 */
+
+.ema-pet-glow-border {
+  position: fixed;
+  inset: 0;
+  border-radius: 16px;
+  pointer-events: none;
+  z-index: 1;
+  box-shadow:
+    inset 0 0 12px 1px var(--ema-pet-glow),
+    inset 0 0 28px 4px color-mix(in srgb, var(--ema-pet-glow) 33%, transparent),
+    0 0 24px 2px var(--ema-pet-glow-bright);
+  opacity: 0;
+  transition: opacity var(--ema-duration-base) var(--ema-ease);
+  animation: none;
+}
+
+body:hover .ema-pet-glow-border {
+  opacity: 1;
+  animation: ema-breathe 2.6s ease-in-out infinite;
+}
+
+.ema-server-status {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 100;
+  display: grid;
+  width: 16px;
+  height: 16px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  opacity: 0;
+  pointer-events: none;
+  cursor: help;
+  transition: opacity var(--ema-duration-base) var(--ema-ease);
+}
+
+body:hover .ema-server-status {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.ema-server-status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--ema-text-tertiary);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--ema-text-tertiary) 70%, transparent);
+}
+
+.ema-server-status[data-status='ok'] .ema-server-status-dot {
+  background: var(--ema-success);
+  box-shadow: 0 0 9px color-mix(in srgb, var(--ema-success) 80%, transparent);
+}
+
+.ema-server-status[data-status='pending'] .ema-server-status-dot {
+  background: var(--ema-warning);
+  box-shadow: 0 0 9px color-mix(in srgb, var(--ema-warning) 80%, transparent);
+}
+
+.ema-server-status[data-status='error'] .ema-server-status-dot {
+  background: var(--ema-danger);
+  box-shadow: 0 0 9px color-mix(in srgb, var(--ema-danger) 80%, transparent);
+}

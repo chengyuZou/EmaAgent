@@ -1,25 +1,26 @@
 /* ── EmaAgent global styles entry ──────────────────────────────────────────
- * 按职责分文件,聚合 import。每个文件 <200 行,职责单一。
- * tokens:    CSS 变量(:root dark + [data-theme="light"] 覆盖)
- * base:      reset + scrollbar + selection + placeholder
- * keyframes: 25 个 @keyframes(UnoCSS animate-* 别名引用)
- * animations: .ema-* 入场/退场/stagger/骨架/微光/状态 工具类
- * transitions: 宽度/文本/折叠过渡 + press 按压
- * 其余文件按 UI 原语、工作区、聊天、AgentRun、设置和舞台消费域归位。
+ * 唯一入口,顺序即规矩:地基 → 原语 → 业务域 → 第三方。
+ * 分层定义与新样式落位规则见 styles/README.md;禁止旁路 import。
  */
-@import './tokens.css';
-@import './base.css';
-@import './keyframes.css';
-@import './animations.css';
-@import './transitions.css';
-@import './uiPrimitives.css';
-@import './workspace.css';
-@import './chatHistory.css';
-@import './agentRun.css';
-@import './settingsDecorations.css';
-@import './stage.css';
-@import './characterStage.css';
-@import './chatInput.css';
-@import './toolRow.css';
-@import './terminalCard.css';
-@import './chatEmptyState.css';
+@import './foundation/tokens.css';
+@import './foundation/base.css';
+@import './foundation/keyframes.css';
+@import './foundation/animations.css';
+@import './foundation/transitions.css';
+
+@import './primitives/glass.css';
+@import './primitives/radix.css';
+@import './primitives/decorations.css';
+
+@import './domains/appearance.css';
+@import './domains/workspace.css';
+@import './domains/chatHistory.css';
+@import './domains/agentRun.css';
+@import './domains/chatInput.css';
+@import './domains/toolRow.css';
+@import './domains/terminalCard.css';
+@import './domains/chatEmptyState.css';
+@import './domains/stage.css';
+@import './domains/characterStage.css';
+
+@import './vendors/hljs-theme.css';

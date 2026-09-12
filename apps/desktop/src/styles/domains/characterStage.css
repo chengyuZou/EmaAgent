@@ -1,0 +1,75 @@
+/* 角色舞台铺满 400x720 主窗口，气泡作为小型浮层叠在画布上。 */
+
+.ema-character-stage-resource,
+.ema-character-stage-placeholder {
+  position: absolute;
+  inset: 0;
+}
+
+.ema-character-stage {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.ema-character-stage-resource {
+  opacity: 1;
+  transition: opacity var(--ema-duration-slow) var(--ema-ease);
+}
+
+.ema-character-stage-resource[data-state='active'] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.ema-character-stage-illustration-layer {
+  position: absolute;
+  inset: 0;
+  transform-origin: center bottom;
+  opacity: 1;
+  transition: opacity 300ms var(--ema-ease);
+}
+
+.ema-character-stage-illustration-layer[data-state='outgoing'] {
+  opacity: 0;
+}
+
+.ema-character-stage-portrait {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center bottom;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.ema-character-stage-placeholder {
+  display: grid;
+  place-items: center;
+  opacity: 0.58;
+  animation: ema-fade-in var(--ema-duration-base) var(--ema-ease) both;
+}
+
+.ema-character-stage-placeholder-ring {
+  width: 42%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 1px solid var(--ema-border);
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--ema-primary) 10%, transparent),
+    transparent 68%
+  );
+  box-shadow: 0 0 42px color-mix(in srgb, var(--ema-primary) 14%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ema-character-stage-resource {
+    transition-duration: 0ms;
+  }
+
+  .ema-character-stage-placeholder {
+    animation: none;
+  }
+}

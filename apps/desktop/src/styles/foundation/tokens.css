@@ -1,0 +1,219 @@
+/* ── Design Tokens ──────────────────────────────────────────────────────────
+ * Dark-first(透明窗口坐桌面),Surface 半透明深色玻璃,OKLCH 感知均匀,阴影暖暗晕。
+ * 命名:--ema-<category>[-variant]。
+ * 亮色覆盖走 [data-theme="light"]（主题 store 切 <html data-theme>）。
+ */
+
+:root {
+  /* 字体分层：界面、Markdown 正文和代码互不串改。 */
+  --ema-font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Microsoft YaHei', sans-serif;
+  --ema-font-content-system: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Microsoft YaHei', sans-serif;
+  --ema-font-content: var(--ema-font-content-system);
+  --ema-font-mono: 'Cascadia Code', 'JetBrains Mono', 'SF Mono', Menlo, Consolas, 'Liberation Mono', 'Microsoft YaHei', monospace;
+
+  /* Easing */
+  --ema-ease:   cubic-bezier(0.23, 1, 0.32, 1);
+  --ema-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ema-duration-fast:   120ms;
+  --ema-duration-base:   200ms;
+  --ema-duration-slow:   300ms;
+  --ema-duration-panel:  280ms;
+
+  /* Border radius */
+  /* 基础值随 --ema-radius 乘数(0-3)缩放,uno rounded-* 与 styles 内部统一引用;
+     pill 固定不缩放。--ema-radius 的事实源在本文件。 */
+  --ema-radius:        1;
+  --ema-radius-xs:    calc(4px  * var(--ema-radius, 1));
+  --ema-radius-sm:    calc(6px  * var(--ema-radius, 1));
+  --ema-radius-md:    calc(10px * var(--ema-radius, 1));
+  --ema-radius-lg:    calc(14px * var(--ema-radius, 1));
+  --ema-radius-xl:    calc(20px * var(--ema-radius, 1));
+  --ema-radius-panel: calc(16px * var(--ema-radius, 1));
+  --ema-radius-pill:  999px;
+
+  /* Shadows - 暖暗晕(任意桌面背景都好看)*/
+  --ema-shadow-1:  0 1px 2px rgba(0,0,0,0.18), 0 0px 1px rgba(0,0,0,0.12);
+  --ema-shadow-2:  0 2px 4px rgba(0,0,0,0.22), 0 4px 10px rgba(0,0,0,0.16), 0 1px 2px rgba(0,0,0,0.10);
+  --ema-shadow-3:  0 4px 8px rgba(0,0,0,0.28), 0 8px 20px rgba(0,0,0,0.20), 0 16px 40px rgba(0,0,0,0.14), 0 1px 2px rgba(0,0,0,0.10);
+  --ema-shadow-focus:   0 0 0 3px oklch(0.72 0.18 var(--chromatic-hue, 200) / 0.28);
+  --ema-shadow-danger:  0 0 0 3px oklch(0.62 0.22 25  / 0.28);
+  /* Soft shadow(负 spread 收拢不发散,抄 AIRI,浮层/卡片 hover 用)*/
+  --ema-shadow-soft: 0 8px 32px -12px rgba(0, 0, 0, 0.18);
+  /* Primary glow(FAB/发送按钮 hover 主题色发光,抄 AstrBot)*/
+  --ema-shadow-primary-glow: 0 8px 24px -4px oklch(0.72 0.18 var(--chromatic-hue, 200) / 0.40);
+  /* 拖放文件悬停高亮(ChatInput,primary 描边 + glow 光晕,两 var 均随主题) */
+  --ema-shadow-dragover: 0 0 0 2px var(--ema-primary), 0 0 24px var(--ema-glow);
+
+  /* Surface layers - 半透明中性深灰玻璃(抄 AstrBot 层差,保留半透明供桌宠玻璃感)。
+     0=最深背景,4=浮层最亮。中性灰非紫黑,跟 AstrBot #1a1a1a->#242424 对齐。 */
+  --ema-surface-0:  rgba(20, 20, 24, 0.92);
+  --ema-surface-1:  rgba(28, 28, 32, 0.88);
+  --ema-surface-2:  rgba(36, 36, 40, 0.82);
+  --ema-surface-3:  rgba(44, 44, 50, 0.78);
+  --ema-surface-4:  rgba(52, 52, 58, 0.90);
+  --ema-bg:         var(--ema-surface-0);
+  --ema-glass-weak:   saturate(150%) blur(4px);
+  --ema-glass-base:   saturate(180%) blur(8px);
+  --ema-glass-strong: saturate(200%) blur(16px);
+  /* Mask 用暗灰非纯黑(抄 AstrBit:暗色遮罩用 background 色非黑,视觉更协调) */
+  --ema-mask: rgba(18, 18, 22, 0.65);
+
+  /* ── 语义色(暗色)── Ema 签名色,跟随 --chromatic-hue(跟 UnoCSS bg-primary 对齐)── */
+  --ema-primary:        oklch(0.72 0.18 var(--chromatic-hue, 200));
+  --ema-primary-hover:  oklch(0.76 0.16 var(--chromatic-hue, 200));
+  --ema-primary-active: oklch(0.65 0.20 var(--chromatic-hue, 200));
+  --ema-primary-muted:  oklch(0.72 0.18 var(--chromatic-hue, 200) / 0.20);
+  --ema-primary-text:   oklch(0.98 0.01 var(--chromatic-hue, 200));
+
+  /* Success - 绿 */
+  --ema-success:        oklch(0.68 0.16 145);
+  --ema-success-hover:  oklch(0.72 0.14 145);
+  --ema-success-muted:  oklch(0.68 0.16 145 / 0.18);
+  --ema-success-text:   oklch(0.88 0.10 145);
+
+  /* Warning - 琥珀 */
+  --ema-warning:        oklch(0.78 0.16 75);
+  --ema-warning-hover:  oklch(0.82 0.14 75);
+  --ema-warning-muted:  oklch(0.78 0.16 75 / 0.18);
+  --ema-warning-text:   oklch(0.90 0.10 75);
+
+  /* Danger - 红 */
+  --ema-danger:         oklch(0.62 0.22 25);
+  --ema-danger-hover:   oklch(0.66 0.20 25);
+  --ema-danger-muted:   oklch(0.62 0.22 25 / 0.18);
+  --ema-danger-text:    oklch(0.88 0.12 25);
+
+  /* Violet - 紫(secondary 强调,chromatic preset hue 285 对齐) */
+  --ema-violet:         oklch(0.72 0.16 285);
+  --ema-violet-hover:   oklch(0.76 0.14 285);
+  --ema-violet-muted:   oklch(0.72 0.16 285 / 0.20);
+  --ema-violet-text:    oklch(0.98 0.01 285);
+
+  /* Syntax highlight(代码高亮,亮暗分别定义,ToolCallBlock/FilePreview 用)*/
+  --ema-syntax-key:     oklch(0.78 0.13 250);
+  --ema-syntax-string:  oklch(0.78 0.16 145);
+  --ema-syntax-number:  oklch(0.78 0.15 55);
+  --ema-syntax-boolean: oklch(0.78 0.16 285);
+  --ema-syntax-comment: oklch(0.55 0.01 280);
+  --ema-syntax-prompt:  oklch(0.78 0.16 75);
+
+  /* 文件类型图标色(AttachmentChip,常规文件色亮暗共用,不随主题翻转) */
+  --ema-file-image: oklch(0.72 0.14 160);
+  --ema-file-pdf:   oklch(0.65 0.20 25);
+  --ema-file-word:  oklch(0.60 0.18 255);
+  --ema-file-ppt:   oklch(0.65 0.19 45);
+  --ema-file-excel: oklch(0.65 0.18 150);
+  --ema-file-code:  oklch(0.72 0.14 75);
+  --ema-file-text:  oklch(0.65 0.04 250);
+  --ema-file-other: oklch(0.60 0.04 250);
+
+  /* Info - 蓝 */
+  --ema-info:           oklch(0.68 0.13 240);
+  --ema-info-hover:     oklch(0.72 0.11 240);
+  --ema-info-muted:     oklch(0.68 0.13 240 / 0.18);
+  --ema-info-text:      oklch(0.88 0.08 240);
+
+  /* ── 文本(暗色:浅字深底)── */
+  --ema-text-primary:   oklch(0.94 0.01 280);
+  --ema-text-secondary: oklch(0.72 0.01 280);
+  --ema-text-tertiary:  oklch(0.52 0.01 280);
+  --ema-text-inverse:   oklch(0.10 0.01 280);
+  --ema-text-code:      oklch(0.85 0.04 280);
+
+  /* Turn 快速导航沿用主题语义色，亮暗主题无需维护第二套组件常量。 */
+  --ema-turn-rail-idle:   var(--ema-text-tertiary);
+  --ema-turn-rail-nearby: var(--ema-text-secondary);
+  --ema-turn-rail-active: var(--ema-primary);
+  --ema-turn-rail-current: var(--ema-primary-hover);
+
+  /* ── Border(暗色:浅描边,加浓 0.12 抄 AIRI 暗底 border 要更明显)── */
+  --ema-border:         rgba(255, 255, 255, 0.12);
+  --ema-border-hover:   rgba(255, 255, 255, 0.14);
+  --ema-border-focus:   var(--ema-primary);
+  --ema-border-strong:  rgba(255, 255, 255, 0.18);
+  --ema-border-error:   var(--ema-danger);
+
+  /* ── Glow(发光环,ChatInput 已删但留 token)── */
+  --ema-glow:        rgba(180, 160, 200, 0.15);
+  --ema-glow-strong: rgba(160, 130, 180, 0.35);
+
+  /* 桌宠窗口签名粉白呼吸光(App GlowBorder,跨主题一致的签名色,不随主题翻转) */
+  --ema-pet-glow:        rgba(255, 214, 230, 0.55);
+  --ema-pet-glow-bright: rgba(255, 192, 214, 0.85);
+
+  /* ── Scrollbar(暗色:跟 primary 联动,抄 AstrBot 滚动条 token 化)── */
+  --ema-scrollbar-thumb: oklch(0.72 0.18 var(--chromatic-hue, 200) / 0.50);
+  --ema-scrollbar-thumb-hover: oklch(0.72 0.18 var(--chromatic-hue, 200) / 0.72);
+}
+
+/* ── Light-mode overrides ──────────────────────────────────────────────────
+ * [data-theme="light"] on <html> by theme store。翻转 text/surface/border/
+ * mask/shadow/semantic-text,primary/secondary hue 不变。
+ */
+[data-theme="light"] {
+  /* Text: 翻深字浅底,字重重。tertiary 加深一档(L 0.48->0.42),亮色模式下
+     小线性图标 + 描述文字在浅背景上更清晰(对比度 ~3:1 -> ~3.5:1)。 */
+  --ema-text-primary:   oklch(0.15 0.01 280);
+  --ema-text-secondary: oklch(0.35 0.01 280);
+  --ema-text-tertiary:  oklch(0.42 0.01 280);
+  --ema-text-code:      oklch(0.22 0.04 280);
+
+  /* Surface: 不透明暖白(无透明,像 AstrBot 卡片)*/
+  --ema-surface-0:  rgba(240, 238, 245, 1);
+  --ema-surface-1:  rgba(250, 249, 255, 1);
+  --ema-surface-2:  rgba(235, 233, 242, 1);
+  --ema-surface-3:  rgba(225, 222, 235, 1);
+  --ema-surface-4:  rgba(255, 255, 255, 1);
+  --ema-bg:         var(--ema-surface-0);
+
+  /* Glass: 禁用(不透明 surface 不需 backdrop blur)*/
+  --ema-glass-weak:   none;
+  --ema-glass-base:   none;
+  --ema-glass-strong: none;
+
+  /* Border: 加深可见 */
+  --ema-border:         rgba(0, 0, 0, 0.10);
+  --ema-border-hover:   rgba(0, 0, 0, 0.18);
+  --ema-border-strong:  rgba(0, 0, 0, 0.24);
+
+  /* Shadows: 加深可见 */
+  --ema-shadow-1:  0 1px 3px rgba(0, 0, 0, 0.10),  0 0px 1px rgba(0, 0, 0, 0.06);
+  --ema-shadow-2:  0 2px 6px rgba(0, 0, 0, 0.12),  0 4px 12px rgba(0, 0, 0, 0.08);
+  --ema-shadow-3:  0 4px 12px rgba(0, 0, 0, 0.15), 0 8px 24px rgba(0, 0, 0, 0.10), 0 1px 3px rgba(0, 0, 0, 0.06);
+  --ema-shadow-focus:   0 0 0 3px oklch(0.65 0.18 var(--chromatic-hue, 200) / 0.25);
+  --ema-shadow-danger:  0 0 0 3px oklch(0.55 0.20 25  / 0.25);
+  --ema-shadow-soft: 0 8px 32px -12px rgba(0, 0, 0, 0.12);
+
+  /* Semantic: 翻 text & muted 背景可读 */
+  --ema-primary-text: oklch(0.25 0.14 var(--chromatic-hue, 200));
+  --ema-success-text: oklch(0.28 0.10 145);
+  --ema-warning-text: oklch(0.30 0.10 75);
+  --ema-danger-text:  oklch(0.28 0.12 25);
+  --ema-info-text:    oklch(0.28 0.08 240);
+
+  --ema-success-muted: oklch(0.55 0.14 145 / 0.18);
+  --ema-warning-muted: oklch(0.65 0.14 75  / 0.18);
+  --ema-danger-muted:  oklch(0.50 0.20 25  / 0.18);
+  --ema-info-muted:    oklch(0.55 0.11 240 / 0.18);
+  --ema-texture-pink: oklch(0.80 0.14 350);
+  --ema-violet-muted:  oklch(0.65 0.16 285 / 0.18);
+  --ema-violet-text:   oklch(0.28 0.14 285);
+  --ema-syntax-key:     oklch(0.45 0.18 255);
+  --ema-syntax-string:  oklch(0.40 0.15 145);
+  --ema-syntax-number:  oklch(0.50 0.16 55);
+  --ema-syntax-boolean: oklch(0.45 0.18 285);
+  --ema-syntax-comment: oklch(0.50 0.01 280);
+  --ema-syntax-prompt:  oklch(0.45 0.16 75);
+  --ema-primary-muted: oklch(0.65 0.16 var(--chromatic-hue, 200) / 0.18);
+
+  /* Mask: 浅遮罩 */
+  --ema-mask: rgba(0, 0, 0, 0.20);
+
+  /* Glow: 减弱 */
+  --ema-glow:        rgba(180, 160, 200, 0.15);
+  --ema-glow-strong: rgba(160, 130, 180, 0.35);
+
+  /* Scrollbar: 可见(跟 primary,暗色透明度低/亮色透明度高) */
+  --ema-scrollbar-thumb: oklch(0.50 0.18 var(--chromatic-hue, 200) / 0.40);
+  --ema-scrollbar-thumb-hover: oklch(0.50 0.18 var(--chromatic-hue, 200) / 0.64);
+}

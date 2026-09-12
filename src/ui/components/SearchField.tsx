@@ -57,7 +57,7 @@ export const SearchField = forwardRef<HTMLInputElement, SearchFieldProps>(
           disabled={disabled}
           autoComplete="off"
           spellCheck={false}
-          className="min-w-0 flex-1 appearance-none border-0 bg-transparent p-0 text-sm
+          className="min-w-0 flex-1 appearance-none border-0 bg-transparent p-0 font-mono text-sm
             text-[var(--ema-text-primary)] caret-[var(--ema-primary)] outline-none
             placeholder:text-[var(--ema-text-tertiary)]
             [&::-webkit-search-cancel-button]:appearance-none

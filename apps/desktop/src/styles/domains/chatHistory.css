@@ -1,0 +1,18 @@
+/* 聊天历史滚动边缘与用户消息内部块的专属样式。 */
+
+.ema-fade-mask-top::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 40px;
+  background: linear-gradient(var(--ema-bg), transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.ema-md-inline p {
+  display: inline;
+  margin: 0;
+}

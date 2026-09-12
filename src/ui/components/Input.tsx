@@ -26,7 +26,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         type={type}
         aria-invalid={error || undefined}
         className={cn(
-          'w-full rounded-md border bg-[var(--ema-surface-2)] text-[var(--ema-text-primary)] placeholder:text-[var(--ema-text-tertiary)]',
+          'w-full rounded-md border bg-[var(--ema-surface-2)] font-mono text-[var(--ema-text-primary)] placeholder:text-[var(--ema-text-tertiary)]',
           'transition-ema focus-ring',
           'disabled:cursor-not-allowed disabled:opacity-50',
           SIZE_CLASSES[inputSize],

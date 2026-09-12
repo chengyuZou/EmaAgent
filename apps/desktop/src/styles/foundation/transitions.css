@@ -1,0 +1,121 @@
+/* ── Transition utility classes ─────────────────────────────────────────────
+ * 宽度/高度/文本展开/折叠过渡 + collapsible grid + press 按压。
+ */
+
+/* 宽度过渡(Inspector 面板/sidebar 展开/收起)。配 w-0 ↔ w-72/w-[560px] + overflow-hidden */
+.ema-transition-width {
+  transition: width var(--ema-duration-panel) var(--ema-ease);
+}
+
+/* 高度过渡(BottomDock 展开/收起)。配 h-0 ↔ 具体高度 + overflow-hidden,拖拽中禁过渡跟手。 */
+.ema-transition-height {
+  transition: height var(--ema-duration-panel) var(--ema-ease);
+}
+
+/* 文本展开/收起(narrative 检索块"展开全文/收起全文")。配 max-h-[preview] ↔ max-h-[full]
+   + overflow-hidden。DOM 常驻,双向:展开高度增长+淡入,收起收缩+淡出。*/
+.ema-transition-text-expand {
+  transition: max-height var(--ema-duration-base) var(--ema-ease),
+              opacity    var(--ema-duration-base) var(--ema-ease);
+}
+
+/* 平滑折叠:grid-template-rows 0fr ↔ 1fr。grid-rows 用 280ms ease-out-expo(快出慢收),
+   opacity 180ms(其他用处用,SettingsPanel 折叠不设 opacity 避免先消失再收缩的僵硬感)。
+   内层 > * overflow:hidden 裁剪,内容随高度自然渐显/渐隐。*/
+.ema-collapsible {
+  display:    grid;
+  transition: grid-template-rows 280ms cubic-bezier(0.16, 1, 0.3, 1),
+              opacity             180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.ema-collapsible > * { overflow: hidden; }
+
+/* 按压:active scale-down,配合现有样式用 */
+.ema-press {
+  transition: transform var(--ema-duration-fast) var(--ema-ease);
+}
+.ema-press:active {
+  transform: scale(0.97);
+}
+
+/* 主题切换双向动画(亮↔暗)。applyMode 切 data-theme 前给 <html> 加此类,
+   触发全局 color/background/border 过渡,过渡完移除。只过渡颜色,不过渡
+   transform/layout(防性能问题 + 防动画错位)。*/
+.ema-theme-transition,
+.ema-theme-transition *,
+.ema-theme-transition *::before,
+.ema-theme-transition *::after {
+  transition: background-color var(--ema-duration-base) var(--ema-ease),
+              color            var(--ema-duration-base) var(--ema-ease),
+              border-color     var(--ema-duration-base) var(--ema-ease),
+              fill             var(--ema-duration-base) var(--ema-ease),
+              box-shadow       var(--ema-duration-base) var(--ema-ease) !important;
+}
+
+/* TurnRail 只响应指针邻域状态，不持续播放装饰动画。移动与离开会沿同一曲线双向回落。 */
+.ema-turn-rail-mark {
+  background-color: var(--ema-turn-rail-idle);
+  opacity: var(--ema-turn-rail-opacity, 0.44);
+  transform: scaleX(var(--ema-turn-rail-scale, 0.24));
+  transform-origin: left center;
+  transition:
+    transform var(--ema-duration-base) var(--ema-ease),
+    opacity var(--ema-duration-base) var(--ema-ease),
+    background-color var(--ema-duration-base) var(--ema-ease),
+    box-shadow var(--ema-duration-base) var(--ema-ease);
+}
+
+.ema-turn-rail-mark[data-emphasis='nearby'] {
+  background-color: var(--ema-turn-rail-nearby);
+}
+
+.ema-turn-rail-mark[data-emphasis='hovered'] {
+  background-color: var(--ema-turn-rail-active);
+  box-shadow: 0 0 8px var(--ema-primary-muted);
+}
+
+.ema-turn-rail-mark[data-emphasis='current'] {
+  background-color: var(--ema-turn-rail-current);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ema-turn-rail-mark {
+    transition-duration: 0ms;
+  }
+}
+
+/* 输入框上方两槽共享不可见中心轴；单槽移到中心，双槽分别回到左右半区。 */
+.ema-activity-strip-track {
+  position: relative;
+  height: 2rem;
+}
+
+.ema-activity-strip-slot {
+  position: absolute;
+  top: 0;
+  width: calc(50% - 0.25rem);
+  transition:
+    transform var(--ema-duration-panel) var(--ema-ease),
+    opacity var(--ema-duration-base) var(--ema-ease);
+}
+
+.ema-activity-strip-slot--todo { left: 0; }
+.ema-activity-strip-slot--diff { right: 0; }
+
+.ema-activity-strip-slot[data-visible='false'] {
+  pointer-events: none;
+  opacity: 0;
+}
+
+.ema-activity-strip-track[data-layout='todo-only'] .ema-activity-strip-slot--todo {
+  transform: translateX(calc(50% + 0.25rem));
+}
+
+.ema-activity-strip-track[data-layout='diff-only'] .ema-activity-strip-slot--diff {
+  transform: translateX(calc(-50% - 0.25rem));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ema-activity-strip-slot {
+    transition-duration: 0ms;
+  }
+}
