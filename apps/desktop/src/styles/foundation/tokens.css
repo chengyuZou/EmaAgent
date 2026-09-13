@@ -13,6 +13,8 @@
 
   /* Easing */
   --ema-ease:   cubic-bezier(0.23, 1, 0.32, 1);
+  /* 过冲回弹(easeOutBack):块/卡入场的"小跳动"用,比平 ease 多一拍俏皮。 */
+  --ema-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --ema-ease-in: cubic-bezier(0.4, 0, 1, 1);
   --ema-duration-fast:   120ms;
   --ema-duration-base:   200ms;

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type JSX } from 'react';
-import { Button, Callout, IconButton, SearchField, Spinner } from '@ema-agent/ui';
+import { Button, Callout, EmptyState, IconButton, SearchField, Skeleton, Spinner } from '@ema-agent/ui';
 import { memoryApi, type MemoryFileContent, type MemorySearchResult } from '../../api/memory.js';
 import { tauriBridge } from '../../lib/tauri-bridge.js';
 import { Markdown } from '../../markdown/renderer.js';
@@ -109,7 +109,7 @@ export function MemoryFilesTab(): JSX.Element {
   const showingSearch = searchResult !== null && query.trim().length > 0;
 
   return (
-    <div className="flex h-full min-h-[38rem] min-w-0 flex-1 flex-col gap-3">
+    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-3">
       <div className="shrink-0">
         <div className="mb-2">
           <h3 className="text-sm font-semibold text-[var(--ema-text-primary)]">Memory 文件</h3>
@@ -153,7 +153,7 @@ export function MemoryFilesTab(): JSX.Element {
             : 'grid-cols-[3.25rem_minmax(0,1fr)]'
         }`}
       >
-        <aside className="min-h-0 border-r border-[var(--ema-border)] bg-[var(--ema-surface-1)]">
+        <aside className="ema-memory-explorer-bg min-h-0 border-r border-[var(--ema-border)]">
           {treeOpen ? (
             <div className="flex h-full min-h-0 flex-col">
               <div className="flex h-12 shrink-0 items-center justify-between border-b border-[var(--ema-border)] px-3">
@@ -179,8 +179,8 @@ export function MemoryFilesTab(): JSX.Element {
 
               <div className="min-h-0 flex-1 overflow-y-auto p-2">
                 {loadingTree ? (
-                  <div className="flex justify-center py-10">
-                    <Spinner size="sm" />
+                  <div className="flex flex-col gap-1.5 px-1 pt-1">
+                    {[0, 1, 2, 3, 4].map(i => <Skeleton key={i} className="h-9 rounded-xl" />)}
                   </div>
                 ) : showingSearch ? (
                   <SearchResults
@@ -228,7 +228,7 @@ export function MemoryFilesTab(): JSX.Element {
           )}
         </aside>
 
-        <main className="flex min-h-0 min-w-0 flex-col bg-[var(--ema-surface-1)]">
+        <main className="ema-memory-reader-bg flex min-h-0 min-w-0 flex-col bg-[var(--ema-surface-1)]">
           <div className="flex h-12 shrink-0 items-center gap-2 border-b border-[var(--ema-border)] px-4">
             <div className="min-w-0 flex-1">
               <p className="truncate font-mono text-xs text-[var(--ema-text-secondary)]">
@@ -250,19 +250,12 @@ export function MemoryFilesTab(): JSX.Element {
           </div>
 
           {selected === null ? (
-            <div className="flex min-h-0 flex-1 items-center justify-center p-6">
-              <div className="flex max-w-sm flex-col items-center gap-3 text-center">
-                <div className="flex size-14 items-center justify-center rounded-2xl bg-[var(--ema-surface-2)]">
-                  <span className="i-lucide:file-search-2 text-2xl text-[var(--ema-text-tertiary)] opacity-70" aria-hidden />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-[var(--ema-text-secondary)]">还没有打开任何文件</p>
-                  <p className="mt-1 text-xs text-[var(--ema-text-tertiary)]">
-                    从左侧选择文件，或先在上方搜索 Memory 内容。
-                  </p>
-                </div>
-              </div>
-            </div>
+            <EmptyState
+              icon="i-lucide:file-search-2"
+              title="还没有打开任何文件"
+              hint="从左侧选择文件,或先在上方搜索 Memory 内容"
+              className="min-h-0 flex-1"
+            />
           ) : document === null ? (
             <div className="flex min-h-0 flex-1 items-center justify-center">
               <Spinner size="sm" />
@@ -288,6 +281,7 @@ export function MemoryFilesTab(): JSX.Element {
   );
 }
 
+
 function TreeSection(props: {
   title: string;
   nodes: readonly TreeNode[];
@@ -306,27 +300,34 @@ function TreeSection(props: {
         <p className="px-2 py-2 text-[11px] text-[var(--ema-text-tertiary)]">暂无文件</p>
       ) : (
         <div className="space-y-0.5">
-          {props.nodes.map(node => (
+          {props.nodes.map((node, nodeIndex) => (
             node.kind === 'directory' ? (
               <div
                 key={`directory:${node.path}`}
-                className="flex h-8 items-center gap-1.5 rounded-lg pr-3 text-xs text-[var(--ema-text-tertiary)]"
-                style={{ paddingLeft: `${10 + node.depth * 14}px` }}
+                className="flex h-8 items-center gap-1.5 rounded-lg pr-3 text-xs font-medium text-[var(--ema-text-secondary)]"
+                style={{
+                  paddingLeft: `${10 + node.depth * 14}px`,
+                  ...(node.depth > 0 ? treeGuideStyle(node.depth) : {}),
+                }}
               >
                 <span className="i-lucide:chevron-down shrink-0 text-[10px] opacity-60" aria-hidden />
-                <span className="i-lucide:folder shrink-0 opacity-70" aria-hidden />
+                <span className="i-lucide:folder shrink-0 text-[var(--ema-warning)]" aria-hidden />
                 <span className="truncate">{node.name}</span>
               </div>
             ) : (
               <button
                 key={node.path}
                 type="button"
-                className={`flex h-9 w-full items-center gap-1.5 rounded-xl pr-3 text-left text-xs transition-colors ${
+                className={`ema-stagger-in flex h-9 w-full items-center gap-1.5 rounded-xl pr-3 text-left text-xs transition-colors ${
                   props.selected === node.path
-                    ? 'bg-[var(--ema-primary-muted)] text-[var(--ema-primary-text)]'
+                    ? 'ema-memory-row-selected text-[var(--ema-primary-text)] font-medium'
                     : 'text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-2)]'
                 }`}
-                style={{ paddingLeft: `${10 + node.depth * 14}px` }}
+                style={{
+                  paddingLeft: `${10 + node.depth * 14}px`,
+                  '--stagger-i': nodeIndex,
+                  ...(node.depth > 0 ? treeGuideStyle(node.depth) : {}),
+                } as React.CSSProperties}
                 onClick={() => props.onOpen(node.path)}
               >
                 <span className="i-lucide:file-text shrink-0 opacity-70" aria-hidden />
@@ -362,11 +363,12 @@ function SearchResults(props: {
           <button
             key={`${match.path}:${match.matchLineNumber}:${index}`}
             type="button"
-            className={`w-full rounded-xl border px-3 py-2 text-left transition-colors ${
+            className={`ema-stagger-in w-full rounded-xl border px-3 py-2 text-left transition-colors ${
               active
                 ? 'border-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
                 : 'border-transparent bg-[var(--ema-surface-1)] hover:border-[var(--ema-border)] hover:bg-[var(--ema-surface-2)]'
             }`}
+            style={{ '--stagger-i': index } as React.CSSProperties}
             onClick={() => props.onOpen(match.path)}
           >
             <p className="truncate text-xs font-semibold text-[var(--ema-text-secondary)]">
@@ -444,4 +446,14 @@ function buildTrackTree(files: readonly string[], track: MemoryTrack): TreeNode[
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
+}
+
+/** 缩进参考线:在 (depth-1) 层父级三角的正下方画 1px 竖线,层级一眼清。 */
+function treeGuideStyle(depth: number): Record<string, string> {
+  return {
+    backgroundImage: 'linear-gradient(to right, var(--ema-border) 1px, transparent 1px)',
+    backgroundRepeat: 'no-repeat',
+    backgroundPosition: `${(depth - 1) * 14 + 5}px 0`,
+    backgroundSize: '1px 100%',
+  };
 }

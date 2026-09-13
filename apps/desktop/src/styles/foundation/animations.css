@@ -43,6 +43,11 @@
 .ema-pop-in {
   animation: ema-pop-in 0.22s var(--ema-ease) both;
 }
+/* 弹簧 pop:scale 0.7→1 带回弹,块级入场的小跳动;支持 --stagger-i 波纹。 */
+.ema-pop-in-spring {
+  animation: ema-pop-in-spring 0.38s var(--ema-ease-spring) both;
+  animation-delay: calc(var(--stagger-i, 0) * 40ms);
+}
 .ema-slide-in-left {
   animation: ema-slide-in-left var(--ema-duration-slow) var(--ema-ease) both;
 }

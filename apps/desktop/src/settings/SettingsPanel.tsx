@@ -18,7 +18,9 @@ import { KnowledgeBaseTab } from './knowledge/KnowledgeBaseTab.js';
 import { McpMarketPage } from './mcp/McpMarketPage.js';
 import { McpEnvironmentPage } from './mcp/McpEnvironmentPage.js';
 import { McpServersPage } from './mcp/McpServersPage.js';
-import { MemoryTab } from './memory/MemoryTab.js';
+import { MemoryFilesTab } from './memory/MemoryFilesTab.js';
+import { MemoryJobsTab } from './memory/MemoryJobsTab.js';
+import { MemoryOverviewTab } from './memory/MemoryOverviewTab.js';
 import { ParameterSettings } from './parameters/ParameterSettings.js';
 import { BindingsTab } from './providers/BindingsTab.js';
 import { ProvidersTab } from './providers/ProvidersTab.js';
@@ -32,7 +34,7 @@ type SettingsPageId =
   | 'characters'
   | 'skills'
   | 'mcp'
-  | 'memory-files'
+  | 'memory'
   | 'knowledge-base'
   | 'storage'
   | 'security'
@@ -41,6 +43,9 @@ type SettingsPageId =
 
 /** 子页 id: 一级页面 id 加子页后缀。 */
 type SettingsSubPageId =
+  | 'memory-overview'
+  | 'memory-files'
+  | 'memory-jobs'
   | 'skills-installed'
   | 'skills-market'
   | 'skills-settings'
@@ -67,6 +72,12 @@ const SKILLS_SUB_PAGES: readonly SettingsSubPage[] = [
   { id: 'skills-settings', label: '设置' },
 ];
 
+const MEMORY_SUB_PAGES: readonly SettingsSubPage[] = [
+  { id: 'memory-overview', label: '概览' },
+  { id: 'memory-files', label: '文件' },
+  { id: 'memory-jobs', label: '后台任务' },
+];
+
 const MCP_SUB_PAGES: readonly SettingsSubPage[] = [
   { id: 'mcp-servers', label: '已配置' },
   { id: 'mcp-market', label: 'MCP 市场' },
@@ -79,7 +90,7 @@ const SETTINGS_PAGES: readonly SettingsPage[] = [
   { id: 'characters', label: '角色卡', icon: 'i-lucide:user-round' },
   { id: 'skills', label: '技能库', icon: 'i-lucide:blocks', subPages: SKILLS_SUB_PAGES },
   { id: 'mcp', label: 'MCP 服务器', icon: 'i-lucide:plug', subPages: MCP_SUB_PAGES },
-  { id: 'memory-files', label: 'Memory 文件', icon: 'i-lucide:library' },
+  { id: 'memory', label: 'Memory', icon: 'i-lucide:library', subPages: MEMORY_SUB_PAGES },
   { id: 'knowledge-base', label: '知识库', icon: 'i-lucide:database' },
   { id: 'storage', label: '存储位置', icon: 'i-lucide:hard-drive', fullHeight: true },
   { id: 'security', label: '安全', icon: 'i-lucide:shield-check' },
@@ -241,7 +252,10 @@ function SettingsContent({ id }: { id: ActiveNav }): JSX.Element {
     case 'mcp': return <McpServersPage />;
     case 'mcp-market': return <McpMarketPage />;
     case 'mcp-environment': return <McpEnvironmentPage />;
-    case 'memory-files': return <MemoryTab />;
+    case 'memory':
+    case 'memory-overview': return <MemoryOverviewTab />;
+    case 'memory-files': return <MemoryFilesTab />;
+    case 'memory-jobs': return <MemoryJobsTab />;
     case 'knowledge-base': return <KnowledgeBaseTab />;
     case 'storage': return <StorageTab />;
     case 'security': return <SecurityTab />;

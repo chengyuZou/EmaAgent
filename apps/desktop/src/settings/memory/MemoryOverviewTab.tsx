@@ -37,7 +37,7 @@ export function MemoryOverviewTab(): JSX.Element {
         <Card
           variant="glass"
           padding="md"
-          className="ema-card-decorate ema-card-decorate--starfield ema-stagger-in transition-all hover:border-[var(--ema-primary)] hover:shadow-[var(--ema-shadow-2)]"
+          className="ema-card-decorate ema-card-decorate--starfield ema-stagger-in transition-all hover:-translate-y-0.5 hover:border-[var(--ema-primary)] hover:shadow-[var(--ema-shadow-2)]"
         >
           <div className="mb-3 flex items-center gap-2">
             <span className="i-lucide:database text-xl text-[var(--ema-primary)]" aria-hidden />
@@ -115,9 +115,9 @@ function TrackCard(props: {
 }
 
 function formatBytes(bytes: number): string {
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KiB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MiB`;
-  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GiB`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
 }
 
 function errorMessage(error: unknown, fallback: string): string {

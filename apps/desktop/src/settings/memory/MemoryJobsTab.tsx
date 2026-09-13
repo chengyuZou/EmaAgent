@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type JSX } from 'react';
-import { Badge, Button, Callout, Card, Spinner } from '@ema-agent/ui';
+import { Badge, Button, Callout, Card, Skeleton, Spinner } from '@ema-agent/ui';
 import { memoryApi, type MemoryJob } from '../../api/memory.js';
 import {
   JOB_KIND_LABEL,
@@ -103,17 +103,17 @@ export function MemoryJobsTab(): JSX.Element {
       {error && <Callout variant="danger">{error}</Callout>}
 
       {!jobs && loading && (
-        <div className="flex justify-center py-12">
-          <Spinner size="md" />
+        <div className="flex flex-col gap-2">
+          {[0, 1, 2].map(i => <Skeleton key={i} className="h-12 rounded-xl" />)}
         </div>
       )}
 
       {failed.length > 0 && (
-        <Callout variant="danger">
+        <Callout variant="danger" className="ema-pop-in-spring">
           <p className="font-semibold">有 {failed.length} 个任务需要注意</p>
           <div className="mt-2 flex flex-col gap-2">
-            {failed.map(job => (
-              <JobRow key={job.id} job={job} />
+            {failed.map((job, i) => (
+              <JobRow key={job.id} job={job} index={i} />
             ))}
           </div>
         </Callout>
@@ -128,7 +128,7 @@ export function MemoryJobsTab(): JSX.Element {
           <Card
             variant="glass"
             padding="md"
-            className="ema-card-decorate ema-card-decorate--circuit"
+            className="ema-card-decorate ema-card-decorate--circuit ema-pop-in-spring"
           >
             <p className="text-center text-xs text-[var(--ema-text-tertiary)]">
               当前没有排队或运行中的任务。
@@ -136,8 +136,8 @@ export function MemoryJobsTab(): JSX.Element {
           </Card>
         ) : (
           <div className="flex flex-col gap-2">
-            {active.map(job => (
-              <JobRow key={job.id} job={job} />
+            {active.map((job, i) => (
+              <JobRow key={job.id} job={job} index={i} />
             ))}
           </div>
         )}
@@ -159,8 +159,8 @@ export function MemoryJobsTab(): JSX.Element {
             </p>
           ) : (
             <div className="flex max-h-96 flex-col gap-2 overflow-y-auto pr-1">
-              {history.map(job => (
-                <JobRow key={job.id} job={job} />
+              {history.map((job, i) => (
+                <JobRow key={job.id} job={job} index={i} />
               ))}
             </div>
           )}
@@ -170,14 +170,15 @@ export function MemoryJobsTab(): JSX.Element {
   );
 }
 
-function JobRow({ job }: { job: MemoryJob }): JSX.Element {
+function JobRow({ job, index = 0 }: { job: MemoryJob; index?: number }): JSX.Element {
   const track = resolveJobTrack(job);
 
   return (
     <Card
       variant="glass"
       padding="sm"
-      className="ema-card-decorate ema-card-decorate--circuit ema-stagger-in"
+      className="ema-card-decorate ema-card-decorate--circuit ema-pop-in-spring"
+      style={{ '--stagger-i': index } as React.CSSProperties}
     >
       <div className="flex flex-wrap items-center gap-2 text-xs">
         {track && <TrackBadge track={track} />}
@@ -208,17 +209,13 @@ function JobRow({ job }: { job: MemoryJob }): JSX.Element {
 }
 
 function TrackBadge({ track }: { track: JobTrack }): JSX.Element {
-  if (track === 'work') {
-    return (
-      <span className="inline-flex h-5 items-center rounded-md border border-sky-200/70 bg-sky-50/70 px-2 text-[10px] font-semibold uppercase tracking-wide text-sky-700">
-        Work
-      </span>
-    );
-  }
-
+  // 语义 token 双主题自适应;硬编码 sky/violet 浅色系在暗色下会瞎。
+  const tones = track === 'work'
+    ? 'border-[var(--ema-info)]/30 bg-[var(--ema-info-muted)] text-[var(--ema-info-text)]'
+    : 'border-[var(--ema-violet)]/30 bg-[var(--ema-violet-muted)] text-[var(--ema-violet-text)]';
   return (
-    <span className="inline-flex h-5 items-center rounded-md border border-violet-200/70 bg-violet-50/70 px-2 text-[10px] font-semibold uppercase tracking-wide text-violet-700">
-      Relationship
+    <span className={`inline-flex h-5 items-center rounded-md border px-2 text-[10px] font-semibold uppercase tracking-wide ${tones}`}>
+      {track === 'work' ? 'Work' : 'Relationship'}
     </span>
   );
 }

@@ -1,0 +1,38 @@
+/* Memory 文件页:文件树缩进参考线、选中行渐变高亮、读者区点阵纹理。 */
+
+/* 选中行:双色 muted 渐变高亮(Sol 素材的 token 版,左实右透)。 */
+.ema-memory-row-selected {
+  background: linear-gradient(
+    90deg,
+    var(--ema-primary-muted),
+    color-mix(in srgb, var(--ema-primary-muted) 45%, transparent)
+  );
+}
+
+/* 文件树面板:淡彩纵向渐变底(面板有气色,不是死白)。 */
+.ema-memory-explorer-bg {
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--ema-primary) 5%, var(--ema-surface-1)) 0%,
+    var(--ema-surface-1) 55%
+  );
+}
+
+/* 读者面板:顶部淡点阵(38% 高度内渐隐完,素材同款克制) + 右上径向光晕。
+   纹理在伪元素背景层:mask 只咬纹理不咬正文,空态/文档态都吃得到。 */
+.ema-memory-reader-bg {
+  position: relative;
+}
+.ema-memory-reader-bg::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(circle at 92% 8%, color-mix(in srgb, var(--ema-primary) 7%, transparent), transparent 30%),
+    radial-gradient(color-mix(in srgb, var(--ema-text-tertiary) 22%, transparent) 0.7px, transparent 1.2px);
+  background-size: 100% 100%, 18px 18px;
+  mask-image: linear-gradient(to bottom, black 0%, transparent 38%);
+  -webkit-mask-image: linear-gradient(to bottom, black 0%, transparent 38%);
+}
+
