@@ -23,7 +23,6 @@ export function SessionPage({ sessionId }: { sessionId: string }): JSX.Element {
   const rightPanelPercent = useSessionSidePanel((state) => state.rightPanelPercent);
   const setRightPanelPercent = useSessionSidePanel((state) => state.setRightPanelPercent);
   const setFullWidth = useSessionSidePanel((state) => state.setFullWidth);
-  const openTab = useSessionSidePanel((state) => state.openTab);
   const [floatingHistoryOpen, setFloatingHistoryOpen] = useState(false);
 
   return (
@@ -62,9 +61,7 @@ export function SessionPage({ sessionId }: { sessionId: string }): JSX.Element {
             className="flex min-w-0 flex-col"
           >
             <SessionHistory sessionId={sessionId} />
-            <ChatActivityStrip
-              onOpenReview={() => openTab(sessionId, { id: 'review', kind: 'review' })}
-            />
+            <ChatActivityStrip />
             <ChatInput />
             <StatusBar sessionId={sessionId} />
           </Panel>

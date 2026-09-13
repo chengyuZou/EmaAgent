@@ -318,9 +318,10 @@ function TreeSection(props: {
               <button
                 key={node.path}
                 type="button"
-                className={`ema-stagger-in flex h-9 w-full items-center gap-1.5 rounded-xl pr-3 text-left text-xs transition-colors ${
+                data-selected={props.selected === node.path || undefined}
+                className={`ema-selectable ema-stagger-in flex h-9 w-full items-center gap-1.5 rounded-xl pr-3 text-left text-xs transition-colors ${
                   props.selected === node.path
-                    ? 'ema-memory-row-selected text-[var(--ema-primary-text)] font-medium'
+                    ? ''
                     : 'text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-2)]'
                 }`}
                 style={{

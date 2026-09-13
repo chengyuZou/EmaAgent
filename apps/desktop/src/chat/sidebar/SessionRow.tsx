@@ -1,13 +1,12 @@
 // 侧栏单条会话行:状态点、标题、时间与右键菜单操作,含删除/重命名确认。
 import { useState, type JSX } from 'react';
-import { Button, ConfirmDialog, DropdownMenu, IconButton, Input, PromptDialog, type MenuItem } from '@ema-agent/ui';
+import { Button, ConfirmDialog, DropdownMenu, PromptDialog, type MenuItem } from '@ema-agent/ui';
 import type { SessionListItem } from '../../api/sessions.js';
 import type { AgentSessionState } from '../../stores/agent.js';
 import { useChatWorkspace } from '../state/chatWorkspace.js';
 import { useSessionStore } from '../../stores/session.js';
 import { runWithToast } from '../../lib/toast.js';
-import { tauriBridge } from '../../lib/tauri-bridge.js';
-import { showToast } from '../../lib/toast.js';
+import { SessionCwdDialog } from '../session/SessionCwdDialog.js';
 
 type StatusDot = { cls: string } | null;
 
@@ -35,21 +34,15 @@ export function formatRelativeTime(updatedAt: number): string {
   return `${Math.floor(diff / 2_592_000_000)}月前`;
 }
 
-export function projectLabelFor(session: SessionListItem): string {
-  if (!session.workspaceRoot) return '对话';
-  const parts = session.workspaceRoot.replaceAll('\\', '/').split('/').filter(Boolean);
-  return parts.at(-1) ?? session.workspaceRoot;
-}
-
 export function SessionRow({ session, isActive, agentSessions, nested = false }: {
   session:   SessionListItem;
   isActive:  boolean;
   agentSessions: ReadonlyMap<string, AgentSessionState>;
   nested?:   boolean;
 }): JSX.Element {
-  const [showWorkspace, setShowWorkspace] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(false);
   const [promptRename, setPromptRename] = useState(false);
+  const [cwdOpen, setCwdOpen] = useState(false);
   const dot = getStatusDot(session, agentSessions);
   const agentSession = agentSessions.get(session.id);
   const isRunning = agentSession?.execution != null;
@@ -69,6 +62,12 @@ export function SessionRow({ session, isActive, agentSessions, nested = false }:
       onSelect: () => setPromptRename(true),
     },
     {
+      kind: 'item',
+      label: '修改执行目录',
+      icon: 'i-lucide:folder-open',
+      onSelect: () => setCwdOpen(true),
+    },
+    {
       kind:     'item',
       label:    'Fork',
       icon:     'i-lucide:git-fork',
@@ -76,12 +75,6 @@ export function SessionRow({ session, isActive, agentSessions, nested = false }:
         const newId = await useSessionStore.getState().forkSession(session.id);
         void useChatWorkspace.getState().viewSession(newId);
       })(),
-    },
-    {
-      kind:     'item',
-      label:    '工作区目录',
-      icon:     'i-lucide:folder',
-      onSelect: () => setShowWorkspace(true),
     },
     {
       kind:     'item',
@@ -177,12 +170,6 @@ export function SessionRow({ session, isActive, agentSessions, nested = false }:
           align="start"
         />
 
-        {showWorkspace && (
-          <>
-            <div className="fixed inset-0 z-50" onClick={() => setShowWorkspace(false)} />
-            <WorkspacePicker session={session} onClose={() => setShowWorkspace(false)} />
-          </>
-        )}
       </div>
 
       <ConfirmDialog
@@ -210,79 +197,7 @@ export function SessionRow({ session, isActive, agentSessions, nested = false }:
         }}
         onCancel={() => setPromptRename(false)}
       />
-    </div>
-  );
-}
-
-function WorkspacePicker({
-  session,
-  onClose,
-}: {
-  session: SessionListItem;
-  onClose(): void;
-}): JSX.Element {
-  const [workspaceRoot, setWorkspaceRoot] = useState(session.workspaceRoot ?? '');
-  const [saving, setSaving] = useState(false);
-  async function pick(): Promise<void> {
-    const chosen = await tauriBridge.openFileDialog({ directory: true });
-    if (chosen) setWorkspaceRoot(chosen);
-  }
-
-  async function save(): Promise<void> {
-    setSaving(true);
-    try {
-      await useSessionStore.getState().setWorkspaceRoot(
-        session.id,
-        workspaceRoot.trim() || null,
-      );
-      onClose();
-    } catch (error) {
-      showToast(
-        error instanceof Error ? error.message : '工作区设置失败',
-        { variant: 'danger' },
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div
-      className="ema-slide-up absolute left-full top-0 z-50 ml-1 w-72 rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-4)] p-3 shadow-[var(--ema-shadow-2)]"
-      onClick={(event) => event.stopPropagation()}
-    >
-      <p className="mb-2 text-xs font-medium text-[var(--ema-text-secondary)]">
-        工作区目录
-      </p>
-      <div className="mb-3 flex gap-1">
-        <Input
-          inputSize="sm"
-          className="font-mono"
-          placeholder="D:\\path\\to\\project"
-          value={workspaceRoot}
-          onChange={(event) => setWorkspaceRoot(event.target.value)}
-          autoFocus
-        />
-        <IconButton
-          size="sm"
-          label="浏览"
-          icon="i-lucide:folder-open"
-          onClick={() => void pick()}
-        />
-      </div>
-      <div className="flex gap-2">
-        <Button
-          variant="primary"
-          size="sm"
-          disabled={saving}
-          onClick={() => void save()}
-        >
-          {saving ? '保存中…' : '保存'}
-        </Button>
-        <Button variant="ghost" size="sm" onClick={onClose}>
-          取消
-        </Button>
-      </div>
+      <SessionCwdDialog sessionId={session.id} open={cwdOpen} onOpenChange={setCwdOpen} />
     </div>
   );
 }

@@ -24,12 +24,12 @@ function matcherFor(ruleContent: string): Ignore {
  * - '//abs/path/**'：规则与候选统一归一为无冒号 POSIX 盘符形（X:/ → /x/，
  *   候选再剥前导 '/' 折算为相对路径——
  *   ignore 包只接受相对路径，Windows 盘符直接喂库必炸；
- * - './src/**' 或 'src/**'：候选先折算为相对 workspaceRoot 的路径；无 workspaceRoot 不命中。
+ * - './src/**' 或 'src/**'：候选先折算为相对 cwd 的路径；无 cwd 不命中。
  */
 export function matchPathRule(
   ruleContent: string,
   candidatePath: string,
-  workspaceRoot?: string,
+  cwd?: string,
 ): boolean {
   if (ruleContent.startsWith('//')) {
     const absoluteRule = toPosixDrive(ruleContent.slice(1).replace(/^\/+/, ''));
@@ -37,8 +37,8 @@ export function matchPathRule(
     return matcherFor(absoluteRule).ignores(target);
   }
 
-  if (!workspaceRoot) return false;
-  const posixRoot = toPosixDrive(workspaceRoot).replace(/\/+$/, '');
+  if (!cwd) return false;
+  const posixRoot = toPosixDrive(cwd).replace(/\/+$/, '');
   const posixCandidate = toPosixDrive(candidatePath);
   if (posixCandidate !== posixRoot && !posixCandidate.startsWith(posixRoot + '/')) {
     return false;

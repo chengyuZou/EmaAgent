@@ -37,7 +37,7 @@ type PdfReadInput = z.infer<typeof inputSchema>;
 
 /** PdfReadTool 的窄 Context：工作区根 + 可选视觉模型; 取消与身份走 ToolInvocation。 */
 interface PdfReadToolContext {
-  workspaceRoot: string;
+  cwd: string;
   vision?: CallVision;
 }
 
@@ -72,11 +72,11 @@ export const PdfReadTool = buildTool<PdfReadInput, PdfReadResult, PdfReadToolCon
   getToolUseSummary: (input) => input.file_path,
 
   validateContext(context) {
-    if (!context.workspaceRoot) {
+    if (!context.cwd) {
       return contextFail('PDF 读取工具未装配工作区。');
     }
     // vision 可选: 缺省时 PDF 只读文本层(扫描页/图表占位 + warning), 不阻断。
-    return contextOk({ workspaceRoot: context.workspaceRoot, vision: context.vision });
+    return contextOk({ cwd: context.cwd, vision: context.vision });
   },
 
   // 路径形状在 Permission 之前校验; 文件存在/签名/体积留在 execute 用 fs 复查。
@@ -90,8 +90,8 @@ export const PdfReadTool = buildTool<PdfReadInput, PdfReadResult, PdfReadToolCon
   checkPermissions: async (input, context, permissionContext) =>
     checkReadPathPermission({
       toolName: BuiltinTools.PdfRead.name,
-      path: path.resolve(context.workspaceRoot, input.file_path),
-      workspaceRoot: context.workspaceRoot,
+      path: path.resolve(context.cwd, input.file_path),
+      cwd: context.cwd,
       permissionContext,
     }),
 
@@ -100,7 +100,7 @@ export const PdfReadTool = buildTool<PdfReadInput, PdfReadResult, PdfReadToolCon
     context: PdfReadToolContext,
     invocation: ToolInvocation,
   ): Promise<PdfReadResult> {
-    const filePath = path.resolve(context.workspaceRoot, input.file_path);
+    const filePath = path.resolve(context.cwd, input.file_path);
     invocation.signal.throwIfAborted();
 
     const fileStat = await stat(filePath);

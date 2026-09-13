@@ -9,7 +9,7 @@ export interface GitChangeStats {
 
 export interface GitSummaryOk {
   readonly capability: 'ok';
-  /** 仓库根目录(.git 所在层),可能与传入的 workspaceRoot 不同。 */
+  /** 仓库根目录(.git 所在层),可能与传入的 cwd 不同。 */
   readonly repoRoot: string;
   /** 当前分支名;detached HEAD 时为 null,由 headShortSha 表达。 */
   readonly branch: string | null;

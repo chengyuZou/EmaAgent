@@ -8,6 +8,7 @@ import { contentHashOf, type ToolInvocation } from '@ema-agent/tools';
 import { BuiltinTools } from '../BuiltinToolIdentity.js';
 import { FileWriteTool } from '../tools/FileWriteTool/FileWriteTool.js';
 import { atomicTempPrefix, atomicWriteUtf8 } from '../tools/FileWriteTool/atomicWrite.js';
+import { checkWritePathPermission } from '../tools/shared/pathPermission.js';
 import {
   cleanupInterruptedFileWriteTemps,
   type InterruptedFileWriteCall,
@@ -31,10 +32,10 @@ function makeInvocation(signal?: AbortSignal): ToolInvocation {
   };
 }
 
-function makeContext(workspaceRoot = '') {
+function makeContext(cwd = '') {
   return {
     readFileState: new Map(),
-    workspaceRoot,
+    cwd,
   };
 }
 
@@ -47,6 +48,35 @@ async function write(
 }
 
 describe('FileWriteTool — 新建与覆盖', () => {
+  it('默认工作目录可写，但同级 data 仍受保护', () => {
+    const workspace = path.join(os.homedir(), '.ema-agent', 'workspace');
+    const permissionContext = {
+      mode: 'acceptEdits' as const,
+      alwaysAllowRules: {},
+      alwaysDenyRules: {},
+      alwaysAskRules: {},
+      workspaceRoots: [workspace],
+    };
+    const base = {
+      toolName: 'FileWrite',
+      cwd: workspace,
+      permissionContext,
+    };
+
+    expect(checkWritePathPermission({
+      ...base,
+      path: path.join(workspace, 'notes.txt'),
+    }).behavior).toBe('allow');
+    expect(checkWritePathPermission({
+      ...base,
+      path: path.join(os.homedir(), '.ema-agent', 'data', 'notes.txt'),
+    }).behavior).toBe('ask');
+    expect(checkWritePathPermission({
+      ...base,
+      path: path.join(workspace, '.ema-agent', 'notes.txt'),
+    }).behavior).toBe('ask');
+  });
+
   it('新建文件并返回完整事实(created: originalFile=null, patch 为空)', async () => {
     const directory = makeTempDir();
     const target = path.join(directory, 'nested', 'answer.txt');

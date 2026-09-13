@@ -102,7 +102,7 @@ export interface Scratchpad {
  */
 export interface ToolUseContext {
   /** 空串表示本次执行没有工作区；文件与 Shell 工具不会进入 ToolPool。 */
-  readonly workspaceRoot: string;
+  readonly cwd: string;
   /**
    * 宿主平台,装配时由 process.platform 冻结。
    * 说明书写平台差异文案(Bash 语义、路径写法、信号)只准从这里取,不得自行探测。

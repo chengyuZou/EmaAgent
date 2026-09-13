@@ -41,13 +41,10 @@ export function pathInWorkingDir(targetPath: string, workingDir: string): boolea
  */
 export function pathInAnyWorkingDir(
   targetPath: string,
-  context:    { readonly workspaceRoot?: string },
+  context:    { readonly workspaceRoots: readonly string[] },
 ): boolean {
-  // 缺少工作区必须直接拒绝，不能让 path.resolve('') 把宿主 cwd 变成隐式授权目录。
-  if (!context.workspaceRoot) return false;
-
   const allPaths = getPathsForPermissionCheck(targetPath);
-  const wd       = context.workspaceRoot;
-
-  return allPaths.every(p => pathInWorkingDir(p, wd));
+  return allPaths.every((pathToCheck) =>
+    context.workspaceRoots.some((root) => pathInWorkingDir(pathToCheck, root)),
+  );
 }

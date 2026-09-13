@@ -61,13 +61,15 @@ interface ToolPermissionContext {
   alwaysAllowRules: ToolPermissionRulesBySource;  // 原始规则字符串桶
   alwaysDenyRules: ToolPermissionRulesBySource;
   alwaysAskRules: ToolPermissionRulesBySource;
-  workspaceRoot?: string;
+  workspaceRoots: readonly string[];
 }
 // ToolPermissionRulesBySource = Partial<Record<'userSettings'|'projectSettings'|'session', readonly string[]>>
 // source 优先级：session > projectSettings > userSettings（具体先生效）
 // 调用身份（sessionId/turnId/toolCallId）不在这里——Tool 自检不需要；
 // 批准卡身份由执行链装配进 PermissionRequest。
 ```
+
+`workspaceRoots` 在每根 Turn 开始时冻结：项目有文件夹时严格等于当前 `folders[].path`，不因为 Session 的旧 `cwd` 曾在项目里就加回去；无项目或空项目时为 `[session.cwd]`。`cwd` 另供相对路径解析和路径规则匹配，不等于自动授权。
 
 `PermissionResult` 四种返回：
 
@@ -88,7 +90,7 @@ interface ToolPermissionContext {
 | `matchesWholeTool(ruleValue, toolName)` | 整体 Tool 规则判定（ruleContent 空 + 同名） |
 | `matchShellRule(ruleContent, command)` | shell 命令 × 规则（exact / `npm:*` 前缀 / wildcard） |
 | `matchWildcardPattern(pattern, command)` | wildcard 底层（`git *` 兼容裸 `git`） |
-| `matchPathRule(ruleContent, candidatePath, workspaceRoot?)` | 路径 × gitignore 规则（`'./src/**'`、`'//abs/path/**'`） |
+| `matchPathRule(ruleContent, candidatePath, cwd?)` | 路径 × gitignore 规则（`'./src/**'`、`'//abs/path/**'`） |
 
 内容级规则匹配的标准姿势：从桶里取 `alwaysAllowRules` 等原始字符串 → `permissionRuleValueFromString` 解析出 `ruleContent` → 喂对应家族的 matcher。
 

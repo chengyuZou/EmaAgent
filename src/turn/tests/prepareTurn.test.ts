@@ -39,7 +39,7 @@ const TURN: Turn = {
 function fakeSession(overrides: Record<string, unknown> = {}) {
   return {
     id: 's1',
-    workspaceRoot: '/w',
+    cwd: '/w',
     projectId: 'p1',
     providerId: 'sess-p',
     modelId: 'sess-m',
@@ -54,7 +54,8 @@ function makeDeps(overrides: Partial<PrepareTurnDeps> = {}): PrepareTurnDeps {
   return {
     sessions: {
       getSession: () => fakeSession(),
-    } as unknown as Pick<SessionStore, 'getSession'>,
+      listProjectFolders: () => [{ path: '/w' }],
+    } as unknown as Pick<SessionStore, 'getSession' | 'listProjectFolders'>,
     providers: {
       resolveConnection: () => ({ protocol: 'openai-chat', baseUrl: 'http://localhost', apiKey: 'k' }),
     } as unknown as Providers,
@@ -113,12 +114,12 @@ function makeRuntime(start: StartTurn) {
 }
 
 describe('prepareTurn', () => {
-  it('将 Session 的 projectId 交给技能目录装载，工作区仍保留主文件夹', async () => {
+  it('将 Session 的 projectId 交给技能目录装载，并按项目文件夹冻结授权目录', async () => {
     const requested: Array<[string, string | null]> = [];
     const prepared = await prepareTurn(
       makeDeps({
-        skillEntries: async (workspaceRoot, projectId) => {
-          requested.push([workspaceRoot, projectId]);
+        skillEntries: async (cwd, projectId) => {
+          requested.push([cwd, projectId]);
           return [];
         },
       }),
@@ -126,12 +127,40 @@ describe('prepareTurn', () => {
     );
 
     expect(requested).toEqual([['/w', 'p1']]);
-    expect(prepared.workspaceRoot).toBe('/w');
+    expect(prepared.cwd).toBe('/w');
+    expect(prepared.tools.permissionContext.workspaceRoots).toEqual(['/w']);
+  });
+
+  it('项目全部源文件夹进入 Prompt，而工作区指令仍从 Session cwd 读取', async () => {
+    const instructionDirectories: string[] = [];
+    const prepared = await prepareTurn(
+      makeDeps({
+        sessions: {
+          getSession: () => fakeSession(),
+          listProjectFolders: () => [{ path: '/w' }, { path: '/other' }],
+        } as never,
+        workspaceInstructions: cwd => {
+          instructionDirectories.push(cwd);
+          return '主目录约定';
+        },
+      }),
+      makeRuntime(makeStart()),
+    );
+    const environment = prepared.systemPrompt.find(block => block.name === 'runtime-environment')!;
+
+    expect(instructionDirectories).toEqual(['/w']);
+    expect(environment.content).toContain('当前执行目录（cwd）：/w');
+    expect(environment.content).toContain('项目源文件夹：\n  - /w\n  - /other');
+    expect(prepared.systemPrompt.find(block => block.name === 'workspace-instructions')?.content)
+      .toContain('主目录约定');
   });
 
   it('请求与 Session 都未指定模型时准备失败（provider/not_configured）', async () => {
     const deps = makeDeps({
-      sessions: { getSession: () => fakeSession({ providerId: null, modelId: null }) } as never,
+      sessions: {
+        getSession: () => fakeSession({ providerId: null, modelId: null }),
+        listProjectFolders: () => [],
+      } as never,
     });
     await expect(prepareTurn(deps, makeRuntime(makeStart()))).rejects.toThrow(TurnPreparationError);
   });

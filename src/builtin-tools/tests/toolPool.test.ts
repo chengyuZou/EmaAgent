@@ -10,7 +10,7 @@ import { BuiltinTools, registerBuiltinTools } from '../index.js';
 
 function baseContext(): ToolUseContext {
   return {
-    workspaceRoot: '',
+    cwd: '',
     platform: process.platform,
   };
 }
@@ -41,7 +41,7 @@ describe('Builtin ToolPool 能力装配', () => {
   it('根 Turn 注入能力后只增加对应工具族', () => {
     const context: ToolUseContext = {
       ...baseContext(),
-      workspaceRoot: 'D:/workspace',
+      cwd: 'D:/workspace',
       readFileState: new Map(),
       taskStore: {} as never,
       askUser: async () => ({ answers: {} }),

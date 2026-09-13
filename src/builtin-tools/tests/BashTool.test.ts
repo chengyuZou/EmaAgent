@@ -17,7 +17,7 @@ function makeInvocation(): ToolInvocation {
 function makeHost(runCommand: ReturnType<typeof vi.fn>) {
   return {
     host: {
-      workspaceRoot: 'D:/workspace',
+      cwd: 'D:/workspace',
       commandRunner: { start: vi.fn(), run: vi.fn() },
       backgroundProcesses: { runCommand, list: vi.fn(), readOutput: vi.fn(), stop: vi.fn() },
     },
@@ -43,10 +43,10 @@ describe('BashTool — Schema 与 Context', () => {
   });
 
   it('没有 commandRunner/backgroundProcesses 时投影失败, 不回退裸进程', () => {
-    const empty = BashTool.validateContext({ workspaceRoot: 'D:/ws' } as never);
+    const empty = BashTool.validateContext({ cwd: 'D:/ws' } as never);
     expect(empty.valid).toBe(false);
     const noWorkspace = BashTool.validateContext({
-      workspaceRoot: '',
+      cwd: '',
       commandRunner: {},
       backgroundProcesses: {},
     } as never);

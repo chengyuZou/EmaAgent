@@ -35,9 +35,9 @@ const DIFF_SAFETY_FLAGS = [
 ] as const;
 
 export async function gitWorkspaceDiff(
-  workspaceRoot: string,
+  cwd: string,
 ): Promise<GitWorkspaceDiffResult> {
-  const repoRoot = await findRepoRoot(workspaceRoot);
+  const repoRoot = await findRepoRoot(cwd);
   if (!repoRoot) return { capability: 'not-a-repo' };
 
   try {
@@ -119,10 +119,10 @@ export type GitCompareTarget =
   | { readonly kind: 'branch'; readonly branch: string };
 
 export async function gitCompareDiff(
-  workspaceRoot: string,
+  cwd: string,
   target: GitCompareTarget,
 ): Promise<GitCompareResult> {
-  const repoRoot = await findRepoRoot(workspaceRoot);
+  const repoRoot = await findRepoRoot(cwd);
   if (!repoRoot) return { capability: 'not-a-repo' };
 
   try {

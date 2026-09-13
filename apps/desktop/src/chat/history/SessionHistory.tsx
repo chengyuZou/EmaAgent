@@ -259,9 +259,16 @@ function ChatEmptyState({ sessionId }: { sessionId: string }): JSX.Element {
   const character = useCharacterStore((state) => (
     state.characters.find((item) => item.name === state.activeName)
   ));
-  const workspaceRoot = useSessionStore((state) => (
-    state.sessions.byId.get(sessionId)?.workspaceRoot ?? null
+  const cwd = useSessionStore((state) => (
+    state.sessions.byId.get(sessionId)?.cwd ?? null
   ));
+  const projectName = useSessionStore((state) => {
+    const projectId = state.sessions.byId.get(sessionId)?.projectId;
+    if (!projectId) return null;
+    const project = [...state.sessions.pinnedProjects, ...state.sessions.projects]
+      .find((item) => item.id === projectId);
+    return project?.name ?? null;
+  });
   const [illustrationUrl, setIllustrationUrl] = useState<string | null>(null);
   useEffect(() => {
     if (!characterName) {
@@ -294,7 +301,7 @@ function ChatEmptyState({ sessionId }: { sessionId: string }): JSX.Element {
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [characterName]);
-  const workspaceName = workspaceRoot?.split(/[\\/]/).filter(Boolean).at(-1);
+  const locationName = projectName ?? cwd?.split(/[\\/]/).filter(Boolean).at(-1);
   return (
     <div className="ema-empty-state">
       <div className="ema-empty-state-glow" aria-hidden />
@@ -313,10 +320,10 @@ function ChatEmptyState({ sessionId }: { sessionId: string }): JSX.Element {
       <h2 className="ema-empty-state-title">
         {character ? `和 ${character.name} 开始聊天` : '开始聊天吧'}
       </h2>
-      {workspaceName && (
+      {locationName && (
         <div className="ema-empty-state-chip">
           <span className="i-lucide:folder" aria-hidden />
-          {workspaceName}
+          {locationName}
         </div>
       )}
     </div>

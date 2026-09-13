@@ -66,7 +66,7 @@ function makeExecutor(tools: AnyTestTool[]): {
     abortSignal: new AbortController().signal,
     toolPool: new ToolPool(tools as never),
     permissionContext: PERMISSION_CONTEXT,
-    toolContext: { workspaceRoot: '', platform: process.platform },
+    toolContext: { cwd: '', platform: process.platform },
     pushEv: event => events.push(event),
     wake: () => undefined,
   });

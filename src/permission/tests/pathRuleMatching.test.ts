@@ -15,7 +15,7 @@ describe('pathRuleMatching', () => {
     expect(matchPathRule('./src/**', 'D:/elsewhere/src/a.ts', root)).toBe(false);
   });
 
-  it('无 workspaceRoot 时相对规则不命中（不允许隐式授权）', () => {
+  it('无 cwd 时相对规则不命中（不允许隐式授权）', () => {
     expect(matchPathRule('./src/**', 'D:/work/project/src/a.ts', undefined)).toBe(false);
   });
 

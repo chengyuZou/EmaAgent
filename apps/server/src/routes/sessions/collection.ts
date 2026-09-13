@@ -6,15 +6,12 @@ import { jsonBody, queryValidator } from '../validate.js';
 
 const createSessionBody = z.object({
   title: z.string().min(1).max(200).optional(),
-  workspaceRoot: z.string().min(1).max(500).optional(),
+  cwd: z.string().min(1).max(500).optional(),
   projectId: z.string().min(1).max(200).optional(),
   executionProfile: z.enum(['chat', 'work']).optional(),
   narrativePolicy: z.enum(['auto', 'always', 'off']).optional(),
   permissionMode: z.enum(['default', 'acceptEdits', 'bypassPermissions']).optional(),
-}).refine(
-  input => input.projectId === undefined || input.workspaceRoot === undefined,
-  { message: 'session_project_workspace_conflict' },
-);
+});
 
 const searchQuery = z.object({
   q: z.string().trim().min(1).max(100),
@@ -56,11 +53,8 @@ function createSessionError(context: Context, error: unknown) {
   if (message.startsWith('project_not_found:')) {
     return context.json({ error: 'project_not_found' }, 404);
   }
-  if (message.startsWith('project_has_no_folder:')) {
-    return context.json({ error: 'project_has_no_folder' }, 400);
-  }
-  if (message === 'session_project_workspace_conflict') {
-    return context.json({ error: 'session_project_workspace_conflict' }, 400);
+  if (message === 'session_cwd_invalid') {
+    return context.json({ error: message }, 400);
   }
   throw error;
 }

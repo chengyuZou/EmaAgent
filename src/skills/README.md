@@ -31,7 +31,7 @@ builtin/user/project 目录
 - project 按源文件夹清单首次扫描并缓存,由 `refreshProjectFolders(folderPaths)` 显式更新.
 - `getByPath(path, folderPaths)` 只在 core 和指定文件夹清单中查找，不能读取其他项目的缓存条目.
 - 项目源文件夹最多 5 路并发，单文件夹内五个生态根并行发现，文件解析使用 16 路有界并发。每个生态根最多遍历 2,000 个目录，深度最多 6 层.
-- Session 有 `projectId` 时扫描项目全部 `folders[]`；否则只扫描其 `workspaceRoot`。同一规则用于 Skills 路由、根 Turn 和 `/compact`.
+- Session 有 `projectId` 时扫描项目全部 `folders[]`（空项目不扫描项目 Skill）；否则只扫描其 `cwd`。同一规则用于 Skills 路由、根 Turn 和 `/compact`.
 - SkillPool 在 Chat 或 Work 根 Turn 开始时冻结. Turn 中的安装或启停只影响下一根 Turn.
 
 ## 持久化

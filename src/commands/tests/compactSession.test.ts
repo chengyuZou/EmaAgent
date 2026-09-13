@@ -220,18 +220,21 @@ describe('compactSession', () => {
       ['D:/main', 'D:/other'],
       'D:/main',
     );
-    fixture.sessions.assignSessionToProject(fixture.sessionId, project.id);
-    fixture.sessions.patchSession(fixture.sessionId, { executionProfile: 'work' });
-    seedLongHistory(fixture.sessions, fixture.sessionId);
+    const projectSessionId = fixture.sessions.createSession({ projectId: project.id }).id;
+    fixture.sessions.patchSession(projectSessionId, {
+      executionProfile: 'work',
+      model: { providerId: PROVIDER_ID, modelId: MODEL_ID },
+    });
+    seedLongHistory(fixture.sessions, projectSessionId);
     const requested: Array<[string, string | null]> = [];
 
     const result = await compactSession({
       ...fixture.deps,
-      skillEntries: async (workspaceRoot, projectId) => {
-        requested.push([workspaceRoot, projectId]);
+      skillEntries: async (cwd, projectId) => {
+        requested.push([cwd, projectId]);
         return [];
       },
-    }, fixture.sessionId);
+    }, projectSessionId);
 
     expect(result.status).toBe('completed');
     expect(requested).toEqual([['D:/main', project.id]]);

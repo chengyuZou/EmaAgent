@@ -44,12 +44,12 @@ export interface ProjectFolder {
 export interface Session {
   id: string;
   title: string;
-  /** 可空：未选=纯 chat 且 work 锁定；在项目内锁定为项目主文件夹。 */
-  workspaceRoot: string | null;
-  /** 项目成员资格；拖入锁定跟随主工作区，拖出恢复自由。 */
+  /** 命令和相对路径的起点；创建时选定，之后只由用户显式修改。 */
+  cwd: string;
+  /** 项目成员资格；项目文件夹清单决定授权范围，不改写 cwd。 */
   projectId: string | null;
   createdAt: number;
-  /** 行属性更新时间：标题、置顶、Workspace 或执行偏好发生变化。 */
+  /** 行属性更新时间：标题、置顶、cwd 或执行偏好发生变化。 */
   updatedAt: number;
   /** 会话活动时间，用于"最近 Session"排序。 */
   lastActivityAt: number;
@@ -109,8 +109,8 @@ export interface PersistedToolInteraction {
 
 export interface CreateSessionInput {
   title?: string;
-  workspaceRoot?: string;
-  /** 项目新对话直接创建为项目成员，工作区由项目主文件夹决定。 */
+  cwd?: string;
+  /** 项目新对话的初始 cwd 取创建时的主文件夹；无主文件夹取固定默认目录。 */
   projectId?: string;
   executionProfile?: ExecutionProfile;
   narrativePolicy?: NarrativePolicy;
@@ -121,7 +121,7 @@ export interface CreateSessionInput {
 export interface PatchSessionInput {
   title?: string;
   pinned?: boolean;
-  workspaceRoot?: string | null;
+  cwd?: string;
   executionProfile?: ExecutionProfile;
   narrativePolicy?: NarrativePolicy;
   permissionMode?: PermissionMode;

@@ -27,7 +27,7 @@ import { readTextInRange } from './readTextInRange.js';
 /** File 读取工具只取得当前 Turn 的读取状态与工作区；取消信号走 ToolInvocation。 */
 interface FileReadToolContext {
   readFileState: ReadFileState;
-  workspaceRoot: string;
+  cwd: string;
 }
 
 // ── 常量 ─────────────────────────────────────────────────────────────────────
@@ -176,7 +176,7 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, FileReadToo
   maxResultBytes: MAX_RESULT_BYTES,
 
   validateContext(ctx) {
-    if (!ctx.workspaceRoot) {
+    if (!ctx.cwd) {
       return contextFail('File 读取工具需要明确的工作区。');
     }
     if (!ctx.readFileState) {
@@ -184,15 +184,15 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, FileReadToo
     }
     return contextOk({
       readFileState: ctx.readFileState,
-      workspaceRoot: ctx.workspaceRoot,
+      cwd: ctx.cwd,
     });
   },
 
   checkPermissions: async (input, context, permissionContext) =>
     checkReadPathPermission({
       toolName: BuiltinTools.FileRead.name,
-      path: path.resolve(context.workspaceRoot, input.file_path),
-      workspaceRoot: context.workspaceRoot,
+      path: path.resolve(context.cwd, input.file_path),
+      cwd: context.cwd,
       permissionContext,
     }),
 
@@ -203,7 +203,7 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, FileReadToo
   ): Promise<FileReadResult> {
     const { file_path, offset, limit } = input;
     // 与 Permission/Write 同一基准: 相对路径按工作区解析, 不借 Core 进程 cwd。
-    const fullPath = path.resolve(context.workspaceRoot, file_path);
+    const fullPath = path.resolve(context.cwd, file_path);
 
     // ── I/O 前校验 ────────────────────────────────────────────────────────────
     if (isUncPath(fullPath)) {

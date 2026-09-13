@@ -10,8 +10,8 @@ describe('MemoryRepo', () => {
     database = createTestDatabase();
     repo = new MemoryRepo(database.db);
     database.db.prepare(`
-      INSERT INTO sessions(id, title, created_at, updated_at)
-      VALUES ('session-a', 'Session A', 1, 1)
+      INSERT INTO sessions(id, title, cwd, created_at, updated_at)
+      VALUES ('session-a', 'Session A', 'D:/work', 1, 1)
     `).run();
     for (const [id, at] of [['turn-a', 1], ['turn-b', 2]] as const) {
       database.db.prepare(`

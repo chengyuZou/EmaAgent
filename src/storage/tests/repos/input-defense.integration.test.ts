@@ -224,8 +224,8 @@ function insertAsset(database: Database, id: string): void {
 
 function insertAgentRun(database: Database, id: string): void {
   database.sqlite.prepare(`
-    INSERT INTO sessions (id, title, created_at, updated_at)
-    VALUES ('session-a', 'Session A', 1, 1)
+    INSERT INTO sessions (id, title, cwd, created_at, updated_at)
+    VALUES ('session-a', 'Session A', 'D:/work', 1, 1)
   `).run();
   database.sqlite.prepare(`
     INSERT INTO turns (

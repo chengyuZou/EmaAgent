@@ -8,8 +8,8 @@ describe('Session ownership 数据库约束', () => {
   beforeEach(() => {
     database = createTestDatabase();
     database.db.prepare(`
-      INSERT INTO sessions (id, title, last_activity_at, created_at, updated_at)
-      VALUES ('session-a', 'A', 1, 1, 1), ('session-b', 'B', 1, 1, 1)
+      INSERT INTO sessions (id, title, cwd, last_activity_at, created_at, updated_at)
+      VALUES ('session-a', 'A', 'D:/work', 1, 1, 1), ('session-b', 'B', 'D:/work', 1, 1, 1)
     `).run();
     database.db.prepare(`
       INSERT INTO turns

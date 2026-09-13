@@ -8,8 +8,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { ReadFileState, ToolInvocation } from '@ema-agent/tools';
 import { FileReadTool, type FileReadResult } from '../tools/FileReadTool/FileReadTool.js';
 
-function makeCtx(workspaceRoot = ''): { readFileState: ReadFileState; workspaceRoot: string } {
-  return { readFileState: new Map(), workspaceRoot };
+function makeCtx(cwd = ''): { readFileState: ReadFileState; cwd: string } {
+  return { readFileState: new Map(), cwd };
 }
 
 function makeInvocation(signal?: AbortSignal): ToolInvocation {

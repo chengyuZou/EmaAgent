@@ -31,7 +31,7 @@ import type {
 export const toSessionRecord = (row: SessionRow): SessionRecord => ({
   id: row.id,
   title: row.title,
-  workspaceRoot: row.workspace_root,
+  cwd: row.cwd,
   projectId: row.project_id,
   pinned: row.pinned === 1,
   archivedAt: row.archived_at,

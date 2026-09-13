@@ -55,7 +55,7 @@ src/sandbox/
 
 **装配层消费**(Server wiring):
 
-- `CommandRunner`(per-Session 构造，能力快照构造即冻结）、`SandboxCapability`;
+- `CommandRunner`(每根 Turn 构造，能力在该 Turn 内冻结）、`SandboxCapability`;
 - `detectBackend()` → `DetectResult { backend, degradeReason? }`（进程级缓存，启动期调用）;
 - `probeBash()`（启动 fire-and-forget 预热）、`probeBashSettled()`、`resetBashProbeCache()`（测试与 Git 安装后重探）;
 - `BackendKind`、`ShellSpec`、`SandboxBackend`（类型）、`WrappedCommand`、`SandboxCommand`、`SandboxConfig`。
@@ -65,7 +65,7 @@ src/sandbox/
 ## 关键不变量
 
 1. **探测二分。** `detectPlatform` 只做环境分类（同步、微秒级、纯函数可测）;"能不能用哪个后端"一律由 `detectBackend` 的真实冒烟终审——二进制存在 ≠ namespace/策略允许。
-2. **能力构造即冻结。** `workspaceRoot` 必填，空串拒绝构造，禁止回退进程 cwd;`writablePaths/forbiddenPaths` 冻结后不可变。
+2. **能力构造即冻结。** Session `cwd` 必填，空串拒绝构造，禁止回退进程 cwd；`writablePaths` 对项目成员取当前全部 Project folders，无项目或空项目取 `[cwd]`，另加临时目录；`forbiddenPaths` 冻结后不可变。Project folders 中途改变只影响下一根 Turn。
 3. **Permission 与 Sandbox 物理分层。** 本包不裁决策略；`unisolated` 只如实报告"无 OS 隔离"，是否允许执行由 Server 策略决定（默认隐藏执行类工具）。
 4. **环境只白名单重建。** 子进程环境清空后按白名单重建，不继承后删；凭据/注入类变量默认不存在。
 5. **路径比较一律真实路径。** cwd 校验与配置绑定同口径 realpath(Windows 剥 `\\?\` 前缀）；符号链接/junction 逃逸 fail-closed。
@@ -85,7 +85,7 @@ src/sandbox/
 | 输出超 100KB/流 | `truncated: true`，头+尾留存+流内通知，总量不破位 |
 | shell 探测冷窗口 | `start()` 抛"Shell 探测尚未完成"（启动预热后实际不可达） |
 | 无 bash(Windows) | `start()` 抛安装引导错误；路由层用 probe 结果引导 WSL2 |
-| cwd 越出能力范围 | 抛错拒绝，不悄悄执行 |
+| 显式切换到授权目录外 | 抛错拒绝，不悄悄执行；Session 原 cwd 始终可作为执行起点，但不因此获得写入授权 |
 | 执行后长出 bare-repo 签名 | `console.warn` 响亮警告，不删任何路径 |
 | onOutput 消费方抛错 | warn 记一笔、停止转发，命令继续跑完 |
 | 后端冒烟失败 | 降级 unisolated + 人类可读 degradeReason，不谎报 isolated |

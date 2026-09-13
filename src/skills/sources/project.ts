@@ -24,22 +24,22 @@ const MAX_SKILL_DIRS_PER_ROOT = 2_000;
 const FOLDER_SCAN_CONCURRENCY = 5;
 
 export async function scanProjectSkills(
-  workspaceRoots: readonly string[],
+  folderPaths: readonly string[],
 ): Promise<SkillDescriptor[]> {
   const folders = await mapConcurrent(
-    workspaceRoots,
+    folderPaths,
     FOLDER_SCAN_CONCURRENCY,
-    async (workspaceRoot) => {
+    async (folderPath) => {
       try {
-        await realpath(workspaceRoot);
+        await realpath(folderPath);
       } catch (error) {
-        console.warn(`[skills] 项目文件夹不可读取: ${workspaceRoot}`, error);
+        console.warn(`[skills] 项目文件夹不可读取: ${folderPath}`, error);
         return [];
       }
       const ecosystems = await Promise.all(PROJECT_ECOSYSTEMS.map(async (ecosystem) => {
-        const ecoRoot = join(workspaceRoot, ecosystem.relativeDir);
+        const ecoRoot = join(folderPath, ecosystem.relativeDir);
         const skillFiles = await collectSkillFiles(ecoRoot);
-        return skillFiles.map(path => ({ path, ecosystem, workspaceRoot }));
+        return skillFiles.map(path => ({ path, ecosystem, folderPath }));
       }));
       return ecosystems.flat();
     },
@@ -50,7 +50,7 @@ export async function scanProjectSkills(
   const descriptors = await mapConcurrent(discovered, 16, async ({
     path,
     ecosystem,
-    workspaceRoot,
+    folderPath,
   }) => {
     try {
       const canonicalPath = await realpath(path);
@@ -65,7 +65,7 @@ export async function scanProjectSkills(
         ...(parsed.whenToUse !== undefined ? { whenToUse: parsed.whenToUse } : {}),
         scope: 'project' as const,
         projectSourceId: ecosystem.sourceId,
-        sourceFolderPath: workspaceRoot,
+        sourceFolderPath: folderPath,
       };
     } catch (error) {
       console.warn(`[skills] 项目技能损坏跳过: ${path}`, error);

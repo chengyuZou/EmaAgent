@@ -1,5 +1,6 @@
 // 集成测试：TurnExecutor 全链——文本轮完成、工具轮的持久化顺序与终态。
 import { describe, expect, it, vi } from 'vitest';
+import os from 'node:os';
 import { z } from 'zod';
 import type { AgentRunExecutor } from '@ema-agent/agent';
 import type { AttachmentStore } from '@ema-agent/attachments';
@@ -125,7 +126,7 @@ describe('TurnExecutor 集成', () => {
     const db = new Database({ memory: true, kind: 'data' });
     db.migrate();
     const sessions = new SessionStore({ db });
-    const session = sessions.createSession({ workspaceRoot: '/w' });
+    const session = sessions.createSession({ cwd: os.tmpdir() });
     const registry = new ToolRegistry();
     const llm = scriptedLlm([
       [
@@ -187,7 +188,7 @@ describe('TurnExecutor 集成', () => {
     const db = new Database({ memory: true, kind: 'data' });
     db.migrate();
     const sessions = new SessionStore({ db });
-    const session = sessions.createSession({ workspaceRoot: '/w' });
+    const session = sessions.createSession({ cwd: os.tmpdir() });
     const registry = new ToolRegistry();
     const requests: unknown[] = [];
     const llm: CallLlm = request => {
@@ -231,7 +232,7 @@ describe('TurnExecutor 集成', () => {
     const db = new Database({ memory: true, kind: 'data' });
     db.migrate();
     const sessions = new SessionStore({ db });
-    const session = sessions.createSession({ workspaceRoot: '/w' });
+    const session = sessions.createSession({ cwd: os.tmpdir() });
     const registry = new ToolRegistry();
     const llm = scriptedLlm([
       [
@@ -267,7 +268,7 @@ describe('TurnExecutor 集成', () => {
     const db = new Database({ memory: true, kind: 'data' });
     db.migrate();
     const sessions = new SessionStore({ db });
-    const session = sessions.createSession({ workspaceRoot: '/w' });
+    const session = sessions.createSession({ cwd: os.tmpdir() });
     const registry = new ToolRegistry();
     const llm = scriptedLlm([
       [
@@ -302,7 +303,7 @@ describe('TurnExecutor 集成', () => {
     const db = new Database({ memory: true, kind: 'data' });
     db.migrate();
     const sessions = new SessionStore({ db });
-    const session = sessions.createSession({ workspaceRoot: '/w' });
+    const session = sessions.createSession({ cwd: os.tmpdir() });
     const registry = new ToolRegistry();
     const requests: unknown[] = [];
     const llm: CallLlm = request => {
@@ -361,7 +362,7 @@ describe('TurnExecutor 集成', () => {
     const db = new Database({ memory: true, kind: 'data' });
     db.migrate();
     const sessions = new SessionStore({ db });
-    const session = sessions.createSession({ workspaceRoot: '/w' });
+    const session = sessions.createSession({ cwd: os.tmpdir() });
     const registry = new ToolRegistry();
     registry.register(echoTool());
     const llm = scriptedLlm([

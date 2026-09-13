@@ -1,4 +1,4 @@
-// 管理前端 Session 列表、工作区、模式和下一轮模型偏好。
+// 管理前端 Session 列表、执行目录、模式和下一轮模型偏好。
 import { create } from 'zustand';
 import {
   sessionsApi,
@@ -39,7 +39,7 @@ export interface SessionStoreState {
   createSession(input?: SessionCreateInput):                         Promise<string>;
   renameSession(id: string, title: string):                       Promise<void>;
   pinSession(id: string, pinned: boolean):                        Promise<void>;
-  setWorkspaceRoot(id: string, path: string | null):              Promise<void>;
+  setCwd(id: string, cwd: string):                                  Promise<void>;
   setExecutionSettings(
     id: string,
     patch: {
@@ -169,12 +169,37 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
     }
   },
 
-  async setWorkspaceRoot(id, path) {
+  async setCwd(id, cwd) {
     try {
-      await sessionsApi.patch(id, { workspaceRoot: path });
-      await get().loadSessions();
+      const saved = await sessionsApi.patch(id, { cwd });
+      set((state) => {
+        const current = state.sessions.byId.get(id);
+        if (!current) return {};
+        return {
+          sessions: replaceSession(state.sessions, id, {
+            ...current,
+            cwd: saved.cwd,
+          }),
+          error: null,
+        };
+      });
     } catch (err: unknown) {
-      set({ error: err instanceof Error ? err.message : '设置工作区失败' });
+      try {
+        const saved = await sessionsApi.get(id);
+        set((state) => {
+          const current = state.sessions.byId.get(id);
+          if (!current) return {};
+          return {
+            sessions: replaceSession(state.sessions, id, {
+              ...current,
+              cwd: saved.cwd,
+            }),
+          };
+        });
+      } catch {
+        // 断线期间不猜测服务端是否保存成功；原显示值保持不动。
+      }
+      set({ error: err instanceof Error ? err.message : '设置执行目录失败' });
       throw err;
     }
   },

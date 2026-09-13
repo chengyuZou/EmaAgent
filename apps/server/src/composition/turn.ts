@@ -67,7 +67,7 @@ export interface TurnComposition {
   /** Vision 描述缓存(path 键);context 投影直接消费, 生产只在 describeImage 注入时发生。 */
   readonly visionCache: VisionDescriptionCache;
   /** 工作区指令读取闭包（commands 装配与下一根 Turn 同字节的 System Prompt 同源复用）。 */
-  readonly workspaceInstructions: (workspaceRoot: string) => string | null;
+  readonly workspaceInstructions: (cwd: string) => string | null;
 }
 
 export interface TurnCompositionDeps {
@@ -176,9 +176,9 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
 
   // ── Reminder 输入（每根 Turn 生产一次；含 currentDate，读取完成即冻结进持久化 reminder） ──
   const readTurnReminder = async (scope: TurnReminderScope): Promise<RenderTurnReminderInput> => {
-    const workspaceRoot = database.session.getSession(scope.sessionId).workspaceRoot ?? '';
-    const git = scope.executionProfile === 'work' && workspaceRoot
-      ? await gitSummary(workspaceRoot).catch(() => undefined)
+    const cwd = database.session.getSession(scope.sessionId).cwd ?? '';
+    const git = scope.executionProfile === 'work' && cwd
+      ? await gitSummary(cwd).catch(() => undefined)
       : undefined;
     const summaryTokens = MEMORY_SUMMARY_TOKENS;
     const [memoryWork, memoryRelationship] = await Promise.all([
@@ -259,8 +259,8 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     })();
   };
 
-  const workspaceInstructions = (workspaceRoot: string): string | null =>
-    readWorkspaceInstructions(workspaceRoot, settings.get(workspaceInstructionFilesSetting));
+  const workspaceInstructions = (cwd: string): string | null =>
+    readWorkspaceInstructions(cwd, settings.get(workspaceInstructionFilesSetting));
 
   turnExecutor = new TurnExecutor({
     turns: database.turns,
@@ -273,12 +273,12 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
       const character = characters.current();
       return buildCharacterPrompt(character, characters.inspectStagePresentation(character.name));
     },
-    skillEntries: (workspaceRoot: string, projectId: string | null) => {
+    skillEntries: (cwd: string, projectId: string | null) => {
       let folderPaths: string[] = [];
       if (projectId) {
         folderPaths = database.session.listProjectFolders(projectId).map((folder) => folder.path);
-      } else if (workspaceRoot) {
-        folderPaths = [workspaceRoot];
+      } else if (cwd) {
+        folderPaths = [cwd];
       }
       return tools.skills.list(folderPaths);
     },
@@ -328,13 +328,13 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
 
 /** 按用户多选的文件名读取工作区指令，顺序即拼接顺序；全部缺失返回 null。 */
 function readWorkspaceInstructions(
-  workspaceRoot: string,
+  cwd: string,
   fileNames: readonly string[],
 ): string | null {
   const parts: string[] = [];
   for (const name of fileNames) {
     try {
-      const filePath = path.join(workspaceRoot, name);
+      const filePath = path.join(cwd, name);
       if (!fs.statSync(filePath).isFile()) continue;
       parts.push(fs.readFileSync(filePath, 'utf8').slice(0, WORKSPACE_INSTRUCTION_MAX_CHARS));
     } catch { /* 读取失败（权限/竞争删除）按无指令处理 */ }

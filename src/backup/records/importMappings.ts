@@ -35,7 +35,7 @@ export function restoreSessionRecord(record: SessionRecord): SessionRow {
   return {
     id: record.id,
     title: record.title,
-    workspace_root: record.workspaceRoot,
+    cwd: record.cwd,
     project_id: record.projectId,
     pinned: record.pinned ? 1 : 0,
     archived_at: record.archivedAt,

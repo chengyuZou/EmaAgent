@@ -9,8 +9,10 @@ import {
   type KeyboardEvent,
 } from 'react';
 import {
+  Button,
   DropdownMenu,
   IconButton,
+  Input,
   PromptDialog,
   Textarea,
   type MenuItem,
@@ -19,7 +21,7 @@ import {
 import type { TurnInputPart, TurnModelSelection } from '@ema-agent/turn';
 import type { NarrativePolicy } from '@ema-agent/session';
 import { PASTE_TEXT_MIN_CHARS } from '@ema-agent/attachments/limits';
-import { sessionsApi } from '../../api/sessions.js';
+import { projectsApi } from '../../api/workspaces.js';
 import { ServerApiError } from '../../api/client.js';
 import { findAvailableModel, providersApi, type AvailableModel } from '../../api/providers.js';
 import { showToast } from '../../lib/toast.js';
@@ -38,7 +40,8 @@ import {
   type SlashMenuHandle,
   type SlashSelection,
 } from './AddInputMenu.js';
-import { draftText, emptyChatDraft, hasDraftContent, insertDraftReference, removeDraftPart, replaceDraftText, type ChatDraft, type ChatDraftPart } from './InputReferences.js';
+import { draftText, emptyChatDraft, hasDraftContent, insertDraftReference, removeDraftPart, replaceDraftText, type ChatDraft } from './InputReferences.js';
+import { finalizeDraft } from './finalizeDraft.js';
 
 const COMPACT_ERRORS: Record<string, string> = {
   session_busy: '当前会话正忙, 请稍后再试',
@@ -50,67 +53,6 @@ const COMPACT_ERRORS: Record<string, string> = {
 
 function isLlmImagePath(filePath: string): boolean {
   return ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(filePath.split('.').pop()?.toLowerCase() ?? '');
-}
-
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('剪贴板图片读取失败'));
-    reader.onload = () => {
-      const dataUrl = String(reader.result);
-      resolve(dataUrl.slice(dataUrl.indexOf(',') + 1));
-    };
-    reader.readAsDataURL(file);
-  });
-}
-
-async function finalizeDraft(sessionId: string, parts: readonly ChatDraftPart[]): Promise<TurnInputPart[]> {
-  const output: TurnInputPart[] = [];
-  // 文件和长粘贴在草稿阶段只存在前端. 此处按用户原始顺序落盘, 成功后再入 Session 队列.
-  for (const part of parts) {
-    if (part.type === 'text' || part.type === 'skill_reference') {
-      output.push(part);
-      continue;
-    }
-    if (part.type === 'file') {
-      output.push({
-        type: 'attachment',
-        block: { type: 'file_reference', path: part.path },
-      });
-      continue;
-    }
-    if (part.type === 'pasted_text') {
-      const saved = await sessionsApi.createPastedText(sessionId, part.content);
-      output.push({
-        type: 'attachment',
-        block: {
-          type: 'pasted_text_reference',
-          path: saved.path,
-          preview: saved.preview,
-        },
-      });
-      continue;
-    }
-    const name = part.name ?? part.sourcePath?.split(/[\\/]/).pop();
-    const saved = part.file
-      ? await sessionsApi.uploadImage(sessionId, {
-          dataBase64: await fileToBase64(part.file),
-          ...(name ? { name } : {}),
-        })
-      : await sessionsApi.uploadImage(sessionId, {
-          sourcePath: part.sourcePath!,
-          ...(name ? { name } : {}),
-        });
-    output.push({
-      type: 'attachment',
-      block: {
-        type: 'image_reference',
-        path: saved.path,
-        ...(name ? { name } : {}),
-      },
-    });
-  }
-  return output;
 }
 
 function queuedInputText(input: readonly TurnInputPart[]): string {
@@ -128,8 +70,11 @@ function queuedInputText(input: readonly TurnInputPart[]): string {
 export function ChatInput(): JSX.Element {
   const viewedId = useChatWorkspace(state => state.viewedSessionId);
   const newProjectId = useChatWorkspace(state => state.newSessionProjectId);
+  const newSessionCwd = useChatWorkspace(state => state.newSessionCwd);
   const storedDraft = useChatWorkspace(state => viewedId ? state.draftMap.get(viewedId) : state.newSessionDraft);
   const viewedSession = useSessionStore(state => viewedId ? state.sessions.byId.get(viewedId) : undefined);
+  const pinnedProjects = useSessionStore(state => state.sessions.pinnedProjects);
+  const projects = useSessionStore(state => state.sessions.projects);
   const agentSession = useAgentStore(state => viewedId ? state.sessions.get(viewedId) : undefined);
   const serverReady = useServerStore(state => state.status.kind === 'ok');
   const ttsEnabled = useUiStore(state => state.ttsEnabled);
@@ -137,6 +82,7 @@ export function ChatInput(): JSX.Element {
   const [submitting, setSubmitting] = useState(false);
   const [compacting, setCompacting] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
+  const [changingProject, setChangingProject] = useState(false);
   const [recording, setRecording] = useState(false);
   const [slashFilter, setSlashFilter] = useState<string | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -175,6 +121,75 @@ export function ChatInput(): JSX.Element {
     ...draft.modelSelection,
     thinkingEnabled: selectedModel?.capability === 'llm' && selectedModel.reasoning === true && draft.modelSelection.thinkingEnabled,
   } : undefined;
+  const currentProjectId = viewedId
+    ? viewedSession?.projectId ?? null
+    : newProjectId ?? null;
+  const availableProjects = [...pinnedProjects, ...projects];
+  const currentProject = availableProjects.find(project => project.id === currentProjectId);
+  const defaultNewCwd = currentProject?.folders.find(folder => folder.isPrimary)?.path
+    ?? '~/.ema-agent/workspace';
+  const displayedNewCwd = newSessionCwd ?? defaultNewCwd;
+
+  async function changeProject(projectId: string | null): Promise<void> {
+    if (projectId === currentProjectId || changingProject) return;
+    if (!viewedId) {
+      useChatWorkspace.getState().openNewSession(projectId ?? undefined);
+      return;
+    }
+    if (!viewedSession) return;
+
+    setChangingProject(true);
+    try {
+      if (projectId) {
+        await projectsApi.addSession(projectId, { sessionId: viewedId });
+      } else if (viewedSession.projectId) {
+        await projectsApi.removeSession(viewedSession.projectId, viewedId);
+      }
+      await useSessionStore.getState().loadSessions();
+      const refreshError = useSessionStore.getState().error;
+      if (refreshError) {
+        showToast(
+          `项目归属已保存，但列表刷新失败: ${refreshError}`,
+          { variant: 'warning' },
+        );
+      }
+    } catch (error) {
+      showToast(
+        error instanceof Error ? `切换项目失败: ${error.message}` : '切换项目失败',
+        { variant: 'danger' },
+      );
+    } finally {
+      setChangingProject(false);
+    }
+  }
+
+  async function pickNewCwd(): Promise<void> {
+    try {
+      const path = await tauriBridge.openFileDialog({ directory: true });
+      if (path) useChatWorkspace.getState().setNewSessionCwd(path);
+    } catch (error) {
+      showToast(
+        error instanceof Error ? error.message : '选择执行目录失败',
+        { variant: 'danger' },
+      );
+    }
+  }
+
+  const projectItems: MenuItem[] = [
+    {
+      kind: 'item',
+      label: '不在项目中工作',
+      icon: currentProjectId === null ? 'i-lucide:check' : 'i-lucide:x',
+      onSelect: () => void changeProject(null),
+    },
+    ...(availableProjects.length > 0 ? [{ kind: 'separator' } as const] : []),
+    ...availableProjects.map((project): MenuItem => ({
+      kind: 'item',
+      label: project.name,
+      icon: project.id === currentProjectId ? 'i-lucide:check' : 'i-lucide:folder',
+      onSelect: () => void changeProject(project.id),
+    })),
+  ];
 
   function updateDraft(patch: Partial<ChatDraft>): void {
     useChatWorkspace.getState().setDraft({ ...draft, ...patch });
@@ -338,8 +353,14 @@ export function ChatInput(): JSX.Element {
     let sessionId = viewedId;
     try {
       if (!sessionId) {
+        if (newSessionCwd !== null && !newSessionCwd.trim()) {
+          showToast('请输入执行目录', { variant: 'danger' });
+          return;
+        }
+        const explicitCwd = newSessionCwd?.trim();
         sessionId = await useSessionStore.getState().createSession({
           ...(newProjectId ? { projectId: newProjectId } : {}),
+          ...(explicitCwd && explicitCwd !== defaultNewCwd ? { cwd: explicitCwd } : {}),
           executionProfile: submitted.executionProfile,
           narrativePolicy: submitted.narrativePolicy,
           permissionMode: submitted.permissionMode,
@@ -511,11 +532,68 @@ export function ChatInput(): JSX.Element {
             ))}
           </div>
         )}
+        <div
+          className="ema-fade-in mb-2 flex w-full min-w-0 items-center gap-2 px-1 text-xs text-[var(--ema-text-secondary)]"
+        >
+          <DropdownMenu
+            side="top"
+            align="start"
+            widthClass="min-w-56"
+            items={projectItems}
+            trigger={(
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={changingProject || (viewedId !== null && !viewedSession)}
+                className="max-w-56 gap-1.5 rounded-md px-2"
+                title={currentProject?.name ?? '不在项目中工作'}
+              >
+                <span className="i-lucide:folder shrink-0 text-sm" aria-hidden />
+                <span className="truncate">{currentProject?.name ?? '选择项目'}</span>
+                <span className="i-lucide:chevron-down shrink-0 text-xs" aria-hidden />
+              </Button>
+            )}
+          />
+          {!viewedId && (
+            <div className="flex min-w-0 flex-1 items-center gap-1.5">
+              <label htmlFor="new-session-cwd" className="shrink-0">cwd:</label>
+              <Input
+                id="new-session-cwd"
+                aria-label="新对话执行目录"
+                value={displayedNewCwd}
+                onChange={event => useChatWorkspace.getState().setNewSessionCwd(event.target.value)}
+                className="min-w-0 flex-1"
+              />
+              {currentProject && currentProject.folders.length > 0 && (
+                <DropdownMenu
+                  side="top"
+                  align="end"
+                  widthClass="min-w-64 max-w-lg"
+                  items={currentProject.folders.map(folder => ({
+                    kind: 'item',
+                    label: folder.path,
+                    icon: folder.path === displayedNewCwd ? 'i-lucide:check' : 'i-lucide:folder',
+                    onSelect: () => useChatWorkspace.getState().setNewSessionCwd(folder.path),
+                  }))}
+                  trigger={(
+                    <IconButton size="sm" icon="i-lucide:list" label="从项目文件夹中选择" />
+                  )}
+                />
+              )}
+              <IconButton
+                size="sm"
+                icon="i-lucide:folder-open"
+                label="选择执行目录"
+                onClick={() => void pickNewCwd()}
+              />
+            </div>
+          )}
+        </div>
         <div className="ema-composer-card relative transition-shadow">
           <SlashCommandMenu
             query={slashFilter}
             sessionId={viewedId}
-            projectId={newProjectId ?? null}
+            projectId={currentProjectId}
             handleRef={slashMenuRef}
             onSelect={selectSlash}
             onClose={() => setSlashFilter(null)}

@@ -1,6 +1,9 @@
 // 集中管理 Session、项目与消息读写的领域规则：什么能写、怎么写、写完联动什么。
 // Turn 生命周期、运行态与导航由 turn 包的 TurnStore 承担；本包只经 storage repo 读取归属。
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import {
   MessagesRepo,
   ProjectsRepo,
@@ -84,23 +87,27 @@ export class SessionStore {
     const id  = crypto.randomUUID();
     const now = this.nextTs();
     const title = (input.title?.trim() || DEFAULT_SESSION_TITLE);
-    if (input.projectId !== undefined && input.workspaceRoot !== undefined) {
-      throw new Error('session_project_workspace_conflict');
+    if (input.cwd !== undefined && input.cwd.trim() === '') {
+      throw new Error('session_cwd_invalid');
     }
 
     this.db.sqlite.transaction(() => {
-      let workspaceRoot = input.workspaceRoot;
+      let cwd = input.cwd;
       if (input.projectId !== undefined) {
         if (!this.projectsRepo.findById(input.projectId)) {
           throw new Error(`project_not_found: ${input.projectId}`);
         }
-        workspaceRoot = this.projectsRepo.primaryFolderPath(input.projectId);
-        if (!workspaceRoot) throw new Error(`project_has_no_folder: ${input.projectId}`);
+        cwd ??= this.projectsRepo.primaryFolderPath(input.projectId);
       }
+      if (!cwd) {
+        cwd = path.join(os.homedir(), '.ema-agent', 'workspace');
+        fs.mkdirSync(cwd, { recursive: true });
+      }
+      assertSessionCwd(cwd);
       this.sessionsRepo.insert({
         id,
         title,
-        workspaceRoot,
+        cwd,
         projectId: input.projectId,
         executionProfile: input.executionProfile,
         narrativePolicy: input.narrativePolicy,
@@ -200,7 +207,7 @@ export class SessionStore {
 
   /**
    * 在一个事务内更新 Session 偏好。
-   * `workspaceRoot` 的 null 表示移出工作区，undefined 表示保持不变。
+   * cwd 是每条 Session 自己的执行目录；项目文件夹变化不回写它。
    */
   patchSession(
     id: string,
@@ -213,12 +220,9 @@ export class SessionStore {
       if (trimmed) cleaned.title = trimmed;
     }
     if (patch.pinned !== undefined)     cleaned.pinned     = patch.pinned;
-    if (patch.workspaceRoot !== undefined) {
-      // 项目成员的工作区锁定为项目主文件夹，只能经项目操作变更。
-      if (this.requireSession(id).projectId !== null) {
-        throw new Error('session_workspace_locked_by_project');
-      }
-      cleaned.workspaceRoot = patch.workspaceRoot;
+    if (patch.cwd !== undefined) {
+      assertSessionCwd(patch.cwd);
+      cleaned.cwd = patch.cwd;
     }
     if (patch.executionProfile !== undefined) cleaned.executionProfile = patch.executionProfile;
     if (patch.narrativePolicy !== undefined) cleaned.narrativePolicy = patch.narrativePolicy;
@@ -264,16 +268,16 @@ export class SessionStore {
   createProject(
     name: string,
     folderPaths: string[],
-    primaryFolderPath: string,
+    primaryFolderPath?: string,
   ): Project {
     const trimmed = name.trim();
     if (!trimmed) throw new Error('project_name_empty');
     const paths = folderPaths.map((path) => path.trim());
-    const primaryPath = primaryFolderPath.trim();
-    if (paths.length === 0 || paths.some((path) => !path)) {
+    const primaryPath = primaryFolderPath?.trim();
+    if (paths.some((path) => !path)) {
       throw new Error('project_folder_path_empty');
     }
-    if (!paths.includes(primaryPath)) {
+    if (primaryPath !== undefined && !paths.includes(primaryPath)) {
       throw new Error('project_primary_folder_missing');
     }
     if (new Set(paths).size !== paths.length) {
@@ -285,7 +289,7 @@ export class SessionStore {
       for (const path of paths) {
         this.projectsRepo.addFolder(id, path);
       }
-      if (paths[0] !== primaryPath) {
+      if (primaryPath && paths[0] !== primaryPath) {
         this.projectsRepo.setPrimaryFolder(id, primaryPath);
       }
     })();
@@ -302,7 +306,7 @@ export class SessionStore {
     this.projectsRepo.rename(id, trimmed, Date.now());
   }
 
-  /** 删除项目：成员 Session 由外键 SET NULL 掉到非项目区，工作区保留恢复自由。 */
+  /** 删除项目：成员 Session 由外键 SET NULL 掉到非项目区，cwd 保留。 */
   deleteProject(id: string): void {
     this.projectsRepo.remove(id);
   }
@@ -315,47 +319,31 @@ export class SessionStore {
     this.projectsRepo.addFolder(projectId, path);
   }
 
-  /** 移除文件夹；若触发主文件夹继位，同事务级联改写成员 workspace_root。 */
+  /** 移除文件夹只更新项目清单；已有 Session 的 cwd 是自己的历史选择。 */
   removeProjectFolder(projectId: string, path: string): void {
-    const { newPrimaryPath } = this.projectsRepo.removeFolder(projectId, path);
-    if (newPrimaryPath !== null) {
-      this.sessionsRepo.cascadeWorkspaceForProject(projectId, newPrimaryPath, Date.now());
-    }
+    this.projectsRepo.removeFolder(projectId, path);
   }
 
-  /** 更换主文件夹并级联全部成员。 */
+  /** 更换主文件夹只影响未来新建 Session 的初始 cwd。 */
   setProjectPrimaryFolder(projectId: string, path: string): void {
     this.projectsRepo.setPrimaryFolder(projectId, path);
-    const primary = this.projectsRepo.primaryFolderPath(projectId);
-    if (primary) this.sessionsRepo.cascadeWorkspaceForProject(projectId, primary, Date.now());
   }
 
   /**
-   * 拖入项目：workspace_root 立即改写为项目主工作区并锁定。
-   * `includeCurrentWorkspace` 为 true 且原工作区不在项目文件夹清单时，先把它加为
-   * 非主文件夹（弹窗"是否加入原工作区"选确认的那条路径）。
+   * 拖入项目只改成员资格，不把原 cwd 加入项目文件夹清单。
    */
   assignSessionToProject(
     sessionId: string,
     projectId: string,
-    includeCurrentWorkspace = false,
   ): void {
-    const session = this.requireSession(sessionId);
-    const primary = this.projectsRepo.primaryFolderPath(projectId);
-    if (!primary) throw new Error(`project_has_no_folder: ${projectId}`);
-
-    this.db.sqlite.transaction(() => {
-      if (includeCurrentWorkspace && session.workspaceRoot) {
-        const folders = this.projectsRepo.listFolders(projectId);
-        if (!folders.some((folder) => folder.path === session.workspaceRoot)) {
-          this.projectsRepo.addFolder(projectId, session.workspaceRoot);
-        }
-      }
-      this.sessionsRepo.assignToProject(sessionId, projectId, primary, Date.now());
-    })();
+    this.requireSession(sessionId);
+    if (!this.projectsRepo.findById(projectId)) {
+      throw new Error(`project_not_found: ${projectId}`);
+    }
+    this.sessionsRepo.assignToProject(sessionId, projectId, Date.now());
   }
 
-  /** 拖出项目：解除成员资格，workspace_root 保留原值恢复自由。 */
+  /** 拖出项目：解除成员资格，cwd 保留原值恢复自由。 */
   removeSessionFromProject(sessionId: string): void {
     this.sessionsRepo.removeFromProject(sessionId, Date.now());
   }
@@ -580,6 +568,10 @@ const MESSAGE_PAGE_MAX_LIMIT = 200;
 const MESSAGE_WINDOW_DEFAULT_BEFORE = 20;
 const MESSAGE_WINDOW_DEFAULT_AFTER = 30;
 const MESSAGE_WINDOW_MAX_TOTAL = 100;
+
+function assertSessionCwd(cwd: string): void {
+  if (!path.isAbsolute(cwd)) throw new Error('session_cwd_invalid');
+}
 
 function messageReadLimit(
   value: number | undefined,

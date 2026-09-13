@@ -154,7 +154,7 @@ function ProjectCreator({ open, onClose }: {
         projectsApi.create({
           name: name.trim(),
           folderPaths,
-          primaryFolderPath,
+          ...(primaryFolderPath ? { primaryFolderPath } : {}),
         }),
         '创建项目失败',
       );
@@ -245,7 +245,7 @@ function ProjectCreator({ open, onClose }: {
         <button
           type="button"
           className="h-9 rounded-lg bg-[var(--ema-text-primary)] px-4 text-sm font-medium text-[var(--ema-bg)] transition-opacity hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-40"
-          disabled={!name.trim() || folderPaths.length === 0 || saving}
+          disabled={!name.trim() || saving}
           onClick={() => void create()}
         >
           {saving ? '创建中…' : '创建项目'}
@@ -516,8 +516,7 @@ function ProjectEditor({
             <Button
               variant="ghost"
               size="sm"
-              disabled={project.folders.length <= 1}
-              title={project.folders.length <= 1 ? '项目至少保留一个源文件夹' : '移除文件夹'}
+              title="移除文件夹"
               onClick={() => void change(
                 projectsApi.removeFolder(project.id, folder.path),
                 '移除源文件夹失败',

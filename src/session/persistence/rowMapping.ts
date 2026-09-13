@@ -48,7 +48,7 @@ export function toSession(row: SessionRow): Session {
   return {
     id: row.id,
     title: row.title,
-    workspaceRoot: row.workspace_root,
+    cwd: row.cwd,
     projectId: row.project_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

@@ -8,7 +8,7 @@ import { contextFail, contextOk } from '../Tool/tool.js';
 import type { ToolUseContext } from '../Tool/toolUseContext.js';
 
 const baseContext: ToolUseContext = {
-  workspaceRoot: 'D:/workspace',
+  cwd: 'D:/workspace',
   platform: 'win32',
 };
 
@@ -29,7 +29,7 @@ function makeTool(
     description: `${name} description`,
     inputSchema: z.object({}),
     validateContext: (context: ToolUseContext) => {
-      if (capability === 'workspace' && !context.workspaceRoot) {
+      if (capability === 'workspace' && !context.cwd) {
         return contextFail('缺少工作区');
       }
       if (capability === 'askUser' && !context.askUser) {

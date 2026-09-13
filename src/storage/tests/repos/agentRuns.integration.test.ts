@@ -12,8 +12,8 @@ describe('AgentRun 持久化状态机', () => {
   beforeEach(() => {
     database = createTestDatabase();
     database.db.prepare(`
-      INSERT INTO sessions (id, title, created_at, updated_at)
-      VALUES ('session-a', 'Session A', 1, 1)
+      INSERT INTO sessions (id, title, cwd, created_at, updated_at)
+      VALUES ('session-a', 'Session A', 'D:/work', 1, 1)
     `).run();
     database.db.prepare(`
       INSERT INTO turns (

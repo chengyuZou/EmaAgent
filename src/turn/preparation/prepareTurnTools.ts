@@ -73,7 +73,10 @@ export interface TurnToolsDeps {
   readonly backgroundProcesses?: BackgroundProcess;
   /** 每 Turn 解析一次 vision 调用闭包；无绑定时返回 undefined（PDF 只读文本层）。 */
   readonly resolveVision?: () => CallVision | undefined;
-  readonly commandRunner?: (sessionId: string) => CommandRunner | undefined;
+  readonly commandRunner?: (
+    cwd: string,
+    workspaceRoots: readonly string[],
+  ) => CommandRunner | undefined;
   readonly toolResultStore?: (sessionId: string) => ToolResultStore;
   readonly toolExecutionState?: ToolExecutionState;
 }
@@ -83,7 +86,8 @@ export interface PrepareTurnToolsInput {
   readonly turnId: string;
   readonly executionProfile: ExecutionProfile;
   readonly narrativePolicy: NarrativePolicy;
-  readonly workspaceRoot: string;
+  readonly cwd: string;
+  readonly workspaceRoots: readonly string[];
   readonly scratchpadDir?: string;
   readonly skillPool?: SkillPool;
   /** 本 Turn 在当前激活知识库内冻结的文档范围。 */
@@ -133,7 +137,7 @@ export function prepareTurnTools(
   deps: TurnToolsDeps,
   input: PrepareTurnToolsInput,
 ): TurnToolsAssembly {
-  const { sessionId, turnId, workspaceRoot, scratchpadDir } = input;
+  const { sessionId, turnId, cwd, scratchpadDir } = input;
   const readFileState: ReadFileState = new Map();
 
   const permissionContext: ToolPermissionContext = {
@@ -141,7 +145,7 @@ export function prepareTurnTools(
     alwaysAllowRules: input.permission.buckets.alwaysAllowRules,
     alwaysDenyRules: input.permission.buckets.alwaysDenyRules,
     alwaysAskRules: input.permission.buckets.alwaysAskRules,
-    ...(workspaceRoot ? { workspaceRoot } : {}),
+    workspaceRoots: input.workspaceRoots,
   };
 
   // 根 Turn 始终 interactive：ask 决策经队列等用户；子 Agent 的装配（prepareSubagent）
@@ -197,7 +201,7 @@ export function prepareTurnTools(
     throw new Error(`AskUser ${outcome.status}: ${outcome.reason}`);
   };
 
-  const commandRunner = deps.commandRunner?.(sessionId);
+  const commandRunner = deps.commandRunner?.(cwd, input.workspaceRoots);
   const vision = deps.resolveVision?.();
   // 召回闭包在本 Turn 构建一次: LLM 连接与模式覆盖全部冻结;
   // auto 时模型经 Tool 触发，always 时 reminder 触发，二者共用同一实现。
@@ -220,7 +224,7 @@ export function prepareTurnTools(
       });
   })();
   const toolContext: ToolUseContext = Object.freeze({
-    workspaceRoot,
+    cwd,
     platform: process.platform,
     ...(commandRunner ? { commandRunner } : {}),
     ...(vision ? { vision } : {}),

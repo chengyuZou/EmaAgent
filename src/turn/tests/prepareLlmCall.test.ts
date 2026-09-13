@@ -17,7 +17,7 @@ const BASELINE_IDS = ['sm-old-1', 'sm-old-2'];
 function makePrepared(overrides: Partial<PreparedTurn> = {}): PreparedTurn {
   return {
     executionProfile: 'work',
-    workspaceRoot: '/w',
+    cwd: '/w',
     contextWindow: 100_000,
     maxOutput: 8_000,
     systemPrompt: [

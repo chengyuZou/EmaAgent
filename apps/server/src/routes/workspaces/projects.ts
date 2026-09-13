@@ -21,8 +21,8 @@ export interface ProjectsRouteDeps {
 
 const createBody = z.object({
   name: z.string().min(1).max(100),
-  folderPaths: z.array(z.string().trim().min(1)).min(1),
-  primaryFolderPath: z.string().trim().min(1),
+  folderPaths: z.array(z.string().trim().min(1)),
+  primaryFolderPath: z.string().trim().min(1).optional(),
 });
 
 const renameBody = z.object({
@@ -39,8 +39,6 @@ const folderBody = z.object({
 
 const assignBody = z.object({
   sessionId: z.string().min(1),
-  /** true 且原工作区不在清单时，先把它加为非主文件夹（弹窗确认加入的那条路径）。 */
-  includeCurrentWorkspace: z.boolean().optional(),
 });
 
 export const projectsRoute = (deps: ProjectsRouteDeps) =>
@@ -60,7 +58,7 @@ export const projectsRoute = (deps: ProjectsRouteDeps) =>
       deps.session.renameProject(context.req.param('id'), context.req.valid('json').name);
       return context.json({ ok: true });
     })
-    // 删除项目：成员 Session 由外键 SET NULL 掉到非项目区，工作区保留。
+    // 删除项目：成员 Session 由外键 SET NULL 掉到非项目区，cwd 保留。
     .delete('/projects/:id', context => {
       deps.session.deleteProject(context.req.param('id'));
       return context.json({ ok: true });
@@ -73,7 +71,7 @@ export const projectsRoute = (deps: ProjectsRouteDeps) =>
       deps.session.addProjectFolder(context.req.param('id'), context.req.valid('json').path);
       return context.json({ ok: true });
     })
-    // 移除主文件夹会触发继位并级联改写成员 workspace_root（SessionStore 内事务）。
+    // 移除主文件夹仅影响项目以后新建 Session 的默认 cwd。
     .delete('/projects/:id/folders', jsonBody(folderBody), async context => {
       deps.session.removeProjectFolder(context.req.param('id'), context.req.valid('json').path);
       return context.json({ ok: true });
@@ -82,21 +80,20 @@ export const projectsRoute = (deps: ProjectsRouteDeps) =>
       deps.session.setProjectPrimaryFolder(context.req.param('id'), context.req.valid('json').path);
       return context.json({ ok: true });
     })
-    // 拖入项目：workspace_root 立即改写为项目主工作区并锁定。
+    // 拖入项目只改变归属，保留已有 Session 的 cwd。
     .post('/projects/:id/sessions', jsonBody(assignBody), async context => {
-      const { sessionId, includeCurrentWorkspace } = context.req.valid('json');
+      const { sessionId } = context.req.valid('json');
       try {
         deps.session.assignSessionToProject(
           sessionId,
           context.req.param('id'),
-          includeCurrentWorkspace ?? false,
         );
         return context.json({ ok: true });
       } catch (error) {
         return projectError(context, error);
       }
     })
-    // 拖出项目：解除成员资格，workspace_root 保留原值恢复自由。
+    // 拖出项目：解除成员资格，cwd 保留原值。
     .delete('/projects/:id/sessions/:sessionId', context => {
       deps.session.removeSessionFromProject(context.req.param('sessionId'));
       return context.json({ ok: true });
@@ -107,8 +104,11 @@ function projectError(context: Context, error: unknown) {
     return context.json({ error: 'session_ownership_violation', message: error.message }, 403);
   }
   const message = error instanceof Error ? error.message : String(error);
-  if (message.includes('project_has_no_folder')) {
-    return context.json({ error: 'project_has_no_folder', message }, 400);
+  if (message.startsWith('project_not_found:')) {
+    return context.json({ error: 'project_not_found' }, 404);
+  }
+  if (message.startsWith('session_not_found:')) {
+    return context.json({ error: 'session_not_found' }, 404);
   }
   if (message.includes('project_name_empty')) {
     return context.json({ error: 'project_name_empty' }, 400);

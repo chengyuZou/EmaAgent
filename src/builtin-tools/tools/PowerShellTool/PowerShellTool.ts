@@ -60,7 +60,7 @@ export interface PowerShellCommandResult {
 
 /** 窄 Context:只要工作区(cwd);Shell 路径由探测模块提供,不进 Context。 */
 interface PowerShellToolContext {
-  workspaceRoot: string;
+  cwd: string;
 }
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
@@ -120,10 +120,10 @@ export const PowerShellTool = buildTool<PowerShellInput, PowerShellCommandResult
     if (!peekPowerShellDetection()?.path) {
       return contextFail('当前环境未探测到 PowerShell(pwsh/powershell.exe)。');
     }
-    if (!ctx.workspaceRoot) {
+    if (!ctx.cwd) {
       return contextFail('PowerShell 需要先选择工作区。');
     }
-    return contextOk({ workspaceRoot: ctx.workspaceRoot });
+    return contextOk({ cwd: ctx.cwd });
   },
 
   async validateInput(input) {
@@ -157,7 +157,7 @@ export const PowerShellTool = buildTool<PowerShellInput, PowerShellCommandResult
       throw new Error('PowerShell is not available on this machine.');
     }
     const result = await runPowerShellCommand(detection.path, input.command, {
-      cwd: context.workspaceRoot,
+      cwd: context.cwd,
       timeoutMs: input.timeout ?? DEFAULT_TIMEOUT_MS,
       signal: invocation.signal,
     });

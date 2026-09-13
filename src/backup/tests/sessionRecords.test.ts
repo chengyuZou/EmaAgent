@@ -8,7 +8,7 @@ import { sessionRecordSchema, turnRecordSchema } from '../records/sessionRecords
 const currentSession = {
   id: 'session-1',
   title: '示例',
-  workspaceRoot: null,
+  cwd: 'D:/work',
   projectId: null,
   pinned: false,
   archivedAt: null,

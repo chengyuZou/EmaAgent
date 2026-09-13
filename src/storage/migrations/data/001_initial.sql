@@ -131,7 +131,7 @@ CREATE TABLE messages (
 CREATE TABLE sessions (
   id                   TEXT PRIMARY KEY,
   title                TEXT NOT NULL,
-  workspace_root       TEXT,
+  cwd                  TEXT NOT NULL,
   project_id           TEXT REFERENCES projects(id) ON DELETE SET NULL,
   pinned               INTEGER NOT NULL DEFAULT 0,
   archived_at          INTEGER,
@@ -156,7 +156,7 @@ CREATE TABLE task_context_state (
   last_reminded_at INTEGER NOT NULL
 );
 
--- 项目是实体：可编辑名称、多源文件夹、恰好一个主文件夹。
+-- 项目是实体：可编辑名称、多源文件夹；无文件夹时没有主文件夹。
 CREATE TABLE projects (
   id         TEXT PRIMARY KEY,
   name       TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 100),
@@ -175,7 +175,7 @@ CREATE TABLE project_folders (
   PRIMARY KEY (project_id, path)
 );
 
--- 至多一个主文件夹（"至少一个"由 repo 拒绝末位删除保证）。
+-- 至多一个主文件夹。
 CREATE UNIQUE INDEX idx_project_folders_primary
   ON project_folders(project_id) WHERE is_primary = 1;
 
@@ -385,9 +385,8 @@ CREATE INDEX idx_messages_summary_cursor
 CREATE INDEX idx_sessions_activity
   ON sessions(pinned DESC, last_activity_at DESC, id DESC);
 
-CREATE INDEX idx_sessions_workspace
-  ON sessions(workspace_root, last_activity_at DESC, id DESC)
-  WHERE workspace_root IS NOT NULL;
+CREATE INDEX idx_sessions_cwd
+  ON sessions(cwd, last_activity_at DESC, id DESC);
 
 CREATE INDEX idx_sessions_project
   ON sessions(project_id, last_activity_at DESC, id DESC)

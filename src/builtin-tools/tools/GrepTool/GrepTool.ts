@@ -12,7 +12,7 @@ import { GREP_DESCRIPTION } from './prompt.js';
 
 /** Grep 工具的窄 Context：只取工作区根；取消信号走 ToolInvocation。 */
 interface GrepToolContext {
-  workspaceRoot: string;
+  cwd: string;
 }
 
 const MAX_ENUMERATED_RECORDS = 20_000;
@@ -131,17 +131,17 @@ export const GrepTool = buildTool<GrepInput, GrepResult, GrepToolContext>({
   isConcurrencySafe: () => true,
 
   validateContext(ctx) {
-    if (!ctx.workspaceRoot) {
+    if (!ctx.cwd) {
       return contextFail('Grep 工具需要明确的工作区，禁止回退到 Sidecar 进程目录。');
     }
-    return contextOk({ workspaceRoot: ctx.workspaceRoot });
+    return contextOk({ cwd: ctx.cwd });
   },
 
   validateInput(input, context) {
     if (!input.path) return { valid: true };
     // UNC 跳过 stat: stat 本身会触发 SMB 认证, NTLM 凭据泄露; Permission 层会拦。
     if (input.path.startsWith('\\\\') || input.path.startsWith('//')) return { valid: true };
-    const resolved = path.resolve(context.workspaceRoot, input.path);
+    const resolved = path.resolve(context.cwd, input.path);
     try {
       fs.statSync(resolved);
     } catch (error) {
@@ -158,9 +158,9 @@ export const GrepTool = buildTool<GrepInput, GrepResult, GrepToolContext>({
     checkReadPathPermission({
       toolName: BuiltinTools.Grep.name,
       path: input.path
-        ? path.resolve(context.workspaceRoot, input.path)
-        : context.workspaceRoot,
-      workspaceRoot: context.workspaceRoot,
+        ? path.resolve(context.cwd, input.path)
+        : context.cwd,
+      cwd: context.cwd,
       permissionContext,
     }),
 
@@ -169,11 +169,11 @@ export const GrepTool = buildTool<GrepInput, GrepResult, GrepToolContext>({
     context: GrepToolContext,
     invocation: ToolInvocation,
   ): Promise<GrepResult> {
-    const workspaceRoot = context.workspaceRoot;
+    const cwd = context.cwd;
     // cwd 内搜索: 输出相对路径(省 token 且更易读); 目标是文件时以其所在目录为 cwd。
     const resolvedTarget = input.path
-      ? path.resolve(workspaceRoot, input.path)
-      : workspaceRoot;
+      ? path.resolve(cwd, input.path)
+      : cwd;
     let searchCwd = resolvedTarget;
     let searchTarget = '.';
     try {

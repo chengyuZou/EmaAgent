@@ -60,7 +60,8 @@ export type CommandCompactResult =
   | { readonly status: 'cancelled' };
 
 export interface CommandCompactDeps {
-  readonly sessions: Pick<SessionStore, 'getSession' | 'loadHistory' | 'appendHistorySummary'>;
+  readonly sessions: Pick<SessionStore,
+    'getSession' | 'listProjectFolders' | 'loadHistory' | 'appendHistorySummary'>;
   /** Assistant 历史的 generatedBy 解析（createGenerationTargetResolver 的事实源）。 */
   readonly turns: Pick<TurnStore, 'getTurn'>;
   readonly activeSessions: ActiveSessionRegistry;
@@ -71,12 +72,12 @@ export interface CommandCompactDeps {
   readonly characterPrompt: () => readonly string[];
   /** 与根 Turn 同一 Skill 目录来源。 */
   readonly skillEntries: (
-    workspaceRoot: string,
+    cwd: string,
     projectId: string | null,
   ) => Promise<readonly SkillDescriptor[]>;
   /** skill_enablement 表的当前禁用路径列表（与根 Turn 同一来源）。 */
   readonly disabledSkillPaths: () => readonly string[];
-  readonly workspaceInstructions?: (workspaceRoot: string) => string | null;
+  readonly workspaceInstructions?: (cwd: string) => string | null;
   readonly memoryGuidance?: () => Promise<string | null> | string | null;
   /** 模型不支持图片输入时的 Vision 描述入口（与根 Turn 同一条降级链）。 */
   readonly describeImage?: VisionDescriptionProducer;
@@ -256,10 +257,13 @@ async function buildCompactSystemMessages(
   providerId: string,
   modelId: string,
 ): Promise<readonly Message[]> {
-  const workspaceRoot = session.workspaceRoot ?? '';
+  const cwd = session.cwd ?? '';
+  const projectFolderPaths = session.projectId
+    ? deps.sessions.listProjectFolders(session.projectId).map(folder => folder.path)
+    : [];
   const skillPool = await resolveSkillPool(
     { settings: deps.settings, skillEntries: deps.skillEntries, disabledSkillPaths: deps.disabledSkillPaths },
-    workspaceRoot,
+    cwd,
     session.projectId,
   );
   const blocks = await buildSessionSystemPrompt(
@@ -272,7 +276,8 @@ async function buildCompactSystemMessages(
     },
     {
       executionProfile: session.executionProfile,
-      workspaceRoot,
+      cwd,
+      projectFolderPaths,
       providerId,
       modelId,
       toolNames: [],

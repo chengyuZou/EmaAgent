@@ -57,7 +57,7 @@ import {
 /** 一个根 Turn 的冻结事实；运行期只读取这一份，不再回读 Settings/Registry/Session。 */
 export interface PreparedTurn {
   readonly executionProfile: ExecutionProfile;
-  readonly workspaceRoot: string;
+  readonly cwd: string;
   readonly projectId: string | null;
   readonly scratchpadDir?: string;
   readonly callLlm: CallLlm;
@@ -83,14 +83,14 @@ export interface PreparedTurn {
 }
 
 export interface PrepareTurnDeps extends TurnToolsDeps {
-  readonly sessions: Pick<SessionStore, 'getSession'>;
+  readonly sessions: Pick<SessionStore, 'getSession' | 'listProjectFolders'>;
   readonly providers: Providers;
   readonly providerModels: ProviderModels;
   readonly attachments: AttachmentStore;
   readonly characterPrompt: () => readonly string[];
   /** SkillRegistry 当前全量条目（含本 Turn 工作区的 project 技能）；冻结在 Pool 之前读取一次。 */
   readonly skillEntries: (
-    workspaceRoot: string,
+    cwd: string,
     projectId: string | null,
   ) => Promise<readonly SkillDescriptor[]>;
   /** skill_enablement 表的当前禁用路径列表（builtin/user 逐技能启停）。 */
@@ -98,7 +98,7 @@ export interface PrepareTurnDeps extends TurnToolsDeps {
   /** 默认 llm 包的 createLlmCall；测试注入脚本化调用。 */
   readonly createLlmCall?: (connection: LlmConnection, modelId: string) => CallLlm;
   /** 工作区指令（EMA.md/CLAUDE.md）按本 Turn 的工作区读取；无工作区时不会调用。 */
-  readonly workspaceInstructions?: (workspaceRoot: string) => string | null;
+  readonly workspaceInstructions?: (cwd: string) => string | null;
   /** 记忆使用指引（静态模板文本，memory 包 buildMemoryGuidance 产出）；两轨摘要不在这里，进 reminder。 */
   readonly memoryGuidance?: () => Promise<string | null> | string | null;
   /** 模型不支持图片时的 Vision 描述入口。 */
@@ -133,8 +133,12 @@ export async function prepareTurn(
   const compactSettings = readCompactSettings(deps.settings);
   const session = deps.sessions.getSession(request.sessionId);
   const permissionMode = session.permissionMode;
-  const workspaceRoot = session.workspaceRoot ?? '';
+  const cwd = session.cwd;
   const projectId = session.projectId;
+  const projectFolders = projectId
+    ? deps.sessions.listProjectFolders(projectId).map((folder) => folder.path)
+    : [];
+  const workspaceRoots = projectFolders.length > 0 ? projectFolders : [cwd];
 
   const providerId = request.modelSelection?.providerId ?? session.providerId;
   const modelId = request.modelSelection?.modelId ?? session.modelId;
@@ -159,7 +163,7 @@ export async function prepareTurn(
   // Skill 目录与 Pool 同步冻结，与 /compact Command 共用同一装配。
   const skillPool = await resolveSkillPool(
     { settings: deps.settings, skillEntries: deps.skillEntries, disabledSkillPaths: deps.disabledSkillPaths },
-    workspaceRoot,
+    cwd,
     projectId,
   );
 
@@ -198,7 +202,8 @@ export async function prepareTurn(
     turnId,
     executionProfile: request.executionProfile,
     narrativePolicy: request.narrativePolicy,
-    workspaceRoot,
+    cwd,
+    workspaceRoots,
     ...(scratchpadDir ? { scratchpadDir } : {}),
     ...(skillPool ? { skillPool } : {}),
     ...(request.knowledge ? { knowledge: request.knowledge } : {}),
@@ -226,7 +231,8 @@ export async function prepareTurn(
     },
     {
       executionProfile: request.executionProfile,
-      workspaceRoot,
+      cwd,
+      projectFolderPaths: projectFolders,
       providerId,
       modelId,
       toolNames: tools.toolPool.tools.map(tool => tool.name),
@@ -236,7 +242,7 @@ export async function prepareTurn(
 
   return Object.freeze({
     executionProfile: request.executionProfile,
-    workspaceRoot,
+    cwd,
     projectId,
     ...(scratchpadDir ? { scratchpadDir } : {}),
     callLlm,

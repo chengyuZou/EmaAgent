@@ -77,7 +77,8 @@ function makeInput(options: {
     turnId: TURN_ID,
     executionProfile: 'work' as const,
     narrativePolicy: 'off' as const,
-    workspaceRoot: '/w',
+    cwd: '/w',
+    workspaceRoots: ['/w'],
     prepareSubagent: async () => { throw new Error('不应派生子 Agent'); },
     parentMessages: [],
     model: { providerId: 'p', modelId: 'm' },
@@ -92,6 +93,29 @@ function makeInput(options: {
 }
 
 describe('prepareTurnTools', () => {
+  it('文件权限与 Shell 工厂使用同一份本 Turn 冻结目录', () => {
+    const received: Array<{ cwd: string; roots: readonly string[] }> = [];
+    const deps: TurnToolsDeps = {
+      ...makeDeps({
+        tools: [],
+        queue: new SessionInteractionQueue(null),
+        settings: fakeSettings(),
+      }),
+      commandRunner: (cwd, roots) => {
+        received.push({ cwd, roots });
+        return undefined;
+      },
+    };
+
+    const assembly = prepareTurnTools(deps, makeInput({
+      events: [],
+      overrides: { cwd: '/old', workspaceRoots: ['/current'] },
+    }));
+
+    expect(assembly.permissionContext.workspaceRoots).toEqual(['/current']);
+    expect(received).toEqual([{ cwd: '/old', roots: ['/current'] }]);
+  });
+
   it('Chat 保留只读工具与 Skill，Work 保留全部工具', () => {
     const readTool = fakeTool('Read', { id: BuiltinTools.FileRead.id });
     const skillTool = fakeTool('Skill', { id: BuiltinTools.Skill.id });

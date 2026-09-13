@@ -14,13 +14,15 @@ import {
   type PermissionDecision,
   type ToolPermissionContext,
 } from '@ema-agent/permission';
+import os from 'node:os';
+import nodePath from 'node:path';
 
 /** 共享判定的输入：Tool 提取出绝对路径后传入。 */
 export interface PathPermissionInput {
   readonly toolName: string;
   /** 候选绝对路径（Tool 已按工作区解析）。 */
   readonly path: string;
-  readonly workspaceRoot?: string;
+  readonly cwd?: string;
   readonly permissionContext: ToolPermissionContext;
   /** 宿主按 Turn 授予的内部工作目录（scratchpad 等），命中则直接放行。 */
   readonly internalRoots?: InternalPathRoots;
@@ -37,7 +39,7 @@ const WRITE_PROTECTED_DIRS: ReadonlySet<string> = new Set([
 export function checkReadPathPermission(
   input: PathPermissionInput,
 ): PermissionDecision {
-  const { toolName, path, workspaceRoot, permissionContext, internalRoots } = input;
+  const { toolName, path, cwd, permissionContext, internalRoots } = input;
   // 原路径与 symlink 真实路径都必须通过全部检查（防符号链接逃逸）。
   const pathsToCheck = getPathsForPermissionCheck(path);
 
@@ -70,7 +72,7 @@ export function checkReadPathPermission(
   for (const pathToCheck of pathsToCheck) {
     const denyRule = findMatchingContentRule(
       permissionContext, toolName, 'deny',
-      (content) => matchPathRule(content, pathToCheck, workspaceRoot),
+      (content) => matchPathRule(content, pathToCheck, cwd),
     );
     if (denyRule) {
       return {
@@ -85,7 +87,7 @@ export function checkReadPathPermission(
   for (const pathToCheck of pathsToCheck) {
     const askRule = findMatchingContentRule(
       permissionContext, toolName, 'ask',
-      (content) => matchPathRule(content, pathToCheck, workspaceRoot),
+      (content) => matchPathRule(content, pathToCheck, cwd),
     );
     if (askRule) {
       return {
@@ -101,7 +103,7 @@ export function checkReadPathPermission(
   if (editResult.behavior === 'allow') return editResult;
 
   // 6. 工作区内读取默认放行（default 模式）。
-  if (pathInAnyWorkingDir(path, { workspaceRoot })) {
+  if (pathInAnyWorkingDir(path, permissionContext)) {
     return {
       behavior: 'allow',
       decisionReason: { type: 'mode', mode: 'default' },
@@ -119,7 +121,7 @@ export function checkReadPathPermission(
   // 8. allow 规则。
   const allowRule = findMatchingContentRule(
     permissionContext, toolName, 'allow',
-    (content) => matchPathRule(content, path, workspaceRoot),
+    (content) => matchPathRule(content, path, cwd),
   );
   if (allowRule) {
     return {
@@ -140,7 +142,7 @@ export function checkReadPathPermission(
 export function checkWritePathPermission(
   input: PathPermissionInput,
 ): PermissionDecision {
-  const { toolName, path, workspaceRoot, permissionContext, internalRoots } = input;
+  const { toolName, path, cwd, permissionContext, internalRoots } = input;
   // 原路径与 symlink 真实路径都必须通过 deny 规则。
   const pathsToCheck = getPathsForPermissionCheck(path);
 
@@ -148,7 +150,7 @@ export function checkWritePathPermission(
   for (const pathToCheck of pathsToCheck) {
     const denyRule = findMatchingContentRule(
       permissionContext, toolName, 'deny',
-      (content) => matchPathRule(content, pathToCheck, workspaceRoot),
+      (content) => matchPathRule(content, pathToCheck, cwd),
     );
     if (denyRule) {
       return {
@@ -182,7 +184,7 @@ export function checkWritePathPermission(
   for (const pathToCheck of pathsToCheck) {
     const askRule = findMatchingContentRule(
       permissionContext, toolName, 'ask',
-      (content) => matchPathRule(content, pathToCheck, workspaceRoot),
+      (content) => matchPathRule(content, pathToCheck, cwd),
     );
     if (askRule) {
       return {
@@ -196,7 +198,7 @@ export function checkWritePathPermission(
   // 5. acceptEdits 模式：工作区内写入放行（模式是 Tool 侧语义）。
   if (
     permissionContext.mode === 'acceptEdits'
-    && pathInAnyWorkingDir(path, { workspaceRoot })
+    && pathInAnyWorkingDir(path, permissionContext)
   ) {
     return {
       behavior: 'allow',
@@ -207,7 +209,7 @@ export function checkWritePathPermission(
   // 6. allow 规则。
   const allowRule = findMatchingContentRule(
     permissionContext, toolName, 'allow',
-    (content) => matchPathRule(content, path, workspaceRoot),
+    (content) => matchPathRule(content, path, cwd),
   );
   if (allowRule) {
     return {
@@ -220,7 +222,7 @@ export function checkWritePathPermission(
   return {
     behavior: 'ask',
     message: `写入 ${path} 需要用户确认`,
-    ...(pathInAnyWorkingDir(path, { workspaceRoot })
+    ...(pathInAnyWorkingDir(path, permissionContext)
       ? {}
       : { decisionReason: { type: 'workingDir', reason: '路径在工作区之外' } }),
   };
@@ -246,6 +248,15 @@ function checkWriteSafety(
 function dangerousPathReason(absolutePath: string): string | undefined {
   const segments = absolutePath.split(/[\\/]/).filter(Boolean);
   const fileName = segments.at(-1)?.toLowerCase();
+  const defaultWorkspace = nodePath.join(os.homedir(), '.ema-agent', 'workspace');
+  const profileDirectoryIndex = defaultWorkspace.split(/[\\/]/).filter(Boolean).length - 2;
+  const relativeToDefaultWorkspace = nodePath.relative(defaultWorkspace, absolutePath);
+  const insideDefaultWorkspace = relativeToDefaultWorkspace === ''
+    || (
+      relativeToDefaultWorkspace !== '..'
+      && !relativeToDefaultWorkspace.startsWith(`..${nodePath.sep}`)
+      && !nodePath.isAbsolute(relativeToDefaultWorkspace)
+    );
   if (fileName) {
     for (const dangerousFile of DANGEROUS_FILES) {
       if (dangerousFile.toLowerCase() === fileName) {
@@ -253,8 +264,11 @@ function dangerousPathReason(absolutePath: string): string | undefined {
       }
     }
   }
-  for (const segment of segments) {
+  for (const [index, segment] of segments.entries()) {
     const lower = segment.toLowerCase();
+    if (lower === '.ema-agent' && insideDefaultWorkspace && index === profileDirectoryIndex) {
+      continue;
+    }
     for (const protectedDir of WRITE_PROTECTED_DIRS) {
       if (protectedDir.toLowerCase() === lower) {
         return `目标路径含受保护目录 ${segment}`;

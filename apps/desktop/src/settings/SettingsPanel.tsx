@@ -212,7 +212,8 @@ function NavButton(props: { active: boolean; expandable: boolean; expanded: bool
   return (
     <Button
       variant="ghost"
-      className={`w-full justify-start gap-2 rounded-lg px-3 py-1.5 text-sm transition-colors ${props.active ? 'ema-active-rail bg-[var(--ema-primary-muted)] text-[var(--ema-primary)]' : 'text-[var(--ema-text-tertiary)] hover:bg-[var(--ema-surface-2)]/50 hover:text-[var(--ema-text-primary)]'}`}
+      data-selected={props.active || undefined}
+      className={`w-full justify-start gap-2 rounded-lg px-3 py-1.5 text-sm transition-colors ${props.active ? 'ema-selectable' : 'text-[var(--ema-text-tertiary)] hover:bg-[var(--ema-surface-2)]/50 hover:text-[var(--ema-text-primary)]'}`}
       onClick={props.onClick}
       aria-current={props.active ? 'page' : undefined}
       aria-expanded={props.expandable ? props.expanded : undefined}
@@ -229,7 +230,8 @@ function SubNavButton(props: { active: boolean; expanded: boolean; label: string
   return (
     <Button
       variant="ghost"
-      className={`mt-0.5 w-full justify-start rounded-lg py-1 pl-9 pr-3 text-xs transition-colors ${props.active ? 'ema-active-rail bg-[var(--ema-primary-muted)] text-[var(--ema-primary)]' : 'text-[var(--ema-text-tertiary)] hover:bg-[var(--ema-surface-2)]/50 hover:text-[var(--ema-text-primary)]'}`}
+      data-selected={props.active || undefined}
+      className={`mt-0.5 w-full justify-start rounded-lg py-1 pl-9 pr-3 text-xs transition-colors ${props.active ? 'ema-selectable' : 'text-[var(--ema-text-tertiary)] hover:bg-[var(--ema-surface-2)]/50 hover:text-[var(--ema-text-primary)]'}`}
       onClick={props.onClick}
       tabIndex={props.expanded ? 0 : -1}
       aria-current={props.active ? 'page' : undefined}

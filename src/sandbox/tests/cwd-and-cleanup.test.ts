@@ -7,10 +7,10 @@ import { resolveCommandCwd } from '../resolveCommandCwd.js';
 import { CommandRunner } from '../commandRunner.js';
 import type { SandboxCapability } from '../types.js';
 
-function makeCapability(workspaceRoot: string, writablePaths: string[] = []): SandboxCapability {
+function makeCapability(cwd: string, writablePaths: string[] = []): SandboxCapability {
   return {
-    workspaceRoot,
-    writablePaths: [workspaceRoot, ...writablePaths],
+    cwd,
+    writablePaths: [cwd, ...writablePaths],
     forbiddenPaths: [],
     networkAccess: 'none',
   };
@@ -26,12 +26,12 @@ function makeWorkspace(): string {
 }
 
 describe('resolveCommandCwd', () => {
-  it('省略时使用 workspaceRoot', () => {
+  it('省略时使用 cwd', () => {
     const root = makeWorkspace();
     expect(resolveCommandCwd(undefined, makeCapability(root))).toBe(fs.realpathSync.native(root));
   });
 
-  it('workspaceRoot 内的子目录与 writablePaths 放行', () => {
+  it('cwd 内的子目录与 writablePaths 放行', () => {
     const root = makeWorkspace();
     const sub = path.join(root, 'sub');
     fs.mkdirSync(sub);
@@ -43,7 +43,26 @@ describe('resolveCommandCwd', () => {
     );
   });
 
-  it('相对路径以 workspaceRoot 为基准解析, 不借宿主进程 cwd', () => {
+  it('旧 cwd 被项目移除后仍可作为起点，但不再授权其子目录', () => {
+    const oldCwd = makeWorkspace();
+    const currentFolder = makeWorkspace();
+    const oldSubdirectory = path.join(oldCwd, 'sub');
+    fs.mkdirSync(oldSubdirectory);
+    const capability: SandboxCapability = {
+      cwd: oldCwd,
+      writablePaths: [currentFolder],
+      forbiddenPaths: [],
+      networkAccess: 'none',
+    };
+
+    expect(resolveCommandCwd(undefined, capability)).toBe(fs.realpathSync.native(oldCwd));
+    expect(resolveCommandCwd('.', capability)).toBe(fs.realpathSync.native(oldCwd));
+    expect(resolveCommandCwd(oldCwd, capability)).toBe(fs.realpathSync.native(oldCwd));
+    expect(resolveCommandCwd(currentFolder, capability)).toBe(fs.realpathSync.native(currentFolder));
+    expect(() => resolveCommandCwd(oldSubdirectory, capability)).toThrow('越出 Sandbox 能力范围');
+  });
+
+  it('相对路径以 cwd 为基准解析, 不借宿主进程 cwd', () => {
     const root = makeWorkspace();
     const sub = path.join(root, 'sub');
     fs.mkdirSync(sub);

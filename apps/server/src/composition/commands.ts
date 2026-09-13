@@ -42,12 +42,12 @@ export function openCommands(deps: {
       const character = characters.store.current();
       return buildCharacterPrompt(character, characters.store.inspectStagePresentation(character.name));
     },
-    skillEntries: (workspaceRoot: string, projectId: string | null) => {
+    skillEntries: (cwd: string, projectId: string | null) => {
       let folderPaths: string[] = [];
       if (projectId) {
         folderPaths = database.session.listProjectFolders(projectId).map((folder) => folder.path);
-      } else if (workspaceRoot) {
-        folderPaths = [workspaceRoot];
+      } else if (cwd) {
+        folderPaths = [cwd];
       }
       return tools.skills.list(folderPaths);
     },

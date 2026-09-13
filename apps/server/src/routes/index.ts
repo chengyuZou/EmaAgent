@@ -118,7 +118,6 @@ export const createRoutes = (composition: Composition, secret: string) => {
       session: database.session,
       turns: database.turns,
       abortAgentRunsForTurn: turnId => turn.agentRuns.abortForTurn(turnId),
-      invalidateSessionRunner: sessionId => tools.invalidateSessionRunner(sessionId),
       // 跨域删除用例在 application 层，装配时绑定 composition。
       deleteSession: sessionId => deleteSession(composition, sessionId),
     }))

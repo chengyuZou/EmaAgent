@@ -15,6 +15,7 @@ function createFixture() {
   sessions.insert({
     id: sessionId,
     title: 'history',
+    cwd: 'D:/work',
     createdAt: 1,
     updatedAt: 1,
     lastActivityAt: 1,

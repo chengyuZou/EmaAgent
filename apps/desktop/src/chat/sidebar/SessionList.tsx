@@ -13,13 +13,13 @@ import {
   type SessionSearchResult,
 } from '../../api/sessions.js';
 import type { AgentSessionState } from '../../stores/agent.js';
+import { useSessionStore } from '../../stores/session.js';
 import { useChatWorkspace } from '../state/chatWorkspace.js';
 import { useHistoryStore } from '../state/history.js';
 import { Collapse, SectionButton } from './ProjectSection.js';
 import {
   SessionRow,
   formatRelativeTime,
-  projectLabelFor,
 } from './SessionRow.js';
 
 interface SessionListProps {
@@ -189,6 +189,13 @@ function SearchRow({
   snippet?: string;
   onSelect(): void;
 }): JSX.Element {
+  const projectName = useSessionStore((state) => {
+    if (!session.projectId) return null;
+    const project = [...state.sessions.pinnedProjects, ...state.sessions.projects]
+      .find((item) => item.id === session.projectId);
+    return project?.name ?? null;
+  });
+
   return row(onSelect, (
     <>
       <span className="mt-1 size-1.5 shrink-0 rounded-full bg-[var(--ema-text-tertiary)]" />
@@ -201,7 +208,7 @@ function SearchRow({
         </span>
       </span>
       <span className="max-w-28 shrink-0 truncate text-xs text-[var(--ema-text-tertiary)]">
-        {projectLabelFor(session)}
+        {projectName ?? '对话'}
       </span>
     </>
   ));

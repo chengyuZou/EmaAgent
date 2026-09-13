@@ -1,5 +1,5 @@
 // CommandRunner 工作区边界与 shell 解析测试:
-// 空 workspaceRoot 拒绝构造; 探测未结算时 start 诚实报错; 结算后正常执行。
+// 空 cwd 拒绝构造; 探测未结算时 start 诚实报错; 结算后正常执行。
 
 import fs from 'node:fs';
 import os from 'node:os';
@@ -17,13 +17,13 @@ afterEach(() => {
 });
 
 describe('CommandRunner 工作区边界', () => {
-  it('空 workspaceRoot 直接拒绝构造', () => {
+  it('空 cwd 直接拒绝构造', () => {
     expect(() => new CommandRunner({
-      workspaceRoot: '',
+      cwd: '',
       writablePaths: [],
       forbiddenPaths: [],
       networkAccess: 'none',
-    })).toThrow('需要明确的 workspaceRoot');
+    })).toThrow('需要明确的 cwd');
   });
 });
 
@@ -32,7 +32,7 @@ describe('CommandRunner shell 解析', () => {
     resetBashProbeCache();
     const root = makeWorkspace();
     const runner = new CommandRunner({
-      workspaceRoot: root,
+      cwd: root,
       writablePaths: [root],
       forbiddenPaths: [],
       networkAccess: 'none',
@@ -49,7 +49,7 @@ describe('CommandRunner shell 解析', () => {
     if (!probe.available || probe.source === 'wsl') return; // wsl 路由语义另测
     const root = makeWorkspace();
     const runner = new CommandRunner({
-      workspaceRoot: root,
+      cwd: root,
       writablePaths: [root],
       forbiddenPaths: [],
       networkAccess: 'none',

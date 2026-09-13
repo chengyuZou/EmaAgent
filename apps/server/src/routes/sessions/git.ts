@@ -12,26 +12,26 @@ const compareBody = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('commit'), sha: z.string().min(1) }),
 ]);
 
-function workspaceRoot(sessions: GitSessionStore, sessionId: string): string | null {
-  return sessions.getSession(sessionId).workspaceRoot;
+function cwd(sessions: GitSessionStore, sessionId: string): string | null {
+  return sessions.getSession(sessionId).cwd;
 }
 
 export const sessionGitRoute = (sessions: GitSessionStore) =>
   new Hono()
     .get('/:sessionId/git/summary', async context => {
-      const root = workspaceRoot(sessions, context.req.param('sessionId'));
+      const root = cwd(sessions, context.req.param('sessionId'));
       return context.json(root ? await gitSummary(root) : { capability: 'not-a-repo' } as const);
     })
     .get('/:sessionId/git/workspace-diff', async context => {
-      const root = workspaceRoot(sessions, context.req.param('sessionId'));
+      const root = cwd(sessions, context.req.param('sessionId'));
       return context.json(root ? await gitWorkspaceDiff(root) : { capability: 'not-a-repo' } as const);
     })
     .get('/:sessionId/git/refs', async context => {
-      const root = workspaceRoot(sessions, context.req.param('sessionId'));
+      const root = cwd(sessions, context.req.param('sessionId'));
       return context.json(root ? await gitRefs(root) : { capability: 'not-a-repo' } as const);
     })
     .post('/:sessionId/git/compare', jsonBody(compareBody), async context => {
-      const root = workspaceRoot(sessions, context.req.param('sessionId'));
+      const root = cwd(sessions, context.req.param('sessionId'));
       return context.json(root
         ? await gitCompareDiff(root, context.req.valid('json'))
         : { capability: 'not-a-repo' } as const);

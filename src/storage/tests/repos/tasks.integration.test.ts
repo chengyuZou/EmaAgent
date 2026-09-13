@@ -16,8 +16,8 @@ describe('Task 持久化边界', () => {
   beforeEach(() => {
     database = createTestDatabase();
     database.db.prepare(`
-      INSERT INTO sessions (id, title, created_at, updated_at)
-      VALUES (?, 'Task session', 1, 1)
+      INSERT INTO sessions (id, title, cwd, created_at, updated_at)
+      VALUES (?, 'Task session', 'D:/work', 1, 1)
     `).run(sessionId);
     database.db.prepare(`
       INSERT INTO turns (

@@ -8,8 +8,7 @@ import { jsonBody } from '../validate.js';
 const patchSessionBody = z.object({
   title: z.string().min(1).max(200).optional(),
   pinned: z.boolean().optional(),
-  /** null 表示移出工作区；undefined 表示保持不变。 */
-  workspaceRoot: z.string().min(1).max(500).nullable().optional(),
+  cwd: z.string().min(1).max(500).optional(),
   executionProfile: z.enum(['chat', 'work']).optional(),
   narrativePolicy: z.enum(['auto', 'always', 'off']).optional(),
   permissionMode: z.enum(['default', 'acceptEdits', 'bypassPermissions']).optional(),
@@ -37,8 +36,6 @@ export interface SessionActionsRouteDeps {
   readonly turns: Pick<TurnStore, 'rewindLastTurn'>;
   /** 回退会删除父 Turn 行, 必须先停仍在写 transcript 的派生 AgentRun. */
   readonly abortAgentRunsForTurn: (turnId: string) => Promise<void>;
-  /** 工作区变更必须淘汰绑定旧工作区的命令运行器。 */
-  readonly invalidateSessionRunner: (sessionId: string) => void;
   /** 跨域删除用例（application/deleteSession）由装配层绑定 composition 后传入。 */
   readonly deleteSession: (sessionId: string) => Promise<void>;
 }
@@ -50,16 +47,13 @@ export const sessionActionsRoute = (deps: SessionActionsRouteDeps) =>
       const patch = context.req.valid('json');
       try {
         deps.session.patchSession(sessionId, patch);
-        if (patch.workspaceRoot !== undefined) {
-          deps.invalidateSessionRunner(sessionId);
-        }
         return context.json(deps.session.getSession(sessionId));
       } catch (error) {
         if (errorMessageStartsWith(error, 'session_not_found')) {
           return context.json({ error: 'session_not_found' }, 404);
         }
-        if (errorMessageStartsWith(error, 'session_workspace_locked_by_project')) {
-          return context.json({ error: 'session_workspace_locked_by_project' }, 409);
+        if (errorMessageStartsWith(error, 'session_cwd_invalid')) {
+          return context.json({ error: 'session_cwd_invalid' }, 400);
         }
         throw error;
       }

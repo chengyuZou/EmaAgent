@@ -21,7 +21,7 @@ import { FILE_WRITE_DESCRIPTION } from './prompt.js';
 /** File 写入工具只取得当前 Turn 的读取状态与工作区;取消与调用身份走 ToolInvocation。 */
 interface FileWriteToolContext {
   readFileState: ReadFileState;
-  workspaceRoot: string;
+  cwd: string;
 }
 
 // ── 输入 schema ──────────────────────────────────────────────────────────────
@@ -59,7 +59,7 @@ export const FileWriteTool = buildTool<FileWriteInput, FileWriteResult, FileWrit
   isConcurrencySafe: () => false,
 
   validateContext(ctx) {
-    if (!ctx.workspaceRoot) {
+    if (!ctx.cwd) {
       return contextFail('File 写入工具需要明确的工作区。');
     }
     if (!ctx.readFileState) {
@@ -67,15 +67,15 @@ export const FileWriteTool = buildTool<FileWriteInput, FileWriteResult, FileWrit
     }
     return contextOk({
       readFileState: ctx.readFileState,
-      workspaceRoot: ctx.workspaceRoot,
+      cwd: ctx.cwd,
     });
   },
 
   checkPermissions: async (input, context, permissionContext) =>
     checkWritePathPermission({
       toolName: BuiltinTools.FileWrite.name,
-      path: path.resolve(context.workspaceRoot, input.file_path),
-      workspaceRoot: context.workspaceRoot,
+      path: path.resolve(context.cwd, input.file_path),
+      cwd: context.cwd,
       permissionContext,
     }),
 
@@ -87,7 +87,7 @@ export const FileWriteTool = buildTool<FileWriteInput, FileWriteResult, FileWrit
     const { file_path, content } = input;
     // 与 Permission/Read 同一基准: 相对路径按工作区解析, 不借 Core 进程 cwd——
     // 否则审批查的是工作区路径, 实际写的却是 Core 启动目录(P1 路径分裂)。
-    const fullPath = path.resolve(context.workspaceRoot, file_path);
+    const fullPath = path.resolve(context.cwd, file_path);
 
     // ── I/O 前守卫(与 Read 对称, 写比读更危险) ────────────────────────────────
     if (fullPath.startsWith('\\\\')) {

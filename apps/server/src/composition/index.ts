@@ -58,7 +58,6 @@ export function buildComposition(input: {
     profileDb: database.profileDb,
     dataDb: database.dataDb,
     activeDataDir: input.activeDataDir,
-    session: database.session,
     settings: settings.settings,
     emitBackgroundEvent: event => appEvents.emit(event),
     onBackgroundCompletion: (sessionId, backgroundProcessId, status) => {

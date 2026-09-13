@@ -32,8 +32,8 @@ beforeEach(() => {
   database = new Database({ memory: true, kind: 'data' });
   database.migrate();
   database.sqlite.prepare(`
-    INSERT INTO sessions (id, title, pinned, last_activity_at, created_at, updated_at)
-    VALUES (?, 's', 0, 1, 1, 1)
+    INSERT INTO sessions (id, title, cwd, pinned, last_activity_at, created_at, updated_at)
+    VALUES (?, 's', 'D:/work', 0, 1, 1, 1)
   `).run(sessionId);
   database.sqlite.prepare(`
     INSERT INTO turns (id, session_id, trigger_type, execution_profile, narrative_policy,

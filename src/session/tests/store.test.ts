@@ -1,5 +1,7 @@
 // 测试 Session、项目、消息读写与独立 Fork 的领域规则。
 import { describe, it, expect } from 'vitest';
+import os from 'node:os';
+import path from 'node:path';
 import { Database, TurnsRepo } from '@ema-agent/storage';
 import { DEFAULT_SESSION_TITLE, SessionStore } from '../store.js';
 
@@ -35,14 +37,15 @@ describe('SessionStore — session', () => {
     expect(s.title).toBe('新对话');
     expect(s.archivedAt).toBeNull();
     expect(s.permissionMode).toBe('default');
+    expect(s.cwd).toBe(path.join(os.homedir(), '.ema-agent', 'workspace'));
   });
 
   it('creates a session with custom input', () => {
     const { store } = makeStore();
-    const s = store.createSession({ title: 'My Chat', workspaceRoot: '/tmp' });
+    const s = store.createSession({ title: 'My Chat', cwd: os.tmpdir() });
 
     expect(s.title).toBe('My Chat');
-    expect(s.workspaceRoot).toBe('/tmp');
+    expect(s.cwd).toBe(os.tmpdir());
   });
 
   it('Session 权限模式创建后可修改，Fork 继承当前选择', () => {
@@ -69,12 +72,13 @@ describe('SessionStore — session', () => {
 
     expect(session).toMatchObject({
       projectId: project.id,
-      workspaceRoot: 'D:/main',
+      cwd: 'D:/main',
       executionProfile: 'work',
       narrativePolicy: 'off',
     });
-    expect(() => store.createSession({ projectId: project.id, workspaceRoot: 'D:/other' }))
-      .toThrow('session_project_workspace_conflict');
+    const chosen = store.createSession({ projectId: project.id, cwd: os.tmpdir() });
+    expect(chosen.projectId).toBe(project.id);
+    expect(chosen.cwd).toBe(os.tmpdir());
   });
 
   it('getSession throws for unknown id', () => {
@@ -176,10 +180,10 @@ describe('SessionStore — 项目', () => {
       'D:/main',
       'D:/first',
     ]);
-    expect(store.createSession({ projectId: project.id }).workspaceRoot).toBe('D:/main');
+    expect(store.createSession({ projectId: project.id }).cwd).toBe('D:/main');
   });
 
-  it('拖入项目锁定工作区为主文件夹，锁定期间 patch 工作区被拒绝', () => {
+  it('拖入项目保留原 cwd，并允许成员显式修改 cwd', () => {
     const { store } = makeStore();
     const session = store.createSession();
     const project = store.createProject('Demo', ['D:/main'], 'D:/main');
@@ -187,41 +191,56 @@ describe('SessionStore — 项目', () => {
     store.assignSessionToProject(session.id, project.id);
     const assigned = store.getSession(session.id);
     expect(assigned.projectId).toBe(project.id);
-    expect(assigned.workspaceRoot).toBe('D:/main');
+    expect(assigned.cwd).toBe(session.cwd);
 
-    expect(() => store.patchSession(session.id, { workspaceRoot: 'D:/other' }))
-      .toThrow('session_workspace_locked_by_project');
+    store.patchSession(session.id, { cwd: 'D:/other' });
+    expect(store.getSession(session.id).cwd).toBe('D:/other');
 
     store.removeSessionFromProject(session.id);
     expect(store.getSession(session.id).projectId).toBeNull();
-    expect(() => store.patchSession(session.id, { workspaceRoot: 'D:/other' })).not.toThrow();
+    expect(store.getSession(session.id).cwd).toBe('D:/other');
   });
 
-  it('拖入时确认保留原工作区会把它加为非主文件夹', () => {
+  it('拖入项目不会把原 cwd 悄悄加入文件夹清单', () => {
     const { store } = makeStore();
-    const session = store.createSession({ workspaceRoot: 'D:/loose' });
+    const session = store.createSession({ cwd: 'D:/loose' });
     const project = store.createProject('Demo', ['D:/main'], 'D:/main');
 
-    store.assignSessionToProject(session.id, project.id, true);
+    store.assignSessionToProject(session.id, project.id);
 
     const projectInSidebar = store.listSessionsForSidebar().projects.find((item) => item.id === project.id)!;
-    expect(projectInSidebar.folders.map((folder) => folder.path)).toContain('D:/loose');
-    expect(projectInSidebar.folders.find((folder) => folder.path === 'D:/loose')!.isPrimary).toBe(false);
-    expect(store.getSession(session.id).workspaceRoot).toBe('D:/main');
+    expect(projectInSidebar.folders.map((folder) => folder.path)).not.toContain('D:/loose');
+    expect(store.getSession(session.id).cwd).toBe('D:/loose');
   });
 
-  it('更换主文件夹级联改写成员工作区', () => {
+  it('更换或移除主文件夹不改旧 Session cwd，只改变后续新 Session 的起点', () => {
     const { store } = makeStore();
-    const session = store.createSession();
     const project = store.createProject('Demo', ['D:/main'], 'D:/main');
+    const session = store.createSession({ projectId: project.id });
     store.addProjectFolder(project.id, 'D:/second');
-    store.assignSessionToProject(session.id, project.id);
 
     store.setProjectPrimaryFolder(project.id, 'D:/second');
 
-    expect(store.getSession(session.id).workspaceRoot).toBe('D:/second');
+    expect(store.getSession(session.id).cwd).toBe('D:/main');
+    expect(store.createSession({ projectId: project.id }).cwd).toBe('D:/second');
+    store.removeProjectFolder(project.id, 'D:/main');
+    expect(store.getSession(session.id).cwd).toBe('D:/main');
     const projectInSidebar = store.listSessionsForSidebar().projects.find((item) => item.id === project.id)!;
     expect(projectInSidebar.folders[0]!.path).toBe('D:/second');
+  });
+
+  it('零文件夹项目可建 Session，之后添加或移除最后一个文件夹也不改旧 cwd', () => {
+    const { store } = makeStore();
+    const project = store.createProject('Empty', []);
+    const session = store.createSession({ projectId: project.id });
+    const defaultCwd = path.join(os.homedir(), '.ema-agent', 'workspace');
+    expect(session.cwd).toBe(defaultCwd);
+
+    store.addProjectFolder(project.id, 'D:/main');
+    expect(store.createSession({ projectId: project.id }).cwd).toBe('D:/main');
+    store.removeProjectFolder(project.id, 'D:/main');
+    expect(store.getSession(session.id).cwd).toBe(defaultCwd);
+    expect(store.listProjectFolders(project.id)).toEqual([]);
   });
 });
 

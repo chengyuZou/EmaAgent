@@ -11,8 +11,8 @@ describe('MessagesRepo 历史加载集成测试', () => {
   beforeEach(() => {
     database = createTestDatabase();
     database.db.prepare(`
-      INSERT INTO sessions (id, title, created_at, updated_at)
-      VALUES (?, '历史测试', 1, 1)
+      INSERT INTO sessions (id, title, cwd, created_at, updated_at)
+      VALUES (?, '历史测试', 'D:/work', 1, 1)
     `).run(sessionId);
     repo = new MessagesRepo(database.db);
   });

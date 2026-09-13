@@ -22,7 +22,7 @@ export const sessionBackupManifestSchema = z.object({
 export const sessionRecordSchema = z.object({
   id,
   title: z.string(),
-  workspaceRoot: z.string().nullable(),
+  cwd: z.string().min(1),
   projectId: nullableId,
   pinned: z.boolean(),
   archivedAt: integer.nullable(),

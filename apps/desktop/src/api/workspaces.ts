@@ -52,7 +52,7 @@ export const projectsApi = {
     }));
   },
 
-  /** 把 Session 挂进项目：workspace_root 立即改写为项目主工作区并锁定。 */
+  /** 把已有 Session 挂进项目；会话 cwd 保持原值。 */
   addSession(id: string, body: ProjectAssignInput) {
     return readRpcJson(rpcClient.api.workspaces.projects[':id'].sessions.$post({
       json: body,

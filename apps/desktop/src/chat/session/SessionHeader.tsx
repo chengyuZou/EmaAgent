@@ -5,6 +5,7 @@ import { sessionGitApi, type SessionGitSummary } from '../../api/git.js';
 import { useAgentRunStore } from '../../stores/agentRun.js';
 import { useSessionAttachmentStore } from '../../stores/sessionAttachment.js';
 import { useSessionStore } from '../../stores/session.js';
+import { SessionCwdDialog } from './SessionCwdDialog.js';
 import {
   isSessionSidePanelFullWidth,
   sessionSourceTab,
@@ -23,6 +24,8 @@ export function SessionHeader({
   isFork: boolean;
 }): JSX.Element {
   const [summaryOpen, setSummaryOpen] = useState(false);
+  const [cwdOpen, setCwdOpen] = useState(false);
+  const cwd = useSessionStore(state => state.sessions.byId.get(sessionId)?.cwd);
   const layout = useSessionSidePanel((state) => state.layouts[sessionId]);
   const setOpen = useSessionSidePanel((state) => state.setOpen);
   const setFullWidth = useSessionSidePanel((state) => state.setFullWidth);
@@ -44,6 +47,17 @@ export function SessionHeader({
     <header className="flex shrink-0 items-center justify-between border-b border-[var(--ema-border)] px-4 py-2">
       <div className="flex min-w-0 items-center gap-2">
         <span className="truncate text-sm font-medium text-[var(--ema-text-secondary)]">{title}</span>
+        {cwd && (
+          <button
+            type="button"
+            className="flex max-w-64 min-w-0 items-center gap-1 rounded-md px-2 py-1 text-xs text-[var(--ema-text-tertiary)] transition-colors hover:bg-[var(--ema-surface-2)] hover:text-[var(--ema-text-primary)]"
+            title={`执行目录: ${cwd} · 点击修改`}
+            onClick={() => setCwdOpen(true)}
+          >
+            <span className="i-lucide:folder-open shrink-0 text-sm" aria-hidden />
+            <span className="truncate">{cwd}</span>
+          </button>
+        )}
         {isFork && <span className="text-xs text-[var(--ema-text-tertiary)]">· 会话副本</span>}
       </div>
       <div className="flex shrink-0 items-center gap-0.5">
@@ -91,14 +105,15 @@ export function SessionHeader({
           </>
         )}
       </div>
+      <SessionCwdDialog sessionId={sessionId} open={cwdOpen} onOpenChange={setCwdOpen} />
     </header>
   );
 }
 
 function SessionSummary({ sessionId }: { sessionId: string }): JSX.Element {
   const openTab = useSessionSidePanel((state) => state.openTab);
-  const workspaceRoot = useSessionStore((state) => (
-    state.sessions.byId.get(sessionId)?.workspaceRoot ?? null
+  const cwd = useSessionStore((state) => (
+    state.sessions.byId.get(sessionId)?.cwd ?? null
   ));
   const [git, setGit] = useState<SessionGitSummary | null>(null);
   const activity = useAgentRunStore(useShallow(state => {
@@ -116,7 +131,7 @@ function SessionSummary({ sessionId }: { sessionId: string }): JSX.Element {
   const sources = useSessionAttachmentStore(state => state.bySession.get(sessionId));
 
   useEffect(() => {
-    if (!workspaceRoot) {
+    if (!cwd) {
       setGit(null);
       return;
     }
@@ -131,21 +146,21 @@ function SessionSummary({ sessionId }: { sessionId: string }): JSX.Element {
     return () => {
       mounted = false;
     };
-  }, [sessionId, workspaceRoot]);
+  }, [sessionId, cwd]);
   useEffect(() => { void useAgentRunStore.getState().loadForSession(sessionId); }, [sessionId]);
   useEffect(() => { void useSessionAttachmentStore.getState().loadForSession(sessionId); }, [sessionId]);
 
   return (
     <div className="flex flex-col gap-3 p-3 text-xs">
-      {workspaceRoot && (
+      {cwd && (
         <section>
           <SectionTitle>环境信息</SectionTitle>
           <ReadOnlyRow icon="i-lucide:file-diff" label="变更">
             <GitChanges git={git} />
           </ReadOnlyRow>
           <ReadOnlyRow icon="i-lucide:monitor" label="本地">
-            <span className="truncate text-[var(--ema-text-tertiary)]" title={workspaceRoot}>
-              {workspaceRoot}
+            <span className="truncate text-[var(--ema-text-tertiary)]" title={cwd}>
+              {cwd}
             </span>
           </ReadOnlyRow>
           <ReadOnlyRow icon="i-lucide:git-branch" label="分支">

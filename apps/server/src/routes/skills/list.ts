@@ -72,7 +72,7 @@ export const skillListRoute = (deps: SkillListRouteDeps) => {
       if (session.projectId) {
         return deps.sessions.listProjectFolders(session.projectId).map((folder) => folder.path);
       }
-      return session.workspaceRoot ? [session.workspaceRoot] : [];
+      return session.cwd ? [session.cwd] : [];
     } catch (error) {
       if (error instanceof Error && error.message.startsWith('session_not_found:')) {
         throw new HTTPException(404, {

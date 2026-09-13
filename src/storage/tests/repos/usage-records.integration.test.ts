@@ -11,8 +11,8 @@ describe('UsageRecordsRepo', () => {
   beforeEach(() => {
     database = createTestDatabase();
     database.db.prepare(`
-      INSERT INTO sessions (id, title, created_at, updated_at)
-      VALUES ('session-a', 'Session A', 1, 1)
+      INSERT INTO sessions (id, title, cwd, created_at, updated_at)
+      VALUES ('session-a', 'Session A', 'D:/work', 1, 1)
     `).run();
     database.db.prepare(`
       INSERT INTO turns
@@ -20,8 +20,8 @@ describe('UsageRecordsRepo', () => {
       VALUES ('turn-a', 'session-a', 'userMessage', 'work', 'off', 'completed', 1)
     `).run();
     database.db.prepare(`
-      INSERT INTO sessions (id, title, created_at, updated_at)
-      VALUES ('session-b', 'Session B', 1, 1)
+      INSERT INTO sessions (id, title, cwd, created_at, updated_at)
+      VALUES ('session-b', 'Session B', 'D:/work', 1, 1)
     `).run();
     repo = new UsageRecordsRepo(database.db);
   });

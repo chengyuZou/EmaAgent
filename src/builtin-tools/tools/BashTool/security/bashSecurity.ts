@@ -2688,7 +2688,7 @@ function pathInside(root: string, target: string): boolean {
 /**
  * 重定向目标允许: /dev/null、系统临时目录内、工作区相对路径;
  * 含 .. 段一律拒绝(逃出 cwd); 其余绝对路径拒绝。
- * 执行时 cwd 即工作区, 因此本判定无需 workspaceRoot 也能与执行语义一致。
+ * 执行时 cwd 即工作区, 因此本判定无需 cwd 也能与执行语义一致。
  */
 function redirectAllowed(target: string, tmpDir: string): boolean {
   if (target === '/dev/null') return true;

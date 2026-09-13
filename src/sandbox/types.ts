@@ -62,8 +62,8 @@ export interface SandboxBackend {
 /** 为一个 Session 冻结的命令执行能力；Sandbox 不从 Permission 规则反推。 */
 export interface SandboxCapability {
   /** 必填;空串直接拒绝,不允许回退到宿主进程工作目录。 */
-  workspaceRoot: string;
-  /** 绝对路径;workspaceRoot 之外的附加可写根,构造时统一规范化,不含空项。 */
+  cwd: string;
+  /** 绝对路径;cwd 之外的附加可写根,构造时统一规范化,不含空项。 */
   writablePaths: readonly string[];
   /** 绝对路径;同时禁止读取与写入(protected 表达不出这个强度,故名 forbidden)。 */
   forbiddenPaths: readonly string[];

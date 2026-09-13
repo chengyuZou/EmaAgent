@@ -24,6 +24,7 @@ describe('SessionBackupReader', () => {
     sessions.insert({
       id: 'session-backup',
       title: 'backup',
+      cwd: 'D:/work',
       executionProfile: 'work',
       narrativePolicy: 'auto',
       createdAt: 1,
@@ -68,6 +69,7 @@ describe('SessionBackupReader', () => {
     sessions.insert({
       id: 'session-cursor',
       title: 'cursor',
+      cwd: 'D:/work',
       executionProfile: 'work',
       narrativePolicy: 'auto',
       createdAt: 1,

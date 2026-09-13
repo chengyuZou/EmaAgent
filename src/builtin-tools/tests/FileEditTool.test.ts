@@ -27,7 +27,7 @@ function makeInvocation(callId = 'call-edit-1', signal?: AbortSignal): ToolInvoc
 function makeContext(callId: string) {
   return {
     readFileState: new Map() as ReadFileState,
-    workspaceRoot: '',
+    cwd: '',
     callId,
   };
 }
@@ -61,7 +61,7 @@ async function edit(
 ) {
   return FileEditTool.execute(
     { file_path: target, old_string: oldString, new_string: newString, replace_all: replaceAll },
-    { readFileState: ctx.readFileState, workspaceRoot: '' },
+    { readFileState: ctx.readFileState, cwd: '' },
     makeInvocation(ctx.callId),
   );
 }
@@ -73,7 +73,7 @@ describe('FileEditTool — 输入与先读守卫', () => {
     }).success).toBe(false);
     const verdict = FileEditTool.validateInput!(
       { file_path: 'a.txt', old_string: 'same', new_string: 'same', replace_all: false },
-      { readFileState: new Map(), workspaceRoot: '' },
+      { readFileState: new Map(), cwd: '' },
       makeInvocation(),
     );
     expect(verdict).toMatchObject({ valid: false, code: 'edit/empty' });

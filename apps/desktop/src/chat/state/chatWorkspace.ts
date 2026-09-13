@@ -9,11 +9,14 @@ interface ChatWorkspaceState {
   readonly viewedSessionId: string | null;
   /** null 表示普通新对话, string 表示在指定 Project 中新建; undefined 表示已有 Session. */
   readonly newSessionProjectId: string | null | undefined;
+  /** null 表示沿用所选项目主文件夹，或无项目时的默认执行目录。 */
+  readonly newSessionCwd: string | null;
   readonly draftMap: ReadonlyMap<string, ChatDraft>;
   readonly newSessionDraft: ChatDraft;
   readonly scrollToTurnId: string | null;
   viewSession(id: string): Promise<void>;
   openNewSession(projectId?: string): void;
+  setNewSessionCwd(cwd: string): void;
   promoteNewSession(id: string): void;
   setDraft(draft: ChatDraft): void;
   setDraftFor(sessionId: string | null, draft: ChatDraft): void;
@@ -24,6 +27,7 @@ interface ChatWorkspaceState {
 export const useChatWorkspace = create<ChatWorkspaceState>((set, get) => ({
   viewedSessionId: null,
   newSessionProjectId: null,
+  newSessionCwd: null,
   draftMap: new Map(),
   newSessionDraft: emptyChatDraft(),
   scrollToTurnId: null,
@@ -43,8 +47,13 @@ export const useChatWorkspace = create<ChatWorkspaceState>((set, get) => ({
     set({
       viewedSessionId: null,
       newSessionProjectId: projectId ?? null,
+      newSessionCwd: null,
       scrollToTurnId: null,
     });
+  },
+
+  setNewSessionCwd(cwd) {
+    set({ newSessionCwd: cwd });
   },
 
   promoteNewSession(id) {
@@ -53,6 +62,7 @@ export const useChatWorkspace = create<ChatWorkspaceState>((set, get) => ({
     set({
       viewedSessionId: id,
       newSessionProjectId: undefined,
+      newSessionCwd: null,
       newSessionDraft: emptyChatDraft(),
       draftMap,
     });
@@ -95,6 +105,7 @@ export const useChatWorkspace = create<ChatWorkspaceState>((set, get) => ({
         draftMap,
         viewedSessionId: wasViewed ? null : state.viewedSessionId,
         newSessionProjectId: wasViewed ? null : state.newSessionProjectId,
+        newSessionCwd: wasViewed ? null : state.newSessionCwd,
       };
     });
   },
@@ -197,7 +208,6 @@ function persistedSidePanelTab(value: unknown): SessionSidePanelTab | null {
   if (typeof tab.id !== 'string' || typeof tab.kind !== 'string') return null;
 
   switch (tab.kind) {
-    case 'review':
     case 'files':
     case 'sources':
     case 'tasks':

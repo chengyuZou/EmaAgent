@@ -119,7 +119,7 @@ function makeEnv(options: {
     toolPool: new ToolPool(options.tools as never),
     permissionContext: PERMISSION_CONTEXT,
     ...(options.askPermission ? { askPermission: options.askPermission } : {}),
-    toolContext: { workspaceRoot: '', platform: process.platform },
+    toolContext: { cwd: '', platform: process.platform },
     ...(options.state ? { toolExecutionState: options.state } : {}),
   };
 }

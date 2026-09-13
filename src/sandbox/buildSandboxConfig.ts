@@ -29,7 +29,7 @@ export function buildSandboxConfig(capability: SandboxCapability): SandboxConfig
   }
 
   for (const fileName of BARE_REPO_FILES) {
-    const targetPath = normalizePath(path.join(capability.workspaceRoot, fileName));
+    const targetPath = normalizePath(path.join(capability.cwd, fileName));
     try {
       statSync(targetPath);
       pushUnique(denyWrite, targetPath);

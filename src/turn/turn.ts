@@ -82,7 +82,13 @@ export interface TurnExecutorDeps extends PrepareTurnDeps {
   readonly turns: TurnStore;
   readonly sessions: Pick<
     SessionStore,
-    'getSession' | 'appendMessage' | 'appendHistorySummary' | 'loadHistory' | 'markMessageInterrupted' | 'updateMessageBlocks'
+    | 'getSession'
+    | 'listProjectFolders'
+    | 'appendMessage'
+    | 'appendHistorySummary'
+    | 'loadHistory'
+    | 'markMessageInterrupted'
+    | 'updateMessageBlocks'
   >;
   readonly createCompact: (
     callLlm: CallLlm,

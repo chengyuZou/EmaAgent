@@ -14,11 +14,11 @@ export type PermissionModeRow = 'default' | 'acceptEdits' | 'bypassPermissions';
 export interface SessionRow {
   id: string;
   title: string;
-  workspace_root:     string | null;
-  /** 项目成员资格；在项目内 workspace_root 锁定为项目主文件夹。 */
+  cwd:     string;
+  /** 项目成员资格；cwd 不随项目文件夹变化自动改写。 */
   project_id:         string | null;
   created_at: number;
-  /** 行元数据更新时间:title/pin/workspace/Profile 编辑。不用于 UI 中 Session 侧栏排序。 */
+  /** 行元数据更新时间：标题、置顶、cwd 或 Profile 编辑。不用于 UI 侧栏排序。 */
   updated_at: number;
   /** 对话活动时间:新 turn/message 开始时推进。用于UI中session侧栏排序。 */
   last_activity_at: number;
@@ -55,7 +55,7 @@ export interface SessionSearchRow extends SessionRowEnriched {
 export interface SessionInsert {
   id: string;
   title: string;
-  workspaceRoot?:  string | null;
+  cwd:  string;
   projectId?: string | null;
   forkedFromSessionId?: string;
   forkedFromTurnId?: string | null;
@@ -78,7 +78,7 @@ export class SessionsRepo {
     this.db
       .prepare(
         `INSERT INTO sessions
-           (id, title, workspace_root, project_id,
+           (id, title, cwd, project_id,
             forked_from_session_id, forked_from_turn_id,
             execution_profile, narrative_policy, permission_mode,
             provider_id, model_id,
@@ -86,7 +86,7 @@ export class SessionsRepo {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(s.id, s.title,
-        s.workspaceRoot ?? null,
+        s.cwd,
         s.projectId ?? null,
         s.forkedFromSessionId ?? null,
         s.forkedFromTurnId ?? null,
@@ -145,25 +145,18 @@ export class SessionsRepo {
 
   // ── 项目成员资格 ────────────────────────────────────────────────────────────
 
-  /** 拖入项目：锁定成员资格并把 workspace_root 锁定为项目主文件夹。 */
-  assignToProject(id: string, projectId: string, workspaceRoot: string, now: number): void {
+  /** 拖入项目只改变成员资格。 */
+  assignToProject(id: string, projectId: string, now: number): void {
     this.db
-      .prepare('UPDATE sessions SET project_id = ?, workspace_root = ?, updated_at = ? WHERE id = ?')
-      .run(projectId, workspaceRoot, now, id);
+      .prepare('UPDATE sessions SET project_id = ?, updated_at = ? WHERE id = ?')
+      .run(projectId, now, id);
   }
 
-  /** 拖出项目：只解除成员资格，workspace_root 保留原值恢复自由。 */
+  /** 拖出项目：只解除成员资格，cwd 保留原值恢复自由。 */
   removeFromProject(id: string, now: number): void {
     this.db
       .prepare('UPDATE sessions SET project_id = NULL, updated_at = ? WHERE id = ?')
       .run(now, id);
-  }
-
-  /** 项目换主/继位时级联改写全部成员的 workspace_root。 */
-  cascadeWorkspaceForProject(projectId: string, workspaceRoot: string, now: number): void {
-    this.db
-      .prepare('UPDATE sessions SET workspace_root = ?, updated_at = ? WHERE project_id = ?')
-      .run(workspaceRoot, now, projectId);
   }
 
   search(query: string, limit: number): SessionSearchRow[] {
@@ -320,13 +313,13 @@ export class SessionsRepo {
       //    forked_from_* 指回来源 Session 与截断 Turn，用于 Fork 溯源。
       this.db.prepare(
         `INSERT INTO sessions
-           (id, title, workspace_root, project_id,
+           (id, title, cwd, project_id,
             forked_from_session_id, forked_from_turn_id,
             execution_profile, narrative_policy, permission_mode,
             provider_id, model_id,
             created_at, updated_at, last_activity_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).run(newId, title, src.workspace_root,
+      ).run(newId, title, src.cwd,
         src.project_id,
         srcId, untilTurnId ?? null,
         src.execution_profile, src.narrative_policy, src.permission_mode,
@@ -484,7 +477,7 @@ export class SessionsRepo {
     patch: {
       title?:          string;
       pinned?:         boolean;
-      workspaceRoot?:  string | null;
+      cwd?:  string;
       executionProfile?: ExecutionProfileRow;
       narrativePolicy?: NarrativePolicyRow;
       permissionMode?: PermissionModeRow;
@@ -507,9 +500,9 @@ export class SessionsRepo {
     } else if (patch.pinned === false) {
       setClauses.push('pinned = 0');
     }
-    if (patch.workspaceRoot !== undefined) {
-      setClauses.push('workspace_root = ?');
-      values.push(patch.workspaceRoot);
+    if (patch.cwd !== undefined) {
+      setClauses.push('cwd = ?');
+      values.push(patch.cwd);
     }
     if (patch.executionProfile !== undefined) {
       setClauses.push('execution_profile = ?');

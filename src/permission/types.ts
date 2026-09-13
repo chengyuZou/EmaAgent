@@ -111,7 +111,7 @@ export type ToolPermissionRulesBySource = Partial<
 >;
 
 /**
- * 一次判定的完整上下文：模式 + 冻结规则集 + 工作区。settings 源规则 Turn 冻结；
+ * 一次判定的完整上下文：模式 + 冻结规则集 + 项目当前授权目录。settings 源规则 Turn 冻结；
  * session 源本 Turn 即效。调用身份（sessionId/turnId/toolCallId）不属于判定上下文——
  * Tool 自检不需要它，批准卡身份由执行链装配进 PermissionRequest。
  */
@@ -120,7 +120,7 @@ export interface ToolPermissionContext {
   readonly alwaysAllowRules: ToolPermissionRulesBySource;
   readonly alwaysDenyRules: ToolPermissionRulesBySource;
   readonly alwaysAskRules: ToolPermissionRulesBySource;
-  readonly workspaceRoot?: string;
+  readonly workspaceRoots: readonly string[];
 }
 
 

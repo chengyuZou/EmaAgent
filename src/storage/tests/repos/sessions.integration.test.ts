@@ -17,7 +17,7 @@ describe('SessionsRepo integration', () => {
   });
 
   it('Session 权限模式默认 default，修改与 Fork 均保留所选模式', () => {
-    repo.insert({ id: 'source', title: 'Source', createdAt: 1, updatedAt: 1 });
+    repo.insert({ id: 'source', title: 'Source', cwd: 'D:/work', createdAt: 1, updatedAt: 1 });
     expect(repo.findById('source')?.permission_mode).toBe('default');
 
     repo.patch('source', { permissionMode: 'bypassPermissions' }, 2);
@@ -28,7 +28,7 @@ describe('SessionsRepo integration', () => {
   });
 
   it('listEnrichedAll 返回带投影的扁平行（分桶归业务层）', () => {
-    insertSession({ id: 'a', workspaceRoot: 'D:/work/a', lastActivityAt: 30 });
+    insertSession({ id: 'a', cwd: 'D:/work/a', lastActivityAt: 30 });
     insertSession({ id: 'b', pinned: true, lastActivityAt: 50 });
     insertSession({ id: 'c', archivedAt: 60 });
 
@@ -142,21 +142,21 @@ describe('SessionsRepo integration', () => {
   function insertSession(fixture: {
     id: string;
     pinned?: boolean;
-    workspaceRoot?: string;
+    cwd?: string;
     lastActivityAt?: number;
     archivedAt?: number | null;
   }): void {
     const timestamp = fixture.lastActivityAt ?? 10;
     database.db.prepare(`
       INSERT INTO sessions
-        (id, title, pinned, archived_at, workspace_root, last_activity_at, created_at, updated_at)
+        (id, title, pinned, archived_at, cwd, last_activity_at, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       fixture.id,
       `${fixture.id} session`,
       fixture.pinned ? 1 : 0,
       fixture.archivedAt ?? null,
-      fixture.workspaceRoot ?? null,
+      fixture.cwd ?? 'D:/work',
       timestamp,
       timestamp,
       timestamp,

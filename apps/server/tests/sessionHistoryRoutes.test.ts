@@ -1,11 +1,15 @@
 // 验证 Session 创建与 History 新契约挂在真实 URL 上，不再返回按 Turn 拼装的正文。
 import { Hono } from 'hono';
+import os from 'node:os';
+import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ActiveSessionRegistry, SessionStore } from '@ema-agent/session';
 import { Database } from '@ema-agent/storage';
 import { TurnStore } from '../../../src/turn/turnStore.js';
 import { sessionCollectionRoute } from '../src/routes/sessions/collection.js';
+import { sessionActionsRoute } from '../src/routes/sessions/actions.js';
 import { sessionHistoryRoute } from '../src/routes/sessions/history.js';
+import { projectsRoute } from '../src/routes/workspaces/projects.js';
 
 let database: Database;
 let sessions: SessionStore;
@@ -19,14 +23,21 @@ beforeEach(() => {
   turns = new TurnStore({ db: database, activeSessions: new ActiveSessionRegistry() });
   app = new Hono()
     .route('/api/sessions', sessionCollectionRoute({ session: sessions }))
-    .route('/api/sessions', sessionHistoryRoute({ session: sessions, turns }));
+    .route('/api/sessions', sessionHistoryRoute({ session: sessions, turns }))
+    .route('/api/sessions', sessionActionsRoute({
+      session: sessions,
+      turns,
+      abortAgentRunsForTurn: async () => {},
+      deleteSession: async (sessionId) => sessions.deleteSession(sessionId),
+    }))
+    .route('/api/workspaces', projectsRoute({ session: sessions }));
 });
 
 afterEach(() => database.close());
 
 describe('Session collection and History routes', () => {
-  it('项目新对话在创建响应中已经绑定项目主工作区与执行偏好', async () => {
-    const project = sessions.createProject('Demo', 'D:/demo');
+  it('项目新对话在创建响应中已固定当前主文件夹为 cwd 与执行偏好', async () => {
+    const project = sessions.createProject('Demo', ['D:/demo'], 'D:/demo');
     const response = await app.request('/api/sessions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -41,11 +52,70 @@ describe('Session collection and History routes', () => {
     expect(response.status).toBe(201);
     expect(await response.json()).toMatchObject({
       projectId: project.id,
-      workspaceRoot: 'D:/demo',
+      cwd: 'D:/demo',
       executionProfile: 'work',
       narrativePolicy: 'off',
       permissionMode: 'acceptEdits',
     });
+  });
+
+  it('创建项目会话时可在请求中同时指定项目与执行目录', async () => {
+    const project = sessions.createProject('Demo', [os.tmpdir()], os.tmpdir());
+    const response = await app.request('/api/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId: project.id, cwd: path.dirname(os.tmpdir()) }),
+    });
+
+    expect(response.status).toBe(201);
+    expect(await response.json()).toMatchObject({
+      projectId: project.id,
+      cwd: path.dirname(os.tmpdir()),
+    });
+  });
+
+  it('零文件夹项目可建会话，项目成员可显式修改 cwd，文件夹变动不回写', async () => {
+    const createProject = await app.request('/api/workspaces/projects', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Empty', folderPaths: [] }),
+    });
+    expect(createProject.status).toBe(201);
+    const project = await createProject.json() as { id: string };
+
+    const createSession = await app.request('/api/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId: project.id }),
+    });
+    expect(createSession.status).toBe(201);
+    const session = await createSession.json() as { id: string; cwd: string };
+    expect(session.cwd).toBe(path.join(os.homedir(), '.ema-agent', 'workspace'));
+
+    const patch = await app.request(`/api/sessions/${session.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cwd: os.tmpdir() }),
+    });
+    expect(patch.status).toBe(200);
+    expect((await patch.json() as { cwd: string }).cwd).toBe(os.tmpdir());
+
+    const addFolder = await app.request(`/api/workspaces/projects/${project.id}/folders`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: path.join(os.tmpdir(), 'project-folder') }),
+    });
+    expect(addFolder.status).toBe(200);
+    expect(sessions.getSession(session.id).cwd).toBe(os.tmpdir());
+
+    const removeFolder = await app.request(`/api/workspaces/projects/${project.id}/folders`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: path.join(os.tmpdir(), 'project-folder') }),
+    });
+    expect(removeFolder.status).toBe(200);
+    expect(sessions.listProjectFolders(project.id)).toEqual([]);
+    expect(sessions.getSession(session.id).cwd).toBe(os.tmpdir());
   });
 
   it('Message 页、Message 锚点、Turn 索引和 Turn 收口各走独立 URL', async () => {

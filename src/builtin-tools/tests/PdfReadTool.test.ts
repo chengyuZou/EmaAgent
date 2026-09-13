@@ -38,8 +38,8 @@ function invocation(): ToolInvocation {
   });
 }
 
-function narrowContext(workspaceRoot: string): { workspaceRoot: string } {
-  const result = PdfReadTool.validateContext({ workspaceRoot } as never);
+function narrowContext(cwd: string): { cwd: string } {
+  const result = PdfReadTool.validateContext({ cwd } as never);
   if (!result.valid) throw new Error(result.reason);
   return result.context;
 }
@@ -65,15 +65,15 @@ describe('PdfReadTool schema', () => {
 
 describe('PdfReadTool validateContext', () => {
   it('没有工作区时拒绝执行', () => {
-    expect(PdfReadTool.validateContext({ workspaceRoot: '' } as never)).toEqual({
+    expect(PdfReadTool.validateContext({ cwd: '' } as never)).toEqual({
       valid: false,
       reason: 'PDF 读取工具未装配工作区。',
     });
   });
 
   it('有工作区时只投影窄 Context', () => {
-    const result = PdfReadTool.validateContext({ workspaceRoot: 'C:\\work' } as never);
-    expect(result).toEqual({ valid: true, context: { workspaceRoot: 'C:\\work' } });
+    const result = PdfReadTool.validateContext({ cwd: 'C:\\work' } as never);
+    expect(result).toEqual({ valid: true, context: { cwd: 'C:\\work' } });
   });
 });
 

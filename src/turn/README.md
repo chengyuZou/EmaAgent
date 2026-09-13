@@ -36,7 +36,7 @@ start
   → TurnStore.startTurn（建行 + 注册活动信号 + 收口同 Session 崩溃残留）
   → prepareTurn（preparation/，一次性冻结）
   │    ├─ 读取并冻结本 Turn 的 agent/compact/attachment/permission 设置
-  │    ├─ Session 事实（workspaceRoot/projectId/模型偏好）
+  │    ├─ Session 事实（cwd/projectId/模型偏好）与当前 Project folders
   │    ├─ 模型解析：请求覆盖 > Session 偏好；ProviderModels 事实 + resolveConnection + createLlm
   │    ├─ 附件登记（AttachmentStore.addAll）→ 用户消息只保存 attachment_ref
   │    ├─ Skill：work 态 freezeSkillPool + 选中引用冻结；正文由 Skill Tool 按需读取

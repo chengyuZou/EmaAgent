@@ -26,7 +26,7 @@ import {
 /** File 编辑工具只取得当前 Turn 的读取状态与工作区;取消与调用身份走 ToolInvocation。 */
 interface FileEditToolContext {
   readFileState: ReadFileState;
-  workspaceRoot: string;
+  cwd: string;
 }
 
 /** 编辑文件大小上限,防 V8 字符串长度限制(~2^30)导致 OOM。 */
@@ -76,7 +76,7 @@ export const FileEditTool = buildTool<FileEditInput, FileEditResult, FileEditToo
   isConcurrencySafe: () => false,
 
   validateContext(ctx) {
-    if (!ctx.workspaceRoot) {
+    if (!ctx.cwd) {
       return contextFail('File 编辑工具需要明确的工作区。');
     }
     if (!ctx.readFileState) {
@@ -84,7 +84,7 @@ export const FileEditTool = buildTool<FileEditInput, FileEditResult, FileEditToo
     }
     return contextOk({
       readFileState: ctx.readFileState,
-      workspaceRoot: ctx.workspaceRoot,
+      cwd: ctx.cwd,
     });
   },
 
@@ -104,8 +104,8 @@ export const FileEditTool = buildTool<FileEditInput, FileEditResult, FileEditToo
   checkPermissions: async (input, context, permissionContext) =>
     checkWritePathPermission({
       toolName: BuiltinTools.FileEdit.name,
-      path: path.resolve(context.workspaceRoot, input.file_path),
-      workspaceRoot: context.workspaceRoot,
+      path: path.resolve(context.cwd, input.file_path),
+      cwd: context.cwd,
       permissionContext,
     }),
 
@@ -116,7 +116,7 @@ export const FileEditTool = buildTool<FileEditInput, FileEditResult, FileEditToo
   ): Promise<FileEditResult> {
     const { file_path, old_string, replace_all } = input;
     // 与 FileRead/Permission 同一基准: 相对路径按工作区解析, 不借宿主进程 cwd。
-    const fullPath = path.resolve(context.workspaceRoot, file_path);
+    const fullPath = path.resolve(context.cwd, file_path);
 
     // ── 文件大小上限(防 V8 字符串长度 OOM)─────────────────────────────────
     let stat: fs.Stats;

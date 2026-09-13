@@ -29,7 +29,8 @@ export interface PromptBlock {
 /** 本轮模型与运行时事实;由调用方注入,本包不自行探测。 */
 export interface PromptEnvironment {
   readonly platform: NodeJS.Platform;
-  readonly workspaceRoot: string | null;
+  readonly cwd: string | null;
+  readonly projectFolderPaths: readonly string[];
   readonly providerId: string;
   readonly modelId: string;
 }
@@ -74,14 +75,20 @@ const EXTERNAL_CONTENT_TRUST = `## 外部内容信任级
 
 /** 运行时事实段:模型按此回答"当前环境",不猜日期、平台或自己是什么模型。 */
 function runtimeEnvironment(env: PromptEnvironment): string {
-  const workspace = env.workspaceRoot
-    ? `- 当前工作区:${env.workspaceRoot}`
-    : '- 当前没有可操作的工作区。';
+  const currentDirectory = env.cwd
+    ? `- 当前执行目录（cwd）：${env.cwd}`
+    : '- 当前没有执行目录。';
   return [
     '# 本轮运行环境',
     `- 操作系统：${env.platform}`,
     `- 当前模型：${env.providerId} / ${env.modelId}`,
-    workspace,
+    currentDirectory,
+    ...(env.projectFolderPaths.length > 0
+      ? [
+          '- 项目源文件夹：',
+          ...env.projectFolderPaths.map(folderPath => `  - ${folderPath}`),
+        ]
+      : []),
     '以上是本轮开始时冻结的运行时事实;文件、仓库和外部状态以工具的最新结果为准。',
   ].join('\n');
 }

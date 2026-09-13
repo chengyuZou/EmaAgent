@@ -30,8 +30,8 @@ function seedSource(dataDir: string): Database {
   const db = new Database({ memory: true, kind: 'data' });
   db.migrate();
   db.sqlite.prepare(`
-    INSERT INTO sessions (id, title, pinned, last_activity_at, created_at, updated_at)
-    VALUES (?, '往返', 0, 1, 1, 1)
+    INSERT INTO sessions (id, title, cwd, pinned, last_activity_at, created_at, updated_at)
+    VALUES (?, '往返', 'D:/work', 0, 1, 1, 1)
   `).run(SESSION_ID);
   db.sqlite.prepare(`
     INSERT INTO turns (id, session_id, trigger_type, execution_profile, narrative_policy,

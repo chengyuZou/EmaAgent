@@ -42,9 +42,9 @@ function setMtime(filePath: string, ms: number): void {
 
 async function glob(
   input: { pattern: string; path?: string },
-  workspaceRoot: string,
+  cwd: string,
 ): Promise<GlobResult> {
-  return GlobTool.execute(input, { workspaceRoot }, makeInvocation());
+  return GlobTool.execute(input, { cwd }, makeInvocation());
 }
 
 describe('GlobTool — 匹配与投影', () => {
@@ -117,16 +117,16 @@ describe('GlobTool — 匹配与投影', () => {
     const invocation = makeInvocation();
 
     expect(
-      GlobTool.validateInput!({ pattern: '**/*', path: 'nope' }, { workspaceRoot: ws }, invocation).valid,
+      GlobTool.validateInput!({ pattern: '**/*', path: 'nope' }, { cwd: ws }, invocation).valid,
     ).toBe(false);
     expect(
-      GlobTool.validateInput!({ pattern: '**/*', path: 'f.ts' }, { workspaceRoot: ws }, invocation).valid,
+      GlobTool.validateInput!({ pattern: '**/*', path: 'f.ts' }, { cwd: ws }, invocation).valid,
     ).toBe(false);
     expect(
-      GlobTool.validateInput!({ pattern: '**/*', path: '\\\\server\\share' }, { workspaceRoot: ws }, invocation).valid,
+      GlobTool.validateInput!({ pattern: '**/*', path: '\\\\server\\share' }, { cwd: ws }, invocation).valid,
     ).toBe(true);
     expect(
-      GlobTool.validateInput!({ pattern: '**/*' }, { workspaceRoot: ws }, invocation).valid,
+      GlobTool.validateInput!({ pattern: '**/*' }, { cwd: ws }, invocation).valid,
     ).toBe(true);
   });
 });

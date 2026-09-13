@@ -12,8 +12,8 @@ import type {
   GitSummaryError,
 } from './types.js';
 
-export async function gitSummary(workspaceRoot: string): Promise<GitSummary> {
-  const repoRoot = await findRepoRoot(workspaceRoot);
+export async function gitSummary(cwd: string): Promise<GitSummary> {
+  const repoRoot = await findRepoRoot(cwd);
   if (!repoRoot) return { capability: 'not-a-repo' };
 
   try {

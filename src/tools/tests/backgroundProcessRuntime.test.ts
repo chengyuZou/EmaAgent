@@ -106,7 +106,7 @@ function createFixture(options?: {
   const db = new Database({ memory: true, kind: 'data' });
   db.migrate();
   db.sqlite.prepare(
-    `INSERT INTO sessions (id, title, created_at, updated_at) VALUES (?, '', 1, 1)`,
+    `INSERT INTO sessions (id, title, cwd, created_at, updated_at) VALUES (?, '', 'D:/work', 1, 1)`,
   ).run(SESSION_ID);
   db.sqlite.prepare(
     `INSERT INTO turns (id, session_id, status, created_at)

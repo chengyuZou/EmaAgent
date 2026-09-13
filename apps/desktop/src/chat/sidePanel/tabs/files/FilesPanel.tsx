@@ -1,4 +1,4 @@
-// 按 Session 与工作区根目录隔离文件树与目录请求；文件在工作区 Dock 以标签预览。
+// 按 Session 与项目源文件夹隔离文件树与目录请求；无项目时浏览会话 cwd。
 import { useState, useCallback, useEffect, useRef, type JSX, type CSSProperties } from 'react';
 import { ScrollArea } from '@ema-agent/ui';
 import { filesApi, type FileEntry } from '../../../../api/workspaces.js';
@@ -33,8 +33,11 @@ class DirectoryRequestGate {
   }
 }
 
-function workspaceBrowserScopeKey(sessionId: string, root: string): string {
-  return JSON.stringify([sessionId, root]);
+function workspaceBrowserScopeKey(
+  sessionId: string,
+  roots: readonly string[],
+): string {
+  return JSON.stringify([sessionId, roots]);
 }
 
 // ── File icon by extension ────────────────────────────────────────────────────
@@ -62,6 +65,10 @@ function fmtSize(bytes: number): string {
   if (bytes < 1024)       return `${bytes}B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}K`;
   return `${(bytes / (1024 * 1024)).toFixed(1)}M`;
+}
+
+function folderName(path: string): string {
+  return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
 }
 
 // ── Tree node ─────────────────────────────────────────────────────────────────
@@ -193,29 +200,47 @@ export function FilesPanel(): JSX.Element {
   const session    = useSessionStore((s) =>
     sessionId ? s.sessions.byId.get(sessionId) : undefined,
   );
+  const project = useSessionStore((state) => {
+    if (!session?.projectId) return undefined;
+    return [...state.sessions.pinnedProjects, ...state.sessions.projects]
+      .find((item) => item.id === session.projectId);
+  });
+  const roots = session?.projectId
+    ? project?.folders.map(folder => folder.path) ?? []
+    : session ? [session.cwd] : [];
+  const primaryRoot = session?.projectId
+    ? project?.folders.find(folder => folder.isPrimary)?.path ?? roots[0] ?? null
+    : session?.cwd ?? null;
 
-  const root: string | null = session?.workspaceRoot ?? null;
-
-  if (!sessionId || !root) {
+  if (!sessionId || roots.length === 0 || !primaryRoot) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-10 px-4 ema-fade-in">
         <span className="i-lucide:folder-x text-3xl opacity-20 text-[var(--ema-primary)]" aria-hidden />
         <p className="text-xs text-center text-[var(--ema-text-tertiary)]">
-          当前会话未配置工作区
-        </p>
-        <p className="text-[10px] text-center opacity-50 text-[var(--ema-text-tertiary)]">
-          在设置 → 工作区中添加目录
+          {session?.projectId ? '项目暂无源文件夹' : '尚未打开会话'}
         </p>
       </div>
     );
   }
 
-  const scopeKey = workspaceBrowserScopeKey(sessionId, root);
-  return <ScopedFilesPanel key={scopeKey} root={root} />;
+  const scopeKey = workspaceBrowserScopeKey(sessionId, roots);
+  return (
+    <ScopedFilesPanel
+      key={scopeKey}
+      roots={roots}
+      primaryRoot={primaryRoot}
+    />
+  );
 }
 
-function ScopedFilesPanel({ root }: { root: string }): JSX.Element {
-
+function ScopedFilesPanel({
+  roots,
+  primaryRoot,
+}: {
+  roots: readonly string[];
+  primaryRoot: string;
+}): JSX.Element {
+  const [root, setRoot] = useState(primaryRoot);
   const [search,       setSearch]       = useState('');
   const [dirNodes,     setDirNodes]     = useState<Map<string, DirNode>>(new Map);
   const requestGateRef = useRef<DirectoryRequestGate | null>(null);
@@ -283,6 +308,32 @@ function ScopedFilesPanel({ root }: { root: string }): JSX.Element {
 
   return (
     <div className="flex flex-col h-full ema-fade-in">
+      <div className="shrink-0 border-b border-[var(--ema-border)] px-2 py-1.5">
+        {roots.length > 1 ? (
+          <select
+            aria-label="选择项目源文件夹"
+            className="w-full rounded-md border border-[var(--ema-border)] bg-[var(--ema-surface-2)] px-2 py-1 text-xs text-[var(--ema-text-primary)] outline-none focus:border-[var(--ema-primary)]"
+            value={root}
+            onChange={event => setRoot(event.target.value)}
+          >
+            {roots.map(path => (
+              <option key={path} value={path}>
+                {roots.some(other => other !== path && folderName(other) === folderName(path))
+                  ? path
+                  : folderName(path)}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <div
+            className="flex items-center gap-2 truncate px-1 text-xs text-[var(--ema-text-secondary)]"
+            title={root}
+          >
+            <span className="i-lucide:folder text-sm" aria-hidden />
+            <span className="truncate">{folderName(root)}</span>
+          </div>
+        )}
+      </div>
       {/* Search */}
       <div className="px-2 py-1.5 border-b shrink-0 border-[var(--ema-border)]">
         <input

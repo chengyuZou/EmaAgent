@@ -20,7 +20,6 @@ import {
   sandboxNetworkSetting,
   type SandboxStatus,
 } from '@ema-agent/sandbox';
-import type { SessionStore } from '@ema-agent/session';
 import type { SettingsStore } from '@ema-agent/settings';
 import {
   createMarketInstaller,
@@ -72,7 +71,6 @@ export interface ToolsDeps {
   readonly profileDb: Database;
   readonly dataDb: Database;
   readonly activeDataDir: string;
-  readonly session: SessionStore;
   readonly settings: SettingsStore;
   readonly emitBackgroundEvent: (event: BackgroundProcessEvent) => void;
   readonly onBackgroundCompletion: (
@@ -103,14 +101,16 @@ export interface ToolsComposition {
   readonly skillUserRoot: string;
   /** 沙箱状态实时读:网络档位是设置键,运行期可改,冻结快照会陈旧。 */
   getSandboxStatus(): SandboxStatus;
-  /** 按 Session 缓存的命令运行器；workspaceRoot 变化后必须 invalidate。 */
-  getCommandRunner(sessionId: string): CommandRunner | undefined;
-  invalidateSessionRunner(sessionId: string): void;
+  /** 使用本 Turn 已冻结的 cwd 与 Project folders 构造命令运行器。 */
+  getCommandRunner(
+    cwd: string,
+    workspaceRoots: readonly string[],
+  ): CommandRunner;
   /** Session 级外置工具结果存储（按 Session 缓存目录句柄）。 */
   getSessionToolResultStore(sessionId: string): ToolResultStore;
   /**
    * Session 删除时清理其工具侧进程内状态：停掉该 Session 的后台进程、
-   * 释放命令运行器缓存与外置工具结果存储缓存。
+   * 释放外置工具结果存储缓存。
    */
   discardSessionToolState(sessionId: string): Promise<void>;
 }
@@ -127,7 +127,7 @@ function readUnsafeOverrides(env: NodeJS.ProcessEnv): { shell: boolean } {
 }
 
 export function openTools(deps: ToolsDeps): ToolsComposition {
-  const { profileDb, dataDb, activeDataDir, session, settings } = deps;
+  const { profileDb, dataDb, activeDataDir, settings } = deps;
 
   // ── 沙箱策略（本机能力探测 + 显式开发开关收敛） ──────────────────────────────
   const detection = detectBackend();
@@ -164,27 +164,19 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
     ...sqliteFileSet(profileDbPath()),
     ...sqliteFileSet(dataDbPathFor(activeDataDir)),
   ]);
-  const runners = new Map<string, CommandRunner>();
-  // 沙箱网络档位是设置键:写入后已缓存的 runner 仍持旧档,全量失效让下条命令重建。
-  settings.subscribe((event) => {
-    if (event.changedKeys.includes(sandboxNetworkSetting.key)) runners.clear();
-  });
-  const getCommandRunner = (sessionId: string): CommandRunner | undefined => {
-    const cached = runners.get(sessionId);
-    if (cached) return cached;
-    const workspaceRoot = session.getSession(sessionId).workspaceRoot;
-    if (!workspaceRoot) return undefined;
+  const getCommandRunner = (
+    cwd: string,
+    workspaceRoots: readonly string[],
+  ): CommandRunner => {
     const temporaryWritePaths = process.platform === 'darwin'
       ? [os.tmpdir(), '/tmp', '/private/tmp']
       : [os.tmpdir()];
-    const runner = new CommandRunner({
-      workspaceRoot,
-      writablePaths: [workspaceRoot, ...temporaryWritePaths],
+    return new CommandRunner({
+      cwd,
+      writablePaths: [...workspaceRoots, ...temporaryWritePaths],
       forbiddenPaths,
       networkAccess: settings.get(sandboxNetworkSetting),
     });
-    runners.set(sessionId, runner);
-    return runner;
   };
 
   // ── 工具注册表与内置目录 ────────────────────────────────────────────────────
@@ -282,11 +274,9 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
     skillUserRoot,
     getSandboxStatus,
     getCommandRunner,
-    invalidateSessionRunner: sessionId => { runners.delete(sessionId); },
     getSessionToolResultStore,
     async discardSessionToolState(sessionId) {
       await backgroundProcesses.discardSession(sessionId);
-      runners.delete(sessionId);
       resultStores.delete(sessionId);
     },
   };

@@ -16,6 +16,7 @@ function insertSession(db: Database, id: string): string {
   new SessionsRepo(db.sqlite).insert({
     id: id,
     title: id,
+    cwd: 'D:/work',
     createdAt: 1,
     updatedAt: 1,
   });

@@ -21,19 +21,20 @@ function realpathIfExists(p: string): string {
 }
 
 /**
- * 解析并校验命令工作目录。requested 省略时使用 workspaceRoot;
- * 相对路径以 workspaceRoot 为基准(不是 Core 进程 cwd);
- * 结果必须位于 workspaceRoot 或 writablePaths 之一(按真实路径比较,
- * 防符号链接/junction 逃逸), 否则拒绝而不是悄悄执行。
+ * 解析并校验命令工作目录。requested 省略时使用 cwd;
+ * 相对路径以 cwd 为基准(不是 Core 进程 cwd);
+ * Session cwd 本身始终可作为执行起点，即使它已从项目目录清单移除；
+ * 显式切换到别的目录只允许当前 writablePaths。运行起点不等于写入授权。
  */
 export function resolveCommandCwd(
   requested: string | undefined,
   capability: SandboxCapability,
 ): string {
-  const resolved = path.resolve(capability.workspaceRoot, requested ?? '.');
+  const resolved = path.resolve(capability.cwd, requested ?? '.');
   const real = realpathIfExists(resolved);
+  if (real === realpathIfExists(path.resolve(capability.cwd))) return real;
 
-  const roots = [capability.workspaceRoot, ...capability.writablePaths]
+  const roots = capability.writablePaths
     .map((r) => realpathIfExists(path.resolve(r)));
   if (!roots.some((root) => pathInside(root, real))) {
     throw new Error(`工作目录 ${real} 越出 Sandbox 能力范围`);

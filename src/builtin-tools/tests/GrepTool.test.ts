@@ -43,11 +43,11 @@ type GrepInputShape = Parameters<typeof GrepTool.execute>[0];
 
 async function grep(
   input: Record<string, unknown>,
-  workspaceRoot: string,
+  cwd: string,
 ): Promise<GrepResult> {
   // 镜像生产链路: 注册表先 inputSchema.parse 再 execute, 默认值(default)在此生效。
   const parsed = GrepTool.inputSchema.parse(input);
-  return GrepTool.execute(parsed as GrepInputShape, { workspaceRoot }, makeInvocation());
+  return GrepTool.execute(parsed as GrepInputShape, { cwd }, makeInvocation());
 }
 
 describe.skipIf(!hasRipgrep)('GrepTool', () => {
@@ -166,13 +166,13 @@ describe.skipIf(!hasRipgrep)('GrepTool', () => {
     const invocation = makeInvocation();
 
     expect(
-      GrepTool.validateInput!({ pattern: 'x', path: 'nope' }, { workspaceRoot: ws }, invocation).valid,
+      GrepTool.validateInput!({ pattern: 'x', path: 'nope' }, { cwd: ws }, invocation).valid,
     ).toBe(false);
     expect(
-      GrepTool.validateInput!({ pattern: 'x', path: '\\\\server\\share' }, { workspaceRoot: ws }, invocation).valid,
+      GrepTool.validateInput!({ pattern: 'x', path: '\\\\server\\share' }, { cwd: ws }, invocation).valid,
     ).toBe(true);
     expect(
-      GrepTool.validateInput!({ pattern: 'x' }, { workspaceRoot: ws }, invocation).valid,
+      GrepTool.validateInput!({ pattern: 'x' }, { cwd: ws }, invocation).valid,
     ).toBe(true);
   });
 });

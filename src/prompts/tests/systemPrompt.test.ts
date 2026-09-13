@@ -20,7 +20,8 @@ function input(overrides: Partial<Parameters<typeof getSystemPrompt>[0]> = {}) {
     ],
     environment: {
       platform: 'win32' as const,
-      workspaceRoot: 'D:\\proj',
+      cwd: 'D:\\proj',
+      projectFolderPaths: [],
       providerId: 'openai',
       modelId: 'gpt-5.2',
     },
@@ -73,6 +74,25 @@ describe('getSystemPrompt', () => {
     expect(blocks.some(block => block.name === 'memory-guidance')).toBe(false);
     expect(blocks.some(block => block.name === 'workspace-instructions')).toBe(false);
     expect(blocks.every(block => block.content.trim().length > 0)).toBe(true);
+  });
+
+  it('运行环境区分固定 cwd 和项目的全部源文件夹', () => {
+    const blocks = getSystemPrompt(input({
+      environment: {
+        platform: 'win32',
+        cwd: 'D:\\main',
+        projectFolderPaths: ['D:\\main', 'D:\\other'],
+        providerId: 'openai',
+        modelId: 'gpt-5.2',
+      },
+    }));
+    const environment = blocks.find(block => block.name === 'runtime-environment')!;
+
+    expect(environment.content).toContain('当前执行目录（cwd）：D:\\main');
+    expect(environment.content).toContain('项目源文件夹：\n  - D:\\main\n  - D:\\other');
+
+    const ungrouped = getSystemPrompt(input()).at(-1)!;
+    expect(ungrouped.content).not.toContain('项目源文件夹');
   });
 
   it('memorySection 存在时生成 memory-guidance 产品指引块（不带数据级护栏）', () => {

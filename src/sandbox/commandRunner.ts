@@ -38,11 +38,11 @@ export class CommandRunner {
   private readonly exploitPathsExistedAtStart: ReadonlySet<string>;
 
   constructor(capability: SandboxCapability) {
-    if (capability.workspaceRoot.trim() === '') {
-      throw new Error('CommandRunner 需要明确的 workspaceRoot，禁止回退到进程工作目录。');
+    if (capability.cwd.trim() === '') {
+      throw new Error('CommandRunner 需要明确的 cwd，禁止回退到进程工作目录。');
     }
     this.capability = Object.freeze({
-      workspaceRoot: capability.workspaceRoot,
+      cwd: capability.cwd,
       writablePaths: Object.freeze([...capability.writablePaths]),
       forbiddenPaths: Object.freeze([...capability.forbiddenPaths]),
       networkAccess: capability.networkAccess,
@@ -56,10 +56,10 @@ export class CommandRunner {
     void probeBash();
 
     this.config = buildSandboxConfig(this.capability);
-    this.bareRepoExistedAtStart = hasBareRepoSignature(capability.workspaceRoot);
+    this.bareRepoExistedAtStart = hasBareRepoSignature(capability.cwd);
     this.exploitPathsExistedAtStart = new Set(
       BARE_REPO_EXPLOIT_FILES.filter((fileName) =>
-        existsSync(path.join(capability.workspaceRoot, fileName)),
+        existsSync(path.join(capability.cwd, fileName)),
       ),
     );
   }
@@ -100,7 +100,7 @@ export class CommandRunner {
    */
   private cleanup(): void {
     if (this.bareRepoExistedAtStart) return;
-    const root = this.capability.workspaceRoot;
+    const root = this.capability.cwd;
     if (!hasBareRepoSignature(root)) return;
     const newExploits = BARE_REPO_EXPLOIT_FILES.filter(
       (fileName) =>

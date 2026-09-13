@@ -18,7 +18,7 @@ import { BASH_DESCRIPTION } from './prompt.js';
 interface BashToolContext {
   runner: CommandRunner;
   backgroundProcesses: BackgroundProcess;
-  workspaceRoot: string;
+  cwd: string;
 }
 
 /** 交互等待期的输出增量(转交后台后不再上报)。 */
@@ -110,7 +110,7 @@ export const BashTool = buildTool<BashInput, BashResult, BashToolContext, BashPr
   isConcurrencySafe: () => false,
 
   validateContext(ctx) {
-    if (!ctx.workspaceRoot) {
+    if (!ctx.cwd) {
       return contextFail('Shell 工具需要明确的工作区。');
     }
     if (!ctx.commandRunner || !ctx.backgroundProcesses) {
@@ -119,7 +119,7 @@ export const BashTool = buildTool<BashInput, BashResult, BashToolContext, BashPr
     return contextOk({
       runner: ctx.commandRunner,
       backgroundProcesses: ctx.backgroundProcesses,
-      workspaceRoot: ctx.workspaceRoot,
+      cwd: ctx.cwd,
     });
   },
 
@@ -206,7 +206,7 @@ export const BashTool = buildTool<BashInput, BashResult, BashToolContext, BashPr
       runner: context.runner,
       command,
       description: input.description,
-      cwd: context.workspaceRoot,
+      cwd: context.cwd,
       timeoutMs: timeout,
       runInBackground,
       waitSignal: invocation.signal,
