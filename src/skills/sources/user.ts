@@ -52,7 +52,7 @@ export function createSkillStore(deps: SkillStoreDeps): SkillStore {
         const row: SkillRow = {
           path: skillFile,
           name: parsed.name,
-          version: parsed.version,
+          version: parsed.version ?? null,
           description: parsed.description,
           dir_path: dir,
           size_bytes: await measureSkillDirectory(dir),
@@ -91,7 +91,7 @@ export function createSkillStore(deps: SkillStoreDeps): SkillStore {
     const row: SkillRow = {
       path: join(target, 'SKILL.md'),
       name: parsed.name,
-      version: parsed.version,
+      version: parsed.version ?? null,
       description: parsed.description,
       dir_path: target,
       size_bytes: await measureSkillDirectory(target),
@@ -150,10 +150,9 @@ function toDescriptor(row: SkillRow, parsed: ParsedSkillMd): SkillDescriptor {
   return {
     name: row.name,
     path: row.path,
-    version: row.version,
+    ...(row.version !== null ? { version: row.version } : {}),
     description: row.description,
     whenToUse: parsed.whenToUse,
-    suggestedTools: parsed.suggestedTools,
     scope: 'user',
     sizeBytes: row.size_bytes,
   };

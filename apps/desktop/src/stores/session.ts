@@ -5,8 +5,7 @@ import {
   type SessionListItem,
   type SessionCreateInput,
   type SessionPatchInput,
-  type SessionProjectGroup,
-  type SessionsGrouped,
+  type Project,
 } from '../api/sessions.js';
 import { useBackgroundProcessStore } from './backgroundProcess.js';
 import { useAgentStore } from './agent.js';
@@ -24,8 +23,8 @@ import type { PermissionMode } from '@ema-agent/permission';
 
 export interface SessionsState {
   pinned:   SessionListItem[];
-  pinnedProjects: SessionProjectGroup[];
-  projects: SessionProjectGroup[];
+  pinnedProjects: Project[];
+  projects: Project[];
   recent:   SessionListItem[];
   archived: SessionListItem[];
   byId:     Map<string, SessionListItem>;
@@ -69,8 +68,16 @@ function emptySessions(): SessionsState {
 function rebuildById(s: SessionsState): void {
   s.byId = new Map();
   for (const x of s.pinned)   s.byId.set(x.id, x);
-  for (const g of s.pinnedProjects) for (const x of g.sessions) s.byId.set(x.id, x);
-  for (const g of s.projects)       for (const x of g.sessions) s.byId.set(x.id, x);
+  for (const project of s.pinnedProjects) {
+    for (const session of project.sessions) {
+      s.byId.set(session.id, session);
+    }
+  }
+  for (const project of s.projects) {
+    for (const session of project.sessions) {
+      s.byId.set(session.id, session);
+    }
+  }
   for (const x of s.recent)   s.byId.set(x.id, x);
   for (const x of s.archived) s.byId.set(x.id, x);
 }
@@ -82,14 +89,14 @@ function replaceSession(
 ): SessionsState {
   const replace = (session: SessionListItem): SessionListItem =>
     session.id === id ? replacement : session;
-  const replaceGroup = (group: SessionProjectGroup): SessionProjectGroup => ({
-    ...group,
-    sessions: group.sessions.map(replace),
+  const replaceProjectSession = (project: Project): Project => ({
+    ...project,
+    sessions: project.sessions.map(replace),
   });
   const next: SessionsState = {
     pinned: sessions.pinned.map(replace),
-    pinnedProjects: sessions.pinnedProjects.map(replaceGroup),
-    projects: sessions.projects.map(replaceGroup),
+    pinnedProjects: sessions.pinnedProjects.map(replaceProjectSession),
+    projects: sessions.projects.map(replaceProjectSession),
     recent: sessions.recent.map(replace),
     archived: sessions.archived.map(replace),
     byId: new Map(sessions.byId),
@@ -113,13 +120,13 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
   async loadSessions() {
     set({ loading: true, error: null });
     try {
-      const grouped = await sessionsApi.listGrouped();
+      const sidebarData = await sessionsApi.listForSidebar();
       const sessions: SessionsState = {
-        pinned:   [...grouped.pinned],
-        pinnedProjects: [...grouped.pinnedProjects],
-        projects: [...grouped.projects],
-        recent:   [...grouped.recent],
-        archived: [...grouped.archived],
+        pinned:   [...sidebarData.pinned],
+        pinnedProjects: [...sidebarData.pinnedProjects],
+        projects: [...sidebarData.projects],
+        recent:   [...sidebarData.recent],
+        archived: [...sidebarData.archived],
         byId:     new Map(),
       };
       rebuildById(sessions);

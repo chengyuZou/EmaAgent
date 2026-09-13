@@ -14,11 +14,10 @@ import {
 
 export type SessionCreateInput = InferRequestType<RpcClient['api']['sessions']['$post']>['json'];
 export type Session = RpcJson<RpcClient['api']['sessions']['$post']>;
-export type SessionsGrouped = RpcJson<RpcClient['api']['sessions']['$get']>;
+export type SessionSidebarData = RpcJson<RpcClient['api']['sessions']['$get']>;
 /** 分组列表的会话条目（含 hasActiveTurn/lastTurnStatus/hasUnread 列表投影）。 */
-export type SessionListItem = SessionsGrouped['recent'][number];
-/** 项目槽：实体 + 文件夹 + 成员 Session。 */
-export type SessionProjectGroup = SessionsGrouped['projects'][number];
+export type SessionListItem = SessionSidebarData['recent'][number];
+export type Project = SessionSidebarData['projects'][number];
 export type SessionSearchResult = RpcJson<RpcClient['api']['sessions']['search']['$get']>;
 export type SessionPatchInput = InferRequestType<RpcClient['api']['sessions'][':sessionId']['$put']>['json'];
 export type SessionMessagePage = RpcJson<RpcClient['api']['sessions'][':sessionId']['messages']['$get']>;
@@ -43,7 +42,7 @@ export const sessionsApi = {
   },
 
   /** GET /api/sessions — 分组列表（侧栏唯一路径）。 */
-  listGrouped(): Promise<SessionsGrouped> {
+  listForSidebar(): Promise<SessionSidebarData> {
     return readRpcJson(rpcClient.api.sessions.$get());
   },
 

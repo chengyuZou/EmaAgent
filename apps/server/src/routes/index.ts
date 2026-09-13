@@ -52,12 +52,12 @@ import { settingsValuesRoute } from './settings/values.js';
 import { skillListRoute } from './skills/list.js';
 import { skillMarketRoute } from './skills/market.js';
 import { systemStatsRoute } from './system/stats.js';
+import { usageRecordsRoute } from './system/usageRecords.js';
 import { systemStatusRoute } from './system/status.js';
 import { systemEventsRoute } from './system/events.js';
 import { tasksRoute } from './tasks.js';
 import { turnAudioRoute } from './turns/audio.js';
 import { turnControlRoute } from './turns/control.js';
-import { dataDirsRoute } from './workspaces/dataDirs.js';
 import { filesRoute } from './workspaces/files.js';
 import { projectsRoute } from './workspaces/projects.js';
 
@@ -87,6 +87,10 @@ export const createRoutes = (composition: Composition, secret: string) => {
     .route('/api/system', systemStatsRoute({
       dataDirStats: database.dataDirStats,
       sessionStats: database.sessionStats,
+      messages: database.messages,
+    }))
+    .route('/api/system', usageRecordsRoute({
+      usageRecords: database.usageRecords,
     }))
 
     .route('/api/ws/agent', agentWebSocketRoute({
@@ -234,12 +238,6 @@ export const createRoutes = (composition: Composition, secret: string) => {
     }))
 
     .route('/api/workspaces', projectsRoute({ session: database.session }))
-    .route('/api/workspaces', dataDirsRoute({
-      activeDataDir: database.activeDataDir,
-      dataDb: database.dataDb,
-      activeSessions: database.activeSessions,
-      closeDatabases: () => database.close(),
-    }))
     .route('/api/workspaces', filesRoute())
 
     .notFound(context => context.json({ error: 'not_found' }, 404))

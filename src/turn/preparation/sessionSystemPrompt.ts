@@ -12,23 +12,24 @@ import {
   type SkillPool,
 } from '@ema-agent/skills';
 
-export interface WorkSkillPoolDeps {
+export interface SkillPoolDeps {
   readonly settings: SettingsStore;
-  /** SkillRegistry 当前全量条目（含工作区的 project 技能）；chat 态不调用。 */
-  readonly skillEntries: (workspaceRoot: string) => Promise<readonly SkillDescriptor[]>;
+  /** SkillRegistry 当前全量条目（含工作区的 project 技能）。 */
+  readonly skillEntries: (
+    workspaceRoot: string,
+    projectId: string | null,
+  ) => Promise<readonly SkillDescriptor[]>;
   /** skill_enablement 表的当前禁用路径列表（builtin/user 逐技能启停）。 */
   readonly disabledSkillPaths: () => readonly string[];
 }
 
-/** Skill 目录与 Pool 同步冻结；chat 态不建 Pool（Skill 工具不可见）。 */
-export async function resolveWorkSkillPool(
-  deps: WorkSkillPoolDeps,
-  executionProfile: ExecutionProfile,
+/** Chat 与 Work 使用同一份冻结的 Skill 目录。 */
+export async function resolveSkillPool(
+  deps: SkillPoolDeps,
   workspaceRoot: string,
+  projectId: string | null,
 ): Promise<SkillPool | undefined> {
-  const skillEntries = executionProfile === 'work'
-    ? await deps.skillEntries(workspaceRoot)
-    : [];
+  const skillEntries = await deps.skillEntries(workspaceRoot, projectId);
   if (skillEntries.length === 0) return undefined;
   return freezeSkillPool({
     entries: skillEntries,

@@ -17,7 +17,12 @@ export type SkillMarketDetailResult = RpcJson<RpcClient['api']['skills']['market
 export type SkillMarketFileContentResult = RpcJson<RpcClient['api']['skills']['market']['skills'][':source'][':slug']['file']['$get']>;
 export type SkillMarketInstallBody = InferRequestType<RpcClient['api']['skills']['market']['install']['$post']>['json'];
 
-/** sessionId 缺省时只见 builtin+user；project 技能按 Session 工作区合成。 */
+/** 项目新对话尚无 Session，列表可以直接传 projectId。 */
+const listContext = (sessionId?: string, projectId?: string) => ({
+  ...(sessionId ? { sessionId } : {}),
+  ...(projectId ? { projectId } : {}),
+});
+
 const withSessionId = (sessionId: string | undefined) => (sessionId ? { sessionId } : {});
 
 export const skillsApi = {
@@ -26,8 +31,8 @@ export const skillsApi = {
   },
 
   /** GET /api/skills?sessionId= — 全量目录（含 enabled 投影）。 */
-  list(sessionId?: string): Promise<SkillListResult> {
-    return readRpcJson(rpcClient.api.skills.$get({ query: withSessionId(sessionId) }));
+  list(sessionId?: string, projectId?: string): Promise<SkillListResult> {
+    return readRpcJson(rpcClient.api.skills.$get({ query: listContext(sessionId, projectId) }));
   },
 
   /** GET /api/skills/descriptor?skillPath=&sessionId= — 单条详情。 */

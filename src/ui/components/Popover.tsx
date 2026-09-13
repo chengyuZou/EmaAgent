@@ -23,6 +23,8 @@ export interface PopoverProps {
   /** Inline style — use for dynamic widths (e.g. `{ width: 280 }`) to avoid UnoCSS scanning limits. */
   style?:      CSSProperties;
   className?:  string;
+  onOpenAutoFocus?: (event: Event) => void;
+  onCloseAutoFocus?: (event: Event) => void;
 }
 
 export function Popover(props: PopoverProps): React.JSX.Element {
@@ -35,6 +37,8 @@ export function Popover(props: PopoverProps): React.JSX.Element {
     widthClass = 'w-64',
     style,
     className,
+    onOpenAutoFocus,
+    onCloseAutoFocus,
   } = props;
 
   return (
@@ -50,6 +54,8 @@ export function Popover(props: PopoverProps): React.JSX.Element {
           align={align}
           sideOffset={sideOffset}
           style={style}
+          onOpenAutoFocus={onOpenAutoFocus}
+          onCloseAutoFocus={onCloseAutoFocus}
           className={cn(
             'z-40 panel-glass rounded-lg p-2 shadow-xl',
             widthClass,

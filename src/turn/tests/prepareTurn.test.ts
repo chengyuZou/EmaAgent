@@ -113,6 +113,22 @@ function makeRuntime(start: StartTurn) {
 }
 
 describe('prepareTurn', () => {
+  it('将 Session 的 projectId 交给技能目录装载，工作区仍保留主文件夹', async () => {
+    const requested: Array<[string, string | null]> = [];
+    const prepared = await prepareTurn(
+      makeDeps({
+        skillEntries: async (workspaceRoot, projectId) => {
+          requested.push([workspaceRoot, projectId]);
+          return [];
+        },
+      }),
+      makeRuntime(makeStart()),
+    );
+
+    expect(requested).toEqual([['/w', 'p1']]);
+    expect(prepared.workspaceRoot).toBe('/w');
+  });
+
   it('请求与 Session 都未指定模型时准备失败（provider/not_configured）', async () => {
     const deps = makeDeps({
       sessions: { getSession: () => fakeSession({ providerId: null, modelId: null }) } as never,
@@ -156,19 +172,26 @@ describe('prepareTurn', () => {
     await expect(prepareTurn(deps, makeRuntime(makeStart()))).rejects.toThrow(/未在该 Provider 下启用/);
   });
 
-  it('chat Profile 不建 SkillPool，work Profile 冻结 Pool 且 deny 生效', async () => {
+  it('Chat 与 Work 都冻结 SkillPool，Chat 也接受已选 Skill', async () => {
     const descriptor: SkillDescriptor = {
       name: 'demo',
       path: '/skills/demo/SKILL.md',
       version: '1.0.0',
       description: 'd',
-      suggestedTools: [],
       scope: 'user',
     };
     const deps = makeDeps({ skillEntries: () => [descriptor] });
 
-    const chat = await prepareTurn(deps, makeRuntime(makeStart({ executionProfile: 'chat' })));
-    expect(chat.skillPool).toBeUndefined();
+    const chat = await prepareTurn(deps, makeRuntime(makeStart({
+      executionProfile: 'chat',
+      input: [{ type: 'skill_reference', name: 'demo', path: descriptor.path }],
+    })));
+    expect(chat.skillPool?.getByPath(descriptor.path)).toBeDefined();
+    expect(chat.userMessageBlocks).toEqual([{
+      type: 'skill_reference',
+      name: 'demo',
+      path: descriptor.path,
+    }]);
 
     const work = await prepareTurn(deps, makeRuntime(makeStart()));
     expect(work.skillPool?.getByPath('/skills/demo/SKILL.md')).toBeDefined();
@@ -180,7 +203,6 @@ describe('prepareTurn', () => {
       path: '/skills/demo/SKILL.md',
       version: '1.0.0',
       description: 'd',
-      suggestedTools: [],
       scope: 'user',
     };
     let attachmentWrites = 0;

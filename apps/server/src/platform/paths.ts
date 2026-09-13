@@ -10,7 +10,7 @@ const REPO_ROOT = path.resolve(__dirname, '..', '..', '..', '..');
 
 // ── Profile（跨数据目录共享） ─────────────────────────────────────────────────
 
-/** 永远 `~/.ema-agent/`：profile.db、registry.json、lockfile.json、characters/。测试用 EMA_PROFILE_DIR 覆盖。 */
+/** 永远 `~/.ema-agent/`：profile.db、lockfile.json、characters/。registry.json 与库注册表已随单库化整体拆除。测试用 EMA_PROFILE_DIR 覆盖。 */
 export function profileDir(): string {
   const dir = process.env['EMA_PROFILE_DIR'] ?? path.join(os.homedir(), '.ema-agent');
   fs.mkdirSync(dir, { recursive: true });
@@ -26,12 +26,13 @@ export function sqliteFileSet(databasePath: string): string[] {
   return [databasePath, `${databasePath}-wal`, `${databasePath}-shm`];
 }
 
-export function registryPath(): string {
-  return path.join(profileDir(), 'registry.json');
-}
-
 export function lockfilePath(): string {
   return path.join(profileDir(), 'lockfile.json');
+}
+
+/** 唯一数据目录:`~/.ema-agent/data`。固定,不再有库注册表。 */
+export function dataDirPath(): string {
+  return path.join(profileDir(), 'data');
 }
 
 // ── 角色资源包 ────────────────────────────────────────────────────────────────

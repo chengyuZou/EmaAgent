@@ -18,10 +18,9 @@ export async function scanBuiltinSkills(deps: BuiltinScanDeps): Promise<SkillDes
         return {
           name: parsed.name,
           path: skillFile,
-          version: parsed.version,
+          ...(parsed.version !== undefined ? { version: parsed.version } : {}),
           description: parsed.description,
           ...(parsed.whenToUse !== undefined ? { whenToUse: parsed.whenToUse } : {}),
-          suggestedTools: parsed.suggestedTools,
           scope: 'builtin' as const,
         };
       } catch (error) {

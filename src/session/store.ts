@@ -24,7 +24,7 @@ import type {
   SessionListItem,
   Message,
   Project,
-  ProjectGroup,
+  ProjectFolder,
   CreateSessionInput,
   PatchSessionInput,
   AppendMessageInput,
@@ -123,10 +123,10 @@ export class SessionStore {
   }
 
   /** 侧栏投影：置顶 Session / 置顶项目 / 其余项目 / 最近 / 已归档。 */
-  listSessionsGrouped(): {
+  listSessionsForSidebar(): {
     pinned:   SessionListItem[];
-    pinnedProjects: ProjectGroup[];
-    projects: ProjectGroup[];
+    pinnedProjects: Project[];
+    projects: Project[];
     recent:   SessionListItem[];
     archived: SessionListItem[];
   } {
@@ -158,16 +158,16 @@ export class SessionStore {
       recent.push(toSessionListItem(row));
     }
 
-    const pinnedProjects: ProjectGroup[] = [];
-    const projects: ProjectGroup[] = [];
+    const pinnedProjects: Project[] = [];
+    const projects: Project[] = [];
     for (const projectRow of this.projectsRepo.list()) {
-      const group: ProjectGroup = {
-        project: toProject(projectRow),
-        folders: foldersByProject.get(projectRow.id) ?? [],
-        sessions: (membersByProject.get(projectRow.id) ?? []).map(toSessionListItem),
-      };
-      if (group.project.pinned) pinnedProjects.push(group);
-      else projects.push(group);
+      const project = toProject(
+        projectRow,
+        foldersByProject.get(projectRow.id) ?? [],
+        (membersByProject.get(projectRow.id) ?? []).map(toSessionListItem),
+      );
+      if (project.pinned) pinnedProjects.push(project);
+      else projects.push(project);
     }
 
     return { pinned, pinnedProjects, projects, recent, archived };
@@ -254,13 +254,46 @@ export class SessionStore {
 
   // ── 项目 ────────────────────────────────────────────────────────────────────
 
-  createProject(name: string, firstFolderPath?: string): Project {
+  listProjectFolders(projectId: string): ProjectFolder[] {
+    if (!this.projectsRepo.findById(projectId)) {
+      throw new Error(`project_not_found: ${projectId}`);
+    }
+    return this.projectsRepo.listFolders(projectId).map(toProjectFolder);
+  }
+
+  createProject(
+    name: string,
+    folderPaths: string[],
+    primaryFolderPath: string,
+  ): Project {
     const trimmed = name.trim();
     if (!trimmed) throw new Error('project_name_empty');
+    const paths = folderPaths.map((path) => path.trim());
+    const primaryPath = primaryFolderPath.trim();
+    if (paths.length === 0 || paths.some((path) => !path)) {
+      throw new Error('project_folder_path_empty');
+    }
+    if (!paths.includes(primaryPath)) {
+      throw new Error('project_primary_folder_missing');
+    }
+    if (new Set(paths).size !== paths.length) {
+      throw new Error('project_folder_duplicate');
+    }
     const id = crypto.randomUUID();
-    this.projectsRepo.insert({ id, name: trimmed, now: Date.now() });
-    if (firstFolderPath) this.projectsRepo.addFolder(id, firstFolderPath);
-    return toProject(this.projectsRepo.findById(id)!);
+    this.db.sqlite.transaction(() => {
+      this.projectsRepo.insert({ id, name: trimmed, now: Date.now() });
+      for (const path of paths) {
+        this.projectsRepo.addFolder(id, path);
+      }
+      if (paths[0] !== primaryPath) {
+        this.projectsRepo.setPrimaryFolder(id, primaryPath);
+      }
+    })();
+    return toProject(
+      this.projectsRepo.findById(id)!,
+      this.projectsRepo.listFolders(id).map(toProjectFolder),
+      [],
+    );
   }
 
   renameProject(id: string, name: string): void {

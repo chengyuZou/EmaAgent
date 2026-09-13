@@ -6,7 +6,7 @@ export interface SkillRow {
   path:           string;
   name:           string;
   /** SKILL.md frontmatter version,只作展示。 */
-  version:        string;
+  version:        string | null;
   description:    string;
   dir_path:       string;
   size_bytes:     number;

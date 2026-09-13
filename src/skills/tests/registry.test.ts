@@ -70,7 +70,7 @@ describe('SkillRegistry', () => {
     expect(corePaths).toContain(join(builtinRoot, 'code-review', 'SKILL.md'));
     expect((await registry.list()).some(entry => entry.scope === 'project')).toBe(false);
     // 带工作区：合成 project
-    const project = (await registry.list(workspace)).find(entry => entry.scope === 'project');
+    const project = (await registry.list([workspace])).find(entry => entry.scope === 'project');
     expect(project?.projectSourceId).toBe('agents');
     expect((await registry.getByPath(join(builtinRoot, 'code-review', 'SKILL.md')))?.name).toBe('code-review');
   });
@@ -86,12 +86,30 @@ describe('SkillRegistry', () => {
     const wsA = makeWorkspace('skill-a');
     const wsB = makeWorkspace('skill-b');
 
-    const keysA = (await registry.list(wsA)).map((d) => d.name);
-    const keysB = (await registry.list(wsB)).map((d) => d.name);
+    const keysA = (await registry.list([wsA])).map((d) => d.name);
+    const keysB = (await registry.list([wsB])).map((d) => d.name);
     expect(keysA).toContain('skill-a');
     expect(keysA).not.toContain('skill-b');
     expect(keysB).toContain('skill-b');
     expect(keysB).not.toContain('skill-a');
+  });
+
+  it('多文件夹目录可见全部技能，详情只接受当前清单内的路径', async () => {
+    const userRoot = makeDir();
+    const first = makeWorkspace('alpha');
+    const second = makeWorkspace('beta');
+    const registry = createSkillRegistry({
+      userRoot,
+      builtinRoot: makeDir(),
+      store: createSkillStore({ repo: makeRepo(), enablement: makeEnablement(), userRoot }),
+    });
+    await registry.refreshCore();
+
+    const names = (await registry.list([first, second])).map((entry) => entry.name);
+    expect(names).toEqual(['alpha', 'beta']);
+    const betaPath = join(second, '.agents/skills', 'beta', 'SKILL.md');
+    expect(await registry.getByPath(betaPath, [first])).toBeUndefined();
+    expect((await registry.getByPath(betaPath, [first, second]))?.name).toBe('beta');
   });
 
   it('project 列表复用工作区缓存,显式刷新后替换缓存', async () => {
@@ -103,16 +121,19 @@ describe('SkillRegistry', () => {
       store: createSkillStore({ repo: makeRepo(), enablement: makeEnablement(), userRoot }),
     });
     await registry.refreshCore();
-    expect((await registry.list(workspace)).map(entry => entry.name)).toContain('before');
+    expect((await registry.list([workspace])).map(entry => entry.name)).toContain('before');
 
     mkdirSync(join(workspace, '.agents/skills', 'after'), { recursive: true });
     writeFileSync(join(workspace, '.agents/skills', 'after', 'SKILL.md'), SKILL_MD('after'));
-    expect((await registry.list(workspace)).map(entry => entry.name)).not.toContain('after');
+    expect((await registry.list([workspace])).map(entry => entry.name)).not.toContain('after');
 
-    await registry.refreshWorkspace(workspace);
-    const refreshed = await registry.list(workspace);
+    await registry.refreshProjectFolders([workspace]);
+    const refreshed = await registry.list([workspace]);
     expect(refreshed.map(entry => entry.name)).toContain('after');
-    expect((await registry.getByPath(join(workspace, '.agents/skills', 'after', 'SKILL.md')))?.name).toBe('after');
+    expect((await registry.getByPath(
+      join(workspace, '.agents/skills', 'after', 'SKILL.md'),
+      [workspace],
+    ))?.name).toBe('after');
   });
 
   it('并发 refreshCore 串行收尾,结果一致', async () => {

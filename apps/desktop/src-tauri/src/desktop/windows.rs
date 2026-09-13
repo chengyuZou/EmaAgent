@@ -45,7 +45,7 @@ fn create_window(app: &tauri::AppHandle, label: &str) -> Result<WebviewWindow, S
             .map_err(|error| format!("failed to create main webview: {error}"))?,
         "chat" => WebviewWindowBuilder::new(app, "chat", WebviewUrl::App("chat.html".into()))
             .title("Ema · 聊天")
-            .inner_size(720.0, 560.0)
+            .inner_size(1420.0, 880.0)
             .center()
             .visible(false)
             .resizable(true)
@@ -58,7 +58,7 @@ fn create_window(app: &tauri::AppHandle, label: &str) -> Result<WebviewWindow, S
         "settings" => {
             WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("settings.html".into()))
                 .title("Ema · 设置")
-                .inner_size(860.0, 620.0)
+                .inner_size(1420.0, 880.0)
                 .center()
                 .visible(false)
                 .resizable(true)

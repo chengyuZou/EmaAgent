@@ -26,17 +26,14 @@ export interface SkillDescriptor {
   name: string;
   /** SKILL.md 的绝对路径,同时是技能身份。 */
   path: string;
-  version: string;
+  version?: string;
   description: string;
   whenToUse?: string;
-  /**
-   * 技能作者在 frontmatter `allowed-tools` 声明的建议工具,只供模型阅读。
-   * 不是权限规则,不过滤任何工具;真实现规范语义(预授权)是 permission 体系的事。
-   */
-  suggestedTools: string[];
   scope: SkillScope;
   /** project 技能所属生态,供来源级启停使用。 */
   projectSourceId?: string;
+  /** project 技能所在的项目源文件夹,供菜单显示真实出处。 */
+  sourceFolderPath?: string;
   /** 目录总字节(user 域对账时测量);展示用,不进 Prompt。 */
   sizeBytes?: number;
 }
@@ -59,22 +56,18 @@ export const SkillNameSchema = z.string()
 
 export const SkillFrontmatterSchema = z.object({
   name:        SkillNameSchema,
-  version:     z.string().default('1.0.0'),
+  version:     z.string().optional(),
   description: z.string().default(''),
-  /** 生态契约(agentskills.io):作者声明的建议工具;只投影给模型阅读,不做权限执行。 */
-  'allowed-tools': z.array(z.string().trim().min(1).max(256)).max(64).optional(),
   /** 模型决定相关性的关键文案。 */
   'when-to-use': z.string().optional(),
 });
 
 export type SkillFrontmatter = z.infer<typeof SkillFrontmatterSchema>;
 
-/** 解析后的 SKILL.md 全文(含 body)。body 是不可信运行时上下文,不是 System Prompt。 */
+/** 从 SKILL.md frontmatter 解析出的目录字段。 */
 export interface ParsedSkillMd {
   name:          string;
-  version:       string;
+  version?:      string;
   description:   string;
   whenToUse?:    string;
-  suggestedTools: string[];
-  body:          string;
 }

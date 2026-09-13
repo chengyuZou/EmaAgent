@@ -58,9 +58,9 @@ export function SessionRow({ session, isActive, agentSessions, nested = false }:
   const menuItems: MenuItem[] = [
     {
       kind:     'item',
-      label:    session.pinned ? '取消固定' : '固定',
+      label:    session.pinned ? '取消置顶' : '置顶',
       icon:     session.pinned ? 'i-lucide:pin-off' : 'i-lucide:pin',
-      onSelect: () => void runWithToast(useSessionStore.getState().pinSession(session.id, !session.pinned), '固定失败'),
+      onSelect: () => void runWithToast(useSessionStore.getState().pinSession(session.id, !session.pinned), '对话置顶失败'),
     },
     {
       kind:     'item',

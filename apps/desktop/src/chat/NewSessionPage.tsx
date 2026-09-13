@@ -15,8 +15,7 @@ export function NewSessionPage(): JSX.Element {
   const sessions = useSessionStore(state => state.sessions);
   const [illustrationUrl, setIllustrationUrl] = useState<string | null>(null);
   const project = [...sessions.pinnedProjects, ...sessions.projects]
-    .find((group) => group.project.id === projectId)
-    ?.project;
+    .find((item) => item.id === projectId);
 
   useEffect(() => {
     if (!characterName) {

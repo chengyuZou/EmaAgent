@@ -3,6 +3,7 @@
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { Hono } from 'hono';
+import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import type { SessionStore } from '@ema-agent/session';
 import {
@@ -23,20 +24,24 @@ import { jsonBody, queryValidator } from '../validate.js';
 import type { AppEvent } from '../../application/appEvents.js';
 
 export interface SkillListRouteDeps {
-  readonly skills: Pick<SkillRegistry, 'list' | 'getByPath' | 'refreshCore' | 'refreshWorkspace'>;
+  readonly skills: Pick<SkillRegistry, 'list' | 'getByPath' | 'refreshCore' | 'refreshProjectFolders'>;
   readonly skillStore: Pick<SkillStore, 'deleteUserSkill'>;
   /** builtin/user 逐技能启停事实（skill_enablement 表）。 */
   readonly skillEnablement: Pick<SkillEnablementRepo, 'listDisabledPaths' | 'setEnabled'>;
   readonly settings: Pick<SettingsStore, 'get'>;
-  /** sessionId → 工作区：project 技能按 Session 工作区合成；不传 sessionId 只见 builtin+user。 */
-  readonly sessions: Pick<SessionStore, 'getSession'>;
+  /** 按 Session 或 Project 取得技能扫描文件夹；无上下文只见 builtin/user。 */
+  readonly sessions: Pick<SessionStore, 'getSession' | 'listProjectFolders'>;
   /** 启停/删除/重扫后广播 skills_changed,让其他窗口重读。 */
   readonly emitApp: (event: AppEvent) => void;
 }
 
 const listQuery = z.object({
   sessionId: z.string().min(1).optional(),
-});
+  projectId: z.string().min(1).optional(),
+}).refine(
+  ({ sessionId, projectId }) => !sessionId || !projectId,
+  'sessionId 与 projectId 不能同时提供',
+);
 
 /** 绝对路径放在 query 中,不进入 URL 路径段。 */
 const skillQuery = z.object({
@@ -54,9 +59,33 @@ const enabledBody = z.object({
 });
 
 export const skillListRoute = (deps: SkillListRouteDeps) => {
-  const workspaceOf = (sessionId: string | undefined): string | undefined => {
-    if (!sessionId) return undefined;
-    return deps.sessions.getSession(sessionId).workspaceRoot ?? undefined;
+  const folderPathsOf = (
+    sessionId: string | undefined,
+    projectId: string | undefined,
+  ): string[] => {
+    try {
+      if (projectId) {
+        return deps.sessions.listProjectFolders(projectId).map((folder) => folder.path);
+      }
+      if (!sessionId) return [];
+      const session = deps.sessions.getSession(sessionId);
+      if (session.projectId) {
+        return deps.sessions.listProjectFolders(session.projectId).map((folder) => folder.path);
+      }
+      return session.workspaceRoot ? [session.workspaceRoot] : [];
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith('session_not_found:')) {
+        throw new HTTPException(404, {
+          res: Response.json({ error: 'session_not_found' }, { status: 404 }),
+        });
+      }
+      if (error instanceof Error && error.message.startsWith('project_not_found:')) {
+        throw new HTTPException(404, {
+          res: Response.json({ error: 'project_not_found' }, { status: 404 }),
+        });
+      }
+      throw error;
+    }
   };
   const readEnablement = (): SkillEnablement => ({
     disabledPaths: deps.skillEnablement.listDisabledPaths(),
@@ -67,18 +96,19 @@ export const skillListRoute = (deps: SkillListRouteDeps) => {
     .get('/sources', context => context.json({ items: PROJECT_ECOSYSTEMS }))
     .get('/', queryValidator(listQuery), async context => {
       const enablement = readEnablement();
-      const entries = await deps.skills.list(workspaceOf(context.req.valid('query').sessionId));
+      const { sessionId, projectId } = context.req.valid('query');
+      const entries = await deps.skills.list(folderPathsOf(sessionId, projectId));
       return context.json({ items: entries.map(entry => toWire(entry, enablement)) });
     })
     .get('/descriptor', queryValidator(skillQuery), async context => {
       const { skillPath, sessionId } = context.req.valid('query');
-      const entry = await deps.skills.getByPath(skillPath, workspaceOf(sessionId));
+      const entry = await deps.skills.getByPath(skillPath, folderPathsOf(sessionId, undefined));
       if (!entry) return context.json({ error: 'skill_not_found' }, 404);
       return context.json(toWire(entry, readEnablement()));
     })
     .get('/content', queryValidator(skillQuery), async context => {
       const { skillPath, sessionId } = context.req.valid('query');
-      const entry = await deps.skills.getByPath(skillPath, workspaceOf(sessionId));
+      const entry = await deps.skills.getByPath(skillPath, folderPathsOf(sessionId, undefined));
       if (!entry) return context.json({ error: 'skill_not_found' }, 404);
       const content = await readFile(entry.path, 'utf8');
       return context.json({ path: entry.path, content });
@@ -86,13 +116,13 @@ export const skillListRoute = (deps: SkillListRouteDeps) => {
     // 技能目录的文件清单与预览:dotfiles 不进(藏住 .ema-market.json 这类内部文件)。
     .get('/files', queryValidator(skillQuery), async context => {
       const { skillPath, sessionId } = context.req.valid('query');
-      const entry = await deps.skills.getByPath(skillPath, workspaceOf(sessionId));
+      const entry = await deps.skills.getByPath(skillPath, folderPathsOf(sessionId, undefined));
       if (!entry) return context.json({ error: 'skill_not_found' }, 404);
       return context.json({ items: await listSkillFiles(dirname(entry.path)) });
     })
     .get('/file', queryValidator(skillFileQuery), async context => {
-      const { skillPath, path: filePath } = context.req.valid('query');
-      const entry = await deps.skills.getByPath(skillPath);
+      const { skillPath, path: filePath, sessionId } = context.req.valid('query');
+      const entry = await deps.skills.getByPath(skillPath, folderPathsOf(sessionId, undefined));
       if (!entry) return context.json({ error: 'skill_not_found' }, 404);
       let target: string;
       try {
@@ -112,26 +142,24 @@ export const skillListRoute = (deps: SkillListRouteDeps) => {
     .put('/enabled', jsonBody(enabledBody), async context => {
       const { path, enabled } = context.req.valid('json');
       const entry = await deps.skills.getByPath(path);
-      if (entry?.scope === 'project') {
-        return context.json({ error: 'project_skill_uses_source_toggle', message: '项目技能由来源级开关控制' }, 400);
-      }
       if (!entry) return context.json({ error: 'skill_not_found' }, 404);
       deps.skillEnablement.setEnabled(path, enabled);
       deps.emitApp({ type: 'skills_changed' });
       return context.json(toWire(entry, readEnablement()));
     })
     // 真实重扫 builtin+user 目录：手放目录的技能在此之后可见。
-    .post('/rescan', queryValidator(listQuery), async context => {
+    .post('/rescan', queryValidator(z.object({ sessionId: z.string().min(1).optional() })), async context => {
       await deps.skills.refreshCore();
-      const workspaceRoot = workspaceOf(context.req.valid('query').sessionId);
-      if (workspaceRoot) await deps.skills.refreshWorkspace(workspaceRoot);
+      const { sessionId } = context.req.valid('query');
+      const folderPaths = folderPathsOf(sessionId, undefined);
+      if (folderPaths.length > 0) await deps.skills.refreshProjectFolders(folderPaths);
       deps.emitApp({ type: 'skills_changed' });
       return context.json({ ok: true });
     })
     // 只有 user 技能可删：builtin 只读，project 跟随工作区文件。
     .delete('/', queryValidator(skillQuery), async context => {
       const { skillPath, sessionId } = context.req.valid('query');
-      const entry = await deps.skills.getByPath(skillPath, workspaceOf(sessionId));
+      const entry = await deps.skills.getByPath(skillPath, folderPathsOf(sessionId, undefined));
       if (!entry) return context.json({ error: 'skill_not_found' }, 404);
       if (entry.scope !== 'user') {
         return context.json({ error: 'skill_not_deletable', message: '只有用户技能可以删除' }, 400);

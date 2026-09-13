@@ -59,7 +59,7 @@ describe('SessionStore — session', () => {
 
   it('创建 Project Session 时在同一次操作中写入项目与主工作区', () => {
     const { store } = makeStore();
-    const project = store.createProject('Demo', 'D:/main');
+    const project = store.createProject('Demo', ['D:/main'], 'D:/main');
 
     const session = store.createSession({
       projectId: project.id,
@@ -87,22 +87,22 @@ describe('SessionStore — session', () => {
     const s = store.createSession();
     store.archiveSession(s.id);
 
-    const grouped = store.listSessionsGrouped();
+    const grouped = store.listSessionsForSidebar();
     expect(grouped.recent).toHaveLength(0);
     expect(grouped.archived.map((item) => item.id)).toEqual([s.id]);
   });
 
   it('同时属于项目和置顶的 Session 进置顶桶，项目桶不再列出它', () => {
     const { store } = makeStore();
-    const project = store.createProject('Demo', 'D:/main');
+    const project = store.createProject('Demo', ['D:/main'], 'D:/main');
     const s = store.createSession();
     store.assignSessionToProject(s.id, project.id);
     store.pinSession(s.id);
 
-    const grouped = store.listSessionsGrouped();
+    const grouped = store.listSessionsForSidebar();
     expect(grouped.pinned.map((item) => item.id)).toEqual([s.id]);
-    const group = grouped.projects.find((g) => g.project.id === project.id)!;
-    expect(group.sessions).toHaveLength(0);
+    const projectInSidebar = grouped.projects.find((item) => item.id === project.id)!;
+    expect(projectInSidebar.sessions).toHaveLength(0);
   });
 
   it('updateTitle changes title', () => {
@@ -154,10 +154,35 @@ describe('SessionStore — session', () => {
 });
 
 describe('SessionStore — 项目', () => {
+  it('创建项目时保存多个源文件夹和指定主文件夹', () => {
+    const { store } = makeStore();
+    expect(() => store.createProject('Demo', [' '], ' ')).toThrow('project_folder_path_empty');
+
+    const project = store.createProject(
+      'Demo',
+      ['D:/first', 'D:/main'],
+      'D:/main',
+    );
+    expect(project.folders).toContainEqual(expect.objectContaining({
+      path: 'D:/first',
+      isPrimary: false,
+    }));
+    expect(project.folders).toContainEqual(expect.objectContaining({
+      path: 'D:/main',
+      isPrimary: true,
+    }));
+    expect(project.sessions).toEqual([]);
+    expect(store.listProjectFolders(project.id).map((folder) => folder.path)).toEqual([
+      'D:/main',
+      'D:/first',
+    ]);
+    expect(store.createSession({ projectId: project.id }).workspaceRoot).toBe('D:/main');
+  });
+
   it('拖入项目锁定工作区为主文件夹，锁定期间 patch 工作区被拒绝', () => {
     const { store } = makeStore();
     const session = store.createSession();
-    const project = store.createProject('Demo', 'D:/main');
+    const project = store.createProject('Demo', ['D:/main'], 'D:/main');
 
     store.assignSessionToProject(session.id, project.id);
     const assigned = store.getSession(session.id);
@@ -175,28 +200,28 @@ describe('SessionStore — 项目', () => {
   it('拖入时确认保留原工作区会把它加为非主文件夹', () => {
     const { store } = makeStore();
     const session = store.createSession({ workspaceRoot: 'D:/loose' });
-    const project = store.createProject('Demo', 'D:/main');
+    const project = store.createProject('Demo', ['D:/main'], 'D:/main');
 
     store.assignSessionToProject(session.id, project.id, true);
 
-    const group = store.listSessionsGrouped().projects.find((g) => g.project.id === project.id)!;
-    expect(group.folders.map((folder) => folder.path)).toContain('D:/loose');
-    expect(group.folders.find((folder) => folder.path === 'D:/loose')!.isPrimary).toBe(false);
+    const projectInSidebar = store.listSessionsForSidebar().projects.find((item) => item.id === project.id)!;
+    expect(projectInSidebar.folders.map((folder) => folder.path)).toContain('D:/loose');
+    expect(projectInSidebar.folders.find((folder) => folder.path === 'D:/loose')!.isPrimary).toBe(false);
     expect(store.getSession(session.id).workspaceRoot).toBe('D:/main');
   });
 
   it('更换主文件夹级联改写成员工作区', () => {
     const { store } = makeStore();
     const session = store.createSession();
-    const project = store.createProject('Demo', 'D:/main');
+    const project = store.createProject('Demo', ['D:/main'], 'D:/main');
     store.addProjectFolder(project.id, 'D:/second');
     store.assignSessionToProject(session.id, project.id);
 
     store.setProjectPrimaryFolder(project.id, 'D:/second');
 
     expect(store.getSession(session.id).workspaceRoot).toBe('D:/second');
-    const group = store.listSessionsGrouped().projects.find((g) => g.project.id === project.id)!;
-    expect(group.folders[0]!.path).toBe('D:/second');
+    const projectInSidebar = store.listSessionsForSidebar().projects.find((item) => item.id === project.id)!;
+    expect(projectInSidebar.folders[0]!.path).toBe('D:/second');
   });
 });
 

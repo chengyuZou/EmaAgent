@@ -10,7 +10,7 @@ import {
   type JSX,
   type RefObject,
 } from 'react';
-import { Popover, ScrollArea } from '@ema-agent/ui';
+import { Popover } from '@ema-agent/ui';
 import { commandsApi, type CommandDescriptor } from '../../api/commands.js';
 import { skillsApi, type SkillListItem } from '../../api/skills.js';
 
@@ -65,6 +65,14 @@ function matchesSlashQuery(name: string, query: string): boolean {
   return name.toLowerCase().includes(query.toLowerCase());
 }
 
+function skillOrigin(skill: SkillListItem): string {
+  if (skill.scope === 'builtin') return '系统';
+  if (skill.scope === 'user') return '个人';
+  const folderPath = skill.sourceFolderPath ?? '';
+  const parts = folderPath.split(/[\\/]/).filter(Boolean);
+  return parts.at(-1) ?? folderPath;
+}
+
 export type SlashSelection =
   | { kind: 'command'; command: CommandDescriptor }
   | { kind: 'skill'; skill: SkillListItem };
@@ -81,6 +89,7 @@ interface FlatItem {
   icon: string;
   title: string;
   detail: string;
+  origin?: string;
 }
 
 export interface SlashCommandMenuProps {
@@ -88,6 +97,7 @@ export interface SlashCommandMenuProps {
   query: string | null;
   /** 依附的 Session（Skill 目录按它合成 project 作用域）。 */
   sessionId: string | null;
+  projectId: string | null;
   handleRef: RefObject<SlashMenuHandle | null>;
   onSelect(selection: SlashSelection): void;
   onClose(): void;
@@ -96,6 +106,7 @@ export interface SlashCommandMenuProps {
 export function SlashCommandMenu({
   query,
   sessionId,
+  projectId,
   handleRef,
   onSelect,
   onClose,
@@ -115,11 +126,12 @@ export function SlashCommandMenu({
     void commandsApi.list()
       .then((catalog) => { if (!disposed) setCommands(catalog.commands); })
       .catch(() => { if (!disposed) setCommands([]); });
-    void skillsApi.list(sessionId ?? undefined)
+    const selectedProjectId = sessionId ? undefined : projectId ?? undefined;
+    void skillsApi.list(sessionId ?? undefined, selectedProjectId)
       .then((result) => { if (!disposed) setSkills(result.items); })
       .catch(() => { if (!disposed) setSkills([]); });
     return () => { disposed = true; };
-  }, [open, sessionId]);
+  }, [open, sessionId, projectId]);
 
   const items = useMemo<FlatItem[]>(() => {
     // 后端目录（确定性命令）在前，本地命令随后；同名去重（后端优先）。
@@ -160,6 +172,7 @@ export function SlashCommandMenu({
         icon: 'i-lucide:sparkles',
         title: `/${skill.name}`,
         detail: skill.description,
+        origin: skillOrigin(skill),
       }));
     return [...commandItems, ...skillItems];
   }, [commands, skills, filter]);
@@ -201,10 +214,13 @@ export function SlashCommandMenu({
       side="top"
       align="start"
       sideOffset={4}
-      widthClass="w-80"
-      trigger={<span className="absolute left-3 top-0 h-0 w-0 pointer-events-none" aria-hidden />}
+      widthClass=""
+      style={{ width: 'var(--radix-popover-trigger-width)' }}
+      trigger={<span className="absolute inset-x-0 top-0 h-0 pointer-events-none" aria-hidden />}
+      onOpenAutoFocus={(event) => event.preventDefault()}
+      onCloseAutoFocus={(event) => event.preventDefault()}
     >
-      <ScrollArea className="max-h-72">
+      <div className="max-h-72 overflow-y-auto">
         <div ref={listRef} className="flex flex-col gap-0.5">
           {items.length === 0 && (
             <div className="px-2 py-3 text-xs text-center text-[var(--ema-text-tertiary)]">
@@ -216,7 +232,7 @@ export function SlashCommandMenu({
               key={item.key}
               type="button"
               data-index={index}
-              className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors ${
+              className={`flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors ${
                 index === activeIndex
                   ? 'bg-[var(--ema-surface-3)] text-[var(--ema-text-primary)]'
                   : 'text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-2)]'
@@ -226,14 +242,14 @@ export function SlashCommandMenu({
             >
               <span className={`${item.icon} text-sm shrink-0 text-[var(--ema-text-tertiary)]`} aria-hidden />
               <span className="text-xs font-mono shrink-0">{item.title}</span>
-              <span className="text-xs truncate text-[var(--ema-text-tertiary)]">{item.detail}</span>
-              {index === 0 || items[index - 1]!.section !== item.section ? (
-                <span className="ml-auto text-[10px] shrink-0 text-[var(--ema-text-tertiary)]">{item.section}</span>
-              ) : null}
+              <span className="min-w-0 flex-1 text-xs truncate text-[var(--ema-text-tertiary)]">{item.detail}</span>
+              <span className="ml-auto text-[10px] shrink-0 text-[var(--ema-text-tertiary)]">
+                {item.origin ?? (index === 0 || items[index - 1]!.section !== item.section ? item.section : '')}
+              </span>
             </button>
           ))}
         </div>
-      </ScrollArea>
+      </div>
     </Popover>
   );
 }

@@ -1,6 +1,6 @@
 # @ema-agent/skills
 
-Skills 域负责发现 `SKILL.md`,维护内存注册表,为根 Work Turn 冻结 SkillPool,以及安装和删除用户技能.
+Skills 域负责发现 `SKILL.md`,维护内存注册表,为根 Turn 冻结 SkillPool,以及安装和删除用户技能.
 
 ## 身份
 
@@ -15,23 +15,24 @@ Skill 只有两个跨边界身份字段:
 
 `path` 是唯一身份. 不再存在 `SkillKey`, `callName`, path hash 或 `$ARGUMENTS`. 同名 Skill 由不同绝对路径区分.
 
-`SkillDescriptor` 还携带展示和 Prompt 目录实际消费的 `version`, `description`, `whenToUse`, `suggestedTools`, `scope`, `sizeBytes`. Project Skill 额外携带 `projectSourceId`,只供来源级启停使用.
+`SkillDescriptor` 还携带展示和 Prompt 目录实际消费的 `version`, `description`, `whenToUse`, `scope`, `sizeBytes`. Project Skill 额外携带 `projectSourceId`（生态来源级启停）和 `sourceFolderPath`（所属项目源文件夹，供菜单标注出处）。`allowed-tools` 不参与目录投影或权限判断；模型选中技能后由 SkillTool 读取完整 SKILL.md。
 
 ## 数据流
 
 ```text
 builtin/user/project 目录
   -> scanBuiltinSkills / SkillStore.reconcileUserRoot / scanProjectSkills
-  -> SkillRegistry 内存索引(path -> descriptor)
+  -> SkillRegistry 按文件夹清单缓存目录
   -> freezeSkillPool
   -> System Prompt 技能目录 + SkillTool
 ```
 
 - builtin 与 user 在启动,安装,卸载或显式重扫后由 `refreshCore()` 更新.
-- project 按工作区首次扫描并缓存,由 `refreshWorkspace(workspaceRoot)` 显式更新.
-- `getByPath()` 直接查内存索引;指定工作区且未命中时重扫该工作区一次.
-- Project 的五个生态根并行发现,文件解析使用 16 路有界并发.
-- SkillPool 在根 Work Turn 开始时冻结. Turn 中的安装或启停只影响下一根 Turn.
+- project 按源文件夹清单首次扫描并缓存,由 `refreshProjectFolders(folderPaths)` 显式更新.
+- `getByPath(path, folderPaths)` 只在 core 和指定文件夹清单中查找，不能读取其他项目的缓存条目.
+- 项目源文件夹最多 5 路并发，单文件夹内五个生态根并行发现，文件解析使用 16 路有界并发。每个生态根最多遍历 2,000 个目录，深度最多 6 层.
+- Session 有 `projectId` 时扫描项目全部 `folders[]`；否则只扫描其 `workspaceRoot`。同一规则用于 Skills 路由、根 Turn 和 `/compact`.
+- SkillPool 在 Chat 或 Work 根 Turn 开始时冻结. Turn 中的安装或启停只影响下一根 Turn.
 
 ## 持久化
 
@@ -50,7 +51,7 @@ builtin/user/project 目录
 }
 ```
 
-Tool 从当前 Turn 的 SkillPool 按 `path` 精确取技能并读取该文件. 返回 SKILL.md 正文与资源目录提示. 它不接受参数,不替换 `$ARGUMENTS`,也不按名称猜测技能. 读取互不修改共享状态,允许并发执行.
+Tool 从当前 Turn 的 SkillPool 按 `path` 精确取技能并读取该文件. 返回完整 SKILL.md（含 frontmatter）与资源目录提示. 它不替换 `$ARGUMENTS`,也不按名称猜测技能. 读取互不修改共享状态,允许并发执行.
 
 ## Session 引用
 

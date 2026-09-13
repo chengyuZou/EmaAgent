@@ -273,7 +273,15 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
       const character = characters.current();
       return buildCharacterPrompt(character, characters.inspectStagePresentation(character.name));
     },
-    skillEntries: (workspaceRoot: string) => tools.skills.list(workspaceRoot || undefined),
+    skillEntries: (workspaceRoot: string, projectId: string | null) => {
+      let folderPaths: string[] = [];
+      if (projectId) {
+        folderPaths = database.session.listProjectFolders(projectId).map((folder) => folder.path);
+      } else if (workspaceRoot) {
+        folderPaths = [workspaceRoot];
+      }
+      return tools.skills.list(folderPaths);
+    },
     disabledSkillPaths: () => tools.skillEnablement.listDisabledPaths(),
     registry: tools.registry,
     interactionQueue,

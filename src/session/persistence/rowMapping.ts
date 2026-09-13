@@ -19,13 +19,19 @@ import type {
   SessionListItem,
 } from '../types.js';
 
-export function toProject(row: ProjectRow): Project {
+export function toProject(
+  row: ProjectRow,
+  folders: ProjectFolder[],
+  sessions: SessionListItem[],
+): Project {
   return {
     id: row.id,
     name: row.name,
     pinned: row.pinned === 1,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    folders,
+    sessions,
   };
 }
 

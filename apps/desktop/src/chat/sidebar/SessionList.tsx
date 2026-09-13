@@ -15,7 +15,7 @@ import {
 import type { AgentSessionState } from '../../stores/agent.js';
 import { useChatWorkspace } from '../state/chatWorkspace.js';
 import { useHistoryStore } from '../state/history.js';
-import { Collapse, SectionButton } from './ProjectGroup.js';
+import { Collapse, SectionButton } from './ProjectSection.js';
 import {
   SessionRow,
   formatRelativeTime,
@@ -45,10 +45,8 @@ export function SessionList({
     <section className="mb-1">
       <SectionButton
         label={label}
-        count={sessions.length}
         collapsed={collapsed}
         onClick={() => setCollapsed((value) => !value)}
-        icon={label === '归档' ? 'i-lucide:archive' : 'i-lucide:message-circle'}
       />
 
       <Collapse open={!collapsed}>

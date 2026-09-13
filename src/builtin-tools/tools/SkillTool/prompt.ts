@@ -16,11 +16,7 @@ Skills are reusable instruction packages (a SKILL.md) that tell you how to perfo
 
 ## What you get back
 
-The full skill instructions plus its path. Follow the instructions for the rest of this turn. Relative resources live beside SKILL.md.
-
-## Capability narrowing
-
-A skill may declare allowed-tools. Invoking it narrows your available tools to the intersection for the rest of this turn — it can only restrict, never grant new capabilities.
+The full SKILL.md, including its frontmatter, plus its path. Follow the instructions for the rest of this turn. Relative resources live beside SKILL.md. Frontmatter fields such as allowed-tools do not change tool permissions.
 
 ## Failure
 

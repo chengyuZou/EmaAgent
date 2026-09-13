@@ -51,7 +51,7 @@ import {
 } from './prepareTurnTools.js';
 import {
   buildSessionSystemPrompt,
-  resolveWorkSkillPool,
+  resolveSkillPool,
 } from './sessionSystemPrompt.js';
 
 /** 一个根 Turn 的冻结事实；运行期只读取这一份，不再回读 Settings/Registry/Session。 */
@@ -89,7 +89,10 @@ export interface PrepareTurnDeps extends TurnToolsDeps {
   readonly attachments: AttachmentStore;
   readonly characterPrompt: () => readonly string[];
   /** SkillRegistry 当前全量条目（含本 Turn 工作区的 project 技能）；冻结在 Pool 之前读取一次。 */
-  readonly skillEntries: (workspaceRoot: string) => Promise<readonly SkillDescriptor[]>;
+  readonly skillEntries: (
+    workspaceRoot: string,
+    projectId: string | null,
+  ) => Promise<readonly SkillDescriptor[]>;
   /** skill_enablement 表的当前禁用路径列表（builtin/user 逐技能启停）。 */
   readonly disabledSkillPaths: () => readonly string[];
   /** 默认 llm 包的 createLlmCall；测试注入脚本化调用。 */
@@ -153,11 +156,11 @@ export async function prepareTurn(
   const supportsImageInput = modelFacts.inputImage === true;
   const degradations: RequestDegradationNotice[] = [];
 
-  // Skill 目录与 Pool 同步冻结（与 /compact Command 共用同一装配）；chat 态不建 Pool。
-  const skillPool = await resolveWorkSkillPool(
+  // Skill 目录与 Pool 同步冻结，与 /compact Command 共用同一装配。
+  const skillPool = await resolveSkillPool(
     { settings: deps.settings, skillEntries: deps.skillEntries, disabledSkillPaths: deps.disabledSkillPaths },
-    request.executionProfile,
     workspaceRoot,
+    projectId,
   );
 
   const attachmentBlocks = request.input

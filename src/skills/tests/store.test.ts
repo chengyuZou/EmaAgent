@@ -51,6 +51,28 @@ function makeEnablement() {
 }
 
 describe('reconcileUserRoot', () => {
+  it('无 version 的技能入索引时保存 NULL,不伪造展示版本', async () => {
+    const root = makeRoot();
+    const dir = join(root, 'unversioned');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'SKILL.md'),
+      '---\nname: unversioned\ndescription: 无版本技能\n---\n# 用法\n',
+    );
+    const { repo, rows } = makeRepo();
+    const store = createSkillStore({
+      repo,
+      enablement: makeEnablement().enablement,
+      userRoot: root,
+    });
+
+    const result = await store.reconcileUserRoot();
+
+    expect(result.entries).toHaveLength(1);
+    expect(result.entries[0]).not.toHaveProperty('version');
+    expect([...rows.values()][0]?.version).toBeNull();
+  });
+
   it('新增目录入索引;消失目录删索引并连带清启停行;损坏目录跳过不拖垮整轮', async () => {
     const root = makeRoot();
     writeSkill(root, 'alpha', 'alpha');

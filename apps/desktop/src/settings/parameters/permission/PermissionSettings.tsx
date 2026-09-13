@@ -1,7 +1,7 @@
 // 编辑全局与已有项目的权限规则, 以及交互等待时间.
 import { useEffect, useState, type JSX } from 'react';
 import { Button, Callout, Input, Select, Spinner, Textarea } from '@ema-agent/ui';
-import { sessionsApi, type SessionProjectGroup } from '../../../api/sessions.js';
+import { sessionsApi, type Project } from '../../../api/sessions.js';
 import type { SettingApply } from '../../../api/settings.js';
 import { SettingsCard, SettingsSection, SettingItem } from '../../shared/SettingItem.js';
 import { useSettingValues } from '../useSettingValues.js';
@@ -93,17 +93,17 @@ function ProjectRules(props: { values: ReadonlyMap<string, unknown>; apply(key: 
     deny: readRuleRecord(props.values, PROJECT_RULE_KEYS.deny),
     ask: readRuleRecord(props.values, PROJECT_RULE_KEYS.ask),
   };
-  const [projects, setProjects] = useState<SessionProjectGroup[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [selected, setSelected] = useState('');
   const [loadError, setLoadError] = useState<string | null>(null);
   useEffect(() => {
-    void sessionsApi.listGrouped()
-      .then(grouped => setProjects([...grouped.pinnedProjects, ...grouped.projects]))
+    void sessionsApi.listForSidebar()
+      .then(sidebarData => setProjects([...sidebarData.pinnedProjects, ...sidebarData.projects]))
       .catch(error => setLoadError(error instanceof Error ? error.message : '项目列表读取失败'));
   }, []);
   useEffect(() => {
-    if (!projects.some(group => group.project.id === selected)) {
-      setSelected(projects[0]?.project.id ?? '');
+    if (!projects.some(project => project.id === selected)) {
+      setSelected(projects[0]?.id ?? '');
     }
   }, [projects, selected]);
 
@@ -126,7 +126,7 @@ function ProjectRules(props: { values: ReadonlyMap<string, unknown>; apply(key: 
             <Select
               className="w-64"
               value={selected}
-              options={projects.map(group => ({ value: group.project.id, label: group.project.name }))}
+              options={projects.map(project => ({ value: project.id, label: project.name }))}
               onChange={setSelected}
             />
           </SettingItem>

@@ -233,7 +233,7 @@ CREATE TABLE settings (
 CREATE TABLE skills (
   path          TEXT PRIMARY KEY,
   name          TEXT NOT NULL,
-  version       TEXT NOT NULL DEFAULT '1.0.0',
+  version       TEXT,
   description   TEXT NOT NULL DEFAULT '',
   dir_path      TEXT NOT NULL,
   size_bytes    INTEGER NOT NULL DEFAULT 0,

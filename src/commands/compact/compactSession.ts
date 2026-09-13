@@ -38,7 +38,7 @@ import { estimateMessagesTokens } from '@ema-agent/token';
 import {
   buildSessionSystemPrompt,
   createGenerationTargetResolver,
-  resolveWorkSkillPool,
+  resolveSkillPool,
   type TurnStore,
 } from '@ema-agent/turn';
 import { recordLlmCallUsage, type UsageRecorder } from '@ema-agent/usage';
@@ -69,8 +69,11 @@ export interface CommandCompactDeps {
   readonly settings: SettingsStore;
   /** 与根 Turn 共用 CharacterStore 的当前角色与舞台 Presentation。 */
   readonly characterPrompt: () => readonly string[];
-  /** 与根 Turn 同一 Skill 目录来源；chat 态不调用。 */
-  readonly skillEntries: (workspaceRoot: string) => Promise<readonly SkillDescriptor[]>;
+  /** 与根 Turn 同一 Skill 目录来源。 */
+  readonly skillEntries: (
+    workspaceRoot: string,
+    projectId: string | null,
+  ) => Promise<readonly SkillDescriptor[]>;
   /** skill_enablement 表的当前禁用路径列表（与根 Turn 同一来源）。 */
   readonly disabledSkillPaths: () => readonly string[];
   readonly workspaceInstructions?: (workspaceRoot: string) => string | null;
@@ -243,7 +246,7 @@ export async function compactSession(
 }
 
 /**
- * 摘要请求的系统段：与根 Turn 共用同一装配（resolveWorkSkillPool +
+ * 摘要请求的系统段：与根 Turn 共用同一装配（resolveSkillPool +
  * buildSessionSystemPrompt），事实不变时逐字节一致，共享前缀缓存。
  * toolNames 恒空（手动路径不装配 ToolPool，见文件头注释）。
  */
@@ -254,10 +257,10 @@ async function buildCompactSystemMessages(
   modelId: string,
 ): Promise<readonly Message[]> {
   const workspaceRoot = session.workspaceRoot ?? '';
-  const skillPool = await resolveWorkSkillPool(
+  const skillPool = await resolveSkillPool(
     { settings: deps.settings, skillEntries: deps.skillEntries, disabledSkillPaths: deps.disabledSkillPaths },
-    session.executionProfile,
     workspaceRoot,
+    session.projectId,
   );
   const blocks = await buildSessionSystemPrompt(
     {

@@ -21,7 +21,8 @@ export interface ProjectsRouteDeps {
 
 const createBody = z.object({
   name: z.string().min(1).max(100),
-  firstFolderPath: z.string().min(1).optional(),
+  folderPaths: z.array(z.string().trim().min(1)).min(1),
+  primaryFolderPath: z.string().trim().min(1),
 });
 
 const renameBody = z.object({
@@ -45,9 +46,12 @@ const assignBody = z.object({
 export const projectsRoute = (deps: ProjectsRouteDeps) =>
   new Hono()
     .post('/projects', jsonBody(createBody), async context => {
-      const { name, firstFolderPath } = context.req.valid('json');
+      const { name, folderPaths, primaryFolderPath } = context.req.valid('json');
       try {
-        return context.json(deps.session.createProject(name, firstFolderPath), 201);
+        return context.json(
+          deps.session.createProject(name, folderPaths, primaryFolderPath),
+          201,
+        );
       } catch (error) {
         return projectError(context, error);
       }
@@ -108,6 +112,12 @@ function projectError(context: Context, error: unknown) {
   }
   if (message.includes('project_name_empty')) {
     return context.json({ error: 'project_name_empty' }, 400);
+  }
+  if (message.includes('project_primary_folder_missing')) {
+    return context.json({ error: 'project_primary_folder_missing' }, 400);
+  }
+  if (message.includes('project_folder_duplicate')) {
+    return context.json({ error: 'project_folder_duplicate' }, 400);
   }
   throw error;
 }

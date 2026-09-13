@@ -1,5 +1,4 @@
-// Skill 调用工具:从本根 Turn 冻结的 SkillPool 按绝对路径读取 SKILL.md,
-// 返回完整指令与资源根。suggestedTools 是作者声明的建议工具,只供模型阅读,不做权限执行。
+// Skill 调用工具:从本根 Turn 冻结的 SkillPool 按绝对路径读取完整 SKILL.md。
 // 激活态不持久化——模型忘了技能内容就再调一次(目录常驻),这是 V1 拍板的简化。
 import { dirname } from 'node:path';
 import { readFile } from 'node:fs/promises';
@@ -35,13 +34,10 @@ type SkillInput = z.infer<typeof inputSchema>;
 export interface SkillToolResult {
   name: string;
   path: string;
-  version: string;
+  version?: string;
   description: string;
   whenToUse?: string;
-  /** 作者声明的建议工具(frontmatter allowed-tools);仅供参考,不是权限规则。 */
-  suggestedTools: string[];
-  /** 技能目录绝对路径;scripts/references 由 FileRead/Bash 按需取用。 */
-  /** SKILL.md 正文。 */
+  /** 完整 SKILL.md,包含 frontmatter 和正文。 */
   instructions: string;
 }
 
@@ -58,7 +54,7 @@ export const SkillTool = buildTool<SkillInput, SkillToolResult, SkillToolContext
   checkPermissions: async () => ({ behavior: 'allow' }),
 
   validateContext(ctx: ToolUseContext) {
-    // Pool 由根 Turn 装配;子 Agent 与 chat 态不注入,天然不可见。
+    // Pool 由根 Turn 装配;没有技能池的调用上下文不可见。
     if (!ctx.skillPool) {
       return contextFail('Skill 工具仅在带技能池的根 Turn 可用。');
     }
@@ -72,27 +68,20 @@ export const SkillTool = buildTool<SkillInput, SkillToolResult, SkillToolContext
       throw new Error(`Unknown skill path: ${input.path}. Available: ${available}`);
     }
 
-    const raw = await readFile(entry.path, 'utf8');
-    const instructions = extractBody(raw);
+    const instructions = await readFile(entry.path, 'utf8');
 
     return {
       name: entry.name,
       path: entry.path,
-      version: entry.version,
+      ...(entry.version !== undefined ? { version: entry.version } : {}),
       description: entry.description,
       ...(entry.whenToUse !== undefined ? { whenToUse: entry.whenToUse } : {}),
-      suggestedTools: [...entry.suggestedTools],
       instructions,
     };
   },
 
   mapResultToModelContent(output) {
-    return `Skill "${output.name}" (v${output.version}) loaded. Resources root: ${dirname(output.path)}\n\n${output.instructions}`;
+    const version = output.version === undefined ? '' : ` (v${output.version})`;
+    return `Skill "${output.name}"${version} loaded. Resources root: ${dirname(output.path)}\n\n${output.instructions}`;
   },
 });
-
-/** SKILL.md 正文:剥掉 frontmatter,只渲染 body(frontmatter 是元数据不是指令)。 */
-function extractBody(raw: string): string {
-  const match = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/.exec(raw);
-  return (match ? raw.slice(match[0].length) : raw).trim();
-}

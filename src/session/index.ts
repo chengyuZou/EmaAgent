@@ -20,7 +20,6 @@ export type {
   Message,
   Project,
   ProjectFolder,
-  ProjectGroup,
   CreateSessionInput,
   PatchSessionInput,
   AppendMessageInput,

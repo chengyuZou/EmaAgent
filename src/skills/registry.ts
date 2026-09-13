@@ -3,7 +3,7 @@
 //
 // 装载模型：
 // - builtin + user 与工作区无关，合并为 core；启动时、安装/卸载后由 refreshCore() 重扫；
-// - project 技能按工作区首次读取并缓存,显式 refreshWorkspace() 时重扫。
+// - project 技能按源文件夹清单首次读取并缓存,显式 refreshProjectFolders() 时重扫。
 import type { SkillStore } from './sources/user.js';
 import { scanBuiltinSkills } from './sources/builtin.js';
 import { scanProjectSkills } from './sources/project.js';
@@ -20,15 +20,15 @@ export interface SkillRegistryDeps {
 export interface SkillRegistry {
   /** builtin+user 重扫；串行接棒,并发调用不交错。启动、安装、卸载后调用。 */
   refreshCore(): Promise<void>;
-  /** 重扫一个工作区的 project 技能并替换该工作区缓存。 */
-  refreshWorkspace(workspaceRoot: string): Promise<void>;
+  /** 重扫当前文件夹清单的 project 技能并替换该清单缓存。 */
+  refreshProjectFolders(folderPaths: readonly string[]): Promise<void>;
   /**
    * 当前全量(含禁用项);禁用过滤是 Pool 冻结时的事。
-   * 传入 workspaceRoot 时附带该工作区缓存的 project 技能;首次读取会扫描。
+   * 传入源文件夹清单时附带对应的 project 技能；首次读取会扫描。
    * 调用会等待进行中的首次 core 装载，避免启动竞态下读到空目录。
    */
-  list(workspaceRoot?: string): Promise<readonly SkillDescriptor[]>;
-  getByPath(path: string, workspaceRoot?: string): Promise<SkillDescriptor | undefined>;
+  list(folderPaths?: readonly string[]): Promise<readonly SkillDescriptor[]>;
+  getByPath(path: string, folderPaths?: readonly string[]): Promise<SkillDescriptor | undefined>;
 }
 
 /**
@@ -38,8 +38,7 @@ export interface SkillRegistry {
 export function createSkillRegistry(deps: SkillRegistryDeps): SkillRegistry {
   let core: readonly SkillDescriptor[] = [];
   const coreByPath = new Map<string, SkillDescriptor>();
-  const projectByWorkspace = new Map<string, readonly SkillDescriptor[]>();
-  const projectByPath = new Map<string, SkillDescriptor>();
+  const projectByFolders = new Map<string, readonly SkillDescriptor[]>();
   let coreReady: Promise<void> | undefined;
   let tail: Promise<void> = Promise.resolve();
 
@@ -57,31 +56,29 @@ export function createSkillRegistry(deps: SkillRegistryDeps): SkillRegistry {
     for (const entry of core) coreByPath.set(entry.path, entry);
   }
 
-  async function scanWorkspace(workspaceRoot: string): Promise<readonly SkillDescriptor[]> {
+  async function scanFolders(folderPaths: readonly string[]): Promise<readonly SkillDescriptor[]> {
     try {
-      return await scanProjectSkills(workspaceRoot);
+      return await scanProjectSkills(folderPaths);
     } catch {
       return [];
     }
   }
 
-  async function list(workspaceRoot?: string): Promise<readonly SkillDescriptor[]> {
+  async function list(folderPaths: readonly string[] = []): Promise<readonly SkillDescriptor[]> {
     // 首次装载尚未完成时等待它，而不是把空目录交给调用方；首装失败降级为当前 core。
     if (coreReady) await coreReady.catch(() => undefined);
     let project: readonly SkillDescriptor[] = [];
-    if (workspaceRoot) {
-      if (!projectByWorkspace.has(workspaceRoot)) await refreshWorkspace(workspaceRoot);
-      project = projectByWorkspace.get(workspaceRoot) ?? [];
+    if (folderPaths.length > 0) {
+      const key = JSON.stringify(folderPaths);
+      if (!projectByFolders.has(key)) await refreshProjectFolders(folderPaths);
+      project = projectByFolders.get(key) ?? [];
     }
     return [...core, ...project];
   }
 
-  async function refreshWorkspace(workspaceRoot: string): Promise<void> {
-    const previous = projectByWorkspace.get(workspaceRoot) ?? [];
-    for (const entry of previous) projectByPath.delete(entry.path);
-    const entries = await scanWorkspace(workspaceRoot);
-    projectByWorkspace.set(workspaceRoot, entries);
-    for (const entry of entries) projectByPath.set(entry.path, entry);
+  async function refreshProjectFolders(folderPaths: readonly string[]): Promise<void> {
+    const entries = await scanFolders(folderPaths);
+    projectByFolders.set(JSON.stringify(folderPaths), entries);
   }
 
   return {
@@ -91,15 +88,15 @@ export function createSkillRegistry(deps: SkillRegistryDeps): SkillRegistry {
       coreReady ??= run;
       return run;
     },
-    refreshWorkspace,
+    refreshProjectFolders,
     list,
-    async getByPath(path: string, workspaceRoot?: string) {
+    async getByPath(path: string, folderPaths: readonly string[] = []) {
       if (coreReady) await coreReady.catch(() => undefined);
-      const cached = coreByPath.get(path) ?? projectByPath.get(path);
-      if (cached) return cached;
-      if (!workspaceRoot) return undefined;
-      await refreshWorkspace(workspaceRoot);
-      return projectByPath.get(path);
+      const coreEntry = coreByPath.get(path);
+      if (coreEntry) return coreEntry;
+      if (folderPaths.length === 0) return undefined;
+      const entries = await list(folderPaths);
+      return entries.find((entry) => entry.path === path);
     },
   };
 }

@@ -1,12 +1,12 @@
 # Session
 
-`src/session` 拥有持久会话、项目分组与消息历史的**业务规则**：什么能写、怎么写、写完联动什么。SQL 归 storage，协议归 server，Turn 执行归 turn 包。
+`src/session` 拥有持久会话、项目与消息历史的**业务规则**：什么能写、怎么写、写完联动什么。SQL 归 storage，协议归 server，Turn 执行归 turn 包。
 
 ## 领域事实
 
 - **Session**：标题、workspaceRoot（项目内锁定为项目主文件夹）、projectId、createdAt/updatedAt/lastActivityAt、archivedAt、pinned、fork 溯源双列、executionProfile、narrativePolicy、当前模型（providerId/ModelId）、lastViewedAt。
 - **SessionListItem** = Session + 列表投影三字段（hasActiveTurn / lastTurnStatus / hasUnread）。三字段只由列表/搜索 SQL 的 CTE 算出；单查路径返回裸 Session，不允许伪造投影。
-- **Project**：可编辑名称 + 多源文件夹，恰好一个主文件夹（按 updatedAt 倒序首位即主）。
+- **Project**：id、name、pinned、createdAt、updatedAt、folders[]、sessions[]。创建时必须提供至少一个源文件夹并指定其中一个为主文件夹；侧栏 Project 的 sessions[] 只包含当前在项目区显示的成员，置顶 Session 单独进入置顶桶。
 - **Message**：sessionId、可空 turnId（null = /compact summary 等 Session 级消息）、role、kind（normal / reminder / tool_results / summary）、blocks、interrupted、createdAt。用户块允许 `attachment_ref` 与 `skill_ref`，只保存稳定引用，不复制附件正文或 SKILL.md。
 
 ## 公共入口
@@ -14,8 +14,8 @@
 `SessionStore` 是唯一读写聚合：
 
 - **Session**：createSession（可直接携带 projectId，并在同一事务内绑定项目主工作区）/ getSession / sessionExists / patchSession（项目成员改工作区抛 `session_workspace_locked_by_project`）/ pin / archive / setViewedAt / updateTitle；
-- **侧栏**：`listSessionsGrouped()` 五桶（置顶 Session / 置顶项目 / 其余项目 / 最近 / 已归档；Session 同时满足 pinned 与 project 时进置顶桶）；`searchSessions` 不搜归档；
-- **Project**：createProject / rename / delete / pin / 文件夹增删 / 设主 / 拖入拖出；主文件夹变更或继位时同事务级联改写全部成员的 workspace_root；
+- **侧栏**：`listSessionsForSidebar()` 五桶（置顶 Session / 置顶项目 / 其余项目 / 最近 / 已归档；Session 同时满足 pinned 与 project 时进置顶桶）；`searchSessions` 不搜归档；
+- **Project**：createProject(name, folderPaths, primaryFolderPath) 在一次事务中创建项目及全部源文件夹；listProjectFolders(projectId) 给 Skills 读取项目全部源文件夹；rename / delete / pin / 文件夹增删 / 设主 / 拖入拖出；主文件夹变更或继位时同事务级联改写全部成员的 workspace_root；
 - **Fork**：forkSession 复制 Turn/Message/Attachment 并重映射 ID，不带 Task、AgentRun 或任何在跑的外部副作用；
 - **Message**：appendMessage（turnId 归属校验）/ appendHistorySummary（Session 级压缩摘要，必须带覆盖截止游标）/ loadHistory（最新 summary + 其覆盖游标之后的消息，LLM 可见历史）/ listMessages（UI 正文复合游标页，旧到新）/ listMessagesAround（按 Message 锚点读取有界窗口）/ loadMessagesForTurn（Turn 终态持久收口）/ findToolInteraction（启动恢复）/ markMessageInterrupted / assertMessageOwnership；
 - **删除**：deleteSession 只删本聚合的数据库行并触发 onSessionRemoved 文件清理；活动 Turn 的取消与运行态收口归 TurnStore，由删除用例（Server 编排）先行调用。

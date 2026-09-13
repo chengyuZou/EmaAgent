@@ -316,6 +316,11 @@ export function ChatInput(): JSX.Element {
     }
     updateDraft({ parts: next });
     setSlashFilter(null);
+    if (selection.kind === 'skill') {
+      const textarea = textareaRef.current?.el();
+      textarea?.focus();
+      textarea?.setSelectionRange(token.start, token.start);
+    }
     if (selection.kind === 'command') {
       void runCommand(selection.command.name).catch((error) => {
         showToast(
@@ -510,6 +515,7 @@ export function ChatInput(): JSX.Element {
           <SlashCommandMenu
             query={slashFilter}
             sessionId={viewedId}
+            projectId={newProjectId ?? null}
             handleRef={slashMenuRef}
             onSelect={selectSlash}
             onClose={() => setSlashFilter(null)}

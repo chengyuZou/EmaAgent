@@ -8,7 +8,7 @@ import { useSessionStore } from '../../stores/session.js';
 import { useAgentStore } from '../../stores/agent.js';
 import { useDragResize } from '../../hooks/use-drag-resize.js';
 import { getStatusDot } from './SessionRow.js';
-import { ProjectGroups } from './ProjectGroup.js';
+import { PinnedSection, ProjectSection } from './ProjectSection.js';
 import { SessionList, SessionSearch } from './SessionList.js';
 
 /** 同一会话可同时出现在置顶桶与项目桶；搜索覆盖层的近期清单合并展示前去重保序。 */
@@ -53,20 +53,12 @@ export function SessionSidebar(): JSX.Element {
 
   const allActiveSessions = useMemo(() => uniqueSessions([
     ...sessions.pinned,
-    ...sessions.pinnedProjects.flatMap((g) => g.sessions),
-    ...sessions.projects.flatMap((g) => g.sessions),
+    ...sessions.pinnedProjects.flatMap((project) => project.sessions),
+    ...sessions.projects.flatMap((project) => project.sessions),
     ...sessions.recent,
   ]), [sessions]);
 
-  // 服务端分桶互斥：pinned 优先于项目成员资格，recent 只含无项目非置顶会话。
-  const projectGroups = useMemo(
-    () => [...sessions.pinnedProjects, ...sessions.projects],
-    [sessions],
-  );
-  const conversationSessions = useMemo(() => uniqueSessions([
-    ...sessions.pinned,
-    ...sessions.recent,
-  ]), [sessions]);
+  // 服务端分桶互斥：置顶 Session 独立展示，项目成员仍由对应项目行展示。
 
   useEffect(() => {
     const desired = new Set<string>();
@@ -153,14 +145,20 @@ export function SessionSidebar(): JSX.Element {
           </div>
 
           <div className="flex-1 overflow-y-auto py-1.5">
-            <ProjectGroups
-              groups={projectGroups}
+            <PinnedSection
+              projects={sessions.pinnedProjects}
+              sessions={sessions.pinned}
+              viewedId={viewedId}
+              agentSessions={agentSessions}
+            />
+            <ProjectSection
+              projects={sessions.projects}
               viewedId={viewedId}
               agentSessions={agentSessions}
             />
             <SessionList
               label="对话"
-              sessions={conversationSessions}
+              sessions={sessions.recent}
               viewedId={viewedId}
               agentSessions={agentSessions}
               emptyText="暂无独立对话"

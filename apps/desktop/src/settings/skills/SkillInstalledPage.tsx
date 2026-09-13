@@ -129,7 +129,7 @@ export function SkillInstalledPage(): JSX.Element {
                       aria-hidden
                     />
                     <span className="text-sm font-semibold text-[var(--ema-text-primary)]">{sk.name}</span>
-                    <Badge variant="neutral">v{sk.version}</Badge>
+                    {sk.version && <Badge variant="neutral">v{sk.version}</Badge>}
                     <Badge variant="neutral">{SCOPE_LABEL[sk.scope] ?? sk.scope}</Badge>
                   </div>
                   {sk.description && (
@@ -248,7 +248,7 @@ function SkillDetailDialog(props: {
       {skill && (
         <div className="flex flex-col gap-3">
           <div className="flex items-center gap-2 flex-wrap text-xs text-[var(--ema-text-tertiary)]">
-            <Badge variant="neutral">v{skill.version}</Badge>
+            {skill.version && <Badge variant="neutral">v{skill.version}</Badge>}
             <Badge variant="neutral">{SCOPE_LABEL[skill.scope] ?? skill.scope}</Badge>
             <Badge variant={skill.enabled ? 'success' : 'neutral'}>{skill.enabled ? '已启用' : '已禁用'}</Badge>
             {formatBytes(skill.sizeBytes) && <span>{formatBytes(skill.sizeBytes)}</span>}

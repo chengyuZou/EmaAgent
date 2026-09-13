@@ -47,8 +47,9 @@ import type { TurnKnowledgeSelection } from '../types.js';
 import type { SessionInteractionQueue } from '../interactionQueue.js';
 import type { TurnStreamEvent } from '../events.js';
 
-/** Chat 只暴露只读检索工具；写文件、Shell、Task、子 Agent 与 Skill 属于 Work。 */
+/** Chat 只暴露只读检索与 Skill；Skill 读取指令，不授予 Work 工具。 */
 const CHAT_TOOL_IDS: ReadonlySet<string> = new Set([
+  BuiltinTools.Skill.id,
   BuiltinTools.FileRead.id,
   BuiltinTools.Glob.id,
   BuiltinTools.Grep.id,

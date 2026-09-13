@@ -22,13 +22,15 @@ export type NarrativePolicy = 'auto' | 'always' | 'off';
  */
 export type TurnStatus = 'running' | 'completed' | 'failed' | 'aborted';
 
-/** 项目实体：可编辑名称 + 多源文件夹（恰好一个主文件夹）。 */
+/** 项目属性、源文件夹与侧栏当前显示的成员 Session；置顶 Session 单独显示。 */
 export interface Project {
   id: string;
   name: string;
   pinned: boolean;
   createdAt: number;
   updatedAt: number;
+  folders: ProjectFolder[];
+  sessions: SessionListItem[];
 }
 
 export interface ProjectFolder {
@@ -37,13 +39,6 @@ export interface ProjectFolder {
   createdAt: number;
   /** 只在"设为主要"时写入；null = 从未当过主，排序沉底。 */
   updatedAt: number | null;
-}
-
-/** 侧栏一个项目槽：实体 + 文件夹 + 成员 Session。 */
-export interface ProjectGroup {
-  project: Project;
-  folders: ProjectFolder[];
-  sessions: SessionListItem[];
 }
 
 export interface Session {

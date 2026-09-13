@@ -213,6 +213,30 @@ describe('compactSession', () => {
     expect(record.inputTokens).toBe(8_000);
   });
 
+  it('项目 Work Session 压缩时使用项目身份装载技能目录', async () => {
+    const fixture = makeFixture();
+    const project = fixture.sessions.createProject(
+      'Demo',
+      ['D:/main', 'D:/other'],
+      'D:/main',
+    );
+    fixture.sessions.assignSessionToProject(fixture.sessionId, project.id);
+    fixture.sessions.patchSession(fixture.sessionId, { executionProfile: 'work' });
+    seedLongHistory(fixture.sessions, fixture.sessionId);
+    const requested: Array<[string, string | null]> = [];
+
+    const result = await compactSession({
+      ...fixture.deps,
+      skillEntries: async (workspaceRoot, projectId) => {
+        requested.push([workspaceRoot, projectId]);
+        return [];
+      },
+    }, fixture.sessionId);
+
+    expect(result.status).toBe('completed');
+    expect(requested).toEqual([['D:/main', project.id]]);
+  });
+
   it('摘要请求形状：tools 为空、force、thinking 缺省、system 段含角色 Prompt', async () => {
     const fixture = makeFixture();
     const ids = seedLongHistory(fixture.sessions, fixture.sessionId);

@@ -1,16 +1,15 @@
-// Workspaces API：/api/workspaces——项目态（projects）、数据目录注册表（data-dirs）
-// 与本机文件浏览/预览（files）。三个域三个对象，无旧前缀兼容映射。
+// Workspaces API：/api/workspaces——项目态（projects）与本机文件浏览/预览（files）。
+// 数据目录已单库化(~/.ema-agent/data 固定),不再有注册表面。
 import type { InferRequestType } from 'hono/client';
 import { rpcClient, readRpcJson, type RpcClient, type RpcJson } from './client.js';
 
 // ── Projects ─────────────────────────────────────────────────────────────────
 
 export type ProjectCreateInput = InferRequestType<RpcClient['api']['workspaces']['projects']['$post']>['json'];
-export type ProjectRecord = RpcJson<RpcClient['api']['workspaces']['projects']['$post']>;
 export type ProjectAssignInput = InferRequestType<RpcClient['api']['workspaces']['projects'][':id']['sessions']['$post']>['json'];
 
 export const projectsApi = {
-  create(body: ProjectCreateInput): Promise<ProjectRecord> {
+  create(body: ProjectCreateInput) {
     return readRpcJson(rpcClient.api.workspaces.projects.$post({ json: body }));
   },
 
@@ -68,74 +67,6 @@ export const projectsApi = {
   },
 };
 
-// ── Data dirs ────────────────────────────────────────────────────────────────
-
-export type DataDirRegistry = RpcJson<RpcClient['api']['workspaces']['data-dirs']['$get']>;
-export type DataDirItem = DataDirRegistry['dirs'][number];
-export type DataDirAddInput = InferRequestType<RpcClient['api']['workspaces']['data-dirs']['$post']>['json'];
-export type DataDirMigrateInput = InferRequestType<RpcClient['api']['workspaces']['data-dirs']['migrate']['$post']>['json'];
-
-export const dataDirsApi = {
-  listDirs(): Promise<DataDirRegistry> {
-    return readRpcJson(rpcClient.api.workspaces['data-dirs'].$get());
-  },
-
-  addDir(body: DataDirAddInput) {
-    return readRpcJson(rpcClient.api.workspaces['data-dirs'].$post({ json: body }));
-  },
-
-  /** wipe=false 只摘注册;wipe=true 白名单全删。活动库有动静返回 409 dir_busy。 */
-  removeDir(name: string, wipe = false) {
-    return readRpcJson(rpcClient.api.workspaces['data-dirs'][':name'].$delete({
-      param: { name },
-      query: wipe ? { wipe: '1' } : {},
-    }));
-  },
-
-  /** 任意已注册库的只读统计(L1 库卡与 L2 顶部共用)。 */
-  dirStats(name: string) {
-    return readRpcJson(rpcClient.api.workspaces['data-dirs'][':name'].stats.$get({
-      param: { name },
-    }));
-  },
-
-  /** 任意已注册库的 session 列表(只读)。 */
-  dirSessions(name: string) {
-    return readRpcJson(rpcClient.api.workspaces['data-dirs'][':name'].sessions.$get({
-      param: { name },
-    }));
-  },
-
-  /** 任意已注册库某 session 的 raw 消息行(blocks_json 不 parse,keyset 分页)。 */
-  dirSessionMessages(
-    name: string,
-    sessionId: string,
-    opts: { before?: { createdAt: number; id: string }; limit?: number } = {},
-  ) {
-    return readRpcJson(rpcClient.api.workspaces['data-dirs'][':name'].sessions[':sessionId'].messages.$get({
-      param: { name, sessionId },
-      query: {
-        ...(opts.before ? {
-          beforeCreatedAt: String(opts.before.createdAt),
-          beforeId: opts.before.id,
-        } : {}),
-        ...(opts.limit !== undefined ? { limit: String(opts.limit) } : {}),
-      },
-    }));
-  },
-
-  /** 写入新活动项即完成；当前进程仍连旧目录，必须重启生效。 */
-  activateDir(name: string) {
-    return readRpcJson(rpcClient.api.workspaces['data-dirs'][':name'].activate.$post({
-      param: { name },
-    }));
-  },
-
-  /** 迁移：热拷贝 data.db + 文件目录复制，注册并切换后要求重启。 */
-  migrate(body: DataDirMigrateInput) {
-    return readRpcJson(rpcClient.api.workspaces['data-dirs'].migrate.$post({ json: body }));
-  },
-};
 
 // ── Files（前端 Files 面板的本机文件浏览） ────────────────────────────────────
 

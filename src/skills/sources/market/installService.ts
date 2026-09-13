@@ -29,7 +29,7 @@ export interface MarketInstallResult {
   readonly path: string;
   readonly dirName: string;
   readonly name: string;
-  readonly version: string;
+  readonly version?: string;
 }
 
 /** 安装失败:带业务码与 preserves 来源的错误。 */
@@ -158,7 +158,12 @@ export function createMarketInstaller(deps: MarketInstallerDeps) {
       await writeFile(join(staging, MARKET_META_FILENAME), `${JSON.stringify(meta, null, 2)}\n`, 'utf-8');
 
       const descriptor = await deps.store.finalizeInstall(staging, dirName);
-      return { path: descriptor.path, dirName, name: descriptor.name, version: descriptor.version };
+      return {
+        path: descriptor.path,
+        dirName,
+        name: descriptor.name,
+        ...(descriptor.version !== undefined ? { version: descriptor.version } : {}),
+      };
     } finally {
       await rm(staging, { recursive: true, force: true }).catch(() => {});
     }

@@ -92,17 +92,19 @@ function makeInput(options: {
 }
 
 describe('prepareTurnTools', () => {
-  it('chat Profile 只保留只读白名单工具；work 保留全部', () => {
+  it('Chat 保留只读工具与 Skill，Work 保留全部工具', () => {
     const readTool = fakeTool('Read', { id: BuiltinTools.FileRead.id });
+    const skillTool = fakeTool('Skill', { id: BuiltinTools.Skill.id });
     const bashTool = fakeTool('Bash', { id: BuiltinTools.Bash.id });
     const deps = makeDeps({
-      tools: [readTool, bashTool],
+      tools: [readTool, skillTool, bashTool],
       queue: new SessionInteractionQueue(null),
       settings: fakeSettings(),
     });
 
     const chat = prepareTurnTools(deps, makeInput({ events: [], overrides: { executionProfile: 'chat' } }));
     expect(chat.toolPool.get('Read')).toBeDefined();
+    expect(chat.toolPool.get('Skill')).toBeDefined();
     expect(chat.toolPool.get('Bash')).toBeUndefined();
 
     const work = prepareTurnTools(deps, makeInput({ events: [] }));
