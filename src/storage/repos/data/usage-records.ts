@@ -21,6 +21,24 @@ export interface UsageRecordRow {
   created_at: number;
 }
 
+/** keyset 游标:created_at 主序,id 同刻决胜(与 messages 分页同款,新数据插入不位移)。 */
+export interface UsageRecordPageCursor {
+  readonly createdAt: number;
+  readonly id: string;
+}
+
+export interface UsageRecordPage {
+  readonly items: readonly UsageRecordRow[];
+  readonly nextCursor: UsageRecordPageCursor | null;
+}
+
+export interface UsageRecordListFilter {
+  readonly sessionId?: string;
+  readonly capability?: UsageRecord['capability'];
+  readonly cursor?: UsageRecordPageCursor;
+  readonly limit?: number;
+}
+
 export class UsageRecordsRepo {
   constructor(private readonly db: SqliteDb) {}
 
@@ -53,6 +71,42 @@ export class UsageRecordsRepo {
       WHERE session_id = ?
       ORDER BY created_at ASC, id ASC
     `).all(sessionId) as UsageRecordRow[];
+  }
+
+  /**
+   * 库级明细查询:参数在才过滤(sessionId/capability 可空),
+   * created_at DESC 倒序 + keyset 游标向回翻。供存储库浏览与未来的用量统计页共用。
+   */
+  list(filter: UsageRecordListFilter): UsageRecordPage {
+    const limit = Math.min(Math.max(filter.limit ?? 100, 1), 500);
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+    if (filter.sessionId) {
+      conditions.push('session_id = ?');
+      params.push(filter.sessionId);
+    }
+    if (filter.capability) {
+      conditions.push('capability = ?');
+      params.push(filter.capability);
+    }
+    if (filter.cursor) {
+      conditions.push('(created_at < ? OR (created_at = ? AND id < ?))');
+      params.push(filter.cursor.createdAt, filter.cursor.createdAt, filter.cursor.id);
+    }
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const rows = this.db.prepare(`
+      SELECT * FROM usage_records
+      ${where}
+      ORDER BY created_at DESC, id DESC
+      LIMIT ?
+    `).all(...params, limit + 1) as UsageRecordRow[];
+    const hasMore = rows.length > limit;
+    const items = hasMore ? rows.slice(0, limit) : rows;
+    const last = items[items.length - 1];
+    return {
+      items,
+      nextCursor: hasMore && last ? { createdAt: last.created_at, id: last.id } : null,
+    };
   }
 
   /** 删除早于 cutoffMs 的记录，返回删除行数；由启动一次性保留清理调用。 */

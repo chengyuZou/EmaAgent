@@ -2,6 +2,7 @@
 import {
   AgentRunMessagesRepo,
   AgentRunsRepo,
+  MessagesRepo,
   AttachmentImagesRepo,
   AttachmentPastedTextsRepo,
   Database,
@@ -48,6 +49,10 @@ export interface DatabaseComposition {
   readonly agentRunMessages: AgentRunMessagesStore;
   /** 全部能力调用共享的用量记账口（UsageRecordsRepo 直接满足 UsageRecorder 端口）。 */
   readonly usageRecorder: UsageRecorder;
+  /** 与 usageRecorder 同实例的具体类型:用量明细查询(Token 明细页)需要 list()。 */
+  readonly usageRecords: UsageRecordsRepo;
+  /** raw 消息只读投影(存储页消息查看器)。 */
+  readonly messages: MessagesRepo;
   /** 数据目录/单 Session 的存储统计只读投影。 */
   readonly dataDirStats: DataDirStatsRepo;
   readonly sessionStats: SessionStatsRepo;
@@ -58,7 +63,7 @@ export interface DatabaseComposition {
 
 /**
  * 打开并迁移两个数据库，构造全部存储层 Store。
- * activeDataDir 由 main.ts 经 dataDirRegistry + lockfile 决议后传入——本函数不决定"用哪个目录"。
+ * activeDataDir 由 lifecycle 经 profile.db 的 data_dirs 表决议后传入——本函数不决定"用哪个目录"。
  */
 export function openDatabases(activeDataDir: string): DatabaseComposition {
   const profileDb = new Database({ path: profileDbPath(), kind: 'profile' });
@@ -78,6 +83,8 @@ export function openDatabases(activeDataDir: string): DatabaseComposition {
     throw err;
   }
 
+  const usageRecords = new UsageRecordsRepo(dataDb.sqlite);
+  const messages = new MessagesRepo(dataDb.sqlite);
   const session = new SessionStore({
     db: dataDb,
     // Session 删除提交后清理库外文件（音频、附件、工具结果、scratchpad）。
@@ -115,7 +122,9 @@ export function openDatabases(activeDataDir: string): DatabaseComposition {
     tasks: new TaskStore(new TasksRepo(dataDb.sqlite)),
     agentRuns: new AgentRunStore(new AgentRunsRepo(dataDb.sqlite)),
     agentRunMessages: new AgentRunMessagesStore(new AgentRunMessagesRepo(dataDb.sqlite)),
-    usageRecorder: new UsageRecordsRepo(dataDb.sqlite),
+    usageRecorder: usageRecords,
+    usageRecords,
+    messages,
     dataDirStats: new DataDirStatsRepo(dataDb.sqlite),
     sessionStats: new SessionStatsRepo(dataDb.sqlite),
     close() {

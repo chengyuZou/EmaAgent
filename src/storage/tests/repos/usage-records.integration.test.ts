@@ -94,4 +94,34 @@ describe('UsageRecordsRepo', () => {
     expect(() => repo.record({ ...record('cross-session', 10), sessionId: 'session-b' }))
       .toThrow(/ownership_violation/);
   });
+
+
+  it('list: sessionId/capability 过滤 + keyset 翻页不重复不遗漏', () => {
+    // 同刻三条(决胜 id)+ 异刻两条 + 别的 session + 别的 capability
+    repo.record({ ...record('r-3', 100), id: 'r-c' });
+    repo.record({ ...record('r-2', 100), id: 'r-b' });
+    repo.record({ ...record('r-1', 100), id: 'r-a' });
+    repo.record(record('r-old', 50));
+    repo.record({ ...record('r-other-session', 90), sessionId: 'session-b', turnId: null });
+    repo.record({ ...record('r-tts', 95), capability: 'tts', inputTokens: null, outputTokens: null });
+
+    // 第一页:倒序最新 3 条(同刻按 id 倒序 r-c > r-b > r-a)
+    const page1 = repo.list({ sessionId: 'session-a', limit: 3 });
+    expect(page1.items.map(row => row.id)).toEqual(['r-c', 'r-b', 'r-a']);
+    expect(page1.nextCursor).not.toBeNull();
+
+    // 第二页:游标后继续,不重复不遗漏(r-tts 95, r-old 50)
+    const page2 = repo.list({ sessionId: 'session-a', limit: 3, cursor: page1.nextCursor! });
+    expect(page2.items.map(row => row.id)).toEqual(['r-tts', 'r-old']);
+    expect(page2.nextCursor).toBeNull();
+
+    // capability 过滤
+    const tts = repo.list({ sessionId: 'session-a', capability: 'tts' });
+    expect(tts.items.map(row => row.id)).toEqual(['r-tts']);
+
+    // 不传 sessionId = 整库
+    const all = repo.list({ limit: 10 });
+    expect(all.items).toHaveLength(6);
+  });
+
 });

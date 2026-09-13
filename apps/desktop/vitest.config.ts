@@ -1,4 +1,4 @@
-// Desktop 单元测试只加载 tests/ 下的 Node 测试，不启动应用构建与样式插件。
+// Desktop 单元测试在 Node 环境运行，不启动应用构建与样式插件。
 import { defineConfig } from 'vitest/config';
 import { resolve } from 'node:path';
 
@@ -14,6 +14,10 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['tests/**/*.test.ts'],
+    include: [
+      'tests/**/*.test.ts',
+      'src/**/tests/*.test.ts',
+      'src/**/tests/*.test.tsx',
+    ],
   },
 });

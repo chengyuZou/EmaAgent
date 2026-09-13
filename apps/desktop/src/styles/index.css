@@ -13,6 +13,7 @@
 @import './primitives/decorations.css';
 
 @import './domains/appearance.css';
+@import './domains/storage.css';
 @import './domains/workspace.css';
 @import './domains/chatHistory.css';
 @import './domains/agentRun.css';

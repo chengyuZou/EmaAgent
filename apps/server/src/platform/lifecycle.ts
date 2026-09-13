@@ -11,9 +11,8 @@ import {
   type StartupRecoveryDeps,
 } from '../composition/recovery.js';
 import { createRoutes } from '../routes/index.js';
-import { activeDirEntry, loadRegistry } from './dataDirRegistry.js';
 import { acquireLock } from './lockfile.js';
-import { ensureDataDirLayout } from './paths.js';
+import { dataDirPath, ensureDataDirLayout, profileDir } from './paths.js';
 import { publishReadyFile } from './readiness.js';
 import { HTTP_SERVER_TIMEOUTS } from './requestBudget.js';
 
@@ -30,7 +29,8 @@ export interface ServerLifecycle {
  * Narrative 推送、默认 KB 等后台驱动允许降级. 启动不会续跑旧 Turn 或后台工作.
  */
 export async function startServer(secret: string): Promise<ServerLifecycle> {
-  const activeDataDir = activeDirEntry(loadRegistry()).path;
+  // 单一数据目录:~/.ema-agent/data 固定,不再有库注册表。
+  const activeDataDir = dataDirPath();
   ensureDataDirLayout(activeDataDir);
 
   const lock = acquireLock(activeDataDir);
@@ -100,8 +100,8 @@ export async function startServer(secret: string): Promise<ServerLifecycle> {
       .catch(error => console.warn('[providers] models.dev 目录刷新失败:', error));
     void running.narrative.configureNarrativeBridge()
       .catch(error => console.warn('[narrative] Bridge 配置推送失败:', error));
-    // 默认库落在 <数据目录>/kb/<随机 id>:参数是父目录,库目录由 KbManager 自建。
-    void running.knowledge.kb.ensureDefault(path.join(activeDataDir, 'kb'))
+    // 默认库落在 kb/<随机 id>:参数是父目录,库目录由 KbManager 自建。
+    void running.knowledge.kb.ensureDefault(path.join(profileDir(), 'kb'))
       .catch(error => console.warn('[kb] 默认知识库创建失败:', error));
     return {
       composition: running,
