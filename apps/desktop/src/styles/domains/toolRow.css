@@ -9,7 +9,14 @@
   height: 24px;
   text-align: left;
   position: relative;
-  border-radius: 6px;
+  border-radius: var(--ema-radius-sm);
+  /* 行级 hover:整行浅底 + 文字提一档(与 leading 槽 chevron 显现配套)。 */
+  transition: background-color var(--ema-duration-fast) var(--ema-ease),
+              color var(--ema-duration-fast) var(--ema-ease);
+}
+.ema-tool-row:hover {
+  background: var(--ema-surface-2);
+  color: var(--ema-text-secondary);
 }
 
 .ema-tool-row-leading {
@@ -31,7 +38,7 @@
   justify-content: center;
   font-size: 14px;
   color: var(--ema-text-tertiary);
-  transition: opacity 100ms ease;
+  transition: opacity var(--ema-duration-fast) var(--ema-ease);
 }
 
 .ema-tool-row-icon { opacity: 1; }

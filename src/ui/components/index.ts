@@ -24,7 +24,7 @@ export { Progress } from './Progress.js';
 export { Badge }   from './Badge.js';
 export { Divider } from './Divider.js';
 
-// Menu cards (AIRI-style settings entries)
+// 菜单大卡(设置菜单入口,图标出血/状态点)
 export { MenuIconItem }   from './MenuIconItem.js';
 export { MenuStatusItem } from './MenuStatusItem.js';
 

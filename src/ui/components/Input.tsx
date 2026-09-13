@@ -32,8 +32,8 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           'transition-ema',
           'disabled:cursor-not-allowed disabled:opacity-50',
           SIZE_CLASSES[inputSize],
-          // Strip the native number-spinner arrows (↕) — they look out of place
-          // in the dark UI; users type the value directly.
+          // 去掉原生数字步进箭头(↕)——暗色 UI 里格格不入,
+          // 数值直接手输。
           type === 'number' &&
             '[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none',
           error

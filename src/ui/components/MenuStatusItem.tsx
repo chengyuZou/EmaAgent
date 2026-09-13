@@ -3,15 +3,12 @@ import { cn } from '../utils/cn.js';
 
 // ── MenuStatusItem ───────────────────────────────────────────────────────────
 //
-// Provider-style grid card (ported from AIRI's icon-status-item.vue):
-// title + description, a grayscale icon peeking from the right edge that
-// regains colour on hover, and a configured/unconfigured status dot in
-// the bottom strip.
+// Provider 网格卡:标题+描述、灰度图标从右缘探出(hover 回色),
+// 左上角配置状态点。装饰(hover 扫光+纹理)统一走 ema-card-decorate primitive,
+// 不在组件里手写伪元素。
 //
-// Structure is intentionally FLAT (same as MenuIconItem): the icon sits
-// directly in the button, not in a nested overflow-hidden panel. Only one
-// overflow-hidden layer clips the icon, so the right-edge peek-through
-// works the same way as the main-menu cards.
+// 结构保持扁平:icon 直接放在 button 里,只有一层 overflow-hidden 裁剪,
+// 右缘探出效果与主菜单卡一致。
 
 export interface MenuStatusItemProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'title'> {
   title:        string;
@@ -32,34 +29,21 @@ export function MenuStatusItem(props: MenuStatusItemProps): React.JSX.Element {
       type="button"
       className={cn(
         'group relative w-full h-full flex flex-col overflow-hidden box-border text-left cursor-pointer',
+        'ema-card-decorate ema-card-decorate--plus',
         'rounded-xl bg-[var(--ema-surface-1)] ema-glass-weak border-2 border-solid border-[var(--ema-border)]',
         'hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-2)]',
         'active:scale-[0.98]',
-        'transition-all duration-[var(--ema-duration-base)] ease-in-out',
-        // Light sweep on hover (::before)
-        'before:content-empty before:absolute before:inset-0 before:z-0',
-        'before:w-1/4 before:h-full before:opacity-0',
-        'before:transition-all before:duration-[400ms] before:ease-in-out',
-        'before:[mask-image:linear-gradient(120deg,white_50%,transparent_75%)]',
-        'hover:before:opacity-100 hover:before:w-[85%]',
-        'hover:before:bg-gradient-to-r hover:before:from-[var(--ema-primary)]/30 hover:before:via-[var(--ema-primary)]/15 hover:before:to-transparent',
-        // Dotted texture (::after)
-        'after:content-empty after:absolute after:inset-0 after:z-0 after:w-full after:h-full',
-        'after:[background-image:radial-gradient(circle_at_30%_30%,color-mix(in_srgb,var(--ema-primary)_30%,transparent),transparent_45%),radial-gradient(circle_at_70%_70%,color-mix(in_srgb,var(--ema-violet)_28%,transparent),transparent_50%),radial-gradient(circle,color-mix(in_srgb,var(--ema-text-tertiary)_30%,transparent)_1px,transparent_1.5px)]',
-        'after:[background-size:100%_100%,100%_100%,10px_10px]',
-        'after:[mask-image:linear-gradient(165deg,white_30%,transparent_50%)]',
-        'after:transition-all after:duration-250',
-        'after:opacity-100 hover:after:[background-size:102%_102%]',
+        'transition-ema',
         className,
       )}
       {...rest}
     >
       {/* Text (padded like a card; 左侧留白给状态点) */}
       <div className="relative z-1 flex-1 min-w-0 p-5 pb-3 pl-9">
-        <div className="text-lg font-semibold text-[var(--ema-text-primary)] group-hover:text-[var(--ema-primary-text)] transition-all duration-[var(--ema-duration-base)] ease-in-out truncate">
+        <div className="text-lg font-semibold text-[var(--ema-text-primary)] group-hover:text-[var(--ema-primary-text)] transition-ema truncate">
           {title}
         </div>
-        <div className="text-sm text-[var(--ema-text-tertiary)] group-hover:text-[var(--ema-primary-text)]/80 transition-all duration-[var(--ema-duration-base)] ease-in-out truncate">
+        <div className="text-sm text-[var(--ema-text-tertiary)] group-hover:text-[var(--ema-primary-text)]/80 transition-ema truncate">
           {description ?? ''}
         </div>
       </div>
@@ -72,7 +56,7 @@ export function MenuStatusItem(props: MenuStatusItemProps): React.JSX.Element {
             icon,
             'absolute right-0 top-1/2 -translate-y-1/2 size-16 opacity-40',
             'text-[var(--ema-text-tertiary)] group-hover:text-[var(--ema-primary)] group-hover:opacity-70 group-hover:scale-110',
-            'transition-all duration-[var(--ema-duration-base)] ease-in-out',
+            'transition-ema',
             iconColor,
           )}
         />
@@ -81,7 +65,7 @@ export function MenuStatusItem(props: MenuStatusItemProps): React.JSX.Element {
       {/* Status dot — 左上角 */}
       <div className="absolute left-2 top-2 z-1">
         {configured
-          ? <div className="size-4 rounded-full bg-[var(--ema-success)] shadow-lg" />
+          ? <div className="size-4 rounded-full bg-[var(--ema-success)] shadow-[var(--ema-shadow-1)]" />
           : <div className="size-4 rounded-full bg-[var(--ema-surface-2)] border-2 border-solid border-[var(--ema-border-strong)]" />}
       </div>
     </button>

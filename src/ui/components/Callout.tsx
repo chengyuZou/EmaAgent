@@ -29,8 +29,8 @@ export function Callout(props: CalloutProps): React.JSX.Element {
     <div
       role="note"
       className={cn(
-        'relative rounded-md border pl-4 pr-3 py-3',
-        "before:content-empty before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1 before:rounded-l-md",
+        'relative rounded-xl border pl-4 pr-3 py-3',
+        "before:content-empty before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1 before:rounded-l-xl",
         v.bg, v.text, v.stripe, className,
       )}
     >

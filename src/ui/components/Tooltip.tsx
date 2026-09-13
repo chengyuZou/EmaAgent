@@ -41,7 +41,7 @@ export function Tooltip(props: TooltipProps): React.JSX.Element {
           align={align}
           sideOffset={sideOffset}
           className={cn(
-            'z-50 rounded-md border border-[var(--ema-border)] bg-[var(--ema-surface-4)] px-2.5 py-1',
+            'z-50 rounded-lg border border-[var(--ema-border)] bg-[var(--ema-surface-4)] px-2.5 py-1',
             'text-xs text-[var(--ema-text-primary)] shadow-[var(--ema-shadow-2)]',
             'ema-anim-fade',
           )}

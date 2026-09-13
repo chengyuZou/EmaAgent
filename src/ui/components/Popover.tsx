@@ -57,7 +57,7 @@ export function Popover(props: PopoverProps): React.JSX.Element {
           onOpenAutoFocus={onOpenAutoFocus}
           onCloseAutoFocus={onCloseAutoFocus}
           className={cn(
-            'z-40 panel-glass rounded-lg p-2 shadow-xl',
+            'z-40 panel-glass rounded-xl p-2 shadow-[var(--ema-shadow-2)]',
             widthClass,
             'ema-anim-scale',
             'focus:outline-none',

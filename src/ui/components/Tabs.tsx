@@ -7,7 +7,7 @@ import { cn } from '../utils/cn.js';
 //
 // 水平/垂直标签页,基于 Radix 的薄封装,自带触发器样式与内容面板。
 //
-// horizontal underline/pill 用滑动指示器(抄 AIRI select-tab):List ::before 滑块
+// horizontal underline/pill 用滑动指示器:List ::before 滑块
 // 按 --tab-active-index/--tab-count calc 平滑滑动,trigger 等宽(flex-1)。
 // vertical sidebar 保留各自 active bg(无横向滑块)。
 
@@ -76,7 +76,7 @@ export function Tabs(props: TabsProps): React.JSX.Element {
             value={it.value}
             disabled={it.disabled}
             className={cn(
-              'inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-ema cursor-pointer',
+              'inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-ema cursor-pointer focus-ring',
               'disabled:opacity-40 disabled:cursor-not-allowed',
               'text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)]',
               // horizontal: 等宽 + 居中,让滑块 calc(100%/count * index) 定位准确
@@ -91,9 +91,8 @@ export function Tabs(props: TabsProps): React.JSX.Element {
                 // 滑块(ema-tab-slider--pill::before)代替 active bg
               ),
               variant === 'sidebar' && cn(
-                'rounded-md justify-start text-left w-full',
-                'data-[state=active]:bg-[var(--ema-primary-muted)]/60',
-                'data-[state=active]:text-[var(--ema-primary-text)]',
+                'ema-selectable rounded-lg justify-start text-left w-full',
+                // 选中三件套(色条+渐变+内描边+主色字)由 ema-selectable 承担
               ),
             )}
           >

@@ -69,7 +69,7 @@ export const Textarea = forwardRef<TextareaHandle, TextareaProps>(
         const el = innerRef.current;
         if (!el) return;
         // Direct .value mutation is ignored by React for controlled inputs.
-        // Using the native prototype setter + synthetic input event triggers
+        // 用原生 prototype setter + 原生 input 事件触发,
         // React's onChange so both controlled and uncontrolled callers get ''.
         const nativeSetter = Object.getOwnPropertyDescriptor(
           HTMLTextAreaElement.prototype, 'value',
@@ -139,7 +139,7 @@ export const Textarea = forwardRef<TextareaHandle, TextareaProps>(
       };
     }, [autoGrow, scheduleHeightRecompute]);
 
-    // Reserve room for action (~44px wide + 16px padding on right + 12px bottom)
+    // 给内嵌动作预留空间(约 44px 宽 + 右 16px + 下 12px)
     const reserveAction = embeddedAction ? { paddingRight: 52, paddingBottom: 48 } : null;
 
     const textareaEl = (

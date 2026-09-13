@@ -48,8 +48,9 @@
   animation: ema-pop-in-spring 0.38s var(--ema-ease-spring) both;
   animation-delay: calc(var(--stagger-i, 0) * 40ms);
 }
+/* 与 slide-right 同轨迹,只是节奏不同;keyframes 复用不另造。 */
 .ema-slide-in-left {
-  animation: ema-slide-in-left var(--ema-duration-slow) var(--ema-ease) both;
+  animation: ema-slide-right var(--ema-duration-slow) var(--ema-ease) both;
 }
 .ema-slide-in-right {
   animation: ema-slide-in-right var(--ema-duration-slow) var(--ema-ease) both;
@@ -94,9 +95,9 @@
   background: linear-gradient(
     90deg,
     transparent 0%,
-    rgba(255, 255, 255, 0.06) 40%,
-    rgba(255, 255, 255, 0.10) 50%,
-    rgba(255, 255, 255, 0.06) 60%,
+    color-mix(in srgb, var(--ema-text-primary) 6%, transparent) 40%,
+    color-mix(in srgb, var(--ema-text-primary) 10%, transparent) 50%,
+    color-mix(in srgb, var(--ema-text-primary) 6%, transparent) 60%,
     transparent 100%
   );
   animation: ema-skeleton-wave 2s ease-in-out infinite;
@@ -112,9 +113,9 @@
   background: linear-gradient(
     105deg,
     transparent 30%,
-    rgba(255, 255, 255, 0.08) 45%,
-    rgba(255, 255, 255, 0.14) 50%,
-    rgba(255, 255, 255, 0.08) 55%,
+    color-mix(in srgb, var(--ema-text-primary) 8%, transparent) 45%,
+    color-mix(in srgb, var(--ema-text-primary) 14%, transparent) 50%,
+    color-mix(in srgb, var(--ema-text-primary) 8%, transparent) 55%,
     transparent 70%
   );
   animation: ema-shimmer 2.5s ease-in-out infinite;

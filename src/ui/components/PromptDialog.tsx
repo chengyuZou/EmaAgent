@@ -29,7 +29,7 @@ export function PromptDialog(props: PromptDialogProps): React.JSX.Element {
   } = props;
   const [value, setValue] = useState(initialValue);
 
-  // Reset to initialValue each time the dialog opens.
+  // 每次打开时重置回 initialValue。
   useEffect(() => { if (open) setValue(initialValue); }, [open, initialValue]);
 
   return (

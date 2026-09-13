@@ -36,7 +36,7 @@ export function DropdownMenu(props: DropdownMenuProps): React.JSX.Element {
           align={align}
           sideOffset={6}
           className={cn(
-            'z-40 panel-glass rounded-lg p-1 shadow-xl',
+            'z-40 panel-glass rounded-xl p-1 shadow-[var(--ema-shadow-2)]',
             widthClass,
             'ema-anim-scale',
           )}
@@ -94,7 +94,7 @@ function RenderItem({ item, checkIcon, submenuIcon }: { item: MenuItem; checkIco
           <RadixDropdown.Portal>
             <RadixDropdown.SubContent
               className={cn(
-                'z-50 panel-glass rounded-lg p-1 shadow-xl min-w-44',
+                'z-50 panel-glass rounded-xl p-1 shadow-[var(--ema-shadow-2)] min-w-44',
                 'ema-anim-scale',
               )}
             >

@@ -59,7 +59,6 @@ button, [role="button"], [data-tauri-drag-region], .ema-no-select, .ema-no-selec
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--ema-scrollbar-thumb-hover, rgba(255, 255, 255, 0.28));
-  width: 8px;
 }
 ::-webkit-scrollbar-corner {
   background: transparent;
@@ -76,7 +75,7 @@ button, [role="button"], [data-tauri-drag-region], .ema-no-select, .ema-no-selec
 
 /* ── Selection ──────────────────────────────────────────────────────────────*/
 ::selection {
-  background: oklch(0.72 0.18 var(--chromatic-hue, 200) / 0.35) !important;
+  background: color-mix(in srgb, var(--ema-primary) 35%, transparent) !important;
   color: inherit !important;
 }
 

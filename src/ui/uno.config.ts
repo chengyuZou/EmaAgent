@@ -1,11 +1,11 @@
-// ── EmaAgent shared UnoCSS preset ───────────────────────────────────────────
+// ── EmaAgent 共享 UnoCSS preset ─────────────────────────────────────────────
 //
-// Single source of truth for design tokens. Consumed by:
-//   - src/ui            (component library + Ladle stories)
-//   - packages/desktop-ui    (business components)
-//   - apps/desktop           (main window + sub-windows)
+// 设计 token 单一事实源。消费方:
+//   - src/ui            (组件库 + Ladle stories)
+//   - packages/desktop-ui    (业务组件)
+//   - apps/desktop           (主窗口 + 子窗口)
 //
-// Usage in a downstream uno.config.ts:
+// 下游 uno.config.ts 用法:
 //
 //   import { defineConfig } from 'unocss';
 //   import { emaSharedPreset } from '@ema-agent/ui/uno.config';
@@ -14,14 +14,12 @@
 //     content: { pipeline: { include: [/src\/.*\.(t|j)sx?$/] } },
 //   });
 //
-// IMPORTANT: do NOT add app-specific safelist or content globs here. This
-// file is shared across the workspace — anything app-specific belongs in
-// that app's own uno.config.ts.
+// 注意:不要在这里加应用专属 safelist 或 content 通配——本文件全工作区共享,
+// 应用专属内容属于各应用自己的 uno.config.ts。
 
-// Import presets from their own packages, NOT the `unocss` aggregate entry —
-// the aggregate re-exports every transformer, and transformer-attributify-jsx
-// drags oxc-parser's wasm binding into Vite's browser module graph (the
-// unocss vite plugin injects this config file into the graph for HMR).
+// preset 要从各自的包导入,不走 `unocss` 聚合入口——聚合入口会 re-export 全部
+// transformer,而 transformer-attributify-jsx 会把 oxc-parser 的 wasm binding
+// 拖进 Vite 的浏览器模块图(unocss vite 插件会把本配置文件注入该图做 HMR)。
 import type { Preset, UserConfig } from '@unocss/core';
 import presetAttributify from '@unocss/preset-attributify';
 import presetIcons from '@unocss/preset-icons';
@@ -36,23 +34,22 @@ import {
 } from './uno-preset-chromatic.js';
 
 /**
- * Universal rounding scale - references the tokens.css radius variables
- * (apps/desktop-ui/src/styles/tokens.css) so Uno rounded-* and hand-written
- * CSS resolve the same --ema-radius multiplier. pill/full stay fixed.
+ * 通用圆角刻度——引用 tokens.css 的 --ema-radius-* 变量,
+ * Uno rounded-* 与手写 CSS 吃同一个 --ema-radius 倍率。pill/full 固定不缩放。
  */
 export const RADIUS_SCALE = {
-  sm:      'var(--ema-radius-sm)',    // tags, dot badges, small chips
-  DEFAULT: 'var(--ema-radius-xs)',    // bare `rounded` - smallest default radius
-  md:      'var(--ema-radius-md)',    // cards
-  lg:      'var(--ema-radius-lg)',    // dialogs, popovers, sub-window panels
-  xl:      'var(--ema-radius-xl)',    // main window itself, hero containers
-  pill:    'var(--ema-radius-pill)',  // pill buttons - fixed 999px
-  full:    '50%',                     // circular icon buttons, dots, avatars
+  sm:      'var(--ema-radius-sm)',    // 标签、圆点徽标、小 chip
+  DEFAULT: 'var(--ema-radius-xs)',    // 裸 rounded - 最小默认圆角
+  md:      'var(--ema-radius-md)',    // 居中档,排版组件(pre 等)与散件用
+  lg:      'var(--ema-radius-lg)',    // 按钮与小浮件
+  xl:      'var(--ema-radius-xl)',    // 卡片、对话框、浮层、主窗口
+  pill:    'var(--ema-radius-pill)',  // pill 按钮 - 固定 999px
+  full:    '50%',                     // 圆形图标钮、圆点、头像
 } as const;
 
 /**
- * Text font stacks - reference tokens.css variables so Uno font-mono/font-sans
- * and CSS var(--ema-font-*) resolve to the same faces.
+ * 文本字体栈——引用 tokens.css 变量,Uno font-mono/font-sans
+ * 与 CSS var(--ema-font-*) 解析到同一组字。
  */
 export const FONT_FAMILY = {
   sans: 'var(--ema-font-ui)',
@@ -62,16 +59,15 @@ export const FONT_FAMILY = {
 // ── Safelist ────────────────────────────────────────────────────────────────
 
 /**
- * Generate dynamic color classes that UnoCSS can't infer from static source
- * scanning. Without this, classes assembled at runtime (e.g.
- * `bg-primary-${level}`) wouldn't be in the final CSS.
+ * 静态扫描推不出来的动态颜色类在这里强制生成。没有它,运行时拼出来的类
+ * (如 `bg-primary-${level}`)不会出现在最终 CSS 里。
  *
- * Keep this conservative — every class here adds to CSS bundle size.
+ * 保持克制——这里每加一条都会增加 CSS 体积。
  */
 function buildSafelist(): string[] {
   const out: string[] = [];
 
-  // Primary / violet at all scales × common utilities
+  // primary / violet 全刻度 × 常用工具
   const scales = ['50','100','200','300','400','500','600','700','800','900','950'];
   const utilities = ['bg', 'text', 'border', 'ring'];
   const opacities = ['', '/10', '/20', '/30', '/50', '/70', '/80'];
@@ -86,7 +82,7 @@ function buildSafelist(): string[] {
     }
   }
 
-  // Status colors used by Callout / Badge
+  // Callout / Badge 用的状态色
   for (const sem of ['green', 'red', 'amber', 'sky']) {
     for (const s of ['100', '500', '900']) {
       out.push(`bg-${sem}-${s}/20`);
@@ -98,16 +94,14 @@ function buildSafelist(): string[] {
   return out;
 }
 
-// ── The preset itself ──────────────────────────────────────────────────────
+// ── preset 本体 ─────────────────────────────────────────────────────────────
 
 /**
- * Returns the array of presets + theme + safelist + shortcuts to spread into
- * a downstream `defineConfig({...})`. We return a config object factory
- * rather than a finalized config so each consumer can add their own
- * `content` globs and additional presets.
+ * 返回 preset 数组 + theme + safelist + shortcuts,供下游 defineConfig 展开。
+ * 返回工厂而非成品配置,是为了让每个消费方能加自己的 content 通配与额外 preset。
  */
 export interface EmaSharedPresetOptions {
-  /** Extra iconify collections (e.g. lobe-icons via createExternalPackageIconLoader). */
+  /** 额外图标集(如 lobe-icons 经 createExternalPackageIconLoader)。 */
   iconCollections?: Record<string, unknown>;
 }
 
@@ -115,8 +109,8 @@ export function emaSharedPreset(options: EmaSharedPresetOptions = {}): Preset[] 
   const chromatic = createPresetChromatic();
   return [
     presetWind3({
-      // Tailwind v3 compatibility. We keep `prefersColor: 'media'` off so
-      // dark mode is class-driven (toggled via root `.dark` class).
+      // Tailwind v3 兼容。不开 prefersColor: 'media',
+      // 暗色模式由 class 驱动(根元素 .dark 切换)。
       dark: 'class',
     }),
     // OKLCH 动态色板——主色(water-blue)与 violet 都由同一个 hue 变量派生,
@@ -124,11 +118,11 @@ export function emaSharedPreset(options: EmaSharedPresetOptions = {}): Preset[] 
     chromatic({
       baseHue: EMA_PRIMARY_HUE,
       colors: {
-        primary: 0,                // stays at EMA_PRIMARY_HUE (200 = water-blue)
+        primary: 0,                // 保持 EMA_PRIMARY_HUE (200 = water-blue)
         violet:  EMA_VIOLET_OFFSET, // 200 + 85 = 285 = violet
       },
     }) as unknown as Preset,
-    // 仅识别 un-* 属性，避免把 React 的 icon/items/options props 误判成工具类。
+    // 仅识别 un-* 属性,避免把 React 的 icon/items/options props 误判成工具类。
     presetAttributify({ prefixedOnly: true, prefix: 'un-' }),
     presetIcons({
       scale: 1.2,
@@ -147,15 +141,13 @@ export function emaSharedPreset(options: EmaSharedPresetOptions = {}): Preset[] 
         'code': { 'border-radius': RADIUS_SCALE.sm },
       },
     }),
-    // -- Universal box-sizing reset --
+    // -- 通用 box-sizing reset --
     //
-    // UnoCSS (unlike Tailwind's `@tailwind base`) does NOT auto-inject this.
-    // Without it, form elements (textarea/input/select/button) fall back to
-    // the UA stylesheet's `content-box`, so `w-full` + `px-*`/`pr-*` padding
-    // ADDS to the declared width instead of being absorbed by it — the
-    // element silently renders wider than its parent. Cost a full afternoon
-    // chasing a "phantom rounded box" next to ChatInput's textarea that
-    // turned out to be exactly this overflow (see chat history 2026-06-16).
+    // UnoCSS(与 Tailwind 的 `@tailwind base` 不同)不会自动注入这条。
+    // 没有它,表单元素(textarea/input/select/button)回落到 UA 样式表的
+    // content-box,w-full + px-* 内边距会加在声明宽度之外——元素悄悄比父级宽。
+    // 当年追了一整个下午的"幽灵圆角框"(ChatInput textarea 旁)就是这个溢出
+    // (见 2026-06-16 聊天记录)。
     {
       name: 'ema-reset',
       preflights: [
@@ -164,9 +156,9 @@ export function emaSharedPreset(options: EmaSharedPresetOptions = {}): Preset[] 
         },
       ],
     },
-    // -- Shape system: --ema-radius scales all rounded-* values at runtime --
-    // Fact source is tokens.css; this preflight only guarantees the variable
-    // exists in environments (e.g. Ladle) that do not load desktop-ui styles.
+    // -- 形状系统:--ema-radius 运行时缩放所有 rounded-* --
+    // 事实源在 tokens.css;这个 preflight 只保证变量在不加载 desktop-ui
+    // 样式的环境(如 Ladle)里也存在。
     {
       name: 'ema-shape',
       preflights: [
@@ -175,8 +167,8 @@ export function emaSharedPreset(options: EmaSharedPresetOptions = {}): Preset[] 
         },
       ],
     },
-    // -- Custom animations: theme entries so animate-* UnoCSS utilities remain
-    //    available as aliases. Keyframes live exclusively in style.css.
+    // -- 自定义动画:注册成 theme 条目,animate-* Uno 工具类可用。
+    //    @keyframes 只住在 styles/keyframes.css。
     {
       name: 'ema-animations',
       theme: {
@@ -194,7 +186,7 @@ export function emaSharedPreset(options: EmaSharedPresetOptions = {}): Preset[] 
       },
       preflights: [
         {
-          // progress-shine is Progress-component-only; not in style.css.
+          // progress-shine 是 Progress 组件专用,不进 styles/keyframes.css。
           getCSS: () => `
 @keyframes progress-shine {
   0%   { opacity: 0.4; transform: scale(0, 1); }
@@ -208,40 +200,42 @@ export function emaSharedPreset(options: EmaSharedPresetOptions = {}): Preset[] 
 }
 
 /**
- * The shared theme object — `colors`, `borderRadius`, `fontFamily`.
- * Spread this into the consumer's `defineConfig({ theme: { ... } })`.
+ * 共享 theme 对象——`colors`、`borderRadius`、`fontFamily`。
+ * 展开到消费方的 defineConfig({ theme: { ... } })。
  */
 export function emaSharedTheme() {
   return {
-    // primary + violet colors are injected by the chromatic preset in emaSharedPreset().
-    // Do NOT re-declare them here — explicit theme keys override preset theme keys in
-    // UnoCSS, which would shadow the CSS-variable-based oklch() expressions.
+    // primary + violet 色板由 emaSharedPreset() 的 chromatic preset 注入。
+    // 不要在这里重复声明——UnoCSS 里显式 theme key 会覆盖 preset theme key,
+    // 会把基于 CSS 变量的 oklch() 表达式屏蔽掉。
     borderRadius: RADIUS_SCALE,
     fontFamily:   FONT_FAMILY,
   };
 }
 
-/** Shorthand class shortcuts available everywhere. */
+/** 全局可用的快捷方式类。 */
 export function emaSharedShortcuts() {
   return {
-    // Frosted glass panel — floating dock, popovers, dialogs
+    // 毛玻璃面板——浮动 dock、popover、dialog
     'panel-glass': 'bg-[var(--ema-surface-4)] backdrop-blur-md border border-[var(--ema-border)] shadow-lg',
-    // Lighter glass for cards inside a surface (settings cards, provider grid)
+    // 面板内嵌卡片的轻玻璃(设置卡、provider 网格)
     'card-glass': 'bg-[var(--ema-surface-2)] backdrop-blur-sm border border-[var(--ema-border)]',
-    // Focus ring on interactive elements (token-driven, adapts to light/dark)
-    'focus-ring': 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ema-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--ema-bg)]',
-    // Standard interactive transition — 250ms matches AIRI's feel
-    'transition-ema': 'transition-all duration-250 ease-in-out',
-    // Press-scale feedback (AIRI active:scale-95/98 pattern)
+    // 可聚焦元素的焦点环(token 驱动,亮暗自适应)。
+    // 2px 实心环(72% primary)贴边无 offset 缝 + 3px 同色 12% 光晕——与四控件方案 B 同配方;
+    // 旧版 ring-offset-2 会在环与元素之间塞一条底色缝,焦点框与发光对不上。
+    'focus-ring': 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--ema-primary)_72%,transparent)] focus-visible:shadow-[0_0_0_3px_color-mix(in_srgb,var(--ema-primary)_12%,transparent)]',
+    // 标准交互动效——只覆盖视觉属性,不碰 layout(transform 给 hover/press 缩放留路)
+    'transition-ema': 'transition-[background-color,border-color,color,fill,stroke,box-shadow,transform,opacity] duration-250 ease-in-out',
+    // 按压反馈(沿用现有手感,数值不做全局并轨)
     'press':    'active:scale-[0.95] transition-transform duration-100',
     'press-sm': 'active:scale-[0.98] transition-transform duration-100',
   };
 }
 
-/** Safelist export — see buildSafelist comment for rationale. */
+/** safelist 导出——原因见 buildSafelist 注释。 */
 export const emaSharedSafelist = buildSafelist();
 
-// ── This package's own config (used by Ladle preview) ──────────────────────
+// ── 本包自用配置(Ladle 预览用) ──────────────────────────────────────────────
 
 const config: UserConfig = {
   presets:   emaSharedPreset(),

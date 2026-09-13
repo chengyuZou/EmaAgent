@@ -30,7 +30,7 @@ export const CardButton = forwardRef<HTMLButtonElement, CardButtonProps>(
         ref={ref}
         type={type}
         className={cn(
-          'text-left rounded-md border-2 border-solid transition-ema cursor-pointer select-none',
+          'text-left rounded-xl border-2 border-solid transition-ema cursor-pointer select-none',
           'bg-[var(--ema-surface-1)] border-[var(--ema-border)]',
           'hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]',
           'active:scale-[0.99] focus-ring',

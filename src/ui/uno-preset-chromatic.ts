@@ -1,8 +1,7 @@
 // 为 UnoCSS 生成可运行时换色的色阶与亮度、饱和度修饰符。
 //
-// Adapted from @proj-airi/unocss-preset-chromatic (D:\Github\chromatic).
-// Generates OKLCH-based color scales driven by CSS custom properties so the
-// full `primary` + `violet` palettes update at runtime from a single hue var.
+// 生成由 CSS 自定义属性驱动的 OKLCH 色阶,运行时改一个 hue 变量,
+// primary + violet 两套色板整体跟随。
 //
 // Runtime contract:
 //   --chromatic-hue      base hue in degrees (user-settable)

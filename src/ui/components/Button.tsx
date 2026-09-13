@@ -8,10 +8,10 @@ import { cn } from '../utils/cn.js';
 // 三轴组合:variant × size × shape,全部走 UnoCSS 原子类。
 
 export type ButtonVariant =
-  | 'primary'         // Water-blue accented, signature action
-  | 'secondary'       // Neutral, frosted-glass look
-  | 'ghost'           // Transparent, hover-only background
-  | 'danger';         // Red, destructive
+  | 'primary'         // 主题色强调,签名级动作
+  | 'secondary'       // 中性,轻玻璃质感
+  | 'ghost'           // 透明,仅 hover 出底
+  | 'danger';         // 红色,破坏性操作
 
 export type ButtonSize  = 'sm' | 'md' | 'lg';
 export type ButtonShape = 'rounded' | 'pill';
@@ -56,7 +56,7 @@ const SIZE_CLASSES: Record<ButtonSize, string> = {
 };
 
 const SHAPE_CLASSES: Record<ButtonShape, string> = {
-  rounded: 'rounded-md',
+  rounded: 'rounded-lg',
   pill:    'rounded-pill',
 };
 

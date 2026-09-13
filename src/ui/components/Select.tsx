@@ -79,7 +79,7 @@ export function Select(props: SelectProps): React.JSX.Element {
           position="popper"
           sideOffset={4}
           className={cn(
-            'z-50 panel-glass rounded-lg p-1 shadow-xl',
+            'z-50 panel-glass rounded-xl p-1 shadow-[var(--ema-shadow-2)]',
             'min-w-[var(--radix-select-trigger-width)]',
             'ema-anim-scale',
           )}

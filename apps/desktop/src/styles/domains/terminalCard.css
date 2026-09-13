@@ -2,7 +2,7 @@
    + 复制），输出区独立滚动、white-space: pre 不换行。 */
 
 .ema-terminal-card {
-  border-radius: 12px;
+  border-radius: var(--ema-radius-xl);
   border: 1px solid var(--ema-border);
   background: var(--ema-surface-1);
   overflow: hidden;
@@ -51,10 +51,11 @@
   justify-content: center;
   width: 20px;
   height: 20px;
-  border-radius: 5px;
+  border-radius: var(--ema-radius-sm);
   font-size: 12px;
   color: var(--ema-text-tertiary);
-  transition: color 100ms ease, background 100ms ease;
+  transition: color var(--ema-duration-fast) var(--ema-ease),
+              background-color var(--ema-duration-fast) var(--ema-ease);
 }
 
 .ema-terminal-copy:hover {

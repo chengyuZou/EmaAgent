@@ -80,7 +80,7 @@ export function Toaster({ maxVisible = 5, closeIcon }: ToasterProps): React.JSX.
             if (!open) toastStore.dismiss(item.id);
           }}
           className={cn(
-            'flex items-start gap-3 rounded-lg border px-4 py-3 shadow-xl',
+            'flex items-start gap-3 rounded-xl border px-4 py-3 shadow-[var(--ema-shadow-2)]',
             'backdrop-blur-md ema-anim-toast',
             VARIANT_CLASSES[item.variant],
           )}

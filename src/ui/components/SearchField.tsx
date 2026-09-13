@@ -71,10 +71,10 @@ export const SearchField = forwardRef<HTMLInputElement, SearchFieldProps>(
             aria-label="清除搜索"
             title="清除搜索"
             disabled={disabled}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg
               text-[var(--ema-text-tertiary)] transition-colors
               hover:bg-[var(--ema-surface-2)] hover:text-[var(--ema-text-primary)]
-              focus-visible:outline-2 focus-visible:outline-[var(--ema-primary)]"
+              focus-ring"
             onClick={() => onChange('')}
           >
             <span className="i-lucide:x text-sm" aria-hidden />
@@ -86,11 +86,11 @@ export const SearchField = forwardRef<HTMLInputElement, SearchFieldProps>(
             aria-busy={loading || undefined}
             disabled={disabled || loading}
             className="flex h-8 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap
-              rounded-lg border-0 bg-[var(--ema-primary-muted)] px-3 text-sm font-semibold
-              text-[var(--ema-primary)] transition-colors
-              hover:bg-[var(--ema-primary)] hover:text-[var(--ema-primary-text)]
+              rounded-lg border-0 bg-[var(--ema-primary)] px-3 text-sm font-semibold
+              text-[var(--ema-text-inverse)] shadow-[var(--ema-shadow-cta)] transition-[background-color,box-shadow,filter]
+              hover:brightness-105 hover:shadow-[var(--ema-shadow-cta-hover)]
               active:brightness-95 disabled:cursor-not-allowed disabled:opacity-60
-              focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ema-primary)]"
+              focus-ring"
           >
             {loading && <span className="i-svg-spinners:ring-resize text-xs" aria-hidden />}
             搜索

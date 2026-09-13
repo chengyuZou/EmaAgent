@@ -32,7 +32,7 @@
   border-radius: 9999px;
   object-fit: cover;
   border: 1px solid var(--ema-border);
-  box-shadow: 0 4px 20px rgb(0 0 0 / 0.12);
+  box-shadow: var(--ema-shadow-2);
 }
 
 .ema-empty-state-avatar-fallback {
@@ -62,11 +62,16 @@
   color: var(--ema-text-secondary);
   background: var(--ema-surface-2);
   border: 1px solid var(--ema-border);
-  transition: background 120ms ease, border-color 120ms ease;
+  transition: background-color var(--ema-duration-fast) var(--ema-ease),
+              border-color var(--ema-duration-fast) var(--ema-ease),
+              color var(--ema-duration-fast) var(--ema-ease);
 }
 
+/* hover 三件套:muted 底 + primary 边 + primary-text 字。 */
 .ema-empty-state-chip:hover {
-  background: var(--ema-surface-3);
+  background: var(--ema-primary-muted);
+  border-color: var(--ema-primary);
+  color: var(--ema-primary-text);
 }
 
 .ema-empty-state-chip-empty {

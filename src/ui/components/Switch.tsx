@@ -39,10 +39,10 @@ export const Switch = forwardRef<HTMLButtonElement, SwitchProps>(function Switch
     >
       <RadixSwitch.Thumb
         className={cn(
-          'block h-6 w-6 rounded-full border border-black/5 bg-white shadow-md',
+          'block h-6 w-6 rounded-full border border-black/5 bg-white shadow-[var(--ema-shadow-1)]',
           'translate-x-0.5 data-[state=checked]:translate-x-full',
-          'transition-transform duration-250 ease-in-out will-change-transform',
-          'data-[state=checked]:shadow-[0_2px_8px_rgba(0,0,0,0.24)]',
+          'transition-transform duration-[var(--ema-duration-base)] ease-[var(--ema-ease)] will-change-transform',
+          'data-[state=checked]:shadow-[var(--ema-shadow-2)]',
         )}
       />
     </RadixSwitch.Root>

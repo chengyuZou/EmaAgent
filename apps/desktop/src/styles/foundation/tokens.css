@@ -43,6 +43,12 @@
   --ema-shadow-soft: 0 8px 32px -12px rgba(0, 0, 0, 0.18);
   /* Primary glow(FAB/发送按钮 hover 主题色发光)*/
   --ema-shadow-primary-glow: 0 8px 24px -4px oklch(0.72 0.18 var(--chromatic-hue, 200) / 0.40);
+  /* 签名 CTA 柔影(发送钮等实心主色按钮常驻,同色系负 spread 收拢;hover 提亮抬影不缩放) */
+  --ema-shadow-cta:       0 4px 14px -8px var(--ema-primary);
+  --ema-shadow-cta-hover: 0 5px 18px -7px var(--ema-primary);
+  /* 选中三件套(.ema-selectable):90° 渐变底 + 1px 内描边 + 左侧 2px 生长色条 */
+  --ema-selected-bg: linear-gradient(90deg, var(--ema-primary-muted), color-mix(in srgb, var(--ema-primary-muted) 28%, transparent));
+  --ema-selected-ring: inset 0 0 0 1px color-mix(in srgb, var(--ema-primary) 12%, transparent);
   /* 拖放文件悬停高亮(ChatInput,primary 描边 + glow 光晕,两 var 均随主题) */
   --ema-shadow-dragover: 0 0 0 2px var(--ema-primary), 0 0 24px var(--ema-glow);
 
@@ -65,7 +71,8 @@
   --ema-primary-hover:  oklch(0.76 0.16 var(--chromatic-hue, 200));
   --ema-primary-active: oklch(0.65 0.20 var(--chromatic-hue, 200));
   --ema-primary-muted:  oklch(0.72 0.18 var(--chromatic-hue, 200) / 0.20);
-  --ema-primary-text:   oklch(0.98 0.01 var(--chromatic-hue, 200));
+  /* 暗色下也要"主色调过的可读色",不能近白,否则 muted 底上的字/勾/高亮全不显色。 */
+  --ema-primary-text:   oklch(0.85 0.09 var(--chromatic-hue, 200));
 
   /* Success - 绿 */
   --ema-success:        oklch(0.68 0.16 145);
@@ -85,11 +92,11 @@
   --ema-danger-muted:   oklch(0.62 0.22 25 / 0.18);
   --ema-danger-text:    oklch(0.88 0.12 25);
 
-  /* Violet - 紫(secondary 强调,chromatic preset hue 285 对齐) */
-  --ema-violet:         oklch(0.72 0.16 285);
-  --ema-violet-hover:   oklch(0.76 0.14 285);
-  --ema-violet-muted:   oklch(0.72 0.16 285 / 0.20);
-  --ema-violet-text:    oklch(0.98 0.01 285);
+  /* Violet - 紫(secondary 强调,hue+85 与 Uno chromatic preset 同式,随用户色相走) */
+  --ema-violet:         oklch(0.72 0.16 calc(var(--chromatic-hue, 200) + 85));
+  --ema-violet-hover:   oklch(0.76 0.14 calc(var(--chromatic-hue, 200) + 85));
+  --ema-violet-muted:   oklch(0.72 0.16 calc(var(--chromatic-hue, 200) + 85) / 0.20);
+  --ema-violet-text:    oklch(0.85 0.09 calc(var(--chromatic-hue, 200) + 85));
 
   /* Syntax highlight(代码高亮,亮暗分别定义,ToolCallBlock/FilePreview 用)*/
   --ema-syntax-key:     oklch(0.78 0.13 250);
@@ -136,41 +143,27 @@
   --ema-border-error:   var(--ema-danger);
 
   /* 控件皮肤(Input/Select/Textarea/SearchField 统一):引用语义层,亮暗主题自动跟随。
-     "厚"靠微阴影垫底+大圆角,不靠加粗边框;圆角走组件类 rounded-xl(随形状系统缩放)。 */
-/* ── Form controls ───────────────────────────────── */
+     "厚"靠微阴影垫底+大圆角,不靠加粗边框;圆角走组件类 rounded-xl(随形状系统缩放)。
+     focus 不换底色,避免焦点时整个输入框跳亮;焦点反馈=主题色边+同色光晕。 */
+  --ema-control-bg:           var(--ema-surface-2);
+  --ema-control-bg-hover:     var(--ema-surface-3);
+  --ema-control-bg-focus:     var(--ema-surface-2);
+  --ema-control-border:       var(--ema-border);
+  --ema-control-border-hover: var(--ema-border-hover);
+  /* 清晰的一根主题色边界,但不拉满饱和。 */
+  --ema-control-border-focus: color-mix(in srgb, var(--ema-primary) 72%, transparent);
+  --ema-control-shadow:       var(--ema-shadow-1);
+  --ema-control-shadow-focus: 0 0 0 3px color-mix(in srgb, var(--ema-primary) 12%, transparent);
 
---ema-control-bg:    var(--ema-surface-2);
---ema-control-bg-hover:    var(--ema-surface-3);
-/*
- * Focus 后不要突然换成 surface-1。
- * 保持和普通状态基本一致，避免焦点时整个输入框“跳亮”。
- */
---ema-control-bg-focus:    var(--ema-surface-2);
-/* 默认边框 */
---ema-control-border:   var(--ema-border);
-/* Hover 稍微加强 */
---ema-control-border-hover:   var(--ema-border-hover);
-/*
- * Focus border：
- * 清晰的一根主题色边界，
- * 但不要 100% 饱和。
- */
---ema-control-border-focus:   color-mix(in srgb,var(--ema-primary) 72%,transparent);
-/*
- * 默认的轻微立体感。
- */
---ema-control-shadow:   var(--ema-shadow-1);
---ema-control-shadow-focus:   0 0 0 3pxcolor-mix(in srgb,var(--ema-primary) 12%,transparent);
-
-  /* ── Glow(发光环,ChatInput 已删但留 token)── */
-  --ema-glow:        rgba(180, 160, 200, 0.15);
-  --ema-glow-strong: rgba(160, 130, 180, 0.35);
+  /* ── Glow(发光环,拖放悬停等主题色光晕,随用户色相走)── */
+  --ema-glow:        oklch(0.72 0.18 var(--chromatic-hue, 200) / 0.15);
+  --ema-glow-strong: oklch(0.72 0.18 var(--chromatic-hue, 200) / 0.35);
 
   /* 桌宠窗口签名粉白呼吸光(App GlowBorder,跨主题一致的签名色,不随主题翻转) */
   --ema-pet-glow:        rgba(255, 214, 230, 0.55);
   --ema-pet-glow-bright: rgba(255, 192, 214, 0.85);
 
-  /* ── Scrollbar(暗色:跟 primary 联动,抄 AstrBot 滚动条 token 化)── */
+  /* ── Scrollbar(暗色:跟 primary 联动,滚动条 token 化)── */
   --ema-scrollbar-thumb: oklch(0.72 0.18 var(--chromatic-hue, 200) / 0.50);
   --ema-scrollbar-thumb-hover: oklch(0.72 0.18 var(--chromatic-hue, 200) / 0.72);
 }
@@ -225,8 +218,8 @@
   --ema-danger-muted:  oklch(0.50 0.20 25  / 0.18);
   --ema-info-muted:    oklch(0.55 0.11 240 / 0.18);
   --ema-texture-pink: oklch(0.80 0.14 350);
-  --ema-violet-muted:  oklch(0.65 0.16 285 / 0.18);
-  --ema-violet-text:   oklch(0.28 0.14 285);
+  --ema-violet-muted:  oklch(0.65 0.16 calc(var(--chromatic-hue, 200) + 85) / 0.18);
+  --ema-violet-text:   oklch(0.28 0.14 calc(var(--chromatic-hue, 200) + 85));
   --ema-syntax-key:     oklch(0.45 0.18 255);
   --ema-syntax-string:  oklch(0.40 0.15 145);
   --ema-syntax-number:  oklch(0.50 0.16 55);
@@ -239,8 +232,8 @@
   --ema-mask: rgba(0, 0, 0, 0.20);
 
   /* Glow: 减弱 */
-  --ema-glow:        rgba(180, 160, 200, 0.15);
-  --ema-glow-strong: rgba(160, 130, 180, 0.35);
+  --ema-glow:        oklch(0.65 0.18 var(--chromatic-hue, 200) / 0.15);
+  --ema-glow-strong: oklch(0.65 0.18 var(--chromatic-hue, 200) / 0.35);
 
   /* Scrollbar: 可见(跟 primary,暗色透明度低/亮色透明度高) */
   --ema-scrollbar-thumb: oklch(0.50 0.18 var(--chromatic-hue, 200) / 0.40);

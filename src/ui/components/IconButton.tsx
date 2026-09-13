@@ -36,12 +36,13 @@ const VARIANT_CLASSES: Record<IconButtonVariant, { idle: string; toggled: string
     toggled: 'bg-[var(--ema-primary-muted)] border-[var(--ema-primary)]/70 text-[var(--ema-primary-text)] shadow-[var(--ema-shadow-focus)]',
   },
   primary: {
-    idle:    'bg-[var(--ema-primary-muted)] hover:bg-[var(--ema-primary)]/45 hover:shadow-[var(--ema-shadow-primary-glow)] text-[var(--ema-primary-text)] border-[var(--ema-primary)]/50',
-    toggled: 'bg-[var(--ema-primary)] border-[var(--ema-primary)]/80 text-[var(--ema-primary-text)] shadow-[var(--ema-shadow-focus)]',
+    // 签名级动作(发送等):实心主色 + 同色系柔影常驻,hover 只提亮抬影。
+    idle:    'bg-[var(--ema-primary)] text-[var(--ema-text-inverse)] border-[var(--ema-primary)]/80 shadow-[var(--ema-shadow-cta)] hover:brightness-105 hover:shadow-[var(--ema-shadow-cta-hover)]',
+    toggled: 'bg-[var(--ema-primary)] border-[var(--ema-primary)]/80 text-[var(--ema-text-inverse)] shadow-[var(--ema-shadow-cta)]',
   },
   danger: {
-    idle:    'bg-[var(--ema-surface-3)] hover:bg-[var(--ema-danger)]/60 hover:border-[var(--ema-danger)]/60 text-[var(--ema-text-primary)] hover:text-white border-[var(--ema-border)]',
-    toggled: 'bg-[var(--ema-danger)]/60 border-[var(--ema-danger)]/70 text-white',
+    idle:    'bg-[var(--ema-surface-3)] hover:bg-[var(--ema-danger)]/60 hover:border-[var(--ema-danger)]/60 text-[var(--ema-text-primary)] hover:text-[var(--ema-text-inverse)] border-[var(--ema-border)]',
+    toggled: 'bg-[var(--ema-danger)]/60 border-[var(--ema-danger)]/70 text-[var(--ema-text-inverse)]',
   },
 };
 

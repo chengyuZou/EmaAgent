@@ -1,0 +1,50 @@
+/* 可选中行的统一选中语言:左侧 2px 色条(scaleY 生长) + 90° 渐变底 + 1px 内描边
+   + 主色字。Session 列表、文件树、垂直 Tab、设置导航共用;
+   挂 data-selected / aria-current / data-state="active" 任一即视为选中。 */
+
+.ema-selectable {
+  position: relative;
+  overflow: hidden;
+}
+
+.ema-selectable::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 9px;
+  bottom: 9px;
+  width: 2px;
+  border-radius: var(--ema-radius-pill);
+  background: var(--ema-primary);
+  transform: scaleY(0.15);
+  opacity: 0;
+  transition: transform var(--ema-duration-base) var(--ema-ease),
+              opacity var(--ema-duration-base) var(--ema-ease);
+  pointer-events: none;
+}
+
+/* :hover 克隆是为了压住消费方自带的 hover:bg/hover:text 单类(同优先级拼顺序不稳)。 */
+.ema-selectable[data-selected='true'],
+.ema-selectable[aria-current='true'],
+.ema-selectable[data-state='active'],
+.ema-selectable[data-selected='true']:hover,
+.ema-selectable[aria-current='true']:hover,
+.ema-selectable[data-state='active']:hover {
+  background: var(--ema-selected-bg);
+  box-shadow: var(--ema-selected-ring);
+  color: var(--ema-primary-text);
+  font-weight: 600;
+}
+
+.ema-selectable[data-selected='true']::before,
+.ema-selectable[aria-current='true']::before,
+.ema-selectable[data-state='active']::before {
+  transform: scaleY(1);
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ema-selectable::before {
+    transition: none;
+  }
+}

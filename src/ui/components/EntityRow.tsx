@@ -27,7 +27,7 @@ export function EntityRow({ decorate, active, onClick, index, className, childre
       type={onClick ? 'button' : undefined}
       onClick={onClick}
       className={cn(
-        'ema-stagger-in ema-glass-weak ema-card-decorate bg-[var(--ema-surface-1)] rounded-xl border-2 border-solid text-left',
+        'ema-stagger-in ema-glass-weak ema-card-decorate bg-[var(--ema-surface-1)] rounded-xl border-2 border-solid text-left focus-ring',
         active
           ? 'border-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
           : 'border-[var(--ema-border)] hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]',

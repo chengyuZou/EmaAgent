@@ -1,13 +1,5 @@
-/* Memory 文件页:文件树缩进参考线、选中行渐变高亮、读者区点阵纹理。 */
-
-/* 选中行:双色 muted 渐变高亮(Sol 素材的 token 版,左实右透)。 */
-.ema-memory-row-selected {
-  background: linear-gradient(
-    90deg,
-    var(--ema-primary-muted),
-    color-mix(in srgb, var(--ema-primary-muted) 45%, transparent)
-  );
-}
+/* Memory 文件页:文件树面板淡彩渐变底、读者区点阵纹理。
+   选中行语言已统一进 primitives/selectable.css 的 .ema-selectable。 */
 
 /* 文件树面板:淡彩纵向渐变底(面板有气色,不是死白)。 */
 .ema-memory-explorer-bg {

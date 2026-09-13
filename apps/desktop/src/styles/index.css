@@ -11,6 +11,7 @@
 @import './primitives/glass.css';
 @import './primitives/radix.css';
 @import './primitives/decorations.css';
+@import './primitives/selectable.css';
 
 @import './domains/appearance.css';
 @import './domains/storage.css';

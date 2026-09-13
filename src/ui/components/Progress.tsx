@@ -33,24 +33,24 @@ export function Progress({
       aria-valuenow={clamped}
       aria-valuemin={0}
       aria-valuemax={100}
-      className={cn('relative overflow-hidden rounded-md w-full', height, className)}
+      className={cn('relative overflow-hidden rounded-lg w-full', height, className)}
     >
       {/* Track (background) */}
-      <div className={cn('absolute inset-0 rounded-md bg-[var(--ema-surface-2)]', height)} />
+      <div className={cn('absolute inset-0 rounded-lg bg-[var(--ema-surface-2)]', height)} />
 
       {/* Fill bar */}
       <div
         className={cn(
-          'absolute left-0 top-0 rounded-md transition-[width] duration-500 ease-in-out will-change-[width]',
+          'absolute left-0 top-0 rounded-lg transition-[width] duration-500 ease-in-out will-change-[width]',
           height,
           barClass || 'bg-[var(--ema-primary)]',
         )}
         style={{ width: `${clamped}%` }}
       >
-        {/* Shine sweep (AIRI's progress-shine animation) */}
+        {/* 流光扫描(progress-shine 动画) */}
         {animated && clamped < 100 && (
           <div
-            className="animate-progress-shine absolute inset-0 origin-left rounded-md bg-white/30"
+            className="animate-progress-shine absolute inset-0 origin-left rounded-lg bg-white/30"
             style={{ willChange: 'transform, opacity' }}
           />
         )}

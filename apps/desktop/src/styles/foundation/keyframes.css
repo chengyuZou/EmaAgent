@@ -60,10 +60,6 @@
   from { opacity: 0; transform: scale(0.7) translateY(6px); }
   to   { opacity: 1; transform: scale(1)    translateY(0); }
 }
-@keyframes ema-slide-in-left {
-  from { opacity: 0; transform: translateX(-12px); }
-  to   { opacity: 1; transform: translateX(0); }
-}
 @keyframes ema-slide-in-right {
   from { opacity: 0; transform: translateX(12px); }
   to   { opacity: 1; transform: translateX(0); }

@@ -31,7 +31,7 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(
     return (
       <div
         ref={ref}
-        className={cn('rounded-md', VARIANT_CLASSES[variant], PADDING_CLASSES[padding], className)}
+        className={cn('rounded-xl', VARIANT_CLASSES[variant], PADDING_CLASSES[padding], className)}
         {...rest}
       >
         {children}

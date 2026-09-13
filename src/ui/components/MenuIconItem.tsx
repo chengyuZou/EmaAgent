@@ -3,11 +3,9 @@ import { cn } from '../utils/cn.js';
 
 // ── MenuIconItem ─────────────────────────────────────────────────────────────
 //
-// Large settings-menu entry card (ported from AIRI's icon-item.vue):
-// title + description on the left, oversized half-faded icon bleeding off
-// the right edge. Hover: primary border, primary text, icon scales up and
-// tints, a gradient light-sweep fades in from the left over a dotted
-// texture. Token-driven - works in both light and dark themes.
+// 设置菜单大卡:标题+描述在左,超大半透图标从右缘探出;
+// hover 时主题色描边、文字与图标回色,扫光从左侧淡入。
+// token 驱动,亮暗主题都安全。
 
 export interface MenuIconItemProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'title'> {
   title:       string;
@@ -29,14 +27,14 @@ export function MenuIconItem(props: MenuIconItemProps): React.JSX.Element {
         'hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-2)]',
         'active:scale-[0.98]',
         'transition-all duration-[var(--ema-duration-base)] ease-in-out',
-        // Light sweep (::before)
+        // 左侧扫光(::before)
         'before:content-empty before:absolute before:inset-0 before:z-0',
         'before:w-1/4 before:h-full before:opacity-0',
         'before:transition-all before:duration-250 before:ease-in-out',
         'before:[mask-image:linear-gradient(120deg,white_30%,transparent_50%)]',
         'hover:before:opacity-100 hover:before:w-[85%]',
         'hover:before:bg-gradient-to-r hover:before:from-[var(--ema-primary)]/20 hover:before:via-[var(--ema-primary)]/10 hover:before:to-transparent',
-        // Dotted texture (::after)
+        // 点阵纹理(::after)
         'after:content-empty after:absolute after:inset-0 after:z-0 after:w-full after:h-full',
         'after:[background-image:radial-gradient(circle,var(--ema-text-tertiary)_1px,transparent_1px)]',
         'after:[background-size:10px_10px]',
