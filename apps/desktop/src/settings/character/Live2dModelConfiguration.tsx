@@ -370,7 +370,7 @@ function MappingSection<T>({
   };
 
   return (
-    <div className="rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-2)] p-4">
+    <div className="ema-card-decorate ema-card-decorate--mesh rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-2)] p-4">
       <p className="mb-1 text-xs font-semibold text-[var(--ema-text-secondary)]">{title}</p>
       <p className="mb-3 text-[11px] text-[var(--ema-text-tertiary)]">{hint}</p>
       <div className="mb-3 flex gap-2">
@@ -392,23 +392,25 @@ function MappingSection<T>({
       {entries.map(([word, value]) => (
         <div
           key={word}
-          className="grid grid-cols-[120px_minmax(0,1fr)_auto_auto] items-center gap-2 border-b border-[var(--ema-border)] py-1.5 last:border-none"
+          className="grid grid-cols-[minmax(96px,140px)_minmax(160px,1fr)_auto] items-center gap-2 border-b border-[var(--ema-border)] -mx-2 px-2 py-1.5 last:border-none rounded-lg transition-colors hover:bg-[var(--ema-surface-1)]"
         >
-          <span className="font-mono text-xs text-[var(--ema-info)]">{word}</span>
+          <span className="truncate font-mono text-xs text-[var(--ema-info)]">{word}</span>
           <Select
             value={resolve(value)}
             options={options}
             onChange={target => onChange(word, target)}
           />
-          <Button size="sm" variant="ghost" onClick={() => onPreview(resolve(value))}>
-            预览
-          </Button>
-          <IconButton
-            size="sm"
-            label={`删除 ${word}`}
-            icon="i-mdi:delete-outline"
-            onClick={() => onRemove(word)}
-          />
+          <div className="flex items-center gap-1">
+            <Button size="sm" variant="ghost" onClick={() => onPreview(resolve(value))}>
+              预览
+            </Button>
+            <IconButton
+              size="sm"
+              label={`删除 ${word}`}
+              icon="i-mdi:delete-outline"
+              onClick={() => onRemove(word)}
+            />
+          </div>
         </div>
       ))}
     </div>
@@ -474,7 +476,7 @@ function NativeResourceList({ title, items }: {
         {items.map(item => (
           <div
             key={item.file}
-            className="grid grid-cols-[minmax(0,1fr)_120px_64px] items-center gap-2 border-b border-[var(--ema-border)] py-1.5 last:border-none"
+            className="grid grid-cols-[minmax(0,1fr)_minmax(96px,140px)_auto] items-center gap-2 border-b border-[var(--ema-border)] -mx-2 px-2 py-1.5 last:border-none rounded-lg transition-colors hover:bg-[var(--ema-surface-1)]"
           >
             <span
               className="truncate font-mono text-[11px] text-[var(--ema-text-secondary)]"

@@ -502,10 +502,12 @@ export class SessionStore {
   listMessages(sessionId: string, input: ListMessagesInput = {}): MessagePage {
     const limit = messageReadLimit(input.limit, MESSAGE_PAGE_DEFAULT_LIMIT, 'message_page_limit');
     this.requireSession(sessionId);
+    // UI 正文分页固定从新往旧取再 reverse 成旧到新展示;排序方向不受存储页查看器影响。
     const page = this.messagesRepo.listPage(
       sessionId,
       input.before ? decodeMessageCursor(input.before) : undefined,
       limit,
+      'desc',
     );
     return {
       messages: [...page.rows].reverse().map(toMessage),

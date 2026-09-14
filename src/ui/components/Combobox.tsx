@@ -7,6 +7,8 @@ import { Popover } from './Popover.js';
 //
 // 基于 Popover 的可搜索单选:输入过滤、↓↑ 只在可用项间循环(Enter 选择/Esc 关闭)、
 // 高亮不落在禁用项、点击外部关闭。输入框即 trigger。
+// allowFreeText=true 时输入即值(选项只负责回填),用于"词表提示但允许自由新词"
+// 的场景(如插画 expression);默认仍是"值来自选项"。
 // 适用 V1 场景(模型选择约 10 项、会话切换约 50 项);超过 500 项需虚拟列表。
 
 export interface ComboboxOption {
@@ -56,6 +58,8 @@ export interface ComboboxProps {
   placeholder?: string;
   disabled?:    boolean;
   filter?:      (query: string, option: ComboboxOption) => boolean;
+  /** 输入即值:打字实时写回 onChange,关闭时输入框显示 value 本身(不要求命中选项)。 */
+  allowFreeText?: boolean;
   width?:       number;
   className?:   string;
 }
@@ -67,6 +71,7 @@ export function Combobox({
   placeholder = '搜索…',
   disabled = false,
   filter: customFilter,
+  allowFreeText = false,
   width = 280,
   className,
 }: ComboboxProps): React.JSX.Element {
@@ -83,7 +88,8 @@ export function Combobox({
 
   const filtered = query ? options.filter((o) => match(query, o)) : options;
   const safeIdx = deriveActiveIndex(filtered, activeIdx);
-  const selectedLabel = options.find((o) => o.value === value)?.label ?? '';
+  const selectedLabel = options.find((o) => o.value === value)?.label
+    ?? (allowFreeText ? (value ?? '') : '');
 
   const uid = useId();
   const listboxId = `${uid}-listbox`;
@@ -182,16 +188,17 @@ export function Combobox({
           ? options.filter((option) => match(nextQuery, option))
           : options;
         setQuery(nextQuery);
+        if (allowFreeText) onChange(nextQuery);
         setOpen(true);
         setActiveIdx(firstEnabledIndex(nextFiltered));
       }}
       onKeyDown={onKeyDown}
       onClick={openList}
       className={cn(
-        'w-full rounded-md border px-3 py-2 text-sm outline-none transition-ema',
-        'bg-[var(--ema-surface-2)] text-[var(--ema-text-primary)] placeholder:text-[var(--ema-text-tertiary)]',
-        'border-[var(--ema-border)] hover:border-[var(--ema-border-hover)]',
-        'focus:border-[var(--ema-primary)] focus:ring-2 focus:ring-[var(--ema-primary)]/40',
+        'w-full rounded-xl border px-3 py-2 text-sm font-mono outline-none transition-ema',
+        'bg-[var(--ema-control-bg)] shadow-[var(--ema-control-shadow)] text-[var(--ema-text-primary)] placeholder:text-[var(--ema-text-tertiary)]',
+        'border-[var(--ema-control-border)] hover:border-[var(--ema-control-border-hover)] hover:bg-[var(--ema-control-bg-hover)]',
+        'focus:border-[var(--ema-control-border-focus)] focus:bg-[var(--ema-control-bg-focus)] focus:shadow-[var(--ema-control-shadow-focus)]',
         disabled && 'cursor-not-allowed opacity-50',
         className,
       )}

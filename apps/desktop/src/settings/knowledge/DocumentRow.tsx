@@ -69,7 +69,7 @@ export function DocumentRow({ doc, kbId, onDelete, index }: {
   return (
     <EntityRow
       decorate="ema-card-decorate--starfield"
-      active={expanded}
+      selected={expanded}
       index={index}
       className={`flex flex-col ${expanded ? 'ema-row-active' : ''}`}
     >

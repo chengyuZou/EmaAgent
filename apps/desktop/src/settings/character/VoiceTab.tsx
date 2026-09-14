@@ -2,7 +2,7 @@
 // 导入后只允许改展示名;promptText/promptLang/时长/体积都是导入事实,不重传。
 import { useEffect, useState, type JSX } from 'react';
 import {
-  Button, Dialog, DropdownMenu, IconButton, Input, ScrollArea, Select,
+  Button, Dialog, DropdownMenu, IconButton, Input, ScrollArea, Select, Textarea,
   type MenuItem,
 } from '@ema-agent/ui';
 import { ServerApiError } from '../../api/client.js';
@@ -218,8 +218,9 @@ function VoiceRow({ character, sample, index }: {
 
   return (
     <div
-      className="ema-stagger-in flex items-center gap-3 rounded-xl border border-[var(--ema-border)]
-        bg-[var(--ema-surface-2)] px-3 py-2.5"
+      className="ema-stagger-in ema-card-decorate ema-card-decorate--plus flex items-center gap-3 rounded-xl border border-[var(--ema-border)]
+        bg-[var(--ema-surface-1)] px-3 py-2.5 transition-ema
+        hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]"
       style={{ '--stagger-i': index } as React.CSSProperties}
     >
       <span
@@ -357,13 +358,12 @@ function ImportVoiceDialog({ character, open, onOpenChange }: {
         </label>
         <label className="flex flex-col gap-1 text-xs text-[var(--ema-text-secondary)]">
           promptText(音频的朗读文本)
-          <textarea
-            className="min-h-20 w-full resize-y rounded-lg border border-[var(--ema-border)]
-              bg-[var(--ema-surface-1)] px-3 py-2 text-sm text-[var(--ema-text-primary)]
-              focus:outline-none focus:border-[var(--ema-primary)]"
+          <Textarea
             value={promptText}
             onChange={e => setPromptText(e.target.value)}
             placeholder="请一定要填写这段音频里说的话的原文 否则语音生成的结果极差"
+            minRows={3}
+            maxRows={10}
           />
         </label>
         <label className="flex flex-col gap-1 text-xs text-[var(--ema-text-secondary)]">

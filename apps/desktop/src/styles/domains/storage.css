@@ -5,3 +5,10 @@
   animation-duration: 300ms;
   animation-timing-function: var(--ema-ease);
 }
+
+/* 消息查看器的 JSON 长行自动换行(预宽折行,不横向滚);
+   只作用本容器,聊天页代码块保留横向滚动语义,不动全局。 */
+.ema-raw-json .markdown-content pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

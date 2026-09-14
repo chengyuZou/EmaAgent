@@ -11,6 +11,10 @@ import { Markdown } from '../../markdown/renderer.js';
 import { TokenDetail } from './TokenDetail.js';
 import { fmtBytes, fmtDateFull, fmtDateShort, fmtDuration, fmtTokens } from './storageFormat.js';
 
+/** 消息查看器每页条数:前端与后端 pageSize 的约定值,随每个分页请求传给端点;
+    调整只改这里,分页条与请求参数同步生效。 */
+const RAW_MESSAGES_PAGE_SIZE = 50;
+
 type ViewerState =
   | { kind: 'messages'; sessionId: string; sessionTitle: string }
   | { kind: 'token'; sessionId: string; sessionTitle: string }
@@ -344,22 +348,26 @@ type RawMessage = Awaited<ReturnType<typeof systemApi.getRawMessages>>['messages
 
 function RawMessageList({ sessionId }: { sessionId: string }): JSX.Element {
   const [messages, setMessages] = useState<RawMessage[]>([]);
+  const [order, setOrder] = useState<'asc' | 'desc'>('asc');
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [cursor, setCursor] = useState<{ createdAt: number; id: string } | null>(null);
   const [failed, setFailed] = useState(false);
 
+  // before 缺省=从头取(order 方向的第一页);切序时整体重取,不拼接两个方向的链。
   const load = useCallback((before?: { createdAt: number; id: string }) => {
     if (before) setLoadingMore(true);
+    else setLoading(true);
     systemApi.getRawMessages(sessionId, {
       ...(before ? { before } : {}),
-      limit: 50,
+      order,
+      limit: RAW_MESSAGES_PAGE_SIZE,
     }).then(result => {
       setMessages(current => before ? [...current, ...result.messages] : [...result.messages]);
       setCursor(result.nextCursor ?? null);
     }).catch(() => setFailed(true))
       .finally(() => { setLoading(false); setLoadingMore(false); });
-  }, [sessionId]);
+  }, [sessionId, order]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -367,18 +375,29 @@ function RawMessageList({ sessionId }: { sessionId: string }): JSX.Element {
   if (loading) {
     return <div className="flex flex-col gap-2">{[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-9 rounded-lg" />)}</div>;
   }
-  if (messages.length === 0) {
-    return <p className="py-10 text-center text-xs text-[var(--ema-text-tertiary)]">这个会话还没有消息</p>;
-  }
   return (
     <div className="flex flex-col">
-      {messages.map(message => (
-        <RawMessageRow key={message.id} message={message} />
-      ))}
+      <div className="flex items-center justify-end px-2 pb-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={order === 'asc' ? 'i-lucide:arrow-up-wide-narrow' : 'i-lucide:arrow-down-wide-narrow'}
+            onClick={() => setOrder(current => (current === 'asc' ? 'desc' : 'asc'))}
+          >
+            {order === 'asc' ? '正序' : '倒序'}
+          </Button>
+      </div>
+      {messages.length === 0 ? (
+        <p className="py-10 text-center text-xs text-[var(--ema-text-tertiary)]">这个会话还没有消息</p>
+      ) : (
+        messages.map(message => (
+          <RawMessageRow key={message.id} message={message} />
+        ))
+      )}
       {cursor && (
         <div className="flex justify-center py-3">
           <Button variant="ghost" size="sm" loading={loadingMore} onClick={() => load(cursor)}>
-            加载更早的消息
+            {order === 'asc' ? '加载更晚的消息' : '加载更早的消息'}
           </Button>
         </div>
       )}
@@ -428,7 +447,7 @@ function RawMessageRow({ message }: { message: RawMessage }): JSX.Element {
         style={{ gridTemplateRows: open ? '1fr' : '0fr', opacity: open ? 1 : 0 }}
       >
         <div>
-          <div className="mx-2 mb-2 rounded-lg border border-[var(--ema-border)] bg-[var(--ema-surface-0)]">
+          <div className="ema-raw-json mx-2 mb-2 rounded-lg border border-[var(--ema-border)] bg-[var(--ema-surface-0)]">
             <Markdown source={`\`\`\`json\n${pretty}\n\`\`\``} />
           </div>
         </div>

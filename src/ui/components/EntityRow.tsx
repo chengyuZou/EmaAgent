@@ -9,8 +9,8 @@ import { cn } from '../utils/cn.js';
 export interface EntityRowProps {
   /** `ema-card-decorate--xxx` variant. */
   decorate?: string;
-  /** Selected/active state: primary border + primary-muted bg. */
-  active?:   boolean;
+  /** Selected state: primary border + primary-muted bg. */
+  selected?: boolean;
   /** If given, renders a <button> (clickable row). */
   onClick?:  () => void;
   /** Stagger index for `ema-stagger-in`. */
@@ -20,7 +20,7 @@ export interface EntityRowProps {
   children:  ReactNode;
 }
 
-export function EntityRow({ decorate, active, onClick, index, className, children }: EntityRowProps): JSX.Element {
+export function EntityRow({ decorate, selected, onClick, index, className, children }: EntityRowProps): JSX.Element {
   const Comp = onClick ? 'button' : 'div';
   return (
     <Comp
@@ -28,7 +28,7 @@ export function EntityRow({ decorate, active, onClick, index, className, childre
       onClick={onClick}
       className={cn(
         'ema-stagger-in ema-glass-weak ema-card-decorate bg-[var(--ema-surface-1)] rounded-xl border-2 border-solid text-left focus-ring',
-        active
+        selected
           ? 'border-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
           : 'border-[var(--ema-border)] hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]',
         decorate,

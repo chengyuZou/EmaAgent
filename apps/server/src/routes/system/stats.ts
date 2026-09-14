@@ -11,6 +11,7 @@ import {
 const rawMessagesQuery = z.object({
   beforeCreatedAt: z.coerce.number().int().optional(),
   beforeId: z.string().min(1).optional(),
+  order: z.enum(['asc', 'desc']).default('asc'),
   limit: z.coerce.number().int().min(1).max(200).default(50),
 }).refine(
   input => (input.beforeCreatedAt === undefined) === (input.beforeId === undefined),
@@ -33,15 +34,16 @@ export const systemStatsRoute = (deps: SystemStatsRouteDeps) =>
     .get('/stats/session-summaries', context => {
       return context.json({ sessions: deps.sessionStats.listSummaries() });
     })
-    // 存储页原始消息查看器:raw 行原样下发(blocks_json 不 parse),keyset 向回翻。
+    // 存储页原始消息查看器:raw 行原样下发(blocks_json 不 parse),keyset 按排序方向续翻。
     .get('/stats/sessions/:id/raw-messages', queryValidator(rawMessagesQuery), context => {
-      const { beforeCreatedAt, beforeId, limit } = context.req.valid('query');
+      const { beforeCreatedAt, beforeId, order, limit } = context.req.valid('query');
       const page = deps.messages.listPage(
         context.req.param('id'),
         beforeCreatedAt === undefined || beforeId === undefined
           ? undefined
           : { createdAt: beforeCreatedAt, id: beforeId },
         limit,
+        order,
       );
       return context.json({
         messages: page.rows,

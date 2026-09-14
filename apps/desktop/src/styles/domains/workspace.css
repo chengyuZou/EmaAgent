@@ -1,4 +1,5 @@
-/* 会话侧栏、设置导航和工作区 Dock 共用的选择与拖拽反馈。 */
+/* 会话侧栏、设置导航和工作区 Dock 共用的拖拽反馈。
+   选中态语言已统一进 primitives/selectable.css 的 .ema-selectable。 */
 
 .ema-resize-handle {
   position: absolute;
@@ -24,16 +25,25 @@
 }
 .ema-resize-handle-h:hover { background: var(--ema-primary); }
 
-.ema-active-rail { position: relative; }
-.ema-active-rail::before {
+/* 右侧面板 tab 条:变宽可关 tab,下划线指示器逐 tab 生长(scaleX 0→1)。
+   等宽滑块(ema-tab-slider)按索引 calc 定位,吃不准变宽 tab,故用逐 tab ::after。
+   bottom:-5px = 跨 tab 底与条框底边的 4px 内距+1px 边线,线正好压在条框分隔线上。 */
+.ema-dock-tab { position: relative; }
+.ema-dock-tab::after {
   content: '';
   position: absolute;
-  left: 0;
-  top: 8px;
-  bottom: 8px;
-  width: 2px;
+  left: 10px;
+  right: 10px;
+  bottom: -5px;
+  height: 2px;
   border-radius: var(--ema-radius-pill);
   background: var(--ema-primary);
-  opacity: 0.7;
+  transform: scaleX(0);
+  transition: transform var(--ema-duration-fast) var(--ema-ease);
   pointer-events: none;
+}
+.ema-dock-tab[data-selected='true']::after { transform: scaleX(1); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ema-dock-tab::after { transition: none; }
 }

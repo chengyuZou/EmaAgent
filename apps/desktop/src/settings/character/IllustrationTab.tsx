@@ -1,5 +1,5 @@
 // 插图 Tab:上资源列表(真缩略图)下单张配置,点列表切换;右上[导入图片]。
-// expression 是自由文本(词法 [a-z][a-z0-9_]*),datalist 给该角色已有词提示,允许手写新词。
+// expression 是自由文本(词法 [a-z][a-z0-9_]*),纯 Input 手写新词。
 import { useCallback, useEffect, useMemo, useState, type JSX } from 'react';
 import {
   Button, DropdownMenu, IconButton, Input, ScrollArea, Slider, Spinner,
@@ -73,10 +73,9 @@ export function IllustrationTab({ character }: { character: Character }): JSX.El
           </div>
           {selected && (
             <IllustrationConfig
-              key={`${character.name}/${selected.name}`}
+              key={selected.name}
               character={character}
               item={selected}
-              pool={illustrations}
             />
           )}
         </div>
@@ -204,10 +203,9 @@ function IllustrationCard({
 
 // ── 单张配置区 ────────────────────────────────────────────────────────────────
 
-function IllustrationConfig({ character, item, pool }: {
+function IllustrationConfig({ character, item }: {
   character: Character;
   item: Illustration;
-  pool: readonly Illustration[];
 }): JSX.Element {
   const store = useCharacterStore();
   const [displayName, setDisplayName] = useState(item.displayName);
@@ -216,12 +214,6 @@ function IllustrationConfig({ character, item, pool }: {
   const [offsetX, setOffsetX] = useState(item.stageOffsetX);
   const [offsetY, setOffsetY] = useState(item.stageOffsetY);
   const [saving, setSaving] = useState(false);
-
-  // 该角色插图池里已有的全部 expression, datalist 提示但允许自由手写新词
-  const poolWords = useMemo(
-    () => [...new Set(pool.map(p => p.expression).filter((w): w is string => !!w))],
-    [pool],
-  );
 
   const dirty = displayName !== item.displayName
     || (expression || null) !== item.expression
@@ -273,11 +265,7 @@ function IllustrationConfig({ character, item, pool }: {
                 onChange={e => setExpression(e.target.value)}
                 className="w-full"
                 placeholder="留空 = 不参与表情池"
-                list={`pool-${character.name}`}
               />
-              <datalist id={`pool-${character.name}`}>
-                {poolWords.map(word => <option key={word} value={word} />)}
-              </datalist>
             </div>
           </div>
           <IllustrationSlider label="缩放" min={0.1} max={5} step={0.05} value={scale} onChange={setScale} />

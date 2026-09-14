@@ -78,3 +78,45 @@
   border-style: dashed;
   color: var(--ema-text-tertiary);
 }
+
+/* 新会话 welcome 区:eyebrow 装饰小字 + 2×2 快捷动作网格。 */
+.ema-empty-state-eyebrow {
+  position: relative;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ema-primary-text);
+}
+
+.ema-empty-state-prompts {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-top: 8px;
+  width: min(420px, 100%);
+}
+
+.ema-empty-state-prompt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  text-align: left;
+  border: 1px solid var(--ema-border);
+  border-radius: var(--ema-radius-lg);
+  background: var(--ema-surface-1);
+  color: var(--ema-text-secondary);
+  cursor: pointer;
+  transition: background-color var(--ema-duration-fast) var(--ema-ease),
+              border-color var(--ema-duration-fast) var(--ema-ease),
+              color var(--ema-duration-fast) var(--ema-ease);
+}
+
+/* hover 三件套与 chip 同方。 */
+.ema-empty-state-prompt:hover {
+  background: var(--ema-primary-muted);
+  border-color: var(--ema-primary);
+  color: var(--ema-primary-text);
+}

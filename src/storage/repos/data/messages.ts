@@ -109,19 +109,23 @@ export class MessagesRepo {
     sessionId: string,
     cursor: MessagePageCursor | undefined,
     limit: number,
+    order: 'asc' | 'desc',
   ): MessageRowPage {
+    // keyset 方向随排序:正序取"比游标新",倒序取"比游标旧";比较符与 ORDER 同向,链不断。
+    const direction = order === 'desc' ? 'DESC' : 'ASC';
+    const comparator = order === 'desc' ? '<' : '>';
     const rows = cursor
       ? this.db.prepare(`
           SELECT * FROM messages
           WHERE session_id = ?
-            AND (created_at < ? OR (created_at = ? AND id < ?))
-          ORDER BY created_at DESC, id DESC
+            AND (created_at ${comparator} ? OR (created_at = ? AND id ${comparator} ?))
+          ORDER BY created_at ${direction}, id ${direction}
           LIMIT ?
         `).all(sessionId, cursor.createdAt, cursor.createdAt, cursor.id, limit + 1)
       : this.db.prepare(`
           SELECT * FROM messages
           WHERE session_id = ?
-          ORDER BY created_at DESC, id DESC
+          ORDER BY created_at ${direction}, id ${direction}
           LIMIT ?
         `).all(sessionId, limit + 1);
     const typedRows = rows as MessageRow[];

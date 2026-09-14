@@ -39,8 +39,8 @@ export const systemApi = {
     return readRpcJson(rpcClient.api.system.stats['session-summaries'].$get());
   },
 
-  /** GET /api/system/stats/sessions/:id/raw-messages — 原始消息(keyset 向回翻)。 */
-  getRawMessages(sessionId: string, opts: { before?: { createdAt: number; id: string }; limit?: number } = {}) {
+  /** GET /api/system/stats/sessions/:id/raw-messages — 原始消息(keyset 续翻+方向参数)。 */
+  getRawMessages(sessionId: string, opts: { before?: { createdAt: number; id: string }; order?: 'asc' | 'desc'; limit?: number } = {}) {
     return readRpcJson(rpcClient.api.system.stats.sessions[':id']['raw-messages'].$get({
       param: { id: sessionId },
       query: {
@@ -48,6 +48,7 @@ export const systemApi = {
           beforeCreatedAt: String(opts.before.createdAt),
           beforeId: opts.before.id,
         } : {}),
+        order: opts.order ?? 'asc',
         limit: String(opts.limit ?? 50),
       },
     }));

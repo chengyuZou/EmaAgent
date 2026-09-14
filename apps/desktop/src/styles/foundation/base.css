@@ -21,6 +21,13 @@ input, textarea, select, button {
   font-family: inherit;
 }
 
+/* 表单控件的原生焦点框一律关闭:焦点反馈由控件皮肤的"主色边+光晕"统一负责,
+   否则 Chromium 原生黑环与我们的光晕同时渲染,一道控件两层框。
+   按钮不在此列——裸 button(未挂 focus-ring 的页面散件)键盘焦点只剩原生框,不能剥夺。 */
+input, textarea, select {
+  outline: none;
+}
+
 /* Edge/WebView2 对 password 输入框自带的 reveal 按钮一律隐藏——密钥显示切换由我们的眼睛按钮统一负责。 */
 input[type='password']::-ms-reveal {
   display: none;
