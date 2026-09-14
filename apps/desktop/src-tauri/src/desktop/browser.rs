@@ -6,6 +6,8 @@ use tauri::{
 };
 use tauri_plugin_opener::OpenerExt;
 
+use super::windows::SHARED_BROWSER_ARGS;
+
 const BROWSER_EVENT: &str = "browser:event";
 
 #[derive(Clone, Copy, Deserialize)]
@@ -49,6 +51,7 @@ pub fn open(
     let title_id = browser_id.clone();
     let opener = window.app_handle().clone();
     let builder = WebviewBuilder::new(label, WebviewUrl::External(parsed))
+        .additional_browser_args(SHARED_BROWSER_ARGS)
         .on_navigation(|url| matches!(url.scheme(), "http" | "https"))
         .on_new_window(move |url, _| {
             let _ = opener.opener().open_url(url.as_str(), None::<&str>);

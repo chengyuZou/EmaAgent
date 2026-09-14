@@ -8,7 +8,7 @@ use tauri::{
 
 const WINDOW_VISIBILITY_EVENT: &str = "ema://window-visibility";
 // 同一进程内的 WebView2 必须使用一致的浏览器参数，否则后创建的窗口会被环境复用规则拒绝。
-const SHARED_BROWSER_ARGS: &str = "--autoplay-policy=no-user-gesture-required";
+pub(crate) const SHARED_BROWSER_ARGS: &str = "--autoplay-policy=no-user-gesture-required";
 const MAIN_FOCUS_SETTLE_GRACE: Duration = Duration::from_millis(350);
 static MAIN_FOCUSED_AT: Mutex<Option<Instant>> = Mutex::new(None);
 

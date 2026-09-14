@@ -64,11 +64,30 @@ describe('Turn 历史读取', () => {
       });
     }
 
-    const first = messages.listPage(sessionId, undefined, 2);
-    const second = messages.listPage(sessionId, first.nextCursor ?? undefined, 2);
+    const first = messages.listPage(sessionId, undefined, 2, 'desc');
+    const second = messages.listPage(sessionId, first.nextCursor ?? undefined, 2, 'desc');
 
     expect(first.rows.map((row) => row.id)).toEqual(['message-c', 'message-b']);
     expect(second.rows.map((row) => row.id)).toEqual(['message-a']);
+  });
+
+  it('Message 正序分页从最旧一条起按同方向游标续翻', () => {
+    const { messages, sessionId } = createFixture();
+    for (const id of ['message-a', 'message-b', 'message-c']) {
+      messages.insert({
+        id,
+        sessionId,
+        role: 'user',
+        blocksJson: JSON.stringify(id),
+        createdAt: 10,
+      });
+    }
+
+    const first = messages.listPage(sessionId, undefined, 2, 'asc');
+    const second = messages.listPage(sessionId, first.nextCursor ?? undefined, 2, 'asc');
+
+    expect(first.rows.map((row) => row.id)).toEqual(['message-a', 'message-b']);
+    expect(second.rows.map((row) => row.id)).toEqual(['message-c']);
   });
 
   it('Message 锚点窗口按旧到新返回并报告两侧缺口', () => {

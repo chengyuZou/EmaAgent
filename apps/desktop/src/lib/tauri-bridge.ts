@@ -89,6 +89,8 @@ let _event:  TauriEvent  | null = null;
 let _dialog: TauriDialog | null = null;
 let _window: TauriWindow | null = null;
 const terminalChannels = new Map<string, object>();
+const pendingBrowserOpens = new Map<string, Promise<void>>();
+const pendingBrowserVisibility = new Map<string, Promise<void>>();
 
 const WINDOW_VISIBILITY_EVENT = 'ema://window-visibility';
 const SYSTEM_EVENT = 'ema://system-event';
@@ -503,9 +505,22 @@ export const tauriBridge = {
   },
 
   async openBrowser(browserId: string, url: string, bounds: BrowserBounds): Promise<void> {
-    const core = await getCore();
-    if (!core) throw new Error('当前环境不支持内置浏览器');
-    await core.invoke('open_browser', { browserId, url, bounds });
+    const pending = pendingBrowserOpens.get(browserId);
+    if (pending) return pending;
+
+    const opening = (async () => {
+      const core = await getCore();
+      if (!core) throw new Error('当前环境不支持内置浏览器');
+      await core.invoke('open_browser', { browserId, url, bounds });
+    })();
+    pendingBrowserOpens.set(browserId, opening);
+    try {
+      await opening;
+    } finally {
+      if (pendingBrowserOpens.get(browserId) === opening) {
+        pendingBrowserOpens.delete(browserId);
+      }
+    }
   },
 
   async navigateBrowser(browserId: string, url: string): Promise<void> {
@@ -539,12 +554,25 @@ export const tauriBridge = {
   },
 
   async setBrowserVisible(browserId: string, visible: boolean): Promise<void> {
-    const core = await getCore();
-    if (!core) return;
-    await core.invoke('set_browser_visible', { browserId, visible });
+    const previous = pendingBrowserVisibility.get(browserId) ?? Promise.resolve();
+    const update = previous.catch(() => {}).then(async () => {
+      const core = await getCore();
+      if (!core) return;
+      await core.invoke('set_browser_visible', { browserId, visible });
+    });
+    pendingBrowserVisibility.set(browserId, update);
+    try {
+      await update;
+    } finally {
+      if (pendingBrowserVisibility.get(browserId) === update) {
+        pendingBrowserVisibility.delete(browserId);
+      }
+    }
   },
 
   async closeBrowser(browserId: string): Promise<void> {
+    await pendingBrowserOpens.get(browserId)?.catch(() => {});
+    await pendingBrowserVisibility.get(browserId)?.catch(() => {});
     const core = await getCore();
     if (!core) return;
     await core.invoke('close_browser', { browserId });
