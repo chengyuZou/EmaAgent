@@ -120,6 +120,26 @@ describe.skipIf(!HAS_GIT)('gitWorkspaceDiff(真实临时仓库)', () => {
     expect(result.staged.totalAdditions).toBe(1);
   });
 
+  it('单个文件差异超出上限时返回整页超限状态', async () => {
+    const file = path.join(root, 'large-file.txt');
+    await fs.writeFile(file, `${'x'.repeat(100)}\n`.repeat(2_100));
+    try {
+      expect(await gitWorkspaceDiff(root)).toEqual({ capability: 'diff-too-large' });
+    } finally {
+      await fs.rm(file);
+    }
+  });
+
+  it('Git 原始输出超出缓冲区时返回整页超限状态', async () => {
+    const file = path.join(root, 'large-output.txt');
+    await fs.writeFile(file, `${'x'.repeat(100)}\n`.repeat(84_000));
+    try {
+      expect(await gitWorkspaceDiff(root)).toEqual({ capability: 'diff-too-large' });
+    } finally {
+      await fs.rm(file);
+    }
+  });
+
   it('干净仓库双 scope 为空且 omittedFiles 为 0', async () => {
     const clean = await fs.mkdtemp(path.join(os.tmpdir(), 'ema-git-diff-clean-'));
     try {

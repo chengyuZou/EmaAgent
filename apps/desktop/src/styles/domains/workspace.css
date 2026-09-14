@@ -1,5 +1,6 @@
 /* 会话侧栏、设置导航和工作区 Dock 共用的拖拽反馈。
-   选中态语言已统一进 primitives/selectable.css 的 .ema-selectable。 */
+   选中态语言已统一进 primitives/selectable.css 的 .ema-selectable;
+   chat 域控件皮肤统一走 uno shortcut(chat-bar-btn/chat-icon-btn/chat-row-action/chat-btn)。 */
 
 .ema-resize-handle {
   position: absolute;
@@ -25,25 +26,26 @@
 }
 .ema-resize-handle-h:hover { background: var(--ema-primary); }
 
-/* 右侧面板 tab 条:变宽可关 tab,下划线指示器逐 tab 生长(scaleX 0→1)。
-   等宽滑块(ema-tab-slider)按索引 calc 定位,吃不准变宽 tab,故用逐 tab ::after。
-   bottom:-5px = 跨 tab 底与条框底边的 4px 内距+1px 边线,线正好压在条框分隔线上。 */
-.ema-dock-tab { position: relative; }
-.ema-dock-tab::after {
-  content: '';
-  position: absolute;
-  left: 10px;
-  right: 10px;
-  bottom: -5px;
-  height: 2px;
-  border-radius: var(--ema-radius-pill);
-  background: var(--ema-primary);
-  transform: scaleX(0);
-  transition: transform var(--ema-duration-fast) var(--ema-ease);
-  pointer-events: none;
+/* 右侧工作区标签槽:内凹轨道 + 槽内胶囊(替代旧 dock-tab 下划线,替换非并存)。
+   动态变宽可关 tab:激活=抬升胶囊,未激活贴槽底;关闭键由消费方 hover/focus-within 浮现。 */
+.ema-tab-slot {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 12px;
+  border: 1px solid var(--ema-border);
+  background: var(--ema-surface-0);
+  box-shadow: var(--ema-shadow-inset);
 }
-.ema-dock-tab[data-selected='true']::after { transform: scaleX(1); }
-
-@media (prefers-reduced-motion: reduce) {
-  .ema-dock-tab::after { transition: none; }
+.ema-slot-tab {
+  position: relative;
+  border-radius: 9px;
+  transition: background-color var(--ema-duration-fast) var(--ema-ease),
+              color var(--ema-duration-fast) var(--ema-ease);
+}
+.ema-slot-tab[data-selected='true'] {
+  background: var(--ema-surface-3);
+  color: var(--ema-text-primary);
+  box-shadow: var(--ema-shadow-1);
 }

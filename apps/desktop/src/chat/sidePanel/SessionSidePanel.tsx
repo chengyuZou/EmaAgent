@@ -113,35 +113,33 @@ function TabBar({
   }
 
   return (
-    <div className="flex shrink-0 items-center gap-0.5 overflow-x-auto border-b border-[var(--ema-border)] px-1.5 py-1">
-      {tabs.map((tab) => (
-        <div
-          key={tab.id}
-          data-selected={tab.id === activeTabId || undefined}
-          className={`ema-dock-tab group flex max-w-44 shrink-0 cursor-pointer items-center gap-1 rounded-md py-1 pl-2 pr-0.5 transition-colors ${
-            tab.id === activeTabId
-              ? 'text-[var(--ema-primary-text)]'
-              : 'text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-2)]'
-          }`}
-          onClick={() => activateTab(sessionId, tab.id)}
-        >
-          <span className={`${tabIcon(tab)} shrink-0 text-sm`} aria-hidden />
-          <span className="truncate text-xs">
-            <TabLabel sessionId={sessionId} tab={tab} />
-          </span>
-          <IconButton
-            size="sm"
-            label={`关闭${baseLabel(tab)}`}
-            icon="i-lucide:x"
-            className="opacity-0 group-hover:opacity-100"
-            onClick={(event) => {
-              event.stopPropagation();
-              close(tab);
-            }}
-          />
-        </div>
-      ))}
-      <IconButton size="sm" label="新建标签" icon="i-lucide:plus" onClick={onAdd} />
+    <div className="shrink-0 border-b border-[var(--ema-border)] px-1.5 py-1.5">
+      <div className="ema-tab-slot min-w-0 overflow-x-auto">
+        {tabs.map((tab) => (
+          <div
+            key={tab.id}
+            data-selected={tab.id === activeTabId || undefined}
+            className="ema-slot-tab group flex max-w-44 shrink-0 cursor-pointer items-center gap-1 py-1 pl-2 pr-0.5 text-[var(--ema-text-secondary)]"
+            onClick={() => activateTab(sessionId, tab.id)}
+          >
+            <span className={`${tabIcon(tab)} shrink-0 text-sm`} aria-hidden />
+            <span className="truncate text-xs">
+              <TabLabel sessionId={sessionId} tab={tab} />
+            </span>
+            <IconButton
+              size="sm"
+              label={`关闭${baseLabel(tab)}`}
+              icon="i-lucide:x"
+              className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
+              onClick={(event) => {
+                event.stopPropagation();
+                close(tab);
+              }}
+            />
+          </div>
+        ))}
+        <IconButton size="sm" label="新建标签" icon="i-lucide:plus" onClick={onAdd} />
+      </div>
     </div>
   );
 }
@@ -170,12 +168,12 @@ function Launcher({
   }, [onClose]);
 
   const menu = (
-    <div className="flex w-44 flex-col gap-0.5 rounded-xl border border-[var(--ema-border-hover)] bg-[var(--ema-surface-4)] p-1.5 shadow-[var(--ema-shadow-3)]">
+    <div className="flex w-52 flex-col gap-0.5 rounded-xl border border-[var(--ema-border-hover)] bg-[var(--ema-surface-4)] p-1.5 shadow-[var(--ema-shadow-3)]">
       {LAUNCHER_TABS.map((tab) => (
         <Button
           key={tab.id}
           variant="ghost"
-          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-normal"
+          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-xs text-[var(--ema-text-secondary)] hover:bg-[var(--ema-primary-muted)] hover:text-[var(--ema-primary-text)]"
           onClick={() => {
             openTab(sessionId, tab);
             onClose?.();
@@ -192,7 +190,7 @@ function Launcher({
       <Button
         variant="ghost"
         disabled={openingTerminal || !cwd}
-        className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-normal"
+        className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-xs text-[var(--ema-text-secondary)] hover:bg-[var(--ema-primary-muted)] hover:text-[var(--ema-primary-text)]"
         onClick={() => {
           if (!cwd) return;
           const terminalId = nanoid();
@@ -223,7 +221,7 @@ function Launcher({
 
       <Button
         variant="ghost"
-        className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-normal"
+        className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-xs text-[var(--ema-text-secondary)] hover:bg-[var(--ema-primary-muted)] hover:text-[var(--ema-primary-text)]"
         onClick={() => {
           const browserId = nanoid();
           openTab(sessionId, browserTab(browserId));

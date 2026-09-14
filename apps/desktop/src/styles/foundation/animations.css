@@ -25,6 +25,11 @@
   animation: ema-card-in-flat var(--ema-duration-slow) var(--ema-ease) both;
   animation-delay: calc(min(var(--stagger-i, 0), 11) * 40ms);
 }
+/* 高频列表(文件树)轻快滑入:180ms 无 scale + 行延迟 16ms 封顶 12——有呼吸感不拖时间。 */
+.ema-stagger-in-swift {
+  animation: ema-card-in-flat 180ms var(--ema-ease) both;
+  animation-delay: calc(min(var(--stagger-i, 0), 11) * 16ms);
+}
 .ema-chip-in {
   animation: ema-chip-in var(--ema-duration-fast) var(--ema-ease) both;
 }

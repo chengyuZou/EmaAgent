@@ -15,7 +15,7 @@ export interface GitResult {
 export interface RunGitOptions {
   /** 视为成功的额外退出码;git diff --no-index 有差异时以 1 退出,属正常输出。 */
   readonly allowedExitCodes?: readonly number[];
-  /** 单次输出上限,默认 4MB;合并 patch 可能超过默认值,调用方显式抬高。 */
+  /** 单次输出上限,默认 16MiB;工作区 diff 单独限制为 8MiB。 */
   readonly maxOutputBytes?: number;
   /** 额外全局配置(-c key=value),注入到内置安全配置之后、子命令之前。用于 commit 等需要作者/签名配置的写操作。 */
   readonly extraConfig?: readonly string[];
@@ -59,6 +59,10 @@ export function runGit(
         const err = error as NodeJS.ErrnoException & { killed?: boolean };
         if (err.code === 'ENOENT') {
           reject(new GitError('git/unavailable', 'git: executable not found on PATH'));
+          return;
+        }
+        if (err.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER') {
+          reject(new GitError('git/output-too-large', `git ${args.join(' ')}: output exceeded ${options.maxOutputBytes ?? GIT_MAX_OUTPUT_BYTES} bytes`));
           return;
         }
         if (err.killed) {

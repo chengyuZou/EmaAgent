@@ -116,15 +116,15 @@ export function SessionSidebar(): JSX.Element {
       ) : (
         <>
           <div className="px-1.5 py-2 border-b border-[var(--ema-border)]">
-            <div className="flex h-9 w-full items-center gap-2.5 rounded-md pr-1 text-sm text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-2)]">
-              <Button
-                variant="ghost"
-                className="flex min-w-0 flex-1 items-center gap-2.5 px-2 text-left font-normal"
-                onClick={() => useChatWorkspace.getState().openNewSession()}
-              >
-                <span className="i-lucide:square-pen text-base text-[var(--ema-text-tertiary)]" aria-hidden />
-                <span className="truncate">新对话</span>
-              </Button>
+            <div className="flex w-full items-center gap-2">
+            <Button
+              variant="ghost"
+              className="chat-bar-btn"
+              onClick={() => useChatWorkspace.getState().openNewSession()}
+            >
+              <span className="i-lucide:square-pen text-base" aria-hidden />
+              <span className="truncate">新对话</span>
+            </Button>
               <Button
                 variant="ghost"
                 className="flex size-6 shrink-0 items-center justify-center rounded border border-[var(--ema-border)] bg-[var(--ema-surface-3)] p-0"

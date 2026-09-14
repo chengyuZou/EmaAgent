@@ -153,7 +153,7 @@ function DirSubtree({
   return (
     <>
       {node.children.map((child, i) => (
-        <div key={child.path} className="ema-stagger-in" style={{ '--stagger-i': i } as CSSProperties}>
+        <div key={child.path} className="ema-stagger-in-swift" style={{ '--stagger-i': i } as CSSProperties}>
           <FileRow
             entry={child}
             depth={depth}
@@ -353,7 +353,7 @@ function ScopedFilesPanel({
       {/* Search */}
       <div className="px-2 py-1.5 border-b shrink-0 border-[var(--ema-border)]">
         <input
-          className="w-full rounded-md px-2 py-1 text-[11px] outline-none bg-[var(--ema-surface-2)] text-[var(--ema-text-primary)]"
+          className="w-full rounded-md px-2 py-1 text-[11px] outline-none bg-[var(--ema-surface-0)] text-[var(--ema-text-primary)] border border-[var(--ema-border)] shadow-[var(--ema-shadow-inset)] focus:border-[var(--ema-control-border-focus)] focus:shadow-[var(--ema-control-shadow-focus)]"
           placeholder="筛选文件…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}

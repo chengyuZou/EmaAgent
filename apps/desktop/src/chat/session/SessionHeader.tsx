@@ -101,7 +101,7 @@ export function SessionHeader({ sessionId }: { sessionId: string }): JSX.Element
               aria-label="置顶摘要"
               title="置顶摘要"
             >
-              <span className="i-lucide:panel-top text-lg" aria-hidden />
+              <span className="i-lucide:pin text-lg" aria-hidden />
               {runningAgentRunCount > 0 && (
                 <span className="pointer-events-none absolute -right-0.5 -top-0.5 flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-[var(--ema-primary)] px-0.5 text-[9px] font-bold text-[var(--ema-text-primary)]">
                   {runningAgentRunCount}

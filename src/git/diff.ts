@@ -48,6 +48,9 @@ export async function gitWorkspaceDiff(
     ]);
     return { capability: 'ok', repoRoot, staged, unstaged };
   } catch (error) {
+    if (error instanceof GitError && (error.code === 'git/output-too-large' || error.code === 'git/diff-too-large')) {
+      return { capability: 'diff-too-large' };
+    }
     return mapGitError(error, (kind, message): GitSummaryUnavailable | GitSummaryError =>
       kind === 'unavailable'
         ? { capability: 'git-unavailable' }
@@ -68,6 +71,10 @@ async function queryScopeDiff(
     ...(scope === 'staged' ? ['--cached'] : []),
   ];
   const collected = await collectTrackedDiff(repoRoot, diffArgs);
+  if (collected.omittedFiles > 0 || collected.totalChars > GIT_DIFF_MAX_TOTAL_CHARS
+    || collected.files.some((file) => file.truncated)) {
+    throw new GitError('git/diff-too-large', 'Git 工作区差异超出展示上限');
+  }
   const files: GitDiffFile[] = [...collected.files];
   let omittedFiles = collected.omittedFiles;
   let totalChars = collected.totalChars;
@@ -75,13 +82,15 @@ async function queryScopeDiff(
   // 未跟踪文件只属于未暂存维度:ls-files 列清单,逐文件 --no-index 伪 diff。
   if (scope === 'unstaged') {
     const untracked = await listUntrackedFiles(repoRoot, overrides);
-    const selected = untracked.slice(0, GIT_DIFF_MAX_UNTRACKED_FILES);
-    omittedFiles += Math.max(0, untracked.length - selected.length);
-    for (let i = 0; i < selected.length; i += GIT_DIFF_UNTRACKED_CONCURRENCY) {
-      const batch = selected.slice(i, i + GIT_DIFF_UNTRACKED_CONCURRENCY);
-      // 单个文件(超大/权限)失败只计入 omitted,不拖垮整个工作区 diff。
+    if (untracked.length > GIT_DIFF_MAX_UNTRACKED_FILES) {
+      throw new GitError('git/diff-too-large', '未跟踪文件数量超出展示上限');
+    }
+    for (let i = 0; i < untracked.length; i += GIT_DIFF_UNTRACKED_CONCURRENCY) {
+      const batch = untracked.slice(i, i + GIT_DIFF_UNTRACKED_CONCURRENCY);
+      // 单个文件读取失败只计入 omitted;输出超限必须上报为整页超限。
       const patches = await Promise.all(batch.map((file) =>
         diffUntrackedFile(repoRoot, overrides, file).catch((error: unknown) => {
+          if (error instanceof GitError && error.code === 'git/output-too-large') throw error;
           if (error instanceof GitError) return null;
           throw error;
         })));
@@ -91,15 +100,22 @@ async function queryScopeDiff(
           continue;
         }
         if (files.length >= GIT_DIFF_MAX_FILES_PER_SCOPE || totalChars >= GIT_DIFF_MAX_TOTAL_CHARS) {
-          omittedFiles += 1;
-          continue;
+          throw new GitError('git/diff-too-large', 'Git 工作区差异超出展示上限');
         }
         const parsed = parseGitDiffSections(patch)[0];
         if (!parsed) continue;
-        files.push(toDiffFile(repoRoot, parsed, 'added'));
-        totalChars += files[files.length - 1]?.unifiedDiff.length ?? 0;
+        const file = toDiffFile(repoRoot, parsed, 'added');
+        if (file.truncated) {
+          throw new GitError('git/diff-too-large', '单个文件差异超出展示上限');
+        }
+        files.push(file);
+        totalChars += file.unifiedDiff.length;
       }
     }
+  }
+
+  if (totalChars > GIT_DIFF_MAX_TOTAL_CHARS) {
+    throw new GitError('git/diff-too-large', 'Git 工作区差异超出展示上限');
   }
 
   return {

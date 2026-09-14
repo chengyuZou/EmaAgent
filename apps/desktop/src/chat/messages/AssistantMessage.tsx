@@ -54,11 +54,10 @@ function ForkButton({ turnId }: { turnId: string }): JSX.Element | null {
 
   return (
     <IconButton
-      variant="default"
       size="sm"
       icon="i-lucide:git-fork"
       label="从该回复创建新会话"
-      className="-ml-0.5 opacity-30 hover:opacity-80"
+      className="chat-icon-btn"
       onClick={() => void handleFork()}
     />
   );
@@ -367,7 +366,7 @@ function BubbleFooter({
           size="sm"
           label={isPlayingThis ? '停止播放' : '重播语音'}
           icon={isPlayingThis ? 'i-lucide:square' : 'i-lucide:rotate-ccw'}
-          className="opacity-30 hover:opacity-80 -ml-0.5"
+          className="chat-icon-btn -ml-0.5"
           onClick={handleAudioClick}
         />
       )}
@@ -377,7 +376,7 @@ function BubbleFooter({
           size="sm"
           label="复制"
           icon={copied ? 'i-lucide:check' : 'i-lucide:copy'}
-          className="opacity-30 hover:opacity-80"
+          className="chat-icon-btn"
           onClick={() => {
             void navigator.clipboard.writeText(textContent).then(() => {
               setCopied(true);
@@ -387,11 +386,11 @@ function BubbleFooter({
         />
       )}
 
-      {!isStreaming && createdAt !== undefined && (
-        <span className="opacity-50 tabular-nums">{formatTurnTime(createdAt)}</span>
-      )}
-
       {!isStreaming && canFork && turnId && <ForkButton turnId={turnId} />}
+
+      {!isStreaming && createdAt !== undefined && (
+        <span className="ml-auto opacity-50 tabular-nums">{formatTurnTime(createdAt)}</span>
+      )}
     </div>
   );
 }

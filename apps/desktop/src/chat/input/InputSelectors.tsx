@@ -80,12 +80,8 @@ export function ExecutionProfileSelector({
       trigger={(
         <Button
           variant="ghost"
-          className="gap-1 rounded-lg px-2 py-1 text-xs text-[var(--ema-text-secondary)]"
+          className="chat-btn"
         >
-          <span
-            className={`${EXECUTION_PROFILE_ICONS[value]} text-sm`}
-            aria-hidden
-          />
           {EXECUTION_PROFILE_LABELS[value]}
           <span className="i-lucide:chevron-up text-[10px]" aria-hidden />
         </Button>
@@ -117,10 +113,10 @@ export function PermissionModeSelector({
       trigger={(
         <Button
           variant="ghost"
-          className={`gap-1 rounded-lg px-2 py-1 text-xs ${
+          className={`chat-btn ${
             value === 'bypassPermissions'
               ? 'text-[var(--ema-warning)]'
-              : 'text-[var(--ema-text-secondary)]'
+              : ''
           }`}
         >
           <span className="i-lucide:shield-check text-sm" aria-hidden />
@@ -278,10 +274,9 @@ export function ModelPicker({
       trigger={(
         <Button
           variant="ghost"
-          className="min-w-0 gap-1 rounded-lg px-2 py-1 text-xs text-[var(--ema-text-secondary)]"
+          className="chat-btn min-w-0"
           title={label}
         >
-          <span className="i-lucide:box text-sm" aria-hidden />
           <span className="max-w-44 truncate">{label}</span>
           {selection && (
             <span className="text-[var(--ema-text-tertiary)]">
@@ -351,9 +346,8 @@ export function KbButton({
       trigger={(
         <Button
           variant="ghost"
-          className="gap-1 rounded-lg px-2 py-1 text-xs text-[var(--ema-text-secondary)]"
+          className="chat-btn"
         >
-          <span className="i-lucide:library text-sm" aria-hidden />
           {selectedIds.length > 0 ? `${selectedIds.length} 个文件` : 'KB 全部'}
           <span className="i-lucide:chevron-up text-[10px]" aria-hidden />
         </Button>

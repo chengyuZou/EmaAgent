@@ -18,7 +18,6 @@ function reviewFile(file: GitDiffFile, scope: 'staged' | 'unstaged'): ReviewFile
     additions: file.additions,
     deletions: file.deletions,
     unifiedDiff: file.unifiedDiff,
-    truncated: file.truncated,
   };
 }
 
@@ -82,24 +81,36 @@ export function ReviewPanel({ sessionId }: { sessionId: string }): JSX.Element {
           </>
         )}
         <span className="flex-1" />
-        <Input
-          inputSize="sm"
-          value={filter}
-          onChange={(event) => setFilter(event.target.value)}
-          placeholder="筛选文件…"
-          className="w-36"
-          aria-label="按路径筛选文件"
-        />
+        {result?.capability !== 'diff-too-large' && (
+          <Input
+            inputSize="sm"
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
+            placeholder="筛选文件…"
+            className="w-36"
+            aria-label="按路径筛选文件"
+          />
+        )}
         <IconButton size="sm" label="刷新 Git 差异" icon="i-lucide:refresh-cw" onClick={() => setRefresh((value) => value + 1)} />
-        <IconButton size="sm" label="分列差异" icon="i-lucide:columns-2" toggled={split} onClick={() => setSplit((value) => !value)} />
+        {result?.capability !== 'diff-too-large' && (
+          <IconButton size="sm" label="分列差异" icon="i-lucide:columns-2" toggled={split} onClick={() => setSplit((value) => !value)} />
+        )}
       </div>
 
       {loading ? (
         <div className="flex flex-1 items-center justify-center"><Spinner size="md" label="正在读取 Git 差异" /></div>
+      ) : result?.capability === 'diff-too-large' ? (
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
+          <span className="i-lucide:file-warning text-3xl text-[var(--ema-text-tertiary)]" aria-hidden />
+          <h2 className="text-sm font-medium text-[var(--ema-text-primary)]">差异过大，暂不展示</h2>
+          <p className="max-w-sm text-xs text-[var(--ema-text-secondary)]">
+            为保持应用流畅，此处不加载过大的 Git 差异。缩小工作区变更范围后可以刷新重试。
+          </p>
+        </div>
       ) : statusMessage ? (
         <div className="flex flex-1 items-center justify-center px-4 text-center text-xs text-[var(--ema-text-tertiary)]">{statusMessage}</div>
       ) : fileCount === 0 && omittedCount > 0 ? (
-        <div className="flex flex-1 items-center justify-center text-xs text-[var(--ema-text-tertiary)]">差异超出本次读取上限，请缩小工作区变更范围后刷新</div>
+        <div className="flex flex-1 items-center justify-center text-xs text-[var(--ema-text-tertiary)]">有 {omittedCount} 个文件未能读取</div>
       ) : fileCount === 0 ? (
         <div className="flex flex-1 items-center justify-center text-xs text-[var(--ema-text-tertiary)]">工作区没有文件变更</div>
       ) : staged.length + unstaged.length === 0 ? (
@@ -128,7 +139,7 @@ export function ReviewPanel({ sessionId }: { sessionId: string }): JSX.Element {
               </div>
               {section.omitted > 0 && (
                 <p className="px-1 py-2 text-[11px] text-[var(--ema-text-tertiary)]">
-                  还有 {section.omitted} 个文件未包含在本次差异中
+                  {section.omitted} 个文件未能读取
                 </p>
               )}
             </section>

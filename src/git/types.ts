@@ -67,7 +67,7 @@ export interface GitScopeDiff {
   readonly files: readonly GitDiffFile[];
   readonly totalAdditions: number;
   readonly totalDeletions: number;
-  /** 总量或文件数触顶而未包含的文件数;0 表示完整。 */
+  /** 未包含的文件数:比较查询触顶,或工作区中单个未跟踪文件读取失败。 */
   readonly omittedFiles: number;
 }
 
@@ -80,8 +80,14 @@ export interface GitDiffOk {
   readonly unstaged: GitScopeDiff;
 }
 
+export interface GitDiffTooLarge {
+  /** 原始 Git 输出、单文件补丁、文件数或总体积超出审阅页展示上限。 */
+  readonly capability: 'diff-too-large';
+}
+
 export type GitWorkspaceDiffResult =
   | GitDiffOk
+  | GitDiffTooLarge
   | GitSummaryNotARepo
   | GitSummaryUnavailable
   | GitSummaryError;

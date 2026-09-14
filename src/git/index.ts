@@ -14,6 +14,7 @@ export type {
   GitCompareResult,
   GitRefsResult,
   GitDiffOk,
+  GitDiffTooLarge,
   GitScopeDiff,
   GitDiffFile,
   GitFileStatus,

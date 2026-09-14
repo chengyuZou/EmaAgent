@@ -1,6 +1,8 @@
 export type GitErrorCode =
   | 'git/unavailable'
   | 'git/timeout'
+  | 'git/output-too-large'
+  | 'git/diff-too-large'
   | 'git/command-failed';
 
 export class GitError extends Error {

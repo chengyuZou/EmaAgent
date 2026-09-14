@@ -189,21 +189,19 @@ export function UserMessage({ message, canEdit = false }: UserMessageProps): JSX
           <span className="opacity-50 tabular-nums">{formatTurnTime(message.createdAt)}</span>
           {content.trim().length > 0 && !editing && (
             <IconButton
-              variant="default"
               size="sm"
               icon={copied ? 'i-lucide:check' : 'i-lucide:copy'}
               label="复制"
-              className="opacity-30 hover:opacity-80"
+              className="chat-icon-btn"
               onClick={copyContent}
             />
           )}
           {showEdit && (
             <IconButton
-              variant="default"
               size="sm"
               icon="i-lucide:pencil"
               label="重写最后一轮（不撤销已执行操作）"
-              className="opacity-30 hover:opacity-80"
+              className="chat-icon-btn"
               onClick={startEdit}
             />
           )}

@@ -5,6 +5,7 @@ import {
   ConfirmDialog,
   Dialog,
   DropdownMenu,
+  IconButton,
   Input,
   type MenuItem,
 } from '@ema-agent/ui';
@@ -330,36 +331,30 @@ function ProjectRow({
           aria-expanded={!collapsed}
         >
           <span
-            className="i-lucide:folder text-base text-[var(--ema-text-tertiary)]"
+            className={`text-base text-[var(--ema-text-tertiary)] ${
+              collapsed ? 'i-lucide:folder' : 'i-lucide:folder-open'
+            }`}
             aria-hidden
           />
           <span className="min-w-0 flex-1 truncate text-left">
             {project.name}
           </span>
-          <span
-            className={`i-lucide:chevron-down text-xs transition-transform ${
-              collapsed ? '-rotate-90' : ''
-            } opacity-0 group-hover:opacity-100 group-focus-within:opacity-100`}
-            aria-hidden
-          />
         </button>
-        <button
-          type="button"
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded p-0 text-[var(--ema-text-tertiary)] hover:bg-[var(--ema-surface-3)] hover:text-[var(--ema-primary)] focus:outline-none"
-          aria-label={`在 ${project.name} 中新建对话`}
+        <IconButton
+          size="sm"
+          className="chat-row-action"
+          icon="i-lucide:plus-circle"
+          label={`在 ${project.name} 中新建对话`}
           onClick={() => useChatWorkspace.getState().openNewSession(project.id)}
-        >
-          <span className="i-lucide:plus-circle text-sm" aria-hidden />
-        </button>
+        />
         <DropdownMenu
           trigger={
-            <button
-              type="button"
-              className="flex h-6 w-6 shrink-0 items-center justify-center rounded p-0 text-[var(--ema-text-tertiary)] hover:bg-[var(--ema-surface-3)] focus:outline-none"
-              aria-label={`${project.name} 项目菜单`}
-            >
-              <span className="i-solar:menu-dots-bold-duotone text-xs" aria-hidden />
-            </button>
+            <IconButton
+              size="sm"
+              className="chat-row-action"
+              icon="i-lucide:more-horizontal"
+              label={`${project.name} 项目菜单`}
+            />
           }
           items={menuItems}
           side="right"
@@ -581,15 +576,29 @@ export function SectionButton({
         />
       </button>
       {onAdd && (
-        <button
-          type="button"
-          className="mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--ema-text-tertiary)] opacity-0 transition-opacity hover:text-[var(--ema-text-primary)] focus:outline-none group-hover:opacity-100 group-focus-within:opacity-100"
-          aria-label="新建项目"
-          title="新建项目"
-          onClick={onAdd}
-        >
-          <span className="i-lucide:plus text-sm" aria-hidden />
-        </button>
+        <>
+          <DropdownMenu
+            trigger={
+              <IconButton
+                size="sm"
+                className="chat-row-action mr-0.5"
+                icon="i-lucide:more-horizontal"
+                label="项目分区操作"
+              />
+            }
+            items={[{ kind: 'item', label: '新建项目', icon: 'i-lucide:plus', onSelect: onAdd }]}
+            side="right"
+            align="start"
+            widthClass="min-w-40"
+          />
+          <IconButton
+            size="sm"
+            className="chat-row-action mr-1"
+            icon="i-lucide:plus"
+            label="新建项目"
+            onClick={onAdd}
+          />
+        </>
       )}
     </div>
   );

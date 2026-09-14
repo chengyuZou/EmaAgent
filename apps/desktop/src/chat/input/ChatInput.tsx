@@ -659,10 +659,9 @@ export function ChatInput(): JSX.Element {
               trigger={(
                 <IconButton
                   size="sm"
-                  variant="default"
                   icon="i-lucide:plus"
                   label="添加内容"
-                  className="rounded-full"
+                  className="chat-icon-btn"
                 />
               )}
             />
@@ -673,10 +672,10 @@ export function ChatInput(): JSX.Element {
             />
             <IconButton
               size="sm"
-              variant={ttsEnabled ? 'primary' : 'default'}
               icon={ttsEnabled ? 'i-lucide:volume-2' : 'i-lucide:volume-x'}
               label="切换 TTS"
               toggled={ttsEnabled}
+              className="chat-icon-btn"
               onClick={() => useUiStore.getState().setTtsEnabled(!ttsEnabled)}
             />
             <PermissionModeSelector
@@ -728,6 +727,7 @@ export function ChatInput(): JSX.Element {
               variant={recording ? 'danger' : 'default'}
               icon={recording ? 'i-lucide:square' : 'i-lucide:mic'}
               label={recording ? '停止录音' : '语音输入'}
+              className={recording ? undefined : 'chat-icon-btn'}
               onClick={() => void toggleRecording()}
             />
             {executing && !hasInput ? (
@@ -742,7 +742,7 @@ export function ChatInput(): JSX.Element {
               />
             ) : (
               <IconButton
-                size="sm"
+                size="md"
                 variant="primary"
                 icon="i-lucide:arrow-up"
                 label={executing ? '加入队列' : '发送'}

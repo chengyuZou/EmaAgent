@@ -212,7 +212,7 @@ function HistoryRowRenderer({
   if (single?.kind === 'summary') {
     return <CompactDivider message={single} />;
   }
-  if (single?.role === 'user') {
+  if (single?.role === 'user' && single.kind === 'normal') {
     return <UserMessage message={single} canEdit={canEdit} />;
   }
   if (group.messages.some((message) => message.role === 'assistant')) {

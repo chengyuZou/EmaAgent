@@ -41,6 +41,8 @@
   --ema-shadow-danger:  0 0 0 3px oklch(0.62 0.22 25  / 0.28);
   /* Soft shadow(负 spread 收拢不发散,浮层/卡片 hover 用)*/
   --ema-shadow-soft: 0 8px 32px -12px rgba(0, 0, 0, 0.18);
+  /* 内凹槽(标签槽/筛选框的 recessed 轨道) */
+  --ema-shadow-inset: inset 0 1px 3px rgba(0, 0, 0, 0.18);
   /* Primary glow(FAB/发送按钮 hover 主题色发光)*/
   --ema-shadow-primary-glow: 0 8px 24px -4px oklch(0.72 0.18 var(--chromatic-hue, 200) / 0.40);
   /* 签名 CTA 柔影(发送钮等实心主色按钮常驻,同色系负 spread 收拢;hover 提亮抬影不缩放) */
@@ -205,6 +207,7 @@
   --ema-shadow-focus:   0 0 0 3px oklch(0.65 0.18 var(--chromatic-hue, 200) / 0.25);
   --ema-shadow-danger:  0 0 0 3px oklch(0.55 0.20 25  / 0.25);
   --ema-shadow-soft: 0 8px 32px -12px rgba(0, 0, 0, 0.12);
+  --ema-shadow-inset: inset 0 1px 3px rgba(0, 0, 0, 0.08);
 
   /* Semantic: 翻 text & muted 背景可读 */
   --ema-primary-text: oklch(0.25 0.14 var(--chromatic-hue, 200));
