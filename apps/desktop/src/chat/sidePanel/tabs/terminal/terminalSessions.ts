@@ -26,7 +26,7 @@ const entries = new Map<string, TerminalEntry>();
 export interface StartTerminalInput {
   readonly terminalId: string;
   readonly sessionId: string;
-  readonly cwd?: string;
+  readonly cwd: string;
 }
 
 export async function startTerminal(input: StartTerminalInput): Promise<void> {
@@ -73,7 +73,7 @@ export async function startTerminal(input: StartTerminalInput): Promise<void> {
     await tauriBridge.openTerminal({
       terminalId: input.terminalId,
       sessionId: input.sessionId,
-      ...(input.cwd ? { cwd: input.cwd } : {}),
+      cwd: input.cwd,
       ...(shell ? { shell: { kind: shell.kind, path: shell.path } } : {}),
       columns: entry.columns,
       rows: entry.rows,

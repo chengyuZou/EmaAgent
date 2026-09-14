@@ -1,37 +1,22 @@
-import { useState, type JSX } from 'react';
+import type { JSX } from 'react';
 import { Group, Panel, Separator } from 'react-resizable-panels';
-import { Button } from '@ema-agent/ui';
 import { useServerStore } from '../../stores/server.js';
-import { useSessionStore } from '../../stores/session.js';
 import { ChatInput } from '../input/ChatInput.js';
 import { SessionHistory } from '../history/SessionHistory.js';
 import { ChatActivityStrip } from '../messages/toolBlocks/ChatActivityStrip.js';
 import { SessionHeader } from './SessionHeader.js';
 import { SessionSidePanel } from '../sidePanel/SessionSidePanel.js';
-import {
-  isSessionSidePanelFullWidth,
-  useSessionSidePanel,
-} from '../state/chatWorkspace.js';
+import { useSessionSidePanel } from '../state/chatWorkspace.js';
 
 export function SessionPage({ sessionId }: { sessionId: string }): JSX.Element {
-  const session = useSessionStore(state => state.sessions.byId.get(sessionId));
   const serverStatus = useServerStore(state => state.status);
   const layout = useSessionSidePanel((state) => state.layouts[sessionId]);
-  const fullWidth = useSessionSidePanel((state) => (
-    isSessionSidePanelFullWidth(state, sessionId)
-  ));
   const rightPanelPercent = useSessionSidePanel((state) => state.rightPanelPercent);
   const setRightPanelPercent = useSessionSidePanel((state) => state.setRightPanelPercent);
-  const setFullWidth = useSessionSidePanel((state) => state.setFullWidth);
-  const [floatingHistoryOpen, setFloatingHistoryOpen] = useState(false);
 
   return (
-    <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-      <SessionHeader
-        sessionId={sessionId}
-        title={session?.title ?? '加载中…'}
-        isFork={session?.forkedFromSessionId != null}
-      />
+    <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <SessionHeader sessionId={sessionId} />
       {serverStatus.kind === 'error' && (
         <div
           role="status"
@@ -45,75 +30,41 @@ export function SessionPage({ sessionId }: { sessionId: string }): JSX.Element {
         </div>
       )}
       <Group
-        key={`${sessionId}:${fullWidth}:${layout?.open ?? false}`}
+        key={`${sessionId}:${layout?.open ?? false}`}
         orientation="horizontal"
         className="min-h-0 min-w-0 flex-1"
-        defaultLayout={fullWidth || !layout?.open ? { chat: 100 } : { chat: 100 - rightPanelPercent, workspace: rightPanelPercent }}
+        defaultLayout={!layout?.open ? { chat: 100 } : { chat: 100 - rightPanelPercent, workspace: rightPanelPercent }}
         onLayoutChanged={(sizes, detail) => {
           if (detail.isUserInteraction && sizes.workspace !== undefined) setRightPanelPercent(sizes.workspace);
         }}
       >
-        {!fullWidth && (
-          <Panel
-            id="chat"
-            minSize="30%"
-            defaultSize={`${100 - rightPanelPercent}%`}
-            className="flex min-w-0 flex-col"
-          >
-            <SessionHistory sessionId={sessionId} />
-            <ChatActivityStrip />
-            <ChatInput />
-            <StatusBar sessionId={sessionId} />
-          </Panel>
-        )}
+        <Panel
+          id="chat"
+          minSize="30%"
+          defaultSize={`${100 - rightPanelPercent}%`}
+          className="flex min-w-0 flex-col"
+        >
+          <SessionHistory sessionId={sessionId} />
+          <ChatActivityStrip />
+          <ChatInput />
+          <StatusBar sessionId={sessionId} />
+        </Panel>
 
-        {!fullWidth && layout?.open && (
+        {layout?.open && (
           <Separator className="w-1 cursor-col-resize bg-[var(--ema-border)] hover:bg-[var(--ema-primary)]" />
         )}
 
-        {(fullWidth || layout?.open) && (
+        {layout?.open && (
           <Panel
             id="workspace"
-            minSize={fullWidth ? '100%' : '20%'}
-            defaultSize={fullWidth ? '100%' : `${rightPanelPercent}%`}
+            minSize="20%"
+            defaultSize={`${rightPanelPercent}%`}
             className="min-w-0"
           >
-            <SessionSidePanel
-              sessionId={sessionId}
-              fullWidth={fullWidth}
-              {...(!fullWidth && (layout?.tabOrder.length ?? 0) > 0
-                ? { onExpand: () => setFullWidth(sessionId, true) }
-                : {})}
-            />
+            <SessionSidePanel sessionId={sessionId} />
           </Panel>
         )}
       </Group>
-
-      {fullWidth && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center">
-          <div className="pointer-events-auto flex w-[min(720px,92%)] flex-col gap-1.5 pb-3">
-            {floatingHistoryOpen && (
-              <div className="flex h-[50vh] flex-col overflow-hidden rounded-2xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] shadow-[var(--ema-shadow-3)] ema-fade-in">
-                <SessionHistory sessionId={sessionId} />
-              </div>
-            )}
-            <Button
-              variant="ghost"
-              className="flex size-6 items-center justify-center self-center rounded-full border border-[var(--ema-border)] bg-[var(--ema-surface-3)] p-0 shadow-[var(--ema-shadow-1)]"
-              onClick={() => setFloatingHistoryOpen((value) => !value)}
-              title={floatingHistoryOpen ? '合上聊天' : '展开聊天'}
-            >
-              <span
-                className={`${floatingHistoryOpen
-                  ? 'i-lucide:chevron-down'
-                  : 'i-lucide:chevron-up'} text-xs`}
-                aria-hidden
-              />
-            </Button>
-            <ChatInput />
-          </div>
-        </div>
-      )}
     </main>
   );
 }

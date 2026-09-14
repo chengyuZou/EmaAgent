@@ -1,37 +1,11 @@
 // 按 Session 与项目源文件夹隔离文件树与目录请求；无项目时浏览会话 cwd。
 import { useState, useCallback, useEffect, useRef, type JSX, type CSSProperties } from 'react';
-import { ScrollArea } from '@ema-agent/ui';
+import { DropdownMenu, ScrollArea, type MenuItem } from '@ema-agent/ui';
+import { ServerApiError } from '../../../../api/client.js';
 import { filesApi, type FileEntry } from '../../../../api/workspaces.js';
 import { useChatWorkspace } from '../../../state/chatWorkspace.js';
 import { useSessionStore } from '../../../../stores/session.js';
 import { fileTab, useSessionSidePanel } from '../../../state/chatWorkspace.js';
-
-// ── 目录请求代际门：过期响应不得覆盖新作用域的树 ────────────────────────────────
-
-interface DirectoryRequestToken {
-  path: string;
-  generation: number;
-}
-
-class DirectoryRequestGate {
-  private readonly generations = new Map<string, number>();
-  private active = true;
-
-  begin(path: string): DirectoryRequestToken {
-    const generation = (this.generations.get(path) ?? 0) + 1;
-    this.generations.set(path, generation);
-    return { path, generation };
-  }
-
-  isCurrent(token: DirectoryRequestToken): boolean {
-    return this.active && this.generations.get(token.path) === token.generation;
-  }
-
-  dispose(): void {
-    this.active = false;
-    this.generations.clear();
-  }
-}
 
 function workspaceBrowserScopeKey(
   sessionId: string,
@@ -74,10 +48,18 @@ function folderName(path: string): string {
 // ── Tree node ─────────────────────────────────────────────────────────────────
 
 interface DirNode {
-  path:     string;
   children: FileEntry[] | null; // null = not loaded yet
   loading:  boolean;
-  error:    boolean;
+  error:    string | null;
+}
+
+function directoryError(cause: unknown): string {
+  if (cause instanceof ServerApiError) {
+    if (cause.code === 'path_not_found') return '目录不存在';
+    if (cause.code === 'access_denied') return '没有读取权限';
+    if (cause.code === 'not_a_directory') return '所选路径不是目录';
+  }
+  return cause instanceof Error ? cause.message : '读取失败';
 }
 
 function FileRow({
@@ -158,6 +140,14 @@ function DirSubtree({
   onSelectFile: (path: string) => void;
 }): JSX.Element | null {
   const node = dirNodes.get(dirPath);
+  if (node?.error) {
+    return (
+      <div className="flex items-center gap-2 px-3 py-1 text-[10px] text-[var(--ema-danger)]" style={{ paddingLeft: 8 + depth * 14 }}>
+        <span>{node.error}</span>
+        <button type="button" className="underline" onClick={() => onToggle(dirPath)}>重试</button>
+      </div>
+    );
+  }
   if (!node?.children) return null;
 
   return (
@@ -172,7 +162,7 @@ function DirSubtree({
             onToggle={onToggle}
             onSelectFile={onSelectFile}
           />
-          {child.type === 'dir' && dirNodes.get(child.path)?.children != null && (
+          {child.type === 'dir' && (dirNodes.get(child.path)?.children != null || dirNodes.get(child.path)?.error) && (
             <DirSubtree
               dirPath={child.path}
               depth={depth + 1}
@@ -184,11 +174,6 @@ function DirSubtree({
           )}
         </div>
       ))}
-      {node.error && (
-        <div className="px-3 py-0.5 text-[10px] text-[var(--ema-danger)]" style={{ paddingLeft: 8 + depth * 14 }}>
-          读取失败
-        </div>
-      )}
     </>
   );
 }
@@ -197,6 +182,7 @@ function DirSubtree({
 
 export function FilesPanel(): JSX.Element {
   const sessionId  = useChatWorkspace((s) => s.viewedSessionId);
+  const loading = useSessionStore((s) => s.loading);
   const session    = useSessionStore((s) =>
     sessionId ? s.sessions.byId.get(sessionId) : undefined,
   );
@@ -205,11 +191,19 @@ export function FilesPanel(): JSX.Element {
     return [...state.sessions.pinnedProjects, ...state.sessions.projects]
       .find((item) => item.id === session.projectId);
   });
-  const roots = session?.projectId
-    ? project?.folders.map(folder => folder.path) ?? []
+  if (session?.projectId && !project) {
+    return (
+      <div className="flex items-center justify-center px-4 py-10 text-xs text-[var(--ema-text-tertiary)]">
+        {loading ? '正在读取项目…' : '项目不可用'}
+      </div>
+    );
+  }
+  const projectFolders = project?.folders ?? [];
+  const roots = projectFolders.length > 0
+    ? projectFolders.map(folder => folder.path)
     : session ? [session.cwd] : [];
-  const primaryRoot = session?.projectId
-    ? project?.folders.find(folder => folder.isPrimary)?.path ?? roots[0] ?? null
+  const primaryRoot = projectFolders.length > 0
+    ? projectFolders.find(folder => folder.isPrimary)?.path ?? roots[0] ?? null
     : session?.cwd ?? null;
 
   if (!sessionId || roots.length === 0 || !primaryRoot) {
@@ -217,7 +211,7 @@ export function FilesPanel(): JSX.Element {
       <div className="flex flex-col items-center justify-center gap-3 py-10 px-4 ema-fade-in">
         <span className="i-lucide:folder-x text-3xl opacity-20 text-[var(--ema-primary)]" aria-hidden />
         <p className="text-xs text-center text-[var(--ema-text-tertiary)]">
-          {session?.projectId ? '项目暂无源文件夹' : '尚未打开会话'}
+          尚未打开会话
         </p>
       </div>
     );
@@ -227,6 +221,7 @@ export function FilesPanel(): JSX.Element {
   return (
     <ScopedFilesPanel
       key={scopeKey}
+      projectName={project?.name ?? null}
       roots={roots}
       primaryRoot={primaryRoot}
     />
@@ -234,18 +229,18 @@ export function FilesPanel(): JSX.Element {
 }
 
 function ScopedFilesPanel({
+  projectName,
   roots,
   primaryRoot,
 }: {
+  projectName: string | null;
   roots: readonly string[];
   primaryRoot: string;
 }): JSX.Element {
   const [root, setRoot] = useState(primaryRoot);
   const [search,       setSearch]       = useState('');
   const [dirNodes,     setDirNodes]     = useState<Map<string, DirNode>>(new Map);
-  const requestGateRef = useRef<DirectoryRequestGate | null>(null);
-  const requestGate = requestGateRef.current ?? new DirectoryRequestGate();
-  requestGateRef.current = requestGate;
+  const requestGenerations = useRef(new Map<string, number>());
 
   // 点击文件在工作区 Dock 中以 file:<path> 标签打开（同一路径复用同一标签）。
   const sessionId = useChatWorkspace((s) => s.viewedSessionId);
@@ -256,34 +251,44 @@ function ScopedFilesPanel({
   }, [sessionId, openTab]);
 
   const filter = search.trim().toLowerCase();
+  const folderItems: MenuItem[] = roots.map(path => ({
+    kind: 'item',
+    label: roots.some(other => other !== path && folderName(other) === folderName(path))
+      ? path
+      : folderName(path),
+    icon: path === root ? 'i-lucide:check' : 'i-lucide:folder',
+    onSelect: () => {
+      setRoot(path);
+      setSearch('');
+    },
+  }));
 
   const loadDir = useCallback(async (dirPath: string): Promise<void> => {
-    const token = requestGate.begin(dirPath);
+    const generation = (requestGenerations.current.get(dirPath) ?? 0) + 1;
+    requestGenerations.current.set(dirPath, generation);
     setDirNodes((prev) => {
       const next = new Map(prev);
       const existing = next.get(dirPath);
-      next.set(dirPath, { path: dirPath, children: existing?.children ?? null, loading: true, error: false });
+      next.set(dirPath, { children: existing?.children ?? null, loading: true, error: null });
       return next;
     });
     try {
       const { entries } = await filesApi.ls(dirPath);
-      if (!requestGate.isCurrent(token)) return;
+      if (requestGenerations.current.get(dirPath) !== generation) return;
       setDirNodes((prev) => {
         const next = new Map(prev);
-        next.set(dirPath, { path: dirPath, children: entries, loading: false, error: false });
+        next.set(dirPath, { children: entries, loading: false, error: null });
         return next;
       });
-    } catch {
-      if (!requestGate.isCurrent(token)) return;
+    } catch (cause) {
+      if (requestGenerations.current.get(dirPath) !== generation) return;
       setDirNodes((prev) => {
         const next = new Map(prev);
-        next.set(dirPath, { path: dirPath, children: null, loading: false, error: true });
+        next.set(dirPath, { children: null, loading: false, error: directoryError(cause) });
         return next;
       });
     }
-  }, [requestGate]);
-
-  useEffect(() => () => requestGate.dispose(), [requestGate]);
+  }, []);
 
   const toggleDir = useCallback((dirPath: string): void => {
     setDirNodes((prev) => {
@@ -308,22 +313,33 @@ function ScopedFilesPanel({
 
   return (
     <div className="flex flex-col h-full ema-fade-in">
-      <div className="shrink-0 border-b border-[var(--ema-border)] px-2 py-1.5">
+      <div className="shrink-0 space-y-1.5 border-b border-[var(--ema-border)] px-2 py-1.5">
+        <div
+          className="flex min-w-0 items-center gap-2 rounded-md border border-[var(--ema-border)] bg-[var(--ema-surface-2)] px-2 py-1 text-xs text-[var(--ema-text-primary)]"
+          title={projectName ?? root}
+        >
+          <span className="i-lucide:folder shrink-0 text-sm" aria-hidden />
+          <span className="truncate">{projectName ?? '执行目录'}</span>
+        </div>
         {roots.length > 1 ? (
-          <select
-            aria-label="选择项目源文件夹"
-            className="w-full rounded-md border border-[var(--ema-border)] bg-[var(--ema-surface-2)] px-2 py-1 text-xs text-[var(--ema-text-primary)] outline-none focus:border-[var(--ema-primary)]"
-            value={root}
-            onChange={event => setRoot(event.target.value)}
-          >
-            {roots.map(path => (
-              <option key={path} value={path}>
-                {roots.some(other => other !== path && folderName(other) === folderName(path))
-                  ? path
-                  : folderName(path)}
-              </option>
-            ))}
-          </select>
+          <DropdownMenu
+            side="bottom"
+            align="start"
+            widthClass="min-w-48 max-w-72"
+            items={folderItems}
+            trigger={(
+              <button
+                type="button"
+                className="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left text-xs text-[var(--ema-text-secondary)] transition-colors hover:bg-[var(--ema-surface-2)] hover:text-[var(--ema-text-primary)]"
+                title={root}
+                aria-label="选择项目源文件夹"
+              >
+                <span className="i-lucide:folder shrink-0 text-sm" aria-hidden />
+                <span className="min-w-0 flex-1 truncate">{folderName(root)}</span>
+                <span className="i-lucide:chevron-down shrink-0 text-xs" aria-hidden />
+              </button>
+            )}
+          />
         ) : (
           <div
             className="flex items-center gap-2 truncate px-1 text-xs text-[var(--ema-text-secondary)]"

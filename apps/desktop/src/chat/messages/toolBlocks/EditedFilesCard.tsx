@@ -1,9 +1,6 @@
-// 变更汇总卡：已编辑 N 个文件 + 增删计数 + 分页清单 + 审核入口；无真实撤销能力不渲染。
+// 变更汇总卡：已编辑 N 个文件 + 增删计数 + 分页清单；无真实撤销能力不渲染。
 import { useState, type JSX } from 'react';
-import { Button } from '@ema-agent/ui';
 
-import { useChatWorkspace } from '../../state/chatWorkspace.js';
-import { useSessionSidePanel } from '../../state/chatWorkspace.js';
 import type { EditedFileEntry } from './workGroups.js';
 
 const PAGE_SIZE = 5;
@@ -16,8 +13,6 @@ export function EditedFilesCard({
   deletions: number;
 }): JSX.Element {
   const [visible, setVisible] = useState(PAGE_SIZE);
-  const sessionId = useChatWorkspace((s) => s.viewedSessionId);
-  const openTab = useSessionSidePanel((state) => state.openTab);
 
   return (
     <div className="overflow-hidden rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)]">
@@ -28,17 +23,6 @@ export function EditedFilesCard({
         </span>
         <span className="text-[11px] text-[var(--ema-success-text)]">+{additions}</span>
         <span className="text-[11px] text-[var(--ema-danger-text)]">-{deletions}</span>
-        <span className="flex-1" />
-        <Button
-          variant="ghost"
-          size="sm"
-          className="px-2 py-0.5 text-[11px] text-[var(--ema-text-tertiary)]"
-          onClick={() => {
-            if (sessionId) openTab(sessionId, { id: 'review', kind: 'review' });
-          }}
-        >
-          审核
-        </Button>
       </div>
       <div className="border-t border-[var(--ema-border)]">
         {files.slice(0, visible).map((file) => (

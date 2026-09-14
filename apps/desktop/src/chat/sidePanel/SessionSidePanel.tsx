@@ -4,7 +4,6 @@ import { nanoid } from 'nanoid';
 import { Button, IconButton } from '@ema-agent/ui';
 import { useSessionAttachmentStore } from '../../stores/sessionAttachment.js';
 import { useSessionStore } from '../../stores/session.js';
-import { tauriBridge } from '../../lib/tauri-bridge.js';
 import {
   browserTab,
   terminalTab,
@@ -26,6 +25,8 @@ import { closeTerminalSession, startTerminal } from './tabs/terminal/terminalSes
 const LAUNCHER_TABS: readonly SessionSidePanelTab[] = [
   { id: 'review', kind: 'review' },
   { id: 'files', kind: 'files' },
+  { id: 'subagents', kind: 'subagents' },
+  { id: 'sources', kind: 'sources' },
 ];
 
 function tabIcon(tab: SessionSidePanelTab): string {
@@ -63,7 +64,7 @@ function baseLabel(tab: SessionSidePanelTab): string {
     case 'source':
       return '附件';
     case 'sources':
-      return '来源';
+      return '附件';
     case 'tasks':
       return '任务';
     case 'subagents':
@@ -71,7 +72,7 @@ function baseLabel(tab: SessionSidePanelTab): string {
     case 'terminal':
       return '终端';
     case 'browser':
-      return tab.title?.trim() || tab.url;
+      return tab.title?.trim() || tab.url || '新标签页';
     case 'processes':
       return '后台进程';
   }
@@ -97,20 +98,17 @@ function TabBar({
   tabs,
   activeTabId,
   onAdd,
-  onExpand,
 }: {
   sessionId: string;
   tabs: readonly SessionSidePanelTab[];
   activeTabId?: string;
   onAdd(): void;
-  onExpand?: () => void;
 }): JSX.Element {
   const closeTab = useSessionSidePanel((state) => state.closeTab);
   const activateTab = useSessionSidePanel((state) => state.activateTab);
 
   function close(tab: SessionSidePanelTab): void {
     if (tab.kind === 'terminal') void closeTerminalSession(tab.terminalId).catch(() => {});
-    if (tab.kind === 'browser') void tauriBridge.closeBrowser(tab.browserId).catch(() => {});
     closeTab(sessionId, tab.id);
   }
 
@@ -119,9 +117,10 @@ function TabBar({
       {tabs.map((tab) => (
         <div
           key={tab.id}
-          className={`group flex max-w-44 shrink-0 cursor-pointer items-center gap-1 rounded-md py-1 pl-2 pr-0.5 transition-colors ${
+          data-selected={tab.id === activeTabId || undefined}
+          className={`ema-dock-tab group flex max-w-44 shrink-0 cursor-pointer items-center gap-1 rounded-md py-1 pl-2 pr-0.5 transition-colors ${
             tab.id === activeTabId
-              ? 'bg-[var(--ema-primary-muted)] text-[var(--ema-primary)]'
+              ? 'text-[var(--ema-primary-text)]'
               : 'text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-2)]'
           }`}
           onClick={() => activateTab(sessionId, tab.id)}
@@ -143,14 +142,6 @@ function TabBar({
         </div>
       ))}
       <IconButton size="sm" label="新建标签" icon="i-lucide:plus" onClick={onAdd} />
-      {onExpand && (
-        <IconButton
-          size="sm"
-          label="全宽展开"
-          icon="i-lucide:maximize-2"
-          onClick={onExpand}
-        />
-      )}
     </div>
   );
 }
@@ -163,7 +154,7 @@ function Launcher({
   onClose?: () => void;
 }): JSX.Element {
   const openTab = useSessionSidePanel((state) => state.openTab);
-  const workspaceRoot = useSessionStore(state => state.sessions.byId.get(sessionId)?.workspaceRoot ?? null);
+  const cwd = useSessionStore(state => state.sessions.byId.get(sessionId)?.cwd);
   const [openingTerminal, setOpeningTerminal] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -200,9 +191,10 @@ function Launcher({
 
       <Button
         variant="ghost"
-        disabled={openingTerminal}
+        disabled={openingTerminal || !cwd}
         className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-normal"
         onClick={() => {
+          if (!cwd) return;
           const terminalId = nanoid();
           setOpeningTerminal(true);
           setError(null);
@@ -210,7 +202,7 @@ function Launcher({
           void startTerminal({
             terminalId,
             sessionId,
-            ...(workspaceRoot ? { cwd: workspaceRoot } : {}),
+            cwd,
           })
             .then(() => {
               openTab(sessionId, terminalTab(terminalId));
@@ -234,7 +226,7 @@ function Launcher({
         className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-normal"
         onClick={() => {
           const browserId = nanoid();
-          openTab(sessionId, browserTab(browserId, 'https://www.bing.com/'));
+          openTab(sessionId, browserTab(browserId));
           onClose?.();
         }}
       >
@@ -273,12 +265,8 @@ function Launcher({
 
 export function SessionSidePanel({
   sessionId,
-  fullWidth,
-  onExpand,
 }: {
   sessionId: string;
-  fullWidth: boolean;
-  onExpand?: () => void;
 }): JSX.Element {
   const layout = useSessionSidePanel((state) => state.layouts[sessionId]);
   const [launcherOpen, setLauncherOpen] = useState(false);
@@ -295,7 +283,6 @@ export function SessionSidePanel({
           tabs={tabs}
           activeTabId={layout?.activeTabId}
           onAdd={() => setLauncherOpen(true)}
-          {...(!fullWidth && onExpand ? { onExpand } : {})}
         />
       )}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -358,7 +345,7 @@ function TabContent({
         <BrowserPanel
           sessionId={sessionId}
           browserId={tab.browserId}
-          initialUrl={tab.url}
+          url={tab.url}
           visible={visible}
         />
       );

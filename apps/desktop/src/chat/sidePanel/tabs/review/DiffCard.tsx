@@ -36,13 +36,12 @@ export interface DiffCardProps {
   readonly item: ReviewFileItem;
   readonly expanded: boolean;
   readonly split: boolean;
-  readonly wrap: boolean;
   readonly onToggle: () => void;
   readonly onOpenFile?: (absolutePath: string) => void;
 }
 
 export function DiffCard({
-  item, expanded, split, wrap, onToggle, onOpenFile,
+  item, expanded, split, onToggle, onOpenFile,
 }: DiffCardProps): JSX.Element {
   const meta = STATUS_META[item.status];
   const segments = useMemo(
@@ -98,9 +97,7 @@ export function DiffCard({
             )}
           </div>
           <div
-            className={`max-h-[32rem] overflow-auto border-t border-[var(--ema-border)] font-mono text-[11px] leading-relaxed ${
-              wrap ? 'whitespace-pre-wrap break-words' : 'whitespace-pre'
-            }`}
+            className="max-h-[32rem] overflow-auto border-t border-[var(--ema-border)] font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-words"
           >
             {segments.length === 0 ? (
               <p className="px-2.5 py-2 text-[var(--ema-text-tertiary)]">无文本 diff(二进制或空变更)</p>

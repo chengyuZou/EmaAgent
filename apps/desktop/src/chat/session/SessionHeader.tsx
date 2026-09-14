@@ -1,37 +1,30 @@
 import { useEffect, useState, type JSX, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { IconButton, Popover } from '@ema-agent/ui';
+import { Button, Dialog, IconButton, Input, Popover } from '@ema-agent/ui';
 import { sessionGitApi, type SessionGitSummary } from '../../api/git.js';
+import { showToast } from '../../lib/toast.js';
 import { useAgentRunStore } from '../../stores/agentRun.js';
 import { useSessionAttachmentStore } from '../../stores/sessionAttachment.js';
 import { useSessionStore } from '../../stores/session.js';
 import { SessionCwdDialog } from './SessionCwdDialog.js';
 import {
-  isSessionSidePanelFullWidth,
   sessionSourceTab,
   useSessionSidePanel,
 } from '../state/chatWorkspace.js';
 
 const SOURCE_PREVIEW_COUNT = 3;
 
-export function SessionHeader({
-  sessionId,
-  title,
-  isFork,
-}: {
-  sessionId: string;
-  title: string;
-  isFork: boolean;
-}): JSX.Element {
+export function SessionHeader({ sessionId }: { sessionId: string }): JSX.Element {
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [cwdOpen, setCwdOpen] = useState(false);
-  const cwd = useSessionStore(state => state.sessions.byId.get(sessionId)?.cwd);
+  const [titleOpen, setTitleOpen] = useState(false);
+  const [titleDraft, setTitleDraft] = useState('');
+  const [titleSaving, setTitleSaving] = useState(false);
+  const session = useSessionStore(state => state.sessions.byId.get(sessionId));
+  const title = session?.title ?? '加载中…';
+  const cwd = session?.cwd;
   const layout = useSessionSidePanel((state) => state.layouts[sessionId]);
-  const setOpen = useSessionSidePanel((state) => state.setOpen);
-  const setFullWidth = useSessionSidePanel((state) => state.setFullWidth);
-  const fullWidth = useSessionSidePanel((state) => (
-    isSessionSidePanelFullWidth(state, sessionId)
-  ));
+  const setSidePanelOpen = useSessionSidePanel((state) => state.setSidePanelOpen);
   const runningAgentRunCount = useAgentRunStore(state => {
     const ids = new Set<string>();
     for (const run of state.runs.values()) {
@@ -43,69 +36,107 @@ export function SessionHeader({
     return ids.size;
   });
 
+  async function saveTitle(): Promise<void> {
+    const nextTitle = titleDraft.trim();
+    if (!session || !nextTitle || titleSaving) return;
+    if (nextTitle === session.title) {
+      setTitleOpen(false);
+      return;
+    }
+    setTitleSaving(true);
+    try {
+      await useSessionStore.getState().renameSession(sessionId, nextTitle);
+      setTitleOpen(false);
+    } catch (error) {
+      showToast(
+        error instanceof Error ? `重命名会话失败: ${error.message}` : '重命名会话失败',
+        { variant: 'danger' },
+      );
+    } finally {
+      setTitleSaving(false);
+    }
+  }
+
   return (
     <header className="flex shrink-0 items-center justify-between border-b border-[var(--ema-border)] px-4 py-2">
       <div className="flex min-w-0 items-center gap-2">
-        <span className="truncate text-sm font-medium text-[var(--ema-text-secondary)]">{title}</span>
+        <span className="i-lucide:folder shrink-0 text-sm text-[var(--ema-text-secondary)]" aria-hidden />
+        <Button
+          variant="ghost"
+          disabled={!session}
+          className="h-auto max-w-56 min-w-0 px-1 py-0.5 text-sm text-[var(--ema-text-primary)]"
+          title={`重命名会话: ${title}`}
+          onClick={() => {
+            setTitleDraft(title);
+            setTitleOpen(true);
+          }}
+        >
+          <span className="truncate">{title}</span>
+        </Button>
         {cwd && (
-          <button
-            type="button"
-            className="flex max-w-64 min-w-0 items-center gap-1 rounded-md px-2 py-1 text-xs text-[var(--ema-text-tertiary)] transition-colors hover:bg-[var(--ema-surface-2)] hover:text-[var(--ema-text-primary)]"
+          <Button
+            variant="ghost"
+            className="h-auto max-w-72 min-w-0 px-2 py-1 text-xs font-normal text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-secondary)]"
             title={`执行目录: ${cwd} · 点击修改`}
             onClick={() => setCwdOpen(true)}
           >
-            <span className="i-lucide:folder-open shrink-0 text-sm" aria-hidden />
+            <span className="text-[var(--ema-text-tertiary)]" aria-hidden>·</span>
             <span className="truncate">{cwd}</span>
-          </button>
+          </Button>
         )}
-        {isFork && <span className="text-xs text-[var(--ema-text-tertiary)]">· 会话副本</span>}
       </div>
       <div className="flex shrink-0 items-center gap-0.5">
-        {fullWidth ? (
-          <button
-            className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-[var(--ema-primary)] hover:bg-[var(--ema-primary-muted)]"
-            onClick={() => setFullWidth(sessionId, false)}
-          >
-            <span className="i-lucide:minimize-2 text-sm" aria-hidden />
-            恢复面板宽度
-          </button>
-        ) : (
-          <>
-            <Popover
-              open={summaryOpen}
-              onOpenChange={setSummaryOpen}
-              side="bottom"
-              align="end"
-              widthClass="w-72"
-              trigger={(
-                <span className="relative">
-                  <IconButton
-                    size="md"
-                    label="置顶摘要"
-                    icon="i-lucide:panel-top"
-                    toggled={summaryOpen}
-                  />
-                  {runningAgentRunCount > 0 && (
-                    <span className="pointer-events-none absolute -right-0.5 -top-0.5 flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-[var(--ema-primary)] px-0.5 text-[9px] font-bold text-[var(--ema-text-primary)]">
-                      {runningAgentRunCount}
-                    </span>
-                  )}
+        <Popover
+          open={summaryOpen}
+          onOpenChange={setSummaryOpen}
+          side="bottom"
+          align="end"
+          widthClass="w-72"
+          trigger={(
+            <Button
+              variant="secondary"
+              className={`relative h-9 w-9 rounded-full p-0 ${summaryOpen
+                ? 'border-[var(--ema-primary)]/70 bg-[var(--ema-primary-muted)] text-[var(--ema-primary-text)]'
+                : ''}`}
+              aria-label="置顶摘要"
+              title="置顶摘要"
+            >
+              <span className="i-lucide:panel-top text-lg" aria-hidden />
+              {runningAgentRunCount > 0 && (
+                <span className="pointer-events-none absolute -right-0.5 -top-0.5 flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-[var(--ema-primary)] px-0.5 text-[9px] font-bold text-[var(--ema-text-primary)]">
+                  {runningAgentRunCount}
                 </span>
               )}
-            >
-              <SessionSummary sessionId={sessionId} />
-            </Popover>
-            <IconButton
-              size="md"
-              label={layout?.open ? '折叠右侧栏' : '展开右侧栏'}
-              icon="i-lucide:panel-right"
-              toggled={layout?.open ?? false}
-              onClick={() => setOpen(sessionId, !(layout?.open ?? false))}
-            />
-          </>
-        )}
+            </Button>
+          )}
+        >
+          <SessionSummary sessionId={sessionId} />
+        </Popover>
+        <IconButton
+          size="md"
+          label={layout?.open ? '折叠右侧栏' : '展开右侧栏'}
+          icon="i-lucide:panel-right"
+          toggled={layout?.open ?? false}
+          onClick={() => setSidePanelOpen(sessionId, !(layout?.open ?? false))}
+        />
       </div>
       <SessionCwdDialog sessionId={sessionId} open={cwdOpen} onOpenChange={setCwdOpen} />
+      <Dialog open={titleOpen} onOpenChange={setTitleOpen} title="重命名会话">
+        <form onSubmit={(event) => { event.preventDefault(); void saveTitle(); }}>
+          <Input
+            aria-label="会话标题"
+            value={titleDraft}
+            onChange={(event) => setTitleDraft(event.target.value)}
+            autoFocus
+          />
+          <div className="mt-4 flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setTitleOpen(false)}>取消</Button>
+            <Button type="submit" variant="primary" disabled={!titleDraft.trim() || titleSaving}>
+              {titleSaving ? '保存中…' : '保存'}
+            </Button>
+          </div>
+        </form>
+      </Dialog>
     </header>
   );
 }
@@ -136,6 +167,7 @@ function SessionSummary({ sessionId }: { sessionId: string }): JSX.Element {
       return;
     }
     let mounted = true;
+    // 不用加入 cwd 参数 后端会根据 sessionId 自动获取 cwd
     void sessionGitApi.summary(sessionId)
       .then((value) => {
         if (mounted) setGit(value);
@@ -172,8 +204,9 @@ function SessionSummary({ sessionId }: { sessionId: string }): JSX.Element {
       )}
       <section>
         <SectionTitle>子智能体</SectionTitle>
-        <button
-          className="flex w-full items-center gap-2 rounded-md px-1 py-1 text-left hover:bg-[var(--ema-surface-2)]"
+        <Button
+          variant="ghost"
+          className="h-auto w-full justify-start gap-2 px-1 py-1 text-left text-xs font-normal"
           onClick={() => openTab(sessionId, { id: 'subagents', kind: 'subagents' })}
         >
           <span className="i-lucide:bot text-sm text-[var(--ema-text-tertiary)]" aria-hidden />
@@ -185,10 +218,10 @@ function SessionSummary({ sessionId }: { sessionId: string }): JSX.Element {
               {activity.ended} 已完成
             </span>
           )}
-        </button>
+        </Button>
       </section>
       <section>
-        <SectionTitle>来源</SectionTitle>
+        <SectionTitle>附件</SectionTitle>
         {sources === undefined ? (
           <p className="px-1 text-[var(--ema-text-tertiary)]">加载中…</p>
         ) : sources.length === 0 ? (
@@ -196,9 +229,10 @@ function SessionSummary({ sessionId }: { sessionId: string }): JSX.Element {
         ) : (
           <>
             {sources.slice(0, SOURCE_PREVIEW_COUNT).map((source) => (
-              <button
+              <Button
                 key={source.path}
-                className="flex w-full items-center gap-2 rounded-md px-1 py-1 text-left hover:bg-[var(--ema-surface-2)]"
+                variant="ghost"
+                className="h-auto w-full justify-start gap-2 px-1 py-1 text-left text-xs font-normal"
                 onClick={() => openTab(sessionId, sessionSourceTab(source.path))}
               >
                 <span
@@ -212,15 +246,16 @@ function SessionSummary({ sessionId }: { sessionId: string }): JSX.Element {
                     ? source.name ?? '剪贴板图片'
                     : '粘贴文本'}
                 </span>
-              </button>
+              </Button>
             ))}
-            <button
-              className="mt-1 px-1 text-[var(--ema-primary)] hover:underline"
+            <Button
+              variant="ghost"
+              className="mt-1 h-auto px-1 py-0 text-xs font-normal text-[var(--ema-primary)] hover:underline"
               onClick={() => openTab(sessionId, { id: 'sources', kind: 'sources' })}
             >
               查看全部
               {sources.length > SOURCE_PREVIEW_COUNT ? ` (${sources.length})` : ''}
-            </button>
+            </Button>
           </>
         )}
       </section>

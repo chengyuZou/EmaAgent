@@ -99,11 +99,12 @@ export function SessionRow({ session, isActive, agentSessions, nested = false }:
 
   return (
     <div
+      data-selected={isActive || undefined}
       className={`group relative flex items-center gap-1.5 h-9 pr-2 rounded-md text-sm cursor-pointer transition-[background-color,color,box-shadow] duration-[var(--ema-duration-fast)] ease-[var(--ema-ease)] ${
         nested ? 'pl-6' : 'pl-2'
       } ${
         isActive
-          ? 'ema-active-rail bg-[var(--ema-surface-2)] text-[var(--ema-text-primary)] shadow-[var(--ema-shadow-1)]'
+          ? 'ema-selectable'
           : 'text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-2)] hover:text-[var(--ema-text-primary)]'
       }`}
       onClick={() => void useChatWorkspace.getState().viewSession(session.id)}

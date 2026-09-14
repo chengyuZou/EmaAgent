@@ -1,6 +1,7 @@
 // 持有 Chat 当前页面、未发送草稿, 以及每个 Session 的右侧面板布局.
 import { create } from 'zustand';
 import { sessionsApi } from '../../api/sessions.js';
+import { tauriBridge } from '../../lib/tauri-bridge.js';
 import { stopTtsPlayback } from '../../lib/tts-playback.js';
 import { useSessionStore } from '../../stores/session.js';
 import { emptyChatDraft, type ChatDraft } from '../input/InputReferences.js';
@@ -121,7 +122,7 @@ export type SessionSidePanelTab =
       id: `browser:${string}`;
       kind: 'browser';
       browserId: string;
-      url: string;
+      url: string | null;
       title?: string;
     }
   | { id: 'subagents'; kind: 'subagents' }
@@ -173,134 +174,18 @@ export function terminalTab(terminalId: string): SessionSidePanelTab {
 
 export function browserTab(
   browserId: string,
-  url: string,
 ): SessionSidePanelTab {
   return {
     id: `browser:${browserId}`,
     kind: 'browser',
     browserId,
-    url,
+    url: null,
   };
 }
 
-const SIDE_PANEL_STORAGE_KEY = 'ema-chat-side-panel';
 const DEFAULT_RIGHT_PANEL_PERCENT = 30;
 const MIN_RIGHT_PANEL_PERCENT = 20;
 const MAX_RIGHT_PANEL_PERCENT = 70;
-
-interface PersistedSidePanel {
-  layouts: Record<string, SessionSidePanelLayout>;
-  rightPanelPercent: number;
-}
-
-function browserStorage(): Storage | null {
-  try {
-    return typeof localStorage === 'undefined' ? null : localStorage;
-  } catch {
-    return null;
-  }
-}
-
-function persistedSidePanelTab(value: unknown): SessionSidePanelTab | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-
-  const tab = value as Partial<SessionSidePanelTab>;
-  if (typeof tab.id !== 'string' || typeof tab.kind !== 'string') return null;
-
-  switch (tab.kind) {
-    case 'files':
-    case 'sources':
-    case 'tasks':
-    case 'subagents':
-    case 'processes':
-      return tab.id === tab.kind ? tab as SessionSidePanelTab : null;
-    case 'file':
-    case 'source':
-      return typeof (tab as { path?: unknown }).path === 'string'
-        ? tab as SessionSidePanelTab
-        : null;
-    case 'browser':
-      return typeof (tab as { browserId?: unknown }).browserId === 'string'
-        && typeof (tab as { url?: unknown }).url === 'string'
-        ? tab as SessionSidePanelTab
-        : null;
-    default:
-      // 终端只对当前进程有意义, 不跨应用重启恢复.
-      return null;
-  }
-}
-
-function sanitizeSidePanelLayouts(
-  value: unknown,
-): Record<string, SessionSidePanelLayout> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-
-  const layouts: Record<string, SessionSidePanelLayout> = {};
-  for (const [sessionId, candidate] of Object.entries(value)) {
-    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
-      continue;
-    }
-
-    const raw = candidate as Partial<SessionSidePanelLayout>;
-    if (
-      !raw.tabsById
-      || typeof raw.tabsById !== 'object'
-      || !Array.isArray(raw.tabOrder)
-    ) {
-      continue;
-    }
-
-    const tabsById: Record<string, SessionSidePanelTab> = {};
-    for (const item of Object.values(raw.tabsById)) {
-      const tab = persistedSidePanelTab(item);
-      if (tab) tabsById[tab.id] = tab;
-    }
-
-    const tabOrder = raw.tabOrder.filter((id): id is string => (
-      typeof id === 'string' && id in tabsById
-    ));
-    layouts[sessionId] = {
-      tabsById,
-      tabOrder,
-      ...(typeof raw.activeTabId === 'string' && tabOrder.includes(raw.activeTabId)
-        ? { activeTabId: raw.activeTabId }
-        : {}),
-      open: raw.open === true && tabOrder.length > 0,
-    };
-  }
-
-  return layouts;
-}
-
-function loadPersistedSidePanel(): PersistedSidePanel {
-  const fallback: PersistedSidePanel = {
-    layouts: {},
-    rightPanelPercent: DEFAULT_RIGHT_PANEL_PERCENT,
-  };
-  const target = browserStorage();
-  if (!target) return fallback;
-
-  try {
-    const raw = target.getItem(SIDE_PANEL_STORAGE_KEY);
-    if (!raw) return fallback;
-
-    const parsed = JSON.parse(raw) as Partial<PersistedSidePanel>;
-    const rightPanelPercent = typeof parsed.rightPanelPercent === 'number'
-      ? Math.min(
-          MAX_RIGHT_PANEL_PERCENT,
-          Math.max(MIN_RIGHT_PANEL_PERCENT, parsed.rightPanelPercent),
-        )
-      : DEFAULT_RIGHT_PANEL_PERCENT;
-
-    return {
-      layouts: sanitizeSidePanelLayouts(parsed.layouts),
-      rightPanelPercent,
-    };
-  } catch {
-    // localStorage 是外部持久边界. 内容损坏时只放弃布局, 不影响 Chat 启动.
-    return fallback;
-  }
-}
 
 function emptySidePanelLayout(): SessionSidePanelLayout {
   return {
@@ -333,15 +218,14 @@ function removeSidePanelTab(
   };
 }
 
-interface SessionSidePanelState extends PersistedSidePanel {
-  /** 全宽只属于本次界面状态, 关闭面板或重启后恢复普通 Chat 布局. */
-  fullWidthBySession: Record<string, boolean>;
+interface SessionSidePanelState {
+  layouts: Record<string, SessionSidePanelLayout>;
+  rightPanelPercent: number;
   openTab(sessionId: string, tab: SessionSidePanelTab): void;
   closeTab(sessionId: string, tabId: string): void;
   activateTab(sessionId: string, tabId: string): void;
-  setOpen(sessionId: string, open: boolean): void;
+  setSidePanelOpen(sessionId: string, open: boolean): void;
   setRightPanelPercent(percent: number): void;
-  setFullWidth(sessionId: string, fullWidth: boolean): void;
   updateBrowserTab(
     sessionId: string,
     browserId: string,
@@ -350,9 +234,9 @@ interface SessionSidePanelState extends PersistedSidePanel {
   removeSessionLayout(sessionId: string): void;
 }
 
-export const useSessionSidePanel = create<SessionSidePanelState>((set) => ({
-  ...loadPersistedSidePanel(),
-  fullWidthBySession: {},
+export const useSessionSidePanel = create<SessionSidePanelState>((set, get) => ({
+  layouts: {},
+  rightPanelPercent: DEFAULT_RIGHT_PANEL_PERCENT,
 
   openTab(sessionId, tab) {
     set((state) => {
@@ -373,6 +257,10 @@ export const useSessionSidePanel = create<SessionSidePanelState>((set) => ({
   },
 
   closeTab(sessionId, tabId) {
+    const tab = get().layouts[sessionId]?.tabsById[tabId];
+    if (tab?.kind === 'browser') {
+      void tauriBridge.closeBrowser(tab.browserId).catch(() => {});
+    }
     set((state) => {
       const layout = state.layouts[sessionId];
       if (!layout) return state;
@@ -404,19 +292,14 @@ export const useSessionSidePanel = create<SessionSidePanelState>((set) => ({
     });
   },
 
-  setOpen(sessionId, open) {
+  setSidePanelOpen(sessionId, open) {
     set((state) => {
       const layout = state.layouts[sessionId] ?? emptySidePanelLayout();
-      const fullWidthBySession = !open && state.fullWidthBySession[sessionId]
-        ? { ...state.fullWidthBySession, [sessionId]: false }
-        : state.fullWidthBySession;
-
       return {
         layouts: {
           ...state.layouts,
           [sessionId]: { ...layout, open },
         },
-        fullWidthBySession,
       };
     });
   },
@@ -428,15 +311,6 @@ export const useSessionSidePanel = create<SessionSidePanelState>((set) => ({
         Math.max(MIN_RIGHT_PANEL_PERCENT, percent),
       ),
     });
-  },
-
-  setFullWidth(sessionId, fullWidth) {
-    set((state) => ({
-      fullWidthBySession: {
-        ...state.fullWidthBySession,
-        [sessionId]: fullWidth,
-      },
-    }));
   },
 
   updateBrowserTab(sessionId, browserId, patch) {
@@ -468,39 +342,17 @@ export const useSessionSidePanel = create<SessionSidePanelState>((set) => ({
   },
 
   removeSessionLayout(sessionId) {
+    const layout = get().layouts[sessionId];
+    for (const tab of Object.values(layout?.tabsById ?? {})) {
+      if (tab.kind === 'browser') {
+        void tauriBridge.closeBrowser(tab.browserId).catch(() => {});
+      }
+    }
     set((state) => {
       const layouts = { ...state.layouts };
-      const fullWidthBySession = { ...state.fullWidthBySession };
       delete layouts[sessionId];
-      delete fullWidthBySession[sessionId];
 
-      return { layouts, fullWidthBySession };
+      return { layouts };
     });
   },
 }));
-
-useSessionSidePanel.subscribe((state) => {
-  const target = browserStorage();
-  if (!target) return;
-
-  try {
-    target.setItem(SIDE_PANEL_STORAGE_KEY, JSON.stringify({
-      layouts: sanitizeSidePanelLayouts(state.layouts),
-      rightPanelPercent: state.rightPanelPercent,
-    } satisfies PersistedSidePanel));
-  } catch {
-    // 布局记忆失败不影响当前进程内的标签和宽度.
-  }
-});
-
-export function isSessionSidePanelFullWidth(
-  state: Pick<SessionSidePanelState, 'layouts' | 'fullWidthBySession'>,
-  sessionId: string | null,
-): boolean {
-  if (!sessionId) return false;
-
-  const layout = state.layouts[sessionId];
-  return state.fullWidthBySession[sessionId] === true
-    && layout?.open === true
-    && layout.tabOrder.length > 0;
-}
