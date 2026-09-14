@@ -203,7 +203,6 @@ CREATE TABLE provider_models (
 CREATE TABLE model_bindings (
   module      TEXT PRIMARY KEY CHECK(module IN (
                 'memory-llm',
-                'title',
                 'lightrag-embed', 'lightrag-llm',
                 'tts', 'stt', 'vision'
               )),
@@ -211,7 +210,7 @@ CREATE TABLE model_bindings (
   provider_id TEXT NOT NULL,
   model_id    TEXT NOT NULL,
   CHECK(
-    (module IN ('memory-llm','title','lightrag-llm') AND capability = 'llm')
+    (module IN ('memory-llm','lightrag-llm') AND capability = 'llm')
     OR (module = 'lightrag-embed' AND capability = 'embed')
     OR (module = 'tts' AND capability = 'tts')
     OR (module = 'stt' AND capability = 'stt')

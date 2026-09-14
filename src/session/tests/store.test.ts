@@ -468,25 +468,3 @@ describe('SessionStore — message', () => {
     expect(store.listMessages(foreign.id).messages).toHaveLength(0);
   });
 });
-
-describe('updateTitleIfDefault', () => {
-  it('默认标题可被自动标题覆盖；用户手动改名后以用户为准', () => {
-    const { store } = makeStore();
-    const session = store.createSession();
-    expect(store.getSession(session.id).title).toBe(DEFAULT_SESSION_TITLE);
-
-    expect(store.updateTitleIfDefault(session.id, '生成的标题')).toBe(true);
-    expect(store.getSession(session.id).title).toBe('生成的标题');
-
-    // 标题已非默认（无论来自生成还是用户手改）：迟到结果不得覆盖。
-    expect(store.updateTitleIfDefault(session.id, '迟到覆盖')).toBe(false);
-    expect(store.getSession(session.id).title).toBe('生成的标题');
-  });
-
-  it('用户手动改回默认文案的会话仍可被覆盖；不存在的 id 返回 false', () => {
-    const { store } = makeStore();
-    const session = store.createSession({ title: '用户起的名' });
-    expect(store.updateTitleIfDefault(session.id, 'x')).toBe(false);
-    expect(store.updateTitleIfDefault('missing-id', 'x')).toBe(false);
-  });
-});

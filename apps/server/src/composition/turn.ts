@@ -23,7 +23,7 @@ import {
   workMemoryDir,
 } from '@ema-agent/memory';
 import { permissionAskTimeoutSetting } from '@ema-agent/permission';
-import { DEFAULT_SESSION_TITLE, generateSessionTitle } from '@ema-agent/session';
+import { DEFAULT_SESSION_TITLE } from '@ema-agent/session';
 import type { SettingsStore } from '@ema-agent/settings';
 import { workspaceInstructionFilesSetting } from '@ema-agent/skills';
 import type { StageEngine } from '@ema-agent/stage';
@@ -219,46 +219,6 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     };
   };
 
-  // ── 会话标题：用户消息落库即异步生成；读检/去重/条件写三层各挡一类浪费与覆盖 ──
-  const generatingTitles = new Set<string>();
-  const startSessionTitleGeneration = (sessionId: string, userText: string): void => {
-    // 同 Session 已有一路在生成：并发/连发只调一次模型。
-    if (generatingTitles.has(sessionId)) return;
-    // 标题已非默认（老会话或用户已改名）：连模型都不调。
-    if (database.session.getSession(sessionId).title !== DEFAULT_SESSION_TITLE) return;
-    const binding = providers.modelBindings.get('title');
-    if (!binding) return;
-    const query = userText.trim();
-    if (!query) return;
-
-    generatingTitles.add(sessionId);
-    void (async () => {
-      try {
-        const callLlm = createLlmCall(providers.providers.resolveConnection(binding.providerId, 'llm'), binding.modelId);
-        const title = await generateSessionTitle(query, async prompt => {
-          const completion = await createLlmCompletion(callLlm({
-            messages: [{ role: 'user', content: [{ type: 'text', text: prompt }] }],
-            maxOutputTokens: 64,
-          }));
-          const text = completion.blocks
-            .filter(block => block.type === 'text')
-            .map(block => block.text)
-            .join('');
-          return text.trim() || undefined;
-        });
-        if (!title) return;
-        // 条件写入是最后防线：生成期间用户改名/会话已删/另一路先完成都不覆盖。
-        if (database.session.updateTitleIfDefault(sessionId, title)) {
-          deps.emitAppEvent({ type: 'session_title_updated', sessionId, title });
-        }
-      } catch {
-        // 标题是增强体验；失败静默，下一条用户消息会重试。
-      } finally {
-        generatingTitles.delete(sessionId);
-      }
-    })();
-  };
-
   const workspaceInstructions = (cwd: string): string | null =>
     readWorkspaceInstructions(cwd, settings.get(workspaceInstructionFilesSetting));
 
@@ -310,7 +270,6 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     memoryGuidance: () => buildMemoryGuidance().catch(() => null),
     usageRecorder: database.usageRecorder,
     stage,
-    startSessionTitleGeneration,
     characterDirectoryName: () => characters.current().name,
     onTurnCompletedInTransaction: deps.onTurnCompletedInTransaction,
   });

@@ -29,7 +29,6 @@ import { MODEL_BINDING_CAPABILITIES } from '@ema-agent/providers/modelBindings';
 
 const MODULES: Array<{ id: BindingModule; label: string; desc: string }> = [
   { id: 'memory-llm',     label: 'Memory',        desc: '记忆提取与整合' },
-  { id: 'title',          label: 'Title',         desc: '会话标题自动生成' },
   { id: 'lightrag-embed', label: 'LightRAG 嵌入', desc: '⚠️ 叙事专用嵌入（Pro/bge-m3），重启应用后生效。中途换模型检索质量大幅下降——非必要勿动。知识库的嵌入在各库详情页单独配置。' },
   { id: 'lightrag-llm',   label: 'LightRAG LLM',  desc: '叙事模式剧情检索 LLM' },
   { id: 'tts',           label: 'TTS',          desc: '语音合成' },
