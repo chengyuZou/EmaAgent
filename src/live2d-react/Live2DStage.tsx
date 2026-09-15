@@ -47,6 +47,16 @@ export interface Live2DStageProps {
   interactive?: boolean;
   onReady?: (info: Live2DStageReadyInfo) => void;
   onError?: (error: Error) => void;
+  onDiagnostic?: (
+    event:
+      | 'canvas_created'
+      | 'ticker_started'
+      | 'ticker_stopped'
+      | 'model_loading'
+      | 'model_ready'
+      | 'first_tick',
+    durationS: number | null,
+  ) => void;
   className?: string;
 }
 
@@ -61,6 +71,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
     interactive = true,
     onReady,
     onError,
+    onDiagnostic,
     className,
   }, ref): JSX.Element {
     const hostRef = useRef<HTMLDivElement | null>(null);
@@ -83,12 +94,12 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
     const interactiveRef = useRef(interactive);
     const speakingRef = useRef(false);
     const lastPointerActivityAtRef = useRef(0);
-    const callbacksRef = useRef({ onReady, onError });
+    const callbacksRef = useRef({ onReady, onError, onDiagnostic });
 
     runtimeConfigRef.current = runtimeConfig;
     suspendedRef.current = suspended;
     interactiveRef.current = interactive;
-    callbacksRef.current = { onReady, onError };
+    callbacksRef.current = { onReady, onError, onDiagnostic };
 
     useImperativeHandle(ref, () => ({
       setExpression(name) {
@@ -153,7 +164,11 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
 
       appRef.current = app;
       host.appendChild(app.view as HTMLCanvasElement);
-      if (suspendedRef.current) app.ticker.stop();
+      callbacksRef.current.onDiagnostic?.('canvas_created', null);
+      if (suspendedRef.current) {
+        app.ticker.stop();
+        callbacksRef.current.onDiagnostic?.('ticker_stopped', null);
+      }
 
       return () => {
         loadGenerationRef.current += 1;
@@ -167,11 +182,14 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
     useEffect(() => {
       const app = appRef.current;
       if (!app) return;
-      if (suspended) app.ticker.stop();
-      else {
+      if (suspended) {
+        app.ticker.stop();
+        callbacksRef.current.onDiagnostic?.('ticker_stopped', null);
+      } else {
         // WebView 恢复可见后的首个动画帧可能要等输入事件;先画一帧再重启 ticker。
         app.render();
         app.ticker.start();
+        callbacksRef.current.onDiagnostic?.('ticker_started', null);
       }
     }, [suspended]);
 
@@ -196,6 +214,8 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
       const app = appRef.current;
       if (!app) return;
       const generation = ++loadGenerationRef.current;
+      const loadStartedAt = performance.now();
+      callbacksRef.current.onDiagnostic?.('model_loading', null);
 
       void loadLive2DArchive(modelArchive, {
         ticker: app.ticker,
@@ -212,7 +232,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
 
         // ZIP 可在旧模型仍显示时完成解析;只有新模型可用后才原子替换舞台内容.
         modelCleanupRef.current?.();
-        modelCleanupRef.current = mountModel(app, model, {
+        const cleanupModel = mountModel(app, model, {
           runtimeConfigRef,
           interactiveRef,
           suspendedRef,
@@ -228,6 +248,21 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
           applyFramingRef,
           idleMotionPlaybackRef,
         });
+        const firstTick = (): void => {
+          callbacksRef.current.onDiagnostic?.(
+            'first_tick',
+            (performance.now() - loadStartedAt) / 1000,
+          );
+        };
+        app.ticker.addOnce(firstTick);
+        modelCleanupRef.current = () => {
+          app.ticker.remove(firstTick);
+          cleanupModel();
+        };
+        callbacksRef.current.onDiagnostic?.(
+          'model_ready',
+          (performance.now() - loadStartedAt) / 1000,
+        );
         callbacksRef.current.onReady?.({
           hasExpressions: expressionsRef.current.length > 0,
           expressions: expressionsRef.current,

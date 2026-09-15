@@ -4,6 +4,7 @@ export { CharacterStore } from './store.js';
 export type {
   CharacterSwitchedListener,
   CharacterPresentationChangedListener,
+  CharacterResourcesChangedListener,
 } from './store.js';
 export {
   EMA_CHARACTER_NAME,
@@ -28,7 +29,8 @@ export type {
   CharacterLive2dModel,
   CharacterLive2dModelInput,
   CharacterLive2dModelPatch,
-  ImportCharacterLive2dModelInput,
+  PrepareCharacterLive2dImportInput,
+  PreparedLive2dImport,
   Live2dExpression,
   Live2dMotion,
   Live2dRuntimeConfig,
@@ -60,6 +62,7 @@ export type {
   CharacterSwitchedEvent,
   CharacterEvent,
   CharacterPresentationChangedEvent,
+  CharacterResourcesChangedEvent,
 } from './events.js';
 export {
   CharacterDirectoryConflictError,

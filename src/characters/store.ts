@@ -22,7 +22,8 @@ import type {
   CharacterLive2dModel,
   CharacterLive2dModelInput,
   CharacterLive2dModelPatch,
-  ImportCharacterLive2dModelInput,
+  PrepareCharacterLive2dImportInput,
+  PreparedLive2dImport,
   Live2dConfiguration,
   Live2dMappings,
 } from './live2d/types.js';
@@ -37,6 +38,7 @@ import {
   findLive2dFilesSync,
   importLive2dFiles,
   live2dDirectoryByteSizeSync,
+  type ImportedLive2dFiles,
 } from './live2d/live2dFiles.js';
 import type {
   CharacterIllustration,
@@ -81,6 +83,14 @@ export type CharacterPresentationChangedListener = (
   character: Character,
   presentation: CharacterStagePresentation,
 ) => void;
+export type CharacterResourcesChangedListener = (character: Character) => void;
+
+interface PreparedLive2dImportEntry {
+  readonly characterName: string;
+  readonly operationDirectory: string;
+  readonly resourceDirectory: string;
+  readonly files: ImportedLive2dFiles;
+}
 
 export class CharacterStore {
   private readonly repository: CharacterRepository;
@@ -90,6 +100,8 @@ export class CharacterStore {
   private readonly paths: CharacterResourcePaths;
   private readonly switchedListeners = new Set<CharacterSwitchedListener>();
   private readonly presentationChangedListeners = new Set<CharacterPresentationChangedListener>();
+  private readonly resourcesChangedListeners = new Set<CharacterResourcesChangedListener>();
+  private readonly preparedLive2dImports = new Map<string, PreparedLive2dImportEntry>();
   // Promise 尾链只按稳定角色名分组，避免同一角色的文件操作与 SQL 提交互相覆盖。
   private readonly mutationTails = new Map<string, Promise<void>>();
 
@@ -113,6 +125,11 @@ export class CharacterStore {
   onPresentationChanged(handler: CharacterPresentationChangedListener): () => void {
     this.presentationChangedListeners.add(handler);
     return () => this.presentationChangedListeners.delete(handler);
+  }
+
+  onResourcesChanged(handler: CharacterResourcesChangedListener): () => void {
+    this.resourcesChangedListeners.add(handler);
+    return () => this.resourcesChangedListeners.delete(handler);
   }
 
   /** 只在 Desktop Host 判定 `profile.db` 尚未创建时调用。 */
@@ -274,59 +291,125 @@ export class CharacterStore {
 
   setPrimaryLive2dModel(characterName: string, live2dName: string): Promise<boolean> {
     return this.mutate(characterName, () => {
-      this.getRequiredCharacterOnly(characterName);
+      const character = this.getRequiredCharacterOnly(characterName);
       if (!this.live2dModels.find(characterName, live2dName)) {
         throw new CharacterResourceNotFoundError('live2d_model', live2dName);
       }
       const changed = this.live2dModels.setPrimary(characterName, live2dName);
-      if (changed) this.resourceChanged(characterName);
+      if (changed) {
+        this.resourcesChanged(characterName);
+        if (character.stageKind === 'live2d') this.emitPresentationChanged(characterName);
+      }
       return changed;
     });
   }
 
   updateLive2dModel(characterName: string, live2dName: string, patch: CharacterLive2dModelPatch): Promise<CharacterLive2dModel | undefined> {
     return this.mutate(characterName, () => {
-      this.getRequiredCharacterOnly(characterName);
+      const character = this.getRequiredCharacterOnly(characterName);
+      const current = this.live2dModels.find(characterName, live2dName);
       normalizeResourcePatch(patch);
       const resource = this.live2dModels.update(characterName, live2dName, patch);
-      if (resource) this.resourceChanged(characterName);
+      if (resource) {
+        this.resourcesChanged(characterName);
+        if (character.stageKind === 'live2d' && current?.isPrimary) {
+          this.emitPresentationChanged(characterName);
+        }
+      }
       return resource;
     });
   }
-  async importLive2dModel(characterName: string, input: ImportCharacterLive2dModelInput): Promise<CharacterLive2dModel> {
+  
+  async prepareLive2dImport(
+    characterName: string,
+    input: PrepareCharacterLive2dImportInput,
+  ): Promise<PreparedLive2dImport> {
     return this.mutate(characterName, async () => {
       this.getRequiredCharacterOnly(characterName);
-      // 导入先在角色目录之外完成解压、模型引用和运行配置校验；全部通过后才改名提交。
-      const operationDirectory = this.createStagingOperation();
+      // Server 能校验本地模型,但封面必须由 Desktop 的 WebGL 生成。这里先只写暂存区,
+      // 避免 Desktop 生成 PNG 期间其他窗口看到一个尚未完成的模型。
+      const importId = crypto.randomUUID();
+      const operationDirectory = this.paths.stagingOperationDirectory(importId);
+      fs.mkdirSync(operationDirectory, { recursive: true });
       const stagedDirectory = path.join(operationDirectory, 'resource');
-      let destination: string | undefined;
       try {
         const files = await importLive2dFiles(input.source, stagedDirectory);
-        destination = this.paths.live2dModelDirectory(characterName, files.name);
+        const destination = this.paths.live2dModelDirectory(characterName, files.name);
         if (fs.existsSync(destination) || this.live2dModels.find(characterName, files.name)) {
           throw new CharacterResourceValidationError('resource_name_conflict');
         }
         const live2dFiles = await findLive2dFiles(stagedDirectory);
         await readLive2dModelResources(live2dFiles.modelPath);
         readLive2dRuntimeConfig(live2dFiles.runtimeConfigPath);
-        await fs.promises.mkdir(this.paths.live2dRoot(characterName), { recursive: true });
-        await fs.promises.rename(stagedDirectory, destination);
-        try {
-          const resource = this.live2dModels.insert(characterName, {
-            name: files.name,
-            displayName: files.displayName,
-            isPrimary: false,
-            byteSize: files.byteSize,
-          });
-          this.resourceChanged(characterName);
-          return resource;
-        } catch (error) {
-          await deleteLive2dDirectory(destination);
-          throw error;
-        }
-      } finally {
+        this.preparedLive2dImports.set(importId, {
+          characterName,
+          operationDirectory,
+          resourceDirectory: stagedDirectory,
+          files,
+        });
+        return { importId, ...files };
+      } catch (error) {
         await removeDirectoryIfPresent(operationDirectory);
+        throw error;
       }
+    });
+  }
+
+  streamPreparedLive2dArchive(characterName: string, importId: string): Readable {
+    const prepared = this.getPreparedLive2dImport(characterName, importId);
+    return createLive2dArchiveStream(prepared.resourceDirectory);
+  }
+
+  async commitLive2dImport(
+    characterName: string,
+    importId: string,
+    previewPng: Buffer,
+  ): Promise<CharacterLive2dModel> {
+    return this.mutate(characterName, async () => {
+      this.getRequiredCharacterOnly(characterName);
+      const prepared = this.getPreparedLive2dImport(characterName, importId);
+      const destination = this.paths.live2dModelDirectory(characterName, prepared.files.name);
+      if (fs.existsSync(destination) || this.live2dModels.find(characterName, prepared.files.name)) {
+        throw new CharacterResourceValidationError('resource_name_conflict');
+      }
+
+      const stagedPreview = path.join(prepared.operationDirectory, 'preview.png');
+      const previewTarget = this.paths.live2dPreviewFile(characterName, prepared.files.name);
+      await fs.promises.writeFile(stagedPreview, previewPng);
+      await fs.promises.mkdir(this.paths.live2dRoot(characterName), { recursive: true });
+      await fs.promises.mkdir(this.paths.previewRoot(characterName), { recursive: true });
+
+      // 模型目录和封面都准备好后才写数据库。角色列表以数据库为准,因此其他窗口
+      // 不会在封面仍不存在时提前看到这张模型卡片。
+      await fs.promises.rename(prepared.resourceDirectory, destination);
+      await fs.promises.rename(stagedPreview, previewTarget);
+      let resource: CharacterLive2dModel;
+      try {
+        resource = this.live2dModels.insert(characterName, {
+          name: prepared.files.name,
+          displayName: prepared.files.displayName,
+          isPrimary: false,
+          byteSize: prepared.files.byteSize,
+        });
+      } catch (error) {
+        await fs.promises.mkdir(prepared.operationDirectory, { recursive: true });
+        await fs.promises.rename(destination, prepared.resourceDirectory);
+        await fs.promises.rename(previewTarget, stagedPreview);
+        throw error;
+      }
+
+      this.preparedLive2dImports.delete(importId);
+      await removeDirectoryIfPresent(prepared.operationDirectory);
+      this.resourcesChanged(characterName);
+      return resource;
+    });
+  }
+
+  async cancelLive2dImport(characterName: string, importId: string): Promise<void> {
+    return this.mutate(characterName, async () => {
+      const prepared = this.getPreparedLive2dImport(characterName, importId);
+      await removeDirectoryIfPresent(prepared.operationDirectory);
+      this.preparedLive2dImports.delete(importId);
     });
   }
   async exportLive2dModel(characterName: string, live2dName: string, destination: string): Promise<string> {
@@ -357,7 +440,10 @@ export class CharacterStore {
           if (staged) await fs.promises.rename(staged, source);
           if (stagedPreview) await fs.promises.rename(stagedPreview, previewSource);
         }
-        if (deleted) this.resourceChanged(characterName);
+        if (deleted) {
+          this.resourcesChanged(characterName);
+          if (current.isPrimary) this.emitPresentationChanged(characterName);
+        }
         return deleted;
       } catch (error) {
         if (staged && !fs.existsSync(source)) await fs.promises.rename(staged, source);
@@ -371,30 +457,36 @@ export class CharacterStore {
 
   setPrimaryIllustration(characterName: string, illustrationName: string): Promise<boolean> {
     return this.mutate(characterName, () => {
-      this.getRequiredCharacterOnly(characterName);
+      const character = this.getRequiredCharacterOnly(characterName);
       if (!this.illustrations.find(characterName, illustrationName)) {
         throw new CharacterResourceNotFoundError('illustration', illustrationName);
       }
       const changed = this.illustrations.setPrimary(characterName, illustrationName);
-      if (changed) this.resourceChanged(characterName);
+      if (changed) {
+        this.resourcesChanged(characterName);
+        if (character.stageKind === 'illustration') this.emitPresentationChanged(characterName);
+      }
       return changed;
     });
   }
 
   updateIllustration(characterName: string, illustrationName: string, patch: CharacterIllustrationPatch): Promise<CharacterIllustration | undefined> {
     return this.mutate(characterName, () => {
-      this.getRequiredCharacterOnly(characterName);
+      const character = this.getRequiredCharacterOnly(characterName);
       normalizeResourcePatch(patch);
       normalizeExpression(patch.expression);
       this.assertExpressionCapacity(characterName, patch.expression, illustrationName);
       const resource = this.illustrations.update(characterName, illustrationName, patch);
-      if (resource) this.resourceChanged(characterName);
+      if (resource) {
+        this.resourcesChanged(characterName);
+        if (character.stageKind === 'illustration') this.emitPresentationChanged(characterName);
+      }
       return resource;
     });
   }
   async importIllustration(characterName: string, input: ImportCharacterIllustrationInput): Promise<CharacterIllustration> {
     return this.mutate(characterName, async () => {
-      this.getRequiredCharacterOnly(characterName);
+      const character = this.getRequiredCharacterOnly(characterName);
       normalizeExpression(input.expression);
       this.assertExpressionCapacity(characterName, input.expression);
       const operationDirectory = this.createStagingOperation();
@@ -416,7 +508,8 @@ export class CharacterStore {
             isPrimary: false,
             byteSize: files.byteSize,
           });
-          this.resourceChanged(characterName);
+          this.resourcesChanged(characterName);
+          if (character.stageKind === 'illustration') this.emitPresentationChanged(characterName);
           return resource;
         } catch (error) {
           await removeFileIfPresent(destination);
@@ -439,7 +532,7 @@ export class CharacterStore {
   }
   async deleteIllustration(characterName: string, illustrationName: string): Promise<CharacterIllustration | undefined> {
     return this.mutate(characterName, async () => {
-      this.getRequiredCharacterOnly(characterName);
+      const character = this.getRequiredCharacterOnly(characterName);
       const current = this.illustrations.find(characterName, illustrationName);
       if (!current) return undefined;
       const operationDirectory = this.createStagingOperation();
@@ -448,7 +541,10 @@ export class CharacterStore {
       try {
         const deleted = this.illustrations.delete(characterName, illustrationName);
         if (!deleted && staged) await fs.promises.rename(staged, source);
-        if (deleted) this.resourceChanged(characterName);
+        if (deleted) {
+          this.resourcesChanged(characterName);
+          if (character.stageKind === 'illustration') this.emitPresentationChanged(characterName);
+        }
         return deleted;
       } catch (error) {
         if (staged && !fs.existsSync(source)) await fs.promises.rename(staged, source);
@@ -466,7 +562,7 @@ export class CharacterStore {
         throw new CharacterResourceNotFoundError('voice_sample', voiceName);
       }
       const changed = this.voiceSamples.setPrimary(characterName, voiceName);
-      if (changed) this.resourceChanged(characterName);
+      if (changed) this.resourcesChanged(characterName);
       return changed;
     });
   }
@@ -476,7 +572,7 @@ export class CharacterStore {
       this.getRequiredCharacterOnly(characterName);
       normalizeResourcePatch(patch);
       const resource = this.voiceSamples.update(characterName, voiceName, patch);
-      if (resource) this.resourceChanged(characterName);
+      if (resource) this.resourcesChanged(characterName);
       return resource;
     });
   }
@@ -511,7 +607,7 @@ export class CharacterStore {
             byteSize: validated.byteSize,
             durationMs: validated.durationMs,
           });
-          this.resourceChanged(characterName);
+          this.resourcesChanged(characterName);
           return resource;
         } catch (error) {
           await removeFileIfPresent(destination);
@@ -543,7 +639,7 @@ export class CharacterStore {
       try {
         const deleted = this.voiceSamples.delete(characterName, voiceName);
         if (!deleted && staged) await fs.promises.rename(staged, source);
-        if (deleted) this.resourceChanged(characterName);
+        if (deleted) this.resourcesChanged(characterName);
         return deleted;
       } catch (error) {
         if (staged && !fs.existsSync(source)) await fs.promises.rename(staged, source);
@@ -645,9 +741,13 @@ export class CharacterStore {
 
   /** 写入 Live2D 静态封面(前端导入/补票时离屏渲一帧的 PNG)。 */
   async saveLive2dPreview(characterName: string, live2dName: string, png: Buffer): Promise<void> {
-    const target = this.resolveLive2dPreviewFile(characterName, live2dName);
-    await fs.promises.mkdir(path.dirname(target), { recursive: true });
-    await fs.promises.writeFile(target, png);
+    return this.mutate(characterName, async () => {
+      const target = this.resolveLive2dPreviewFile(characterName, live2dName);
+      await fs.promises.mkdir(path.dirname(target), { recursive: true });
+      await fs.promises.writeFile(target, png);
+      // 手动重做封面不会改变主舞台,只通知角色资源页面重新读取这张图片。
+      this.resourcesChanged(characterName);
+    });
   }
 
   resolveIllustrationFile(characterName: string, illustrationName: string): string {
@@ -668,8 +768,12 @@ export class CharacterStore {
 
   async reloadLive2dConfiguration(characterName: string, live2dName: string): Promise<Live2dConfiguration> {
     return this.mutate(characterName, async () => {
+      const character = this.getRequiredCharacterOnly(characterName);
       const configuration = await this.readLive2dConfiguration(characterName, live2dName);
-      this.resourceChanged(characterName);
+      const model = this.live2dModels.find(characterName, live2dName);
+      if (character.stageKind === 'live2d' && model?.isPrimary) {
+        this.emitPresentationChanged(characterName);
+      }
       return configuration;
     });
   }
@@ -694,8 +798,9 @@ export class CharacterStore {
   }
   async saveLive2dMappings(characterName: string, live2dName: string, mappings: Live2dMappings): Promise<Live2dConfiguration> {
     return this.mutate(characterName, async () => {
-      this.getRequiredCharacterOnly(characterName);
-      if (!this.live2dModels.find(characterName, live2dName)) {
+      const character = this.getRequiredCharacterOnly(characterName);
+      const model = this.live2dModels.find(characterName, live2dName);
+      if (!model) {
         throw new CharacterResourceNotFoundError('live2d_model', live2dName);
       }
       const directory = this.paths.live2dModelDirectory(characterName, live2dName);
@@ -708,7 +813,10 @@ export class CharacterStore {
         resources.expressions.map(expression => expression.name),
         resources.motions,
       );
-      this.resourceChanged(characterName);
+      this.resourcesChanged(characterName);
+      if (character.stageKind === 'live2d' && model.isPrimary) {
+        this.emitPresentationChanged(characterName);
+      }
       return {
         runtimeConfig: written.config,
         expressions: resources.expressions.map(expression => ({
@@ -781,10 +889,13 @@ export class CharacterStore {
     return staged;
   }
 
-  private resourceChanged(characterName: string): void {
-    // 资源表自身的时间不足以刷新角色卡；同时推进角色更新时间并广播新的舞台事实。
+  private resourcesChanged(characterName: string): void {
+    // 角色卡用 Character.updatedAt 判断服务端图片是否已经换代,所以资源文件完成后
+    // 必须与资源列表通知一起推进这个时间。
     this.repository.touch(characterName);
-    this.emitPresentationChanged(characterName);
+    const character = this.get(characterName);
+    if (!character) return;
+    for (const listener of this.resourcesChangedListeners) listener(character);
   }
   private emitSwitched(next: Character): void {
     const presentation = this.inspectStagePresentation(next.name);
@@ -795,6 +906,17 @@ export class CharacterStore {
     if (!character) return;
     const presentation = this.inspectStagePresentation(characterName);
     for (const listener of this.presentationChangedListeners) listener(character, presentation);
+  }
+
+  private getPreparedLive2dImport(
+    characterName: string,
+    importId: string,
+  ): PreparedLive2dImportEntry {
+    const prepared = this.preparedLive2dImports.get(importId);
+    if (!prepared || prepared.characterName !== characterName) {
+      throw new CharacterResourceNotFoundError('live2d_import', importId);
+    }
+    return prepared;
   }
 }
 

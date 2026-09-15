@@ -13,7 +13,10 @@ export interface CharacterResourcesRouteDeps {
     CharacterStore,
     | 'setPrimaryLive2dModel'
     | 'updateLive2dModel'
-    | 'importLive2dModel'
+    | 'prepareLive2dImport'
+    | 'streamPreparedLive2dArchive'
+    | 'commitLive2dImport'
+    | 'cancelLive2dImport'
     | 'exportLive2dModel'
     | 'deleteLive2dModel'
     | 'resolveLive2dModelDirectory'
@@ -53,8 +56,12 @@ const illustrationPatch = resourcePatch.extend({
 
 const voicePatch = z.object({ displayName: z.string().trim().min(1).max(200) });
 
-const importLive2dBody = z.object({
+const prepareLive2dImportBody = z.object({
   source: z.string().min(1),
+}).strict();
+
+const commitLive2dImportBody = z.object({
+  previewPngBase64: z.string().min(1).max(4_000_000),
 }).strict();
 
 const previewBody = z.object({
@@ -143,6 +150,46 @@ export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
         path: deps.characters.resolveCharacterDirectory(context.req.param('characterName')),
       })))
     // ── Live2D ─────────────────────────────────────────────────────────────────
+    // 暂存导入必须写在 `:live2dName` 路由之前,否则 imports 会被当成已安装模型名。
+    // prepare 只校验和暂存,commit 才让数据库、模型目录与封面同时对其他窗口可见。
+    .post('/:characterName/live2d/imports', jsonBody(prepareLive2dImportBody), context =>
+      run(context, () => deps.characters.prepareLive2dImport(
+        context.req.param('characterName'),
+        context.req.valid('json'),
+      )))
+    .get('/:characterName/live2d/imports/:importId/archive', context => {
+      try {
+        const archive = deps.characters.streamPreparedLive2dArchive(
+          context.req.param('characterName'),
+          context.req.param('importId'),
+        );
+        return new Response(Readable.toWeb(archive) as ReadableStream, {
+          headers: {
+            'Content-Type': 'application/zip',
+            'Cache-Control': 'no-store',
+          },
+        });
+      } catch (error) {
+        return characterError(context, error);
+      }
+    })
+    .post(
+      '/:characterName/live2d/imports/:importId/commit',
+      jsonBody(commitLive2dImportBody),
+      context => run(context, () => deps.characters.commitLive2dImport(
+        context.req.param('characterName'),
+        context.req.param('importId'),
+        Buffer.from(context.req.valid('json').previewPngBase64, 'base64'),
+      )),
+    )
+    .delete('/:characterName/live2d/imports/:importId', context =>
+      run(context, async () => {
+        await deps.characters.cancelLive2dImport(
+          context.req.param('characterName'),
+          context.req.param('importId'),
+        );
+        return { ok: true as const };
+      }))
     .post('/:characterName/live2d/:live2dName/primary', context =>
       whenSessionsIdle(context, async () => ({
         ok: await deps.characters.setPrimaryLive2dModel(
@@ -154,11 +201,6 @@ export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
       run(context, () => deps.characters.updateLive2dModel(
         context.req.param('characterName'),
         context.req.param('live2dName'),
-        context.req.valid('json'),
-      )))
-    .post('/:characterName/live2d/import', jsonBody(importLive2dBody), context =>
-      run(context, () => deps.characters.importLive2dModel(
-        context.req.param('characterName'),
         context.req.valid('json'),
       )))
     .post('/:characterName/live2d/:live2dName/export', jsonBody(exportBody), context =>

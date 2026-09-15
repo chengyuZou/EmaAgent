@@ -3,11 +3,13 @@ import { useEffect, useState, type JSX } from 'react';
 import { fetchServerObjectUrl } from '../lib/serverFileUrl.js';
 
 export function ServerImage({
-  path, alt, className, onMissing,
+  path, alt, className, contentUpdatedAt, onLoad, onMissing,
 }: {
   path: string;
   alt: string;
   className?: string;
+  contentUpdatedAt?: number;
+  onLoad?: () => void;
   onMissing?: () => void;
 }): JSX.Element | null {
   const [url, setUrl] = useState<string | null>(null);
@@ -30,12 +32,13 @@ export function ServerImage({
       }
       objectUrl = result;
       setUrl(result);
+      onLoad?.();
     });
     return () => {
       disposed = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [path]);
+  }, [path, contentUpdatedAt]);
 
   if (missing || !url) return null;
   return <img src={url} alt={alt} className={className} />;

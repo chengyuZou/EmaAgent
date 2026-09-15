@@ -120,10 +120,51 @@ describe('CharacterStore', () => {
     };
     fs.writeFileSync(path.join(source, 'runtime-config.json'), JSON.stringify(authorConfig));
 
-    const imported = await store.importLive2dModel('模型角色', { source });
+    const resourceChanges: string[] = [];
+    const presentationChanges: string[] = [];
+    const stopResourceChanges = store.onResourcesChanged(character => {
+      resourceChanges.push(character.name);
+    });
+    const stopPresentationChanges = store.onPresentationChanged(character => {
+      presentationChanges.push(character.name);
+    });
+    const prepared = await store.prepareLive2dImport('模型角色', { source });
+
+    expect(prepared).toMatchObject({
+      name: 'alice-model',
+      displayName: 'alice-model',
+    });
+    expect(store.get('模型角色')?.live2dModels).toEqual([]);
+    expect(fs.existsSync(path.join(root, 'characters', '模型角色', 'live2d', 'alice-model'))).toBe(false);
+
+    const preparedArchiveChunks: Buffer[] = [];
+    for await (const chunk of store.streamPreparedLive2dArchive('模型角色', prepared.importId)) {
+      preparedArchiveChunks.push(Buffer.from(chunk));
+    }
+    expect(Object.keys(unzipSync(Buffer.concat(preparedArchiveChunks)))).toEqual(expect.arrayContaining([
+      'alice.model3.json',
+      'alice.moc3',
+      'textures/texture.png',
+    ]));
+
+    const imported = await store.commitLive2dImport(
+      '模型角色',
+      prepared.importId,
+      pngBytes(),
+    );
+    expect(resourceChanges).toEqual(['模型角色']);
+    expect(presentationChanges).toEqual([]);
+
+    await store.update('模型角色', { stageKind: 'live2d' });
+    resourceChanges.length = 0;
+    presentationChanges.length = 0;
     await store.setPrimaryLive2dModel('模型角色', imported.name);
+    stopResourceChanges();
+    stopPresentationChanges();
 
     expect(imported.name).toBe('alice-model');
+    expect(resourceChanges).toEqual(['模型角色']);
+    expect(presentationChanges).toEqual(['模型角色']);
     const archiveChunks: Buffer[] = [];
     for await (const chunk of store.streamLive2dArchive('模型角色', 'alice-model')) {
       archiveChunks.push(Buffer.from(chunk));
@@ -179,17 +220,49 @@ describe('CharacterStore', () => {
         wave: { group: 'Wave', index: 0 },
       },
     });
-    await store.update('模型角色', { stageKind: 'live2d' });
     expect(characterStageVocabulary(store.inspectStagePresentation('模型角色'))).toEqual({
       emotions: ['determined', 'happy'],
       motions: ['happy', 'wave'],
     });
 
+    const previewChanges: string[] = [];
+    const previewPresentationChanges: string[] = [];
+    const stopPreviewChanges = store.onResourcesChanged(character => {
+      previewChanges.push(character.name);
+    });
+    const stopPreviewPresentationChanges = store.onPresentationChanged(character => {
+      previewPresentationChanges.push(character.name);
+    });
     await store.saveLive2dPreview('模型角色', 'alice-model', pngBytes());
+    stopPreviewChanges();
+    stopPreviewPresentationChanges();
     const preview = path.join(root, 'characters', '模型角色', '.previews', 'alice-model.png');
     expect(fs.existsSync(preview)).toBe(true);
+    expect(previewChanges).toEqual(['模型角色']);
+    expect(previewPresentationChanges).toEqual([]);
     await store.deleteLive2dModel('模型角色', 'alice-model');
     expect(fs.existsSync(preview)).toBe(false);
+  });
+
+  it('取消 Live2D 暂存导入后不会留下模型或封面', async () => {
+    store.create({ name: '取消角色', personaPrompt: '角色。' });
+    const source = path.join(root, 'cancel-model');
+    fs.mkdirSync(source, { recursive: true });
+    fs.writeFileSync(path.join(source, 'cancel.model3.json'), JSON.stringify({
+      Version: 3,
+      FileReferences: {
+        Moc: 'cancel.moc3',
+        Textures: ['cancel.png'],
+      },
+    }));
+    fs.writeFileSync(path.join(source, 'cancel.moc3'), Buffer.from([1]));
+    fs.writeFileSync(path.join(source, 'cancel.png'), pngBytes());
+
+    const prepared = await store.prepareLive2dImport('取消角色', { source });
+    await store.cancelLive2dImport('取消角色', prepared.importId);
+
+    expect(store.get('取消角色')?.live2dModels).toEqual([]);
+    expect(fs.existsSync(path.join(root, 'characters', '.staging', prepared.importId))).toBe(false);
   });
 
   it('同一角色的同名导入串行，失败请求不会删除先成功的资源', async () => {

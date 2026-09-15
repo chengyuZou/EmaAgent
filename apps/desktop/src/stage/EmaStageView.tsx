@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, type JSX } from 'react';
 import {
   Live2DStage,
   type Live2DStageHandle,
+  type Live2DStageProps,
   type Live2DStageReadyInfo,
 } from '@ema-agent/live2d-react';
 import type { Live2dRuntimeConfig } from '@ema-agent/characters';
@@ -21,6 +22,7 @@ export interface EmaStageViewProps {
   onExpressionChanged?: (expression: string | null) => void;
   onReady?: (info: Live2DStageReadyInfo) => void;
   onError?: (error: Error) => void;
+  onDiagnostic?: Live2DStageProps['onDiagnostic'];
 }
 
 export function EmaStageView({
@@ -35,6 +37,7 @@ export function EmaStageView({
   onExpressionChanged,
   onReady,
   onError,
+  onDiagnostic,
 }: EmaStageViewProps): JSX.Element {
   const stageRef = useRef<Live2DStageHandle | null>(null);
   const setStageHandle = useCallback((handle: Live2DStageHandle | null): void => {
@@ -78,6 +81,7 @@ export function EmaStageView({
       interactive={interactive}
       onReady={onReady}
       onError={onError}
+      onDiagnostic={onDiagnostic}
     />
   );
 }

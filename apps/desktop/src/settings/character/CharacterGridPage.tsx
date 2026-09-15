@@ -215,6 +215,7 @@ function CharacterCover({ character }: { character: Character }): JSX.Element {
           path={charactersApi.live2dPreviewUrl(character.name, primary.name)}
           alt={character.name}
           className="aspect-[3/4] w-full object-cover"
+          contentUpdatedAt={character.updatedAt}
         />
       );
     }

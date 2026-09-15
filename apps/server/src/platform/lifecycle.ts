@@ -2,6 +2,7 @@
 // 以及对应的优雅关闭. 这里只编排顺序, 业务对象全部来自 Composition.
 import path from 'node:path';
 import type { Server } from 'node:http';
+import { performance } from 'node:perf_hooks';
 import { serve } from '@hono/node-server';
 import { WebSocketServer } from 'ws';
 import { buildComposition, type Composition } from '../composition/index.js';
@@ -29,26 +30,35 @@ export interface ServerLifecycle {
  * Narrative 推送、默认 KB 等后台驱动允许降级. 启动不会续跑旧 Turn 或后台工作.
  */
 export async function startServer(secret: string): Promise<ServerLifecycle> {
+  let phaseStartedAt = performance.now();
+  console.info('[server:startup] data directory preparation started');
   // 单一数据目录:~/.ema-agent/data 固定,不再有库注册表。
   const activeDataDir = dataDirPath();
   ensureDataDirLayout(activeDataDir);
+  logStartupDuration('data directory preparation', phaseStartedAt);
 
+  phaseStartedAt = performance.now();
+  console.info('[server:startup] data directory lock started');
   const lock = acquireLock(activeDataDir);
   if (!lock.acquired) {
     throw new Error(
       `数据目录已被另一个 server 进程占用: ${activeDataDir}（持有者 pid=${lock.conflict.pid}）`,
     );
   }
+  logStartupDuration('data directory lock', phaseStartedAt);
 
   let composition: Composition | undefined;
   let server: Server | undefined;
   let webSocketServer: WebSocketServer | undefined;
   try {
+    phaseStartedAt = performance.now();
+    console.info('[server:startup] composition started');
     const running = buildComposition({
       activeDataDir,
       initializeBuiltinCharacters: process.env['EMA_INITIALIZE_BUILTIN_CHARACTERS'] === '1',
     });
     composition = running;
+    logStartupDuration('composition', phaseStartedAt);
     const recoveryDeps: StartupRecoveryDeps = {
       activeDataDir,
       dataDb: running.database.dataDb,
@@ -60,8 +70,13 @@ export async function startServer(secret: string): Promise<ServerLifecycle> {
       backgroundProcesses: running.tools.backgroundProcesses,
       settings: running.settings.settings,
     };
+    phaseStartedAt = performance.now();
+    console.info('[server:startup] required recovery started');
     runRequiredRecovery(recoveryDeps);
+    logStartupDuration('required recovery', phaseStartedAt);
 
+    phaseStartedAt = performance.now();
+    console.info('[server:startup] route assembly and listening started');
     const app = createRoutes(running, secret);
     const channelWebSocketServer = new WebSocketServer({ noServer: true });
     webSocketServer = channelWebSocketServer;
@@ -79,9 +94,12 @@ export async function startServer(secret: string): Promise<ServerLifecycle> {
     httpServer.headersTimeout = HTTP_SERVER_TIMEOUTS.headersMs;
     httpServer.requestTimeout = HTTP_SERVER_TIMEOUTS.requestBodyMs;
     await new Promise<void>(resolve => httpServer.once('listening', resolve));
+    logStartupDuration('route assembly and listening', phaseStartedAt);
     const address = httpServer.address();
     const port = typeof address === 'object' && address !== null ? address.port : 0;
+    phaseStartedAt = performance.now();
     const unpublishReady = publishReadyFile(port);
+    logStartupDuration('ready publication', phaseStartedAt);
 
     // ── ready 之后的后台驱动 ──────────────────────────────────────────────
     runFileMaintenance(recoveryDeps);
@@ -127,4 +145,10 @@ export async function startServer(secret: string): Promise<ServerLifecycle> {
     lock.release();
     throw error;
   }
+}
+
+function logStartupDuration(phase: string, startedAt: number): void {
+  console.info(
+    `[server:startup] ${phase} completed duration_s=${((performance.now() - startedAt) / 1000).toFixed(3)}`,
+  );
 }

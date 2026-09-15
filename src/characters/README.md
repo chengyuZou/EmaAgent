@@ -34,7 +34,7 @@ interface Character {
 - `voiceName` 是完整音频文件名。
 - 每份资源另有可编辑 `displayName`，修改它不移动文件。
 - 三类资源均无 `enabled`。每类至多一份 `isPrimary`；删除主要参考音频时自动提升排序后的下一条，Live2D 与插图不自动提升。
-- Live2D 支持 ZIP 或文件夹导入。
+- Live2D 支持 ZIP 或文件夹导入。Server 先校验并暂存模型，Desktop 用暂存归档生成封面，最后一次提交模型目录、封面和数据库资源行。封面生成失败时取消本次导入，设置页不会看到不完整的资源卡。
 - Voice 只支持本地文件路径导入，参考文本和语言导入后不可修改；最大 512 MiB、最长 1 分钟。
 - Illustration 可带一个 `expression`。同一表情最多 10 张，表情池由查询结果派生，不另存 JSON。
 
@@ -51,15 +51,17 @@ interface Character {
 
 Presentation 不返回宿主绝对路径。Live2D 模型由 Server 将已展开目录流式包装成一个受认证的 ZIP 响应,Desktop 再把完整目录树交给 Zip/File Loader；立绘通过受认证的单文件接口读取。设置页封面和主舞台共用同一条 Live2D ZIP 加载链。
 
-Live2D 静态封面保存在角色目录的 `.previews/<live2dName>.png`,不写回用户模型目录,也不进入模型导出 ZIP。Desktop 导入模型后先用同一份 ZIP 离屏渲染并上传封面,再刷新资源列表；生成失败时保留已经导入的模型,由资源卡显示明确的手动重试入口。进入配置页不会静默生成封面。删除模型时必须同时删除对应封面。
+Live2D 静态封面保存在角色目录的 `.previews/<live2dName>.png`,不写回用户模型目录,也不进入模型导出 ZIP。导入使用 `POST /live2d/imports` 准备暂存资源，`GET /live2d/imports/:importId/archive` 提供离屏渲染所需的完整目录，`POST /live2d/imports/:importId/commit` 接收封面并完成提交；Desktop 中途失败时调用 `DELETE /live2d/imports/:importId` 取消。只有 commit 成功后才发送资源变化事件。已有模型仍可通过明确的“重新渲染封面”入口修复封面，进入配置页不会静默生成。删除模型时必须同时删除对应封面。
 
 Stage 对每个合法 `<emotion>` 都发出 `emotion_changed`，即使前后值相同。立绘消费者收到事件后从对应表情池随机选择；池内多于一张时排除当前图片，再用普通交叉淡入淡出换图。立绘没有呼吸动画。
 
 Character 和 Live2D 资源行都不保存情绪或动作词汇。Live2D 词汇只取当前 Presentation 中 `runtime-config.json` 的 `emotionMap`、`motionMap` 键；立绘情绪词只取 Presentation 的 `expression` 分组。Turn Prompt、StageEngine 和主窗口都消费 CharacterStore 产出的 Presentation，不各自维护词汇副本。
 
+`character_resources_changed` 表示角色包文件和资源行已经完整写入，Settings 收到后重读资源列表。`character_presentation_changed` 只在当前舞台读取结果可能变化时发送，主窗口收到后重读 Presentation。切换主要舞台资源会同时发送两种事件；导入非主要资源或重做静态封面只发送资源事件，不能因此重载正在渲染的主 Canvas。
+
 内置角色只在 Desktop Host 发现 `~/.ema-agent/profile.db` 尚未创建时初始化。Host 先把随包的同名角色目录复制到 `~/.ema-agent/characters`，再让 Server 调用 `initializeBuiltinCharacters()` 写入对应数据库行。后续启动不补种，用户删除内置角色后不会自动恢复。
 
-用户手改 `runtime-config.json` 后调用 `reloadLive2dConfiguration`。该操作校验并返回当前完整配置，再广播舞台变化；不写 SQL 词汇列。
+用户手改 `runtime-config.json` 后调用 `reloadLive2dConfiguration`。该操作校验并返回当前完整配置；只有目标是当前主要 Live2D 且舞台类型为 Live2D 时才广播舞台变化，不写 SQL 词汇列。
 
 ## Server 协调
 

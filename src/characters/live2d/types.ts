@@ -38,8 +38,15 @@ export interface CharacterLive2dModelPatch {
   stageOffsetY?: number;
 }
 
-export interface ImportCharacterLive2dModelInput {
+export interface PrepareCharacterLive2dImportInput {
   source: string;
+}
+
+export interface PreparedLive2dImport {
+  importId: string;
+  name: string;
+  displayName: string;
+  byteSize: number;
 }
 
 /** 语义情绪名到模型原生 Expression 的映射。 */

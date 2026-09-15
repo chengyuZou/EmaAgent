@@ -51,7 +51,11 @@ export class CharacterInputInvalidError extends Error {
   }
 }
 
-export type CharacterResourceKind = 'live2d_model' | 'illustration' | 'voice_sample';
+export type CharacterResourceKind =
+  | 'live2d_model'
+  | 'live2d_import'
+  | 'illustration'
+  | 'voice_sample';
 
 export class CharacterResourceNotFoundError extends Error {
   readonly code = 'character_resource_not_found';

@@ -198,32 +198,35 @@ function ModelCard({
           )}
         />
       </div>
-      {missing ? (
-        <div className="flex aspect-[3/4] w-full flex-col items-center justify-center gap-2 bg-[var(--ema-surface-3)] px-3 text-center">
-          <span className="text-xs text-[var(--ema-text-tertiary)]">
-            {generationFailed ? '封面生成失败' : '暂无封面'}
-          </span>
-          <Button
-            variant="secondary"
-            size="sm"
-            loading={generating}
-            onClick={(event) => {
-              event.stopPropagation();
-              void renderPreview();
-            }}
-          >
-            {generating ? '正在生成' : '生成封面'}
-          </Button>
-        </div>
-      ) : (
+      <div className="relative aspect-[3/4] w-full bg-[var(--ema-surface-3)]">
+        {missing && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-3 text-center">
+            <span className="text-xs text-[var(--ema-text-tertiary)]">
+              {generationFailed ? '封面生成失败' : '暂无封面'}
+            </span>
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={generating}
+              onClick={(event) => {
+                event.stopPropagation();
+                void renderPreview();
+              }}
+            >
+              {generating ? '正在生成' : '生成封面'}
+            </Button>
+          </div>
+        )}
         <ServerImage
           key={imageKey}
           path={charactersApi.live2dPreviewUrl(character.name, model.name)}
           alt={model.name}
-          className="aspect-[3/4] w-full object-cover"
+          className="h-full w-full object-cover"
+          contentUpdatedAt={character.updatedAt}
+          onLoad={() => setMissing(false)}
           onMissing={() => setMissing(true)}
         />
-      )}
+      </div>
       <div className="px-3 py-2">
         <p className="truncate text-xs font-semibold text-[var(--ema-text-primary)]">{model.name}</p>
         <p className="truncate text-[11px] text-[var(--ema-text-tertiary)]">{model.displayName}</p>
@@ -248,29 +251,36 @@ async function exportLive2d(characterName: string, live2dName: string): Promise<
 
 function ImportMenu({ character }: { character: Character }): JSX.Element {
   const store = useCharacterStore();
-  const [importing, setImporting] = useState<'model' | 'preview' | null>(null);
+  const [importing, setImporting] = useState<'prepare' | 'preview' | 'commit' | null>(null);
 
   async function runImport(source: string): Promise<void> {
-    setImporting('model');
+    let importId: string | null = null;
+    setImporting('prepare');
     try {
-      const result = await charactersApi.importLive2d(character.name, { source });
+      // 新模型必须等封面生成成功后再进入资源列表,否则其他窗口会先请求到不存在的图片,
+      // 并把一次正常的导入过程显示成缺失封面。
+      const prepared = await charactersApi.prepareLive2dImport(character.name, { source });
+      const preparedImportId = prepared.importId;
+      importId = preparedImportId;
       setImporting('preview');
-      let previewError: string | null = null;
-      try {
-        await generateLive2dPreview(character.name, result.name);
-      } catch (error) {
-        previewError = error instanceof Error ? error.message : '未知错误';
-      }
+      const archive = await charactersApi.preparedLive2dArchive(character.name, preparedImportId);
+      const previewPngBase64 = await renderLive2dPreview(archive);
+      setImporting('commit');
+      const result = await charactersApi.commitLive2dImport(
+        character.name,
+        preparedImportId,
+        previewPngBase64,
+      );
+      importId = null;
       await store.load();
-      if (previewError) {
-        showToast(`${result.name} 已导入,但封面生成失败: ${previewError}`, { variant: 'warning' });
-      } else {
-        showToast(`已导入 ${result.name}`, { variant: 'success' });
-      }
+      showToast(`已导入 ${result.name}`, { variant: 'success' });
     } catch (error) {
-      if (error instanceof ServerApiError && error.code === 'character_work_running') {
-        showToast('当前角色有正在执行的任务,请先停止或等其结束后再导入', { variant: 'warning' });
-        return;
+      if (importId) {
+        try {
+          await charactersApi.cancelLive2dImport(character.name, importId);
+        } catch (cancelError) {
+          console.warn('[live2d-import] 暂存资源清理失败,应用下次启动时会再次清理', cancelError);
+        }
       }
       showToast(error instanceof Error ? error.message : '导入失败', { variant: 'danger' });
     } finally {
@@ -304,7 +314,11 @@ function ImportMenu({ character }: { character: Character }): JSX.Element {
       items={items}
       trigger={(
         <Button variant="primary" size="sm" icon="i-mdi:plus" loading={importing !== null}>
-          {importing === 'preview' ? '正在生成封面' : '导入'}
+          {importing === 'preview'
+            ? '正在生成封面'
+            : importing === 'commit'
+              ? '正在完成导入'
+              : '导入'}
         </Button>
       )}
     />
