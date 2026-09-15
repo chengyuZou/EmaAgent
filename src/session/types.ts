@@ -51,7 +51,7 @@ export interface Session {
   createdAt: number;
   /** 行属性更新时间：标题、置顶、cwd 或执行偏好发生变化。 */
   updatedAt: number;
-  /** 会话活动时间，用于"最近 Session"排序。 */
+  /** 会话活动时间，用于时间展示与未读判断。 */
   lastActivityAt: number;
   /** 非 null 即已封存；解封即置回 null。 */
   archivedAt: number | null;
@@ -178,4 +178,23 @@ export interface SessionSearchHit {
 
 export interface SearchSessionsOutput {
   results: SessionSearchHit[];
+}
+
+export type SessionSidebarDestination =
+  | { section: 'pinned' }
+  | { section: 'project'; projectId: string }
+  | { section: 'recent' };
+
+export interface MoveSessionInSidebarInput {
+  sessionId: string;
+  destination: SessionSidebarDestination;
+  /** null 表示放到目标分区末尾。 */
+  beforeSessionId: string | null;
+}
+
+export interface MoveProjectInSidebarInput {
+  projectId: string;
+  section: 'pinned' | 'projects';
+  /** null 表示放到目标分区末尾。 */
+  beforeProjectId: string | null;
 }

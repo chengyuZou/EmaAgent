@@ -3,6 +3,7 @@ import { Buffer }                from 'node:buffer';
 import { randomUUID }            from 'node:crypto';
 import type { McpServersRepo, McpServerRow } from '@ema-agent/storage';
 import type { McpInstallProvenance, McpServerConfig, McpServerRecord, McpToolInfo } from './types.js';
+import type { McpServersChangedEvent } from './events.js';
 import { McpInstallProvenanceSchema, McpServerConfigSchema, McpToolInfoListSchema } from './types.js';
 import { McpServerNotFoundError, McpUnsupportedTransportError } from './errors.js';
 import {
@@ -24,6 +25,7 @@ import {
 export class McpServerStore {
   constructor(
     private readonly repo: McpServersRepo,
+    private readonly onChanged?: (event: McpServersChangedEvent) => void,
   ) {}
 
   register(
@@ -41,6 +43,7 @@ export class McpServerStore {
         configJson,
         ...provenancePatch(trustedProvenance),
       });
+      this.onChanged?.({ type: 'mcp_servers_changed' });
       return existing.id;
     }
     this.repo.insert({
@@ -55,6 +58,7 @@ export class McpServerStore {
       enabled:      1,
       installed_at: Date.now(),
     });
+    this.onChanged?.({ type: 'mcp_servers_changed' });
     return id;
   }
 
@@ -64,18 +68,21 @@ export class McpServerStore {
     if (!row) return;
     assertMcpToolSchemaLimits(name, tools);
     this.repo.update(row.id, { toolsCache: JSON.stringify(tools) });
+    this.onChanged?.({ type: 'mcp_servers_changed' });
   }
 
   setEnabled(name: string, enabled: boolean): void {
     const row = this.repo.findByName(name);
     if (!row) throw new McpServerNotFoundError(name);
     this.repo.update(row.id, { enabled: enabled ? 1 : 0 });
+    this.onChanged?.({ type: 'mcp_servers_changed' });
   }
 
   remove(name: string): void {
     const row = this.repo.findByName(name);
     if (!row) return;
     this.repo.deleteById(row.id);
+    this.onChanged?.({ type: 'mcp_servers_changed' });
   }
 
   findByName(name: string): McpServerRecord | null {

@@ -5,6 +5,7 @@ export type {
   ParsedSkillMd,
   SkillFrontmatter,
 } from './types.js';
+export type { SkillEvent } from './events.js';
 export {
   SkillFrontmatterSchema,
   SkillNameSchema,

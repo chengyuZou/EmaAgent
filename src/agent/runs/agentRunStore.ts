@@ -2,6 +2,7 @@
 // 完整 Assistant 消息与 ToolResult 流水归 agentRunMessagesStore.ts.
 
 import type { AgentRunRow, AgentRunsRepo } from '@ema-agent/storage';
+import type { AgentRunChangedEvent } from '../events.js';
 import type {
   AgentRun,
   AgentRunCompletion,
@@ -39,7 +40,10 @@ function fromRow(row: AgentRunRow): AgentRun {
 }
 
 export class AgentRunStore {
-  constructor(private readonly repo: AgentRunsRepo) {}
+  constructor(
+    private readonly repo: AgentRunsRepo,
+    private readonly onChanged?: (event: AgentRunChangedEvent) => void,
+  ) {}
 
   start(input: AgentRunStart): AgentRun {
     const now = Date.now();
@@ -57,7 +61,9 @@ export class AgentRunStore {
     if (!inserted) {
       throw new Error(`AgentRun ${input.agentRunId} 已存在`);
     }
-    return fromRow(inserted);
+    const run = fromRow(inserted);
+    this.onChanged?.({ type: 'agent_runs_changed', sessionId: run.sessionId });
+    return run;
   }
 
   complete(
@@ -123,15 +129,23 @@ export class AgentRunStore {
   }
 
   delete(agentRunId: string): void {
+    const run = this.repo.findById(agentRunId);
     this.repo.delete(agentRunId);
+    if (run) this.onChanged?.({ type: 'agent_runs_changed', sessionId: run.session_id });
   }
 
   clearTerminalForSession(sessionId: string): number {
-    return this.repo.deleteTerminalForSession(sessionId);
+    const deleted = this.repo.deleteTerminalForSession(sessionId);
+    if (deleted > 0) this.onChanged?.({ type: 'agent_runs_changed', sessionId });
+    return deleted;
   }
 
   recoverInterrupted(): AgentRun[] {
-    return this.repo.markStuckFailed(Date.now()).map(fromRow);
+    const runs = this.repo.markStuckFailed(Date.now()).map(fromRow);
+    for (const sessionId of new Set(runs.map(run => run.sessionId))) {
+      this.onChanged?.({ type: 'agent_runs_changed', sessionId });
+    }
+    return runs;
   }
 
   private currentFor(
@@ -150,7 +164,11 @@ export class AgentRunStore {
     agentRunId: string,
     updated: AgentRunRow | undefined,
   ): AgentRunTransitionResult {
-    if (updated) return { ok: true, changed: true, run: fromRow(updated) };
+    if (updated) {
+      const run = fromRow(updated);
+      this.onChanged?.({ type: 'agent_runs_changed', sessionId: run.sessionId });
+      return { ok: true, changed: true, run };
+    }
     const current = this.repo.findById(agentRunId);
     return current
       ? this.conflict(action, current)

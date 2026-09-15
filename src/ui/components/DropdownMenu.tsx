@@ -8,7 +8,7 @@ import { cn } from '../utils/cn.js';
 // 条目类型:item / separator / submenu(递归) / checkbox。
 
 export type MenuItem =
-  | { kind: 'item';      label: string; icon?: string; danger?: boolean; disabled?: boolean; shortcut?: string; onSelect(): void }
+  | { kind: 'item';      label: string; icon?: string; danger?: boolean; disabled?: boolean; shortcut?: string; description?: string; onSelect(): void }
   | { kind: 'separator' }
   | { kind: 'submenu';   label: string; icon?: string; items: MenuItem[] }
   | { kind: 'checkbox';  label: string; icon?: string; checked: boolean; onCheckedChange(v: boolean): void };
@@ -61,7 +61,14 @@ function RenderItem({ item, checkIcon, submenuIcon }: { item: MenuItem; checkIco
           className={cn(itemBaseCn, item.danger ? itemDangerCn : '')}
         >
           {item.icon && <span className={cn(item.icon, 'text-base')} aria-hidden />}
-          <span className="flex-1">{item.label}</span>
+          <span className="flex-1">
+            <span className="block">{item.label}</span>
+            {item.description && (
+              <span className="block text-[11px] leading-snug text-[var(--ema-text-tertiary)]">
+                {item.description}
+              </span>
+            )}
+          </span>
           {item.shortcut && <span className="ml-2 text-xs text-[var(--ema-text-tertiary)]">{item.shortcut}</span>}
         </RadixDropdown.Item>
       );

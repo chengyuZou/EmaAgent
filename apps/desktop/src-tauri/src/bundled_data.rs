@@ -4,13 +4,15 @@ use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, Manager};
 
+use crate::desktop::profile::profile_root;
+
 const TIMELINES: [&str; 3] = ["1st_Loop", "2nd_Loop", "3rd_Loop"];
 
 /// 返回是否需要由 Server 初始化内置角色数据库行。
 /// `profile.db` 是角色配置的事实源；它已经存在时不再复制或补种内置角色，
 /// 因而用户主动删除艾玛后，后续启动不会把她恢复出来。
 pub async fn prepare_builtin_characters(app: &AppHandle) -> Result<bool, String> {
-    let profile_root = ema_profile_root()?;
+    let profile_root = profile_root()?;
     if profile_root.join("profile.db").exists() {
         return Ok(false);
     }
@@ -30,7 +32,7 @@ pub async fn prepare_narrative_data(app: &AppHandle) -> Result<PathBuf, String> 
         return Ok(path);
     }
 
-    let destination = ema_profile_root()?
+    let destination = profile_root()?
         .join("narrative")
         .join("data")
         .join("witch-trial");
@@ -77,15 +79,6 @@ fn bundled_narrative_source(app: &AppHandle) -> Result<PathBuf, String> {
         .map_err(|error| format!("resolve application resources: {error}"))?
         .join("narrative")
         .join("witch-trial"))
-}
-
-fn ema_profile_root() -> Result<PathBuf, String> {
-    if let Some(path) = std::env::var_os("EMA_PROFILE_DIR") {
-        return Ok(PathBuf::from(path));
-    }
-    dirs::home_dir()
-        .map(|home| home.join(".ema-agent"))
-        .ok_or_else(|| "cannot resolve user home directory".to_string())
 }
 
 fn install_builtin_characters(source: &Path, destination: &Path) -> Result<(), String> {

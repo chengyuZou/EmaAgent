@@ -2,6 +2,8 @@
 
 `src/agent` 只实现一个 Agent 的 `LLM → Tool → Result` 循环，以及父 Agent 派生的子 AgentRun。根 Turn、Session 历史、Context、Compact、权限装配和 ToolPool 发现都不属于本包；循环只产 `AgentLoopEvent`，持久化由事件消费方（Turn / AgentRunExecutor）在 yield 恢复点完成。
 
+`AgentRunStore` 在运行行创建、终态变更、删除或启动恢复落库后发 `agent_runs_changed { sessionId }`；跨窗口消费者重查该 Session 的子代理统计。`AgentRunEvent` 仍是执行流事件，不替代持久化通知。
+
 ## 唯一循环
 
 ```text

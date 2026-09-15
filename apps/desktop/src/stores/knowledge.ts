@@ -485,3 +485,17 @@ export function selectIngestSummary(s: KnowledgeStoreState): IngestSummary {
   else                       state = 'done';     // 至少一个成功且无活跃
   return { active, failed, done, total, state };
 }
+
+export function handleKnowledgeSystemEvent(event: AppEvent): void {
+  switch (event.type) {
+    case 'kb_ingest_progress':
+    case 'kb_ingest_completed':
+    case 'kb_ingest_failed':
+    case 'kb_reembed_progress':
+    case 'kb_reembed_completed':
+    case 'kb_reembed_cancelled':
+    case 'kb_reembed_failed':
+      useKnowledgeStore.getState().applyKnowledgeEvent(event);
+      break;
+  }
+}

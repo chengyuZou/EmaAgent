@@ -4,6 +4,7 @@ from __future__ import annotations
 import hmac
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -54,6 +55,8 @@ def build_app(port: int) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        started_at = time.perf_counter()
+        print("[narrative:startup] lifespan started", flush=True)
         narrative_root = resolve_narrative_root()
         validate_narrative_root(narrative_root)
         print(f"[narrative-bridge] content root: {narrative_root}", flush=True)
@@ -65,6 +68,10 @@ def build_app(port: int) -> FastAPI:
         app.state.startup_completed = True
 
         clear_ready = publish_ready(port)
+        print(
+            f"[narrative:startup] ready published duration_s={time.perf_counter() - started_at:.3f}",
+            flush=True,
+        )
         try:
             yield
         finally:

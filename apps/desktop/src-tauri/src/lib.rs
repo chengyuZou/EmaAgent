@@ -2,24 +2,24 @@
 mod bundled_data;
 mod commands;
 mod desktop;
+mod logging;
 mod processes;
 
 use tauri::{Manager, RunEvent};
-use tracing_subscriber::EnvFilter;
 
 use commands::{
     browser_back, browser_forward, close_browser, close_session_terminals, close_terminal,
     get_server_port, get_server_secret, get_start_narrative_on_launch, navigate_browser,
-    open_browser, open_path, open_terminal, open_window, quit_app, reload_browser, resize_terminal,
-    set_always_on_top, set_browser_bounds, set_browser_visible, set_passthrough,
-    set_start_narrative_on_launch, write_terminal,
+    open_browser, open_path, open_terminal, open_window, quit_app, reload_browser,
+    report_live2d_diagnostic, resize_terminal, set_always_on_top, set_browser_bounds,
+    set_browser_visible, set_passthrough, set_start_narrative_on_launch, write_terminal,
 };
 use desktop::terminal::TerminalSessions;
 use desktop::windows::{handle_window_event, show_main_window};
 use processes::DesktopProcesses;
 
 pub fn run() {
-    init_logging();
+    logging::init_logging();
 
     let processes = DesktopProcesses::new().expect("failed to initialize desktop child processes");
     let processes_for_setup = processes.clone();
@@ -36,6 +36,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_server_secret,
             get_server_port,
+            report_live2d_diagnostic,
             get_start_narrative_on_launch,
             set_start_narrative_on_launch,
             set_always_on_top,
@@ -86,13 +87,4 @@ pub fn run() {
                 tracing::info!("tauri exit event — child processes stopped");
             }
         });
-}
-
-fn init_logging() {
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info,ema_desktop_lib=debug"));
-    tracing_subscriber::fmt()
-        .with_env_filter(filter)
-        .with_target(false)
-        .init();
 }

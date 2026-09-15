@@ -6,6 +6,7 @@ import { useStorageStore } from '../../stores/storage.js';
 import { sessionsApi } from '../../api/sessions.js';
 import { systemApi, type SessionSummary } from '../../api/system.js';
 import { showToast } from '../../lib/toast.js';
+import { subscribeSystemEvent } from '../../lib/system-event-dispatcher.js';
 import { morphTransition, MORPH_NAME } from '../../lib/viewTransition.js';
 import { Markdown } from '../../markdown/renderer.js';
 import { TokenDetail } from './TokenDetail.js';
@@ -27,9 +28,51 @@ export function StorageTab(): JSX.Element {
   const [openSessionId, setOpenSessionId] = useState<string | null>(null);
   const [viewer, setViewer] = useState<ViewerState | null>(null);
   const [exporting, setExporting] = useState<string | null>(null);
+  const morphSourceRef = useRef<HTMLElement | null>(null);
+
+  // 块 ⇄ 全幅查看器的共享元素 morph:打开时把源块挂名(旧帧有名才扩散得起来),
+  // 查看器本体常驻同名;关闭时源块名字保留到新帧做逆扩散,落幕后摘名。
+  function openViewerMorph(next: ViewerState, sourceEl: HTMLElement | null): void {
+    morphSourceRef.current = sourceEl;
+    if (sourceEl) sourceEl.style.viewTransitionName = MORPH_NAME;
+    void morphTransition(() => setViewer(next));
+  }
+
+  function closeViewerMorph(): void {
+    const sourceEl = morphSourceRef.current;
+    void morphTransition(() => setViewer(null))?.finally(() => {
+      if (sourceEl) sourceEl.style.viewTransitionName = '';
+      morphSourceRef.current = null;
+    });
+  }
 
   useEffect(() => {
-    void store.loadAll();
+    void store.loadAll(true);
+  }, []);
+
+  useEffect(() => {
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+    const unsubscribe = subscribeSystemEvent(event => {
+      if (
+        event.type !== 'session_list_changed'
+        && event.type !== 'session_messages_changed'
+        && event.type !== 'turn_completed'
+        && event.type !== 'turn_failed'
+        && event.type !== 'turn_aborted'
+        && event.type !== 'attachments_changed'
+        && event.type !== 'session_audio_changed'
+        && event.type !== 'agent_runs_changed'
+        && event.type !== 'usage_recorded'
+      ) return;
+      clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => {
+        void useStorageStore.getState().loadAll(true);
+      }, 150);
+    });
+    return () => {
+      unsubscribe();
+      clearTimeout(refreshTimer);
+    };
   }, []);
 
   async function handleImport(file: File): Promise<void> {
@@ -98,7 +141,7 @@ export function StorageTab(): JSX.Element {
         />
       </div>
 
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="ema-fade-in flex-1 overflow-y-auto p-6">
         <div className="flex flex-col gap-6">
           {stats && <OverviewBand stats={stats} />}
 
@@ -126,7 +169,7 @@ export function StorageTab(): JSX.Element {
                 onToggle={() =>
                   setOpenSessionId(current => (current === session.id ? null : session.id))}
                 onExport={() => void handleExport(session)}
-                onOpenViewer={next => morphTransition(() => setViewer(next))}
+                onOpenViewer={(next, sourceEl) => openViewerMorph(next, sourceEl)}
               />
             ))}
           </div>
@@ -136,7 +179,7 @@ export function StorageTab(): JSX.Element {
       {viewer && (
         <ViewerOverlay
           viewer={viewer}
-          onClose={() => morphTransition(() => setViewer(null))}
+          onClose={closeViewerMorph}
         />
       )}
     </div>
@@ -154,10 +197,16 @@ function SessionAccordion({
   exporting: boolean;
   onToggle(): void;
   onExport(): void;
-  onOpenViewer(viewer: ViewerState): void;
+  onOpenViewer(viewer: ViewerState, sourceEl: HTMLElement | null): void;
 }): JSX.Element {
   const title = session.title || '未命名会话';
   const tokenTotal = fmtTokens(session.totalInputTokens + session.totalOutputTokens);
+  /* 展开过的内容常驻 DOM:收起时 0fr 网格负责裁剪,动画才能双向跑;
+     若收起即卸载,内容在动画起跑前消失,折叠就成了瞬切。 */
+  const [hasOpened, setHasOpened] = useState(open);
+  useEffect(() => {
+    if (open) setHasOpened(true);
+  }, [open]);
 
   return (
     <div
@@ -200,7 +249,7 @@ function SessionAccordion({
         style={{ gridTemplateRows: open ? '1fr' : '0fr', opacity: open ? 1 : 0 }}
       >
         <div>
-          {open && (
+          {hasOpened && (
             <SessionBlocks
               sessionId={session.id}
               sessionTitle={title}
@@ -220,17 +269,43 @@ function SessionBlocks({
 }: {
   sessionId: string;
   sessionTitle: string;
-  onOpenViewer(viewer: ViewerState): void;
+  onOpenViewer(viewer: ViewerState, sourceEl: HTMLElement | null): void;
 }): JSX.Element {
   const [stats, setStats] = useState<Awaited<ReturnType<typeof systemApi.getSessionStats>> | null>(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let active = true;
-    systemApi.getSessionStats(sessionId)
-      .then(result => { if (active) setStats(result); })
-      .catch(() => { if (active) setFailed(true); });
-    return () => { active = false; };
+    let requestId = 0;
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+    const refresh = () => {
+      const currentRequestId = ++requestId;
+      systemApi.getSessionStats(sessionId)
+        .then(result => {
+          if (active && currentRequestId === requestId) {
+            setStats(result);
+            setFailed(false);
+          }
+        })
+        .catch(() => { if (active && currentRequestId === requestId) setFailed(true); });
+    };
+    refresh();
+    const unsubscribe = subscribeSystemEvent(event => {
+      if (
+        (event.type === 'session_messages_changed' && event.sessionId === sessionId)
+        || (event.type === 'attachments_changed' && event.sessionId === sessionId)
+        || (event.type === 'session_audio_changed' && event.sessionId === sessionId)
+        || (event.type === 'agent_runs_changed' && event.sessionId === sessionId)
+        || (event.type === 'usage_recorded' && event.sessionId === sessionId)
+        || ('sessionId' in event && event.sessionId === sessionId && (
+          event.type === 'turn_completed' || event.type === 'turn_failed' || event.type === 'turn_aborted'
+        ))
+      ) {
+        clearTimeout(refreshTimer);
+        refreshTimer = setTimeout(refresh, 150);
+      }
+    });
+    return () => { active = false; unsubscribe(); clearTimeout(refreshTimer); };
   }, [sessionId]);
 
   if (failed) {
@@ -281,7 +356,7 @@ function SessionBlocks({
         <button
           key={block.label}
           type="button"
-          onClick={() => block.viewer && onOpenViewer(block.viewer)}
+          onClick={(event) => block.viewer && onOpenViewer(block.viewer, event.currentTarget)}
           className="ema-stagger-in flex cursor-pointer flex-col gap-0.5 rounded-xl border
             border-[var(--ema-border)] bg-[var(--ema-surface-1)] px-3 py-2.5 text-left
             transition-all duration-[var(--ema-duration-fast)]
@@ -353,9 +428,11 @@ function RawMessageList({ sessionId }: { sessionId: string }): JSX.Element {
   const [loadingMore, setLoadingMore] = useState(false);
   const [cursor, setCursor] = useState<{ createdAt: number; id: string } | null>(null);
   const [failed, setFailed] = useState(false);
+  const requestId = useRef(0);
 
   // before 缺省=从头取(order 方向的第一页);切序时整体重取,不拼接两个方向的链。
   const load = useCallback((before?: { createdAt: number; id: string }) => {
+    const currentRequestId = ++requestId.current;
     if (before) setLoadingMore(true);
     else setLoading(true);
     systemApi.getRawMessages(sessionId, {
@@ -363,13 +440,36 @@ function RawMessageList({ sessionId }: { sessionId: string }): JSX.Element {
       order,
       limit: RAW_MESSAGES_PAGE_SIZE,
     }).then(result => {
+      if (currentRequestId !== requestId.current) return;
       setMessages(current => before ? [...current, ...result.messages] : [...result.messages]);
       setCursor(result.nextCursor ?? null);
-    }).catch(() => setFailed(true))
-      .finally(() => { setLoading(false); setLoadingMore(false); });
+      setFailed(false);
+    }).catch(() => { if (currentRequestId === requestId.current) setFailed(true); })
+      .finally(() => {
+        if (currentRequestId === requestId.current) {
+          setLoading(false);
+          setLoadingMore(false);
+        }
+      });
   }, [sessionId, order]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+    const unsubscribe = subscribeSystemEvent(event => {
+      if (
+        (event.type === 'session_messages_changed' && event.sessionId === sessionId)
+        || (event.type === 'turn_completed' && event.sessionId === sessionId)
+        || (event.type === 'turn_failed' && event.sessionId === sessionId)
+        || (event.type === 'turn_aborted' && event.sessionId === sessionId)
+      ) {
+        clearTimeout(refreshTimer);
+        refreshTimer = setTimeout(() => load(), 150);
+      }
+    });
+    return () => { unsubscribe(); clearTimeout(refreshTimer); };
+  }, [sessionId, load]);
 
   if (failed) return <p className="py-10 text-center text-xs text-[var(--ema-danger)]">消息读取失败</p>;
   if (loading) {
@@ -390,9 +490,18 @@ function RawMessageList({ sessionId }: { sessionId: string }): JSX.Element {
       {messages.length === 0 ? (
         <p className="py-10 text-center text-xs text-[var(--ema-text-tertiary)]">这个会话还没有消息</p>
       ) : (
-        messages.map(message => (
-          <RawMessageRow key={message.id} message={message} />
-        ))
+        /* key=order:切序整体重挂,行按新序重放滑入(感知=真重排了一遍)。 */
+        <div key={order}>
+          {messages.map((message, index) => (
+            <div
+              key={message.id}
+              className="ema-stagger-in-swift"
+              style={{ '--stagger-i': index } as CSSProperties}
+            >
+              <RawMessageRow message={message} />
+            </div>
+          ))}
+        </div>
       )}
       {cursor && (
         <div className="flex justify-center py-3">

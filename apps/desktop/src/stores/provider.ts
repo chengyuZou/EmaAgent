@@ -1,6 +1,7 @@
 // Provider 事实族单一入口：Provider 配置与业务位模型绑定。
 // 只存同窗口多组件订阅的两份共享状态；可用模型目录这类查询由各消费方直接调 API。
 import { create } from 'zustand';
+import type { AppEvent } from '@ema-agent/server/application/appEvents.js';
 import {
   providersApi,
   type ProviderRecord,
@@ -26,29 +27,34 @@ export interface ProviderStoreState {
   deleteBinding(module: BindingModule):               Promise<void>;
 }
 
+let providersRequest = 0;
+let bindingsRequest = 0;
+let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+let refreshRunning = false;
+let providersPending = false;
+let bindingsPending = false;
+
 export const useProviderStore = create<ProviderStoreState>((set, get) => ({
   providers:   [],
   bindings:    {},
 
   async loadAll() {
-    const [providers, bindings] = await Promise.all([
-      providersApi.list(),
-      providersApi.listBindings(),
+    await Promise.all([
+      get().refreshProviders(),
+      get().refreshBindings(),
     ]);
-    set({
-      providers: [...providers],
-      bindings: indexBindings(bindings),
-    });
   },
 
   async refreshProviders() {
+    const request = ++providersRequest;
     const providers = await providersApi.list();
-    set({ providers: [...providers] });
+    if (request === providersRequest) set({ providers: [...providers] });
   },
 
   async refreshBindings() {
+    const request = ++bindingsRequest;
     const bindings = await providersApi.listBindings();
-    set({ bindings: indexBindings(bindings) });
+    if (request === bindingsRequest) set({ bindings: indexBindings(bindings) });
   },
 
   async createProvider(input) {
@@ -76,6 +82,48 @@ export const useProviderStore = create<ProviderStoreState>((set, get) => ({
     });
   },
 }));
+
+/** Settings 窗口只对已收到的控制面变更重读；连续事件合并，飞行中再变更则补读。 */
+export function handleProviderSystemEvent(event: AppEvent): void {
+  if (
+    event.type === 'provider_config_changed'
+    || event.type === 'provider_models_changed'
+    || event.type === 'provider_health_changed'
+  ) {
+    providersPending = true;
+  } else if (event.type === 'model_bindings_changed') {
+    bindingsPending = true;
+  } else {
+    return;
+  }
+  if (refreshTimer !== null || refreshRunning) return;
+  refreshTimer = setTimeout(() => {
+    refreshTimer = null;
+    void refreshPendingProviderData();
+  }, 150);
+}
+
+async function refreshPendingProviderData(): Promise<void> {
+  if (refreshRunning) return;
+  refreshRunning = true;
+  try {
+    while (providersPending || bindingsPending) {
+      const refreshProviders = providersPending;
+      const refreshBindings = bindingsPending;
+      providersPending = false;
+      bindingsPending = false;
+      const results = await Promise.allSettled([
+        refreshProviders ? useProviderStore.getState().refreshProviders() : Promise.resolve(),
+        refreshBindings ? useProviderStore.getState().refreshBindings() : Promise.resolve(),
+      ]);
+      for (const result of results) {
+        if (result.status === 'rejected') console.warn('[providers] 跨窗口刷新失败:', result.reason);
+      }
+    }
+  } finally {
+    refreshRunning = false;
+  }
+}
 
 function indexBindings(list: BindingsList): Partial<Record<BindingModule, BindingsList[number]>> {
   const out: Partial<Record<BindingModule, BindingsList[number]>> = {};

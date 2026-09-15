@@ -12,6 +12,7 @@ import {
   IMAGE_NORMALIZE_MAX_DIMENSION,
 } from './limits.js';
 import type { StoreSweepReport } from './types.js';
+import type { AttachmentEvent } from './events.js';
 
 const SUPPORTED_FORMATS = new Set(['png', 'jpeg', 'gif', 'webp']);
 
@@ -25,6 +26,7 @@ export class ImageStore {
     private readonly repo: AttachmentImagesRepo,
     /** Ema 数据根;副本落在 sessions/<sessionId>/attachments/images/, 随 Session 目录删除。 */
     private readonly dataDir: string,
+    private readonly onChanged?: (event: AttachmentEvent) => void,
   ) {}
 
   /** 字节来源由调用方读出(剪贴板直接给字节, 拖入文件由端点读盘), 域层只见字节。
@@ -52,6 +54,7 @@ export class ImageStore {
       byte_size: normalized.bytes.length,
       created_at: Date.now(),
     }]);
+    this.onChanged?.({ type: 'attachments_changed', sessionId });
     return { path: target, byteSize: normalized.bytes.length };
   }
 
@@ -85,6 +88,7 @@ export class ImageStore {
       freedBytes += row.byte_size;
     }
     this.repo.deleteByPaths(stale.map((row) => row.path));
+    if (stale.length > 0) this.onChanged?.({ type: 'attachments_changed', sessionId });
 
     const dir = path.join(this.dataDir, 'sessions', sessionId, 'attachments', 'images');
     let entries;

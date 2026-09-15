@@ -2,6 +2,8 @@
 
 用户输入框附件的唯一业务所有者。
 
+`ImageStore` 与 `PastedTextStore` 在受管文件及账本都写入成功后发 `attachments_changed { sessionId }`；残留清扫确实删除账本行时也发送。跨窗口消费者据此重查该 Session 的附件统计。
+
 ## 业务边界
 
 负责：一次 Turn 的附件输入定义；点击发送后的登记（realpath/stat 权威化）；图片原始字节

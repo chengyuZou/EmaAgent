@@ -13,11 +13,15 @@ import type {
   TaskUpdateInput,
   TaskUpdateResult,
 } from './types.js';
+import type { TaskEvent } from './events.js';
 
 const DEFAULT_REMINDER_TURNS = 10;
 
 export class TaskStore {
-  constructor(private readonly repo: TasksRepo) {}
+  constructor(
+    private readonly repo: TasksRepo,
+    private readonly onChanged?: (event: TaskEvent) => void,
+  ) {}
 
   create(input: TaskCreateInput): Task {
     const row = this.repo.create({
@@ -29,7 +33,9 @@ export class TaskStore {
       createdByTurnId: input.turnId,
       createdAt: Date.now(),
     });
-    return this.mapRows(input.sessionId, [row])[0]!;
+    const task = this.mapRows(input.sessionId, [row])[0]!;
+    this.onChanged?.({ type: 'tasks_changed', sessionId: input.sessionId });
+    return task;
   }
 
   get(sessionId: string, taskId: string): Task | undefined {
@@ -61,6 +67,7 @@ export class TaskStore {
         input.expectedVersion,
       );
       if (deleted.ok) {
+        this.onChanged?.({ type: 'tasks_changed', sessionId: input.sessionId });
         return { ok: true, changed: true, deleted: true, taskId: input.taskId };
       }
       return {
@@ -92,7 +99,11 @@ export class TaskStore {
       },
       updatedAt: now,
     });
-    return this.mapMutationResult(input.sessionId, result);
+    const update = this.mapMutationResult(input.sessionId, result);
+    if (update.ok && update.changed) {
+      this.onChanged?.({ type: 'tasks_changed', sessionId: input.sessionId });
+    }
+    return update;
   }
 
   /** 只检查是否到了提醒周期（不消费）；提醒随 reminder 落库后由宿主调 markReminded 提交。 */

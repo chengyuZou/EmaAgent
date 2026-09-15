@@ -110,3 +110,8 @@ export type AgentRunEvent =
       readonly agentRunId: string;
       readonly reason: string;
     };
+
+export type AgentRunChangedEvent = {
+  readonly type: 'agent_runs_changed';
+  readonly sessionId: string;
+};

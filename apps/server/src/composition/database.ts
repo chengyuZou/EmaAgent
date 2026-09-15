@@ -11,12 +11,12 @@ import {
   TasksRepo,
   UsageRecordsRepo,
 } from '@ema-agent/storage';
-import { AgentRunMessagesStore, AgentRunStore } from '@ema-agent/agent';
-import { AttachmentStore, ImageStore, PastedTextStore } from '@ema-agent/attachments';
-import { ActiveSessionRegistry, SessionStore } from '@ema-agent/session';
-import { TaskStore } from '@ema-agent/tasks';
+import { AgentRunMessagesStore, AgentRunStore, type AgentRunChangedEvent } from '@ema-agent/agent';
+import { AttachmentStore, ImageStore, PastedTextStore, type AttachmentEvent } from '@ema-agent/attachments';
+import { ActiveSessionRegistry, SessionStore, type SessionEvent } from '@ema-agent/session';
+import { TaskStore, type TaskEvent } from '@ema-agent/tasks';
 import { TurnStore } from '@ema-agent/turn';
-import type { UsageRecorder } from '@ema-agent/usage';
+import type { UsageEvent, UsageRecorder } from '@ema-agent/usage';
 import {
   dataDbPathFor,
   profileDbPath,
@@ -47,9 +47,9 @@ export interface DatabaseComposition {
   readonly tasks: TaskStore;
   readonly agentRuns: AgentRunStore;
   readonly agentRunMessages: AgentRunMessagesStore;
-  /** 全部能力调用共享的用量记账口（UsageRecordsRepo 直接满足 UsageRecorder 端口）。 */
+  /** 全部能力调用共享的记账口；SQL 写入成功后通知用量视图。 */
   readonly usageRecorder: UsageRecorder;
-  /** 与 usageRecorder 同实例的具体类型:用量明细查询(Token 明细页)需要 list()。 */
+  /** 用量明细查询的 SQL Repo，供 Token 明细页读取。 */
   readonly usageRecords: UsageRecordsRepo;
   /** raw 消息只读投影(存储页消息查看器)。 */
   readonly messages: MessagesRepo;
@@ -65,7 +65,12 @@ export interface DatabaseComposition {
  * 打开并迁移两个数据库，构造全部存储层 Store。
  * activeDataDir 由 lifecycle 经 profile.db 的 data_dirs 表决议后传入——本函数不决定"用哪个目录"。
  */
-export function openDatabases(activeDataDir: string): DatabaseComposition {
+export function openDatabases(
+  activeDataDir: string,
+  emitChanged: (
+    event: SessionEvent | AttachmentEvent | UsageEvent | AgentRunChangedEvent | TaskEvent,
+  ) => void,
+): DatabaseComposition {
   const profileDb = new Database({ path: profileDbPath(), kind: 'profile' });
   try {
     profileDb.migrate();
@@ -84,11 +89,18 @@ export function openDatabases(activeDataDir: string): DatabaseComposition {
   }
 
   const usageRecords = new UsageRecordsRepo(dataDb.sqlite);
+  const usageRecorder: UsageRecorder = {
+    record(record) {
+      usageRecords.record(record);
+      emitChanged({ type: 'usage_recorded', sessionId: record.sessionId });
+    },
+  };
   const messages = new MessagesRepo(dataDb.sqlite);
   const session = new SessionStore({
     db: dataDb,
     // Session 删除提交后清理库外文件（音频、附件、工具结果、scratchpad）。
     onSessionRemoved: sessionId => removeSessionDir(activeDataDir, sessionId),
+    onChanged: emitChanged,
   });
   // 启动对账:清掉导入崩溃留下的"有目录无行"尸体目录。
   const orphanDirs = removeOrphanSessionDirectories(activeDataDir, id => session.sessionExists(id));
@@ -98,14 +110,21 @@ export function openDatabases(activeDataDir: string): DatabaseComposition {
   const activeSessions = new ActiveSessionRegistry();
   const turns = new TurnStore({
     db: dataDb,
-    onTurnRemoved: (sessionId, turnId) => removeTurnFiles(activeDataDir, sessionId, turnId),
+    onTurnRemoved: (sessionId, turnId) => {
+      try {
+        removeTurnFiles(activeDataDir, sessionId, turnId);
+      } finally {
+        emitChanged({ type: 'session_messages_changed', sessionId });
+        emitChanged({ type: 'session_list_changed' });
+      }
+    },
     activeSessions,
   });
 
   const attachmentImages = new AttachmentImagesRepo(dataDb.sqlite);
   const attachmentPastedTexts = new AttachmentPastedTextsRepo(dataDb.sqlite);
-  const imageStore = new ImageStore(attachmentImages, activeDataDir);
-  const pasteStore = new PastedTextStore(attachmentPastedTexts, activeDataDir);
+  const imageStore = new ImageStore(attachmentImages, activeDataDir, emitChanged);
+  const pasteStore = new PastedTextStore(attachmentPastedTexts, activeDataDir, emitChanged);
 
   return {
     profileDb,
@@ -119,10 +138,10 @@ export function openDatabases(activeDataDir: string): DatabaseComposition {
     pasteStore,
     attachmentImages,
     attachmentPastedTexts,
-    tasks: new TaskStore(new TasksRepo(dataDb.sqlite)),
-    agentRuns: new AgentRunStore(new AgentRunsRepo(dataDb.sqlite)),
+    tasks: new TaskStore(new TasksRepo(dataDb.sqlite), emitChanged),
+    agentRuns: new AgentRunStore(new AgentRunsRepo(dataDb.sqlite), emitChanged),
     agentRunMessages: new AgentRunMessagesStore(new AgentRunMessagesRepo(dataDb.sqlite)),
-    usageRecorder: usageRecords,
+    usageRecorder,
     usageRecords,
     messages,
     dataDirStats: new DataDirStatsRepo(dataDb.sqlite),

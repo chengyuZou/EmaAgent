@@ -42,11 +42,11 @@ export function buildComposition(input: {
   activeDataDir: string;
   initializeBuiltinCharacters: boolean;
 }): Composition {
-  const database = openDatabases(input.activeDataDir);
+  const appEvents = new AppEvents();
+  const database = openDatabases(input.activeDataDir, event => appEvents.emit(event));
   const settings = openSettings(database.profileDb);
   const providers = openProviders(database.profileDb);
   const agentConnections = new AgentSocketConnections();
-  const appEvents = new AppEvents();
   // Tools 在 Composition 返回前没有调用入口, 因此装配期间不可能产生真实完成通知.
   // 先放空出口打断构造顺序, openTurns 完成后再接到唯一 Session 队列.
   let notifyBackgroundCompletion = (
@@ -63,8 +63,7 @@ export function buildComposition(input: {
     onBackgroundCompletion: (sessionId, backgroundProcessId, status) => {
       notifyBackgroundCompletion(sessionId, backgroundProcessId, status);
     },
-    emitMcpConnection: connection => appEvents.emit({ type: 'mcp_connection_changed', connection }),
-    emitMcpMarket: source => appEvents.emit({ type: 'mcp_market_changed', source }),
+    emitMcpEvent: event => appEvents.emit(event),
   });
   const knowledge = openKnowledge(
     database.profileDb,
@@ -83,6 +82,7 @@ export function buildComposition(input: {
     providers.providers,
     providers.modelBindings,
     characters.store,
+    event => appEvents.emit(event),
   );
 
   // ── 跨族胶合（只允许在这里出现） ────────────────────────────────────────────
@@ -96,6 +96,12 @@ export function buildComposition(input: {
     );
     characters.stage.reset();
     appEvents.emit({ type: 'character_switched', characterName: next.name, displayName: next.displayName });
+  });
+  characters.store.onResourcesChanged((character) => {
+    appEvents.emit({
+      type: 'character_resources_changed',
+      characterName: character.name,
+    });
   });
   characters.store.onPresentationChanged((character, presentation) => {
     if (character.name === characters.store.current().name) {
@@ -111,8 +117,8 @@ export function buildComposition(input: {
     });
   });
   // 设置变更：前端设置页以外的视图据此刷新。
-  settings.settings.subscribe(({ changedKeys }) => {
-    appEvents.emit({ type: 'settings_changed', changedKeys });
+  settings.settings.subscribe(() => {
+    appEvents.emit({ type: 'settings_changed' });
   });
   // KB 域事件进应用通道。
   knowledge.kb.events.on(event => appEvents.emit(event));

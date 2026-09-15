@@ -15,6 +15,8 @@ Turn output_text_delta
              `- merged/<turnId>.mp3  Turn 完整音频
 ```
 
+`session_audio_changed { sessionId }` 只在合并音频写入 `speech_outputs` 后由应用装配发送；临时分段和实时音频帧不触发跨窗口统计刷新。
+
 ## 定死的边界
 
 - 根 Turn 的语音接线由装配层 `startTurnSpeech` 建立：事件泵只把文字副本喂给 Speech，Turn 终态立即照常发布，不等待合成、播放或归档。

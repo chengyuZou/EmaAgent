@@ -60,6 +60,25 @@ export type Live2dPreviewCommand =
       readonly stageOffsetY: number;
     };
 
+export type Live2dDiagnosticEvent =
+  | 'presentation_loading'
+  | 'presentation_loaded'
+  | 'presentation_failed'
+  | 'archive_loading'
+  | 'archive_loaded'
+  | 'archive_failed'
+  | 'canvas_created'
+  | 'ticker_started'
+  | 'ticker_stopped'
+  | 'model_loading'
+  | 'model_ready'
+  | 'model_failed'
+  | 'first_tick'
+  | 'preview_expression'
+  | 'preview_motion'
+  | 'preview_placement'
+  | 'preview_ignored';
+
 // ── Tauri 环境检测 ─────────────────────────────────────────────────────────
 
 let _detected: boolean | null = null;
@@ -338,6 +357,26 @@ export const tauriBridge = {
 
   async listenLive2dPreview(handler: (command: Live2dPreviewCommand) => void): Promise<() => void> {
     return listenTauri<Live2dPreviewCommand>(STAGE_LIVE2D_PREVIEW_EVENT, handler);
+  },
+
+  async reportLive2dDiagnostic(
+    event: Live2dDiagnosticEvent,
+    characterName: string | null,
+    modelName: string | null,
+    durationS: number | null = null,
+    errorMessage: string | null = null,
+  ): Promise<void> {
+    try {
+      await invokeTauri('report_live2d_diagnostic', {
+        event,
+        characterName,
+        modelName,
+        durationS,
+        errorMessage,
+      });
+    } catch (error) {
+      console.warn('[stage] Live2D 诊断记录失败', event, error);
+    }
   },
 
   async openChatWindow(): Promise<void> {

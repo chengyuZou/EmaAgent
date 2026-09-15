@@ -10,8 +10,7 @@ import {
   OfficialRegistryAdapter,
   McpRegistry,
   McpServerStore,
-  type McpConnection,
-  type McpMarketSource,
+  type McpEvent,
 } from '@ema-agent/mcp';
 import {
   CommandRunner,
@@ -78,8 +77,7 @@ export interface ToolsDeps {
     backgroundProcessId: string,
     status: BackgroundProcessNotifiableStatus,
   ) => void;
-  readonly emitMcpConnection: (connection: McpConnection) => void;
-  readonly emitMcpMarket: (source: McpMarketSource) => void;
+  readonly emitMcpEvent: (event: McpEvent) => void;
 }
 
 export interface ToolsComposition {
@@ -211,11 +209,14 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
   };
 
   // ── MCP：缓存预填后并发连接启用项；市场缓存独立于已安装 Server。 ─────────────
-  const mcpServers = new McpServerStore(new McpServersRepo(profileDb.sqlite));
+  const mcpServers = new McpServerStore(
+    new McpServersRepo(profileDb.sqlite),
+    event => deps.emitMcpEvent(event),
+  );
   const mcp = new McpRegistry(
     mcpServers,
     registry,
-    connection => deps.emitMcpConnection(connection),
+    () => deps.emitMcpEvent({ type: 'mcp_connection_changed' }),
   );
   mcp.primeFromCache();
   mcp.connectEnabledInBackground();
@@ -223,7 +224,7 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
     new McpMarketStore(new McpMarketEntriesRepo(profileDb.sqlite)),
     [new OfficialRegistryAdapter()],
     mcp,
-    source => deps.emitMcpMarket(source),
+    source => deps.emitMcpEvent({ type: 'mcp_market_changed', source }),
   );
   const mcpEnvironment = new McpLocalCommandEnvironment();
 

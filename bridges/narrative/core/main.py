@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import socket
+import os
+import time
 
 import uvicorn
 
@@ -16,8 +18,14 @@ def pick_port() -> int:
 
 
 def main() -> None:
+    started_at = time.perf_counter()
+    print(f"[narrative:startup] process entered pid={os.getpid()}", flush=True)
     port = pick_port()
     app = build_app(port)
+    print(
+        f"[narrative:startup] app constructed duration_s={time.perf_counter() - started_at:.3f}",
+        flush=True,
+    )
     server = uvicorn.Server(
         uvicorn.Config(
             app,

@@ -4,6 +4,7 @@ export type {
   UsageRecord,
   UsageRecorder,
   UsageRecordStatus,
+  UsageEvent,
 } from './types.js';
 export { createUsageRecord, reportUsage } from './record.js';
 export type { UsageRecordInput } from './record.js';

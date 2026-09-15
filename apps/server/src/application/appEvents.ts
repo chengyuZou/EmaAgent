@@ -1,10 +1,19 @@
 // 广播不属于单个 Turn 的应用级提示事件，查询型状态仍由各自 HTTP Route 提供。
 import type { CharacterEvent } from '@ema-agent/characters';
 import type { KnowledgeEvent } from '@ema-agent/knowledge';
-import type { McpConnection, McpMarketSource } from '@ema-agent/mcp';
+import type { McpEvent } from '@ema-agent/mcp';
 import type { SystemWarningEvent } from '@ema-agent/system';
 import type { BackgroundProcessEvent } from '@ema-agent/tools';
 import type { TurnEvent } from '@ema-agent/turn';
+import type { ProviderEvent } from '@ema-agent/providers';
+import type { SessionEvent } from '@ema-agent/session';
+import type { AttachmentEvent } from '@ema-agent/attachments';
+import type { UsageEvent } from '@ema-agent/usage';
+import type { AgentRunChangedEvent } from '@ema-agent/agent';
+import type { SpeechArchiveEvent } from '@ema-agent/speech';
+import type { TaskEvent } from '@ema-agent/tasks';
+import type { SettingsEvent } from '@ema-agent/settings';
+import type { SkillEvent } from '@ema-agent/skills';
 
 export type TurnActivityEvent = Extract<
   TurnEvent,
@@ -16,12 +25,17 @@ export type AppEvent =
   | KnowledgeEvent
   | CharacterEvent
   | TurnActivityEvent
-  | SystemWarningEvent
-  | { readonly type: 'session_title_updated'; readonly sessionId: string; readonly title: string }
-  | { readonly type: 'settings_changed'; readonly changedKeys: readonly string[] }
-  | { readonly type: 'skills_changed' }
-  | { readonly type: 'mcp_connection_changed'; readonly connection: McpConnection }
-  | { readonly type: 'mcp_market_changed'; readonly source: McpMarketSource };
+  | ProviderEvent
+  | SessionEvent
+  | AttachmentEvent
+  | UsageEvent
+  | AgentRunChangedEvent
+  | SpeechArchiveEvent
+  | TaskEvent
+  | SettingsEvent
+  | SkillEvent
+  | McpEvent
+  | SystemWarningEvent;
 
 export class AppEvents {
   private readonly listeners = new Set<(event: AppEvent) => void>();

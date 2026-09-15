@@ -1,6 +1,7 @@
 // 管理已安装 Skill 目录（含 enabled 投影）与启停开关。
 // 启停走 skills 业务端点（skill_enablement 表）；市场浏览与安装在独立市场窗口。
 import { create } from 'zustand';
+import type { AppEvent } from '@ema-agent/server/application/appEvents.js';
 import {
   skillsApi,
   type SkillListItem,
@@ -82,3 +83,9 @@ export const useSkillStore = create<SkillStoreState>((set, get) => ({
     }
   },
 }));
+
+export function handleSkillSystemEvent(event: AppEvent): void {
+  if (event.type === 'skills_changed' && useSkillStore.getState().loaded) {
+    void useSkillStore.getState().refresh().catch(() => {});
+  }
+}

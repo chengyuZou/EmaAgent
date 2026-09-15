@@ -1,8 +1,9 @@
 // Token 明细查看器:库级 usage_records 按 Session 过滤,chips 按数据动态生成
 // (无 producer 的能力不出现,未来接上自动长出);全部档纯 SQL 原样,LLM/Vision 档带 KV 缓存率。
-import { useCallback, useEffect, useMemo, useState, type JSX } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type JSX } from 'react';
 import { Badge, Button, Skeleton } from '@ema-agent/ui';
 import { systemApi } from '../../api/system.js';
+import { subscribeSystemEvent } from '../../lib/system-event-dispatcher.js';
 import { fmtDateFull } from './storageFormat.js';
 
 type UsageRecord = Awaited<ReturnType<typeof systemApi.getUsageRecords>>['items'][number];
@@ -17,21 +18,40 @@ export function TokenDetail({ sessionId }: { sessionId: string }): JSX.Element {
   const [loadingMore, setLoadingMore] = useState(false);
   const [failed, setFailed] = useState(false);
   const [chip, setChip] = useState<'all' | Capability>('all');
+  const requestId = useRef(0);
 
   const load = useCallback((before?: { createdAt: number; id: string }) => {
+    const currentRequestId = ++requestId.current;
     if (before) setLoadingMore(true);
+    else setLoading(true);
     systemApi.getUsageRecords({
       sessionId,
       limit: PAGE_SIZE,
       ...(before ? { before } : {}),
     }).then(result => {
+      if (currentRequestId !== requestId.current) return;
       setRecords(current => before ? [...current, ...result.items] : [...result.items]);
       setCursor(result.nextCursor ?? null);
-    }).catch(() => setFailed(true))
-      .finally(() => { setLoading(false); setLoadingMore(false); });
+      setFailed(false);
+    }).catch(() => { if (currentRequestId === requestId.current) setFailed(true); })
+      .finally(() => {
+        if (currentRequestId === requestId.current) {
+          setLoading(false);
+          setLoadingMore(false);
+        }
+      });
   }, [sessionId]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+    const unsubscribe = subscribeSystemEvent(event => {
+      if (event.type !== 'usage_recorded' || event.sessionId !== sessionId) return;
+      clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => load(), 150);
+    });
+    return () => { unsubscribe(); clearTimeout(refreshTimer); };
+  }, [sessionId, load]);
 
   // chips 跟着已加载数据长: distinct(capability) 保持 SQL 枚举顺序。
   const chips = useMemo(() => {
@@ -90,9 +110,16 @@ export function TokenDetail({ sessionId }: { sessionId: string }): JSX.Element {
         </p>
       )}
 
-      <div className="flex flex-col divide-y divide-[var(--ema-border)]">
-        {filtered.map(record => (
-          <UsageRow key={record.id} record={record} />
+      {/* key=chip:切过滤条件整体重挂,行按新集重放滑入。 */}
+      <div key={chip} className="flex flex-col divide-y divide-[var(--ema-border)]">
+        {filtered.map((record, index) => (
+          <div
+            key={record.id}
+            className="ema-stagger-in-swift"
+            style={{ '--stagger-i': index } as CSSProperties}
+          >
+            <UsageRow record={record} />
+          </div>
         ))}
       </div>
 

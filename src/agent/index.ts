@@ -21,6 +21,7 @@ export { runAgentLoop } from './agentLoop.js';
 export type {
   AgentLoopEvent,
   AgentRunEvent,
+  AgentRunChangedEvent,
 } from './events.js';
 export type {
   AgentLoopPhase,

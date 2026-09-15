@@ -2,7 +2,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use rand::{rngs::OsRng, RngCore};
 use tauri::AppHandle;
@@ -66,30 +66,39 @@ impl DesktopProcesses {
 
         self.0.stopping.store(false, Ordering::Release);
         *self.0.state.write().await = State::Starting;
+        let startup_started = Instant::now();
+        tracing::info!("desktop child startup started");
 
         let run_dir = run_directory();
+        let run_directory_started = Instant::now();
         if let Err(error) = prepare_run_directory(&run_dir).await {
             *self.0.state.write().await = State::Failed;
             return Err(error);
         }
+        tracing::info!(duration_s = %format!("{:.3}", run_directory_started.elapsed().as_secs_f64()), "child run directory ready");
         *self.0.run_dir.lock().await = Some(run_dir.clone());
 
+        let characters_started = Instant::now();
+        tracing::info!("builtin character preparation started");
         let initialize_builtin_characters = match prepare_builtin_characters(&app).await {
             Ok(value) => value,
             Err(error) => return self.fail_server_start(error).await,
         };
+        tracing::info!(duration_s = %format!("{:.3}", characters_started.elapsed().as_secs_f64()), initialize_builtin_characters, "builtin character preparation completed");
 
         let secret = generate_shared_secret();
         let start_narrative = read_start_narrative_on_launch().unwrap_or_else(|error| {
             tracing::warn!(%error, "read desktop settings failed; Narrative remains enabled");
             true
         });
+        let narrative_started = Instant::now();
         let narrative_url = if start_narrative {
             self.try_start_narrative(&app, &run_dir, &secret).await
         } else {
             tracing::info!("Narrative Bridge disabled for this launch");
             None
         };
+        tracing::info!(duration_s = %format!("{:.3}", narrative_started.elapsed().as_secs_f64()), available = narrative_url.is_some(), "Narrative startup phase completed");
 
         if self.0.stopping.load(Ordering::Acquire) {
             self.stop_children().await;
@@ -97,6 +106,8 @@ impl DesktopProcesses {
             return Err("desktop startup cancelled".to_string());
         }
 
+        let server_started = Instant::now();
+        tracing::info!("Server startup phase started");
         let server_launch = match resolve_server_launch(&app) {
             Ok(launch) => launch,
             Err(error) => return self.fail_server_start(error).await,
@@ -117,11 +128,20 @@ impl DesktopProcesses {
         };
         *self.0.server.lock().await = Some(server);
 
-        let ready =
-            match wait_for_ready(&server_ready, "server", READY_TIMEOUT, &self.0.stopping).await {
-                Ok(ready) => ready,
-                Err(error) => return self.fail_server_start(error).await,
-            };
+        let ready_started = Instant::now();
+        let ready = match wait_for_ready(
+            &server_ready,
+            "server",
+            READY_TIMEOUT,
+            &self.0.stopping,
+            &self.0.server,
+        )
+        .await
+        {
+            Ok(ready) => ready,
+            Err(error) => return self.fail_server_start(error).await,
+        };
+        tracing::info!(duration_s = %format!("{:.3}", ready_started.elapsed().as_secs_f64()), port = ready, "Server readiness received");
 
         let connection = ServerConnection {
             port: ready,
@@ -129,7 +149,8 @@ impl DesktopProcesses {
         };
         *self.0.state.write().await = State::Ready(connection);
         self.watch_children();
-        tracing::info!(port = ready, "desktop child processes ready");
+        tracing::info!(port = ready, duration_s = %format!("{:.3}", server_started.elapsed().as_secs_f64()), "Server startup phase completed");
+        tracing::info!(duration_s = %format!("{:.3}", startup_started.elapsed().as_secs_f64()), "desktop child processes ready");
         Ok(())
     }
 
@@ -168,6 +189,8 @@ impl DesktopProcesses {
         run_dir: &Path,
         secret: &str,
     ) -> Option<String> {
+        let data_started = Instant::now();
+        tracing::info!("Narrative data preparation started");
         let narrative_dir = match prepare_narrative_data(app).await {
             Ok(path) => path,
             Err(error) => {
@@ -175,6 +198,7 @@ impl DesktopProcesses {
                 return None;
             }
         };
+        tracing::info!(duration_s = %format!("{:.3}", data_started.elapsed().as_secs_f64()), "Narrative data preparation completed");
         let launch = match resolve_narrative_launch(app) {
             Ok(launch) => launch,
             Err(error) => {
@@ -182,11 +206,15 @@ impl DesktopProcesses {
                 return None;
             }
         };
+        let process_started = Instant::now();
         match self
             .start_narrative(launch, run_dir, secret, &narrative_dir)
             .await
         {
-            Ok(port) => Some(format!("http://127.0.0.1:{port}")),
+            Ok(port) => {
+                tracing::info!(duration_s = %format!("{:.3}", process_started.elapsed().as_secs_f64()), "Narrative process became ready");
+                Some(format!("http://127.0.0.1:{port}"))
+            }
             Err(error) => {
                 self.terminate_narrative().await;
                 tracing::warn!(%error, "Narrative Bridge unavailable");
@@ -217,6 +245,7 @@ impl DesktopProcesses {
             "narrative-bridge",
             READY_TIMEOUT,
             &self.0.stopping,
+            &self.0.narrative,
         )
         .await?;
         tracing::info!(port = ready, "Narrative Bridge ready");
@@ -224,6 +253,7 @@ impl DesktopProcesses {
     }
 
     async fn fail_server_start(&self, error: String) -> Result<(), String> {
+        tracing::error!(%error, "Server startup phase failed");
         self.stop_children().await;
         *self.0.state.write().await = State::Failed;
         Err(error)

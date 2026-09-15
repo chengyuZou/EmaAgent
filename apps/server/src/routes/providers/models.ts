@@ -72,6 +72,8 @@ export interface ProviderModelsRouteDeps {
   readonly providers: Providers;
   readonly providerModels: ProviderModels;
   readonly modelBindings: ModelBindings;
+  readonly notifyProviderModelsChanged: (providerId: string) => void;
+  readonly notifyModelBindingsChanged: () => void;
   /** models.dev 目录网络刷新；同步到 SQL 由 syncDevModels 负责。 */
   readonly refreshCatalog: (signal?: AbortSignal) => Promise<boolean>;
 }
@@ -109,7 +111,9 @@ export const providerModelsRoute = (deps: ProviderModelsRouteDeps) =>
       try {
         await deps.refreshCatalog()
           .catch(error => console.warn('[providers] models.dev 目录刷新失败:', error));
-        const models = deps.providerModels.syncDevModels(context.req.param('providerId'), capability);
+        const providerId = context.req.param('providerId');
+        const models = deps.providerModels.syncDevModels(providerId, capability);
+        deps.notifyProviderModelsChanged(providerId);
         return context.json({ models });
       } catch (error) {
         return providerError(context, error);
@@ -117,10 +121,13 @@ export const providerModelsRoute = (deps: ProviderModelsRouteDeps) =>
     })
     .put('/:providerId/models', jsonBody(providerModelBody), async context => {
       try {
-        return context.json(deps.providerModels.save({
-          providerId: context.req.param('providerId'),
+        const providerId = context.req.param('providerId');
+        const model = deps.providerModels.save({
+          providerId,
           ...context.req.valid('json'),
-        }));
+        });
+        deps.notifyProviderModelsChanged(providerId);
+        return context.json(model);
       } catch (error) {
         return providerError(context, error);
       }
@@ -129,12 +136,15 @@ export const providerModelsRoute = (deps: ProviderModelsRouteDeps) =>
       const { capability } = context.req.valid('query');
       const { enabled } = context.req.valid('json');
       try {
-        return context.json(deps.providerModels.setEnabled(
-          context.req.param('providerId'),
+        const providerId = context.req.param('providerId');
+        const model = deps.providerModels.setEnabled(
+          providerId,
           capability,
           context.req.param('modelId'),
           enabled,
-        ));
+        );
+        deps.notifyProviderModelsChanged(providerId);
+        return context.json(model);
       } catch (error) {
         return providerError(context, error);
       }
@@ -142,7 +152,9 @@ export const providerModelsRoute = (deps: ProviderModelsRouteDeps) =>
     .delete('/:providerId/models/:modelId', queryValidator(modelQuery), context => {
       const { capability } = context.req.valid('query');
       try {
-        deps.providerModels.delete(context.req.param('providerId'), capability, context.req.param('modelId'));
+        const providerId = context.req.param('providerId');
+        deps.providerModels.delete(providerId, capability, context.req.param('modelId'));
+        deps.notifyProviderModelsChanged(providerId);
         return context.body(null, 204);
       } catch (error) {
         return providerError(context, error);
@@ -156,6 +168,7 @@ export const providerModelsRoute = (deps: ProviderModelsRouteDeps) =>
       try {
         assertBindingConnection(deps, module, body.providerId);
         deps.modelBindings.set({ module, ...body });
+        deps.notifyModelBindingsChanged();
         return context.json(deps.modelBindings.get(module));
       } catch (error) {
         return providerError(context, error);
@@ -164,6 +177,7 @@ export const providerModelsRoute = (deps: ProviderModelsRouteDeps) =>
     .delete('/bindings/:module', paramValidator(bindingParams), context => {
       const { module } = context.req.valid('param');
       deps.modelBindings.delete(module);
+      deps.notifyModelBindingsChanged();
       return context.body(null, 204);
     });
 

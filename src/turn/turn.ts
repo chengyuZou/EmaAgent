@@ -196,7 +196,7 @@ export class TurnExecutor {
 
   /**
    * 取消并等待该 Turn 终态落库。Session 删除等编排必须先让活动 Turn 走完
-   * finish 链（writer 收口、队列清理），否则删除会与在飞持久化竞争。
+   * finish 链（writer 收口、队列清理），否则删除会与尚未完成的持久化竞争。
    */
   async abortAndAwait(sessionId: string, turnId: string): Promise<void> {
     this.abort(sessionId, turnId);
@@ -549,8 +549,12 @@ export class TurnExecutor {
         terminal = 'aborted';
         this.deps.turns.abortTurn(sessionId, turnId);
         const outcome: TurnOutcome = { status: 'aborted', sessionId, turnId, reason: 'user_stop' };
-        emit({ type: 'turn_aborted', sessionId, turnId, reason: outcome.reason });
-        await this.finishSafely(channel, writer, terminal, tools, turnId, () => resolveCompletion(outcome));
+        await this.finishSafely(
+          channel, writer, terminal, tools, turnId,
+          () => resolveCompletion(outcome),
+          rejectCompletion,
+          () => emit({ type: 'turn_aborted', sessionId, turnId, reason: outcome.reason }),
+        );
         return;
       }
 
@@ -574,8 +578,12 @@ export class TurnExecutor {
             durationMs: Date.now() - startedAt,
           },
         };
-        emit({ type: 'turn_completed', sessionId, turnId, stats: outcome.stats });
-        await this.finishSafely(channel, writer, terminal, tools, turnId, () => resolveCompletion(outcome));
+        await this.finishSafely(
+          channel, writer, terminal, tools, turnId,
+          () => resolveCompletion(outcome),
+          rejectCompletion,
+          () => emit({ type: 'turn_completed', sessionId, turnId, stats: outcome.stats }),
+        );
         return;
       }
 
@@ -583,8 +591,13 @@ export class TurnExecutor {
       const code: TurnFailureCode = stopped.state.stopReason === 'max_iterations'
         ? 'turn/budget_exceeded'
         : 'turn/execution_failed';
-      const outcome = this.failTurn(turn, code, `AgentLoop 终止：${stopped.state.stopReason}`, emit);
-      await this.finishSafely(channel, writer, terminal, tools, turnId, () => resolveCompletion(outcome));
+      const outcome = this.failTurn(turn, code, `AgentLoop 终止：${stopped.state.stopReason}`);
+      await this.finishSafely(
+        channel, writer, terminal, tools, turnId,
+        () => resolveCompletion(outcome),
+        rejectCompletion,
+        () => emit({ type: 'turn_failed', sessionId, turnId, code, message: outcome.message }),
+      );
     } catch (error) {
       // 准备或持久化失败时, 尚未确认的队列项必须回到可领取状态.
       this.deps.continuations.release(turnId);
@@ -592,17 +605,32 @@ export class TurnExecutor {
         terminal = 'aborted';
         this.deps.turns.abortTurn(sessionId, turnId);
         const outcome: TurnOutcome = { status: 'aborted', sessionId, turnId, reason: 'user_stop' };
-        emit({ type: 'turn_aborted', sessionId, turnId, reason: outcome.reason });
-        await this.finishSafely(channel, writer, terminal, tools, turnId, () => resolveCompletion(outcome));
+        await this.finishSafely(
+          channel, writer, terminal, tools, turnId,
+          () => resolveCompletion(outcome),
+          rejectCompletion,
+          () => emit({ type: 'turn_aborted', sessionId, turnId, reason: outcome.reason }),
+        );
         return;
       }
 
       terminal = 'failed';
       try {
-        const outcome = this.failTurn(turn, failureCodeOf(error), failureMessageOf(error), emit);
-        await this.finishSafely(channel, writer, terminal, tools, turnId, () => resolveCompletion(outcome));
+        const outcome = this.failTurn(turn, failureCodeOf(error), failureMessageOf(error));
+        await this.finishSafely(
+          channel, writer, terminal, tools, turnId,
+          () => resolveCompletion(outcome),
+          rejectCompletion,
+          () => emit({
+            type: 'turn_failed',
+            sessionId,
+            turnId,
+            code: outcome.code,
+            message: outcome.message,
+          }),
+        );
       } catch (terminalError) {
-        await this.finishSafely(channel, writer, terminal, tools, turnId, () => undefined);
+        await this.finishSafely(channel, writer, terminal, tools, turnId, () => undefined, rejectCompletion);
         rejectCompletion(terminalError);
       }
     } finally {
@@ -627,7 +655,7 @@ export class TurnExecutor {
     }
   }
 
-  /** 终态提交后的统一收尾：writer 收口、交互清理、工具与子 Agent 停止、通道关闭。 */
+  /** 终态提交后的统一收尾：writer 与工具完成后才发终态事件并关闭通道。 */
   private async finishSafely(
     channel: TurnEventChannel<TurnStreamEvent>,
     writer: TurnMessageWriter,
@@ -635,11 +663,17 @@ export class TurnExecutor {
     tools: TurnToolsAssembly | undefined,
     turnId: string,
     resolve: () => void,
+    reject: (error: unknown) => void,
+    emitTerminal?: () => void,
   ): Promise<void> {
+    let writerFinished = false;
+    let writerError: unknown;
     try {
       await writer.finish(terminal);
-    } catch {
-      // 收口持久化失败已由 turn 终态承载，不再二次失败。
+      writerFinished = true;
+    } catch (error) {
+      writerError = error;
+      console.warn('[turn] 消息收口失败，终态事件未广播:', error);
     }
     try {
       this.deps.interactionQueue.cancelForTurn(turnId, `turn ${terminal}`);
@@ -653,6 +687,12 @@ export class TurnExecutor {
         // 工具关闭失败不能覆盖终态。
       }
     }
+    if (!writerFinished) {
+      reject(writerError);
+      channel.fail(writerError);
+      return;
+    }
+    emitTerminal?.();
     resolve();
     channel.finish();
   }
@@ -661,10 +701,8 @@ export class TurnExecutor {
     turn: Turn,
     code: TurnFailureCode,
     message: string,
-    emit: (event: TurnStreamEvent) => void,
-  ): TurnOutcome {
+  ): Extract<TurnOutcome, { status: 'failed' }> {
     this.deps.turns.failTurn(turn.id, { errorCode: code, errorMessage: message });
-    emit({ type: 'turn_failed', sessionId: turn.sessionId, turnId: turn.id, code, message });
     return {
       status: 'failed',
       sessionId: turn.sessionId,

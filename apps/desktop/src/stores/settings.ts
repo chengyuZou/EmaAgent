@@ -1,6 +1,7 @@
 // 桌面即时设置通道：permission 等待超时与事件展示配置，保存后广播同步其他桌面窗口。
 // 两个值键（permission.askTimeoutMs / frontend.eventDisplay）走 settings 值 API，不再有专用端点。
 import { create } from 'zustand';
+import type { AppEvent } from '@ema-agent/server/application/appEvents.js';
 import { settingsApi, type EventDisplayTable } from '../api/settings.js';
 import { tauriBridge, type DesktopSettingsPayload } from '../lib/tauri-bridge.js';
 
@@ -103,4 +104,10 @@ function broadcastDesktopSettings(state: SettingsStoreState): void {
   void tauriBridge.publishDesktopSettingsChanged(payload).catch((error: unknown) => {
     console.warn('[settings] 广播桌面设置失败', error);
   });
+}
+
+export function handleSettingsSystemEvent(event: AppEvent): void {
+  if (event.type === 'settings_changed') {
+    void useSettingsStore.getState().refreshDesktopSettings().catch(() => {});
+  }
 }

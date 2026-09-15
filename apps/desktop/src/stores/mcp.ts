@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { AppEvent } from '@ema-agent/server/application/appEvents.js';
 import {
   mcpApi,
   type McpImportResult,
@@ -77,4 +78,13 @@ export const useMcpStore = create<McpStoreState>((set, get) => ({
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+export function handleMcpSystemEvent(event: AppEvent): void {
+  if (
+    (event.type === 'mcp_connection_changed' || event.type === 'mcp_servers_changed')
+    && useMcpStore.getState().servers.length > 0
+  ) {
+    void useMcpStore.getState().refresh().catch(() => {});
+  }
 }

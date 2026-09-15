@@ -11,6 +11,7 @@ export { defineSetting } from './types.js';
 export type {
   SettingsChangedEvent,
   SettingsChangedListener,
+  SettingsEvent,
 } from './events.js';
 export type {
   SettingApplyPolicy,

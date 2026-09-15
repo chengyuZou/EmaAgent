@@ -30,6 +30,7 @@ export interface ProviderHealthRouteDeps {
   readonly providers: Providers;
   readonly providerModels: ProviderModels;
   readonly modelCatalog: ModelsDevCatalog;
+  readonly notifyProviderHealthChanged: (providerId: string) => void;
 }
 
 export const providerHealthRoute = (deps: ProviderHealthRouteDeps) =>
@@ -52,6 +53,7 @@ export const providerHealthRoute = (deps: ProviderHealthRouteDeps) =>
           latencyMs: Date.now() - startedAt,
           lastError: null,
         });
+        deps.notifyProviderHealthChanged(providerId);
         return context.json({ ok: true, latencyMs: Date.now() - startedAt });
       } catch (error) {
         if (error instanceof ProviderError) return providerError(context, error);
@@ -63,6 +65,7 @@ export const providerHealthRoute = (deps: ProviderHealthRouteDeps) =>
           latencyMs: Date.now() - startedAt,
           lastError: message,
         });
+        deps.notifyProviderHealthChanged(providerId);
         return context.json({ ok: false, error: message }, 502);
       }
     });

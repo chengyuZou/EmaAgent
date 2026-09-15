@@ -50,7 +50,7 @@ export function TodoWriteActivitySummary({
   return (
     <button
       type="button"
-      className="ema-press flex h-8 w-full items-center gap-2 rounded-lg border border-[var(--ema-border)] bg-[var(--ema-surface-1)] px-3 text-xs shadow-[var(--ema-shadow-1)]"
+      className="ema-press flex h-8 w-full items-center gap-2 rounded-lg border border-[var(--ema-border)] bg-[var(--ema-surface-1)] px-3 text-xs shadow-[var(--ema-shadow-1)] transition-colors hover:bg-[var(--ema-surface-2)]"
       onClick={onToggle}
       aria-expanded={open}
     >

@@ -1,5 +1,6 @@
 // 后台进程面板状态:每 Session 列表、每进程有界输出缓存、SSE 事件原位更新、Session 删除清理。
 import { create } from 'zustand';
+import type { AppEvent } from '@ema-agent/server/application/appEvents.js';
 import type {
   BackgroundProcessEvent,
 } from '@ema-agent/tools';
@@ -213,3 +214,9 @@ export const useBackgroundProcessStore = create<BackgroundProcessStore>()((set, 
     });
   },
 }));
+
+export function handleBackgroundProcessSystemEvent(event: AppEvent): void {
+  if (event.type === 'background_process_changed') {
+    useBackgroundProcessStore.getState().applyEvent(event);
+  }
+}

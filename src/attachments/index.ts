@@ -1,4 +1,5 @@
 export { AttachmentStore } from './attachmentStore.js';
+export type { AttachmentEvent } from './events.js';
 export type { AttachmentStoreDeps, AttachmentSweepReport } from './attachmentStore.js';
 export { ImageStore } from './imageStore.js';
 export type { SavedImage } from './imageStore.js';

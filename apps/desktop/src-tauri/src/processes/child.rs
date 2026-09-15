@@ -70,6 +70,7 @@ async fn spawn(
         let _ = child.kill().await;
         return Err(error);
     }
+    tracing::info!(label, pid, "child process spawned");
     pipe_stdout(child.stdout.take(), label);
     pipe_stderr(child.stderr.take(), label);
     Ok(child)

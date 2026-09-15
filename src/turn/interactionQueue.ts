@@ -226,7 +226,7 @@ export class SessionInteractionQueue {
     return ids.length;
   }
 
-  /** 诊断：在飞条目总数。 */
+  /** 诊断：等待交互完成的条目总数。 */
   size(): number {
     return this.index.size;
   }

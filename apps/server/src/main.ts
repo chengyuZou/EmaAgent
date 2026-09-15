@@ -1,10 +1,16 @@
 // server 进程唯一入口：共享密钥 → 生命周期 → 信号驱动的优雅关闭。
+import { performance } from 'node:perf_hooks';
 import { MissingSharedSecretError, requireSharedSecret } from './platform/auth.js';
 import { startServer } from './platform/lifecycle.js';
 
 async function main(): Promise<void> {
+  const startedAt = performance.now();
+  console.info(`[server:startup] process entered pid=${process.pid}`);
   const secret = requireSharedSecret();
   const lifecycle = await startServer(secret);
+  console.info(
+    `[server:startup] ready duration_s=${((performance.now() - startedAt) / 1000).toFixed(3)}`,
+  );
   console.log(`[server] 已监听 127.0.0.1:${lifecycle.port}`);
 
   let closing = false;

@@ -21,6 +21,8 @@ settings.listDefinitions()
 settings.subscribe(listener)
 ```
 
+`SettingsStore.subscribe` 的进程内通知保留 `changedKeys` 供即时设置消费；跨窗口 `SettingsEvent` 只有 `settings_changed`，窗口据此重查设置，不传无人消费的修订号或设置值。
+
 `SettingDefinition` 只有这些字段:
 
 - `key`: SQLite 主键和业务身份.

@@ -42,6 +42,8 @@ const updateProviderBody = z.object({
 export interface ProviderConfigsRouteDeps {
   readonly providers: Providers;
   readonly providerModels: ProviderModels;
+  readonly notifyProviderConfigChanged: () => void;
+  readonly notifyProviderModelsChanged: (providerId: string) => void;
   /** models.dev 目录网络刷新（后台 fire-and-forget 链路用）。 */
   readonly refreshCatalog: (signal?: AbortSignal) => Promise<boolean>;
 }
@@ -52,6 +54,7 @@ export const providerConfigsRoute = (deps: ProviderConfigsRouteDeps) =>
     .post('/', jsonBody(createProviderBody), async context => {
       try {
         const created = deps.providers.create(context.req.valid('json'));
+        deps.notifyProviderConfigChanged();
         syncDevModelsAfterConfig(deps, created.id);
         return context.json(created, 201);
       } catch (error) {
@@ -68,6 +71,7 @@ export const providerConfigsRoute = (deps: ProviderConfigsRouteDeps) =>
     .patch('/:providerId', jsonBody(updateProviderBody), async context => {
       try {
         const provider = deps.providers.update(context.req.param('providerId'), context.req.valid('json'));
+        deps.notifyProviderConfigChanged();
         syncDevModelsAfterConfig(deps, provider.id);
         return context.json(provider);
       } catch (error) {
@@ -77,6 +81,7 @@ export const providerConfigsRoute = (deps: ProviderConfigsRouteDeps) =>
     .delete('/:providerId', context => {
       try {
         deps.providers.delete(context.req.param('providerId'));
+        deps.notifyProviderConfigChanged();
         return context.body(null, 204);
       } catch (error) {
         return providerError(context, error);
@@ -121,6 +126,7 @@ function syncDevModelsAfterConfig(deps: ProviderConfigsRouteDeps, providerId: st
       for (const capability of caps) {
         try {
           deps.providerModels.syncDevModels(providerId, capability);
+          deps.notifyProviderModelsChanged(providerId);
         } catch (error) {
           console.warn('[providers] 目录模型同步失败:', error);
         }

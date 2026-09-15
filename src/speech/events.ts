@@ -9,3 +9,8 @@ export type SpeechControlEvent =
 export type SpeechStreamEvent =
   | SpeechControlEvent
   | { readonly type: 'audio_chunk'; readonly bytes: Uint8Array };
+
+export type SpeechArchiveEvent = {
+  readonly type: 'session_audio_changed';
+  readonly sessionId: string;
+};

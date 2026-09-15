@@ -35,3 +35,8 @@ export interface UsageRecord {
 export interface UsageRecorder {
   record(record: UsageRecord): void;
 }
+
+export type UsageEvent = {
+  readonly type: 'usage_recorded';
+  readonly sessionId: string | null;
+};

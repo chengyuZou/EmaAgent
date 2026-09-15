@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Badge, Button, Callout, Dialog, EmptyState, Field, Input, MarketCard, SearchField, Spinner } from '@ema-agent/ui';
 import { mcpApi, type McpMarketDetail, type McpMarketEntry } from '../../api/mcp.js';
-import { MCP_MARKET_CHANGED_EVENT } from '../../lib/system-event-dispatcher.js';
 import { showToast } from '../../lib/toast.js';
 import { tauriBridge } from '../../lib/tauri-bridge.js';
 import { useMcpStore } from '../../stores/mcp.js';
 
 const SOURCE = 'official' as const;
+export const MCP_MARKET_CHANGED_EVENT = 'ema:mcp-market-changed';
 
 export function McpMarketPage(): JSX.Element {
   const [search, setSearch] = useState('');

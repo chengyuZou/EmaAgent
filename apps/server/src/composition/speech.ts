@@ -16,6 +16,7 @@ import {
   type SpeechControlEvent,
   type SpeechStreamEvent,
   type SpeechVoicePreviewTts,
+  type SpeechArchiveEvent,
 } from '@ema-agent/speech';
 import {
   SpeechOutputsRepo,
@@ -84,6 +85,7 @@ export function openSpeech(
   providers: Providers,
   modelBindings: ModelBindings,
   characters: CharacterStore,
+  emitArchiveChanged: (event: SpeechArchiveEvent) => void,
 ): SpeechComposition {
   const audioArchive = new FsAudioArchive(path.join(activeDataDir, 'sessions'));
   const voiceCache = new SpeechVoiceCache();
@@ -216,6 +218,7 @@ export function openSpeech(
             segmentCount: audio.segmentCount,
             createdAt: Date.now(),
           });
+          emitArchiveChanged({ type: 'session_audio_changed', sessionId: setup.sessionId });
         }
         channels.delete(setup.turnId);
         channel.close();

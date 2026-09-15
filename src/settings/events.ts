@@ -6,3 +6,5 @@ export interface SettingsChangedEvent {
 }
 
 export type SettingsChangedListener = (event: SettingsChangedEvent) => void;
+
+export type SettingsEvent = { readonly type: 'settings_changed' };

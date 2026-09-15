@@ -9,6 +9,7 @@ import type { AttachmentPastedTextsRepo } from '@ema-agent/storage';
 import { AttachmentPreparationError } from './errors.js';
 import { PASTE_TEXT_MIN_CHARS, PASTE_TEXT_PREVIEW_CHARS } from './limits.js';
 import type { StoreSweepReport } from './types.js';
+import type { AttachmentEvent } from './events.js';
 
 export interface SavedPastedText {
   readonly path: string;
@@ -21,6 +22,7 @@ export class PastedTextStore {
   constructor(
     private readonly repo: AttachmentPastedTextsRepo,
     private readonly dataDir: string,
+    private readonly onChanged?: (event: AttachmentEvent) => void,
   ) {}
 
   async savePastedText(sessionId: string, content: string): Promise<SavedPastedText> {
@@ -47,6 +49,7 @@ export class PastedTextStore {
       byte_size: bytes,
       created_at: Date.now(),
     });
+    this.onChanged?.({ type: 'attachments_changed', sessionId });
     return {
       path: target,
       byteSize: bytes,
@@ -76,6 +79,7 @@ export class PastedTextStore {
       freedBytes += row.byte_size;
     }
     this.repo.deleteByPaths(stale.map((row) => row.path));
+    if (stale.length > 0) this.onChanged?.({ type: 'attachments_changed', sessionId });
 
     const dir = path.join(this.dataDir, 'sessions', sessionId, 'attachments', 'pasted');
     let entries;

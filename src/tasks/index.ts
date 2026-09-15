@@ -1,4 +1,5 @@
 export { TaskStore } from './taskStore.js';
+export type { TaskEvent } from './events.js';
 export { formatTaskContextReminder } from './taskContext.js';
 export type {
   Task,

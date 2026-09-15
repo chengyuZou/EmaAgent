@@ -19,6 +19,7 @@ import type { ServerStatus } from './stores/server.js';
 import { charactersApi } from './api/characters.js';
 import { useWindowSuspension } from './hooks/use-window-suspension.js';
 import { tauriBridge } from './lib/tauri-bridge.js';
+import { subscribeSystemEvent } from './lib/system-event-dispatcher.js';
 
 // ── 主窗口 ──────────────────────────────────────────────────────────────────
 //
@@ -37,14 +38,13 @@ export function App(): React.JSX.Element {
   const stageSuspended = useWindowSuspension();
   const serverStatus = useServerStore((s) => s.status);
   const activeCharacterName = useCharacterStore((s) => s.activeName);
-  const activeCharacter = useCharacterStore((s) =>
-    s.characters.find((item) => item.name === s.activeName));
   const activeStage = useRef<ActiveLive2DStage | null>(null);
   const [expressionAvailable, setExpressionAvailable] = useState(false);
   const [expressions, setExpressions] = useState<readonly string[]>([]);
   const [selectedExpression, setSelectedExpression] = useState<string | null>(null);
   const [dockVisible, setDockVisible] = useState(false);
   const [stagePresentation, setStagePresentation] = useState<CharacterStagePresentation | null>(null);
+  const [presentationChangeCount, setPresentationChangeCount] = useState(0);
   const stageRequestSequence = useRef(0);
   const handleStageChanged = useCallback((stage: ActiveLive2DStage | null): void => {
     activeStage.current = stage;
@@ -59,8 +59,17 @@ export function App(): React.JSX.Element {
     void useCharacterStore.getState().load();
   }, [serverStatus.kind]);
 
-  // Character 事件会替换 activeCharacter 对象. 序号让较早的 HTTP 响应不能覆盖后来选择,
-  // 不额外建立一层只包住一次请求的 Loader 类.
+  useEffect(() => subscribeSystemEvent((event) => {
+    if (
+      event.type === 'character_presentation_changed'
+      && event.characterName === useCharacterStore.getState().activeName
+    ) {
+      setPresentationChangeCount(count => count + 1);
+    }
+  }), []);
+
+  // 角色切换和真正影响主舞台的事件才重新读取 presentation。普通资源导入只刷新
+  // Settings 列表,不能让正在渲染的主模型因为一张封面变化而重新加载。
   useEffect(() => {
     const requestSequence = ++stageRequestSequence.current;
 
@@ -72,14 +81,33 @@ export function App(): React.JSX.Element {
     setStagePresentation((current) => (
       current?.characterName === activeCharacterName ? current : null
     ));
+    const presentationStartedAt = performance.now();
+    void tauriBridge.reportLive2dDiagnostic(
+      'presentation_loading',
+      activeCharacterName,
+      null,
+    );
     void charactersApi.presentation(activeCharacterName)
       .then((presentation) => {
         if (requestSequence === stageRequestSequence.current) {
+          void tauriBridge.reportLive2dDiagnostic(
+            'presentation_loaded',
+            activeCharacterName,
+            presentation.status === 'live2d' ? presentation.resource.name : null,
+            (performance.now() - presentationStartedAt) / 1000,
+          );
           setStagePresentation(presentation);
         }
       })
       .catch((error: unknown) => {
         if (requestSequence === stageRequestSequence.current) {
+          void tauriBridge.reportLive2dDiagnostic(
+            'presentation_failed',
+            activeCharacterName,
+            null,
+            (performance.now() - presentationStartedAt) / 1000,
+            String(error),
+          );
           console.error('[stage] 角色呈现读取失败', activeCharacterName, error);
         }
       });
@@ -87,7 +115,7 @@ export function App(): React.JSX.Element {
     return () => {
       stageRequestSequence.current += 1;
     };
-  }, [activeCharacterName, activeCharacter]);
+  }, [activeCharacterName, presentationChangeCount]);
 
   useThemeSync();
   useSettingsSync(serverStatus.kind === 'ok');
@@ -97,14 +125,37 @@ export function App(): React.JSX.Element {
 
   useEffect(() => {
     const unlistenPreview = tauriBridge.listenLive2dPreview((command) => {
-      if (!activeStage.current) return;
+      const stage = activeStage.current;
+      if (!stage) {
+        void tauriBridge.reportLive2dDiagnostic(
+          'preview_ignored',
+          useCharacterStore.getState().activeName,
+          null,
+        );
+        return;
+      }
       if (command.type === 'expression') {
-        activeStage.current.handle.setExpression(command.expression);
+        void tauriBridge.reportLive2dDiagnostic(
+          'preview_expression',
+          stage.characterName,
+          stage.modelName,
+        );
+        stage.handle.setExpression(command.expression);
         setSelectedExpression(command.expression);
       } else if (command.type === 'motion') {
-        activeStage.current.handle.playMotion(command.group, command.index);
+        void tauriBridge.reportLive2dDiagnostic(
+          'preview_motion',
+          stage.characterName,
+          stage.modelName,
+        );
+        stage.handle.playMotion(command.group, command.index);
       } else {
-        activeStage.current.handle.setPlacement(
+        void tauriBridge.reportLive2dDiagnostic(
+          'preview_placement',
+          stage.characterName,
+          stage.modelName,
+        );
+        stage.handle.setPlacement(
           command.stageScale,
           command.stageOffsetX,
           command.stageOffsetY,

@@ -1,9 +1,52 @@
 // 提供窗口显示、交互模式与应用退出相关的 Tauri commands。
+use serde::Deserialize;
 use tauri::Manager;
 
 use crate::desktop::settings::{read_start_narrative_on_launch, write_start_narrative_on_launch};
 use crate::desktop::windows::{begin_main_focus_settling, show_window};
 use crate::processes::DesktopProcesses;
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Live2dDiagnosticEvent {
+    PresentationLoading,
+    PresentationLoaded,
+    PresentationFailed,
+    ArchiveLoading,
+    ArchiveLoaded,
+    ArchiveFailed,
+    CanvasCreated,
+    TickerStarted,
+    TickerStopped,
+    ModelLoading,
+    ModelReady,
+    ModelFailed,
+    FirstTick,
+    PreviewExpression,
+    PreviewMotion,
+    PreviewPlacement,
+    PreviewIgnored,
+}
+
+#[tauri::command]
+pub fn report_live2d_diagnostic(
+    window: tauri::Window,
+    event: Live2dDiagnosticEvent,
+    character_name: Option<String>,
+    model_name: Option<String>,
+    duration_s: Option<f64>,
+    error_message: Option<String>,
+) {
+    tracing::info!(
+        window = window.label(),
+        ?event,
+        ?character_name,
+        ?model_name,
+        ?duration_s,
+        ?error_message,
+        "Live2D stage diagnostic"
+    );
+}
 
 #[tauri::command]
 pub fn set_always_on_top(window: tauri::Window, value: bool) -> Result<(), String> {

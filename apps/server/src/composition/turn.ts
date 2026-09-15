@@ -117,7 +117,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     attachTurn: (handle, ttsEnabled) => deps.fanout.attach(handle, { ttsEnabled }),
     publish: (sessionId, event) => deps.publishQueuedInput(sessionId, event),
   });
-  // 超时设置即改即生效（只影响此后新建的条目，在飞条目保留原超时）。
+  // 超时设置即改即生效（只影响此后新建的条目，已启动条目保留原超时）。
   settings.subscribe(({ changedKeys }) => {
     if (changedKeys.includes(permissionAskTimeoutSetting.key)) {
       interactionQueue.setDefaultTimeout(settings.get(permissionAskTimeoutSetting));

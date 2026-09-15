@@ -229,16 +229,6 @@ export function emaSharedShortcuts() {
     // 按压反馈(沿用现有手感,数值不做全局并轨)
     'press':    'active:scale-[0.95] transition-transform duration-100',
     'press-sm': 'active:scale-[0.98] transition-transform duration-100',
-    // chat 域控件皮肤(设想稿语言):组件(Button/IconButton)照常渲染,皮肤由 shortcut 承担。
-    // 厚条(新对话):38px、rounded-xl、有底有边有影。
-    'chat-bar-btn': 'flex items-center justify-center gap-1.5 w-full h-9.5 rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-3)] text-[var(--ema-text-primary)] text-[13px] shadow-[var(--ema-shadow-1)] hover:bg-[var(--ema-surface-4)] hover:border-[var(--ema-primary)]/30',
-    // 裸态小矩形钮:默认无底无边,hover 显底(消息动作/Header/Panel 顶栏/composer 底栏通用);
-    // aria-pressed 为切换钮的"开"态(TTS 等),常驻 muted 底。
-    'chat-icon-btn': 'inline-flex items-center justify-center size-7.5 rounded-[9px] border border-transparent bg-transparent text-[var(--ema-text-tertiary)] hover:bg-[var(--ema-surface-2)] hover:text-[var(--ema-text-primary)] aria-pressed:bg-[var(--ema-primary-muted)] aria-pressed:text-[var(--ema-primary-text)] aria-pressed:border-[var(--ema-primary)]/40',
-    // 行内动作:裸态+随行 hover/focus-within 浮现;菜单打开时也保持可见。
-    'chat-row-action': 'chat-icon-btn size-5.5 rounded-md opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100',
-    // 选择器小矩形(纯文本 pill):KB/Max/模型;权限那颗自行加盾 icon。
-    'chat-btn': 'inline-flex items-center gap-1 h-7.5 px-2.5 rounded-[9px] border border-[var(--ema-border)] bg-[var(--ema-surface-3)] text-[var(--ema-text-secondary)] text-[11px] font-medium shadow-[var(--ema-shadow-1)] hover:bg-[var(--ema-surface-4)] hover:text-[var(--ema-text-primary)] hover:border-[var(--ema-primary)]/30',
   };
 }
 

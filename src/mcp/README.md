@@ -56,6 +56,7 @@
 
 ## 跨进程事件
 
+- `mcp_servers_changed`: 安装配置、启停、删除或工具缓存写入后，Desktop 重读已安装列表。
 - `mcp_connection_changed`: 当前连接状态变化，Desktop 重读已安装列表。
 - `mcp_market_changed`: 某个已接入来源刷新完成，已打开该来源的窗口重读缓存。
 

@@ -4,7 +4,7 @@ import type { Composition } from '../composition/index.js';
 
 /**
  * 顺序不可交换：删除守卫先挡住新 Turn 并中止活动 Turn；等活动 Turn 走完
- * finish 链（终态落库、交互清理、工具停驻）后才动数据行，否则删除与在飞
+ * finish 链（终态落库、交互清理、工具停驻）后才动数据行，否则删除与未完成的
  * 持久化竞争。Memory 的 Session 级清理归 Sol 的 Memory 包收口后接入。
  */
 export async function deleteSession(composition: Composition, sessionId: string): Promise<void> {
