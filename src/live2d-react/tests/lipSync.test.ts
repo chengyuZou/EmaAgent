@@ -26,7 +26,7 @@ function setup() {
     for (const listener of listeners) listener();
   };
 
-  const lipSync = attachLive2DLipSync(model, () => [{
+  const lipSync = attachLive2DLipSync(model, [{
     index: 2,
     closedValue: -1,
     openValue: 3,

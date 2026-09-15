@@ -110,15 +110,14 @@ describe('CharacterStore', () => {
     fs.writeFileSync(path.join(source, 'orphan.exp3.json'), '{}');
     fs.writeFileSync(path.join(source, 'wave.motion3.json'), '{}');
     fs.writeFileSync(path.join(source, 'orphan.motion3.json'), '{}');
-    const authorConfig = {
-      authorField: 'preserved',
+    const runtimeConfig = {
       emotionMap: {
         neutral: {},
         determined: { expression: 'Smile' },
       },
       motionMap: { disabled: {} },
     };
-    fs.writeFileSync(path.join(source, 'runtime-config.json'), JSON.stringify(authorConfig));
+    fs.writeFileSync(path.join(source, 'runtime-config.json'), JSON.stringify(runtimeConfig));
 
     const resourceChanges: string[] = [];
     const presentationChanges: string[] = [];
@@ -191,7 +190,7 @@ describe('CharacterStore', () => {
       'alice-model',
       'runtime-config.json',
     );
-    expect(JSON.parse(fs.readFileSync(runtimeConfigPath, 'utf8'))).toEqual(authorConfig);
+    expect(JSON.parse(fs.readFileSync(runtimeConfigPath, 'utf8'))).toEqual(runtimeConfig);
 
     const saved = await store.saveLive2dMappings('模型角色', 'alice-model', {
       emotionMap: {
@@ -208,7 +207,6 @@ describe('CharacterStore', () => {
       motionMap: { happy: { group: 'Wave', index: 0 }, wave: { group: 'Wave', index: 0 } },
     });
     expect(JSON.parse(fs.readFileSync(runtimeConfigPath, 'utf8'))).toEqual({
-      authorField: 'preserved',
       emotionMap: {
         neutral: {},
         determined: { expression: 'Smile' },

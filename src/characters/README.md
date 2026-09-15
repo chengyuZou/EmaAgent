@@ -57,6 +57,8 @@ Stage 对每个合法 `<emotion>` 都发出 `emotion_changed`，即使前后值�
 
 Character 和 Live2D 资源行都不保存情绪或动作词汇。Live2D 词汇只取当前 Presentation 中 `runtime-config.json` 的 `emotionMap`、`motionMap` 键；立绘情绪词只取 Presentation 的 `expression` 分组。Turn Prompt、StageEngine 和主窗口都消费 CharacterStore 产出的 Presentation，不各自维护词汇副本。
 
+`runtime-config.json` 只保存 `emotionMap` 和 `motionMap`。Motion、Expression、Idle、LipSync 和 EyeBlink 等模型原生能力全部以 `.model3.json` 为事实源；角色层不重复登记，也不从未登记文件推测能力。
+
 `character_resources_changed` 表示角色包文件和资源行已经完整写入，Settings 收到后重读资源列表。`character_presentation_changed` 只在当前舞台读取结果可能变化时发送，主窗口收到后重读 Presentation。切换主要舞台资源会同时发送两种事件；导入非主要资源或重做静态封面只发送资源事件，不能因此重载正在渲染的主 Canvas。
 
 内置角色只在 Desktop Host 发现 `~/.ema-agent/profile.db` 尚未创建时初始化。Host 先把随包的同名角色目录复制到 `~/.ema-agent/characters`，再让 Server 调用 `initializeBuiltinCharacters()` 写入对应数据库行。后续启动不补种，用户删除内置角色后不会自动恢复。

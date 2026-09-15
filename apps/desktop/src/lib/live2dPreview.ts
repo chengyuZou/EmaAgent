@@ -37,6 +37,7 @@ export async function renderLive2dPreview(modelArchive: Blob): Promise<string> {
       autoHitTest: false,
       autoFocus: false,
       autoUpdate: false,
+      // 封面只抓固定初始化帧;若启动模型 Idle,抓图结果会随随机 Motion 和时机变化.
       idleMotionGroup: '__ema_idle_disabled__',
     });
     // 摆位:模型居中铺满高度

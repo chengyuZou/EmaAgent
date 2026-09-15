@@ -5,21 +5,10 @@ import profileJson from './wlipsync-profile.json';
 // wLipSync 原始输出为 A/E/I/O/U/S 六个权重。
 // Ema 模型没有各元音嘴型参数（cdi3.json 只有 ParamMouthOpenY + ParamMouthForm，
 // 没有 ParamMouthA/E/I/O/U），因此元音识别结果无法驱动分元音嘴型，
-// 只能聚合为单一 mouthOpen（取最大元音权重）；相比 RMS 音量包络，
-// 元音识别抗噪、对浊音/清音的幅度判断更准确。
-const RAW_KEYS = ['A', 'E', 'I', 'O', 'U', 'S'] as const;
-const RAW_TO_VOWEL: Record<(typeof RAW_KEYS)[number], 'A' | 'E' | 'I' | 'O' | 'U'> = {
-  A: 'A',
-  E: 'E',
-  I: 'I',
-  O: 'O',
-  U: 'U',
-  // S（无声/咝音）折到 I，避免闭嘴瞬间硬跳
-  S: 'I',
-};
+// 这里只把五个元音置信度聚合为单一 mouthOpen；S 不代表元音，闭嘴过渡交给平滑处理。
+const VOWEL_KEYS = ['A', 'E', 'I', 'O', 'U'] as const;
 
-// 音量软化曲线：amp = min(volume × 0.9, 1) ^ 0.7，再按元音权重封顶 0.7
-const VOWEL_CAP = 0.7;
+// 音量软化曲线保留轻声开口，同时由元音置信度过滤纯噪声和停顿。
 const VOLUME_SCALE = 0.9;
 const VOLUME_EXPONENT = 0.7;
 // mouthOpen 重算节流（约 25fps，防抖）与 lerp 平滑窗口
@@ -57,20 +46,14 @@ export async function createEmaLipSync(audioContext: AudioContext): Promise<EmaL
   let smoothedMouthOpen = 0;
   let lastSmoothedMs = 0;
 
-  // 元音权重 × 音量软化系数，S 折入 I 后取最大
+  // 模型只有一个张嘴参数，因此取当前最可信的元音，再乘音量得到统一开口度。
   const computeMouthOpen = (): number => {
     const amp = Math.min((node.volume ?? 0) * VOLUME_SCALE, 1) ** VOLUME_EXPONENT;
     let maxWeight = 0;
-    const projected: Record<'A' | 'E' | 'I' | 'O' | 'U', number> = { A: 0, E: 0, I: 0, O: 0, U: 0 };
-    for (const raw of RAW_KEYS) {
-      const vowel = RAW_TO_VOWEL[raw];
-      const rawVal = node.weights?.[raw] ?? 0;
-      projected[vowel] = Math.max(projected[vowel], Math.min(VOWEL_CAP, rawVal * amp));
+    for (const vowel of VOWEL_KEYS) {
+      maxWeight = Math.max(maxWeight, node.weights?.[vowel] ?? 0);
     }
-    for (const w of Object.values(projected)) {
-      maxWeight = Math.max(maxWeight, w);
-    }
-    return maxWeight;
+    return Math.min(1, Math.max(0, maxWeight * amp));
   };
 
   const getMouthOpen = (): number => {

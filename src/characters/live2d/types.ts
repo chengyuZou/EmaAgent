@@ -71,8 +71,6 @@ export interface Live2dMotion {
 export interface Live2dRuntimeConfig {
   emotionMap?: Record<string, Live2dExpression>;
   motionMap?: Record<string, Live2dMotion>;
-  idleMotions?: Live2dMotion[];
-  lipSyncParameterIds?: string[];
 }
 
 export interface Live2dNativeMotion {

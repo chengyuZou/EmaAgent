@@ -1,13 +1,12 @@
-// 测试播放绑定只保留当前 Cubism 模型真实存在的 Parameter 与 Motion。
+// 测试口型绑定只采用 model3.json 登记且 Cubism Core 真实存在的 Parameter。
 
 import type { Cubism4InternalModel } from 'pixi-live2d-display/cubism4';
 import { describe, expect, it } from 'vitest';
-import { resolveLive2DModelBindings } from '../modelBindings.js';
+import { resolveLive2DLipSyncParameters } from '../modelBindings.js';
 
 function internalModel(
   ids: readonly string[],
   lipSyncIds: readonly string[],
-  motions: Record<string, readonly unknown[]>,
 ): Cubism4InternalModel {
   return {
     coreModel: {
@@ -19,43 +18,31 @@ function internalModel(
     settings: {
       getLipSyncParameters: () => [...lipSyncIds],
     },
-    motionManager: { definitions: motions },
   } as unknown as Cubism4InternalModel;
 }
 
-describe('resolveLive2DModelBindings', () => {
-  it('未显式绑定时使用模型 LipSync group，但不猜待机 Motion', () => {
-    const resolved = resolveLive2DModelBindings(
-      internalModel(['ParamMouthOpenY'], ['ParamMouthOpenY'], { Idle: [{}, {}] }),
+describe('resolveLive2DLipSyncParameters', () => {
+  it('使用模型 LipSync group，并映射到参数真实范围', () => {
+    const resolved = resolveLive2DLipSyncParameters(
+      internalModel(['ParamMouthOpenY'], ['ParamMouthOpenY']),
     );
 
-    expect(resolved.lipSyncParameters).toEqual([{
+    expect(resolved).toEqual([{
       index: 0,
       closedValue: 0,
       openValue: 2,
     }]);
-    expect(resolved.idleMotions).toEqual([]);
   });
 
-  it('空数组关闭口型，并过滤未知 ID、越界 Motion 和重复引用', () => {
-    const resolved = resolveLive2DModelBindings(
-      internalModel(['Mouth'], ['Mouth'], { Idle: [{}, {}], Wave: [{}] }),
-      {
-        lipSyncParameterIds: [],
-        idleMotions: [
-          { group: 'Idle', index: 1 },
-          { group: 'Idle', index: 1 },
-          { group: 'Idle', index: 2 },
-          { group: 'Missing', index: 0 },
-          { group: 'Wave', index: 0 },
-        ],
-      },
+  it('过滤模型未实际包含的 ID 和重复登记', () => {
+    const resolved = resolveLive2DLipSyncParameters(
+      internalModel(['Mouth'], ['Mouth', 'Missing', 'Mouth']),
     );
 
-    expect(resolved.lipSyncParameters).toEqual([]);
-    expect(resolved.idleMotions).toEqual([
-      { group: 'Idle', index: 1 },
-      { group: 'Wave', index: 0 },
-    ]);
+    expect(resolved).toEqual([{
+      index: 0,
+      closedValue: 0,
+      openValue: 2,
+    }]);
   });
 });

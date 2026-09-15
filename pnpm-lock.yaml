@@ -809,9 +809,6 @@ importers:
 
   src/live2d-react:
     dependencies:
-      '@ema-agent/characters':
-        specifier: workspace:*
-        version: link:../characters
       jszip:
         specifier: ^3.10.1
         version: 3.10.1

@@ -320,8 +320,8 @@ export const tauriBridge = {
     await emitTauri(STAGE_MOTION_EVENT, { motion });
   },
 
-  async publishStageSpeech(speaking: boolean, rms: number): Promise<void> {
-    await emitTauri(STAGE_SPEECH_EVENT, { speaking, rms });
+  async publishStageSpeech(speaking: boolean, mouthOpen: number): Promise<void> {
+    await emitTauri(STAGE_SPEECH_EVENT, { speaking, mouthOpen });
   },
 
   async publishLive2dPreview(command: Live2dPreviewCommand): Promise<void> {
@@ -347,11 +347,11 @@ export const tauriBridge = {
   },
 
   async listenStageSpeech(
-    handler: (speaking: boolean, rms: number) => void,
+    handler: (speaking: boolean, mouthOpen: number) => void,
   ): Promise<() => void> {
-    return listenTauri<{ speaking: boolean; rms: number }>(
+    return listenTauri<{ speaking: boolean; mouthOpen: number }>(
       STAGE_SPEECH_EVENT,
-      ({ speaking, rms }) => handler(speaking, rms),
+      ({ speaking, mouthOpen }) => handler(speaking, mouthOpen),
     );
   },
 

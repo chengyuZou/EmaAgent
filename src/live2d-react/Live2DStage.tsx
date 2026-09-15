@@ -14,19 +14,14 @@ import {
   Live2DModel,
   MotionPriority,
 } from 'pixi-live2d-display/cubism4';
-import type { Live2dRuntimeConfig } from '@ema-agent/characters';
 import {
   calculateLive2DPlacement,
   type Live2DModelBounds,
 } from './framing.js';
 import { startLive2DIdleGaze } from './idleGaze.js';
-import { startLive2DIdleMotionPlayback } from './idleMotion.js';
 import { loadLive2DArchive } from './live2dArchive.js';
 import { attachLive2DLipSync, type Live2DLipSync } from './lipSync.js';
-import {
-  resolveLive2DModelBindings,
-  type ResolvedLive2DModelBindings,
-} from './modelBindings.js';
+import { resolveLive2DLipSyncParameters } from './modelBindings.js';
 import type {
   Live2DStageHandle,
   Live2DStageReadyInfo,
@@ -39,7 +34,6 @@ const POINTER_IDLE_GAZE_MS = 1_000;
 
 export interface Live2DStageProps {
   modelArchive: Blob;
-  runtimeConfig?: Live2dRuntimeConfig;
   stageScale?: number;
   stageOffsetX?: number;
   stageOffsetY?: number;
@@ -63,7 +57,6 @@ export interface Live2DStageProps {
 export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
   function Live2DStage({
     modelArchive,
-    runtimeConfig,
     stageScale = 1,
     stageOffsetX = 0,
     stageOffsetY = 0,
@@ -79,24 +72,17 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
     const modelRef = useRef<Cubism4Model | null>(null);
     const modelCleanupRef = useRef<(() => void) | null>(null);
     const loadGenerationRef = useRef(0);
-    const resolvedBindingsRef = useRef<ResolvedLive2DModelBindings | null>(null);
     const lipSyncRef = useRef<Live2DLipSync | null>(null);
     const expressionsRef = useRef<readonly string[]>([]);
     const stageScaleRef = useRef(stageScale);
     const stageOffsetXRef = useRef(stageOffsetX);
     const stageOffsetYRef = useRef(stageOffsetY);
     const applyFramingRef = useRef<() => void>(() => {});
-    const idleMotionPlaybackRef = useRef<ReturnType<
-      typeof startLive2DIdleMotionPlayback
-    > | null>(null);
-    const runtimeConfigRef = useRef(runtimeConfig);
     const suspendedRef = useRef(suspended);
     const interactiveRef = useRef(interactive);
-    const speakingRef = useRef(false);
     const lastPointerActivityAtRef = useRef(0);
     const callbacksRef = useRef({ onReady, onError, onDiagnostic });
 
-    runtimeConfigRef.current = runtimeConfig;
     suspendedRef.current = suspended;
     interactiveRef.current = interactive;
     callbacksRef.current = { onReady, onError, onDiagnostic };
@@ -133,9 +119,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
         });
       },
       setLipSync(nextSpeaking, mouthOpen) {
-        speakingRef.current = nextSpeaking;
         lipSyncRef.current?.set(nextSpeaking, mouthOpen);
-        if (!nextSpeaking) idleMotionPlaybackRef.current?.resume();
       },
     }), []);
 
@@ -201,16 +185,6 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
     }, [stageOffsetX, stageOffsetY, stageScale]);
 
     useEffect(() => {
-      const model = modelRef.current;
-      if (!model) return;
-      resolvedBindingsRef.current = resolveLive2DModelBindings(
-        model.internalModel,
-        runtimeConfig,
-      );
-      idleMotionPlaybackRef.current?.resume();
-    }, [runtimeConfig]);
-
-    useEffect(() => {
       const app = appRef.current;
       if (!app) return;
       const generation = ++loadGenerationRef.current;
@@ -222,8 +196,6 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
         autoHitTest: false,
         autoFocus: false,
         autoUpdate: true,
-        // 原生 MotionManager 会轮播整个 Idle group;这里只播放 Character 明确登记的待机 Motion.
-        idleMotionGroup: '__ema_idle_disabled__',
       }).then((model) => {
         if (generation !== loadGenerationRef.current || appRef.current !== app) {
           model.destroy({ children: true });
@@ -233,20 +205,16 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
         // ZIP 可在旧模型仍显示时完成解析;只有新模型可用后才原子替换舞台内容.
         modelCleanupRef.current?.();
         const cleanupModel = mountModel(app, model, {
-          runtimeConfigRef,
           interactiveRef,
           suspendedRef,
-          speakingRef,
           lastPointerActivityAtRef,
           modelRef,
-          resolvedBindingsRef,
           lipSyncRef,
           expressionsRef,
           stageScaleRef,
           stageOffsetXRef,
           stageOffsetYRef,
           applyFramingRef,
-          idleMotionPlaybackRef,
         });
         const firstTick = (): void => {
           callbacksRef.current.onDiagnostic?.(
@@ -291,22 +259,16 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
 );
 
 interface MountedModelRefs {
-  readonly runtimeConfigRef: MutableRefObject<Live2dRuntimeConfig | undefined>;
   readonly interactiveRef: MutableRefObject<boolean>;
   readonly suspendedRef: MutableRefObject<boolean>;
-  readonly speakingRef: MutableRefObject<boolean>;
   readonly lastPointerActivityAtRef: MutableRefObject<number>;
   readonly modelRef: MutableRefObject<Cubism4Model | null>;
-  readonly resolvedBindingsRef: MutableRefObject<ResolvedLive2DModelBindings | null>;
   readonly lipSyncRef: MutableRefObject<Live2DLipSync | null>;
   readonly expressionsRef: MutableRefObject<readonly string[]>;
   readonly stageScaleRef: MutableRefObject<number>;
   readonly stageOffsetXRef: MutableRefObject<number>;
   readonly stageOffsetYRef: MutableRefObject<number>;
   readonly applyFramingRef: MutableRefObject<() => void>;
-  readonly idleMotionPlaybackRef: MutableRefObject<ReturnType<
-    typeof startLive2DIdleMotionPlayback
-  > | null>;
 }
 
 function mountModel(
@@ -318,14 +280,9 @@ function mountModel(
   refs.modelRef.current = model;
   app.stage.addChild(model);
 
-  const initialBindings = resolveLive2DModelBindings(
-    model.internalModel,
-    refs.runtimeConfigRef.current,
-  );
-  refs.resolvedBindingsRef.current = initialBindings;
   refs.lipSyncRef.current = attachLive2DLipSync(
     model.internalModel,
-    () => refs.resolvedBindingsRef.current?.lipSyncParameters ?? [],
+    resolveLive2DLipSyncParameters(model.internalModel),
   );
 
   refs.lastPointerActivityAtRef.current = performance.now();
@@ -379,32 +336,12 @@ function mountModel(
   cleanups.push(() => window.removeEventListener('mousemove', followPointer));
 
   refs.expressionsRef.current = extractExpressionNames(model.internalModel);
-  const idleMotionPlayback = startLive2DIdleMotionPlayback(
-    model.internalModel.motionManager,
-    motion => model.motion(
-      motion.group,
-      motion.index,
-      MotionPriority.IDLE,
-    ),
-    () => refs.resolvedBindingsRef.current?.idleMotions ?? [],
-    () => !refs.suspendedRef.current && !refs.speakingRef.current,
-  );
-  refs.idleMotionPlaybackRef.current = idleMotionPlayback;
-  cleanups.push(() => {
-    idleMotionPlayback.dispose();
-    if (refs.idleMotionPlaybackRef.current === idleMotionPlayback) {
-      refs.idleMotionPlaybackRef.current = null;
-    }
-  });
-
   return () => {
     refs.applyFramingRef.current = () => {};
     for (const cleanup of cleanups.reverse()) cleanup();
     refs.lipSyncRef.current?.dispose();
     refs.lipSyncRef.current = null;
     refs.expressionsRef.current = [];
-    refs.speakingRef.current = false;
-    refs.resolvedBindingsRef.current = null;
     refs.modelRef.current = null;
     app.stage.removeChild(model);
     model.destroy({ children: true });

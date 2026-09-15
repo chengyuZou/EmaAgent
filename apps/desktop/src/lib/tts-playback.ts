@@ -14,10 +14,10 @@ export const usePlaybackStore = create<PlaybackState>(() => ({ playingTurnId: nu
 
 let audioContext: AudioContext | null = null;
 let analyser: AnalyserNode | null = null;
-let rmsData: Uint8Array | null = null;
+let fallbackVolumeData: Uint8Array | null = null;
 let lipSync: EmaLipSync | null = null;
 let lipSyncPromise: Promise<EmaLipSync | null> | null = null;
-let rmsFrame = 0;
+let mouthTrackingFrame = 0;
 let lastSpeechPublish = 0;
 
 function audioGraph(): { context: AudioContext; analyser: AnalyserNode } {
@@ -27,7 +27,7 @@ function audioGraph(): { context: AudioContext; analyser: AnalyserNode } {
     analyser.fftSize = 256;
     analyser.smoothingTimeConstant = 0.4;
     analyser.connect(audioContext.destination);
-    rmsData = new Uint8Array(analyser.frequencyBinCount);
+    fallbackVolumeData = new Uint8Array(analyser.frequencyBinCount);
   }
   return { context: audioContext, analyser: analyser! };
 }
@@ -53,41 +53,46 @@ function connectLipSync(source: AudioNode): void {
   else void ensureLipSync().then(value => value?.connectSource(source));
 }
 
-function publishSpeech(speaking: boolean, rms: number, force = false): void {
+function publishSpeech(speaking: boolean, mouthOpen: number, force = false): void {
   const now = performance.now();
   if (!force && now - lastSpeechPublish < 33) return;
   lastSpeechPublish = now;
-  void tauriBridge.publishStageSpeech(speaking, rms);
+  void tauriBridge.publishStageSpeech(speaking, mouthOpen);
 }
 
-function startRms(): void {
-  if (rmsFrame) return;
+function startMouthTracking(): void {
+  if (mouthTrackingFrame) return;
   publishSpeech(true, 0, true);
   void ensureLipSync();
   const frame = (): void => {
-    let rms = lipSync?.getMouthOpen();
-    if (rms === undefined) {
+    let mouthOpen = lipSync?.getMouthOpen();
+    if (mouthOpen === undefined) {
       const graph = audioGraph();
-      if (!rmsData || rmsData.length !== graph.analyser.frequencyBinCount) {
-        rmsData = new Uint8Array(graph.analyser.frequencyBinCount);
+      if (!fallbackVolumeData || fallbackVolumeData.length !== graph.analyser.frequencyBinCount) {
+        fallbackVolumeData = new Uint8Array(graph.analyser.frequencyBinCount);
       }
-      graph.analyser.getByteTimeDomainData(rmsData as Uint8Array<ArrayBuffer>);
+      graph.analyser.getByteTimeDomainData(
+        fallbackVolumeData as Uint8Array<ArrayBuffer>,
+      );
       let sum = 0;
-      for (const sample of rmsData) {
+      for (const sample of fallbackVolumeData) {
         const value = (sample - 128) / 128;
         sum += value * value;
       }
-      rms = Math.min(1, Math.sqrt(sum / rmsData.length) * 3);
+      mouthOpen = Math.min(
+        1,
+        Math.sqrt(sum / fallbackVolumeData.length) * 3,
+      );
     }
-    publishSpeech(true, rms);
-    rmsFrame = requestAnimationFrame(frame);
+    publishSpeech(true, mouthOpen);
+    mouthTrackingFrame = requestAnimationFrame(frame);
   };
   frame();
 }
 
-function stopRms(): void {
-  if (rmsFrame) cancelAnimationFrame(rmsFrame);
-  rmsFrame = 0;
+function stopMouthTracking(): void {
+  if (mouthTrackingFrame) cancelAnimationFrame(mouthTrackingFrame);
+  mouthTrackingFrame = 0;
   publishSpeech(false, 0, true);
 }
 
@@ -195,13 +200,13 @@ async function playSentence(player: LivePlayer, bytes: Uint8Array): Promise<void
   connectLipSync(source);
   player.activeSource = source;
   setPlaying(player.turnId);
-  startRms();
+  startMouthTracking();
   await new Promise<void>(resolve => {
     source.onended = () => resolve();
     source.start();
   });
   if (player.activeSource === source) player.activeSource = null;
-  stopRms();
+  stopMouthTracking();
 }
 
 function finishLivePlayer(player: LivePlayer): void {
@@ -209,7 +214,7 @@ function finishLivePlayer(player: LivePlayer): void {
   livePlayers.delete(player.turnId);
   if (sessionTurns.get(player.sessionId) === player.turnId) sessionTurns.delete(player.sessionId);
   setPlaying(null);
-  stopRms();
+  stopMouthTracking();
 }
 
 function destroyLivePlayer(player: LivePlayer): void {
@@ -221,7 +226,7 @@ function destroyLivePlayer(player: LivePlayer): void {
   livePlayers.delete(player.turnId);
   if (sessionTurns.get(player.sessionId) === player.turnId) sessionTurns.delete(player.sessionId);
   if (usePlaybackStore.getState().playingTurnId === player.turnId) setPlaying(null);
-  stopRms();
+  stopMouthTracking();
 }
 
 function joinChunks(chunks: readonly Uint8Array[]): Uint8Array {
@@ -259,7 +264,7 @@ export async function replayTurn(turnId: string): Promise<void> {
   connectLipSync(source);
   replaySource = source;
   setPlaying(turnId);
-  startRms();
+  startMouthTracking();
   try {
     await new Promise<void>(resolve => {
       source.onended = () => resolve();
@@ -268,7 +273,7 @@ export async function replayTurn(turnId: string): Promise<void> {
   } finally {
     if (replaySource === source) replaySource = null;
     setPlaying(null);
-    stopRms();
+    stopMouthTracking();
   }
 }
 
@@ -279,7 +284,7 @@ export function stopPlayback(): void {
     replaySource = null;
   }
   setPlaying(null);
-  stopRms();
+  stopMouthTracking();
 }
 
 export function evictSessionPlayers(sessionId: string): void {

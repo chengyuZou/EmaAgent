@@ -22,7 +22,7 @@ export interface Live2DLipSync {
 
 export function attachLive2DLipSync(
   internalModel: Cubism4InternalModel,
-  readParameters: () => readonly ResolvedLive2DLipSyncParameter[],
+  parameters: readonly ResolvedLive2DLipSyncParameter[],
 ): Live2DLipSync {
   // 0.5.0-beta 运行时继承 EventEmitter，但打包后的 d.ts 丢失了 on/off 成员。
   const frameEvents = internalModel as Cubism4InternalModel & {
@@ -60,7 +60,7 @@ export function attachLive2DLipSync(
     );
     current += (target - current) * factor;
 
-    for (const parameter of readParameters()) {
+    for (const parameter of parameters) {
       const value = parameter.closedValue
         + (parameter.openValue - parameter.closedValue) * current;
       internalModel.coreModel.setParameterValueByIndex(parameter.index, value);

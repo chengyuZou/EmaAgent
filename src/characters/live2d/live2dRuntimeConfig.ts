@@ -9,6 +9,7 @@ import type {
 } from './types.js';
 
 const VOCABULARY_NAME = /^[a-z][a-z0-9_]*$/u;
+const RUNTIME_CONFIG_KEYS = new Set(['emotionMap', 'motionMap']);
 
 /**
  * `runtime-config.json` 是 Ema 在 Cubism 文件之外使用的语义配置. 本模块认识的部分如下:
@@ -19,16 +20,14 @@ const VOCABULARY_NAME = /^[a-z][a-z0-9_]*$/u;
  *     "happy": { "expression": "smile" },
  *     "neutral": {}
  *   },
- *   "motionMap": { "wave": { "group": "TapBody", "index": 0 } },
- *   "idleMotions": [{ "group": "Idle", "index": 0 }],
- *   "lipSyncParameterIds": ["ParamMouthOpenY"]
+ *   "motionMap": { "wave": { "group": "TapBody", "index": 0 } }
  * }
  * ```
  *
  * map 的 key 是 LLM 在 `<emotion>` 或 `<motion>` 中使用的语义词. expression 指向
  * model3.json 的 Expression Name, motion 指向 model3.json 的 group 和数组 index.
- * 空对象表示作者明确禁用该语义词, 因而不会进入 Presentation 词汇. 文件还可能包含
- * 舞台参数等其他作者字段, 读取时不对外暴露, 写映射时原样保留.
+ * 空对象表示作者明确禁用该语义词, 因而不会进入 Presentation 词汇. 模型原生能力只从
+ * model3.json 读取,本文件不重复登记待机 Motion 或口型 Parameter.
  */
 export function readLive2dRuntimeConfig(filePath: string | null): Live2dRuntimeConfig {
   if (filePath === null) return {};
@@ -42,7 +41,7 @@ export async function writeLive2dMappings(
   expressions: readonly string[],
   motions: readonly Live2dNativeMotion[],
 ): Promise<{ readonly path: string; readonly config: Live2dRuntimeConfig }> {
-  // 用户编辑会完整替换两张语义映射，但不改 runtime-config.json 中其他作者字段。
+  // 保存时重写完整语义配置,避免已经失去消费方的旧字段继续伪装成模型能力来源.
   assertMappings(mappings);
   const expressionNames = new Set(expressions);
   const motionNames = new Set(motions.map(motion => `${motion.group}:${motion.index}`));
@@ -54,9 +53,11 @@ export async function writeLive2dMappings(
       invalidMappingTarget();
     }
   }
-  const document = runtimeConfigPath ? readRuntimeConfigObject(runtimeConfigPath) : {};
-  document.emotionMap = keepDisabledMappings(document.emotionMap, mappings.emotionMap);
-  document.motionMap = keepDisabledMappings(document.motionMap, mappings.motionMap);
+  const existing = runtimeConfigPath ? readRuntimeConfigObject(runtimeConfigPath) : {};
+  const document = {
+    emotionMap: keepDisabledMappings(existing.emotionMap, mappings.emotionMap),
+    motionMap: keepDisabledMappings(existing.motionMap, mappings.motionMap),
+  };
   const config = parseRuntimeConfig(document);
   const target = runtimeConfigPath ?? path.join(path.dirname(modelPath), 'runtime-config.json');
   await writeRuntimeConfigObject(target, document);
@@ -64,15 +65,14 @@ export async function writeLive2dMappings(
 }
 
 function parseRuntimeConfig(document: Record<string, unknown>): Live2dRuntimeConfig {
+  if (Object.keys(document).some(key => !RUNTIME_CONFIG_KEYS.has(key))) {
+    invalidRuntimeConfig();
+  }
   const emotionMap = document.emotionMap === undefined ? undefined : readEmotionMap(document.emotionMap);
   const motionMap = document.motionMap === undefined ? undefined : readMotionMap(document.motionMap);
   return {
     ...(emotionMap ? { emotionMap } : {}),
     ...(motionMap ? { motionMap } : {}),
-    ...(document.idleMotions === undefined ? {} : { idleMotions: readMotionList(document.idleMotions) }),
-    ...(document.lipSyncParameterIds === undefined
-      ? {}
-      : { lipSyncParameterIds: readParameterIds(document.lipSyncParameterIds) }),
   };
 }
 
@@ -136,11 +136,6 @@ function readMotionMap(value: unknown): Record<string, Live2dMotion> {
   return map;
 }
 
-function readMotionList(value: unknown): Live2dMotion[] {
-  if (!Array.isArray(value)) invalidRuntimeConfig();
-  return value.map(readMotion);
-}
-
 function readMotion(value: unknown): Live2dMotion {
   if (!isRecord(value)
     || !nonEmptyString(value.group)
@@ -150,14 +145,6 @@ function readMotion(value: unknown): Live2dMotion {
     invalidRuntimeConfig();
   }
   return { group: value.group.trim(), index: value.index };
-}
-
-function readParameterIds(value: unknown): string[] {
-  if (!Array.isArray(value)) invalidRuntimeConfig();
-  return value.map(item => {
-    if (!nonEmptyString(item)) invalidRuntimeConfig();
-    return item.trim();
-  });
 }
 
 function assertVocabularyName(value: string): void {

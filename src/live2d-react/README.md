@@ -19,7 +19,6 @@ interface Live2DStageHandle {
 <Live2DStage
   ref={stageRef}
   modelArchive={archiveBlob}
-  runtimeConfig={characterLive2dRuntimeConfig}
   stageScale={resource.stageScale}
   stageOffsetX={resource.stageOffsetX}
   stageOffsetY={resource.stageOffsetY}
@@ -29,9 +28,9 @@ interface Live2DStageHandle {
 />
 ```
 
-`Live2dRuntimeConfig` 与 `Live2dMotion` 直接来自 `@ema-agent/characters`,本包不复制一份 bindings 协议。`mouthOpen` 是宿主已换算的 `0..1` 开口度；本包不理解 RMS 或某个 TTS 协议。`lipSyncParameterIds === undefined` 时使用 `.model3.json` 的 `LipSync` group，显式空数组则关闭口型。
+`mouthOpen` 是宿主已换算的 `0..1` 开口度,本包不理解音频分析或某个 TTS 协议。嘴部 Parameter 只从 `.model3.json` 的 `LipSync` Group 读取,模型没有登记时不驱动口型。
 
-待机动作只从 `idleMotions` 选择，不自动把整个 `Idle` group 当成待机。真实模型可能把流泪、特殊剧情等 Motion 也放进该组。首次加载立即自动选择一条；当前 Motion 结束后在下一动画帧继续自动选择，手动 Motion 结束后也回到同一待机链。
+待机动作交给 Cubism MotionManager,它从 `.model3.json` 的 `Idle` Group 自动选择并在 Motion 结束后继续播放。手动 Motion 使用更高优先级,播放完成后自然回到原生待机链。
 
 ## 播放流水线
 
@@ -58,9 +57,8 @@ Character ZIP Blob
 
 - `Live2DStage.tsx`：React/PIXI/Cubism 生命周期和公开句柄。
 - `live2dArchive.ts`：把完整 ZIP 目录树接入 pixi-live2d-display 的 Zip/File Loader。
-- `modelBindings.ts`：把资源绑定投影到当前模型真实存在的 Parameter 与 Motion。
+- `modelBindings.ts`：把模型登记的口型 ID 投影到 Cubism Core 的真实 Parameter 范围。
 - `lipSync.ts`：说话期间在唯一帧更新点平滑写入口型，说完经 hold 交还控制权。
-- `idleMotion.ts`：在 Motion 完成事件后连续播放 Character 明确允许的待机 Motion。
 - `idleGaze.ts`：无鼠标活动时随机游移注视点。
 - `framing.ts`：纯函数计算默认半身构图。
 - `types.ts`：宿主真正消费的公共类型。

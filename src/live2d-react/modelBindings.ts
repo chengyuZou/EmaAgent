@@ -1,7 +1,6 @@
-// 把 Character 给出的 ID 和 Motion 引用绑定到当前 Cubism 模型的真实对象。
+// 把 model3.json 的 LipSync Parameter 绑定到当前 Cubism 模型的真实参数范围。
 
 import type { Cubism4InternalModel } from 'pixi-live2d-display/cubism4';
-import type { Live2dMotion, Live2dRuntimeConfig } from '@ema-agent/characters';
 
 export interface ResolvedLive2DLipSyncParameter {
   index: number;
@@ -9,27 +8,18 @@ export interface ResolvedLive2DLipSyncParameter {
   openValue: number;
 }
 
-export interface ResolvedLive2DModelBindings {
-  idleMotions: readonly Live2dMotion[];
-  lipSyncParameters: readonly ResolvedLive2DLipSyncParameter[];
-}
-
 /**
  * Cubism `getParameterIndex()` 会为未知 ID 创建虚拟参数，所以先用 Core 真实 ID 过滤。
- * Motion 也在模型加载后绑定，避免待机调度反复请求不存在的动作。
  */
-export function resolveLive2DModelBindings(
+export function resolveLive2DLipSyncParameters(
   internalModel: Cubism4InternalModel,
-  runtimeConfig?: Live2dRuntimeConfig,
-): ResolvedLive2DModelBindings {
+): ResolvedLive2DLipSyncParameter[] {
   const coreModel = internalModel.coreModel;
   const parameters = coreModel.getModel().parameters;
   const parameterIds = new Set(parameters.ids);
-  const requestedLipSyncIds = runtimeConfig?.lipSyncParameterIds
-    ?? internalModel.settings.getLipSyncParameters()
-    ?? [];
+  const requestedLipSyncIds = internalModel.settings.getLipSyncParameters() ?? [];
 
-  const lipSyncParameters = uniqueNonEmpty(requestedLipSyncIds).flatMap((id) => {
+  return uniqueNonEmpty(requestedLipSyncIds).flatMap((id) => {
     if (!parameterIds.has(id)) return [];
     const index = coreModel.getParameterIndex(id);
     const minimum = coreModel.getParameterMinimumValue(index);
@@ -40,40 +30,6 @@ export function resolveLive2DModelBindings(
       openValue: maximum,
     }];
   });
-
-  return {
-    idleMotions: resolveMotionReferences(
-      internalModel.motionManager.definitions,
-      runtimeConfig?.idleMotions ?? [],
-    ),
-    lipSyncParameters,
-  };
-}
-
-function resolveMotionReferences(
-  definitions: Readonly<Partial<Record<string, readonly unknown[]>>>,
-  references: readonly Live2dMotion[],
-): Live2dMotion[] {
-  const seen = new Set<string>();
-  const resolved: Live2dMotion[] = [];
-
-  for (const reference of references) {
-    const group = reference.group.trim();
-    const motions = definitions[group];
-    if (!group || !motions?.length) continue;
-    if (!Number.isInteger(reference.index)
-      || reference.index < 0
-      || reference.index >= motions.length) {
-      continue;
-    }
-
-    const key = `${group}:${reference.index}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    resolved.push({ group, index: reference.index });
-  }
-
-  return resolved;
 }
 
 function uniqueNonEmpty(values: readonly string[]): string[] {

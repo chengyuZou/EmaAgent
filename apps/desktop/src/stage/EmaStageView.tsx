@@ -58,8 +58,8 @@ export function EmaStageView({
       const target = runtimeConfig?.motionMap?.[motion];
       if (target) stageRef.current?.playMotion(target.group, target.index);
     });
-    const unlistenSpeech = tauriBridge.listenStageSpeech((speaking, rms) => {
-      stageRef.current?.setLipSync(speaking, rms);
+    const unlistenSpeech = tauriBridge.listenStageSpeech((speaking, mouthOpen) => {
+      stageRef.current?.setLipSync(speaking, mouthOpen);
     });
 
     return () => {
@@ -73,7 +73,6 @@ export function EmaStageView({
     <Live2DStage
       ref={setStageHandle}
       modelArchive={modelArchive}
-      runtimeConfig={runtimeConfig}
       stageScale={stageScale}
       stageOffsetX={stageOffsetX}
       stageOffsetY={stageOffsetY}
