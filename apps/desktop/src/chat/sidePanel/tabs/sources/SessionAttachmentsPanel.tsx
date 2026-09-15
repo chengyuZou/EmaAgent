@@ -1,5 +1,5 @@
 // 展示当前 Session 的全部持久附件(图片/粘贴文本两本账合并),点击打开预览标签。
-import { useEffect, type JSX } from 'react';
+import { useEffect, type CSSProperties, type JSX } from 'react';
 import { Button, ScrollArea } from '@ema-agent/ui';
 
 import type { SessionAttachmentsResult } from '../../../../api/sessions.js';
@@ -65,9 +65,9 @@ export function SessionAttachmentsPanel({ sessionId }: { sessionId: string | nul
         </div>
       )}
       <ScrollArea className="min-h-0 flex-1">
-        {attachments.map((attachment) => (
+        {attachments.map((attachment, index) => (
+          <div key={attachment.path} className="ema-stagger-in-swift" style={{ '--stagger-i': index } as CSSProperties}>
           <button
-            key={attachment.path}
             className="flex w-full items-start gap-2.5 border-b border-[var(--ema-border)] px-3 py-2.5 text-left transition-colors hover:bg-[var(--ema-surface-2)]"
             onClick={() => openTab(sessionId, sessionSourceTab(attachment.path))}
           >
@@ -85,6 +85,7 @@ export function SessionAttachmentsPanel({ sessionId }: { sessionId: string | nul
             </span>
             <span className="i-lucide:chevron-right mt-1 shrink-0 text-xs text-[var(--ema-text-tertiary)]" aria-hidden />
           </button>
+          </div>
         ))}
       </ScrollArea>
     </div>

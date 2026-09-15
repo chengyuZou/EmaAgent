@@ -145,7 +145,10 @@ export const createRoutes = (composition: Composition, secret: string) => {
       activeDataDir: database.activeDataDir,
     }))
     // backup 是独立业务域（未来还有角色/设置备份）；Session 支路的 URL 仍在 /api/sessions 下。
-    .route('/api/sessions', sessionBackupRoute({ backup: backup.sessionBackup }))
+    .route('/api/sessions', sessionBackupRoute({
+      backup: backup.sessionBackup,
+      onImported: () => appEvents.emit({ type: 'session_list_changed' }),
+    }))
     .route('/api/commands', commandsCatalogRoute({
       listCommandDescriptors: commands.listCommandDescriptors,
     }))
@@ -183,16 +186,21 @@ export const createRoutes = (composition: Composition, secret: string) => {
       providerModels: providers.providerModels,
       modelBindings: providers.modelBindings,
       refreshCatalog: providers.refreshCatalog,
+      notifyProviderModelsChanged: providerId => appEvents.emit({ type: 'provider_models_changed', providerId }),
+      notifyModelBindingsChanged: () => appEvents.emit({ type: 'model_bindings_changed' }),
     }))
     .route('/api/providers', providerConfigsRoute({
       providers: providers.providers,
       providerModels: providers.providerModels,
       refreshCatalog: providers.refreshCatalog,
+      notifyProviderConfigChanged: () => appEvents.emit({ type: 'provider_config_changed' }),
+      notifyProviderModelsChanged: providerId => appEvents.emit({ type: 'provider_models_changed', providerId }),
     }))
     .route('/api/providers', providerHealthRoute({
       providers: providers.providers,
       providerModels: providers.providerModels,
       modelCatalog: providers.modelCatalog,
+      notifyProviderHealthChanged: providerId => appEvents.emit({ type: 'provider_health_changed', providerId }),
     }))
     .route('/api/providers', providerCapabilitiesRoute({
       voicePreview: speech.voicePreview,

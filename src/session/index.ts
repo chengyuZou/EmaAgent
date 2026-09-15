@@ -1,4 +1,5 @@
 export { SessionStore } from './store.js';
+export type { SessionEvent } from './events.js';
 export { DEFAULT_SESSION_TITLE } from './store.js';
 export type { SessionStoreDeps } from './store.js';
 export { SessionOwnershipError } from './errors.js';
@@ -31,6 +32,9 @@ export type {
   ExecutionProfile,
   NarrativePolicy,
   TurnStatus,
+  SessionSidebarDestination,
+  MoveSessionInSidebarInput,
+  MoveProjectInSidebarInput,
 } from './types.js';
 
 export type {

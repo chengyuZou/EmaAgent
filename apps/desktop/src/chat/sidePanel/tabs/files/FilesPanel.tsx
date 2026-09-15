@@ -64,7 +64,7 @@ function directoryError(cause: unknown): string {
 
 function FileRow({
   entry, depth, filter,
-  dirNode, onToggle, onSelectFile,
+  dirNode, onToggle, onSelectFile, activeTabId,
 }: {
   entry:        FileEntry;
   depth:        number;
@@ -72,6 +72,7 @@ function FileRow({
   dirNode:      DirNode | undefined;
   onToggle:     (path: string) => void;
   onSelectFile: (path: string) => void;
+  activeTabId?: string;
 }): JSX.Element | null {
   const isDir    = entry.type === 'dir';
   const expanded = isDir && dirNode?.children != null;
@@ -90,7 +91,12 @@ function FileRow({
 
   return (
     <div
-      className="flex items-center gap-1.5 px-2 py-0.5 rounded cursor-pointer group select-none transition-colors hover:bg-[var(--ema-surface-2)]"
+      data-selected={!isDir && activeTabId === fileTab(entry.path).id ? true : undefined}
+      className={`flex items-center gap-1.5 px-2 py-0.5 rounded cursor-pointer group select-none transition-colors ${
+        !isDir && activeTabId === fileTab(entry.path).id
+          ? 'bg-[var(--ema-primary-muted)]'
+          : 'hover:bg-[var(--ema-surface-2)]'
+      }`}
       style={{ paddingLeft: 8 + indent }}
       onClick={handleClick}
       title={entry.path}
@@ -113,7 +119,7 @@ function FileRow({
       )}
 
       <span
-        className="flex-1 truncate text-[11px] leading-tight text-[var(--ema-text-primary)]"
+        className="flex-1 truncate font-mono text-[11px] leading-tight text-[var(--ema-text-primary)]"
       >
         {entry.name}
       </span>
@@ -130,7 +136,7 @@ function FileRow({
 // ── Recursive subtree ─────────────────────────────────────────────────────────
 
 function DirSubtree({
-  dirPath, depth, filter, dirNodes, onToggle, onSelectFile,
+  dirPath, depth, filter, dirNodes, onToggle, onSelectFile, activeTabId,
 }: {
   dirPath:      string;
   depth:        number;
@@ -138,6 +144,7 @@ function DirSubtree({
   dirNodes:     Map<string, DirNode>;
   onToggle:     (path: string) => void;
   onSelectFile: (path: string) => void;
+  activeTabId?: string;
 }): JSX.Element | null {
   const node = dirNodes.get(dirPath);
   if (node?.error) {
@@ -161,6 +168,7 @@ function DirSubtree({
             dirNode={dirNodes.get(child.path)}
             onToggle={onToggle}
             onSelectFile={onSelectFile}
+            activeTabId={activeTabId}
           />
           {child.type === 'dir' && (dirNodes.get(child.path)?.children != null || dirNodes.get(child.path)?.error) && (
             <DirSubtree
@@ -170,6 +178,7 @@ function DirSubtree({
               dirNodes={dirNodes}
               onToggle={onToggle}
               onSelectFile={onSelectFile}
+              activeTabId={activeTabId}
             />
           )}
         </div>
@@ -244,6 +253,10 @@ function ScopedFilesPanel({
 
   // 点击文件在工作区 Dock 中以 file:<path> 标签打开（同一路径复用同一标签）。
   const sessionId = useChatWorkspace((s) => s.viewedSessionId);
+  // 当前激活标签:文件行高亮"正在预览"的唯一数据源(fileTab(path).id 比对)。
+  const activeTabId = useSessionSidePanel((state) =>
+    sessionId ? state.layouts[sessionId]?.activeTabId : undefined,
+  );
   const openTab = useSessionSidePanel((state) => state.openTab);
   const openFileTab = useCallback((path: string): void => {
     if (!sessionId) return;
@@ -370,6 +383,7 @@ function ScopedFilesPanel({
           dirNodes={dirNodes}
           onToggle={toggleDir}
           onSelectFile={openFileTab}
+          activeTabId={activeTabId}
         />
         {dirNodes.get(root)?.loading && (
           <div className="px-3 py-1 text-[10px] text-[var(--ema-text-tertiary)]">加载中…</div>

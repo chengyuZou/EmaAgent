@@ -18,6 +18,7 @@
 @import './domains/memory.css';
 @import './domains/workspace.css';
 @import './domains/chatHistory.css';
+@import './domains/chatControls.css';
 @import './domains/agentRun.css';
 @import './domains/chatInput.css';
 @import './domains/toolRow.css';

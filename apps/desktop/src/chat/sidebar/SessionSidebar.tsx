@@ -10,6 +10,7 @@ import { useDragResize } from '../../hooks/use-drag-resize.js';
 import { getStatusDot } from './SessionRow.js';
 import { PinnedSection, ProjectSection } from './ProjectSection.js';
 import { SessionList, SessionSearch } from './SessionList.js';
+import { SidebarDragProvider } from './SidebarDragContext.js';
 
 /** 同一会话可同时出现在置顶桶与项目桶；搜索覆盖层的近期清单合并展示前去重保序。 */
 function uniqueSessions(items: readonly SessionListItem[]): SessionListItem[] {
@@ -93,7 +94,7 @@ export function SessionSidebar(): JSX.Element {
         <div className="flex flex-col items-center py-2 gap-2">
           <Button
             variant="ghost"
-            className="flex h-7 w-7 items-center justify-center rounded-md border border-[var(--ema-border)] bg-[var(--ema-surface-3)] font-normal text-[var(--ema-text-primary)] transition-colors hover:border-[var(--ema-primary)]/40 hover:bg-[var(--ema-primary-muted)]"
+            className="chat-icon-btn"
             onClick={() => setCollapsed(false)}
             title="展开侧边栏"
           >
@@ -114,7 +115,7 @@ export function SessionSidebar(): JSX.Element {
           </div>
         </div>
       ) : (
-        <>
+        <SidebarDragProvider>
           <div className="px-1.5 py-2 border-b border-[var(--ema-border)]">
             <div className="flex w-full items-center gap-2">
             <Button
@@ -136,10 +137,10 @@ export function SessionSidebar(): JSX.Element {
             </div>
             <Button
               variant="ghost"
-              className="flex h-9 w-full items-center gap-2.5 rounded-md px-2 text-sm font-normal text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-2)]"
+              className="flex h-8 w-full items-center gap-2 rounded-lg px-2 text-xs text-[var(--ema-text-tertiary)] transition-colors hover:bg-[var(--ema-surface-2)] hover:text-[var(--ema-text-primary)]"
               onClick={() => setSearchOpen(true)}
             >
-              <span className="i-lucide:search text-base text-[var(--ema-text-tertiary)]" aria-hidden />
+              <span className="i-lucide:search text-sm" aria-hidden />
               <span>搜索</span>
             </Button>
           </div>
@@ -162,6 +163,7 @@ export function SessionSidebar(): JSX.Element {
               viewedId={viewedId}
               agentSessions={agentSessions}
               emptyText="暂无独立对话"
+              dropDestination={{ section: 'recent' }}
             />
             <SessionList
               label="归档"
@@ -172,7 +174,7 @@ export function SessionSidebar(): JSX.Element {
               emptyText="暂无归档"
             />
           </div>
-        </>
+        </SidebarDragProvider>
       )}
 
       {searchOpen && (

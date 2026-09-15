@@ -17,6 +17,8 @@ import { useSessionStore } from '../../stores/session.js';
 import { useChatWorkspace } from '../state/chatWorkspace.js';
 import { useHistoryStore } from '../state/history.js';
 import { Collapse, SectionButton } from './ProjectSection.js';
+import type { SessionSidebarMoveInput } from '../../api/workspaces.js';
+import { useSidebarDrag } from './SidebarDragContext.js';
 import {
   SessionRow,
   formatRelativeTime,
@@ -29,6 +31,7 @@ interface SessionListProps {
   agentSessions: ReadonlyMap<string, AgentSessionState>;
   initiallyCollapsed?: boolean;
   emptyText?: string;
+  dropDestination?: SessionSidebarMoveInput['destination'];
 }
 
 export function SessionList({
@@ -38,11 +41,16 @@ export function SessionList({
   agentSessions,
   initiallyCollapsed = false,
   emptyText = '暂无内容',
+  dropDestination,
 }: SessionListProps): JSX.Element {
   const [collapsed, setCollapsed] = useState(initiallyCollapsed);
+  const drag = useSidebarDrag();
+  const endDropProps = dropDestination
+    ? drag.sessionTargetProps(`sessions-end:${label}`, dropDestination, null)
+    : {};
 
   return (
-    <section className="mb-1">
+    <section className="mb-2">
       <SectionButton
         label={label}
         collapsed={collapsed}
@@ -62,8 +70,15 @@ export function SessionList({
                 session={session}
                 isActive={session.id === viewedId}
                 agentSessions={agentSessions}
+                dropDestination={dropDestination}
               />
             ))
+          )}
+          {dropDestination && (
+            <div
+              className={`ema-sidebar-drop-zone ema-drop-end ${drag.dragged?.kind === 'session' ? 'ema-drop-ready' : ''}`}
+              {...endDropProps}
+            />
           )}
         </div>
       </Collapse>

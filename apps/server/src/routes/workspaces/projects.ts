@@ -1,4 +1,4 @@
-// 项目管理：项目 CRUD、置顶、文件夹清单与 Session 成员拖拽；列表投影由 sessions 域提供。
+// 项目管理与 Sidebar 排序：项目 CRUD、文件夹、Session 归属及跨分区拖放。
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import { SessionOwnershipError, type SessionStore } from '@ema-agent/session';
@@ -16,6 +16,8 @@ export interface ProjectsRouteDeps {
     | 'setProjectPrimaryFolder'
     | 'assignSessionToProject'
     | 'removeSessionFromProject'
+    | 'moveSessionInSidebar'
+    | 'moveProjectInSidebar'
   >;
 }
 
@@ -41,8 +43,44 @@ const assignBody = z.object({
   sessionId: z.string().min(1),
 });
 
+const moveSessionBody = z.object({
+  destination: z.discriminatedUnion('section', [
+    z.object({ section: z.literal('pinned') }),
+    z.object({ section: z.literal('project'), projectId: z.string().min(1) }),
+    z.object({ section: z.literal('recent') }),
+  ]),
+  beforeSessionId: z.string().min(1).nullable(),
+});
+
+const moveProjectBody = z.object({
+  section: z.enum(['pinned', 'projects']),
+  beforeProjectId: z.string().min(1).nullable(),
+});
+
 export const projectsRoute = (deps: ProjectsRouteDeps) =>
   new Hono()
+    .put('/sidebar/sessions/:sessionId', jsonBody(moveSessionBody), context => {
+      try {
+        deps.session.moveSessionInSidebar({
+          sessionId: context.req.param('sessionId'),
+          ...context.req.valid('json'),
+        });
+        return context.json({ ok: true });
+      } catch (error) {
+        return projectError(context, error);
+      }
+    })
+    .put('/sidebar/projects/:projectId', jsonBody(moveProjectBody), context => {
+      try {
+        deps.session.moveProjectInSidebar({
+          projectId: context.req.param('projectId'),
+          ...context.req.valid('json'),
+        });
+        return context.json({ ok: true });
+      } catch (error) {
+        return projectError(context, error);
+      }
+    })
     .post('/projects', jsonBody(createBody), async context => {
       const { name, folderPaths, primaryFolderPath } = context.req.valid('json');
       try {
@@ -109,6 +147,15 @@ function projectError(context: Context, error: unknown) {
   }
   if (message.startsWith('session_not_found:')) {
     return context.json({ error: 'session_not_found' }, 404);
+  }
+  if (message.startsWith('session_archived:')) {
+    return context.json({ error: 'session_archived' }, 409);
+  }
+  if (
+    message.startsWith('session_drop_target_not_found:')
+    || message.startsWith('project_drop_target_not_found:')
+  ) {
+    return context.json({ error: 'sidebar_drop_target_not_found' }, 409);
   }
   if (message.includes('project_name_empty')) {
     return context.json({ error: 'project_name_empty' }, 400);

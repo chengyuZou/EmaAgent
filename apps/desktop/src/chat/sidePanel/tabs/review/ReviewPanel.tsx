@@ -4,6 +4,8 @@ import { IconButton, Input, Spinner } from '@ema-agent/ui';
 
 import { sessionGitApi, type SessionGitWorkspaceDiff } from '../../../../api/git.js';
 import { useSessionStore } from '../../../../stores/session.js';
+import { useAgentRunStore } from '../../../../stores/agentRun.js';
+import { useLiveTurns } from '../../../state/liveTurns.js';
 import { fileTab, useSessionSidePanel } from '../../../state/chatWorkspace.js';
 import { DiffCard, type ReviewFileItem } from './DiffCard.js';
 
@@ -31,6 +33,51 @@ export function ReviewPanel({ sessionId }: { sessionId: string }): JSX.Element {
   const [filter, setFilter] = useState('');
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [split, setSplit] = useState(false);
+
+  useEffect(() => {
+    const completedCalls = new Set(
+      useLiveTurns.getState().bySession.get(sessionId)?.items
+        .flatMap(item => item.type === 'tool_use' && item.durationMs !== undefined
+          ? [item.callId]
+          : []) ?? [],
+    );
+    for (const [runId, run] of useAgentRunStore.getState().live) {
+      if (run.sessionId !== sessionId) continue;
+      for (const entry of useAgentRunStore.getState().liveTranscripts.get(runId) ?? []) {
+        if (entry.role === 'tool_result') completedCalls.add(entry.result.toolCallId);
+      }
+    }
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+    const scheduleRefresh = () => {
+      clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => setRefresh(value => value + 1), 150);
+    };
+    const unsubscribe = useLiveTurns.subscribe(state => {
+      const items = state.bySession.get(sessionId)?.items ?? [];
+      let hasNewResult = false;
+      for (const item of items) {
+        if (item.type !== 'tool_use' || item.durationMs === undefined || completedCalls.has(item.callId)) continue;
+        completedCalls.add(item.callId);
+        hasNewResult = true;
+      }
+      if (!hasNewResult) return;
+      scheduleRefresh();
+    });
+    const unsubscribeAgentRuns = useAgentRunStore.subscribe(state => {
+      for (const [runId, run] of state.live) {
+        if (run.sessionId !== sessionId) continue;
+        const latest = state.liveTranscripts.get(runId)?.at(-1);
+        if (latest?.role !== 'tool_result' || completedCalls.has(latest.result.toolCallId)) continue;
+        completedCalls.add(latest.result.toolCallId);
+        scheduleRefresh();
+      }
+    });
+    return () => {
+      unsubscribe();
+      unsubscribeAgentRuns();
+      clearTimeout(refreshTimer);
+    };
+  }, [sessionId]);
 
   useEffect(() => {
     let current = true;
@@ -91,9 +138,9 @@ export function ReviewPanel({ sessionId }: { sessionId: string }): JSX.Element {
             aria-label="按路径筛选文件"
           />
         )}
-        <IconButton size="sm" label="刷新 Git 差异" icon="i-lucide:refresh-cw" onClick={() => setRefresh((value) => value + 1)} />
+        <IconButton size="sm" className="chat-icon-btn" label="刷新 Git 差异" icon="i-lucide:refresh-cw" onClick={() => setRefresh((value) => value + 1)} />
         {result?.capability !== 'diff-too-large' && (
-          <IconButton size="sm" label="分列差异" icon="i-lucide:columns-2" toggled={split} onClick={() => setSplit((value) => !value)} />
+          <IconButton size="sm" className="chat-icon-btn" label="分列差异" icon="i-lucide:columns-2" toggled={split} onClick={() => setSplit((value) => !value)} />
         )}
       </div>
 

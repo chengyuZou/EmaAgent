@@ -1,5 +1,5 @@
 // 展示当前 Session 的持久 Task；修改仍由根 Agent 的 Task Tool 完成。
-import { useEffect, useMemo, type JSX } from 'react';
+import { useEffect, useMemo, type CSSProperties, type JSX } from 'react';
 import { Badge, Button, Spinner, type BadgeVariant } from '@ema-agent/ui';
 
 import type { TaskItem } from '../../../../api/tasks.js';
@@ -44,10 +44,11 @@ export function SessionTasksPanel({ sessionId }: { sessionId: string | null }): 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-2">
       <div className="flex flex-col gap-1.5">
-        {ordered.map((task) => {
+        {ordered.map((task, index) => {
           const meta = STATUS_META[task.status];
           return (
-            <article key={task.id} className="rounded-lg border border-[var(--ema-border)] bg-[var(--ema-surface-1)] px-3 py-2.5">
+            <div key={task.id} className="ema-stagger-in-swift" style={{ '--stagger-i': index } as CSSProperties}>
+            <article className="rounded-lg border border-[var(--ema-border)] bg-[var(--ema-surface-1)] px-3 py-2.5">
               <div className="flex items-center gap-2">
                 <span className={`${meta.icon} shrink-0 text-sm text-[var(--ema-text-tertiary)] ${task.status === 'in_progress' ? 'animate-spin' : ''}`} aria-hidden />
                 <span className="min-w-0 flex-1 truncate text-xs font-medium text-[var(--ema-text-primary)]">
@@ -60,6 +61,7 @@ export function SessionTasksPanel({ sessionId }: { sessionId: string | null }): 
                 <p className="mt-1 text-[10px] text-[var(--ema-primary)]">{task.activeForm}</p>
               )}
             </article>
+            </div>
           );
         })}
       </div>

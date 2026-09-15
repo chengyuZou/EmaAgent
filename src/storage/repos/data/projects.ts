@@ -6,6 +6,7 @@ export interface ProjectRow {
   id: string;
   name: string;
   pinned: number;
+  sidebar_order: number;
   created_at: number;
   updated_at: number;
 }
@@ -33,8 +34,22 @@ export class ProjectsRepo {
 
   insert(project: { id: string; name: string; pinned?: boolean; now: number }): void {
     this.db
-      .prepare('INSERT INTO projects (id, name, pinned, created_at, updated_at) VALUES (?, ?, ?, ?, ?)')
-      .run(project.id, project.name, project.pinned ? 1 : 0, project.now, project.now);
+      .prepare(`
+        INSERT INTO projects (id, name, pinned, sidebar_order, created_at, updated_at)
+        VALUES (
+          ?, ?, ?,
+          (SELECT COALESCE(MAX(sidebar_order), 0) + 1 FROM projects WHERE pinned = ?),
+          ?, ?
+        )
+      `)
+      .run(
+        project.id,
+        project.name,
+        project.pinned ? 1 : 0,
+        project.pinned ? 1 : 0,
+        project.now,
+        project.now,
+      );
   }
 
   findById(id: string): ProjectRow | undefined {
@@ -43,7 +58,7 @@ export class ProjectsRepo {
 
   list(): ProjectRow[] {
     return this.db
-      .prepare('SELECT * FROM projects ORDER BY pinned DESC, updated_at DESC, id DESC')
+      .prepare('SELECT * FROM projects ORDER BY pinned DESC, sidebar_order DESC, updated_at DESC, id DESC')
       .all() as ProjectRow[];
   }
 
@@ -52,8 +67,36 @@ export class ProjectsRepo {
   }
 
   setPinned(id: string, pinned: boolean, now: number): void {
-    this.db.prepare('UPDATE projects SET pinned = ?, updated_at = ? WHERE id = ?')
-      .run(pinned ? 1 : 0, now, id);
+    this.db.transaction(() => {
+      const result = this.db.prepare('UPDATE projects SET pinned = ?, updated_at = ? WHERE id = ?')
+        .run(pinned ? 1 : 0, now, id);
+      if (result.changes === 0) throw new Error(`project_not_found: ${id}`);
+      this.moveToTop(id, pinned);
+    })();
+  }
+
+  moveInSidebar(
+    id: string,
+    pinned: boolean,
+    beforeProjectId: string | null,
+    now: number,
+  ): void {
+    this.db.transaction(() => {
+      const current = this.findById(id);
+      if (!current) throw new Error(`project_not_found: ${id}`);
+
+      if ((current.pinned === 1) !== pinned) {
+        this.db.prepare('UPDATE projects SET pinned = ?, updated_at = ? WHERE id = ?')
+          .run(pinned ? 1 : 0, now, id);
+      }
+
+      const orderedIds = this.db
+        .prepare('SELECT id FROM projects WHERE pinned = ? AND id <> ? ORDER BY sidebar_order DESC, id DESC')
+        .pluck()
+        .all(pinned ? 1 : 0, id) as string[];
+      insertProjectBefore(orderedIds, id, beforeProjectId);
+      this.writeOrder(orderedIds);
+    })();
   }
 
   /** 删除项目；成员 Session 由外键 SET NULL 掉到非项目区。 */
@@ -125,4 +168,33 @@ export class ProjectsRepo {
         .run(now, projectId, path);
     })();
   }
+
+  private moveToTop(id: string, pinned: boolean): void {
+    const next = this.db
+      .prepare('SELECT COALESCE(MAX(sidebar_order), 0) + 1 FROM projects WHERE pinned = ? AND id <> ?')
+      .pluck()
+      .get(pinned ? 1 : 0, id) as number;
+    this.db.prepare('UPDATE projects SET sidebar_order = ? WHERE id = ?').run(next, id);
+  }
+
+  private writeOrder(ids: string[]): void {
+    const update = this.db.prepare('UPDATE projects SET sidebar_order = ? WHERE id = ?');
+    for (let index = 0; index < ids.length; index += 1) {
+      update.run(ids.length - index, ids[index]!);
+    }
+  }
+}
+
+function insertProjectBefore(
+  ids: string[],
+  movedId: string,
+  beforeId: string | null,
+): void {
+  if (beforeId === null) {
+    ids.push(movedId);
+    return;
+  }
+  const index = ids.indexOf(beforeId);
+  if (index < 0) throw new Error(`project_drop_target_not_found: ${beforeId}`);
+  ids.splice(index, 0, movedId);
 }

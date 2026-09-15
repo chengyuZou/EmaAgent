@@ -603,7 +603,7 @@ export function ChatInput(): JSX.Element {
               {draft.parts.map((part, index) => part.type === 'text' ? null : (
                 <span
                   key={index}
-                  className="inline-flex max-w-52 items-center gap-1 rounded-md border border-[var(--ema-border)] bg-[var(--ema-info-muted)] px-2 py-1 text-[11px] text-[var(--ema-info)]"
+                  className="inline-flex max-w-52 items-center gap-1 rounded-md border border-[var(--ema-border)] bg-[var(--ema-primary-muted)] px-2 py-1 text-[11px] text-[var(--ema-primary-text)]"
                 >
                   <span
                     className={part.type === 'skill_reference'
@@ -641,7 +641,7 @@ export function ChatInput(): JSX.Element {
             rows={1}
             value={text}
             placeholder="随心输入, / 打开命令与技能…"
-            className="min-h-[64px] w-full resize-none overflow-y-auto rounded-[22px] bg-transparent px-4 py-3 text-sm text-[var(--ema-text-secondary)] focus:outline-none"
+            className="min-h-[64px] w-full resize-none overflow-y-auto rounded-[22px] bg-transparent px-4 py-3 font-mono text-sm text-[var(--ema-text-secondary)] focus:outline-none"
             style={{ maxHeight: 200 }}
             onChange={(event: ChangeEvent<HTMLTextAreaElement>) => (
               updateText(event.target.value, event.target.selectionStart)
@@ -746,6 +746,7 @@ export function ChatInput(): JSX.Element {
                 variant="primary"
                 icon="i-lucide:arrow-up"
                 label={executing ? '加入队列' : '发送'}
+                className="rounded-[10px]"
                 disabled={!hasInput || !serverReady || submitting || compacting}
                 onClick={() => void send()}
               />

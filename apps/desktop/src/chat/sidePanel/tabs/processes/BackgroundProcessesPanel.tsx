@@ -1,6 +1,6 @@
-// 后台进程面板:列表(运行/排队 + 已结束分组)到详情(事实行、有界输出、跟随尾部、终止)的标签内导航。
+// 后台进程面板:列表到终端风格的只读详情；终止入口统一留在 Header 置顶摘要。
 import { useEffect, useMemo, useState, type JSX } from 'react';
-import { Badge, Button, IconButton, Spinner, type BadgeVariant } from '@ema-agent/ui';
+import { Badge, Button, Spinner, type BadgeVariant } from '@ema-agent/ui';
 import type { BackgroundProcessStatus, BackgroundProcessSummary } from '../../../../api/backgroundProcesses.js';
 import { tauriBridge } from '../../../../lib/tauri-bridge.js';
 import { showToast } from '../../../../lib/toast.js';
@@ -43,11 +43,12 @@ function isLive(status: BackgroundProcessStatus): boolean {
 
 export interface BackgroundProcessesPanelProps {
   sessionId: string | null;
+  backgroundProcessId?: string;
   className?: string;
 }
 
 export function BackgroundProcessesPanel({
-  sessionId, className = '',
+  sessionId, backgroundProcessId, className = '',
 }: BackgroundProcessesPanelProps): JSX.Element {
   const list = useBackgroundProcessStore((s) =>
     sessionId ? s.listsBySession.get(sessionId) : undefined);
@@ -55,8 +56,8 @@ export function BackgroundProcessesPanel({
   const [detailId, setDetailId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (sessionId) void loadForSession(sessionId);
-  }, [sessionId, loadForSession]);
+    if (sessionId && !list) void loadForSession(sessionId);
+  }, [sessionId, list, loadForSession]);
 
   const processes = useMemo(
     () => [...(list?.processes ?? [])].sort((a, b) => b.createdAt - a.createdAt),
@@ -64,29 +65,21 @@ export function BackgroundProcessesPanel({
   );
   const live = processes.filter((p) => isLive(p.status));
   const terminal = processes.filter((p) => !isLive(p.status));
-  const detailProcess = detailId
-    ? processes.find((p) => p.id === detailId)
+  const selectedProcessId = backgroundProcessId ?? detailId;
+  const detailProcess = selectedProcessId
+    ? processes.find((p) => p.id === selectedProcessId)
     : undefined;
 
   // 列表重拉后进程消失(Session 删除/重启恢复),回列表不展示假详情。
   useEffect(() => {
-    if (detailId && list?.status === 'ready' && !detailProcess) setDetailId(null);
-  }, [detailId, list?.status, detailProcess]);
+    if (!backgroundProcessId && detailId && list?.status === 'ready' && !detailProcess) {
+      setDetailId(null);
+    }
+  }, [backgroundProcessId, detailId, list?.status, detailProcess]);
 
   if (!sessionId) {
     return <EmptyHint icon="i-lucide:message-square-off" text="请先选择会话" />;
   }
-  if (detailId && detailProcess) {
-    return (
-      <ProcessDetail
-        sessionId={sessionId}
-        process={detailProcess}
-        className={className}
-        onBack={() => setDetailId(null)}
-      />
-    );
-  }
-
   if (list?.status === 'loading' && processes.length === 0) {
     return <div className="flex justify-center py-6"><Spinner size="sm" /></div>;
   }
@@ -99,6 +92,28 @@ export function BackgroundProcessesPanel({
           重新加载
         </Button>
       </div>
+    );
+  }
+  if (backgroundProcessId) {
+    if (!detailProcess) {
+      return <EmptyHint icon="i-lucide:circle-slash" text="后台进程记录不存在" />;
+    }
+    return (
+      <ProcessDetail
+        sessionId={sessionId}
+        process={detailProcess}
+        className={className}
+      />
+    );
+  }
+  if (detailId && detailProcess) {
+    return (
+      <ProcessDetail
+        sessionId={sessionId}
+        process={detailProcess}
+        className={className}
+        onBack={() => setDetailId(null)}
+      />
     );
   }
   if (processes.length === 0) {
@@ -144,7 +159,7 @@ function ProcessRow({
   const meta = STATUS_ICON[process.status];
   return (
     <button
-      className="flex items-center gap-2.5 rounded-lg border px-2.5 py-2 text-left transition-all bg-[var(--ema-surface-1)] border-[var(--ema-border)] hover:border-[var(--ema-border-hover)]"
+      className="flex items-center gap-2.5 rounded-lg border px-2.5 py-2 text-left transition-all bg-[var(--ema-surface-1)] border-[var(--ema-border)] hover:border-[var(--ema-border-hover)] hover:shadow-[var(--ema-shadow-soft)]"
       onClick={onOpen}
     >
       <span className={`${meta.icon} shrink-0 text-base`} style={{ color: meta.color }} aria-hidden />
@@ -171,14 +186,12 @@ function ProcessDetail({
   sessionId: string;
   process: BackgroundProcessSummary;
   className: string;
-  onBack(): void;
+  onBack?: () => void;
 }): JSX.Element {
   const readOutput = useBackgroundProcessStore((s) => s.readOutput);
   const setFollowTail = useBackgroundProcessStore((s) => s.setFollowTail);
-  const stop = useBackgroundProcessStore((s) => s.stop);
   const output = useBackgroundProcessStore((s) => s.outputsById.get(process.id));
   const scrollToTurn = useChatWorkspace((s) => s.scrollToTurn);
-  const [stopping, setStopping] = useState(false);
 
   const processId = process.id;
   const originTurnId = process.originTurnId;
@@ -192,17 +205,6 @@ function ProcessDetail({
   const meta = STATUS_ICON[process.status];
   const followTail = output?.followTail ?? false;
 
-  const handleStop = async (): Promise<void> => {
-    setStopping(true);
-    try {
-      await stop(sessionId, processId);
-    } catch (error: unknown) {
-      showToast(error instanceof Error ? `终止失败：${error.message}` : '终止失败', { variant: 'danger' });
-    } finally {
-      setStopping(false);
-    }
-  };
-
   const handleReveal = async (): Promise<void> => {
     try {
       await tauriBridge.revealInFolder(process.outputDir);
@@ -214,9 +216,11 @@ function ProcessDetail({
   return (
     <div className={`flex h-full min-h-0 flex-col ${className}`}>
       <div className="flex shrink-0 items-center gap-1.5 border-b border-[var(--ema-border)] px-2 py-1.5">
-        <Button variant="ghost" size="sm" className="px-1.5 text-[var(--ema-text-tertiary)]" onClick={onBack}>
-          <span className="i-lucide:arrow-left text-sm" aria-hidden />
-        </Button>
+        {onBack && (
+          <Button variant="ghost" size="sm" className="px-1.5 text-[var(--ema-text-tertiary)]" onClick={onBack}>
+            <span className="i-lucide:arrow-left text-sm" aria-hidden />
+          </Button>
+        )}
         <span className={`${meta.icon} shrink-0 text-sm`} style={{ color: meta.color }} aria-hidden />
         <span className="truncate text-xs font-medium text-[var(--ema-text-primary)]" title={process.command}>
           {process.description ?? process.command}
@@ -272,16 +276,6 @@ function ProcessDetail({
           <Button variant="ghost" size="sm" className="px-2 text-[11px] text-[var(--ema-text-tertiary)]" onClick={() => void handleReveal()}>
             在文件管理器中显示
           </Button>
-          {live && (
-            <IconButton
-              variant="danger"
-              size="sm"
-              icon="i-lucide:circle-stop"
-              label="终止进程"
-              loading={stopping}
-              onClick={() => void handleStop()}
-            />
-          )}
         </div>
         {(output?.hasMore || process.outputTruncated) && (
           <p className="shrink-0 px-3 pb-1 text-[10px] text-[var(--ema-text-tertiary)]">

@@ -20,8 +20,10 @@ export interface SessionRow {
   created_at: number;
   /** 行元数据更新时间：标题、置顶、cwd 或 Profile 编辑。不用于 UI 侧栏排序。 */
   updated_at: number;
-  /** 对话活动时间:新 turn/message 开始时推进。用于UI中session侧栏排序。 */
+  /** 对话活动时间:新 Turn 开始时推进，用于时间展示与未读判断。 */
   last_activity_at: number;
+  /** 侧栏内的显式顺序；拖放与新 Turn 开始会推进它。 */
+  sidebar_order: number;
   archived_at: number | null;
   pinned:        number;        // 0 | 1
   /** fork 溯源：来源 Session 与截断点 Turn（完整复制时截断点为 null）。 */
@@ -82,8 +84,15 @@ export class SessionsRepo {
             forked_from_session_id, forked_from_turn_id,
             execution_profile, narrative_policy, permission_mode,
             provider_id, model_id,
-            created_at, updated_at, last_activity_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            created_at, updated_at, last_activity_at, sidebar_order)
+         VALUES (
+           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+           (SELECT COALESCE(MAX(sidebar_order), 0) + 1
+              FROM sessions
+             WHERE archived_at IS NULL
+               AND pinned = 0
+               AND project_id IS ?)
+         )`,
       )
       .run(s.id, s.title,
         s.cwd,
@@ -96,7 +105,8 @@ export class SessionsRepo {
         s.model?.providerId ?? null,
         s.model?.modelId ?? null,
         s.createdAt, s.updatedAt,
-        s.lastActivityAt ?? s.createdAt);
+        s.lastActivityAt ?? s.createdAt,
+        s.projectId ?? null);
   }
 
   findById(id: string): SessionRow | undefined {
@@ -138,7 +148,11 @@ export class SessionsRepo {
           ON lt.session_id = s.id
          AND lt.row_number = 1
         LEFT JOIN running_turns rt ON rt.session_id = s.id
-        ORDER BY s.pinned DESC, s.last_activity_at DESC, s.id DESC
+        ORDER BY
+          CASE WHEN s.archived_at IS NULL THEN s.pinned ELSE 0 END DESC,
+          s.sidebar_order DESC,
+          s.last_activity_at DESC,
+          s.id DESC
       `)
       .all() as SessionRowEnriched[];
   }
@@ -147,16 +161,22 @@ export class SessionsRepo {
 
   /** 拖入项目只改变成员资格。 */
   assignToProject(id: string, projectId: string, now: number): void {
-    this.db
-      .prepare('UPDATE sessions SET project_id = ?, updated_at = ? WHERE id = ?')
-      .run(projectId, now, id);
+    this.db.transaction(() => {
+      this.db
+        .prepare('UPDATE sessions SET project_id = ?, updated_at = ? WHERE id = ?')
+        .run(projectId, now, id);
+      this.moveToTop(id);
+    })();
   }
 
   /** 拖出项目：只解除成员资格，cwd 保留原值恢复自由。 */
   removeFromProject(id: string, now: number): void {
-    this.db
-      .prepare('UPDATE sessions SET project_id = NULL, updated_at = ? WHERE id = ?')
-      .run(now, id);
+    this.db.transaction(() => {
+      this.db
+        .prepare('UPDATE sessions SET project_id = NULL, updated_at = ? WHERE id = ?')
+        .run(now, id);
+      this.moveToTop(id);
+    })();
   }
 
   search(query: string, limit: number): SessionSearchRow[] {
@@ -253,38 +273,84 @@ export class SessionsRepo {
   }
 
   touchActivity(id: string, at: number): void {
-    this.db
-      .prepare('UPDATE sessions SET updated_at = ?, last_activity_at = ? WHERE id = ?')
-      .run(at, at, id);
+    this.db.transaction(() => {
+      const result = this.db
+        .prepare('UPDATE sessions SET updated_at = ?, last_activity_at = ? WHERE id = ?')
+        .run(at, at, id);
+      if (result.changes === 0) throw new Error(`session_not_found: ${id}`);
+      this.moveToTop(id);
+    })();
   }
 
   // ── 置顶 / 取消置顶 ────────────────────────────────────────────────────────
 
   pin(id: string, now: number): void {
-    this.db
-      .prepare('UPDATE sessions SET pinned = 1, updated_at = ? WHERE id = ?')
-      .run(now, id);
+    this.db.transaction(() => {
+      this.db
+        .prepare('UPDATE sessions SET pinned = 1, updated_at = ? WHERE id = ?')
+        .run(now, id);
+      this.moveToTop(id);
+    })();
   }
 
   unpin(id: string): void {
     const now = Date.now();
-    this.db
-      .prepare('UPDATE sessions SET pinned = 0, updated_at = ? WHERE id = ?')
-      .run(now, id);
+    this.db.transaction(() => {
+      this.db
+        .prepare('UPDATE sessions SET pinned = 0, updated_at = ? WHERE id = ?')
+        .run(now, id);
+      this.moveToTop(id);
+    })();
   }
 
   // ── 归档 / 取消归档 ────────────────────────────────────────────────────────────
 
   archive(id: string, archivedAt: number): void {
-    this.db
-      .prepare('UPDATE sessions SET archived_at = ?, updated_at = ? WHERE id = ?')
-      .run(archivedAt, archivedAt, id);
+    this.db.transaction(() => {
+      this.db
+        .prepare('UPDATE sessions SET archived_at = ?, updated_at = ? WHERE id = ?')
+        .run(archivedAt, archivedAt, id);
+      this.moveToTop(id);
+    })();
   }
 
   unarchive(id: string): void {
-    this.db
-      .prepare('UPDATE sessions SET archived_at = NULL, updated_at = ? WHERE id = ?')
-      .run(Date.now(), id);
+    this.db.transaction(() => {
+      this.db
+        .prepare('UPDATE sessions SET archived_at = NULL, updated_at = ? WHERE id = ?')
+        .run(Date.now(), id);
+      this.moveToTop(id);
+    })();
+  }
+
+  moveInSidebar(
+    id: string,
+    pinned: boolean,
+    projectId: string | null,
+    beforeSessionId: string | null,
+    now: number,
+  ): void {
+    this.db.transaction(() => {
+      const current = this.findById(id);
+      if (!current) throw new Error(`session_not_found: ${id}`);
+      if (current.archived_at !== null) throw new Error(`session_archived: ${id}`);
+
+      const membershipChanged = current.pinned !== (pinned ? 1 : 0)
+        || current.project_id !== projectId;
+      this.db.prepare(`
+        UPDATE sessions
+           SET pinned = ?, project_id = ?, updated_at = CASE WHEN ? THEN ? ELSE updated_at END
+         WHERE id = ?
+      `).run(pinned ? 1 : 0, projectId, membershipChanged ? 1 : 0, now, id);
+
+      const { sql, params } = activeBucketWhere(pinned, projectId);
+      const orderedIds = this.db
+        .prepare(`SELECT id FROM sessions WHERE ${sql} AND id <> ? ORDER BY sidebar_order DESC, id DESC`)
+        .pluck()
+        .all(...params, id) as string[];
+      insertSessionBefore(orderedIds, id, beforeSessionId);
+      this.writeOrder(orderedIds);
+    })();
   }
 
   // ── Fork ──────────────────────────────────────────────────────────────────────
@@ -317,14 +383,21 @@ export class SessionsRepo {
             forked_from_session_id, forked_from_turn_id,
             execution_profile, narrative_policy, permission_mode,
             provider_id, model_id,
-            created_at, updated_at, last_activity_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            created_at, updated_at, last_activity_at, sidebar_order)
+         VALUES (
+           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+           (SELECT COALESCE(MAX(sidebar_order), 0) + 1
+              FROM sessions
+             WHERE archived_at IS NULL
+               AND pinned = 0
+               AND project_id IS ?)
+         )`,
       ).run(newId, title, src.cwd,
         src.project_id,
         srcId, untilTurnId ?? null,
         src.execution_profile, src.narrative_policy, src.permission_mode,
         src.provider_id, src.model_id,
-        createdAt, createdAt, createdAt);
+        createdAt, createdAt, createdAt, src.project_id);
 
       // 2. 构建 old->new turn id 映射。Turn 被复制以使 fork 出的 session
       //    保留触发来源、Profile、模型冻结、usage 与时序。
@@ -534,6 +607,54 @@ export class SessionsRepo {
       this.db
         .prepare(`UPDATE sessions SET ${setClauses.join(', ')} WHERE id = ?`)
         .run(...values);
+      if (patch.pinned !== undefined) this.moveToTop(id);
     })();
   }
+
+  private moveToTop(id: string): void {
+    const row = this.findById(id);
+    if (!row) throw new Error(`session_not_found: ${id}`);
+    const { sql, params } = bucketWhere(row);
+    const next = this.db
+      .prepare(`SELECT COALESCE(MAX(sidebar_order), 0) + 1 FROM sessions WHERE ${sql} AND id <> ?`)
+      .pluck()
+      .get(...params, id) as number;
+    this.db.prepare('UPDATE sessions SET sidebar_order = ? WHERE id = ?').run(next, id);
+  }
+
+  private writeOrder(ids: string[]): void {
+    const update = this.db.prepare('UPDATE sessions SET sidebar_order = ? WHERE id = ?');
+    for (let index = 0; index < ids.length; index += 1) {
+      update.run(ids.length - index, ids[index]!);
+    }
+  }
+}
+
+function activeBucketWhere(pinned: boolean, projectId: string | null): {
+  sql: string;
+  params: unknown[];
+} {
+  if (pinned) return { sql: 'archived_at IS NULL AND pinned = 1', params: [] };
+  return projectId === null
+    ? { sql: 'archived_at IS NULL AND pinned = 0 AND project_id IS NULL', params: [] }
+    : { sql: 'archived_at IS NULL AND pinned = 0 AND project_id = ?', params: [projectId] };
+}
+
+function bucketWhere(row: SessionRow): { sql: string; params: unknown[] } {
+  if (row.archived_at !== null) return { sql: 'archived_at IS NOT NULL', params: [] };
+  return activeBucketWhere(row.pinned === 1, row.project_id);
+}
+
+function insertSessionBefore(
+  ids: string[],
+  movedId: string,
+  beforeId: string | null,
+): void {
+  if (beforeId === null) {
+    ids.push(movedId);
+    return;
+  }
+  const index = ids.indexOf(beforeId);
+  if (index < 0) throw new Error(`session_drop_target_not_found: ${beforeId}`);
+  ids.splice(index, 0, movedId);
 }

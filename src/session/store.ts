@@ -38,8 +38,11 @@ import type {
   PersistedToolInteraction,
   SearchSessionsInput,
   SearchSessionsOutput,
+  MoveSessionInSidebarInput,
+  MoveProjectInSidebarInput,
 } from './types.js';
 import type { MessageBlocks } from './message.js';
+import type { SessionEvent } from './events.js';
 
 // ── Session 聚合 ─────────────────────────────────────────────────────────────
 
@@ -50,6 +53,7 @@ export interface SessionStoreDeps {
   db: Database;
   /** Session 删除后清理数据库外的音频、附件和工具结果文件。 */
   onSessionRemoved?: (sessionId: string) => void;
+  onChanged?: (event: SessionEvent) => void;
 }
 
 /** 管理 Session/Project/Message 聚合的规则与读写。 */
@@ -60,16 +64,18 @@ export class SessionStore {
   private readonly projectsRepo: ProjectsRepo;
   private readonly db:           Database;
   private readonly onSessionRemoved?: (sessionId: string) => void;
+  private readonly onChanged?: (event: SessionEvent) => void;
   /** 单调时间戳避免同毫秒写入破坏游标边界。 */
   private lastTs = 0;
 
-  constructor({ db, onSessionRemoved }: SessionStoreDeps) {
+  constructor({ db, onSessionRemoved, onChanged }: SessionStoreDeps) {
     this.sessionsRepo = new SessionsRepo(db.sqlite);
     this.turnsRepo    = new TurnsRepo(db.sqlite);
     this.messagesRepo = new MessagesRepo(db.sqlite);
     this.projectsRepo = new ProjectsRepo(db.sqlite);
     this.db           = db;
     this.onSessionRemoved = onSessionRemoved;
+    this.onChanged = onChanged;
   }
 
   // ── 内部时间 ────────────────────────────────────────────────────────────────
@@ -117,7 +123,9 @@ export class SessionStore {
         lastActivityAt: now,
       });
     })();
-    return this.requireSession(id);
+    const session = this.requireSession(id);
+    this.onChanged?.({ type: 'session_list_changed' });
+    return session;
   }
 
   getSession(id: string): Session {
@@ -190,19 +198,23 @@ export class SessionStore {
 
   setViewedAt(id: string): void {
     this.sessionsRepo.setViewedAt(id, Date.now());
+    this.onChanged?.({ type: 'session_list_changed' });
   }
 
   updateTitle(id: string, title: string): void {
     const trimmed = title.trim();
     if (!trimmed) return;
     this.sessionsRepo.updateTitle(id, trimmed, Date.now());
+    this.onChanged?.({ type: 'session_list_changed' });
   }
 
   /** 自动标题的条件写入：用户已改名（或会话已删）时返回 false，调用方不得发变更事件。 */
   updateTitleIfDefault(id: string, title: string): boolean {
     const trimmed = title.trim();
     if (!trimmed) return false;
-    return this.sessionsRepo.updateTitleIfDefault(id, trimmed, DEFAULT_SESSION_TITLE, Date.now());
+    const changed = this.sessionsRepo.updateTitleIfDefault(id, trimmed, DEFAULT_SESSION_TITLE, Date.now());
+    if (changed) this.onChanged?.({ type: 'session_list_changed' });
+    return changed;
   }
 
   /**
@@ -234,26 +246,31 @@ export class SessionStore {
     if (Object.keys(cleaned).length === 0) return;
 
     this.sessionsRepo.patch(id, cleaned, Date.now());
+    this.onChanged?.({ type: 'session_list_changed' });
   }
 
   // ── 置顶 ───────────────────────────────────────────────────────────────────
 
   pinSession(id: string): void {
     this.sessionsRepo.pin(id, Date.now());
+    this.onChanged?.({ type: 'session_list_changed' });
   }
 
   unpinSession(id: string): void {
     this.sessionsRepo.unpin(id);
+    this.onChanged?.({ type: 'session_list_changed' });
   }
 
   // ── 归档 ───────────────────────────────────────────────────────────────────
 
   archiveSession(id: string): void {
     this.sessionsRepo.archive(id, Date.now());
+    this.onChanged?.({ type: 'session_list_changed' });
   }
 
   unarchiveSession(id: string): void {
     this.sessionsRepo.unarchive(id);
+    this.onChanged?.({ type: 'session_list_changed' });
   }
 
   // ── 项目 ────────────────────────────────────────────────────────────────────
@@ -293,40 +310,58 @@ export class SessionStore {
         this.projectsRepo.setPrimaryFolder(id, primaryPath);
       }
     })();
-    return toProject(
+    const project = toProject(
       this.projectsRepo.findById(id)!,
       this.projectsRepo.listFolders(id).map(toProjectFolder),
       [],
     );
+    this.onChanged?.({ type: 'session_list_changed' });
+    return project;
   }
 
   renameProject(id: string, name: string): void {
     const trimmed = name.trim();
     if (!trimmed) return;
     this.projectsRepo.rename(id, trimmed, Date.now());
+    this.onChanged?.({ type: 'session_list_changed' });
   }
 
   /** 删除项目：成员 Session 由外键 SET NULL 掉到非项目区，cwd 保留。 */
   deleteProject(id: string): void {
     this.projectsRepo.remove(id);
+    this.onChanged?.({ type: 'session_list_changed' });
   }
 
   pinProject(id: string, pinned: boolean): void {
     this.projectsRepo.setPinned(id, pinned, Date.now());
+    this.onChanged?.({ type: 'session_list_changed' });
+  }
+
+  moveProjectInSidebar(input: MoveProjectInSidebarInput): void {
+    this.projectsRepo.moveInSidebar(
+      input.projectId,
+      input.section === 'pinned',
+      input.beforeProjectId,
+      Date.now(),
+    );
+    this.onChanged?.({ type: 'session_list_changed' });
   }
 
   addProjectFolder(projectId: string, path: string): void {
     this.projectsRepo.addFolder(projectId, path);
+    this.onChanged?.({ type: 'session_list_changed' });
   }
 
   /** 移除文件夹只更新项目清单；已有 Session 的 cwd 是自己的历史选择。 */
   removeProjectFolder(projectId: string, path: string): void {
     this.projectsRepo.removeFolder(projectId, path);
+    this.onChanged?.({ type: 'session_list_changed' });
   }
 
   /** 更换主文件夹只影响未来新建 Session 的初始 cwd。 */
   setProjectPrimaryFolder(projectId: string, path: string): void {
     this.projectsRepo.setPrimaryFolder(projectId, path);
+    this.onChanged?.({ type: 'session_list_changed' });
   }
 
   /**
@@ -341,11 +376,35 @@ export class SessionStore {
       throw new Error(`project_not_found: ${projectId}`);
     }
     this.sessionsRepo.assignToProject(sessionId, projectId, Date.now());
+    this.onChanged?.({ type: 'session_list_changed' });
   }
 
   /** 拖出项目：解除成员资格，cwd 保留原值恢复自由。 */
   removeSessionFromProject(sessionId: string): void {
     this.sessionsRepo.removeFromProject(sessionId, Date.now());
+    this.onChanged?.({ type: 'session_list_changed' });
+  }
+
+  moveSessionInSidebar(input: MoveSessionInSidebarInput): void {
+    let pinned = false;
+    let projectId: string | null = null;
+    if (input.destination.section === 'pinned') {
+      pinned = true;
+    } else if (input.destination.section === 'project') {
+      projectId = input.destination.projectId;
+      if (!this.projectsRepo.findById(projectId)) {
+        throw new Error(`project_not_found: ${projectId}`);
+      }
+    }
+
+    this.sessionsRepo.moveInSidebar(
+      input.sessionId,
+      pinned,
+      projectId,
+      input.beforeSessionId,
+      Date.now(),
+    );
+    this.onChanged?.({ type: 'session_list_changed' });
   }
 
   // ── 独立 Session Fork ──────────────────────────────────────────────────────
@@ -364,6 +423,7 @@ export class SessionStore {
     const title = `${src.title} (fork)`;
     const now   = this.nextTs();
     const messageCount = this.sessionsRepo.forkInto(srcId, newId, title, now, untilTurnId);
+    this.onChanged?.({ type: 'session_list_changed' });
     return { sessionId: newId, messageCount };
   }
 
@@ -376,7 +436,11 @@ export class SessionStore {
   deleteSession(id: string): void {
     this.sessionsRepo.delete(id);
     // 数据库行由外键级联；文件目录需要显式清理。
-    this.onSessionRemoved?.(id);
+    try {
+      this.onSessionRemoved?.(id);
+    } finally {
+      this.onChanged?.({ type: 'session_list_changed' });
+    }
   }
 
   // ── Message ─────────────────────────────────────────────────────────────────
@@ -404,7 +468,9 @@ export class SessionStore {
       interrupted: input.interrupted ?? false,
       createdAt:   now,
     });
-    return this.requireMessage(id);
+    const message = this.requireMessage(id);
+    this.onChanged?.({ type: 'session_messages_changed', sessionId: input.sessionId });
+    return message;
   }
 
   /**
@@ -433,11 +499,15 @@ export class SessionStore {
       createdAt: this.nextTs(),
       summarizedThroughMessageId: input.summarizedThroughMessageId,
     });
-    return this.requireMessage(id);
+    const message = this.requireMessage(id);
+    this.onChanged?.({ type: 'session_messages_changed', sessionId: input.sessionId });
+    return message;
   }
 
   markMessageInterrupted(id: string): void {
+    const message = this.requireMessage(id);
     this.messagesRepo.markInterrupted(id);
+    this.onChanged?.({ type: 'session_messages_changed', sessionId: message.sessionId });
   }
 
   /**

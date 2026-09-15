@@ -25,6 +25,7 @@ import {
   providersApi,
   type AvailableModel,
 } from '../../api/providers.js';
+import { subscribeSystemEvent } from '../../lib/system-event-dispatcher.js';
 import { useKnowledgeStore } from '../../stores/knowledge.js';
 import { useLiveTurns } from '../state/liveTurns.js';
 
@@ -53,6 +54,13 @@ const PERMISSION_MODE_LABELS: Record<PermissionMode, string> = {
   default: '默认权限',
   acceptEdits: '自动接受编辑',
   bypassPermissions: '绕过权限',
+};
+
+/* 菜单第二行解释(安全语义区,光看标题不够):每档说清它实际放行什么。 */
+const PERMISSION_MODE_DESCRIPTIONS: Record<PermissionMode, string> = {
+  default: '编辑文件和使用互联网时始终询问',
+  acceptEdits: '仅对检测到的风险操作请求批准',
+  bypassPermissions: '可不受限制地访问互联网和电脑上的任何文件',
 };
 
 export function ExecutionProfileSelector({
@@ -100,6 +108,7 @@ export function PermissionModeSelector({
   const items: MenuItem[] = (['default', 'acceptEdits', 'bypassPermissions'] as const).map((mode) => ({
     kind: 'item',
     label: PERMISSION_MODE_LABELS[mode],
+    description: PERMISSION_MODE_DESCRIPTIONS[mode],
     icon: value === mode ? 'i-lucide:check' : 'i-lucide:circle',
     onSelect: () => onChange(mode),
   }));
@@ -108,7 +117,7 @@ export function PermissionModeSelector({
     <DropdownMenu
       side="top"
       align="start"
-      widthClass="min-w-40"
+      widthClass="min-w-64"
       items={items}
       trigger={(
         <Button
@@ -146,12 +155,37 @@ export function ModelPicker({
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    providersApi.listAvailable('llm')
-      .then(({ models: available }) => {
-        setModels([...available]);
-        setLoaded(true);
-      })
-      .catch(() => setLoaded(true));
+    let active = true;
+    let request = 0;
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    const loadModels = (): void => {
+      const current = ++request;
+      void providersApi.listAvailable('llm')
+        .then(({ models: available }) => {
+          if (!active || current !== request) return;
+          setModels([...available]);
+          setLoaded(true);
+        })
+        .catch(() => {
+          if (active && current === request) setLoaded(true);
+        });
+    };
+
+    loadModels();
+    const unsubscribe = subscribeSystemEvent((event) => {
+      if (event.type !== 'provider_config_changed' && event.type !== 'provider_models_changed') return;
+      if (refreshTimer !== null) clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => {
+        refreshTimer = null;
+        loadModels();
+      }, 150);
+    });
+    return () => {
+      active = false;
+      request += 1;
+      if (refreshTimer !== null) clearTimeout(refreshTimer);
+      unsubscribe();
+    };
   }, []);
 
   const grouped = useMemo(() => {

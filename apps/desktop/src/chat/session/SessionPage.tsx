@@ -1,5 +1,10 @@
-import type { JSX } from 'react';
-import { Group, Panel, Separator } from 'react-resizable-panels';
+import { useEffect, useRef, type JSX } from 'react';
+import {
+  Group,
+  Panel,
+  Separator,
+  type PanelImperativeHandle,
+} from 'react-resizable-panels';
 import { useServerStore } from '../../stores/server.js';
 import { ChatInput } from '../input/ChatInput.js';
 import { SessionHistory } from '../history/SessionHistory.js';
@@ -13,6 +18,16 @@ export function SessionPage({ sessionId }: { sessionId: string }): JSX.Element {
   const layout = useSessionSidePanel((state) => state.layouts[sessionId]);
   const rightPanelPercent = useSessionSidePanel((state) => state.rightPanelPercent);
   const setRightPanelPercent = useSessionSidePanel((state) => state.setRightPanelPercent);
+  const workspacePanelRef = useRef<PanelImperativeHandle | null>(null);
+  const panelOpen = layout?.open ?? false;
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      if (panelOpen) workspacePanelRef.current?.resize(`${rightPanelPercent}%`);
+      else workspacePanelRef.current?.collapse();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [panelOpen, rightPanelPercent, sessionId]);
 
   return (
     <main className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -30,10 +45,9 @@ export function SessionPage({ sessionId }: { sessionId: string }): JSX.Element {
         </div>
       )}
       <Group
-        key={`${sessionId}:${layout?.open ?? false}`}
         orientation="horizontal"
-        className="min-h-0 min-w-0 flex-1"
-        defaultLayout={!layout?.open ? { chat: 100 } : { chat: 100 - rightPanelPercent, workspace: rightPanelPercent }}
+        className="ema-session-workspace-group min-h-0 min-w-0 flex-1"
+        defaultLayout={!panelOpen ? { chat: 100, workspace: 0 } : { chat: 100 - rightPanelPercent, workspace: rightPanelPercent }}
         onLayoutChanged={(sizes, detail) => {
           if (detail.isUserInteraction && sizes.workspace !== undefined) setRightPanelPercent(sizes.workspace);
         }}
@@ -50,20 +64,25 @@ export function SessionPage({ sessionId }: { sessionId: string }): JSX.Element {
           <StatusBar sessionId={sessionId} />
         </Panel>
 
-        {layout?.open && (
-          <Separator className="w-1 cursor-col-resize bg-[var(--ema-border)] hover:bg-[var(--ema-primary)]" />
-        )}
+        <Separator
+          disabled={!panelOpen}
+          data-open={panelOpen}
+          className="ema-workspace-separator"
+        />
 
-        {layout?.open && (
-          <Panel
-            id="workspace"
-            minSize="20%"
-            defaultSize={`${rightPanelPercent}%`}
-            className="min-w-0"
-          >
+        <Panel
+          id="workspace"
+          panelRef={workspacePanelRef}
+          minSize="20%"
+          collapsedSize="0%"
+          collapsible
+          defaultSize={panelOpen ? `${rightPanelPercent}%` : '0%'}
+          className="min-w-0"
+        >
+          <div className="ema-workspace-panel h-full min-w-0" data-open={panelOpen}>
             <SessionSidePanel sessionId={sessionId} />
-          </Panel>
-        )}
+          </div>
+        </Panel>
       </Group>
     </main>
   );

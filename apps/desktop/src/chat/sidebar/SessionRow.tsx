@@ -1,12 +1,14 @@
 // 侧栏单条会话行:状态点、标题、时间与右键菜单操作,含删除/重命名确认。
 import { useState, type JSX } from 'react';
-import { Button, ConfirmDialog, DropdownMenu, PromptDialog, type MenuItem } from '@ema-agent/ui';
+import { Button, ConfirmDialog, DropdownMenu, IconButton, PromptDialog, type MenuItem } from '@ema-agent/ui';
 import type { SessionListItem } from '../../api/sessions.js';
 import type { AgentSessionState } from '../../stores/agent.js';
 import { useChatWorkspace } from '../state/chatWorkspace.js';
 import { useSessionStore } from '../../stores/session.js';
 import { runWithToast } from '../../lib/toast.js';
 import { SessionCwdDialog } from '../session/SessionCwdDialog.js';
+import type { SessionSidebarMoveInput } from '../../api/workspaces.js';
+import { useSidebarDrag } from './SidebarDragContext.js';
 
 type StatusDot = { cls: string } | null;
 
@@ -27,18 +29,25 @@ export function getStatusDot(
 export function formatRelativeTime(updatedAt: number): string {
   const diff = Math.max(0, Date.now() - updatedAt);
   if (diff < 60_000) return '刚刚';
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}分钟前`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}小时前`;
-  if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)}天前`;
-  if (diff < 2_592_000_000) return `${Math.floor(diff / 604_800_000)}周前`;
-  return `${Math.floor(diff / 2_592_000_000)}月前`;
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时`;
+  if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)} 天`;
+  if (diff < 2_592_000_000) return `${Math.floor(diff / 604_800_000)} 周`;
+  return `${Math.floor(diff / 2_592_000_000)} 个月`;
 }
 
-export function SessionRow({ session, isActive, agentSessions, nested = false }: {
+export function SessionRow({
+  session,
+  isActive,
+  agentSessions,
+  nested = false,
+  dropDestination,
+}: {
   session:   SessionListItem;
   isActive:  boolean;
   agentSessions: ReadonlyMap<string, AgentSessionState>;
   nested?:   boolean;
+  dropDestination?: SessionSidebarMoveInput['destination'];
 }): JSX.Element {
   const [pendingDelete, setPendingDelete] = useState(false);
   const [promptRename, setPromptRename] = useState(false);
@@ -47,6 +56,10 @@ export function SessionRow({ session, isActive, agentSessions, nested = false }:
   const agentSession = agentSessions.get(session.id);
   const isRunning = agentSession?.execution != null;
   const timeLabel = formatRelativeTime(session.lastActivityAt);
+  const drag = useSidebarDrag();
+  const dropProps = dropDestination
+    ? drag.sessionTargetProps(`session-before:${session.id}`, dropDestination, session.id)
+    : {};
 
   const menuItems: MenuItem[] = [
     {
@@ -99,14 +112,19 @@ export function SessionRow({ session, isActive, agentSessions, nested = false }:
 
   return (
     <div
+      draggable={dropDestination !== undefined}
+      data-dragging={drag.dragged?.kind === 'session' && drag.dragged.id === session.id || undefined}
       data-selected={isActive || undefined}
-      className={`group relative flex items-center gap-1.5 h-9 pr-2 rounded-md text-sm cursor-pointer transition-[background-color,color,box-shadow] duration-[var(--ema-duration-fast)] ease-[var(--ema-ease)] ${
+      className={`ema-sidebar-item ema-drop-before group relative flex h-[34px] items-center gap-1.5 rounded-lg pr-2 text-sm cursor-pointer transition-[background-color,color,box-shadow,opacity,transform] duration-[var(--ema-duration-fast)] ease-[var(--ema-ease)] ${
         nested ? 'pl-6' : 'pl-2'
       } ${
         isActive
           ? 'ema-selectable'
           : 'text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-2)] hover:text-[var(--ema-text-primary)]'
       }`}
+      onDragStart={(event) => drag.startSession(event, session.id)}
+      onDragEnd={drag.endDrag}
+      {...dropProps}
       onClick={() => void useChatWorkspace.getState().viewSession(session.id)}
     >
       <span className="shrink-0 w-3 flex items-center justify-center">
@@ -157,14 +175,14 @@ export function SessionRow({ session, isActive, agentSessions, nested = false }:
         </span>
         <DropdownMenu
           trigger={
-            <Button
-              variant="ghost"
-              className={`absolute right-0 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded p-0 font-normal text-[var(--ema-text-tertiary)] transition-[opacity,color,background-color] hover:bg-[var(--ema-surface-2)] hover:text-[var(--ema-text-primary)] ${
-                isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+            <IconButton
+              size="sm"
+              icon="i-lucide:more-horizontal"
+              label={`${session.title || '新对话'} 操作`}
+              className={`chat-row-action absolute inset-y-0 right-0 my-auto ${
+                isActive ? 'opacity-100' : ''
               }`}
-            >
-              <span className="i-solar:menu-dots-bold-duotone text-xs shrink-0" aria-hidden />
-            </Button>
+            />
           }
           items={menuItems}
           side="right"

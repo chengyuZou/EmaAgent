@@ -1,6 +1,7 @@
 // Review 的按文件 diff 卡:头部路径/状态/增删/打开标签/折叠,正文统一或分列,上下文段增量展开。
 import { useMemo, useState, type JSX } from 'react';
 import { Button, IconButton } from '@ema-agent/ui';
+import { highlightDiffLine } from '../../../../markdown/syntaxHighlight.js';
 import {
   buildSegments,
   parseUnifiedDiff,
@@ -22,7 +23,6 @@ export interface ReviewFileItem {
   readonly additions: number;
   readonly deletions: number;
   readonly unifiedDiff: string;
-  readonly truncated: boolean;
 }
 
 const STATUS_META: Record<ReviewFileItem['status'], { icon: string; label: string }> = {
@@ -92,9 +92,6 @@ export function DiffCard({
                 onClick={() => onOpenFile(item.absolutePath!)}
               />
             )}
-            {item.truncated && (
-              <span className="text-[11px] text-[var(--ema-warning-text)]">diff 过长,已截断</span>
-            )}
           </div>
           <div
             className="max-h-[32rem] overflow-auto border-t border-[var(--ema-border)] font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-words"
@@ -106,6 +103,7 @@ export function DiffCard({
                 <DiffSegmentView
                   key={segment.kind === 'lines' ? `lines-${index}` : segment.id}
                   segment={segment}
+                  filePath={item.displayPath}
                   split={split}
                   revealed={segment.kind === 'collapsible' ? revealed[segment.id] ?? 0 : 0}
                   onReveal={(id, count) => setRevealed((current) => ({ ...current, [id]: count }))}
@@ -120,9 +118,10 @@ export function DiffCard({
 }
 
 function DiffSegmentView({
-  segment, split, revealed, onReveal,
+  segment, filePath, split, revealed, onReveal,
 }: {
   segment: DiffSegment;
+  filePath: string;
   split: boolean;
   revealed: number;
   onReveal: (id: string, count: number) => void;
@@ -140,7 +139,7 @@ function DiffSegmentView({
     const remaining = segment.lines.length - revealed;
     return (
       <>
-        <DiffLines lines={shown} split={split} />
+        <DiffLines lines={shown} filePath={filePath} split={split} />
         {remaining > 0 && (
           <button
             className="w-full px-2.5 py-1 text-center text-[10px] transition-colors text-[var(--ema-info-text)] bg-[var(--ema-surface-2)] hover:bg-[var(--ema-info-muted)]"
@@ -153,15 +152,21 @@ function DiffSegmentView({
     );
   }
 
-  return <DiffLines lines={segment.lines} split={split} />;
+  return <DiffLines lines={segment.lines} filePath={filePath} split={split} />;
 }
 
-function DiffLines({ lines, split }: { lines: readonly DiffLine[]; split: boolean }): JSX.Element {
+function DiffLines({
+  lines, filePath, split,
+}: {
+  lines: readonly DiffLine[];
+  filePath: string;
+  split: boolean;
+}): JSX.Element {
   if (split) {
     return (
       <>
         {toSplitRows(lines).map((row, index) => (
-          <SplitRowView key={index} row={row} />
+          <SplitRowView key={index} row={row} filePath={filePath} />
         ))}
       </>
     );
@@ -169,13 +174,17 @@ function DiffLines({ lines, split }: { lines: readonly DiffLine[]; split: boolea
   return (
     <>
       {lines.map((line, index) => (
-        <UnifiedLineView key={index} line={line} />
+        <UnifiedLineView key={index} line={line} filePath={filePath} />
       ))}
     </>
   );
 }
 
-function UnifiedLineView({ line }: { line: DiffLine }): JSX.Element {
+function UnifiedLineView({ line, filePath }: { line: DiffLine; filePath: string }): JSX.Element {
+  const highlightedHtml = useMemo(
+    () => highlightDiffLine(line.text, filePath),
+    [filePath, line.text],
+  );
   const tone = line.kind === 'add'
     ? 'text-[var(--ema-success-text)] bg-[var(--ema-success-muted)]'
     : line.kind === 'del'
@@ -186,22 +195,27 @@ function UnifiedLineView({ line }: { line: DiffLine }): JSX.Element {
       <span className="w-9 shrink-0 select-none text-right opacity-60">{line.oldLine ?? ''}</span>
       <span className="w-9 shrink-0 select-none text-right opacity-60">{line.newLine ?? ''}</span>
       <span className="min-w-0 flex-1 pl-2">
-        {line.kind === 'add' ? '+' : line.kind === 'del' ? '-' : ' '}{line.text}
+        {line.kind === 'add' ? '+' : line.kind === 'del' ? '-' : ' '}
+        <span dangerouslySetInnerHTML={{ __html: highlightedHtml }} />
       </span>
     </div>
   );
 }
 
-function SplitRowView({ row }: { row: SplitRow }): JSX.Element {
+function SplitRowView({ row, filePath }: { row: SplitRow; filePath: string }): JSX.Element {
   return (
     <div className="grid grid-cols-2 px-2.5">
-      <SplitCell side={row.left} />
-      <SplitCell side={row.right} />
+      <SplitCell side={row.left} filePath={filePath} />
+      <SplitCell side={row.right} filePath={filePath} />
     </div>
   );
 }
 
-function SplitCell({ side }: { side: SplitRow['left'] }): JSX.Element {
+function SplitCell({ side, filePath }: { side: SplitRow['left']; filePath: string }): JSX.Element {
+  const highlightedHtml = useMemo(
+    () => highlightDiffLine(side.text, filePath),
+    [filePath, side.text],
+  );
   const tone = side.kind === 'del'
     ? 'text-[var(--ema-danger-text)] bg-[var(--ema-danger-muted)]'
     : side.kind === 'add'
@@ -212,7 +226,10 @@ function SplitCell({ side }: { side: SplitRow['left'] }): JSX.Element {
   return (
     <div className={`flex min-w-0 ${tone}`}>
       <span className="w-9 shrink-0 select-none text-right opacity-60">{side.line ?? ''}</span>
-      <span className="min-w-0 flex-1 pl-2">{side.text}</span>
+      <span
+        className="min-w-0 flex-1 pl-2"
+        dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+      />
     </div>
   );
 }

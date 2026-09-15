@@ -122,7 +122,7 @@ export function SessionHistory({ sessionId }: { sessionId: string }): JSX.Elemen
       <TurnNavigationRail sessionId={sessionId} onSelectTurn={selectTurn} />
       <Virtuoso
         ref={listRef}
-        className="absolute inset-0 pl-14 pr-4"
+        className="absolute inset-0 pl-14 pr-4 overflow-x-hidden"
         data={rows}
         firstItemIndex={firstItemIndex}
         computeItemKey={(index, row) => {

@@ -1,0 +1,126 @@
+/* Chat 的侧栏、Header、消息动作、输入栏与右侧 Panel 共用控件皮肤。 */
+
+.chat-icon-btn,
+.chat-row-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--ema-text-tertiary);
+  box-shadow: none;
+  transform: none;
+}
+
+.ema-chat-window button[aria-label]:not([aria-label='发送']):not([aria-label='加入队列']) {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+}
+
+.chat-icon-btn:hover,
+.chat-row-action:hover,
+.ema-chat-window button[aria-label]:not([aria-label='发送']):not([aria-label='加入队列']):hover {
+  border-color: transparent;
+  background: var(--ema-surface-2);
+  color: var(--ema-text-primary);
+  box-shadow: none;
+  transform: none;
+}
+
+.chat-icon-btn:active,
+.chat-row-action:active,
+.ema-chat-window button[aria-label]:not([aria-label='发送']):not([aria-label='加入队列']):active {
+  transform: scale(0.94);
+}
+
+.chat-icon-btn[aria-pressed='true'],
+.chat-row-action[aria-pressed='true'],
+.chat-icon-btn[data-state='open'],
+.chat-row-action[data-state='open'] {
+  border-color: color-mix(in srgb, var(--ema-primary) 40%, transparent);
+  background: var(--ema-primary-muted);
+  color: var(--ema-primary-text);
+  box-shadow: none;
+}
+
+.ema-chat-window button[aria-label]:not([aria-label='发送']):not([aria-label='加入队列'])[aria-pressed='true'],
+.ema-chat-window button[aria-label]:not([aria-label='发送']):not([aria-label='加入队列'])[data-state='open'] {
+  border-color: transparent;
+  background: var(--ema-primary-muted);
+  color: var(--ema-primary-text);
+  box-shadow: none;
+}
+
+.chat-row-action {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  opacity: 0;
+}
+
+.group:hover .chat-row-action,
+.group:focus-within .chat-row-action,
+.chat-row-action:focus-visible,
+.chat-row-action[data-state='open'] {
+  opacity: 1;
+}
+
+.chat-row-action.opacity-100 {
+  opacity: 1;
+}
+
+.chat-bar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--ema-text-primary);
+  box-shadow: none;
+  font-size: 13px;
+}
+
+.chat-bar-btn:hover {
+  border-color: transparent;
+  background: var(--ema-surface-4);
+}
+
+.chat-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  box-shadow: none;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.chat-btn:hover {
+  border-color: transparent;
+  background: var(--ema-surface-4);
+  color: var(--ema-text-primary);
+}
+
+.chat-bar-btn[data-state='open'],
+.chat-btn[data-state='open'] {
+  border-color: transparent;
+  background: var(--ema-surface-3);
+  box-shadow: none;
+}

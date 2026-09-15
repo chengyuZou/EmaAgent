@@ -179,14 +179,15 @@ export class SessionBackupRestorer {
         id, title, cwd, project_id, pinned, archived_at,
         forked_from_session_id, forked_from_turn_id,
         last_viewed_at, last_activity_at, created_at, updated_at,
-        provider_id, model_id, execution_profile, narrative_policy, permission_mode
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        provider_id, model_id, execution_profile, narrative_policy, permission_mode,
+        sidebar_order
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       session.id, session.title, session.cwd, projectId, session.pinned,
       session.archived_at, forkedFromSessionId, forkedFromTurnId,
       session.last_viewed_at, session.last_activity_at, session.created_at, session.updated_at,
       session.provider_id, session.model_id, session.execution_profile,
-      session.narrative_policy, session.permission_mode,
+      session.narrative_policy, session.permission_mode, session.sidebar_order,
     );
 
     const insertTurn = this.db.prepare(`

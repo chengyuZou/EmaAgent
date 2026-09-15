@@ -3,6 +3,7 @@ import { useEffect, useState, type JSX } from 'react';
 import { nanoid } from 'nanoid';
 import { Button, IconButton } from '@ema-agent/ui';
 import { useSessionAttachmentStore } from '../../stores/sessionAttachment.js';
+import { useBackgroundProcessStore } from '../../stores/backgroundProcess.js';
 import { useSessionStore } from '../../stores/session.js';
 import {
   browserTab,
@@ -49,6 +50,7 @@ function tabIcon(tab: SessionSidePanelTab): string {
     case 'browser':
       return 'i-lucide:globe';
     case 'processes':
+    case 'process':
       return 'i-lucide:square-terminal';
   }
 }
@@ -75,6 +77,8 @@ function baseLabel(tab: SessionSidePanelTab): string {
       return tab.title?.trim() || tab.url || '新标签页';
     case 'processes':
       return '后台进程';
+    case 'process':
+      return '后台进程';
   }
 }
 
@@ -90,7 +94,14 @@ function TabLabel({
     const source = state.bySession.get(sessionId)?.find(item => item.path === tab.path);
     return source?.kind === 'image' ? source.name ?? '剪贴板图片' : source ? '粘贴文本' : undefined;
   });
-  return <>{sourceTitle ?? baseLabel(tab)}</>;
+  const processTitle = useBackgroundProcessStore((state) => {
+    if (tab.kind !== 'process') return undefined;
+    return state.listsBySession.get(sessionId)?.processes
+      .find((process) => process.id === tab.backgroundProcessId)?.description
+      ?? state.listsBySession.get(sessionId)?.processes
+        .find((process) => process.id === tab.backgroundProcessId)?.command;
+  });
+  return <>{sourceTitle ?? processTitle ?? baseLabel(tab)}</>;
 }
 
 function TabBar({
@@ -113,24 +124,24 @@ function TabBar({
   }
 
   return (
-    <div className="shrink-0 border-b border-[var(--ema-border)] px-1.5 py-1.5">
+    <div className="shrink-0 border-b border-[var(--ema-border)] px-1.5 py-1">
       <div className="ema-tab-slot min-w-0 overflow-x-auto">
         {tabs.map((tab) => (
           <div
             key={tab.id}
             data-selected={tab.id === activeTabId || undefined}
-            className="ema-slot-tab group flex max-w-44 shrink-0 cursor-pointer items-center gap-1 py-1 pl-2 pr-0.5 text-[var(--ema-text-secondary)]"
+            className="ema-slot-tab group flex min-w-28 max-w-56 shrink-0 cursor-pointer items-center gap-1 py-0.5 pl-2.5 pr-0.5 text-[var(--ema-text-secondary)]"
             onClick={() => activateTab(sessionId, tab.id)}
           >
             <span className={`${tabIcon(tab)} shrink-0 text-sm`} aria-hidden />
-            <span className="truncate text-xs">
+            <span className="min-w-0 flex-1 truncate text-xs">
               <TabLabel sessionId={sessionId} tab={tab} />
             </span>
             <IconButton
               size="sm"
               label={`关闭${baseLabel(tab)}`}
               icon="i-lucide:x"
-              className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
+              className="ema-slot-tab-close opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
               onClick={(event) => {
                 event.stopPropagation();
                 close(tab);
@@ -286,7 +297,7 @@ export function SessionSidePanel({
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {tabs.length === 0 && <Launcher sessionId={sessionId} />}
         {tabs.map(tab => {
-          const visible = !launcherOpen && tab.id === layout?.activeTabId;
+          const visible = Boolean(layout?.open) && !launcherOpen && tab.id === layout?.activeTabId;
           return (
             <div
               key={tab.id}
@@ -334,6 +345,13 @@ function TabContent({
       return <SessionTasksPanel sessionId={sessionId} />;
     case 'processes':
       return <BackgroundProcessesPanel sessionId={sessionId} />;
+    case 'process':
+      return (
+        <BackgroundProcessesPanel
+          sessionId={sessionId}
+          backgroundProcessId={tab.backgroundProcessId}
+        />
+      );
     case 'subagents':
       return <AgentRunPanel sessionId={sessionId} className="p-2" />;
     case 'terminal':

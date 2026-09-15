@@ -158,7 +158,7 @@ function AgentRunRow({
 
   return (
     <div
-      className="relative rounded-lg overflow-hidden cursor-pointer transition-all flex ema-stagger-in bg-[var(--ema-surface-1)] border border-[var(--ema-border)] hover:border-[var(--ema-border-hover)]"
+      className="relative rounded-lg overflow-hidden cursor-pointer transition-all flex ema-stagger-in bg-[var(--ema-surface-1)] border border-[var(--ema-border)] hover:border-[var(--ema-border-hover)] hover:shadow-[var(--ema-shadow-soft)]"
       style={{ '--stagger-i': staggerIndex } as CSSProperties}
       onClick={onOpen}
     >

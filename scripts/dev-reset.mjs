@@ -1,6 +1,4 @@
-// 开发期重置：清空 EmaAgent 本地库与已铺资源，下次启动从干净状态重建。
-// 只服务开发联调。系统凭据库（Provider Key 等）不在此目录，不受影响；
-// profile.db 里的 Provider 配置会被清掉，需在设置页重新添加。
+// 开发期重置:删除 EmaAgent 可重建的本地状态,让下次启动走完整的首次初始化流程。
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -8,54 +6,68 @@ import process from 'node:process';
 
 const profileRoot = process.env['EMA_PROFILE_DIR'] ?? path.join(os.homedir(), '.ema-agent');
 
-// 最低限度校验：只认默认目录名或显式环境变量，防误指到别的目录。
+// 默认运行时只允许清理固定的应用目录。测试可以用 EMA_PROFILE_DIR 指向临时目录。
 if (!process.env['EMA_PROFILE_DIR'] && path.basename(profileRoot) !== '.ema-agent') {
   console.error(`拒绝重置非 EmaAgent 目录: ${profileRoot}`);
   process.exit(1);
 }
 if (!fs.existsSync(profileRoot)) {
-  console.log(`profile 目录不存在，无需重置: ${profileRoot}`);
+  console.log(`Profile 目录不存在,无需重置: ${profileRoot}`);
   process.exit(0);
 }
 
 const removed = [];
+
 function remove(target) {
   if (!fs.existsSync(target)) return;
   fs.rmSync(target, { recursive: true, force: true });
   removed.push(target);
 }
-function removeDb(file) {
-  for (const suffix of ['', '-wal', '-shm']) remove(`${file}${suffix}`);
-}
 
-// 设置/角色/Provider 库。
-removeDb(path.join(profileRoot, 'profile.db'));
-
-// registry.json 登记的全部数据目录：清业务库、Session 文件树与知识库目录（每库独立 kb.db + files/）。
-const registryFile = path.join(profileRoot, 'registry.json');
-if (fs.existsSync(registryFile)) {
-  try {
-    const registry = JSON.parse(fs.readFileSync(registryFile, 'utf8'));
-    for (const dir of registry.dirs ?? []) {
-      if (typeof dir?.path !== 'string') continue;
-      removeDb(path.join(dir.path, 'data.db'));
-      remove(path.join(dir.path, 'sessions'));
-      remove(path.join(dir.path, 'kb'));
-    }
-  } catch {
-    console.warn('registry.json 解析失败，跳过数据目录清理');
+function removeSqlite(databasePath) {
+  for (const suffix of ['', '-wal', '-shm']) {
+    remove(`${databasePath}${suffix}`);
   }
 }
 
-// 已铺资源：下次启动从仓库种子/发布包重铺。
-remove(path.join(profileRoot, 'characters'));
-remove(path.join(profileRoot, 'resources'));
-remove(path.join(profileRoot, 'narrative'));
+removeSqlite(path.join(profileRoot, 'profile.db'));
+
+// data/ 是当前唯一业务数据目录。整目录删除可同时清掉 data.db、Session 文件和暂存内容。
+remove(path.join(profileRoot, 'data'));
+
+// 这些目录由首次启动、后端业务或用户操作重新建立。
+for (const directory of [
+  'characters',
+  'kb',
+  'memories',
+  'narrative',
+  'resources',
+  'skills',
+]) {
+  remove(path.join(profileRoot, directory));
+}
+
+// 桌面设置和进程协调文件也属于本次运行状态,首次启动不应继承它们。
+for (const file of [
+  'bridge.port',
+  'desktop.json',
+  'lockfile.json',
+]) {
+  remove(path.join(profileRoot, file));
+}
+
+// 单库化前的 data.db 与 registry.json 已没有读取方,只在开发机升级后作为残留清掉。
+removeSqlite(path.join(profileRoot, 'data.db'));
+remove(path.join(profileRoot, 'registry.json'));
 
 if (removed.length === 0) {
   console.log('没有可清理的内容。');
 } else {
   console.log('已删除:');
-  for (const target of removed) console.log(`  ${target}`);
+  for (const target of removed) {
+    console.log(`  ${target}`);
+  }
 }
-console.log('重置完成。下次启动将重建数据库并重铺内置角色与技能；Provider 需在设置页重新添加。');
+
+console.log('已保留 logs/ 与 workspace/。');
+console.log('重置完成。下次启动将重建数据库和内置资源;Provider 需在设置页重新添加。');

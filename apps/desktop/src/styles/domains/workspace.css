@@ -1,6 +1,5 @@
 /* 会话侧栏、设置导航和工作区 Dock 共用的拖拽反馈。
-   选中态语言已统一进 primitives/selectable.css 的 .ema-selectable;
-   chat 域控件皮肤统一走 uno shortcut(chat-bar-btn/chat-icon-btn/chat-row-action/chat-btn)。 */
+   选中态语言在 primitives/selectable.css,Chat 控件皮肤在 chatControls.css。 */
 
 .ema-resize-handle {
   position: absolute;
@@ -13,6 +12,71 @@
   background: transparent;
 }
 .ema-resize-handle:hover { background: var(--ema-primary); }
+.ema-resize-handle:active { background: var(--ema-primary); }
+
+.ema-sidebar-item {
+  position: relative;
+}
+
+.ema-sidebar-item[data-dragging='true'] {
+  opacity: 0.42;
+  transform: scale(0.98);
+}
+
+.ema-sidebar-item[data-drop-active='true'],
+.ema-sidebar-drop-zone[data-drop-active='true'] {
+  background: var(--ema-primary-muted);
+}
+
+.ema-drop-inside[data-drop-active='true'] {
+  box-shadow: var(--ema-shadow-dragover);
+  color: var(--ema-text-primary);
+}
+
+.ema-drop-before[data-drop-active='true']::after,
+.ema-drop-end[data-drop-active='true']::after {
+  content: '';
+  position: absolute;
+  z-index: 2;
+  left: 8px;
+  right: 8px;
+  top: 0;
+  height: 2px;
+  border-radius: var(--ema-radius-pill);
+  background: var(--ema-primary);
+  box-shadow: 0 0 12px var(--ema-glow-strong);
+}
+
+.ema-sidebar-drop-zone {
+  position: relative;
+  min-height: 0;
+  border-radius: var(--ema-radius-sm);
+  transition: min-height var(--ema-duration-fast) var(--ema-ease),
+              background-color var(--ema-duration-fast) var(--ema-ease);
+}
+
+.ema-sidebar-drop-zone.ema-drop-ready {
+  min-height: 14px;
+}
+
+.ema-sidebar-drop-zone[data-drop-active='true'],
+.ema-sidebar-drop-zone[data-drop-complete='true'] {
+  min-height: 12px;
+}
+
+.ema-sidebar-item[data-drop-complete='true'] {
+  animation: ema-sidebar-drop-complete 320ms var(--ema-ease);
+}
+
+.ema-sidebar-drop-zone[data-drop-complete='true'] {
+  background: var(--ema-primary-muted);
+  animation: ema-sidebar-drop-complete 320ms var(--ema-ease);
+}
+
+@keyframes ema-sidebar-drop-complete {
+  0%, 100% { box-shadow: none; }
+  45% { box-shadow: var(--ema-shadow-dragover); }
+}
 
 .ema-resize-handle-h {
   position: absolute;
@@ -32,20 +96,138 @@
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 3px;
-  border-radius: 12px;
+  padding: 2px;
+  border-radius: 10px;
   border: 1px solid var(--ema-border);
-  background: var(--ema-surface-0);
-  box-shadow: var(--ema-shadow-inset);
+  background: color-mix(in srgb, var(--ema-surface-1) 72%, transparent);
 }
 .ema-slot-tab {
   position: relative;
-  border-radius: 9px;
+  min-height: 26px;
+  border-radius: 8px;
   transition: background-color var(--ema-duration-fast) var(--ema-ease),
               color var(--ema-duration-fast) var(--ema-ease);
 }
 .ema-slot-tab[data-selected='true'] {
+  background: color-mix(in srgb, var(--ema-surface-3) 72%, transparent);
+  color: var(--ema-text-primary);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--ema-text-primary) 7%, transparent);
+}
+
+.ema-slot-tab-close {
+  width: 22px;
+  height: 22px;
+  margin-left: auto;
+}
+
+.ema-file-preview .markdown-content pre,
+.ema-file-preview .markdown-content code {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Header 置顶摘要:五类 Session 工作状态共用同一套可折叠行。 */
+.ema-session-summary {
+  max-height: min(680px, calc(100vh - 72px));
+  overflow-y: auto;
+  padding: 6px 8px;
+}
+
+.ema-summary-section + .ema-summary-section {
+  border-top: 1px solid var(--ema-border);
+}
+
+.ema-summary-section-trigger {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 6px 5px;
+  color: var(--ema-text-tertiary);
+  font-size: 11px;
+  font-weight: 500;
+  text-align: left;
+  transition: color var(--ema-duration-fast) var(--ema-ease);
+}
+
+.ema-summary-section-trigger:hover {
+  color: var(--ema-text-primary);
+}
+
+.ema-summary-row {
+  display: flex;
+  width: 100%;
+  min-height: 30px;
+  align-items: center;
+  gap: 8px;
+  border-radius: var(--ema-radius-sm);
+  padding: 5px 7px;
+  color: var(--ema-text-secondary);
+  font-size: 12px;
+  transition: background-color var(--ema-duration-fast) var(--ema-ease),
+              color var(--ema-duration-fast) var(--ema-ease);
+}
+
+button.ema-summary-row:hover,
+button.ema-summary-row:focus-visible {
   background: var(--ema-surface-3);
   color: var(--ema-text-primary);
-  box-shadow: var(--ema-shadow-1);
+}
+
+.ema-summary-process-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-radius: var(--ema-radius-sm);
+  transition: background-color var(--ema-duration-fast) var(--ema-ease);
+}
+
+.ema-summary-process-row:hover,
+.ema-summary-process-row:focus-within {
+  background: var(--ema-surface-3);
+}
+
+.ema-summary-process-row .ema-summary-row:hover,
+.ema-summary-process-row .ema-summary-row:focus-visible {
+  background: transparent;
+}
+
+/* react-resizable-panels 把比例写在直属 Panel 上；这里只过渡该比例，不替换它的拖拽。 */
+.ema-session-workspace-group > [data-panel] {
+  transition: flex-grow var(--ema-duration-panel) var(--ema-ease);
+}
+
+.ema-workspace-panel {
+  opacity: 1;
+  transform: translateX(0);
+  transition: opacity var(--ema-duration-base) var(--ema-ease),
+              transform var(--ema-duration-panel) var(--ema-ease);
+}
+
+.ema-workspace-panel[data-open='false'] {
+  opacity: 0;
+  transform: translateX(16px);
+  pointer-events: none;
+}
+
+.ema-workspace-separator {
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  opacity: 1;
+  transition: background-color var(--ema-duration-fast) var(--ema-ease),
+              opacity var(--ema-duration-base) var(--ema-ease);
+}
+
+.ema-workspace-separator:hover {
+  background: var(--ema-primary);
+}
+
+.ema-workspace-separator[data-open='false'] {
+  width: 0;
+  cursor: default;
+  opacity: 0;
+  pointer-events: none;
 }

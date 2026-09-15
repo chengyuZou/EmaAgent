@@ -13,6 +13,7 @@ import {
 import { Popover } from '@ema-agent/ui';
 import { commandsApi, type CommandDescriptor } from '../../api/commands.js';
 import { skillsApi, type SkillListItem } from '../../api/skills.js';
+import { subscribeSystemEvent } from '../../lib/system-event-dispatcher.js';
 
 interface LocalCommandDescriptor {
   readonly name: string;
@@ -119,18 +120,44 @@ export function SlashCommandMenu({
   const open = query !== null;
   const filter = query ?? '';
 
-  // 打开时拉取两份目录；命令目录全局稳定，技能目录随 Session 变化。
+  // 命令目录全局稳定，打开时读取一次。
   useEffect(() => {
     if (!open) return;
     let disposed = false;
     void commandsApi.list()
       .then((catalog) => { if (!disposed) setCommands(catalog.commands); })
       .catch(() => { if (!disposed) setCommands([]); });
-    const selectedProjectId = sessionId ? undefined : projectId ?? undefined;
-    void skillsApi.list(sessionId ?? undefined, selectedProjectId)
-      .then((result) => { if (!disposed) setSkills(result.items); })
-      .catch(() => { if (!disposed) setSkills([]); });
     return () => { disposed = true; };
+  }, [open]);
+
+  // 技能目录跟随 Session/Project；设置窗口改动技能时重读当前目录。
+  useEffect(() => {
+    if (!open) return;
+    let disposed = false;
+    let requestId = 0;
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+    const selectedProjectId = sessionId ? undefined : projectId ?? undefined;
+    const refresh = () => {
+      const currentRequestId = ++requestId;
+      void skillsApi.list(sessionId ?? undefined, selectedProjectId)
+        .then((result) => {
+          if (!disposed && currentRequestId === requestId) setSkills(result.items);
+        })
+        .catch(() => {
+          if (!disposed && currentRequestId === requestId) setSkills([]);
+        });
+    };
+    refresh();
+    const unsubscribe = subscribeSystemEvent(event => {
+      if (event.type !== 'skills_changed') return;
+      clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(refresh, 150);
+    });
+    return () => {
+      disposed = true;
+      unsubscribe();
+      clearTimeout(refreshTimer);
+    };
   }, [open, sessionId, projectId]);
 
   const items = useMemo<FlatItem[]>(() => {
@@ -234,7 +261,7 @@ export function SlashCommandMenu({
               data-index={index}
               className={`flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors ${
                 index === activeIndex
-                  ? 'bg-[var(--ema-surface-3)] text-[var(--ema-text-primary)]'
+                  ? 'bg-[var(--ema-primary-muted)] text-[var(--ema-primary-text)]'
                   : 'text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-2)]'
               }`}
               onMouseEnter={() => setActiveIndex(index)}

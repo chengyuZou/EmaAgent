@@ -20,7 +20,8 @@ export type CharacterPatchInput = InferRequestType<RpcClient['api']['characters'
 export type CharacterPresentation = RpcJson<RpcClient['api']['characters'][':characterName']['presentation']['$get']>;
 export type Live2dConfiguration = RpcJson<RpcClient['api']['characters'][':characterName']['live2d'][':live2dName']['configuration']['$get']>;
 export type Live2dMappingsInput = InferRequestType<RpcClient['api']['characters'][':characterName']['live2d'][':live2dName']['configuration']['$put']>['json'];
-export type Live2dImportInput = InferRequestType<RpcClient['api']['characters'][':characterName']['live2d']['import']['$post']>['json'];
+export type Live2dImportInput = InferRequestType<RpcClient['api']['characters'][':characterName']['live2d']['imports']['$post']>['json'];
+export type PreparedLive2dImport = RpcJson<RpcClient['api']['characters'][':characterName']['live2d']['imports']['$post']>;
 export type IllustrationImportInput = InferRequestType<RpcClient['api']['characters'][':characterName']['illustrations']['import']['$post']>['json'];
 export type VoiceImportInput = InferRequestType<RpcClient['api']['characters'][':characterName']['voice']['import']['$post']>['json'];
 export type ResourcePatchInput = InferRequestType<RpcClient['api']['characters'][':characterName']['live2d'][':live2dName']['$patch']>['json'];
@@ -82,11 +83,35 @@ export const charactersApi = {
 
   // ── Live2D ─────────────────────────────────────────────────────────────────
 
-  importLive2d(characterName: string, input: Live2dImportInput) {
-    return readRpcJson(rpcClient.api.characters[':characterName'].live2d.import.$post({
+  prepareLive2dImport(characterName: string, input: Live2dImportInput): Promise<PreparedLive2dImport> {
+    return readRpcJson(rpcClient.api.characters[':characterName'].live2d.imports.$post({
       param: { characterName },
       json: input,
     }));
+  },
+
+  async preparedLive2dArchive(characterName: string, importId: string): Promise<Blob> {
+    const response = await serverClient.requestRaw(
+      `/api/characters/${encodeURIComponent(characterName)}/live2d/imports/${encodeURIComponent(importId)}/archive`,
+    );
+    return response.blob();
+  },
+
+  commitLive2dImport(characterName: string, importId: string, previewPngBase64: string) {
+    return readRpcJson(
+      rpcClient.api.characters[':characterName'].live2d.imports[':importId'].commit.$post({
+        param: { characterName, importId },
+        json: { previewPngBase64 },
+      }),
+    );
+  },
+
+  async cancelLive2dImport(characterName: string, importId: string): Promise<void> {
+    await readRpcJson(
+      rpcClient.api.characters[':characterName'].live2d.imports[':importId'].$delete({
+        param: { characterName, importId },
+      }),
+    );
   },
 
   patchLive2d(characterName: string, live2dName: string, input: ResourcePatchInput) {

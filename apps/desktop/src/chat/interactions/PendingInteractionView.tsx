@@ -79,7 +79,9 @@ function CollapsibleCard({
     <Card
       variant="elevated"
       padding="none"
-      className="w-full overflow-hidden border border-[var(--ema-border)] shadow-[var(--ema-shadow-2)]"
+      className="w-full overflow-hidden border shadow-[var(--ema-shadow-2)]
+        border-[color-mix(in_srgb,var(--ema-warning)_33%,transparent)]
+        bg-[color-mix(in_srgb,var(--ema-warning)_5%,var(--ema-surface-1))]"
     >
       <div className="flex min-h-10 items-center gap-3 px-4 py-2">
         <span className="min-w-0 flex-1 truncate text-xs font-medium text-[var(--ema-text-secondary)]">
@@ -166,6 +168,7 @@ function PermissionView({
             <Button
               variant="primary"
               size="sm"
+              className="bg-[var(--ema-warning)] text-[var(--ema-bg)] border-[var(--ema-warning)] hover:brightness-105"
               disabled={submission.submitting}
               onClick={() => respond({ action: 'allow' })}
             >

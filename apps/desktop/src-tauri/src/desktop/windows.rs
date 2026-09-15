@@ -52,6 +52,7 @@ fn create_window(app: &tauri::AppHandle, label: &str) -> Result<WebviewWindow, S
             .decorations(true)
             .transparent(false)
             .always_on_top(false)
+            .disable_drag_drop_handler()
             .additional_browser_args(SHARED_BROWSER_ARGS)
             .build()
             .map_err(|error| format!("failed to create chat webview: {error}"))?,

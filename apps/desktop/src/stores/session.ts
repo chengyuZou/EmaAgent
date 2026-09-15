@@ -7,6 +7,11 @@ import {
   type SessionPatchInput,
   type Project,
 } from '../api/sessions.js';
+import {
+  sidebarApi,
+  type ProjectSidebarMoveInput,
+  type SessionSidebarMoveInput,
+} from '../api/workspaces.js';
 import { useBackgroundProcessStore } from './backgroundProcess.js';
 import { useAgentStore } from './agent.js';
 import {
@@ -39,6 +44,8 @@ export interface SessionStoreState {
   createSession(input?: SessionCreateInput):                         Promise<string>;
   renameSession(id: string, title: string):                       Promise<void>;
   pinSession(id: string, pinned: boolean):                        Promise<void>;
+  moveSessionInSidebar(id: string, input: SessionSidebarMoveInput): Promise<void>;
+  moveProjectInSidebar(id: string, input: ProjectSidebarMoveInput): Promise<void>;
   setCwd(id: string, cwd: string):                                  Promise<void>;
   setExecutionSettings(
     id: string,
@@ -109,6 +116,7 @@ function replaceSession(
 const preferredModelWriteChains = new Map<string, Promise<void>>();
 const preferredModelGenerations = new Map<string, number>();
 const executionSettingsWriteChains = new Map<string, Promise<void>>();
+let sessionListRequestId = 0;
 
 // ── Store ─────────────────────────────────────────────────────────────────────
 
@@ -118,6 +126,7 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
   error:        null,
 
   async loadSessions() {
+    const requestId = ++sessionListRequestId;
     set({ loading: true, error: null });
     try {
       const sidebarData = await sessionsApi.listForSidebar();
@@ -130,9 +139,11 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
         byId:     new Map(),
       };
       rebuildById(sessions);
-      set({ sessions, loading: false });
+      if (requestId === sessionListRequestId) set({ sessions, loading: false });
     } catch (err: unknown) {
-      set({ error: err instanceof Error ? err.message : '加载会话列表失败', loading: false });
+      if (requestId === sessionListRequestId) {
+        set({ error: err instanceof Error ? err.message : '加载会话列表失败', loading: false });
+      }
     }
   },
 
@@ -200,6 +211,28 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
         // 断线期间不猜测服务端是否保存成功；原显示值保持不动。
       }
       set({ error: err instanceof Error ? err.message : '设置执行目录失败' });
+      throw err;
+    }
+  },
+
+  async moveSessionInSidebar(id, input) {
+    try {
+      await sidebarApi.moveSession(id, input);
+      await get().loadSessions();
+    } catch (err: unknown) {
+      await get().loadSessions();
+      set({ error: err instanceof Error ? err.message : '移动对话失败' });
+      throw err;
+    }
+  },
+
+  async moveProjectInSidebar(id, input) {
+    try {
+      await sidebarApi.moveProject(id, input);
+      await get().loadSessions();
+    } catch (err: unknown) {
+      await get().loadSessions();
+      set({ error: err instanceof Error ? err.message : '移动项目失败' });
       throw err;
     }
   },

@@ -1,13 +1,16 @@
-import { useEffect, useState, type JSX, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type JSX, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { Button, Dialog, IconButton, Input, Popover } from '@ema-agent/ui';
 import { sessionGitApi, type SessionGitSummary } from '../../api/git.js';
 import { showToast } from '../../lib/toast.js';
 import { useAgentRunStore } from '../../stores/agentRun.js';
+import { useBackgroundProcessStore } from '../../stores/backgroundProcess.js';
 import { useSessionAttachmentStore } from '../../stores/sessionAttachment.js';
 import { useSessionStore } from '../../stores/session.js';
+import { useTaskStore } from '../../stores/task.js';
 import { SessionCwdDialog } from './SessionCwdDialog.js';
 import {
+  backgroundProcessTab,
   sessionSourceTab,
   useSessionSidePanel,
 } from '../state/chatWorkspace.js';
@@ -25,16 +28,6 @@ export function SessionHeader({ sessionId }: { sessionId: string }): JSX.Element
   const cwd = session?.cwd;
   const layout = useSessionSidePanel((state) => state.layouts[sessionId]);
   const setSidePanelOpen = useSessionSidePanel((state) => state.setSidePanelOpen);
-  const runningAgentRunCount = useAgentRunStore(state => {
-    const ids = new Set<string>();
-    for (const run of state.runs.values()) {
-      if (run.sessionId === sessionId && run.status === 'running') ids.add(run.id);
-    }
-    for (const [id, run] of state.live) {
-      if (run.sessionId === sessionId) ids.add(id);
-    }
-    return ids.size;
-  });
 
   async function saveTitle(): Promise<void> {
     const nextTitle = titleDraft.trim();
@@ -64,7 +57,7 @@ export function SessionHeader({ sessionId }: { sessionId: string }): JSX.Element
         <Button
           variant="ghost"
           disabled={!session}
-          className="h-auto max-w-56 min-w-0 px-1 py-0.5 text-sm text-[var(--ema-text-primary)]"
+          className="h-auto max-w-56 min-w-0 px-1 py-0.5 text-sm font-semibold text-[var(--ema-text-primary)] hover:bg-transparent"
           title={`重命名会话: ${title}`}
           onClick={() => {
             setTitleDraft(title);
@@ -76,7 +69,7 @@ export function SessionHeader({ sessionId }: { sessionId: string }): JSX.Element
         {cwd && (
           <Button
             variant="ghost"
-            className="h-auto max-w-72 min-w-0 px-2 py-1 text-xs font-normal text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-secondary)]"
+            className="h-auto max-w-72 min-w-0 px-2 py-1 font-mono text-xs font-normal text-[var(--ema-text-tertiary)] hover:bg-transparent hover:text-[var(--ema-text-primary)]"
             title={`执行目录: ${cwd} · 点击修改`}
             onClick={() => setCwdOpen(true)}
           >
@@ -91,29 +84,26 @@ export function SessionHeader({ sessionId }: { sessionId: string }): JSX.Element
           onOpenChange={setSummaryOpen}
           side="bottom"
           align="end"
-          widthClass="w-72"
+          widthClass="w-80"
+          className="overflow-hidden p-0"
           trigger={(
             <Button
-              variant="secondary"
-              className={`relative h-9 w-9 rounded-full p-0 ${summaryOpen
-                ? 'border-[var(--ema-primary)]/70 bg-[var(--ema-primary-muted)] text-[var(--ema-primary-text)]'
+              variant="ghost"
+              className={`chat-icon-btn relative ${summaryOpen
+                ? 'bg-[var(--ema-primary-muted)] text-[var(--ema-primary-text)] border-[var(--ema-primary)]/40'
                 : ''}`}
               aria-label="置顶摘要"
               title="置顶摘要"
             >
-              <span className="i-lucide:pin text-lg" aria-hidden />
-              {runningAgentRunCount > 0 && (
-                <span className="pointer-events-none absolute -right-0.5 -top-0.5 flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-[var(--ema-primary)] px-0.5 text-[9px] font-bold text-[var(--ema-text-primary)]">
-                  {runningAgentRunCount}
-                </span>
-              )}
+              <span className="i-lucide:sliders-horizontal text-base" aria-hidden />
             </Button>
           )}
         >
-          <SessionSummary sessionId={sessionId} />
+          <SessionSummary sessionId={sessionId} onNavigate={() => setSummaryOpen(false)} />
         </Popover>
         <IconButton
           size="md"
+          className="chat-icon-btn"
           label={layout?.open ? '折叠右侧栏' : '展开右侧栏'}
           icon="i-lucide:panel-right"
           toggled={layout?.open ?? false}
@@ -141,12 +131,19 @@ export function SessionHeader({ sessionId }: { sessionId: string }): JSX.Element
   );
 }
 
-function SessionSummary({ sessionId }: { sessionId: string }): JSX.Element {
+function SessionSummary({
+  sessionId,
+  onNavigate,
+}: {
+  sessionId: string;
+  onNavigate(): void;
+}): JSX.Element {
   const openTab = useSessionSidePanel((state) => state.openTab);
   const cwd = useSessionStore((state) => (
     state.sessions.byId.get(sessionId)?.cwd ?? null
   ));
   const [git, setGit] = useState<SessionGitSummary | null>(null);
+  const [stoppingProcessIds, setStoppingProcessIds] = useState<ReadonlySet<string>>(new Set());
   const activity = useAgentRunStore(useShallow(state => {
     const running = new Set<string>();
     let ended = 0;
@@ -160,6 +157,23 @@ function SessionSummary({ sessionId }: { sessionId: string }): JSX.Element {
     return { running: running.size, ended };
   }));
   const sources = useSessionAttachmentStore(state => state.bySession.get(sessionId));
+  const processList = useBackgroundProcessStore(state => state.listsBySession.get(sessionId));
+  const tasks = useTaskStore(state => state.tasksBySession.get(sessionId));
+  const liveProcesses = useMemo(
+    () => [...(processList?.processes ?? [])]
+      .filter(process => process.status === 'queued' || process.status === 'running')
+      .sort((left, right) => right.createdAt - left.createdAt),
+    [processList?.processes],
+  );
+  const taskCounts = useMemo(() => {
+    let active = 0;
+    let completed = 0;
+    for (const task of tasks?.values() ?? []) {
+      if (task.status === 'pending' || task.status === 'in_progress') active += 1;
+      if (task.status === 'completed') completed += 1;
+    }
+    return { active, completed, total: tasks?.size ?? 0 };
+  }, [tasks]);
 
   useEffect(() => {
     if (!cwd) {
@@ -181,129 +195,201 @@ function SessionSummary({ sessionId }: { sessionId: string }): JSX.Element {
   }, [sessionId, cwd]);
   useEffect(() => { void useAgentRunStore.getState().loadForSession(sessionId); }, [sessionId]);
   useEffect(() => { void useSessionAttachmentStore.getState().loadForSession(sessionId); }, [sessionId]);
+  useEffect(() => { void useBackgroundProcessStore.getState().loadForSession(sessionId); }, [sessionId]);
+  useEffect(() => { void useTaskStore.getState().loadForSession(sessionId); }, [sessionId]);
+
+  const navigate = (tab: Parameters<typeof openTab>[1]): void => {
+    openTab(sessionId, tab);
+    onNavigate();
+  };
+
+  const stopProcess = async (processId: string): Promise<void> => {
+    setStoppingProcessIds(current => new Set(current).add(processId));
+    try {
+      await useBackgroundProcessStore.getState().stop(sessionId, processId);
+    } catch (error: unknown) {
+      showToast(
+        error instanceof Error ? `终止后台进程失败: ${error.message}` : '终止后台进程失败',
+        { variant: 'danger' },
+      );
+    } finally {
+      setStoppingProcessIds(current => {
+        const next = new Set(current);
+        next.delete(processId);
+        return next;
+      });
+    }
+  };
 
   return (
-    <div className="flex flex-col gap-3 p-3 text-xs">
-      {cwd && (
-        <section>
-          <SectionTitle>环境信息</SectionTitle>
-          <ReadOnlyRow icon="i-lucide:file-diff" label="变更">
-            <GitChanges git={git} />
-          </ReadOnlyRow>
-          <ReadOnlyRow icon="i-lucide:monitor" label="本地">
-            <span className="truncate text-[var(--ema-text-tertiary)]" title={cwd}>
-              {cwd}
-            </span>
-          </ReadOnlyRow>
-          <ReadOnlyRow icon="i-lucide:git-branch" label="分支">
-            <span className="truncate text-[var(--ema-text-tertiary)]">
-              {git?.capability === 'ok' ? git.branch ?? '未命名分支' : '不可用'}
-            </span>
-          </ReadOnlyRow>
-        </section>
-      )}
-      <section>
-        <SectionTitle>子智能体</SectionTitle>
-        <Button
-          variant="ghost"
-          className="h-auto w-full justify-start gap-2 px-1 py-1 text-left text-xs font-normal"
-          onClick={() => openTab(sessionId, { id: 'subagents', kind: 'subagents' })}
+    <div className="ema-session-summary text-xs">
+      <SummarySection title="环境信息">
+        <SummaryRow
+          icon="i-lucide:file-diff"
+          label="变更"
+          onClick={() => navigate({ id: 'review', kind: 'review' })}
         >
-          <span className="i-lucide:bot text-sm text-[var(--ema-text-tertiary)]" aria-hidden />
-          {activity.running > 0
-            ? <span className="text-[var(--ema-primary)]">{activity.running} 个运行中</span>
-            : <span className="text-[var(--ema-text-tertiary)]">没有运行中的子智能体</span>}
-          {activity.ended > 0 && (
-            <span className="ml-auto text-[var(--ema-text-tertiary)]">
-              {activity.ended} 已完成
-            </span>
-          )}
-        </Button>
-      </section>
-      <section>
-        <SectionTitle>附件</SectionTitle>
+          <GitChanges git={git} />
+        </SummaryRow>
+        <SummaryRow icon="i-lucide:monitor" label="本地" title={cwd ?? undefined} />
+        <SummaryRow
+          icon="i-lucide:git-branch"
+          label={git?.capability === 'ok' ? git.branch ?? '未命名分支' : '分支不可用'}
+        />
+      </SummarySection>
+
+      <SummarySection title="子代理" summary={activity.running > 0 ? `${activity.running} 运行中` : undefined}>
+        <SummaryRow
+          icon="i-solar:cpu-bold-duotone"
+          label={activity.running > 0 ? `${activity.running} 个运行中` : '暂无运行中的子代理'}
+          onClick={() => navigate({ id: 'subagents', kind: 'subagents' })}
+        >
+          {activity.ended > 0 ? <span>{activity.ended} 已完成</span> : null}
+        </SummaryRow>
+      </SummarySection>
+
+      <SummarySection title="后台进程" summary={liveProcesses.length > 0 ? `${liveProcesses.length} 运行中` : undefined}>
+        {liveProcesses.length === 0 ? (
+          <SummaryRow icon="i-lucide:square-terminal" label="暂无运行中的后台进程" />
+        ) : liveProcesses.map(process => (
+          <div key={process.id} className="ema-summary-process-row">
+            <button
+              type="button"
+              className="ema-summary-row min-w-0 flex-1"
+              title={process.command}
+              onClick={() => navigate(backgroundProcessTab(process.id))}
+            >
+              <span className="i-lucide:square-terminal shrink-0 text-sm" aria-hidden />
+              <span className="min-w-0 flex-1 truncate text-left">
+                {process.description ?? process.command}
+              </span>
+            </button>
+            <IconButton
+              size="sm"
+              variant="danger"
+              icon="i-lucide:square"
+              label={`终止 ${process.description ?? process.command}`}
+              loading={stoppingProcessIds.has(process.id)}
+              onClick={() => void stopProcess(process.id)}
+            />
+          </div>
+        ))}
+      </SummarySection>
+
+      <SummarySection title="Tasks" summary={taskCounts.active > 0 ? `${taskCounts.active} 待处理` : undefined}>
+        <SummaryRow
+          icon="i-lucide:list-checks"
+          label={taskCounts.total > 0 ? `${taskCounts.active} 待处理` : '当前会话没有 Tasks'}
+          onClick={() => navigate({ id: 'tasks', kind: 'tasks' })}
+        >
+          {taskCounts.completed > 0 ? <span>{taskCounts.completed} 已完成</span> : null}
+        </SummaryRow>
+      </SummarySection>
+
+      <SummarySection title="附件" summary={sources && sources.length > 0 ? `${sources.length}` : undefined}>
         {sources === undefined ? (
-          <p className="px-1 text-[var(--ema-text-tertiary)]">加载中…</p>
+          <SummaryRow icon="i-lucide:loader-circle animate-spin" label="正在读取附件…" />
         ) : sources.length === 0 ? (
-          <p className="px-1 text-[var(--ema-text-tertiary)]">暂无来源</p>
+          <SummaryRow icon="i-lucide:paperclip" label="当前会话没有附件" />
         ) : (
           <>
-            {sources.slice(0, SOURCE_PREVIEW_COUNT).map((source) => (
-              <Button
+            {sources.slice(0, SOURCE_PREVIEW_COUNT).map(source => (
+              <SummaryRow
                 key={source.path}
-                variant="ghost"
-                className="h-auto w-full justify-start gap-2 px-1 py-1 text-left text-xs font-normal"
-                onClick={() => openTab(sessionId, sessionSourceTab(source.path))}
-              >
-                <span
-                  className={source.kind === 'image'
-                    ? 'i-lucide:image'
-                    : 'i-lucide:file-text'}
-                  aria-hidden
-                />
-                <span className="truncate text-[var(--ema-text-secondary)]">
-                  {source.kind === 'image'
-                    ? source.name ?? '剪贴板图片'
-                    : '粘贴文本'}
-                </span>
-              </Button>
+                icon={source.kind === 'image' ? 'i-lucide:image' : 'i-lucide:file-text'}
+                label={source.kind === 'image' ? source.name ?? '剪贴板图片' : '粘贴文本'}
+                onClick={() => navigate(sessionSourceTab(source.path))}
+              />
             ))}
-            <Button
-              variant="ghost"
-              className="mt-1 h-auto px-1 py-0 text-xs font-normal text-[var(--ema-primary)] hover:underline"
-              onClick={() => openTab(sessionId, { id: 'sources', kind: 'sources' })}
-            >
-              查看全部
-              {sources.length > SOURCE_PREVIEW_COUNT ? ` (${sources.length})` : ''}
-            </Button>
+            <SummaryRow
+              icon="i-lucide:paperclip"
+              label={sources.length > SOURCE_PREVIEW_COUNT ? `查看全部 ${sources.length} 个附件` : '查看全部附件'}
+              onClick={() => navigate({ id: 'sources', kind: 'sources' })}
+            />
           </>
         )}
-      </section>
+      </SummarySection>
     </div>
   );
 }
 
-function SectionTitle({ children }: { children: ReactNode }): JSX.Element {
+function SummarySection({
+  title,
+  summary,
+  children,
+}: {
+  title: string;
+  summary?: string;
+  children: ReactNode;
+}): JSX.Element {
+  const [open, setOpen] = useState(true);
   return (
-    <div className="px-1 pb-1 text-[11px] font-medium text-[var(--ema-text-tertiary)]">
-      {children}
-    </div>
+    <section className="ema-summary-section">
+      <button
+        type="button"
+        className="ema-summary-section-trigger"
+        aria-expanded={open}
+        onClick={() => setOpen(current => !current)}
+      >
+        <span>{title}</span>
+        {summary && <span className="ml-auto text-[10px] text-[var(--ema-text-tertiary)]">{summary}</span>}
+        <span
+          className={`i-lucide:chevron-down shrink-0 text-xs transition-transform ${open ? '' : '-rotate-90'}`}
+          aria-hidden
+        />
+      </button>
+      <div className="ema-collapsible" style={{ gridTemplateRows: open ? '1fr' : '0fr', opacity: open ? 1 : 0 }}>
+        <div>
+          <div className="pb-1">{children}</div>
+        </div>
+      </div>
+    </section>
   );
 }
 
-function ReadOnlyRow({
+function SummaryRow({
   icon,
   label,
+  title,
   children,
+  onClick,
 }: {
   icon: string;
   label: string;
-  children: ReactNode;
+  title?: string;
+  children?: ReactNode;
+  onClick?: () => void;
 }): JSX.Element {
-  return (
-    <div className="flex items-center gap-2 px-1 py-1 text-[var(--ema-text-secondary)]">
+  const content = (
+    <>
       <span className={`${icon} text-sm text-[var(--ema-text-tertiary)]`} aria-hidden />
-      <span>{label}</span>
-      <span className="min-w-0 flex-1">{children}</span>
-    </div>
+      <span className="min-w-0 flex-1 truncate text-left">{label}</span>
+      {children && <span className="shrink-0 text-[var(--ema-text-tertiary)]">{children}</span>}
+      {onClick && <span className="i-lucide:chevron-right shrink-0 text-[10px] opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />}
+    </>
+  );
+  return onClick ? (
+    <button type="button" className="ema-summary-row group" title={title} onClick={onClick}>
+      {content}
+    </button>
+  ) : (
+    <div className="ema-summary-row" title={title}>{content}</div>
   );
 }
+
 function GitChanges({ git }: { git: SessionGitSummary | null }): JSX.Element {
   if (!git || git.capability !== 'ok') {
     return <span className="text-[var(--ema-text-tertiary)]">不可用</span>;
   }
-  const files = git.unstaged.filesChanged + git.staged.filesChanged;
   const insertions = git.unstaged.insertions + git.staged.insertions;
   const deletions = git.unstaged.deletions + git.staged.deletions;
-  if (files === 0 && git.untrackedCount === 0) {
+  if (insertions === 0 && deletions === 0 && git.untrackedCount === 0) {
     return <span className="text-[var(--ema-text-tertiary)]">无变更</span>;
   }
   return (
-    <span className="text-[var(--ema-text-tertiary)]">
-      {files} 个文件{' '}
+    <span className="flex items-center gap-1">
       <span className="text-[var(--ema-success)]">+{insertions}</span>{' '}
       <span className="text-[var(--ema-danger)]">-{deletions}</span>
-      {git.untrackedCount > 0 ? ` · ${git.untrackedCount} 未跟踪` : ''}
     </span>
   );
 }

@@ -128,7 +128,8 @@ export type SessionSidePanelTab =
   | { id: 'subagents'; kind: 'subagents' }
   | { id: 'sources'; kind: 'sources' }
   | { id: 'tasks'; kind: 'tasks' }
-  | { id: 'processes'; kind: 'processes' };
+  | { id: 'processes'; kind: 'processes' }
+  | { id: `process:${string}`; kind: 'process'; backgroundProcessId: string };
 
 export interface SessionSidePanelLayout {
   tabsById: Record<string, SessionSidePanelTab>;
@@ -169,6 +170,14 @@ export function terminalTab(terminalId: string): SessionSidePanelTab {
     id: `terminal:${terminalId}`,
     kind: 'terminal',
     terminalId,
+  };
+}
+
+export function backgroundProcessTab(backgroundProcessId: string): SessionSidePanelTab {
+  return {
+    id: `process:${backgroundProcessId}`,
+    kind: 'process',
+    backgroundProcessId,
   };
 }
 

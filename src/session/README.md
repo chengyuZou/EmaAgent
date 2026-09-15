@@ -4,9 +4,9 @@
 
 ## 领域事实
 
-- **Session**：标题、非空 `cwd`、projectId、createdAt/updatedAt/lastActivityAt、archivedAt、pinned、fork 溯源双列、executionProfile、narrativePolicy、当前模型（providerId/modelId）、lastViewedAt。`cwd` 是命令和相对路径的起点，新建时选定，此后只由用户显式修改。
+- **Session**：标题、非空 `cwd`、projectId、createdAt/updatedAt/lastActivityAt、archivedAt、pinned、fork 溯源双列、executionProfile、narrativePolicy、当前模型（providerId/modelId）、lastViewedAt。`cwd` 是命令和相对路径的起点，新建时选定，此后只由用户显式修改。Storage 的 `sidebar_order` 只表达所在侧栏分区内的顺序，不进入 Session API；拖放与新 Turn 开始会更新它。
 - **SessionListItem** = Session + 列表投影三字段（hasActiveTurn / lastTurnStatus / hasUnread）。三字段只由列表/搜索 SQL 的 CTE 算出；单查路径返回裸 Session，不允许伪造投影。
-- **Project**：id、name、pinned、createdAt、updatedAt、folders[]、sessions[]。可以没有源文件夹；有文件夹时其中一个为主。侧栏 Project 的 sessions[] 只包含当前在项目区显示的成员，置顶 Session 单独进入置顶桶。
+- **Project**：id、name、pinned、createdAt、updatedAt、folders[]、sessions[]。可以没有源文件夹；有文件夹时其中一个为主。侧栏 Project 的 sessions[] 只包含当前在项目区显示的成员，置顶 Session 单独进入置顶桶。Storage 的 `sidebar_order` 独立保存 Project 在置顶/普通项目区的顺序。
 - **Message**：sessionId、可空 turnId（null = /compact summary 等 Session 级消息）、role、kind（normal / reminder / tool_results / summary）、blocks、interrupted、createdAt。用户块允许 `attachment_ref` 与 `skill_ref`，只保存稳定引用，不复制附件正文或 SKILL.md。
 
 ## 公共入口
@@ -14,7 +14,7 @@
 `SessionStore` 是唯一读写聚合：
 
 - **Session**：createSession（可同时携带 projectId 与显式 cwd；未给 cwd 时取创建当刻的项目主文件夹；项目无主文件夹或无项目时，创建并使用 `~/.ema-agent/workspace`）/ getSession / sessionExists / patchSession（项目成员也可显式改 cwd）/ pin / archive / setViewedAt / updateTitle；
-- **侧栏**：`listSessionsForSidebar()` 五桶（置顶 Session / 置顶项目 / 其余项目 / 最近 / 已归档；Session 同时满足 pinned 与 project 时进置顶桶）；`searchSessions` 不搜归档；
+- **侧栏**：`listSessionsForSidebar()` 五桶（置顶 Session / 置顶项目 / 其余项目 / 最近 / 已归档；Session 同时满足 pinned 与 project 时进置顶桶）；`moveSessionInSidebar` 一次提交归属、置顶与插入位置，拖入置顶会清空 projectId；`moveProjectInSidebar` 一次提交项目分区和插入位置；新 Turn 开始时 Session 回到当前分区顶部；`searchSessions` 不搜归档；
 - **Project**：createProject(name, folderPaths, primaryFolderPath?) 在一次事务中创建项目及全部源文件夹；listProjectFolders(projectId) 给 Skills、Permission 读取项目全部源文件夹；rename / delete / pin / 文件夹增删 / 设主 / 拖入拖出。设主、移除文件夹、拖入项目均不改旧 Session 的 cwd；设主只影响以后新建的 Session。
 - **Fork**：forkSession 复制 Turn/Message/Attachment 并重映射 ID，不带 Task、AgentRun 或任何在跑的外部副作用；
 - **Message**：appendMessage（turnId 归属校验）/ appendHistorySummary（Session 级压缩摘要，必须带覆盖截止游标）/ loadHistory（最新 summary + 其覆盖游标之后的消息，LLM 可见历史）/ listMessages（UI 正文复合游标页，旧到新）/ listMessagesAround（按 Message 锚点读取有界窗口）/ loadMessagesForTurn（Turn 终态持久收口）/ findToolInteraction（启动恢复）/ markMessageInterrupted / assertMessageOwnership；
@@ -27,6 +27,8 @@
 - `parseMessageBlocksJson`：blocks_json 的唯一解析点。
 - `collectAttachmentReferenceIds`：一次批量收集消息里全部附件引用 id，供历史重放前批量预取附件。
 - `SessionOwnershipError`：跨 Session 引用的稳定错误。
+
+`SessionStoreDeps.onChanged` 在对应写入成功后接收 `SessionEvent`：`session_list_changed` 表示侧栏会话或项目投影须重查；`session_messages_changed { sessionId }` 表示该会话新增了持久 Message。流式 Message 块更新不逐次广播，完整正文以 Turn 终态事件为刷新边界。导入备份和末轮回退绕过本 Store 写入口，分别由 Server 导入路由和 TurnStore 清理回调在提交后发相同事件。
 
 ## 边界（本包不负责）
 

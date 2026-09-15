@@ -51,3 +51,8 @@
 
 /* Markdown 正文用内容字体(代码块走 hljs/mono,不受此规则影响)。 */
 .markdown-content { font-family: var(--ema-font-content); }
+
+/* 长代码块在气泡内部横向滚,绝不允许把历史滚动容器撑出水平滚轮。 */
+.markdown-content pre {
+  overflow-x: auto;
+}

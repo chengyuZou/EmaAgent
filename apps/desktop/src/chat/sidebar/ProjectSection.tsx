@@ -17,6 +17,7 @@ import type { AgentSessionState } from '../../stores/agent.js';
 import { useSessionStore } from '../../stores/session.js';
 import { useChatWorkspace } from '../state/chatWorkspace.js';
 import { SessionRow } from './SessionRow.js';
+import { useSidebarDrag } from './SidebarDragContext.js';
 
 interface ProjectSectionProps {
   projects: Project[];
@@ -36,11 +37,22 @@ export function PinnedSection({
   agentSessions: ReadonlyMap<string, AgentSessionState>;
 }): JSX.Element | null {
   const [collapsed, setCollapsed] = useState(false);
+  const drag = useSidebarDrag();
+  const projectEndDropProps = drag.projectTargetProps('pinned-projects-end', 'pinned', null);
+  const sessionEndDropProps = drag.sessionTargetProps(
+    'pinned-sessions-end',
+    { section: 'pinned' },
+    null,
+  );
 
-  if (projects.length === 0 && sessions.length === 0) return null;
+  useEffect(() => {
+    if (drag.dragged) setCollapsed(false);
+  }, [drag.dragged]);
+
+  if (projects.length === 0 && sessions.length === 0 && !drag.dragged) return null;
 
   return (
-    <section className="mb-1">
+    <section className="mb-2">
       <SectionButton
         label="置顶"
         collapsed={collapsed}
@@ -52,18 +64,28 @@ export function PinnedSection({
             <ProjectRow
               key={project.id}
               project={project}
+              section="pinned"
               viewedId={viewedId}
               agentSessions={agentSessions}
             />
           ))}
+          <div
+            className={`ema-sidebar-drop-zone ema-drop-end ${drag.dragged?.kind === 'project' ? 'ema-drop-ready' : ''}`}
+            {...projectEndDropProps}
+          />
           {sessions.map((session) => (
             <SessionRow
               key={session.id}
               session={session}
               isActive={session.id === viewedId}
               agentSessions={agentSessions}
+              dropDestination={{ section: 'pinned' }}
             />
           ))}
+          <div
+            className={`ema-sidebar-drop-zone ema-drop-end ${drag.dragged?.kind === 'session' ? 'ema-drop-ready' : ''}`}
+            {...sessionEndDropProps}
+          />
         </div>
       </Collapse>
     </section>
@@ -77,9 +99,15 @@ export function ProjectSection({
 }: ProjectSectionProps): JSX.Element {
   const [collapsed, setCollapsed] = useState(false);
   const [creating, setCreating] = useState(false);
+  const drag = useSidebarDrag();
+  const endDropProps = drag.projectTargetProps('projects-end', 'projects', null);
+
+  useEffect(() => {
+    if (drag.dragged?.kind === 'project') setCollapsed(false);
+  }, [drag.dragged]);
 
   return (
-    <section className="mb-1">
+    <section className="mb-2">
       <SectionButton
         label="项目"
         collapsed={collapsed}
@@ -98,11 +126,16 @@ export function ProjectSection({
               <ProjectRow
                 key={project.id}
                 project={project}
+                section="projects"
                 viewedId={viewedId}
                 agentSessions={agentSessions}
               />
             ))
           )}
+          <div
+            className={`ema-sidebar-drop-zone ema-drop-end ${drag.dragged?.kind === 'project' ? 'ema-drop-ready' : ''}`}
+            {...endDropProps}
+          />
         </div>
       </Collapse>
       <ProjectCreator open={creating} onClose={() => setCreating(false)} />
@@ -258,10 +291,12 @@ function ProjectCreator({ open, onClose }: {
 
 function ProjectRow({
   project,
+  section,
   viewedId,
   agentSessions,
 }: {
   project: Project;
+  section: 'pinned' | 'projects';
   viewedId: string | null;
   agentSessions: ReadonlyMap<string, AgentSessionState>;
 }): JSX.Element {
@@ -269,6 +304,14 @@ function ProjectRow({
   const [collapsed, setCollapsed] = useState(!active);
   const [editing, setEditing] = useState(false);
   const [removing, setRemoving] = useState(false);
+  const drag = useSidebarDrag();
+  const rowDropProps = drag.dragged?.kind === 'session'
+    ? drag.sessionTargetProps(
+      `project-session-end:${project.id}`,
+      { section: 'project', projectId: project.id },
+      null,
+    )
+    : drag.projectTargetProps(`project-before:${project.id}`, section, project.id);
 
   useEffect(() => {
     if (active) setCollapsed(false);
@@ -318,11 +361,12 @@ function ProjectRow({
   return (
     <div>
       <div
-        className={`group flex h-9 w-full items-center gap-1 rounded-md border border-transparent px-1 text-sm font-normal focus-within:border-[var(--ema-primary)] ${
-          active
-            ? 'bg-[var(--ema-surface-2)] text-[var(--ema-text-primary)] shadow-[var(--ema-shadow-1)]'
-            : 'text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-2)]'
-        }`}
+        draggable
+        data-dragging={drag.dragged?.kind === 'project' && drag.dragged.id === project.id || undefined}
+        className={`ema-sidebar-item ema-project-row ${drag.dragged?.kind === 'session' ? 'ema-drop-inside' : 'ema-drop-before'} group flex h-[34px] w-full items-center gap-1 rounded-lg border border-transparent px-1 text-sm font-normal text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-2)]`}
+        onDragStart={(event) => drag.startProject(event, project.id)}
+        onDragEnd={drag.endDrag}
+        {...rowDropProps}
       >
         <button
           type="button"
@@ -331,7 +375,7 @@ function ProjectRow({
           aria-expanded={!collapsed}
         >
           <span
-            className={`text-base text-[var(--ema-text-tertiary)] ${
+            className={`text-base text-[var(--ema-warning)] ${
               collapsed ? 'i-lucide:folder' : 'i-lucide:folder-open'
             }`}
             aria-hidden
@@ -343,7 +387,7 @@ function ProjectRow({
         <IconButton
           size="sm"
           className="chat-row-action"
-          icon="i-lucide:plus-circle"
+          icon="i-lucide:square-pen"
           label={`在 ${project.name} 中新建对话`}
           onClick={() => useChatWorkspace.getState().openNewSession(project.id)}
         />
@@ -372,6 +416,7 @@ function ProjectRow({
               isActive={session.id === viewedId}
               agentSessions={agentSessions}
               nested
+              dropDestination={{ section: 'project', projectId: project.id }}
             />
           ))}
         </div>
@@ -560,7 +605,7 @@ export function SectionButton({
   onAdd,
 }: SectionButtonProps): JSX.Element {
   return (
-    <div className="group mx-1.5 mb-0.5 flex h-9 items-center rounded-md border border-transparent text-[var(--ema-text-tertiary)] transition-colors hover:border-[var(--ema-border)] hover:bg-[var(--ema-surface-2)] focus-within:border-[var(--ema-primary)] focus-within:bg-[var(--ema-surface-2)]">
+    <div className="group mx-1.5 mb-0.5 flex h-7 items-center text-[var(--ema-text-tertiary)]">
       <button
         type="button"
         className="flex h-full min-w-0 flex-1 items-center gap-1.5 px-2 text-left text-xs focus:outline-none"
@@ -576,29 +621,13 @@ export function SectionButton({
         />
       </button>
       {onAdd && (
-        <>
-          <DropdownMenu
-            trigger={
-              <IconButton
-                size="sm"
-                className="chat-row-action mr-0.5"
-                icon="i-lucide:more-horizontal"
-                label="项目分区操作"
-              />
-            }
-            items={[{ kind: 'item', label: '新建项目', icon: 'i-lucide:plus', onSelect: onAdd }]}
-            side="right"
-            align="start"
-            widthClass="min-w-40"
-          />
-          <IconButton
-            size="sm"
-            className="chat-row-action mr-1"
-            icon="i-lucide:plus"
-            label="新建项目"
-            onClick={onAdd}
-          />
-        </>
+        <IconButton
+          size="sm"
+          className="chat-row-action mr-1"
+          icon="i-lucide:plus"
+          label="新建项目"
+          onClick={onAdd}
+        />
       )}
     </div>
   );

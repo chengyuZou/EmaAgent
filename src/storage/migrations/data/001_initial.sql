@@ -139,6 +139,7 @@ CREATE TABLE sessions (
   forked_from_turn_id  TEXT REFERENCES turns(id) ON DELETE SET NULL,
   last_viewed_at       INTEGER,
   last_activity_at     INTEGER NOT NULL DEFAULT 0,
+  sidebar_order        INTEGER NOT NULL DEFAULT 0,
   created_at           INTEGER NOT NULL,
   updated_at           INTEGER NOT NULL,
   provider_id   TEXT,
@@ -161,6 +162,7 @@ CREATE TABLE projects (
   id         TEXT PRIMARY KEY,
   name       TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 100),
   pinned     INTEGER NOT NULL DEFAULT 0,
+  sidebar_order INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
@@ -391,6 +393,12 @@ CREATE INDEX idx_sessions_cwd
 CREATE INDEX idx_sessions_project
   ON sessions(project_id, last_activity_at DESC, id DESC)
   WHERE project_id IS NOT NULL;
+
+CREATE INDEX idx_sessions_sidebar_order
+  ON sessions(archived_at, pinned DESC, project_id, sidebar_order DESC, id DESC);
+
+CREATE INDEX idx_projects_sidebar_order
+  ON projects(pinned DESC, sidebar_order DESC, id DESC);
 
 CREATE INDEX idx_tasks_session_status
   ON tasks(session_id, status, display_number ASC);

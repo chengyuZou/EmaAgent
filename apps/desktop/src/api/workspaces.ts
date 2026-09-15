@@ -7,6 +7,8 @@ import { rpcClient, readRpcJson, type RpcClient, type RpcJson } from './client.j
 
 export type ProjectCreateInput = InferRequestType<RpcClient['api']['workspaces']['projects']['$post']>['json'];
 export type ProjectAssignInput = InferRequestType<RpcClient['api']['workspaces']['projects'][':id']['sessions']['$post']>['json'];
+export type SessionSidebarMoveInput = InferRequestType<RpcClient['api']['workspaces']['sidebar']['sessions'][':sessionId']['$put']>['json'];
+export type ProjectSidebarMoveInput = InferRequestType<RpcClient['api']['workspaces']['sidebar']['projects'][':projectId']['$put']>['json'];
 
 export const projectsApi = {
   create(body: ProjectCreateInput) {
@@ -63,6 +65,22 @@ export const projectsApi = {
   removeSession(id: string, sessionId: string) {
     return readRpcJson(rpcClient.api.workspaces.projects[':id'].sessions[':sessionId'].$delete({
       param: { id, sessionId },
+    }));
+  },
+};
+
+export const sidebarApi = {
+  moveSession(sessionId: string, body: SessionSidebarMoveInput) {
+    return readRpcJson(rpcClient.api.workspaces.sidebar.sessions[':sessionId'].$put({
+      json: body,
+      param: { sessionId },
+    }));
+  },
+
+  moveProject(projectId: string, body: ProjectSidebarMoveInput) {
+    return readRpcJson(rpcClient.api.workspaces.sidebar.projects[':projectId'].$put({
+      json: body,
+      param: { projectId },
     }));
   },
 };
