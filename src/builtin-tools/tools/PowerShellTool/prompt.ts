@@ -6,6 +6,8 @@ const MAX_TIMEOUT_MS = 600_000;
 
 export const POWERSHELL_DESCRIPTION = `Executes a given PowerShell command on Windows with an optional timeout. Working directory is fixed to the workspace; shell state (variables, functions) does not persist between calls.
 
+Every invocation must explicitly use UTF-8. Begin the command with this prefix: [Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false); [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); $OutputEncoding = [Console]::OutputEncoding. Also pass -Encoding utf8 to every PowerShell cmdlet that reads or writes text and supports an encoding parameter.
+
 IMPORTANT: This tool is for terminal operations via PowerShell: git, npm, docker, and PS cmdlets. DO NOT use it for file operations (reading, writing, editing, searching, finding files) - use the specialized tools instead:
 - File search: use Glob (NOT Get-ChildItem -Recurse)
 - Content search: use Grep (NOT Select-String)
