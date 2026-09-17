@@ -50,9 +50,111 @@
 }
 
 /* Markdown 正文用内容字体(代码块走 hljs/mono,不受此规则影响)。 */
-.markdown-content { font-family: var(--ema-font-content); }
+.markdown-content {
+  min-width: 0;
+  font-family: var(--ema-font-content);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
 
-/* 长代码块在气泡内部横向滚,绝不允许把历史滚动容器撑出水平滚轮。 */
-.markdown-content pre {
-  overflow-x: auto;
+/* Chat Message 的正文、代码、表格和长路径都在气泡宽度内换行。 */
+.ema-message-content {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.ema-message-content .markdown-content pre,
+.ema-message-content .markdown-content code {
+  max-width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.ema-message-content .markdown-content pre {
+  overflow-x: hidden;
+}
+
+.ema-message-content .markdown-content table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.ema-message-content .markdown-content th,
+.ema-message-content .markdown-content td {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.ema-message-chip,
+.ema-message-mode {
+  border: 1px solid var(--ema-border);
+  border-radius: 4px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.chat-icon-btn.chat-message-action {
+  width: 24px;
+  height: 22px;
+  border-radius: 5px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ema-message-shell:hover .chat-message-action,
+.ema-message-shell:focus-within .chat-message-action,
+.chat-message-action:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.ema-thinking-block {
+  min-width: 0;
+  border-left: 2px solid var(--ema-border-strong);
+  background: color-mix(in srgb, var(--ema-surface-2) 58%, transparent);
+}
+
+.ema-thinking-summary {
+  display: flex;
+  width: 100%;
+  min-height: 28px;
+  cursor: pointer;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 9px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  color: var(--ema-text-tertiary);
+  font-size: 12px;
+  user-select: none;
+}
+
+.ema-thinking-summary:hover {
+  background: color-mix(in srgb, var(--ema-surface-3) 62%, transparent);
+  color: var(--ema-text-secondary);
+}
+
+.ema-thinking-chevron {
+  margin-left: auto;
+  transition: transform var(--ema-duration-fast) var(--ema-ease);
+}
+
+.ema-thinking-summary[aria-expanded="true"] .ema-thinking-chevron {
+  transform: rotate(90deg);
+}
+
+.ema-collapsible.ema-chat-collapsible {
+  transition: grid-template-rows var(--ema-duration-fast) var(--ema-ease),
+              opacity var(--ema-duration-fast) var(--ema-ease);
+}
+
+.ema-thinking-content {
+  min-width: 0;
+  padding: 4px 10px 9px 30px;
+  color: var(--ema-text-secondary);
+  font-size: 12px;
 }

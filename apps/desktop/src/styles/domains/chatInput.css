@@ -2,6 +2,7 @@
    token 全部走语义层(--ema-border/--ema-surface-N/--ema-bg), 亮暗主题零覆写. */
 
 .ema-composer-card {
+  border-top: none !important;
   border-radius: var(--ema-radius-xl);
   border: 1px solid var(--ema-border);
   background: var(--ema-surface-2);

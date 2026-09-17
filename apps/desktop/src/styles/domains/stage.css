@@ -66,3 +66,7 @@ body:hover .ema-server-status {
   background: var(--ema-danger);
   box-shadow: 0 0 9px color-mix(in srgb, var(--ema-danger) 80%, transparent);
 }
+
+.ema-speech-bubble-text::-webkit-scrollbar {
+  display: none;
+}

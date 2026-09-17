@@ -74,3 +74,80 @@
     transition: none;
   }
 }
+
+/* 通用 Tool 内容比正文更紧凑, 但沿用同一套内容字体、代码字体和语法色. */
+.ema-tool-field-list {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  margin: 0;
+  padding-right: 24px;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.ema-tool-field-row {
+  display: grid;
+  grid-template-columns: minmax(72px, max-content) minmax(0, 1fr);
+  column-gap: 10px;
+  min-width: 0;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.ema-tool-field-row:nth-child(odd) {
+  background: color-mix(in srgb, var(--ema-surface-2) 45%, transparent);
+}
+
+.ema-tool-field-row dt {
+  color: var(--ema-text-tertiary);
+}
+
+.ema-tool-field-row dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--ema-text-secondary);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.ema-tool-result-markdown {
+  min-width: 0;
+  color: var(--ema-text-secondary);
+  font-size: 11px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.ema-tool-result-markdown > :first-child {
+  margin-top: 0;
+}
+
+.ema-tool-result-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.ema-tool-result-markdown p,
+.ema-tool-result-markdown ul,
+.ema-tool-result-markdown ol,
+.ema-tool-result-markdown pre,
+.ema-tool-result-markdown table {
+  margin-block: 6px;
+}
+
+.ema-tool-result-markdown pre,
+.ema-tool-result-code {
+  max-width: 100%;
+  margin: 0;
+  padding: 7px 9px;
+  border: 1px solid color-mix(in srgb, var(--ema-border) 70%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--ema-surface-2) 58%, transparent);
+  color: var(--ema-text-secondary);
+  font-family: var(--ema-font-mono);
+  font-size: 11px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
