@@ -1,4 +1,4 @@
-// 测试 StageEngine 的标签清洗、情绪持续状态与动作词汇校验。
+// 测试 StageEngine 的标签清洗、跨 delta 扫描与角色词汇校验.
 import { describe, expect, it } from 'vitest';
 import { StageEngine } from '../engine.js';
 
