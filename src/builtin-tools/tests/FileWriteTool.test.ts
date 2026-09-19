@@ -89,11 +89,32 @@ describe('FileWriteTool — 新建与覆盖', () => {
     expect(result.content).toBe('完整内容');
     expect(result.originalFile).toBeNull();
     expect(result.structuredPatch).toEqual([]);
+    expect(result.additions).toBe(1);
+    expect(result.deletions).toBe(0);
     expect(fs.readFileSync(target, 'utf8')).toBe('完整内容');
     // 缓存更新: 后续 Edit 无需重读
     const canonical = fs.realpathSync.native(target);
     expect(ctx.readFileState.get(canonical)?.content).toBe('完整内容');
     expect(listWriteTemps(path.dirname(target))).toEqual([]);
+  });
+
+  it('新建文件的 additions 使用实际文本行数, 不把结尾换行算成空白行', async () => {
+    const directory = makeTempDir();
+    const twoLines = await write(
+      path.join(directory, 'two-lines.txt'),
+      '第一行\n第二行\n',
+      makeContext(),
+    );
+    const empty = await write(
+      path.join(directory, 'empty.txt'),
+      '',
+      makeContext(),
+    );
+
+    expect(twoLines.additions).toBe(2);
+    expect(twoLines.deletions).toBe(0);
+    expect(empty.additions).toBe(0);
+    expect(empty.deletions).toBe(0);
   });
 
   it('拒绝在没有完整 Read 状态时覆盖已有文件', async () => {
@@ -124,6 +145,8 @@ describe('FileWriteTool — 新建与覆盖', () => {
 
     expect(result.type).toBe('updated');
     expect(result.originalFile).toBe('第一行\n旧内容\n');
+    expect(result.additions).toBe(1);
+    expect(result.deletions).toBe(1);
     const lines = result.structuredPatch.flatMap((h) => h.lines);
     expect(lines.some((l) => l === '-旧内容')).toBe(true);
     expect(lines.some((l) => l === '+新内容')).toBe(true);
@@ -264,6 +287,8 @@ describe('FileWriteTool.mapResultToModelContent', () => {
     bytesWritten: 3,
     content: 'abc',
     structuredPatch: [],
+    additions: 1,
+    deletions: 0,
   };
 
   it('created 与 updated 各一句短确认', () => {

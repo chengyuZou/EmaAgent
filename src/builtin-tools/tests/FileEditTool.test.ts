@@ -119,6 +119,8 @@ describe('FileEditTool — 替换语义', () => {
       replacements: 1,
     });
     expect(result.originalFile).toBe('前文\n旧内容\n后文\n');
+    expect(result.additions).toBe(1);
+    expect(result.deletions).toBe(1);
     expect(result.structuredPatch.length).toBeGreaterThan(0);
     const allLines = result.structuredPatch.flatMap(h => h.lines);
     expect(allLines.some(l => l === '-旧内容')).toBe(true);
@@ -147,6 +149,8 @@ describe('FileEditTool — 替换语义', () => {
 
     expect(result.replacements).toBe(2);
     expect(result.replaceAll).toBe(true);
+    expect(result.additions).toBe(2);
+    expect(result.deletions).toBe(2);
     expect(fs.readFileSync(target, 'utf8')).toBe('bar\nbar\n');
   });
 
@@ -209,6 +213,8 @@ describe('FileEditTool.mapResultToModelContent', () => {
     newString: 'y',
     originalFile: 'x',
     structuredPatch: [],
+    additions: 0,
+    deletions: 0,
     replacements: 1,
   };
 

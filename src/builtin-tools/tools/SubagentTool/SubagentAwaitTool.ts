@@ -14,7 +14,7 @@ interface SubagentAwaitContext {
 }
 
 const inputSchema = z.object({
-  agentRunId: z.string().uuid().describe('AgentRun ID returned by Subagent (runInBackground).'),
+  agentRunId: z.string().min(1).describe('AgentRun ID returned by Subagent (runInBackground).'),
 });
 
 type SubagentAwaitInput = z.infer<typeof inputSchema>;

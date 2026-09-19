@@ -45,9 +45,7 @@ export { WebFetchArgsView, WebFetchResultView, webFetchTitle } from './tools/Web
 export {
   NarrativeSearchArgsView,
   NarrativeSearchResultView,
-  NarrativeStatusBlock,
 } from './tools/NarrativeSearchTool/UI.js';
-export type { NarrativeStatusViewData } from './tools/NarrativeSearchTool/UI.js';
 export { PdfReadArgsView, PdfReadResultView } from './tools/PdfReadTool/UI.js';
 export { TodoWriteActivitySummary, TodoWriteArgsView } from './tools/TodoWriteTool/UI.js';
 export { additionsToUnifiedText, patchToUnifiedText } from './tools/FileEditTool/patch.js';

@@ -14,7 +14,7 @@ import {
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { checkWritePathPermission } from '../shared/pathPermission.js';
 import { atomicTransformUtf8 } from '../FileWriteTool/atomicWrite.js';
-import { buildStructuredPatch, type PatchHunk } from './patch.js';
+import { buildStructuredPatch, countPatchLines, type PatchHunk } from './patch.js';
 import { FILE_EDIT_DESCRIPTION } from './prompt.js';
 import {
   countOccurrences,
@@ -60,6 +60,10 @@ export interface FileEditResult {
   /** 编辑前全文,审计与重算的基准。 */
   originalFile: string;
   structuredPatch: PatchHunk[];
+  /** 本次 Tool 调用在 structuredPatch 中新增的行数. */
+  additions: number;
+  /** 本次 Tool 调用在 structuredPatch 中删除的行数. */
+  deletions: number;
   replaceAll: boolean;
   replacements: number;
 }
@@ -213,16 +217,21 @@ export const FileEditTool = buildTool<FileEditInput, FileEditResult, FileEditToo
       truncated: false,
     });
 
+    const structuredPatch = buildStructuredPatch(
+      file_path,
+      written.previousContent ?? '',
+      written.content,
+    );
+    const { additions, deletions } = countPatchLines(structuredPatch);
+
     return {
       filePath: file_path,
       oldString: actualOld,
       newString: styledNew,
       originalFile: written.previousContent ?? '',
-      structuredPatch: buildStructuredPatch(
-        file_path,
-        written.previousContent ?? '',
-        written.content,
-      ),
+      structuredPatch,
+      additions,
+      deletions,
       replaceAll: replace_all,
       replacements,
     };

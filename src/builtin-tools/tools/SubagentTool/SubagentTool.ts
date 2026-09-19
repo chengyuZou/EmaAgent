@@ -1,7 +1,6 @@
 // 启动子 Agent: 默认同步等待完成, runInBackground 立即返回引用;
 // 同步等待超限时自动转交后台(与命令工具 30s 转交同思想).
 // 模型说明书见 prompt.ts。
-import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
   buildTool,
@@ -163,9 +162,9 @@ export const SubagentTool = buildTool<SubagentInput, SubagentResult, SubagentToo
     context: SubagentToolContext,
     invocation: ToolInvocation,
   ): Promise<SubagentResult> {
-    // Tool 先分配稳定 ID, AgentRunExecutor 才能用同一个身份记录执行、转录和事件.
-    // Tool 本身只决定同步等待还是转交后台, 不复制运行状态.
-    const agentRunId = randomUUID();
+    // Subagent ToolCall 与它创建的 AgentRun 是同一次业务动作. 共用 ID 后, History 中的
+    // tool_use 可以直接打开 AgentRun;刷新 Desktop 也不需要恢复第二张关联表.
+    const agentRunId = invocation.toolCallId;
     const role = getAgentRole(input.role ?? DEFAULT_AGENT_ROLE);
     if (!role) {
       throw new Error(

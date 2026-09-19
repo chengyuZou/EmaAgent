@@ -37,7 +37,7 @@ export class PastedTextStore {
     const bytes = Buffer.byteLength(content, 'utf8');
     try {
       await mkdir(dir, { recursive: true });
-      // 直写最终路径(两家同款);写一半崩了留下的是无行残渣,归磁盘侧清扫。
+      // 直接写最终路径,错误文件会在每次开软件时被扫掉, 不再做临时文件再搬运
       await writeFile(target, content, { encoding: 'utf8', mode: 0o600 });
     } catch (error) {
       await rm(target, { force: true }).catch(() => {});

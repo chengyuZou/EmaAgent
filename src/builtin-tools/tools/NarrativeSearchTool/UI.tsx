@@ -1,14 +1,13 @@
-// NarrativeSearchTool 的桌面展示: 事件驱动的剧情检索状态块 + 参数/结果卡。
-// 状态块同时服务 SSE 流式(desktop 直接传 narrative_status slice 作 data)与持久化结果。
+// NarrativeSearchTool 的桌面参数与结果展示. 运行状态由通用 Tool 块负责, 检索内容在结果落盘后显示.
 import { useState, type JSX } from 'react';
-import { Button, Spinner } from '@ema-agent/ui';
+import { Button } from '@ema-agent/ui';
 import type { NarrativeQueryMode } from '@ema-agent/narrative';
 import type { NarrativeSearchResult } from './NarrativeSearchTool.js';
 
-/** 展示前显示的前 N 字(超长截断,点"展开全文"看全部)。 */
+/** 展示前 N 个字符. 内容更长时允许用户展开全文. */
 const PREVIEW_CHARS = 500;
 
-/** 检索模式的中文标签；Record 穷尽——NarrativeQueryMode 加成员时这里必须同批补。 */
+/** 检索模式的中文标签. NarrativeQueryMode 增加成员时这里必须同批补齐. */
 const NARRATIVE_MODE_LABELS: Record<NarrativeQueryMode, string> = {
   local: '局部',
   global: '全局',
@@ -17,27 +16,27 @@ const NARRATIVE_MODE_LABELS: Record<NarrativeQueryMode, string> = {
   mix: '图谱',
 };
 
-/** 状态块视图模型: 与 desktop 的 narrative_status slice 同构, 流式/持久化共用。 */
-export interface NarrativeStatusViewData {
-  status: 'running' | 'completed' | 'failed' | 'interrupted';
-  timelines: string[];
-  completedTimelines: string[];
-  snippets: Record<string, string>;
-  failedTimelines: Record<string, string>;
-  message?: string;
-}
-
 /**
- * 剧情检索块。外层始终可折叠(header 切整块),双向动画。
- *   - 单周目:外层折叠,展开后直接显示那一个周目的内容(无内层子折叠)
- *   - 多周目:外层折叠 + 内层每个周目各自独立子折叠(双向动画)
- * 流式中按 timeline 完成状态实时更新;持久化后从 DB 重建(完整 text)。
+ * 剧情检索结果可以整体折叠.
+ * 单周目展开后直接显示正文, 多周目再为每个周目提供独立折叠.
+ * Tool 完成后从类型化结果显示正文. Tool 是否仍在运行以及调用本身是否失败由外层 Tool 块显示.
  */
-export function NarrativeStatusBlock({ data }: { data: NarrativeStatusViewData }): JSX.Element {
-  const timelines = data.timelines;
-  const completed = new Set(data.completedTimelines);
-  const failed    = data.failedTimelines ?? {};
-  const isMulti   = timelines.length > 1;
+function NarrativeResultBlock({ result }: { result: NarrativeSearchResult }): JSX.Element {
+  const completed = new Set(result.timelines.map((timeline) => timeline.name));
+  const snippets = Object.fromEntries(
+    result.timelines.map((timeline) => [timeline.name, timeline.text]),
+  );
+  const failed = Object.fromEntries(
+    result.failures.map((failure) => [failure.timeline, failure.message]),
+  );
+  const timelines = [
+    ...result.timelines.map((timeline) => timeline.name),
+    ...result.failures
+      .map((failure) => failure.timeline)
+      .filter((name) => !completed.has(name)),
+  ];
+  const isFailed = result.status === 'unavailable';
+  const isMulti = timelines.length > 1;
   const [outerOpen, setOuterOpen] = useState(false);
 
   return (
@@ -50,18 +49,14 @@ export function NarrativeStatusBlock({ data }: { data: NarrativeStatusViewData }
         className="flex w-full items-center gap-1.5 text-left font-medium text-[var(--ema-info)] transition-colors hover:opacity-80"
         aria-expanded={outerOpen}
       >
-        {data.status === 'running' && <Spinner size="sm" />}
-        {data.status === 'completed' && (
+        {!isFailed && (
           <span className="i-lucide:circle-check shrink-0 text-[var(--ema-info)]" aria-hidden />
         )}
-        {data.status === 'failed' && (
+        {isFailed && (
           <span className="i-lucide:triangle-alert shrink-0 text-[var(--ema-warning)]" aria-hidden />
         )}
-        {data.status === 'interrupted' && (
-          <span className="i-lucide:circle-pause shrink-0 text-[var(--ema-warning)]" aria-hidden />
-        )}
         <span className="flex-1">
-          {narrativeStatusLabel(data, completed.size, Object.keys(failed).length)}
+          {narrativeResultLabel(result, timelines.length)}
         </span>
         <span className={`${outerOpen ? 'i-lucide:chevron-down' : 'i-lucide:chevron-right'} text-[var(--ema-text-tertiary)]`} aria-hidden />
       </Button>
@@ -71,10 +66,12 @@ export function NarrativeStatusBlock({ data }: { data: NarrativeStatusViewData }
         style={{ gridTemplateRows: outerOpen ? '1fr' : '0fr', opacity: outerOpen ? 1 : 0 }}
       >
         <div className="flex flex-col gap-2">
-          {(data.status === 'failed' || data.status === 'interrupted') && data.message && (
-            <p className="text-xs text-[var(--ema-warning)]">{data.message}</p>
+          {isFailed && (
+            <p className="text-xs text-[var(--ema-warning)]">
+              {result.failures[0]?.message ?? '剧情检索不可用'}
+            </p>
           )}
-          {data.status === 'completed' && timelines.length === 0 && (
+          {!isFailed && timelines.length === 0 && (
             <p className="text-xs italic text-[var(--ema-text-tertiary)]">
               未找到相关剧情资料
             </p>
@@ -85,7 +82,7 @@ export function NarrativeStatusBlock({ data }: { data: NarrativeStatusViewData }
               name={name}
               completed={completed.has(name)}
               error={failed[name]}
-              text={data.snippets?.[name]}
+              text={snippets[name]}
               isMulti={isMulti}
             />
           ))}
@@ -96,8 +93,8 @@ export function NarrativeStatusBlock({ data }: { data: NarrativeStatusViewData }
 }
 
 /**
- * 单个周目行: 单周目直接显示文本, 多周目各自独立子折叠(双向动画)。
- * 内容超 PREVIEW_CHARS 字: 预览前 N 字 + "展开全文"按钮。
+ * 单周目直接显示正文, 多周目各自独立折叠.
+ * 正文超过 PREVIEW_CHARS 个字符时先显示预览, 用户可以继续展开全文.
  */
 function TimelineRow({
   name, completed, error, text, isMulti,
@@ -110,7 +107,6 @@ function TimelineRow({
 }): JSX.Element {
   const [innerOpen, setInnerOpen] = useState(false);
   const [fullText, setFullText]   = useState(false);
-  const settled = completed || error !== undefined;
   const hasFull   = !!text && text.length > PREVIEW_CHARS;
   const displayText = fullText ? text : (text?.slice(0, PREVIEW_CHARS) ?? '');
 
@@ -119,18 +115,16 @@ function TimelineRow({
       <Button
         variant="ghost"
         type="button"
-        disabled={!isMulti || !settled}
-        onClick={isMulti && settled ? () => setInnerOpen((v) => !v) : undefined}
+        disabled={!isMulti}
+        onClick={isMulti ? () => setInnerOpen((v) => !v) : undefined}
         className="flex w-full items-center gap-1.5 text-left hover:opacity-80 disabled:cursor-default disabled:hover:opacity-100"
       >
         {error
           ? <span className="i-lucide:triangle-alert shrink-0 text-[var(--ema-warning)]" aria-hidden />
-          : completed
-          ? <span className="i-lucide:check shrink-0 text-[var(--ema-info)]" aria-hidden />
-          : <span className="i-lucide:ellipsis shrink-0 text-[var(--ema-text-tertiary)]" aria-hidden />
+          : <span className="i-lucide:check shrink-0 text-[var(--ema-info)]" aria-hidden />
         }
         <span className={error ? 'text-[var(--ema-warning)]' : completed ? 'text-[var(--ema-text-secondary)]' : 'text-[var(--ema-text-tertiary)]'}>{name}</span>
-        {isMulti && settled && (
+        {isMulti && (
           <span className={`ml-auto ${innerOpen ? 'i-lucide:chevron-down' : 'i-lucide:chevron-right'} text-[var(--ema-text-tertiary)]`} aria-hidden />
         )}
       </Button>
@@ -185,19 +179,13 @@ function TimelineRow({
   );
 }
 
-function narrativeStatusLabel(
-  data: NarrativeStatusViewData,
-  completedCount: number,
-  failedCount: number,
-): string {
-  if (data.status === 'running') return '检索剧情资料…';
-  if (data.status === 'failed') return '剧情检索失败';
-  if (data.status === 'interrupted') return '剧情检索已中断';
-  if (data.timelines.length === 0) return '未找到相关剧情资料';
-  if (failedCount > 0) {
-    return `已检索 ${completedCount}/${data.timelines.length} 条剧情线`;
+function narrativeResultLabel(result: NarrativeSearchResult, timelineCount: number): string {
+  if (result.status === 'unavailable') return '剧情检索失败';
+  if (timelineCount === 0) return '未找到相关剧情资料';
+  if (result.failures.length > 0) {
+    return `已检索 ${result.timelines.length}/${timelineCount} 条剧情线`;
   }
-  return `已检索 ${data.timelines.length} 条剧情线`;
+  return `已检索 ${timelineCount} 条剧情线`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -231,30 +219,9 @@ export function NarrativeSearchArgsView({ args }: { args: unknown }): JSX.Elemen
   );
 }
 
-/** 结果卡: 把类型化 TOutput 投影成状态块视图, 供 Tool 注册表在普通结果卡中复用。 */
+/** Tool 完成后直接显示 NarrativeSearchResult, 不再转换成第二套流式状态. */
 export function NarrativeSearchResultView({ data }: { data: unknown }): JSX.Element | null {
   const result = asNarrativeSearchResult(data);
   if (!result) return null;
-
-  const view: NarrativeStatusViewData = result.status === 'unavailable'
-    ? {
-        status: 'failed',
-        timelines: [],
-        completedTimelines: [],
-        snippets: {},
-        failedTimelines: {},
-        message: result.failures[0]?.message ?? '剧情检索不可用',
-      }
-    : {
-        status: 'completed',
-        timelines: result.timelines.map((timeline) => timeline.name),
-        completedTimelines: result.timelines.map((timeline) => timeline.name),
-        snippets: Object.fromEntries(
-          result.timelines.map((timeline) => [timeline.name, timeline.text]),
-        ),
-        failedTimelines: Object.fromEntries(
-          result.failures.map((failure) => [failure.timeline, failure.message]),
-        ),
-      };
-  return <NarrativeStatusBlock data={view} />;
+  return <NarrativeResultBlock result={result} />;
 }

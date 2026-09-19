@@ -27,6 +27,8 @@ export function asFileEditResult(data: unknown): FileEditResult | null {
     && typeof data['newString'] === 'string'
     && Array.isArray(data['structuredPatch'])
     && data['structuredPatch'].every(isPatchHunk)
+    && typeof data['additions'] === 'number'
+    && typeof data['deletions'] === 'number'
     && typeof data['replacements'] === 'number'
   ) {
     return data as unknown as FileEditResult;
@@ -147,13 +149,6 @@ export function StructuredPatchCard({ hunks }: { hunks: readonly PatchHunk[] }):
 function FileEditDiffCard({ result }: { result: FileEditResult }): JSX.Element {
   const [copied, setCopied] = useState(false);
 
-  const additions = result.structuredPatch.reduce(
-    (sum, h) => sum + h.lines.filter((l) => l.startsWith('+')).length, 0,
-  );
-  const deletions = result.structuredPatch.reduce(
-    (sum, h) => sum + h.lines.filter((l) => l.startsWith('-')).length, 0,
-  );
-
   return (
     <div className="flex flex-col gap-1 pr-6">
       {/* 头部: 语义行 + 增删计数 + 复制 */}
@@ -161,8 +156,8 @@ function FileEditDiffCard({ result }: { result: FileEditResult }): JSX.Element {
         <span className="text-[var(--ema-text-secondary)]">
           已编辑 · {result.replacements} 处替换
         </span>
-        <span className="text-[var(--ema-success-text)]">+{additions}</span>
-        <span className="text-[var(--ema-danger-text)]">-{deletions}</span>
+        <span className="text-[var(--ema-success-text)]">+{result.additions}</span>
+        <span className="text-[var(--ema-danger-text)]">-{result.deletions}</span>
         {result.replaceAll && <Badge variant="primary">replace_all</Badge>}
         <button
           className="ml-auto px-1.5 py-0.5 rounded text-[10px] transition-colors text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)]"

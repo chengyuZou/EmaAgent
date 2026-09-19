@@ -15,7 +15,12 @@ import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { checkWritePathPermission } from '../shared/pathPermission.js';
 import { atomicTransformUtf8 } from './atomicWrite.js';
 import { isBlockedDevice } from '../FileReadTool/FileReadTool.js';
-import { buildStructuredPatch, type PatchHunk } from '../FileEditTool/patch.js';
+import {
+  buildStructuredPatch,
+  countCreatedFileLines,
+  countPatchLines,
+  type PatchHunk,
+} from '../FileEditTool/patch.js';
 import { FILE_WRITE_DESCRIPTION } from './prompt.js';
 
 /** File 写入工具只取得当前 Turn 的读取状态与工作区;取消与调用身份走 ToolInvocation。 */
@@ -45,6 +50,10 @@ export interface FileWriteResult {
   originalFile: string | null;
   /** updated 的 diff;created 为空数组(UI 用 content 直接展示,不合成假 diff)。 */
   structuredPatch: PatchHunk[];
+  /** 本次 Tool 调用新增的行数. created 表示新文件实际文本行数. */
+  additions: number;
+  /** 本次 Tool 调用删除的行数. created 固定为 0. */
+  deletions: number;
 }
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
@@ -136,15 +145,22 @@ export const FileWriteTool = buildTool<FileWriteInput, FileWriteResult, FileWrit
       truncated: false,
     });
     const existed = written.existed;
+    const structuredPatch = existed && written.previousContent !== null
+      ? buildStructuredPatch(file_path, written.previousContent, content)
+      : [];
+    const lineCounts = existed
+      ? countPatchLines(structuredPatch)
+      : { additions: countCreatedFileLines(content), deletions: 0 };
+
     return {
       type: existed ? 'updated' : 'created',
       filePath: file_path,
       bytesWritten: Buffer.byteLength(content, 'utf8'),
       content,
       originalFile: written.previousContent,
-      structuredPatch: existed && written.previousContent !== null
-        ? buildStructuredPatch(file_path, written.previousContent, content)
-        : [],
+      structuredPatch,
+      additions: lineCounts.additions,
+      deletions: lineCounts.deletions,
     };
   },
 

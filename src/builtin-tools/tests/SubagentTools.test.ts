@@ -4,7 +4,7 @@ import type { SubagentControl, ToolInvocation } from '@ema-agent/tools';
 import { SubagentTool } from '../tools/SubagentTool/SubagentTool.js';
 import { SubagentAwaitTool } from '../tools/SubagentTool/SubagentAwaitTool.js';
 
-const AGENT_RUN_ID = '11111111-1111-4111-8111-111111111111';
+const AGENT_RUN_ID = 'call-sub-1';
 
 function makeInvocation(signal?: AbortSignal): ToolInvocation {
   return {
@@ -48,11 +48,17 @@ describe('SubagentTool — 三形态', () => {
       makeInvocation(),
     );
 
-    expect(result.kind).toBe('background');
-    expect(result.via).toBe('requested');
+    expect(result).toEqual({
+      kind: 'background',
+      agentRunId: AGENT_RUN_ID,
+      via: 'requested',
+    });
     expect(subagents.start).toHaveBeenCalledWith(
       '检查文件边界',
-      expect.objectContaining({ contextMode: 'subagent' }),
+      expect.objectContaining({
+        agentRunId: AGENT_RUN_ID,
+        contextMode: 'subagent',
+      }),
       true,
       expect.any(AbortSignal),
     );
@@ -152,6 +158,10 @@ describe('SubagentTool — 模型身份成对校验', () => {
 });
 
 describe('SubagentAwait', () => {
+  it('接受 Provider 产生的非 UUID ToolCall ID', () => {
+    expect(SubagentAwaitTool.inputSchema.safeParse({ agentRunId: AGENT_RUN_ID }).success).toBe(true);
+  });
+
   it('Await 返回输出; 未知或仍被其他等待方持有时返回 output:null', async () => {
     const subagents = makeSubagents();
     const projection = SubagentAwaitTool.validateContext({ subagents } as never);

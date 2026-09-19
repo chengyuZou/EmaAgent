@@ -26,6 +26,8 @@ export function asFileWriteResult(data: unknown): FileWriteResult | null {
     && typeof data['content'] === 'string'
     && (data['originalFile'] === null || typeof data['originalFile'] === 'string')
     && Array.isArray(data['structuredPatch'])
+    && typeof data['additions'] === 'number'
+    && typeof data['deletions'] === 'number'
   ) {
     return data as unknown as FileWriteResult;
   }
@@ -59,28 +61,27 @@ export function FileWriteResultView({ data }: { data: unknown }): JSX.Element | 
 
   if (result.type === 'updated') {
     const patch: readonly PatchHunk[] = result.structuredPatch;
-    const additions = patch.reduce((s, h) => s + h.lines.filter((l) => l.startsWith('+')).length, 0);
-    const deletions = patch.reduce((s, h) => s + h.lines.filter((l) => l.startsWith('-')).length, 0);
     return (
       <div className="flex flex-col gap-1 pr-6">
         <div className="flex items-center gap-2 text-[11px] leading-relaxed">
           <span className="text-[var(--ema-text-secondary)]">已覆盖写入</span>
-          <span className="text-[var(--ema-success-text)]">+{additions}</span>
-          <span className="text-[var(--ema-danger-text)]">-{deletions}</span>
+          <span className="text-[var(--ema-success-text)]">+{result.additions}</span>
+          <span className="text-[var(--ema-danger-text)]">-{result.deletions}</span>
         </div>
         <StructuredPatchCard hunks={patch} />
       </div>
     );
   }
 
-  // created: 内容预览(前 N 行), 全文在结果区可滚。
-  const lines = result.content.split('\n');
+  // created 没有 structuredPatch. 预览与 ToolResult 使用相同的文本行口径, 不把结尾换行算成空白行.
+  const lines = result.content.length === 0 ? [] : result.content.split('\n');
+  if (lines.at(-1) === '') lines.pop();
   const preview = lines.slice(0, CREATED_PREVIEW_LINES);
   const omitted = lines.length - preview.length;
   return (
     <div className="flex flex-col gap-1 pr-6">
       <span className="text-[11px] text-[var(--ema-text-secondary)]">
-        新建文件 · {lines.length.toLocaleString()} 行 · {(result.bytesWritten / 1024).toFixed(1)} KB
+        新建文件 · {result.additions.toLocaleString()} 行 · {(result.bytesWritten / 1024).toFixed(1)} KB
       </span>
       <div className="max-h-48 overflow-auto rounded-md border border-[var(--ema-border)] px-2 py-1 font-mono text-[11px] leading-relaxed">
         {preview.map((line, index) => (
